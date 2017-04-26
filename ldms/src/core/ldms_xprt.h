@@ -137,12 +137,18 @@ enum ldms_request_cmd {
 };
 
 struct ldms_send_cmd_param {
+#ifdef SWIG
+%immutable;
+#endif
 	uint32_t msg_len;
 	char msg[0];
 };
 
 struct ldms_lookup_cmd_param {
 	uint32_t flags;
+#ifdef SWIG
+%immutable;
+#endif
 	uint32_t path_len;
 	char path[LDMS_LOOKUP_PATH_MAX+1];
 };
@@ -189,6 +195,9 @@ struct ldms_rendezvous_lookup_param {
 	uint32_t data_len;
 	uint32_t card;
 	uint32_t schema_len;
+#ifdef SWIG
+%immutable;
+#endif
 	uint32_t inst_name_len;
 	char schema_inst_name[0]; /* schema name and then instance name */
 };
@@ -233,6 +242,9 @@ struct ldms_dir_reply {
 	uint32_t type;
 	uint32_t more;
 	uint32_t set_count;
+#ifdef SWIG
+%immutable;
+#endif
 	uint32_t set_list_len;
 	char set_list[0];
 };

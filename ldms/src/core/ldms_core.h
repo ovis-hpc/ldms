@@ -94,6 +94,9 @@ typedef struct ldms_value_desc {
 	uint32_t vd_array_count;/*! Number of elements in the array */
 	uint8_t vd_type;	/*! The type of the value, enum ldms_value_type */
 	uint8_t vd_flags;	/*! Metric or Attribute */
+#ifdef SWIG
+%immutable;
+#endif
 	uint8_t vd_name_len;	/*! The length of the metric name in bytes*/
 	char vd_name[0];	/*! The metric name */
 } *ldms_mdesc_t;
@@ -168,6 +171,9 @@ struct ldms_set_hdr {
 	uint8_t pad1;	/* data pad */
 	uint8_t pad2;	/* data pad */
 	uint8_t pad3;	/* data pad */
+#ifdef SWIG
+%immutable;
+#endif
 	uint32_t card;		/* Size of dictionary */
 	uint32_t meta_sz;	/* size of meta data in bytes */
 	uint32_t data_sz;	/* size of metric values in bytes */
@@ -236,6 +242,9 @@ enum ldms_value_type {
 };
 
 typedef struct ldms_name {
+#ifdef SWIG
+%immutable;
+#endif
 	uint8_t len;
 	char name[0];
 } *ldms_name_t;
