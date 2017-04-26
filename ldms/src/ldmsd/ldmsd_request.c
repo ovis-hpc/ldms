@@ -155,6 +155,7 @@ static int version_handler(ldmsd_req_ctxt_t reqc);
 static int env_handler(ldmsd_req_ctxt_t req_ctxt);
 static int include_handler(ldmsd_req_ctxt_t req_ctxt);
 static int oneshot_handler(ldmsd_req_ctxt_t req_ctxt);
+static int logrotate_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static struct request_handler_entry request_handler[] = {
@@ -201,6 +202,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_ENV_REQ] = { LDMSD_ENV_REQ, env_handler },
 	[LDMSD_INCLUDE_REQ] = { LDMSD_INCLUDE_REQ, include_handler },
 	[LDMSD_ONESHOT_REQ] = { LDMSD_ONESHOT_REQ, oneshot_handler },
+	[LDMSD_LOGROTATE_REQ] = { LDMSD_LOGROTATE_REQ, logrotate_handler },
 };
 
 struct req_str_id {
@@ -217,7 +219,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "include",            LDMSD_INCLUDE_REQ  },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ   },
 	{  "loglevel",           LDMSD_VERBOSE_REQ  },
-	{   "logrotate",         LDMSD_NOTSUPPORT_REQ  },
+	{  "logrotate",          LDMSD_LOGROTATE_REQ  },
 	{  "oneshot",            LDMSD_ONESHOT_REQ  },
 	{  "prdcr_add",          LDMSD_PRDCR_ADD_REQ  },
 	{  "prdcr_del",          LDMSD_PRDCR_DEL_REQ  },
@@ -3073,6 +3075,21 @@ einval:
 
 out:
 	rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return rc;
+}
+
+extern int ldmsd_logrotate();
+static int logrotate_handler(ldmsd_req_ctxt_t reqc)
+{
+	size_t cnt = 0;
+	reqc->errcode = ldmsd_logrotate();
+	if (reqc->errcode) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Failed to rotate the log file. %s",
+				strerror(reqc->errcode));
+	}
+	int rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return rc;
 }

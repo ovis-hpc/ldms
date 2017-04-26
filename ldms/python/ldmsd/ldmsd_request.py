@@ -202,6 +202,8 @@ class LDMSD_Request(object):
     ENV = 0x600 + 5
     INCLUDE = 0x600 + 6
     ONESHOT = 0x600 + 7
+    LOGROTATE = 0x600 + 8
+    
 
     LDMSD_REQ_ID_MAP = {
             'cli': {'id' :CLI},
@@ -254,6 +256,7 @@ class LDMSD_Request(object):
             'env': {'id': ENV},
             'include': {'id': INCLUDE},
             'oneshot': {'id': ONESHOT},
+            'logrotate': {'id': LOGROTATE},
         }
 
     SOM_FLAG = 1

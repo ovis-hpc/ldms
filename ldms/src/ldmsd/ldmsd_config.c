@@ -972,17 +972,6 @@ cleanup:
 	return rc;
 }
 
-int process_log_rotate(char *replybuf, struct attr_value_list *av_list,
-					struct attr_value_list *kw_list)
-{
-	int rc = ldmsd_logrotate();
-	if (rc)
-		snprintf(replybuf, REPLYBUF_LEN, "%d Failed to rotate the log file", -rc);
-	else
-		snprintf(replybuf, REPLYBUF_LEN, "%d", -rc);
-	return 0;
-}
-
 extern int
 process_request(int fd, struct msghdr *msg, size_t msg_len);
 void *ctrl_thread_proc(void *v)
