@@ -147,8 +147,7 @@ class LDMSD_Req_Attr(object):
         return self.packed
 
 class LDMSD_Request(object):
-    CLI = 1
-    EXAMPLE = 2
+    EXAMPLE = 1
 
     PRDCR_ADD = 0x100
     PRDCR_DEL = 0x100 + 1
@@ -206,7 +205,6 @@ class LDMSD_Request(object):
     EXIT_DAEMON = 0x600 + 9
 
     LDMSD_REQ_ID_MAP = {
-            'cli': {'id' :CLI},
             'example': {'id': EXAMPLE},
 
             'prdcr_add': {'id': PRDCR_ADD},

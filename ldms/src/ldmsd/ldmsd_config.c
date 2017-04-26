@@ -86,7 +86,6 @@
 #include "config.h"
 
 #define REPLYBUF_LEN 4096
-static char replybuf[REPLYBUF_LEN];
 char myhostname[HOST_NAME_MAX+1];
 pthread_t ctrl_thread = (pthread_t)-1;
 pthread_t inet_ctrl_thread = (pthread_t)-1;
@@ -134,25 +133,6 @@ void ldmsd_config_cleanup()
 		close(inet_listener);
 	if (inet_sock >= 0)
 		close(inet_sock);
-}
-
-int send_reply(int sock, struct sockaddr *sa, ssize_t sa_len,
-	       char *msg, ssize_t msg_len)
-{
-	struct msghdr reply;
-	struct iovec iov;
-
-	reply.msg_name = sa;
-	reply.msg_namelen = sa_len;
-	iov.iov_base = msg;
-	iov.iov_len = msg_len;
-	reply.msg_iov = &iov;
-	reply.msg_iovlen = 1;
-	reply.msg_control = NULL;
-	reply.msg_controllen = 0;
-	reply.msg_flags = 0;
-	sendmsg(sock, &reply, 0);
-	return 0;
 }
 
 struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name)
@@ -278,231 +258,6 @@ const char *match_selector_str(enum ldmsd_name_match_sel sel)
 		return "SCHEMA_NAME";
 	}
 	return "BAD SELECTOR";
-}
-
-void __process_info_prdcr(enum ldmsd_loglevel llevel)
-{
-	ldmsd_prdcr_t prdcr;
-	ldmsd_log(llevel, "\n");
-	ldmsd_log(llevel, "========================================================================\n");
-	ldmsd_log(llevel, "%s\n", "Producers");
-#ifdef LDMSD_UPDATE_TIME
-	ldmsd_log(llevel, "%-20s %-20s %-8s %-12s %-10s %s\n",
-		 "Name", "Host", "Port", "ConnIntrvl", "State", "Schdule update time(usec)");
-#else /* LDMSD_UPDATE_TIME */
-	ldmsd_log(llevel, "%-20s %-20s %-8s %-12s %s\n",
-		 "Name", "Host", "Port", "ConnIntrvl", "State");
-#endif /* LDMSD_UPDATE_TIME */
-	ldmsd_log(llevel, "-------------------- -------------------- ---------- ---------- ----------\n");
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-#ifdef LDMSD_UPDATE_TIME
-		ldmsd_log(llevel, "%-20s %-20s %-8hu %-12d %-10s %lf\n",
-			 prdcr->obj.name, prdcr->host_name, prdcr->port_no,
-			 prdcr->conn_intrvl_us,
-			 prdcr_state_str(prdcr->conn_state),
-			 prdcr->sched_update_time);
-#else /* LDMSD_UPDATE_TIME */
-		ldmsd_log(llevel, "%-20s %-20s %-8hu %-12d %s\n",
-			 prdcr->obj.name, prdcr->host_name, prdcr->port_no,
-			 prdcr->conn_intrvl_us,
-			 prdcr_state_str(prdcr->conn_state));
-#endif /* LDMSD_UPDATE_TIME */
-		ldmsd_prdcr_lock(prdcr);
-		ldmsd_prdcr_set_t prv_set;
-#ifdef LDMSD_UPDATE_TIME
-		ldmsd_log(llevel, "    %-32s %-20s %-10s %s\n",
-			 "Instance Name", "Schema Name", "State", "Update time (usec)");
-		for (prv_set = ldmsd_prdcr_set_first(prdcr); prv_set;
-		     prv_set = ldmsd_prdcr_set_next(prv_set)) {
-			ldmsd_log(llevel, "    %-32s %-20s %-10s %lf\n",
-				 prv_set->inst_name,
-				 prv_set->schema_name,
-				 ldmsd_prdcr_set_state_str(prv_set->state),
-				 prv_set->updt_duration);
-		}
-#else /* LDMSD_UPDATE_TIME */
-		ldmsd_log(llevel, "    %-32s %-20s %s\n",
-			 "Instance Name", "Schema Name", "State");
-		for (prv_set = ldmsd_prdcr_set_first(prdcr); prv_set;
-		     prv_set = ldmsd_prdcr_set_next(prv_set)) {
-			ldmsd_log(llevel, "    %-32s %-20s %s\n",
-				 prv_set->inst_name,
-				 prv_set->schema_name,
-				 ldmsd_prdcr_set_state_str(prv_set->state));
-		}
-#endif /* LDMSD_UPDATE_TIME */
-
-		ldmsd_prdcr_unlock(prdcr);
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	ldmsd_log(llevel, "-------------------- -------------------- ---------- ---------- ----------\n");
-}
-
-void __process_info_updtr(enum ldmsd_loglevel llevel)
-{
-	char offset_s[15];
-	ldmsd_updtr_t updtr;
-	ldmsd_log(llevel, "\n");
-	ldmsd_log(llevel, "========================================================================\n");
-	ldmsd_log(llevel, "%s\n", "Updaters");
-#ifdef LDMSD_UPDATE_TIME
-	ldmsd_log(llevel, "%-20s %-14s %-14s %-10s %-10s %s\n",
-		 "Name", "Update Intrvl", "Offset", "State", "Submitting time (usec)", "Update time (usec)");
-#else /* LDMSD_UDPATE_TIME */
-	ldmsd_log(llevel, "%-20s %-14s %-14s %s\n",
-		 "Name", "Update Intrvl", "Offset", "State");
-#endif /* LDMSD_UPDATE_TIME */
-
-	ldmsd_log(llevel, "-------------------- -------------- -------------- ----------\n");
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
-	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
-		if (updtr->updt_task_flags & LDMSD_TASK_F_SYNCHRONOUS)
-			sprintf(offset_s, "%d", updtr->updt_offset_us);
-		else
-			sprintf(offset_s, "ASYNC");
-#ifdef LDMSD_UPDATE_TIME
-		ldmsd_log(llevel, "%-20s %-14d %-14s %-10s %lf %lf\n",
-			 updtr->obj.name, updtr->updt_intrvl_us,
-			 offset_s,
-			 ldmsd_updtr_state_str(updtr->state),
-			 updtr->sched_duration,
-			 updtr->duration);
-#else /* LDMSD_UPDATE_TIME */
-		ldmsd_log(llevel, "%-20s %-14d %-14s %s\n",
-			 updtr->obj.name, updtr->updt_intrvl_us,
-			 offset_s,
-			 ldmsd_updtr_state_str(updtr->state));
-#endif /* LDMSD_UPDATE_TIME */
-
-		ldmsd_updtr_lock(updtr);
-		ldmsd_name_match_t match;
-		ldmsd_log(llevel, "    Metric Set Match Specifications (empty == All)\n");
-		ldmsd_log(llevel, "    %-10s %s\n", "Compare To", "Value");
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		for (match = ldmsd_updtr_match_first(updtr); match;
-		     match = ldmsd_updtr_match_next(match)) {
-			ldmsd_log(llevel, "    %-10s %s\n",
-				 match_selector_str(match->selector),
-				 match->regex_str);
-		}
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		ldmsd_prdcr_ref_t ref;
-		ldmsd_prdcr_t prdcr;
-		ldmsd_log(llevel, "    Producers (empty == None)\n");
-		ldmsd_log(llevel, "    %-10s %-10s %-10s %s\n", "Name", "Transport", "Host", "Port");
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
-		     ref = ldmsd_updtr_prdcr_next(ref)) {
-			prdcr = ref->prdcr;
-			ldmsd_log(llevel, "    %-10s %-10s %-10s %hu\n",
-				 prdcr->obj.name,
-				 prdcr->xprt_name,
-				 prdcr->host_name,
-				 prdcr->port_no);
-		}
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		ldmsd_updtr_unlock(updtr);
-	}
-	ldmsd_log(llevel, "-------------------- -------------- ----------\n");
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
-}
-
-void __process_info_strgp(enum ldmsd_loglevel llevel)
-{
-	ldmsd_strgp_t strgp;
-	ldmsd_log(llevel, "\n");
-	ldmsd_log(llevel, "========================================================================\n");
-	ldmsd_log(llevel, "%s\n", "Storage Policies");
-	ldmsd_log(llevel, "%-15s %-15s %-15s %-15s %-s\n",
-		 "Name", "Container", "Schema", "Back End", "State");
-	ldmsd_log(llevel, "--------------- --------------- --------------- --------------- --------\n");
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
-	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
-		ldmsd_log(llevel, "%-15s %-15s %-15s %-15s %-8s\n",
-			 strgp->obj.name,
-			 strgp->container, strgp->schema, strgp->plugin_name,
-			 ldmsd_strgp_state_str(strgp->state));
-		ldmsd_strgp_lock(strgp);
-		ldmsd_name_match_t match;
-		ldmsd_log(llevel, "    Producer Match Specifications (empty == All)\n");
-		ldmsd_log(llevel, "    %s\n", "Name");
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		for (match = ldmsd_strgp_prdcr_first(strgp); match;
-		     match = ldmsd_strgp_prdcr_next(match)) {
-			ldmsd_log(llevel, "    %s\n", match->regex_str);
-		}
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-
-		ldmsd_log(llevel, "    Metrics (empty == All)\n");
-		ldmsd_log(llevel, "    %s\n", "Name");
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		ldmsd_strgp_metric_t metric;
-		for (metric = ldmsd_strgp_metric_first(strgp); metric;
-		     metric = ldmsd_strgp_metric_next(metric)) {
-			ldmsd_log(llevel, "    %s\n", metric->name);
-		}
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		ldmsd_strgp_unlock(strgp);
-	}
-	ldmsd_log(llevel, "--------------- --------------- --------------- --------------- ---------------\n");
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
-}
-
-/**
- * Return information about the state of the daemon
- */
-int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	int llevel = LDMSD_LALL;
-
-	char *name;
-	name = av_value(avl, "name");
-	if (name) {
-		if (0 == strcmp(name, "prdcr")) {
-			__process_info_prdcr(llevel);
-		} else if (0 == strcmp(name, "updtr")) {
-			__process_info_updtr(llevel);
-		} else if (0 == strcmp(name, "strgp")) {
-			__process_info_strgp(llevel);
-		} else {
-			snprintf(replybuf, REPLYBUF_LEN, "%dInvalid name '%s'. "
-					"The choices are prdcr, updtr, strgp.",
-					-EINVAL, name);
-		}
-		snprintf(replybuf, REPLYBUF_LEN, "0");
-		return 0;
-	}
-
-	extern int ev_thread_count;
-	extern pthread_t *ev_thread;
-	extern int *ev_count;
-	int i;
-	struct hostspec *hs;
-	int verbose = 0;
-	char *vb = av_value(avl, "verbose");
-	if (vb && (strcasecmp(vb, "true") == 0 ||
-			strcasecmp(vb, "t") == 0))
-		verbose = 1;
-
-	ldmsd_log(llevel, "Event Thread Info:\n");
-	ldmsd_log(llevel, "%-16s %s\n", "----------------", "------------");
-	ldmsd_log(llevel, "%-16s %s\n", "Thread", "Task Count");
-	ldmsd_log(llevel, "%-16s %s\n", "----------------", "------------");
-	for (i = 0; i < ev_thread_count; i++) {
-		ldmsd_log(llevel, "%-16p %d\n",
-			 (void *)ev_thread[i], ev_count[i]);
-	}
-
-	ldmsd_log(llevel, "========================================================================\n");
-	__process_info_prdcr(llevel);
-
-	__process_info_updtr(llevel);
-
-	__process_info_strgp(llevel);
-
-	snprintf(replybuf, REPLYBUF_LEN, "0");
-	return 0;
 }
 
 int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
@@ -647,28 +402,6 @@ int ldmsd_set_udata_regex(char *set_name, char *regex_str,
 	return 0;
 }
 
-int resolve(const char *hostname, struct sockaddr_in *sin)
-{
-	struct hostent *h;
-
-	h = gethostbyname(hostname);
-	if (!h) {
-		printf("Error resolving hostname '%s'\n", hostname);
-		return -1;
-	}
-
-	if (h->h_addrtype != AF_INET) {
-		printf("Hostname '%s' resolved to an unsupported address family\n",
-		       hostname);
-		return -1;
-	}
-
-	memset(sin, 0, sizeof *sin);
-	sin->sin_addr.s_addr = *(unsigned int *)(h->h_addr_list[0]);
-	sin->sin_family = h->h_addrtype;
-	return 0;
-}
-
 void ldmsd_exit_daemon()
 {
 	cleanup_requested = 1;
@@ -744,7 +477,7 @@ ldmsd_req_ctxt_t process_config_line(char *line, struct ldmsd_req_hdr_s *request
 		goto out;
 	}
 
-	rc = ldmsd_cfg2attr(request, _line, &reqc->req_buf,
+	rc = ldmsd_process_cfg_str(request, _line, &reqc->req_buf,
 				&reqc->req_off, &reqc->req_len);
 	if (rc) {
 		errno = rc;
