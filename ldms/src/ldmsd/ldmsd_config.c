@@ -669,14 +669,10 @@ int resolve(const char *hostname, struct sockaddr_in *sin)
 	return 0;
 }
 
-int process_exit(char *replybuf, struct attr_value_list *av_list,
-					struct attr_value_list *kw_list)
+void ldmsd_exit_daemon()
 {
 	cleanup_requested = 1;
-	/* set flag for bottom of message handler loops to check for quit. */
 	ldmsd_log(LDMSD_LINFO, "User requested exit.\n");
-	snprintf(replybuf, REPLYBUF_LEN, "0cleanup request received.\n");
-	return 0;
 }
 
 extern uint32_t ldmsd_req_attr_str2id(const char *name);

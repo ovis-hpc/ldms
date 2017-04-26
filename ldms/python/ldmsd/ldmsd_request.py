@@ -203,7 +203,7 @@ class LDMSD_Request(object):
     INCLUDE = 0x600 + 6
     ONESHOT = 0x600 + 7
     LOGROTATE = 0x600 + 8
-    
+    EXIT_DAEMON = 0x600 + 9
 
     LDMSD_REQ_ID_MAP = {
             'cli': {'id' :CLI},
@@ -257,6 +257,7 @@ class LDMSD_Request(object):
             'include': {'id': INCLUDE},
             'oneshot': {'id': ONESHOT},
             'logrotate': {'id': LOGROTATE},
+            'daemon_exit': {'id': EXIT_DAEMON},
         }
 
     SOM_FLAG = 1
