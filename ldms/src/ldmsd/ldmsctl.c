@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2011-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2011-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2011-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2011-2017 Open Grid Computing, Inc. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -58,12 +58,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
-#include <netinet/in.h>
+#include <sys/socket.h>
 #include <sys/un.h>
 #include <libgen.h>
 #include <signal.h>
 #include <search.h>
+#include <semaphore.h>
+#include <assert.h>
 #include "config.h"
+
+#define _GNU_SOURCE
 
 #ifdef HAVE_LIBREADLINE
 #  if defined(HAVE_READLINE_READLINE_H)
@@ -90,17 +94,43 @@ extern int read_history ();
   /* no history */
 #endif /* HAVE_READLINE_HISTORY */
 
-#include "ldms.h"
 #include "ldmsd.h"
-#include <ovis_ctrl/ctrl.h>
-#include <ovis_util/util.h>
+#include "ldmsd_request.h"
 
-#define FMT "S:"
+#define FMT "h:p:a:S:"
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
 
-struct attr_value_list *av_list, *kw_list;
+#define LDMSD_SOCKPATH_ENV "LDMSD_SOCKPATH"
 
-void usage(char *argv[])
+static char *linebuf;
+static size_t linebuf_len;
+static char *buffer;
+static size_t buffer_len;
+
+struct ctrl {
+	int sock;
+	struct sockaddr *sa;
+	size_t sa_len;
+};
+
+struct command {
+	char *token;
+	int cmd_id;
+	int (*action)(char *args);
+	void (*help)();
+};
+
+static int command_comparator(const void *a, const void *b)
+{
+	struct command *_a = (struct command *)a;
+	struct command *_b = (struct command *)b;
+	return strcmp(_a->token, _b->token);
+}
+
+#define LDMSCTL_HELP LDMSD_NOTSUPPORT_REQ + 1
+#define LDMSCTL_QUIT LDMSD_NOTSUPPORT_REQ + 2
+
+static void usage(char *argv[])
 {
 	printf("%s: [%s]\n"
                "    -S <socket>     The UNIX socket that the ldms daemon is listening on.\n"
@@ -109,292 +139,648 @@ void usage(char *argv[])
 	exit(1);
 }
 
-int handle_help(char *kw, char *err_str)
+static int handle_quit(char *kw)
 {
-	printf("help\n"
-	       "   - Print this menu.\n"
-	       "\n"
-	       "usage\n"
-	       "   - Show loaded plugin usage information.\n"
-	       "\n"
-	       "load name=<name>\n"
-	       "   - Loads the specified plugin. The library that implements\n"
-	       "     the plugin should be in the directory specified by the\n"
-	       "     LDMSD_PLUGIN_LIBPATH environment variable.\n"
-	       "     <name>       The plugin name, this is used to locate a loadable\n"
-	       "                  library named \"lib<name>.so\"\n"
-	       "\n"
-	       "term name=<name>\n"
-	       "   - Unloads the specified plugin.\n"
-	       "     <name>       The plugin name.\n"
-	       "\n"
-	       "config name=<name> [ <attr>=<value> ... ]\n"
-	       "   - Provides a mechanism to specify configuration options\n"
-	       "     <name>       The plugin name.\n"
-	       "     <attr>       An attribute name.\n"
-	       "     <value>      An attribute value.\n"
-	       "\n"
-               "udata set=<set_name> metric=<metric_name> udata=<user_data>\n"
-               "   - Set the user data of the specified metric in the given set\n"
-               "     <set_name>      The metric set name\n"
-               "     <metric_name>   The metric name\n"
-               "     <user_data>     The user data value\n"
-               "\n"
-               "udata_regex set=<set_name> regex=<regex> base=<base> [incr=<incr>]\n"
-               "   - Set the user data of multiple metrics using regular expression.\n"
-               "     The user data of the first matched metric is set to the base value.\n"
-               "     The base value is incremented by the given 'incr' value and then\n"
-               "     sets to the user data of the consecutive matched metric and so on.\n"
-               "     <set_name>      The metric set name\n"
-               "     <regex>         A regular expression to match metric names to be set\n"
-               "     <base>          The base value of user data (uint64).\n"
-               "     <incr>          Increment value (int). The default is 0. If incr is 0,\n"
-               "                     the user data of all matched metrics are set\n"
-               "                     to the base value.\n"
-               "\n"
-	       "start name=<name> interval=<interval> [ offset=<offset>]\n"
-	       "   - Begins calling the sampler's 'sample' method at the\n"
-	       "     sample interval.\n"
-	       "     <name>       The sampler name.\n"
-	       "     <interval>   The sample interval in microseconds.\n"
-	       "     <offset>     Optional offset (shift) from the sample mark\n"
-	       "                  in microseconds. Offset can be positive or\n"
-	       "                  negative with magnitude up to 1/2 the sample interval.\n"
-	       "                  If this offset is specified, including 0, \n"
-	       "                  collection will be synchronous; if the offset\n"
-	       "                  is not specified, collection will be asychronous.\n"
-	       "\n"
-	       "stop name=<name>\n"
-	       "   - Cancels sampling on the specified plugin.\n"
-	       "     <name>       The sampler name.\n"
-	       "\n"
-	       "add host=<host> type=<type> sets=<set names>\n"
-	       "                [ interval=<interval> ] [ offset=<offset>]\n"
-	       "                [ xprt=<xprt> ] [ port=<port> ]\n"
-	       "                [ standby=<agg_no> ]\n"
-	       "   - Adds a host to the list of hosts monitored by this ldmsd.\n"
-	       "     <host>       The hostname. This can be an IP address or DNS\n"
-	       "                  hostname.\n"
-	       "     <type>       One of the following host types: \n"
-	       "         active   An connection is initiated with the peer and\n"
-	       "                  it's metric sets will be periodically queried.\n"
-	       "         passive  A connect request is expected from the specified host.\n"
-	       "                  After this request is received, the peer's metric sets\n"
-	       "                  will be queried periodically.\n"
-	       "         bridging A connect request is initiated to the remote peer,\n"
-	       "                  but it's metric sets are not queried. This is the active\n"
-	       "                  side of the passive host above.\n"
-	       "         local    The to-be-added host is the local host. The given\n"
-	       "                  set name(s) must be the name(s) of local set(s).\n"
-	       "                  This option is used so that ldmsd can store\n"
-	       "                  the given local set(s) if it is configured to do so.\n"
-               "     <set names>  The list of metric set names to be queried.\n"
-               "		  The list is comma separated.\n"
-	       "     <interval>   An optional sampling interval in microseconds,\n"
-	       "                  defaults to 1000000.\n"
-	       "     <offset>     An optional offset (shift) from the sample mark\n"
-	       "                  in microseconds. If this offset is specified,\n "
-	       "                  including 0, the collection will be synchronous;\n"
-	       "                  if the offset is not specified, the collection\n"
-	       "                  will be asychronous\n"
-	       "     <xprt>       The transport type, defaults to 'sock'\n"
-	       "         sock     The sockets transport.\n"
-	       "         rdma     The OFA Verbs Transport for Infiniband or iWARP.\n"
-	       "         ugni     The Cray Gemini transport.\n"
-	       "     <port>       The port number to connect on, defaults to 50000.\n"
-	       "     <agg_no>     The number of the aggregator that this is standby for.\n"
-	       "                  Defaults to 0 which means this is an active aggregator.\n"
-	       "\n"
-	       "store name=<plugin> policy=<policy> container=<container> schema=<schema>\n"
-	       "      [hosts=<hosts>] [metric=<metric>,<metric>,...]\n"
-	       "   - Saves a metrics from one or more hosts to persistent storage.\n"
-	       "      <policy>      The storage policy name. This must be unique.\n"
-               "      <container>   The container name used by the plugin to name data.\n"
-	       "      <schema>      A name used to name the set of metrics stored together.\n"
-	       "      <metrics>     A comma separated list of metric names. If not specified,\n"
-	       "                    all metrics in the metric set will be saved.\n"
-	       "      <hosts>       The set of hosts whose data will be stored. If hosts is not\n"
-	       "                    specified, the metric set will be saved for all hosts. If\n"
-	       "                    specified, the value should be a comma separated list of\n"
-	       "                    host names.\n"
-	       "\n"
-	       "standby agg_no=<agg_no> state=<0/1>\n"
-	       "   - ldmsd will update the standby state (standby/active) of\n"
-	       "     the given aggregator number.\n"
-	       "    <agg_no>    Unique integer id for an aggregator from 1 to 64\n"
-	       "    <state>     0/1 - standby/active\n"
-	       "\n"
-	       "oneshot name=<name> time=<time>\n"
-	       "   - Schedule a one-shot sample event\n"
-	       "     <name>       The sampler name.\n"
-	       "     <time>       A Unix timestamp or a special keyword 'now+<second>'\n"
-	       "                  The sample will occur at the specified timestamp or at\n"
-	       "                  the <second> from now.\n"
-	       "\n"
-	       "info\n"
-	       "   - Causes the ldmsd to dump out information about plugins,\n"
-	       "     work queue utilization, hosts and object stores.\n"
-	       "\n"
-	       "quit\n"
-	       "   - Exit ldmsctl.\n"
-	       "daemon-exit\n"
-	       "   - Tell daemon to exit.\n");
-	return 0;
-}
-
-char *err_str;
-char *linebuf;
-char *sockname = LDMSD_CONTROL_SOCKNAME;
-struct ctrlsock *ctrl_sock;
-
-void cleanup()
-{
-	if (ctrl_sock)
-		ctrl_close(ctrl_sock);
-}
-
-int handle_usage(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_LIST_PLUGINS, av_list, err_str);
-}
-
-int handle_loglevel(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_VERBOSE, av_list, err_str);
-}
-
-int handle_version(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_VERSION, av_list, err_str);
-}
-
-int handle_plugin_load(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_LOAD_PLUGIN, av_list, err_str);
-}
-
-int handle_oneshot_sample(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_ONESHOT_SAMPLE, av_list, err_str);
-}
-
-int handle_plugin_term(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_TERM_PLUGIN, av_list, err_str);
-}
-
-int handle_plugin_config(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_CFG_PLUGIN, av_list, err_str);
-}
-
-int handle_set_udata(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_SET_UDATA, av_list, err_str);
-}
-
-int handle_set_udata_regex(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_SET_UDATA_REGEX, av_list, err_str);
-}
-
-int handle_sampler_start(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_START_SAMPLER, av_list, err_str);
-}
-
-int handle_sampler_stop(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_STOP_SAMPLER, av_list, err_str);
-}
-
-int handle_info(char *kw, char *err_str)
-{
-	return ctrl_request(ctrl_sock, LDMSCTL_INFO_DAEMON, av_list, err_str);
-}
-
-int handle_quit(char *kw, char *err_str)
-{
+	printf("bye ... :)\n");
 	exit(0);
 	return 0;
 }
 
-int handle_daemon_exit(char *kw, char *err_str)
+static void help_usage()
 {
-	return ctrl_request(ctrl_sock, LDMSCTL_EXIT_DAEMON, av_list, err_str);
+	printf( "usage\n"
+		"   - Show loaded plugin usage information.\n"
+		"Parameters:\n"
+		"    [name=]     A loaded plugin name\n");
 }
 
-
-struct kw {
-	char *token;
-	int (*action)(char *kw, char *err_str);
-};
-
-int handle_nxt_token(char *kw, char *err_str);
-/* keyword_tbl is used with bsearch and must be in strcmp sort order. */
-struct kw keyword_tbl[] = {
-	{ "?", handle_help },
-	{ "config", handle_plugin_config },
-	{ "daemon-exit", handle_daemon_exit },
-	{ "help", handle_help },
-	{ "info", handle_info },
-	{ "load", handle_plugin_load },
-	{ "loglevel", handle_loglevel },
-	{ "oneshot", handle_oneshot_sample },
-	{ "quit", handle_quit },
-	{ "start", handle_sampler_start },
-	{ "stop", handle_sampler_stop },
-	{ "term", handle_plugin_term },
-	{ "udata", handle_set_udata },
-	{ "udata_regex", handle_set_udata_regex },
-	{ "usage", handle_usage },
-	{ "version", handle_version }
-};
-
-static int kw_comparator(const void *a, const void *b)
+static void help_load()
 {
-	struct kw *_a = (struct kw *)a;
-	struct kw *_b = (struct kw *)b;
-	return strcmp(_a->token, _b->token);
+	printf(	"\nLoads the specified plugin. The library that implements\n"
+		"the plugin should be in the directory specified by the\n"
+		"LDMSD_PLUGIN_LIBPATH environment variable.\n\n"
+		"Parameters:\n"
+		"     name=       The plugin name, this is used to locate a loadable\n"
+		"                 library named \"lib<name>.so\"\n");
 }
 
-int nxt_kw;
-int handle_nxt_token(char *word, char *err_str)
+static void help_term()
 {
-	struct kw key;
-	struct kw *kw;
+	printf(	"\nUnload the specified plugin.\n\n"
+		"Parameters:\n"
+		"     name=       The plugin name.\n");
+}
 
-	key.token = av_name(kw_list, nxt_kw);
-	kw = bsearch(&key, keyword_tbl, ARRAY_SIZE(keyword_tbl),
-		     sizeof(*kw), kw_comparator);
-	if (kw) {
-		nxt_kw++;
-		return kw->action(key.token, err_str);
+static void help_config()
+{
+	printf(	"Provides a mechanism to specify configuration options\n\n"
+		"Parameters:\n"
+		"     name=       The plugin name.\n"
+		"     <attr>=     Plugin specific attr=value tuples.\n");
+}
+
+static void help_start()
+{
+	printf(	"Begins calling the sampler's 'sample' method at the\n"
+		"sample interval.\n\n"
+		"Parameters:\n"
+		"     name=       The sampler name.\n"
+		"     interval=   The sample interval in microseconds.\n"
+		"     [offset=]     Optional offset (shift) from the sample mark\n"
+		"                 in microseconds. Offset can be positive or\n"
+		"                 negative with magnitude up to 1/2 the sample interval.\n"
+		"                 If this offset is specified, including 0, \n"
+		"                 collection will be synchronous; if the offset\n"
+		"                 is not specified, collection will be asychronous.\n");
+}
+
+static void help_stop()
+{
+	printf( "\nCancels sampling on the specified plugin.\n\n"
+		"Parameters:\n"
+		"     name=       The sampler name.\n");
+}
+
+static void help_daemon_status()
+{
+	printf( "\nCauses the ldmsd to dump out information about its internal state.\n");
+}
+
+static void help_udata()
+{
+	printf( "\nSet the user data of the specified metric in the given set\n\n"
+		"Parameters:\n"
+		"     set=           The metric set name\n"
+		"     metric_name=   The metric name\n"
+		"     user_data=     The user data value\n");
+}
+
+static void help_udata_regex()
+{
+	printf( "\nSet the user data of multiple metrics using regular expression.\n"
+		"The user data of the first matched metric is set to the base value.\n"
+		"The base value is incremented by the given 'incr' value and then\n"
+		"sets to the user data of the consecutive matched metric and so on.\n"
+		"Parameters:\n"
+		"     set=           The metric set name\n"
+		"     regex=         A regular expression to match metric names to be set\n"
+		"     base=          The base value of user data (uint64).\n"
+		"     [incr=]        Increment value (int). The default is 0. If incr is 0,\n"
+		"                    the user data of all matched metrics are set\n"
+		"                    to the base value.\n");
+}
+
+static void help_oneshot()
+{
+	printf( "\nSchedule a one-shot sample event\n\n"
+		"Parameters:\n"
+		"     name=       The sampler name.\n"
+		"     time=       A Unix timestamp or a special keyword 'now+<second>'\n"
+		"                 The sample will occur at the specified timestamp or at\n"
+		"                 the second= from now.\n");
+}
+
+static void help_loglevel()
+{
+	printf( "\nChange the verbosity level of ldmsd\n\n"
+		"Parameters:\n"
+		"	level=	levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]\n");
+}
+
+static void help_quit()
+{
+	printf( "\nquit\n"
+		"   - Exit.\n");
+}
+
+static void help_prdcr_add()
+{
+	printf( "\nAdd an LDMS Producer to the Aggregator\n\n"
+		"Parameters:\n"
+		"     name=     A unique name for this Producer\n"
+		"     xprt=     The transport name [sock, rdma, ugni]\n"
+		"     host=     The hostname of the host\n"
+		"     port=     The port number on which the LDMS is listening\n"
+		"     type=     The connection type [active, passive]\n"
+		"     interval= The connection retry interval (us)\n");
+}
+
+static void help_prdcr_del()
+{
+	printf( "\nDelete an LDMS Producer from the Aggregator. The producer\n"
+		"cannot be in use or running.\n\n"
+		"Parameters:\n"
+		"     name=    The Producer name\n");
+}
+
+static void help_prdcr_start()
+{
+	printf( "\nStart the specified producer.\n\n"
+		"Parameters:\n"
+		"     name=       The name of the producer\n"
+		"     [interval=] The connection retry interval in micro-seconds.\n"
+		"                 If this is not specified, the previously\n"
+		"                 configured value will be used.\n");
+}
+
+static void help_prdcr_stop()
+{
+	printf( "\nStop the specified producer.\n\n"
+		"Parameters:\n"
+		"     name=     THe producer name\n");
+}
+
+static void help_prdcr_start_regex()
+{
+	printf( "\nStart all producers matching a regular expression.\n\n"
+		"Parameters:\n\n"
+		"     regex=        A regular expression\n"
+		"     [interval=]   The connection retry interval in micro-seconds.\n"
+		"                   If this is not specified, the previously configured\n"
+		"                   value will be used.\n");
+}
+
+static void help_prdcr_stop_regex()
+{
+	printf( "\nStop all producers matching a regular expression.\n\n"
+		"Parameters:\n"
+		"     regex=        A regular expression\n");
+}
+
+static void help_updtr_add()
+{
+	printf( "\nAdd an updater process that will periodically sample\n"
+		"Producer metric sets\n\n"
+		"Parameters:\n"
+		"     name=       The update policy name\n"
+		"     interval=   The update/collect interval\n"
+		"     [offset=]   Offset for synchronized aggregation\n");
+}
+
+static void help_updtr_del()
+{
+	printf( "\nRemove an updater from the configuration\n\n"
+		"Parameters:\n"
+		"     name=     The update policy name\n");
+}
+
+static void help_updtr_match_add()
+{
+	printf( "\nAdd a match condition that specifies the sets to an Updater policy.\n\n"
+		"Parameters:\n"
+		"     name=   The update policy name\n"
+		"     regex=  The regular expression string\n"
+		"     match=  The value with which to compare; if match=inst,\n"
+		"     	      the expression will match the set's instance name, if\n"
+		"     	      match=schema, the expression will match the set's\n"
+		"     	      schema name.\n");
+}
+
+static void help_updtr_match_del()
+{
+	printf( "\nRemove a match condition that specifies the sets from an Updater policy.\n\n"
+		"Parameters:\n"
+		"     name=   The update policy name\n"
+		"     regex=  The regular expression string\n"
+		"     match=  The value with which to compare; if match=inst,\n"
+		"     	      the expression will match the set's instance name, if\n"
+		"     	      match=schema, the expression will match the set's\n"
+		"     	      schema name.\n");
+}
+
+static void help_updtr_prdcr_add()
+{
+	printf( "\nAdd matching Producers to an Updater policy.\n\n"
+		"Parameters:\n"
+		"     name=   The update policy name\n"
+		"     regex=  A regular expression matching zero or more producers\n");
+}
+
+static void help_updtr_prdcr_del()
+{
+	printf( "\nRemove matching Producers from an Updater policy.\n\n"
+		"Parameters:\n"
+		"     name=   The update policy name\n"
+		"     regex=  A regular expression matching zero or more producers\n");
+}
+
+static void help_updtr_start()
+{
+	printf( "\nStart an update policy.\n\n"
+		"Parameters:\n"
+		"     name=       The update policy name\n"
+		"     [interval=] The update interval in micro-seconds.\n"
+		"                 If this is not specified, the previously\n"
+		"                 configured value will be used.\n"
+		"     [offset=]   Offset for synchronization\n");
+}
+
+static void help_updtr_stop()
+{
+	printf( "\nStop an update policy. The Updater must be stopped in order to\n"
+		"change it's configuration.\n\n"
+		"Parameters:\n"
+		"     name=   The update policy name\n");
+}
+
+static void help_strgp_add()
+{
+	printf( "\nCreate a Storage Policy and open/create the storage instance.\n"
+		"The store plugin must be configured via the command 'config'\n\n"
+		"Parameters:\n"
+		"     name=        The unique storage policy name.\n"
+		"     plugin=      The name of the storage backend.\n"
+		"     container=   The storage backend container name.\n"
+		"     schema=      The schema name of the metric set to store.\n");
+}
+
+static void help_strgp_del()
+{
+	printf( "\nRemove a Storage Policy. All updaters must be stopped in order for\n"
+		"a storage policy to be deleted.\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n");
+}
+
+static void help_strgp_prdcr_add()
+{
+	printf( "\nAdd a regular expression used to identify the producers this\n"
+		"storage policy will apply to.\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n"
+		"     regex=  A regular expression matching metric set producers\n");
+}
+
+static void help_strgp_prdcr_del()
+{
+	printf( "\nRemove a regular expression from the producer match list.\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n"
+		"     regex=  The regular expression to remove\n");
+}
+
+static void help_strgp_metric_add()
+{
+	printf( "\nAdd the name of a metric to store. If the metric list is NULL,\n"
+		"all metrics in the metric set will be stored.\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n"
+		"     metric= The metric name\n");
+}
+
+static void help_strgp_metric_del()
+{
+	printf( "\nRemove a metric from the set of stored metrics\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n"
+		"     metric= The metric name\n");
+}
+
+static void help_strgp_start()
+{
+	printf( "\nStart an storage policy\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n");
+}
+
+static void help_strgp_stop()
+{
+	printf( "\nStop an storage policy. A storage policy must be stopped\n"
+		"in order to change its configuration.\n\n"
+		"Parameters:\n"
+		"     name=   The storage policy name\n");
+}
+
+static void help_version()
+{
+	printf( "\nGet the LDMS version.\n");
+}
+
+int handle_help(char *args);
+
+static struct command action_tbl[] = {
+		{ "?", LDMSCTL_HELP, handle_help, NULL },
+		{ "help", LDMSCTL_HELP, handle_help, NULL },
+		{ "quit", LDMSCTL_QUIT, handle_quit, help_quit },
+};
+
+static struct command help_tbl[] = {
+	{ "config", LDMSD_PLUGN_CONFIG_REQ, NULL, help_config },
+	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status },
+	{ "load", LDMSD_PLUGN_LOAD_REQ, NULL, help_load },
+	{ "loglevel", LDMSD_VERBOSE_REQ, NULL, help_loglevel },
+	{ "oneshot", LDMSD_ONESHOT_REQ, NULL, help_oneshot },
+	{ "prdcr_add", LDMSD_PRDCR_ADD_REQ, NULL, help_prdcr_add },
+	{ "prdcr_del", LDMSD_PRDCR_DEL_REQ, NULL, help_prdcr_del },
+	{ "prdcr_start", LDMSD_PRDCR_START_REQ, NULL, help_prdcr_start },
+	{ "prdcr_start_regex", LDMSD_PRDCR_START_REGEX_REQ, NULL, help_prdcr_start_regex },
+	{ "prdcr_stop", LDMSD_PRDCR_STOP_REQ, NULL, help_prdcr_stop },
+	{ "prdcr_stop_regex", LDMSD_PRDCR_STOP_REGEX_REQ, NULL, help_prdcr_stop_regex },
+	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit },
+	{ "start", LDMSD_PLUGN_START_REQ, NULL, help_start },
+	{ "stop", LDMSD_PLUGN_STOP_REQ, NULL, help_stop },
+	{ "strgp_add", LDMSD_STRGP_ADD_REQ, NULL, help_strgp_add },
+	{ "strgp_del", LDMSD_STRGP_DEL_REQ, NULL, help_strgp_del },
+	{ "strgp_metric_add", LDMSD_STRGP_METRIC_ADD_REQ, NULL, help_strgp_metric_add },
+	{ "strgp_metric_del", LDMSD_STRGP_METRIC_DEL_REQ, NULL, help_strgp_metric_del },
+	{ "strgp_prdcr_add", LDMSD_STRGP_PRDCR_ADD_REQ, NULL, help_strgp_prdcr_add },
+	{ "strgp_prdcr_del", LDMSD_STRGP_PRDCR_DEL_REQ, NULL, help_strgp_prdcr_del },
+	{ "strgp_start", LDMSD_STRGP_START_REQ, NULL, help_strgp_start },
+	{ "strgp_stop", LDMSD_STRGP_STOP_REQ, NULL, help_strgp_stop },
+	{ "term", LDMSD_PLUGN_TERM_REQ, NULL, help_term },
+	{ "udata", LDMSD_SET_UDATA_REQ, NULL, help_udata },
+	{ "udata_regex", LDMSD_SET_UDATA_REGEX_REQ, NULL, help_udata_regex },
+	{ "updtr_add", LDMSD_UPDTR_ADD_REQ, NULL, help_updtr_add },
+	{ "updtr_del", LDMSD_UPDTR_DEL_REQ, NULL, help_updtr_del },
+	{ "updtr_match_add", LDMSD_UPDTR_MATCH_ADD_REQ, NULL, help_updtr_match_add },
+	{ "updtr_match_del", LDMSD_UPDTR_DEL_REQ, NULL, help_updtr_match_del },
+	{ "updtr_prdcr_add", LDMSD_UPDTR_PRDCR_ADD_REQ, NULL, help_updtr_prdcr_add },
+	{ "updtr_prdcr_del", LDMSD_UPDTR_PRDCR_DEL_REQ, NULL, help_updtr_prdcr_del },
+	{ "updtr_start", LDMSD_UPDTR_START_REQ, NULL, help_updtr_start },
+	{ "updtr_stop", LDMSD_UPDTR_STOP_REQ, NULL, help_updtr_stop },
+	{ "usage", LDMSD_PLUGN_LIST_REQ, NULL, help_usage },
+	{ "version", LDMSD_VERSION_REQ, NULL, help_version },
+};
+
+void __print_all_command()
+{
+	printf( "The available commands are as follows. To see help for\n"
+		"a command, do 'help <command>'\n\n");
+	size_t tbl_len = sizeof(help_tbl)/sizeof(help_tbl[0]);
+
+	int max_width = 20;
+	int i = 0;
+	printf("%-*s", max_width, help_tbl[i].token);
+	for (i = 1; i < tbl_len; i++) {
+		printf("%-*s", max_width, help_tbl[i].token);
+		if (i % 5 == 4)
+			printf("\n");
 	}
-	printf("Unrecognized keyword '%s'.", key.token);
-	return EINVAL;
+	printf("\n");
+}
+
+int handle_help(char *args)
+{
+	if (!args) {
+		__print_all_command();
+	} else {
+		char *_args, *ptr;
+		_args = strtok_r(args, " \t\n", &ptr);
+		if (!_args) {
+			__print_all_command();
+			return 0;
+		}
+
+		struct command *help_cmd;
+		help_cmd = bsearch(&_args, help_tbl, ARRAY_SIZE(help_tbl),
+			     sizeof(*help_cmd), command_comparator);
+		if (!help_cmd) {
+			printf("Unrecognized command '%s'.\n", _args);
+			return EINVAL;
+		}
+		if (help_cmd->help) {
+			help_cmd->help();
+		} else {
+			printf("No help found for the command '%s'.\n",
+					help_cmd->token);
+		}
+		return 0;
+	}
+
+	return 0;
+}
+
+static int __send_cmd(struct ctrl *ctrl, ldmsd_req_hdr_t req,
+					char *data, size_t data_len)
+{
+	struct msghdr reply;
+	struct iovec iov[2];
+
+	reply.msg_name = 0;
+	reply.msg_namelen = 0;
+	iov[0].iov_base = req;
+	iov[0].iov_len = sizeof(*req);
+	iov[1].iov_base = data;
+	iov[1].iov_len = data_len;
+	reply.msg_iov = iov;
+	reply.msg_iovlen = 2;
+	reply.msg_control = NULL;
+	reply.msg_controllen = 0;
+	reply.msg_flags = 0;
+
+	if (sendmsg(ctrl->sock, &reply, 0) < 0)
+		return errno;
+	return 0;
+}
+
+static char * __recv_resp(struct ctrl *ctrl)
+{
+	struct msghdr msg;
+	struct iovec iov;
+	struct sockaddr_storage ss;
+
+	struct ldmsd_req_hdr_s req_resp;
+	ssize_t msglen;
+	ss.ss_family = AF_UNIX;
+	msg.msg_name = &ss;
+	msg.msg_namelen = sizeof(ss);
+	iov.iov_base = &req_resp;
+	iov.iov_len = sizeof(req_resp);
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+	msg.msg_control = NULL;
+	msg.msg_controllen = 0;
+	msg.msg_flags = 0;
+	msglen = recvmsg(ctrl->sock, &msg, MSG_PEEK);
+	if (msglen <= 0)
+		return NULL;
+
+	if (buffer_len < req_resp.rec_len) {
+		free(buffer);
+		buffer = malloc(req_resp.rec_len);
+		if (!buffer) {
+			printf("Out of memory\n");
+			exit(ENOMEM);
+
+		}
+		buffer_len = req_resp.rec_len;
+	}
+	memset(buffer, 0, buffer_len);
+	iov.iov_base = buffer;
+	iov.iov_len = req_resp.rec_len;
+
+	msglen = recvmsg(ctrl->sock, &msg, MSG_WAITALL);
+	if (msglen < req_resp.rec_len)
+		return NULL;
+
+	return buffer;
+}
+
+static int __handle_cmd(char *cmd, struct ctrl *ctrl)
+{
+	static int msg_no = 0;
+	struct ldmsd_req_hdr_s request, response;
+	int rc;
+
+	struct command key, *action_cmd;
+	char *ptr, *args, *dummy;
+	int cmd_id;
+
+	/* Strip the new-line character */
+	char *newline = strrchr(cmd, '\n');
+	if (newline)
+		*newline = '\0';
+
+	dummy = strdup(cmd);
+	if (!dummy) {
+		printf("Out of memory\n");
+		exit(ENOMEM);
+	}
+
+	key.token = strtok_r(dummy, " \t\n", &ptr);
+	args = strtok_r(NULL, "\n", &ptr);
+	action_cmd = bsearch(&key, action_tbl, ARRAY_SIZE(action_tbl),
+			sizeof(struct command), command_comparator);
+	if (action_cmd) {
+		(void)action_cmd->action(args);
+		free(dummy);
+		return 0;
+	}
+	free(dummy);
+
+	size_t buffer_offset = 0;
+	memset(buffer, 0, buffer_len);
+	rc = ldmsd_process_cfg_str(&request, cmd, &buffer, &buffer_offset,
+							&buffer_len);
+	if (rc) {
+		if (rc == ENOMEM) {
+			printf("Out of memory\n");
+			return rc; /* Return the error to exit the program */
+		} else if (rc == ENOSYS) {
+			printf("Command not found\n");
+		} else {
+			printf("Invalid configuration\n");
+		}
+		return 0;
+	}
+	request.flags = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
+	request.msg_no = msg_no;
+	msg_no++;
+
+	rc = __send_cmd(ctrl, &request, buffer, buffer_offset);
+	if (rc) {
+		printf("Failed to send data to ldmsd. %s\n", strerror(errno));
+		return rc;
+	}
+	char *resp = __recv_resp(ctrl);
+	if (!resp) {
+		printf("Failed to receive the response\n");
+		return -1;
+	}
+	memcpy(&response, resp, sizeof(response));
+	char *msg = resp + sizeof(response);
+
+	if (response.code != 0) {
+		printf("%s\n", msg);
+	} else {
+		if (request.code == LDMSD_PRDCR_STATUS_REQ ||
+				request.code == LDMSD_DAEMON_STATUS_REQ ||
+				request.code == LDMSD_UPDTR_STATUS_REQ ||
+				request.code == LDMSD_STRGP_STATUS_REQ) {
+			printf("%s\n", msg);
+		}
+	}
+	return 0;
+}
+
+struct ctrl *__unix_domain_ctrl(char *my_name, char *sockname)
+{
+	int rc;
+	struct sockaddr_un my_un, lcl_addr, rem_addr;
+	char *mn;
+	char *sockpath;
+	char *_sockname = NULL;
+	struct ctrl *ctrl;
+
+	ctrl = calloc(1, sizeof *ctrl);
+	if (!ctrl)
+		return NULL;
+
+	if (sockname[0] == '/') {
+		_sockname = strdup(sockname);
+		if (!_sockname)
+			goto err;
+		sockpath = dirname(_sockname);
+		strcpy(my_un.sun_path, sockname);
+	} else {
+		sockpath = getenv(LDMSD_SOCKPATH_ENV);
+		if (!sockpath)
+			sockpath = "/var/run";
+		sprintf(my_un.sun_path, "%s/%s", sockpath, sockname);
+	}
+
+	rem_addr.sun_family = AF_UNIX;
+	strncpy(rem_addr.sun_path, my_un.sun_path,
+		sizeof(struct sockaddr_un) - sizeof(short));
+
+	/* Create control socket */
+	ctrl->sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (ctrl->sock < 0)
+		goto err;
+
+	pid_t pid = getpid();
+	lcl_addr.sun_family = AF_UNIX;
+
+	mn = strdup(my_name);
+	if (!mn)
+		goto err;
+	sprintf(my_un.sun_path, "%s/%s", sockpath, basename(mn));
+	free(mn);
+
+	rc = mkdir(my_un.sun_path, 0755);
+	if (rc < 0) {
+		/* Ignore the error if the path already exists */
+		if (errno != EEXIST) {
+			printf("Error creating '%s: %s\n", my_un.sun_path,
+							strerror(errno));
+			close(ctrl->sock);
+			goto err;
+		}
+	}
+
+	sprintf(lcl_addr.sun_path, "%s/%d", my_un.sun_path, pid);
+
+	rc = connect(ctrl->sock, (struct sockaddr *)&rem_addr,
+			  sizeof(struct sockaddr_un));
+	if (rc < 0) {
+		printf("Error creating '%s'\n", rem_addr.sun_path);
+		close(ctrl->sock);
+		goto err;
+	}
+	ctrl->sa = (struct sockaddr *)&rem_addr;
+	ctrl->sa_len = sizeof(rem_addr);
+	if (_sockname)
+		free(_sockname);
+	return ctrl;
+ err:
+	free(ctrl);
+	if (_sockname)
+		free(_sockname);
+	return NULL;
+}
+
+int __inet_ctrl(const char *host, const char *port, const char *secretword_path)
+{
+	return ENOSYS;
 }
 
 int main(int argc, char *argv[])
 {
 	int op;
-	char *s = NULL;
-	int rc;
-	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
-	char *env;
+	char *host, *port, *secretword_path, *sockname, *env, *s;
+	host = port = secretword_path = sockname = s = NULL;
+	int rc, is_inet = 0;
 
-	env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
-	if (env)
-		cfg_buf_len = strtol(env, NULL, 0);
-	linebuf = malloc(cfg_buf_len);
-	err_str = malloc(cfg_buf_len);
-	if (!linebuf | !err_str) {
-		printf("Error allocating %zu bytes for configuration buffers.\n",
-		       cfg_buf_len);
-		exit(1);
-	}
-
-	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'S':
@@ -404,67 +790,77 @@ int main(int argc, char *argv[])
 			usage(argv);
 		}
 	}
-	av_list = av_new(128);
-	kw_list = av_new(128);
-	if (!av_list || !kw_list) {
+
+	if (!sockname) {
+		printf("Please provide the UNIX Domain socket path ('-S')\n");
+		usage(argv);
+		return 0;
+	}
+
+	env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
+	if (env)
+		linebuf_len = buffer_len = strtol(env, NULL, 0);
+	else
+		linebuf_len = buffer_len = LDMSD_MAX_CONFIG_STR_LEN;
+	buffer = malloc(buffer_len);
+	linebuf = malloc(buffer_len);
+	if (!buffer || !linebuf) {
 		printf("Out of memory\n");
-		exit(1);
+		exit(ENOMEM);
+	}
+	struct ctrl *ctrl;
+	if (sockname) {
+		ctrl = __unix_domain_ctrl(basename(argv[0]), sockname);
+		if (!ctrl) {
+			printf("Failed to connect to ldmsd.\n");
+			exit(-1);
+		}
+	} else {
+		if (!host) {
+			printf("Please give '-h'.\n");
+			usage(argv);
+			return 0;
+		}
+		if (!port) {
+			printf("please give '-p'.\n");
+			usage(argv);
+			return 0;
+		}
+		is_inet = 1;
+		rc = __inet_ctrl(host, port, secretword_path);
+		if (rc) {
+			printf("Failed to connect to ldmsd.\n");
+			exit(rc);
+		}
 	}
 
-	ctrl_sock = ctrl_connect(basename(argv[0]), sockname,
-						"LDMSD_SOCKPATH");
-	if (!ctrl_sock) {
-		printf("Error setting up connection with ldmsd.\n");
-		exit(1);
-	}
-	atexit(cleanup);
 	do {
-
 #ifdef HAVE_LIBREADLINE
 #ifndef HAVE_READLINE_HISTORY
 		if (s != NULL)
 			free(s); /* previous readline output must be freed if not in history */
 #endif /* HAVE_READLINE_HISTORY */
-		if (isatty(0) ) {
+		if (isatty(0))
 			s = readline("ldmsctl> ");
-		} else {
-			s = fgets(linebuf, cfg_buf_len, stdin);
-		}
+		else
+			s = fgets(linebuf, linebuf_len, stdin);
 #else /* HAVE_LIBREADLINE */
-		if (isatty(0) ) {
+		if (isatty(0)) {
 			fputs("ldmsctl> ", stdout);
 		}
-		s = fgets(linebuf, cfg_buf_len, stdin);
+		s = fgets(linebuf, linebuf_len, stdin);
 #endif /* HAVE_LIBREADLINE */
 		if (!s)
 			break;
+		if (s[0] == '\0')
+			continue;
 #ifdef HAVE_READLINE_HISTORY
 		add_history(s);
 #endif /* HAVE_READLINE_HISTORY */
 
-		err_str[0] = '\0';
-		rc = tokenize(s, kw_list, av_list);
-		if (rc) {
-			sprintf(err_str, "Memory allocation failure.");
-			continue;
-		}
-
-		if (!kw_list->count)
-			continue;
-
-		struct kw key;
-		struct kw *kw;
-
-		nxt_kw = 0;
-		key.token = av_name(kw_list, nxt_kw);
-		kw = bsearch(&key, keyword_tbl, ARRAY_SIZE(keyword_tbl),
-			     sizeof(*kw), kw_comparator);
-		if (kw)
-			(void)kw->action(key.token, err_str);
-		else
-			printf("Unrecognized keyword '%s'.\n", key.token);
-		if (err_str[0] != '\0')
-			printf("%s\n", err_str);
+		rc = __handle_cmd(s, ctrl);
+		if (rc)
+			break;
 	} while (s);
- 	return 0;
+	return 0;
 }
