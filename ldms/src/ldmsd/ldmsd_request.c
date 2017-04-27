@@ -88,7 +88,6 @@
 
 pthread_mutex_t msg_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
-
 static int msg_comparator(void *a, const void *b)
 {
 	msg_key_t ak = (msg_key_t)a;
@@ -206,106 +205,6 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_LOGROTATE_REQ] = { LDMSD_LOGROTATE_REQ, logrotate_handler },
 	[LDMSD_EXIT_DAEMON_REQ] = { LDMSD_EXIT_DAEMON_REQ, exit_daemon_handler },
 };
-
-struct req_str_id {
-	const char *str;
-	uint32_t id;
-};
-
-const struct req_str_id req_str_id_table[] = {
-	/* This table need to be sorted by keyword for bsearch() */
-	{  "config",             LDMSD_PLUGN_CONFIG_REQ   },
-	{  "daemon",             LDMSD_DAEMON_STATUS_REQ   },
-	{  "env",                LDMSD_ENV_REQ  },
-	{  "exit",               LDMSD_EXIT_DAEMON_REQ  },
-	{  "include",            LDMSD_INCLUDE_REQ  },
-	{  "load",               LDMSD_PLUGN_LOAD_REQ   },
-	{  "loglevel",           LDMSD_VERBOSE_REQ  },
-	{  "logrotate",          LDMSD_LOGROTATE_REQ  },
-	{  "oneshot",            LDMSD_ONESHOT_REQ  },
-	{  "prdcr_add",          LDMSD_PRDCR_ADD_REQ  },
-	{  "prdcr_del",          LDMSD_PRDCR_DEL_REQ  },
-	{  "prdcr_start",        LDMSD_PRDCR_START_REQ  },
-	{  "prdcr_start_regex",  LDMSD_PRDCR_START_REGEX_REQ  },
-	{  "prdcr_stop",         LDMSD_PRDCR_STOP_REQ  },
-	{  "prdcr_stop_regex",   LDMSD_PRDCR_STOP_REGEX_REQ  },
-	{  "remove",             LDMSD_NOTSUPPORT_REQ   },
-	{  "start",              LDMSD_PLUGN_START_REQ   },
-	{  "stop",               LDMSD_PLUGN_STOP_REQ   },
-	{  "strgp_add",          LDMSD_STRGP_ADD_REQ  },
-	{  "strgp_del",          LDMSD_STRGP_DEL_REQ  },
-	{  "strgp_metric_add",   LDMSD_STRGP_METRIC_ADD_REQ  },
-	{  "strgp_metric_del",   LDMSD_STRGP_METRIC_DEL_REQ  },
-	{  "strgp_prdcr_add",    LDMSD_STRGP_PRDCR_ADD_REQ  },
-	{  "strgp_prdcr_del",    LDMSD_STRGP_PRDCR_DEL_REQ  },
-	{  "strgp_start",        LDMSD_STRGP_START_REQ  },
-	{  "strgp_stop",         LDMSD_STRGP_STOP_REQ  },
-	{  "term",               LDMSD_PLUGN_TERM_REQ   },
-	{  "udata",              LDMSD_SET_UDATA_REQ  },
-	{  "udata_regex",        LDMSD_SET_UDATA_REGEX_REQ  },
-	{  "updtr_add",          LDMSD_UPDTR_ADD_REQ  },
-	{  "updtr_del",          LDMSD_UPDTR_DEL_REQ  },
-	{  "updtr_match_add",    LDMSD_UPDTR_MATCH_ADD_REQ  },
-	{  "updtr_match_del",    LDMSD_UPDTR_MATCH_DEL_REQ  },
-	{  "updtr_prdcr_add",    LDMSD_UPDTR_PRDCR_ADD_REQ  },
-	{  "updtr_prdcr_del",    LDMSD_UPDTR_PRDCR_DEL_REQ  },
-	{  "updtr_start",        LDMSD_UPDTR_START_REQ  },
-	{  "updtr_stop",         LDMSD_UPDTR_STOP_REQ  },
-	{  "usage",              LDMSD_PLUGN_LIST_REQ  },
-	{  "version",            LDMSD_VERSION_REQ  },
-};
-
-/* This table need to be sorted by keyword for bsearch() */
-const struct req_str_id attr_str_id_table[] = {
-	{  "base",              LDMSD_ATTR_BASE   },
-	{  "container",		LDMSD_ATTR_CONTAINER   },
-	{  "host",		LDMSD_ATTR_HOST   },
-	{  "incr",              LDMSD_ATTR_INCREMENT   },
-	{  "instance",		LDMSD_ATTR_INSTANCE   },
-	{  "interval",		LDMSD_ATTR_INTERVAL   },
-	{  "level",             LDMSD_ATTR_LEVEL   },
-	{  "match",		LDMSD_ATTR_MATCH   },
-	{  "metric",		LDMSD_ATTR_METRIC   },
-	{  "name",		LDMSD_ATTR_NAME   },
-	{  "offset",		LDMSD_ATTR_OFFSET   },
-	{  "path",              LDMSD_ATTR_PATH   },
-	{  "plugin",		LDMSD_ATTR_PLUGIN   },
-	{  "port",		LDMSD_ATTR_PORT   },
-	{  "producer",		LDMSD_ATTR_PRODUCER   },
-	{  "regex",		LDMSD_ATTR_REGEX   },
-	{  "schema",		LDMSD_ATTR_SCHEMA   },
-	{  "time",              LDMSD_ATTR_TIME   },
-	{  "type",		LDMSD_ATTR_TYPE   },
-	{  "udata",             LDMSD_ATTR_UDATA   },
-	{  "xprt",		LDMSD_ATTR_XPRT   },
-};
-
-uint32_t req_str_id_cmp(const struct req_str_id *a, const struct req_str_id *b)
-{
-	return strcmp(a->str, b->str);
-}
-
-uint32_t ldmsd_req_str2id(const char *verb)
-{
-	struct req_str_id key = {verb, -1};
-	struct req_str_id *x = bsearch(&key, req_str_id_table,
-			sizeof(req_str_id_table)/sizeof(*req_str_id_table),
-			sizeof(*req_str_id_table), (void *)req_str_id_cmp);
-	if (!x)
-		return -1;
-	return x->id;
-}
-
-uint32_t ldmsd_req_attr_str2id(const char *name)
-{
-	struct req_str_id key = {name, -1};
-	struct req_str_id *x = bsearch(&key, attr_str_id_table,
-			sizeof(attr_str_id_table)/sizeof(*attr_str_id_table),
-			sizeof(*attr_str_id_table), (void *)req_str_id_cmp);
-	if (!x)
-		return -1;
-	return x->id;
-}
 
 /*
  * The process request function takes records and collects
@@ -465,10 +364,7 @@ int ldmsd_handle_request(ldmsd_req_hdr_t request, ldmsd_req_ctxt_t reqc)
 	return rc;
 }
 
-extern int process_record(int fd,
-		   struct sockaddr *sa, ssize_t sa_len,
-		   uint32_t cmd_id,
-		   char *command, ssize_t cmd_len);
+size_t Snprintf(char **dst, size_t *len, char *fmt, ...);
 static int
 send_request_reply(struct ldmsd_req_ctxt *reqc,
 		   char *data, size_t data_len,
@@ -477,8 +373,9 @@ int process_request(int fd, struct msghdr *msg, size_t msg_len)
 {
 	ldmsd_req_hdr_t request = msg->msg_iov[0].iov_base;
 	struct req_ctxt_key key;
-	ldmsd_req_ctxt_t reqc;
+	ldmsd_req_ctxt_t reqc = NULL;
 	int rc;
+	size_t cnt = 0;
 
 	key.msg_no = request->msg_no;
 	key.sock_fd = fd;
@@ -489,8 +386,8 @@ int process_request(int fd, struct msghdr *msg, size_t msg_len)
 		 * the tree */
 		reqc = find_req_ctxt(&key);
 		if (reqc) {
-			ldmsd_log(LDMSD_LERROR,
-				  "Duplicate message number %d:%d received\n",
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				  "Duplicate message number %d:%d received",
 				  key.msg_no, key.sock_fd);
 			goto err_out;
 		}
@@ -499,14 +396,18 @@ int process_request(int fd, struct msghdr *msg, size_t msg_len)
 			memcpy(&reqc->rh, request, sizeof(*request));
 			reqc->resp_handler = send_request_reply;
 			reqc->dest_fd = fd;
+		} else {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"ldmsd out of memory.");
 		}
 
 	} else {
 		reqc = find_req_ctxt(&key);
-		if (!reqc)
-			ldmsd_log(LDMSD_LERROR,
-				  "The message no %d:%d was not found\n",
+		if (!reqc) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				  "The message no %d:%d was not found.",
 				  key.msg_no, key.sock_fd);
+		}
 	}
 	if (!reqc)
 		goto err_out;
@@ -521,21 +422,27 @@ int process_request(int fd, struct msghdr *msg, size_t msg_len)
 	reqc->mh = msg;
 
 	if (request->marker != LDMSD_RECORD_MARKER) {
-		ldmsd_log(LDMSD_LERROR, "Received an invalid cfg request "
-				"from %d with msg_no %d.\n", fd, key.msg_no);
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Received an invalid cfg request");
 		goto out;
 	}
 
 	/* Check for request id outside of range */
 	rc = ldmsd_handle_request(request, reqc);
-out:
-	req_ctxt_tree_lock();
-	free_req_ctxt(reqc);
-	req_ctxt_tree_unlock();
-	return rc;
 err_out:
 	pthread_mutex_unlock(&msg_tree_lock);
-	return -1;
+out:
+	if (reqc) {
+		req_ctxt_tree_lock();
+		free_req_ctxt(reqc);
+		req_ctxt_tree_unlock();
+	}
+	if (cnt) {
+		ldmsd_log(LDMSD_LERROR, "%s\n", reqc->line_buf);
+		rc = send_request_reply(reqc, reqc->line_buf, cnt,
+					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	}
+	return rc;
 }
 
 static int
@@ -2629,22 +2536,11 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 		goto err;
 	}
 
-	reqc->errcode = ldmsd_config_plugin(plugin_name, av_list,
-					kw_list, reqc->rep_buf);
-	if (reqc->errcode) {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"%s", reqc->rep_buf);
 	reqc->errcode = ldmsd_config_plugin(plugin_name, av_list, kw_list);
 	if (reqc->errcode) {
-		if (reqc->errcode == ENOENT) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"Plugin '%s' not found.",
-					plugin_name);
-		} else {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"Plugin '%s' configuration error.",
-					plugin_name);
-		}
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Plugin '%s' configuration error.",
+				plugin_name);
 	} else {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "0");
 	}

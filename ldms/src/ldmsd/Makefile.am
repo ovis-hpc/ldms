@@ -20,7 +20,7 @@ ldms_ls_LDFLAGS = $(AM_LDFLAGS) \
 	-levent -levent_pthreads -lpthread \
 	@LDFLAGS_GETTIME@
 
-ldmsd_SOURCES = ldmsd.c ldmsd_config.c ldmsd_request.c \
+ldmsd_SOURCES = ldmsd.c ldmsd_config.c ldmsd_request.c ldmsd_request_util.c \
 	ldmsd_request.h \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c
 ldmsd_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@

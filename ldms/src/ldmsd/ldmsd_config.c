@@ -675,63 +675,6 @@ void ldmsd_exit_daemon()
 	ldmsd_log(LDMSD_LINFO, "User requested exit.\n");
 }
 
-extern uint32_t ldmsd_req_attr_str2id(const char *name);
-/*
- * If both \c name and \c value are NULL, the end attribute is added to req_buf.
- * If \c name is NULL but \c value is not NULL, the attribute of type ATTR_STRING
- * is added to req_buf.
- * If \c name and \c value are not NULL, the attribute of the corresponding type
- * is added to req_buf.
- * Otherwise, EINVAL is returned.
- */
-static int add_attr_from_attr_str(char *name, char *value, ldmsd_req_ctxt_t reqc)
-{
-	struct ldmsd_req_attr_s attr;
-
-	if (!name && !value) {
-		attr.discrim = 0;
-		attr.attr_len = 0;
-	} else if (name && !value) {
-		/* The attribute value must be provided */
-		return EINVAL;
-	} else {
-		attr.discrim = 1;
-		/* Assume that the string av is NULL-terminated */
-		attr.attr_len = strlen(value) + 1; /* +1 to include \0 */
-		if (!name) {
-			/* Caller wants the attribute id of ATTR_STRING */
-			attr.attr_id = LDMSD_ATTR_STRING;
-		} else {
-			attr.attr_id = ldmsd_req_attr_str2id(name);
-			if (attr.attr_id < 0) {
-				ldmsd_log(LDMSD_LERROR,
-					"Invalid attribute name '%s'\n", name);
-				return EINVAL;
-			}
-		}
-	}
-
-	if (reqc->req_len - reqc->req_off <
-			sizeof(struct ldmsd_req_attr_s) + attr.attr_len) {
-		reqc->req_buf = realloc(reqc->req_buf, reqc->req_len * 2);
-		if (!reqc->req_buf) {
-			ldmsd_log(LDMSD_LERROR, "Out of memory\n");
-			return ENOMEM;
-		}
-		reqc->req_len = reqc->req_len * 2;
-	}
-
-	memcpy(&reqc->req_buf[reqc->req_off], &attr, sizeof(attr));
-	reqc->req_off += sizeof(attr);
-
-	if (attr.attr_len) {
-		memcpy(&reqc->req_buf[reqc->req_off], value, attr.attr_len);
-		reqc->req_off += attr.attr_len;
-	}
-
-	return 0;
-}
-
 /* data_len is excluding the null character */
 int print_config_error(struct ldmsd_req_ctxt *reqc, char *data, size_t data_len,
 		int msg_flags)
@@ -757,30 +700,22 @@ int print_config_error(struct ldmsd_req_ctxt *reqc, char *data, size_t data_len,
 	return 0;
 }
 
-void __get_attr_name_value(char *av, char **name, char **value)
-{
-	*name = av;
-	*value = strchr(av, '=');
-	**value = '\0';
-	(*value)++;
-}
-
 extern void req_ctxt_tree_lock();
 extern void req_ctxt_tree_unlock();
-extern uint32_t ldmsd_req_str2id(const char *verb);
 extern ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key);
 extern void free_req_ctxt(ldmsd_req_ctxt_t rm);
 extern int ldmsd_handle_request(ldmsd_req_hdr_t request, ldmsd_req_ctxt_t reqc);
-int process_config_line(char *line)
+ldmsd_req_ctxt_t process_config_line(char *line, struct ldmsd_req_hdr_s *request)
 {
 	static uint32_t msg_no = 0;
-	struct ldmsd_req_hdr_s request = {
-			.marker = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F,
-			.flags = LDMSD_RECORD_MARKER,
-			.msg_no = msg_no,
-			.rec_len = 0,
-			.code = -1,
-	};
+
+	request->marker = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
+	request->flags = LDMSD_RECORD_MARKER;
+	request->msg_no = msg_no;
+	request->rec_len = 0;
+	request->code = -1;
+
+	errno = 0;
 	struct req_ctxt_key key = {
 			.msg_no = msg_no,
 			.sock_fd = -1
@@ -796,19 +731,8 @@ int process_config_line(char *line)
 	_line = strdup(line);
 	if (!_line) {
 		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
-		return ENOMEM;
-	}
-
-	/* Get the request id */
-	verb = _line;
-	av = strchr(_line, ' ');
-	*av = '\0';
-	av++;
-
-	request.code = ldmsd_req_str2id(verb);
-	if ((request.code < 0) || (request.code == LDMSD_NOTSUPPORT_REQ)) {
-		rc = ENOSYS;
-		goto out;
+		errno = ENOMEM;
+		return NULL;
 	}
 
 	/* Prepare the request context */
@@ -816,75 +740,35 @@ int process_config_line(char *line)
 	reqc = alloc_req_ctxt(&key);
 	if (!reqc) {
 		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
-		rc = ENOMEM;
+		errno = ENOMEM;
 		goto out;
 	}
+
+	rc = ldmsd_cfg2attr(request, _line, &reqc->req_buf,
+				&reqc->req_off, &reqc->req_len);
+	if (rc) {
+		errno = rc;
+		goto err;
+	}
+
 	memcpy(&reqc->rh, &request, sizeof(request));
 
 	reqc->resp_handler = print_config_error;
 	reqc->dest_fd = -1; /* We don't need the destination file descriptor here */
-
-	/* TODO: Make this support environment variable */
-	if (request.code == LDMSD_PLUGN_CONFIG_REQ) {
-		size_t len = strlen(av);
-		size_t cnt = 0;
-		tmp = malloc(len);
-		if (!tmp) {
-			ldmsd_log(LDMSD_LERROR, "Out of memory\n");
-			rc = ENOMEM;
-			goto out;
-		}
-		av = strtok_r(av, " ", &ptr);
-		while (av) {
-			__get_attr_name_value(av, &name, &value);
-
-			if (0 == strncmp(name, "name", 4)) {
-				/* Find the name attribute */
-				rc = add_attr_from_attr_str(name, value, reqc);
-				if (rc)
-					goto out;
-			} else {
-				/* Construct the other attribute into a ATTR_STRING */
-				cnt += snprintf(&tmp[cnt], len - cnt, "%s=%s ",
-							name, value);
-			}
-			av = strtok_r(NULL, " ", &ptr);
-		}
-		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
-		rc = add_attr_from_attr_str(NULL, tmp, reqc);
-		if (rc)
-			goto out;
-
-	} else {
-		av = strtok_r(av, " ", &ptr);
-		while (av) {
-			__get_attr_name_value(av, &name, &value);
-			rc = add_attr_from_attr_str(name, value, reqc);
-			if (rc)
-				goto out;
-			av = strtok_r(NULL, " ", &ptr);
-		}
-	}
-
-	/* Add the end attribute */
-	rc = add_attr_from_attr_str(NULL, NULL, reqc);
-	if (rc)
-		goto out;
 	req_ctxt_tree_unlock();
-	rc = ldmsd_handle_request(&request, reqc);
-out:
+	goto out;
+
+err:
 	if (reqc) {
 		req_ctxt_tree_lock();
 		free_req_ctxt(reqc);
 		req_ctxt_tree_unlock();
+		reqc = NULL;
 	}
-
-	if (tmp)
-		free(tmp);
+out:
 	free(_line);
-	return rc;
+	return reqc;
 }
-
 int process_config_file(const char *path, int *errloc)
 {
 	int rc = 0;
@@ -908,6 +792,8 @@ int process_config_file(const char *path, int *errloc)
 		rc = errno;
 		goto cleanup;
 	}
+	struct ldmsd_req_hdr_s request;
+	struct ldmsd_req_ctxt *reqc;
 
 next_line:
 	line = fgets(buff + off, cfg_buf_len - off, fin);
@@ -950,16 +836,33 @@ next_line:
 		goto next_line;
 	}
 
-	rc = process_config_line(line);
+	reqc = process_config_line(line, &request);
+	if (!reqc) {
+		ldmsd_log(LDMSD_LERROR, "Problem in line %d: %s\n", lineno,
+							strerror(errno));
+		goto cleanup;
+	}
+	rc = ldmsd_handle_request(&request, reqc);
 	if (rc) {
 		ldmsd_log(LDMSD_LERROR, "Problem in line: %s\n", line);
 		goto cleanup;
 	}
-	off = 0;
 
+	if (reqc) {
+		req_ctxt_tree_lock();
+		free_req_ctxt(reqc);
+		req_ctxt_tree_unlock();
+		reqc = NULL;
+	}
+	off = 0;
 	goto next_line;
 
 cleanup:
+	if (reqc) {
+		req_ctxt_tree_lock();
+		free_req_ctxt(reqc);
+		req_ctxt_tree_unlock();
+	}
 	if (fin)
 		fclose(fin);
 	if (buff)
