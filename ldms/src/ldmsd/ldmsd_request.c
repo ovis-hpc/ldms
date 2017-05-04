@@ -630,16 +630,16 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		goto einval;
 	}
 	if (type < 0) {
-		attr_name = "type";
-		goto einval;
-	}
-	if (type == EINVAL) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "The attribute "
 					"type '%s' is invalid.", type);
 		goto send_reply;
 	}
-	if (type == LDMSD_PRDCR_TYPE_LOCAL)
-		goto out;
+	if (type == LDMSD_PRDCR_TYPE_LOCAL) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Producer with type 'local' is not supported.");
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
 
 	if (!xprt) {
 		attr_name = "xprt";
