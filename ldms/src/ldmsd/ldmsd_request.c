@@ -940,39 +940,122 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 	return rc;
 }
 
+size_t __prdcr_set_status(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_set_t prd_set)
+{
+	struct ldms_timestamp ts, dur;
+	ts = ldms_transaction_timestamp_get(prd_set->set);
+	dur = ldms_transaction_duration_get(prd_set->set);
+	return Snprintf(&reqc->line_buf, &reqc->line_len,
+		"{ "
+		"\"inst_name\":\"%s\","
+		"\"schema_name\":\"%s\","
+		"\"state\":\"%s\","
+		"\"origin\":\"%s\","
+		"\"producer\":\"%s\","
+		"\"timestamp.sec\":\"%d\","
+		"\"timestamp.usec\":\"%d\","
+		"\"duration.sec\":\"%d\","
+		"\"duration.usec\":\"%d\""
+		"}",
+		prd_set->inst_name, prd_set->schema_name,
+		ldmsd_prdcr_set_state_str(prd_set->state),
+		ldms_set_producer_name_get(prd_set->set),
+		prd_set->prdcr->obj.name,
+		ts.sec, ts.usec,
+		dur.sec, dur.usec);
+}
+
+/* This function must be called with producer lock held */
+int __prdcr_set_status_handler(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr,
+			int *count, const char *setname, const char *schema)
+{
+	int rc;
+	size_t cnt;
+	ldmsd_prdcr_set_t prd_set;
+
+	if (setname) {
+		prd_set = ldmsd_prdcr_set_find(prdcr, setname);
+		if (!prd_set)
+			return 0;
+		if (schema && (0 != strcmp(prd_set->schema_name, schema)))
+			return 0;
+		if (*count)
+			rc = reqc->resp_handler(reqc, ",\n", 2, 0);
+		cnt = __prdcr_set_status(reqc, prd_set);
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
+		(*count)++;
+	} else {
+		for (prd_set = ldmsd_prdcr_set_first(prdcr); prd_set;
+			prd_set = ldmsd_prdcr_set_next(prd_set)) {
+			if (schema && (0 != strcmp(prd_set->schema_name, schema)))
+				continue;
+
+			if (*count)
+				rc = reqc->resp_handler(reqc, ",\n", 2, 0);
+			cnt = __prdcr_set_status(reqc, prd_set);
+			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
+			(*count)++;
+		}
+	}
+	return rc;
+}
+
 static int prdcr_set_handler(ldmsd_req_ctxt_t reqc)
 {
-	ldmsd_prdcr_t prdcr;
-	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)reqc->req_buf;
-	size_t cnt;
+	char *prdcr_name, *setname, *schema;
+	prdcr_name = setname = schema = NULL;
+	ldmsd_prdcr_t prdcr = NULL;
+	ldmsd_req_attr_t attr;
+	size_t cnt = 0;
 	int rc, count = 0;
 	reqc->errcode = 0;
 
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_PRODUCER:
+			prdcr_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_INSTANCE:
+			setname = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_SCHEMA:
+			schema = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
 	rc = reqc->resp_handler(reqc, "[", 1, LDMSD_REQ_SOM_F);
-	prdcr = ldmsd_prdcr_find((char *)attr->attr_value);
-	if (!prdcr) {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Producer %s does not exist.",
-				attr->attr_value);
-		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
-		goto out;
+	if (prdcr_name) {
+		prdcr = ldmsd_prdcr_find(prdcr_name);
+		if (!prdcr)
+			goto out;
 	}
-	ldmsd_prdcr_lock(prdcr);
-	ldmsd_prdcr_set_t met_set;
-	for (met_set = ldmsd_prdcr_set_first(prdcr); met_set;
-		met_set = ldmsd_prdcr_set_next(met_set)) {
-		if (count)
-			rc = reqc->resp_handler(reqc, ",\n", 2, 0);
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"{ \"inst_name\":\"%s\","
-				"\"schema_name\":\"%s\","
-				"\"state\":\"%s\"}",
-				met_set->inst_name, met_set->schema_name,
-				ldmsd_prdcr_set_state_str(met_set->state));
-		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
-		count++;
+
+	if (prdcr) {
+		ldmsd_prdcr_lock(prdcr);
+		rc = __prdcr_set_status_handler(reqc, prdcr, &count,
+				setname, schema);
+		ldmsd_prdcr_unlock(prdcr);
+	} else {
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+		for (prdcr = ldmsd_prdcr_first(); prdcr;
+				prdcr = ldmsd_prdcr_next(prdcr)) {
+			ldmsd_prdcr_lock(prdcr);
+			rc = __prdcr_set_status_handler(reqc, prdcr, &count,
+					setname, schema);
+			ldmsd_prdcr_unlock(prdcr);
+			if (rc) {
+				ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+				goto out;
+			}
+		}
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	}
-	ldmsd_prdcr_unlock(prdcr);
+
 out:
 	rc = reqc->resp_handler(reqc, "]", 1, LDMSD_REQ_EOM_F);
 	return rc;

@@ -114,7 +114,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_stop_regex': {'id': 25,
                                            'req_attr': ['regex']},
                       'prdcr_set_status': {'id': 0x100 + 7,
-                                           'req_attr': ['name']},
+                                           'opt_attr': ['producer', 'instance', 'schema']},
                       ##### Updater Policy #####
                       'updtr_add': {'id': 30,
                                      'req_attr': ['name'],

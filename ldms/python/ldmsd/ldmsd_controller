@@ -195,6 +195,7 @@ class LdmsdCmdParser(cmd.Cmd):
         resp = request.receive(self.ctrl)
         if is_debug:
             print("Received the response of request {0}".format(request.message_number_get()))
+            print(resp)
         if resp is None:
             raise Exception("Failed to get the information from ldmsd")
         if 'errcode' in resp.keys() and resp['errcode'] != 0:
@@ -589,18 +590,34 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_prdcr_set_status(self, arg):
         """
-        Report the statuses of all producer sets of a producer
+        Report the statuses of producer sets that are matched the given conditions.
         Parameters:
-        name=        Producer name
+        [producer=]        Producer name
+        [instance=]        Instance name
+        [schema=]          Schema name
         """
         resp = self.handle('prdcr_set_status', arg)
-        metric_sets = json.loads(resp)
-        print("Name             Schema Name      State")
-        print("---------------- ---------------- ------------ ")
-        for pset in metric_sets:
-            print("    {0:16} {1:16} {2}".format(pset['inst_name'],
-                                                 pset['schema_name'],
-                                                 pset['state']))
+        if resp['errcode'] == 0:
+            from datetime import datetime
+            metric_sets = json.loads(resp['msg'])
+
+            print("Name                 Schema Name      State      Origin           Producer         timestamp                 duration (usec)")
+            print("-------------------- ---------------- ---------- ---------------- ---------------- ------------------------- ---------------")
+            for pset in metric_sets:
+                ts = float(pset['timestamp.sec'])
+                ts_sec = datetime.fromtimestamp(ts).strftime('%m-%d-%y %H:%M:%S')
+                ts_str = "{0} [{1}]".format(ts_sec, pset['timestamp.usec'])
+                dur = pset['duration.sec'] + "." + pset['duration.usec'].zfill(6)
+                print("{0:20} {1:16} {2:10} {3:16} {4:16} {5:25} {6:12}".format(pset['inst_name'],
+                                                                                pset['schema_name'],
+                                                                                pset['state'],
+                                                                                pset['origin'],
+                                                                                pset['producer'],
+                                                                                ts_str,
+                                                                                dur))
+
+    def complete_prdcr_set_status(self, text, lne, begidx, endidx):
+        return self.__complete_attr_list('prdcr_set_status', text)
 
     def do_updtr_status(self, arg):
         """

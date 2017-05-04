@@ -679,6 +679,19 @@ ldmsd_prdcr_set_t ldmsd_prdcr_set_next(ldmsd_prdcr_set_t prd_set)
 	return NULL;
 }
 
+/**
+ * Get the producer set with the given name \c setname
+ *
+ * This function must be called with the producer lock held.
+ */
+ldmsd_prdcr_set_t ldmsd_prdcr_set_find(ldmsd_prdcr_t prdcr, const char *setname)
+{
+	struct rbn *rbn = rbt_find(&prdcr->set_tree, setname);
+	if (rbn)
+		return container_of(rbn, struct ldmsd_prdcr_set, rbn);
+	return NULL;
+}
+
 /* Must be called with strgp lock held. */
 void ldmsd_prdcr_update(ldmsd_strgp_t strgp)
 {

@@ -647,6 +647,7 @@ ldmsd_prdcr_t ldmsd_prdcr_first();
 ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr);
 ldmsd_prdcr_set_t ldmsd_prdcr_set_first(ldmsd_prdcr_t prdcr);
 ldmsd_prdcr_set_t ldmsd_prdcr_set_next(ldmsd_prdcr_set_t prv_set);
+ldmsd_prdcr_set_t ldmsd_prdcr_set_find(ldmsd_prdcr_t prdcr, const char *setname);
 static inline void ldmsd_prdcr_lock(ldmsd_prdcr_t prdcr) {
 	ldmsd_cfgobj_lock(&prdcr->obj);
 }
