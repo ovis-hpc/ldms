@@ -86,14 +86,6 @@
 #include <mcheck.h>
 #endif /* DEBUG */
 
-#ifdef ENABLE_OCM
-#include <ocm/ocm.h>
-#include <coll/str_map.h>
-const char *ldmsd_svc_type = "ldmsd_sampler";
-uint16_t ocm_port = OCM_DEFAULT_PORT;
-int ldmsd_ocm_init(const char *svc_type, uint16_t port);
-#endif
-
 #if OVIS_LIB_HAVE_AUTH
 #include "ovis_auth/auth.h"
 #endif /* OVIS_LIB_HAVE_AUTH */
@@ -104,7 +96,7 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkN:o:r:R:p:a:v:Vz:Z:q:c:u"
+#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:a:v:Vz:Z:q:c:u"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"
@@ -460,10 +452,6 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -T set_name    Test set prefix.\n");
 	printf("    -N             Notify registered monitors of the test metric sets\n");
 	printf("  Configuration Options\n");
-#ifdef ENABLE_OCM
-	printf("  OCM Options\n");
-	printf("    -o ocm_port    The OCM port (default: %hu).\n", ocm_port);
-#endif
 #if OVIS_LIB_HAVE_AUTH
 	printf("    -a secretfile  Give the location of the secretword file.\n"
 	       "                   Normally, the environment variable\n"
@@ -1275,15 +1263,6 @@ int main(int argc, char *argv[])
 			usage_hint(argv,"-Z not needed in LDMS v3. Remove it.\n"
 				"This message will disappear in a future release.");
 			break;
-		case 'o':
-#ifdef ENABLE_OCM
-			if (check_arg("o", optarg, LO_UINT))
-				return 1;
-			ocm_port = atoi(optarg);
-#else
-			printf("Error: -o options requires OCM support.\n");
-#endif
-			break;
 #if OVIS_LIB_HAVE_AUTH
 		case 'a':
 			if (check_arg("a", optarg, LO_PATH))
@@ -1555,14 +1534,6 @@ int main(int argc, char *argv[])
 
 	listen_on_transport(xprt_str, port_str);
 
-#ifdef ENABLE_OCM
-	int ocm_rc = ldmsd_ocm_init(ldmsd_svc_type, ocm_port);
-	if (ocm_rc) {
-		ldmsd_log(LDMSD_LERROR, "Error: cannot initialize OCM, rc: %d\n",
-				ocm_rc);
-		cleanup(ocm_rc, "ocm_init failed");
-	}
-#endif
 	if (config_path) {
 		int errloc = 0;
 		int rc = process_config_file(config_path, &errloc);
