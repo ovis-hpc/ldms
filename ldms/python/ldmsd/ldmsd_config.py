@@ -1,7 +1,7 @@
 #######################################################################
 # -*- c-basic-offset: 8 -*-
-# Copyright (c) 2015-2016 Open Grid Computing, Inc. All rights reserved.
-# Copyright (c) 2015-2016 Sandia Corporation. All rights reserved.
+# Copyright (c) 2015-2017 Open Grid Computing, Inc. All rights reserved.
+# Copyright (c) 2015-2017 Sandia Corporation. All rights reserved.
 # Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
 # license for use of this work by or on behalf of the U.S. Government.
 # Export of this program may require a license from the United States
@@ -64,102 +64,67 @@ import socket
 
 #:Dictionary contains the cmd_id, required attribute list
 #:and optional attribute list of each ldmsd commands. For example,
-#:LDMSD_CTRL_CMD_MAP['load']['id'] is the command id of the load command
 #:LDMSD_CTRL_CMD_MAP['load']['req_attr'] is the list of the required attributes
 #:of the load command.
 #:LDMSD_CTRL_CMD_MAP['load']['opt_attr'] is the list of the optional attributes
 #:of the load command.
-LDMSD_CTRL_CMD_MAP = {'usage': {'id': 0, 'req_attr': [], 'opt_attr': ['name']},
-                      'load': {'id': 1,
-                               'req_attr': ['name']},
-                      'term': {'id': 2,
-                               'req_attr': ['name']},
-                      'config': {'id': 3,
-                                 'req_attr': ['name', 'producer', 'instance']},
-                      'start': {'id': 4,
-                                'req_attr': ['name', 'interval'],
+LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
+                      'load': {'req_attr': ['name']},
+                      'term': {'req_attr': ['name']},
+                      'config': {'req_attr': ['name', 'producer', 'instance']},
+                      'start': {'req_attr': ['name', 'interval'],
                                 'opt_attr': ['offset']},
-                      'stop': {'id': 5,
-                               'req_attr': ['name']},
-                      'udata': {'id': 10,
-                                'req_attr': ['instance', 'metric', 'udata']},
-                      'daemon_exit': {'id': 11, 'req_attr': []},
-                      'oneshot': {'id': 13,
-                                  'req_attr': ['name', 'time']},
-                      'udata_regex': {'id': 14,
-                                      'req_attr': ['instance', 'regex', 'base'],
+                      'stop': {'req_attr': ['name']},
+                      'udata': {'req_attr': ['instance', 'metric', 'udata']},
+                      'daemon_exit': {'req_attr': []},
+                      'oneshot': {'req_attr': ['name', 'time']},
+                      'udata_regex': {'req_attr': ['instance', 'regex', 'base'],
                                       'opt_attr': ['incr']},
-                      'version': {'id': 15, 'req_attr': [], 'opt_attr': []},
-                      'loglevel': {'id': 16, 'req_attr': ['level'],},
-                      'include': {'id': 17, 'req_attr': ['path'] },
-                      'env': {'id': 18, 'req_attr': []},
-                      'logrotate': {'id': 19, 'req_attr': [], 'opt_attr': []},
+                      'version': {'req_attr': [], 'opt_attr': []},
+                      'loglevel': {'req_attr': ['level'],},
+                      'include': {'req_attr': ['path'] },
+                      'env': {'req_attr': []},
+                      'logrotate': {'req_attr': [], 'opt_attr': []},
                       ###############################
                       # LDMSD command version 3
                       ###############################
                       ##### Producer Policy #####
-                      'prdcr_add': {'id': 20,
-                                    'req_attr': ['name', 'type', 'xprt', 'host',
+                      'prdcr_add': {'req_attr': ['name', 'type', 'xprt', 'host',
                                              'port', 'interval']},
-                      'prdcr_del': {'id': 21,
-                                    'req_attr': ['name']},
-                      'prdcr_start': {'id': 22,
-                                      'req_attr': ['name'],
+                      'prdcr_del': {'req_attr': ['name']},
+                      'prdcr_start': {'req_attr': ['name'],
                                       'opt_attr': ['interval']},
-                      'prdcr_stop': {'id': 23,
-                                     'req_attr': ['name']},
-                      'prdcr_start_regex': {'id': 24,
-                                            'req_attr': ['regex'],
+                      'prdcr_stop': {'req_attr': ['name']},
+                      'prdcr_start_regex': {'req_attr': ['regex'],
                                             'opt_attr': ['interval']},
-                      'prdcr_stop_regex': {'id': 25,
-                                           'req_attr': ['regex']},
-                      'prdcr_status': {'id': 0x100 + 4,
-                                       'opt_attr': [], 'req_attr': []},
-                      'prdcr_set_status': {'id': 0x100 + 7,
-                                           'opt_attr': ['producer', 'instance', 'schema']},
+                      'prdcr_stop_regex': {'req_attr': ['regex']},
+                      'prdcr_status': {'opt_attr': [], 'req_attr': []},
+                      'prdcr_set_status': {'opt_attr': ['producer', 'instance', 'schema']},
                       ##### Updater Policy #####
-                      'updtr_add': {'id': 30,
-                                     'req_attr': ['name'],
-                                     'opt_attr': ['offset', 'push', 'interval']},
-                      'updtr_del': {'id': 31,
-                                     'req_attr': ['name']},
-                      'updtr_match_add': {'id': 32,
-                                          'req_attr': ['name', 'regex', 'match']},
-                      'updtr_match_del': {'id': 33,
-                                          'req_attr': ['name', 'regex', 'match']},
-                      'updtr_prdcr_add': {'id': 34,
-                                          'req_attr': ['name', 'regex']},
-                      'updtr_prdcr_del': {'id': 35,
-                                          'req_attr': ['name', 'regex']},
-                      'updtr_start': {'id': 38,
-                                      'req_attr': ['name'],
+                      'updtr_add': {'req_attr': ['name'],
+                                    'opt_attr': ['offset', 'push', 'interval']},
+                      'updtr_del': {'req_attr': ['name']},
+                      'updtr_match_add': {'req_attr': ['name', 'regex', 'match']},
+                      'updtr_match_del': {'req_attr': ['name', 'regex', 'match']},
+                      'updtr_prdcr_add': {'req_attr': ['name', 'regex']},
+                      'updtr_prdcr_del': {'req_attr': ['name', 'regex']},
+                      'updtr_start': {'req_attr': ['name'],
                                       'opt_attr': ['interval', 'offset']},
-                      'updtr_stop': {'id': 39,
-                                     'req_attr': ['name']},
-                      'udptr_status': {'id': 0x300 + 4,
-                                       'req_attr': [], 'opt_attr': []},
+                      'updtr_stop': {'req_attr': ['name']},
+                      'udptr_status': {'req_attr': [], 'opt_attr': []},
                       ##### Storage Policy #####
-                      'strgp_add': {'id': 40,
-                                     'req_attr': ['name', 'plugin', 'container',
+                      'strgp_add': {'req_attr': ['name', 'plugin', 'container',
                                               'schema']},
-                      'strgp_del': {'id': 41,
-                                    'req_attr': ['name']},
-                      'strgp_prdcr_add': {'id': 42,
-                                          'req_attr': ['name', 'regex']},
-                      'strgp_prdcr_del': {'id': 43,
-                                          'req_attr': ['name', 'regex']},
-                      'strgp_metric_add': {'id': 44,
-                                           'req_attr': ['name', 'metric']},
-                      'strgp_metric_del': {'id': 45,
-                                           'req_attr': ['name', 'metric']},
-                      'strgp_start': {'id': 48,
-                                      'req_attr': ['name']},
-                      'strgp_stop': {'id': 49,
-                                     'req_attr': ['name']},
-                      'strgp_status': {'id': 0x200 + 4,
-                                       'req_attr': [], 'opt_attr': []},
+                      'strgp_del': {'req_attr': ['name']},
+                      'strgp_prdcr_add': {'req_attr': ['name', 'regex']},
+                      'strgp_prdcr_del': {'req_attr': ['name', 'regex']},
+                      'strgp_metric_add': {'req_attr': ['name', 'metric']},
+                      'strgp_metric_del': {'req_attr': ['name', 'metric']},
+                      'strgp_start': {'req_attr': ['name']},
+                      'strgp_stop': {'req_attr': ['name']},
+                      'strgp_status': {'req_attr': [], 'opt_attr': []},
                       ##### Daemon #####
-                      'daemon_status': {'id': 0x600+3},
+                      'daemon_status': {'req_attr': [], 'opt_attr': []},
                       }
 
 """@var MAX_RECV_LEN
@@ -196,11 +161,6 @@ class ldmsdConfig(object):
         """
         self.socket.close()
 
-    def get_cmd_id(self, cmd_verb):
-        """Return the command ID of the given command
-        """
-        return LDMSD_CTRL_CMD_MAP[cmd_verb]['id']
-
     def get_cmd_attr_list(self, cmd_verb):
         """Return the dictionary of command attributes
 
@@ -218,181 +178,6 @@ class ldmsdConfig(object):
             if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']) > 0:
                 attr_dict['opt'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']
         return attr_dict
-
-    def talk(self, cmd):
-        """Send command and receive response to and from ldmsd
-        """
-        self.send_command(cmd + "\0")
-        return self.receive_response()
-
-    def __format_cmd(self, cmd_key, attr_value_dict):
-        cmd_id = LDMSD_CTRL_CMD_MAP[cmd_key]['id']
-        s = "{0}{1}".format(cmd_id, cmd_key)
-        if attr_value_dict is None:
-            return s
-
-        for attr in attr_value_dict:
-            if attr_value_dict[attr] is not None:
-                s += " {0}={1}".format(attr, attr_value_dict[attr])
-        return s
-
-    def load(self, name):
-        attr_value_dict = {'name': name}
-        cmd = self.__format_cmd('load', attr_value_dict)
-        return self.talk(cmd)
-
-    def usage(self):
-        return self.talk(self.__format_cmd('usage', {}))
-
-    def term(self, name):
-        return self.talk(self.__format_cmd('term', {'name': name}))
-
-    def config(self, name, **kwargs):
-        kwargs.update({'name': name})
-        cmd = self.__format_cmd('config', kwargs)
-        return self.talk(cmd)
-
-    def start(self, name, interval):
-        cmd = self.__format_cmd('start', {'name': name,
-                                                  'interval': interval})
-        return self.talk(cmd)
-
-    def stop(self, name):
-        cmd = self.__format_cmd('stop', {'name': name})
-        return self.talk(cmd)
-
-    def info(self, name = None):
-        attr_values = {}
-        if name:
-            attr_values['name'] = name
-        return self.talk(self.__format_cmd('info', attr_values))
-
-    def status(self, name = None):
-        msg = bytearray()
-        msg.append(0xff)
-        msg.append(0x01)
-        return self.talk(msg)
-
-    def set_udata(self, set, metric, udata):
-        cmd = self.__format_cmd('udata', {'set': set, 'metric': metric,
-                                              'udata': udata})
-        return self.talk(cmd)
-
-    def set_udata_regex(self, set, regex, base, incr = None):
-        cmd = self.__format_cmd('udata_regex', {'set': set,
-                                                'regex': regex,
-                                                'base': base,
-                                                'incr': incr})
-        return self.talk(cmd)
-
-    def exit_daemon(self):
-        return self.talk(self.__format_cmd('exit', {}))
-
-    def oneshot(self, sampler_name, time):
-        attr_values = {'name': sampler_name, 'time': time}
-        return self.talk(self.__format_cmd('oneshot', attr_values))
-
-    def version(self):
-        return self.talk(self.__format_cmd('version', {}))
-
-    def loglevel(self, level):
-        attr_values = {'level': level}
-        return self.talk(self.__format_cmd('loglevel', attr_values))
-
-    def logrotate(self, path = None):
-	attr_values = {}
-	if path:
-		attr_values['path'] = path
-	return self.talk(self.__format_cmd('path', attr_values))
-    #############################################
-    # LDMSD command version 3
-    #############################################
-
-    def prdcr_add(self, name, xprt, host, port, type, interval):
-        attr_values = {'name': name,
-                       'xprt': xprt,
-                       'host': host,
-                       'port': port,
-                       'type': type,
-                       'interval': interval}
-        return self.talk(self.__format_cmd('prdcr_add', attr_values))
-
-    def prdcr_del(self, name):
-        return self.talk(self.__format_cmd('prdcr_del', {'name': name}))
-
-    def prdcr_start(self, name, interval = None):
-        attr_values = {'name': name, 'interval': interval}
-        return self.talk(self.__format_cmd('prdcr_start', attr_values))
-
-    def prdcr_start_regex(self, regex, interval = None):
-        attr_values = {'regex': regex, 'interval': interval}
-        return self.talk(self.__format_cmd('prdcr_start_regex', attr_values))
-
-    def prdcr_stop(self, name):
-        return self.talk(self.__format_cmd('prdcr_stop', {'name': name}))
-
-    def prdcr_stop_regex(self, regex):
-        return self.talk(self.__format_cmd('prdcr_stop_regex', {'regex': regex}))
-
-    def updtr_add(self, name, interval, offset = None):
-        attr_values = {'name': name, 'interval': interval, 'offset': offset}
-        return self.talk(self.__format_cmd('updtr_add', attr_values))
-
-    def updtr_del(self, name):
-        return self.talk(self.__format_cmd('updtr_del', {'name': name}))
-
-    def updtr_start(self, name, interval = None, offset = None):
-        attr_values = {'name': name, 'interval': interval, 'offset': offset}
-        return self.talk(self.__format_cmd('updtr_start', attr_values))
-
-    def updtr_stop(self, name):
-        return self.talk(self.__format_cmd('updtr_stop', {'name': name}))
-
-    def updtr_match_add(self, name, match, regex):
-        attr_values = {'name': name, 'match': match, 'regex': regex}
-        return self.talk(self.__format_cmd('updtr_match_add', attr_values))
-
-    def updtr_match_del(self, name, match, regex):
-        attr_values = {'name': name, 'match': match, 'regex': regex}
-        return self.talk(self.__format_cmd('updtr_match_del', attr_values))
-
-    def updtr_prdcr_add(self, name, regex):
-        attr_values = {'name': name, 'regex': regex}
-        return self.talk(self.__format_cmd('updtr_prdcr_add', attr_values))
-
-    def updtr_prdcr_del(self, name, regex):
-        attr_values = {'name': name, 'regex': regex}
-        return self.talk(self.__format_cmd('updtr_prdcr_del', attr_values))
-
-    def strgp_add(self, name, plugin, container, schema):
-        attr_values = {'name': name, 'plugin': plugin,
-                       'container': container, 'schema': schema}
-        return self.talk(self.__format_cmd('strgp_add', attr_values))
-
-    def strgp_del(self, name):
-        return self.talk(self.__format_cmd('strgp_del', {'name': name}))
-
-    def strgp_prdcr_add(self, name, regex):
-        attr_values = {'name': name, 'regex': regex}
-        return self.talk(self.__format_cmd('strgp_prdcr_add', attr_values))
-
-    def strgp_prdcr_del(self, name, regex):
-        attr_values = {'name': name, 'regex': regex}
-        return self.talk(self.__format_cmd('strgp_prdcr_add', attr_values))
-
-    def strgp_metric_add(self, name, metric):
-        attr_values = {'name': name, 'metric': metric}
-        return self.talk(self.__format_cmd('strgp_metric_add', attr_values))
-
-    def strgp_metric_del(self, name, metric):
-        attr_values = {'name': name, 'metric': metric}
-        return self.talk(self.__format_cmd('strgp_metric_del', attr_values))
-
-    def strgp_start(self, name):
-        return self.talk(self.__format_cmd('strgp_start', {'name': name}))
-
-    def strgp_stop(self, name):
-        return self.talk(self.__format_cmd('strgp_stop', {'name': name}))
 
 class ldmsdUSocketConfig(ldmsdConfig):
     def __init__(self, ldmsd_sockpath, sockpath = None, max_recv_len = None):
