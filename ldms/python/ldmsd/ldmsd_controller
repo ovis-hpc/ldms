@@ -549,20 +549,18 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_strgp_stop(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_stop', text)
 
-    #
-    # Backward compatibility commands
-    #
     def do_daemon_status(self, arg):
         """
         Report the daemon status
         Parameters: NONE
         """
         resp = self.handle('daemon_status', arg)
-        threads = json.loads(resp['msg'])
-        print("Thread          Task Count")
-        print("--------------- ----------")
-        for thr in threads:
-            print("{0:15} {1:>10}".format(thr['thread'], thr['task_count']))
+        if resp['errcode'] == 0:
+            threads = json.loads(resp['msg'])
+            print("Thread          Task Count")
+            print("--------------- ----------")
+            for thr in threads:
+                print("{0:15} {1:>10}".format(thr['thread'], thr['task_count']))
 
     def complete_daemon_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('daemon_status', text)
@@ -574,19 +572,23 @@ class LdmsdCmdParser(cmd.Cmd):
             NONE
         """
         resp = self.handle('prdcr_status', None)
-        producers =  json.loads(resp['msg'])
-        print("Name             Host             Port         Transport    State")
-        print("---------------- ---------------- ------------ ------------ ------------")
-        for prdcr in producers:
-            print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
-                                                              prdcr['host'],
-                                                              prdcr['port'],
-                                                              prdcr['transport'],
-                                                              prdcr['state']))
-            for pset in prdcr['sets']:
-                print("    {0:16} {1:16} {2}".format(pset['inst_name'],
-                                                     pset['schema_name'],
-                                                     pset['state']))
+        if resp['errcode'] == 0:
+            producers =  json.loads(resp['msg'])
+            print("Name             Host             Port         Transport    State")
+            print("---------------- ---------------- ------------ ------------ ------------")
+            for prdcr in producers:
+                print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
+                                                                  prdcr['host'],
+                                                                  prdcr['port'],
+                                                                  prdcr['transport'],
+                                                                  prdcr['state']))
+                for pset in prdcr['sets']:
+                    print("    {0:16} {1:16} {2}".format(pset['inst_name'],
+                                                         pset['schema_name'],
+                                                         pset['state']))
+
+    def complete_prdcr_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_status', text)
 
     def do_prdcr_set_status(self, arg):
         """
@@ -616,7 +618,7 @@ class LdmsdCmdParser(cmd.Cmd):
                                                                                 ts_str,
                                                                                 dur))
 
-    def complete_prdcr_set_status(self, text, lne, begidx, endidx):
+    def complete_prdcr_set_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_set_status', text)
 
     def do_updtr_status(self, arg):
@@ -626,35 +628,43 @@ class LdmsdCmdParser(cmd.Cmd):
             NONE
         """
         resp = self.handle('updtr_status', None)
-        updaters = json.loads(resp)
-        print("Name             Interval     Offset       Mode            State")
-        print("---------------- ------------ ------------ --------------- ------------")
-        for updtr in updaters:
-            print("{0:16} {1:12} {2:12} {3:15} {4}".format(
-                updtr['name'], updtr['interval'], updtr['offset'],
-                updtr['mode'], updtr['state']))
-            for prdcr in updtr['producers']:
-                print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
-                    prdcr['name'], prdcr['host'], prdcr['port'],
-                    prdcr['transport'], prdcr['state']))
+        if resp['errcode'] == 0:
+            updaters = json.loads(resp['msg'])
+            print("Name             Interval     Offset       Mode            State")
+            print("---------------- ------------ ------------ --------------- ------------")
+            for updtr in updaters:
+                print("{0:16} {1:12} {2:12} {3:15} {4}".format(
+                    updtr['name'], updtr['interval'], updtr['offset'],
+                    updtr['mode'], updtr['state']))
+                for prdcr in updtr['producers']:
+                    print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
+                        prdcr['name'], prdcr['host'], prdcr['port'],
+                        prdcr['transport'], prdcr['state']))
+
+    def complete_updtr_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('updtr_status', text)
 
     def do_strgp_status(self, arg):
         resp = self.handle('strgp_status', None)
-        policies = json.loads(resp)
-        print("Name             Container        Schema           Plugin           State")
-        print("---------------- ---------------- ---------------- ---------------- ------------")
-        for strgp in policies:
-            print("{0:16} {1:16} {2:16} {3:16} {4}".format(
-                strgp['name'], strgp['container'], strgp['schema'],
-                strgp['plugin'], strgp['state']))
-            print("    producers: ", end='')
-            for prdcr in strgp['producers']:
-                print("{0} ".format(prdcr), end='')
-            print('')
-            print("    metrics: ", end='')
-            for metric in strgp['metrics']:
-                print("{0} ".format(metric), end='')
-            print('')
+        if resp['errcode'] == 0:
+            policies = json.loads(resp['msg'])
+            print("Name             Container        Schema           Plugin           State")
+            print("---------------- ---------------- ---------------- ---------------- ------------")
+            for strgp in policies:
+                print("{0:16} {1:16} {2:16} {3:16} {4}".format(
+                    strgp['name'], strgp['container'], strgp['schema'],
+                    strgp['plugin'], strgp['state']))
+                print("    producers: ", end='')
+                for prdcr in strgp['producers']:
+                    print("{0} ".format(prdcr), end='')
+                print('')
+                print("    metrics: ", end='')
+                for metric in strgp['metrics']:
+                    print("{0} ".format(metric), end='')
+                print('')
+
+    def complete_strgp_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('strgp_status', text)
 
     def do_plugn_status(self, arg):
         resp = self.handle('plugn_status', None)
