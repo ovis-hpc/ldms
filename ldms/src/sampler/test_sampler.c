@@ -70,7 +70,8 @@
 
 struct test_sampler_metric {
 	char *name;
-	enum ldms_value_type type;
+	int mtype; /* 2 is meta and 1 is data */
+	enum ldms_value_type vtype;
 	union ldms_value init_value;
 	int idx;
 	TAILQ_ENTRY(test_sampler_metric) entry;
@@ -80,6 +81,11 @@ TAILQ_HEAD(test_sampler_metric_list, test_sampler_metric);
 struct test_sampler_schema {
 	char *name;
 	ldms_schema_t schema;
+	enum schema_type {
+		TEST_SAMPLER_SCHEMA_TYPE_DEFAULT = 1,
+		TEST_SAMPLER_SCHEMA_TYPE_MANUAL = 2,
+		TEST_SAMPLER_SCHEMA_TYPE_AUTO = 3
+	} type;
 	struct test_sampler_metric_list list;
 	LIST_ENTRY(test_sampler_schema) entry;
 };
@@ -106,8 +112,6 @@ static int num_metrics;
 static char *default_schema_name = "test_sampler";
 static struct test_sampler_schema_list schema_list;
 static struct test_sampler_set_list set_list;
-static int test_sampler_compid_idx;
-static int test_sampler_jobid_idx;
 
 static struct test_sampler_schema *__schema_find(
 		struct test_sampler_schema_list *list, char *name)
@@ -133,12 +137,15 @@ static struct test_sampler_set *__set_find(
 
 static struct test_sampler_metric *__schema_metric_new(char *s)
 {
-	char *name, *type, *value, *ptr;
+	char *name, *mtype, *vtype, *value, *ptr;
 	name = strtok_r(s, ":", &ptr);
 	if (!name)
 		return NULL;
-	type = strtok_r(NULL, ":", &ptr);
-	if (!type)
+	mtype = strtok_r(NULL, ":", &ptr);
+	if (!mtype)
+		return NULL;
+	vtype = strtok_r(NULL, ":", &ptr);
+	if (!vtype)
 		return NULL;
 	value = strtok_r(NULL, ":", &ptr);
 	if (!value)
@@ -153,14 +160,25 @@ static struct test_sampler_metric *__schema_metric_new(char *s)
 		return NULL;
 	}
 
-	metric->type = ldms_metric_str_to_type(type);
-	if (metric->type == LDMS_V_NONE) {
+	if ((0 == strcasecmp(mtype, "data")) || (0 == strcasecmp(mtype, "d"))) {
+		metric->mtype = LDMS_MDESC_F_DATA;
+	} else if ((0 == strcasecmp(mtype, "meta")) ||
+			(0 == strcasecmp(mtype, "m"))) {
+		metric->mtype = LDMS_MDESC_F_META;
+	} else {
 		free(metric->name);
 		free(metric);
 		return NULL;
 	}
 
-	switch (metric->type) {
+	metric->vtype = ldms_metric_str_to_type(vtype);
+	if (metric->vtype == LDMS_V_NONE) {
+		free(metric->name);
+		free(metric);
+		return NULL;
+	}
+
+	switch (metric->vtype) {
 	case LDMS_V_U8:
 		sscanf(value, "%" SCNu8, &(metric->init_value.v_u8));
 		break;
@@ -193,7 +211,7 @@ static struct test_sampler_metric *__schema_metric_new(char *s)
 		break;
 	default:
 		msglog(LDMSD_LERROR, "test_sampler: Unrecognized "
-				"type '%s'\n", type);
+				"type '%s'\n", vtype);
 		free(metric->name);
 		free(metric);
 		return NULL;
@@ -242,6 +260,7 @@ static int create_metric_set(const char *schema_name, int push)
 	if (!ts_schema) {
 		ts_schema = malloc(sizeof(*ts_schema));
 		ts_schema->name = strdup(schema_name);
+		ts_schema->type = TEST_SAMPLER_SCHEMA_TYPE_DEFAULT;
 		schema = ldms_schema_new(schema_name);
 		if (!schema)
 			return ENOMEM;
@@ -353,6 +372,7 @@ static int config_add_schema(struct attr_value_list *avl)
 	LIST_INSERT_HEAD(&schema_list, ts_schema, entry);
 	struct test_sampler_metric *metric;
 	if (metrics) {
+		ts_schema->type = TEST_SAMPLER_SCHEMA_TYPE_MANUAL;
 		char *s, *ptr;
 		s = strtok_r(metrics, ",", &ptr);
 		while (s) {
@@ -366,6 +386,7 @@ static int config_add_schema(struct attr_value_list *avl)
 		}
 		is_mvalue_init = 1;
 	} else {
+		ts_schema->type = TEST_SAMPLER_SCHEMA_TYPE_AUTO;
 		is_need_int = 1;
 		enum ldms_value_type type;
 		num_metrics = atoi(value);
@@ -389,7 +410,7 @@ static int config_add_schema(struct attr_value_list *avl)
 			metric = malloc(sizeof(*metric));
 			snprintf(name, 128, "%s%d", DEFAULT_METRIC_NAME_NAME, i);
 			metric->name = strdup(name);
-			metric->type = type;
+			metric->vtype = type;
 			TAILQ_INSERT_TAIL(&ts_schema->list, metric, entry);
 		}
 	}
@@ -401,15 +422,18 @@ static int config_add_schema(struct attr_value_list *avl)
 		goto cleanup;
 	}
 
-	test_sampler_compid_idx = ldms_schema_meta_add(schema,
-			"component_id", LDMS_V_U64);
-	test_sampler_jobid_idx = ldms_schema_metric_add(schema,
-			"jobid", LDMS_V_U64);
+	if (!metrics) {
+		ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+		ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
+	}
 	TAILQ_FOREACH(metric, &ts_schema->list, entry) {
-		metric->idx = ldms_schema_metric_add(schema, metric->name, metric->type);
+		if (metric->mtype == LDMS_MDESC_F_DATA)
+			metric->idx = ldms_schema_metric_add(schema, metric->name, metric->vtype);
+		else
+			metric->idx = ldms_schema_meta_add(schema, metric->name, metric->vtype);
 		if (is_mvalue_init)
 			continue;
-		switch (metric->type) {
+		switch (metric->vtype) {
 		case LDMS_V_D64:
 			if (init_value)
 				metric->init_value.v_d = strtod(init_value, NULL);
@@ -496,6 +520,7 @@ cleanup:
 
 static int config_add_set(struct attr_value_list *avl)
 {
+	int rc = 0;
 	struct test_sampler_schema *ts_schema;
 	ldms_set_t set;
 
@@ -516,6 +541,10 @@ static int config_add_set(struct attr_value_list *avl)
 				"exist.\n", schema_name);
 		return EINVAL;
 	}
+
+	char *producer = av_value(avl, "producer");
+	char *compid = av_value(avl, "component_id");
+	char *jobid = av_value(avl, "jobid");
 
 	char *push_s = av_value(avl, "push");
 	int push = 0;
@@ -538,21 +567,57 @@ static int config_add_set(struct attr_value_list *avl)
 	}
 	ts_set = __create_test_sampler_set(set, set_name, push, ts_schema);
 	if (!ts_set) {
-		ldms_set_delete(set);
-		return ENOMEM;
+		rc = ENOMEM;
+		goto err0;
 	}
 
 	union ldms_value v;
-	v.v_u64 = 0;
-	ldms_metric_set(ts_set->set, test_sampler_compid_idx, &v);
-	ldms_metric_set(ts_set->set, test_sampler_jobid_idx, &v);
-	int i = test_sampler_jobid_idx + 1;
+	int mid = 0;
+	if (ts_schema->type == TEST_SAMPLER_SCHEMA_TYPE_AUTO) {
+		char *endptr;
+		if (compid) {
+			v.v_u64 = strtoull(compid, &endptr, 0);
+			if (*endptr == '\0') {
+				msglog(LDMSD_LERROR, "test_sampler: invalid "
+						"component_id %s\n", compid);
+				rc = EINVAL;
+				goto err1;
+			}
+		} else {
+			v.v_u64 = 0;
+		}
+		mid = ldms_metric_by_name(ts_set->set, "component_id");
+		ldms_metric_set(ts_set->set, mid, &v);
+		if (jobid) {
+			v.v_u64 = strtoull(jobid, &endptr, 0);
+			if (*endptr == '\0') {
+				msglog(LDMSD_LERROR, "test_sampler: invalid "
+						"jobid %s\n", jobid);
+				rc = EINVAL;
+				goto err1;
+			}
+		} else {
+			v.v_u64 = 0;
+		}
+		mid = ldms_metric_by_name(ts_set->set, "jobid");
+		ldms_metric_set(ts_set->set, mid, &v);
+	}
+
 	struct test_sampler_metric *metric;
 	TAILQ_FOREACH(metric, &ts_schema->list, entry) {
-		ldms_metric_set(ts_set->set, i, &(metric->init_value));
-		i++;
+		ldms_metric_set(ts_set->set, metric->idx, &(metric->init_value));
 	}
+
+	if (producer) {
+		ldms_set_producer_name_set(ts_set->set, producer);
+	}
+
 	return 0;
+err0:
+	ldms_set_delete(set);
+err1:
+	free(ts_set);
+	return rc;
 }
 
 static int config_add_default(struct attr_value_list *avl)
@@ -606,6 +671,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *action;
 	char *s;
 	char *compid;
+	char *jobid;
 	char *push;
 	void * arg = NULL;
 	int rc;
@@ -628,21 +694,34 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 	producer_name = av_value(avl, "producer");
-	if (producer_name) {
-		struct test_sampler_set *ts_set;
-		LIST_FOREACH(ts_set, &set_list, entry) {
-			ldms_set_producer_name_set(ts_set->set, producer_name);
-		}
-	}
-
 	compid = av_value(avl, "component_id");
-	if (compid) {
-		struct test_sampler_set *ts_set;
-		union ldms_value v;
-		sscanf(compid, "%" SCNu64, &v.v_u64);
-		LIST_FOREACH(ts_set, &set_list, entry) {
-			ldms_metric_set(ts_set->set,
-					test_sampler_compid_idx, &v);
+	jobid = av_value(avl, "jobid");
+
+	struct test_sampler_set *ts_set;
+	union ldms_value v;
+	int mid;
+	LIST_FOREACH(ts_set, &set_list, entry) {
+		if (producer_name)
+			ldms_set_producer_name_set(ts_set->set, producer_name);
+		if (compid) {
+			sscanf(compid, "%" SCNu64, &v.v_u64);
+			mid = ldms_metric_by_name(ts_set->set, "component_id");
+			if (mid < 0) {
+				msglog(LDMSD_LINFO, "No component_id in "
+						"set '%s'\n", ts_set->name);
+				continue;
+			}
+			ldms_metric_set(ts_set->set, mid, &v);
+		}
+		if (jobid) {
+			sscanf(jobid, "%" SCNu64, &v.v_u64);
+			mid = ldms_metric_by_name(ts_set->set, "jobid");
+			if (mid < 0) {
+				msglog(LDMSD_LINFO, "No job ID in "
+						"set '%s'\n", ts_set->name);
+				continue;
+			}
+			ldms_metric_set(ts_set->set, mid, &v);
 		}
 	}
 
@@ -669,6 +748,10 @@ static int sample(struct ldmsd_sampler *self)
 		set = ts_set->set;
 		ldms_transaction_begin(set);
 		TAILQ_FOREACH(metric, &ts_set->ts_schema->list, entry) {
+			if (metric->mtype == LDMS_MDESC_F_META)
+				continue;
+			if (0 == strcmp(metric->name, "job_id"))
+				continue;
 			v.v_u64 = ldms_metric_get_u64(set, metric->idx);
 			v.v_u64++;
 			ldms_metric_set(set, metric->idx, &v);
@@ -747,20 +830,29 @@ static void term(struct ldmsd_plugin *self)
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=test_sampler action=add_schema schema=<schema_name>\n"
-		"       [metrics=<metric name>:<metric type>:<init value>,<metric name>:<metric type>:<init value>,...]\n"
+		"       [metrics=<metric name>:<metric type>:<value type>:<init value>,<metric name>:<metric type>:<value type>:<init value>,...]\n"
 		"       [num_metrics=<num_metrics>] [type=<metric type>]\n"
 		"	[init_value=<init_value>]\n"
 		"\n"
 		"    Either giving metrics or num_metrics. The default init value\n"
 		"    is the metric index.\n"
-		"    The valid metric types are, for example, D64, F32, S64, U64, S64_ARRAY\n"
+		"    \n"
+		"    If 'metrics' is given, the meta and data metrics in the schema will be exactly as the given metric list.\n"
+		"    Otherwise, 'component_id' and 'job_id' metrics will be automatically added to the schema.\n"
+		"    The valid metric types are either 'meta' or 'data'.\n"
+		"    The valid value types are, for example, D64, F32, S64, U64, S64_ARRAY\n"
 		""
 		"\n"
 		"config name=test_sampler action=add_set instance=<set_name>\n"
-		"       schema=<schema_name> [push=<push>]\n"
+		"       schema=<schema_name>\n"
+		"       [producer=<producer>] [component_id=<compid>] [jobid=<jobid>]\n"
+		"       [push=<push>]\n"
 		"\n"
 		"    <set name>      The set name\n"
 		"    <schema name>   The schema name\n"
+		"    <producer>      The producer name\n"
+		"    <compid>        The component ID\n"
+		"    <jobid>         The job ID\n"
 		"    <push>          A positive number. The default is 0 meaning no pushing update.\n."
 		"                    1 means the sampler will push every update,\n"
 		"                    2 means the sampler will push every other update,\n"
@@ -780,9 +872,10 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                 3 means the sampler will push every third updates,\n"
 		"                 and so on.\n"
 		"\n"
-		"config name=test_sampler [producer=<prod_name>] [component_id=<comp_id>]\n"
+		"config name=test_sampler [producer=<prod_name>] [component_id=<comp_id>] [jobid=<jobid>]\n"
 		"    <prod_name>  The producer name\n"
-		"    <comp_id>    The component ID\n";
+		"    <comp_id>    The component ID\n"
+		"    <jobid>      The job ID\n";
 
 }
 
