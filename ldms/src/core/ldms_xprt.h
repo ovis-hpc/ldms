@@ -247,9 +247,13 @@ struct ldms_auth_challenge_reply {
 	char s[LDMS_PASSWORD_MAX];
 };
 
+#define LDMS_CMD_PUSH_REPLY_F_MORE	0x80000000 /* !0 if this push message has more data */
 struct ldms_push_reply {
 	uint64_t set_id;	/*! The RBD of the set that has been updated */
 	uint32_t flags;
+	uint32_t data_off;
+	uint32_t data_len;
+	char data[0];
 };
 
 struct ldms_reply_hdr {
@@ -308,9 +312,6 @@ struct ldms_context {
 			ldms_notify_cb_t cb;
 			void *arg;
 		} req_notify;
-		struct {
-			struct ldms_rbuf_desc *write_rbd;
-		} push;
 	};
 	TAILQ_ENTRY(ldms_context) link;
 };

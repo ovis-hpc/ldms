@@ -123,6 +123,8 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	ldmsd_log(LDMSD_LDEBUG, "Update complete for Set %s with status %d\n",
 					prd_set->inst_name, status);
 	if (status & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST)) {
+		ldmsd_log(LDMSD_LINFO, "Update completing with bad status %d\n",
+			  status & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST));
 		goto out;
 	}
 
@@ -134,7 +136,8 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	gn = ldms_set_data_gn_get(set);
 	pthread_mutex_lock(&prd_set->lock);
 	if (prd_set->last_gn == gn) {
-		ldmsd_log(LDMSD_LINFO, "Set %s oversampled.\n", prd_set->inst_name, prd_set->last_gn);
+		ldmsd_log(LDMSD_LINFO, "Set %s oversampled %d == %d.\n",
+			  prd_set->inst_name, prd_set->last_gn, gn);
 		goto set_ready;
 	}
 	prd_set->last_gn = gn;

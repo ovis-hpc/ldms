@@ -349,7 +349,6 @@ void ldms_xprt_close(ldms_t x)
 
 void __ldms_xprt_resource_free(struct ldms_xprt *x)
 {
-	int num_zap_ref = 0;
 	pthread_mutex_lock(&x->lock);
 #if OVIS_LIB_HAVE_AUTH
 	if (x->password)
@@ -394,7 +393,6 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 #endif /* DEBUG */
 
 		__ldms_free_ctxt(x, ctxt);
-		num_zap_ref++;
 	}
 
 	struct ldms_rbuf_desc *rbd;
@@ -406,18 +404,15 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 			__ldms_rbd_xprt_release(rbd);
 	}
 	pthread_mutex_unlock(&x->lock);
-	while (num_zap_ref > 0) {
-		zap_put_ep(x->zap_ep);
-		num_zap_ref--;
-	}
 }
 
 void ldms_xprt_put(ldms_t x)
 {
 	assert(x->ref_count);
-	pthread_mutex_lock(&xprt_list_lock);
 	if (0 == __sync_sub_and_fetch(&x->ref_count, 1)) {
+		pthread_mutex_lock(&xprt_list_lock);
 		LIST_REMOVE(x, xprt_link);
+		pthread_mutex_unlock(&xprt_list_lock);
 #ifdef DEBUG
 		x->xprt_link.le_next = 0;
 		x->xprt_link.le_prev = 0;
@@ -428,7 +423,6 @@ void ldms_xprt_put(ldms_t x)
 		sem_destroy(&x->sem);
 		free(x);
 	}
-	pthread_mutex_unlock(&xprt_list_lock);
 }
 
 struct make_dir_arg {
@@ -647,17 +641,19 @@ process_cancel_push_request(struct ldms_xprt *x, struct ldms_request *req)
 	if (!push_rbd || 0 == (push_rbd->push_flags & LDMS_RBD_F_PUSH))
 		return;
 	set = r->set;
-	pthread_mutex_lock(&xprt_list_lock);
 
 	/* Peer will get push notification with UPD_F_PUSH_LAST set. */
 	assert(!(push_rbd->push_flags & LDMS_RBD_F_PUSH_CANCEL));
 	push_rbd->push_flags |= LDMS_RBD_F_PUSH_CANCEL;
 	send_push_notification(push_rbd);
 
-	/* If any remaining RBD still want automatic push updates,
+	/*
+	 * If any remaining RBD still want automatic push updates,
 	 * leave it on for the set, otherwise, turn it off for the set
 	 */
 	r->remote_set_id = 0;
+
+	pthread_mutex_lock(&xprt_list_lock);
 	__ldms_free_rbd(push_rbd);
 
 	LIST_FOREACH(r, &set->remote_rbd_list, set_link) {
@@ -1113,9 +1109,14 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 {
 	struct ldms_rbuf_desc *push_rbd =
 		(typeof(push_rbd))(unsigned long)reply->push.set_id;
-	assert(push_rbd->push_cb);
-	push_rbd->push_cb((ldms_t)x, push_rbd->push_s, ntohl(reply->push.flags),
-			  push_rbd->push_cb_arg);
+	uint32_t data_off = ntohl(reply->push.data_off);
+	uint32_t data_len = ntohl(reply->push.data_len);
+
+	/* Copy the data to the metric set */
+	memcpy((char *)push_rbd->push_s->set->meta + data_off, reply->push.data, data_len);
+	if (push_rbd->push_cb && (0 == (ntohl(reply->push.flags) & LDMS_CMD_PUSH_REPLY_F_MORE)))
+		push_rbd->push_cb((ldms_t)x, push_rbd->push_s, ntohl(reply->push.flags),
+				  push_rbd->push_cb_arg);
 }
 
 #if OVIS_LIB_HAVE_AUTH
@@ -1577,18 +1578,6 @@ static int send_push_notification(struct ldms_rbuf_desc *r)
 
 static void handle_zap_write_complete(zap_ep_t zep, zap_event_t ev)
 {
-	struct ldms_context *ctxt = ev->context;
-	struct ldms_xprt *x = zap_get_ucontext(zep);
-
-	if (!ev->status)
-		(void)send_push_notification(ctxt->push.write_rbd);
-
-	pthread_mutex_lock(&x->lock);
-	__ldms_free_ctxt(x, ctxt);
-#ifdef DEBUG
-	x->active_push--;
-#endif /* DEBUG */
-	pthread_mutex_unlock(&x->lock);
 }
 
 #ifdef DEBUG
@@ -2611,17 +2600,13 @@ int ldms_xprt_cancel_push(ldms_set_t s)
 	if (!s->xprt)
 		return EINVAL;
 	/* We may/will continue to receive push notifications after this */
-#if 0
-	s->push_flags = 0;
-	s->push_cb = NULL;
-	s->push_cb_arg = NULL;
-#endif
 	return send_req_cancel_push(s);
 }
 
 int __ldms_xprt_push(ldms_set_t s, int push_flags)
 {
 	int rc;
+	struct ldms_reply *reply;
 	struct ldms_set *set = s->set;
 	uint32_t meta_meta_gn = __le32_to_cpu(set->meta->meta_gn);
 	uint32_t meta_meta_sz = __le32_to_cpu(set->meta->meta_sz);
@@ -2629,7 +2614,6 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 	struct ldms_rbuf_desc *rbd;
 	ldms_t x;
 	zap_map_t rmap, lmap;
-	struct ldms_context *ctxt;
 
 	/* We have to lock all the transports since we are racing with
 	 * disconnect and this function operates on more than one
@@ -2646,7 +2630,7 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 			continue;
 		}
 		pthread_mutex_lock(&x->lock);
-		rc = 0; ctxt = NULL;
+		rc = 0;
 
 		if ((x->auth_flag != LDMS_XPRT_AUTH_DISABLE) &&
 		    (x->auth_flag != LDMS_XPRT_AUTH_APPROVED))
@@ -2668,36 +2652,55 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 			len = meta_data_sz;
 			doff = (uint8_t *)set->data - (uint8_t *)set->meta;
 		}
-		ctxt = __ldms_alloc_ctxt(x, sizeof(*ctxt), LDMS_CONTEXT_PUSH);
-		if (!ctxt) {
+		size_t hdr_len = sizeof(struct ldms_reply_hdr)
+			+ sizeof(struct ldms_push_reply);
+		size_t max_len = zap_max_msg(x->zap);
+		reply = malloc(max_len);
+		if (!reply) {
 			rc = ENOMEM;
 			goto skip;
 		}
-		ctxt->push.write_rbd = rbd;
 #ifdef PUSH_DEBUG
 		x->log("DEBUG: Push set %s to endpoint %p\n",
-				ldms_set_instance_name_get(rbd->set),
-                                x->zap_ep);
+		       ldms_set_instance_name_get(rbd->set),
+		       x->zap_ep);
 #endif /* PUSH_DEBUG */
-		rc = zap_write(x->zap_ep,
-			       lmap, zap_map_addr(lmap) + doff,
-			       rmap, zap_map_addr(rmap) + doff,
-			       len, ctxt);
-	skip:
-		if (rc) {
-			if (ctxt)
-				__ldms_free_ctxt(x, ctxt);
-			pthread_mutex_unlock(&x->lock);
-#ifdef PUSH_DEBUG
-			x->log("DEBUG: Error %d: zep %p: zap_write fails\n",
-							rc, x->zap_ep);
-#endif /* PUSH_DEBUG */
-			break;
+		while (len) {
+			size_t data_len;
+			ldms_xprt_get(x);
+			if ((len + hdr_len) > max_len) {
+				data_len = htonl(max_len - hdr_len);
+				reply->push.flags = htonl(LDMS_CMD_PUSH_REPLY_F_MORE);
+			} else {
+				reply->push.flags = 0;
+				data_len = len;
+			}
+			reply->hdr.xid = 0;
+			reply->hdr.cmd = htonl(LDMS_CMD_PUSH_REPLY);
+			reply->hdr.len = htonl(hdr_len + data_len);
+			reply->hdr.rc = 0;
+			reply->push.set_id = rbd->remote_set_id;
+			reply->push.data_len = htonl(data_len);
+			reply->push.data_off = htonl(doff);
+			reply->push.flags |= htonl(LDMS_UPD_F_PUSH);
+			if (rbd->push_flags & LDMS_RBD_F_PUSH_CANCEL)
+				reply->push.flags |= htonl(LDMS_UPD_F_PUSH_LAST);
+			memcpy(reply->push.data, (unsigned char *)set->meta + doff, data_len);
+			rc = zap_send(x->zap_ep, reply, hdr_len + data_len);
+			ldms_xprt_put(x);
+			if (rc)
+				break;
+			doff += data_len;
+			len -= data_len;
 		}
+		free(reply);
+	skip:
 #ifdef DEBUG
 		x->active_push++;
 #endif /* DEBUG */
 		pthread_mutex_unlock(&x->lock);
+		if (rc)
+			break;
 	}
  out:
 	pthread_mutex_unlock(&set->lock);
@@ -2707,7 +2710,7 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 
 int ldms_xprt_push(ldms_set_t s)
 {
-	__ldms_xprt_push(s, LDMS_RBD_F_PUSH);
+	return __ldms_xprt_push(s, LDMS_RBD_F_PUSH);
 }
 
 int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
