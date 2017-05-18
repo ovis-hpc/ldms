@@ -84,32 +84,43 @@ static ldms_t ldms;
 static sem_t exit_sem;
 
 static const int num_sets = 1;
-static ldms_set_t set_array[3];
+
+struct push_set {
+	ldms_set_t set;
+	int idx;
+	char *name;
+	enum {
+		PUSH_SET_WAIT_PUSH_UPDATE,
+		PUSH_SET_TO_CANCEL,
+		PUSH_SET_CANCELED,
+		PUSH_SET_RECEIVED_LAST_PUSH,
+	} state;
+};
+static struct push_set *set_array[3];
 static const char *set_names[] = {
 		"test_set_1",
 		"test_set_2",
 		"test_set_3"
 };
 
-#define FMT "x:p:h:i:svcou"
+#define FMT "x:p:h:i:svcoud"
 
 static void desc() {
 	printf(
 "Server:\n"
-"	- create the set with the given name. The set contains only one metric.\n"
-"	- it periodically creates events of the specified type(s)\n"
-"	  The metric value is incremented by 1 if -M is specified\n"
-"	  The user data is incremented by 1 if -U is specified\n"
-"	- call ldms_notify with the appropriate type after it makes each change\n"
+"	- create a metric set containing one meta metric and one data metric.\n"
+"	- meta metric and data metric are alternately incremented.\n"
+"	- the set is explicitly push every 4 samples\n"
 "Client:\n"
-"	- connects to the server."
-"	- upon receiving 'CONNECTED' event, it requests for the\n"
-"	  notification of the specified type(s).\n"
-"	- after receive a notification,\n"
-"		update the set if -u is specified, and then\n"
-"		cancel the notification request if -c is specified.\n"
-"	- upon receiving all updates, it closes the transport if -c is specified\n"
-"	- client exits when it receives the DISCONNECTED event\n"
+"	- connects to the server, requests dir, do lookup\n"
+"	- registers for a push update either 'onchange' (-o)\n"
+"	  only for 'explicit push'. The default is 'explicit push'\n"
+"	- cancels the push registration after receiving the first push update\n"
+"	  if '-c' is given. The program will not close the connection and exit\n"
+"	  automatically to catch duplicated last push update.\n"
+"	  Testers are encouraged to wait a couple seconds depending on the sampling interval\n"
+"	  of the server before exiting the test program\n"
+"	- Request for updates if '-u' is given with '-i' interval length.\n"
 	);
 }
 
@@ -125,8 +136,9 @@ static void usage() {
 "Client options:\n"
 "	-c		Cancel the pull request\n"
 "	-h host		Host name to connect to.\n"
-"	-o		Request 'onchange' pull\n"
+"	-o		Request 'onchange' push\n"
 "	-u		Pull set content\n"
+"	-i interval	Pull interval\n"
 	);
 }
 
@@ -165,6 +177,9 @@ static void process_args(int argc, char **argv) {
 		case 'u':
 			is_pull = 1;
 			break;
+		case 'd':
+			desc();
+			exit(0);
 		default:
 			printf("Unrecognized option '%c'\n", op);
 			usage();
@@ -275,12 +290,11 @@ static void __print_set(ldms_set_t s)
 		goto loop;
 	out:
 		printf("%10" PRIu64 "\n", ldms_metric_user_data_get(s, i));
-		;
 	}
 	printf("--------------------------------\n");
 }
 
-static ldms_set_t __server_create_set(const char *name)
+static struct push_set *__server_create_set(const char *name)
 {
 	ldms_schema_t schema = ldms_schema_new("TEST SCHEMA");
 	if (!schema) {
@@ -309,7 +323,14 @@ static ldms_set_t __server_create_set(const char *name)
 
 	ldms_metric_set_u64(set, 0, 0);
 	ldms_metric_set_u64(set, 0, 0);
-	return set;
+	struct push_set *push_set = calloc(1, sizeof(*push_set));
+	if (!push_set) {
+		_log("Out of memory\n");
+		assert(0);
+	}
+	push_set->set = set;
+	push_set->name = strdup(name);
+	return push_set;
 }
 
 #define USER_EVENT "udata is changed\n"
@@ -319,6 +340,7 @@ static void do_server(struct sockaddr_in *sin)
 	int i;
 	for (i = 0; i < num_sets; i++) {
 		set_array[i] = __server_create_set(set_names[i]);
+		set_array[i]->idx = i;
 		if (!set_array[i])
 			assert(0);
 	}
@@ -338,7 +360,7 @@ static void do_server(struct sockaddr_in *sin)
 	uint64_t metric_value = 1;
 	while (1) {
 		for (i = 0; i < num_sets; i++) {
-			set = set_array[i];
+			set = set_array[i]->set;
 			ldms_transaction_begin(set);
 			if ((round % 2) == 1) {
 				_log("%s: Update meta value to %" PRIu64 "\n",
@@ -357,7 +379,7 @@ static void do_server(struct sockaddr_in *sin)
 			if (is_verbose)
 				__print_set(set);
 
-			if ((round % 2) == 1) {
+			if ((round % 4) == 1) {
 				_log("%s: Push the set\n", set_names[i]);
 				ldms_xprt_push(set);
 			}
@@ -387,7 +409,6 @@ static void client_update_cb(ldms_t x, ldms_set_t set, int status, void *arg)
 	int rc = ldms_xprt_update(set, client_update_cb, arg);
 	if (rc) {
 		_log("Failed to update set '%s'\n", setname);
-		assert(0);
 	}
 }
 
@@ -395,28 +416,52 @@ static void client_push_update_cb(ldms_t x, ldms_set_t set,
 					int status, void *arg)
 {
 	int set_idx = (int)(long unsigned)arg;
+	char *setname;
+	setname = (char *)ldms_set_instance_name_get(set);
+	struct push_set *push_set = set_array[set_idx];
 	if (0 == (status & LDMS_UPD_F_PUSH)) {
-		_log("Received pull update in push path. Set '%d'.\n", set_idx);
+		_log("%s: Received pull update in push path.\n", setname);
 		assert(0);
 	}
 
 	if (1 == (status | ~LDMS_UPD_F_PUSH)) {
-		_log("Received push update error\n", set_idx);
+		_log("%s: Received push update error\n", setname);
 		assert(0);
 	}
 
-	if (!is_cancel && (status & LDMS_UPD_F_PUSH_LAST)) {
-		_log("Unexpected the last push update. Set '%d'\n", set_idx);
+	if ((!is_cancel || (push_set->state != PUSH_SET_CANCELED)) &&
+				(status & LDMS_UPD_F_PUSH_LAST)) {
+		_log("%s: Unexpected the last push update.\n", setname);
 		assert(0);
 	}
 
-	char *setname;
-	setname = (char *)ldms_set_instance_name_get(set);
+	if (push_set->state == PUSH_SET_CANCELED) {
+		if (!is_cancel) {
+			_log("%s:, Received last push update without "
+					"cancellation request\n", setname);
+			assert(0);
+		}
+		if (status & LDMS_UPD_F_PUSH_LAST) {
+			_log("%s: last push update\n", setname);
+			__print_set(set);
+			if (push_set->state == PUSH_SET_RECEIVED_LAST_PUSH) {
+				_log("%s: Already received the last push update\n",
+						setname);
+			} else {
+				push_set->state = PUSH_SET_RECEIVED_LAST_PUSH;
+			}
+
+			goto out;
+		}
+	}
+
 	_log("%s: push_update_cb\n", setname);
 
 	__print_set(set);
 
 	if (is_cancel) {
+		if (push_set->state == PUSH_SET_CANCELED)
+			goto out;
 		_log("Canceling the push for set '%s'\n", setname);
 		int rc = ldms_xprt_cancel_push(set);
 		if (rc) {
@@ -424,12 +469,12 @@ static void client_push_update_cb(ldms_t x, ldms_set_t set,
 								rc, setname);
 			assert(0);
 		}
-		if (status & LDMS_UPD_F_PUSH_LAST) {
-			is_closed = 1;
-			ldms_xprt_close(x);
-		}
-
+		push_set->state = PUSH_SET_CANCELED;
+		goto out;
 	}
+out:
+	_log("==============================================\n");
+	return;
 }
 
 static void client_lookup_cb(ldms_t x, enum ldms_lookup_status status,
@@ -440,8 +485,18 @@ static void client_lookup_cb(ldms_t x, enum ldms_lookup_status status,
 		assert(0);
 	}
 	char *setname = (char *)ldms_set_instance_name_get(set);
+
 	int rc, push_flag;
 	int idx = (int)(long unsigned)arg;
+	struct push_set *push_set = calloc(1, sizeof(*push_set));
+	if (!push_set) {
+		_log("Out of memory\n");
+		assert(0);
+	}
+	push_set->set = set;
+	push_set->idx = idx;
+	push_set->name = strdup(set_names[idx]);
+	set_array[idx] = push_set;
 
 	push_flag = 0;
 	if (is_onchange)
@@ -454,7 +509,7 @@ static void client_lookup_cb(ldms_t x, enum ldms_lookup_status status,
 					setname, push_flag, rc);
 		assert(0);
 	}
-
+	push_set->state = PUSH_SET_WAIT_PUSH_UPDATE;
 	if (is_pull) {
 		_log("%s: Update\n", setname);
 		rc = ldms_xprt_update(set, client_update_cb, arg);
@@ -476,7 +531,7 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 		printf("%d: connected\n", port);
 		for (i = 0; i < num_sets; i++) {
 			rc = ldms_xprt_lookup(x, set_names[i], LDMS_LOOKUP_BY_INSTANCE,
-					client_lookup_cb, (void *)(uint64_t)(i+1));
+					client_lookup_cb, (void *)(uint64_t)i);
 			if (rc) {
 				_log("ldms_xprt_lookup for '%s' failed '%d'\n",
 							set_names[i], rc);
