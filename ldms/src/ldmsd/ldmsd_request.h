@@ -133,6 +133,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_LEVEL,
 	LDMSD_ATTR_PATH,
 	LDMSD_ATTR_TIME,
+	LDMSD_ATTR_PUSH,
 	LDMSD_ATTR_LAST,
 };
 

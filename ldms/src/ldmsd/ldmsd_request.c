@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2017 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -1595,8 +1595,8 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 
 static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *name, *offset_str, *interval_str, *attr_name;
-	name = offset_str = interval_str = NULL;
+	char *name, *offset_str, *interval_str, *push, *attr_name;
+	name = offset_str = interval_str = push = NULL;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
 	reqc->errcode = 0;
@@ -1612,6 +1612,9 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 			break;
 		case LDMSD_ATTR_OFFSET:
 			offset_str = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_PUSH:
+			push = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1635,6 +1638,17 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 			goto enomem;
 		else
 			goto send_reply;
+	}
+
+	if (push) {
+		if (0 == strcasecmp(push, "onchange")) {
+			updtr->push_flags = LDMSD_UPDTR_F_PUSH |
+						LDMSD_UPDTR_F_PUSH_CHANGE;
+		} else {
+			updtr->push_flags = LDMSD_UPDTR_F_PUSH;
+		}
+	} else {
+		updtr->push_flags = 0;
 	}
 
 	updtr->updt_intrvl_us = strtol(interval_str, NULL, 0);
