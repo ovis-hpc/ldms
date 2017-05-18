@@ -78,7 +78,6 @@
 #include "ovis_auth/auth.h"
 #endif /* OVIS_LIB_HAVE_AUTH */
 
-static int send_push_notification(struct ldms_rbuf_desc *r);
 static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *, struct ldms_set *);
 
 /**
@@ -635,6 +634,7 @@ process_cancel_push_request(struct ldms_xprt *x, struct ldms_request *req)
 	struct ldms_rbuf_desc *r;
 	struct ldms_rbuf_desc *push_rbd;
 	struct ldms_set *set;
+	int rc;
 
 	r = (struct ldms_rbuf_desc *)req->cancel_push.set_id;
 	push_rbd = (struct ldms_rbuf_desc *)r->remote_set_id;
@@ -645,7 +645,21 @@ process_cancel_push_request(struct ldms_xprt *x, struct ldms_request *req)
 	/* Peer will get push notification with UPD_F_PUSH_LAST set. */
 	assert(!(push_rbd->push_flags & LDMS_RBD_F_PUSH_CANCEL));
 	push_rbd->push_flags |= LDMS_RBD_F_PUSH_CANCEL;
-	send_push_notification(push_rbd);
+	struct ldms_reply reply;
+
+	ldms_xprt_get(x);
+	size_t len = sizeof(struct ldms_reply_hdr) +
+			sizeof(struct ldms_push_reply);
+	reply.hdr.xid = 0;
+	reply.hdr.cmd = htonl(LDMS_CMD_PUSH_REPLY);
+	reply.hdr.len = htonl(len);
+	reply.hdr.rc = 0;
+	reply.push.set_id = push_rbd->remote_set_id;
+	reply.push.data_len = 0;
+	reply.push.data_off = 0;
+	reply.push.flags = htonl(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST);
+	rc = zap_send(x->zap_ep, &reply, len);
+	ldms_xprt_put(x);
 
 	/*
 	 * If any remaining RBD still want automatic push updates,
@@ -1113,10 +1127,16 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	uint32_t data_len = ntohl(reply->push.data_len);
 
 	/* Copy the data to the metric set */
-	memcpy((char *)push_rbd->push_s->set->meta + data_off, reply->push.data, data_len);
-	if (push_rbd->push_cb && (0 == (ntohl(reply->push.flags) & LDMS_CMD_PUSH_REPLY_F_MORE)))
-		push_rbd->push_cb((ldms_t)x, push_rbd->push_s, ntohl(reply->push.flags),
-				  push_rbd->push_cb_arg);
+	if (data_len) {
+		memcpy((char *)push_rbd->push_s->set->meta + data_off,
+					reply->push.data, data_len);
+	}
+	if (push_rbd->push_cb &&
+		(0 == (ntohl(reply->push.flags) & LDMS_CMD_PUSH_REPLY_F_MORE))) {
+		push_rbd->push_cb((ldms_t)x, push_rbd->push_s,
+					ntohl(reply->push.flags),
+					push_rbd->push_cb_arg);
+	}
 }
 
 #if OVIS_LIB_HAVE_AUTH
@@ -1544,36 +1564,6 @@ static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 	pthread_mutex_lock(&x->lock);
 	__ldms_free_ctxt(x, ctxt);
 	pthread_mutex_unlock(&x->lock);
-}
-
-static int send_push_notification(struct ldms_rbuf_desc *r)
-{
-	struct ldms_xprt *x = r->xprt;
-	struct ldms_reply reply;
-	size_t len;
-	int rc;
-#ifdef PUSH_DEBUG
-	x->log("DEBUG: Sending push notification for set %s to endpoint %p\n",
-			ldms_set_instance_name_get(r->set), x->zap_ep);
-#endif /* PUSH_DEBUG */
-	ldms_xprt_get(x);
-	len = sizeof(struct ldms_reply_hdr)
-		+ sizeof(struct ldms_push_reply);
-	reply.hdr.xid = 0;
-	reply.hdr.cmd = htonl(LDMS_CMD_PUSH_REPLY);
-	reply.hdr.len = htonl(len);
-	reply.hdr.rc = 0;
-	reply.push.set_id = r->remote_set_id;
-	reply.push.flags = htonl(LDMS_UPD_F_PUSH);
-	if (r->push_flags & LDMS_RBD_F_PUSH_CANCEL)
-		reply.push.flags |= htonl(LDMS_UPD_F_PUSH_LAST);
-	rc = zap_send(x->zap_ep, &reply, len);
-#ifdef PUSH_DEBUG
-	x->log("DEBUG: Error %d: Failed to send push notification for set %s to endpoint %p\n",
-			rc, ldms_set_instance_name_get(r->set), x->zap_ep);
-#endif /* PUSH_DEBUG */
-	ldms_xprt_put(x);
-	return rc;
 }
 
 static void handle_zap_write_complete(zap_ep_t zep, zap_event_t ev)
@@ -2639,8 +2629,6 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 		if (!(rbd->push_flags & push_flags))
 			goto skip;
 
-		zap_map_t rmap = rbd->rmap;
-		zap_map_t lmap = rbd->lmap;
 		size_t doff;
 		size_t len;
 
