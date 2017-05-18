@@ -64,6 +64,7 @@
 #include <papi.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include <linux/inotify.h>
 
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
@@ -81,6 +82,11 @@ static int* papi_event_sets;
 static int event_codes[64];
 static int* apppid; /* Application PIDS array */
 static uint64_t max_pids;
+int inot_length;;
+int inot_fd;
+int inot_wd;
+char inot_buffer[16];
+int exist_before = 0;
 
 static int create_metric_set(const char* instance_name, const char* schema_name,
 	char* events, char* filename)
@@ -95,7 +101,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	char* events_names[8];
 	char buf[255];
 
-	appname_filename = (char *) calloc(strlen(filename), sizeof (char));
+	appname_filename = strdup(filename);
 	/* Check to see if we were successful */
 	if (appname_filename == NULL) {
 		/* We were not so display a message */
@@ -105,14 +111,26 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 		goto err;
 	}
 
-	strcpy(appname_filename, filename);
-
 	rc = PAPI_library_init(PAPI_VER_CURRENT);
 	if (rc != PAPI_VER_CURRENT) {
 		msglog(LDMSD_LERROR, "papi: library init error! %d: %s\n", rc,
 			PAPI_strerror(rc));
 		rc = ENOENT;
 		goto err;
+	}
+
+	/* 
+	 * Intialize the Inotify instance to check if the appnamefile was written
+	 */
+	inot_fd = inotify_init1(IN_NONBLOCK);
+
+	/* checking for error */
+	if ( inot_fd < 0 ) {
+		msglog(LDMSD_LERROR, "papi: inotify intialization" 
+			"error = %d \n", inot_fd);
+                rc = ENOENT;
+                goto err;
+		
 	}
 
 	/* 
@@ -708,6 +726,8 @@ static int sample(struct ldmsd_sampler * self)
 {
 	int rc, c;
 	int pids_count_left;
+	int err;
+	struct stat file_stat;
 
 	if (!set) {
 		msglog(LDMSD_LERROR, "papi: plugin not initialized\n");
@@ -725,9 +745,36 @@ static int sample(struct ldmsd_sampler * self)
 
 	if (pids_count == 0) {
 
-		/* Read the support file */
-		read_sup_file();
-
+		/* Check if the file exist */
+		err = stat("/tmp/appname", &file_stat);
+		msglog(LDMSD_LDEBUG, "file exist? %d\n", err);
+		if (err != 0) {
+			/* if not exist do nothing */
+			exist_before = 0;
+			return 0;
+		} else {
+			/* 
+			 * If the file exist, set the inotify once
+			 * Add the watch for close with write only
+			 * exist_before used to add the watch one time only
+			 */
+			if ( exist_before == 0) {
+				inot_wd = inotify_add_watch(inot_fd, 
+					appname_filename, IN_CLOSE_WRITE);
+				/* Read the support file */
+				read_sup_file();
+				exist_before = 1;
+			} else {
+				inot_length = read( inot_fd, inot_buffer, 16 );
+				if (inot_length > 0) {
+					/* File changed */
+					/* Read the support file */
+			                read_sup_file();
+				} 
+			}
+			
+		}
+		
 		if (strlen(appname_str) > 1) {
 			msglog(LDMSD_LDEBUG, "pgrep %s | wc -l\n", appname_str);
 			sprintf(command, "pgrep %s | wc -l", appname_str);
@@ -743,8 +790,8 @@ static int sample(struct ldmsd_sampler * self)
 				}
 			} else msglog(LDMSD_LDEBUG, "Waiting for application to"
 				" start\n");
-		} else msglog(LDMSD_LDEBUG, "Waiting for an file to be "
-			"created\n");
+		} else msglog(LDMSD_LDEBUG, "Waiting for the appname file to be"
+			" created or changed\n");
 	} else { /* When PID exist */
 		/* check if the attach happened before, no need to attach */
 		if (attach == 0) {
