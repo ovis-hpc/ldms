@@ -1587,7 +1587,19 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 			pthread_mutex_unlock(&x->lock);
 			goto out_1;
 		}
-		*rd_ctxt = *ctxt;
+
+		rd_ctxt->sem = ctxt->sem;
+		rd_ctxt->sem_p = ctxt->sem_p;
+		rd_ctxt->rc = ctxt->rc;
+		rd_ctxt->type = ctxt->type;
+		rd_ctxt->lookup = ctxt->lookup;
+		rd_ctxt->lookup.path = strdup(ctxt->lookup.path);
+		if (!rd_ctxt->lookup.path) {
+			rc = ENOMEM;
+			__ldms_free_ctxt(x, rd_ctxt);
+			pthread_mutex_unlock(&x->lock);
+			goto out_1;
+		}
 	} else {
 		rd_ctxt = ctxt;
 	}
