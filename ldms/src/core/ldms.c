@@ -460,6 +460,19 @@ void ldms_set_delete(ldms_set_t s)
 	__ldms_set_tree_unlock();
 }
 
+void ldms_set_put(ldms_set_t s)
+{
+	if (!s)
+		return;
+
+	__ldms_set_tree_lock();
+	struct ldms_set *set = s->set;
+	pthread_mutex_lock(&set->lock);
+	__ldms_free_rbd(s); /* removes the RBD from the local/remote rbd list */
+	pthread_mutex_unlock(&set->lock);
+	__ldms_set_tree_unlock();
+}
+
 static  void sync_lookup_cb(ldms_t x, enum ldms_lookup_status status, int more,
 			    ldms_set_t s, void *arg)
 {
