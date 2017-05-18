@@ -65,6 +65,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include <linux/inotify.h>
+#include <sys/stat.h>
 
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
