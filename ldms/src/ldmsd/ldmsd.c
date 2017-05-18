@@ -613,6 +613,8 @@ int calculate_timeout(int thread_id, unsigned long interval_us,
 			 the amount of time it takes to do the sample call. We
 			 deem this accepable. */
 		event_base_gettimeofday_cached(get_ev_base(thread_id), &new_tv);
+		/* get_ev_base() is called only to get the ev_base */
+		release_ev_base(thread_id);
 	}
 
 	epoch_us = (1000000 * (long int)new_tv.tv_sec) +
