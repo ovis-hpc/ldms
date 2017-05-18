@@ -128,8 +128,8 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	if ( inot_fd < 0 ) {
 		msglog(LDMSD_LERROR, "papi: inotify intialization" 
 			"error = %d \n", inot_fd);
-                rc = ENOENT;
-                goto err;
+		rc = ENOENT;
+		goto err;
 		
 	}
 
@@ -769,7 +769,7 @@ static int sample(struct ldmsd_sampler * self)
 				if (inot_length > 0) {
 					/* File changed */
 					/* Read the support file */
-			                read_sup_file();
+					read_sup_file();
 				} 
 			}
 			
