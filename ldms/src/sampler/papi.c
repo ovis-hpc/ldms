@@ -83,11 +83,12 @@ static int* papi_event_sets;
 static int event_codes[64];
 static int* apppid; /* Application PIDS array */
 static uint64_t max_pids;
-int inot_length;;
-int inot_fd;
-int inot_wd;
-char inot_buffer[16];
-int exist_before = 0;
+static int inot_length;;
+static int inot_fd;
+static int inot_wd;
+static char inot_buffer[16];
+static int exist_before = 0;
+static int inotif;
 
 static int create_metric_set(const char* instance_name, const char* schema_name,
 	char* events, char* filename)
@@ -123,17 +124,20 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	/* 
 	 * Intialize the Inotify instance to check if the appnamefile was written
 	 */
-	inot_fd = inotify_init1(IN_NONBLOCK);
 
-	/* checking for error */
-	if ( inot_fd < 0 ) {
-		msglog(LDMSD_LERROR, "papi: inotify intialization" 
-			"error = %d \n", inot_fd);
-		rc = ENOENT;
-		goto err;
+	if (inotif > 0 ) { 
 		
-	}
+		inot_fd = inotify_init1(IN_NONBLOCK);
 
+		/* checking for error */
+		if ( inot_fd < 0 ) {
+			msglog(LDMSD_LERROR, "papi: inotify intialization" 
+				"error = %d \n", inot_fd);
+			rc = ENOENT;
+			goto err;
+			
+		}
+	}
 	/* 
 	 * Added support to multiplex event set 
 	 * Enable and initialize multiplex support 
@@ -363,6 +367,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	char *component_id;
 	char *maxpids;
 	char *multiplx;
+	char *val;
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
@@ -387,6 +392,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		max_pids = (uint64_t) (atoi(maxpids));
 	else
 		max_pids = 1;
+
+	/* Set if inotify is uesd or not 1 yes, 0 no  */
+	val = av_value(avl, "inotify");
+        if (val)
+                inotif = (uint64_t) (atoi(val));
+        else
+                inotif = 0;
 
 	multiplx = av_value(avl, "multiplex");
 	if (multiplx)
@@ -473,12 +485,12 @@ void read_sup_file()
 		int token_number = 1;
 		if (getline(&line, &len, file) == -1) goto nextread;
 
+		ldms_transaction_begin(set);
 		record = strtok_r(line, ",", &status);
 		while (record) {
 			strtok(record, "\n");
 			switch (token_number) {
 				case 1:
-					ldms_transaction_begin(set);
 					/* Save the application name */
 					ldms_metric_array_set(set, token_number,
 						(ldms_mval_t) record, 0,
@@ -488,10 +500,8 @@ void read_sup_file()
 					msglog(LDMSD_LDEBUG, "appperformance: "
 						"APPNAME from file= %s \n",
 						ldms_metric_array_get(set, 1));
-					ldms_transaction_end(set);
 					break;
 				case 2:
-					ldms_transaction_begin(set);
 					/* Save the jobid */
 					ldms_metric_array_set(set, token_number,
 						(ldms_mval_t) record, 0,
@@ -499,10 +509,8 @@ void read_sup_file()
 					msglog(LDMSD_LDEBUG, "appperformance: "
 						"jobid = %s \n",
 						record);
-					ldms_transaction_end(set);
 					break;
 				case 3:
-					ldms_transaction_begin(set);
 					/* Save the user name */
 					ldms_metric_array_set(set, token_number,
 						(ldms_mval_t) record, 0,
@@ -510,12 +518,13 @@ void read_sup_file()
 					msglog(LDMSD_LDEBUG, "appperformance: "
 						"user name = %s \n"
 						, record);
-					ldms_transaction_end(set);
 					break;
 			}
 			record = strtok_r(NULL, ",", &status);
 			token_number++;
 		}
+
+		ldms_transaction_end(set);
 nextread:
 		msglog(LDMSD_LDEBUG, "appperformance: End reading the File\n");
 		fclose(file);
@@ -746,34 +755,38 @@ static int sample(struct ldmsd_sampler * self)
 
 	if (pids_count == 0) {
 
-		/* Check if the file exist */
-		err = stat("/tmp/appname", &file_stat);
-		msglog(LDMSD_LDEBUG, "file exist? %d\n", err);
-		if (err != 0) {
-			/* if not exist do nothing */
-			exist_before = 0;
-			return 0;
-		} else {
-			/* 
-			 * If the file exist, set the inotify once
-			 * Add the watch for close with write only
-			 * exist_before used to add the watch one time only
-			 */
-			if ( exist_before == 0) {
-				inot_wd = inotify_add_watch(inot_fd, 
-					appname_filename, IN_CLOSE_WRITE);
-				/* Read the support file */
-				read_sup_file();
-				exist_before = 1;
+		if (inotif > 0 ) {
+			/* Check if the file exist */
+			err = stat("/tmp/appname", &file_stat);
+			msglog(LDMSD_LDEBUG, "file exist? %d\n", err);
+			if (err != 0) {
+				/* if not exist do nothing */
+				exist_before = 0;
+				return 0;
 			} else {
-				inot_length = read( inot_fd, inot_buffer, 16 );
-				if (inot_length > 0) {
-					/* File changed */
+				/* 
+				 * If the file exist, set the inotify once
+				 * Add the watch for close with write only
+				 * exist_before used to add the watch one time only
+				 */
+				if ( exist_before == 0) {
+					inot_wd = inotify_add_watch(inot_fd, 
+						appname_filename, IN_CLOSE_WRITE);
 					/* Read the support file */
 					read_sup_file();
-				} 
+					exist_before = 1;
+				} else {
+					inot_length = read( inot_fd, inot_buffer, 16 );
+					if (inot_length > 0) {
+						/* File changed */
+						/* Read the support file */
+						read_sup_file();
+					} 
+				}
 			}
-			
+		} else {
+			/* Read the support file */
+			read_sup_file();
 		}
 		
 		if (strlen(appname_str) > 1) {
