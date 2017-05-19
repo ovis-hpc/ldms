@@ -87,6 +87,8 @@
  */
 
 pthread_mutex_t msg_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+static char *cfg_resp_buf;
+static size_t cfg_resp_buf_sz;
 
 static int msg_comparator(void *a, const void *b)
 {
@@ -94,7 +96,7 @@ static int msg_comparator(void *a, const void *b)
 	msg_key_t bk = (msg_key_t)b;
 	int rc;
 
-	rc = ak->sock_fd - bk->sock_fd;
+	rc = ak->conn_id - bk->conn_id;
 	if (rc)
 		return rc;
 	return ak->msg_no - bk->msg_no;
@@ -363,88 +365,9 @@ int ldmsd_handle_request(ldmsd_req_hdr_t request, ldmsd_req_ctxt_t reqc)
 }
 
 size_t Snprintf(char **dst, size_t *len, char *fmt, ...);
-static int
-send_request_reply(struct ldmsd_req_ctxt *reqc,
-		   char *data, size_t data_len,
-		   int msg_flags);
-int process_request(int fd, struct msghdr *msg, size_t msg_len)
-{
-	ldmsd_req_hdr_t request = msg->msg_iov[0].iov_base;
-	struct req_ctxt_key key;
-	ldmsd_req_ctxt_t reqc = NULL;
-	int rc;
-	size_t cnt = 0;
-
-	key.msg_no = request->msg_no;
-	key.sock_fd = fd;
-
-	req_ctxt_tree_lock();
-	if (request->flags & LDMSD_REQ_SOM_F) {
-		/* Ensure that we don't already have this message in
-		 * the tree */
-		reqc = find_req_ctxt(&key);
-		if (reqc) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				  "Duplicate message number %d:%d received",
-				  key.msg_no, key.sock_fd);
-			goto err_out;
-		}
-		reqc = alloc_req_ctxt(&key);
-		if (reqc) {
-			memcpy(&reqc->rh, request, sizeof(*request));
-			reqc->resp_handler = send_request_reply;
-			reqc->dest_fd = fd;
-		} else {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"ldmsd out of memory.");
-		}
-
-	} else {
-		reqc = find_req_ctxt(&key);
-		if (!reqc) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				  "The message no %d:%d was not found.",
-				  key.msg_no, key.sock_fd);
-		}
-	}
-	if (!reqc)
-		goto err_out;
-
-	if (gather_data(reqc, msg, msg_len))
-		goto err_out;
-
-	req_ctxt_tree_unlock();
-	if (0 == (request->flags & LDMSD_REQ_EOM_F))
-		return 0;
-
-	reqc->mh = msg;
-
-	if (request->marker != LDMSD_RECORD_MARKER) {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Received an invalid cfg request");
-		goto out;
-	}
-
-	/* Check for request id outside of range */
-	rc = ldmsd_handle_request(request, reqc);
-err_out:
-	pthread_mutex_unlock(&msg_tree_lock);
-out:
-	if (reqc) {
-		req_ctxt_tree_lock();
-		free_req_ctxt(reqc);
-		req_ctxt_tree_unlock();
-	}
-	if (cnt) {
-		ldmsd_log(LDMSD_LERROR, "%s\n", reqc->line_buf);
-		rc = send_request_reply(reqc, reqc->line_buf, cnt,
-					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
-	}
-	return rc;
-}
 
 static int
-send_request_reply(struct ldmsd_req_ctxt *reqc,
+send_request_reply_outband(struct ldmsd_req_ctxt *reqc,
 		   char *data, size_t data_len,
 		   int msg_flags)
 {
@@ -475,6 +398,7 @@ send_request_reply(struct ldmsd_req_ctxt *reqc,
 			req_reply.flags = msg_flags;
 			req_reply.rec_len = reqc->rep_off + sizeof(req_reply);
 			req_reply.code = reqc->errcode;
+			req_reply.type = LDMSD_REQ_TYPE_CONFIG_RESP;
 
 			reply_msg.msg_name = reqc->mh->msg_name;
 			reply_msg.msg_namelen = reqc->mh->msg_namelen;
@@ -496,6 +420,225 @@ send_request_reply(struct ldmsd_req_ctxt *reqc,
 	} while (data_len);
 
 	return 0;
+}
+
+int
+send_request_reply_intband(struct ldmsd_req_ctxt *reqc,
+			   char *data, size_t data_len,
+			   int msg_flags)
+{
+	struct ldmsd_req_hdr_s *req_reply;
+	size_t remaining, len;
+	int rc;
+
+	do {
+		remaining = reqc->rep_len - reqc->rep_off;
+		if (data_len < remaining)
+			remaining = data_len;
+
+		if (remaining && data) {
+			memcpy(&reqc->rep_buf[reqc->rep_off], data, remaining);
+			reqc->rep_off += remaining;
+			data_len -= remaining;
+			data += remaining;
+		}
+
+		if ((remaining == 0) ||
+		    ((data_len == 0) && (msg_flags & LDMSD_REQ_EOM_F))) {
+			msg_flags = (reqc->rec_no == 0?LDMSD_REQ_SOM_F:0)
+						| (msg_flags & LDMSD_REQ_EOM_F);
+			len = sizeof(*req_reply) + reqc->rep_off;
+			if (cfg_resp_buf_sz < len) {
+				if (cfg_resp_buf)
+					free(cfg_resp_buf);
+				cfg_resp_buf = calloc(1, len);
+				if (!cfg_resp_buf) {
+					ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+					return ENOMEM;
+				}
+				cfg_resp_buf_sz = len;
+			}
+			req_reply = (ldmsd_req_hdr_t)cfg_resp_buf;
+			/* Record is full, send it on it's way */
+			memcpy(req_reply, &reqc->rh, sizeof reqc->rh);
+			req_reply->flags = msg_flags;
+			req_reply->rec_len = reqc->rep_off + sizeof(req_reply);
+			req_reply->code = reqc->errcode;
+			req_reply->type = LDMSD_REQ_TYPE_CONFIG_RESP;
+
+			memcpy(cfg_resp_buf + sizeof(*req_reply),
+					reqc->rep_buf, reqc->rep_off);
+			rc = ldms_xprt_send(reqc->ldms, cfg_resp_buf, len);
+			if (rc) {
+				ldmsd_log(LDMSD_LERROR, "Failed to send "
+						"the config response back\n");
+				free(req_reply);
+				return rc;
+			}
+			reqc->rec_no ++;
+			reqc->rep_off = 0;
+			reqc->rep_buf[0] = '\0';
+		}
+	} while (data_len);
+
+	return 0;
+}
+
+int process_request_unix_domain(int fd, struct msghdr *msg, size_t msg_len)
+{
+	ldmsd_req_hdr_t request = msg->msg_iov[0].iov_base;
+	struct req_ctxt_key key;
+	ldmsd_req_ctxt_t reqc = NULL;
+	int rc;
+	size_t cnt = 0;
+
+	key.msg_no = request->msg_no;
+	key.conn_id = fd;
+
+	req_ctxt_tree_lock();
+	if (request->flags & LDMSD_REQ_SOM_F) {
+		/* Ensure that we don't already have this message in
+		 * the tree */
+		reqc = find_req_ctxt(&key);
+		if (reqc) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				  "Duplicate message number %d:%d received",
+				  key.msg_no, key.conn_id);
+			goto err_out;
+		}
+		reqc = alloc_req_ctxt(&key);
+		if (reqc) {
+			memcpy(&reqc->rh, request, sizeof(*request));
+			reqc->resp_handler = send_request_reply_outband;
+			reqc->dest_fd = fd;
+		} else {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"ldmsd out of memory.");
+		}
+
+	} else {
+		reqc = find_req_ctxt(&key);
+		if (!reqc) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				  "The message no %d:%d was not found.",
+				  key.msg_no, key.conn_id);
+		}
+	}
+	if (!reqc)
+		goto err_out;
+
+	if (gather_data(reqc, msg, msg_len))
+		goto err_out;
+
+	req_ctxt_tree_unlock();
+	if (0 == (request->flags & LDMSD_REQ_EOM_F))
+		return 0;
+
+	reqc->mh = msg;
+
+	if (request->marker != LDMSD_RECORD_MARKER) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Received an invalid cfg request");
+		goto out;
+	}
+
+	/* Check for request id outside of range */
+	rc = ldmsd_handle_request(request, reqc);
+err_out:
+	pthread_mutex_unlock(&msg_tree_lock);
+out:
+	if (cnt) {
+		ldmsd_log(LDMSD_LERROR, "%s\n", reqc->line_buf);
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
+					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	}
+	if (reqc) {
+		req_ctxt_tree_lock();
+		free_req_ctxt(reqc);
+		req_ctxt_tree_unlock();
+	}
+	return rc;
+}
+
+int process_request_ldms_xprt(ldms_t x, ldmsd_req_hdr_t request, char *data,
+							size_t data_len)
+{
+	struct req_ctxt_key key;
+	ldmsd_req_ctxt_t reqc = NULL;
+	int rc;
+	size_t cnt = 0;
+
+	key.msg_no = request->msg_no;
+	key.conn_id = (uint64_t)(long unsigned)x;
+
+	req_ctxt_tree_lock();
+	if (request->flags & LDMSD_REQ_SOM_F) {
+		/* Ensure that we don't already have this message in
+		 * the tree */
+		reqc = find_req_ctxt(&key);
+		if (reqc) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				  "Duplicate message number %d:%" PRIu64 "received",
+				  key.msg_no, key.conn_id);
+			goto err_out;
+		}
+		reqc = alloc_req_ctxt(&key);
+		if (reqc) {
+			memcpy(&reqc->rh, request, sizeof(*request));
+			reqc->resp_handler = send_request_reply_intband;
+			reqc->ldms = x;
+		} else {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"ldmsd out of memory.");
+		}
+
+	} else {
+		reqc = find_req_ctxt(&key);
+		if (!reqc) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				  "The message no %d:%d was not found.",
+				  key.msg_no, key.conn_id);
+		}
+	}
+	if (!reqc)
+		goto err_out;
+
+	if (reqc->req_len < data_len) {
+		reqc->req_buf = realloc(reqc->req_buf, reqc->req_len + data_len);
+		if (!reqc->req_buf) {
+			free_req_ctxt(reqc);
+			return ENOMEM;
+		}
+		reqc->req_len += data_len;
+	}
+	memcpy(reqc->req_buf + reqc->req_off, data, data_len);
+	reqc->req_off += data_len;
+	req_ctxt_tree_unlock();
+	if (0 == (request->flags & LDMSD_REQ_EOM_F))
+		return 0;
+
+	if (request->marker != LDMSD_RECORD_MARKER) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Received an invalid cfg request");
+		goto out;
+	}
+
+	/* Check for request id outside of range */
+	rc = ldmsd_handle_request(request, reqc);
+err_out:
+	pthread_mutex_unlock(&msg_tree_lock);
+out:
+	if (cnt) {
+		ldmsd_log(LDMSD_LERROR, "%s\n", reqc->line_buf);
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
+					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	}
+	if (reqc) {
+		req_ctxt_tree_lock();
+		free_req_ctxt(reqc);
+		req_ctxt_tree_unlock();
+	}
+	return rc;
 }
 
 size_t Snprintf(char **dst, size_t *len, char *fmt, ...)

@@ -451,7 +451,7 @@ ldmsd_req_ctxt_t process_config_line(char *line, struct ldmsd_req_hdr_s *request
 	errno = 0;
 	struct req_ctxt_key key = {
 			.msg_no = msg_no,
-			.sock_fd = -1
+			.conn_id = -1,
 	};
 	msg_no++;
 
@@ -487,7 +487,7 @@ ldmsd_req_ctxt_t process_config_line(char *line, struct ldmsd_req_hdr_s *request
 	memcpy(&reqc->rh, &request, sizeof(request));
 
 	reqc->resp_handler = print_config_error;
-	reqc->dest_fd = -1; /* We don't need the destination file descriptor here */
+	reqc->ldms = NULL;
 	req_ctxt_tree_unlock();
 	goto out;
 
@@ -512,6 +512,10 @@ int process_config_file(const char *path, int *errloc)
 	char *comment;
 	ssize_t off = 0;
 	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
+
+	struct ldmsd_req_hdr_s request;
+	struct ldmsd_req_ctxt *reqc = NULL;
+
 	char *env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
 	if (env)
 		cfg_buf_len = strtol(env, NULL, 0);
@@ -525,8 +529,7 @@ int process_config_file(const char *path, int *errloc)
 		rc = errno;
 		goto cleanup;
 	}
-	struct ldmsd_req_hdr_s request;
-	struct ldmsd_req_ctxt *reqc;
+
 
 next_line:
 	line = fgets(buff + off, cfg_buf_len - off, fin);
@@ -605,7 +608,7 @@ cleanup:
 }
 
 extern int
-process_request(int fd, struct msghdr *msg, size_t msg_len);
+process_request_unix_domain(int fd, struct msghdr *msg, size_t msg_len);
 void *ctrl_thread_proc(void *v)
 {
 	struct sockaddr_un sun = {.sun_family = AF_UNIX, .sun_path = ""};
@@ -668,7 +671,7 @@ loop:
 		if (msglen < request.rec_len)
 			break;
 
-		process_request(sock, &msg, msglen);
+		process_request_unix_domain(sock, &msg, msglen);
 		if (cleanup_requested)
 			break;
 	} while (1);
@@ -885,7 +888,7 @@ loop:
 		if (msglen < request.rec_len)
 			break;
 
-		process_request(inet_sock, &msg, msglen);
+		process_request_outband(inet_sock, &msg, msglen);
 		if (cleanup_requested)
 			break;
 

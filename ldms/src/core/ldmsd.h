@@ -795,4 +795,5 @@ int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t err
 extern const char *ldmsd_secret_get(void);
 /** Find out if authentication is required. 1 yes, 0 no. */
 extern int ldmsd_authentication_required();
+
 #endif
