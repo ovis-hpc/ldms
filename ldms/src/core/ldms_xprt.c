@@ -634,6 +634,7 @@ process_cancel_push_request(struct ldms_xprt *x, struct ldms_request *req)
 	struct ldms_rbuf_desc *r;
 	struct ldms_rbuf_desc *push_rbd;
 	struct ldms_set *set;
+	uint64_t remote_set_id;
 	int rc;
 
 	r = (struct ldms_rbuf_desc *)req->cancel_push.set_id;
@@ -644,7 +645,28 @@ process_cancel_push_request(struct ldms_xprt *x, struct ldms_request *req)
 
 	/* Peer will get push notification with UPD_F_PUSH_LAST set. */
 	assert(!(push_rbd->push_flags & LDMS_RBD_F_PUSH_CANCEL));
-	push_rbd->push_flags |= LDMS_RBD_F_PUSH_CANCEL;
+	remote_set_id = push_rbd->remote_set_id;
+
+	pthread_mutex_lock(&xprt_list_lock);
+	pthread_mutex_lock(&set->lock);
+
+	/*
+	 * If any remaining RBD still want automatic push updates,
+	 * leave it on for the set, otherwise, turn it off for the set
+	 */
+	r->remote_set_id = 0;
+
+	__ldms_free_rbd(push_rbd);
+
+	LIST_FOREACH(r, &set->remote_rbd_list, set_link) {
+		if (r->push_flags & LDMS_RBD_F_PUSH_CHANGE)
+			goto out;
+	}
+	set->flags &= ~LDMS_SET_F_PUSH_CHANGE;
+out:
+	pthread_mutex_unlock(&set->lock);
+	pthread_mutex_unlock(&xprt_list_lock);
+
 	struct ldms_reply reply;
 
 	ldms_xprt_get(x);
@@ -654,29 +676,12 @@ process_cancel_push_request(struct ldms_xprt *x, struct ldms_request *req)
 	reply.hdr.cmd = htonl(LDMS_CMD_PUSH_REPLY);
 	reply.hdr.len = htonl(len);
 	reply.hdr.rc = 0;
-	reply.push.set_id = push_rbd->remote_set_id;
+	reply.push.set_id = remote_set_id;
 	reply.push.data_len = 0;
 	reply.push.data_off = 0;
 	reply.push.flags = htonl(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST);
 	rc = zap_send(x->zap_ep, &reply, len);
 	ldms_xprt_put(x);
-
-	/*
-	 * If any remaining RBD still want automatic push updates,
-	 * leave it on for the set, otherwise, turn it off for the set
-	 */
-	r->remote_set_id = 0;
-
-	pthread_mutex_lock(&xprt_list_lock);
-	__ldms_free_rbd(push_rbd);
-
-	LIST_FOREACH(r, &set->remote_rbd_list, set_link) {
-		if (r->push_flags & LDMS_RBD_F_PUSH_CHANGE)
-			goto out;
-	}
-	set->flags &= ~LDMS_SET_F_PUSH_CHANGE;
- out:
-	pthread_mutex_unlock(&xprt_list_lock);
 	return;
 }
 
@@ -2605,7 +2610,8 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 	ldms_t x;
 	zap_map_t rmap, lmap;
 
-	/* We have to lock all the transports since we are racing with
+	/*
+	 * We have to lock all the transports since we are racing with
 	 * disconnect and this function operates on more than one
 	 * transport, i.e. the remote_rbd_list
 	 */
