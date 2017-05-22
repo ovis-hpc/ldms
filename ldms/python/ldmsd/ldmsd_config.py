@@ -53,6 +53,8 @@
 from abc import ABCMeta, abstractmethod
 from os.path import basename, dirname
 import struct
+import cmd
+from argparse import ArgumentError
 """
 @module ldmsd_config
 
@@ -60,7 +62,6 @@ import struct
 
 import os
 import socket
-
 
 #:Dictionary contains the cmd_id, required attribute list
 #:and optional attribute list of each ldmsd commands. For example,
@@ -193,6 +194,7 @@ class ldmsdUSocketConfig(ldmsdConfig):
             self.max_recv_len = max_recv_len
         self.ldmsd_sockpath = ldmsd_sockpath
         self.socket.connect(self.ldmsd_sockpath)
+        self.type = "udomain"
 
     def __del__(self):
         if self.socket is not None:
@@ -259,6 +261,7 @@ class ldmsdInetConfig(ldmsdConfig):
             if len(s) == 0:
                 self.socket.close()
                 raise Exception("The server closes the connection")
+            self.type = "inet"
 
     def __del__(self):
         if self.socket is not None:
@@ -288,3 +291,63 @@ class ldmsdInetConfig(ldmsdConfig):
         if self.socket is not None:
             self.socket.close()
             self.socket = None
+
+class ldmsdInbandConfig(ldmsdConfig):
+
+    def __init__(self, host, port, xprt, secretword, max_recv_len = MAX_RECV_LEN):
+        try:
+            from ovis_ldms import ldms
+        except:
+            raise ImportError("Failed to import ovis_ldms.ldms. "
+                              "Please make sure that ldms is built with --enable-swig")
+        else:
+            self.ldms_module = ldms
+
+        if xprt is None:
+            raise ArgumentError("xprt is required to create an LDMS transport")
+
+        self.socket = None
+        self.host = host
+        self.port = port
+        self.max_recv_len = max_recv_len
+        self.secretword = secretword
+        self.xprt = xprt
+
+        if secretword:
+            self.ldms = ldms.ldms_xprt_with_auth_new(self.xprt, None, self.secretword)
+        else:
+
+            self.ldms = ldms.ldms_xprt_new(self.xprt, None)
+
+        self.rc = ldms.LDMS_xprt_connect_by_name(self.ldms, self.host, str(self.port))
+        if self.rc != 0:
+            raise RuntimeError("Failed to connect to ldmsd")
+        self.type = "inband"
+
+    def __del__(self):
+        pass
+
+    def setMaxRecvLen(self, max_recv_len):
+        pass
+
+    def getMaxRecvLen(self):
+        return -1
+
+    def getHost(self):
+        return self.host
+
+    def getPort(self):
+        return self.port
+
+    def send_command(self, cmd):
+        if self.ldms is None:
+            raise Exception("The connection hasn't been connected.")
+        rc = self.ldms_module.ldms_xprt_send(self.ldms, cmd, len(cmd))
+        if rc != 0:
+            raise RuntimeError("Failed to send the command")
+
+    def receive_response(self, recv_len = None):
+        return self.ldms_module.LDMS_xprt_recv(self.ldms)
+
+    def close(self):
+        self.ldms_module.ldms_xprt_close(self.ldms)
