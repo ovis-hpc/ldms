@@ -9,22 +9,32 @@ use Getopt::Long;
 my $debug = 0;
 my $help;
 my $gabage;
-my $setname;
+my $setname = "";
 my $schema;
-my $producer;
+my $producer = "";
 my $num_metrics;
 my @metrics;
 my $mtype;
 my $vtype;
 my $mname;
 my $init_value;
+my $raw_init_value;
+my $num_elem;
+my $compid = -1;
+my $jobid = 0;
 
 my $interval = -1;
 my $offset = -1;
 my $load;
+my $add_set;
 
 GetOptions(
 	"load" => \$load,
+	"add_set" => \$add_set,
+	"compid=i" => \$compid,
+	"jobid=i" => \$jobid,
+	"producer=s" => \$producer,
+	"instance=s" => \$setname,
 	"interval=i" => \$interval,
 	"offset=i" => \$offset,
 	"debug=i" => \$debug,
@@ -46,7 +56,9 @@ if (index($line, "METADATA --------") == -1) {
 
 $line = <STDIN>; # Get the producer name
 chomp $line;
-($gabage, $producer) = split / : +/, $line;
+if ($producer eq "") {
+	($gabage, $producer) = split / : +/, $line;
+}
 
 if ($debug) {
 	print "producer: $producer\n";
@@ -54,7 +66,9 @@ if ($debug) {
 
 $line = <STDIN>; # Get instance name
 chomp $line;
-($gabage, $setname) = split / : +/, $line;
+if ($setname eq "") {
+	($gabage, $setname) = split / : +/, $line;
+}
 if ($debug) {
 	print "setname: $setname\n";
 }
@@ -87,18 +101,46 @@ while ($line = <STDIN>) {
 	if (!$line) {
 		last;
 	}
-	($mtype, $vtype, $mname, $init_value) = split / +/, $line;
+	($mtype, $vtype, $mname, $raw_init_value) = split / +/, $line;
+	$mname =~ s/#/_/;
+	$vtype =~ s/\[\]/_array/;
+	if ($vtype =~ /_array/) {
+		$num_elem = ($raw_init_value =~ tr/,//);
+		$num_elem = $num_elem + 1;
+	} else {
+		$num_elem = 0;
+	}
+	if ($vtype =~ /_array/) {
+		$init_value = (split /,/, $raw_init_value)[0];
+		if ($vtype eq "char_array") {
+			$init_value =~ s/\"//g;
+			$num_elem = length($init_value);
+		}
+	} else {
+		$init_value = $raw_init_value;
+	}
+	if ($mname eq "component_id") {
+		if ($compid != -1 ) {
+			$init_value = $compid;
+		}
+	}
+	if ($mname eq "job_id") {
+		if ($jobid != -1 ) {
+			$init_value = $jobid;
+		}
+	}
 	if ($debug) {
 #		print "name: $mname\n";
 #		print "mtype: $mtype\n";
 #		print "vtype: $vtype\n";
 #		print "value: $init_value\n";
-#		print "$mname	$mtype	$vtype	$init_value\n";
+#		print "$mname	$mtype	$vtype	$init_value   $num_elem\n";
 	}
 	push @{$metrics[$count]}, $mname;
 	push @{$metrics[$count]}, $mtype;
 	push @{$metrics[$count]}, $vtype;
 	push @{$metrics[$count]}, $init_value;
+	push @{$metrics[$count]}, $num_elem;
 	$count++;
 }
 
@@ -125,13 +167,14 @@ foreach $count (0..@metrics-1) {
 	$mtype = $metrics[$count][1];
 	$vtype = $metrics[$count][2];
 	$init_value = $metrics[$count][3];
+	$num_elem = $metrics[$count][4];
 	if ($debug) {
-		print "$mtype $vtype	$mname	$init_value\n";
+		print "$mtype $vtype	$mname	$init_value	$num_elem\n";
 	}
 	if ($count == 0) {
-		$mstr = $mname.':'.$mtype.':'.$vtype.':'.$init_value;
+		$mstr = $mname.':'.$mtype.':'.$vtype.':'.$init_value.':'.$num_elem;
 	} else {
-		$mstr = $mstr.','.$mname.':'.$mtype.':'.$vtype.':'.$init_value;
+		$mstr = $mstr.','.$mname.':'.$mtype.':'.$vtype.':'.$init_value.':'.$num_elem;
 	}
 }
 
@@ -141,7 +184,10 @@ if ($load) {
 }
 
 print "config name=test_sampler action=add_schema schema=$schema metrics=$mstr\n";
-print "config name=test_sampler action=add_set instance=$setname schema=$schema producer=$producer\n";
+
+if ($add_set) {
+	print "config name=test_sampler action=add_set instance=$setname schema=$schema producer=$producer\n";
+}
 
 if ($interval >= 0) {
 	print "start name=test_sampler interval=$interval";
@@ -168,6 +214,11 @@ ldms_ls2test_sampler_cfg.pl [options]
 
 
 Options:
+	only_schema	Print only the config line with action=add_schema
+
+	compid		Component ID to use
+
+	jobid		Job ID to use
 
 	load		Print 'load name=test_sampler'
 
