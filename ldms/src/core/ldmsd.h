@@ -612,9 +612,6 @@ extern ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND + 1];
  */
 #define LEN_ERRSTR 256
 
-int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
-int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR]);
-void ldmsd_host_sampler_cb(int fd, short sig, void *arg);
 void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
 int ldmsd_logrotate();
 int ldmsd_plugins_usage(const char *plugin_name);
@@ -650,6 +647,7 @@ ldmsd_prdcr_t ldmsd_prdcr_first();
 ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr);
 ldmsd_prdcr_set_t ldmsd_prdcr_set_first(ldmsd_prdcr_t prdcr);
 ldmsd_prdcr_set_t ldmsd_prdcr_set_next(ldmsd_prdcr_set_t prv_set);
+ldmsd_prdcr_set_t ldmsd_prdcr_set_find(ldmsd_prdcr_t prdcr, const char *setname);
 static inline void ldmsd_prdcr_lock(ldmsd_prdcr_t prdcr) {
 	ldmsd_cfgobj_lock(&prdcr->obj);
 }
@@ -797,24 +795,4 @@ int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t err
 extern const char *ldmsd_secret_get(void);
 /** Find out if authentication is required. 1 yes, 0 no. */
 extern int ldmsd_authentication_required();
-
-#define LDMSD_RECORD_MARKER 0xffffffff
-
-#define LDMSD_REQ_SOM_F	1
-#define LDMSD_REQ_EOM_F	2
-
-typedef struct ldmsd_req_attr_s {
-	uint32_t discrim;	/* If 0, end of attr_list */
-	uint32_t attr_id;	/* Attribute identifier, unique per ldmsd_req_hdr_s.cmd_id */
-	uint32_t attr_len;	/* Size of value in bytes */
-	uint8_t attr_value[0];	/* Size is attr_len */
-} *ldmsd_req_attr_t;
-typedef struct ldmsd_req_hdr_s {
-	uint32_t marker;	/* Always has the value 0xff */
-	uint32_t flags;		/* EOM==1 means this is the last record for this message */
-	uint32_t msg_no;	/* Unique for each request */
-	uint32_t cmd_id;	/* The unique command id */
-	uint32_t rec_len;	/* Record length in bytes including this header */
-} *ldmsd_req_hdr_t;
-
 #endif

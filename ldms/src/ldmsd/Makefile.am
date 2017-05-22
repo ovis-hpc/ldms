@@ -20,7 +20,7 @@ ldms_ls_LDFLAGS = $(AM_LDFLAGS) \
 	-levent -levent_pthreads -lpthread \
 	@LDFLAGS_GETTIME@
 
-ldmsd_SOURCES = ldmsd.c ldmsd_config.c ldmsd_request.c \
+ldmsd_SOURCES = ldmsd.c ldmsd_config.c ldmsd_request.c ldmsd_request_util.c \
 	ldmsd_request.h \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c
 ldmsd_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@
@@ -29,12 +29,6 @@ ldmsd_LDFLAGS = $(AM_LDFLAGS) \
 	@LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
 	-lzap -lmmalloc -lovis_util -lcoll \
 	-levent -levent_pthreads -lpthread
-
-if ENABLE_OCM
-ldmsd_SOURCES += ldmsd_ocm.c
-ldmsd_LDFLAGS += @OCM_LIBDIR_FLAG@ -locm
-ldmsd_CFLAGS += @OCM_INCDIR_FLAG@
-endif
 
 ldmsd_LDFLAGS += -lovis_util -lcoll -ldl -lovis_ctrl
 
@@ -46,23 +40,9 @@ endif
 ldmsd_LDFLAGS += @OVIS_AUTH_LIBS@
 ldms_ls_LDADD += @OVIS_AUTH_LIBS@
 
-ldmsctl_SOURCES = ldmsctl.c
+ldmsctl_SOURCES = ldmsctl.c ldmsd_request_util.c
 ldmsctl_LDADD = $(CORE)/libldms.la @OVIS_AUTH_LIBS@
 ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ -lovis_ctrl -lovis_util -lmmalloc -lcoll -lzap  @LDFLAGS_GETTIME@
-
-if ENABLE_LDMSD_RCTL
-ldmsd_SOURCES += ldmsd_config_rctrl.c
-ldmsd_LDFLAGS += -locm -lovis_rctrl @OCM_LIBDIR_FLAG@
-ldmsd_CFLAGS += -DENABLE_LDMSD_RCTL  @OCM_INCDIR_FLAG@
-
-sbin_PROGRAMS += ldmsd_rctl
-ldmsd_rctl_SOURCES = ldmsd_rctl.c
-ldmsd_rctl_LDADD = $(CORE)/libldms.la
-ldmsd_rctl_LDFLAGS = $(AM_LDFLAGS) -lovis_rctrl -lzap -lmmalloc -locm -lpthread \
-		      @OCM_LIBDIR_FLAG@ @LDFLAGS_READLINE@
-ldmsd_rctl_CFLAGS = $(AM_CFLAGS) @OCM_INCDIR_FLAG@
-ldmsd_rctl_LDADD += @OVIS_AUTH_LIBS@
-endif
 
 ldmsd_sos_init_SOURCES = ldmsd_sos_init.c
 ldmsd_sos_init_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)

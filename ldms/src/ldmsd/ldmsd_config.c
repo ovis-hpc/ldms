@@ -82,10 +82,10 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
+#include "ldmsd_request.h"
 #include "config.h"
 
 #define REPLYBUF_LEN 4096
-static char replybuf[REPLYBUF_LEN];
 char myhostname[HOST_NAME_MAX+1];
 pthread_t ctrl_thread = (pthread_t)-1;
 pthread_t inet_ctrl_thread = (pthread_t)-1;
@@ -97,12 +97,6 @@ char *sockname = NULL;
 static int cleanup_requested = 0;
 int bind_succeeded;
 
-extern struct event_base *get_ev_base(int idx);
-extern void release_ev_base(int idx);
-int find_least_busy_thread();
-int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
-			char *err_str);
-int ldmsd_oneshot_sample(char *plugin_name, char *ts, char *err_str);
 extern void cleanup(int x, char *reason);
 
 pthread_mutex_t host_list_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -141,25 +135,6 @@ void ldmsd_config_cleanup()
 		close(inet_sock);
 }
 
-int send_reply(int sock, struct sockaddr *sa, ssize_t sa_len,
-	       char *msg, ssize_t msg_len)
-{
-	struct msghdr reply;
-	struct iovec iov;
-
-	reply.msg_name = sa;
-	reply.msg_namelen = sa_len;
-	iov.iov_base = msg;
-	iov.iov_len = msg_len;
-	reply.msg_iov = &iov;
-	reply.msg_iovlen = 1;
-	reply.msg_control = NULL;
-	reply.msg_controllen = 0;
-	reply.msg_flags = 0;
-	sendmsg(sock, &reply, 0);
-	return 0;
-}
-
 struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name)
 {
 	struct ldmsd_plugin_cfg *p;
@@ -170,7 +145,8 @@ struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name)
 	return NULL;
 }
 
-struct ldmsd_plugin_cfg *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
+struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
+				char *errstr, size_t errlen)
 {
 	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
 	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
@@ -199,22 +175,22 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 
 	if (!d) {
 		char *dlerr = dlerror();
-		ldmsd_log(LDMSD_LERROR, "Failed to load the plugin '%s': "
-				"dlerror %s\n", plugin_name, dlerr);
-		snprintf(err_str, LEN_ERRSTR, "Failed to load the plugin '%s'. "
-				"dlerror %s", plugin_name, dlerr);
+		snprintf(errstr, errlen, "Failed to load the plugin '%s'. "
+				"dlerror: %s", plugin_name, dlerr);
 		goto err;
 	}
 
 	ldmsd_plugin_get_f pget = dlsym(d, "get_plugin");
 	if (!pget) {
-		snprintf(err_str, LEN_ERRSTR,
-			"The library is missing the get_plugin() function.");
+		snprintf(errstr, errlen,
+			"The library of '%s' is missing the get_plugin() "
+						"function.", plugin_name);
 		goto err;
 	}
 	lpi = pget(ldmsd_msg_logger);
 	if (!lpi) {
-		snprintf(err_str, LEN_ERRSTR, "The plugin could not be loaded.");
+		snprintf(errstr, errlen, "The plugin '%s' could not be loaded.",
+								plugin_name);
 		goto err;
 	}
 	pi = calloc(1, sizeof *pi);
@@ -236,7 +212,7 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
 	LIST_INSERT_HEAD(&plugin_list, pi, entry);
 	return pi;
 enomem:
-	snprintf(err_str, LEN_ERRSTR, "No memory");
+	snprintf(errstr, errlen, "No memory");
 err:
 	if (pi) {
 		if (pi->name)
@@ -284,285 +260,13 @@ const char *match_selector_str(enum ldmsd_name_match_sel sel)
 	return "BAD SELECTOR";
 }
 
-void __process_info_prdcr(enum ldmsd_loglevel llevel)
-{
-	ldmsd_prdcr_t prdcr;
-	ldmsd_log(llevel, "\n");
-	ldmsd_log(llevel, "========================================================================\n");
-	ldmsd_log(llevel, "%s\n", "Producers");
-#ifdef LDMSD_UPDATE_TIME
-	ldmsd_log(llevel, "%-20s %-20s %-8s %-12s %-10s %s\n",
-		 "Name", "Host", "Port", "ConnIntrvl", "State", "Schdule update time(usec)");
-#else /* LDMSD_UPDATE_TIME */
-	ldmsd_log(llevel, "%-20s %-20s %-8s %-12s %s\n",
-		 "Name", "Host", "Port", "ConnIntrvl", "State");
-#endif /* LDMSD_UPDATE_TIME */
-	ldmsd_log(llevel, "-------------------- -------------------- ---------- ---------- ----------\n");
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-#ifdef LDMSD_UPDATE_TIME
-		ldmsd_log(llevel, "%-20s %-20s %-8hu %-12d %-10s %lf\n",
-			 prdcr->obj.name, prdcr->host_name, prdcr->port_no,
-			 prdcr->conn_intrvl_us,
-			 prdcr_state_str(prdcr->conn_state),
-			 prdcr->sched_update_time);
-#else /* LDMSD_UPDATE_TIME */
-		ldmsd_log(llevel, "%-20s %-20s %-8hu %-12d %s\n",
-			 prdcr->obj.name, prdcr->host_name, prdcr->port_no,
-			 prdcr->conn_intrvl_us,
-			 prdcr_state_str(prdcr->conn_state));
-#endif /* LDMSD_UPDATE_TIME */
-		ldmsd_prdcr_lock(prdcr);
-		ldmsd_prdcr_set_t prv_set;
-#ifdef LDMSD_UPDATE_TIME
-		ldmsd_log(llevel, "    %-32s %-20s %-10s %s\n",
-			 "Instance Name", "Schema Name", "State", "Update time (usec)");
-		for (prv_set = ldmsd_prdcr_set_first(prdcr); prv_set;
-		     prv_set = ldmsd_prdcr_set_next(prv_set)) {
-			ldmsd_log(llevel, "    %-32s %-20s %-10s %lf\n",
-				 prv_set->inst_name,
-				 prv_set->schema_name,
-				 ldmsd_prdcr_set_state_str(prv_set->state),
-				 prv_set->updt_duration);
-		}
-#else /* LDMSD_UPDATE_TIME */
-		ldmsd_log(llevel, "    %-32s %-20s %s\n",
-			 "Instance Name", "Schema Name", "State");
-		for (prv_set = ldmsd_prdcr_set_first(prdcr); prv_set;
-		     prv_set = ldmsd_prdcr_set_next(prv_set)) {
-			ldmsd_log(llevel, "    %-32s %-20s %s\n",
-				 prv_set->inst_name,
-				 prv_set->schema_name,
-				 ldmsd_prdcr_set_state_str(prv_set->state));
-		}
-#endif /* LDMSD_UPDATE_TIME */
-
-		ldmsd_prdcr_unlock(prdcr);
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	ldmsd_log(llevel, "-------------------- -------------------- ---------- ---------- ----------\n");
-}
-
-void __process_info_updtr(enum ldmsd_loglevel llevel)
-{
-	char offset_s[15];
-	ldmsd_updtr_t updtr;
-	ldmsd_log(llevel, "\n");
-	ldmsd_log(llevel, "========================================================================\n");
-	ldmsd_log(llevel, "%s\n", "Updaters");
-#ifdef LDMSD_UPDATE_TIME
-	ldmsd_log(llevel, "%-20s %-14s %-14s %-10s %-10s %s\n",
-		 "Name", "Update Intrvl", "Offset", "State", "Submitting time (usec)", "Update time (usec)");
-#else /* LDMSD_UDPATE_TIME */
-	ldmsd_log(llevel, "%-20s %-14s %-14s %s\n",
-		 "Name", "Update Intrvl", "Offset", "State");
-#endif /* LDMSD_UPDATE_TIME */
-
-	ldmsd_log(llevel, "-------------------- -------------- -------------- ----------\n");
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
-	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
-		if (updtr->updt_task_flags & LDMSD_TASK_F_SYNCHRONOUS)
-			sprintf(offset_s, "%d", updtr->updt_offset_us);
-		else
-			sprintf(offset_s, "ASYNC");
-#ifdef LDMSD_UPDATE_TIME
-		ldmsd_log(llevel, "%-20s %-14d %-14s %-10s %lf %lf\n",
-			 updtr->obj.name, updtr->updt_intrvl_us,
-			 offset_s,
-			 ldmsd_updtr_state_str(updtr->state),
-			 updtr->sched_duration,
-			 updtr->duration);
-#else /* LDMSD_UPDATE_TIME */
-		ldmsd_log(llevel, "%-20s %-14d %-14s %s\n",
-			 updtr->obj.name, updtr->updt_intrvl_us,
-			 offset_s,
-			 ldmsd_updtr_state_str(updtr->state));
-#endif /* LDMSD_UPDATE_TIME */
-
-		ldmsd_updtr_lock(updtr);
-		ldmsd_name_match_t match;
-		ldmsd_log(llevel, "    Metric Set Match Specifications (empty == All)\n");
-		ldmsd_log(llevel, "    %-10s %s\n", "Compare To", "Value");
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		for (match = ldmsd_updtr_match_first(updtr); match;
-		     match = ldmsd_updtr_match_next(match)) {
-			ldmsd_log(llevel, "    %-10s %s\n",
-				 match_selector_str(match->selector),
-				 match->regex_str);
-		}
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		ldmsd_prdcr_ref_t ref;
-		ldmsd_prdcr_t prdcr;
-		ldmsd_log(llevel, "    Producers (empty == None)\n");
-		ldmsd_log(llevel, "    %-10s %-10s %-10s %s\n", "Name", "Transport", "Host", "Port");
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
-		     ref = ldmsd_updtr_prdcr_next(ref)) {
-			prdcr = ref->prdcr;
-			ldmsd_log(llevel, "    %-10s %-10s %-10s %hu\n",
-				 prdcr->obj.name,
-				 prdcr->xprt_name,
-				 prdcr->host_name,
-				 prdcr->port_no);
-		}
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		ldmsd_updtr_unlock(updtr);
-	}
-	ldmsd_log(llevel, "-------------------- -------------- ----------\n");
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
-}
-
-void __process_info_strgp(enum ldmsd_loglevel llevel)
-{
-	ldmsd_strgp_t strgp;
-	ldmsd_log(llevel, "\n");
-	ldmsd_log(llevel, "========================================================================\n");
-	ldmsd_log(llevel, "%s\n", "Storage Policies");
-	ldmsd_log(llevel, "%-15s %-15s %-15s %-15s %-s\n",
-		 "Name", "Container", "Schema", "Back End", "State");
-	ldmsd_log(llevel, "--------------- --------------- --------------- --------------- --------\n");
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
-	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
-		ldmsd_log(llevel, "%-15s %-15s %-15s %-15s %-8s\n",
-			 strgp->obj.name,
-			 strgp->container, strgp->schema, strgp->plugin_name,
-			 ldmsd_strgp_state_str(strgp->state));
-		ldmsd_strgp_lock(strgp);
-		ldmsd_name_match_t match;
-		ldmsd_log(llevel, "    Producer Match Specifications (empty == All)\n");
-		ldmsd_log(llevel, "    %s\n", "Name");
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		for (match = ldmsd_strgp_prdcr_first(strgp); match;
-		     match = ldmsd_strgp_prdcr_next(match)) {
-			ldmsd_log(llevel, "    %s\n", match->regex_str);
-		}
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-
-		ldmsd_log(llevel, "    Metrics (empty == All)\n");
-		ldmsd_log(llevel, "    %s\n", "Name");
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		ldmsd_strgp_metric_t metric;
-		for (metric = ldmsd_strgp_metric_first(strgp); metric;
-		     metric = ldmsd_strgp_metric_next(metric)) {
-			ldmsd_log(llevel, "    %s\n", metric->name);
-		}
-		ldmsd_log(llevel, "    ----------------------------------------\n");
-		ldmsd_strgp_unlock(strgp);
-	}
-	ldmsd_log(llevel, "--------------- --------------- --------------- --------------- ---------------\n");
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
-}
-
-/**
- * Return information about the state of the daemon
- */
-int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	int llevel = LDMSD_LALL;
-
-	char *name;
-	name = av_value(avl, "name");
-	if (name) {
-		if (0 == strcmp(name, "prdcr")) {
-			__process_info_prdcr(llevel);
-		} else if (0 == strcmp(name, "updtr")) {
-			__process_info_updtr(llevel);
-		} else if (0 == strcmp(name, "strgp")) {
-			__process_info_strgp(llevel);
-		} else {
-			snprintf(replybuf, REPLYBUF_LEN, "%dInvalid name '%s'. "
-					"The choices are prdcr, updtr, strgp.",
-					-EINVAL, name);
-		}
-		snprintf(replybuf, REPLYBUF_LEN, "0");
-		return 0;
-	}
-
-	extern int ev_thread_count;
-	extern pthread_t *ev_thread;
-	extern int *ev_count;
-	int i;
-	struct hostspec *hs;
-	int verbose = 0;
-	char *vb = av_value(avl, "verbose");
-	if (vb && (strcasecmp(vb, "true") == 0 ||
-			strcasecmp(vb, "t") == 0))
-		verbose = 1;
-
-	ldmsd_log(llevel, "Event Thread Info:\n");
-	ldmsd_log(llevel, "%-16s %s\n", "----------------", "------------");
-	ldmsd_log(llevel, "%-16s %s\n", "Thread", "Task Count");
-	ldmsd_log(llevel, "%-16s %s\n", "----------------", "------------");
-	for (i = 0; i < ev_thread_count; i++) {
-		ldmsd_log(llevel, "%-16p %d\n",
-			 (void *)ev_thread[i], ev_count[i]);
-	}
-
-	ldmsd_log(llevel, "========================================================================\n");
-	__process_info_prdcr(llevel);
-
-	__process_info_updtr(llevel);
-
-	__process_info_strgp(llevel);
-
-	snprintf(replybuf, REPLYBUF_LEN, "0");
-	return 0;
-}
-
-int process_version(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	struct ldms_version version;
-	ldms_version_get(&version);
-	snprintf(replybuf, REPLYBUF_LEN, "0LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
-					version.major,
-					version.minor,
-					version.patch,
-					version.flags);
-	return 0;
-}
-
-int process_verbosity_change(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
-{
-	char *level_s;
-	char err_str[LEN_ERRSTR];
-
-	level_s = av_value(avl, "level");
-	if (!level_s) {
-		snprintf(replybuf, REPLYBUF_LEN, "%d The level was not specified\n", -EINVAL);
-		goto out;
-	}
-
-	err_str[0] = '\0';
-	int rc = ldmsd_loglevel_set(level_s);
-	if (rc < 0) {
-		snprintf(err_str, LEN_ERRSTR, "Invalid verbosity level, "
-				"expecting DEBUG, INFO, ERROR, CRITICAL and QUIET\n");
-	}
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-
-#ifdef DEBUG
-	ldmsd_log(LDMSD_LDEBUG, "TEST DEBUG\n");
-	ldmsd_log(LDMSD_LINFO, "TEST INFO\n");
-	ldmsd_log(LDMSD_LERROR, "TEST ERROR\n");
-	ldmsd_log(LDMSD_LCRITICAL, "TEST CRITICAL\n");
-	ldmsd_log(LDMSD_LALL, "TEST SUPREME\n");
-#endif /* DEBUG */
-
-out:
-	return 0;
-}
-
-int ldmsd_compile_regex(regex_t *regex, const char *regex_str, char *errbuf, size_t errsz)
+int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
+				char *errbuf, size_t errsz)
 {
 	memset(regex, 0, sizeof *regex);
 	int rc = regcomp(regex, regex_str, REG_NOSUB);
 	if (rc) {
-		snprintf(errbuf, errsz, "22");
-		(void)regerror(rc,
-			       regex,
-			       &errbuf[2],
-			       errsz - 2);
-		strcat(errbuf, "\n");
+		(void)regerror(rc, regex, errbuf, errsz);
 	}
 	return rc;
 }
@@ -570,44 +274,34 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str, char *errbuf, siz
 /*
  * Load a plugin
  */
-int ldmsd_load_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
+int ldmsd_load_plugin(char *plugin_name, char *errstr, size_t errlen)
 {
-
-	int rc = 0;
-	err_str[0] = '\0';
-
 	struct ldmsd_plugin_cfg *pi = ldmsd_get_plugin(plugin_name);
 	if (pi) {
-		snprintf(err_str, LEN_ERRSTR, "Plugin already loaded");
-		rc = EEXIST;
-		goto out;
+		snprintf(errstr, errlen, "Plugin '%s' already loaded",
+							plugin_name);
+		return EEXIST;
 	}
-	pi = new_plugin(plugin_name, err_str);
+	pi = new_plugin(plugin_name, errstr, errlen);
 	if (!pi)
-		rc = 1;
-out:
-	return rc;
+		return -1;
+	return 0;
 }
 
 /*
  * Destroy and unload the plugin
  */
-int ldmsd_term_plugin(char *plugin_name, char err_str[LEN_ERRSTR])
+int ldmsd_term_plugin(char *plugin_name)
 {
 	int rc = 0;
 	struct ldmsd_plugin_cfg *pi;
-	err_str[0] = '\0';
 
 	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi) {
-		rc = ENOENT;
-		snprintf(err_str, LEN_ERRSTR, "plugin not found.");
-		return rc;
-	}
+	if (!pi)
+		return ENOENT;
+
 	pthread_mutex_lock(&pi->lock);
 	if (pi->ref_count) {
-		snprintf(err_str, LEN_ERRSTR, "The specified plugin has "
-				"active users and cannot be terminated.");
 		rc = EINVAL;
 		pthread_mutex_unlock(&pi->lock);
 		goto out;
@@ -624,85 +318,62 @@ out:
  */
 int ldmsd_config_plugin(char *plugin_name,
 			struct attr_value_list *_av_list,
-			struct attr_value_list *_kw_list,
-			char err_str[LEN_ERRSTR])
+			struct attr_value_list *_kw_list)
 {
 	int rc = 0;
 	struct ldmsd_plugin_cfg *pi;
-	err_str[0] = '\0';
 
 	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi) {
-		rc = ENOENT;
-		snprintf(err_str, LEN_ERRSTR, "The plugin was not found.");
-		goto out;
-	}
+	if (!pi)
+		return ENOENT;
+
 	pthread_mutex_lock(&pi->lock);
 	rc = pi->plugin->config(pi->plugin, _kw_list, _av_list);
-	if (rc)
-		snprintf(err_str, LEN_ERRSTR, "Plugin configuration error.");
 	pthread_mutex_unlock(&pi->lock);
 out:
 	return rc;
 }
 
-int _ldmsd_set_udata(ldms_set_t set, char *metric_name, uint64_t udata,
-						char err_str[LEN_ERRSTR])
-{
-	int i = ldms_metric_by_name(set, metric_name);
-	if (i < 0) {
-		snprintf(err_str, LEN_ERRSTR, "Metric '%s' not found.",
-			 metric_name);
-		return ENOENT;
-	}
-
-	ldms_metric_user_data_set(set, i, udata);
-	return 0;
-}
-
 /*
  * Assign user data to a metric
  */
-int ldmsd_set_udata(char *set_name, char *metric_name,
-		char *udata_s, char err_str[LEN_ERRSTR])
+int ldmsd_set_udata(const char *set_name, const char *metric_name,
+						const char *udata_s)
 {
 	ldms_set_t set;
-	err_str[0] = '\0';
 	set = ldms_set_by_name(set_name);
-	if (!set) {
-		snprintf(err_str, LEN_ERRSTR, "Set '%s' not found.", set_name);
+	if (!set)
 		return ENOENT;
-	}
 
 	char *endptr;
 	uint64_t udata = strtoull(udata_s, &endptr, 0);
-	if (endptr[0] != '\0') {
-		snprintf(err_str, LEN_ERRSTR, "User data '%s' invalid.",
-								udata_s);
+	if (endptr[0] != '\0')
 		return EINVAL;
-	}
 
-	int rc =_ldmsd_set_udata(set, metric_name, udata, err_str);
+	int mid = ldms_metric_by_name(set, metric_name);
+	if (mid < 0)
+		return -ENOENT;
+	ldms_metric_user_data_set(set, mid, udata);
+
 	ldms_set_put(set);
-	return rc;
+	return 0;
 }
 
 int ldmsd_set_udata_regex(char *set_name, char *regex_str,
-		char *base_s, char *inc_s, char err_str[LEN_ERRSTR])
+		char *base_s, char *inc_s, char *errstr, size_t errsz)
 {
 	int rc = 0;
 	ldms_set_t set;
-	err_str[0] = '\0';
 	set = ldms_set_by_name(set_name);
 	if (!set) {
-		snprintf(err_str, LEN_ERRSTR, "Set '%s' not found.", set_name);
+		snprintf(errstr, errsz, "Set '%s' not found.", set_name);
 		return ENOENT;
 	}
 
 	char *endptr;
 	uint64_t base = strtoull(base_s, &endptr, 0);
 	if (endptr[0] != '\0') {
-		snprintf(err_str, LEN_ERRSTR, "User data base '%s' invalid.",
+		snprintf(errstr, errsz, "User data base '%s' invalid.",
 								base_s);
 		return EINVAL;
 	}
@@ -712,7 +383,7 @@ int ldmsd_set_udata_regex(char *set_name, char *regex_str,
 		inc = atoi(inc_s);
 
 	regex_t regex;
-	rc = ldmsd_compile_regex(&regex, regex_str, err_str, LEN_ERRSTR);
+	rc = ldmsd_compile_regex(&regex, regex_str, errstr, errsz);
 	if (rc)
 		return rc;
 
@@ -731,366 +402,106 @@ int ldmsd_set_udata_regex(char *set_name, char *regex_str,
 	return 0;
 }
 
-int resolve(const char *hostname, struct sockaddr_in *sin)
-{
-	struct hostent *h;
-
-	h = gethostbyname(hostname);
-	if (!h) {
-		printf("Error resolving hostname '%s'\n", hostname);
-		return -1;
-	}
-
-	if (h->h_addrtype != AF_INET) {
-		printf("Hostname '%s' resolved to an unsupported address family\n",
-		       hostname);
-		return -1;
-	}
-
-	memset(sin, 0, sizeof *sin);
-	sin->sin_addr.s_addr = *(unsigned int *)(h->h_addr_list[0]);
-	sin->sin_family = h->h_addrtype;
-	return 0;
-}
-
-/*
- * Functions to process ldmsctl commands
- */
-/* load plugin */
-int process_load_plugin(char *replybuf, struct attr_value_list *av_list,
-			struct attr_value_list *kw_list)
-{
-	char *plugin_name;
-	char err_str[LEN_ERRSTR];
-
-	plugin_name = av_value(av_list, "name");
-	if (!plugin_name) {
-		snprintf(replybuf, REPLYBUF_LEN, "%d The plugin name was "
-				"not specified\n", -EINVAL);
-		goto out;
-	}
-
-	int rc = ldmsd_load_plugin(plugin_name, err_str);
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-out:
-	return 0;
-}
-
-/* terminate a plugin */
-int process_term_plugin(char *replybuf, struct attr_value_list *av_list,
-			struct attr_value_list *kw_list)
-{
-	char *plugin_name;
-	char err_str[LEN_ERRSTR];
-
-	plugin_name = av_value(av_list, "name");
-	if (!plugin_name) {
-		snprintf(replybuf, REPLYBUF_LEN, "%d The plugin name must "
-				"be specified.", -EINVAL);
-		goto out;
-	}
-
-	int rc = ldmsd_term_plugin(plugin_name, err_str);
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-out:
-	return 0;
-}
-
-/* configure a plugin */
-int process_config_plugin(char *replybuf, struct attr_value_list *av_list,
-			  struct attr_value_list *kw_list)
-{
-	char *plugin_name;
-	char err_str[LEN_ERRSTR];
-
-	plugin_name = av_value(av_list, "name");
-	if (!plugin_name) {
-		snprintf(replybuf, REPLYBUF_LEN, "%d The plugin name must "
-				"be specified.", -EINVAL);
-		goto out;
-	}
-
-	int rc = ldmsd_config_plugin(plugin_name, av_list, kw_list, err_str);
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-out:
-	return 0;
-}
-
-/* Assign user data to a metric */
-int process_set_udata(char *replybuf, struct attr_value_list *av_list,
-		struct attr_value_list *kw_list)
-{
-	char *set_name, *metric_name, *udata;
-	char err_str[LEN_ERRSTR];
-	char *attr;
-	int rc = 0;
-
-	attr = "set";
-	set_name = av_value(av_list, attr);
-	if (!set_name)
-		goto einval;
-
-	attr = "metric";
-	metric_name = av_value(av_list, attr);
-	if (!metric_name)
-		goto einval;
-
-	attr = "udata";
-	udata = av_value(av_list, attr);
-	if (!udata)
-		goto einval;
-
-	rc = ldmsd_set_udata(set_name, metric_name, udata, err_str);
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-	return 0;
-einval:
-	snprintf(replybuf, REPLYBUF_LEN, "%dThe attribute '%s' is required.\n",
-								-EINVAL, attr);
-	return 0;
-}
-
-int process_set_udata_regex(char *replybuf, struct attr_value_list *av_list,
-		struct attr_value_list *kw_list)
-{
-	char *set_name, *regex, *base_s, *inc_s;
-	char err_str[LEN_ERRSTR];
-	char *attr;
-	int rc = 0;
-
-	attr = "set";
-	set_name = av_value(av_list, attr);
-	if (!set_name)
-		goto einval;
-
-	attr = "regex";
-	regex = av_value(av_list, attr);
-	if (!regex)
-		goto einval;
-
-	attr = "base";
-	base_s = av_value(av_list, attr);
-	if (!base_s)
-		goto einval;
-
-	attr = "incr";
-	inc_s = av_value(av_list, attr);
-
-	rc = ldmsd_set_udata_regex(set_name, regex, base_s, inc_s, err_str);
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-	return 0;
-
-einval:
-	snprintf(replybuf, REPLYBUF_LEN, "%dThe attribute '%s' is required.\n",
-								-EINVAL, attr);
-	return 0;
-}
-
-/* Start a sampler */
-int process_start_sampler(char *replybuf, struct attr_value_list *av_list,
-			  struct attr_value_list *kw_list)
-{
-	char *plugin_name, *interval, *offset;
-	char err_str[LEN_ERRSTR];
-	char *attr;
-
-	attr = "name";
-	plugin_name = av_value(av_list, "name");
-	if (!plugin_name)
-		goto einval;
-
-	attr = "interval";
-	interval = av_value(av_list, attr);
-	if (!interval)
-		goto einval;
-
-	attr = "offset";
-	offset = av_value(av_list, attr);
-
-	int rc = ldmsd_start_sampler(plugin_name, interval, offset, err_str);
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-	return 0;
-einval:
-	snprintf(replybuf, REPLYBUF_LEN, "%dThe attribute '%s' is required.\n",
-								-EINVAL, attr);
-	return 0;
-}
-
-int process_oneshot_sample(char *replybuf, struct attr_value_list *av_list,
-			   struct attr_value_list *kw_list)
-{
-	char *attr;
-	char *plugin_name, *ts;
-	char err_str[LEN_ERRSTR];
-
-	attr = "name";
-	plugin_name = av_value(av_list, attr);
-	if (!plugin_name)
-		goto einval;
-
-	attr = "time";
-	ts = av_value(av_list, attr);
-	if (!ts)
-		goto einval;
-
-	int rc = ldmsd_oneshot_sample(plugin_name, ts, err_str);
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-	goto out;
-
-einval:
-	snprintf(replybuf, REPLYBUF_LEN, "%dThe attribute '%s' is required.\n",
-								-EINVAL, attr);
-out:
-	return 0;
-}
-
-/* stop a sampler */
-int process_stop_sampler(char *replybuf, struct attr_value_list *av_list,
-			 struct attr_value_list *kw_list)
-{
-	char *plugin_name;
-	char err_str[LEN_ERRSTR];
-
-	plugin_name = av_value(av_list, "name");
-	if (!plugin_name) {
-		snprintf(replybuf, REPLYBUF_LEN, "%d The plugin name must be specified.",
-								-EINVAL);
-		goto out;
-	}
-
-	int rc = ldmsd_stop_sampler(plugin_name, err_str);
-	snprintf(replybuf, REPLYBUF_LEN, "%d%s", -rc, err_str);
-out:
-	return 0;
-}
-
-int process_ls_plugins(char *replybuf, struct attr_value_list *av_list,
-		       struct attr_value_list *kw_list)
-{
-	struct ldmsd_plugin_cfg *p;
-	size_t offset = 0;
-	size_t sz = REPLYBUF_LEN - 1;
-	offset += sprintf(replybuf, "0");
-	LIST_FOREACH(p, &plugin_list, entry) {
-		offset += snprintf(&replybuf[offset], sz - offset,
-				"%s\n", p->name);
-		if (p->plugin->usage && (offset < sz)) {
-			offset += snprintf(&replybuf[offset], sz - offset, "%s",
-					p->plugin->usage(p->plugin));
-		}
-		if (offset >= sz)
-			break;
-	}
-	return 0;
-}
-
-int process_exit(char *replybuf, struct attr_value_list *av_list,
-					struct attr_value_list *kw_list)
+void ldmsd_exit_daemon()
 {
 	cleanup_requested = 1;
-	/* set flag for bottom of message handler loops to check for quit. */
 	ldmsd_log(LDMSD_LINFO, "User requested exit.\n");
-	snprintf(replybuf, REPLYBUF_LEN, "0cleanup request received.\n");
+}
+
+/* data_len is excluding the null character */
+int print_config_error(struct ldmsd_req_ctxt *reqc, char *data, size_t data_len,
+		int msg_flags)
+{
+	if (data_len + 1 > reqc->rep_len - reqc->rep_off) {
+		reqc->rep_buf = realloc(reqc->rep_buf,
+				reqc->rep_off + data_len + 1);
+		if (!reqc->rep_buf) {
+			ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+			return ENOMEM;
+		}
+		reqc->rep_len = reqc->rep_off + data_len + 1;
+	}
+
+	if (data) {
+		memcpy(&reqc->rep_buf[reqc->rep_off], data, data_len);
+		reqc->rep_off += data_len;
+		reqc->rep_buf[reqc->rep_off] = '\0';
+	}
+	if (reqc->rep_off)
+		ldmsd_log(LDMSD_LERROR, "%s\n", reqc->rep_buf);
+
 	return 0;
 }
 
-static int command_id(const char *command);
-
-int process_config_line(char *line)
+extern void req_ctxt_tree_lock();
+extern void req_ctxt_tree_unlock();
+extern ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key);
+extern void free_req_ctxt(ldmsd_req_ctxt_t rm);
+extern int ldmsd_handle_request(ldmsd_req_hdr_t request, ldmsd_req_ctxt_t reqc);
+ldmsd_req_ctxt_t process_config_line(char *line, struct ldmsd_req_hdr_s *request)
 {
-	char *cmd_s;
-	long cmd_id;
-	int tokens, rc, n, buf_rc;
-	struct attr_value_list *av_list = NULL;
-	struct attr_value_list *kw_list = NULL;
-	/* skip leading spaces */
-	while (isspace(*line)) {
-		line++;
-	}
-	for (tokens = 0, cmd_s = line; cmd_s[0] != '\0';) {
-		tokens++;
-		/* find whitespace */
-		while (cmd_s[0] != '\0' && !isspace(cmd_s[0]))
-			cmd_s++;
-		/* Now skip whitepace to next token */
-		while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
-			cmd_s++;
-	}
-	rc = ENOMEM;
-	av_list = av_new(tokens);
-	kw_list = av_new(tokens);
-	if (!av_list || !kw_list) {
-		ldmsd_log(LDMSD_LERROR, "failed av/kw_new(%d)\n",tokens);
-		goto cleanup;
+	static uint32_t msg_no = 0;
+
+	request->marker = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
+	request->flags = LDMSD_RECORD_MARKER;
+	request->msg_no = msg_no;
+	request->rec_len = 0;
+	request->code = -1;
+
+	errno = 0;
+	struct req_ctxt_key key = {
+			.msg_no = msg_no,
+			.sock_fd = -1
+	};
+	msg_no++;
+
+	char *_line, *ptr, *verb, *av, *name, *value, *tmp = NULL;
+	int idx, rc = 0, attr_cnt = 0;
+	uint32_t req_id;
+	size_t tot_attr_len = 0;
+	struct ldmsd_req_ctxt *reqc = NULL;
+
+	_line = strdup(line);
+	if (!_line) {
+		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+		errno = ENOMEM;
+		return NULL;
 	}
 
-	rc = tokenize(line, kw_list, av_list);
+	/* Prepare the request context */
+	req_ctxt_tree_lock();
+	reqc = alloc_req_ctxt(&key);
+	if (!reqc) {
+		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+		errno = ENOMEM;
+		goto out;
+	}
+
+	rc = ldmsd_process_cfg_str(request, _line, &reqc->req_buf,
+				&reqc->req_off, &reqc->req_len);
 	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "Memory allocation failure "
-				"tokenizing '%s'\n", line);
-		rc = ENOMEM;
-		goto cleanup;
+		errno = rc;
+		goto err;
 	}
 
-	cmd_s = av_name(kw_list, 0);
-	if (!cmd_s) {
-		ldmsd_log(LDMSD_LERROR, "Request is missing Id '%s'\n", line);
-		rc = EINVAL;
-		goto cleanup;
-	}
+	memcpy(&reqc->rh, &request, sizeof(request));
 
-	cmd_id = command_id(cmd_s);
-	if (cmd_id >= 0 && cmd_id <= LDMSCTL_LAST_COMMAND
-			&& cmd_table[cmd_id]) {
-		replybuf[0] = 0; /* reset replybuf */
-		rc = cmd_table[cmd_id](replybuf, av_list, kw_list);
-		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
-					"config '%s' error rc: %d\n",
-					cmd_s, rc);
-			char *avstr = av_to_string(av_list,0);
-			char *avexp = av_to_string(av_list,1);
-			char *kwstr = av_to_string(kw_list,0);
-			char *kwexp = av_to_string(kw_list,1);
-			ldmsd_log(LDMSD_LERROR,"av_list raw:\n%s", avstr);
-			ldmsd_log(LDMSD_LERROR,"av_list exp:\n%s", avexp);
-			ldmsd_log(LDMSD_LERROR,"kw_list raw:\n%s", kwstr);
-			ldmsd_log(LDMSD_LERROR,"kw_list exp:\n%s", kwexp);
-			free(avstr);
-			free(avexp);
-			free(kwstr);
-			free(kwexp);
-		}
-		n = 0;
-		sscanf(replybuf, "%d%n", &buf_rc, &n);
-		if (buf_rc) {
-			ldmsd_log(LDMSD_LERROR,
-					"config '%s' error: %s\n",
-					cmd_s, replybuf + n);
-			rc = buf_rc;
-			char *avstr = av_to_string(av_list,0);
-			char *avexp = av_to_string(av_list,1);
-			char *kwstr = av_to_string(kw_list,0);
-			char *kwexp = av_to_string(kw_list,1);
-			ldmsd_log(LDMSD_LERROR,"av_list raw:\n%s", avstr);
-			ldmsd_log(LDMSD_LERROR,"av_list exp:\n%s", avexp);
-			ldmsd_log(LDMSD_LERROR,"kw_list raw:\n%s", kwstr);
-			ldmsd_log(LDMSD_LERROR,"kw_list exp:\n%s", kwexp);
-			free(avstr);
-			free(avexp);
-			free(kwstr);
-			free(kwexp);
-		}
-	} else {
-		rc = EINVAL;
+	reqc->resp_handler = print_config_error;
+	reqc->dest_fd = -1; /* We don't need the destination file descriptor here */
+	req_ctxt_tree_unlock();
+	goto out;
+
+err:
+	if (reqc) {
+		req_ctxt_tree_lock();
+		free_req_ctxt(reqc);
+		req_ctxt_tree_unlock();
+		reqc = NULL;
 	}
-cleanup:
-	if (av_list)
-		av_free(av_list);
-	if (kw_list)
-		av_free(kw_list);
-	return rc;
+out:
+	free(_line);
+	return reqc;
 }
-
 int process_config_file(const char *path, int *errloc)
 {
 	int rc = 0;
@@ -1114,6 +525,8 @@ int process_config_file(const char *path, int *errloc)
 		rc = errno;
 		goto cleanup;
 	}
+	struct ldmsd_req_hdr_s request;
+	struct ldmsd_req_ctxt *reqc;
 
 next_line:
 	line = fgets(buff + off, cfg_buf_len - off, fin);
@@ -1156,17 +569,33 @@ next_line:
 		goto next_line;
 	}
 
-	rc = process_config_line(line);
+	reqc = process_config_line(line, &request);
+	if (!reqc) {
+		ldmsd_log(LDMSD_LERROR, "Problem in line %d: %s\n", lineno,
+							strerror(errno));
+		goto cleanup;
+	}
+	rc = ldmsd_handle_request(&request, reqc);
 	if (rc) {
 		ldmsd_log(LDMSD_LERROR, "Problem in line: %s\n", line);
 		goto cleanup;
 	}
 
+	if (reqc) {
+		req_ctxt_tree_lock();
+		free_req_ctxt(reqc);
+		req_ctxt_tree_unlock();
+		reqc = NULL;
+	}
 	off = 0;
-
 	goto next_line;
 
 cleanup:
+	if (reqc) {
+		req_ctxt_tree_lock();
+		free_req_ctxt(reqc);
+		req_ctxt_tree_unlock();
+	}
 	if (fin)
 		fclose(fin);
 	if (buff)
@@ -1175,244 +604,14 @@ cleanup:
 	return rc;
 }
 
-int process_include(char *replybuf, struct attr_value_list *av_list,
-					struct attr_value_list * kw_list)
-{
-	int rc;
-	const char *path;
-	path = av_name(kw_list, 1);
-	if (!path)
-		return EINVAL;
-	int errloc = 0;
-	rc = process_config_file(path, &errloc);
-	return rc;
-}
-
-int process_env(char *replybuf, struct attr_value_list *av_list,
-					struct attr_value_list * kw_list)
-{
-	int rc = 0;
-	int i;
-	for (i = 0; i < av_list->count; i++) {
-		struct attr_value *v = &av_list->list[i];
-		rc = setenv(v->name, v->value, 1);
-		if (rc)
-			return rc;
-	}
-	return 0;
-}
-
-int process_log_rotate(char *replybuf, struct attr_value_list *av_list,
-					struct attr_value_list *kw_list)
-{
-	int rc = ldmsd_logrotate();
-	if (rc)
-		snprintf(replybuf, REPLYBUF_LEN, "%d Failed to rotate the log file", -rc);
-	else
-		snprintf(replybuf, REPLYBUF_LEN, "%d", -rc);
-	return 0;
-}
-
-extern int cmd_prdcr_add(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_prdcr_del(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_prdcr_start(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_prdcr_stop(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_prdcr_start_regex(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_prdcr_stop_regex(char *, struct attr_value_list *, struct attr_value_list *);
-
-extern int cmd_updtr_add(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_updtr_del(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_updtr_match_add(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_updtr_match_del(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_updtr_prdcr_add(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_updtr_prdcr_del(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_updtr_start(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_updtr_stop(char *, struct attr_value_list *, struct attr_value_list *);
-
-extern int cmd_strgp_add(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_strgp_del(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_strgp_prdcr_add(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_strgp_prdcr_del(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_strgp_metric_add(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_strgp_metric_del(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_strgp_start(char *, struct attr_value_list *, struct attr_value_list *);
-extern int cmd_strgp_stop(char *, struct attr_value_list *, struct attr_value_list *);
-
-struct cmd_str_id {
-	const char *str;
-	int id;
-};
-
-const struct cmd_str_id cmd_str_id_table[] = {
-	/* This table need to be sorted by keyword for bsearch() */
-	{  "config",             3   },
-	{  "env",                18  },
-	{  "exit",               12  },
-	{  "include",            17  },
-	{  "info",               9   },
-	{  "load",               1   },
-	{  "loglevel",           16  },
-	{  "oneshot",            13  },
-	{  "prdcr_add",          20  },
-	{  "prdcr_del",          21  },
-	{  "prdcr_start",        22  },
-	{  "prdcr_start_regex",  24  },
-	{  "prdcr_stop",         23  },
-	{  "prdcr_stop_regex",   25  },
-	{  "remove",             7   },
-	{  "start",              4   },
-	{  "stop",               5   },
-	{  "strgp_add",          40  },
-	{  "strgp_del",          41  },
-	{  "strgp_metric_add",   44  },
-	{  "strgp_metric_del",   45  },
-	{  "strgp_prdcr_add",    42  },
-	{  "strgp_prdcr_del",    43  },
-	{  "strgp_start",        48  },
-	{  "strgp_stop",         49  },
-	{  "term",               2   },
-	{  "udata",              10  },
-	{  "udata_regex",        14  },
-	{  "updtr_add",          30  },
-	{  "updtr_del",          31  },
-	{  "updtr_match_add",    32  },
-	{  "updtr_match_del",    33  },
-	{  "updtr_prdcr_add",    34  },
-	{  "updtr_prdcr_del",    35  },
-	{  "updtr_start",        38  },
-	{  "updtr_stop",         39  },
-	{  "usage",              0   },
-	{  "version",            15  },
-};
-
-int cmd_str_id_cmp(const struct cmd_str_id *a, const struct cmd_str_id *b)
-{
-	return strcmp(a->str, b->str);
-}
-
-static int command_id(const char *command)
-{
-	struct cmd_str_id key = {command, -1};
-	struct cmd_str_id *x = bsearch(&key, cmd_str_id_table,
-			sizeof(cmd_str_id_table)/sizeof(*cmd_str_id_table),
-			sizeof(*cmd_str_id_table), (void*)cmd_str_id_cmp);
-	if (!x)
-		return -1;
-	return x->id;
-}
-
-ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND+1] = {
-	[LDMSCTL_LIST_PLUGINS] = process_ls_plugins,
-	[LDMSCTL_LOAD_PLUGIN] =	process_load_plugin,
-	[LDMSCTL_TERM_PLUGIN] =	process_term_plugin,
-	[LDMSCTL_CFG_PLUGIN] =	process_config_plugin,
-	[LDMSCTL_START_SAMPLER] = process_start_sampler,
-	[LDMSCTL_STOP_SAMPLER] = process_stop_sampler,
-	[LDMSCTL_INFO_DAEMON] = process_info,
-	[LDMSCTL_SET_UDATA] = process_set_udata,
-	[LDMSCTL_SET_UDATA_REGEX] = process_set_udata_regex,
-	[LDMSCTL_EXIT_DAEMON] = process_exit,
-	[LDMSCTL_ONESHOT_SAMPLE] = process_oneshot_sample,
-	[LDMSCTL_VERSION] = process_version,
-	[LDMSCTL_VERBOSE] = process_verbosity_change,
-	[LDMSCTL_INCLUDE] = process_include,
-	[LDMSCTL_ENV] = process_env,
-	[LDMSCTL_LOGROTATE] = process_log_rotate,
-	[LDMSCTL_PRDCR_ADD] = cmd_prdcr_add,
-	[LDMSCTL_PRDCR_DEL] = cmd_prdcr_del,
-	[LDMSCTL_PRDCR_START] = cmd_prdcr_start,
-	[LDMSCTL_PRDCR_STOP] = cmd_prdcr_stop,
-	[LDMSCTL_PRDCR_START_REGEX] = cmd_prdcr_start_regex,
-	[LDMSCTL_PRDCR_STOP_REGEX] = cmd_prdcr_stop_regex,
-	[LDMSCTL_UPDTR_ADD] = cmd_updtr_add,
-	[LDMSCTL_UPDTR_DEL] = cmd_updtr_del,
-	[LDMSCTL_UPDTR_MATCH_ADD] = cmd_updtr_match_add,
-	[LDMSCTL_UPDTR_MATCH_DEL] = cmd_updtr_match_del,
-	[LDMSCTL_UPDTR_PRDCR_ADD] = cmd_updtr_prdcr_add,
-	[LDMSCTL_UPDTR_PRDCR_DEL] = cmd_updtr_prdcr_del,
-	[LDMSCTL_UPDTR_START] = cmd_updtr_start,
-	[LDMSCTL_UPDTR_STOP] = cmd_updtr_stop,
-	[LDMSCTL_STRGP_ADD] = cmd_strgp_add,
-	[LDMSCTL_STRGP_DEL] = cmd_strgp_del,
-	[LDMSCTL_STRGP_PRDCR_ADD] = cmd_strgp_prdcr_add,
-	[LDMSCTL_STRGP_PRDCR_DEL] = cmd_strgp_prdcr_del,
-	[LDMSCTL_STRGP_METRIC_ADD] = cmd_strgp_metric_add,
-	[LDMSCTL_STRGP_METRIC_DEL] = cmd_strgp_metric_del,
-	[LDMSCTL_STRGP_START] = cmd_strgp_start,
-	[LDMSCTL_STRGP_STOP] = cmd_strgp_stop,
-};
-
-int process_record(int fd,
-		   struct sockaddr *sa, ssize_t sa_len,
-		   char *command, ssize_t cmd_len)
-{
-	char *cmd_s;
-	long cmd_id;
-	struct attr_value_list *av_list;
-	struct attr_value_list *kw_list;
-	int tokens, rc;
-
-	/*
-	 * Count the number of spaces. That's the maximum number of
-	 * tokens that could be present
-	 */
-	for (tokens = 0, cmd_s = command; cmd_s[0] != '\0';) {
-		tokens++;
-		/* find whitespace */
-		while (cmd_s[0] != '\0' && !isspace(cmd_s[0]))
-			cmd_s++;
-		/* Now skip whitepace to next token */
-		while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
-			cmd_s++;
-	}
-	rc = ENOMEM;
-	av_list = av_new(tokens);
-	kw_list = av_new(tokens);
-	if (!av_list || !kw_list)
-		goto out;
-	rc = tokenize(command, kw_list, av_list);
-	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "Memory allocation failure "
-				"processing '%s'\n", command);
-		rc = ENOMEM;
-		goto out;
-	}
-
-	cmd_s = av_name(kw_list, 0);
-	if (!cmd_s) {
-		ldmsd_log(LDMSD_LERROR, "Request is missing Id '%s'\n", command);
-		rc = EINVAL;
-		goto out;
-	}
-
-	cmd_id = strtoul(cmd_s, NULL, 0);
-	if (cmd_id >= 0 && cmd_id <= LDMSCTL_LAST_COMMAND) {
-		if (cmd_table[cmd_id]) {
-			rc = cmd_table[cmd_id](replybuf, av_list, kw_list);
-			goto out;
-		}
-	}
-	snprintf(replybuf, REPLYBUF_LEN, "22Invalid command id %ld\n", cmd_id);
-	rc = EINVAL;
- out:
-	if (fd >= 0)
-		send_reply(fd, sa, sa_len, replybuf, strlen(replybuf)+1);
-	if (kw_list)
-		av_free(kw_list);
-	if (av_list)
-		av_free(av_list);
-	return rc;
-}
-
-int process_message(int sock, struct msghdr *msg, ssize_t msglen)
-{
-	return process_record(sock,
-			      msg->msg_name, msg->msg_namelen,
-			      msg->msg_iov->iov_base, msglen);
-}
-
+extern int
+process_request(int fd, struct msghdr *msg, size_t msg_len);
 void *ctrl_thread_proc(void *v)
 {
+	struct sockaddr_un sun = {.sun_family = AF_UNIX, .sun_path = ""};
+	socklen_t sun_len = sizeof(sun);
+	int sock;
+
 	struct msghdr msg;
 	struct iovec iov;
 	unsigned char *lbuf;
@@ -1428,22 +627,48 @@ void *ctrl_thread_proc(void *v)
 			  cfg_buf_len);
 		cleanup(1, "ctrl thread proc out of memory");
 	}
+
+loop:
+	sock = accept(muxr_s, (void *)&sun, &sun_len);
+	if (sock < 0) {
+		ldmsd_log(LDMSD_LERROR, "Error %d failed to accept.\n", inet_sock);
+		goto loop;
+	}
+
 	iov.iov_base = lbuf;
 	do {
+		struct ldmsd_req_hdr_s request;
 		ssize_t msglen;
 		ss.ss_family = AF_UNIX;
 		msg.msg_name = &ss;
 		msg.msg_namelen = sizeof(ss);
-		iov.iov_len = cfg_buf_len;
+		iov.iov_len = sizeof(request);
+		iov.iov_base = &request;
 		msg.msg_iov = &iov;
 		msg.msg_iovlen = 1;
 		msg.msg_control = NULL;
 		msg.msg_controllen = 0;
 		msg.msg_flags = 0;
-		msglen = recvmsg(muxr_s, &msg, 0);
+		msglen = recvmsg(sock, &msg, MSG_PEEK);
 		if (msglen <= 0)
 			break;
-		process_message(muxr_s, &msg, msglen);
+		if (cfg_buf_len < request.rec_len) {
+			free(lbuf);
+			lbuf = malloc(request.rec_len);
+			if (!lbuf) {
+				cfg_buf_len = 0;
+				break;
+			}
+			cfg_buf_len = request.rec_len;
+		}
+		iov.iov_base = lbuf;
+		iov.iov_len = request.rec_len;
+
+		msglen = recvmsg(sock, &msg, MSG_WAITALL);
+		if (msglen < request.rec_len)
+			break;
+
+		process_request(sock, &msg, msglen);
 		if (cleanup_requested)
 			break;
 	} while (1);
@@ -1452,7 +677,7 @@ void *ctrl_thread_proc(void *v)
 		ctrl_thread = (pthread_t)-1;
 		cleanup(0,"user quit");
 	}
-	free(lbuf);
+	goto loop;
 	return NULL;
 }
 
@@ -1482,7 +707,7 @@ int ldmsd_config_init(char *name)
 			sizeof(struct sockaddr_un) - sizeof(short));
 
 	/* Create listener */
-	muxr_s = socket(AF_UNIX, SOCK_DGRAM, 0);
+	muxr_s = socket(AF_UNIX, SOCK_STREAM, 0);
 	if (muxr_s < 0) {
 		ldmsd_log(LDMSD_LERROR, "Error %d creating muxr socket.\n",
 				muxr_s);
@@ -1498,6 +723,12 @@ int ldmsd_config_init(char *name)
 	}
 	bind_succeeded = 1;
 
+	ret = listen(muxr_s, 1);
+	if (ret < 0) {
+		ldmsd_log(LDMSD_LERROR, "Error %d listen to sock named '%s'.\n",
+				errno, sockname);
+	}
+
 	ret = pthread_create(&ctrl_thread, NULL, ctrl_thread_proc, 0);
 	if (ret) {
 		ldmsd_log(LDMSD_LERROR, "Error %d creating "
@@ -1506,9 +737,6 @@ int ldmsd_config_init(char *name)
 	}
 	return 0;
 }
-
-extern int
-process_request(int fd, struct msghdr *msg, size_t msg_len);
 
 void *inet_ctrl_thread_proc(void *args)
 {
@@ -1641,34 +869,26 @@ loop:
 		msglen = recvmsg(inet_sock, &msg, MSG_PEEK);
 		if (msglen <= 0)
 			break;
-		if (request.marker != LDMSD_RECORD_MARKER || (msglen < sizeof(request))) {
-			iov.iov_len = cfg_buf_len;
-			iov.iov_base = lbuf;
-			msglen = recvmsg(inet_sock, &msg, 0);
-			if (msglen <= 0)
+		if (cfg_buf_len < request.rec_len) {
+			free(lbuf);
+			lbuf = malloc(request.rec_len);
+			if (!lbuf) {
+				cfg_buf_len = 0;
 				break;
-			/* Process old style message */
-			process_message(inet_sock, &msg, msglen);
-			if (cleanup_requested)
-				break;
-		} else {
-			if (cfg_buf_len < request.rec_len) {
-				cfg_buf_len = request.rec_len;
-				free(lbuf);
-				lbuf = malloc(cfg_buf_len);
-				if (!lbuf)
-					break;
-				iov.iov_base = lbuf;
 			}
-			iov.iov_base = lbuf;
-			iov.iov_len = request.rec_len;
-			msglen = recvmsg(inet_sock, &msg, MSG_WAITALL);
-			if (msglen < request.rec_len)
-				break;
-			process_request(inet_sock, &msg, msglen);
-			if (cleanup_requested)
-				break;
+			cfg_buf_len = request.rec_len;
 		}
+
+		iov.iov_base = lbuf;
+		iov.iov_len = request.rec_len;
+		msglen = recvmsg(inet_sock, &msg, MSG_WAITALL);
+		if (msglen < request.rec_len)
+			break;
+
+		process_request(inet_sock, &msg, msglen);
+		if (cleanup_requested)
+			break;
+
 	} while (1);
 	ldmsd_log(LDMSD_LINFO,
 		  "Closing configuration socket. cfg_buf_len %d\n",
@@ -1838,7 +1058,7 @@ int ldmsd_plugins_usage(const char *plugname)
 			char *suff = rindex(b, '.');
 			*suff = '\0';
 			char err_str[LEN_ERRSTR];
-			if (ldmsd_load_plugin(b, err_str)) {
+			if (ldmsd_load_plugin(b, err_str, LEN_ERRSTR)) {
 				fprintf(stderr, "Unable to load plugin %s: %s\n",
 					b, err_str);
 				goto next;
@@ -1868,8 +1088,16 @@ int ldmsd_plugins_usage(const char *plugname)
 			const char *u = pi->plugin->usage(pi->plugin);
 			printf("%s\n", u);
 			printf("=========================\n");
-			if (ldmsd_term_plugin(b, err_str)) {
-				fprintf(stderr, "%s\n", err_str);
+			rc = ldmsd_term_plugin(b);
+			if (rc == ENOENT) {
+				fprintf(stderr, "plugin '%s' not found\n", b);
+			} else if (rc == EINVAL) {
+				fprintf(stderr, "The specified plugin '%s' has "
+					"active users and cannot be "
+					"terminated.\n", b);
+			} else if (rc) {
+				fprintf(stderr, "Failed to terminate "
+						"the plugin '%s'\n", b);
 			}
  next:
 			free(tmp);

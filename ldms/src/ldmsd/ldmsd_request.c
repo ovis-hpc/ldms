@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2017 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -87,10 +87,6 @@
  */
 
 pthread_mutex_t msg_tree_lock = PTHREAD_MUTEX_INITIALIZER;
-typedef struct msg_key {
-	uint32_t msg_no;
-	uint32_t sock_fd;
-} *msg_key_t;
 
 static int msg_comparator(void *a, const void *b)
 {
@@ -107,62 +103,61 @@ struct rbt msg_tree = RBT_INITIALIZER(msg_comparator);
 #define LINE_BUF_LEN 1024
 #define REQ_BUF_LEN 4096
 #define REP_BUF_LEN REQ_BUF_LEN
-typedef struct req_msg {
-	struct msg_key key;
-	struct rbn rbn;
-	struct ldmsd_req_hdr_s rh;
-	struct msghdr *mh;
-	int rec_no;
-	size_t line_len;
-	char *line_buf;
-	size_t req_len;
-	size_t req_off;
-	char *req_buf;
-	size_t rep_len;
-	size_t rep_off;
-	char *rep_buf;
-} *req_msg_t;
 
 typedef int
-(*ldmsd_request_handler_t)(int sock, req_msg_t rm);
+(*ldmsd_request_handler_t)(ldmsd_req_ctxt_t req_ctxt);
 struct request_handler_entry {
 	int req_id;
 	ldmsd_request_handler_t handler;
 };
 
-static int cli_handler(int sock, req_msg_t rm);
-static int example_handler(int sock, req_msg_t rm);
-static int prdcr_add_handler(int sock, req_msg_t rm);
-static int prdcr_del_handler(int sock, req_msg_t rm);
-static int prdcr_start_handler(int sock, req_msg_t rm);
-static int prdcr_stop_handler(int sock, req_msg_t rm);
-static int prdcr_start_regex_handler(int sock, req_msg_t rm);
-static int prdcr_stop_regex_handler(int sock, req_msg_t rm);
-static int prdcr_status_handler(int sock, req_msg_t rm);
-static int prdcr_set_handler(int sock, req_msg_t rm);
-static int strgp_add_handler(int sock, req_msg_t rm);
-static int strgp_del_handler(int sock, req_msg_t rm);
-static int strgp_start_handler(int sock, req_msg_t rm);
-static int strgp_stop_handler(int sock, req_msg_t rm);
-static int strgp_prdcr_add_handler(int sock, req_msg_t rm);
-static int strgp_prdcr_del_handler(int sock, req_msg_t rm);
-static int strgp_metric_add_handler(int sock, req_msg_t rm);
-static int strgp_metric_del_handler(int sock, req_msg_t rm);
-static int strgp_status_handler(int sock, req_msg_t rm);
-static int updtr_add_handler(int sock, req_msg_t rm);
-static int updtr_del_handler(int sock, req_msg_t rm);
-static int updtr_prdcr_add_handler(int sock, req_msg_t rm);
-static int updtr_prdcr_del_handler(int sock, req_msg_t rm);
-static int updtr_match_add_handler(int sock, req_msg_t rm);
-static int updtr_match_del_handler(int sock, req_msg_t rm);
-static int updtr_start_handler(int sock, req_msg_t rm);
-static int updtr_stop_handler(int sock, req_msg_t rm);
-static int updtr_status_handler(int sock, req_msg_t rm);
-static int plugn_status_handler(int sock, req_msg_t rm);
-static int unimplemented_handler(int sock, req_msg_t rm);
+static int example_handler(ldmsd_req_ctxt_t req_ctxt);
+static int prdcr_add_handler(ldmsd_req_ctxt_t req_ctxt);
+static int prdcr_del_handler(ldmsd_req_ctxt_t req_ctxt);
+static int prdcr_start_handler(ldmsd_req_ctxt_t req_ctxt);
+static int prdcr_stop_handler(ldmsd_req_ctxt_t req_ctxt);
+static int prdcr_start_regex_handler(ldmsd_req_ctxt_t req_ctxt);
+static int prdcr_stop_regex_handler(ldmsd_req_ctxt_t req_ctxt);
+static int prdcr_status_handler(ldmsd_req_ctxt_t req_ctxt);
+static int prdcr_set_handler(ldmsd_req_ctxt_t req_ctxt);
+static int strgp_add_handler(ldmsd_req_ctxt_t req_ctxt);
+static int strgp_del_handler(ldmsd_req_ctxt_t req_ctxt);
+static int strgp_start_handler(ldmsd_req_ctxt_t req_ctxt);
+static int strgp_stop_handler(ldmsd_req_ctxt_t req_ctxt);
+static int strgp_prdcr_add_handler(ldmsd_req_ctxt_t req_ctxt);
+static int strgp_prdcr_del_handler(ldmsd_req_ctxt_t req_ctxt);
+static int strgp_metric_add_handler(ldmsd_req_ctxt_t req_ctxt);
+static int strgp_metric_del_handler(ldmsd_req_ctxt_t req_ctxt);
+static int strgp_status_handler(ldmsd_req_ctxt_t req_ctxt);
+static int updtr_add_handler(ldmsd_req_ctxt_t req_ctxt);
+static int updtr_del_handler(ldmsd_req_ctxt_t req_ctxt);
+static int updtr_prdcr_add_handler(ldmsd_req_ctxt_t req_ctxt);
+static int updtr_prdcr_del_handler(ldmsd_req_ctxt_t req_ctxt);
+static int updtr_match_add_handler(ldmsd_req_ctxt_t req_ctxt);
+static int updtr_match_del_handler(ldmsd_req_ctxt_t req_ctxt);
+static int updtr_start_handler(ldmsd_req_ctxt_t req_ctxt);
+static int updtr_stop_handler(ldmsd_req_ctxt_t req_ctxt);
+static int updtr_status_handler(ldmsd_req_ctxt_t req_ctxt);
+static int plugn_start_handler(ldmsd_req_ctxt_t req_ctxt);
+static int plugn_stop_handler(ldmsd_req_ctxt_t req_ctxt);
+static int plugn_status_handler(ldmsd_req_ctxt_t req_ctxt);
+static int plugn_load_handler(ldmsd_req_ctxt_t req_ctxt);
+static int plugn_term_handler(ldmsd_req_ctxt_t req_ctxt);
+static int plugn_config_handler(ldmsd_req_ctxt_t req_ctxt);
+static int plugn_list_handler(ldmsd_req_ctxt_t req_ctxt);
+static int set_udata_handler(ldmsd_req_ctxt_t req_ctxt);
+static int set_udata_regex_handler(ldmsd_req_ctxt_t req_ctxt);
+static int verbosity_change_handler(ldmsd_req_ctxt_t reqc);
+static int daemon_status_handler(ldmsd_req_ctxt_t reqc);
+static int version_handler(ldmsd_req_ctxt_t reqc);
+static int env_handler(ldmsd_req_ctxt_t req_ctxt);
+static int include_handler(ldmsd_req_ctxt_t req_ctxt);
+static int oneshot_handler(ldmsd_req_ctxt_t req_ctxt);
+static int logrotate_handler(ldmsd_req_ctxt_t req_ctxt);
+static int exit_daemon_handler(ldmsd_req_ctxt_t req_ctxt);
+static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static struct request_handler_entry request_handler[] = {
-	[LDMSD_CLI_REQ]          = { LDMSD_CLI_REQ, cli_handler },
 	[LDMSD_EXAMPLE_REQ]      = { LDMSD_EXAMPLE_REQ, example_handler },
 	[LDMSD_PRDCR_ADD_REQ]    = { LDMSD_PRDCR_ADD_REQ, prdcr_add_handler },
 	[LDMSD_PRDCR_DEL_REQ]    = { LDMSD_PRDCR_DEL_REQ, prdcr_del_handler },
@@ -190,7 +185,23 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_UPDTR_MATCH_ADD_REQ]   = { LDMSD_UPDTR_MATCH_ADD_REQ, updtr_match_add_handler },
 	[LDMSD_UPDTR_MATCH_DEL_REQ]   = { LDMSD_UPDTR_MATCH_DEL_REQ, updtr_match_del_handler },
 	[LDMSD_UPDTR_STATUS_REQ] = { LDMSD_UPDTR_STATUS_REQ, updtr_status_handler },
+	[LDMSD_PLUGN_START_REQ] = { LDMSD_PLUGN_START_REQ, plugn_start_handler },
+	[LDMSD_PLUGN_STOP_REQ] = { LDMSD_PLUGN_STOP_REQ, plugn_stop_handler },
 	[LDMSD_PLUGN_STATUS_REQ] = { LDMSD_PLUGN_STATUS_REQ, plugn_status_handler },
+	[LDMSD_PLUGN_LOAD_REQ] = { LDMSD_PLUGN_LOAD_REQ, plugn_load_handler },
+	[LDMSD_PLUGN_TERM_REQ] = { LDMSD_PLUGN_TERM_REQ, plugn_term_handler },
+	[LDMSD_PLUGN_CONFIG_REQ] = { LDMSD_PLUGN_CONFIG_REQ, plugn_config_handler },
+	[LDMSD_PLUGN_LIST_REQ] = { LDMSD_PLUGN_LIST_REQ, plugn_list_handler },
+	[LDMSD_SET_UDATA_REQ] = { LDMSD_SET_UDATA_REQ, set_udata_handler },
+	[LDMSD_SET_UDATA_REGEX_REQ] = { LDMSD_SET_UDATA_REGEX_REQ, set_udata_regex_handler },
+	[LDMSD_VERBOSE_REQ] = { LDMSD_VERBOSE_REQ, verbosity_change_handler },
+	[LDMSD_DAEMON_STATUS_REQ] = { LDMSD_DAEMON_STATUS_REQ, daemon_status_handler },
+	[LDMSD_VERSION_REQ] = { LDMSD_VERSION_REQ, version_handler },
+	[LDMSD_ENV_REQ] = { LDMSD_ENV_REQ, env_handler },
+	[LDMSD_INCLUDE_REQ] = { LDMSD_INCLUDE_REQ, include_handler },
+	[LDMSD_ONESHOT_REQ] = { LDMSD_ONESHOT_REQ, oneshot_handler },
+	[LDMSD_LOGROTATE_REQ] = { LDMSD_LOGROTATE_REQ, logrotate_handler },
+	[LDMSD_EXIT_DAEMON_REQ] = { LDMSD_EXIT_DAEMON_REQ, exit_daemon_handler },
 };
 
 /*
@@ -202,73 +213,83 @@ static struct request_handler_entry request_handler[] = {
  * 1. msg_no is unique on the socket
  * 2. There may be multiple messages outstanding on the same socket
  */
-static req_msg_t find_msg(struct msg_key *key)
+static ldmsd_req_ctxt_t find_req_ctxt(struct req_ctxt_key *key)
 {
-	req_msg_t rm = NULL;
+	ldmsd_req_ctxt_t rm = NULL;
 	struct rbn *rbn = rbt_find(&msg_tree, key);
 	if (rbn)
-		rm = container_of(rbn, struct req_msg, rbn);
+		rm = container_of(rbn, struct ldmsd_req_ctxt, rbn);
 	return rm;
 }
 
-static void free_msg(req_msg_t rm)
+void free_req_ctxt(ldmsd_req_ctxt_t reqc)
 {
-	rbt_del(&msg_tree, &rm->rbn);
-	if (rm->line_buf)
-		free(rm->line_buf);
-	if (rm->req_buf)
-		free(rm->req_buf);
-	if (rm->rep_buf)
-		free(rm->rep_buf);
-	free(rm);
+	rbt_del(&msg_tree, &reqc->rbn);
+	if (reqc->line_buf)
+		free(reqc->line_buf);
+	if (reqc->req_buf)
+		free(reqc->req_buf);
+	if (reqc->rep_buf)
+		free(reqc->rep_buf);
+	free(reqc);
 }
 
-static req_msg_t alloc_msg(struct msg_key *key)
+ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key)
 {
-	req_msg_t rm;
-	rm = calloc(1, sizeof *rm);
-	if (!rm)
+	ldmsd_req_ctxt_t reqc;
+	reqc = calloc(1, sizeof *reqc);
+	if (!reqc)
 		return NULL;
-	rm->line_len = LINE_BUF_LEN;
-	rm->line_buf = malloc(LINE_BUF_LEN);
-	if (!rm->line_buf)
+	reqc->line_len = LINE_BUF_LEN;
+	reqc->line_buf = malloc(LINE_BUF_LEN);
+	if (!reqc->line_buf)
 		goto err;
-	rm->req_len = REQ_BUF_LEN;
-	rm->req_off = 0;
-	rm->req_buf = malloc(REQ_BUF_LEN);
-	if (!rm->req_buf)
+	reqc->req_len = REQ_BUF_LEN;
+	reqc->req_off = 0;
+	reqc->req_buf = malloc(REQ_BUF_LEN);
+	if (!reqc->req_buf)
 		goto err;
-	rm->req_buf[0] = '\0';
-	rm->rep_len = REP_BUF_LEN;
-	rm->rep_off = 0;
-	rm->rep_buf = malloc(REP_BUF_LEN);
-	if (!rm->rep_buf)
+	reqc->req_buf[0] = '\0';
+	reqc->rep_len = REP_BUF_LEN;
+	reqc->rep_off = 0;
+	reqc->rep_buf = malloc(REP_BUF_LEN);
+	if (!reqc->rep_buf)
 		goto err;
-	rm->rep_buf[0] = '\0';
-	rm->key = *key;
-	rbn_init(&rm->rbn, &rm->key);
-	rbt_ins(&msg_tree, &rm->rbn);
-	return rm;
+	reqc->rep_buf[0] = '\0';
+	reqc->key = *key;
+	rbn_init(&reqc->rbn, &reqc->key);
+	rbt_ins(&msg_tree, &reqc->rbn);
+	return reqc;
  err:
-	free_msg(rm);
+	free_req_ctxt(reqc);
 	return NULL;
 }
 
-static int gather_data(req_msg_t rm, struct msghdr *msg, size_t msg_len)
+void req_ctxt_tree_lock()
+{
+	pthread_mutex_lock(&msg_tree_lock);
+}
+
+void req_ctxt_tree_unlock()
+{
+	pthread_mutex_unlock(&msg_tree_lock);
+}
+
+static int gather_data(ldmsd_req_ctxt_t reqc, struct msghdr *msg, size_t msg_len)
 {
 	int i;
 	size_t copylen;
 	size_t copyoff;
 	ldmsd_req_hdr_t request = msg->msg_iov[0].iov_base;
-	size_t remaining = rm->req_len - rm->req_off;
+	size_t remaining = reqc->req_len - reqc->req_off;
 	if (msg_len > remaining) {
 		size_t new_size = msg_len + REQ_BUF_LEN;
-		if (new_size < rm->req_len + msg_len)
-			new_size = rm->req_len + msg_len;
-		rm->req_buf = realloc(rm->req_buf, new_size);
-		if (!rm->req_buf)
+		if (new_size < reqc->req_len + msg_len)
+			new_size = reqc->req_len + msg_len;
+		reqc->req_buf = realloc(reqc->req_buf, new_size);
+		if (!reqc->req_buf)
 			return ENOMEM;
-		rm->req_len = new_size;
+		reqc->req_len = new_size;
 	}
 	copyoff = sizeof(*request);
 	for (i = 0; i < msg->msg_iovlen; i++) {
@@ -277,79 +298,153 @@ static int gather_data(req_msg_t rm, struct msghdr *msg, size_t msg_len)
 			continue;
 		}
 		copylen = msg->msg_iov[i].iov_len - copyoff;
-		memcpy(&rm->req_buf[rm->req_off],
+		memcpy(&reqc->req_buf[reqc->req_off],
 		       msg->msg_iov[i].iov_base + copyoff,
 		       copylen);
-		rm->req_off += copylen;
+		reqc->req_off += copylen;
 		copyoff = 0;
 	}
-	rm->req_buf[rm->req_off] = '\0';
+	reqc->req_buf[reqc->req_off] = '\0';
 	return 0;
 }
 
+static int string2attr_list(char *str, struct attr_value_list **__av_list,
+					struct attr_value_list **__kw_list)
+{
+	char *cmd_s;
+	struct attr_value_list *av_list;
+	struct attr_value_list *kw_list;
+	int tokens, rc;
+
+	/*
+	 * Count the numebr of spaces. That's the maximum number of
+	 * tokens that could be present.
+	 */
+	for (tokens = 0, cmd_s = str; cmd_s[0] != '\0';) {
+		tokens++;
+		/* find whitespace */
+		while (cmd_s[0] != '\0' && !isspace(cmd_s[0]))
+			cmd_s++;
+		/* Now skip whitespace to next token */
+		while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
+			cmd_s++;
+	}
+	rc = ENOMEM;
+	av_list = av_new(tokens);
+	kw_list = av_new(tokens);
+	if (!av_list || !kw_list)
+		goto err;
+
+	rc = tokenize(str, kw_list, av_list);
+	if (rc)
+		goto err;
+	*__av_list = av_list;
+	*__kw_list = kw_list;
+	return 0;
+err:
+	*__av_list = NULL;
+	*__kw_list = NULL;
+	return rc;
+}
+
+int ldmsd_handle_request(ldmsd_req_hdr_t request, ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	/* Check for request id outside of range */
+	if (request->code < 0 ||
+	    request->code >= (sizeof(request_handler)/sizeof(request_handler[0])))
+		rc = unimplemented_handler(reqc);
+	else if (!request_handler[request->code].handler)
+		/* Check for unimplemented request */
+		rc = unimplemented_handler(reqc);
+	else
+		rc = request_handler[request->code].handler(reqc);
+	return rc;
+}
+
+size_t Snprintf(char **dst, size_t *len, char *fmt, ...);
+static int
+send_request_reply(struct ldmsd_req_ctxt *reqc,
+		   char *data, size_t data_len,
+		   int msg_flags);
 int process_request(int fd, struct msghdr *msg, size_t msg_len)
 {
 	ldmsd_req_hdr_t request = msg->msg_iov[0].iov_base;
-	struct msg_key key;
-	req_msg_t rm;
+	struct req_ctxt_key key;
+	ldmsd_req_ctxt_t reqc = NULL;
 	int rc;
+	size_t cnt = 0;
 
 	key.msg_no = request->msg_no;
 	key.sock_fd = fd;
 
-	pthread_mutex_lock(&msg_tree_lock);
+	req_ctxt_tree_lock();
 	if (request->flags & LDMSD_REQ_SOM_F) {
 		/* Ensure that we don't already have this message in
 		 * the tree */
-		rm = find_msg(&key);
-		if (rm) {
-			ldmsd_log(LDMSD_LERROR,
-				  "Duplicate message number %d:%d received\n",
+		reqc = find_req_ctxt(&key);
+		if (reqc) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				  "Duplicate message number %d:%d received",
 				  key.msg_no, key.sock_fd);
 			goto err_out;
 		}
-		rm = alloc_msg(&key);
-		if (rm)
-			memcpy(&rm->rh, request, sizeof(*request));
+		reqc = alloc_req_ctxt(&key);
+		if (reqc) {
+			memcpy(&reqc->rh, request, sizeof(*request));
+			reqc->resp_handler = send_request_reply;
+			reqc->dest_fd = fd;
+		} else {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"ldmsd out of memory.");
+		}
+
 	} else {
-		rm = find_msg(&key);
-		if (!rm)
-			ldmsd_log(LDMSD_LERROR,
-				  "The message no %d:%d was not found\n",
+		reqc = find_req_ctxt(&key);
+		if (!reqc) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				  "The message no %d:%d was not found.",
 				  key.msg_no, key.sock_fd);
+		}
 	}
-	if (!rm)
+	if (!reqc)
 		goto err_out;
 
-	if (gather_data(rm, msg, msg_len))
+	if (gather_data(reqc, msg, msg_len))
 		goto err_out;
 
-	pthread_mutex_unlock(&msg_tree_lock);
+	req_ctxt_tree_unlock();
 	if (0 == (request->flags & LDMSD_REQ_EOM_F))
 		return 0;
 
-	rm->mh = msg;
+	reqc->mh = msg;
+
+	if (request->marker != LDMSD_RECORD_MARKER) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Received an invalid cfg request");
+		goto out;
+	}
 
 	/* Check for request id outside of range */
-	if (request->cmd_id < 0 ||
-	    request->cmd_id >= (sizeof(request_handler)/sizeof(request_handler[0])))
-		rc = unimplemented_handler(fd, rm);
-	else if (!request_handler[request->cmd_id].handler)
-		/* Check for unimplemented request */
-		rc = unimplemented_handler(fd, rm);
-	else
-		rc = request_handler[request->cmd_id].handler(fd, rm);
-	pthread_mutex_lock(&msg_tree_lock);
-	free_msg(rm);
+	rc = ldmsd_handle_request(request, reqc);
+err_out:
 	pthread_mutex_unlock(&msg_tree_lock);
+out:
+	if (reqc) {
+		req_ctxt_tree_lock();
+		free_req_ctxt(reqc);
+		req_ctxt_tree_unlock();
+	}
+	if (cnt) {
+		ldmsd_log(LDMSD_LERROR, "%s\n", reqc->line_buf);
+		rc = send_request_reply(reqc, reqc->line_buf, cnt,
+					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	}
 	return rc;
- err_out:
-	pthread_mutex_unlock(&msg_tree_lock);
-	return -1;
 }
 
 static int
-send_request_reply(int sock, req_msg_t rm,
+send_request_reply(struct ldmsd_req_ctxt *reqc,
 		   char *data, size_t data_len,
 		   int msg_flags)
 {
@@ -359,13 +454,13 @@ send_request_reply(int sock, req_msg_t rm,
 	size_t remaining;
 
 	do {
-		remaining = rm->rep_len - rm->rep_off;
+		remaining = reqc->rep_len - reqc->rep_off;
 		if (data_len < remaining)
 			remaining = data_len;
 
 		if (remaining && data) {
-			memcpy(&rm->rep_buf[rm->rep_off], data, remaining);
-			rm->rep_off += remaining;
+			memcpy(&reqc->rep_buf[reqc->rep_off], data, remaining);
+			reqc->rep_off += remaining;
 			data_len -= remaining;
 			data += remaining;
 		}
@@ -373,29 +468,30 @@ send_request_reply(int sock, req_msg_t rm,
 		if ((remaining == 0) ||
 		    ((data_len == 0) && (msg_flags & LDMSD_REQ_EOM_F))) {
 			msg_flags =
-				(rm->rec_no == 0?LDMSD_REQ_SOM_F:0)
+				(reqc->rec_no == 0?LDMSD_REQ_SOM_F:0)
 				| (msg_flags & LDMSD_REQ_EOM_F);
 			/* Record is full, send it on it's way */
-			memcpy(&req_reply, &rm->rh, sizeof rm->rh);
+			memcpy(&req_reply, &reqc->rh, sizeof reqc->rh);
 			req_reply.flags = msg_flags;
-			req_reply.rec_len = rm->rep_off + sizeof(req_reply);
+			req_reply.rec_len = reqc->rep_off + sizeof(req_reply);
+			req_reply.code = reqc->errcode;
 
-			reply_msg.msg_name = rm->mh->msg_name;
-			reply_msg.msg_namelen = rm->mh->msg_namelen;
+			reply_msg.msg_name = reqc->mh->msg_name;
+			reply_msg.msg_namelen = reqc->mh->msg_namelen;
 			iov[0].iov_base = &req_reply;
 			iov[0].iov_len = sizeof(req_reply);
-			iov[1].iov_base = rm->rep_buf;
-			iov[1].iov_len = rm->rep_off,
+			iov[1].iov_base = reqc->rep_buf;
+			iov[1].iov_len = reqc->rep_off,
 			reply_msg.msg_iov = iov;
 			reply_msg.msg_iovlen = 2;
 			reply_msg.msg_control = NULL;
 			reply_msg.msg_controllen = 0;
 			reply_msg.msg_flags = 0;
-			if (sendmsg(sock, &reply_msg, 0) < 0)
+			if (sendmsg(reqc->dest_fd, &reply_msg, 0) < 0)
 				return errno;
-			rm->rec_no ++;
-			rm->rep_off = 0;
-			rm->rep_buf[0] = '\0';
+			reqc->rec_no ++;
+			reqc->rep_off = 0;
+			reqc->rep_buf[0] = '\0';
 		}
 	} while (data_len);
 
@@ -429,137 +525,6 @@ size_t Snprintf(char **dst, size_t *len, char *fmt, ...)
 	}
 	va_end(ap);
 	return cnt;
-}
-
-#define Snprintf_error(dst, len, fmt, ...) \
-	Snprintf(dst, len, "{\"error\":\""fmt"\"}", ##__VA_ARGS__)
-
-/* kw_table must ordered in strcasecmp order, for use with bsearch. */
-struct kw {
-	char *token_str;
-	int token_id;
-} kw_table[] = {
-	{ "CONFIG", LDMSCTL_CFG_PLUGIN },
-	{ "ENV", LDMSCTL_ENV },
-	{ "EXIT", LDMSCTL_EXIT_DAEMON },
-	{ "INCLUDE", LDMSCTL_INCLUDE },
-	{ "INFO", LDMSCTL_INFO_DAEMON },
-	{ "LIST", LDMSCTL_LIST_PLUGINS },
-	{ "LOAD", LDMSCTL_LOAD_PLUGIN },
-	{ "ONESHOT_SAMPLE", LDMSCTL_ONESHOT_SAMPLE },
-	{ "PRDCR_ADD", LDMSCTL_PRDCR_ADD },
-	{ "PRDCR_DEL", LDMSCTL_PRDCR_DEL },
-	{ "PRDCR_START", LDMSCTL_PRDCR_START },
-	{ "PRDCR_START_REGEX", LDMSCTL_PRDCR_START_REGEX },
-	{ "PRDCR_STOP", LDMSCTL_PRDCR_STOP },
-	{ "PRDCR_STOP_REGEX", LDMSCTL_PRDCR_STOP_REGEX },
-	{ "SET_UDATA", LDMSCTL_SET_UDATA },
-	{ "SET_UDATA_REGEX", LDMSCTL_SET_UDATA_REGEX },
-	{ "START", LDMSCTL_START_SAMPLER },
-	{ "STOP", LDMSCTL_STOP_SAMPLER },
-	{ "STRGP_ADD", LDMSCTL_STRGP_ADD },
-	{ "STRGP_DEL", LDMSCTL_STRGP_DEL },
-	{ "STRGP_METRIC_ADD", LDMSCTL_STRGP_METRIC_ADD },
-	{ "STRGP_METRIC_DEL", LDMSCTL_STRGP_METRIC_DEL },
-	{ "STRGP_PRDCR_ADD", LDMSCTL_STRGP_PRDCR_ADD },
-	{ "STRGP_PRDCR_DEL", LDMSCTL_STRGP_PRDCR_DEL },
-	{ "STRGP_START", LDMSCTL_STRGP_START },
-	{ "STRGP_STOP", LDMSCTL_STRGP_STOP },
-	{ "TERM", LDMSCTL_TERM_PLUGIN },
-	{ "UPDTR_ADD", LDMSCTL_UPDTR_ADD },
-	{ "UPDTR_DEL", LDMSCTL_UPDTR_DEL },
-	{ "UPDTR_MATCH_ADD", LDMSCTL_UPDTR_MATCH_ADD },
-	{ "UPDTR_MATCH_DEL", LDMSCTL_UPDTR_MATCH_DEL },
-	{ "UPDTR_PRDCR_ADD", LDMSCTL_UPDTR_PRDCR_ADD },
-	{ "UPDTR_PRDCR_DEL", LDMSCTL_UPDTR_PRDCR_DEL },
-	{ "UPDTR_START", LDMSCTL_UPDTR_START },
-	{ "UPDTR_STOP", LDMSCTL_UPDTR_STOP },
-	{ "VERBOSE", LDMSCTL_VERBOSE },
-	{ "VERSION", LDMSCTL_VERSION },
-};
-
-static int kw_cmp(const void *a, const void *b)
-{
-	struct kw *_a = (struct kw *)a;
-	struct kw *_b = (struct kw *)b;
-	return strcasecmp(_a->token_str, _b->token_str);
-}
-
-static int cli_handler(int sock, req_msg_t rm)
-{
-	char *cmd_s;
-	long cmd_id;
-	struct attr_value_list *av_list;
-	struct attr_value_list *kw_list;
-	int tokens, rc;
-
-	/*
-	 * Count the number of spaces. That's the maximum number of
-	 * tokens that could be present
-	 */
-	for (tokens = 0, cmd_s = rm->req_buf; cmd_s[0] != '\0';) {
-		tokens++;
-		/* find whitespace */
-		while (cmd_s[0] != '\0' && !isspace(cmd_s[0]))
-			cmd_s++;
-		/* Now skip whitepace to next token */
-		while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
-			cmd_s++;
-	}
-	rc = ENOMEM;
-	av_list = av_new(tokens);
-	kw_list = av_new(tokens);
-	if (!av_list || !kw_list)
-		goto out;
-	rc = tokenize(rm->req_buf, kw_list, av_list);
-	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "ENOMEM processing %d byte request",
-			  rm->req_off);
-		rc = ENOMEM;
-		goto out;
-	}
-
-	cmd_s = av_name(kw_list, 0);
-	if (!cmd_s) {
-		ldmsd_log(LDMSD_LERROR, "EINVAL request is missing request Id\n");
-		rc = EINVAL;
-		goto out;
-	}
-
-	if (isalpha(cmd_s[0])) {
-		struct kw key;
-		key.token_str = cmd_s;
-		struct kw *kw = bsearch(&key, kw_table,
-					sizeof(kw_table) / sizeof(kw_table[0]),
-					sizeof(kw_table[0]),
-					kw_cmp);
-		if (!kw) {
-			ldmsd_log(LDMSD_LERROR, "Unrecognized keyword %s\n", cmd_s);
-			rc = EINVAL;
-			goto out;
-		}
-		cmd_id = kw->token_id;
-	} else
-		cmd_id = strtoul(cmd_s, NULL, 0);
-	if (cmd_id >= 0 && cmd_id <= LDMSCTL_LAST_COMMAND) {
-		if (cmd_table[cmd_id]) {
-			rc = cmd_table[cmd_id](rm->rep_buf, av_list, kw_list);
-			goto out;
-		}
-	}
-	rc = send_request_reply(sock, rm, "22Invalid command", 18,
-				LDMSD_REQ_SOM_F|LDMSD_REQ_EOM_F);
-	free(kw_list);
-	free(av_list);
-	return rc;
- out:
-	rm->rep_off = strlen(rm->rep_buf) + 1;
-	rc = send_request_reply(sock, rm, NULL, 0, LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
-	if (kw_list)
-		av_free(kw_list);
-	if (av_list)
-		av_free(av_list);
-	return rc;
 }
 
 /**
@@ -596,32 +561,33 @@ static int cli_handler(int sock, req_msg_t rm)
  * The example below takes a variable length argument list, formats
  * the arguments as a JSON array and returns the array to the caller.
  */
-static int example_handler(int sock, req_msg_t rm)
+static int example_handler(ldmsd_req_ctxt_t reqc)
 {
 	size_t cnt;
 	int rc, count = 0;
-	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)rm->req_buf;
-	rc = send_request_reply(sock, rm, "[", 1, LDMSD_REQ_SOM_F);
+	reqc->errcode = 0;
+	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)reqc->req_buf;
+	rc = reqc->resp_handler(reqc, "[", 1, LDMSD_REQ_SOM_F);
 	while (attr->discrim) {
 		if (count)
-			rc = send_request_reply(sock, rm, ",\n", 2, 0);
+			rc = reqc->resp_handler(reqc, ",\n", 2, 0);
 
-		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			       "{ \"attr_len\":%d,"
 			       "\"attr_id\":%d,"
 			       "\"attr_value\": \"%s\" }",
 			       attr->attr_len,
 			       attr->attr_id,
 			       (char *)attr->attr_value);
-		rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
 		count++;
 		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
 	}
-	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
+	rc = reqc->resp_handler(reqc, "]", 1, LDMSD_REQ_EOM_F);
 	return rc;
 }
 
-static int prdcr_add_handler(int sock, req_msg_t rm)
+static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_prdcr_t prdcr;
 	char *name, *host, *xprt, *attr_name;
@@ -629,10 +595,11 @@ static int prdcr_add_handler(int sock, req_msg_t rm)
 	enum ldmsd_prdcr_type type = -1;
 	short port_no = -1;
 	int interval_us = -1;
-	size_t cnt;
+	size_t cnt = 0;
+	reqc->errcode = 0;
 
 	ldmsd_req_attr_t attr;
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -663,16 +630,16 @@ static int prdcr_add_handler(int sock, req_msg_t rm)
 		goto einval;
 	}
 	if (type < 0) {
-		attr_name = "type";
-		goto einval;
-	}
-	if (type == EINVAL) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe attribute "
-					"type '%s' is invalid.", EINVAL, type);
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "The attribute "
+					"type '%s' is invalid.", type);
 		goto send_reply;
 	}
-	if (type == LDMSD_PRDCR_TYPE_LOCAL)
-		goto out;
+	if (type == LDMSD_PRDCR_TYPE_LOCAL) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Producer with type 'local' is not supported.");
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
 
 	if (!xprt) {
 		attr_name = "xprt";
@@ -698,33 +665,35 @@ out:
 		else
 			goto enomem;
 	}
-	cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	goto send_reply;
 enomem:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dMemory allocation "
-							"failed.", ENOMEM);
+	reqc->errcode = ENOMEM;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"Memory allocation failed.");
 	goto send_reply;
 eexist:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe prdcr %s already "
-						"exists.", EEXIST, name);
+	reqc->errcode = EEXIST;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"The prdcr %s already exists.", name);
 	goto send_reply;
 einval:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", EINVAL, attr_name);
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int prdcr_del_handler(int sock, req_msg_t rm)
+static int prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name = NULL, *attr_name;
-	size_t cnt;
-	int rc;
+	size_t cnt = 0;
+	reqc->errcode = 0;
 
 	ldmsd_req_attr_t attr;
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -737,36 +706,36 @@ static int prdcr_del_handler(int sock, req_msg_t rm)
 	}
 	if (!name) {
 		attr_name = "name";
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute "
-					"'%s' is required.", EINVAL, attr_name);
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"This attribute '%s' is required.", attr_name);
 		goto send_reply;
 	}
 
-	rc = ldmsd_prdcr_del(name);
-	if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe producer "
-				"specified does not exist.", ENOENT);
-	} else if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe producer "
-						"is in use.", EBUSY);
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_prdcr_del(name);
+	if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The producer specified does not exist.");
+	} else if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"%dThe producer is in use.");
 	}
 
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int prdcr_start_handler(int sock, req_msg_t rm)
+static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *interval_str;
 	name = interval_str = NULL;
-	size_t cnt;
+	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -781,35 +750,35 @@ static int prdcr_start_handler(int sock, req_msg_t rm)
 		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
 	}
 	if (!name) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute "
-						"'name' is required.", EINVAL);
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"This attribute 'name' is required.");
 		goto send_reply;
 	}
 
-	int rc = ldmsd_prdcr_start(name, interval_str);
-	if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe producer "
-						"is already running.", EBUSY);
-	} else if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe producer "
-					"specified does not exist.", ENOENT);
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_prdcr_start(name, interval_str);
+	if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The producer is already running.");
+	} else if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The producer specified does not exist.");
 	}
 
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int prdcr_stop_handler(int sock, req_msg_t rm)
+static int prdcr_stop_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name = NULL;
-	size_t cnt;
+	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -821,36 +790,36 @@ static int prdcr_stop_handler(int sock, req_msg_t rm)
 		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
 	}
 	if (!name) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute "
-						"'name' is required.", EINVAL);
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"This attribute 'name' is required.");
 		goto send_reply;
 	}
 
-	int rc = ldmsd_prdcr_stop(name);
-	if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe producer "
-						"is already stopped.", EBUSY);
-	} else if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe producer "
-					"specified does not exist.", ENOENT);
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_prdcr_stop(name);
+	if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The producer is already stopped.");
+	} else if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The producer specified does not exist.");
 	}
 
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int prdcr_start_regex_handler(int sock, req_msg_t rm)
+static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *prdcr_regex, *interval_str;
 	prdcr_regex = interval_str = NULL;
-	size_t cnt;
+	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_REGEX:
@@ -865,30 +834,30 @@ static int prdcr_start_regex_handler(int sock, req_msg_t rm)
 		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
 	}
 	if (!prdcr_regex) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute "
-						"'regex' is required.", EINVAL);
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"This attribute 'regex' is required.");
 		goto send_reply;
 	}
-	int rc = ldmsd_prdcr_start_regex(prdcr_regex, interval_str,
-					rm->line_buf, rm->line_len);
-	if (rc)
-		cnt = sizeof(rm->line_buf);
-	else
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_prdcr_start_regex(prdcr_regex, interval_str,
+					reqc->line_buf, reqc->line_len);
+	if (reqc->errcode)
+		cnt = sizeof(reqc->line_buf) + 1;
 
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int prdcr_stop_regex_handler(int sock, req_msg_t rm)
+static int prdcr_stop_regex_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *prdcr_regex = NULL;
-	size_t cnt;
+	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_REGEX:
@@ -900,38 +869,39 @@ static int prdcr_stop_regex_handler(int sock, req_msg_t rm)
 		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
 	}
 	if (!prdcr_regex) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute "
-						"'regex' is required.", EINVAL);
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"This attribute 'regex' is required.");
 		goto send_reply;
 	}
-	int rc = ldmsd_prdcr_stop_regex(prdcr_regex, rm->line_buf, rm->line_len);
-	if (rc)
-		cnt = sizeof(rm->line_buf);
-	else
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_prdcr_stop_regex(prdcr_regex,
+				reqc->line_buf, reqc->line_len);
+	if (reqc->errcode)
+		cnt = sizeof(reqc->line_buf) + 1;
 
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int prdcr_status_handler(int sock, req_msg_t rm)
+static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 	ldmsd_prdcr_t prdcr;
 	size_t cnt;
 	int rc, count = 0;
+	reqc->errcode = 0;
 
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	rc = send_request_reply(sock, rm, "[", 1, LDMSD_REQ_SOM_F);
+	rc = reqc->resp_handler(reqc, "[", 1, LDMSD_REQ_SOM_F);
 	for (prdcr = ldmsd_prdcr_first(); prdcr;
 	     prdcr = ldmsd_prdcr_next(prdcr)) {
 
 		if (count)
-			rc = send_request_reply(sock, rm, ",\n", 2, 0);
+			rc = reqc->resp_handler(reqc, ",\n", 2, 0);
 
-		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			       "{ \"name\":\"%s\","
 			       "\"host\":\"%s\","
 			       "\"port\":%hu,"
@@ -941,7 +911,7 @@ static int prdcr_status_handler(int sock, req_msg_t rm)
 			       prdcr->obj.name,
 			       prdcr->host_name, prdcr->port_no, prdcr->xprt_name,
 			       prdcr_state_str(prdcr->conn_state));
-		rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
 
 		ldmsd_prdcr_lock(prdcr);
 		ldmsd_prdcr_set_t prv_set;
@@ -950,71 +920,156 @@ static int prdcr_status_handler(int sock, req_msg_t rm)
 		     prv_set = ldmsd_prdcr_set_next(prv_set)) {
 
 			if (set_count)
-				rc = send_request_reply(sock, rm, ",\n", 2, 0);
+				rc = reqc->resp_handler(reqc, ",\n", 2, 0);
 
-			cnt = Snprintf(&rm->line_buf, &rm->line_len,
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				       "{ \"inst_name\":\"%s\","
 				       "\"schema_name\":\"%s\","
 				       "\"state\":\"%s\"}",
 				       prv_set->inst_name, prv_set->schema_name,
 				       ldmsd_prdcr_set_state_str(prv_set->state));
-			rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
+			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
 			set_count++;
 		}
 		ldmsd_prdcr_unlock(prdcr);
-		rc = send_request_reply(sock, rm, "]}", 2, 0);
+		rc = reqc->resp_handler(reqc, "]}", 2, 0);
 		count++;
 	}
-	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
+	rc = reqc->resp_handler(reqc, "]", 1, LDMSD_REQ_EOM_F);
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	return rc;
 }
 
-static int prdcr_set_handler(int sock, req_msg_t rm)
+size_t __prdcr_set_status(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_set_t prd_set)
 {
-	ldmsd_prdcr_t prdcr;
-	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)rm->req_buf;
-	size_t cnt;
-	int rc, count = 0;
+	struct ldms_timestamp ts, dur;
+	ts = ldms_transaction_timestamp_get(prd_set->set);
+	dur = ldms_transaction_duration_get(prd_set->set);
+	return Snprintf(&reqc->line_buf, &reqc->line_len,
+		"{ "
+		"\"inst_name\":\"%s\","
+		"\"schema_name\":\"%s\","
+		"\"state\":\"%s\","
+		"\"origin\":\"%s\","
+		"\"producer\":\"%s\","
+		"\"timestamp.sec\":\"%d\","
+		"\"timestamp.usec\":\"%d\","
+		"\"duration.sec\":\"%d\","
+		"\"duration.usec\":\"%d\""
+		"}",
+		prd_set->inst_name, prd_set->schema_name,
+		ldmsd_prdcr_set_state_str(prd_set->state),
+		ldms_set_producer_name_get(prd_set->set),
+		prd_set->prdcr->obj.name,
+		ts.sec, ts.usec,
+		dur.sec, dur.usec);
+}
 
-	rc = send_request_reply(sock, rm, "[", 1, LDMSD_REQ_SOM_F);
-	prdcr = ldmsd_prdcr_find((char *)attr->attr_value);
-	if (!prdcr) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"Producer %s does not exist.",
-				attr->attr_value);
-		rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
-		goto out;
+/* This function must be called with producer lock held */
+int __prdcr_set_status_handler(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr,
+			int *count, const char *setname, const char *schema)
+{
+	int rc;
+	size_t cnt;
+	ldmsd_prdcr_set_t prd_set;
+
+	if (setname) {
+		prd_set = ldmsd_prdcr_set_find(prdcr, setname);
+		if (!prd_set)
+			return 0;
+		if (schema && (0 != strcmp(prd_set->schema_name, schema)))
+			return 0;
+		if (*count)
+			rc = reqc->resp_handler(reqc, ",\n", 2, 0);
+		cnt = __prdcr_set_status(reqc, prd_set);
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
+		(*count)++;
+	} else {
+		for (prd_set = ldmsd_prdcr_set_first(prdcr); prd_set;
+			prd_set = ldmsd_prdcr_set_next(prd_set)) {
+			if (schema && (0 != strcmp(prd_set->schema_name, schema)))
+				continue;
+
+			if (*count)
+				rc = reqc->resp_handler(reqc, ",\n", 2, 0);
+			cnt = __prdcr_set_status(reqc, prd_set);
+			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
+			(*count)++;
+		}
 	}
-	ldmsd_prdcr_lock(prdcr);
-	ldmsd_prdcr_set_t met_set;
-	for (met_set = ldmsd_prdcr_set_first(prdcr); met_set;
-		met_set = ldmsd_prdcr_set_next(met_set)) {
-		if (count)
-			rc = send_request_reply(sock, rm, ",\n", 2, 0);
-		cnt = Snprintf(&rm->line_buf, &rm->line_len,
-				"{ \"inst_name\":\"%s\","
-				"\"schema_name\":\"%s\","
-				"\"state\":\"%s\"}",
-				met_set->inst_name, met_set->schema_name,
-				ldmsd_prdcr_set_state_str(met_set->state));
-		rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
-		count++;
-	}
-	ldmsd_prdcr_unlock(prdcr);
-out:
-	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
 	return rc;
 }
 
-static int strgp_add_handler(int sock, req_msg_t rm)
+static int prdcr_set_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *prdcr_name, *setname, *schema;
+	prdcr_name = setname = schema = NULL;
+	ldmsd_prdcr_t prdcr = NULL;
+	ldmsd_req_attr_t attr;
+	size_t cnt = 0;
+	int rc, count = 0;
+	reqc->errcode = 0;
+
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_PRODUCER:
+			prdcr_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_INSTANCE:
+			setname = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_SCHEMA:
+			schema = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	rc = reqc->resp_handler(reqc, "[", 1, LDMSD_REQ_SOM_F);
+	if (prdcr_name) {
+		prdcr = ldmsd_prdcr_find(prdcr_name);
+		if (!prdcr)
+			goto out;
+	}
+
+	if (prdcr) {
+		ldmsd_prdcr_lock(prdcr);
+		rc = __prdcr_set_status_handler(reqc, prdcr, &count,
+				setname, schema);
+		ldmsd_prdcr_unlock(prdcr);
+	} else {
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+		for (prdcr = ldmsd_prdcr_first(); prdcr;
+				prdcr = ldmsd_prdcr_next(prdcr)) {
+			ldmsd_prdcr_lock(prdcr);
+			rc = __prdcr_set_status_handler(reqc, prdcr, &count,
+					setname, schema);
+			ldmsd_prdcr_unlock(prdcr);
+			if (rc) {
+				ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+				goto out;
+			}
+		}
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	}
+
+out:
+	rc = reqc->resp_handler(reqc, "]", 1, LDMSD_REQ_EOM_F);
+	return rc;
+}
+
+static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *attr_name, *name, *plugin, *container, *schema;
 	name = plugin = container = schema = NULL;
 	ldmsd_req_attr_t attr;
-	size_t cnt;
+	size_t cnt = 0;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1055,8 +1110,9 @@ static int strgp_add_handler(int sock, req_msg_t rm)
 	struct ldmsd_plugin_cfg *store;
 	store = ldmsd_get_plugin(plugin);
 	if (!store) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe plugin "
-						"does not exist.\n", ENOENT);
+		reqc->errcode = ENOENT;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"The plugin does not exist.\n");
 		goto send_reply;
 	}
 
@@ -1080,7 +1136,6 @@ static int strgp_add_handler(int sock, req_msg_t rm)
 	if (!strgp->container)
 		goto enomem_3;
 
-	cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	goto send_reply;
 
 enomem_3:
@@ -1090,29 +1145,33 @@ enomem_2:
 enomem_1:
 	free(strgp);
 enomem:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dMemory allocation "
-							"failed.", ENOMEM);
+	reqc->errcode = ENOMEM;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Memory allocation failed.");
 	goto send_reply;
 eexist:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe prdcr %s already "
-						"exists.", EEXIST, name);
+	reqc->errcode = EEXIST;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The prdcr %s already exists.", name);
 	goto send_reply;
 einval:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", EINVAL, attr_name);
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int strgp_del_handler(int sock, req_msg_t rm)
+static int strgp_del_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name = NULL;
 	ldmsd_req_attr_t attr;
-	size_t cnt;
+	size_t cnt = 0;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1125,36 +1184,35 @@ static int strgp_del_handler(int sock, req_msg_t rm)
 	}
 
 	if (!name) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis "
-			"attribute 'name' is required.", EINVAL);
+		reqc->errcode= EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"This attribute 'name' is required.");
 		goto send_reply;
 	}
 
-	int rc = ldmsd_strgp_del(name);
-	if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe storage "
-				"policy specified does not exist.", ENOENT);
-	} else if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe storage "
-				"policy is in use.", EBUSY);
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_strgp_del(name);
+	if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The storage policy specified does not exist.");
+	} else if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The storage policy is in use.");
 	}
-
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int strgp_prdcr_add_handler(int sock, req_msg_t rm)
+static int strgp_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *regex_str, *attr_name;
 	name = regex_str = NULL;
 	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1178,42 +1236,42 @@ static int strgp_prdcr_add_handler(int sock, req_msg_t rm)
 		goto einval;
 	}
 
-	int rc = ldmsd_strgp_prdcr_add(name, regex_str,
-				rm->line_buf, rm->line_len);
-	if (rc) {
-		if (rc == ENOENT) {
-			cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-					"%dThe storage policy specified "
-					"does not exist\n", ENOENT);
-		} else if (rc == EBUSY) {
-			cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dConfiguration changes cannot be made "
-				"while the storage policy is running\n", EBUSY);
-		} else if (rc == ENOMEM) {
-			cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-					"%dOut of memory.\n", ENOMEM);
+	reqc->errcode = ldmsd_strgp_prdcr_add(name, regex_str,
+				reqc->line_buf, reqc->line_len);
+	if (reqc->errcode) {
+		if (reqc->errcode == ENOENT) {
+			reqc->errcode = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"The storage policy specified "
+					"does not exist.");
+		} else if (reqc->errcode == EBUSY) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Configuration changes cannot be made "
+				"while the storage policy is running.");
+		} else if (reqc->errcode == ENOMEM) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Out of memory");
 		}
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	}
 	goto send_reply;
 einval:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", EINVAL, attr_name);
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int strgp_prdcr_del_handler(int sock, req_msg_t rm)
+static int strgp_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *regex_str, *attr_name;
 	name = regex_str = NULL;
 	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1237,41 +1295,41 @@ static int strgp_prdcr_del_handler(int sock, req_msg_t rm)
 		goto einval;
 	}
 
-	int rc = ldmsd_strgp_prdcr_add(name, regex_str,
-				rm->line_buf, rm->line_len);
-	if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThe storage policy specified "
-				"does not exist\n", ENOENT);
-	} else if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dConfiguration changes cannot be made "
-			"while the storage policy is running\n", EBUSY);
-	} else if (rc == EEXIST) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThe specified regex does not match "
-				"any condition\n", ENOENT);
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_strgp_prdcr_add(name, regex_str,
+				reqc->line_buf, reqc->line_len);
+	if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The storage policy specified "
+				"does not exist.");
+	} else if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"Configuration changes cannot be made "
+			"while the storage policy is running.");
+	} else if (reqc->errcode == EEXIST) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The specified regex does not match "
+				"any condition.");
 	}
 	goto send_reply;
 einval:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", EINVAL, attr_name);
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int strgp_metric_add_handler(int sock, req_msg_t rm)
+static int strgp_metric_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *metric_name, *attr_name;
 	name = metric_name = NULL;
 	ldmsd_req_attr_t attr;
-	size_t cnt;
+	size_t cnt = 0;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1295,43 +1353,43 @@ static int strgp_metric_add_handler(int sock, req_msg_t rm)
 		goto einval;
 	}
 
-	int rc = ldmsd_strgp_metric_add(name, metric_name);
-	if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThe storage policy specified "
-				"does not exist\n", ENOENT);
-	} else if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dConfiguration changes cannot be made "
-			"while the storage policy is running\n", EBUSY);
-	} else if (rc == EEXIST) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThe specified metric is already "
-				"present.\n", EEXIST);
-	} else if (rc == ENOMEM) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dMemory allocation failure.\n", ENOMEM);
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_strgp_metric_add(name, metric_name);
+	if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The storage policy specified "
+				"does not exist.");
+	} else if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"Configuration changes cannot be made "
+			"while the storage policy is running.");
+	} else if (reqc->errcode == EEXIST) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The specified metric is already "
+				"present.");
+	} else if (reqc->errcode == ENOMEM) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Memory allocation failure.");
 	}
 	goto send_reply;
 einval:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", EINVAL, attr_name);
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int strgp_metric_del_handler(int sock, req_msg_t rm)
+static int strgp_metric_del_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *metric_name, *attr_name;
 	name = metric_name = NULL;
 	ldmsd_req_attr_t attr;
-	size_t cnt;
+	size_t cnt = 0;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1355,40 +1413,39 @@ static int strgp_metric_del_handler(int sock, req_msg_t rm)
 		goto einval;
 	}
 
-	int rc = ldmsd_strgp_metric_del(name, metric_name);
-	if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThe storage policy specified "
-				"does not exist\n", ENOENT);
-	} else if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dConfiguration changes cannot be made "
-			"while the storage policy is running\n", EBUSY);
-	} else if (rc == EEXIST) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThe specified metric was not found.\n",
-				EEXIST);
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_strgp_metric_del(name, metric_name);
+	if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The storage policy specified "
+				"does not exist.");
+	} else if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"Configuration changes cannot be made "
+			"while the storage policy is running.");
+	} else if (reqc->errcode == EEXIST) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The specified metric was not found.");
 	}
 	goto send_reply;
 einval:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", EINVAL, attr_name);
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int strgp_start_handler(int sock, req_msg_t rm)
+static int strgp_start_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *attr_name;
 	name = NULL;
 	ldmsd_req_attr_t attr;
-	size_t cnt;
+	size_t cnt = 0;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1402,7 +1459,8 @@ static int strgp_start_handler(int sock, req_msg_t rm)
 
 	if (!name) {
 		attr_name = "name";
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"%dThis attribute '%s' is required.",
 				EINVAL, attr_name);
 		goto send_reply;
@@ -1410,38 +1468,40 @@ static int strgp_start_handler(int sock, req_msg_t rm)
 
 	ldmsd_strgp_t strgp = ldmsd_strgp_find(name);
 	if (!strgp) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dThe storage policy does not exist.\n", ENOENT);
+		reqc->errcode = ENOENT;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"The storage policy does not exist.");
 		goto out_1;
 	}
 	ldmsd_strgp_lock(strgp);
 	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dThe storage policy is already running\n", EBUSY);
+		reqc->errcode = EBUSY;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"The storage policy is already running.");
 		goto out_1;
 	}
 	strgp->state = LDMSD_STRGP_STATE_RUNNING;
 	/* Update all the producers of our changed state */
 	ldmsd_prdcr_update(strgp);
-	cnt = Snprintf(&rm->line_buf, &rm->line_len, "0\n");
 
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int strgp_stop_handler(int sock, req_msg_t rm)
+static int strgp_stop_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *attr_name;
 	name = NULL;
 	ldmsd_req_attr_t attr;
-	size_t cnt;
+	size_t cnt = 0;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1454,44 +1514,43 @@ static int strgp_stop_handler(int sock, req_msg_t rm)
 	}
 
 	if (!name) {
+		reqc->errcode = EINVAL;
 		attr_name = "name";
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThis attribute '%s' is required.",
-				EINVAL, attr_name);
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"This attribute '%s' is required.", attr_name);
 		goto send_reply;
 	}
 
-	int rc = ldmsd_strgp_stop(name);
-	if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dThe storage policy does not exist.", ENOENT);
-	} else if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dThe storage policy is not running.", EBUSY);
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_strgp_stop(name);
+	if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"The storage policy does not exist.");
+	} else if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"The storage policy is not running.");
 	}
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int strgp_status_handler(int sock, req_msg_t rm)
+static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_strgp_t strgp;
 	size_t cnt;
 	int rc, metric_count, match_count, count = 0;
 	ldmsd_name_match_t match;
 	ldmsd_strgp_metric_t metric;
+	reqc->errcode = 0;
 
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
-	rc = send_request_reply(sock, rm, "[", 1, 0);
+	rc = reqc->resp_handler(reqc, "[", 1, 0);
 	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
 		if (count)
-			rc = send_request_reply(sock, rm, ",\n", 2, 0);
+			rc = reqc->resp_handler(reqc, ",\n", 2, 0);
 		ldmsd_strgp_lock(strgp);
-		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			       "{\"name\":\"%s\","
 			       "\"container\":\"%s\","
 			       "\"schema\":\"%s\","
@@ -1503,45 +1562,46 @@ static int strgp_status_handler(int sock, req_msg_t rm)
 			       strgp->schema,
 			       strgp->plugin_name,
 			       ldmsd_strgp_state_str(strgp->state));
-		rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
 		match_count = 0;
 		for (match = ldmsd_strgp_prdcr_first(strgp); match;
 		     match = ldmsd_strgp_prdcr_next(match)) {
 			if (match_count)
-				rc = send_request_reply(sock, rm, ",", 1, 0);
+				rc = reqc->resp_handler(reqc, ",", 1, 0);
 			match_count++;
-			cnt = Snprintf(&rm->line_buf, &rm->line_len,
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				       "\"%s\"", match->regex_str);
-			rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
+			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
 		}
-		rc = send_request_reply(sock, rm, "],\"metrics\":[", 13, 0);
+		rc = reqc->resp_handler(reqc, "],\"metrics\":[", 13, 0);
 		metric_count = 0;
 		for (metric = ldmsd_strgp_metric_first(strgp); metric;
 		     metric = ldmsd_strgp_metric_next(metric)) {
 			if (metric_count)
-				rc = send_request_reply(sock, rm, ",", 1, 0);
+				rc = reqc->resp_handler(reqc, ",", 1, 0);
 			metric_count++;
-			cnt = Snprintf(&rm->line_buf, &rm->line_len,
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				       "\"%s\"", metric->name);
-			rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
+			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
 		}
-		rc = send_request_reply(sock, rm, "]}", 2, 0);
+		rc = reqc->resp_handler(reqc, "]}", 2, 0);
 		ldmsd_strgp_unlock(strgp);
 		count++;
 	}
-	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
+	rc = reqc->resp_handler(reqc, "]", 1, LDMSD_REQ_EOM_F);
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 	return rc;
 }
 
-static int updtr_add_handler(int sock, req_msg_t rm)
+static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *name, *offset_str, *interval_str, *attr_name;
-	name = offset_str = interval_str = NULL;
-	size_t cnt;
+	char *name, *offset_str, *interval_str, *push, *attr_name;
+	name = offset_str = interval_str = push = NULL;
+	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1552,6 +1612,9 @@ static int updtr_add_handler(int sock, req_msg_t rm)
 			break;
 		case LDMSD_ATTR_OFFSET:
 			offset_str = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_PUSH:
+			push = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1574,7 +1637,18 @@ static int updtr_add_handler(int sock, req_msg_t rm)
 		else if (errno == ENOMEM)
 			goto enomem;
 		else
-			goto out;
+			goto send_reply;
+	}
+
+	if (push) {
+		if (0 == strcasecmp(push, "onchange")) {
+			updtr->push_flags = LDMSD_UPDTR_F_PUSH |
+						LDMSD_UPDTR_F_PUSH_CHANGE;
+		} else {
+			updtr->push_flags = LDMSD_UPDTR_F_PUSH;
+		}
+	} else {
+		updtr->push_flags = 0;
 	}
 
 	updtr->updt_intrvl_us = strtol(interval_str, NULL, 0);
@@ -1584,35 +1658,35 @@ static int updtr_add_handler(int sock, req_msg_t rm)
 	} else {
 		updtr->updt_task_flags = 0;
 	}
-	goto out;
+	goto send_reply;
 
 einval:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", EINVAL, attr_name);
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
 	goto send_reply;
 enomem:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dOut of memory\n", ENOMEM);
+	reqc->errcode = ENOMEM;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "Out of memory");
 	goto send_reply;
 eexist:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe updtr %s already "
-						"exists.", EEXIST, name);
-	goto send_reply;
-out:
-	cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = EEXIST;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"The updtr %s already exists.", name);
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int updtr_del_handler(int sock, req_msg_t rm)
+static int updtr_del_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name = NULL;
-	size_t cnt;
+	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1626,178 +1700,43 @@ static int updtr_del_handler(int sock, req_msg_t rm)
 	if (!name)
 		goto einval;
 
-	int rc = ldmsd_updtr_del(name);
-	if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe updater "
-				"specified does not exist.", ENOENT);
-	} else if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe updater "
-				"is in use.", EBUSY);
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_updtr_del(name);
+	if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The updater specified does not exist.");
+	} else if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The updater is in use.");
 	}
-
 	goto send_reply;
 
 einval:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute "
-						"'name' is required.", EINVAL);
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute 'name' is required.");
 	goto send_reply;
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int updtr_prdcr_add_handler(int sock, req_msg_t rm)
+static int updtr_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *updtr_name, *prdcr_regex, *attr_name;
 	updtr_name = prdcr_regex = NULL;
-	int rc;
-	size_t cnt;
-	ldmsd_req_attr_t attr;
-
-	attr = (ldmsd_req_attr_t)rm->req_buf;
-	while (attr->discrim) {
-		switch (attr->attr_id) {
-		case LDMSD_ATTR_NAME:
-			updtr_name = (char *)attr->attr_value;
-			break;
-		case LDMSD_ATTR_REGEX:
-			prdcr_regex = (char *)attr->attr_value;
-			break;
-		default:
-			break;
-		}
-		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
-	}
-
-	if (!updtr_name) {
-		attr_name = "name";
-		goto einval;
-	}
-	if (!prdcr_regex) {
-		attr_name = "regex";
-		goto einval;
-	}
-
-	rc = ldmsd_updtr_prdcr_add(updtr_name, prdcr_regex,
-				rm->line_buf, rm->line_len);
-	if (rc) {
-		if (rc == ENOENT) {
-			cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-					"%dThe updater specified "
-					"does not exist.", ENOENT);
-		} else if (rc == EBUSY) {
-			cnt = Snprintf_error(&rm->line_buf, &rm->line_len,""
-				"%dConfiguration changes cannot be "
-				"made while the updater is running.",
-				EBUSY);
-		} else if (rc == ENOMEM) {
-			cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dMemory allocation failure.",
-				ENOMEM);
-		} else {
-			cnt = strlen(rm->line_buf);
-		}
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
-	}
-	goto send_reply;
-
-einval:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", EINVAL, attr_name);
-send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
-				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
-	return 0;
-}
-
-static int updtr_prdcr_del_handler(int sock, req_msg_t rm)
-{
-	char *updtr_name, *prdcr_regex, *attr_name;
-	updtr_name = prdcr_regex = NULL;
-	int rc;
-	size_t cnt;
-	ldmsd_req_attr_t attr;
-
-	attr = (ldmsd_req_attr_t)rm->req_buf;
-	while (attr->discrim) {
-		switch (attr->attr_id) {
-		case LDMSD_ATTR_NAME:
-			updtr_name = (char *)attr->attr_value;
-			break;
-		case LDMSD_ATTR_REGEX:
-			prdcr_regex = (char *)attr->attr_value;
-			break;
-		default:
-			break;
-		}
-		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
-	}
-
-	if (!updtr_name) {
-		attr_name = "name";
-		goto einval;
-	}
-	if (!prdcr_regex) {
-		attr_name = "regex";
-		goto einval;
-	}
-
-	rc = ldmsd_updtr_prdcr_del(updtr_name, prdcr_regex,
-			rm->line_buf, rm->line_len);
-	if (rc) {
-		if (rc == ENOMEM) {
-			cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-					"%dThe updater specified does not "
-					"exist.", ENOENT);
-		} else if (rc == EBUSY) {
-			cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-					"%dConfiguration changes cannot be "
-					"made while the updater is running,",
-					EBUSY);
-		} else if (rc == ENOENT) {
-			cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-					"%dThe updater specified does not "
-					"exist.", ENOENT);
-		} else {
-			cnt = strlen(rm->line_buf);
-		}
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
-	}
-
-	goto send_reply;
-einval:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", EINVAL, attr_name);
-send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
-				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
-	return 0;
-}
-
-static int updtr_match_add_handler(int sock, req_msg_t rm)
-{
-	char *updtr_name, *regex_str, *match_str, *attr_name;
-	updtr_name = regex_str = match_str = NULL;
-	int rc;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
 			updtr_name = (char *)attr->attr_value;
 			break;
 		case LDMSD_ATTR_REGEX:
-			regex_str = (char *)attr->attr_value;
-			break;
-		case LDMSD_ATTR_MATCH:
-			match_str = (char *)attr->attr_value;
+			prdcr_regex = (char *)attr->attr_value;
 			break;
 		default:
 			break;
@@ -1809,48 +1748,111 @@ static int updtr_match_add_handler(int sock, req_msg_t rm)
 		attr_name = "name";
 		goto einval;
 	}
-	if (!regex_str) {
+	if (!prdcr_regex) {
 		attr_name = "regex";
 		goto einval;
 	}
 
-	rc = ldmsd_updtr_match_add(updtr_name, regex_str, match_str,
-			rm->line_buf, rm->line_len);
-	if (!rc) {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
-	} else if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThe updater specified does not exist.", ENOENT);
-	} else if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dConfiguration changes cannot be made "
-				"while the updater is running\n", EBUSY);
-	} else if (rc == ENOMEM) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dOut of memory.\n", ENOMEM);
-	} else if (rc == EINVAL) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThe value '%s' for match= is invalid.\n",
-				EINVAL, match_str);
+	reqc->errcode = ldmsd_updtr_prdcr_add(updtr_name, prdcr_regex,
+				reqc->line_buf, reqc->line_len);
+	if (reqc->errcode) {
+		if (reqc->errcode == ENOENT) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"The updater specified "
+					"does not exist.");
+		} else if (reqc->errcode == EBUSY) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,""
+				"Configuration changes cannot be "
+				"made while the updater is running.");
+		} else if (reqc->errcode == ENOMEM) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Memory allocation failure.");
+		} else {
+			cnt = strlen(reqc->line_buf);
+		}
 	}
 	goto send_reply;
+
 einval:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", EINVAL, attr_name);
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int updtr_match_del_handler(int sock, req_msg_t rm)
+static int updtr_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *updtr_name, *prdcr_regex, *attr_name;
+	updtr_name = prdcr_regex = NULL;
+	size_t cnt = 0;
+	ldmsd_req_attr_t attr;
+	reqc->errcode = 0;
+
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			updtr_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_REGEX:
+			prdcr_regex = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	if (!updtr_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!prdcr_regex) {
+		attr_name = "regex";
+		goto einval;
+	}
+
+	reqc->errcode = ldmsd_updtr_prdcr_del(updtr_name, prdcr_regex,
+			reqc->line_buf, reqc->line_len);
+	if (reqc->errcode) {
+		if (reqc->errcode == ENOMEM) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"The updater specified does not exist.");
+		} else if (reqc->errcode == EBUSY) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Configuration changes cannot be "
+					"made while the updater is running,");
+		} else if (reqc->errcode == ENOENT) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"The updater specified does not exist.");
+		} else {
+			cnt = strlen(reqc->line_buf);
+		}
+	}
+
+	goto send_reply;
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+send_reply:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int updtr_match_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *updtr_name, *regex_str, *match_str, *attr_name;
 	updtr_name = regex_str = match_str = NULL;
-	size_t cnt;
+	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1877,44 +1879,107 @@ static int updtr_match_del_handler(int sock, req_msg_t rm)
 		goto einval;
 	}
 
-	int rc = ldmsd_updtr_match_del(updtr_name, regex_str, match_str);
-	if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dThe updater specified does not exist.", ENOENT);
-	} else if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dConfiguration changes cannot be made "
-				"while the updater is running.", EBUSY);
-	} else if (rc == -ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dThe specified regex does not match any condition.",
-			ENOENT);
-	} else if (rc == EINVAL) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-			"%dUnrecognized match type '%s'", EINVAL, match_str);
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_updtr_match_add(updtr_name, regex_str, match_str,
+			reqc->line_buf, reqc->line_len);
+	if (reqc->errcode) {
+		if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The updater specified does not exist.");
+		} else if (reqc->errcode == EBUSY) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Configuration changes cannot be made "
+					"while the updater is running.");
+		} else if (reqc->errcode == ENOMEM) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Out of memory.");
+		} else if (reqc->errcode == EINVAL) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The value '%s' for match= is invalid.",
+							match_str);
+		}
 	}
-
 	goto send_reply;
 einval:
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThis attribute '%s' "
-					"is required.", EINVAL, attr_name);
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int updtr_start_handler(int sock, req_msg_t rm)
+static int updtr_match_del_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *updtr_name, *regex_str, *match_str, *attr_name;
+	updtr_name = regex_str = match_str = NULL;
+	size_t cnt = 0;
+	ldmsd_req_attr_t attr;
+	reqc->errcode = 0;
+
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			updtr_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_REGEX:
+			regex_str = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_MATCH:
+			match_str = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	if (!updtr_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!regex_str) {
+		attr_name = "regex";
+		goto einval;
+	}
+
+	reqc->errcode = ldmsd_updtr_match_del(updtr_name, regex_str, match_str);
+	if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"The updater specified does not exist.");
+	} else if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Configuration changes cannot be made "
+				"while the updater is running.");
+	} else if (reqc->errcode == -ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"The specified regex does not match any condition.");
+	} else if (reqc->errcode == EINVAL) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"Unrecognized match type '%s'", match_str);
+	}
+
+	goto send_reply;
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+send_reply:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *updtr_name, *interval_str, *offset_str;
 	updtr_name = interval_str = offset_str = NULL;
-	int rc;
-	size_t cnt;
+	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1933,36 +1998,35 @@ static int updtr_start_handler(int sock, req_msg_t rm)
 	}
 
 	if (!updtr_name) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThe updater name must be specified.", EINVAL);
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The updater name must be specified.");
 		goto send_reply;
 	}
 
-	rc = ldmsd_updtr_start(updtr_name, interval_str, offset_str);
-	if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe updater "
-				"specified does not exist.", ENOENT);
-	} else if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThe updater is already running.", EBUSY);
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_updtr_start(updtr_name, interval_str, offset_str);
+	if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The updater specified does not exist.");
+	} else if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The updater is already running.");
 	}
 
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
 
-static int updtr_stop_handler(int sock, req_msg_t rm)
+static int updtr_stop_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *updtr_name = NULL;
-	int rc;
-	size_t cnt;
+	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	reqc->errcode = 0;
 
-	attr = (ldmsd_req_attr_t)rm->req_buf;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_NAME:
@@ -1975,24 +2039,22 @@ static int updtr_stop_handler(int sock, req_msg_t rm)
 	}
 
 	if (!updtr_name) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThe updater name must be specified.", EINVAL);
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The updater name must be specified.");
 		goto send_reply;
 	}
 
-	rc = ldmsd_updtr_stop(updtr_name);
-	if (rc == ENOENT) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len, "%dThe updater "
-				"specified does not exist.", ENOENT);
-	} else if (rc == EBUSY) {
-		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
-				"%dThe updater is already stopped.", EBUSY);
-	} else {
-		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
+	reqc->errcode = ldmsd_updtr_stop(updtr_name);
+	if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The updater specified does not exist.");
+	} else if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The updater is already stopped.");
 	}
-
 send_reply:
-	(void) send_request_reply(sock, rm, rm->line_buf, cnt,
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return 0;
 }
@@ -2006,7 +2068,7 @@ static const char *update_mode(int push_flags)
 	return "Push on Request";
 }
 
-static int updtr_status_handler(int sock, req_msg_t rm)
+static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_updtr_t updtr;
 	size_t cnt;
@@ -2014,15 +2076,16 @@ static int updtr_status_handler(int sock, req_msg_t rm)
 	ldmsd_prdcr_ref_t ref;
 	ldmsd_prdcr_t prdcr;
 	const char *prdcr_state_str(enum ldmsd_prdcr_state state);
+	reqc->errcode = 0;
 
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
-	rc = send_request_reply(sock, rm, "[", 1, 0);
+	rc = reqc->resp_handler(reqc, "[", 1, 0);
 	count = 0;
 	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
 		if (count)
-			rc = send_request_reply(sock, rm, ",\n", 2, 0);
+			rc = reqc->resp_handler(reqc, ",\n", 2, 0);
 		count++;
-		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			       "{\"name\":\"%s\","
 			       "\"interval\":\"%d\","
 			       "\"offset\":%d,"
@@ -2034,15 +2097,15 @@ static int updtr_status_handler(int sock, req_msg_t rm)
 			       updtr->updt_offset_us,
 			       update_mode(updtr->push_flags),
 			       ldmsd_updtr_state_str(updtr->state));
-		rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
 		prdcr_count = 0;
 		for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
 		     ref = ldmsd_updtr_prdcr_next(ref)) {
 			if (prdcr_count)
-				rc = send_request_reply(sock, rm, ",\n", 2, 0);
+				rc = reqc->resp_handler(reqc, ",\n", 2, 0);
 			prdcr_count++;
 			prdcr = ref->prdcr;
-			cnt = Snprintf(&rm->line_buf, &rm->line_len,
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				       "{\"name\":\"%s\","
 				       "\"host\":\"%s\","
 				       "\"port\":%hd,"
@@ -2053,11 +2116,11 @@ static int updtr_status_handler(int sock, req_msg_t rm)
 				       prdcr->port_no,
 				       prdcr->xprt_name,
 				       prdcr_state_str(prdcr->conn_state));
-			rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
+			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
 		}
-		rc = send_request_reply(sock, rm, "]}", 2, 0);
+		rc = reqc->resp_handler(reqc, "]}", 2, 0);
 	}
-	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
+	rc = reqc->resp_handler(reqc, "]", 1, LDMSD_REQ_EOM_F);
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 	return rc;
 }
@@ -2074,19 +2137,152 @@ static char *plugn_state_str(enum ldmsd_plugin_type type)
 	return "unknown";
 }
 
-static int plugn_status_handler(int sock, req_msg_t rm)
+extern int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset);
+extern int ldmsd_stop_sampler(char *plugin);
+extern int ldmsd_load_plugin(char *plugin_name, char *errstr, size_t errlen);
+extern int ldmsd_term_plugin(char *plugin_name);
+extern int ldmsd_config_plugin(char *plugin_name,
+			struct attr_value_list *_av_list,
+			struct attr_value_list *_kw_list);
+
+static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *plugin_name, *interval_us, *offset, *attr_name;
+	plugin_name = interval_us = offset = NULL;
+	size_t cnt = 0;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			plugin_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_INTERVAL:
+			interval_us = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_OFFSET:
+			offset = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!plugin_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!interval_us) {
+		attr_name = "interval";
+		goto einval;
+	}
+
+	reqc->errcode = ldmsd_start_sampler(plugin_name, interval_us, offset);
+	if (reqc->errcode == 0) {
+		goto send_reply;
+	} else if (reqc->errcode == EINVAL) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"interval '%s' invalid", interval_us);
+	} else if (reqc->errcode == -EINVAL) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The specified plugin is not a sampler.");
+	} else if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Sampler '%s' not found.", plugin_name);
+	} else if (reqc->errcode == EBUSY) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Sampler '%s' is already running.", plugin_name);
+	} else if (reqc->errcode == EDOM) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Sampler parameters interval and offset are "
+				"incompatible.");
+	} else {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Failed to start the sampler '%s'.", plugin_name);
+	}
+	goto send_reply;
+
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+send_reply:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int plugn_stop_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *plugin_name, *attr_name;
+	plugin_name = NULL;
+	size_t cnt = 0;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			plugin_name = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!plugin_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	reqc->errcode = ldmsd_stop_sampler(plugin_name);
+	if (reqc->errcode == 0) {
+		goto send_reply;
+	} else if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Sampler '%s' not found.", plugin_name);
+	} else if (reqc->errcode == EINVAL) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The plugin '%s' is not a sampler.",
+				plugin_name);
+	} else if (reqc->errcode == -EBUSY) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The sampler '%s' is not running.", plugin_name);
+	} else {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Failed to stop sampler '%s'", plugin_name);
+	}
+	goto send_reply;
+
+einval:
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+send_reply:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int plugn_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	extern struct plugin_list plugin_list;
 	struct ldmsd_plugin_cfg *p;
 	size_t cnt;
 	int rc, count;
-	rc = send_request_reply(sock, rm, "[", 1, 0);
+	reqc->errcode = 0;
+
+	rc = reqc->resp_handler(reqc, "[", 1, 0);
 	count = 0;
 	LIST_FOREACH(p, &plugin_list, entry) {
 		if (count)
-			rc = send_request_reply(sock, rm, ",\n", 2, 0);
+			rc = reqc->resp_handler(reqc, ",\n", 2, 0);
 		count++;
-		cnt = Snprintf(&rm->line_buf, &rm->line_len,
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			       "{\"name\":\"%s\",\"type\":\"%s\","
 			       "\"sample_interval_us\":%d,"
 			       "\"sample_offset_us\":%d,"
@@ -2095,21 +2291,642 @@ static int plugn_status_handler(int sock, req_msg_t rm)
 			       plugn_state_str(p->plugin->type),
 			       p->sample_interval_us, p->sample_offset_us,
 			       p->libpath);
-		rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
 	}
-	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
+	rc = reqc->resp_handler(reqc, "]", 1, LDMSD_REQ_EOM_F);
 	return rc;
 }
 
-static int unimplemented_handler(int sock, req_msg_t rm)
+static int plugn_load_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *plugin_name, *attr_name;
+	plugin_name = NULL;
+	size_t cnt = 0;
+	ldmsd_req_attr_t attr;
+
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			plugin_name = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!plugin_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	reqc->errcode = ldmsd_load_plugin(plugin_name, reqc->line_buf,
+							reqc->line_len);
+	if (reqc->errcode)
+		cnt = strlen(reqc->line_buf) + 1;
+	goto send_reply;
+
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+send_reply:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int plugn_term_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *plugin_name, *attr_name;
+	plugin_name = NULL;
+	size_t cnt = 0;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			plugin_name = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!plugin_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	reqc->errcode = ldmsd_term_plugin(plugin_name);
+	if (reqc->errcode == 0) {
+		goto send_reply;
+	} else if (reqc->errcode == ENOENT) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"plugin '%s' not found.", plugin_name);
+	} else if (reqc->errcode == EINVAL) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The specified plugin '%s' has "
+				"active users and cannot be terminated.",
+				plugin_name);
+	} else {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Failed to terminate the plugin '%s'.",
+				plugin_name);
+	}
+	goto send_reply;
+
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+send_reply:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *plugin_name, *config_attr, *attr_name;
+	plugin_name = config_attr = NULL;
+	size_t cnt = 0;
+	reqc->errcode = 0;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			plugin_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_STRING:
+			config_attr = attr->attr_value;
+			break;
+		default:
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Invalid attribute id %d", attr->attr_id);
+			goto send_reply;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!plugin_name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!config_attr) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"No config attributes are provided.");
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
+
+	char *cmd_s;
+	struct attr_value_list *av_list;
+	struct attr_value_list *kw_list;
+	int tokens;
+
+	/*
+	 * Count the numebr of spaces. That's the maximum number of
+	 * tokens that could be present.
+	 */
+	for (tokens = 0, cmd_s = config_attr; cmd_s[0] != '\0';) {
+		tokens++;
+		/* find whitespace */
+		while (cmd_s[0] != '\0' && !isspace(cmd_s[0]))
+			cmd_s++;
+		/* Now skip whitespace to next token */
+		while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
+			cmd_s++;
+	}
+	reqc->errcode = ENOMEM;
+	av_list = av_new(tokens);
+	kw_list = av_new(tokens);
+	if (!av_list || !kw_list) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Out of memory");
+		goto err;
+	}
+
+	reqc->errcode = tokenize(config_attr, kw_list, av_list);
+	if (reqc->errcode) {
+		ldmsd_log(LDMSD_LERROR, "Memory allocation failure "
+				"processing '%s'\n", config_attr);
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Out of memory");
+		reqc->errcode = ENOMEM;
+		goto err;
+	}
+
+	reqc->errcode = ldmsd_config_plugin(plugin_name, av_list, kw_list);
+	if (reqc->errcode) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Plugin '%s' configuration error.",
+				plugin_name);
+	}
+	goto send_reply;
+
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+	goto send_reply;
+err:
+	if (kw_list)
+		av_free(kw_list);
+	if (av_list)
+		av_free(av_list);
+send_reply:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+extern struct plugin_list plugin_list;
+static int plugn_list_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *name = NULL;
+	int rc, count = 0;
+	size_t cnt = 0;
+	struct ldmsd_plugin_cfg *p;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	if (attr->attr_id == LDMSD_ATTR_NAME)
+		name = (char *)attr->attr_value;
+
+	LIST_FOREACH(p, &plugin_list, entry) {
+		if (name && (0 != strcmp(name, p->name)))
+			continue;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "%s\n", p->name);
+		if (count == 0) {
+			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
+					LDMSD_REQ_SOM_F);
+		} else {
+			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
+		}
+		if (rc)
+			goto out;
+		if (p->plugin->usage) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "%s",
+					p->plugin->usage(p->plugin));
+			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
+			if (rc)
+				goto out;
+		}
+		count++;
+	}
+	if (name && (0 == count)) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Plugin '%s' not loaded.", name);
+		reqc->errcode = ENOENT;
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_EOM_F | LDMSD_REQ_EOM_F);
+		return rc;
+	}
+	rc = reqc->resp_handler(reqc, NULL, 0, LDMSD_REQ_EOM_F);
+out:
+	return rc;
+}
+
+extern int ldmsd_set_udata(const char *set_name, const char *metric_name,
+						const char *udata_s);
+static int set_udata_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *set_name, *metric_name, *udata, *attr_name;
+	set_name = metric_name = udata = NULL;
+	size_t cnt = 0;
+
+	reqc->errcode = 0;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_INSTANCE:
+			set_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_METRIC:
+			metric_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_UDATA:
+			udata = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	if (!set_name) {
+		attr_name = "instance";
+		goto einval;
+	}
+	if (!metric_name) {
+		attr_name = "metric";
+		goto einval;
+	}
+	if (!udata) {
+		attr_name = "udata";
+		goto einval;
+	}
+
+	reqc->errcode = ldmsd_set_udata(set_name, metric_name, udata);
+	if (reqc->errcode) {
+		if (reqc->errcode == ENOENT) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Set '%s' not found.", set_name);
+		} else if (reqc->errcode == -ENOENT) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Metric '%s' not found in Set '%s'.",
+					metric_name, set_name);
+		} else if (reqc->errcode == EINVAL) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"User data '%s' is invalid.", udata);
+		}
+	}
+	goto out;
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+out:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+extern int ldmsd_set_udata_regex(char *set_name, char *regex_str,
+		char *base_s, char *inc_s, char *er_str, size_t errsz);
+static int set_udata_regex_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *set_name, *regex, *base_s, *inc_s, *attr_name;
+	set_name = regex = base_s = inc_s = NULL;
+	int rc = 0;
+	size_t cnt = 0;
+
+	reqc->errcode = 0;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_INSTANCE:
+			set_name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_REGEX:
+			regex = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_BASE:
+			base_s = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_INCREMENT:
+			inc_s = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+
+	if (!set_name) {
+		attr_name = "instance";
+		goto einval;
+	}
+	if (!regex) {
+		attr_name = "regex";
+		goto einval;
+	}
+	if (!base_s) {
+		attr_name = "base";
+		goto einval;
+	}
+
+	reqc->errcode = ldmsd_set_udata_regex(set_name, regex, base_s, inc_s,
+						reqc->line_buf, reqc->line_len);
+	if (reqc->errcode)
+		cnt = strlen(reqc->line_buf) + 1;
+	goto out;
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+out:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *level_s = NULL;
+	size_t cnt = 0;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	if (attr->attr_id == LDMSD_ATTR_LEVEL)
+		level_s = (char *)attr->attr_value;
+	if (!level_s) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"This attribute 'level' is required.");
+		goto out;
+	}
+
+	int rc = ldmsd_loglevel_set(level_s);
+	if (rc < 0) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Invalid verbosity level, expecting DEBUG, "
+				"INFO, ERROR, CRITICAL and QUIET\n");
+		goto out;
+	}
+
+#ifdef DEBUG
+	ldmsd_log(LDMSD_LDEBUG, "TEST DEBUG\n");
+	ldmsd_log(LDMSD_LINFO, "TEST INFO\n");
+	ldmsd_log(LDMSD_LERROR, "TEST ERROR\n");
+	ldmsd_log(LDMSD_LCRITICAL, "TEST CRITICAL\n");
+	ldmsd_log(LDMSD_LALL, "TEST SUPREME\n");
+#endif /* DEBUG */
+out:
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
+}
+
+static int daemon_status_handler(ldmsd_req_ctxt_t reqc)
+{
+	size_t cnt = 0;
+	int rc = 0;
+
+	extern int ev_thread_count;
+	extern pthread_t *ev_thread;
+	extern int *ev_count;
+	int i;
+
+	rc = reqc->resp_handler(reqc, "[", 1, LDMSD_REQ_SOM_F);
+	for (i = 0; i < ev_thread_count; i++) {
+		if (i)
+			rc = reqc->resp_handler(reqc, ",\n", 2, 0);
+
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"{ \"thread\":\"%p\","
+				"\"task_count\":\"%d\"}",
+				(void *)ev_thread[i], ev_count[i]);
+		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
+	}
+	rc = reqc->resp_handler(reqc, "]", 1, LDMSD_REQ_EOM_F);
+	return rc;
+}
+
+static int version_handler(ldmsd_req_ctxt_t reqc)
+{
+	struct ldms_version ldms_version;
+	struct ldmsd_version ldmsd_version;
+
+	ldms_version_get(&ldms_version);
+	size_t cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"LDMS Version: %hhu.%hhu.%hhu.%hhu\n",
+			ldms_version.major, ldms_version.minor,
+			ldms_version.patch, ldms_version.flags);
+	int rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, LDMSD_REQ_SOM_F);
+	if (rc)
+		return rc;
+
+	ldmsd_version_get(&ldmsd_version);
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"LDMSD Version: %hhu.%hhu.%hhu.%hhu",
+			ldmsd_version.major, ldmsd_version.minor,
+			ldmsd_version.patch, ldmsd_version.flags);
+	rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, LDMSD_REQ_EOM_F);
+	return rc;
+
+
+}
+
+static int env_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	size_t cnt = 0;
+	char *env_s = NULL;
+
+	ldmsd_req_attr_t attr;
+	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_STRING:
+			env_s = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!env_s) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"No environment names/values are given.");
+		reqc->errcode = EINVAL;
+		goto out;
+	}
+
+	struct attr_value_list *av_list;
+	struct attr_value_list *kw_list;
+	rc = string2attr_list(env_s, &av_list, &kw_list);
+	if (rc) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Out of memory.");
+		reqc->errcode = ENOMEM;
+		goto out;
+	}
+
+	int i;
+	for (i = 0; i < av_list->count; i++) {
+		struct attr_value *v = &av_list->list[i];
+		rc = setenv(v->name, v->value, 1);
+		if (rc) {
+			rc = errno;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Failed to set '%s=%s': %s",
+					v->name, v->value, strerror(rc));
+			goto out;
+		}
+	}
+out:
+	rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
+			LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return rc;
+}
+
+extern int process_config_file(const char *path, int *lineno);
+static int include_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *path = NULL;
+	int rc = 0;
+	size_t cnt = 0;
+
+	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while (attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_PATH:
+			path = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!path) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"This attribute 'path' is required.");
+		goto out;
+	}
+	int lineno;
+	reqc->errcode = process_config_file(path, &lineno);
+	if (reqc->errcode) {
+		if (lineno == 0) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Failed to process cfg '%s': %s",
+				path, strerror(reqc->errcode));
+		} else {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Failed to process cfg '%s' at line '%d'",
+				path, lineno);
+		}
+	}
+
+out:
+	rc =  reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return rc;
+}
+
+extern int ldmsd_oneshot_sample(const char *name, const char *time_s,
+					char *errstr, size_t errlen);
+static int oneshot_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *name, *time_s, *attr_name;
+	name = time_s = NULL;
+	size_t cnt = 0;
+	int rc = 0;
+
+	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)reqc->req_buf;
+	while(attr->discrim) {
+		switch (attr->attr_id) {
+		case LDMSD_ATTR_NAME:
+			name = (char *)attr->attr_value;
+			break;
+		case LDMSD_ATTR_TIME:
+			time_s = (char *)attr->attr_value;
+			break;
+		default:
+			break;
+		}
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+	}
+	if (!name) {
+		attr_name = "name";
+		goto einval;
+	}
+	if (!time_s) {
+		attr_name = "time";
+		goto einval;
+	}
+
+	reqc->errcode = ldmsd_oneshot_sample(name, time_s,
+				reqc->line_buf, reqc->line_len);
+	if (reqc->errcode) {
+		cnt = strlen(reqc->line_buf) + 1;
+		goto out;
+	}
+	rc = reqc->resp_handler(reqc, NULL, 0, LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return rc;
+
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"This attribute '%s' is required.", attr_name);
+
+out:
+	rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return rc;
+}
+
+extern int ldmsd_logrotate();
+static int logrotate_handler(ldmsd_req_ctxt_t reqc)
+{
+	size_t cnt = 0;
+	reqc->errcode = ldmsd_logrotate();
+	if (reqc->errcode) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Failed to rotate the log file. %s",
+				strerror(reqc->errcode));
+	}
+	int rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return rc;
+}
+
+extern void ldmsd_exit_daemon();
+static int exit_daemon_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldmsd_exit_daemon();
+	size_t cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"exit daemon request received");
+	int rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
+			LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return rc;
+}
+
+static int unimplemented_handler(ldmsd_req_ctxt_t reqc)
 {
 	size_t cnt;
-	int rc;
+	reqc->errcode = ENOSYS;
 
-	rc = send_request_reply(sock, rm, "[", 1, 0);
-	cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The request is not implemented");
-	rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
-	rc = send_request_reply(sock, rm, "]", 1, LDMSD_REQ_EOM_F);
-	return rc;
+	(void) reqc->resp_handler(reqc, reqc->line_buf, cnt,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	return 0;
 }

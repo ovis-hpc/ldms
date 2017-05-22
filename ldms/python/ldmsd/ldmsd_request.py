@@ -1,7 +1,7 @@
 #######################################################################
 # -*- c-basic-offset: 8 -*-
-# Copyright (c) 2016 Open Grid Computing, Inc. All rights reserved.
-# Copyright (c) 2016 Sandia Corporation. All rights reserved.
+# Copyright (c) 2016-2017 Open Grid Computing, Inc. All rights reserved.
+# Copyright (c) 2016-2017 Sandia Corporation. All rights reserved.
 # Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
 # license for use of this work by or on behalf of the U.S. Government.
 # Export of this program may require a license from the United States
@@ -51,7 +51,6 @@
 #######################################################################
 import struct
 import cmd
-from ldmsd import ldmsd_config
 import json
 import argparse
 import sys
@@ -79,6 +78,14 @@ class LDMSD_Req_Attr(object):
     CONTAINER = 13
     SCHEMA = 14
     METRIC = 15
+    STRING = 16
+    UDATA = 17
+    BASE = 18
+    INCREMENT = 19
+    LEVEL = 20
+    PATH = 21
+    TIME = 22
+    LAST = 23
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -95,16 +102,42 @@ class LDMSD_Req_Attr(object):
                    'container': CONTAINER,
                    'schema': SCHEMA,
                    'metric': METRIC,
+                   'udata': UDATA,
+                   'base': BASE,
+                   'incr': INCREMENT,
+                   'level': LEVEL,
+                   'path': PATH,
+                   'time': TIME,
         }
 
-    def __init__(self, attr_id, value):
-        self.attr_id = attr_id
-        # One is added to account for the terminating zero
-        self.attr_len = int(len(value)+1)
-        self.attr_value = value
-        self.fmt = 'iii' + str(self.attr_len) + 's'
-        self.packed = struct.pack(self.fmt, 1, self.attr_id,
-                                  self.attr_len, self.attr_value)
+    def __init__(self, value = None, attr_name = None, attr_id = None):
+        if attr_id:
+            self.attr_id = attr_id
+        else:
+            if attr_name:
+                try:
+                    self.attr_id = self.NAME_ID_MAP[attr_name]
+                except KeyError:
+                    raise
+            else:
+                # Assume this is the last attribute.
+                self.attr_id = self.LAST
+
+        if self.attr_id == self.LAST:
+            self.packed = struct.pack("i", 0)
+        else:
+            self.attr_value = value            
+            if value is None:
+                self.attr_len = 0
+                self.attr_fmt = 'iii'
+                self.packed = struct.pack(self.fmt, 1, self.attr_id,
+                                                    self.attr_len)
+            else:
+                # One is added to account for the terminating zero
+                self.attr_len = int(len(value)+1)
+                self.fmt = 'iii' + str(self.attr_len) + 's'
+                self.packed = struct.pack(self.fmt, 1, self.attr_id,
+                                          self.attr_len, self.attr_value)
 
     def __len__(self):
         return len(self.packed)
@@ -113,8 +146,7 @@ class LDMSD_Req_Attr(object):
         return self.packed
 
 class LDMSD_Request(object):
-    CLI = 1
-    EXAMPLE = 2
+    EXAMPLE = 1
 
     PRDCR_ADD = 0x100
     PRDCR_DEL = 0x100 + 1
@@ -123,7 +155,7 @@ class LDMSD_Request(object):
     PRDCR_STATUS = 0x100 + 4
     PRDCR_START_REGEX = 0x100 + 5
     PRDCR_STOP_REGEX = 0x100 + 6
-    PRDCR_METRIC_SET = 0x100 + 7
+    PRDCR_SET_STATUS = 0x100 + 7
 
     STRGP_ADD = 0x200
     STRGP_DEL = 0x200 + 1
@@ -158,12 +190,86 @@ class LDMSD_Request(object):
     PLUGN_LOAD = 0X500 + 5
     PLUGN_TERM = 0X500 + 6
     PLUGN_CONFIG = 0X500 + 7
+    PLUGN_LIST = 0x500 + 8
+
+    SET_UDATA = 0x600
+    SET_UDATA_REGEX = 0x600 + 1
+    VERBOSITY_CHANGE = 0x600 + 2
+    DAEMON_STATUS = 0x600 + 3
+    VERSION = 0x600 + 4
+    ENV = 0x600 + 5
+    INCLUDE = 0x600 + 6
+    ONESHOT = 0x600 + 7
+    LOGROTATE = 0x600 + 8
+    EXIT_DAEMON = 0x600 + 9
+
+    LDMSD_REQ_ID_MAP = {
+            'example': {'id': EXAMPLE},
+
+            'prdcr_add': {'id': PRDCR_ADD},
+            'prdcr_del': {'id': PRDCR_DEL},
+            'prdcr_start': {'id': PRDCR_START},
+            'prdcr_stop': {'id': PRDCR_STOP},
+            'prdcr_status': {'id': PRDCR_STATUS},
+            'prdcr_start': {'id': PRDCR_START},
+            'prdcr_start_regex': {'id': PRDCR_START_REGEX},
+            'prdcr_stop': {'id': PRDCR_STOP},
+            'prdcr_stop_regex': {'id': PRDCR_STOP_REGEX},
+            'prdcr_set_status': {'id': PRDCR_SET_STATUS},
+
+            'strgp_add': {'id': STRGP_ADD},
+            'strgp_del': {'id': STRGP_DEL},
+            'strgp_start': {'id': STRGP_START},
+            'strgp_stop': {'id': STRGP_STOP},
+            'strgp_status': {'id': STRGP_STATUS},
+            'strgp_prdcr_add': {'id': STRGP_PRDCR_ADD},
+            'strgp_prdcr_del': {'id': STRGP_PRDCR_DEL},
+            'strgp_metric_add': {'id': STRGP_METRIC_ADD},
+            'strgp_metric_del': {'id': STRGP_METRIC_DEL},
+
+            'updtr_add': {'id': UPDTR_ADD},
+            'updtr_del': {'id': UPDTR_DEL},
+            'updtr_start': {'id': UPDTR_START},
+            'updtr_stop': {'id': UPDTR_STOP},
+            'updtr_status': {'id': UPDTR_STATUS},
+            'updtr_prdcr_add': {'id': UPDTR_PRDCR_ADD},
+            'updtr_prdcr_del': {'id': UPDTR_PRDCR_DEL},
+            'updtr_match_add': {'id': UPDTR_MATCH_ADD},
+            'updtr_match_del': {'id': UPDTR_MATCH_DEL},
+
+            'start': {'id': PLUGN_START},
+            'stop': {'id': PLUGN_STOP},
+            'plugin_status': {'id': PLUGN_STATUS},
+            'load': {'id': PLUGN_LOAD},
+            'term': {'id': PLUGN_TERM},
+            'config': {'id': PLUGN_CONFIG},
+            'usage': {'id': PLUGN_LIST},
+            
+            'udata': {'id': SET_UDATA},
+            'udata_regex': {'id': SET_UDATA_REGEX},
+            'loglevel': {'id': VERBOSITY_CHANGE},
+            'daemon_status': {'id': DAEMON_STATUS},
+            'version': {'id': VERSION},
+            'env': {'id': ENV},
+            'include': {'id': INCLUDE},
+            'oneshot': {'id': ONESHOT},
+            'logrotate': {'id': LOGROTATE},
+            'daemon_exit': {'id': EXIT_DAEMON},
+        }
 
     SOM_FLAG = 1
     EOM_FLAG = 2
     message_number = 1
     header_size = 20
-    def __init__(self, command, message=None, attrs=None):
+    def __init__(self, command=None, command_id=None, message=None, attrs=None):
+        marker = -1
+        if command_id is None and command is None:
+            raise Exception("Need either command or command_id")
+        if command_id is None:
+            if command not in self.LDMSD_REQ_ID_MAP.keys():
+                raise KeyError("Command '{0}' is not supported.".format(command))
+            command_id = self.LDMSD_REQ_ID_MAP[command]['id']
+
         self.message = message
         self.request_size = self.header_size
         if message:
@@ -176,10 +282,10 @@ class LDMSD_Request(object):
                 self.request_size += len(attr)
             # Account for size of terminating 0
             self.request_size += 4
-        self.request = struct.pack('iiiii', -1,
+
+        self.request = struct.pack('iiiii', marker,
                                    LDMSD_Request.SOM_FLAG | LDMSD_Request.EOM_FLAG,
-                                   self.message_number, command,
-                                   self.request_size)
+                                   self.message_number, command_id, self.request_size)
         # Add the attributes after the message header
         if attrs:
             for attr in attrs:
@@ -188,25 +294,33 @@ class LDMSD_Request(object):
         # Add any message payload
         if message:
             self.request += message
-        self.response = ""
+        self.response = {'errcode': None, 'msg': None}
         LDMSD_Request.message_number += 1
 
-    def send(self, socket):
-        rc = socket.sendall(bytes(self.request))
-        if rc:
-            raise LDMSD_Except("Error {0} sending request".format(rc))
+    def message_number_get(self):
+        return self.message_number
 
-    def receive(self, socket):
-        self.response = ""
+    def send(self, ctrl):
+        try:
+            ctrl.send_command(bytes(self.request))
+        except:
+            raise
+
+    def receive(self, ctrl):
+        self.response = {'errcode': None, 'msg': None}
+        msg = ""
         while True:
-            hdr = socket.recv(self.header_size)
-            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
+            hdr = ctrl.socket.recv(self.header_size)
+            (marker, flags, msg_no, errcode, rec_len) = struct.unpack('iiiii', hdr)
             if marker != -1:
                 raise LDMSD_Except("Invalid response format")
-            data = socket.recv(rec_len - self.header_size)
-            self.response += data
+            if rec_len - self.header_size > 0:
+                data = ctrl.socket.recv(rec_len - self.header_size)
+                msg += data
             if flags & LDMSD_Request.EOM_FLAG:
                 break
+        self.response['errcode'] = errcode
+        self.response['msg'] = msg
         return self.response
 
     def is_error_resp(self, json_obj_resp):
@@ -220,6 +334,9 @@ class LDMSD_Request(object):
             if 'error' in json_obj_resp[0].keys():
                 return True
         return False
+
+    def resp2json(self, resp):
+        return json.dumps(resp)
 
 class LdmsdReqParser(cmd.Cmd):
     def __init__(self, host = None, port = None, secretPath = None, infile=None):

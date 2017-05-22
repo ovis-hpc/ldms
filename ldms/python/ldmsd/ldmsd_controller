@@ -62,6 +62,8 @@ import traceback
 import json
 
 from ldmsd import ldmsd_config, ldmsd_util, ldmsd_request
+from ldmsd.ldmsd_request import LDMSD_Request
+from ldmsd.ldmsd_request import LDMSD_Req_Attr
 LDMSD_REQ_SOM_F=1
 LDMSD_REQ_EOM_F=2
 LDMSD_REQ_ALL_F=(LDMSD_REQ_SOM_F|LDMSD_REQ_EOM_F)
@@ -150,18 +152,55 @@ class LdmsdCmdParser(cmd.Cmd):
         return line
 
     def handle(self, verb, args):
-        if not self.__check_command_syntax(args):
-            print("Wrong syntax. There are attributes that no values are given.")
-            return
+        if args and not self.__check_command_syntax(args):
+            print("Syntax error, there are attributes for which no value is given.")
 
-        cmd_id = self.ctrl.get_cmd_id(verb)
-        cmd = "{0}{1} {2}".format(cmd_id, verb, args)
-        resp = self.ctrl.talk(cmd)
-        resp = resp.rstrip()
-        import re
-        g = re.match(r"(-*)(\d+)", resp)
-        if len(resp[g.end():]) > 0:
-            print(resp[g.end():])
+        attr_list = []
+        if args:
+            attr_s = []
+            attr_str_list = args.split(' ')
+
+            for attr_str in attr_str_list:
+                [name, value] = attr_str.split("=")
+                if (verb == "config" and name != "name") or (verb == "env"):
+                    attr_s.append(attr_str)
+                else:
+                    try:
+                        attr = LDMSD_Req_Attr(value = value, attr_name = name)
+                    except KeyError:
+                        attr_s.append(attr_str)
+                    except Exception:
+                        raise
+                    else:
+                        attr_list.append(attr)
+
+            if len(attr_s) > 0:
+                attr_str = " ".join(attr_s)
+                attr = LDMSD_Req_Attr(value = attr_str, attr_id = LDMSD_Req_Attr.STRING)
+                attr_list.append(attr)
+
+        attr_list.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.LAST))
+        try:
+            request = LDMSD_Request(command = verb, attrs = attr_list)
+        except KeyError:
+            print("'{0}' is not supported.".format(verb))
+            return None
+        except:
+            raise
+
+        request.send(self.ctrl)
+        if is_debug:
+            print("Sent request {0}".format(request.message_number_get()))
+
+        resp = request.receive(self.ctrl)
+        if is_debug:
+            print("Received the response of request {0}".format(request.message_number_get()))
+            print(resp)
+        if resp is None:
+            raise Exception("Failed to get the information from ldmsd")
+        if 'errcode' in resp.keys() and resp['errcode'] != 0:
+                print(resp['msg'])
+        return resp
 
     def read_none_tty(self, fin):
         for cmd in fin:
@@ -193,7 +232,9 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_usage(self, arg):
         """List the usage of the plugins loaded on the server.
         """
-        self.handle('usage', arg)
+        resp = self.handle('usage', arg)
+        if resp['errcode'] == 0:
+            print(resp['msg'])
 
     def complete_usage(self, text, line, begidx, endidx):
         return self.__complete_attr_list('usage', text)
@@ -508,137 +549,134 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_strgp_stop(self, text, line, begidx, endidx):
         return self.__complete_attr_list('strgp_stop', text)
 
-    #
-    # Backward compatibility commands
-    #
-    def do_info(self, arg):
+    def do_daemon_status(self, arg):
         """
-        Tell the daemon to dump it's internal state to the log file.
-        Parameters:
-        [name=]   Reports only the specified objects. The choices are
-                  prdcr, updtr and strgp.
-                     'prdcr': list the state of all producers.
-                     'updtr': list the state of all update policies.
-                     'strgp': list the state of all storage policies.
+        Report the daemon status
+        Parameters: NONE
         """
-        self.handle('info', arg)
+        resp = self.handle('daemon_status', arg)
+        if resp['errcode'] == 0:
+            threads = json.loads(resp['msg'])
+            print("Thread          Task Count")
+            print("--------------- ----------")
+            for thr in threads:
+                print("{0:15} {1:>10}".format(thr['thread'], thr['task_count']))
 
-    def complete_info(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('info', text)
-
-    def format_request(self, cmd):
-        self.msg_no = self.msg_no + 1
-        return struct.pack('iiiii', -1, LDMSD_REQ_ALL_F, self.msg_no, cmd, 20)
+    def complete_daemon_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('daemon_status', text)
 
     def do_prdcr_status(self, arg):
-        msg = self.format_request(LDMSD_PRDCR_STATUS_REQ)
-        rc = self.ctrl.socket.sendall(bytes(msg))
-        response = ""
-        while True:
-            hdr = self.ctrl.socket.recv(20)
-            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
-            data = self.ctrl.socket.recv(rec_len - 20)
-            response += data
-            if flags:
-                break
-        producers =  json.loads(response)
-        print("Name             Host             Port         Transport    State")
-        print("---------------- ---------------- ------------ ------------ ------------")
-        for prdcr in producers:
-            print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
-                                                              prdcr['host'],
-                                                              prdcr['port'],
-                                                              prdcr['transport'],
-                                                              prdcr['state']))
-            for pset in prdcr['sets']:
-                print("    {0:16} {1:16} {2}".format(pset['inst_name'],
-                                                     pset['schema_name'],
-                                                     pset['state']))
-    def do_prdcr_set(self, arg):
-        try:
-            prdcr_name = ldmsd_request.LDMSD_Req_Attr(1, arg)
-            req = ldmsd_request.LDMSD_Request(LDMSD_PRDCR_SET_REQ, attrs = [prdcr_name,])
-            req.send(self.ctrl.socket)
-            metric_sets = req.receive(self.ctrl.socket)
-            metric_sets = json.loads(metric_sets)
-            print("Name             Schema Name      State")
-            print("---------------- ---------------- ------------ ")
+        """
+        Get the statuses of all producers
+        Parameters:
+            NONE
+        """
+        resp = self.handle('prdcr_status', None)
+        if resp['errcode'] == 0:
+            producers =  json.loads(resp['msg'])
+            print("Name             Host             Port         Transport    State")
+            print("---------------- ---------------- ------------ ------------ ------------")
+            for prdcr in producers:
+                print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
+                                                                  prdcr['host'],
+                                                                  prdcr['port'],
+                                                                  prdcr['transport'],
+                                                                  prdcr['state']))
+                for pset in prdcr['sets']:
+                    print("    {0:16} {1:16} {2}".format(pset['inst_name'],
+                                                         pset['schema_name'],
+                                                         pset['state']))
+
+    def complete_prdcr_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_status', text)
+
+    def do_prdcr_set_status(self, arg):
+        """
+        Report the statuses of producer sets that are matched the given conditions.
+        Parameters:
+        [producer=]        Producer name
+        [instance=]        Instance name
+        [schema=]          Schema name
+        """
+        resp = self.handle('prdcr_set_status', arg)
+        if resp['errcode'] == 0:
+            from datetime import datetime
+            metric_sets = json.loads(resp['msg'])
+
+            print("Name                 Schema Name      State      Origin           Producer         timestamp                 duration (usec)")
+            print("-------------------- ---------------- ---------- ---------------- ---------------- ------------------------- ---------------")
             for pset in metric_sets:
-                print("    {0:16} {1:16} {2}".format(pset['inst_name'],
-                                                     pset['schema_name'],
-                                                     pset['state']))
-        except Exception as e:
-            print(repr(e))
+                ts = float(pset['timestamp.sec'])
+                ts_sec = datetime.fromtimestamp(ts).strftime('%m-%d-%y %H:%M:%S')
+                ts_str = "{0} [{1}]".format(ts_sec, pset['timestamp.usec'])
+                dur = pset['duration.sec'] + "." + pset['duration.usec'].zfill(6)
+                print("{0:20} {1:16} {2:10} {3:16} {4:16} {5:25} {6:12}".format(pset['inst_name'],
+                                                                                pset['schema_name'],
+                                                                                pset['state'],
+                                                                                pset['origin'],
+                                                                                pset['producer'],
+                                                                                ts_str,
+                                                                                dur))
+
+    def complete_prdcr_set_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_set_status', text)
 
     def do_updtr_status(self, arg):
-        msg = self.format_request(LDMSD_UPDTR_STATUS_REQ)
-        rc = self.ctrl.socket.sendall(bytes(msg))
-        response = ""
-        while True:
-            hdr = self.ctrl.socket.recv(20)
-            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
-            data = self.ctrl.socket.recv(rec_len - 20)
-            response += data
-            if flags:
-                break
-        updaters = json.loads(response)
-        print("Name             Interval     Offset       Mode            State")
-        print("---------------- ------------ ------------ --------------- ------------")
-        for updtr in updaters:
-            print("{0:16} {1:12} {2:12} {3:15} {4}".format(
-                updtr['name'], updtr['interval'], updtr['offset'],
-                updtr['mode'], updtr['state']))
-            for prdcr in updtr['producers']:
-                print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
-                    prdcr['name'], prdcr['host'], prdcr['port'],
-                    prdcr['transport'], prdcr['state']))
+        """
+        Get the statuses of all Updaters.
+        Parameters:
+            NONE
+        """
+        resp = self.handle('updtr_status', None)
+        if resp['errcode'] == 0:
+            updaters = json.loads(resp['msg'])
+            print("Name             Interval     Offset       Mode            State")
+            print("---------------- ------------ ------------ --------------- ------------")
+            for updtr in updaters:
+                print("{0:16} {1:12} {2:12} {3:15} {4}".format(
+                    updtr['name'], updtr['interval'], updtr['offset'],
+                    updtr['mode'], updtr['state']))
+                for prdcr in updtr['producers']:
+                    print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
+                        prdcr['name'], prdcr['host'], prdcr['port'],
+                        prdcr['transport'], prdcr['state']))
+
+    def complete_updtr_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('updtr_status', text)
 
     def do_strgp_status(self, arg):
-        msg = self.format_request(LDMSD_STRGP_STATUS_REQ)
-        rc = self.ctrl.socket.sendall(bytes(msg))
-        response = ""
-        while True:
-            hdr = self.ctrl.socket.recv(20)
-            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
-            data = self.ctrl.socket.recv(rec_len - 20)
-            response += data
-            if flags:
-                break
-        policies = json.loads(response)
-        print("Name             Container        Schema           Plugin           State")
-        print("---------------- ---------------- ---------------- ---------------- ------------")
-        for strgp in policies:
-            print("{0:16} {1:16} {2:16} {3:16} {4}".format(
-                strgp['name'], strgp['container'], strgp['schema'],
-                strgp['plugin'], strgp['state']))
-            print("    producers: ", end='')
-            for prdcr in strgp['producers']:
-                print("{0} ".format(prdcr), end='')
-            print('')
-            print("    metrics: ", end='')
-            for metric in strgp['metrics']:
-                print("{0} ".format(metric), end='')
-            print('')
+        resp = self.handle('strgp_status', None)
+        if resp['errcode'] == 0:
+            policies = json.loads(resp['msg'])
+            print("Name             Container        Schema           Plugin           State")
+            print("---------------- ---------------- ---------------- ---------------- ------------")
+            for strgp in policies:
+                print("{0:16} {1:16} {2:16} {3:16} {4}".format(
+                    strgp['name'], strgp['container'], strgp['schema'],
+                    strgp['plugin'], strgp['state']))
+                print("    producers: ", end='')
+                for prdcr in strgp['producers']:
+                    print("{0} ".format(prdcr), end='')
+                print('')
+                print("    metrics: ", end='')
+                for metric in strgp['metrics']:
+                    print("{0} ".format(metric), end='')
+                print('')
+
+    def complete_strgp_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('strgp_status', text)
 
     def do_plugn_status(self, arg):
-        msg = self.format_request(LDMSD_PLUGN_STATUS_REQ)
-        rc = self.ctrl.socket.sendall(bytes(msg))
-        response = ""
-        while True:
-            hdr = self.ctrl.socket.recv(20)
-            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
-            data = self.ctrl.socket.recv(rec_len - 20)
-            response += data
-            if flags:
-                break
-        plugins = json.loads(response)
-        print("Name         Type         Interval     Offset       Libpath")
-        print("------------ ------------ ------------ ------------ ------------")
-        for plugn in plugins:
-            print("{0:12} {1:12} {2:12} {3:12} {4:12}".format(
-                plugn['name'], plugn['type'],
-                plugn['sample_interval_us'], plugn['sample_offset_us'],
-                plugn['libpath']))
+        resp = self.handle('plugn_status', None)
+        if resp:
+            plugins = json.loads(resp)
+            print("Name         Type         Interval     Offset       Libpath")
+            print("------------ ------------ ------------ ------------ ------------")
+            for plugn in plugins:
+                print("{0:12} {1:12} {2:12} {3:12} {4:12}".format(
+                    plugn['name'], plugn['type'],
+                    plugn['sample_interval_us'], plugn['sample_offset_us'],
+                    plugn['libpath']))
 
     def do_status(self, arg):
         all__ = (len(arg) == 0)
@@ -705,7 +743,7 @@ class LdmsdCmdParser(cmd.Cmd):
         Set the user data value for a metric in a metric set. This is typically used to
         convey the Component Id to the Aggregator.
         Parameters:
-        set=   The sampler plugin name
+        instance=   The instance name
         metric= The metric name
         udata=  The desired user-data. This is a 64b unsigned integer.
         """
@@ -721,7 +759,7 @@ class LdmsdCmdParser(cmd.Cmd):
         The base value is incremented by the given 'incr' value and then
         sets to the user data of the consecutive matched metric and so on.
         Parameters:
-             set=           The metric set name
+             instance=      The instance name
              regex=         A regular expression to match metric names to be set
              base=          The base value of user data (uint64)
              [incr=]        Increment value (int). The default is 0. If incr is 0,
@@ -759,13 +797,20 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Get the LDMS version the running LDMSD bases on.
         """
-        self.handle('version', arg)
+        resp = self.handle('version', arg)
+        if 'errcode' in resp.keys() and resp['errcode'] == 0:
+            print(resp['msg'])
 
     def do_include(self, arg):
         """
         Include a configuration file
+        Parameters:
+        path=    Path to the configuration file
         """
         self.handle('include', arg)
+
+    def complete_include(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('include', text)
 
     def do_env(self, arg):
         """
@@ -785,6 +830,18 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         self.ctrl.close()
         return True
+
+    def do_oneshot(self, arg):
+        """
+        Make a sampler plugin to take a sample at a specific time
+        Parameters:
+        name=    Sampler plugin name
+        time=    Timestamp since epoch. If 'now' is given, the sampler plugin will sample data right away.
+        """
+        self.handle('oneshot', arg)
+
+    def complete_oneshot(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('oneshot', text)
 
     def parseline(self, line):
         """Parse the line into a command name and a string containing

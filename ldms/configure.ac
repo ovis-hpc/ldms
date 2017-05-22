@@ -148,10 +148,6 @@ dnl This got defined here for LIBEVENT_ENABLE
 OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
 OPTION_WITH([libevent], [LIBEVENT],[/usr])
 
-OPTION_DEFAULT_DISABLE([ocm], [ENABLE_OCM])
-OPTION_WITH_OR_BUILD([ocm], [../ocm/src],[ocm ovis_rctrl],[ocm-vars.sh],[ocm],[])
-
-OPTION_DEFAULT_DISABLE([ldmsd-rctl], [ENABLE_LDMSD_RCTL])
 OPTION_DEFAULT_ENABLE([ldms-python], [ENABLE_LDMS_PYTHON])
 OPTION_DEFAULT_DISABLE([ldms-test], [ENABLE_LDMS_TEST])
 

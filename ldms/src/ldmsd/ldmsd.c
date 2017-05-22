@@ -86,14 +86,6 @@
 #include <mcheck.h>
 #endif /* DEBUG */
 
-#ifdef ENABLE_OCM
-#include <ocm/ocm.h>
-#include <coll/str_map.h>
-const char *ldmsd_svc_type = "ldmsd_sampler";
-uint16_t ocm_port = OCM_DEFAULT_PORT;
-int ldmsd_ocm_init(const char *svc_type, uint16_t port);
-#endif
-
 #if OVIS_LIB_HAVE_AUTH
 #include "ovis_auth/auth.h"
 #endif /* OVIS_LIB_HAVE_AUTH */
@@ -104,7 +96,7 @@ int ldmsd_ocm_init(const char *svc_type, uint16_t port);
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkN:o:r:R:p:a:v:Vz:Z:q:c:u"
+#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:a:v:Vz:Z:q:c:u"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"
@@ -460,10 +452,6 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -T set_name    Test set prefix.\n");
 	printf("    -N             Notify registered monitors of the test metric sets\n");
 	printf("  Configuration Options\n");
-#ifdef ENABLE_OCM
-	printf("  OCM Options\n");
-	printf("    -o ocm_port    The OCM port (default: %hu).\n", ocm_port);
-#endif
 #if OVIS_LIB_HAVE_AUTH
 	printf("    -a secretfile  Give the location of the secretword file.\n"
 	       "                   Normally, the environment variable\n"
@@ -803,8 +791,7 @@ void ldmsd_task_join(ldmsd_task_t task)
 /*
  * Start the sampler
  */
-int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
-			char err_str[LEN_ERRSTR])
+int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 {
 	char *endptr;
 	int rc = 0;
@@ -812,30 +799,22 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
 	long sample_offset = 0;
 	int synchronous = 0;
 	struct ldmsd_plugin_cfg *pi;
-	err_str[0] = '\0';
 
 	sample_interval = strtoul(interval, &endptr, 0);
-	if (endptr[0] != '\0') {
-		snprintf(err_str, LEN_ERRSTR, "interval '%s' invalid", interval);
+	if (endptr[0] != '\0')
 		return EINVAL;
-	}
 
 	pi = ldmsd_get_plugin((char *)plugin_name);
-	if (!pi) {
-		rc = ENOENT;
-		snprintf(err_str, LEN_ERRSTR, "Sampler not found.");
-		return rc;
-	}
+	if (!pi)
+		return ENOENT;
+
 	pthread_mutex_lock(&pi->lock);
 	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
-		rc = EINVAL;
-		snprintf(err_str, LEN_ERRSTR,
-				"The specified plugin is not a sampler.");
+		rc = -EINVAL;
 		goto out;
 	}
 	if (pi->thread_id >= 0) {
 		rc = EBUSY;
-		snprintf(err_str, LEN_ERRSTR, "Sampler is already running.");
 		goto out;
 	}
 
@@ -843,8 +822,7 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset,
 		sample_offset = strtol(offset, NULL, 0);
 		if ( !((sample_interval >= 10) &&
 		       (sample_interval >= labs(sample_offset)*2)) ){
-			snprintf(err_str, LEN_ERRSTR, "Sampler parameters "
-				"interval and offset are incompatible.");
+			rc = EDOM;
 			goto out;
 		}
 		synchronous = 1;
@@ -890,11 +868,11 @@ void oneshot_sample_cb(int fd, short sig, void *arg)
 	pthread_mutex_unlock(&pi->lock);
 }
 
-int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
+int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
+					char *errstr, size_t errlen)
 {
 	int rc = 0;
 	struct ldmsd_plugin_cfg *pi;
-	err_str[0] = '\0';
 	time_t now, sched;
 	struct timeval tv;
 
@@ -905,14 +883,14 @@ int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 		sched = strtoul(ts, NULL, 10);
 		now = time(NULL);
 		if (now < 0) {
-			snprintf(err_str, LEN_ERRSTR, "Failed to get "
+			snprintf(errstr, errlen, "Failed to get "
 						"the current time.");
 			rc = errno;
 			return rc;
 		}
 		double diff = difftime(sched, now);
 		if (diff < 0) {
-			snprintf(err_str, LEN_ERRSTR, "The schedule time '%s' "
+			snprintf(errstr, errlen, "The schedule time '%s' "
 				 "is ahead of the current time %jd",
 				 ts, (intmax_t)now);
 			rc = EINVAL;
@@ -924,7 +902,7 @@ int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 
 	struct oneshot *ossample = malloc(sizeof(*ossample));
 	if (!ossample) {
-		snprintf(err_str, LEN_ERRSTR, "Out of Memory");
+		snprintf(errstr, errlen, "Out of Memory");
 		rc = ENOMEM;
 		return rc;
 	}
@@ -932,21 +910,21 @@ int ldmsd_oneshot_sample(char *plugin_name, char *ts, char err_str[LEN_ERRSTR])
 	pi = ldmsd_get_plugin((char *)plugin_name);
 	if (!pi) {
 		rc = ENOENT;
-		snprintf(err_str, LEN_ERRSTR, "Sampler not found.");
+		snprintf(errstr, errlen, "Sampler not found.");
 		free(ossample);
 		return rc;
 	}
 	pthread_mutex_lock(&pi->lock);
 	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
 		rc = EINVAL;
-		snprintf(err_str, LEN_ERRSTR,
+		snprintf(errstr, errlen,
 				"The specified plugin is not a sampler.");
 		goto err;
 	}
 	pi->ref_count++;
 	ossample->pi = pi;
 	if (pi->thread_id < 0) {
-		snprintf(err_str, LEN_ERRSTR, "Sampler '%s' not started yet.",
+		snprintf(errstr, errlen, "Sampler '%s' not started yet.",
 								plugin_name);
 		rc = EPERM;
 		goto err;
@@ -968,24 +946,18 @@ out:
 /*
  * Stop the sampler
  */
-int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR])
+int ldmsd_stop_sampler(char *plugin_name)
 {
 	int rc = 0;
 	struct ldmsd_plugin_cfg *pi;
-	err_str[0] = '\0';
 
 	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi) {
-		rc = ENOENT;
-		snprintf(err_str, LEN_ERRSTR, "Sampler not found.");
-		goto out_nolock;
-	}
+	if (!pi)
+		return ENOENT;
 	pthread_mutex_lock(&pi->lock);
 	/* Ensure this is a sampler */
 	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
 		rc = EINVAL;
-		snprintf(err_str, LEN_ERRSTR,
-				"The specified plugin is not a sampler.");
 		goto out;
 	}
 	if (pi->event) {
@@ -996,12 +968,10 @@ int ldmsd_stop_sampler(char *plugin_name, char err_str[LEN_ERRSTR])
 		pi->thread_id = -1;
 		pi->ref_count--;
 	} else {
-		rc = EINVAL;
-		snprintf(err_str, LEN_ERRSTR, "The sampler is not running.");
+		rc = -EBUSY;
 	}
 out:
 	pthread_mutex_unlock(&pi->lock);
-out_nolock:
 	return rc;
 }
 
@@ -1293,15 +1263,6 @@ int main(int argc, char *argv[])
 			usage_hint(argv,"-Z not needed in LDMS v3. Remove it.\n"
 				"This message will disappear in a future release.");
 			break;
-		case 'o':
-#ifdef ENABLE_OCM
-			if (check_arg("o", optarg, LO_UINT))
-				return 1;
-			ocm_port = atoi(optarg);
-#else
-			printf("Error: -o options requires OCM support.\n");
-#endif
-			break;
 #if OVIS_LIB_HAVE_AUTH
 		case 'a':
 			if (check_arg("a", optarg, LO_PATH))
@@ -1573,14 +1534,6 @@ int main(int argc, char *argv[])
 
 	listen_on_transport(xprt_str, port_str);
 
-#ifdef ENABLE_OCM
-	int ocm_rc = ldmsd_ocm_init(ldmsd_svc_type, ocm_port);
-	if (ocm_rc) {
-		ldmsd_log(LDMSD_LERROR, "Error: cannot initialize OCM, rc: %d\n",
-				ocm_rc);
-		cleanup(ocm_rc, "ocm_init failed");
-	}
-#endif
 	if (config_path) {
 		int errloc = 0;
 		int rc = process_config_file(config_path, &errloc);
