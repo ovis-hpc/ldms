@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2017 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -206,7 +206,7 @@ __test_sampler_metric_new(const char *name, const char *mtype,
 
 	count = atoi(count_str);
 	if (vtype == LDMS_V_CHAR_ARRAY) {
-		if (init_value && (count < strlen(init_value)))
+		if (init_value && (count < strlen(init_value) + 1))
 			count = strlen(init_value) + 1;
 		metric = malloc(sizeof(*metric) + count);
 	} else {
@@ -585,35 +585,35 @@ static int config_add_set(struct attr_value_list *avl)
 
 	union ldms_value v;
 	int mid = 0;
-	if (ts_schema->type == TEST_SAMPLER_SCHEMA_TYPE_AUTO) {
-		char *endptr;
-		if (compid) {
-			v.v_u64 = strtoull(compid, &endptr, 0);
-			if (*endptr == '\0') {
-				msglog(LDMSD_LERROR, "test_sampler: invalid "
-						"component_id %s\n", compid);
-				rc = EINVAL;
-				goto err1;
-			}
-		} else {
-			v.v_u64 = 0;
+	char *endptr;
+	if (compid) {
+		v.v_u64 = strtoull(compid, &endptr, 0);
+		if (*endptr != '\0') {
+			msglog(LDMSD_LERROR, "test_sampler: invalid "
+					"component_id %s\n", compid);
+			rc = EINVAL;
+			goto err1;
 		}
-		mid = ldms_metric_by_name(ts_set->set, "component_id");
-		ldms_metric_set(ts_set->set, mid, &v);
-		if (jobid) {
-			v.v_u64 = strtoull(jobid, &endptr, 0);
-			if (*endptr == '\0') {
-				msglog(LDMSD_LERROR, "test_sampler: invalid "
-						"jobid %s\n", jobid);
-				rc = EINVAL;
-				goto err1;
-			}
-		} else {
-			v.v_u64 = 0;
-		}
-		mid = ldms_metric_by_name(ts_set->set, "jobid");
-		ldms_metric_set(ts_set->set, mid, &v);
+	} else {
+		v.v_u64 = 0;
 	}
+	mid = ldms_metric_by_name(ts_set->set, "component_id");
+	if (mid >= 0)
+		ldms_metric_set(ts_set->set, mid, &v);
+	if (jobid) {
+		v.v_u64 = strtoull(jobid, &endptr, 0);
+		if (*endptr != '\0') {
+			msglog(LDMSD_LERROR, "test_sampler: invalid "
+					"jobid %s\n", jobid);
+			rc = EINVAL;
+			goto err1;
+		}
+	} else {
+		v.v_u64 = 0;
+	}
+	mid = ldms_metric_by_name(ts_set->set, "jobid");
+	if (mid >= 0)
+		ldms_metric_set(ts_set->set, mid, &v);
 
 	int i;
 	struct test_sampler_metric *metric;
