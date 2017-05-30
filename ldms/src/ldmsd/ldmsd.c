@@ -1489,9 +1489,6 @@ int main(int argc, char *argv[])
 	if (config_path) {
 		int rc = process_config_file(config_path);
 		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
-					"Process config file error: %d (%s)\n", rc,
-					config_path);
 			cleanup(rc, "process config file failed");
 		}
 	}
