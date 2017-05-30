@@ -225,7 +225,7 @@ out:
         return arg;
 }
 
-void __recv_arg_destory(struct recv_arg *arg)
+void __recv_arg_destroy(struct recv_arg *arg)
 {
         pthread_mutex_lock(&recv_arg_list_lock);
         LIST_REMOVE(arg, entry);
@@ -320,7 +320,7 @@ static void __passive_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
                 sem_post(&event_arg->sem);
                 break;
         case LDMS_XPRT_EVENT_DISCONNECTED:
-                __recv_arg_destory(event_arg->recv_arg);
+                __recv_arg_destroy(event_arg->recv_arg);
                 free(event_arg);
                 ldms_xprt_put(x);
                 break;
@@ -384,7 +384,7 @@ static void __active_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
                 sem_post(&event_arg->sem);
                 break;
         case LDMS_XPRT_EVENT_DISCONNECTED:
-                __recv_arg_destory(event_arg->recv_arg);
+                __recv_arg_destroy(event_arg->recv_arg);
                 sem_destroy(&event_arg->sem);
                 free(event_arg);
                 ldms_xprt_put(x);
