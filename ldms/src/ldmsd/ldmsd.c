@@ -1545,8 +1545,7 @@ int main(int argc, char *argv[])
 		cleanup(4, "sock config_init failed");
 
 	if (inet_listener_port)
-		if (ldmsd_inet_config_init(inet_listener_port, secretword))
-			cleanup(104, "inet config_init failed");
+		listen_on_transport(xprt_str, inet_listener_port);
 
 #ifdef ENABLE_LDMSD_RCTL
 	if (rctrl_port)
