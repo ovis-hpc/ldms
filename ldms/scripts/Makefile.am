@@ -15,4 +15,5 @@ bin_SCRIPTS += ldms-py-subset_test.sh
 bin_SCRIPTS += ldms-py-syslog.sh
 bin_SCRIPTS += ldms-meminfo.sh
 bin_SCRIPTS += ldms-py-varset.sh
+bin_SCRIPTS += ldms-py-rename.sh
 endif

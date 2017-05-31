@@ -55,6 +55,7 @@
 
 #define _GNU_SOURCE
 
+#include <libgen.h>
 #include <stdbool.h>
 #include <ovis_util/util.h>
 #include <ovis_util/notification.h>
@@ -68,7 +69,12 @@
 #define STOREK_COMMON \
 	/** The full path of an ovis notification output.  NULL indicates no notices wanted.  */ \
         char *notify; \
-	bool notify_isfifo
+	bool notify_isfifo; \
+	/** The full path template for renaming closed outputs. NULL indicates no renames wanted. */ \
+        char *rename_template; \
+	unsigned rename_uid; \
+	unsigned rename_gid; \
+	unsigned rename_perm
 
 struct storek_common {
 	STOREK_COMMON;
@@ -169,6 +175,36 @@ int replace_string(char **strp, const char *val);
 extern
 void notify_output(const char *event, const char *name, const char *type, struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps, const char * container, const char *schema);
 
+/**
+ * Rename a closed file, following the rename template,
+ * and applying permissions, uid, gid.
+ * The rename_template of s_handle is a string containing a path including
+ * optionally the following substitutions:
+ *	%P expands to plugin name,
+ *	%C expands to container,
+ *	%S expands to schema,
+ *	%T expands to type.
+ *	%B expands to basename(name),
+ *	%D expands to dirname(name),
+ *	%s timestamp suffix, if it exists.
+ * Specifying both output event notification and output 
+ * renaming produces a race condition between this function
+ * and the event-processor and should be avoided.
+ * 
+ * The expanded name must be on the same file system (mount point)
+ * as the original file, or the underlying C rename() call will fail.
+ * This is not an interface that will implicitly copy and remove files.
+ * \param name a file just closed.
+ * \param type the type of file, e.g. NOTE_DAT.
+ * \param s_handle the store instance
+ * \param cps the store plugin instance
+ *
+ * Rename failures will be logged; there is no way to detect them here.
+ */
+void rename_output(const char *name, const char *type,
+	struct csv_store_handle_common *s_handle,
+	struct csv_plugin_static *cps);
+
 
 /**
  * configurations custom for a container+schema that can override
@@ -201,16 +237,25 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 #define NOTIFY_USAGE \
 		"         - notify  The path for the file event notices.\n" \
 		"         - notify_isfifo  0 if not (the default) or 1 if fifo.\n" \
+		"         - rename_template  The template string for closed output renaming.\n" \
+		"         - rename_uid  The numeric user id for output renaming.\n" \
+		"         - rename_gid  The numeric group id for output renaming.\n" \
+		"         - rename_perm  The octal permission bits for output renaming.\n" \
 
 
 #define LIB_CTOR_COMMON(cps) \
 	cps.notify = NULL; \
 	cps.notify_isfifo = false; \
+	cps.rename_template = false; \
+	cps.rename_uid = 0; \
+	cps.rename_gid = 0; \
+	cps.rename_perm = 0; \
 	cps.hooks_closed = 0
 
 
 #define LIB_DTOR_COMMON(cps) \
 	ovis_notification_close(cps.onp); \
-	free(cps.notify)
+	free(cps.notify); \
+	free(cps.rename_template)
 
 #endif /* store_csv_common_h_seen */
