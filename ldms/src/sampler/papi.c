@@ -310,8 +310,6 @@ next_event:
 		}
 	}
 
-	msglog(LDMSD_LDEBUG, "papi: 2\n");
-
 	papi_event_val = calloc(event_count, sizeof (uint64_t));
 	if (papi_event_val == NULL) {
 		msglog(LDMSD_LERROR, "papi: failed to allocate papi event read"
@@ -319,8 +317,6 @@ next_event:
 		rc = ENOMEM;
 		goto err;
 	}
-
-	msglog(LDMSD_LDEBUG, "papi: 3\n");
 
 	set = ldms_set_new(instance_name, schema);
 	if (!set) {
@@ -337,11 +333,9 @@ next_event:
 	/* papi_event_set is saved in location */
 	ldms_metric_user_data_set(set, 0, papi_event_set);
 
-	msglog(LDMSD_LDEBUG, "papi: 4\n");
 	return 0;
 
 err:
-	msglog(LDMSD_LDEBUG, "papi: 5\n");
 	if (schema)
 		ldms_schema_delete(schema);
 	schema = NULL;
