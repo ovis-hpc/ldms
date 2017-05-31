@@ -80,7 +80,7 @@ static int attach = 0;
 static int multiplex = 0;
 static uint64_t compid;
 static int* papi_event_sets;
-static int event_codes[64];
+static int event_codes[500];
 static int* apppid; /* Application PIDS array */
 static uint64_t max_pids;
 static int inot_length;;
@@ -100,7 +100,7 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	char* status;
 	PAPI_event_info_t event_info;
 	union ldms_value v;
-	char* events_names[8];
+	char* events_names[500];
 	char buf[255];
 
 	appname_filename = strdup(filename);
@@ -284,6 +284,7 @@ next_event:
 		rc = ENOENT;
 		goto err;
 	}
+
 	/* Save data for max_pids, we have one set created earlier */
 	for (i = 1; i < max_pids; i++) {
 		sprintf(buf, "Pid_%d", i);
@@ -309,6 +310,8 @@ next_event:
 		}
 	}
 
+	msglog(LDMSD_LDEBUG, "papi: 2\n");
+
 	papi_event_val = calloc(event_count, sizeof (uint64_t));
 	if (papi_event_val == NULL) {
 		msglog(LDMSD_LERROR, "papi: failed to allocate papi event read"
@@ -316,6 +319,8 @@ next_event:
 		rc = ENOMEM;
 		goto err;
 	}
+
+	msglog(LDMSD_LDEBUG, "papi: 3\n");
 
 	set = ldms_set_new(instance_name, schema);
 	if (!set) {
@@ -331,9 +336,12 @@ next_event:
 
 	/* papi_event_set is saved in location */
 	ldms_metric_user_data_set(set, 0, papi_event_set);
+
+	msglog(LDMSD_LDEBUG, "papi: 4\n");
 	return 0;
 
 err:
+	msglog(LDMSD_LDEBUG, "papi: 5\n");
 	if (schema)
 		ldms_schema_delete(schema);
 	schema = NULL;
