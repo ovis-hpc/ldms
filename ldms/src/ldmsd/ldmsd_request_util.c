@@ -53,6 +53,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <ovis_util/util.h>
 #include "ldmsd_request.h"
 
 struct req_str_id {
@@ -119,8 +120,10 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "plugin",		LDMSD_ATTR_PLUGIN   },
 	{  "port",		LDMSD_ATTR_PORT   },
 	{  "producer",		LDMSD_ATTR_PRODUCER   },
+	{  "push", 		LDMSD_ATTR_PUSH   },
 	{  "regex",		LDMSD_ATTR_REGEX   },
 	{  "schema",		LDMSD_ATTR_SCHEMA   },
+	{  "string",		LDMSD_ATTR_STRING  },
 	{  "time",              LDMSD_ATTR_TIME   },
 	{  "type",		LDMSD_ATTR_TYPE   },
 	{  "udata",             LDMSD_ATTR_UDATA   },
@@ -302,4 +305,24 @@ last_attr:
 err:
 	free(dummy);
 	return rc;
+}
+
+char *ldmsd_req_attr_value_get_by_id(char *attr_list, uint32_t attr_id)
+{
+	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)attr_list;
+	while (attr->discrim) {
+		if (attr->attr_id == attr_id) {
+			return str_repl_env_vars((char *)attr->attr_value);
+		}
+		attr = (ldmsd_req_attr_t)(&attr->attr_value[attr->attr_len]);
+	}
+	return NULL;
+}
+
+char *ldmsd_req_attr_value_get_by_name(char *attr_list, const char *name)
+{
+	uint32_t attr_id = ldmsd_req_attr_str2id(name);
+	if (attr_id < 0)
+		return NULL;
+	return ldmsd_req_attr_value_get_by_id(attr_list, attr_id);
 }
