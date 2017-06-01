@@ -552,7 +552,6 @@ static int papi_events(int c)
 	if (rc != PAPI_OK) {
 		msglog(LDMSD_LERROR, "papi: failed to create empty "
 			"event set number %d error %d!\n", c, rc);
-		deatach_pids();
 		return -1;
 	}
 
@@ -564,7 +563,6 @@ static int papi_events(int c)
 			msglog(LDMSD_LERROR, "papi: failed to add "
 				"event 0x%X to event set error %d\n",
 				event_codes[num], rc);
-			deatach_pids();
 			return -1;
 		}
 	}
@@ -611,7 +609,11 @@ static int create_event_sets()
 		} else {
 			while (fscanf(pipe_fp1, "%d", &apppid[c]) != -1
 				&& c < pids_count) {
-				if (papi_events(c) < 0) return -1;
+				if (papi_events(c) < 0) {
+                                    pclose(pipe_fp1);
+                                    deatach_pids();
+                                    return -1;
+                                }
 				c++;
 			}
 			pclose(pipe_fp1);
