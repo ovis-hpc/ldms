@@ -611,7 +611,6 @@ static int create_event_sets()
 				&& c < pids_count) {
 				if (papi_events(c) < 0) {
                                     pclose(pipe_fp1);
-                                    deatach_pids();
                                     return -1;
                                 }
 				c++;
