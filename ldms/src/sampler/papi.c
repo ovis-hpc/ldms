@@ -557,14 +557,13 @@ static int papi_events(int c)
 
 	event_count = PAPI_num_events(ldms_metric_user_data_get(set, 0));
 
-	for (num = 0; num < event_count; num++) {
-		if (PAPI_add_event(papi_event_sets[c],
-			event_codes[num]) != PAPI_OK) {
-			msglog(LDMSD_LERROR, "papi: failed to add "
-				"event 0x%X to event set error %d\n",
-				event_codes[num], rc);
-			return -1;
-		}
+	rc = PAPI_add_events(papi_event_sets[c],
+			&event_codes, event_count);
+	if (rc != PAPI_OK) {
+		msglog(LDMSD_LERROR, "papi: failed to add "
+				"event to event set error %d\n",
+				rc);
+		return -1;
 	}
 	return 0;
 }
@@ -595,7 +594,7 @@ static int create_event_sets()
 
 		apppid = (int*) calloc(pids_count, sizeof (int));
 
-		papi_event_sets = (int*) calloc(pids_count,
+		papi_event_sets = (int*) calloc(pids_count*20,
 			sizeof (int));
 
 		sprintf(command, "pgrep %s", appname_str);
