@@ -554,6 +554,30 @@ static int papi_events(int c)
 			"event set number %d error %d!\n", c, rc);
 		return -1;
 	}
+	
+	if (multiplex) {
+		/* Explicitly bind event set to cpu component.	
+		 * PAPI documentation states that this must be done after 
+		 * PAPI_create_eventset, but before calling PAPI_set_multiplex.
+		 * The argument 0 binds to cpu component.
+		 */
+		rc = PAPI_assign_eventset_component(papi_event_sets[c], 0);
+		if (rc != PAPI_OK) {
+			msglog(LDMSD_LERROR, "papi: failed to bind papi to cpu"
+				" component!\n");
+			rc = ENOENT;
+			return -1;
+		}
+
+		/* Convert papi_event_set to a multiplexed event set */
+		rc = PAPI_set_multiplex(papi_event_sets[c]);
+		if (rc != PAPI_OK) {
+			msglog(LDMSD_LERROR, "papi: failed to convert event set"
+				" to multiplexed!\n");
+			rc = ENOENT;
+			return -1;
+		}
+	}
 
 	event_count = PAPI_num_events(ldms_metric_user_data_get(set, 0));
 
