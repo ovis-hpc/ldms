@@ -72,7 +72,7 @@ static ldmsd_msg_log_f msglog;
 static ldms_schema_t schema;
 static char* default_schema_name = "spapi";
 static long_long* papi_event_val;
-static char *appname_str;
+static char *appname_str = "";
 static char *appname_filename;
 static int pids_count = 0;
 /* 0-Sampler not attached yet 1-Sampler is attached to a process */
@@ -89,6 +89,7 @@ static int inot_wd;
 static char inot_buffer[16];
 static int exist_before = 0;
 static int inotif;
+static char *oldline = "";
 
 static int create_metric_set(const char* instance_name, const char* schema_name,
 	char* events, char* filename)
@@ -470,7 +471,6 @@ static ldms_set_t get_set(struct ldmsd_sampler * self)
 void read_sup_file()
 {
 
-	appname_str = "";
 	/* Read a file ex. /tmp/myapp.txt to the get the application name */
 	FILE *file;
 	char *line = NULL;
@@ -478,15 +478,22 @@ void read_sup_file()
 	char *record;
 	char* status;
 
-	msglog(LDMSD_LDEBUG, "appperformance: Start Reading the File\n");
+	msglog(LDMSD_LDEBUG, "papi: Start Reading the File\n");
 
-	msglog(LDMSD_LDEBUG, "appperformance: Open the "
+	msglog(LDMSD_LDEBUG, "papi: Open the "
 		"File: %s\n", appname_filename);
 	file = fopen(appname_filename, "r");
 	if ((file != NULL)) { /* APPNAME is set */
 		int token_number = 1;
 		if (getline(&line, &len, file) == -1) goto nextread;
-
+		
+		msglog(LDMSD_LDEBUG, "papi: line = %s\n", line);
+		msglog(LDMSD_LDEBUG, "papi: oldline = %s\n", oldline);
+		/* Check if the same job line read before */
+		if (strcmp(line, oldline) == 0) goto nextread;
+		
+		oldline = strdup(line);
+		
 		ldms_transaction_begin(set);
 		record = strtok_r(line, ",", &status);
 		while (record) {
@@ -499,7 +506,7 @@ void read_sup_file()
 						strlen(record) + 1);
 					appname_str = (char *)
 						ldms_metric_array_get(set, 1);
-					msglog(LDMSD_LDEBUG, "appperformance: "
+					msglog(LDMSD_LDEBUG, "papi: "
 						"APPNAME from file= %s \n",
 						ldms_metric_array_get(set, 1));
 					break;
@@ -508,7 +515,7 @@ void read_sup_file()
 					ldms_metric_array_set(set, token_number,
 						(ldms_mval_t) record, 0,
 						strlen(record) + 1);
-					msglog(LDMSD_LDEBUG, "appperformance: "
+					msglog(LDMSD_LDEBUG, "papi: "
 						"jobid = %s \n",
 						record);
 					break;
@@ -517,7 +524,7 @@ void read_sup_file()
 					ldms_metric_array_set(set, token_number,
 						(ldms_mval_t) record, 0,
 						strlen(record) + 1);
-					msglog(LDMSD_LDEBUG, "appperformance: "
+					msglog(LDMSD_LDEBUG, "papi: "
 						"user name = %s \n"
 						, record);
 					break;
@@ -528,10 +535,10 @@ void read_sup_file()
 
 		ldms_transaction_end(set);
 nextread:
-		msglog(LDMSD_LDEBUG, "appperformance: End reading the File\n");
+		msglog(LDMSD_LDEBUG, "papi: End reading the File\n");
 		fclose(file);
 	} else {
-		msglog(LDMSD_LDEBUG, "appperformance: Error in open the "
+		msglog(LDMSD_LDEBUG, "papi: Error in open the "
 			"appname file: %d \n", errno);
 	}
 }
@@ -742,6 +749,7 @@ int deatach_pids()
 	free(papi_event_sets);
 	attach = 0;
 	pids_count = 0;
+	appname_str = "";
 
 	/* Clear PID metric */
 	/* Save the PID number in the pid metric */
