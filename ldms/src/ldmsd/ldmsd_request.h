@@ -51,6 +51,7 @@
 
 #include <inttypes.h>
 #include "coll/rbt.h"
+#include "ldms.h"
 
 #ifndef LDMS_SRC_LDMSD_LDMSD_REQUEST_H_
 #define LDMS_SRC_LDMSD_LDMSD_REQUEST_H_
@@ -142,8 +143,12 @@ enum ldmsd_request_attr {
 #define LDMSD_REQ_SOM_F	1
 #define LDMSD_REQ_EOM_F	2
 
+#define LDMSD_REQ_TYPE_CONFIG_CMD 1
+#define LDMSD_REQ_TYPE_CONFIG_RESP 2
+
 typedef struct ldmsd_req_hdr_s {
 	uint32_t marker;	/* Always has the value 0xff */
+	uint32_t type;		/* Request type */
 	uint32_t flags;		/* EOM==1 means this is the last record for this message */
 	uint32_t msg_no;	/* Unique for each request */
 	uint32_t code;		/* For command req, it is the unique command id. For command response, it is the error code. */
@@ -152,7 +157,7 @@ typedef struct ldmsd_req_hdr_s {
 
 typedef struct req_ctxt_key {
 	uint32_t msg_no;
-	uint32_t sock_fd;
+	uint64_t conn_id;
 } *msg_key_t;
 
 struct ldmsd_req_ctxt;
@@ -163,7 +168,6 @@ typedef struct ldmsd_req_ctxt {
 	struct req_ctxt_key key;
 	struct rbn rbn;
 	struct ldmsd_req_hdr_s rh;
-	struct msghdr *mh;
 	int rec_no;
 	uint32_t errcode;
 	size_t line_len;
@@ -174,7 +178,10 @@ typedef struct ldmsd_req_ctxt {
 	size_t rep_len;
 	size_t rep_off;
 	char *rep_buf;
-	int dest_fd; /* Where to respond back to */
+	ldms_t ldms; /* In-band */
+	int dest_fd; /* Out-of-band */
+	struct msghdr *mh;
+
 	ldmsd_req_resp_handler_t resp_handler;
 } *ldmsd_req_ctxt_t;
 

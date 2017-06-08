@@ -257,10 +257,14 @@ class LDMSD_Request(object):
             'daemon_exit': {'id': EXIT_DAEMON},
         }
 
+    TYPE_CONFIG_CMD = 1
+    TYPE_CONFIG_RESP = 2
+    TYPE_LAST = 3
+
     SOM_FLAG = 1
     EOM_FLAG = 2
     message_number = 1
-    header_size = 20
+    header_size = 24
     def __init__(self, command=None, command_id=None, message=None, attrs=None):
         marker = -1
         if command_id is None and command is None:
@@ -283,7 +287,7 @@ class LDMSD_Request(object):
             # Account for size of terminating 0
             self.request_size += 4
 
-        self.request = struct.pack('iiiii', marker,
+        self.request = struct.pack('iiiiii', marker, self.TYPE_CONFIG_CMD,
                                    LDMSD_Request.SOM_FLAG | LDMSD_Request.EOM_FLAG,
                                    self.message_number, command_id, self.request_size)
         # Add the attributes after the message header
@@ -309,18 +313,31 @@ class LDMSD_Request(object):
     def receive(self, ctrl):
         self.response = {'errcode': None, 'msg': None}
         msg = ""
-        while True:
-            hdr = ctrl.socket.recv(self.header_size)
-            (marker, flags, msg_no, errcode, rec_len) = struct.unpack('iiiii', hdr)
-            if marker != -1:
-                raise LDMSD_Except("Invalid response format")
-            if rec_len - self.header_size > 0:
-                data = ctrl.socket.recv(rec_len - self.header_size)
-                msg += data
-            if flags & LDMSD_Request.EOM_FLAG:
-                break
+        try:
+            if ctrl.type != "inband":
+                while True:
+                    hdr = ctrl.socket.recv(self.header_size)
+                    (marker, type, flags, msg_no, errcode, rec_len) = struct.unpack('iiiiii', hdr)
+                    if marker != -1:
+                        raise LDMSD_Except("Invalid response format")
+                    if rec_len - self.header_size > 0:
+                        data = ctrl.socket.recv(rec_len - self.header_size)
+                        msg += data
+                    if flags & LDMSD_Request.EOM_FLAG:
+                        break
+            else:
+                hdr_data = ctrl.receive_response()
+                (marker, type, flags, msg_no, errcode, rec_len) = struct.unpack('iiiiii', 
+                                                                    hdr_data[0:self.header_size])
+                if marker != -1 or type != self.TYPE_CONFIG_RESP:
+                    raise LDMSD_Except("Invalid response")
+                if rec_len - self.header_size > 0:
+                    msg += hdr_data[self.header_size:]
+        except:
+            raise
+
         self.response['errcode'] = errcode
-        self.response['msg'] = msg
+        self.response['msg'] = str(msg)
         return self.response
 
     def is_error_resp(self, json_obj_resp):

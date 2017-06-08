@@ -80,6 +80,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
+#include "ldmsd_request.h"
 #include "config.h"
 
 #ifdef DEBUG
@@ -1000,6 +1001,24 @@ void *event_proc(void *v)
 	return NULL;
 }
 
+extern int
+process_request_ldms_xprt(ldms_t x, ldmsd_req_hdr_t request, char *data,
+						size_t data_len);
+void __recv_msg(ldms_t x, char *data, size_t data_len)
+{
+	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)data;
+	switch (request->type) {
+	case LDMSD_REQ_TYPE_CONFIG_CMD:
+		(void)process_request_ldms_xprt(x, request, data + sizeof(*request),
+					request->rec_len - sizeof(*request));
+		break;
+	case LDMSD_REQ_TYPE_CONFIG_RESP:
+		break;
+	default:
+		break;
+	}
+}
+
 void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	switch (e->type) {
@@ -1007,6 +1026,9 @@ void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		ldms_xprt_put(x);
+		break;
+	case LDMS_XPRT_EVENT_RECV:
+		__recv_msg(x, e->data, e->data_len);
 		break;
 	default:
 		assert(0);
@@ -1523,8 +1545,7 @@ int main(int argc, char *argv[])
 		cleanup(4, "sock config_init failed");
 
 	if (inet_listener_port)
-		if (ldmsd_inet_config_init(inet_listener_port, secretword))
-			cleanup(104, "inet config_init failed");
+		listen_on_transport(xprt_str, inet_listener_port);
 
 #ifdef ENABLE_LDMSD_RCTL
 	if (rctrl_port)

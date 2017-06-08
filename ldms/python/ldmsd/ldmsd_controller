@@ -75,10 +75,11 @@ LDMSD_UPDTR_STATUS_REQ=0x304
 LDMSD_PLUGN_STATUS_REQ=0x504
 
 class LdmsdCmdParser(cmd.Cmd):
-    def __init__(self, sockname = None, host_port = None, secretPath = None, infile=None):
+    def __init__(self, sockname = None, host = None, port = None, xprt = None,
+                                    secretPath = None, infile=None, inband = True):
         self.msg_no = 1
-        if (sockname is None) and (host_port is None):
-            raise ValueError("Expecting either sockname or host_port. None is given")
+        if (sockname is None) and (host is None or port is None):
+            raise ValueError("Expecting either sockname or host & port. None is given")
 
         if sockname is not None:
             self.ctrl = ldmsd_config.ldmsdUSocketConfig(ldmsd_sockpath = sockname)
@@ -99,10 +100,17 @@ class LdmsdCmdParser(cmd.Cmd):
             except:
                 raise
 
-            self.ctrl = ldmsd_config.ldmsdInetConfig(host = host_port['host'],
-                                                     port = host_port['port'],
-                                                     secretword = self.secretword)
-            self.prompt = "{0}:{1}> ".format(host_port['host'], host_port['port'])
+            if inband is True:
+                self.ctrl = ldmsd_config.ldmsdInbandConfig(host = host,
+                                                           port = port,
+                                                           xprt = xprt,
+                                                           secretword = self.secretword)
+                self.prompt = "{0}:{1}:{2}>".format(xprt, host, port)
+            else:
+                self.ctrl = ldmsd_config.ldmsdInetConfig(host = host,
+                                                             port = int(port),
+                                                             secretword = self.secretword)
+                self.prompt = "{0}:{1}> ".format(host, port)
 
         if infile:
             cmd.Cmd.__init__(self, stdin=infile)
@@ -883,6 +891,10 @@ if __name__ == "__main__":
                             help = "Hostname of ldmsd to connect to")
         parser.add_argument('--port',
                             help = "Inet ctrl listener port of ldmsd")
+        parser.add_argument('--xprt',
+                            help = "LDMS Transport type: sock, ugni, rdma. Only for the inband channel",
+                            choices = ['sock', 'ugni', 'rdma'],
+                            default = 'sock')
         parser.add_argument('--auth_file',
                             help = "Path to the file containing the secretword. \
 This must be use only when the ldmsd is using authentication and \
@@ -903,12 +915,11 @@ ldmsd_controller is not connecting to ldmsd through a unix domain socket.")
             print("Please give either --sockname or both of --host and --port.")
             sys.exit(1)
 
-        if args.sockname is not None:
-            cmdParser = LdmsdCmdParser(sockname = args.sockname)
-        else:
-            cmdParser = LdmsdCmdParser(host_port = {'host': args.host,
-                                                    'port': int(args.port)},
-                                       secretPath = args.auth_file)
+        cmdParser = LdmsdCmdParser(sockname = args.sockname,
+                                   host = args.host,
+                                   port = args.port,
+                                   xprt = args.xprt,
+                                   secretPath = args.auth_file)
 
         if args.source is not None or args.script is not None:
             if args.source is not None:

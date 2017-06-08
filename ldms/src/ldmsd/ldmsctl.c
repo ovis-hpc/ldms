@@ -65,6 +65,7 @@
 #include <search.h>
 #include <semaphore.h>
 #include <assert.h>
+#include "ldms.h"
 #include "config.h"
 
 #define _GNU_SOURCE
@@ -97,7 +98,7 @@ extern int read_history ();
 #include "ldmsd.h"
 #include "ldmsd_request.h"
 
-#define FMT "h:p:a:S:"
+#define FMT "h:p:a:S:x:"
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
 
 #define LDMSD_SOCKPATH_ENV "LDMSD_SOCKPATH"
@@ -107,10 +108,28 @@ static size_t linebuf_len;
 static char *buffer;
 static size_t buffer_len;
 
-struct ctrl {
-	int sock;
-	struct sockaddr *sa;
-	size_t sa_len;
+struct ldmsctl_ctrl {
+	enum ldmsctl_ctrl_type {
+		LDMSCTL_TYPE_LOCAL = 1,
+		LDMSCTL_TYPE_REMOTE,
+	} type;
+	union {
+		struct ldmsctl_local {
+			int sock;
+			struct sockaddr *sa;
+			size_t sa_len;
+		} local;
+		struct ldmsctl_remote {
+			ldms_t x;
+			enum {
+				LDMSCTL_REMOTE_DISCONNECTED,
+				LDMSCTL_REMOTE_CONNECTED,
+				LDMSCTL_REMOTE_ERROR,
+			} state;
+			sem_t connected_sem;
+			sem_t recv_sem;
+		} remote;
+	};
 };
 
 struct command {
@@ -550,8 +569,8 @@ int handle_help(char *args)
 	return 0;
 }
 
-static int __send_cmd(struct ctrl *ctrl, ldmsd_req_hdr_t req,
-					char *data, size_t data_len)
+static int __local_send_cmd(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req,
+						char *data, size_t data_len)
 {
 	struct msghdr reply;
 	struct iovec iov[2];
@@ -568,12 +587,36 @@ static int __send_cmd(struct ctrl *ctrl, ldmsd_req_hdr_t req,
 	reply.msg_controllen = 0;
 	reply.msg_flags = 0;
 
-	if (sendmsg(ctrl->sock, &reply, 0) < 0)
+	if (sendmsg(ctrl->local.sock, &reply, 0) < 0)
 		return errno;
 	return 0;
 }
 
-static char * __recv_resp(struct ctrl *ctrl)
+static int __remote_send_cmd(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req,
+						char *data, size_t data_len)
+{
+	size_t req_sz = sizeof(*req);
+	char *req_buf = malloc(req_sz + data_len);
+	if (!req_buf) {
+		printf("Out of memory\n");
+		return ENOMEM;
+	}
+
+	memcpy(req_buf, req, req_sz);
+	memcpy(req_buf + req_sz, data, data_len);
+	return ldms_xprt_send(ctrl->remote.x, req_buf, req_sz + data_len);
+}
+
+static int __send_cmd(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req,
+					char *data, size_t data_len)
+{
+	if (ctrl->type == LDMSCTL_TYPE_LOCAL)
+		return __local_send_cmd(ctrl, req, data, data_len);
+	else
+		return __remote_send_cmd(ctrl, req, data, data_len);
+}
+
+static char * __local_recv_resp(struct ldmsctl_ctrl *ctrl)
 {
 	struct msghdr msg;
 	struct iovec iov;
@@ -591,7 +634,7 @@ static char * __recv_resp(struct ctrl *ctrl)
 	msg.msg_control = NULL;
 	msg.msg_controllen = 0;
 	msg.msg_flags = 0;
-	msglen = recvmsg(ctrl->sock, &msg, MSG_PEEK);
+	msglen = recvmsg(ctrl->local.sock, &msg, MSG_PEEK);
 	if (msglen <= 0)
 		return NULL;
 
@@ -609,14 +652,32 @@ static char * __recv_resp(struct ctrl *ctrl)
 	iov.iov_base = buffer;
 	iov.iov_len = req_resp.rec_len;
 
-	msglen = recvmsg(ctrl->sock, &msg, MSG_WAITALL);
+	msglen = recvmsg(ctrl->local.sock, &msg, MSG_WAITALL);
 	if (msglen < req_resp.rec_len)
 		return NULL;
 
 	return buffer;
 }
 
-static int __handle_cmd(char *cmd, struct ctrl *ctrl)
+static char *__remote_recv_resp(struct ldmsctl_ctrl *ctrl)
+{
+loop:
+	sem_wait(&ctrl->remote.recv_sem);
+	if (!buffer) {
+		return NULL;
+	}
+	return buffer;
+}
+
+static char *__recv_resp(struct ldmsctl_ctrl *ctrl)
+{
+	if (ctrl->type == LDMSCTL_TYPE_LOCAL)
+		return __local_recv_resp(ctrl);
+	else
+		return __remote_recv_resp(ctrl);
+}
+
+static int __handle_cmd(char *cmd, struct ldmsctl_ctrl *ctrl)
 {
 	static int msg_no = 0;
 	struct ldmsd_req_hdr_s request, response;
@@ -665,6 +726,7 @@ static int __handle_cmd(char *cmd, struct ctrl *ctrl)
 	}
 	request.flags = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
 	request.msg_no = msg_no;
+	request.type = LDMSD_REQ_TYPE_CONFIG_CMD;
 	msg_no++;
 
 	rc = __send_cmd(ctrl, &request, buffer, buffer_offset);
@@ -693,18 +755,20 @@ static int __handle_cmd(char *cmd, struct ctrl *ctrl)
 	return 0;
 }
 
-struct ctrl *__unix_domain_ctrl(char *my_name, char *sockname)
+struct ldmsctl_ctrl *__unix_domain_ctrl(char *my_name, char *sockname)
 {
 	int rc;
 	struct sockaddr_un my_un, lcl_addr, rem_addr;
 	char *mn;
 	char *sockpath;
 	char *_sockname = NULL;
-	struct ctrl *ctrl;
+	struct ldmsctl_ctrl *ctrl;
 
 	ctrl = calloc(1, sizeof *ctrl);
 	if (!ctrl)
 		return NULL;
+
+	ctrl->type = LDMSCTL_TYPE_LOCAL;
 
 	if (sockname[0] == '/') {
 		_sockname = strdup(sockname);
@@ -724,8 +788,8 @@ struct ctrl *__unix_domain_ctrl(char *my_name, char *sockname)
 		sizeof(struct sockaddr_un) - sizeof(short));
 
 	/* Create control socket */
-	ctrl->sock = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (ctrl->sock < 0)
+	ctrl->local.sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	if (ctrl->local.sock < 0)
 		goto err;
 
 	pid_t pid = getpid();
@@ -743,22 +807,22 @@ struct ctrl *__unix_domain_ctrl(char *my_name, char *sockname)
 		if (errno != EEXIST) {
 			printf("Error creating '%s: %s\n", my_un.sun_path,
 							strerror(errno));
-			close(ctrl->sock);
+			close(ctrl->local.sock);
 			goto err;
 		}
 	}
 
 	sprintf(lcl_addr.sun_path, "%s/%d", my_un.sun_path, pid);
 
-	rc = connect(ctrl->sock, (struct sockaddr *)&rem_addr,
+	rc = connect(ctrl->local.sock, (struct sockaddr *)&rem_addr,
 			  sizeof(struct sockaddr_un));
 	if (rc < 0) {
 		printf("Error creating '%s'\n", rem_addr.sun_path);
-		close(ctrl->sock);
+		close(ctrl->local.sock);
 		goto err;
 	}
-	ctrl->sa = (struct sockaddr *)&rem_addr;
-	ctrl->sa_len = sizeof(rem_addr);
+	ctrl->local.sa = (struct sockaddr *)&rem_addr;
+	ctrl->local.sa_len = sizeof(rem_addr);
 	if (_sockname)
 		free(_sockname);
 	return ctrl;
@@ -769,15 +833,105 @@ struct ctrl *__unix_domain_ctrl(char *my_name, char *sockname)
 	return NULL;
 }
 
-int __inet_ctrl(const char *host, const char *port, const char *secretword_path)
+void __ldms_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-	return ENOSYS;
+	size_t msg_len;
+	static size_t resp_hdr_sz = sizeof(struct ldmsd_req_hdr_s);
+	struct ldmsctl_ctrl *ctrl = cb_arg;
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_CONNECTED:
+		ctrl->remote.state = LDMSCTL_REMOTE_CONNECTED;
+		sem_post(&ctrl->remote.connected_sem);
+		break;
+	case LDMS_XPRT_EVENT_REJECTED:
+		printf("The connected request is rejected."
+				"Please verify your secret word.\n");
+		ldms_xprt_put(ctrl->remote.x);
+		exit(0);
+	case LDMS_XPRT_EVENT_DISCONNECTED:
+		ctrl->remote.state = LDMSCTL_REMOTE_DISCONNECTED;
+		ldms_xprt_put(ctrl->remote.x);
+		printf("The connection is disconnected.\n");
+		exit(0);
+	case LDMS_XPRT_EVENT_ERROR:
+		ctrl->remote.state = LDMSCTL_REMOTE_ERROR;
+		printf("Connection error\n");
+		exit(0);
+		break;
+	case LDMS_XPRT_EVENT_RECV:
+		if (buffer_len < e->data_len) {
+			free(buffer);
+			buffer = malloc(e->data_len);
+			if (!buffer) {
+				printf("Out of memory\n");
+				buffer = NULL;
+				buffer_len = 0;
+				ldms_xprt_close(ctrl->remote.x);
+				sem_post(&ctrl->remote.recv_sem);
+				break;
+			}
+			buffer_len = e->data_len;
+		}
+		memset(buffer, 0, buffer_len);
+		memcpy(buffer, e->data, e->data_len);
+		sem_post(&ctrl->remote.recv_sem);
+		break;
+	default:
+		assert(0);
+	}
+}
+
+struct ldmsctl_ctrl *__remote_ctrl(const char *host, const char *port,
+			const char *xprt, const char *secretword_path)
+{
+	ldms_t x;
+	struct ldmsctl_ctrl *ctrl;
+	int rc;
+
+	ctrl = calloc(1, sizeof(*ctrl));
+	if (!ctrl)
+		return NULL;
+
+	sem_init(&ctrl->remote.connected_sem, 0, 0);
+	sem_init(&ctrl->remote.recv_sem, 0, 0);
+
+	ctrl->type = LDMSCTL_TYPE_REMOTE;
+
+
+#if OVIS_LIB_HAVE_AUTH
+	char *secretword = ldms_get_secretword(secretword_path, NULL);
+	if (!secretword) {
+		printf("Failed to get the secret word\n");
+		exit(0);
+	}
+	ctrl->remote.x = ldms_xprt_with_auth_new(xprt, NULL, secretword);
+#else /* OVIS_LIB_HAVE_AUTH */
+	ctrl->remote.x = ldms_xprt_new(xprt, NULL);
+#endif /* OVIS_LIB_HAVE_AUTH */
+	if (!ctrl->remote.x) {
+		printf("Failed to create an ldms transport. %s\n",
+						strerror(errno));
+		return NULL;
+	}
+
+	rc = ldms_xprt_connect_by_name(ctrl->remote.x, host, port,
+						__ldms_event_cb, ctrl);
+	if (rc) {
+		ldms_xprt_put(ctrl->remote.x);
+		sem_destroy(&ctrl->remote.connected_sem);
+		sem_destroy(&ctrl->remote.recv_sem);
+		free(ctrl);
+		return NULL;
+	}
+
+	sem_wait(&ctrl->remote.connected_sem);
+	return ctrl;
 }
 
 int main(int argc, char *argv[])
 {
 	int op;
-	char *host, *port, *secretword_path, *sockname, *env, *s;
+	char *host, *port, *secretword_path, *sockname, *env, *s, *xprt;
 	host = port = secretword_path = sockname = s = NULL;
 	int rc, is_inet = 0;
 
@@ -786,15 +940,21 @@ int main(int argc, char *argv[])
 		case 'S':
 			sockname = strdup(optarg);
 			break;
+		case 'h':
+			host = strdup(optarg);
+			break;
+		case 'p':
+			port = strdup(optarg);
+			break;
+		case 'x':
+			xprt = strdup(optarg);
+			break;
+		case 'a':
+			secretword_path = strdup(optarg);
+			break;
 		default:
 			usage(argv);
 		}
-	}
-
-	if (!sockname) {
-		printf("Please provide the UNIX Domain socket path ('-S')\n");
-		usage(argv);
-		return 0;
 	}
 
 	env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
@@ -808,7 +968,11 @@ int main(int argc, char *argv[])
 		printf("Out of memory\n");
 		exit(ENOMEM);
 	}
-	struct ctrl *ctrl;
+	struct ldmsctl_ctrl *ctrl;
+
+	if (!sockname && (!host || !port || !xprt))
+		goto arg_err;
+
 	if (sockname) {
 		ctrl = __unix_domain_ctrl(basename(argv[0]), sockname);
 		if (!ctrl) {
@@ -816,21 +980,11 @@ int main(int argc, char *argv[])
 			exit(-1);
 		}
 	} else {
-		if (!host) {
-			printf("Please give '-h'.\n");
-			usage(argv);
-			return 0;
-		}
-		if (!port) {
-			printf("please give '-p'.\n");
-			usage(argv);
-			return 0;
-		}
 		is_inet = 1;
-		rc = __inet_ctrl(host, port, secretword_path);
-		if (rc) {
+		ctrl = __remote_ctrl(host, port, xprt, secretword_path);
+		if (!ctrl) {
 			printf("Failed to connect to ldmsd.\n");
-			exit(rc);
+			exit(-1);
 		}
 	}
 
@@ -862,5 +1016,9 @@ int main(int argc, char *argv[])
 		if (rc)
 			break;
 	} while (s);
+	return 0;
+arg_err:
+	printf("Please give either '-S' or '-h, -p and -x'\n");
+	usage(argv);
 	return 0;
 }
