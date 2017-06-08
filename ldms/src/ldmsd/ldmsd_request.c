@@ -2969,8 +2969,8 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 	if (reqc->errcode) {
 		if (lineno == 0) {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Failed to process cfg '%s': %s",
-				path, strerror(reqc->errcode));
+				"Failed to process cfg '%s' at line %d: %s",
+				path, lineno, strerror(reqc->errcode));
 		} else {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Failed to process cfg '%s' at line '%d'",

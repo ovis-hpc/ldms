@@ -574,13 +574,14 @@ next_line:
 
 	reqc = process_config_line(line, &request);
 	if (!reqc) {
-		ldmsd_log(LDMSD_LERROR, "Problem in line %d: %s\n", lineno,
-							strerror(errno));
+		ldmsd_log(LDMSD_LERROR, "Process config file error at line %d "
+				"(%s). %s\n", lineno, path, strerror(errno));
 		goto cleanup;
 	}
 	rc = ldmsd_handle_request(&request, reqc);
 	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "Problem in line: %s\n", line);
+		ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
+				lineno, path);
 		goto cleanup;
 	}
 

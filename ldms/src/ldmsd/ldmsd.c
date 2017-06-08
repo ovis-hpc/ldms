@@ -1559,9 +1559,6 @@ int main(int argc, char *argv[])
 		int errloc = 0;
 		int rc = process_config_file(config_path, &errloc);
 		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
-				"Process config file error at line %d: %d (%s): %s\n",
-				errloc, rc, config_path, strerror(rc));
 			cleanup(rc, "process config file failed");
 		}
 	}
