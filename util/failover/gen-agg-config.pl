@@ -275,7 +275,7 @@ sub process_updaters {
 		push @active_grps, @{$ref};
 		for my $grp (@active_grps) {
 			my $updtr = "$grp";
-			my $prdcr = "$grp\..*";
+			my $prdcr = "$grp\\..*";
 			add_updater($agg, $agg, $updtr, $prdcr, $grp);
 			if ($agg_list{$grp}) {
 				# If $grp is an aggregator, take care of the failover-recover conf.
@@ -284,7 +284,7 @@ sub process_updaters {
 				my $grp_watcher = $watch_entry{$grp};
 				if ($grp_watcher) {
 					$updtr = "${grp}_failover.$grp_watcher";
-					$prdcr = "$grp_watcher\..*";
+					$prdcr = "$grp_watcher\\..*";
 					add_updater($agg, $agg, $updtr, $prdcr, $grp);
 					failover_recover($grp, $agg, $updtr, "start");
 				}
@@ -298,7 +298,7 @@ sub process_updaters {
 		if ($ref) {
 			for my $grp (@{$ref}) {
 				my $updtr = "${w}_failover.$grp";
-				my $prdcr = "$grp\..*";
+				my $prdcr = "$grp\\..*";
 				add_updater($agg, $w, $updtr, $prdcr, $grp);
 				failover_recover($w, $agg, $updtr, "start");
 			}
