@@ -589,7 +589,7 @@ static int papi_events(int c)
 	event_count = PAPI_num_events(ldms_metric_user_data_get(set, 0));
 
 	rc = PAPI_add_events(papi_event_sets[c],
-			&event_codes, event_count);
+			event_codes, event_count);
 	if (rc != PAPI_OK) {
 		msglog(LDMSD_LERROR, "papi: failed to add "
 				"event to event set error %d\n",
