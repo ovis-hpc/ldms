@@ -1903,6 +1903,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 			 *
 			 *  Send the LDMS_CONN_EVENT_REJECTED to the application.
 			 */
+			event.type = LDMS_XPRT_EVENT_REJECTED;
 #ifdef DEBUG
 			x->log("DEBUG: ldms_zap_cb: auth fail: rejected. %d\n", (int) x->auth_flag);
 #endif /* DEBUG */
