@@ -1072,6 +1072,7 @@ int process_config_file(const char *path)
 	char *buff = NULL;
 	char *line;
 	char *comment;
+	int line_no = 0;
 	ssize_t off = 0;
 	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
 	char *env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
@@ -1092,6 +1093,7 @@ next_line:
 	line = fgets(buff + off, cfg_buf_len - off, fin);
 	if (!line)
 		goto cleanup;
+	line_no++;
 
 	comment = strchr(line, '#');
 
@@ -1129,8 +1131,12 @@ next_line:
 	}
 
 	rc = process_config_line(line);
-	if (rc)
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Process config file error %d at line %d "
+				"(%s)\n", rc, line_no, path);;
 		goto cleanup;
+	}
+
 
 	off = 0;
 
