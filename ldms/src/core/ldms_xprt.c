@@ -2625,7 +2625,7 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 	uint32_t meta_meta_gn = __le32_to_cpu(set->meta->meta_gn);
 	uint32_t meta_meta_sz = __le32_to_cpu(set->meta->meta_sz);
 	uint32_t meta_data_sz = __le32_to_cpu(set->meta->data_sz);
-	struct ldms_rbuf_desc *rbd;
+	struct ldms_rbuf_desc *rbd, *next_rbd;
 	ldms_t x;
 	zap_map_t rmap, lmap;
 
@@ -2638,21 +2638,26 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 
 	/* Run through all RBD for the set and push to registered peers */
 	pthread_mutex_lock(&set->lock);
-	LIST_FOREACH(rbd, &set->remote_rbd_list, set_link) {
+	rbd = LIST_FIRST(&set->remote_rbd_list);
+	while (rbd) {
+		rc = 0;
+		next_rbd = LIST_NEXT(rbd, set_link);
 		ldms_t x = rbd->xprt;
 		if (!x) {
 			printf("Skipping RBD with no transport %p\n", rbd);
-			continue;
+			goto skip;
 		}
 		pthread_mutex_lock(&x->lock);
-		rc = 0;
-
 		if ((x->auth_flag != LDMS_XPRT_AUTH_DISABLE) &&
-		    (x->auth_flag != LDMS_XPRT_AUTH_APPROVED))
+		    (x->auth_flag != LDMS_XPRT_AUTH_APPROVED)) {
+			pthread_mutex_unlock(&x->lock);
 			goto skip;
+		}
 
-		if (!(rbd->push_flags & push_flags))
+		if (!(rbd->push_flags & push_flags)) {
+			pthread_mutex_unlock(&x->lock);
 			goto skip;
+		}
 
 		size_t doff;
 		size_t len;
@@ -2671,6 +2676,7 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 		reply = malloc(max_len);
 		if (!reply) {
 			rc = ENOMEM;
+			pthread_mutex_unlock(&x->lock);
 			goto skip;
 		}
 #ifdef PUSH_DEBUG
@@ -2678,9 +2684,10 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 		       ldms_set_instance_name_get(rbd->set),
 		       x->zap_ep);
 #endif /* PUSH_DEBUG */
+		ldms_xprt_get(x);
 		while (len) {
 			size_t data_len;
-			ldms_xprt_get(x);
+
 			if ((len + hdr_len) > max_len) {
 				data_len = htonl(max_len - hdr_len);
 				reply->push.flags = htonl(LDMS_CMD_PUSH_REPLY_F_MORE);
@@ -2700,20 +2707,25 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 				reply->push.flags |= htonl(LDMS_UPD_F_PUSH_LAST);
 			memcpy(reply->push.data, (unsigned char *)set->meta + doff, data_len);
 			rc = zap_send(x->zap_ep, reply, hdr_len + data_len);
-			ldms_xprt_put(x);
 			if (rc)
 				break;
 			doff += data_len;
 			len -= data_len;
 		}
+		pthread_mutex_unlock(&x->lock);
+		pthread_mutex_unlock(&set->lock);
+		pthread_mutex_unlock(&xprt_list_lock);
+		ldms_xprt_put(x);
+		pthread_mutex_lock(&set->lock);
+		pthread_mutex_lock(&xprt_list_lock);
 		free(reply);
 	skip:
 #ifdef DEBUG
 		x->active_push++;
 #endif /* DEBUG */
-		pthread_mutex_unlock(&x->lock);
 		if (rc)
 			break;
+		rbd = next_rbd;
 	}
  out:
 	pthread_mutex_unlock(&set->lock);
