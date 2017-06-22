@@ -329,14 +329,20 @@ static int handleRollover(struct csv_plugin_static *cps){
 						filename, NOTE_DAT, CSHC(s_handle),
 						cps, s_handle->container,
 						s_handle->schema);
+					rename_output(s_handle->filename, NOTE_DAT,
+						CSHC(s_handle), cps);
 				}
 				if (s_handle->headerfile) {
 					fclose(s_handle->headerfile);
+				}
+				if (s_handle->headerfilename) {
 					notify_output(NOTE_CLOSE, s_handle->
 						headerfilename, NOTE_HDR,
 						CSHC(s_handle), cps,
 						s_handle->container,
 						s_handle->schema);
+					rename_output(s_handle->headerfilename, NOTE_HDR,
+						CSHC(s_handle), cps);
 				}
 				s_handle->file = nfp;
 				replace_string(&(s_handle->filename), roc.filename);
@@ -705,6 +711,8 @@ static const char *usage(struct ldmsd_plugin *self)
 	return  "    config name=store_csv action=init path=<path> rollover=<num> rolltype=<num>\n"
 		"           [altheader=<0/!0> userdata=<0/!0>]\n"
 		"           [buffer=<0|1>]\n"
+		"           [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid]\n"
+		"               rename_perm=<octal-mode>]]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - path      The path to the root of the csv directory\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
@@ -721,6 +729,8 @@ static const char *usage(struct ldmsd_plugin *self)
 		"         - altheader Header in a separate file (optional, default to init)\n"
 		NOTIFY_USAGE
 		"         - userdata     UserData in printout (optional, default to init)\n"
+		"         - metapath A string template for the file rename, where %[BCDPSTs]\n"
+		"           are replaced per the man page Plugin_store_csv.\n"
 		;
 }
 
