@@ -194,8 +194,8 @@ static int add_attr_from_attr_str(char *name, char *value,
 		}
 	}
 
-	if (len - offset <
-			sizeof(struct ldmsd_req_attr_s) + attr.attr_len) {
+	size_t sz = sizeof(struct ldmsd_req_attr_s) + attr.attr_len;
+	while (len - offset < sz) {
 		buf = realloc(buf, len * 2);
 		if (!buf) {
 			return ENOMEM;

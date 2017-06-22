@@ -192,8 +192,6 @@ typedef struct ldmsd_req_attr_s {
 	uint8_t attr_value[0];	/* Size is attr_len */
 } *ldmsd_req_attr_t;
 
-typedef struct ldmsd_req_hdr_s *ldmsd_req_hdr_t;
-
 /**
  * \brief Process a configuration line and prepare the buffer of ldmsd_req_attr
  *
