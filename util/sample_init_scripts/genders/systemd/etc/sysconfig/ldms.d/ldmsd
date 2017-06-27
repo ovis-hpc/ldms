@@ -86,12 +86,24 @@ toss2)
 	libdir="/usr/lib64"
 ;;
 esac
-export LD_LIBRARY_PATH=$libdir:$libdir/ovis-ldms:$libevent2_libdir:$LD_LIBRARY_PATH
+if ! test -f $libdir/ovis-lib-configvars.sh; then
+	logger syslog.err "Missing $libdir/ovis-lib-configvars.sh"
+	dietrace 1
+fi
+if ! test -f $libdir/ovis-ldms-configvars.sh; then
+	logger syslog.err "Missing $libdir/ovis-ldms-configvars.sh"
+	dietrace 1
+fi
+
+. $libdir/ovis-lib-configvars.sh
+. $libdir/ovis-ldms-configvars.sh
+
+export LD_LIBRARY_PATH=$libdir:$ovis_ldms_pkglibdir:$ovis_lib_pkglibdir:$ovis_lib_plugins:$ovis_ldms_plugins:$libevent2_libdir:$LD_LIBRARY_PATH
 if test -z "$LDMSD_PLUGIN_LIBPATH"; then
-	LDMSD_PLUGIN_LIBPATH=$libdir/ovis-ldms
+	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins:$ovis_lib_plugins
 fi
 if test -z "$ZAP_LIBPATH"; then
-	ZAP_LIBPATH=$LDMSD_PLUGIN_LIBPATH
+	ZAP_LIBPATH=$ovis_lib_plugins
 fi
 export ZAP_LIBPATH LDMSD_PLUGIN_LIBPATH
 
@@ -100,10 +112,6 @@ if test -z "$LDMS_SECRETS_DIR"; then
 fi
 if test -z "$LDMS_AUTH_FILE"; then
 	LDMS_AUTH_FILE=$LDMS_SECRETS_DIR/$LDMSCLUSTER.ldmsauth.conf
-fi
-
-if test -z $AGG_ID_BASE; then
-	AGG_ID_BASE=1000000
 fi
 
 # Derive component IDs from hostname embedded numbers, with
@@ -133,14 +141,50 @@ else
 fi
 export hostnumber
 
+build_genders_file
+check_genders_file
+
+if ! $NODEATTR $NODEATTRFILE -k > /dev/null 2>&1; then
+	echoq "problem with $NODEATTRFILE"
+	logger -p syslog.crit -s "BAD GENDERS $NODEATTRFILE"
+	$NODEATTR $NODEATTRFILE -k
+	dietrace 1
+fi
+export NODEATTR NODEATTRFILE
+
+if ! $NODEATTR $NODEATTRFILE $host ldmsaggd >/dev/null 2>&1; then
+	not_aggregator=1
+	echoq "$host is is not an LDMSD aggregation host."
+else
+	if test -z $AGG_ID_BASE; then
+		AGG_ID_BASE=1000000
+	fi
+fi
+
+if test -n "$NODE_ID_BASE"; then
+	if test -n "$LDMSD_IDBASE"; then
+		logger -p syslog.info "Ignoring NODE_ID_BASE for LDMSD_IDBASE";
+	else
+		# support legacy usage
+		LDMSD_IDBASE=$NODE_ID_BASE
+	fi
+fi
+if test -z "$LDMSD_IDBASE"; then
+	LDMSD_IDBASE=`$NODEATTR $NODEATTRFILE -v $host ldmsd_idbase 2>/dev/null`
+	if test -z "$LDMSD_IDBASE" ; then
+		LDMSD_IDBASE=1
+	fi
+fi
+export LDMSD_IDBASE
+
 if test -z $COMPONENT_ID; then
 	if test -n "$AGG_ID_BASE"; then
 		COMPONENT_ID="$(( $AGG_ID_BASE + $hostnumber ))"
 	fi
-	if test -n "$NODE_ID_BASE" -a -z "$COMPONENT_ID"; then
-		COMPONENT_ID="$(( $NODE_ID_BASE + $hostnumber ))"
+	if test -n "$LDMSD_IDBASE" -a -z "$COMPONENT_ID"; then
+		COMPONENT_ID="$(( $LDMSD_IDBASE + $hostnumber ))"
 	fi
-	if test -n "$COMPONENT_ID"; then
+	if test -z "$COMPONENT_ID"; then
 		COMPONENT_ID=1
 	fi
 fi
@@ -149,16 +193,6 @@ export COMPONENT_ID
 if [ $COMPONENT_ID -lt 1 ]; then
 	logger syslog.err "Component_ID for $host is $COMPONENT_ID. Exiting..."
 	logger syslog.info "set COMPONENT_ID in conf file or LDMSD_IDBASE in genders file."
-	dietrace 1
-fi
-
-build_genders_file
-check_genders_file
-
-if ! $NODEATTR $NODEATTRFILE -k > /dev/null 2>&1; then
-	echoq "problem with $NODEATTRFILE"
-	logger -p syslog.crit -s "BAD GENDERS $NODEATTRFILE"
-	$NODEATTR $NODEATTRFILE -k
 	dietrace 1
 fi
 
@@ -230,22 +264,11 @@ if test -z $LDMSD_DBG; then
 fi
 export LDMSD_DBG
 
-if test -z $LDMSD_IDBASE; then
-	LDMSD_IDBASE=`$NODEATTR $NODEATTRFILE -v $host ldmsd_idbase 2>/dev/null`
-	if test -z $NODE_ID_BASE; then
-		NODE_ID_BASE=$LDMSD_IDBASE
-		if test -z $NODE_ID_BASE; then
-			NODE_ID_BASE=1
-		fi
-	fi
-fi
-export NODE_ID_BASE
-
 # : separated list of metric sets to load at startup
 if test -z "$LDMSD_METRIC_PLUGINS"; then
 	LDMSD_METRIC_PLUGINS=`$NODEATTR $NODEATTRFILE -v $host ldmsd_metric_plugins 2>/dev/null`
 	if test -z "$LDMSD_METRIC_PLUGINS"; then
-		LDMSD_METRIC_PLUGINS="meminfo:vmstat:procnfs:procstat"
+		LDMSD_METRIC_PLUGINS=""
 	fi
 fi
 export LDMSD_METRIC_PLUGINS

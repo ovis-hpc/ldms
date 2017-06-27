@@ -44,7 +44,7 @@ PermissionsStartOnly=true
 # Normally LDMS_PREFIX should not be set in the Environment.
 # Set it to use non-standard installs only, and then set
 # LDMSD_BUILDTYPE=experimental in the ldmsd.%I.conf file.
-Environment=LDMS_PREFIX=/home/baallan/ovis/repos/ogc-gitlab-tossinit/LDMS_install
+#Environment=LDMS_PREFIX=/home/baallan/ovis/repos/ogc-gitlab-tossinit/LDMS_install
 
 # This script is the same as ldmsd.service (except that LDMSCLUSTER is %I)
 

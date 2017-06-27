@@ -37,6 +37,8 @@ ldmsd_idbase=IDMIN      Defines the least component_id for a node type.
                         integer ISUFFIX, component_id is IDMIN+ISUFFIX.
                         component_id of 0 is reserved;
                         ensure IDMIN+ISUFFIX>0.
+                        Overrideable with the LDMSD_IDBASE environment variable,
+                        which is not recommended except for debugging.
 ldmsd_dbg=LEVEL         Defines the daemon binary's logging level, with
                         values as defined in ldmsd(8) and NONE,
                         which routes all logging to /dev/null.

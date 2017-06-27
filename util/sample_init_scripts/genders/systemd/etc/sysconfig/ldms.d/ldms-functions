@@ -145,13 +145,15 @@ build_genders_file () {
 		return
 	fi
 	if test -z "$LDMS_GENDERS"; then
-		# if not specified, concat default locations together.
+		# if not specified, take first of files found
 		GENDERBASE=$sysconfdir/sysconfig/ldms.d/ClusterGenders
-		LDMS_GENDERS="$sysconfdir/genders $GENDERBASE/genders.$LDMSCLUSTER $GENDERBASE/genders.local"
+		LDMS_GENDERS="$GENDERBASE/genders.$LDMSCLUSTER $sysconfdir/genders"
 		havefiles=0
 		for f in $LDMS_GENDERS; do
 			if test -f $f -a -r $f; then
-				((havefiles++))
+				LDMS_GENDERS=$f
+				havefiles=1
+				break
 			fi
 		done
 		if test "$havefiles" = "0"; then
@@ -165,7 +167,7 @@ build_genders_file () {
 			return
 		fi
 	else
-		# die if user said something wrong
+		# die if user named something missing
 		for i in $LDMS_GENDERS; do
 			if ! test -f $i -a -r $i; then
 				logger -p syslog.err Unable to read genders file $i
@@ -197,6 +199,7 @@ build_genders_file () {
 	echoq LDMS_GENDERS=$LDMS_GENDERS
 	NODEATTRFILE="-f $LDMS_GENDERS"
 	NODEATTR=nodeattr
+	export NODEATTRFILE NODEATTR
 }
 
 failure() {

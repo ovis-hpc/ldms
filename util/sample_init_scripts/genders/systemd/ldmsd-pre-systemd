@@ -36,7 +36,7 @@
 # Variables exported by ldms.d/ldmsd and its descendants are
 # exported to the daemon's environment.
 #
-VERBOSE=-v
+# VERBOSE=-v
 LDMSCLUSTER=$1
 OUTNAME=$2
 echo $0 $1 $2
@@ -60,7 +60,7 @@ fi
 save_env_init $1
 export LDMSCLUSTER
 NODEFILE=$sysconfdir/sysconfig/ldms.d/ldmsd
-
+# load ldms-aggd localizations source (which will include ldmsd localizations)
 if test -f $NODEFILE; then
 	. $NODEFILE
 else
@@ -68,8 +68,6 @@ else
 	exit 1
 fi
 
-# load ldms-aggd localizations source (which will include ldmsd localizations)
-. $NODEFILE
 # double check logging not misconfigured
 check_log_option
 

@@ -103,11 +103,10 @@ If LDMS_USE_GENDERS is defined as 0, genders information will not be queried at 
 .B LDMS_GENDERS="file list"
 
 The files listed in LDMS_GENDERS are concatenated and used for genders queries.
-In simple installations, LDMS_GENDERS=/etc/sysconfig/ldms.d/ClusterGenders/genders.local or
-LDMS_GENDERS=/etc/genders is typical.
-If unset, /etc/genders, /etc/sysconfig/ldms.d/ClusterGenders/$CLUSTERNAME and etc/sysconfig/ldms.d/ClusterGenders/genders.local are all used by default. If none of these are present, startup will fail. If these are redundant, startup will fail.
+In simple installations, LDMS_GENDERS=/etc/sysconfig/ldms.d/ClusterGenders/genders.local or LDMS_GENDERS=/etc/genders is typical.
+If unset, /etc/sysconfig/ldms.d/ClusterGenders/$CLUSTERNAME and /etc/genders are checked and the first found is used as the default. If none of these are present, startup will fail.
 .PP
-The normal reason for setting an alternative list is to, on a storage machine, join a copy if the genders file from a cluster monitored to the genders needed for configuring stores on the specific storage machine. Since more than one storage machine might be serving a cluster or the storage machine may be in a different administrative domain, this splitting of the gender file maintenance duties is often desirable.
+The normal reason for setting an LDMS_GENDERS list is to, on a storage machine, join a copy if the genders file from a cluster monitored to the genders needed for configuring stores on the specific storage machine. Since more than one storage machine might be serving a cluster or the storage machine may be in a different administrative domain, this splitting of the gender file maintenance duties is often desirable.
 
 .B LDMS_GENDERS_HOST=name
 
@@ -140,9 +139,9 @@ Overrides with N the ldmsd_event_thds gender value. If neither is specified, the
 
 If defined, this overrides the component_id derived from the host name. In cluster deployments, this should never be defined as a constant. This value is expected to be a positive (nonzero) integer unique to each host in the ldmsd aggregation hierarchy, if not across the entire site. Specific logic computes a default value of COMPONENT_ID for cray hosts.
 
-.B NODE_ID_BASE=P
+.B LDMSD_IDBASE=P
 
-If defined when COMPONENT_ID is not, P is added to the number extracted from the host name and used as the COMPONENT_ID in non-Cray environments.
+If defined when COMPONENT_ID is not, P is added to the number extracted from the host name and used as the COMPONENT_ID in non-Cray environments. Overrides gender ldmsd_idbase. Alias NODE_ID_BASE is deprecated; when both present LDMSD_IDBASE takes precedence.
 
 .B AGG_ID_BASE=Q
 
