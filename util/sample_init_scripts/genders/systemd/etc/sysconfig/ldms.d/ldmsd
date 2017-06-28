@@ -100,7 +100,7 @@ fi
 
 export LD_LIBRARY_PATH=$libdir:$ovis_ldms_pkglibdir:$ovis_lib_pkglibdir:$ovis_lib_plugins:$ovis_ldms_plugins:$libevent2_libdir:$LD_LIBRARY_PATH
 if test -z "$LDMSD_PLUGIN_LIBPATH"; then
-	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins:$ovis_lib_plugins
+	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins
 fi
 if test -z "$ZAP_LIBPATH"; then
 	ZAP_LIBPATH=$ovis_lib_plugins
