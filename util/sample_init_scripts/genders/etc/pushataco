@@ -1,4 +1,0 @@
-#!/bin/bash
-rm -rf DELTA/*
-find . -name 'ldm*' -exec cp --parents {} /etc \;
-find . -name 'ldm*' -exec cp --parents {} /gmi/images/toss2-prod/etc \;
