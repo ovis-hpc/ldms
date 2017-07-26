@@ -62,6 +62,7 @@ import traceback
 import json
 
 from ldmsd import ldmsd_config, ldmsd_util, ldmsd_request
+LDMSD_REQ_HDR_SIZE=20
 LDMSD_REQ_SOM_F=1
 LDMSD_REQ_EOM_F=2
 LDMSD_REQ_ALL_F=(LDMSD_REQ_SOM_F|LDMSD_REQ_EOM_F)
@@ -519,21 +520,25 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_info(self, text, line, begidx, endidx):
         return self.__complete_attr_list('info', text)
 
+    def get_response(self):
+        response = ""
+        while True:
+            hdr = self.ctrl.socket.recv(LDMSD_REQ_HDR_SIZE)
+            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
+            data = self.ctrl.socket.recv(rec_len - LDMSD_REQ_HDR_SIZE)
+            response += data
+            if flags & LDMSD_REQ_EOM_F:
+                break
+        return response
+
     def format_request(self, cmd):
         self.msg_no = self.msg_no + 1
-        return struct.pack('iiiii', -1, LDMSD_REQ_ALL_F, self.msg_no, cmd, 20)
+        return struct.pack('iiiii', -1, LDMSD_REQ_ALL_F, self.msg_no, cmd, LDMSD_REQ_HDR_SIZE)
 
     def do_prdcr_status(self, arg):
         msg = self.format_request(LDMSD_PRDCR_STATUS_REQ)
         rc = self.ctrl.socket.sendall(bytes(msg))
-        response = ""
-        while True:
-            hdr = self.ctrl.socket.recv(20)
-            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
-            data = self.ctrl.socket.recv(rec_len - 20)
-            response += data
-            if flags:
-                break
+        response = self.get_response()
         producers =  json.loads(response)
         print("Name             Host             Port         Transport    State")
         print("---------------- ---------------- ------------ ------------ ------------")
@@ -566,14 +571,7 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_updtr_status(self, arg):
         msg = self.format_request(LDMSD_UPDTR_STATUS_REQ)
         rc = self.ctrl.socket.sendall(bytes(msg))
-        response = ""
-        while True:
-            hdr = self.ctrl.socket.recv(20)
-            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
-            data = self.ctrl.socket.recv(rec_len - 20)
-            response += data
-            if flags:
-                break
+        response = self.get_response()
         updaters = json.loads(response)
         print("Name             Interval     Offset       State")
         print("---------------- ------------ ------------ ------------")
@@ -588,14 +586,7 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_strgp_status(self, arg):
         msg = self.format_request(LDMSD_STRGP_STATUS_REQ)
         rc = self.ctrl.socket.sendall(bytes(msg))
-        response = ""
-        while True:
-            hdr = self.ctrl.socket.recv(20)
-            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
-            data = self.ctrl.socket.recv(rec_len - 20)
-            response += data
-            if flags:
-                break
+        response = self.get_response()
         policies = json.loads(response)
         print("Name             Container        Schema           Plugin           State")
         print("---------------- ---------------- ---------------- ---------------- ------------")
@@ -615,14 +606,7 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_plugn_status(self, arg):
         msg = self.format_request(LDMSD_PLUGN_STATUS_REQ)
         rc = self.ctrl.socket.sendall(bytes(msg))
-        response = ""
-        while True:
-            hdr = self.ctrl.socket.recv(20)
-            (marker, flags, msg_no, cmd_id, rec_len) = struct.unpack('iiiii', hdr)
-            data = self.ctrl.socket.recv(rec_len - 20)
-            response += data
-            if flags:
-                break
+        response = self.get_response()
         plugins = json.loads(response)
         print("Name         Type         Interval     Offset       Libpath")
         print("------------ ------------ ------------ ------------ ------------")
