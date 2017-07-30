@@ -74,6 +74,7 @@
 #include <libgen.h>
 #include <glob.h>
 #include <time.h>
+#include <sys/queue.h>
 #include <event2/thread.h>
 #include <coll/rbt.h>
 #include <coll/str_map.h>
@@ -90,7 +91,15 @@ char myhostname[HOST_NAME_MAX+1];
 pthread_t ctrl_thread = (pthread_t)-1;
 pthread_t inet_ctrl_thread = (pthread_t)-1;
 int muxr_s = -1;
-int inet_sock = -1;
+
+typedef struct cfg_clnt_s {
+	int sock;
+	pthread_t thread;
+	LIST_ENTRY(cfg_clnt_s) entry;
+} *cfg_clnt_t;
+
+pthread_mutex_t clnt_list_lock = PTHREAD_MUTEX_INITIALIZER;
+LIST_HEAD(cfg_clnt_list, cfg_clnt_s) clnt_list;
 int inet_listener = -1;
 char *sockname = NULL;
 
@@ -137,8 +146,14 @@ void ldmsd_config_cleanup()
 
 	if (inet_listener >= 0)
 		close(inet_listener);
-	if (inet_sock >= 0)
-		close(inet_sock);
+	cfg_clnt_t clnt;
+	pthread_mutex_lock(&clnt_list_lock);
+	while (!LIST_EMPTY(&clnt_list)) {
+		clnt = LIST_FIRST(&clnt_list);
+		LIST_REMOVE(clnt, entry);
+		pthread_cancel(clnt->thread);
+	}
+	pthread_mutex_unlock(&clnt_list_lock);
 }
 
 int send_reply(int sock, struct sockaddr *sa, ssize_t sa_len,
@@ -1484,15 +1499,121 @@ int ldmsd_config_init(char *name)
 extern int
 process_request(int fd, struct msghdr *msg, size_t msg_len);
 
+static size_t get_cfg_buf_len()
+{
+	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
+	char *env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
+	if (env)
+		cfg_buf_len = strtol(env, NULL, 0);
+	if (cfg_buf_len <= 0)
+		return LDMSD_MAX_CONFIG_STR_LEN;
+	return cfg_buf_len;
+}
+
+void *config_proc(void *arg)
+{
+	cfg_clnt_t clnt = arg;
+	ssize_t msglen;
+	struct iovec iov;
+	char *lbuf;
+	struct msghdr msg;
+	struct sockaddr_in sin;
+	struct ldmsd_req_hdr_s request;
+	size_t cfg_buf_len = get_cfg_buf_len();
+
+	lbuf = malloc(cfg_buf_len);
+	if (!lbuf) {
+		ldmsd_log(LDMSD_LERROR,
+			  "Memory allocation failure in config_proc\n");
+		close(clnt->sock);
+		free(clnt);
+		return NULL;
+	}
+	do {
+		sin.sin_family = AF_INET;
+		msg.msg_name = &sin;
+		msg.msg_namelen = sizeof(sin);
+		iov.iov_len = sizeof(request);
+		iov.iov_base = &request;
+		msg.msg_iov = &iov;
+		msg.msg_iovlen = 1;
+		msg.msg_control = NULL;
+		msg.msg_controllen = 0;
+		msg.msg_flags = 0;
+
+		/* Read the message header */
+		msglen = recvmsg(clnt->sock, &msg, MSG_PEEK);
+		if (msglen <= 0)
+			/* closing */
+			break;
+
+		if (request.marker != LDMSD_RECORD_MARKER
+		    || (msglen < sizeof(request))) {
+
+			iov.iov_len = cfg_buf_len;
+			iov.iov_base = lbuf;
+
+			msglen = recvmsg(clnt->sock, &msg, 0);
+			if (msglen <= 0)
+				break;
+
+			/* Process old style message */
+			process_message(clnt->sock, &msg, msglen);
+			if (cleanup_requested)
+				break;
+		} else {
+			if (cfg_buf_len < request.rec_len) {
+				cfg_buf_len = request.rec_len;
+				free(lbuf);
+				lbuf = malloc(cfg_buf_len);
+				if (!lbuf) {
+					ldmsd_log(LDMSD_LERROR,
+						  "Memory allocation failure in "
+						  "config_proc.\n");
+					break;
+				}
+				iov.iov_base = lbuf;
+			}
+			iov.iov_base = lbuf;
+			iov.iov_len = request.rec_len;
+			msglen = recvmsg(clnt->sock, &msg, MSG_WAITALL);
+			if (msglen < request.rec_len)
+				break;
+			process_request(clnt->sock, &msg, msglen);
+			if (cleanup_requested)
+				break;
+		}
+	} while (1);
+
+	ldmsd_log(LDMSD_LINFO,
+		  "Closing configuration socket. cfg_buf_len %d\n",
+		  cfg_buf_len);
+
+	pthread_mutex_lock(&clnt_list_lock);
+	LIST_REMOVE(clnt, entry);
+	pthread_mutex_unlock(&clnt_list_lock);
+
+	free(lbuf);
+	close(clnt->sock);
+	free(clnt);
+
+	if (cleanup_requested) {
+		/* Reset it to prevent deadlock in cleanup */
+		inet_ctrl_thread = (pthread_t)-1;
+		cleanup(0, "user quit");
+		return NULL;
+	}
+}
+
 void *inet_ctrl_thread_proc(void *args)
 {
 #if OVIS_LIB_HAVE_AUTH
 	const char *secretword = (const char *)args;
 #endif
-	struct msghdr msg;
+	int inet_sock;
+	int accept_err;
 	struct iovec iov;
 	unsigned char *lbuf;
-	struct sockaddr_in sin;
 	struct sockaddr_in rem_sin;
 	socklen_t addrlen = sizeof(rem_sin);
 	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
@@ -1507,13 +1628,22 @@ void *inet_ctrl_thread_proc(void *args)
 		cleanup(1, "inet ctrl thread out of memory");
 	}
 	iov.iov_base = lbuf;
+	accept_err = 0;
 loop:
 	inet_sock = accept(inet_listener, (struct sockaddr *)&rem_sin, &addrlen);
 	if (inet_sock < 0) {
-		ldmsd_log(LDMSD_LERROR, "Error %d failed to setting up the config "
-				"listener.\n", inet_sock);
+		/* Don't flood the log with accept errors */
+		if (accept_err < 10) {
+			ldmsd_log(LDMSD_LERROR, "Error %d accepting "
+				  "config connection.\n", inet_sock);
+			accept_err++;
+		}
+		/* This sleep avoids spinning on accept error */
+		sleep(1);
 		goto loop;
 	}
+	/* Reset accept error count after successful connect */
+	accept_err = 0;
 
 #if OVIS_LIB_HAVE_AUTH
 
@@ -1592,71 +1722,40 @@ loop:
 	uint64_t greeting = 0;
 	int rc = send(inet_sock, (char *)&greeting, sizeof(uint64_t), 0);
 	if (rc == -1) {
-		ldmsd_log(LDMSD_LERROR, "Error %d failed to send "
-				"the greeting to the controller.\n",
-				errno);
+		ldmsd_log(LDMSD_LINFO,
+			  "Error %d failed to send "
+			  "the greeting to the controller.\n",
+			  errno);
 		goto loop;
 	}
 #endif /* OVIS_LIB_HAVE_AUTH */
-	do {
-		struct ldmsd_req_hdr_s request;
-		ssize_t msglen;
-		sin.sin_family = AF_INET;
-		msg.msg_name = &sin;
-		msg.msg_namelen = sizeof(sin);
-		iov.iov_len = sizeof(request);
-		iov.iov_base = &request;
-		msg.msg_iov = &iov;
-		msg.msg_iovlen = 1;
-		msg.msg_control = NULL;
-		msg.msg_controllen = 0;
-		msg.msg_flags = 0;
-		/* Read the message header */
-		msglen = recvmsg(inet_sock, &msg, MSG_PEEK);
-		if (msglen <= 0)
-			break;
-		if (request.marker != LDMSD_RECORD_MARKER || (msglen < sizeof(request))) {
-			iov.iov_len = cfg_buf_len;
-			iov.iov_base = lbuf;
-			msglen = recvmsg(inet_sock, &msg, 0);
-			if (msglen <= 0)
-				break;
-			/* Process old style message */
-			process_message(inet_sock, &msg, msglen);
-			if (cleanup_requested)
-				break;
-		} else {
-			if (cfg_buf_len < request.rec_len) {
-				cfg_buf_len = request.rec_len;
-				free(lbuf);
-				lbuf = malloc(cfg_buf_len);
-				if (!lbuf)
-					break;
-				iov.iov_base = lbuf;
-			}
-			iov.iov_base = lbuf;
-			iov.iov_len = request.rec_len;
-			msglen = recvmsg(inet_sock, &msg, MSG_WAITALL);
-			if (msglen < request.rec_len)
-				break;
-			process_request(inet_sock, &msg, msglen);
-			if (cleanup_requested)
-				break;
-		}
-	} while (1);
-	ldmsd_log(LDMSD_LINFO,
-		  "Closing configuration socket. cfg_buf_len %d\n",
-		  cfg_buf_len);
-	close(inet_sock);
-	inet_sock = -1;
-	if (cleanup_requested) {
-		/* Reset it to prevent deadlock in cleanup */
-		inet_ctrl_thread = (pthread_t)-1;
-		cleanup(0,"user quit");
-		return NULL;
+	/* Each connection gets it's own thread. Otherwise an
+	 * ldmsd_controller client will hang the GUI.
+	 */
+	cfg_clnt_t clnt = malloc(sizeof *clnt);
+	if (!clnt) {
+		close(inet_sock);
+		ldmsd_log(LDMSD_LERROR,
+			  "Memory allocation failure in config connect.\n");
+		goto loop;
 	}
+	clnt->sock = inet_sock;
+	pthread_mutex_lock(&clnt_list_lock);
+	LIST_INSERT_HEAD(&clnt_list, clnt, entry);
+	pthread_mutex_unlock(&clnt_list_lock);
 
+	rc = pthread_create(&clnt->thread, NULL, config_proc, clnt);
+	if (rc) {
+		close(inet_sock);
+		ldmsd_log(LDMSD_LERROR,
+			  "Error creating thread in config connect.\n");
+		pthread_mutex_lock(&clnt_list_lock);
+		LIST_REMOVE(clnt, entry);
+		pthread_mutex_unlock(&clnt_list_lock);
+		free(clnt);
+	}
 	goto loop;
+
 	return NULL;
 }
 
