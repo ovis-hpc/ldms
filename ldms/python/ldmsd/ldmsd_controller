@@ -618,6 +618,8 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_status(self, arg):
         all__ = (len(arg) == 0)
+        if "plugn" in arg or all__:
+            self.do_plugn_status(arg)
         if "prdcr" in arg or all__:
             self.do_prdcr_status(arg)
         if "updtr" in arg or all__:
