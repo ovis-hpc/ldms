@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2017 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -238,13 +238,17 @@ static req_msg_t alloc_msg(struct msg_key *key)
 	rm->req_buf = malloc(REQ_BUF_LEN);
 	if (!rm->req_buf)
 		goto err;
-	rm->req_buf[0] = '\0';
 	rm->rep_len = REP_BUF_LEN;
 	rm->rep_off = 0;
 	rm->rep_buf = malloc(REP_BUF_LEN);
 	if (!rm->rep_buf)
 		goto err;
-	rm->rep_buf[0] = '\0';
+
+	/* Fill in empty discriminators for 20B messages */
+	*(uint32_t *)rm->line_buf = 0;
+	*(uint32_t *)rm->req_buf = 0;
+	*(uint32_t *)rm->rep_buf = 0;
+
 	rm->key = *key;
 	rbn_init(&rm->rbn, &rm->key);
 	rbt_ins(&msg_tree, &rm->rbn);
