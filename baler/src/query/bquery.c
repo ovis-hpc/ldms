@@ -2267,7 +2267,7 @@ int bq_msg_ptc_set_pos(struct bquery *q, struct bquery_pos *pos)
 	LIST_FOREACH(hent, &msgq->hent_list, link) {
 		if (hent->ptn_id != pos->ptn_id)
 			continue;
-		rc = sos_iter_pos_set(hent->iter, &pos->pos);
+		rc = sos_iter_pos_set(hent->iter, pos->pos);
 		if (rc)
 			return rc;
 		bq_msg_ptc_hent_obj_update(hent);
