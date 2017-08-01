@@ -145,13 +145,15 @@ build_genders_file () {
 		return
 	fi
 	if test -z "$LDMS_GENDERS"; then
-		# if not specified, concat default locations together.
+		# if not specified, take first of files found
 		GENDERBASE=$sysconfdir/sysconfig/ldms.d/ClusterGenders
-		LDMS_GENDERS="$sysconfdir/genders $GENDERBASE/genders.$LDMSCLUSTER $GENDERBASE/genders.local"
+		LDMS_GENDERS="$GENDERBASE/genders.$LDMSCLUSTER $sysconfdir/genders"
 		havefiles=0
 		for f in $LDMS_GENDERS; do
 			if test -f $f -a -r $f; then
-				((havefiles++))
+				LDMS_GENDERS=$f
+				havefiles=1
+				break
 			fi
 		done
 		if test "$havefiles" = "0"; then
@@ -165,7 +167,7 @@ build_genders_file () {
 			return
 		fi
 	else
-		# die if user said something wrong
+		# die if user named something missing
 		for i in $LDMS_GENDERS; do
 			if ! test -f $i -a -r $i; then
 				logger -p syslog.err Unable to read genders file $i
@@ -197,6 +199,7 @@ build_genders_file () {
 	echoq LDMS_GENDERS=$LDMS_GENDERS
 	NODEATTRFILE="-f $LDMS_GENDERS"
 	NODEATTR=nodeattr
+	export NODEATTRFILE NODEATTR
 }
 
 failure() {
@@ -224,7 +227,15 @@ save_env_finish () {
 		dietrace 1
 	fi
 	printenv |sort > $env2
-	diff $env1 $env2 |sed -e 's/< .*//g' -e 's/^-*//g' -e 's/^[0-9].*//g' -e 's/^> //g' |grep = > $2
+	diff $env1 $env2 |sed -e 's/< .*//g' \
+		-e 's/^-*//g' \
+		-e 's/^[0-9].*//g' \
+		-e 's/^> //g' \
+		-e 's/"/\"/g' \
+		-e "s/'/'\"'\"'/g" \
+		-e "s/=/='/" \
+		-e "s/$/'/" \
+		|grep = > $2
 	if ! test "$DEBUG" = "yes"; then
 		/bin/rm -f $env1 $env2
 	fi
@@ -235,7 +246,15 @@ save_env_finish () {
 save_env_finish_sysvinit () {
 	env2=`mktemp /var/run/ldmsd/tmp/env2.$1.XXX`
 	printenv |sort > $env2
-	diff $env1 $env2 |sed -e 's/< .*//g' -e 's/^-*//g' -e 's/^[0-9].*//g' -e 's/^> //g' |grep = | sed -e 's/^/export /'> $2
+	diff $env1 $env2 |sed -e 's/< .*//g' \
+		-e 's/^-*//g' \
+		-e 's/^[0-9].*//g' \
+		-e 's/^> //g' | \
+		-e 's/"/\"/g' \
+		-e "s/'/'\"'\"'/g" \
+		-e "s/=/='/" \
+		-e "s/$/'/" \
+		| grep = | sed -e 's/^/export /'> $2
 	if ! test "$DEBUG" = "yes"; then
 		/bin/rm -f $env1 $env2
 	fi
@@ -691,36 +710,6 @@ start_stores () {
 			fi
 			if ! test -r $cattext; then
 				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_text_${pi} file $cattext not readable."
-				continue
-			fi
-		fi
-
-		# plugin options from per-plugin config/start generators
-		genprog=`$NODEATTR $NODEATTRFILE -v $host ldmsd_config_gen_${pi} 2>/dev/null`
-		if test -n "$genprog"; then
-			if ! test $conf = "0"; then
-				logger -p syslog.warning -t ldmsd.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_gen_${pi} and ldmsd_${pi} or ldmsd_config_text_${pi} not allowed."
-				continue
-			fi
-			conf="generate"
-			if ! test -f $genprog; then
-				if test -f $sysconfdir/sysconfig/ldms.d/plugins-conf/$genprog; then
-					genprog=$sysconfdir/sysconfig/ldms.d/plugins-conf/$genprog
-				fi
-				if test $genprog = "yes"; then
-					genprog=$sysconfdir/sysconfig/ldms.d/plugins-conf/gen.$pi
-				fi
-			fi
-			if ! test -f $genprog; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not a regular file."
-				continue
-			fi
-			if ! test -r $genprog; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not readable."
-				continue
-			fi
-			if ! test -x $genprog; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not executable."
 				continue
 			fi
 		fi

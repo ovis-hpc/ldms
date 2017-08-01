@@ -41,7 +41,7 @@ For hosts operating under systemd, the service files ldmsd.service and ldmsd@.se
 
 Within a cluster, when the ldmsd service is started with 'systemctl start ldmsd' the service script loads environment variable customizations first from /etc/sysconfig/ldms.d/ldmsd.local.conf. It applies the genders file information, then generates the environment and plugin configuration files needed by the ldmsd binary and launches that binary.
 
-On a data storage host handling multiple clusters, a separate ldmsd instance is configured and run for each cluster. The service ldmsd@$CLUSTERNAME reads its configuration information from /etc/sysconfig/ldms.d/ldmsd.$CLUSTERNAME.conf.
+On a data storage host handling multiple clusters, a separate ldmsd instance is configured and run for each cluster. The service ldmsd@$LDMSCLUSTER reads its configuration information from /etc/sysconfig/ldms.d/ldmsd.$LDMSCLUSTER.conf.
 
 .SH Installing and running gender-based init scripts under sysvinit
 
@@ -49,12 +49,12 @@ For hosts operating under sysvinit, a boot script file ldmsd is normally install
 
 Within a cluster, when the ldmsd service is started with 'systemctl start ldmsd' the service script loads environment variable customizations first from /etc/sysconfig/ldms.d/ldmsd.local.conf. It applies the genders file information, then generates the environment and plugin configuration files needed by the ldmsd binary and launches that binary.
 
-On a data storage host handling multiple clusters, a separate ldmsd instance is configured and run for each cluster. Creating each instance requires generating a tailored init script. See 'Generating sysvinit ldmsd instances' below. The each instance reads its configuration information from /etc/sysconfig/ldms.d/ldmsd.$CLUSTERNAME.conf, just as with the systemd version.
+On a data storage host handling multiple clusters, a separate ldmsd instance is configured and run for each cluster. Creating each instance requires generating a tailored init script. See 'Generating sysvinit ldmsd instances' below. The each instance reads its configuration information from /etc/sysconfig/ldms.d/ldmsd.$LDMSCLUSTER.conf, just as with the systemd version.
 
 
 .SH TUNING THE LDMSD RUNTIME BEHAVIOR WITH ENVIRONMENT VARIABLES
 
-Regardless of the sysvinit or systemd choice, the following variables affect the launch of ldmsd when specified in ldmsd.local.conf (or ldmsd.$CLUSTERNAME.conf).
+Regardless of the sysvinit or systemd choice, the following variables affect the launch of ldmsd when specified in ldmsd.local.conf (or ldmsd.$LDMSCLUSTER.conf).
 They are grouped by role: generally applicable, collection, aggregation, or storage, or experimental.
 
 .SH Tuning variables for ldmsd in any role (collection, aggregation, storage)
@@ -103,11 +103,10 @@ If LDMS_USE_GENDERS is defined as 0, genders information will not be queried at 
 .B LDMS_GENDERS="file list"
 
 The files listed in LDMS_GENDERS are concatenated and used for genders queries.
-In simple installations, LDMS_GENDERS=/etc/sysconfig/ldms.d/ClusterGenders/genders.local or
-LDMS_GENDERS=/etc/genders is typical.
-If unset, /etc/genders, /etc/sysconfig/ldms.d/ClusterGenders/$CLUSTERNAME and etc/sysconfig/ldms.d/ClusterGenders/genders.local are all used by default. If none of these are present, startup will fail. If these are redundant, startup will fail.
+In simple installations, LDMS_GENDERS=/etc/sysconfig/ldms.d/ClusterGenders/genders.local or LDMS_GENDERS=/etc/genders is typical.
+If unset, /etc/sysconfig/ldms.d/ClusterGenders/genders.$LDMSCLUSTER and /etc/genders are checked and the first found is used as the default. If none of these are present, startup will fail.
 .PP
-The normal reason for setting an alternative list is to, on a storage machine, join a copy if the genders file from a cluster monitored to the genders needed for configuring stores on the specific storage machine. Since more than one storage machine might be serving a cluster or the storage machine may be in a different administrative domain, this splitting of the gender file maintenance duties is often desirable.
+The normal reason for setting an LDMS_GENDERS list is to, on a storage machine, join a copy if the genders file from a cluster monitored to the genders needed for configuring stores on the specific storage machine. Since more than one storage machine might be serving a cluster or the storage machine may be in a different administrative domain, this splitting of the gender file maintenance duties is often desirable.
 
 .B LDMS_GENDERS_HOST=name
 
@@ -140,9 +139,9 @@ Overrides with N the ldmsd_event_thds gender value. If neither is specified, the
 
 If defined, this overrides the component_id derived from the host name. In cluster deployments, this should never be defined as a constant. This value is expected to be a positive (nonzero) integer unique to each host in the ldmsd aggregation hierarchy, if not across the entire site. Specific logic computes a default value of COMPONENT_ID for cray hosts.
 
-.B NODE_ID_BASE=P
+.B LDMSD_IDBASE=P
 
-If defined when COMPONENT_ID is not, P is added to the number extracted from the host name and used as the COMPONENT_ID in non-Cray environments.
+If defined when COMPONENT_ID is not, P is added to the number extracted from the host name and used as the COMPONENT_ID in non-Cray environments. Overrides gender ldmsd_idbase. Alias NODE_ID_BASE is deprecated; when both present LDMSD_IDBASE takes precedence.
 
 .B AGG_ID_BASE=Q
 
@@ -195,7 +194,7 @@ Note for experimenters: LDMS_PREFIX must be set in the systemd service file  /et
 
 .B LDMSD_METRIC_PLUGINS=plugin-name-list
 
-If defined, this overrides the ldmsd_metric_plugins gender. In hierarchical aggregation settings, this may lead to incorrect storage configuration and loss of data unless a corresponding
+If defined, this overrides the ldmsd_metric_plugins gender. In hierarchical aggregation settings, this may lead to incorrect storage configuration and loss of data unless a corresponding value is set on all other nodes in the hierarchy.
 
 .B LDMSD_STORE_PLUGINS=store-plugin-name-list
 
@@ -262,7 +261,7 @@ Directory where LDMS authentication secrets for remote systems are kept.
 Typos in the ldms genders keywords may lead to silent application of defaults.
 In a new deployment, always review  /var/run/ldmsd/ldmsd.env.local and /var/run/ldmsd/all-config.local to verify your expected options have been applied.
 .PP
-For storage deployments supporting a remote machine $CLUSTERNAME, any place .local appears in these man pages, you can usually replace it with .$CLUSTERNAME and arrive at a correct conclusion.
+For storage deployments supporting a remote machine $LDMSCLUSTER, any place .local appears in these man pages, you can usually replace it with .$LDMSCLUSTER and arrive at a correct conclusion.
 .PP
 For initial deployment debugging under systemd, "journalctl -f -o cat" is very handy.
 
