@@ -34,6 +34,16 @@ libaries_rtr_mmr_la_LIBADD = $(CORE)/libldms.la -lovis_util \
                                   @LDFLAGS_GETTIME@ -lcoll
 pkglib_LTLIBRARIES += libaries_rtr_mmr.la
 
-
-
 endif
+
+# Can make linkstatus w/o craysystem sampler and w/o aries_mmr and vice versa.
+# Switching to the new naming convention where cray specific items are prefixed with cray
+# Putting it here for arrangement purposes
+if ENABLE_ARIES_LINKSTATUS
+libaries_linkstatus_la_SOURCES = aries_linkstatus.c
+libaries_linkstatus_la_CFLAGS = $(AM_CFLAGS)
+libaries_linkstatus_la_LDFLAGS = $(AM_LDFLAGS)
+libaries_linkstatus_la_LIBADD = $(COMMON_LIBADD)
+pkglib_LTLIBRARIES += libaries_linkstatus.la
+endif
+
