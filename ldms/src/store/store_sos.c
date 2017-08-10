@@ -243,10 +243,12 @@ sos_handle_t create_container(const char *path)
 	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
 	if (rc) {
 		msglog(LDMSD_LERROR, "New partition could not be made primary\n");
-		goto err_1;
+		goto err_2;
 	}
 	sos_part_put(part);
 	return create_handle(path, sos);
+ err_2:
+	sos_part_put(part);
  err_1:
 	sos_container_close(sos, SOS_COMMIT_ASYNC);
  err_0:
@@ -255,22 +257,27 @@ sos_handle_t create_container(const char *path)
 	return NULL;
 }
 
-void close_container(sos_handle_t h)
+static void close_container(sos_handle_t h)
 {
 	assert(h->ref_count == 0);
 	sos_container_close(h->sos, SOS_COMMIT_ASYNC);
 	free(h);
 }
 
-void put_container(sos_handle_t h)
+static void put_container_no_lock(sos_handle_t h)
 {
-	pthread_mutex_lock(&cfg_lock);
 	h->ref_count--;
 	if (h->ref_count == 0) {
 		/* remove from list, destroy the handle */
 		LIST_REMOVE(h, entry);
 		close_container(h);
 	}
+}
+
+static void put_container(sos_handle_t h)
+{
+	pthread_mutex_lock(&cfg_lock);
+	put_container_no_lock(h);
 	pthread_mutex_unlock(&cfg_lock);
 }
 
@@ -296,18 +303,42 @@ static sos_handle_t find_container(const char *path)
  */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
+	struct sos_instance *si;
+	int rc;
 	char *value;
 	value = av_value(avl, "path");
 	if (!value)
-		goto einval;
+		return EINVAL;
 
 	pthread_mutex_lock(&cfg_lock);
-	snprintf(root_path, PATH_MAX, "%s", value);
+	strncpy(root_path, value, PATH_MAX);
+
+	/* Run through all open containers and close them. They will
+	 * get re-opened when store() is next called
+	 */
+	rc = ENOMEM;
+	LIST_FOREACH(si, &inst_list, entry) {
+		pthread_mutex_lock(&si->lock);
+		if (si->sos_handle) {
+			put_container_no_lock(si->sos_handle);
+			si->sos_handle = NULL;
+		}
+		size_t pathlen =
+			strlen(root_path) + strlen(si->container) + 4;
+		if (si->path)
+			free(si->path);
+		si->path = malloc(pathlen);
+		if (!si->path)
+			goto err_0;
+		sprintf(si->path, "%s/%s", root_path, si->container);
+		pthread_mutex_unlock(&si->lock);
+	}
 	pthread_mutex_unlock(&cfg_lock);
 	return 0;
-einval:
+
+ err_0:
 	pthread_mutex_unlock(&cfg_lock);
-	return EINVAL;
+	return rc;
 }
 
 static void term(struct ldmsd_plugin *self)
@@ -381,10 +412,23 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	rc = sos_schema_index_add(schema, "timestamp");
 	if (rc)
 		goto err_1;
+
+	/* We assume that job_id and component_id are in the metric array below */
+	for (i = 0; i < metric_count; i++) {
+		msglog(LDMSD_LINFO, "Adding attribute %s to the schema\n",
+		       ldms_metric_name_get(set, metric_arry[i]));
+		rc = sos_schema_attr_add(schema,
+			ldms_metric_name_get(set, metric_arry[i]),
+			sos_type_map[ldms_metric_type_get(set, metric_arry[i])]);
+		if (rc)
+			goto err_1;
+	}
+
 	/*
 	 * Component/Time Index
 	 */
-	rc = sos_schema_attr_add(schema, "comp_time", SOS_TYPE_UINT64);
+	char *comp_time_attrs[] = { "component_id", "timestamp" };
+	rc = sos_schema_attr_add(schema, "comp_time", SOS_TYPE_JOIN, 2, comp_time_attrs);
 	if (rc)
 		goto err_1;
 	rc = sos_schema_index_add(schema, "comp_time");
@@ -393,21 +437,14 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	/*
 	 * Job/Time Index
 	 */
-	rc = sos_schema_attr_add(schema, "job_time", SOS_TYPE_UINT64);
+	char *job_time_attrs[] = { "job_id", "timestamp" };
+	rc = sos_schema_attr_add(schema, "job_time", SOS_TYPE_JOIN, 2, job_time_attrs);
 	if (rc)
 		goto err_1;
 	rc = sos_schema_index_add(schema, "job_time");
 	if (rc)
 		goto err_1;
 
-	/* We assume that job_id and component_id are in the metric array below */
-	for (i = 0; i < metric_count; i++) {
-		rc = sos_schema_attr_add(schema,
-			ldms_metric_name_get(set, metric_arry[i]),
-			sos_type_map[ldms_metric_type_get(set, metric_arry[i])]);
-		if (rc)
-			goto err_1;
-	}
 	return schema;
  err_1:
 	sos_schema_free(schema);
