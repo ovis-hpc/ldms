@@ -1037,7 +1037,8 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 				       "{ \"inst_name\":\"%s\","
 				       "\"schema_name\":\"%s\","
 				       "\"state\":\"%s\"}",
-				       prv_set->inst_name, prv_set->schema_name,
+				       prv_set->inst_name,
+				       (prv_set->schema_name ? prv_set->schema_name : ""),
 				       ldmsd_prdcr_set_state_str(prv_set->state));
 			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
 			set_count++;
