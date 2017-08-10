@@ -960,7 +960,8 @@ static int prdcr_status_handler(int sock, req_msg_t rm)
 				       "{ \"inst_name\":\"%s\","
 				       "\"schema_name\":\"%s\","
 				       "\"state\":\"%s\"}",
-				       prv_set->inst_name, prv_set->schema_name,
+				       prv_set->inst_name,
+				       (prv_set->schema_name ? prv_set->schema_name : ""),
 				       ldmsd_prdcr_set_state_str(prv_set->state));
 			rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
 			set_count++;
