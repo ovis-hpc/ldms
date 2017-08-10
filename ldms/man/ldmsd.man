@@ -50,27 +50,27 @@ to ldmsd. See the -m option for further details. If both are specified, the -m
 option takes precedence over this environment variable.
 
 .SS CRAY Specific Environment variables for ugni transport
-LDMS_UGNI_PTAG
+ZAP_UGNI_PTAG
 For XE/XK, the PTag value as given by apstat -P.
 For XC, The value does not matter but the environment variable must be set.
 .TP
-LDMS_UGNI_COOKIE
+ZAP_UGNI_COOKIE
 For XE/XK, the Cookie value corresponding to the PTag value as given by apstat -P
 For XC, the Cookie value (not Cookie2) as given by apstat -P
 .TP
-LDMS_UGNI_CQ_DEPTH
+ZAP_UGNI_CQ_DEPTH
 Optional value for the CQ depth. Default is 2048.
 .TP
-LDMS_UGNI_STATE_INTERVAL
+ZAP_UGNI_STATE_INTERVAL
 Optional. If set, then ldmsd will check all nodes' states via rca interface.
 States for all nodes are checked and stored at intervals determined by this environment variable. The stored
 values are checked against before contacting a node. If you choose to use this option, then the rule of
-thumb is to set LDMS_UGNI_STATE_INTERVAL and LDMS_UGNI_STATE_OFFSET such that the node states are checked
+thumb is to set ZAP_UGNI_STATE_INTERVAL and ZAP_UGNI_STATE_OFFSET such that the node states are checked
 before the metric set update occurs (see interval and offset in ldmsd_controller)
 .TP
-LDMS_UGNI_STATE_OFFSET
-Optional. Only relevant if LDMS_UGNI_STATE_INTERVAL is set. Defaults to zero. Offset from zero for
-checking the nodes state (see LDMS_UGNI_STATE_INTERVAL, above).
+ZAP_UGNI_STATE_OFFSET
+Optional. Only relevant if ZAP_UGNI_STATE_INTERVAL is set. Defaults to zero. Offset from zero for
+checking the nodes state (see ZAP_UGNI_STATE_INTERVAL, above).
 
 
 .SH OPTIONS
@@ -212,7 +212,7 @@ foo         user 20596 0x86bb0000 0x86bc0000
 .RE
 .fi
 .PP
-Set the environment variables LDMS_UGNI_PTAG and LDMS_UGNI_COOKIE with the appropriate ptag and cookie.
+Set the environment variables ZAP_UGNI_PTAG and ZAP_UGNI_COOKIE with the appropriate ptag and cookie.
 .PP
 Run ldmsd directly or as part of a script launched from aprun. In either case, Use aprun with the correct -p <ptag> when running.
 
