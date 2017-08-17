@@ -6,6 +6,9 @@ if test -n "$LDMS_PREFIX"; then
 else
 	inst=/usr
 fi
-echo "$NUMACTL $NUMAOPT $inst/sbin/ldmsd $*" > $LDMS_PREFIX/var/run/ldmsd/ldmsd.start
+
+target=$1
+shift
+echo "$NUMACTL $NUMAOPT $inst/sbin/ldmsd $*" > $LDMS_PREFIX/var/run/ldmsd/ldmsd.start.$target
 $NUMACTL $NUMAOPT $inst/sbin/ldmsd $*
 #LDMS_POST_INSTALLED=0 do not change this line

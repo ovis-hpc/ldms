@@ -28,6 +28,10 @@ fi
 # load ldmsd localizations source
 . $NODEFILE
 
+if test -n "$LDMSD_GENDERS_HOST"; then
+	echo 'set LDMS_GENDERS_HOST not LDMSD_GENDERS_HOST'
+	dietrace 1
+fi
 if test -n "$LDMS_GENDERS_HOST"; then
         hostfull=$LDMS_GENDERS_HOST
 else
@@ -304,7 +308,7 @@ if test "x$LDMSD_USE_UNIX_SOCK" = "xyes"; then
 	fi
 	LDMSD_SOCK_OPT="-S"
 	sockdir=`dirname $LDMSD_SOCKPATH`
-	mkdir -p $sockdir >2/dev/null
+	mkdir -p $sockdir 2>/dev/null
 else
 	LDMSD_SOCK_OPT=""
 	unset LDMSD_SOCKPATH
