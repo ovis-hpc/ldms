@@ -60,7 +60,7 @@ EnvironmentFile = -/var/run/ldmsd/ldmsd.env.%I
 # Start main service
 # This is all one line so it is easily converted to sysvinit, not so
 # it is easy to read.
-ExecStart= /bin/bash -c '/bin/rm -f $LDMSD_SOCKPATH ; /usr/bin/ldmsd-wrapper.sh $LDMSD_GLOBAL_OPTS $MEM_OPT $LDMSAGGD_MEM_RES -c $LDMSD_PLUGIN_CONFIG_FILE -a $LDMS_AUTH_FILE -r /var/run/ldmsd/ldmsd-%I.pid -x $LDMSD_XPRT:$LDMSD_PORT -P $LDMSD_EVENT_THDS $LDMSD_INET_OPT $LDMSD_CONFIG_PORT $LDMSD_SOCK_OPT $LDMSD_SOCKPATH -v $LDMSD_DBG $LDMS_LOG_OPT $LDMS_LOG_FILE 2>&1'
+ExecStart= /bin/bash -c '/bin/rm -f $LDMSD_SOCKPATH ; /usr/bin/ldmsd-wrapper.sh %I $LDMSD_GLOBAL_OPTS $MEM_OPT $LDMSAGGD_MEM_RES -c $LDMSD_PLUGIN_CONFIG_FILE -a $LDMS_AUTH_FILE -r /var/run/ldmsd/ldmsd-%I.pid -x $LDMSD_XPRT:$LDMSD_PORT -P $LDMSD_EVENT_THDS $LDMSD_INET_OPT $LDMSD_CONFIG_PORT $LDMSD_SOCK_OPT $LDMSD_SOCKPATH -v $LDMSD_DBG $LDMS_LOG_OPT $LDMS_LOG_FILE 2>&1'
 
 # Sets open_files_limit
 LimitNOFILE = 1000
