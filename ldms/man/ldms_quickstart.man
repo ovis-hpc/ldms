@@ -561,8 +561,8 @@ Note: The userid of the ptag being removed must match that of the user running t
 Set the following environment variables for either user or system ptags (example shows user ptag values):
 .nf
 .RS
-export LDMS_UGNI_PTAG 233
-export LDMS_UGNI_COOKIE 0xa1230000
+export ZAP_UGNI_PTAG 233
+export ZAP_UGNI_COOKIE 0xa1230000
 .RE
 .fi
 
@@ -615,12 +615,12 @@ Note: The userid of the ptag being removed must match that of the user running t
 
 .SS PTAG-Related Enviroment variables for ldms (XC)
 Set the following environment variables.
-On XC the ptag value doesn't matter but LDMS_UGNI_PTAG must be defined.
+On XC the ptag value doesn't matter but ZAP_UGNI_PTAG must be defined.
 Set the Cookie (not Cookie2) for either user or system ptag.
 .nf
 .RS
-export LDMS_UGNI_PTAG=0
-export LDMS_UGNI_COOKIE=0x86bb0000
+export ZAP_UGNI_PTAG=0
+export ZAP_UGNI_COOKIE=0x86bb0000
 .RE
 .fi
 
