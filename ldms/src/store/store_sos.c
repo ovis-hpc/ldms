@@ -100,7 +100,7 @@ struct sos_instance {
 	int comp_id_idx;
 	sos_attr_t ts_attr;
 	sos_attr_t comp_time_attr;
-	sos_attr_t job_time_attr;
+	sos_attr_t job_comp_time_attr;
 	sos_attr_t first_attr;
 
 	LIST_ENTRY(sos_instance) entry;
@@ -437,11 +437,11 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	/*
 	 * Job/Time Index
 	 */
-	char *job_time_attrs[] = { "job_id", "timestamp" };
-	rc = sos_schema_attr_add(schema, "job_time", SOS_TYPE_JOIN, 2, job_time_attrs);
+	char *job_comp_time_attrs[] = { "job_id", "component_id", "timestamp" };
+	rc = sos_schema_attr_add(schema, "job_comp_time", SOS_TYPE_JOIN, 3, job_comp_time_attrs);
 	if (rc)
 		goto err_1;
-	rc = sos_schema_index_add(schema, "job_time");
+	rc = sos_schema_index_add(schema, "job_comp_time");
 	if (rc)
 		goto err_1;
 
@@ -575,7 +575,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		si->job_id_idx = ldms_metric_by_name(set, "job_id");
 		si->comp_id_idx = ldms_metric_by_name(set, "component_id");
 		si->ts_attr = sos_schema_attr_by_name(si->sos_schema, "timestamp");
-		si->job_time_attr = sos_schema_attr_by_name(si->sos_schema, "job_time");
+		si->job_comp_time_attr = sos_schema_attr_by_name(si->sos_schema, "job_comp_time");
 		si->comp_time_attr = sos_schema_attr_by_name(si->sos_schema, "comp_time");
 		si->first_attr = sos_schema_attr_by_name(si->sos_schema,
 				ldms_metric_name_get(set, metric_arry[0]));
@@ -586,7 +586,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			msglog(LDMSD_LERROR,
 			       "The job_id is missing from the metric set/schema.\n");
 		assert(si->comp_time_attr);
-		assert(si->job_time_attr);
+		assert(si->job_comp_time_attr);
 		assert(si->ts_attr);
 	}
 	obj = sos_obj_new(si->sos_schema);
@@ -611,19 +611,13 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		comp_id = ldms_metric_get_u32(set, si->comp_id_idx);
 	else
 		comp_id = 0;
-	value = sos_value_init(value, obj, si->comp_time_attr);
-	value->data->prim.uint64_ = (uint64_t)timestamp.sec | ((uint64_t)comp_id << 32);
-	sos_value_put(value);
 
-	/* job_time */
+	/* job_comp_time */
 	uint32_t job_id;
 	if (si->job_id_idx >= 0)
 		job_id = ldms_metric_get_u32(set, si->job_id_idx);
 	else
 		job_id = 0;
-	value = sos_value_init(value, obj, si->job_time_attr);
-	value->data->prim.uint64_ = (uint64_t)timestamp.sec | ((uint64_t)job_id << 32);
-	sos_value_put(value);
 
 	enum ldms_value_type metric_type;
 	int array_len;
