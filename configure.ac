@@ -119,9 +119,5 @@ util/sample_init_scripts/genders/sysv/Makefile
 util/sample_init_scripts/genders/sysv/etc/Makefile
 util/sample_init_scripts/genders/sysv/etc/init.d/Makefile
 util/sample_init_scripts/genders/examples/Makefile
-packaging/ovis-trinity.spec
-packaging/ovis-rhine.spec
-packaging/ovis-mon7.spec
-packaging/ovis-mon6.spec
-packaging/ovis-base.spec])
+])
 AC_OUTPUT
