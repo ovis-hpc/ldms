@@ -50,6 +50,9 @@ ldmsaggd=LIST           Enables aggregation, gathering from LIST.
                         LIST is : separated, containing hostnames, or
                         literals BOOTNODELIST, or CLIENTOFLIST or
                         AGGCLIENTOFLIST. See "Node Lists" below.
+ldmsd_exclude_host      Defines this host as excluded
+                        from aggregation and collection activities,
+                        even when the host appears in a list.
 ldmsaggd_clientof=H     Defines n-th level aggregation host.
 ldmsaggd_event_thds=N   Defines thread count used to manage events.
 ldmsaggd_mem_res=M      Defines DMA reservation size.
@@ -302,6 +305,9 @@ ldmsaggd_offset_SUFFIX=OAGGS   As OSAMP, but for aggregating schema
 Some features listed not yet supported, as marked.
 .PP
 Typos in the ldms attribute names may lead to silent application of defaults.
+.PP
+Attribute value substitution based on hostname fragments is not yet supported for plugin options.
+
 
 .SH EXAMPLES
 .PP
