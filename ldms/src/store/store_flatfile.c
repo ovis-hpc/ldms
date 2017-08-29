@@ -253,7 +253,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 {
 	struct flatfile_store_instance *si;
 	int i;
-	int rc = 0;
+	int rc = 0, rc2 = 0;
 	int last_rc = 0;
 	int last_errno = 0;
 
@@ -265,16 +265,67 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	const struct ldms_timestamp *ts = &_ts;
 	uint64_t comp_id;
 
+	const char *prod;
+	prod = ldms_set_producer_name_get(set);
 	for (i=0; i<metric_count; i++) {
 		pthread_mutex_lock(&si->ms[i]->lock);
 		comp_id = ldms_metric_user_data_get(set, metric_arry[i]);
-		rc = fprintf(si->ms[i]->file, "%"PRIu32".%"PRIu32" %"PRIu64
-				" %"PRIu64"\n", ts->sec,
-				ts->usec, comp_id,
+		/* time, host, compid, value */
+		rc2 = fprintf(si->ms[i]->file, "%"PRIu32".%"PRIu32" %s %"PRIu64,
+			ts->sec, ts->usec, prod, comp_id);
+		enum ldms_value_type metric_type =
+			ldms_metric_type_get(set, metric_arry[i]);
+		switch (metric_type) {
+		case LDMS_V_CHAR_ARRAY:
+			rc = fprintf(si->ms[i]->file, " %s\n",
+			     ldms_metric_array_get_str(set, metric_arry[i]));
+			break;
+		case LDMS_V_U8:
+			rc = fprintf(si->ms[i]->file, " %u\n",
+			     (unsigned)ldms_metric_get_u8(set, metric_arry[i]));
+			break;
+		case LDMS_V_S8:
+			rc = fprintf(si->ms[i]->file, " %d\n",
+			     (int)ldms_metric_get_s8(set, metric_arry[i]));
+			break;
+		case LDMS_V_U16:
+			rc = fprintf(si->ms[i]->file, " %u\n",
+			     (unsigned)ldms_metric_get_u16(set, metric_arry[i]));
+			break;
+		case LDMS_V_S16:
+			rc = fprintf(si->ms[i]->file, " %d\n",
+			     (int)ldms_metric_get_s16(set, metric_arry[i]));
+			break;
+		case LDMS_V_U32:
+			rc = fprintf(si->ms[i]->file, " %u\n",
+			     (unsigned)ldms_metric_get_u32(set, metric_arry[i]));
+			break;
+		case LDMS_V_S32:
+			rc = fprintf(si->ms[i]->file, " %d\n",
+			     ldms_metric_get_s32(set, metric_arry[i]));
+			break;
+		case LDMS_V_U64:
+			rc = fprintf(si->ms[i]->file, " %"PRIu64"\n",
 			     ldms_metric_get_u64(set, metric_arry[i]));
-		if (rc < 0) {
+			break;
+		case LDMS_V_S64:
+			rc = fprintf(si->ms[i]->file, " %"PRId64"\n",
+			     ldms_metric_get_s64(set, metric_arry[i]));
+			break;
+		case LDMS_V_F32:
+			rc = fprintf(si->ms[i]->file, " %.9g\n",
+			     ldms_metric_get_float(set, metric_arry[i]));
+			break;
+		case LDMS_V_D64:
+			rc = fprintf(si->ms[i]->file, " %.17g\n",
+			     ldms_metric_get_double(set, metric_arry[i]));
+			break;
+		default:
+			break;
+		}
+		if (rc < 0 || rc2 < 0) {
 			last_errno = errno;
-			last_rc = rc;
+			last_rc = (rc != 0 ? rc : rc2);
 			msglog(LDMSD_LERROR, "Error %d: %s at %s:%d\n", last_errno,
 					strerror(last_errno), __FILE__,
 					__LINE__);
