@@ -17,7 +17,7 @@ strgp_add plugin=store_flatfile [ <attr> = <value> ]
 
 
 .SH DESCRIPTION
-The flatfile store generates one file per metric with time, producer, component id, and value columns separated by spaces. The file name is $datadir/$container/$metric_name. 
+The flatfile store generates one file per metric with time, producer, component id, and value columns separated by spaces. The file name is $datadir/$container/$schema/$metric_name. 
 
 .PP
 
@@ -62,9 +62,9 @@ Please note the argument changes from v2.
 .SH BUGS
 Numeric array metrics are not presently supported.
 There is a maximum of 20 concurrent flatfile stores.
-The same metric in multiple schema may generate conflicting files,
-if path is not used to separate the data. There is no way to filter which metrics are written. Unchanged meta-metrics are always written.
-
+The store is brittle to schema with multiple definitions, though it ought not to be.
+Unchanged meta-metrics are always written anyway.
+There is no option to quote string values, handle rollover, or handle buffering.
 
 .SH EXAMPLES
 .PP
@@ -73,11 +73,14 @@ Within ldmsd_controller or in a configuration file
 load name=store_flatfile
 config name=store_flatfile path=/XXX/datadir
 
-strgp_add name=store_flatfile_meminfo plugin=store_flatfile schema=meminfo container=contain_meminfo
+# log only Active from the meminfo sampler
+strgp_add name=store_flatfile_meminfo plugin=store_flatfile schema=meminfo container=flat
 strgp_prdcr_add name=store_flatfile_meminfo regex=localhost1
+strgp_metric_add name=store_flatfile_meminfo metric=Active
 strgp_start name=store_flatfile_meminfo regex=localhost1
 
-strgp_add name=store_flatfile_vmstat plugin=store_flatfile schema=vmstat container=contain_vmstat
+# log all from vmstat
+strgp_add name=store_flatfile_vmstat plugin=store_flatfile schema=vmstat container=flat
 strgp_prdcr_add name=store_flatfile_vmstat regex=localhost1
 strgp_start name=store_flatfile_vmstat regex=localhost1
 
