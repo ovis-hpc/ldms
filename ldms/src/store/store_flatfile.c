@@ -64,10 +64,11 @@
 #include <coll/idx.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include <ovis_util/util.h>
 
 /*
  * NOTE:
- *   (flatfile::path) = (root_path)/(comp_type)/(metric)
+ *   (flatfile::path) = (root_path)/(container)/(schema)/(metric)
  */
 
 static idx_t store_idx;
@@ -90,13 +91,13 @@ struct flatfile_metric_store {
 
 struct flatfile_store_instance {
 	struct ldmsd_store *store;
-	char *path; /**< (root_path)/(comp_type) */
-	char *container;
+	char *path; /**< (root_path)/(container)/schema */
+	char *schema;
 	void *ucontext;
 	idx_t ms_idx;
 	LIST_HEAD(ms_list, flatfile_metric_store) ms_list;
 	int metric_count;
-	struct flatfile_metric_store *ms[0];
+	struct flatfile_metric_store *ms[/*flex array*/];
 };
 
 static pthread_mutex_t cfg_lock;
@@ -146,7 +147,7 @@ static void *get_ucontext(ldmsd_store_handle_t _sh)
 }
 
 static ldmsd_store_handle_t
-open_store(struct ldmsd_store *s, const char *comp_type, const char *container,
+open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	  struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct flatfile_store_instance *si;
@@ -158,7 +159,7 @@ open_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 	 * Add a component type directory if one does not
 	 * already exist
 	 */
-	si = idx_find(store_idx, (void *)container, strlen(container));
+	si = idx_find(store_idx, (void *)schema, strlen(schema));
 	if (!si) {
 		/*
 		 * First, count the metric.
@@ -168,8 +169,8 @@ open_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		TAILQ_FOREACH(x, metric_list, entry) {
 			metric_count++;
 		}
-		sprintf(tmp_path, "%s/%s", root_path, comp_type);
-		mkdir(tmp_path, 0777);
+		sprintf(tmp_path, "%s/%s/%s", root_path, container, schema);
+		f_mkdir_p(tmp_path, 0777);
 
 		/*
 		 * Open a new store for this component-type and
@@ -189,8 +190,8 @@ open_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 		si->path = strdup(tmp_path);
 		if (!si->path)
 			goto err2;
-		si->container = strdup(container);
-		if (!si->container)
+		si->schema = strdup(schema);
+		if (!si->schema)
 			goto err3;
 		i = 0;
 		char mname[128];
@@ -216,14 +217,16 @@ open_store(struct ldmsd_store *s, const char *comp_type, const char *container,
 			if (!ms->path)
 				goto err4;
 			ms->file = fopen_perm(ms->path, "a+", LDMSD_DEFAULT_FILE_PERM);
-			if (!ms->file)
+			if (!ms->file) {
+			/* log message needed here from errno */
 				goto err4;
+			}
 			pthread_mutex_init(&ms->lock, NULL);
 			idx_add(si->ms_idx, name, strlen(name), ms);
 			LIST_INSERT_HEAD(&si->ms_list, ms, entry);
 			si->ms[i++] = ms;
 		}
-		idx_add(store_idx, (void *)container, strlen(container), si);
+		idx_add(store_idx, (void *)schema, strlen(schema), si);
 	}
 	goto out;
 err4:
@@ -236,13 +239,14 @@ err4:
 		free(ms);
 	}
 
-	free(si->container);
+	free(si->schema);
 err3:
 	free(si->path);
 err2:
 	idx_destroy(si->ms_idx);
 err1:
 	free(si);
+	si = NULL;
 out:
 	pthread_mutex_unlock(&cfg_lock);
 	return si;
@@ -271,58 +275,72 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		pthread_mutex_lock(&si->ms[i]->lock);
 		comp_id = ldms_metric_user_data_get(set, metric_arry[i]);
 		/* time, host, compid, value */
-		rc2 = fprintf(si->ms[i]->file, "%"PRIu32".%"PRIu32" %s %"PRIu64,
-			ts->sec, ts->usec, prod, comp_id);
+#define STAMP \
+	rc2 = fprintf(si->ms[i]->file, "%"PRIu32".%06"PRIu32" %s %"PRIu64, \
+		ts->sec, ts->usec, prod, comp_id)
 		enum ldms_value_type metric_type =
 			ldms_metric_type_get(set, metric_arry[i]);
 		switch (metric_type) {
 		case LDMS_V_CHAR_ARRAY:
+			STAMP;
 			rc = fprintf(si->ms[i]->file, " %s\n",
 			     ldms_metric_array_get_str(set, metric_arry[i]));
 			break;
 		case LDMS_V_U8:
+			STAMP;
 			rc = fprintf(si->ms[i]->file, " %u\n",
 			     (unsigned)ldms_metric_get_u8(set, metric_arry[i]));
 			break;
 		case LDMS_V_S8:
+			STAMP;
 			rc = fprintf(si->ms[i]->file, " %d\n",
 			     (int)ldms_metric_get_s8(set, metric_arry[i]));
 			break;
 		case LDMS_V_U16:
+			STAMP;
 			rc = fprintf(si->ms[i]->file, " %u\n",
 			     (unsigned)ldms_metric_get_u16(set, metric_arry[i]));
 			break;
 		case LDMS_V_S16:
+			STAMP;
 			rc = fprintf(si->ms[i]->file, " %d\n",
 			     (int)ldms_metric_get_s16(set, metric_arry[i]));
 			break;
 		case LDMS_V_U32:
+			STAMP;
 			rc = fprintf(si->ms[i]->file, " %u\n",
 			     (unsigned)ldms_metric_get_u32(set, metric_arry[i]));
 			break;
 		case LDMS_V_S32:
+			STAMP;
 			rc = fprintf(si->ms[i]->file, " %d\n",
 			     ldms_metric_get_s32(set, metric_arry[i]));
 			break;
 		case LDMS_V_U64:
+			STAMP;
 			rc = fprintf(si->ms[i]->file, " %"PRIu64"\n",
 			     ldms_metric_get_u64(set, metric_arry[i]));
 			break;
 		case LDMS_V_S64:
+			STAMP;
 			rc = fprintf(si->ms[i]->file, " %"PRId64"\n",
 			     ldms_metric_get_s64(set, metric_arry[i]));
 			break;
 		case LDMS_V_F32:
+			STAMP;
 			rc = fprintf(si->ms[i]->file, " %.9g\n",
 			     ldms_metric_get_float(set, metric_arry[i]));
 			break;
 		case LDMS_V_D64:
+			STAMP;
 			rc = fprintf(si->ms[i]->file, " %.17g\n",
 			     ldms_metric_get_double(set, metric_arry[i]));
 			break;
 		default:
+			/* array types not supported yet. want row and split files options */
 			break;
 		}
+#undef STAMP
 		if (rc < 0 || rc2 < 0) {
 			last_errno = errno;
 			last_rc = (rc != 0 ? rc : rc2);
@@ -380,9 +398,9 @@ static void close_store(ldmsd_store_handle_t _sh)
 			free(ms->path);
 		free(ms);
 	}
-	idx_delete(store_idx, (void *)(si->container), strlen(si->container));
+	idx_delete(store_idx, (void *)(si->schema), strlen(si->schema));
 	free(si->path);
-	free(si->container);
+	free(si->schema);
 	idx_destroy(si->ms_idx);
 	free(si);
 	pthread_mutex_unlock(&cfg_lock);
