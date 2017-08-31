@@ -13,20 +13,7 @@ OVIS_LIB = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 OVIS_LIB_TARBALL = $(OVIS_LIB).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-PHONY_rpm = rpm rpm-old toss centos doxygen doc install-doc
-rpm-old: dist-gzip
-	$(MKDIR_P) rpm/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-	cp $(OVIS_LIB_TARBALL) ovis-lib.spec rpm/SOURCES
-	rpmbuild --define "_topdir `pwd`/rpm" -ba ovis-lib.spec
-
-rpm toss centos: dist-gzip
-	$(MKDIR_P) centos/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-	cp $(OVIS_LIB_TARBALL) packaging/ovis-lib-toss.spec centos/SOURCES
-	rpmbuild --define "_topdir `pwd`/centos" -ba packaging/ovis-lib-toss.spec
-
-rpm-clean:
-	rm -rf rpm/ centos/
-	rm -f $(OVIS_LIB_TARBALL)
+PHONY_doc = doxygen doc install-doc
 
 if ENABLE_DOC
 install-data-local: install-doc
@@ -42,7 +29,7 @@ doxygen-out: $(DOCDEPS)
 	doxygen ./Doxyfile
 	touch doxygen-out
 
-.PHONY: install-doxygen $(PHONY_rpm)
+.PHONY: install-doxygen $(PHONY_doc)
 install-doxygen: doxygen-out
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search
 	for f in doxygen/html/* ; do \
@@ -68,4 +55,4 @@ install-doc: install-dox
 PEDIGREE = $(DESTDIR)/$(bindir)/lib-pedigree
 include $(srcdir)/pedigree.am
 
-clean-local: rpm-clean
+clean-local:

@@ -1,4 +1,5 @@
 #!/bin/bash -x
+echo "$0 `date`" >> .last-make
 eventname=libevent-2.0.21-stable
 export LOCALEVENT=0 ; # else expect /usr to be a good libevent2
 # we build libevent once, then reinstall it as first built if
@@ -17,7 +18,7 @@ build_subdir=LDMS_objdir
 # full path of where we want things installed
 prefix=`pwd`/LDMS_install
 
-if test -f lib/packaging/ovis-lib-toss.spec.in; then
+if test -f ldms/src/sampler/meminfo.c; then
 	mkdir -p $prefix
 	# Are we at the top?
 	if test -f ldms/configure; then

@@ -433,7 +433,6 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 etc/systemd/Makefile
 		 python/Makefile
 		 python/ldmsd/Makefile
-		 packaging/ovis-ldms.spec
 		 Doxyfile
 		 scripts/ldmsd
 		 scripts/envldms.sh

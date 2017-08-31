@@ -21,20 +21,7 @@ LDMS = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 LDMS_TARBALL = $(LDMS).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-PHONY_rpm = rpm centos toss doxygen rpm-old doc install-doc
-rpm-old: dist-gzip
-	$(MKDIR_P) rpm/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-	cp $(LDMS_TARBALL) rpm/SOURCES
-	rpmbuild -ba ldms.spec
-
-rpm toss centos: dist-gzip
-	$(MKDIR_P) centos/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-	cp $(LDMS_TARBALL) packaging/ovis-ldms.spec centos/SOURCES
-	rpmbuild --define "_topdir `pwd`/centos" -ba packaging/ovis-ldms.spec
-
-rpm-clean:
-	rm -rf rpm/ centos
-	rm -f $(LDMS_TARBALL)
+PHONY_doc = doxygen doc install-doc
 
 if ENABLE_DEVELOPER
 
@@ -86,7 +73,7 @@ if ENABLE_DOC_MAN
 SUBDIRS += man
 endif
 
-.PHONY: $(PHONY_rpm) $(PHONY_dox)
+.PHONY: $(PHONY_doc) $(PHONY_dox)
 
 install-data-local: install-dox
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
@@ -97,4 +84,4 @@ install-data-local: install-dox
 PEDIGREE = $(DESTDIR)/$(bindir)/ldms-pedigree
 include $(top_srcdir)/pedigree.am
 
-clean-local: rpm-clean
+clean-local:
