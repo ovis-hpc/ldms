@@ -214,11 +214,17 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 			ms = calloc(1, sizeof(*ms));
 			sprintf(tmp_path, "%s/%s", si->path, name);
 			ms->path = strdup(tmp_path);
-			if (!ms->path)
+			if (!ms->path) {
+				msglog(LDMSD_LERROR, "Out of memory at %s:%d\n",
+					__FILE__, __LINE__);
 				goto err4;
+			}
 			ms->file = fopen_perm(ms->path, "a+", LDMSD_DEFAULT_FILE_PERM);
 			if (!ms->file) {
-			/* log message needed here from errno */
+				int eno = errno;
+				msglog(LDMSD_LERROR, "Error opening %s: %d: %s at %s:%d\n",
+					ms->path, eno, strerror(eno),
+					__FILE__, __LINE__);
 				goto err4;
 			}
 			pthread_mutex_init(&ms->lock, NULL);
