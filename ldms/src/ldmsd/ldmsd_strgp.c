@@ -305,7 +305,7 @@ out_2:
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
+
 	return rc;
 }
 
@@ -370,7 +370,7 @@ int ldmsd_strgp_prdcr_del(const char *strgp_name, const char *regex_str)
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
+
 	return rc;
 }
 
@@ -458,7 +458,7 @@ int ldmsd_strgp_metric_add(const char *strgp_name, const char *metric_name)
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
+
 	return rc;
 }
 
@@ -478,15 +478,27 @@ int cmd_strgp_metric_add(char *replybuf, struct attr_value_list *avl, struct att
 	}
 
 	int rc = ldmsd_strgp_metric_add(strgp_name, metric_name);
-	if (rc == ENOENT) {
+	switch (rc) {
+	case ENOENT: 
 		sprintf(replybuf, "%dThe storage policy specified does not exist\n", ENOENT);
-	} else if (rc == EBUSY) {
+		break;
+	case EBUSY:
 		sprintf(replybuf, "%dConfiguration changes cannot be made "
 			"while the storage policy is running\n", EBUSY);
-	} else if (rc == EEXIST) {
+		break;
+	case EEXIST:
 		sprintf(replybuf, "%dThe specified metric is already present.\n", EEXIST);
-	} else if (rc == ENOMEM) {
+		break;
+	case ENOMEM:
 		sprintf(replybuf, "%dMemory allocation failure.\n", ENOMEM);
+		break;
+	case 0:
+		sprintf(replybuf, "0ok: policy %s add metric %s\n", strgp_name, metric_name);
+		break;
+	default:
+		sprintf(replybuf, "%derror: unexpected error from ldmsd_strgp_metric_add(%s,%s)\n",
+			rc, strgp_name, metric_name);
+		break;
 	}
 
 out_0:
@@ -515,7 +527,7 @@ int ldmsd_strgp_metric_del(const char *strgp_name, const char *metric_name)
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
+
 	return rc;
 }
 
@@ -742,8 +754,8 @@ int ldmsd_strgp_stop(const char *strgp_name)
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
-	return 0;
+
+	return 0; /* return rc here? */
 }
 
 int cmd_strgp_stop(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
@@ -822,7 +834,6 @@ out_0:
 
 void ldmsd_strgp_close()
 {
-	int rc = 0;
 	ldmsd_strgp_t strgp = ldmsd_strgp_first();
 	while (strgp) {
 		ldmsd_strgp_lock(strgp);
