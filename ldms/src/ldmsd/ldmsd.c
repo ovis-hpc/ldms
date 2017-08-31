@@ -1040,10 +1040,10 @@ void listen_on_transport(char *xprt_str, char *port_str)
 	else
 		port_no = atoi(port_str);
 #if OVIS_LIB_HAVE_AUTH
-	l = ldms_xprt_with_auth_new(xprt_str, ldmsd_lcritical,
+	l = ldms_xprt_with_auth_new(xprt_str, ldmsd_lwarning,
 		secretword);
 #else
-	l = ldms_xprt_new(xprt_str, ldmsd_lcritical);
+	l = ldms_xprt_new(xprt_str, ldmsd_lwarning);
 #endif /* OVIS_LIB_HAVE_AUTH */
 	if (!l) {
 		ldmsd_log(LDMSD_LERROR, "The transport specified, "
