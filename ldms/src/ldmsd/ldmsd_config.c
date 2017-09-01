@@ -1585,7 +1585,7 @@ void *config_proc(void *arg)
 		}
 	} while (1);
 
-	ldmsd_log(LDMSD_LINFO,
+	ldmsd_log(LDMSD_LDEBUG,
 		  "Closing configuration socket. cfg_buf_len %d\n",
 		  cfg_buf_len);
 
