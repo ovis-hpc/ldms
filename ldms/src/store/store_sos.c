@@ -99,7 +99,9 @@ struct sos_instance {
 	int job_id_idx;
 	int comp_id_idx;
 	sos_attr_t ts_attr;
+	sos_attr_t comp_id;
 	sos_attr_t comp_time_attr;
+	sos_attr_t job_id;
 	sos_attr_t job_comp_time_attr;
 	sos_attr_t first_attr;
 
@@ -412,18 +414,18 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	rc = sos_schema_index_add(schema, "timestamp");
 	if (rc)
 		goto err_1;
-
-	/* We assume that job_id and component_id are in the metric array below */
-	for (i = 0; i < metric_count; i++) {
-		msglog(LDMSD_LINFO, "Adding attribute %s to the schema\n",
-		       ldms_metric_name_get(set, metric_arry[i]));
-		rc = sos_schema_attr_add(schema,
-			ldms_metric_name_get(set, metric_arry[i]),
-			sos_type_map[ldms_metric_type_get(set, metric_arry[i])]);
-		if (rc)
-			goto err_1;
-	}
-
+	rc = sos_schema_attr_add(schema, "component_id", SOS_TYPE_UINT64);
+	if (rc)
+		goto err_1;
+	rc = sos_schema_index_add(schema, "component_id");
+	if (rc)
+		goto err_1;
+	rc = sos_schema_attr_add(schema, "job_id", SOS_TYPE_UINT64);
+	if (rc)
+		goto err_1;
+	rc = sos_schema_index_add(schema, "job_id");
+	if (rc)
+		goto err_1;
 	/*
 	 * Component/Time Index
 	 */
@@ -435,7 +437,7 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	if (rc)
 		goto err_1;
 	/*
-	 * Job/Time Index
+	 * Job/Component/Time Index
 	 */
 	char *job_comp_time_attrs[] = { "job_id", "component_id", "timestamp" };
 	rc = sos_schema_attr_add(schema, "job_comp_time", SOS_TYPE_JOIN, 3, job_comp_time_attrs);
@@ -444,6 +446,33 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	rc = sos_schema_index_add(schema, "job_comp_time");
 	if (rc)
 		goto err_1;
+
+	/*
+	 * Job/Time/Component Index
+	 */
+	char *job_time_comp_attrs[] = { "job_id", "timestamp", "component_id" };
+	rc = sos_schema_attr_add(schema, "job_time_comp", SOS_TYPE_JOIN, 3, job_time_comp_attrs);
+	if (rc)
+		goto err_1;
+	rc = sos_schema_index_add(schema, "job_time_comp");
+	if (rc)
+		goto err_1;
+
+	for (i = 0; i < metric_count; i++) {
+		if (0 == strcmp("timestamp", ldms_metric_name_get(set, metric_arry[i])))
+			continue;
+		if (0 == strcmp("component_id", ldms_metric_name_get(set, metric_arry[i])))
+			continue;
+		if (0 == strcmp("job_id", ldms_metric_name_get(set, metric_arry[i])))
+			continue;
+		msglog(LDMSD_LINFO, "Adding attribute %s to the schema\n",
+		       ldms_metric_name_get(set, metric_arry[i]));
+		rc = sos_schema_attr_add(schema,
+			ldms_metric_name_get(set, metric_arry[i]),
+			sos_type_map[ldms_metric_type_get(set, metric_arry[i])]);
+		if (rc)
+			goto err_1;
+	}
 
 	return schema;
  err_1:
@@ -604,20 +633,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	value->data->prim.timestamp_.fine.secs = timestamp.sec;
 	value->data->prim.timestamp_.fine.usecs = timestamp.usec;
 	sos_value_put(value);
-
-	/* comp_time */
-	uint32_t comp_id;
-	if (si->comp_id_idx >= 0)
-		comp_id = ldms_metric_get_u32(set, si->comp_id_idx);
-	else
-		comp_id = 0;
-
-	/* job_comp_time */
-	uint32_t job_id;
-	if (si->job_id_idx >= 0)
-		job_id = ldms_metric_get_u32(set, si->job_id_idx);
-	else
-		job_id = 0;
 
 	enum ldms_value_type metric_type;
 	int array_len;
