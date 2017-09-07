@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013-2016 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2017 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2013-2017 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -81,17 +81,20 @@
 
 typedef enum{CSV_CFGINIT_PRE, CSV_CFGINIT_IN, CSV_CFGINIT_DONE, CSV_CFGINIT_FAILED} csvcfg_state;
 
-/* override for special keys */
+/* override for special keys. This may get deprecated. */
 struct storek{
 	char* key;
 	STOREK_COMMON;
 	int altheader;
 	int udata;
+	int buffer_type; /* In case some metrics store at a different rate */
+	int buffer_sz;
 };
 
 #define PNAME "store_csv"
 
-static int buffer_flag = 1;
+static int buffer_type = 1; /* autobuffering */
+static int buffer_sz = 0;
 static csvcfg_state cfgstate = CSV_CFGINIT_PRE;
 #define MAX_ROLLOVER_STORE_KEYS 20
 static idx_t store_idx; //NOTE: this doesnt have an iterator. Hence storekeys.
@@ -106,7 +109,7 @@ static bool ietfcsv = false; /* we will add an option like v2 enabling this soon
 static int rollover;
 /** rolltype determines how to interpret rollover values > 0. */
 static int rolltype;
-/** ROLLTYPES documents rolltype and is used in help output. */
+/** ROLLTYPES documents rolltype and is used in help output. Also used for buffering */
 #define ROLLTYPES \
 "                     1: wake approximately every rollover seconds and roll.\n" \
 "                     2: wake daily at rollover seconds after midnight (>=0) and roll.\n" \
@@ -155,6 +158,9 @@ struct csv_store_handle {
 	char *store_key; /* this is the container+schema */
 	pthread_mutex_t lock;
 	void *ucontext;
+	int buffer_type;
+	int buffer_sz;
+	int64_t lastflush;
 	int64_t store_count;
 	int64_t byte_count;
 	CSV_STORE_HANDLE_COMMON;
@@ -174,6 +180,8 @@ static int kw_comparator(const void *a, const void *b)
 	return strcmp(_a->token, _b->token);
 }
 
+static int config_buffer(char *bs, char *bt, int *rbs, int *rbt);
+
 static char* allocStoreKey(const char* container, const char* schema){
 
   if ((container == NULL) || (schema == NULL) ||
@@ -191,19 +199,6 @@ static char* allocStoreKey(const char* container, const char* schema){
 
   snprintf(path, pathlen, "%s/%s", container, schema);
   return path;
-}
-
-static void __buffer_routine(FILE *f)
-{
-	if (buffer_flag)
-		return;
-	/* disable buffer */
-	int rc;
-	rc = setvbuf(f, NULL, _IONBF, 0);
-	if (rc) {
-		msglog(LDMSD_LERROR, "%s:%d setvbuf() rc: %d, errno: %d\n",
-					__FILE__, __LINE__, rc, errno);
-	}
 }
 
 /* Time-based rolltypes will always roll the files when this
@@ -246,6 +241,7 @@ static int handleRollover(struct csv_plugin_static *cps){
 						continue;
 					} else {
 						s_handle->store_count = 0;
+						s_handle->lastflush = 0;
 					}
 					break;
 				case 4:
@@ -254,6 +250,7 @@ static int handleRollover(struct csv_plugin_static *cps){
 						continue;
 					} else {
 						s_handle->byte_count = 0;
+						s_handle->lastflush = 0;
 					}
 					break;
 				default:
@@ -279,7 +276,7 @@ static int handleRollover(struct csv_plugin_static *cps){
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
-				__buffer_routine(nfp);
+
 				notify_output(NOTE_OPEN, tmp_path, NOTE_DAT,
 					CSHC(s_handle), cps, s_handle->container,
 					s_handle->schema);
@@ -320,7 +317,6 @@ static int handleRollover(struct csv_plugin_static *cps){
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
-				__buffer_routine(nhfp);
 
 				//close and swap
 				if (s_handle->file) {
@@ -439,13 +435,17 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
  */
 static int config_custom(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
+	char *bvalue;
 	char *cvalue;
 	char *svalue;
+	char *value;
 	char *skey = NULL;
 	char *altvalue;
-	char *value;
+	int buf;
+	int buft;
 	int idx;
 	int i;
+	int rc;
 
 	pthread_mutex_lock(&cfg_lock);
 
@@ -458,8 +458,12 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	}
 
 	value = av_value(avl, "buffer");
-	if (value) {
-		buffer_flag = atoi(value);
+	bvalue = av_value(avl, "buffertype");
+	rc = config_buffer(value, bvalue, &buf, &buft);
+	if (rc){
+		cfgstate = CSV_CFGINIT_FAILED;
+		pthread_mutex_unlock(&cfg_lock);
+		return rc;
 	}
 
 	cvalue = av_value(avl, "container");
@@ -513,6 +517,8 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	//defaults to init
 	specialkeys[idx].altheader = altheader;
 	specialkeys[idx].udata = udata;
+	specialkeys[idx].buffer_sz = buf;
+	specialkeys[idx].buffer_type = buft;
 	//increment nspecialkeys now. note that if the args are a problem, we will have incremented.
 	if (idx == nspecialkeys)
 		nspecialkeys++;
@@ -532,6 +538,74 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	return 0;
 }
 
+
+static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
+	int rc;
+	int tempbs;
+	int tempbt;
+
+
+	if (!bs && !bt){
+		*rbs = 1;
+		*rbt = 0;
+		return 0;
+	}
+
+	if (!bs && bt){
+		msglog(LDMSD_LERROR,
+		       "%s: Cannot have buffer type without buffer\n",
+		       __FILE__);
+		return EINVAL;
+	}
+
+	tempbs = atoi(bs);
+	if (tempbs < 0){
+		msglog(LDMSD_LERROR,
+		       "%s: Bad val for buffer %d\n",
+		       __FILE__, tempbs);
+		return EINVAL;
+	}
+	if ((tempbs == 0) || (tempbs == 1)){
+		if (bt){
+			msglog(LDMSD_LERROR,
+			       "%s: Cannot have no/autobuffer with buffer type\n",
+			       __FILE__);
+			return EINVAL;
+		} else {
+			*rbs = tempbs;
+			*rbt = 0;
+			return 0;
+		}
+	}
+
+	if (!bt){
+		msglog(LDMSD_LERROR,
+		       "%s: Cannot have buffer size with no buffer type\n",
+		       __FILE__);
+		return EINVAL;
+	}
+
+	tempbt = atoi(bt);
+	if ((tempbt != 3) && (tempbt != 4)){
+		msglog(LDMSD_LERROR,
+		       "%s: Invalid buffer type %d\n",
+		       __FILE__, tempbt);
+		return EINVAL;
+	}
+
+	if (tempbt == 4){
+		//adjust bs for kb
+		tempbs *= 1024;
+	}
+
+	*rbs = tempbs;
+	*rbt = tempbt;
+
+	return 0;
+
+}
+
+
 /**
  * configurations for the whole store. these will be defaults if not overridden.
  * some implementation details are for backwards compatibility
@@ -539,11 +613,15 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
 {
 	char *value;
+	char *bvalue;
 	char *altvalue;
 	char *uvalue;
 	char *rvalue;
+	int buf = -1;
+	int buft = -1;
 	int roll = -1;
 	int rollmethod = DEFAULT_ROLLTYPE;
+	int rc;
 
 	pthread_mutex_lock(&cfg_lock);
 
@@ -563,14 +641,20 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	cfgstate = CSV_CFGINIT_IN;
 
 	value = av_value(avl, "buffer");
-	if (value) {
-		buffer_flag = atoi(value);
+	bvalue = av_value(avl, "buffertype");
+	rc = config_buffer(value, bvalue, &buf, &buft);
+	if (rc){
+		cfgstate = CSV_CFGINIT_FAILED;
+		pthread_mutex_unlock(&cfg_lock);
+		return rc;
 	}
+	buffer_sz = buf;
+	buffer_type = buft;
 
 	value = av_value(avl, "path");
 	if (!value) {
 		msglog(LDMSD_LERROR, "%s: config init: path option required\n",
-			__FILE__);
+		       __FILE__);
 		cfgstate = CSV_CFGINIT_FAILED;
 		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
@@ -710,7 +794,7 @@ static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "    config name=store_csv action=init path=<path> rollover=<num> rolltype=<num>\n"
 		"           [altheader=<0/!0> userdata=<0/!0>]\n"
-		"           [buffer=<0|1>]\n"
+		"           [buffer=<0/1/N> buffertype=<3/4>]\n"
 		"           [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid]\n"
 		"               rename_perm=<octal-mode>]]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
@@ -721,10 +805,13 @@ static const char *usage(struct ldmsd_plugin *self)
 		"         - rollover  Greater than or equal to zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
-		"         - buffer    0 to disable bufferring, 1 to enable it (optional, default: 1).\n"
+		"         - buffer    0 to disable buffering, 1 to enable it with autosize (default)\n"
+		"                     N > 1 to flush after that many kb (> 4) or that many lines (>=1)\n"
+		"         - buffertype [3,4] Defines the policy used to schedule buffer flush.\n"
+		"                      Only applies for N > 1. Same as rolltypes.\n"
 		"\n"
 		"    config name=store_csv action=custom container=<c_name> schema=<s_name>\n"
-		"           [altheader=<0/1> userdata=<0/1>]\n"
+		"           [altheader=<0/1> userdata=<0/1> buffer=<0/1/N> buffertype=<3/4>]\n"
 		"         - Override the default parameters set by action=init for particular containers\n"
 		"         - altheader Header in a separate file (optional, default to init)\n"
 		NOTIFY_USAGE
@@ -813,6 +900,7 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 
 	/* Flush for the header, whether or not it is the data file as well */
 	fflush(fp);
+	fsync(fileno(fp));
 
 	fclose(s_handle->headerfile);
 	s_handle->headerfile = 0;
@@ -821,7 +909,7 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 }
 
 /*
- *  THIS FUNCTION IS INCOMPLETE. We want this but we want a nice way to invert the metric order
+ *  Would like to do this instead, but cannot currently get array size in open_store
  */
 #if 0
 static int print_header_from_open(struct csv_store_handle *s_handle,
@@ -899,6 +987,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 
 		s_handle->store_count = 0;
 		s_handle->byte_count = 0;
+		s_handle->lastflush = 0;
 
 		idx = -1;
 		for (i = 0; i < nspecialkeys; i++){
@@ -915,9 +1004,13 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 					specialkeys[idx].notify;
 			s_handle->altheader = specialkeys[idx].altheader;
 			s_handle->udata = specialkeys[idx].udata;
+			s_handle->buffer_sz = specialkeys[idx].buffer_sz;
+			s_handle->buffer_type = specialkeys[idx].buffer_type;
 		} else {
 			s_handle->altheader = altheader;
 			s_handle->udata = udata;
+			s_handle->buffer_sz = buffer_sz;
+			s_handle->buffer_type = buffer_type;
 		}
 
 		s_handle->printheader = FIRST_PRINT_HEADER;
@@ -954,7 +1047,6 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	}
 	strcpy(roc.filename, tmp_path);
 	replace_string(&(s_handle->filename), roc.filename);
-	__buffer_routine(s_handle->file);
 
 	/*
 	 * Always reprint the header because this is a store that may have been
@@ -991,7 +1083,6 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 			goto err3;
 		}
 	}
-	__buffer_routine(s_handle->headerfile);
 	replace_string(&(s_handle->headerfilename), roc.headerfilename);
 
 	/* ideally here should always be the printing of the header, and we could drop keeping
@@ -1062,6 +1153,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 	struct csv_store_handle *s_handle;
 	uint32_t len;
 	int i, j;
+	int doflush = 0;
 	int rc, rcu;
 
 	s_handle = _s_handle;
@@ -1535,6 +1627,24 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 	fprintf(s_handle->file,"\n");
 
 	s_handle->store_count++;
+
+
+
+	if ((s_handle->buffer_type == 3) &&
+	    ((s_handle->store_count - s_handle->lastflush) >=
+	     s_handle->buffer_sz)){
+		s_handle->lastflush = s_handle->store_count;
+		doflush = 1;
+	} else if ((s_handle->buffer_type == 4) &&
+		 ((s_handle->byte_count - s_handle->lastflush) >=
+		  s_handle->buffer_sz)){
+		s_handle->lastflush = s_handle->byte_count;
+		doflush = 1;
+	}
+	if ((s_handle->buffer_sz == 0) || doflush){
+		fflush(s_handle->file);
+		fsync(fileno(s_handle->file));
+	}
 	pthread_mutex_unlock(&s_handle->lock);
 
 	return 0;
@@ -1587,11 +1697,10 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 
 	idx_delete(store_idx, s_handle->store_key, strlen(s_handle->store_key));
 
-	for (i = 0; i < nstorekeys; i++){
-		if (strcmp(storekeys[i], s_handle->store_key) == 0){
+	for (i = 0; i < nstorekeys; i++) {
+		if (storekeys[i] && (0 == strcmp(storekeys[i], s_handle->store_key))) {
 			free(storekeys[i]);
-			storekeys[i] = 0;
-			//note the space is still in the array
+			storekeys[i] = NULL;
 			break;
 		}
 	}

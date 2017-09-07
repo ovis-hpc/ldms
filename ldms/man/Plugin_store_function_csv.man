@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_function_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "22 Dec 2016" "v3.3.3" "LDMS Plugin store_function_csv man page"
+.TH man 7 "22 Aug 2017" "v3.4" "LDMS Plugin store_function_csv man page"
 
 .SH NAME
 Plugin_store_function_csv - man page for the LDMS store_function_csv plugin
@@ -22,7 +22,7 @@ the ldmsd_controller. The store_function_csv plugin is a CSV store.
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 .TP
 .BR config
-name=<plugin_name> path=<path> derivedconf=<confname>[ altheader=<0/!0> ageusec=<ageusec> buffer=<0/!0> rolltype=<rolltype> rollover=<rollover>]
+name=<plugin_name> path=<path> derivedconf=<confname>[ altheader=<0/!0> ageusec=<ageusec> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover>]
 .br
 ldmsd_controller configuration line
 .RS
@@ -50,9 +50,13 @@ ageusec=<ageusec>
 .br
 Set output data field Flag = 1 if the interval between two successive data reports for the same host's same metric set is greater than ageusec. (NOTE: in v3 this is now usec, not sec).
 .TP
-buffer=<0/!0>
+buffer=<0/1/N>
 .br
-Distinguishes whether or not to buffer the data for the writeout. 0 = does not buffer. Any non-zero means buffering occurs. Default is to buffer.
+Distinguishes whether or not to buffer the data for the writeout. 0 = does not buffer. 1 enables buffering with the system determining the flush. N will flush after approximately N kB of data (> 4) or N lines -- buffertype determines which of these it is. Default is system controlled buffering (1).
+.TP
+buffertype=<3/4>
+.br
+If buffer=N then buffertype determines if the buffer parameter refers to kB of writeout or number of lines. The values are the same as in rolltype, so only 3 and 4 are applicable.
 .TP
 rolltype=<rolltype>
 .br

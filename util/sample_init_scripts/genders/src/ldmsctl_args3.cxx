@@ -31,6 +31,7 @@ using namespace boost;
 using namespace Gendersplusplus;
 namespace po = boost::program_options;
 
+
 static int dbg = 0;
 
 void printvec( const vector< pair< string, string > >& all)
@@ -119,6 +120,8 @@ public:
 	virtual void get_schemas_extra(const string& host, string& schemas) = 0;
 	// get local ldmsaggd_exclude_sets on. may be empty result.
 	virtual void get_exclude_sets(const string& host, string& sets) = 0;
+	// get exclude flag for host for $prefix_exclude_host
+	virtual bool get_exclude_host(const string& host, string prefix, string& ehval) = 0;
 	// get the collectors host aggregates. may be empty result.
 	virtual void get_clientof(const string& host, vector<string>& clientof) = 0;
 	// get the aggregators host aggregates. may be empty result.
@@ -224,6 +227,36 @@ private:
 		}
 	}
 
+	vector< string > getnodes_subst(const string attr, const string val) {
+		vector< string > full = g.getnodes(attr);
+		vector< string > result;
+		if (val.size() == 0) {
+			return full;
+		}
+		for (vector<string>::size_type j = 0; j < full.size(); j++) {
+			string host = full[j];
+			string unsub;
+			g.testattr(attr, unsub, host);
+			string hsub = unsub;
+			gender_substitute(host, hsub);
+			if (hsub == val) {
+				if (dbg > 0) {
+					cerr << "subst '" << hsub <<"' matches " 
+					<< val << " from " << unsub << " on " <<
+					host << endl;
+				}
+				result.push_back(host);
+			} else {
+				if (dbg > 0) {
+					cerr << "subst '" << hsub <<"' unmatches " 
+					<< val << " from " << unsub << " on " <<
+					host <<  endl;
+				}
+			}
+			
+		}
+		return result;
+	}
 public:
 	// given g must outlive this object.
 	genders_api(Genders& g) : g(g) {}
@@ -278,9 +311,13 @@ public:
 		}
 		if (! has_property(host, hosts, t.host) ) {
 			t.host = host;
+		} else {
+			gender_substitute(host, t.host);
 		}
 		if (! has_property(host, producer, t.producer) ) {
 			t.producer = host;
+		} else {
+			gender_substitute(host, t.producer);
 		}
 		if (! has_property(host, xprts, t.xprt) ) {
 			t.xprt = "sock";
@@ -304,14 +341,18 @@ public:
 	virtual void get_schemas_extra(const string& host, string &sets) {
 		has_property(host,"ldmsd_schemas_extra", sets);
 	}
+	virtual bool get_exclude_host(const string& host, string prefix, string &ehval) {
+		string ehname = prefix + "_exclude_host";
+		return has_property(host, ehname, ehval);
+	}
 	virtual void get_exclude_sets(const string& host, string &sets) {
 		has_property(host,"ldmsaggd_exclude_sets", sets);
 	}
 	virtual void get_clientof(const string& host, vector<string>& clientof) {
-		clientof = g.getnodes("ldmsd_clientof",host);
+		clientof = getnodes_subst("ldmsd_clientof",host);
 	}
 	virtual void get_aggclientof(const string& host, vector<string>& aggclientof) {
-		aggclientof = g.getnodes("ldmsaggd_clientof",host);
+		aggclientof = getnodes_subst("ldmsaggd_clientof",host);
 	}
 	virtual void get_producer(const string& host, string& producer) {
 		has_property(host, "ldmsd_producer", producer);
@@ -405,11 +446,17 @@ private:
 
 	void add_collectors(int level, vector<string>& node_list, vector<string>& out, const set<string>& ban, set<string>& sets_seen) {
 		ostringstream oss;
+		oss << "# ac top\n";
 		oss << "updtr_add name=all_" << hostname;
 		oss << " interval=" << aggdt.interval;
 		oss << " offset=" << aggdt.offset;
 		oss << endl;
+		string ehdummy;
 		for (vector<string>::size_type j = 0; j < node_list.size(); j++) {
+			if (in->get_exclude_host(node_list[j], "ldmsd", ehdummy)) {
+				// do not aggregate from or collect on excluded hosts.
+				continue;
+			}
 			if (level) {
 				format_local_sets(node_list[j], out, ban, sets_seen);
 			} else {
@@ -497,6 +544,7 @@ public:
 				in->get_aggclientof(hostname,aggclientof_list);
 
 				ostringstream oss;
+				oss << "# aggclient list\n";
 				oss << "updtr_add name=all_" << hostname;
 				oss << " interval=" << aggdt.interval;
 				oss << " offset=" << aggdt.offset;
@@ -550,10 +598,25 @@ public:
 		}
 	}
 
-	//
+	// dump the constructed command list, removing duplicates other
+	// than comments
 	void print_add_hosts(string NODELIST) {
+		(void) NODELIST;
+		vector<string>keepers;
+		set<string>uniques;
 		for(vector<string>::size_type i = 0; i < adds.size(); i++) {
-			cout << adds[i] << endl;
+			stringstream sstrm(adds[i]);
+			string elt;
+			while (std::getline(sstrm, elt)) {
+				if (elt.size() > 0 && (elt[0] == '#' ||
+					uniques.find(elt) == uniques.end())) {
+					uniques.insert(elt);
+					keepers.push_back(elt);
+				}
+			}
+		}
+		for(vector<string>::size_type i = 0; i < keepers.size(); i++) {
+			cout << keepers[i] << endl;
 		}
 	}
 };
