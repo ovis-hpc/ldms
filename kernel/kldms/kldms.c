@@ -453,7 +453,7 @@ int kldms_schema_metric_add(kldms_schema_t s, const char *name,
 			    enum ldms_value_type type, const char *units)
 {
 	if (type > LDMS_V_D64)
-		return EINVAL;
+		return -EINVAL;
 	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, units, 1);
 }
 EXPORT_SYMBOL(kldms_schema_metric_add);
@@ -462,7 +462,7 @@ int kldms_schema_meta_add(kldms_schema_t s, const char *name,
 			  enum ldms_value_type type, const char *units)
 {
 	if (type > LDMS_V_D64)
-		return EINVAL;
+		return -EINVAL;
 	return __schema_metric_add(s, name, LDMS_MDESC_F_META, type, units, 1);
 }
 EXPORT_SYMBOL(kldms_schema_meta_add);
@@ -477,7 +477,7 @@ int kldms_schema_metric_array_add(kldms_schema_t s, const char *name,
 				  uint32_t count)
 {
 	if (!__type_is_array(type))
-		return EINVAL;
+		return -EINVAL;
 	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, units, count);
 }
 EXPORT_SYMBOL(kldms_schema_metric_array_add);
@@ -487,10 +487,82 @@ int kldms_schema_meta_array_add(kldms_schema_t s, const char *name,
 				uint32_t count)
 {
 	if (!__type_is_array(type))
-		return EINVAL;
+		return -EINVAL;
 	return __schema_metric_add(s, name, LDMS_MDESC_F_META, type, units, count);
 }
 EXPORT_SYMBOL(kldms_schema_meta_array_add);
+
+static void __metric_array_set(kldms_set_t s, ldms_mdesc_t desc, ldms_mval_t dst,
+			       int i, ldms_mval_t src)
+{
+	if (i < 0 || i >= __le32_to_cpu(desc->vd_array_count)) {
+		pr_err("Attempt to set idx %d in array of %d elements.\n",
+		       i, __le32_to_cpu(desc->vd_array_count));
+		return;
+	}
+
+	switch (desc->vd_type) {
+	case LDMS_V_CHAR_ARRAY:
+	case LDMS_V_U8_ARRAY:
+	case LDMS_V_S8_ARRAY:
+		dst->a_u8[i] = src->v_u8;
+		break;
+	case LDMS_V_U16_ARRAY:
+	case LDMS_V_S16_ARRAY:
+		dst->a_u16[i] = __cpu_to_le16(src->v_u16);
+		break;
+	case LDMS_V_U32_ARRAY:
+	case LDMS_V_S32_ARRAY:
+		dst->a_u32[i] = __cpu_to_le32(src->v_u32);
+		break;
+	case LDMS_V_U64_ARRAY:
+	case LDMS_V_S64_ARRAY:
+		dst->a_u64[i] = __cpu_to_le64(src->v_u64);
+		break;
+	case LDMS_V_F32_ARRAY:
+#if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
+		dst->a_f[i] = src->v_f;
+#else
+		*(uint32_t *)&dst->a_f[i] = __cpu_to_le32(*(uint32_t*)&src->v_f);
+#endif
+		break;
+	case LDMS_V_D64_ARRAY:
+#if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
+		dst->a_d[i] = src->v_d;
+#else
+		*(uint64_t*)&dst->a_d[i] = __cpu_to_le64(*(uint64_t*)&src->v_d);
+#endif
+		break;
+	default:
+		pr_err("Unsupported metric type %d\n", desc->vd_type);
+		return;
+	}
+}
+
+void __ldms_gn_inc(struct kldms_set *set, ldms_mdesc_t desc)
+{
+	if (desc->vd_flags & LDMS_MDESC_F_DATA) {
+		LDMS_GN_INCREMENT(set->ks_data->gn);
+	} else {
+		LDMS_GN_INCREMENT(set->ks_meta->meta_gn);
+		set->ks_data->meta_gn = set->ks_meta->meta_gn;
+	}
+}
+
+void kldms_metric_array_set_val(kldms_set_t set, int metric_idx, int array_idx, ldms_mval_t src)
+{
+	ldms_mdesc_t desc;
+	ldms_mval_t dst;
+
+	desc = ldms_ptr_(struct ldms_value_desc, set->ks_meta,
+			__le32_to_cpu(set->ks_meta->dict[metric_idx]));
+	dst = ldms_ptr_(union ldms_value, set->ks_meta,
+			__le32_to_cpu(desc->vd_data_offset));
+
+	__metric_array_set(set, desc, dst, array_idx, src);
+	__ldms_gn_inc(set, desc);
+}
+EXPORT_SYMBOL(kldms_metric_array_set_val);
 
 void kldms_metric_set(kldms_set_t s, int i, ldms_mval_t v)
 {
@@ -524,10 +596,10 @@ void kldms_metric_set(kldms_set_t s, int i, ldms_mval_t v)
 		*(uint64_t*)&mv->v_d = __cpu_to_le32(*(uint64_t*)&v->v_d);
 		break;
 	default:
-		panic("unexpected metric type");
+		pr_err("unexpected metric type %d.\n", desc->vd_type);
 		return;
 	}
-	__ldms_data_gn_inc(s);
+	__ldms_gn_inc(s, desc);
 }
 EXPORT_SYMBOL(kldms_metric_set);
 

@@ -9,11 +9,11 @@
  * Build this driver against your kernel and load the module.
  */
 /*
- * LDMS Modifications: 
+ * LDMS Modifications:
  *
  * (C) Copyright 2017 Open Grid Computing, Inc.
  *
- * Author: Tom TUcker <tom@ogc.us>
+ * Author: Tom Tucker <tom@ogc.us>
  */
 #include <linux/init.h>
 #include <linux/module.h>
@@ -22,10 +22,28 @@
 #include <linux/device.h>
 #include <linux/cpu.h>
 #include <linux/io.h>
-#include <linux/perf_event.h>
 
+#include <linux/hrtimer.h>
+#include <linux/ktime.h>
+
+#include <asm/uaccess.h>
 #include <asm/cputhreads.h>
 #include "kldms.h"
+
+static uint64_t timer_interval_ns = 1e9;
+struct sampler_context {
+	kldms_set_t set;
+	int array_idx;
+	int array_cnt;
+};
+static struct my_timer {
+	struct hrtimer hr_timer;
+	struct sampler_context hr_ctxt;
+} my_timer;
+static long set_count = 1;
+static long array_depth = 10;
+static char *instance_name;
+static char *producer_name;
 
 #define BE(x, s)	be_to_cpu(x, s)
 
@@ -356,19 +374,19 @@ static enum ldms_value_type bits_to_type(size_t bits)
 {
 	switch (bits) {
 	case 8:
-		return LDMS_V_U8;
+		return LDMS_V_U8_ARRAY;
 	case 16:
-		return LDMS_V_U16;
+		return LDMS_V_U16_ARRAY;
 	case 32:
-		return LDMS_V_U32;
+		return LDMS_V_U32_ARRAY;
 	case 64:
-		return LDMS_V_U64;
+		return LDMS_V_U64_ARRAY;
 	default:
-		return LDMS_V_U64;
+		return LDMS_V_U64_ARRAY;
 	}
 }
 
-static int create_metric_set(void)
+static int create_metric_set(int set_no, int depth)
 {
 	int i, j, k, rc = 0;
 	kldms_schema_t schema;
@@ -385,11 +403,14 @@ static int create_metric_set(void)
 		return ENOMEM;
 	}
 	pr_info("create metric set %p\n", schema);
+
+	kldms_schema_meta_add(schema, "array_depth", LDMS_V_U32, "");
 	for (i = 0; i < nr_system_sensors; i++) {
 		snprintf(mn, sizeof(mn), "system/%s", system_sensors[i].name);
-		rc = kldms_schema_metric_add(schema, mn,
-					     bits_to_type(system_sensors[i].size),
-					     system_sensors[i].unit);
+		rc = kldms_schema_metric_array_add(schema, mn,
+						   bits_to_type(system_sensors[i].size),
+						   system_sensors[i].unit,
+						   depth);
 		if (rc < 0) {
 			pr_err("Error %d creating the metric %s\n", rc, mn);
 			goto err;
@@ -401,9 +422,10 @@ static int create_metric_set(void)
 		for (j = 0; j < nr_chip_sensors; j++) {
 			snprintf(mn, sizeof(mn), "%s/%s",
 				 chips[i].name, chips[i].sensors[j].name);
-			rc = kldms_schema_metric_add(schema, mn,
-						     bits_to_type(chips[i].sensors[j].size),
-						     chips[i].sensors[j].unit);
+			rc = kldms_schema_metric_array_add(schema, mn,
+							   bits_to_type(chips[i].sensors[j].size),
+							   chips[i].sensors[j].unit,
+							   depth);
 			if (rc < 0) {
 				pr_err("Error %d creating the metric %s\n", rc, mn);
 				goto err;
@@ -415,9 +437,10 @@ static int create_metric_set(void)
 			for (k = 0; k < nr_cores_sensors; k++) {
 				snprintf(mn, sizeof(mn), "%s/%s",
 					 chips[i].name, chips[i].cores[j].sensors[k].name);
-				rc = kldms_schema_metric_add(schema, mn,
-							     bits_to_type(chips[i].cores[j].sensors[k].size),
-							     chips[i].cores[j].sensors[k].unit);
+				rc = kldms_schema_metric_array_add(schema, mn,
+								   bits_to_type(chips[i].cores[j].sensors[k].size),
+								   chips[i].cores[j].sensors[k].unit,
+								   depth);
 				if (rc < 0) {
 					pr_err("Error %d creating the metric %s\n", rc, mn);
 					goto err;
@@ -435,39 +458,289 @@ static int create_metric_set(void)
 	return rc;
 }
 
-static void sample(void)
+static void get_value(union ldms_value *v, sensor_t *s)
+{
+	switch (s->size) {
+	case 16:
+		v->v_u16 = BE(s->vaddr, s->size);
+		break;
+	case 32:
+		v->v_u32 = BE(s->vaddr, s->size);
+		break;
+	case 64:
+		v->v_u64 = BE(s->vaddr, s->size);
+		break;
+	case 8:
+		v->v_u8 = BE(s->vaddr, s->size);
+		break;
+	default:
+		v->v_u64 = BE(s->vaddr, s->size);
+		break;
+	}
+}
+
+static void sample(struct sampler_context *ctxt)
 {
 	int i, j, k;
 	union ldms_value v;
+	kldms_set_t set = ctxt->set;
+	int idx = ctxt->array_idx;
 
-	if (!occ_sensor_set)
+	if (!ctxt || !ctxt->set)
 		return;
 
+	pr_info("ctxt %p set %p array_idx %d array_cnt %d\n",
+		ctxt, ctxt->set, ctxt->array_idx, ctxt->array_cnt);
+	ctxt->array_idx = (ctxt->array_idx + 1) % ctxt->array_cnt;
 	kldms_transaction_begin(occ_sensor_set);
-	pr_info("sampling metric set %p\n", occ_sensor_set);
+	pr_info("sampling metric set array_idx %d array_cnt %d\n", idx, ctxt->array_cnt);
 
 	for (i = 0; i < nr_system_sensors; i++) {
 		sensor_t *s = &system_sensors[i];
-		v.v_u64 = BE(s->vaddr, s->size);
-		kldms_metric_set(occ_sensor_set, s->metric_id, &v);
+		get_value(&v, s);
+		kldms_metric_array_set_val(set, s->metric_id, idx, &v);
 	}
 
 	for (i = 0; i < nr_chips; i++) {
 		for (j = 0; j < nr_chip_sensors; j++) {
 			sensor_t *s = &chips[i].sensors[j];
-			v.v_u64 = BE(s->vaddr, s->size);
-			kldms_metric_set(occ_sensor_set, s->metric_id, &v);
+			get_value(&v, s);
+			kldms_metric_array_set_val(set, s->metric_id, idx, &v);
 		}
 		for (j = 0; j < chips[i].nr_cores; j++) {
 			for (k = 0; k < nr_cores_sensors; k++) {
 				sensor_t *s = &chips[i].cores[j].sensors[k];
-				v.v_u64 = BE(s->vaddr, s->size);
-				kldms_metric_set(occ_sensor_set, s->metric_id, &v);
+				get_value(&v, s);
+				kldms_metric_array_set_val(set, s->metric_id, idx, &v);
 			}
 		}
 	}
 	kldms_transaction_end(occ_sensor_set);
 }
+
+enum hrtimer_restart timer_callback(struct hrtimer *timer_for_restart)
+{
+	struct my_timer *mt = (struct my_timer *)timer_for_restart;
+	ktime_t currtime , interval;
+	currtime  = ktime_get();
+	interval = ktime_set(0, timer_interval_ns); 
+	hrtimer_forward(timer_for_restart, currtime , interval);
+	sample(&mt->hr_ctxt);
+	return HRTIMER_RESTART;
+}
+
+static void start_sampler(void)
+{
+	ktime_t ktime = ktime_set(0, timer_interval_ns);
+	pr_info("Starting sampler with interval of %llu ns.\n", timer_interval_ns);
+	hrtimer_init( &my_timer.hr_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL );
+	my_timer.hr_timer.function = &timer_callback;
+	my_timer.hr_ctxt.set = occ_sensor_set;
+	my_timer.hr_ctxt.array_idx = 0;
+	my_timer.hr_ctxt.array_cnt = array_depth;
+	hrtimer_start(&my_timer.hr_timer, ktime, HRTIMER_MODE_REL);
+}
+
+static void stop_sampler(void)
+{
+	int ret;
+	pr_info("Stopping sampler.\n");
+	ret = hrtimer_cancel(&my_timer.hr_timer);
+	if (ret)
+		pr_info("The timer was still in use...\n");
+
+}
+
+static int handle_timer_interval(ctl_table *table, int write,
+				 void __user *buffer, size_t *lenp,
+				 loff_t *ppos)
+{
+	int n;
+	char req_buf[80];
+	if (!write)
+		return -EINVAL;
+
+	if (*lenp > sizeof(req_buf))
+		return -EFAULT;
+
+	if (copy_from_user(req_buf, buffer, *lenp))
+		return -EFAULT;
+
+	n = sscanf(req_buf, "%llu", &timer_interval_ns);
+	if (n != 1)
+		return -EINVAL;
+	if (timer_interval_ns < 500000) {
+		stop_sampler();
+		timer_interval_ns = 0;
+		pr_err("The sample interval cannot be less than 500us.\n");
+		return -EINVAL;
+	}
+	if (n <= 0)
+		stop_sampler();
+	else
+		start_sampler();
+	
+	return 0;
+}
+
+static int handle_set_count(ctl_table *table, int write,
+			    void __user *buffer, size_t *lenp,
+			    loff_t *ppos)
+{
+	int n;
+	char req_buf[80];
+	if (!write)
+		return -EINVAL;
+
+	if (*lenp > sizeof(req_buf))
+		return -EFAULT;
+
+	if (copy_from_user(req_buf, buffer, *lenp))
+		return -EFAULT;
+
+	n = sscanf(req_buf, "%ld", &set_count);
+	if (n != 1)
+		return -EINVAL;
+
+	return 0;
+}
+
+static int handle_array_depth(ctl_table *table, int write,
+			      void __user *buffer, size_t *lenp,
+			      loff_t *ppos)
+{
+	int n;
+	char req_buf[80];
+	if (!write)
+		return -EINVAL;
+
+	if (*lenp > sizeof(req_buf))
+		return -EFAULT;
+
+	if (copy_from_user(req_buf, buffer, *lenp))
+		return -EFAULT;
+
+	n = sscanf(req_buf, "%ld", &array_depth);
+	if (n != 1)
+		return -EINVAL;
+
+	return 0;
+}
+
+static int handle_instance_name(ctl_table *table, int write,
+				void __user *buffer, size_t *lenp,
+				loff_t *ppos)
+{
+	if (write) {
+		if (*lenp > 255)
+			return -EFAULT;
+
+		if (instance_name) {
+			kfree(instance_name);
+			instance_name = NULL;
+		}
+		instance_name = kmalloc(*lenp + 1, GFP_KERNEL);
+		if (!instance_name)
+			return -ENOMEM;
+
+		if (copy_from_user(instance_name, buffer, *lenp))
+			return -EFAULT;
+
+		instance_name[*lenp] = '\0';
+	} else {
+		*lenp = 0;
+		if (instance_name && *ppos < (strlen(instance_name)-1)) {
+			*lenp = strlen(instance_name);
+			strncpy(buffer, instance_name, *lenp);
+			*ppos = *lenp;
+			return 0;
+		}
+		return 0;
+	}
+	return 0;
+}
+
+static int handle_producer_name(ctl_table *table, int write,
+				void __user *buffer, size_t *lenp,
+				loff_t *ppos)
+{
+	if (write) {
+		if (*lenp > 255)
+			return -EFAULT;
+
+		if (producer_name) {
+			kfree(producer_name);
+			producer_name = NULL;
+		}
+		producer_name = kmalloc(*lenp + 1, GFP_KERNEL);
+		if (!producer_name)
+			return -ENOMEM;
+
+		if (copy_from_user(producer_name, buffer, *lenp))
+			return -EFAULT;
+
+		producer_name[*lenp] = '\0';
+	} else {
+		*lenp = 0;
+		if (producer_name && *ppos < (strlen(producer_name)-1)) {
+			*lenp = strlen(producer_name);
+			strncpy(buffer, producer_name, *lenp);
+			*ppos = *lenp;
+			return 0;
+		}
+		return 0;
+	}
+	return 0;
+}
+
+static struct ctl_table_header *occ_sensor_table_header;
+static ctl_table occ_sensor_parm_table[] = {
+	{
+		.procname	= "timer_interval_ns",
+		.data		= NULL,
+		.maxlen		= 0,
+		.mode		= 0644,
+		.proc_handler	= handle_timer_interval,
+	},
+	{
+		.procname	= "array_depth",
+		.data		= NULL,
+		.maxlen		= 0,
+		.mode		= 0644,
+		.proc_handler	= handle_array_depth,
+	},
+	{
+		.procname	= "set_count",
+		.data		= NULL,
+		.maxlen		= 0,
+		.mode		= 0644,
+		.proc_handler	= handle_set_count,
+	},
+	{
+		.procname	= "instance_name",
+		.data		= NULL,
+		.maxlen		= 0,
+		.mode		= 0644,
+		.proc_handler	= handle_instance_name,
+	},
+	{
+		.procname	= "producer_name",
+		.data		= NULL,
+		.maxlen		= 0,
+		.mode		= 0644,
+		.proc_handler	= handle_producer_name,
+	},
+	{ },
+};
+
+static struct ctl_table occ_sensor_root_table[] = {
+	{
+		.procname	= "occ_sensor",
+		.mode		= 0555,
+		.child		= occ_sensor_parm_table
+	},
+	{ },
+};
 
 static int sensor_init(void)
 {
@@ -476,6 +749,7 @@ static int sensor_init(void)
 	if (rc)
 		goto out;
 
+	occ_sensor_table_header = register_sysctl_table(occ_sensor_root_table);
 	occ_sensor_kobj = kobject_create_and_add("occ_sensors",
 						 &cpu_subsys.dev_root->kobj);
 	rc = sysfs_create_group(occ_sensor_kobj, &system_attr_group);
@@ -492,10 +766,8 @@ static int sensor_init(void)
 			goto out_clean_kobj;
 		}
 	}
-	if (create_metric_set())
+	if (create_metric_set(0, array_depth))
 		goto out_clean_kobj;
-	else
-		sample();
 	return rc;
 
 out_clean_kobj:
@@ -508,7 +780,16 @@ out:
 
 static void sensor_exit(void)
 {
-	kldms_schema_t schema = kldms_schema_find("occ_sensors");;
+	kldms_schema_t schema;
+
+	stop_sampler();
+
+	if (occ_sensor_table_header) {
+		unregister_sysctl_table(occ_sensor_table_header);
+		occ_sensor_table_header = NULL;
+	}
+
+	schema = kldms_schema_find("occ_sensors");;
 	kldms_schema_delete(schema);
 
 	kobject_put(occ_sensor_kobj);

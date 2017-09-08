@@ -44,7 +44,8 @@
 enum kldms_req_id {
 	KLDMS_REQ_HELLO = 1,
 	KLDMS_REQ_PUBLISH_SET,
-	KLDMS_REQ_UNPUBLISH_SET
+	KLDMS_REQ_UNPUBLISH_SET,
+	KLDMS_REQ_UPDATE_SET,
 };
 struct kldms_req_hdr {
 	enum kldms_req_id	req_id;
@@ -65,6 +66,19 @@ struct kldms_req_publish_set {
 struct kldms_req_unpublish_set {
 	struct kldms_req_hdr	hdr;
 	int			set_id;
+};
+
+struct kldms_req_update_set {
+	struct kldms_req_hdr	hdr;
+	int			set_id;
+};
+
+union kldms_req {
+	struct kldms_req_hdr		hdr;
+	struct kldms_req_hello		hello;
+	struct kldms_req_publish_set	publish;
+	struct kldms_req_unpublish_set	unpublish;
+	struct kldms_req_update_set	update;
 };
 
 #endif
