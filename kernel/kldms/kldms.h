@@ -66,6 +66,7 @@ struct kldms_request {
 		struct kldms_req_hello		hello;
 		struct kldms_req_publish_set	publish;
 		struct kldms_req_unpublish_set	unpub;
+		struct kldms_req_update_set	update;
 	};
 };
 
@@ -140,11 +141,6 @@ typedef struct kldms_metric kldms_metric_t;
 	(_gn) = __cpu_to_le64(__le64_to_cpu((_gn)) + 1); \
 } while (0)
 
-void __ldms_data_gn_inc(struct kldms_set *set)
-{
-	LDMS_GN_INCREMENT(set->ks_data->gn);
-}
-
 static inline int ldms_transaction_begin(kldms_set_t set)
 {
 	struct ldms_data_hdr *dh = set->ks_data;
@@ -181,6 +177,13 @@ static inline int ldms_transaction_end(kldms_set_t set)
  */
 extern int kldms_schema_metric_add(kldms_schema_t s, const char *name, enum ldms_value_type type,
 				   const char *units);
+extern int kldms_schema_meta_add(kldms_schema_t s, const char *name, enum ldms_value_type type,
+				 const char *units);
+extern int kldms_schema_metric_array_add(kldms_schema_t s, const char *name, enum ldms_value_type type,
+					 const char *units, uint32_t count);
+extern int kldms_schema_meta_array_add(kldms_schema_t s, const char *name, enum ldms_value_type type,
+				       const char *units, uint32_t count);
+void kldms_metric_array_set_val(kldms_set_t set, int metric_idx, int array_idx, ldms_mval_t src);
 extern void kldms_metric_set(kldms_set_t s, int i, ldms_mval_t v);
 extern kldms_schema_t kldms_schema_new(const char * schema_name);
 extern kldms_schema_t kldms_schema_find(const char *schema_name);

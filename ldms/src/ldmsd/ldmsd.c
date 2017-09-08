@@ -80,6 +80,7 @@
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
 #include "config.h"
+#include "../../kernel/kldms/kldms_req.h"
 
 #include "ovis_event/ovis_event.h"
 
@@ -545,14 +546,11 @@ pthread_t get_thread(int idx)
 	return ev_thread[idx];
 }
 
-/*
- * This function opens the device file specified by 'devname' and
- * mmaps the metric set 'set_no'.
- */
-int map_fd;
-ldms_set_t map_set;
-int publish_kernel(const char *setfile)
+pthread_t k_thread;
+void *k_proc(void *arg)
 {
+	int map_fd;
+	ldms_set_t map_set;
 	int rc;
 	int i, j;
 	void *meta_addr;
@@ -563,18 +561,19 @@ int publish_kernel(const char *setfile)
 	unsigned char *p;
 	char set_name[80];
 	FILE *fp;
-
+	union kldms_req k_req;
+	
 	fp = fopen(setfile, "r");
 	if (!fp) {
 		ldmsd_log(LDMSD_LERROR, "The specified kernel metric set file '%s' could not be opened.\n",
 			 setfile);
-		return 0;
+		exit(1);
 	}
 
 	map_fd = open("/dev/kldms0", O_RDWR);
 	if (map_fd < 0) {
 		ldmsd_log(LDMSD_LERROR, "Error %d opening the KLDMS device file '/dev/kldms0'\n", map_fd);
-		return map_fd;
+		exit(1);
 	}
 
 	while (3 == fscanf(fp, "%d %d %s", &set_no, &set_size, set_name)) {
@@ -582,7 +581,7 @@ int publish_kernel(const char *setfile)
 		ldmsd_log(LDMSD_LERROR, "Mapping set %d name %s\n", set_no, set_name);
 		meta_addr = mmap((void *)0, set_size, PROT_READ|PROT_WRITE, MAP_SHARED, map_fd, id);
 		if (meta_addr == MAP_FAILED)
-			return -ENOMEM;
+			exit(1);
 		sh = meta_addr;
 		if (set_name[0] == '/')
 			sprintf(sh->producer_name, "%s%s", myhostname, set_name);
@@ -594,7 +593,7 @@ int publish_kernel(const char *setfile)
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR, "Error encountered mmaping the set '%s', rc %d\n",
 				 set_name, rc);
-			return rc;
+			exit(1);
 		}
 		sh = meta_addr;
 		p = meta_addr;
@@ -614,6 +613,37 @@ int publish_kernel(const char *setfile)
 		ldmsd_log(LDMSD_LERROR, "name: '%s'\n", sh->producer_name);
 		ldmsd_log(LDMSD_LERROR, "size: %d\n", __le32_to_cpu(sh->meta_sz));
 	}
+
+	/* Read from map_fd and process events as they are delivered by the kernel */
+	while (0 < (rc = read(map_fd, &k_req, sizeof(k_req)))) {
+		switch (k_req.hdr.req_id) {
+		case KLDMS_REQ_HELLO:
+			printf("%s\n", k_req.hello.msg);
+			break;
+		case KLDMS_REQ_PUBLISH_SET:
+			printf("set_id %d data_len %zu\n",
+			       k_req.publish.set_id, k_req.publish.data_len);
+			break;
+		case KLDMS_REQ_UNPUBLISH_SET:
+			printf("set_id %d data_len %zu\n",
+			       k_req.unpublish.set_id);
+			break;
+		case KLDMS_REQ_UPDATE_SET:
+			printf("set_id %d\n", k_req.update.set_id);
+			break;
+		default:
+			printf("unrecognized request %d\n", k_req.hdr.req_id);
+			break;
+		}
+	}
+}
+/*
+ * This function opens the device file specified by 'devname' and
+ * mmaps the metric set 'set_no'.
+ */
+int publish_kernel(const char *setfile)
+{
+	pthread_create(&k_thread, NULL, k_proc, (void *)setfile);
 	return 0;
 }
 
