@@ -1664,12 +1664,12 @@ out:
 
 int bq_img_get_pos(struct bquery *q, struct bquery_pos *pos)
 {
-	return sos_iter_pos(q->itr, &pos->pos);
+	return sos_iter_pos_get(q->itr, &pos->pos);
 }
 
 int bq_img_set_pos(struct bquery *q, struct bquery_pos *pos)
 {
-	int rc = sos_iter_set(q->itr, &pos->pos);
+	int rc = sos_iter_pos_set(q->itr, pos->pos);
 	if (rc)
 		return rc;
 	__img_obj_update((void*)q);
@@ -2041,7 +2041,7 @@ int bq_msg_tc_get_pos(struct bquery *q, struct bquery_pos *pos)
 	struct bmsgquery *msgq = (void*)q;
 	pos->ptn_id = __bq_msg_entry_get_ptn_id(q);
 	pos->dir = msgq->last_dir;
-	rc = sos_iter_pos(q->itr, &pos->pos);
+	rc = sos_iter_pos_get(q->itr, &pos->pos);
 	return rc;
 }
 
@@ -2052,7 +2052,7 @@ int bq_msg_tc_set_pos(struct bquery *q, struct bquery_pos *pos)
 	uint32_t comp_id;
 	int rc;
 
-	rc = sos_iter_set(q->itr, &pos->pos);
+	rc = sos_iter_pos_set(q->itr, pos->pos);
 	if (rc)
 		return rc;
 	__msg_obj_update(msgq);
@@ -2124,7 +2124,7 @@ int bq_msg_ptc_get_pos(struct bquery *q, struct bquery_pos *pos)
 		return EINVAL; /* the iterator is in an invalid state */
 	pos->ptn_id = __bq_msg_entry_get_ptn_id(q);
 	pos->dir = msgq->last_dir;
-	rc = sos_iter_pos(hent->iter, &pos->pos);
+	rc = sos_iter_pos_get(hent->iter, &pos->pos);
 	return rc;
 }
 
@@ -2267,7 +2267,7 @@ int bq_msg_ptc_set_pos(struct bquery *q, struct bquery_pos *pos)
 	LIST_FOREACH(hent, &msgq->hent_list, link) {
 		if (hent->ptn_id != pos->ptn_id)
 			continue;
-		rc = sos_iter_set(hent->iter, &pos->pos);
+		rc = sos_iter_pos_set(hent->iter, pos->pos);
 		if (rc)
 			return rc;
 		bq_msg_ptc_hent_obj_update(hent);

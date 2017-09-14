@@ -74,7 +74,7 @@ struct bsos_wrap {
 struct __attribute__((packed)) bquery_pos {
 	union {
 		struct {
-			struct sos_pos pos;
+			sos_pos_t pos;
 			uint32_t ptn_id;
 			uint32_t dir;
 		};

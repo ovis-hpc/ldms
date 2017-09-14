@@ -1037,7 +1037,8 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 				       "{ \"inst_name\":\"%s\","
 				       "\"schema_name\":\"%s\","
 				       "\"state\":\"%s\"}",
-				       prv_set->inst_name, prv_set->schema_name,
+				       prv_set->inst_name,
+				       (prv_set->schema_name ? prv_set->schema_name : ""),
 				       ldmsd_prdcr_set_state_str(prv_set->state));
 			rc = reqc->resp_handler(reqc, reqc->line_buf, cnt, 0);
 			set_count++;
@@ -2083,7 +2084,11 @@ struct plugin_list {
 
 static char *plugn_state_str(enum ldmsd_plugin_type type)
 {
-	static char *state_str[] = { "sampler", "store" };
+	static char *state_str[] = {
+		[LDMSD_PLUGIN_OTHER] = "other",
+		[LDMSD_PLUGIN_SAMPLER] = "sampler",
+		[LDMSD_PLUGIN_STORE] = "store"
+	};
 	if (type <= LDMSD_PLUGIN_STORE)
 		return state_str[type];
 	return "unknown";

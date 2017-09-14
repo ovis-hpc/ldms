@@ -69,7 +69,7 @@ LDMSD_REQ_EOM_F=2
 LDMSD_REQ_ALL_F=(LDMSD_REQ_SOM_F|LDMSD_REQ_EOM_F)
 LDMSD_CLI_REQ=1
 LDMSD_PRDCR_STATUS_REQ=0x104
-LDMSD_PRDCR_SET_REQ=0x105
+LDMSD_PRDCR_SET_REQ=0x107
 LDMSD_STRGP_STATUS_REQ=0x204
 LDMSD_UPDTR_STATUS_REQ=0x304
 LDMSD_PLUGN_STATUS_REQ=0x504
@@ -688,6 +688,8 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_status(self, arg):
         all__ = (len(arg) == 0)
+        if "plugn" in arg or all__:
+            self.do_plugn_status(arg)
         if "prdcr" in arg or all__:
             self.do_prdcr_status(arg)
         if "updtr" in arg or all__:
