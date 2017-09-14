@@ -34,6 +34,7 @@ Type=forking
 PIDFile=/var/run/ldmsd/ldmsd-local.pid
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=ldmsd
 
 # Disable service start and stop timeout logic of systemd for ldmsd service.
 TimeoutSec=0
