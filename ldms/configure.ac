@@ -419,7 +419,6 @@ OVIS_EXEC_SCRIPTS(
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
-		 src/ovis-ldms-configvars.sh
 		 swig/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile

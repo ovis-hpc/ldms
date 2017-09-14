@@ -14,6 +14,9 @@ AM_CONFIG_HEADER(config.h)
 AM_PROG_LIBTOOL
 AC_LIB_RPATH
 
+dnl check for python interpreter
+AM_PATH_PYTHON([2.6])
+
 dnl Checks for programs
 AC_PROG_CXX
 AC_CHECK_SIZEOF(long)
@@ -103,6 +106,7 @@ AC_SUBST(ac_configure_args)
 
 AC_CONFIG_FILES([Makefile
 util/Makefile
+util/relocation/Makefile
 util/sample_init_scripts/Makefile
 util/sample_init_scripts/genders/Makefile
 util/sample_init_scripts/genders/man/Makefile
@@ -120,4 +124,31 @@ util/sample_init_scripts/genders/sysv/etc/Makefile
 util/sample_init_scripts/genders/sysv/etc/init.d/Makefile
 util/sample_init_scripts/genders/examples/Makefile
 ])
+
+OVIS_EXEC_SCRIPTS(
+	util/relocation/bld_manifest.sh
+	util/relocation/relocate-paths.sh
+	util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/ldmsd
+	util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/ldms-functions
+	util/sample_init_scripts/genders/systemd/ldmsd-pre-systemd
+	util/sample_init_scripts/genders/systemd/ldmsd-wrapper.sh
+	util/sample_init_scripts/genders/sysv/etc/init.d/ldmsd
+	util/sample_init_scripts/genders/sysv/etc/init.d/ldmsd.template
+	util/sample_init_scripts/genders/sysv/ldmsd-pre-sysvinit
+)
+
+AC_CONFIG_COMMANDS([scripts],[ echo fixing script perms.
+for i in $ovis_exec_scripts; do
+	if test -f $ovis_exec_scripts_objdir/$i; then
+		chmod a+x $ovis_exec_scripts_objdir/$i;
+	else
+		echo failing chmod on missing $ovis_exec_scripts_objdir/$i;
+	fi
+done
+],[
+	ovis_exec_scripts="$ovis_exec_scripts"
+	ovis_extra_dist="$ovis_extra_dist"
+	ovis_exec_scripts_objdir="$ac_pwd"
+])
+
 AC_OUTPUT

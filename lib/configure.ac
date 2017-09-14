@@ -126,7 +126,6 @@ AC_SUBST(ac_configure_args)
 AC_CONFIG_FILES([ovis-lib.spec
 		Doxyfile
 		Makefile
-		src/ovis-lib-configvars.sh
 		src/Makefile
 		src/third/Makefile
 		src/coll/Makefile

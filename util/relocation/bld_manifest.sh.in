@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# Define an egrep match string that will identify files that need to be added to
+# the relocation manifest.
+
+EGREP_STRING="(@prefix@|@sysconfdir@|@localstatedir@})"
+
+errs=0
+if test $# -ne 3; then
+	echo "There should be exactly three command-line parameters" >&2
+	((errs = errs+1))
+elif ! test -d $1; then
+	echo "USR parameter \"$1\" is not a directory" >&2
+	((errs = errs+1))
+elif ! test -d $2; then
+	echo "ETC parameter \"$2\" is not a directory" >&2
+	((errs = errs+1))
+elif ! test -d $3; then
+	echo "VAR parameter \"$3\" is not a directory" >&2
+	((errs = errs+1))
+fi
+if test $errs -ne 0; then
+	echo "Usage: $0 <usrpath> <etcpath> <varpath>" >&2
+	exit 1
+fi
+
+USR_PATH=$1
+ETC_PATH=$2
+VAR_PATH=$3
+
+function scan_one_tree
+{
+	typeset DIR=$1 PATH=$2
+
+	/usr/bin/egrep -l -r ${EGREP_STRING} ${PATH} | while read path
+	do
+		# Skip unrelocatable files, they don't belong in the manifest.
+
+		if [ "$path" != "${path%.pyc}" -o \
+		     "$path" != "${path%.pyo}" ]; then
+			continue	# can't modify compiled python files
+		fi
+		FILE_OUT=$(/usr/bin/file -b $path)
+		if echo "$FILE_OUT" | /usr/bin/egrep -q 'symbolic link'; then
+			continue	# can't modify symlinks
+		fi
+		if echo "$FILE_OUT" | /usr/bin/egrep -q 'ELF.*shared object'; then
+			continue	# can't modify .so libraries
+		fi
+		if echo "$FILE_OUT" | /usr/bin/egrep -q 'ELF.*executable'; then
+			continue	# can't modify binaries
+		fi
+		if test "${path##*/}" = "relocate-paths.sh"; then
+			continue	# don't relocate the relocation script
+		fi
+
+		# This file belongs in the manifest.
+
+		echo "$DIR ${path#${PATH}/}"
+	done | /usr/bin/sort
+}
+
+scan_one_tree USR $USR_PATH
+scan_one_tree ETC $ETC_PATH
+scan_one_tree VAR $VAR_PATH

@@ -1,3 +1,7 @@
+
+sysconfdir=@sysconfdir@
+localstatedir=@localstatedir@
+
 #
 # Functions for ldmsd and ldms-aggd config file generation.
 # These may depend on variables defined in the respective .conf files
@@ -176,7 +180,7 @@ build_genders_file () {
 		done
 	fi
 	# now put multiple files together.
-	ALLDIR=/var/run/ldmsd/genderscratch
+	ALLDIR=$localstatedir/run/ldmsd/genderscratch
 	mkdir -p $ALLDIR
 	if ! test -d $ALLDIR; then
 		echoq "Unable to find/make $ALLDIR. make or mount it."
@@ -210,8 +214,8 @@ failure() {
 # save exported env vars
 # safe in privatetmp environment
 save_env_init () {
-	mkdir -p /var/run/ldmsd/tmp
-	env1=`mktemp /var/run/ldmsd/tmp/env1.$1.XXX`
+	mkdir -p $localstatedir/run/ldmsd/tmp
+	env1=`mktemp $localstatedir/run/ldmsd/tmp/env1.$1.XXX`
 	if test -z "$env1"; then
 		logger -p syslog.error -s "$0: cannot make env tempfile"
 		dietrace 1
@@ -221,7 +225,7 @@ save_env_init () {
 
 # append changed exported env vars to $2
 save_env_finish () {
-	env2=`mktemp /var/run/ldmsd/tmp/env2.$1.XXX`
+	env2=`mktemp $localstatedir/run/ldmsd/tmp/env2.$1.XXX`
 	if test -z "$env2"; then
 		logger -p syslog.error -s "$0: cannot make env tempfile"
 		dietrace 1
@@ -244,12 +248,12 @@ save_env_finish () {
 # append changed exported env vars to $2
 # prepend export to all lines
 save_env_finish_sysvinit () {
-	env2=`mktemp /var/run/ldmsd/tmp/env2.$1.XXX`
+	env2=`mktemp $localstatedir/run/ldmsd/tmp/env2.$1.XXX`
 	printenv |sort > $env2
 	diff $env1 $env2 |sed -e 's/< .*//g' \
 		-e 's/^-*//g' \
 		-e 's/^[0-9].*//g' \
-		-e 's/^> //g' | \
+		-e 's/^> //g' \
 		-e 's/"/\"/g' \
 		-e "s/'/'\"'\"'/g" \
 		-e "s/=/='/" \
@@ -534,7 +538,7 @@ start_ldmsd_plugins () {
 }
 
 generate_collector_config  () {
-	LDMSD_PLUGIN_CONFIG_FILE=/var/run/ldmsd/all-config.$LDMSCLUSTER
+	LDMSD_PLUGIN_CONFIG_FILE=$localstatedir/run/ldmsd/all-config.$LDMSCLUSTER
 	export LDMSD_PLUGIN_CONFIG_FILE
 	/bin/rm -f $LDMSD_PLUGIN_CONFIG_FILE
 	start_ldmsd_plugins $LDMSD_PLUGIN_CONFIG_FILE
@@ -608,8 +612,8 @@ get_schema_list () {
 		envbadschemas="$LDMSD_EXCLUDE_SCHEMA_LIST"
 	fi
 	excludelist="${envbadschemas},${badschemas},${reallybadschemas}"
-	keepfile=`mktemp /var/run/ldmsd/tmp/schemas.1.XXX`
-	badfile=`mktemp /var/run/ldmsd/tmp/schemas.2.XXX`
+	keepfile=`mktemp $localstatedir/run/ldmsd/tmp/schemas.1.XXX`
+	badfile=`mktemp $localstatedir/run/ldmsd/tmp/schemas.2.XXX`
 	echo $schemas | tr ",: " "\n" | sort -u > $keepfile
 	echo $excludelist | tr ",: " "\n" | sort -u > $badfile
 	slist=`comm -23 $keepfile $badfile`

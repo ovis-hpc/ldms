@@ -84,4 +84,10 @@ install-data-local: install-dox
 PEDIGREE = $(DESTDIR)/$(bindir)/ldms-pedigree
 include $(top_srcdir)/pedigree.am
 
+uninstall-hook:
+	rm $(PEDIGREE)
+	for f in AUTHORS README COPYING ChangeLog ; do \
+		rm $(DESTDIR)$(docdir)$(OPV)/$$f; \
+	done
+
 clean-local:

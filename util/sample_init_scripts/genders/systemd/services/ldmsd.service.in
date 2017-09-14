@@ -31,7 +31,7 @@ WantedBy=multi-user.target
 
 Type=forking
 
-PIDFile=/var/run/ldmsd/ldmsd-local.pid
+PIDFile=@localstatedir@/run/ldmsd/ldmsd-local.pid
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=ldmsd
@@ -42,27 +42,21 @@ TimeoutSec=0
 # Execute pre and post scripts as root
 PermissionsStartOnly=true
 
-# Normally LDMS_PREFIX should not be set in the Environment.
-# Set it to use non-standard installs only, and then set
-# LDMSD_BUILDTYPE=experimental in the ldmsd.local.conf file.
-#Environment=LDMS_PREFIX=/home/baallan/ovis/repos/ogc-gitlab-tossinit/LDMS_install
-
-# This script is the same (except that 'local' is hardwired) as ldmsd@.service
-Environment=LDMSCLUSTER=local
+# This script is the same as ldmsd@.service (except that LDMSCLUSTER is hardwired to 'local')
 
 # Needed to create env file
-ExecStartPre = /usr/bin/test -x /usr/bin/ldmsd-pre-systemd
-ExecStartPre = /bin/mkdir -p /var/run/ldmsd
-ExecStartPre = /bin/rm -f /var/run/ldmsd/ldmsd.env.local
-ExecStartPre = /usr/bin/ldmsd-pre-systemd local /var/run/ldmsd/ldmsd.env.local
-ExecStartPre = /usr/bin/test /var/run/ldmsd/ldmsd.env.local -nt /usr/bin/ldmsd-pre-systemd
+ExecStartPre = /usr/bin/test -x @bindir@/ldmsd-pre-systemd
+ExecStartPre = /bin/mkdir -p @localstatedir@/run/ldmsd
+ExecStartPre = /bin/rm -f @localstatedir@/run/ldmsd/ldmsd.env.local
+ExecStartPre = @bindir@/ldmsd-pre-systemd local @localstatedir@/run/ldmsd/ldmsd.env.local
+ExecStartPre = /usr/bin/test @localstatedir@/run/ldmsd/ldmsd.env.local -nt @bindir@/ldmsd-pre-systemd
 
-EnvironmentFile = -/var/run/ldmsd/ldmsd.env.local
+EnvironmentFile = -@localstatedir@/run/ldmsd/ldmsd.env.local
 
 # Start main service
 # This is all one line so it is easily converted to sysvinit, not so
 # it is easy to read.
-ExecStart= /bin/bash -c '/bin/rm -f $LDMSD_SOCKPATH ; /usr/bin/ldmsd-wrapper.sh local $LDMSD_GLOBAL_OPTS $MEM_OPT $LDMSAGGD_MEM_RES -c $LDMSD_PLUGIN_CONFIG_FILE -a $LDMS_AUTH_FILE -r /var/run/ldmsd/ldmsd-local.pid -x $LDMSD_XPRT:$LDMSD_PORT -P $LDMSD_EVENT_THDS $LDMSD_INET_OPT $LDMSD_CONFIG_PORT $LDMSD_SOCK_OPT $LDMSD_SOCKPATH -v $LDMSD_DBG $LDMS_LOG_OPT $LDMS_LOG_FILE 2>&1'
+ExecStart= /bin/bash -c '/bin/rm -f $LDMSD_SOCKPATH ; @bindir@/ldmsd-wrapper.sh local $LDMSD_GLOBAL_OPTS $MEM_OPT $LDMSAGGD_MEM_RES -c $LDMSD_PLUGIN_CONFIG_FILE -a $LDMS_AUTH_FILE -r @localstatedir@/run/ldmsd/ldmsd-local.pid -x $LDMSD_XPRT:$LDMSD_PORT -P $LDMSD_EVENT_THDS $LDMSD_INET_OPT $LDMSD_CONFIG_PORT $LDMSD_SOCK_OPT $LDMSD_SOCKPATH -v $LDMSD_DBG $LDMS_LOG_OPT $LDMS_LOG_FILE 2>&1'
 
 # Sets open_files_limit
 LimitNOFILE = 1000
