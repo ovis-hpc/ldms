@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2017 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -238,13 +238,17 @@ static req_msg_t alloc_msg(struct msg_key *key)
 	rm->req_buf = malloc(REQ_BUF_LEN);
 	if (!rm->req_buf)
 		goto err;
-	rm->req_buf[0] = '\0';
 	rm->rep_len = REP_BUF_LEN;
 	rm->rep_off = 0;
 	rm->rep_buf = malloc(REP_BUF_LEN);
 	if (!rm->rep_buf)
 		goto err;
-	rm->rep_buf[0] = '\0';
+
+	/* Fill in empty discriminators for 20B messages */
+	*(uint32_t *)rm->line_buf = 0;
+	*(uint32_t *)rm->req_buf = 0;
+	*(uint32_t *)rm->rep_buf = 0;
+
 	rm->key = *key;
 	rbn_init(&rm->rbn, &rm->key);
 	rbt_ins(&msg_tree, &rm->rbn);
@@ -956,7 +960,8 @@ static int prdcr_status_handler(int sock, req_msg_t rm)
 				       "{ \"inst_name\":\"%s\","
 				       "\"schema_name\":\"%s\","
 				       "\"state\":\"%s\"}",
-				       prv_set->inst_name, prv_set->schema_name,
+				       prv_set->inst_name,
+				       (prv_set->schema_name ? prv_set->schema_name : ""),
 				       ldmsd_prdcr_set_state_str(prv_set->state));
 			rc = send_request_reply(sock, rm, rm->line_buf, cnt, 0);
 			set_count++;
@@ -2057,7 +2062,11 @@ struct plugin_list {
 
 static char *plugn_state_str(enum ldmsd_plugin_type type)
 {
-	static char *state_str[] = { "sampler", "store" };
+	static char *state_str[] = {
+		[LDMSD_PLUGIN_OTHER] = "other",
+		[LDMSD_PLUGIN_SAMPLER] = "sampler",
+		[LDMSD_PLUGIN_STORE] = "store"
+	};
 	if (type <= LDMSD_PLUGIN_STORE)
 		return state_str[type];
 	return "unknown";

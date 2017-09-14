@@ -197,7 +197,7 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	if (status != LDMS_LOOKUP_OK) {
 		status = (status < 0 ? -status : status);
 		if (status == ENOMEM) {
-			ldmsd_log(LDMSD_LINFO,
+			ldmsd_log(LDMSD_LERROR,
 				"Error %d in lookup callback for set '%s' "
 				"Consider changing the -m parameter on the "
 				"command line to a bigger value. "
@@ -206,7 +206,7 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 				ldmsd_get_max_mem_sz_str());
 
 		} else {
-			ldmsd_log(LDMSD_LINFO,
+			ldmsd_log(LDMSD_LERROR,
 				  "Error %d in lookup callback for set '%s'\n",
 					  status, prd_set->inst_name);
 		}
