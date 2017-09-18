@@ -337,6 +337,7 @@ extern int parse_cfg(const char *config_file);
 
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_MAX_CONFIG_STR_LEN 8192
+#define LDMSD_MAX_CONFIG_REC_LEN 4096
 struct attr_value_list;
 struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN];
@@ -796,4 +797,9 @@ extern const char *ldmsd_secret_get(void);
 /** Find out if authentication is required. 1 yes, 0 no. */
 extern int ldmsd_authentication_required();
 
+/* Listen for a connection request on an ldms xprt */
+extern int listen_on_ldms_xprt(char *xprt_str, char *port_str, char *secretword);
+
+/* Listen for a connection either on Unix domain socket or Socket. A dedicated thread is assigned to a new connection. */
+extern int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword);
 #endif

@@ -54,6 +54,7 @@
 #include <errno.h>
 #include <string.h>
 #include <ovis_util/util.h>
+#include "ldmsd.h"
 #include "ldmsd_request.h"
 
 struct req_str_id {
@@ -72,10 +73,12 @@ const struct req_str_id req_str_id_table[] = {
 	{  "loglevel",           LDMSD_VERBOSE_REQ  },
 	{  "logrotate",          LDMSD_LOGROTATE_REQ  },
 	{  "oneshot",            LDMSD_ONESHOT_REQ  },
+	{  "plugn_status",       LDMSD_PLUGN_STATUS_REQ  },
 	{  "prdcr_add",          LDMSD_PRDCR_ADD_REQ  },
 	{  "prdcr_del",          LDMSD_PRDCR_DEL_REQ  },
 	{  "prdcr_start",        LDMSD_PRDCR_START_REQ  },
 	{  "prdcr_start_regex",  LDMSD_PRDCR_START_REGEX_REQ  },
+	{  "prdcr_status",       LDMSD_PRDCR_STATUS_REQ  },
 	{  "prdcr_stop",         LDMSD_PRDCR_STOP_REQ  },
 	{  "prdcr_stop_regex",   LDMSD_PRDCR_STOP_REGEX_REQ  },
 	{  "start",              LDMSD_PLUGN_START_REQ   },
@@ -87,6 +90,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "strgp_prdcr_add",    LDMSD_STRGP_PRDCR_ADD_REQ  },
 	{  "strgp_prdcr_del",    LDMSD_STRGP_PRDCR_DEL_REQ  },
 	{  "strgp_start",        LDMSD_STRGP_START_REQ  },
+	{  "strgp_status",       LDMSD_STRGP_STATUS_REQ  },
 	{  "strgp_stop",         LDMSD_STRGP_STOP_REQ  },
 	{  "term",               LDMSD_PLUGN_TERM_REQ   },
 	{  "udata",              LDMSD_SET_UDATA_REQ  },
@@ -98,6 +102,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "updtr_prdcr_add",    LDMSD_UPDTR_PRDCR_ADD_REQ  },
 	{  "updtr_prdcr_del",    LDMSD_UPDTR_PRDCR_DEL_REQ  },
 	{  "updtr_start",        LDMSD_UPDTR_START_REQ  },
+	{  "updtr_status",       LDMSD_UPDTR_STATUS_REQ  },
 	{  "updtr_stop",         LDMSD_UPDTR_STOP_REQ  },
 	{  "usage",              LDMSD_PLUGN_LIST_REQ  },
 	{  "version",            LDMSD_VERSION_REQ  },
@@ -111,6 +116,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "incr",              LDMSD_ATTR_INCREMENT   },
 	{  "instance",		LDMSD_ATTR_INSTANCE   },
 	{  "interval",		LDMSD_ATTR_INTERVAL   },
+	{  "interval_us",	LDMSD_ATTR_INTERVAL   },
 	{  "level",             LDMSD_ATTR_LEVEL   },
 	{  "match",		LDMSD_ATTR_MATCH   },
 	{  "metric",		LDMSD_ATTR_METRIC   },
@@ -165,56 +171,57 @@ int32_t ldmsd_req_attr_str2id(const char *name)
  * is added to req_buf.
  * Otherwise, EINVAL is returned.
  */
-static int add_attr_from_attr_str(char *name, char *value,
-		char **reqbuf, size_t *reqbuf_offset, size_t *reqbuf_len)
+static int add_attr_from_attr_str(char *name, char *value, ldmsd_req_hdr_t *request,
+				  size_t *rec_off, size_t *rec_len)
 {
-	struct ldmsd_req_attr_s attr;
-	char *buf = *reqbuf;
-	size_t offset = *reqbuf_offset;
-	size_t len = *reqbuf_len;
+	ldmsd_req_attr_t attr;
+	size_t attr_sz, val_sz;
+	ldmsd_req_hdr_t req = *request;
+	char *buf = (char *)*request;
+	size_t offset = *rec_off;
+	size_t len = *rec_len;
 
 	if (!name && !value) {
-		attr.discrim = 0;
-		attr.attr_len = 0;
+		/* Terminate the attribute list */
+		memset(&buf[offset], 0, sizeof(uint32_t));
+		attr_sz = sizeof(uint32_t);
+		goto out;
 	} else if (name && !value) {
 		/* The attribute value must be provided */
 		return EINVAL;
-	} else {
-		attr.discrim = 1;
-		/* Assume that the string av is NULL-terminated */
-		attr.attr_len = strlen(value) + 1; /* +1 to include \0 */
-		if (!name) {
-			/* Caller wants the attribute id of ATTR_STRING */
-			attr.attr_id = LDMSD_ATTR_STRING;
-		} else {
-			int err_or_id = ldmsd_req_attr_str2id(name);
-			if (err_or_id < 0) {
-				return EINVAL;
-			}
-			attr.attr_id = err_or_id;
-		}
 	}
 
-	size_t sz = sizeof(struct ldmsd_req_attr_s) + attr.attr_len;
-	while (len - offset < sz) {
+	val_sz = strlen(value) + 1; /* include '\0' */
+	attr_sz = sizeof(struct ldmsd_req_attr_s) + val_sz;
+	while (len - offset < attr_sz) {
 		buf = realloc(buf, len * 2);
 		if (!buf) {
 			return ENOMEM;
 		}
+		*request = req = (ldmsd_req_hdr_t)buf;
 		len = len * 2;
 	}
 
-	memcpy(&buf[offset], &attr, sizeof(attr));
-	offset += sizeof(attr);
-
-	if (attr.attr_len) {
-		memcpy(&buf[offset], value, attr.attr_len);
-		offset += attr.attr_len;
+	attr = (ldmsd_req_attr_t)&buf[offset];
+	attr->discrim = 1;
+	attr->attr_len = val_sz;
+	if (!name) {
+		/* Caller wants the attribute id of ATTR_STRING */
+		attr->attr_id = LDMSD_ATTR_STRING;
+	} else {
+		attr->attr_id = ldmsd_req_attr_str2id(name);
+		if (attr->attr_id < 0)
+			return EINVAL;
 	}
 
-	*reqbuf = buf;
-	*reqbuf_len = len;
-	*reqbuf_offset = offset;
+	if (val_sz)
+		memcpy(attr->attr_value, value, val_sz);
+
+ out:
+	offset += attr_sz;
+	(*request)->rec_len += attr_sz;
+	*rec_len = len;
+	*rec_off = offset;
 	return 0;
 }
 
@@ -226,15 +233,18 @@ void __get_attr_name_value(char *av, char **name, char **value)
 	(*value)++;
 }
 
-int ldmsd_process_cfg_str(ldmsd_req_hdr_t request, const char *cfg,
-			char **buf, size_t *bufoffset, size_t *buflen)
+ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 {
 	char *av, *verb, *tmp, *ptr, *name, *value, *dummy;
 	int rc;
+	ldmsd_req_hdr_t request;
+	size_t cfg_len = strlen(cfg);
+	size_t rec_off, rec_len;
 
 	dummy = strdup(cfg);
 	if (!dummy)
-		return ENOMEM;
+		return NULL;
+
 	verb = dummy;
 	/* Get the request id */
 	av = strchr(dummy, ' ');
@@ -243,17 +253,24 @@ int ldmsd_process_cfg_str(ldmsd_req_hdr_t request, const char *cfg,
 		av++;
 	}
 
+	request = calloc(1, LDMSD_MAX_CONFIG_STR_LEN); /* arbitrary but substantial */
+	if (!request)
+		goto err;
 	request->marker = LDMSD_RECORD_MARKER;
-	request->code = ldmsd_req_str2id(verb);
-	if ((request->code < 0) || (request->code == LDMSD_NOTSUPPORT_REQ)) {
+	request->type = LDMSD_REQ_TYPE_CONFIG_CMD;
+	request->flags = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
+	request->msg_no = msg_no;
+	request->req_id = ldmsd_req_str2id(verb);
+	if ((request->req_id < 0) || (request->req_id == LDMSD_NOTSUPPORT_REQ)) {
 		rc = ENOSYS;
 		goto err;
 	}
-
+	rec_len = LDMSD_MAX_CONFIG_STR_LEN;
+	request->rec_len = rec_off = sizeof(*request);
 	if (!av)
 		goto last_attr;
 
-	if (request->code == LDMSD_PLUGN_CONFIG_REQ) {
+	if (request->req_id == LDMSD_PLUGN_CONFIG_REQ) {
 		size_t len = strlen(av);
 		size_t cnt = 0;
 		tmp = malloc(len);
@@ -267,8 +284,8 @@ int ldmsd_process_cfg_str(ldmsd_req_hdr_t request, const char *cfg,
 
 			if (0 == strncmp(name, "name", 4)) {
 				/* Find the name attribute */
-				rc = add_attr_from_attr_str(name, value, buf,
-						bufoffset, buflen);
+				rc = add_attr_from_attr_str(name, value, &request,
+							    &rec_off, &rec_len);
 				if (rc) {
 					free(tmp);
 					goto err;
@@ -282,7 +299,7 @@ int ldmsd_process_cfg_str(ldmsd_req_hdr_t request, const char *cfg,
 			av = strtok_r(NULL, " ", &ptr);
 		}
 		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
-		rc = add_attr_from_attr_str(NULL, tmp, buf, bufoffset, buflen);
+		rc = add_attr_from_attr_str(NULL, tmp, &request, &rec_off, &rec_len);
 		free(tmp);
 		if (rc)
 			goto err;
@@ -291,7 +308,7 @@ int ldmsd_process_cfg_str(ldmsd_req_hdr_t request, const char *cfg,
 		while (av) {
 			__get_attr_name_value(av, &name, &value);
 			rc = add_attr_from_attr_str(name, value,
-					buf, bufoffset, buflen);
+						    &request, &rec_off, &rec_len);
 			if (rc)
 				goto err;
 			av = strtok_r(NULL, " ", &ptr);
@@ -299,13 +316,12 @@ int ldmsd_process_cfg_str(ldmsd_req_hdr_t request, const char *cfg,
 	}
 last_attr:
 	/* Add the end attribute */
-	rc = add_attr_from_attr_str(NULL, NULL, buf, bufoffset, buflen);
-	request->rec_len = *bufoffset + sizeof(*request);
+	rc = add_attr_from_attr_str(NULL, NULL, &request, &rec_off, &rec_len);
 	free(dummy);
-	return 0;
+	return request;
 err:
 	free(dummy);
-	return rc;
+	return NULL;
 }
 
 char *ldmsd_req_attr_value_get_by_id(char *attr_list, uint32_t attr_id)
@@ -320,10 +336,11 @@ char *ldmsd_req_attr_value_get_by_id(char *attr_list, uint32_t attr_id)
 	return NULL;
 }
 
-char *ldmsd_req_attr_value_get_by_name(char *attr_list, const char *name)
+char *ldmsd_req_attr_value_get_by_name(char *request, const char *name)
 {
-	int32_t attr_id = ldmsd_req_attr_str2id(name);
+	ldmsd_req_hdr_t req = (ldmsd_req_hdr_t)request;
+	uint32_t attr_id = ldmsd_req_attr_str2id(name);
 	if (attr_id < 0)
 		return NULL;
-	return ldmsd_req_attr_value_get_by_id(attr_list, attr_id);
+	return ldmsd_req_attr_value_get_by_id((char *)(req + 1), attr_id);
 }

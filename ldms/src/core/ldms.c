@@ -79,6 +79,19 @@ static char *__set_dir = SET_DIR_PATH;
 #define SET_DIR_LEN sizeof(SET_DIR_PATH)
 static char __set_path[PATH_MAX];
 
+/* This function is useful for displaying data structures stored in
+ * mmap'd memory that on some platforms is not accessible to the
+ * debugger.
+ */
+void __dbg_dump_addr(unsigned long *p, size_t size)
+{
+	while (size > 0) {
+		printf("%ld %lx\n", *p, *p);
+		p ++;
+		size -= 8;
+	}
+}
+
 char *_create_path(const char *set_name);
 
 static int set_comparator(void *a, const void *b)

@@ -135,6 +135,7 @@ MAX_RECV_LEN = 4096
 
 class ldmsdConfig(object):
     __metaclass__ = ABCMeta
+    msg_hdr_len = 24
 
     @abstractmethod
     def send_command(self, cmd):
@@ -145,16 +146,14 @@ class ldmsdConfig(object):
     def receive_response(self, recv_len = None):
         """Receive a response from the ldmsd process
         """
-        if recv_len is None:
-            recv_len = self.max_recv_len
-        data_all = ""
-        data = self.socket.recv(recv_len)
-        while '\x00' not in data:
-            data_all += data
-            data = self.socket.recv(recv_len)
-        data_all += data
-        data = data_all.split('\x00')[0]
-        return data
+        hdr = self.socket.recv(self.msg_hdr_len, socket.MSG_WAITALL)
+        (marker, msg_type, flags, msg_no, errcode, rec_len) = struct.unpack('iiiiii', hdr)
+        data_len = rec_len - self.msg_hdr_len
+        msg = hdr
+        if data_len > 0:
+            data = self.socket.recv(data_len, socket.MSG_WAITALL)
+            msg += data
+        return msg
 
     @abstractmethod
     def close(self):
@@ -187,7 +186,7 @@ class ldmsdUSocketConfig(ldmsdConfig):
             raise ValueError("{0} doesn't exist.".format(ldmsd_sockpath))
 
         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        
+
         if max_recv_len is None:
             self.max_recv_len = MAX_RECV_LEN
         else:

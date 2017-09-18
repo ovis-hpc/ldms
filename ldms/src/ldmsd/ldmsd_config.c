@@ -85,17 +85,19 @@
 #include "ldmsd_request.h"
 #include "config.h"
 
-#define REPLYBUF_LEN 4096
-char myhostname[HOST_NAME_MAX+1];
-pthread_t ctrl_thread = (pthread_t)-1;
-pthread_t inet_ctrl_thread = (pthread_t)-1;
-int muxr_s = -1;
-int inet_sock = -1;
-int inet_listener = -1;
-char *sockname = NULL;
+typedef struct cfg_clnt_s {
+	struct ldmsd_cfg_xprt_s xprt;
+	struct sockaddr_storage ss;
+	char recbuf[LDMSD_MAX_CONFIG_REC_LEN];
+	char *secretword;
+	pthread_t thread;
+	LIST_ENTRY(cfg_clnt_s) entry;
+} *cfg_clnt_t;
+
+pthread_mutex_t clnt_list_lock = PTHREAD_MUTEX_INITIALIZER;
+LIST_HEAD(cfg_clnt_list, cfg_clnt_s) clnt_list;
 
 static int cleanup_requested = 0;
-int bind_succeeded;
 
 extern void cleanup(int x, char *reason);
 
@@ -109,30 +111,14 @@ LIST_HEAD(plugin_list, ldmsd_plugin_cfg) plugin_list;
 
 void ldmsd_config_cleanup()
 {
-	if (ctrl_thread != (pthread_t)-1) {
-		void *dontcare;
-		pthread_cancel(ctrl_thread);
-		pthread_join(ctrl_thread, &dontcare);
+	cfg_clnt_t clnt;
+	pthread_mutex_lock(&clnt_list_lock);
+	while (!LIST_EMPTY(&clnt_list)) {
+		clnt = LIST_FIRST(&clnt_list);
+		LIST_REMOVE(clnt, entry);
+		pthread_cancel(clnt->thread);
 	}
-
-	if (inet_ctrl_thread != (pthread_t)-1) {
-		void *dontcare;
-		pthread_cancel(inet_ctrl_thread);
-		pthread_join(inet_ctrl_thread, &dontcare);
-	}
-
-	if (muxr_s >= 0)
-		close(muxr_s);
-	if (sockname && bind_succeeded) {
-		ldmsd_log(LDMSD_LINFO, "LDMS Daemon deleting socket "
-						"file %s\n", sockname);
-		unlink(sockname);
-	}
-
-	if (inet_listener >= 0)
-		close(inet_listener);
-	if (inet_sock >= 0)
-		close(inet_sock);
+	pthread_mutex_unlock(&clnt_list_lock);
 }
 
 struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name)
@@ -175,16 +161,18 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 
 	if (!d) {
 		char *dlerr = dlerror();
+		ldmsd_log(LDMSD_LERROR, "Failed to load the plugin '%s': "
+				"dlerror %s\n", plugin_name, dlerr);
 		snprintf(errstr, errlen, "Failed to load the plugin '%s'. "
-				"dlerror: %s", plugin_name, dlerr);
+				"dlerror %s", plugin_name, dlerr);
 		goto err;
 	}
 
 	ldmsd_plugin_get_f pget = dlsym(d, "get_plugin");
 	if (!pget) {
 		snprintf(errstr, errlen,
-			"The library of '%s' is missing the get_plugin() "
-						"function.", plugin_name);
+			"The library, '%s',  is missing the get_plugin() "
+			 "function.", plugin_name);
 		goto err;
 	}
 	lpi = pget(ldmsd_msg_logger);
@@ -266,7 +254,12 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 	memset(regex, 0, sizeof *regex);
 	int rc = regcomp(regex, regex_str, REG_NOSUB);
 	if (rc) {
-		(void)regerror(rc, regex, errbuf, errsz);
+		snprintf(errbuf, errsz, "22");
+		(void)regerror(rc,
+			       regex,
+			       &errbuf[2],
+			       errsz - 2);
+		strcat(errbuf, "\n");
 	}
 	return rc;
 }
@@ -332,6 +325,20 @@ int ldmsd_config_plugin(char *plugin_name,
 	pthread_mutex_unlock(&pi->lock);
 out:
 	return rc;
+}
+
+int _ldmsd_set_udata(ldms_set_t set, char *metric_name, uint64_t udata,
+						char err_str[LEN_ERRSTR])
+{
+	int i = ldms_metric_by_name(set, metric_name);
+	if (i < 0) {
+		snprintf(err_str, LEN_ERRSTR, "Metric '%s' not found.",
+			 metric_name);
+		return ENOENT;
+	}
+
+	ldms_metric_user_data_set(set, i, udata);
+	return 0;
 }
 
 /*
@@ -408,28 +415,24 @@ void ldmsd_exit_daemon()
 	ldmsd_log(LDMSD_LINFO, "User requested exit.\n");
 }
 
-/* data_len is excluding the null character */
-int print_config_error(struct ldmsd_req_ctxt *reqc, char *data, size_t data_len,
-		int msg_flags)
+static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 {
-	if (data_len + 1 > reqc->rep_len - reqc->rep_off) {
-		reqc->rep_buf = realloc(reqc->rep_buf,
-				reqc->rep_off + data_len + 1);
-		if (!reqc->rep_buf) {
-			ldmsd_log(LDMSD_LERROR, "Out of memory\n");
-			return ENOMEM;
-		}
-		reqc->rep_len = reqc->rep_off + data_len + 1;
-	}
+	ldmsd_req_attr_t attr;
+	ldmsd_req_hdr_t req_reply = (ldmsd_req_hdr_t)data;
 
-	if (data) {
-		memcpy(&reqc->rep_buf[reqc->rep_off], data, data_len);
-		reqc->rep_off += data_len;
-		reqc->rep_buf[reqc->rep_off] = '\0';
+	attr = ldmsd_first_attr(req_reply);
+	if (attr->discrim == 0 || attr->discrim == 1) {
+		/* We don't dump attributes to the log */
+		ldmsd_log(LDMSD_LERROR, "msg_no %d flags %x rec_len %d rsp_err %d msg\n",
+			  req_reply->msg_no, req_reply->flags, req_reply->rec_len,
+			  req_reply->rsp_err);
+	} else {
+		data[data_len] = '\0';
+		attr = ldmsd_first_attr(req_reply);
+		ldmsd_log(LDMSD_LERROR, "msg_no %d flags %x rec_len %d rsp_err %d msg %s\n",
+			  req_reply->msg_no, req_reply->flags, req_reply->rec_len,
+			  req_reply->rsp_err, attr);
 	}
-	if (reqc->rep_off)
-		ldmsd_log(LDMSD_LERROR, "%s\n", reqc->rep_buf);
-
 	return 0;
 }
 
@@ -437,73 +440,10 @@ extern void req_ctxt_tree_lock();
 extern void req_ctxt_tree_unlock();
 extern ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key);
 extern void free_req_ctxt(ldmsd_req_ctxt_t rm);
-extern int ldmsd_handle_request(ldmsd_req_hdr_t request, ldmsd_req_ctxt_t reqc);
-ldmsd_req_ctxt_t process_config_line(char *line, struct ldmsd_req_hdr_s *request)
+
+int process_config_file(const char *path)
 {
 	static uint32_t msg_no = 0;
-
-	request->marker = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
-	request->flags = LDMSD_RECORD_MARKER;
-	request->msg_no = msg_no;
-	request->rec_len = 0;
-	request->code = -1;
-
-	errno = 0;
-	struct req_ctxt_key key = {
-			.msg_no = msg_no,
-			.conn_id = -1,
-	};
-	msg_no++;
-
-	char *_line, *ptr, *verb, *av, *name, *value, *tmp = NULL;
-	int idx, rc = 0, attr_cnt = 0;
-	uint32_t req_id;
-	size_t tot_attr_len = 0;
-	struct ldmsd_req_ctxt *reqc = NULL;
-
-	_line = strdup(line);
-	if (!_line) {
-		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
-		errno = ENOMEM;
-		return NULL;
-	}
-
-	/* Prepare the request context */
-	req_ctxt_tree_lock();
-	reqc = alloc_req_ctxt(&key);
-	if (!reqc) {
-		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
-		errno = ENOMEM;
-		goto out;
-	}
-
-	rc = ldmsd_process_cfg_str(request, _line, &reqc->req_buf,
-				&reqc->req_off, &reqc->req_len);
-	if (rc) {
-		errno = rc;
-		goto err;
-	}
-
-	memcpy(&reqc->rh, &request, sizeof(request));
-
-	reqc->resp_handler = print_config_error;
-	reqc->ldms = NULL;
-	req_ctxt_tree_unlock();
-	goto out;
-
-err:
-	if (reqc) {
-		req_ctxt_tree_lock();
-		free_req_ctxt(reqc);
-		req_ctxt_tree_unlock();
-		reqc = NULL;
-	}
-out:
-	free(_line);
-	return reqc;
-}
-int process_config_file(const char *path, int *errloc)
-{
 	int rc = 0;
 	int lineno = 0;
 	FILE *fin = NULL;
@@ -512,24 +452,27 @@ int process_config_file(const char *path, int *errloc)
 	char *comment;
 	ssize_t off = 0;
 	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
-
-	struct ldmsd_req_hdr_s request;
-	struct ldmsd_req_ctxt *reqc = NULL;
+	struct ldmsd_cfg_xprt_s xprt;
+	ldmsd_req_hdr_t request;
 
 	char *env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
 	if (env)
 		cfg_buf_len = strtol(env, NULL, 0);
+
 	fin = fopen(path, "rt");
 	if (!fin) {
 		rc = errno;
 		goto cleanup;
 	}
+
 	buff = malloc(cfg_buf_len);
 	if (!buff) {
 		rc = errno;
 		goto cleanup;
 	}
 
+	xprt.xprt = NULL;
+	xprt.send_fn = log_response_fn;
 
 next_line:
 	line = fgets(buff + off, cfg_buf_len - off, fin);
@@ -572,173 +515,398 @@ next_line:
 		goto next_line;
 	}
 
-	reqc = process_config_line(line, &request);
-	if (!reqc) {
+	request = ldmsd_parse_config_str(line, msg_no);
+	msg_no += 1;
+	if (!request) {
 		ldmsd_log(LDMSD_LERROR, "Process config file error at line %d "
 				"(%s). %s\n", lineno, path, strerror(errno));
 		goto cleanup;
 	}
-	rc = ldmsd_handle_request(&request, reqc);
+	rc = ldmsd_process_config_request(&xprt, request, request->rec_len);
 	if (rc) {
 		ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
 				lineno, path);
+		free(request);
 		goto cleanup;
 	}
-
-	if (reqc) {
-		req_ctxt_tree_lock();
-		free_req_ctxt(reqc);
-		req_ctxt_tree_unlock();
-		reqc = NULL;
-	}
+	free(request);
 	off = 0;
 	goto next_line;
 
 cleanup:
-	if (reqc) {
-		req_ctxt_tree_lock();
-		free_req_ctxt(reqc);
-		req_ctxt_tree_unlock();
-	}
 	if (fin)
 		fclose(fin);
 	if (buff)
 		free(buff);
-	*errloc = lineno;
 	return rc;
 }
 
-extern int
-process_request_unix_domain(int fd, struct msghdr *msg, size_t msg_len);
-void *ctrl_thread_proc(void *v)
+static int send_sock_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 {
-	struct sockaddr_un sun = {.sun_family = AF_UNIX, .sun_path = ""};
-	socklen_t sun_len = sizeof(sun);
-	int sock;
+	return send(xprt->sock.fd, data, data_len, 0);
+}
 
-	struct msghdr msg;
-	struct iovec iov;
-	unsigned char *lbuf;
-	struct sockaddr_storage ss;
-	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
-	char *env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
-	if (env)
-		cfg_buf_len = strtol(env, NULL, 0);
-	lbuf = malloc(cfg_buf_len);
-	if (!lbuf) {
-		ldmsd_log(LDMSD_LERROR,
-			  "Fatal error allocating %zu bytes for config string.\n",
-			  cfg_buf_len);
-		cleanup(1, "ctrl thread proc out of memory");
-	}
+void *config_proc(void *arg)
+{
+	cfg_clnt_t clnt = arg;
+	ssize_t msglen;
+	struct ldmsd_req_hdr_s request;
 
-loop:
-	sock = accept(muxr_s, (void *)&sun, &sun_len);
-	if (sock < 0) {
-		ldmsd_log(LDMSD_LERROR, "Error %d failed to accept.\n", inet_sock);
-		goto loop;
-	}
-
-	iov.iov_base = lbuf;
 	do {
-		struct ldmsd_req_hdr_s request;
-		ssize_t msglen;
-		ss.ss_family = AF_UNIX;
-		msg.msg_name = &ss;
-		msg.msg_namelen = sizeof(ss);
-		iov.iov_len = sizeof(request);
-		iov.iov_base = &request;
-		msg.msg_iov = &iov;
-		msg.msg_iovlen = 1;
-		msg.msg_control = NULL;
-		msg.msg_controllen = 0;
-		msg.msg_flags = 0;
-		msglen = recvmsg(sock, &msg, MSG_PEEK);
+		/* Read the message header */
+		msglen = recv(clnt->xprt.sock.fd, &request, sizeof(request), MSG_PEEK);
 		if (msglen <= 0)
+			/* closing */
 			break;
-		if (cfg_buf_len < request.rec_len) {
-			free(lbuf);
-			lbuf = malloc(request.rec_len);
-			if (!lbuf) {
-				cfg_buf_len = 0;
-				break;
-			}
-			cfg_buf_len = request.rec_len;
+		/* Verify the marker */
+		if (request.marker != LDMSD_RECORD_MARKER
+		    || (msglen < sizeof(request))) {
+			ldmsd_log(LDMSD_LERROR, "Invalid request: missing record marker.\n");
+			break;
 		}
-		iov.iov_base = lbuf;
-		iov.iov_len = request.rec_len;
-
-		msglen = recvmsg(sock, &msg, MSG_WAITALL);
-		if (msglen < request.rec_len)
+		/* If the record length is greater than what we accept, send record
+		 * length advice and close */
+		if (LDMSD_MAX_CONFIG_REC_LEN < request.rec_len) {
+			ldmsd_send_cfg_rec_adv(&clnt->xprt, -1, LDMSD_MAX_CONFIG_REC_LEN);
 			break;
-
-		process_request_unix_domain(sock, &msg, msglen);
+		}
+		/* Receive the request record */
+		msglen = recv(clnt->xprt.sock.fd, clnt->recbuf, request.rec_len, MSG_WAITALL);
+		if (msglen < request.rec_len) {
+			ldmsd_log(LDMSD_LERROR, "Received short configuration record.\n");
+			break;
+		}
+		/* Process the request record */
+		ldmsd_process_config_request(&clnt->xprt,
+					     (ldmsd_req_hdr_t)clnt->recbuf,
+					     request.rec_len);
 		if (cleanup_requested)
 			break;
 	} while (1);
+
+	ldmsd_log(LDMSD_LDEBUG, "Closing configuration socket %d\n", clnt->xprt.sock.fd);
+
+	pthread_mutex_lock(&clnt_list_lock);
+	LIST_REMOVE(clnt, entry);
+	pthread_mutex_unlock(&clnt_list_lock);
+
+	close(clnt->xprt.sock.fd);
+	free(clnt);
+
 	if (cleanup_requested) {
-		/* Reset it to prevent deadlock in cleanup */
-		ctrl_thread = (pthread_t)-1;
-		cleanup(0,"user quit");
+		cleanup(0, "user quit");
+		return NULL;
+	}
+}
+
+void *config_cm_proc(void *args)
+{
+	cfg_clnt_t listen_clnt = args;
+	int sock;
+	int accept_err;
+	struct iovec iov;
+	struct sockaddr_storage rem_ss;
+	socklen_t rem_salen = sizeof(rem_ss);
+	accept_err = 0;
+loop:
+	sock = accept(listen_clnt->xprt.sock.fd, (struct sockaddr *)&rem_ss, &rem_salen);
+	if (sock < 0) {
+		/* Don't flood the log with accept errors */
+		if (accept_err < 10) {
+			ldmsd_log(LDMSD_LERROR, "Error %d accepting "
+				  "config connection.\n", sock);
+			accept_err++;
+		}
+		/* This sleep avoids spinning on accept error */
+		sleep(1);
+		goto loop;
+	}
+	/* Reset accept error count after successful connect */
+	accept_err = 0;
+
+#if OVIS_LIB_HAVE_AUTH
+
+#include <string.h>
+#include "ovis_auth/auth.h"
+
+#define _str(x) #x
+#define str(x) _str(x)
+	struct ovis_auth_challenge auth_ch;
+	int rc;
+	if (listen_clnt->secretword && listen_clnt->secretword[0] != '\0') {
+		uint64_t ch = ovis_auth_gen_challenge();
+		char *psswd = ovis_auth_encrypt_password(ch, listen_clnt->secretword);
+		if (!psswd) {
+			ldmsd_log(LDMSD_LERROR, "Failed to generate "
+					"the password for the controller\n");
+			goto loop;
+		}
+		size_t len = strlen(psswd) + 1;
+		char *psswd_buf = malloc(len);
+		if (!psswd_buf) {
+			ldmsd_log(LDMSD_LERROR, "Failed to authenticate "
+					"the controller. Out of memory");
+			free(psswd);
+			goto loop;
+		}
+
+		ovis_auth_pack_challenge(ch, &auth_ch);
+		rc = send(sock, (char *)&auth_ch, sizeof(auth_ch), 0);
+		if (rc == -1) {
+			ldmsd_log(LDMSD_LERROR, "Error %d failed to send "
+					"the challenge to the controller.\n",
+					errno);
+			free(psswd_buf);
+			free(psswd);
+			goto loop;
+		}
+		rc = recv(sock, psswd_buf, len - 1, 0);
+		if (rc == -1) {
+			ldmsd_log(LDMSD_LERROR, "Error %d. Failed to receive "
+					"the password from the controller.\n",
+					errno);
+			free(psswd_buf);
+			free(psswd);
+			goto loop;
+		}
+		psswd_buf[rc] = '\0';
+		if (0 != strcmp(psswd, psswd_buf)) {
+			shutdown(sock, SHUT_RDWR);
+			close(sock);
+			free(psswd_buf);
+			free(psswd);
+			goto loop;
+		}
+		free(psswd);
+		free(psswd_buf);
+		int approved = 1;
+		rc = send(sock, (void *)&approved, sizeof(int), 0);
+		if (rc == -1) {
+			ldmsd_log(LDMSD_LERROR, "Error %d failed to send "
+				"the init message to the controller.\n", errno);
+			goto loop;
+		}
+	} else {
+		/* Don't do authetication */
+		auth_ch.hi = auth_ch.lo = 0;
+		rc = send(sock, (char *)&auth_ch, sizeof(auth_ch), 0);
+		if (rc == -1) {
+			ldmsd_log(LDMSD_LERROR, "Error %d failed to send "
+					"the greeting to the controller.\n",
+					errno);
+			goto loop;
+		}
+	}
+#else /* OVIS_LIB_HAVE_AUTH */
+	uint64_t greeting = 0;
+	int rc = send(sock, (char *)&greeting, sizeof(uint64_t), 0);
+	if (rc == -1) {
+		ldmsd_log(LDMSD_LINFO,
+			  "Error %d failed to send "
+			  "the greeting to the controller.\n",
+			  errno);
+		goto loop;
+	}
+#endif /* OVIS_LIB_HAVE_AUTH */
+	/* Each connection gets it's own thread. Otherwise an
+	 * ldmsd_controller client will hang the GUI.
+	 */
+	cfg_clnt_t clnt = malloc(sizeof *clnt);
+	if (!clnt) {
+		close(sock);
+		ldmsd_log(LDMSD_LERROR,
+			  "Memory allocation failure in config connect.\n");
+		goto loop;
+	}
+	clnt->xprt.sock.fd = sock;
+	clnt->xprt.send_fn = send_sock_fn;
+
+	pthread_mutex_lock(&clnt_list_lock);
+	LIST_INSERT_HEAD(&clnt_list, clnt, entry);
+	pthread_mutex_unlock(&clnt_list_lock);
+
+	rc = pthread_create(&clnt->thread, NULL, config_proc, clnt);
+	if (rc) {
+		close(sock);
+		ldmsd_log(LDMSD_LERROR,
+			  "Error creating thread in config connect.\n");
+		pthread_mutex_lock(&clnt_list_lock);
+		LIST_REMOVE(clnt, entry);
+		pthread_mutex_unlock(&clnt_list_lock);
+		free(clnt);
 	}
 	goto loop;
 	return NULL;
 }
 
-int ldmsd_config_init(char *name)
+int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword)
 {
-	struct sockaddr_un sun;
-	int ret;
+	struct sockaddr_storage ss;
+	socklen_t sa_len;
+	struct sockaddr_un *sun;
+	struct sockaddr_in *sin;
+	int rc;
 
-	/* Create the control socket parsing structures */
-	if (!name) {
-		char *sockpath = getenv("LDMSD_SOCKPATH");
-		if (!sockpath)
-			sockpath = "/var/run";
-		sockname = malloc(sizeof(LDMSD_CONTROL_SOCKNAME) + strlen(sockpath) + 2);
+	if (0 == strcasecmp(xprt_str, "unix")) {
+		char *sockname = port_str;
+		sun = (struct sockaddr_un *)&ss;
+		sa_len = sizeof(*sun);
 		if (!sockname) {
-			ldmsd_log(LDMSD_LERROR, "Our of memory\n");
-			return -1;
+			char *sockpath = getenv("LDMSD_SOCKPATH");
+			if (!sockpath)
+				sockpath = "/var/run";
+			sockname = malloc(sizeof(LDMSD_CONTROL_SOCKNAME) + strlen(sockpath) + 2);
+			if (!sockname) {
+				ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+				return -1;
+			}
+			sprintf(sockname, "%s/%s", sockpath, LDMSD_CONTROL_SOCKNAME);
 		}
-		sprintf(sockname, "%s/%s", sockpath, LDMSD_CONTROL_SOCKNAME);
-	} else {
-		sockname = strdup(name);
-	}
-
-	memset(&sun, 0, sizeof(sun));
-	sun.sun_family = AF_UNIX;
-	strncpy(sun.sun_path, sockname,
+		memset(sun, 0, sizeof(*sun));
+		sun->sun_family = AF_UNIX;
+		strncpy(sun->sun_path, sockname,
 			sizeof(struct sockaddr_un) - sizeof(short));
-
-	/* Create listener */
-	muxr_s = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (muxr_s < 0) {
-		ldmsd_log(LDMSD_LERROR, "Error %d creating muxr socket.\n",
-				muxr_s);
+	} else if (0 == strcasecmp(xprt_str, "sock")) {
+		sin = (struct sockaddr_in *)&ss;
+		sa_len = sizeof(*sin);
+		sin->sin_family = AF_INET;
+		sin->sin_addr.s_addr = 0;
+		sin->sin_port = htons(atoi(port_str));
+	} else {
+		ldmsd_log(LDMSD_LERROR,
+			  "Unrecognized configuration transport string %s\n",
+			  xprt_str);
 		return -1;
 	}
-
-	/* Bind to our public name */
-	ret = bind(muxr_s, (struct sockaddr *)&sun, sizeof(struct sockaddr_un));
-	if (ret < 0) {
-		ldmsd_log(LDMSD_LERROR, "Error %d binding to socket "
-				"named '%s'.\n", errno, sockname);
+	cfg_clnt_t clnt = calloc(1, sizeof(*clnt));
+	if (!clnt) {
+		ldmsd_log(LDMSD_LERROR,
+			  "Memory allocation failure creating configuration client.\n");
 		return -1;
 	}
-	bind_succeeded = 1;
-
-	ret = listen(muxr_s, 1);
-	if (ret < 0) {
-		ldmsd_log(LDMSD_LERROR, "Error %d listen to sock named '%s'.\n",
-				errno, sockname);
+	clnt->secretword = strdup(secretword);
+	clnt->xprt.sock.fd = socket(ss.ss_family, SOCK_STREAM, 0);
+	if (clnt->xprt.sock.fd < 0) {
+		ldmsd_log(LDMSD_LERROR, "A configuration socket could not be created, "
+			  "error = %d.\n", errno);
+		goto err;
+	}
+	rc = bind(clnt->xprt.sock.fd, (struct sockaddr *)&ss, sa_len);
+	if (rc < 0) {
+		ldmsd_log(LDMSD_LERROR, "Error %d binding to configuration socket %s:%s\n",
+			  errno, xprt_str, port_str);
+		goto err;
+	}
+	rc = listen(clnt->xprt.sock.fd, 10);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Error %d listening on configuration socket %s:%s\n",
+			  errno, xprt_str, port_str);
+		goto err;
 	}
 
-	ret = pthread_create(&ctrl_thread, NULL, ctrl_thread_proc, 0);
-	if (ret) {
-		ldmsd_log(LDMSD_LERROR, "Error %d creating "
-				"the control pthread'.\n");
+	pthread_mutex_lock(&clnt_list_lock);
+	LIST_INSERT_HEAD(&clnt_list, clnt, entry);
+	pthread_mutex_unlock(&clnt_list_lock);
+
+	rc = pthread_create(&clnt->thread, NULL, config_cm_proc, clnt);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR,
+			  "Error creating configuration connection management thread.\n");
+		goto err_1;
+	}
+	return 0;
+ err_1:
+	pthread_mutex_lock(&clnt_list_lock);
+	LIST_REMOVE(clnt, entry);
+	pthread_mutex_unlock(&clnt_list_lock);
+
+ err:
+	close(clnt->xprt.sock.fd);
+	free(clnt);
+	return -1;
+}
+
+static int send_ldms_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
+{
+        return ldms_xprt_send(xprt->ldms.ldms, data, data_len);
+}
+
+static void __recv_msg(ldms_t x, char *data, size_t data_len)
+{
+        ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)data;
+        struct ldmsd_cfg_xprt_s xprt;
+        xprt.ldms.ldms = x;
+        xprt.send_fn = send_ldms_fn;
+        switch (request->type) {
+        case LDMSD_REQ_TYPE_CONFIG_CMD:
+                (void)ldmsd_process_config_request(&xprt, request, data_len);
+                break;
+        case LDMSD_REQ_TYPE_CONFIG_RESP:
+                break;
+        default:
+                break;
+        }
+}
+
+static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+{
+        switch (e->type) {
+        case LDMS_XPRT_EVENT_CONNECTED:
+                break;
+        case LDMS_XPRT_EVENT_DISCONNECTED:
+                ldms_xprt_put(x);
+                break;
+        case LDMS_XPRT_EVENT_RECV:
+                __recv_msg(x, e->data, e->data_len);
+                break;
+        default:
+                assert(0);
+                break;
+        }
+}
+
+int listen_on_ldms_xprt(char *xprt_str, char *port_str, char *secretword)
+{
+        int port_no;
+        ldms_t l = NULL;
+        int ret;
+        struct sockaddr_in sin;
+
+        if (!port_str || port_str[0] == '\0')
+                port_no = LDMS_DEFAULT_PORT;
+        else
+                port_no = atoi(port_str);
+#if OVIS_LIB_HAVE_AUTH
+        l = ldms_xprt_with_auth_new(xprt_str, ldmsd_linfo,
+                secretword);
+#else
+        l = ldms_xprt_new(xprt_str, ldmsd_linfo);
+#endif /* OVIS_LIB_HAVE_AUTH */
+        if (!l) {
+                ldmsd_log(LDMSD_LERROR, "The transport specified, "
+                                "'%s', is invalid.\n", xprt_str);
+                cleanup(6, "error creating transport");
+        }
+	cfg_clnt_t clnt = calloc(1, sizeof(*clnt));
+	if (!clnt) {
+		ldmsd_log(LDMSD_LERROR,
+			  "Memory allocation failure creating configuration client.\n");
 		return -1;
 	}
+	clnt->secretword = strdup(secretword);
+        clnt->xprt.ldms.ldms = l;
+        sin.sin_family = AF_INET;
+        sin.sin_addr.s_addr = 0;
+        sin.sin_port = htons(port_no);
+        ret = ldms_xprt_listen(l, (struct sockaddr *)&sin, sizeof(sin),
+			       __listen_connect_cb, NULL);
+        if (ret) {
+                ldmsd_log(LDMSD_LERROR, "Error %d listening on the '%s' "
+                                "transport.\n", ret, xprt_str);
+                cleanup(7, "error listening on transport");
+        }
+        ldmsd_log(LDMSD_LINFO, "Listening on transport %s:%s\n",
+                        xprt_str, port_str);
 	return 0;
 }
 

@@ -204,8 +204,6 @@ class LdmsdCmdParser(cmd.Cmd):
         if is_debug:
             print("Received the response of request {0}".format(request.message_number_get()))
             print(resp)
-        if resp is None:
-            raise Exception("Failed to get the information from ldmsd")
         if 'errcode' in resp.keys() and resp['errcode'] != 0:
                 print(resp['msg'])
         return resp
@@ -580,20 +578,23 @@ class LdmsdCmdParser(cmd.Cmd):
             NONE
         """
         resp = self.handle('prdcr_status', None)
-        if resp['errcode'] == 0:
-            producers =  json.loads(resp['msg'])
-            print("Name             Host             Port         Transport    State")
-            print("---------------- ---------------- ------------ ------------ ------------")
-            for prdcr in producers:
-                print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
-                                                                  prdcr['host'],
-                                                                  prdcr['port'],
-                                                                  prdcr['transport'],
-                                                                  prdcr['state']))
-                for pset in prdcr['sets']:
-                    print("    {0:16} {1:16} {2}".format(pset['inst_name'],
-                                                         pset['schema_name'],
-                                                         pset['state']))
+        if resp['errcode'] != 0:
+            print("Request returned error {0}".format(resp['errcode']))
+            return
+
+        producers =  json.loads(resp['msg'])
+        print("Name             Host             Port         Transport    State")
+        print("---------------- ---------------- ------------ ------------ ------------")
+        for prdcr in producers:
+            print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
+                                                              prdcr['host'],
+                                                              prdcr['port'],
+                                                              prdcr['transport'],
+                                                              prdcr['state']))
+            for pset in prdcr['sets']:
+                print("    {0:16} {1:16} {2}".format(pset['inst_name'],
+                                                     pset['schema_name'],
+                                                     pset['state']))
 
     def complete_prdcr_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_status', text)
@@ -677,7 +678,7 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_plugn_status(self, arg):
         resp = self.handle('plugn_status', None)
         if resp:
-            plugins = json.loads(resp)
+            plugins = json.loads(resp['msg'])
             print("Name         Type         Interval     Offset       Libpath")
             print("------------ ------------ ------------ ------------ ------------")
             for plugn in plugins:
@@ -906,6 +907,8 @@ ldmsd_controller is not connecting to ldmsd through a unix domain socket.")
         parser.add_argument('--script',
                             help = "Execute the script and send the output \
                             commands to the connected ldmsd")
+        parser.add_argument('--inband', action = "store_true",
+                            help = "Specify this option to connect to the data channel.")
         parser.add_argument('--debug', action = "store_true",
                             help = argparse.SUPPRESS)
 
@@ -921,6 +924,7 @@ ldmsd_controller is not connecting to ldmsd through a unix domain socket.")
                                    host = args.host,
                                    port = args.port,
                                    xprt = args.xprt,
+                                   inband = args.inband,
                                    secretPath = args.auth_file)
 
         if args.source is not None or args.script is not None:

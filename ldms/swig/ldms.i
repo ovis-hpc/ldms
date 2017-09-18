@@ -132,7 +132,7 @@ PyObject *LDMS_xprt_dir(ldms_t x)
 	}
 	return setList;
  err:
-	return Py_None;
+	Py_RETURN_NONE;
 }
 
 struct recv_buf {
@@ -246,12 +246,12 @@ PyObject *LDMS_xprt_recv(ldms_t x)
                 assert(0);
         sem_wait(&arg->sem_ready);
         buf = __recv_buf_next(arg);
-        if (!buf) {
-                assert(0 == "No data receieved");
-        }
-        data = PyByteArray_FromStringAndSize(buf->data, buf->data_len);
-        __recv_buf_destroy(buf, arg);
-        return data;
+	if (buf) {
+		data = PyByteArray_FromStringAndSize(buf->data, buf->data_len);
+		__recv_buf_destroy(buf, arg);
+		return data;
+	}
+        Py_RETURN_NONE;
 }
 
 struct passive_event_arg {
@@ -497,7 +497,7 @@ PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
 		return PyLong_FromLong(l);
 	return PyFloat_FromDouble(d);
  fail:
-	return Py_None;
+	Py_RETURN_NONE;
 }
 
 %}
@@ -587,7 +587,7 @@ PyObject *LDMS_xprt_dir(ldms_t x);
                 }
                 return PyLong_FromLong(0);
 	fail:
-		return Py_None;
+		Py_RETURN_NONE;
 	}
 	inline void metric_value_set(size_t i, PyObject *o) {
 		enum ldms_value_type t = ldms_metric_type_get(self, i);
