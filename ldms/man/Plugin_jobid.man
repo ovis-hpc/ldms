@@ -25,7 +25,7 @@ configuration line
 .TP
 name=<plugin_name>
 .br
-This MUST be vmstat.
+This MUST be jobid.
 .TP
 producer=<pname>
 .br
