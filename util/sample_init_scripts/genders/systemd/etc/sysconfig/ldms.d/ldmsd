@@ -294,11 +294,21 @@ if test -z "$LDMSD_OFFSET_DEFAULT"; then
 fi
 export LDMSD_OFFSET_DEFAULT
 
-
 # Note the LDMS_LOG_PATH may become a problem if
 # on a shared file system that goes down and daemon debugging is enabled.
 if test -z "$LDMS_LOG_PATH"; then
-	LDMS_LOG_PATH=journal
+	LDMSD_LOG_PATH=`$NODEATTR $NODEATTRFILE -v $host ldmsd_log 2>/dev/null`
+	if test -z "$LDMSD_LOG_PATH"; then
+		LDMS_LOG_PATH=journal
+	fi
+fi
+
+if test -z "$LDMSD_USE_UNIX_SOCK"; then
+	LDMSD_USE_UNIX_SOCK=`$NODEATTR $NODEATTRFILE -v $host ldmsd_use_unix_socket 2>/dev/null`
+fi
+
+if test -z "$LDMSD_SOCKPATH"; then
+	LDMSD_SOCKPATH=`$NODEATTR $NODEATTRFILE -v $host ldmsd_sockpath 2>/dev/null`
 fi
 
 if test "x$LDMSD_USE_UNIX_SOCK" = "xyes"; then
@@ -314,6 +324,15 @@ else
 	unset LDMSD_SOCKPATH
 fi
 export LDMSD_SOCK_OPT LDMSD_SOCKPATH
+
+if test -z "$LDMSD_USE_INET_SOCK"; then
+	LDMSD_USE_INET_SOCK=`$NODEATTR $NODEATTRFILE -v $host ldmsd_use_inet_socket 2>/dev/null`
+fi
+
+if test -z "$LDMSD_CONFIG_PORT"; then
+	LDMSD_CONFIG_PORT=`$NODEATTR $NODEATTRFILE -v $host ldmsd_config_port 2>/dev/null`
+fi
+
 if test "x$LDMSD_USE_INET_SOCK" = "xyes"; then
 	LDMSD_INET_OPT="-p"
 	if test -z "LDMSD_CONFIG_PORT"; then

@@ -94,7 +94,7 @@ If neither is defined defined, N defaults to 411.
 
 .B LDMS_LOG_PATH=x
 
-If LDMS_LOG_PATH is not defined, journal is used. The allowed values of x are 'NONE', 'syslog', 'journal', and a directory name. If systemd and journal cannot be detected, syslog should be used. If NONE, all log messages will go to /dev/null. In the directory case, the log file will be $LDMS_LOG_PATH/ldmsd.log.local.
+This overrides gender ldmsd_log. If neither the gender nor LDMS_LOG_PATH is defined, journal is used. The allowed values of x are 'NONE', 'syslog', 'journal', and a directory name. If systemd and journal cannot be detected, syslog should be used. If NONE, all log messages will go to /dev/null. In the directory case, the log file will be $LDMS_LOG_PATH/ldmsd.log.$LDMSCLUSTER.
 
 .B LDMS_USE_GENDERS=0
 
@@ -106,7 +106,7 @@ The files listed in LDMS_GENDERS are concatenated and used for genders queries.
 In simple installations, LDMS_GENDERS=/etc/sysconfig/ldms.d/ClusterGenders/genders.local or LDMS_GENDERS=/etc/genders is typical.
 If unset, /etc/sysconfig/ldms.d/ClusterGenders/genders.$LDMSCLUSTER and /etc/genders are checked and the first found is used as the default. If none of these are present, startup will fail.
 .PP
-The normal reason for setting an LDMS_GENDERS list is to, on a storage machine, join a copy if the genders file from a cluster monitored to the genders needed for configuring stores on the specific storage machine. Since more than one storage machine might be serving a cluster or the storage machine may be in a different administrative domain, this splitting of the gender file maintenance duties is often desirable.
+The normal reasons for setting an LDMS_GENDERS list is to support splitting administrative duties. For example, on a storage machine, join a copy if the genders file from a cluster monitored to the genders needed for configuring stores on the specific storage machine. Since more than one storage machine might be serving a cluster or the storage machine may be in a different administrative domain, this splitting of the gender file maintenance duties is often desirable.
 
 .B LDMS_GENDERS_HOST=name
 
@@ -114,19 +114,19 @@ If defined, this overrides the name of the local host when making gender queries
 
 .B LDMSD_USE_UNIX_SOCK=yes
 
-If LDMSD_USE_UNIX_SOCK=yes, a Unix socket will be created for local control of the daemon.
+If defined, this overrides gender ldmsd_use_unix_socket. If LDMSD_USE_UNIX_SOCK=yes, a Unix socket will be created for local control of the daemon
 
 .B LDMSD_SOCKPATH=/path/to/sockdir/file
 
-Overrides the default /var/run/lmdsd/usock.local opened when LDMSD_USE_UNIX_SOCK=yes.
+If defined, this overrides gender ldmsd_sockpath. If neither the gender nor the environment variable is defined, the default /var/run/lmdsd/usock.$LDMSCLUSTER is opened when the unix socket is enabled.
 
 .B LDMSD_USE_INET_SOCK=yes
 
-If LDMSD_USE_INET_SOCK=yes, a network socket will be created for network control of the daemon.
+If defined, this overrides gender ldmsd_use_inet_socket. If either the gender or the environment variable is defined as "yes", a network socket will be created for network control of the daemon.
 
 .B LDMSD_CONFIG_PORT=R
 
-Overrides with R the port number used when LDMSD_USE_INET_SOCK=yes. If not specified, the default value is 410.
+If defined, this overrides gender ldmsd_config_port. If neither gender nor environment variable is defined, the default port number 410 is used when inet socket is enabled.
 
 .B LDMSD_EVENT_THDS=N
 
