@@ -57,6 +57,13 @@ ldmsd_log=DEST          Defines where to send log output. This may be
                         one of syslog, journal, NONE, or a directory
                         name. If a name, the directory will be created
                         and ldmsd.log.$LDMSCLUSTER is the file name.
+ldmsd_vg=VGBIN          Defines the full path to an executable wrapper
+                        such as valgrind to be used for daemon launch.
+                        Note this may be any audit tool, not just valgrind.
+                        Interactions with the numactl environment may be
+                        nontrivial to manage.
+ldmsd_vgargfile=VGOPT   Defines a file containing the command line
+                        options to pass to VGBIN (as a single line).
 ldmsd_proc=P            Core to pin ldmsd to in many-core hosts. Active
                         only if NUMA-related environment variable is set
                         or a Phi processor is detected.
