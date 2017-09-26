@@ -139,4 +139,4 @@ localhost2/aries_mmr: consistent, last update: Wed Oct 28 08:48:36 2015 [153343u
 
 
 .SH SEE ALSO
-ldmsd(8), Plugin_cray_sampler_variants(7), ldms_quickstart(7), ldmsd_controller(8)
+ldmsd(8), Plugin_cray_sampler_variants(7), Plugin_aries_linkstatus(7), ldms_quickstart(7), ldmsd_controller(8)
