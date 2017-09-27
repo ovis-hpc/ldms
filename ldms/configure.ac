@@ -100,6 +100,8 @@ dnl spaceless names in the cray_system_sampler. Default is with spaces for rever
 OPTION_DEFAULT_ENABLE([spaceless_names], [ENABLE_SPACELESS_NAMES])
 dnl aries_mmr is not part of the cray_system_sampler
 OPTION_DEFAULT_DISABLE([aries-mmr], [ENABLE_ARIES_MMR], [Requires --enable-gpcd or --with-aries-libgpcd=libdir,incdir])
+dnl linkstatus is not part of the cray_system_sampler
+OPTION_DEFAULT_DISABLE([aries_linkstatus], [ENABLE_ARIES_LINKSTATUS], [Requires gpcdr to be set up with status metrics])
 OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
