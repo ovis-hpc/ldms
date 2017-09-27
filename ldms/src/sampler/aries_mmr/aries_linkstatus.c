@@ -65,7 +65,7 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "../ldms_jobid.h"
+#include "sampler_base.h"
 
 #define LINKSTATUS_FILE "/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
 #define NUMROW_TILE 5
@@ -75,16 +75,12 @@ static char *lsfile;
 static char *lrfile;
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
-static ldms_schema_t schema;
 #define SAMP "aries_linkstatus"
-static char *default_schema_name = SAMP;
-static uint64_t compid;
 
-static int metric_offset = 1;
-LJI_GLOBALS;
+static base_data_t base;
+static int metric_offset;
 
-static int create_metric_set(const char *instance_name, char* schema_name)
+static int create_metric_set(base_data_t base)
 {
 	int rc, i,j;
 	uint64_t metric_value;
@@ -92,6 +88,7 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
+	ldms_schema_t schema;
 
 	FILE *mf = fopen(lsfile, "r");
 	if (!mf) {
@@ -110,25 +107,15 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	}
 	fclose(mf);
 
-	schema = ldms_schema_new(schema_name);
+	schema = base_schema_new(base);
 	if (!schema) {
 		rc = ENOMEM;
 		goto err;
 	}
+	metric_offset = ldms_schema_metric_count_get(schema);
 
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	metric_offset++;
-	rc = LJI_ADD_JOBID(schema);
-	if (rc < 0) {
-		goto err;
-	}
-	//well known aries tiles dimension. send before receive
-	for (i = 0; i < NUMROW_TILE; i++){
+	/* Well known aries tiles dimension. send before receive */
+	for (i = 0; i < NUMROW_TILE; i++) {
 		snprintf(lbuf,255, "sendlinkstatus_r%d", i);
 		rc = ldms_schema_metric_array_add(schema, lbuf, LDMS_V_U8_ARRAY, NUMCOL_TILE);
 		if (rc < 0) {
@@ -136,8 +123,8 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 			goto err;
 		}
 	}
-	//well known aries tiles dimension
-	for (i = 0; i < NUMROW_TILE; i++){
+	/* Well known aries tiles dimension */
+	for (i = 0; i < NUMROW_TILE; i++) {
 		snprintf(lbuf,255, "recvlinkstatus_r%d", i);
 		rc = ldms_schema_metric_array_add(schema, lbuf, LDMS_V_U8_ARRAY, NUMCOL_TILE);
 		if (rc < 0) {
@@ -146,23 +133,14 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		}
 	}
 
-	set = ldms_set_new(instance_name, schema);
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
 		goto err;
 	}
-
-	//add specialized metrics
-	v.v_u64 = compid;
-	ldms_metric_set(set, 0, &v);
-
-	LJI_SAMPLE(set,1);
 	return 0;
 
  err:
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
 	if (mf)
 		fclose(mf);
 	mf = NULL;
@@ -171,14 +149,10 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP " producer=<prod_name> instance=<inst_name> [file_send=<send_file_name> file_recv=<recv_file_name> component_id=<compid> schema=<sname> with_jobid=<jid>]\n"
-		"    <prod_name>  The producer name\n"
-		"    <inst_name>  The instance name\n"
-                "    <send_file_name>  Optional location of the gpcdr file to read for send link status\n",
-                "    <recv_file_name>  Optional location of the gpcdr file to read for recv link status\n",
-		"    <compid>     Optional unique number identifier. Defaults to zero.\n"
-		LJI_DESC
-		"    <sname>      Optional schema name. Defaults to '" SAMP "'\n";
+	return  "config name=" SAMP " " BASE_CONFIG_USAGE
+		" [file_send=<send_file_name> file_recv=<recv_file_name>\n"
+                "    <send_file_name>  Optional location of the gpcdr file to read for send link status\n"
+                "    <recv_file_name>  Optional location of the gpcdr file to read for recv link status\n";
 }
 
 /**
@@ -196,38 +170,18 @@ static const char *usage(struct ldmsd_plugin *self)
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
-	char *sname;
 	char *fname;
 	void * arg = NULL;
 	int rc;
 
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, SAMP ": missing producer.\n");
-		return ENOENT;
-	}
-
-	value = av_value(avl, "component_id");
-	if (value)
-		compid = (uint64_t)(atoi(value));
-	else
-		compid = 0;
-
-	LJI_CONFIG(value,avl);
-
-	value = av_value(avl, "instance");
-	if (!value) {
-		msglog(LDMSD_LERROR, SAMP ": missing instance.\n");
-		return ENOENT;
-	}
-
-	sname = av_value(avl, "schema");
-	if (!sname)
-		sname = default_schema_name;
-	if (strlen(sname) == 0) {
-		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
+	if (set) {
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
+
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base)
+		return EINVAL;
 
 	fname = av_value(avl, "file_send");
 	if (!fname)
@@ -236,7 +190,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		lsfile = strdup(fname);
 	if (strlen(lsfile) == 0){
 		msglog(LDMSD_LERROR, SAMP ": file name invalid.\n");
-		return EINVAL;
+		goto err;
 	}
 
 	fname = av_value(avl, "file_recv");
@@ -246,21 +200,19 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		lrfile = strdup(fname);
 	if (strlen(lrfile) == 0){
 		msglog(LDMSD_LERROR, SAMP ": file name invalid.\n");
-		return EINVAL;
+		goto err;
 	}
 
-	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
-		return EINVAL;
-	}
-
-	rc = create_metric_set(value, sname);
+	rc = create_metric_set(base);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
-		return rc;
+		goto err;
 	}
-	ldms_set_producer_name_set(set, producer_name);
 	return 0;
+ err:
+	base_del(base);
+	base = NULL;
+	return EINVAL;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -284,9 +236,7 @@ static int sample(struct ldmsd_sampler *self)
 		return EINVAL;
 	}
 
-	ldms_transaction_begin(set);
-
-	LJI_SAMPLE(set, 1);
+	base_sample_begin(base);
 
 	/* doing this infrequently, so open and close each time */
 	FILE *mf = fopen(lsfile, "r");
@@ -348,7 +298,7 @@ static int sample(struct ldmsd_sampler *self)
 	fclose(mf);
 	mf = NULL;
 
-	ldms_transaction_end(set);
+	base_sample_end(base);
 	if (mf) fclose(mf);
 	return 0;
 
@@ -367,12 +317,11 @@ static void term(struct ldmsd_plugin *self)
 	if (lrfile)
 		free(lrfile);
 	lrfile = NULL;
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	base_del(base);
+	base = NULL;
 }
 
 static struct ldmsd_sampler aries_linkstatus_plugin = {

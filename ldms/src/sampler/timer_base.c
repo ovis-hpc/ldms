@@ -80,8 +80,6 @@
 
 static ldmsd_msg_log_f msglog;
 
-LJI_GLOBALS;
-
 /* state of the sampler */
 typedef enum {
 	TBS_INIT,
@@ -177,9 +175,6 @@ int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 {
 	struct timer_base *tb;
 	char *v;
-	char *pname;
-	char *sname;
-	char *iname;
 	char *timer;
 	int rc = 0;
 
@@ -207,78 +202,36 @@ int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		rc = EEXIST;
 		goto out;
 	}
-
-	pname = av_value(avl, "producer");
-	if (!pname) {
-		msglog(LDMSD_LERROR, "%s: missing producer.\n", tb->base.base.name);
-		rc = EINVAL;
+	tb->cfg = base_config(avl, tb->base.base.name, tb->base.base.name, msglog);
+	if (!tb->cfg)
 		goto out;
-	}
-	snprintf(tb->pname, sizeof(tb->pname), "%s", pname);
-	iname = av_value(avl, "instance");
-	if (!iname) {
-		msglog(LDMSD_LERROR, "%s: missing instance.\n", tb->base.base.name);
-		rc = EINVAL;
-		goto out;
-	}
-	snprintf(tb->iname, sizeof(tb->iname), "%s", iname);
 
-	v = av_value(avl, "component_id");
-	if (!v)
-		tb->compid = 0;
-	else
-		tb->compid = strtoull(v, NULL, 0);
-
-	LJI_CONFIG(v,avl);
-
-	sname = av_value(avl, "schema");
-	if (!sname)
-		sname = tb->base.base.name;
-
-	tb->schema = ldms_schema_new(sname);
+	snprintf(tb->pname, sizeof(tb->pname), "%s", tb->cfg->producer_name);
+	snprintf(tb->iname, sizeof(tb->iname), "%s", tb->cfg->instance_name);
+	tb->compid = tb->cfg->component_id;
+	tb->schema = base_schema_new(tb->cfg);
 	if (!tb->schema) {
 		rc = errno;
 		goto out;
 	}
 
-	rc = ldms_schema_metric_add(tb->schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		msglog(LDMSD_LERROR, "%s: ldms_schema_metric_add() failed, rc: %d.\n",
-				tb->base.base.name, rc);
-		goto cleanup;
-	}
-	rc = LJI_ADD_JOBID(tb->schema);
-	if (rc < 0) {
-		msglog(LDMSD_LERROR, "%s: ldms_schema_metric_add() failed, rc: %d.\n",
-				tb->base.base.name, rc);
-		goto cleanup;
-	}
-
 	rc = 0;
 	tb->state = TBS_CONFIGURED;
 
-	goto out;
-
-cleanup:
-	ldms_schema_delete(tb->schema);
-	tb->schema = NULL;
-
 out:
 	pthread_mutex_unlock(&tb->mutex);
+	base_del(tb->cfg);
+	tb->cfg = NULL;
 	return rc;
 }
 
 int timer_base_create_set(struct timer_base *tb)
 {
-	tb->set = ldms_set_new(tb->iname, tb->schema);
+	tb->set = base_set_new(tb->cfg);
 	if (!tb->set) {
 		msglog(LDMSD_LERROR, "%s: ldms_set_new() failed, errno: %d.\n",
 				tb->base.base.name, errno);
 		return errno;
-	}
-	ldms_set_producer_name_set(tb->set, tb->pname);
-	if (tb->compid) {
-		ldms_metric_set_u64(tb->set, 0, tb->compid);
 	}
 	return 0;
 }
@@ -302,11 +255,9 @@ int timer_base_sample(struct ldmsd_sampler *self)
 	static uint64_t count;
 	struct tsampler_timer_entry *ent;
 
-	ldms_transaction_begin(tb->set);
-
-	LJI_SAMPLE(tb->set,1);
 
 	pthread_mutex_lock(&tb->mutex);
+	base_sample_begin(tb->cfg);
 	switch (tb->state) {
 	case TBS_INIT:
 		assert(0);
@@ -326,6 +277,7 @@ int timer_base_sample(struct ldmsd_sampler *self)
 		/* do nothing */
 		break;
 	}
+	base_sample_end(tb->cfg);
 	pthread_mutex_unlock(&tb->mutex);
 
 	goto out;
@@ -365,10 +317,11 @@ void timer_base_cleanup(struct timer_base *tb)
 		ldms_set_delete(tb->set);
 		tb->set = NULL;
 	}
-	if (tb->schema) {
-		ldms_schema_delete(tb->schema);
-		tb->schema = NULL;
+	if (tb->cfg) {
+		base_del(tb->cfg);
+		tb->cfg = NULL;
 	}
+	tb->schema = NULL;
 	tb->state = TBS_INIT;
 }
 

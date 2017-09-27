@@ -56,6 +56,7 @@
 #include "tsampler.h"
 #include <sys/queue.h>
 #include <pthread.h>
+#include "sampler_base.h"
 
 struct tsampler_timer_entry {
 	struct tsampler_timer timer;
@@ -69,6 +70,7 @@ struct timer_base {
 		ST_CONFIGURED,
 		ST_RUNNING,
 	} state;
+	base_data_t cfg;	/* sampler base class data */
 	ldms_set_t set;
 	ldms_schema_t schema;
 	uint64_t compid;

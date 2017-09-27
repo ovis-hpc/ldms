@@ -9,6 +9,7 @@ AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 COMMON_LIBADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ -lovis_util
 ldmssamplerincludedir = $(includedir)/ldms/sampler
 ldmssamplerinclude_HEADERS = 
+BASE_SRC=sampler_base.c sampler_base.h
 
 if ENABLE_JOBID
 AM_CFLAGS += -DENABLE_JOBID
@@ -24,7 +25,7 @@ libtsampler_la_SOURCES = tsampler.c tsampler.h
 libtsampler_la_LIBADD = $(COMMON_LIBADD) -lovis_event -lpthread
 pkglib_LTLIBRARIES += libtsampler.la
 
-libtimer_base_la_SOURCES = timer_base.c timer_base.h
+libtimer_base_la_SOURCES = timer_base.c timer_base.h  $(BASE_SRC)
 libtimer_base_la_LIBADD = $(COMMON_LIBADD) libtsampler.la $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libtimer_base.la
 
@@ -140,7 +141,7 @@ pkglib_LTLIBRARIES += liblnet_stats.la
 endif
 
 if ENABLE_MEMINFO
-libmeminfo_la_SOURCES = meminfo.c sampler_base.c sampler_base.h
+libmeminfo_la_SOURCES = meminfo.c $(BASE_SRC)
 libmeminfo_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libmeminfo.la
 endif
@@ -234,7 +235,7 @@ pkglib_LTLIBRARIES += libsysclassib.la
 endif
 
 if ENABLE_VMSTAT
-libvmstat_la_SOURCES = vmstat.c sampler_base.c sampler_base.h
+libvmstat_la_SOURCES = vmstat.c $(BASE_SRC)
 libvmstat_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libvmstat.la
 endif

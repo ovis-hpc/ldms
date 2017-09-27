@@ -62,6 +62,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "timer_base.h"
+#include "sampler_base.h"
 
 static ldmsd_msg_log_f msglog;
 

@@ -60,18 +60,26 @@ typedef struct base_data_s {
 	ldms_set_t set;
 	uint64_t component_id;
 	int job_id_idx;
+	int app_id_idx;
 	int job_start_idx;
 	int job_end_idx;
 } *base_data_t;
 
 #define BASE_COMPONENT_ID	0
 #define BASE_JOB_ID		1
+#define BASE_APP_ID		2
 #define BASE_CONFIG_USAGE \
 	"producer=<name> instance=<name> [component_id=<int>] [schema=<name>]\n" \
+	"                [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>]\n" \
 	"    producer     A unique name for the host providing the data\n" \
 	"    instance     A unique name for the metric set\n" \
 	"    component_id A unique number for the component being monitored, Defaults to zero.\n" \
-	"    schema       The name of the metric set schema, Defaults to the sampler name\n"
+	"    schema       The name of the metric set schema, Defaults to the sampler name\n" \
+	"    job_set      The instance name of the set containing the job data, default is 'job_info'\n" \
+	"    job_id       The name of the metric containing the Job Id, default is 'job_id'\n" \
+	"    app_id       The name of the metric containing the Application Id, default is 'app_id'\n" \
+	"    job_start    The name of the metric containing the Job start time, default is 'job_start'\n" \
+	"    job_end      The name of the metric containing the Job end time, default is 'job_end'\n"
 
 /**
  * \brief Create a sample schema with the standard metrics
@@ -123,4 +131,11 @@ void base_sample_begin(base_data_t base);
  */
 void base_sample_end(base_data_t base);
 
+/**
+ * \brief Release resources associated with base_data
+ *
+ * This function deletes the memory allocated for the configuration string data,
+ * the schema, and the containing structure. The set is not destroyed
+ */
+void base_del(base_data_t base);
 #endif
