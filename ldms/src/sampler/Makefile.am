@@ -85,6 +85,14 @@ if ENABLE_LLNL
 SUBDIRS += llnl
 endif
 
+if ENABLE_JOBINFO
+SUBDIRS += job_info
+endif
+
+if ENABLE_SLURM_JOBINFO
+SUBDIRS += job_info_slurm
+endif
+
 if ENABLE_LUSTRE
 SUBDIRS += lustre
 endif
@@ -96,7 +104,6 @@ endif
 if ENABLE_CRAY_SYSTEM_SAMPLER
 SUBDIRS += cray_system_sampler
 endif
-
 
 if ENABLE_ARIES_MMR
 SUBDIRS += aries_mmr
@@ -133,7 +140,7 @@ pkglib_LTLIBRARIES += liblnet_stats.la
 endif
 
 if ENABLE_MEMINFO
-libmeminfo_la_SOURCES = meminfo.c
+libmeminfo_la_SOURCES = meminfo.c sampler_base.c sampler_base.h
 libmeminfo_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libmeminfo.la
 endif
@@ -227,7 +234,7 @@ pkglib_LTLIBRARIES += libsysclassib.la
 endif
 
 if ENABLE_VMSTAT
-libvmstat_la_SOURCES = vmstat.c
+libvmstat_la_SOURCES = vmstat.c sampler_base.c sampler_base.h
 libvmstat_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libvmstat.la
 endif
@@ -250,16 +257,3 @@ libtest_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libtest_sampler.la
 endif
 
-if ENABLE_JOBINFO
-libjobinfo_la_SOURCES = jobinfo.c
-libjobinfo_la_LIBADD = $(COMMON_LIBADD)
-libjobinfo_la_CFLAGS = $(AM_CFLAGS) -DSYSCONFDIR='"$(sysconfdir)"'
-pkglib_LTLIBRARIES += libjobinfo.la
-endif
-
-if ENABLE_SLURM_JOBINFO
-libjobinfo_slurm_la_SOURCES = jobinfo_slurm.c
-libjobinfo_slurm_la_LIBADD = $(COMMON_LIBADD)
-libjobinfo_slurm_la_CFLAGS = $(AM_CFLAGS) -I$(SLURM_INCDIR) -DSYSCONFDIR='"$(sysconfdir)"'
-pkglib_LTLIBRARIES += libjobinfo_slurm.la
-endif

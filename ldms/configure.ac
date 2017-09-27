@@ -456,6 +456,8 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
+		 src/sampler/job_info/Makefile
+		 src/sampler/job_info_slurm/Makefile
 		 src/sampler/llnl/Makefile
 		 src/sampler/hadoop/Makefile
 		 src/sampler/hadoop/hadoop-sinks/OvisSink.java

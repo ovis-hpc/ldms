@@ -140,7 +140,7 @@ typedef struct ldms_schema_s *ldms_schema_t;
  * \li \b ldms_schema_delete() Destroy a Schema
  * \li \b ldms_schema_metric_add() Add a metric to the Schema
  * \li \b ldms_schema_meta_add() Add a meta-metric to the Schema
- * \li \b ldms_schema_card_get() Return the number of Metrics in the Schema
+ * \li \b ldms_schema_metric_count_get() Return the number of Metrics in the Schema
  *
  * \section metric_sets Creating Metric Sets
  *
