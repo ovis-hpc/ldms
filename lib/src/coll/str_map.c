@@ -56,6 +56,7 @@
  *
  */
 
+#include "ovis-lib-config.h"
 #include <errno.h>
 #include "str_map.h"
 #include "fnv_hash.h"
@@ -72,7 +73,7 @@
  */
 struct str_map {
 	size_t hash_size; /**< hash size */
-	struct obj_list_head lh_table[0]; /**< hash table */
+	struct obj_list_head lh_table[OVIS_FLEX]; /**< hash table */
 };
 
 struct str_map* str_map_create(size_t sz)

@@ -44,6 +44,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#include "ovis-lib-config.h"
 #include "heap.h"
 #include <errno.h>
 #include <stdlib.h>
@@ -56,7 +57,7 @@ struct ovis_heap {
 	ovis_heap_comp comp;
 	int sz;
 	int alloc_sz;
-	ovis_heap_node_t heap[0];
+	ovis_heap_node_t heap[OVIS_FLEX];
 };
 
 ovis_heap_t ovis_heap_create(int heapsize, ovis_heap_comp comp)

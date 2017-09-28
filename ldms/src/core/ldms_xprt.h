@@ -104,7 +104,7 @@ enum ldms_request_cmd {
 
 struct ldms_send_cmd_param {
 	uint32_t msg_len;
-	char msg[0];
+	char msg[OVIS_FLEX];
 };
 
 struct ldms_lookup_cmd_param {
@@ -152,7 +152,7 @@ struct ldms_lookup_msg {
 	uint32_t card;
 	uint32_t schema_len;
 	uint32_t inst_name_len;
-	char schema_inst_name[0]; /* schema name and then instance name */
+	char schema_inst_name[OVIS_FLEX]; /* schema name and then instance name */
 };
 
 struct ldms_dir_reply {
@@ -160,7 +160,7 @@ struct ldms_dir_reply {
 	uint32_t more;
 	uint32_t set_count;
 	uint32_t set_list_len;
-	char set_list[0];
+	char set_list[OVIS_FLEX];
 };
 
 struct ldms_req_notify_reply {

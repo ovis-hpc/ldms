@@ -61,7 +61,8 @@
 #include <linux/limits.h>
 #include <pthread.h>
 #include <errno.h>
-#include <coll/idx.h>
+#include "ovis-ldms-config.h"
+#include "coll/idx.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include <ovis_util/util.h>
@@ -97,7 +98,7 @@ struct flatfile_store_instance {
 	idx_t ms_idx;
 	LIST_HEAD(ms_list, flatfile_metric_store) ms_list;
 	int metric_count;
-	struct flatfile_metric_store *ms[/*flex array*/];
+	struct flatfile_metric_store *ms[OVIS_FLEX];
 };
 
 static pthread_mutex_t cfg_lock;
