@@ -662,9 +662,9 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 void close_store_common(struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps) {
 	if (!s_handle || !cps) {
-		cps->msglog(LDMSD_LERROR,
-			"%s: close_store_common with null argument\n",
-			cps->pname);
+		ldmsd_log(LDMSD_LERROR,
+			"%s: close_store_common with null handle or plugin data\n",
+			(cps ? cps->pname : "null plugin data"));
 		return;
 	}
 

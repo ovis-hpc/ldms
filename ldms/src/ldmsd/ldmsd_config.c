@@ -156,7 +156,7 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 	char *libpath;
 	char *saveptr = NULL;
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
-	void *d;
+	void *d = NULL;
 
 	if (!path)
 		path = LDMSD_PLUGIN_LIBPATH_DEFAULT;
@@ -847,6 +847,7 @@ int ldmsd_plugins_usage(const char *plugname)
 		       	/* strip lib prefix and .so suffix*/
 			b+= 3;
 			char *suff = rindex(b, '.');
+			assert(suff != NULL || NULL == "plugin glob match means . will be found always");
 			*suff = '\0';
 			char err_str[LEN_ERRSTR];
 			if (ldmsd_load_plugin(b, err_str, LEN_ERRSTR)) {

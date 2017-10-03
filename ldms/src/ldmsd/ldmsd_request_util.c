@@ -146,7 +146,7 @@ uint32_t ldmsd_req_str2id(const char *verb)
 	return x->id;
 }
 
-uint32_t ldmsd_req_attr_str2id(const char *name)
+int32_t ldmsd_req_attr_str2id(const char *name)
 {
 	struct req_str_id key = {name, -1};
 	struct req_str_id *x = bsearch(&key, attr_str_id_table,
@@ -187,10 +187,11 @@ static int add_attr_from_attr_str(char *name, char *value,
 			/* Caller wants the attribute id of ATTR_STRING */
 			attr.attr_id = LDMSD_ATTR_STRING;
 		} else {
-			attr.attr_id = ldmsd_req_attr_str2id(name);
-			if (attr.attr_id < 0) {
+			int err_or_id = ldmsd_req_attr_str2id(name);
+			if (err_or_id < 0) {
 				return EINVAL;
 			}
+			attr.attr_id = err_or_id;
 		}
 	}
 
@@ -321,7 +322,7 @@ char *ldmsd_req_attr_value_get_by_id(char *attr_list, uint32_t attr_id)
 
 char *ldmsd_req_attr_value_get_by_name(char *attr_list, const char *name)
 {
-	uint32_t attr_id = ldmsd_req_attr_str2id(name);
+	int32_t attr_id = ldmsd_req_attr_str2id(name);
 	if (attr_id < 0)
 		return NULL;
 	return ldmsd_req_attr_value_get_by_id(attr_list, attr_id);

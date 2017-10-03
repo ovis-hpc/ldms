@@ -22,7 +22,7 @@ libcoll_la_LIBADD = ../third/libovis_third.la ../ovis_util/libovis_util.la
 
 lib_LTLIBRARIES += libcoll.la
 
-check_PROGRAMS += test_ovis_map test_rbt test_label_set
+check_PROGRAMS += test_ovis_map test_rbt test_label_set test_idx
 
 test_rbt_SOURCES = rbt.c rbt.h
 test_rbt_CFLAGS = $(AM_CFLAGS) -DRBT_TEST
@@ -38,6 +38,9 @@ test_label_set_CFLAGS = $(AM_CFLAGS)
 #test_label_set_LDFLAGS = -static
 #test_label_set_LDADD = libcoll.la ../ovis_util/libovis_util.la ../third/libovis_third.la
 test_label_set_LDADD = libcoll.la
+
+test_idx_SOURCES = idx.c
+test_idx_CFLAGS = $(AM_CFLAGS) -DIDX_TEST
 
 endif
 

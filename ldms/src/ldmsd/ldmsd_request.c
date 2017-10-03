@@ -344,6 +344,10 @@ static int string2attr_list(char *str, struct attr_value_list **__av_list,
 	*__kw_list = kw_list;
 	return 0;
 err:
+	if (av_list)
+		av_free(av_list);
+	if (kw_list)
+		av_free(kw_list);
 	*__av_list = NULL;
 	*__kw_list = NULL;
 	return rc;
@@ -512,16 +516,15 @@ int process_request_unix_domain(int fd, struct msghdr *msg, size_t msg_len)
 			reqc->resp_handler = send_request_reply_outband;
 			reqc->dest_fd = fd;
 		} else {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"ldmsd out of memory.");
+			ldmsd_log(LDMSD_LERROR, "process_request_unix_domain: out of memory\n");
 		}
 
 	} else {
 		reqc = find_req_ctxt(&key);
 		if (!reqc) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				  "The message no %d:%d was not found.",
-				  key.msg_no, key.conn_id);
+			ldmsd_log(LDMSD_LERROR, "process_request_unix_domain:"
+					"The message no %d:%d was not found.\n",
+					key.msg_no, key.conn_id);
 		}
 	}
 	if (!reqc)
@@ -547,7 +550,7 @@ int process_request_unix_domain(int fd, struct msghdr *msg, size_t msg_len)
 err_out:
 	pthread_mutex_unlock(&msg_tree_lock);
 out:
-	if (cnt) {
+	if (cnt && reqc) {
 		ldmsd_log(LDMSD_LERROR, "%s\n", reqc->line_buf);
 		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
 					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
@@ -595,9 +598,8 @@ int process_request_ldms_xprt(ldms_t x, ldmsd_req_hdr_t request, char *data,
 	} else {
 		reqc = find_req_ctxt(&key);
 		if (!reqc) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				  "The message no %d:%d was not found.",
-				  key.msg_no, key.conn_id);
+			ldmsd_log(LDMSD_LERROR, "The message no %d:%d was not found.",
+				key.msg_no, key.conn_id);
 		}
 	}
 	if (!reqc)
@@ -628,7 +630,7 @@ int process_request_ldms_xprt(ldms_t x, ldmsd_req_hdr_t request, char *data,
 err_out:
 	pthread_mutex_unlock(&msg_tree_lock);
 out:
-	if (cnt) {
+	if (cnt && reqc) {
 		ldmsd_log(LDMSD_LERROR, "%s\n", reqc->line_buf);
 		rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
 					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
@@ -826,6 +828,8 @@ send_reply:
 		free(name);
 	if (type_s)
 		free(type_s);
+	if (port_s)
+		free(port_s);
 	if (interval_s)
 		free(interval_s);
 	if (host)
@@ -2630,6 +2634,8 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 	int rc = 0;
 	size_t cnt = 0;
 	char *env_s = NULL;
+	struct attr_value_list *av_list = NULL;
+	struct attr_value_list *kw_list = NULL;
 
 	ldmsd_req_attr_t attr;
 	attr = (ldmsd_req_attr_t)reqc->req_buf;
@@ -2650,8 +2656,6 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 		goto out;
 	}
 
-	struct attr_value_list *av_list;
-	struct attr_value_list *kw_list;
 	rc = string2attr_list(env_s, &av_list, &kw_list);
 	if (rc) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -2675,6 +2679,10 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 out:
 	rc = reqc->resp_handler(reqc, reqc->line_buf, cnt,
 			LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	if (kw_list)
+		av_free(kw_list);
+	if (av_list)
+		av_free(av_list);
 	return rc;
 }
 

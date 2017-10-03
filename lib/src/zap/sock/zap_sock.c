@@ -848,7 +848,7 @@ err0:
 }
 
 typedef void(*process_sep_msg_fn_t)(struct z_sock_ep*, size_t reqlen);
-static process_sep_msg_fn_t process_sep_msg_fns[] = {
+static process_sep_msg_fn_t process_sep_msg_fns[SOCK_MSG_TYPE_LAST] = {
 	[SOCK_MSG_SENDRECV] = process_sep_msg_sendrecv,
 	[SOCK_MSG_READ_REQ] = process_sep_msg_read_req,
 	[SOCK_MSG_READ_RESP] = process_sep_msg_read_resp,
@@ -880,7 +880,7 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 		if (buflen < reqlen)
 			break;
 		msg_type = ntohs(hdr.msg_type);
-		if (msg_type < SOCK_MSG_TYPE_LAST)
+		if (msg_type >= SOCK_MSG_FIRST && msg_type < SOCK_MSG_TYPE_LAST)
 			process_sep_msg_fns[msg_type](sep, reqlen);
 		else /* unknown type */
 			process_sep_msg_unknown(sep, reqlen);
@@ -916,14 +916,14 @@ static void release_buf_event(struct z_sock_ep *sep)
 	}
 }
 
-zap_event_type_t ev_type_cvt[] = {
+zap_event_type_t ev_type_cvt[SOCK_MSG_TYPE_LAST] = {
 	[SOCK_MSG_SENDRECV] = ZAP_EVENT_RECV_COMPLETE,
-	[SOCK_MSG_RENDEZVOUS] = -1,
+	[SOCK_MSG_RENDEZVOUS] = ZAP_EVENT_BAD,
 	[SOCK_MSG_READ_REQ] = ZAP_EVENT_READ_COMPLETE,
-	[SOCK_MSG_READ_RESP] = -1,
+	[SOCK_MSG_READ_RESP] = ZAP_EVENT_BAD,
 	[SOCK_MSG_WRITE_REQ] = ZAP_EVENT_WRITE_COMPLETE,
-	[SOCK_MSG_WRITE_RESP] = -1,
-	[SOCK_MSG_ACCEPTED] = -1
+	[SOCK_MSG_WRITE_RESP] = ZAP_EVENT_BAD,
+	[SOCK_MSG_ACCEPTED] = ZAP_EVENT_BAD
 };
 
 static zap_err_t __sock_send_connect(struct z_sock_ep *sep, char *buf, size_t len)
@@ -1058,7 +1058,10 @@ static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 		TAILQ_REMOVE(&sep->io_q, io, q_link);
 
 		msg_type = ntohs(io->hdr.msg_type);
-		ev_type = ev_type_cvt[msg_type];
+		if (msg_type >= SOCK_MSG_FIRST && msg_type < SOCK_MSG_TYPE_LAST)
+			ev_type = ev_type_cvt[msg_type];
+		else
+			ev_type = ZAP_EVENT_BAD;
 
 		/* Call the completion routine */
 		struct zap_event ev = {

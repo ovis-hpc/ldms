@@ -841,7 +841,7 @@ static void ugni_sock_read(struct bufferevent *buf_event, void *arg)
 		msg_type = ntohs(hdr.msg_type);
 		DLOG_(uep, "Receiving msg: %s\n",
 				zap_ugni_msg_type_str(msg_type));
-		if (msg_type < ZAP_UGNI_MSG_TYPE_LAST)
+		if (msg_type > ZAP_UGNI_MSG_NONE && msg_type < ZAP_UGNI_MSG_TYPE_LAST)
 			process_uep_msg_fns[msg_type](uep, reqlen);
 		else /* unknown type */
 			process_uep_msg_unknown(uep, reqlen);

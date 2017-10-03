@@ -200,7 +200,7 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	zap_t z = NULL;
 	char *errstr;
 	int ret;
-	void *d;
+	void *d = NULL;
 	char *saveptr = NULL;
 
 	if (!log_fn)

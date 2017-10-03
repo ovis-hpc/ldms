@@ -89,6 +89,8 @@ typedef struct zap *zap_t;
 typedef void (*zap_log_fn_t)(const char *fmt, ...);
 typedef struct zap_map *zap_map_t;
 
+#define ZAP_EVENT_BAD -1
+
 typedef enum zap_event_type {
 	/*! An incoming connect request is ready to be accepted or rejected. */
 	ZAP_EVENT_CONNECT_REQUEST = 1,
