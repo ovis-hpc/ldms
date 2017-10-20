@@ -979,7 +979,7 @@ int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 		break;
 	default:
 		x->log("Unrecognized request %d\n", cmd);
-		assert(0);
+		assert(0 == "Unrecognized LDMS_CMD request type");
 	}
 	return 0;
 }
@@ -1373,7 +1373,9 @@ void __ldms_passive_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		/* Do nothing */
 		break;
 	default:
-		assert(0);
+		x->log("__ldms_passive_connect_cb: unexpected ldms_xprt event value %d\n",
+			(int) e->type);
+		assert(0 == "__ldms_passive_connect_cb: unexpected ldms_xprt event value");
 	}
 }
 
@@ -1595,7 +1597,7 @@ int __is_lookup_name_good(struct ldms_xprt *x,
 			char errstr[512];
 			(void)regerror(rc, &regex, errstr, sizeof(errstr));
 			x->log("%s(): %s\n", __func__, errstr);
-			assert(0);
+			assert(0 == "bad regcomp in __is_lookup_name_good");
 		}
 
 		rc = regexec(&regex, name, 0, NULL, 0);
@@ -1767,6 +1769,11 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 
 	/* We will be the target of RDMA_WRITE */
 	push_rbd = __ldms_alloc_rbd(x, my_rbd->set, LDMS_RBD_TARGET);
+	if (!push_rbd) {
+		struct ldms_xprt *x = zap_get_ucontext(zep);
+		x->log("handle_rendezvous_push: __ldms_alloc_rbd out of memory\n");
+		return;
+	}
 	push_rbd->rmap = ev->map;
 	push_rbd->remote_set_id = push->push_set_id;
 	/* When the peer cancels the push, it will be my_rbd, not the push_rbd */
@@ -1919,7 +1926,9 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_xprt_put(x);
 		break;
 	default:
-		assert(0);
+		x->log("ldms_zap_cb: unexpected zap event value %d from network\n",
+			(int) ev->type);
+		assert(0 == "network sent bad zap event value to ldms_zap_cb");
 	}
 }
 
@@ -1983,7 +1992,9 @@ static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_zap_cb(zep, ev);
 		break;
 	default:
-		assert(0);
+		x->log("ldms_zap_auto_cb: unexpected zap event value %d from network\n",
+			(int) ev->type);
+		assert(0 == "network sent bad zap event value to ldms_zap_auto_cb");
 	}
 }
 
@@ -2613,7 +2624,7 @@ int ldms_xprt_cancel_push(ldms_set_t s)
 
 int __ldms_xprt_push(ldms_set_t s, int push_flags)
 {
-	int rc;
+	int rc = 0;
 	struct ldms_reply *reply;
 	struct ldms_set *set = s->set;
 	uint32_t meta_meta_gn = __le32_to_cpu(set->meta->meta_gn);
@@ -2750,7 +2761,9 @@ static void sync_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	case LDMS_XPRT_EVENT_RECV:
 		break;
 	default:
-		assert(0);
+		x->log("sync_connect_cb: unexpected ldms_xprt event value %d\n",
+			(int) e->type);
+		assert(0 == "sync_connect_cb: unexpected ldms_xprt event value");
 	}
 	sem_post(&x->sem);
 }

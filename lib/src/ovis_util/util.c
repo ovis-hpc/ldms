@@ -175,8 +175,10 @@ char *av_value(struct attr_value_list *av_list, const char *name)
 		char *str = str_repl_env_vars(av_list->list[i].value);
 		if (str) {
 			string_ref_t ref = malloc(sizeof(*ref));
-			if (!ref)
+			if (!ref) {
+				free(str);
 				return NULL;
+			}
 			ref->str = str;
 			LIST_INSERT_HEAD(&av_list->strings, ref, entry);
 			return str;
@@ -192,8 +194,10 @@ char *av_value_at_idx(struct attr_value_list *av_list, int i)
 		char *str = str_repl_env_vars(av_list->list[i].value);
 		if (str) {
 			string_ref_t ref = malloc(sizeof(*ref));
-			if (!ref)
+			if (!ref) {
+				free(str);
 				return NULL;
+			}
 			ref->str = str;
 			LIST_INSERT_HEAD(&av_list->strings, ref, entry);
 			return str;

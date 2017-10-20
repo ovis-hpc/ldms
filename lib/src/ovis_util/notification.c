@@ -138,11 +138,11 @@ static int process_notification(struct ovis_notification *onp)
 		if ( (onp->max_age > 0 && (now - item->time_in) > onp->max_age) ||
 		     (onp->num_entries > onp->max_entries && onp->max_entries > 0) ) {
 			STAILQ_REMOVE(&(onp->head), item, ovis_notification_entry, entries);
-			free(item);
 			onp->num_entries--;
 			if (onp->log)
 				onp->log(OL_INFO,"Dropping output from queue %s: %s",
 						onp->name, item->buf);
+			free(item);
 			continue;
 		}
 		// attempt item
@@ -318,6 +318,7 @@ struct ovis_notification * ovis_notification_open(const char *name, uint32_t wri
 	struct ovis_notification *onp = calloc(1,sizeof(*onp));
 	if (!onp)
 		goto err;
+	onp->fd = -1;
 	onp->name = strdup(name);
 	if (!onp->name) {
 		goto err;
@@ -381,6 +382,10 @@ struct ovis_notification * ovis_notification_open(const char *name, uint32_t wri
 	return onp;
  err:
 	if (onp) {
+		if (onp->fd != -1) {
+			close(onp->fd);
+		}
+		pthread_mutex_destroy(&onp->lock);
 		free(onp->name);
 		free(onp);
 	}

@@ -336,6 +336,7 @@ static int long_format = 0;
 
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
+	unsigned long last = (unsigned long)arg;
 	if (rc & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST)) {
 		printf("    Error %x updating metric set.\n", rc);
 		goto out;
@@ -348,7 +349,6 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 			return;
 		}
 	}
-	unsigned long last = (unsigned long)arg;
 	struct ldms_timestamp _ts = ldms_transaction_timestamp_get(s);
 	struct ldms_timestamp const *ts = &_ts;
 	int consistent = ldms_set_is_consistent(s);

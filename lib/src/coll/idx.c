@@ -397,6 +397,49 @@ int main(int argc, char *argv[])
 		free(obj);
 	}
 	idx_destroy(idx);
+	idx = idx_create();
+	char *strings[] = {"a", "aa", "aaa", "aaaa", "aaaaa", NULL};
+	i = 0;
+	while (strings[i] != NULL) {
+		char *ikey = strings[i];
+		int keylen = strlen(ikey);
+		rc = idx_add(idx,(idx_key_t)ikey, keylen, ikey);
+		TEST_ASSERT(!rc, "Add object '%s'.\n", ikey);
+		i++;
+	}
+	i = 0;
+	while (strings[i] != NULL) {
+		char *ikey = strings[i];
+		int keylen = strlen(ikey);
+		obj = idx_find(idx, (idx_key_t)ikey, keylen);
+		TEST_ASSERT(obj != NULL,
+			    "Object %s was found with key '%s'.\n", obj, ikey);
+		TEST_ASSERT(0 == strcmp(ikey, obj),
+			    "Object '%s' matches key '%s'.\n",
+			    obj, ikey);
+		i++;
+	}
+	size_t ic = idx_count(idx);
+	TEST_ASSERT(ic > 0,"idx starting with size %lu\n",(unsigned long)ic);
+	i = 0;
+	while (strings[i] != NULL) {
+		char *ikey = strings[i];
+		keylen = strlen(ikey);
+		obj = idx_delete(idx, (idx_key_t)ikey, keylen);
+		TEST_ASSERT(obj != NULL,
+			    "Object %p was deleted with key '%s'.\n", obj, ikey);
+		TEST_ASSERT(0 == strcmp(ikey, obj),
+			    "Object deleted '%s' matches key '%s'.\n",
+			    obj, ikey);
+		TEST_ASSERT(NULL == idx_find(idx, ikey, keylen),
+			"Object deleted '%p can no longer be found.\n", obj);
+		int newic = idx_count(idx);
+		ic--;
+		TEST_ASSERT(ic == newic, "idx size correct after delete.\n", obj);
+		i++;
+	}
+
+	idx_destroy(idx);
 	return 0;
 }
 

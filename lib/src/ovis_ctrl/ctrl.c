@@ -229,11 +229,21 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname,
 		if (!_sockname)
 			goto err;
 		sockpath = dirname(_sockname);
+		if (strlen(sockpath) + 1 > sizeof(my_un.sun_path)) {
+			printf("sockpath '%s' too long\n", sockpath);
+			errno = EINVAL;
+			goto err;
+		}
 		strcpy(my_un.sun_path, sockname);
 	} else {
 		sockpath = getenv(sock_envpath);
 		if (!sockpath)
 			sockpath = "/var/run";
+		if (strlen(sockpath) + 2 + strlen(sockname) > sizeof(my_un.sun_path)) {
+			printf("sockpath '%s/%s' too long\n", sockpath, sockname);
+			errno = EINVAL;
+			goto err;
+		}
 		sprintf(my_un.sun_path, "%s/%s", sockpath, sockname);
 	}
 
@@ -249,8 +259,10 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname,
 	sock->lcl_sun.sun_family = AF_UNIX;
 
 	mn = strdup(my_name);
-	if (!mn)
+	if (!mn) {
+		close(sock->sock);
 		goto err;
+	}
 	sprintf(my_un.sun_path, "%s/%s", sockpath, basename(mn));
 	free(mn);
 

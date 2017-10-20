@@ -151,7 +151,7 @@ typedef struct ldmsd_req_hdr_s {
 	uint32_t type;		/* Request type */
 	uint32_t flags;		/* EOM==1 means this is the last record for this message */
 	uint32_t msg_no;	/* Unique for each request */
-	uint32_t code;		/* For command req, it is the unique command id. For command response, it is the error code. */
+	int32_t code;		/* For command req, it is the unique command id. For command response, it is the error code. */
 	uint32_t rec_len;	/* Record length in bytes including this header */
 } *ldmsd_req_hdr_t;
 
@@ -233,6 +233,6 @@ uint32_t ldmsd_req_str2id(const char *verb);
  * \return The attribute ID is returned on success. -1 is returned if
  *         the attribute name is not recognized.
  */
-uint32_t ldmsd_req_attr_str2id(const char *name);
+int32_t ldmsd_req_attr_str2id(const char *name);
 
 #endif /* LDMS_SRC_LDMSD_LDMSD_REQUEST_H_ */

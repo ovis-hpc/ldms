@@ -102,7 +102,7 @@ static int create_metric_set(const char *in, char* sn)
 			rc = ENOMEM;
 			goto err;
 		}
-		snprintf(schema_name, len, "%s%d", schema_name, curmets);
+		snprintf(schema_name, len, "%s%d", sn, curmets);
 	}
 	schema = ldms_schema_new(schema_name);
 	if (!schema) {
@@ -118,7 +118,7 @@ static int create_metric_set(const char *in, char* sn)
 			rc = ENOMEM;
 			goto err;
 		}
-		snprintf(instance_name, len, "%s%d", instance_name, curmets);
+		snprintf(instance_name, len, "%s%d", in, curmets);
 	}
 
 	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);

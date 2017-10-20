@@ -604,7 +604,9 @@ static int __remote_send_cmd(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req,
 
 	memcpy(req_buf, req, req_sz);
 	memcpy(req_buf + req_sz, data, data_len);
-	return ldms_xprt_send(ctrl->remote.x, req_buf, req_sz + data_len);
+	int rc = ldms_xprt_send(ctrl->remote.x, req_buf, req_sz + data_len);
+	free(req_buf);
+	return rc;
 }
 
 static int __send_cmd(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req,
@@ -775,11 +777,19 @@ struct ldmsctl_ctrl *__unix_domain_ctrl(char *my_name, char *sockname)
 		if (!_sockname)
 			goto err;
 		sockpath = dirname(_sockname);
+		if (strlen(sockpath)+1 > sizeof(my_un.sun_path)) {
+			errno = EINVAL;
+			goto err;
+		}
 		strcpy(my_un.sun_path, sockname);
 	} else {
 		sockpath = getenv(LDMSD_SOCKPATH_ENV);
 		if (!sockpath)
 			sockpath = "/var/run";
+		if (strlen(sockpath) + 2 + strlen(sockname) > sizeof(my_un.sun_path)) {
+			errno = EINVAL;
+			goto err;
+		}
 		sprintf(my_un.sun_path, "%s/%s", sockpath, sockname);
 	}
 
@@ -932,7 +942,7 @@ int main(int argc, char *argv[])
 {
 	int op;
 	char *host, *port, *secretword_path, *sockname, *env, *s, *xprt;
-	host = port = secretword_path = sockname = s = NULL;
+	host = port = secretword_path = sockname = s = xprt = NULL;
 	int rc, is_inet = 0;
 
 	while ((op = getopt(argc, argv, FMT)) != -1) {

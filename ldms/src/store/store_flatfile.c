@@ -212,6 +212,11 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 			}
 			/* Create new metric store if not exist. */
 			ms = calloc(1, sizeof(*ms));
+			if (!ms) {
+				msglog(LDMSD_LERROR, "Out of memory at %s:%d\n",
+					__FILE__, __LINE__);
+				goto err4;
+			}
 			sprintf(tmp_path, "%s/%s", si->path, name);
 			ms->path = strdup(tmp_path);
 			if (!ms->path) {
@@ -236,6 +241,13 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	}
 	goto out;
 err4:
+	if (ms) {
+		if (ms->path)
+			free(ms->path);
+		if (ms->file)
+			fclose(ms->file);
+		free(ms);
+	}
 	while ((ms = LIST_FIRST(&si->ms_list))) {
 		LIST_REMOVE(ms, entry);
 		if (ms->path)
