@@ -1,7 +1,7 @@
 EXTRA_DIST=ovis-auth.sh.in
 lib_LTLIBRARIES =
 
-AM_CFLAGS = -I$(srcdir)/../
+AM_CFLAGS = -I$(srcdir)/../ -I..
 
 libovis_auth_la_SOURCES = auth.c auth.h
 libovis_authinclude_HEADERS =  auth.h

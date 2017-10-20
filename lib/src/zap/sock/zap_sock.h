@@ -61,7 +61,7 @@
 #include <event2/bufferevent.h>
 #include <event2/listener.h>
 #include <event2/thread.h>
-
+#include "ovis-lib-config.h"
 #include "coll/rbt.h"
 #include "zap.h"
 #include "zap_priv.h"
@@ -153,7 +153,7 @@ struct sock_msg_connect {
 	struct zap_version ver;
 	char sig[8];
 	uint32_t data_len;
-	char data[0];
+	char data[OVIS_FLEX];
 };
 
 /**
@@ -162,7 +162,7 @@ struct sock_msg_connect {
 struct sock_msg_sendrecv {
 	struct sock_msg_hdr hdr;
 	uint32_t data_len;
-	char data[0];
+	char data[OVIS_FLEX];
 };
 
 /**
@@ -183,7 +183,7 @@ struct sock_msg_read_resp {
 	uint16_t status; /**< Return status */
 	uint64_t dst_ptr; /**< Destination memory addr (on initiator) */
 	uint32_t data_len; /**< Response data length */
-	char data[0]; /**< Response data */
+	char data[OVIS_FLEX]; /**< Response data */
 };
 
 /**
@@ -194,7 +194,7 @@ struct sock_msg_write_req {
 	uint32_t dst_map_key; /**< Destination map key */
 	uint64_t dst_ptr; /**< Destination address */
 	uint32_t data_len; /**< Data length */
-	char data[0]; /**< data for SOCK_MSG_WRITE_REQ */
+	char data[OVIS_FLEX]; /**< data for SOCK_MSG_WRITE_REQ */
 };
 
 /**
@@ -214,7 +214,7 @@ struct sock_msg_rendezvous {
 	uint32_t acc; /**< Access */
 	uint64_t addr; /**< Address in the map */
 	uint32_t data_len; /**< Length */
-	char msg[0]; /**< Context */
+	char msg[OVIS_FLEX]; /**< Context */
 };
 
 /**
@@ -229,7 +229,7 @@ struct z_sock_io {
 	union {
 		struct sock_msg_hdr hdr;
 		struct sock_msg_read_req read;
-		struct sock_msg_write_req write;
+		struct sock_msg_write_req write; /* flexi */
 	};
 };
 

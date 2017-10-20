@@ -1,6 +1,6 @@
 pkglib_LTLIBRARIES = libzap_sock.la
 
-AM_CFLAGS = -I$(srcdir)/../.. -I$(srcdir)/.. -I$(top_srcdir) @LIBEVENT_INCDIR_FLAG@
+AM_CFLAGS = -I$(srcdir)/../.. -I$(srcdir)/.. -I$(top_srcdir) @LIBEVENT_INCDIR_FLAG@ -I../..
 
 libzap_sock_la_SOURCES = zap_sock.c zap_sock.h
 libzap_sock_la_CFLAGS = $(AM_CFLAGS) 

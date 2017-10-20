@@ -800,8 +800,11 @@ extern int ldmsd_authentication_required();
 typedef struct ldmsd_req_attr_s {
 	uint32_t discrim;	/* If 0, end of attr_list */
 	uint32_t attr_id;	/* Attribute identifier, unique per ldmsd_req_hdr_s.cmd_id */
+#ifdef SWIG
+%immutable;
+#endif
 	uint32_t attr_len;	/* Size of value in bytes */
-	uint8_t attr_value[0];	/* Size is attr_len */
+	uint8_t attr_value[OVIS_FLEX];	/* Size is attr_len */
 } *ldmsd_req_attr_t;
 typedef struct ldmsd_req_hdr_s {
 	uint32_t marker;	/* Always has the value 0xff */

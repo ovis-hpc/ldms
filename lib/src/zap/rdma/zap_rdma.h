@@ -54,6 +54,7 @@
 #include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
 #include <semaphore.h>
+#include "ovis-lib-config.h"
 #include "../zap.h"
 #include "../zap_priv.h"
 
@@ -83,19 +84,19 @@ struct z_rdma_share_msg {
 	uint32_t len;
 	uint32_t rkey;
 	uint64_t va;
-	char msg[0];
+	char msg[OVIS_FLEX];
 };
 
 struct z_rdma_accept_msg {
 	struct z_rdma_message_hdr hdr;
 	uint32_t len;
-	char data[0];
+	char data[OVIS_FLEX];
 };
 
 struct z_rdma_reject_msg {
 	struct z_rdma_message_hdr hdr;
 	uint32_t len;
-	char msg[0];
+	char msg[OVIS_FLEX];
 };
 
 #pragma pack()
@@ -135,7 +136,7 @@ struct z_rdma_context {
 struct z_rdma_conn_data {
 	struct zap_version v;
 	uint8_t data_len;
-	char data[0];
+	char data[OVIS_FLEX];
 };
 #pragma pack(pop)
 
@@ -156,7 +157,7 @@ struct z_rdma_ep {
 	struct ibv_qp *qp;
 
 	union {
-		struct z_rdma_conn_data conn_data;
+		struct z_rdma_conn_data conn_data; /* flexi */
 		char ___[RDMA_CONN_DATA_MAX];
 	};
 

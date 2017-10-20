@@ -55,7 +55,7 @@
 #include <semaphore.h>
 #include <sys/queue.h>
 #include <pthread.h>
-
+#include "ovis-lib-config.h"
 #include "zap.h"
 
 #include "config.h"
