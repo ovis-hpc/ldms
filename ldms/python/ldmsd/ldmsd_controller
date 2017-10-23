@@ -81,36 +81,34 @@ class LdmsdCmdParser(cmd.Cmd):
         if (sockname is None) and (host is None or port is None):
             raise ValueError("Expecting either sockname or host & port. None is given")
 
-        if sockname is not None:
-            self.ctrl = ldmsd_config.ldmsdUSocketConfig(ldmsd_sockpath = sockname)
-            self.prompt = "{0}> ".format(os.path.basename(sockname))
+        try:
+            self.secretword = None
             if secretPath is not None:
-                print("Unix domain socket is in used. Ignore the path to the secret word")
-        else:
-            try:
-                self.secretword = None
-                if secretPath is not None:
-                    try:
-                        from ovis_lib import ovis_auth
-                    except ImportError:
-                        raise ImportError("No module named ovis_lib. Please "
-                                        "make sure that ovis is built with "
-                                        "--enable-swig")
-                    self.secretword = ovis_auth.ovis_auth_get_secretword(secretPath, None)
-            except:
-                raise
+                try:
+                    from ovis_lib import ovis_auth
+                except ImportError:
+                    raise ImportError("No module named ovis_lib. Please "
+                                    "make sure that ovis is built with "
+                                    "--enable-swig")
+                self.secretword = ovis_auth.ovis_auth_get_secretword(secretPath, None)
+        except:
+            raise
 
-            if inband is True:
-                self.ctrl = ldmsd_config.ldmsdInbandConfig(host = host,
-                                                           port = port,
-                                                           xprt = xprt,
-                                                           secretword = self.secretword)
-                self.prompt = "{0}:{1}:{2}>".format(xprt, host, port)
-            else:
-                self.ctrl = ldmsd_config.ldmsdInetConfig(host = host,
-                                                             port = int(port),
-                                                             secretword = self.secretword)
-                self.prompt = "{0}:{1}> ".format(host, port)
+        if sockname is not None:
+            self.ctrl = ldmsd_config.ldmsdOutbandConfig(sockname = sockname,
+                                                    secretword = self.secretword)
+            self.prompt = "{0}> ".format(os.path.basename(sockname))
+        elif inband is True:
+            self.ctrl = ldmsd_config.ldmsdInbandConfig(host = host,
+                                                       port = port,
+                                                       xprt = xprt,
+                                                       secretword = self.secretword)
+            self.prompt = "{0}:{1}:{2}>".format(xprt, host, port)
+        else:
+            self.ctrl = ldmsd_config.ldmsdOutbandConfig(host = host,
+                                                         port = int(port),
+                                                         secretword = self.secretword)
+            self.prompt = "{0}:{1}> ".format(host, port)
 
         if infile:
             cmd.Cmd.__init__(self, stdin=infile)
@@ -900,8 +898,7 @@ if __name__ == "__main__":
                             default = 'sock')
         parser.add_argument('--auth_file',
                             help = "Path to the file containing the secretword. \
-This must be use only when the ldmsd is using authentication and \
-ldmsd_controller is not connecting to ldmsd through a unix domain socket.")
+This is required when the ldmsd is using authentication regardless of transport types.")
         parser.add_argument('--source',
                             help = "Path to the config file")
         parser.add_argument('--script',
@@ -919,6 +916,10 @@ ldmsd_controller is not connecting to ldmsd through a unix domain socket.")
         if (args.sockname is None) and (args.host is None or args.port is None):
             print("Please give either --sockname or both of --host and --port.")
             sys.exit(1)
+
+        if (args.sockname is not None) and (args.host is not None or args.port is not None):
+            print("The Unix Domain socket path is ignored.")
+            args.sockname = None
 
         cmdParser = LdmsdCmdParser(sockname = args.sockname,
                                    host = args.host,
