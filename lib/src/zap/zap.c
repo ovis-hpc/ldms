@@ -64,6 +64,7 @@
 #include <limits.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include "ovis-lib-config.h"
 #include "zap.h"
 #include "zap_priv.h"
 
@@ -299,7 +300,7 @@ void blocking_zap_cb(zap_ep_t zep, zap_event_t ev)
 
 struct zap_interpose_ctxt {
 	struct zap_event ev;
-	unsigned char data[0];
+	unsigned char data[OVIS_FLEX];
 };
 
 /*

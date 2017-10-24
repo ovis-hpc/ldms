@@ -95,10 +95,10 @@ typedef struct ldms_value_desc {
 	uint8_t vd_type;	/*! The type of the value, enum ldms_value_type */
 	uint8_t vd_flags;	/*! Metric or Attribute */
 #ifdef SWIG
-%immutable;
+%ignore vd_name;
 #endif
 	uint8_t vd_name_len;	/*! The length of the metric name in bytes*/
-	char vd_name[0];	/*! The metric name */
+	char vd_name[OVIS_FLEX];		/*! The metric name */
 } *ldms_mdesc_t;
 #pragma pack()
 
@@ -177,7 +177,7 @@ struct ldms_set_hdr {
 	uint32_t card;		/* Size of dictionary */
 	uint32_t meta_sz;	/* size of meta data in bytes */
 	uint32_t data_sz;	/* size of metric values in bytes */
-	uint32_t dict[0];	/* The attr/metric dictionary */
+	uint32_t dict[OVIS_FLEX];/* The attr/metric dictionary */
 };
 
 /**
@@ -197,21 +197,23 @@ typedef union ldms_value {
 	int64_t v_s64;
 	float v_f;
 	double v_d;
-	char a_char[0];
-	uint8_t a_u8[0];
-	int8_t a_s8[0];
-	uint16_t a_u16[0];
-	int16_t a_s16[0];
-	uint32_t a_u32[0];
-	int32_t a_s32[0];
-	uint64_t a_u64[0];
-	int64_t a_s64[0];
-	float a_f[0];
-	double a_d[0];
+	char a_char[OVIS_FLEX_UNION];
+	uint8_t a_u8[OVIS_FLEX_UNION];
+	int8_t a_s8[OVIS_FLEX_UNION];
+	uint16_t a_u16[OVIS_FLEX_UNION];
+	int16_t a_s16[OVIS_FLEX_UNION];
+	uint32_t a_u32[OVIS_FLEX_UNION];
+	int32_t a_s32[OVIS_FLEX_UNION];
+	uint64_t a_u64[OVIS_FLEX_UNION];
+	int64_t a_s64[OVIS_FLEX_UNION];
+	float a_f[OVIS_FLEX_UNION];
+	double a_d[OVIS_FLEX_UNION];
 } *ldms_mval_t;
 
 /**
  * \brief LDMS value type enumeration
+ * Note: the numeric values must be < 255, as enum ldms_value_type fitting 
+ * into a byte is assumed in some transmission protocols.
  */
 enum ldms_value_type {
 	LDMS_V_NONE = 0,
@@ -243,10 +245,10 @@ enum ldms_value_type {
 
 typedef struct ldms_name {
 #ifdef SWIG
-%immutable;
+%ignore name;
 #endif
 	uint8_t len;
-	char name[0];
+	char name[OVIS_FLEX];
 } *ldms_name_t;
 
 #ifndef roundup

@@ -1,6 +1,6 @@
 pkglib_LTLIBRARIES = libzap_rdma.la
 
-AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir)
+AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir) -I../..
 
 libzap_rdma_la_SOURCES = zap_rdma.c zap_rdma.h
 libzap_rdma_la_CFLAGS = @LIBIBVERBS_INCDIR_FLAG@ @LIBRDMACM_INCDIR_FLAG@ ${AM_CFLAGS}

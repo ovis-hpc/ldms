@@ -97,7 +97,7 @@ struct flatfile_store_instance {
 	idx_t ms_idx;
 	LIST_HEAD(ms_list, flatfile_metric_store) ms_list;
 	int metric_count;
-	struct flatfile_metric_store *ms[/*flex array*/];
+	struct flatfile_metric_store *ms[OVIS_FLEX];
 };
 
 static pthread_mutex_t cfg_lock;

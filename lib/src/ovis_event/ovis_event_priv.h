@@ -50,6 +50,7 @@
  */
 #ifndef __OVIS_EVENT_PRIV_H
 #define __OVIS_EVENT_PRIV_H
+#include "ovis-lib-config.h"
 #include "ovis_event.h"
 #include "../coll/heap.h"
 #include <pthread.h>
@@ -71,7 +72,7 @@ struct ovis_event {
 struct ovis_event_heap {
 	uint32_t alloc_len;
 	uint32_t heap_len;
-	struct ovis_event *ev[0];
+	struct ovis_event *ev[OVIS_FLEX];
 };
 
 struct ovis_event_manager {

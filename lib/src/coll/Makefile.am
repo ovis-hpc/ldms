@@ -1,6 +1,6 @@
 lib_LTLIBRARIES =
 
-AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir)
+AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir) -I..
 
 check_PROGRAMS =
 
