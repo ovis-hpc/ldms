@@ -55,6 +55,7 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <errno.h>
+#include <assert.h>
 #include "store_csv_common.h"
 #define DSTRING_USE_SHORT
 #include "ovis_util/dstring.h"
@@ -662,9 +663,7 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 void close_store_common(struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps) {
 	if (!s_handle || !cps) {
-		ldmsd_log(LDMSD_LERROR,
-			"%s: close_store_common with null handle or plugin data\n",
-			(cps ? cps->pname : "null plugin data"));
+		assert(NULL == "close_store_common invalid arguments");
 		return;
 	}
 
