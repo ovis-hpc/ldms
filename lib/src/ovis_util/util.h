@@ -112,7 +112,7 @@ struct attr_value_list {
 	int size;
 	int count;
 	LIST_HEAD(string_list, string_ref_s) strings;
-	struct attr_value list[0];
+	struct attr_value list[OVIS_FLEX];
 };
 
 /**

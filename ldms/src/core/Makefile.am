@@ -1,6 +1,6 @@
 lib_LTLIBRARIES =
 
-AM_CFLAGS = $(DBGFLAGS) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@ @LIBEVENT_INCDIR_FLAG@
+AM_CFLAGS = $(DBGFLAGS) -I$(top_srcdir) -I.. @OVIS_LIB_INCDIR_FLAG@ @LIBEVENT_INCDIR_FLAG@
 AM_CPPFLAGS = -DSYSCONFDIR='"$(sysconfdir)"' -DPLUGINDIR='"$(pkglibdir)"'
 AM_CFLAGS += \
 "-DLDMS_SRCDIR=\"$(abs_top_srcdir)\"" \

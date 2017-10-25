@@ -7,7 +7,7 @@ nodist_pkgpython_PYTHON = zap.py
 pkgpyexec_LTLIBRARIES = _zap.la
 _zap_la_SOURCES = $(SWIG_SOURCES)
 nodist__zap_la_SOURCES = zap.c
-_zap_la_CFLAGS = -g $(SWIG_PYTHON_CPPFLAGS) -I$(top_srcdir)/src
+_zap_la_CFLAGS = -g $(SWIG_PYTHON_CPPFLAGS) -I$(top_srcdir)/src -I../../src
 _zap_la_LDFLAGS = -module $(PYTHON_LDFLAGS)
 _zap_la_LIBADD = $(top_builddir)/src/zap/libzap.la
 

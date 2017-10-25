@@ -3,7 +3,7 @@ if ENABLE_SOS
 sbin_PROGRAMS += ldmsd_sos_init
 endif
 CORE = ../core
-AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
+AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I.. @OVIS_LIB_INCDIR_FLAG@
 AM_CFLAGS += \
 "-DLDMS_SRCDIR=\"$(abs_top_srcdir)\"" \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
