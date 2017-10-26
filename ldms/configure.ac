@@ -8,7 +8,7 @@ AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 AM_INIT_AUTOMAKE([foreign tar-pax])
 m4_ifdef([AM_SILENT_RULES],
-         [AM_SILENT_RULES([yes])
+	 [AM_SILENT_RULES([yes])
 ])
 AX_PREFIX_CONFIG_H_G(src/ovis-ldms-config.h)
 AM_PROG_LIBTOOL
@@ -101,6 +101,8 @@ dnl spaceless names in the cray_system_sampler. Default is with spaces for rever
 OPTION_DEFAULT_ENABLE([spaceless_names], [ENABLE_SPACELESS_NAMES])
 dnl aries_mmr is not part of the cray_system_sampler
 OPTION_DEFAULT_DISABLE([aries-mmr], [ENABLE_ARIES_MMR], [Requires --enable-gpcd or --with-aries-libgpcd=libdir,incdir])
+dnl linkstatus is not part of the cray_system_sampler
+OPTION_DEFAULT_DISABLE([aries_linkstatus], [ENABLE_ARIES_LINKSTATUS], [Requires gpcdr to be set up with status metrics])
 OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
@@ -319,7 +321,7 @@ then
 
 	if test -z "$ENABLE_SPACELESS_NAMES_TRUE"; then
 	   AC_DEFINE([HAVE_SPACELESS_NAMES],[1],[cray_system_sampler: Using spaceless names.])
-        fi
+	fi
 
 	if !(test -z "$ENABLE_GEMINI_GPCDR_TRUE") && !(test -z "$ENABLE_ARIES_GPCDR_TRUE")
 	then
@@ -389,8 +391,8 @@ then
 	AC_MSG_FAILURE([ not found])
 	)
 
-        AC_CHECK_LIB(micmgmt, mic_open_device, [],
-            AC_MSG_FAILURE([micmgmt library not found.  knc_sampler requires libmicmgmt.]))
+	AC_CHECK_LIB(micmgmt, mic_open_device, [],
+	    AC_MSG_FAILURE([micmgmt library not found.  knc_sampler requires libmicmgmt.]))
 fi
 
 dnl Reset LIBS variable.

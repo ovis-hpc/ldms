@@ -682,4 +682,4 @@ U64 1626210          ipogif0_tx_bytes
 
 
 .SH SEE ALSO
-ldmsd(7), Plugin_kgnilnd(7), Plugin_aries_mmr(7), ldms_quickstart(7), ldmsd_controller(8)
+ldmsd(7), Plugin_kgnilnd(7), Plugin_aries_mmr(7), Plugin_aries_linkstatus(7), ldms_quickstart(7), ldmsd_controller(8)
