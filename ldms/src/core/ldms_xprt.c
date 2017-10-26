@@ -2614,7 +2614,7 @@ static int send_req_cancel_push(struct ldms_rbuf_desc *r)
 	req.hdr.xid = 0;
 	req.hdr.cmd = htonl(LDMS_CMD_CANCEL_PUSH);
 	req.hdr.len = htonl(len);
-	req.cancel_notify.set_id = r->remote_set_id;
+	req.cancel_push.set_id = r->remote_set_id;
 	rc = zap_send(x->zap_ep, &req, len);
 	ldms_xprt_put(x);
 	return rc;
