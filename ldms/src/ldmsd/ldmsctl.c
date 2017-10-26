@@ -152,9 +152,9 @@ static int command_comparator(const void *a, const void *b)
 static void usage(char *argv[])
 {
 	printf("%s: [%s]\n"
-               "    -S <socket>     The UNIX socket that the ldms daemon is listening on.\n"
-               "                    [" LDMSD_CONTROL_SOCKNAME "].\n",
-               argv[0], FMT);
+	       "    -S <socket>     The UNIX socket that the ldms daemon is listening on.\n"
+	       "                    [" LDMSD_CONTROL_SOCKNAME "].\n",
+	       argv[0], FMT);
 	exit(1);
 }
 
@@ -350,9 +350,9 @@ static void help_updtr_match_add()
 		"     name=   The update policy name\n"
 		"     regex=  The regular expression string\n"
 		"     match=  The value with which to compare; if match=inst,\n"
-		"     	      the expression will match the set's instance name, if\n"
-		"     	      match=schema, the expression will match the set's\n"
-		"     	      schema name.\n");
+		"	      the expression will match the set's instance name, if\n"
+		"	      match=schema, the expression will match the set's\n"
+		"	      schema name.\n");
 }
 
 static void help_updtr_match_del()
@@ -362,9 +362,9 @@ static void help_updtr_match_del()
 		"     name=   The update policy name\n"
 		"     regex=  The regular expression string\n"
 		"     match=  The value with which to compare; if match=inst,\n"
-		"     	      the expression will match the set's instance name, if\n"
-		"     	      match=schema, the expression will match the set's\n"
-		"     	      schema name.\n");
+		"	      the expression will match the set's instance name, if\n"
+		"	      match=schema, the expression will match the set's\n"
+		"	      schema name.\n");
 }
 
 static void help_updtr_prdcr_add()
@@ -682,7 +682,8 @@ static char *__recv_resp(struct ldmsctl_ctrl *ctrl)
 static int __handle_cmd(char *cmd, struct ldmsctl_ctrl *ctrl)
 {
 	static int msg_no = 0;
-	struct ldmsd_req_hdr_s request, response;
+	ldmsd_req_hdr_t request;
+	struct ldmsd_req_hdr_s response;
 	int rc;
 
 	struct command key, *action_cmd;
@@ -713,22 +714,7 @@ static int __handle_cmd(char *cmd, struct ldmsctl_ctrl *ctrl)
 
 	size_t buffer_offset = 0;
 	memset(buffer, 0, buffer_len);
-	rc = ldmsd_process_cfg_str(&request, cmd, &buffer, &buffer_offset,
-							&buffer_len);
-	if (rc) {
-		if (rc == ENOMEM) {
-			printf("Out of memory\n");
-			return rc; /* Return the error to exit the program */
-		} else if (rc == ENOSYS) {
-			printf("Command not found\n");
-		} else {
-			printf("Invalid configuration\n");
-		}
-		return 0;
-	}
-	request.flags = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
-	request.msg_no = msg_no;
-	request.type = LDMSD_REQ_TYPE_CONFIG_CMD;
+	request = ldmsd_parse_config_str(line, msg_no);
 	msg_no++;
 
 	rc = __send_cmd(ctrl, &request, buffer, buffer_offset);
@@ -744,13 +730,13 @@ static int __handle_cmd(char *cmd, struct ldmsctl_ctrl *ctrl)
 	memcpy(&response, resp, sizeof(response));
 	char *msg = resp + sizeof(response);
 
-	if (response.code != 0) {
+	if (response.req_id != 0) {
 		printf("%s\n", msg);
 	} else {
-		if (request.code == LDMSD_PRDCR_STATUS_REQ ||
-				request.code == LDMSD_DAEMON_STATUS_REQ ||
-				request.code == LDMSD_UPDTR_STATUS_REQ ||
-				request.code == LDMSD_STRGP_STATUS_REQ) {
+		if (request.req_id == LDMSD_PRDCR_STATUS_REQ ||
+				request.req_id == LDMSD_DAEMON_STATUS_REQ ||
+				request.req_id == LDMSD_UPDTR_STATUS_REQ ||
+				request.req_id == LDMSD_STRGP_STATUS_REQ) {
 			printf("%s\n", msg);
 		}
 	}

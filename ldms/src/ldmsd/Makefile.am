@@ -1,4 +1,5 @@
-sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
+#sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
+sbin_PROGRAMS = ldmsd ldms_ls
 if ENABLE_SOS
 sbin_PROGRAMS += ldmsd_sos_init
 endif

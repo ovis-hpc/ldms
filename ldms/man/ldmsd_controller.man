@@ -40,16 +40,20 @@ Specify the UNIX sock used to communicate with the ldmsd
 .br
 Hostname of the ldmsd to connect to
 .TP
-.BI --post " POST"
+.BI --port " PORT"
 .br
 Inet ctrl listener port of ldmsd
 .TP
+.BI --inband
+.br
+Connect to an LDMS daemon via the data channel
+.TP
 .BI --auth_file " AUTH_FILE"
 .br
-Path to the file containing the secret word
+Path to the file containing the secret word.
 .br
-NOTE: if you are using ldmsd_controller to configure a remote host and you are
-using authentication, then you must build with --enable-swig.
+NOTE: if you are using ldmsd_controller to configure an LDMS daemon either local
+or remote and you are using authentication, then you must build with --enable-swig.
 .TP
 .BI --source " SOURCE"
 .br

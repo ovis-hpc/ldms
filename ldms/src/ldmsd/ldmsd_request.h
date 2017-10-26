@@ -107,6 +107,7 @@ enum ldmsd_request {
 	LDMSD_ONESHOT_REQ,
 	LDMSD_LOGROTATE_REQ,
 	LDMSD_EXIT_DAEMON_REQ,
+	LDMSD_RECORD_LEN_ADVICE_REQ,
 	LDMSD_NOTSUPPORT_REQ,
 };
 
@@ -135,6 +136,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_PATH,
 	LDMSD_ATTR_TIME,
 	LDMSD_ATTR_PUSH,
+	LDMSD_ATTR_REC_LEN,
 	LDMSD_ATTR_LAST,
 };
 
@@ -151,49 +153,105 @@ typedef struct ldmsd_req_hdr_s {
 	uint32_t type;		/* Request type */
 	uint32_t flags;		/* EOM==1 means this is the last record for this message */
 	uint32_t msg_no;	/* Unique for each request */
-	int32_t code;		/* For command req, it is the unique command id. For command response, it is the error code. */
+	union {
+		uint32_t req_id;	/* request id */
+		uint32_t rsp_err;	/* response error  */
+	};
 	uint32_t rec_len;	/* Record length in bytes including this header */
 } *ldmsd_req_hdr_t;
 
+/**
+ * The format of requests and replies is as follows:
+ *
+ *                 Standard Record Format
+ * +---------------------------------------------------------+
+ * | ldmsd_req_hdr_s                                         |
+ * +---------------------------------------------------------+
+ * | attr_0, attr_discrim == 1                               |
+ * +---------------------------------------------------------+
+ * S                                                         |
+ * +---------------------------------------------------------+
+ * | attr_N, attr_discrim == 1                               |
+ * +---------------------------------------------------------+
+ * | attr_discrim == 0, remaining fields are not present     |
+ * +---------------------------------------------------------+
+ *
+ *                 String Record Format
+ * +---------------------------------------------------------+
+ * | ldmsd_req_hdr_s                                         |
+ * +---------------------------------------------------------+
+ * | String bytes, i.e. attr_discrim > 1                     |
+ * | length is rec_len - sizeof(ldmsd_req_hdr_s)             |
+ * S                                                         S
+ * +---------------------------------------------------------+
+ */
 typedef struct req_ctxt_key {
 	uint32_t msg_no;
 	uint64_t conn_id;
 } *msg_key_t;
 
 struct ldmsd_req_ctxt;
-/** Function to handle the response */
-typedef int (*ldmsd_req_resp_handler_t)(struct ldmsd_req_ctxt *ctxt,
-				char *data, size_t data_len, int msg_flags);
+
+
+typedef struct ldmsd_cfg_ldms_s {
+	ldms_t ldms;
+} *ldmsd_cfg_ldms_t;
+
+typedef struct ldmsd_cfg_sock_s {
+	int fd;
+} *ldmsd_cfg_sock_t;
+
+typedef struct ldmsd_cfg_file_s {
+	uint32_t next_msg_no;
+} *ldmsd_cfg_file_t;
+
+struct ldmsd_cfg_xprt_s;
+typedef int (*ldmsd_cfg_send_fn_t)(struct ldmsd_cfg_xprt_s *xprt, char *data, size_t data_len);
+typedef struct ldmsd_cfg_xprt_s {
+	union {
+		void *xprt;
+		struct ldmsd_cfg_file_s file;
+		struct ldmsd_cfg_sock_s sock;
+		struct ldmsd_cfg_ldms_s ldms;
+	};
+	ldmsd_cfg_send_fn_t send_fn;
+} *ldmsd_cfg_xprt_t;
+
 typedef struct ldmsd_req_ctxt {
 	struct req_ctxt_key key;
 	struct rbn rbn;
-	struct ldmsd_req_hdr_s rh;
+
+	ldmsd_cfg_xprt_t xprt;	/* network transport */
+
 	int rec_no;
 	uint32_t errcode;
+
 	size_t line_len;
 	char *line_buf;
+
 	size_t req_len;
 	size_t req_off;
 	char *req_buf;
+
 	size_t rep_len;
 	size_t rep_off;
 	char *rep_buf;
-	ldms_t ldms; /* In-band */
-	int dest_fd; /* Out-of-band */
-	struct msghdr *mh;
-
-	ldmsd_req_resp_handler_t resp_handler;
 } *ldmsd_req_ctxt_t;
 
 typedef struct ldmsd_req_attr_s {
-	uint32_t discrim;	/* If 0, end of attr_list */
+	uint32_t discrim;	/* If 0, the remaining fields are not present */
 	uint32_t attr_id;	/* Attribute identifier, unique per ldmsd_req_hdr_s.cmd_id */
 	uint32_t attr_len;	/* Size of value in bytes */
-	uint8_t attr_value[0];	/* Size is attr_len */
+	union {
+		uint8_t attr_value[0];
+		uint16_t attr_u16[0];
+		uint32_t attr_u32[0];
+		uint64_t attr_u64[0];
+	};
 } *ldmsd_req_attr_t;
 
 /**
- * \brief Process a configuration line and prepare the buffer of ldmsd_req_attr
+ * \brief Translate a config string to a LDMSD configuration request
  *
  * The configuration line is in the format of <verb>[ <attr=value> <attr=value>..]
  * The function performs the following tasks.
@@ -204,16 +262,12 @@ typedef struct ldmsd_req_attr_s {
  * - If \c buf is not large enough, it is re-allocated to the necessary size.
  *   \c *buflen is updated.
  *
- * \param request	request header to be set.
- * \param cfg
- * \param buf
- * \param bufoffset
- * \param buflen
+ * \param cfg A string containing the configuaration command text
+ * \param msg_no The next unique message number
  *
- * \return 0 on success. An error code is returned on failure.
+ * \return The request parsed from the string
  */
-int ldmsd_process_cfg_str(ldmsd_req_hdr_t request, const char *cfg,
-			char **buf, size_t *bufoffset, size_t *buflen);
+ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no);
 
 /**
  * \brief Convert a command string to the request ID.
@@ -234,5 +288,30 @@ uint32_t ldmsd_req_str2id(const char *verb);
  *         the attribute name is not recognized.
  */
 int32_t ldmsd_req_attr_str2id(const char *name);
+
+/**
+ * \brief Advise the peer our configuration record length
+ *
+ * Send configuration record length advice
+ *
+ * \param xprt The configuration transport handle
+ * \param rec_len The record length
+ */
+void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec_len);
+int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request, size_t req_len);
+int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc, char *data, size_t data_len, int msg_flags);
+void ldmsd_send_error_reply(ldmsd_cfg_xprt_t xprt, uint32_t msg_no,
+			    uint32_t error, char *data, size_t data_len);
+int ldmsd_handle_request(ldmsd_req_ctxt_t reqc);
+static inline ldmsd_req_attr_t ldmsd_first_attr(ldmsd_req_hdr_t rh)
+{
+	return (ldmsd_req_attr_t)(rh + 1);
+}
+
+static inline ldmsd_req_attr_t ldmsd_next_attr(ldmsd_req_attr_t attr)
+{
+	return (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+}
+
 
 #endif /* LDMS_SRC_LDMSD_LDMSD_REQUEST_H_ */

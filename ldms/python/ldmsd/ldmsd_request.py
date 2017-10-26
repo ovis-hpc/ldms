@@ -89,6 +89,7 @@ class LDMSD_Req_Attr(object):
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
+                   'interval_us': INTERVAL,
                    'offset': OFFSET,
                    'regex': REGEX,
                    'type': TYPE,
@@ -126,16 +127,16 @@ class LDMSD_Req_Attr(object):
         if self.attr_id == self.LAST:
             self.packed = struct.pack("i", 0)
         else:
-            self.attr_value = value            
+            self.attr_value = value
             if value is None:
                 self.attr_len = 0
-                self.attr_fmt = 'iii'
+                self.attr_fmt = 'iiq'
                 self.packed = struct.pack(self.fmt, 1, self.attr_id,
                                                     self.attr_len)
             else:
                 # One is added to account for the terminating zero
                 self.attr_len = int(len(value)+1)
-                self.fmt = 'iii' + str(self.attr_len) + 's'
+                self.fmt = 'iiq' + str(self.attr_len) + 's'
                 self.packed = struct.pack(self.fmt, 1, self.attr_id,
                                           self.attr_len, self.attr_value)
 
@@ -239,12 +240,12 @@ class LDMSD_Request(object):
 
             'start': {'id': PLUGN_START},
             'stop': {'id': PLUGN_STOP},
-            'plugin_status': {'id': PLUGN_STATUS},
+            'plugn_status': {'id': PLUGN_STATUS},
             'load': {'id': PLUGN_LOAD},
             'term': {'id': PLUGN_TERM},
             'config': {'id': PLUGN_CONFIG},
             'usage': {'id': PLUGN_LIST},
-            
+
             'udata': {'id': SET_UDATA},
             'udata_regex': {'id': SET_UDATA_REGEX},
             'loglevel': {'id': VERBOSITY_CHANGE},
@@ -311,39 +312,29 @@ class LDMSD_Request(object):
             raise
 
     def receive(self, ctrl):
-        self.response = {'errcode': None, 'msg': None}
-        msg = ""
-        try:
-            if ctrl.type != "inband":
-                while True:
-                    hdr = ctrl.socket.recv(self.header_size)
-                    (marker, type, flags, msg_no, errcode, rec_len) = struct.unpack('iiiiii', hdr)
-                    if marker != -1:
-                        raise LDMSD_Except("Invalid response format")
-                    if rec_len - self.header_size > 0:
-                        data = ctrl.socket.recv(rec_len - self.header_size)
-                        msg += data
-                    if flags & LDMSD_Request.EOM_FLAG:
-                        break
+        self.response = None
+        msg = None
+        while True:
+            record = ctrl.receive_response()
+            (marker, msg_type, msg_flags, msg_no,
+             errcode, rec_len) = struct.unpack('iiiiii',
+                                               record[:self.header_size])
+            if marker != -1:
+                raise ValueError("Record is missing the marker")
+            data = record[self.header_size:]
+            if msg is None:
+                msg = data
             else:
-                hdr_data = ctrl.receive_response()
-                (marker, type, flags, msg_no, errcode, rec_len) = struct.unpack('iiiiii', 
-                                                                    hdr_data[0:self.header_size])
-                if marker != -1 or type != self.TYPE_CONFIG_RESP:
-                    raise LDMSD_Except("Invalid response")
-                if rec_len - self.header_size > 0:
-                    msg += hdr_data[self.header_size:]
-        except:
-            raise
-
-        self.response['errcode'] = errcode
-        self.response['msg'] = str(msg)
-        return self.response
+                msg += data
+            if (msg_flags & LDMSD_Request.EOM_FLAG) != 0:
+                return { 'errcode' : errcode, 'msg' : str(msg) }
+                return True
+        # unreachable
 
     def is_error_resp(self, json_obj_resp):
         if json_obj_resp == 0:
             return False
-        
+
         if len(json_obj_resp) == 1:
             if 'error' in json_obj_resp.keys():
                 return True
@@ -417,6 +408,7 @@ class LdmsdReqParser(cmd.Cmd):
         """
         Add a producer.
         """
+        pass
 
 if __name__ == "__main__":
     is_debug = True

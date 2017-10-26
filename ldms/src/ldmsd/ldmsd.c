@@ -122,7 +122,6 @@ FILE *log_fp;
 
 int do_kernel = 0;
 char *setfile = NULL;
-char *listen_arg = NULL;
 
 int find_least_busy_thread();
 
@@ -130,9 +129,7 @@ int passive = 0;
 int log_level_thr = LDMSD_LERROR;  /* log level threshold */
 int quiet = 0; /* Is verbosity quiet? 0 for no and 1 for yes */
 
-const char *config_path = NULL;
-
-extern int process_config_file(const char *path, int *errloc);
+extern int process_config_file(const char *path);
 
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
@@ -165,7 +162,7 @@ int ldmsd_loglevel_set(char *verbose_level)
 
 enum ldmsd_loglevel ldmsd_loglevel_get()
 {
-        return log_level_thr;
+	return log_level_thr;
 }
 
 int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level)
@@ -413,61 +410,64 @@ void usage_hint(char *argv[],char *hint)
 {
 	printf("%s: [%s]\n", argv[0], FMT);
 	printf("  General Options\n");
-	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
-	printf("    -u             List plugins and where possible their usage, then exit.\n");
+	printf("    -F	     Foreground mode, don't daemonize the program [false].\n");
+	printf("    -u	     List plugins and where possible their usage, then exit.\n");
 	printf("    -m memory size Maximum size of pre-allocated memory for metric sets.\n"
-	       "                   The given size must be less than 1 petabytes.\n"
-	       "                   The default value is %s\n"
-	       "                   For example, 20M or 20mb are 20 megabytes.\n"
-	       "                   - The environment variable %s could be set instead of\n"
-	       "                   giving the -m option. If both are given, the -m option\n"
-	       "                   takes precedence over the environment variable.\n",
+	       "		   The given size must be less than 1 petabytes.\n"
+	       "		   The default value is %s\n"
+	       "		   For example, 20M or 20mb are 20 megabytes.\n"
+	       "		   - The environment variable %s could be set instead of\n"
+	       "		   giving the -m option. If both are given, the -m option\n"
+	       "		   takes precedence over the environment variable.\n",
 	       LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
 	printf("    -r pid_file    The path to the pid file for daemon mode.\n"
-	       "                   [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
+	       "		   [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
 	printf("  Log Verbosity Options\n");
 	printf("    -l log_file    The path to the log file for status messages.\n"
-	       "                   [" LDMSD_LOGFILE "]\n");
+	       "		   [" LDMSD_LOGFILE "]\n");
 	printf("    -v level       The available verbosity levels, in order of decreasing verbosity,\n"
-	       "                   are DEBUG, INFO, ERROR, CRITICAL and QUIET.\n"
-	       "                   The default level is ERROR.\n");
+	       "		   are DEBUG, INFO, ERROR, CRITICAL and QUIET.\n"
+	       "		   The default level is ERROR.\n");
 	printf("  Communication Options\n");
-	printf("    -S sockname    Specifies the unix domain socket name to\n"
-	       "                   use for ldmsctl access.\n");
 	printf("    -x xprt:port   Specifies the transport type to listen on. May be specified\n"
-	       "                   more than once for multiple transports. The transport string\n"
-	       "                   is one of 'rdma', 'sock' or 'ugni'. A transport specific port number\n"
-	       "                   is optionally specified following a ':', e.g. rdma:50000.\n");
+	       "		   more than once for multiple transports. The transport string\n"
+	       "		   is one of 'rdma', 'sock' or 'ugni'. A transport specific port number\n"
+	       "		   is optionally specified following a ':', e.g. rdma:50000.\n");
 	printf("  Kernel Metric Options\n");
-	printf("    -k             Publish kernel metrics.\n");
+	printf("    -k	     Publish kernel metrics.\n");
 	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
-	       "                   [" LDMSD_SETFILE "]\n");
+	       "		   [" LDMSD_SETFILE "]\n");
 	printf("  Thread Options\n");
 	printf("    -P thr_count   Count of event threads to start.\n");
 	printf("    -f count       The number of flush threads.\n");
-	printf("    -D num         The dirty threshold.\n");
+	printf("    -D num	 The dirty threshold.\n");
 	printf("  Test Options\n");
 	printf("    -H host_name   The host/producer name for metric sets.\n");
-	printf("    -i             Test metric set sample interval.\n");
+	printf("    -i	     Test metric set sample interval.\n");
 	printf("    -t count       Create set_count instances of set_name.\n");
 	printf("    -T set_name    Test set prefix.\n");
-	printf("    -N             Notify registered monitors of the test metric sets\n");
+	printf("    -N	     Notify registered monitors of the test metric sets\n");
 	printf("  Configuration Options\n");
 #if OVIS_LIB_HAVE_AUTH
 	printf("    -a secretfile  Give the location of the secretword file.\n"
-	       "                   Normally, the environment variable\n"
+	       "		   Normally, the environment variable\n"
 	       "		   %s must be set to the full path to the file storing\n"
 	       "		   the shared secret word, e.g., secretword=<word>, where\n"
 	       "		   %d < word length < %d\n", LDMSD_AUTH_ENV,
 				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
 #endif /* OVIS_LIB_HAVE_AUTH */
-	printf("    -p port        The inet control listener port for receiving configuration\n");
+	printf("    -p xprt:[sockname|port]	Specifies the transport type to listen on for receiving configuration.\n"
+	       "                                The transport type is either 'unix' or 'sock'.\n"
+	       "                                Unix domain socket: unix:sockname. sockname is the unix domain socket path."
+	       "                                Inet: sock:port. port is the port to listen on.\n");
 #ifdef ENABLE_LDMSD_RCTL
-	printf("    -R port        The listener port for receiving configuration\n"
-	       "                   from the ldmsd_rctl program\n");
+	printf("    -R port	The listener port for receiving configuration\n"
+	       "		   from the ldmsd_rctl program\n");
 #endif
-	printf("    -c path        The path to configuration file (optional, default: <none>).\n");
-	printf("    -V             Print LDMS version and exit\n.");
+	printf("    -c path	The path to configuration file (optional, default: <none>).\n");
+	printf("    -V	     Print LDMS version and exit\n.");
+	printf("   Deprecated Options\n");
+	printf("    -S     	   DEPRECATED. Please use -p unix:[path] instead.\n");
 	if (hint) {
 		printf("\nHINT: %s\n",hint);
 	}
@@ -1001,78 +1001,6 @@ void *event_proc(void *v)
 	return NULL;
 }
 
-extern int
-process_request_ldms_xprt(ldms_t x, ldmsd_req_hdr_t request, char *data,
-						size_t data_len);
-void __recv_msg(ldms_t x, char *data, size_t data_len)
-{
-	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)data;
-	switch (request->type) {
-	case LDMSD_REQ_TYPE_CONFIG_CMD:
-		(void)process_request_ldms_xprt(x, request, data + sizeof(*request),
-					request->rec_len - sizeof(*request));
-		break;
-	case LDMSD_REQ_TYPE_CONFIG_RESP:
-		break;
-	default:
-		break;
-	}
-}
-
-void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
-{
-	switch (e->type) {
-	case LDMS_XPRT_EVENT_CONNECTED:
-		break;
-	case LDMS_XPRT_EVENT_DISCONNECTED:
-		ldms_xprt_put(x);
-		break;
-	case LDMS_XPRT_EVENT_RECV:
-		__recv_msg(x, e->data, e->data_len);
-		break;
-	default:
-		assert(0);
-		break;
-	}
-}
-
-void listen_on_transport(char *xprt_str, char *port_str)
-{
-	int port_no;
-	ldms_t l = NULL;
-	int ret;
-	struct sockaddr_in sin;
-
-	if (!port_str || port_str[0] == '\0')
-		port_no = LDMS_DEFAULT_PORT;
-	else
-		port_no = atoi(port_str);
-#if OVIS_LIB_HAVE_AUTH
-	l = ldms_xprt_with_auth_new(xprt_str, ldmsd_linfo,
-		secretword);
-#else
-	l = ldms_xprt_new(xprt_str, ldmsd_linfo);
-#endif /* OVIS_LIB_HAVE_AUTH */
-	if (!l) {
-		ldmsd_log(LDMSD_LERROR, "The transport specified, "
-				"'%s', is invalid.\n", xprt_str);
-		cleanup(6, "error creating transport");
-	}
-	ldms = l;
-	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = 0;
-	sin.sin_port = htons(port_no);
-	ret = ldms_xprt_listen(l, (struct sockaddr *)&sin, sizeof(sin),
-			__listen_connect_cb, NULL);
-	if (ret) {
-		ldmsd_log(LDMSD_LERROR, "Error %d listening on the '%s' "
-				"transport.\n", ret, xprt_str);
-		cleanup(7, "error listening on transport");
-	}
-	ldmsd_log(LDMSD_LINFO, "Listening on transport %s:%s\n",
-			xprt_str, port_str);
-}
-
 void ev_log_cb(int sev, const char *msg)
 {
 	const char *sev_s[] = {
@@ -1083,8 +1011,6 @@ void ev_log_cb(int sev, const char *msg)
 	};
 	ldmsd_log(LDMSD_LERROR, "%s: %s\n", sev_s[sev], msg);
 }
-
-extern int ldmsd_inet_config_init(const char *port, const char *secretword);
 
 char *ldmsd_get_max_mem_sz_str()
 {
@@ -1150,12 +1076,8 @@ int main(int argc, char *argv[])
 	ldms_version_get(&ldms_version);
 	ldmsd_version_get(&ldmsd_version);
 	char *sockname = NULL;
-	char *inet_listener_port = NULL;
 	char *authfile = NULL;
 	int list_plugins = 0;
-#ifdef ENABLE_LDMSD_RCTL
-	char *rctrl_port = NULL;
-#endif /* ENABLE_LDMSD_CTRL */
 	int ret;
 	int sample_interval = 2000000;
 	int op;
@@ -1196,35 +1118,11 @@ int main(int argc, char *argv[])
 		case 'k':
 			do_kernel = 1;
 			break;
-		case 'x':
-			if (check_arg("x", optarg, LO_NAME))
-				return 1;
-			listen_arg = strdup(optarg);
-			break;
-		case 'S':
-			/* Set the SOCKNAME to listen on */
-			if (check_arg("S", optarg, LO_PATH))
-				return 1;
-			sockname = strdup(optarg);
-			break;
-		case 'p':
-			/* Set the port to listen on configuration */
-			if (check_arg("p", optarg, LO_UINT))
-				return 1;
-			inet_listener_port = strdup(optarg);
-			break;
 		case 'r':
 			if (check_arg("r", optarg, LO_PATH))
 				return 1;
 			pidfile = strdup(optarg);
 			break;
-#ifdef ENABLE_LDMSD_RCTL
-		case 'R':
-			if (check_arg("R", optarg, LO_UINT))
-				return 1;
-			rctrl_port = strdup(optarg);
-			break;
-#endif /* ENABLE_LDMSD_RCTL */
 		case 'l':
 			if (check_arg("l", optarg, LO_PATH))
 				return 1;
@@ -1297,9 +1195,6 @@ int main(int argc, char *argv[])
 			}
 			break;
 #endif /* OVIS_LIB_HAVE_AUTH */
-		case 'c':
-			config_path = optarg;
-			break;
 		case 'V':
 			printf("LDMSD Version: %s\n", PACKAGE_VERSION);
 			printf("LDMS Protocol Version: %hhu.%hhu.%hhu.%hhu\n",
@@ -1318,17 +1213,17 @@ int main(int argc, char *argv[])
 		case 'u':
 			list_plugins = 1;
 			break;
+		case 'x':
+		case 'p':
+		case 'c':
+			/* Handle below */
+			break;
 		case '?':
 			printf("Error: unknown argument: %c\n", optopt);
 		default:
 			usage(argv);
 		}
 	}
-	if (!listen_arg) {
-		printf("The -x option is required.\n");
-		usage(argv);
-	}
-
 	if (list_plugins) {
 		ldmsd_plugins_usage(NULL);
 		exit(0);
@@ -1430,14 +1325,10 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	char *xprt_str = strtok(listen_arg, ":");
-	char *port_str = strtok(NULL, ":");
 	if (myhostname[0] == '\0') {
 		ret = gethostname(myhostname, sizeof(myhostname));
 		if (ret)
 			myhostname[0] = '\0';
-		size_t len = strlen(myhostname);
-		sprintf(&myhostname[len], "_%s_%s", xprt_str, port_str);
 	}
 	/* Create the test sets */
 	ldms_set_t *test_sets = calloc(test_set_count, sizeof(ldms_set_t));
@@ -1541,25 +1432,40 @@ int main(int argc, char *argv[])
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3, "start kernel sampler failed");
 
-	if (sockname && ldmsd_config_init(sockname))
-		cleanup(4, "sock config_init failed");
-
-	if (inet_listener_port)
-		listen_on_transport(xprt_str, inet_listener_port);
-
+	opterr = 0;
+	optind = 0;
+	char *xprt_str, *port_str;
+	while ((op = getopt(argc, argv, FMT)) != -1) {
+		char *dup_arg;
+		switch (op) {
+		case 'x':
+			if (check_arg("x", optarg, LO_NAME))
+				return 1;
+			dup_arg = strdup(optarg);
+			xprt_str = strtok(dup_arg, ":");
+			port_str = strtok(NULL, ":");
+			listen_on_ldms_xprt(xprt_str, port_str, secretword);
+			break;
+		case 'p':
+			if (check_arg("p", optarg, LO_NAME))
+				return 1;
+			dup_arg = strdup(optarg);
+			xprt_str = strtok(dup_arg, ":");
+			port_str = strtok(NULL, ":");
+			listen_on_cfg_xprt(xprt_str, port_str, secretword);
+			break;
+		case 'c':
+			if (ret = process_config_file(strdup(optarg)))
+				cleanup(ret, "Error %d processing configuration file '%s'");
+			break;
 #ifdef ENABLE_LDMSD_RCTL
-	if (rctrl_port)
-		if (ldmsd_rctrl_init(rctrl_port, secretword))
-			cleanup(4, "rctrl_init failed");
+		case 'R':
+			if (check_arg("R", optarg, LO_UINT))
+				return 1;
+			if (ldmsd_rctrl_init(strdup(optarg), secretword))
+				cleanup(4, "rctrl_init failed");
+			break;
 #endif /* ENABLE_LDMSD_RCTL */
-
-	listen_on_transport(xprt_str, port_str);
-
-	if (config_path) {
-		int errloc = 0;
-		int rc = process_config_file(config_path, &errloc);
-		if (rc) {
-			cleanup(rc, "process config file failed");
 		}
 	}
 

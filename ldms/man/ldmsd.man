@@ -111,7 +111,7 @@ Communication Options:
 .TP
 .BI -S " SOCKNAME"
 .br
-SOCKNAME is the unix domain socket name to use for ldmsd_controller access.
+DEPRECATED. Please use the -p unix:SOCKNAME option instead.
 .TP
 .BI -x " XPRT:PORT"
 .br
@@ -119,8 +119,13 @@ Specifies the transport type to listen on. May be specified more than once for
 multiple transports. The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY XE/XK/XC).
 A transport specific port number is optionally specified following a ':', e.g. rdma:50000.
 .TP
-.BI -p " port"
-The inet control listener port for receiving configuration. If not specified, no inet port is opened.
+.BI -p " XPRT:SOCKNAME|XPRT:PORT"
+Specifies the transport type to listen on for receiving configuration. May be
+specified more than once for multiple transports. The XPRT string is either 'unix' or 'sock'.
+For Unix domain socket connection, use -p unix:SOCKNAME.
+SOCKNAME is the Unix domain socket path. For remote connection use -p sock:PORT.
+PORT is the listening port. If not specified, Unix domain socket nor inet port
+is opened.
 .TP
 .BI -R " port"
 If built with --enable-ldmsd-rctl, the listener port for receiving configuration from the ldmsd_rctl program. If not specified, no rctl port is opened.
@@ -187,7 +192,7 @@ Notify registered monitors of the test metric sets.
 
 .SS Obsolete options:
 .TP
-.BI "-q -Z -z"
+.BI "-q -Z -z -S"
 .br
 These v2 options are no longer supported, and will cause exit with a hint.
 
@@ -225,8 +230,9 @@ None known.
 .SH EXAMPLES
 .PP
 .nf
-$/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -S /var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1
+$/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -p unix:/var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1
 .br
+$/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -p sock:61000 -p unix:/var/runldmsd/metric_socket
 .fi
 
 
