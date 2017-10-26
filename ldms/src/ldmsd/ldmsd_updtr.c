@@ -494,6 +494,9 @@ int ldmsd_updtr_stop(const char *updtr_name)
 
 	}
 	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
+	if (updtr->push_flags)
+		cancel_push(updtr);
+
 	ldmsd_task_stop(&updtr->task);
 	ldmsd_task_join(&updtr->task);
 out_1:
