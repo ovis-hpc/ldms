@@ -5,7 +5,7 @@ EXTRA_DIST=@OVIS_EXTRA_DIST@
 if ENABLE_SCRIPTS
 bin_SCRIPTS= envldms.sh
 
-# CLEANFILES = $(bin_SCRIPTS)
+DISTCLEANFILES = $(bin_SCRIPTS)
 
 bin_SCRIPTS+= ldms_ban.sh
 bin_SCRIPTS+=  ldms-py-fptrans_test.sh

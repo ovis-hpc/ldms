@@ -55,4 +55,7 @@ install-doc: install-dox
 PEDIGREE = $(DESTDIR)/$(bindir)/lib-pedigree
 include $(srcdir)/pedigree.am
 
+uninstall-hook:
+	rm $(PEDIGREE)
+
 clean-local:

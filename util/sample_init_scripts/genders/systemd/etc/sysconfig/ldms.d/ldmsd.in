@@ -14,6 +14,16 @@
 # goes on in ldms-functions supplied functions after all the required defaults
 # have been checked here.
 
+export prefix=@prefix@
+export exec_prefix=@exec_prefix@
+export sbindir=@sbindir@
+export bindir=@bindir@
+export libdir=@libdir@
+export localstatedir=@localstatedir@
+export sysconfdir=@sysconfdir@
+export pythondir=@pythondir@
+export libevent2_libdir=@libeventpath@
+
 if test -z "$FUNCTIONS" -o ! -r "$FUNCTIONS"; then
 	echo "ldms.d/ldmsd can only be used from systemctl or service launchers, not directly."
 	exit 1
@@ -39,57 +49,8 @@ else
 fi
 host="$( echo $hostfull | cut -d "." -f1 )"
 LDMS_HOSTNAME=$host
+export host hostfull
 
-
-case $LDMS_BUILDTYPE in
-experimental)
-	if test -z "$LDMS_PREFIX"; then
-		echo 'LDMS_PREFIX must be set and exported in ldmsd[@].service or init.d/ldmsd file'
-		dietrace 1
-	fi
-	prefix="$LDMS_PREFIX"
-	exec_prefix="$prefix"
-	sbindir="$prefix/sbin"
-	bindir="$prefix/bin"
-	sysconfdir="$prefix/etc"
-	localstatedir="/var"
-	libdir="$prefix/lib"
-;;
-toss2-experimental)
-	if test -z "$LDMS_PREFIX"; then
-		echo 'LDMS_PREFIX must be set and exported in ldmsd[@].service or init.d/ldmsd file'
-		dietrace 1
-	fi
-	# experimental, but assuming libevent from toss ovis libevent2
-	prefix="$LDMS_PREFIX"
-	exec_prefix="$prefix"
-	sbindir="$prefix/sbin"
-	bindir="$prefix/bin"
-	sysconfdir="$prefix/etc"
-	localstatedir="/var"
-	libdir="$prefix/lib"
-	libevent2_libdir=/usr/lib64/ovis-libevent2/lib64/
-;;
-toss2)
-	prefix="/usr"
-	exec_prefix="/usr"
-	sbindir="/usr/sbin"
-	bindir="$prefix/bin"
-	sysconfdir="/etc"
-	localstatedir="/var"
-	libdir="/usr/lib64"
-	libevent2_libdir=$libdir/ovis-libevent2/lib64/
-;;
-*)
-	prefix="/usr"
-	exec_prefix="/usr"
-	sbindir="/usr/sbin"
-	bindir="/usr/bin"
-	sysconfdir="/etc"
-	localstatedir="/var"
-	libdir="/usr/lib64"
-;;
-esac
 if ! test -f $libdir/ovis-lib-configvars.sh; then
 	logger syslog.err "Missing $libdir/ovis-lib-configvars.sh"
 	dietrace 1
@@ -110,6 +71,12 @@ if test -z "$ZAP_LIBPATH"; then
 	ZAP_LIBPATH=$ovis_lib_plugins
 fi
 export ZAP_LIBPATH LDMSD_PLUGIN_LIBPATH
+
+if test -z "$PYTHONPATH"; then
+	export PYTHONPATH="$pythondir"
+else
+	export PYTHONPATH="$pythondir:$PYTHONPATH"
+fi
 
 if test -z "$LDMS_SECRETS_DIR"; then
 	LDMS_SECRETS_DIR=$sysconfdir/sysconfig/ldms.d/ClusterSecrets
@@ -221,6 +188,7 @@ fi
 export NUMACTL NUMAOPT
 
 check_auth_option
+
 if ! $NODEATTR $NODEATTRFILE $host ldmsd >/dev/null 2>&1; then
 	not_collector=1
 	echoq "$host is is not an LDMSD (data collection) host."
@@ -255,9 +223,33 @@ if test -z $LDMSD_XPRT; then
 fi
 export LDMSD_XPRT
 
+# When ugni is used as the transport, ZAP_UGNI_COOKIE must be set, and for the
+# Cray-XE, ZAP_UGNI_PTAG must also be set.
+if test "$LDMSD_XPRT" = "ugni"; then
+	kern_rel=$(uname -r)
+	if test "${kern_rel#*-cray_ari}" != "$kern_rel"; then
+		if test -z "$ZAP_UGNI_COOKIE"; then
+			logger syslog.error "When LDMSD_XPRT is 'ugni' on a Cray XC, ZAP_UGNI_COOKIE must also be set"
+			dietrace 1
+		fi
+		export ZAP_UGNI_COOKIE
+	elif test "${kern_rel#*-cray_gem}" != "$kern_rel"; then
+		if test -z "$ZAP_UGNI_PTAG"; then
+			logger syslog.error "When LDMSD_XPRT is 'ugni' on a Cray XE, ZAP_UGNI_PTAG must also be set"
+			dietrace 1
+		fi
+		if test -z "$ZAP_UGNI_COOKIE"; then
+			logger syslog.error "When LDMSD_XPRT is 'ugni' on a Cray XE, ZAP_UGNI_COOKIE must also be set"
+			dietrace 1
+		fi
+		export ZAP_UGNI_PTAG ZAP_UGNI_COOKIE
+	fi
+fi
+
 if test -z $LDMSD_HOST; then
 	LDMSD_HOST=`$NODEATTR $NODEATTRFILE -v $host ldmsd_host 2>/dev/null`
 fi
+
 if test -z $LDMSD_DBG; then
 	LDMSD_DBG=`$NODEATTR $NODEATTRFILE -v $host ldmsd_dbg 2>/dev/null`
 	if test -z $LDMSD_DBG; then
@@ -314,7 +306,7 @@ fi
 if test "x$LDMSD_USE_UNIX_SOCK" = "xyes"; then
 	#Paths to unix domain socket used by ldmsctl to communicate with ldmsd
 	if test -z "$LDMSD_SOCKPATH"; then
-		LDMSD_SOCKPATH="/var/run/ldmsd/usock.$LDMSCLUSTER"
+		LDMSD_SOCKPATH="$localstatedir/run/ldmsd/usock.$LDMSCLUSTER"
 	fi
 	LDMSD_SOCK_OPT="-S"
 	sockdir=`dirname $LDMSD_SOCKPATH`
@@ -384,11 +376,11 @@ if ! test -x $LDMSCTL_ARGS; then
 	echoq "cannot verify $LDMSCTL_ARGS"
 	dietrace 1
 fi
-
 if test "$DEBUG" = "yes"; then
 	# log some noise
 	$LDMSCTL_ARGS -n $LDMS_HOSTNAME -t store-list -v 1
 fi
+
 if test -z "$LDMSD_SCHEMA_LIST"; then
 	# query entire gender hierarchy recursively for schemas in use anywhere.
 	LDMSD_SCHEMA_LIST=`$LDMSCTL_ARGS -n $LDMS_HOSTNAME -t store-list 2>/dev/null`

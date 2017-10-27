@@ -1,4 +1,5 @@
-EXTRA_DIST = ldmsd-pre-sysvinit
+EXTRA_DIST = ldmsd-pre-sysvinit.in
+DISTCLEANFILES = ldmsd-pre-sysvinit
 if ENABLE_LIBGENDERS
 SUBDIRS = etc
 bin_SCRIPTS= ldmsd-pre-sysvinit
