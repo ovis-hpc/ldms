@@ -10,7 +10,28 @@ AM_INIT_AUTOMAKE([foreign tar-pax])
 m4_ifdef([AM_SILENT_RULES],
 	 [AM_SILENT_RULES([yes])
 ])
-AX_PREFIX_CONFIG_H_G(src/ovis-ldms-config.h)
+AX_PREFIX_CONFIG_H_G(src/ovis-ldms-config.h,,,[
+#ifndef OVIS_FLEX
+/* If OVIS_LDMS_FLEXIBLE_ARRAY_MEMBER is undefined or 1, we use 0
+   for flexible array size on non ISO C compilers,
+   else we use empty [] per c99.
+   If a compiler is found not supporting both flex arrays and
+   0 size array declarations, it will need an OVIS_FLEX value of 1
+   and all sizeof calls on the affected structures will need
+   offsetof instead, as outlined in ac_c_flexible_array_member source.
+*/
+#if (OVIS_LDMS_FLEXIBLE_ARRAY_MEMBER + 0)
+#define OVIS_FLEX 0
+#else
+#define OVIS_FLEX
+#endif
+/* A union of flexible array types is not allowed by gcc 4.
+   If this changes in a future compiler, this define may need changing.
+   The ldms metric value union needs this.
+*/
+#define OVIS_FLEX_UNION 0
+#endif
+])
 AM_PROG_LIBTOOL
 AC_LIB_RPATH
 

@@ -243,10 +243,10 @@ typedef struct ldmsd_req_attr_s {
 	uint32_t attr_id;	/* Attribute identifier, unique per ldmsd_req_hdr_s.cmd_id */
 	uint32_t attr_len;	/* Size of value in bytes */
 	union {
-		uint8_t attr_value[0];
-		uint16_t attr_u16[0];
-		uint32_t attr_u32[0];
-		uint64_t attr_u64[0];
+		uint8_t attr_value[OVIS_FLEX_UNION];
+		uint16_t attr_u16[OVIS_FLEX_UNION];
+		uint32_t attr_u32[OVIS_FLEX_UNION];
+		uint64_t attr_u64[OVIS_FLEX_UNION];
 	};
 } *ldmsd_req_attr_t;
 

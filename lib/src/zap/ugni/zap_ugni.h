@@ -65,7 +65,7 @@
 
 #include <gni_pub.h>
 #include <rca_lib.h>
-
+#include "ovis-lib-config.h"
 #include "coll/rbt.h"
 
 #include "zap.h"
@@ -226,7 +226,7 @@ struct zap_ugni_msg_hdr {
 struct zap_ugni_msg_regular {
 	struct zap_ugni_msg_hdr hdr;
 	uint32_t data_len;
-	char data[0];
+	char data[OVIS_FLEX];
 };
 
 /**
@@ -238,7 +238,7 @@ struct zap_ugni_msg_rendezvous {
 	zap_access_t acc;
 	uint64_t addr; /**< Address in the map */
 	uint32_t data_len; /**< Length */
-	char msg[0]; /**< Context */
+	char msg[OVIS_FLEX]; /**< Context */
 };
 
 /**
@@ -249,7 +249,7 @@ struct zap_ugni_msg_accepted {
 	uint32_t inst_id; /**< inst_id of the accepter (passive side). */
 	uint32_t pe_addr; /**< peer address of the accepter (passive side). */
 	uint32_t data_len;
-	char data[0];
+	char data[OVIS_FLEX];
 };
 
 static char ZAP_UGNI_SIG[8] = "UGNI";
@@ -265,7 +265,7 @@ struct zap_ugni_msg_connect {
 	uint32_t inst_id; /**< inst_id of the requester (active side). */
 	uint32_t pe_addr; /**< peer address of the requester (active side). */
 	uint32_t data_len; /**< Connection data*/
-	char data[0];      /**< Size of connection data */
+	char data[OVIS_FLEX];      /**< Size of connection data */
 };
 
 #pragma pack()

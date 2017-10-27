@@ -6,7 +6,7 @@ nodist_pkgpython_PYTHON = ovis_auth.py
 pkgpyexec_LTLIBRARIES = _ovis_auth.la
 _ovis_auth_la_SOURCES = $(SWIG_SOURCES)
 nodist__ovis_auth_la_SOURCES = auth.c
-_ovis_auth_la_CFLAGS = -g $(SWIG_PYTHON_CPPFLAGS) -I$(top_srcdir)/src
+_ovis_auth_la_CFLAGS = -g $(SWIG_PYTHON_CPPFLAGS) -I$(top_srcdir)/src -I../../src
 _ovis_auth_la_LDFLAGS = -module $(PYTHON_LDFLAGS)
 _ovis_auth_la_LIBADD = $(top_builddir)/src/ovis_auth/libovis_auth.la
 

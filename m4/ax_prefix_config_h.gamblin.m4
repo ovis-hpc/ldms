@@ -1,11 +1,13 @@
 # ===========================================================================
+# derived by Ben Allan from AX_PREFIX_CONFIG_H_G
+# 	adds literal epilog to generated package config header.
 # derived by Todd Gamblin (LLNL) from
 #           http://autoconf-archive.cryp.to/ax_prefix_config_h.html
 # ===========================================================================
 #
 # SYNOPSIS
 #
-#   AX_PREFIX_CONFIG_H_G [(OUTPUT-HEADER [,PREFIX [,ORIG-HEADER]])]
+#   AX_PREFIX_CONFIG_H_G [(OUTPUT-HEADER [,PREFIX [,ORIG-HEADER [,EPILOG]]])]
 #
 # DESCRIPTION
 #
@@ -22,11 +24,14 @@
 #   config.header file. The PREFIX is converted to uppercase for the
 #   conversions.
 #
+#   Appends EPILOG unmodified to the generated header.
+#
 #   Defaults:
 #
 #     OUTPUT-HEADER = $PACKAGE-config.h
 #     PREFIX = $PACKAGE
 #     ORIG-HEADER, from AM_CONFIG_HEADER(config.h)
+#     EPILOG {none}
 #
 #   Your configure.ac script should contain both macros in this order, and
 #   unlike the earlier variations of this prefix-macro it is okay to place
@@ -90,7 +95,7 @@
 #
 # LAST MODIFICATION
 #
-#   2008-04-12
+#   2017-09-28
 #
 # COPYLEFT
 #
@@ -184,6 +189,8 @@ else
     echo /'*' $_OUT. Generated automatically at end of configure. '*'/ >>$tmp/pconfig.h
 
     sed -f _script $_INP >>$tmp/pconfig.h
+    echo '/* user epilog */' >>$tmp/pconfig.h
+    echo '$4' >>$tmp/pconfig.h
     echo ' ' >>$tmp/pconfig.h
     echo '/* once:' $_DEF '*/' >>$tmp/pconfig.h
     echo "@%:@endif" >>$tmp/pconfig.h

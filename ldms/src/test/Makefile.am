@@ -3,7 +3,7 @@ CORE = ../core
 
 sbin_PROGRAMS = test_ldms_xprt_reconnect
 
-AM_CFLAGS = -I$(srcdir)/$(CORE) @OVIS_LIB_INCDIR_FLAG@
+AM_CFLAGS = -I$(srcdir)/$(CORE) -I.. @OVIS_LIB_INCDIR_FLAG@
 
 sbin_PROGRAMS += test_ldms_xprt_reconnect
 test_ldms_xprt_reconnect_SOURCES = test_ldms_xprt_reconnect.c

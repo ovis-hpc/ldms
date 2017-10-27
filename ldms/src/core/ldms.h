@@ -60,6 +60,7 @@
 #include <byteswap.h>
 #include <asm/byteorder.h>
 #include "ovis-lib-config.h"
+#include "ovis-ldms-config.h"
 #include "ldms_core.h"
 #include "coll/rbt.h"
 #include "ovis_util/os_util.h"
@@ -583,7 +584,7 @@ typedef struct ldms_dir_s {
 	int set_count;
 
 	/** each string is null terminated. */
-	char *set_names[0];
+	char *set_names[OVIS_FLEX];
 } *ldms_dir_t;
 
 typedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg);
@@ -1404,10 +1405,10 @@ typedef enum ldms_notify_event_type {
 typedef struct ldms_notify_event_s {
 	ldms_notify_event_type_t type;
 #ifdef SWIG
-%immutable;
+%ignore u_data;
 #endif
 	size_t len;		/*! The size of the event in bytes */
-	unsigned char u_data[0];/*! User-data for the LDMS_USER_DATA
+	unsigned char u_data[OVIS_FLEX];/*! User-data for the LDMS_USER_DATA
 				  type */
 } *ldms_notify_event_t;
 

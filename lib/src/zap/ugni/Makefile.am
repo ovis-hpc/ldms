@@ -1,6 +1,6 @@
 pkglib_LTLIBRARIES = libzap_ugni.la
 
-AM_CFLAGS = -I$(srcdir)/../ -I$(srcdir)/../../ @LIBEVENT_INCDIR_FLAG@
+AM_CFLAGS = -I$(srcdir)/../ -I$(srcdir)/../../ @LIBEVENT_INCDIR_FLAG@ -I../..
 
 # UGNI_CLFAGS and UGNI_LIBS are set by PKG_CHECK_MODULES in configure.ac
 

@@ -141,7 +141,7 @@ struct ldms_send_cmd_param {
 %immutable;
 #endif
 	uint32_t msg_len;
-	char msg[0];
+	char msg[OVIS_FLEX];
 };
 
 struct ldms_lookup_cmd_param {
@@ -199,7 +199,7 @@ struct ldms_rendezvous_lookup_param {
 %immutable;
 #endif
 	uint32_t inst_name_len;
-	char schema_inst_name[0]; /* schema name and then instance name */
+	char schema_inst_name[OVIS_FLEX]; /* schema name and then instance name */
 };
 
 struct ldms_rendezvous_push_param {
@@ -234,7 +234,7 @@ struct ldms_lookup_msg {
 	uint32_t card;
 	uint32_t schema_len;
 	uint32_t inst_name_len;
-	char schema_inst_name[0]; /* schema name and then instance name */
+	char schema_inst_name[OVIS_FLEX]; /* schema name and then instance name */
 };
 #endif
 
@@ -246,7 +246,7 @@ struct ldms_dir_reply {
 %immutable;
 #endif
 	uint32_t set_list_len;
-	char set_list[0];
+	char set_list[OVIS_FLEX];
 };
 
 struct ldms_req_notify_reply {
@@ -265,7 +265,7 @@ struct ldms_push_reply {
 	uint32_t flags;
 	uint32_t data_off;
 	uint32_t data_len;
-	char data[0];
+	char data[OVIS_FLEX];
 };
 
 struct ldms_reply_hdr {

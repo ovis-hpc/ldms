@@ -139,7 +139,7 @@ struct recv_buf {
         ldms_t x;
         TAILQ_ENTRY(recv_buf) entry;
         size_t data_len;
-        char data[0];
+        char data[OVIS_FLEX];
 };
 
 struct recv_arg {
