@@ -7,7 +7,7 @@ export PATH=${BUILDDIR}/sbin:$PATH
 export LD_LIBRARY_PATH=@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
 export ZAP_LIBPATH=@pkglibdir@
 export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
-export PYTHONPATH=@pythondir@
+export PYTHONPATH=@pythondir@:$PYTHONPATH
 
 set -x
 TESTDIR=/tmp/$USER/ldmstest/$$

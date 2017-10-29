@@ -3,11 +3,7 @@ EXTRA_DIST=ovis-lib-configvars.sh.in
 CLEANFILES = ovis-lib-configvars.sh
 DISTCLEANFILES = $(nobase_include_HEADERS)
 
-do_subst = sed \
-	-e 's,[@]prefix[@],$(prefix),g' \
-	-e 's,[@]exec_prefix[@],$(exec_prefix),g' \
-	-e 's,[@]libdir[@],$(libdir),g' \
-	-e 's,[@]pkglibdir[@],$(pkglibdir),g'
+do_subst = @LIB_SUBST_RULE@
 
 %.sh: %.sh.in
 	$(do_subst) < $< > $@
