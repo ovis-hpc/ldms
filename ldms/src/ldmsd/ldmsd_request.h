@@ -199,6 +199,7 @@ typedef struct ldmsd_cfg_ldms_s {
 
 typedef struct ldmsd_cfg_sock_s {
 	int fd;
+	struct sockaddr_storage ss;
 } *ldmsd_cfg_sock_t;
 
 typedef struct ldmsd_cfg_file_s {
@@ -207,6 +208,7 @@ typedef struct ldmsd_cfg_file_s {
 
 struct ldmsd_cfg_xprt_s;
 typedef int (*ldmsd_cfg_send_fn_t)(struct ldmsd_cfg_xprt_s *xprt, char *data, size_t data_len);
+typedef void (*ldmsd_cfg_cleanup_fn_t)(struct ldmsd_cfg_xprt_s *xprt);
 typedef struct ldmsd_cfg_xprt_s {
 	union {
 		void *xprt;
@@ -215,6 +217,7 @@ typedef struct ldmsd_cfg_xprt_s {
 		struct ldmsd_cfg_ldms_s ldms;
 	};
 	ldmsd_cfg_send_fn_t send_fn;
+	ldmsd_cfg_cleanup_fn_t cleanup_fn;
 } *ldmsd_cfg_xprt_t;
 
 typedef struct ldmsd_req_ctxt {

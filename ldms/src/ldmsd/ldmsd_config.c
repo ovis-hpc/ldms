@@ -116,9 +116,26 @@ void ldmsd_config_cleanup()
 	while (!LIST_EMPTY(&clnt_list)) {
 		clnt = LIST_FIRST(&clnt_list);
 		LIST_REMOVE(clnt, entry);
+		if (clnt->xprt.cleanup_fn)
+			clnt->xprt.cleanup_fn(&clnt->xprt);
 		pthread_cancel(clnt->thread);
 	}
 	pthread_mutex_unlock(&clnt_list_lock);
+}
+
+void ldmsd_cfg_unix_cleanup(ldmsd_cfg_xprt_t xprt)
+{
+	unlink(((struct sockaddr_un *)(&xprt->sock.ss))->sun_path);
+}
+
+void ldmsd_cfg_sock_cleanup(ldmsd_cfg_xprt_t xprt)
+{
+	/* nothing to do */
+}
+
+void ldmsd_cfg_ldms_xprt_cleanup(ldmsd_cfg_xprt_t xprt)
+{
+	/* nothing to do */
 }
 
 struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name)
@@ -687,7 +704,7 @@ loop:
 			goto loop;
 		}
 	} else {
-		/* Don't do authetication */
+		/* Don't do authentication */
 		auth_ch.hi = auth_ch.lo = 0;
 		rc = send(sock, (char *)&auth_ch, sizeof(auth_ch), 0);
 		if (rc == -1) {
@@ -720,6 +737,8 @@ loop:
 	}
 	clnt->xprt.sock.fd = sock;
 	clnt->xprt.send_fn = send_sock_fn;
+	clnt->xprt.sock.ss = rem_ss;
+	clnt->xprt.cleanup_fn = NULL;
 
 	pthread_mutex_lock(&clnt_list_lock);
 	LIST_INSERT_HEAD(&clnt_list, clnt, entry);
@@ -745,6 +764,7 @@ int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword)
 	socklen_t sa_len;
 	struct sockaddr_un *sun;
 	struct sockaddr_in *sin;
+	ldmsd_cfg_cleanup_fn_t cleanup_fn;
 	int rc;
 
 	if (0 == strcasecmp(xprt_str, "unix")) {
@@ -766,12 +786,14 @@ int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword)
 		sun->sun_family = AF_UNIX;
 		strncpy(sun->sun_path, sockname,
 			sizeof(struct sockaddr_un) - sizeof(short));
+		cleanup_fn = ldmsd_cfg_unix_cleanup;
 	} else if (0 == strcasecmp(xprt_str, "sock")) {
 		sin = (struct sockaddr_in *)&ss;
 		sa_len = sizeof(*sin);
 		sin->sin_family = AF_INET;
 		sin->sin_addr.s_addr = 0;
 		sin->sin_port = htons(atoi(port_str));
+		cleanup_fn = ldmsd_cfg_sock_cleanup;
 	} else {
 		ldmsd_log(LDMSD_LERROR,
 			  "Unrecognized configuration transport string %s\n",
@@ -784,7 +806,9 @@ int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword)
 			  "Memory allocation failure creating configuration client.\n");
 		return -1;
 	}
+	clnt->xprt.cleanup_fn = cleanup_fn;
 	clnt->secretword = strdup(secretword);
+	clnt->xprt.sock.ss = ss;
 	clnt->xprt.sock.fd = socket(ss.ss_family, SOCK_STREAM, 0);
 	if (clnt->xprt.sock.fd < 0) {
 		ldmsd_log(LDMSD_LERROR, "A configuration socket could not be created, "
@@ -893,6 +917,7 @@ int listen_on_ldms_xprt(char *xprt_str, char *port_str, char *secretword)
 			  "Memory allocation failure creating configuration client.\n");
 		return -1;
 	}
+	clnt->xprt.cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
 	clnt->secretword = strdup(secretword);
         clnt->xprt.ldms.ldms = l;
         sin.sin_family = AF_INET;
