@@ -1,9 +1,0 @@
-"balerd.log" {
-	size 5M
-	maxage 90
-	rotate 168
-	notifempty
-	compress
-	delaycompress
-	copytruncate
-}

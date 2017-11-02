@@ -1,9 +1,0 @@
-sources:
-    srv0: ["http://localhost:18000", "http://localhost:19000"]
-#    srv0: ["bstore:///home/narate/projects/ovis.baler2/baler/test/indy_test/store.0"]
-    srv1: ["http://localhost:18001", "http://localhost:19001"]
-#    srv1: ["bstore:///home/narate/projects/ovis.baler2/baler/test/indy_test/store.1"]
-    srv2: ["http://localhost:18002", "http://localhost:19002"]
-#    srv2: ["bstore:///home/narate/projects/ovis.baler2/baler/test/indy_test/store.2"]
-    srv3: ["bstore:///home/narate/projects/ovis.baler2/baler/test/indy_test/store.3"]
-store: "./tmp/localstore"

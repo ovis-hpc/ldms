@@ -1,7 +1,0 @@
--------- ----------
-ptn_id   pattern   
--------- ----------
-     128 This is * test message from *, *: *
-     129 * see fire!
-     130 * is * sheep.
--------- ----------
