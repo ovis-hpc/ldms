@@ -30,8 +30,6 @@ MAYBE_SOS = @MAYBE_SOS@
 MAYBE_OCM = @MAYBE_OCM@
 # ldms needs lib; optional sos, ocm
 MAYBE_LDMS = @MAYBE_LDMS@
-# baler needs lib, sos; optional ocm
-MAYBE_BALER = @MAYBE_BALER@
 # me needs lib; optional ocm
 MAYBE_ME = @MAYBE_ME@
 # komondor needs lib; optional ocm
@@ -41,7 +39,6 @@ SUBDIRS += $(GPCDSUBDIR) \
 $(MAYBE_SOS) \
 $(MAYBE_OCM) \
 $(MAYBE_LDMS) \
-$(MAYBE_BALER) \
 $(MAYBE_ME) \
 $(MAYBE_KOMONDOR) \
 util
@@ -50,7 +47,7 @@ util
 # For now, we ship as we expect to configure.
 # Perhaps all should be included all the time but we surround their
 # make content for dist with enable conditionals.
-DIST_SUBDIRS = $(GPCDSUBDIR) lib $(MAYBE_SOS) ldms $(MAYBE_BALER) util
+DIST_SUBDIRS = $(GPCDSUBDIR) lib $(MAYBE_SOS) ldms util
 # make dist _will_ fail for these unless we mod their .am files
 # so not included in dist.
 NODIST_SUBDIRS = ocm me komondor
@@ -59,7 +56,7 @@ BASE = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 BASE_TARBALL = $(BASE).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-.PHONY: doxygen 
+.PHONY: doxygen
 
 banned:
 	(cd ldms; make banned)
