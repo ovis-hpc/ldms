@@ -65,7 +65,7 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldms_jobid.h"
+#include "sampler_base.h"
 
 #define PROC_FILE "/proc/meminfo"
 
@@ -73,17 +73,13 @@ static char *procfile = PROC_FILE;
 static ldms_set_t set = NULL;
 static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
-static ldms_schema_t schema;
 #define SAMP "meminfo"
-static char *default_schema_name = SAMP;
-static uint64_t compid;
+static int metric_offset;
+static base_data_t base;
 
-static int metric_offset = 1;
-LJI_GLOBALS;
-
-static int create_metric_set(const char *instance_name, char* schema_name)
+static int create_metric_set(base_data_t base)
 {
+	ldms_schema_t schema;
 	int rc, i;
 	uint64_t metric_value;
 	union ldms_value v;
@@ -98,23 +94,16 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		return ENOENT;
 	}
 
-	schema = ldms_schema_new(schema_name);
+	schema = base_schema_new(base);
 	if (!schema) {
-		rc = ENOMEM;
+		msglog(LDMSD_LERROR,
+		       "%s: The schema '%s' could not be created, errno=%d.\n",
+		       __FILE__, base->schema_name, errno);
 		goto err;
 	}
 
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	metric_offset++;
-	rc = LJI_ADD_JOBID(schema);
-	if (rc < 0) {
-		goto err;
-	}
+	/* Location of first metric from proc/meminfo file */
+	metric_offset = ldms_schema_metric_count_get(schema);
 
 	/*
 	 * Process the file to define all the metrics.
@@ -142,23 +131,15 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		}
 	} while (s);
 
-	set = ldms_set_new(instance_name, schema);
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
 		goto err;
 	}
 
-	//add specialized metrics
-	v.v_u64 = compid;
-	ldms_metric_set(set, 0, &v);
-
-	LJI_SAMPLE(set,1);
 	return 0;
 
  err:
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
 	if (mf)
 		fclose(mf);
 	mf = NULL;
@@ -189,76 +170,36 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP " producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname> with_jobid=<jid>]\n"
-		"    <prod_name>  The producer name\n"
-		"    <inst_name>  The instance name\n"
-		"    <compid>     Optional unique number identifier. Defaults to zero.\n"
-		LJI_DESC
-		"    <sname>      Optional schema name. Defaults to '" SAMP "'\n";
+	return  "config name=" SAMP BASE_CONFIG_USAGE;
 }
 
-/**
- * \brief Configuration
- *
- * config name=meminfo producer=<name> instance=<instance_name> [component_id=<compid> schema=<sname>] [with_jobid=<jid>]
- *     producer_name    The producer id value.
- *     instance_name    The set name.
- *     component_id     The component id. Defaults to zero
- *     sname            Optional schema name. Defaults to meminfo
- *     jid              lookup jobid or report 0.
- */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value;
-	char *sname;
-	void * arg = NULL;
 	int rc;
-
-	rc = config_check(kwl, avl, arg);
-	if (rc != 0){
-		return rc;
-	}
-
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, SAMP ": missing producer.\n");
-		return ENOENT;
-	}
-
-	value = av_value(avl, "component_id");
-	if (value)
-		compid = (uint64_t)(atoi(value));
-	else
-		compid = 0;
-
-	LJI_CONFIG(value,avl);
-
-	value = av_value(avl, "instance");
-	if (!value) {
-		msglog(LDMSD_LERROR, SAMP ": missing instance.\n");
-		return ENOENT;
-	}
-
-	sname = av_value(avl, "schema");
-	if (!sname)
-		sname = default_schema_name;
-	if (strlen(sname) == 0) {
-		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
-		return EINVAL;
-	}
 
 	if (set) {
 		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
-	rc = create_metric_set(value, sname);
-	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+	rc = config_check(kwl, avl, NULL);
+	if (rc != 0){
 		return rc;
 	}
-	ldms_set_producer_name_set(set, producer_name);
+
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base)
+		goto err;
+
+	rc = create_metric_set(base);
+	if (rc) {
+		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		goto err;
+	}
 	return 0;
+ err:
+	base_del(base);
+	return rc;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -279,10 +220,8 @@ static int sample(struct ldmsd_sampler *self)
 		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_transaction_begin(set);
 
-	LJI_SAMPLE(set, 1);
-
+	base_sample_begin(base);
 	metric_no = metric_offset;
 	fseek(mf, 0, SEEK_SET);
 	do {
@@ -299,7 +238,7 @@ static int sample(struct ldmsd_sampler *self)
 		metric_no++;
 	} while (s);
  out:
-	ldms_transaction_end(set);
+	base_sample_end(base);
 	return 0;
 }
 
@@ -308,9 +247,8 @@ static void term(struct ldmsd_plugin *self)
 	if (mf)
 		fclose(mf);
 	mf = NULL;
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
+	if (base)
+		base_del(base);
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;

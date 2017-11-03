@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2017 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -48,59 +48,31 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef __TIMER_BASE_H
-#define __TIMER_BASE_H
+#ifndef __JOBINFO_H
+#define __JOBINFO_H
+#include <limits.h>
 
-#include "ldms.h"
-#include "ldmsd.h"
-#include "tsampler.h"
-#include <sys/queue.h>
-#include <pthread.h>
-#include "sampler_base.h"
+#define	LDMS_JOBINFO_DATA_FILE	"/var/run/ldms_jobinfo.data"
+#define	JOBINFO_MAX_USERNAME	LOGIN_NAME_MAX
+#define	JOBINFO_MAX_JOBNAME	128
 
-struct tsampler_timer_entry {
-	struct tsampler_timer timer;
-	TAILQ_ENTRY(tsampler_timer_entry) entry;
+#define	JOBINFO_JOB_STARTED	1
+#define	JOBINFO_JOB_EXITED	2
+
+/*
+ * Structure used to provide jonbinfo data from a jobinfo provider to the
+ * LDMS jobinfo sampler.
+ */
+struct jobinfo {
+	u_int			job_id;
+	u_int			job_status;
+	u_int			app_id;
+	uid_t			user_id;
+	long int		job_start;
+	long int		job_end;
+	u_int			job_exit_status;
+	char			job_name[JOBINFO_MAX_JOBNAME];
+	char			job_user[JOBINFO_MAX_USERNAME];
 };
 
-struct timer_base {
-	struct ldmsd_sampler base;
-	enum {
-		ST_INIT,
-		ST_CONFIGURED,
-		ST_RUNNING,
-	} state;
-	base_data_t cfg;	/* sampler base class data */
-	ldms_set_t set;
-	ldms_schema_t schema;
-	uint64_t compid;
-	pthread_mutex_t mutex;
-	TAILQ_HEAD(, tsampler_timer_entry) timer_list;
-	char buff[1024]; /* string buffer for internal timer_base use */
-	char iname[1024]; /* iname for internal use */
-	char pname[1024]; /* producer name for internal use */
-};
-
-void timer_base_init(struct timer_base *tb);
-
-int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
-		struct attr_value_list *avl);
-
-int timer_base_create_set(struct timer_base *tb);
-
-ldms_set_t timer_base_get_set(struct ldmsd_sampler *self);
-
-void timer_base_term(struct ldmsd_plugin *self);
-
-int timer_base_sample(struct ldmsd_sampler *self);
-
-void timer_base_cleanup(struct timer_base *tb);
-
-int timer_base_add_hfmetric(struct timer_base *tb,
-				const char *name,
-				enum ldms_value_type type,
-				int n,
-				const struct timeval *interval,
-				tsampler_sample_cb cb,
-				void *ctxt);
-#endif
+#endif /* __JOBINFO_H */

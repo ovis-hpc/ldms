@@ -129,6 +129,8 @@ OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
 OPTION_DEFAULT_DISABLE([switchx], [ENABLE_SWITCHX])
 OPTION_WITH([switchx], [SWITCHX],[/usr/local])
+OPTION_DEFAULT_ENABLE([jobinfo-sampler], [ENABLE_JOBINFO])
+OPTION_DEFAULT_DISABLE([jobinfo-slurm], [ENABLE_SLURM_JOBINFO])
 
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
@@ -217,6 +219,17 @@ if test -z "$ENABLE_SYSCLASSIB_TRUE"; then
 	AC_CHECK_HEADER(infiniband/umad.h, [],
 		AC_MSG_ERROR([<infiniband/umad.h> not found.  Is libibumad-dev or
 			libibumad-devel installed?]))
+fi
+
+dnl Checks for slurm includes
+OPTION_WITH([slurm], [SLURM], [/usr])
+if test -z "$ENABLE_SLURM_JOBINFO"; then
+	OCFLAGS=$CFLAGS
+	CFLAGS=-I$SLURM_INCDIR
+	AC_CHECK_HEADER(slurm/spank.h, [],
+		AC_MSG_ERROR([<slurm/spank.h> not found.
+			slurm installed?]))
+	CFLAGS=$OCFLAGS
 fi
 
 if test "x$WITH_OVIS_LIB" != "xbuild" && test -z "$ENABLE_TSAMPLER_TRUE"; then
@@ -443,6 +456,8 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
+		 src/sampler/job_info/Makefile
+		 src/sampler/job_info_slurm/Makefile
 		 src/sampler/llnl/Makefile
 		 src/sampler/hadoop/Makefile
 		 src/sampler/hadoop/hadoop-sinks/OvisSink.java

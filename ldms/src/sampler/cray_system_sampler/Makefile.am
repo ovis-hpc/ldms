@@ -20,6 +20,7 @@ CRAY_LDFLAGS_ = $(AM_LDFLAGS) @RCA_LIBDIR_FLAG@ @RCA_LIB64DIR_FLAG@ \
 			-lrca
 
 CRAY_SOURCES_ = cray_sampler_base.h cray_sampler_base.c \
+	../sampler_base.c ../sampler_base.h \
 	rca_metrics.h rca_metrics.c \
 	general_metrics.h general_metrics.c
 CRAY_LIBADD_ = $(COMMON_LIBADD)

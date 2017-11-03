@@ -24,10 +24,12 @@ EXTRA_DIST = ldmsauth.conf \
 	     ldmsplugin.aggregator.conf \
 	     ldmsd.aggregator.env.in \
 	     ldmsd.sampler.env.in \
+	     ldms.plugstack.env.in \
 	     ldms.cfg
 
 ENV_FILES = $(builddir)/ldmsd.sampler.env \
-	    $(builddir)/ldmsd.aggregator.env
+	    $(builddir)/ldmsd.aggregator.env \
+	    $(builddir)/ldms.plugstack.env
 
 $(builddir)/%.env: $(srcdir)/%.env.in
 	$(do_subst) < $< > $@
@@ -50,3 +52,4 @@ uninstall-local:
 	rm -f $(CONF_DIR)/ldmsplugin.sampler.conf
 	rm -f $(CONF_DIR)/ldmsplugin.aggregator.conf
 	rm -f $(CONF_DIR)/ldms.cfg
+	rm -f $(CONF_DIR)/ldms.plugstack.env

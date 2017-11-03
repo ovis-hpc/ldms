@@ -76,57 +76,36 @@
 #include "lustre_metrics.h"
 #endif
 
-
+#include "../sampler_base.h"
 
 /* General vars */
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
-static ldms_schema_t schema;
 static char *default_schema_name = "cray_aries_r";
 static int off_hsn = 0;
 
-static uint64_t compid;
-static uint64_t jobid;
-//wont need a metric offset
-
+static base_data_t base;
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static int create_metric_set(const char *instance_name, char* schema_name){
+static int create_metric_set(base_data_t base)
+{
+	int rc, i;
+	ldms_schema_t schema;
 
-	int rc;
-	union ldms_value v;
-	uint64_t metric_value;
-	char *s;
-	char lbuf[256];
-	char metric_name[128];
-	int i;
-
-
-	schema = ldms_schema_new(schema_name);
-	if (!schema)
-		return ENOMEM;
-
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
+	schema = base_schema_new(base);
+	if (!schema) {
+		msglog(LDMSD_LERROR,
+		       "%s: The schema '%s' could not be created, errno=%d.\n",
+		       __FILE__, base->schema_name, errno);
 		goto err;
 	}
-
-	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
 	/*
 	 * Will create each metric in the set, even if the source does not exist
 	 */
-
 	rc = 0;
 	for (i = 0; i < NS_NUM; i++) {
 		switch(i){
@@ -165,26 +144,15 @@ static int create_metric_set(const char *instance_name, char* schema_name){
 		}
 	}
 
-
-	set = ldms_set_new(instance_name, schema);
-	if (!set){
+	set = base_set_new(base);
+	if (!set) {
 		msglog(LDMSD_LERROR, "%s: set null in create_metric_set\n",
 		       __FILE__);
 		rc = errno;
 		goto err;
 	}
-
-	//add specialized metrics
-	v.v_u64 = compid;
-	ldms_metric_set(set, 0, &v);
-	v.v_u64 = 0;
-	ldms_metric_set(set, 1, &v);
-
 	return 0;
-
-
  err:
-	ldms_schema_delete(schema);
 	return rc;
 }
 
@@ -214,46 +182,8 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value = NULL;
-	char *sname = NULL;
-	char *instancename = NULL;
-	char *rvalue = NULL;
 	int mvalue = -1;
-	void* arg;
 	int rc = 0;
-
-	rc = config_check(kwl, avl, arg);
-	if (rc != 0){
-		return rc;
-	}
-
-	off_hsn = 0;
-	producer_name = av_value(avl, "producer");
-	if (!producer_name){
-		msglog(LDMSD_LERROR, "cray_aries_r_sampler: missing producer\n");
-		return ENOENT;
-	}
-
-	value = av_value(avl, "component_id");
-	if (value)
-		compid = (uint64_t)(atoi(value));
-	else
-		compid = 0;
-
-	instancename = av_value(avl, "instance");
-	if (!instancename){
-		msglog(LDMSD_LERROR, "cray_aries_r_sampler: missing instance\n");
-		return ENOENT;
-	}
-
-	sname = av_value(avl, "schema");
-	if (!sname){
-		sname = default_schema_name;
-	}
-	if (strlen(sname) == 0){
-		msglog(LDMSD_LERROR, "%s: schema name invalid.\n",
-		       __FILE__);
-		return EINVAL;
-	}
 
 	if (set) {
 		msglog(LDMSD_LERROR, "%s: Set already created.\n",
@@ -261,7 +191,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	//off nettopo for aries
+	rc = config_check(kwl, avl, NULL);
+	if (rc != 0){
+		return rc;
+	}
+
+	base = base_config(avl, "cray_aries_r_sampler", default_schema_name, msglog);
+	if (!base)
+		goto out;
+
+	off_hsn = 0;
+	/* off nettopo for aries */
 	set_offns_generic(NS_NETTOPO);
 	rc = config_generic(kwl, avl, msglog);
 	if (rc != 0){
@@ -299,17 +239,15 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			goto out;
 	}
 
-
-	rc = create_metric_set(instancename, sname);
-	if (rc){
+	rc = create_metric_set(base);
+	if (rc) {
 		msglog(LDMSD_LERROR, "cray_aries_r_sampler: failed to create a metric set %d.\n", rc);
-		return rc;
+		goto out;
 	}
-
-	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 
-out:
+ out:
+	base_del(base);
 	return rc;
 }
 
@@ -336,8 +274,7 @@ static int sample(struct ldmsd_sampler *self)
 		msglog(LDMSD_LDEBUG,"cray_aries_r_sampler: plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_transaction_begin(set);
-
+	base_sample_begin(base);
 	for (i = 0; i < NS_NUM; i++){
 		rc = 0;
 		switch(i){
@@ -365,9 +302,8 @@ static int sample(struct ldmsd_sampler *self)
 			       ns_names[i], rc);
 		}
 	}
-
  out:
-	ldms_transaction_end(set);
+	base_sample_end(base);
 
 #if 0
 	clock_gettime(CLOCK_REALTIME, &time2);
@@ -375,16 +311,17 @@ static int sample(struct ldmsd_sampler *self)
 	uint64_t end_nsec = (time2.tv_sec)*1000000000+time2.tv_nsec;
 	dt = end_nsec - beg_nsec;
 #endif
-
-	//always return 0 so it will continue even if there was an error in a subset of metrics
+	/* Always return 0 so it will continue even if there was an
+	 * error in a subset of metrics */
 	return 0;
 }
 
 static void term(struct ldmsd_plugin *self)
 {
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
+	if (base) {
+		base_del(base);
+		base = NULL;
+	}
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;

@@ -66,6 +66,7 @@
 #include "gpcd_lib.h"
 #include "ldms.h"
 #include "ldmsd.h"
+#include "sampler_base.h"
 
 /**
  * \file aries_rtr_mmr.c
@@ -124,13 +125,10 @@ static gpcd_mmr_list_t *listp = NULL;
 
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
 static ldms_schema_t schema;
 static char *default_schema_name = "aries_rtr_mmr";
-static uint64_t compid;
 static char* rtrid = NULL;
-static uint64_t jobid;
-
+static base_data_t base;
 
 static int filterConfig(char* tmpname){
 //return val of 1 means keep this
@@ -336,42 +334,25 @@ static int addMetric(char* tmpname){
 	return rc;
 }
 
-static int create_metric_set(const char *instance_name, char* schema_name)
+static int create_metric_set(base_data_t base)
 {
 	union ldms_value v;
 	int rc, i;
 
-	schema = ldms_schema_new(schema_name);
+	schema = base_schema_new(base);
 	if (!schema) {
 		rc = ENOMEM;
 		goto err;
 	}
-
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	if (rtrid)
-                rc = ldms_schema_meta_array_add(schema, "aries_rtr_id", LDMS_V_CHAR_ARRAY, strlen(rtrid)+1);
-        else
-                rc = ldms_schema_meta_array_add(schema, "aries_rtr_id", LDMS_V_CHAR_ARRAY, 1);
-
+	rc = ldms_schema_meta_array_add(schema, "aries_rtr_id", LDMS_V_CHAR_ARRAY, strlen(rtrid)+1);
         if (rc < 0) {
 		rc = ENOMEM;
 		goto err;
 	}
 
-	//add them in the order of the file.
-	//they will come off the context and the index list in the reverse order
-
+	/* Add them in the order of the file.  they will come off the
+	 * context and the index list in the reverse order
+	 */
 	for (i = 0; i < numraw; i++){
 		rc = addMetric(rawlist[i]);
 		if (rc == ENOMEM)
@@ -386,28 +367,19 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	rawlist = NULL;
 	numraw = 0;
 
-	set = ldms_set_new(instance_name, schema);
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
 		goto err;
 	}
 
-	//add specialized metrics
-	v.v_u64 = compid;
-	ldms_metric_set(set, 0, &v);
-	v.v_u64 = 0;
-	ldms_metric_set(set, 1, &v);
-	if (rtrid)
-                ldms_metric_array_set_str(set, 2, rtrid);
-        else
-                ldms_metric_array_set_str(set, 2, "");
+	ldms_metric_array_set_str(set, ldms_metric_by_name(set, "aries_rtr_id"), rtrid);
 	return 0;
 
 err:
-	if (schema)
-		ldms_schema_delete(schema);
+	base_del(base);
+	base = NULL;
 	schema = NULL;
-
 	return rc;
 }
 
@@ -427,6 +399,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
+	base = base_config(avl, "aries_rtr_mmr", default_schema_name, msglog);
+	if (!base)
+		return EINVAL;
+
 	for (i = 0; i < END_T; i++){
 		mvals[i].num_metrics = 0;
 		mvals[i].ctx = gpcd_create_context();
@@ -436,37 +412,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		}
 	}
 
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: missing producer\n");
-		return ENOENT;
-	}
-
-	value = av_value(avl, "component_id");
-	if (value)
-		compid = (uint64_t)(atoi(value));
-	else
-		compid = 0;
-
 	value = av_value(avl, "aries_rtr_id");
         if (value)
                 rtrid = strdup(value);
         else
-		rtrid = NULL;
-
-	value = av_value(avl, "instance");
-	if (!value) {
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: missing instance.\n");
-		return ENOENT;
-	}
-
-	sname = av_value(avl, "schema");
-	if (!sname)
-		sname = default_schema_name;
-	if (strlen(sname) == 0){
-		msglog(LDMSD_LERROR, "aries_rtr_mmr: schema name invalid.\n");
-		return EINVAL;
-	}
+		rtrid = strdup("");
 
 	rawf = av_value(avl, "file");
 	if (rawf){
@@ -480,12 +430,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	rc = create_metric_set(value, sname);
+	rc = create_metric_set(base);
 	if (rc) {
 		msglog(LDMSD_LERROR, "aries_rtr_mmr: failed to create a metric set.\n");
 		return rc;
 	}
-	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 }
 
@@ -511,8 +460,7 @@ static int sample(struct ldmsd_sampler *self){
 		}
 	}
 
-	ldms_transaction_begin(set);
-
+	base_sample_begin(base);
 	for (i = 0; i < END_T; i++){
 		struct met *np;
 
@@ -563,8 +511,7 @@ static int sample(struct ldmsd_sampler *self){
 
 	rc = 0;
 out:
-
-	ldms_transaction_end(set);
+	base_sample_end(base);
 	return 0;
 
 }
@@ -619,17 +566,15 @@ static void term(struct ldmsd_plugin *self)
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+	base_del(base);
+	base = NULL;
 }
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=aries_rtr_mmr producer=<prod_name> instance=<inst_name> file=<file> [component_id=<compid> aries_rtr_id=<rtrid> schema=<sname>]\n"
-		"    <prod_name>    The producer name\n"
-		"    <inst_name>    The instance name\n"
-		"    <file>         File with full names of metrics\n";
-		"    <compid>       Optional unique number identifier. Defaults to zero.\n"
-                "    <rtrid>        Optional unique rtr string identifier. Defaults to 0 length string.\n"
-		"    <sname>        Optional schema name. Defaults to 'aries_rtr_mmr'\n";
+	return  "config name=aries_rtr_mmr " BASE_CONFIG_USAGE " file=<file> [aries_rtr_id=<rtrid>]\n"
+		"    <file>         File with full names of metrics\n"
+		"    <rtrid>        Optional unique rtr string identifier. Defaults to 0 length string.\n";
 }
 
 static struct ldmsd_sampler aries_rtr_mmr_plugin = {
