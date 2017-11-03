@@ -54,10 +54,6 @@ fi
 OPTION_DEFAULT_ENABLE([ldms], [ENABLE_LDMS],[  requires lib])
 AC_CONFIG_SUBDIRS([ldms])
 
-OPTION_DEFAULT_DISABLE([baler], [ENABLE_BALER], [  requires sos])
-
-AC_CONFIG_SUBDIRS([baler])
-
 OPTION_DEFAULT_DISABLE([me], [ENABLE_ME], [  requires lib])
 if test "$enable_me" = "yes"; then
 	AC_CONFIG_SUBDIRS([me])
@@ -76,7 +72,6 @@ SUBST_MAYBE([gpcdlocal])
 SUBST_MAYBE([sos])
 SUBST_MAYBE([ocm])
 SUBST_MAYBE([ldms])
-SUBST_MAYBE([baler])
 SUBST_MAYBE([me])
 SUBST_MAYBE([komondor])
 
