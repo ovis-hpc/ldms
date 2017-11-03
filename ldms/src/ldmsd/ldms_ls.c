@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2017 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -69,6 +69,7 @@
 #include <time.h>
 #include <ovis_util/util.h>
 #include <semaphore.h>
+#include <regex.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include <event2/event.h>
@@ -101,6 +102,13 @@ struct ls_set {
 	LIST_ENTRY(ls_set) entry;
 };
 LIST_HEAD(set_list, ls_set) set_list;
+
+struct match_str {
+	char *str;
+	regex_t regex;
+	LIST_ENTRY(match_str) entry;
+};
+LIST_HEAD(match_list, match_str) match_list;
 
 void null_log(const char *fmt, ...)
 {
@@ -149,6 +157,17 @@ void usage(char *argv[])
 	printf("\n    -V           Print LDMS version and exit.\n");
 	printf("\n    -P           Register for push updates.\n");
 	exit(1);
+}
+
+int __compile_regex(regex_t *regex, const char *regex_str) {
+	char errmsg[128];
+	memset(regex, 0, sizeof(*regex));
+	int rc = regcomp(regex, regex_str, REG_NOSUB);
+	if (rc) {
+		(void)regerror(rc, regex, errmsg, 128);
+		printf("%s\n", errmsg);
+	}
+	return rc;
 }
 
 void server_timeout(void)
@@ -337,6 +356,10 @@ static int long_format = 0;
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
 	unsigned long last = (unsigned long)arg;
+	if (!verbose && !long_format) {
+		printf("%s", ldms_set_instance_name_get(s));
+		goto out;
+	}
 	if (rc & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST)) {
 		printf("    Error %x updating metric set.\n", rc);
 		goto out;
@@ -403,7 +426,10 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 	ldms_xprt_update(s, print_cb, (void *)(unsigned long)(last && !more));
 	return;
  err:
-	printf("ldms_ls: Error %d looking up metric set.\n", status);
+	if (verbose || long_format)
+		printf("ldms_ls: Error %d looking up metric set.\n", status);
+	else
+		printf("ldms_ls: No metric sets matched the given criteria\n");
 	if (status == ENOMEM) {
 		printf("Change the LDMS_LS_MEM_SZ environment variable or the "
 		       "-m option to a bigger value. The current "
@@ -450,10 +476,9 @@ void lookup_push_cb(ldms_t t, enum ldms_lookup_status status,
 	}
 }
 
-static void add_set(char *name)
+static void __add_set(char *name)
 {
 	struct ls_set *lss;
-
 	lss = calloc(1, sizeof(struct ls_set));
 	if (!lss) {
 		dir_status = ENOMEM;
@@ -461,6 +486,19 @@ static void add_set(char *name)
 	}
 	lss->name = strdup(name);
 	LIST_INSERT_HEAD(&set_list, lss, entry);
+}
+
+static void add_set(char *name)
+{
+	struct match_str *match;
+	if (LIST_EMPTY(&match_list)) {
+		__add_set(name);
+	} else {
+		LIST_FOREACH(match, &match_list, entry) {
+			if (0 == regexec(&match->regex, name, 0, NULL, 0))
+				__add_set(name);
+		}
+	}
 }
 
 void add_set_list(ldms_t t, ldms_dir_t _dir)
@@ -677,7 +715,15 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&print_lock, 0);
 	pthread_cond_init(&print_cv, NULL);
 
+	enum ldms_lookup_flags flags = 0;
+	int is_filter_list = 0;
+	if (regex)
+		flags |= LDMS_LOOKUP_RE;
+	if (schema)
+		flags |= LDMS_LOOKUP_BY_SCHEMA;
+
 	if (optind == argc) {
+		/* List all existing metric sets */
 		ret = ldms_xprt_dir(ldms, dir_cb, NULL, 0);
 		if (ret) {
 			printf("ldms_dir returned synchronous error %d\n",
@@ -685,8 +731,55 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 	} else {
-		if (!verbose && !long_format)
-			usage(argv);
+		if (!verbose && !long_format) {
+			is_filter_list = 1;
+			/*
+			 * List the metric sets that the instance name or
+			 * schema name matched the given criteria.
+			 */
+			struct match_str *match;
+			for (i = optind; i < argc; i++) {
+				match = malloc(sizeof(*match));
+				if (!match) {
+					perror("ldms: ");
+					exit(2);
+				}
+				if (!(flags & LDMS_LOOKUP_RE)) {
+					/* Take the given string literally */
+					match->str = malloc(strlen(argv[i] + 3));
+					if (!match->str) {
+						perror("ldms: ");
+						exit(2);
+					}
+					sprintf(match->str, "^%s$", argv[i]);
+					flags |= LDMS_LOOKUP_RE;
+				} else {
+					/* Take the given string as regular expression */
+					match->str = strdup(argv[i]);
+					if (!match->str) {
+						perror("ldms: ");
+						exit(2);
+					}
+				}
+				ret = __compile_regex(&match->regex,
+match->str);
+				if (ret)
+					exit(1);
+				LIST_INSERT_HEAD(&match_list, match, entry);
+			}
+			if (!(flags & LDMS_LOOKUP_BY_SCHEMA)) {
+				/* Filter out metric sets using the instance
+				 * names, so no need to do lookup.
+				 */
+				ret = ldms_xprt_dir(ldms, dir_cb, NULL, 0);
+				if (ret) {
+					printf("ldms_dir returned synchronous "
+						"error %d\n", ret);
+					exit(1);
+				}
+				goto wait_dir;
+			 }
+		}
 		/*
 		 * Set list specified on the command line. Dummy up a
 		 * directory and call our ldms_dir callback
@@ -701,13 +794,28 @@ int main(int argc, char *argv[])
 		}
 		dir->set_count = argc - optind;
 		dir->type = LDMS_DIR_LIST;
-		for (i = optind; i < argc; i++)
-			dir->set_names[i - optind] = strdup(argv[i]);
+		if (LIST_EMPTY(&match_list)) {
+			for (i = optind; i < argc; i++)
+				dir->set_names[i - optind] = strdup(argv[i]);
+		} else {
+			struct match_str *match;
+			i = 0;
+			match = LIST_FIRST(&match_list);
+			while (match) {
+				dir->set_names[i++] = strdup(match->str);
+				LIST_REMOVE(match, entry);
+				regfree(&match->regex);
+				free(match->str);
+				free(match);
+				match = LIST_FIRST(&match_list);
+			}
+		}
 		add_set_list(ldms, dir);
 		dir_done = 1;	/* no need to wait */
 		dir_status = 0;
 	}
 
+wait_dir:
 	clock_gettime(CLOCK_REALTIME, &ts);
 	ts.tv_sec += waitsecs;
 	pthread_mutex_lock(&dir_lock);
@@ -725,19 +833,16 @@ int main(int argc, char *argv[])
 
 	struct ls_set *lss;
 	if (LIST_EMPTY(&set_list)) {
+		if (is_filter_list)
+			printf("ldms_ls: No metric sets matched the given criteria\n");
 		done = 1;
 		goto done;
 	}
 	while (!LIST_EMPTY(&set_list)) {
-		enum ldms_lookup_flags flags = 0;
-		if (regex)
-			flags |= LDMS_LOOKUP_RE;
-		if (schema)
-			flags |= LDMS_LOOKUP_BY_SCHEMA;
 		lss = LIST_FIRST(&set_list);
 		LIST_REMOVE(lss, entry);
 
-		if (verbose || long_format) {
+		if (verbose || long_format || (flags & LDMS_LOOKUP_BY_SCHEMA)) {
 			pthread_mutex_lock(&print_lock);
 			print_done = 0;
 			pthread_mutex_unlock(&print_lock);

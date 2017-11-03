@@ -52,7 +52,7 @@ Indicates that the NAME is a schema name.
 .TP
 .BI -I " NAME"
 .br
-Indicates that the NAME is an instance name.
+Indicates that the NAME is an instance name. This is the default.
 .TP
 .BI -h " HOST"
 .br
@@ -177,8 +177,36 @@ vm1_1/meminfo: consistent, last update: Fri Dec 16 17:12:08 2016 [5091us]
                GN : 985
   -----------------
 .RE
+.PP
+5) Regular Expression:
+.nf
+.RS
+$ldms_ls -h vm1 -x sock -p 60000 -E vm1
+vm1_1/meminfo
+vm1_1/vmstat
+.nf
+.PP
+$ldms_ls -h vm1 -x sock -p 60000 -E vms
+vm1_1/vmstat
+.nf
+.PP
+$ldms_ls -h vm1 -x sock -p 60000 -E -I memin
+vm1_1/meminfo
+.nf
+.PP
+$ldms_ls -h vm1 -x sock -p 60000 -E -S ^vmstat$
+vm1_1/vmstat
+.nf
+.PP
+$ldms_ls -h vm1 -x sock -p 60000 -E -S cpu
+ldms_ls: No metric sets matched the given criteria
 .fi
 .PP
+If the -E option is not given, the given string will be taken literally, i.e., it is equivalent to giving -E ^foo$.
+
+The regular expression option can be used with the -v and -l options. In this case ldms_ls will display only the information of the metric sets that matched the given regular expression.
+.PP
+
 
 
 .SH SEE ALSO
