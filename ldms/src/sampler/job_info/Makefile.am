@@ -3,11 +3,12 @@ dist_man7_MANS=
 
 CORE = ../../core
 SAMPLER= ../../sampler
-AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
+AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@ \
+	    -I../../
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 
-COMMON_LIBADD = $(CORE)/libldms.la
-		@LDFLAGS_GETTIME@ -lovis_util -lcoll
+COMMON_LIBADD = $(CORE)/libldms.la \
+		@LDFLAGS_GETTIME@ -lovis_util -lcoll -lpthread
 
 libjobinfo_la_SOURCES = jobinfo.c jobinfo.h
 libjobinfo_la_LIBADD = $(COMMON_LIBADD)
