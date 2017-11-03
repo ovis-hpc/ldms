@@ -73,6 +73,7 @@ int main(int argc, char **argv)
 	enum id_lang il;
 	struct ovis_label_set *aols[il_last];
 
+	// any len
 	aols[0] = NULL;
 	for (il = il_least; il < il_last; il++) {
 		aols[il] = ovis_label_set_create(il,0);
@@ -90,6 +91,8 @@ int main(int argc, char **argv)
 		ovis_label_set_destroy(ols);
 		aols[il] = NULL;
 	}
+
+	// limited len
 	for (il = il_least; il < il_last; il++) {
 		aols[il] = ovis_label_set_create(il,31);
 	}
@@ -105,5 +108,25 @@ int main(int argc, char **argv)
 		ovis_label_set_destroy(ols);
 		aols[il] = NULL;
 	}
+
+	// string lifecycle
+	for (il = il_least; il < il_last; il++) {
+		aols[il] = ovis_label_set_create(il,0);
+	}
+	for (il = il_least; il < il_last; il++) {
+		printf("\n%s:\n", lang_to_string[il]);
+		struct ovis_label_set * ols = aols[il];
+		struct ovis_name id;
+		for (i = 0; i < argc; i++) {
+			printf("%s\n",argv[i]);
+			char *st = strdup(argv[i]);
+			id = ovis_label_set_own(ols,
+				ovis_name_from_string(st));
+			printf("\t%s\n",id.name);
+		}
+		ovis_label_set_destroy(ols);
+		aols[il] = NULL;
+	}
+
 	return 0;
 }
