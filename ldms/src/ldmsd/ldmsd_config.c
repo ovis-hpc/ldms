@@ -931,6 +931,8 @@ const char * blacklist[] = {
 
 #define APP "ldmsd"
 
+static int ldmsd_plugins_usage_dir(const char *dir, const char *plugname);
+
 /* Dump plugin names and usages (where available) before ldmsd redirects
  * io. Loads and terms all plugins, which provides a modest check on some
  * coding and deployment issues.
@@ -938,8 +940,10 @@ const char * blacklist[] = {
  */
 int ldmsd_plugins_usage(const char *plugname)
 {
-	struct stat buf;
-	glob_t pglob;
+	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
+	char *pathdir = library_path;
+	char *libpath;
+	char *saveptr = NULL;
 
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
 	if (!path)
@@ -950,6 +954,23 @@ int ldmsd_plugins_usage(const char *plugname)
 		fprintf(stderr, "Did not find env(LDMSD_PLUGIN_LIBPATH).\n");
 		return EINVAL;
 	}
+	strncpy(library_path, path, sizeof(library_path) - 1);
+
+	int trc=0, rc = 0;
+	while ((libpath = strtok_r(pathdir, ":", &saveptr)) != NULL) {
+		pathdir = NULL;
+		trc = ldmsd_plugins_usage_dir(libpath, plugname);
+		if (trc)
+			rc = trc;
+	}
+	return rc;
+}
+
+static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
+{
+	assert( path || "null dir name in ldmsd_plugins_usage" == NULL);
+	struct stat buf;
+	glob_t pglob;
 
 	if (stat(path, &buf) < 0) {
 		int err = errno;
