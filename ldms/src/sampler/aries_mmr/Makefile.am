@@ -5,7 +5,7 @@ CORE = ../../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I../.. @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 BASE_SRC = ../sampler_base.h ../sampler_base.c
-BASE_INC = ../
+BASE_INC = $(srcdir)/../
 
 # libgpcdlocal and headers are *NOT* part of LDMS and should be elsewhere on your system
 # Specific packagings of ldms (cray) may for convenience include source and binaries of libgpcdlocal
