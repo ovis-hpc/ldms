@@ -223,9 +223,9 @@ fi
 
 dnl Checks for slurm includes
 OPTION_WITH([slurm], [SLURM], [/usr])
-if test -z "$ENABLE_SLURM_JOBINFO"; then
+if test -z "$ENABLE_SLURM_JOBINFO_TRUE"; then
 	OCFLAGS=$CFLAGS
-	CFLAGS=-I$SLURM_INCDIR
+	CFLAGS=$SLURM_INCDIR_FLAG
 	AC_CHECK_HEADER(slurm/spank.h, [],
 		AC_MSG_ERROR([<slurm/spank.h> not found.
 			slurm installed?]))
