@@ -150,12 +150,23 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 	strncpy(library_path, path, sizeof(library_path) - 1);
 
 	while ((libpath = strtok_r(pathdir, ":", &saveptr)) != NULL) {
+		ldmsd_log(LDMSD_LDEBUG, "Checking for %s in %s\n",
+			plugin_name, libpath);
 		pathdir = NULL;
 		snprintf(library_name, sizeof(library_name), "%s/lib%s.so",
-			 libpath, plugin_name);
+			libpath, plugin_name);
 		d = dlopen(library_name, RTLD_NOW);
 		if (d != NULL) {
 			break;
+		}
+		struct stat buf;
+		if (stat(library_name, &buf) == 0) {
+			char *dlerr = dlerror();
+			ldmsd_log(LDMSD_LERROR, "Bad plugin "
+				"'%s': dlerror %s\n", plugin_name, dlerr);
+			snprintf(errstr, errlen, "Bad plugin"
+				" '%s'. dlerror %s", plugin_name, dlerr);
+			goto err;
 		}
 	}
 
@@ -595,8 +606,8 @@ void *config_proc(void *arg)
 
 	if (cleanup_requested) {
 		cleanup(0, "user quit");
-		return NULL;
 	}
+	return NULL;
 }
 
 void *config_cm_proc(void *args)
