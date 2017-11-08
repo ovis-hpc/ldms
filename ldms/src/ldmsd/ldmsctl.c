@@ -66,6 +66,7 @@
 #include <semaphore.h>
 #include <assert.h>
 #include <netdb.h>
+#include "json_parser/json.h"
 #include "ldms.h"
 #include "ldmsd_request.h"
 #include "config.h"
@@ -380,15 +381,76 @@ static void help_prdcr_stop_regex()
 		"     regex=        A regular expression\n");
 }
 
+void __print_prdcr_status(json_value *jvalue)
+{
+	if (jvalue->type != json_object) {
+		printf("Invalid producer status format\n");
+		return;
+	}
+
+	char *name, *host, *xprt, *state;
+	json_int_t port;
+
+	name = jvalue->u.object.values[0].value->u.string.ptr;
+	host = jvalue->u.object.values[1].value->u.string.ptr;
+	port = jvalue->u.object.values[2].value->u.integer;
+	xprt = jvalue->u.object.values[3].value->u.string.ptr;
+	state = jvalue->u.object.values[4].value->u.string.ptr;
+
+	printf("%-16s %-16s %-12" PRId64 "%-12s %-12s\n", name, host, port, xprt, state);
+
+	json_value *prd_set_array_jvalue;
+	prd_set_array_jvalue = jvalue->u.object.values[5].value;
+	if (prd_set_array_jvalue->type != json_array) {
+		printf("---Invalid producer status format---\n");
+		return;
+	}
+
+	char *inst_name, *schema_name, *set_state;
+	json_value *prd_set_jvalue;
+	int i;
+	for (i = 0; i < prd_set_array_jvalue->u.array.length; i++) {
+		prd_set_jvalue = prd_set_array_jvalue->u.array.values[i];
+		if (prd_set_jvalue->type != json_object) {
+			printf("---Invalid producer status format---\n");
+			return;
+		}
+		inst_name = prd_set_jvalue->u.object.values[0].value->u.string.ptr;
+		schema_name = prd_set_jvalue->u.object.values[1].value->u.string.ptr;
+		set_state = prd_set_jvalue->u.object.values[2].value->u.string.ptr;
+
+		printf("    %-16s %-16s %s\n", inst_name, schema_name, set_state);
+	}
+}
+
 static void resp_prdcr_status(ldmsd_req_hdr_t resp)
 {
 	char *str = ldmsctl_resp_msg_get(resp);
-	printf("%s\n", str);
+	size_t len = resp->rec_len - sizeof(*resp);
+	json_value *json, *prdcr_json;
+	json = json_parse(str, len);
+	if (!json)
+		return;
+
+	if (json->type != json_array) {
+		printf("Unrecognized producer status format\n");
+		return;
+	}
+	int i;
+
+	printf("Name             Host             Port         Transport    State\n");
+	printf("---------------- ---------------- ------------ ------------ ------------\n");
+
+	for (i = 0; i < json->u.array.length; i++) {
+		prdcr_json = json->u.array.values[i];
+		__print_prdcr_status(prdcr_json);
+	}
+	json_value_free(json);
 }
 
 static void help_prdcr_status()
 {
-	/* TODO: */
+	printf( "\nGet status of all producers\n");
 }
 
 static void help_updtr_add()
@@ -467,15 +529,81 @@ static void help_updtr_stop()
 		"     name=   The update policy name\n");
 }
 
+void __print_updtr_status(json_value *jvalue)
+{
+	if (jvalue->type != json_object) {
+		printf("Invalid updater status format\n");
+		return;
+	}
+
+	char *name, *interval, *mode, *state;
+	json_int_t offset;
+
+	name = jvalue->u.object.values[0].value->u.string.ptr;
+	interval = jvalue->u.object.values[1].value->u.string.ptr;
+	offset = jvalue->u.object.values[2].value->u.integer;
+	mode = jvalue->u.object.values[3].value->u.string.ptr;
+	state = jvalue->u.object.values[4].value->u.string.ptr;
+	printf("%-16s %-12s %-12" PRId64 "%-15s %s\n",
+			name, interval, offset, mode, state);
+
+	json_value *prd_array_jvalue;
+	prd_array_jvalue = jvalue->u.object.values[5].value;
+	if (prd_array_jvalue->type != json_array) {
+		printf("---Invalid updater status format---\n");
+		return;
+	}
+
+	char *prdcr_name, *host, *xprt, *prdcr_state;
+	json_int_t port;
+	json_value *prd_jvalue;
+	int i;
+	for (i = 0; i < prd_array_jvalue->u.array.length; i++) {
+		prd_jvalue = prd_array_jvalue->u.array.values[i];
+		if (prd_jvalue->type != json_object) {
+			printf("---Invalid updater status format---\n");
+			return;
+		}
+		prdcr_name = prd_jvalue->u.object.values[0].value->u.string.ptr;
+		host = prd_jvalue->u.object.values[1].value->u.string.ptr;
+		port = prd_jvalue->u.object.values[2].value->u.integer;
+		xprt = prd_jvalue->u.object.values[3].value->u.string.ptr;
+		prdcr_state = prd_jvalue->u.object.values[4].value->u.string.ptr;
+		printf("    %-16s %-16s %-12" PRId64 "%-12s %s\n",
+				prdcr_name, host, port, xprt, prdcr_state);
+	}
+}
+
 static void resp_updtr_status(ldmsd_req_hdr_t resp)
 {
 	char *str = ldmsctl_resp_msg_get(resp);
-	printf("%s\n", str);
+	size_t len = resp->rec_len - sizeof(*resp);
+	json_value *json, *prdcr_json;
+	json = json_parse(str, len);
+	if (!json)
+		return;
+
+	if (json->type != json_array) {
+		printf("Unrecognized updater status format\n");
+		return;
+	}
+	int i;
+
+	printf("Name             Interval     Offset       Mode            State\n");
+	printf("---------------- ------------ ------------ --------------- ------------\n");
+
+	for (i = 0; i < json->u.array.length; i++) {
+		prdcr_json = json->u.array.values[i];
+		__print_updtr_status(prdcr_json);
+	}
+	json_value_free(json);
 }
 
 static void help_updtr_status()
 {
-	/* TODO */
+	printf("\nGet the statuses of all Updaters\n"
+	       "Parameters:\n"
+	       "      None\n");
 }
 
 static void help_strgp_add()
@@ -546,15 +674,92 @@ static void help_strgp_stop()
 		"     name=   The storage policy name\n");
 }
 
+void __print_strgp_status(json_value *jvalue)
+{
+	if (jvalue->type != json_object) {
+		printf("Invalid producer status format\n");
+		return;
+	}
+
+	char *name, *container, *schema, *plugin, *state;
+	json_int_t offset;
+
+	name = jvalue->u.object.values[0].value->u.string.ptr;
+	container = jvalue->u.object.values[1].value->u.string.ptr;
+	schema = jvalue->u.object.values[2].value->u.string.ptr;
+	plugin = jvalue->u.object.values[3].value->u.string.ptr;
+	state = jvalue->u.object.values[4].value->u.string.ptr;
+	printf("%-16s %-16s %-16s %-16s %s\n",
+			name, container, schema, plugin, state);
+
+	json_value *prd_array_jvalue, *metric_array_jvalue;
+	prd_array_jvalue = jvalue->u.object.values[5].value;
+	if (prd_array_jvalue->type != json_array) {
+		printf("---Invalid storage policy status format---\n");
+		return;
+	}
+	printf("    producers:");
+
+	json_value *prd_jvalue, *metric_jvalue;
+	int i;
+	for (i = 0; i < prd_array_jvalue->u.array.length; i++) {
+		prd_jvalue = prd_array_jvalue->u.array.values[i];
+		if (prd_jvalue->type != json_string) {
+			printf("---Invalid storage policy status format---\n");
+			return;
+		}
+		printf(" %s", prd_jvalue->u.string.ptr);
+	}
+	printf("\n");
+
+	metric_array_jvalue = jvalue->u.object.values[6].value;
+	if (metric_array_jvalue->type != json_array) {
+		printf("---Invalid storage policy status format---\n");
+		return;
+	}
+	printf("     metrics:");
+	for (i = 0; i < metric_array_jvalue->u.array.length; i++) {
+		metric_jvalue = metric_array_jvalue->u.array.values[i];
+		if (metric_jvalue->type != json_string) {
+			printf("---Invalid storage policy status format---\n");
+			return;
+		}
+		printf(" %s", metric_jvalue->u.string.ptr);
+	}
+	printf("\n");
+}
+
 static void resp_strgp_status(ldmsd_req_hdr_t resp)
 {
 	char *str = ldmsctl_resp_msg_get(resp);
-	printf("%s\n", str);
+	size_t len = resp->rec_len - sizeof(*resp);
+	json_value *json, *prdcr_json;
+	json = json_parse(str, len);
+	if (!json)
+		return;
+
+	if (json->type != json_array) {
+		printf("Unrecognized producer status format\n");
+		return;
+	}
+	int i;
+
+	printf("Name             Container        Schema           Plugin           State\n");
+	printf("---------------- ---------------- ---------------- ---------------- ------------\n");
+
+	for (i = 0; i < json->u.array.length; i++) {
+		prdcr_json = json->u.array.values[i];
+		__print_strgp_status(prdcr_json);
+	}
+	json_value_free(json);
+
 }
 
 static void help_strgp_status()
 {
-	/* TODO */
+	printf("\nGet the statuses of all Storage policies\n"
+	       "Parameters:\n"
+	       "      None\n");
 }
 
 static void help_version()
