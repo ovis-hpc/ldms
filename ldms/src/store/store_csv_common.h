@@ -145,6 +145,9 @@ struct csv_store_handle_common {
  */
 int parse_bool(struct csv_plugin_static *cps, struct attr_value_list *avl, const char *param_name, bool *param_value);
 
+/** As parse_bool, but log pointer and source instead of plugin pointer */
+int parse_bool2(ldmsd_msg_log_f log, struct attr_value_list *avl, const char *param_name, bool *param_value, const char *source);
+
 /* Replace the *strp with allocated duplicate of val.
  * String pointers managed with this function should not be set
  * by any other method.
