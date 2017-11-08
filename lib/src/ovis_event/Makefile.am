@@ -14,4 +14,8 @@ if ENABLE_OVIS_EVENT_TEST
 ovis_event_test_SOURCES = ovis_event_test.c
 ovis_event_test_LDADD = libovis_event.la -lpthread
 bin_PROGRAMS += ovis_event_test
+
+ovis_event_periodic_test_SOURCES = ovis_event_periodic_test.c
+ovis_event_periodic_test_LDADD = libovis_event.la -lpthread
+bin_PROGRAMS += ovis_event_periodic_test
 endif

@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2016-17 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2016-17 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -48,48 +48,42 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef __OVIS_EVENT_PRIV_H
-#define __OVIS_EVENT_PRIV_H
-#include "ovis-lib-config.h"
-#include "ovis_event.h"
-#include "../coll/heap.h"
+
+#include <assert.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <stdarg.h>
 #include <pthread.h>
-#include <stddef.h>
+#include <time.h>
+#include <sys/time.h>
+#include <stdlib.h>
 
-struct ovis_event {
-	uint32_t flags;
-	uint32_t epoll_events;
-	int fd;
-	ovis_event_cb cb;
-	void *ctxt;
-	struct timeval tv;
+#include "ovis_event.h"
+
+void cb(uint32_t events, const struct timeval *tv, ovis_event_t ev)
+{
+	printf("tv: %ld.%06ld\n", tv->tv_sec, tv->tv_usec);
+}
+
+int main(int argc, char **argv)
+{
+	int rc;
+	ovis_event_t ev;
+	ovis_event_manager_t evm;
 	union ovis_event_time_param_u tp;
-	int idx;
-};
+	int msec = 1000;
+	if (argc > 1) {
+		msec = atoi(argv[1]);
+	}
+	tp.periodic.period_us = msec * 1000;
+	tp.periodic.phase_us = 0;
 
-#define MAX_OVIS_EVENTS 128
+	evm = ovis_event_manager_create();
 
-struct ovis_event_heap {
-	uint32_t alloc_len;
-	uint32_t heap_len;
-	struct ovis_event *ev[OVIS_FLEX];
-};
-
-struct ovis_event_manager {
-	int evcount;
-	int refcount;
-	int efd; /* epoll fd */
-	int pfd[2]; /* pipe for event notification */
-	struct ovis_event ovis_ev;
-	struct epoll_event ev[MAX_OVIS_EVENTS];
-	pthread_mutex_t mutex;
-	struct ovis_event_heap *heap;
-	enum {
-		OVIS_EVENT_MANAGER_INIT,
-		OVIS_EVENT_MANAGER_RUNNING,
-		OVIS_EVENT_MANAGER_WAITING,
-		OVIS_EVENT_MANAGER_TERM,
-	} state;
-};
-
-#endif
+	ev = ovis_event_create(-1, 0, &tp, OVIS_EVENT_PERIODIC, cb, NULL);
+	assert(ev);
+	rc = ovis_event_add(evm, ev);
+	assert(rc == 0);
+	ovis_event_loop(evm, 0);
+	return 0;
+}
