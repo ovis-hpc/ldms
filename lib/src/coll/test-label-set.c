@@ -44,14 +44,10 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 #include "label-set.h"
-//#include "coll/ovis-map.h"
-//#include <ctype.h>
 #include <stdlib.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
-//#include <limits.h>
-//#include <errno.h>
 
 static const char *lang_to_string[] =
 {
@@ -73,7 +69,7 @@ int main(int argc, char **argv)
 	enum id_lang il;
 	struct ovis_label_set *aols[il_last];
 
-	// any len
+	/* any len */
 	aols[0] = NULL;
 	for (il = il_least; il < il_last; il++) {
 		aols[il] = ovis_label_set_create(il,0);
@@ -92,7 +88,7 @@ int main(int argc, char **argv)
 		aols[il] = NULL;
 	}
 
-	// limited len
+	/* limited len */
 	for (il = il_least; il < il_last; il++) {
 		aols[il] = ovis_label_set_create(il,31);
 	}
@@ -109,7 +105,7 @@ int main(int argc, char **argv)
 		aols[il] = NULL;
 	}
 
-	// string lifecycle
+	/* string lifecycle */
 	for (il = il_least; il < il_last; il++) {
 		aols[il] = ovis_label_set_create(il,0);
 	}
