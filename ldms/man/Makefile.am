@@ -17,6 +17,9 @@ Plugin_knc_sampler.man \
 Plugin_lnet_stats.man \
 Plugin_meminfo.man \
 Plugin_fptrans.man \
+Plugin_clock.man \
+Plugin_procstat.man \
+Plugin_sysclassib.man \
 Plugin_jobid.man \
 Plugin_msr_interlagos.man \
 Plugin_procinterrupts.man \
@@ -33,9 +36,7 @@ dist_man7_MANS += Plugin_all_example.man
 endif
 
 pending_dist_man7_MANS= \
-Plugin_procsensors.man \
-Plugin_procstat.man \
-Plugin_sysclassib.man
+Plugin_procsensors.man
 
 dist_man7_MANS += Plugin_store_rabbitv3.man
 

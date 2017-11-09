@@ -116,6 +116,12 @@
  */
 #define SCIB_PC_EXT_LAST IB_PC_EXT_LAST_F
 
+typedef enum {
+	SYSCLASSIB_METRICS_COUNTER,
+	SYSCLASSIB_METRICS_BOTH
+} sysclassib_metrics_type_t;
+
+
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_jobid.h"
@@ -157,7 +163,7 @@ const char *all_metric_names[] = {
 /**
  * IB_PC_* to scib index map.
  */
-const int scib_idx[] = {
+static const int scib_idx[] = {
 	/* ignore these two */
 	[IB_PC_PORT_SELECT_F]         =  -1,
 	[IB_PC_COUNTER_SELECT_F]      =  -1,
@@ -205,6 +211,7 @@ const int scib_idx[] = {
  * Infiniband port representation and context.
  */
 struct scib_port {
+	int badport; /**< rc from open_port at start. */
 	char *ca; /**< CA name */
 	int portno; /**< port number */
 	uint64_t comp_id; /**< comp_id */
@@ -249,6 +256,10 @@ struct timeval tv[2];
 struct timeval *tv_now = &tv[0];
 struct timeval *tv_prev = &tv[1];
 
+/*
+ * Which metrics - counter or both. default both.
+ */
+static sysclassib_metrics_type_t sysclassib_metrics_type;
 /**
  * \param setname The set name (e.g. nid00001/sysclassib)
  */
@@ -284,6 +295,15 @@ static int create_metric_set(const char *instance_name, char *schema_name)
 	}
 
 	LIST_FOREACH(port, &scib_port_list, entry) {
+		if (port->badport) {
+			msglog(LDMSD_LINFO,
+				"sysclassib: Not monitoring port: %s.%d\n",
+				port->ca, port->portno);
+		} else {
+			msglog(LDMSD_LINFO,
+				"sysclassib: Monitoring port: %s.%d\n",
+				port->ca, port->portno);
+		}
 		for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
 			/* counters */
 			snprintf(metric_name, 128, "ib.%s#%s.%d",
@@ -293,12 +313,14 @@ static int create_metric_set(const char *instance_name, char *schema_name)
 			port->handle[i] = ldms_schema_metric_add(schema, metric_name,
 							  LDMS_V_U64);
 			/* rates */
-			snprintf(metric_name, 128, "ib.%s.rate#%s.%d",
+			if (sysclassib_metrics_type == SYSCLASSIB_METRICS_BOTH) {
+				snprintf(metric_name, 128, "ib.%s.rate#%s.%d",
 					all_metric_names[i],
 					port->ca,
 					port->portno);
-			port->rate[i] = ldms_schema_metric_add(schema, metric_name,
+				port->rate[i] = ldms_schema_metric_add(schema, metric_name,
 							LDMS_V_F32);
+			}
 		}
 	}
 	/* create set and metrics */
@@ -393,6 +415,8 @@ int populate_ports(struct scib_port_list *list, char *ports)
 	while (*s) {
 		rc = sscanf(s, "%63[^.].%d%n", ca, &port_no, &n);
 		if (rc != 2) {
+			msglog(LDMSD_LERROR,"sysclassib: Cannot parse ports:%s."
+				"Need list of NAME.NUM, e.g. qib0.1,qib.1\n",s);
 			rc = EINVAL;  /* invalid format */
 			goto err;
 		}
@@ -455,7 +479,7 @@ int open_port(struct scib_port *port)
 	rc = umad_get_port(port->ca, port->portno, &uport);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": umad_get_port('%s', %d) "
-				": %d\n", port->ca, port->portno, rc);
+			": %d\n", port->ca, port->portno, rc);
 		return rc;
 	}
 
@@ -476,9 +500,9 @@ int open_port(struct scib_port *port)
 			| IB_PM_EXT_WIDTH_NOIETF_SUP);
 
 	if (!port->ext) {
-		msglog(LDMSD_LERROR, SAMP ": WARNING: Extended query not "
-				"supported for %s:%d, the sampler will reset "
-				"counters every query\n", port->ca, port->portno);
+		msglog(LDMSD_LINFO, SAMP ": WARNING: Extended query not "
+			"supported for %s:%d, the sampler will reset "
+			"counters every query\n", port->ca, port->portno);
 	}
 
 	return 0;
@@ -506,23 +530,32 @@ void close_port(struct scib_port *port)
 int open_ports(struct scib_port_list *list)
 {
 	struct scib_port *port;
-	int rc;
+	int rc = 0, err = 0, lastrc = 0;
 
 	LIST_FOREACH(port, list, entry) {
+		port->badport = 0;
 		rc = open_port(port);
-		if (rc)
-			return rc;
+		if (rc) {
+			msglog(LDMSD_LINFO,"sysclassib: Error querying %s.%d, errno: %d\n",
+				port->ca, port->portno, rc);
+			port->badport = rc;
+			lastrc = rc;
+			err++;
+		}
 	}
 
+	if (err)
+		return lastrc;
 	return 0;
 }
 
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return
-"config name=sysclassib producer=<prod_name> instance=<inst_name> ports=<ports> [component_id=<compid> schema=<sname> with_jobid=<bool>]\n"
+"config name=sysclassib producer=<prod_name> instance=<inst_name> ports=<ports> [component_id=<compid> schema=<sname> with_jobid=<bool>] [metrics_type=<mtype>\n"
 "    <prod_name>     The producer name\n"
 "    <inst_name>     The instance name\n"
+"    <mtype>         0 (raw counters) or 1 (raw and also rates, default)\n"
 "    <ports>         A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
 "                    a * for all IB ports. If not given, '*' is assumed.\n"
 "    <compid>     Optional unique number identifier. Defaults to zero.\n"
@@ -557,11 +590,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	value = av_value(avl, "component_id");
 	if (value)
-		compid = (uint64_t)(atoi(value));
+		compid = strtoull(value, NULL, 0);
 	else
 		compid = 0;
 
-	LJI_CONFIG(value,avl);
+	LJI_CONFIG(value, avl);
 
 	setstr = av_value(avl, "instance");
 	if (!setstr) {
@@ -578,6 +611,16 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
+	value = av_value(avl,"metrics_type");
+	if (value) {
+		sysclassib_metrics_type = atoi(value);
+		if ((sysclassib_metrics_type < SYSCLASSIB_METRICS_COUNTER) ||
+		    (sysclassib_metrics_type > SYSCLASSIB_METRICS_BOTH)) {
+			return EINVAL;
+		}
+	} else {
+		sysclassib_metrics_type = SYSCLASSIB_METRICS_BOTH;
+	}
 	ports = av_value(avl, "ports");
 	if (!ports)
 		ports = "*";
@@ -620,7 +663,9 @@ inline void update_metric(struct scib_port *port, int idx, uint64_t new_v,
 	if (!port->ext)
 		new_v += old_v;
 	ldms_metric_set_u64(set, port->handle[idx], new_v);
-	ldms_metric_set_float(set, port->rate[idx], (new_v - old_v) / dt);
+	if (sysclassib_metrics_type == SYSCLASSIB_METRICS_BOTH) {
+		ldms_metric_set_float(set, port->rate[idx], (new_v - old_v) / dt);
+	}
 }
 
 /**
@@ -632,6 +677,10 @@ int query_port(struct scib_port *port, float dt)
 	int rc;
 	uint64_t v;
 	int i, j;
+	if (port->badport) {
+		/* we will not retry ports missing at sampler start. */
+		return 0;
+	}
 	if (!port->srcport) {
 		rc = open_port(port);
 		if (rc)
@@ -641,7 +690,7 @@ int query_port(struct scib_port *port, float dt)
 			IB_GSI_PORT_COUNTERS, port->srcport);
 	if (!p) {
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP ": Error querying %s.%d, errno: %d\n",
+		msglog(LDMSD_LDEBUG, SAMP ": Error querying %s.%d, errno: %d\n",
 				port->ca, port->portno, rc);
 		close_port(port);
 		return rc;
@@ -678,7 +727,7 @@ int query_port(struct scib_port *port, float dt)
 			IB_GSI_PORT_COUNTERS_EXT, port->srcport);
 	if (!p) {
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP ": Error extended querying %s.%d, "
+		msglog(LDMSD_LDEBUG, SAMP ": Error extended querying %s.%d, "
 				"errno: %d\n", port->ca, port->portno, rc);
 		close_port(port);
 		return rc;
