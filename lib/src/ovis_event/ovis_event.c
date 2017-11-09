@@ -59,8 +59,13 @@
 
 #define __TIMER_VALID(tv) ((tv)->tv_sec >= 0)
 
+#define ROUND(x, p) ( ((x)+((p)-1))/(p)*(p) )
+#define USEC 1000000
+
 static
 void ovis_event_manager_destroy(ovis_event_manager_t m);
+
+static void __ovis_event_next_wakeup(const struct timeval *now, ovis_event_t ev);
 
 static inline
 void ovis_event_manager_ref_get(ovis_event_manager_t m)
@@ -262,8 +267,8 @@ ovis_event_manager_t ovis_event_manager_create()
 	m->ovis_ev.cb = __ovis_event_pipe_cb;
 	m->ovis_ev.tv.tv_sec = -1;
 	m->ovis_ev.tv.tv_usec = 0;
-	m->ovis_ev.timer.tv_sec = -1;
-	m->ovis_ev.timer.tv_sec = 0;
+	m->ovis_ev.tp.timer.tv_sec = -1;
+	m->ovis_ev.tp.timer.tv_sec = 0;
 	m->ovis_ev.fd = m->pfd[0];
 	m->ovis_ev.idx = -1;
 	m->ovis_ev.epoll_events = EPOLLIN;
@@ -345,9 +350,10 @@ loop:
 	goto out;
 
 process_event:
-	if (ev->flags & OVIS_EVENT_PERSISTENT) {
-		/* re-calculate timer for persistent events*/
-		timeradd(&tv, &ev->timer, &ev->tv);
+	if (ev->flags & (OVIS_EVENT_PERSISTENT|OVIS_EVENT_PERIODIC)) {
+		/* re-calculate timer for persistent/periodic events*/
+		gettimeofday(&tv, NULL);
+		__ovis_event_next_wakeup(&tv, ev);
 		ovis_event_heap_update(m->heap, ev->idx);
 	} else {
 		ev = ovis_event_heap_pop(m->heap);
@@ -364,12 +370,13 @@ out:
 	return timeout;
 }
 
-int ovis_event_timer_update(ovis_event_manager_t m, ovis_event_t ev)
+static
+int __ovis_event_timer_update(ovis_event_manager_t m, ovis_event_t ev)
 {
 	struct timeval tv;
 	pthread_mutex_lock(&m->mutex);
 	gettimeofday(&tv, NULL);
-	timeradd(&tv, &ev->timer, &ev->tv);
+	timeradd(&tv, &ev->tp.timer, &ev->tv);
 	ovis_event_heap_update(m->heap, ev->idx);
 	pthread_mutex_unlock(&m->mutex);
 	return 0;
@@ -386,11 +393,11 @@ int ovis_event_get_fd(ovis_event_t e)
 }
 
 ovis_event_t ovis_event_create(int fd, uint32_t epoll_events,
-				const struct timeval *timer, int is_persistent,
-				ovis_event_cb cb, void *ctxt)
+			       const union ovis_event_time_param_u *t,
+			       int flags, ovis_event_cb cb, void *ctxt)
 {
 	/* check validity before allocation */
-	if (fd < 0 && ! timer) {
+	if (fd < 0 && !t) {
 		errno = EINVAL;
 		return NULL;
 	}
@@ -401,16 +408,39 @@ ovis_event_t ovis_event_create(int fd, uint32_t epoll_events,
 	ev->fd = fd;
 	ev->epoll_events = epoll_events;
 	ev->idx = -1;
-	if (timer)
-		ev->timer = *timer;
-	else
-		ev->timer.tv_sec = -1;
-	if (is_persistent)
-		ev->flags |= OVIS_EVENT_PERSISTENT;
+
+	if (t) {
+		/* This is either periodic or timer */
+		ev->tp = *t;
+		if (flags & OVIS_EVENT_PERIODIC) {
+			ev->flags = OVIS_EVENT_PERIODIC;
+		} else {
+			ev->flags = OVIS_EVENT_TIMER;
+			if (flags & OVIS_EVENT_PERSISTENT)
+				ev->flags |= OVIS_EVENT_PERSISTENT;
+		}
+	}
+
 	ev->cb = cb;
 	ev->ctxt = ctxt;
 out:
 	return ev;
+}
+
+static void __ovis_event_next_wakeup(const struct timeval *now, ovis_event_t ev)
+{
+	uint64_t us, usp;
+	if (ev->flags & OVIS_EVENT_TIMER) {
+		timeradd(now, &ev->tp.timer, &ev->tv);
+	} else if (ev->flags & OVIS_EVENT_PERIODIC) {
+		us = now->tv_sec * USEC + now->tv_usec;
+		us = ROUND(us, ev->tp.periodic.period_us);
+		us += ev->tp.periodic.phase_us;
+		ev->tv.tv_sec = us / USEC;
+		ev->tv.tv_usec = us % USEC;
+	} else {
+		assert(0 == "Bad event type");
+	}
 }
 
 int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev)
@@ -430,16 +460,17 @@ int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev)
 		pthread_mutex_unlock(&m->mutex);
 	}
 
-	if (__TIMER_VALID(&ev->timer)) {
-		/* timer event */
+	if (ev->flags & (OVIS_EVENT_TIMER|OVIS_EVENT_PERIODIC)) {
+		/* timer or periodic event */
 		if (ev->idx != -1) {
 			rc = EEXIST;
 			goto out;
 		}
 		pthread_mutex_lock(&m->mutex);
 		struct timeval tv;
+		/* calculate wake up time */
 		gettimeofday(&tv, NULL);
-		timeradd(&tv, &ev->timer, &ev->tv);
+		__ovis_event_next_wakeup(&tv, ev);
 		rc = ovis_event_heap_insert(m->heap, ev);
 		if (rc) {
 			pthread_mutex_unlock(&m->mutex);
@@ -527,11 +558,9 @@ int ovis_event_term_check(ovis_event_manager_t m)
 
 int ovis_event_loop(ovis_event_manager_t m, int return_on_empty)
 {
-	struct timeval tv, dtv, etv;
 	ovis_event_t ev;
 	int timeout;
 	int i;
-	int fd;
 	int rc = 0;
 
 	ovis_event_manager_ref_get(m);
@@ -575,9 +604,9 @@ loop:
 		if (ev->cb) {
 			ev->cb(m->ev[i].events, NULL, ev);
 		}
-		if (ev->idx != -1) {
+		if (ev->flags & OVIS_EVENT_TIMER && ev->idx != -1) {
 			/* i/o event has an active timer */
-			rc = ovis_event_timer_update(m, ev);
+			rc = __ovis_event_timer_update(m, ev);
 		}
 	}
 

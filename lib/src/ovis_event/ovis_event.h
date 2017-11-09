@@ -70,7 +70,7 @@
  *
  * ovis_event_manager_t ovis_event_manager_create();
  * ovis_event_t ovis_event_create(int fd, uint32_t epoll_events,
- *			const struct timeval *tv, int is_persistent,
+ *			const union ovis_event_time_param_u *t, int flags,
  *			ovis_event_cb cb, void *ctxt);
  * int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev);
  * int ovis_event_del(ovis_event_manager_t m, ovis_event_t ev);
@@ -145,7 +145,8 @@
  * struct timeval timer = {20, 0};
  * ovis_event_t e;
  * void *my_ctxt; // some context of the event
- * e = ovis_event_create(fd, EPOLLIN, &timer, 1, callback, my_ctxt);
+ * e = ovis_event_create(fd, EPOLLIN, (void*)&timer, OVIS_EVENT_PERSISTENT,
+ *                       callback, my_ctxt);
  * ovis_event_add(m, e);
  * // callback() function will be called every 20 seconds, or when fd is ready
  * // for read. timer is reset every time the callback is called.
@@ -159,10 +160,22 @@
 #include <stdint.h>
 #include <sys/time.h>
 
-#define OVIS_EVENT_PERSISTENT 0x1
+#define  OVIS_EVENT_PERSISTENT  0x001
+#define  OVIS_EVENT_TIMER       0x010
+#define  OVIS_EVENT_PERIODIC    0x100
 
 typedef struct ovis_event *ovis_event_t;
 typedef struct ovis_event_manager *ovis_event_manager_t;
+
+typedef struct ovis_periodic_s {
+	uint64_t period_us; /* period in microseconds */
+	uint64_t phase_us; /* phase in microseconds */
+} *ovis_periodic_t;
+
+typedef union ovis_event_time_param_u {
+	struct timeval timer;
+	struct ovis_periodic_s periodic;
+} *ovis_event_time_param_t;
 
 /**
  * callback interface for event notification.
@@ -174,14 +187,16 @@ typedef struct ovis_event_manager *ovis_event_manager_t;
  * In the case of epoll event, \c events value is set by \c epoll, and \c tv is
  * NULL.
  *
- * In the case of timer event, \c events is 0, and \c tv sets to current time.
+ * In the case of timer or periodic event, \c events is 0, and \c tv sets to
+ * current time.
  *
  * \c e is the event assocated with the call for both cases.
  *
  * Application can use \c ovis_event_get_fd() and \c ovis_event_get_ctxt() to
  * obtain associated file descriptor and context accordingly.
  */
-typedef void (*ovis_event_cb)(uint32_t events, const struct timeval *tv, struct ovis_event *e);
+typedef void (*ovis_event_cb)(uint32_t events, const struct timeval *tv,
+			      struct ovis_event *e);
 
 /**
  * Create an ovis_event_manager.
@@ -225,11 +240,14 @@ int ovis_event_get_fd(ovis_event_t e);
  * \param epoll_events epoll events to register for the file descriptor \c fd.
  *                     See <b>epoll_ctl(2)</b> for the details about epoll
  *                     events.
- * \param timer the timer value for timer event. This parameter can be \c NULL
- *              if the application wish to create only epoll event.
- * \param is_persistent for timer event. If set to non-zero value, the timer
- *                      event will be persistent, i.e. the timer automatically
- *                      reset and re-arm after each timer event notification.
+ * \param t the time parameter. If the flags has OVIS_EVENT_PERIODIC, the
+ *          parameter will be accessed as periodic. Otherwise, the parameter
+ *          is accessed as timeval which represents the timer.  This parameter
+ *          can be \c NULL if the application wish to get only epoll event.
+ * \param flags \c OVIS_EVENT_PERSISTENT for timer event to be persistent, i.e.
+ *              the timer is reset and re-arm when an event is delivered.
+ *              \c OVIS_EVENT_PERIODIC for creating periodic event. In this
+ *              case, the parameter \c t is accessed as periodic.
  * \param cb the callback function for event notification.
  * \param ctxt the event context. application can obtabin this context later by
  *             calling \c ovis_event_get_ctxt().
@@ -238,8 +256,8 @@ int ovis_event_get_fd(ovis_event_t e);
  * \retval NULL if error. \c errno is also set.
  */
 ovis_event_t ovis_event_create(int fd, uint32_t epoll_events,
-				const struct timeval *timer, int is_persistent,
-				ovis_event_cb cb, void *ctxt);
+				const union ovis_event_time_param_u *t,
+				int flags, ovis_event_cb cb, void *ctxt);
 
 /**
  * Add an event into the event queue (managed by the manager \c m).

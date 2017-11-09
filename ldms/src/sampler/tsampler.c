@@ -89,6 +89,7 @@ void tsampler_cb(uint32_t events, const struct timeval *tv, ovis_event_t ev)
 int tsampler_timer_add(tsampler_timer_t x)
 {
 	int rc = 0;
+	union ovis_event_time_param_u tp;
 	if (!ready)
 		return EFAULT;
 	if (x->interval.tv_sec < 0)
@@ -105,7 +106,11 @@ int tsampler_timer_add(tsampler_timer_t x)
 	if (!x->n) {
 		return EINVAL;
 	}
-	x->__internal.ev = ovis_event_create(-1, 0, &x->interval, 1, tsampler_cb, x);
+	tp.periodic.period_us = x->interval.tv_sec * 1000000 +
+				x->interval.tv_usec;
+	tp.periodic.phase_us = 0;
+	x->__internal.ev = ovis_event_create(-1, 0, &tp, OVIS_EVENT_PERIODIC,
+					     tsampler_cb, x);
 	if (!x->__internal.ev) {
 		return errno;
 	}

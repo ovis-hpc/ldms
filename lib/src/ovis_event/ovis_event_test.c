@@ -56,11 +56,14 @@
 #include <pthread.h>
 #include <time.h>
 #include <sys/time.h>
+#include <stdlib.h>
 
 #include "ovis_event.h"
 
 const char msg[] = "Hello.";
 const char *name = "HUHA";
+
+int periodic = 1;
 
 static
 int test_log(const char *fmt, ...)
@@ -78,7 +81,7 @@ int test_log(const char *fmt, ...)
 	localtime_r(&tv.tv_sec, &tm);
 	alloc_len = 4096;
 	len = snprintf(buff, alloc_len,
-			"%d-%02d-%02d %02d:%02d:%02d.%ld %s: ",
+			"%d-%02d-%02d %02d:%02d:%02d.%06ld %s: ",
 			tm.tm_year + 1900,
 			tm.tm_mon + 1,
 			tm.tm_mday,
@@ -129,13 +132,26 @@ void *terminate_loop(void *arg)
 void reader_routine(int fd)
 {
 	pthread_t thread;
-	struct timeval tv = {1, 0};
+	union ovis_event_time_param_u tp;
 	struct context ctxt = {fd, 0};
 	int rc;
+	int flags;
 	ovis_event_manager_t m = ovis_event_manager_create();
 	assert(m);
 	pthread_create(&thread, NULL, terminate_loop, m);
-	ovis_event_t ev = ovis_event_create(fd, EPOLLIN, &tv, 1, reader_cb, &ctxt);
+
+	if (periodic) {
+		tp.periodic.period_us = 1000000;
+		tp.periodic.phase_us = 0;
+		flags = OVIS_EVENT_PERIODIC;
+	} else {
+		tp.timer.tv_sec = 1;
+		tp.timer.tv_usec = 0;
+		flags = OVIS_EVENT_TIMER|OVIS_EVENT_PERSISTENT;
+	}
+
+	ovis_event_t ev = ovis_event_create(fd, EPOLLIN, &tp, flags,
+					    reader_cb, &ctxt);
 	assert(ev);
 	rc = ovis_event_add(m, ev);
 	assert(rc == 0);
@@ -158,13 +174,26 @@ void writer_cb(uint32_t events, const struct timeval *tv, ovis_event_t ev)
 void writer_routine(int fd)
 {
 	pthread_t thread;
-	struct timeval tv = {3, 0};
+	union ovis_event_time_param_u tp;
 	struct context ctxt = {fd, 0};
 	int rc = 0;
+	int flags;
 	ovis_event_manager_t m = ovis_event_manager_create();
 	assert(m);
 	pthread_create(&thread, NULL, terminate_loop, m);
-	ovis_event_t ev = ovis_event_create(-1, 0, &tv, 1, writer_cb, &ctxt);
+
+	if (periodic) {
+		tp.periodic.period_us = 3000000;
+		tp.periodic.phase_us = 0;
+		flags = OVIS_EVENT_PERIODIC;
+	} else {
+		tp.timer.tv_sec = 3;
+		tp.timer.tv_usec = 0;
+		flags = OVIS_EVENT_TIMER|OVIS_EVENT_PERSISTENT;
+	}
+
+	ovis_event_t ev = ovis_event_create(-1, 0, &tp, flags,
+					    writer_cb, &ctxt);
 	assert(ev);
 	test_log("adding write event\n");
 	rc = ovis_event_add(m, ev);
@@ -178,10 +207,16 @@ void writer_routine(int fd)
 int main(int argc, char **argv)
 {
 	pid_t pid;
+	const char *use_timer;
 	int rc;
 	int pfd[2]; /* pfd[0] for read, pfd[1] for write */
 	rc = pipe(pfd);
 	assert(rc == 0);
+
+	use_timer = getenv("USE_TIMER");
+	if (use_timer)
+		periodic = 0;
+	printf("periodic: %d\n", periodic);
 
 	pid = fork();
 	if (pid == 0) {
