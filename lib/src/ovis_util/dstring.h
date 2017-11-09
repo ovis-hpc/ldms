@@ -152,6 +152,10 @@ extern const char *dstrval(const dstring_t * dsPtr);
  *  malloc fails in the process.
  */
 extern char *dstrcat(dstring_t * dsPtr, const char *string, int length);
+/** append formatted int to dstring. */
+extern char *dstrcat_int(dstring_t * dsPtr, int64_t);
+/** append formatted unsigned to dstring. */
+extern char *dstrcat_uint(dstring_t * dsPtr, uint64_t);
 
 /*----------------------------------------------------------------------*/
 /**
