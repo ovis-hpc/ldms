@@ -142,7 +142,6 @@ static char *filter_path; /**< store filter path */
 static char *rmq_exchange; /**< store queue */
 amqp_bytes_t rmq_exchange_bytes; /**< store queue in amqp form */
 static ldmsd_msg_log_f msglog;
-#define COMPIDNAME "component_id" /* this belongs in an ldmsd header */
 #define COMPIDSPACE "                     " /* room for u64/nul */
 #define COMPIDBUFSZ 22
 #define PRODBUFSZ 65
@@ -1159,7 +1158,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		return ENOMEM;
 	}
 
-	int compid_index = ldms_metric_by_name(set, COMPIDNAME);
+	int compid_index = ldms_metric_by_name(set, LDMSD_COMPID);
 	if (! compid_index ||
 		ldms_metric_type_get(set,compid_index) != LDMS_V_U64) {
 	/* msglog(LDMSD_LDEBUG,"rabbitv3: no u64 component_id found.\n"); */
@@ -1193,7 +1192,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 			int metric_id = metric_arry[i];
 			// comp_id = ldms_metric_user_data_get(set, metric_id);
 			char *name = (char *)ldms_metric_name_get(set,metric_id);
-			if (0 == strcmp(name, COMPIDNAME)) {
+			if (0 == strcmp(name, LDMSD_COMPID)) {
 				continue;
 			}
 			idx_t idx;
