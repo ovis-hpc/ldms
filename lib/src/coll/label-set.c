@@ -551,7 +551,8 @@ struct ovis_name ovis_label_set_insert_pair(struct ovis_label_set * is, const st
 	return value->id;
 }
 
-struct ovis_name ovis_label_set_insert(struct ovis_label_set * is, const struct ovis_name label)
+static
+struct ovis_name ovis_label_set_insert2(struct ovis_label_set * is, const struct ovis_name label, bool own)
 {
 	struct ovis_name id;
 	struct ovis_map_element ome = { label.name, label.hash, NULL };
@@ -574,7 +575,10 @@ struct ovis_name ovis_label_set_insert(struct ovis_label_set * is, const struct 
 		return ovis_name_null;
 	}
 	id = ovis_name_from_string2(sval, ilen);
-	struct ovis_label_id *value = create_pair(label, id, PI_XFER );
+	int deep = PI_XFER;
+	if (own)
+		deep |= PL_XFER;
+	struct ovis_label_id *value = create_pair(label, id, deep );
 	if (!value) {
 		return ovis_name_null;
 	}
@@ -584,30 +588,43 @@ struct ovis_name ovis_label_set_insert(struct ovis_label_set * is, const struct 
 	return id;
 }
 
+struct ovis_name ovis_label_set_insert(struct ovis_label_set * s, const struct ovis_name label)
+{
+	return ovis_label_set_insert2(s, label, false);
+}
+
+struct ovis_name ovis_label_set_own(struct ovis_label_set * s, const struct ovis_name label)
+{
+	return ovis_label_set_insert2(s, label, true);
+}
+
 const struct ovis_name ovis_label_set_get_label(struct ovis_label_set * is, const struct ovis_name id)
 {
 	struct ovis_name label;
-	// fixme
+	memset(&label,0,sizeof(label));
+	/* fixme */
 	return label;
 }
 
 const struct ovis_name ovis_label_set_get_id(struct ovis_label_set * is, const struct ovis_name label)
 {
 	struct ovis_name id;
-	// fixme
+	memset(&id,0,sizeof(id));
+	/* fixme */
 	return id;
 }
 
 struct ovis_label_set_iterator *ovis_label_set_iterator_get(struct ovis_label_set * is)
 {
 	return NULL;
-	// fixme
+	/* fixme */
 }
 
 const struct ovis_label_id ovis_label_set_next(struct ovis_label_set * is, struct ovis_label_set_iterator *iter)
 {
 	struct ovis_label_id result;
+	memset(&result,0,sizeof(result));
 	return result;
-	// fixme
+	/* fixme */
 }
 
