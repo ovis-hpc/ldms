@@ -453,6 +453,68 @@ static void help_prdcr_status()
 	printf( "\nGet status of all producers\n");
 }
 
+void __print_prdcr_set_status(json_value *jvalue)
+{
+	if (jvalue->type != json_object) {
+		printf("---Invalid producer set status format---\n");
+		return;
+	}
+
+	char *name, *schema, *state, *origin, *prdcr;
+	char *ts_sec, *ts_usec;
+	uint32_t dur_sec, dur_usec;
+
+	name = jvalue->u.object.values[0].value->u.string.ptr;
+	schema = jvalue->u.object.values[1].value->u.string.ptr;
+	state = jvalue->u.object.values[2].value->u.string.ptr;
+	origin = jvalue->u.object.values[3].value->u.string.ptr;
+	prdcr = jvalue->u.object.values[4].value->u.string.ptr;
+	ts_sec = jvalue->u.object.values[5].value->u.string.ptr;
+	ts_usec = jvalue->u.object.values[6].value->u.string.ptr;
+	dur_sec = strtoul(jvalue->u.object.values[7].value->u.string.ptr, NULL, 0);
+	dur_usec = strtoul(jvalue->u.object.values[8].value->u.string.ptr, NULL, 0);
+
+	char ts[64];
+	char dur[64];
+	snprintf(ts, 63, "%s [%s]", ts_sec, ts_usec);
+	snprintf(dur, 63, "%" PRIu32 ".%06" PRIu32, dur_sec, dur_usec);
+
+	printf("%-20s %-16s %-10s %-16s %-16s %-25s %-12s\n",
+			name, schema, state, origin, prdcr, ts, dur);
+}
+
+static void resp_prdcr_set_status(ldmsd_req_hdr_t resp)
+{
+	char *str = ldmsctl_resp_msg_get(resp);
+	size_t len = resp->rec_len - sizeof(*resp);
+	json_value *json, *prdcr_json;
+	json = json_parse(str, len);
+	if (!json)
+		return;
+
+	if (json->type != json_array) {
+		printf("Unrecognized producer set status format\n");
+		return;
+	}
+	int i;
+
+	printf("Name                 Schema Name      State      Origin           "
+			"Producer         timestamp                 duration (sec)\n");
+	printf("-------------------- ---------------- ---------- ---------------- "
+			"---------------- ------------------------- ---------------\n");
+
+	for (i = 0; i < json->u.array.length; i++) {
+		prdcr_json = json->u.array.values[i];
+		__print_prdcr_set_status(prdcr_json);
+	}
+	json_value_free(json);
+}
+
+static void help_prdcr_set_status()
+{
+	printf( "\nGet status of all producer sets\n");
+}
+
 static void help_updtr_add()
 {
 	printf( "\nAdd an updater process that will periodically sample\n"
@@ -792,6 +854,7 @@ static struct command command_tbl[] = {
 	{ "oneshot", LDMSD_ONESHOT_REQ, NULL, help_oneshot, resp_generic },
 	{ "prdcr_add", LDMSD_PRDCR_ADD_REQ, NULL, help_prdcr_add, resp_generic },
 	{ "prdcr_del", LDMSD_PRDCR_DEL_REQ, NULL, help_prdcr_del, resp_generic },
+	{ "prdcr_set_status", LDMSD_PRDCR_SET_REQ, NULL, help_prdcr_set_status, resp_prdcr_set_status },
 	{ "prdcr_start", LDMSD_PRDCR_START_REQ, NULL, help_prdcr_start, resp_generic },
 	{ "prdcr_start_regex", LDMSD_PRDCR_START_REGEX_REQ, NULL, help_prdcr_start_regex, resp_generic },
 	{ "prdcr_status", LDMSD_PRDCR_STATUS_REQ, NULL, help_prdcr_status, resp_prdcr_status },

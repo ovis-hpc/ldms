@@ -78,6 +78,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "plugn_status",       LDMSD_PLUGN_STATUS_REQ  },
 	{  "prdcr_add",          LDMSD_PRDCR_ADD_REQ  },
 	{  "prdcr_del",          LDMSD_PRDCR_DEL_REQ  },
+	{  "prdcr_set_status",   LDMSD_PRDCR_SET_REQ },
 	{  "prdcr_start",        LDMSD_PRDCR_START_REQ  },
 	{  "prdcr_start_regex",  LDMSD_PRDCR_START_REGEX_REQ  },
 	{  "prdcr_status",       LDMSD_PRDCR_STATUS_REQ  },
