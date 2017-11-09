@@ -1419,7 +1419,7 @@ static int strgp_start_handler(ldmsd_req_ctxt_t reqc)
 		reqc->errcode = ENOENT;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The storage policy does not exist.");
-		goto out_1;
+		goto send_reply;
 	}
 	ldmsd_strgp_lock(strgp);
 	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
