@@ -82,6 +82,7 @@
 #include "lustre_sampler.h"
 
 #define STR_MAP_SIZE 4093
+#define SAMP "lustre2_client"
 
 static struct lustre_metric_src_list lms_list = {0};
 
@@ -209,7 +210,7 @@ static int create_metric_set(const char *path, const char *oscs,
 		goto err0;
 	heads[2] = lh_llite;
 
-	ldms_schema_t schema = ldms_schema_new("Lustre_Client");
+	ldms_schema_t schema = ldms_schema_new(SAMP);
 	if (!schema)
 		goto err0;
 
@@ -349,7 +350,7 @@ static int sample(struct ldmsd_sampler *self)
 
 static struct ldmsd_sampler lustre_client_plugin = {
 	.base = {
-		.name = "lustre_client",
+		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
