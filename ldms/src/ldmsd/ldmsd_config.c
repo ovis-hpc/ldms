@@ -167,12 +167,23 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 	strncpy(library_path, path, sizeof(library_path) - 1);
 
 	while ((libpath = strtok_r(pathdir, ":", &saveptr)) != NULL) {
+		ldmsd_log(LDMSD_LDEBUG, "Checking for %s in %s\n",
+			plugin_name, libpath);
 		pathdir = NULL;
 		snprintf(library_name, sizeof(library_name), "%s/lib%s.so",
-			 libpath, plugin_name);
+			libpath, plugin_name);
 		d = dlopen(library_name, RTLD_NOW);
 		if (d != NULL) {
 			break;
+		}
+		struct stat buf;
+		if (stat(library_name, &buf) == 0) {
+			char *dlerr = dlerror();
+			ldmsd_log(LDMSD_LERROR, "Bad plugin "
+				"'%s': dlerror %s\n", plugin_name, dlerr);
+			snprintf(errstr, errlen, "Bad plugin"
+				" '%s'. dlerror %s", plugin_name, dlerr);
+			goto err;
 		}
 	}
 
@@ -612,8 +623,8 @@ void *config_proc(void *arg)
 
 	if (cleanup_requested) {
 		cleanup(0, "user quit");
-		return NULL;
 	}
+	return NULL;
 }
 
 void *config_cm_proc(void *args)
@@ -945,6 +956,8 @@ const char * blacklist[] = {
 
 #define APP "ldmsd"
 
+static int ldmsd_plugins_usage_dir(const char *dir, const char *plugname);
+
 /* Dump plugin names and usages (where available) before ldmsd redirects
  * io. Loads and terms all plugins, which provides a modest check on some
  * coding and deployment issues.
@@ -952,8 +965,10 @@ const char * blacklist[] = {
  */
 int ldmsd_plugins_usage(const char *plugname)
 {
-	struct stat buf;
-	glob_t pglob;
+	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
+	char *pathdir = library_path;
+	char *libpath;
+	char *saveptr = NULL;
 
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
 	if (!path)
@@ -964,6 +979,23 @@ int ldmsd_plugins_usage(const char *plugname)
 		fprintf(stderr, "Did not find env(LDMSD_PLUGIN_LIBPATH).\n");
 		return EINVAL;
 	}
+	strncpy(library_path, path, sizeof(library_path) - 1);
+
+	int trc=0, rc = 0;
+	while ((libpath = strtok_r(pathdir, ":", &saveptr)) != NULL) {
+		pathdir = NULL;
+		trc = ldmsd_plugins_usage_dir(libpath, plugname);
+		if (trc)
+			rc = trc;
+	}
+	return rc;
+}
+
+static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
+{
+	assert( path || "null dir name in ldmsd_plugins_usage" == NULL);
+	struct stat buf;
+	glob_t pglob;
 
 	if (stat(path, &buf) < 0) {
 		int err = errno;
