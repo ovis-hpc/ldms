@@ -618,7 +618,7 @@ class LdmsdCmdParser(cmd.Cmd):
             from datetime import datetime
             metric_sets = json.loads(resp['msg'])
 
-            print("Name                 Schema Name      State      Origin           Producer         timestamp                 duration (usec)")
+            print("Name                 Schema Name      State      Origin           Producer         timestamp                duration (sec)")
             print("-------------------- ---------------- ---------- ---------------- ---------------- ------------------------- ---------------")
             for pset in metric_sets:
                 ts = float(pset['timestamp.sec'])
