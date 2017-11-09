@@ -301,7 +301,7 @@ if test -z "$ENABLE_RABBITV3_TRUE" ; then
 #endif
 ]])],
 	[AC_DEFINE([HAVE_RABBITMQ],[],[Is librabbitmq >= 0.7.0 available?])],
-	[ AC_MSG_ERROR([librabbitmq version < 0.7 not found])])
+	[ AC_MSG_ERROR([librabbitmq version > 0.7 not found])])
 	AC_LANG_POP([C])
 fi
 
