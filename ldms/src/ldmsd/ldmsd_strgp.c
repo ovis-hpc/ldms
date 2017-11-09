@@ -421,6 +421,7 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	return 0;
 err:
 	free(strgp->metric_arry);
+	strgp->metric_arry = NULL;
 	strgp->metric_count = 0;
 	return rc;
 }
