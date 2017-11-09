@@ -69,7 +69,15 @@
 int parse_bool(struct csv_plugin_static *cps, struct attr_value_list *avl,
 		const char *name, bool *bval)
 {
-	if (!cps || !avl || !name || !bval)
+	if (!cps)
+		return EINVAL;
+	return parse_bool2(cps->msglog, avl, name, bval, cps->pname);
+}
+
+int parse_bool2(ldmsd_msg_log_f mlg, struct attr_value_list *avl,
+		const char *name, bool *bval, const char *src)
+{
+	if (!avl || !name || !bval)
 		return EINVAL;
 	const char *val = av_value(avl, name);
 	if (val) {
@@ -90,8 +98,9 @@ int parse_bool(struct csv_plugin_static *cps, struct attr_value_list *avl,
 			*bval = false;
 			break;
 		default:
-			cps->msglog(LDMSD_LERROR, "%s: bad %s=%s\n",
-				cps->pname, name, val);
+			if (mlg)
+				mlg(LDMSD_LERROR, "%s: bad %s=%s\n",
+					(src ? src : ""), name, val);
 			return EINVAL;
 		}
 	}
