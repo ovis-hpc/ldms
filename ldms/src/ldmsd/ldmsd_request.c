@@ -636,6 +636,7 @@ static int example_handler(ldmsd_req_ctxt_t reqc)
 }
 
 extern char *ldmsd_req_attr_value_get_by_name(char *attr_list, const char *name);
+extern int ldmsd_req_attr_keyword_exist_by_name(char *request, const char *name);
 
 static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 {

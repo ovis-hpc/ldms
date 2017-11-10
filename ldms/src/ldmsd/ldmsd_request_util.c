@@ -53,6 +53,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <string.h>
+#include <assert.h>
 #include <ovis_util/util.h>
 #include "ldmsd.h"
 #include "ldmsd_request.h"
@@ -186,12 +187,14 @@ static int add_attr_from_attr_str(char *name, char *value, ldmsd_req_hdr_t *requ
 		memset(&buf[offset], 0, sizeof(uint32_t));
 		attr_sz = sizeof(uint32_t);
 		goto out;
-	} else if (name && !value) {
-		/* The attribute value must be provided */
-		return EINVAL;
 	}
 
-	val_sz = strlen(value) + 1; /* include '\0' */
+	if (value)
+		val_sz = strlen(value) + 1; /* include '\0' */
+	else
+		/* keyword */
+		val_sz = 0;
+
 	attr_sz = sizeof(struct ldmsd_req_attr_s) + val_sz;
 	while (len - offset < attr_sz) {
 		buf = realloc(buf, len * 2);
@@ -227,10 +230,25 @@ static int add_attr_from_attr_str(char *name, char *value, ldmsd_req_hdr_t *requ
 
 void __get_attr_name_value(char *av, char **name, char **value)
 {
+	assert((av && name && value) ||
+			(NULL == "__get_attr_name_value() invalid parameter"));
+	if (!av || !name || !value) {
+		if (name)
+			*name = NULL;
+		if (value)
+			*value = NULL;
+		return;
+	}
 	*name = av;
-	*value = strchr(av, '=');
-	**value = '\0';
-	(*value)++;
+	char *delim;
+	delim = strchr(av, '=');
+	if (delim) {
+		*value = delim;
+		**value = '\0';
+		(*value)++;
+	} else {
+		*value = NULL;
+	}
 }
 
 ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
@@ -281,7 +299,12 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 		av = strtok_r(av, " ", &ptr);
 		while (av) {
 			__get_attr_name_value(av, &name, &value);
-
+			if (!name) {
+				/* av is neither attribute value nor keyword */
+				rc = EINVAL;
+				free(tmp);
+				goto err;
+			}
 			if (0 == strncmp(name, "name", 4)) {
 				/* Find the name attribute */
 				rc = add_attr_from_attr_str(name, value, &request,
@@ -293,12 +316,18 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 
 			} else {
 				/* Construct the other attribute into a ATTR_STRING */
-				cnt += snprintf(&tmp[cnt], len - cnt, "%s=%s ",
-							name, value);
+				if (value) {
+					cnt += snprintf(&tmp[cnt], len - cnt,
+							"%s=%s ", name, value);
+				} else {
+					cnt += snprintf(&tmp[cnt], len - cnt,
+							"%s ", name);
+				}
 			}
 			av = strtok_r(NULL, " ", &ptr);
 		}
 		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
+		/* Add an attribute of type 'STRING' */
 		rc = add_attr_from_attr_str(NULL, tmp, &request, &rec_off, &rec_len);
 		free(tmp);
 		if (rc)
@@ -307,6 +336,11 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 		av = strtok_r(av, " ", &ptr);
 		while (av) {
 			__get_attr_name_value(av, &name, &value);
+			if (!name) {
+				/* av is neither attribute value nor keyword */
+				rc = EINVAL;
+				goto err;
+			}
 			rc = add_attr_from_attr_str(name, value,
 						    &request, &rec_off, &rec_len);
 			if (rc)
@@ -336,6 +370,18 @@ char *ldmsd_req_attr_value_get_by_id(char *attr_list, uint32_t attr_id)
 	return NULL;
 }
 
+int ldmsd_req_attr_keyword_exist_by_id(char *attr_list, uint32_t attr_id)
+{
+	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)attr_list;
+	while (attr->discrim) {
+		if (attr->attr_id == attr_id) {
+			return 1; /* exist */
+		}
+		attr = (ldmsd_req_attr_t)(&attr->attr_value[attr->attr_len]);
+	}
+	return 0;
+}
+
 char *ldmsd_req_attr_value_get_by_name(char *request, const char *name)
 {
 	ldmsd_req_hdr_t req = (ldmsd_req_hdr_t)request;
@@ -343,4 +389,13 @@ char *ldmsd_req_attr_value_get_by_name(char *request, const char *name)
 	if (attr_id < 0)
 		return NULL;
 	return ldmsd_req_attr_value_get_by_id((char *)(req + 1), attr_id);
+}
+
+int ldmsd_req_attr_keyword_exist_by_name(char *request, const char *name)
+{
+	ldmsd_req_hdr_t req = (ldmsd_req_hdr_t)request;
+	uint32_t attr_id = ldmsd_req_attr_str2id(name);
+	if (attr_id < 0)
+		return -ENOENT;
+	return ldmsd_req_attr_keyword_exist_by_id((char *)(req + 1), attr_id);
 }

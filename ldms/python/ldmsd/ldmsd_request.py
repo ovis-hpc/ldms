@@ -130,7 +130,7 @@ class LDMSD_Req_Attr(object):
             self.attr_value = value
             if value is None:
                 self.attr_len = 0
-                self.attr_fmt = 'iiq'
+                self.fmt = 'iiq'
                 self.packed = struct.pack(self.fmt, 1, self.attr_id,
                                                     self.attr_len)
             else:

@@ -167,7 +167,15 @@ class LdmsdCmdParser(cmd.Cmd):
             attr_str_list = args.split(' ')
 
             for attr_str in attr_str_list:
-                [name, value] = attr_str.split("=")
+                name = None
+                value = None
+                try:
+                    [name, value] = attr_str.split("=")
+                except ValueError:
+                    # keyword
+                    [name] = attr_str.split("=")
+                except:
+                    raise
                 if (verb == "config" and name != "name") or (verb == "env"):
                     attr_s.append(attr_str)
                 else:
