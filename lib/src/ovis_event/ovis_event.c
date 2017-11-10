@@ -429,7 +429,7 @@ out:
 
 static void __ovis_event_next_wakeup(const struct timeval *now, ovis_event_t ev)
 {
-	uint64_t us, usp;
+	uint64_t us;
 	if (ev->flags & OVIS_EVENT_TIMER) {
 		timeradd(now, &ev->tp.timer, &ev->tv);
 	} else if (ev->flags & OVIS_EVENT_PERIODIC) {
