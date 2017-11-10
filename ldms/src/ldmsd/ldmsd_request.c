@@ -157,6 +157,7 @@ static int include_handler(ldmsd_req_ctxt_t req_ctxt);
 static int oneshot_handler(ldmsd_req_ctxt_t req_ctxt);
 static int logrotate_handler(ldmsd_req_ctxt_t req_ctxt);
 static int exit_daemon_handler(ldmsd_req_ctxt_t req_ctxt);
+static int greeting_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static struct request_handler_entry request_handler[] = {
@@ -204,6 +205,7 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_ONESHOT_REQ] = { LDMSD_ONESHOT_REQ, oneshot_handler },
 	[LDMSD_LOGROTATE_REQ] = { LDMSD_LOGROTATE_REQ, logrotate_handler },
 	[LDMSD_EXIT_DAEMON_REQ] = { LDMSD_EXIT_DAEMON_REQ, exit_daemon_handler },
+	[LDMSD_GREETING_REQ] = { LDMSD_GREETING_REQ, greeting_handler },
 };
 
 /*
@@ -2721,6 +2723,65 @@ static int exit_daemon_handler(ldmsd_req_ctxt_t reqc)
 	int rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt,
 			LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	return rc;
+}
+
+static int greeting_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *str = 0;
+	char *rep_len_str = 0;
+	char *num_rec_str = 0;
+	int rep_len = 0;
+	int num_rec = 0;
+	size_t cnt = 0;
+	int rc = 0;
+	int i, msg_flag;
+
+	rep_len_str = ldmsd_req_attr_value_get_by_name(reqc->req_buf, "offset");
+	num_rec_str = ldmsd_req_attr_value_get_by_name(reqc->req_buf, "level");
+	str = ldmsd_req_attr_value_get_by_name(reqc->req_buf, "name");
+	if (str) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "Hello '%s'", str);
+		(void) ldmsd_append_reply(reqc, reqc->line_buf, cnt,
+					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	} else if (ldmsd_req_attr_keyword_exist_by_name(reqc->req_buf, "test")) {
+		(void) ldmsd_append_reply(reqc, "Hi", 2,
+				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	} else if (rep_len_str) {
+		rep_len = atoi(rep_len_str);
+ 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "%0*d", rep_len, rep_len);
+		(void) ldmsd_append_reply(reqc, reqc->line_buf, cnt,
+					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	} else if (num_rec_str) {
+		num_rec = atoi(num_rec_str);
+		if (num_rec <= 1) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"First and last record (level <= 1)");
+			ldmsd_append_reply(reqc, reqc->line_buf, cnt,
+					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+			goto out;
+		}
+		for (i = 0; i < num_rec; i++) {
+			msg_flag = 0;
+			if (i == 0) {
+				cnt = snprintf(reqc->line_buf, reqc->line_len,
+							"First record: %d", i);
+				msg_flag = LDMSD_REQ_SOM_F;
+			} else if (i == (num_rec-1)) {
+				cnt = snprintf(reqc->line_buf, reqc->line_len,
+							"Last record: %d", i);
+				msg_flag = LDMSD_REQ_EOM_F;
+			} else {
+				cnt = snprintf(reqc->line_buf, reqc->line_len,
+							"record %d", i);
+			}
+			ldmsd_append_reply(reqc, reqc->line_buf, cnt, msg_flag);
+		}
+	} else {
+		(void) ldmsd_append_reply(reqc, NULL, 0,
+					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	}
+out:
+	return 0;
 }
 
 static int unimplemented_handler(ldmsd_req_ctxt_t reqc)

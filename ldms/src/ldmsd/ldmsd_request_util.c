@@ -69,6 +69,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "daemon",             LDMSD_DAEMON_STATUS_REQ   },
 	{  "env",                LDMSD_ENV_REQ  },
 	{  "exit",               LDMSD_EXIT_DAEMON_REQ  },
+	{  "greeting",           LDMSD_GREETING_REQ },
 	{  "include",            LDMSD_INCLUDE_REQ  },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ   },
 	{  "loglevel",           LDMSD_VERBOSE_REQ  },
@@ -131,6 +132,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "regex",		LDMSD_ATTR_REGEX   },
 	{  "schema",		LDMSD_ATTR_SCHEMA   },
 	{  "string",		LDMSD_ATTR_STRING  },
+	{  "test",              LDMSD_ATTR_TEST   },
 	{  "time",              LDMSD_ATTR_TIME   },
 	{  "type",		LDMSD_ATTR_TYPE   },
 	{  "udata",             LDMSD_ATTR_UDATA   },
@@ -258,7 +260,6 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 	ldmsd_req_hdr_t request;
 	size_t cfg_len = strlen(cfg);
 	size_t rec_off, rec_len;
-
 	dummy = strdup(cfg);
 	if (!dummy)
 		return NULL;

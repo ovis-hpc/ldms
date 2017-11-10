@@ -860,6 +860,23 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_oneshot(self, text, line, begidx, endidx):
         return self.__complete_attr_list('oneshot', text)
 
+    def do_greeting(self, arg):
+        """
+        Say hi to the ldmsd. If name="<string>" is given, ldmsd will echo the string back.
+        If the parameter name is omitted, no responses will be returned.
+        If a keyword 'test' is given, ldmsd will say 'Hi' back. E.g., greeting test.
+        Parameter:
+        [name=]   String that ldmsd will echo back.
+        [offset=]  Number of characters in the response message.
+        [level=]   Number of records in the response message.
+        """
+        resp = self.handle('greeting', arg)
+        if resp['msg'] != "":
+            print(resp['msg'])
+
+    def complete_greeting(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('greeting', text)
+
     def parseline(self, line):
         """Parse the line into a command name and a string containing
         the arguments.  Returns a tuple containing (command, args, line).
@@ -886,6 +903,7 @@ class LdmsdCmdParser(cmd.Cmd):
         while i < n and line[i] in self.identchars: i = i+1
         cmd, arg = line[:i], line[i:].strip()
         return cmd, arg, line
+
 if __name__ == "__main__":
     is_debug = True
     try:
