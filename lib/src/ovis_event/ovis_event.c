@@ -63,12 +63,12 @@
 #define USEC 1000000
 
 static
-void ovis_event_manager_destroy(ovis_event_manager_t m);
+void ovis_scheduler_destroy(ovis_scheduler_t m);
 
 static void __ovis_event_next_wakeup(const struct timeval *now, ovis_event_t ev);
 
 static inline
-void ovis_event_manager_ref_get(ovis_event_manager_t m)
+void ovis_scheduler_ref_get(ovis_scheduler_t m)
 {
 	pthread_mutex_lock(&m->mutex);
 	m->refcount++;
@@ -76,14 +76,14 @@ void ovis_event_manager_ref_get(ovis_event_manager_t m)
 }
 
 static inline
-void ovis_event_manager_ref_put(ovis_event_manager_t m)
+void ovis_scheduler_ref_put(ovis_scheduler_t m)
 {
 	pthread_mutex_lock(&m->mutex);
 	assert(m->refcount > 0);
 	m->refcount--;
 	if (m->refcount == 0) {
 		pthread_mutex_unlock(&m->mutex);
-		ovis_event_manager_destroy(m);
+		ovis_scheduler_destroy(m);
 		return;
 	}
 	pthread_mutex_unlock(&m->mutex);
@@ -107,34 +107,34 @@ void ovis_event_heap_free(struct ovis_event_heap *h)
 }
 
 static inline
-int ovis_event_lt(struct ovis_event *e0, struct ovis_event *e1)
+int ovis_event_lt(ovis_event_t e0, ovis_event_t e1)
 {
-	return timercmp(&e0->tv, &e1->tv, <);
+	return timercmp(&e0->priv.tv, &e1->priv.tv, <);
 }
 
 static inline
 void ovis_event_heap_float(struct ovis_event_heap *h, int idx)
 {
 	int pidx;
-	struct ovis_event *ev = h->ev[idx];
+	ovis_event_t ev = h->ev[idx];
 	while (idx) {
 		pidx = (idx - 1)/2;
 		if (!ovis_event_lt(ev, h->ev[pidx])) {
 			break;
 		}
 		h->ev[idx] = h->ev[pidx];
-		h->ev[pidx]->idx = idx;
+		h->ev[pidx]->priv.idx = idx;
 		idx = pidx;
 	}
 	h->ev[idx] = ev;
-	ev->idx = idx;
+	ev->priv.idx = idx;
 }
 
 static inline
 void ovis_event_heap_sink(struct ovis_event_heap *h, int idx)
 {
 	int l, r, x;
-	struct ovis_event *ev = h->ev[idx];
+	ovis_event_t ev = h->ev[idx];
 	l = idx*2+1;
 	r = l+1;
 	while (l < h->heap_len) {
@@ -152,17 +152,17 @@ void ovis_event_heap_sink(struct ovis_event_heap *h, int idx)
 			break;
 		}
 		h->ev[idx] = h->ev[x];
-		h->ev[x]->idx = idx;
+		h->ev[x]->priv.idx = idx;
 		idx = x;
 		l = idx*2+1;
 		r = l+1;
 	}
 	h->ev[idx] = ev;
-	ev->idx = idx;
+	ev->priv.idx = idx;
 }
 
 static inline
-int ovis_event_heap_insert(struct ovis_event_heap *h, struct ovis_event *ev)
+int ovis_event_heap_insert(struct ovis_event_heap *h, ovis_event_t ev)
 {
 	if (h->heap_len == h->alloc_len) {
 		return ENOMEM;
@@ -173,13 +173,13 @@ int ovis_event_heap_insert(struct ovis_event_heap *h, struct ovis_event *ev)
 }
 
 static inline
-int ovis_event_heap_remove(struct ovis_event_heap *h, struct ovis_event *ev)
+int ovis_event_heap_remove(struct ovis_event_heap *h, ovis_event_t ev)
 {
-	if (ev->idx >= 0) {
-		h->ev[ev->idx] = h->ev[--h->heap_len];
-		h->ev[ev->idx]->idx = ev->idx;
-		ovis_event_heap_sink(h, ev->idx);
-		ev->idx = -1;
+	if (ev->priv.idx >= 0) {
+		h->ev[ev->priv.idx] = h->ev[--h->heap_len];
+		h->ev[ev->priv.idx]->priv.idx = ev->priv.idx;
+		ovis_event_heap_sink(h, ev->priv.idx);
+		ev->priv.idx = -1;
 	}
 	return 0;
 }
@@ -187,23 +187,23 @@ int ovis_event_heap_remove(struct ovis_event_heap *h, struct ovis_event *ev)
 static inline
 void ovis_event_heap_update(struct ovis_event_heap *h, int idx)
 {
-	struct ovis_event *ev = h->ev[idx];
+	ovis_event_t ev = h->ev[idx];
 	ovis_event_heap_float(h, idx);
-	if (ev->idx == idx) {
+	if (ev->priv.idx == idx) {
 		ovis_event_heap_sink(h, idx);
 	}
 }
 
 static inline
-struct ovis_event *ovis_event_heap_pop(struct ovis_event_heap *h)
+ovis_event_t ovis_event_heap_pop(struct ovis_event_heap *h)
 {
-	struct ovis_event *ev = h->ev[0];
+	ovis_event_t ev = h->ev[0];
 	ovis_event_heap_remove(h, ev);
 	return ev;
 }
 
 static inline
-struct ovis_event *ovis_event_heap_top(struct ovis_event_heap *h)
+ovis_event_t ovis_event_heap_top(struct ovis_event_heap *h)
 {
 	if (h->heap_len > 0)
 		return h->ev[0];
@@ -211,10 +211,10 @@ struct ovis_event *ovis_event_heap_top(struct ovis_event_heap *h)
 }
 
 static
-void __ovis_event_pipe_cb(uint32_t events, const struct timeval *tv, ovis_event_t ev)
+void __ovis_event_pipe_cb(ovis_event_t ev)
 {
 	int rc;
-	ovis_event_manager_t m = ev->ctxt;
+	ovis_scheduler_t m = ev->param.ctxt;
 	ovis_event_t pev; /* event read from the pipe */
 loop:
 	/* just reap whatever we have in the channel */
@@ -227,10 +227,10 @@ loop:
 	goto loop;
 }
 
-ovis_event_manager_t ovis_event_manager_create()
+ovis_scheduler_t ovis_scheduler_new()
 {
 	int rc;
-	ovis_event_manager_t m = malloc(sizeof(*m));
+	ovis_scheduler_t m = malloc(sizeof(*m));
 	if (!m)
 		goto out;
 
@@ -263,17 +263,15 @@ ovis_event_manager_t ovis_event_manager_create()
 	if (rc != 0)
 		goto err;
 
-	m->ovis_ev.ctxt = m;
-	m->ovis_ev.cb = __ovis_event_pipe_cb;
-	m->ovis_ev.tv.tv_sec = -1;
-	m->ovis_ev.tv.tv_usec = 0;
-	m->ovis_ev.tp.timer.tv_sec = -1;
-	m->ovis_ev.tp.timer.tv_sec = 0;
-	m->ovis_ev.fd = m->pfd[0];
-	m->ovis_ev.idx = -1;
-	m->ovis_ev.epoll_events = EPOLLIN;
+	m->ovis_ev.param.ctxt = m;
+	m->ovis_ev.param.cb_fn = __ovis_event_pipe_cb;
+	m->ovis_ev.priv.tv.tv_sec = -1;
+	m->ovis_ev.priv.tv.tv_usec = 0;
+	m->ovis_ev.param.fd = m->pfd[0];
+	m->ovis_ev.priv.idx = -1;
+	m->ovis_ev.param.epoll_events = EPOLLIN;
 
-	m->ev[0].events = m->ovis_ev.epoll_events;
+	m->ev[0].events = m->ovis_ev.param.epoll_events;
 	m->ev[0].data.ptr = &m->ovis_ev;
 	rc = epoll_ctl(m->efd, EPOLL_CTL_ADD, m->pfd[0], &m->ev[0]);
 	if (rc != 0)
@@ -282,14 +280,14 @@ ovis_event_manager_t ovis_event_manager_create()
 	goto out;
 
 err:
-	ovis_event_manager_free(m);
+	ovis_scheduler_free(m);
 	m = NULL;
 out:
 	return m;
 }
 
 static
-void ovis_event_manager_destroy(ovis_event_manager_t m)
+void ovis_scheduler_destroy(ovis_scheduler_t m)
 {
 	if (m->efd >= 0)
 		close(m->efd);
@@ -306,9 +304,9 @@ void ovis_event_manager_destroy(ovis_event_manager_t m)
 	free(m);
 }
 
-void ovis_event_manager_free(ovis_event_manager_t m)
+void ovis_scheduler_free(ovis_scheduler_t m)
 {
-	ovis_event_manager_ref_put(m);
+	ovis_scheduler_ref_put(m);
 }
 
 /**
@@ -317,9 +315,10 @@ void ovis_event_manager_free(ovis_event_manager_t m)
  * \retval timeout the timeout (milliseconds) to the next event.
  */
 static
-int ovis_event_heap_process(struct ovis_event_manager *m)
+int ovis_event_heap_process(ovis_scheduler_t m)
 {
 	struct timeval tv, dtv;
+	uint64_t us;
 	ovis_event_t ev;
 	int timeout = -1;
 
@@ -332,11 +331,11 @@ loop:
 	}
 
 	gettimeofday(&tv, NULL);
-	if (!timercmp(&ev->tv, &tv, >)) {
+	if (!timercmp(&ev->priv.tv, &tv, >)) {
 		/* current time is greater than event time */
 		goto process_event;
 	}
-	timersub(&ev->tv, &tv, &dtv);
+	timersub(&ev->priv.tv, &tv, &dtv);
 	assert(dtv.tv_sec >= 0);
 	assert(dtv.tv_usec >= 0);
 	/* tv_usec + 999 is for rounding-up transforming usec -> msec */
@@ -350,18 +349,31 @@ loop:
 	goto out;
 
 process_event:
-	if (ev->flags & (OVIS_EVENT_PERSISTENT|OVIS_EVENT_PERIODIC)) {
-		/* re-calculate timer for persistent/periodic events*/
+	switch (ev->param.type) {
+	case OVIS_EVENT_TIMEOUT:
+	case OVIS_EVENT_EPOLL_TIMEOUT:
+		/* timeout event application callback */
 		gettimeofday(&tv, NULL);
-		__ovis_event_next_wakeup(&tv, ev);
-		ovis_event_heap_update(m->heap, ev->idx);
-	} else {
-		ev = ovis_event_heap_pop(m->heap);
-		m->evcount--;
+		timeradd(&tv, &ev->param.timeout, &ev->priv.tv);
+		ovis_event_heap_update(m->heap, ev->priv.idx);
+		ev->cb.type = OVIS_EVENT_TIMEOUT;
+		break;
+	case OVIS_EVENT_PERIODIC:
+		/* periodic event application callback */
+		gettimeofday(&tv, NULL);
+		us = tv.tv_sec * USEC + tv.tv_usec;
+		us = ROUND(us, ev->param.periodic.period_us);
+		us += ev->param.periodic.phase_us;
+		ev->priv.tv.tv_sec = us / USEC;
+		ev->priv.tv.tv_usec = us % USEC;
+		ovis_event_heap_update(m->heap, ev->priv.idx);
+		ev->cb.type = OVIS_EVENT_PERIODIC;
+		break;
+	default:
+		assert(0 == "Unexpected event type");
 	}
 	pthread_mutex_unlock(&m->mutex);
-	/* timeout event application callback */
-	ev->cb(0, &tv, ev);
+	ev->param.cb_fn(ev);
 	goto loop;
 out:
 	if (m->state == OVIS_EVENT_MANAGER_RUNNING)
@@ -371,58 +383,88 @@ out:
 }
 
 static
-int __ovis_event_timer_update(ovis_event_manager_t m, ovis_event_t ev)
+int __ovis_event_timer_update(ovis_scheduler_t m, ovis_event_t ev)
 {
 	struct timeval tv;
 	pthread_mutex_lock(&m->mutex);
 	gettimeofday(&tv, NULL);
-	timeradd(&tv, &ev->tp.timer, &ev->tv);
-	ovis_event_heap_update(m->heap, ev->idx);
+	timeradd(&tv, &ev->param.timeout, &ev->priv.tv);
+	ovis_event_heap_update(m->heap, ev->priv.idx);
 	pthread_mutex_unlock(&m->mutex);
 	return 0;
 }
 
 void *ovis_event_get_ctxt(ovis_event_t e)
 {
-	return e->ctxt;
+	return e->param.ctxt;
 }
 
 int ovis_event_get_fd(ovis_event_t e)
 {
-	return e->fd;
+	return e->param.fd;
 }
 
-ovis_event_t ovis_event_create(int fd, uint32_t epoll_events,
-			       const union ovis_event_time_param_u *t,
-			       int flags, ovis_event_cb cb, void *ctxt)
+ovis_event_t ovis_event_epoll_new(ovis_event_cb_fn cb_fn, void *ctxt,
+				  int fd, uint32_t epoll_events)
 {
-	/* check validity before allocation */
-	if (fd < 0 && !t) {
-		errno = EINVAL;
-		return NULL;
-	}
-
 	ovis_event_t ev = calloc(1, sizeof(*ev));
 	if (!ev)
 		goto out;
-	ev->fd = fd;
-	ev->epoll_events = epoll_events;
-	ev->idx = -1;
+	ev->param.type = OVIS_EVENT_EPOLL;
+	ev->param.fd = fd;
+	ev->param.epoll_events = epoll_events;
+	ev->param.cb_fn = cb_fn;
+	ev->param.ctxt = ctxt;
+	ev->priv.idx = -1;
+out:
+	return ev;
+}
 
-	if (t) {
-		/* This is either periodic or timer */
-		ev->tp = *t;
-		if (flags & OVIS_EVENT_PERIODIC) {
-			ev->flags = OVIS_EVENT_PERIODIC;
-		} else {
-			ev->flags = OVIS_EVENT_TIMER;
-			if (flags & OVIS_EVENT_PERSISTENT)
-				ev->flags |= OVIS_EVENT_PERSISTENT;
-		}
-	}
+ovis_event_t ovis_event_timeout_new(ovis_event_cb_fn cb_fn, void *ctxt,
+				    const struct timeval *timeout)
+{
+	ovis_event_t ev = calloc(1, sizeof(*ev));
+	if (!ev)
+		goto out;
+	ev->param.type = OVIS_EVENT_TIMEOUT;
+	ev->param.timeout = *timeout;
+	ev->param.cb_fn = cb_fn;
+	ev->param.ctxt = ctxt;
+	ev->priv.idx = -1;
+out:
+	return ev;
+}
 
-	ev->cb = cb;
-	ev->ctxt = ctxt;
+ovis_event_t ovis_event_epoll_timeout_new(ovis_event_cb_fn cb_fn, void *ctxt,
+					  int fd, uint32_t epoll_events,
+					  const struct timeval *timeout)
+{
+	ovis_event_t ev = calloc(1, sizeof(*ev));
+	if (!ev)
+		goto out;
+	ev->param.type = OVIS_EVENT_EPOLL_TIMEOUT;
+	ev->param.fd = fd;
+	ev->param.epoll_events = epoll_events;
+	ev->param.timeout = *timeout;
+	ev->param.cb_fn = cb_fn;
+	ev->param.ctxt = ctxt;
+	ev->priv.idx = -1;
+out:
+	return ev;
+}
+
+ovis_event_t ovis_event_periodic_new(ovis_event_cb_fn cb_fn, void *ctxt,
+				     const struct ovis_periodic_s *p)
+{
+	ovis_event_t ev = calloc(1, sizeof(*ev));
+	if (!ev)
+		goto out;
+	ev->param.type = OVIS_EVENT_PERIODIC;
+	ev->param.periodic = *p;
+	ev->param.fd = -1;
+	ev->param.cb_fn = cb_fn;
+	ev->param.ctxt = ctxt;
+	ev->priv.idx = -1;
 out:
 	return ev;
 }
@@ -430,29 +472,33 @@ out:
 static void __ovis_event_next_wakeup(const struct timeval *now, ovis_event_t ev)
 {
 	uint64_t us;
-	if (ev->flags & OVIS_EVENT_TIMER) {
-		timeradd(now, &ev->tp.timer, &ev->tv);
-	} else if (ev->flags & OVIS_EVENT_PERIODIC) {
+	switch (ev->param.type) {
+	case OVIS_EVENT_TIMEOUT:
+	case OVIS_EVENT_EPOLL_TIMEOUT:
+		timeradd(now, &ev->param.timeout, &ev->priv.tv);
+		break;
+	case OVIS_EVENT_PERIODIC:
 		us = now->tv_sec * USEC + now->tv_usec;
-		us = ROUND(us, ev->tp.periodic.period_us);
-		us += ev->tp.periodic.phase_us;
-		ev->tv.tv_sec = us / USEC;
-		ev->tv.tv_usec = us % USEC;
-	} else {
+		us = ROUND(us, ev->param.periodic.period_us);
+		us += ev->param.periodic.phase_us;
+		ev->priv.tv.tv_sec = us / USEC;
+		ev->priv.tv.tv_usec = us % USEC;
+		break;
+	default:
 		assert(0 == "Bad event type");
 	}
 }
 
-int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev)
+int ovis_scheduler_event_add(ovis_scheduler_t m, ovis_event_t ev)
 {
 	int rc = 0;
 	ssize_t wb;
 
-	if (ev->fd >= 0) {
+	if (ev->param.type & OVIS_EVENT_EPOLL) {
 		struct epoll_event e;
-		e.events = ev->epoll_events;
+		e.events = ev->param.epoll_events;
 		e.data.ptr = ev;
-		rc = epoll_ctl(m->efd, EPOLL_CTL_ADD, ev->fd, &e);
+		rc = epoll_ctl(m->efd, EPOLL_CTL_ADD, ev->param.fd, &e);
 		if (rc)
 			goto out;
 		pthread_mutex_lock(&m->mutex);
@@ -460,9 +506,9 @@ int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev)
 		pthread_mutex_unlock(&m->mutex);
 	}
 
-	if (ev->flags & (OVIS_EVENT_TIMER|OVIS_EVENT_PERIODIC)) {
+	if (ev->param.type & (OVIS_EVENT_TIMEOUT|OVIS_EVENT_PERIODIC)) {
 		/* timer or periodic event */
-		if (ev->idx != -1) {
+		if (ev->priv.idx != -1) {
 			rc = EEXIST;
 			goto out;
 		}
@@ -478,7 +524,8 @@ int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev)
 		}
 		m->evcount++;
 		/* notify only if the new event affect the next timeout */
-		if (m->state == OVIS_EVENT_MANAGER_WAITING && ev->idx == 0) {
+		if (m->state == OVIS_EVENT_MANAGER_WAITING
+				&& ev->priv.idx == 0) {
 			wb = write(m->pfd[1], &ev, sizeof(ev));
 			if (wb == -1) {
 				rc = errno;
@@ -493,16 +540,16 @@ out:
 	return rc;
 }
 
-int ovis_event_del(ovis_event_manager_t m, ovis_event_t ev)
+int ovis_scheduler_event_del(ovis_scheduler_t m, ovis_event_t ev)
 {
 	int rc = 0;
 	ssize_t wb;
-	if (ev->fd >= 0) {
+	if (ev->param.type & OVIS_EVENT_EPOLL) {
 		/* remove from epoll */
 		struct epoll_event e;
-		e.events = ev->epoll_events;
+		e.events = ev->param.epoll_events;
 		e.data.ptr = ev;
-		rc = epoll_ctl(m->efd, EPOLL_CTL_DEL, ev->fd, &e);
+		rc = epoll_ctl(m->efd, EPOLL_CTL_DEL, ev->param.fd, &e);
 		if (rc)
 			goto out;
 		pthread_mutex_lock(&m->mutex);
@@ -511,7 +558,7 @@ int ovis_event_del(ovis_event_manager_t m, ovis_event_t ev)
 	}
 
 	pthread_mutex_lock(&m->mutex);
-	if (ev->idx >= 0) {
+	if (ev->priv.idx >= 0) {
 		ovis_event_heap_remove(m->heap, ev);
 		m->evcount--;
 		/* notify only last delete event */
@@ -535,7 +582,7 @@ void ovis_event_free(ovis_event_t ev)
 }
 
 static
-int ovis_event_term_check(ovis_event_manager_t m)
+int ovis_event_term_check(ovis_scheduler_t m)
 {
 	int rc;
 	pthread_mutex_lock(&m->mutex);
@@ -556,14 +603,14 @@ int ovis_event_term_check(ovis_event_manager_t m)
 	return rc;
 }
 
-int ovis_event_loop(ovis_event_manager_t m, int return_on_empty)
+int ovis_scheduler_loop(ovis_scheduler_t m, int return_on_empty)
 {
 	ovis_event_t ev;
 	int timeout;
 	int i;
 	int rc = 0;
 
-	ovis_event_manager_ref_get(m);
+	ovis_scheduler_ref_get(m);
 	pthread_mutex_lock(&m->mutex);
 	switch (m->state) {
 	case OVIS_EVENT_MANAGER_INIT:
@@ -589,7 +636,7 @@ loop:
 	}
 	pthread_mutex_unlock(&m->mutex);
 
-	rc = epoll_wait(m->efd, m->ev, MAX_OVIS_EVENTS, timeout);
+	rc = epoll_wait(m->efd, m->ev, MAX_EPOLL_EVENTS, timeout);
 	assert(rc >= 0 || errno == EINTR);
 	pthread_mutex_lock(&m->mutex);
 	if (m->state == OVIS_EVENT_MANAGER_WAITING)
@@ -601,11 +648,13 @@ loop:
 		if (rc)
 			goto out;
 		ev = m->ev[i].data.ptr;
-		if (ev->cb) {
-			ev->cb(m->ev[i].events, NULL, ev);
+		ev->cb.type = OVIS_EVENT_EPOLL;
+		ev->cb.epoll_events = m->ev[i].events;
+		if (ev->param.cb_fn) {
+			ev->param.cb_fn(ev);
 		}
-		if (ev->flags & OVIS_EVENT_TIMER && ev->idx != -1) {
-			/* i/o event has an active timer */
+		if (ev->param.type & OVIS_EVENT_TIMEOUT && ev->priv.idx != -1) {
+			/* i/o event has an active timeout */
 			rc = __ovis_event_timer_update(m, ev);
 		}
 	}
@@ -616,11 +665,11 @@ loop:
 
 	goto loop;
 out:
-	ovis_event_manager_ref_put(m);
+	ovis_scheduler_ref_put(m);
 	return rc;
 }
 
-int ovis_event_term(ovis_event_manager_t m)
+int ovis_scheduler_term(ovis_scheduler_t m)
 {
 	int rc;
 	ssize_t wb;

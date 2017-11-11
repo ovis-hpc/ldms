@@ -63,8 +63,6 @@
 const char msg[] = "Hello.";
 const char *name = "HUHA";
 
-int periodic = 1;
-
 static
 int test_log(const char *fmt, ...)
 {
@@ -105,64 +103,59 @@ struct context {
 };
 
 char buff[4096];
-void reader_cb(uint32_t events, const struct timeval *tv, ovis_event_t ev)
+void reader_cb(ovis_event_t ev)
 {
 	int rc;
-	struct context *ctxt = ovis_event_get_ctxt(ev);
+	struct context *ctxt = ev->param.ctxt;
 	int fd = ctxt->fd;
 	ctxt->count++;
-	if (events & EPOLLIN) {
+	switch (ev->cb.type) {
+	case OVIS_EVENT_EPOLL:
+		assert(ev->cb.epoll_events & EPOLLIN);
 		rc = read(fd, buff, sizeof(buff));
 		assert(rc == sizeof(msg));
 		test_log("(%d) receiving '%s'\n", ctxt->count, buff);
-	} else {
+		break;
+	case OVIS_EVENT_TIMEOUT:
 		test_log("(%d) timeout event.\n", ctxt->count);
+		break;
+	default:
+		assert(0 == "Bad event type");
 	}
 }
 
 void *terminate_loop(void *arg)
 {
-	ovis_event_manager_t m = arg;
+	ovis_scheduler_t m = arg;
 	sleep(10);
 	test_log("terminating ...\n");
-	ovis_event_term(m);
+	ovis_scheduler_term(m);
 	return NULL;
 }
 
 void reader_routine(int fd)
 {
 	pthread_t thread;
-	union ovis_event_time_param_u tp;
+	struct timeval tv = {1, 0};
 	struct context ctxt = {fd, 0};
 	int rc;
-	int flags;
-	ovis_event_manager_t m = ovis_event_manager_create();
+	ovis_scheduler_t m = ovis_scheduler_new();
 	assert(m);
 	pthread_create(&thread, NULL, terminate_loop, m);
 
-	if (periodic) {
-		tp.periodic.period_us = 1000000;
-		tp.periodic.phase_us = 0;
-		flags = OVIS_EVENT_PERIODIC;
-	} else {
-		tp.timer.tv_sec = 1;
-		tp.timer.tv_usec = 0;
-		flags = OVIS_EVENT_TIMER|OVIS_EVENT_PERSISTENT;
-	}
-
-	ovis_event_t ev = ovis_event_create(fd, EPOLLIN, &tp, flags,
-					    reader_cb, &ctxt);
+	ovis_event_t ev = ovis_event_epoll_timeout_new(reader_cb, &ctxt,
+						       fd, EPOLLIN, &tv);
 	assert(ev);
-	rc = ovis_event_add(m, ev);
+	rc = ovis_scheduler_event_add(m, ev);
 	assert(rc == 0);
-	rc = ovis_event_loop(m, 0);
+	rc = ovis_scheduler_loop(m, 0);
 	test_log("terminated\n");
 	pthread_join(thread, NULL);
 }
 
-void writer_cb(uint32_t events, const struct timeval *tv, ovis_event_t ev)
+void writer_cb(ovis_event_t ev)
 {
-	struct context *ctxt = ovis_event_get_ctxt(ev);
+	struct context *ctxt = ev->param.ctxt;
 	int fd = ctxt->fd;
 	int rc;
 	ctxt->count++;
@@ -174,32 +167,28 @@ void writer_cb(uint32_t events, const struct timeval *tv, ovis_event_t ev)
 void writer_routine(int fd)
 {
 	pthread_t thread;
-	union ovis_event_time_param_u tp;
+	struct timeval tv;
 	struct context ctxt = {fd, 0};
 	int rc = 0;
-	int flags;
-	ovis_event_manager_t m = ovis_event_manager_create();
+	ovis_scheduler_t m = ovis_scheduler_new();
 	assert(m);
 	pthread_create(&thread, NULL, terminate_loop, m);
 
-	if (periodic) {
-		tp.periodic.period_us = 3000000;
-		tp.periodic.phase_us = 0;
-		flags = OVIS_EVENT_PERIODIC;
-	} else {
-		tp.timer.tv_sec = 3;
-		tp.timer.tv_usec = 0;
-		flags = OVIS_EVENT_TIMER|OVIS_EVENT_PERSISTENT;
-	}
+	tv.tv_sec = 3;
+	tv.tv_usec = 0;
 
-	ovis_event_t ev = ovis_event_create(-1, 0, &tp, flags,
-					    writer_cb, &ctxt);
-	assert(ev);
+	struct ovis_event_s _ev = OVIS_EVENT_INITIALIZER;
+	_ev.param.type = OVIS_EVENT_TIMEOUT;
+	_ev.param.cb_fn = writer_cb;
+	_ev.param.ctxt = &ctxt;
+	_ev.param.timeout.tv_sec = 3;
+	_ev.param.timeout.tv_usec = 0;
+
 	test_log("adding write event\n");
-	rc = ovis_event_add(m, ev);
+	rc = ovis_scheduler_event_add(m, &_ev);
 	assert(rc == 0);
 	test_log("write event added\n");
-	rc = ovis_event_loop(m, 0);
+	rc = ovis_scheduler_loop(m, 0);
 	test_log("terminated\n");
 	pthread_join(thread, NULL);
 }
@@ -207,16 +196,10 @@ void writer_routine(int fd)
 int main(int argc, char **argv)
 {
 	pid_t pid;
-	const char *use_timer;
 	int rc;
 	int pfd[2]; /* pfd[0] for read, pfd[1] for write */
 	rc = pipe(pfd);
 	assert(rc == 0);
-
-	use_timer = getenv("USE_TIMER");
-	if (use_timer)
-		periodic = 0;
-	printf("periodic: %d\n", periodic);
 
 	pid = fork();
 	if (pid == 0) {
