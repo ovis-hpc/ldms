@@ -72,5 +72,5 @@ rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
 echo Listing plugins
-ldmsd -u -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -v DEBUG -r $LDMSD_PIDFILE.1
+ldmsd -u -x sock:$port1 -p unix:$SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -v DEBUG -r $LDMSD_PIDFILE.1
 echo "logs and data stored under $TESTDIR"

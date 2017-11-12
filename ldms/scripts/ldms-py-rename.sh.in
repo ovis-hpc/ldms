@@ -22,13 +22,6 @@ if test ! -x $BUILDDIR/sbin/ldmsd; then
 	echo "can't find ldmsd binary. set destdir in $0 before testing?"
 	exit 1
 fi
-if test ! -x $BUILDDIR/bin/ldmsd_controller; then
-	echo "can't find ldmsd_controller script. Included python in build?"
-	exit 1
-else
-	LC=$BUILDDIR/bin/ldmsd_controller
-	CSO="--sockname"
-fi
 
 case "x$USER" in
 	x)
@@ -68,6 +61,17 @@ export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
 #export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
 export LDMSD_SOCKPATH=${TESTDIR}/run
 mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH $STOREDIR/spool
+SECRET=$SOCKDIR/secret
+echo "secretword=crashtestdummy" > $SECRET
+export LDMS_AUTH_FILE=$SECRET
+chmod go-rwx $SECRET
+if test ! -x $BUILDDIR/bin/ldmsd_controller; then
+	echo "can't find ldmsd_controller script. Included python in build?"
+	exit 1
+else
+	LC="$BUILDDIR/bin/ldmsd_controller --auth_file=$SECRET"
+	CSO="--sockname"
+fi
 echo "logs and data stored under $TESTDIR"
 
 export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$ovis_lib_plugins::$LD_LIBRARY_PATH
@@ -91,10 +95,10 @@ rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
 echo Starting daemons
-ldmsd -x sock:$port1 -S $SOCKDIR/metric_socket_1  -l $LOGDIR/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1
+ldmsd -x sock:$port1 -p unix:$SOCKDIR/metric_socket_1  -l $LOGDIR/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1
 die $?
 
-ldmsd -x sock:$port4 -S $SOCKDIR/metric_socket_4  -l $LOGDIR/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4
+ldmsd -x sock:$port4 -p unix:$SOCKDIR/metric_socket_4  -l $LOGDIR/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4
 die $?
 
 mysleep 1
