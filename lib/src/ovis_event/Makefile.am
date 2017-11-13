@@ -18,4 +18,8 @@ bin_PROGRAMS += ovis_event_test
 ovis_event_periodic_test_SOURCES = ovis_event_periodic_test.c
 ovis_event_periodic_test_LDADD = libovis_event.la -lpthread
 bin_PROGRAMS += ovis_event_periodic_test
+
+ovis_event_net_test_SOURCES = ovis_event_net_test.c
+ovis_event_net_test_LDADD = libovis_event.la -lpthread
+bin_PROGRAMS += ovis_event_net_test
 endif
