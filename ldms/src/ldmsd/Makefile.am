@@ -15,12 +15,11 @@ AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
 
 ldms_ls_SOURCES = ldms_ls.c
-ldms_ls_CFLAGS = $(AM_CFLAGS) @LIBEVENT_INCDIR_FLAG@
+ldms_ls_CFLAGS = $(AM_CFLAGS)
 ldms_ls_LDADD = $(CORE)/libldms.la
 ldms_ls_LDFLAGS = $(AM_LDFLAGS) \
-	@LIBEVENT_LIB64DIR_FLAG@ @LIBEVENT_LIBDIR_FLAG@ \
 	-lzap -lmmalloc -lovis_util -lcoll \
-	-levent -levent_pthreads -lpthread \
+	-lpthread \
 	@LDFLAGS_GETTIME@
 
 ldmsd_SOURCES = ldmsd.c ldmsd_config.c ldmsd_request.c ldmsd_request_util.c \
