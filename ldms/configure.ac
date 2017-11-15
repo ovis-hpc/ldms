@@ -170,15 +170,8 @@ AC_SUBST(ZAP_LIBPATH)
 LDMSD_PLUGIN_LIBPATH=${pkglibdir}
 AC_SUBST(LDMSD_PLUGIN_LIBPATH)
 
-dnl This got defined here for LIBEVENT_ENABLE
-OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
-OPTION_WITH([libevent], [LIBEVENT],[/usr])
-
 OPTION_DEFAULT_ENABLE([ldms-python], [ENABLE_LDMS_PYTHON])
 OPTION_DEFAULT_DISABLE([ldms-test], [ENABLE_LDMS_TEST])
-
-dnl Check for libevent
-OPTION_WITH_EVENT
 
 dnl Check for pthread support
 AC_CHECK_LIB(pthread, pthread_mutex_init, [],

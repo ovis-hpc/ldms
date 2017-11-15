@@ -73,8 +73,6 @@
 #include <assert.h>
 #include <libgen.h>
 #include <time.h>
-#include <event2/thread.h>
-#include <event2/event.h>
 #include <coll/rbt.h>
 #include <coll/str_map.h>
 #include "ldms.h"
@@ -82,6 +80,8 @@
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
 #include "config.h"
+
+#include "ovis_event/ovis_event.h"
 
 #ifdef DEBUG
 #include <mcheck.h>
@@ -476,7 +476,7 @@ void usage(char *argv[]) {
 }
 
 int ev_thread_count = 1;
-struct event_base **ev_base;	/* event bases */
+ovis_scheduler_t *ovis_scheduler;
 pthread_t *ev_thread;		/* sampler threads */
 int *ev_count;			/* number of hosts/samplers assigned to each thread */
 
@@ -494,15 +494,15 @@ int find_least_busy_thread()
 	return idx;
 }
 
-struct event_base *get_ev_base(int idx)
+ovis_scheduler_t get_ovis_scheduler(int idx)
 {
-	ev_count[idx] = ev_count[idx] + 1;
-	return ev_base[idx];
+	__sync_add_and_fetch(&ev_count[idx], 1);
+	return ovis_scheduler[idx];
 }
 
-void release_ev_base(int idx)
+void release_ovis_scheduler(int idx)
 {
-	ev_count[idx] = ev_count[idx] - 1;
+	__sync_sub_and_fetch(&ev_count[idx], 1);
 }
 
 pthread_t get_thread(int idx)
@@ -582,65 +582,22 @@ int publish_kernel(const char *setfile)
 	return 0;
 }
 
-
-int calculate_timeout(int thread_id, unsigned long interval_us,
-			     long offset_us, struct timeval* tv){
-
-	struct timeval new_tv;
-	long int adj_interval;
-	long int epoch_us;
-
-	if (thread_id < 0){
-		/* get real time of day */
-		gettimeofday(&new_tv, NULL);
-	} else {
-		/* NOTE: this uses libevent's cached time for the callback.
-		      By the time we add the event we will be at least off by
-			 the amount of time it takes to do the sample call. We
-			 deem this accepable. */
-		event_base_gettimeofday_cached(get_ev_base(thread_id), &new_tv);
-		/* get_ev_base() is called only to get the ev_base */
-		release_ev_base(thread_id);
-	}
-
-	epoch_us = (1000000 * (long int)new_tv.tv_sec) +
-		(long int)new_tv.tv_usec;
-	adj_interval = interval_us - (epoch_us % interval_us) + offset_us;
-	/* Could happen initially, and later depending on when the event
-	   actually occurs. However the max negative this can be, based on
-	   the restrictions put in is (-0.5*interval+ 1us). Skip this next
-	   point and go on to the next one */
-	if (adj_interval <= 0)
-		adj_interval += interval_us; /* Guaranteed to be positive */
-
-	tv->tv_sec = adj_interval/1000000;
-	tv->tv_usec = adj_interval % 1000000;
-	return 0;
-}
-
 static void stop_sampler(struct ldmsd_plugin_cfg *pi)
 {
-	evtimer_del(pi->event);
-	event_free(pi->event);
-	pi->event = NULL;
-	release_ev_base(pi->thread_id);
+	ovis_scheduler_event_del(pi->os, &pi->oev);
 	pi->thread_id = -1;
 	pi->ref_count--;
+	pi->os = NULL;
+	release_ovis_scheduler(pi->thread_id);
 }
 
-void plugin_sampler_cb(int fd, short sig, void *arg)
+void plugin_sampler_cb(ovis_event_t oev)
 {
-	struct ldmsd_plugin_cfg *pi = arg;
+	struct ldmsd_plugin_cfg *pi = oev->param.ctxt;
 	pthread_mutex_lock(&pi->lock);
 	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
-	if (pi->synchronous){
-		calculate_timeout(pi->thread_id, pi->sample_interval_us,
-				  pi->sample_offset_us, &pi->timeout);
-	}
 	int rc = pi->sampler->sample(pi->sampler);
-	if (!rc) {
-		(void)evtimer_add(pi->event, &pi->timeout);
-	} else {
+	if (rc) {
 		/*
 		 * If the sampler reports an error don't reschedule
 		 * the timeout. This is an indication of a configuration
@@ -662,9 +619,8 @@ static void resched_task(ldmsd_task_t task)
 		adj_interval = random() % 1000000;
 		task->flags &= ~LDMSD_TASK_F_IMMEDIATE;
 	} else if (task->flags & LDMSD_TASK_F_SYNCHRONOUS) {
-		event_base_gettimeofday_cached(get_ev_base(task->thread_id), &new_tv);
+		gettimeofday(&new_tv, NULL);
 		/* The task is already counted when the task is started */
-		release_ev_base(task->thread_id);
 		epoch_us = (1000000 * (long)new_tv.tv_sec) + (long)new_tv.tv_usec;
 		adj_interval = task->sched_us -
 			(epoch_us % task->sched_us) + task->offset_us;
@@ -673,35 +629,27 @@ static void resched_task(ldmsd_task_t task)
 	} else {
 		adj_interval = task->sched_us;
 	}
-	task->timeout.tv_sec = adj_interval / 1000000;
-	task->timeout.tv_usec = adj_interval % 1000000;
+	task->oev.param.timeout.tv_sec = adj_interval / 1000000;
+	task->oev.param.timeout.tv_usec = adj_interval % 1000000;
 }
 
 static int start_task(ldmsd_task_t task)
 {
-	int rc = evtimer_add(task->event, &task->timeout);
+	int rc = ovis_scheduler_event_add(task->os, &task->oev);
 	if (!rc)
 		return LDMSD_TASK_STATE_STARTED;
 	return LDMSD_TASK_STATE_STOPPED;
 }
 
-static void task_cleanup(ldmsd_task_t task)
+static void task_cb_fn(ovis_event_t ev)
 {
-	if (task->event) {
-		event_del(task->event);
-		event_free(task->event);
-		task->event = NULL;
-	}
-}
-
-static void task_cb_fn(int fd, short sig, void *arg)
-{
-	ldmsd_task_t task = arg;
+	ldmsd_task_t task = ev->param.ctxt;
 	enum ldmsd_task_state next_state;
+	ovis_scheduler_event_del(task->os, ev);
+
 	pthread_mutex_lock(&task->lock);
 	if (task->flags & LDMSD_TASK_F_STOP) {
 		task->state = LDMSD_TASK_STATE_STOPPED;
-		task_cleanup(task);
 		goto out;
 	}
 	resched_task(task);
@@ -714,7 +662,6 @@ static void task_cb_fn(int fd, short sig, void *arg)
 	pthread_mutex_lock(&task->lock);
 	if (task->flags & LDMSD_TASK_F_STOP) {
 		task->state = LDMSD_TASK_STATE_STOPPED;
-		task_cleanup(task);
 	} else
 		task->state = next_state;
  out:
@@ -739,11 +686,10 @@ void ldmsd_task_stop(ldmsd_task_t task)
 		goto out;
 	task->flags |= LDMSD_TASK_F_STOP;
 	if (task->state != LDMSD_TASK_STATE_RUNNING) {
-		event_del(task->event);
-		event_free(task->event);
-		task->event = NULL;
+		ovis_scheduler_event_del(task->os, &task->oev);
+		task->os = NULL;
+		release_ovis_scheduler(task->thread_id);
 		task->state = LDMSD_TASK_STATE_STOPPED;
-		release_ev_base(task->thread_id);
 		pthread_cond_signal(&task->join_cv);
 	}
 out:
@@ -761,16 +707,16 @@ int ldmsd_task_start(ldmsd_task_t task,
 		goto out;
 	}
 	task->thread_id = find_least_busy_thread();
-	task->event = evtimer_new(get_ev_base(task->thread_id), task_cb_fn, task);
-	if (!task->event) {
-		rc = ENOMEM;
-		goto out;
-	}
+	task->os = get_ovis_scheduler(task->thread_id);
 	task->fn = task_fn;
 	task->fn_arg = task_arg;
 	task->flags = flags;
 	task->sched_us = sched_us;
 	task->offset_us = offset_us;
+	OVIS_EVENT_INIT(&task->oev);
+	task->oev.param.type = OVIS_EVENT_TIMEOUT;
+	task->oev.param.cb_fn = task_cb_fn;
+	task->oev.param.ctxt = task;
 	resched_task(task);
 	rc = start_task(task);
  out:
@@ -826,22 +772,18 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 		synchronous = 1;
 	}
 
-	pi->sample_interval_us = sample_interval;
-	pi->sample_offset_us = sample_offset;
-	pi->synchronous = synchronous;
+	OVIS_EVENT_INIT(&pi->oev);
+	pi->oev.param.type = OVIS_EVENT_PERIODIC;
+	pi->oev.param.periodic.period_us = sample_interval;
+	pi->oev.param.periodic.phase_us = sample_offset;
+	pi->oev.param.ctxt = pi;
+	pi->oev.param.cb_fn = plugin_sampler_cb;
 
 	pi->ref_count++;
 
 	pi->thread_id = find_least_busy_thread();
-	pi->event = evtimer_new(get_ev_base(pi->thread_id), plugin_sampler_cb, pi);
-	if (pi->synchronous){
-		calculate_timeout(-1, pi->sample_interval_us,
-				  pi->sample_offset_us, &pi->timeout);
-	} else {
-		pi->timeout.tv_sec = sample_interval / 1000000;
-		pi->timeout.tv_usec = sample_interval % 1000000;
-	}
-	rc = evtimer_add(pi->event, &pi->timeout);
+	pi->os = get_ovis_scheduler(pi->thread_id);
+	rc = ovis_scheduler_event_add(pi->os, &pi->oev);
 out:
 	pthread_mutex_unlock(&pi->lock);
 	return rc;
@@ -849,20 +791,21 @@ out:
 
 struct oneshot {
 	struct ldmsd_plugin_cfg *pi;
-	struct event *event;
+	ovis_scheduler_t os;
+	struct ovis_event_s oev;
 };
 
-void oneshot_sample_cb(int fd, short sig, void *arg)
+void oneshot_sample_cb(ovis_event_t ev)
 {
-	struct oneshot *os = arg;
+	struct oneshot *os = ev->param.ctxt;
 	struct ldmsd_plugin_cfg *pi = os->pi;
+	ovis_scheduler_event_del(os->os, ev);
 	pthread_mutex_lock(&pi->lock);
 	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
 	pi->sampler->sample(pi->sampler);
 	pi->ref_count--;
-	evtimer_del(os->event);
+	release_ovis_scheduler(pi->thread_id);
 	free(os);
-	release_ev_base(pi->thread_id);
 	pthread_mutex_unlock(&pi->lock);
 }
 
@@ -927,10 +870,15 @@ int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
 		rc = EPERM;
 		goto err;
 	}
-	ossample->event = evtimer_new(get_ev_base(pi->thread_id),
-				      oneshot_sample_cb, ossample);
+	ossample->os = get_ovis_scheduler(pi->thread_id);
+	OVIS_EVENT_INIT(&ossample->oev);
+	ossample->oev.param.type = OVIS_EVENT_TIMEOUT;
+	ossample->oev.param.ctxt = ossample;
+	ossample->oev.param.cb_fn = oneshot_sample_cb;
+	ossample->oev.param.timeout = tv;
 
-	rc = evtimer_add(ossample->event, &tv);
+	rc = ovis_scheduler_event_add(ossample->os, &ossample->oev);
+
 	if (rc)
 		goto err;
 	goto out;
@@ -958,11 +906,10 @@ int ldmsd_stop_sampler(char *plugin_name)
 		rc = EINVAL;
 		goto out;
 	}
-	if (pi->event) {
-		evtimer_del(pi->event);
-		event_free(pi->event);
-		pi->event = NULL;
-		release_ev_base(pi->thread_id);
+	if (pi->os) {
+		ovis_scheduler_event_del(pi->os, &pi->oev);
+		pi->os = NULL;
+		release_ovis_scheduler(pi->thread_id);
 		pi->thread_id = -1;
 		pi->ref_count--;
 	} else {
@@ -973,27 +920,10 @@ out:
 	return rc;
 }
 
-void keepalive_cb(int fd, short sig, void *arg)
-{
-	struct event *keepalive = arg;
-	struct timeval keepalive_to;
-
-	keepalive_to.tv_sec = 10;
-	keepalive_to.tv_usec = 0;
-	evtimer_add(keepalive, &keepalive_to);
-}
-
 void *event_proc(void *v)
 {
-	struct event_base *sampler_base = v;
-	struct timeval keepalive_to;
-	struct event *keepalive;
-	keepalive = evtimer_new(sampler_base, keepalive_cb, NULL);
-	keepalive_to.tv_sec = 10;
-	keepalive_to.tv_usec = 0;
-	evtimer_assign(keepalive, sampler_base, keepalive_cb, keepalive);
-	evtimer_add(keepalive, &keepalive_to);
-	event_base_loop(sampler_base, 0);
+	ovis_scheduler_t os = v;
+	ovis_scheduler_loop(os, 0);
 	ldmsd_log(LDMSD_LINFO, "Exiting the sampler thread.\n");
 	return NULL;
 }
@@ -1353,17 +1283,13 @@ int main(int argc, char *argv[])
 		}
 	}
 
-
-	evthread_use_pthreads();
-	event_set_log_callback(ev_log_cb);
-
 	ev_count = calloc(ev_thread_count, sizeof(int));
 	if (!ev_count) {
 		ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
 		exit(1);
 	}
-	ev_base = calloc(ev_thread_count, sizeof(struct event_base *));
-	if (!ev_base) {
+	ovis_scheduler = calloc(ev_thread_count, sizeof(*ovis_scheduler));
+	if (!ovis_scheduler) {
 		ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
 		exit(1);
 	}
@@ -1373,12 +1299,12 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 	for (op = 0; op < ev_thread_count; op++) {
-		ev_base[op] = event_init();
-		if (!ev_base[op]) {
-			ldmsd_log(LDMSD_LERROR, "Error creating an event base.\n");
-			cleanup(6, "event base create failed");
+		ovis_scheduler[op] = ovis_scheduler_new();
+		if (!ovis_scheduler[op]) {
+			ldmsd_log(LDMSD_LERROR, "Error creating an OVIS scheduler.\n");
+			cleanup(6, "OVIS scheduler create failed");
 		}
-		ret = pthread_create(&ev_thread[op], NULL, event_proc, ev_base[op]);
+		ret = pthread_create(&ev_thread[op], NULL, event_proc, ovis_scheduler[op]);
 		if (ret) {
 			ldmsd_log(LDMSD_LERROR, "Error %d creating the event "
 					"thread.\n", ret);

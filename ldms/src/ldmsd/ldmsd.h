@@ -60,6 +60,7 @@
 #include <coll/idx.h>
 #endif /* LDMSD_UPDATE_TIME */
 
+#include <ovis_event/ovis_event.h>
 #include <ovis_util/util.h>
 #include "ldms.h"
 
@@ -98,7 +99,6 @@ typedef struct ldmsd_task {
 	int offset_us;
 	pthread_mutex_t lock;
 	pthread_cond_t join_cv;
-	struct event *event;
 	struct timeval timeout;
 	enum ldmsd_task_state {
 		LDMSD_TASK_STATE_STOPPED,
@@ -107,6 +107,8 @@ typedef struct ldmsd_task {
 	} state;
 	ldmsd_task_fn_t fn;
 	void *fn_arg;
+	ovis_scheduler_t os;
+	struct ovis_event_s oev;
 } *ldmsd_task_t;
 
 typedef struct ldmsd_sec_ctxt {
@@ -381,8 +383,9 @@ struct ldmsd_plugin_cfg {
 		struct ldmsd_store *store;
 	};
 	struct timeval timeout;
-	struct event *event;
 	pthread_mutex_t lock;
+	ovis_scheduler_t os;
+	struct ovis_event_s oev;
 	LIST_ENTRY(ldmsd_plugin_cfg) entry;
 };
 
