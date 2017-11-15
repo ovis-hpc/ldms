@@ -700,14 +700,16 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		 interval_us = strtol(interval_s, NULL, 0);
 	}
 
-out:
 	prdcr = ldmsd_prdcr_new(name, xprt, host, port_no, type, interval_us);
 	if (!prdcr) {
 		if (errno == EEXIST)
 			goto eexist;
+		else if (errno == EAFNOSUPPORT)
+			goto eafnosupport;
 		else
 			goto enomem;
 	}
+
 	goto send_reply;
 enomem:
 	reqc->errcode = ENOMEM;
@@ -718,6 +720,11 @@ eexist:
 	reqc->errcode = EEXIST;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The prdcr %s already exists.", name);
+	goto send_reply;
+eafnosupport:
+	reqc->errcode = EAFNOSUPPORT;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"Error resolving hostname '%s'\n", host);
 	goto send_reply;
 einval:
 	reqc->errcode = EINVAL;
