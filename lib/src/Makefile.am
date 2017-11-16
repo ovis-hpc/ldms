@@ -27,16 +27,16 @@ if ENABLE_OVIS_AUTH
 SUBDIRS += ovis_auth
 endif
 
+if ENABLE_OVIS_EVENT
+SUBDIRS += ovis_event
+endif
+
 if ENABLE_ZAP
 SUBDIRS += zap
 endif
 
 if ENABLE_OVIS_CTRL
 SUBDIRS += ovis_ctrl
-endif
-
-if ENABLE_OVIS_EVENT
-SUBDIRS += ovis_event
 endif
 
 install-data-hook: ovis-lib-configvars.sh
