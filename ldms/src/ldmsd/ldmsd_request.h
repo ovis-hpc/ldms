@@ -216,9 +216,14 @@ typedef struct ldmsd_cfg_xprt_s {
 		struct ldmsd_cfg_sock_s sock;
 		struct ldmsd_cfg_ldms_s ldms;
 	};
+	size_t max_msg;
 	ldmsd_cfg_send_fn_t send_fn;
 	ldmsd_cfg_cleanup_fn_t cleanup_fn;
 } *ldmsd_cfg_xprt_t;
+
+#define LINE_BUF_LEN 1024
+#define REQ_BUF_LEN 4096
+#define REP_BUF_LEN REQ_BUF_LEN
 
 typedef struct ldmsd_req_ctxt {
 	struct req_ctxt_key key;

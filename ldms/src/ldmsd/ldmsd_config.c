@@ -464,11 +464,6 @@ static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 	return 0;
 }
 
-extern void req_ctxt_tree_lock();
-extern void req_ctxt_tree_unlock();
-extern ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key);
-extern void free_req_ctxt(ldmsd_req_ctxt_t rm);
-
 int process_config_file(const char *path)
 {
 	static uint32_t msg_no = 0;
@@ -501,6 +496,7 @@ int process_config_file(const char *path)
 
 	xprt.xprt = NULL;
 	xprt.send_fn = log_response_fn;
+	xprt.max_msg = REP_BUF_LEN;
 
 next_line:
 	line = fgets(buff + off, cfg_buf_len - off, fin);
@@ -627,6 +623,16 @@ void *config_proc(void *arg)
 	return NULL;
 }
 
+int __sock_max_buf_len_get(int sock, int optname)
+{
+	int optval, rc;;
+	socklen_t optlen = sizeof(optval);
+	rc = getsockopt(sock, SOL_SOCKET, optname, &optval, &optlen);
+	if (rc == -1)
+		return -errno;
+	return optval;
+}
+
 void *config_cm_proc(void *args)
 {
 	cfg_clnt_t listen_clnt = args;
@@ -750,6 +756,13 @@ loop:
 	clnt->xprt.send_fn = send_sock_fn;
 	clnt->xprt.sock.ss = rem_ss;
 	clnt->xprt.cleanup_fn = NULL;
+	clnt->xprt.max_msg = __sock_max_buf_len_get(sock, SO_SNDBUF);
+	if (clnt->xprt.max_msg < 0) {
+		ldmsd_log(LDMSD_LERROR, "Error %d getting maximum sock "
+				"send buffer length\n", -clnt->xprt.max_msg);
+		close(sock);
+		goto loop;
+	}
 
 	pthread_mutex_lock(&clnt_list_lock);
 	LIST_INSERT_HEAD(&clnt_list, clnt, entry);
@@ -826,6 +839,12 @@ int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword)
 			  "error = %d.\n", errno);
 		goto err;
 	}
+	clnt->xprt.max_msg = __sock_max_buf_len_get(clnt->xprt.sock.fd, SO_SNDBUF);
+	if (clnt->xprt.max_msg < 0) {
+		ldmsd_log(LDMSD_LERROR, "Error %d getting the max sock send "
+				"buffer length.\n", -clnt->xprt.max_msg);
+		goto err;
+	}
 	rc = bind(clnt->xprt.sock.fd, (struct sockaddr *)&ss, sa_len);
 	if (rc < 0) {
 		ldmsd_log(LDMSD_LERROR, "Error %d binding to configuration socket %s:%s\n",
@@ -872,6 +891,7 @@ static void __recv_msg(ldms_t x, char *data, size_t data_len)
         struct ldmsd_cfg_xprt_s xprt;
         xprt.ldms.ldms = x;
         xprt.send_fn = send_ldms_fn;
+        xprt.max_msg = x->max_msg;
         switch (request->type) {
         case LDMSD_REQ_TYPE_CONFIG_CMD:
                 (void)ldmsd_process_config_request(&xprt, request, data_len);
@@ -928,6 +948,7 @@ int listen_on_ldms_xprt(char *xprt_str, char *port_str, char *secretword)
 			  "Memory allocation failure creating configuration client.\n");
 		return -1;
 	}
+	clnt->xprt.max_msg = l->max_msg;
 	clnt->xprt.cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
 	clnt->secretword = strdup(secretword);
         clnt->xprt.ldms.ldms = l;
