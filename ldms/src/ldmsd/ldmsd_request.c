@@ -534,10 +534,12 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 		}
 		reqc = alloc_req_ctxt(&key, xprt->max_msg);
 		if (!reqc) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"ldmsd out of memory.");
+			char errstr[64];
+			snprintf(errstr, 63, "ldmsd out of memory");
+			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
 			rc = ENOMEM;
-			ldmsd_send_error_reply(xprt, key.msg_no, rc, reqc->line_buf, cnt);
+			ldmsd_send_error_reply(xprt, key.msg_no, rc,
+						errstr, strlen(errstr));
 			goto err_out;
 		}
 		if (reqc->req_len < req_len) {
@@ -551,11 +553,14 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 	} else {
 		reqc = find_req_ctxt(&key);
 		if (!reqc) {
+			char errstr[256];
+			snprintf(errstr, 255, "The message no %" PRIu32
+					" was not found.", key.msg_no);
 			rc = ENOENT;
-			ldmsd_log(LDMSD_LERROR, "The message no %d:%d was not found.",
-				key.msg_no, key.conn_id);
-			/* TODO: the below line will crash reqc is NULL. The error message should be sent to the interface */
-//			ldmsd_send_error_reply(xprt, key.msg_no, rc, reqc->line_buf, cnt);
+			ldmsd_log(LDMSD_LERROR, "The message no %" PRIu32 ":%" PRIu64
+					" was not found.\n", key.msg_no, key.conn_id);
+			ldmsd_send_error_reply(xprt, key.msg_no, rc,
+						errstr, strlen(errstr));
 			goto err_out;
 		}
 		/* Copy the data from this record to the tail of the request context */
