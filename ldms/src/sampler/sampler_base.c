@@ -138,7 +138,7 @@ base_data_t base_config(struct attr_value_list *avl,
 		if (!value)
 			value = "app_id";
 		base->app_id_idx = ldms_metric_by_name(base->job_set, value);
-		if (base->job_id_idx < 0) {
+		if (base->app_id_idx < 0) {
 			log(LDMSD_LINFO,
 			    "%s: The App Id metric named, %s, does not exist. Job "
 			    "data will not be associated with the metric values.\n",
@@ -154,7 +154,7 @@ base_data_t base_config(struct attr_value_list *avl,
 			log(LDMSD_LINFO,
 			    "%s: The Job Start metric named, %s, does not exist. Job "
 			    "data will not be associated with the metric values.\n",
-			    name, value); 
+			    name, value);
 			base->job_set = NULL;
 			goto err;
 		}
@@ -166,7 +166,7 @@ base_data_t base_config(struct attr_value_list *avl,
 			log(LDMSD_LINFO,
 			    "%s: The Job End metric named, %s, does not exist. Job "
 			    "data will not be associated with the metric values.\n",
-			    name, value); 
+			    name, value);
 			base->job_set = NULL;
 			goto err;
 		}
@@ -254,4 +254,3 @@ void base_sample_end(base_data_t base)
 		return;
 	ldms_transaction_end(base->set);
 }
-
