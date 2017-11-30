@@ -70,12 +70,12 @@
  *
  * Gets the following selected data items:
  *
- * Second line:
+ * Line prefixed with rpc:
  * rpc 2 numeric fields
  * field1: Total number of RPC calls to NFS,
  * field2: Number of times a call had to be retransmitted due to a timeout while waiting for a reply from server
  *
- *  Fourth line:
+ * Line prefixed with proc3 (nfs v3 response stats)
  * proc3 23 numeric fields:
  * field3: getattr
  * field4: setattr
@@ -101,6 +101,7 @@
  */
 
 #define PROC_FILE "/proc/net/rpc/nfs"
+
 static char *procfile = PROC_FILE;
 
 #define MAXOPTS 2
@@ -142,9 +143,8 @@ static int create_metric_set(const char *path, char* schema_name)
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, SAMP ": Could not open /proc/net/rpc/nfs file "
-				"'%s'...exiting\n",
-				procfile);
+		msglog(LDMSD_LERROR, SAMP ": Could not open " PROC_FILE " file "
+				"... exiting sampler\n");
 		return ENOENT;
 	}
 
@@ -185,7 +185,7 @@ static int create_metric_set(const char *path, char* schema_name)
 		goto err;
 	}
 
-	//add specialized metrics
+	/* add specialized metrics */
 	v.v_u64 = compid;
 	ldms_metric_set(set, 0, &v);
 
@@ -305,6 +305,7 @@ PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
 PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
 	PRIu64 " %" PRIu64 " %" PRIu64 " %s\n"
 
+static int nfs3_warn_once = 1;
 static int sample(struct ldmsd_sampler *self)
 {
 	int rc, i;
@@ -325,47 +326,52 @@ static int sample(struct ldmsd_sampler *self)
 	 * Format of the file is well known --
 	 * We want lines 1 and 3 (starting with 0)
 	 */
-	int currlinenum = 0;
+	int found = 0;
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
 
 		char junk[5][100];
-		switch (currlinenum) {
-			case 1:
-				rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 "%s\n",
-						junk[0], &v[0].v_u64, &v[1].v_u64, junk[1]);
-				if (rc != 4) {
-					rc = EINVAL;
-					goto out;
-				}
-				ldms_metric_set(set, (0 + metric_offset), &v[0]);
-				ldms_metric_set(set, (1 + metric_offset), &v[1]);
-				break;
-			case 3:
-				rc = sscanf(lbuf, LINE_FMT,
-						junk[0], junk[1], junk[2], &v[2].v_u64,
-						&v[3].v_u64, &v[4].v_u64, &v[5].v_u64,
-						&v[6].v_u64, &v[7].v_u64, &v[8].v_u64,
-						&v[9].v_u64, &v[10].v_u64, &v[11].v_u64,
-						&v[12].v_u64, &v[13].v_u64,	&v[14].v_u64,
-						&v[15].v_u64, &v[16].v_u64, &v[17].v_u64,
-						&v[18].v_u64, &v[19].v_u64, &v[20].v_u64,
-						&v[21].v_u64, &v[22].v_u64, junk[3]);
-				if (rc < 24) {
-					rc = EINVAL;
-					goto out;
-				}
-				for (i = 2; i < 23; i++)
-					ldms_metric_set(set, (i+metric_offset), &v[i]);
-				break;
-			default:
-				break;
+		if (strncmp(s,"rpc ", 4) == 0) {
+			rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 "%s\n",
+					junk[0], &v[0].v_u64, &v[1].v_u64, junk[1]);
+			if (rc != 4) {
+				rc = EINVAL;
+				goto out;
+			}
+			ldms_metric_set(set, (0 + metric_offset), &v[0]);
+			ldms_metric_set(set, (1 + metric_offset), &v[1]);
+			found++;
 		}
-		currlinenum++;
-	} while (s); /* must get to EOF for the switch to work */
+		if (strncmp(s,"proc3 ", 6) == 0) {
+			rc = sscanf(lbuf, LINE_FMT,
+					junk[0], junk[1], junk[2], &v[2].v_u64,
+					&v[3].v_u64, &v[4].v_u64, &v[5].v_u64,
+					&v[6].v_u64, &v[7].v_u64, &v[8].v_u64,
+					&v[9].v_u64, &v[10].v_u64, &v[11].v_u64,
+					&v[12].v_u64, &v[13].v_u64,	&v[14].v_u64,
+					&v[15].v_u64, &v[16].v_u64, &v[17].v_u64,
+					&v[18].v_u64, &v[19].v_u64, &v[20].v_u64,
+					&v[21].v_u64, &v[22].v_u64, junk[3]);
+			if (rc < 24) {
+				rc = EINVAL;
+				goto out;
+			}
+			for (i = 2; i < 23; i++) {
+				ldms_metric_set(set, (i+metric_offset), &v[i]);
+			}
+			found++;
+		}
+	} while (s);
 	rc = 0;
+	if (found != 2) {
+		if (nfs3_warn_once) {
+			nfs3_warn_once = 0;
+			msglog(LDMSD_LERROR, SAMP ": " PROC_FILE " file "
+				"does not contain nfs3 statistics.\n");
+		}
+	}
 out:
 	ldms_transaction_end(set);
 	return rc;
