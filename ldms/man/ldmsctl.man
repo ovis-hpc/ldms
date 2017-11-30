@@ -9,16 +9,9 @@ ldmsctl \- Issue control commands to ldmsd.
 ldmsctl [OPTION...]
 
 .SH DESCRIPTION
-In LDMS (Lightweight Distributed Metric Service), version 2 the ldmsctl command is used to issue commands to ldmsd (ldms daemons). After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl.
+After LDMS (lightweight Distributed Metric Service) version 3.4, ldmsctl is an LDMS daemon C-interface that can be used to dynamically configure an LDMS daemon instead of ldmsd_controller when Python is not available. After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl. There are three approaches to connect to an LDMS daemon: Unix domain socket, TCP/IP socket and the data channel.
 
-ldmsctl still works for configuring samplers in version 3. In early versions of v3, code paths taken by ldmsctl were the v2 code
-paths, kept for backwards compatibility. These were removed around version v3.3. The only remaining capability for ldmsctl
-is to dynamically configure a sampler when you don't have python support.
-
-Starting ldmsd with the configuration file option enables you to statically configure a sampler without requiring python.
-Dynamically configuring samplers with ldmsd_controller requires python.
-
-ldmsctl will be removed in a future release. It is not recommended that you use this with v3, but rather use ldmsd_controller instead.
+Before version 3.4 Unix domain socket is the only connection ldmsctl uses. In version 3.# to 3.3 ldmsctl can be used to dynamically configure sampler daemons only.
 
 .SH ENVIRONMENT
 The following environment variables must be set (includes environment variables needed for the actions,
@@ -36,6 +29,9 @@ path_to_ovis_build/lib/ovis-ldms
 LDMSD_SOCKPATH
 path to the unix domain socket for the ldmsd. Default is /var/run. If you have changed the path (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd).
 .TP
+LDMS_AUTH_FILE
+Path to the file containing the secret word.
+.TP
 PATH
 path_to_ovis_build/sbin:path_to_ovis_build/bin
 
@@ -45,6 +41,30 @@ path_to_ovis_build/sbin:path_to_ovis_build/bin
 .BI -S " SOCKET"
 .br
 SOCKET is the unix domain socket that the ldmsd is listening on.
+.TP
+.BI -h " HOST"
+.br
+HOST is the hostname to connect to the LDMS daemon
+.TP
+.BI -p " PORT"
+.br
+PORT is the port to connect to the LDMS daemon
+.TP
+.BR -i
+.br
+Establish an inband connection to the LDMS daemon. ldmsctl will connect to the data channel.
+.TP
+.BI -x " XPRT"
+.br
+XPRT is the transport one of sock, ugni, or rdma. Only use with the option -i
+.TP
+.BI -s " SOURCE"
+.br
+SOURCE is the path to a configuration file
+.TP
+.BI -X " COMMAND"
+.br
+COMMAND is a shell command to be executed. The output will be sent to ldmsd.
 .TP
 .BR -V
 Display LDMS version information and then exit.
@@ -273,11 +293,24 @@ No known bugs.
 
 .PP
 .nf
-1) Run ldmsctl -S <unix domain socket path/name associated with target ldmsd>
+1) Run ldmsctl
+.RS
+1.1) Unix domain socket: ldmsctl -S <unix domain socket path/name associated with target ldmsd>
+
 $/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
 ldmsctl>
-.fi
 
+1.2) TCP/IP socket
+
+$/tmp/opt/ovis/sbin/ldmsctl -h vm1_2 -p 20001
+ldmsctl>
+
+1.3) inband channel
+
+$/tmp/opt/ovis/sbin/ldmsctl -h vm1_2 -p 10001 -i -x sock
+ldmsctl>
+.RE
+.fi
 .PP
 .nf
 2) After starting ldmsctl, configure "meminfo" collector plugin to collect every second.
