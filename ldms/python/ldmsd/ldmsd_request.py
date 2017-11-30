@@ -85,7 +85,8 @@ class LDMSD_Req_Attr(object):
     LEVEL = 20
     PATH = 21
     TIME = 22
-    LAST = 23
+    TEST = 24
+    LAST = 26
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -109,6 +110,7 @@ class LDMSD_Req_Attr(object):
                    'level': LEVEL,
                    'path': PATH,
                    'time': TIME,
+                   'test': TEST,
         }
 
     def __init__(self, value = None, attr_name = None, attr_id = None):
@@ -130,7 +132,7 @@ class LDMSD_Req_Attr(object):
             self.attr_value = value
             if value is None:
                 self.attr_len = 0
-                self.attr_fmt = 'iiq'
+                self.fmt = 'iiq'
                 self.packed = struct.pack(self.fmt, 1, self.attr_id,
                                                     self.attr_len)
             else:
@@ -148,6 +150,7 @@ class LDMSD_Req_Attr(object):
 
 class LDMSD_Request(object):
     EXAMPLE = 1
+    GREETING = 2
 
     PRDCR_ADD = 0x100
     PRDCR_DEL = 0x100 + 1
@@ -206,6 +209,7 @@ class LDMSD_Request(object):
 
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
+            'greeting': {'id': GREETING},
 
             'prdcr_add': {'id': PRDCR_ADD},
             'prdcr_del': {'id': PRDCR_DEL},

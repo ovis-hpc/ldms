@@ -126,6 +126,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'strgp_status': {'req_attr': [], 'opt_attr': []},
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': []},
+                      ##### Misc. #####
+                      'greeting': {'req_attr': [], 'opt_attr': ['name', 'offset', 'level']},
                       }
 
 """@var MAX_RECV_LEN
