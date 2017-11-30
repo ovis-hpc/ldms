@@ -2756,7 +2756,7 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 	num_rec_str = ldmsd_req_attr_value_get_by_name(reqc->req_buf, "level");
 	str = ldmsd_req_attr_value_get_by_name(reqc->req_buf, "name");
 	if (str) {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "Hello '%s'", str);
+		cnt = snprintf(reqc->line_buf, reqc->line_len, "Hello '%s'", str);
 		(void) ldmsd_append_reply(reqc, reqc->line_buf, cnt,
 					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	} else if (ldmsd_req_attr_keyword_exist_by_name(reqc->req_buf, "test")) {
@@ -2764,8 +2764,14 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	} else if (rep_len_str) {
 		rep_len = atoi(rep_len_str);
- 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "%0*d", rep_len, rep_len);
-		(void) ldmsd_append_reply(reqc, reqc->line_buf, cnt,
+		char *buf = malloc(rep_len + 1);
+		if (!buf) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len, "ldmsd out of memory");
+			buf = reqc->line_buf;
+		} else {
+			cnt = snprintf(buf, rep_len + 1, "%0*d", rep_len, rep_len);
+		}
+		(void) ldmsd_append_reply(reqc, buf, cnt,
 					LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
 	} else if (num_rec_str) {
 		num_rec = atoi(num_rec_str);
