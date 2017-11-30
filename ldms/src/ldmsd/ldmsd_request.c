@@ -102,9 +102,6 @@ static int msg_comparator(void *a, const void *b)
 	return ak->msg_no - bk->msg_no;
 }
 struct rbt msg_tree = RBT_INITIALIZER(msg_comparator);
-#define LINE_BUF_LEN 1024
-#define REQ_BUF_LEN 4096
-#define REP_BUF_LEN REQ_BUF_LEN
 
 typedef int
 (*ldmsd_request_handler_t)(ldmsd_req_ctxt_t req_ctxt);
@@ -238,13 +235,18 @@ void free_req_ctxt(ldmsd_req_ctxt_t reqc)
 	free(reqc);
 }
 
-ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key)
+/*
+ * max_msg_len must be a positive number.
+ */
+ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key, size_t max_msg_len)
 {
 	ldmsd_req_ctxt_t reqc;
+	size_t len;
+
 	reqc = calloc(1, sizeof *reqc);
 	if (!reqc)
 		return NULL;
-	/* leave one byte for terminating '\0' to accomodate string replies */
+	/* leave one byte for terminating '\0' to accommodate string replies */
 	reqc->line_len = LINE_BUF_LEN - 1;
 	reqc->line_buf = malloc(LINE_BUF_LEN);
 	if (!reqc->line_buf)
@@ -254,13 +256,13 @@ ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key)
 	reqc->req_buf = malloc(REQ_BUF_LEN);
 	if (!reqc->req_buf)
 		goto err;
-	*(uint32_t *)&reqc->req_buf[reqc->req_off] = 0; /* teriminating discrim */
-	reqc->rep_len = REP_BUF_LEN - 1;
+	*(uint32_t *)&reqc->req_buf[reqc->req_off] = 0; /* terminating discrim */
+	reqc->rep_len = max_msg_len - 1;
 	reqc->rep_off = sizeof(struct ldmsd_req_hdr_s);
-	reqc->rep_buf = malloc(REP_BUF_LEN);
+	reqc->rep_buf = malloc(max_msg_len);
 	if (!reqc->rep_buf)
 		goto err;
-	*(uint32_t *)&reqc->req_buf[reqc->rep_off] = 0; /* teriminating discrim */
+	*(uint32_t *)&reqc->req_buf[reqc->rep_off] = 0; /* terminating discrim */
 	reqc->key = *key;
 	rbn_init(&reqc->rbn, &reqc->key);
 	rbt_ins(&msg_tree, &reqc->rbn);
@@ -530,7 +532,7 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 			ldmsd_send_error_reply(xprt, key.msg_no, rc, reqc->line_buf, cnt);
 			goto err_out;
 		}
-		reqc = alloc_req_ctxt(&key);
+		reqc = alloc_req_ctxt(&key, xprt->max_msg);
 		if (!reqc) {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 					"ldmsd out of memory.");

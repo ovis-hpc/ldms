@@ -1411,6 +1411,7 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	__ldms_xprt_init(_x, x->name, x->log);
 	_x->zap = x->zap;
 	_x->zap_ep = zep;
+	_x->max_msg = zap_max_msg(x->zap);
 	_x->event_cb = x->event_cb;
 	_x->event_cb_arg = x->event_cb_arg;
 	if (!_x->event_cb)
@@ -2053,6 +2054,7 @@ int __ldms_xprt_zap_new(struct ldms_xprt *x, const char *name,
 		ret = ENOMEM;
 		goto err1;
 	}
+	x->max_msg = zap_max_msg(x->zap);
 	zap_set_ucontext(x->zap_ep, x);
 	return 0;
 err1:
