@@ -151,87 +151,92 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 	}
 	rewind(mf);
 
-	{
-		size_t nread = fread(ji_buf, sizeof(char), flen, mf);
-		ji_buf[flen] = '\0';
-		if (nread < flen) {
-			ji_buf[nread] = '\0';
-		}
-		fclose(mf);
-
-		int maxlist = 1;
-		char *t = ji_buf;
-		while (t[0] != '\0') {
-			if (isspace(t[0])) maxlist++;
-			t++;
-		}
-		kvl = av_new(maxlist);
-		avl = av_new(maxlist);
-		rc = tokenize(ji_buf,kvl,avl);
-		if (rc) {
-			goto err;
-		}
-
-		char *tmp = av_value(avl, "JOBID");
-		if (tmp) {
-			char *endp = NULL;
-			errno = 0;
-			uint64_t j = strtoull(tmp, &endp, 0);
-			if (endp == tmp || errno) {
-				msglog(LDMSD_LERROR,"Fail parsing JOBID '%s'\n", tmp);
-				rc = EINVAL;
-				goto err;
-			}
-			ji->jobid = j;
-
-			tmp = av_value(avl, "UID");
-			if (tmp) {
-				endp = NULL;
-				errno = 0;
-				j = strtoull(tmp, &endp, 0);
-				if (endp == tmp || errno) {
-					msglog(LDMSD_LINFO,"Fail parsing UID '%s'\n",
-						tmp);
-					rc = EINVAL;
-					goto err;
-				}
-				ji->uid = j;
-			}
-
-			tmp = av_value(avl, "USER");
-			if (tmp) {
-				if (strlen(tmp) >= LJI_USER_NAME_MAX) {
-					msglog(LDMSD_LINFO,"Username too long '%s'\n",
-						tmp);
-					rc = EINVAL;
-					goto err;
-				} else {
-					strcpy(ji->user,tmp);
-				}
-			}
-		}
-
-
-		ldms_transaction_begin(js);
-
-		union ldms_value v;
-		v.v_u64 = compid;
-		ldms_metric_set(js, compid_pos, &v);
-
-		v.v_u64 = ji->jobid;
-		ldms_metric_set(js, jobid_pos, &v);
-
-		v.v_u64 = ji->uid;
-		ldms_metric_set(js, uid_pos, &v);
-
-		ldms_mval_t mv = (ldms_mval_t) &(ji->user);
-		ldms_metric_array_set(js, user_pos, mv, 0, LJI_USER_NAME_MAX);
-
-		ldms_transaction_end(js);
-		rc = 0;
-
+	size_t nread = fread(ji_buf, sizeof(char), flen, mf);
+	ji_buf[flen] = '\0';
+	if (nread < flen) {
+		ji_buf[nread] = '\0';
 	}
+	fclose(mf);
+
+	int maxlist = 1;
+	char *t = ji_buf;
+	while (t[0] != '\0') {
+		if (isspace(t[0])) maxlist++;
+		t++;
+	}
+	kvl = av_new(maxlist);
+	avl = av_new(maxlist);
+	rc = tokenize(ji_buf,kvl,avl);
+	if (rc) {
+		goto err;
+	}
+
+	char *endp;
+	char *tmp = av_value(avl, "JOBID");
+	uint64_t j;
+	if (tmp) {
+		endp = NULL;
+		errno = 0;
+		j = strtoull(tmp, &endp, 0);
+		if (endp == tmp || errno) {
+			msglog(LDMSD_LERROR,"Fail parsing JOBID '%s'\n", tmp);
+			rc = EINVAL;
+		}
+		ji->jobid = j;
+	} else {
+		ji->jobid = 0;
+	}
+
+
+	tmp = av_value(avl, "UID");
+	if (tmp) {
+		endp = NULL;
+		errno = 0;
+		j = strtoull(tmp, &endp, 0);
+		if (endp == tmp || errno) {
+			msglog(LDMSD_LINFO,"Fail parsing UID '%s'\n", tmp);
+			rc = EINVAL;
+		}
+		ji->uid = j;
+	} else {
+		ji->uid = 0;
+	}
+
+	tmp = av_value(avl, "USER");
+	if (tmp) {
+		if (strlen(tmp) >= LJI_USER_NAME_MAX) {
+			msglog(LDMSD_LINFO,"Username too long '%s'\n", tmp);
+			rc = EINVAL;
+		} else {
+			strcpy(ji->user, tmp);
+		}
+	} else {
+		strcpy(ji->user, "root");
+	}
+
+	goto out;
 err:
+	strcpy(ji->user, "root");
+	ji->uid = 0;
+	ji->jobid = 0;
+out:
+	ldms_transaction_begin(js);
+
+	union ldms_value v;
+	v.v_u64 = compid;
+	ldms_metric_set(js, compid_pos, &v);
+
+	v.v_u64 = ji->jobid;
+	ldms_metric_set(js, jobid_pos, &v);
+
+	v.v_u64 = ji->uid;
+	ldms_metric_set(js, uid_pos, &v);
+
+	ldms_mval_t mv = (ldms_mval_t) &(ji->user);
+	ldms_metric_array_set(js, user_pos, mv, 0, LJI_USER_NAME_MAX);
+
+	ldms_transaction_end(js);
+
 	av_free(kvl);
 	av_free(avl);
 	return rc;
@@ -295,8 +300,8 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	 */
 	rc = parse_jobinfo(procfile, &ji, set);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": parse_jobinfo fail.\n");
-		goto err;
+		msglog(LDMSD_LERROR, SAMP ": parse_jobinfo fail ignored;"
+			"expect 0/root data values. Queue system silent?\n");
 	}
 	return 0;
 
