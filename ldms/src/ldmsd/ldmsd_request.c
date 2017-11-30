@@ -409,6 +409,7 @@ int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc,
 	ldmsd_req_hdr_t req_reply = (ldmsd_req_hdr_t)reqc->rep_buf;
 	ldmsd_req_attr_t attr;
 	size_t remaining;
+	int flags;
 
 	do {
 		remaining = reqc->rep_len - reqc->rep_off - sizeof(*req_reply);
@@ -426,14 +427,15 @@ int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc,
 		    ((data_len == 0) && (msg_flags & LDMSD_REQ_EOM_F))) {
 			/* If this is the first record in the response, set the
 			 * SOM_F bit. If the caller set the EOM_F bit and we've
-			 * exhausted data_len, set the EOM_F bit. */
-			msg_flags =
-				(reqc->rec_no == 0?LDMSD_REQ_SOM_F:0)
-				| (msg_flags & LDMSD_REQ_EOM_F);
+			 * exhausted data_len, set the EOM_F bit.
+			 * If we've exhausted the reply buffer, unset the EOM_F bit.
+			 */
+			flags = msg_flags & ((!remaining && data_len)?(~LDMSD_REQ_EOM_F):LDMSD_REQ_EOM_F);
+			flags |= (reqc->rec_no == 0?LDMSD_REQ_SOM_F:0);
 			/* Record is full, send it on it's way */
 			req_reply->marker = LDMSD_RECORD_MARKER;
 			req_reply->type = LDMSD_REQ_TYPE_CONFIG_RESP;
-			req_reply->flags = msg_flags;
+			req_reply->flags = flags;
 			req_reply->msg_no = reqc->key.msg_no;
 			req_reply->rsp_err = reqc->errcode;
 			req_reply->rec_len = reqc->rep_off;
