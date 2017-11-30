@@ -85,7 +85,9 @@ class LDMSD_Req_Attr(object):
     LEVEL = 20
     PATH = 21
     TIME = 22
+    PUSH = 23
     TEST = 24
+    REC_LEN = 25
     LAST = 26
 
     NAME_ID_MAP = {'name': NAME,
@@ -110,6 +112,7 @@ class LDMSD_Req_Attr(object):
                    'level': LEVEL,
                    'path': PATH,
                    'time': TIME,
+                   'push': PUSH,
                    'test': TEST,
         }
 
