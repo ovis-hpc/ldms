@@ -140,7 +140,7 @@ struct command {
 	int cmd_id;
 	int (*action)(struct ldmsctl_ctrl *ctrl, char *args);
 	void (*help)();
-	void (*resp)(ldmsd_req_hdr_t response);
+	void (*resp)(char *msg, size_t len, uint32_t rsp_err);
 };
 
 static int command_comparator(const void *a, const void *b)
@@ -186,9 +186,8 @@ static void help_greeting()
 	       "               If 'name' is not given, nothing will be returned\n");
 }
 
-static void resp_greeting(ldmsd_req_hdr_t resp)
+static void resp_greeting(char *msg, size_t len, uint32_t rsp_err)
 {
-	char *msg = ldmsctl_resp_msg_get(resp);
 	if (msg)
 		printf("%s\n", msg);
 }
@@ -213,11 +212,10 @@ static void help_source()
 	       "  source <PATH>  PATH is the path to the configuration file.\n");
 }
 
-static void resp_usage(ldmsd_req_hdr_t resp)
+static void resp_usage(char *msg, size_t len, uint32_t rsp_err)
 {
-	char *str = ldmsctl_resp_msg_get(resp);
-	if (str)
-		printf("%s\n", str);
+	if (msg)
+		printf("%s\n", msg);
 }
 
 static void help_usage()
@@ -423,10 +421,8 @@ void __print_prdcr_status(json_value *jvalue)
 	}
 }
 
-static void resp_prdcr_status(ldmsd_req_hdr_t resp)
+static void resp_prdcr_status(char *str, size_t len, uint32_t rsp_err)
 {
-	char *str = ldmsctl_resp_msg_get(resp);
-	size_t len = resp->rec_len - sizeof(*resp);
 	json_value *json, *prdcr_json;
 	json = json_parse(str, len);
 	if (!json)
@@ -483,10 +479,8 @@ void __print_prdcr_set_status(json_value *jvalue)
 			name, schema, state, origin, prdcr, ts, dur);
 }
 
-static void resp_prdcr_set_status(ldmsd_req_hdr_t resp)
+static void resp_prdcr_set_status(char *str, size_t len, uint32_t rsp_err)
 {
-	char *str = ldmsctl_resp_msg_get(resp);
-	size_t len = resp->rec_len - sizeof(*resp);
 	json_value *json, *prdcr_json;
 	json = json_parse(str, len);
 	if (!json)
@@ -636,10 +630,8 @@ void __print_updtr_status(json_value *jvalue)
 	}
 }
 
-static void resp_updtr_status(ldmsd_req_hdr_t resp)
+static void resp_updtr_status(char *str, size_t len, uint32_t rsp_err)
 {
-	char *str = ldmsctl_resp_msg_get(resp);
-	size_t len = resp->rec_len - sizeof(*resp);
 	json_value *json, *prdcr_json;
 	json = json_parse(str, len);
 	if (!json)
@@ -791,10 +783,8 @@ void __print_strgp_status(json_value *jvalue)
 	printf("\n");
 }
 
-static void resp_strgp_status(ldmsd_req_hdr_t resp)
+static void resp_strgp_status(char *str, size_t len, uint32_t rsp_err)
 {
-	char *str = ldmsctl_resp_msg_get(resp);
-	size_t len = resp->rec_len - sizeof(*resp);
 	json_value *json, *prdcr_json;
 	json = json_parse(str, len);
 	if (!json)
@@ -829,11 +819,9 @@ static void help_version()
 	printf( "\nGet the LDMS version.\n");
 }
 
-static void resp_generic(ldmsd_req_hdr_t resp)
+static void resp_generic(char *msg, size_t len, uint32_t rsp_err)
 {
-	char *msg;
-	if (resp->rsp_err) {
-		msg = ldmsctl_resp_msg_get(resp);
+	if (rsp_err) {
 		if (msg)
 			printf("%s\n", msg);
 	}
@@ -1075,14 +1063,49 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 		printf("Failed to send data to ldmsd. %s\n", strerror(errno));
 		return rc;
 	}
-	char *resp = ctrl->recv_resp(ctrl);
-	if (!resp) {
-		printf("Failed to receive the response\n");
-		return -1;
+	ldmsd_req_hdr_t resp;
+	size_t req_hdr_sz = sizeof(*resp);
+	size_t lbufsz = 1024;
+	size_t lbufoffset = 0;
+	char *lbuf = malloc(lbufsz);
+	if (!lbuf) {
+		printf("Out of memory\n");
+		exit(1);
 	}
 
-	cmd->resp((ldmsd_req_hdr_t)resp);
-	return 0;
+	char *rec;
+	size_t reclen = 0;
+	size_t msglen = 0;
+	rc = 0;
+	while (1) {
+		resp = (ldmsd_req_hdr_t)ctrl->recv_resp(ctrl);
+		if (!resp) {
+			printf("Failed to receive the response\n");
+			rc = -1;
+			goto out;
+		}
+		rec = ldmsctl_resp_msg_get(resp);
+		reclen = resp->rec_len - req_hdr_sz;
+		if (lbufsz < msglen + reclen) {
+			lbuf = realloc(lbuf, msglen + (reclen * 2));
+			if (!lbuf) {
+				printf("Out of memory\n");
+				exit(1);
+			}
+			lbufsz = msglen + (reclen * 2);
+			memset(&lbuf[msglen], 0, lbufsz - msglen);
+		}
+		memcpy(&lbuf[msglen], rec, reclen);
+		msglen += reclen;
+		if ((resp->flags & LDMSD_REQ_EOM_F) != 0) {
+			break;
+		}
+	}
+
+	cmd->resp(lbuf, msglen, resp->rsp_err);
+out:
+	free(lbuf);
+	return rc;
 }
 
 struct ldmsctl_ctrl *__sock_ctrl(const char *hostname,
