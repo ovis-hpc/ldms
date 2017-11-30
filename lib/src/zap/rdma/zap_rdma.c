@@ -147,6 +147,24 @@ static int cq_fd;
 static int cm_fd;
 #define CQ_EVENT_LEN 16
 
+static int __enable_cq_events(struct z_rdma_ep *rep)
+{
+	/* handle CQ events */
+	struct epoll_event cq_event;
+	cq_event.data.ptr = rep;
+	cq_event.events = EPOLLIN | EPOLLOUT;
+
+	/* Release when deleting the cq_channel fd from the epoll */
+	__zap_get_ep(&rep->ep);
+	if (epoll_ctl(cq_fd, EPOLL_CTL_ADD, rep->cq_channel->fd, &cq_event)) {
+		LOG_(rep, "RMDA: epoll_ctl CTL_ADD failed\n");
+		__zap_put_ep(&rep->ep); /* Taken before adding cq_channel fd to epoll*/
+		return errno;
+	}
+
+	return 0;
+}
+
 static void __rdma_teardown_conn(struct z_rdma_ep *ep)
 {
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
@@ -1389,6 +1407,8 @@ handle_conn_error(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id, int reason)
 {
 	struct zap_event zev = {0};
 	zev.status = reason;
+	if (rep->cq_channel)
+		__enable_cq_events(rep);
 	rep->ep.state = ZAP_EP_ERROR;
 	switch (rep->ep.state) {
 	case ZAP_EP_ACCEPTING:
@@ -1477,6 +1497,7 @@ handle_rejected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id,
 	zev.type = ZAP_EVENT_REJECTED;
 
 callback:
+	__enable_cq_events(rep);
 	rep->ep.state = ZAP_EP_ERROR;
 	rep->ep.cb(&rep->ep, &zev);
 	__zap_put_ep(&rep->ep); /* Release the reference taken when the endpoint got created. */
@@ -1516,18 +1537,7 @@ handle_established(struct z_rdma_ep *rep, struct rdma_cm_event *event)
 	}
 
 	rep->ep.cb(&rep->ep, &zev);
-
-	/* Now that we're connected, handle CQ events */
-	struct epoll_event cq_event;
-	cq_event.data.ptr = rep;
-	cq_event.events = EPOLLIN | EPOLLOUT;
-
-	/* Release when deleting the cq_channel fd from the epoll */
-	__zap_get_ep(&rep->ep);
-	if (epoll_ctl(cq_fd, EPOLL_CTL_ADD, rep->cq_channel->fd, &cq_event)) {
-		LOG_(rep, "RMDA: epoll_ctl CTL_ADD failed\n");
-		__zap_put_ep(&rep->ep); /* Taken before adding cq_channel fd to epoll*/
-	}
+	__enable_cq_events(rep);
 }
 
 static void _rdma_deliver_disconnected(struct z_rdma_ep *rep)
