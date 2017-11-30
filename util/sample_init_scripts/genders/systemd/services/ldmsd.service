@@ -65,7 +65,7 @@ EnvironmentFile = -/var/run/ldmsd/ldmsd.env.local
 ExecStart= /bin/bash -c '/bin/rm -f $LDMSD_SOCKPATH ; /usr/bin/ldmsd-wrapper.sh local $LDMSD_GLOBAL_OPTS $MEM_OPT $LDMSAGGD_MEM_RES -c $LDMSD_PLUGIN_CONFIG_FILE -a $LDMS_AUTH_FILE -r /var/run/ldmsd/ldmsd-local.pid -x $LDMSD_XPRT:$LDMSD_PORT -P $LDMSD_EVENT_THDS $LDMSD_INET_OPT $LDMSD_CONFIG_PORT $LDMSD_SOCK_OPT $LDMSD_SOCKPATH -v $LDMSD_DBG $LDMS_LOG_OPT $LDMS_LOG_FILE 2>&1'
 
 # Sets open_files_limit
-LimitNOFILE = 1000
+LimitNOFILE = 65536
 # Set RAM limit on daemon instance cgrpup
 #LimitRSS = infinity
 # delay between sigterm and sigkill during stop.
