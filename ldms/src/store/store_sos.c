@@ -426,6 +426,27 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	rc = sos_schema_index_add(schema, "job_id");
 	if (rc)
 		goto err_1;
+
+	/* The metrics from the set _must_ come before the index
+	 * attributes or the store method will fail attempting to set
+	 * an index attribute from a LDMS metric set value
+	 */
+	for (i = 0; i < metric_count; i++) {
+		if (0 == strcmp("timestamp", ldms_metric_name_get(set, metric_arry[i])))
+			continue;
+		if (0 == strcmp("component_id", ldms_metric_name_get(set, metric_arry[i])))
+			continue;
+		if (0 == strcmp("job_id", ldms_metric_name_get(set, metric_arry[i])))
+			continue;
+		msglog(LDMSD_LINFO, "Adding attribute %s to the schema\n",
+		       ldms_metric_name_get(set, metric_arry[i]));
+		rc = sos_schema_attr_add(schema,
+			ldms_metric_name_get(set, metric_arry[i]),
+			sos_type_map[ldms_metric_type_get(set, metric_arry[i])]);
+		if (rc)
+			goto err_1;
+	}
+
 	/*
 	 * Component/Time Index
 	 */
@@ -457,22 +478,6 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	rc = sos_schema_index_add(schema, "job_time_comp");
 	if (rc)
 		goto err_1;
-
-	for (i = 0; i < metric_count; i++) {
-		if (0 == strcmp("timestamp", ldms_metric_name_get(set, metric_arry[i])))
-			continue;
-		if (0 == strcmp("component_id", ldms_metric_name_get(set, metric_arry[i])))
-			continue;
-		if (0 == strcmp("job_id", ldms_metric_name_get(set, metric_arry[i])))
-			continue;
-		msglog(LDMSD_LINFO, "Adding attribute %s to the schema\n",
-		       ldms_metric_name_get(set, metric_arry[i]));
-		rc = sos_schema_attr_add(schema,
-			ldms_metric_name_get(set, metric_arry[i]),
-			sos_type_map[ldms_metric_type_get(set, metric_arry[i])]);
-		if (rc)
-			goto err_1;
-	}
 
 	return schema;
  err_1:
