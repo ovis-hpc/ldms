@@ -10,6 +10,16 @@ COMMON_LIBADD = $(CORE)/libldms.la \
 
 if ENABLE_CRAY_SYSTEM_SAMPLER
 
+# first build dvs sampler
+libcray_dvs_sampler_la_SOURCES = dvs_sampler.c ../sampler_base.c \
+				../sampler_base.h
+libcray_dvs_sampler_la_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/../
+libcray_dvs_sampler_la_LDFLAGS = $(AM_LDFLAGS)
+libcray_dvs_sampler_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+pkglib_LTLIBRARIES += libcray_dvs_sampler.la
+
+# then build cray_system_sampler
+
 CRAY_CFLAGS_ = $(AM_CFLAGS) @RCA_INCDIR_FLAG@ @KRCA_INCDIR_FLAG@ \
 			@CRAY_HSS_DEVEL_INCDIR_FLAG@ \
 			-I@CRAY_HSS_DEVEL_INCDIR@/rsms
