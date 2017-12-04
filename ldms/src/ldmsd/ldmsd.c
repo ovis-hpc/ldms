@@ -460,10 +460,6 @@ void usage_hint(char *argv[],char *hint)
 	       "                                The transport type is either 'unix' or 'sock'.\n"
 	       "                                Unix domain socket: unix:sockname. sockname is the unix domain socket path."
 	       "                                Inet: sock:port. port is the port to listen on.\n");
-#ifdef ENABLE_LDMSD_RCTL
-	printf("    -R port	The listener port for receiving configuration\n"
-	       "		   from the ldmsd_rctl program\n");
-#endif
 	printf("    -c path	The path to configuration file (optional, default: <none>).\n");
 	printf("    -V	     Print LDMS version and exit\n.");
 	printf("   Deprecated Options\n");
@@ -1458,14 +1454,6 @@ int main(int argc, char *argv[])
 			if (ret = process_config_file(strdup(optarg)))
 				cleanup(ret, "Error %d processing configuration file '%s'");
 			break;
-#ifdef ENABLE_LDMSD_RCTL
-		case 'R':
-			if (check_arg("R", optarg, LO_UINT))
-				return 1;
-			if (ldmsd_rctrl_init(strdup(optarg), secretword))
-				cleanup(4, "rctrl_init failed");
-			break;
-#endif /* ENABLE_LDMSD_RCTL */
 		}
 	}
 
