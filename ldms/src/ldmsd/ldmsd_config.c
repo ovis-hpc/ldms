@@ -822,39 +822,43 @@ int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword)
 		ldmsd_log(LDMSD_LERROR,
 			  "Unrecognized configuration transport string %s\n",
 			  xprt_str);
-		return -1;
+		return EINVAL;
 	}
 	cfg_clnt_t clnt = calloc(1, sizeof(*clnt));
 	if (!clnt) {
 		ldmsd_log(LDMSD_LERROR,
 			  "Memory allocation failure creating configuration client.\n");
-		return -1;
+		return ENOMEM;
 	}
 	clnt->xprt.cleanup_fn = cleanup_fn;
 	clnt->secretword = strdup(secretword);
 	clnt->xprt.sock.ss = ss;
 	clnt->xprt.sock.fd = socket(ss.ss_family, SOCK_STREAM, 0);
 	if (clnt->xprt.sock.fd < 0) {
+		rc = errno;
 		ldmsd_log(LDMSD_LERROR, "A configuration socket could not be created, "
-			  "error = %d.\n", errno);
+			  "error = %d.\n", rc);
 		goto err;
 	}
 	clnt->xprt.max_msg = __sock_max_buf_len_get(clnt->xprt.sock.fd, SO_SNDBUF);
 	if (clnt->xprt.max_msg < 0) {
+		rc = -clnt->xprt.max_msg;
 		ldmsd_log(LDMSD_LERROR, "Error %d getting the max sock send "
-				"buffer length.\n", -clnt->xprt.max_msg);
+				"buffer length.\n", rc);
 		goto err;
 	}
 	rc = bind(clnt->xprt.sock.fd, (struct sockaddr *)&ss, sa_len);
 	if (rc < 0) {
+		rc = errno;
 		ldmsd_log(LDMSD_LERROR, "Error %d binding to configuration socket %s:%s\n",
-			  errno, xprt_str, port_str);
+			  rc, xprt_str, port_str);
 		goto err;
 	}
 	rc = listen(clnt->xprt.sock.fd, 10);
 	if (rc) {
+		rc = errno;
 		ldmsd_log(LDMSD_LERROR, "Error %d listening on configuration socket %s:%s\n",
-			  errno, xprt_str, port_str);
+			  rc, xprt_str, port_str);
 		goto err;
 	}
 
@@ -877,7 +881,7 @@ int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword)
  err:
 	close(clnt->xprt.sock.fd);
 	free(clnt);
-	return -1;
+	return rc;
 }
 
 static int send_ldms_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
@@ -946,7 +950,7 @@ int listen_on_ldms_xprt(char *xprt_str, char *port_str, char *secretword)
 	if (!clnt) {
 		ldmsd_log(LDMSD_LERROR,
 			  "Memory allocation failure creating configuration client.\n");
-		return -1;
+		return ENOMEM;
 	}
 	clnt->xprt.max_msg = l->max_msg;
 	clnt->xprt.cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
