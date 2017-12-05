@@ -337,6 +337,15 @@ int ovis_scheduler_event_add(ovis_scheduler_t s, ovis_event_t ev);
 int ovis_scheduler_event_del(ovis_scheduler_t m, ovis_event_t ev);
 
 /**
+ * Modify epoll events of an ovis event \p ev in the scheduler \p s.
+ *
+ * \retval 0 if success.
+ * \retval errno if error.
+ */
+int ovis_scheduler_epoll_event_mod(ovis_scheduler_t s, ovis_event_t ev,
+				   int epoll_events);
+
+/**
  * Free memory allocated from ::ovis_event_create().
  *
  * \param ev the event handle to be freed.

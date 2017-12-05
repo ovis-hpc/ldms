@@ -692,3 +692,17 @@ int ovis_scheduler_term(ovis_scheduler_t m)
 	pthread_mutex_unlock(&m->mutex);
 	return rc;
 }
+
+int ovis_scheduler_epoll_event_mod(ovis_scheduler_t s, ovis_event_t ev,
+				   int epoll_events)
+{
+	struct epoll_event epev = {.events = epoll_events, .data = {.ptr = ev}};
+	int rc;
+	rc = epoll_ctl(s->efd, EPOLL_CTL_MOD, ev->param.fd, &epev);
+	if (rc) {
+		rc = errno;
+	} else {
+		ev->param.epoll_events = epoll_events;
+	}
+	return rc;
+}
