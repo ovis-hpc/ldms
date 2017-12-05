@@ -188,8 +188,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 	base = base_config(avl, SAMP, SAMP, msglog);
-	if (!base)
+	if (!base) {
+		rc = errno;
 		goto err;
+	}
+
 
 	rc = create_metric_set(base);
 	if (rc) {
