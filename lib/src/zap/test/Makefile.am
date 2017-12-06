@@ -5,6 +5,10 @@ AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir)/src -I$(top_srcdir) -I../..
 zap_test_SOURCES = zap_test.c
 zap_test_LDADD = $(builddir)/../libzap.la -lpthread -ldl
 
+sbin_PROGRAMS += zap_test_big
+zap_test_big_SOURCES = zap_test_big.c
+zap_test_big_LDADD = $(builddir)/../libzap.la -lpthread -ldl
+
 sbin_PROGRAMS += zap_test_reconnect
 zap_test_reconnect_SOURCES = zap_test_reconnect.c
 zap_test_reconnect_LDADD = $(builddir)/../libzap.la -lpthread -ldl
