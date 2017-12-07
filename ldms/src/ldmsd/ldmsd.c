@@ -1444,7 +1444,8 @@ int main(int argc, char *argv[])
 			dup_arg = strdup(optarg);
 			xprt_str = strtok(dup_arg, ":");
 			port_str = strtok(NULL, ":");
-			listen_on_ldms_xprt(xprt_str, port_str, secretword);
+			if (ret = listen_on_ldms_xprt(xprt_str, port_str, secretword))
+				cleanup(ret, "Error setting up ldms transport");
 			break;
 		case 'p':
 			if (check_arg("p", optarg, LO_NAME))
@@ -1452,7 +1453,8 @@ int main(int argc, char *argv[])
 			dup_arg = strdup(optarg);
 			xprt_str = strtok(dup_arg, ":");
 			port_str = strtok(NULL, ":");
-			listen_on_cfg_xprt(xprt_str, port_str, secretword);
+			if (ret = listen_on_cfg_xprt(xprt_str, port_str, secretword))
+				cleanup(ret, "Error setting up configuration transport");
 			break;
 		case 'c':
 			if (ret = process_config_file(strdup(optarg)))
