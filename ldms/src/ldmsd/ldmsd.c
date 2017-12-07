@@ -1329,7 +1329,7 @@ int main(int argc, char *argv[])
 			} else {
 
 #define BANNER_PART1_A "Started LDMS Daemon with authentication "
-#define BANNER_PART1_NOA "Started LDMS Daemon with authentication "
+#define BANNER_PART1_NOA "Started LDMS Daemon without authentication "
 #define BANNER_PART2 "version %s. LDMSD Interface Version " \
 	"%hhu.%hhu.%hhu.%hhu. LDMS Protocol Version %hhu.%hhu.%hhu.%hhu. " \
 	"git-SHA %s\n", PACKAGE_VERSION, \
