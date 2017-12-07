@@ -1458,7 +1458,7 @@ int main(int argc, char *argv[])
 			break;
 		case 'c':
 			if (ret = process_config_file(strdup(optarg)))
-				cleanup(ret, "Error %d processing configuration file '%s'");
+				cleanup(ret, "Error processing configuration file");
 			break;
 #ifdef ENABLE_LDMSD_RCTL
 		case 'R':

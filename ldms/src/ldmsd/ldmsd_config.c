@@ -482,15 +482,19 @@ int process_config_file(const char *path)
 	if (env)
 		cfg_buf_len = strtol(env, NULL, 0);
 
-	fin = fopen(path, "rt");
-	if (!fin) {
-		rc = errno;
-		goto cleanup;
-	}
-
 	buff = malloc(cfg_buf_len);
 	if (!buff) {
 		rc = errno;
+		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+		goto cleanup;
+	}
+
+	fin = fopen(path, "rt");
+	if (!fin) {
+		rc = errno;
+		strerror_r(rc, buff, cfg_buf_len - 1);
+		ldmsd_log(LDMSD_LERROR, "Failed to open the config file '%s'. %s\n",
+				path, buff);
 		goto cleanup;
 	}
 
