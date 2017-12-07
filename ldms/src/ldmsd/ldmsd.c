@@ -97,7 +97,7 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:a:v:Vz:Z:q:c:u"
+#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:a:v:Vz:Z:q:c:u"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"
@@ -112,6 +112,8 @@ int test_set_count=1;
 int notify=0;
 char *logfile;
 char *pidfile;
+char *bannerfile;
+int banner = 1;
 char *secretword;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size;
@@ -309,7 +311,14 @@ void cleanup(int x, const char *reason)
 	if (!foreground && pidfile) {
 		unlink(pidfile);
 		free(pidfile);
-		pidfile =  NULL;
+		pidfile = NULL;
+		if (bannerfile) {
+			if ( banner < 2) {
+				unlink(bannerfile);
+			}
+			free(bannerfile);
+			bannerfile = NULL;
+		}
 	}
 
 	exit(x);
@@ -411,6 +420,8 @@ void usage_hint(char *argv[],char *hint)
 	printf("%s: [%s]\n", argv[0], FMT);
 	printf("  General Options\n");
 	printf("    -F	     Foreground mode, don't daemonize the program [false].\n");
+	printf("    -B mode  Daemon mode banner file with pidfile [1].\n"
+	       "   		modes:0-no banner file, 1-banner auto-deleted, 2-banner left.\n");
 	printf("    -u	     List plugins and where possible their usage, then exit.\n");
 	printf("    -m memory size Maximum size of pre-allocated memory for metric sets.\n"
 	       "		   The given size must be less than 1 petabytes.\n"
@@ -1103,8 +1114,14 @@ int main(int argc, char *argv[])
 	sigaddset(&sigset, SIGABRT);
 
 	opterr = 0;
+
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
+		case 'B':
+			if (check_arg("B", optarg, LO_UINT))
+				return 1;
+			banner = atoi(optarg);
+			break;
 		case 'H':
 			if (check_arg("H", optarg, LO_NAME))
 				return 1;
@@ -1290,6 +1307,46 @@ int main(int argc, char *argv[])
 			fprintf(pfile,"%ld\n",(long)mypid);
 			fclose(pfile);
 		}
+		if (pidfile && banner) {
+			char *suffix = ".version";
+			bannerfile = malloc(strlen(suffix)+strlen(pidfile)+1);
+			if (!bannerfile) {
+				ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
+				exit(1);
+			}
+			sprintf(bannerfile, "%s%s", pidfile, suffix);
+			if( !access( bannerfile, F_OK ) ) {
+				ldmsd_log(LDMSD_LERROR, "Existing banner file named '%s': %s\n",
+					bannerfile, "overwritten if writable");
+			}
+			FILE *bfile = fopen_perm(bannerfile,"w", LDMSD_DEFAULT_FILE_PERM);
+			if (!bfile) {
+				int banerr = errno;
+				ldmsd_log(LDMSD_LERROR, "Could not open the banner file named '%s': %s\n",
+					bannerfile, strerror(banerr));
+				free(bannerfile);
+				bannerfile = NULL;
+			} else {
+
+#define BANNER_PART1_A "Started LDMS Daemon with authentication "
+#define BANNER_PART1_NOA "Started LDMS Daemon with authentication "
+#define BANNER_PART2 "version %s. LDMSD Interface Version " \
+	"%hhu.%hhu.%hhu.%hhu. LDMS Protocol Version %hhu.%hhu.%hhu.%hhu. " \
+	"git-SHA %s\n", PACKAGE_VERSION, \
+	ldmsd_version.major, ldmsd_version.minor, \
+	ldmsd_version.patch, ldmsd_version.flags, \
+	ldms_version.major, ldms_version.minor, ldms_version.patch, \
+	ldms_version.flags, OVIS_GIT_LONG
+
+#if OVIS_LIB_HAVE_AUTH
+				fprintf(bfile, BANNER_PART1_A
+#else /* OVIS_LIB_HAVE_AUTH */
+				fprintf(bfile, BANNER_PART1_NOA
+#endif /* OVIS_LIB_HAVE_AUTH */
+					BANNER_PART2);
+				fclose(bfile);
+			}
+		}
 	}
 
 
@@ -1411,17 +1468,12 @@ int main(int argc, char *argv[])
 		setfile = LDMSD_SETFILE;
 
 #if OVIS_LIB_HAVE_AUTH
-	ldmsd_log(LDMSD_LCRITICAL, "Started LDMS Daemon with authentication "
+	ldmsd_log(LDMSD_LINFO, BANNER_PART1_A
 #else /* OVIS_LIB_HAVE_AUTH */
-	ldmsd_log(LDMSD_LCRITICAL, "Started LDMS Daemon without authentication "
+	ldmsd_log(LDMSD_LINFO, BANNER_PART1_NOA
 #endif /* OVIS_LIB_HAVE_AUTH */
-		"version %s. LDMSD Interface Version "
-		"%hhu.%hhu.%hhu.%hhu. LDMS Protocol Version %hhu.%hhu.%hhu.%hhu. "
-		"git-SHA %s\n", PACKAGE_VERSION,
-		ldmsd_version.major, ldmsd_version.minor,
-		ldmsd_version.patch, ldmsd_version.flags,
-		ldms_version.major, ldms_version.minor, ldms_version.patch,
-		ldms_version.flags, OVIS_GIT_LONG);
+			BANNER_PART2);
+
 #if OVIS_LIB_HAVE_AUTH
 	secretword = NULL;
 	secretword = ldms_get_secretword(authfile, ldmsd_lcritical);
