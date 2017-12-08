@@ -114,10 +114,10 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	uint64_t gn;
 	ldmsd_prdcr_set_t prd_set = arg;
 	int errcode;
+	gettimeofday(&prd_set->updt_end, NULL);
 #ifdef LDMSD_UPDATE_TIME
-	struct timeval end;
-	gettimeofday(&end, NULL);
-	prd_set->updt_duration = ldmsd_timeval_diff(&prd_set->updt_start, &end);
+	prd_set->updt_duration = ldmsd_timeval_diff(&prd_set->updt_start,
+							&prd_set->updt_end);
 	__updt_time_put(prd_set->updt_time);
 #endif /* LDMSD_UPDATE_TIME */
 	errcode = LDMS_UPD_ERROR(status);
@@ -189,10 +189,17 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 	ldmsd_log(LDMSD_LDEBUG, "Schedule an update for set %s\n",
 					prd_set->inst_name);
 	int push_flags = 0;
+	gettimeofday(&prd_set->updt_start, NULL);
+	if ((prd_set->updt_interval != updtr->updt_intrvl_us) ||
+			(prd_set->updt_offset != updtr->updt_offset_us)) {
+		prd_set->updt_interval = updtr->updt_intrvl_us;
+		prd_set->updt_offset = updtr->updt_offset_us;
+		prd_set->updt_sync = (updtr->task.flags & LDMSD_TASK_F_SYNCHRONOUS)?1:0;
+	}
+
 #ifdef LDMSD_UPDATE_TIME
 	prd_set->updt_time = updtr->curr_updt_time;
 	__updt_time_get(prd_set->updt_time);
-	gettimeofday(&prd_set->updt_start, NULL);
 	if (prd_set->updt_time->update_start.tv_sec == 0)
 		prd_set->updt_time->update_start = prd_set->updt_start;
 	if (!updtr->push_flags) {

@@ -224,10 +224,16 @@ typedef struct ldmsd_prdcr_set {
 	LIST_HEAD(ldmsd_strgp_ref_list, ldmsd_strgp_ref) strgp_list;
 	struct rbn rbn;
 
-#ifdef LDMSD_UPDATE_TIME
-	struct ldmsd_updt_time *updt_time;
 	struct timeval updt_start;
+	struct timeval updt_end;
+
+	int updt_interval;
+	int updt_offset;
+	uint8_t updt_sync;
+
+#ifdef LDMSD_UPDATE_TIME
 	double updt_duration;
+	struct ldmsd_updt_time *updt_time;
 #endif /* LDMSD_UPDATE_TIME */
 
 	int ref_count;
@@ -353,6 +359,41 @@ struct ldmsd_strgp {
 	/** Update function */
 	strgp_update_fn_t update_fn;
 };
+
+typedef struct ldmsd_set_info {
+	ldms_set_t set;
+	char *origin_name;
+	enum ldmsd_set_origin_type {
+		LDMSD_SET_ORIGIN_SAMP_PI = 1,
+		LDMSD_SET_ORIGIN_PRDCR,
+	} origin_type; /* who is responsible of the set. */
+	unsigned long interval_us; /* sampling interval or update interval */
+	long offset_us; /* sampling offset or update offset */
+	int sync; /* 1 if synchronous */
+	struct timeval start; /* Latest sampling/update timestamp */
+	struct timeval end; /* latest sampling/update timestamp */
+	union {
+		struct ldmsd_plugin_cfg *pi;
+		ldmsd_prdcr_set_t prd_set;
+	};
+} *ldmsd_set_info_t;
+
+/**
+ * \brief Get the set information
+ *
+ * \return pointer to struct ldmsd_set_info is returned.
+ */
+ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name);
+
+/**
+ * Delete the set info \c info
+ */
+void ldmsd_set_info_delete(ldmsd_set_info_t info);
+
+/**
+ * \brief Convert the set origin type from enum to string
+ */
+char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type);
 
 extern int parse_cfg(const char *config_file);
 
