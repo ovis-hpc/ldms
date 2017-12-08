@@ -95,11 +95,23 @@ echo removing old output
 rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
+jobfile=$SOCKDIR/jobdata.1
+cat << EOF > ${jobfile}
+JOBID=8675309
+UID=57
+USER=$USER
+APPID=5551212
+EOF
+
 
 echo Starting plugins on daemon1
 cat << EOF > $in1
+load name=jobid
+config name=jobid producer=localhost1 instance=localhost1/jobid component_id=3 file=$jobfile
+start name=jobid interval=1000000 offset=0 component_id=1 
+
 load name=meminfo
-config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=1 udata_default=10
+config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=1 udata_default=10 job_set=localhost1/jobid
 start name=meminfo interval=1000000
 EOF
 
@@ -124,11 +136,15 @@ cat << EOF >> $in4
 strgp_add name=store_csv plugin=store_csv schema=meminfo container=fmeminfo
 strgp_prdcr_add name=store_csv regex=localhost1
 strgp_start name=store_csv regex=localhost1
+strgp_add name=jobid.csv plugin=store_csv schema=jobid container=jobid
+strgp_prdcr_add name=jobid.csv regex=localhost1
+strgp_start name=jobid.csv regex=localhost1
 EOF
 mkfifo $NOTICES.fifo
 cat $NOTICES.fifo &
 
 echo Starting daemons
+# valgrind -v --log-file=vg.log.1 --track-origins=yes --trace-children=yes
 ldmsd -x sock:$port1 -p unix:$SOCKDIR/metric_socket_1 -c $in1 -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1
 die $?
 
@@ -140,6 +156,7 @@ die $?
 mysleep 5
 echo quitting
 cat << EOF | $LC $CSO $SOCKDIR/metric_socket_4
+strgp_stop name=jobid.csv regex=localhost1
 strgp_stop name=store_csv regex=localhost1
 EOF
 mysleep 1
