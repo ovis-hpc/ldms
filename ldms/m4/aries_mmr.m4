@@ -51,7 +51,7 @@ esac
 save_LDFLAGS="$LDFLAGS"
 LDFLAGS="-L$ARIES_LIBGPCD_LIBDIR $LDFLAGS"
 if test -z "$GPCDLOCAL_BUILD_LIBDIR"; then
-AC_CHECK_LIB([gpcdlocal], [gpcd_create_context],
+AC_CHECK_LIB([gpcd], [gpcd_create_context],
 	[AC_SUBST([ARIES_LIBGPCD_LIBDIR], [$ARIES_LIBGPCD_LIBDIR])
          AC_DEFINE([HAVE_ARIES_LIBGPCD], [1],
 		 [Define if have gpcd for aries mmr sampler])
