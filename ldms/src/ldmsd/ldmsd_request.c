@@ -262,7 +262,7 @@ ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key, size_t max_msg_len)
 	reqc->rep_buf = malloc(max_msg_len);
 	if (!reqc->rep_buf)
 		goto err;
-	*(uint32_t *)&reqc->req_buf[reqc->rep_off] = 0; /* terminating discrim */
+	*(uint32_t *)&reqc->rep_buf[reqc->rep_off] = 0; /* terminating discrim */
 	reqc->key = *key;
 	rbn_init(&reqc->rbn, &reqc->key);
 	rbt_ins(&msg_tree, &reqc->rbn);
