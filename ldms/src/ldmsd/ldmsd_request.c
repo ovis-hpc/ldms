@@ -2330,6 +2330,10 @@ send_reply:
 		free(plugin_name);
 	if (config_attr)
 		free(config_attr);
+	if (kw_list)
+		av_free(kw_list);
+	if (av_list)
+		av_free(av_list);
 	return 0;
 }
 
