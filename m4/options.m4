@@ -515,3 +515,7 @@ OPTION_DOC_GENERATE(LATEX)
 OPTION_DOC_GENERATE(MAN)
 OPTION_DOC_GENERATE(GRAPH)
 ])
+dnl SYNOPSIS: define common do_subst make rule sed expression
+dnl for  makefiles.
+AC_DEFUN([OVIS_DO_SUBST],[AC_SUBST([$1],[$2])])
+
