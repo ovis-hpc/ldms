@@ -531,7 +531,7 @@ static void process_sep_msg_sendrecv(struct z_sock_ep *sep, size_t reqlen)
 static void process_sep_msg_read_req(struct z_sock_ep *sep, size_t reqlen)
 {
 	/* unpack received message */
-	struct sock_msg_read_req msg;
+	struct sock_msg_read_req msg = {0};
 	uint32_t data_len;
 	char *src;
 
@@ -542,7 +542,7 @@ static void process_sep_msg_read_req(struct z_sock_ep *sep, size_t reqlen)
 	src = (char *)be64toh(msg.src_ptr);
 
 	/* Prepare response message */
-	struct sock_msg_read_resp rmsg;
+	struct sock_msg_read_resp rmsg = {0};
 	rmsg.hdr.msg_type = htons(SOCK_MSG_READ_RESP);
 	rmsg.hdr.xid = msg.hdr.xid;
 	rmsg.hdr.ctxt = msg.hdr.ctxt;
@@ -958,7 +958,7 @@ err:
 static zap_err_t __sock_send(struct z_sock_ep *sep, uint16_t msg_type,
 		char *buf, size_t len)
 {
-	struct sock_msg_sendrecv msg;
+	struct sock_msg_sendrecv msg = { 0 };
 	struct evbuffer *ebuf = evbuffer_new();
 	if (!ebuf)
 		return ZAP_ERR_RESOURCE;
@@ -1064,11 +1064,10 @@ static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 			ev_type = ZAP_EVENT_BAD;
 
 		/* Call the completion routine */
-		struct zap_event ev = {
-			.type = ev_type,
-			.status = ZAP_ERR_FLUSH,
-			.context = (void *)io->hdr.ctxt
-		};
+		struct zap_event ev = { 0 };
+		ev.type = ev_type;
+		ev.status = ZAP_ERR_FLUSH;
+		ev.context = (void *)io->hdr.ctxt;
 		free(io);	/* Don't put back on free_q, we're closing */
 		sep->ep.cb(&sep->ep, &ev);
 	}
@@ -1388,7 +1387,7 @@ static zap_err_t z_sock_share(zap_ep_t ep, zap_map_t map,
 	/* prepare message */
 	struct zap_sock_map *smap = (void*)map;
 	size_t sz = sizeof(struct sock_msg_rendezvous) + msg_len;
-	struct sock_msg_rendezvous *msgr = malloc(sz);
+	struct sock_msg_rendezvous *msgr = calloc(1,sz);
 	if (!msgr)
 		return ZAP_ERR_RESOURCE;
 
