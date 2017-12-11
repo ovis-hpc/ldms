@@ -1444,8 +1444,11 @@ int main(int argc, char *argv[])
 			dup_arg = strdup(optarg);
 			xprt_str = strtok(dup_arg, ":");
 			port_str = strtok(NULL, ":");
-			if (ret = listen_on_ldms_xprt(xprt_str, port_str, secretword))
+			ret = listen_on_ldms_xprt(xprt_str, port_str, secretword);
+			free(dup_arg);
+			if (ret) {
 				cleanup(ret, "Error setting up ldms transport");
+			}
 			break;
 		case 'p':
 			if (check_arg("p", optarg, LO_NAME))
@@ -1453,12 +1456,19 @@ int main(int argc, char *argv[])
 			dup_arg = strdup(optarg);
 			xprt_str = strtok(dup_arg, ":");
 			port_str = strtok(NULL, ":");
-			if (ret = listen_on_cfg_xprt(xprt_str, port_str, secretword))
+			ret = listen_on_cfg_xprt(xprt_str, port_str, secretword);
+			free(dup_arg);
+			if (ret) {
 				cleanup(ret, "Error setting up configuration transport");
+			}
 			break;
 		case 'c':
-			if (ret = process_config_file(strdup(optarg)))
+			dup_arg = strdup(optarg);
+			ret = process_config_file(dup_arg);
+			free(dup_arg);
+			if (ret) {
 				cleanup(ret, "Error processing configuration file");
+			}
 			break;
 #ifdef ENABLE_LDMSD_RCTL
 		case 'R':
