@@ -261,8 +261,10 @@ typedef struct z_sock_buff_s {
 
 typedef struct z_sock_send_wr_s {
 	TAILQ_ENTRY(z_sock_send_wr_s) link;
-	size_t len;
-	size_t off;
+	size_t msg_len; /* remaining msg len */
+	size_t data_len; /* remaining data len */
+	size_t off; /* offset of msg or data */
+	const char *data;
 	char msg[OVIS_FLEX];
 } *z_sock_send_wr_t;
 

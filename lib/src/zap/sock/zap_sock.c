@@ -1135,24 +1135,49 @@ static void sock_write(ovis_event_t ev)
 		__disable_epoll_out(sep);
 		goto out;
 	}
-	wsz = write(sep->sock, wr->msg + wr->off, wr->len);
-	if (wsz < 0) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
+
+	/* msg */
+	if (wr->msg_len) {
+		wsz = write(sep->sock, wr->msg + wr->off, wr->msg_len);
+		if (wsz < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				goto out;
+			/* bad error */
+			goto err;
+		}
+		DEBUG_LOG(sep, "ep: %p, wrote %ld bytes\n", sep, wsz);
+		if (wsz < wr->msg_len) {
+			wr->msg_len -= wsz;
+			wr->off += wsz;
 			goto out;
-		/* bad error */
-		goto err;
+		}
+		wr->msg_len = 0;
+		wr->off = 0;
 	}
-	DEBUG_LOG(sep, "ep: %p, wrote %ld bytes\n", sep, wsz);
-	if (wsz == wr->len) {
-		/* all written, remove the entry */
-		TAILQ_REMOVE(&sep->sq, wr, link);
-		free(wr);
-		goto next;
+
+	if (wr->data_len) {
+		wsz = write(sep->sock, wr->data + wr->off, wr->data_len);
+		if (wsz < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				goto out;
+			/* bad error */
+			goto err;
+		}
+		DEBUG_LOG(sep, "ep: %p, wrote %ld bytes\n", sep, wsz);
+		if (wsz < wr->data_len) {
+			wr->data_len -= wsz;
+			wr->off += wsz;
+			goto out;
+		}
+		wr->data_len = 0;
+		wr->off = 0;
 	}
-	/* cannot write all of the message, try again next time */
-	wr->len -= wsz;
-	wr->off += wsz;
-	/* let-trough */
+
+	/* reaching here means wr->data_len and wr->msg_len are 0 */
+	TAILQ_REMOVE(&sep->sq, wr, link);
+	free(wr);
+	goto next;
+
  out:
 	pthread_mutex_unlock(&sep->ep.lock);
 	return;
@@ -1314,26 +1339,37 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 					size_t msg_size,
 					const char *data, size_t data_len)
 {
+	z_sock_send_wr_t wr;
 	size_t mlen = ntohl(m->msg_len);
 	sock_msg_type_t mtype = ntohs(m->msg_type);
 	DEBUG_LOG_SEND_MSG(sep, m);
 	/* allocate send wr */
 	if (mtype == SOCK_MSG_READ_RESP || mtype == SOCK_MSG_WRITE_REQ) {
-		/* allow big message */
+		/* allow big message, and do not copy `data`  */
+		wr = malloc(sizeof(*wr) + msg_size);
+		if (!wr)
+			return ZAP_ERR_RESOURCE;
+		wr->msg_len = msg_size;
+		wr->data_len = data_len;
+		wr->data = data;
+		wr->off = 0;
+		memcpy(wr->msg, m, msg_size);
 	} else {
 		if (mlen - sizeof(struct sock_msg_hdr) > sep->ep.z->max_msg) {
 			DEBUG_LOG(sep, "ep: %p, SEND invalid message length: %ld\n",
 				  sep, mlen);
 			return ZAP_ERR_PARAMETER;
 		}
+		wr = malloc(sizeof(*wr) + msg_size + data_len);
+		if (!wr)
+			return ZAP_ERR_RESOURCE;
+		wr->msg_len = msg_size + data_len;
+		wr->data_len = 0;
+		wr->data = NULL;
+		wr->off = 0;
+		memcpy(wr->msg, m, msg_size);
+		memcpy(wr->msg + msg_size, data, data_len);
 	}
-	z_sock_send_wr_t wr = malloc(sizeof(*wr) + msg_size + data_len);
-	if (!wr)
-		return ZAP_ERR_RESOURCE;
-	wr->len = msg_size + data_len;
-	wr->off = 0;
-	memcpy(wr->msg, m, msg_size);
-	memcpy(wr->msg + msg_size, data, data_len);
 	TAILQ_INSERT_TAIL(&sep->sq, wr, link);
 	if (__enable_epoll_out(sep))
 		return ZAP_ERR_RESOURCE;
