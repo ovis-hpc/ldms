@@ -399,6 +399,7 @@ struct ldmsd_plugin_cfg {
 	struct ovis_event_s oev;
 	LIST_ENTRY(ldmsd_plugin_cfg) entry;
 };
+LIST_HEAD(plugin_list, ldmsd_plugin_cfg);
 
 #define LDMSD_DEFAULT_SAMPLE_INTERVAL 1000000
 /** Metric name for component ids (u64). */

@@ -2923,10 +2923,6 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 	return rc;
 }
 
-struct plugin_list {
-	struct ldmsd_plugin_cfg *lh_first;
-};
-
 static char *state_str[] = {
 	[LDMSD_PLUGIN_OTHER] = "other",
 	[LDMSD_PLUGIN_SAMPLER] = "sampler",
