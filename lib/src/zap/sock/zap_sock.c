@@ -958,7 +958,7 @@ err:
 static zap_err_t __sock_send(struct z_sock_ep *sep, uint16_t msg_type,
 		char *buf, size_t len)
 {
-	struct sock_msg_sendrecv msg = { 0 };
+	struct sock_msg_sendrecv msg = {0};
 	struct evbuffer *ebuf = evbuffer_new();
 	if (!ebuf)
 		return ZAP_ERR_RESOURCE;
@@ -1064,10 +1064,11 @@ static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 			ev_type = ZAP_EVENT_BAD;
 
 		/* Call the completion routine */
-		struct zap_event ev = { 0 };
-		ev.type = ev_type;
-		ev.status = ZAP_ERR_FLUSH;
-		ev.context = (void *)io->hdr.ctxt;
+		struct zap_event ev = {
+			.type = ev_type,
+			.status = ZAP_ERR_FLUSH,
+			.context = (void *)io->hdr.ctxt
+		};
 		free(io);	/* Don't put back on free_q, we're closing */
 		sep->ep.cb(&sep->ep, &ev);
 	}
