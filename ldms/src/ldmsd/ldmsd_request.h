@@ -300,6 +300,66 @@ uint32_t ldmsd_req_str2id(const char *verb);
 int32_t ldmsd_req_attr_str2id(const char *name);
 
 /**
+ * \brief Return a request attribute handle of the given ID
+ *
+ * \param request   Buffer storing request header and the attributes
+ * \param attr_id   Attribute ID
+ *
+ * \return attribute handle. NULL if it does not exist.
+ */
+ldmsd_req_attr_t ldmsd_req_attr_get_by_id(char *request, uint32_t attr_id);
+
+/**
+ * \brief Return a request attribute handle of the given name
+ *
+ * \param request   Buffer storing request header and the attributes
+ * \param name      Attribute name
+ *
+ * \return attribute handle. NULL if it does not exist.
+ */
+ldmsd_req_attr_t ldmsd_req_attr_get_by_name(char *request, const char *name);
+
+/**
+ * \brief Return the value string of the given attribute ID
+ *
+ * \param request   Buffer storing request header and the attributes
+ * \param attr_id   Attribute ID
+ *
+ * \return a string. NULL if it does not exist.
+ */
+char *ldmsd_req_attr_str_value_get_by_id(char *request, uint32_t attr_id);
+
+/**
+ * \brief Verify whether the given attribute/keyword ID exists or not.
+ *
+ * \param request   Buffer storing request header and the attributes
+ * \param attr_id   ID of the keyword
+ *
+ * \return 1 if the keyword or attribute exists. Otherwise, 0 is returned.
+ */
+int ldmsd_req_attr_keyword_exist_by_id(char *request, uint32_t attr_id);
+
+/**
+ * \brief Return the value string of the given attribute name
+ *
+ * \param request   Buffer storing request header and the attributes
+ * \param name      Attribute name
+ *
+ * \return a string. NULL if it does not exist.*
+ */
+char *ldmsd_req_attr_str_value_get_by_name(char *request, const char *name);
+
+/**
+ * \brief Verify whether the given attribute/keyword name exists or not.
+ *
+ * \param request   Buffer storing request header and the attributes
+ * \param name      Attribute name
+ *
+ * \return 1 if the keyword or attribute exists. Otherwise, 0 is returned.
+ */
+int ldmsd_req_attr_keyword_exist_by_name(char *request, const char *name);
+
+/**
  * \brief Advise the peer our configuration record length
  *
  * Send configuration record length advice
