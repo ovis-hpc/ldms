@@ -56,11 +56,9 @@
 #define __LDMS_XPRT_UGNI_H__
 #include <semaphore.h>
 #include <sys/queue.h>
-#include <event2/event.h>
-#include <event2/buffer.h>
-#include <event2/bufferevent.h>
-#include <event2/listener.h>
-#include <event2/thread.h>
+
+#include "ovis_event/ovis_event.h"
+
 #include <sys/time.h>
 
 #include <gni_pub.h>
@@ -114,6 +112,8 @@
  * lcl=<local ip address:port> <--> rmt=<remote ip address:port>
  */
 #define ZAP_UGNI_EP_NAME_SZ 64
+
+#define ZAP_UGNI_INIT_RECV_BUFF_SZ 4096
 
 struct zap_ugni_map {
 	struct zap_map map;
@@ -270,6 +270,19 @@ struct zap_ugni_msg_connect {
 
 #pragma pack()
 
+struct zap_ugni_send_wr {
+	STAILQ_ENTRY(zap_ugni_send_wr) link;
+	off_t off; /* offset of to be written */
+	size_t alen; /* remaining length after data + off */
+	char data[OVIS_FLEX];
+};
+
+struct zap_ugni_recv_buff {
+	size_t len; /* length of the bufferred data */
+	size_t alen; /* available allocated length after data + len */
+	char data[OVIS_FLEX];
+};
+
 struct zap_ugni_post_desc;
 LIST_HEAD(zap_ugni_post_desc_list, zap_ugni_post_desc);
 struct z_ugni_ep {
@@ -278,21 +291,24 @@ struct z_ugni_ep {
 	int sock;
 	int node_id;
 	int ep_id; /* The index in the endpoint array */
-	struct bufferevent *buf_event;
-	struct evconnlistener *listen_ev;
+	struct ovis_event_s io_ev;
+	struct ovis_event_s deferred_ev;
 	char *conn_data;
 	size_t conn_data_len;
 	uint8_t rejecting;
+	uint8_t sock_connected;
 	gni_ep_handle_t gni_ep;
 
 	struct zap_ugni_post_desc_list post_desc_list;
 	struct zap_event conn_ev;
 
-	struct event *deferred_event;
 	/*
 	 * The counter of retries to unbind the GNI endpoint
 	 */
 	int unbind_count;
+
+	STAILQ_HEAD(, zap_ugni_send_wr) sq; /* send queue */
+	struct zap_ugni_recv_buff *rbuff; /* recv buffer */
 
 	LIST_ENTRY(z_ugni_ep) link;
 	LIST_ENTRY(z_ugni_ep) deferred_link;
