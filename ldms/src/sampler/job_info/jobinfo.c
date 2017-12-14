@@ -161,19 +161,40 @@ jobinfo_thread_proc(void *arg)
 	int			nd;
 	int			wd;
 	struct inotify_event	ev;
+	int			mask = IN_CLOSE | IN_MOVE | IN_CREATE | IN_DELETE;
 
 	nd = inotify_init();
-
-	wd = inotify_add_watch(nd, jobinfo_datafile, IN_CLOSE_WRITE);
-	if (wd == -1)
-		return NULL;
-
 	while (1) {
+		/*
+		 * The file is created by slurm. It may not exist at
+		 * the time this sampler is loaded
+		 */
+		if (wd < 0) {
+			wd = inotify_add_watch(nd, jobinfo_datafile, mask);
+			if (wd < 0) {
+				msglog(LDMSD_LINFO,
+				       SAMP ": the job file %s does not exist, retrying in 60s\n",
+				       jobinfo_datafile);
+				sleep(60);
+				continue;
+			}
+		}
+
 		rc = read(nd, &ev, sizeof(ev));
 		if (rc < sizeof(ev)) {
+			msglog(LDMSD_LINFO,
+			       SAMP ": Error %d reading from the inotify descriptor.\n",
+			       errno);
+			/* Watch descriptor no longer valid */
+			inotify_rm_watch(nd, wd);
+			wd = -1;
 			continue;
 		}
-		if (set == NULL) {
+
+		if (ev.mask & (IN_MOVE | IN_MOVE | IN_CREATE | IN_DELETE)) {
+			/* File was moved, re-add the file */
+			inotify_rm_watch(nd, wd);
+			wd = -1;
 			continue;
 		}
 
