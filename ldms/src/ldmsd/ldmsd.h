@@ -835,4 +835,7 @@ int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t err
 
 /* Listen for a connection request on an ldms xprt */
 extern ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str);
+
+/* Receive a message from an ldms endpoint */
+void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len);
 #endif

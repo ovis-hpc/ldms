@@ -234,11 +234,16 @@ typedef struct ldmsd_cfg_xprt_s {
 typedef struct ldmsd_req_ctxt {
 	struct req_ctxt_key key;
 	struct rbn rbn;
+	int ref_count;
 
 	ldmsd_cfg_xprt_t xprt;	/* network transport */
 
+	void *ctxt;
+
 	int rec_no;
+
 	uint32_t errcode;
+	uint32_t req_id;
 
 	size_t line_len;
 	char *line_buf;
@@ -251,6 +256,15 @@ typedef struct ldmsd_req_ctxt {
 	size_t rep_off;
 	char *rep_buf;
 } *ldmsd_req_ctxt_t;
+
+typedef struct ldmsd_req_cmd *ldmsd_req_cmd_t;
+typedef int (* ldmsd_req_resp_fn)(ldmsd_req_cmd_t rcmd);
+typedef struct ldmsd_req_cmd {
+	ldmsd_req_ctxt_t reqc; /* The request context containing request to be forwarded */
+	ldmsd_req_ctxt_t org_reqc; /* The original request context */
+	ldmsd_req_resp_fn resp_handler; /* Pointer to the function to handle the response */
+	void *ctxt;
+} *ldmsd_req_cmd_t;
 
 #pragma pack(push, 1)
 typedef struct ldmsd_req_attr_s {
@@ -404,6 +418,7 @@ void ldmsd_ntoh_req_msg(ldmsd_req_hdr_t msg);
  */
 void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec_len);
 int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request, size_t req_len);
+int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t response, size_t resp_len);
 int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc, char *data, size_t data_len, int msg_flags);
 void ldmsd_send_error_reply(ldmsd_cfg_xprt_t xprt, uint32_t msg_no,
 			    uint32_t error, char *data, size_t data_len);
@@ -418,5 +433,9 @@ static inline ldmsd_req_attr_t ldmsd_next_attr(ldmsd_req_attr_t attr)
 	return (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
 }
 
+/**
+ * \brief Initialize config transport to be an ldms transport
+ */
+void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms);
 
 #endif /* LDMS_SRC_LDMSD_LDMSD_REQUEST_H_ */

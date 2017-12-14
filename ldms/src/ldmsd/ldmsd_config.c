@@ -594,7 +594,7 @@ static int send_ldms_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
         return ldms_xprt_send(xprt->ldms.ldms, data, data_len);
 }
 
-static void __recv_msg(ldms_t x, char *data, size_t data_len)
+void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 {
         ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)data;
         struct ldmsd_cfg_xprt_s xprt;
@@ -607,6 +607,7 @@ static void __recv_msg(ldms_t x, char *data, size_t data_len)
                 (void)ldmsd_process_config_request(&xprt, request, data_len);
                 break;
         case LDMSD_REQ_TYPE_CONFIG_RESP:
+		(void)ldmsd_process_config_response(&xprt, request, data_len);
                 break;
         default:
                 break;
@@ -624,7 +625,7 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
                 ldms_xprt_put(x);
                 break;
         case LDMS_XPRT_EVENT_RECV:
-                __recv_msg(x, e->data, e->data_len);
+                ldmsd_recv_msg(x, e->data, e->data_len);
                 break;
         default:
                 assert(0);
@@ -666,6 +667,15 @@ ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
         ldmsd_log(LDMSD_LINFO, "Listening on transport %s:%s\n",
                         xprt_str, port_str);
 	return l;
+}
+
+void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
+{
+	ldms_xprt_get(ldms);
+	xprt->ldms.ldms = ldms;
+	xprt->send_fn = send_ldms_fn;
+	xprt->max_msg = ldms->max_msg;
+	xprt->cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
 }
 
 const char * blacklist[] = {
