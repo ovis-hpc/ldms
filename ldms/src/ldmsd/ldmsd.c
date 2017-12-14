@@ -1463,7 +1463,11 @@ int main(int argc, char *argv[])
 			ret = process_config_file(dup_arg);
 			free(dup_arg);
 			if (ret) {
-				cleanup(ret, "Error processing configuration file");
+				char errstr[128];
+				snprintf(errstr, sizeof(errstr),
+					 "Error %d processing configuration file '%s'",
+					 ret, optarg);
+				cleanup(ret, errstr);
 			}
 			break;
 		}
