@@ -203,8 +203,11 @@ int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		goto out;
 	}
 	tb->cfg = base_config(avl, tb->base.base.name, tb->base.base.name, msglog);
-	if (!tb->cfg)
+	if (!tb->cfg) {
+		rc = errno;
 		goto out;
+	}
+
 
 	snprintf(tb->pname, sizeof(tb->pname), "%s", tb->cfg->producer_name);
 	snprintf(tb->iname, sizeof(tb->iname), "%s", tb->cfg->instance_name);

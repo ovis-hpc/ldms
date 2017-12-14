@@ -197,8 +197,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 	base = base_config(avl, "cray_aries_r_sampler", default_schema_name, msglog);
-	if (!base)
+	if (!base) {
+		rc = errno;
 		goto out;
+	}
+
 
 	off_hsn = 0;
 	/* off nettopo for aries */

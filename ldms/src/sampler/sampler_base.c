@@ -69,6 +69,8 @@ void base_del(base_data_t base)
 		free(base->schema_name);
 	if (base->schema)
 		ldms_schema_delete(base->schema);
+	if (base->job_set)
+		ldms_set_delete(base->job_set);
 	free(base);
 }
 
@@ -78,16 +80,19 @@ base_data_t base_config(struct attr_value_list *avl,
 {
 	char *job_set_name;
 	char *value;
+	errno = 0;
+
 	base_data_t base = calloc(1, sizeof(*base));
 	if (!base) {
 		log(LDMSD_LERROR, "Memory allocation failure in %s\n", name);
+		errno = ENOMEM;
 		return NULL;
 	}
 
 	value = av_value(avl, "producer");
 	if (!value) {
 		log(LDMSD_LERROR, "%s: config string is missing the producer name.\n", name);
-		goto err;
+		goto einval;
 	}
 	base->producer_name = strdup(value);
 
@@ -100,7 +105,7 @@ base_data_t base_config(struct attr_value_list *avl,
 		log(LDMSD_LERROR,
 		    "%s: configuration is missing the instance name.\n",
 		    name);
-		goto err;
+		goto einval;
 	}
 	base->instance_name = strdup(value);
 
@@ -128,10 +133,9 @@ base_data_t base_config(struct attr_value_list *avl,
 		base->job_id_idx = ldms_metric_by_name(base->job_set, value);
 		if (base->job_id_idx < 0) {
 			log(LDMSD_LINFO,
-			    "%s: The Job Id metric named, %s, does not exist. Job "
-			    "data will not be associated with the metric values.\n",
-			    name, value);
-			base->job_set = NULL;
+			    "%s: The specified job_set '%s' is missing "
+			    "the 'job_id' attribute and cannot be used.\n",
+			    name, job_set_name);
 			goto err;
 		}
 		value = av_value(avl, "app_id");
@@ -140,10 +144,9 @@ base_data_t base_config(struct attr_value_list *avl,
 		base->app_id_idx = ldms_metric_by_name(base->job_set, value);
 		if (base->app_id_idx < 0) {
 			log(LDMSD_LINFO,
-			    "%s: The App Id metric named, %s, does not exist. Job "
-			    "data will not be associated with the metric values.\n",
-			    name, value);
-			base->job_set = NULL;
+			    "%s: The specified job_set '%s' is missing "
+			    "the 'app_id' attribute and cannot be used.\n",
+			    name, job_set_name);
 			goto err;
 		}
 		value = av_value(avl, "job_start");
@@ -152,10 +155,9 @@ base_data_t base_config(struct attr_value_list *avl,
 		base->job_start_idx = ldms_metric_by_name(base->job_set, value);
 		if (base->job_start_idx < 0) {
 			log(LDMSD_LINFO,
-			    "%s: The Job Start metric named, %s, does not exist. Job "
-			    "data will not be associated with the metric values.\n",
-			    name, value);
-			base->job_set = NULL;
+			    "%s: The specified job_set '%s' is missing "
+			    "the 'job_start' attribute and cannot be used.\n",
+			    name, job_set_name);
 			goto err;
 		}
 		value = av_value(avl, "job_end");
@@ -164,15 +166,15 @@ base_data_t base_config(struct attr_value_list *avl,
 		base->job_end_idx = ldms_metric_by_name(base->job_set, value);
 		if (base->job_end_idx < 0) {
 			log(LDMSD_LINFO,
-			    "%s: The Job End metric named, %s, does not exist. Job "
-			    "data will not be associated with the metric values.\n",
-			    name, value);
-			base->job_set = NULL;
+			    "%s: The specified job_set '%s' is missing "
+			    "the 'job_end' attribute and cannot be used.\n",
+			    name, job_set_name);
 			goto err;
 		}
 	}
 	return base;
- err:
+err:
+	errno = EINVAL;
 	base_del(base);
 	return NULL;
 }
