@@ -178,6 +178,7 @@ AC_CONFIG_FILES([ovis-lib.spec
 		Makefile
 		src/Makefile
 		src/third/Makefile
+		src/third/json_parser/Makefile	
 		src/coll/Makefile
 		src/mmalloc/Makefile
 		src/ovis_event/Makefile

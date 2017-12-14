@@ -65,8 +65,15 @@
 #include <search.h>
 #include <semaphore.h>
 #include <assert.h>
+#include <netdb.h>
+#include "json_parser/json.h"
 #include "ldms.h"
+#include "ldmsd_request.h"
 #include "config.h"
+
+#if OVIS_LIB_HAVE_AUTH
+#include "ovis_auth/auth.h"
+#endif /* OVIS_LIB_HAVE_AUTH */
 
 #define _GNU_SOURCE
 
@@ -98,7 +105,7 @@ extern int read_history ();
 #include "ldmsd.h"
 #include "ldmsd_request.h"
 
-#define FMT "h:p:a:S:x:"
+#define FMT "h:p:a:S:x:s:X:i"
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
 
 #define LDMSD_SOCKPATH_ENV "LDMSD_SOCKPATH"
@@ -108,35 +115,32 @@ static size_t linebuf_len;
 static char *buffer;
 static size_t buffer_len;
 
+struct ldmsctl_ctrl;
+typedef int (*ctrl_send_fn_t)(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req);
+typedef char *(*ctrl_recv_fn_t)(struct ldmsctl_ctrl *ctrl);
+typedef void (*ctrl_close_fn_t)(struct ldmsctl_ctrl *ctrl);
 struct ldmsctl_ctrl {
-	enum ldmsctl_ctrl_type {
-		LDMSCTL_TYPE_LOCAL = 1,
-		LDMSCTL_TYPE_REMOTE,
-	} type;
 	union {
-		struct ldmsctl_local {
+		struct ldmsctl_sock {
 			int sock;
-			struct sockaddr *sa;
-			size_t sa_len;
-		} local;
-		struct ldmsctl_remote {
+		} sock;
+		struct ldmsctl_ldms_xprt {
 			ldms_t x;
-			enum {
-				LDMSCTL_REMOTE_DISCONNECTED,
-				LDMSCTL_REMOTE_CONNECTED,
-				LDMSCTL_REMOTE_ERROR,
-			} state;
 			sem_t connected_sem;
 			sem_t recv_sem;
-		} remote;
+		} ldms_xprt;
 	};
+	ctrl_send_fn_t send_req;
+	ctrl_recv_fn_t recv_resp;
+	ctrl_close_fn_t close;
 };
 
 struct command {
 	char *token;
 	int cmd_id;
-	int (*action)(char *args);
+	int (*action)(struct ldmsctl_ctrl *ctrl, char *args);
 	void (*help)();
+	void (*resp)(char *msg, size_t len, uint32_t rsp_err);
 };
 
 static int command_comparator(const void *a, const void *b)
@@ -148,21 +152,70 @@ static int command_comparator(const void *a, const void *b)
 
 #define LDMSCTL_HELP LDMSD_NOTSUPPORT_REQ + 1
 #define LDMSCTL_QUIT LDMSD_NOTSUPPORT_REQ + 2
+#define LDMSCTL_SCRIPT LDMSD_NOTSUPPORT_REQ + 3
+#define LDMSCTL_SOURCE LDMSD_NOTSUPPORT_REQ + 4
 
 static void usage(char *argv[])
 {
 	printf("%s: [%s]\n"
 	       "    -S <socket>     The UNIX socket that the ldms daemon is listening on.\n"
-	       "                    [" LDMSD_CONTROL_SOCKNAME "].\n",
+	       "                    [" LDMSD_CONTROL_SOCKNAME "].\n"
+	       "    -h <host>       Hostname of ldmsd to connect to\n"
+	       "    -p <port>       LDMS daemon listener port to connect to\n"
+	       "    -x <xprt>       Transports one of sock, ugni, and rdma. Only use with the option -i\n"
+	       "    -i              Specify to connect to the data channel\n"
+	       "    -a              Path to the file containing the secret word\n"
+	       "    -s <source>     Path to a configuration file\n"
+	       "    -X <script>     Path to a script file that generates a configuration file\n",
 	       argv[0], FMT);
-	exit(1);
+	exit(0);
 }
 
-static int handle_quit(char *kw)
+static char *ldmsctl_resp_msg_get(ldmsd_req_hdr_t response)
+{
+	if (response->rec_len - sizeof(*response) == 0)
+		return NULL;
+	return (char *)(response+1);
+}
+
+static void help_greeting()
+{
+	printf("\nGreet ldmsd\n\n"
+	       "Parameters:"
+	       "     [name=]   The string ldmsd will echo back.\n"
+	       "               If 'name' is not given, nothing will be returned\n");
+}
+
+static void resp_greeting(char *msg, size_t len, uint32_t rsp_err)
+{
+	if (msg)
+		printf("%s\n", msg);
+}
+
+static int handle_quit(struct ldmsctl_ctrl *ctrl, char *kw)
 {
 	printf("bye ... :)\n");
+	ctrl->close(ctrl);
 	exit(0);
 	return 0;
+}
+
+static void help_script()
+{
+	printf("\nExecute the command and send the output to ldmsd.\n\n"
+	       "  script <CMD>   CMD is the command to be executed.\n");
+}
+
+static void help_source()
+{
+	printf("\nSend the commands in the configuration file to the ldmsd\n\n"
+	       "  source <PATH>  PATH is the path to the configuration file.\n");
+}
+
+static void resp_usage(char *msg, size_t len, uint32_t rsp_err)
+{
+	if (msg)
+		printf("%s\n", msg);
 }
 
 static void help_usage()
@@ -326,6 +379,136 @@ static void help_prdcr_stop_regex()
 		"     regex=        A regular expression\n");
 }
 
+void __print_prdcr_status(json_value *jvalue)
+{
+	if (jvalue->type != json_object) {
+		printf("Invalid producer status format\n");
+		return;
+	}
+
+	char *name, *host, *xprt, *state;
+	json_int_t port;
+
+	name = jvalue->u.object.values[0].value->u.string.ptr;
+	host = jvalue->u.object.values[1].value->u.string.ptr;
+	port = jvalue->u.object.values[2].value->u.integer;
+	xprt = jvalue->u.object.values[3].value->u.string.ptr;
+	state = jvalue->u.object.values[4].value->u.string.ptr;
+
+	printf("%-16s %-16s %-12" PRId64 "%-12s %-12s\n", name, host, port, xprt, state);
+
+	json_value *prd_set_array_jvalue;
+	prd_set_array_jvalue = jvalue->u.object.values[5].value;
+	if (prd_set_array_jvalue->type != json_array) {
+		printf("---Invalid producer status format---\n");
+		return;
+	}
+
+	char *inst_name, *schema_name, *set_state;
+	json_value *prd_set_jvalue;
+	int i;
+	for (i = 0; i < prd_set_array_jvalue->u.array.length; i++) {
+		prd_set_jvalue = prd_set_array_jvalue->u.array.values[i];
+		if (prd_set_jvalue->type != json_object) {
+			printf("---Invalid producer status format---\n");
+			return;
+		}
+		inst_name = prd_set_jvalue->u.object.values[0].value->u.string.ptr;
+		schema_name = prd_set_jvalue->u.object.values[1].value->u.string.ptr;
+		set_state = prd_set_jvalue->u.object.values[2].value->u.string.ptr;
+
+		printf("    %-16s %-16s %s\n", inst_name, schema_name, set_state);
+	}
+}
+
+static void resp_prdcr_status(char *str, size_t len, uint32_t rsp_err)
+{
+	json_value *json, *prdcr_json;
+	json = json_parse(str, len);
+	if (!json)
+		return;
+
+	if (json->type != json_array) {
+		printf("Unrecognized producer status format\n");
+		return;
+	}
+	int i;
+
+	printf("Name             Host             Port         Transport    State\n");
+	printf("---------------- ---------------- ------------ ------------ ------------\n");
+
+	for (i = 0; i < json->u.array.length; i++) {
+		prdcr_json = json->u.array.values[i];
+		__print_prdcr_status(prdcr_json);
+	}
+	json_value_free(json);
+}
+
+static void help_prdcr_status()
+{
+	printf( "\nGet status of all producers\n");
+}
+
+void __print_prdcr_set_status(json_value *jvalue)
+{
+	if (jvalue->type != json_object) {
+		printf("---Invalid producer set status format---\n");
+		return;
+	}
+
+	char *name, *schema, *state, *origin, *prdcr;
+	char *ts_sec, *ts_usec;
+	uint32_t dur_sec, dur_usec;
+
+	name = jvalue->u.object.values[0].value->u.string.ptr;
+	schema = jvalue->u.object.values[1].value->u.string.ptr;
+	state = jvalue->u.object.values[2].value->u.string.ptr;
+	origin = jvalue->u.object.values[3].value->u.string.ptr;
+	prdcr = jvalue->u.object.values[4].value->u.string.ptr;
+	ts_sec = jvalue->u.object.values[5].value->u.string.ptr;
+	ts_usec = jvalue->u.object.values[6].value->u.string.ptr;
+	dur_sec = strtoul(jvalue->u.object.values[7].value->u.string.ptr, NULL, 0);
+	dur_usec = strtoul(jvalue->u.object.values[8].value->u.string.ptr, NULL, 0);
+
+	char ts[64];
+	char dur[64];
+	snprintf(ts, 63, "%s [%s]", ts_sec, ts_usec);
+	snprintf(dur, 63, "%" PRIu32 ".%06" PRIu32, dur_sec, dur_usec);
+
+	printf("%-20s %-16s %-10s %-16s %-16s %-25s %-12s\n",
+			name, schema, state, origin, prdcr, ts, dur);
+}
+
+static void resp_prdcr_set_status(char *str, size_t len, uint32_t rsp_err)
+{
+	json_value *json, *prdcr_json;
+	json = json_parse(str, len);
+	if (!json)
+		return;
+
+	if (json->type != json_array) {
+		printf("Unrecognized producer set status format\n");
+		return;
+	}
+	int i;
+
+	printf("Name                 Schema Name      State      Origin           "
+			"Producer         timestamp                 duration (sec)\n");
+	printf("-------------------- ---------------- ---------- ---------------- "
+			"---------------- ------------------------- ---------------\n");
+
+	for (i = 0; i < json->u.array.length; i++) {
+		prdcr_json = json->u.array.values[i];
+		__print_prdcr_set_status(prdcr_json);
+	}
+	json_value_free(json);
+}
+
+static void help_prdcr_set_status()
+{
+	printf( "\nGet status of all producer sets\n");
+}
+
 static void help_updtr_add()
 {
 	printf( "\nAdd an updater process that will periodically sample\n"
@@ -402,6 +585,81 @@ static void help_updtr_stop()
 		"     name=   The update policy name\n");
 }
 
+void __print_updtr_status(json_value *jvalue)
+{
+	if (jvalue->type != json_object) {
+		printf("Invalid updater status format\n");
+		return;
+	}
+
+	char *name, *interval, *mode, *state;
+	json_int_t offset;
+
+	name = jvalue->u.object.values[0].value->u.string.ptr;
+	interval = jvalue->u.object.values[1].value->u.string.ptr;
+	offset = jvalue->u.object.values[2].value->u.integer;
+	mode = jvalue->u.object.values[3].value->u.string.ptr;
+	state = jvalue->u.object.values[4].value->u.string.ptr;
+	printf("%-16s %-12s %-12" PRId64 "%-15s %s\n",
+			name, interval, offset, mode, state);
+
+	json_value *prd_array_jvalue;
+	prd_array_jvalue = jvalue->u.object.values[5].value;
+	if (prd_array_jvalue->type != json_array) {
+		printf("---Invalid updater status format---\n");
+		return;
+	}
+
+	char *prdcr_name, *host, *xprt, *prdcr_state;
+	json_int_t port;
+	json_value *prd_jvalue;
+	int i;
+	for (i = 0; i < prd_array_jvalue->u.array.length; i++) {
+		prd_jvalue = prd_array_jvalue->u.array.values[i];
+		if (prd_jvalue->type != json_object) {
+			printf("---Invalid updater status format---\n");
+			return;
+		}
+		prdcr_name = prd_jvalue->u.object.values[0].value->u.string.ptr;
+		host = prd_jvalue->u.object.values[1].value->u.string.ptr;
+		port = prd_jvalue->u.object.values[2].value->u.integer;
+		xprt = prd_jvalue->u.object.values[3].value->u.string.ptr;
+		prdcr_state = prd_jvalue->u.object.values[4].value->u.string.ptr;
+		printf("    %-16s %-16s %-12" PRId64 "%-12s %s\n",
+				prdcr_name, host, port, xprt, prdcr_state);
+	}
+}
+
+static void resp_updtr_status(char *str, size_t len, uint32_t rsp_err)
+{
+	json_value *json, *prdcr_json;
+	json = json_parse(str, len);
+	if (!json)
+		return;
+
+	if (json->type != json_array) {
+		printf("Unrecognized updater status format\n");
+		return;
+	}
+	int i;
+
+	printf("Name             Interval     Offset       Mode            State\n");
+	printf("---------------- ------------ ------------ --------------- ------------\n");
+
+	for (i = 0; i < json->u.array.length; i++) {
+		prdcr_json = json->u.array.values[i];
+		__print_updtr_status(prdcr_json);
+	}
+	json_value_free(json);
+}
+
+static void help_updtr_status()
+{
+	printf("\nGet the statuses of all Updaters\n"
+	       "Parameters:\n"
+	       "      None\n");
+}
+
 static void help_strgp_add()
 {
 	printf( "\nCreate a Storage Policy and open/create the storage instance.\n"
@@ -470,75 +728,174 @@ static void help_strgp_stop()
 		"     name=   The storage policy name\n");
 }
 
+void __print_strgp_status(json_value *jvalue)
+{
+	if (jvalue->type != json_object) {
+		printf("Invalid producer status format\n");
+		return;
+	}
+
+	char *name, *container, *schema, *plugin, *state;
+	json_int_t offset;
+
+	name = jvalue->u.object.values[0].value->u.string.ptr;
+	container = jvalue->u.object.values[1].value->u.string.ptr;
+	schema = jvalue->u.object.values[2].value->u.string.ptr;
+	plugin = jvalue->u.object.values[3].value->u.string.ptr;
+	state = jvalue->u.object.values[4].value->u.string.ptr;
+	printf("%-16s %-16s %-16s %-16s %s\n",
+			name, container, schema, plugin, state);
+
+	json_value *prd_array_jvalue, *metric_array_jvalue;
+	prd_array_jvalue = jvalue->u.object.values[5].value;
+	if (prd_array_jvalue->type != json_array) {
+		printf("---Invalid storage policy status format---\n");
+		return;
+	}
+	printf("    producers:");
+
+	json_value *prd_jvalue, *metric_jvalue;
+	int i;
+	for (i = 0; i < prd_array_jvalue->u.array.length; i++) {
+		prd_jvalue = prd_array_jvalue->u.array.values[i];
+		if (prd_jvalue->type != json_string) {
+			printf("---Invalid storage policy status format---\n");
+			return;
+		}
+		printf(" %s", prd_jvalue->u.string.ptr);
+	}
+	printf("\n");
+
+	metric_array_jvalue = jvalue->u.object.values[6].value;
+	if (metric_array_jvalue->type != json_array) {
+		printf("---Invalid storage policy status format---\n");
+		return;
+	}
+	printf("     metrics:");
+	for (i = 0; i < metric_array_jvalue->u.array.length; i++) {
+		metric_jvalue = metric_array_jvalue->u.array.values[i];
+		if (metric_jvalue->type != json_string) {
+			printf("---Invalid storage policy status format---\n");
+			return;
+		}
+		printf(" %s", metric_jvalue->u.string.ptr);
+	}
+	printf("\n");
+}
+
+static void resp_strgp_status(char *str, size_t len, uint32_t rsp_err)
+{
+	json_value *json, *prdcr_json;
+	json = json_parse(str, len);
+	if (!json)
+		return;
+
+	if (json->type != json_array) {
+		printf("Unrecognized producer status format\n");
+		return;
+	}
+	int i;
+
+	printf("Name             Container        Schema           Plugin           State\n");
+	printf("---------------- ---------------- ---------------- ---------------- ------------\n");
+
+	for (i = 0; i < json->u.array.length; i++) {
+		prdcr_json = json->u.array.values[i];
+		__print_strgp_status(prdcr_json);
+	}
+	json_value_free(json);
+
+}
+
+static void help_strgp_status()
+{
+	printf("\nGet the statuses of all Storage policies\n"
+	       "Parameters:\n"
+	       "      None\n");
+}
+
 static void help_version()
 {
 	printf( "\nGet the LDMS version.\n");
 }
 
-int handle_help(char *args);
+static void resp_generic(char *msg, size_t len, uint32_t rsp_err)
+{
+	if (rsp_err) {
+		if (msg)
+			printf("%s\n", msg);
+	}
+}
 
-static struct command action_tbl[] = {
-		{ "?", LDMSCTL_HELP, handle_help, NULL },
-		{ "help", LDMSCTL_HELP, handle_help, NULL },
-		{ "quit", LDMSCTL_QUIT, handle_quit, help_quit },
-};
+static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
+static int handle_source(struct ldmsctl_ctrl *ctrl, char *path);
+static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
 
-static struct command help_tbl[] = {
-	{ "config", LDMSD_PLUGN_CONFIG_REQ, NULL, help_config },
-	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status },
-	{ "load", LDMSD_PLUGN_LOAD_REQ, NULL, help_load },
-	{ "loglevel", LDMSD_VERBOSE_REQ, NULL, help_loglevel },
-	{ "oneshot", LDMSD_ONESHOT_REQ, NULL, help_oneshot },
-	{ "prdcr_add", LDMSD_PRDCR_ADD_REQ, NULL, help_prdcr_add },
-	{ "prdcr_del", LDMSD_PRDCR_DEL_REQ, NULL, help_prdcr_del },
-	{ "prdcr_start", LDMSD_PRDCR_START_REQ, NULL, help_prdcr_start },
-	{ "prdcr_start_regex", LDMSD_PRDCR_START_REGEX_REQ, NULL, help_prdcr_start_regex },
-	{ "prdcr_stop", LDMSD_PRDCR_STOP_REQ, NULL, help_prdcr_stop },
-	{ "prdcr_stop_regex", LDMSD_PRDCR_STOP_REGEX_REQ, NULL, help_prdcr_stop_regex },
-	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit },
-	{ "start", LDMSD_PLUGN_START_REQ, NULL, help_start },
-	{ "stop", LDMSD_PLUGN_STOP_REQ, NULL, help_stop },
-	{ "strgp_add", LDMSD_STRGP_ADD_REQ, NULL, help_strgp_add },
-	{ "strgp_del", LDMSD_STRGP_DEL_REQ, NULL, help_strgp_del },
-	{ "strgp_metric_add", LDMSD_STRGP_METRIC_ADD_REQ, NULL, help_strgp_metric_add },
-	{ "strgp_metric_del", LDMSD_STRGP_METRIC_DEL_REQ, NULL, help_strgp_metric_del },
-	{ "strgp_prdcr_add", LDMSD_STRGP_PRDCR_ADD_REQ, NULL, help_strgp_prdcr_add },
-	{ "strgp_prdcr_del", LDMSD_STRGP_PRDCR_DEL_REQ, NULL, help_strgp_prdcr_del },
-	{ "strgp_start", LDMSD_STRGP_START_REQ, NULL, help_strgp_start },
-	{ "strgp_stop", LDMSD_STRGP_STOP_REQ, NULL, help_strgp_stop },
-	{ "term", LDMSD_PLUGN_TERM_REQ, NULL, help_term },
-	{ "udata", LDMSD_SET_UDATA_REQ, NULL, help_udata },
-	{ "udata_regex", LDMSD_SET_UDATA_REGEX_REQ, NULL, help_udata_regex },
-	{ "updtr_add", LDMSD_UPDTR_ADD_REQ, NULL, help_updtr_add },
-	{ "updtr_del", LDMSD_UPDTR_DEL_REQ, NULL, help_updtr_del },
-	{ "updtr_match_add", LDMSD_UPDTR_MATCH_ADD_REQ, NULL, help_updtr_match_add },
-	{ "updtr_match_del", LDMSD_UPDTR_DEL_REQ, NULL, help_updtr_match_del },
-	{ "updtr_prdcr_add", LDMSD_UPDTR_PRDCR_ADD_REQ, NULL, help_updtr_prdcr_add },
-	{ "updtr_prdcr_del", LDMSD_UPDTR_PRDCR_DEL_REQ, NULL, help_updtr_prdcr_del },
-	{ "updtr_start", LDMSD_UPDTR_START_REQ, NULL, help_updtr_start },
-	{ "updtr_stop", LDMSD_UPDTR_STOP_REQ, NULL, help_updtr_stop },
-	{ "usage", LDMSD_PLUGN_LIST_REQ, NULL, help_usage },
-	{ "version", LDMSD_VERSION_REQ, NULL, help_version },
+static struct command command_tbl[] = {
+	{ "?", LDMSCTL_HELP, handle_help, NULL, NULL },
+	{ "config", LDMSD_PLUGN_CONFIG_REQ, NULL, help_config, resp_generic },
+	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status, resp_generic },
+	{ "greeting", LDMSD_GREETING_REQ, NULL, help_greeting, resp_greeting },
+	{ "help", LDMSCTL_HELP, handle_help, NULL, NULL },
+	{ "load", LDMSD_PLUGN_LOAD_REQ, NULL, help_load, resp_generic },
+	{ "loglevel", LDMSD_VERBOSE_REQ, NULL, help_loglevel, resp_generic },
+	{ "oneshot", LDMSD_ONESHOT_REQ, NULL, help_oneshot, resp_generic },
+	{ "prdcr_add", LDMSD_PRDCR_ADD_REQ, NULL, help_prdcr_add, resp_generic },
+	{ "prdcr_del", LDMSD_PRDCR_DEL_REQ, NULL, help_prdcr_del, resp_generic },
+	{ "prdcr_set_status", LDMSD_PRDCR_SET_REQ, NULL, help_prdcr_set_status, resp_prdcr_set_status },
+	{ "prdcr_start", LDMSD_PRDCR_START_REQ, NULL, help_prdcr_start, resp_generic },
+	{ "prdcr_start_regex", LDMSD_PRDCR_START_REGEX_REQ, NULL, help_prdcr_start_regex, resp_generic },
+	{ "prdcr_status", LDMSD_PRDCR_STATUS_REQ, NULL, help_prdcr_status, resp_prdcr_status },
+	{ "prdcr_stop", LDMSD_PRDCR_STOP_REQ, NULL, help_prdcr_stop, resp_generic },
+	{ "prdcr_stop_regex", LDMSD_PRDCR_STOP_REGEX_REQ, NULL, help_prdcr_stop_regex, resp_generic },
+	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit, resp_generic },
+	{ "script", LDMSCTL_SCRIPT, handle_script, help_script, resp_generic },
+	{ "source", LDMSCTL_SOURCE, handle_source, help_source, resp_generic },
+	{ "start", LDMSD_PLUGN_START_REQ, NULL, help_start, resp_generic },
+	{ "stop", LDMSD_PLUGN_STOP_REQ, NULL, help_stop, resp_generic },
+	{ "strgp_add", LDMSD_STRGP_ADD_REQ, NULL, help_strgp_add, resp_generic },
+	{ "strgp_del", LDMSD_STRGP_DEL_REQ, NULL, help_strgp_del, resp_generic },
+	{ "strgp_metric_add", LDMSD_STRGP_METRIC_ADD_REQ, NULL, help_strgp_metric_add, resp_generic },
+	{ "strgp_metric_del", LDMSD_STRGP_METRIC_DEL_REQ, NULL, help_strgp_metric_del, resp_generic },
+	{ "strgp_prdcr_add", LDMSD_STRGP_PRDCR_ADD_REQ, NULL, help_strgp_prdcr_add, resp_generic },
+	{ "strgp_prdcr_del", LDMSD_STRGP_PRDCR_DEL_REQ, NULL, help_strgp_prdcr_del, resp_generic },
+	{ "strgp_start", LDMSD_STRGP_START_REQ, NULL, help_strgp_start, resp_generic },
+	{ "strgp_status", LDMSD_STRGP_STATUS_REQ, NULL, help_strgp_status, resp_strgp_status },
+	{ "strgp_stop", LDMSD_STRGP_STOP_REQ, NULL, help_strgp_stop, resp_generic },
+	{ "term", LDMSD_PLUGN_TERM_REQ, NULL, help_term, resp_generic },
+	{ "udata", LDMSD_SET_UDATA_REQ, NULL, help_udata, resp_generic },
+	{ "udata_regex", LDMSD_SET_UDATA_REGEX_REQ, NULL, help_udata_regex, resp_generic },
+	{ "updtr_add", LDMSD_UPDTR_ADD_REQ, NULL, help_updtr_add, resp_generic },
+	{ "updtr_del", LDMSD_UPDTR_DEL_REQ, NULL, help_updtr_del, resp_generic },
+	{ "updtr_match_add", LDMSD_UPDTR_MATCH_ADD_REQ, NULL, help_updtr_match_add, resp_generic },
+	{ "updtr_match_del", LDMSD_UPDTR_DEL_REQ, NULL, help_updtr_match_del, resp_generic },
+	{ "updtr_prdcr_add", LDMSD_UPDTR_PRDCR_ADD_REQ, NULL, help_updtr_prdcr_add, resp_generic },
+	{ "updtr_prdcr_del", LDMSD_UPDTR_PRDCR_DEL_REQ, NULL, help_updtr_prdcr_del, resp_generic },
+	{ "updtr_start", LDMSD_UPDTR_START_REQ, NULL, help_updtr_start, resp_generic },
+	{ "updtr_status", LDMSD_UPDTR_STATUS_REQ, NULL, help_updtr_status, resp_updtr_status },
+	{ "updtr_stop", LDMSD_UPDTR_STOP_REQ, NULL, help_updtr_stop, resp_generic },
+	{ "usage", LDMSD_PLUGN_LIST_REQ, NULL, help_usage, resp_usage },
+	{ "version", LDMSD_VERSION_REQ, NULL, help_version , resp_generic },
 };
 
 void __print_all_command()
 {
 	printf( "The available commands are as follows. To see help for\n"
 		"a command, do 'help <command>'\n\n");
-	size_t tbl_len = sizeof(help_tbl)/sizeof(help_tbl[0]);
+	size_t tbl_len = sizeof(command_tbl)/sizeof(command_tbl[0]);
 
 	int max_width = 20;
 	int i = 0;
-	printf("%-*s", max_width, help_tbl[i].token);
+	printf("%-*s", max_width, command_tbl[i].token);
 	for (i = 1; i < tbl_len; i++) {
-		printf("%-*s", max_width, help_tbl[i].token);
+		printf("%-*s", max_width, command_tbl[i].token);
 		if (i % 5 == 4)
 			printf("\n");
 	}
 	printf("\n");
 }
 
-int handle_help(char *args)
+static int handle_help(struct ldmsctl_ctrl *ctrl, char *args)
 {
 	if (!args) {
 		__print_all_command();
@@ -551,7 +908,7 @@ int handle_help(char *args)
 		}
 
 		struct command *help_cmd;
-		help_cmd = bsearch(&_args, help_tbl, ARRAY_SIZE(help_tbl),
+		help_cmd = bsearch(&_args, command_tbl, ARRAY_SIZE(command_tbl),
 			     sizeof(*help_cmd), command_comparator);
 		if (!help_cmd) {
 			printf("Unrecognized command '%s'.\n", _args);
@@ -569,133 +926,107 @@ int handle_help(char *args)
 	return 0;
 }
 
-static int __local_send_cmd(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req,
-						char *data, size_t data_len)
+static int __sock_send(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req)
 {
-	struct msghdr reply;
-	struct iovec iov[2];
-
-	reply.msg_name = 0;
-	reply.msg_namelen = 0;
-	iov[0].iov_base = req;
-	iov[0].iov_len = sizeof(*req);
-	iov[1].iov_base = data;
-	iov[1].iov_len = data_len;
-	reply.msg_iov = iov;
-	reply.msg_iovlen = 2;
-	reply.msg_control = NULL;
-	reply.msg_controllen = 0;
-	reply.msg_flags = 0;
-
-	if (sendmsg(ctrl->local.sock, &reply, 0) < 0)
-		return errno;
+	int rc;
+	rc = send(ctrl->sock.sock, req, req->rec_len, 0);
+	if (rc == -1) {
+		printf("Error %d: Failed to send the request.\n", errno);
+		exit(1);
+	}
 	return 0;
 }
 
-static int __remote_send_cmd(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req,
-						char *data, size_t data_len)
+static void __sock_close(struct ldmsctl_ctrl *ctrl)
+{
+	close(ctrl->sock.sock);
+}
+
+static int __ldms_xprt_send(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req)
 {
 	size_t req_sz = sizeof(*req);
-	char *req_buf = malloc(req_sz + data_len);
+	char *req_buf = malloc(req->rec_len);
 	if (!req_buf) {
 		printf("Out of memory\n");
 		return ENOMEM;
 	}
 
-	memcpy(req_buf, req, req_sz);
-	memcpy(req_buf + req_sz, data, data_len);
-	int rc = ldms_xprt_send(ctrl->remote.x, req_buf, req_sz + data_len);
+	memcpy(req_buf, req, req->rec_len);
+	int rc = ldms_xprt_send(ctrl->ldms_xprt.x, req_buf, req->rec_len);
 	free(req_buf);
 	return rc;
 }
 
-static int __send_cmd(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req,
-					char *data, size_t data_len)
+static void __ldms_xprt_close(struct ldmsctl_ctrl *ctrl)
 {
-	if (ctrl->type == LDMSCTL_TYPE_LOCAL)
-		return __local_send_cmd(ctrl, req, data, data_len);
-	else
-		return __remote_send_cmd(ctrl, req, data, data_len);
+	sem_destroy(&ctrl->ldms_xprt.connected_sem);
+	sem_destroy(&ctrl->ldms_xprt.recv_sem);
+	ldms_xprt_close(ctrl->ldms_xprt.x);
 }
 
-static char * __local_recv_resp(struct ldmsctl_ctrl *ctrl)
+static char * __sock_recv(struct ldmsctl_ctrl *ctrl)
 {
-	struct msghdr msg;
-	struct iovec iov;
-	struct sockaddr_storage ss;
-
-	struct ldmsd_req_hdr_s req_resp;
+	struct ldmsd_req_hdr_s resp;
 	ssize_t msglen;
-	ss.ss_family = AF_UNIX;
-	msg.msg_name = &ss;
-	msg.msg_namelen = sizeof(ss);
-	iov.iov_base = &req_resp;
-	iov.iov_len = sizeof(req_resp);
-	msg.msg_iov = &iov;
-	msg.msg_iovlen = 1;
-	msg.msg_control = NULL;
-	msg.msg_controllen = 0;
-	msg.msg_flags = 0;
-	msglen = recvmsg(ctrl->local.sock, &msg, MSG_PEEK);
+
+	msglen = recv(ctrl->sock.sock, &resp, sizeof(resp), MSG_PEEK);
 	if (msglen <= 0)
+		/* closing */
 		return NULL;
 
-	if (buffer_len < req_resp.rec_len) {
+	/* Verify the marker */
+	if (resp.marker != LDMSD_RECORD_MARKER
+			|| (msglen < sizeof(resp))) {
+		printf("Invalid response: missing record marker.\n");
+		return NULL;
+	}
+
+	if (buffer_len < resp.rec_len) {
 		free(buffer);
-		buffer = malloc(req_resp.rec_len);
+		buffer = malloc(resp.rec_len);
 		if (!buffer) {
 			printf("Out of memory\n");
 			exit(ENOMEM);
-
 		}
-		buffer_len = req_resp.rec_len;
+		buffer_len = resp.rec_len;
 	}
 	memset(buffer, 0, buffer_len);
-	iov.iov_base = buffer;
-	iov.iov_len = req_resp.rec_len;
 
-	msglen = recvmsg(ctrl->local.sock, &msg, MSG_WAITALL);
-	if (msglen < req_resp.rec_len)
+	msglen = recv(ctrl->sock.sock, buffer, resp.rec_len, MSG_WAITALL);
+	if (msglen < resp.rec_len) {
+		printf("Error: Received short response record.\n");
 		return NULL;
+	}
 
 	return buffer;
 }
 
-static char *__remote_recv_resp(struct ldmsctl_ctrl *ctrl)
+static char *__ldms_xprt_recv(struct ldmsctl_ctrl *ctrl)
 {
 loop:
-	sem_wait(&ctrl->remote.recv_sem);
+	sem_wait(&ctrl->ldms_xprt.recv_sem);
 	if (!buffer) {
 		return NULL;
 	}
 	return buffer;
 }
 
-static char *__recv_resp(struct ldmsctl_ctrl *ctrl)
-{
-	if (ctrl->type == LDMSCTL_TYPE_LOCAL)
-		return __local_recv_resp(ctrl);
-	else
-		return __remote_recv_resp(ctrl);
-}
-
-static int __handle_cmd(char *cmd, struct ldmsctl_ctrl *ctrl)
+static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 {
 	static int msg_no = 0;
 	ldmsd_req_hdr_t request;
-	struct ldmsd_req_hdr_s response;
 	int rc;
 
-	struct command key, *action_cmd;
+	struct command key, *cmd;
 	char *ptr, *args, *dummy;
 	int cmd_id;
 
 	/* Strip the new-line character */
-	char *newline = strrchr(cmd, '\n');
+	char *newline = strrchr(cmd_str, '\n');
 	if (newline)
 		*newline = '\0';
 
-	dummy = strdup(cmd);
+	dummy = strdup(cmd_str);
 	if (!dummy) {
 		printf("Out of memory\n");
 		exit(ENOMEM);
@@ -703,10 +1034,15 @@ static int __handle_cmd(char *cmd, struct ldmsctl_ctrl *ctrl)
 
 	key.token = strtok_r(dummy, " \t\n", &ptr);
 	args = strtok_r(NULL, "\n", &ptr);
-	action_cmd = bsearch(&key, action_tbl, ARRAY_SIZE(action_tbl),
+	cmd = bsearch(&key, command_tbl, ARRAY_SIZE(command_tbl),
 			sizeof(struct command), command_comparator);
-	if (action_cmd) {
-		(void)action_cmd->action(args);
+	if (!cmd) {
+		printf("Unrecognized command '%s'\n", key.token);
+		return 0;
+	}
+
+	if (cmd->action) {
+		(void)cmd->action(ctrl, args);
 		free(dummy);
 		return 0;
 	}
@@ -714,119 +1050,188 @@ static int __handle_cmd(char *cmd, struct ldmsctl_ctrl *ctrl)
 
 	size_t buffer_offset = 0;
 	memset(buffer, 0, buffer_len);
-	request = ldmsd_parse_config_str(line, msg_no);
-	msg_no++;
+	request = ldmsd_parse_config_str(cmd_str, msg_no);
+	if (!request) {
+		printf("Failed to process the request. "
+			"Please make sure that there is no typo.\n");
+		return EINVAL;
+	}
 
-	rc = __send_cmd(ctrl, &request, buffer, buffer_offset);
+	msg_no++;
+	rc = ctrl->send_req(ctrl, request);
 	if (rc) {
 		printf("Failed to send data to ldmsd. %s\n", strerror(errno));
 		return rc;
 	}
-	char *resp = __recv_resp(ctrl);
-	if (!resp) {
-		printf("Failed to receive the response\n");
-		return -1;
+	ldmsd_req_hdr_t resp;
+	size_t req_hdr_sz = sizeof(*resp);
+	size_t lbufsz = 1024;
+	size_t lbufoffset = 0;
+	char *lbuf = malloc(lbufsz);
+	if (!lbuf) {
+		printf("Out of memory\n");
+		exit(1);
 	}
-	memcpy(&response, resp, sizeof(response));
-	char *msg = resp + sizeof(response);
 
-	if (response.req_id != 0) {
-		printf("%s\n", msg);
-	} else {
-		if (request.req_id == LDMSD_PRDCR_STATUS_REQ ||
-				request.req_id == LDMSD_DAEMON_STATUS_REQ ||
-				request.req_id == LDMSD_UPDTR_STATUS_REQ ||
-				request.req_id == LDMSD_STRGP_STATUS_REQ) {
-			printf("%s\n", msg);
+	char *rec;
+	size_t reclen = 0;
+	size_t msglen = 0;
+	rc = 0;
+	while (1) {
+		resp = (ldmsd_req_hdr_t)ctrl->recv_resp(ctrl);
+		if (!resp) {
+			printf("Failed to receive the response\n");
+			rc = -1;
+			goto out;
+		}
+		rec = ldmsctl_resp_msg_get(resp);
+		reclen = resp->rec_len - req_hdr_sz;
+		if (lbufsz < msglen + reclen) {
+			lbuf = realloc(lbuf, msglen + (reclen * 2));
+			if (!lbuf) {
+				printf("Out of memory\n");
+				exit(1);
+			}
+			lbufsz = msglen + (reclen * 2);
+			memset(&lbuf[msglen], 0, lbufsz - msglen);
+		}
+		memcpy(&lbuf[msglen], rec, reclen);
+		msglen += reclen;
+		if ((resp->flags & LDMSD_REQ_EOM_F) != 0) {
+			break;
 		}
 	}
-	return 0;
+
+	cmd->resp(lbuf, msglen, resp->rsp_err);
+out:
+	free(lbuf);
+	return rc;
 }
 
-struct ldmsctl_ctrl *__unix_domain_ctrl(char *my_name, char *sockname)
+struct ldmsctl_ctrl *__sock_ctrl(const char *hostname,
+				const char *port_str,
+				const char *my_name,
+				const char *sockname,
+				const char *secretword)
 {
-	int rc;
-	struct sockaddr_un my_un, lcl_addr, rem_addr;
-	char *mn;
-	char *sockpath;
-	char *_sockname = NULL;
+	struct sockaddr_storage ss;
+	socklen_t sa_len;
+	struct sockaddr_un *sun;
+	struct sockaddr_in *sin;
 	struct ldmsctl_ctrl *ctrl;
+	struct sockaddr_un my_un, rem_addr;
+	char *sockpath, *_sockname = NULL;
+	int rc;
+
+	if (!sockname) {
+		/* sock */
+		sin = (struct sockaddr_in *)&ss;
+		sa_len = sizeof(*sin);
+		struct hostent *h;
+
+		h = gethostbyname(hostname);
+		if (!h) {
+			printf("Error resolving hostname '%s'\n", hostname);
+			return NULL;
+		}
+
+		if (h->h_addrtype != AF_INET) {
+			printf("Error the hostname has invalid address type.\n");
+			return NULL;
+		}
+
+		memset(&ss, 0, sizeof(ss));
+		struct sockaddr_in *sin = (struct sockaddr_in *)&ss;
+		sin->sin_addr.s_addr = *(unsigned int *)(h->h_addr_list[0]);
+		sin->sin_family = AF_INET;
+		sin->sin_port = htons(atoi(port_str));
+	} else {
+		/* Unix domain socket */
+		sun = (struct sockaddr_un *)&ss;
+		sa_len = sizeof(*sun);
+		memset(&ss, 0, sizeof(ss));
+		sun->sun_family = AF_UNIX;
+		if (sockname[0] == '/') {
+			if (strlen(sockname)+1 > sizeof(sun->sun_path)) {
+				printf("Sock path '%s' is too large.\n", sockname);
+				return NULL;
+			}
+			strcpy(sun->sun_path, sockname);
+		} else {
+			sockpath = getenv(LDMSD_SOCKPATH_ENV);
+			if (!sockpath)
+				sockpath = "/var/run";
+			if (strlen(sockpath) + 2 + strlen(sockname) > sizeof(sun->sun_path)) {
+				printf("Sock path is too large\n");
+				return NULL;
+			}
+			sprintf(sun->sun_path, "%s/%s", sockpath, sockname);
+		}
+
+	}
 
 	ctrl = calloc(1, sizeof *ctrl);
 	if (!ctrl)
 		return NULL;
+	ctrl->sock.sock = socket(ss.ss_family, SOCK_STREAM, 0);
+	if (ctrl->sock.sock < 0) {
+		printf("Socket could not be created.\n");
+		free(ctrl);
+		return NULL;
+	}
 
-	ctrl->type = LDMSCTL_TYPE_LOCAL;
+	ctrl->send_req = __sock_send;
+	ctrl->recv_resp = __sock_recv;
+	ctrl->close = __sock_close;
 
-	if (sockname[0] == '/') {
-		_sockname = strdup(sockname);
-		if (!_sockname)
-			goto err;
-		sockpath = dirname(_sockname);
-		if (strlen(sockpath)+1 > sizeof(my_un.sun_path)) {
-			errno = EINVAL;
-			goto err;
-		}
-		strcpy(my_un.sun_path, sockname);
+	rc = connect(ctrl->sock.sock, (struct sockaddr *)&ss, sa_len);
+	if (rc == -1) {
+		printf("Error %d: Failed to connect to ldmsd\n", errno);
+		free(ctrl);
+		return NULL;
+	}
+
+#if OVIS_LIB_HAVE_AUTH
+	size_t len = 4096;
+	char *psswd_buf = malloc(len);
+	rc = recv(ctrl->sock.sock, psswd_buf, len - 1, 0);
+	if (rc == -1) {
+		printf("Error %d: Failed to receive authentication challenge.\n", errno);
+		free(psswd_buf);
+		free(ctrl);
+		return NULL;
+	}
+
+	struct ovis_auth_challenge *chl;
+	chl = (struct ovis_auth_challenge *)psswd_buf;
+	uint64_t challenge = ovis_auth_unpack_challenge(chl);
+	char *psswd = ovis_auth_encrypt_password(challenge, secretword);
+	if (!psswd) {
+		printf("Auth error: Failed to get the password\n");
+		free(psswd);
+		free(psswd_buf);
+		free(ctrl);
+		return NULL;
 	} else {
-		sockpath = getenv(LDMSD_SOCKPATH_ENV);
-		if (!sockpath)
-			sockpath = "/var/run";
-		if (strlen(sockpath) + 2 + strlen(sockname) > sizeof(my_un.sun_path)) {
-			errno = EINVAL;
-			goto err;
+		rc = send(ctrl->sock.sock, psswd, strlen(psswd), 0);
+		if (rc == -1) {
+			free(psswd);
+			free(psswd_buf);
+			free(ctrl);
+			return NULL;
 		}
-		sprintf(my_un.sun_path, "%s/%s", sockpath, sockname);
+		free(psswd);
 	}
 
-	rem_addr.sun_family = AF_UNIX;
-	strncpy(rem_addr.sun_path, my_un.sun_path,
-		sizeof(struct sockaddr_un) - sizeof(short));
-
-	/* Create control socket */
-	ctrl->local.sock = socket(AF_UNIX, SOCK_STREAM, 0);
-	if (ctrl->local.sock < 0)
-		goto err;
-
-	pid_t pid = getpid();
-	lcl_addr.sun_family = AF_UNIX;
-
-	mn = strdup(my_name);
-	if (!mn)
-		goto err;
-	sprintf(my_un.sun_path, "%s/%s", sockpath, basename(mn));
-	free(mn);
-
-	rc = mkdir(my_un.sun_path, 0755);
-	if (rc < 0) {
-		/* Ignore the error if the path already exists */
-		if (errno != EEXIST) {
-			printf("Error creating '%s: %s\n", my_un.sun_path,
-							strerror(errno));
-			close(ctrl->local.sock);
-			goto err;
-		}
+	rc = recv(ctrl->sock.sock, psswd_buf, len, 0);
+	if (!rc) {
+		printf("ldmsd closed the connection.\n");
+		free(psswd_buf);
+		free(ctrl);
+		return NULL;
 	}
-
-	sprintf(lcl_addr.sun_path, "%s/%d", my_un.sun_path, pid);
-
-	rc = connect(ctrl->local.sock, (struct sockaddr *)&rem_addr,
-			  sizeof(struct sockaddr_un));
-	if (rc < 0) {
-		printf("Error creating '%s'\n", rem_addr.sun_path);
-		close(ctrl->local.sock);
-		goto err;
-	}
-	ctrl->local.sa = (struct sockaddr *)&rem_addr;
-	ctrl->local.sa_len = sizeof(rem_addr);
-	if (_sockname)
-		free(_sockname);
+#endif /* OVIS_LIB_HAVE_AUTH */
 	return ctrl;
- err:
-	free(ctrl);
-	if (_sockname)
-		free(_sockname);
-	return NULL;
 }
 
 void __ldms_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
@@ -836,21 +1241,18 @@ void __ldms_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	struct ldmsctl_ctrl *ctrl = cb_arg;
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
-		ctrl->remote.state = LDMSCTL_REMOTE_CONNECTED;
-		sem_post(&ctrl->remote.connected_sem);
+		sem_post(&ctrl->ldms_xprt.connected_sem);
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
 		printf("The connected request is rejected."
 				"Please verify your secret word.\n");
-		ldms_xprt_put(ctrl->remote.x);
+		ldms_xprt_put(ctrl->ldms_xprt.x);
 		exit(0);
 	case LDMS_XPRT_EVENT_DISCONNECTED:
-		ctrl->remote.state = LDMSCTL_REMOTE_DISCONNECTED;
-		ldms_xprt_put(ctrl->remote.x);
+		ldms_xprt_put(ctrl->ldms_xprt.x);
 		printf("The connection is disconnected.\n");
 		exit(0);
 	case LDMS_XPRT_EVENT_ERROR:
-		ctrl->remote.state = LDMSCTL_REMOTE_ERROR;
 		printf("Connection error\n");
 		exit(0);
 		break;
@@ -862,23 +1264,23 @@ void __ldms_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 				printf("Out of memory\n");
 				buffer = NULL;
 				buffer_len = 0;
-				ldms_xprt_close(ctrl->remote.x);
-				sem_post(&ctrl->remote.recv_sem);
+				ldms_xprt_close(ctrl->ldms_xprt.x);
+				sem_post(&ctrl->ldms_xprt.recv_sem);
 				break;
 			}
 			buffer_len = e->data_len;
 		}
 		memset(buffer, 0, buffer_len);
 		memcpy(buffer, e->data, e->data_len);
-		sem_post(&ctrl->remote.recv_sem);
+		sem_post(&ctrl->ldms_xprt.recv_sem);
 		break;
 	default:
 		assert(0);
 	}
 }
 
-struct ldmsctl_ctrl *__remote_ctrl(const char *host, const char *port,
-			const char *xprt, const char *secretword_path)
+struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
+			const char *xprt, const char *secretword)
 {
 	ldms_t x;
 	struct ldmsctl_ctrl *ctrl;
@@ -888,40 +1290,88 @@ struct ldmsctl_ctrl *__remote_ctrl(const char *host, const char *port,
 	if (!ctrl)
 		return NULL;
 
-	sem_init(&ctrl->remote.connected_sem, 0, 0);
-	sem_init(&ctrl->remote.recv_sem, 0, 0);
+	sem_init(&ctrl->ldms_xprt.connected_sem, 0, 0);
+	sem_init(&ctrl->ldms_xprt.recv_sem, 0, 0);
 
-	ctrl->type = LDMSCTL_TYPE_REMOTE;
-
+	ctrl->send_req = __ldms_xprt_send;
+	ctrl->recv_resp = __ldms_xprt_recv;
+	ctrl->close = __ldms_xprt_close;
 
 #if OVIS_LIB_HAVE_AUTH
-	char *secretword = ldms_get_secretword(secretword_path, NULL);
-	if (!secretword) {
-		printf("Failed to get the secret word\n");
-		exit(0);
-	}
-	ctrl->remote.x = ldms_xprt_with_auth_new(xprt, NULL, secretword);
+	ctrl->ldms_xprt.x = ldms_xprt_with_auth_new(xprt, NULL, secretword);
 #else /* OVIS_LIB_HAVE_AUTH */
-	ctrl->remote.x = ldms_xprt_new(xprt, NULL);
+	ctrl->ldms_xprt.x = ldms_xprt_new(xprt, NULL);
 #endif /* OVIS_LIB_HAVE_AUTH */
-	if (!ctrl->remote.x) {
+	if (!ctrl->ldms_xprt.x) {
 		printf("Failed to create an ldms transport. %s\n",
 						strerror(errno));
 		return NULL;
 	}
 
-	rc = ldms_xprt_connect_by_name(ctrl->remote.x, host, port,
+	rc = ldms_xprt_connect_by_name(ctrl->ldms_xprt.x, host, port,
 						__ldms_event_cb, ctrl);
 	if (rc) {
-		ldms_xprt_put(ctrl->remote.x);
-		sem_destroy(&ctrl->remote.connected_sem);
-		sem_destroy(&ctrl->remote.recv_sem);
+		ldms_xprt_put(ctrl->ldms_xprt.x);
+		sem_destroy(&ctrl->ldms_xprt.connected_sem);
+		sem_destroy(&ctrl->ldms_xprt.recv_sem);
 		free(ctrl);
 		return NULL;
 	}
 
-	sem_wait(&ctrl->remote.connected_sem);
+	sem_wait(&ctrl->ldms_xprt.connected_sem);
 	return ctrl;
+}
+
+static int handle_source(struct ldmsctl_ctrl *ctrl, char *path)
+{
+	FILE *f;
+	char *s;
+	int rc = 0;
+
+	f = fopen(path, "r");
+	if (!f) {
+		rc = errno;
+		printf("Error %d: Failed to open the configuration file '%s'\n",
+								rc, path);
+		return rc;
+	}
+	fseek(f, 0, SEEK_SET);
+
+	s = fgets(linebuf, linebuf_len, f);
+	while (s) {
+		rc = __handle_cmd(ctrl, linebuf);
+		if (rc)
+			break;
+		s = fgets(linebuf, linebuf_len, f);
+	}
+	fclose(f);
+	return rc;
+}
+
+static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd)
+{
+	int rc = 0;
+	FILE *f;
+	char *s;
+
+	f = popen(cmd, "r");
+	if (!f) {
+		rc = errno;
+		printf("Error %d: Failed to open pipe of the command '%s'\n",
+								rc, cmd);
+
+		return rc;
+	}
+
+	s = fgets(linebuf, linebuf_len, f);
+	while (s) {
+		rc = __handle_cmd(ctrl, linebuf);
+		if (rc)
+			break;
+		s = fgets(linebuf, linebuf_len, f);
+	}
+	pclose(f);
+	return rc;
 }
 
 int main(int argc, char *argv[])
@@ -929,7 +1379,9 @@ int main(int argc, char *argv[])
 	int op;
 	char *host, *port, *secretword_path, *sockname, *env, *s, *xprt;
 	host = port = secretword_path = sockname = s = xprt = NULL;
-	int rc, is_inet = 0;
+	char *source, *script;
+	source = script = NULL;
+	int rc, is_inband = 0;
 
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
@@ -948,8 +1400,18 @@ int main(int argc, char *argv[])
 		case 'a':
 			secretword_path = strdup(optarg);
 			break;
+		case 'i':
+			is_inband = 1;
+			break;
+		case 's':
+			source = strdup(optarg);
+			break;
+		case 'X':
+			script = strdup(optarg);
+			break;
 		default:
 			usage(argv);
+			exit(0);
 		}
 	}
 
@@ -964,24 +1426,44 @@ int main(int argc, char *argv[])
 		printf("Out of memory\n");
 		exit(ENOMEM);
 	}
-	struct ldmsctl_ctrl *ctrl;
-
-	if (!sockname && (!host || !port || !xprt))
+	if (!sockname && (!host || !port))
+		goto arg_err;
+	else if (is_inband && !xprt)
 		goto arg_err;
 
-	if (sockname) {
-		ctrl = __unix_domain_ctrl(basename(argv[0]), sockname);
+#if OVIS_LIB_HAVE_AUTH
+	char *secretword = ldms_get_secretword(secretword_path, NULL);
+	if (!secretword) {
+		printf("Failed to get the secret word\n");
+		exit(1);
+	}
+#else /* OVIS_LIB_HAVE_AUTH */
+	char *secretword = NULL;
+#endif /* OVIS_LIB_HAVE_AUTH */
+
+	struct ldmsctl_ctrl *ctrl;
+	if (is_inband) {
+		ctrl = __ldms_xprt_ctrl(host, port, xprt, secretword);
 		if (!ctrl) {
 			printf("Failed to connect to ldmsd.\n");
 			exit(-1);
 		}
 	} else {
-		is_inet = 1;
-		ctrl = __remote_ctrl(host, port, xprt, secretword_path);
-		if (!ctrl) {
-			printf("Failed to connect to ldmsd.\n");
-			exit(-1);
-		}
+		ctrl = __sock_ctrl(host, port, basename(argv[0]),
+					sockname, secretword);
+		if (!ctrl)
+			exit(1);
+	}
+	/* At this point ldmsctl is connected to the ldmsd */
+
+	if (source) {
+		(void) handle_source(ctrl, source);
+		return 0;
+	}
+
+	if (script) {
+		(void) handle_script(ctrl, script);
+		return 0;
 	}
 
 	do {
@@ -1008,13 +1490,15 @@ int main(int argc, char *argv[])
 		add_history(s);
 #endif /* HAVE_READLINE_HISTORY */
 
-		rc = __handle_cmd(s, ctrl);
+		rc = __handle_cmd(ctrl, s);
 		if (rc)
 			break;
 	} while (s);
+
+	ctrl->close(ctrl);
 	return 0;
 arg_err:
-	printf("Please give either '-S' or '-h, -p and -x'\n");
+	printf("Please specify the connection type.\n");
 	usage(argv);
 	return 0;
 }
