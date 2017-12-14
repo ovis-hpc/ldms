@@ -161,6 +161,8 @@ char *str_repl_env_vars(const char *str)
 
 char *av_name(struct attr_value_list *av_list, int idx)
 {
+	if (!av_list)
+		return NULL;
 	if (idx < av_list->count)
 		return av_list->list[idx].name;
 	return NULL;
@@ -168,6 +170,8 @@ char *av_name(struct attr_value_list *av_list, int idx)
 
 char *av_value(struct attr_value_list *av_list, const char *name)
 {
+	if (!av_list)
+		return NULL;
 	int i;
 	for (i = 0; i < av_list->count; i++) {
 		if (strcmp(name, av_list->list[i].name))
@@ -243,6 +247,8 @@ err:
 
 void av_free(struct attr_value_list *avl)
 {
+	if (!avl)
+		return;
 	string_ref_t ref;
 	while (!LIST_EMPTY(&avl->strings)) {
 		ref = LIST_FIRST(&avl->strings);
