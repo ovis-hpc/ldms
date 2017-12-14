@@ -176,11 +176,11 @@ libperfevent_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lm
 pkglib_LTLIBRARIES += libperfevent.la
 endif
 
-if ENABLE_PAPI
-libspapi_la_SOURCES = papi.c
-libspapi_la_CFLAGS = $(AM_CFLAGS) $(LIBPAPI_INCDIR_FLAG) $(LIBPAPI_LIBDIR_FLAG)
-libspapi_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lpapi -lm
-pkglib_LTLIBRARIES += libspapi.la
+if ENABLE_HWEVENTPAPI
+libhweventpapi_la_SOURCES = hweventpapi.c
+libhweventpapi_la_CFLAGS = $(AM_CFLAGS) $(LIBPAPI_INCDIR_FLAG) $(LIBPAPI_LIBDIR_FLAG)
+libhweventpapi_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lpapi -lm
+pkglib_LTLIBRARIES += libhweventpapi.la
 endif
 
 if ENABLE_RAPL

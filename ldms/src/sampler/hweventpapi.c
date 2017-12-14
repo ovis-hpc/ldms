@@ -68,8 +68,8 @@
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
 static ldms_schema_t schema;
-static char* default_schema_name = "spapi";
-#define SAMP "spapi"
+static char* default_schema_name = "hweventpapi";
+#define SAMP "hweventpapi"
 static long_long* papi_event_val;
 static char *appname_str = "";
 static char *jobid = "";
