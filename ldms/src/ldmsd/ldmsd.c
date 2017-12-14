@@ -1455,8 +1455,13 @@ int main(int argc, char *argv[])
 			listen_on_cfg_xprt(xprt_str, port_str, secretword);
 			break;
 		case 'c':
-			if (ret = process_config_file(strdup(optarg)))
-				cleanup(ret, "Error %d processing configuration file '%s'");
+			if (ret = process_config_file(strdup(optarg))) {
+				char errstr[80];
+				snprintf(errstr, sizeof(errstr),
+					 "Error %d processing configuration file '%s'",
+					 ret, optarg);
+				cleanup(ret, errstr);
+			}
 			break;
 #ifdef ENABLE_LDMSD_RCTL
 		case 'R':
