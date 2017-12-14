@@ -2252,6 +2252,8 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *plugin_name, *config_attr, *attr_name;
 	plugin_name = config_attr = NULL;
+	struct attr_value_list *av_list = NULL;
+	struct attr_value_list *kw_list = NULL;
 	size_t cnt = 0;
 	reqc->errcode = 0;
 
@@ -2268,8 +2270,6 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	char *cmd_s;
-	struct attr_value_list *av_list;
-	struct attr_value_list *kw_list;
 	int tokens;
 
 	/*
@@ -2323,6 +2323,8 @@ err:
 		av_free(kw_list);
 	if (av_list)
 		av_free(av_list);
+	kw_list = NULL;
+	av_list = NULL;
 send_reply:
 	(void) ldmsd_append_reply(reqc, reqc->line_buf, cnt,
 				LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
@@ -2330,6 +2332,10 @@ send_reply:
 		free(plugin_name);
 	if (config_attr)
 		free(config_attr);
+	if (kw_list)
+		av_free(kw_list);
+	if (av_list)
+		av_free(av_list);
 	return 0;
 }
 
