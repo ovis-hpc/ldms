@@ -126,9 +126,6 @@ For Unix domain socket connection, use -p unix:SOCKNAME.
 SOCKNAME is the Unix domain socket path. For remote connection use -p sock:PORT.
 PORT is the listening port. If not specified, Unix domain socket nor inet port
 is opened.
-.TP
-.BI -R " port"
-If built with --enable-ldmsd-rctl, the listener port for receiving configuration from the ldmsd_rctl program. If not specified, no rctl port is opened.
 
 .SS
 Log Verbosity Options:
