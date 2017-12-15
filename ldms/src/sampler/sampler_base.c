@@ -136,7 +136,7 @@ base_data_t base_config(struct attr_value_list *avl,
 			    "%s: The specified job_set '%s' is missing "
 			    "the 'job_id' attribute and cannot be used.\n",
 			    name, job_set_name);
-			goto err;
+			goto einval;
 		}
 		value = av_value(avl, "app_id");
 		if (!value)
@@ -147,7 +147,7 @@ base_data_t base_config(struct attr_value_list *avl,
 			    "%s: The specified job_set '%s' is missing "
 			    "the 'app_id' attribute and cannot be used.\n",
 			    name, job_set_name);
-			goto err;
+			goto einval;
 		}
 		value = av_value(avl, "job_start");
 		if (!value)
@@ -158,7 +158,7 @@ base_data_t base_config(struct attr_value_list *avl,
 			    "%s: The specified job_set '%s' is missing "
 			    "the 'job_start' attribute and cannot be used.\n",
 			    name, job_set_name);
-			goto err;
+			goto einval;
 		}
 		value = av_value(avl, "job_end");
 		if (!value)
@@ -169,11 +169,11 @@ base_data_t base_config(struct attr_value_list *avl,
 			    "%s: The specified job_set '%s' is missing "
 			    "the 'job_end' attribute and cannot be used.\n",
 			    name, job_set_name);
-			goto err;
+			goto einval;
 		}
 	}
 	return base;
-err:
+einval:
 	errno = EINVAL;
 	base_del(base);
 	return NULL;
