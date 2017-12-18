@@ -150,6 +150,7 @@ enum ldmsd_request_attr {
 #define LDMSD_REQ_TYPE_CONFIG_CMD 1
 #define LDMSD_REQ_TYPE_CONFIG_RESP 2
 
+#pragma pack(push, 1)
 typedef struct ldmsd_req_hdr_s {
 	uint32_t marker;	/* Always has the value 0xff */
 	uint32_t type;		/* Request type */
@@ -161,6 +162,7 @@ typedef struct ldmsd_req_hdr_s {
 	};
 	uint32_t rec_len;	/* Record length in bytes including this header */
 } *ldmsd_req_hdr_t;
+#pragma pack(pop)
 
 /**
  * The format of requests and replies is as follows:
@@ -248,6 +250,7 @@ typedef struct ldmsd_req_ctxt {
 	char *rep_buf;
 } *ldmsd_req_ctxt_t;
 
+#pragma pack(push, 1)
 typedef struct ldmsd_req_attr_s {
 	uint32_t discrim;	/* If 0, the remaining fields are not present */
 	uint32_t attr_id;	/* Attribute identifier, unique per ldmsd_req_hdr_s.cmd_id */
@@ -259,6 +262,7 @@ typedef struct ldmsd_req_attr_s {
 		uint64_t attr_u64[OVIS_FLEX_UNION];
 	};
 } *ldmsd_req_attr_t;
+#pragma pack(pop)
 
 /**
  * \brief Translate a config string to a LDMSD configuration request
@@ -358,6 +362,35 @@ char *ldmsd_req_attr_str_value_get_by_name(char *request, const char *name);
  * \return 1 if the keyword or attribute exists. Otherwise, 0 is returned.
  */
 int ldmsd_req_attr_keyword_exist_by_name(char *request, const char *name);
+
+/**
+ * Convert the request header byte order from host to network
+ */
+void ldmsd_hton_req_hdr(ldmsd_req_hdr_t req);
+/**
+ * Convert the request attribute byte order from host to network
+ */
+void ldmsd_hton_req_attr(ldmsd_req_attr_t attr);
+/**
+ * Convert the message byte order from host to network
+ *
+ * It assumes that the buffer \c msg contains the whole message.
+ */
+void ldmsd_hton_req_msg(ldmsd_req_hdr_t msg);
+/**
+ * Convert the request header byte order from network to host
+ */
+void ldmsd_ntoh_req_hdr(ldmsd_req_hdr_t req);
+/**
+ * Convert the request attribute byte order from network to host
+ */
+void ldmsd_ntoh_req_attr(ldmsd_req_attr_t attr);
+/**
+ * Convert the message byte order from network to host
+ *
+ * It assumes that the buffer \c msg contains the whole message.
+ */
+void ldmsd_ntoh_req_msg(ldmsd_req_hdr_t msg);
 
 /**
  * \brief Advise the peer our configuration record length

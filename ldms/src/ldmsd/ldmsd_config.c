@@ -544,13 +544,19 @@ next_line:
 	}
 
 	request = ldmsd_parse_config_str(line, msg_no);
+
+	/*
+	 * Convert the request byte order from host to network
+	 * to be compatible with the other config methods.
+	 */
+	ldmsd_hton_req_msg(request);
 	msg_no += 1;
 	if (!request) {
 		ldmsd_log(LDMSD_LERROR, "Process config file error at line %d "
 				"(%s). %s\n", lineno, path, strerror(errno));
 		goto cleanup;
 	}
-	rc = ldmsd_process_config_request(&xprt, request, request->rec_len);
+	rc = ldmsd_process_config_request(&xprt, request, htonl(request->rec_len));
 	if (rc) {
 		ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
 				lineno, path);
@@ -586,6 +592,10 @@ void *config_proc(void *arg)
 		if (msglen <= 0)
 			/* closing */
 			break;
+
+		/* Convert the byte order from network to host */
+		ldmsd_ntoh_req_hdr(&request);
+
 		/* Verify the marker */
 		if (request.marker != LDMSD_RECORD_MARKER
 		    || (msglen < sizeof(request))) {
@@ -604,6 +614,7 @@ void *config_proc(void *arg)
 			ldmsd_log(LDMSD_LERROR, "Received short configuration record.\n");
 			break;
 		}
+
 		/* Process the request record */
 		ldmsd_process_config_request(&clnt->xprt,
 					     (ldmsd_req_hdr_t)clnt->recbuf,
@@ -900,7 +911,8 @@ static void __recv_msg(ldms_t x, char *data, size_t data_len)
         xprt.ldms.ldms = x;
         xprt.send_fn = send_ldms_fn;
         xprt.max_msg = x->max_msg;
-        switch (request->type) {
+
+        switch (ntohl(request->type)) {
         case LDMSD_REQ_TYPE_CONFIG_CMD:
                 (void)ldmsd_process_config_request(&xprt, request, data_len);
                 break;

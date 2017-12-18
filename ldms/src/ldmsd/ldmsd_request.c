@@ -509,10 +509,10 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 	size_t cnt;
 	int rc = 0;
 
-	key.msg_no = request->msg_no;
+	key.msg_no = ntohl(request->msg_no);
 	key.conn_id = (uint64_t)(long unsigned)xprt;
 
-	if (request->marker != LDMSD_RECORD_MARKER) {
+	if (ntohl(request->marker) != LDMSD_RECORD_MARKER) {
 		char *msg = "Config request is missing record marker";
 		ldmsd_send_error_reply(xprt, -1, EINVAL, msg, strlen(msg));
 		rc = EINVAL;
@@ -520,7 +520,7 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 	}
 
 	req_ctxt_tree_lock();
-	if (request->flags & LDMSD_REQ_SOM_F) {
+	if (ntohl(request->flags) & LDMSD_REQ_SOM_F) {
 		/* Ensure that we don't already have this message in
 		 * the tree */
 		reqc = find_req_ctxt(&key);
@@ -570,9 +570,12 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 	}
 	req_ctxt_tree_unlock();
 
-	if (0 == (request->flags & LDMSD_REQ_EOM_F))
+	if (0 == (ntohl(request->flags) & LDMSD_REQ_EOM_F))
 		/* Not the end of the message */
 		goto out;
+
+	/* Convert the request byte order from network to host */
+	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->req_buf);
 
 	rc = ldmsd_handle_request(reqc);
 

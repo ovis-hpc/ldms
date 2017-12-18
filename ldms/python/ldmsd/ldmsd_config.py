@@ -149,7 +149,7 @@ class ldmsdConfig(object):
         """Receive a response from the ldmsd process
         """
         hdr = self.socket.recv(self.msg_hdr_len, socket.MSG_WAITALL)
-        (marker, msg_type, flags, msg_no, errcode, rec_len) = struct.unpack('iiiiii', hdr)
+        (marker, msg_type, flags, msg_no, errcode, rec_len) = struct.unpack('=LLLLLL', hdr)
         data_len = rec_len - self.msg_hdr_len
         msg = hdr
         if data_len > 0:
