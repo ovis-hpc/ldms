@@ -463,6 +463,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/hadoop/hadoop-sinks/OvisSink.java
 		 src/sampler/cray_system_sampler/Makefile
 		 src/sampler/aries_mmr/Makefile
+		 src/sampler/aries_mmr/aries_mmr_set_configs/Makefile
 		 src/ldmsd/Makefile
 		 scripts/Makefile
 		 src/test/Makefile
