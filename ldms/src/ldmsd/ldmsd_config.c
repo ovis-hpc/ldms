@@ -447,19 +447,19 @@ static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 {
 	ldmsd_req_attr_t attr;
 	ldmsd_req_hdr_t req_reply = (ldmsd_req_hdr_t)data;
+	ldmsd_ntoh_req_msg(req_reply);
 
 	attr = ldmsd_first_attr(req_reply);
-	if (attr->discrim == 0 || attr->discrim == 1) {
-		/* We don't dump attributes to the log */
-		ldmsd_log(LDMSD_LDEBUG, "msg_no %d flags %x rec_len %d rsp_err %d msg\n",
-			  req_reply->msg_no, req_reply->flags, req_reply->rec_len,
-			  req_reply->rsp_err);
-	} else {
-		data[data_len] = '\0';
-		attr = ldmsd_first_attr(req_reply);
-		ldmsd_log(LDMSD_LDEBUG, "msg_no %d flags %x rec_len %d rsp_err %d msg %s\n",
-			  req_reply->msg_no, req_reply->flags, req_reply->rec_len,
-			  req_reply->rsp_err, attr);
+
+	/* We don't dump attributes to the log */
+	ldmsd_log(LDMSD_LDEBUG, "msg_no %d flags %x rec_len %d rsp_err %d\n",
+		  req_reply->msg_no, req_reply->flags, req_reply->rec_len,
+		  req_reply->rsp_err);
+
+	if (req_reply->rsp_err && (attr->attr_id == LDMSD_ATTR_STRING)) {
+		/* Print the error message to the log */
+		ldmsd_log(LDMSD_LERROR, "msg_no %d: error %d: %s\n",
+				req_reply->msg_no, req_reply->rsp_err, attr->attr_value);
 	}
 	return 0;
 }
