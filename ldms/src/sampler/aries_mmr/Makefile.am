@@ -1,3 +1,4 @@
+SUBDIRS = aries_mmr_set_configs
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 
