@@ -877,6 +877,20 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_greeting(self, text, line, begidx, endidx):
         return self.__complete_attr_list('greeting', text)
 
+    def do_example(self, arg):
+        resp = self.handle('example', arg)
+        if resp['msg'] == "":
+            return
+        
+        attr_list = json.loads(resp['msg'])
+        print("{0:10} {1:10} {2}".format("ATTR_ID", "VALUE_LENGTH", "VALUE"))
+        print("---------- ---------- ----------")
+        for attr in attr_list:
+            print("{0:10} {1:10} {2}".format(attr['attr_id'], attr['attr_len'], attr['attr_value']))
+
+    def complete_example(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('example', text)
+
     def parseline(self, line):
         """Parse the line into a command name and a string containing
         the arguments.  Returns a tuple containing (command, args, line).
