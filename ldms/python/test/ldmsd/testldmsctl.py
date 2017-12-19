@@ -39,7 +39,7 @@ class TestLdmsctl(unittest.TestCase):
         cmd = "echo \"greeting\" | ldmsctl -S {0} -a {1}".format(self.SOCKNAME, self.AUTHPATH)
         try:
             ldmsctl_out = sp.check_output(cmd, shell=True)
-            self.assertEqual(ldmsctl_out, "\n", ldmsctl_out)
+            self.assertEqual(ldmsctl_out, "", ldmsctl_out)
         except CalledProcessError as e:
             self.assertTrue(False, e.output)
 
@@ -47,7 +47,7 @@ class TestLdmsctl(unittest.TestCase):
         cmd = "echo \"greeting\" | ldmsctl -h {0} -p {1}".format(self.HOST, self.CFG_PORT)
         try:
             ldmsctl_out = sp.check_output(cmd, shell=True)
-            self.assertEqual(ldmsctl_out, "\n", ldmsctl_out)
+            self.assertEqual(ldmsctl_out, "", ldmsctl_out)
         except CalledProcessError as e:
             self.assertTrue(False, e.output)
 
@@ -55,7 +55,7 @@ class TestLdmsctl(unittest.TestCase):
         cmd = "echo \"greeting\" | ldmsctl -h {0} -p {1}".format(self.HOST, self.CFG_PORT)
         try:
             ldmsctl_out = sp.check_output(cmd, shell=True)
-            self.assertEqual(ldmsctl_out, "\n", ldmsctl_out)
+            self.assertEqual(ldmsctl_out, "", ldmsctl_out)
         except CalledProcessError as e:
             self.assertTrue(False, e.output)
 
@@ -65,7 +65,7 @@ class TestLdmsctl(unittest.TestCase):
         
         try:
             ldmsctl_out = sp.check_output(cmd, shell=True)
-            self.assertEqual(ldmsctl_out, "\n", ldmsctl_out)
+            self.assertEqual(ldmsctl_out, "", ldmsctl_out)
         except CalledProcessError as e:
             self.assertTrue(False, e.output)
 
@@ -74,7 +74,7 @@ class TestLdmsctl(unittest.TestCase):
                                                 self.HOST, self.CFG_PORT)
         try:
             ldmsctl_out = sp.check_output(cmd, shell=True)
-            self.assertEqual(ldmsctl_out, "Hello 'foo'\n", ldmsctl_out)
+            self.assertEqual(ldmsctl_out, "Hello 'foo'\n", repr(ldmsctl_out))
         except CalledProcessError as e:
             self.assertTrue(False, e.output)
 
@@ -83,7 +83,7 @@ class TestLdmsctl(unittest.TestCase):
                                                 self.HOST, self.CFG_PORT)     
         try:
             ldmsctl_out = sp.check_output(cmd, shell=True)
-            self.assertEqual(ldmsctl_out, "Hi\n", ldmsctl_out)
+            self.assertEqual(ldmsctl_out, "Hi\n", repr(ldmsctl_out))
         except CalledProcessError as e:
             self.assertTrue(False, e.output)
 
@@ -92,7 +92,7 @@ class TestLdmsctl(unittest.TestCase):
                                                 self.HOST, self.CFG_PORT)
         try:
             ldmsctl_out = sp.check_output(cmd, shell=True)
-            self.assertEqual(ldmsctl_out, "Hello 'foo'\n", ldmsctl_out)
+            self.assertEqual(ldmsctl_out, "Hello 'foo'\n", repr(ldmsctl_out))
         except CalledProcessError as e:
             self.assertTrue(False, e.output)
 

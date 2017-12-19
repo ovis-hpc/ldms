@@ -140,7 +140,7 @@ struct command {
 	int cmd_id;
 	int (*action)(struct ldmsctl_ctrl *ctrl, char *args);
 	void (*help)();
-	void (*resp)(char *msg, size_t len, uint32_t rsp_err);
+	void (*resp)(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err);
 };
 
 static int command_comparator(const void *a, const void *b)
@@ -186,10 +186,11 @@ static void help_greeting()
 	       "               If 'name' is not given, nothing will be returned\n");
 }
 
-static void resp_greeting(char *msg, size_t len, uint32_t rsp_err)
+static void resp_greeting(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
-	if (msg)
-		printf("%s\n", msg);
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
+		printf("%s\n", attr->attr_value);
 }
 
 static int handle_quit(struct ldmsctl_ctrl *ctrl, char *kw)
@@ -212,10 +213,11 @@ static void help_source()
 	       "  source <PATH>  PATH is the path to the configuration file.\n");
 }
 
-static void resp_usage(char *msg, size_t len, uint32_t rsp_err)
+static void resp_usage(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
-	if (msg)
-		printf("%s\n", msg);
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
+		printf("%s\n", attr->attr_value);
 }
 
 static void help_usage()
@@ -421,8 +423,13 @@ void __print_prdcr_status(json_value *jvalue)
 	}
 }
 
-static void resp_prdcr_status(char *str, size_t len, uint32_t rsp_err)
+static void resp_prdcr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
+	char *str;
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
+		str = attr->attr_value;
+
 	json_value *json, *prdcr_json;
 	json = json_parse(str, len);
 	if (!json)
@@ -479,8 +486,12 @@ void __print_prdcr_set_status(json_value *jvalue)
 			name, schema, state, origin, prdcr, ts, dur);
 }
 
-static void resp_prdcr_set_status(char *str, size_t len, uint32_t rsp_err)
+static void resp_prdcr_set_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
+	char *str;
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
+		str = attr->attr_value;
 	json_value *json, *prdcr_json;
 	json = json_parse(str, len);
 	if (!json)
@@ -630,8 +641,12 @@ void __print_updtr_status(json_value *jvalue)
 	}
 }
 
-static void resp_updtr_status(char *str, size_t len, uint32_t rsp_err)
+static void resp_updtr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
+	char *str;
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
+		str = attr->attr_value;
 	json_value *json, *prdcr_json;
 	json = json_parse(str, len);
 	if (!json)
@@ -783,8 +798,12 @@ void __print_strgp_status(json_value *jvalue)
 	printf("\n");
 }
 
-static void resp_strgp_status(char *str, size_t len, uint32_t rsp_err)
+static void resp_strgp_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
+	char *str;
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
+		str = attr->attr_value;
 	json_value *json, *prdcr_json;
 	json = json_parse(str, len);
 	if (!json)
@@ -819,11 +838,13 @@ static void help_version()
 	printf( "\nGet the LDMS version.\n");
 }
 
-static void resp_generic(char *msg, size_t len, uint32_t rsp_err)
+static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
+	ldmsd_req_attr_t attr;
 	if (rsp_err) {
-		if (msg)
-			printf("%s\n", msg);
+		attr = ldmsd_first_attr(resp);
+		if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
+			printf("%s\n", attr->attr_value);
 	}
 }
 
@@ -974,6 +995,9 @@ static char * __sock_recv(struct ldmsctl_ctrl *ctrl)
 		/* closing */
 		return NULL;
 
+	/* Convert the response byte order from network to host */
+	ldmsd_ntoh_req_hdr(&resp);
+
 	/* Verify the marker */
 	if (resp.marker != LDMSD_RECORD_MARKER
 			|| (msglen < sizeof(resp))) {
@@ -1090,8 +1114,13 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 			rc = -1;
 			goto out;
 		}
-		rec = ldmsctl_resp_msg_get(resp);
-		reclen = resp->rec_len - req_hdr_sz;
+		if (ntohl(resp->flags) & LDMSD_REQ_SOM_F) {
+			reclen = ntohl(resp->rec_len);
+			rec = (char *)resp;
+		} else {
+			reclen = ntohl(resp->rec_len) - req_hdr_sz;
+			rec = (char *)(resp + 1);
+		}
 		if (lbufsz < msglen + reclen) {
 			lbuf = realloc(lbuf, msglen + (reclen * 2));
 			if (!lbuf) {
@@ -1103,12 +1132,12 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 		}
 		memcpy(&lbuf[msglen], rec, reclen);
 		msglen += reclen;
-		if ((resp->flags & LDMSD_REQ_EOM_F) != 0) {
+		if ((ntohl(resp->flags) & LDMSD_REQ_EOM_F) != 0) {
 			break;
 		}
 	}
-
-	cmd->resp(lbuf, msglen, resp->rsp_err);
+	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)lbuf);
+	cmd->resp((ldmsd_req_hdr_t)lbuf, msglen, resp->rsp_err);
 out:
 	free(lbuf);
 	return rc;

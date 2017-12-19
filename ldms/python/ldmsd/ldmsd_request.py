@@ -373,7 +373,7 @@ class LDMSD_Request(object):
                 if attr.discrim == 0:
                     break
                 attr_list.append(attr)
-                offset = attr.LDMSD_REQ_ATTR_SZ + attr.attr_len
+                offset += attr.LDMSD_REQ_ATTR_SZ + attr.attr_len
 
         msg = None        
         if len(attr_list) == 1:
