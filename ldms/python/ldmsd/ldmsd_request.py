@@ -56,11 +56,12 @@ import argparse
 import sys
 import traceback
 
-class LDMSD_Except(Exception):
-    def __init__(self, value):
-        self.value = value
-    def __str__(self):
-        return repr(self.value)
+class LDMSD_Request_Exception(Exception):
+    '''Raise when there is an error in the ldmsd request module'''
+    def __init__(self, message, errcode, *args):
+        self.message = message
+        self.errcode = errcode
+        super(LDMSD_Request_Exception, self).__init__(message, errcode, *args)
 
 class LDMSD_Req_Attr(object):
     LDMSD_REQ_ATTR_SZ = 12
