@@ -152,7 +152,11 @@ class LDMSD_Req_Attr(object):
                 else:
                     self.attr_len = attr_len
 
-                self.fmt = '!LLL' + str(self.attr_len) + 's'
+                self.fmt = '!LLL'
+                if (self.attr_id == self.REC_LEN):
+                    self.fmt += 'L'
+                else:
+                    self.fmt += str(self.attr_len) + 's'
                 self.packed = struct.pack(self.fmt, 1, self.attr_id,
                                           self.attr_len, self.attr_value)
 
@@ -168,10 +172,15 @@ class LDMSD_Req_Attr(object):
         (discrim, attr_id, attr_len, ) = struct.unpack('!LLL', 
                                             buf[:cls.LDMSD_REQ_ATTR_SZ])
 
-        fmt = str(attr_len) + 's'
+        if attr_id == cls.REC_LEN:
+            fmt = '!L'
+        else:
+            fmt = str(attr_len) + 's'
 
         (attr_value,) = struct.unpack(fmt, buf[cls.LDMSD_REQ_ATTR_SZ:attr_len + cls.LDMSD_REQ_ATTR_SZ])
-        attr_value = attr_value.strip('\0')
+        if attr_id != cls.REC_LEN:
+            attr_value = attr_value.strip('\0')
+
         attr = LDMSD_Req_Attr(value = attr_value, attr_id = attr_id, attr_len = attr_len)
         return attr
 
@@ -373,6 +382,9 @@ class LDMSD_Request(object):
                 attr = LDMSD_Req_Attr.unpack(resp[offset:])
                 if attr.discrim == 0:
                     break
+                if attr.attr_id == attr.REC_LEN:
+                    raise LDMSD_Request_Exception(message="The request is too big.",
+                                                  errcode=errcode)
                 attr_list.append(attr)
                 offset += attr.LDMSD_REQ_ATTR_SZ + attr.attr_len
 
