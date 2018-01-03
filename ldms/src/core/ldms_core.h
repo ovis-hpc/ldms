@@ -53,7 +53,10 @@
 #ifndef __LDMS_CORE_H__
 #define __LDMS_CORE_H__
 
+#include <stdint.h>
 #include <asm/byteorder.h>
+
+#include "ovis-ldms-config.h"
 
 #define LDMS_SETH_F_BE		0x0001
 #define LDMS_SETH_F_LE		0x0002
@@ -212,7 +215,7 @@ typedef union ldms_value {
 
 /**
  * \brief LDMS value type enumeration
- * Note: the numeric values must be < 255, as enum ldms_value_type fitting 
+ * Note: the numeric values must be < 255, as enum ldms_value_type fitting
  * into a byte is assumed in some transmission protocols.
  */
 enum ldms_value_type {
