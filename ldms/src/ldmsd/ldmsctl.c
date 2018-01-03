@@ -71,10 +71,6 @@
 #include "ldmsd_request.h"
 #include "config.h"
 
-#if OVIS_LIB_HAVE_AUTH
-#include "ovis_auth/auth.h"
-#endif /* OVIS_LIB_HAVE_AUTH */
-
 #define _GNU_SOURCE
 
 #ifdef HAVE_LIBREADLINE
@@ -1226,46 +1222,6 @@ struct ldmsctl_ctrl *__sock_ctrl(const char *hostname,
 		return NULL;
 	}
 
-#if OVIS_LIB_HAVE_AUTH
-	size_t len = 4096;
-	char *psswd_buf = malloc(len);
-	rc = recv(ctrl->sock.sock, psswd_buf, len - 1, 0);
-	if (rc == -1) {
-		printf("Error %d: Failed to receive authentication challenge.\n", errno);
-		free(psswd_buf);
-		free(ctrl);
-		return NULL;
-	}
-
-	struct ovis_auth_challenge *chl;
-	chl = (struct ovis_auth_challenge *)psswd_buf;
-	uint64_t challenge = ovis_auth_unpack_challenge(chl);
-	char *psswd = ovis_auth_encrypt_password(challenge, secretword);
-	if (!psswd) {
-		printf("Auth error: Failed to get the password\n");
-		free(psswd);
-		free(psswd_buf);
-		free(ctrl);
-		return NULL;
-	} else {
-		rc = send(ctrl->sock.sock, psswd, strlen(psswd), 0);
-		if (rc == -1) {
-			free(psswd);
-			free(psswd_buf);
-			free(ctrl);
-			return NULL;
-		}
-		free(psswd);
-	}
-
-	rc = recv(ctrl->sock.sock, psswd_buf, len, 0);
-	if (!rc) {
-		printf("ldmsd closed the connection.\n");
-		free(psswd_buf);
-		free(ctrl);
-		return NULL;
-	}
-#endif /* OVIS_LIB_HAVE_AUTH */
 	return ctrl;
 }
 
@@ -1332,11 +1288,7 @@ struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
 	ctrl->recv_resp = __ldms_xprt_recv;
 	ctrl->close = __ldms_xprt_close;
 
-#if OVIS_LIB_HAVE_AUTH
-	ctrl->ldms_xprt.x = ldms_xprt_with_auth_new(xprt, NULL, secretword);
-#else /* OVIS_LIB_HAVE_AUTH */
 	ctrl->ldms_xprt.x = ldms_xprt_new(xprt, NULL);
-#endif /* OVIS_LIB_HAVE_AUTH */
 	if (!ctrl->ldms_xprt.x) {
 		printf("Failed to create an ldms transport. %s\n",
 						strerror(errno));
@@ -1466,15 +1418,7 @@ int main(int argc, char *argv[])
 	else if (is_inband && !xprt)
 		goto arg_err;
 
-#if OVIS_LIB_HAVE_AUTH
-	char *secretword = ldms_get_secretword(secretword_path, NULL);
-	if (!secretword) {
-		printf("Failed to get the secret word\n");
-		exit(1);
-	}
-#else /* OVIS_LIB_HAVE_AUTH */
 	char *secretword = NULL;
-#endif /* OVIS_LIB_HAVE_AUTH */
 
 	struct ldmsctl_ctrl *ctrl;
 	if (is_inband) {

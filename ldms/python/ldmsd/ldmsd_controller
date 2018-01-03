@@ -76,38 +76,22 @@ LDMSD_PLUGN_STATUS_REQ=0x504
 
 class LdmsdCmdParser(cmd.Cmd):
     def __init__(self, sockname = None, host = None, port = None, xprt = None,
-                                    secretPath = None, infile=None, inband = True):
+                                    infile=None, inband = True):
         self.msg_no = 1
         if (sockname is None) and (host is None or port is None):
             raise ValueError("Expecting either sockname or host & port. None is given")
 
-        try:
-            self.secretword = None
-            if secretPath is not None:
-                try:
-                    from ovis_lib import ovis_auth
-                except ImportError:
-                    raise ImportError("No module named ovis_lib. Please "
-                                    "make sure that ovis is built with "
-                                    "--enable-swig")
-                self.secretword = ovis_auth.ovis_auth_get_secretword(secretPath, None)
-        except:
-            raise
-
         if sockname is not None:
-            self.ctrl = ldmsd_config.ldmsdOutbandConfig(sockname = sockname,
-                                                    secretword = self.secretword)
+            self.ctrl = ldmsd_config.ldmsdOutbandConfig(sockname = sockname)
             self.prompt = "{0}> ".format(os.path.basename(sockname))
         elif inband is True:
             self.ctrl = ldmsd_config.ldmsdInbandConfig(host = host,
                                                        port = port,
-                                                       xprt = xprt,
-                                                       secretword = self.secretword)
+                                                       xprt = xprt)
             self.prompt = "{0}:{1}:{2}>".format(xprt, host, port)
         else:
             self.ctrl = ldmsd_config.ldmsdOutbandConfig(host = host,
-                                                         port = int(port),
-                                                         secretword = self.secretword)
+                                                         port = int(port))
             self.prompt = "{0}:{1}> ".format(host, port)
 
         if infile:
@@ -936,9 +920,6 @@ if __name__ == "__main__":
                             help = "LDMS Transport type: sock, ugni, rdma. Only for the inband channel",
                             choices = ['sock', 'ugni', 'rdma'],
                             default = 'sock')
-        parser.add_argument('--auth_file',
-                            help = "Path to the file containing the secretword. \
-This is required when the ldmsd is using authentication regardless of transport types.")
         parser.add_argument('--source',
                             help = "Path to the config file")
         parser.add_argument('--script',
@@ -965,8 +946,7 @@ This is required when the ldmsd is using authentication regardless of transport 
                                    host = args.host,
                                    port = args.port,
                                    xprt = args.xprt,
-                                   inband = args.inband,
-                                   secretPath = args.auth_file)
+                                   inband = args.inband)
 
         if args.source is not None or args.script is not None:
             if args.source is not None:

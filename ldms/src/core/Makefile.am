@@ -12,7 +12,7 @@ ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldms_xprt.h
 libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h
 libldms_la_LIBADD = -ldl -lpthread -lcoll \
 	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
-	-lmmalloc -lzap @OVIS_AUTH_LIBS@
+	-lmmalloc -lzap
 
 lib_LTLIBRARIES += libldms.la
 

@@ -89,7 +89,6 @@ typedef struct cfg_clnt_s {
 	struct ldmsd_cfg_xprt_s xprt;
 	struct sockaddr_storage ss;
 	char recbuf[LDMSD_MAX_CONFIG_REC_LEN];
-	char *secretword;
 	pthread_t thread;
 	LIST_ENTRY(cfg_clnt_s) entry;
 } *cfg_clnt_t;
@@ -673,80 +672,6 @@ loop:
 	/* Reset accept error count after successful connect */
 	accept_err = 0;
 
-#if OVIS_LIB_HAVE_AUTH
-
-#include <string.h>
-#include "ovis_auth/auth.h"
-
-#define _str(x) #x
-#define str(x) _str(x)
-	struct ovis_auth_challenge auth_ch;
-	int rc;
-	if (listen_clnt->secretword && listen_clnt->secretword[0] != '\0') {
-		uint64_t ch = ovis_auth_gen_challenge();
-		char *psswd = ovis_auth_encrypt_password(ch, listen_clnt->secretword);
-		if (!psswd) {
-			ldmsd_log(LDMSD_LERROR, "Failed to generate "
-					"the password for the controller\n");
-			goto loop;
-		}
-		size_t len = strlen(psswd) + 1;
-		char *psswd_buf = malloc(len);
-		if (!psswd_buf) {
-			ldmsd_log(LDMSD_LERROR, "Failed to authenticate "
-					"the controller. Out of memory");
-			free(psswd);
-			goto loop;
-		}
-
-		ovis_auth_pack_challenge(ch, &auth_ch);
-		rc = send(sock, (char *)&auth_ch, sizeof(auth_ch), 0);
-		if (rc == -1) {
-			ldmsd_log(LDMSD_LERROR, "Error %d failed to send "
-					"the challenge to the controller.\n",
-					errno);
-			free(psswd_buf);
-			free(psswd);
-			goto loop;
-		}
-		rc = recv(sock, psswd_buf, len - 1, 0);
-		if (rc == -1) {
-			ldmsd_log(LDMSD_LERROR, "Error %d. Failed to receive "
-					"the password from the controller.\n",
-					errno);
-			free(psswd_buf);
-			free(psswd);
-			goto loop;
-		}
-		psswd_buf[rc] = '\0';
-		if (0 != strcmp(psswd, psswd_buf)) {
-			shutdown(sock, SHUT_RDWR);
-			close(sock);
-			free(psswd_buf);
-			free(psswd);
-			goto loop;
-		}
-		free(psswd);
-		free(psswd_buf);
-		int approved = 1;
-		rc = send(sock, (void *)&approved, sizeof(int), 0);
-		if (rc == -1) {
-			ldmsd_log(LDMSD_LERROR, "Error %d failed to send "
-				"the init message to the controller.\n", errno);
-			goto loop;
-		}
-	} else {
-		/* Don't do authentication */
-		auth_ch.hi = auth_ch.lo = 0;
-		rc = send(sock, (char *)&auth_ch, sizeof(auth_ch), 0);
-		if (rc == -1) {
-			ldmsd_log(LDMSD_LERROR, "Error %d failed to send "
-					"the greeting to the controller.\n",
-					errno);
-			goto loop;
-		}
-	}
-#else /* OVIS_LIB_HAVE_AUTH */
 	uint64_t greeting = 0;
 	int rc = send(sock, (char *)&greeting, sizeof(uint64_t), 0);
 	if (rc == -1) {
@@ -756,7 +681,6 @@ loop:
 			  errno);
 		goto loop;
 	}
-#endif /* OVIS_LIB_HAVE_AUTH */
 	/* Each connection gets it's own thread. Otherwise an
 	 * ldmsd_controller client will hang the GUI.
 	 */
@@ -797,7 +721,7 @@ loop:
 	return NULL;
 }
 
-int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword)
+int listen_on_cfg_xprt(char *xprt_str, char *port_str)
 {
 	struct sockaddr_storage ss;
 	socklen_t sa_len;
@@ -846,7 +770,6 @@ int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword)
 		return ENOMEM;
 	}
 	clnt->xprt.cleanup_fn = cleanup_fn;
-	clnt->secretword = strdup(secretword);
 	clnt->xprt.sock.ss = ss;
 	clnt->xprt.sock.fd = socket(ss.ss_family, SOCK_STREAM, 0);
 	if (clnt->xprt.sock.fd < 0) {
@@ -940,7 +863,7 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
         }
 }
 
-int listen_on_ldms_xprt(char *xprt_str, char *port_str, char *secretword)
+int listen_on_ldms_xprt(char *xprt_str, char *port_str)
 {
         int port_no;
         ldms_t l = NULL;
@@ -951,12 +874,7 @@ int listen_on_ldms_xprt(char *xprt_str, char *port_str, char *secretword)
                 port_no = LDMS_DEFAULT_PORT;
         else
                 port_no = atoi(port_str);
-#if OVIS_LIB_HAVE_AUTH
-        l = ldms_xprt_with_auth_new(xprt_str, ldmsd_linfo,
-                secretword);
-#else
         l = ldms_xprt_new(xprt_str, ldmsd_linfo);
-#endif /* OVIS_LIB_HAVE_AUTH */
         if (!l) {
                 ldmsd_log(LDMSD_LERROR, "The transport specified, "
                                 "'%s', is invalid.\n", xprt_str);
@@ -970,7 +888,6 @@ int listen_on_ldms_xprt(char *xprt_str, char *port_str, char *secretword)
 	}
 	clnt->xprt.max_msg = l->max_msg;
 	clnt->xprt.cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
-	clnt->secretword = strdup(secretword);
         clnt->xprt.ldms.ldms = l;
         sin.sin_family = AF_INET;
         sin.sin_addr.s_addr = 0;

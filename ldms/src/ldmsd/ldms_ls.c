@@ -145,15 +145,6 @@ void usage(char *argv[])
 	       "                     instead of giving the -m option. If both are given,\n"
 	       "                     this option takes precedence over the environment variable.\n",
 	       LDMS_LS_MAX_MEM_SZ_STR, LDMS_LS_MEM_SZ_ENVVAR);
-#if OVIS_LIB_HAVE_AUTH
-	printf("\n    -a <path>        The full Path to the file containing the shared secret word.\n"
-	       "                     Set the environment variable %s to the full path\n"
-	       "                     to avoid giving it at command-line every time.\n",
-		LDMS_AUTH_ENV);
-	printf("                     Normally, the environment variable\n"
-	       "                     must be set to the full path to the file storing\n"
-	       "                     the shared secret word, e.g., secretword=<word>\n");
-#endif /* OVIS_LIB_HAVE_AUTH */
 	printf("\n    -V           Print LDMS version and exit.\n");
 	printf("\n    -P           Register for push updates.\n");
 	exit(1);
@@ -565,10 +556,6 @@ int main(int argc, char *argv[])
 	int schema = 0;
 	ldms_lookup_cb_t lu_cb_fn = lookup_cb;
 	struct timespec ts;
-#if OVIS_LIB_HAVE_AUTH
-	char *auth_path = 0;
-	char *secretword = 0;
-#endif
 	/* If no arguments are given, print usage. */
 	if (argc == 1)
 		usage(argv);
@@ -616,11 +603,6 @@ int main(int argc, char *argv[])
 		case 'm':
 			mem_sz = strdup(optarg);
 			break;
-#if OVIS_LIB_HAVE_AUTH
-		case 'a':
-			auth_path = strdup(optarg);
-			break;
-#endif /* OVIS_LIB_HAVE_AUTH */
 		case 'V':
 			ldms_version_get(&version);
 			printf("LDMS_LS Version: %s\n", PACKAGE_VERSION);
@@ -668,19 +650,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-#if OVIS_LIB_HAVE_AUTH
-	if (auth_path && strcmp(auth_path,"none")==0) {
-		ldms = ldms_xprt_new(xprt, null_log);
-	} else {
-		secretword = ldms_get_secretword(auth_path, null_log);
-		if (secretword)
-			ldms = ldms_xprt_with_auth_new(xprt, null_log, secretword);
-		else
-			exit(EINVAL);
-	}
-#else /* OVIS_LIB_HAVE_AUTH */
 	ldms = ldms_xprt_new(xprt, null_log);
-#endif /* OVIS_LIB_HAVE_AUTH */
 	if (!ldms) {
 		printf("Error creating transport.\n");
 		exit(1);

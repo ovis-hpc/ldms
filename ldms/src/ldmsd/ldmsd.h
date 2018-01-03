@@ -792,14 +792,9 @@ void ldmsd_task_join(ldmsd_task_t task);
 /** Regular expressions */
 int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t errsz);
 
-/** Get the LDMSD configured authentication secret already loaded. */
-extern const char *ldmsd_secret_get(void);
-/** Find out if authentication is required. 1 yes, 0 no. */
-extern int ldmsd_authentication_required();
-
 /* Listen for a connection request on an ldms xprt */
-extern int listen_on_ldms_xprt(char *xprt_str, char *port_str, char *secretword);
+extern int listen_on_ldms_xprt(char *xprt_str, char *port_str);
 
 /* Listen for a connection either on Unix domain socket or Socket. A dedicated thread is assigned to a new connection. */
-extern int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword);
+extern int listen_on_cfg_xprt(char *xprt_str, char *port_str);
 #endif

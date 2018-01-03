@@ -382,12 +382,7 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	switch (prdcr->type) {
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
-#if OVIS_LIB_HAVE_AUTH
-		prdcr->xprt = ldms_xprt_with_auth_new(prdcr->xprt_name,
-				ldmsd_linfo, ldmsd_secret_get());
-#else
 		prdcr->xprt = ldms_xprt_new(prdcr->xprt_name, ldmsd_linfo);
-#endif /* OVIS_LIB_HAVE_AUTH */
 		if (prdcr->xprt) {
 			ret  = ldms_xprt_connect(prdcr->xprt,
 						 (struct sockaddr *)&prdcr->ss,

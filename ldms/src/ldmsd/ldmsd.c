@@ -87,10 +87,6 @@
 #include <mcheck.h>
 #endif /* DEBUG */
 
-#if OVIS_LIB_HAVE_AUTH
-#include "ovis_auth/auth.h"
-#endif /* OVIS_LIB_HAVE_AUTH */
-
 #define LDMSD_AUTH_ENV "LDMS_AUTH_FILE"
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
@@ -114,7 +110,6 @@ char *logfile;
 char *pidfile;
 char *bannerfile;
 int banner = 1;
-char *secretword;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size;
 char *max_mem_sz_str;
@@ -276,13 +271,6 @@ const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level)
 		return ldmsd_loglevel_names[level];
 	return "LDMSD_LNONE";
 }
-
-#if OVIS_LIB_HAVE_AUTH
-const char *ldmsd_secret_get(void)
-{
-	return secretword;
-}
-#endif
 
 #ifdef LDMSD_UPDATE_TIME
 double ldmsd_timeval_diff(struct timeval *start, struct timeval *end)
@@ -459,14 +447,6 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -T set_name    Test set prefix.\n");
 	printf("    -N	     Notify registered monitors of the test metric sets\n");
 	printf("  Configuration Options\n");
-#if OVIS_LIB_HAVE_AUTH
-	printf("    -a secretfile  Give the location of the secretword file.\n"
-	       "		   Normally, the environment variable\n"
-	       "		   %s must be set to the full path to the file storing\n"
-	       "		   the shared secret word, e.g., secretword=<word>, where\n"
-	       "		   %d < word length < %d\n", LDMSD_AUTH_ENV,
-				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
-#endif /* OVIS_LIB_HAVE_AUTH */
 	printf("    -p xprt:[sockname|port]	Specifies the transport type to listen on for receiving configuration.\n"
 	       "                                The transport type is either 'unix' or 'sock'.\n"
 	       "                                Unix domain socket: unix:sockname. sockname is the unix domain socket path."
@@ -1196,18 +1176,6 @@ int main(int argc, char *argv[])
 			usage_hint(argv,"-Z not needed in LDMS v3. Remove it.\n"
 				"This message will disappear in a future release.");
 			break;
-#if OVIS_LIB_HAVE_AUTH
-		case 'a':
-			if (check_arg("a", optarg, LO_PATH))
-				return 1;
-			authfile = strdup(optarg);
-			if (!authfile) {
-				printf("Unable to copy secretword filename\n");
-				exit(ENOMEM);
-
-			}
-			break;
-#endif /* OVIS_LIB_HAVE_AUTH */
 		case 'V':
 			printf("LDMSD Version: %s\n", PACKAGE_VERSION);
 			printf("LDMS Protocol Version: %hhu.%hhu.%hhu.%hhu\n",
@@ -1463,19 +1431,6 @@ int main(int argc, char *argv[])
 	if (!setfile)
 		setfile = LDMSD_SETFILE;
 
-#if OVIS_LIB_HAVE_AUTH
-	ldmsd_log(LDMSD_LINFO, BANNER_PART1_A
-#else /* OVIS_LIB_HAVE_AUTH */
-	ldmsd_log(LDMSD_LINFO, BANNER_PART1_NOA
-#endif /* OVIS_LIB_HAVE_AUTH */
-			BANNER_PART2);
-
-#if OVIS_LIB_HAVE_AUTH
-	secretword = NULL;
-	secretword = ldms_get_secretword(authfile, ldmsd_lcritical);
-	if ( !secretword )
-		cleanup(15, "auth get secretword failed");
-#endif /* OVIS_LIB_HAVE_AUTH */
 
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3, "start kernel sampler failed");
@@ -1492,7 +1447,7 @@ int main(int argc, char *argv[])
 			dup_arg = strdup(optarg);
 			xprt_str = strtok(dup_arg, ":");
 			port_str = strtok(NULL, ":");
-			ret = listen_on_ldms_xprt(xprt_str, port_str, secretword);
+			ret = listen_on_ldms_xprt(xprt_str, port_str);
 			free(dup_arg);
 			if (ret) {
 				cleanup(ret, "Error setting up ldms transport");
@@ -1504,7 +1459,7 @@ int main(int argc, char *argv[])
 			dup_arg = strdup(optarg);
 			xprt_str = strtok(dup_arg, ":");
 			port_str = strtok(NULL, ":");
-			ret = listen_on_cfg_xprt(xprt_str, port_str, secretword);
+			ret = listen_on_cfg_xprt(xprt_str, port_str);
 			free(dup_arg);
 			if (ret) {
 				cleanup(ret, "Error setting up configuration transport");

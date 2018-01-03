@@ -413,21 +413,11 @@ class LDMSD_Request(object):
         return json.dumps(resp)
 
 class LdmsdReqParser(cmd.Cmd):
-    def __init__(self, host = None, port = None, secretPath = None, infile=None):
+    def __init__(self, host = None, port = None, infile=None):
         try:
-            self.secretword = None
-            if secretPath is not None:
-                try:
-                    from ovis_lib import ovis_auth
-                except ImportError:
-                    raise ImportError("No module ovis_lib. Please make sure that ovis"
-                                        "is built with --enable-swig")
-                self.secretword = ovis_auth.ovis_auth_get_secretword(secretPath, None)
-
-                self.ctrl = ldmsd_config.ldmsdInetConfig(host = host,
-                                                         port = int(port),
-                                                         secretword = self.secretword)
-                self.prompt = "{0}:{1}> ".format(host, port)
+            self.ctrl = ldmsd_config.ldmsdInetConfig(host = host,
+                                                     port = int(port))
+            self.prompt = "{0}:{1}> ".format(host, port)
 
             if infile:
                 cmd.Cmd.__init__(self, stdin=infile)
@@ -483,10 +473,6 @@ if __name__ == "__main__":
         parser.add_argument("--host", help = "Hostname of ldmsd to connect to")
         parser.add_argument('--port',
                             help = "Inet ctrl listener port of ldmsd")
-        parser.add_argument('--auth_file',
-                            help = "Path to the file containing the secretword. \
-This must be use only when the ldmsd is using authentication and \
-ldmsd_controller is not connecting to ldmsd through a unix domain socket.")
         parser.add_argument('--debug', action = "store_true",
                             help = argparse.SUPPRESS)
         args = parser.parse_args()
@@ -496,8 +482,7 @@ ldmsd_controller is not connecting to ldmsd through a unix domain socket.")
             print("Please give --host and --port")
             sys.exit(1)
 
-        reqParser = LdmsdReqParser(host = args.host, port = args.port,
-                                        secretPath = args.auth_file)
+        reqParser = LdmsdReqParser(host = args.host, port = args.port)
 
         reqParser.cmdloop("Welcome to the LDMSD control processor")
 

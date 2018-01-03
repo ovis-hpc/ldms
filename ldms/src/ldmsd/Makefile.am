@@ -40,11 +40,8 @@ ldmsd_LDFLAGS += -lrabbitmq
 ldmsd_CFLAGS += -DENABLE_RABBITMQ
 endif
 
-ldmsd_LDFLAGS += @OVIS_AUTH_LIBS@
-ldms_ls_LDADD += @OVIS_AUTH_LIBS@
-
 ldmsctl_SOURCES = ldmsctl.c ldmsd_request_util.c
-ldmsctl_LDADD = $(CORE)/libldms.la @OVIS_AUTH_LIBS@
+ldmsctl_LDADD = $(CORE)/libldms.la
 ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ \
 		-lovis_ctrl -lovis_util -lmmalloc -lcoll -lzap -pthread \
 		 -ljson_parser -lm @LDFLAGS_GETTIME@

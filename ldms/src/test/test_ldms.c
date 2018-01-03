@@ -314,17 +314,7 @@ void do_server(struct sockaddr_in *sin)
 	int rc;
 	ldms_t ldms;
 
-#if OVIS_LIB_HAVE_AUTH
-	const char *secretword;
-	secretword = ldms_get_secretword(secretword_path, _log);
-	if (!secretword) {
-		printf("Failed to get the secretword from '%s'\n", secretword_path);
-		exit(1);
-	}
-	ldms = ldms_xprt_with_auth_new(xprt, _log, secretword);
-#else /* OVIS_LIB_HAVE_AUTH */
 	ldms = ldms_xprt_new(xprt, _log);
-#endif /* OVIS_LIB_HAVE_AUTH */
 	if (!ldms) {
 		printf("ldms_xprt_new error\n");
 		exit(-1);
