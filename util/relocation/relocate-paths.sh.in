@@ -17,7 +17,7 @@ MANIFEST=$4	# File containing file names to swizzle, one per line
 
 # sedargs="-es:@prefix@:$USR:g -es:@sysconfdir@:$ETC:g -es:@localstatedir@:$VAR:g"
 
-sedargs="-es:/usr/bin/env :UsRbInEnV:g -es:@prefix@:$USR:g -es:@sysconfdir@:$ETC:g -es:@localstatedir@:$VAR:g -es:UsRbInEnV:/usr/bin/env :g"
+sedargs="-es%/usr/bin/env[[:space:]]%UsRbInEnV%g -es:@prefix@:$USR:g -es:@sysconfdir@:$ETC:g -es:@localstatedir@:$VAR:g -es%UsRbInEnV%/usr/bin/env\d032%g"
 
 # Perform path relocation within the contents of each file in the manifest.
 
