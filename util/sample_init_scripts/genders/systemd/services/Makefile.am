@@ -13,7 +13,7 @@ ldmsd.service: ldmsd.service.in
 ldmsd@.service: ldmsd@.service.in
 	$(do_subst) < $< > $@
 
-if ENABLE_LIBGENDERS
+if ENABLE_TOSS_SYSTEMD
 dist_doc_DATA = README.ldmsd
 endif
 

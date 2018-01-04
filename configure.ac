@@ -76,6 +76,7 @@ SUBST_MAYBE([me])
 SUBST_MAYBE([komondor])
 
 OPTION_DEFAULT_DISABLE([libgenders], [ENABLE_LIBGENDERS],[  requires C++,boost])
+OPTION_DEFAULT_DISABLE([genderssystemd], [ENABLE_TOSS_SYSTEMD],[  toss systemd init scripts])
 
 if test -z "$ENABLE_LIBGENDERS_TRUE"
 then

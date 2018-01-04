@@ -4,7 +4,7 @@ docdir = $(datadir)/doc/@PACKAGE@-@VERSION@/sample_init_scripts/genders/systemd/
 EXTRA_DIST = ldmsd.in ldms-functions.in
 DISTCLEANFILES = ldmsd ldms-functions
 
-if ENABLE_LIBGENDERS
+if ENABLE_TOSS_SYSTEMD
 SUBDIRS = plugins-conf ClusterGenders ClusterSecrets
 dist_doc_DATA = \
 ldmsd \
