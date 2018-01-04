@@ -48,8 +48,11 @@
  */
 /**
  * \file ldms_jobid.c
- * \brief Provide Ldms Job Information sampling and service for
- * other samplers.
+ * \brief Provide Job Information sampling and service for
+ * other samplers from any resource manager that can write
+ * a text file at job start.
+ * Does not support job-start and job-end timestamp collection,
+ * but provides dummy time values == 1.
  */
 #ifndef ldms_jobid_h_seen
 #define ldms_jobid_h_seen
@@ -62,13 +65,15 @@
 struct ldms_job_info {
 	uint64_t jobid;
 	uint64_t uid;
+	uint64_t appid;
 	char user[LJI_USER_NAME_MAX];
 };
 
 #define LJI_jobid 0x1
 #define LJI_uid 0x2
 #define LJI_user 0x4
-#define LJI_all (LJI_jobid|LJI_uid|LJI_user)
+#define LJI_appid 0x8
+#define LJI_all (LJI_jobid|LJI_uid|LJI_user|LJI_appid)
 
 /* Default names all samplers will use for job info metrics. */
 /** uint64_t holding integer identifier from resource manager. */
@@ -77,6 +82,8 @@ struct ldms_job_info {
 #define LJI_UID_METRIC_NAME "uid"
 /** login name as accounted by resource manager. */
 #define LJI_USER_METRIC_NAME "username"
+/** application id as accounted by resource manager. */
+#define LJI_APPID_METRIC_NAME "app_id"
 
 /** NULL terminated array of job-related metric names. */
 extern const char *lji_metric_names[];
@@ -88,6 +95,10 @@ extern const char *lji_metric_names[];
 /* Create uid metric with standard name. */
 #define LJI_ADD_UID(schema) \
 	ldms_schema_metric_add(schema, LJI_UID_METRIC_NAME, LDMS_V_U64)
+
+/* Create app_id metric with standard name. */
+#define LJI_ADD_APPID(schema) \
+	ldms_schema_metric_add(schema, LJI_APPID_METRIC_NAME, LDMS_V_U64)
 
 #ifdef ENABLE_JOBID
 /* \brief Get the most recently sampled job information.

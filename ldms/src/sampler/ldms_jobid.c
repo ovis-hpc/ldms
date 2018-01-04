@@ -83,6 +83,7 @@ exists if the next lines are added to slurm-prolog or equivalent
 	echo JOBID=$SLURM_JOBID > /var/run/ldms.slurm.jobinfo
 	echo UID=$SLURM_UID >> /var/run/ldms.jobinfo
 	echo USER=$SLURM_USER >> /var/run/ldms.jobinfo
+	echo APPID=0 >> /var/run/ldms.jobinfo
 and the next line is added to slurm-epilog or equivalent
 	echo "JOBID=0" > /var/run/ldms.jobinfo
 On some slurm 2.3.x systems, these are in /etc/nodestate/bin/.
@@ -90,7 +91,8 @@ On systems with non-slurm reservations or shared reservations,
 this sampler may need to be cloned and modified.
 
 The functionality is generic to files containing the
-key=value pairs listed above.
+key=value pairs listed above. APPID often exists on Cray systems;
+if it is not present, 0 will be recorded.
 */
 #define DEFAULT_FILE "/var/run/ldms.jobinfo"
 #define SAMP "jobid"
@@ -102,6 +104,7 @@ const char *lji_metric_names[] = {
 LJI_JOBID_METRIC_NAME,
 LJI_UID_METRIC_NAME,
 LJI_USER_METRIC_NAME,
+LJI_APPID_METRIC_NAME,
 NULL
 };
 
@@ -120,13 +123,18 @@ static int32_t compid_pos = 0;
 static int32_t jobid_pos = 0;
 static int32_t uid_pos = 0;
 static int32_t user_pos = 0;
+static int32_t appid_pos = 0;
+static int32_t jstart_pos = 0;
+static int32_t jend_pos = 0;
 
 
 #define JI_SIZE 32768
 static char ji_buf[JI_SIZE];
+static int set_meta_new = 0;
+static int nojobidfile = 1;
 static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t js) {
 	int rc = 0;
-	ji->jobid = ji->uid = 0;
+	ji->appid = ji->jobid = ji->uid = 0;
 	memset(&(ji->user[0]), '\0', LJI_USER_NAME_MAX);
 	strcpy(&(ji->user[0]), "root");
 	FILE *mf = fopen(file, "r");
@@ -134,7 +142,11 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 	struct attr_value_list *avl = NULL;
 
 	if (!mf) {
-		msglog(LDMSD_LINFO,"Could not open the jobid file '%s'\n", procfile);
+		if (nojobidfile) {
+			nojobidfile = 0;
+			msglog(LDMSD_LINFO,"Could not open the jobid file '%s'\n",
+				procfile);
+		}
 		rc = EINVAL;
 		goto err;
 	}
@@ -166,7 +178,9 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 	}
 	kvl = av_new(maxlist);
 	avl = av_new(maxlist);
-	rc = tokenize(ji_buf,kvl,avl);
+	rc = tokenize(ji_buf, kvl, avl);
+	av_free(kvl);
+	kvl = NULL;
 	if (rc) {
 		goto err;
 	}
@@ -202,6 +216,20 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 		ji->uid = 0;
 	}
 
+	tmp = av_value(avl, "APPID");
+	if (tmp) {
+		endp = NULL;
+		errno = 0;
+		j = strtoull(tmp, &endp, 0);
+		if (endp == tmp || errno) {
+			msglog(LDMSD_LINFO,"Fail parsing APPID '%s'\n", tmp);
+			rc = EINVAL;
+		}
+		ji->appid = j;
+	} else {
+		ji->appid = 0;
+	}
+
 	tmp = av_value(avl, "USER");
 	if (tmp) {
 		if (strlen(tmp) >= LJI_USER_NAME_MAX) {
@@ -218,27 +246,36 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 err:
 	strcpy(ji->user, "root");
 	ji->uid = 0;
+	ji->appid = 0;
 	ji->jobid = 0;
 out:
 	ldms_transaction_begin(js);
 
 	union ldms_value v;
-	v.v_u64 = compid;
-	ldms_metric_set(js, compid_pos, &v);
-
+	if (set_meta_new) {
+		set_meta_new = 0;
+		v.v_u64 = compid;
+		ldms_metric_set(js, compid_pos, &v);
+		v.v_u32 = 1;
+		ldms_metric_set(js, jstart_pos, &v);
+		ldms_metric_set(js, jend_pos, &v);
+	}
 	v.v_u64 = ji->jobid;
 	ldms_metric_set(js, jobid_pos, &v);
 
 	v.v_u64 = ji->uid;
 	ldms_metric_set(js, uid_pos, &v);
 
+	v.v_u64 = ji->appid;
+	ldms_metric_set(js, appid_pos, &v);
+
 	ldms_mval_t mv = (ldms_mval_t) &(ji->user);
 	ldms_metric_array_set(js, user_pos, mv, 0, LJI_USER_NAME_MAX);
 
 	ldms_transaction_end(js);
 
-	av_free(kvl);
-	av_free(avl);
+	if (avl)
+		av_free(avl);
 	return rc;
 }
 
@@ -288,12 +325,34 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	user_pos = rc;
 	rc = 0;
 
+	rc = ldms_schema_metric_add(schema, "app_id", LDMS_V_U64);
+	if (rc < 0) {
+		msglog(LDMSD_LERROR, SAMP ": ldms_schema_metric_add app_id fail.\n");
+		goto err;
+	}
+	appid_pos = rc;
+
+	rc = ldms_schema_meta_add(schema, "job_start", LDMS_V_U32);
+	if (rc < 0) {
+		msglog(LDMSD_LERROR, SAMP ": ldms_schema_meta_add job_start fail.\n");
+		goto err;
+	}
+	jstart_pos = rc;
+
+	rc = ldms_schema_meta_add(schema, "job_end", LDMS_V_U32);
+	if (rc < 0) {
+		msglog(LDMSD_LERROR, SAMP ": ldms_schema_meta_add job_end fail.\n");
+		goto err;
+	}
+	jend_pos = rc;
+
 	set = ldms_set_new(instance_name, schema);
 	if (!set) {
 		rc = errno;
 		msglog(LDMSD_LERROR, SAMP ": ldms_set_new fail.\n");
 		goto err;
 	}
+	set_meta_new = 1;
 
 	/*
 	 * Process the file to init jobid.
@@ -310,7 +369,7 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		ldms_set_delete(set);
 		set = NULL;
 	}
-	msglog(LDMSD_LDEBUG, SAMP ": rc=%d: %s.\n",rc,strerror(-rc));
+	msglog(LDMSD_LDEBUG, SAMP ": rc=%d: %s.\n", rc, strerror(-rc));
 	return -rc;
 }
 
@@ -417,6 +476,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
+	msglog(LDMSD_LDEBUG, SAMP ": config() ok.\n");
 	return 0;
 }
 
@@ -450,6 +510,8 @@ int ldms_job_info_get(struct ldms_job_info *ji, unsigned flags)
 	}
 	if (flags & LJI_jobid)
 		ji->jobid = ldms_metric_get_u64(set, jobid_pos);
+	if (flags & LJI_appid)
+		ji->appid = ldms_metric_get_u64(set, appid_pos);
 	if (flags & LJI_uid)
 		ji->uid = ldms_metric_get_u64(set, uid_pos);
 	if (flags & LJI_user) {
