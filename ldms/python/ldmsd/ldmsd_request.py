@@ -257,6 +257,7 @@ class LDMSD_Request(object):
     ONESHOT = 0x600 + 7
     LOGROTATE = 0x600 + 8
     EXIT_DAEMON = 0x600 + 9
+    SET_INFO = 0X600 + 11
 
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
@@ -313,6 +314,7 @@ class LDMSD_Request(object):
             'oneshot': {'id': ONESHOT},
             'logrotate': {'id': LOGROTATE},
             'daemon_exit': {'id': EXIT_DAEMON},
+            'set_info': {'id': SET_INFO},
         }
 
     TYPE_CONFIG_CMD = 1

@@ -131,6 +131,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       ##### Misc. #####
                       'greeting': {'req_attr': [], 'opt_attr': ['name', 'offset', 'level']},
                       'example': {'req_attr': [], 'opt_attr': []},
+                      'set_info': {'req_attr': ['instance'], 'opt_attr': []}
                       }
 
 """@var MAX_RECV_LEN

@@ -63,8 +63,9 @@ import json
 import re
 
 from ldmsd import ldmsd_config, ldmsd_util, ldmsd_request
-from ldmsd.ldmsd_request import LDMSD_Request
+from ldmsd.ldmsd_request import LDMSD_Request, LDMSD_Req_Attr
 from ldmsd.ldmsd_request import LDMSD_Req_Attr
+
 LDMSD_REQ_SOM_F=1
 LDMSD_REQ_EOM_F=2
 LDMSD_REQ_ALL_F=(LDMSD_REQ_SOM_F|LDMSD_REQ_EOM_F)
@@ -941,6 +942,59 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_example(self, text, line, begidx, endidx):
         return self.__complete_attr_list('example', text)
+
+    def __ts2human(self, sec, usec):
+        from datetime import datetime
+        ts = float(sec)
+        ts_sec = datetime.fromtimestamp(ts).strftime('%m-%d-%y %H:%M:%S')
+        ts_str = "{0} [{1}]".format(ts_sec, usec)
+        return ts_str
+
+    def do_set_info(self, arg):
+        """
+        Display the route of the set from aggregators to the sampler daemon.
+        Parameters:
+        instance=   Set instance name
+        """
+        resp = self.handle('set_info', arg)
+        attr_list = resp['attr_list']
+        if attr_list is None:
+            print("No response back")
+
+        if attr_list[0].attr_id != LDMSD_Req_Attr.JSON:
+            # Assume that this is an error message
+            return
+
+        try:
+            src = json.loads(attr_list[0].attr_value)
+            route = src['route']
+            print("---------------------")
+            print("instance: '{0}'".format(src['instance']))
+            print("schema: '{0}'".format(src['schema']))
+            print("=====================")
+            print("{0:20} {1:15} {2:15} {3:15} {4:10} {5:10} {6:5} {7:25} {8:25}".format(
+                "host", "type", "name", "prdcr_host", "interval", "offset", "sync", "start", "end"))
+            print("-------------------- --------------- --------------- --------------- "
+                    "---------- ---------- ----- ------------------------- -------------------------")
+            for hop in route:
+                detail = hop['detail']
+                if hop['type'] == "producer":
+                    print("{0:20} {1:15} {2:15} {3:15} {4:10} {5:10} {6:5} {7:25} {8:25}".format(
+                        hop['host'], hop['type'], detail['name'], detail['host'], detail['update_int'],
+                        detail['update_off'], detail['update_sync'], 
+                        self.__ts2human(detail['last_start_sec'], detail['last_start_usec']),
+                        self.__ts2human(detail['last_end_sec'], detail['last_end_usec'])))
+                else:
+                    print("{0:20} {1:15} {2:15} {3:15} {4:10} {5:10} {6:5} {7:25} {8:25}".format(
+                        hop['host'], hop['type'], detail['name'], "---", detail['interval_us'],
+                        detail['offset_us'], detail['sync'], 
+                        self.__ts2human(detail['trans_start_sec'], detail['trans_start_usec']), 
+                        self.__ts2human(detail['trans_end_sec'], detail['trans_end_usec'])))
+        except:
+            raise                    
+
+    def complete_set_info(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('set_info', text)
 
     def parseline(self, line):
         """Parse the line into a command name and a string containing
