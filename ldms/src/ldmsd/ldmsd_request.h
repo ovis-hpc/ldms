@@ -139,6 +139,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_PUSH,
 	LDMSD_ATTR_TEST,
 	LDMSD_ATTR_REC_LEN,
+	LDMSD_ATTR_JSON,
 	LDMSD_ATTR_LAST,
 };
 

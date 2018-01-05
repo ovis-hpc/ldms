@@ -715,7 +715,7 @@ static int example_handler(ldmsd_req_ctxt_t reqc)
 	} else {
 		attr.discrim = 1;
 		attr.attr_len = cnt;
-		attr.attr_id = LDMSD_ATTR_STRING;
+		attr.attr_id = LDMSD_ATTR_JSON;
 		ldmsd_hton_req_attr(&attr);
 	}
 	(void) ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
@@ -1085,7 +1085,7 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 		return rc;
 	attr.discrim = 1;
 	attr.attr_len = cnt;
-	attr.attr_id = LDMSD_ATTR_STRING;
+	attr.attr_id = LDMSD_ATTR_JSON;
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
@@ -1240,7 +1240,7 @@ static int prdcr_set_status_handler(ldmsd_req_ctxt_t reqc)
 		return rc;
 	attr.discrim = 1;
 	attr.attr_len = cnt;
-	attr.attr_id = LDMSD_ATTR_STRING;
+	attr.attr_id = LDMSD_ATTR_JSON;
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
@@ -1761,7 +1761,7 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 		return rc;
 	attr.discrim = 1;
 	attr.attr_len = cnt;
-	attr.attr_id = LDMSD_ATTR_STRING;
+	attr.attr_id = LDMSD_ATTR_JSON;
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
@@ -2274,7 +2274,7 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 		return rc;
 	attr.discrim = 1;
 	attr.attr_len = cnt;
-	attr.attr_id = LDMSD_ATTR_STRING;
+	attr.attr_id = LDMSD_ATTR_JSON;
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
@@ -2466,7 +2466,7 @@ static int plugn_status_handler(ldmsd_req_ctxt_t reqc)
 		return rc;
 	attr.discrim = 1;
 	attr.attr_len = cnt;
-	attr.attr_id = LDMSD_ATTR_STRING;
+	attr.attr_id = LDMSD_ATTR_JSON;
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
@@ -2881,7 +2881,7 @@ static int daemon_status_handler(ldmsd_req_ctxt_t reqc)
 		return rc;
 	attr.discrim = 1;
 	attr.attr_len = cnt;
-	attr.attr_id = LDMSD_ATTR_STRING;
+	attr.attr_id = LDMSD_ATTR_JSON;
 	ldmsd_hton_req_attr(&attr);
 	ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 

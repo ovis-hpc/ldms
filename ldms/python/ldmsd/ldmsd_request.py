@@ -91,7 +91,8 @@ class LDMSD_Req_Attr(object):
     PUSH = 23
     TEST = 24
     REC_LEN = 25
-    LAST = 26
+    JSON = 26
+    LAST = 27
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -390,7 +391,7 @@ class LDMSD_Request(object):
 
         msg = None        
         if len(attr_list) == 1:
-            if attr_list[0].attr_id == LDMSD_Req_Attr.STRING:
+            if (attr_list[0].attr_id == LDMSD_Req_Attr.STRING) or (attr_list[0].attr_id == LDMSD_Req_Attr.JSON):
                 msg = attr_list[0].attr_value
         elif len(attr_list) == 0:
             attr_list = None
