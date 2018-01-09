@@ -6,3 +6,7 @@ dist_doc_DATA = \
 README ldmsauth.conf
 endif
 
+install-data-hook:
+	if test -f $(docdir)/ldmsauth.conf; then \
+		chmod 600 $(docdir)/ldmsauth.conf; \
+	fi
