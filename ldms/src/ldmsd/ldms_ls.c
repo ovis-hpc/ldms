@@ -110,6 +110,10 @@ struct match_str {
 };
 LIST_HEAD(match_list, match_str) match_list;
 
+const char *auth_name = "none";
+struct attr_value_list *auth_opt = NULL;
+const int auth_opt_max = 128;
+
 void null_log(const char *fmt, ...)
 {
 	va_list ap;
@@ -119,7 +123,7 @@ void null_log(const char *fmt, ...)
 	fflush(stderr);
 }
 
-#define FMT "h:p:x:w:m:ESIlvua:VP"
+#define FMT "h:p:x:w:m:ESIlvua:A:VP"
 void usage(char *argv[])
 {
 	printf("%s -h <hostname> -x <transport> [ name ... ]\n"
@@ -556,6 +560,8 @@ int main(int argc, char *argv[])
 	int schema = 0;
 	ldms_lookup_cb_t lu_cb_fn = lookup_cb;
 	struct timespec ts;
+	char *lval, *rval;
+
 	/* If no arguments are given, print usage. */
 	if (argc == 1)
 		usage(argv);
@@ -566,6 +572,11 @@ int main(int argc, char *argv[])
 	}
 
 	link_libevent(argv[0]);
+	auth_opt = av_new(auth_opt_max);
+	if (!auth_opt) {
+		printf("ERROR: Not enough memory");
+		exit(1);
+	}
 
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
@@ -617,6 +628,24 @@ int main(int argc, char *argv[])
 			lu_cb_fn = lookup_push_cb;
 			long_format = 1;
 			break;
+		case 'a':
+			auth_name = optarg;
+			break;
+		case 'A':
+			lval = strtok(optarg, "=");
+			rval = strtok(NULL, "");
+			if (!lval || !rval) {
+				printf("ERROR: Expecting -A name=value");
+				exit(1);
+			}
+			if (auth_opt->count == auth_opt->size) {
+				printf("ERROR: Too many auth options");
+				exit(1);
+			}
+			auth_opt->list[auth_opt->count].name = lval;
+			auth_opt->list[auth_opt->count].value = rval;
+			auth_opt->count++;
+			break;
 		default:
 			usage(argv);
 		}
@@ -650,7 +679,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	ldms = ldms_xprt_new(xprt, null_log);
+	ldms = ldms_xprt_new_with_auth(xprt, null_log, auth_name, auth_opt);
 	if (!ldms) {
 		printf("Error creating transport.\n");
 		exit(1);

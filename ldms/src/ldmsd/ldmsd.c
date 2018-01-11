@@ -93,7 +93,7 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:a:v:Vz:Z:q:c:u"
+#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:v:Vz:Z:q:c:ua:A:"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"
@@ -126,12 +126,23 @@ int passive = 0;
 int log_level_thr = LDMSD_LERROR;  /* log level threshold */
 int quiet = 0; /* Is verbosity quiet? 0 for no and 1 for yes */
 
+const char *auth_name = "none";
+struct attr_value_list *auth_opt = NULL;
+const int AUTH_OPT_MAX = 128;
+
 extern int process_config_file(const char *path);
 
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
 	NULL
 };
+
+void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt)
+{
+	if (!ldms)
+		return;
+	ldms_local_cred_get(ldms, &sctxt->crd);
+}
 
 void ldmsd_version_get(struct ldmsd_version *v)
 {
@@ -289,7 +300,6 @@ void cleanup(int x, const char *reason)
 	ldmsd_strgp_close();
 	ldmsd_log(llevel, "LDMSD_ LDMS Daemon exiting...status %d, %s\n", x,
 		       (reason && x) ? reason : "");
-	ldmsd_config_cleanup();
 	if (ldms) {
 		/* No need to close the xprt. It has never been connected. */
 		ldms_xprt_put(ldms);
@@ -1063,7 +1073,8 @@ int main(int argc, char *argv[])
 	ldms_version_get(&ldms_version);
 	ldmsd_version_get(&ldmsd_version);
 	char *sockname = NULL;
-	char *authfile = NULL;
+	char *lval = NULL;
+	char *rval = NULL;
 	int list_plugins = 0;
 	int ret;
 	int sample_interval = 2000000;
@@ -1088,6 +1099,12 @@ int main(int argc, char *argv[])
 	sigaddset(&sigset, SIGINT);
 	sigaddset(&sigset, SIGTERM);
 	sigaddset(&sigset, SIGABRT);
+
+	auth_opt = av_new(AUTH_OPT_MAX);
+	if (!auth_opt) {
+		printf("Not enough memory!!!\n");
+		exit(1);
+	}
 
 	opterr = 0;
 
@@ -1195,9 +1212,32 @@ int main(int argc, char *argv[])
 			list_plugins = 1;
 			break;
 		case 'x':
-		case 'p':
 		case 'c':
 			/* Handle below */
+			break;
+		case 'a':
+			/* auth name */
+			auth_name = optarg;
+			break;
+		case 'A':
+			/* (multiple) auth options */
+			lval = strtok(optarg, "=");
+			if (!lval) {
+				printf("ERROR: Expecting -A name=value\n");
+				exit(1);
+			}
+			rval = strtok(NULL, "");
+			if (!rval) {
+				printf("ERROR: Expecting -A name=value\n");
+				exit(1);
+			}
+			if (auth_opt->count == auth_opt->size) {
+				printf("ERROR: Too many auth options\n");
+				exit(1);
+			}
+			auth_opt->list[auth_opt->count].name = lval;
+			auth_opt->list[auth_opt->count].value = rval;
+			auth_opt->count++;
 			break;
 		case '?':
 			printf("Error: unknown argument: %c\n", optopt);
@@ -1435,9 +1475,9 @@ int main(int argc, char *argv[])
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3, "start kernel sampler failed");
 
+	char *xprt_str, *port_str;
 	opterr = 0;
 	optind = 0;
-	char *xprt_str, *port_str;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		char *dup_arg;
 		switch (op) {
@@ -1447,24 +1487,20 @@ int main(int argc, char *argv[])
 			dup_arg = strdup(optarg);
 			xprt_str = strtok(dup_arg, ":");
 			port_str = strtok(NULL, ":");
-			ret = listen_on_ldms_xprt(xprt_str, port_str);
+			ldms = listen_on_ldms_xprt(xprt_str, port_str);
 			free(dup_arg);
-			if (ret) {
+			if (!ldms) {
 				cleanup(ret, "Error setting up ldms transport");
 			}
 			break;
-		case 'p':
-			if (check_arg("p", optarg, LO_NAME))
-				return 1;
-			dup_arg = strdup(optarg);
-			xprt_str = strtok(dup_arg, ":");
-			port_str = strtok(NULL, ":");
-			ret = listen_on_cfg_xprt(xprt_str, port_str);
-			free(dup_arg);
-			if (ret) {
-				cleanup(ret, "Error setting up configuration transport");
-			}
-			break;
+		}
+	}
+
+	opterr = 0;
+	optind = 0;
+	while ((op = getopt(argc, argv, FMT)) != -1) {
+		char *dup_arg;
+		switch (op) {
 		case 'c':
 			dup_arg = strdup(optarg);
 			ret = process_config_file(dup_arg);

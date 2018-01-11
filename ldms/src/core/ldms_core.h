@@ -180,6 +180,9 @@ struct ldms_set_hdr {
 	uint32_t card;		/* Size of dictionary */
 	uint32_t meta_sz;	/* size of meta data in bytes */
 	uint32_t data_sz;	/* size of metric values in bytes */
+	uint32_t uid;           /* UID */
+	uint32_t gid;           /* GID */
+	uint32_t perm;          /* permission */
 	uint32_t dict[OVIS_FLEX];/* The attr/metric dictionary */
 };
 

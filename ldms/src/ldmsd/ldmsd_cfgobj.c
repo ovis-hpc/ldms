@@ -50,9 +50,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <pthread.h>
 #include <stdlib.h>
-#include <string.h>
 #include <string.h>
 #include <errno.h>
 #include <coll/rbt.h>
@@ -61,6 +63,12 @@
 int cfgobj_cmp(void *a, const void *b)
 {
 	return strcmp(a, b);
+}
+
+int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt)
+{
+	return ovis_access_check(ctxt->crd.uid, ctxt->crd.gid, acc,
+				 obj->uid, obj->gid, obj->perm);
 }
 
 struct rbt prdcr_tree = RBT_INITIALIZER(cfgobj_cmp);
@@ -124,13 +132,13 @@ void ldmsd_cfgobj_unlock(ldmsd_cfgobj_t obj)
 	pthread_mutex_unlock(&obj->lock);
 }
 
-/**
- * Allocate a configuration object of the requested size. A
- * configuration object with the same name and type must not already
- * exist. On success, the object is returned locked.
- */
-ldmsd_cfgobj_t ldmsd_cfgobj_new(const char *name, ldmsd_cfgobj_type_t type, size_t obj_size,
-				ldmsd_cfgobj_del_fn_t __del)
+ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
+					  ldmsd_cfgobj_type_t type,
+					  size_t obj_size,
+					  ldmsd_cfgobj_del_fn_t __del,
+					  uid_t uid,
+					  gid_t gid,
+					  int perm)
 {
 	ldmsd_cfgobj_t obj = NULL;
 
@@ -155,6 +163,9 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new(const char *name, ldmsd_cfgobj_type_t type, size
 		obj->__del = __del;
 	else
 		obj->__del = ldmsd_cfgobj___del;
+	obj->uid = uid;
+	obj->gid = gid;
+	obj->perm = perm;
 
 	pthread_mutex_init(&obj->lock, NULL);
 	pthread_mutex_lock(&obj->lock);
@@ -169,6 +180,18 @@ out_2:
 out_1:
 	pthread_mutex_unlock(cfgobj_locks[type]);
 	return obj;
+}
+
+/**
+ * Allocate a configuration object of the requested size. A
+ * configuration object with the same name and type must not already
+ * exist. On success, the object is returned locked.
+ */
+ldmsd_cfgobj_t ldmsd_cfgobj_new(const char *name, ldmsd_cfgobj_type_t type,
+				size_t obj_size, ldmsd_cfgobj_del_fn_t __del)
+{
+	return ldmsd_cfgobj_new_with_auth(name, type, obj_size, __del,
+					  getuid(), getgid(), 0777);
 }
 
 ldmsd_cfgobj_t ldmsd_cfgobj_get(ldmsd_cfgobj_t obj)

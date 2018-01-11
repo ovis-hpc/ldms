@@ -60,6 +60,7 @@
 #include <sys/socket.h>
 #include <coll/rbt.h>
 #include <pthread.h>
+#include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_request.h"
 
@@ -103,11 +104,23 @@ static int msg_comparator(void *a, const void *b)
 }
 struct rbt msg_tree = RBT_INITIALIZER(msg_comparator);
 
+static
+void ldmsd_req_ctxt_sec_get(ldmsd_req_ctxt_t rctxt, ldmsd_sec_ctxt_t sctxt)
+{
+	if (rctxt->xprt->xprt) {
+		ldms_xprt_cred_get(rctxt->xprt->xprt, NULL, &sctxt->crd);
+	} else {
+		ldmsd_sec_ctxt_get(sctxt);
+	}
+}
+
 typedef int
 (*ldmsd_request_handler_t)(ldmsd_req_ctxt_t req_ctxt);
 struct request_handler_entry {
 	int req_id;
 	ldmsd_request_handler_t handler;
+	int flag; /* Lower 12 bit (mask 0777) for request permisson.
+		   * The rest is reserved for ldmsd_request use. */
 };
 
 static int example_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -156,53 +169,160 @@ static int logrotate_handler(ldmsd_req_ctxt_t req_ctxt);
 static int exit_daemon_handler(ldmsd_req_ctxt_t req_ctxt);
 static int greeting_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
+static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
+
+/* executable for all */
+#define XALL 0111
+/* executable for user, and group */
+#define XUG 0110
 
 static struct request_handler_entry request_handler[] = {
-	[LDMSD_EXAMPLE_REQ]      = { LDMSD_EXAMPLE_REQ, example_handler },
-	[LDMSD_PRDCR_ADD_REQ]    = { LDMSD_PRDCR_ADD_REQ, prdcr_add_handler },
-	[LDMSD_PRDCR_DEL_REQ]    = { LDMSD_PRDCR_DEL_REQ, prdcr_del_handler },
-	[LDMSD_PRDCR_START_REQ]  = { LDMSD_PRDCR_START_REQ, prdcr_start_handler },
-	[LDMSD_PRDCR_STOP_REQ]  = { LDMSD_PRDCR_STOP_REQ, prdcr_stop_handler },
-	[LDMSD_PRDCR_STATUS_REQ] = { LDMSD_PRDCR_STATUS_REQ, prdcr_status_handler },
-	[LDMSD_PRDCR_SET_REQ] = { LDMSD_PRDCR_SET_REQ, prdcr_set_status_handler },
-	[LDMSD_PRDCR_START_REGEX_REQ] = { LDMSD_PRDCR_START_REGEX_REQ, prdcr_start_regex_handler },
-	[LDMSD_PRDCR_STOP_REGEX_REQ]  = { LDMSD_PRDCR_STOP_REGEX_REQ, prdcr_stop_regex_handler },
-	[LDMSD_STRGP_ADD_REQ]    = { LDMSD_STRGP_ADD_REQ, strgp_add_handler },
-	[LDMSD_STRGP_DEL_REQ]    = { LDMSD_STRGP_DEL_REQ, strgp_del_handler },
-	[LDMSD_STRGP_PRDCR_ADD_REQ]   = { LDMSD_STRGP_PRDCR_ADD_REQ, strgp_prdcr_add_handler },
-	[LDMSD_STRGP_PRDCR_DEL_REQ]   = { LDMSD_STRGP_PRDCR_DEL_REQ, strgp_prdcr_del_handler },
-	[LDMSD_STRGP_METRIC_ADD_REQ]  = { LDMSD_STRGP_METRIC_ADD_REQ, strgp_metric_add_handler },
-	[LDMSD_STRGP_METRIC_DEL_REQ]   = { LDMSD_STRGP_METRIC_DEL_REQ, strgp_metric_del_handler },
-	[LDMSD_STRGP_START_REQ]  = { LDMSD_STRGP_START_REQ, strgp_start_handler },
-	[LDMSD_STRGP_STOP_REQ]   = { LDMSD_STRGP_STOP_REQ, strgp_stop_handler },
-	[LDMSD_STRGP_STATUS_REQ] = { LDMSD_STRGP_STATUS_REQ, strgp_status_handler },
-	[LDMSD_UPDTR_ADD_REQ]    = { LDMSD_UPDTR_ADD_REQ, updtr_add_handler },
-	[LDMSD_UPDTR_DEL_REQ]    = { LDMSD_UPDTR_DEL_REQ, updtr_del_handler },
-	[LDMSD_UPDTR_PRDCR_ADD_REQ]   = { LDMSD_UPDTR_PRDCR_ADD_REQ, updtr_prdcr_add_handler },
-	[LDMSD_UPDTR_PRDCR_DEL_REQ]   = { LDMSD_UPDTR_PRDCR_DEL_REQ, updtr_prdcr_del_handler },
-	[LDMSD_UPDTR_START_REQ]  = { LDMSD_UPDTR_START_REQ, updtr_start_handler },
-	[LDMSD_UPDTR_STOP_REQ]   = { LDMSD_UPDTR_STOP_REQ, updtr_stop_handler },
-	[LDMSD_UPDTR_MATCH_ADD_REQ]   = { LDMSD_UPDTR_MATCH_ADD_REQ, updtr_match_add_handler },
-	[LDMSD_UPDTR_MATCH_DEL_REQ]   = { LDMSD_UPDTR_MATCH_DEL_REQ, updtr_match_del_handler },
-	[LDMSD_UPDTR_STATUS_REQ] = { LDMSD_UPDTR_STATUS_REQ, updtr_status_handler },
-	[LDMSD_PLUGN_START_REQ] = { LDMSD_PLUGN_START_REQ, plugn_start_handler },
-	[LDMSD_PLUGN_STOP_REQ] = { LDMSD_PLUGN_STOP_REQ, plugn_stop_handler },
-	[LDMSD_PLUGN_STATUS_REQ] = { LDMSD_PLUGN_STATUS_REQ, plugn_status_handler },
-	[LDMSD_PLUGN_LOAD_REQ] = { LDMSD_PLUGN_LOAD_REQ, plugn_load_handler },
-	[LDMSD_PLUGN_TERM_REQ] = { LDMSD_PLUGN_TERM_REQ, plugn_term_handler },
-	[LDMSD_PLUGN_CONFIG_REQ] = { LDMSD_PLUGN_CONFIG_REQ, plugn_config_handler },
-	[LDMSD_PLUGN_LIST_REQ] = { LDMSD_PLUGN_LIST_REQ, plugn_list_handler },
-	[LDMSD_SET_UDATA_REQ] = { LDMSD_SET_UDATA_REQ, set_udata_handler },
-	[LDMSD_SET_UDATA_REGEX_REQ] = { LDMSD_SET_UDATA_REGEX_REQ, set_udata_regex_handler },
-	[LDMSD_VERBOSE_REQ] = { LDMSD_VERBOSE_REQ, verbosity_change_handler },
-	[LDMSD_DAEMON_STATUS_REQ] = { LDMSD_DAEMON_STATUS_REQ, daemon_status_handler },
-	[LDMSD_VERSION_REQ] = { LDMSD_VERSION_REQ, version_handler },
-	[LDMSD_ENV_REQ] = { LDMSD_ENV_REQ, env_handler },
-	[LDMSD_INCLUDE_REQ] = { LDMSD_INCLUDE_REQ, include_handler },
-	[LDMSD_ONESHOT_REQ] = { LDMSD_ONESHOT_REQ, oneshot_handler },
-	[LDMSD_LOGROTATE_REQ] = { LDMSD_LOGROTATE_REQ, logrotate_handler },
-	[LDMSD_EXIT_DAEMON_REQ] = { LDMSD_EXIT_DAEMON_REQ, exit_daemon_handler },
-	[LDMSD_GREETING_REQ] = { LDMSD_GREETING_REQ, greeting_handler },
+	[LDMSD_EXAMPLE_REQ] = { LDMSD_EXAMPLE_REQ, example_handler, XALL },
+
+	/* PRDCR */
+	[LDMSD_PRDCR_ADD_REQ] = {
+		LDMSD_PRDCR_ADD_REQ, prdcr_add_handler, XUG
+	},
+	[LDMSD_PRDCR_DEL_REQ] = {
+		LDMSD_PRDCR_DEL_REQ, prdcr_del_handler, XUG
+	},
+	[LDMSD_PRDCR_START_REQ] = {
+		LDMSD_PRDCR_START_REQ, prdcr_start_handler, XUG
+	},
+	[LDMSD_PRDCR_STOP_REQ] = {
+		LDMSD_PRDCR_STOP_REQ, prdcr_stop_handler, XUG
+	},
+	[LDMSD_PRDCR_STATUS_REQ] = {
+		LDMSD_PRDCR_STATUS_REQ, prdcr_status_handler, XALL
+	},
+	[LDMSD_PRDCR_SET_REQ] = {
+		LDMSD_PRDCR_SET_REQ, prdcr_set_status_handler, XUG
+	},
+	[LDMSD_PRDCR_START_REGEX_REQ] = {
+		LDMSD_PRDCR_START_REGEX_REQ, prdcr_start_regex_handler, XUG
+	},
+	[LDMSD_PRDCR_STOP_REGEX_REQ] = {
+		LDMSD_PRDCR_STOP_REGEX_REQ, prdcr_stop_regex_handler, XUG
+	},
+
+	/* STRGP */
+	[LDMSD_STRGP_ADD_REQ] = {
+		LDMSD_STRGP_ADD_REQ, strgp_add_handler, XUG
+	},
+	[LDMSD_STRGP_DEL_REQ]  = {
+		LDMSD_STRGP_DEL_REQ, strgp_del_handler, XUG
+	},
+	[LDMSD_STRGP_PRDCR_ADD_REQ] = {
+		LDMSD_STRGP_PRDCR_ADD_REQ, strgp_prdcr_add_handler, XUG
+	},
+	[LDMSD_STRGP_PRDCR_DEL_REQ] = {
+		LDMSD_STRGP_PRDCR_DEL_REQ, strgp_prdcr_del_handler, XUG
+	},
+	[LDMSD_STRGP_METRIC_ADD_REQ] = {
+		LDMSD_STRGP_METRIC_ADD_REQ, strgp_metric_add_handler, XUG
+	},
+	[LDMSD_STRGP_METRIC_DEL_REQ] = {
+		LDMSD_STRGP_METRIC_DEL_REQ, strgp_metric_del_handler, XUG
+	},
+	[LDMSD_STRGP_START_REQ] = {
+		LDMSD_STRGP_START_REQ, strgp_start_handler, XUG
+	},
+	[LDMSD_STRGP_STOP_REQ] = {
+		LDMSD_STRGP_STOP_REQ, strgp_stop_handler, XUG
+	},
+	[LDMSD_STRGP_STATUS_REQ] = {
+		LDMSD_STRGP_STATUS_REQ, strgp_status_handler, XALL
+	},
+
+	/* UPDTR */
+	[LDMSD_UPDTR_ADD_REQ] = {
+		LDMSD_UPDTR_ADD_REQ, updtr_add_handler, XUG
+	},
+	[LDMSD_UPDTR_DEL_REQ] = {
+		LDMSD_UPDTR_DEL_REQ, updtr_del_handler, XUG
+	},
+	[LDMSD_UPDTR_PRDCR_ADD_REQ] = {
+		LDMSD_UPDTR_PRDCR_ADD_REQ, updtr_prdcr_add_handler, XUG
+	},
+	[LDMSD_UPDTR_PRDCR_DEL_REQ] = {
+		LDMSD_UPDTR_PRDCR_DEL_REQ, updtr_prdcr_del_handler, XUG
+	},
+	[LDMSD_UPDTR_START_REQ] = {
+		LDMSD_UPDTR_START_REQ, updtr_start_handler, XUG
+	},
+	[LDMSD_UPDTR_STOP_REQ] = {
+		LDMSD_UPDTR_STOP_REQ, updtr_stop_handler, XUG
+	},
+	[LDMSD_UPDTR_MATCH_ADD_REQ] = {
+		LDMSD_UPDTR_MATCH_ADD_REQ, updtr_match_add_handler, XUG
+	},
+	[LDMSD_UPDTR_MATCH_DEL_REQ] = {
+		LDMSD_UPDTR_MATCH_DEL_REQ, updtr_match_del_handler, XUG
+	},
+	[LDMSD_UPDTR_STATUS_REQ] = {
+		LDMSD_UPDTR_STATUS_REQ, updtr_status_handler, XALL
+	},
+
+	/* PLUGN */
+	[LDMSD_PLUGN_START_REQ] = {
+		LDMSD_PLUGN_START_REQ, plugn_start_handler, XUG
+	},
+	[LDMSD_PLUGN_STOP_REQ] = {
+		LDMSD_PLUGN_STOP_REQ, plugn_stop_handler, XUG
+	},
+	[LDMSD_PLUGN_STATUS_REQ] = {
+		LDMSD_PLUGN_STATUS_REQ, plugn_status_handler, XALL
+	},
+	[LDMSD_PLUGN_LOAD_REQ] = {
+		LDMSD_PLUGN_LOAD_REQ, plugn_load_handler, XUG
+	},
+	[LDMSD_PLUGN_TERM_REQ] = {
+		LDMSD_PLUGN_TERM_REQ, plugn_term_handler, XUG
+	},
+	[LDMSD_PLUGN_CONFIG_REQ] = {
+		LDMSD_PLUGN_CONFIG_REQ, plugn_config_handler, XUG
+	},
+	[LDMSD_PLUGN_LIST_REQ] = {
+		LDMSD_PLUGN_LIST_REQ, plugn_list_handler, XALL
+	},
+
+	/* SET */
+	[LDMSD_SET_UDATA_REQ] = {
+		LDMSD_SET_UDATA_REQ, set_udata_handler, XUG
+	},
+	[LDMSD_SET_UDATA_REGEX_REQ] = {
+		LDMSD_SET_UDATA_REGEX_REQ, set_udata_regex_handler, XUG
+	},
+
+
+	/* MISC */
+	[LDMSD_VERBOSE_REQ] = {
+		LDMSD_VERBOSE_REQ, verbosity_change_handler, XUG
+	},
+	[LDMSD_DAEMON_STATUS_REQ] = {
+		LDMSD_DAEMON_STATUS_REQ, daemon_status_handler, XALL
+	},
+	[LDMSD_VERSION_REQ] = {
+		LDMSD_VERSION_REQ, version_handler, XALL
+	},
+	[LDMSD_ENV_REQ] = {
+		LDMSD_ENV_REQ, env_handler, XUG
+	},
+	[LDMSD_INCLUDE_REQ] = {
+		LDMSD_INCLUDE_REQ, include_handler, XUG
+	},
+	[LDMSD_ONESHOT_REQ] = {
+		LDMSD_ONESHOT_REQ, oneshot_handler, XUG
+	},
+	[LDMSD_LOGROTATE_REQ] = {
+		LDMSD_LOGROTATE_REQ, logrotate_handler, XUG
+	},
+	[LDMSD_EXIT_DAEMON_REQ] = {
+		LDMSD_EXIT_DAEMON_REQ, exit_daemon_handler, XUG
+	},
+	[LDMSD_GREETING_REQ] = {
+		LDMSD_GREETING_REQ, greeting_handler, XUG
+	},
 };
 
 /*
@@ -361,21 +481,38 @@ err:
 
 int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 {
+	struct request_handler_entry *ent;
 	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)reqc->req_buf;
-	int rc;
+	ldms_t xprt = reqc->xprt->xprt;
+	uid_t luid;
+	gid_t lgid;
 
 	/* Check for request id outside of range */
-	if (request->req_id < 0 ||
+	if ((int)request->req_id < 0 ||
 	    request->req_id >= (sizeof(request_handler)/sizeof(request_handler[0])))
-		rc = unimplemented_handler(reqc);
-	else if (!request_handler[request->req_id].handler)
-		/* Check for unimplemented request */
-		rc = unimplemented_handler(reqc);
-	else
-		rc = request_handler[request->req_id].handler(reqc);
-	return rc;
+		return unimplemented_handler(reqc);
+
+	ent = &request_handler[request->req_id];
+
+	/* Check for unimplemented request */
+	if (!ent->handler)
+		return unimplemented_handler(reqc);
+
+	/* Check command permission */
+	if (xprt) {
+		/* NOTE: NULL xprt is a config file */
+		struct ldms_cred crd;
+		ldms_xprt_cred_get(xprt, &crd, NULL);
+		luid = crd.uid;
+		lgid = crd.gid;
+		if (0 != ldms_access_check(xprt, 0111, luid, lgid,
+				ent->flag & 0111))
+			return eperm_handler(reqc);
+	}
+	return request_handler[request->req_id].handler(reqc);
 }
 
+__attribute__((format(printf, 3, 4)))
 size_t Snprintf(char **dst, size_t *len, char *fmt, ...)
 {
 	va_list ap;
@@ -738,6 +875,10 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	int interval_us = -1;
 	struct ldmsd_req_attr_s attr;
 	size_t cnt = 0;
+	uid_t uid;
+	gid_t gid;
+	int perm;
+	char *perm_s = NULL;
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -751,7 +892,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		goto einval;
 	} else {
 		type = ldmsd_prdcr_str2type(type_s);
-		if (type < 0) {
+		if ((int)type < 0) {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 					"The attribute type '%s' is invalid.",
 					type_s);
@@ -792,7 +933,23 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		 interval_us = strtol(interval_s, NULL, 0);
 	}
 
-	prdcr = ldmsd_prdcr_new(name, xprt, host, port_no, type, interval_us);
+	struct ldmsd_sec_ctxt sctxt;
+	if (reqc->xprt->xprt) {
+		/* the requester is the owner of the object */
+		ldms_xprt_cred_get(reqc->xprt->xprt, NULL, &sctxt.crd);
+	} else {
+		ldmsd_sec_ctxt_get(&sctxt);
+	}
+	uid = sctxt.crd.uid;
+	gid = sctxt.crd.gid;
+
+	perm = 0770;
+	perm_s = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "perm");
+	if (perm_s)
+		perm = strtol(perm_s, NULL, 0);
+
+	prdcr = ldmsd_prdcr_new_with_auth(name, xprt, host, port_no, type,
+					  interval_us, uid, gid, perm);
 	if (!prdcr) {
 		if (errno == EEXIST)
 			goto eexist;
@@ -836,6 +993,8 @@ send_reply:
 		free(host);
 	if (xprt)
 		free(xprt);
+	if (perm_s)
+		free(perm_s);
 	return 0;
 }
 
@@ -843,6 +1002,8 @@ static int prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name = NULL, *attr_name;
 	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -855,13 +1016,28 @@ static int prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
-	reqc->errcode = ldmsd_prdcr_del(name);
-	if (reqc->errcode == ENOENT) {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	reqc->errcode = ldmsd_prdcr_del(name, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
+		Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The producer specified does not exist.");
-	} else if (reqc->errcode == EBUSY) {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"%dThe producer is in use.");
+		break;
+	case EBUSY:
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The producer is in use.");
+		break;
+	case EACCES:
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Permission denied.");
+		break;
+	default:
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Error: %d %s",
+				reqc->errcode, ovis_errno_abbvr(reqc->errcode));
 	}
 
 send_reply:
@@ -876,7 +1052,8 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 	char *name, *interval_str;
 	name = interval_str = NULL;
 	size_t cnt = 0;
-	ldmsd_req_attr_t attr;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	name = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "name");
@@ -887,15 +1064,30 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
 	interval_str = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "interval");
 
-	reqc->errcode = ldmsd_prdcr_start(name, interval_str);
-	if (reqc->errcode == EBUSY) {
+	reqc->errcode = ldmsd_prdcr_start(name, interval_str, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The producer is already running.");
-	} else if (reqc->errcode == ENOENT) {
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The producer specified does not exist.");
+		break;
+	case EACCES:
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Permission denied.");
+		break;
+	default:
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Error: %d %s",
+				reqc->errcode, ovis_errno_abbvr(reqc->errcode));
 	}
 
 send_reply:
@@ -912,6 +1104,8 @@ static int prdcr_stop_handler(ldmsd_req_ctxt_t reqc)
 	char *name = NULL;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	name = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "name");
@@ -922,13 +1116,28 @@ static int prdcr_stop_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
-	reqc->errcode = ldmsd_prdcr_stop(name);
-	if (reqc->errcode == EBUSY) {
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	reqc->errcode = ldmsd_prdcr_stop(name, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The producer is already stopped.");
-	} else if (reqc->errcode == ENOENT) {
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The producer specified does not exist.");
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Permission denied.");
+		break;
+	default:
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Error: %d %s",
+				reqc->errcode, ovis_errno_abbvr(reqc->errcode));
 	}
 
 send_reply:
@@ -944,6 +1153,8 @@ static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
 	prdcr_regex = interval_str = NULL;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	prdcr_regex = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "regex");
@@ -956,10 +1167,11 @@ static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
 
 	interval_str = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "interval");
 
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
 	reqc->errcode = ldmsd_prdcr_start_regex(prdcr_regex, interval_str,
-					reqc->line_buf, reqc->line_len);
-	if (reqc->errcode)
-		cnt = sizeof(reqc->line_buf) + 1;
+					reqc->line_buf, reqc->line_len, &sctxt);
+	/* on error, reqc->line_buf will be filled */
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -975,6 +1187,8 @@ static int prdcr_stop_regex_handler(ldmsd_req_ctxt_t reqc)
 	char *prdcr_regex = NULL;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	prdcr_regex = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "regex");
@@ -984,10 +1198,11 @@ static int prdcr_stop_regex_handler(ldmsd_req_ctxt_t reqc)
 				"This attribute 'regex' is required by prdcr_stop_regex.");
 		goto send_reply;
 	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_prdcr_stop_regex(prdcr_regex,
-				reqc->line_buf, reqc->line_len);
-	if (reqc->errcode)
-		cnt = sizeof(reqc->line_buf) + 1;
+				reqc->line_buf, reqc->line_len, &sctxt);
+	/* on error, reqc->line_buf will be filled */
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -1261,6 +1476,11 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	name = plugin = container = schema = NULL;
 	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
+	uid_t uid;
+	gid_t gid;
+	int perm;
+	char *perm_s = NULL;
+
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -1292,7 +1512,21 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
-	ldmsd_strgp_t strgp = ldmsd_strgp_new(name);
+	struct ldmsd_sec_ctxt sctxt;
+	if (reqc->xprt->xprt) {
+		ldms_xprt_cred_get(reqc->xprt->xprt, NULL, &sctxt.crd);
+	} else {
+		ldmsd_sec_ctxt_get(&sctxt);
+	}
+	uid = sctxt.crd.uid;
+	gid = sctxt.crd.gid;
+
+	perm = 0770;
+	perm_s = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "perm");
+	if (perm_s)
+		perm = strtol(perm_s, NULL, 0);
+
+	ldmsd_strgp_t strgp = ldmsd_strgp_new_with_auth(name, uid, gid, perm);
 	if (!strgp) {
 		if (errno == EEXIST)
 			goto eexist;
@@ -1345,6 +1579,8 @@ send_reply:
 		free(container);
 	if (schema)
 		free(schema);
+	if (perm_s)
+		free(perm_s);
 	return 0;
 }
 
@@ -1353,6 +1589,8 @@ static int strgp_del_handler(ldmsd_req_ctxt_t reqc)
 	char *name = NULL;
 	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	name = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "name");
@@ -1364,14 +1602,30 @@ static int strgp_del_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
-	reqc->errcode = ldmsd_strgp_del(name);
-	if (reqc->errcode == ENOENT) {
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	reqc->errcode = ldmsd_strgp_del(name, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The storage policy specified does not exist.");
-	} else if (reqc->errcode == EBUSY) {
+		break;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The storage policy is in use.");
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Permission denied.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
+
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (name)
@@ -1384,6 +1638,8 @@ static int strgp_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	char *name, *regex_str, *attr_name;
 	name = regex_str = NULL;
 	ldmsd_req_attr_t attr;
+	struct ldmsd_sec_ctxt sctxt;
+
 	size_t cnt = 0;
 	reqc->errcode = 0;
 
@@ -1397,21 +1653,34 @@ static int strgp_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!regex_str)
 		goto einval;
 
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_strgp_prdcr_add(name, regex_str,
-				reqc->line_buf, reqc->line_len);
-	if (reqc->errcode) {
-		if (reqc->errcode == ENOENT) {
-			reqc->errcode = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"The storage policy specified "
-					"does not exist.");
-		} else if (reqc->errcode == EBUSY) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				reqc->line_buf, reqc->line_len, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The storage policy specified "
+				"does not exist.");
+		break;
+	case EBUSY:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Configuration changes cannot be made "
 				"while the storage policy is running.");
-		} else if (reqc->errcode == ENOMEM) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+		break;
+	case ENOMEM:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 					"Out of memory");
-		}
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Permission denied.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
 	goto send_reply;
 einval:
@@ -1434,6 +1703,8 @@ static int strgp_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 	name = regex_str = NULL;
 	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -1446,20 +1717,35 @@ static int strgp_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 	if (!regex_str)
 		goto einval;
 
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_strgp_prdcr_add(name, regex_str,
-				reqc->line_buf, reqc->line_len);
-	if (reqc->errcode == ENOENT) {
+				reqc->line_buf, reqc->line_len, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The storage policy specified "
 				"does not exist.");
-	} else if (reqc->errcode == EBUSY) {
+		break;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"Configuration changes cannot be made "
 			"while the storage policy is running.");
-	} else if (reqc->errcode == EEXIST) {
+		break;
+	case EEXIST:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The specified regex does not match "
 				"any condition.");
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Permission denied.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
 	goto send_reply;
 einval:
@@ -1482,6 +1768,8 @@ static int strgp_metric_add_handler(ldmsd_req_ctxt_t reqc)
 	name = metric_name = NULL;
 	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -1494,22 +1782,37 @@ static int strgp_metric_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!metric_name)
 		goto einval;
 
-	reqc->errcode = ldmsd_strgp_metric_add(name, metric_name);
-	if (reqc->errcode == ENOENT) {
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	reqc->errcode = ldmsd_strgp_metric_add(name, metric_name, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The storage policy specified "
 				"does not exist.");
-	} else if (reqc->errcode == EBUSY) {
+		break;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"Configuration changes cannot be made "
-			"while the storage policy is running.");
-	} else if (reqc->errcode == EEXIST) {
+				"Configuration changes cannot be made "
+				"while the storage policy is running.");
+		break;
+	case EEXIST:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The specified metric is already "
-				"present.");
-	} else if (reqc->errcode == ENOMEM) {
+				"The specified metric is already present.");
+		break;
+	case ENOMEM:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Memory allocation failure.");
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Permission denied.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
 	goto send_reply;
 einval:
@@ -1532,6 +1835,8 @@ static int strgp_metric_del_handler(ldmsd_req_ctxt_t reqc)
 	name = metric_name = NULL;
 	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -1544,18 +1849,33 @@ static int strgp_metric_del_handler(ldmsd_req_ctxt_t reqc)
 	if (!metric_name)
 		goto einval;
 
-	reqc->errcode = ldmsd_strgp_metric_del(name, metric_name);
-	if (reqc->errcode == ENOENT) {
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	reqc->errcode = ldmsd_strgp_metric_del(name, metric_name, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The storage policy specified "
-				"does not exist.");
-	} else if (reqc->errcode == EBUSY) {
+				"The storage policy specified does not exist.");
+		break;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"Configuration changes cannot be made "
-			"while the storage policy is running.");
-	} else if (reqc->errcode == EEXIST) {
+				"Configuration changes cannot be made "
+				"while the storage policy is running.");
+		break;
+	case EEXIST:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The specified metric was not found.");
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Permission denied.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
 	goto send_reply;
 einval:
@@ -1578,6 +1898,9 @@ static int strgp_start_handler(ldmsd_req_ctxt_t reqc)
 	name = NULL;
 	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
+	int rc;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -1598,6 +1921,13 @@ static int strgp_start_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 	ldmsd_strgp_lock(strgp);
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	reqc->errcode = ldmsd_cfgobj_access_check(&strgp->obj, 0222, &sctxt);
+	if (reqc->errcode) {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"Permission denied.");
+		goto out_1;
+	}
 	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
 		reqc->errcode = EBUSY;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -1624,6 +1954,8 @@ static int strgp_stop_handler(ldmsd_req_ctxt_t reqc)
 	name = NULL;
 	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -1636,13 +1968,27 @@ static int strgp_stop_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
-	reqc->errcode = ldmsd_strgp_stop(name);
-	if (reqc->errcode == ENOENT) {
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	reqc->errcode = ldmsd_strgp_stop(name, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"The storage policy does not exist.");
-	} else if (reqc->errcode == EBUSY) {
+				"The storage policy does not exist.");
+		break;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"The storage policy is not running.");
+				"The storage policy is not running.");
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Permission denied.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -1782,6 +2128,11 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	name = offset_str = interval_str = push = NULL;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	uid_t uid;
+	gid_t gid;
+	int perm;
+	char *perm_s = NULL;
+
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -1797,7 +2148,21 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	offset_str = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "offset");
 	push = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "push");
 
-	ldmsd_updtr_t updtr = ldmsd_updtr_new(name);
+	struct ldmsd_sec_ctxt sctxt;
+	if (reqc->xprt->xprt) {
+		ldms_xprt_cred_get(reqc->xprt->xprt, NULL, &sctxt.crd);
+	} else {
+		ldmsd_sec_ctxt_get(&sctxt);
+	}
+	uid = sctxt.crd.uid;
+	gid = sctxt.crd.gid;
+
+	perm = 0770;
+	perm_s = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "perm");
+	if (perm_s)
+		perm = strtoul(perm_s, NULL, 0);
+
+	ldmsd_updtr_t updtr = ldmsd_updtr_new_with_auth(name, uid, gid, perm);
 	if (!updtr) {
 		if (errno == EEXIST)
 			goto eexist;
@@ -1851,6 +2216,8 @@ send_reply:
 		free(offset_str);
 	if (push)
 		free(push);
+	if (perm_s)
+		free(perm_s);
 	return 0;
 }
 
@@ -1859,19 +2226,35 @@ static int updtr_del_handler(ldmsd_req_ctxt_t reqc)
 	char *name = NULL;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	name = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "name");
 	if (!name)
 		goto einval;
 
-	reqc->errcode = ldmsd_updtr_del(name);
-	if (reqc->errcode == ENOENT) {
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	reqc->errcode = ldmsd_updtr_del(name, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The updater specified does not exist.");
-	} else if (reqc->errcode == EBUSY) {
+		break;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The updater is in use.");
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Permission denied.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
 	goto send_reply;
 
@@ -1893,6 +2276,7 @@ static int updtr_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	updtr_name = prdcr_regex = NULL;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	struct ldmsd_sec_ctxt sctxt;
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -1905,23 +2289,33 @@ static int updtr_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!prdcr_regex)
 		goto einval;
 
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_updtr_prdcr_add(updtr_name, prdcr_regex,
-				reqc->line_buf, reqc->line_len);
-	if (reqc->errcode) {
-		if (reqc->errcode == ENOENT) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"The updater specified "
-					"does not exist.");
-		} else if (reqc->errcode == EBUSY) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,""
+				reqc->line_buf, reqc->line_len, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Permission denied.");
+		break;
+	case ENOENT:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The updater specified does not exist.");
+		break;
+	case EBUSY:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Configuration changes cannot be "
 				"made while the updater is running.");
-		} else if (reqc->errcode == ENOMEM) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+		break;
+	case ENOMEM:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Memory allocation failure.");
-		} else {
-			cnt = strlen(reqc->line_buf);
-		}
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
 	goto send_reply;
 
@@ -1945,6 +2339,8 @@ static int updtr_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 	updtr_name = prdcr_regex = NULL;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -1957,24 +2353,34 @@ static int updtr_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 	if (!prdcr_regex)
 		goto einval;
 
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_updtr_prdcr_del(updtr_name, prdcr_regex,
-			reqc->line_buf, reqc->line_len);
-	if (reqc->errcode) {
-		if (reqc->errcode == ENOMEM) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"The updater specified does not exist.");
-		} else if (reqc->errcode == EBUSY) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"Configuration changes cannot be "
-					"made while the updater is running,");
-		} else if (reqc->errcode == ENOENT) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"The updater specified does not exist.");
-		} else {
-			cnt = strlen(reqc->line_buf);
-		}
+			reqc->line_buf, reqc->line_len, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Permission denied.");
+		break;
+	case ENOMEM:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The updater specified does not exist.");
+		break;
+	case EBUSY:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Configuration changes cannot be "
+				"made while the updater is running,");
+		break;
+	case ENOENT:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The updater specified does not exist.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
-
 	goto send_reply;
 einval:
 	reqc->errcode = EINVAL;
@@ -1996,6 +2402,8 @@ static int updtr_match_add_handler(ldmsd_req_ctxt_t reqc)
 	updtr_name = regex_str = match_str = NULL;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -2009,26 +2417,41 @@ static int updtr_match_add_handler(ldmsd_req_ctxt_t reqc)
 
 	match_str = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "match");
 
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_updtr_match_add(updtr_name, regex_str, match_str,
-			reqc->line_buf, reqc->line_len);
-	if (reqc->errcode) {
-		if (reqc->errcode == ENOENT) {
+			reqc->line_buf, reqc->line_len, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The updater specified does not exist.");
-		} else if (reqc->errcode == EBUSY) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"Configuration changes cannot be made "
-					"while the updater is running.");
-		} else if (reqc->errcode == ENOMEM) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"Out of memory.");
-		} else if (reqc->errcode == EINVAL) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+		break;
+	case EBUSY:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Configuration changes cannot be made "
+				"while the updater is running.");
+		break;
+	case ENOMEM:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Out of memory.");
+		break;
+	case EINVAL:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The value '%s' for match= is invalid.",
-							match_str);
-		}
+				match_str);
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Permission denied.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
 	goto send_reply;
+
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -2051,6 +2474,8 @@ static int updtr_match_del_handler(ldmsd_req_ctxt_t reqc)
 	updtr_name = regex_str = match_str = NULL;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	attr_name = "name";
@@ -2064,22 +2489,38 @@ static int updtr_match_del_handler(ldmsd_req_ctxt_t reqc)
 
 	match_str  = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "match");
 
-	reqc->errcode = ldmsd_updtr_match_del(updtr_name, regex_str, match_str);
-	if (reqc->errcode == ENOENT) {
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	reqc->errcode = ldmsd_updtr_match_del(updtr_name, regex_str, match_str,
+					      &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The updater specified does not exist.");
-	} else if (reqc->errcode == EBUSY) {
+		break;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Configuration changes cannot be made "
 				"while the updater is running.");
-	} else if (reqc->errcode == -ENOENT) {
+		break;
+	case -ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The specified regex does not match any condition.");
-	} else if (reqc->errcode == EINVAL) {
+		break;
+	case EINVAL:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"Unrecognized match type '%s'", match_str);
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Permission denied.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
-
 	goto send_reply;
 einval:
 	reqc->errcode = EINVAL;
@@ -2103,6 +2544,8 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 	updtr_name = interval_str = offset_str = NULL;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	updtr_name = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "name");
@@ -2115,13 +2558,28 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 	interval_str = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "interval");
 	offset_str  = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "offset");
 
-	reqc->errcode = ldmsd_updtr_start(updtr_name, interval_str, offset_str);
-	if (reqc->errcode == ENOENT) {
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	reqc->errcode = ldmsd_updtr_start(updtr_name, interval_str, offset_str,
+					  &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The updater specified does not exist.");
-	} else if (reqc->errcode == EBUSY) {
+		break;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The updater is already running.");
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Permission denied.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
 
 send_reply:
@@ -2140,6 +2598,8 @@ static int updtr_stop_handler(ldmsd_req_ctxt_t reqc)
 	char *updtr_name = NULL;
 	size_t cnt = 0;
 	ldmsd_req_attr_t attr;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	updtr_name = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "name");
@@ -2150,14 +2610,29 @@ static int updtr_stop_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
-	reqc->errcode = ldmsd_updtr_stop(updtr_name);
-	if (reqc->errcode == ENOENT) {
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	reqc->errcode = ldmsd_updtr_stop(updtr_name, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The updater specified does not exist.");
-	} else if (reqc->errcode == EBUSY) {
+		break;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The updater is already stopped.");
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Permission denied.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
+
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (updtr_name)
@@ -2294,7 +2769,7 @@ struct plugin_list {
 };
 
 static char *state_str[] = {
-	[LDMSD_PLUGIN_OTHER] "other",
+	[LDMSD_PLUGIN_OTHER] = "other",
 	[LDMSD_PLUGIN_SAMPLER] = "sampler",
 	[LDMSD_PLUGIN_STORE] = "store",
 };
@@ -2440,8 +2915,8 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
 		count++;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			       "{\"name\":\"%s\",\"type\":\"%s\","
-			       "\"sample_interval_us\":%d,"
-			       "\"sample_offset_us\":%d,"
+			       "\"sample_interval_us\":%ld,"
+			       "\"sample_offset_us\":%ld,"
 			       "\"libpath\":\"%s\"}",
 			       p->plugin->name,
 			       plugn_state_str(p->plugin->type),
@@ -2704,12 +3179,14 @@ static int plugn_list_handler(ldmsd_req_ctxt_t reqc)
 }
 
 extern int ldmsd_set_udata(const char *set_name, const char *metric_name,
-						const char *udata_s);
+			   const char *udata_s, ldmsd_sec_ctxt_t sctxt);
 static int set_udata_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *set_name, *metric_name, *udata, *attr_name;
 	set_name = metric_name = udata = NULL;
 	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	attr_name = "instance";
@@ -2725,21 +3202,36 @@ static int set_udata_handler(ldmsd_req_ctxt_t reqc)
 	if (!udata)
 		goto einval;
 
-	reqc->errcode = ldmsd_set_udata(set_name, metric_name, udata);
-	if (reqc->errcode) {
-		if (reqc->errcode == ENOENT) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"Set '%s' not found.", set_name);
-		} else if (reqc->errcode == -ENOENT) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"Metric '%s' not found in Set '%s'.",
-					metric_name, set_name);
-		} else if (reqc->errcode == EINVAL) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"User data '%s' is invalid.", udata);
-		}
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	reqc->errcode = ldmsd_set_udata(set_name, metric_name, udata, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Permission denied.");
+		break;
+	case ENOENT:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Set '%s' not found.", set_name);
+		break;
+	case -ENOENT:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Metric '%s' not found in Set '%s'.",
+				metric_name, set_name);
+		break;
+	case EINVAL:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"User data '%s' is invalid.", udata);
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
 	}
 	goto out;
+
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -2756,13 +3248,16 @@ out:
 }
 
 extern int ldmsd_set_udata_regex(char *set_name, char *regex_str,
-		char *base_s, char *inc_s, char *er_str, size_t errsz);
+		char *base_s, char *inc_s, char *er_str, size_t errsz,
+		ldmsd_sec_ctxt_t sctxt);
 static int set_udata_regex_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *set_name, *regex, *base_s, *inc_s, *attr_name;
 	set_name = regex = base_s = inc_s = NULL;
 	int rc = 0;
 	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+
 	reqc->errcode = 0;
 
 	attr_name = "instance";
@@ -2780,10 +3275,9 @@ static int set_udata_regex_handler(ldmsd_req_ctxt_t reqc)
 
 	inc_s = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "incr");
 
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_set_udata_regex(set_name, regex, base_s, inc_s,
-						reqc->line_buf, reqc->line_len);
-	if (reqc->errcode)
-		cnt = strlen(reqc->line_buf) + 1;
+				reqc->line_buf, reqc->line_len, &sctxt);
 	goto out;
 einval:
 	reqc->errcode = EINVAL;
@@ -3180,6 +3674,15 @@ static int unimplemented_handler(ldmsd_req_ctxt_t reqc)
 
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The request is not implemented");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
+static int eperm_handler(ldmsd_req_ctxt_t reqc)
+{
+	reqc->errcode = EPERM;
+	Snprintf(&reqc->line_buf, &reqc->line_len,
+			"Operation not permitted.");
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }

@@ -349,7 +349,8 @@ class ldmsdOutbandConfig(ldmsdConfig):
 
 class ldmsdInbandConfig(ldmsdConfig):
 
-    def __init__(self, host, port, xprt, max_recv_len = MAX_RECV_LEN):
+    def __init__(self, host, port, xprt, max_recv_len = MAX_RECV_LEN,
+                 auth=None, auth_opt=None):
         try:
             from ovis_ldms import ldms
         except:
@@ -367,7 +368,12 @@ class ldmsdInbandConfig(ldmsdConfig):
         self.max_recv_len = max_recv_len
         self.xprt = xprt
 
-        self.ldms = ldms.ldms_xprt_new(self.xprt, None)
+        if auth:
+            self.ldms = ldms.LDMS_xprt_new_with_auth(self.xprt,
+                                                     auth,
+                                                     auth_opt)
+        else:
+            self.ldms = ldms.ldms_xprt_new(self.xprt, None)
 
         self.rc = ldms.LDMS_xprt_connect_by_name(self.ldms, self.host, str(self.port))
         if self.rc != 0:

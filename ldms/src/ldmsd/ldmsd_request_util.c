@@ -126,6 +126,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "name",		LDMSD_ATTR_NAME   },
 	{  "offset",		LDMSD_ATTR_OFFSET   },
 	{  "path",              LDMSD_ATTR_PATH   },
+	{  "perm",              LDMSD_ATTR_PERM   },
 	{  "plugin",		LDMSD_ATTR_PLUGIN   },
 	{  "port",		LDMSD_ATTR_PORT   },
 	{  "producer",		LDMSD_ATTR_PRODUCER   },
@@ -216,7 +217,7 @@ static int add_attr_from_attr_str(char *name, char *value, ldmsd_req_hdr_t *requ
 		attr->attr_id = LDMSD_ATTR_STRING;
 	} else {
 		attr->attr_id = ldmsd_req_attr_str2id(name);
-		if (attr->attr_id < 0)
+		if ((int)attr->attr_id < 0)
 			return EINVAL;
 	}
 
@@ -256,6 +257,7 @@ void __get_attr_name_value(char *av, char **name, char **value)
 
 ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 {
+	static const char *delim = " \t";
 	char *av, *verb, *tmp, *ptr, *name, *value, *dummy;
 	int rc;
 	ldmsd_req_hdr_t request;
@@ -281,7 +283,7 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 	request->flags = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
 	request->msg_no = msg_no;
 	request->req_id = ldmsd_req_str2id(verb);
-	if ((request->req_id < 0) || (request->req_id == LDMSD_NOTSUPPORT_REQ)) {
+	if (((int)request->req_id < 0) || (request->req_id == LDMSD_NOTSUPPORT_REQ)) {
 		rc = ENOSYS;
 		goto err;
 	}
@@ -298,7 +300,7 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 			rc = ENOMEM;
 			goto err;
 		}
-		av = strtok_r(av, " ", &ptr);
+		av = strtok_r(av, delim, &ptr);
 		while (av) {
 			__get_attr_name_value(av, &name, &value);
 			if (!name) {
@@ -326,7 +328,7 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 							"%s ", name);
 				}
 			}
-			av = strtok_r(NULL, " ", &ptr);
+			av = strtok_r(NULL, delim, &ptr);
 		}
 		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
 		/* Add an attribute of type 'STRING' */
@@ -335,7 +337,7 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 		if (rc)
 			goto err;
 	} else {
-		av = strtok_r(av, " ", &ptr);
+		av = strtok_r(av, delim, &ptr);
 		while (av) {
 			__get_attr_name_value(av, &name, &value);
 			if (!name) {
@@ -347,7 +349,7 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 						    &request, &rec_off, &rec_len);
 			if (rc)
 				goto err;
-			av = strtok_r(NULL, " ", &ptr);
+			av = strtok_r(NULL, delim, &ptr);
 		}
 	}
 last_attr:
@@ -375,7 +377,7 @@ ldmsd_req_attr_t ldmsd_req_attr_get_by_id(char *request, uint32_t attr_id)
 
 ldmsd_req_attr_t ldmsd_req_attr_get_by_name(char *request, const char *name)
 {
-	uint32_t attr_id = ldmsd_req_attr_str2id(name);
+	int32_t attr_id = ldmsd_req_attr_str2id(name);
 	if (attr_id < 0)
 		return NULL;
 	return ldmsd_req_attr_get_by_id(request, attr_id);
@@ -399,7 +401,7 @@ int ldmsd_req_attr_keyword_exist_by_id(char *request, uint32_t attr_id)
 
 char *ldmsd_req_attr_str_value_get_by_name(char *request, const char *name)
 {
-	uint32_t attr_id = ldmsd_req_attr_str2id(name);
+	int32_t attr_id = ldmsd_req_attr_str2id(name);
 	if (attr_id < 0)
 		return NULL;
 	return ldmsd_req_attr_str_value_get_by_id(request, attr_id);
@@ -407,7 +409,7 @@ char *ldmsd_req_attr_str_value_get_by_name(char *request, const char *name)
 
 int ldmsd_req_attr_keyword_exist_by_name(char *request, const char *name)
 {
-	uint32_t attr_id = ldmsd_req_attr_str2id(name);
+	int32_t attr_id = ldmsd_req_attr_str2id(name);
 	if (attr_id < 0)
 		return -ENOENT;
 	return ldmsd_req_attr_keyword_exist_by_id(request, attr_id);

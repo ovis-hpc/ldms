@@ -60,6 +60,7 @@ import sys
 import os
 import traceback
 import json
+import re
 
 from ldmsd import ldmsd_config, ldmsd_util, ldmsd_request
 from ldmsd.ldmsd_request import LDMSD_Request
@@ -75,24 +76,20 @@ LDMSD_UPDTR_STATUS_REQ=0x304
 LDMSD_PLUGN_STATUS_REQ=0x504
 
 class LdmsdCmdParser(cmd.Cmd):
-    def __init__(self, sockname = None, host = None, port = None, xprt = None,
-                                    infile=None, inband = True):
+    def __init__(self, host = None, port = None, xprt = None, infile=None,
+                 auth=None, auth_opt=None):
         self.msg_no = 1
-        if (sockname is None) and (host is None or port is None):
-            raise ValueError("Expecting either sockname or host & port. None is given")
 
-        if sockname is not None:
-            self.ctrl = ldmsd_config.ldmsdOutbandConfig(sockname = sockname)
-            self.prompt = "{0}> ".format(os.path.basename(sockname))
-        elif inband is True:
+        if host and port:
             self.ctrl = ldmsd_config.ldmsdInbandConfig(host = host,
-                                                       port = port,
-                                                       xprt = xprt)
-            self.prompt = "{0}:{1}:{2}>".format(xprt, host, port)
+                                                   port = port,
+                                                   xprt = xprt,
+                                                   auth = auth,
+                                                   auth_opt = auth_opt)
+            self.prompt = "{0}:{1}:{2}> ".format(xprt, host, port)
         else:
-            self.ctrl = ldmsd_config.ldmsdOutbandConfig(host = host,
-                                                         port = int(port))
-            self.prompt = "{0}:{1}> ".format(host, port)
+            self.ctrl = None
+            self.prompt = "(not connected)> "
 
         if infile:
             cmd.Cmd.__init__(self, stdin=infile)
@@ -136,6 +133,49 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         print(args)
 
+    def do_connect(self, args):
+        """
+        Connect to an LDMS daemon
+        Parameters:
+        xprt=     The transport name [sock, rdma, ugni] (default: sock)
+        host=     The hostname of the host (default: localhost)
+        port=     The port number on which the LDMS is listening
+        auth=     The authentication method (default: none)
+
+        Other ATTR=VALUE parameters will be passed to authentication plugin.
+        """
+        if self.ctrl:
+            print("WARN: Already connected, do nothing.")
+            return None
+        kwargs = {
+                "xprt": "sock",
+                "host": "localhost",
+                "port": None,
+                "auth": "none",
+                "auth_opt": {},
+            }
+        r = re.compile("\s*(\w+)=(\w+)")
+        for attr, value in r.findall(args):
+            if attr in kwargs:
+                kwargs[attr] = value
+            else:
+                # treat as auth options
+                kwargs["auth_opt"][attr] = value
+        self.ctrl = ldmsd_config.ldmsdInbandConfig(**kwargs)
+        self.prompt = "{0}:{1}:{2}> ".format(kwargs["xprt"],
+                                             kwargs["host"],
+                                             kwargs["port"])
+
+    def complete_connect(self, text, line, begidx, endidx):
+        name_list = ["xprt=", "host=", "port=", "auth="]
+        full_list = ["xprt=(sock|rdma|ugni)",
+                     "host=HOSTNAME",
+                     "port=PORT",
+                     "auth=AUTH_METHOD"]
+        if not text:
+            return full_list
+        return [x for x in name_list if x.startswith(text)]
+
     def precmd(self, line):
         if line[0:1] == '#':
             return ''
@@ -144,6 +184,10 @@ class LdmsdCmdParser(cmd.Cmd):
     def handle(self, verb, args):
         if args and not self.__check_command_syntax(args):
             print("Syntax error, there are attributes for which no value is given.")
+
+        if not self.ctrl:
+            print("Error: no LDMS connection")
+            return None
 
         attr_list = []
         if args:
@@ -902,6 +946,7 @@ class LdmsdCmdParser(cmd.Cmd):
         cmd, arg = line[:i], line[i:].strip()
         return cmd, arg, line
 
+
 if __name__ == "__main__":
     is_debug = True
     try:
@@ -910,14 +955,13 @@ if __name__ == "__main__":
                                          "the socket path of the ldmsd or " \
                                          "give both hostname and inet control port. " \
                                          "If all are given, the sockname takes the priority.")
-        parser.add_argument("--sockname",
-                            help="Specify the UNIX socket used to communicate with LDMSD.")
         parser.add_argument('--host',
-                            help = "Hostname of ldmsd to connect to")
+                            help = "Hostname of ldmsd to connect to",
+                            default = 'localhost')
         parser.add_argument('--port',
                             help = "Inet ctrl listener port of ldmsd")
         parser.add_argument('--xprt',
-                            help = "LDMS Transport type: sock, ugni, rdma. Only for the inband channel",
+                            help = "LDMS Transport type: sock, ugni, rdma.",
                             choices = ['sock', 'ugni', 'rdma'],
                             default = 'sock')
         parser.add_argument('--source',
@@ -925,8 +969,11 @@ if __name__ == "__main__":
         parser.add_argument('--script',
                             help = "Execute the script and send the output \
                             commands to the connected ldmsd")
-        parser.add_argument('--inband', action = "store_true",
-                            help = "Specify this option to connect to the data channel.")
+        parser.add_argument('-a', '--auth',
+                            help = "Authentication method.");
+        parser.add_argument('-A', '--auth-arg', action = 'append',
+                            help = "Authentication arguments (name=value). \
+                                    This option can be given multiple times.")
         parser.add_argument('--debug', action = "store_true",
                             help = argparse.SUPPRESS)
 
@@ -934,19 +981,23 @@ if __name__ == "__main__":
 
         is_debug = args.debug
 
-        if (args.sockname is None) and (args.host is None or args.port is None):
-            print("Please give either --sockname or both of --host and --port.")
-            sys.exit(1)
+        auth_opt = None
+        if args.auth_arg:
+            auth_opt = dict()
+            rx = re.compile("(\w+)=(.+)")
+            for arg in args.auth_arg:
+                m = rx.match(arg)
+                if not m:
+                    print("Expceting --auth-arg to be NAME=VALUE")
+                    sys.exit(1)
+                (k, v) = m.groups()
+                auth_opt[k] = v
 
-        if (args.sockname is not None) and (args.host is not None or args.port is not None):
-            print("The Unix Domain socket path is ignored.")
-            args.sockname = None
-
-        cmdParser = LdmsdCmdParser(sockname = args.sockname,
-                                   host = args.host,
+        cmdParser = LdmsdCmdParser(host = args.host,
                                    port = args.port,
                                    xprt = args.xprt,
-                                   inband = args.inband)
+                                   auth = args.auth,
+                                   auth_opt = auth_opt)
 
         if args.source is not None or args.script is not None:
             if args.source is not None:

@@ -412,13 +412,14 @@ static void updtr_task_cb(ldmsd_task_t task, void *arg)
 }
 
 ldmsd_updtr_t
-ldmsd_updtr_new(const char *name)
+ldmsd_updtr_new_with_auth(const char *name, uid_t uid, gid_t gid, int perm)
 {
 	struct ldmsd_updtr *updtr;
 
 	updtr = (struct ldmsd_updtr *)
-		ldmsd_cfgobj_new(name, LDMSD_CFGOBJ_UPDTR,
-				 sizeof *updtr, ldmsd_updtr___del);
+		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_UPDTR,
+				 sizeof *updtr, ldmsd_updtr___del,
+				 uid, gid, perm);
 	if (!updtr)
 		return NULL;
 
@@ -430,7 +431,15 @@ ldmsd_updtr_new(const char *name)
 	return updtr;
 }
 
-int ldmsd_updtr_del(const char *updtr_name)
+ldmsd_updtr_t
+ldmsd_updtr_new(const char *name)
+{
+	struct ldmsd_sec_ctxt sctxt;
+	ldmsd_sec_ctxt_get(&sctxt);
+	return ldmsd_updtr_new_with_auth(name, sctxt.crd.uid, sctxt.crd.gid, 0777);
+}
+
+int ldmsd_updtr_del(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
@@ -438,6 +447,9 @@ int ldmsd_updtr_del(const char *updtr_name)
 		return ENOENT;
 	}
 	ldmsd_updtr_lock(updtr);
+	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
+	if (rc)
+		goto out;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out;
@@ -461,7 +473,7 @@ out:
 }
 
 int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
-						const char *offset_str)
+		      const char *offset_str, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
@@ -469,6 +481,9 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 		return ENOENT;
 
 	ldmsd_updtr_lock(updtr);
+	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out_1;
@@ -490,7 +505,7 @@ out_1:
 	return rc;
 }
 
-int ldmsd_updtr_stop(const char *updtr_name)
+int ldmsd_updtr_stop(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
@@ -498,6 +513,9 @@ int ldmsd_updtr_stop(const char *updtr_name)
 		return ENOENT;
 
 	ldmsd_updtr_lock(updtr);
+	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (updtr->state != LDMSD_UPDTR_STATE_RUNNING) {
 		rc = EBUSY;
 		goto out_1;
@@ -560,7 +578,8 @@ ldmsd_name_match_t updtr_find_match_ex(ldmsd_updtr_t updtr,
 }
 
 int ldmsd_updtr_match_add(const char *updtr_name, const char *regex_str,
-		const char *selector_str, char *rep_buf, size_t rep_len)
+		const char *selector_str, char *rep_buf, size_t rep_len,
+		ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
@@ -568,6 +587,9 @@ int ldmsd_updtr_match_add(const char *updtr_name, const char *regex_str,
 		return ENOENT;
 
 	ldmsd_updtr_lock(updtr);
+	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out_1;
@@ -612,7 +634,7 @@ out_0:
 }
 
 int ldmsd_updtr_match_del(const char *updtr_name, const char *regex_str,
-						const char *selector_str)
+			  const char *selector_str, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	enum ldmsd_name_match_sel sel;
@@ -631,6 +653,9 @@ int ldmsd_updtr_match_del(const char *updtr_name, const char *regex_str,
 		return ENOENT;
 
 	ldmsd_updtr_lock(updtr);
+	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out_1;
@@ -678,7 +703,7 @@ ldmsd_prdcr_ref_t prdcr_ref_find_regex(ldmsd_updtr_t updtr, regex_t *regex)
 }
 
 int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
-						char *rep_buf, size_t rep_len)
+			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt)
 {
 	regex_t regex;
 	ldmsd_updtr_t updtr;
@@ -698,6 +723,9 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 	}
 
 	ldmsd_updtr_lock(updtr);
+	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
 		sprintf(rep_buf, "%dConfiguration changes cannot be made "
 				"while the updater is running\n", EBUSY);
@@ -732,7 +760,7 @@ out_1:
 }
 
 int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
-						char *rep_buf, size_t rep_len)
+			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	regex_t regex;
@@ -749,6 +777,9 @@ int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 		goto out_0;
 	}
 	ldmsd_updtr_lock(updtr);
+	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out_1;
