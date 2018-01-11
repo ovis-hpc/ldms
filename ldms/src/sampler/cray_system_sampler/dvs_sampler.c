@@ -180,7 +180,7 @@ static int create_metric_set(dvs_mount_t dvsm)
 		goto err;
 	}
 
-	/* Location of first metric from proc/meminfo file */
+	/* Location of first metric from proc/dvs file */
 	metric_offset = ldms_schema_metric_count_get(schema);
 
 	/*
@@ -548,7 +548,7 @@ static void term(struct ldmsd_plugin *self)
 		base_del(cfg_base);
 }
 
-static struct ldmsd_sampler meminfo_plugin = {
+static struct ldmsd_sampler dvs_plugin = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
@@ -569,5 +569,5 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	log_fn = pf;
 	rbt_init(&mount_tree, mount_comparator);
-	return &meminfo_plugin.base;
+	return &dvs_plugin.base;
 }
