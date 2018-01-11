@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ovis-ldms, 3.3.0, ovis-help@sandia.gov)
+AC_INIT(ovis-ldms, 4.0.0, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/core/ldms.h])
 AC_CONFIG_AUX_DIR(config)
@@ -493,6 +493,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/hadoop/hadoop-sinks/OvisSink.java
 		 src/sampler/cray_system_sampler/Makefile
 		 src/sampler/aries_mmr/Makefile
+		 src/sampler/aries_mmr/aries_mmr_set_configs/Makefile
 		 src/ldmsd/Makefile
 		 scripts/Makefile
 		 src/test/Makefile
