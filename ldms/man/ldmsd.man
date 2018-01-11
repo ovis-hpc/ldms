@@ -80,6 +80,11 @@ General/Configuration Options:
 .BR -F
 Run in foreground mode; don't daemonize the program. Default is false.
 .TP
+.BR -B version-file-mode
+When run in daemon mode, controls the existence of the banner file. 
+Mode 0 suppresses the version file. Mode 1 deletes it at daemon exit. Mode >= 2 leaves it in place for debugging after daemon exit. Default mode is 1.
+The banner contains the software and protocol versions information, which is also logged at the INFO level. The banner file name is always the pidfile name with .version appended.
+.TP
 .BR -c
 The path to configuration file (optional, default: <none>).
 .TP
@@ -92,7 +97,7 @@ For aggregating ldmsd, a rough estimate of preallocated memory needed is (Number
 Data sets containing arrays may require more.
 .TP
 .BI -r " pid_file"
-The path to the pid file for daemon mode.
+The path to the pid file and prefix of the .version banner file for daemon mode.
 .TP
 .BI -a " secretfile"
 Give the location of the secretword file.
