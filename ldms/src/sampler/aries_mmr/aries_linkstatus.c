@@ -149,7 +149,7 @@ static int create_metric_set(base_data_t base)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP " " BASE_CONFIG_USAGE
+	return  "config name=" SAMP BASE_CONFIG_USAGE
 		" [file_send=<send_file_name> file_recv=<recv_file_name>\n"
                 "    <send_file_name>  Optional location of the gpcdr file to read for send link status\n"
                 "    <recv_file_name>  Optional location of the gpcdr file to read for recv link status\n";

@@ -574,7 +574,7 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=aries_nic_mmr " BASE_CONFIG_USAGE " file=<file> [aries_rtr_id=<rtrid>]\n"
+	return  "config name=aries_nic_mmr" BASE_CONFIG_USAGE " file=<file> [aries_rtr_id=<rtrid>]\n"
 		"    <file>         File with full names of metrics\n"
 		"    <rtrid>        Optional unique rtr string identifier. Defaults to 0 length string.\n";
 }

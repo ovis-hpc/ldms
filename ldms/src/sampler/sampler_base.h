@@ -69,7 +69,7 @@ typedef struct base_data_s {
 #define BASE_JOB_ID		1
 #define BASE_APP_ID		2
 #define BASE_CONFIG_USAGE \
-	"producer=<name> instance=<name> [component_id=<int>] [schema=<name>]\n" \
+	" producer=<name> instance=<name> [component_id=<int>] [schema=<name>]\n" \
 	"                [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>]\n" \
 	"    producer     A unique name for the host providing the data\n" \
 	"    instance     A unique name for the metric set\n" \
