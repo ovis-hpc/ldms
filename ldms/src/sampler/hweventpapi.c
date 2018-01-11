@@ -562,16 +562,19 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 	char *component_id;
 	char* filename;
+	char* producername;
 
 	msglog(LDMSD_LDEBUG, SAMP ": config start \n");
 
 	schema = NULL;
 
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
+	producername = av_value(avl, "producer");
+	if (!producername) {
 		msglog(LDMSD_LERROR, SAMP ": missing producer\n");
 		goto out;
 	}
+
+	producer_name = strdup(producername);
 
 	component_id = av_value(avl, "component_id");
 	if (component_id)
