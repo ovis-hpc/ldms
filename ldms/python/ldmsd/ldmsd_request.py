@@ -56,13 +56,16 @@ import argparse
 import sys
 import traceback
 
-class LDMSD_Except(Exception):
-    def __init__(self, value):
-        self.value = value
-    def __str__(self):
-        return repr(self.value)
+class LDMSD_Request_Exception(Exception):
+    '''Raise when there is an error in the ldmsd request module'''
+    def __init__(self, message, errcode, *args):
+        self.message = message
+        self.errcode = errcode
+        super(LDMSD_Request_Exception, self).__init__(message, errcode, *args)
 
 class LDMSD_Req_Attr(object):
+    LDMSD_REQ_ATTR_SZ = 12
+    
     NAME = 1
     INTERVAL = 2
     OFFSET = 3
@@ -88,7 +91,8 @@ class LDMSD_Req_Attr(object):
     PUSH = 23
     TEST = 24
     REC_LEN = 25
-    LAST = 26
+    JSON = 26
+    LAST = 27
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -116,7 +120,8 @@ class LDMSD_Req_Attr(object):
                    'test': TEST,
         }
 
-    def __init__(self, value = None, attr_name = None, attr_id = None):
+    def __init__(self, value = None, attr_name = None, attr_id = None, attr_len = None):
+        self.discrim = 1
         if attr_id:
             self.attr_id = attr_id
         else:
@@ -130,7 +135,10 @@ class LDMSD_Req_Attr(object):
                 self.attr_id = self.LAST
 
         if self.attr_id == self.LAST:
+            # terminating attribute
             self.packed = struct.pack("!L", 0)
+            self.attr_len = 0
+            self.discrim = 0
         else:
             self.attr_value = value
             if value is None:
@@ -140,13 +148,42 @@ class LDMSD_Req_Attr(object):
                                                     self.attr_len)
             else:
                 # One is added to account for the terminating zero
-                self.attr_len = int(len(value)+1)
-                self.fmt = '!LLL' + str(self.attr_len) + 's'
+                if attr_len is None:
+                    self.attr_len = int(len(value)+1)
+                else:
+                    self.attr_len = attr_len
+
+                self.fmt = '!LLL'
+                if (self.attr_id == self.REC_LEN):
+                    self.fmt += 'L'
+                else:
+                    self.fmt += str(self.attr_len) + 's'
                 self.packed = struct.pack(self.fmt, 1, self.attr_id,
                                           self.attr_len, self.attr_value)
 
     def __len__(self):
         return len(self.packed)
+
+    @classmethod
+    def unpack(cls, buf):
+        (discrim, ) = struct.unpack('!L', buf[:4])
+        if discrim == 0:
+            return LDMSD_Req_Attr(attr_id = cls.LAST)
+
+        (discrim, attr_id, attr_len, ) = struct.unpack('!LLL', 
+                                            buf[:cls.LDMSD_REQ_ATTR_SZ])
+
+        if attr_id == cls.REC_LEN:
+            fmt = '!L'
+        else:
+            fmt = str(attr_len) + 's'
+
+        (attr_value,) = struct.unpack(fmt, buf[cls.LDMSD_REQ_ATTR_SZ:attr_len + cls.LDMSD_REQ_ATTR_SZ])
+        if attr_id != cls.REC_LEN:
+            attr_value = attr_value.strip('\0')
+
+        attr = LDMSD_Req_Attr(value = attr_value, attr_id = attr_id, attr_len = attr_len)
+        return attr
 
     def pack(self):
         return self.packed
@@ -321,23 +358,44 @@ class LDMSD_Request(object):
 
     def receive(self, ctrl):
         self.response = None
-        msg = None
+        resp = None
         while True:
             record = ctrl.receive_response()
             (marker, msg_type, msg_flags, msg_no,
-             errcode, rec_len) = struct.unpack('=LLLLLL',
+             errcode, rec_len) = struct.unpack('!LLLLLL',
                                                record[:self.header_size])
+             
             if marker != self.MARKER:
                 raise ValueError("Record is missing the marker")
             data = record[self.header_size:]
-            if msg is None:
-                msg = data
+            if resp is None:
+                resp = data
             else:
-                msg += data
+                resp += data
             if (msg_flags & LDMSD_Request.EOM_FLAG) != 0:
-                return { 'errcode' : errcode, 'msg' : str(msg) }
-                return True
-        # unreachable
+                break
+
+        attr_list = []
+        
+        if resp is not None:
+            offset = 0
+            while True:
+                attr = LDMSD_Req_Attr.unpack(resp[offset:])
+                if attr.discrim == 0:
+                    break
+                if attr.attr_id == attr.REC_LEN:
+                    raise LDMSD_Request_Exception(message="The request is too big.",
+                                                  errcode=errcode)
+                attr_list.append(attr)
+                offset += attr.LDMSD_REQ_ATTR_SZ + attr.attr_len
+
+        msg = None        
+        if len(attr_list) == 1:
+            if (attr_list[0].attr_id == LDMSD_Req_Attr.STRING) or (attr_list[0].attr_id == LDMSD_Req_Attr.JSON):
+                msg = attr_list[0].attr_value
+        elif len(attr_list) == 0:
+            attr_list = None
+        return {'errcode': errcode, 'msg': msg, 'attr_list': attr_list}
 
     def is_error_resp(self, json_obj_resp):
         if json_obj_resp == 0:

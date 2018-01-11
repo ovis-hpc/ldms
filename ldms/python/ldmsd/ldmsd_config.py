@@ -128,6 +128,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'daemon_status': {'req_attr': [], 'opt_attr': []},
                       ##### Misc. #####
                       'greeting': {'req_attr': [], 'opt_attr': ['name', 'offset', 'level']},
+                      'example': {'req_attr': [], 'opt_attr': []},
                       }
 
 """@var MAX_RECV_LEN
@@ -149,7 +150,7 @@ class ldmsdConfig(object):
         """Receive a response from the ldmsd process
         """
         hdr = self.socket.recv(self.msg_hdr_len, socket.MSG_WAITALL)
-        (marker, msg_type, flags, msg_no, errcode, rec_len) = struct.unpack('=LLLLLL', hdr)
+        (marker, msg_type, flags, msg_no, errcode, rec_len) = struct.unpack('!LLLLLL', hdr)
         data_len = rec_len - self.msg_hdr_len
         msg = hdr
         if data_len > 0:
