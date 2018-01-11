@@ -412,3 +412,71 @@ int ldmsd_req_attr_keyword_exist_by_name(char *request, const char *name)
 		return -ENOENT;
 	return ldmsd_req_attr_keyword_exist_by_id(request, attr_id);
 }
+
+void ldmsd_ntoh_req_attr(ldmsd_req_attr_t attr)
+{
+	attr->attr_id = ntohl(attr->attr_id);
+	attr->attr_len = ntohl(attr->attr_len);
+	attr->discrim = ntohl(attr->discrim);
+}
+
+void ldmsd_ntoh_req_hdr(ldmsd_req_hdr_t req)
+{
+	req->flags = ntohl(req->flags);
+	req->marker = ntohl(req->marker);
+	req->msg_no = ntohl(req->msg_no);
+	req->rec_len = ntohl(req->rec_len);
+	req->req_id = ntohl(req->req_id);
+	req->type = ntohl(req->type);
+}
+
+/**
+ * Expect \c req to contain the whole message
+ */
+void ldmsd_ntoh_req_msg(ldmsd_req_hdr_t req)
+{
+	ldmsd_req_attr_t attr;
+	ldmsd_ntoh_req_hdr(req);
+
+	if (req->rec_len == sizeof(*req))
+		return;
+
+	attr = ldmsd_first_attr(req);
+	while (attr && attr->discrim) {
+		ldmsd_ntoh_req_attr(attr);
+		attr = ldmsd_next_attr(attr);
+	}
+}
+
+void ldmsd_hton_req_hdr(ldmsd_req_hdr_t req)
+{
+	req->flags = htonl(req->flags);
+	req->marker = htonl(req->marker);
+	req->msg_no = htonl(req->msg_no);
+	req->rec_len = htonl(req->rec_len);
+	req->req_id = htonl(req->req_id);
+	req->type = htonl(req->type);
+}
+
+void ldmsd_hton_req_attr(ldmsd_req_attr_t attr)
+{
+	attr->attr_id = htonl(attr->attr_id);
+	attr->attr_len = htonl(attr->attr_len);
+	attr->discrim = htonl(attr->discrim);
+}
+
+void ldmsd_hton_req_msg(ldmsd_req_hdr_t resp)
+{
+	ldmsd_req_attr_t attr, next_attr;
+	ldmsd_hton_req_hdr(resp);
+
+	if (ntohl(resp->rec_len) == sizeof(*resp))
+		return;
+
+	attr = ldmsd_first_attr(resp);
+	while (attr && attr->discrim) {
+		next_attr = ldmsd_next_attr(attr);
+		ldmsd_hton_req_attr(attr);
+		attr = next_attr;
+	}
+}

@@ -116,7 +116,7 @@ static char *buffer;
 static size_t buffer_len;
 
 struct ldmsctl_ctrl;
-typedef int (*ctrl_send_fn_t)(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req);
+typedef int (*ctrl_send_fn_t)(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req, size_t len);
 typedef char *(*ctrl_recv_fn_t)(struct ldmsctl_ctrl *ctrl);
 typedef void (*ctrl_close_fn_t)(struct ldmsctl_ctrl *ctrl);
 struct ldmsctl_ctrl {
@@ -926,10 +926,10 @@ static int handle_help(struct ldmsctl_ctrl *ctrl, char *args)
 	return 0;
 }
 
-static int __sock_send(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req)
+static int __sock_send(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req, size_t len)
 {
 	int rc;
-	rc = send(ctrl->sock.sock, req, req->rec_len, 0);
+	rc = send(ctrl->sock.sock, req, len, 0);
 	if (rc == -1) {
 		printf("Error %d: Failed to send the request.\n", errno);
 		exit(1);
@@ -942,17 +942,17 @@ static void __sock_close(struct ldmsctl_ctrl *ctrl)
 	close(ctrl->sock.sock);
 }
 
-static int __ldms_xprt_send(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req)
+static int __ldms_xprt_send(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req, size_t len)
 {
 	size_t req_sz = sizeof(*req);
-	char *req_buf = malloc(req->rec_len);
+	char *req_buf = malloc(len);
 	if (!req_buf) {
 		printf("Out of memory\n");
 		return ENOMEM;
 	}
 
-	memcpy(req_buf, req, req->rec_len);
-	int rc = ldms_xprt_send(ctrl->ldms_xprt.x, req_buf, req->rec_len);
+	memcpy(req_buf, req, len);
+	int rc = ldms_xprt_send(ctrl->ldms_xprt.x, req_buf, len);
 	free(req_buf);
 	return rc;
 }
@@ -1015,6 +1015,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 {
 	static int msg_no = 0;
 	ldmsd_req_hdr_t request;
+	size_t len;
 	int rc;
 
 	struct command key, *cmd;
@@ -1058,7 +1059,12 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	}
 
 	msg_no++;
-	rc = ctrl->send_req(ctrl, request);
+
+	len = request->rec_len;
+	/* Convert the request byte order from host to network */
+	ldmsd_hton_req_msg(request);
+
+	rc = ctrl->send_req(ctrl, request, len);
 	if (rc) {
 		printf("Failed to send data to ldmsd. %s\n", strerror(errno));
 		return rc;

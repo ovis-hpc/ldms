@@ -130,18 +130,18 @@ class LDMSD_Req_Attr(object):
                 self.attr_id = self.LAST
 
         if self.attr_id == self.LAST:
-            self.packed = struct.pack("i", 0)
+            self.packed = struct.pack("!L", 0)
         else:
             self.attr_value = value
             if value is None:
                 self.attr_len = 0
-                self.fmt = 'iiq'
+                self.fmt = '!LLL'
                 self.packed = struct.pack(self.fmt, 1, self.attr_id,
                                                     self.attr_len)
             else:
                 # One is added to account for the terminating zero
                 self.attr_len = int(len(value)+1)
-                self.fmt = 'iiq' + str(self.attr_len) + 's'
+                self.fmt = '!LLL' + str(self.attr_len) + 's'
                 self.packed = struct.pack(self.fmt, 1, self.attr_id,
                                           self.attr_len, self.attr_value)
 
@@ -268,13 +268,14 @@ class LDMSD_Request(object):
     TYPE_CONFIG_CMD = 1
     TYPE_CONFIG_RESP = 2
     TYPE_LAST = 3
+    
+    MARKER = 0xffffffff
 
     SOM_FLAG = 1
     EOM_FLAG = 2
     message_number = 1
     header_size = 24
     def __init__(self, command=None, command_id=None, message=None, attrs=None):
-        marker = -1
         if command_id is None and command is None:
             raise Exception("Need either command or command_id")
         if command_id is None:
@@ -295,14 +296,14 @@ class LDMSD_Request(object):
             # Account for size of terminating 0
             self.request_size += 4
 
-        self.request = struct.pack('iiiiii', marker, self.TYPE_CONFIG_CMD,
+        self.request = struct.pack('!LLLLLL', self.MARKER, self.TYPE_CONFIG_CMD,
                                    LDMSD_Request.SOM_FLAG | LDMSD_Request.EOM_FLAG,
                                    self.message_number, command_id, self.request_size)
         # Add the attributes after the message header
         if attrs:
             for attr in attrs:
                 self.request += attr.pack()
-            self.request += struct.pack('i', 0) # terminate list
+            self.request += struct.pack('!L', 0) # terminate list
         # Add any message payload
         if message:
             self.request += message
@@ -324,9 +325,9 @@ class LDMSD_Request(object):
         while True:
             record = ctrl.receive_response()
             (marker, msg_type, msg_flags, msg_no,
-             errcode, rec_len) = struct.unpack('iiiiii',
+             errcode, rec_len) = struct.unpack('=LLLLLL',
                                                record[:self.header_size])
-            if marker != -1:
+            if marker != self.MARKER:
                 raise ValueError("Record is missing the marker")
             data = record[self.header_size:]
             if msg is None:
