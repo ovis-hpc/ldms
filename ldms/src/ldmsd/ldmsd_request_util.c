@@ -360,44 +360,55 @@ err:
 	return NULL;
 }
 
-char *ldmsd_req_attr_value_get_by_id(char *attr_list, uint32_t attr_id)
+ldmsd_req_attr_t ldmsd_req_attr_get_by_id(char *request, uint32_t attr_id)
 {
-	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)attr_list;
+	ldmsd_req_hdr_t req = (ldmsd_req_hdr_t)request;
+	ldmsd_req_attr_t attr = ldmsd_first_attr(req);
 	while (attr->discrim) {
 		if (attr->attr_id == attr_id) {
-			return str_repl_env_vars((char *)attr->attr_value);
+			return attr;
 		}
-		attr = (ldmsd_req_attr_t)(&attr->attr_value[attr->attr_len]);
+		attr = ldmsd_next_attr(attr);
 	}
 	return NULL;
 }
 
-int ldmsd_req_attr_keyword_exist_by_id(char *attr_list, uint32_t attr_id)
+ldmsd_req_attr_t ldmsd_req_attr_get_by_name(char *request, const char *name)
 {
-	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)attr_list;
-	while (attr->discrim) {
-		if (attr->attr_id == attr_id) {
-			return 1; /* exist */
-		}
-		attr = (ldmsd_req_attr_t)(&attr->attr_value[attr->attr_len]);
-	}
-	return 0;
-}
-
-char *ldmsd_req_attr_value_get_by_name(char *request, const char *name)
-{
-	ldmsd_req_hdr_t req = (ldmsd_req_hdr_t)request;
 	uint32_t attr_id = ldmsd_req_attr_str2id(name);
 	if (attr_id < 0)
 		return NULL;
-	return ldmsd_req_attr_value_get_by_id((char *)(req + 1), attr_id);
+	return ldmsd_req_attr_get_by_id(request, attr_id);
+}
+
+char *ldmsd_req_attr_str_value_get_by_id(char *request, uint32_t attr_id)
+{
+	ldmsd_req_attr_t attr = ldmsd_req_attr_get_by_id(request, attr_id);
+	if (!attr)
+		return NULL;
+	return str_repl_env_vars((char *)attr->attr_value);
+}
+
+int ldmsd_req_attr_keyword_exist_by_id(char *request, uint32_t attr_id)
+{
+	ldmsd_req_attr_t attr = ldmsd_req_attr_get_by_id(request, attr_id);
+	if (attr)
+		return 1;
+	return 0;
+}
+
+char *ldmsd_req_attr_str_value_get_by_name(char *request, const char *name)
+{
+	uint32_t attr_id = ldmsd_req_attr_str2id(name);
+	if (attr_id < 0)
+		return NULL;
+	return ldmsd_req_attr_str_value_get_by_id(request, attr_id);
 }
 
 int ldmsd_req_attr_keyword_exist_by_name(char *request, const char *name)
 {
-	ldmsd_req_hdr_t req = (ldmsd_req_hdr_t)request;
 	uint32_t attr_id = ldmsd_req_attr_str2id(name);
 	if (attr_id < 0)
 		return -ENOENT;
-	return ldmsd_req_attr_keyword_exist_by_id((char *)(req + 1), attr_id);
+	return ldmsd_req_attr_keyword_exist_by_id(request, attr_id);
 }
