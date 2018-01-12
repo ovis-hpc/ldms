@@ -251,6 +251,7 @@ ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key, size_t max_msg_len)
 	reqc->line_buf = malloc(LINE_BUF_LEN);
 	if (!reqc->line_buf)
 		goto err;
+	reqc->line_buf[0] = '\0';
 	reqc->req_len = REQ_BUF_LEN - 1;
 	reqc->req_off = sizeof(struct ldmsd_req_hdr_s);
 	reqc->req_buf = malloc(REQ_BUF_LEN);
