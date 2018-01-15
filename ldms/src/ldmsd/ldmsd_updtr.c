@@ -199,6 +199,11 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 			push_flags = LDMS_XPRT_PUSH_F_CHANGE;
 		rc = ldms_xprt_register_push(prd_set->set, push_flags,
 					     updtr_update_cb, prd_set);
+		if (rc) {
+			/* This message does not repeat */
+			ldmsd_log(LDMSD_LERROR, "Register push error %d Set %s\n",
+						rc, prd_set->inst_name);
+		}
 		op_s = "Registering push for";
 	}
 	if (rc) {
@@ -221,6 +226,11 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 			push_flags = LDMS_XPRT_PUSH_F_CHANGE;
 		rc = ldms_xprt_register_push(prd_set->set, push_flags,
 					     updtr_update_cb, prd_set);
+		if (rc) {
+			/* This message does not repeat */
+			ldmsd_log(LDMSD_LERROR, "Register push error %d Set %s\n",
+						rc, prd_set->inst_name);
+		}
 		op_s = "Registering push for";
 	}
 	if (rc) {
