@@ -56,26 +56,72 @@
  * rca (mesh coord).
  */
 
-
-#include <rca_lib.h>
-#include <rs_id.h>
-#include <rs_meshcoord.h>
 #include "rca_metrics.h"
+
+/** These only work for gemini */
+#define RCAHELPER_BIN "/opt/cray/rca/default/bin/rca-helper"
 
 int nettopo_setup(ldmsd_msg_log_f msglog)
 {
-	rs_node_t node;
-	mesh_coord_t loc;
 	uint16_t nid;
+	FILE* pipe;
+	char cmdbuffer[128];
+	char buffer[128];
 
-	rca_get_nodeid(&node);
-	nid = (uint16_t)node.rs_node_s._node_id;
-	rca_get_meshcoord(nid, &loc);
-	nettopo_coord.x = loc.mesh_x;
-	nettopo_coord.y = loc.mesh_y;
-	nettopo_coord.z = loc.mesh_z;
 
+	snprintf(cmdbuffer, 127, "%s %s", RCAHELPER_BIN, "-i");
+	pipe = popen(cmdbuffer, "r");
+	if (!pipe)
+		goto err;
+
+	if (!feof(pipe)){
+		if (fgets(buffer, 128, pipe) != NULL){
+			/* FIXME: better check here.... */
+			nid = (uint16_t)(atoi(buffer));
+		} else {
+			goto err;
+		}
+	} else {
+		goto err;
+	}
+
+	pclose(pipe);
+
+	snprintf(cmdbuffer, 127, "%s %s %d", RCAHELPER_BIN, "-C", (int)nid);
+	pipe = popen(cmdbuffer, "r");
+	if (!pipe)
+		goto err;
+
+	if (!feof(pipe)){
+		if (fgets(buffer, 128, pipe) != NULL){
+			/* FIXME: better check here.... */
+			int rc = sscanf(buffer, "%d %d %d\n",
+					&nettopo_coord.x,
+					&nettopo_coord.y,
+					&nettopo_coord.z);
+			if (rc != 3)
+				goto err;
+		}
+	} else {
+		goto err;
+	}
+
+	pclose(pipe);
 	return 0;
+
+	err:
+	if (pipe)
+		pclose(pipe);
+
+	pipe = 0;
+	msglog(LDMSD_LERROR,
+	       "rca_metrics: rca-helper fail. node and coords will be invalid\n");
+	nid = 0;
+	nettopo_coord.x = 6666;
+	nettopo_coord.y = 6666;
+	nettopo_coord.z = 6666;
+
+	return 0; /* even though it fails */
 }
 
 int sample_metrics_nettopo(ldms_set_t set, ldmsd_msg_log_f msglog)

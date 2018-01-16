@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_cray_system_sampler_variants
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "03 Dec 2016" "v3" "LDMS Plugin for all variants of the cray_system_sampler man page"
+.TH man 7 "14 Jan 2018" "v4" "LDMS Plugin for all variants of the cray_system_sampler man page"
 
 .SH NAME
 Plugin_cray_system_sampler_variants - man page for all variants of the LDMS cray_system_sampler plugin
@@ -89,7 +89,7 @@ parsed rtr file with media type and link information. For cray_gemini_r/d_sample
 .TP
 gpu_devices=<gpulist>
 .b
-CSV separated gpu device names list. For example: gpu_devices="Tesla_K20X". Currently, have to use an underscore in the name that will be replaced by a space at the time of name resolution. This will be revised in a future release. Non-existent gpu device names will be populated with 0 valued metrics.
+CSV separated gpu device names list. For example: gpu_devices=Tesla_K20X. (WARNING: quotes around the device list were required in V3, but will fail on V4.) Currently, have to use an underscore in the name that will be replaced by a space at the time of name resolution. This will be revised in a future release. Non-existent gpu device names will be populated with 0 valued metrics.
 Only relevant if you have built with --enable_cray_nvidia.
 .TP
 off_<namespace>=1
@@ -205,9 +205,9 @@ The cray_aries_r_sampler also outputs some additional non-HSN-related data avail
 .SH NOTES
 .PP
 .IP \[bu]
-In v3, the cray_gemini_d variant, which obtained gemini performance data from the gpcd interface and computed the link aggregation has been deprecated.
+WARNING: The gpu_devices needed to be given in quotes in v3. This will fail in v4.
 .IP \[bu]
-Please note the argument changes between v2 and v3.
+As in v3, the cray_gemini_d variant, which obtained gemini performance data from the gpcd interface and computed the link aggregation has been deprecated.
 .IP \[bu]
 The aries network counters are in fluctuation and may change at any time.
 .IP \[bu]
