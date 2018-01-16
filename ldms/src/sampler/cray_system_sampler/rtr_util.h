@@ -67,7 +67,6 @@
 #include <string.h>
 #include <sys/types.h>
 #include <ctype.h>
-#include <rs_id.h>
 #include "gemini.h"
 #include "ldms.h"
 #include "ldmsd.h"

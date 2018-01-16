@@ -4,6 +4,8 @@ pkglib_LTLIBRARIES =
 CORE = ../../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I../.. @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
+BASE_SRC = ../sampler_base.h ../sampler_base.c
+BASE_INC = $(srcdir)/../
 
 COMMON_LIBADD = $(CORE)/libldms.la \
 		@LDFLAGS_GETTIME@ -lovis_util -lcoll
@@ -11,26 +13,25 @@ COMMON_LIBADD = $(CORE)/libldms.la \
 if ENABLE_CRAY_SYSTEM_SAMPLER
 
 # first build dvs sampler
-libcray_dvs_sampler_la_SOURCES = dvs_sampler.c ../sampler_base.c \
-				../sampler_base.h
-libcray_dvs_sampler_la_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/../
+libcray_dvs_sampler_la_SOURCES = dvs_sampler.c $(BASE_SRC)
+libcray_dvs_sampler_la_CFLAGS = $(AM_CFLAGS) -I$(BASE_INC)
 libcray_dvs_sampler_la_LDFLAGS = $(AM_LDFLAGS)
 libcray_dvs_sampler_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libcray_dvs_sampler.la
 
 # then build cray_system_sampler
 
-CRAY_CFLAGS_ = $(AM_CFLAGS) @RCA_INCDIR_FLAG@ @KRCA_INCDIR_FLAG@ \
-			@CRAY_HSS_DEVEL_INCDIR_FLAG@ \
-			-I@CRAY_HSS_DEVEL_INCDIR@/rsms
-CRAY_LDFLAGS_ = $(AM_LDFLAGS) @RCA_LIBDIR_FLAG@ @RCA_LIB64DIR_FLAG@ \
-			@KRCA_LIBDIR_FLAG@ @KRCA_LIB64DIR_FLAG@ \
-			@CRAY_HSS_DEVEL_LIBDIR_FLAG@ \
-			@CRAY_HSS_DEVEL_LIB64DIR_FLAG@ \
-			-lrca
+
+
+CRAY_CFLAGS_ = $(AM_CFLAGS) \
+                        @CRAY_HSS_DEVEL_INCDIR_FLAG@ \
+                        -I@CRAY_HSS_DEVEL_INCDIR@/rsms
+CRAY_LDFLAGS_ = $(AM_LDFLAGS) \
+                        @CRAY_HSS_DEVEL_LIBDIR_FLAG@ \
+	                @CRAY_HSS_DEVEL_LIB64DIR_FLAG@
 
 CRAY_SOURCES_ = cray_sampler_base.h cray_sampler_base.c \
-	../sampler_base.c ../sampler_base.h \
+	$(BASE_SRC) \
 	rca_metrics.h rca_metrics.c \
 	general_metrics.h general_metrics.c
 CRAY_LIBADD_ = $(COMMON_LIBADD)
@@ -49,7 +50,7 @@ endif
 
 if ENABLE_GEMINI_GPCDR
 if ENABLE_CRAY_NVIDIA
-libcray_gemini_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_) @CRAY_NVIDIA_INC_INCDIR_FLAG@
+libcray_gemini_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_) @CRAY_NVIDIA_INC_INCDIR_FLAG@ -I$(BASE_INC)
 libcray_gemini_r_sampler_la_SOURCES = $(CRAY_SOURCES_) \
 	cray_gemini_r_sampler.c \
 	rtr_util.h \
@@ -57,7 +58,7 @@ libcray_gemini_r_sampler_la_SOURCES = $(CRAY_SOURCES_) \
 	nvidia_metrics.c nvidia_metrics.h
 libcray_gemini_r_sampler_la_LDFLAGS = $(CRAY_LDFLAGS_) -ldl
 else
-libcray_gemini_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_)
+libcray_gemini_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_) -I$(BASE_INC)
 libcray_gemini_r_sampler_la_SOURCES = $(CRAY_SOURCES_) \
 	cray_gemini_r_sampler.c \
 	rtr_util.h \
@@ -71,14 +72,14 @@ endif
 
 if ENABLE_ARIES_GPCDR
 if ENABLE_CRAY_NVIDIA
-libcray_aries_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_) @CRAY_NVIDIA_INC_INCDIR_FLAG@
+libcray_aries_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_) @CRAY_NVIDIA_INC_INCDIR_FLAG@ -I$(BASE_INC)
 libcray_aries_r_sampler_la_SOURCES = $(CRAY_SOURCES_) \
 	cray_aries_r_sampler.c \
 	aries_metrics_gpcdr.c aries_metrics_gpcdr.h \
 	nvidia_metrics.c nvidia_metrics.h
 libcray_aries_r_sampler_la_LDFLAGS = $(CRAY_LDFLAGS_) -ldl
 else
-libcray_aries_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_)
+libcray_aries_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_) -I$(BASE_INC)
 libcray_aries_r_sampler_la_SOURCES = $(CRAY_SOURCES_) \
 	cray_aries_r_sampler.c \
 	aries_metrics_gpcdr.c aries_metrics_gpcdr.h

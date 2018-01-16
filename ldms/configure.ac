@@ -144,10 +144,6 @@ OPTION_DEFAULT_DISABLE([cray-nvidia-inc], [ENABLE_CRAY_NVIDIA_INC])
 OPTION_WITH([cray-nvidia-inc], [CRAY_NVIDIA_INC]) dnl for the path to nvidia include
 
 dnl Will need to have the NVIDIA library in the LD_LIBRARY_PATH
-OPTION_DEFAULT_DISABLE([rca], [ENABLE_RCA])
-OPTION_WITH([rca], [RCA],[/usr])
-OPTION_DEFAULT_DISABLE([krca], [ENABLE_KRCA])
-OPTION_WITH([krca], [KRCA],[/usr])
 OPTION_DEFAULT_DISABLE([cray-hss-devel], [ENABLE_CRAY_HSS_DEVEL])
 OPTION_WITH([cray-hss-devel], [CRAY_HSS_DEVEL],[/usr])
 
