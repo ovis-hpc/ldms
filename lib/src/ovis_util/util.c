@@ -60,6 +60,9 @@
 #include <regex.h>
 #include <assert.h>
 #include <errno.h>
+#include <pwd.h>
+#include <grp.h>
+
 #include "util.h"
 #define DSTRING_USE_SHORT
 #include "dstring.h"
@@ -520,4 +523,74 @@ FILE *fopen_perm(const char *path, const char *f_mode, int o_mode)
 	if (fd < 0)
 		return NULL;
 	return fdopen(fd, f_mode);
+}
+
+/*
+ * \retval 0 OK
+ * \retval errno for error
+ */
+int __uid_gid_check(uid_t uid, gid_t gid)
+{
+	struct passwd pw;
+	struct passwd *p;
+	int rc;
+	char *buf;
+	int i;
+	int n = 128;
+	gid_t gid_list[n];
+
+	buf = malloc(BUFSIZ);
+	if (!buf) {
+		rc = ENOMEM;
+		goto out;
+	}
+
+	rc = getpwuid_r(uid, &pw, buf, BUFSIZ, &p);
+	if (!p) {
+		rc = rc?rc:ENOENT;
+		goto out;
+	}
+
+	rc = getgrouplist(p->pw_name, p->pw_gid, gid_list, &n);
+	if (rc == -1) {
+		rc = ENOBUFS;
+		goto out;
+	}
+
+	for (i = 0; i < n; i++) {
+		if (gid == gid_list[i]) {
+			rc = 0;
+			goto out;
+		}
+	}
+
+	rc = ENOENT;
+
+out:
+	if (buf)
+		free(buf);
+	return rc;
+}
+int ovis_access_check(uid_t auid, gid_t agid, int acc,
+		      uid_t ouid, gid_t ogid, int perm)
+{
+	int macc = acc & perm;
+	/* other */
+	if (07 & macc) {
+		return 0;
+	}
+	/* owner */
+	if (0700 & macc) {
+		if (auid == ouid)
+			return 0;
+	}
+	/* group  */
+	if (070 & macc) {
+		if (agid == ogid)
+			return 0;
+		/* else need to check x->ruid group list */
+		if (0 == __uid_gid_check(auid, ouid))
+			return 0;
+	}
+	return EACCES;
 }

@@ -274,4 +274,25 @@ char *str_repl_env_vars(const char *str);
  *              also set to describe the error.
  */
 FILE *fopen_perm(const char *path, const char *f_mode, int o_mode);
+
+/**
+ * \brief Generic object access check function
+ *
+ * Check if an object of ogid:ouid with permission \c perm is accessible (\c
+ * acc) by auid:agid.
+ *
+ * \param auid accessor's UID
+ * \param agid accessor's GID
+ * \param acc  access bits (Unix mode 0777 style)
+ * \param ouid object owner's UID
+ * \param ogid object owner's GID
+ * \param perm object's permission
+ *
+ * \retval 0 if \c acc is allowed.
+ * \retval EACCES if \c acc is not allowed.
+ *
+ */
+int ovis_access_check(uid_t auid, gid_t agid, int acc,
+		      uid_t ouid, gid_t ogid, int perm);
+
 #endif /* OVIS_UTIL_H_ */
