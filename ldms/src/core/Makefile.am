@@ -7,7 +7,7 @@ AM_CFLAGS += \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
 
 ldmscoreincludedir = $(includedir)/ldms
-ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldmsd.h ldms_xprt.h
+ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldms_xprt.h
 
 libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h
 libldms_la_LIBADD = -ldl -lpthread -lcoll \

@@ -8,6 +8,9 @@ AM_CFLAGS += \
 "-DLDMS_SRCDIR=\"$(abs_top_srcdir)\"" \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
 
+ldmsdincludedir = $(includedir)/ldms
+ldmsdinclude_HEADERS = ldmsd.h
+
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
 
