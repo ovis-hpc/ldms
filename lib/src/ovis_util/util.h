@@ -295,4 +295,12 @@ FILE *fopen_perm(const char *path, const char *f_mode, int o_mode);
 int ovis_access_check(uid_t auid, gid_t agid, int acc,
 		      uid_t ouid, gid_t ogid, int perm);
 
+/**
+ * \brief errno to string abbreviation.
+ *
+ * \retval str The abbrevation of the errno \c e (e.g. "ENOMEM")
+ * \retval "UNKNOWN_ERRNO" if the errno \c e is unknown.
+ */
+const char* ovis_errno_abbvr(int e);
+
 #endif /* OVIS_UTIL_H_ */
