@@ -234,7 +234,9 @@ static int purge_layer(struct idx_layer_s *pl, idx_key_t key, size_t keylen)
 	unsigned char *pkey = key;
 	struct idx_layer_s *npl;
 	assert(*(unsigned char *)pkey != (unsigned char )255);
-	if (keylen == 2) {
+	if (keylen < 2) {
+		return 0;
+	} else if (keylen==2) {
 		if (!pl->obj_count && !pl->layer_count) {
 			free(pl);
 			return 1;
