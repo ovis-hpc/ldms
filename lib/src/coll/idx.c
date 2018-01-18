@@ -143,7 +143,6 @@ void idx_destroy(idx_t t)
  */
 void *idx_find(idx_t t, idx_key_t key, size_t keylen)
 {
-	int l = 0;
 	unsigned char *pkey = key;
 	struct idx_layer_s *pl;
 
@@ -183,7 +182,6 @@ static void traverse_layer(idx_t t, struct idx_layer_s *pl, idx_cb_fn_t cb, void
  */
 void idx_traverse(idx_t t, idx_cb_fn_t cb, void *cb_arg)
 {
-	int e;
 	struct idx_layer_s *pl = t->top;
 	traverse_layer(t, pl, cb, cb_arg);
 }
@@ -195,7 +193,6 @@ int idx_add(idx_t t, idx_key_t key, size_t keylen, void *obj)
 {
 	struct idx_layer_s *pl;
 	unsigned char *pidx = key;
-	int i;
 
 	/* We don't allow adding a NULL pointer as an object */
 	if (!obj)
@@ -206,7 +203,7 @@ int idx_add(idx_t t, idx_key_t key, size_t keylen, void *obj)
 
 	idx_entries++;
 	keylen--;
-	for (pl = t->top, i = 0; keylen;
+	for (pl = t->top; keylen;
 	     keylen--, pl = pl->entries[*pidx++].next) {
 		/* If there is no layer at this prefix, add one */
 		if (!pl->entries[*pidx].next) {
@@ -256,9 +253,8 @@ static int purge_layer(struct idx_layer_s *pl, idx_key_t key, size_t keylen)
 	return 0;
 }
 
-static int purge_layers(idx_t t, idx_key_t key, size_t keylen)
+static void purge_layers(idx_t t, idx_key_t key, size_t keylen)
 {
-	int l = 0;
 	unsigned char *pkey = key;
 	struct idx_layer_s *pl = t->top;
 
@@ -280,7 +276,6 @@ static int purge_layers(idx_t t, idx_key_t key, size_t keylen)
  */
 void *idx_delete(idx_t t, idx_key_t key, size_t keylen)
 {
-	int l = 0;
 	unsigned char *pkey = key;
 	struct idx_layer_s *pl;
 	void *obj;
