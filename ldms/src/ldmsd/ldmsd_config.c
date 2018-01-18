@@ -543,18 +543,18 @@ next_line:
 	}
 
 	request = ldmsd_parse_config_str(line, msg_no);
-
-	/*
-	 * Convert the request byte order from host to network
-	 * to be compatible with the other config methods.
-	 */
-	ldmsd_hton_req_msg(request);
 	msg_no += 1;
 	if (!request) {
 		ldmsd_log(LDMSD_LERROR, "Process config file error at line %d "
 				"(%s). %s\n", lineno, path, strerror(errno));
 		goto cleanup;
 	}
+
+	/*
+	 * Convert the request byte order from host to network
+	 * to be compatible with the other config methods.
+	 */
+	ldmsd_hton_req_msg(request);
 	rc = ldmsd_process_config_request(&xprt, request, htonl(request->rec_len));
 	if (rc) {
 		ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
