@@ -93,6 +93,8 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 		LIST_REMOVE(match, entry);
 		free(match);
 	}
+	if (strgp->plugin_name)
+		free(strgp->plugin_name);
 	ldmsd_cfgobj___del(obj);
 }
 
