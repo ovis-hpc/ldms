@@ -172,6 +172,13 @@ base_data_t base_config(struct attr_value_list *avl,
 			goto einval;
 		}
 	}
+	/* uid, gid, permission */
+	value = av_value(avl, "uid");
+	base->uid = (value)?(strtol(value, NULL, 0)):(-1);
+	value = av_value(avl, "gid");
+	base->gid = (value)?(strtol(value, NULL, 0)):(-1);
+	value = av_value(avl, "perm");
+	base->perm = (value)?(strtol(value, NULL, 0)):(0777);
 	return base;
 einval:
 	errno = EINVAL;
@@ -215,7 +222,8 @@ ldms_schema_t base_schema_new(base_data_t base)
 
 ldms_set_t base_set_new(base_data_t base)
 {
-	base->set = ldms_set_new(base->instance_name, base->schema);
+	base->set = ldms_set_new_with_auth(base->instance_name, base->schema,
+					   base->uid, base->gid, base->perm);
 	if (base->set) {
 		ldms_set_producer_name_set(base->set, base->producer_name);
 		ldms_metric_set_u64(base->set, BASE_COMPONENT_ID, base->component_id);
