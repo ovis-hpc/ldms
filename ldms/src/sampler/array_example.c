@@ -67,6 +67,10 @@ static ldmsd_msg_log_f msglog;
 static uint64_t compid = 0;
 static uint64_t jobid = 0;
 
+static uint32_t uid;
+static uint32_t gid;
+static uint32_t perm;
+
 struct array_construct {
 	const char *name;
 	enum ldms_value_type type;
@@ -154,7 +158,7 @@ static int create_metric_set(const char *instance_name,
 		metric_list[num_metrics].type = LDMS_V_NONE;
 	}
 
-	set = ldms_set_new(instance_name, schema);
+	set = ldms_set_new_with_auth(instance_name, schema, uid, gid, perm);
 	if (!set) {
 		rc = errno;
 		goto err;
@@ -209,6 +213,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		type = ldms_metric_str_to_type(value);
 	else
 		type = LDMS_V_NONE;
+
+	/* uid, gid, permission */
+	value = av_value(avl, "uid");
+	uid = (value)?(strtol(value, NULL, 0)):(-1);
+	value = av_value(avl, "gid");
+	gid = (value)?(strtol(value, NULL, 0)):(-1);
+	value = av_value(avl, "perm");
+	perm = (value)?(strtol(value, NULL, 0)):(0777);
 
 	value = av_value(avl, "instance");
 	if (!value) {
