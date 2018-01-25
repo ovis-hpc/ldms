@@ -61,6 +61,9 @@ Created on Apr 28, 2015
 import shlex
 from subprocess import Popen, PIPE
 import re
+import os
+import time
+import tempfile
 
 def add_cmd_line_arg(arg, value = None):
     """Return a string of command line option and value
@@ -333,3 +336,74 @@ def get_var_from_file(module_name, filepath):
     data = imp.load_source(module_name, '', f)
     f.close()
     return data
+
+class LDMSD(object):
+    """A utility class to handle an LDMS Daemon subprocess"""
+
+    def __init__(self, port, xprt="sock", logfile=None, auth="none",
+                 auth_opt={}, verbose="INFO", cfg=None):
+        """LDMSD subprocess handler initialization
+
+        @param port(str): the LDMSD listening port.
+        @param xprt(str): the transport type ("sock", "rdma", or "ugni").
+        @param logfile(str): the path to the logfile. If the value is `None`,
+                             no log is produced.
+        @param auth(str): the name of the LDMS authentication plugin.
+        @param auth_opt(dict): the dictionary of key-value specifying
+                               authentication plugin options.
+        """
+        self.cmd_args = [
+            "ldmsd",
+            "-F", # foreground
+            "-x", "%s:%s" % (xprt, port),
+            "-a", auth,
+            "-v", verbose,
+        ]
+        if logfile:
+            self.cmd_args.extend(["-l", logfile])
+        if auth_opt:
+            for a,v in auth_opt.iteritems():
+                self.cmd_args.extend(["-A", "%s=%s" % (a, v)])
+        self.proc = None
+        self.cfg = None
+        if cfg:
+            self.cfg = tempfile.NamedTemporaryFile()
+            self.cfg.write(cfg)
+            self.cfg.file.flush()
+            self.cmd_args.extend(["-c", self.cfg.name])
+
+    def is_running(self):
+        """Return `True` if the daemon is running"""
+        if not self.proc:
+            return False
+        self.proc.poll()
+        return self.proc.returncode == None
+
+    def run(self):
+        """Run the daemon"""
+        if self.proc:
+            raise RuntimeError("LDMSD already running")
+        self.proc = Popen(self.cmd_args,
+                          stdin=open(os.devnull, "r"),
+                          stdout=open(os.devnull, "w"),
+                          stderr=open(os.devnull, "w"),
+                          close_fds = True,
+                          )
+        time.sleep(1)
+        self.proc.poll()
+        if self.proc.returncode != None:
+            # process terminated
+            raise RuntimeError("LDMSD terminated prematurely")
+
+    def term(self):
+        """Terminate the daemon"""
+        self.proc.terminate()
+        # also drain the output
+        self.proc.communicate()
+        self.proc = None
+
+    def __del__(self):
+        if self.proc:
+            self.term()
+        if self.cfg:
+            self.cfg.close()
