@@ -92,7 +92,8 @@ class LDMSD_Req_Attr(object):
     TEST = 24
     REC_LEN = 25
     JSON = 26
-    LAST = 27
+    PERM = 27
+    LAST = 28
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -118,6 +119,7 @@ class LDMSD_Req_Attr(object):
                    'time': TIME,
                    'push': PUSH,
                    'test': TEST,
+                   'perm': PERM,
         }
 
     def __init__(self, value = None, attr_name = None, attr_id = None, attr_len = None):
