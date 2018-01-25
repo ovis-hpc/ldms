@@ -374,6 +374,8 @@ class ldmsdInbandConfig(ldmsdConfig):
                                                      auth_opt)
         else:
             self.ldms = ldms.ldms_xprt_new(self.xprt, None)
+            if not self.ldms:
+                raise ValueError("Transport could not be connected")
 
         self.rc = ldms.LDMS_xprt_connect_by_name(self.ldms, self.host, str(self.port))
         if self.rc != 0:

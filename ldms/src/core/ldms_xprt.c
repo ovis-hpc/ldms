@@ -1906,12 +1906,16 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name, ldms_log_fn_t log_fn,
 		goto err1;
 
 	auth_plugin = ldms_auth_plugin_get(auth_name);
-	if (!auth_plugin)
+	if (!auth_plugin) {
+		ret = errno;
 		goto err2;
+	}
 
 	auth = ldms_auth_new(auth_plugin, auth_av_list);
-	if (!auth)
+	if (!auth) {
+		ret = errno;
 		goto err2;
+	}
 	x->auth_flag = LDMS_XPRT_AUTH_INIT;
 
 	ret = ldms_xprt_auth_bind(x, auth);
