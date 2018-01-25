@@ -640,7 +640,7 @@ struct test_key {
 	int ord;
 };
 
-int test_comparator(void *a, void *b)
+int test_comparator(void *a, const void *b)
 {
 	return *(int *)a - *(int *)b;
 }
