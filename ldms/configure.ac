@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ovis-ldms, 4.0.0, ovis-help@sandia.gov)
+AC_INIT(ovis-ldms, 4.1.0, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/core/ldms.h])
 AC_CONFIG_AUX_DIR(config)
@@ -165,6 +165,7 @@ else
 	ZAP_LIBPATH=${OVIS_LIB_LIBDIR}/ovis-lib
 fi
 ZAP_LIBPATH=${ZAP_LIBPATH#*/rpm7/BUILDROOT}
+ZAP_LIBPATH=${ZAP_LIBPATH#*/tmproot}
 AC_SUBST(ZAP_LIBPATH)
 LDMSD_PLUGIN_LIBPATH=${pkglibdir}
 AC_SUBST(LDMSD_PLUGIN_LIBPATH)
