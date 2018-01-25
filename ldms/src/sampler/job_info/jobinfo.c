@@ -159,7 +159,7 @@ jobinfo_thread_proc(void *arg)
 {
 	int			rc;
 	int			nd;
-	int			wd;
+	int			wd = -1;
 	struct inotify_event	ev;
 	int			mask = IN_CLOSE | IN_MOVE | IN_CREATE | IN_DELETE;
 
@@ -319,18 +319,19 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 		return ENOENT;
 	}
 
-	rc = pthread_create(&jobinfo_thread, NULL, jobinfo_thread_proc, 0);
-	if (rc != 0)
-		return ENOMEM;
-
 	rc = create_metric_set(value, "jobinfo");
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
-		pthread_cancel(jobinfo_thread);
 		return rc;
 	}
-
 	ldms_set_producer_name_set(set, producer_name);
+
+	rc = pthread_create(&jobinfo_thread, NULL, jobinfo_thread_proc, 0);
+	if (rc != 0) {
+		ldms_set_delete(set);
+		set = NULL;
+		return ENOMEM;
+	}
 	return 0;
 }
 
