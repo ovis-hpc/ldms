@@ -66,7 +66,7 @@ class LDMSD_Request_Exception(Exception):
 
 class LDMSD_Req_Attr(object):
     LDMSD_REQ_ATTR_SZ = 12
-    
+
     NAME = 1
     INTERVAL = 2
     OFFSET = 3
@@ -173,7 +173,7 @@ class LDMSD_Req_Attr(object):
         if discrim == 0:
             return LDMSD_Req_Attr(attr_id = cls.LAST)
 
-        (discrim, attr_id, attr_len, ) = struct.unpack('!LLL', 
+        (discrim, attr_id, attr_len, ) = struct.unpack('!LLL',
                                             buf[:cls.LDMSD_REQ_ATTR_SZ])
 
         if attr_id == cls.REC_LEN:
@@ -308,7 +308,7 @@ class LDMSD_Request(object):
     TYPE_CONFIG_CMD = 1
     TYPE_CONFIG_RESP = 2
     TYPE_LAST = 3
-    
+
     MARKER = 0xffffffff
 
     SOM_FLAG = 1
@@ -367,7 +367,7 @@ class LDMSD_Request(object):
             (marker, msg_type, msg_flags, msg_no,
              errcode, rec_len) = struct.unpack('!LLLLLL',
                                                record[:self.header_size])
-             
+
             if marker != self.MARKER:
                 raise ValueError("Record is missing the marker")
             data = record[self.header_size:]
@@ -379,7 +379,7 @@ class LDMSD_Request(object):
                 break
 
         attr_list = []
-        
+
         if resp is not None:
             offset = 0
             while True:
@@ -392,7 +392,7 @@ class LDMSD_Request(object):
                 attr_list.append(attr)
                 offset += attr.LDMSD_REQ_ATTR_SZ + attr.attr_len
 
-        msg = None        
+        msg = None
         if len(attr_list) == 1:
             if (attr_list[0].attr_id == LDMSD_Req_Attr.STRING) or (attr_list[0].attr_id == LDMSD_Req_Attr.JSON):
                 msg = attr_list[0].attr_value
