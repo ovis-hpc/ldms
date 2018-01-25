@@ -55,6 +55,7 @@ import json
 import argparse
 import sys
 import traceback
+import re
 
 class LDMSD_Request_Exception(Exception):
     '''Raise when there is an error in the ldmsd request module'''
@@ -414,7 +415,52 @@ class LDMSD_Request(object):
     def resp2json(self, resp):
         return json.dumps(resp)
 
-class LdmsdReqParser(cmd.Cmd):
+    @classmethod
+    def from_verb_attrs(cls, verb, attrs):
+        """Create LDMSD_Request object from verb (str) and attrs (list of str pair)
+
+        verb (str) - the LDMSD command verb
+        attrs (list of (str, str)) - the list of attribute-value pairs. For
+                positional attribute, the value is None.
+
+        """
+        req_attrs = []
+        attr_s = []
+        for a, v in attrs:
+            s = a if v is None else a+"="+v
+            if (verb == "config" and a != "name") or (verb == "env"):
+                attr_s.append(s)
+            else:
+                try:
+                    attr = LDMSD_Req_Attr(value = v, attr_name = a)
+                except KeyError:
+                    attr_s.append(s)
+                except Exception:
+                    raise
+                else:
+                    req_attrs.append(attr)
+        if attr_s:
+            attr_str = " ".join(attr_s)
+            attr = LDMSD_Req_Attr(value = attr_str, attr_id = LDMSD_Req_Attr.STRING)
+            req_attrs.append(attr)
+        req_attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.LAST))
+        return LDMSD_Request(command = verb, attrs = req_attrs)
+
+    ATTR_RE = re.compile("([^=]+)(?:=(.+))?")
+
+    @classmethod
+    def from_str(cls, cmd_str):
+        """Parse the cmd_str and make LDMSD_Request object from it
+
+        cmd_str - a string in the `verb arg1=val1 arg2=val2 ...` format.
+        """
+        tkns = re.split("\s+", cmd_str)
+        verb = tkns[0]
+        av_list = (cls.ATTR_RE.match(x).groups() for x in tkns[1:])
+        return cls.from_verb_attrs(verb, av_list)
+
+
+class LdmsdReqCmd(cmd.Cmd):
     def __init__(self, host = None, port = None, infile=None):
         try:
             self.ctrl = ldmsd_config.ldmsdInetConfig(host = host,
@@ -484,7 +530,7 @@ if __name__ == "__main__":
             print("Please give --host and --port")
             sys.exit(1)
 
-        reqParser = LdmsdReqParser(host = args.host, port = args.port)
+        reqParser = LdmsdReqCmd(host = args.host, port = args.port)
 
         reqParser.cmdloop("Welcome to the LDMSD control processor")
 
