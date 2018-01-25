@@ -530,7 +530,7 @@ int ldmsd_updtr_stop(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
 out_1:
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
-	return 0;
+	return rc;
 }
 
 ldmsd_updtr_t ldmsd_updtr_first()
