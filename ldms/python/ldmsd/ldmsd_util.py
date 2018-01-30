@@ -59,11 +59,15 @@ Created on Apr 28, 2015
   Utility for OVIS test infrastructure
 """
 import shlex
-from subprocess import Popen, PIPE
+from subprocess import Popen, PIPE, STDOUT
 import re
 import os
 import time
 import tempfile
+import fcntl
+from StringIO import StringIO
+import errno
+import tty
 
 def add_cmd_line_arg(arg, value = None):
     """Return a string of command line option and value
@@ -407,3 +411,102 @@ class LDMSD(object):
             self.term()
         if self.cfg:
             self.cfg.close()
+
+class LDMSD_Controller(object):
+    """ldmsd_controller subprocess handler"""
+
+    def __init__(self, port, host="localhost", xprt="sock",
+                       auth="none", auth_opt={}):
+        """LDMSD_Controller initialization
+
+        @param port(str): the port of ldmsd to connect to.
+        @param host(str): the hostname hosting the ldmsd.
+        @param auth(str): the name of the authentication plugin
+        @param auth_opt(dict): the dictionary of key-value specifying
+                               authentication plugin options.
+        """
+        self.cmd_args = [
+            "exec ldmsd_controller",
+            "--host", host,
+            "--port", port,
+            "--xprt", xprt,
+            "-a", auth,
+        ]
+        for a, v in auth_opt.iteritems():
+            self.cmd_args.extend(["-A", "%s=%s" % (a, v)])
+        self.proc = None
+        self.pty = None
+
+    def is_running(self):
+        """Return `True` if the subprocess is running"""
+        if not self.proc:
+            return False
+        self.proc.poll()
+        return self.proc.returncode == None
+
+    def run(self):
+        """Run ldmsd_controller subprocess"""
+        if self.proc:
+            raise RuntimeError("process already running")
+        # Create pty
+        _mfd, _sfd = os.openpty()
+        fl = fcntl.fcntl(_mfd, fcntl.F_GETFL)
+        rc = fcntl.fcntl(_mfd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
+        assert(rc == 0)
+        self.pty = os.fdopen(_mfd, "r+", 0)
+        tty.setraw(_sfd) # set RAW mode
+
+        cmd = " ".join(self.cmd_args)
+        self.proc = Popen(cmd,
+                          stdin=_sfd,
+                          stdout=_sfd,
+                          stderr=STDOUT,
+                          close_fds = True,
+                          shell = True,
+                          )
+        time.sleep(0.5)
+        if not self.is_running():
+            raise RuntimeError("process terminated prematurely")
+
+    def term(self):
+        """Terminate the ldmsd_controller subprocess"""
+        if not self.proc:
+            raise RuntimeError("process not running")
+        self.proc.terminate()
+        # also drain the output
+        self.proc.communicate()
+        self.proc = None
+
+    def read_pty(self, dt = 0.5, n = 2):
+        """Read the pty until idle
+
+        Idle means the pty.read() got EAGAIN for `n` times consecutively with
+        interval `dt` seconds.
+        """
+        if not self.proc:
+            raise RuntimeError("process not running")
+        _c = 0 # initialize counter
+        _out = StringIO()
+        while True:
+            try:
+                _s = self.pty.read()
+                _out.write(_s)
+                _c = 0 # reset counter
+            except IOError, e:
+                if e.errno != errno.EAGAIN:
+                    raise
+                _c += 1
+                if _c == n:
+                    break
+                time.sleep(dt)
+        return _out.getvalue()
+
+    def write_pty(self, s):
+        """Write string `s` to the ldmsd_controller pty"""
+        if not self.proc:
+            raise RuntimeError("process not running")
+        self.pty.write(s)
+
+    def __del__(self):
+        if self.proc:
+            self.term()
