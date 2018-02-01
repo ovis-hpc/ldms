@@ -535,6 +535,10 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 	}
 }
 
+%nodefaultctor ldms_rbuf_desc;
+%nodefaultdtor ldms_rbuf_desc;
+struct ldms_rbuf_desc {};
+
 %extend ldms_rbuf_desc {
 	inline size_t __len__() { return ldms_set_card_get(self); }
 	inline PyObject *metric_name_get(size_t i) {
