@@ -602,8 +602,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	/* checking for error */
 	if (inot_fd < 0) {
 		msglog(LDMSD_LERROR, SAMP ": inotify initialization"
-			"error = %d \n", inot_fd);
-		goto out;
+			" error = %d \n", inot_fd);
+		return ENOENT;
 
 	}
 
@@ -1002,7 +1002,7 @@ static int sample(struct ldmsd_sampler * self)
 	}
 
 	if (!set || schema == NULL) {
-		msglog(LDMSD_LERROR, SAMP ": Wait for file to set the schema\n");
+		msglog(LDMSD_LDEBUG, SAMP ": Wait for file to set the schema\n");
 		return 0;
 	}
 
