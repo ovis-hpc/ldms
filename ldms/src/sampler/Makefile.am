@@ -8,7 +8,7 @@ AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I.. @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 COMMON_LIBADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ -lovis_util
 ldmssamplerincludedir = $(includedir)/ldms/sampler
-ldmssamplerinclude_HEADERS = 
+ldmssamplerinclude_HEADERS =
 BASE_SRC=sampler_base.c sampler_base.h
 
 if ENABLE_JOBID
@@ -147,7 +147,7 @@ pkglib_LTLIBRARIES += libmeminfo.la
 endif
 
 if ENABLE_MSR_INTERLAGOS
-libmsr_interlagos_la_SOURCES = msr_interlagos.c
+libmsr_interlagos_la_SOURCES = msr_interlagos.c  $(BASE_SRC)
 libmsr_interlagos_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lpthread
 pkglib_LTLIBRARIES += libmsr_interlagos.la
 endif
