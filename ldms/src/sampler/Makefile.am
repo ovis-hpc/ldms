@@ -148,7 +148,7 @@ pkglib_LTLIBRARIES += libmeminfo.la
 endif
 
 if ENABLE_MSR_INTERLAGOS
-libmsr_interlagos_la_SOURCES = msr_interlagos.c
+libmsr_interlagos_la_SOURCES = msr_interlagos.c  $(BASE_SRC)
 libmsr_interlagos_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lpthread
 pkglib_LTLIBRARIES += libmsr_interlagos.la
 endif
