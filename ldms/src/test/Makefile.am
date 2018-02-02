@@ -35,6 +35,12 @@ test_ldms_LDADD = $(CORE)/libldms.la
 test_ldms_LDFLAGS = $(AM_LDFLAGS) -pthread
 test_ldms_CFLAGS = $(AM_CFLAGS)
 
+sbin_PROGRAMS += test_ldms_set_info
+test_ldms_set_info_SOURCES = test_ldms_set_info.c
+test_ldms_set_info_LDADD = $(CORE)/libldms.la
+test_ldms_set_info_LDFLAGS = $(AM_LDFLAGS) -pthread
+test_ldms_set_info_CFLAGS = $(AM_CFLAGS)
+
 check_PROGRAMS = test_metric
 test_metric_SOURCES = test_metric.c
 test_metric_LDADD = $(CORE)/libldms.la

@@ -78,11 +78,25 @@ struct ldms_schema_s {
 	LIST_ENTRY(ldms_schema_s) entry;
 };
 
+struct ldms_set_info_pair {
+	char *key;
+	char *value;
+	LIST_ENTRY(ldms_set_info_pair) entry;
+};
+
+struct ldms_set_info_list {
+	int count;
+	size_t len; /* Total length of all key value strings including the null terminators */
+	LIST_HEAD(ldms_set_info_pair_list, ldms_set_info_pair) list;
+};
+
 LIST_HEAD(rbd_list, ldms_rbuf_desc);
 struct ldms_set {
 	unsigned long flags;
 	struct ldms_set_hdr *meta;
 	struct ldms_data_hdr *data;
+	struct ldms_set_info_list local_info;
+	struct ldms_set_info_list remote_info; /*set info from the lookup operation */
 	struct rbn rb_node;
 	struct rbd_list local_rbd_list;
 	struct rbd_list remote_rbd_list;
@@ -130,5 +144,9 @@ static int __ldms_set_publish(struct ldms_set *set);
 static int __ldms_set_unpublish(struct ldms_set *set);
 extern int ldms_set_publish(ldms_set_t sd);
 extern int ldms_set_unpublish(ldms_set_t sd);
+
+extern int __ldms_set_info_set(struct ldms_set_info_list *info,
+				const char *key, const char *value);
+extern void __ldms_set_info_delete(struct ldms_set_info_list *info);
 
 #endif
