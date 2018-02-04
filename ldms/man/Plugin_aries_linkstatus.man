@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_cray_linkstatus
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "25 Sep 2017" "v3.5" "LDMS Plugin for the aries_linkstatus sampler"
+.TH man 7 "4 Jan 2018" "v4" "LDMS Plugin for the aries_linkstatus sampler"
 
 .SH NAME
 Plugin_aries_linkstatus - man page for the linkstatus plugin for Cray Aries systems
@@ -48,9 +48,12 @@ example, correspond to the 8 values for tiles 010 - 017.
 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 
+The aries_linkstatus plugin uses the sampler_base base class. This man page covers only the configuration
+attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
+
 .TP
 .BR config
-name=<plugin_name> producer=<pname> instance=<iname> file_send=<send_file_name> file_recv=<recv_file_name> [component_id=<compid> schema=<sname>]
+name=<plugin_name> file_send=<send_file_name> file_recv=<recv_file_name> [schema=<sname>]
 .br
 configuration line
 .RS
@@ -58,14 +61,6 @@ configuration line
 name=<plugin_name>
 .br
 aries_linkstatus
-.TP
-producer=<pname>
-.br
-The producer name string.
-.TP
-instance=<iname>
-.br
-The name of the metric set.
 .TP
 file_send=<send_file_name>
 .br
@@ -78,10 +73,7 @@ Location of the file with the recvlinkstatus metrics, as specified in the gpcdr 
 schema=<sname>
 .br
 Optional schema name. It is intended that the same sampler on different nodes with different metrics have a different schema. This will default to aries_linkstatus, if unspecified.
-.TP
-component_id=<compid>
-.br
-Component id. Defaults to 0.
+
 
 .SH NOTES
 .PP
@@ -131,4 +123,4 @@ localhost1/aries_linkstatus: consistent, last update: Tue Sep 26 11:35:51 2017 [
  D u8[]       recvlinkstatus_r4                          0x03,0x03,0x00,0x03,0x03,0x03,0x03,0x03
 
 .SH SEE ALSO
-ldmsd(7), Plugin_cray_system_sampler_variants(7), Plugin_aries_mmr(7), ldms_quickstart(7), ldmsd_controller(8)
+ldmsd(7), ldms_sampler_base(7), Plugin_cray_system_sampler_variants(7), Plugin_aries_mmr(7), ldms_quickstart(7), ldmsd_controller(8)

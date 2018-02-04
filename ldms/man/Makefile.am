@@ -14,6 +14,7 @@ ldms_authentication.man \
 ldms_auth_ovis.man \
 ldms_auth_naive.man \
 ldms_quickstart.man \
+ldms_sampler_base.man \
 Plugin_aries_mmr.man \
 Plugin_cray_system_sampler_variants.man \
 Plugin_kgnilnd.man \
