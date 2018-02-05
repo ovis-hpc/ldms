@@ -17,6 +17,7 @@ ldms_quickstart.man \
 ldms_sampler_base.man \
 Plugin_aries_mmr.man \
 Plugin_cray_system_sampler_variants.man \
+Plugin_cray_dvs_sampler.man \
 Plugin_kgnilnd.man \
 Plugin_knc_sampler.man \
 Plugin_lnet_stats.man \

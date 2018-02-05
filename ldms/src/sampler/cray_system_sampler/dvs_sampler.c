@@ -74,7 +74,7 @@
 
 static ldmsd_msg_log_f log_fn;
 static char *procfile = "/proc/fs/dvs";
-#define SAMP "dvs_client"
+#define SAMP "cray_dvs_sampler"
 static int metric_offset;	/* first non-base metric */
 static base_data_t cfg_base;	/* global base for all sets */
 static char **cfgmetrics;   /* downselect of metrics from user config */
