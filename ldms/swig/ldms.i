@@ -563,6 +563,30 @@ struct ldms_rbuf_desc {};
 		union ldms_value *v = ldms_metric_get(self, i);
 		return PyObject_FromMetricValue(v, ldms_metric_type_get(self, i));
 	}
+	inline PyObject *metric_value_get_by_name(const char *name) {
+		int i = ldms_metric_by_name(self, name);
+		if (i < 0)
+			return Py_None;
+		return ldms_rbuf_desc_metric_value_get(self, i);
+	}
+	inline PyObject *__getitem__(PyObject *key) {
+		if (PyInt_Check(key)) {
+			/* access by index */
+			int i = PyInt_AS_LONG(key);
+			return ldms_rbuf_desc_metric_value_get(self, i);
+		}
+		if (PyLong_Check(key)) {
+			/* access by index */
+			int i = PyLong_AsLong(key);
+			return ldms_rbuf_desc_metric_value_get(self, i);
+		}
+		if (PyString_Check(key)) {
+			char *s = PyString_AS_STRING(key);
+			return ldms_rbuf_desc_metric_value_get_by_name(self, s);
+		}
+		PyErr_SetString(PyExc_TypeError, "Unsupported key type");
+		return NULL;
+	}
 	inline PyObject *array_metric_value_get(size_t mid, size_t idx) {
                 enum ldms_value_type t = ldms_metric_type_get(self, mid);
                 switch (t) {
