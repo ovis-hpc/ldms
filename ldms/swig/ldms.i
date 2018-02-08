@@ -502,6 +502,20 @@ PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
 
 %}
 
+%{
+typedef struct ldms_update_ctxt {
+	sem_t sem;
+	int rc;
+} *ldms_update_ctxt_t;
+
+void __update_cb(ldms_t xprt, ldms_set_t set, int flags, void *_ctxt)
+{
+	ldms_update_ctxt_t ctxt = _ctxt;
+	ctxt->rc = flags & LDMS_UPD_F_ERROR;
+	sem_post(&ctxt->sem);
+}
+%}
+
 typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
 typedef unsigned int uint32_t;
@@ -535,6 +549,11 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 	}
 }
 
+%nodefaultctor ldms_rbuf_desc;
+%nodefaultdtor ldms_rbuf_desc;
+struct ldms_rbuf_desc {};
+typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
+
 %extend ldms_rbuf_desc {
 	inline size_t __len__() { return ldms_set_card_get(self); }
 	inline PyObject *metric_name_get(size_t i) {
@@ -558,6 +577,30 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 	inline PyObject *metric_value_get(size_t i) {
 		union ldms_value *v = ldms_metric_get(self, i);
 		return PyObject_FromMetricValue(v, ldms_metric_type_get(self, i));
+	}
+	inline PyObject *metric_value_get_by_name(const char *name) {
+		int i = ldms_metric_by_name(self, name);
+		if (i < 0)
+			return Py_None;
+		return ldms_rbuf_desc_metric_value_get(self, i);
+	}
+	inline PyObject *__getitem__(PyObject *key) {
+		if (PyInt_Check(key)) {
+			/* access by index */
+			int i = PyInt_AS_LONG(key);
+			return ldms_rbuf_desc_metric_value_get(self, i);
+		}
+		if (PyLong_Check(key)) {
+			/* access by index */
+			int i = PyLong_AsLong(key);
+			return ldms_rbuf_desc_metric_value_get(self, i);
+		}
+		if (PyString_Check(key)) {
+			char *s = PyString_AS_STRING(key);
+			return ldms_rbuf_desc_metric_value_get_by_name(self, s);
+		}
+		PyErr_SetString(PyExc_TypeError, "Unsupported key type");
+		return NULL;
 	}
 	inline PyObject *array_metric_value_get(size_t mid, size_t idx) {
                 enum ldms_value_type t = ldms_metric_type_get(self, mid);
@@ -696,6 +739,54 @@ PyObject *LDMS_xprt_dir(ldms_t x);
 		char dtsz[200];
 		sprintf(dtsz, "%d.%06d(s)", ts->sec, ts->usec);
 		return PyString_FromString(dtsz);
+	}
+	inline void update() {
+		int rc;
+		ldms_update_ctxt_t ctxt;
+		char err_buff[128];
+
+		ctxt = malloc(sizeof(*ctxt));
+		if (!ctxt) {
+			snprintf(err_buff, sizeof(err_buff),
+				 "malloc() failed, errno: %d",
+				 errno);
+			goto err0;
+		}
+		rc = sem_init(&ctxt->sem, 0, 0);
+		if (rc) {
+			snprintf(err_buff, sizeof(err_buff),
+				 "sem_init() failed, errno: %d",
+				 errno);
+			goto err1;
+		}
+		rc = ldms_xprt_update(self, __update_cb, ctxt);
+		if (rc) {
+			snprintf(err_buff, sizeof(err_buff),
+				 "ldms_xprt_update() failed, errno: %d",
+				 errno);
+			goto err2;
+		}
+		rc = sem_wait(&ctxt->sem);
+		if (rc) {
+			snprintf(err_buff, sizeof(err_buff),
+				 "sem_wait() failed, errno: %d",
+				 errno);
+			goto err2;
+		}
+		if (ctxt->rc) {
+			snprintf(err_buff, sizeof(err_buff), "Update failed");
+			goto err2;
+		}
+		sem_destroy(&ctxt->sem);
+		free(ctxt);
+		return;
+
+	err2:
+		sem_destroy(&ctxt->sem);
+	err1:
+		free(ctxt);
+	err0:
+		PyErr_SetString(PyExc_TypeError, err_buff);
 	}
 }
 
