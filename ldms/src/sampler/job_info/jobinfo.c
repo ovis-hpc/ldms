@@ -86,7 +86,7 @@ char *job_metrics[] = {
 	"job_status",
 	"app_id",
 	"user_id",
-	"comp_id",
+	"component_id",
 	"job_start",
 	"job_end",
 	"job_exit_status",
@@ -159,9 +159,9 @@ jobinfo_thread_proc(void *arg)
 {
 	int			rc;
 	int			nd;
-	int			wd;
+	int			wd = -1;
 	struct inotify_event	ev;
-	int			mask = IN_CLOSE | IN_MOVE | IN_CREATE | IN_DELETE;
+	int			mask = IN_CLOSE_WRITE | IN_CREATE | IN_DELETE | IN_DELETE_SELF;
 
 	nd = inotify_init();
 	while (1) {
@@ -181,7 +181,7 @@ jobinfo_thread_proc(void *arg)
 		}
 
 		rc = read(nd, &ev, sizeof(ev));
-		if (rc < sizeof(ev)) {
+		if (rc < sizeof(ev) || (ev.mask & (IN_CREATE | IN_DELETE | IN_DELETE_SELF))) {
 			msglog(LDMSD_LINFO,
 			       SAMP ": Error %d reading from the inotify descriptor.\n",
 			       errno);
@@ -190,14 +190,6 @@ jobinfo_thread_proc(void *arg)
 			wd = -1;
 			continue;
 		}
-
-		if (ev.mask & (IN_MOVE | IN_MOVE | IN_CREATE | IN_DELETE)) {
-			/* File was moved, re-add the file */
-			inotify_rm_watch(nd, wd);
-			wd = -1;
-			continue;
-		}
-
 		jobinfo_read_data();
 	}
 
@@ -319,18 +311,19 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 		return ENOENT;
 	}
 
-	rc = pthread_create(&jobinfo_thread, NULL, jobinfo_thread_proc, 0);
-	if (rc != 0)
-		return ENOMEM;
-
 	rc = create_metric_set(value, "jobinfo");
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
-		pthread_cancel(jobinfo_thread);
 		return rc;
 	}
-
 	ldms_set_producer_name_set(set, producer_name);
+
+	rc = pthread_create(&jobinfo_thread, NULL, jobinfo_thread_proc, 0);
+	if (rc != 0) {
+		ldms_set_delete(set);
+		set = NULL;
+		return ENOMEM;
+	}
 	return 0;
 }
 
