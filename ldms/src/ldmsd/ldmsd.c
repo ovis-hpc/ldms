@@ -807,17 +807,17 @@ out:
 	ldmsd_set_tree_unlock();
 }
 
-int ldmsd_set_update_hint_set(ldms_set_t set, int interval_us, int offset_us)
+int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us)
 {
 	char value[128];
 	if (offset_us == LDMSD_UPDT_HINT_OFFSET_NONE)
-		snprintf(value, 127, "%d:", interval_us);
+		snprintf(value, 127, "%ld:", interval_us);
 	else
-		snprintf(value, 127, "%d:%d", interval_us, offset_us);
+		snprintf(value, 127, "%ld:%ld", interval_us, offset_us);
 	return ldms_set_info_set(set, LDMSD_SET_INFO_UPDATE_HINT_KEY, value);
 }
 
-int ldmsd_set_update_hint_get(ldms_set_t set, int *interval_us, int *offset_us)
+int ldmsd_set_update_hint_get(ldms_set_t set, long *interval_us, long *offset_us)
 {
 	char *value, *tmp, *endptr;
 	*interval_us = 0;
@@ -830,6 +830,9 @@ int ldmsd_set_update_hint_get(ldms_set_t set, int *interval_us, int *offset_us)
 	tmp = strtok_r(NULL, ":", &endptr);
 	if (tmp)
 		*offset_us = strtol(tmp, NULL, 0);
+	free(value);
+	ldmsd_log(LDMSD_LDEBUG, "set '%s': getting updtr hint '%s'\n",
+			ldms_set_instance_name_get(set), value);
 	return 0;
 }
 
@@ -925,9 +928,27 @@ out:
 	pthread_mutex_unlock(&task->lock);
 }
 
+int ldmsd_task_resched(ldmsd_task_t task, int flags, long sched_us, long offset_us)
+{
+	int rc = 0;
+	pthread_mutex_lock(&task->lock);
+	if ((task->state != LDMSD_TASK_STATE_RUNNING)
+			&& (task->state != LDMSD_TASK_STATE_STARTED))
+		goto out;
+	ovis_scheduler_event_del(task->os, &task->oev);
+	task->flags = flags;
+	task->sched_us = sched_us;
+	task->offset_us = offset_us;
+	resched_task(task);
+	rc = ovis_scheduler_event_add(task->os, &task->oev);
+out:
+	pthread_mutex_unlock(&task->lock);
+	return rc;
+}
+
 int ldmsd_task_start(ldmsd_task_t task,
 		     ldmsd_task_fn_t task_fn, void *task_arg,
-		     int flags, int sched_us, int offset_us)
+		     int flags, long sched_us, long offset_us)
 {
 	int rc = 0;
 	pthread_mutex_lock(&task->lock);
@@ -1123,8 +1144,8 @@ int __sampler_set_info_add(struct ldmsd_plugin *pi, char *interval, char *offset
 {
 	ldmsd_plugin_set_t set;
 	int rc;
-	int interval_us;
-	int offset_us;
+	long interval_us;
+	long offset_us;
 
 	if (pi->type != LDMSD_PLUGIN_SAMPLER)
 		return EINVAL;

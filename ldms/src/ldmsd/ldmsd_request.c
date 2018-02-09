@@ -2448,6 +2448,7 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	gid_t gid;
 	int perm;
 	char *perm_s = NULL;
+	int interval_us, offset_us, push_flags;
 
 	reqc->errcode = 0;
 
@@ -2463,9 +2464,6 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 
 	attr_name = "interval";
 	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INTERVAL);
-	if (!interval_str)
-		goto einval;
-
 	offset_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_OFFSET);
 	push = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_PUSH);
 
@@ -2483,34 +2481,24 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (perm_s)
 		perm = strtoul(perm_s, NULL, 0);
 
-	ldmsd_updtr_t updtr = ldmsd_updtr_new_with_auth(name, uid, gid, perm);
+	push_flags = 0;
+	if (push) {
+		if (0 == strcasecmp(push, "onchange")) {
+			push_flags = LDMSD_UPDTR_F_PUSH |
+						LDMSD_UPDTR_F_PUSH_CHANGE;
+		} else {
+			push_flags = LDMSD_UPDTR_F_PUSH;
+		}
+	}
+	ldmsd_updtr_t updtr = ldmsd_updtr_new_with_auth(name, interval_str,
+					offset_str, push_flags, uid, gid, perm);
 	if (!updtr) {
 		if (errno == EEXIST)
 			goto eexist;
 		else if (errno == ENOMEM)
 			goto enomem;
-		else
-			goto send_reply;
 	}
 
-	if (push) {
-		if (0 == strcasecmp(push, "onchange")) {
-			updtr->push_flags = LDMSD_UPDTR_F_PUSH |
-						LDMSD_UPDTR_F_PUSH_CHANGE;
-		} else {
-			updtr->push_flags = LDMSD_UPDTR_F_PUSH;
-		}
-	} else {
-		updtr->push_flags = 0;
-	}
-
-	updtr->updt_intrvl_us = strtol(interval_str, NULL, 0);
-	if (offset_str) {
-		updtr->updt_offset_us = strtol(offset_str, NULL, 0);
-		updtr->updt_task_flags = LDMSD_TASK_F_SYNCHRONOUS;
-	} else {
-		updtr->updt_task_flags = 0;
-	}
 	goto send_reply;
 
 ename:
@@ -2992,16 +2980,16 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 	ldmsd_updtr_lock(updtr);
 	cnt = snprintf(reqc->line_buf, reqc->line_len,
 		       "{\"name\":\"%s\","
-		       "\"interval\":\"%d\","
+		       "\"interval\":\"%ld\","
 		       "\"offset\":\"%d\","
 		       "\"sync\":\"%s\","
 		       "\"mode\":\"%s\","
 		       "\"state\":\"%s\","
 		       "\"producers\":[",
 		       updtr->obj.name,
-		       updtr->updt_intrvl_us,
-		       updtr->updt_offset_us,
-		       ((updtr->updt_task_flags==LDMSD_TASK_F_SYNCHRONOUS)?"true":"false"),
+		       updtr->default_task.sched.intrvl_us,
+		       updtr->default_task.sched.offset_us,
+		       ((updtr->default_task.task_flags==LDMSD_TASK_F_SYNCHRONOUS)?"true":"false"),
 		       update_mode(updtr->push_flags),
 		       ldmsd_updtr_state_str(updtr->state));
 	rc = cb(reqc, reqc->line_buf, cnt, arg);

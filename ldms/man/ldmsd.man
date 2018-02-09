@@ -45,7 +45,12 @@ LDMSD_MEM_SZ
 The size of memory reserved for metric sets. Set this variable or specify "-m"
 to ldmsd. See the -m option for further details. If both are specified, the -m
 option takes precedence over this environment variable.
-
+.TP
+LDMSD_UPDTR_OFFSET_INCR
+The increment to the offset hint in microseconds. This is only for updaters that
+determine the update interval and offset automatically. For example, the offset
+hint is 100000 which is 100 millisecond of the second.  The updater offset will
+be 100000 + LDMSD_UPDTR_OFFSET_INCR. The default is 100000 (100 milliseconds).
 .SS CRAY Specific Environment variables for ugni transport
 ZAP_UGNI_PTAG
 For XE/XK, the PTag value as given by apstat -P.

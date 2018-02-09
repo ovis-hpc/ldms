@@ -88,7 +88,7 @@ void ldmsd_version_get(struct ldmsd_version *v);
 
 /** Update hint */
 #define LDMSD_SET_INFO_UPDATE_HINT_KEY "updt_hint_us"
-#define LDMSD_UPDT_HINT_OFFSET_NONE INT_MIN
+#define LDMSD_UPDT_HINT_OFFSET_NONE LONG_MIN
 
 typedef struct ldmsd_plugin_set {
 	ldms_set_t set;
@@ -100,6 +100,10 @@ typedef struct ldmsd_plugin_set_list {
 	struct rbn rbn;
 	LIST_HEAD(, ldmsd_plugin_set) list;
 } *ldmsd_plugin_set_list_t;
+
+/** Set information */
+#define LDMSD_SET_INFO_INTERVAL_KEY "interval_us"
+#define LDMSD_SET_INFO_OFFSET_KEY "offset_us"
 
 /** Request that the task stop */
 #define LDMSD_TASK_F_STOP		0x01
@@ -113,8 +117,8 @@ typedef void (*ldmsd_task_fn_t)(struct ldmsd_task *, void *arg);
 typedef struct ldmsd_task {
 	int thread_id;
 	int flags;
-	int sched_us;
-	int offset_us;
+	long sched_us;
+	long offset_us;
 	pthread_mutex_t lock;
 	pthread_cond_t join_cv;
 	struct timeval timeout;
@@ -168,7 +172,7 @@ typedef struct ldmsd_prdcr {
 	unsigned short port_no;		/* Port number */
 	char *xprt_name;	/* Transport name */
 	ldms_t xprt;
-	int conn_intrvl_us;	/* connect interval */
+	long conn_intrvl_us;	/* connect interval */
 
 	enum ldmsd_prdcr_state {
 		/** Producer is disabled and idle */
@@ -184,7 +188,7 @@ typedef struct ldmsd_prdcr {
 	enum ldmsd_prdcr_type {
 		/** Connection initiated at this side */
 		LDMSD_PRDCR_TYPE_ACTIVE,
-		/** Connection initated by peer */
+		/** Connection initiated by peer */
 		LDMSD_PRDCR_TYPE_PASSIVE,
 		/** Producer is local to this daemon */
 		LDMSD_PRDCR_TYPE_LOCAL
@@ -195,9 +199,15 @@ typedef struct ldmsd_prdcr {
 	/** Maintains a tree of all metric sets available from this
 	 * producer. It is a tree to allow quick lookup by the logic
 	 * that handles dir_add and dir_del directory updates from the
-	 * produer.
+	 * producer.
 	 */
 	struct rbt set_tree;
+	/**
+	 * Maintains a free of all metric sets with update hint
+	 * available from this producer. It is a tree to allow
+	 * quick lookup by the logic that handles update schedule.
+	 */
+	struct rbt hint_set_tree;
 #ifdef LDMSD_UPDATE_TIME
 	double sched_update_time;
 #endif /* LDMSD_UPDATE_TIME */
@@ -213,6 +223,14 @@ typedef struct ldmsd_strgp_ref {
 
 #define LDMSD_PRDCR_SET_F_PUSH_REG	1
 
+typedef struct ldmsd_updt_hint_set_list {
+	struct rbn rbn;
+	LIST_HEAD(, ldmsd_prdcr_set) list;
+} *ldmsd_updt_hint_set_list_t;
+struct ldmsd_updtr_schedule {
+	long intrvl_us;
+	long offset_us;
+};
 typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
 typedef struct ldmsd_prdcr_set {
 	char *inst_name;
@@ -231,6 +249,11 @@ typedef struct ldmsd_prdcr_set {
 	LIST_HEAD(ldmsd_strgp_ref_list, ldmsd_strgp_ref) strgp_list;
 	struct rbn rbn;
 
+	LIST_ENTRY(ldmsd_prdcr_set) updt_hint_entry;
+
+	struct ldmsd_updtr_schedule prev_hint;
+	struct ldmsd_updtr_schedule updt_hint;
+
 	struct timeval updt_start;
 	struct timeval updt_end;
 
@@ -239,8 +262,8 @@ typedef struct ldmsd_prdcr_set {
 	uint8_t updt_sync;
 
 #ifdef LDMSD_UPDATE_TIME
-	double updt_duration;
 	struct ldmsd_updt_time *updt_time;
+	double updt_duration;
 #endif /* LDMSD_UPDATE_TIME */
 
 	int ref_count;
@@ -252,7 +275,7 @@ double ldmsd_timeval_diff(struct timeval *start, struct timeval *end);
 
 typedef struct ldmsd_prdcr_ref {
 	ldmsd_prdcr_t prdcr;
-	LIST_ENTRY(ldmsd_prdcr_ref) entry;
+	struct rbn rbn;
 } *ldmsd_prdcr_ref_t;
 
 /**
@@ -276,14 +299,29 @@ struct ldmsd_updt_time {
 
 #define LDMSD_UPDTR_F_PUSH		1
 #define LDMSD_UPDTR_F_PUSH_CHANGE	2
+#define LDMSD_UPDTR_OFFSET_INCR_DEFAULT	100000
+#define LDMSD_UPDTR_OFFSET_INCR_VAR	"LDMSD_UPDTR_OFFSET_INCR"
+
+struct ldmsd_updtr;
+typedef struct ldmsd_updtr_task {
+	struct ldmsd_updtr *updtr;
+	int is_default;
+	struct ldmsd_task task;
+	int task_flags;
+	struct ldmsd_updtr_schedule hint; /* Hint from producer set */
+	struct ldmsd_updtr_schedule sched; /* actual schedule */
+	int set_count;
+	struct rbn rbn;
+	LIST_ENTRY(ldmsd_updtr_task) entry; /* Entry in the list of to-be-deleted tasks */
+} *ldmsd_updtr_task_t;
+LIST_HEAD(ldmsd_updtr_task_list, ldmsd_updtr_task);
+
 struct ldmsd_name_match;
 typedef struct ldmsd_updtr {
 	struct ldmsd_cfgobj obj;
 
-	int updt_intrvl_us;	/* update interval */
-	int updt_offset_us;	/* update time offset */
-	int updt_task_flags;
 	int push_flags;
+	int is_auto;		/* automatically determine interval and/or offset */
 
 	enum ldmsd_updtr_state {
 		/** Initial updater state */
@@ -292,7 +330,15 @@ typedef struct ldmsd_updtr {
 		LDMSD_UPDTR_STATE_RUNNING,
 	} state;
 
-	struct ldmsd_task task;
+	/* The default schedule specified from configuration */
+	struct ldmsd_updtr_task default_task;
+	/*
+	 * All tasks here don't have the same schedule as the root task.
+	 * The key is interval and offset hint.
+	 */
+	struct rbt task_tree;
+	/* Task to cleanup useless tasks from the task tree */
+	struct ldmsd_updtr_task tree_mgmt_task;
 
 #ifdef LDMSD_UPDATE_TIME
 	struct ldmsd_updt_time *curr_updt_time;
@@ -300,7 +346,10 @@ typedef struct ldmsd_updtr {
 	double sched_duration;
 #endif /* LDMSD_UPDATE_TIME */
 
-	LIST_HEAD(prdcr_list, ldmsd_prdcr_ref) prdcr_list;
+	/*
+	 * For quick search when query for updater that updates a prdcr_set.
+	 */
+	struct rbt prdcr_tree;
 	LIST_HEAD(updtr_match_list, ldmsd_name_match) match_list;
 } *ldmsd_updtr_t;
 
@@ -755,6 +804,9 @@ ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr);
 ldmsd_prdcr_set_t ldmsd_prdcr_set_first(ldmsd_prdcr_t prdcr);
 ldmsd_prdcr_set_t ldmsd_prdcr_set_next(ldmsd_prdcr_set_t prv_set);
 ldmsd_prdcr_set_t ldmsd_prdcr_set_find(ldmsd_prdcr_t prdcr, const char *setname);
+ldmsd_prdcr_set_t ldmsd_prdcr_set_first_by_hint(ldmsd_prdcr_t prdcr,
+					struct ldmsd_updtr_schedule *hint);
+ldmsd_prdcr_set_t ldmsd_prdcr_set_next_by_hint(ldmsd_prdcr_set_t prd_set);
 static inline void ldmsd_prdcr_lock(ldmsd_prdcr_t prdcr) {
 	ldmsd_cfgobj_lock(&prdcr->obj);
 }
@@ -797,9 +849,12 @@ int ldmsd_prdcr_stop_regex(const char *prdcr_regex,
 			char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
 
 /* updtr */
-ldmsd_updtr_t ldmsd_updtr_new(const char *name);
-ldmsd_updtr_t ldmsd_updtr_new_with_auth(const char *name,
-					uid_t uid, gid_t gid, int perm);
+ldmsd_updtr_t
+ldmsd_updtr_new(const char *name, char *interval_str, char *offset_str,
+							int push_flags);
+ldmsd_updtr_t
+ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str,
+				int push_flags, uid_t uid, gid_t gid, int perm);
 int ldmsd_updtr_del(const char *updtr_name, ldmsd_sec_ctxt_t ctxt);
 ldmsd_updtr_t ldmsd_updtr_first();
 ldmsd_updtr_t ldmsd_updtr_next(struct ldmsd_updtr *updtr);
@@ -897,6 +952,10 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
 int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
+ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_find(ldmsd_updtr_t updtr,
+					const char *prdcr_name);
+int ldmsd_updtr_schedule_cmp(void *a, const void *b);
+int ldmsd_updtr_task_tree_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set);
 
 /* Failover routines */
 int ldmsd_failover_config(const char *host, const char *port, const char *xprt,
@@ -907,7 +966,9 @@ int ldmsd_failover_config(const char *host, const char *port, const char *xprt,
 void ldmsd_task_init(ldmsd_task_t task);
 int ldmsd_task_start(ldmsd_task_t task,
 		     ldmsd_task_fn_t task_fn, void *task_arg,
-		     int flags, int sched_us, int offset_us);
+		     int flags, long sched_us, long offset_us);
+int ldmsd_task_resched(ldmsd_task_t task,
+		     int flags, long sched_us, long offset_us);
 void ldmsd_task_stop(ldmsd_task_t task);
 void ldmsd_task_join(ldmsd_task_t task);
 
@@ -919,8 +980,8 @@ ldmsd_plugin_set_list_t ldmsd_plugin_set_list_find(const char *plugin_name);
 ldmsd_plugin_set_t ldmsd_plugin_set_first(const char *plugin_name);
 ldmsd_plugin_set_t ldmsd_plugin_set_next(ldmsd_plugin_set_t set);
 
-int ldmsd_set_update_hint_set(ldms_set_t set, int interval_us, int offset_us);
-int ldmsd_set_update_hint_get(ldms_set_t set, int *interva_us, int *offset_us);
+int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us);
+int ldmsd_set_update_hint_get(ldms_set_t set, long *interva_us, long *offset_us);
 
 /** Regular expressions */
 int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t errsz);
