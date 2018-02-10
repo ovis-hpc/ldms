@@ -17,7 +17,7 @@ if ENABLE_CRAY_SYSTEM_SAMPLER
 libcray_dvs_sampler_la_SOURCES = dvs_sampler.c $(BASE_SRC)
 libcray_dvs_sampler_la_CFLAGS = $(AM_CFLAGS) -I$(BASE_INC)
 libcray_dvs_sampler_la_LDFLAGS = $(AM_LDFLAGS)
-libcray_dvs_sampler_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libcray_dvs_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libcray_dvs_sampler.la
 
 # then build cray_system_sampler
