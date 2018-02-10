@@ -235,7 +235,7 @@ endif
 
 if ENABLE_SYSCLASSIB
 libsysclassib_la_SOURCES = sysclassib.c
-libsysclassib_la_LIBADD = $(COMMON_LIBADD) -libmad -libumad $(JOBID_LIBFLAGS)
+libsysclassib_la_LIBADD = $(COMMON_LIBADD) -libmad -libumad
 pkglib_LTLIBRARIES += libsysclassib.la
 endif
 

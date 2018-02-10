@@ -124,7 +124,7 @@ typedef enum {
 
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldms_jobid.h"
+#include "sampler_base.h"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -245,12 +245,8 @@ uint8_t rcvbuf[BUFSIZ] = {0};
 
 #define SAMP "sysclassib"
 static ldms_set_t set = NULL;
-static ldms_schema_t schema = NULL;
-static char *default_schema_name = SAMP;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
-static uint64_t compid;
-LJI_GLOBALS;
+static int base_data_t base;
 
 struct timeval tv[2];
 struct timeval *tv_now = &tv[0];
@@ -263,45 +259,35 @@ static sysclassib_metrics_type_t sysclassib_metrics_type;
 /**
  * \param setname The set name (e.g. nid00001/sysclassib)
  */
-static int create_metric_set(const char *instance_name, char *schema_name)
+static int create_metric_set(base_data_t base)
 {
 	int rc, i;
+	ldms_schema_t schema;
 	char metric_name[128];
 	struct scib_port *port;
 
-	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Double create set: %s\n",
-				instance_name);
-		return EEXIST;
-	}
 
-	schema = ldms_schema_new(schema_name);
+	schema = base_schema_new(base);
 	if (!schema)
 		return ENOMEM;
 
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		ldms_schema_delete(schema);
-		schema = NULL;
-		return rc;
+	if (!schema) {
+		msglog(LDMSD_LERROR,
+		       "%s: The schema '%s' could not be created, errno=%d.\n",
+		       __FILE__, base->schema_name, errno);
+		rc = EINVAL;
+		goto err;
 	}
 
-	rc = LJI_ADD_JOBID(schema);
-	if (rc < 0) {
-		ldms_schema_delete(schema);
-		schema = NULL;
-		return rc;
-	}
 
 	LIST_FOREACH(port, &scib_port_list, entry) {
 		if (port->badport) {
 			msglog(LDMSD_LINFO,
-				"sysclassib: Not monitoring port: %s.%d\n",
+				SAMP ": Not monitoring port: %s.%d\n",
 				port->ca, port->portno);
 		} else {
 			msglog(LDMSD_LINFO,
-				"sysclassib: Monitoring port: %s.%d\n",
+				SAMP ": Monitoring port: %s.%d\n",
 				port->ca, port->portno);
 		}
 		for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
@@ -323,22 +309,19 @@ static int create_metric_set(const char *instance_name, char *schema_name)
 			}
 		}
 	}
-	/* create set and metrics */
-	set = ldms_set_new(instance_name, schema);
+
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP ": ldms_set_new failed, "
-				"errno: %d, %s\n", rc, strerror(errno));
-		ldms_schema_delete(schema);
-		schema = NULL;
-		return errno;
+		goto err;
 	}
-	union ldms_value v;
-	v.v_u64 = compid;
-	ldms_metric_set(set, 0, &v);
 
-	LJI_SAMPLE(set,1);
 	return 0;
+
+err:
+
+	return rc;
+
 }
 
 /**
@@ -552,24 +535,16 @@ int open_ports(struct scib_port_list *list)
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return
-"config name=sysclassib producer=<prod_name> instance=<inst_name> ports=<ports> [component_id=<compid> schema=<sname> with_jobid=<bool>] [metrics_type=<mtype>\n"
-"    <prod_name>     The producer name\n"
-"    <inst_name>     The instance name\n"
-"    <mtype>         0 (raw counters) or 1 (raw and also rates, default)\n"
-"    <ports>         A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
-"                    a * for all IB ports. If not given, '*' is assumed.\n"
-"    <compid>     Optional unique number identifier. Defaults to zero.\n"
-LJI_DESC
-"    <sname>      Optional schema name. Defaults to '" SAMP "'\n"
-;
+		"config name=" SAMP " ports=<ports> [metrics_type=<mtype>] " \
+		BASE_CONFIG_USAGE \
+		"    <mtype>         0 (raw counters) or 1 (raw and also rates, default)\n"
+		"    <ports>         A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
+		"                    a * for all IB ports. If not given, '*' is assumed.\n";
 }
 
 /**
  * \brief Configuration
  *
- * config name=sysclassib component_id=NUM set=NAME ports=PORTS
- * NUM is a regular decimal
- * NAME is a set name
  * PORTS is a comma-separate list of the form CARD1.PORT1,CARD2.PORT2,...
  * 	or just a single '*' (w/o quote) for all ports
  */
@@ -577,37 +552,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 {
 
 	int rc = 0;
-	char *setstr;
-	char *sname;
 	char *ports;
 	char *value;
 
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, SAMP ": missing 'producer'\n");
-		return ENOENT;
-	}
 
-	value = av_value(avl, "component_id");
-	if (value)
-		compid = strtoull(value, NULL, 0);
-	else
-		compid = 0;
-
-	LJI_CONFIG(value, avl);
-
-	setstr = av_value(avl, "instance");
-	if (!setstr) {
-		msglog(LDMSD_LERROR, SAMP ": missing 'instance'\n");
-		return ENOENT;
-	}
-
-	sname = av_value(avl, "schema");
-	if (!sname) {
-		sname = default_schema_name;
-	}
-	if (strlen(sname) == 0){
-		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
+	if (set) {
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
@@ -637,15 +587,23 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
-		return EINVAL;
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base){
+		rc = EINVAL;
+		goto err;
 	}
-	rc = create_metric_set(setstr, sname);
-	if (rc)
-		return rc;
-	ldms_set_producer_name_set(set, producer_name);
+
+	rc = create_metric_set(base);
+	if (rc) {
+		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		goto err;
+	}
+
 	return 0;
+
+err:
+	base_del(base);
+	return rc;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -758,13 +716,12 @@ static int sample(struct ldmsd_sampler *self)
 	timersub(tv_now, tv_prev, &tv_diff);
 	dt = tv_diff.tv_sec + tv_diff.tv_usec / 1e06f;
 
-	ldms_transaction_begin(set);
-	LJI_SAMPLE(set,1);
+	base_sample_begin(base);
 	LIST_FOREACH(port, &scib_port_list, entry) {
 		/* query errors are handled in query_port() function */
 		query_port(port, dt);
 	}
-	ldms_transaction_end(set);
+	base_sample_end(base);
 
 	tmp = tv_now;
 	tv_now = tv_prev;
@@ -781,9 +738,8 @@ static void term(struct ldmsd_plugin *self){
 		free(port->ca);
 		free(port);
 	}
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
+	if (base)
+		base_del(base);
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
