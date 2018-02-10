@@ -76,7 +76,6 @@
 #include <math.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldms_jobid.h"
 #include "sampler_base.h"
 
 #ifndef ARRAY_SIZE
