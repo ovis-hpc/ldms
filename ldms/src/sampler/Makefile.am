@@ -203,7 +203,7 @@ endif
 
 if ENABLE_PROCINTERRUPTS
 libprocinterrupts_la_SOURCES = procinterrupts.c
-libprocinterrupts_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libprocinterrupts_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocinterrupts.la
 endif
 
