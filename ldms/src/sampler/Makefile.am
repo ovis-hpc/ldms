@@ -221,7 +221,7 @@ endif
 
 if ENABLE_PROCSENSORS
 libprocsensors_la_SOURCES = procsensors.c
-libprocsensors_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libprocsensors_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocsensors.la
 endif
 
