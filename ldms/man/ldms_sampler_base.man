@@ -97,4 +97,4 @@ start name=meminfo interval=1000000
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), Plugin_aries_linkstatus(7), Plugin_aries_mmr(7), Plugin_cray_sampler_variants(7), Plugin_cray_dvs_sampler(7), Plugin_kgnilnd(7), Plugin_meminfo(7), Plugin_msr_interlagos(7), Plugin_vmstat(7)
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), Plugin_aries_linkstatus(7), Plugin_aries_mmr(7), Plugin_array_example(7), Plugin_cray_sampler_variants(7), Plugin_cray_dvs_sampler(7), Plugin_kgnilnd(7), Plugin_meminfo(7), Plugin_msr_interlagos(7), Plugin_vmstat(7)
