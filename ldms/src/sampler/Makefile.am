@@ -209,7 +209,7 @@ endif
 
 if ENABLE_PROCNETDEV
 libprocnetdev_la_SOURCES = procnetdev.c
-libprocnetdev_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libprocnetdev_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocnetdev.la
 endif
 
@@ -271,4 +271,3 @@ libtest_sampler_la_SOURCES = test_sampler.c
 libtest_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libtest_sampler.la
 endif
-
