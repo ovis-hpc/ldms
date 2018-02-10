@@ -155,18 +155,6 @@ static const char *usage(struct ldmsd_plugin *self)
                 "    <recv_file_name>  Optional location of the gpcdr file to read for recv link status\n";
 }
 
-/**
- * \brief Configuration
- *
- * config name=aries_linkstatus producer=<name> instance=<instance_name> [component_id=<compid> file_send=<send_file_name> file_recv=<recv_file_name> schema=<sname>] [with_jobid=<jid>]
- *     producer_name    The producer id value.
- *     instance_name    The set name.
- *     component_id     The component id. Defaults to zero
- *     send_file_name   Optional send_file name. Defaults to well known location.
- *     recv_file_name   Optional recv_file name. Defaults to well known location.
- *     sname            Optional schema name. Defaults to aries_linkstatus
- *     jid              lookup jobid or report 0.
- */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
