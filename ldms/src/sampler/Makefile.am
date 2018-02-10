@@ -215,7 +215,7 @@ endif
 
 if ENABLE_PROCNFS
 libprocnfs_la_SOURCES = procnfs.c
-libprocnfs_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libprocnfs_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocnfs.la
 endif
 
