@@ -143,7 +143,7 @@ endif
 
 if ENABLE_MEMINFO
 libmeminfo_la_SOURCES = meminfo.c $(BASE_SRC)
-libmeminfo_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libmeminfo_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libmeminfo.la
 endif
 

@@ -15,7 +15,7 @@ With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms 
 or a configuration file. The meminfo plugin provides memory info from /proc/meminfo.
 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
-The memifo plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
+The meminfo plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
 
 
 
