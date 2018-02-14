@@ -309,7 +309,6 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 {
 	int rc = 0;
 	char *op_s;
-	struct timeval end;
 	ldmsd_updtr_t updtr = task->updtr;
 	/* The reference will be put back in update_cb */
 	ldmsd_log(LDMSD_LDEBUG, "Schedule an update for set %s\n",
@@ -320,6 +319,7 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 	__updt_time_get(prd_set->updt_time);
 	if (prd_set->updt_time->update_start.tv_sec == 0)
 		prd_set->updt_time->update_start = prd_set->updt_start;
+#endif
 	if (!updtr->push_flags) {
 		prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
 		ldmsd_prdcr_set_ref_get(prd_set);
@@ -340,39 +340,14 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 		op_s = "Registering push for";
 	}
 	if (rc) {
+#ifdef LDMSD_UPDATE_TIME
 		__updt_time_put(prd_set->updt_time);
+#endif
 		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: %s Set %s\n",
 						rc, op_s, prd_set->inst_name);
 		if (!updtr->push_flags)
 			ldmsd_prdcr_set_ref_put(prd_set);
 	}
-#else /* LDMSD_UPDATE_TIME */
-	if (!updtr->push_flags) {
-		prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
-		ldmsd_prdcr_set_ref_get(prd_set);
-		rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
-		op_s = "Updating";
-	} else if (0 == (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG)) {
-		prd_set->push_flags |= LDMSD_PRDCR_SET_F_PUSH_REG;
-		ldmsd_prdcr_set_ref_get(prd_set);
-		if (updtr->push_flags & LDMSD_UPDTR_F_PUSH_CHANGE)
-			push_flags = LDMS_XPRT_PUSH_F_CHANGE;
-		rc = ldms_xprt_register_push(prd_set->set, push_flags,
-					     updtr_update_cb, prd_set);
-		if (rc) {
-			/* This message does not repeat */
-			ldmsd_log(LDMSD_LERROR, "Register push error %d Set %s\n",
-						rc, prd_set->inst_name);
-		}
-		op_s = "Registering push for";
-	}
-	if (rc) {
-		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: %s Set %s\n",
-						rc, op_s, prd_set->inst_name);
-		if (!updtr->push_flags)
-			ldmsd_prdcr_set_ref_put(prd_set);
-	}
-#endif /* LDMSD_UPDATE_TIME */
 	return rc;
 }
 
