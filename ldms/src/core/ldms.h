@@ -653,6 +653,12 @@ extern int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flag
 #define LDMS_DEFAULT_PORT	LDMSDPORT
 #define LDMS_LOOKUP_PATH_MAX	511
 
+enum ldms_lookup_flags {
+	LDMS_LOOKUP_BY_INSTANCE = 0,
+	LDMS_LOOKUP_BY_SCHEMA = 1,
+	LDMS_LOOKUP_RE = 2,
+	LDMS_LOOKUP_SET_INFO = 4,
+};
 
 /**
  * \brief Query the contents of a metric set.
@@ -692,12 +698,6 @@ extern int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flag
  *		 to the \c cb function.
  * \returns	 0 if the query was submitted successfully.
  */
-enum ldms_lookup_flags {
-	LDMS_LOOKUP_BY_INSTANCE = 0,
-	LDMS_LOOKUP_BY_SCHEMA = 1,
-	LDMS_LOOKUP_RE = 2,
-	LDMS_LOOKUP_SET_INFO = 4,
-};
 extern int ldms_xprt_lookup(ldms_t t, const char *name, enum ldms_lookup_flags flags,
 		       ldms_lookup_cb_t cb, void *cb_arg);
 
