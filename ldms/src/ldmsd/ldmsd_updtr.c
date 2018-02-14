@@ -239,6 +239,8 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	uint64_t gn;
 	ldmsd_prdcr_set_t prd_set = arg;
 	int errcode;
+
+	pthread_mutex_lock(&prd_set->lock);
 	gettimeofday(&prd_set->updt_end, NULL);
 #ifdef LDMSD_UPDATE_TIME
 	prd_set->updt_duration = ldmsd_timeval_diff(&prd_set->updt_start,
@@ -266,7 +268,6 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	}
 
 	gn = ldms_set_data_gn_get(set);
-	pthread_mutex_lock(&prd_set->lock);
 	if (prd_set->last_gn == gn) {
 		ldmsd_log(LDMSD_LINFO, "Set %s oversampled %"PRIu64" == %"PRIu64".\n",
 			  prd_set->inst_name, prd_set->last_gn, gn);
@@ -285,8 +286,8 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 set_ready:
 	if ((status & LDMS_UPD_F_MORE) == 0)
 		prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
-	pthread_mutex_unlock(&prd_set->lock);
 out:
+	pthread_mutex_unlock(&prd_set->lock);
 	if (0 == errcode) {
 		ldmsd_log(LDMSD_LINFO, "Pushing set %p %s\n", prd_set->set,
 						prd_set->inst_name);
