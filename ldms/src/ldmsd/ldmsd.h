@@ -1008,4 +1008,89 @@ extern const char *ldmsd_myhostname_get();
 
 /* Get the name of this ldmsd */
 const char *ldmsd_myname_get();
+
+/* Listen for a connection either on Unix domain socket or Socket. A dedicated thread is assigned to a new connection. */
+extern int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword);
+
+/**
+ * \brief Create a new group of sets.
+ *
+ * To destroy the group, simply call \c ldms_set_delete().
+ *
+ * \param grp_name The name of the group.
+ *
+ * \retval grp  If success, the LDMS set handle that represents the group.
+ * \retval NULL If failed.
+ */
+ldms_set_t ldmsd_group_new(const char *grp_name);
+
+/**
+ * \brief Add a set into the group.
+ *
+ * \param grp      The group handle (from \c ldmsd_group_new()).
+ * \param set_name The name of the set to be added.
+ */
+int ldmsd_group_set_add(ldms_set_t grp, const char *set_name);
+
+/**
+ * \brief Remove a set from the group.
+ *
+ * \param grp      The group handle (from \c ldmsd_group_new()).
+ * \param set_name The name of the set to be removed.
+ */
+int ldmsd_group_set_rm(ldms_set_t grp, const char *set_name);
+
+enum ldmsd_group_check_flag {
+	LDMSD_GROUP_IS_GROUP = 0x00000001,
+	LDMSD_GROUP_MODIFIED = 0x00000002,
+	LDMSD_GROUP_ERROR    = 0xF0000000,
+};
+
+/**
+ * \brief Check ldmsd group status.
+ *
+ * \retval flags LDMSD_GROUP check flags. The caller should check the returned
+ *               flags against ::ldmsd_group_check_flag enumeration.
+ */
+int ldmsd_group_check(ldms_set_t set);
+
+/**
+ * \brief Group member iteration callback signature.
+ *
+ * The callback function will be called for each member of the group.
+ *
+ *
+ * \param grp  The group handle.
+ * \param name The member name.
+ * \param arg  The application-supplied generic argument.
+ *
+ * \retval 0     If there is no error.
+ * \retval errno If an error occurred. In this case, the iteration will be
+ *               stopped.
+ */
+typedef int (*ldmsd_group_iter_cb_t)(ldms_set_t grp, const char *name, void *arg);
+
+/**
+ * \brief Iterate over the members of the group.
+ *
+ * Iterate over the members of the group, calling the \c cb function for each
+ * of them.
+ *
+ * \param grp The group handle.
+ * \param cb  The callback function.
+ * \param arg The argument to be supplied to the callback function.
+ *
+ * \retval 0     If there is no error.
+ * \retval errno If failed.
+ */
+int ldmsd_group_iter(ldms_set_t grp, ldmsd_group_iter_cb_t cb, void *arg);
+
+/**
+ * \brief Get the member name from a set info key.
+ *
+ * \retval NULL If \c info_key is NOT for set member entry.
+ * \retval name If \c info_key is for set member entry.
+ */
+const char *ldmsd_group_member_name(const char *info_key);
+
 #endif

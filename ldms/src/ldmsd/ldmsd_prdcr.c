@@ -410,7 +410,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
 	ldmsd_prdcr_set_ref_get(set); /* It will be put back in lookup_cb */
 	/* Refresh the set with a lookup */
 	rc = ldms_xprt_lookup(prdcr->xprt, inst_name,
-			      LDMS_LOOKUP_BY_INSTANCE,
+			      LDMS_LOOKUP_BY_INSTANCE | LDMS_LOOKUP_SET_INFO,
 			      prdcr_lookup_cb, set);
 	if (rc) {
 		ldmsd_log(LDMSD_LINFO, "Synchronous error %d from ldms_lookup\n", rc);

@@ -234,9 +234,23 @@ static void updtr_task_set_reset(ldmsd_updtr_task_t task)
 	task->set_count = 0;
 }
 
+static void
+__grp_info_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
+			    int more, ldms_set_t set, void *arg)
+{
+	ldmsd_prdcr_set_t prd_set = arg;
+	pthread_mutex_lock(&prd_set->lock);
+	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+	ldmsd_prdcr_set_ref_put(prd_set); /* taken before re-lookup */
+	pthread_mutex_unlock(&prd_set->lock);
+}
+
 static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 {
+	int flags;
+	int rc;
 	uint64_t gn;
+	const char *name;
 	ldmsd_prdcr_set_t prd_set = arg;
 	int errcode;
 	gettimeofday(&prd_set->updt_end, NULL);
@@ -263,6 +277,22 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	if (!ldms_set_is_consistent(set)) {
 		ldmsd_log(LDMSD_LINFO, "Set %s is inconsistent.\n", prd_set->inst_name);
 		goto set_ready;
+	}
+
+	flags = ldmsd_group_check(prd_set->set);
+	if (flags & (LDMSD_GROUP_IS_GROUP|LDMSD_GROUP_MODIFIED)) {
+		/* Group modified, need info update --> re-lookup the info */
+		ldmsd_prdcr_set_ref_get(prd_set);
+		name = ldms_set_instance_name_get(prd_set->set);
+		rc = ldms_xprt_lookup(t, name, LDMS_LOOKUP_SET_INFO,
+				      __grp_info_lookup_cb, prd_set);
+		if (rc) {
+			ldmsd_prdcr_set_ref_put(prd_set);
+			goto set_ready;
+		}
+		/* __grp_info_lookup_cb() will change the state */
+		pthread_mutex_unlock(&prd_set->lock);
+		goto out;
 	}
 
 	gn = ldms_set_data_gn_get(set);
@@ -305,11 +335,36 @@ out:
 	return;
 }
 
+struct ldmsd_group_traverse_ctxt {
+	ldmsd_prdcr_t prdcr;
+	ldmsd_updtr_t updtr;
+	ldmsd_updtr_task_t task;
+};
+
+static int schedule_set_updates(ldmsd_prdcr_set_t prd_set,
+				ldmsd_updtr_task_t updtr);
+
+static int
+__grp_iter_cb(ldms_set_t grp, const char *name, void *arg)
+{
+	int rc;
+	ldmsd_prdcr_set_t prd_set;
+	struct ldmsd_group_traverse_ctxt *ctxt = arg;
+
+	prd_set = ldmsd_prdcr_set_find(ctxt->prdcr, name);
+	if (!prd_set)
+		return 0; /* It is OK. Try again next iteration */
+	rc = schedule_set_updates(prd_set, ctxt->task);
+	return rc;
+}
+
 static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t task)
 {
 	int rc = 0;
+	int flags;
 	char *op_s;
 	ldmsd_updtr_t updtr = task->updtr;
+	struct ldmsd_group_traverse_ctxt ctxt;
 	/* The reference will be put back in update_cb */
 	ldmsd_log(LDMSD_LDEBUG, "Schedule an update for set %s\n",
 					prd_set->inst_name);
@@ -323,6 +378,17 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 	if (!updtr->push_flags) {
 		prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
 		ldmsd_prdcr_set_ref_get(prd_set);
+		flags = ldmsd_group_check(prd_set->set);
+		if (flags & LDMSD_GROUP_IS_GROUP) {
+			/* This is a group */
+			ctxt.prdcr = prd_set->prdcr;
+			ctxt.updtr = updtr;
+			ctxt.task = task;
+			rc = ldmsd_group_iter(prd_set->set,
+					      __grp_iter_cb, &ctxt);
+			if (rc)
+				goto out;
+		}
 		rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
 		op_s = "Updating";
 	} else if (0 == (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG)) {
@@ -339,6 +405,7 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 		}
 		op_s = "Registering push for";
 	}
+out:
 	if (rc) {
 #ifdef LDMSD_UPDATE_TIME
 		__updt_time_put(prd_set->updt_time);
