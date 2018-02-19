@@ -478,6 +478,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms-py-rename.sh
 		 scripts/ldms-meminfo.sh
 		 scripts/ldms_local_opa2test.sh
+		 scripts/ldms-l2_test.sh
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
