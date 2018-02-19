@@ -205,7 +205,7 @@ static int create_metric_set(base_data_t base)
 	}
 
 	/* Location of first metric */
-	metric_offset = ldms_schema_metric_count_get(schema);
+	metric_offset = ldms_schema_metric_count_get(smarts->schema);
 
 
 	for (i = 0; i < num_disks; i++) {
@@ -291,6 +291,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
+	int i;
+	int rc = 0;
 	num_disks = 0;
 	value = av_value(avl, "disks");
 	if (value) {
@@ -303,7 +305,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		disknames = malloc(num_disks * sizeof(char *));
 		free(s);
 		tmp = strtok(value, ",");
-		int i = 0;
+		i = 0;
 		while (tmp) {
 			disknames[i] = strdup(tmp);
 			tmp = strtok(NULL, ",");
@@ -320,7 +322,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto err;
 	}
 
-	int rc = create_metric_set(base);
+	rc = create_metric_set(base);
 	if (rc){
 		msglog(LDMSD_LERROR, SAMP ":failed to create a metric set.\n");
 		goto err;
