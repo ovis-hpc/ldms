@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c) 2016 Open Grid Computing, Inc. All rights reserved.
  * Copyright (c) 2016 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
@@ -53,7 +53,7 @@
  * \brief /proc/?/lnet/stats data provider
  *
  * as of Lustre 2.5-2.8:
- * __proc_lnet_stats in 
+ * __proc_lnet_stats in
  * lustre-?/lnet/lnet/router_proc.c
  * generates the proc file as:
  *         len = snprintf(tmpstr, tmpsiz,
@@ -80,7 +80,7 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldms_jobid.h"
+#include "sampler_base.h"
 #include <assert.h>
 #define PROC_FILE_DEFAULT "/proc/sys/lnet/stats"
 
@@ -88,26 +88,22 @@ static char *procfile = NULL;
 static ldms_set_t set = NULL;
 static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
-static ldms_schema_t schema;
 #define SAMP "lnet_stats"
-static char *default_schema_name = SAMP;
-static uint64_t compid;
 
-static int metric_offset = 1;
-LJI_GLOBALS;
+static int metric_offset;
+static base_data_t base;
 
 static const char * stat_name[] = {
-	"msgs_alloc", 
+	"msgs_alloc",
 	"msgs_max",
 	"errors",
-	"send_count", 
+	"send_count",
 	"recv_count",
-	"route_count", 
+	"route_count",
 	"drop_count",
-	"send_length", 
+	"send_length",
 	"recv_length",
-	"route_length", 
+	"route_length",
 	"drop_length",
 };
 
@@ -134,7 +130,7 @@ static int parse_stats(FILE *fp)
 	}
 
 	assert(NAME_CNT == 11); /* fix scanf call if this fails */
-	int n = sscanf(statsbuf, 
+	int n = sscanf(statsbuf,
 		"%" SCNu64 " "
 		"%" SCNu64 " "
 		"%" SCNu64 " "
@@ -170,9 +166,10 @@ static int parse_stats(FILE *fp)
 
 }
 
-static int create_metric_set(const char *instance_name, char* schema_name)
+static int create_metric_set(base_data_t base)
 {
 	int rc, i;
+	ldms_schema_t schema;
 	union ldms_value v;
 
 	mf = fopen(procfile, "r");
@@ -190,23 +187,18 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		goto err;
 	}
 
-	schema = ldms_schema_new(schema_name);
+
+	schema = base_schema_new(base);
 	if (!schema) {
-		rc = ENOMEM;
+		msglog(LDMSD_LERROR,
+		       "%s: The schema '%s' could not be created, errno=%d.\n",
+		       __FILE__, base->schema_name, errno);
+		rc = errno;
 		goto err;
 	}
 
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	metric_offset++;
-	rc = LJI_ADD_JOBID(schema);
-	if (rc < 0) {
-		goto err;
-	}
+	/* Location of the first metric */
+	metric_offset = ldms_schema_metric_count_get(schema);
 
 	/*
 	 * Process the file to define all the metrics.
@@ -220,23 +212,16 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		}
 	}
 
-	set = ldms_set_new(instance_name, schema);
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
 		goto err;
 	}
 
-	//add specialized metrics
-	v.v_u64 = compid;
-	ldms_metric_set(set, 0, &v);
-
-	LJI_SAMPLE(set,1);
 	return 0;
 
  err:
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
+
 	if (mf)
 		fclose(mf);
 	mf = NULL;
@@ -267,51 +252,24 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP " producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname> with_jobid=<jid> file=<proc_name>] \n"
-		"    <prod_name>  The producer name\n"
-		"    <inst_name>  The instance name\n"
-		"    <compid>     Optional unique number identifier. Defaults to zero.\n"
-		LJI_DESC
-		"    <sname>      Optional schema name. Defaults to '" SAMP "'\n"
+	return  "config name=" SAMP " [file=<proc_name>] " BASE_CONFIG_USAGE
 		"    <proc_name>  The lnet proc file name if not "  PROC_FILE_DEFAULT "\n";
 }
 
-/**
- * \brief Configuration
- *
- * config name=lnet_stats producer=<name> instance=<instance_name> [component_id=<compid> schema=<sname>] [with_jobid=<jid>]
- *     producer_name    The producer id value.
- *     instance_name    The set name.
- *     component_id     The component id. Defaults to zero
- *     sname            Optional schema name. Defaults to lnet_stats
- *     proc_name        The lnet proc file name if not PROC_FILE_DEFAULT
- *     jid              lookup jobid or report 0.
- */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value;
-	char *sname;
 	void * arg = NULL;
 	int rc;
+
+	if (set) {
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		return EINVAL;
+	}
 
 	rc = config_check(kwl, avl, arg);
 	if (rc != 0) {
 		return rc;
 	}
-
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, SAMP ": missing producer.\n");
-		return ENOENT;
-	}
-
-	value = av_value(avl, "component_id");
-	if (value)
-		compid = (uint64_t)(atoi(value));
-	else
-		compid = 0;
-
-	LJI_CONFIG(value,avl);
 
 	char *pvalue = av_value(avl, "file");
 	if (pvalue) {
@@ -324,32 +282,21 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return ENOMEM;
 	}
 
-	value = av_value(avl, "instance");
-	if (!value) {
-		msglog(LDMSD_LERROR, SAMP ": missing instance.\n");
-		return ENOENT;
-	}
-
-	sname = av_value(avl, "schema");
-	if (!sname)
-		sname = default_schema_name;
-	if (strlen(sname) == 0) {
-		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base)
 		return EINVAL;
-	}
 
-	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
-		return EINVAL;
-	}
-
-	rc = create_metric_set(value, sname);
+	rc  = create_metric_set(base);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
-		return rc;
+		goto err;
 	}
-	ldms_set_producer_name_set(set, producer_name);
+
 	return 0;
+
+err:
+	base_del(base);
+	return rc;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -367,15 +314,14 @@ static int sample(struct ldmsd_sampler *self)
 		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_transaction_begin(set);
 
-	LJI_SAMPLE(set, 1);
+	base_sample_begin(base);
 
 	metric_no = metric_offset;
 	int parse_err = parse_stats(mf);
 	if (parse_err) {
 		if (parse_err_cnt < 2) {
-			msglog(LDMSD_LERROR, "Could not parse the " SAMP
+			msglog(LDMSD_LERROR, SAMP "Could not parse the " SAMP
 				 " file '%s'\n", procfile);
 		}
 		parse_err_cnt++;
@@ -388,7 +334,7 @@ static int sample(struct ldmsd_sampler *self)
 		metric_no++;
 	}
  out:
-	ldms_transaction_end(set);
+	base_sample_end(base);
 	return rc;
 }
 
@@ -397,9 +343,9 @@ static void term(struct ldmsd_plugin *self)
 	if (mf)
 		fclose(mf);
 	mf = NULL;
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
+	if (base)
+		base_del(base);
+	base = NULL;
 	if (procfile)
 		free(procfile);
 	if (set)

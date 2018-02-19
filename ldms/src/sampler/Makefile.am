@@ -137,7 +137,7 @@ endif
 
 if ENABLE_LNET_STATS
 liblnet_stats_la_SOURCES = lnet_stats.c $(BASE_SRC)
-liblnet_stats_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+liblnet_stats_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += liblnet_stats.la
 endif
 
