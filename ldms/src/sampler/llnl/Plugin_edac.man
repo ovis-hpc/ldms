@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_edac
 .\" Contact ovis-help@sandia.gov to correct errors or typos.
-.TH man 7 "19 Jan 2017" "v3" "LDMS Plugin edac man page"
+.TH man 7 "18 Feb 2018" "v4" "LDMS Plugin edac man page"
 
 .SH NAME
 Plugin_edac - man page for the LDMS edac plugin
@@ -15,10 +15,11 @@ The edac plugin provides memory error information from /sys/devices/system/edac
 for correctable and uncorrectable errors.
 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
+The edac plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
 
 .TP
 .BR config
-name=<plugin_name> component_id=<comp_id> max_mc=<max_mc> max_csrow=<max_csrow> set=<set_name> 
+name=<plugin_name>  max_mc=<max_mc> max_csrow=<max_csrow> [schema=<schema>]
 .br
  configuration line
 .RS
@@ -27,25 +28,10 @@ name=<plugin_name>
 .br
 This MUST be edac.
 .TP
-producer=<pname>
-.br
-The producer string value.
-.TP
-instance=<set_name>
-.br
-The name of the metric set.
-.TP
 schema=<schema>
 .br
 Optional schema name. It is intended that the same sampler on different nodes with different metrics have a
 different schema. If not specified, will default to edac.
-.TP
-component_id=<comp_id>
-.br
-The component id numerical value.
-with_jobid=<bool>
-.br
-Option to collect job id with set or 0 if not.
 .TP
 max_mc=<max_mc>
 .br
@@ -59,12 +45,12 @@ The number of csrows in a single mc. For example, the value should be 4 for when
 .SH DATA
 This reports counts for both correctable and uncorrectable errors per mc and per csrow. It also reports the seconds since reset per mc.
 
-.SH EXAMPLES 
+.SH EXAMPLES
 .PP
 Within ldmsd_controller or a configuration file:
 .nf
 load name=edac
-config name=edac producer=vm1_1 component_id=1 instance=vm1_1/edac max_mc=2 max_csrow=4 
+config name=edac producer=vm1_1 component_id=1 instance=vm1_1/edac max_mc=2 max_csrow=4
 start name=edac interval=1000000
 .fi
 
@@ -78,9 +64,10 @@ see www.kernel.org/doc/Documentation/edac.txt and www.kernel.org/doc/Documentati
 .SH AUTHORS
 Kathleen Shoga <shoga1@llnl.gov> (Lawrence Livermore National Laboratory).
 Ported to LDMS v3 by Benjamin Allan <baallan@sandia.gov>.
+Ported to LDMS v4 by Ann Gentile  <gentile@sandia.gov>.
 
 .SH ACKNOWLEDGMENTS
 This work was created under the auspices of the U.S. Department of Energy by Lawrence Livermore National Laboratory under Contract DE-AC52-07NA27344. Release Number: LLNL-SM-687054.
 
 .SH SEE ALSO
-edac(3), edac-util(8), edac-ctl(8), ldms(7)
+edac(3), edac-util(8), edac-ctl(8), ldms(7), ldms_sampler_base(7)
