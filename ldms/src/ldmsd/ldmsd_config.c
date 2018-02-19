@@ -669,6 +669,8 @@ ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
 }
 
 const char * blacklist[] = {
+	"libtsampler.so",
+	"libtimer_base.so",
 	"liblustre_sampler.so",
 	"libzap.so",
 	"libzap_rdma.so",
