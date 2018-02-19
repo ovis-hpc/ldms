@@ -246,7 +246,7 @@ uint8_t rcvbuf[BUFSIZ] = {0};
 #define SAMP "sysclassib"
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
-static int base_data_t base;
+static base_data_t base;
 
 struct timeval tv[2];
 struct timeval *tv_now = &tv[0];
