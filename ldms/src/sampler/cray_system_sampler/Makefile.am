@@ -5,16 +5,16 @@ CORE = ../../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I../.. @OVIS_LIB_INCDIR_FLAG@ \
    -I$(srcdir)/../../ldmsd
 AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
-BASE_SRC = ../sampler_base.h ../sampler_base.c
 BASE_INC = $(srcdir)/../
+BASE_LIBADD = ../libsampler_base.la
 
-COMMON_LIBADD = $(CORE)/libldms.la \
+COMMON_LIBADD = $(BASE_LIBADD) $(CORE)/libldms.la \
 		@LDFLAGS_GETTIME@ -lovis_util -lcoll
 
 if ENABLE_CRAY_SYSTEM_SAMPLER
 
 # first build dvs sampler
-libcray_dvs_sampler_la_SOURCES = dvs_sampler.c $(BASE_SRC)
+libcray_dvs_sampler_la_SOURCES = dvs_sampler.c
 libcray_dvs_sampler_la_CFLAGS = $(AM_CFLAGS) -I$(BASE_INC)
 libcray_dvs_sampler_la_LDFLAGS = $(AM_LDFLAGS)
 libcray_dvs_sampler_la_LIBADD = $(COMMON_LIBADD)
@@ -32,7 +32,6 @@ CRAY_LDFLAGS_ = $(AM_LDFLAGS) \
 	                @CRAY_HSS_DEVEL_LIB64DIR_FLAG@
 
 CRAY_SOURCES_ = cray_sampler_base.h cray_sampler_base.c \
-	$(BASE_SRC) \
 	rca_metrics.h rca_metrics.c \
 	general_metrics.h general_metrics.c
 CRAY_LIBADD_ = $(COMMON_LIBADD)
