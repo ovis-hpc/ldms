@@ -197,7 +197,7 @@ endif
 
 if ENABLE_PROCDISKSTATS
 libprocdiskstats_la_SOURCES = procdiskstats.c $(BASE_SRC)
-libprocdiskstats_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libprocdiskstats_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocdiskstats.la
 endif
 
