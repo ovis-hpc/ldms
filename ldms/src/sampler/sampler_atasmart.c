@@ -75,6 +75,7 @@
 #include <atasmart.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "sampler_base.h"
 
 #define NFIELD 9
 static char *fieldname[NFIELD] = {
@@ -99,9 +100,11 @@ struct atatsmart_set_size {
 
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
 static char **disknames;
 static int num_disks;
+#define SAMP "sampler_atasmart"
+static int metric_offset;
+static base_data_t base;
 
 struct ldms_atasmart *smarts;
 
@@ -139,7 +142,7 @@ void atasmart_get_disk_info(SkDisk *d, const SkSmartAttributeParsedData *a,
 	for (i = 0; i < NFIELD; i++) {
 		rc = get_metric_name(metric_name, fieldname[i], name_base, dname);
 		if (rc) {
-			msglog(LDMSD_LERROR, "atasmart: metric_name '%s_%s#%s' "
+			msglog(LDMSD_LERROR, SAMP ": metric_name '%s_%s#%s' "
 					"longer than the max length %d.\n",
 					fieldname[i], name_base,
 				dname, MAX_METRIC_NAME_LEN);
@@ -176,33 +179,40 @@ void atasmart_get_disk_info(SkDisk *d, const SkSmartAttributeParsedData *a,
 	}
 }
 
-static int create_metric_set(char *setname)
+static int create_metric_set(base_data_t base)
 {
 	int rc, i;
 	int num_skipped_disks = 0;
 	smarts = calloc(1, sizeof(struct ldms_atasmart));
 	if (!smarts) {
-		msglog(LDMSD_LERROR, "atasmart: Failed to create set.\n");
+		msglog(LDMSD_LERROR, SAMP ": Failed to create set.\n");
 		return ENOMEM;
 	}
 
 	smarts->d = calloc(num_disks, sizeof(SkDisk *));
 	if (!smarts->d) {
-		msglog(LDMSD_LERROR, "atasmart: Failed to create set.\n");
+		msglog(LDMSD_LERROR, SAMP ": Failed to create set.\n");
 		goto err;
 	}
 
-	smarts->schema = ldms_schema_new("atasmart");
+	smarts->schema = base_schema_new(base);
 	if (!smarts->schema) {
-		msglog(LDMSD_LERROR, "atasmart: Failed to create schema.\n");
+		msglog(LDMSD_LERROR,
+		       "%s: The schema '%s' could not be created, errno=%d.\n",
+		       __FILE__, base->schema_name, errno);
+		rc = errno;
 		goto err0;
 	}
+
+	/* Location of first metric */
+	metric_offset = ldms_schema_metric_count_get(schema);
+
 
 	for (i = 0; i < num_disks; i++) {
 		smarts->curr_disk_no = i;
 		rc = sk_disk_open(disknames[i], &(smarts->d[i]));
 		if (rc) {
-			msglog("atasmart: Create SkDisk '%s' failed. Error %d.\n",
+			msglog(LDMSD_LERROR, SAMP ": Create SkDisk '%s' failed. Error %d.\n",
 					disknames[i], rc);
 			free(disknames[i]);
 			disknames[i] = NULL;
@@ -212,7 +222,7 @@ static int create_metric_set(char *setname)
 
 		rc = sk_disk_smart_read_data(smarts->d[i]);
 		if (rc) {
-			msglog(LDMSD_LERROR, "atasmart: Read data SkDisk '%s'. "
+			msglog(LDMSD_LERROR, SAMP ": Read data SkDisk '%s'. "
 					"Error %d\n", disknames[i], rc);
 			free(disknames[i]);
 			disknames[i] = NULL;
@@ -225,7 +235,7 @@ static int create_metric_set(char *setname)
 		rc = sk_disk_smart_parse_attributes(smarts->d[i],
 				atasmart_get_disk_info, (void *) smarts);
 		if (rc) {
-			msglog(LDMSD_LERROR, "atasmart: Get size of SkDisk '%s'. "
+			msglog(LDMSD_LERROR, SAMP ": Get size of SkDisk '%s'. "
 					"Error %d\n", disknames[i], rc);
 			free(disknames[i]);
 			disknames[i] = NULL;
@@ -236,10 +246,10 @@ static int create_metric_set(char *setname)
 		}
 	}
 
-	set = ldms_set_new(setname, smarts->schema);
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
-		msglog(LDMSD_LERROR, "atasmart: Failed to create metric set.\n");
+		msglog(LDMSD_LERROR, SAMP ": Failed to create metric set.\n");
 		goto err1;
 	}
 
@@ -256,15 +266,13 @@ err0:
 	free(smarts->d);
 err:
 	free(smarts);
+
 	return ENOMEM;
 }
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=sampler_atasmart producer=<prod_name> \n"
-		"	instance=<inst_name> disks=<disknames>\n"
-		"    <prod_name>    The producer name\n"
-		"    <inst_name>    The instance name\n"
+	return  "config name=" SAMP " disks=<disknames> " BASE_CONFIG_USAGE
 		"    <disks>        A comma-separated list of disk names,\n"
 		"		       e.g., /dev/sda,/dev/sda1.\n";
 }
@@ -277,8 +285,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *value;
 	char *s;
 	char *tmp;
-	num_disks = 0;
 
+	if (set) {
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		return EINVAL;
+	}
+
+	num_disks = 0;
 	value = av_value(avl, "disks");
 	if (value) {
 		s = strdup(value);
@@ -297,31 +310,35 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			i++;
 		}
 	} else {
-		msglog(LDMSD_LERROR, "atasmart: failed to parse the disk names\n");
+		msglog(LDMSD_LERROR, SAMP ": failed to parse the disk names\n");
 		return -1;
 	}
 
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, "atasmart: missing 'producer'.\n");
-		return ENOENT;
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base){
+		rc = EINVAL;
+		goto err;
 	}
 
-	value = av_value(avl, "instance");
-	if (!value) {
-		msglog(LDMSD_LERROR, "atasmart: missing 'instance'\n");
-		return ENOENT;
+	int rc = create_metric_set(base);
+	if (rc){
+		msglog(LDMSD_LERROR, SAMP ":failed to create a metric set.\n");
+		goto err;
 	}
 
-	if (set) {
-		msglog(LDMSD_LERROR, "sampler_atasmart: Set already created.\n");
-		return EINVAL;
-	}
-	int rc = create_metric_set(value);
-	if (rc)
-		return rc;
-	ldms_set_producer_name_set(set, producer_name);
 	return 0;
+
+err:
+	for (i = 0; i < num_disks; i++){
+		free(disknames[i]);
+	}
+	free(disknames);
+	disknames = NULL;
+
+	base_del(base);
+	base = NULL;
+
+	return rc;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -385,12 +402,12 @@ static int sample(struct ldmsd_sampler *self)
 	int metric_no;
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, "meminfo: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_transaction_begin(set);
+	base_sample_begin(base);
 
-	metric_no = 0;
+	metric_no = metric_offset;
 	int i;
 	for (i = 0; i < num_disks; i++) {
 		ret = sk_disk_smart_parse_attributes(smarts->d[i],
@@ -404,16 +421,17 @@ static int sample(struct ldmsd_sampler *self)
 		}
 	}
 
-	ldms_transaction_end(set);
+	base_sample_end(base);
 	return 0;
 err:
-	ldms_transaction_end(set);
+
+	base_sample_end(base);
 	return ret;
 }
 
 static void term(struct ldmsd_plugin *self)
 {
-	ldms_schema_delete(smarts->schema);
+
 	int i;
 	for (i = 0; i < num_disks; i++) {
 		sk_disk_free(smarts->d[i]);
@@ -422,6 +440,9 @@ static void term(struct ldmsd_plugin *self)
 	free(smarts);
 	free(disknames);
 	smarts = NULL;
+	if (base)
+		base_del(base);
+	base = NULL;
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
@@ -429,7 +450,7 @@ static void term(struct ldmsd_plugin *self)
 
 static struct ldmsd_sampler sampler_atasmart_plugin = {
 	.base = {
-		.name = "sampler_atasmart",
+		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,

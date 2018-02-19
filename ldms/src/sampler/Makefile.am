@@ -256,7 +256,7 @@ endif
 
 if ENABLE_ATASMART
 libsampler_atasmart_la_SOURCES = sampler_atasmart.c $(BASE_SRC)
-libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart $(JOBID_LIBFLAGS)
+libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart
 pkglib_LTLIBRARIES += libsampler_atasmart.la
 endif
 
