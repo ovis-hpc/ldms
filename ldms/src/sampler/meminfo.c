@@ -99,6 +99,7 @@ static int create_metric_set(base_data_t base)
 		msglog(LDMSD_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
+		rc = errno;
 		goto err;
 	}
 
@@ -192,7 +193,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		rc = errno;
 		goto err;
 	}
-
 
 	rc = create_metric_set(base);
 	if (rc) {
