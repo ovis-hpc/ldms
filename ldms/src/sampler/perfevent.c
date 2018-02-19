@@ -68,7 +68,9 @@
 #include <math.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldms_jobid.h"
+#include "sampler_base.h"
+
+#define SAMP "perfevent"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -100,11 +102,8 @@ LIST_HEAD(gevent_list, event_group) gevent_list;
 
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
-static ldms_schema_t schema;
-static char* default_schema_name = "perfevent";
-static uint64_t compid;
+static base_data_t base;
 
-LJI_GLOBALS;
 
 struct pevent {
 	struct perf_event_attr attr;
@@ -140,7 +139,7 @@ static inline int pe_open(struct perf_event_attr *attr, pid_t pid, int cpu, int 
 static const char *usage(struct ldmsd_plugin* self)
 {
 	return
-		"    config name=perfevent action=init producer=<producer_name> instance=<instance_name> [schema=<schema_name>]\n"
+		"    config name=perfevent action=init " BASE_CONFIG_USAGE
 		"    config name=perfevent action=del metricname=<string>\n"
 		"            - Deletes the specified event.\n"
 		"    config name=perfevent action=ls\n"
@@ -158,7 +157,6 @@ static const char *usage(struct ldmsd_plugin* self)
 		"                          exclusive.\n"
 		"            <type>        The event type.\n"
 		"            <id>          The event id.\n"
-		"        " LJI_DESC
 		" For more information visit: http://man7.org/linux/man-pages/man2/perf_event_open.2.html\n\n";
 }
 
@@ -269,7 +267,7 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 
 	pe->attr.size = sizeof(pe->attr);
 	/* changed the read format to do the group read */
-	pe->attr.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_TOTAL_TIME_RUNNING; 
+	pe->attr.read_format = PERF_FORMAT_GROUP | PERF_FORMAT_TOTAL_TIME_RUNNING;
 	pe->attr.exclude_kernel = 1;
 	pe->attr.exclude_hv = 1;
 	pe->pid = -1;
@@ -391,63 +389,34 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 {
 	/* Create the metric set */
 	int rc;
-	char *producer_name;
-	char *instance_name;
-	char *schema_name;
-	char *compid_str;
+
+	ldms_schema_t schema;
 	struct pevent *pe;
 	union ldms_value v;
 
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, "perfevent: producer not passed\n");
+	if (set) {
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
-	compid_str = av_value(avl, "component_id");
-	if (compid_str)
-		compid = (uint64_t)(atoi(compid_str));
-	else
-		compid = 0;
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base)
+		goto err;
 
-	LJI_CONFIG(compid_str,avl);
-
-	instance_name = av_value(avl, "instance");
-	if (!instance_name) {
-		msglog(LDMSD_LERROR, "perfevent: instance name not passed\n");
-		return EINVAL;
-	}
-
-	schema_name = av_value(avl, "schema");
-	if (!schema_name)
-		schema_name = default_schema_name;
-	if (strlen(schema_name) == 0){
-		msglog(LDMSD_LERROR, "perfevent: schema name invalid.\n");
-		return EINVAL;
-	}
-
-	schema = ldms_schema_new(schema_name);
+	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR, "perfevent: failed to creat schema!\n");
-		rc = ENOMEM;
+		msglog(LDMSD_LERROR,
+		       "%s: The schema '%s' could not be created, errno=%d.\n",
+		       __FILE__, base->schema_name, errno);
+		rc = errno;
 		goto err;
 	}
 
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	rc = LJI_ADD_JOBID(schema);
-	if (rc < 0) {
-		goto err;
-	}
 
 	LIST_FOREACH(pe, &pevent_list, entry) {
 		rc = ldms_schema_metric_add(schema, pe->name, LDMS_V_U64);
 		if (rc < 0) {
-			msglog(LDMSD_LERROR, "perfevent: failed to add event %s to metric set.\n", pe->name);
+			msglog(LDMSD_LERROR, SAMP ": failed to add event %s to metric set.\n", pe->name);
 			goto err;
 		}
 		pe->metric_index = rc;
@@ -458,27 +427,14 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 		current_group->metric_index[pe->group_index] = pe->metric_index;
 
 
-		msglog(LDMSD_LINFO, "perfevent: event [name: %s, code: 0x%x] has been added.\n", pe->name, pe->attr.config);
+		msglog(LDMSD_LINFO, SAMP ": event [name: %s, code: 0x%x] has been added.\n", pe->name, pe->attr.config);
 	}
 
-	set = ldms_set_new(instance_name, schema);
-	if (!set) {
-		msglog(LDMSD_LERROR, "perfevent: failed to create metric set %s.\n", instance_name);
-		rc = errno;
-		goto err;
-	}
-
-	//add specialized metrics
-	v.v_u64 = compid;
-	ldms_metric_set(set, 0, &v);
-
-	LJI_SAMPLE(set,1);
 	return 0;
 
 err:
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
+	if (base)
+		base_del(base);
 	return rc;
 }
 
@@ -532,7 +488,7 @@ static int sample(struct ldmsd_sampler *self)
 	uint64_t val;
 
 	if (!set) {
-		msglog(LDMSD_LERROR, "error(perfevent): plug-in not initialized\n");
+		msglog(LDMSD_LERROR, SAMP ": plug-in not initialized\n");
 		return EINVAL;
 	}
 
@@ -543,22 +499,20 @@ static int sample(struct ldmsd_sampler *self)
 		LIST_FOREACH(eg, &gevent_list, entry) {
 			rc = ioctl(eg->leader, PERF_EVENT_IOC_RESET, 0); /* reset the values to 0 */
 			if(rc == -1){
-				msglog(LDMSD_LERROR, "Error(%d) in starting %d\n", rc, eg->leader);
+				msglog(LDMSD_LERROR, SAMP "Error(%d) in starting %d\n", rc, eg->leader);
 				return rc;
 			}
 
 			rc = ioctl(eg->leader, PERF_EVENT_IOC_ENABLE, 0); /* start counting the values */
 			if(rc == -1){
-				msglog(LDMSD_LERROR, "Error(%d) in starting %d\n", rc, eg->leader);
+				msglog(LDMSD_LERROR, SAMP "Error(%d) in starting %d\n", rc, eg->leader);
 				return rc;
 			}
 		}
 		started = 1;
 	}
 
-	ldms_transaction_begin(set);
-
-	LJI_SAMPLE(set, 1);
+	base_sample_begin(base);
 
 	struct event_group *eg;
 	LIST_FOREACH(eg, &gevent_list, entry) {
@@ -573,7 +527,7 @@ static int sample(struct ldmsd_sampler *self)
 		free(data);
 	}
 
-	ldms_transaction_end(set);
+	base_sample_end(base);
 
 	return 0;
 }
@@ -581,7 +535,7 @@ static int sample(struct ldmsd_sampler *self)
 static void term(struct ldmsd_plugin *self)
 {
 	struct pevent *pe;
-	struct event_group *ge; 
+	struct event_group *ge;
 
 	if(started) {
 		LIST_FOREACH(pe, &pevent_list, entry) {
@@ -599,18 +553,19 @@ static void term(struct ldmsd_plugin *self)
 		free(ge);
 	}
 
+	if (base)
+		base_del(base);
+	base = NULL;
+
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
 
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
 }
 
 static struct ldmsd_sampler pe_plugin = {
 	.base = {
-		.name = "perfevent",
+		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
