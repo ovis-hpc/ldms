@@ -170,14 +170,16 @@ char *ev_str[] = {
 	[ZAP_EVENT_RENDEZVOUS] = "RENDEZVOUS",
 };
 
-/* Data src/sink for RDMA_WRITE */
-char write_buf[1024];
+struct zap_test_mem {
+	char write_buf[1024]; /* Data src/sink for RDMA_WRITE */
+	char read_buf[1024]; /* Data src/sink for RDMA_READ */
+};
+
+struct zap_test_mem mem;
+struct zap_mem_info meminfo = {.start = &mem, .len = sizeof(mem)};
 
 zap_map_t write_map = NULL; /* exporting write map */
 zap_map_t read_map = NULL; /* exporting read map */
-
-/* Data src/sink for RDMA_READ */
-char read_buf[1024];
 
 zap_map_t remote_map = NULL; /* remote memory mapping */
 
@@ -216,10 +218,10 @@ void handle_recv(zap_ep_t ep, zap_event_t ev)
 	assert((server_events & SERVER_RECV_DARE) == 0);
 	server_events |= SERVER_RECV_DARE;
 
-	strcpy(write_buf, WRITE_DATA_2);
+	strcpy(mem.write_buf, WRITE_DATA_2);
 
 	/* Map the data to send */
-	err = zap_map(ep, &src_write_map, write_buf, sizeof write_buf,
+	err = zap_map(ep, &src_write_map, mem.write_buf, sizeof mem.write_buf,
 			ZAP_ACCESS_NONE);
 	if (err) {
 		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
@@ -251,10 +253,10 @@ void handle_rendezvous(zap_ep_t ep, zap_event_t ev)
 	}
 	printf("rendezvous msg_len: %zu\n", ev->data_len);
 	printf("rendezvous message: %s\n", (char*)ev->data);
-	strcpy(write_buf, WRITE_DATA);
+	strcpy(mem.write_buf, WRITE_DATA);
 
 	/* map the data to send */
-	err = zap_map(ep, &src_write_map, write_buf, sizeof write_buf,
+	err = zap_map(ep, &src_write_map, mem.write_buf, sizeof mem.write_buf,
 			ZAP_ACCESS_NONE);
 	if (err) {
 		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
@@ -273,8 +275,8 @@ void handle_rendezvous(zap_ep_t ep, zap_event_t ev)
 	printf("Write map is %p.\n", src_write_map);
 
 	/* Create a map for our peer to read from */
-	strcpy(read_buf, READ_DATA);
-	err = zap_map(ep, &read_map, read_buf, sizeof read_buf, ZAP_ACCESS_READ);
+	strcpy(mem.read_buf, READ_DATA);
+	err = zap_map(ep, &read_map, mem.read_buf, sizeof mem.read_buf, ZAP_ACCESS_READ);
 	if (err) {
 		printf("Error %d for map of RDMA_READ memory.\n", err);
 		return;
@@ -400,7 +402,7 @@ void do_rendezvous(zap_ep_t ep)
 {
 	zap_err_t err;
 
-	err = zap_map(ep, &write_map, write_buf, sizeof(write_buf),
+	err = zap_map(ep, &write_map, mem.write_buf, sizeof(mem.write_buf),
 		      ZAP_ACCESS_WRITE);
 	if (err) {
 		printf("Error %d mapping the write buffer.\n", err);
@@ -438,7 +440,7 @@ void do_read_and_verify_write(zap_ep_t ep, zap_event_t ev)
 	}
 
 	/* Create some memory to receive the read data */
-	err = zap_map(ep, &dst_read_map, read_buf, zap_map_len(src_read_map),
+	err = zap_map(ep, &dst_read_map, mem.read_buf, zap_map_len(src_read_map),
 		      ZAP_ACCESS_WRITE | ZAP_ACCESS_READ);
 	if (err) {
 		printf("Error %d mapping RDMA_READ data sink memory.\n", err);
@@ -457,8 +459,8 @@ void do_read_and_verify_write(zap_ep_t ep, zap_event_t ev)
 	printf("Read Map is %p.\n", dst_read_map);
 
 	/* Let's see what the partner wrote in our write_buf */
-	printf("WRITE BUFFER CONTAINS: '%s'.\n", write_buf);
-	assert(0 == strncmp(write_buf, WRITE_DATA, strlen(WRITE_DATA)+1));
+	printf("WRITE BUFFER CONTAINS: '%s'.\n", mem.write_buf);
+	assert(0 == strncmp(mem.write_buf, WRITE_DATA, strlen(WRITE_DATA)+1));
 }
 
 void do_read_complete(zap_ep_t ep, zap_event_t ev)
@@ -479,8 +481,8 @@ void do_read_complete(zap_ep_t ep, zap_event_t ev)
 	if (err)
 		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
 #endif
-	printf("READ BUFFER CONTAINS '%s'.\n", read_buf);
-	assert(0 == strcmp(READ_DATA, read_buf));
+	printf("READ BUFFER CONTAINS '%s'.\n", mem.read_buf);
+	assert(0 == strcmp(READ_DATA, mem.read_buf));
 
 	assert (0 == (client_events & CLIENT_READ_SUCCESS));
 	client_events |= CLIENT_READ_SUCCESS;
@@ -600,7 +602,7 @@ void test_log(const char *fmt, ...)
 
 zap_mem_info_t test_meminfo(void)
 {
-	return NULL;
+	return &meminfo;
 }
 
 void do_server(zap_t zap, struct sockaddr_in *sin)
