@@ -201,11 +201,11 @@ void handle_recv(zap_ep_t ep, zap_event_t ev)
 	}
 	assert(len == ev->data_len);
 
-	if (strncmp(dare, ev->data, strlen(dare)+1) != 0) {
+	if (strncmp(dare, (char*)ev->data, strlen(dare)+1) != 0) {
 		/* regular message received, just echo back and return */
 		assert((server_events & SERVER_RECV_1) == 0);
 		server_events |= SERVER_RECV_1;
-		do_send(ep, ev->data);
+		do_send(ep, (char*)ev->data);
 		return;
 	}
 
@@ -330,7 +330,7 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 			if (!ev->data) {
 				printf("Error: No connect data is received.\n");
 				exit(1);
-			} else if (0 != strcmp(ev->data, CONN_DATA)) {
+			} else if (0 != strcmp((char*)ev->data, CONN_DATA)) {
 				printf("Error: received wrong connect data. "
 					"Expected: %s. Received: %s\n",
 					CONN_DATA, ev->data);
@@ -511,7 +511,7 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 			printf("Error: No accepted data is received.\n");
 			exit(1);
 		}
-		if (0 != strcmp(ev->data, ACCEPT_DATA)) {
+		if (0 != strcmp((char*)ev->data, ACCEPT_DATA)) {
 			printf("Error: received wrong accepted data. Expected: %s. Received: %s\n",
 				ACCEPT_DATA, ev->data);
 			exit(1);
@@ -529,7 +529,7 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 			printf("Error: No rejected data is received.\n");
 			exit(1);
 		}
-		if (0 != strcmp(ev->data, REJECT_DATA)) {
+		if (0 != strcmp((char*)ev->data, REJECT_DATA)) {
 			printf("Error: received wrong rejected data. "
 					"Expected: %s. Received %s\n",
 					REJECT_DATA, ev->data);
