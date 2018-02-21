@@ -156,6 +156,9 @@ pthread_mutex_t done_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t done_cv = PTHREAD_COND_INITIALIZER;
 zap_t zap;
 
+const char *transport = NULL;
+const char *host = NULL;
+
 char *dare = "read/write dare";
 
 char *ev_str[] = {
@@ -217,6 +220,13 @@ void handle_recv(zap_ep_t ep, zap_event_t ev)
 
 	assert((server_events & SERVER_RECV_DARE) == 0);
 	server_events |= SERVER_RECV_DARE;
+
+	if (strcmp(transport, "ugni") == 0) {
+		/* On UGNI transport, the write will succeed as the real memory
+		 * mapping is just one big memory pool. */
+		zap_close(ep);
+		return;
+	}
 
 	strcpy(mem.write_buf, WRITE_DATA_2);
 
@@ -627,7 +637,11 @@ void do_server(zap_t zap, struct sockaddr_in *sin)
 	while (!done)
 		pthread_cond_wait(&done_cv, &done_lock);
 	pthread_mutex_unlock(&done_lock);
-	assert(server_events == SERVER_EVENTS);
+	if (strcmp(transport, "ugni") == 0) {
+		assert(server_events == (SERVER_EVENTS & (~SERVER_WRITE_ERROR)));
+	} else {
+		assert(server_events == SERVER_EVENTS);
+	}
 	printf("zap_test server SUCCESS!\n");
 }
 
@@ -695,8 +709,6 @@ int main(int argc, char *argv[])
 {
 	int rc;
 	int is_server = 0;
-	char *transport = NULL;
-	char *host = NULL;
 	short port_no = -1;
 	struct sockaddr_in sin;
 	zap_err_t err;
@@ -707,10 +719,10 @@ int main(int argc, char *argv[])
 			is_server = 1;
 			break;
 		case 'h':
-			host = strdup(optarg);
+			host = optarg;
 			break;
 		case 'x':
-			transport = strdup(optarg);
+			transport = optarg;
 			break;
 		case 'p':
 			port_no = atoi(optarg);
@@ -743,7 +755,6 @@ int main(int argc, char *argv[])
 		       __func__, transport);
 		exit(1);
 	}
-	free(transport);
 	if (is_server)
 		do_server(zap, &sin);
 	else
