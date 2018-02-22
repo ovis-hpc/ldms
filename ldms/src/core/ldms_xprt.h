@@ -204,12 +204,11 @@ struct ldms_rendezvous_lookup_param {
 	uint32_t meta_len;
 	uint32_t data_len;
 	uint32_t card;
-	uint32_t schema_len;
 #ifdef SWIG
 %immutable;
 #endif
-	uint32_t inst_name_len;
-	char schema_inst_name[OVIS_FLEX]; /* schema name and then instance name */
+	/* schema name, then instance name, and then set_info key value pairs */
+	char set_info[OVIS_FLEX];
 };
 
 struct ldms_rendezvous_push_param {
@@ -234,19 +233,6 @@ struct ldms_rendezvous_msg {
 		struct ldms_rendezvous_push_param push;
 	};
 };
-#if 0
-struct ldms_lookup_msg {
-	uint64_t xid;
-	uint64_t set_id;
-	uint32_t more;
-	uint32_t meta_len;
-	uint32_t data_len;
-	uint32_t card;
-	uint32_t schema_len;
-	uint32_t inst_name_len;
-	char schema_inst_name[OVIS_FLEX]; /* schema name and then instance name */
-};
-#endif
 
 struct ldms_dir_reply {
 	uint32_t type;

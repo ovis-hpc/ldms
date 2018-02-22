@@ -148,5 +148,7 @@ extern int ldms_set_unpublish(ldms_set_t sd);
 extern int __ldms_set_info_set(struct ldms_set_info_list *info,
 				const char *key, const char *value);
 extern void __ldms_set_info_delete(struct ldms_set_info_list *info);
+extern struct ldms_set_info_pair *__ldms_set_info_find(struct ldms_set_info_list *info,
+								const char *key);
 
 #endif
