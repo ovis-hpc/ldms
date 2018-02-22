@@ -192,6 +192,7 @@ static int create_metric_set(dvs_mount_t dvsm)
 	char basename[80];
 	int state = 0;
 	int line_no = 0;
+	int mnt_pt;
 
 	dvsm->cfg = dup_cfg(cfg_base, dvsm->mnt_pt);
 	schema = base_schema_new(dvsm->cfg);
@@ -201,6 +202,7 @@ static int create_metric_set(dvs_mount_t dvsm)
 		       __FILE__, cfg_base->schema_name, errno);
 		goto err;
 	}
+	mnt_pt = ldms_schema_meta_array_add(schema, "mountpt", LDMS_V_CHAR_ARRAY, strlen(dvsm->mnt_pt)+1);
 
 	/*
 	 * First pass to determine number of possible metrics
@@ -262,6 +264,8 @@ static int create_metric_set(dvs_mount_t dvsm)
 		if (rc != 0){
 			goto err;
 		}
+		if (!num_cfgmetrics)
+			keepmetric = 1;
 		for (i = 0; i < num_cfgmetrics; i++){
 			//NOTE: that the following DEBUG is verbose
 			log_fn(LDMSD_LDEBUG,
@@ -329,6 +333,7 @@ static int create_metric_set(dvs_mount_t dvsm)
 		rc = errno;
 		goto err;
 	}
+	ldms_metric_array_set_str(dvsm->set, mnt_pt, dvsm->mnt_pt);
 
 	return 0;
 
