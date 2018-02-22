@@ -56,32 +56,21 @@
 #include <pthread.h>
 #include <stddef.h>
 
-struct ovis_event {
-	uint32_t flags;
-	uint32_t epoll_events;
-	int fd;
-	ovis_event_cb cb;
-	void *ctxt;
-	struct timeval tv;
-	union ovis_event_time_param_u tp;
-	int idx;
-};
-
-#define MAX_OVIS_EVENTS 128
+#define MAX_EPOLL_EVENTS 128
 
 struct ovis_event_heap {
 	uint32_t alloc_len;
 	uint32_t heap_len;
-	struct ovis_event *ev[OVIS_FLEX];
+	ovis_event_t ev[OVIS_FLEX];
 };
 
-struct ovis_event_manager {
+struct ovis_scheduler_s {
 	int evcount;
 	int refcount;
 	int efd; /* epoll fd */
 	int pfd[2]; /* pipe for event notification */
-	struct ovis_event ovis_ev;
-	struct epoll_event ev[MAX_OVIS_EVENTS];
+	struct ovis_event_s ovis_ev;
+	struct epoll_event ev[MAX_EPOLL_EVENTS];
 	pthread_mutex_t mutex;
 	struct ovis_event_heap *heap;
 	enum {

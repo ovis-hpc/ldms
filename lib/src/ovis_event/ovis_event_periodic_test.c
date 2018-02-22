@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2016-17 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2016-17 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2017 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -60,30 +60,32 @@
 
 #include "ovis_event.h"
 
-void cb(uint32_t events, const struct timeval *tv, ovis_event_t ev)
+void cb(ovis_event_t ev)
 {
-	printf("tv: %ld.%06ld\n", tv->tv_sec, tv->tv_usec);
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	printf("tv: %ld.%06ld\n", tv.tv_sec, tv.tv_usec);
 }
 
 int main(int argc, char **argv)
 {
 	int rc;
 	ovis_event_t ev;
-	ovis_event_manager_t evm;
-	union ovis_event_time_param_u tp;
+	ovis_scheduler_t sch;
+	struct ovis_periodic_s p;
 	int msec = 1000;
 	if (argc > 1) {
 		msec = atoi(argv[1]);
 	}
-	tp.periodic.period_us = msec * 1000;
-	tp.periodic.phase_us = 0;
+	p.period_us = msec * 1000;
+	p.phase_us = 0;
 
-	evm = ovis_event_manager_create();
+	sch = ovis_scheduler_new();
 
-	ev = ovis_event_create(-1, 0, &tp, OVIS_EVENT_PERIODIC, cb, NULL);
+	ev = ovis_event_periodic_new(cb, NULL, &p);
 	assert(ev);
-	rc = ovis_event_add(evm, ev);
+	rc = ovis_scheduler_event_add(sch, ev);
 	assert(rc == 0);
-	ovis_event_loop(evm, 0);
+	ovis_scheduler_loop(sch, 0);
 	return 0;
 }

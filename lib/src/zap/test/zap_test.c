@@ -118,10 +118,46 @@
 #include <libgen.h>
 #include "zap.h"
 
+/* Expected server events */
+#define  SERVER_REJECT          0x00000001
+#define  SERVER_ACCEPT          0x00000002
+#define  SERVER_CONNECTED       0x00000004
+#define  SERVER_RECV_1          0x00000008
+#define  SERVER_RENDEZVOUS      0x00000010
+#define  SERVER_WRITE_SUCCESS   0x00000020
+#define  SERVER_RECV_DARE       0x00000040
+#define  SERVER_WRITE_ERROR     0x00000080
+#define  SERVER_DISCONNECTED    0x00000100
+#define  SERVER_EVENTS          0x000001FF
+
+int server_events = 0;
+
+/* Expected client events */
+#define  CLIENT_REJECTED      0x00000001
+#define  CLIENT_CONNECTED     0x00000002
+#define  CLIENT_RECV_ECHO     0x00000004
+#define  CLIENT_RENDEZVOUS    0x00000008
+#define  CLIENT_READ_SUCCESS  0x00000010
+#define  CLIENT_DISCONNECTED  0x00000020
+#define  CLIENT_EVENTS        0x0000003F
+
+int client_events = 0;
+
+#define HELLO_MSG "Hello there!"
+#define WRITE_DATA "Thanks for sharing!"
+#define WRITE_DATA_2 "bla bla bla"
+#define READ_DATA "This is the data source for the RDMA_READ."
+#define CONN_DATA "Hello, world!"
+#define ACCEPT_DATA "Accepted!"
+#define REJECT_DATA "Rejected ... try again"
+
 static int done = 0;
 pthread_mutex_t done_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t done_cv = PTHREAD_COND_INITIALIZER;
 zap_t zap;
+
+const char *transport = NULL;
+const char *host = NULL;
 
 char *dare = "read/write dare";
 
@@ -137,14 +173,16 @@ char *ev_str[] = {
 	[ZAP_EVENT_RENDEZVOUS] = "RENDEZVOUS",
 };
 
-/* Data src/sink for RDMA_WRITE */
-char write_buf[1024];
+struct zap_test_mem {
+	char write_buf[1024]; /* Data src/sink for RDMA_WRITE */
+	char read_buf[1024]; /* Data src/sink for RDMA_READ */
+};
+
+struct zap_test_mem mem;
+struct zap_mem_info meminfo = {.start = &mem, .len = sizeof(mem)};
 
 zap_map_t write_map = NULL; /* exporting write map */
 zap_map_t read_map = NULL; /* exporting read map */
-
-/* Data src/sink for RDMA_READ */
-char read_buf[1024];
 
 zap_map_t remote_map = NULL; /* remote memory mapping */
 
@@ -168,9 +206,11 @@ void handle_recv(zap_ep_t ep, zap_event_t ev)
 	}
 	assert(len == ev->data_len);
 
-	if (strncmp(dare, ev->data, strlen(dare)+1) != 0) {
+	if (strncmp(dare, (char*)ev->data, strlen(dare)+1) != 0) {
 		/* regular message received, just echo back and return */
-		do_send(ep, ev->data);
+		assert((server_events & SERVER_RECV_1) == 0);
+		server_events |= SERVER_RECV_1;
+		do_send(ep, (char*)ev->data);
 		return;
 	}
 
@@ -178,10 +218,20 @@ void handle_recv(zap_ep_t ep, zap_event_t ev)
 	zap_err_t err;
 	zap_map_t src_write_map;
 
-	strcpy(write_buf, "Thanks for sharing!");
+	assert((server_events & SERVER_RECV_DARE) == 0);
+	server_events |= SERVER_RECV_DARE;
+
+	if (strcmp(transport, "ugni") == 0) {
+		/* On UGNI transport, the write will succeed as the real memory
+		 * mapping is just one big memory pool. */
+		zap_close(ep);
+		return;
+	}
+
+	strcpy(mem.write_buf, WRITE_DATA_2);
 
 	/* Map the data to send */
-	err = zap_map(ep, &src_write_map, write_buf, sizeof write_buf,
+	err = zap_map(ep, &src_write_map, mem.write_buf, sizeof mem.write_buf,
 			ZAP_ACCESS_NONE);
 	if (err) {
 		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
@@ -204,16 +254,19 @@ void handle_rendezvous(zap_ep_t ep, zap_event_t ev)
 	zap_map_t src_write_map;
 	zap_map_t dst_write_map;
 
+	assert((server_events & SERVER_RENDEZVOUS) == 0);
+	server_events |= SERVER_RENDEZVOUS;
+
 	if (ev->status) {
 		printf("error %d received in rendezvous event.\n", ev->status);
 		return;
 	}
 	printf("rendezvous msg_len: %zu\n", ev->data_len);
 	printf("rendezvous message: %s\n", (char*)ev->data);
-	strcpy(write_buf, "thanks for sharing!");
+	strcpy(mem.write_buf, WRITE_DATA);
 
 	/* map the data to send */
-	err = zap_map(ep, &src_write_map, write_buf, sizeof write_buf,
+	err = zap_map(ep, &src_write_map, mem.write_buf, sizeof mem.write_buf,
 			ZAP_ACCESS_NONE);
 	if (err) {
 		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
@@ -232,8 +285,8 @@ void handle_rendezvous(zap_ep_t ep, zap_event_t ev)
 	printf("Write map is %p.\n", src_write_map);
 
 	/* Create a map for our peer to read from */
-	strcpy(read_buf, "This is the data source for the RDMA_READ.");
-	err = zap_map(ep, &read_map, read_buf, sizeof read_buf, ZAP_ACCESS_READ);
+	strcpy(mem.read_buf, READ_DATA);
+	err = zap_map(ep, &read_map, mem.read_buf, sizeof mem.read_buf, ZAP_ACCESS_READ);
 	if (err) {
 		printf("Error %d for map of RDMA_READ memory.\n", err);
 		return;
@@ -249,6 +302,13 @@ void do_write_complete(zap_ep_t ep, zap_event_t ev)
 {
 	zap_err_t err;
 	printf("Write complete with status: %s\n", zap_err_str(ev->status));
+	if (ev->status) {
+		assert((server_events & SERVER_WRITE_ERROR) == 0);
+		server_events |= SERVER_WRITE_ERROR;
+	} else {
+		assert((server_events & SERVER_WRITE_SUCCESS) == 0);
+		server_events |= SERVER_WRITE_SUCCESS;
+	}
 	zap_map_t write_src_map = (void *)(unsigned long)ev->context;
 	printf("Unmapping write map %p.\n", write_src_map);
 	err = zap_unmap(ep, write_src_map);
@@ -260,9 +320,6 @@ void do_write_complete(zap_ep_t ep, zap_event_t ev)
 	}
 }
 
-#define CONN_DATA "Hello, world!"
-#define ACCEPT_DATA "Accepted!"
-#define REJECT_DATA "Rejected ... try again"
 void server_cb(zap_ep_t ep, zap_event_t ev)
 {
 	static int reject = 1;
@@ -272,6 +329,8 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
 		if (reject) {
+			assert((server_events & SERVER_REJECT) == 0);
+			server_events |= SERVER_REJECT;
 			printf("  ... REJECTING\n");
 			err = zap_reject(ep, REJECT_DATA, strlen(REJECT_DATA) + 1);
 			if (err) {
@@ -283,7 +342,7 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 			if (!ev->data) {
 				printf("Error: No connect data is received.\n");
 				exit(1);
-			} else if (0 != strcmp(ev->data, CONN_DATA)) {
+			} else if (0 != strcmp((char*)ev->data, CONN_DATA)) {
 				printf("Error: received wrong connect data. "
 					"Expected: %s. Received: %s\n",
 					CONN_DATA, ev->data);
@@ -298,12 +357,16 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 					printf("Error: zap_accept fails %s\n",
 							zap_err_str(err));
 				}
+				assert((server_events & SERVER_ACCEPT) == 0);
+				server_events |= SERVER_ACCEPT;
 			}
 		}
 		/* alternating between reject and accept */
 		reject = !reject;
 		break;
 	case ZAP_EVENT_CONNECTED:
+		assert((server_events & SERVER_CONNECTED) == 0);
+		server_events |= SERVER_CONNECTED;
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
 	case ZAP_EVENT_REJECTED:
@@ -319,7 +382,8 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 			zap_unmap(ep, read_map);
 			read_map = NULL;
 		}
-
+		assert((server_events & SERVER_DISCONNECTED) == 0);
+		server_events |= SERVER_DISCONNECTED;
 		zap_free(ep);
 		done = 1;
 		pthread_cond_broadcast(&done_cv);
@@ -348,7 +412,7 @@ void do_rendezvous(zap_ep_t ep)
 {
 	zap_err_t err;
 
-	err = zap_map(ep, &write_map, write_buf, sizeof(write_buf),
+	err = zap_map(ep, &write_map, mem.write_buf, sizeof(mem.write_buf),
 		      ZAP_ACCESS_WRITE);
 	if (err) {
 		printf("Error %d mapping the write buffer.\n", err);
@@ -386,7 +450,7 @@ void do_read_and_verify_write(zap_ep_t ep, zap_event_t ev)
 	}
 
 	/* Create some memory to receive the read data */
-	err = zap_map(ep, &dst_read_map, read_buf, zap_map_len(src_read_map),
+	err = zap_map(ep, &dst_read_map, mem.read_buf, zap_map_len(src_read_map),
 		      ZAP_ACCESS_WRITE | ZAP_ACCESS_READ);
 	if (err) {
 		printf("Error %d mapping RDMA_READ data sink memory.\n", err);
@@ -405,7 +469,8 @@ void do_read_and_verify_write(zap_ep_t ep, zap_event_t ev)
 	printf("Read Map is %p.\n", dst_read_map);
 
 	/* Let's see what the partner wrote in our write_buf */
-	printf("WRITE BUFFER CONTAINS: '%s'.\n", write_buf);
+	printf("WRITE BUFFER CONTAINS: '%s'.\n", mem.write_buf);
+	assert(0 == strncmp(mem.write_buf, WRITE_DATA, strlen(WRITE_DATA)+1));
 }
 
 void do_read_complete(zap_ep_t ep, zap_event_t ev)
@@ -426,7 +491,12 @@ void do_read_complete(zap_ep_t ep, zap_event_t ev)
 	if (err)
 		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
 #endif
-	printf("READ BUFFER CONTAINS '%s'.\n", read_buf);
+	printf("READ BUFFER CONTAINS '%s'.\n", mem.read_buf);
+	assert(0 == strcmp(READ_DATA, mem.read_buf));
+
+	assert (0 == (client_events & CLIENT_READ_SUCCESS));
+	client_events |= CLIENT_READ_SUCCESS;
+
 	zap_unmap(ep, write_map);
 
 	do_send(ep, dare);
@@ -453,20 +523,25 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 			printf("Error: No accepted data is received.\n");
 			exit(1);
 		}
-		if (0 != strcmp(ev->data, ACCEPT_DATA)) {
+		if (0 != strcmp((char*)ev->data, ACCEPT_DATA)) {
 			printf("Error: received wrong accepted data. Expected: %s. Received: %s\n",
 				ACCEPT_DATA, ev->data);
 			exit(1);
 		}
 		printf("CONNECTED data: '%s' data_len: %jd\n", ev->data, ev->data_len);
-		do_send(ep, "Hello there!");
+		assert (0 == (client_events & CLIENT_CONNECTED));
+		client_events |= CLIENT_CONNECTED;
+		do_send(ep, HELLO_MSG);
 		break;
 	case ZAP_EVENT_REJECTED:
+		assert (0 == (client_events & CLIENT_REJECTED));
+		client_events |= CLIENT_REJECTED;
+
 		if (!ev->data) {
 			printf("Error: No rejected data is received.\n");
 			exit(1);
 		}
-		if (0 != strcmp(ev->data, REJECT_DATA)) {
+		if (0 != strcmp((char*)ev->data, REJECT_DATA)) {
 			printf("Error: received wrong rejected data. "
 					"Expected: %s. Received %s\n",
 					REJECT_DATA, ev->data);
@@ -494,18 +569,20 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 			zap_unmap(ep, remote_map);
 			remote_map = NULL;
 		}
+		assert (0 == (client_events & CLIENT_DISCONNECTED));
+		client_events |= CLIENT_DISCONNECTED;
 
 		zap_free(ep);
 		done = 1;
 		pthread_cond_broadcast(&done_cv);
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
-		if (strncmp(dare, ev->data, strlen(dare)+1) == 0) {
-			/* read dare, do read and verify write again */
-			do_read_and_verify_write(ep, ev);
-		} else {
-			do_rendezvous(ep);
-		}
+		/* Expecting HELLO_MSG back */
+		assert(ev->data_len == strlen(HELLO_MSG)+1);
+		assert(0 == strcmp((void*)ev->data, HELLO_MSG));
+		assert (0 == (client_events & CLIENT_RECV_ECHO));
+		client_events |= CLIENT_RECV_ECHO;
+		do_rendezvous(ep);
 		break;
 	case ZAP_EVENT_READ_COMPLETE:
 		do_read_complete(ep, ev);
@@ -514,6 +591,8 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		assert(0);
 		break;
 	case ZAP_EVENT_RENDEZVOUS:
+		assert (0 == (client_events & CLIENT_RENDEZVOUS));
+		client_events |= CLIENT_RENDEZVOUS;
 		do_read_and_verify_write(ep, ev);
 		break;
 	default:
@@ -533,7 +612,7 @@ void test_log(const char *fmt, ...)
 
 zap_mem_info_t test_meminfo(void)
 {
-	return NULL;
+	return &meminfo;
 }
 
 void do_server(zap_t zap, struct sockaddr_in *sin)
@@ -558,6 +637,12 @@ void do_server(zap_t zap, struct sockaddr_in *sin)
 	while (!done)
 		pthread_cond_wait(&done_cv, &done_lock);
 	pthread_mutex_unlock(&done_lock);
+	if (strcmp(transport, "ugni") == 0) {
+		assert(server_events == (SERVER_EVENTS & (~SERVER_WRITE_ERROR)));
+	} else {
+		assert(server_events == SERVER_EVENTS);
+	}
+	printf("zap_test server SUCCESS!\n");
 }
 
 void do_client(zap_t zap, struct sockaddr_in *sin)
@@ -582,6 +667,8 @@ void do_client(zap_t zap, struct sockaddr_in *sin)
 	while (!done)
 		pthread_cond_wait(&done_cv, &done_lock);
 	pthread_mutex_unlock(&done_lock);
+	assert(client_events == CLIENT_EVENTS);
+	printf("zap_test client SUCCESS!\n");
 }
 
 int resolve(const char *hostname, struct sockaddr_in *sin)
@@ -622,8 +709,6 @@ int main(int argc, char *argv[])
 {
 	int rc;
 	int is_server = 0;
-	char *transport = NULL;
-	char *host = NULL;
 	short port_no = -1;
 	struct sockaddr_in sin;
 	zap_err_t err;
@@ -634,10 +719,10 @@ int main(int argc, char *argv[])
 			is_server = 1;
 			break;
 		case 'h':
-			host = strdup(optarg);
+			host = optarg;
 			break;
 		case 'x':
-			transport = strdup(optarg);
+			transport = optarg;
 			break;
 		case 'p':
 			port_no = atoi(optarg);
@@ -670,7 +755,6 @@ int main(int argc, char *argv[])
 		       __func__, transport);
 		exit(1);
 	}
-	free(transport);
 	if (is_server)
 		do_server(zap, &sin);
 	else

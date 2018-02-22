@@ -59,7 +59,6 @@
 #include <time.h>
 #include <coll/rbt.h>
 #include <ovis_util/util.h>
-#include "event.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"

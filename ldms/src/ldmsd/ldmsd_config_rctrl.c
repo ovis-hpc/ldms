@@ -72,8 +72,6 @@
 #include <assert.h>
 #include <libgen.h>
 #include <time.h>
-#include <event2/thread.h>
-#include "event.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"

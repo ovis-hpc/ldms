@@ -56,11 +56,7 @@
 #define __LDMS_XPRT_SOCK_H__
 #include <semaphore.h>
 #include <sys/queue.h>
-#include <event2/event.h>
-#include <event2/buffer.h>
-#include <event2/bufferevent.h>
-#include <event2/listener.h>
-#include <event2/thread.h>
+#include "ovis_event/ovis_event.h"
 #include "ovis-lib-config.h"
 #include "coll/rbt.h"
 #include "zap.h"
@@ -120,15 +116,24 @@ typedef enum sock_msg_type {
 
 static const char *__sock_msg_type_str[SOCK_MSG_TYPE_LAST] = {
 	[0]     =  "SOCK_MSG_INVALID",
-	[SOCK_MSG_SENDRECV]    =  "SOCK_MSG_SENDRECV",
 	[SOCK_MSG_CONNECT]     =  "SOCK_MSG_CONNECT",
+	[SOCK_MSG_SENDRECV]    =  "SOCK_MSG_SENDRECV",
 	[SOCK_MSG_RENDEZVOUS]  =  "SOCK_MSG_RENDEZVOUS",
 	[SOCK_MSG_READ_REQ]    =  "SOCK_MSG_READ_REQ",
 	[SOCK_MSG_READ_RESP]   =  "SOCK_MSG_READ_RESP",
 	[SOCK_MSG_WRITE_REQ]   =  "SOCK_MSG_WRITE_REQ",
 	[SOCK_MSG_WRITE_RESP]  =  "SOCK_MSG_WRITE_RESP",
 	[SOCK_MSG_ACCEPTED]    =  "SOCK_MSG_ACCEPTED",
+	[SOCK_MSG_REJECTED]    =  "SOCK_MSG_REJECTED",
 };
+
+static inline
+const char *sock_msg_type_str(sock_msg_type_t t)
+{
+	if (SOCK_MSG_FIRST <= t && t < SOCK_MSG_TYPE_LAST)
+		return __sock_msg_type_str[t];
+	return __sock_msg_type_str[0];
+}
 
 #pragma pack(4)
 
@@ -218,6 +223,17 @@ struct sock_msg_rendezvous {
 	char msg[OVIS_FLEX]; /**< Context */
 };
 
+/* convenient union of message structures */
+typedef union sock_msg_u {
+	struct sock_msg_sendrecv sendrecv;
+	struct sock_msg_connect connect;
+	struct sock_msg_rendezvous rendezvous;
+	struct sock_msg_read_req read_req;
+	struct sock_msg_read_resp read_resp;
+	struct sock_msg_write_req write_req;
+	struct sock_msg_write_resp write_resp;
+} *sock_msg_t;
+
 /**
  * Keeps track of outstanding I/O so that it can be cleaned up when
  * the endpoint shuts down. A z_sock_io is either on the free_q or the
@@ -236,19 +252,39 @@ struct z_sock_io {
 
 #pragma pack()
 
+typedef struct z_sock_buff_s {
+	/* NOTE: total allocated data length is alen + len */
+	size_t alen; /* available data length */
+	size_t len; /* current data length */
+	void *data;
+} *z_sock_buff_t;
+
+typedef struct z_sock_send_wr_s {
+	TAILQ_ENTRY(z_sock_send_wr_s) link;
+	size_t msg_len; /* remaining msg len */
+	size_t data_len; /* remaining data len */
+	size_t off; /* offset of msg or data */
+	const char *data;
+	char msg[OVIS_FLEX];
+} *z_sock_send_wr_t;
+
 struct z_sock_ep {
 	struct zap_ep ep;
 
 	int sock;
-	struct bufferevent *buf_event;
-	struct evconnlistener *listen_ev;
 	char *conn_data;
 	size_t conn_data_len;
 	uint8_t rejecting;
 
+	int sock_connected;
+
+	struct ovis_event_s ev;
+	struct z_sock_buff_s buff;
+
 	pthread_mutex_t q_lock;
 	TAILQ_HEAD(z_sock_free_q, z_sock_io) free_q;
 	TAILQ_HEAD(z_sock_io_q, z_sock_io) io_q;
+	TAILQ_HEAD(, z_sock_send_wr_s) sq; /* send queue */
 	LIST_ENTRY(z_sock_ep) link;
 };
 

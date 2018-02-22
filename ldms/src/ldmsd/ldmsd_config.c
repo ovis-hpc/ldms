@@ -74,11 +74,9 @@
 #include <libgen.h>
 #include <glob.h>
 #include <time.h>
-#include <event2/thread.h>
 #include <coll/rbt.h>
 #include <coll/str_map.h>
 #include <ovis_util/util.h>
-#include "event.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"

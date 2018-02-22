@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2016-17 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2016-17 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -58,26 +58,28 @@
  *
  * \section name NAME
  *
- * ovis_event library - an epoll wrapper with timer event
+ * ovis_event library - an epoll wrapper with timer and periodic events
  *
  * \section synopsis SYNOPSIS
  *
  * \code
  * #include <ovis_event/ovis_event.h>
  *
- * typedef void (*ovis_event_cb)(uint32_t events,
- * 			const struct timeval *tv, struct ovis_event *e);
+ * typedef void (*ovis_event_cb)(ovis_event_t ev);
  *
- * ovis_event_manager_t ovis_event_manager_create();
- * ovis_event_t ovis_event_create(int fd, uint32_t epoll_events,
- *			const union ovis_event_time_param_u *t, int flags,
- *			ovis_event_cb cb, void *ctxt);
- * int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev);
- * int ovis_event_del(ovis_event_manager_t m, ovis_event_t ev);
- * int ovis_event_loop(struct ovis_event_manager *m, int return_on_empty);
- *
- * int ovis_event_get_fd(ovis_event_t e);
- * void *ovis_event_get_ctxt(ovis_event_t e);
+ * ovis_scheduler_t ovis_scheduler_new();
+ * ovis_event_t ovis_event_epoll_new(ovis_event_cb_fn cb, void *ctxt,
+ *                                   int fd, uint32_t epoll_events);
+ * ovis_event_t ovis_event_timeout_new(ovis_event_cb_fn cb, void *ctxt,
+ *                                     const struct timeval *tv);
+ * ovis_event_t ovis_event_epoll_timeout_new(ovis_event_cb_fn cb, void *ctxt,
+ *                                           int fd, uint32_t epoll_events,
+ *                                           const struct timeval *tv);
+ * ovis_event_t ovis_event_periodic_new(ovis_event_cb_fn cb, void *ctxt,
+ *                                      const struct ovis_periodic_s *p);
+ * int ovis_scheduler_event_add(ovis_scheduler_t m, ovis_event_t ev);
+ * int ovis_scheduler_event_del(ovis_scheduler_t m, ovis_event_t ev);
+ * int ovis_scheduler_loop(struct ovis_scheduler *m, int return_on_empty);
  * \endcode
  *
  *
@@ -85,21 +87,34 @@
  *
  * ovis_event library is an epoll wrapper with timer event support. Each event
  * is delivered to the application via callback interface (see \c ovis_event_cb
- * definition above). There are two kinds of events to deliver to the
- * application: timer event and epoll event. A timer event is delivered when the
- * count-down timer reaches 0. An epoll event is delivered when the file
- * descriptor is ready for read or write.
+ * definition above). There are three kinds of events to deliver to the
+ * application: epoll event, timeout event, and periodic event.
  *
- * Application can create an event that is both timer and epoll. In other words,
- * the application will receive a notification when the timer run out or the
- * file descriptor is ready, whichever came first.
+ * ::ovis_event_epoll_new() creates an epoll event. An epoll event is delivered
+ * when the ovis scheduler receive a notification from epoll subsystem.  Please
+ * see \c epoll_ctl(2) for more information about epoll events.
  *
- * A timer event is delivered only once. The application may decide to add it
- * again to re-arm the event. To avoid repeatedly adding a timer event, the
- * application may create a <i>persistent</i> timer event instead.
+ * ::ovis_event_epoll_timeout_new() creates an epoll event with timeout.
+ * An application can create an epoll event with timeout. In other words,
+ * the application will receive a notification when the time run out or the
+ * file descriptor is ready, whichever came first. The timeout got reset every
+ * callback.
  *
- * If a timer event is <i>persistent</i>, the timer of the event is
- * automatically reset and re-added into the event queue.
+ * ::ovis_event_timeout_new() creates a pure timeout event. A timeout event is
+ * delivered to the application when the specified timeout value has passed.
+ * If the application wants an event that arrive periodically, a timeout event
+ * is NOT recommended as the wake up time contains slight slack and the
+ * application will see a shifting wake up time. For periodic use case, we
+ * recommend periodic event.
+ *
+ * ::ovis_event_periodic_new() creates a periodic event. This is different from
+ * a timeout event in that the periodic event wake up time will (try to) be
+ * aligned with the wall clock. The application suppled a period (in
+ * micro-seconds) and a phase (a time shift in microseconds), and the ovis
+ * scheduler will try to wake up periodically at \c period*n+phase. The periodic
+ * event might have a slight wake up time slack, but it does not have
+ * continuously time shifting like the timeout event.
+ *
  *
  * \section example EXAMPLE
  *
@@ -110,46 +125,63 @@
  * #include <ovis_event/ovis_event.h>
  *
  * // example of a callback function
- * void callback(uint32_t events, const struct timeval *tv, struct ovis_event *e)
+ * void callback(ovis_event_t e)
  * {
- *     void *ctxt = ovis_event_get_ctxt(e);
+ *     void *ctxt = e->param.ctxt;
  *     int fd = ovis_event_get_fd(e);
  *
- *     if (events == 0) {
- *         // timer event
+ *     switch (ev->cb.type) {
+ *     case OVIS_EVENT_EPOLL:
+ *         if (ev->cb.epoll_events & EPOLLIN)
+ *             printf("fd: %d, input ready\n", e->param.fd);
+ *         if (ev->cb.epoll_events & EPOLLOUT)
+ *             printf("fd: %d, output ready\n", e->param.fd);
+ *         if (ev->cb.epoll_events & EPOLLHUP)
+ *             printf("fd: %d, hang-up\n", e->param.fd);
+ *         break;
+ *     case OVIS_EVENT_TIMEOUT:
+ *         printf("timeout event");
+ *         break;
+ *     case OVIS_EVENT_PERIODIC:
+ *         printf("periodic event");
+ *         break;
+ *     default:
+ *         assert(0 == "Bad event");
+ *         break;
  *     }
- *
- *     if (events & EPOLLIN) {
- *         // Input ready event
- *     }
- *
- *     if (events & EPOLLOUT) {
- *         // Output ready event
- *     }
- *
- *     if (events & EPOLLHUP) {
- *         // Hang-up event ...
- *     }
- *     ...
  * }
  * ...
  *
- * // code for create event manager and execute event loop (on one thread)
- * ovis_event_manager_t m;
- * m = ovis_event_manager_create();
- * ovis_event_loop(m, 0); // this will block
+ * // code for create a scheduler and execute the scheduler loop (on a thread)
+ * ovis_scheduler_t s;
+ * s = ovis_scheduler_new();
+ * ovis_scheduler_loop(s, 0); // this will block
  * ...
  *
  * // code for create and add event (on another thread)
  * int fd; // some file descriptor
- * struct timeval timer = {20, 0};
+ * struct timeval timeout = {20, 0};
  * ovis_event_t e;
  * void *my_ctxt; // some context of the event
- * e = ovis_event_create(fd, EPOLLIN, (void*)&timer, OVIS_EVENT_PERSISTENT,
- *                       callback, my_ctxt);
- * ovis_event_add(m, e);
- * // callback() function will be called every 20 seconds, or when fd is ready
- * // for read. timer is reset every time the callback is called.
+ * // creating epoll-with-timeout event
+ * e = ovis_event_epoll_timeout_new(callback, my_ctxt, fd, EPOLLIN, &timeout);
+ * rc = ovis_scheduler_event_add(s, e);
+ * // callback() function will be called when a timeout (20s) occur, or when fd
+ * // is ready for read. The timeout is reset every time the callback is called.
+ * // Use ovis_event_epoll_new() to create an epoll event without a timeout.
+ * ...
+ *
+ *
+ * // In some case, you want periodic event instead of a timeout event due to
+ * // the fact that the wake-up time of the timeout event will keep drifting
+ * // forward a little for every wake-up. Periodic events on the other hand will
+ * // try to schedule the wake up time that is aligned to the wall clock.
+ * // The following is an example of waking up every 1 second with 500 ms offset
+ * // (e.g. 1.5  2.5  3.5  4.5 ....).
+ * struct ovis_periodic_s p = {1000000, 500000};
+ * ovis_event_t e;
+ * e = ovis_event_periodic_new(callback, my_ctxt, &p);
+ * ovis_scheduler_event_add(s, e);
  *
  * \endcode
  */
@@ -160,12 +192,15 @@
 #include <stdint.h>
 #include <sys/time.h>
 
-#define  OVIS_EVENT_PERSISTENT  0x001
-#define  OVIS_EVENT_TIMER       0x010
-#define  OVIS_EVENT_PERIODIC    0x100
+typedef enum ovis_event_type_e {
+	OVIS_EVENT_EPOLL          =  0x1,
+	OVIS_EVENT_TIMEOUT        =  0x2,
+	OVIS_EVENT_EPOLL_TIMEOUT  =  0x3,  /*  EPOLL|TIMEOUT  */
+	OVIS_EVENT_PERIODIC       =  0x4,
+} ovis_event_type_t;
 
-typedef struct ovis_event *ovis_event_t;
-typedef struct ovis_event_manager *ovis_event_manager_t;
+typedef struct ovis_event_s *ovis_event_t;
+typedef struct ovis_scheduler_s *ovis_scheduler_t;
 
 typedef struct ovis_periodic_s {
 	uint64_t period_us; /* period in microseconds */
@@ -173,119 +208,142 @@ typedef struct ovis_periodic_s {
 } *ovis_periodic_t;
 
 typedef union ovis_event_time_param_u {
-	struct timeval timer;
+	struct timeval timeout;
 	struct ovis_periodic_s periodic;
 } *ovis_event_time_param_t;
 
 /**
  * callback interface for event notification.
- *
- * The registered callback function will be called to notify about the added
- * event. This callback function is invoked in two cases: epoll event and timer
- * event.
- *
- * In the case of epoll event, \c events value is set by \c epoll, and \c tv is
- * NULL.
- *
- * In the case of timer or periodic event, \c events is 0, and \c tv sets to
- * current time.
- *
- * \c e is the event assocated with the call for both cases.
- *
- * Application can use \c ovis_event_get_fd() and \c ovis_event_get_ctxt() to
- * obtain associated file descriptor and context accordingly.
  */
-typedef void (*ovis_event_cb)(uint32_t events, const struct timeval *tv,
-			      struct ovis_event *e);
+typedef void (*ovis_event_cb_fn)(ovis_event_t ev);
 
 /**
- * Create an ovis_event_manager.
+ * OVIS event structure.
  *
- * To run \c ovis_event_loop() and to add an event, a manager is need. This
- * function is for creating the event manager.
+ * Please use one of the following functions to create an ovis_event.
+ * - ::ovis_event_epoll_new()
+ * - ::ovis_event_epoll_timeout_new()
+ * - ::ovis_event_timeout_new()
+ * - ::ovis_event_periodic_new()
  *
- * \retval m a handle to \c ovis_event_manager.
+ * Otherwise, please use ::OVIS_EVENT_INITIALIZER or ::OVIS_EVENT_INIT to
+ * initialize the event structure and set the \c .param accordingly afterward.
+ */
+struct ovis_event_s {
+	/* application-supplied parameters */
+	struct {
+		ovis_event_type_t type;
+		uint32_t epoll_events;
+		int fd;
+		ovis_event_cb_fn cb_fn;
+		union {
+			struct timeval timeout;
+			struct ovis_periodic_s periodic;
+		};
+		void *ctxt;
+	} param;
+
+	/* callback information from ovis_scheduler to application */
+	struct {
+		ovis_event_type_t type; /* what causes the callback */
+		uint32_t epoll_events; /* for event = OVIS_EVENT_EPOLL */
+	} cb;
+
+	/* private data for ovis_scheduler */
+	struct {
+		struct timeval tv;
+		int idx;
+	} priv; /* private data for ovis_scheduler */
+};
+
+#define OVIS_EVENT_INITIALIZER {.param = {.fd=-1}, .priv = {.idx=-1},}
+
+#define OVIS_EVENT_INIT(ev) do {\
+	(ev)->param.fd = -1; \
+	(ev)->priv.idx = -1; \
+} while(0)
+
+/**
+ * Create an OVIS event scheduler.
+ *
+ * An OVIS event scheduler handles event registration and event dispatch. The
+ * scheduler itself is a structure holding information. It does not create a new
+ * thread. The application must call ::ovis_scheduler_loop() to run scheduler
+ * routine. The function will block, and the caller thread is used for
+ * ovis event scheduling.
+ *
+ * \retval m a handle to \c ovis_scheduler.
  * \retval NULL on failure. In this case, \c errno is also set to describe the
  *              error.
  */
-ovis_event_manager_t ovis_event_manager_create();
+ovis_scheduler_t ovis_scheduler_new();
 
 /**
  * Destroy the unused event manager.
  *
  * \param m the ovis event manager handle.
  */
-void ovis_event_manager_free(ovis_event_manager_t m);
+void ovis_scheduler_free(ovis_scheduler_t m);
 
 /**
- * Get event context (that was specified at the creation of the event).
- *
- * \param e the event handle.
- * \retval ctxt the event context.
+ * Create a new epoll event.
  */
-void *ovis_event_get_ctxt(ovis_event_t e);
+ovis_event_t ovis_event_epoll_new(ovis_event_cb_fn cb, void *ctxt,
+				  int fd, uint32_t epoll_events);
 
 /**
- * Get the file descriptor associated to the event \c e.
- *
- * \param e the event handle.
- * \retval fd the file descriptor.
+ * Create a new timeout event.
  */
-int ovis_event_get_fd(ovis_event_t e);
+ovis_event_t ovis_event_timeout_new(ovis_event_cb_fn cb, void *ctxt,
+				    const struct timeval *tv);
 
 /**
- * Create an ovis event.
- *
- * \param fd the file descriptor associated to the event.
- * \param epoll_events epoll events to register for the file descriptor \c fd.
- *                     See <b>epoll_ctl(2)</b> for the details about epoll
- *                     events.
- * \param t the time parameter. If the flags has OVIS_EVENT_PERIODIC, the
- *          parameter will be accessed as periodic. Otherwise, the parameter
- *          is accessed as timeval which represents the timer.  This parameter
- *          can be \c NULL if the application wish to get only epoll event.
- * \param flags \c OVIS_EVENT_PERSISTENT for timer event to be persistent, i.e.
- *              the timer is reset and re-arm when an event is delivered.
- *              \c OVIS_EVENT_PERIODIC for creating periodic event. In this
- *              case, the parameter \c t is accessed as periodic.
- * \param cb the callback function for event notification.
- * \param ctxt the event context. application can obtabin this context later by
- *             calling \c ovis_event_get_ctxt().
- *
- * \retval e the event handle.
- * \retval NULL if error. \c errno is also set.
+ * Create a new epoll with timeout event.
  */
-ovis_event_t ovis_event_create(int fd, uint32_t epoll_events,
-				const union ovis_event_time_param_u *t,
-				int flags, ovis_event_cb cb, void *ctxt);
+ovis_event_t ovis_event_epoll_timeout_new(ovis_event_cb_fn cb, void *ctxt,
+					  int fd, uint32_t epoll_events,
+					  const struct timeval *tv);
 
 /**
- * Add an event into the event queue (managed by the manager \c m).
+ * Create a periodic event.
+ */
+ovis_event_t ovis_event_periodic_new(ovis_event_cb_fn cb, void *ctxt,
+				     const struct ovis_periodic_s *p);
+
+/**
+ * Add an event into the scheduler.
  *
- * \param m the ovis event manager handle.
+ * \param s the ovis scheduler handle.
  * \param ev the ovis event to be added.
  *
  * \retval 0 if OK.
  * \retval errno if error.
  *
- * \note When an event is in the queue, the manager owns the event \c ev. The
- * application should not modify \c ev before \c ev leaves the event queue. An
- * event \c ev leaves the event queue if:
- *   - it is a notifying non-persistent timer event in the callback function.
- *   - application directly call \c ovis_event_del() on the event \c ev.
+ * \note The scheduler owns the event after this call. The application should
+ * not modify the event before removing it from the scheduler by calling \c
+ * ovis_event_del().
  */
-int ovis_event_add(ovis_event_manager_t m, ovis_event_t ev);
+int ovis_scheduler_event_add(ovis_scheduler_t s, ovis_event_t ev);
 
 /**
- * Remove an event \c ev from the event queue.
+ * Remove an event \c ev from the scheduler.
  *
- * \param m the event manager handle.
+ * \param s the scheduler handle.
  * \param ev the event handle.
  *
  * \retval 0 if OK.
  * \retval errno if error.
  */
-int ovis_event_del(ovis_event_manager_t m, ovis_event_t ev);
+int ovis_scheduler_event_del(ovis_scheduler_t m, ovis_event_t ev);
+
+/**
+ * Modify epoll events of an ovis event \p ev in the scheduler \p s.
+ *
+ * \retval 0 if success.
+ * \retval errno if error.
+ */
+int ovis_scheduler_epoll_event_mod(ovis_scheduler_t s, ovis_event_t ev,
+				   int epoll_events);
 
 /**
  * Free memory allocated from ::ovis_event_create().
@@ -295,18 +353,18 @@ int ovis_event_del(ovis_event_manager_t m, ovis_event_t ev);
 void ovis_event_free(ovis_event_t ev);
 
 /**
- * Event loop function for an event manager \c m to manage and deliver events.
- * \param m the event manager handle.
+ * Event loop function for the scheduler \c m to manage and deliver events.
+ * \param s the scheduler handle.
  * \param return_on_empty return if event queue is empty.
  *
  * \retval ENOENT if event loop terminated on empty queue.
  * \retval EINTR if the event loop terminated by ::ovis_event_term().
  */
-int ovis_event_loop(ovis_event_manager_t m, int return_on_empty);
+int ovis_scheduler_loop(ovis_scheduler_t m, int return_on_empty);
 
 /**
- * Singal the manager to terminate the event loop.
+ * Singal the scheduler to terminate the event loop.
  */
-int ovis_event_term(ovis_event_manager_t m);
+int ovis_scheduler_term(ovis_scheduler_t s);
 
 #endif

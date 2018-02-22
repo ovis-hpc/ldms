@@ -72,7 +72,6 @@
 #include <regex.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
-#include <event2/event.h>
 #include "config.h"
 
 #define LDMS_LS_MEM_SZ_ENVVAR "LDMS_LS_MEM_SZ"
@@ -534,15 +533,6 @@ void ldms_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	sem_post(&conn_sem);
 }
 
-void link_libevent(const char *v)
-{
-	if (strcmp(v,"/")==0) {
-#ifdef _EVENT2_EVENT_H_
-		event_base_gettimeofday_cached(NULL,NULL);
-#endif
-	}
-}
-
 int main(int argc, char *argv[])
 {
 	struct ldms_version version;
@@ -571,7 +561,6 @@ int main(int argc, char *argv[])
 		_exit(-1);
 	}
 
-	link_libevent(argv[0]);
 	auth_opt = av_new(auth_opt_max);
 	if (!auth_opt) {
 		printf("ERROR: Not enough memory");
