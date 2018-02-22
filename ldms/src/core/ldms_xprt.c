@@ -225,6 +225,7 @@ static void send_dir_update(struct ldms_xprt *x,
 		break;
 	case LDMS_DIR_DEL:
 	case LDMS_DIR_ADD:
+	case LDMS_DIR_UPD:
 		set_count = 1;
 		set_list_sz = strlen(set_name) + 1;
 		break;
@@ -249,6 +250,7 @@ static void send_dir_update(struct ldms_xprt *x,
 		break;
 	case LDMS_DIR_DEL:
 	case LDMS_DIR_ADD:
+	case LDMS_DIR_UPD:
 		memcpy(reply->dir.set_list, set_name, set_list_sz);
 		break;
 	}
@@ -334,6 +336,11 @@ void __ldms_dir_add_set(const char *set_name)
 void __ldms_dir_del_set(const char *set_name)
 {
 	dir_update(set_name, LDMS_DIR_DEL);
+}
+
+void __ldms_dir_upd_set(const char *set_name)
+{
+	dir_update(set_name, LDMS_DIR_UPD);
 }
 
 void ldms_xprt_close(ldms_t x)
@@ -726,7 +733,7 @@ static void __copy_set_info_to_lookup_msg(char *buffer, ldms_name_t schema,
 	str = (ldms_name_t)&(str->name[str->len]);
 
 	/* Local set information */
-	LIST_FOREACH(pair, &set->local_info.list, entry) {
+	LIST_FOREACH(pair, &set->local_info, entry) {
 		/* Copy the key string */
 		str->len = strlen(pair->key) + 1;
 		strcpy(str->name, pair->key);
@@ -739,7 +746,7 @@ static void __copy_set_info_to_lookup_msg(char *buffer, ldms_name_t schema,
 	}
 
 	/* Remote set information */
-	LIST_FOREACH(pair, &set->remote_info.list, entry) {
+	LIST_FOREACH(pair, &set->remote_info, entry) {
 		if (__ldms_set_info_find(&set->local_info, pair->key)) {
 			/*
 			 * The local set info supersedes the remote set info.
@@ -772,11 +779,11 @@ static int __get_set_info_sz(struct ldms_set *set, int *count, size_t *len)
 	struct ldms_set_info_pair *pair;
 	int cnt = 0;
 	size_t l = 0;
-	LIST_FOREACH(pair, &set->local_info.list, entry) {
+	LIST_FOREACH(pair, &set->local_info, entry) {
 		cnt++;
 		l += strlen(pair->key) + strlen(pair->value) + 2;
 	}
-	LIST_FOREACH(pair, &set->remote_info.list, entry) {
+	LIST_FOREACH(pair, &set->remote_info, entry) {
 		if (__ldms_set_info_find(&set->local_info, pair->key))
 			continue;
 		cnt++;

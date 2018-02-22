@@ -560,7 +560,8 @@ extern int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len);
 enum ldms_dir_type {
 	LDMS_DIR_LIST,		/*! A complete list of available metric sets */
 	LDMS_DIR_DEL,		/*! The listed metric sets have been deleted */
-	LDMS_DIR_ADD		/*! The listed metric sets have been added */
+	LDMS_DIR_ADD,		/*! The listed metric sets have been added */
+	LDMS_DIR_UPD,		/*! The set_info of the listed metric set have been updated */
 };
 
 /**

@@ -284,14 +284,6 @@ static int set_list_sz_cb(struct ldms_set *set, void *arg)
 	*set_list_size = arg.set_list_len;
 }
 
-static void __ldms_set_info_list_init(struct ldms_set_info_list *list)
-{
-	struct ldms_set_info_pair *pair;
-	list->len = 0;
-	list->count = 0;
-	LIST_INIT(&list->list);
-}
-
  /* The caller must hold the set tree lock. */
 static struct ldms_set *
 __record_set(const char *instance_name,
@@ -311,8 +303,8 @@ __record_set(const char *instance_name,
 		goto out;
 	}
 
-	__ldms_set_info_list_init(&set->local_info);
-	__ldms_set_info_list_init(&set->remote_info);
+	LIST_INIT(&set->local_info);
+	LIST_INIT(&set->remote_info);
 	LIST_INIT(&set->remote_rbd_list);
 	LIST_INIT(&set->local_rbd_list);
 	pthread_mutex_init(&set->lock, NULL);
@@ -460,15 +452,13 @@ int ldms_xprt_update(ldms_set_t s, ldms_update_cb_t cb, void *arg)
 void __ldms_set_info_delete(struct ldms_set_info_list *info)
 {
 	struct ldms_set_info_pair *pair;
-	while (!LIST_EMPTY(&info->list)) {
-		pair = LIST_FIRST(&info->list);
+	while (!LIST_EMPTY(info)) {
+		pair = LIST_FIRST(info);
 		LIST_REMOVE(pair, entry);
 		free(pair->key);
 		free(pair->value);
 		free(pair);
 	}
-	info->count = 0;
-	info->len = 0;
 }
 
 void ldms_set_delete(ldms_set_t s)
@@ -2058,7 +2048,7 @@ int __ldms_set_info_set(struct ldms_set_info_list *info,
 	char *old_value = NULL;
 	struct ldms_set_info_pair *pair;
 
-	LIST_FOREACH(pair, &info->list, entry) {
+	LIST_FOREACH(pair, info, entry) {
 		if (0 == strcmp(key, pair->key)) {
 			old_value = pair->value;
 			goto set_value;
@@ -2087,14 +2077,9 @@ set_value:
 	} else {
 		if (old_value) {
 			/* The key already exists. Free the old value */
-			info->len -= strlen(old_value);
-			info->len += strlen(value);
 			free(old_value);
 		} else {
-			/* +2 for two null terminators*/
-			info->len += strlen(key) + strlen(value) + 2;
-			LIST_INSERT_HEAD(&info->list, pair, entry);
-			info->count++;
+			LIST_INSERT_HEAD(info, pair, entry);
 		}
 	}
 	return 0;
@@ -2113,6 +2098,7 @@ int ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
 	pthread_mutex_lock(&s->set->lock);
 	rc = __ldms_set_info_set(&s->set->local_info, key, value);
 	pthread_mutex_unlock(&s->set->lock);
+	__ldms_dir_upd_set(ldms_set_instance_name_get(s));
 	return rc;
 }
 
@@ -2121,7 +2107,7 @@ struct ldms_set_info_pair *__ldms_set_info_find(struct ldms_set_info_list *info,
 								const char *key)
 {
 	struct ldms_set_info_pair *pair;
-	LIST_FOREACH(pair, &info->list, entry)
+	LIST_FOREACH(pair, info, entry)
 		if (0 == strcmp(key, pair->key))
 			return pair;
 	return NULL;
@@ -2138,13 +2124,11 @@ void ldms_set_info_unset(ldms_set_t s, const char *key)
 		return;
 	}
 	LIST_REMOVE(pair, entry);
-	s->set->local_info.len -= strlen(pair->key) + 1;
-	s->set->local_info.len -= strlen(pair->value) + 1;
-	s->set->local_info.count--;
 	free(pair->key);
 	free(pair->value);
 	free(pair);
 	pthread_mutex_unlock(&s->set->lock);
+	__ldms_dir_upd_set(ldms_set_instance_name_get(s));
 }
 
 char *ldms_set_info_get(ldms_set_t s, const char *key)
@@ -2172,13 +2156,13 @@ int ldms_set_info_traverse(ldms_set_t s, ldms_set_info_traverse_cb_fn cb,
 							int flag, void *cb_arg)
 {
 	struct ldms_set_info_pair *pair;
-	struct ldms_set_info_pair_list *list;
+	struct ldms_set_info_list *list;
 	int rc = 0;
 	pthread_mutex_lock(&s->set->lock);
 	if (flag == LDMS_SET_INFO_F_LOCAL) {
-		list = &s->set->local_info.list;
+		list = &s->set->local_info;
 	} else if (flag == LDMS_SET_INFO_F_REMOTE) {
-		list = &s->set->remote_info.list;
+		list = &s->set->remote_info;
 	} else {
 		rc = EINVAL;
 		goto out;

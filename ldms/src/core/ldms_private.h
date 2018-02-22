@@ -83,13 +83,7 @@ struct ldms_set_info_pair {
 	char *value;
 	LIST_ENTRY(ldms_set_info_pair) entry;
 };
-
-struct ldms_set_info_list {
-	int count;
-	size_t len; /* Total length of all key value strings including the null terminators */
-	LIST_HEAD(ldms_set_info_pair_list, ldms_set_info_pair) list;
-};
-
+LIST_HEAD(ldms_set_info_list, ldms_set_info_pair);
 LIST_HEAD(rbd_list, ldms_rbuf_desc);
 struct ldms_set {
 	unsigned long flags;
@@ -125,6 +119,7 @@ extern int __ldms_get_local_set_list(char *set_list, size_t set_list_len,
 				     int *set_count, int *set_list_size);
 extern void __ldms_dir_add_set(const char *set_name);
 extern void __ldms_dir_del_set(const char *set_name);
+extern void __ldms_dir_upd_set(const char *set_name);
 extern int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg);
 extern size_t __ldms_xprt_max_msg(struct ldms_xprt *x);
 
