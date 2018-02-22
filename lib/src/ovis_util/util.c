@@ -60,6 +60,9 @@
 #include <regex.h>
 #include <assert.h>
 #include <errno.h>
+#include <pwd.h>
+#include <grp.h>
+
 #include "util.h"
 #define DSTRING_USE_SHORT
 #include "dstring.h"
@@ -520,4 +523,215 @@ FILE *fopen_perm(const char *path, const char *f_mode, int o_mode)
 	if (fd < 0)
 		return NULL;
 	return fdopen(fd, f_mode);
+}
+
+/*
+ * \retval 0 OK
+ * \retval errno for error
+ */
+int __uid_gid_check(uid_t uid, gid_t gid)
+{
+	struct passwd pw;
+	struct passwd *p;
+	int rc;
+	char *buf;
+	int i;
+	int n = 128;
+	gid_t gid_list[n];
+
+	buf = malloc(BUFSIZ);
+	if (!buf) {
+		rc = ENOMEM;
+		goto out;
+	}
+
+	rc = getpwuid_r(uid, &pw, buf, BUFSIZ, &p);
+	if (!p) {
+		rc = rc?rc:ENOENT;
+		goto out;
+	}
+
+	rc = getgrouplist(p->pw_name, p->pw_gid, gid_list, &n);
+	if (rc == -1) {
+		rc = ENOBUFS;
+		goto out;
+	}
+
+	for (i = 0; i < n; i++) {
+		if (gid == gid_list[i]) {
+			rc = 0;
+			goto out;
+		}
+	}
+
+	rc = ENOENT;
+
+out:
+	if (buf)
+		free(buf);
+	return rc;
+}
+int ovis_access_check(uid_t auid, gid_t agid, int acc,
+		      uid_t ouid, gid_t ogid, int perm)
+{
+	int macc = acc & perm;
+	/* other */
+	if (07 & macc) {
+		return 0;
+	}
+	/* owner */
+	if (0700 & macc) {
+		if (auid == ouid)
+			return 0;
+	}
+	/* group  */
+	if (070 & macc) {
+		if (agid == ogid)
+			return 0;
+		/* else need to check x->ruid group list */
+		if (0 == __uid_gid_check(auid, ouid))
+			return 0;
+	}
+	return EACCES;
+}
+
+const char* ovis_errno_abbvr(int e)
+{
+	const char *estr[] = {
+		[EPERM]            =  "EPERM",
+		[ENOENT]           =  "ENOENT",
+		[ESRCH]            =  "ESRCH",
+		[EINTR]            =  "EINTR",
+		[EIO]              =  "EIO",
+		[ENXIO]            =  "ENXIO",
+		[E2BIG]            =  "E2BIG",
+		[ENOEXEC]          =  "ENOEXEC",
+		[EBADF]            =  "EBADF",
+		[ECHILD]           =  "ECHILD",
+		[EAGAIN]           =  "EAGAIN",
+		[ENOMEM]           =  "ENOMEM",
+		[EACCES]           =  "EACCES",
+		[EFAULT]           =  "EFAULT",
+		[ENOTBLK]          =  "ENOTBLK",
+		[EBUSY]            =  "EBUSY",
+		[EEXIST]           =  "EEXIST",
+		[EXDEV]            =  "EXDEV",
+		[ENODEV]           =  "ENODEV",
+		[ENOTDIR]          =  "ENOTDIR",
+		[EISDIR]           =  "EISDIR",
+		[EINVAL]           =  "EINVAL",
+		[ENFILE]           =  "ENFILE",
+		[EMFILE]           =  "EMFILE",
+		[ENOTTY]           =  "ENOTTY",
+		[ETXTBSY]          =  "ETXTBSY",
+		[EFBIG]            =  "EFBIG",
+		[ENOSPC]           =  "ENOSPC",
+		[ESPIPE]           =  "ESPIPE",
+		[EROFS]            =  "EROFS",
+		[EMLINK]           =  "EMLINK",
+		[EPIPE]            =  "EPIPE",
+		[EDOM]             =  "EDOM",
+		[ERANGE]           =  "ERANGE",
+		[EDEADLK]          =  "EDEADLK",
+		[ENAMETOOLONG]     =  "ENAMETOOLONG",
+		[ENOLCK]           =  "ENOLCK",
+		[ENOSYS]           =  "ENOSYS",
+		[ENOTEMPTY]        =  "ENOTEMPTY",
+		[ELOOP]            =  "ELOOP",
+		[ENOMSG]           =  "ENOMSG",
+		[EIDRM]            =  "EIDRM",
+		[ECHRNG]           =  "ECHRNG",
+		[EL2NSYNC]         =  "EL2NSYNC",
+		[EL3HLT]           =  "EL3HLT",
+		[EL3RST]           =  "EL3RST",
+		[ELNRNG]           =  "ELNRNG",
+		[EUNATCH]          =  "EUNATCH",
+		[ENOCSI]           =  "ENOCSI",
+		[EL2HLT]           =  "EL2HLT",
+		[EBADE]            =  "EBADE",
+		[EBADR]            =  "EBADR",
+		[EXFULL]           =  "EXFULL",
+		[ENOANO]           =  "ENOANO",
+		[EBADRQC]          =  "EBADRQC",
+		[EBADSLT]          =  "EBADSLT",
+		[EBFONT]           =  "EBFONT",
+		[ENOSTR]           =  "ENOSTR",
+		[ENODATA]          =  "ENODATA",
+		[ETIME]            =  "ETIME",
+		[ENOSR]            =  "ENOSR",
+		[ENONET]           =  "ENONET",
+		[ENOPKG]           =  "ENOPKG",
+		[EREMOTE]          =  "EREMOTE",
+		[ENOLINK]          =  "ENOLINK",
+		[EADV]             =  "EADV",
+		[ESRMNT]           =  "ESRMNT",
+		[ECOMM]            =  "ECOMM",
+		[EPROTO]           =  "EPROTO",
+		[EMULTIHOP]        =  "EMULTIHOP",
+		[EDOTDOT]          =  "EDOTDOT",
+		[EBADMSG]          =  "EBADMSG",
+		[EOVERFLOW]        =  "EOVERFLOW",
+		[ENOTUNIQ]         =  "ENOTUNIQ",
+		[EBADFD]           =  "EBADFD",
+		[EREMCHG]          =  "EREMCHG",
+		[ELIBACC]          =  "ELIBACC",
+		[ELIBBAD]          =  "ELIBBAD",
+		[ELIBSCN]          =  "ELIBSCN",
+		[ELIBMAX]          =  "ELIBMAX",
+		[ELIBEXEC]         =  "ELIBEXEC",
+		[EILSEQ]           =  "EILSEQ",
+		[ERESTART]         =  "ERESTART",
+		[ESTRPIPE]         =  "ESTRPIPE",
+		[EUSERS]           =  "EUSERS",
+		[ENOTSOCK]         =  "ENOTSOCK",
+		[EDESTADDRREQ]     =  "EDESTADDRREQ",
+		[EMSGSIZE]         =  "EMSGSIZE",
+		[EPROTOTYPE]       =  "EPROTOTYPE",
+		[ENOPROTOOPT]      =  "ENOPROTOOPT",
+		[EPROTONOSUPPORT]  =  "EPROTONOSUPPORT",
+		[ESOCKTNOSUPPORT]  =  "ESOCKTNOSUPPORT",
+		[EOPNOTSUPP]       =  "EOPNOTSUPP",
+		[EPFNOSUPPORT]     =  "EPFNOSUPPORT",
+		[EAFNOSUPPORT]     =  "EAFNOSUPPORT",
+		[EADDRINUSE]       =  "EADDRINUSE",
+		[EADDRNOTAVAIL]    =  "EADDRNOTAVAIL",
+		[ENETDOWN]         =  "ENETDOWN",
+		[ENETUNREACH]      =  "ENETUNREACH",
+		[ENETRESET]        =  "ENETRESET",
+		[ECONNABORTED]     =  "ECONNABORTED",
+		[ECONNRESET]       =  "ECONNRESET",
+		[ENOBUFS]          =  "ENOBUFS",
+		[EISCONN]          =  "EISCONN",
+		[ENOTCONN]         =  "ENOTCONN",
+		[ESHUTDOWN]        =  "ESHUTDOWN",
+		[ETOOMANYREFS]     =  "ETOOMANYREFS",
+		[ETIMEDOUT]        =  "ETIMEDOUT",
+		[ECONNREFUSED]     =  "ECONNREFUSED",
+		[EHOSTDOWN]        =  "EHOSTDOWN",
+		[EHOSTUNREACH]     =  "EHOSTUNREACH",
+		[EALREADY]         =  "EALREADY",
+		[EINPROGRESS]      =  "EINPROGRESS",
+		[ESTALE]           =  "ESTALE",
+		[EUCLEAN]          =  "EUCLEAN",
+		[ENOTNAM]          =  "ENOTNAM",
+		[ENAVAIL]          =  "ENAVAIL",
+		[EISNAM]           =  "EISNAM",
+		[EREMOTEIO]        =  "EREMOTEIO",
+		[EDQUOT]           =  "EDQUOT",
+		[ENOMEDIUM]        =  "ENOMEDIUM",
+		[EMEDIUMTYPE]      =  "EMEDIUMTYPE",
+		[ECANCELED]        =  "ECANCELED",
+		[ENOKEY]           =  "ENOKEY",
+		[EKEYEXPIRED]      =  "EKEYEXPIRED",
+		[EKEYREVOKED]      =  "EKEYREVOKED",
+		[EKEYREJECTED]     =  "EKEYREJECTED",
+		[EOWNERDEAD]       =  "EOWNERDEAD",
+		[ENOTRECOVERABLE]  =  "ENOTRECOVERABLE",
+		[ERFKILL]          =  "ERFKILL",
+		[EHWPOISON]        =  "EHWPOISON",
+	};
+	if (e < sizeof(estr)/sizeof(*estr) && estr[e]) {
+		return estr[e];
+	}
+	return "UNKNOWN_ERRNO";
 }

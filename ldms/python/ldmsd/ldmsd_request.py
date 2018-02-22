@@ -55,6 +55,7 @@ import json
 import argparse
 import sys
 import traceback
+import re
 
 class LDMSD_Request_Exception(Exception):
     '''Raise when there is an error in the ldmsd request module'''
@@ -65,7 +66,7 @@ class LDMSD_Request_Exception(Exception):
 
 class LDMSD_Req_Attr(object):
     LDMSD_REQ_ATTR_SZ = 12
-    
+
     NAME = 1
     INTERVAL = 2
     OFFSET = 3
@@ -92,7 +93,8 @@ class LDMSD_Req_Attr(object):
     TEST = 24
     REC_LEN = 25
     JSON = 26
-    LAST = 27
+    PERM = 27
+    LAST = 28
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -118,6 +120,7 @@ class LDMSD_Req_Attr(object):
                    'time': TIME,
                    'push': PUSH,
                    'test': TEST,
+                   'perm': PERM,
         }
 
     def __init__(self, value = None, attr_name = None, attr_id = None, attr_len = None):
@@ -170,7 +173,7 @@ class LDMSD_Req_Attr(object):
         if discrim == 0:
             return LDMSD_Req_Attr(attr_id = cls.LAST)
 
-        (discrim, attr_id, attr_len, ) = struct.unpack('!LLL', 
+        (discrim, attr_id, attr_len, ) = struct.unpack('!LLL',
                                             buf[:cls.LDMSD_REQ_ATTR_SZ])
 
         if attr_id == cls.REC_LEN:
@@ -305,7 +308,7 @@ class LDMSD_Request(object):
     TYPE_CONFIG_CMD = 1
     TYPE_CONFIG_RESP = 2
     TYPE_LAST = 3
-    
+
     MARKER = 0xffffffff
 
     SOM_FLAG = 1
@@ -364,7 +367,7 @@ class LDMSD_Request(object):
             (marker, msg_type, msg_flags, msg_no,
              errcode, rec_len) = struct.unpack('!LLLLLL',
                                                record[:self.header_size])
-             
+
             if marker != self.MARKER:
                 raise ValueError("Record is missing the marker")
             data = record[self.header_size:]
@@ -376,7 +379,7 @@ class LDMSD_Request(object):
                 break
 
         attr_list = []
-        
+
         if resp is not None:
             offset = 0
             while True:
@@ -389,7 +392,7 @@ class LDMSD_Request(object):
                 attr_list.append(attr)
                 offset += attr.LDMSD_REQ_ATTR_SZ + attr.attr_len
 
-        msg = None        
+        msg = None
         if len(attr_list) == 1:
             if (attr_list[0].attr_id == LDMSD_Req_Attr.STRING) or (attr_list[0].attr_id == LDMSD_Req_Attr.JSON):
                 msg = attr_list[0].attr_value
@@ -412,22 +415,57 @@ class LDMSD_Request(object):
     def resp2json(self, resp):
         return json.dumps(resp)
 
-class LdmsdReqParser(cmd.Cmd):
-    def __init__(self, host = None, port = None, secretPath = None, infile=None):
-        try:
-            self.secretword = None
-            if secretPath is not None:
-                try:
-                    from ovis_lib import ovis_auth
-                except ImportError:
-                    raise ImportError("No module ovis_lib. Please make sure that ovis"
-                                        "is built with --enable-swig")
-                self.secretword = ovis_auth.ovis_auth_get_secretword(secretPath, None)
+    @classmethod
+    def from_verb_attrs(cls, verb, attrs):
+        """Create LDMSD_Request object from verb (str) and attrs (list of str pair)
 
-                self.ctrl = ldmsd_config.ldmsdInetConfig(host = host,
-                                                         port = int(port),
-                                                         secretword = self.secretword)
-                self.prompt = "{0}:{1}> ".format(host, port)
+        verb (str) - the LDMSD command verb
+        attrs (list of (str, str)) - the list of attribute-value pairs. For
+                positional attribute, the value is None.
+
+        """
+        req_attrs = []
+        attr_s = []
+        for a, v in attrs:
+            s = a if v is None else a+"="+v
+            if (verb == "config" and a != "name") or (verb == "env"):
+                attr_s.append(s)
+            else:
+                try:
+                    attr = LDMSD_Req_Attr(value = v, attr_name = a)
+                except KeyError:
+                    attr_s.append(s)
+                except Exception:
+                    raise
+                else:
+                    req_attrs.append(attr)
+        if attr_s:
+            attr_str = " ".join(attr_s)
+            attr = LDMSD_Req_Attr(value = attr_str, attr_id = LDMSD_Req_Attr.STRING)
+            req_attrs.append(attr)
+        req_attrs.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.LAST))
+        return LDMSD_Request(command = verb, attrs = req_attrs)
+
+    ATTR_RE = re.compile("([^=]+)(?:=(.+))?")
+
+    @classmethod
+    def from_str(cls, cmd_str):
+        """Parse the cmd_str and make LDMSD_Request object from it
+
+        cmd_str - a string in the `verb arg1=val1 arg2=val2 ...` format.
+        """
+        tkns = re.split("\s+", cmd_str)
+        verb = tkns[0]
+        av_list = (cls.ATTR_RE.match(x).groups() for x in tkns[1:])
+        return cls.from_verb_attrs(verb, av_list)
+
+
+class LdmsdReqCmd(cmd.Cmd):
+    def __init__(self, host = None, port = None, infile=None):
+        try:
+            self.ctrl = ldmsd_config.ldmsdInetConfig(host = host,
+                                                     port = int(port))
+            self.prompt = "{0}:{1}> ".format(host, port)
 
             if infile:
                 cmd.Cmd.__init__(self, stdin=infile)
@@ -483,10 +521,6 @@ if __name__ == "__main__":
         parser.add_argument("--host", help = "Hostname of ldmsd to connect to")
         parser.add_argument('--port',
                             help = "Inet ctrl listener port of ldmsd")
-        parser.add_argument('--auth_file',
-                            help = "Path to the file containing the secretword. \
-This must be use only when the ldmsd is using authentication and \
-ldmsd_controller is not connecting to ldmsd through a unix domain socket.")
         parser.add_argument('--debug', action = "store_true",
                             help = argparse.SUPPRESS)
         args = parser.parse_args()
@@ -496,8 +530,7 @@ ldmsd_controller is not connecting to ldmsd through a unix domain socket.")
             print("Please give --host and --port")
             sys.exit(1)
 
-        reqParser = LdmsdReqParser(host = args.host, port = args.port,
-                                        secretPath = args.auth_file)
+        reqParser = LdmsdReqCmd(host = args.host, port = args.port)
 
         reqParser.cmdloop("Welcome to the LDMSD control processor")
 

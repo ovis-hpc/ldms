@@ -111,13 +111,14 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 }
 
 ldmsd_strgp_t
-ldmsd_strgp_new(const char *name)
+ldmsd_strgp_new_with_auth(const char *name, uid_t uid, gid_t gid, int perm)
 {
 	struct ldmsd_strgp *strgp;
 
 	strgp = (struct ldmsd_strgp *)
-		ldmsd_cfgobj_new(name, LDMSD_CFGOBJ_STRGP,
-				 sizeof *strgp, ldmsd_strgp___del);
+		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_STRGP,
+				 sizeof *strgp, ldmsd_strgp___del,
+				 uid, gid, perm);
 	if (!strgp)
 		return NULL;
 
@@ -128,6 +129,14 @@ ldmsd_strgp_new(const char *name)
 	ldmsd_task_init(&strgp->task);
 	ldmsd_cfgobj_unlock(&strgp->obj);
 	return strgp;
+}
+
+ldmsd_strgp_t
+ldmsd_strgp_new(const char *name)
+{
+	struct ldmsd_sec_ctxt sctxt;
+	ldmsd_sec_ctxt_get(&sctxt);
+	return ldmsd_strgp_new_with_auth(name, sctxt.crd.uid, sctxt.crd.gid, 0777);
 }
 
 ldmsd_strgp_t ldmsd_strgp_first()
@@ -194,7 +203,7 @@ ldmsd_name_match_t strgp_find_prdcr_ex(ldmsd_strgp_t strgp, const char *ex)
 }
 
 int ldmsd_strgp_prdcr_add(const char *strgp_name, const char *regex_str,
-					char *rep_buf, size_t rep_len)
+			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
@@ -202,6 +211,9 @@ int ldmsd_strgp_prdcr_add(const char *strgp_name, const char *regex_str,
 		return ENOENT;
 
 	ldmsd_strgp_lock(strgp);
+	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out_1;
@@ -284,7 +296,8 @@ ldmsd_strgp_metric_t strgp_metric_new(const char *metric_name)
 	return metric;
 }
 
-int ldmsd_strgp_metric_add(const char *strgp_name, const char *metric_name)
+int ldmsd_strgp_metric_add(const char *strgp_name, const char *metric_name,
+			   ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
@@ -292,6 +305,9 @@ int ldmsd_strgp_metric_add(const char *strgp_name, const char *metric_name)
 		return ENOENT;
 
 	ldmsd_strgp_lock(strgp);
+	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out_1;
@@ -314,13 +330,17 @@ out_0:
 	return rc;
 }
 
-int ldmsd_strgp_metric_del(const char *strgp_name, const char *metric_name)
+int ldmsd_strgp_metric_del(const char *strgp_name, const char *metric_name,
+			   ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
 	if (!strgp)
 		return ENOENT;
 	ldmsd_strgp_lock(strgp);
+	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out_1;
@@ -486,7 +506,7 @@ void ldmsd_strgp_update(ldmsd_prdcr_set_t prd_set)
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 }
 
-int ldmsd_strgp_stop(const char *strgp_name)
+int ldmsd_strgp_stop(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
@@ -494,6 +514,9 @@ int ldmsd_strgp_stop(const char *strgp_name)
 		return ENOENT;
 
 	ldmsd_strgp_lock(strgp);
+	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (strgp->state != LDMSD_STRGP_STATE_RUNNING) {
 		rc = EBUSY;
 		goto out_1;
@@ -509,7 +532,7 @@ out_0:
 	return 0;
 }
 
-int ldmsd_strgp_del(const char *strgp_name)
+int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
@@ -517,6 +540,9 @@ int ldmsd_strgp_del(const char *strgp_name)
 		return ENOENT;
 
 	ldmsd_strgp_lock(strgp);
+	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out_1;

@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010-2017 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010-2017 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2018 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -64,13 +64,11 @@
 #include "ldms_core.h"
 #include "coll/rbt.h"
 #include "ovis_util/os_util.h"
+#include "ovis_util/util.h"
 
 
 #ifdef __cplusplus
 extern "C" {
-#endif
-#if 0
-}
 #endif
 typedef struct ldms_xprt *ldms_t;
 typedef struct ldms_rbuf_desc *ldms_rbuf_t;
@@ -118,6 +116,8 @@ typedef struct ldms_schema_s *ldms_schema_t;
  * The connection management API consists of the following functions:
  *
  * \li \b ldms_xprt_create() Create a transport instance.
+ * \li \b ldms_xprt_create_with_auth() Create a transport instance with
+ * authentication.
  * \li \b ldms_xprt_listen() Create a listening endpoint and respond to
  * queries from peers.
  * \li \b ldms_xprt_connect() Request a connection with a remote peer.
@@ -148,7 +148,9 @@ typedef struct ldms_schema_s *ldms_schema_t;
  * principle functions for creating and destroying local metric sets are the
  * following:
  *
- * \li \b ldms_set_new() Create a new metric set from a Scheam
+ * \li \b ldms_set_new() Create a new metric set from a Schema
+ * \li \b ldms_set_new_with_auth() Create a new metric set from a Schema with
+ * owner's UID/GID and permission.
  * \li \b ldms_set_delete() Destroy a metric set.
  *
  * \section query Querying Metric Sets
@@ -226,7 +228,7 @@ void ldms_version_get(struct ldms_version *v);
  * \retval !0 The versions match
  * \retval 0 The versions do not match
  */
-int ldms_version_check(struct ldms_version *v);
+int ldms_version_check(const struct ldms_version *v);
 
 /**
  * \brief Find a transport that matches the specified address.
@@ -327,42 +329,22 @@ typedef void (*ldms_log_fn_t)(const char *fmt, ...);
  */
 extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn);
 
-#if OVIS_LIB_HAVE_AUTH
-/** The same env variable applies to all or confused inconsistency results. */
-#define LDMS_AUTH_ENV "LDMS_AUTH_FILE"
 /**
- * \brief Create a transport handle always with authentication
+ * \brief Create a transport handle with authentication
  *
- * Metric sets are exported on the network through a transport. A
- * transport handle is required to communicate on the network.
+ * This is like ::ldms_xprt_new(), but with authentication plugin attached to
+ * the transport.
  *
- * \param name	The name of the transport type to create.
- * \param log_fn An optional function to call when logging transport messages
- * \param secretword  The shared secret word used for authentication.
- *                    If NULL is given, the call fails.
- *
- * \returns	A transport handle on success.
- * \returns	0 If the transport could not be created.
+ * \param xprt_name The name of the transport type.
+ * \param log_fn An optional function to call when logging transport messages.
+ * \param auth_name The name of the authentication plugin.
+ * \param auth_av_list The attribute-value list containing options for the
+ *                     authentication plugin. Please consult the plugin manual
+ *                     for the options.
  */
-extern ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
-					const char *secretword);
-/**
- * \brief Find the secretword used for encrypting the key exchange.
- *
- * All callers connecting to ldmsd via any network socket use
- * this to get their secretword needed for ldms_xprt_with_auth_new.
- * The source for the secret is as follows:
- *   The file, if given, first.
- *   The env var LDMS_AUTH_ENV, if set.
- *   ~/.ldmsauth.conf, if present.
- *   sysconfdir/ldmsauth.conf, if present.
- * First source given or present, but erroneous, results in a failure.
- * \param file The user-supplied name of a file to check.
- * \param log_fn Output sink for error messages.
- * \return NULL on failure (errno set) or the secret. Caller owns result.
- */
-extern char *ldms_get_secretword(const char * file, ldms_log_fn_t log_fn);
-#endif /* OVIS_LIB_HAVE_AUTH */
+ldms_t ldms_xprt_new_with_auth(const char *xprt_name, ldms_log_fn_t log_fn,
+			       const char *auth_name,
+			       struct attr_value_list *auth_av_list);
 
 enum ldms_xprt_event_type {
 	/*! A new connection is established */
@@ -391,6 +373,11 @@ typedef struct ldms_xprt_event {
 	 */
 	size_t data_len;
 } *ldms_xprt_event_t;
+
+typedef struct ldms_cred {
+	uid_t uid;
+	gid_t gid;
+} *ldms_cred_t;
 
 /**
  * Definition of callback function for ldms_xprt_connect and ldms_xprt_listen.
@@ -493,6 +480,16 @@ extern int ldms_xprt_listen(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 		ldms_event_cb_t cb, void *cb_arg);
 extern int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port,
 		ldms_event_cb_t cb, void *cb_arg);
+
+/**
+ * \brief Get local and remote sockaddr from the xprt.
+ *
+ * \retval 0 If success.
+ * \retval errno If failed.
+ */
+int ldms_xprt_sockaddr(ldms_t x, struct sockaddr *local_sa,
+		       struct sockaddr *remote_sa,
+		       socklen_t *sa_len);
 
 /**
  * \brief Close a connection to an LDMS host.
@@ -847,6 +844,28 @@ extern int ldms_schema_metric_count_get(ldms_schema_t schema);
 extern ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema);
 
 /**
+ * \brief Create an LDMS metric set with owner and permission
+ *
+ * Create a metric set, like ::ldms_set_new(), but with a specified owner \c
+ * uid-gid and a permission \c perm. The remote peer will not be able to get the
+ * set in the directory listing, nor be able to perform \c ldms_xprt_lookup()
+ * without a proper owner/group/permission. The permission is 9-bit UNIX style
+ * (owner-group-other read-write-execute).
+ *
+ * \param instance_name The name of the metric set.
+ * \param schema        The schema of the set.
+ * \param uid           The user ID of the set owner.
+ * \param gid           The group ID of the set owner.
+ * \param perm          The 9-bit UNIX style permission (e.g. 0640).
+ *
+ * \retval NULL If failed.
+ * \retval setp The set pointer, if success.
+ */
+ldms_set_t ldms_set_new_with_auth(const char *instance_name,
+				  ldms_schema_t schema,
+				  uid_t uid, gid_t gid, int perm);
+
+/**
  * \brief Delete the set reference
  *
  * Delete the set reference. The set will be deleted when all set references
@@ -926,6 +945,27 @@ extern int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *s);
  * \return The number of metrics in the set
  */
 extern uint32_t ldms_set_card_get(ldms_set_t s);
+
+/**
+ * \brief Retreive the UID of the LDMS set.
+ * \param s The set handle.
+ * \retval uid The UID of the set.
+ */
+uint32_t ldms_set_uid_get(ldms_set_t s);
+
+/**
+ * \brief Retreive the GID of the LDMS set.
+ * \param s The set handle.
+ * \retval gid The GID of the set.
+ */
+uint32_t ldms_set_gid_get(ldms_set_t s);
+
+/**
+ * \brief Retreive the permission of the LDMS set.
+ * \param s The set handle.
+ * \retval perm The permission of the set.
+ */
+uint32_t ldms_set_perm_get(ldms_set_t s);
 
 /**
  * \brief Get the size in bytes of the set's meta data
@@ -1516,6 +1556,54 @@ int ldms_cancel_notify(ldms_t x, ldms_set_t s);
  * \param e	The event
  */
 void ldms_notify(ldms_set_t s, ldms_notify_event_t e);
+
+/**
+ * \brief Get ldms credentials to both ends of the transport
+ *
+ * \param x The LDMS transport handle.
+ * \param [out] lcl Credential output for the local end of the transport. This
+ *                  paramater can be NULL.
+ * \param [out] rmt Credential output for the remote end of the transport. This
+ *                  parameter can be NULL.
+ *
+ * \note If the ldms transport \c x is not connected, the data in \c rmt is
+ * invalid. For the listening endpoint, please use ::ldms_local_cred_get() to
+ * get the credential.
+ */
+void ldms_xprt_cred_get(ldms_t x, ldms_cred_t lcl, ldms_cred_t rmt);
+
+/**
+ * \brief Get the local credential
+ *
+ * \param x The LDMS transport handle.
+ * \param [out] lcl Credential output for the local end of the transport.
+ */
+void ldms_local_cred_get(ldms_t x, ldms_cred_t lcl);
+
+#define LDMS_ACCESS_READ 0444
+#define LDMS_ACCESS_WRITE 0222
+#define LDMS_ACCESS_EXECUTE 0111
+
+/**
+ * \brief Check if the access is permitted for the object over the transport
+ *
+ * This is a convenient function to check whether the remote peer should be able
+ * to access (\c LDMS_ACCESS_READ, \c LDMS_ACCESS_WRITE, or
+ * \c LDMS_ACCESS_EXECUTE) an object (ldms' or application's) that owns by \c
+ * obj_uid/obj_gid with permission \c obj_perm.
+ *
+ * \param x The LDMS transport handle
+ * \param acc The access request flag (one of the LDMS_ACCESS_READ,
+ *            LDMS_ACCESS_WRITE and LDMS_ACCESS_EXECUTE).
+ * \param obj_uid The UID of the object in question.
+ * \param obj_gid The GID of the object in question.
+ * \param obj_perm The permission of the object in question.
+ *
+ * \retval 0 if the access is granted.
+ * \retval EACCES if the access is denied.
+ */
+int ldms_access_check(ldms_t x, uint32_t acc, uid_t obj_uid, gid_t obj_gid,
+		      int obj_perm);
 /**
  * \}
  */

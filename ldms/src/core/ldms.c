@@ -727,7 +727,9 @@ void __ldms_metric_size_get(const char *name, enum ldms_value_type t,
 	*data_sz = __ldms_value_size_get(t, count);
 }
 
-ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
+ldms_set_t ldms_set_new_with_auth(const char *instance_name,
+				  ldms_schema_t schema,
+				  uid_t uid, gid_t gid, int perm)
 {
 	struct ldms_data_hdr *data;
 	struct ldms_set_hdr *meta;
@@ -764,6 +766,9 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 	/* Initialize the metric set header */
 	meta->meta_gn = __cpu_to_le64(1);
 	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
+	meta->uid = __cpu_to_le32(uid);
+	meta->gid = __cpu_to_le32(gid);
+	meta->perm = __cpu_to_le32(perm);
 
 	/*
 	 * Set the instance name.
@@ -843,6 +848,11 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 	return NULL;
 }
 
+ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
+{
+	return ldms_set_new_with_auth(instance_name, schema, -1, -1, 0777);
+}
+
 const char *ldms_set_name_get(ldms_set_t s)
 {
 	struct ldms_set_hdr *sh = s->set->meta;
@@ -858,6 +868,21 @@ const char *ldms_set_schema_name_get(ldms_set_t s)
 uint32_t ldms_set_card_get(ldms_set_t s)
 {
 	return __le32_to_cpu(s->set->meta->card);
+}
+
+uint32_t ldms_set_uid_get(ldms_set_t s)
+{
+	return __le32_to_cpu(s->set->meta->uid);
+}
+
+uint32_t ldms_set_gid_get(ldms_set_t s)
+{
+	return __le32_to_cpu(s->set->meta->gid);
+}
+
+uint32_t ldms_set_perm_get(ldms_set_t s)
+{
+	return __le32_to_cpu(s->set->meta->perm);
 }
 
 extern uint32_t ldms_set_meta_sz_get(ldms_set_t s)
@@ -1983,12 +2008,30 @@ int ldms_set_is_consistent(ldms_set_t s)
 	return (dh->trans.flags == LDMS_TRANSACTION_END);
 }
 
+void ldms_xprt_cred_get(ldms_t x, ldms_cred_t lcl, ldms_cred_t rmt)
+{
+	if (lcl) {
+		lcl->uid = x->luid;
+		lcl->gid = x->lgid;
+	}
+
+	if (rmt) {
+		rmt->uid = x->ruid;
+		rmt->gid = x->rgid;
+	}
+}
+
+void ldms_local_cred_get(ldms_t x, ldms_cred_t lcl)
+{
+	ldms_auth_cred_get(x->auth, lcl);
+}
+
 void ldms_version_get(struct ldms_version *v)
 {
 	LDMS_VERSION_SET(*v);
 }
 
-int ldms_version_check(struct ldms_version *v)
+int ldms_version_check(const struct ldms_version *v)
 {
 	return LDMS_VERSION_EQUAL(*v);
 }

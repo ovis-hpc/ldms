@@ -187,9 +187,9 @@ class ldmsdConfig(object):
 #         self.socket = None
 #         if not os.path.exists(ldmsd_sockpath):
 #             raise ValueError("{0} doesn't exist.".format(ldmsd_sockpath))
-# 
+#
 #         self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-# 
+#
 #         if max_recv_len is None:
 #             self.max_recv_len = MAX_RECV_LEN
 #         else:
@@ -197,39 +197,39 @@ class ldmsdConfig(object):
 #         self.ldmsd_sockpath = ldmsd_sockpath
 #         self.socket.connect(self.ldmsd_sockpath)
 #         self.type = "udomain"
-# 
+#
 #     def __del__(self):
 #         if self.socket is not None:
 #             self.socket.close()
-# 
+#
 #     def setMaxRecvLen(self, max_recv_len):
 #         self.max_recv_len = max_recv_len
-# 
+#
 #     def getMaxRecvLen(self):
 #         return self.max_recv_len
-# 
+#
 #     def getSockPath(self):
 #         return self.sockpath
-# 
+#
 #     def setLdmsdSockPath(self, ldmsd_sockpath):
 #         self.ldmsd_sockpath = ldmsd_sockpath
-# 
+#
 #     def getLdmsdSockPath(self):
 #         return self.ldmsd_sockpath
-# 
+#
 #     def send_command(self, cmd):
 #         if self.socket is None:
 #             raise Exception("The connection has been closed.")
 #         self.socket.sendall(cmd)
-# 
+#
 #     def receive_response(self, recv_len = None):
 #         return ldmsdConfig.receive_response(self, recv_len)
-# 
+#
 #     def close(self):
 #         if self.socket is not None:
 #             self.socket.close()
 #             self.socket = None
-# 
+#
 # class ldmsdInetConfig(ldmsdConfig):
 #     def __init__(self, host, port, secretword, max_recv_len = MAX_RECV_LEN):
 #         self.socket = None
@@ -252,7 +252,7 @@ class ldmsdConfig(object):
 #             auth_chl = ovis_auth.ovis_auth_challenge()
 #             auth_chl.lo = _chl[0]
 #             auth_chl.hi = _chl[1]
-# 
+#
 #             if self.secretword is None:
 #                 self.socket.close()
 #                 raise Exception("The server requires authentication")
@@ -264,78 +264,58 @@ class ldmsdConfig(object):
 #                 self.socket.close()
 #                 raise Exception("The server closes the connection")
 #             self.type = "inet"
-# 
+#
 #     def __del__(self):
 #         if self.socket is not None:
 #             self.socket.close()
-# 
+#
 #     def setMaxRecvLen(self, max_recv_len):
 #         self.max_recv_len = max_recv_len
-# 
+#
 #     def getMaxRecvLen(self):
 #         return self.max_recv_len
-# 
+#
 #     def getHost(self):
 #         return self.host
-# 
+#
 #     def getPort(self):
 #         return self.port
-# 
+#
 #     def send_command(self, cmd):
 #         if self.socket is None:
 #             raise Exception("The connection has been disconnected")
 #         self.socket.sendall(cmd)
-# 
+#
 #     def receive_response(self, recv_len = None):
 #         return ldmsdConfig.receive_response(self, recv_len)
-# 
+#
 #     def close(self):
 #         if self.socket is not None:
 #             self.socket.close()
 #             self.socket = None
 
 class ldmsdOutbandConfig(ldmsdConfig):
-    def __init__(self, secretword, host = None, port = None, sockname = None, max_recv_len = MAX_RECV_LEN):
+    def __init__(self, host = None, port = None, sockname = None, max_recv_len = MAX_RECV_LEN):
         self.socket = None
         self.host = host
         self.port = port
         self.sockname = sockname
         self.max_recv_len = max_recv_len
-        self.secretword = secretword
 
         if self.sockname is not None:
             if not os.path.exists(sockname):
                 raise ValueError("{0} doesn't exist.".format(sockname))
+            self.type = "udomain"
             self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             self.socket.connect(self.sockname)
         else:
+            self.type = "inet"
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.connect((host, port))
         buf = self.socket.recv(self.max_recv_len)
         _chl = struct.unpack('II', buf)
         if _chl[0] != 0 or _chl[1] != 0:
-            try:
-                from ovis_lib import ovis_auth
-            except ImportError:
-                raise ImportError("No module named ovis_lib. Please "
-                                        "make sure that ovis is built with "
-                                        "--enable-swig")
-            # Do authentication
-            auth_chl = ovis_auth.ovis_auth_challenge()
-            auth_chl.lo = _chl[0]
-            auth_chl.hi = _chl[1]
-
-            if self.secretword is None:
-                self.socket.close()
-                raise Exception("The server requires authentication")
-            chl = ovis_auth.ovis_auth_unpack_challenge(auth_chl)
-            auth_psswd = ovis_auth.ovis_auth_encrypt_password(chl, self.secretword)
-            self.socket.send(auth_psswd)
-            s = self.socket.recv(self.max_recv_len)
-            if len(s) == 0:
-                self.socket.close()
-                raise Exception("The server closes the connection")
-            self.type = "inet"
+            raise RuntimeError("Authentication required")
 
     def __del__(self):
         if self.socket is not None:
@@ -369,7 +349,8 @@ class ldmsdOutbandConfig(ldmsdConfig):
 
 class ldmsdInbandConfig(ldmsdConfig):
 
-    def __init__(self, host, port, xprt, secretword, max_recv_len = MAX_RECV_LEN):
+    def __init__(self, host, port, xprt, max_recv_len = MAX_RECV_LEN,
+                 auth=None, auth_opt=None):
         try:
             from ovis_ldms import ldms
         except:
@@ -385,14 +366,15 @@ class ldmsdInbandConfig(ldmsdConfig):
         self.host = host
         self.port = port
         self.max_recv_len = max_recv_len
-        self.secretword = secretword
         self.xprt = xprt
 
-        if secretword:
-            self.ldms = ldms.ldms_xprt_with_auth_new(self.xprt, None, self.secretword)
+        if auth:
+            self.ldms = ldms.LDMS_xprt_new_with_auth(self.xprt, auth, auth_opt)
         else:
-
             self.ldms = ldms.ldms_xprt_new(self.xprt, None)
+
+        if not self.ldms:
+            raise ValueError("Failed to create LDMS transport")
 
         self.rc = ldms.LDMS_xprt_connect_by_name(self.ldms, self.host, str(self.port))
         if self.rc != 0:

@@ -7,12 +7,13 @@ AM_CFLAGS += \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
 
 ldmscoreincludedir = $(includedir)/ldms
-ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldmsd.h ldms_xprt.h
+ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldms_xprt.h ldms_auth.h
 
-libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h
+libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h \
+		     ldms_auth.c ldms_xprt_auth.c
 libldms_la_LIBADD = -ldl -lpthread -lcoll \
 	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
-	-lmmalloc -lzap @OVIS_AUTH_LIBS@
+	-lmmalloc -lzap
 
 lib_LTLIBRARIES += libldms.la
 

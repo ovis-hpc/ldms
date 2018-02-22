@@ -8,6 +8,9 @@ AM_CFLAGS += \
 "-DLDMS_SRCDIR=\"$(abs_top_srcdir)\"" \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
 
+ldmsdincludedir = $(includedir)/ldms
+ldmsdinclude_HEADERS = ldmsd.h
+
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
 
@@ -37,11 +40,8 @@ ldmsd_LDFLAGS += -lrabbitmq
 ldmsd_CFLAGS += -DENABLE_RABBITMQ
 endif
 
-ldmsd_LDFLAGS += @OVIS_AUTH_LIBS@
-ldms_ls_LDADD += @OVIS_AUTH_LIBS@
-
 ldmsctl_SOURCES = ldmsctl.c ldmsd_request_util.c
-ldmsctl_LDADD = $(CORE)/libldms.la @OVIS_AUTH_LIBS@
+ldmsctl_LDADD = $(CORE)/libldms.la
 ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ \
 		-lovis_ctrl -lovis_util -lmmalloc -lcoll -lzap -pthread \
 		 -ljson_parser -lm @LDFLAGS_GETTIME@

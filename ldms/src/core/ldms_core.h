@@ -53,7 +53,10 @@
 #ifndef __LDMS_CORE_H__
 #define __LDMS_CORE_H__
 
+#include <stdint.h>
 #include <asm/byteorder.h>
+
+#include "ovis-ldms-config.h"
 
 #define LDMS_SETH_F_BE		0x0001
 #define LDMS_SETH_F_LE		0x0002
@@ -144,9 +147,9 @@ struct ldms_version {
 
 void ldms_version_get(struct ldms_version *v);
 
-/* 3.5.0.0 */
-#define LDMS_VERSION_MAJOR	 0x03
-#define LDMS_VERSION_MINOR	 0x05
+/* 4.0.0.0 */
+#define LDMS_VERSION_MAJOR	 0x04
+#define LDMS_VERSION_MINOR	 0x00
 #define LDMS_VERSION_PATCH	 0x00
 #define LDMS_VERSION_FLAGS	 0x00
 #define LDMS_VERSION_SET(version) do {				\
@@ -177,6 +180,9 @@ struct ldms_set_hdr {
 	uint32_t card;		/* Size of dictionary */
 	uint32_t meta_sz;	/* size of meta data in bytes */
 	uint32_t data_sz;	/* size of metric values in bytes */
+	uint32_t uid;           /* UID */
+	uint32_t gid;           /* GID */
+	uint32_t perm;          /* permission */
 	uint32_t dict[OVIS_FLEX];/* The attr/metric dictionary */
 };
 
@@ -212,7 +218,7 @@ typedef union ldms_value {
 
 /**
  * \brief LDMS value type enumeration
- * Note: the numeric values must be < 255, as enum ldms_value_type fitting 
+ * Note: the numeric values must be < 255, as enum ldms_value_type fitting
  * into a byte is assumed in some transmission protocols.
  */
 enum ldms_value_type {

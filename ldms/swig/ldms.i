@@ -53,15 +53,80 @@
 #include <errno.h>
 #include <pthread.h>
 #include "ldms.h"
+#include "ovis_util/util.h"
 
-ldms_t LDMS_xprt_new(const char *xprt, const char *secretword)
+ldms_t LDMS_xprt_new(const char *xprt)
 {
         ldms_t x;
-        if (secretword)
-                x = ldms_xprt_with_auth_new(xprt, NULL, secretword);
-        else
-                x = ldms_xprt_new(xprt, NULL);
+	x = ldms_xprt_new(xprt, NULL);
         return x;
+}
+
+ldms_t LDMS_xprt_new_with_auth(const char *xprt, const char *auth_name,
+			       PyObject *auth_opt)
+{
+	ldms_t x = NULL;
+	PyObject *key, *value, *str;
+	Py_ssize_t pos = 0;
+	int n = 0;
+	struct attr_value_list *av_list = NULL;
+	char *s;
+
+	if (!auth_name) {
+		/* use default */
+		return LDMS_xprt_new(xprt);
+	}
+
+	if (!auth_opt || auth_opt == Py_None)
+		goto call;
+
+	if (!PyObject_TypeCheck(auth_opt, &PyDict_Type)) {
+		/* Bad type */
+		PyErr_SetString(PyExc_TypeError, "auth_opt must be a dict");
+		goto out;
+	}
+
+	n = PyDict_Size(auth_opt);
+	if (!n)
+		goto call;
+
+	av_list = av_new(n);
+	if (!av_list)
+		goto nomem;
+
+	while (PyDict_Next(auth_opt, &pos, &key, &value)) {
+		/* key and value are borrowed, not a new reference. No need to
+		 * call Py_DECREF().
+		 *
+		 * In addition, PyString_AsString() returns the internal
+		 * pointer. The caller must not modify or free it.
+		 * PyString_AsString() also automatically raise TypeError if the
+		 * object is not a String.
+		 */
+		s = PyString_AsString(key);
+		if (!s)
+			goto cleanup;
+		av_list->list[av_list->count].name = s;
+		s = PyString_AsString(value);
+		if (!s)
+			goto cleanup;
+		av_list->list[av_list->count].value = s;
+		av_list->count++;
+	}
+
+call:
+	x = ldms_xprt_new_with_auth(xprt, NULL, auth_name, av_list);
+	goto cleanup;
+
+nomem:
+	PyErr_SetString(PyExc_RuntimeError, "Out of memory");
+	goto cleanup;
+
+cleanup:
+	if (av_list)
+		free(av_list);
+out:
+	return x;
 }
 
 ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name, enum ldms_lookup_flags flags)
@@ -425,24 +490,6 @@ int LDMS_xprt_connect_by_name(ldms_t x, const char *host, const char *port)
         return arg->errcode;
 }
 
-PyObject *LDMS_get_secretword(const char *file)
-{
-        char *word;
-        int rc;
-
-        PyObject *result = PyList_New(0);
-
-        word = ldms_get_secretword(file, NULL);
-        rc = errno;
-        PyList_Append(result, PyInt_FromLong(rc));
-        if (word) {
-                PyList_Append(result, PyString_FromString(word));
-        } else {
-                PyList_Append(result, Py_None);
-        }
-        return result;
-}
-
 PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
 {
         /*
@@ -528,11 +575,9 @@ typedef long int64_t;
 %include "ldms.h"
 %include "ldms_core.h"
 
-ldms_t ldms_xprt_with_auth_new(const char *name, ldms_log_fn_t log_fn,
-                                                const char *secretword);
-ldms_t LDMS_xprt_new(const char *xprt, const char *secretword);
-
-PyObject *LDMS_get_secretword(const char *file);
+ldms_t LDMS_xprt_new(const char *xprt);
+ldms_t LDMS_xprt_new_with_auth(const char *xprt, const char *auth_name,
+			       PyObject *auth_opt);
 
 int LDMS_xprt_listen_by_name(ldms_t x, const char *host, const char *port);
 ldms_t LDMS_xprt_accept(ldms_t x);

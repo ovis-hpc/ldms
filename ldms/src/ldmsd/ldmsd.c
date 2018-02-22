@@ -87,17 +87,13 @@
 #include <mcheck.h>
 #endif /* DEBUG */
 
-#if OVIS_LIB_HAVE_AUTH
-#include "ovis_auth/auth.h"
-#endif /* OVIS_LIB_HAVE_AUTH */
-
 #define LDMSD_AUTH_ENV "LDMS_AUTH_FILE"
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:a:v:Vz:Z:q:c:u"
+#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:v:Vz:Z:q:c:ua:A:"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"
@@ -114,7 +110,6 @@ char *logfile;
 char *pidfile;
 char *bannerfile;
 int banner = 1;
-char *secretword;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size;
 char *max_mem_sz_str;
@@ -131,12 +126,23 @@ int passive = 0;
 int log_level_thr = LDMSD_LERROR;  /* log level threshold */
 int quiet = 0; /* Is verbosity quiet? 0 for no and 1 for yes */
 
+const char *auth_name = "none";
+struct attr_value_list *auth_opt = NULL;
+const int AUTH_OPT_MAX = 128;
+
 extern int process_config_file(const char *path);
 
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
 	NULL
 };
+
+void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt)
+{
+	if (!ldms)
+		return;
+	ldms_local_cred_get(ldms, &sctxt->crd);
+}
 
 void ldmsd_version_get(struct ldmsd_version *v)
 {
@@ -277,13 +283,6 @@ const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level)
 	return "LDMSD_LNONE";
 }
 
-#if OVIS_LIB_HAVE_AUTH
-const char *ldmsd_secret_get(void)
-{
-	return secretword;
-}
-#endif
-
 #ifdef LDMSD_UPDATE_TIME
 double ldmsd_timeval_diff(struct timeval *start, struct timeval *end)
 {
@@ -301,7 +300,6 @@ void cleanup(int x, const char *reason)
 	ldmsd_strgp_close();
 	ldmsd_log(llevel, "LDMSD_ LDMS Daemon exiting...status %d, %s\n", x,
 		       (reason && x) ? reason : "");
-	ldmsd_config_cleanup();
 	if (ldms) {
 		/* No need to close the xprt. It has never been connected. */
 		ldms_xprt_put(ldms);
@@ -459,14 +457,6 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -T set_name    Test set prefix.\n");
 	printf("    -N	     Notify registered monitors of the test metric sets\n");
 	printf("  Configuration Options\n");
-#if OVIS_LIB_HAVE_AUTH
-	printf("    -a secretfile  Give the location of the secretword file.\n"
-	       "		   Normally, the environment variable\n"
-	       "		   %s must be set to the full path to the file storing\n"
-	       "		   the shared secret word, e.g., secretword=<word>, where\n"
-	       "		   %d < word length < %d\n", LDMSD_AUTH_ENV,
-				   MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
-#endif /* OVIS_LIB_HAVE_AUTH */
 	printf("    -p xprt:[sockname|port]	Specifies the transport type to listen on for receiving configuration.\n"
 	       "                                The transport type is either 'unix' or 'sock'.\n"
 	       "                                Unix domain socket: unix:sockname. sockname is the unix domain socket path."
@@ -1083,7 +1073,8 @@ int main(int argc, char *argv[])
 	ldms_version_get(&ldms_version);
 	ldmsd_version_get(&ldmsd_version);
 	char *sockname = NULL;
-	char *authfile = NULL;
+	char *lval = NULL;
+	char *rval = NULL;
 	int list_plugins = 0;
 	int ret;
 	int sample_interval = 2000000;
@@ -1108,6 +1099,12 @@ int main(int argc, char *argv[])
 	sigaddset(&sigset, SIGINT);
 	sigaddset(&sigset, SIGTERM);
 	sigaddset(&sigset, SIGABRT);
+
+	auth_opt = av_new(AUTH_OPT_MAX);
+	if (!auth_opt) {
+		printf("Not enough memory!!!\n");
+		exit(1);
+	}
 
 	opterr = 0;
 
@@ -1196,18 +1193,6 @@ int main(int argc, char *argv[])
 			usage_hint(argv,"-Z not needed in LDMS v3. Remove it.\n"
 				"This message will disappear in a future release.");
 			break;
-#if OVIS_LIB_HAVE_AUTH
-		case 'a':
-			if (check_arg("a", optarg, LO_PATH))
-				return 1;
-			authfile = strdup(optarg);
-			if (!authfile) {
-				printf("Unable to copy secretword filename\n");
-				exit(ENOMEM);
-
-			}
-			break;
-#endif /* OVIS_LIB_HAVE_AUTH */
 		case 'V':
 			printf("LDMSD Version: %s\n", PACKAGE_VERSION);
 			printf("LDMS Protocol Version: %hhu.%hhu.%hhu.%hhu\n",
@@ -1227,9 +1212,32 @@ int main(int argc, char *argv[])
 			list_plugins = 1;
 			break;
 		case 'x':
-		case 'p':
 		case 'c':
 			/* Handle below */
+			break;
+		case 'a':
+			/* auth name */
+			auth_name = optarg;
+			break;
+		case 'A':
+			/* (multiple) auth options */
+			lval = strtok(optarg, "=");
+			if (!lval) {
+				printf("ERROR: Expecting -A name=value\n");
+				exit(1);
+			}
+			rval = strtok(NULL, "");
+			if (!rval) {
+				printf("ERROR: Expecting -A name=value\n");
+				exit(1);
+			}
+			if (auth_opt->count == auth_opt->size) {
+				printf("ERROR: Too many auth options\n");
+				exit(1);
+			}
+			auth_opt->list[auth_opt->count].name = lval;
+			auth_opt->list[auth_opt->count].value = rval;
+			auth_opt->count++;
 			break;
 		case '?':
 			printf("Error: unknown argument: %c\n", optopt);
@@ -1463,26 +1471,13 @@ int main(int argc, char *argv[])
 	if (!setfile)
 		setfile = LDMSD_SETFILE;
 
-#if OVIS_LIB_HAVE_AUTH
-	ldmsd_log(LDMSD_LINFO, BANNER_PART1_A
-#else /* OVIS_LIB_HAVE_AUTH */
-	ldmsd_log(LDMSD_LINFO, BANNER_PART1_NOA
-#endif /* OVIS_LIB_HAVE_AUTH */
-			BANNER_PART2);
-
-#if OVIS_LIB_HAVE_AUTH
-	secretword = NULL;
-	secretword = ldms_get_secretword(authfile, ldmsd_lcritical);
-	if ( !secretword )
-		cleanup(15, "auth get secretword failed");
-#endif /* OVIS_LIB_HAVE_AUTH */
 
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3, "start kernel sampler failed");
 
+	char *xprt_str, *port_str;
 	opterr = 0;
 	optind = 0;
-	char *xprt_str, *port_str;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		char *dup_arg;
 		switch (op) {
@@ -1492,24 +1487,20 @@ int main(int argc, char *argv[])
 			dup_arg = strdup(optarg);
 			xprt_str = strtok(dup_arg, ":");
 			port_str = strtok(NULL, ":");
-			ret = listen_on_ldms_xprt(xprt_str, port_str, secretword);
+			ldms = listen_on_ldms_xprt(xprt_str, port_str);
 			free(dup_arg);
-			if (ret) {
+			if (!ldms) {
 				cleanup(ret, "Error setting up ldms transport");
 			}
 			break;
-		case 'p':
-			if (check_arg("p", optarg, LO_NAME))
-				return 1;
-			dup_arg = strdup(optarg);
-			xprt_str = strtok(dup_arg, ":");
-			port_str = strtok(NULL, ":");
-			ret = listen_on_cfg_xprt(xprt_str, port_str, secretword);
-			free(dup_arg);
-			if (ret) {
-				cleanup(ret, "Error setting up configuration transport");
-			}
-			break;
+		}
+	}
+
+	opterr = 0;
+	optind = 0;
+	while ((op = getopt(argc, argv, FMT)) != -1) {
+		char *dup_arg;
+		switch (op) {
 		case 'c':
 			dup_arg = strdup(optarg);
 			ret = process_config_file(dup_arg);

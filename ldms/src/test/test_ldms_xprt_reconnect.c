@@ -285,11 +285,7 @@ void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 int client_connect(struct conn *conn)
 {
 	int rc = 0;
-#if OVIS_LIB_HAVE_AUTH
-	conn->ldms = ldms_xprt_with_auth_new(xprt, _log, secretword);
-#else /* OVIS_LIB_HAVE_AUTH */
 	conn->ldms = ldms_xprt_new(xprt, _log);
-#endif /* OVIS_LIB_HAVE_AUTH */
 	if (!conn->ldms) {
 		printf("ldms_xprt_new error\n");
 		exit(-1);
@@ -395,11 +391,7 @@ void do_server(struct sockaddr_in *sin)
 {
 	int rc;
 	ldms_t ldms;
-#if OVIS_LIB_HAVE_AUTH
-	ldms = ldms_xprt_with_auth_new(xprt, _log, secretword);
-#else /* OVIS_LIB_HAVE_AUTH */
 	ldms = ldms_xprt_new(xprt, _log);
-#endif /* OVIS_LIB_HAVE_AUTH */
 	if (!ldms) {
 		printf("ldms_xprt_new error\n");
 		exit(-1);

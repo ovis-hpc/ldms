@@ -50,9 +50,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <pthread.h>
 #include <stdlib.h>
-#include <string.h>
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
@@ -374,6 +376,9 @@ reset_prdcr:
 	ldmsd_prdcr_unlock(prdcr);
 }
 
+extern const char *auth_name;
+extern struct attr_value_list *auth_opt;
+
 static void prdcr_connect(ldmsd_prdcr_t prdcr)
 {
 	int ret;
@@ -382,12 +387,8 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	switch (prdcr->type) {
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
-#if OVIS_LIB_HAVE_AUTH
-		prdcr->xprt = ldms_xprt_with_auth_new(prdcr->xprt_name,
-				ldmsd_linfo, ldmsd_secret_get());
-#else
-		prdcr->xprt = ldms_xprt_new(prdcr->xprt_name, ldmsd_linfo);
-#endif /* OVIS_LIB_HAVE_AUTH */
+		prdcr->xprt = ldms_xprt_new_with_auth(prdcr->xprt_name,
+					ldmsd_linfo, auth_name, auth_opt);
 		if (prdcr->xprt) {
 			ret  = ldms_xprt_connect(prdcr->xprt,
 						 (struct sockaddr *)&prdcr->ss,
@@ -455,16 +456,17 @@ int ldmsd_prdcr_str2type(const char *type)
 }
 
 ldmsd_prdcr_t
-ldmsd_prdcr_new(const char *name, const char *xprt_name,
+ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const short port_no,
 		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us)
+		int conn_intrvl_us, uid_t uid, gid_t gid, int perm)
 {
 	struct ldmsd_prdcr *prdcr;
 
 	prdcr = (struct ldmsd_prdcr *)
-		ldmsd_cfgobj_new(name, LDMSD_CFGOBJ_PRDCR,
-				 sizeof *prdcr, ldmsd_prdcr___del);
+		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_PRDCR,
+				sizeof *prdcr, ldmsd_prdcr___del,
+				uid, gid, perm);
 	if (!prdcr)
 		return NULL;
 
@@ -493,7 +495,18 @@ out:
 	return NULL;
 }
 
-int ldmsd_prdcr_del(const char *prdcr_name)
+ldmsd_prdcr_t
+ldmsd_prdcr_new(const char *name, const char *xprt_name,
+		const char *host_name, const short port_no,
+		enum ldmsd_prdcr_type type,
+		int conn_intrvl_us)
+{
+	return ldmsd_prdcr_new_with_auth(name, xprt_name, host_name,
+			port_no, type, conn_intrvl_us, getuid(),
+			getgid(), 0777);
+}
+
+int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(prdcr_name);
@@ -501,6 +514,9 @@ int ldmsd_prdcr_del(const char *prdcr_name)
 		return ENOENT;
 
 	ldmsd_prdcr_lock(prdcr);
+	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out_1;
@@ -533,7 +549,8 @@ ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr)
 	return (ldmsd_prdcr_t)ldmsd_cfgobj_next(&prdcr->obj);
 }
 
-int ldmsd_prdcr_start(const char *name, const char *interval_str)
+int ldmsd_prdcr_start(const char *name, const char *interval_str,
+		      ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(name);
@@ -541,6 +558,9 @@ int ldmsd_prdcr_start(const char *name, const char *interval_str)
 		return ENOENT;
 
 	ldmsd_prdcr_lock(prdcr);
+	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out_1;
@@ -560,7 +580,7 @@ out_0:
 	return rc;
 }
 
-int ldmsd_prdcr_stop(const char *name)
+int ldmsd_prdcr_stop(const char *name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(name);
@@ -568,6 +588,9 @@ int ldmsd_prdcr_stop(const char *name)
 		return ENOENT;
 
 	ldmsd_prdcr_lock(prdcr);
+	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out_1;
@@ -587,7 +610,8 @@ out_0:
 }
 
 int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
-						char *rep_buf, size_t rep_len)
+			    char *rep_buf, size_t rep_len,
+			    ldmsd_sec_ctxt_t ctxt)
 {
 	regex_t regex;
 	ldmsd_prdcr_t prdcr;
@@ -603,6 +627,9 @@ int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 		if (rc)
 			continue;
 		ldmsd_prdcr_lock(prdcr);
+		rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
+		if (rc)
+			goto skip;
 		if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
 			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 			if (interval_str)
@@ -611,6 +638,7 @@ int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 					 LDMSD_TASK_F_IMMEDIATE,
 					 prdcr->conn_intrvl_us, 0);
 		}
+	skip:
 		ldmsd_prdcr_unlock(prdcr);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
@@ -619,7 +647,8 @@ int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 	return 0;
 }
 
-int ldmsd_prdcr_stop_regex(const char *prdcr_regex, char *rep_buf, size_t rep_len)
+int ldmsd_prdcr_stop_regex(const char *prdcr_regex, char *rep_buf,
+			   size_t rep_len, ldmsd_sec_ctxt_t ctxt)
 {
 	regex_t regex;
 	ldmsd_prdcr_t prdcr;
@@ -634,6 +663,9 @@ int ldmsd_prdcr_stop_regex(const char *prdcr_regex, char *rep_buf, size_t rep_le
 		if (rc)
 			continue;
 		ldmsd_prdcr_lock(prdcr);
+		rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
+		if (rc)
+			goto skip;
 		if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
 			if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
 				prdcr_reset_sets(prdcr);
@@ -643,6 +675,7 @@ int ldmsd_prdcr_stop_regex(const char *prdcr_regex, char *rep_buf, size_t rep_le
 			ldmsd_task_join(&prdcr->task);
 			prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
 		}
+	skip:
 		ldmsd_prdcr_unlock(prdcr);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);

@@ -55,10 +55,12 @@
 
 #include <semaphore.h>
 #include <sys/queue.h>
+#include <sys/types.h>
 
 #include <zap/zap.h>
 
 #include "ldms.h"
+#include "ldms_auth.h"
 
 #include "config.h"
 
@@ -122,7 +124,9 @@ enum ldms_request_cmd {
 	LDMS_CMD_REQ_NOTIFY,
 	LDMS_CMD_CANCEL_NOTIFY,
 	LDMS_CMD_SEND_MSG,
+	LDMS_CMD_AUTH_MSG,
 	LDMS_CMD_CANCEL_PUSH,
+	LDMS_CMD_AUTH,
 	LDMS_CMD_REPLY = 0x100,
 	LDMS_CMD_DIR_REPLY,
 	LDMS_CMD_DIR_CANCEL_REPLY,
@@ -132,8 +136,14 @@ enum ldms_request_cmd {
 	LDMS_CMD_AUTH_CHALLENGE_REPLY,
 	LDMS_CMD_AUTH_APPROVAL_REPLY,
 	LDMS_CMD_PUSH_REPLY,
+	LDMS_CMD_AUTH_REPLY,
 	/* Transport private requests set bit 32 */
 	LDMS_CMD_XPRT_PRIVATE = 0x80000000,
+};
+
+struct ldms_conn_msg {
+	struct ldms_version ver;
+	char auth_name[LDMS_AUTH_NAME_MAX];
 };
 
 struct ldms_send_cmd_param {
@@ -367,9 +377,20 @@ struct ldms_xprt {
 		LDMS_XPRT_AUTH_FAILED = -1, /* authentication failed */
 		LDMS_XPRT_AUTH_DISABLE = 0, /* authentication not is used */
 		LDMS_XPRT_AUTH_INIT = 1, /* Use authentication */
-		LDMS_XPRT_AUTH_PASSWORD = 2, /* Sent password to server */
+		LDMS_XPRT_AUTH_BUSY = 2, /* Authentication in operation */
 		LDMS_XPRT_AUTH_APPROVED = 3 /* authentication approved */
 	} auth_flag;
+
+	ldms_auth_t auth; /* authentication object */
+
+	/* Remote Credential */
+	uid_t ruid;
+	gid_t rgid;
+	/* Local Credential */
+	uid_t luid;
+	gid_t lgid;
+
+	int term;
 
 	/** Transport message logging callback */
 	ldms_log_fn_t log;
@@ -377,5 +398,18 @@ struct ldms_xprt {
 	LIST_HEAD(xprt_rbd_list, ldms_rbuf_desc) rbd_list;
 	LIST_ENTRY(ldms_xprt) xprt_link;
 };
+
+void __ldms_xprt_term(struct ldms_xprt *x);
+
+/* ====================
+ * xprt_auth operations
+ * ====================
+ *
+ * These functions are implemented in `ldms_xprt_auth.c`.
+ */
+int ldms_xprt_auth_bind(ldms_t xprt, ldms_auth_t auth);
+void ldms_xprt_auth_begin(ldms_t xprt);
+int ldms_xprt_auth_send(ldms_t _x, const char *msg_buf, size_t msg_len);
+void ldms_xprt_auth_end(ldms_t xprt, int result);
 
 #endif

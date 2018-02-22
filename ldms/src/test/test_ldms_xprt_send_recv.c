@@ -242,11 +242,7 @@ static void do_server(struct sockaddr_in *sin)
 	int rc;
 	ldms_t ldms;
 
-#if OVIS_LIB_HAVE_AUTH
-	ldms = ldms_xprt_with_auth_new(xprt, _log, secretword);
-#else /* OVIS_LIB_HAVE_AUTH */
 	ldms = ldms_xprt_new(xprt, _log);
-#endif /* OVIS_LIB_HAVE_AUTH */
 	if (!ldms) {
 		printf("ldms_xprt_new error\n");
 		exit(-1);
@@ -339,11 +335,7 @@ static void do_client(struct sockaddr_in *_sin)
 	freeaddrinfo(ai);
 
 	ldms_t x;
-#if OVIS_LIB_HAVE_AUTH
-	x = ldms_xprt_with_auth_new(xprt, _log, secretword);
-#else /* OVIS_LIB_HAVE_AUTH */
 	x = ldms_xprt_new(xprt, _log);
-#endif /* OVIS_LIB_HAVE_AUTH */
 	if (!x) {
 		printf("ldms_xprt_new error\n");
 		exit(-1);

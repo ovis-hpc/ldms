@@ -52,6 +52,7 @@
 #define _LDMS_PRIVATE_H
 #include <sys/queue.h>
 #include <ldms_xprt.h>
+#include <pthread.h>
 #include "ovis_util/os_util.h"
 
 #define LDMS_GN_INCREMENT(_gn) do { \

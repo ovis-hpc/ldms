@@ -13,6 +13,7 @@ do_subst = @LDMS_SUBST_RULE@
 
 if ENABLE_CORE
 SUBDIRS += core
+SUBDIRS += auth
 endif
 
 if ENABLE_STORE

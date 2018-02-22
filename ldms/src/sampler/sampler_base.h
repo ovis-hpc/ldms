@@ -58,6 +58,9 @@ typedef struct base_data_s {
 	ldms_schema_t schema;
 	ldms_set_t job_set;
 	ldms_set_t set;
+	uid_t uid;
+	gid_t gid;
+	int perm;
 	uint64_t component_id;
 	int job_id_idx;
 	int app_id_idx;
