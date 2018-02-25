@@ -106,6 +106,7 @@ static int create_metric_set(int num_metrics, int num_ele, enum ldms_value_type 
 		msglog(LDMSD_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
+		rc = errno;
 		goto err;
 	}
 
@@ -160,6 +161,8 @@ static int create_metric_set(int num_metrics, int num_ele, enum ldms_value_type 
 		rc = errno;
 		goto err;
 	}
+
+	return 0;
 
  err:
 	return rc;
