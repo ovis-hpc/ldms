@@ -255,15 +255,19 @@ static int config_add_disks(struct attr_value_list *avl, ldms_schema_t schema)
 		for (name = strtok_r(value_tmp, ",", &ptr);
 		     name; name = strtok_r(NULL, ",", &ptr)) {
 			TAILQ_FOREACH(disk, &disk_list, entry) {
-				if (0 == strcmp(name, disk->name))
+				if (0 == strcmp(name, disk->name)){
+					msglog(LDMSD_LDEBUG, SAMP " will monitor %s\n", name);
 					disk->monitored = 1;
+				}
 			}
 		}
 		free(value_tmp);
 	} else {
 		/* Mark all the disks as monitored */
-		TAILQ_FOREACH(disk, &disk_list, entry)
+		TAILQ_FOREACH(disk, &disk_list, entry) {
+			msglog(LDMSD_LDEBUG, SAMP " will monitor %s\n", disk->name);
 			disk->monitored = 1;
+		}
 	}
 
 	/* Add metrics for monitored disks */
@@ -340,6 +344,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		       "the metric set.\n");
 		goto err;
 	}
+
 
 	return 0;
 
@@ -443,11 +448,14 @@ static int sample(struct ldmsd_sampler *self)
 		set_disk_metrics(disk, v, dt);
 		disk = TAILQ_NEXT(disk, entry);
 	} while (disk);
+
+	rc = 0;
 out:
 	tmp_tv = curr_tv;
 	curr_tv = prev_tv;
 	prev_tv = tmp_tv;
 	base_sample_end(base);
+
 	return rc;
 }
 
