@@ -93,7 +93,7 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:v:Vz:Z:q:c:u:a:A:"
+#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:v:Vz:Z:q:c:ua:A:"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"
@@ -444,6 +444,8 @@ void usage_hint(char *argv[],char *hint)
 	       "		   more than once for multiple transports. The transport string\n"
 	       "		   is one of 'rdma', 'sock' or 'ugni'. A transport specific port number\n"
 	       "		   is optionally specified following a ':', e.g. rdma:50000.\n");
+	printf("    -a AUTH        Transport authentication plugin (default: 'none')\n");
+	printf("    -A KEY=VALUE   Authentication plugin options (repeatable)\n");
 	printf("  Kernel Metric Options\n");
 	printf("    -k	     Publish kernel metrics.\n");
 	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
@@ -459,14 +461,11 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -T set_name    Test set prefix.\n");
 	printf("    -N	     Notify registered monitors of the test metric sets\n");
 	printf("  Configuration Options\n");
-	printf("    -p xprt:[sockname|port]	Specifies the transport type to listen on for receiving configuration.\n"
-	       "                                The transport type is either 'unix' or 'sock'.\n"
-	       "                                Unix domain socket: unix:sockname. sockname is the unix domain socket path."
-	       "                                Inet: sock:port. port is the port to listen on.\n");
 	printf("    -c path	The path to configuration file (optional, default: <none>).\n");
 	printf("    -V	     Print LDMS version and exit\n.");
 	printf("   Deprecated Options\n");
-	printf("    -S     	   DEPRECATED. Please use -p unix:[path] instead.\n");
+	printf("    -S     	   DEPRECATED.\n");
+	printf("    -p     	   DEPRECATED.\n");
 	if (hint) {
 		printf("\nHINT: %s\n",hint);
 	}
@@ -1158,6 +1157,9 @@ int main(int argc, char *argv[])
 		case 'x':
 		case 'c':
 			/* Handle below */
+			break;
+		case 'p':
+			usage_hint(argv,"-p is deprecated.");
 			break;
 		case 'a':
 			/* auth name */
