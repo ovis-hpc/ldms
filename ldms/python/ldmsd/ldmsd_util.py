@@ -416,7 +416,7 @@ class LDMSD_Controller(object):
     """ldmsd_controller subprocess handler"""
 
     def __init__(self, port, host="localhost", xprt="sock",
-                       auth="none", auth_opt={}):
+                       auth="none", auth_opt={}, ldmsctl=False):
         """LDMSD_Controller initialization
 
         @param port(str): the port of ldmsd to connect to.
@@ -425,13 +425,23 @@ class LDMSD_Controller(object):
         @param auth_opt(dict): the dictionary of key-value specifying
                                authentication plugin options.
         """
-        self.cmd_args = [
-            "exec ldmsd_controller",
-            "--host", host,
-            "--port", port,
-            "--xprt", xprt,
-            "-a", auth,
-        ]
+        self.is_ldmsctl = ldmsctl
+        if self.is_ldmsctl:
+            self.cmd_args = [
+                "exec ldmsctl",
+                "-h", host,
+                "-p", port,
+                "-x", xprt,
+                "-a", auth,
+            ]
+        else:
+            self.cmd_args = [
+                "exec ldmsd_controller",
+                "--host", host,
+                "--port", port,
+                "--xprt", xprt,
+                "-a", auth,
+            ]
         for a, v in auth_opt.iteritems():
             self.cmd_args.extend(["-A", "%s=%s" % (a, v)])
         self.proc = None
