@@ -101,7 +101,7 @@ extern int read_history ();
 #include "ldmsd.h"
 #include "ldmsd_request.h"
 
-#define FMT "h:p:a:S:x:s:X:i"
+#define FMT "h:p:a:A:S:x:s:X:i"
 #define ARRAY_SIZE(a)  (sizeof(a) / sizeof(a[0]))
 
 #define LDMSD_SOCKPATH_ENV "LDMSD_SOCKPATH"
@@ -154,15 +154,18 @@ static int command_comparator(const void *a, const void *b)
 static void usage(char *argv[])
 {
 	printf("%s: [%s]\n"
-	       "    -S <socket>     The UNIX socket that the ldms daemon is listening on.\n"
-	       "                    [" LDMSD_CONTROL_SOCKNAME "].\n"
-	       "    -h <host>       Hostname of ldmsd to connect to\n"
-	       "    -p <port>       LDMS daemon listener port to connect to\n"
-	       "    -x <xprt>       Transports one of sock, ugni, and rdma. Only use with the option -i\n"
-	       "    -i              Specify to connect to the data channel\n"
-	       "    -a              Path to the file containing the secret word\n"
+	       "    -h <host>       Hostname of ldmsd to connect to.\n"
+	       "    -p <port>       LDMS daemon listener port to connect to.\n"
+	       "    -x <xprt>       Transports one of sock, ugni, and rdma.\n"
+	       "    -a              Authentication plugin (default: 'none').\n"
+	       "    -A <K>=<VAL>    Authentication plugin options (repeatable).\n"
 	       "    -s <source>     Path to a configuration file\n"
-	       "    -X <script>     Path to a script file that generates a configuration file\n",
+	       "    -X <script>     Path to a script file that generates a configuration file\n"
+	       "DEPRECATED OPTIONS:\n"
+	       "    -S <socket>     **DEPRECATED** The UNIX socket that the ldms daemon is listening on.\n"
+	       "                    [" LDMSD_CONTROL_SOCKNAME "].\n"
+	       "    -i              **DEPRECATED** Specify to connect to the data channel\n"
+	       ,
 	       argv[0], FMT);
 	exit(0);
 }
@@ -1135,92 +1138,6 @@ out:
 	return rc;
 }
 
-struct ldmsctl_ctrl *__sock_ctrl(const char *hostname,
-				const char *port_str,
-				const char *my_name,
-				const char *sockname,
-				const char *secretword)
-{
-	struct sockaddr_storage ss;
-	socklen_t sa_len;
-	struct sockaddr_un *sun;
-	struct sockaddr_in *sin;
-	struct ldmsctl_ctrl *ctrl;
-	struct sockaddr_un my_un, rem_addr;
-	char *sockpath, *_sockname = NULL;
-	int rc;
-
-	if (!sockname) {
-		/* sock */
-		sin = (struct sockaddr_in *)&ss;
-		sa_len = sizeof(*sin);
-		struct hostent *h;
-
-		h = gethostbyname(hostname);
-		if (!h) {
-			printf("Error resolving hostname '%s'\n", hostname);
-			return NULL;
-		}
-
-		if (h->h_addrtype != AF_INET) {
-			printf("Error the hostname has invalid address type.\n");
-			return NULL;
-		}
-
-		memset(&ss, 0, sizeof(ss));
-		struct sockaddr_in *sin = (struct sockaddr_in *)&ss;
-		sin->sin_addr.s_addr = *(unsigned int *)(h->h_addr_list[0]);
-		sin->sin_family = AF_INET;
-		sin->sin_port = htons(atoi(port_str));
-	} else {
-		/* Unix domain socket */
-		sun = (struct sockaddr_un *)&ss;
-		sa_len = sizeof(*sun);
-		memset(&ss, 0, sizeof(ss));
-		sun->sun_family = AF_UNIX;
-		if (sockname[0] == '/') {
-			if (strlen(sockname)+1 > sizeof(sun->sun_path)) {
-				printf("Sock path '%s' is too large.\n", sockname);
-				return NULL;
-			}
-			strcpy(sun->sun_path, sockname);
-		} else {
-			sockpath = getenv(LDMSD_SOCKPATH_ENV);
-			if (!sockpath)
-				sockpath = "/var/run";
-			if (strlen(sockpath) + 2 + strlen(sockname) > sizeof(sun->sun_path)) {
-				printf("Sock path is too large\n");
-				return NULL;
-			}
-			sprintf(sun->sun_path, "%s/%s", sockpath, sockname);
-		}
-
-	}
-
-	ctrl = calloc(1, sizeof *ctrl);
-	if (!ctrl)
-		return NULL;
-	ctrl->sock.sock = socket(ss.ss_family, SOCK_STREAM, 0);
-	if (ctrl->sock.sock < 0) {
-		printf("Socket could not be created.\n");
-		free(ctrl);
-		return NULL;
-	}
-
-	ctrl->send_req = __sock_send;
-	ctrl->recv_resp = __sock_recv;
-	ctrl->close = __sock_close;
-
-	rc = connect(ctrl->sock.sock, (struct sockaddr *)&ss, sa_len);
-	if (rc == -1) {
-		printf("Error %d: Failed to connect to ldmsd\n", errno);
-		free(ctrl);
-		return NULL;
-	}
-
-	return ctrl;
-}
-
 void __ldms_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	size_t msg_len;
@@ -1231,8 +1148,7 @@ void __ldms_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		sem_post(&ctrl->ldms_xprt.connected_sem);
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
-		printf("The connected request is rejected."
-				"Please verify your secret word.\n");
+		printf("The connected request is rejected.\n");
 		ldms_xprt_put(ctrl->ldms_xprt.x);
 		exit(0);
 	case LDMS_XPRT_EVENT_DISCONNECTED:
@@ -1267,7 +1183,8 @@ void __ldms_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 }
 
 struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
-			const char *xprt, const char *secretword)
+			const char *xprt, const char *auth,
+			struct attr_value_list *auth_opt)
 {
 	ldms_t x;
 	struct ldmsctl_ctrl *ctrl;
@@ -1284,7 +1201,7 @@ struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
 	ctrl->recv_resp = __ldms_xprt_recv;
 	ctrl->close = __ldms_xprt_close;
 
-	ctrl->ldms_xprt.x = ldms_xprt_new(xprt, NULL);
+	ctrl->ldms_xprt.x = ldms_xprt_new_with_auth(xprt, NULL, auth, auth_opt);
 	if (!ctrl->ldms_xprt.x) {
 		printf("Failed to create an ldms transport. %s\n",
 						strerror(errno));
@@ -1360,17 +1277,25 @@ static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd)
 int main(int argc, char *argv[])
 {
 	int op;
-	char *host, *port, *secretword_path, *sockname, *env, *s, *xprt;
-	host = port = secretword_path = sockname = s = xprt = NULL;
+	char *host, *port, *auth, *sockname, *env, *s, *xprt;
+	char *lval, *rval;
+	host = port = sockname = s = xprt = NULL;
 	char *source, *script;
 	source = script = NULL;
-	int rc, is_inband = 0;
+	int rc, is_inband = 1;
+	struct attr_value_list *auth_opt = NULL;
+	const int AUTH_OPT_MAX = 128;
+
+	auth = "none";
+
+	auth_opt = av_new(AUTH_OPT_MAX);
+	if (!auth_opt) {
+		printf("ERROR: Not enough memory.\n");
+		exit(1);
+	}
 
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
-		case 'S':
-			sockname = strdup(optarg);
-			break;
 		case 'h':
 			host = strdup(optarg);
 			break;
@@ -1381,10 +1306,27 @@ int main(int argc, char *argv[])
 			xprt = strdup(optarg);
 			break;
 		case 'a':
-			secretword_path = strdup(optarg);
+			auth = strdup(optarg);
 			break;
-		case 'i':
-			is_inband = 1;
+		case 'A':
+			/* (multiple) auth options */
+			lval = strtok(optarg, "=");
+			if (!lval) {
+				printf("ERROR: Expecting -A name=value\n");
+				exit(1);
+			}
+			rval = strtok(NULL, "");
+			if (!rval) {
+				printf("ERROR: Expecting -A name=value\n");
+				exit(1);
+			}
+			if (auth_opt->count == auth_opt->size) {
+				printf("ERROR: Too many auth options\n");
+				exit(1);
+			}
+			auth_opt->list[auth_opt->count].name = lval;
+			auth_opt->list[auth_opt->count].value = rval;
+			auth_opt->count++;
 			break;
 		case 's':
 			source = strdup(optarg);
@@ -1409,25 +1351,19 @@ int main(int argc, char *argv[])
 		printf("Out of memory\n");
 		exit(ENOMEM);
 	}
-	if (!sockname && (!host || !port))
-		goto arg_err;
-	else if (is_inband && !xprt)
+
+	if (!host || !port || !xprt)
 		goto arg_err;
 
 	char *secretword = NULL;
 
 	struct ldmsctl_ctrl *ctrl;
 	if (is_inband) {
-		ctrl = __ldms_xprt_ctrl(host, port, xprt, secretword);
+		ctrl = __ldms_xprt_ctrl(host, port, xprt, auth, auth_opt);
 		if (!ctrl) {
 			printf("Failed to connect to ldmsd.\n");
 			exit(-1);
 		}
-	} else {
-		ctrl = __sock_ctrl(host, port, basename(argv[0]),
-					sockname, secretword);
-		if (!ctrl)
-			exit(1);
 	}
 	/* At this point ldmsctl is connected to the ldmsd */
 
