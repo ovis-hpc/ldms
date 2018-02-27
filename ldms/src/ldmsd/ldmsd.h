@@ -86,6 +86,10 @@ struct ldmsd_version {
 /** Get the ldmsd version  */
 void ldmsd_version_get(struct ldmsd_version *v);
 
+/** Update hint */
+#define LDMSD_SET_INFO_UPDATE_HINT_KEY "updt_hint_us"
+#define LDMSD_UPDT_HINT_OFFSET_NONE INT_MIN
+
 typedef struct ldmsd_plugin_set {
 	ldms_set_t set;
 	char *plugin_name;
@@ -914,6 +918,9 @@ ldmsd_plugin_set_list_t ldmsd_plugin_set_list_next(ldmsd_plugin_set_list_t list)
 ldmsd_plugin_set_list_t ldmsd_plugin_set_list_find(const char *plugin_name);
 ldmsd_plugin_set_t ldmsd_plugin_set_first(const char *plugin_name);
 ldmsd_plugin_set_t ldmsd_plugin_set_next(ldmsd_plugin_set_t set);
+
+int ldmsd_set_update_hint_set(ldms_set_t set, int interval_us, int offset_us);
+int ldmsd_set_update_hint_get(ldms_set_t set, int *interva_us, int *offset_us);
 
 /** Regular expressions */
 int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t errsz);

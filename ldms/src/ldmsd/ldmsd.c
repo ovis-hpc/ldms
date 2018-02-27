@@ -789,6 +789,32 @@ out:
 	ldmsd_set_tree_unlock();
 }
 
+int ldmsd_set_update_hint_set(ldms_set_t set, int interval_us, int offset_us)
+{
+	char value[128];
+	if (offset_us == LDMSD_UPDT_HINT_OFFSET_NONE)
+		snprintf(value, 127, "%d:", interval_us);
+	else
+		snprintf(value, 127, "%d:%d", interval_us, offset_us);
+	return ldms_set_info_set(set, LDMSD_SET_INFO_UPDATE_HINT_KEY, value);
+}
+
+int ldmsd_set_update_hint_get(ldms_set_t set, int *interval_us, int *offset_us)
+{
+	char *value, *tmp, *endptr;
+	*interval_us = 0;
+	*offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+	value = ldms_set_info_get(set, LDMSD_SET_INFO_UPDATE_HINT_KEY);
+	if (!value)
+		return 0;
+	tmp = strtok_r(value, ":", &endptr);
+	*interval_us = strtol(tmp, NULL, 0);
+	tmp = strtok_r(NULL, ":", &endptr);
+	if (tmp)
+		*offset_us = strtol(tmp, NULL, 0);
+	return 0;
+}
+
 static void resched_task(ldmsd_task_t task)
 {
 	struct timeval new_tv;
