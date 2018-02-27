@@ -1,0 +1,165 @@
+#!/bin/bash
+allowroot=1
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+
+export PYTHONPATH=${prefix}/lib/python2.7/site-packages
+. $libdir/ovis-lib-configvars.sh
+. $libdir/ovis-ldms-configvars.sh
+# Manually redefine portbase to avoid collisions.
+# Base should be above the maximum in :
+#  cat /proc/sys/net/ipv4/ip_local_port_range
+# and below 65530 or below the minimum and above 1024
+portbase=61100
+port1=`expr $portbase + 1`
+port4=`expr $portbase + 4`
+cport1=`expr $portbase + 1 + 1000`
+cport4=`expr $portbase + 4 + 1000`
+if test ! -x $prefix/sbin/ldmsd; then
+	echo "can't find ldmsd binary."
+	exit 1
+fi
+
+echo "Must be run in root environment."
+echo "Killing other ldmsd might be a bad idea"
+echo "Interfering LDMSD might include:"
+ps auxww |grep ldms | grep sock:$port1
+ps auxww |grep ldms | grep sock:$port1
+
+
+function mysleep() {
+	echo -n sleep $1 ...
+	sleep $1
+	echo done
+}
+
+function die () {
+	if test $1 = 0; then
+		return 0
+	else
+		echo FAIL $1 before line ${BASH_LINENO[0]}
+		exit $1
+	fi
+}
+
+
+# use our pid in dirname to prevent collisions in dir & file naming
+TESTDIR=/tmp/$USER/ldmstest/$$
+STOREDIR=$TESTDIR/store
+SOCKDIR=$TESTDIR/run/ldmsd
+in1=$SOCKDIR/in1
+in4=$SOCKDIR/in4
+LOGDIR=$TESTDIR/logs
+export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
+export LDMSD_SOCKPATH=${TESTDIR}/run
+mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_SOCKPATH
+SECRET=$SOCKDIR/secret
+echo "secretword=crashtestdummy" > $SECRET
+export LDMS_AUTH_FILE=$SECRET
+chmod go-rwx $SECRET
+if test ! -x $prefix/bin/ldmsd_controller; then
+	echo "can't find ldmsd_controller script. Included python in build?"
+	exit 1
+else
+	# unix style
+	LC="$prefix/bin/ldmsd_controller --auth_file=$SECRET"
+	CSO="--sockname"
+	# tcp style
+	LC="$prefix/bin/ldmsd_controller --xprt sock --host localhost --auth ovis"
+	CPO="--port"
+fi
+echo "logs and data stored under $TESTDIR"
+
+export LD_LIBRARY_PATH=$libdir:$pkglibdir:$ovis_lib_libdir:$ovis_lib_pkglibdir:$LD_LIBRARY_PATH
+export ZAP_LIBPATH=$ovis_lib_pkglibdir
+export PATH=${prefix}/sbin:$PATH
+export LDMSD_PLUGIN_LIBPATH=$ovis_ldms_pkglibdir:$ovis_lib_pkglibdir
+
+echo "Listing ldmsd's still running:"
+pgrep ldmsd
+echo "Done."
+
+jobfile=$SOCKDIR/jobdata.1
+cat << EOF > ${jobfile}
+JOBID=8675309
+UID=57
+USER=$USER
+APPID=5551212
+EOF
+
+
+echo Starting plugins on daemon1
+cat << EOF > $in1
+load name=jobid
+config name=jobid producer=localhost1 instance=localhost1/jobid component_id=3 file=$jobfile
+start name=jobid interval=1000000 offset=0
+
+load name=opa2
+#config name=opa2 producer=localhost1 instance=localhost1/opa2 schema=opa2 component_id=1 udata_default=10 job_set=localhost1/jobid ports=hfi1_0.1
+config name=opa2 producer=localhost1 instance=localhost1/opa2 schema=opa2 component_id=1 udata_default=10 job_set=localhost1/jobid
+start name=opa2 interval=1000000
+EOF
+
+# is conn retry interval in sec or u-sec? man not specific.
+ARI=1000000
+echo Adding host1 to aggregator4
+cat << EOF  > $in4
+prdcr_add name=localhost1 host=localhost type=active xprt=sock interval=$ARI port=$port1
+prdcr_start name=localhost1
+updtr_add name=localhost1 interval=1000000 offset=10000
+updtr_prdcr_add name=localhost1 regex=localhost1
+updtr_start name=localhost1
+EOF
+
+echo Loading store_csv on aggregator4
+echo "load name=store_csv" >> $in4
+echo Config store_csv on aggregator4
+echo "config name=store_csv action=init path=${STOREDIR}" >> $in4
+
+echo Start store_csv on aggregator4
+cat << EOF >> $in4
+strgp_add name=store_csv plugin=store_csv schema=opa2 container=store_csv
+strgp_prdcr_add name=store_csv regex=localhost1
+strgp_start name=store_csv regex=localhost1
+strgp_add name=jobid.csv plugin=store_csv schema=jobid container=jobid
+strgp_prdcr_add name=jobid.csv regex=localhost1
+strgp_start name=jobid.csv regex=localhost1
+EOF
+
+echo Starting daemons
+#valgrind -v --log-file=vg.log.1 --track-origins=yes --trace-children=yes \
+#--leak-check=full --show-leak-kinds=all \
+#ldmsd -x sock:$port1 -p unix:$SOCKDIR/metric_socket_1 -c $in1 -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1
+
+# ldmsd -x ugni:10000 -x sock:20000 -a ovis -A conf=LDMS_AUTH_FILE_PATH
+#ldmsd -x sock:$port1 -p unix:$SOCKDIR/metric_socket_1 -c $in1 -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1 -V &
+#ldmsd -x sock:$port1 -x unix:$SOCKDIR/metric_socket_1 -a ovis -A conf=$SECRET -c $in1 -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1 -V &
+echo "ldmsd -x sock:$port1 -x sock:$cport1 -a ovis -A conf=$SECRET -c $in1 -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1 &"
+      ldmsd -x sock:$port1 -x sock:$cport1 -a ovis -A conf=$SECRET -c $in1 -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1 &
+die $?
+
+echo "ldmsd -x sock:$port4 -x sock:$cport4 -a ovis -A conf=$SECRET -c $in4 -l ${LOGDIR}/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4 &"
+      ldmsd -x sock:$port4 -x sock:$cport4 -a ovis -A conf=$SECRET -c $in4 -l ${LOGDIR}/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4 &
+die $?
+#
+mysleep 5
+echo Stopping plugins on daemon1
+# cat << EOF | $LC $CSO $SOCKDIR/metric_socket_1
+cat << EOF | $LC $CPO $cport1
+stop name=opa2
+stop name=jobid
+term name=opa2
+term name=jobid
+EOF
+#cat << EOF | $LC $CSO $SOCKDIR/metric_socket_4
+cat << EOF | $LC $CPO $cport4
+strgp_stop name=jobid.csv regex=localhost1
+strgp_stop name=store_csv regex=localhost1
+EOF
+mysleep 1
+kill -SIGTERM `cat  $TESTDIR/run/ldmsd.pid.1` `cat  $TESTDIR/run/ldmsd.pid.4`
+echo done;
+sleep 1
+echo "logs and data stored under $TESTDIR"
+ln -sf ${LOGDIR}/1.txt .

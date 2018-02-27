@@ -16,4 +16,6 @@ bin_SCRIPTS += ldms-py-syslog.sh
 bin_SCRIPTS += ldms-meminfo.sh
 bin_SCRIPTS += ldms-py-varset.sh
 bin_SCRIPTS += ldms-py-rename.sh
+bin_SCRIPTS += ldms_local_opa2test.sh
+
 endif
