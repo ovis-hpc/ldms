@@ -706,8 +706,14 @@ extern int ldms_xprt_lookup(ldms_t t, const char *name, enum ldms_lookup_flags f
 
 /** The update is the result of a peer push */
 #define LDMS_UPD_F_PUSH		0x10000000
-/* This is final push update for this set */
+/** This is final push update for this set */
 #define LDMS_UPD_F_PUSH_LAST	0x20000000
+/** Indicate more outstanding update completion on the set */
+#define LDMS_UPD_F_MORE		0x40000000
+
+#define LDMS_UPD_ERROR_MASK 0x00FFFFFF
+
+#define LDMS_UPD_ERROR(s) ((s) & LDMS_UPD_ERROR_MASK)
 
 /**
  * \brief Prototype for the function called when update completes.
@@ -821,6 +827,17 @@ extern void ldms_schema_delete(ldms_schema_t schema);
  * \returns The number of metrics in the schema
  */
 extern int ldms_schema_metric_count_get(ldms_schema_t schema);
+
+/**
+ * \brief Set the cardinality of the set array created by this schema.
+ *
+ * \param schema The schema handle.
+ * \param card   The cardinality.
+ *
+ * \retval 0      If succeeded.
+ * \retval EINVAL If \c card is invalid.
+ */
+extern int ldms_schema_array_card_set(ldms_schema_t schema, int card);
 
 /**
  * \brief Create a Metric set

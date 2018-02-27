@@ -74,6 +74,7 @@ struct ldms_schema_s {
 	int card;
 	size_t meta_sz;
 	size_t data_sz;
+	int array_card;
 	STAILQ_HEAD(metric_list_head, ldms_mdef_s) metric_list;
 	LIST_ENTRY(ldms_schema_s) entry;
 };
@@ -88,13 +89,15 @@ LIST_HEAD(rbd_list, ldms_rbuf_desc);
 struct ldms_set {
 	unsigned long flags;
 	struct ldms_set_hdr *meta;
-	struct ldms_data_hdr *data;
+	struct ldms_data_hdr *data; /* points to current entry of data array */
 	struct ldms_set_info_list local_info;
 	struct ldms_set_info_list remote_info; /*set info from the lookup operation */
 	struct rbn rb_node;
 	struct rbd_list local_rbd_list;
 	struct rbd_list remote_rbd_list;
 	pthread_mutex_t lock;
+	int curr_idx;
+	struct ldms_data_hdr *data_array;
 };
 
 /* Convenience macro to roundup a value to a multiple of the _s parameter */
@@ -113,6 +116,7 @@ extern int __ldms_remote_dir_cancel(ldms_t x);
 extern struct ldms_set *
 __ldms_create_set(const char *instance_name, const char *schema_name,
 		  size_t meta_len, size_t data_len, size_t card,
+		  size_t array_card,
 		  uint32_t flags);
 extern void __ldms_get_local_set_list_sz(int *set_count, int *set_list_len);
 extern int __ldms_get_local_set_list(char *set_list, size_t set_list_len,
@@ -145,5 +149,16 @@ extern int __ldms_set_info_set(struct ldms_set_info_list *info,
 extern void __ldms_set_info_delete(struct ldms_set_info_list *info);
 extern struct ldms_set_info_pair *__ldms_set_info_find(struct ldms_set_info_list *info,
 								const char *key);
+static inline
+struct ldms_data_hdr *__set_array_get(struct ldms_set *set, int idx)
+{
+	return ((void *)set->data_array) + idx * __le32_to_cpu(set->meta->data_sz);
+}
+
+static inline
+struct ldms_data_hdr *__ldms_set_array_get(ldms_set_t s, int idx)
+{
+	return __set_array_get(s->set, idx);
+}
 
 #endif

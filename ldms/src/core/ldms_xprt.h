@@ -203,7 +203,9 @@ struct ldms_rendezvous_lookup_param {
 	uint32_t more;
 	uint32_t meta_len;
 	uint32_t data_len;
-	uint32_t card;
+	uint32_t card; /* card of dict */
+	uint32_t schema_len;
+	uint32_t array_card; /* card of array */
 #ifdef SWIG
 %immutable;
 #endif
@@ -289,6 +291,7 @@ typedef enum ldms_context_type {
 	LDMS_CONTEXT_REQ_NOTIFY,
 	LDMS_CONTEXT_SEND,
 	LDMS_CONTEXT_PUSH,
+	LDMS_CONTEXT_UPDATE_META,
 } ldms_context_type_t;
 
 struct ldms_context {
@@ -314,6 +317,8 @@ struct ldms_context {
 			ldms_set_t s;
 			ldms_update_cb_t cb;
 			void *arg;
+			int idx_from;
+			int idx_to;
 		} update;
 		struct {
 			ldms_set_t s;
