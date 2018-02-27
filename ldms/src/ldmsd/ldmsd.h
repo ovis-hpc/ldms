@@ -83,6 +83,17 @@ struct ldmsd_version {
 /** Get the ldmsd version  */
 void ldmsd_version_get(struct ldmsd_version *v);
 
+typedef struct ldmsd_plugin_set {
+	ldms_set_t set;
+	char *plugin_name;
+	char *inst_name;
+	LIST_ENTRY(ldmsd_plugin_set) entry;
+} *ldmsd_plugin_set_t;
+typedef struct ldmsd_plugin_set_list {
+	struct rbn rbn;
+	LIST_HEAD(, ldmsd_plugin_set) list;
+} *ldmsd_plugin_set_list_t;
+
 /** Request that the task stop */
 #define LDMSD_TASK_F_STOP		0x01
 /** Use 'synchronous' scheduling. This is set when offset_us is !0 */
@@ -398,6 +409,9 @@ struct ldmsd_plugin_cfg {
 extern void ldmsd_config_cleanup(void);
 extern int ldmsd_config_init(char *name);
 struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name);
+
+int ldmsd_set_register(ldms_set_t set, const char *pluing_name);
+void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
 
 /**
  * \brief ldms_store
@@ -829,6 +843,14 @@ int ldmsd_task_start(ldmsd_task_t task,
 		     int flags, int sched_us, int offset_us);
 void ldmsd_task_stop(ldmsd_task_t task);
 void ldmsd_task_join(ldmsd_task_t task);
+
+void ldmsd_set_tree_lock();
+void ldmsd_set_tree_unlock();
+ldmsd_plugin_set_list_t ldmsd_plugin_set_list_first();
+ldmsd_plugin_set_list_t ldmsd_plugin_set_list_next(ldmsd_plugin_set_list_t list);
+ldmsd_plugin_set_list_t ldmsd_plugin_set_list_find(const char *plugin_name);
+ldmsd_plugin_set_t ldmsd_plugin_set_first(const char *plugin_name);
+ldmsd_plugin_set_t ldmsd_plugin_set_next(ldmsd_plugin_set_t set);
 
 /** Regular expressions */
 int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t errsz);
