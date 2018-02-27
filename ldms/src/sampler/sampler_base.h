@@ -52,6 +52,7 @@
 #define SAMPLER_BASE_H
 #include "ldmsd.h"
 typedef struct base_data_s {
+	char *pi_name;
 	char *instance_name;
 	char *producer_name;
 	char *schema_name;

@@ -63,6 +63,10 @@ void base_del(base_data_t base)
 {
 	if (!base)
 		return;
+	if (base->instance_name && base->pi_name)
+		ldmsd_set_deregister(base->instance_name, base->pi_name);
+	if (base->pi_name)
+		free(base->pi_name);
 	if (base->producer_name)
 		free(base->producer_name);
 	if (base->instance_name)
@@ -87,6 +91,14 @@ base_data_t base_config(struct attr_value_list *avl,
 	base_data_t base = calloc(1, sizeof(*base));
 	if (!base) {
 		log(LDMSD_LERROR, "Memory allocation failure in %s\n", name);
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	base->pi_name = strdup(name);
+	if (!base->pi_name) {
+		log(LDMSD_LERROR, "Memory allocation failure in %s\n", name);
+		free(base);
 		errno = ENOMEM;
 		return NULL;
 	}
@@ -246,6 +258,7 @@ ldms_set_t base_set_new(base_data_t base)
 		base->set = NULL;
 		errno = rc;
 	}
+	ldmsd_set_register(base->set, base->pi_name);
 	return base->set;
 }
 
