@@ -712,12 +712,12 @@ int ldmsd_set_register(ldms_set_t set, const char *pluing_name)
 	struct rbn *rbn;
 	ldmsd_plugin_set_t s;
 	ldmsd_plugin_set_list_t list;
+	struct ldmsd_plugin_cfg *pi;
 	int rc;
 
 	s = malloc(sizeof(*s));
-	if (!s) {
+	if (!s)
 		return ENOMEM;
-	}
 	s->plugin_name = strdup(pluing_name);
 	if (!s->plugin_name) {
 		rc = ENOMEM;
@@ -751,8 +751,26 @@ int ldmsd_set_register(ldms_set_t set, const char *pluing_name)
 	}
 	LIST_INSERT_HEAD(&list->list, s, entry);
 	ldmsd_set_tree_unlock();
-	return 0;
 
+	pi = ldmsd_get_plugin((char *)pluing_name);
+	if (!pi) {
+		ldmsd_set_deregister(s->inst_name, pluing_name);
+		return EINVAL;
+	}
+	if (pi->plugin->type == LDMSD_PLUGIN_SAMPLER) {
+		if (pi->sample_interval_us) {
+			/* Add the update hint to the set_info */
+			rc = ldmsd_set_update_hint_set(s->set,
+					pi->sample_interval_us, pi->sample_offset_us);
+			if (rc) {
+				/* Leave the ldmsd plugin set in the tree, so return 0. */
+				ldmsd_log(LDMSD_LERROR, "Error %d: Failed to add "
+						"the update hint to set '%s'\n",
+						rc, s->inst_name);
+			}
+		}
+	}
+	return 0;
 free_inst_name:
 	free(s->inst_name);
 free_plugin:
@@ -1101,6 +1119,35 @@ void ldmsd_set_info_delete(ldmsd_set_info_t info)
 	free(info);
 }
 
+int __sampler_set_info_add(struct ldmsd_plugin *pi, char *interval, char *offset)
+{
+	ldmsd_plugin_set_t set;
+	int rc;
+	int interval_us;
+	int offset_us;
+
+	if (pi->type != LDMSD_PLUGIN_SAMPLER)
+		return EINVAL;
+	if (!interval)
+		return EINVAL;
+	interval_us = strtol(interval, NULL, 0);
+	if (offset)
+		offset_us = strtol(offset, NULL, 0);
+	else
+		offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+	for (set = ldmsd_plugin_set_first(pi->name); set;
+				set = ldmsd_plugin_set_next(set)) {
+		rc = ldmsd_set_update_hint_set(set->set, interval_us, offset_us);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR, "Error %d: Failed to add "
+					"the update hint to set '%s'\n",
+					rc, ldms_set_instance_name_get(set->set));
+			return rc;
+		}
+	}
+	return 0;
+}
+
 /*
  * Start the sampler
  */
@@ -1130,6 +1177,10 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 		rc = EBUSY;
 		goto out;
 	}
+
+	rc = __sampler_set_info_add(pi->plugin, interval, offset);
+	if (rc)
+		goto out;
 
 	if (offset) {
 		sample_offset = strtol(offset, NULL, 0);
