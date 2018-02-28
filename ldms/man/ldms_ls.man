@@ -1,6 +1,6 @@
 .\" Manpage for ldms_ls
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "22 Dec 2016" "v3.3" "ldms_ls man page"
+.TH man 8 "28 Feb 2018" "v4" "ldms_ls man page"
 
 .SH NAME
 ldms_ls \- Query an ldmsd for metric set values
@@ -31,9 +31,6 @@ path to ovis/lib/ovis-ldms
 
 .SS
 The following environment variables are optional:
-.TP
-LDMS_AUTH_FILE
-The full path to the file containing the secret word. For details, see ldms_authentication(7).
 .TP
 LDMS_LS_MEM_SZ
 The size of memory reserved for metric sets. See the -m option.
@@ -66,9 +63,18 @@ PORT of the HOST to use for the query. Default is LDMS_DEFAULT_PORT.
 .TP
 .BR -l
 Display long listing. Outputs details of the metric set, including timestamp, metric names, metric types, and values.
+
 .TP
-.BI -a " <path>"
-If using authentication, <path> is the full path to the file containing the shared secret word. See ldms_authentication(7) for alternatives.
+.BI -a " AUTH"
+The name of the LDMS Authentication plugin. Please see
+.BR ldms_authentication (7)
+for more details. (default: "none").
+.TP
+.BI "-A " NAME = VALUE
+The name-value options for the LDMS Authentication plugin. This option can be
+given multiple times. Please see
+.BR ldms_authentication (7)
+for more information and consult the plugin manual for the option details.
 
 .TP
 .BI -m  " MEMORY_SIZE"

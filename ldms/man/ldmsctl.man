@@ -1,6 +1,6 @@
 .\" Manpage for ldmsctl
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "16 Jan 2017" "v3" "ldmsctl man page"
+.TH man 8 "28 Feb 2018" "v4" "ldmsctl man page"
 
 .SH NAME
 ldmsctl \- Issue control commands to ldmsd.
@@ -9,9 +9,16 @@ ldmsctl \- Issue control commands to ldmsd.
 ldmsctl [OPTION...]
 
 .SH DESCRIPTION
-After LDMS (lightweight Distributed Metric Service) version 3.4, ldmsctl is an LDMS daemon C-interface that can be used to dynamically configure an LDMS daemon instead of ldmsd_controller when Python is not available. After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl. There are three approaches to connect to an LDMS daemon: Unix domain socket, TCP/IP socket and the data channel.
+After LDMS (lightweight Distributed Metric Service) version 3.4, ldmsctl is an
+LDMS daemon C-interface that can be used to dynamically configure an LDMS daemon
+instead of ldmsd_controller when Python is not available. After the ldmsctl is
+started commands can be entered at the prompt or (usually) a command script can
+be created and piped into the ldmsctl.
 
-Before version 3.4 Unix domain socket is the only connection ldmsctl uses. In version 3.# to 3.3 ldmsctl can be used to dynamically configure sampler daemons only.
+LDMS version 4 requires ldmsctl to use LDMS transport (data channel) to connect
+to \fBldmsd\fR to levarage LDMS Authentication plugin in the transport. Please
+note that the \fBldmsd\fR may have multiple data channels, one of which can be
+dedicated for management use.
 
 .SH ENVIRONMENT
 The following environment variables must be set (includes environment variables needed for the actions,
@@ -26,44 +33,39 @@ path_to_ovis_build/lib/ovis-ldms
 LDMSD_PLUGIN_LIBPATH
 path_to_ovis_build/lib/ovis-ldms
 .TP
-LDMSD_SOCKPATH
-path to the unix domain socket for the ldmsd. Default is /var/run. If you have changed the path (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd).
-.TP
-LDMS_AUTH_FILE
-Path to the file containing the secret word.
-.TP
 PATH
 path_to_ovis_build/sbin:path_to_ovis_build/bin
 
 
 .SH OPTIONS
 .TP
-.BI -S " SOCKET"
-.br
-SOCKET is the unix domain socket that the ldmsd is listening on.
-.TP
 .BI -h " HOST"
-.br
 HOST is the hostname to connect to the LDMS daemon
 .TP
 .BI -p " PORT"
-.br
 PORT is the port to connect to the LDMS daemon
 .TP
-.BR -i
-.br
-Establish an inband connection to the LDMS daemon. ldmsctl will connect to the data channel.
-.TP
 .BI -x " XPRT"
-.br
 XPRT is the transport one of sock, ugni, or rdma. Only use with the option -i
 .TP
+.BI -a " AUTH"
+AUTH is the name of the LDMS Authentication plugin to be used for the
+connection. Please see
+.BR ldms_authentication (7)
+for more information. If this option is not given, the default is "none" (no
+authentication).
+.TP
+.BI -A " NAME" = VALUE
+Passing the \fINAME\fR=\fIVALUE\fR option to the LDMS Authentication plugin.
+This command line option can be given multiple times. Please see
+.BR ldms_authentication (7)
+for more information, and consult the plugin manual page for plugin-specific
+options.
+.TP
 .BI -s " SOURCE"
-.br
 SOURCE is the path to a configuration file
 .TP
 .BI -X " COMMAND"
-.br
 COMMAND is a shell command to be executed. The output will be sent to ldmsd.
 .TP
 .BR -V
@@ -291,29 +293,19 @@ No known bugs.
 
 .SH EXAMPLES
 
-.PP
-.nf
+.HP
 1) Run ldmsctl
-.RS
-1.1) Unix domain socket: ldmsctl -S <unix domain socket path/name associated with target ldmsd>
 
-$/tmp/opt/ovis/sbin/ldmsctl -S /var/run/ldmsd/metric_socket_vm1_1
-ldmsctl>
-
-1.2) TCP/IP socket
-
-$/tmp/opt/ovis/sbin/ldmsctl -h vm1_2 -p 20001
-ldmsctl>
-
-1.3) inband channel
-
-$/tmp/opt/ovis/sbin/ldmsctl -h vm1_2 -p 10001 -i -x sock
-ldmsctl>
-.RE
-.fi
-.PP
 .nf
-2) After starting ldmsctl, configure "meminfo" collector plugin to collect every second.
+$/tmp/opt/ovis/sbin/ldmsctl -h vm1_2 -p 10001 -x sock
+ldmsctl>
+.fi
+
+.HP
+2) After starting ldmsctl, configure "meminfo" collector plugin to collect every
+second.
+
+.nf
 Note: interval=<# usec> e.g interval=1000000 defines a one second interval.
 ldmsctl> load name=meminfo
 ldmsctl> config name=meminfo component_id=1 set=vm1_1/meminfo
@@ -321,9 +313,10 @@ ldmsctl> start name=meminfo interval=1000000
 ldmsctl> quit
 .fi
 
-.PP
-.nf
+.HP
 3) Configure collectors on host "vm1" via bash script called collect.sh
+
+.nf
 #!/bin/bash
 export LD_LIBRARY_PATH=/tmp/opt/ovis/lib/:$LD_LIBRARY_PATH
 export ZAP_LIBPATH=/tmp/opt/ovis/lib/ovis-ldms
