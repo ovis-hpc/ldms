@@ -9,7 +9,7 @@ DISTCLEANFILES = $(bin_SCRIPTS)
 
 bin_SCRIPTS+= ldms_ban.sh
 bin_SCRIPTS+=  ldms-py-fptrans_test.sh
-bin_SCRIPTS += ldms_plugins_list.sh
+bin_SCRIPTS += ldms-plugins.sh
 bin_SCRIPTS += ldms-py-edac_test.sh
 bin_SCRIPTS += ldms-py-subset_test.sh
 bin_SCRIPTS += ldms-py-syslog.sh

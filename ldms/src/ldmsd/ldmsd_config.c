@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2010-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2018 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -56,6 +56,7 @@
 #include <getopt.h>
 #include <stdlib.h>
 #include <sys/errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/queue.h>
@@ -726,6 +727,19 @@ static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 	}
 
 	int rc = 0;
+	enum ldmsd_plugin_type tmatch = LDMSD_PLUGIN_OTHER;
+	bool matchtype = false;
+	if (plugname && strcmp(plugname,"store") == 0) {
+		matchtype = true;
+		tmatch = LDMSD_PLUGIN_STORE;
+		plugname = NULL;
+	}
+	if (plugname && strcmp(plugname,"sampler") == 0) {
+		matchtype = true;
+		tmatch = LDMSD_PLUGIN_SAMPLER;
+		plugname = NULL;
+	}
+
 
 	const char *match1 = "/lib";
 	const char *match2 = ".so";
@@ -756,7 +770,7 @@ static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 		rc = 1;
 		break;
 	case GLOB_NOMATCH:
-		fprintf(stderr, "%s: no libraries in %s\n", APP, path);
+		fprintf(stderr, "%s: no libraries in %s for %s\n", APP, path, pat);
 		rc = 1;
 		break;
 	default:
@@ -822,6 +836,8 @@ static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 				ptype = "BAD plugin";
 				break;
 			}
+			if (matchtype && tmatch != pi->plugin->type)
+				goto next;
 			printf("======= %s %s:\n", ptype, b);
 			const char *u = pi->plugin->usage(pi->plugin);
 			printf("%s\n", u);

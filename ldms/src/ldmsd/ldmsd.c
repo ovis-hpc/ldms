@@ -93,7 +93,7 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:v:Vz:Z:q:c:ua:A:"
+#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:v:Vz:Z:q:c:u:a:A:"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"
@@ -420,7 +420,9 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -F	     Foreground mode, don't daemonize the program [false].\n");
 	printf("    -B mode  Daemon mode banner file with pidfile [1].\n"
 	       "   		modes:0-no banner file, 1-banner auto-deleted, 2-banner left.\n");
-	printf("    -u	     List plugins and where possible their usage, then exit.\n");
+	printf("    -u	name List named plugin if available, and where possible\n");
+	printf("       	its usage, then exit. Name all, sampler, and store limit output.\n");
+	printf("    -u	name List named plugin if available, and where possible their usage, then exit.\n");
 	printf("    -m memory size Maximum size of pre-allocated memory for metric sets.\n"
 	       "		   The given size must be less than 1 petabytes.\n"
 	       "		   The default value is %s\n"
@@ -1005,6 +1007,7 @@ int main(int argc, char *argv[])
 	char *sockname = NULL;
 	char *lval = NULL;
 	char *rval = NULL;
+	char *plug_name = NULL;
 	int list_plugins = 0;
 	int ret;
 	int sample_interval = 2000000;
@@ -1139,7 +1142,10 @@ int main(int argc, char *argv[])
 			exit(0);
 			break;
 		case 'u':
+			if (check_arg("u", optarg, LO_NAME))
+				return 1;
 			list_plugins = 1;
+			plug_name = strdup(optarg);
 			break;
 		case 'x':
 		case 'c':
@@ -1176,7 +1182,15 @@ int main(int argc, char *argv[])
 		}
 	}
 	if (list_plugins) {
-		ldmsd_plugins_usage(NULL);
+		if (plug_name) {
+			if (strcmp(plug_name,"all") == 0) {
+				free(plug_name);
+				plug_name = NULL;
+			}
+		}
+		ldmsd_plugins_usage(plug_name);
+		if (plug_name)
+			free(plug_name);
 		exit(0);
 	}
 
