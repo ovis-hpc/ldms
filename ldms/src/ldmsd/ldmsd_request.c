@@ -173,6 +173,8 @@ static int greeting_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_route_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
+static int updtr_task_status_handler(ldmsd_req_ctxt_t req_ctxt);
+static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc);
 
 /* these are implemented in ldmsd_failover.c */
 int failover_config_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -218,6 +220,9 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_PRDCR_STOP_REGEX_REQ] = {
 		LDMSD_PRDCR_STOP_REGEX_REQ, prdcr_stop_regex_handler, XUG
+	},
+	[LDMSD_PRDCR_HINT_TREE_REQ] = {
+		LDMSD_PRDCR_HINT_TREE_REQ, prdcr_hint_tree_status_handler, XALL
 	},
 
 	/* STRGP */
@@ -276,6 +281,9 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_UPDTR_STATUS_REQ] = {
 		LDMSD_UPDTR_STATUS_REQ, updtr_status_handler, XALL
+	},
+	[LDMSD_UPDTR_TASK_REQ] = {
+		LDMSD_UPDTR_TASK_REQ, updtr_task_status_handler, XALL
 	},
 
 	/* PLUGN */
@@ -1480,7 +1488,7 @@ int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb,
 		       "\"host\":\"%s\","
 		       "\"port\":%hu,"
 		       "\"transport\":\"%s\","
-		       "\"reconnect_us\":\"%d\","
+		       "\"reconnect_us\":\"%ld\","
 		       "\"state\":\"%s\","
 		       "\"sets\": [",
 		       prdcr->obj.name, ldmsd_prdcr_type2str(prdcr->type),
@@ -2981,7 +2989,7 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 	cnt = snprintf(reqc->line_buf, reqc->line_len,
 		       "{\"name\":\"%s\","
 		       "\"interval\":\"%ld\","
-		       "\"offset\":\"%d\","
+		       "\"offset\":\"%ld\","
 		       "\"sync\":\"%s\","
 		       "\"mode\":\"%s\","
 		       "\"state\":\"%s\","
@@ -3119,6 +3127,374 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 out:
 	if (name)
 		free(name);
+	return rc;
+}
+
+static int __updtr_task_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_task_t task)
+{
+	size_t cnt;
+	cnt = snprintf(reqc->line_buf, reqc->line_len,
+			"{\"interval_us\":\"%ld\",", task->sched.intrvl_us);
+	if (task->sched.offset_us == LDMSD_UPDT_HINT_OFFSET_NONE) {
+		cnt += snprintf(reqc->line_buf + cnt, reqc->line_len - cnt,
+			"\"offset_us\":\"None\",");
+	} else {
+		cnt += snprintf(reqc->line_buf + cnt, reqc->line_len - cnt,
+			"\"offset_us\":\"%ld\",", task->sched.offset_us);
+	}
+	cnt += snprintf(reqc->line_buf + cnt, reqc->line_len - cnt,
+			"\"default_task\":\"%s\"}", (task->is_default)?"true":"false");
+	return cnt;
+}
+
+int __updtr_task_tree_json_obj(ldmsd_req_ctxt_t reqc,
+				ldmsd_updtr_t updtr,
+				action_fn cb, void *arg)
+{
+	ldmsd_plugin_set_t set;
+	size_t cnt;
+	int rc, set_count;
+	ldmsd_updtr_task_t task;
+	struct rbn *rbn;
+
+	ldmsd_updtr_lock(updtr);
+	cnt = snprintf(reqc->line_buf, reqc->line_len,
+			"{\"name\":\"%s\","
+			"\"tasks\":[", updtr->obj.name);
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	if (rc)
+		goto out;
+
+	task = &updtr->default_task;
+	cnt = __updtr_task_json_obj(reqc, task);
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	if (rc)
+		goto out;
+
+	rbn = rbt_min(&updtr->task_tree);
+	while (rbn) {
+		cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
+		rc = cb(reqc, reqc->line_buf, cnt, arg);
+		if (rc)
+			goto out;
+		task = container_of(rbn, struct ldmsd_updtr_task, rbn);
+		cnt = __updtr_task_json_obj(reqc, task);
+		rc = cb(reqc, reqc->line_buf, cnt, arg);
+		if (rc)
+			goto out;
+		rbn = rbn_succ(rbn);
+	}
+	cnt = snprintf(reqc->line_buf, reqc->line_len, "]}");
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+out:
+	ldmsd_updtr_unlock(updtr);
+	return rc;
+}
+
+static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc, updtr_count;
+	size_t cnt = 0;
+	ldmsd_updtr_task_t task;
+	struct rbn *rbn;
+	char *name;
+	ldmsd_updtr_t updtr;
+	struct ldmsd_req_attr_s attr;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	if (name) {
+		updtr = ldmsd_updtr_find(name);
+		if (!updtr) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len, "updtr '%s' not found", name);
+			ldmsd_send_error_reply(reqc->xprt, reqc->rec_no, ENOENT,
+							reqc->line_buf, cnt);
+			return 0;
+		}
+		rc = __updtr_task_tree_json_obj(reqc, updtr, __get_json_obj_len_cb, &cnt);
+		if (rc)
+			goto err;
+	} else {
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
+		for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
+			rc = __updtr_task_tree_json_obj(reqc, updtr, __get_json_obj_len_cb, &cnt);
+			if (rc) {
+				ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+				goto err;
+			}
+			cnt += 1; /* +1 for the comma between updtr json objects */
+		}
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+		cnt -= 1; /* Get rid of the extra comma count following the last json object. */
+	}
+	cnt += 2; /* +2 for the [ and ]. */
+
+	attr.discrim = 1;
+	attr.attr_len = cnt;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		goto err;
+
+	cnt = snprintf(reqc->line_buf, reqc->line_len, "[");
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+	if (rc)
+		goto err;
+	if (name) {
+		updtr = ldmsd_updtr_find(name);
+		if (!updtr) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"updtr '%s' not found", name);
+			ldmsd_send_error_reply(reqc->xprt, reqc->rec_no, ENOENT,
+							reqc->line_buf, cnt);
+			return 0;
+		}
+		rc = __updtr_task_tree_json_obj(reqc, updtr, __append_json_obj_cb, NULL);
+		if (rc)
+			goto err;
+	} else {
+		updtr_count = 0;
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
+		for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
+			if (updtr_count) {
+				cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
+				rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_len, 0);
+				if (rc) {
+					ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+					goto err;
+				}
+			}
+			rc = __updtr_task_tree_json_obj(reqc, updtr, __append_json_obj_cb, NULL);
+			if (rc) {
+				ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+				goto err;
+			}
+			updtr_count++;
+		}
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+	}
+	cnt = snprintf(reqc->line_buf, reqc->line_len, "]");
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+	if (rc)
+		goto err;
+
+	attr.discrim = 0;
+	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
+				sizeof(uint32_t), LDMSD_REQ_EOM_F);
+	if (name)
+		free(name);
+
+	return rc;
+err:
+	ldmsd_send_error_reply(reqc->xprt, reqc->rec_no, rc,
+						"internal error", 15);
+	return rc;
+}
+
+int __prdcr_hint_set_list_json_obj(ldmsd_req_ctxt_t reqc,
+				ldmsd_updt_hint_set_list_t list,
+				action_fn cb, void *arg)
+{
+	size_t cnt;
+	ldmsd_prdcr_set_t set;
+	int rc, set_count;
+	set_count = 0;
+
+	if (LIST_EMPTY(&list->list))
+		return 0;
+	set = LIST_FIRST(&list->list);
+	pthread_mutex_lock(&set->lock);
+	cnt = snprintf(reqc->line_buf, reqc->line_len,
+				"{\"interval_us\":\"%ld\",",
+				set->updt_hint.intrvl_us);
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	if (rc)
+		goto err;
+	if (set->updt_hint.offset_us == LDMSD_UPDT_HINT_OFFSET_NONE) {
+		cnt = snprintf(reqc->line_buf, reqc->line_len,
+				"\"offset_us\":\"None\",");
+	} else {
+		cnt = snprintf(reqc->line_buf, reqc->line_len,
+				"\"offset_us\":\"%ld\",",
+				set->updt_hint.offset_us);
+	}
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	if (rc)
+		goto err;
+	cnt = snprintf(reqc->line_buf, reqc->line_len,
+			"\"sets\":[");
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	if (rc)
+		goto err;
+	while (set) {
+		if (0 == set_count) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"\"%s\"",
+					set->inst_name);
+			rc = cb(reqc, reqc->line_buf, cnt, arg);
+			if (rc)
+				goto err;
+		} else {
+			cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
+			rc = cb(reqc, reqc->line_buf, cnt, arg);
+			if (rc)
+				goto err;
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"\"%s\"",
+					set->inst_name);
+			rc = cb(reqc, reqc->line_buf, cnt, arg);
+			if (rc)
+				goto err;
+		}
+		set_count++;
+		pthread_mutex_unlock(&set->lock);
+		set = LIST_NEXT(set, updt_hint_entry);
+		if (!set)
+			break;
+		pthread_mutex_lock(&set->lock);
+	}
+	cnt = snprintf(reqc->line_buf, reqc->line_len, "]}");
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	return rc;
+err:
+	pthread_mutex_unlock(&set->lock);
+	return rc;
+}
+
+int __prdcr_hint_set_tree_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr,
+							action_fn cb, void *arg)
+{
+	size_t cnt;
+	int rc, count;
+	struct rbn *rbn;
+	ldmsd_updt_hint_set_list_t list;
+
+	cnt = snprintf(reqc->line_buf, reqc->line_len,
+			"{\"name\":\"%s\","
+			"\"hints\":[", prdcr->obj.name);
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	if (rc)
+		return rc;
+	count = 0;
+	rbn = rbt_min(&prdcr->hint_set_tree);
+	while (rbn) {
+		if (0 < count)
+			rc = cb(reqc, ",", 1, arg);
+		list = container_of(rbn, struct ldmsd_updt_hint_set_list, rbn);
+		rc = __prdcr_hint_set_list_json_obj(reqc, list, cb, arg);
+		if (rc)
+			return rc;
+		count++;
+		rbn = rbn_succ(rbn);
+	}
+out:
+	cnt = snprintf(reqc->line_buf, reqc->line_len, "]}");
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	return rc;
+}
+
+static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
+{
+	size_t cnt = 0;
+	int rc, prdcr_count;
+	ldmsd_prdcr_t prdcr;
+	ldmsd_updt_hint_set_list_t list;
+	struct rbn *rbn;
+	char *name;
+	struct ldmsd_req_attr_s attr;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	if (name) {
+		prdcr = ldmsd_prdcr_find(name);
+		if (!prdcr) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"prdcr '%s' not found", name);
+			reqc->errcode = ENOENT;
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+			return 0;
+		}
+		ldmsd_prdcr_lock(prdcr);
+		rc = __prdcr_hint_set_tree_json_obj(reqc, prdcr,
+				__get_json_obj_len_cb, (void*)&cnt);
+		ldmsd_prdcr_unlock(prdcr);
+		if (rc)
+			goto intr_err;
+	} else {
+		prdcr_count = 0;
+		for (prdcr = ldmsd_prdcr_first(); prdcr;
+				prdcr = ldmsd_prdcr_next(prdcr)) {
+			ldmsd_prdcr_lock(prdcr);
+			rc = __prdcr_hint_set_tree_json_obj(reqc, prdcr,
+					__get_json_obj_len_cb, (void*)&cnt);
+			ldmsd_prdcr_unlock(prdcr);
+			if (rc)
+				goto intr_err;
+			prdcr_count +=1;
+		}
+		cnt += (prdcr_count  - 1); /* Count the commas */
+	}
+
+	cnt += 2; /*   +2 for [ and ] */
+
+	attr.discrim = 1;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	attr.attr_len = cnt;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr,
+			sizeof(struct ldmsd_req_attr_s), LDMSD_REQ_SOM_F);
+	if (rc)
+		goto intr_err;
+	cnt = snprintf(reqc->line_buf, reqc->line_len, "[");
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+	if (rc)
+		goto intr_err;
+	if (name) {
+		prdcr = ldmsd_prdcr_find(name);
+		if (!prdcr) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"prdcr '%s' not found", name);
+			reqc->errcode = ENOENT;
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+			return 0;
+		}
+		ldmsd_prdcr_lock(prdcr);
+		rc = __prdcr_hint_set_tree_json_obj(reqc, prdcr,
+				__append_json_obj_cb, (void*)&cnt);
+		ldmsd_prdcr_unlock(prdcr);
+		if (rc)
+			goto intr_err;
+	} else {
+		prdcr_count = 0;
+		for (prdcr = ldmsd_prdcr_first(); prdcr;
+				prdcr = ldmsd_prdcr_next(prdcr)) {
+			if (prdcr_count) {
+				cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
+				rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+				if (rc)
+					goto intr_err;
+			}
+			ldmsd_prdcr_lock(prdcr);
+			rc = __prdcr_hint_set_tree_json_obj(reqc, prdcr,
+					__append_json_obj_cb, (void*)&cnt);
+			ldmsd_prdcr_unlock(prdcr);
+			if (rc)
+				goto intr_err;
+			prdcr_count++;
+		}
+	}
+	cnt = snprintf(reqc->line_buf, reqc->line_len, "]");
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+	if (rc)
+		goto intr_err;
+	attr.discrim = 0;
+	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
+				sizeof(uint32_t), LDMSD_REQ_EOM_F);
+	if (rc)
+		goto intr_err;
+	return 0;
+intr_err:
+	ldmsd_send_error_reply(reqc->xprt, reqc->rec_no, EINTR,
+					"interval error", 14);
 	return rc;
 }
 

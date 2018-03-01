@@ -454,6 +454,16 @@ static void help_prdcr_stop_regex()
 		"     regex=        A regular expression\n");
 }
 
+static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	ldmsd_req_attr_t attr;
+	if (rsp_err) {
+		attr = ldmsd_first_attr(resp);
+		if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
+			printf("%s\n", attr->attr_value);
+	}
+}
+
 void __print_prdcr_status(json_value *jvalue)
 {
 	if (jvalue->type != json_object) {
@@ -597,6 +607,71 @@ static void resp_prdcr_set_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp
 static void help_prdcr_set_status()
 {
 	printf( "\nGet status of all producer sets\n");
+}
+
+static void __print_prdcr_hint_tree(json_value *prdcr_json)
+{
+	json_value *hints, *hint, *sets;
+	char *name, *intrvl, *offset;
+	int i, j;
+	name = ldmsctl_json_str_value_get(prdcr_json, "name");
+	printf("prdcr: %s\n", name);
+
+	hints = ldmsctl_json_value_get(prdcr_json, "hints");
+	if (hints->type != json_array) {
+		printf("Unrecognized reply format\n");
+		return;
+	}
+	for (i = 0; i < hints->u.array.length; i++) {
+		hint = ldmsctl_json_array_ele_get(hints, i);
+		intrvl = ldmsctl_json_str_value_get(hint, "interval_us");
+		offset = ldmsctl_json_str_value_get(hint, "offset_us");
+		sets = ldmsctl_json_value_get(hint, "sets");
+		printf("   update hint: %s:%s\n", intrvl, offset);
+		if (sets->type != json_array) {
+			printf("Unrecognized reply format\n");
+			return;
+		}
+		for (j = 0; j < sets->u.array.length; j++) {
+			printf("     %s\n", sets->u.array.values[j]->u.string.ptr);
+		}
+	}
+}
+
+static void resp_prdcr_hint_tree(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	int i;
+
+	if (0 != rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON)) {
+		printf("Unrecognized reply format\n");
+		return;
+	}
+	json_value *json, *prdcr_json;
+	json = json_parse((char *)attr->attr_value, len);
+	if (!json)
+		return;
+	if (json->type != json_array) {
+		printf("Unrecognized reply format\n");
+		return;
+	}
+	for (i = 0; i < json->u.array.length; i++) {
+		prdcr_json = json->u.array.values[i];
+		__print_prdcr_hint_tree(prdcr_json);
+	}
+	json_value_free(json);
+}
+
+static void help_prdcr_hint_tree()
+{
+	printf("\nPrint producer sets by the update hints\n"
+	       "Parameters:\n"
+	       "      [name=]     The producer name\n");
 }
 
 static void help_updtr_add()
@@ -751,6 +826,62 @@ static void help_updtr_status()
 	printf("\nGet the statuses of all Updaters\n"
 	       "Parameters:\n"
 	       "      None\n");
+}
+
+static void __print_updtr_task(json_value *updtr_json)
+{
+	json_value *tasks, *task;
+	char *name, *intrvl, *offset, *is_default;
+	int i;
+	name = ldmsctl_json_str_value_get(updtr_json, "name");
+	tasks = ldmsctl_json_value_get(updtr_json, "tasks");
+	printf("Updater: %s\n", name);
+	printf("   tasks: <interval_us>:<offset_us>\n");
+	for (i = 0; i < tasks->u.array.length; i++) {
+		task = tasks->u.array.values[i];
+		intrvl = ldmsctl_json_str_value_get(task, "interval_us");
+		offset = ldmsctl_json_str_value_get(task, "offset_us");
+		is_default = ldmsctl_json_str_value_get(task, "default_task");
+		if (0 == strcmp(is_default, "true")) {
+			printf("     %s:%s     default\n", intrvl, offset);
+		} else {
+			printf("     %s:%s\n", intrvl, offset);
+		}
+	}
+}
+
+static void resp_updtr_task(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	json_value *json, *updtr;
+	int i;
+
+	if (0 != rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+	json = json_parse((char*)attr->attr_value, len);
+	if (!json)
+		return;
+	if (json->type != json_array) {
+		printf("Unrecognized updater status format\n");
+		return;
+	}
+	for (i = 0; i < json->u.array.length; i++) {
+		updtr = json->u.array.values[i];
+		__print_updtr_task(updtr);
+	}
+	json_value_free(json);
+}
+
+static void help_updtr_task()
+{
+	printf("\bGet the tasks of an update\n"
+	       "Parameters:\n"
+	       "      [name=]     The updater policy name\n");
 }
 
 static void help_strgp_add()
@@ -966,16 +1097,6 @@ static void help_plugn_sets()
 static void help_version()
 {
 	printf( "\nGet the LDMS version.\n");
-}
-
-static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
-{
-	ldmsd_req_attr_t attr;
-	if (rsp_err) {
-		attr = ldmsd_first_attr(resp);
-		if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
-			printf("%s\n", attr->attr_value);
-	}
 }
 
 static void help_set_route()
@@ -1206,6 +1327,7 @@ static struct command command_tbl[] = {
 	{ "plugn_sets", LDMSD_PLUGN_SETS_REQ, NULL, help_plugn_sets, resp_plugn_sets },
 	{ "prdcr_add", LDMSD_PRDCR_ADD_REQ, NULL, help_prdcr_add, resp_generic },
 	{ "prdcr_del", LDMSD_PRDCR_DEL_REQ, NULL, help_prdcr_del, resp_generic },
+	{ "prdcr_hint_tree", LDMSD_PRDCR_HINT_TREE_REQ, NULL, help_prdcr_hint_tree, resp_prdcr_hint_tree },
 	{ "prdcr_set_status", LDMSD_PRDCR_SET_REQ, NULL, help_prdcr_set_status, resp_prdcr_set_status },
 	{ "prdcr_start", LDMSD_PRDCR_START_REQ, NULL, help_prdcr_start, resp_generic },
 	{ "prdcr_start_regex", LDMSD_PRDCR_START_REGEX_REQ, NULL, help_prdcr_start_regex, resp_generic },
@@ -1239,6 +1361,7 @@ static struct command command_tbl[] = {
 	{ "updtr_start", LDMSD_UPDTR_START_REQ, NULL, help_updtr_start, resp_generic },
 	{ "updtr_status", LDMSD_UPDTR_STATUS_REQ, NULL, help_updtr_status, resp_updtr_status },
 	{ "updtr_stop", LDMSD_UPDTR_STOP_REQ, NULL, help_updtr_stop, resp_generic },
+	{ "updtr_task", LDMSD_UPDTR_TASK_REQ, NULL, help_updtr_task, resp_updtr_task },
 	{ "usage", LDMSD_PLUGN_LIST_REQ, NULL, help_usage, resp_usage },
 	{ "version", LDMSD_VERSION_REQ, NULL, help_version , resp_generic },
 };
