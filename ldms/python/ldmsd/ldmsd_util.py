@@ -68,6 +68,7 @@ import fcntl
 from StringIO import StringIO
 import errno
 import tty
+from distutils.spawn import find_executable
 
 def add_cmd_line_arg(arg, value = None):
     """Return a string of command line option and value
@@ -345,7 +346,7 @@ class LDMSD(object):
     """A utility class to handle an LDMS Daemon subprocess"""
 
     def __init__(self, port, xprt="sock", logfile=None, auth="none",
-                 auth_opt={}, verbose="INFO", cfg=None):
+                 auth_opt={}, verbose="INFO", cfg=None, gdb_port=None):
         """LDMSD subprocess handler initialization
 
         @param port(str): the LDMSD listening port.
@@ -355,14 +356,30 @@ class LDMSD(object):
         @param auth(str): the name of the LDMS authentication plugin.
         @param auth_opt(dict): the dictionary of key-value specifying
                                authentication plugin options.
+        @param verbose(str): the verbosity of the log.
+        @param cfg(str): the daemon configuration.
+        @param gdb_port(str): the port of the gdbserver. If this is `None`, the
+                              process will NOT be under gdb. If the port is
+                              specified, the process will run under gdbserver.
         """
-        self.cmd_args = [
-            "ldmsd",
+        self.cmd_args = []
+        if gdb_port:
+            ldmsd_path = find_executable("ldmsd")
+            if not ldmsd_path:
+                raise RuntimeError("ldmsd not found")
+            self.cmd_args.extend([
+                    "gdbserver",
+                    "localhost:%s" % str(gdb_port),
+                    ldmsd_path,
+                ])
+        else:
+            self.cmd_args.append("ldmsd")
+        self.cmd_args.extend([
             "-F", # foreground
             "-x", "%s:%s" % (xprt, port),
             "-a", auth,
             "-v", verbose,
-        ]
+        ])
         if logfile:
             self.cmd_args.extend(["-l", logfile])
         if auth_opt:
