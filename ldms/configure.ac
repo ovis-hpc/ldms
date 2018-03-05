@@ -115,6 +115,7 @@ OPTION_WITH([pow], [POW], [/usr/local])
 
 
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
+OPTION_DEFAULT_DISABLE([opa2], [ENABLE_OPA2])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
 OPTION_DEFAULT_DISABLE([cray_system_sampler], [ENABLE_CRAY_SYSTEM_SAMPLER])
@@ -474,6 +475,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms-py-syslog.sh
 		 scripts/ldms-py-rename.sh
 		 scripts/ldms-meminfo.sh
+		 scripts/ldms_local_opa2test.sh
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile

@@ -235,6 +235,15 @@ libsysclassib_la_LIBADD = $(COMMON_LIBADD) -libmad -libumad $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libsysclassib.la
 endif
 
+if ENABLE_OPA2
+OPA2_LIBADD = -libmad -libumad -lpthread
+libopa2_la_SOURCES = opa2.c $(BASE_SRC)
+OPAINC=/usr/include/infiniband
+libopa2_la_CFLAGS = $(AM_CFLAGS) -I$(OPAINC)
+libopa2_la_LIBADD = $(AM_LDFLAGS) $(COMMON_LIBADD) $(OPA2_LIBADD) $(JOBID_LIBFLAGS)
+pkglib_LTLIBRARIES += libopa2.la
+endif
+
 if ENABLE_VMSTAT
 libvmstat_la_SOURCES = vmstat.c $(BASE_SRC)
 libvmstat_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
