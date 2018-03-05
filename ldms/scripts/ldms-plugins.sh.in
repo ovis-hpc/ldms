@@ -1,0 +1,61 @@
+#!/bin/bash
+
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+
+export LD_LIBRARY_PATH=${prefix}/lib:${exec_prefix}/lib:${libdir}/ovis-ldms:@libeventpath@:$LD_LIBRARY_PATH
+export ZAP_LIBPATH=${libdir}/ovis-ldms
+export PATH=${exec_prefix}/sbin:$PATH
+export LDMSD_PLUGIN_LIBPATH=${libdir}/ovis-ldms
+
+function usage () {
+cat << EOF
+$0: usage $0 [option] [plugin name]
+options are:
+       -b show brief output
+       -n show names only.
+EOF
+}
+short=0
+names=0
+bug=0
+while getopts "bn" opt; do
+	case $opt in
+	b)
+		short=1
+		;;
+	n)
+		names=1
+		;;
+	\?)
+		echo "Invalid option: -$OPTARG" >&2
+		bug=1
+		;;
+	esac
+done
+shift $((OPTIND -1))
+if test "$bug" = "1"; then
+	usage
+	exit 1
+fi
+plug=$1
+if test -z "$plug"; then
+	plug=all
+fi
+tmp=`mktemp pluglist.XXXXXX`
+ldmsd -u $plug -x dummy:0 >&2 >$tmp
+case $short,$names in
+	0,0) cat $tmp
+		;;
+	1,0) grep "======= " $tmp | sed -e 's/=//g' -e 's/://g' -e 's/^ //g'
+		;;
+	*,1) grep "======= " $tmp | sed -e 's/=//g' \
+		-e 's/ //g' \
+		-e 's/://g' \
+		-e 's/SAMPLER//g' \
+		-e 's/STORE//g' \
+		-e 's/TRANSFORM//g'
+		;;
+esac
+rm $tmp

@@ -468,7 +468,7 @@ dnl handle test generation and chmod
 OVIS_EXEC_SCRIPTS(
 		 scripts/ldms_ban.sh
 		 scripts/ldms-py-fptrans_test.sh
-		 scripts/ldms_plugins_list.sh
+		 scripts/ldms-plugins.sh
 		 scripts/ldms-py-edac_test.sh
 		 scripts/ldms-py-subset_test.sh
 		 scripts/ldms-py-varset.sh

@@ -108,6 +108,9 @@ If ldms is configured with --disable-ovis_auth, the -a option disappears and wil
 .TP
 .BR -V
 Display LDMS version information and then exit.
+.TP
+.BR -u " plugin_name"
+Display the usage for named plugin. Special names all, sampler, and store match all, sampler type, and store type plugins, respectively.
 
 
 

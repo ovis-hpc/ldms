@@ -3,6 +3,7 @@ dist_man8_MANS= \
 ldms_build_install.man \
 ldms_ls.man \
 ldmsd.man \
+ldms-plugins.man \
 ldmsd_exits.man \
 ldmsd_controller.man \
 ldmsctl.man
