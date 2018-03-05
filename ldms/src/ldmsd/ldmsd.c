@@ -636,8 +636,10 @@ static void resched_task(ldmsd_task_t task)
 static int start_task(ldmsd_task_t task)
 {
 	int rc = ovis_scheduler_event_add(task->os, &task->oev);
-	if (!rc)
+	if (!rc) {
+		errno = rc;
 		return LDMSD_TASK_STATE_STARTED;
+	}
 	return LDMSD_TASK_STATE_STOPPED;
 }
 
@@ -665,8 +667,12 @@ static void task_cb_fn(ovis_event_t ev)
 	} else
 		task->state = next_state;
  out:
-	if (task->state == LDMSD_TASK_STATE_STOPPED)
+	if (task->state == LDMSD_TASK_STATE_STOPPED) {
+		ovis_scheduler_event_del(task->os, &task->oev);
+		task->os = NULL;
+		release_ovis_scheduler(task->thread_id);
 		pthread_cond_signal(&task->join_cv);
+	}
 	pthread_mutex_unlock(&task->lock);
 }
 
@@ -700,7 +706,7 @@ int ldmsd_task_start(ldmsd_task_t task,
 		     ldmsd_task_fn_t task_fn, void *task_arg,
 		     int flags, int sched_us, int offset_us)
 {
-	int rc;
+	int rc = 0;
 	pthread_mutex_lock(&task->lock);
 	if (task->state != LDMSD_TASK_STATE_STOPPED) {
 		rc = EBUSY;
@@ -718,7 +724,9 @@ int ldmsd_task_start(ldmsd_task_t task,
 	task->oev.param.cb_fn = task_cb_fn;
 	task->oev.param.ctxt = task;
 	resched_task(task);
-	rc = start_task(task);
+	task->state = start_task(task);
+	if (task->state != LDMSD_TASK_STATE_STARTED)
+		rc = errno;
  out:
 	pthread_mutex_unlock(&task->lock);
 	return rc;
