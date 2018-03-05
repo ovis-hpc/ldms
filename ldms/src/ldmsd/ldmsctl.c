@@ -421,13 +421,12 @@ void __print_prdcr_status(json_value *jvalue)
 
 static void resp_prdcr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
-	char *str;
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
-	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
-		str = attr->attr_value;
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
 
 	json_value *json, *prdcr_json;
-	json = json_parse(str, len);
+	json = json_parse((char*)attr->attr_value, len);
 	if (!json)
 		return;
 
@@ -484,12 +483,11 @@ void __print_prdcr_set_status(json_value *jvalue)
 
 static void resp_prdcr_set_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
-	char *str;
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
-	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
-		str = attr->attr_value;
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
 	json_value *json, *prdcr_json;
-	json = json_parse(str, len);
+	json = json_parse((char*)attr->attr_value, len);
 	if (!json)
 		return;
 
@@ -639,12 +637,11 @@ void __print_updtr_status(json_value *jvalue)
 
 static void resp_updtr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
-	char *str;
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
-	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
-		str = attr->attr_value;
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
 	json_value *json, *prdcr_json;
-	json = json_parse(str, len);
+	json = json_parse((char*)attr->attr_value, len);
 	if (!json)
 		return;
 
@@ -796,12 +793,11 @@ void __print_strgp_status(json_value *jvalue)
 
 static void resp_strgp_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
-	char *str;
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
-	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
-		str = attr->attr_value;
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
 	json_value *json, *prdcr_json;
-	json = json_parse(str, len);
+	json = json_parse((char*)attr->attr_value, len);
 	if (!json)
 		return;
 
