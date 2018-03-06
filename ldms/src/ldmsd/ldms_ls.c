@@ -367,15 +367,20 @@ static int long_format = 0;
 
 void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
+	int err;
 	unsigned long last = (unsigned long)arg;
 	if (!verbose && !long_format) {
 		printf("%s", ldms_set_instance_name_get(s));
 		goto out;
 	}
-	if (rc & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST)) {
-		printf("    Error %x updating metric set.\n", rc);
+	err = LDMS_UPD_ERROR(rc);
+	if (err) {
+		printf("    Error %x updating metric set.\n", err);
 		goto out;
 	}
+	/* Ignore if more update of this set is expected */
+	if (rc & LDMS_UPD_F_MORE)
+		return;
 	/* If this is a push update and it's not the last, ignore it. */
 	if (rc & LDMS_UPD_F_PUSH) {
 		if (!(rc & LDMS_UPD_F_PUSH_LAST)) {
@@ -460,7 +465,7 @@ void lookup_push_cb(ldms_t t, enum ldms_lookup_status status,
 		    ldms_set_t s, void *arg)
 {
 	unsigned long last = (unsigned long)arg;
-	if (status & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST)) {
+	if (LDMS_UPD_ERROR(status)) {
 		/* Lookup failed, signal the main thread to finish up */
 		last = 1;
 		pthread_mutex_lock(&print_lock);
