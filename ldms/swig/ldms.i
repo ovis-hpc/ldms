@@ -859,6 +859,10 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 	inline uint64_t data_gn_get() {
 		return ldms_set_data_gn_get(self);
 	}
+	inline struct ldms_timestamp ts_get() {
+		struct ldms_timestamp const _ts = ldms_transaction_timestamp_get(self);
+		return _ts;
+	}
 	inline PyObject *timestamp_get() {
 		struct ldms_timestamp const _ts = ldms_transaction_timestamp_get(self);
 		struct ldms_timestamp const *ts = &_ts;
@@ -949,6 +953,34 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 			PyErr_SetString(PyExc_RuntimeError, buff);
 			__uctxt_free(ctxt);
 		}
+	}
+}
+
+%extend ldms_timestamp {
+	inline int __cmp__(const struct ldms_timestamp *other) {
+		if (self->sec < other->sec)
+			return -1;
+		if (self->sec > other->sec)
+			return 1;
+		if (self->usec < other->usec)
+			return -1;
+		if (self->usec > other->usec)
+			return 1;
+		return 0;
+	}
+	inline double __sub__(const struct ldms_timestamp *other) {
+		if (ldms_timestamp___cmp__(self, other) < 0) {
+			return - ldms_difftimestamp(other, self);
+		} else {
+			return ldms_difftimestamp(self, other);
+		}
+	}
+	inline PyObject *__str__() {
+		/* Use `buff` because PyString_FromFormat() does not support
+		 * leading-zeroes formatting */
+		char buff[64];
+		snprintf(buff, sizeof(buff), "%d.%06d", self->sec, self->usec);
+		return PyString_FromString(buff);
 	}
 }
 
