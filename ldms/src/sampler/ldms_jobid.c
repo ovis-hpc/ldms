@@ -256,7 +256,7 @@ out:
 		set_meta_new = 0;
 		v.v_u64 = compid;
 		ldms_metric_set(js, compid_pos, &v);
-		v.v_u32 = 1;
+		v.v_u32 = 0;
 		ldms_metric_set(js, jstart_pos, &v);
 		ldms_metric_set(js, jend_pos, &v);
 	}
