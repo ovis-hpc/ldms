@@ -1,0 +1,156 @@
+.\" Manpage for ldms-static-test.sh
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "26 Feb 2018" "v4.0" "ldms-static-test.sh man page"
+
+.SH NAME
+ldms-static-test.sh \- Run a canned test scenario
+
+.SH SYNOPSIS
+ldms-static-test.sh [-l]
+ldms-static-test.sh <input_file> [test_dir]
+
+.SH DESCRIPTION
+The ldms-static-test.sh command starts a canned test defined in the input_file
+using a standard environment. The input file is written in a simple bash macro
+language described in LANGUAGE below. Supporting configuration file fragments
+will be used, as determined from the input file. See FILES below.
+This tests ldmsd run with static configuration files (as would normally
+happen as a system service) and shut down with a signal.
+
+.SH OPTIONS
+.TP
+-l
+.br
+List the canned tests available.
+
+.SH LANGUAGE
+
+The following macro language is provided as extensions on bash.
+Other bash use is also possible, but not recommended.
+
+.TP
+LDMSD <daemon-numbers>
+.br
+This starts a number of daemons described by daemon-numbers. The numbers can
+be a given list, such as "1 2 3". The environment of each daemon (and its config script)
+will contain the variable i set to one of the given values, as described in
+ENVIRONMENT. For each value of i, a configuration fragment $input_file.$i must also exist. Use seq(1) to generate large number sequences.
+.TP
+MESSAGE [arguments]
+.br
+The expanded arguments are logged.
+.TP
+LDMS_LS <k> [ldms_ls_args]
+.br
+This invokes ldms_ls on the k-th ldmsd.
+.TP
+KILL_LDMSD <daemon-numbers>
+.br
+Kills the listed daemons.
+.TP
+SLEEP <n>
+.br
+Sleeps n seconds and logs a message about it.
+.TP
+JOBDATA jobfile [daemon-numbers]
+.br
+Creates jobfile with data for the jobid plugin to parse.
+If daemon numbers are specified, creates a jobfile.$k for each
+value of k listed in daemon-numbers. Each file will have
+unique numeric values, sequentially increasing.
+This does not provide data in the slurm-plugin sampler binary format.
+.TP
+vgon
+.br
+Turns on use of valgrind for any ldmsd or ldms_ls subsequently started.
+.TP
+vgoff
+.br
+Turns off use of valgrind for any ldmsd or ldms_ls subsequently started.
+.TP
+file_created <filename>
+.br
+Verifies the existence and readability of filename.
+.TP
+bypass=<0,1>
+.br
+This variable assignment disables (1) or enables (0) all the macros described
+above. Typical use is to skip one or more operations while debugging a
+test script.
+.TP
+portbase=<K>
+.br
+The listening port numbers assigned to the daemons will be K+i, where i is as described for
+macro LDMSD. It is a good idea (to support automated testing) if portbase is set
+in <input_file> so that each test uses a unique range of ports. This enables tests
+to proceed in parallel.
+
+
+.SH ENVIRONMENT
+The following variables are visible to the input file and the configuration file.
+.TP
+i
+.br
+Daemon configuration files and commands can refer to ${i} where i is the
+integer daemon number supplied via LDMSD for the specific
+daemon using the script.
+.TP
+portN
+.br
+Daemon configuration files and commands can refer to ${portN} where N is any
+value of 'i' described above. portN is the data port number of the N-th daemon.
+.TP
+input
+.br
+The name of the input file as specified when invoking this command.
+.TP
+testname
+.br
+The base name (directories stripped) of the input file name.
+This variable makes it possible to use similar input across many test
+files when the name of the input file is the same as the plugin tested.
+.TP
+TESTDIR
+.br
+Root directory of the testing setup.
+.TP
+STOREDIR
+.br
+A directory that should be used for store output configuration.
+.TP
+LOGDIR
+.br
+A directory that should be used for log outputs.
+.TP
+LDMS_AUTH_FILE
+.br
+Secret file used for daemon communication.
+.TP
+XPRT
+.br
+The transport used. It may be specified in the environment to override
+the default 'sock', and it is exported to the executed daemon environment.
+
+.SH NOTES
+Any other variable may be defined and exported for use in the attribute/value
+expansion of values in plugin configuration.
+
+.SH FILES
+.TP
+.I $input_file.$i
+.br
+For each value of i specifed to start an ldmsd, a configuration file named
+$input_file.$i must also exist. This configuration file is used when starting the daemon.
+.TP
+.I [test_dir]
+.br
+If test_dir is supplied, it is used as the test output directory.
+The default output location is `pwd`/ldmstest/$testname.
+.TP
+.I $docdir/examples/static-test/$input_file
+.br
+If input_file is not found in the current directory, it is checked for in $docdir/examples/static-test/$input_file.
+
+
+.SH SEE ALSO
+seq(1)

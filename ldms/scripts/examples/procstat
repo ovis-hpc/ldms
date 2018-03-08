@@ -1,0 +1,13 @@
+portbase=61036
+LDMSD `seq 3`
+SLEEP 10
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -l
+MESSAGE ldms_ls on host 3:
+LDMS_LS 3
+SLEEP 5
+KILL_LDMSD `seq 3`
+file_created $STOREDIR/node/procstat_auto
+file_created $STOREDIR/node2/procstat2.HEADER

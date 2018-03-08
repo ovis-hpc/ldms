@@ -72,6 +72,10 @@ if test ! -x $BUILDDIR/bin/ldmsd_controller; then
 else
 	LC="$BUILDDIR/bin/ldmsd_controller --auth_file=$SECRET"
 	CSO="--sockname"
+	# tcp style
+	LC="$prefix/bin/ldmsd_controller --xprt sock --host localhost --auth ovis"
+	CPO="--port"
+
 fi
 echo "logs and data stored under $TESTDIR"
 
@@ -108,7 +112,7 @@ echo Starting plugins on daemon1
 cat << EOF > $in1
 load name=jobid
 config name=jobid producer=localhost1 instance=localhost1/jobid component_id=3 file=$jobfile
-start name=jobid interval=1000000 offset=0 component_id=1 
+start name=jobid interval=1000000 offset=0
 
 load name=meminfo
 config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=1 udata_default=10 job_set=localhost1/jobid
@@ -134,30 +138,39 @@ echo "config name=store_csv action=init path=${STOREDIR} altheader=1 notify=$NOT
 echo Start store_csv on aggregator4
 cat << EOF >> $in4
 strgp_add name=store_csv plugin=store_csv schema=meminfo container=fmeminfo
-strgp_prdcr_add name=store_csv regex=localhost1
-strgp_start name=store_csv regex=localhost1
+strgp_prdcr_add name=store_csv regex=.*
+strgp_start name=store_csv
+
 strgp_add name=jobid.csv plugin=store_csv schema=jobid container=jobid
-strgp_prdcr_add name=jobid.csv regex=localhost1
-strgp_start name=jobid.csv regex=localhost1
+strgp_prdcr_add name=jobid.csv regex=.*
+strgp_start name=jobid.csv
 EOF
 mkfifo $NOTICES.fifo
 cat $NOTICES.fifo &
 
 echo Starting daemons
 # valgrind -v --log-file=vg.log.1 --track-origins=yes --trace-children=yes
-ldmsd -x sock:$port1 -p unix:$SOCKDIR/metric_socket_1 -c $in1 -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1
+ldmsd -x sock:$port1 -a ovis -A conf=$SECRET -c $in1 -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1
 die $?
 
 # valgrind -v --log-file=vg.log --track-origins=yes ldmsd -x sock:$port4 -p unix:$SOCKDIR/metric_soc
 #ldmsd -x sock:$port4 -p unix:$SOCKDIR/metric_socket_4 -c $in4  -l ${LOGDIR}/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4 &
-ldmsd -x sock:$port4 -p unix:$SOCKDIR/metric_socket_4 -c $in4  -l ${LOGDIR}/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4 &
+ldmsd -x sock:$port4 -a ovis -A conf=$SECRET -c $in4  -l ${LOGDIR}/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4 &
 die $?
 #
-mysleep 5
+mysleep 3
+cat << EOF > ${jobfile}
+JOBID=8675400
+UID=60
+USER=$USER
+APPID=5551300
+EOF
+mysleep 3
+
 echo quitting
-cat << EOF | $LC $CSO $SOCKDIR/metric_socket_4
-strgp_stop name=jobid.csv regex=localhost1
-strgp_stop name=store_csv regex=localhost1
+cat << EOF | $LC $CPO $port4
+strgp_stop name=jobid.csv
+strgp_stop name=store_csv
 EOF
 mysleep 1
 kill -SIGTERM `cat  $TESTDIR/run/ldmsd.pid.1` `cat  $TESTDIR/run/ldmsd.pid.4`

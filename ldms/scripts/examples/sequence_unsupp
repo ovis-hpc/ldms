@@ -1,0 +1,8 @@
+portbase=61048
+export sampler=meminfo
+LDMSD `seq 4`
+
+MESSAGE ldms_ls on host 3:
+LDMS_LS 3
+SLEEP 15
+KILL_LDMSD `seq 4`
