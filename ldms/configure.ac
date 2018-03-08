@@ -94,6 +94,11 @@ OPTION_DEFAULT_ENABLE([array_example], [ENABLE_ARRAY_EXAMPLE])
 OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
 OPTION_DEFAULT_DISABLE([rapl], [ENABLE_RAPL])
 OPTION_DEFAULT_DISABLE([hweventpapi], [ENABLE_HWEVENTPAPI])
+OPTION_DEFAULT_DISABLE([mpi_sampler], [ENABLE_MPI_SAMPLER])
+OPTION_DEFAULT_DISABLE([mpi_noprofile], [ENABLE_MPI_NOPROFILE])
+if test -z "$ENABLE_MPI_SAMPLER_TRUE" ; then
+	AX_MPI([:],[ AC_MSG_ERROR([MPICC required by mpi_sampler ])])
+fi
 OPTION_WITH([libpapi], [LIBPAPI])
 OPTION_DEFAULT_ENABLE([procinterrupts], [ENABLE_PROCINTERRUPTS])
 OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
@@ -487,6 +492,9 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/job_info_slurm/Makefile
 		 src/sampler/llnl/Makefile
 		 src/sampler/hadoop/Makefile
+		 src/sampler/shm/Makefile
+		 src/sampler/shm/shm_util/Makefile
+		 src/sampler/shm/mpi_profiler/Makefile
 		 src/sampler/hadoop/hadoop-sinks/OvisSink.java
 		 src/sampler/cray_system_sampler/Makefile
 		 src/sampler/aries_mmr/Makefile
