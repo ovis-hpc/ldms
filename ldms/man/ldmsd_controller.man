@@ -1,23 +1,24 @@
 .\" Manpage for ldmsd_controller
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "16 Jan 2017" "v3" "ldmsd_contoller man page"
+.TH man 8 "28 Feb 2018" "v4" "ldmsd_contoller man page"
 
 .SH NAME
-ldmsd_controller \- python script interface to configure an ldms daemon.
+ldmsd_controller \- a python program to configure an ldms daemon.
 
 .SH SYNOPSIS
->ldmsd_controller [ <attr>=<value> ]
+.B ldmsd_controller
+[OPTIONS]
+
 ldmsd_controller> <cmd> [ <attr>=<value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), the ldmsd
 can be configured via the ldmsd_controller.
 
-ldmsd_controller is new in v3 and replaces v2's ldmsctl.
-
-If ldms is built with --enable-readline, one can invoke the ldmsd_controller from the command line
-and obtain an input interface with feedback. In many instances, instances, however, it is prefered
-to execute scripts and send the output commands to an ldmsd instead.
+If ldms is built with --enable-readline, one can invoke the ldmsd_controller
+from the command line and obtain an input interface with feedback. In many
+instances, instances, however, it is prefered to execute scripts and send the
+output commands to an ldmsd instead.
 
 .SH ENVIRONMENT
 Note: python2.6 with the additional installation of the argparse module
@@ -30,30 +31,30 @@ PYTHONPATH
 PATH
 <path_to_ovis_install>/bin
 
-.SH LDMSD_CONTROLLER CONFIGURATION ATTRIBUTE SYNTAX
-.TP
-.BI --sockname " SOCKNAME"
-.br
-Specify the UNIX sock used to communicate with the ldmsd
+.SH LDMSD_CONTROLLER OPTIONS
 .TP
 .BI --host " HOST"
-.br
-Hostname of the ldmsd to connect to
+Hostname of \fBldmsd\fR to connect to
 .TP
 .BI --port " PORT"
-.br
-Inet ctrl listener port of ldmsd
+The port of \fBldmsd\fR to connect to
 .TP
-.BI --inband
-.br
-Connect to an LDMS daemon via the data channel
+.BI --xprt " XPRT"
+The transport type (\fBsock\fR, \fBrdma\fR, \fBugni\fR).
 .TP
-.BI --auth_file " AUTH_FILE"
-.br
-Path to the file containing the secret word.
-.br
-NOTE: if you are using ldmsd_controller to configure an LDMS daemon either local
-or remote and you are using authentication, then you must build with --enable-swig.
+.BI -a " AUTH" " | --auth" " AUTH"
+The LDMS authentication plugin. Please see
+.BR ldms_authentication (7)
+for more information.
+.TP
+.BI "-A " NAME = VALUE " | --auth-arg " NAME = VALUE
+Options
+.IR NAME = VALUE
+Passing the \fINAME\fR=\fIVALUE\fR option to the LDMS Authentication plugin.
+This command line option can be given multiple times. Please see
+.BR ldms_authentication (7)
+for more information, and consult the plugin manual page for plugin-specific
+options.
 .TP
 .BI --source " SOURCE"
 .br

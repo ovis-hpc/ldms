@@ -146,8 +146,10 @@ void usage(char *argv[])
 	       "                     For example, 20M or 20mb are 20 megabytes.\n"
 	       "                     - The environment variable %s could be set\n"
 	       "                     instead of giving the -m option. If both are given,\n"
-	       "                     this option takes precedence over the environment variable.\n",
-	       LDMS_LS_MAX_MEM_SZ_STR, LDMS_LS_MEM_SZ_ENVVAR);
+	       "                     this option takes precedence over the environment variable.\n"
+	       "\n    -a <auth>        LDMS Authentication plugin to be used (default: 'none').\n"
+	       "\n    -A <key>=<value> (repeatable) LDMS Authentication plugin parameters.\n"
+	       , LDMS_LS_MAX_MEM_SZ_STR, LDMS_LS_MEM_SZ_ENVVAR);
 	printf("\n    -V           Print LDMS version and exit.\n");
 	printf("\n    -P           Register for push updates.\n");
 	exit(1);

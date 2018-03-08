@@ -1,6 +1,6 @@
 .\" Manpage for ldmsd ldms-aggd
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "22 Dec 2016" "v3.3" "ldmsd man page"
+.TH man 8 "28 Feb 2018" "v4" "ldmsd man page"
 
 .SH NAME
 ldmsd \- Start an ldms daemon
@@ -28,9 +28,6 @@ Path to ovis/lib and libevent2/lib, if not in a system default path. Depending o
 PATH
 Include the path to sbin directory containing ldmsd.
 .SS The following environment variables may be set to override compiled-in defaults:
-.TP
-LDMSD_AUTH_FILE
-For authentication unless overridden on the command line. Consult ldms_authentication(7) for further details.
 .TP
 ZAP_LIBPATH
 Path to ovis/lib/ovis-ldms
@@ -81,7 +78,7 @@ General/Configuration Options:
 Run in foreground mode; don't daemonize the program. Default is false.
 .TP
 .BR -B version-file-mode
-When run in daemon mode, controls the existence of the banner file. 
+When run in daemon mode, controls the existence of the banner file.
 Mode 0 suppresses the version file. Mode 1 deletes it at daemon exit. Mode >= 2 leaves it in place for debugging after daemon exit. Default mode is 1.
 The banner contains the software and protocol versions information, which is also logged at the INFO level. The banner file name is always the pidfile name with .version appended.
 .TP
@@ -99,13 +96,6 @@ Data sets containing arrays may require more.
 .BI -r " pid_file"
 The path to the pid file and prefix of the .version banner file for daemon mode.
 .TP
-.BI -a " secretfile"
-Give the location of the secretword file.
-Normally, the environment variable LDMSD_AUTH_FILE must be set to the full
-path to the file storing the shared secret word
-
-If ldms is configured with --disable-ovis_auth, the -a option disappears and will cause an error if it is given.
-.TP
 .BR -V
 Display LDMS version information and then exit.
 .TP
@@ -113,27 +103,30 @@ Display LDMS version information and then exit.
 Display the usage for named plugin. Special names all, sampler, and store match all, sampler type, and store type plugins, respectively.
 
 
-
 .SS
 Communication Options:
 .TP
-.BI -S " SOCKNAME"
-.br
-DEPRECATED. Please use the -p unix:SOCKNAME option instead.
-.TP
-.BI -x " XPRT:PORT"
+.BI -x " XPRT" [: PORT ]
 .br
 Specifies the transport type to listen on. May be specified more than once for
-multiple transports. The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY XE/XK/XC).
-A transport specific port number is optionally specified following a ':', e.g. rdma:50000.
+multiple transports. The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY
+XE/XK/XC).  A transport specific port number is optionally specified following a
+\':', e.g. rdma:10000.
 .TP
-.BI -p " XPRT:SOCKNAME|XPRT:PORT"
-Specifies the transport type to listen on for receiving configuration. May be
-specified more than once for multiple transports. The XPRT string is either 'unix' or 'sock'.
-For Unix domain socket connection, use -p unix:SOCKNAME.
-SOCKNAME is the Unix domain socket path. For remote connection use -p sock:PORT.
-PORT is the listening port. If not specified, Unix domain socket nor inet port
-is opened.
+.BI -a " AUTH"
+AUTH is the name of the LDMS Authentication plugin to be used for the
+LDMS connection. Please see
+.BR ldms_authentication (7)
+for more information. If this option is not given, the default is "none" (no
+authentication).
+.TP
+.BI -A " NAME" = VALUE
+Passing the \fINAME\fR=\fIVALUE\fR option to the LDMS Authentication plugin.
+This command line option can be given multiple times. Please see
+.BR ldms_authentication (7)
+for more information, and consult the plugin manual page for plugin-specific
+options.
+
 
 .SS
 Log Verbosity Options:
@@ -200,6 +193,11 @@ Notify registered monitors of the test metric sets.
 .BI "-q -Z -z -S"
 .br
 These v2 options are no longer supported, and will cause exit with a hint.
+
+.TP
+.BI -p " XPRT" : (NAME|PORT)
+The configuration-only transports have been removed from \fBldmsd\fR v4 to
+leverage the pluggable authentication capability in LDMS transport.
 
 .SH RUNNING LDMSD ON CRAY XE/XK/XC SYSTEMS USING APRUN
 .PP
