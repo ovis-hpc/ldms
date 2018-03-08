@@ -1,0 +1,79 @@
+.\" Manpage for Plugin_shm_sampler
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "5 March 2018" "v4.0" "LDMS Plugin shm_sampler man page"
+.Dd 3/5/18               \" DATE
+.Dt shm_sampler 1      \" Program name and manual section number
+
+.Sh Name                 \" Section Header - required - don't modify
+.Nm shm_sampler
+.Nd 
+This is a sampler plug-in module within the the LDMS that can read from a dynamic number of shm files. 
+
+.Sh SYNOPSIS 
+Within ldmsd_controller or a configuration file:
+.br
+load name=shm_sampler
+.br
+config name=shm_sampler [ <attr>=<value> ]
+
+
+.Sh DESCRIPTION          \" Section Header - required - don't modify
+.Nm
+is a sampler plug-in module within the the LDMS. This sampler can read from a dynamic number of shm files. 
+These files are tracked by a central index file in shared memory. 
+The main usage of this sampler is to stream application performance data.
+
+.Pp                      \" Inserts a space
+Configuration options:
+.br
+producer=<name> instance=<name> [shm_index=<name>][shm_boxmax=<int>][shm_array_max=<int>][shm_metric_max=<int>] 
+[shm_set_timeout=<int>][component_id=<int>] [schema=<name>] [job_set=<name> job_id=<name> app_id=<name> 
+job_start=<name> job_end=<name>]
+.Bl -tag -width -indent  \" Begins a tagged list
+.It producer               \" Each item preceded by .It macro
+ A unique name for the host providing the data
+.It instance
+A unique name for the metric set
+.It shm_index    
+A unique name for the shared memory index file
+.It    shm_boxmax   
+Maximum number of entries in the shared memory index file
+.It    shm_array_max   
+Maximum number of elements in array metrics
+.It    shm_metric_max  
+Maximum number of metrics
+.It    shm_set_timeout 
+No read/write timeout in seconds
+.It    component_id 
+A unique number for the component being monitored, Defaults to zero.
+.It    schema       
+The name of the metric set schema, Defaults to the sampler name
+.It    job_set      
+The instance name of the set containing the job data, default is 'job_info'
+.It    job_id       
+The name of the metric containing the Job Id, default is 'job_id'
+.It    app_id       
+The name of the metric containing the Application Id, default is 'app_id'
+.It    job_start    
+The name of the metric containing the Job start time, default is 'job_start'
+.It    job_end      
+The name of the metric containing the Job end time, default is 'job_end'
+.El \" Ends the list
+
+
+.Sh BUGS
+None known.
+
+.Sh EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=shm_sampler
+config name=shm_sampler producer=samplerd instance=samplerd/shm_sampler shm_index=/ldms_shm_mpi_index shm_boxmax=4 component_id=23
+start name=shm_sampler interval=1000000 offset=0
+.fi
+
+
+
+.Sh SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8)

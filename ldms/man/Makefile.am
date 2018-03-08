@@ -33,6 +33,7 @@ Plugin_store_flatfile.man \
 Plugin_store_sos.man \
 Plugin_lustre2_client.man \
 Plugin_opa2.man \
+Plugin_shm_sampler.man \
 Plugin_vmstat.man
 
 if ENABLE_ARRAY_EXAMPLE

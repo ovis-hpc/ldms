@@ -184,6 +184,10 @@ libhweventpapi_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lpapi -lm
 pkglib_LTLIBRARIES += libhweventpapi.la
 endif
 
+if ENABLE_MPI_SAMPLER
+SUBDIRS += shm
+endif
+
 if ENABLE_RAPL
 librapl_la_SOURCES = rapl.c
 librapl_la_CFLAGS = $(AM_CFLAGS) $(LIBPAPI_INCDIR_FLAG)
