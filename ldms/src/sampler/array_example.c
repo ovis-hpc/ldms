@@ -68,10 +68,6 @@ static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
 static base_data_t base;
 
-static uint32_t uid;
-static uint32_t gid;
-static uint32_t perm;
-
 struct array_construct {
 	const char *name;
 	enum ldms_value_type type;

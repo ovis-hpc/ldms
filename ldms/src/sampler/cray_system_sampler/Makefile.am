@@ -2,8 +2,7 @@ lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 
 CORE = ../../core
-AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I../.. @OVIS_LIB_INCDIR_FLAG@ \
-   -I$(srcdir)/../../ldmsd
+AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I../.. @OVIS_LIB_INCDIR_FLAG@ -I$(srcdir)/../../ldmsd
 AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 BASE_INC = $(srcdir)/../
 BASE_LIBADD = ../libsampler_base.la
@@ -25,11 +24,11 @@ pkglib_LTLIBRARIES += libcray_dvs_sampler.la
 
 
 CRAY_CFLAGS_ = $(AM_CFLAGS) \
-                        @CRAY_HSS_DEVEL_INCDIR_FLAG@ \
-                        -I@CRAY_HSS_DEVEL_INCDIR@/rsms
+			@CRAY_HSS_DEVEL_INCDIR_FLAG@ \
+			-I@CRAY_HSS_DEVEL_INCDIR@/rsms
 CRAY_LDFLAGS_ = $(AM_LDFLAGS) \
-                        @CRAY_HSS_DEVEL_LIBDIR_FLAG@ \
-	                @CRAY_HSS_DEVEL_LIB64DIR_FLAG@
+			@CRAY_HSS_DEVEL_LIBDIR_FLAG@ \
+			@CRAY_HSS_DEVEL_LIB64DIR_FLAG@
 
 CRAY_SOURCES_ = cray_sampler_base.h cray_sampler_base.c \
 	rca_metrics.h rca_metrics.c \
