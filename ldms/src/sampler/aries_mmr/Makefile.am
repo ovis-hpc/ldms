@@ -3,7 +3,8 @@ lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 
 CORE = ../../core
-AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I../.. @OVIS_LIB_INCDIR_FLAG@
+AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I../.. @OVIS_LIB_INCDIR_FLAG@ \
+  -I$(srcdir)/../../ldmsd
 AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 BASE_SRC = ../sampler_base.h ../sampler_base.c
 BASE_INC = $(srcdir)/../
