@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2013-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2016,2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2016,2018 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -80,6 +80,7 @@
 #include "ldmsd.h"
 
 #include "lustre_sampler.h"
+#include "../sampler_base.h"
 
 #define STR_MAP_SIZE 4093
 #define SAMP "lustre2_client"
@@ -89,6 +90,8 @@ static struct lustre_metric_src_list lms_list = {0};
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
+
+static base_data_t base;
 
 static char tmp_path[PATH_MAX];
 
@@ -174,7 +177,6 @@ struct str_list_head* construct_client_list(const char *clients,
 /**
  * \brief Create metric set.
  *
- * \param path The set name, e.g. vic1/lustre_oss (it does look like a path).
  * \param oscs The comma-separated list of OST clients. Being NULL means
  * 	using all OSCs at the time.
  * \param mdcs Similar to \c oscs, but for MDS clients.
@@ -183,8 +185,8 @@ struct str_list_head* construct_client_list(const char *clients,
  * \returns 0 on success.
  * \returns \c errno on error.
  */
-static int create_metric_set(const char *path, const char *oscs,
-			     const char *mdcs, const char *llites)
+static int create_metric_set(const char *oscs, const char *mdcs,
+			     const char *llites)
 {
 	int rc, i;
 
@@ -210,7 +212,7 @@ static int create_metric_set(const char *path, const char *oscs,
 		goto err0;
 	heads[2] = lh_llite;
 
-	ldms_schema_t schema = ldms_schema_new(SAMP);
+	ldms_schema_t schema = base_schema_new(base);
 	if (!schema)
 		goto err0;
 
@@ -233,17 +235,15 @@ static int create_metric_set(const char *path, const char *oscs,
 	}
 
 	/* Done calculating, now it is time to construct set */
-	set = ldms_set_new(path, schema);
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
 		goto err1;
 	}
-	ldms_schema_delete(schema);
 	return 0;
 err1:
 	msglog(LDMSD_LINFO, "lustre_oss.c:create_metric_set@err1\n");
 	lustre_metric_src_list_free(&lms_list);
-	ldms_schema_delete(schema);
 	msglog(LDMSD_LINFO, "WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
 err0:
@@ -257,9 +257,14 @@ err0:
 
 static void term(struct ldmsd_plugin *self)
 {
-	if (set)
+	if (set) {
 		ldms_set_delete(set);
-	set = NULL;
+		set = NULL;
+	}
+	if (base) {
+		base_del(base);
+		base = NULL;
+	}
 }
 
 /**
@@ -277,31 +282,27 @@ static void term(struct ldmsd_plugin *self)
  */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value, *oscs, *mdcs, *llites;
-
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, "lustre2_client: missing producer\n");
-		return ENOENT;
-	}
-
-	value = av_value(avl, "instance");
-	if (!value) {
-		msglog(LDMSD_LERROR, "lustre2_client: missing instance\n");
-		return EINVAL;
-	}
-	oscs = av_value(avl, "osc");
-	mdcs = av_value(avl, "mdc");
-	llites = av_value(avl, "llite");
+	char *oscs, *mdcs, *llites;
 
 	if (set) {
 		msglog(LDMSD_LERROR, "lustre2_client: Set already created.\n");
 		return EINVAL;
 	}
-	int rc = create_metric_set(value, oscs, mdcs, llites);
-	if (rc)
+
+	base = base_config(avl, SAMP, "Lustre_Client", msglog);
+	if (!base)
+		return errno;
+
+	oscs = av_value(avl, "osc");
+	mdcs = av_value(avl, "mdc");
+	llites = av_value(avl, "llite");
+
+	int rc = create_metric_set(oscs, mdcs, llites);
+	if (rc) {
+		base_del(base);
+		base = NULL;
 		return rc;
-	ldms_set_producer_name_set(set, producer_name);
+	}
 	return 0;
 }
 

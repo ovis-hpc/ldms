@@ -17,7 +17,8 @@ pkglib_LTLIBRARIES += liblustre_sampler.la
 
 # common libadd for all subclass of lustre_sampler
 COMMON_LIBADD = $(CORE)/libldms.la  liblustre_sampler.la \
-		@LDFLAGS_GETTIME@ -lovis_util -lcoll
+		@LDFLAGS_GETTIME@ -lovis_util -lcoll \
+		../libsampler_base.la
 
 #liblustre2_mds
 liblustre2_mds_la_SOURCES = lustre2_mds.c
