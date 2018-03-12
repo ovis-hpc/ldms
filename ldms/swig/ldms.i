@@ -561,6 +561,9 @@ void __update_cb(ldms_t xprt, ldms_set_t set, int flags, void *_ctxt)
 	ctxt->rc = flags & LDMS_UPD_F_ERROR;
 	sem_post(&ctxt->sem);
 }
+
+SWIGINTERN PyObject *
+ldms_rbuf_desc_array_metric_value_get(struct ldms_rbuf_desc *, size_t, size_t);
 %}
 
 typedef unsigned char uint8_t;
@@ -621,7 +624,29 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 	}
 	inline PyObject *metric_value_get(size_t i) {
 		union ldms_value *v = ldms_metric_get(self, i);
-		return PyObject_FromMetricValue(v, ldms_metric_type_get(self, i));
+		enum ldms_value_type t = ldms_metric_type_get(self, i);
+		int j, n;
+		PyObject *lst, *obj;
+		if (!ldms_type_is_array(t)) {
+			return PyObject_FromMetricValue(v, t);
+		}
+		n = ldms_metric_array_get_len(self, i);
+		lst = PyList_New(n);
+		if (!lst) {
+			PyErr_SetString(PyExc_RuntimeError, "Out of memory.");
+			return NULL;
+		}
+		for (j = 0; j < n; j++) {
+			obj = ldms_rbuf_desc_array_metric_value_get(self, i, j);
+			if (!obj) {
+				PyErr_SetString(PyExc_RuntimeError,
+						"Out of memory.");
+				Py_DECREF(lst);
+				return NULL;
+			}
+			PyList_SetItem(lst, j, obj); /* This steals obj ref */
+		}
+		return lst;
 	}
 	inline PyObject *metric_value_get_by_name(const char *name) {
 		int i = ldms_metric_by_name(self, name);
