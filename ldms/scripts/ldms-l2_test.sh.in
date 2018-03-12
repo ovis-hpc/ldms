@@ -39,7 +39,7 @@ case "x$USER" in
 esac
 
 function mysleep() {
-	echo -n sleep $1 ... 
+	echo -n sleep $1 ...
 	sleep $1
 	echo done
 }
@@ -58,6 +58,9 @@ function die () {
 TESTDIR=/tmp/$USER/ldmstest/$$
 STOREDIR=$TESTDIR/store
 SOCKDIR=$TESTDIR/run/ldmsd
+in1=$SOCKDIR/in1
+in2=$SOCKDIR/in2
+in4=$SOCKDIR/in4
 LOGDIR=$TESTDIR/logs
 export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
 export LDMSD_SOCKPATH=${TESTDIR}/run
@@ -70,8 +73,10 @@ if test ! -x $BUILDDIR/bin/ldmsd_controller; then
 	echo "can't find ldmsd_controller script. Included python in build?"
 	exit 1
 else
-	LC="$BUILDDIR/bin/ldmsd_controller --auth_file=$SECRET"
-	CSO="--sockname"
+	# tcp style
+	LC="$prefix/bin/ldmsd_controller --xprt sock --host localhost --auth ovis"
+	CPO="--port"
+
 fi
 echo "logs and data stored under $TESTDIR"
 export LD_LIBRARY_PATH=$ovis_lib_libdir:$ovis_lib_pkglibdir:$ovis_ldms_libdir:$ovis_ldms_pkglibdir:$LD_LIBRARY_PATH
@@ -101,13 +106,14 @@ cat << EOF > $jobfile
 JOBID=1
 UID=$UID
 USER=$USER
+APPID=5551212
 EOF
 
 echo Starting plugins on daemon1
-cat << EOF > $SOCKDIR/conf.1
+cat << EOF > $in1
 load name=jobid
 config name=jobid producer=localhost1 instance=localhost1/jobid component_id=3 file=$jobfile
-start name=jobid interval=1000000 offset=0 component_id=3
+start name=jobid interval=1000000 offset=0
 
 load name=meminfo
 config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=3 job_set=localhost1/jobid
@@ -118,7 +124,7 @@ EOF
 ARI=1000000
 
 echo Adding host1 to aggregator2
-cat << EOF  > $SOCKDIR/conf.2
+cat << EOF  > $in2
 prdcr_add name=localhost1 host=localhost type=active xprt=sock interval=$ARI port=$port1
 prdcr_start name=localhost1
 
@@ -129,7 +135,7 @@ updtr_start name=localhost1
 EOF
 
 echo Adding host2 to aggregator4
-cat << EOF  > $SOCKDIR/conf.4
+cat << EOF  > $in4
 prdcr_add name=localhost2 host=localhost type=active xprt=sock interval=$ARI port=$port2
 prdcr_start name=localhost2
 
@@ -150,36 +156,36 @@ strgp_start name=sfmem regex=.*
 EOF
 
 echo Starting daemons 
-ldmsd -x sock:$port1 -p unix:$SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1 -c $SOCKDIR/conf.1
+ldmsd -x sock:$port1 -a ovis -A conf=$SECRET -c $in1 -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1
 die $?
 
-ldmsd -x sock:$port2 -p unix:$SOCKDIR/metric_socket_2  -l ${LOGDIR}/2.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.2 -c $SOCKDIR/conf.2
+ldmsd -x sock:$port2 -a ovis -A conf=$SECRET -c $in2 -l ${LOGDIR}/2.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.2
 die $?
 
-ldmsd -x sock:$port4 -p unix:$SOCKDIR/metric_socket_4  -l ${LOGDIR}/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4 -c $SOCKDIR/conf.4
+ldmsd -x sock:$port4 -a ovis -A conf=$SECRET -c $in4 -l ${LOGDIR}/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4
 die $?
 
 mysleep 1
 
 echo list host1
 echo ldms_ls on host 1:
-ldms_ls -h localhost -x sock -p $port1 -a $SECRET
+ldms_ls -a ovis -A conf=$SECRET -h localhost -x sock -p $port1 
 echo "11111111111111111111111111111111111111111111111111111111111111"
 
 mysleep 2
 echo ldms_ls on host 2:
-ldms_ls -h localhost -x sock -p $port2 -a $SECRET
+ldms_ls -a ovis -A conf=$SECRET -h localhost -x sock -p $port2
 mysleep 2
 echo "done 222222222222222222222222222222222222222222222222222222222"
 
 echo ldms_ls on host 4:
-ldms_ls -h localhost -x sock -p $port4 -a $SECRET
+ldms_ls -a ovis -A conf=$SECRET -h localhost -x sock -p $port4
 echo "done 333333333333333333333333333333333333333333333333333333333"
 
 mysleep 4
 
 echo quitting
-cat << EOF | $LC $CSO $SOCKDIR/metric_socket_4
+cat << EOF | $LC $CPO $port4
 prdcr_stop name=localhost2
 updtr_stop name=localhost2
 strgp_stop name=sfmem
@@ -202,7 +208,7 @@ term name=store_csv
 #term regex=.*
 EOF
 
-cat << EOF | $LC $CSO $SOCKDIR/metric_socket_1
+cat << EOF | $LC $CPO $port1
 stop name=meminfo
 term name=meminfo
 stop name=jobid
