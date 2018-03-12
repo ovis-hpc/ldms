@@ -60,26 +60,28 @@
 #include "ovis_event/ovis_event.h"
 
 static pthread_t thr;
-static ovis_event_manager_t evm;
+static ovis_scheduler_t evm;
 static int ready;
 
 static
 void *thread_proc(void *arg)
 {
-	ovis_event_loop(evm, 0);
+	ovis_scheduler_loop(evm, 0);
 	return NULL;
 }
 
 static
-void tsampler_cb(uint32_t events, const struct timeval *tv, ovis_event_t ev)
+void tsampler_cb(ovis_event_t ev)
 {
-	tsampler_timer_t x = ovis_event_get_ctxt(ev);
+	tsampler_timer_t x = ev->param.ctxt;
 	ldms_mval_t mv = ldms_metric_get_addr(x->set, x->tid);
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
 	if (x->tid >= 0) {
 		struct timeval *_tv = (void*)&mv->a_u64[x->idx * 2];
-		*_tv = *tv;
+		*_tv = tv;
 	}
-	x->time = *tv;
+	x->time = tv;
 	x->cb(x);
 	x->idx++;
 	if (x->idx == x->n)
@@ -109,13 +111,12 @@ int tsampler_timer_add(tsampler_timer_t x)
 	tp.periodic.period_us = x->interval.tv_sec * 1000000 +
 				x->interval.tv_usec;
 	tp.periodic.phase_us = 0;
-	x->__internal.ev = ovis_event_create(-1, 0, &tp, OVIS_EVENT_PERIODIC,
-					     tsampler_cb, x);
+	x->__internal.ev = ovis_event_periodic_new(tsampler_cb, x, &tp.periodic);
 	if (!x->__internal.ev) {
 		return errno;
 	}
 	x->idx = 0;
-	rc = ovis_event_add(evm, x->__internal.ev);
+	rc = ovis_scheduler_event_add(evm, x->__internal.ev);
 	if (rc) {
 		ovis_event_free(x->__internal.ev);
 	}
@@ -124,8 +125,11 @@ int tsampler_timer_add(tsampler_timer_t x)
 
 void tsampler_timer_remove(tsampler_timer_t x)
 {
-	if (x->__internal.ev)
-		ovis_event_del(evm, x->__internal.ev);
+	if (x->__internal.ev) {
+		ovis_scheduler_event_del(evm, x->__internal.ev);
+		ovis_event_free(x->__internal.ev);
+		x->__internal.ev = NULL;
+	}
 }
 
 static __attribute__((constructor))
@@ -133,7 +137,7 @@ void __init()
 {
 	int rc;
 	ready = 0;
-	evm = ovis_event_manager_create();
+	evm = ovis_scheduler_new();
 	rc = pthread_create(&thr, NULL, thread_proc, NULL);
 	if (rc)
 		return;

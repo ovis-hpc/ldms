@@ -117,7 +117,7 @@ int hfclock_config(struct ldmsd_plugin *self,
 	uint64_t x;
 	struct hfclock *hf = (void*)self;
 
-	rc = timer_base_config(self, kwl, avl);
+	rc = timer_base_config(self, kwl, avl, msglog);
 	if (rc)
 		goto out;
 

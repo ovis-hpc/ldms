@@ -193,7 +193,7 @@ int cray_power_sampler_config(struct ldmsd_plugin *self,
 	struct cray_power_sampler *cps = (void*)self;
 	int i;
 
-	rc = timer_base_config(self, kwl, avl);
+	rc = timer_base_config(self, kwl, avl, msglog);
 	if (rc) {
 		goto out;
 	}

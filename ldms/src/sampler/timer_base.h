@@ -75,6 +75,7 @@ struct timer_base {
 	ldms_schema_t schema;
 	uint64_t compid;
 	pthread_mutex_t mutex;
+	ldmsd_msg_log_f msglog;
 	TAILQ_HEAD(, tsampler_timer_entry) timer_list;
 	char buff[1024]; /* string buffer for internal timer_base use */
 	char iname[1024]; /* iname for internal use */
@@ -84,7 +85,7 @@ struct timer_base {
 void timer_base_init(struct timer_base *tb);
 
 int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
-		struct attr_value_list *avl);
+		      struct attr_value_list *avl, ldmsd_msg_log_f msglog);
 
 int timer_base_create_set(struct timer_base *tb);
 
