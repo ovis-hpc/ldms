@@ -415,6 +415,8 @@ static int sample(struct ldmsd_sampler *self)
 		set_disk_metrics(disk, v, dt);
 		disk = TAILQ_NEXT(disk, entry);
 	} while (disk);
+
+	rc = 0;
 out:
 	tmp_tv = curr_tv;
 	curr_tv = prev_tv;
