@@ -231,14 +231,21 @@ ldms_schema_t base_schema_new(base_data_t base)
 
 ldms_set_t base_set_new(base_data_t base)
 {
-	base->set = ldms_set_new_with_auth(base->instance_name, base->schema,
-					   base->uid, base->gid, base->perm);
+	int rc;
+	base->set = ldms_set_new(base->instance_name, base->schema);
 	if (!base->set)
 		return NULL;
 	ldms_set_producer_name_set(base->set, base->producer_name);
 	ldms_metric_set_u64(base->set, BASE_COMPONENT_ID, base->component_id);
 	ldms_metric_set_u64(base->set, BASE_JOB_ID, 0);
 	ldms_metric_set_u64(base->set, BASE_APP_ID, 0);
+	ldms_set_config_auth(base->set, base->uid, base->gid, base->perm);
+	rc = ldms_set_publish(base->set);
+	if (rc) {
+		ldms_set_delete(base->set);
+		base->set = NULL;
+		errno = rc;
+	}
 	return base->set;
 }
 

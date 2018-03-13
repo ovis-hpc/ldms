@@ -894,7 +894,6 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
  * \{
  */
 
-
 /**
  * Configure set authorization.
  *
@@ -914,6 +913,22 @@ int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, int perm);
 /**
  * \}  (ldms_set_config)
  */
+
+/**
+ * \brief Publish the LDMS set.
+ * \param set The set handle.
+ * \retval 0      If succeeded.
+ * \retval EEXIST If the set has already been published.
+ */
+int ldms_set_publish(ldms_set_t set);
+
+/**
+ * \brief Unpublish the LDMS set.
+ * \param set The set handle.
+ * \retval 0      If succeeded.
+ * \retval ENOENT If the set has not yet published.
+ */
+int ldms_set_unpublish(ldms_set_t set);
 
 /**
  * \brief Delete the set reference

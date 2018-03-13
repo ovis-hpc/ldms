@@ -889,9 +889,6 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	struct ldms_set *set = __record_set(instance_name, meta, data_base, LDMS_SET_F_LOCAL);
 	if (!set)
 		goto err_1;
-	rc = __ldms_set_publish(set);
-	if (rc)
-		goto err_2;
 	ldms_set_t rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
 	if (!rbd)
 		goto err_2;

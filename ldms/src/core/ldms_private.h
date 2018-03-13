@@ -141,8 +141,6 @@ extern void __ldms_set_tree_unlock();
 
 static int __ldms_set_publish(struct ldms_set *set);
 static int __ldms_set_unpublish(struct ldms_set *set);
-extern int ldms_set_publish(ldms_set_t sd);
-extern int ldms_set_unpublish(ldms_set_t sd);
 
 extern int __ldms_set_info_set(struct ldms_set_info_list *info,
 				const char *key, const char *value);
