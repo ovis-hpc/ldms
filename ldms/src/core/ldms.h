@@ -884,6 +884,38 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 				  uid_t uid, gid_t gid, int perm);
 
 /**
+ * \addtogroup ldms_set_config LDMS Set Configuration
+ *
+ * This is a collection of set configuration API.
+ *
+ * All functions in this group return \c errno to describe the error, or \c 0
+ * if they succeed.
+ *
+ * \{
+ */
+
+
+/**
+ * Configure set authorization.
+ *
+ * If this is not configured, the default values are as following:
+ * - \c uid:  \c -1
+ * - \c gid:  \c -1
+ * - \c perm: \c 0777
+ *
+ * \param uid  The UID.
+ * \param gid  The GID.
+ * \param perm The UNIX-style permission (e.g. 0644).
+ * \retval errno If failed.
+ * \retval 0     If succeeded.
+ */
+int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, int perm);
+
+/**
+ * \}  (ldms_set_config)
+ */
+
+/**
  * \brief Delete the set reference
  *
  * Delete the set reference. The set will be deleted when all set references

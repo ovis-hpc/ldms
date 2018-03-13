@@ -911,6 +911,14 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 	return ldms_set_new_with_auth(instance_name, schema, -1, -1, 0777);
 }
 
+int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, int perm)
+{
+	set->set->meta->uid = __cpu_to_le32(uid);
+	set->set->meta->gid = __cpu_to_le32(gid);
+	set->set->meta->perm = __cpu_to_le32(perm);
+	return 0;
+}
+
 const char *ldms_set_name_get(ldms_set_t s)
 {
 	struct ldms_set_hdr *sh = s->set->meta;
