@@ -2607,7 +2607,12 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 		next_rbd = LIST_NEXT(rbd, set_link);
 		ldms_t x = rbd->xprt;
 		if (!x) {
-			printf("Skipping RBD with no transport %p\n", rbd);
+#ifdef PUSH_DEBUG
+			x->log("DEBUG: Push set '%s'. Skipping RBD with no "
+						"transport %p. RBD type: %d\n",
+						ldms_set_instance_name_get(rbd),
+								rbd, rbd->type);
+#endif /* PUSH_DEBUG */
 			goto skip;
 		}
 		pthread_mutex_lock(&x->lock);
@@ -2643,7 +2648,7 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 		}
 #ifdef PUSH_DEBUG
 		x->log("DEBUG: Push set %s to endpoint %p\n",
-		       ldms_set_instance_name_get(rbd->set),
+		       ldms_set_instance_name_get(rbd),
 		       x->zap_ep);
 #endif /* PUSH_DEBUG */
 		ldms_xprt_get(x);
