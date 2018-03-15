@@ -2758,7 +2758,7 @@ int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
 		rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
 	}
 out:
- 	freeaddrinfo(ai);
+	freeaddrinfo(ai);
 	return rc;
 }
 

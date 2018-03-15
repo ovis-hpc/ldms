@@ -82,15 +82,15 @@
 #define LDMS_SET_NAME_MAX 256
 #define LDMS_PRODUCER_NAME_MAX 64 /* including the terminating null byte */
 
+#pragma pack(4)
+#define LDMS_MDESC_F_DATA	1
+#define LDMS_MDESC_F_META	2
 /**
  * \brief Metric value descriptor
  *
  * This structure describes a metric value in the metric set. Metrics
  * are self describing. Value descriptors are aligned on 64 bit boundaries.
  */
-#pragma pack(4)
-#define LDMS_MDESC_F_DATA	1
-#define LDMS_MDESC_F_META	2
 typedef struct ldms_value_desc {
 	uint64_t vd_user_data;	/*! User defined meta-data */
 	uint32_t vd_data_offset;/*! Value offset in data (metric) or meta-data (attr) */
