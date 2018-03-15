@@ -337,8 +337,9 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	ldmsd_prdcr_lock(prdcr);
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
-		ldmsd_log(LDMSD_LINFO, "Producer %s is connected\n",
-				prdcr->obj.name);
+		ldmsd_log(LDMSD_LINFO, "Producer %s is connected (%s %s:%d)\n",
+				prdcr->obj.name, prdcr->xprt_name,
+				prdcr->host_name, (int)prdcr->port_no);
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
 		if (ldms_xprt_dir(prdcr->xprt, prdcr_dir_cb, prdcr,
 				  LDMS_DIR_F_NOTIFY))
@@ -347,15 +348,19 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
 		ldmsd_log(LDMSD_LERROR, "Producer %s rejected the "
-				"connection\n", prdcr->obj.name);
+				"connection (%s %s:%d)\n", prdcr->obj.name,
+				prdcr->xprt_name, prdcr->host_name,
+				(int)prdcr->port_no);
 		goto reset_prdcr;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
-		ldmsd_log(LDMSD_LINFO, "Producer %s is disconnected\n",
-				prdcr->obj.name);
+		ldmsd_log(LDMSD_LINFO, "Producer %s is disconnected (%s %s:%d)\n",
+				prdcr->obj.name, prdcr->xprt_name,
+				prdcr->host_name, (int)prdcr->port_no);
 		goto reset_prdcr;
 	case LDMS_XPRT_EVENT_ERROR:
-		ldmsd_log(LDMSD_LINFO, "Producer %s: connection error\n",
-				prdcr->obj.name);
+		ldmsd_log(LDMSD_LINFO, "Producer %s: connection error to %s %s:%d\n",
+				prdcr->obj.name, prdcr->xprt_name,
+				prdcr->host_name, (int)prdcr->port_no);
 		goto reset_prdcr;
 	default:
 		assert(0);
