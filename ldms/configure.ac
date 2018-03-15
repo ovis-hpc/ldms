@@ -109,7 +109,7 @@ OPTION_DEFAULT_ENABLE([llnl-edac], [ENABLE_LLNL_EDAC])
 AM_CONDITIONAL([ENABLE_LLNL], [test "x$ENABLE_LLNL_EDAC_FALSE" = "x#"])
 OPTION_DEFAULT_DISABLE([fptrans], [ENABLE_FPTRANS])
 
-OPTION_DEFAULT_DISABLE([tsampler], [ENABLE_TSAMPLER])
+OPTION_DEFAULT_ENABLE([tsampler], [ENABLE_TSAMPLER])
 OPTION_DEFAULT_ENABLE([cray_power_sampler], [ENABLE_CRAY_POWER_SAMPLER])
 dnl cray_power_sampler won't build with --disable-tsampler
 
@@ -239,7 +239,7 @@ if test "x$WITH_OVIS_LIB" != "xbuild" && test -z "$ENABLE_TSAMPLER_TRUE"; then
 	AC_CHECK_HEADERS(ovis_event/ovis_event.h, [],
 			 AC_MSG_FAILURE([ovis_event/ovis_event.h not found.])
 			 )
-	AC_CHECK_LIB(ovis_event, ovis_event_create, [],
+	AC_CHECK_LIB(ovis_event, ovis_scheduler_new, [],
 		     AC_MSG_ERROR([ovis_event library not found.]),
 		     [ $OVIS_LIB_LIB64DIR_FLAG  $OVIS_LIB_LIBDIR_FLAG ]
 		    )

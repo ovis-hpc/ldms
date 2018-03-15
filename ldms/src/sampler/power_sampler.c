@@ -109,7 +109,7 @@ int power_sampler_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	struct power_sampler *ps = (void*)self;
 	struct timeval tv = {0, 100000};
 
-	rc = timer_base_config(self, kwl, avl);
+	rc = timer_base_config(self, kwl, avl, msglog);
 	if (rc) {
 		goto out;
 	}

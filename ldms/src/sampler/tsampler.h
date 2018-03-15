@@ -123,7 +123,7 @@ struct tsampler_timer {
 
 	/* information for tsampler internal usage, please ignore these fields */
 	struct {
-		void *ev;
+		ovis_event_t ev;
 	} __internal;
 };
 
