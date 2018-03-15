@@ -77,49 +77,35 @@
 #endif
 
 
+#include "../sampler_base.h"
+
+
 /* General vars */
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
-static ldms_schema_t schema;
 static char *default_schema_name = "cray_gemini_r";
 static int off_hsn = 0;
 
-static uint64_t compid;
-static uint64_t jobid;
-//wont need a metric offset
+static base_data_t base;
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
 
-static int create_metric_set(const char *instance_name, char* schema_name){
+static int create_metric_set(base_data_t base)
+{
 
-	int rc;
-	union ldms_value v;
-	uint64_t metric_value;
-	char *s;
-	char lbuf[256];
-	char metric_name[128];
-	int i;
+	int rc, i;
+	ldms_schema_t schema;
 
-
-	schema = ldms_schema_new(schema_name);
-	if (!schema)
-		return ENOMEM;
-
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
+	schema = base_schema_new(base);
+        if (!schema) {
+                msglog(LDMSD_LERROR,
+                       "%s: The schema '%s' could not be created, errno=%d.\n",
+                       __FILE__, base->schema_name, errno);
+                goto err;
+        }
 
 	/*
 	 * Will create each metric in the set, even if the source does not exist
@@ -163,31 +149,23 @@ static int create_metric_set(const char *instance_name, char* schema_name){
 		}
 	}
 
-
-	set = ldms_set_new(instance_name, schema);
-	if (!set){
-		rc = errno;
-		goto err;
-	}
-
-	//add specialized metrics
-	v.v_u64 = compid;
-	ldms_metric_set(set, 0, &v);
-	v.v_u64 = 0;
-	ldms_metric_set(set, 1, &v);
-
+	set = base_set_new(base);
+        if (!set) {
+                msglog(LDMSD_LERROR, "%s: set null in create_metric_set\n",
+                       __FILE__);
+                rc = errno;
+                goto err;
+        }
 	return 0;
-
  err:
-	ldms_schema_delete(schema);
 	return rc;
 }
 
 /**
  * check for invalid flags, with particular emphasis on warning the user about
  */
-static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
-{
+static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl){
+
 	char *value;
 	int i;
 
@@ -211,54 +189,24 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value = NULL;
-	char *sname = NULL;
-	char *instancename = NULL;
 	char *rvalue = NULL;
 	int mvalue = -1;
-	void *arg;
 	int rc = 0;
 
 
-	rc = config_check(kwl, avl, arg);
+	rc = config_check(kwl, avl);
 	if (rc != 0){
 		return rc;
 	}
 
+	base = base_config(avl, "cray_gemini_r_sampler", default_schema_name, msglog);
+        if (!base) {
+                rc = errno;
+                goto out;
+        }
+
+
 	off_hsn = 0;
-	producer_name = av_value(avl, "producer");
-	if (!producer_name){
-		msglog(LDMSD_LERROR, "cray_gemini_r_sampler: missing producer\n");
-		return ENOENT;
-	}
-
-	value = av_value(avl, "component_id");
-	if (value)
-		compid = (uint64_t)(atoi(value));
-	else
-		compid = 0;
-
-	instancename = av_value(avl, "instance");
-	if (!instancename){
-		msglog(LDMSD_LERROR, "cray_gemini_r_sampler: missing instance\n");
-		return ENOENT;
-	}
-
-	sname = av_value(avl, "schema");
-	if (!sname){
-		sname = default_schema_name;
-	}
-	if (strlen(sname) == 0){
-		msglog(LDMSD_LERROR, "%s: schema name invalid.\n",
-		       __FILE__);
-		return EINVAL;
-	}
-
-	if (set) {
-		msglog(LDMSD_LERROR, "%s: Set already created.\n",
-		       __FILE__);
-		return EINVAL;
-	}
-
 	set_offns_generic(NS_ENERGY);
 	rc = config_generic(kwl, avl, msglog);
 	if (rc != 0){
@@ -301,16 +249,15 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 
 
-	rc = create_metric_set(instancename, sname);
+	rc = create_metric_set(base);
 	if (rc){
-		msglog(LDMSD_LERROR, "cray_gemini_d_sampler: failed to create a metric set.\n");
+		msglog(LDMSD_LERROR, "cray_gemini_r_sampler: failed to create a metric set.\n");
 		return rc;
 	}
-
-	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 
 out:
+	base_del(base);
 	return rc;
 }
 
@@ -337,7 +284,7 @@ static int sample(struct ldmsd_sampler *self)
 		msglog(LDMSD_LDEBUG,"cray_gemini_r_sampler: plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_transaction_begin(set);
+	base_sample_begin(base);
 
 	for (i = 0; i < NS_NUM; i++){
 		rc = 0;
@@ -368,7 +315,7 @@ static int sample(struct ldmsd_sampler *self)
 	}
 
  out:
-	ldms_transaction_end(set);
+	base_sample_end(base);
 
 #if 0
 	clock_gettime(CLOCK_REALTIME, &time2);
@@ -384,6 +331,10 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
+	if (base) {
+                base_del(base);
+                base = NULL;
+        }
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;

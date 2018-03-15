@@ -212,11 +212,11 @@ static const char *usage(struct ldmsd_plugin *self)
 /**
  * \brief Configuration
  *
- * config name=meminfo producer=<name> instance=<instance_name> [component_id=<compid> schema=<sname>] [with_jobid=<jid>]
+ * config name=variable producer=<name> instance=<instance_name> [component_id=<compid> schema=<sname>] [with_jobid=<jid>]
  *     producer_name    The producer id value.
  *     instance_name    The set name.
  *     component_id     The component id. Defaults to zero
- *     sname            Optional schema name. Defaults to meminfo
+ *     sname            Optional schema name. Defaults to variable
  *     jid              lookup jobid or report 0.
  */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
@@ -340,7 +340,7 @@ static void term(struct ldmsd_plugin *self)
 	free(producer_name);
 }
 
-static struct ldmsd_sampler meminfo_plugin = {
+static struct ldmsd_sampler variable_plugin = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
@@ -356,5 +356,5 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
 	set = NULL;
-	return &meminfo_plugin.base;
+	return &variable_plugin.base;
 }

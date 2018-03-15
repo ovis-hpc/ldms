@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_all_example
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "27 Feb 2017" "v3" "LDMS Plugin all_example man page"
+.TH man 7 "18 Feb 2018" "v4" "LDMS Plugin all_example man page"
 
 .SH NAME
 Plugin_all_example - man page for the LDMS all_example plugin
@@ -15,10 +15,12 @@ With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms 
 or a configuration file. The all_example plugin provides coding example for all metric types and a known data set for transmission and storage tests. The expected values are 76 or 'L', as appropriate to the data type.
 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
+The all_example plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
+
 
 .TP
 .BR config
-name=<plugin_name> producer=<pname> instance=<set_name> [schema=<sname>] [component_id=<compid>]
+name=<plugin_name> [schema=<sname>]
 .br
 configuration line
 .RS
@@ -27,22 +29,10 @@ name=<plugin_name>
 .br
 This MUST be all_example.
 .TP
-producer=<pname>
-.br
-The producer string value.
-.TP
-instance=<set_name>
-.br
-The name of the metric set.
-.TP
 schema=<schema>
 .br
 Optional schema name. It is intended that the same sampler on different nodes with different metrics have a
 different schema. If not specified, will default to `all_example`.
-.TP
-component_id=<compid>
-.br
-Optional component identifier. Defaults to zero.
 .RE
 
 .SH BUGS
@@ -58,4 +48,4 @@ start name=all_example interval=1000000
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldms_quickstart(7), ldmsd_controller(8)
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7)

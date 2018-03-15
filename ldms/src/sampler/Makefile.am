@@ -1,16 +1,26 @@
 ACLOCAL_AMFLAGS = -I m4
 # unlike default automake, we build this dir's local pieces before its children.
 SUBDIRS = .
+lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 CORE = ../core
 
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I.. @OVIS_LIB_INCDIR_FLAG@ \
 	    -I$(srcdir)/../ldmsd
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
-COMMON_LIBADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ -lovis_util
-ldmssamplerincludedir = $(includedir)/ldms/sampler
-ldmssamplerinclude_HEADERS =
+
+CORE_LIBADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ -lovis_util
+
 BASE_SRC=sampler_base.c sampler_base.h
+libsampler_base_la_SOURCES = $(BASE_SRC)
+libsampler_base_la_LIBADD = $(CORE_LIBADD)
+lib_LTLIBRARIES += libsampler_base.la
+BASE_LIBADD = libsampler_base.la
+
+COMMON_LIBADD = $(BASE_LIBADD) $(CORE_LIBADD)
+
+ldmssamplerincludedir = $(includedir)/ldms/sampler
+ldmssamplerinclude_HEADERS = sampler_base.h
 
 if ENABLE_JOBID
 AM_CFLAGS += -DENABLE_JOBID
@@ -26,7 +36,7 @@ libtsampler_la_SOURCES = tsampler.c tsampler.h
 libtsampler_la_LIBADD = $(COMMON_LIBADD) -lovis_event -lpthread
 pkglib_LTLIBRARIES += libtsampler.la
 
-libtimer_base_la_SOURCES = timer_base.c timer_base.h  $(BASE_SRC)
+libtimer_base_la_SOURCES = timer_base.c timer_base.h
 libtimer_base_la_LIBADD = $(COMMON_LIBADD) libtsampler.la $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libtimer_base.la
 
@@ -54,14 +64,14 @@ endif
 endif #ENABLE_TSAMPLER
 
 if ENABLE_KGNILND
-libkgnilnd_la_SOURCES = kgnilnd.c
+libkgnilnd_la_SOURCES = kgnilnd.c  $(BASE_SRC)
 libkgnilnd_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libkgnilnd.la
 endif
 
 if ENABLE_CLOCK
 libclock_la_SOURCES = clock.c
-libclock_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libclock_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libclock.la
 endif
 
@@ -73,7 +83,7 @@ endif
 
 if ENABLE_SYNTHETIC
 libsynthetic_la_SOURCES = synthetic.c
-libsynthetic_la_LIBADD = $(COMMON_LIBADD) -lm $(JOBID_LIBFLAGS)
+libsynthetic_la_LIBADD = $(COMMON_LIBADD) -lm
 pkglib_LTLIBRARIES += libsynthetic.la
 endif
 
@@ -137,19 +147,19 @@ endif
 
 if ENABLE_LNET_STATS
 liblnet_stats_la_SOURCES = lnet_stats.c
-liblnet_stats_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+liblnet_stats_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += liblnet_stats.la
 endif
 
 if ENABLE_MEMINFO
-libmeminfo_la_SOURCES = meminfo.c $(BASE_SRC)
-libmeminfo_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libmeminfo_la_SOURCES = meminfo.c
+libmeminfo_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libmeminfo.la
 endif
 
 if ENABLE_MSR_INTERLAGOS
 libmsr_interlagos_la_SOURCES = msr_interlagos.c
-libmsr_interlagos_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lpthread
+libmsr_interlagos_la_LIBADD = $(COMMON_LIBADD) -lpthread
 pkglib_LTLIBRARIES += libmsr_interlagos.la
 endif
 
@@ -173,7 +183,7 @@ endif
 
 if ENABLE_PERFEVENT
 libperfevent_la_SOURCES = perfevent.c
-libperfevent_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lm
+libperfevent_la_LIBADD = $(COMMON_LIBADD) -lm
 pkglib_LTLIBRARIES += libperfevent.la
 endif
 
@@ -197,31 +207,31 @@ endif
 
 if ENABLE_PROCDISKSTATS
 libprocdiskstats_la_SOURCES = procdiskstats.c
-libprocdiskstats_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libprocdiskstats_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocdiskstats.la
 endif
 
 if ENABLE_PROCINTERRUPTS
 libprocinterrupts_la_SOURCES = procinterrupts.c
-libprocinterrupts_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libprocinterrupts_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocinterrupts.la
 endif
 
 if ENABLE_PROCNETDEV
 libprocnetdev_la_SOURCES = procnetdev.c
-libprocnetdev_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libprocnetdev_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocnetdev.la
 endif
 
 if ENABLE_PROCNFS
 libprocnfs_la_SOURCES = procnfs.c
-libprocnfs_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libprocnfs_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocnfs.la
 endif
 
 if ENABLE_PROCSENSORS
 libprocsensors_la_SOURCES = procsensors.c
-libprocsensors_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libprocsensors_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocsensors.la
 endif
 
@@ -235,7 +245,7 @@ endif
 
 if ENABLE_SYSCLASSIB
 libsysclassib_la_SOURCES = sysclassib.c
-libsysclassib_la_LIBADD = $(COMMON_LIBADD) -libmad -libumad $(JOBID_LIBFLAGS)
+libsysclassib_la_LIBADD = $(COMMON_LIBADD) -libmad -libumad
 pkglib_LTLIBRARIES += libsysclassib.la
 endif
 
@@ -249,14 +259,14 @@ pkglib_LTLIBRARIES += libopa2.la
 endif
 
 if ENABLE_VMSTAT
-libvmstat_la_SOURCES = vmstat.c $(BASE_SRC)
-libvmstat_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+libvmstat_la_SOURCES = vmstat.c
+libvmstat_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libvmstat.la
 endif
 
 if ENABLE_ATASMART
 libsampler_atasmart_la_SOURCES = sampler_atasmart.c
-libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart $(JOBID_LIBFLAGS)
+libsampler_atasmart_la_LIBADD = $(COMMON_LIBADD) -latasmart
 pkglib_LTLIBRARIES += libsampler_atasmart.la
 endif
 
@@ -271,4 +281,3 @@ libtest_sampler_la_SOURCES = test_sampler.c
 libtest_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libtest_sampler.la
 endif
-

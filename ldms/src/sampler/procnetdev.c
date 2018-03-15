@@ -64,8 +64,7 @@
 #include <sys/time.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldms_jobid.h"
-
+#include "sampler_base.h"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -86,15 +85,12 @@ static char iface[MAXIFACE][20];
 static char mindex[MAXIFACE];
 
 static ldms_set_t set;
-static ldms_schema_t schema;
 #define SAMP "procnetdev"
-static char* default_schema_name = SAMP;
 static FILE *mf = NULL;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
-static uint64_t compid;
-static int metric_offset = 1;
-LJI_GLOBALS;
+static int metric_offset;
+static base_data_t base;
+
 
 struct kw {
 	char *token;
@@ -106,9 +102,10 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 	return set;
 }
 
-static int create_metric_set(const char *instance_name, char* schema_name)
+static int create_metric_set(base_data_t base)
 {
 	int rc;
+	ldms_schema_t schema;
 	char metric_name[128];
 	union ldms_value v;
 	int i, j;
@@ -122,23 +119,17 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	}
 
 	/* Create a metric set of the required size */
-	schema = ldms_schema_new(schema_name);
+	schema = base_schema_new(base);
 	if (!schema) {
-		rc = ENOMEM;
+		msglog(LDMSD_LERROR,
+		       "%s: The schema '%s' could not be created, errno=%d.\n",
+		       __FILE__, base->schema_name, errno);
+		rc = EINVAL;
 		goto err;
 	}
 
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	metric_offset++;
-	rc = LJI_ADD_JOBID(schema);
-	if (rc < 0) {
-		goto err;
-	}
+	/* Location of first metric from proc file */
+	metric_offset = ldms_schema_metric_count_get(schema);
 
 	/* Use all specified ifaces whether they exist or not. These will be
 	   populated with 0 values for non existent ifaces. The metrics will appear
@@ -157,17 +148,12 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		}
 	}
 
-	set = ldms_set_new(instance_name, schema);
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
 		goto err;
 	}
 
-	//add specialized metrics
-	v.v_u64 = compid;
-	ldms_metric_set(set, 0, &v);
-
-	LJI_SAMPLE(set,1);
 	return 0;
 
 err:
@@ -175,10 +161,6 @@ err:
 	if (mf)
 		fclose(mf);
 	mf = NULL;
-
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
 
 	return rc;
 }
@@ -208,35 +190,19 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return
-		"config name=" SAMP " producer=<prod_name> instance=<inst_name> ifaces=<ifs> [schema=<sname> with_jobid=<jid>]\n"
-		"    <prod_name>     The producer name\n"
-		"    <inst_name>     The instance name\n"
+	return "config name=" SAMP " ifaces=<ifs>\n" \
+		BASE_CONFIG_USAGE \
 		"    <ifs>           A comma-separated list of interface names (e.g. eth0,eth1)\n"
 		"                    Order matters. All ifaces will be included\n"
-		"                    whether they exist of not up to a total of MAXIFACE\n"
-		LJI_DESC
-		"    <sname>         Optional schema name. Defaults to 'procnetdev'\n";
+		"                    whether they exist of not up to a total of MAXIFACE\n";
 }
 
-/**
- * \brief Configuration
- *
- *   config name=procnetdev producer=<prod_name> instance=<inst_name> ifaces=<ifs> [component_id=<comp_id> schema=<sname>] [with_jobid=<bool>]
- *     <prod_name>     The producer name
- *     <inst_name>     The instance name
- *     <comp_id>       The component id. Defaults to zero
- *     <ifs>           A comma-separated list of interface names (e.g. eth0,eth1)
- *     <sname>         Optional schema name. Defaults to 'procnetdev'
- */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *sname = NULL;
 	char* ifacelist = NULL;
 	char* pch = NULL;
 	char *saveptr = NULL;
 	char *ivalue = NULL;
-	char *value = NULL;
 	void *arg = NULL;
 	int rc;
 
@@ -247,34 +213,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	if (set) {
 		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
-		return EINVAL;
-	}
-
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, SAMP ": missing 'producer'.\n");
-		return ENOENT;
-	}
-
-	value = av_value(avl, "component_id");
-	if (value)
-		compid = (uint64_t)(atoi(value));
-	else
-		compid = 0;
-
-	LJI_CONFIG(value,avl);
-
-	value = av_value(avl, "instance");
-	if (!value) {
-		msglog(LDMSD_LERROR, SAMP ": missing 'instance'.\n");
-		return ENOENT;
-	}
-
-	sname = av_value(avl, "schema");
-	if (!sname)
-		sname = default_schema_name;
-	if (strlen(sname) == 0) {
-		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
 		return EINVAL;
 	}
 
@@ -299,18 +237,25 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (niface == 0)
 		goto err;
 
-	rc = create_metric_set(value, sname);
+
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base){
+		rc = EINVAL;
+		goto err;
+	}
+
+	rc = create_metric_set(base);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err;
 	}
-	ldms_set_producer_name_set(set, producer_name);
 
 	return 0;
 
  err:
 	if (ifacelist)
 		free(ifacelist);
+	base_del(base);
 	return rc;
 
 }
@@ -331,11 +276,12 @@ static int sample(struct ldmsd_sampler *self)
 	if (!mf)
 		mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open /proc/net/dev file "
+		msglog(LDMSD_LERROR, SAMP ": Could not open /proc/net/dev file "
 				"'%s'...exiting\n", procfile);
 		return ENOENT;
 	}
 
+	base_sample_begin(base);
 	metric_no = metric_offset;
 	fseek(mf, 0, SEEK_SET); //seek should work if get to EOF
 	int usedifaces = 0;
@@ -343,8 +289,6 @@ static int sample(struct ldmsd_sampler *self)
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	/* data */
 
-	ldms_transaction_begin(set);
-	LJI_SAMPLE(set, 1);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -369,7 +313,7 @@ static int sample(struct ldmsd_sampler *self)
 				&v[10].v_u64, &v[11].v_u64, &v[12].v_u64,
 				&v[13].v_u64, &v[14].v_u64, &v[15].v_u64);
 		if (rc != 17){
-			msglog(LDMSD_LINFO, "Procnetdev: wrong number of "
+			msglog(LDMSD_LINFO, SAMP ": wrong number of "
 					"fields in sscanf\n");
 			continue;
 		}
@@ -390,8 +334,9 @@ static int sample(struct ldmsd_sampler *self)
 			} /* end if */
 		} /* end for*/
 	} while (s);
-	ldms_transaction_end(set);
 
+out:
+	base_sample_end(base);
 	return 0;
 }
 
@@ -401,10 +346,8 @@ static void term(struct ldmsd_plugin *self)
 	if (mf)
 		fclose(mf);
 	mf = NULL;
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
-
+	if (base)
+		base_del(base);
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;

@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_msr_interlagos
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "03 Dec 2016" "v3.3.3" "LDMS Plugin msr interlagos man page"
+.TH man 7 "04 Jan 2018" "v4" "LDMS Plugin msr interlagos man page"
 
 .SH NAME
 Plugin_msr - man page for the LDMS msr interlagos plugin
@@ -245,6 +245,7 @@ config action=rewrite
 
 
 .SH LDMSD_CONTROLLER CONFIGURATION ATTRIBUTE SYNTAX
+The msr_interlagos plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
 
 .TP
 .BR config
@@ -262,25 +263,11 @@ action=<action>
 Options are initialize, add, finalize, halt, continue, reassign, rewrite, and ls:
 
 .TP
-.TP
 .BR initialize
-producer=<prod_name> instance=<inst_name> component_id=<comp_id> corespernuma=<cpnuma> conffile=<conffile>
-[maxcore=<maxcore> schema=<schema> with _jobid=<jid>]
+corespernuma=<cpnuma> conffile=<conffile> [maxcore=<maxcore> schema=<schema> ]
 .br
-initialize the plugin
+initialize the plugin. sampler_base configuration arguments should be specified at this point.
 .RS
-.TP
-producer=<prod_name>
-.br
-The producer name.
-.TP
-instance=<inst_name>
-.br
-The instance name.
-.TP
-component_id=<comp_id>
-.br
-The component id numerical value.
 .TP
 corespernuma=<corespernuma>
 .br
@@ -297,10 +284,6 @@ Optional. Defaults to using the actual number of cores.
 schema=<schema>
 .br
 Schema name. Optional. Defaults to msr_interlagos.
-.TP
-with_jobid=<jid>
-.br
-Fixed jobid. Optional. Defaults to 0.
 .RE
 
 .TP
@@ -419,4 +402,4 @@ config name=msr_interlagos action=halt metricname=TOT_CYC
 
 
 .SH SEE ALSO
-ldmsd(7), ldms_quickstart(7), Plugin_store_function_csv(7), ldmsd_controller(8)
+ldmsd(7), ldms_quickstart(7), ldms_sampler_base(7), Plugin_store_function_csv(7), ldmsd_controller(8)

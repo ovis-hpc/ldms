@@ -275,7 +275,11 @@ int add_metrics_generic(ldms_schema_t schema,
 					msglog);
 		if (rc != 0)
 			return rc;
-		nettopo_setup(msglog);
+		rc = nettopo_setup(msglog);
+		if (rc != 0){
+			/* continue on, but with invalid values */
+			msglog(LDMSD_LERROR, "netopo_setup failed. All nettopo values for this nid will be invalid\n");
+		}
 		return 0;
 		break;
 	case NS_VMSTAT:

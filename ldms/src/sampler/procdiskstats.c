@@ -63,7 +63,9 @@
 #include <assert.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "sampler_base.h"
 
+#define SAMP "procdiskstats"
 #define PROC_FILE "/proc/diskstats"
 #define SECTOR_SIZE_FILE_FMT "/sys/block/%s/queue/hw_sector_size"
 
@@ -98,7 +100,9 @@ static char *fieldname[NFIELD] = {
 static ldms_set_t set;
 static FILE *mf = NULL;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
+static int metric_offset;
+static base_data_t base;
+
 
 static long USER_HZ; /* initialized in get_plugin() */
 static struct timeval _tv[2] = { {0}, {0} };
@@ -149,7 +153,7 @@ static int get_sector_sz(char *device)
 
 	f = fopen(filename, "r");
 	if (!f) {
-		msglog(LDMSD_LERROR, "Failed to open %s\n", filename);
+		msglog(LDMSD_LERROR, SAMP "Failed to open %s\n", filename);
 		return DEFAULT_SECTOR_SZ;
 	}
 
@@ -162,7 +166,7 @@ static int get_sector_sz(char *device)
 		rc = sscanf(filename, "%d", &result);
 
 		if (rc != 1) {
-			msglog(LDMSD_LINFO, "Failed to get the sector size of %s. "
+			msglog(LDMSD_LINFO, SAMP "Failed to get the sector size of %s. "
 					"The size is set to 512.\n", device);
 			result = DEFAULT_SECTOR_SZ;
 		}
@@ -251,15 +255,19 @@ static int config_add_disks(struct attr_value_list *avl, ldms_schema_t schema)
 		for (name = strtok_r(value_tmp, ",", &ptr);
 		     name; name = strtok_r(NULL, ",", &ptr)) {
 			TAILQ_FOREACH(disk, &disk_list, entry) {
-				if (0 == strcmp(name, disk->name))
+				if (0 == strcmp(name, disk->name)){
+					msglog(LDMSD_LDEBUG, SAMP " will monitor %s\n", name);
 					disk->monitored = 1;
+				}
 			}
 		}
 		free(value_tmp);
 	} else {
 		/* Mark all the disks as monitored */
-		TAILQ_FOREACH(disk, &disk_list, entry)
+		TAILQ_FOREACH(disk, &disk_list, entry) {
+			msglog(LDMSD_LDEBUG, SAMP " will monitor %s\n", disk->name);
 			disk->monitored = 1;
+		}
 	}
 
 	/* Add metrics for monitored disks */
@@ -273,52 +281,76 @@ static int config_add_disks(struct attr_value_list *avl, ldms_schema_t schema)
 	return rc;
 
 err:
-	msglog(LDMSD_LERROR, "%s Error %d adding metrics.\n", __FILE__, rc);
+	msglog(LDMSD_LERROR, SAMP "%s Error %d adding metrics.\n", rc);
 	return rc;
 }
+
+
+static int create_metric_set(base_data_t base, struct attr_value_list *avl){
+	ldms_schema_t schema;
+	int rc;
+
+	schema = base_schema_new(base);
+	if (!schema) {
+		msglog(LDMSD_LERROR,
+			SAMP ": The schema '%s' could not be created, errno=%d.\n",
+		       base->schema_name, errno);
+		goto err;
+	}
+
+	/* Location of first metric */
+	metric_offset = ldms_schema_metric_count_get(schema);
+
+	rc = config_add_disks(avl, schema);
+	if (rc)
+		goto err;
+
+
+	set = base_set_new(base);
+	if (!set) {
+		rc = errno;
+		goto err;
+	}
+
+	return 0;
+
+err:
+	return rc;
+}
+
 
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	char *attr;
 	int rc = 0;
-	ldms_schema_t schema = ldms_schema_new("procdiskstats");
-	if (!schema)
-		return ENOMEM;
 
-	attr = "producer";
-	producer_name = av_value(avl, attr);
-	if (!producer_name)
-		goto enoent;
-
-	rc = config_add_disks(avl, schema);
-	if (rc)
-		goto err;
-
-	attr = "instance";
-	value = av_value(avl, attr);
-	if (!value)
-		goto enoent;
 
 	if (set) {
-		msglog(LDMSD_LERROR, "procdiskstat: Set already created.\n");
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		return EINVAL;
+	}
+
+
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base) {
+		rc = EINVAL;
 		goto err;
 	}
-	set = ldms_set_new(value, schema);
-	if (!set) {
-		rc = errno;
-		msglog(LDMSD_LERROR, "procdiskstats: failed to create "
-				"the metric set.\n");
+
+	rc = create_metric_set(base, avl);
+	if (rc){
+		msglog(LDMSD_LERROR, SAMP ": failed to create "
+		       "the metric set.\n");
 		goto err;
 	}
-	ldms_set_producer_name_set(set, producer_name);
-	ldms_schema_delete(schema);
+
+
 	return 0;
-enoent:
-	msglog(LDMSD_LERROR, "procdiskstat: requires '%s'\n", attr);
+
 err:
-	ldms_schema_delete(schema);
-	return ENOENT;
+	base_del(base);
+	return rc;
 }
 
 static float calculate_rate(uint64_t prev_value, uint64_t curr_v, float dt)
@@ -382,7 +414,7 @@ static int sample(struct ldmsd_sampler *self)
 	struct proc_disk_s *disk;
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, "diskstats: plugin not initialized\n");
+		msglog(LDMSD_LDEBUG, SAMP " plugin not initialized\n");
 		return EINVAL;
 	}
 
@@ -390,7 +422,8 @@ static int sample(struct ldmsd_sampler *self)
 		mf = fopen(procfile, "r");
 	if (!mf)
 		return ENOENT;
-	ldms_transaction_end(set);
+
+	base_sample_begin(base);
 	gettimeofday(curr_tv, NULL);
 	timersub(curr_tv, prev_tv, &diff_tv);
 	dt = diff_tv.tv_sec + diff_tv.tv_usec / 1e06;
@@ -415,11 +448,14 @@ static int sample(struct ldmsd_sampler *self)
 		set_disk_metrics(disk, v, dt);
 		disk = TAILQ_NEXT(disk, entry);
 	} while (disk);
+
+	rc = 0;
 out:
 	tmp_tv = curr_tv;
 	curr_tv = prev_tv;
 	prev_tv = tmp_tv;
-	ldms_transaction_end(set);
+	base_sample_end(base);
+
 	return rc;
 }
 
@@ -434,9 +470,13 @@ static void term(struct ldmsd_plugin *self)
 		fclose(mf);
 	mf = 0;
 
+	if (base)
+		base_del(base);
+	base = NULL;
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
+
 	while (!TAILQ_EMPTY(&disk_list)) {
 		struct proc_disk_s *disk = TAILQ_FIRST(&disk_list);
 		TAILQ_REMOVE(&disk_list, disk, entry);
@@ -446,22 +486,20 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-        return  "config name=procdiskstats producer=<prod_name> instance=<inst_name> device=<devices>\n"
-                "    <prod_name>     The producer name value\n"
-                "    <inst_name>     The instance name\n"
-                "    <devices>       A comma-separated list of devices\n";
+	return  "config name=procdiskstats device=<devices> " BASE_CONFIG_USAGE
+		"    <devices>       A comma-separated list of devices\n";
 }
 
 static struct ldmsd_sampler procdiskstats_plugin = {
-        .base = {
-                .name = "procdiskstats",
+	.base = {
+		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
-                .term = term,
-                .config = config,
-                .usage = usage,
-        },
-        .get_set = get_set,
-        .sample = sample,
+		.term = term,
+		.config = config,
+		.usage = usage,
+	},
+	.get_set = get_set,
+	.sample = sample,
 };
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)

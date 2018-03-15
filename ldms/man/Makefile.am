@@ -14,8 +14,12 @@ ldms_authentication.man \
 ldms_auth_ovis.man \
 ldms_auth_naive.man \
 ldms_quickstart.man \
+ldms_sampler_base.man \
+Plugin_aries_linkstatus.man \
 Plugin_aries_mmr.man \
+Plugin_array_example.man \
 Plugin_cray_system_sampler_variants.man \
+Plugin_cray_dvs_sampler.man \
 Plugin_kgnilnd.man \
 Plugin_knc_sampler.man \
 Plugin_lnet_stats.man \

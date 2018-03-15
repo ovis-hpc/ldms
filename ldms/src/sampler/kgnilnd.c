@@ -52,6 +52,10 @@
 /**
  * \file kgnilnd.c
  * \brief /proc/kgnilnd data provider
+ *
+ * Unlike other samplers, we reopen the kgnilnd file each time we sample. If the open
+ * fails, we still return success instead of an error so that that sampler will not
+ * be stopped.
  */
 #include <inttypes.h>
 #include <unistd.h>
@@ -64,6 +68,7 @@
 #include <ctype.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "sampler_base.h"
 
 #define PROC_FILE "/proc/kgnilnd/stats"
 
@@ -72,13 +77,10 @@ static char *procfile = PROC_FILE;
 static ldms_set_t set = NULL;
 static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
-static ldms_schema_t schema;
-static char *default_schema_name = "kgnilnd";
-static uint64_t compid;
-static uint64_t jobid;
-static int metric_offset = 2;
+#define SAMP "kgnilnd"
+static int metric_offset = 0;
 static int nmetrics = 0;
+static base_data_t base;
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
@@ -105,39 +107,34 @@ struct kgnilnd_metric {
 	uint64_t udata;
 };
 
-static int create_metric_set(const char *instance_name, char* schema_name)
+static int create_metric_set(base_data_t base)
 {
-	int rc;
+	ldms_schema_t schema;
 	uint64_t metric_value;
 	union ldms_value v;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];
+	int rc;
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open the kgnilnd file "
+		msglog(LDMSD_LERROR, "Could not open the " SAMP " file "
 				"'%s'...aborting\n", procfile);
 		return ENOENT;
 	}
 
-	schema = ldms_schema_new(schema_name);
+	schema = base_schema_new(base);
 	if (!schema) {
-		rc = ENOMEM;
+		msglog(LDMSD_LERROR,
+		       "%s: The schema '%s' could not be created, errno=%d.\n",
+		       __FILE__, base->schema_name, errno);
+		rc = errno;
 		goto err;
 	}
 
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
+	/* Location of first metric from proc/meminfo file */
+	metric_offset = ldms_schema_metric_count_get(schema);
 
 	/* Process the file to define all the metrics.*/
 	if (fseek(mf, 0, SEEK_SET) != 0){
@@ -171,23 +168,15 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		}
 	} while (s);
 
-	set = ldms_set_new(instance_name, schema);
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
 		goto err;
 	}
 
-	//add specialized metrics
-	v.v_u64 = compid;
-	ldms_metric_set(set, 0, &v);
-	v.v_u64 = 0;
-	ldms_metric_set(set, 1, &v);
-
 	return 0;
 
- err:
-	if (schema)
-		ldms_schema_delete(schema);
+err:
 	if (mf)
 		fclose(mf);
 	mf = NULL;
@@ -208,7 +197,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 	for (i = 0; i < numdep; i++){
 		value = av_value(avl, deprecated[i]);
 		if (value){
-			msglog(LDMSD_LERROR, "kgnilnd: config argument %s has been deprecated.\n",
+			msglog(LDMSD_LERROR, SAMP ": config argument %s has been deprecated.\n",
 			       deprecated[i]);
 			return EINVAL;
 		}
@@ -220,63 +209,36 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value;
-	char *sname;
 	void *arg;
 	int rc = 0;
 
+	if (set) {
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		return EINVAL;
+	}
 
 	rc = config_check(kwl, avl, arg);
 	if (rc != 0){
 		return EINVAL;
 	}
 
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, "%s: missing producer\n",
-		       __FILE__);
-		return ENOENT;
+
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base){
+		rc = EINVAL;
+		goto err;
 	}
 
-	value = av_value(avl, "component_id");
-        if (value)
-                compid = (uint64_t)(atoi(value));
-        else
-                compid = 0;
-
-	value = av_value(avl, "instance");
-	if (!value) {
-		msglog(LDMSD_LERROR, "%s: missing instance.\n",
-		       __FILE__);
-		return ENOENT;
-	}
-
-	sname = av_value(avl, "schema");
-	if (!sname){
-		sname = default_schema_name;
-	}
-	if (strlen(sname) == 0){
-		msglog(LDMSD_LERROR, "%s: schema name invalid.\n",
-		       __FILE__);
-		return EINVAL;
-	}
-
-	if (set) {
-		msglog(LDMSD_LERROR, "%s: Set already created.\n",
-		       __FILE__);
-		return EINVAL;
-	}
-
-	rc = create_metric_set(value, sname);
+	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, "%s: failed to create a metric set.\n",
-		       __FILE__);
-		return rc;
+		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		goto err;
 	}
-
-	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 
+err:
+	base_del(base);
+	return rc;
 }
 
 static int __kgnilnd_reset(){
@@ -284,11 +246,11 @@ static int __kgnilnd_reset(){
 	int i;
 
 	v.v_u64 = 0;
-	ldms_transaction_begin(set);
+	base_sample_begin(base);
 	for (i = 0; i < nmetrics; i++){
 		ldms_metric_set(set, (i+metric_offset), &v);
 	}
-	ldms_transaction_end(set);
+	base_sample_end(base);
 }
 
 static int sample(struct ldmsd_sampler *self)
@@ -299,9 +261,10 @@ static int sample(struct ldmsd_sampler *self)
 	union ldms_value v;
 
 	if (!set){
-	  msglog(LDMSD_LDEBUG, "kgnilnd: plugin not initialized\n");
-//	  return EINVAL;
-	  return 0;
+	  msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+	  /* let this one fail */
+	  //return 0;
+	  return EINVAL;
 	}
 
 	if (!mf){
@@ -309,7 +272,8 @@ static int sample(struct ldmsd_sampler *self)
 		if (!mf) {
 			msglog(LDMSD_LERROR, "Could not open the kgnilnd file "
 			       "'%s'...\n", procfile);
-			__kgnilnd_reset(set);
+			__kgnilnd_reset();
+			/* return success so it wont exit. try again next time */
 			// return ENOENT;
 			return 0;
 		}
@@ -319,17 +283,18 @@ static int sample(struct ldmsd_sampler *self)
 		/* perhaps the file handle has become invalid.
 		 * close it so it will reopen it on the next round.
 		 */
-		msglog(LDMSD_LERROR, "Could not seek in the kgnilnd file "
+		msglog(LDMSD_LERROR, "Could not seek in the " SAMP " file "
 		       "'%s'...closing filehandle\n", procfile);
 		fclose(mf);
 		mf = 0;
-		__kgnilnd_reset(set);
+		__kgnilnd_reset();
+		/* return success so it wont exit. try again next time */
 //		return EINVAL;
 		return 0;
 	}
 
+	base_sample_begin(base);
 	metric_no = metric_offset;
-	ldms_transaction_begin(set);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
@@ -350,7 +315,7 @@ static int sample(struct ldmsd_sampler *self)
 	} while (s);
 	rc = 0;
 out:
-	ldms_transaction_end(set);
+	base_sample_end(base);
 	return 0;
 }
 
@@ -359,9 +324,8 @@ static void term(struct ldmsd_plugin *self)
 	if (mf)
 		fclose(mf);
 	mf = NULL;
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
+	if (base)
+		base_del(base);
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
@@ -369,17 +333,13 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=kgnilnd producer=<prod_name> instance=<inst_name> [component_id=<compid> schema=<sname>]\n"
-		"    <prod_name>  The producer name.\n"
-		"    <inst_name>  The set name.\n",
-                "    <compid>     Optional unique number identifier. Defaults to zero.\n"
-		"    <sname>      Optional schema name. Defaults to 'kgnilnd'\n";
+	return  "config name=" SAMP BASE_CONFIG_USAGE;
 }
 
 
 static struct ldmsd_sampler kgnilnd_plugin = {
 	.base = {
-		.name = "kgnilnd",
+		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,

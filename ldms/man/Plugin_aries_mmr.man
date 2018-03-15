@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_aries_mmr
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "03 Dec 2016" "v3" "LDMS Plugin for the aries_mmr sampler."
+.TH man 7 "04 Feb 2018" "v4" "LDMS Plugin for the aries_mmr sampler."
 
 .SH NAME
 Plugin_aries_mmr - man page for the aries_mmr sampler and variants.
@@ -45,9 +45,12 @@ To build the aries_mmr sampler, build with the following flags:
 .B   --with-aries-libgpcd=<full_path_to_libgpcd.a>,<full_path_to_lib_gpcd.h>
 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
+The aries_mmr plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
+
+
 .TP
 .BR config
-name=<plugin_name> producer=<pname> instance=<iname> file=<file> [component_id=<compid> aries_rtr_id=<rtrid> schema=<sname>]
+name=<plugin_name> file=<file> [aries_rtr_id=<rtrid> schema=<sname>]
 .br
 configuration line
 .RS
@@ -56,21 +59,9 @@ name=<plugin_name>
 .br
 This MUST be aries_mmr, aries_nic_mmr, or aries_rtr_mmr.
 .TP
-producer=<pname>
-.br
-The producer name string.
-.TP
-instance=<iname>
-.br
-The name of the metric set.
-.TP
 schema=<sname>
 .br
 Optional schema name. It is intended that the same sampler on different nodes with different metrics have a different schema. This will default to cray_aries_r or cray_gemini_r as appropriate, if unspecified.
-.TP
-component_id=<compid>
-.br
-Optional component identifier. Defaults to zero.
 .TP
 aries_rtr_id=<rtrid>
 .br
@@ -139,4 +130,4 @@ localhost2/aries_mmr: consistent, last update: Wed Oct 28 08:48:36 2015 [153343u
 
 
 .SH SEE ALSO
-ldmsd(8), Plugin_cray_sampler_variants(7), Plugin_aries_linkstatus(7), ldms_quickstart(7), ldmsd_controller(8)
+ldmsd(8), ldms_sampler_base(7), Plugin_cray_sampler_variants(7), Plugin_aries_linkstatus(7), ldms_quickstart(7), ldmsd_controller(8)

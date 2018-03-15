@@ -19,6 +19,7 @@ bin_SCRIPTS += ldms-meminfo.sh
 bin_SCRIPTS += ldms-py-varset.sh
 bin_SCRIPTS += ldms-py-rename.sh
 bin_SCRIPTS += ldms_local_opa2test.sh
+bin_SCRIPTS += ldms-l2_test.sh
 
 install-data-local:
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/examples/static-test && \

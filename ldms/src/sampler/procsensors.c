@@ -75,6 +75,7 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "sampler_base.h"
 
 //FIXME: make this a parameter later..
 static char* procsensorsfiledir = "/sys/devices/pci0000:00/0000:00:01.1/i2c-1/1-002f/";
@@ -82,40 +83,38 @@ const static int vartypes = 3;
 const static char* varnames[] = {"in", "fan", "temp"};
 const static int varbounds[] = {0, 9, 1, 9, 1, 6};
 static ldms_set_t set;
-static ldms_schema_t schema;
 static int metric_count; /* now global */
 static uint64_t* metric_values;
-static uint64_t* metric_times;
-static int num_metric_times;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
+#define SAMP "procsensors"
+static int metric_offset;
+static base_data_t base;
 
-#undef CHECK_SENSORS_TIMING
-#ifdef CHECK_SENSORS_TIMING
-/* Some temporary for testing x ref with metric_times */
-int tv_sec_metric_handle2;
-int tv_nsec_metric_handle2;
-int tv_dnsec_metric_handle;
-int tv_sec_metric_handle3;
-int tv_nsec_metric_handle3;
-int tv_dnwrite_metric_handle;
-#endif
 
-static int create_metric_set(const char *instance_name)
+static int create_metric_set(base_data_t base)
 {
+	ldms_schema_t schema;
 	int rc, i, j;
 	char metric_name[128];
 	rc = ENOMEM;
 
-	/* Create the metric set */
-	schema = ldms_schema_new("procsensors");
-	if (!schema)
-		return ENOMEM;
+	schema = base_schema_new(base);
+	if (!schema) {
+		msglog(LDMSD_LERROR,
+		       "%s: The schema '%s' could not be created, errno=%d.\n",
+		       __FILE__, base->schema_name, errno);
+		goto err;
+	}
+
+	/* Location of first metric from proc/meminfo file */
+	metric_offset = ldms_schema_metric_count_get(schema);
+
 
 	/*
 	 * Process file to define all the metrics.
 	 */
 
+	metric_count = 0;
 	for (i = 0; i < vartypes; i++){
 		for (j = varbounds[2 * i]; j <= varbounds[2 * i + 1]; j++){
 			snprintf(metric_name, 127,
@@ -125,57 +124,15 @@ static int create_metric_set(const char *instance_name)
 				rc = ENOMEM;
 				goto err;
 			}
+			metric_count++;
 		}
 	}
-
-#ifdef CHECK_SENSORS_TIMING
-	num_metric_times = 4;
-	tv_sec_metric_handle2 = ldms_schema_metric_add(schema, "procsensors_tv_sec2", LDMS_V_U64);
-	if (tv_sec_metric_handle2 < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	tv_nsec_metric_handle2 = ldms_schema_metric_add(schema, "procsensors_tv_nsec2", LDMS_V_U64);
-	if (tv_nsec_metric_handle2 < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	tv_dnsec_metric_handle = ldms_schema_metric_add(schema, "procsensors_tv_dnsec", LDMS_V_U64);
-	if (tv_dnsec_metric_handle < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	tv_sec_metric_handle3 = ldms_schema_metric_add(schema, "procsensors_tv_sec3", LDMS_V_U64);
-	if (tv_sec_metric_handle3 < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	tv_nsec_metric_handle3 = ldms_schema_metric_add(schema, "procsensors_tv_nsec3", LDMS_V_U64);
-	if (tv_nsec_metric_handle3 < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	tv_dnwrite_metric_handle = ldms_schema_metric_add(schema, "procsensors_tv_dnwrite", LDMS_V_U64);
-	if (tv_dnwrite_metric_handle < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-#endif
 
 	metric_values = calloc(metric_count, sizeof(uint64_t));
 	if (!metric_values)
 		goto err;
 
-	metric_times = calloc(num_metric_times, sizeof(uint64_t));
-	if (!metric_times)
-		goto err;
-
-	set = ldms_set_new(instance_name, schema);
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
 		goto err;
@@ -184,47 +141,35 @@ static int create_metric_set(const char *instance_name)
 	return 0;
 
 err:
-	ldms_schema_delete(schema);
-	schema = NULL;
 	return rc;
 }
 
-/**
- * \brief Configuration
- *
- * Usage:
- * config name=procsensors producer=<prod_name> instance=<inst_name>
- *     <prod_name>       The producer name
- *     <inst_name>       The instance name
- */
+
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int rc;
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, "procsensors: missing 'producer'\n");
-		return ENOENT;
-	}
-
-	value = av_value(avl, "instance");
-	if (!value) {
-		msglog(LDMSD_LERROR, "procsensors: missing 'instance'\n");
-		return ENOENT;
-	}
 
 	if (set) {
-		msglog(LDMSD_LERROR, "procsensor: Set already created.\n");
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
-	rc = create_metric_set(value);
+
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base)
+		goto err;
+
+	rc = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, "procsensors: failed to create the metric set.\n");
-		return rc;
+		msglog(LDMSD_LERROR, SAMP ": failed to create the metric set.\n");
+		goto err;
 	}
-	ldms_set_producer_name_set(set, producer_name);
 
 	return 0;
+
+err:
+	base_del(base);
+	return rc;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -244,11 +189,7 @@ static int sample(struct ldmsd_sampler *self)
 	int i, j;
 	FILE *mf;
 
-	int metric_time_no = 0;
-	clock_gettime(CLOCK_REALTIME, &time1);
-	metric_times[metric_time_no++] = time1.tv_sec;
-	metric_times[metric_time_no++] = time1.tv_nsec;
-	ldms_transaction_begin(set);
+	base_sample_begin(base);
 	metric_no = 0;
 	for (i = 0; i < vartypes; i++){
 		for (j = varbounds[2*i]; j <= varbounds[2*i+1]; j++){
@@ -258,7 +199,7 @@ static int sample(struct ldmsd_sampler *self)
 			//FIXME: do we really want to open and close each one?
 			mf = fopen(procfile, "r");
 			if (!mf) {
-				msglog(LDMSD_LERROR, "Could not open "
+				msglog(LDMSD_LERROR, SAMP "Could not open "
 						"the procsensors file "
 						"'%s'...exiting\n", procfile);
 				rc = ENOENT;
@@ -281,63 +222,39 @@ static int sample(struct ldmsd_sampler *self)
 		}
 	}
 
-#ifdef CHECK_SENSORS_TIMING
-	clock_gettime(CLOCK_REALTIME, &time1);
-	metric_times[metric_time_no++] = time1.tv_sec;
-	metric_times[metric_time_no++] = time1.tv_nsec;
-#endif
 
 	/* now do the writeout */
 
 	/* metrics */
-	metric_no = 0;
 	for (i = 0; i < metric_count; i++){
 		v.v_u64 = metric_values[i];
-		ldms_metric_set(set , i, &v);
+		ldms_metric_set(set , (i+metric_offset), &v);
 	}
 
-#ifdef CHECK_SENSORS_TIMING
-	//second set of times
-	v.v_u64 = metric_times[2];
-	ldms_metric_set(set, tv_sec_metric_handle2, &v);
-	v.v_u64 = metric_times[3];
-	ldms_metric_set(set, tv_nsec_metric_handle2, &v);
-	v.v_u64 = metric_times[3]-metric_times[1];  //sub start of writeout nsec
-	ldms_metric_set(set, tv_dnsec_metric_handle, &v);
-
-	//and get the last write times. array storage for these is unused
-	clock_gettime(CLOCK_REALTIME, &time1);
-	v.v_u64 = time1.tv_sec;
-	ldms_metric_set(set, tv_sec_metric_handle3, &v);
-	v.v_u64 = time1.tv_nsec;
-	ldms_metric_set(set, tv_nsec_metric_handle3, &v);
-	v.v_u64 = time1.tv_nsec-metric_times[3];  //sub start of writeout nsec
-	ldms_metric_set(set, tv_dnwrite_metric_handle, &v);
-#endif
 	rc = 0;
 out:
-	ldms_transaction_end(set);
+	base_sample_end(base);
 	return rc;
 }
 
 static void term(struct ldmsd_plugin *self)
 {
-	if (schema)
-		ldms_schema_delete(schema);
+	if (base)
+		base_del(base);
 	if (set)
 		ldms_set_delete(set);
+	set = NULL;
 }
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=procsensors producer=<prod_name> instance=<inst_name>\n"
-		"    <prod_name>    The producer name\n"
-		"    <inst_name>    The instance name\n";
+	return  "config name= " SAMP BASE_CONFIG_USAGE;
+
 }
 
 static struct ldmsd_sampler procsensors_plugin = {
 	.base = {
-		.name = "procsensors",
+		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,

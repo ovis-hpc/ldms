@@ -1,43 +1,54 @@
 .\" Manpage for Plugin_fptrans
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "18 Feb 2018" "v4" "LDMS Plugin fptrans man page"
+.TH man 7 "18 Feb 2018" "v4" "LDMS Plugin synthetic man page"
 
 .SH NAME
-Plugin_fptrans - man page for the LDMS fptrans plugin
+Plugin_fptrans - man page for the LDMS synthetic plugin
 
 .SH SYNOPSIS
 Within ldmsd_controller or a configuration file:
 .br
-config name=fptrans [ <attr>=<value> ]
+config name=synthetic [ <attr>=<value> ]
 
 .SH DESCRIPTION
 
-The fptrans plugin provides metrics that have well known values which can be used to test transmission and storage fidelity of single and double precision scalars and floating point arrays.
+The synthetic plugin provides metrics yielding waves offset by component_id
 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 The fptrans plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
 
 
-
 .TP
 .BR config
-name=<plugin_name> [schema=<sname>]
+name=<plugin_name> [schema=<sname>] [origin=<f> height=<f> period=<f>]
 .br
 configuration line
 .RS
 .TP
 name=<plugin_name>
 .br
-This MUST be fptrans.
+This MUST be synthetic
 .TP
 schema=<schema>
 .br
 Optional schema name. It is intended that the same sampler on different nodes with different metrics have a
-different schema. If not specified, it will default to `fptrans`.
+different schema. If not specified, it will default to `synthetic`.
+.TP
+origin=<origin>
+.br
+The zero time for periodic functions.
+.TP
+height=<height>
+.br
+The amplitude of functions.
+.TP
+period=<period>
+.br
+The function period.
 .RE
 
 .SH NOTES
-The well known values used are 0, 1, and pi as determined by C macro M_PI.
+None.
 
 .SH BUGS
 No known bugs.
@@ -46,9 +57,9 @@ No known bugs.
 .PP
 Within ldmsd_controller or a configuration file:
 .nf
-load name=fptrans
-config name=fptrans producer=vm1_1 instance=vm1_1/fptrans
-start name=fptrans interval=1000000
+load name=synthetic
+config name=synthetic producer=vm1_1 instance=vm1_1/synthetic
+start name=synthetic interval=1000000
 .fi
 
 .SH SEE ALSO

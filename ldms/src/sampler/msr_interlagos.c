@@ -76,7 +76,7 @@
 #include <math.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldms_jobid.h"
+#include "sampler_base.h"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -275,9 +275,7 @@ static ldms_schema_t schema;
 static uint64_t comp_id;
 #define SAMP "msr_interlagos"
 static char *default_schema_name = SAMP;
-
-static int metric_offset = 1;
-LJI_GLOBALS;
+static base_data_t base;
 
 static ctrcfg_state cfgstate = CFG_PRE;
 
@@ -296,7 +294,6 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                              report 0 as values any N > actual numcores\n"
 		"            corespernuma    - num cores per numa domain (used for uncore counters)\n"
 		"            conffile        - configuration file with the counter assignment options\n"
-		LJI_DESC
 		"            schema          - Optional schema name. Defaults to '" SAMP "'\n"
 		"\n"
 		"    config name=msr_interlagos action=add metricname=<name>\n"
@@ -1238,45 +1235,17 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 		return -1;
 	}
 
-	val = av_value(avl, "producer");
-	if (!val) {
-		msglog(LDMSD_LERROR, SAMP ": missing producer.\n");
-		return ENOENT;
-	}
-	producer_name = strdup(val);
-
-	val = av_value(avl, "component_id");
-	if (!val){
-		comp_id = 0;
-	} else {
-		comp_id = strtoull(val, NULL, 0);
-	}
-
-	LJI_CONFIG(val, avl);
-
-	val = av_value(avl, "instance");
-	if (!val) {
-		msglog(LDMSD_LERROR, SAMP ": missing instance.\n");
-		_free_names();
-		return ENOENT;
-	}
-	instance_name = strdup(val);
-
-	val = av_value(avl, "schema");
-	if (!val)
-		val = default_schema_name;
-	if (strlen(val) == 0) {
-		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
-		_free_names();
-		return EINVAL;
-	}
-	schema_name = strdup(val);
+	if (set) {
+                msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+                return EINVAL;
+        }
 
 	cfile = av_value(avl, "conffile");
 	if (!cfile){
 		msglog(LDMSD_LERROR, SAMP ": no config file");
 		_free_names();
-		return EINVAL;
+		rc = EINVAL;
+		return rc;
 	} else {
 		rc = parseConfig(cfile);
 		if (rc != 0){
@@ -1301,6 +1270,14 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	pthread_mutex_lock(&cfglock);
 
+	base = base_config(avl, SAMP, SAMP, msglog);
+        if (!base) {
+                rc = errno;
+		_free_names();
+		pthread_mutex_unlock(&cfglock);
+		return rc;
+        }
+
 	maxcore = numcore;
 	val = av_value(avl, "maxcore");
 	if (val){
@@ -1309,6 +1286,7 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 			msglog(LDMSD_LERROR, SAMP ": maxcore %d invalid\n",
 			       maxcore);
 			_free_names();
+			base_del(base);
 			pthread_mutex_unlock(&cfglock);
 			return -1;
 		}
@@ -1322,12 +1300,14 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl,
 			msglog(LDMSD_LERROR, SAMP ": corespernuma %d invalid\n",
 			       maxcore);
 			_free_names();
+			base_del(base);
 			pthread_mutex_unlock(&cfglock);
 			return -1;
 		}
 	} else {
 		msglog(LDMSD_LERROR, SAMP ": must specify corespernuma\n");
 		_free_names();
+		base_del(base);
 		pthread_mutex_unlock(&cfglock);
 		return -1;
 	}
@@ -1548,23 +1528,14 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl,
 	}
 	numinitnames = 0;
 
-	schema = ldms_schema_new(schema_name);
+	schema = base_schema_new(base);
 	if (!schema) {
-		rc = ENOMEM;
-		goto err;
-	}
+                msglog(LDMSD_LERROR,
+		       "%s: The schema '%s' could not be created, errno=%d.\n",
+                       __FILE__, base->schema_name, errno);
+                goto err;
+        }
 
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0){
-		rc = ENOMEM;
-		goto err;
-	}
-
-	metric_offset++;
-	rc = LJI_ADD_JOBID(schema);
-	if (rc < 0){
-		goto err;
-	}
 
 	/* add the metrics */
 	i = 0;
@@ -1612,21 +1583,13 @@ static int finalize(struct attr_value_list *kwl, struct attr_value_list *avl,
 		i++;
 	}
 
-	set = ldms_set_new(instance_name, schema);
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
 		goto err;
 	}
 
-	ldms_set_producer_name_set(set, producer_name);
 	_free_names();
-
-	//add specialized metrics
-	v.v_u64 = comp_id;
-	ldms_metric_set(set, 0, &v);
-
-	LJI_SAMPLE(set,1);
-
 	cfgstate = CFG_DONE_FINAL;
 	pthread_mutex_unlock(&cfglock);
 	return 0;
@@ -1733,9 +1696,7 @@ static int sample(struct ldmsd_sampler *self)
 		return -1;
 	}
 
-	ldms_transaction_begin(set);
-
-	LJI_SAMPLE(set, 1);
+	base_sample_begin(base);
 
 	TAILQ_FOREACH(pe, &counter_list, entry) {
 		pthread_mutex_lock(&pe->lock);
@@ -1743,7 +1704,7 @@ static int sample(struct ldmsd_sampler *self)
 		pthread_mutex_unlock(&pe->lock);
 	}
 
-	ldms_transaction_end(set);
+	base_sample_end(base);
 	return 0;
 }
 
@@ -1774,7 +1735,12 @@ static void term(struct ldmsd_plugin *self)
 
 	//should also free the counter list FIXME -- what does this mean?
 
-	ldms_set_delete(set);
+	if (base)
+		base_del(base);
+	base = NULL;
+	if (set)
+		ldms_set_delete(set);
+	set = NULL;
 }
 
 static struct ldmsd_sampler msr_interlagos_plugin = {

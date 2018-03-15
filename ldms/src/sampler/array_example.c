@@ -57,19 +57,16 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include <stdlib.h>
+#include "sampler_base.h"
+#define SAMP "array_example"
 
 #define array_metric_name_base "array_"
 #define array_num_ele_default 10
 
-static ldms_schema_t schema;
+static int metric_offset;
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
-static uint64_t compid = 0;
-static uint64_t jobid = 0;
-
-static uint32_t uid;
-static uint32_t gid;
-static uint32_t perm;
+static base_data_t base;
 
 struct array_construct {
 	const char *name;
@@ -93,27 +90,24 @@ struct array_construct array_contruct_entries[] = {
 
 static struct array_construct *metric_list;
 
-static int create_metric_set(const char *instance_name,
-		int num_metrics, int num_ele, enum ldms_value_type type)
+static int create_metric_set(int num_metrics, int num_ele, enum ldms_value_type type,
+			     base_data_t base)
 {
+	ldms_schema_t schema;
 	union ldms_value v;
 	int rc;
 
-	schema = ldms_schema_new("array_example");
-	if (!schema)
-		return ENOMEM;
-
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-	        goto err;
+	schema = base_schema_new(base);
+	if (!schema) {
+		msglog(LDMSD_LERROR,
+		       "%s: The schema '%s' could not be created, errno=%d.\n",
+		       __FILE__, base->schema_name, errno);
+		rc = errno;
+		goto err;
 	}
 
-	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
-	if (rc < 0) {
-	        rc = ENOMEM;
-	        goto err;
-	}
+	/* Location of first metric */
+	metric_offset = ldms_schema_metric_count_get(schema);
 
 	struct array_construct *ent;
 	if (num_metrics < 0) {
@@ -158,43 +152,30 @@ static int create_metric_set(const char *instance_name,
 		metric_list[num_metrics].type = LDMS_V_NONE;
 	}
 
-	set = ldms_set_new_with_auth(instance_name, schema, uid, gid, perm);
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
 		goto err;
 	}
 
-	//add specialized metrics
-	v.v_u64 = compid;
-	ldms_metric_set(set, 0, &v);
-	v.v_u64 = 0;
-	ldms_metric_set(set, 1, &v);
-
 	return 0;
+
  err:
-	ldms_schema_delete(schema);
 	return rc;
 }
+
+
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
 	int num_metrics;
 	int num_ele;
 	enum ldms_value_type type;
-	const char *producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, "array_example: missing producer\n");
-		return ENOENT;
-	}
+	int rc;
 
-	value = av_value(avl, "component_id");
-	if (value)
-	        compid = (uint64_t)(atoi(value));
-	else
-	        compid = 0;
 
 	if (set) {
-		msglog(LDMSD_LERROR, "array_example: Set already created.\n");
+		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
 
@@ -214,39 +195,39 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	else
 		type = LDMS_V_NONE;
 
-	/* uid, gid, permission */
-	value = av_value(avl, "uid");
-	uid = (value)?(strtol(value, NULL, 0)):(-1);
-	value = av_value(avl, "gid");
-	gid = (value)?(strtol(value, NULL, 0)):(-1);
-	value = av_value(avl, "perm");
-	perm = (value)?(strtol(value, NULL, 0)):(0777);
-
-	value = av_value(avl, "instance");
-	if (!value) {
-		msglog(LDMSD_LERROR, "array_example: missing instance.\n");
-		return ENOENT;
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base){
+		rc = EINVAL;
+		goto err;
 	}
 
-	int rc = create_metric_set(value, num_metrics, num_ele, type);
+	rc = create_metric_set(num_metrics, num_ele, type, base);
 	if (rc) {
-		msglog(LDMSD_LERROR, "array_example: failed to create a metric set.\n");
-		return rc;
+		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		goto err;
 	}
-	ldms_set_producer_name_set(set, producer_name);
 	return 0;
+
+err:
+	base_del(base);
+	return rc;
 }
 
 static int sample(struct ldmsd_sampler *self)
 {
-	if (!set)
-		return EINTR;
-	ldms_transaction_begin(set);
+
 	int i, mid;
 	static uint8_t off = 0;
 	struct array_construct *ent = metric_list;
 	union ldms_value v;
-	mid = 2; //2 specialized metrics
+
+	if (!set) {
+		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
+		return EINVAL;
+	}
+
+	base_sample_begin(base);
+	mid = metric_offset;
 	while (ent->name) {
 		for (i = 0; i < ent->n; i++) {
 			switch (ent->type) {
@@ -289,7 +270,7 @@ static int sample(struct ldmsd_sampler *self)
 		ent++;
 	}
 	off++;
-	ldms_transaction_end(set);
+	base_sample_end(base);
 	return 0;
 }
 
@@ -300,9 +281,8 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
+	if (base)
+		base_del(base);
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
@@ -310,11 +290,9 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=array_example producer=<prod_name> instance=<inst_name> [component_id=<compid>]\n"
-		"       [num_metrics=<num_metrics>] [num_ele=<num_ele>] [type=<type>]\n"
-		"    <prod_name>  The producer name\n"
-		"    <inst_name>  The instance name\n"
-		"    <compid>     Optional unique number identifier. Defaults to zero.\n"
+
+	return "config name=array_example [num_metrics=<num_metrics>] [num_ele=<num_ele>] [type=<type>]\n" \
+		BASE_CONFIG_USAGE \
 		"    <num_metrics>    The number of metrics in the schema\n"
 		"    <num_ele>    The number of elements in each array. All arrays have the same number of elements.\n"
 		"    <type>       The type of metric arrays, e.g., U64_ARRAY, U8_ARRAY, etc\n";
@@ -322,7 +300,7 @@ static const char *usage(struct ldmsd_plugin *self)
 
 static struct ldmsd_sampler array_example_plugin = {
 	.base = {
-		.name = "array_example",
+		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,

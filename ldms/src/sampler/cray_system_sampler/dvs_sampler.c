@@ -74,9 +74,11 @@
 
 static ldmsd_msg_log_f log_fn;
 static char *procfile = "/proc/fs/dvs";
-#define SAMP "dvs_client"
+#define SAMP "cray_dvs_sampler"
 static int metric_offset;	/* first non-base metric */
 static base_data_t cfg_base;	/* global base for all sets */
+static char **cfgmetrics;   /* downselect of metrics from user config */
+static int num_cfgmetrics = 0;
 
 typedef struct dvs_mount_s {
 	base_data_t cfg; /* The configuration data */
@@ -86,9 +88,35 @@ typedef struct dvs_mount_s {
 	FILE *mount_f;   /* <mount-no>/mount has the local mount point */
 	ldms_set_t set;
 	struct rbn rbn;
+	int* use_m; /* Indicator if this metric is to be used or not */
 } *dvs_mount_t;
 
 struct rbt mount_tree;
+
+static int _line2basename(char* s, char* name){
+	int cnt;
+	int i;
+
+	cnt = sscanf(s, "%80[^:]:", name);
+
+	if (cnt < 1) {
+		log_fn(LDMSD_LERROR, "invalid dvs stats file format.\n");
+		return EINVAL;
+	}
+
+	cnt = strlen(name);
+	if (cnt && name[cnt-1] == '\n')
+		name[cnt-1] = '\0';
+	for (i = 0; i < cnt; i++) {
+		if (name[i] == ' ') {
+			name[i] = '_';
+			continue;
+		}
+	}
+
+	return 0;
+}
+
 
 static int handle_req_ops(dvs_mount_t mount, char *line,
 			  char **u64_names, size_t u64_cnt,
@@ -99,21 +127,13 @@ static int handle_req_ops(dvs_mount_t mount, char *line,
 	char *base_name;
 	char name[80];
 	char metric_name[128];
-	int cnt = sscanf(line, "%80[^:]:", name);
 	int metric_count = 0;
-	if (cnt < 1) {
-		log_fn(LDMSD_LERROR, "invalid dvs stats file format.\n");
+
+	rc = _line2basename(line, name);
+	if (rc != 0){
 		goto err;
 	}
-	cnt = strlen(name);
-	if (cnt && name[cnt-1] == '\n')
-		name[cnt-1] = '\0';
-	for (i = 0; i < cnt; i++) {
-		if (name[i] == ' ') {
-			name[i] = '_';
-			continue;
-		}
-	}
+
 	for (i = 0; i < u64_cnt; i++) {
 		if (u64_names[i][0] == '\0')
 			sprintf(metric_name, "%s", name);
@@ -169,7 +189,9 @@ static int create_metric_set(dvs_mount_t dvsm)
 	union ldms_value v;
 	char *s;
 	char lbuf[256];
+	char basename[80];
 	int state = 0;
+	int line_no = 0;
 
 	dvsm->cfg = dup_cfg(cfg_base, dvsm->mnt_pt);
 	schema = base_schema_new(dvsm->cfg);
@@ -180,13 +202,33 @@ static int create_metric_set(dvs_mount_t dvsm)
 		goto err;
 	}
 
-	/* Location of first metric from proc/dvs file */
-	metric_offset = ldms_schema_metric_count_get(schema);
+	/*
+	 * First pass to determine number of possible metrics
+	 */
+	line_no = 0;
+	fseek(dvsm->stats_f, 0, SEEK_SET);
+	do {
+		s = fgets(lbuf, sizeof(lbuf), dvsm->stats_f);
+		if (!s)
+			break;
+		line_no++;
+	} while (s);
+
+	dvsm->use_m = calloc(line_no, sizeof(int));
+	if (!dvsm->use_m){
+		rc = ENOMEM;
+		goto err;
+	}
 
 	/*
 	 * Process the file to define all the metrics.
 	 */
+
+	/* Location of first metric from dvs file */
+	metric_offset = ldms_schema_metric_count_get(schema);
+
 	metric_no = metric_offset;
+	line_no = 0;
 	fseek(dvsm->stats_f, 0, SEEK_SET);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), dvsm->stats_f);
@@ -210,6 +252,36 @@ static int create_metric_set(dvs_mount_t dvsm)
 				state ++;
 			break;
 		}
+		/*
+		 * Check to see if this metric (basename) should be used.
+		 * Note: this is in terms of the input line number, not the
+		 * metrics since there is more than 1 metric per line
+		 */
+		int keepmetric = 0;
+		rc = _line2basename(s, basename);
+		if (rc != 0){
+			goto err;
+		}
+		for (i = 0; i < num_cfgmetrics; i++){
+			//NOTE: that the following DEBUG is verbose
+			log_fn(LDMSD_LDEBUG,
+			       SAMP "will be comparing basename '%s' to keepname '%s'.\n",
+			       basename, cfgmetrics[i]);
+			if (strcmp(basename,cfgmetrics[i]) == 0){
+				keepmetric = 1;
+				break;
+			}
+		}
+		dvsm->use_m[line_no++] = keepmetric;
+		if (!keepmetric){
+			log_fn(LDMSD_LDEBUG,
+			       SAMP "config not including metrics from '%s'.\n", lbuf);
+			continue;
+		}  else {
+			log_fn(LDMSD_LDEBUG,
+			       SAMP "config WILL include metrics from '%s'.\n", lbuf);
+		}
+
 		switch (state) {
 		case 0:
 			rc = handle_req_ops(dvsm, s,
@@ -266,15 +338,94 @@ static int create_metric_set(dvs_mount_t dvsm)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP BASE_CONFIG_USAGE;
+	return  "config name=" SAMP "producer=<name> instance=<name> [component_id=<int>] [schema=<name>] [conffile=<cfgfile>]\n"
+		"                [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>]\n"
+		"    producer     A unique name for the host providing the data\n"
+		"    instance     A unique name for the metric set\n"
+		"    component_id A unique number for the component being monitored, Defaults to zero.\n"
+		"    schema       The name of the metric set schema, Defaults to the sampler name\n"
+		"    conffile     Optional file of metricnames for downselection\n"
+		"    job_set      The instance name of the set containing the job data, default is 'job_info'\n"
+		"    job_id       The name of the metric containing the Job Id, default is 'job_id'\n"
+		"    app_id       The name of the metric containing the Application Id, default is 'app_id'\n"
+		"    job_start    The name of the metric containing the Job start time, default is 'job_start'\n"
+		"    job_end      The name of the metric containing the Job end time, default is 'job_end'\n";
+
+}
+
+static int local_config(struct attr_value_list *avl,
+                        const char *name, const char *def_schema,
+                        ldmsd_msg_log_f log)
+{
+	char lbuf[256];
+	char tmpname[256];
+	char* value;
+	char* s;
+	int count = 0;
+	int rc=0;
+	FILE *cf;
+
+	value = av_value(avl, "conffile");
+	if (!value){
+		log(LDMSD_LDEBUG, SAMP " no conffile. This is ok.\n");
+		return 0;
+	}
+
+	/* read the file of downselected metrics. One pass to count, second pass to fill */
+	cf = fopen(value, "r");
+	if (!cf){
+		log(LDMSD_LERROR, SAMP " conffile '%s' cannot be opened\n", value);
+		rc = errno;     /* probably EPERM */
+		return rc;
+	}
+
+	do {
+		s = fgets(lbuf, sizeof(lbuf), cf);
+		if (!s)
+			break;
+		count++;
+	} while(s);
+
+	cfgmetrics = calloc(count, sizeof(char*));
+	if (!cfgmetrics){
+		fclose(cf);
+		return ENOMEM;
+	}
+
+	fseek(cf, 0, SEEK_SET);
+	count = 0;
+	do {
+		s = fgets(lbuf, sizeof(lbuf), cf);
+		if (!s)
+			break;
+
+		rc = sscanf(lbuf," %s", tmpname);
+		if ((strlen(tmpname) > 0) && (tmpname[0] != '#')){
+			cfgmetrics[count] = strdup(tmpname);
+			log(LDMSD_LDEBUG, SAMP ": conffile will be keeping metric '%s'\n", tmpname);
+		}
+		count++;
+	} while(s);
+
+	num_cfgmetrics = count;
+
+	fclose(cf);
+
+	return rc;
+
 }
 
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
+	int rc;
+
 	cfg_base = base_config(avl, SAMP, SAMP, log_fn);
 	if (!cfg_base)
 		return EINVAL;
-	return 0;
+	rc = local_config(avl, SAMP, SAMP, log_fn);
+
+	return rc;
+
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -300,6 +451,8 @@ int unmount_dvs(dvs_mount_t dvsm)
 		free(dvsm->dir);
 	if (dvsm->set)
 		ldms_set_delete(dvsm->set);
+	if (dvsm->use_m)
+		free(dvsm->use_m);
 	rbt_del(&mount_tree, &dvsm->rbn);
 	free(dvsm);
 }
@@ -354,6 +507,8 @@ int mount_dvs(const char *dir)
 	rbt_ins(&mount_tree, &dvsm->rbn);
 	return 0;
  err_5:
+	if (dvsm->use_m)
+		free(dvsm->use_m);
 	free(dvsm->mnt_pt);
  err_4:
 	fclose(dvsm->stats_f);
@@ -439,6 +594,11 @@ static int handle_old_mount(dvs_mount_t dvsm, const char *path)
 			if (s[0] != 'I')
 				state ++;
 			break;
+		}
+
+		if (!dvsm->use_m[line_no]){
+			line_no++;
+			continue;
 		}
 		switch (state) {
 		case 0:
@@ -543,9 +703,17 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
+	int i;
+
 	/* TODO: Run through the tree and blow everything away */
 	if (cfg_base)
 		base_del(cfg_base);
+	for (i = 0; i <num_cfgmetrics; i++){
+		free(cfgmetrics[i]);
+	}
+	free(cfgmetrics);
+	cfgmetrics = NULL;
+	num_cfgmetrics = 0;
 }
 
 static struct ldmsd_sampler dvs_plugin = {

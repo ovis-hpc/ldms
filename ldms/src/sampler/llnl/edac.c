@@ -1,29 +1,29 @@
 /* -*- c-basic-offset: 8 -*-
  * Copyright (c) 2017, Sandia Corporation.
- * Copyright (c) 2016, Lawrence Livermore National Security, LLC. 
+ * Copyright (c) 2016, Lawrence Livermore National Security, LLC.
  * Produced at the Lawrence Livermore National Laboratory. Written by
  * Kathleen Shoga <shoga1@llnl.gov> (Lawrence Livermore National Lab)
- * 
- * LLNL-CODE-685879 All rights reserved. 
+ *
+ * LLNL-CODE-685879 All rights reserved.
  * This file is part of EDAC Plugin, Version 1.0
  *
- * This program is free software; you can redistribute it and/or modify 
- * it under the terms of the GNU General Public License (as published 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (as published
  * by the Free Software Foundation) version 2, dated June 1991.
  *
  * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the IMPLIED WARRANTY OF 
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the terms 
+ * but WITHOUT ANY WARRANTY; without even the IMPLIED WARRANTY OF
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the terms
  * and conditions of the GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License 
+ * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software Foundation,
  * Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
  *
  * Please see LLNL_LICENSE_EDAC for the full details.
  *
- * This work was performed under the auspices of the U.S. Department of 
- * Energy by Lawrence Livermore National Laboratory under 
+ * This work was performed under the auspices of the U.S. Department of
+ * Energy by Lawrence Livermore National Laboratory under
  * Contract DE-AC52-07NA27344.
  *
  * This plugin uses the template of the other LDMS plugins, but it
@@ -94,7 +94,7 @@
 //#include <string.h> // needed for memcpy in ldms.h unused feature
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldms_jobid.h"
+#include "../sampler_base.h"
 
 // plugin specific (edac)
 int edac_valid = 0; /* sample disabled until configured correctly */
@@ -107,11 +107,9 @@ char edac_name[MAXSZ][MAXSZ];
 
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
-static ldms_schema_t schema;
 #define SAMP "edac"
-static char *default_schema_name = SAMP;
-static uint64_t comp_id;
+static int metric_offset;
+static base_data_t base;
 
 
 static char *replace_slash(char *s)
@@ -127,34 +125,24 @@ static char *replace_slash(char *s)
 	}
 	return s;
 }
-static int metric_offset = 1;
-LJI_GLOBALS;
 
-static int create_metric_set(const char *instance_name, char* schema_name)
+
+static int create_metric_set(base_data_t base)
 {
 	int rc;
 	union ldms_value v;
-	schema = ldms_schema_new(schema_name);
+	ldms_schema_t schema;
+
+
+	schema = base_schema_new(base);
 	if (!schema) {
 		msglog(LDMSD_LERROR, SAMP ": schema_new(%s) failed.\n",
-			schema_name);
-		rc = ENOMEM;
-		goto err;
+			base->schema_name);
+		return ENOMEM;
 	}
 
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": add comp id failed.\n");
-		rc = ENOMEM;
-		goto err;
-	}
-
-	metric_offset++;
-	rc = LJI_ADD_JOBID(schema);
-	if (rc < 0) {
-		msglog(LDMSD_LERROR, SAMP ": add jobid failed.\n");
-		goto err;
-	}
+	/* Location of first metric */
+	metric_offset= ldms_schema_metric_count_get(schema);
 
 	// My variables
 	FILE * myFile;
@@ -180,24 +168,24 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	// Filling command and edac_name arrays
 	for (mc_counter=0; mc_counter < max_mc; mc_counter++)
 	{
-		sprintf(command[counter], "/sys/devices/system/edac/mc/mc%d/ce_count",mc_counter);	
+		sprintf(command[counter], "/sys/devices/system/edac/mc/mc%d/ce_count",mc_counter);
 		counter++;
-		sprintf(command[counter], "/sys/devices/system/edac/mc/mc%d/ce_noinfo_count",mc_counter);	
+		sprintf(command[counter], "/sys/devices/system/edac/mc/mc%d/ce_noinfo_count",mc_counter);
 		counter++;
-		sprintf(command[counter], "/sys/devices/system/edac/mc/mc%d/ue_count",mc_counter);	
+		sprintf(command[counter], "/sys/devices/system/edac/mc/mc%d/ue_count",mc_counter);
 		counter++;
-		sprintf(command[counter], "/sys/devices/system/edac/mc/mc%d/ue_noinfo_count",mc_counter);	
+		sprintf(command[counter], "/sys/devices/system/edac/mc/mc%d/ue_noinfo_count",mc_counter);
 		counter++;
 		for (csrow_counter=0; csrow_counter < max_csrow; csrow_counter++)
 		{
-			sprintf(command[counter],"/sys/devices/system/edac/mc/mc%d/csrow%d/ce_count",mc_counter,csrow_counter);	
+			sprintf(command[counter],"/sys/devices/system/edac/mc/mc%d/csrow%d/ce_count",mc_counter,csrow_counter);
 			counter++;
-			sprintf(command[counter],"/sys/devices/system/edac/mc/mc%d/csrow%d/ue_count",mc_counter,csrow_counter);	
+			sprintf(command[counter],"/sys/devices/system/edac/mc/mc%d/csrow%d/ue_count",mc_counter,csrow_counter);
 			counter++;
-			sprintf(command[counter],"/sys/devices/system/edac/mc/mc%d/csrow%d/ch0_ce_count",mc_counter,csrow_counter);	
+			sprintf(command[counter],"/sys/devices/system/edac/mc/mc%d/csrow%d/ch0_ce_count",mc_counter,csrow_counter);
 			counter++;
 		}
-		sprintf(command[counter], "/sys/devices/system/edac/mc/mc%d/seconds_since_reset",mc_counter);	
+		sprintf(command[counter], "/sys/devices/system/edac/mc/mc%d/seconds_since_reset",mc_counter);
 		counter++;
 	}
 
@@ -221,7 +209,7 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		strcpy(edac_name[i],command[i]+28);
 		replace_slash(edac_name[i]);
 	}
-	
+
 	for(i = 0; i < totalCommands; i++ )
 	{
 		rc = ldms_schema_metric_add(schema, edac_name[i], LDMS_V_U64);
@@ -233,24 +221,17 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		}
 	}
 
-	set = ldms_set_new(instance_name, schema);
-	if (!set) {
+	set = base_set_new(base);
+	if (!set){
 		rc = errno;
 		msglog(LDMSD_LERROR, SAMP ": failed to create set during config.\n");
 		goto err;
 	}
 
-	// update specialized metrics
-	v.v_u64 = comp_id;
-	ldms_metric_set(set, 0, &v);
-
-	LJI_SAMPLE(set,1);
 	return 0;
 
  err:
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
+
 	return rc;
 }
 
@@ -300,29 +281,15 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP "  producer=<prod_name> instance=<inst_name> [component_id=<comp_id> schema=<sname> max_mc=<max_mc> max_csrow=<max_csrow>\n"
-		"    <prod_name>  The producer name\n"
-		"    <inst_name>  The instance name\n"
-		"    <comp_id>    Optional unique number identifier. Defaults to zero.\n"
-		LJI_DESC
-		"    <sname>      Optional schema name. Defaults to '" SAMP "'\n"
+	return  "config name=" SAMP " max_mc=<max_mc> max_csrow=<max_csrow> " BASE_CONFIG_USAGE
 		"    <max_mc>      The max number of mc.\n"
 		"    <max_csrow>   The max number of csrows per mc.\n";
 }
 
-/**
- * \brief Configuration
- *
- * config name=edac component_id=<comp_id>  max_mc=<max_mc> max_csrow=<max_csrow> with_jobid=<bool>
- *     comp_id     The component id value.
- *     bool        lookup jobid or report 0.
- *     max_mc      The max number of mc.
- *     max_csrow   The max number of csrows per mc.
- */
+
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value;
-	char *sname;
+
 	void * arg = NULL;
 	long tmp;
 	int rc=0;
@@ -332,33 +299,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, SAMP ": missing producer.\n");
-		return ENOENT;
-	}
-
-	value = av_value(avl, "component_id");
-	if (value)
-		comp_id = strtoull(value, NULL, 0);
-	else
-		comp_id = 0;
-
-	LJI_CONFIG(value,avl);
-
-	value = av_value(avl, "instance");
-	if (!value) {
-		msglog(LDMSD_LERROR, SAMP ": missing instance.\n");
-		return ENOENT;
-	}
-
-	sname = av_value(avl, "schema");
-	if (!sname)
-		sname = default_schema_name;
-	if (strlen(sname) == 0) {
-		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
-		return EINVAL;
-	}
 	if (set) {
 		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
@@ -392,15 +332,26 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		}
 	}
 
-	rc = create_metric_set(value, sname);
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base) {
+		rc = EINVAL;
+		goto err;
+	}
+
+	rc = create_metric_set(base);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
-		return rc;
+		goto err;
 	}
-	ldms_set_producer_name_set(set, producer_name);
+
 	edac_valid=1;
 
 	return 0;
+
+err:
+	base_del(base);
+	return rc;
+
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -430,9 +381,8 @@ static int sample(struct ldmsd_sampler *self)
 		msglog(LDMSD_LERROR, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_transaction_begin(set);
+	base_sample_begin(base);
 
-	LJI_SAMPLE(set, 1);
 	metric_no = metric_offset;
 
 	// Begin getting numbers
@@ -466,7 +416,7 @@ static int sample(struct ldmsd_sampler *self)
 	}
 
 out:
-	rc = ldms_transaction_end(set);
+	base_sample_end(base);
 	if (myFile)
 		fclose(myFile);
 	return rc;
@@ -474,9 +424,9 @@ out:
 
 static void term(struct ldmsd_plugin *self)
 {
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
+	if (base)
+		base_del(base);
+	base = NULL;
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
