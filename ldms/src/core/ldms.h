@@ -560,7 +560,8 @@ extern int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len);
 enum ldms_dir_type {
 	LDMS_DIR_LIST,		/*! A complete list of available metric sets */
 	LDMS_DIR_DEL,		/*! The listed metric sets have been deleted */
-	LDMS_DIR_ADD		/*! The listed metric sets have been added */
+	LDMS_DIR_ADD,		/*! The listed metric sets have been added */
+	LDMS_DIR_UPD,		/*! The set_info of the listed metric set have been updated */
 };
 
 /**
@@ -688,6 +689,7 @@ enum ldms_lookup_flags {
 	LDMS_LOOKUP_BY_INSTANCE = 0,
 	LDMS_LOOKUP_BY_SCHEMA = 1,
 	LDMS_LOOKUP_RE = 2,
+	LDMS_LOOKUP_SET_INFO = 4,
 };
 extern int ldms_xprt_lookup(ldms_t t, const char *name, enum ldms_lookup_flags flags,
 		       ldms_lookup_cb_t cb, void *cb_arg);
@@ -1097,6 +1099,71 @@ extern double ldms_difftimestamp(const struct ldms_timestamp *after, const struc
  * but optional.
  */
 extern int ldms_set_is_consistent(ldms_set_t s);
+
+#define LDMS_SET_INFO_F_LOCAL 0
+#define LDMS_SET_INFO_F_REMOTE 1
+
+/**
+ * \brief Add an key-value pair set information
+ *
+ * If the key exists, the function resets the value to the new value \c value.
+ * Adding a key-value pair potentially hides the key-value pair
+ * gotten from a lookup response that has the same key.
+ *
+ * \c ldms_set_info_unset() can be used to unset the value. Afterward, \c ldms_set_info_get()
+ * can be used to get the value gotten from the lookup reply.
+ *
+ * \param s	The set handle
+ * \param key	The name of the information
+ * \param value	The information
+ *
+ * \return 0 on success. ENOMEM if malloc fails. EINVAL if \c s does not exist.
+ *
+ * \see ldms_set_info_unset, ldms_set_info_get
+ */
+extern int ldms_set_info_set(ldms_set_t s, const char *key, const char *value);
+
+/**
+ * \brief Unset the value of of the given key.
+ *
+ * A key value pair which is set by \c ldms_set_info_set will be unset. Applications
+ * may use the function to unset a value to access the value received from a lookup reply
+ * with the same key.
+ *
+ * The key-value pairs from lookup replies will be untouched.
+ *
+ * \param s	The set handle
+ * \param key	The key string
+ *
+ * \see ldms_set_info_set
+ */
+extern void ldms_set_info_unset(ldms_set_t s, const char *key);
+
+/**
+ * \brief Return a copy of the value of the given key
+ *
+ * \param s	The set handle
+ * \param key	The key
+ *
+ * \return The value of the key. NULL is returned if the key does not exist or
+ *         there is an error.
+ */
+extern char *ldms_set_info_get(ldms_set_t s, const char *key);
+
+/**
+ * \brief Walk through the set information key-value pairs
+ *
+ * \param s	The set handle
+ * \param cb	The callback function to perform for each key value pair
+ * \param flag  LDMS_SET_INFO_F_LOCAL or LDMS_SET_INFO_F_REMOTE
+ * \param cb_arg	The callback argument
+ *
+ * \return 0 on success. Otherwise, an error code is returned.
+ */
+typedef int (*ldms_set_info_traverse_cb_fn)(const char *key, const char *value,
+								void *cb_arg);
+extern int ldms_set_info_traverse(ldms_set_t s, ldms_set_info_traverse_cb_fn cb,
+							int flag, void *cb_arg);
 
 /**
  * \brief Add a metric to schema

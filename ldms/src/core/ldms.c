@@ -303,7 +303,8 @@ __record_set(const char *instance_name,
 		goto out;
 	}
 
-
+	LIST_INIT(&set->local_info);
+	LIST_INIT(&set->remote_info);
 	LIST_INIT(&set->remote_rbd_list);
 	LIST_INIT(&set->local_rbd_list);
 	pthread_mutex_init(&set->lock, NULL);
@@ -448,6 +449,18 @@ int ldms_xprt_update(ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	return 0;
 }
 
+void __ldms_set_info_delete(struct ldms_set_info_list *info)
+{
+	struct ldms_set_info_pair *pair;
+	while (!LIST_EMPTY(info)) {
+		pair = LIST_FIRST(info);
+		LIST_REMOVE(pair, entry);
+		free(pair->key);
+		free(pair->value);
+		free(pair);
+	}
+}
+
 void ldms_set_delete(ldms_set_t s)
 {
 	int destroy_set = 0;
@@ -468,6 +481,8 @@ void ldms_set_delete(ldms_set_t s)
 	if (destroy_set) {
 		rbt_del(&set_tree, &set->rb_node);
 		mm_free(set->meta);
+		__ldms_set_info_delete(&set->local_info);
+		__ldms_set_info_delete(&set->remote_info);
 		free(set);
 	}
 	__ldms_set_tree_unlock();
@@ -2024,6 +2039,143 @@ void ldms_xprt_cred_get(ldms_t x, ldms_cred_t lcl, ldms_cred_t rmt)
 void ldms_local_cred_get(ldms_t x, ldms_cred_t lcl)
 {
 	ldms_auth_cred_get(x->auth, lcl);
+}
+
+/* The caller must hold the set lock */
+int __ldms_set_info_set(struct ldms_set_info_list *info,
+			const char *key, const char *value)
+{
+	char *old_value = NULL;
+	struct ldms_set_info_pair *pair;
+
+	LIST_FOREACH(pair, info, entry) {
+		if (0 == strcmp(key, pair->key)) {
+			old_value = pair->value;
+			goto set_value;
+		}
+	}
+
+	pair = malloc(sizeof(*pair));
+	if (!pair)
+		return ENOMEM;
+
+	pair->key = strdup(key);
+	if (!pair->key) {
+		free(pair);
+		return ENOMEM;
+	}
+
+set_value:
+	pair->value = strdup(value);
+	if (!pair->value) {
+		if (!old_value) {
+			/* This is a new key value pair. Delete the key */
+			free(pair->key);
+			free(pair);
+		}
+		return ENOMEM;
+	} else {
+		if (old_value) {
+			/* The key already exists. Free the old value */
+			free(old_value);
+		} else {
+			LIST_INSERT_HEAD(info, pair, entry);
+		}
+	}
+	return 0;
+}
+
+int ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
+{
+	int rc;
+
+	if (!key)
+		return EINVAL;
+
+	if (!value)
+		return EINVAL;
+
+	pthread_mutex_lock(&s->set->lock);
+	rc = __ldms_set_info_set(&s->set->local_info, key, value);
+	pthread_mutex_unlock(&s->set->lock);
+	__ldms_dir_upd_set(ldms_set_instance_name_get(s));
+	return rc;
+}
+
+/* The caller must hold the set lock. */
+struct ldms_set_info_pair *__ldms_set_info_find(struct ldms_set_info_list *info,
+								const char *key)
+{
+	struct ldms_set_info_pair *pair;
+	LIST_FOREACH(pair, info, entry)
+		if (0 == strcmp(key, pair->key))
+			return pair;
+	return NULL;
+}
+
+void ldms_set_info_unset(ldms_set_t s, const char *key)
+{
+	int rc;
+	struct ldms_set_info_pair *pair;
+	pthread_mutex_lock(&s->set->lock);
+	pair = __ldms_set_info_find(&s->set->local_info, key);
+	if (!pair) {
+		pthread_mutex_unlock(&s->set->lock);
+		return;
+	}
+	LIST_REMOVE(pair, entry);
+	free(pair->key);
+	free(pair->value);
+	free(pair);
+	pthread_mutex_unlock(&s->set->lock);
+	__ldms_dir_upd_set(ldms_set_instance_name_get(s));
+}
+
+char *ldms_set_info_get(ldms_set_t s, const char *key)
+{
+	struct ldms_set_info_pair *pair;
+	char *value = NULL;
+
+	pthread_mutex_lock(&s->set->lock);
+	pair = __ldms_set_info_find(&s->set->local_info, key);
+	if (pair) {
+		value = strdup(pair->value);
+		goto out;
+	}
+
+	pair = __ldms_set_info_find(&s->set->remote_info, key);
+	if (!pair)
+		goto out;
+	value = strdup(pair->value);
+out:
+	pthread_mutex_unlock(&s->set->lock);
+	return value;
+}
+
+int ldms_set_info_traverse(ldms_set_t s, ldms_set_info_traverse_cb_fn cb,
+							int flag, void *cb_arg)
+{
+	struct ldms_set_info_pair *pair;
+	struct ldms_set_info_list *list;
+	int rc = 0;
+	pthread_mutex_lock(&s->set->lock);
+	if (flag == LDMS_SET_INFO_F_LOCAL) {
+		list = &s->set->local_info;
+	} else if (flag == LDMS_SET_INFO_F_REMOTE) {
+		list = &s->set->remote_info;
+	} else {
+		rc = EINVAL;
+		goto out;
+	}
+
+	LIST_FOREACH(pair, list, entry) {
+		rc = cb(pair->key, pair->value, cb_arg);
+		if (rc)
+			goto out;
+	}
+out:
+	pthread_mutex_unlock(&s->set->lock);
+	return rc;
 }
 
 void ldms_version_get(struct ldms_version *v)

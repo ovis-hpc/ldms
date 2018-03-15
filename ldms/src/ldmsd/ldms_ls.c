@@ -317,8 +317,17 @@ void metric_printer(ldms_set_t s, int i)
 	printf("\n");
 }
 
+int print_set_info(const char *key, const char *value, void *cb_arg)
+{
+	int *count = (int *)cb_arg;
+	printf("     %*s : %s\n", 20, key, value);
+	(*count)++;
+	return 0;
+}
+
 void print_detail(ldms_set_t s)
 {
+	const struct ldms_set_info_pair *pair;
 	struct ldms_timestamp _ts = ldms_transaction_timestamp_get(s);
 	struct ldms_timestamp _dur = ldms_transaction_duration_get(s);
 	struct ldms_timestamp const *ts = &_ts;
@@ -326,9 +335,16 @@ void print_detail(ldms_set_t s)
 	int consistent = ldms_set_is_consistent(s);
 	struct tm *tm;
 	char dtsz[200];
+
 	time_t t = ts->sec;
 	tm = localtime(&t);
 	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm);
+
+	int count = 0;
+	printf("  APPLICATION SET INFORMATION ------\n");
+	(void) ldms_set_info_traverse(s, print_set_info, LDMS_SET_INFO_F_REMOTE, &count);
+	if (0 == count)
+		printf("	none\n");
 
 	printf("  METADATA --------\n");
 	printf("    Producer Name : %s\n", ldms_set_producer_name_get(s));
