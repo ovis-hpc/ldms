@@ -1970,7 +1970,7 @@ z_rdma_map(zap_ep_t ep, zap_map_t *pm,
 	}
 
 	if (mem_info)
-		LOG_(rep, "%s meminfo %p.\n", __func__, mem_info);
+		DLOG_(rep, "%s meminfo %p.\n", __func__, mem_info);
 	map->mr = ibv_reg_mr(rep->pd, buf, len, acc_flags);
 	if (!map->mr)
 		goto err_1;
