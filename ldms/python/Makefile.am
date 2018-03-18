@@ -1,1 +1,1 @@
-SUBDIRS = ldmsd
+SUBDIRS = ldmsd cmds
