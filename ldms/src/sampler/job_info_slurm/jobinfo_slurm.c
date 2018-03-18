@@ -62,7 +62,6 @@
 #include <sys/socket.h>
 #include <sys/wait.h>
 #include <netinet/in.h>
-
 #include <slurm/spank.h>
 
 #include "jobinfo.h"
@@ -76,12 +75,11 @@
 SPANK_PLUGIN(jobinfo, 1)
 struct jobinfo		jobinfo;
 
-int
-hook_write_jobinfo(struct jobinfo *jobinfo)
+int jobinfo_write_file(struct jobinfo *jobinfo)
 {
-	int			rc = 0;
-	FILE			*f;
-	char			*datafile;
+	int	rc = 0;
+	FILE	*f;
+	char	*datafile;
 
 	datafile = getenv("LDMS_JOBINFO_DATA_FILE");
 	if (datafile == NULL)
@@ -92,10 +90,17 @@ hook_write_jobinfo(struct jobinfo *jobinfo)
 		return errno;
 	}
 
-	rc = fwrite(jobinfo, sizeof(*jobinfo), 1, f);
-	if (rc != 1) {
-		rc = EIO;
-	}
+	rc = fprintf(f, "JOB_ID=%d\n", jobinfo->job_id);
+	rc = fprintf(f, "JOB_STATUS=%d\n", jobinfo->job_status);
+	rc = fprintf(f, "JOB_APP_ID=%d\n", jobinfo->job_app_id);
+	rc = fprintf(f, "JOB_USER_ID=%d\n", jobinfo->job_user_id);
+	rc = fprintf(f, "JOB_START=%ld\n", jobinfo->job_start);
+	rc = fprintf(f, "JOB_END=%ld\n", jobinfo->job_end);
+	rc = fprintf(f, "JOB_EXIT=%d\n", jobinfo->job_exit_status);
+	rc = fprintf(f, "JOB_NAME=\"%s\"\n",
+		     jobinfo->job_name ? jobinfo->job_name : "");
+	rc = fprintf(f, "JOB_USER=\"%s\"\n",
+		     jobinfo->job_user ? jobinfo->job_user : "");
 
 	fclose(f);
 
@@ -108,7 +113,7 @@ hook_write_jobinfo(struct jobinfo *jobinfo)
 int
 slurm_spank_init(spank_t sh, int argc, char *argv[])
 {
-	spank_context_t 	context;
+	spank_context_t		context;
 	spank_err_t		err;
 	char			buf[512];
 	struct passwd		*pw;
@@ -119,7 +124,7 @@ slurm_spank_init(spank_t sh, int argc, char *argv[])
 
 	bzero(&jobinfo, sizeof(jobinfo));
 
-	err = spank_get_item(sh, S_JOB_UID, &jobinfo.user_id);
+	err = spank_get_item(sh, S_JOB_UID, &jobinfo.job_user_id);
 	if (err != ESPANK_SUCCESS) {
 		return ESPANK_SUCCESS;
 	}
@@ -133,8 +138,8 @@ slurm_spank_init(spank_t sh, int argc, char *argv[])
 	if (err == ESPANK_SUCCESS) {
 		strncpy(jobinfo.job_name, buf, sizeof(jobinfo.job_name));
 	}
-	
-	pw = getpwuid(jobinfo.user_id);
+
+	pw = getpwuid(jobinfo.job_user_id);
 	if (pw != NULL) {
 		strncpy(jobinfo.job_user, pw->pw_name, sizeof(jobinfo.job_user));
 	}
@@ -142,9 +147,15 @@ slurm_spank_init(spank_t sh, int argc, char *argv[])
 	jobinfo.job_status = JOBINFO_JOB_STARTED;
 	jobinfo.job_start = time(NULL);
 
-	hook_write_jobinfo(&jobinfo);
+	jobinfo_write_file(&jobinfo);
 
 	return ESPANK_SUCCESS;
+}
+
+int
+slurm_spank_task_init(spank_t sh, int argc, char *argv[])
+{
+	return slurm_spank_init(sh, argc, argv);
 }
 
 /*
@@ -153,7 +164,7 @@ slurm_spank_init(spank_t sh, int argc, char *argv[])
 int
 slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 {
-	spank_context_t 	context;
+	spank_context_t		context;
 	int			val;
 
 	context = spank_context();
@@ -164,11 +175,11 @@ slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 	jobinfo.job_exit_status = WEXITSTATUS(val);
 
 	spank_get_item(sh, S_TASK_ID, &val);
-	jobinfo.app_id = val;
+	jobinfo.job_app_id = val;
 
 	jobinfo.job_status = JOBINFO_JOB_EXITED;
 	jobinfo.job_end = time(NULL);
-	hook_write_jobinfo(&jobinfo);
+	jobinfo_write_file(&jobinfo);
 
 	return ESPANK_SUCCESS;
 }

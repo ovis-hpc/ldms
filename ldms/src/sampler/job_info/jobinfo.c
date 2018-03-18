@@ -105,50 +105,77 @@ char *job_metrics[] = {
 #define	JOBINFO_JOB_USER	8
 #define	JOBINFO_JOB_NAME	9
 
+struct attr_s {
+	const char *av_name;
+	int metric_id;
+} attr_dict[] = {
+	{ "JOB_APP_ID",	JOBINFO_APP_ID },
+	{ "JOB_END",	JOBINFO_JOB_END },
+	{ "JOB_EXIT",	JOBINFO_EXIT_STATUS },
+	{ "JOB_ID",	JOBINFO_JOB_ID },
+	{ "JOB_NAME",	JOBINFO_JOB_NAME },
+	{ "JOB_START",	JOBINFO_JOB_START },
+	{ "JOB_STATUS",	JOBINFO_JOB_STATUS },
+	{ "JOB_USER",	JOBINFO_JOB_USER },
+	{ "JOB_USER_ID",JOBINFO_USER_ID },
+};
+#define DICT_LEN (sizeof(attr_dict) / sizeof(attr_dict[0]))
+
+int attr_cmp_fn(const void *a, const void *b)
+{
+	struct attr_s *av = (struct attr_s *)a;
+	struct attr_s *bv = (struct attr_s *)b;
+	return strcmp(av->av_name, bv->av_name);
+}
+
 /*
  * read jobinfo metrics from the shared file.
  */
-void
-jobinfo_read_data(void)
+static void jobinfo_read_data(void)
 {
-
-	union ldms_value	v;
-	struct jobinfo		jobinfo;
-	int			fd;
-
-	/*
- 	 * Open job data file and read data. Ignore any failures and just
- 	 * use the zeroed out data.
- 	 */
-	bzero((void *)&jobinfo, sizeof(jobinfo));
-	fd = open(jobinfo_datafile, O_RDONLY);
-	if (fd >= 0) {
-		(void)read(fd, &jobinfo, sizeof(jobinfo));
-		close(fd);
-	}
+	int i;
+	char buf[80];
+	char *s, *p;
+	FILE* job_file = fopen(jobinfo_datafile, "r");
+	if (!job_file)
+		return;
 
 	ldms_transaction_begin(set);
-	v.v_u64 = jobinfo.app_id;
-	ldms_metric_set(set, JOBINFO_APP_ID, &v);
-	v.v_u64 = jobinfo.job_id;
-	ldms_metric_set(set, JOBINFO_JOB_ID, &v);
-	v.v_u64 = jobinfo.user_id;
-	ldms_metric_set(set, JOBINFO_USER_ID, &v);
-	v.v_u64 = jobinfo.job_status;
-	ldms_metric_set(set, JOBINFO_JOB_STATUS, &v);
-	v.v_u64 = compid;
-	ldms_metric_set(set, JOBINFO_COMP_ID, &v);
-	ldms_metric_array_set_str(set, JOBINFO_JOB_USER, jobinfo.job_user);
-	ldms_metric_array_set_str(set, JOBINFO_JOB_NAME, jobinfo.job_name);
-	v.v_u64 = jobinfo.job_start;
-	ldms_metric_set(set, JOBINFO_JOB_START, &v);
-	v.v_u64 = jobinfo.job_end;
-	ldms_metric_set(set, JOBINFO_JOB_END, &v);
-	v.v_u64 = jobinfo.job_exit_status;
-	ldms_metric_set(set, JOBINFO_EXIT_STATUS, &v);
-	ldms_transaction_end(set);
+	ldms_metric_set_u64(set, JOBINFO_COMP_ID, compid);
 
-	return;
+	while (NULL != (s = fgets(buf, sizeof(buf), job_file))) {
+		char *name = strtok_r(s, "=", &p);
+		char *value = strtok_r(NULL, "=", &p);
+		struct attr_s key;
+		key.av_name = name;
+		struct attr_s *av = (struct attr_s *)
+			bsearch(&key, attr_dict,
+				DICT_LEN, sizeof(*av),attr_cmp_fn);
+		if (av) {
+			/* skip leading \" */
+			while (*value == '"')
+				value++;
+			/* Strip newlines */
+			while (s = strstr(value, "\n"))
+				*s = '\0';
+			/* Strip trailing \" */
+			while (s = strstr(value, "\""))
+				*s = '\0';
+			switch (av->metric_id) {
+			case JOBINFO_JOB_NAME:
+				break;
+			case JOBINFO_JOB_USER:
+				ldms_metric_array_set_str(set,
+							  av->metric_id, value);
+			default:
+				ldms_metric_set_u64(set, av->metric_id,
+						    strtol(value, NULL, 0));
+				break;
+			}
+		}
+	}
+	ldms_transaction_end(set);
+	fclose(job_file);
 }
 
 /*
