@@ -1425,9 +1425,9 @@ void __ldms_xprt_conn_msg_init(ldms_t _x, struct ldms_conn_msg *msg)
 	struct ldms_xprt *x = _x;
 	bzero(msg, sizeof(*msg));
 	LDMS_VERSION_SET(msg->ver);
-	if (x->auth) {
-		memcpy(msg->auth_name, x->auth->plugin->name, LDMS_AUTH_NAME_MAX);
-	}
+	if (x->auth)
+		strncpy(msg->auth_name,
+			x->auth->plugin->name, sizeof(msg->auth_name));
 }
 
 void __ldms_xprt_init(struct ldms_xprt *x, const char *name,
@@ -2715,7 +2715,8 @@ int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 	_x->event_cb = cb;
 	_x->event_cb_arg = cb_arg;
 	ldms_xprt_get(x);
-	rc = zap_connect(_x->zap_ep, sa, sa_len, (void*)&msg, sizeof(msg));
+	rc = zap_connect(_x->zap_ep, sa, sa_len,
+			 (void*)&msg, sizeof(msg.ver) + strlen(msg.auth_name) + 1);
 	if (rc)
 		ldms_xprt_put(x);
 	return rc;
