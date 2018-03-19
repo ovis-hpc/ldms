@@ -272,7 +272,7 @@ static void term(struct ldmsd_plugin *self)
  *
  * (ldmsctl usage note)
  * <code>
- * config name=lustre_client producer_name=<producer_name> instance_name=<instance_name> osts=<OST1>,...
+ * config name=lustre2_client producer_name=<producer_name> instance_name=<instance_name> osts=<OST1>,...
  *     producer_name       The producer id value.
  *     instance_name     The set name.
  *     osts              The comma-separated list of the OSTs to sample from.
@@ -309,13 +309,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return
-"config name=lustre2_client producer=<prod_name> instance=<inst_name> [OPTIONS]\n"
-"    	prod_name             The producer name\n"
-"       inst_name             The instance name\n"
-"    OPTIONS:\n"
-"	osc=STR,STR,...	      The list of OCSs.\n"
-"	mdc=STR,STR,...	      The list of MDCs.\n"
-"	llite=STR,STR,...     The list of llites.\n"
+"config name=" SAMP " " BASE_CONFIG_SYNOPSIS
+"       [osc=<CSV>] [mdc=<CSV>] [llite=<CSV>]\n"
+"\n"
+BASE_CONFIG_DESC
+"    osc          The comma-separated value list of OCSs.\n"
+"    mdc          The comma-separated value list of MDCs.\n"
+"    llite        The comma-separated value list of LLITEs.\n"
+"\n"
 "For oscs,mdcs and llites: if not specified, NONE of the\n"
 "oscs/mdcs/llites will be added. If {oscs,mdcs,llites} is set to *, all\n"
 "of the available {oscs,mdcs,llites} at the time will be added.\n"

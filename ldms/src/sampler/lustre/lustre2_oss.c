@@ -328,7 +328,7 @@ static void term(struct ldmsd_plugin *self)
  *
  * (ldmsctl usage note)
  * <code>
- * config name=lustre_oss producer=<prod_name> instance=<inst_name> osts=<OST1>,...
+ * config name=lustre2_oss producer=<prod_name> instance=<inst_name> osts=<OST1>,...
  *     prod_name       The producer id value.
  *     inst_name     The set name.
  *     osts              The comma-separated list of the OSTs to sample from.
@@ -364,12 +364,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return
-"config name=lustre_oss producer=<prod_name> instance=<inst_name> osts=<ost_list>\n"
-"	<prod_name>	The producer name\n"
-"	<inst_name>	The instance name\n"
-"	<osts>		A comma separated list of OSTs\n"
-"For osts: if not specified, all of the\n"
-"currently available OSTs will be added.\n";
+"config name=" SAMP " " BASE_CONFIG_SYNOPSIS
+"       [osts=<CSV>]\n"
+"\n"
+BASE_CONFIG_DESC
+"    osts         A comma separated value list of OSTs\n"
+"\n"
+"For osts: if not specified, all of the currently available OSTs will be added.\n"
+;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)

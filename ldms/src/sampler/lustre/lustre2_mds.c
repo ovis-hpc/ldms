@@ -247,7 +247,7 @@ static void term(struct ldmsd_plugin *self)
  *
  * (ldmsctl usage note)
  * <code>
- * config name=lustre_mds producer=<prod_name> instance=<inst_name> mdts=<MDT1>,...
+ * config name=lustre2_mds producer=<prod_name> instance=<inst_name> mdts=<MDT1>,...
  *     prod_name       The producer id value.
  *     inst_name     The set name.
  *     mdts              The comma-separated list of the MDTs to sample from.
@@ -282,12 +282,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return
-"config name=lustre_mds producer=<prod_name> instance=<inst_name> mdts=MDT1,...\n"
-"	prod_name	The producer name.\n"
-"	inst_name	The set name.\n"
-"	mdts		The list of MDTs.\n"
-"For mdts: if not specified, all of the\n"
-"currently available MDTs will be added.\n";
+"config name=" SAMP " " BASE_CONFIG_SYNOPSIS
+"       [mdts=<CSV>]\n"
+"\n"
+BASE_CONFIG_DESC
+"    mdts         The comma-separated value list of MDTs.\n"
+"\n"
+"For mdts: if not specified, all of the currently available MDTs will be added.\n"
+;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
