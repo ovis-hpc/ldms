@@ -71,9 +71,10 @@ typedef struct base_data_s {
 #define BASE_COMPONENT_ID	0
 #define BASE_JOB_ID		1
 #define BASE_APP_ID		2
-#define BASE_CONFIG_USAGE \
-	" producer=<name> instance=<name> [component_id=<int>] [schema=<name>]\n" \
-	"                [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>]\n" \
+#define BASE_CONFIG_SYNOPSIS \
+	"producer=<name> instance=<name> [component_id=<int>] [schema=<name>]\n" \
+	"       [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>]\n"
+#define BASE_CONFIG_DESC \
 	"    producer     A unique name for the host providing the data\n" \
 	"    instance     A unique name for the metric set\n" \
 	"    component_id A unique number for the component being monitored, Defaults to zero.\n" \
@@ -83,6 +84,8 @@ typedef struct base_data_s {
 	"    app_id       The name of the metric containing the Application Id, default is 'app_id'\n" \
 	"    job_start    The name of the metric containing the Job start time, default is 'job_start'\n" \
 	"    job_end      The name of the metric containing the Job end time, default is 'job_end'\n"
+
+#define BASE_CONFIG_USAGE BASE_CONFIG_SYNOPSIS BASE_CONFIG_DESC
 
 /**
  * \brief Create a sample schema with the standard metrics
