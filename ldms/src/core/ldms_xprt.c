@@ -2608,7 +2608,7 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 		ldms_t x = rbd->xprt;
 		if (!x) {
 #ifdef PUSH_DEBUG
-			x->log("DEBUG: Push set '%s'. Skipping RBD with no "
+			printf("DEBUG: Push set '%s'. Skipping RBD with no "
 						"transport %p. RBD type: %d\n",
 						ldms_set_instance_name_get(rbd),
 								rbd, rbd->type);
