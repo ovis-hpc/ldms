@@ -1838,7 +1838,7 @@ static int __ldms_conn_msg_verify(struct ldms_xprt *x, const void *data,
 		snprintf(err_msg, err_msg_len, "Version mismatch");
 		return EINVAL;
 	}
-	if (strncmp(msg->auth_name, x->auth->plugin->name, LDMS_AUTH_NAME_MAX)){
+	if (strncmp(msg->auth_name, x->auth->plugin->name, LDMS_AUTH_NAME_MAX+1)){
 		snprintf(err_msg, err_msg_len, "Auth mismatch");
 		return EINVAL;
 	}

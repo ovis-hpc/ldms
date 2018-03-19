@@ -106,7 +106,7 @@
  * \b auth_cred_get() tells the caller about the credential of the local side.
  */
 
-#define LDMS_AUTH_NAME_MAX 55
+#define LDMS_AUTH_NAME_MAX 15
 
 typedef struct ldms_auth_plugin *ldms_auth_plugin_t;
 typedef struct ldms_auth *ldms_auth_t;
@@ -122,7 +122,7 @@ struct ldms_auth {
 };
 
 struct ldms_auth_plugin {
-	char name[LDMS_AUTH_NAME_MAX];
+	char name[LDMS_AUTH_NAME_MAX + 1];
 	ldms_auth_t (*auth_new)(ldms_auth_plugin_t plugin,
 				struct attr_value_list *av_list);
 	ldms_auth_t (*auth_clone)(ldms_auth_t auth);

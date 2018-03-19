@@ -143,7 +143,7 @@ enum ldms_request_cmd {
 
 struct ldms_conn_msg {
 	struct ldms_version ver;
-	char auth_name[LDMS_AUTH_NAME_MAX];
+	char auth_name[LDMS_AUTH_NAME_MAX + 1];
 };
 
 struct ldms_send_cmd_param {
