@@ -113,17 +113,25 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 {
 	uint64_t gn;
 	ldmsd_prdcr_set_t prd_set = arg;
+	int errcode;
 #ifdef LDMSD_UPDATE_TIME
 	struct timeval end;
 	gettimeofday(&end, NULL);
 	prd_set->updt_duration = ldmsd_timeval_diff(&prd_set->updt_start, &end);
 	__updt_time_put(prd_set->updt_time);
 #endif /* LDMSD_UPDATE_TIME */
+	errcode = status & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST);
 	ldmsd_log(LDMSD_LDEBUG, "Update complete for Set %s with status %d\n",
 					prd_set->inst_name, status);
-	if (status & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST)) {
-		ldmsd_log(LDMSD_LINFO, "Update completing with bad status %d\n",
-			  status & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST));
+	if (errcode) {
+		char *op_s;
+		if (0 == (status & LDMS_UPD_F_PUSH))
+			op_s = "update";
+		else
+			op_s = "push";
+		ldmsd_log(LDMSD_LINFO, "Set %s: %s completing with "
+					"bad status %d\n",
+					prd_set->inst_name, op_s,errcode);
 		goto out;
 	}
 
@@ -153,7 +161,7 @@ set_ready:
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 	pthread_mutex_unlock(&prd_set->lock);
 out:
-	if (0 == (status & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST))) {
+	if (0 == errcode) {
 		ldmsd_log(LDMSD_LINFO, "Pushing set %p %s\n", prd_set->set,
 						prd_set->inst_name);
 		int rc = ldms_xprt_push(prd_set->set);
@@ -164,8 +172,8 @@ out:
 	}
 	if (0 == (status & LDMS_UPD_F_PUSH))
 		/*
-		 * A ref is taken before each update, but there is only
-		 * one push reference
+		 * This is an pull update, so put back the reference
+		 * taken when request for the update.
 		 */
 		ldmsd_prdcr_set_ref_put(prd_set);
 	return;
