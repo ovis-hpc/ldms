@@ -55,6 +55,12 @@
 #include "ldms.h"
 #include "ovis_util/util.h"
 
+__attribute__((constructor))
+void __init__()
+{
+	PyEval_InitThreads();
+}
+
 ldms_t LDMS_xprt_new(const char *xprt)
 {
         ldms_t x;
@@ -564,6 +570,67 @@ void __update_cb(ldms_t xprt, ldms_set_t set, int flags, void *_ctxt)
 
 SWIGINTERN PyObject *
 ldms_rbuf_desc_array_metric_value_get(struct ldms_rbuf_desc *, size_t, size_t);
+
+struct __uctxt {
+	PyObject *cb;
+	PyObject *set;
+	PyObject *ctxt;
+};
+
+struct __uctxt *__uctxt_new(PyObject *cb, PyObject *set, PyObject *ctxt)
+{
+	struct __uctxt *uctxt = calloc(1, sizeof(*uctxt));
+	if (!uctxt)
+		return NULL;
+	Py_INCREF(cb);
+	Py_INCREF(set);
+	Py_INCREF(ctxt);
+	uctxt->cb = cb;
+	uctxt->set = set;
+	uctxt->ctxt = ctxt;
+	return uctxt;
+}
+
+void __uctxt_free(struct __uctxt *uctxt)
+{
+	Py_DECREF(uctxt->cb);
+	Py_DECREF(uctxt->set);
+	Py_DECREF(uctxt->ctxt);
+	free(uctxt);
+}
+
+void __update_cb2(ldms_t xprt, ldms_set_t set, int flags, void *_ctxt)
+{
+	struct __uctxt *uctxt = _ctxt;
+	PyObject *result;
+	PyObject *args;
+	PyObject *kwargs;
+	PyGILState_STATE gstate;
+
+	gstate = PyGILState_Ensure();
+
+	/* build arguments */
+	args = Py_BuildValue("()");
+	kwargs = Py_BuildValue("{s:O, s:O, s:i}",
+				"ldms_set", uctxt->set,
+				"ctxt", uctxt->ctxt,
+				"flags", flags);
+
+	/* callback */
+	result = PyObject_Call(uctxt->cb, args, kwargs);
+
+	if (!result) {
+		/* print here as this won't be caught by python thread */
+		PyErr_Print();
+	}
+
+	/* cleanup */
+	Py_XDECREF(result);
+	Py_XDECREF(kwargs);
+	Py_XDECREF(args);
+	__uctxt_free(uctxt);
+	PyGILState_Release(gstate);
+}
 %}
 
 typedef unsigned char uint8_t;
@@ -650,8 +717,10 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 	}
 	inline PyObject *metric_value_get_by_name(const char *name) {
 		int i = ldms_metric_by_name(self, name);
-		if (i < 0)
+		if (i < 0) {
+			Py_INCREF(Py_None);
 			return Py_None;
+		}
 		return ldms_rbuf_desc_metric_value_get(self, i);
 	}
 	inline PyObject *__getitem__(PyObject *key) {
@@ -810,7 +879,7 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 		sprintf(dtsz, "%d.%06d(s)", ts->sec, ts->usec);
 		return PyString_FromString(dtsz);
 	}
-	inline void update() {
+	inline void _update_blocking() {
 		int rc;
 		ldms_update_ctxt_t ctxt;
 		char err_buff[128];
@@ -858,7 +927,36 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 	err0:
 		PyErr_SetString(PyExc_TypeError, err_buff);
 	}
+	inline void _update_nonblocking(PyObject *py_self, PyObject *cb,
+					PyObject *py_ctxt) {
+		int rc;
+		struct __uctxt *ctxt;
+
+		if (!PyCallable_Check(cb)) {
+			PyErr_SetString(PyExc_TypeError,
+					"callabck must be callable");
+			return;
+		}
+		ctxt = __uctxt_new(cb, py_self, py_ctxt);
+		if (!ctxt) {
+			PyErr_SetString(PyExc_RuntimeError, "Out of memory.");
+			return;
+		}
+		rc = ldms_xprt_update(self, __update_cb2, ctxt);
+		if (rc) {
+			char buff[64];
+			snprintf(buff, sizeof(buff), "update failed, rc: %d", rc);
+			PyErr_SetString(PyExc_RuntimeError, buff);
+			__uctxt_free(ctxt);
+		}
+	}
 }
 
 %pythoncode %{
+def set_update(self, cb=None, ctxt=None):
+	if not cb:
+		return _ldms.ldms_rbuf_desc__update_blocking(self)
+	return _ldms.ldms_rbuf_desc__update_nonblocking(self, self, cb, ctxt)
+setattr(ldms_rbuf_desc, "update", set_update)
+
 %}
