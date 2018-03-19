@@ -704,12 +704,10 @@ extern int ldms_xprt_lookup(ldms_t t, const char *name, enum ldms_lookup_flags f
  * \{
  */
 
-/** The update failed due to a transport error */
-#define LDMS_UPD_F_ERROR	1
 /** The update is the result of a peer push */
-#define LDMS_UPD_F_PUSH		2
+#define LDMS_UPD_F_PUSH		0x10000000
 /* This is final push update for this set */
-#define LDMS_UPD_F_PUSH_LAST	4
+#define LDMS_UPD_F_PUSH_LAST	0x20000000
 
 /**
  * \brief Prototype for the function called when update completes.
@@ -719,7 +717,8 @@ extern int ldms_xprt_lookup(ldms_t t, const char *name, enum ldms_lookup_flags f
  *
  * \param t	The transport endpoint.
  * \param s	The metric set handle updated.
- * \param flags One or more of the LDMS_UPD_F_xxx flags
+ * \param flags One or more of the LDMS_UPD_F_xxx flags bitwise-OR
+ * 		the error code in case of an error.
  * \param arg	The callback argument specified in the call to \c ldms_update.
  */
 typedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int flags, void *arg);
