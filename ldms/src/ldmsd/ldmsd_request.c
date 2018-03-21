@@ -3599,7 +3599,7 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 		cnt = snprintf(reqc->line_buf, reqc->line_len, "Hello '%s'", str);
 		ldmsd_send_req_response(reqc, reqc->line_buf);
 	} else if (ldmsd_req_attr_keyword_exist_by_name(reqc->req_buf, "test")) {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "Hi");
+		cnt = snprintf(reqc->line_buf, reqc->line_len, "Hi");
 		ldmsd_send_req_response(reqc, reqc->line_buf);
 	} else if (rep_len_str) {
 		rep_len = atoi(rep_len_str);
@@ -3616,45 +3616,47 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 	} else if (num_rec_str) {
 		num_rec = atoi(num_rec_str);
 		if (num_rec <= 1) {
-			cnt = snprintf(reqc->line_buf, reqc->line_len,
-					"First and last record (level <= 1)");
+			if (num_rec < 1) {
+				cnt = snprintf(reqc->line_buf, reqc->line_len,
+						"Invalid. level >= 1");
+				reqc->errcode = EINVAL;
+			} else {
+				cnt = snprintf(reqc->line_buf, reqc->line_len,
+						"single record 0");
+			}
 			ldmsd_send_req_response(reqc, reqc->line_buf);
 			goto out;
 		}
+
 		struct ldmsd_req_attr_s attr;
+		size_t remaining;
 		attr.attr_id = LDMSD_ATTR_STRING;
 		attr.discrim = 1;
-		cnt = 0;
-		/* Count message length */
-		for (i = 0; i < num_rec; i++) {
-			if (i == 0) {
-				cnt += snprintf(reqc->line_buf, reqc->line_len,
-							"First record: %d", i);
-			} else if (i == (num_rec-1)) {
-				cnt += snprintf(reqc->line_buf, reqc->line_len,
-							"Last record: %d", i);
-			} else {
-				cnt += snprintf(reqc->line_buf, reqc->line_len,
-							"record %d", i);
-			}
-		}
-		attr.attr_len = cnt + 1; /* +1 for '\0' */
+		attr.attr_len = reqc->rep_len - 2*sizeof(struct ldmsd_req_hdr_s)
+						- sizeof(struct ldmsd_req_attr_s);
 		ldmsd_hton_req_attr(&attr);
-		ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+		int msg_flag = LDMSD_REQ_SOM_F;
+
 		/* Construct the message */
 		for (i = 0; i < num_rec; i++) {
-			if (i == 0) {
-				cnt = snprintf(reqc->line_buf, reqc->line_len,
-							"First record: %d", i);
-			} else if (i == (num_rec-1)) {
-				cnt = snprintf(reqc->line_buf, reqc->line_len,
-							"Last record: %d", i);
-				cnt += 1; /* +1 for '\0' */
-			} else {
-				cnt = snprintf(reqc->line_buf, reqc->line_len,
-							"record %d", i);
-			}
+			remaining = reqc->rep_len - 2* sizeof(struct ldmsd_req_hdr_s);
+			ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), msg_flag);
+			remaining -= sizeof(struct ldmsd_req_attr_s);
+			cnt = snprintf(reqc->line_buf, reqc->line_len, "%d", i);
 			ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+			remaining -= cnt;
+			while (reqc->line_len < remaining) {
+				cnt = snprintf(reqc->line_buf, reqc->line_len, "%*s",
+							(int)reqc->line_len, "");
+				ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+				remaining -= cnt;
+			}
+			if (remaining) {
+				cnt = snprintf(reqc->line_buf, reqc->line_len,
+						"%*s", (int)remaining, " ");
+				ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+			}
+			msg_flag = 0;
 		}
 		attr.discrim = 0;
 		ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t),
