@@ -81,7 +81,6 @@ OPTION_WITH([me], [ME], [/usr/local])
 dnl Options for sampler
 OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
 OPTION_DEFAULT_DISABLE([kgnilnd], [ENABLE_KGNILND])
-OPTION_DEFAULT_DISABLE([knc_sampler], [ENABLE_KNC_SAMPLER])
 OPTION_DEFAULT_ENABLE([lustre], [ENABLE_LUSTRE])
 OPTION_DEFAULT_DISABLE([jobid], [ENABLE_JOBID])
 OPTION_DEFAULT_ENABLE([clock], [ENABLE_CLOCK])
@@ -113,12 +112,6 @@ OPTION_DEFAULT_ENABLE([tsampler], [ENABLE_TSAMPLER])
 OPTION_DEFAULT_ENABLE([cray_power_sampler], [ENABLE_CRAY_POWER_SAMPLER])
 dnl cray_power_sampler won't build with --disable-tsampler
 
-dnl power_sampler with powerapi
-dnl power_sampler won't build with --disable-tsampler
-OPTION_DEFAULT_DISABLE([pow], [ENABLE_POW])
-OPTION_WITH([pow], [POW], [/usr/local])
-
-
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_DISABLE([opa2], [ENABLE_OPA2])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
@@ -131,7 +124,6 @@ OPTION_DEFAULT_DISABLE([aries-mmr], [ENABLE_ARIES_MMR], [Requires --enable-gpcd 
 dnl linkstatus is not part of the cray_system_sampler
 OPTION_DEFAULT_DISABLE([aries_linkstatus], [ENABLE_ARIES_LINKSTATUS], [Requires gpcdr to be set up with status metrics])
 OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
-OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
 OPTION_DEFAULT_DISABLE([switchx], [ENABLE_SWITCHX])
 OPTION_WITH([switchx], [SWITCHX],[/usr/local])
@@ -242,23 +234,6 @@ if test "x$WITH_OVIS_LIB" != "xbuild" && test -z "$ENABLE_TSAMPLER_TRUE"; then
 	CFLAGS=$OCFLAGS
 	LIBS=""
 fi
-
-if test -z "$ENABLE_POW_TRUE"; then
-	OCFLAGS=$CFLAGS
-	CFLAGS=-I$POW_INCDIR
-	AC_CHECK_HEADERS(pwr.h,
-			 [],
-			 AC_MSG_FAILURE([pow.h not found])
-			 )
-	AC_CHECK_LIB(pwr, PWR_CntxtInit, [],
-		     AC_MSG_ERROR([PWR_CntxtInit() function not found. powerapi
-				   sampler requires libpow.]),
-		     [ $POW_LIB64DIR_FLAG $POW_LIBDIR_FLAG ]
-		)
-	CFLAGS=$OCFLAGS
-	LIBS=""
-fi
-
 
 if test -z "$ENABLE_SOS_TRUE"; then
 	if test "x$WITH_SOS" != "xbuild"; then
@@ -413,20 +388,6 @@ dnl Reset LIBS variable.
 
 LIBS=""
 
-dnl if knc, check for libmicmgmt
-if test "x$enable_knc_sampler" = "xyes"
-then
-
-	AC_CHECK_HEADERS(miclib.h, [],
-	AC_MSG_FAILURE([ not found])
-	)
-
-	AC_CHECK_LIB(micmgmt, mic_open_device, [],
-	    AC_MSG_FAILURE([micmgmt library not found.  knc_sampler requires libmicmgmt.]))
-fi
-
-dnl Reset LIBS variable.
-LIBS=""
 
 
 OPTION_GITINFO
@@ -489,11 +450,9 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/job_info/Makefile
 		 src/sampler/job_info_slurm/Makefile
 		 src/sampler/llnl/Makefile
-		 src/sampler/hadoop/Makefile
 		 src/sampler/shm/Makefile
 		 src/sampler/shm/shm_util/Makefile
 		 src/sampler/shm/mpi_profiler/Makefile
-		 src/sampler/hadoop/hadoop-sinks/OvisSink.java
 		 src/sampler/cray_system_sampler/Makefile
 		 src/sampler/aries_mmr/Makefile
 		 src/sampler/aries_mmr/aries_mmr_set_configs/Makefile

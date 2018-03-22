@@ -108,5 +108,4 @@ must be given at the configure line. Note that _baler_ has dependency on _sos_.
 LDMS sampler plugins
 * perfevent sampler
 * papi sampler
-* hadoop sampler
 * switchx

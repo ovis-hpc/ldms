@@ -52,15 +52,6 @@ libcray_power_sampler_la_LIBADD = $(COMMON_LIBADD) \
 pkglib_LTLIBRARIES += libcray_power_sampler.la
 endif
 
-if ENABLE_POW
-libpower_sampler_la_SOURCES = power_sampler.c
-libpower_sampler_la_CFLAGS = $(AM_CFLAGS) @POW_INCDIR_FLAG@
-libpower_sampler_la_LIBADD = $(COMMON_LIBADD) \
-			     -lpwr @POW_LIBDIR_FLAG@ @POW_LIB64DIR_FLAG@ \
-			     libtimer_base.la
-pkglib_LTLIBRARIES += libpower_sampler.la
-endif
-
 endif #ENABLE_TSAMPLER
 
 if ENABLE_KGNILND
@@ -109,10 +100,6 @@ if ENABLE_LUSTRE
 SUBDIRS += lustre
 endif
 
-if ENABLE_HADOOP
-SUBDIRS += hadoop
-endif
-
 if ENABLE_CRAY_SYSTEM_SAMPLER
 SUBDIRS += cray_system_sampler
 endif
@@ -129,20 +116,6 @@ pkglib_LTLIBRARIES += libarray_example.la
 liball_example_la_SOURCES = all_example.c
 liball_example_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += liball_example.la
-endif
-
-if ENABLE_KNC_SAMPLER
-libknc_sampler_la_SOURCES = knc_sampler.c
-libknc_sampler_la_LIBADD = $(COMMON_LIBADD) -lmicmgmt
-pkglib_LTLIBRARIES += libknc_sampler.la
-
-libknc_sampler_copy_la_SOURCES = knc_sampler_copy.c
-libknc_sampler_copy_la_LIBADD = $(COMMON_LIBADD) -lmicmgmt
-pkglib_LTLIBRARIES += libknc_sampler_copy.la
-
-libknc_sampler_derived_la_SOURCES = knc_sampler_derived.c
-libknc_sampler_derived_la_LIBADD = $(COMMON_LIBADD) -lmicmgmt
-pkglib_LTLIBRARIES += libknc_sampler_derived.la
 endif
 
 if ENABLE_LNET_STATS
