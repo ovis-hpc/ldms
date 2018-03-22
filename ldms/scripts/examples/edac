@@ -1,6 +1,7 @@
 export plugname=edac
 portbase=61012
-LDMSD 1 2
+LDMSD 1
+LDMSD -p prolog.store2 2
 MESSAGE ldms_ls on host 1:
 LDMS_LS 1 -l
 MESSAGE ldms_ls on host 2:
