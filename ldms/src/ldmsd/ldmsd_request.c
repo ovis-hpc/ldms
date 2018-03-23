@@ -581,7 +581,7 @@ int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc,
 			req_reply->rec_len = reqc->rep_off;
 			ldmsd_hton_req_hdr(req_reply);
 			reqc->xprt->send_fn(reqc->xprt, (char *)req_reply, ntohl(req_reply->rec_len));
-
+			reqc->rec_no++;
 			/* Reset the reply buffer for the next record for this message */
 			reqc->rep_off = sizeof(*req_reply);
 			attr = ldmsd_first_attr(req_reply);
