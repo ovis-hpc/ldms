@@ -167,6 +167,13 @@ class LDMSD_Req_Attr(object):
     def __len__(self):
         return len(self.packed)
 
+    def __repr__(self):
+        if self.discrim:
+            return "<LDMSD_Req_Attr discrim={0} attr_id={1} attr_len={2} attr_value={3}".format(
+                        self.discrim, self.attr_id, self.attr_len, self.attr_value)
+        else:
+            return "<LDMSD_Req_Attr discrim=0>"
+
     @classmethod
     def unpack(cls, buf):
         (discrim, ) = struct.unpack('!L', buf[:4])
