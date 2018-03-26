@@ -3736,6 +3736,79 @@ static int exit_daemon_handler(ldmsd_req_ctxt_t reqc)
 	return 0;
 }
 
+static int __greeting_path_resp_handler(ldmsd_req_cmd_t rcmd)
+{
+	struct ldmsd_req_attr_s my_attr;
+	ldmsd_req_attr_t server_attr;
+	char *path;
+	server_attr = ldmsd_first_attr((ldmsd_req_hdr_t)rcmd->reqc->req_buf);
+	my_attr.discrim = 1;
+	my_attr.attr_id = LDMSD_ATTR_STRING;
+	/* +1 for : */
+	my_attr.attr_len = server_attr->attr_len + strlen((char *)rcmd->ctxt) + 1;
+	path = malloc(my_attr.attr_len);
+	if (!path) {
+		rcmd->org_reqc->errcode = ENOMEM;
+		ldmsd_send_req_response(rcmd->org_reqc, "Out of memory");
+		return 0;
+	}
+	ldmsd_hton_req_attr(&my_attr);
+	ldmsd_append_reply(rcmd->org_reqc, (char *)&my_attr, sizeof(my_attr), LDMSD_REQ_SOM_F);
+	memcpy(path, server_attr->attr_value, server_attr->attr_len);
+	path[server_attr->attr_len] = ':';
+	strcpy(&path[server_attr->attr_len + 1], rcmd->ctxt);
+	ldmsd_append_reply(rcmd->org_reqc, path, ntohl(my_attr.attr_len), 0);
+	my_attr.discrim = 0;
+	ldmsd_append_reply(rcmd->org_reqc, (char *)&my_attr.discrim,
+				sizeof(my_attr.discrim), LDMSD_REQ_EOM_F);
+	free(path);
+	free(rcmd->ctxt);
+	return 0;
+}
+
+static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldmsd_prdcr_t prdcr;
+	ldmsd_req_cmd_t rcmd;
+	struct ldmsd_req_attr_s attr;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	prdcr = ldmsd_prdcr_first();
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);;
+	char *myself = strdup(ldmsd_myhostname_get());
+	if (!prdcr) {
+		attr.discrim = 1;
+		attr.attr_id = LDMSD_ATTR_STRING;
+		attr.attr_len = strlen(myself);
+		ldmsd_hton_req_attr(&attr);
+		ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+		ldmsd_append_reply(reqc, myself, strlen(myself), 0);
+		attr.discrim = 0;
+		ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(attr.discrim), LDMSD_REQ_EOM_F);
+	} else {
+		ldmsd_prdcr_lock(prdcr);
+		rcmd = alloc_req_cmd_ctxt(prdcr->xprt, prdcr->xprt->max_msg,
+						LDMSD_GREETING_REQ, reqc,
+						__greeting_path_resp_handler, myself);
+		ldmsd_prdcr_unlock(prdcr);
+		if (!rcmd) {
+			reqc->errcode = ENOMEM;
+			ldmsd_send_req_response(reqc, "Out of Memory");
+			return 0;
+		}
+		attr.attr_id = LDMSD_ATTR_PATH;
+		attr.attr_len = 0;
+		attr.discrim = 1;
+		ldmsd_hton_req_attr(&attr);
+		__ldmsd_append_buffer(rcmd->reqc, (char *)&attr, sizeof(attr),
+					LDMSD_REQ_SOM_F, LDMSD_REQ_TYPE_CONFIG_CMD);
+		attr.discrim = 0;
+		__ldmsd_append_buffer(rcmd->reqc, (char *)&attr.discrim,
+					sizeof(attr.discrim), LDMSD_REQ_EOM_F,
+						LDMSD_REQ_TYPE_CONFIG_CMD);
+	}
+	return 0;
+}
+
 static int greeting_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *str = 0;
@@ -3816,6 +3889,8 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 		attr.discrim = 0;
 		ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t),
 								LDMSD_REQ_EOM_F);
+	} else if (ldmsd_req_attr_keyword_exist_by_id(reqc->req_buf, LDMSD_ATTR_PATH)) {
+		(void) __greeting_path_req_handler(reqc);
 	} else {
 		ldmsd_send_req_response(reqc, NULL);
 	}
