@@ -106,7 +106,7 @@
  * \b auth_cred_get() tells the caller about the credential of the local side.
  */
 
-#define LDMS_AUTH_NAME_MAX 64
+#define LDMS_AUTH_NAME_MAX 55
 
 typedef struct ldms_auth_plugin *ldms_auth_plugin_t;
 typedef struct ldms_auth *ldms_auth_t;
