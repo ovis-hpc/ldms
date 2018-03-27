@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2013-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2013-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2013-2016,2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2016,2018 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -85,6 +85,9 @@
 #include "ldmsd.h"
 
 #include "lustre_sampler.h"
+#include "../sampler_base.h"
+
+#define SAMP "lustre2_oss"
 
 #define STR_MAP_SIZE 4093
 
@@ -211,6 +214,8 @@ static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
 
+static base_data_t base;
+
 char tmp_path[PATH_MAX];
 
 
@@ -244,7 +249,7 @@ struct str_list_head* construct_ost_list(const char *osts)
  * \returns 0 on success.
  * \returns \c errno on error.
  */
-static int create_metric_set(const char *path, const char *osts)
+static int create_metric_set(const char *osts)
 {
 	int rc, i, j;
 
@@ -253,8 +258,8 @@ static int create_metric_set(const char *path, const char *osts)
 		goto err0;
 
 	/* Done calculating, now it is time to construct set */
-	ldms_schema_t schema = ldms_schema_new("Lustre_OSS");
-	if (schema)
+	ldms_schema_t schema = base_schema_new(base);
+	if (!schema)
 		goto err1;
 	char suffix[128];
 	for (i = 0; i < OSS_SERVICES_LEN; i++) {
@@ -286,17 +291,15 @@ static int create_metric_set(const char *path, const char *osts)
 				goto err2;
 		}
 	}
-	set = ldms_set_new(path, schema);
+	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
 		goto err2;
 	}
-	ldms_schema_delete(schema);
 	return 0;
 err2:
 	msglog(LDMSD_LINFO, "lustre_oss.c:create_metric_set@err2\n");
 	lustre_metric_src_list_free(&lms_list);
-	ldms_schema_delete(schema);
 	msglog(LDMSD_LINFO, "WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
 err1:
@@ -310,9 +313,14 @@ err0:
 
 static void term(struct ldmsd_plugin *self)
 {
-	if (set)
+	if (set) {
 		ldms_set_delete(set);
-	set = NULL;
+		set = NULL;
+	}
+	if (base) {
+		base_del(base);
+		base = NULL;
+	}
 }
 
 /**
@@ -320,7 +328,7 @@ static void term(struct ldmsd_plugin *self)
  *
  * (ldmsctl usage note)
  * <code>
- * config name=lustre_oss producer=<prod_name> instance=<inst_name> osts=<OST1>,...
+ * config name=lustre2_oss producer=<prod_name> instance=<inst_name> osts=<OST1>,...
  *     prod_name       The producer id value.
  *     inst_name     The set name.
  *     osts              The comma-separated list of the OSTs to sample from.
@@ -328,43 +336,42 @@ static void term(struct ldmsd_plugin *self)
  * If osts is not given, the plugin will create ldms_set according to the
  * available OSTs at the time.
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+		  struct attr_value_list *avl)
 {
-	char *value, *osts;
-
-	producer_name = av_value(avl, "producer");
-	if (!producer_name) {
-		msglog(LDMSD_LERROR, "lustre2_oss: missing 'producer'\n");
-		return ENOENT;
-	}
-
-	value = av_value(avl, "set");
-	if (!value) {
-		msglog(LDMSD_LERROR, "lustre2_oss: missing 'instance'\n");
-		return EINVAL;
-	}
-	osts = av_value(avl, "osts");
+	char *osts;
 
 	if (set) {
 		msglog(LDMSD_LERROR, "lustre2_oss: Set already created.\n");
 		return EINVAL;
 	}
-	int rc = create_metric_set(value, osts);
-	if (rc)
+
+	base = base_config(avl, SAMP, "Lustre_OSS", msglog);
+	if (!base)
+		return errno;
+
+	osts = av_value(avl, "osts");
+
+	int rc = create_metric_set(osts);
+	if (rc) {
+		base_del(base);
+		base = NULL;
 		return rc;
-	ldms_set_producer_name_set(set, producer_name);
+	}
 	return 0;
 }
 
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return
-"config name=lustre_oss producer=<prod_name> instance=<inst_name> osts=<ost_list>\n"
-"	<prod_name>	The producer name\n"
-"	<inst_name>	The instance name\n"
-"	<osts>		A comma separated list of OSTs\n"
-"For osts: if not specified, all of the\n"
-"currently available OSTs will be added.\n";
+"config name=" SAMP " " BASE_CONFIG_SYNOPSIS
+"       [osts=<CSV>]\n"
+"\n"
+BASE_CONFIG_DESC
+"    osts         A comma separated value list of OSTs\n"
+"\n"
+"For osts: if not specified, all of the currently available OSTs will be added.\n"
+;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -376,7 +383,7 @@ static int sample(struct ldmsd_sampler *self)
 {
 	if (!set)
 		return EINVAL;
-	ldms_transaction_begin(set);
+	base_sample_begin(base);
 
 	struct lustre_metric_src *lms;
 
@@ -385,7 +392,7 @@ static int sample(struct ldmsd_sampler *self)
 		lms_sample(set, lms);
 	}
 
-	ldms_transaction_end(set);
+	base_sample_end(base);
 	return 0;
 }
 
