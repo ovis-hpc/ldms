@@ -59,7 +59,7 @@
 
 ldms_auth_plugin_t ldms_auth_plugin_get(const char *name)
 {
-	char libname[LDMS_AUTH_NAME_MAX + 16];
+	char libname[LDMS_AUTH_NAME_MAX + 17];
 	int len;
 	void *d = NULL;
 	ldms_auth_plugin_t p;

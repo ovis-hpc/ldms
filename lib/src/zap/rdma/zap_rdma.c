@@ -651,7 +651,7 @@ static zap_err_t z_rdma_connect(zap_ep_t ep,
 
 	ZAP_VERSION_SET(rep->conn_data.v);
 
-	if (data_len > ZAP_RDMA_CONN_DATA_MAX - sizeof(rep->conn_data)) {
+	if (data_len > ZAP_RDMA_CONN_DATA_MAX) {
 		zerr = ZAP_ERR_PARAMETER;
 		goto err_0;
 	}
