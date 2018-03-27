@@ -49,7 +49,7 @@
  */
 /**
  * \file procstat.c
- * \brief /proc/stat/util data provider
+ * \brief /proc/stat data provider
  */
 #define _GNU_SOURCE // for getline(). use a compat lib if not glibc platform
 #include <inttypes.h>
@@ -64,13 +64,11 @@
 #include <time.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldms_jobid.h"
+#include "sampler_base.h"
 
 static const int NCORESUFFIX = 3; //used for getting sum names from per core names (#%d)
 
 #define SAMP "procstat"
-
-static char* default_schema_name = SAMP;
 
 /*
  * Depending on the kernel version, not all of the rows will
@@ -105,21 +103,21 @@ static const char *array_metric_name[] = {
 	"per_core_guest_nice",
 };
 
-#define NUM_MID 8
-#define MID_JOBID g.scalar_pos[0]
-#define MID_PROCESSES g.scalar_pos[1]
-#define MID_PROCS_RUNNING g.scalar_pos[2]
-#define MID_PROCS_BLOCKED g.scalar_pos[3]
-#define MID_SOFTIRQ g.scalar_pos[4]
-#define MID_INTR g.scalar_pos[5]
-#define MID_CTXT g.scalar_pos[6]
-#define MID_NCORE g.scalar_pos[7]
+#define NUM_MID 7
+#define MID_PROCESSES g.scalar_pos[0]
+#define MID_PROCS_RUNNING g.scalar_pos[1]
+#define MID_PROCS_BLOCKED g.scalar_pos[2]
+#define MID_SOFTIRQ g.scalar_pos[3]
+#define MID_INTR g.scalar_pos[4]
+#define MID_CTXT g.scalar_pos[5]
+#define MID_NCORE g.scalar_pos[6]
 
 #define MAX_CPU_METRICS sizeof(default_metric_name)/sizeof(default_metric_name[0])
 
 static
 struct sampler_data {
 	int maxcpu; /* include space for this many cpus in metric set */
+	base_data_t base;
 	ldms_schema_t schema;
 	ldms_set_t set;
 	FILE *mf;	/* /proc/stat file pointer */
@@ -140,6 +138,7 @@ struct sampler_data {
 
 } g = {
 	.maxcpu = -2, // note: -2, not -1 for count_cpu to work right.
+	.base = NULL,
 	.line = NULL,
 	.line_sz = 0,
 	.warn_col_count = 0,
@@ -148,7 +147,6 @@ struct sampler_data {
 };
 // global instance, to become per instance later.
 
-LJI_GLOBALS;
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
@@ -293,7 +291,7 @@ int count_cpu( int *cpu_count, int *column_count, char *token, char **saveptr) {
 /*
 	.maxcpu = -1, // assume cores all locally , or 0-.maxcpu
 */
-static int create_metric_set(const char *instance_name, const char *schema_name)
+static int create_metric_set(base_data_t base)
 {
 	int rc,i;
 	int column_count = 0;
@@ -306,23 +304,14 @@ static int create_metric_set(const char *instance_name, const char *schema_name)
 		return ENOENT;
 	}
 
-	g.schema = ldms_schema_new(schema_name);
+	g.schema = base_schema_new(g.base);
 	if (!g.schema) {
+		g.msglog(LDMSD_LERROR,
+		       "%s: The schema '%s' could not be created, errno=%d.\n",
+		       SAMP, base->schema_name, errno);
 		rc = ENOMEM;
 		goto err;
 	}
-
-	rc = ldms_schema_meta_add(g.schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	rc = LJI_ADD_JOBID(g.schema);
-	if (rc < 0) {
-		goto err;
-	}
-	MID_JOBID = rc;
 
 	fseek(g.mf, 0, SEEK_SET);
 
@@ -403,7 +392,7 @@ if (strcmp(token,X)==0) { \
 			break;
 		case 'b':
 			FINISH_CPUS;
-			// ignore btime constant
+			/* ignore btime constant */
 			if (strcmp(token,"btime")!=0) {
 				STAT_UNEXPECTED("btime");
 			}
@@ -461,7 +450,7 @@ if (strcmp(token,X)==0) { \
 	}
 
 
-	g.set = ldms_set_new(instance_name, g.schema);
+	g.set = base_set_new(g.base);
 	if (!g.set) {
 		rc = errno;
 		g.msglog(LDMSD_LERROR, SAMP ": ldms_create_set failed.\n");
@@ -470,12 +459,10 @@ if (strcmp(token,X)==0) { \
 
 	return 0;
 
- err:
-	ldms_set_delete(g.set);
-	g.set = NULL;
  err1:
 	ldms_schema_delete(g.schema);
 	g.schema = NULL;
+ err:
 	if (g.mf)
 		fclose(g.mf);
 	return rc ;
@@ -509,13 +496,8 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP " maxcpu=<ncpu> producer=<name> instance=<instance_name> [component_id=<compid> schema=<sname>with_jobid=<jid>]\n"
-		"    <prod_name>  The producer name\n"
-		"    <inst_name>  The instance name\n"
-		"    <compid>     Optional unique number identifier. Defaults to zero.\n"
-		"    maxcpu      The number of cpus to record. If fewer exist, report 0s; if more ignore.\n"
-		LJI_DESC
-		"    <sname>      Optional schema name. Defaults to '" SAMP "'\n"
+	return  "config name=" SAMP " maxcpu=<ncpu>" BASE_CONFIG_USAGE
+		"    maxcpu       The number of cpus to record. If fewer exist, report 0s; if more ignore them.\n"
 	;
 }
 
@@ -526,33 +508,28 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *value, *endp = NULL;
 	int rc = EINVAL;
 	uint64_t utmp;
-	char *sname;
 
 	rc = config_check(kwl, avl);
 	if (rc != 0){
 		return rc;
 	}
-
-	g.producer_name = av_value(avl, "producer");
-	if (!g.producer_name) {
-		g.msglog(LDMSD_LERROR, SAMP ": missing producer.\n");
-		return ENOENT;
+	if (g.set) {
+		g.msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		return EINVAL;
 	}
 
-	value = av_value(avl, "component_id");
-	if (value)
-		g.compid = (uint64_t)(atoi(value));
-	else
-		g.compid = 0;
-
-	LJI_CONFIG(value,avl);
+	g.base = base_config(avl, SAMP, SAMP, g.msglog);
+	if (!g.base) {
+		rc = errno;
+		goto out;
+	}
 
 	value = av_value(avl, "maxcpu");
 	if (value) {
 		utmp = strtoull(value, &endp, 0);
 		if (endp == value) {
 			g.msglog(LDMSD_LERROR, SAMP
-				": config: maxcpu value bad: %s\n",value);
+				": config: maxcpu value bad: %s\n", value);
 			rc = EINVAL;
 			goto out;
 		}
@@ -561,31 +538,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		g.maxcpu = -2;
 	}
 
-	value = av_value(avl, "instance");
-	if (!value) {
-		g.msglog(LDMSD_LERROR, SAMP ": missing instance.\n");
-		return ENOENT;
-	}
-
-	sname = av_value(avl, "schema");
-	if (!sname)
-		sname = default_schema_name;
-	if (strlen(sname) == 0) {
-		g.msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
-		return EINVAL;
-	}
-
-	if (g.set) {
-		g.msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
-		return EINVAL;
-	}
-
-	rc = create_metric_set(value, sname);
+	rc = create_metric_set(g.base);
 	if (rc) {
 		g.msglog(LDMSD_LERROR, SAMP " create_metric_set err %d\n",
-		rc);
+			rc);
+		goto out;
 	}
-	ldms_metric_set_u64(g.set, 0, g.compid);
 
 	size_t csize = MAX_CPU_METRICS * g.maxcpu * sizeof(uint64_t)
 		+ g.maxcpu * sizeof(uint64_t *);
@@ -596,6 +554,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		g.set = NULL;
 		g.schema = NULL;
 		rc = ENOMEM;
+		goto out;
 	}
 	g.core_metric = (uint64_t **)g.core_data;
 	uint64_t *head = (uint64_t *)
@@ -605,9 +564,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		g.core_metric[i] = head;
 		head += MAX_CPU_METRICS;
 	}
-
-	ldms_set_producer_name_set(g.set, g.producer_name);
  out:
+	if (g.base && rc != 0) {
+		base_del(g.base);
+		g.base = NULL;
+	}
 	return rc;
 }
 
@@ -622,11 +583,14 @@ static int sample(struct ldmsd_sampler *self)
 		g.msglog(LDMSD_LERROR, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
-	ldms_transaction_begin(g.set);
+	int err = fseek(g.mf, 0, SEEK_SET);
+	if (err < 0) {
+		g.msglog(LDMSD_LERROR, SAMP ": failure seeking /proc/stat.\n");
+		return 0;
+	}
+	
+	base_sample_begin(g.base);
 
-	LJI_SAMPLE(g.set, MID_JOBID);
-
-	fseek(g.mf, 0, SEEK_SET);
 	cpu_count = -1;
 	do {
 		ssize_t nchar = 0;
@@ -685,7 +649,7 @@ static int sample(struct ldmsd_sampler *self)
 					&column_count,
 					token, &saveptr);
 				if (errcpu) {
-					// log something here?
+					/* log something here? */
 					rc = errcpu;
 					goto err1;
 				}
@@ -695,7 +659,7 @@ static int sample(struct ldmsd_sampler *self)
 			break;
 		case 'b':
 			S_FINISH_CPUS;
-			// ignore btime constant and any other b
+			/* ignore btime constant and any other b */
 			break;
 		case 'i':
 			S_FINISH_CPUS;
@@ -754,7 +718,7 @@ err1:
 		g.msglog(LDMSD_LERROR,
 			SAMP ": incomplete sample call.\n");
 	}
-	ldms_transaction_end(g.set);
+	base_sample_end(g.base);
 	return rc;
 #undef S_STAT_UNEXPECTED
 #undef S_FINISH_CPUS
@@ -767,6 +731,8 @@ static void term(struct ldmsd_plugin *self)
 		free(g.core_data);
 		g.core_data = NULL;
 	}
+	if (g.base)
+		base_del(g.base);
 	if (g.set) {
 		ldms_set_delete(g.set);
 		g.set = NULL;
@@ -777,10 +743,9 @@ static void term(struct ldmsd_plugin *self)
 	}
 	free(g.line);
 	g.line = NULL;
+	if (g.mf)
+		fclose(g.mf);
 }
-
-
-
 
 static struct ldmsd_sampler procstat_plugin = {
 	.base = {
@@ -799,4 +764,3 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	g.msglog = pf;
 	return &procstat_plugin.base;
 }
-
