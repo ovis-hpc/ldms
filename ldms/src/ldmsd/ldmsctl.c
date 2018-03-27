@@ -182,7 +182,13 @@ static void help_greeting()
 	printf("\nGreet ldmsd\n\n"
 	       "Parameters:"
 	       "     [name=]   The string ldmsd will echo back.\n"
-	       "               If 'name' is not given, nothing will be returned\n");
+	       "               If 'name' is not given, nothing will be returned\n"
+	       "     [offset=] The response will contain <offset> characters\n"
+	       "     [level=]  The response will consist of <level> + 1 records\n"
+	       "     [test]    The response is 'Hi'\n"
+	       "     [path]    The response is a string 'XXX:YYY:...:ZZZ',\n"
+	       "               where 'XXX', 'YYY' and 'ZZZ' are myhostname of\n"
+	       "               the first producer in the list of each daemon");
 }
 
 static void resp_greeting(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)

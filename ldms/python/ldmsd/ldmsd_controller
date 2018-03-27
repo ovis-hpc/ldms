@@ -897,6 +897,9 @@ class LdmsdCmdParser(cmd.Cmd):
         [name=]   String that ldmsd will echo back.
         [offset=]  Number of characters in the response message.
         [level=]   Number of records in the response message.
+        [test]    'Hi' will be returned.
+        [path]    String 'XXX:YYY:...:ZZZ' will be returned, where 'XXX', 'YYY' and 'ZZZ'
+                  are myhostname of the first producer in the list of each daemon.
         """
         resp = self.handle('greeting', arg)
         if "level" in arg:
