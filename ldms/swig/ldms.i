@@ -564,7 +564,7 @@ typedef struct ldms_update_ctxt {
 void __update_cb(ldms_t xprt, ldms_set_t set, int flags, void *_ctxt)
 {
 	ldms_update_ctxt_t ctxt = _ctxt;
-	ctxt->rc = flags & LDMS_UPD_F_ERROR;
+	ctxt->rc = flags & ~(LDMS_UPD_F_PUSH|LDMS_UPD_F_PUSH_LAST);
 	sem_post(&ctxt->sem);
 }
 
