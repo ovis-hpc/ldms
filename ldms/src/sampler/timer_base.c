@@ -326,13 +326,21 @@ void timer_base_cleanup(struct timer_base *tb)
 	tb->state = TBS_INIT;
 }
 
+static
+int __config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+struct attr_value_list *avl)
+{
+	assert(0 == "ERROR timer_base.config() not overridden.");
+	return ENOSYS;
+}
+
 void timer_base_init(struct timer_base *tb)
 {
 	/* sub-class can override these values after calling this function */
 	snprintf(tb->base.base.name, sizeof(tb->base.base.name), "timer_base");
 	tb->base.base.type = LDMSD_PLUGIN_SAMPLER;
 	tb->base.base.term = timer_base_term;
-	tb->base.base.config = timer_base_config;
+	tb->base.base.config = __config;
 	tb->base.base.usage = timer_base_usage;
 	tb->base.get_set = timer_base_get_set;
 	tb->base.sample = timer_base_sample;
