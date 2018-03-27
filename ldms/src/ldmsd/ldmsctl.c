@@ -188,8 +188,26 @@ static void help_greeting()
 static void resp_greeting(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
-	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
-		printf("%s\n", attr->attr_value);
+	ldmsd_req_attr_t next_attr;
+	int count;
+	while (attr->discrim) {
+		next_attr = ldmsd_next_attr(attr);
+		if ((0 == next_attr->discrim) && (count == 0)) {
+			char *str = strdup(attr->attr_value);
+			char *tok = strtok(str, " ");
+			if (!isdigit(tok[0])) {
+				/* The attribute 'level' isn't used. */
+				printf("%s\n", attr->attr_value);
+			} else {
+				printf("%s\n", str);
+			}
+			free(str);
+		} else {
+			printf("%s\n", strtok(attr->attr_value, " "));
+		}
+		attr = next_attr;
+		count++;
+	}
 }
 
 static int handle_quit(struct ldmsctl_ctrl *ctrl, char *kw)
