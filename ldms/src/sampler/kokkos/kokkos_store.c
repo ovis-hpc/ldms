@@ -1,0 +1,977 @@
+/* -*- c-basic-offset: 8 -*-
+ * Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2018 Sandia Corporation. All rights reserved.
+ *
+ * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
+ * license for use of this work by or on behalf of the U.S. Government.
+ * Export of this program may require a license from the United States
+ * Government.
+ *
+ * This software is available to you under a choice of one of two
+ * licenses.  You may choose to be licensed under the terms of the GNU
+ * General Public License (GPL) Version 2, available from the file
+ * COPYING in the main directory of this source tree, or the BSD-type
+ * license below:
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *      Redistributions of source code must retain the above copyright
+ *      notice, this list of conditions and the following disclaimer.
+ *
+ *      Redistributions in binary form must reproduce the above
+ *      copyright notice, this list of conditions and the following
+ *      disclaimer in the documentation and/or other materials provided
+ *      with the distribution.
+ *
+ *      Neither the name of Sandia nor the names of any contributors may
+ *      be used to endorse or promote products derived from this software
+ *      without specific prior written permission.
+ *
+ *      Neither the name of Open Grid Computing nor the names of any
+ *      contributors may be used to endorse or promote products derived
+ *      from this software without specific prior written permission.
+ *
+ *      Modified source versions must be plainly marked as such, and
+ *      must not be misrepresented as being the original software.
+ *
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+#include <inttypes.h>
+#include <unistd.h>
+#include <sys/errno.h>
+#include <sys/stat.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <time.h>
+#include <pthread.h>
+#include <assert.h>
+#include <coll/htbl.h>
+#include <sos/sos.h>
+#include "ldms.h"
+#include "ldmsd.h"
+#include "json.h"
+
+#include "kvd_svc.h"
+ldmsd_msg_log_f msglog;
+kvd_svc_t kvc = { 0 };
+
+pthread_t sample_thread;
+pthread_t kvd_thread;
+struct kvd_svc_s svc;
+
+htbl_t act_table;
+static sos_t sos;
+static sos_schema_t app_schema;
+static sos_schema_t kernel_schema;
+static sos_attr_t kernel_job_id_attr;
+static sos_attr_t kernel_start_time_attr;
+static sos_attr_t kernel_app_id_attr;
+static sos_attr_t kernel_mpi_rank_attr;
+static sos_attr_t kernel_inst_data_attr;
+static sos_schema_t sha256_schema;
+static sos_attr_t sha256_string_attr;
+static sos_attr_t sha256_digest_attr;
+
+
+static char path_buff[PATH_MAX];
+static char *log_path = "/var/log/ldms/kokkos_kokkos_store.log";
+static char *port = "18080";
+static char *address= "0.0.0.0";
+static char *verbosity = "WARN";
+
+typedef struct kokkos_parser_s {
+	struct json_parser_s base;
+
+	sos_obj_t app_obj;
+	sos_obj_t kernel_obj;
+
+	/* These atttributes inherited are the kernel objects */
+	uint64_t job_id;
+	uint64_t app_id;
+	uint64_t mpi_rank;
+	uint32_t start_time;
+	uint8_t inst_data[SHA256_DIGEST_LENGTH];
+
+} *kokkos_parser_t;
+
+static char *root_path;
+
+static struct ldmsd_plugin kokkos_store;
+
+static void print_entity(json_entity_t e);
+
+static void print_array(json_entity_t e)
+{
+	json_item_t i;
+	int count = 0;
+	printf("[");
+	TAILQ_FOREACH(i, &e->value.array_->item_list, item_entry) {
+		if (count)
+			printf(",");
+		print_entity(i->item);
+		count++;
+	}
+	printf("]");
+}
+
+static void print_dict(json_entity_t e)
+{
+	json_attr_t i;
+	int count = 0;
+	printf("{");
+	TAILQ_FOREACH(i, &e->value.dict_->attr_list, attr_entry) {
+		if (count)
+			printf(",");
+		printf("\"%s\" : ", i->name);
+		print_entity(i->value);
+		count++;
+	}
+	printf("}");
+}
+
+static void print_entity(json_entity_t e)
+{
+	switch (e->type) {
+	case JSON_INT_VALUE:
+		printf("%d", e->value.int_);
+		break;
+	case JSON_BOOL_VALUE:
+		if (e->value.bool_)
+			printf("true");
+		else
+			printf("false");
+		break;
+	case JSON_FLOAT_VALUE:
+		printf("%.2f", e->value.double_);
+		break;
+	case JSON_STRING_VALUE:
+		printf("\"%s\"", e->value.str_);
+		break;
+	case JSON_ARRAY_VALUE:
+		print_array(e);
+		break;
+	case JSON_DICT_VALUE:
+		print_dict(e);
+		break;
+	case JSON_NULL_VALUE:
+		printf("null");
+		break;
+	default:
+		assert(0 == "invalid entity type");
+	}
+}
+
+struct action;
+typedef struct action *action_t;
+typedef int (*act_process_fn_t)(json_parser_t, json_entity_t, sos_obj_t obj, sos_attr_t attr);
+struct action {
+	act_process_fn_t act_fn;
+	sos_schema_t schema;
+	sos_attr_t attr;
+	int app_n_kernel;
+	struct hent hent;
+};
+
+static action_t get_act(const char *key, size_t key_len)
+{
+	hent_t hent = htbl_find(act_table, key, key_len);
+	if (hent)
+		return container_of(hent, struct action, hent);
+	return NULL;
+}
+
+static int process_string(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	kokkos_parser_t k = (kokkos_parser_t)p;
+	struct sos_value_s v_;
+	sos_value_t v = sos_array_new(&v_, attr, obj, e->value.str_->str_len + 2);
+	if (v) {
+		memcpy(v->data->array.data.char_, e->value.str_->str, e->value.str_->str_len);
+		v->data->array.data.char_[e->value.str_->str_len] = '\0';
+		return 0;
+	}
+	return ENOMEM;
+}
+
+struct visit_cb_ctxt {
+	kokkos_parser_t k;
+	json_entity_t e;
+	int rc;
+};
+
+static sos_visit_action_t add_digest_cb(sos_index_t index,
+					sos_key_t key, sos_idx_data_t *idx_data,
+					int found, void *arg)
+{
+	int rc;
+	struct sos_value_s v_, *v;
+	sos_value_data_t digest;
+	size_t sz;
+	sos_obj_t obj;
+	sos_obj_ref_t *ref = (sos_obj_ref_t *)idx_data;
+	struct visit_cb_ctxt *ctxt = arg;
+
+	if (found) {
+		ctxt->rc = EEXIST;
+		return SOS_VISIT_NOP;
+	}
+
+	/* Allocate a new object */
+	obj = sos_obj_new(sha256_schema);
+	if (!obj)
+		goto err_0;
+
+	digest = sos_obj_attr_data(obj, sha256_digest_attr, NULL);
+	if (!digest) {
+		msglog(LDMSD_LERROR,
+		       "%s: Error %d getting the data for the sha256 attribute.\n"
+		       "Digest key was not added.\n",
+		       kokkos_store.name, errno);
+		goto err_1;
+	}
+	memcpy(digest->prim.struc_, ctxt->e->value.str_->str_digest,
+	       sos_attr_size(sha256_digest_attr));
+
+	v = sos_array_new(&v_, sha256_string_attr, obj, ctxt->e->value.str_->str_len + 2);
+	if (!v) {
+		msglog(LDMSD_LERROR,
+		       "%s: Error %d allocating the digest string.\n",
+		       kokkos_store.name, errno);
+		goto err_1;
+	}
+	sos_value_memcpy(v, ctxt->e->value.str_->str, ctxt->e->value.str_->str_len);
+	sos_value_put(v);
+
+	*ref = sos_obj_ref(obj);
+	sos_obj_put(obj);
+	ctxt->rc = 0;
+	return SOS_VISIT_ADD;
+
+ err_1:
+	sos_obj_delete(obj);
+	sos_obj_put(obj);
+
+ err_0:
+	ctxt->rc = ENOMEM;
+	return SOS_VISIT_NOP;
+}
+
+int add_digest(kokkos_parser_t k, json_entity_t e)
+{
+	struct visit_cb_ctxt ctxt;
+	SOS_KEY(key);
+	int rc;
+
+	sos_key_set(key, e->value.str_->str_digest, sos_attr_size(sha256_digest_attr));
+	ctxt.k = k;
+	ctxt.e = e;
+	ctxt.rc = 0;
+	rc = sos_index_visit(sos_attr_index(sha256_digest_attr), key, add_digest_cb, &ctxt);
+	if (rc != ENOMEM)
+		rc = ctxt.rc;
+	return ctxt.rc;
+}
+
+static int process_inst_data(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	kokkos_parser_t k = (kokkos_parser_t)p;
+	int i;
+	sos_value_data_t data;
+
+	/* Add the digest->string map */
+	add_digest(k, e);
+
+	/* Add the object digest attribute */
+	data = sos_obj_attr_data(obj, attr, NULL);
+	memcpy(data->prim.struc_, e->value.str_->str_digest, sos_attr_size(attr));
+
+	/* Save it to the parser so it can be inherited by the kernel samples */
+	memcpy(k->inst_data, e->value.str_->str_digest, sizeof(k->inst_data));
+
+	return 0;
+}
+
+static int process_digest(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	kokkos_parser_t k = (kokkos_parser_t)p;
+	int i;
+	sos_value_data_t data;
+
+	/* Add the digest->string map */
+	add_digest(k, e);
+
+	/* Add the object digest attribute */
+	data = sos_obj_attr_data(obj, attr, NULL);
+	memcpy(data->prim.struc_, e->value.str_->str_digest, sos_attr_size(attr));
+
+	return 0;
+}
+
+static int process_double(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	kokkos_parser_t k = (kokkos_parser_t)p;
+	sos_value_data_t data = sos_obj_attr_data(obj, attr, NULL);
+	if (e->type == JSON_FLOAT_VALUE)
+		data->prim.double_ = e->value.double_;
+	else if (e->type == JSON_INT_VALUE)
+		data->prim.double_ = (double)e->value.int_;
+	else
+		data->prim.double_ = 0.0;
+	return 0;
+}
+
+static int process_int(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	kokkos_parser_t k = (kokkos_parser_t)p;
+	sos_value_data_t data = sos_obj_attr_data(obj, attr, NULL);
+	data->prim.uint64_ = e->value.int_;
+	return 0;
+}
+
+static int process_start_time(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	kokkos_parser_t k = (kokkos_parser_t)p;
+	sos_value_data_t data = sos_obj_attr_data(obj, attr, NULL);
+	data->prim.timestamp_.fine.secs = e->value.int_;
+	data->prim.timestamp_.fine.usecs = 0;
+	k->start_time = e->value.int_;
+	return 0;
+}
+
+static int process_job_id(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	kokkos_parser_t k = (kokkos_parser_t)p;
+	sos_value_data_t data = sos_obj_attr_data(obj, attr, NULL);
+	k->job_id = e->value.int_;
+	data->prim.uint64_ = e->value.int_;
+	return 0;
+}
+
+static int process_app_id(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	kokkos_parser_t k = (kokkos_parser_t)p;
+	sos_value_data_t data = sos_obj_attr_data(obj, attr, NULL);
+	k->app_id = e->value.int_;
+	data->prim.uint64_ = e->value.int_;
+	return 0;
+}
+
+static int process_mpi_rank(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	kokkos_parser_t k = (kokkos_parser_t)p;
+	sos_value_data_t data = sos_obj_attr_data(obj, attr, NULL);
+	k->mpi_rank = e->value.int_;
+	data->prim.uint64_ = e->value.int_;
+	return 0;
+}
+
+static int process_sample_entity(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	kokkos_parser_t k = (kokkos_parser_t)p;
+	action_t act;
+	sos_value_data_t data;
+	json_attr_t a;
+
+	if (e->type != JSON_DICT_VALUE) {
+		msglog(LDMSD_LERROR, "%s: The sample entity must be a dictionary, not a %s\n",
+		       kokkos_store.name, json_type_names[e->type]);
+		return EINVAL;
+	}
+
+	assert(k->kernel_obj == NULL);
+	k->kernel_obj = sos_obj_new(kernel_schema);
+	if (!k->kernel_obj) {
+		msglog(LDMSD_LERROR, "%s: Eror %d creating sample object.\n",
+		       kokkos_store.name, errno);
+		return errno;
+	}
+	data = sos_obj_attr_data(k->kernel_obj, kernel_job_id_attr, NULL);
+	data->prim.uint64_ = k->job_id;
+
+	data = sos_obj_attr_data(k->kernel_obj, kernel_start_time_attr, NULL);
+	data->prim.timestamp_.fine.secs = k->start_time;
+	data->prim.timestamp_.fine.usecs = 0;
+
+	data = sos_obj_attr_data(k->kernel_obj, kernel_app_id_attr, NULL);
+	data->prim.uint64_ = k->app_id;
+
+	data = sos_obj_attr_data(k->kernel_obj, kernel_mpi_rank_attr, NULL);
+	data->prim.uint64_ = k->mpi_rank;
+
+	data = sos_obj_attr_data(k->kernel_obj, kernel_inst_data_attr, NULL);
+	memcpy(data->prim.struc_, k->inst_data, sizeof(k->inst_data));
+
+	TAILQ_FOREACH(a, &e->value.dict_->attr_list, attr_entry) {
+		act = get_act(a->name->str, a->name->str_len);
+		if (!act) {
+			msglog(LDMSD_LERROR, "%s: '%s' is not a recognized attribute name.\n",
+			       kokkos_store.name, a->name->str);
+			continue;
+		}
+		if (act->app_n_kernel)
+			act->act_fn(p, a->value, k->app_obj, act->attr);
+		else
+			act->act_fn(p, a->value, k->kernel_obj, act->attr);
+	}
+	sos_obj_index(k->kernel_obj);
+	sos_obj_put(k->kernel_obj);
+	k->kernel_obj = NULL;
+	return 0;
+}
+
+static int process_array_entity(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	json_item_t i;
+	if (e->type != JSON_ARRAY_VALUE) {
+		msglog(LDMSD_LERROR, "%s: The kernel-perf-info entity "
+			  "must be a JSon array, i.e. []. Got a %d.\n",
+			  kokkos_store.name, e->type);
+		return 1;
+	}
+	TAILQ_FOREACH(i, &e->value.array_->item_list, item_entry) {
+		process_sample_entity(p, i->item, NULL, NULL);
+	}
+	return 0;
+}
+
+static int process_dict_entity(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	kokkos_parser_t k = (kokkos_parser_t)p;
+	action_t act;
+	json_attr_t a;
+
+	if (e->type != JSON_DICT_VALUE) {
+		msglog(LDMSD_LERROR, "%s: Expected a dictionary object, not a %s.\n",
+			  kokkos_store.name, json_type_names[e->type]);
+		return;
+	}
+
+	TAILQ_FOREACH(a, &e->value.dict_->attr_list, attr_entry) {
+		act = get_act(a->name->str, a->name->str_len);
+		if (!act) {
+			msglog(LDMSD_LERROR, "%s: '%s' is not a recognized attribute name.\n",
+			       kokkos_store.name, a->name->str);
+			continue;
+		}
+		if (act->app_n_kernel)
+			act->act_fn(p, a->value, k->app_obj, act->attr);
+		else
+			act->act_fn(p, a->value, k->kernel_obj, act->attr);
+	}
+	return 0;
+}
+
+static void err_enomem(struct kvd_req_ctxt *ctxt, size_t requested)
+{
+	evbuffer_add_printf(ctxt->evbuffer,
+			    "{"
+			    "\"status\" : 12,"
+			    "\"msg\" : \"Out of memory! Could not allocate %d bytes.\""
+			    "}\n", requested);
+}
+
+static void json_result(struct kvd_req_ctxt *ctxt, int result)
+{
+	evbuffer_add_printf(ctxt->evbuffer,
+			    "{ \"status\" : %d, \"msg\" : \"%s\"  }\n",
+			    result, strerror(result));
+}
+
+static void kokkos_handle_sample(struct kvd_req_ctxt *ctxt)
+{
+	json_entity_t e;
+	struct evbuffer *in = evhttp_request_get_input_buffer(ctxt->req);
+	size_t len = evbuffer_get_length(in);
+	const char *key;
+	char *data, *decoded;
+	int rc;
+	json_entity_t entity;
+
+	/*
+	 * lex needs two end-of-buffer characters ('\0'). Add spaces
+	 * to the end of the input to string cause evhttp_uridecode to
+	 * allocate enough memory to overwrite these trailing spaces
+	 * with '\0\0'
+	 */
+	data = malloc(len+3);
+	if (!data) {
+		err_enomem(ctxt, len + 1);
+		return;
+	}
+	evbuffer_copyout(in, data, len);
+	/* Two spaces to the data */
+	data[len] = ' ';
+	data[len+1] = ' ';
+	data[len+2] = '\0';
+	decoded = evhttp_uridecode(data, 0, &len);
+	/* Overwrite the spaces we added */
+	decoded[len-2] = '\0';
+	decoded[len-1] = '\0';
+
+	json_parser_t parser = json_parser_new(sizeof(struct kokkos_parser_s));
+	kokkos_parser_t k = (kokkos_parser_t)parser;
+	k->job_id = k->app_id = k->mpi_rank = 0;
+	k->app_obj = sos_obj_new(app_schema);
+	if (!k->app_obj) {
+		msglog(LDMSD_LERROR, "%s: Error %d creating Kokkos App object.\n",
+		       kokkos_store.name, errno);
+		json_result(ctxt, errno);
+		goto out;
+	}
+	rc = json_parse_buffer(parser, decoded, len+2, &entity);
+	if (rc == 0) {
+		process_dict_entity(parser, entity, NULL, NULL);
+		json_entity_free(entity);
+		json_result(ctxt, 0);
+	} else {
+		json_result(ctxt, EINVAL);
+	}
+	sos_obj_index(k->app_obj);
+ out:
+	free(parser);
+	free(decoded);
+	free(data);
+}
+
+static void kokkos_handle_test(struct kvd_req_ctxt *ctxt)
+{
+	evbuffer_add_printf(ctxt->evbuffer,
+			    "<html><head><title>Kokkos Json Importer Service</title>"
+			    "</head><body>URL Syntax: http://host/sample?\"json-data\"<br>");
+	evbuffer_add_printf(ctxt->evbuffer, "</body></html>");
+}
+
+static struct sos_schema_template kokkos_sha256_template = {
+	.name = "sha256_string",
+	.attrs = {
+		{ .name = "sha256",
+		  .type = SOS_TYPE_STRUCT, .size = 32,
+		  .indexed = 1, .idx_type = "HTBL" },
+		{ .name = "string", .type = SOS_TYPE_CHAR_ARRAY },
+		{}
+	}
+};
+
+// static const char *app_join_list[] = { "inst_data", "job_id", "app_id",  "start_time" };
+static const char *app_join_list[] = { "inst_data", "job_id", "app_id" };
+static struct sos_schema_template kokkos_app_template = {
+	.name = "kokkos_app",
+	.attrs = {
+		{ .name = "job_id", .type = SOS_TYPE_UINT64, .indexed = 1 },
+		{ .name = "job_name", .type = SOS_TYPE_CHAR_ARRAY },
+		{ .name = "app_id", .type = SOS_TYPE_UINT64 },
+		{ .name = "inst_data", .type = SOS_TYPE_STRUCT,	.size = 32 },
+		{ .name = "start_time",	.type = SOS_TYPE_TIMESTAMP },
+		{ .name = "mpi_rank", .type = SOS_TYPE_UINT64 },
+		{ .name = "user_id", .type = SOS_TYPE_UINT32, .indexed = 1 },
+		{ .name = "component_id", .type = SOS_TYPE_UINT64 },
+		{ .name = "total_app_time", .type = SOS_TYPE_DOUBLE },
+		{ .name = "total_kernel_times", .type = SOS_TYPE_DOUBLE },
+		{ .name = "total_non_kernel_times", .type = SOS_TYPE_DOUBLE },
+		{ .name = "percent_in_kernels", .type = SOS_TYPE_DOUBLE },
+		{ .name = "unique_kernel_calls", .type = SOS_TYPE_DOUBLE },
+		{ .name = "inst_job_app_time", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(app_join_list) / sizeof(app_join_list[0]),
+		  .indexed = 1,
+		  .join_list = app_join_list },
+		{}
+	}
+};
+
+// static const char *kernel_join_list[] = { "inst_data", "job_id", "app_id", "kernel_name", "start_time" };
+static const char *kernel_join_list[] = { "inst_data", "job_id", "app_id", "kernel_name" };
+static struct sos_schema_template kokkos_kernel_template = {
+	.name = "kokkos_kernel",
+	.attrs = {
+		{ .name = "job_id", .type = SOS_TYPE_UINT64 },
+		{ .name = "app_id", .type = SOS_TYPE_UINT64 },
+		{ .name = "inst_data", .type = SOS_TYPE_STRUCT,	.size = 32 },
+		{ .name = "start_time",	.type = SOS_TYPE_TIMESTAMP },
+		{ .name = "mpi_rank", .type = SOS_TYPE_UINT64 },
+		{ .name = "kernel_name", .type = SOS_TYPE_STRUCT, .size = 32 },
+		{ .name = "kernel_type", .type = SOS_TYPE_CHAR_ARRAY },
+		{ .name = "region", .type = SOS_TYPE_CHAR_ARRAY },
+		{ .name = "call_count", .type = SOS_TYPE_DOUBLE },
+		{ .name = "total_time", .type = SOS_TYPE_DOUBLE },
+		{ .name = "time_per_call", .type = SOS_TYPE_DOUBLE },
+		{ .name = "inst_job_app_kernel_time", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(kernel_join_list) / sizeof(kernel_join_list[0]),
+		  .indexed = 1,
+		  .join_list = kernel_join_list },
+		{ .name = "inst_job_app_time", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(app_join_list) / sizeof(app_join_list[0]),
+		  .indexed = 1,
+		  .join_list = app_join_list },
+		{ 0 }
+	}
+};
+
+static int create_container(char *path)
+{
+	int rc = 0;
+	sos_t sos;
+	time_t t;
+	char part_name[16];	/* Unix timestamp as string */
+	sos_part_t part;
+
+	rc = sos_container_new(path, 0660);
+	if (rc) {
+		msglog(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
+		       rc, path);
+		goto err_0;
+	}
+	sos = sos_container_open(path, SOS_PERM_RW);
+	if (!sos) {
+		msglog(LDMSD_LERROR, "Error %d opening the container at '%s'\n",
+		       errno, path);
+		goto err_0;
+	}
+	/*
+	 * Create the first partition. All other partitions and
+	 * rollover are handled with the SOS partition commands
+	 */
+	t = time(NULL);
+	sprintf(part_name, "%d", (unsigned int)t);
+	rc = sos_part_create(sos, part_name, path);
+	if (rc) {
+		msglog(LDMSD_LERROR, "Error %d creating the partition '%s' in '%s'\n",
+		       rc, part_name, path);
+		goto err_1;
+	}
+	part = sos_part_find(sos, part_name);
+	if (!part) {
+		msglog(LDMSD_LERROR, "Newly created partition was not found\n");
+		goto err_1;
+	}
+	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
+	if (rc) {
+		msglog(LDMSD_LERROR, "New partition could not be made primary\n");
+		goto err_2;
+	}
+	sos_part_put(part);
+	return 0;
+ err_2:
+	sos_part_put(part);
+ err_1:
+	sos_container_close(sos, SOS_COMMIT_ASYNC);
+	sos = NULL;
+ err_0:
+	return rc;
+}
+
+static int create_schema(sos_t sos,
+			 sos_schema_t *app, sos_schema_t *kernel,
+			 sos_schema_t *sha256)
+{
+	int rc;
+	sos_schema_t schema;
+
+	/* Create and add the App schema */
+	schema = sos_schema_from_template(&kokkos_app_template);
+	if (!schema) {
+		msglog(LDMSD_LERROR, "%s: Error %d creating Kokkos App schema.\n",
+		       kokkos_store.name, errno);
+		return errno;
+	}
+	rc = sos_schema_add(sos, schema);
+	if (rc) {
+		msglog(LDMSD_LERROR, "%s: Error %d adding Kokkos App schema.\n",
+		       kokkos_store.name, rc);
+		return rc;
+	}
+	*app = schema;
+
+	/* Create and add the Kernel schema */
+	schema = sos_schema_from_template(&kokkos_kernel_template);
+	if (!schema) {
+		msglog(LDMSD_LERROR, "%s: Error %d creating Kokkos Kernel schema.\n",
+		       kokkos_store.name, errno);
+		return errno;
+	}
+	rc = sos_schema_add(sos, schema);
+	if (rc) {
+		msglog(LDMSD_LERROR, "%s: Error %d adding Kokkos Kernel schema.\n",
+		       kokkos_store.name, rc);
+		return rc;
+	}
+	*kernel = schema;
+
+	/* Create and add the sha256 schema */
+	schema = sos_schema_from_template(&kokkos_sha256_template);
+	if (!schema) {
+		msglog(LDMSD_LERROR, "%s: Error %d creating SHA256 schema.\n",
+		       kokkos_store.name, errno);
+		return errno;
+	}
+	rc = sos_schema_add(sos, schema);
+	if (rc) {
+		msglog(LDMSD_LERROR, "%s: Error %d adding SHA256 schema.\n",
+		       kokkos_store.name, rc);
+		return rc;
+	}
+	*sha256 = schema;
+
+	return 0;
+}
+
+static int reopen_container(char *path)
+{
+	int rc = 0;
+	sos_schema_t schema;
+
+	/* Close the container if it already exists */
+	if (sos)
+		sos_container_close(sos, SOS_COMMIT_ASYNC);
+
+	/* Check if the container at path is already present */
+	sos = sos_container_open(path, SOS_PERM_RW);
+	if (!sos) {
+		rc = create_container(path);
+		if (rc)
+			return rc;
+		sos = sos_container_open(path, SOS_PERM_RW);
+		if (!sos)
+			return errno;
+		rc = create_schema(sos, &app_schema, &kernel_schema, &sha256_schema);
+		if (rc)
+			return rc;
+	} else {
+		app_schema = sos_schema_by_name(sos, kokkos_app_template.name);
+		if (!app_schema)
+			return EINVAL;
+		kernel_schema = sos_schema_by_name(sos, kokkos_kernel_template.name);
+		if (!app_schema)
+			return EINVAL;
+		sha256_schema = sos_schema_by_name(sos, kokkos_sha256_template.name);
+		if (!sha256_schema)
+			return EINVAL;
+	}
+	kernel_job_id_attr = sos_schema_attr_by_name(kernel_schema, "job_id");
+	kernel_start_time_attr = sos_schema_attr_by_name(kernel_schema, "start_time");
+	kernel_app_id_attr = sos_schema_attr_by_name(kernel_schema, "app_id");
+	kernel_inst_data_attr = sos_schema_attr_by_name(kernel_schema, "inst_data");
+	kernel_mpi_rank_attr = sos_schema_attr_by_name(kernel_schema, "mpi_rank");
+	sha256_string_attr = sos_schema_attr_by_name(sha256_schema, "string");
+	sha256_digest_attr = sos_schema_attr_by_name(sha256_schema, "sha256");
+	return rc;
+}
+
+struct metric_spec {
+	const char *attr_name;
+	const char *json_name;
+	act_process_fn_t act_fn;
+	int app_n_kernel;
+};
+
+struct schema_spec {
+	const char *name;
+	struct metric_spec metrics[];
+};
+
+static struct schema_spec kokkos_app_spec = {
+	.name = "kokkos_app",
+	{
+		{ "", "kokkos-kernel-data", process_dict_entity, 1 },
+		{ "job_id", "job-id", process_job_id, 1 },
+		{ "job_name", "job-name", process_string, 1 },
+		{ "app_id", "app-id", process_app_id, 1 },
+		{ "mpi_rank", "mpi-rank", process_mpi_rank, 1 },
+		{ "inst_data", "inst-data", process_inst_data, 1 },
+		{ "start_time", "start-time", process_start_time, 1 },
+		{ "user_id", "user-id", process_int, 1 },
+		{ "total_app_time", "total-app-time", process_double, 1 },
+		{ "total_kernel_times", "total-kernel-times", process_double, 1 },
+		{ "total_non_kernel_times", "total-non-kernel-times", process_double, 1 },
+		{ "percent_in_kernels", "percent-in-kernels", process_double, 1 },
+		{ "unique_kernel_calls", "unique-kernel-calls", process_double, 1 },
+		{ 0 }
+	}
+};
+
+static struct schema_spec kokkos_sample_spec = {
+	.name = "kokkos_sample",
+	{
+		{ "", "kernel-perf-info", process_array_entity },
+		{ "call_count", "call-count", process_double },
+		{ "total_time", "total-time", process_double },
+		{ "time_per_call", "time-per-call", process_double },
+		{ "kernel_name", "kernel-name", process_digest },
+		{ "region", "region", process_string },
+		{ "kernel_type", "kernel-type", process_string },
+		{ 0 }
+	}
+};
+
+static int create_actions(sos_schema_t schema, struct schema_spec *spec)
+{
+	int rc, i;
+	sos_attr_t attr;
+	struct metric_spec *metric;
+	action_t act;
+
+	for (i = 0, metric = &spec->metrics[i]; metric->attr_name;
+	     metric = &spec->metrics[++i]) {
+		if (metric->json_name[0] == '\0')
+			/* skip attrs with no action */
+			continue;
+
+		act = malloc(sizeof *act);
+		if (!act)
+			return ENOMEM;
+
+		act->act_fn = metric->act_fn;
+		act->app_n_kernel = metric->app_n_kernel;
+		hent_init(&act->hent, metric->json_name, strlen(metric->json_name));
+		if (metric->attr_name && metric->attr_name[0] != '\0') {
+			attr = sos_schema_attr_by_name(schema, metric->attr_name);
+			if (!attr) {
+				msglog(LDMSD_LERROR,
+				       "%s: The attribute '%s' is not present in '%s'.\n",
+				       kokkos_store.name, metric->attr_name, sos_schema_name(schema));
+				return ENOENT;
+			}
+		} else
+			attr = NULL;
+		act->attr = attr;
+		act->schema = schema;
+		htbl_ins(act_table, &act->hent);
+	}
+	return 0;
+}
+
+static const char *usage(struct ldmsd_plugin *self)
+{
+	return  "config name=kokkos_store path=<path> port=<port_no> log=<path>\n"
+		"     path      The path to the root of the SOS container store.\n"
+		"     port      The port number to listen on for incoming connections (defaults to 18080).\n"
+		"     log       The log file for sample updates (defaults to /var/log/kokkos.log).\n";
+}
+
+static int cmp_json_name(const void *a, const void *b, size_t len)
+{
+	return strncmp(a, b, len);
+}
+
+static void *sample_proc(void* psvc)
+{
+	kvd_svc_init(psvc, 1);
+	return NULL;
+}
+
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+{
+	char *value;
+	char *producer_name;
+	int rc, sz;
+
+	svc.log_path = "/var/log/kokkos_svc.log";
+	svc.port = "18080";
+	svc.address = "0.0.0.0";
+	svc.verbosity = "ERROR";
+
+	value = av_value(avl, "port");
+	if (value)
+		svc.port = strdup(value);
+
+	value = av_value(avl, "log");
+	if (value)
+		svc.log_path = strdup(value);
+
+	value = av_value(avl, "path");
+	if (!value) {
+		msglog(LDMSD_LERROR,
+		       "%s: the path to the container (path==) must be specified.\n",
+		       kokkos_store.name);
+		return ENOENT;
+	}
+	if (root_path)
+		free(root_path);
+	sz = strlen(value) + strlen("%s/kokkos");
+	root_path = malloc(sz + 1);
+	if (!root_path) {
+		msglog(LDMSD_LERROR,
+		       "%s: Error allocating %d bytes for the container path.\n",
+		       kokkos_store.name, sz + 1);
+		return ENOENT;
+	}
+	snprintf(root_path, sz, "%s/kokkos", value);
+
+	rc = reopen_container(root_path);
+	if (rc) {
+		msglog(LDMSD_LERROR, "%s: Error opening %s.\n",
+		       kokkos_store.name, root_path);
+		return ENOENT;
+	}
+
+	act_table = htbl_alloc(cmp_json_name, 1123);
+	if (!act_table) {
+		msglog(LDMSD_LERROR,
+		       "%s: Error allocating the action table.\n",
+		       kokkos_store.name);
+		return ENOENT;
+	}
+
+	rc = create_actions(app_schema, &kokkos_app_spec);
+	if (rc) {
+		msglog(LDMSD_LERROR,
+		       "%s: Error %d creating Kokkos App actions.\n",
+		       kokkos_store.name, rc);
+		goto err_1;
+	}
+	rc = create_actions(kernel_schema, &kokkos_sample_spec);
+	if (rc) {
+		msglog(LDMSD_LERROR,
+		       "%s: Error %d creating Kokkos Kernel actions.\n",
+		       kokkos_store.name, rc);
+		goto err_1;
+	}
+
+	kvd_set_svc_handler(&svc, "/test", kokkos_handle_test);
+	kvd_set_svc_handler(&svc, "/sample", kokkos_handle_sample);
+	kvd_set_svc_handler(&svc, "/upload", kokkos_handle_sample);
+	pthread_create(&sample_thread, NULL, sample_proc, &svc);
+
+	return 0;
+ err_1:
+	free(act_table);
+	return rc;
+}
+
+static void term(struct ldmsd_plugin *self)
+{
+	if (sos)
+		sos_container_close(sos, SOS_COMMIT_ASYNC);
+	if (root_path)
+		free(root_path);
+}
+
+static struct ldmsd_plugin kokkos_store = {
+	.name = "kokkos_store",
+	.term = term,
+	.config = config,
+	.usage = usage,
+};
+
+struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
+{
+	msglog = pf;
+	return &kokkos_store;
+}

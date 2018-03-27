@@ -135,11 +135,18 @@ OPTION_DEFAULT_DISABLE([hadoop], [ENABLE_HADOOP])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
 OPTION_DEFAULT_DISABLE([switchx], [ENABLE_SWITCHX])
 OPTION_WITH([switchx], [SWITCHX],[/usr/local])
+OPTION_DEFAULT_ENABLE([kokkos], [ENABLE_KOKKOS])
 OPTION_DEFAULT_ENABLE([jobinfo-sampler], [ENABLE_JOBINFO])
 OPTION_DEFAULT_DISABLE([jobinfo-slurm], [ENABLE_SLURM_JOBINFO])
 
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
+
+dnl check for Flex/Bison if Kokkos is enabled
+if test -z "$ENABLE_KOKKOS_TRUE"; then
+   AC_PROG_LEX
+   AC_PROG_YACC
+fi
 
 dnl Other libraries
 OPTION_DEFAULT_DISABLE([gemini-gpcdr], [ENABLE_GEMINI_GPCDR]) dnl use gpcdr for gemini (not mutually exclusive)
@@ -486,6 +493,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/auth/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
+		 src/sampler/kokkos/Makefile
 		 src/sampler/job_info/Makefile
 		 src/sampler/job_info_slurm/Makefile
 		 src/sampler/llnl/Makefile
@@ -504,6 +512,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 etc/systemd/Makefile
 		 python/Makefile
 		 python/ldmsd/Makefile
+		 python/cmds/Makefile
 		 Doxyfile
 		 scripts/ldmsd
 		 scripts/envldms.sh
