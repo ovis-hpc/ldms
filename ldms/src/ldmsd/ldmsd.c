@@ -93,7 +93,7 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:v:Vz:Z:q:c:ua:A:"
+#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:v:Vz:Z:q:c:u:a:A:"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"

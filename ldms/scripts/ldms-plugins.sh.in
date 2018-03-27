@@ -45,6 +45,12 @@ if test -z "$plug"; then
 fi
 tmp=`mktemp pluglist.XXXXXX`
 ldmsd -u $plug -x dummy:0 >&2 >$tmp
+r=$?
+if ! test $r; then
+	echo problem $r running ldmsd
+	wc -l $tmp
+	exit $r
+fi
 case $short,$names in
 	0,0) cat $tmp
 		;;
