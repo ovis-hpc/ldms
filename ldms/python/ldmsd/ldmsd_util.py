@@ -346,7 +346,8 @@ class LDMSD(object):
     """A utility class to handle an LDMS Daemon subprocess"""
 
     def __init__(self, port, xprt="sock", logfile=None, auth="none",
-                 auth_opt={}, verbose="INFO", cfg=None, gdb_port=None):
+                 auth_opt={}, verbose="INFO", cfg=None, host_name=None,
+                 gdb_port=None):
         """LDMSD subprocess handler initialization
 
         @param port(str): the LDMSD listening port.
@@ -358,6 +359,7 @@ class LDMSD(object):
                                authentication plugin options.
         @param verbose(str): the verbosity of the log.
         @param cfg(str): the daemon configuration.
+        @param host_name(str): the daemon hostname.
         @param gdb_port(str): the port of the gdbserver. If this is `None`, the
                               process will NOT be under gdb. If the port is
                               specified, the process will run under gdbserver.
@@ -385,6 +387,8 @@ class LDMSD(object):
         if auth_opt:
             for a,v in auth_opt.iteritems():
                 self.cmd_args.extend(["-A", "%s=%s" % (a, v)])
+        if host_name:
+            self.cmd_args.extend(["-H", host_name])
         self.proc = None
         self.cfg = None
         if cfg:
