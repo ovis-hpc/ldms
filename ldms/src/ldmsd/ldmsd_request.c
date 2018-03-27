@@ -526,14 +526,15 @@ size_t Snprintf(char **dst, size_t *len, char *fmt, ...)
 
 	va_start(ap, fmt);
 	va_copy(ap_copy, ap);
-	va_end(ap_copy);
 	while (1) {
-		cnt = vsnprintf(*dst, *len, fmt, ap);
+		cnt = vsnprintf(*dst, *len, fmt, ap_copy);
+		va_end(ap_copy);
 		if (cnt >= *len) {
 			free(*dst);
 			*len = cnt * 2;
 			*dst = malloc(*len);
 			assert(*dst);
+			va_copy(ap_copy, ap);
 			continue;
 		}
 		break;
