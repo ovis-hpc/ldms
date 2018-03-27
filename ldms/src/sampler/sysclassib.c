@@ -614,6 +614,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 /**
  * Utility function for updating a single metric in a port.
  */
+static
 inline void update_metric(struct scib_port *port, int idx, uint64_t new_v,
 			float dt)
 {
