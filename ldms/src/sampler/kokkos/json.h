@@ -166,7 +166,7 @@ static inline json_entity_t new_array_val(void) {
 	a->base.value.array_ = a;
 	a->item_count = 0;
 	TAILQ_INIT(&a->item_list);
-	a->base;
+	return &a->base;
 }
 
 static inline json_entity_t add_array_item(json_entity_t e, json_entity_t v)

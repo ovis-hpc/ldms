@@ -461,7 +461,7 @@ static int process_dict_entity(json_parser_t p, json_entity_t e, sos_obj_t obj, 
 	if (e->type != JSON_DICT_VALUE) {
 		msglog(LDMSD_LERROR, "%s: Expected a dictionary object, not a %s.\n",
 			  kokkos_store.name, json_type_names[e->type]);
-		return;
+		return EINVAL;
 	}
 
 	TAILQ_FOREACH(a, &e->value.dict_->attr_list, attr_entry) {
