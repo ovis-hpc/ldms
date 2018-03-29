@@ -170,11 +170,37 @@ static void usage(char *argv[])
 	exit(0);
 }
 
-static char *ldmsctl_resp_msg_get(ldmsd_req_hdr_t response)
+static json_value *ldmsctl_json_value_get(json_value *json_obj, const char *name)
 {
-	if (response->rec_len - sizeof(*response) == 0)
+	int i;
+	json_object_entry entry;
+	if (json_obj->type != json_object)
 		return NULL;
-	return (char *)(response+1);
+	for (i = 0; i < json_obj->u.object.length; i++) {
+		entry = json_obj->u.object.values[i];
+		if (0 == strcmp(entry.name, name))
+			return entry.value;
+	}
+	return NULL;
+}
+
+static json_value *ldmsctl_json_array_ele_get(json_value *json_obj, int idx)
+{
+	if (json_obj->type != json_array)
+		return NULL;
+	if ((idx < 0) || (idx >= json_obj->u.array.length))
+		return NULL;
+	return json_obj->u.array.values[idx];
+}
+
+static char *ldmsctl_json_str_value_get(json_value *json_obj, const char *name)
+{
+	json_value *value = ldmsctl_json_value_get(json_obj, name);
+	if (!value)
+		return NULL;
+	if (value->type != json_string)
+		return NULL;
+	return value->u.string.ptr;
 }
 
 static void help_greeting()
