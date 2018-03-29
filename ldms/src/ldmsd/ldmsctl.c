@@ -434,16 +434,16 @@ void __print_prdcr_status(json_value *jvalue)
 	char *name, *host, *xprt, *state;
 	json_int_t port;
 
-	name = jvalue->u.object.values[0].value->u.string.ptr;
-	host = jvalue->u.object.values[1].value->u.string.ptr;
-	port = jvalue->u.object.values[2].value->u.integer;
-	xprt = jvalue->u.object.values[3].value->u.string.ptr;
-	state = jvalue->u.object.values[4].value->u.string.ptr;
+	name = ldmsctl_json_str_value_get(jvalue, "name");
+	host = ldmsctl_json_str_value_get(jvalue, "host");
+	port = ldmsctl_json_value_get(jvalue, "port")->u.integer;
+	xprt = ldmsctl_json_str_value_get(jvalue, "transport");
+	state = ldmsctl_json_str_value_get(jvalue, "state");
 
 	printf("%-16s %-16s %-12" PRId64 "%-12s %-12s\n", name, host, port, xprt, state);
 
 	json_value *prd_set_array_jvalue;
-	prd_set_array_jvalue = jvalue->u.object.values[5].value;
+	prd_set_array_jvalue = ldmsctl_json_value_get(jvalue, "sets");
 	if (prd_set_array_jvalue->type != json_array) {
 		printf("---Invalid producer status format---\n");
 		return;
@@ -453,14 +453,14 @@ void __print_prdcr_status(json_value *jvalue)
 	json_value *prd_set_jvalue;
 	int i;
 	for (i = 0; i < prd_set_array_jvalue->u.array.length; i++) {
-		prd_set_jvalue = prd_set_array_jvalue->u.array.values[i];
+		prd_set_jvalue = ldmsctl_json_array_ele_get(prd_set_array_jvalue, i);
 		if (prd_set_jvalue->type != json_object) {
 			printf("---Invalid producer status format---\n");
 			return;
 		}
-		inst_name = prd_set_jvalue->u.object.values[0].value->u.string.ptr;
-		schema_name = prd_set_jvalue->u.object.values[1].value->u.string.ptr;
-		set_state = prd_set_jvalue->u.object.values[2].value->u.string.ptr;
+		inst_name = ldmsctl_json_str_value_get(prd_set_jvalue, "inst_name");
+		schema_name = ldmsctl_json_str_value_get(prd_set_jvalue, "schema_name");
+		set_state = ldmsctl_json_str_value_get(prd_set_jvalue, "state");
 
 		printf("    %-16s %-16s %s\n", inst_name, schema_name, set_state);
 	}
@@ -487,7 +487,7 @@ static void resp_prdcr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err
 	printf("---------------- ---------------- ------------ ------------ ------------\n");
 
 	for (i = 0; i < json->u.array.length; i++) {
-		prdcr_json = json->u.array.values[i];
+		prdcr_json = ldmsctl_json_array_ele_get(json, i);
 		__print_prdcr_status(prdcr_json);
 	}
 	json_value_free(json);
@@ -506,18 +506,26 @@ void __print_prdcr_set_status(json_value *jvalue)
 	}
 
 	char *name, *schema, *state, *origin, *prdcr;
-	char *ts_sec, *ts_usec;
+	char *ts_sec, *ts_usec, *dur_sec_str, *dur_usec_str;
 	uint32_t dur_sec, dur_usec;
 
-	name = jvalue->u.object.values[0].value->u.string.ptr;
-	schema = jvalue->u.object.values[1].value->u.string.ptr;
-	state = jvalue->u.object.values[2].value->u.string.ptr;
-	origin = jvalue->u.object.values[3].value->u.string.ptr;
-	prdcr = jvalue->u.object.values[4].value->u.string.ptr;
-	ts_sec = jvalue->u.object.values[5].value->u.string.ptr;
-	ts_usec = jvalue->u.object.values[6].value->u.string.ptr;
-	dur_sec = strtoul(jvalue->u.object.values[7].value->u.string.ptr, NULL, 0);
-	dur_usec = strtoul(jvalue->u.object.values[8].value->u.string.ptr, NULL, 0);
+	name = ldmsctl_json_str_value_get(jvalue, "inst_name");
+	schema = ldmsctl_json_str_value_get(jvalue, "schema_name");
+	state = ldmsctl_json_str_value_get(jvalue, "state");
+	origin = ldmsctl_json_str_value_get(jvalue, "origin");
+	prdcr = ldmsctl_json_str_value_get(jvalue, "producer");
+	ts_sec = ldmsctl_json_str_value_get(jvalue, "timestamp.sec");
+	ts_usec = ldmsctl_json_str_value_get(jvalue, "timestamp.usec");
+	dur_sec_str = ldmsctl_json_str_value_get(jvalue, "duration.sec");
+	dur_usec_str = ldmsctl_json_str_value_get(jvalue, "duration.usec");
+	if (dur_sec_str)
+		dur_sec = strtoul(dur_sec_str, NULL, 0);
+	else
+		dur_sec = 0;
+	if (dur_usec_str)
+		dur_usec = strtoul(dur_usec_str, NULL, 0);
+	else
+		dur_usec = 0;
 
 	char ts[64];
 	char dur[64];
@@ -550,7 +558,7 @@ static void resp_prdcr_set_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp
 			"---------------- ------------------------- ---------------\n");
 
 	for (i = 0; i < json->u.array.length; i++) {
-		prdcr_json = json->u.array.values[i];
+		prdcr_json = ldmsctl_json_array_ele_get(json, i);
 		__print_prdcr_set_status(prdcr_json);
 	}
 	json_value_free(json);
@@ -647,17 +655,17 @@ void __print_updtr_status(json_value *jvalue)
 	char *name, *interval, *mode, *state;
 	json_int_t offset;
 
-	name = jvalue->u.object.values[0].value->u.string.ptr;
-	interval = jvalue->u.object.values[1].value->u.string.ptr;
-	offset = jvalue->u.object.values[2].value->u.integer;
-	mode = jvalue->u.object.values[3].value->u.string.ptr;
-	state = jvalue->u.object.values[4].value->u.string.ptr;
+	name = ldmsctl_json_str_value_get(jvalue, "name");;
+	interval = ldmsctl_json_str_value_get(jvalue, "interval");;
+	offset = ldmsctl_json_value_get(jvalue, "offset")->u.integer;
+	mode = ldmsctl_json_str_value_get(jvalue, "mode");
+	state = ldmsctl_json_str_value_get(jvalue, "state");
 	printf("%-16s %-12s %-12" PRId64 "%-15s %s\n",
 			name, interval, offset, mode, state);
 
 	json_value *prd_array_jvalue;
-	prd_array_jvalue = jvalue->u.object.values[5].value;
-	if (prd_array_jvalue->type != json_array) {
+	prd_array_jvalue = ldmsctl_json_value_get(jvalue, "producers");
+	if (!prd_array_jvalue || (prd_array_jvalue->type != json_array)) {
 		printf("---Invalid updater status format---\n");
 		return;
 	}
@@ -667,16 +675,16 @@ void __print_updtr_status(json_value *jvalue)
 	json_value *prd_jvalue;
 	int i;
 	for (i = 0; i < prd_array_jvalue->u.array.length; i++) {
-		prd_jvalue = prd_array_jvalue->u.array.values[i];
+		prd_jvalue = ldmsctl_json_array_ele_get(prd_array_jvalue, i);
 		if (prd_jvalue->type != json_object) {
 			printf("---Invalid updater status format---\n");
 			return;
 		}
-		prdcr_name = prd_jvalue->u.object.values[0].value->u.string.ptr;
-		host = prd_jvalue->u.object.values[1].value->u.string.ptr;
-		port = prd_jvalue->u.object.values[2].value->u.integer;
-		xprt = prd_jvalue->u.object.values[3].value->u.string.ptr;
-		prdcr_state = prd_jvalue->u.object.values[4].value->u.string.ptr;
+		prdcr_name = ldmsctl_json_str_value_get(prd_jvalue, "name");
+		host = ldmsctl_json_str_value_get(prd_jvalue, "host");
+		port = ldmsctl_json_value_get(prd_jvalue, "port")->u.integer;
+		xprt = ldmsctl_json_str_value_get(prd_jvalue, "transport");
+		prdcr_state = ldmsctl_json_str_value_get(prd_jvalue, "state");
 		printf("    %-16s %-16s %-12" PRId64 "%-12s %s\n",
 				prdcr_name, host, port, xprt, prdcr_state);
 	}
@@ -702,7 +710,7 @@ static void resp_updtr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err
 	printf("---------------- ------------ ------------ --------------- ------------\n");
 
 	for (i = 0; i < json->u.array.length; i++) {
-		prdcr_json = json->u.array.values[i];
+		prdcr_json = ldmsctl_json_array_ele_get(json, i);
 		__print_updtr_status(prdcr_json);
 	}
 	json_value_free(json);
@@ -793,17 +801,17 @@ void __print_strgp_status(json_value *jvalue)
 	char *name, *container, *schema, *plugin, *state;
 	json_int_t offset;
 
-	name = jvalue->u.object.values[0].value->u.string.ptr;
-	container = jvalue->u.object.values[1].value->u.string.ptr;
-	schema = jvalue->u.object.values[2].value->u.string.ptr;
-	plugin = jvalue->u.object.values[3].value->u.string.ptr;
-	state = jvalue->u.object.values[4].value->u.string.ptr;
+	name = ldmsctl_json_str_value_get(jvalue, "name");
+	container = ldmsctl_json_str_value_get(jvalue, "container");
+	schema = ldmsctl_json_str_value_get(jvalue, "schema");
+	plugin = ldmsctl_json_str_value_get(jvalue, "plugin");
+	state = ldmsctl_json_str_value_get(jvalue, "state");
 	printf("%-16s %-16s %-16s %-16s %s\n",
 			name, container, schema, plugin, state);
 
 	json_value *prd_array_jvalue, *metric_array_jvalue;
-	prd_array_jvalue = jvalue->u.object.values[5].value;
-	if (prd_array_jvalue->type != json_array) {
+	prd_array_jvalue = ldmsctl_json_value_get(jvalue, "producers");
+	if (!prd_array_jvalue || (prd_array_jvalue->type != json_array)) {
 		printf("---Invalid storage policy status format---\n");
 		return;
 	}
@@ -812,8 +820,8 @@ void __print_strgp_status(json_value *jvalue)
 	json_value *prd_jvalue, *metric_jvalue;
 	int i;
 	for (i = 0; i < prd_array_jvalue->u.array.length; i++) {
-		prd_jvalue = prd_array_jvalue->u.array.values[i];
-		if (prd_jvalue->type != json_string) {
+		prd_jvalue = ldmsctl_json_array_ele_get(prd_array_jvalue, i);
+		if (!prd_jvalue || (prd_jvalue->type != json_string)) {
 			printf("---Invalid storage policy status format---\n");
 			return;
 		}
@@ -821,15 +829,15 @@ void __print_strgp_status(json_value *jvalue)
 	}
 	printf("\n");
 
-	metric_array_jvalue = jvalue->u.object.values[6].value;
-	if (metric_array_jvalue->type != json_array) {
+	metric_array_jvalue = ldmsctl_json_value_get(jvalue, "metrics");
+	if (!metric_array_jvalue || (metric_array_jvalue->type != json_array)) {
 		printf("---Invalid storage policy status format---\n");
 		return;
 	}
 	printf("     metrics:");
 	for (i = 0; i < metric_array_jvalue->u.array.length; i++) {
-		metric_jvalue = metric_array_jvalue->u.array.values[i];
-		if (metric_jvalue->type != json_string) {
+		metric_jvalue = ldmsctl_json_array_ele_get(metric_array_jvalue, i);
+		if (!metric_jvalue || (metric_jvalue->type != json_string)) {
 			printf("---Invalid storage policy status format---\n");
 			return;
 		}
@@ -858,7 +866,7 @@ static void resp_strgp_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err
 	printf("---------------- ---------------- ---------------- ---------------- ------------\n");
 
 	for (i = 0; i < json->u.array.length; i++) {
-		prdcr_json = json->u.array.values[i];
+		prdcr_json = ldmsctl_json_array_ele_get(json, i);
 		__print_strgp_status(prdcr_json);
 	}
 	json_value_free(json);
