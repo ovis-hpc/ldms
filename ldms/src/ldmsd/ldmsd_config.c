@@ -591,46 +591,46 @@ cleanup:
 
 static int send_ldms_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 {
-        return ldms_xprt_send(xprt->ldms.ldms, data, data_len);
+	return ldms_xprt_send(xprt->ldms.ldms, data, data_len);
 }
 
 void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 {
-        ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)data;
-        struct ldmsd_cfg_xprt_s xprt;
-        xprt.ldms.ldms = x;
-        xprt.send_fn = send_ldms_fn;
-        xprt.max_msg = x->max_msg;
+	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)data;
+	struct ldmsd_cfg_xprt_s xprt;
+	xprt.ldms.ldms = x;
+	xprt.send_fn = send_ldms_fn;
+	xprt.max_msg = x->max_msg;
 
-        switch (ntohl(request->type)) {
-        case LDMSD_REQ_TYPE_CONFIG_CMD:
-                (void)ldmsd_process_config_request(&xprt, request, data_len);
-                break;
-        case LDMSD_REQ_TYPE_CONFIG_RESP:
+	switch (ntohl(request->type)) {
+	case LDMSD_REQ_TYPE_CONFIG_CMD:
+		(void)ldmsd_process_config_request(&xprt, request, data_len);
+		break;
+	case LDMSD_REQ_TYPE_CONFIG_RESP:
 		(void)ldmsd_process_config_response(&xprt, request, data_len);
-                break;
-        default:
-                break;
-        }
+		break;
+	default:
+		break;
+}
 }
 
 static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-        switch (e->type) {
-        case LDMS_XPRT_EVENT_CONNECTED:
-                break;
-        case LDMS_XPRT_EVENT_DISCONNECTED:
-        case LDMS_XPRT_EVENT_REJECTED:
-        case LDMS_XPRT_EVENT_ERROR:
-                ldms_xprt_put(x);
-                break;
-        case LDMS_XPRT_EVENT_RECV:
-                ldmsd_recv_msg(x, e->data, e->data_len);
-                break;
-        default:
-                assert(0);
-                break;
-        }
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_CONNECTED:
+		break;
+	case LDMS_XPRT_EVENT_DISCONNECTED:
+	case LDMS_XPRT_EVENT_REJECTED:
+	case LDMS_XPRT_EVENT_ERROR:
+		ldms_xprt_put(x);
+		break;
+	case LDMS_XPRT_EVENT_RECV:
+		ldmsd_recv_msg(x, e->data, e->data_len);
+		break;
+	default:
+		assert(0);
+		break;
+	}
 }
 
 /* from ldmsd */
@@ -639,33 +639,33 @@ extern struct attr_value_list *auth_opt;
 
 ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
 {
-        int port_no;
-        ldms_t l = NULL;
-        int ret;
-        struct sockaddr_in sin;
+	int port_no;
+	ldms_t l = NULL;
+	int ret;
+	struct sockaddr_in sin;
 
-        if (!port_str || port_str[0] == '\0')
-                port_no = LDMS_DEFAULT_PORT;
-        else
-                port_no = atoi(port_str);
+	if (!port_str || port_str[0] == '\0')
+		port_no = LDMS_DEFAULT_PORT;
+	else
+		port_no = atoi(port_str);
 	l = ldms_xprt_new_with_auth(xprt_str, ldmsd_linfo, auth_name, auth_opt);
-        if (!l) {
-                ldmsd_log(LDMSD_LERROR, "The transport specified, "
-                                "'%s', is invalid.\n", xprt_str);
-                cleanup(6, "error creating transport");
-        }
-        sin.sin_family = AF_INET;
-        sin.sin_addr.s_addr = 0;
-        sin.sin_port = htons(port_no);
-        ret = ldms_xprt_listen(l, (struct sockaddr *)&sin, sizeof(sin),
+	if (!l) {
+		ldmsd_log(LDMSD_LERROR, "The transport specified, "
+				"'%s', is invalid.\n", xprt_str);
+		cleanup(6, "error creating transport");
+	}
+	sin.sin_family = AF_INET;
+	sin.sin_addr.s_addr = 0;
+	sin.sin_port = htons(port_no);
+	ret = ldms_xprt_listen(l, (struct sockaddr *)&sin, sizeof(sin),
 			       __listen_connect_cb, NULL);
-        if (ret) {
-                ldmsd_log(LDMSD_LERROR, "Error %d listening on the '%s' "
-                                "transport.\n", ret, xprt_str);
-                cleanup(7, "error listening on transport");
-        }
-        ldmsd_log(LDMSD_LINFO, "Listening on transport %s:%s\n",
-                        xprt_str, port_str);
+	if (ret) {
+		ldmsd_log(LDMSD_LERROR, "Error %d listening on the '%s' "
+				"transport.\n", ret, xprt_str);
+		cleanup(7, "error listening on transport");
+	}
+	ldmsd_log(LDMSD_LINFO, "Listening on transport %s:%s\n",
+			xprt_str, port_str);
 	return l;
 }
 
@@ -816,7 +816,7 @@ static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 			}
 			if (blacklisted)
 				goto next;
-		       	/* strip lib prefix and .so suffix*/
+			/* strip lib prefix and .so suffix*/
 			b+= 3;
 			char *suff = rindex(b, '.');
 			assert(suff != NULL || NULL == "plugin glob match means . will be found always");
