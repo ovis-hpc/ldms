@@ -127,6 +127,13 @@ class KokkosData(object):
             f = Sos.Filter(idx_attr)
             inst_data_attr = self.app_schema['inst_data']
             f.add_condition(inst_data_attr, Sos.COND_EQ, inst_data)
+
+            (start, end) = get_times_from_args(args)
+            print(start, end)
+            if start != 0:
+                f.add_condition(self.app_schema['start_time'], Sos.COND_GE, start)
+            if end != 0:
+                f.add_condition(self.app_schema['start_time'], Sos.COND_LE, end)
         else:
             idx_attr = self.app_schema['job_id']
             f = Sos.Filter(idx_attr)
@@ -242,6 +249,11 @@ class KokkosData(object):
         f.add_condition(inst_data_attr, Sos.COND_EQ, inst_data)
         if args.user_id:
             f.add_condition(self.app_schema['user_id'], Sos.COND_EQ, args.user_id)
+        (start, end) = get_times_from_args(args)
+        if start != 0:
+            f.add_condition(self.app_schema['start_time'], Sos.COND_GE, start)
+        if end != 0:
+            f.add_condition(self.app_schema['start_time'], Sos.COND_LE, end)
         f.unique()
         count = f.count()
         shape = [ 'job_id' ]
@@ -371,6 +383,24 @@ def need_job_id():
     print("--job_id must be specified")
     sys.exit(1)
 
+def get_times_from_args(args):
+    if args.begin:
+        start = int(args.begin.strftime("%s"))
+    else:
+        start = 0
+    if args.end:
+        end = int(args.end.strftime("%s"))
+    else:
+        end = 0
+    return (start, end)
+
+def valid_date(date_str):
+    try:
+        return dt.datetime.strptime(date_str, "%Y/%m/%d %H:%M")
+    except:
+        msg = "{0} is not a valid date".format(date_str)
+        raise argparse.ArgumentTypeError(msg)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Query Kokkos Data")
     parser.add_argument("--path", required=True,
@@ -383,6 +413,12 @@ if __name__ == "__main__":
                         help="Compare performance across similar jobs.")
     parser.add_argument("--like", required=False, action="store_true",
                         help="Show jobs like --job_id")
+    parser.add_argument("--begin", type=valid_date,
+                        help="Specify the start time/date for similar jobs. " \
+                        "Format is YYYY/MM/DD HH:MM")
+    parser.add_argument("--end", type=valid_date,
+                        help="Specify the end time/date for similar jobs. " \
+                        "Format is YYYY/MM/DD HH:MM")
     parser.add_argument("--job_id", required=False, type=int,
                         help="Show this job")
     parser.add_argument("--user", required=False,

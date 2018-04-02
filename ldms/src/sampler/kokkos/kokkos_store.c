@@ -140,7 +140,7 @@ static void print_dict(json_entity_t e)
 	TAILQ_FOREACH(i, &e->value.dict_->attr_list, attr_entry) {
 		if (count)
 			printf(",");
-		printf("\"%s\" : ", i->name);
+		printf("\"%s\" : ", i->name->str);
 		print_entity(i->value);
 		count++;
 	}
@@ -151,7 +151,7 @@ static void print_entity(json_entity_t e)
 {
 	switch (e->type) {
 	case JSON_INT_VALUE:
-		printf("%d", e->value.int_);
+		printf("%ld", e->value.int_);
 		break;
 	case JSON_BOOL_VALUE:
 		if (e->value.bool_)
@@ -163,7 +163,7 @@ static void print_entity(json_entity_t e)
 		printf("%.2f", e->value.double_);
 		break;
 	case JSON_STRING_VALUE:
-		printf("\"%s\"", e->value.str_);
+		printf("\"%s\"", e->value.str_->str);
 		break;
 	case JSON_ARRAY_VALUE:
 		print_array(e);
@@ -461,7 +461,7 @@ static int process_dict_entity(json_parser_t p, json_entity_t e, sos_obj_t obj, 
 	if (e->type != JSON_DICT_VALUE) {
 		msglog(LDMSD_LERROR, "%s: Expected a dictionary object, not a %s.\n",
 			  kokkos_store.name, json_type_names[e->type]);
-		return;
+		return EINVAL;
 	}
 
 	TAILQ_FOREACH(a, &e->value.dict_->attr_list, attr_entry) {
@@ -484,7 +484,7 @@ static void err_enomem(struct kvd_req_ctxt *ctxt, size_t requested)
 	evbuffer_add_printf(ctxt->evbuffer,
 			    "{"
 			    "\"status\" : 12,"
-			    "\"msg\" : \"Out of memory! Could not allocate %d bytes.\""
+			    "\"msg\" : \"Out of memory! Could not allocate %zu bytes.\""
 			    "}\n", requested);
 }
 
