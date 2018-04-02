@@ -654,6 +654,7 @@ int __ldmsd_append_buffer(struct ldmsd_req_ctxt *reqc,
 				req_ctxt_ref_put(reqc);
 				return rc;
 			}
+			reqc->rec_no++;
 			/* Reset the reply buffer for the next record for this message */
 			reqc->rep_off = sizeof(*req_buff);
 			attr = ldmsd_first_attr(req_buff);
