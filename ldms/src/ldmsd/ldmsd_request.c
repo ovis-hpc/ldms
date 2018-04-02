@@ -868,10 +868,10 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 	req_ctxt_tree_lock();
 	reqc = find_req_ctxt(&key);
 	if (!reqc) {
-		char errstr[64];
-		snprintf(errstr, 63, "Cannot find the original request of "
-						"a response number %d:%" PRIu64,
-						key.msg_no, key.conn_id);
+		char errstr[256];
+		cnt = snprintf(errstr, 256, "Cannot find the original request"
+					" of a response number %d:%" PRIu64,
+					key.msg_no, key.conn_id);
 		ldmsd_log(LDMSD_LERROR, "%s\n", errstr);
 		ldmsd_send_error_reply(xprt, key.msg_no, ENOENT, errstr, cnt);
 		rc = ENOENT;
