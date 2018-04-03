@@ -1508,7 +1508,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!store) {
 		reqc->errcode = ENOENT;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					"The plugin does not exist.\n");
+				"The plugin %s does not exist. Forgot load?\n", plugin);
 		goto send_reply;
 	}
 
