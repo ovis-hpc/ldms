@@ -606,7 +606,7 @@ size_t Snprintf(char **dst, size_t *len, char *fmt, ...)
 }
 
 int __ldmsd_append_buffer(struct ldmsd_req_ctxt *reqc,
-		       char *data, size_t data_len,
+		       const char *data, size_t data_len,
 		       int msg_flags, int msg_type)
 {
 	req_ctxt_ref_get(reqc);
@@ -671,8 +671,7 @@ int __ldmsd_append_buffer(struct ldmsd_req_ctxt *reqc,
 }
 
 int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc,
-				char *data, size_t data_len,
-				int msg_flags)
+		       const char *data, size_t data_len, int msg_flags)
 {
 	return __ldmsd_append_buffer(reqc, data, data_len, msg_flags,
 					LDMSD_REQ_TYPE_CONFIG_RESP);
@@ -683,7 +682,7 @@ int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc,
  * if there is a message. Otherwise, only the terminating attribute is attached
  * to the request header.
  */
-void ldmsd_send_req_response(ldmsd_req_ctxt_t reqc, char *msg)
+void ldmsd_send_req_response(ldmsd_req_ctxt_t reqc, const char *msg)
 {
 	struct ldmsd_req_attr_s attr;
 	uint32_t flags = 0;
