@@ -173,11 +173,6 @@ next:
 	return 0;
 }
 
-size_t __ldms_xprt_max_msg(struct ldms_xprt *x)
-{
-	return zap_max_msg(x->zap);
-}
-
 /* Caller must call with the ldms xprt lock held */
 struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 		ldms_context_type_t type)
@@ -458,7 +453,7 @@ static int send_dir_reply_cb(struct ldms_set *set, void *arg)
 
 	/* keep filling the buffer until it is full */
 	len = strlen(get_instance_name(set->meta)->name) + 1;
-	if (mda->reply_size + len < __ldms_xprt_max_msg(mda->x)) {
+	if (mda->reply_size + len < ldms_xprt_msg_max(mda->x)) {
 		mda->reply_size += len;
 		strcpy(mda->set_list, get_instance_name(set->meta)->name);
 		mda->set_list += len;
@@ -523,8 +518,8 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	len = sizeof(struct ldms_reply_hdr)
 		+ sizeof(struct ldms_dir_reply)
 		+ set_list_sz;
-	if (len > __ldms_xprt_max_msg(x))
-		len = __ldms_xprt_max_msg(x);
+	if (len > ldms_xprt_msg_max(x))
+		len = ldms_xprt_msg_max(x);
 	reply = malloc(len);
 	if (!reply) {
 		rc = ENOMEM;
