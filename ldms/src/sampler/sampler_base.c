@@ -52,7 +52,9 @@
  * \file sampler_base.c
  * \brief Routines that are generally useful to sampler writers.
  */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include "ldms.h"
 #include "ldmsd.h"
 #include "sampler_base.h"
@@ -179,6 +181,8 @@ base_data_t base_config(struct attr_value_list *avl,
 	base->gid = (value)?(strtol(value, NULL, 0)):(-1);
 	value = av_value(avl, "perm");
 	base->perm = (value)?(strtol(value, NULL, 0)):(0777);
+	value = av_value(avl, "set_array_card");
+	base->set_array_card = (value)?(strtol(value, NULL, 0)):(1);
 	return base;
 einval:
 	errno = EINVAL;
@@ -212,6 +216,11 @@ ldms_schema_t base_schema_new(base_data_t base)
 		errno = ENOMEM;
 		goto err_1;
 	}
+	rc = ldms_schema_array_card_set(base->schema, base->set_array_card);
+	if (rc < 0) {
+		errno = rc;
+		goto err_1;
+	}
 	return base->schema;
  err_1:
 	ldms_schema_delete(base->schema);
@@ -222,13 +231,20 @@ ldms_schema_t base_schema_new(base_data_t base)
 
 ldms_set_t base_set_new(base_data_t base)
 {
-	base->set = ldms_set_new_with_auth(base->instance_name, base->schema,
-					   base->uid, base->gid, base->perm);
-	if (base->set) {
-		ldms_set_producer_name_set(base->set, base->producer_name);
-		ldms_metric_set_u64(base->set, BASE_COMPONENT_ID, base->component_id);
-		ldms_metric_set_u64(base->set, BASE_JOB_ID, 0);
-		ldms_metric_set_u64(base->set, BASE_APP_ID, 0);
+	int rc;
+	base->set = ldms_set_new(base->instance_name, base->schema);
+	if (!base->set)
+		return NULL;
+	ldms_set_producer_name_set(base->set, base->producer_name);
+	ldms_metric_set_u64(base->set, BASE_COMPONENT_ID, base->component_id);
+	ldms_metric_set_u64(base->set, BASE_JOB_ID, 0);
+	ldms_metric_set_u64(base->set, BASE_APP_ID, 0);
+	ldms_set_config_auth(base->set, base->uid, base->gid, base->perm);
+	rc = ldms_set_publish(base->set);
+	if (rc) {
+		ldms_set_delete(base->set);
+		base->set = NULL;
+		errno = rc;
 	}
 	return base->set;
 }

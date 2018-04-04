@@ -706,8 +706,14 @@ extern int ldms_xprt_lookup(ldms_t t, const char *name, enum ldms_lookup_flags f
 
 /** The update is the result of a peer push */
 #define LDMS_UPD_F_PUSH		0x10000000
-/* This is final push update for this set */
+/** This is final push update for this set */
 #define LDMS_UPD_F_PUSH_LAST	0x20000000
+/** Indicate more outstanding update completion on the set */
+#define LDMS_UPD_F_MORE		0x40000000
+
+#define LDMS_UPD_ERROR_MASK 0x00FFFFFF
+
+#define LDMS_UPD_ERROR(s) ((s) & LDMS_UPD_ERROR_MASK)
 
 /**
  * \brief Prototype for the function called when update completes.
@@ -823,6 +829,17 @@ extern void ldms_schema_delete(ldms_schema_t schema);
 extern int ldms_schema_metric_count_get(ldms_schema_t schema);
 
 /**
+ * \brief Set the cardinality of the set array created by this schema.
+ *
+ * \param schema The schema handle.
+ * \param card   The cardinality.
+ *
+ * \retval 0      If succeeded.
+ * \retval EINVAL If \c card is invalid.
+ */
+extern int ldms_schema_array_card_set(ldms_schema_t schema, int card);
+
+/**
  * \brief Create a Metric set
  *
  * Create a metric set on the local host. The metric set is added to
@@ -865,6 +882,53 @@ extern ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema);
 ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 				  ldms_schema_t schema,
 				  uid_t uid, gid_t gid, int perm);
+
+/**
+ * \addtogroup ldms_set_config LDMS Set Configuration
+ *
+ * This is a collection of set configuration API.
+ *
+ * All functions in this group return \c errno to describe the error, or \c 0
+ * if they succeed.
+ *
+ * \{
+ */
+
+/**
+ * Configure set authorization.
+ *
+ * If this is not configured, the default values are as following:
+ * - \c uid:  \c -1
+ * - \c gid:  \c -1
+ * - \c perm: \c 0777
+ *
+ * \param uid  The UID.
+ * \param gid  The GID.
+ * \param perm The UNIX-style permission (e.g. 0644).
+ * \retval errno If failed.
+ * \retval 0     If succeeded.
+ */
+int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, int perm);
+
+/**
+ * \}  (ldms_set_config)
+ */
+
+/**
+ * \brief Publish the LDMS set.
+ * \param set The set handle.
+ * \retval 0      If succeeded.
+ * \retval EEXIST If the set has already been published.
+ */
+int ldms_set_publish(ldms_set_t set);
+
+/**
+ * \brief Unpublish the LDMS set.
+ * \param set The set handle.
+ * \retval 0      If succeeded.
+ * \retval ENOENT If the set has not yet published.
+ */
+int ldms_set_unpublish(ldms_set_t set);
 
 /**
  * \brief Delete the set reference

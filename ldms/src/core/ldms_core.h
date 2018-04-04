@@ -128,6 +128,7 @@ struct ldms_data_hdr {
 	uint64_t gn;		/* Metric-value generation number */
 	uint64_t size;		/* Max size of data */	/* FIXME: unused */
 	uint64_t meta_gn;	/* Meta-data generation number */
+	uint32_t curr_idx;      /* Current set array index */
 };
 
 /**
@@ -147,9 +148,9 @@ struct ldms_version {
 
 void ldms_version_get(struct ldms_version *v);
 
-/* 4.0.0.0 */
+/* 4.1.0.0 */
 #define LDMS_VERSION_MAJOR	 0x04
-#define LDMS_VERSION_MINOR	 0x00
+#define LDMS_VERSION_MINOR	 0x01
 #define LDMS_VERSION_PATCH	 0x00
 #define LDMS_VERSION_FLAGS	 0x00
 #define LDMS_VERSION_SET(version) do {				\
@@ -183,6 +184,7 @@ struct ldms_set_hdr {
 	uint32_t uid;           /* UID */
 	uint32_t gid;           /* GID */
 	uint32_t perm;          /* permission */
+	uint32_t array_card;    /* number of sets in the set array */
 	uint32_t dict[OVIS_FLEX];/* The attr/metric dictionary */
 };
 

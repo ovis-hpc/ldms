@@ -881,6 +881,7 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	msg->lookup.data_len = htonl(__le32_to_cpu(set->meta->data_sz));
 	msg->lookup.meta_len = htonl(__le32_to_cpu(set->meta->meta_sz));
 	msg->lookup.card = htonl(__le32_to_cpu(set->meta->card));
+	msg->lookup.array_card = htonl(__le32_to_cpu(set->meta->array_card));
 
 #ifdef DEBUG
 	x->log("%s(): x %p: sharing ... remote lookup ctxt %p\n",
@@ -1023,14 +1024,14 @@ static void process_lookup_request(struct ldms_xprt *x, struct ldms_request *req
 	process_lookup_request_re(x, req, flags);
 }
 
-static int do_read_all(ldms_t x, ldms_set_t s, size_t len,
-			ldms_update_cb_t cb, void *arg)
+static int do_read_all(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
+	/* Read metadata and the first set in the set array in 1 RDMA read. */
 	TF();
 	struct ldms_context *ctxt;
 	int rc;
-	if (!len)
-		len = __ldms_set_size_get(s->set);
+	uint32_t len = __le32_to_cpu(s->set->meta->meta_sz)
+			+ __le32_to_cpu(s->set->meta->data_sz);
 
 	/* Prevent x being destroyed if DISCONNECTED is delivered in another thread */
 	ldms_xprt_get(x);
@@ -1043,6 +1044,8 @@ static int do_read_all(ldms_t x, ldms_set_t s, size_t len,
 	ctxt->update.s = s;
 	ctxt->update.cb = cb;
 	ctxt->update.arg = arg;
+	ctxt->update.idx_from = 0;
+	ctxt->update.idx_to = 0;
 
 	rc = zap_read(x->zap_ep, s->rmap, zap_map_addr(s->rmap),
 			s->lmap, zap_map_addr(s->lmap), len, ctxt);
@@ -1054,10 +1057,45 @@ out:
 	return rc;
 }
 
-static int do_read_data(ldms_t x, ldms_set_t s, size_t len, ldms_update_cb_t cb, void*arg)
+static int do_read_meta(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
-	int rc;
+	/* Read only the metadata; the data will be updated separately when the
+	 * metadata read completed. */
+	TF();
 	struct ldms_context *ctxt;
+	int rc;
+	uint32_t meta_sz = __le32_to_cpu(s->set->meta->meta_sz);
+
+	ldms_xprt_get(x);
+	pthread_mutex_lock(&x->lock);
+	ctxt = __ldms_alloc_ctxt(x, sizeof(*ctxt), LDMS_CONTEXT_UPDATE_META);
+	if (!ctxt) {
+		rc = ENOMEM;
+		goto out;
+	}
+	ctxt->update.s = s;
+	ctxt->update.cb = cb;
+	ctxt->update.arg = arg;
+
+	rc = zap_read(x->zap_ep, s->rmap, zap_map_addr(s->rmap),
+			s->lmap, zap_map_addr(s->lmap), meta_sz, ctxt);
+	if (rc)
+		__ldms_free_ctxt(x, ctxt);
+out:
+	pthread_mutex_unlock(&x->lock);
+	ldms_xprt_put(x);
+	return rc;
+}
+
+static int do_read_data(ldms_t x, ldms_set_t s, int idx_from, int idx_to,
+			ldms_update_cb_t cb, void*arg)
+{
+	/* Read multiple set data in the set array from `idx_from` to `idx_to`
+	 * (inclusive) in 1 RDMA read. */
+	int rc;
+	uint32_t data_sz;
+	struct ldms_context *ctxt;
+	size_t doff, dlen;
 	TF();
 
 	/* Prevent x being destroyed if DISCONNECTED is delivered in another thread */
@@ -1073,10 +1111,16 @@ static int do_read_data(ldms_t x, ldms_set_t s, size_t len, ldms_update_cb_t cb,
 	ctxt->update.s = s;
 	ctxt->update.cb = cb;
 	ctxt->update.arg = arg;
-	size_t doff = (uint8_t *)s->set->data - (uint8_t *)s->set->meta;
+	ctxt->update.idx_from = idx_from;
+	ctxt->update.idx_to = idx_to;
+	data_sz = __le32_to_cpu(s->set->meta->data_sz);
+	doff = (uint8_t *)s->set->data_array - (uint8_t *)s->set->meta
+							+ idx_from * data_sz;
+	dlen = (idx_to - idx_from + 1) * data_sz;
+
 
 	rc = zap_read(x->zap_ep, s->rmap, zap_map_addr(s->rmap) + doff,
-		      s->lmap, zap_map_addr(s->lmap) + doff, len, ctxt);
+		      s->lmap, zap_map_addr(s->lmap) + doff, dlen, ctxt);
 	if (rc)
 		__ldms_free_ctxt(x, ctxt);
 out:
@@ -1108,16 +1152,28 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	struct ldms_set *set = s->set;
 	uint32_t meta_meta_gn = __le32_to_cpu(set->meta->meta_gn);
 	uint32_t data_meta_gn = __le32_to_cpu(set->data->meta_gn);
-	uint32_t meta_meta_sz = __le32_to_cpu(set->meta->meta_sz);
-	uint32_t meta_data_sz = __le32_to_cpu(set->meta->data_sz);
+	uint32_t n = __le32_to_cpu(set->meta->array_card);
+	int idx_from, idx_to, idx_next, idx_curr;
 
 	zap_get_ep(x->zap_ep);	/* Released in handle_zap_read_complete() */
 	if (meta_meta_gn == 0 || meta_meta_gn != data_meta_gn) {
-		/* Update the metadata along with the data */
-		rc = do_read_all(x, s, meta_meta_sz +
-				 meta_data_sz, cb, arg);
+		if (set->curr_idx == (n-1)) {
+			/* We can update the metadata along with the data */
+			rc = do_read_all(x, s, cb, arg);
+		} else {
+			/* Otherwise, need to update metadata and data
+			 * separately */
+			rc = do_read_meta(x, s, cb, arg);
+		}
 	} else {
-		rc = do_read_data(x, s, meta_data_sz, cb, arg);
+		idx_from = (s->set->curr_idx + 1) % n;
+		idx_curr = __le32_to_cpu(s->set->data->curr_idx);
+		idx_next = (idx_curr + 1) % n;
+		if (idx_next == idx_from)
+			idx_to = idx_next;
+		else
+			idx_to = (idx_curr < idx_from)?(n - 1):(idx_curr);
+		rc = do_read_data(x, s, idx_from, idx_to, cb, arg);
 	}
 	if (rc)
 		zap_put_ep(x->zap_ep);
@@ -1499,53 +1555,161 @@ err0:
 	zap_reject(zep, rej_msg, strlen(rej_msg)+1);
 }
 
+static
+int __ldms_data_ts_cmp(struct ldms_data_hdr *a, struct ldms_data_hdr *b)
+{
+	if (__le32_to_cpu(a->trans.ts.sec) < __le32_to_cpu(b->trans.ts.sec))
+		return -1;
+	if (__le32_to_cpu(a->trans.ts.sec) > __le32_to_cpu(b->trans.ts.sec))
+		return 1;
+	if (__le32_to_cpu(a->trans.ts.usec) < __le32_to_cpu(b->trans.ts.usec))
+		return -1;
+	if (__le32_to_cpu(a->trans.ts.usec) > __le32_to_cpu(b->trans.ts.usec))
+		return 1;
+	return 0;
+}
+
+static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
+				 zap_event_t ev)
+{
+	int i, rc;
+	ldms_set_t s = ctxt->update.s;
+	struct ldms_set *set = s->set;
+	int n = __le32_to_cpu(set->meta->array_card);
+	struct ldms_data_hdr *data, *prev_data;
+	int flags, upd_curr_idx;
+
+	assert(ctxt->update.cb);
+	rc = LDMS_UPD_ERROR(ev->status);
+	if (rc) {
+		/* READ ERROR */
+		ctxt->update.cb(x, s, rc, ctxt->update.arg);
+		goto cleanup;
+	}
+
+	/* update current index from the update */
+	data = __ldms_set_array_get(s, ctxt->update.idx_from);
+	upd_curr_idx = __le32_to_cpu(data->curr_idx);
+	for (i = 0; i < n; i++) {
+		data = __ldms_set_array_get(s, i);
+		data->curr_idx = upd_curr_idx;
+	}
+
+	prev_data = __ldms_set_array_get(s, set->curr_idx);
+	for (i = ctxt->update.idx_from;i <= ctxt->update.idx_to; i++) {
+		data = __ldms_set_array_get(s, i);
+		if (data != prev_data &&
+				__ldms_data_ts_cmp(prev_data, data) >= 0) {
+			/* This can happen if the remote set is not from the
+			 * data sampler. */
+			break;
+		}
+		set->curr_idx = i;
+		set->data = data;
+		if (i == ctxt->update.idx_to
+				&& i == __le32_to_cpu(data->curr_idx)) {
+			/* our update is current. */
+			flags = 0;
+		} else {
+			flags = LDMS_UPD_F_MORE;
+		}
+		ctxt->update.cb(x, s, flags, ctxt->update.arg);
+		prev_data = data;
+	}
+
+	if (flags == 0) /* our update is current */
+		goto cleanup;
+
+	/* the updated set is not current */
+	rc = __ldms_remote_update(x, s, ctxt->update.cb,
+			ctxt->update.arg);
+	if (rc)
+		ctxt->update.cb(x, s, LDMS_UPD_ERROR(rc), ctxt->update.arg);
+
+cleanup:
+	zap_put_ep(x->zap_ep); /* from __ldms_remote_update() */
+	pthread_mutex_lock(&x->lock);
+	__ldms_free_ctxt(x, ctxt);
+	pthread_mutex_unlock(&x->lock);
+}
+
+static void __handle_update_meta(ldms_t x, struct ldms_context *ctxt,
+				 zap_event_t ev)
+{
+	int  rc;
+	ldms_set_t s = ctxt->update.s;
+	struct ldms_set *set = s->set;
+	int idx = (set->curr_idx + 1) % __le32_to_cpu(set->meta->array_card);
+
+	rc = do_read_data(x, s, idx, idx, ctxt->update.cb, ctxt->update.arg);
+	if (rc) {
+		ctxt->update.cb(x, s, LDMS_UPD_ERROR(rc), ctxt->update.arg);
+		zap_put_ep(x->zap_ep);
+	}
+	/* do_read_data has its own context */
+	pthread_mutex_lock(&x->lock);
+	__ldms_free_ctxt(x, ctxt);
+	pthread_mutex_unlock(&x->lock);
+}
+
+static void __handle_lookup(ldms_t x, struct ldms_context *ctxt,
+			    zap_event_t ev)
+{
+	int status;
+	if (!ctxt->lookup.cb)
+		goto ctxt_cleanup;
+	if (ev->status != ZAP_ERR_OK) {
+		/*
+		 * Application doesn't have the set handle yet,
+		 * so delete the set.
+		 */
+		ldms_set_delete(ctxt->lookup.s);
+		ctxt->lookup.s = NULL;
+	} else {
+		ldms_set_publish(ctxt->lookup.s);
+	}
+	if (ev->status) {
+		status = EREMOTEIO;
+	} else {
+		status = 0;
+	}
+	ctxt->lookup.cb((ldms_t)x, status, ctxt->lookup.more, ctxt->lookup.s,
+			ctxt->lookup.cb_arg);
+	if (!ctxt->lookup.more) {
+		zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
+#ifdef DEBUG
+		assert(x->active_lookup > 0);
+		x->active_lookup--;
+		x->log("DEBUG: read_complete: put ref %p: "
+			"active_lookup = %d\n", x->zap_ep, x->active_lookup);
+#endif /* DEBUG */
+	}
+
+ctxt_cleanup:
+	/* each `read` for lookup has its own context */
+	pthread_mutex_lock(&x->lock);
+	__ldms_free_ctxt(x, ctxt);
+	pthread_mutex_unlock(&x->lock);
+}
+
 static void handle_zap_read_complete(zap_ep_t zep, zap_event_t ev)
 {
 	struct ldms_context *ctxt = ev->context;
 	struct ldms_xprt *x = zap_get_ucontext(zep);
+
 	switch (ctxt->type) {
 	case LDMS_CONTEXT_UPDATE:
-		if (ctxt->update.cb) {
-			ctxt->update.cb((ldms_t)x, ctxt->update.s, ev->status,
-					ctxt->update.arg);
-			zap_put_ep(x->zap_ep); /* Taken in ldms_remote_update() */
-		}
+		__handle_update_data(x, ctxt, ev);
+		break;
+	case LDMS_CONTEXT_UPDATE_META:
+		__handle_update_meta(x, ctxt, ev);
 		break;
 	case LDMS_CONTEXT_LOOKUP:
-		if (ctxt->lookup.cb) {
-			if (ev->status != ZAP_ERR_OK) {
-				/*
-				 * Application doesn't have the set handle yet,
-				 * so delete the set.
-				 */
-				ldms_set_delete(ctxt->lookup.s);
-				ctxt->lookup.s = NULL;
-			} else {
-				ldms_set_publish(ctxt->lookup.s);
-			}
-			ctxt->lookup.cb((ldms_t)x, ev->status, ctxt->lookup.more, ctxt->lookup.s,
-					ctxt->lookup.cb_arg);
-			if (!ctxt->lookup.more) {
-				zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
-#ifdef DEBUG
-				pthread_mutex_lock(&x->lock);
-				assert(x->active_lookup > 0);
-				x->active_lookup--;
-				pthread_mutex_unlock(&x->lock);
-				x->log("DEBUG: read_complete: put ref %p: "
-						"active_lookup = %d\n",
-						x->zap_ep, x->active_lookup);
-#endif /* DEBUG */
-			}
-
-		}
+		__handle_lookup(x, ctxt, ev);
 		break;
 	default:
 		assert(0 == "Invalid context type in zap read completion.");
 	}
-	pthread_mutex_lock(&x->lock);
-	__ldms_free_ctxt(x, ctxt);
-	pthread_mutex_unlock(&x->lock);
 }
 
 static void handle_zap_write_complete(zap_ep_t zep, zap_event_t ev)
@@ -1657,6 +1821,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 		lset = __ldms_create_set(inst_name->name, schema_name->name,
 				       ntohl(lu->meta_len), ntohl(lu->data_len),
 				       ntohl(lu->card),
+				       ntohl(lu->array_card),
 				       LDMS_SET_F_REMOTE);
 		if (!lset) {
 			rc = errno;

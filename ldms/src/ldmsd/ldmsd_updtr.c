@@ -120,8 +120,8 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	prd_set->updt_duration = ldmsd_timeval_diff(&prd_set->updt_start, &end);
 	__updt_time_put(prd_set->updt_time);
 #endif /* LDMSD_UPDATE_TIME */
-	errcode = status & ~(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST);
-	ldmsd_log(LDMSD_LDEBUG, "Update complete for Set %s with status %d\n",
+	errcode = LDMS_UPD_ERROR(status);
+	ldmsd_log(LDMSD_LDEBUG, "Update complete for Set %s with status %#x\n",
 					prd_set->inst_name, status);
 	if (errcode) {
 		char *op_s;
@@ -158,7 +158,8 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 		ldmsd_strgp_unlock(strgp);
 	}
 set_ready:
-	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+	if ((status & LDMS_UPD_F_MORE) == 0)
+		prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 	pthread_mutex_unlock(&prd_set->lock);
 out:
 	if (0 == errcode) {
@@ -170,7 +171,7 @@ out:
 						prd_set->inst_name);
 		}
 	}
-	if (0 == (status & LDMS_UPD_F_PUSH))
+	if (0 == (status & (LDMS_UPD_F_PUSH|LDMS_UPD_F_MORE)))
 		/*
 		 * This is an pull update, so put back the reference
 		 * taken when request for the update.

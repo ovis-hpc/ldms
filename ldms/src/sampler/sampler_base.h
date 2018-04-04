@@ -50,7 +50,7 @@
  */
 #ifndef SAMPLER_BASE_H
 #define SAMPLER_BASE_H
-#include <ldmsd.h>
+#include "ldmsd.h"
 typedef struct base_data_s {
 	char *instance_name;
 	char *producer_name;
@@ -61,6 +61,7 @@ typedef struct base_data_s {
 	uid_t uid;
 	gid_t gid;
 	int perm;
+	int set_array_card;
 	uint64_t component_id;
 	int job_id_idx;
 	int app_id_idx;

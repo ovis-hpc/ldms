@@ -308,9 +308,11 @@ __record_set(const char *instance_name,
 	LIST_INIT(&set->remote_rbd_list);
 	LIST_INIT(&set->local_rbd_list);
 	pthread_mutex_init(&set->lock, NULL);
+	set->curr_idx = __le32_to_cpu(sh->array_card) - 1;
 
 	set->meta = sh;
-	set->data = dh;
+	set->data_array = dh;
+	set->data = __set_array_get(set, set->curr_idx);
 	set->flags = flags;
 
 	set->rb_node.key = get_instance_name(set->meta)->name;
@@ -433,7 +435,7 @@ static void sync_update_cb(ldms_t x, ldms_set_t s, int status, void *arg)
 
 int ldms_xprt_update(ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
-	if (s->set->flags & LDMS_SET_F_REMOTE){
+	if (s->set->flags & LDMS_SET_F_REMOTE) {
 		ldms_t x = s->xprt;
 		if (!cb) {
 			int rc = __ldms_remote_update(x, s, sync_update_cb, arg);
@@ -601,34 +603,35 @@ int ldms_set_producer_name_set(ldms_set_t s, const char *name)
 }
 
 /* Caller must hold the set tree lock. */
-struct ldms_set *__ldms_create_set(const char *instance_name, const char *schema_name,
-				   size_t meta_len, size_t data_len, size_t card,
+struct ldms_set *__ldms_create_set(const char *instance_name,
+				   const char *schema_name,
+				   size_t meta_len, size_t data_len,
+				   size_t card,
+				   size_t array_card,
 				   uint32_t flags)
 {
-	struct ldms_data_hdr *data;
+	int i, n;
+	struct ldms_data_hdr *data, *data_base;
 	struct ldms_set_hdr *meta;
 	struct ldms_set *set = NULL;
 
-	int rc;
-
-	meta = mm_alloc(meta_len + data_len);
+	meta = mm_alloc(meta_len + array_card * data_len);
 	if (!meta) {
 		errno = ENOMEM;
 		return NULL;
 	}
 
 
-	memset(meta, 0, meta_len + data_len);
+	memset(meta, 0, meta_len + array_card * data_len);
 	LDMS_VERSION_SET(meta->version);
 	meta->meta_sz = __cpu_to_le32(meta_len);
 
-	data = (struct ldms_data_hdr *)((unsigned char*)meta + meta_len);
 	meta->data_sz = __cpu_to_le32(data_len);
-	data->size = __cpu_to_le64(data_len);
 
 	/* Initialize the metric set header */
 	meta->meta_gn = __cpu_to_le64(1);
 	meta->card = __cpu_to_le32(card);
+	meta->array_card = __cpu_to_le32(array_card);
 	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
 
 	ldms_name_t lname = get_instance_name(meta);
@@ -639,9 +642,16 @@ struct ldms_set *__ldms_create_set(const char *instance_name, const char *schema
 	lname->len = strlen(schema_name) + 1;
 	strcpy(lname->name, schema_name);
 
-	data->gn = data->meta_gn = meta->meta_gn;
+	data_base = (void*)meta + meta_len;
 
-	set = __record_set(instance_name, meta, data, flags);
+	for (i = 0; i < array_card; i++) {
+		data = (void*)data_base + i*data_len;
+		data->size = __cpu_to_le64(data_len);
+		data->curr_idx = __cpu_to_le32(array_card - 1);
+		data->gn = data->meta_gn = meta->meta_gn;
+	}
+
+	set = __record_set(instance_name, meta, data_base, flags);
 	if (set)
 		return set;
 
@@ -651,7 +661,9 @@ struct ldms_set *__ldms_create_set(const char *instance_name, const char *schema
 
 uint32_t __ldms_set_size_get(struct ldms_set *s)
 {
-	return __le32_to_cpu(s->meta->meta_sz) + __le32_to_cpu(s->meta->data_sz);
+	return __le32_to_cpu(s->meta->meta_sz) +
+		(__le32_to_cpu(s->meta->array_card) *
+		 __le32_to_cpu(s->meta->data_sz));
 }
 
 #define LDMS_GRAIN_MMALLOC 1024
@@ -671,6 +683,7 @@ ldms_schema_t ldms_schema_new(const char *schema_name)
 		s->name = strdup(schema_name);
 		s->meta_sz = sizeof(struct ldms_set_hdr);
 		s->data_sz = sizeof(struct ldms_data_hdr);
+		s->array_card = 1;
 		STAILQ_INIT(&s->metric_list);
 	}
 	return s;
@@ -696,6 +709,14 @@ void ldms_schema_delete(ldms_schema_t schema)
 int ldms_schema_metric_count_get(ldms_schema_t schema)
 {
 	return schema->card;
+}
+
+int ldms_schema_array_card_set(ldms_schema_t schema, int card)
+{
+	if (card < 0)
+		return EINVAL;
+	schema->array_card = card;
+	return 0;
 }
 
 static int value_size[] = {
@@ -746,44 +767,57 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 				  ldms_schema_t schema,
 				  uid_t uid, gid_t gid, int perm)
 {
-	struct ldms_data_hdr *data;
+	struct ldms_data_hdr *data, *data_base;
 	struct ldms_set_hdr *meta;
 	struct ldms_value_desc *vd;
-	size_t meta_sz;
+	size_t meta_sz, array_data_sz;
 	uint64_t value_off;
 	ldms_mdef_t md;
 	int metric_idx;
 	int rc, i;
+	int set_array_card;
 
 	if (!instance_name || !schema) {
 		errno = EINVAL;
 		return NULL;
 	}
 
+	set_array_card = schema->array_card;
+
+	if (set_array_card < 0) {
+		errno = EINVAL;
+		return NULL;
+	}
+
+	if (!set_array_card) {
+		set_array_card = 1;
+	}
+
 	meta_sz = schema->meta_sz /* header + metric dict */
 		+ strlen(schema->name) + 2 /* schema name + '\0' + len */
 		+ strlen(instance_name) + 2; /* instance name + '\0' + len */
 	meta_sz = roundup(meta_sz, 8);
-	meta = mm_alloc(meta_sz + schema->data_sz);
+	assert(schema->data_sz == roundup(schema->data_sz, 8));
+	array_data_sz = schema->data_sz * set_array_card;
+	meta = mm_alloc(meta_sz + array_data_sz);
 	if (!meta) {
 		errno = ENOMEM;
 		return NULL;
 	}
-	memset(meta, 0, meta_sz + schema->data_sz);
+	memset(meta, 0, meta_sz + array_data_sz);
 	LDMS_VERSION_SET(meta->version);
 	meta->card = __cpu_to_le32(schema->card);
 	meta->meta_sz = __cpu_to_le32(meta_sz);
 
-	data = (struct ldms_data_hdr *)((unsigned char*)meta + meta_sz);
 	meta->data_sz = __cpu_to_le32(schema->data_sz);
-	data->size = __cpu_to_le64(schema->data_sz);
 
-	/* Initialize the metric set header */
+	/* Initialize the metric set header (metadata part) */
 	meta->meta_gn = __cpu_to_le64(1);
 	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
 	meta->uid = __cpu_to_le32(uid);
 	meta->gid = __cpu_to_le32(gid);
 	meta->perm = __cpu_to_le32(perm);
+	meta->array_card = __cpu_to_le32(set_array_card);
 
 	/*
 	 * Set the instance name.
@@ -799,12 +833,19 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	lname->len = strlen(schema->name) + 1;
 	strcpy(lname->name, schema->name);
 
-	data->gn = data->meta_gn = meta->meta_gn;
+	/* set array element data hdr initialization */
+	data_base = (void*)meta + meta_sz;
+	for (i = 0; i < set_array_card; i++) {
+		data = (void*)data_base + i*schema->data_sz;
+		data->size = __cpu_to_le64(schema->data_sz);
+		data->curr_idx = __cpu_to_le32(set_array_card - 1);
+		data->gn = data->meta_gn = meta->meta_gn;
+	}
 
 	/* Add the metrics from the schema */
 	vd = get_first_metric_desc(meta);
-	value_off = (uint8_t *)data - (uint8_t *)meta;
-	value_off = roundup(value_off + sizeof(*data), 8);
+	/* value_off is the offset from the beginning of data header */
+	value_off = roundup(sizeof(*data_base), 8);
 	metric_idx = 0;
 	size_t vd_size = 0;
 	STAILQ_FOREACH(md, &schema->metric_list, entry) {
@@ -830,7 +871,9 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	}
 	/*
 	 * Now that the end of all vd is known, assign the data offsets for the
-	 * meta-attributes from the meta data area
+	 * meta-attributes from the meta data area.
+	 * value_off in metadata is the offset from the beginning of the
+	 * metadata header.
 	 */
 	value_off = (uint64_t)((char *)vd - (char *)meta);
 	value_off = roundup(value_off, 8);
@@ -843,12 +886,9 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 						   __le32_to_cpu(vd->vd_array_count));
 	}
 	__ldms_set_tree_lock();
-	struct ldms_set *set = __record_set(instance_name, meta, data, LDMS_SET_F_LOCAL);
+	struct ldms_set *set = __record_set(instance_name, meta, data_base, LDMS_SET_F_LOCAL);
 	if (!set)
 		goto err_1;
-	rc = __ldms_set_publish(set);
-	if (rc)
-		goto err_2;
 	ldms_set_t rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
 	if (!rbd)
 		goto err_2;
@@ -866,6 +906,14 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 {
 	return ldms_set_new_with_auth(instance_name, schema, -1, -1, 0777);
+}
+
+int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, int perm)
+{
+	set->set->meta->uid = __cpu_to_le32(uid);
+	set->set->meta->gid = __cpu_to_le32(gid);
+	set->set->meta->perm = __cpu_to_le32(perm);
+	return 0;
 }
 
 const char *ldms_set_name_get(ldms_set_t s)
@@ -1010,6 +1058,10 @@ static ldms_mval_t __value_get(struct ldms_set *s, int idx, ldms_mdesc_t *pd)
 			__le32_to_cpu(s->meta->dict[idx]));
 	if (pd)
 		*pd = desc;
+	if (desc->vd_flags & LDMS_MDESC_F_DATA) {
+		return ldms_ptr_(union ldms_value, s->data,
+				 __le32_to_cpu(desc->vd_data_offset));
+	}
 	return ldms_ptr_(union ldms_value, s->meta,
 			__le32_to_cpu(desc->vd_data_offset));
 }
@@ -1221,24 +1273,18 @@ void ldms_metric_modify(ldms_set_t s, int i)
 
 ldms_mval_t ldms_metric_get(ldms_set_t s, int i)
 {
-	ldms_mdesc_t desc;
-
 	if (i < 0 || i >= __le32_to_cpu(s->set->meta->card))
 		return NULL;
 
-	desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
-			 __le32_to_cpu(s->set->meta->dict[i]));
-
-	return ldms_ptr_(union ldms_value, s->set->meta,
-			 __le32_to_cpu(desc->vd_data_offset));
+	return __value_get(s->set, i, NULL);
 }
 
 ldms_mval_t ldms_metric_get_addr(ldms_set_t s, int i)
 {
-	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
-			__le32_to_cpu(s->set->meta->dict[i]));
-	return ldms_ptr_(union ldms_value, s->set->meta,
-			 __le32_to_cpu(desc->vd_data_offset));
+	if (i < 0 || i >= __le32_to_cpu(s->set->meta->card))
+		return NULL;
+
+	return __value_get(s->set, i, NULL);
 }
 
 uint32_t ldms_metric_array_get_len(ldms_set_t s, int i)
@@ -1251,11 +1297,10 @@ uint32_t ldms_metric_array_get_len(ldms_set_t s, int i)
 }
 ldms_mval_t ldms_metric_array_get(ldms_set_t s, int i)
 {
-	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
-			__le32_to_cpu(s->set->meta->dict[i]));
+	ldms_mdesc_t desc;
+	ldms_mval_t ret = __value_get(s->set, i, &desc);
 	if (metric_is_array(desc))
-		return ldms_ptr_(union ldms_value, s->set->meta,
-				 __le32_to_cpu(desc->vd_data_offset));
+		return ret;
 	return NULL;
 }
 
@@ -1299,10 +1344,7 @@ void ldms_metric_set(ldms_set_t s, int i, ldms_mval_t v)
 	if (i < 0 || i >= __le32_to_cpu(s->set->meta->card))
 		assert(0 == "Invalid metric index");
 
-	desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
-			 __le32_to_cpu(s->set->meta->dict[i]));
-	mv = ldms_ptr_(union ldms_value, s->set->meta,
-		       __le32_to_cpu(desc->vd_data_offset));
+	mv = __value_get(s->set, i, &desc);
 
 	__metric_set(s, desc, mv, v);
 	__ldms_gn_inc(s->set, desc);
@@ -1360,10 +1402,7 @@ void ldms_metric_array_set_val(ldms_set_t s, int metric_idx, int array_idx, ldms
 	if (metric_idx >= __le32_to_cpu(s->set->meta->card))
 		assert(0 == "Invalid metric index");
 
-	desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
-			__le32_to_cpu(s->set->meta->dict[metric_idx]));
-	dst = ldms_ptr_(union ldms_value, s->set->meta,
-			__le32_to_cpu(desc->vd_data_offset));
+	dst = __value_get(s->set, metric_idx, &desc);
 
 	__metric_array_set(s, desc, dst, array_idx, src);
 	__ldms_gn_inc(s->set, desc);
@@ -1648,8 +1687,7 @@ void ldms_metric_array_set(ldms_set_t s, int mid, ldms_mval_t mval,
 	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
 				      __le32_to_cpu(s->set->meta->dict[mid]));
 	int i;
-	ldms_mval_t val = ldms_ptr_(union ldms_value, s->set->meta,
-				    __le32_to_cpu(desc->vd_data_offset));
+	ldms_mval_t val = __value_get(s->set, mid, &desc);
 	switch (desc->vd_type) {
 	case LDMS_V_CHAR_ARRAY:
 	case LDMS_V_U8_ARRAY:
@@ -1944,23 +1982,38 @@ double ldms_metric_array_get_double(ldms_set_t s, int mid, int idx)
 
 int ldms_transaction_begin(ldms_set_t s)
 {
-	struct ldms_data_hdr *dh = s->set->data;
+	struct ldms_data_hdr *dh, *dh_prev;
 	struct timeval tv;
+	int i, n;
+
 	pthread_mutex_lock(&s->set->lock);
+	dh_prev = __ldms_set_array_get(s, s->set->curr_idx);
+	n = __le32_to_cpu(s->set->meta->array_card);
+	s->set->curr_idx = (s->set->curr_idx + 1) % n;
+	dh = __ldms_set_array_get(s, s->set->curr_idx);
+	*dh = *dh_prev; /* copy over the header contents */
 	dh->trans.flags = LDMS_TRANSACTION_BEGIN;
 	(void)gettimeofday(&tv, NULL);
 	dh->trans.ts.sec = __cpu_to_le32(tv.tv_sec);
 	dh->trans.ts.usec = __cpu_to_le32(tv.tv_usec);
+	/* update curr_idx in all headers */
+	for (i = 0; i < n; i++) {
+		dh = __ldms_set_array_get(s, i);
+		dh->curr_idx = __cpu_to_le32(s->set->curr_idx);
+	}
+	s->set->data = __ldms_set_array_get(s, s->set->curr_idx);
 	pthread_mutex_unlock(&s->set->lock);
 	return 0;
 }
 
 int ldms_transaction_end(ldms_set_t s)
 {
-	struct ldms_data_hdr *dh = s->set->data;
+	struct ldms_data_hdr *dh;
 	struct timeval tv;
-	(void)gettimeofday(&tv, NULL);
+
 	pthread_mutex_lock(&s->set->lock);
+	(void)gettimeofday(&tv, NULL);
+	dh = __ldms_set_array_get(s, s->set->curr_idx);
 	dh->trans.dur.sec = tv.tv_sec - __le32_to_cpu(dh->trans.ts.sec);
 	dh->trans.dur.usec = tv.tv_usec - __le32_to_cpu(dh->trans.ts.usec);
 	if (((int32_t)dh->trans.dur.usec) < 0) {

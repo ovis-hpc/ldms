@@ -564,7 +564,9 @@ typedef struct ldms_update_ctxt {
 void __update_cb(ldms_t xprt, ldms_set_t set, int flags, void *_ctxt)
 {
 	ldms_update_ctxt_t ctxt = _ctxt;
-	ctxt->rc = flags & ~(LDMS_UPD_F_PUSH|LDMS_UPD_F_PUSH_LAST);
+	if (flags & LDMS_UPD_F_MORE)
+		return; /* wait for the last update */
+	ctxt->rc = LDMS_UPD_ERROR(flags);
 	sem_post(&ctxt->sem);
 }
 
@@ -628,7 +630,9 @@ void __update_cb2(ldms_t xprt, ldms_set_t set, int flags, void *_ctxt)
 	Py_XDECREF(result);
 	Py_XDECREF(kwargs);
 	Py_XDECREF(args);
-	__uctxt_free(uctxt);
+	if (0 == (flags & LDMS_UPD_F_MORE)) {
+		__uctxt_free(uctxt);
+	}
 	PyGILState_Release(gstate);
 }
 %}
