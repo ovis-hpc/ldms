@@ -50,6 +50,9 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+# This file contains the test cases for ldmsd message boundary protocol logic in
+# ldmsd_controller and ldmsctl
+
 import unittest
 from time import sleep
 import logging
@@ -57,7 +60,7 @@ from ldmsd.ldmsd_util import LDMSD, LDMSD_Controller
 
 log = logging.getLogger(__name__)
 
-class TestLdmsctlMsgBoundary(unittest.TestCase):
+class TestLdmsdInterfaceMsgBoundary(unittest.TestCase):
     HOST = "localhost"
     XPRT = "sock"
     PORT = "10001"
@@ -66,7 +69,8 @@ class TestLdmsctlMsgBoundary(unittest.TestCase):
     AUTH_OPT = {'uid': "1111", 'gid': "1111"}
 
     ldmsd = None
-    ldmsctl = None
+    ldmsd_interface = None
+    is_ldmsctl = None
 
     @classmethod
     def setUpClass(cls):
@@ -79,21 +83,21 @@ class TestLdmsctlMsgBoundary(unittest.TestCase):
             cls.ldmsd.run()
             sleep(1)
             
-            cls.ldmsctl = LDMSD_Controller(port = cls.PORT, host = cls.HOST,
+            cls.ldmsd_interface = LDMSD_Controller(port = cls.PORT, host = cls.HOST,
                                    xprt = cls.XPRT, auth = cls.AUTH,
-                                   auth_opt = cls.AUTH_OPT, ldmsctl = True)
-            cls.ldmsctl.run()
-            cls.ldmsctl.read_pty() # Read the welcome message and the prompt 
+                                   auth_opt = cls.AUTH_OPT, ldmsctl = cls.is_ldmsctl)
+            cls.ldmsd_interface.run()
+            cls.ldmsd_interface.read_pty() # Read the welcome message and the prompt 
         except:
             del cls.ldmsd
-            del cls.ldmsctl
+            del cls.ldmsd_interface
             raise
         log.info(cls.__name__ + " set up done")
 
     @classmethod
     def tearDownClass(cls):
         del cls.ldmsd
-        del cls.ldmsctl
+        del cls.ldmsd_interface
 
     def setUp(self):
         log.debug("Testing: {0}".format(self._testMethodName))
@@ -103,8 +107,8 @@ class TestLdmsctlMsgBoundary(unittest.TestCase):
 
     def _comm(self, cmd):
         cmd = cmd.strip()
-        self.ldmsctl.write_pty(cmd + "\n")
-        resp = self.ldmsctl.read_pty()
+        self.ldmsd_interface.write_pty(cmd + "\n")
+        resp = self.ldmsd_interface.read_pty()
         lines = resp.splitlines()
         log.debug("_ctrl resp:" + str(lines))
         n = len(lines)
@@ -136,6 +140,12 @@ class TestLdmsctlMsgBoundary(unittest.TestCase):
             self.assertEqual(resp[i], str(i))
         self.assertTrue(self.ldmsd.is_running())
 
+class TestLdmsCtlMsgBoundary(TestLdmsdInterfaceMsgBoundary):
+    is_ldmsctl = True
+
+class TestLdmsdControllerMsgBoundary(TestLdmsdInterfaceMsgBoundary):
+    is_ldmsctl = True
+
 if __name__ == "__main__":
     fmt = "%(asctime)s.%(msecs)d %(levelname)s: %(message)s"
     datefmt = "%F %T"
@@ -143,7 +153,7 @@ if __name__ == "__main__":
             format = fmt,
             datefmt = datefmt,
             level = logging.DEBUG,
-            filename = "TestLdmsctlMsgBoundary.log",
+            filename = "ldmsd_interface_msg_boundary.log",
             filemode = "w",
     )
     log = logging.getLogger(__name__)
@@ -151,4 +161,7 @@ if __name__ == "__main__":
     ch.setLevel(logging.INFO)
     ch.setFormatter(logging.Formatter(fmt, datefmt))
     log.addHandler(ch)
-    unittest.main(failfast = True, verbosity = 2)
+    ldmsctl_suite = unittest.TestLoader().loadTestsFromTestCase(TestLdmsCtlMsgBoundary)
+    ldmsd_controller_suite = unittest.TestLoader().loadTestsFromTestCase(TestLdmsdControllerMsgBoundary)
+    suite = unittest.TestSuite([ldmsctl_suite, ldmsd_controller_suite])
+    unittest.TextTestRunner(failfast = True, verbosity = 2).run(suite)
