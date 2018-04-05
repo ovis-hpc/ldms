@@ -177,6 +177,19 @@ static char *ldmsctl_resp_msg_get(ldmsd_req_hdr_t response)
 	return (char *)(response+1);
 }
 
+static json_value *ldmsctl_json_str_value_get(json_value *json_obj,
+					const char *attr_name)
+{
+	int i;
+	json_object_entry entry;
+	for (i = 0; i < json_obj->u.object.length; i++) {
+		entry = json_obj->u.object.values[i];
+		if (0 == strcmp(attr_name, entry.name))
+			return entry.value;
+	}
+	return NULL;
+}
+
 static void help_greeting()
 {
 	printf("\nGreet ldmsd\n\n"
@@ -846,6 +859,58 @@ static void help_strgp_status()
 	       "      None\n");
 }
 
+static void __print_plugn_sets(json_value *plugin_sets)
+{
+	json_value *pi_name, *sets, *set_name;
+	int i;
+	pi_name = ldmsctl_json_str_value_get(plugin_sets, "plugin");
+	if (!pi_name) {
+		printf("Unrecognized json object\n");
+		return;
+	}
+	printf("%s:\n", pi_name->u.string.ptr);
+	sets = ldmsctl_json_str_value_get(plugin_sets, "sets");
+	if (!sets) {
+		printf("   None\n");
+		return;
+	}
+	for (i = 0; i < sets->u.array.length; i++) {
+		set_name = sets->u.array.values[i];
+		printf("   %s\n", set_name->u.string.ptr);
+	}
+}
+
+static void resp_plugn_sets(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+	json_value *json, *plugn_sets_json;
+	json = json_parse((char*)attr->attr_value, len);
+	if (!json)
+		return;
+
+	if (json->type != json_array) {
+		printf("Unrecognized plugn_sets json object\n");
+		return;
+	}
+	int i;
+
+	for (i = 0; i < json->u.array.length; i++) {
+		plugn_sets_json = json->u.array.values[i];
+		__print_plugn_sets(plugn_sets_json);
+	}
+	json_value_free(json);
+
+}
+
+static void help_plugn_sets()
+{
+	printf("\nPrint sets by plugins\n"
+	       "Parameters:\n"
+	       "      [name]=   Plugin name\n");
+}
+
 static void help_version()
 {
 	printf( "\nGet the LDMS version.\n");
@@ -874,6 +939,7 @@ static struct command command_tbl[] = {
 	{ "load", LDMSD_PLUGN_LOAD_REQ, NULL, help_load, resp_generic },
 	{ "loglevel", LDMSD_VERBOSE_REQ, NULL, help_loglevel, resp_generic },
 	{ "oneshot", LDMSD_ONESHOT_REQ, NULL, help_oneshot, resp_generic },
+	{ "plugn_sets", LDMSD_PLUGN_SETS_REQ, NULL, help_plugn_sets, resp_plugn_sets },
 	{ "prdcr_add", LDMSD_PRDCR_ADD_REQ, NULL, help_prdcr_add, resp_generic },
 	{ "prdcr_del", LDMSD_PRDCR_DEL_REQ, NULL, help_prdcr_del, resp_generic },
 	{ "prdcr_set_status", LDMSD_PRDCR_SET_REQ, NULL, help_prdcr_set_status, resp_prdcr_set_status },

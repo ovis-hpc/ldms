@@ -124,6 +124,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'strgp_start': {'req_attr': ['name']},
                       'strgp_stop': {'req_attr': ['name']},
                       'strgp_status': {'req_attr': [], 'opt_attr': []},
+                      ##### Plugin #####
+                      'plugn_sets': {'req_attr': [], 'opt_attr': []},
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': []},
                       ##### Misc. #####

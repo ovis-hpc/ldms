@@ -120,6 +120,17 @@ FILE *log_fp;
 int do_kernel = 0;
 char *setfile = NULL;
 
+static int set_cmp(void *a, const void *b)
+{
+	return strcmp(a, b);
+}
+
+static struct rbt set_tree = {
+		.root = 0,
+		.comparator = set_cmp,
+};
+static pthread_mutex_t set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+
 int find_least_busy_thread();
 
 int passive = 0;
@@ -609,6 +620,148 @@ void plugin_sampler_cb(ovis_event_t oev)
 		stop_sampler(pi);
 	}
 	pthread_mutex_unlock(&pi->lock);
+}
+
+void ldmsd_set_tree_lock()
+{
+	pthread_mutex_lock(&set_tree_lock);
+}
+
+void ldmsd_set_tree_unlock()
+{
+	pthread_mutex_unlock(&set_tree_lock);
+}
+
+/* Caller must hold the set tree lock. */
+ldmsd_plugin_set_list_t ldmsd_plugin_set_list_first()
+{
+	struct rbn *rbn;
+	ldmsd_plugin_set_list_t list;
+
+	rbn = rbt_min(&set_tree);
+	if (!rbn)
+		return NULL;
+	return container_of(rbn, struct ldmsd_plugin_set_list, rbn);
+}
+
+ldmsd_plugin_set_list_t ldmsd_plugin_set_list_next(ldmsd_plugin_set_list_t list)
+{
+	struct rbn *rbn;
+	rbn = rbn_succ(&list->rbn);
+	if (!rbn)
+		return NULL;
+	return container_of(rbn, struct ldmsd_plugin_set_list, rbn);
+}
+
+ldmsd_plugin_set_list_t ldmsd_plugin_set_list_find(const char *plugin_name)
+{
+	struct rbn *rbn;
+	rbn = rbt_find(&set_tree, plugin_name);
+	if (!rbn) {
+		return NULL;
+	}
+	return container_of(rbn, struct ldmsd_plugin_set_list, rbn);
+}
+
+/* Caller must hold the set_tree lock */
+ldmsd_plugin_set_t ldmsd_plugin_set_first(const char *plugin_name)
+{
+	struct rbn *rbn;
+	ldmsd_plugin_set_t set;
+	ldmsd_plugin_set_list_t list;
+	rbn = rbt_find(&set_tree, plugin_name);
+	if (!rbn)
+		return NULL;
+	list = container_of(rbn, struct ldmsd_plugin_set_list, rbn);
+	return LIST_FIRST(&list->list);
+}
+
+/* Caller must hold the set_tree lock */
+ldmsd_plugin_set_t ldmsd_plugin_set_next(ldmsd_plugin_set_t set)
+{
+	return LIST_NEXT(set, entry);
+}
+
+int ldmsd_set_register(ldms_set_t set, const char *pluing_name)
+{
+	struct rbn *rbn;
+	ldmsd_plugin_set_t s;
+	ldmsd_plugin_set_list_t list;
+	int rc;
+
+	s = malloc(sizeof(*s));
+	if (!s) {
+		return ENOMEM;
+	}
+	s->plugin_name = strdup(pluing_name);
+	if (!s->plugin_name) {
+		rc = ENOMEM;
+		goto free_set;
+	}
+	s->inst_name = strdup(ldms_set_instance_name_get(set));
+	if (!s->inst_name) {
+		rc = ENOMEM;
+		goto free_plugin;
+	}
+	s->set = ldms_set_by_name(ldms_set_instance_name_get(set));
+	if (!s->set) {
+		rc = ENOMEM;
+		goto free_inst_name;
+	}
+	ldmsd_set_tree_lock();
+	rbn = rbt_find(&set_tree, s->plugin_name);
+	if (!rbn) {
+		list = malloc(sizeof(*list));
+		if (!list) {
+			ldmsd_set_tree_unlock();
+			ldms_set_put(s->set);
+			rc = ENOMEM;
+			goto free_inst_name;
+		}
+		rbn_init(&list->rbn, s->plugin_name);
+		LIST_INIT(&list->list);
+		rbt_ins(&set_tree, &list->rbn);
+	} else {
+		list = container_of(rbn, struct ldmsd_plugin_set_list, rbn);
+	}
+	LIST_INSERT_HEAD(&list->list, s, entry);
+	ldmsd_set_tree_unlock();
+	return 0;
+
+free_inst_name:
+	free(s->inst_name);
+free_plugin:
+	free(s->plugin_name);
+free_set:
+	free(s);
+	return rc;
+}
+
+void ldmsd_set_deregister(const char *inst_name, const char *plugin_name)
+{
+	ldmsd_plugin_set_t set;
+	ldmsd_plugin_set_list_t list;
+	struct rbn *rbn;
+	ldmsd_set_tree_lock();
+	rbn = rbt_find(&set_tree, plugin_name);
+	if (!rbn)
+		goto out;
+	list = container_of(rbn, struct ldmsd_plugin_set_list, rbn);
+	LIST_FOREACH(set, &list->list, entry) {
+		if (0 == strcmp(set->inst_name, inst_name)) {
+			LIST_REMOVE(set, entry);
+			free(set->inst_name);
+			free(set->plugin_name);
+			ldms_set_put(set->set);
+			free(set);
+		}
+	}
+	if (LIST_EMPTY(&list->list)) {
+		rbt_del(&set_tree, &list->rbn);
+		free(list);
+	}
+out:
+	ldmsd_set_tree_unlock();
 }
 
 static void resched_task(ldmsd_task_t task)

@@ -76,6 +76,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "logrotate",          LDMSD_LOGROTATE_REQ  },
 	{  "oneshot",            LDMSD_ONESHOT_REQ  },
 	{  "plugn_status",       LDMSD_PLUGN_STATUS_REQ  },
+	{  "plugn_sets",         LDMSD_PLUGN_SETS_REQ  },
 	{  "prdcr_add",          LDMSD_PRDCR_ADD_REQ  },
 	{  "prdcr_del",          LDMSD_PRDCR_DEL_REQ  },
 	{  "prdcr_set_status",   LDMSD_PRDCR_SET_REQ  },

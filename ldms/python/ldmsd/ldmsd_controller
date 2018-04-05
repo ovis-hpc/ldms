@@ -721,6 +721,23 @@ class LdmsdCmdParser(cmd.Cmd):
                     plugn['sample_interval_us'], plugn['sample_offset_us'],
                     plugn['libpath']))
 
+    def do_plugn_sets(self, arg):
+        """
+        List the sets by the plugin that provides the sets
+        Parameters:
+        [name=]   The plugin name
+        """
+        resp = self.handle('plugn_sets', arg)
+        if resp is None:
+            return
+        if 0 != resp['errcode']:
+            return
+        plugns = json.loads(resp['msg'])
+        for p in plugns:
+            print("{0}:".format(p['plugin']))
+            for s in p['sets']:
+                print("   {0}".format(s))
+
     def do_status(self, arg):
         all__ = (len(arg) == 0)
         if "plugn" in arg or all__:
