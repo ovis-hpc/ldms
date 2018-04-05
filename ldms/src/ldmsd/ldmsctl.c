@@ -203,19 +203,6 @@ static char *ldmsctl_json_str_value_get(json_value *json_obj, const char *name)
 	return value->u.string.ptr;
 }
 
-static json_value *ldmsctl_json_str_value_get(json_value *json_obj,
-					const char *attr_name)
-{
-	int i;
-	json_object_entry entry;
-	for (i = 0; i < json_obj->u.object.length; i++) {
-		entry = json_obj->u.object.values[i];
-		if (0 == strcmp(attr_name, entry.name))
-			return entry.value;
-	}
-	return NULL;
-}
-
 static void help_greeting()
 {
 	printf("\nGreet ldmsd\n\n"
@@ -901,21 +888,22 @@ static void help_strgp_status()
 
 static void __print_plugn_sets(json_value *plugin_sets)
 {
-	json_value *pi_name, *sets, *set_name;
+	json_value *sets, *set_name;
+	char *pi_name, *sname;
 	int i;
 	pi_name = ldmsctl_json_str_value_get(plugin_sets, "plugin");
 	if (!pi_name) {
 		printf("Unrecognized json object\n");
 		return;
 	}
-	printf("%s:\n", pi_name->u.string.ptr);
-	sets = ldmsctl_json_str_value_get(plugin_sets, "sets");
+	printf("%s:\n", pi_name);
+	sets = ldmsctl_json_value_get(plugin_sets, "sets");
 	if (!sets) {
 		printf("   None\n");
 		return;
 	}
 	for (i = 0; i < sets->u.array.length; i++) {
-		set_name = sets->u.array.values[i];
+		set_name = ldmsctl_json_array_ele_get(sets, i);
 		printf("   %s\n", set_name->u.string.ptr);
 	}
 }
