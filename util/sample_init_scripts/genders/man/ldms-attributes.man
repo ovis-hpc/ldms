@@ -156,9 +156,9 @@ ldmsd_config_text_SUFFIX=FILE   Defines SUFFIX plugin config file.
 ldmsd_config_gen_SUFFIX=PROG    Defines SUFFIX plugin config file
                                 generator.
 ldmsd_schemas_SUFFIX=S          Defines schemas S to route to store
-                                SUFFIX.
+                                SUFFIX. Colon separated list S.
 ldmsd_exclude_schemas_SUFFIX=S  Defines schemas S to exclude from
-                                store SUFFIX.
+                                store SUFFIX. Colon separated list S.
 # for example:
 ldmsd_store_csv=PARAMLIST       defines config flags for store_csv.
 
