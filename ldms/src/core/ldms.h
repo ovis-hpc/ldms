@@ -515,6 +515,13 @@ extern void ldms_xprt_close(ldms_t x);
  */
 extern int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len);
 
+/**
+ * \brief Get transport max message size in bytes.
+ * \param x The transport handle.
+ * \retval sz The maximum message size of the transport.
+ */
+size_t ldms_xprt_msg_max(ldms_t x);
+
 /** \} */
 
 /**
