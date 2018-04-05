@@ -362,6 +362,9 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
 		goto reset_prdcr;
+	case LDMS_XPRT_EVENT_RECV:
+		ldmsd_recv_msg(x, e->data, e->data_len);
+		break;
 	default:
 		assert(0);
 	}

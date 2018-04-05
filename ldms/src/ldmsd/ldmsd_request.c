@@ -63,6 +63,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_request.h"
+#include "ldms_xprt.h"
 
 /*
  * This file implements an LDMSD control protocol. The protocol is
@@ -347,7 +348,8 @@ static ldmsd_req_ctxt_t find_req_ctxt(struct req_ctxt_key *key)
 	return rm;
 }
 
-void free_req_ctxt(ldmsd_req_ctxt_t reqc)
+/* The caller must hold the msg_tree lock. */
+void __free_req_ctxt(ldmsd_req_ctxt_t reqc)
 {
 	rbt_del(&msg_tree, &reqc->rbn);
 	if (reqc->line_buf)
@@ -359,8 +361,23 @@ void free_req_ctxt(ldmsd_req_ctxt_t reqc)
 	free(reqc);
 }
 
+void req_ctxt_ref_get(ldmsd_req_ctxt_t reqc)
+{
+	assert(reqc->ref_count);
+	__sync_fetch_and_add(&reqc->ref_count, 1);
+}
+
+/* Caller must hold the msg_tree lock. */
+void req_ctxt_ref_put(ldmsd_req_ctxt_t reqc)
+{
+	if (0 == __sync_sub_and_fetch(&reqc->ref_count, 1))
+		__free_req_ctxt(reqc);
+}
+
 /*
  * max_msg_len must be a positive number.
+ *
+ * The caller must hold the msg_tree lock.
  */
 ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key, size_t max_msg_len)
 {
@@ -370,6 +387,7 @@ ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key, size_t max_msg_len)
 	reqc = calloc(1, sizeof *reqc);
 	if (!reqc)
 		return NULL;
+	reqc->ref_count = 1;
 	/* leave one byte for terminating '\0' to accommodate string replies */
 	reqc->line_len = LINE_BUF_LEN - 1;
 	reqc->line_buf = malloc(LINE_BUF_LEN);
@@ -393,7 +411,7 @@ ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key, size_t max_msg_len)
 	rbt_ins(&msg_tree, &reqc->rbn);
 	return reqc;
  err:
-	free_req_ctxt(reqc);
+	__free_req_ctxt(reqc);
 	return NULL;
 }
 
@@ -407,37 +425,66 @@ void req_ctxt_tree_unlock()
 	pthread_mutex_unlock(&msg_tree_lock);
 }
 
-static int gather_data(ldmsd_req_ctxt_t reqc, struct msghdr *msg, size_t msg_len)
+static void free_cfg_xprt_ldms(ldmsd_cfg_xprt_t xprt)
 {
-	int i;
-	size_t copylen;
-	size_t copyoff;
-	ldmsd_req_hdr_t request = msg->msg_iov[0].iov_base;
-	size_t remaining = reqc->req_len - reqc->req_off;
-	if (msg_len > remaining) {
-		size_t new_size = msg_len + REQ_BUF_LEN;
-		if (new_size < reqc->req_len + msg_len)
-			new_size = reqc->req_len + msg_len;
-		reqc->req_buf = realloc(reqc->req_buf, new_size);
-		if (!reqc->req_buf)
-			return ENOMEM;
-		reqc->req_len = new_size;
+	ldms_xprt_put(xprt->ldms.ldms);
+	xprt->ldms.ldms = NULL;
+	free(xprt);
+}
+
+/* Caller must hold the msg_tree lock. */
+ldmsd_req_cmd_t alloc_req_cmd_ctxt(ldms_t ldms,
+					size_t max_msg_sz,
+					uint32_t req_id,
+					ldmsd_req_ctxt_t orgn_reqc,
+					ldmsd_req_resp_fn resp_handler,
+					void *ctxt)
+{
+	static uint32_t msg_no = 0;
+
+	ldmsd_req_cmd_t rcmd;
+	struct req_ctxt_key key;
+	ldmsd_cfg_xprt_t xprt = calloc(1, sizeof(*xprt));
+	if (!xprt)
+		return NULL;
+	ldmsd_cfg_ldms_init(xprt, ldms);
+	xprt->cleanup_fn = free_cfg_xprt_ldms;
+
+	rcmd = calloc(1, sizeof(*rcmd));
+	if (!rcmd)
+		goto err0;
+
+	key.msg_no = __sync_fetch_and_add(&msg_no, 1);
+	key.conn_id = (uint64_t)(long unsigned)ldms;
+	rcmd->reqc = alloc_req_ctxt(&key, max_msg_sz);
+	if (!rcmd->reqc)
+		goto err1;
+
+	rcmd->reqc->ctxt = (void *)rcmd;
+	rcmd->reqc->xprt = xprt;
+	if (orgn_reqc) {
+		req_ctxt_ref_get(orgn_reqc);
+		rcmd->org_reqc = orgn_reqc;
 	}
-	copyoff = sizeof(*request);
-	for (i = 0; i < msg->msg_iovlen; i++) {
-		if (msg->msg_iov[i].iov_len <= copyoff) {
-			copyoff -= msg->msg_iov[i].iov_len;
-			continue;
-		}
-		copylen = msg->msg_iov[i].iov_len - copyoff;
-		memcpy(&reqc->req_buf[reqc->req_off],
-		       msg->msg_iov[i].iov_base + copyoff,
-		       copylen);
-		reqc->req_off += copylen;
-		copyoff = 0;
-	}
-	reqc->req_buf[reqc->req_off] = '\0';
-	return 0;
+	rcmd->ctxt = ctxt;
+	rcmd->reqc->req_id = req_id;
+	rcmd->resp_handler = resp_handler;
+	return rcmd;
+err1:
+	free(rcmd);
+err0:
+	free(xprt);
+	return NULL;
+}
+
+/* Caller must hold the msg_tree locks. */
+void free_req_cmd_ctxt(ldmsd_req_cmd_t rcmd)
+{
+	if (rcmd->org_reqc)
+		req_ctxt_ref_put(rcmd->org_reqc);
+	if (rcmd->reqc)
+		req_ctxt_ref_put(rcmd->reqc);
+	free(rcmd);
 }
 
 static int string2attr_list(char *str, struct attr_value_list **__av_list,
@@ -516,6 +563,17 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 	return request_handler[request->req_id].handler(reqc);
 }
 
+int ldmsd_handle_response(ldmsd_req_cmd_t rcmd)
+{
+	if (!rcmd->resp_handler) {
+		ldmsd_log(LDMSD_LERROR, "No response handler "
+				"for requeset id %lu", rcmd->reqc->req_id);
+		return ENOTSUP;
+	}
+
+	return rcmd->resp_handler(rcmd);
+}
+
 __attribute__((format(printf, 3, 4)))
 size_t Snprintf(char **dst, size_t *len, char *fmt, ...)
 {
@@ -547,17 +605,18 @@ size_t Snprintf(char **dst, size_t *len, char *fmt, ...)
 	return cnt;
 }
 
-int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc,
+int __ldmsd_append_buffer(struct ldmsd_req_ctxt *reqc,
 		       char *data, size_t data_len,
-		       int msg_flags)
+		       int msg_flags, int msg_type)
 {
-	ldmsd_req_hdr_t req_reply = (ldmsd_req_hdr_t)reqc->rep_buf;
+	req_ctxt_ref_get(reqc);
+	ldmsd_req_hdr_t req_buff = (ldmsd_req_hdr_t)reqc->rep_buf;
 	ldmsd_req_attr_t attr;
 	size_t remaining;
-	int flags;
+	int flags, rc;
 
 	do {
-		remaining = reqc->rep_len - reqc->rep_off - sizeof(*req_reply);
+		remaining = reqc->rep_len - reqc->rep_off - sizeof(*req_buff);
 		if (data_len < remaining)
 			remaining = data_len;
 
@@ -578,23 +637,45 @@ int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc,
 			flags = msg_flags & ((!remaining && data_len)?(~LDMSD_REQ_EOM_F):LDMSD_REQ_EOM_F);
 			flags |= (reqc->rec_no == 0?LDMSD_REQ_SOM_F:0);
 			/* Record is full, send it on it's way */
-			req_reply->marker = LDMSD_RECORD_MARKER;
-			req_reply->type = LDMSD_REQ_TYPE_CONFIG_RESP;
-			req_reply->flags = flags;
-			req_reply->msg_no = reqc->key.msg_no;
-			req_reply->rsp_err = reqc->errcode;
-			req_reply->rec_len = reqc->rep_off;
-			ldmsd_hton_req_hdr(req_reply);
-			reqc->xprt->send_fn(reqc->xprt, (char *)req_reply, ntohl(req_reply->rec_len));
+			req_buff->marker = LDMSD_RECORD_MARKER;
+			req_buff->type = msg_type;
+			if (msg_type == LDMSD_REQ_TYPE_CONFIG_CMD)
+				req_buff->req_id = reqc->req_id;
+			else
+				req_buff->rsp_err = reqc->errcode;
+			req_buff->flags = flags;
+			req_buff->msg_no = reqc->key.msg_no;
+			req_buff->rec_len = reqc->rep_off;
+			ldmsd_hton_req_hdr(req_buff);
+			rc = reqc->xprt->send_fn(reqc->xprt, (char *)req_buff,
+							ntohl(req_buff->rec_len));
+			if (rc) {
+				/* The content in reqc->rep_buf hasn't been sent. */
+				ldmsd_log(LDMSD_LERROR, "failed to send the reply of "
+						"the config request %d from "
+						"config xprt id %" PRIu64 "\n",
+						reqc->key.msg_no, reqc->key.conn_id);
+				req_ctxt_ref_put(reqc);
+				return rc;
+			}
 			reqc->rec_no++;
 			/* Reset the reply buffer for the next record for this message */
-			reqc->rep_off = sizeof(*req_reply);
-			attr = ldmsd_first_attr(req_reply);
+			reqc->rep_off = sizeof(*req_buff);
+			attr = ldmsd_first_attr(req_buff);
 			attr->discrim = 0;
 		}
 	} while (data_len);
 
+	req_ctxt_ref_put(reqc);
 	return 0;
+}
+
+int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc,
+				char *data, size_t data_len,
+				int msg_flags)
+{
+	return __ldmsd_append_buffer(reqc, data, data_len, msg_flags,
+					LDMSD_REQ_TYPE_CONFIG_RESP);
 }
 
 /*
@@ -716,7 +797,7 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 		if (reqc->req_len < req_len) {
 			/* Send record length advice */
 			ldmsd_send_cfg_rec_adv(xprt, key.msg_no, reqc->req_len);
-			free_req_ctxt(reqc);
+			req_ctxt_ref_put(reqc);
 			goto err_out;
 		}
 		reqc->xprt = xprt;
@@ -748,11 +829,85 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 
 	/* Convert the request byte order from network to host */
 	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->req_buf);
+	reqc->req_id = ((ldmsd_req_hdr_t)reqc->req_buf)->req_id;
 
 	rc = ldmsd_handle_request(reqc);
 
 	req_ctxt_tree_lock();
-	free_req_ctxt(reqc);
+	req_ctxt_ref_put(reqc);
+	req_ctxt_tree_unlock();
+ out:
+	return rc;
+ err_out:
+	req_ctxt_tree_unlock();
+	return rc;
+}
+
+/*
+ * This function assumes that the response is sent using ldms xprt.
+ */
+int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t response,
+								size_t resp_len)
+{
+	struct req_ctxt_key key;
+	ldmsd_req_cmd_t rcmd = NULL;
+	ldmsd_req_ctxt_t reqc = NULL;
+	size_t cnt;
+	int rc = 0;
+
+	key.msg_no = ntohl(response->msg_no);
+	key.conn_id = (uint64_t)(long unsigned)xprt->ldms.ldms;
+
+	if (ntohl(response->marker) != LDMSD_RECORD_MARKER) {
+		char *msg = "Config request is missing record marker";
+		ldmsd_send_error_reply(xprt, -1, EINVAL, msg, strlen(msg));
+		rc = EINVAL;
+		goto out;
+	}
+
+	req_ctxt_tree_lock();
+	reqc = find_req_ctxt(&key);
+	if (!reqc) {
+		char errstr[64];
+		snprintf(errstr, 63, "Cannot find the original request of "
+						"a response number %d:%" PRIu64,
+						key.msg_no, key.conn_id);
+		ldmsd_log(LDMSD_LERROR, "%s\n", errstr);
+		ldmsd_send_error_reply(xprt, key.msg_no, ENOENT, errstr, cnt);
+		rc = ENOENT;
+		goto err_out;
+	}
+	/* Copy the data from this record to the tail of the request context */
+	if (ntohl(response->flags) & LDMSD_REQ_SOM_F) {
+		if (resp_len > reqc->req_len) {
+			ldmsd_send_cfg_rec_adv(xprt, key.msg_no, reqc->req_len);
+			goto err_out;
+		}
+		memcpy(reqc->req_buf, response, resp_len);
+		reqc->req_off = resp_len;
+	} else {
+		cnt = resp_len - sizeof(*response);
+		if (cnt > (reqc->req_len - reqc->req_off)) {
+			ldmsd_send_cfg_rec_adv(xprt, key.msg_no,
+					reqc->req_len - reqc->req_off);
+			goto err_out;
+		}
+		memcpy(&reqc->req_buf[reqc->req_off], response + 1, cnt);
+		reqc->req_off += cnt;
+	}
+	req_ctxt_tree_unlock();
+
+	if (0 == (ntohl(response->flags) & LDMSD_REQ_EOM_F))
+		/* Not the end of the message */
+		goto out;
+
+	/* Convert the request byte order from network to host */
+	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->req_buf);
+	rcmd = (ldmsd_req_cmd_t)reqc->ctxt;
+	rc = ldmsd_handle_response(rcmd);
+
+	req_ctxt_tree_lock();
+	free_req_cmd_ctxt(rcmd);
 	req_ctxt_tree_unlock();
  out:
 	return rc;
@@ -3722,6 +3877,79 @@ static int exit_daemon_handler(ldmsd_req_ctxt_t reqc)
 	return 0;
 }
 
+static int __greeting_path_resp_handler(ldmsd_req_cmd_t rcmd)
+{
+	struct ldmsd_req_attr_s my_attr;
+	ldmsd_req_attr_t server_attr;
+	char *path;
+	server_attr = ldmsd_first_attr((ldmsd_req_hdr_t)rcmd->reqc->req_buf);
+	my_attr.discrim = 1;
+	my_attr.attr_id = LDMSD_ATTR_STRING;
+	/* +1 for : */
+	my_attr.attr_len = server_attr->attr_len + strlen((char *)rcmd->ctxt) + 1;
+	path = malloc(my_attr.attr_len);
+	if (!path) {
+		rcmd->org_reqc->errcode = ENOMEM;
+		ldmsd_send_req_response(rcmd->org_reqc, "Out of memory");
+		return 0;
+	}
+	ldmsd_hton_req_attr(&my_attr);
+	ldmsd_append_reply(rcmd->org_reqc, (char *)&my_attr, sizeof(my_attr), LDMSD_REQ_SOM_F);
+	memcpy(path, server_attr->attr_value, server_attr->attr_len);
+	path[server_attr->attr_len] = ':';
+	strcpy(&path[server_attr->attr_len + 1], rcmd->ctxt);
+	ldmsd_append_reply(rcmd->org_reqc, path, ntohl(my_attr.attr_len), 0);
+	my_attr.discrim = 0;
+	ldmsd_append_reply(rcmd->org_reqc, (char *)&my_attr.discrim,
+				sizeof(my_attr.discrim), LDMSD_REQ_EOM_F);
+	free(path);
+	free(rcmd->ctxt);
+	return 0;
+}
+
+static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldmsd_prdcr_t prdcr;
+	ldmsd_req_cmd_t rcmd;
+	struct ldmsd_req_attr_s attr;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	prdcr = ldmsd_prdcr_first();
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);;
+	char *myself = strdup(ldmsd_myhostname_get());
+	if (!prdcr) {
+		attr.discrim = 1;
+		attr.attr_id = LDMSD_ATTR_STRING;
+		attr.attr_len = strlen(myself);
+		ldmsd_hton_req_attr(&attr);
+		ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+		ldmsd_append_reply(reqc, myself, strlen(myself), 0);
+		attr.discrim = 0;
+		ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(attr.discrim), LDMSD_REQ_EOM_F);
+	} else {
+		ldmsd_prdcr_lock(prdcr);
+		rcmd = alloc_req_cmd_ctxt(prdcr->xprt, prdcr->xprt->max_msg,
+						LDMSD_GREETING_REQ, reqc,
+						__greeting_path_resp_handler, myself);
+		ldmsd_prdcr_unlock(prdcr);
+		if (!rcmd) {
+			reqc->errcode = ENOMEM;
+			ldmsd_send_req_response(reqc, "Out of Memory");
+			return 0;
+		}
+		attr.attr_id = LDMSD_ATTR_PATH;
+		attr.attr_len = 0;
+		attr.discrim = 1;
+		ldmsd_hton_req_attr(&attr);
+		__ldmsd_append_buffer(rcmd->reqc, (char *)&attr, sizeof(attr),
+					LDMSD_REQ_SOM_F, LDMSD_REQ_TYPE_CONFIG_CMD);
+		attr.discrim = 0;
+		__ldmsd_append_buffer(rcmd->reqc, (char *)&attr.discrim,
+					sizeof(attr.discrim), LDMSD_REQ_EOM_F,
+						LDMSD_REQ_TYPE_CONFIG_CMD);
+	}
+	return 0;
+}
+
 static int greeting_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *str = 0;
@@ -3802,6 +4030,8 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 		attr.discrim = 0;
 		ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t),
 								LDMSD_REQ_EOM_F);
+	} else if (ldmsd_req_attr_keyword_exist_by_id(reqc->req_buf, LDMSD_ATTR_PATH)) {
+		(void) __greeting_path_req_handler(reqc);
 	} else {
 		ldmsd_send_req_response(reqc, NULL);
 	}

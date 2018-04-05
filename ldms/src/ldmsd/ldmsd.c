@@ -294,6 +294,11 @@ const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level)
 	return "LDMSD_LNONE";
 }
 
+const char *ldmsd_myhostname_get()
+{
+	return myhostname;
+}
+
 #ifdef LDMSD_UPDATE_TIME
 double ldmsd_timeval_diff(struct timeval *start, struct timeval *end)
 {
