@@ -125,7 +125,6 @@ extern void __ldms_dir_add_set(const char *set_name);
 extern void __ldms_dir_del_set(const char *set_name);
 extern void __ldms_dir_upd_set(const char *set_name);
 extern int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg);
-extern size_t __ldms_xprt_max_msg(struct ldms_xprt *x);
 
 extern uint32_t __ldms_set_size_get(struct ldms_set *s);
 extern void __ldms_metric_size_get(const char *name, enum ldms_value_type t,
