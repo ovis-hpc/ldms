@@ -521,6 +521,7 @@ enum ldmsd_loglevel {
 
 extern const char *ldmsd_loglevel_names[];
 
+__attribute__((format(printf, 2, 3)))
 void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...);
 
 int ldmsd_loglevel_set(char *verbose_level);
@@ -529,11 +530,17 @@ enum ldmsd_loglevel ldmsd_loglevel_get();
 enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s);
 const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level);
 
+__attribute__((format(printf, 1, 2)))
 void ldmsd_ldebug(const char *fmt, ...);
+__attribute__((format(printf, 1, 2)))
 void ldmsd_linfo(const char *fmt, ...);
+__attribute__((format(printf, 1, 2)))
 void ldmsd_lwarning(const char *fmt, ...);
+__attribute__((format(printf, 1, 2)))
 void ldmsd_lerror(const char *fmt, ...);
+__attribute__((format(printf, 1, 2)))
 void ldmsd_lcritical(const char *fmt, ...);
+__attribute__((format(printf, 1, 2)))
 void ldmsd_lall(const char *fmt, ...);
 
 /** Get syslog int value for a level.
