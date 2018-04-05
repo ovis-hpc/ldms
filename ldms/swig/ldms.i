@@ -988,6 +988,15 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 	}
 }
 
+%nodefaultctor ldms_xprt;
+struct ldms_xprt {};
+
+%extend ldms_xprt {
+	inline int msg_max_get() {
+		return ldms_xprt_msg_max(self);
+	}
+}
+
 %pythoncode %{
 def set_update(self, cb=None, ctxt=None):
 	if not cb:
