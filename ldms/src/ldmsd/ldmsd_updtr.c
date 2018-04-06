@@ -143,7 +143,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	gn = ldms_set_data_gn_get(set);
 	pthread_mutex_lock(&prd_set->lock);
 	if (prd_set->last_gn == gn) {
-		ldmsd_log(LDMSD_LINFO, "Set %s oversampled %d == %d.\n",
+		ldmsd_log(LDMSD_LINFO, "Set %s oversampled %"PRIu64" == %"PRIu64".\n",
 			  prd_set->inst_name, prd_set->last_gn, gn);
 		goto set_ready;
 	}

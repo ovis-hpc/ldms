@@ -567,7 +567,7 @@ int ldmsd_handle_response(ldmsd_req_cmd_t rcmd)
 {
 	if (!rcmd->resp_handler) {
 		ldmsd_log(LDMSD_LERROR, "No response handler "
-				"for requeset id %lu", rcmd->reqc->req_id);
+				"for requeset id %" PRIu32, rcmd->reqc->req_id);
 		return ENOTSUP;
 	}
 
