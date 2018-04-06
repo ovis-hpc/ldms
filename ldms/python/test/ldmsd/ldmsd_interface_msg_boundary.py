@@ -89,8 +89,10 @@ class TestLdmsdInterfaceMsgBoundary(unittest.TestCase):
             cls.ldmsd_interface.run()
             cls.ldmsd_interface.read_pty() # Read the welcome message and the prompt 
         except:
-            del cls.ldmsd
-            del cls.ldmsd_interface
+            if cls.ldmsd:
+                del cls.ldmsd
+            if cls.ldmsd_interface:
+                del cls.ldmsd_interface
             raise
         log.info(cls.__name__ + " set up done")
 
@@ -110,7 +112,6 @@ class TestLdmsdInterfaceMsgBoundary(unittest.TestCase):
         self.ldmsd_interface.write_pty(cmd + "\n")
         resp = self.ldmsd_interface.read_pty()
         lines = resp.splitlines()
-        log.debug("_ctrl resp:" + str(lines))
         n = len(lines)
         return lines[0:n-1]
 
@@ -144,7 +145,7 @@ class TestLdmsCtlMsgBoundary(TestLdmsdInterfaceMsgBoundary):
     is_ldmsctl = True
 
 class TestLdmsdControllerMsgBoundary(TestLdmsdInterfaceMsgBoundary):
-    is_ldmsctl = True
+    is_ldmsctl = False
 
 if __name__ == "__main__":
     fmt = "%(asctime)s.%(msecs)d %(levelname)s: %(message)s"
