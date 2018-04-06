@@ -922,7 +922,7 @@ class LdmsdCmdParser(cmd.Cmd):
         if "level" in arg:
             for attr in resp['attr_list']:
                 print(attr.attr_value.translate(None, ' \x00'))
-        elif resp['msg'] != "":
+        elif resp['msg'] and resp['msg'] != "":
             print(resp['msg'])
 
     def complete_greeting(self, text, line, begidx, endidx):
