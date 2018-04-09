@@ -936,13 +936,19 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 			rc = EDOM;
 			goto out;
 		}
-		synchronous = 1;
+		pi->synchronous = 1;
 	}
 
 	OVIS_EVENT_INIT(&pi->oev);
-	pi->oev.param.type = OVIS_EVENT_PERIODIC;
-	pi->oev.param.periodic.period_us = sample_interval;
-	pi->oev.param.periodic.phase_us = sample_offset;
+	if (pi->synchronous) {
+		pi->oev.param.type = OVIS_EVENT_PERIODIC;
+		pi->oev.param.periodic.period_us = sample_interval;
+		pi->oev.param.periodic.phase_us = sample_offset;
+	} else {
+		pi->oev.param.type = OVIS_EVENT_TIMEOUT;
+		pi->oev.param.timeout.tv_sec = sample_interval / 1000000;
+		pi->oev.param.timeout.tv_usec = sample_interval % 1000000;
+	}
 	pi->oev.param.ctxt = pi;
 	pi->oev.param.cb_fn = plugin_sampler_cb;
 
