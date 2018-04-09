@@ -334,6 +334,15 @@ void cleanup(int x, const char *reason)
 			bannerfile = NULL;
 		}
 	}
+	if (pidfile) {
+		free(pidfile);
+		pidfile = NULL;
+	}
+	ldmsd_log(llevel, "LDMSD_ cleanup end.\n");
+	if (logfile) {
+		free(logfile);
+		logfile = NULL;
+	}
 
 	exit(x);
 }
