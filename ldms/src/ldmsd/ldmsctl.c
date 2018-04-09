@@ -152,6 +152,15 @@ static int command_comparator(const void *a, const void *b)
 #define LDMSCTL_SCRIPT LDMSD_NOTSUPPORT_REQ + 3
 #define LDMSCTL_SOURCE LDMSD_NOTSUPPORT_REQ + 4
 
+static void ldmsctl_log(enum ldmsd_loglevel level, const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	printf(stdout,"L=%d: ",level);
+	vfprintf(stdout, fmt, ap);
+	va_end(ap);
+}
+
 static void usage(char *argv[])
 {
 	printf("%s: [%s]\n"
@@ -1289,7 +1298,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 
 	size_t buffer_offset = 0;
 	memset(buffer, 0, buffer_len);
-	request = ldmsd_parse_config_str(cmd_str, msg_no);
+	request = ldmsd_parse_config_str(cmd_str, msg_no, ldmsctl_log);
 	if (!request) {
 		printf("Failed to process the request. "
 			"Please make sure that there is no typo.\n");

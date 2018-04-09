@@ -180,7 +180,8 @@ int32_t ldmsd_req_attr_str2id(const char *name)
  */
 static int add_attr_from_attr_str(const char *name, const char *value,
 				  ldmsd_req_hdr_t *request,
-				  size_t *rec_off, size_t *rec_len)
+				  size_t *rec_off, size_t *rec_len,
+				  ldmsd_msg_log_f msglog)
 {
 	ldmsd_req_attr_t attr;
 	size_t attr_sz, val_sz;
@@ -206,6 +207,7 @@ static int add_attr_from_attr_str(const char *name, const char *value,
 	while (len - offset < attr_sz) {
 		buf = realloc(buf, len * 2);
 		if (!buf) {
+			msglog(LDMSD_LERROR, "out of memory\n", name);
 			return ENOMEM;
 		}
 		*request = req = (ldmsd_req_hdr_t)buf;
@@ -220,8 +222,10 @@ static int add_attr_from_attr_str(const char *name, const char *value,
 		attr->attr_id = LDMSD_ATTR_STRING;
 	} else {
 		attr->attr_id = ldmsd_req_attr_str2id(name);
-		if ((int)attr->attr_id < 0)
+		if ((int)attr->attr_id < 0) {
+			msglog(LDMSD_LERROR, "Invalid attribute: %s\n", name);
 			return EINVAL;
+		}
 	}
 
 	if (val_sz)
@@ -258,7 +262,7 @@ void __get_attr_name_value(char *av, char **name, char **value)
 	}
 }
 
-ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
+ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, ldmsd_msg_log_f msglog)
 {
 	static const char *delim = " \t";
 	char *av, *verb, *tmp, *ptr, *name, *value, *dummy;
@@ -315,7 +319,7 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 			if (0 == strncmp(name, "name", 4)) {
 				/* Find the name attribute */
 				rc = add_attr_from_attr_str(name, value, &request,
-							    &rec_off, &rec_len);
+							    &rec_off, &rec_len, msglog);
 				if (rc) {
 					free(tmp);
 					goto err;
@@ -335,7 +339,7 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 		}
 		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
 		/* Add an attribute of type 'STRING' */
-		rc = add_attr_from_attr_str(NULL, tmp, &request, &rec_off, &rec_len);
+		rc = add_attr_from_attr_str(NULL, tmp, &request, &rec_off, &rec_len, msglog);
 		free(tmp);
 		if (rc)
 			goto err;
@@ -349,7 +353,7 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 				goto err;
 			}
 			rc = add_attr_from_attr_str(name, value,
-						    &request, &rec_off, &rec_len);
+						    &request, &rec_off, &rec_len, msglog);
 			if (rc)
 				goto err;
 			av = strtok_r(NULL, delim, &ptr);
@@ -357,7 +361,7 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 	}
 last_attr:
 	/* Add the end attribute */
-	rc = add_attr_from_attr_str(NULL, NULL, &request, &rec_off, &rec_len);
+	rc = add_attr_from_attr_str(NULL, NULL, &request, &rec_off, &rec_len, msglog);
 	free(dummy);
 	return request;
 err:

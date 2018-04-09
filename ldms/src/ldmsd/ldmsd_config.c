@@ -567,7 +567,7 @@ next_line:
 		goto next_line;
 	}
 
-	request = ldmsd_parse_config_str(line, msg_no);
+	request = ldmsd_parse_config_str(line, msg_no, ldmsd_log);
 	msg_no += 1;
 	if (!request) {
 		rc = errno;
