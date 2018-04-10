@@ -1,5 +1,5 @@
 #!/bin/bash -x
-if test -f lib/packaging/ovis-lib-toss.spec.in; then
+if test -f ldms/src/sampler/meminfo.c; then
 	echo "this is not quite ready. some configs still depend on prior installs, which is not desirable."
 
 	prefix=/opt/ovis

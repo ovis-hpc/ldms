@@ -11,7 +11,7 @@ export CFLAGS="-fsanitize=address -Wall -g -O0"
 # local path of scratch ldms files
 build_subdir=LDMS_objdir
 
-if test -f packaging/ovis-base.spec.in; then
+if test -f ldms/src/sampler/meminfo.c; then
 	prefix=$HOME/opt/ovis
 	expected_event2_prefix=/usr
 
