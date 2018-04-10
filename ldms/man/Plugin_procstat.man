@@ -11,9 +11,12 @@ Within ldmsd_controller or in a configuration file
 config name=procstat [ <attr> = <value> ]
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via
-ldmsd_controller or a configuration file. The procstat plugin provides cpu utilization info from /proc/stat,
+The procstat plugin provides cpu utilization info from /proc/stat,
 allowing for hyperthreading and downed core variability.
+As hyperthreading might be variable and user selectable depending 
+on system configuration, the maximum number of cores potentially appearing
+should be set in the plugin options with the maxcpu parameter.
+Cores not actually appearing will be reported as 0 values.
 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 
@@ -66,7 +69,7 @@ Within ldmsd_controller or a configuration file:
 .nf
 load name=procstat
 config name=procstat producer=vm1_1 component_id=1 maxcpu=4 instance=vm1_1/procstat with_jobid=0
-start name=procstat interval=1000000
+start name=procstat interval=1000000 offset=0
 .fi
 
 .SH SEE ALSO
