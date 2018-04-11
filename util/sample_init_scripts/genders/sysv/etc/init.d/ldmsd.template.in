@@ -8,6 +8,12 @@
 # Short-Description: LDMS service for multiple configurations
 ### END INIT INFO
 
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+bindir=@bindir@
+sbindir=@sbindir@
+localstatedir=@localstatedir@
+
 dist=`lsb_release -i -s`
 rel=`lsb_release -r -s`
 case ${dist},$rel in
@@ -37,40 +43,38 @@ esac
 . /lib/lsb/init-functions
 prog=ldmsd@hermes
 
-# LDMS_PREFIX=/experimental/prefix
-
-PIDFILE=/var/run/ldmsd/ldmsd-hermes.pid
+PIDFILE=$localstatedir/run/ldmsd/ldmsd-hermes.pid
 DESC="LDMSD service for hermes in sysvinit"
 start() {
 	$LDM "Starting $DESC" "$prog"
-	/usr/bin/test -x /usr/bin/ldmsd-pre-sysvinit
+	/usr/bin/test -x $bindir/ldmsd-pre-sysvinit
 	if [ $? -ne 0 ]; then
-		$LEM 1 failed to find /usr/bin/ldmsd-pre-sysvinit
+		$LEM 1 failed to find $bindir/ldmsd-pre-sysvinit
 		exit 1
 	fi
-	/bin/mkdir -p /var/run/ldmsd
+	/bin/mkdir -p $localstatedir/run/ldmsd
 	if [ $? -ne 0 ]; then
-		$LEM 1 failed /bin/mkdir -p /var/run/ldmsd
+		$LEM 1 failed /bin/mkdir -p $localstatedir/run/ldmsd
 		exit 1
 	fi
-	/bin/rm -f /var/run/ldmsd/ldmsd.env.hermes 2>/dev/null
+	/bin/rm -f $localstatedir/run/ldmsd/ldmsd.env.hermes 2>/dev/null
 	if [ $? -ne 0 ]; then
-		$LEM 1 failed /bin/rm -f /var/run/ldmsd/ldmsd.env.hermes
+		$LEM 1 failed /bin/rm -f $localstatedir/run/ldmsd/ldmsd.env.hermes
 		exit 1
 	fi
-	/usr/bin/ldmsd-pre-sysvinit hermes /var/run/ldmsd/ldmsd.env.hermes
+	$bindir/ldmsd-pre-sysvinit hermes $localstatedir/run/ldmsd/ldmsd.env.hermes
 	if [ $? -ne 0 ]; then
-		$LEM 1 failed to run /usr/bin/ldmsd-pre-sysvinit hermes /var/run/ldmsd/ldmsd.env.hermes
+		$LEM 1 failed to run $bindir/ldmsd-pre-sysvinit hermes $localstatedir/run/ldmsd/ldmsd.env.hermes
 		exit 1
 	fi
-	/usr/bin/test /var/run/ldmsd/ldmsd.env.hermes -nt /usr/bin/ldmsd-pre-sysvinit
+	/usr/bin/test $localstatedir/run/ldmsd/ldmsd.env.hermes -nt $bindir/ldmsd-pre-sysvinit
 	if [ $? -ne 0 ]; then
-		$LEM 1 failed to generate /var/run/ldmsd/ldmsd.env.hermes
+		$LEM 1 failed to generate $localstatedir/run/ldmsd/ldmsd.env.hermes
 		exit 1
 	fi
-	. /var/run/ldmsd/ldmsd.env.hermes
+	. $localstatedir/run/ldmsd/ldmsd.env.hermes
 	# $LEM 1 LDP = $LD_LIBRARY_PATH
-	start_daemon -p $PIDFILE /bin/bash -c '/bin/rm -f $LDMSD_SOCKPATH 2>/dev/null;/usr/bin/ldmsd-wrapper.sh $LDMSD_GLOBAL_OPTS $MEM_OPT $LDMSAGGD_MEM_RES -c $LDMSD_PLUGIN_CONFIG_FILE -a $LDMS_AUTH_FILE -r /var/run/ldmsd/ldmsd-hermes.pid -x $LDMSD_XPRT:$LDMSD_PORT -P $LDMSD_EVENT_THDS $LDMSD_INET_OPT $LDMSD_CONFIG_PORT $LDMSD_SOCK_OPT $LDMSD_SOCKPATH -v $LDMSD_DBG $LDMS_LOG_OPT $LDMS_LOG_FILE 2>&1'
+	start_daemon -p $PIDFILE /bin/bash -c '/bin/rm -f $LDMSD_SOCKPATH 2>/dev/null;$bindir/ldmsd-wrapper.sh hermes $LDMSD_GLOBAL_OPTS $MEM_OPT $LDMSAGGD_MEM_RES -c $LDMSD_PLUGIN_CONFIG_FILE -a $LDMS_AUTH_FILE -r $localstatedir/run/ldmsd/ldmsd-hermes.pid -x $LDMSD_XPRT:$LDMSD_PORT -P $LDMSD_EVENT_THDS $LDMSD_INET_OPT $LDMSD_CONFIG_PORT $LDMSD_SOCK_OPT $LDMSD_SOCKPATH -v $LDMSD_DBG $LDMS_LOG_OPT $LDMS_LOG_FILE 2>&1'
 	if [ $? -ne 0 ]; then
 		$LEM 1 failed to launch ldmsd
 		exit 1
@@ -83,7 +87,7 @@ start() {
 
 stop() {
 	$LDM "Stopping $DESC" "$prog"
-	killproc -p $PIDFILE  /bin/bash
+	killproc -p $PIDFILE $sbindir/ldmsd
 	if [ $? -ne 0 ]; then
 		$LEM 1 error seen while stopping pid in $PIDFILE
 		exit 1

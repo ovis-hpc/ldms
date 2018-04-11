@@ -1,3 +1,7 @@
+
+sysconfdir=@sysconfdir@
+localstatedir=@localstatedir@
+
 #
 # Functions for ldmsd and ldms-aggd config file generation.
 # These may depend on variables defined in the respective .conf files
@@ -101,6 +105,9 @@ check_genders_file() {
 	# do not rename these.
 	# renamed="ldmsaggd_interval_default:ldmsd_agg_interval_default ldmsaggd_offset_default:ldmsd_agg_offset_default"
 	renamed="ldmsaggd_stores:ldmsd_store_plugins ldmsd_metric_sets:ldmsd_metric_plugins ldmsaggd_store_csv:ldmsd_store_csv ldmsaggd_conn_thds:ldmsd_event_thds"
+	# common typos in prefixes here
+	prefixtypo="ldmsd_schema_:ldmsd_schemas_ ldmsd_exclude_schema_:ldmsd_exclude_schemas_ ldms_:ldmsd_ ldmsd_metric_plugin$:ldmsd_metric_plugins"
+	commatypo="clock cray_power_sampler fptrans lnet_stats job_info jobid meminfo perfevent procdiskstats procinterrupts procnetdev procnfs procsensors procstat sampler_atasmart sysclassib vmstat store_csv lustre2_client lustre2_mds lustre2_oss store_csv store_rabbitv3 store_flatfile store_sos"
 	n=0
 	v=""
 	for p in $consolidated; do
@@ -121,8 +128,26 @@ check_genders_file() {
 			v="$v, ${arr[0]}"
 		fi
 	done
+	for p in $prefixtypo; do
+		arr=(${p//:/ })
+		val=`$NODEATTR $NODEATTRFILE -l | grep ${arr[0]} 2>/dev/null`
+		if test -n "$val"; then
+			logger -p syslog.err "Correct gender(s) starting with ${arr[0]} to start with ${arr[1]}."
+			((n++))
+			v="$v, $val"
+		fi
+	done
+	for p in $commatypo; do
+		arr=(${p//:/ })
+		val=`$NODEATTR $NODEATTRFILE -l | grep ${arr[0]} 2>/dev/null`
+		if test -n "$val"; then
+			logger -p syslog.err "Found plugin name(s) as a gender: $val. Use : or & instead of , in ldmsd plugin lists, as noted in man ldms-attributes."
+			((n++))
+			v="$v, $val"
+		fi
+	done
 	if test $n -gt 0; then
-		logger -p syslog.err "Gender file problems: $n ($v). These genders need to be removed or replaced as noted."
+		logger -p syslog.err "Gender file problems: $n ($v). These genders need to be removed, replaced, correctly spelled, or punctuated as noted."
 		logger -p syslog.err "Review $NODEATTRFILE"
 		exit 1
 	fi
@@ -176,7 +201,7 @@ build_genders_file () {
 		done
 	fi
 	# now put multiple files together.
-	ALLDIR=/var/run/ldmsd/genderscratch
+	ALLDIR=$localstatedir/run/ldmsd/genderscratch
 	mkdir -p $ALLDIR
 	if ! test -d $ALLDIR; then
 		echoq "Unable to find/make $ALLDIR. make or mount it."
@@ -210,8 +235,8 @@ failure() {
 # save exported env vars
 # safe in privatetmp environment
 save_env_init () {
-	mkdir -p /var/run/ldmsd/tmp
-	env1=`mktemp /var/run/ldmsd/tmp/env1.$1.XXX`
+	mkdir -p $localstatedir/run/ldmsd/tmp
+	env1=`mktemp $localstatedir/run/ldmsd/tmp/env1.$1.XXX`
 	if test -z "$env1"; then
 		logger -p syslog.error -s "$0: cannot make env tempfile"
 		dietrace 1
@@ -221,7 +246,7 @@ save_env_init () {
 
 # append changed exported env vars to $2
 save_env_finish () {
-	env2=`mktemp /var/run/ldmsd/tmp/env2.$1.XXX`
+	env2=`mktemp $localstatedir/run/ldmsd/tmp/env2.$1.XXX`
 	if test -z "$env2"; then
 		logger -p syslog.error -s "$0: cannot make env tempfile"
 		dietrace 1
@@ -244,12 +269,12 @@ save_env_finish () {
 # append changed exported env vars to $2
 # prepend export to all lines
 save_env_finish_sysvinit () {
-	env2=`mktemp /var/run/ldmsd/tmp/env2.$1.XXX`
+	env2=`mktemp $localstatedir/run/ldmsd/tmp/env2.$1.XXX`
 	printenv |sort > $env2
 	diff $env1 $env2 |sed -e 's/< .*//g' \
 		-e 's/^-*//g' \
 		-e 's/^[0-9].*//g' \
-		-e 's/^> //g' | \
+		-e 's/^> //g' \
 		-e 's/"/\"/g' \
 		-e "s/'/'\"'\"'/g" \
 		-e "s/=/='/" \
@@ -534,7 +559,7 @@ start_ldmsd_plugins () {
 }
 
 generate_collector_config  () {
-	LDMSD_PLUGIN_CONFIG_FILE=/var/run/ldmsd/all-config.$LDMSCLUSTER
+	LDMSD_PLUGIN_CONFIG_FILE=$localstatedir/run/ldmsd/all-config.$LDMSCLUSTER
 	export LDMSD_PLUGIN_CONFIG_FILE
 	/bin/rm -f $LDMSD_PLUGIN_CONFIG_FILE
 	start_ldmsd_plugins $LDMSD_PLUGIN_CONFIG_FILE
@@ -608,8 +633,8 @@ get_schema_list () {
 		envbadschemas="$LDMSD_EXCLUDE_SCHEMA_LIST"
 	fi
 	excludelist="${envbadschemas},${badschemas},${reallybadschemas}"
-	keepfile=`mktemp /var/run/ldmsd/tmp/schemas.1.XXX`
-	badfile=`mktemp /var/run/ldmsd/tmp/schemas.2.XXX`
+	keepfile=`mktemp $localstatedir/run/ldmsd/tmp/schemas.1.XXX`
+	badfile=`mktemp $localstatedir/run/ldmsd/tmp/schemas.2.XXX`
 	echo $schemas | tr ",: " "\n" | sort -u > $keepfile
 	echo $excludelist | tr ",: " "\n" | sort -u > $badfile
 	slist=`comm -23 $keepfile $badfile`

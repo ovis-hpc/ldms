@@ -12,4 +12,7 @@ lib_LTLIBRARIES += libovis_auth.la
 
 install-data-hook:
 	$(MKDIR_P) $(DESTDIR)$(pkglibdir)
-	$(INSTALL) -m 644 ovis-auth.sh $(DESTDIR)$(pkglibdir)
+	$(INSTALL) -m 755 ovis-auth.sh $(DESTDIR)$(pkglibdir)
+
+uninstall-hook:
+	rm $(DESTDIR)$(pkglibdir)/ovis-auth.sh

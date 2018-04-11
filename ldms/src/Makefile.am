@@ -1,7 +1,15 @@
 nobase_include_HEADERS = ovis-ldms-config.h
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS =
-EXTRADIST=ovis-ldms-configvars.sh.in
+EXTRA_DIST=ovis-ldms-configvars.sh.in
+CLEANFILES = ovis-ldms-configvars.sh
+DISTCLEANFILES = $(nobase_include_HEADERS)
+
+do_subst = @LDMS_SUBST_RULE@
+
+%.sh: %.sh.in
+	$(do_subst) < $< > $@
+	chmod 755 $@
 
 if ENABLE_CORE
 SUBDIRS += core
@@ -23,8 +31,9 @@ if ENABLE_LDMS_TEST
 SUBDIRS += test
 endif
 
-install-data-hook:
+install-data-hook: ovis-ldms-configvars.sh
 	$(MKDIR_P) $(DESTDIR)$(libdir)
-	sed -i -e 's/{//g' -e 's/}//g' ovis-ldms-configvars.sh
-	$(INSTALL) -m 644 ovis-ldms-configvars.sh $(DESTDIR)$(libdir)
+	$(INSTALL) -m 755 ovis-ldms-configvars.sh $(DESTDIR)$(libdir)
 
+uninstall-hook:
+	rm $(DESTDIR)$(libdir)/ovis-ldms-configvars.sh

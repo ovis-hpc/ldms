@@ -1,7 +1,7 @@
 
 docdir = $(datadir)/doc/@PACKAGE@-@VERSION@/sample_init_scripts/genders/sysv/etc
 
-if ENABLE_LIBGENDERS
+if ENABLE_TOSS_SYSTEMD
 
 SUBDIRS = init.d
 

@@ -1,2 +1,2 @@
 
-SUBDIRS= sample_init_scripts
+SUBDIRS= sample_init_scripts relocation

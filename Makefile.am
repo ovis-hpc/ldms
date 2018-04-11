@@ -8,9 +8,10 @@ ACLOCAL_AMFLAGS = -I m4
 #
 EXTRA_DIST= \
 m4/Ovis-top.m4 \
-packaging/firerpms \
 SHA.txt \
 TAG.txt
+
+DISTCLEANFILES = ovis-all-config.h
 
 docdir = $(datadir)/doc/@PACKAGE@-@VERSION@
 # dist_doc_DATA = README.txt
@@ -58,46 +59,12 @@ BASE = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 BASE_TARBALL = $(BASE).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-.PHONY: rpm centos toss doxygen lanl-mon6 rhine lanl-mon7
+.PHONY: doxygen
 
 banned:
 	(cd ldms; make banned)
 
-rpm centos: dist-gzip
-	$(MKDIR_P) centos/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-	cp $(BASE_TARBALL) packaging/ovis-base.spec centos/SOURCES
-	rpmbuild --define "_topdir `pwd`/centos" -ba packaging/ovis-base.spec
-
-toss: dist-gzip
-	$(MKDIR_P) toss/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-	cp $(BASE_TARBALL) packaging/ovis-base.spec toss/SOURCES
-	rpmbuild --define "_topdir `pwd`/toss" -ba packaging/ovis-base.spec
-
-lanl-mon6: dist-gzip
-	$(MKDIR_P) lanl-mon6/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-	cp $(BASE_TARBALL) packaging/ovis-mon6.spec lanl-mon6/SOURCES
-	rpmbuild --define "_topdir `pwd`/lanl-mon6" -ba packaging/ovis-mon6.spec
-
-lanl-mon7: dist-gzip
-	$(MKDIR_P) lanl-mon7/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-	cp $(BASE_TARBALL) packaging/ovis-mon7.spec lanl-mon7/SOURCES
-	rpmbuild --define "_topdir `pwd`/lanl-mon7" -ba packaging/ovis-mon7.spec
-
-rhine: dist-gzip
-	$(MKDIR_P) rhine/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-	cp $(BASE_TARBALL) packaging/ovis-rhine.spec rhine/SOURCES
-	rpmbuild --define "_topdir `pwd`/rhine" -ba packaging/ovis-rhine.spec
-
-trinitite: dist-gzip
-	$(MKDIR_P) trinity/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-	cp $(BASE_TARBALL) packaging/ovis-trinity.spec trinity/SOURCES
-	rpmbuild --define "_topdir `pwd`/trinity" -ba packaging/ovis-trinity.spec
-
-rpm-clean:
-	rm -rf rpm/ centos
-	rm -f $(BASE_TARBALL)
-
-clean-local: rpm-clean
+clean-local:
 
 install-exec-local:
 	if test -d libevent-2.0.21-stable/lib/ovis-ldms/lib; then \
