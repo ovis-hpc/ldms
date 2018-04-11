@@ -5,6 +5,7 @@ ldms_ls.man \
 ldms-static-test.man \
 ldmsd.man \
 ldmsd_exits.man \
+ldms-static-test.man \
 ldmsd_controller.man \
 ldmsctl.man
 

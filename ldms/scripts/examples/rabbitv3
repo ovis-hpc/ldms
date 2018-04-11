@@ -1,0 +1,13 @@
+portbase=61040
+AUTHFILE=$TESTDIR/run/authfile
+export AUTHFILE
+echo "secretword=mcgregor" > $AUTHFILE
+chmod 600 $AUTHFILE
+file_created $AUTHFILE
+
+MESSAGE starting agg and two collectors
+LDMSD `seq 3`
+LDMS_LS 3
+SLEEP 15
+KILL_LDMSD `seq 3`
+MESSAGE logs and data under ${TESTDIR}

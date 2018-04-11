@@ -1,0 +1,12 @@
+# This test produces inconsistent sets that the store_csv does not
+# handle correctly.
+export plugname=procnetdev
+portbase=61024
+LDMSD 1 2
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -l
+SLEEP 5
+KILL_LDMSD 1 2
+file_created $STOREDIR/node/$testname

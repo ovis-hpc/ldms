@@ -1,6 +1,6 @@
 
 # consider adding ldmsd to bin_SCRIPTS if ldmsd script ever stabilizes
-EXTRA_DIST=@OVIS_EXTRA_DIST@
+EXTRA_DIST=@OVIS_EXTRA_DIST@ examples
 
 if ENABLE_SCRIPTS
 bin_SCRIPTS= envldms.sh
@@ -17,7 +17,6 @@ bin_SCRIPTS += ldms-py-subset_test.sh
 bin_SCRIPTS += ldms-py-syslog.sh
 bin_SCRIPTS += ldms-meminfo.sh
 bin_SCRIPTS += ldms-py-rename.sh
-bin_SCRIPTS += ldms-l2_test.sh
 
 install-data-local:
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/examples/static-test && \
