@@ -66,6 +66,7 @@
 #include <semaphore.h>
 #include <assert.h>
 #include <netdb.h>
+#include <time.h>
 #include "json_parser/json.h"
 #include "ldms.h"
 #include "ldmsd_request.h"
@@ -168,6 +169,21 @@ static void usage(char *argv[])
 	       ,
 	       argv[0], FMT);
 	exit(0);
+}
+
+/* Caller must free the returned string. */
+char *ldmsctl_ts_str(uint32_t sec, uint32_t usec)
+{
+	struct tm *tm;
+	char dtsz[200];
+	char *str = malloc(200);
+	if (!str)
+		return NULL;
+	time_t t = sec;
+	tm = localtime(&t);
+	strftime(dtsz, sizeof(dtsz), "%D %H:%M:%S", tm);
+	snprintf(str, 200, "%s [%dus]", dtsz, usec);
+	return str;
 }
 
 static json_value *ldmsctl_json_value_get(json_value *json_obj, const char *name)
@@ -954,6 +970,96 @@ static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 	}
 }
 
+static void help_set_info()
+{
+	printf("\nDisplay the route of the set from aggregators to the sampler daemon.\n"
+	       "Parameters:\n"
+	       "     instance=   Set instance name\n");
+}
+
+static void resp_set_info(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+	json_value *json, *route, *hop, *hinfo;
+	char *inst_name, *schema_name;
+
+	if (rsp_err) {
+		/* There is an error. */
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
+	json = json_parse((char*)attr->attr_value, len);
+	if (!json)
+		return;
+
+	if (json->type != json_object) {
+		printf("Unrecognized set info response format\n");
+		return;
+	}
+	inst_name = ldmsctl_json_str_value_get(json, "instance");
+	schema_name = ldmsctl_json_str_value_get(json, "schema");
+
+	printf("-----------------------------\n");
+	printf("instance: %s\n", inst_name);
+	printf("schema_name: %s\n", schema_name);
+	printf("=============================\n");
+	printf("%20s %15s %15s %15s %10s %10s %5s %25s %25s",
+			"host", "type", "name", "prdcr_host",
+			"interval", "offset", "sync", "start", "end");
+	printf("-------------------- --------------- --------------- --------------- "
+		"---------- ---------- ----- ------------------------- -------------------------\n");
+	route = ldmsctl_json_value_get(json, "route");
+	if (!route || (route->type != json_array)) {
+		printf("Unrecognized set info response format\n");
+		return;
+	}
+	int i;
+	char *host, *type, *name, *prdcr_host, *intrvl, *offset, *is_sync;
+	char *start_sec, *start_usec, *end_sec, *end_usec, *start, *end;
+	uint32_t sec, usec;
+	for (i = 0; i < route->u.array.length; i++) {
+		hop = ldmsctl_json_array_ele_get(route, i);
+		hinfo = ldmsctl_json_value_get(hop, "detail");
+		type = ldmsctl_json_str_value_get(hop, "type");
+		host = ldmsctl_json_str_value_get(hop, "host");
+		name = ldmsctl_json_str_value_get(hinfo, "name");
+		if (0 == strcmp(type, "producer")) {
+			prdcr_host = ldmsctl_json_str_value_get(hinfo, "host");
+			intrvl = ldmsctl_json_str_value_get(hinfo, "update_int");
+			offset = ldmsctl_json_str_value_get(hinfo, "update_off");
+			is_sync = ldmsctl_json_str_value_get(hinfo, "update_sync");
+			start_sec = ldmsctl_json_str_value_get(hinfo, "last_start_sec");
+			start_usec = ldmsctl_json_str_value_get(hinfo, "last_start_usec");
+			end_sec = ldmsctl_json_str_value_get(hinfo, "last_end_sec");
+			end_usec = ldmsctl_json_str_value_get(hinfo, "last_end_usec");
+		} else {
+			prdcr_host = "---";
+			intrvl = ldmsctl_json_str_value_get(hinfo, "interval_us");
+			offset = ldmsctl_json_str_value_get(hinfo, "offset_us");
+			is_sync = ldmsctl_json_str_value_get(hinfo, "sync");
+			start_sec = ldmsctl_json_str_value_get(hinfo, "trans_start_sec");
+			start_usec = ldmsctl_json_str_value_get(hinfo, "trans_start_usec");
+			end_sec = ldmsctl_json_str_value_get(hinfo, "trans_end_sec");
+			end_usec = ldmsctl_json_str_value_get(hinfo, "trans_end_usec");
+		}
+		sec = strtoul(start_sec, NULL, 0);
+		usec = strtoul(start_usec, NULL, 0);
+		start = ldmsctl_ts_str(sec, usec);
+		sec = strtoul(end_sec, NULL, 0);
+		usec = strtoul(end_usec, NULL, 0);
+		end = ldmsctl_ts_str(sec, usec);
+		printf("%20s %15s %15s %15s %10s %10s %5s %25s %25s",
+					host, type, name, prdcr_host, intrvl,
+					offset, is_sync, start, end);
+		free(start);
+		free(end);
+	}
+	json_value_free(json);
+}
+
 static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
 static int handle_source(struct ldmsctl_ctrl *ctrl, char *path);
 static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
@@ -978,6 +1084,7 @@ static struct command command_tbl[] = {
 	{ "prdcr_stop_regex", LDMSD_PRDCR_STOP_REGEX_REQ, NULL, help_prdcr_stop_regex, resp_generic },
 	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit, resp_generic },
 	{ "script", LDMSCTL_SCRIPT, handle_script, help_script, resp_generic },
+	{ "set_info", LDMSD_SET_INFO_REQ, NULL, help_set_info, resp_set_info },
 	{ "source", LDMSCTL_SOURCE, handle_source, help_source, resp_generic },
 	{ "start", LDMSD_PLUGN_START_REQ, NULL, help_start, resp_generic },
 	{ "stop", LDMSD_PLUGN_STOP_REQ, NULL, help_stop, resp_generic },

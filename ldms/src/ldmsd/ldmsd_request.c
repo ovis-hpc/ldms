@@ -170,6 +170,7 @@ static int oneshot_handler(ldmsd_req_ctxt_t req_ctxt);
 static int logrotate_handler(ldmsd_req_ctxt_t req_ctxt);
 static int exit_daemon_handler(ldmsd_req_ctxt_t req_ctxt);
 static int greeting_handler(ldmsd_req_ctxt_t req_ctxt);
+static int set_info_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
 
@@ -327,6 +328,9 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_GREETING_REQ] = {
 		LDMSD_GREETING_REQ, greeting_handler, XUG
+	},
+	[LDMSD_SET_INFO_REQ] = {
+		LDMSD_SET_INFO_REQ, set_info_handler, XUG
 	},
 };
 
@@ -2923,10 +2927,6 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 	return rc;
 }
 
-struct plugin_list {
-	struct ldmsd_plugin_cfg *lh_first;
-};
-
 static char *state_str[] = {
 	[LDMSD_PLUGIN_OTHER] = "other",
 	[LDMSD_PLUGIN_SAMPLER] = "sampler",
@@ -4057,4 +4057,262 @@ static int eperm_handler(ldmsd_req_ctxt_t reqc)
 			"Operation not permitted.");
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
+}
+
+int ldmsd_set_info_request(ldmsd_prdcr_t prdcr,
+			ldmsd_req_ctxt_t org_reqc, char *inst_name,
+			ldmsd_req_resp_fn resp_handler, void *ctxt)
+{
+	size_t inst_name_len;
+	ldmsd_req_cmd_t rcmd;
+	struct ldmsd_req_attr_s attr;
+	char *buf;
+	int rc;
+
+	rcmd = alloc_req_cmd_ctxt(prdcr->xprt, prdcr->xprt->max_msg,
+					LDMSD_SET_INFO_REQ, org_reqc,
+					resp_handler, ctxt);
+	if (!rcmd)
+		return ENOMEM;
+
+	inst_name_len = strlen(inst_name) + 1;
+	/* instance name attribute */
+	attr.attr_id = LDMSD_ATTR_INSTANCE;
+	attr.attr_len = inst_name_len;
+	attr.discrim = 1;
+	ldmsd_hton_req_attr(&attr);
+	rc = __ldmsd_append_buffer(rcmd->reqc, (char *)&attr, sizeof(attr),
+					LDMSD_REQ_SOM_F, LDMSD_REQ_TYPE_CONFIG_CMD);
+	if (rc)
+		return rc;
+	rc = __ldmsd_append_buffer(rcmd->reqc, inst_name, inst_name_len,
+						0, LDMSD_REQ_TYPE_CONFIG_CMD);
+	if (rc)
+		return rc;
+
+	/* Keyword type to specify that this is an internal request */
+	attr.attr_id = LDMSD_ATTR_TYPE;
+	attr.attr_len = 0;
+	attr.discrim = 1;
+	ldmsd_hton_req_attr(&attr);
+	rc = __ldmsd_append_buffer(rcmd->reqc, (char *)&attr, sizeof(attr),
+						0, LDMSD_REQ_TYPE_CONFIG_CMD);
+	if (rc)
+		return rc;
+
+	/* Terminating discrim */
+	attr.discrim = 0;
+	rc = __ldmsd_append_buffer(rcmd->reqc, (char *)&attr.discrim, sizeof(uint32_t),
+					LDMSD_REQ_EOM_F, LDMSD_REQ_TYPE_CONFIG_CMD);
+	return rc;
+}
+
+size_t __set_info_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
+						ldmsd_set_info_t info)
+{
+	size_t cnt = 0;
+	if (!is_internal) {
+		cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"{"
+					"\"instance\":\"%s\","
+					"\"schema\":\"%s\","
+					"\"route\":"
+					"[",
+					ldms_set_instance_name_get(info->set),
+					ldms_set_schema_name_get(info->set));
+	}
+	if (info->origin_type == LDMSD_SET_ORIGIN_SAMP_PI) {
+		if (!is_internal) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+						"{"
+						"\"instance\":\"%s\","
+						"\"schema\":\"%s\","
+						"\"route\":"
+						"[",
+						ldms_set_instance_name_get(info->set),
+						info->prd_set->schema_name);
+		}
+		cnt += snprintf(&reqc->line_buf[cnt], reqc->line_len - cnt,
+				"{"
+				"\"host\":\"%s\","
+				"\"type\":\"%s\","
+				"\"detail\":"
+					"{"
+					"\"name\":\"%s\","
+					"\"interval_us\":\"%lu\","
+					"\"offset_us\":\"%ld\","
+					"\"sync\":\"%s\","
+					"\"trans_start_sec\":\"%ld\","
+					"\"trans_start_usec\":\"%ld\","
+					"\"trans_end_sec\":\"%ld\","
+					"\"trans_end_usec\":\"%ld\""
+					"}"
+				"}",
+				ldmsd_myhostname_get(),
+				ldmsd_set_info_origin_enum2str(info->origin_type),
+				info->origin_name,
+				info->interval_us,
+				info->offset_us,
+				((info->sync)?"true":"false"),
+				info->start.tv_sec,
+				info->start.tv_usec,
+				info->end.tv_sec,
+				info->end.tv_usec);
+		if (!is_internal) {
+			cnt += snprintf(&reqc->line_buf[cnt], reqc->line_len - cnt, "]}");
+		}
+	} else {
+		cnt += snprintf(&reqc->line_buf[cnt], reqc->line_len - cnt,
+				"{"
+				"\"host\":\"%s\","
+				"\"type\":\"%s\","
+				"\"detail\":"
+					"{"
+					"\"name\":\"%s\","
+					"\"host\":\"%s\","
+					"\"update_int\":\"%ld\","
+					"\"update_off\":\"%ld\","
+					"\"update_sync\":\"%s\","
+					"\"last_start_sec\":\"%ld\","
+					"\"last_start_usec\":\"%ld\","
+					"\"last_end_sec\":\"%ld\","
+					"\"last_end_usec\":\"%ld\""
+					"}"
+				"}",
+				ldmsd_myhostname_get(),
+				ldmsd_set_info_origin_enum2str(info->origin_type),
+				info->origin_name,
+				info->prd_set->prdcr->host_name,
+				info->interval_us,
+				info->offset_us,
+				((info->sync)?"true":"false"),
+				info->start.tv_sec,
+				info->start.tv_usec,
+				info->end.tv_sec,
+				info->end.tv_usec);
+	}
+
+	return cnt;
+}
+
+struct set_info_req_ctxt {
+	char *my_info;
+	int is_internal;
+};
+
+static int set_info_resp_handler(ldmsd_req_cmd_t rcmd)
+{
+	struct ldmsd_req_attr_s my_attr;
+	ldmsd_req_attr_t attr;
+	ldmsd_req_ctxt_t reqc = rcmd->reqc;
+	ldmsd_req_ctxt_t org_reqc = rcmd->org_reqc;
+	struct set_info_req_ctxt *ctxt = (struct set_info_req_ctxt *)rcmd->ctxt;
+
+	attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->req_buf);
+
+	my_attr.attr_id = LDMSD_ATTR_JSON;
+	/* +1 for a command between two json objects */
+	my_attr.attr_len = strlen(ctxt->my_info) + attr->attr_len + 1;
+	if (!ctxt->is_internal) {
+		/* +2 for a square bracket and a curly bracket */
+		my_attr.attr_len += 2;
+	}
+	my_attr.discrim = 1;
+	ldmsd_hton_req_attr(&my_attr);
+	(void) ldmsd_append_reply(org_reqc, (char *)&my_attr, sizeof(my_attr), 0);
+	(void) ldmsd_append_reply(org_reqc, ctxt->my_info, strlen(ctxt->my_info), 0);
+	(void) ldmsd_append_reply(org_reqc, ",", 1, 0);
+	if (!ctxt->is_internal) {
+		/* -1 to exclude the terminating character */
+		(void) ldmsd_append_reply(org_reqc, attr->attr_value, attr->attr_len - 1, 0);
+		(void) ldmsd_append_reply(org_reqc, "]}", 3, 0);
+	} else {
+		(void) ldmsd_append_reply(org_reqc, attr->attr_value, attr->attr_len, 0);
+	}
+
+	my_attr.discrim = 0;
+	(void) ldmsd_append_reply(org_reqc, (char *)&my_attr.discrim,
+					sizeof(uint32_t), LDMSD_REQ_EOM_F);
+	free(ctxt->my_info);
+	free(ctxt);
+	return 0;
+}
+
+static int set_info_handler(ldmsd_req_ctxt_t reqc)
+{
+	size_t cnt;
+	char *inst_name;
+	struct set_info_req_ctxt *ctxt;
+	int is_internal = 0;
+	int rc = 0;
+	ldmsd_set_info_t info;
+	struct ldmsd_req_attr_s attr;
+
+	inst_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INSTANCE);
+	if (!inst_name) {
+		cnt = snprintf(reqc->line_buf, reqc->line_len,
+				"The attribute 'instance' is required.");
+		reqc->errcode = EINVAL;
+		(void) ldmsd_send_req_response(reqc, reqc->line_buf);
+		goto out;
+	}
+
+	is_internal = ldmsd_req_attr_keyword_exist_by_id(reqc->req_buf, LDMSD_ATTR_TYPE);
+
+	info = ldmsd_set_info_get(inst_name);
+	if (!info) {
+		/* The set does not exist. */
+		cnt = snprintf(reqc->line_buf, reqc->line_len,
+				"%s: Set '%s' not exist.",
+				ldmsd_myhostname_get(), inst_name);
+		(void) ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, ENOENT,
+				reqc->line_buf, cnt + 1);
+		goto out;
+	}
+
+	cnt = __set_info_json_get(is_internal, reqc, info);
+	if (info->origin_type == LDMSD_SET_ORIGIN_PRDCR) {
+		ctxt = malloc(sizeof(*ctxt));
+		if (!ctxt) {
+			reqc->errcode = ENOMEM;
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+						"ldmsd: Out of memory");
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+		}
+		ctxt->is_internal = is_internal;
+		ctxt->my_info = malloc(cnt + 1);
+		if (!ctxt->my_info) {
+			reqc->errcode = ENOMEM;
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+						"ldmsd: Out of memory");
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+		}
+		memcpy(ctxt->my_info, reqc->line_buf, cnt + 1);
+		rc = ldmsd_set_info_request(info->prd_set->prdcr,
+				reqc, inst_name, set_info_resp_handler, ctxt);
+		if (rc) {
+			reqc->errcode = rc;
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"%s: error forwarding set_info_request to "
+					"prdcr '%s'", ldmsd_myhostname_get(),
+					info->origin_name);
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+		}
+	} else {
+		attr.attr_id = LDMSD_ATTR_JSON;
+		attr.discrim = 1;
+		attr.attr_len = cnt + 1;
+		ldmsd_hton_req_attr(&attr);
+		(void) __ldmsd_append_buffer(reqc, (char *)&attr, sizeof(attr),
+				LDMSD_REQ_SOM_F, LDMSD_REQ_TYPE_CONFIG_RESP);
+		(void) __ldmsd_append_buffer(reqc, reqc->line_buf, cnt + 1,
+				0, LDMSD_REQ_TYPE_CONFIG_RESP);
+		attr.discrim = 0;
+		(void) __ldmsd_append_buffer(reqc, (char *)&attr.discrim,
+				sizeof(uint32_t),
+				LDMSD_REQ_EOM_F, LDMSD_REQ_TYPE_CONFIG_RESP);
+	}
+	ldmsd_set_info_delete(info);
+out:
+	return rc;
 }
