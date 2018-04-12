@@ -174,6 +174,18 @@ static int set_info_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
 
+/* these are implemented in ldmsd_failover.c */
+int failover_config_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_do_failover_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_do_failback_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_mod_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_status_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_pair_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_reset_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_heartbeat_handler(ldmsd_req_ctxt_t req_ctxt);
+
 /* executable for all */
 #define XALL 0111
 /* executable for user, and group */
@@ -331,6 +343,40 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_SET_INFO_REQ] = {
 		LDMSD_SET_INFO_REQ, set_info_handler, XUG
+	},
+
+	/* FAILOVER */
+	[LDMSD_FAILOVER_CONFIG_REQ] = {
+		LDMSD_FAILOVER_CONFIG_REQ, failover_config_handler, XUG,
+	},
+	[LDMSD_FAILOVER_DO_FAILBACK_REQ]  = {
+		LDMSD_FAILOVER_DO_FAILBACK_REQ, failover_do_failback_handler,
+									XUG,
+	},
+	[LDMSD_FAILOVER_DO_FAILOVER_REQ]  = {
+		LDMSD_FAILOVER_DO_FAILOVER_REQ, failover_do_failover_handler,
+									XUG,
+	},
+	[LDMSD_FAILOVER_MOD_REQ]  = {
+		LDMSD_FAILOVER_MOD_REQ, failover_mod_handler, XUG,
+	},
+	[LDMSD_FAILOVER_STATUS_REQ]  = {
+		LDMSD_FAILOVER_STATUS_REQ, failover_status_handler, XUG,
+	},
+	[LDMSD_FAILOVER_PAIR_REQ] = {
+		LDMSD_FAILOVER_PAIR_REQ, failover_pair_handler, XUG,
+	},
+	[LDMSD_FAILOVER_RESET_REQ] = {
+		LDMSD_FAILOVER_RESET_REQ, failover_reset_handler, XUG,
+	},
+	[LDMSD_FAILOVER_CFGPRDCR_REQ] = {
+		LDMSD_FAILOVER_CFGPRDCR_REQ, failover_cfgprdcr_handler, XUG,
+	},
+	[LDMSD_FAILOVER_CFGUPDTR_REQ] = {
+		LDMSD_FAILOVER_CFGUPDTR_REQ, failover_cfgupdtr_handler, XUG,
+	},
+	[LDMSD_FAILOVER_HEARTBEAT_REQ] = {
+		LDMSD_FAILOVER_HEARTBEAT_REQ, failover_heartbeat_handler, XUG,
 	},
 };
 
@@ -2410,6 +2456,11 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!name)
 		goto einval;
 
+	if (0 == strncmp(LDMSD_FAILOVER_NAME_PREFIX, name,
+			 sizeof(LDMSD_FAILOVER_NAME_PREFIX)-1)) {
+		goto ename;
+	}
+
 	attr_name = "interval";
 	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INTERVAL);
 	if (!interval_str)
@@ -2460,6 +2511,11 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	} else {
 		updtr->updt_task_flags = 0;
 	}
+	goto send_reply;
+
+ename:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "Bad updtr name");
 	goto send_reply;
 
 einval:
@@ -2552,6 +2608,11 @@ static int updtr_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!updtr_name)
 		goto einval;
 
+	if (0 == strncmp(LDMSD_FAILOVER_NAME_PREFIX, updtr_name,
+			 sizeof(LDMSD_FAILOVER_NAME_PREFIX) - 1)) {
+		goto ename;
+	}
+
 	attr_name = "regex";
 	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_REGEX);
 	if (!prdcr_regex)
@@ -2587,6 +2648,11 @@ static int updtr_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 	goto send_reply;
 
+ename:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"Bad prdcr name");
+	goto send_reply;
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,

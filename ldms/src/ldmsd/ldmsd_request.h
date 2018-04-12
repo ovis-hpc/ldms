@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2016-2017 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2016-2017 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2016-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2016-2018 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -112,6 +112,21 @@ enum ldmsd_request {
 	LDMSD_EXIT_DAEMON_REQ,
 	LDMSD_RECORD_LEN_ADVICE_REQ,
 	LDMSD_SET_INFO_REQ,
+
+	/* failover requests by user */
+	LDMSD_FAILOVER_CONFIG_REQ = 0x700, /* "failover_config" user command */
+	LDMSD_FAILOVER_DO_FAILOVER_REQ, /* for user "failover" user command */
+	LDMSD_FAILOVER_DO_FAILBACK_REQ, /* for user "failback" user command */
+	LDMSD_FAILOVER_MOD_REQ, /* for "failove_mod" user command */
+	LDMSD_FAILOVER_STATUS_REQ, /* for "failover_status" user command */
+
+	/* failover requests by ldmsd (not exposed to users) */
+	LDMSD_FAILOVER_PAIR_REQ, /* Pairing request */
+	LDMSD_FAILOVER_RESET_REQ, /* Request to reset failover */
+	LDMSD_FAILOVER_CFGPRDCR_REQ, /* internal producer failover config */
+	LDMSD_FAILOVER_CFGUPDTR_REQ, /* internal updater failover config */
+	LDMSD_FAILOVER_HEARTBEAT_REQ, /* heartbeat message over REQ protocol */
+
 	LDMSD_NOTSUPPORT_REQ,
 };
 
@@ -145,6 +160,9 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_REC_LEN,
 	LDMSD_ATTR_JSON,
 	LDMSD_ATTR_PERM,
+	LDMSD_ATTR_AUTO_SWITCH,
+	LDMSD_ATTR_PEER_NAME,
+	LDMSD_ATTR_TIMEOUT_FACTOR,
 	LDMSD_ATTR_LAST,
 };
 

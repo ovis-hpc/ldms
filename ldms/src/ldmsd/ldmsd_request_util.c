@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2017 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2017 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2017-18 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2017-18 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -69,6 +69,11 @@ const struct req_str_id req_str_id_table[] = {
 	{  "daemon",             LDMSD_DAEMON_STATUS_REQ  },
 	{  "env",                LDMSD_ENV_REQ  },
 	{  "exit",               LDMSD_EXIT_DAEMON_REQ  },
+	{  "failback",           LDMSD_FAILOVER_DO_FAILBACK_REQ  },
+	{  "failover",           LDMSD_FAILOVER_DO_FAILOVER_REQ  },
+	{  "failover_config",    LDMSD_FAILOVER_CONFIG_REQ  },
+	{  "failover_mod",       LDMSD_FAILOVER_MOD_REQ  },
+	{  "failover_status",    LDMSD_FAILOVER_STATUS_REQ  },
 	{  "greeting",           LDMSD_GREETING_REQ  },
 	{  "include",            LDMSD_INCLUDE_REQ  },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ  },
@@ -115,6 +120,7 @@ const struct req_str_id req_str_id_table[] = {
 
 /* This table need to be sorted by keyword for bsearch() */
 const struct req_str_id attr_str_id_table[] = {
+	{  "auto_switch",       LDMSD_ATTR_AUTO_SWITCH  },
 	{  "base",              LDMSD_ATTR_BASE  },
 	{  "container",         LDMSD_ATTR_CONTAINER  },
 	{  "host",              LDMSD_ATTR_HOST  },
@@ -128,6 +134,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "name",              LDMSD_ATTR_NAME  },
 	{  "offset",            LDMSD_ATTR_OFFSET  },
 	{  "path",              LDMSD_ATTR_PATH  },
+	{  "peer_name",         LDMSD_ATTR_PEER_NAME },
 	{  "perm",              LDMSD_ATTR_PERM  },
 	{  "plugin",            LDMSD_ATTR_PLUGIN  },
 	{  "port",              LDMSD_ATTR_PORT  },
@@ -138,6 +145,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "string",            LDMSD_ATTR_STRING  },
 	{  "test",              LDMSD_ATTR_TEST  },
 	{  "time",              LDMSD_ATTR_TIME  },
+	{  "timeout_factor",    LDMSD_ATTR_TIMEOUT_FACTOR  },
 	{  "type",              LDMSD_ATTR_TYPE  },
 	{  "udata",             LDMSD_ATTR_UDATA  },
 	{  "xprt",              LDMSD_ATTR_XPRT  },
