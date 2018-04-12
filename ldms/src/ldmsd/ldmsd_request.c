@@ -386,7 +386,6 @@ void req_ctxt_ref_put(ldmsd_req_ctxt_t reqc)
 ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key, size_t max_msg_len)
 {
 	ldmsd_req_ctxt_t reqc;
-	size_t len;
 
 	reqc = calloc(1, sizeof *reqc);
 	if (!reqc)
@@ -1037,7 +1036,6 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	enum ldmsd_prdcr_type type = -1;
 	unsigned short port_no = 0;
 	int interval_us = -1;
-	struct ldmsd_req_attr_s attr;
 	size_t cnt = 0;
 	uid_t uid;
 	gid_t gid;
@@ -1266,7 +1264,6 @@ static int prdcr_stop_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name = NULL;
 	size_t cnt = 0;
-	ldmsd_req_attr_t attr;
 	struct ldmsd_sec_ctxt sctxt;
 
 	reqc->errcode = 0;
@@ -1315,7 +1312,6 @@ static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
 	char *prdcr_regex, *interval_str;
 	prdcr_regex = interval_str = NULL;
 	size_t cnt = 0;
-	ldmsd_req_attr_t attr;
 	struct ldmsd_sec_ctxt sctxt;
 
 	reqc->errcode = 0;
@@ -1349,7 +1345,6 @@ static int prdcr_stop_regex_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *prdcr_regex = NULL;
 	size_t cnt = 0;
-	ldmsd_req_attr_t attr;
 	struct ldmsd_sec_ctxt sctxt;
 
 	reqc->errcode = 0;
@@ -1556,7 +1551,6 @@ int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
 	char *prdcr_name, *setname, *schema;
 	prdcr_name = setname = schema = NULL;
 	ldmsd_prdcr_t prdcr = NULL;
-	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
 	int rc, count = 0;
 	reqc->errcode = 0;
@@ -1637,7 +1631,6 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *attr_name, *name, *plugin, *container, *schema;
 	name = plugin = container = schema = NULL;
-	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
 	uid_t uid;
 	gid_t gid;
@@ -1750,7 +1743,6 @@ send_reply:
 static int strgp_del_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name = NULL;
-	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
 
@@ -1800,7 +1792,6 @@ static int strgp_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *regex_str, *attr_name;
 	name = regex_str = NULL;
-	ldmsd_req_attr_t attr;
 	struct ldmsd_sec_ctxt sctxt;
 
 	size_t cnt = 0;
@@ -1864,7 +1855,6 @@ static int strgp_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *regex_str, *attr_name;
 	name = regex_str = NULL;
-	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
 
@@ -1929,7 +1919,6 @@ static int strgp_metric_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *metric_name, *attr_name;
 	name = metric_name = NULL;
-	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
 
@@ -1996,7 +1985,6 @@ static int strgp_metric_del_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *metric_name, *attr_name;
 	name = metric_name = NULL;
-	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
 
@@ -2059,9 +2047,7 @@ static int strgp_start_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *attr_name;
 	name = NULL;
-	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
-	int rc;
 	struct ldmsd_sec_ctxt sctxt;
 
 	reqc->errcode = 0;
@@ -2115,7 +2101,6 @@ static int strgp_stop_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *attr_name;
 	name = NULL;
-	ldmsd_req_attr_t attr;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
 
@@ -2290,7 +2275,6 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	char *name, *offset_str, *interval_str, *push, *attr_name;
 	name = offset_str = interval_str = push = NULL;
 	size_t cnt = 0;
-	ldmsd_req_attr_t attr;
 	uid_t uid;
 	gid_t gid;
 	int perm;
@@ -2388,7 +2372,6 @@ static int updtr_del_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name = NULL;
 	size_t cnt = 0;
-	ldmsd_req_attr_t attr;
 	struct ldmsd_sec_ctxt sctxt;
 
 	reqc->errcode = 0;
@@ -2438,7 +2421,6 @@ static int updtr_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	char *updtr_name, *prdcr_regex, *attr_name;
 	updtr_name = prdcr_regex = NULL;
 	size_t cnt = 0;
-	ldmsd_req_attr_t attr;
 	struct ldmsd_sec_ctxt sctxt;
 	reqc->errcode = 0;
 
@@ -2501,7 +2483,6 @@ static int updtr_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 	char *updtr_name, *prdcr_regex, *attr_name;
 	updtr_name = prdcr_regex = NULL;
 	size_t cnt = 0;
-	ldmsd_req_attr_t attr;
 	struct ldmsd_sec_ctxt sctxt;
 
 	reqc->errcode = 0;
@@ -2564,7 +2545,6 @@ static int updtr_match_add_handler(ldmsd_req_ctxt_t reqc)
 	char *updtr_name, *regex_str, *match_str, *attr_name;
 	updtr_name = regex_str = match_str = NULL;
 	size_t cnt = 0;
-	ldmsd_req_attr_t attr;
 	struct ldmsd_sec_ctxt sctxt;
 
 	reqc->errcode = 0;
@@ -2636,7 +2616,6 @@ static int updtr_match_del_handler(ldmsd_req_ctxt_t reqc)
 	char *updtr_name, *regex_str, *match_str, *attr_name;
 	updtr_name = regex_str = match_str = NULL;
 	size_t cnt = 0;
-	ldmsd_req_attr_t attr;
 	struct ldmsd_sec_ctxt sctxt;
 
 	reqc->errcode = 0;
@@ -2706,7 +2685,6 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 	char *updtr_name, *interval_str, *offset_str;
 	updtr_name = interval_str = offset_str = NULL;
 	size_t cnt = 0;
-	ldmsd_req_attr_t attr;
 	struct ldmsd_sec_ctxt sctxt;
 
 	reqc->errcode = 0;
@@ -2760,7 +2738,6 @@ static int updtr_stop_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *updtr_name = NULL;
 	size_t cnt = 0;
-	ldmsd_req_attr_t attr;
 	struct ldmsd_sec_ctxt sctxt;
 
 	reqc->errcode = 0;
@@ -3120,7 +3097,6 @@ static int plugn_load_handler(ldmsd_req_ctxt_t reqc)
 	char *plugin_name, *attr_name;
 	plugin_name = NULL;
 	size_t cnt = 0;
-	struct ldmsd_req_attr_s attr;
 
 	attr_name = "name";
 	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
@@ -3549,7 +3525,6 @@ static int set_udata_regex_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *set_name, *regex, *base_s, *inc_s, *attr_name;
 	set_name = regex = base_s = inc_s = NULL;
-	int rc = 0;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
 
@@ -3687,7 +3662,6 @@ static int version_handler(ldmsd_req_ctxt_t reqc)
 {
 	struct ldms_version ldms_version;
 	struct ldmsd_version ldmsd_version;
-	struct ldmsd_req_attr_s attr;
 
 	ldms_version_get(&ldms_version);
 	size_t cnt = snprintf(reqc->line_buf, reqc->line_len,
@@ -3871,7 +3845,7 @@ extern void ldmsd_exit_daemon();
 static int exit_daemon_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_exit_daemon();
-	size_t cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+	Snprintf(&reqc->line_buf, &reqc->line_len,
 				"exit daemon request received");
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
@@ -3958,8 +3932,7 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 	int rep_len = 0;
 	int num_rec = 0;
 	size_t cnt = 0;
-	int rc = 0;
-	int i, msg_flag;
+	int i;
 
 	rep_len_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_OFFSET);
 	num_rec_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_LEVEL);
