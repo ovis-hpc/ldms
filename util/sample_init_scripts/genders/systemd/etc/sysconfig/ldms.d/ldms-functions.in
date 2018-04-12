@@ -130,7 +130,7 @@ check_genders_file() {
 	done
 	for p in $prefixtypo; do
 		arr=(${p//:/ })
-		val=`$NODEATTR $NODEATTRFILE -l | grep ${arr[0]} 2>/dev/null`
+		val=`$NODEATTR $NODEATTRFILE -l | grep ^${arr[0]} 2>/dev/null`
 		if test -n "$val"; then
 			logger -p syslog.err "Correct gender(s) starting with ${arr[0]} to start with ${arr[1]}."
 			((n++))
@@ -139,7 +139,7 @@ check_genders_file() {
 	done
 	for p in $commatypo; do
 		arr=(${p//:/ })
-		val=`$NODEATTR $NODEATTRFILE -l | grep ${arr[0]} 2>/dev/null`
+		val=`$NODEATTR $NODEATTRFILE -l | grep ^${arr[0]} 2>/dev/null`
 		if test -n "$val"; then
 			logger -p syslog.err "Found plugin name(s) as a gender: $val. Use : or & instead of , in ldmsd plugin lists, as noted in man ldms-attributes."
 			((n++))
