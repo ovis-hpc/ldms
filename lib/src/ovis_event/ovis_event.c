@@ -270,6 +270,7 @@ ovis_scheduler_t ovis_scheduler_new()
 	m->ovis_ev.param.fd = m->pfd[0];
 	m->ovis_ev.priv.idx = -1;
 	m->ovis_ev.param.epoll_events = EPOLLIN;
+	m->ovis_ev.param.type = OVIS_EVENT_EPOLL;
 
 	m->ev[0].events = m->ovis_ev.param.epoll_events;
 	m->ev[0].data.ptr = &m->ovis_ev;
