@@ -177,7 +177,8 @@ int32_t ldmsd_req_attr_str2id(const char *name)
  * is added to req_buf.
  * Otherwise, EINVAL is returned.
  */
-static int add_attr_from_attr_str(char *name, char *value, ldmsd_req_hdr_t *request,
+static int add_attr_from_attr_str(const char *name, const char *value,
+				  ldmsd_req_hdr_t *request,
 				  size_t *rec_off, size_t *rec_len)
 {
 	ldmsd_req_attr_t attr;
