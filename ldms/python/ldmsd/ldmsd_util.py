@@ -414,7 +414,7 @@ class LDMSD(object):
                           stderr=open(os.devnull, "w"),
                           close_fds = True,
                           )
-        time.sleep(1)
+        time.sleep(0.01)
         self.proc.poll()
         if self.proc.returncode != None:
             # process terminated
