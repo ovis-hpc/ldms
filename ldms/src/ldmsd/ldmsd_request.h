@@ -422,9 +422,10 @@ void ldmsd_ntoh_req_msg(ldmsd_req_hdr_t msg);
 void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec_len);
 int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request, size_t req_len);
 int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t response, size_t resp_len);
-int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc, char *data, size_t data_len, int msg_flags);
+int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc, const char *data, size_t data_len, int msg_flags);
 void ldmsd_send_error_reply(ldmsd_cfg_xprt_t xprt, uint32_t msg_no,
 			    uint32_t error, char *data, size_t data_len);
+void ldmsd_send_req_response(ldmsd_req_ctxt_t reqc, const char *msg);
 int ldmsd_handle_request(ldmsd_req_ctxt_t reqc);
 static inline ldmsd_req_attr_t ldmsd_first_attr(ldmsd_req_hdr_t rh)
 {
