@@ -480,6 +480,20 @@ err0:
 	return NULL;
 }
 
+ldmsd_req_cmd_t ldmsd_req_cmd_new(ldms_t ldms,
+				    uint32_t req_id,
+				    ldmsd_req_ctxt_t orgn_reqc,
+				    ldmsd_req_resp_fn resp_handler,
+				    void *ctxt)
+{
+	ldmsd_req_cmd_t ret;
+	req_ctxt_tree_lock();
+	ret = alloc_req_cmd_ctxt(ldms, ldms->max_msg, req_id, orgn_reqc,
+				 resp_handler, ctxt);
+	req_ctxt_tree_unlock();
+	return ret;
+}
+
 /* Caller must hold the msg_tree locks. */
 void free_req_cmd_ctxt(ldmsd_req_cmd_t rcmd)
 {
@@ -488,6 +502,13 @@ void free_req_cmd_ctxt(ldmsd_req_cmd_t rcmd)
 	if (rcmd->reqc)
 		req_ctxt_ref_put(rcmd->reqc);
 	free(rcmd);
+}
+
+void ldmsd_req_cmd_free(ldmsd_req_cmd_t rcmd)
+{
+	req_ctxt_tree_lock();
+	free_req_cmd_ctxt(rcmd);
+	req_ctxt_tree_unlock();
 }
 
 static int string2attr_list(char *str, struct attr_value_list **__av_list,
@@ -678,6 +699,37 @@ int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc,
 {
 	return __ldmsd_append_buffer(reqc, data, data_len, msg_flags,
 					LDMSD_REQ_TYPE_CONFIG_RESP);
+}
+
+int ldmsd_req_cmd_attr_append(ldmsd_req_cmd_t rcmd,
+			      enum ldmsd_request_attr attr_id,
+			      const void *value, int value_len)
+{
+	int rc;
+	struct ldmsd_req_attr_s attr = {
+				.attr_len = value_len,
+				.attr_id = attr_id,
+			};
+	if (attr_id == LDMSD_ATTR_TERM) {
+		attr.discrim = 0;
+		return __ldmsd_append_buffer(rcmd->reqc, (void*)&attr.discrim,
+					     sizeof(attr.discrim),
+					     LDMSD_REQ_EOM_F,
+					     LDMSD_REQ_TYPE_CONFIG_CMD);
+	}
+	if (attr_id >= LDMSD_ATTR_LAST)
+		return EINVAL;
+	attr.discrim = 1;
+	ldmsd_hton_req_attr(&attr);
+	rc = __ldmsd_append_buffer(rcmd->reqc, (void*)&attr, sizeof(attr),
+				   0, LDMSD_REQ_TYPE_CONFIG_CMD);
+	if (rc)
+		return rc;
+	if (value_len) {
+		rc = __ldmsd_append_buffer(rcmd->reqc, value, value_len,
+					   0, LDMSD_REQ_TYPE_CONFIG_CMD);
+	}
+	return rc;
 }
 
 /*
