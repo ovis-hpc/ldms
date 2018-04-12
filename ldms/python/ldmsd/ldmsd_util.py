@@ -347,7 +347,7 @@ class LDMSD(object):
 
     def __init__(self, port, xprt="sock", logfile=None, auth="none",
                  auth_opt={}, verbose="INFO", cfg=None, host_name=None,
-                 gdb_port=None):
+                 gdb_port=None, name=None):
         """LDMSD subprocess handler initialization
 
         @param port(str): the LDMSD listening port.
@@ -389,6 +389,8 @@ class LDMSD(object):
                 self.cmd_args.extend(["-A", "%s=%s" % (a, v)])
         if host_name:
             self.cmd_args.extend(["-H", host_name])
+        if name:
+            self.cmd_args.extend(["-n", name])
         self.proc = None
         self.cfg = None
         if cfg:
