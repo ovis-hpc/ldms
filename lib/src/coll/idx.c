@@ -183,7 +183,6 @@ static void traverse_layer(idx_t t, struct idx_layer_s *pl, idx_cb_fn_t cb, void
  */
 void idx_traverse(idx_t t, idx_cb_fn_t cb, void *cb_arg)
 {
-	int e;
 	struct idx_layer_s *pl = t->top;
 	traverse_layer(t, pl, cb, cb_arg);
 }
@@ -195,7 +194,6 @@ int idx_add(idx_t t, idx_key_t key, size_t keylen, void *obj)
 {
 	struct idx_layer_s *pl;
 	unsigned char *pidx = key;
-	int i;
 
 	/* We don't allow adding a NULL pointer as an object */
 	if (!obj)
@@ -206,7 +204,7 @@ int idx_add(idx_t t, idx_key_t key, size_t keylen, void *obj)
 
 	idx_entries++;
 	keylen--;
-	for (pl = t->top, i = 0; keylen;
+	for (pl = t->top; keylen;
 	     keylen--, pl = pl->entries[*pidx++].next) {
 		/* If there is no layer at this prefix, add one */
 		if (!pl->entries[*pidx].next) {
@@ -234,7 +232,9 @@ static int purge_layer(struct idx_layer_s *pl, idx_key_t key, size_t keylen)
 	unsigned char *pkey = key;
 	struct idx_layer_s *npl;
 	assert(*(unsigned char *)pkey != (unsigned char )255);
-	if (keylen == 2) {
+	if (keylen < 2) {
+		return 0;
+	} else if (keylen==2) {
 		if (!pl->obj_count && !pl->layer_count) {
 			free(pl);
 			return 1;
@@ -254,9 +254,8 @@ static int purge_layer(struct idx_layer_s *pl, idx_key_t key, size_t keylen)
 	return 0;
 }
 
-static int purge_layers(idx_t t, idx_key_t key, size_t keylen)
+static void purge_layers(idx_t t, idx_key_t key, size_t keylen)
 {
-	int l = 0;
 	unsigned char *pkey = key;
 	struct idx_layer_s *pl = t->top;
 
@@ -278,7 +277,6 @@ static int purge_layers(idx_t t, idx_key_t key, size_t keylen)
  */
 void *idx_delete(idx_t t, idx_key_t key, size_t keylen)
 {
-	int l = 0;
 	unsigned char *pkey = key;
 	struct idx_layer_s *pl;
 	void *obj;
@@ -396,6 +394,49 @@ int main(int argc, char *argv[])
 			    obj);
 		free(obj);
 	}
+	idx_destroy(idx);
+	idx = idx_create();
+	char *strings[] = {"a", "aa", "aaa", "aaaa", "aaaaa", NULL};
+	i = 0;
+	while (strings[i] != NULL) {
+		char *ikey = strings[i];
+		int keylen = strlen(ikey);
+		rc = idx_add(idx,(idx_key_t)ikey, keylen, ikey);
+		TEST_ASSERT(!rc, "Add object '%s'.\n", ikey);
+		i++;
+	}
+	i = 0;
+	while (strings[i] != NULL) {
+		char *ikey = strings[i];
+		int keylen = strlen(ikey);
+		obj = idx_find(idx, (idx_key_t)ikey, keylen);
+		TEST_ASSERT(obj != NULL,
+			    "Object %s was found with key '%s'.\n", obj, ikey);
+		TEST_ASSERT(0 == strcmp(ikey, obj),
+			    "Object '%s' matches key '%s'.\n",
+			    obj, ikey);
+		i++;
+	}
+	size_t ic = idx_count(idx);
+	TEST_ASSERT(ic > 0,"idx starting with size %lu\n",(unsigned long)ic);
+	i = 0;
+	while (strings[i] != NULL) {
+		char *ikey = strings[i];
+		keylen = strlen(ikey);
+		obj = idx_delete(idx, (idx_key_t)ikey, keylen);
+		TEST_ASSERT(obj != NULL,
+			    "Object %p was deleted with key '%s'.\n", obj, ikey);
+		TEST_ASSERT(0 == strcmp(ikey, obj),
+			    "Object deleted '%s' matches key '%s'.\n",
+			    obj, ikey);
+		TEST_ASSERT(NULL == idx_find(idx, ikey, keylen),
+			"Object deleted '%p can no longer be found.\n", obj);
+		int newic = idx_count(idx);
+		ic--;
+		TEST_ASSERT(ic == newic, "idx size correct after delete.\n", obj);
+		i++;
+	}
+
 	idx_destroy(idx);
 	return 0;
 }
