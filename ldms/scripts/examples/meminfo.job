@@ -2,8 +2,8 @@
 export plugname=meminfo
 portbase=62020
 JOBDATA $TESTDIR/job.data 1 2 3
-LDMSD -p prolog.jobid -p prolog.sampler 1 2
-LDMSD -p prolog.jobid -p prolog.sampler -p prolog.jobid.store3 3
+LDMSD -p prolog.jobid -p prolog.jobid.sampler 1 2
+LDMSD -p prolog.jobid -p prolog.jobid.sampler -p prolog.jobid.store3 3
 MESSAGE ldms_ls on host 1:
 JOBDATA $TESTDIR/job.data 1 2 3
 LDMS_LS 1 -l
