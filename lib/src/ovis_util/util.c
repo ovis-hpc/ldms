@@ -85,6 +85,8 @@ static const char *get_env_var(const char *src, size_t start_off, size_t end_off
 
 char *str_repl_env_vars(const char *str)
 {
+	if (!str)
+		return NULL;
 	const char *name;
 	const char *value;
 	const char *values[100];
@@ -157,6 +159,8 @@ char *str_repl_env_vars(const char *str)
 
 char *av_name(struct attr_value_list *av_list, int idx)
 {
+	if (!av_list)
+		return NULL;
 	if (idx < av_list->count)
 		return av_list->list[idx].name;
 	return NULL;
@@ -164,6 +168,8 @@ char *av_name(struct attr_value_list *av_list, int idx)
 
 char *av_value(struct attr_value_list *av_list, const char *name)
 {
+	if (!av_list)
+		return NULL;
 	int i;
 	for (i = 0; i < av_list->count; i++) {
 		if (strcmp(name, av_list->list[i].name))
@@ -171,8 +177,10 @@ char *av_value(struct attr_value_list *av_list, const char *name)
 		char *str = str_repl_env_vars(av_list->list[i].value);
 		if (str) {
 			string_ref_t ref = malloc(sizeof(*ref));
-			if (!ref)
+			if (!ref) {
+				free(str);
 				return NULL;
+			}
 			ref->str = str;
 			LIST_INSERT_HEAD(&av_list->strings, ref, entry);
 			return str;
@@ -188,8 +196,10 @@ char *av_value_at_idx(struct attr_value_list *av_list, int i)
 		char *str = str_repl_env_vars(av_list->list[i].value);
 		if (str) {
 			string_ref_t ref = malloc(sizeof(*ref));
-			if (!ref)
+			if (!ref) {
+				free(str);
 				return NULL;
+			}
 			ref->str = str;
 			LIST_INSERT_HEAD(&av_list->strings, ref, entry);
 			return str;
@@ -235,6 +245,8 @@ err:
 
 void av_free(struct attr_value_list *avl)
 {
+	if (!avl)
+		return;
 	string_ref_t ref;
 	while (!LIST_EMPTY(&avl->strings)) {
 		ref = LIST_FIRST(&avl->strings);
