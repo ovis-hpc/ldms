@@ -3,6 +3,6 @@ docdir = $(datadir)/doc/@PACKAGE@-@VERSION@/sample_init_scripts/genders/systemd/
 
 if ENABLE_TOSS_SYSTEMD
 dist_doc_DATA = \
-README genders.local
+README genders.local genders.agg
 endif
 
