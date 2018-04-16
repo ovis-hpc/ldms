@@ -1,0 +1,248 @@
+.\" Manpage for ldmsd_failover
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "16 Apr 2018" "v4.1" "LDMSD Failover man page"
+
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""/.
+.SH NAME
+ldmsd_failover - explanation, configuration, and commands for ldmsd failover
+
+
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""/.
+.SH SYNOPSIS
+
+.nh   \" no hyphenation
+.ad l \"left justified
+
+.IP \fBfailover_config\fR 16
+.RI "host=" HOST " port=" PORT " xprt=" XPRT
+.RI "[peer_name=" NAME "] [interval=" USEC "] [timeout_factor=" FLOAT "]"
+.RI "[auto_switch=" 0|1 "]"
+
+.IP \fBfailover_mod\fR 13
+.RI "[auto_switch=" 0|1 "]"
+
+.IP \fBfailover_status\fR
+
+.IP \fBfailover\fR
+
+.IP \fBfailback\fR
+
+.hy 14 \" default hyphenation
+.ad    \" restore text justification
+
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""/.
+.SH DESCRIPTION
+
+\fBldmsd\fR can be configured to form a failover pair with another \fBldmsd\fR.
+In a nutshell, when a failover pair is formed, the ldmsd's exchange their
+updater and producer configuration so that when one goes down, the other will
+take over the LDMS set aggregation load (\fBfailover\fR).
+
+\fBHeartbeat\fR mechanism is used to detect the service unavailability. Each
+ldmsd in the pair sends heartbeats to the other to let its partner knows that it
+is in service. When the heartbeat is not detected, the failover mechanism is
+executed.
+
+The following paragraphs explain ldmsd configuration commands relating to ldmsd
+failover feature.
+
+\fBfailover_config\fR configure failover feature in an ldmsd. The following list
+describes the command parameters.
+.RS
+.IP \fBhost\fR=\fIHOST\fR 16
+The hostname of the failover partner.
+.IP \fBport\fR=\fIPORT\fR
+The LDMS port of the failover partner.
+.IP \fBxprt\fR=\fIXPRT\fR
+The LDMS transport type (sock, rdma, or ugni) of the failover partner.
+.IP \fBpeer_name\fR=\fINAME\fR
+(Optional) The ldmsd name of the failover parter (please see option \fB-n\fR in
+\fBldmsd\fR(8)). If this is specified, the ldmsd will only accept a pairing with
+other ldmsd with matching name. Otherwise, the ldmsd will pair with any ldmsd
+requesting a failover pairing.
+.IP \fBinterval\fR=\fIuSEC\fR
+(Optional) The interval (in micro-seconds) for heartbeat and transport
+re-connecting. The default is 1000000 (1 sec).
+.IP \fBtimeout_factor\fR=\fIFLOAT\fR
+(Optional) The heartbeat timeout factor. The heartbeat timeout is calculated by
+\fB\%timeout_factor * \%interval\fR.
+.IP \fBauto_switch\fR=\fI0|1\fR
+(Optional) If this is on (1), ldmsd will perform \fBfailover\fR or
+\fBfailback\fR automatically in the anbense or the presense of heartbeats
+respectively. Otherwise, the user need to issue \fBfailover\fR or \fBfailback\fR
+manually. By default, this value is 1.
+.RE
+
+\fBfailover_mod\fR is a command to modify the failover configuration. Currently,
+it accepts only \fBauto_switch\fR option.
+
+\fBfailover_status\fR is a command to report (via \fBldmsd_controller\fR) the
+failover statuses.
+
+\fBfailover\fR is a command to manually execute failover procedure. Please note
+that if the \fBauto_switch\fR is 1, the ldmsd will automatically invoke failback
+when it receives the next heartbeat.
+
+\fBfailback\fR is a command to manually execute the failback procedure. Please
+note that if the \fBauto_switch\fR is 1, the ldmsd will automatically invoke
+failover then the heartbeat timeout expires.
+
+Currently, the \fBheartbeat timeout\fR is 2 times the heartbeat interval.
+
+
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""/.
+.SH EXAMPLES
+
+Let's consider the following setup:
+
+.EX
+                        .-------.
+                        |  a20  |
+                        |-------|
+                        | s00/a |
+                        | s00/b |
+                        | s01/a |
+                        | s01/b |
+                        | s02/a |
+                        | s02/b |
+                        | s03/a |
+                        | s03/b |
+                        '-------'
+                            ^
+                            |
+                .-----------'-----------.
+                |                       |
+            .-------.               .-------.
+            |  a10  |               |  a11  |
+            |-------|               |-------|
+            | s00/a |      pair     | s02/a |
+            | s00/b |...............| s02/b |
+            | s01/a |               | s03/a |
+            | s01/b |               | s03/b |
+            '-------'               '-------'
+                ^                       ^
+                |                       |
+           .----'---.                 .-'------.
+           |        |                 |        |
+       .-------..-------.         .-------..-------.
+       |  s00  ||  s01  |         |  s02  ||  s03  |
+       |-------||-------|         |-------||-------|
+       | s00/a || s01/a |         | s02/a || s03/a |
+       | s00/b || s01/b |         | s02/b || s03/b |
+       '-------''-------'         '-------''-------'
+.EE
+
+In this setup, we have 4 sampler daemons (\fIs00\fR - \fIs03\fR), 2 level-1
+aggregator (\fIa10\fR, \fIa11\fR), and 1 level-2 aggregator (\fIa20\fR). Each
+sampler daemon contain set \fIa\fR and set \fIb\fR, which are prefixed by the
+sampler daemon name. The level-1 aggregators are configured to be a failover
+pair, aggregating sets from the sampler daemons as shown in the picture. And the
+level-2 aggregator is configured to aggregate sets from the level-1 aggregators.
+
+The following is a list of configuration and CLI options to achieve the setup
+shown above:
+
+.EX
+.B
+# a20.cfg
+prdcr_add name=prdcr_a10 host=a10.hostname port=12345 xprt=sock \\
+          type=active interval=1000000
+prdcr_start name=prdcr_a10
+prdcr_add name=prdcr_a11 host=a11.hostname port=12345 xprt=sock \\
+          type=active interval=1000000
+prdcr_start name=prdcr_a11
+updtr_add name=upd interval=1000000 offset=0
+updtr_prdcr_add name=upd regex.*
+updtr_start upd
+
+.B
+# a10.cfg
+prdcr_add name=prdcr_s00 host=s00.hostname port=12345 xprt=sock \\
+          type=active interval=1000000
+prdcr_start name=prdcr_s00
+prdcr_add name=prdcr_s01 host=s01.hostname port=12345 xprt=sock \\
+          type=active interval=1000000
+prdcr_start name=prdcr_s01
+updtr_add name=upd interval=1000000 offset=0
+updtr_prdcr_add name=upd regex.*
+updtr_start upd
+\fIfailover_config\fR host=a11.hostname port=12345 xprt=sock \\
+                      interval=1000000 peer_name=a11
+.B
+# a10 CLI
+$ ldmsd -c a10.cfg -x sock:12345 \fB-n\fR \fIa10\fR
+                                # name this daemon "a10"
+
+.B
+# a11.cfg
+prdcr_add name=prdcr_s02 host=s02.hostname port=12345 xprt=sock \\
+          type=active interval=1000000
+prdcr_start name=prdcr_s02
+prdcr_add name=prdcr_s03 host=s03 port=12345 xprt=sock \\
+          type=active interval=1000000
+prdcr_start name=prdcr_s03
+updtr_add name=upd interval=1000000 offset=0
+updtr_prdcr_add name=upd regex.*
+updtr_start upd
+\fIfailover_config\fR host=a10.hostname port=12345 xprt=sock \\
+                      interval=1000000 peer_name=a10
+.B
+# a11 CLI
+$ ldmsd -c a11 -x sock:12345 \fB-n\fR \fIa11\fR
+                                # name this daemon "a11"
+
+\fB# sampler config\fR are omitted (irrelevant).
+.EE
+
+With this setup, when \fIa10\fR died, \fIa11\fR will start aggregating sets from
+\fIs00\fR and \fIs01\fR. When this is done, \fIa20\fR will still get all of the
+sets through \fIa11\fR depicted in the following figure.
+
+.EX
+                        .-------.
+                        |  a20  |
+                        |-------|
+                        | s00/a |
+                        | s00/b |
+                        | s01/a |
+                        | s01/b |
+                        | s02/a |
+                        | s02/b |
+                        | s03/a |
+                        | s03/b |
+                        '-------'
+                            ^
+                            |
+                            '-----------.
+                                        |
+            xxxxxxxxx               .-------.
+            x  a10  x               |  a11  |
+            x-------x               |-------|
+            x s00/a x               | s00/a |
+            x s00/b x               | s00/b |
+            x s01/a x               | s01/a |
+            x s01/b x               | s01/b |
+            xxxxxxxxx               | s02/a |
+                                    | s02/b |
+                                    | s03/a |
+                                    | s03/b |
+                                    '-------'
+                                        ^
+                                        |
+           .--------.-----------------.-'------.
+           |        |                 |        |
+       .-------..-------.         .-------..-------.
+       |  s00  ||  s01  |         |  s02  ||  s03  |
+       |-------||-------|         |-------||-------|
+       | s00/a || s01/a |         | s02/a || s03/a |
+       | s00/b || s01/b |         | s02/b || s03/b |
+       '-------''-------'         '-------''-------'
+.EE
+
+When \fIa10\fR heartbeat is back, \fIa11\fR will stop its producers/updaters
+that were working in place of \fIa10\fR. The LDMS network is then recovered back
+to the original state in the first figure.
+
+.\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""/.
+.SH SEE ALSO
+.BR ldmsd "(8), " ldms_quickstart "(7), " ldmsd_controller "(8)"
