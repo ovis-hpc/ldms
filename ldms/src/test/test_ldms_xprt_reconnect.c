@@ -65,6 +65,7 @@
 char *xprt = NULL;
 char *host = NULL;
 int port = 0;
+char *port_s = NULL;
 int is_server = 0;
 
 int dir = 0;
@@ -84,7 +85,10 @@ pthread_mutex_t exit_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define METRIC_NAME "A"
 
 struct conn {
-	struct sockaddr_in sin;
+	struct sockaddr sa;
+	socklen_t sa_len;
+	const char *hostname;
+	const char *port;
 	ldms_t ldms;
 	pthread_mutex_t state_lock;
 	enum connect_state {
@@ -115,10 +119,9 @@ void _log(const char *fmt, ...) {
 void client_update_cb(ldms_t ldms, ldms_set_t set, int status, void *arg)
 {
 	struct conn *conn = (struct conn *)arg;
-	int port = ntohs(conn->sin.sin_port);
 	const char *set_name = ldms_set_instance_name_get(conn->set);
 	if (status) {
-		printf("%d: Update failed '%s'\n", port, set_name);
+		printf("%s: Update failed '%s'\n", conn->port, set_name);
 		ldms_set_delete(conn->set);
 		conn->set = NULL;
 		ldms_xprt_close(ldms);
@@ -128,11 +131,11 @@ void client_update_cb(ldms_t ldms, ldms_set_t set, int status, void *arg)
 	conn->set_state = UPDATED;
 
 	if (!ldms_set_is_consistent(conn->set)) {
-		printf("%d: Set %s is inconsistent.\n", port, set_name);
+		printf("%s: Set %s is inconsistent.\n", conn->port, set_name);
 		return;
 	}
 
-	printf("%d: '%s' is updated\n", port, set_name);
+	printf("%s: '%s' is updated\n", conn->port, set_name);
 
 	pthread_mutex_lock(&exit_mutex);
 	if (!forever)
@@ -150,9 +153,8 @@ void client_lookup_cb(ldms_t ldms, enum ldms_lookup_status status,
 	char inst_name[32];
 	int rc;
 	struct conn *conn = (struct conn *)arg;
-	int port = ntohs(conn->sin.sin_port);
 
-	snprintf(inst_name, 31, "%d/%s", port, SET_NAME);
+	snprintf(inst_name, 31, "%s/%s", conn->port, SET_NAME);
 	if (status != LDMS_LOOKUP_OK) {
 		printf("Error doing lookup '%s'\n", inst_name);
 		if (forever)
@@ -167,7 +169,7 @@ void client_lookup_cb(ldms_t ldms, enum ldms_lookup_status status,
 		sleep(1);
 		rc = ldms_xprt_update(set, client_update_cb, (void *)conn);
 		if (rc) {
-			printf("%d: Error doing ldms_xprt_update '%s'\n", port,
+			printf("%s: Error doing ldms_xprt_update '%s'\n", conn->port,
 					ldms_set_instance_name_get(set));
 			ldms_set_delete(set);
 			conn->set = NULL;
@@ -175,7 +177,7 @@ void client_lookup_cb(ldms_t ldms, enum ldms_lookup_status status,
 		}
 	}
 
-	printf("%d: lookup_cb '%s'\n", port, inst_name);
+	printf("%s: lookup_cb '%s'\n", conn->port, inst_name);
 	pthread_mutex_lock(&exit_mutex);
 	if (!forever && !update)
 		exiting = 1;
@@ -186,17 +188,16 @@ void client_dir_cb(ldms_t ldms, int status, ldms_dir_t dir, void *arg)
 {
 	int rc;
 	struct conn *conn = (struct conn *)arg;
-	int port = ntohs(conn->sin.sin_port);
 	switch (dir->type) {
 	case LDMS_DIR_LIST:
-		printf("%d: dir_cb: DIR_LIST", port);
+		printf("%s: dir_cb: DIR_LIST", conn->port);
 		conn->set_state = DIR;
 		if (dir->set_count > 0)
 			printf(": %s\n", dir->set_names[0]);
 		else
 			printf(": No sets\n");
 		if (lookup && dir->set_count > 0) {
-			printf("%d: doing lookup '%s'\n", port, dir->set_names[0]);
+			printf("%s: doing lookup '%s'\n", conn->port, dir->set_names[0]);
 			rc = ldms_xprt_lookup(ldms, dir->set_names[0], LDMS_LOOKUP_BY_INSTANCE,
 					client_lookup_cb, (void *)conn);
 			if (rc) {
@@ -206,10 +207,10 @@ void client_dir_cb(ldms_t ldms, int status, ldms_dir_t dir, void *arg)
 		}
 		break;
 	case LDMS_DIR_ADD:
-		printf("%d: dir_cb: DIR_ADD\n", port);
+		printf("%s: dir_cb: DIR_ADD\n", conn->port);
 		break;
 	case LDMS_DIR_DEL:
-		printf("%d: dir_cb: DIR_DEL\n", port);
+		printf("%s: dir_cb: DIR_DEL\n", conn->port);
 		break;
 	default:
 		break;
@@ -229,12 +230,11 @@ void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	struct conn *conn = (struct conn *)cb_arg;
 	socklen_t slen;
 	ldms_t ldms = conn->ldms;
-	int port = ntohs(conn->sin.sin_port);
 	pthread_mutex_lock(&conn->state_lock);
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
 		conn->state = CONNECTED;
-		printf("%d: connected\n", port);
+		printf("%s: connected\n", conn->port);
 		if (dir) {
 			rc = ldms_xprt_dir(ldms, client_dir_cb, (void *)conn,
 					LDMS_DIR_F_NOTIFY);
@@ -244,7 +244,7 @@ void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 			}
 		} else if (lookup) {
 			char inst_name[32];
-			snprintf(inst_name, 31, "%d/%s", port, SET_NAME);
+			snprintf(inst_name, 31, "%s/%s", conn->port, SET_NAME);
 			rc = ldms_xprt_lookup(ldms, inst_name, LDMS_LOOKUP_BY_INSTANCE,
 					client_lookup_cb, (void *)conn);
 			if (rc) {
@@ -255,13 +255,13 @@ void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		break;
 	case LDMS_XPRT_EVENT_ERROR:
 		conn->state = DISCONNECTED;
-		printf("%d: conn_error\n", port);
+		printf("%s: conn_error\n", conn->port);
 		ldms_xprt_put(ldms);
 		conn->ldms = NULL;
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		conn->state = DISCONNECTED;
-		printf("%d: disconnected\n", port);
+		printf("%s: disconnected\n", conn->port);
 		if (conn->set) {
 			ldms_set_delete(conn->set);
 			conn->set = NULL;
@@ -270,7 +270,7 @@ void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		conn->ldms = NULL;
 		break;
 	default:
-		printf("%d: Unhandled ldms event '%d'\n", port, e->type);
+		printf("%s: Unhandled ldms event '%d'\n", conn->port, e->type);
 		pthread_mutex_unlock(&conn->state_lock);
 		exit(-1);
 	}
@@ -290,11 +290,10 @@ int client_connect(struct conn *conn)
 		printf("ldms_xprt_new error\n");
 		exit(-1);
 	}
-
-	printf("connecting to %s:%hu\n", host, ntohs(conn->sin.sin_port));
+	printf("connecting to %s:%s\n", conn->hostname, conn->port);
 	conn->state = CONNECTING;
 
-	rc = ldms_xprt_connect(conn->ldms, (void *)&(conn->sin), sizeof(conn->sin),
+	rc = ldms_xprt_connect(conn->ldms, &conn->sa, conn->sa_len,
 			client_connect_cb, (void *)conn);
 	if (rc)
 		printf("ldms_xprt_connect error: %d\n", rc);
@@ -321,8 +320,7 @@ void *client_routine(void *arg)
 			if (conn->state == CONNECTED && conn->set_state == NEED_LOOKUP) {
 				pthread_mutex_unlock(&conn->state_lock);
 				char inst_name[32];
-				int port = ntohs(conn->sin.sin_port);
-				snprintf(inst_name, 31, "%d/%s", port, SET_NAME);
+				snprintf(inst_name, 31, "%s/%s", conn->port, SET_NAME);
 				rc = ldms_xprt_lookup(conn->ldms, inst_name, LDMS_LOOKUP_BY_INSTANCE,
 						client_lookup_cb, (void *)conn);
 				if (rc) {
@@ -423,6 +421,11 @@ void do_client(struct sockaddr_in *_sin)
 {
 	struct addrinfo *ai;
 	int rc, i;
+	struct addrinfo hints = {
+		.ai_family = AF_INET,
+		.ai_socktype = SOCK_STREAM
+	};
+
 	conn_list = calloc(num_conn, sizeof(struct conn));
 	if (!conn_list) {
 		printf("Out of memory\n");
@@ -434,19 +437,22 @@ void do_client(struct sockaddr_in *_sin)
 		exit(-1);
 	}
 
-	rc = getaddrinfo(host, NULL, NULL, &ai);
-	if (rc) {
-		printf("getaddrinfo error: %d\n", rc);
-		exit(-1);
-	}
-
+	char port_s[32];
 	for (i = 0; i < num_conn; i++) {
-		conn_list[i].sin = *(struct sockaddr_in *)ai[0].ai_addr;
-		conn_list[i].sin.sin_port = htons(port + i);
+		snprintf(port_s, 31, "%d", port + i);
+		rc = getaddrinfo(host, port_s, &hints, &ai);
+		if (rc) {
+			printf("%s/%s: getaddrinfo failed: %s\n",
+					host, port_s, gai_strerror(rc));
+			exit(-1);
+		}
+		conn_list[i].sa = *(ai->ai_addr);
+		conn_list[i].sa_len = ai->ai_addrlen;
+		conn_list[i].hostname = strdup(host);
+		conn_list[i].port = strdup(port_s);
 		pthread_mutex_init(&conn_list[i].state_lock, 0);
+		freeaddrinfo(ai);
 	}
-
-	freeaddrinfo(ai);
 
 	pthread_t t;
 	rc = pthread_create(&t, NULL, client_routine, conn_list);
@@ -481,6 +487,7 @@ void process_arg(int argc, char **argv)
 			xprt = strdup(optarg);
 			break;
 		case 'p':
+			port_s = strdup(optarg);
 			port = atoi(optarg);
 			break;
 		case 'h':

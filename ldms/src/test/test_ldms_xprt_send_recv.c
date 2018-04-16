@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2017 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2017 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2017,2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2017,2018 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -72,6 +72,7 @@ const char *secretword = "password";
 char *xprt = "sock";
 char *host = "localhost";
 int port = 10001;
+char *port_s = "10001";
 int is_server;
 int is_null;
 sem_t exit_sem;
@@ -314,25 +315,23 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 
 static void do_client(struct sockaddr_in *_sin)
 {
-	struct addrinfo *ai;
-	struct sockaddr_in sin;
 	int rc, i;
+	struct addrinfo *ai;
+	struct addrinfo hints = {
+		.ai_family = AF_INET,
+		.ai_socktype = SOCK_STREAM
+	};
 
 	if (!host) {
 		printf("Please give the hostname\n");
 		exit(-1);
 	}
-
-	rc = getaddrinfo(host, NULL, NULL, &ai);
+	rc = getaddrinfo(host, port_s, &hints, &ai);
 	if (rc) {
-		printf("getaddrinfo error: %d\n", rc);
+		printf("%s/%s: getaddrinfo failed: %s\n",
+				host, port_s, gai_strerror(rc));
 		exit(-1);
 	}
-
-	sin = *(struct sockaddr_in *)ai[0].ai_addr;
-	sin.sin_port = htons(port);
-
-	freeaddrinfo(ai);
 
 	ldms_t x;
 	x = ldms_xprt_new(xprt, _log);
@@ -341,11 +340,11 @@ static void do_client(struct sockaddr_in *_sin)
 		exit(-1);
 	}
 	printf("connecting to %s:%d\n", host, port);
-	rc = ldms_xprt_connect(x, (struct sockaddr *)&sin, sizeof(sin),
+	rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen,
 					client_connect_cb, NULL);
 	if (rc)
 		printf("ldms_xprt_connect error: %d\n", rc);
-
+	freeaddrinfo(ai);
 }
 
 static void usage()
@@ -366,6 +365,7 @@ static void process_arg(int argc, char **argv)
 			xprt = strdup(optarg);
 			break;
 		case 'p':
+			port_s = strdup(optarg);
 			port = atoi(optarg);
 			break;
 		case 'h':
