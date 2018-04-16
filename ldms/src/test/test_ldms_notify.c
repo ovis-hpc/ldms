@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015,2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015,2018 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -307,7 +307,11 @@ static ldms_set_t __server_create_set(const char *name)
 		_log("Failed to create the set '%s'\n", name);
 		assert(set);
 	}
-
+	rc = ldms_set_publish(set);
+	if (rc) {
+		_log("Failed to publish the set '%s'\n", name);
+		assert(set);
+	}
 	ldms_metric_set_u64(set, 0, 0);
 	return set;
 }
