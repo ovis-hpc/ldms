@@ -68,7 +68,6 @@
 #include "ldms.h"
 #define FMT "x:p:h:sfn"
 
-const char *secretword = "password";
 char *xprt = "sock";
 char *host = "localhost";
 int port = 10001;

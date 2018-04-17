@@ -73,7 +73,6 @@ int lookup = 0;
 int update = 0;
 
 int metric_set = 0;
-char *secretword = 0;
 int num_conn = 1;
 int forever = 0;
 
@@ -465,7 +464,6 @@ void do_client(struct sockaddr_in *_sin)
 
 void usage()
 {
-	printf("	-a secretword	Test with the authentication\n");
 	printf("	-d		Send dir request\n");
 	printf("	-f		Client runs forever\n");
 	printf("	-h host		Host name to connect to\n");
@@ -510,9 +508,6 @@ void process_arg(int argc, char **argv)
 			break;
 		case 'f':
 			forever = 1;
-			break;
-		case 'a':
-			secretword = strdup(optarg);
 			break;
 		case 'u':
 			update = 1;
