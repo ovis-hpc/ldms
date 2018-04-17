@@ -56,13 +56,14 @@ import argparse
 import sys
 import traceback
 import re
+import errno
 
-class LDMSD_Request_Exception(Exception):
+class LDMSDRequestException(Exception):
     '''Raise when there is an error in the ldmsd request module'''
     def __init__(self, message, errcode, *args):
         self.message = message
         self.errcode = errcode
-        super(LDMSD_Request_Exception, self).__init__(message, errcode, *args)
+        super(LDMSDRequestException, self).__init__(message, errcode, *args)
 
 class LDMSD_Req_Attr(object):
     LDMSD_REQ_ATTR_SZ = 12
@@ -111,6 +112,7 @@ class LDMSD_Req_Attr(object):
                    'plugin': PLUGIN,
                    'container': CONTAINER,
                    'schema': SCHEMA,
+                   'string': STRING,
                    'metric': METRIC,
                    'udata': UDATA,
                    'base': BASE,
@@ -120,27 +122,34 @@ class LDMSD_Req_Attr(object):
                    'time': TIME,
                    'push': PUSH,
                    'test': TEST,
+                   "REC_LEN": REC_LEN,
+                   "json": JSON,
                    'perm': PERM,
+                   'TERMINATING': LAST
         }
 
     def __init__(self, value = None, attr_name = None, attr_id = None, attr_len = None):
         self.discrim = 1
         if attr_id:
+            if attr_id not in self.NAME_ID_MAP.values():
+                raise LDMSDRequestException("The attr_id '%d' is not valid" % attr_id, errno.EINVAL)
             self.attr_id = attr_id
+            self.attr_name = self.NAME_ID_MAP.keys()[self.NAME_ID_MAP.values().index(self.attr_id)]
         else:
             if attr_name:
                 try:
                     self.attr_id = self.NAME_ID_MAP[attr_name]
                 except KeyError:
                     raise
+                self.attr_name = attr_name
             else:
-                # Assume this is the last attribute.
+                # this is the last attribute.
                 self.attr_id = self.LAST
 
         if self.attr_id == self.LAST:
             # terminating attribute
             self.packed = struct.pack("!L", 0)
-            self.attr_len = 0
+            self.attr_len = 4
             self.discrim = 0
         else:
             self.attr_value = value
@@ -169,8 +178,8 @@ class LDMSD_Req_Attr(object):
 
     def __repr__(self):
         if self.discrim:
-            return "<LDMSD_Req_Attr discrim={0} attr_id={1} attr_len={2} attr_value={3}".format(
-                        self.discrim, self.attr_id, self.attr_len, self.attr_value)
+            return "<LDMSD_Req_Attr discrim=%s attr_id=%d attr_len=%d attr_value=%s>" % (
+                    self.discrim, self.attr_id, self.attr_len, self.attr_value)
         else:
             return "<LDMSD_Req_Attr discrim=0>"
 
@@ -334,7 +343,8 @@ class LDMSD_Request(object):
             if command not in self.LDMSD_REQ_ID_MAP.keys():
                 raise KeyError("Command '{0}' is not supported.".format(command))
             command_id = self.LDMSD_REQ_ID_MAP[command]['id']
-
+        self.command_id = command_id
+        self.attrs = attrs
         self.message = message
         self.request_size = self.header_size
         if message:
@@ -361,6 +371,17 @@ class LDMSD_Request(object):
             self.request += message
         self.response = {'errcode': None, 'msg': None}
         LDMSD_Request.message_number += 1
+
+    def __repr__(self):
+        s = "<LDMSD_Request message_number=%d command_id=%d request_size=%d" % (
+                self.message_number, self.command_id, self.request_size)
+        if (self.attrs is None) or (len(self.attrs) == 0):
+            s += "attrs=[]>"
+        else:
+            for attr in self.attrs:
+                s += "\n    %s" % repr(attr)
+            s += "\n]>"
+        return s
 
     def message_number_get(self):
         return self.message_number
@@ -399,7 +420,7 @@ class LDMSD_Request(object):
                 if attr.discrim == 0:
                     break
                 if attr.attr_id == attr.REC_LEN:
-                    raise LDMSD_Request_Exception(message="The request is too big.",
+                    raise LDMSDRequestException(message="The request is too big.",
                                                   errcode=errcode)
                 attr_list.append(attr)
                 offset += attr.LDMSD_REQ_ATTR_SZ + attr.attr_len
