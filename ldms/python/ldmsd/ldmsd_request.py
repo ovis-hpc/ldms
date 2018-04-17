@@ -345,8 +345,8 @@ class LDMSD_Request(object):
         if attrs:
             for attr in attrs:
                 self.request_size += len(attr)
-            # Account for size of terminating 0
-            self.request_size += 4
+        # Account for size of terminating 0
+        self.request_size += 4
 
         self.request = struct.pack('!LLLLLL', self.MARKER, self.TYPE_CONFIG_CMD,
                                    LDMSD_Request.SOM_FLAG | LDMSD_Request.EOM_FLAG,
@@ -355,7 +355,7 @@ class LDMSD_Request(object):
         if attrs:
             for attr in attrs:
                 self.request += attr.pack()
-            self.request += struct.pack('!L', 0) # terminate list
+        self.request += struct.pack('!L', 0) # terminate list
         # Add any message payload
         if message:
             self.request += message
