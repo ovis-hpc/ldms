@@ -173,12 +173,16 @@ static int create_metric_set(const char *path, const char *mdts)
 {
 	int rc, i;
 	struct str_list_head *lh = construct_mdt_list(mdts);
-	if (!lh)
+	if (!lh) {
+		rc = errno;
 		goto err0;
+	}
 
 	ldms_schema_t schema = base_schema_new(base);
-	if (!schema)
+	if (!schema) {
+		rc = errno;
 		goto err1;
+	}
 
 	char suffix[128];
 	for (i = 0; i < MDS_SERVICES_LEN; i++) {
@@ -217,7 +221,8 @@ static int create_metric_set(const char *path, const char *mdts)
 		rc = errno;
 		goto err2;
 	}
-
+	
+	free_str_list(lh);
 	return 0;
 err2:
 	msglog(LDMSD_LINFO, "lustre_mds.c:create_metric_set@err2\n");
@@ -229,7 +234,7 @@ err1:
 	free_str_list(lh);
 err0:
 	msglog(LDMSD_LINFO, "lustre_mds.c:create_metric_set@err0\n");
-	return errno;
+	return rc;
 }
 
 static void term(struct ldmsd_plugin *self)
