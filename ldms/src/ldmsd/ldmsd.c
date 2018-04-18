@@ -141,8 +141,6 @@ const char *auth_name = "none";
 struct attr_value_list *auth_opt = NULL;
 const int AUTH_OPT_MAX = 128;
 
-extern int process_config_file(const char *path);
-
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
 	NULL
@@ -501,6 +499,7 @@ void usage(char *argv[]) {
 	usage_hint(argv,NULL);
 }
 
+#define EVTH_MAX 1024
 int ev_thread_count = 1;
 ovis_scheduler_t *ovis_scheduler;
 pthread_t *ev_thread;		/* sampler threads */
@@ -698,6 +697,8 @@ ldmsd_plugin_set_t ldmsd_plugin_set_next(ldmsd_plugin_set_t set)
 
 int ldmsd_set_register(ldms_set_t set, const char *pluing_name)
 {
+	if (!set || ! pluing_name)
+		return EINVAL;
 	struct rbn *rbn;
 	ldmsd_plugin_set_t s;
 	ldmsd_plugin_set_list_t list;
@@ -1444,6 +1445,10 @@ int main(int argc, char *argv[])
 			if (check_arg("P", optarg, LO_UINT))
 				return 1;
 			ev_thread_count = atoi(optarg);
+			if (ev_thread_count < 1 )
+				ev_thread_count = 1;
+			if (ev_thread_count > EVTH_MAX)
+				ev_thread_count = EVTH_MAX;
 			break;
 		case 'N':
 			notify = 1;
@@ -1569,7 +1574,8 @@ int main(int argc, char *argv[])
 			if (!pidpath) {
 				pidfile = malloc(strlen(LDMSD_PIDFILE_FMT)
 						+ strlen(basename(argv[0]) + 1));
-				sprintf(pidfile, LDMSD_PIDFILE_FMT, basename(argv[0]));
+				if (pidfile)
+					sprintf(pidfile, LDMSD_PIDFILE_FMT, basename(argv[0]));
 			} else {
 				pidfile = strdup(pidpath);
 			}
@@ -1779,10 +1785,11 @@ int main(int argc, char *argv[])
 	optind = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		char *dup_arg;
+		int lln = -1;
 		switch (op) {
 		case 'c':
 			dup_arg = strdup(optarg);
-			ret = process_config_file(dup_arg);
+			ret = process_config_file(dup_arg, &lln);
 			free(dup_arg);
 			if (ret) {
 				char errstr[128];

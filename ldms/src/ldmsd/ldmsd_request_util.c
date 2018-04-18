@@ -278,7 +278,7 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 		av++;
 	}
 
-	request = calloc(1, LDMSD_MAX_CONFIG_STR_LEN); /* arbitrary but substantial */
+	request = calloc(1, LDMSD_DEF_CONFIG_STR_LEN); /* arbitrary but substantial */
 	if (!request)
 		goto err;
 	request->marker = LDMSD_RECORD_MARKER;
@@ -290,7 +290,7 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no)
 		rc = ENOSYS;
 		goto err;
 	}
-	rec_len = LDMSD_MAX_CONFIG_STR_LEN;
+	rec_len = LDMSD_DEF_CONFIG_STR_LEN;
 	request->rec_len = rec_off = sizeof(*request);
 	if (!av)
 		goto last_attr;

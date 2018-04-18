@@ -237,7 +237,7 @@ static void resp_greeting(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	ldmsd_req_attr_t next_attr;
-	int count;
+	int count = 0;
 	while (attr->discrim) {
 		next_attr = ldmsd_next_attr(attr);
 		if ((0 == next_attr->discrim) && (count == 0)) {
@@ -1563,7 +1563,7 @@ int main(int argc, char *argv[])
 	if (env)
 		linebuf_len = buffer_len = strtol(env, NULL, 0);
 	else
-		linebuf_len = buffer_len = LDMSD_MAX_CONFIG_STR_LEN;
+		linebuf_len = buffer_len = LDMSD_DEF_CONFIG_STR_LEN;
 	buffer = malloc(buffer_len);
 	linebuf = malloc(buffer_len);
 	if (!buffer || !linebuf) {
