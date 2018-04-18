@@ -234,7 +234,11 @@ ovis_scheduler_t ovis_scheduler_new()
 	if (!m)
 		goto out;
 
-	pthread_mutex_init(&m->mutex, NULL);
+	rc = pthread_mutex_init(&m->mutex, NULL);
+	if (rc) {
+		free(m);
+		goto err2;
+	}
 	m->efd = -1;
 	m->pfd[0] = -1;
 	m->pfd[1] = -1;
@@ -281,6 +285,7 @@ ovis_scheduler_t ovis_scheduler_new()
 
 err:
 	ovis_scheduler_free(m);
+err2:
 	m = NULL;
 out:
 	return m;
@@ -301,6 +306,7 @@ void ovis_scheduler_destroy(ovis_scheduler_t m)
 	if (m->heap)
 		ovis_event_heap_free(m->heap);
 
+	pthread_mutex_destroy(&m->mutex);
 	free(m);
 }
 
