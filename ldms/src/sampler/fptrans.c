@@ -77,6 +77,7 @@ static int create_metric_set(base_data_t base)
 		msglog(LDMSD_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
+		rc = errno;
 		goto err;
 	}
 
@@ -217,7 +218,6 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static int sample(struct ldmsd_sampler *self)
 {
-	int rc;
 	union ldms_value v;
 
 	if (!set) {
@@ -229,8 +229,6 @@ static int sample(struct ldmsd_sampler *self)
 	v.v_f = M_PI;
 	ldms_metric_set(set, metric_offset, &v);
 	base_sample_end(base);
-	if (rc)
-		return rc;
 	return 0;
 }
 
