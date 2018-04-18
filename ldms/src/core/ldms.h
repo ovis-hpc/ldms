@@ -1442,6 +1442,16 @@ void ldms_metric_array_set(ldms_set_t s, int metric_idx, ldms_mval_t v,
 void ldms_metric_array_set_val(ldms_set_t s,
 			       int metric_idx, int array_idx, ldms_mval_t src);
 
+
+/**
+ * \brief Tell arrayness of metric.
+ *
+ * \param s		The set handle.
+ * \param metric_idx	The metric index
+ * \retval 0 if ith metric is not an array.
+ */
+int ldms_metric_is_array(ldms_set_t s, int i);
+
 /**
  * \brief Return the ldms_mval_t for the specified metric
  *
