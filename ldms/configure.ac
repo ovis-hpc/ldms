@@ -461,6 +461,7 @@ AC_SUBST(configure_input)
 
 dnl handle test generation and chmod
 OVIS_EXEC_SCRIPTS(
+		 scripts/ldms-wrapper
 		 scripts/ldms-static-test.sh
 		 scripts/ldms_ban.sh
 		 scripts/ldms-py-fptrans_test.sh
