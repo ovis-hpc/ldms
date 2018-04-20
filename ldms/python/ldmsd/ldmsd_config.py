@@ -99,7 +99,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_start_regex': {'req_attr': ['regex'],
                                             'opt_attr': ['interval']},
                       'prdcr_stop_regex': {'req_attr': ['regex']},
-                      'prdcr_status': {'opt_attr': [], 'req_attr': []},
+                      'prdcr_status': {'opt_attr': [], 'req_attr': ['name']},
                       'prdcr_set_status': {'opt_attr': ['producer', 'instance', 'schema']},
                       ##### Updater Policy #####
                       'updtr_add': {'req_attr': ['name'],

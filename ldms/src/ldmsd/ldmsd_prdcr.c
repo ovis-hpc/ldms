@@ -463,6 +463,18 @@ int ldmsd_prdcr_str2type(const char *type)
 	return prdcr_type;
 }
 
+const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type)
+{
+	if (LDMSD_PRDCR_TYPE_ACTIVE == type)
+		return "active";
+	else if (LDMSD_PRDCR_TYPE_PASSIVE == type)
+		return "passive";
+	else if (LDMSD_PRDCR_TYPE_LOCAL == type)
+		return "local";
+	else
+		return NULL;
+}
+
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const short port_no,

@@ -610,7 +610,7 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Get the statuses of all producers
         Parameters:
-            NONE
+        [name=]        producer name
         """
         resp = self.handle('prdcr_status', None)
         if resp['errcode'] != 0:
