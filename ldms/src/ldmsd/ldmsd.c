@@ -313,6 +313,7 @@ void cleanup(int x, const char *reason)
 	int llevel = LDMSD_LINFO;
 	if (x)
 		llevel = LDMSD_LCRITICAL;
+	ldmsd_mm_status(LDMSD_LDEBUG,"mmap use at exit");
 	ldmsd_strgp_close();
 	ldmsd_log(llevel, "LDMSD_ LDMS Daemon exiting...status %d, %s\n", x,
 		       (reason && x) ? reason : "");

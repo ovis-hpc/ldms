@@ -78,6 +78,7 @@
 #include <coll/rbt.h>
 #include <coll/str_map.h>
 #include <ovis_util/util.h>
+#include <mmalloc/mmalloc.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
@@ -676,6 +677,18 @@ void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
 	xprt->send_fn = send_ldms_fn;
 	xprt->max_msg = ldms->max_msg;
 	xprt->cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
+}
+
+void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix)
+{
+	struct mm_stat s;
+	mm_stats(&s);
+	/* compute bound based on current usage */
+	size_t used = s.size - s.grain*s.largest;
+	ldmsd_log(level, "%s: mm_stat: size=%zu grain=%zu chunks_free=%zu grains_free=%zu grains_largest=%zu grains_smallest=%zu bytes_free=%zu bytes_largest=%zu bytes_smallest=%zu bytes_used+holes=%zu\n",
+	prefix,
+	s.size, s.grain, s.chunks, s.bytes, s.largest, s.smallest,
+	s.grain*s.bytes, s.grain*s.largest, s.grain*s.smallest, used);
 }
 
 const char * blacklist[] = {

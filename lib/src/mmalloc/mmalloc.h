@@ -57,6 +57,15 @@ struct mm_info {
 	void *start;		/*! The address of the start of the heap */
 };
 
+struct mm_stat {
+	size_t size;		/*< as in mm_info */
+	size_t grain;		/*< as in mm_info */
+	size_t chunks;		/*< number of unallocated chunks current */
+	size_t bytes;		/*< number of unallocated grains current */
+	size_t largest;		/*< largest unallocated chunk size in grains */
+	size_t smallest;	/*< smallest unallocated chunk size in grains */
+};
+
 /**
  * \brief Get information about the heap configuration
  *
@@ -94,5 +103,11 @@ void *mm_alloc(size_t size);
  * \param ptr	Pointer to the buffer to free.
  */
 void mm_free(void *ptr);
+
+/**
+ * \brief Collect stats about the heap.
+ * \param s buffer to fill with info about mm.
+ */
+void mm_stats(struct mm_stat *s);
 #endif
 
