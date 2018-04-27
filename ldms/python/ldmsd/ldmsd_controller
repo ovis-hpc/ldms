@@ -669,9 +669,9 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Get the statuses of all Updaters.
         Parameters:
-            NONE
+        [name=]        updater name
         """
-        resp = self.handle('updtr_status', None)
+        resp = self.handle('updtr_status', arg)
         if resp['errcode'] == 0:
             updaters = json.loads(resp['msg'])
             print("Name             Interval     Offset       Mode            State")

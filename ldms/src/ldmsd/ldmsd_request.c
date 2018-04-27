@@ -2830,93 +2830,96 @@ static const char *update_mode(int push_flags)
 	return "Push on Request";
 }
 
-int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
+int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
+						action_fn cb, void *arg)
+{
+	size_t cnt;
+	int rc;
+	ldmsd_prdcr_ref_t ref;
+	ldmsd_prdcr_t prdcr;
+	int prdcr_count;
+	const char *prdcr_state_str(enum ldmsd_prdcr_state state);
+
+	ldmsd_updtr_lock(updtr);
+	cnt = snprintf(reqc->line_buf, reqc->line_len,
+		       "{\"name\":\"%s\","
+		       "\"interval\":\"%d\","
+		       "\"offset\":\"%d\","
+		       "\"sync\":\"%s\","
+		       "\"mode\":\"%s\","
+		       "\"state\":\"%s\","
+		       "\"producers\":[",
+		       updtr->obj.name,
+		       updtr->updt_intrvl_us,
+		       updtr->updt_offset_us,
+		       ((updtr->updt_task_flags==LDMSD_TASK_F_SYNCHRONOUS)?"true":"false"),
+		       update_mode(updtr->push_flags),
+		       ldmsd_updtr_state_str(updtr->state));
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	if (rc)
+		goto out;
+
+	prdcr_count = 0;
+	for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
+	     ref = ldmsd_updtr_prdcr_next(ref)) {
+		if (prdcr_count) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len, ",\n");
+			rc = cb(reqc, reqc->line_buf, cnt, arg);
+			if (rc)
+				goto out;
+		}
+		prdcr_count++;
+		prdcr = ref->prdcr;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "{\"name\":\"%s\","
+			       "\"host\":\"%s\","
+			       "\"port\":%hd,"
+			       "\"transport\":\"%s\","
+			       "\"state\":\"%s\"}",
+			       prdcr->obj.name,
+			       prdcr->host_name,
+			       prdcr->port_no,
+			       prdcr->xprt_name,
+			       prdcr_state_str(prdcr->conn_state));
+		rc = cb(reqc, reqc->line_buf, cnt, arg);
+		if (rc)
+			goto out;
+	}
+	cnt = snprintf(reqc->line_buf, reqc->line_len, "]}");
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	if (rc)
+		goto out;
+out:
+	ldmsd_updtr_unlock(updtr);
+	return rc;
+}
+
+int __all_updtr_status(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
 {
 	ldmsd_updtr_t updtr;
 	size_t cnt;
 	int rc, count, prdcr_count;
 	ldmsd_prdcr_ref_t ref;
 	ldmsd_prdcr_t prdcr;
-	const char *prdcr_state_str(enum ldmsd_prdcr_state state);
-	reqc->errcode = 0;
 
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "[");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
-	if (rc)
-		goto out;
+	rc = 0;
 	count = 0;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
-		ldmsd_updtr_lock(updtr);
 		if (count) {
 			cnt = snprintf(reqc->line_buf, reqc->line_len, ",\n");
 			rc = cb(reqc, reqc->line_buf, cnt, arg);
-			if (rc) {
-				ldmsd_updtr_unlock(updtr);
+			if (rc)
 				goto out;
-			}
 		}
 
+		rc = __updtr_status_json_obj(reqc, updtr, cb, arg);
+		if (rc)
+			goto out;
 		count++;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "{\"name\":\"%s\","
-			       "\"interval\":\"%d\","
-			       "\"offset\":%d,"
-			       "\"mode\":\"%s\","
-			       "\"state\":\"%s\","
-			       "\"producers\":[",
-			       updtr->obj.name,
-			       updtr->updt_intrvl_us,
-			       updtr->updt_offset_us,
-			       update_mode(updtr->push_flags),
-			       ldmsd_updtr_state_str(updtr->state));
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
-		if (rc) {
-			ldmsd_updtr_unlock(updtr);
-			goto out;
-		}
-		prdcr_count = 0;
-		for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
-		     ref = ldmsd_updtr_prdcr_next(ref)) {
-			if (prdcr_count) {
-				cnt = snprintf(reqc->line_buf, reqc->line_len, ",\n");
-				rc = cb(reqc, reqc->line_buf, cnt, arg);
-				if (rc) {
-					ldmsd_updtr_unlock(updtr);
-					goto out;
-				}
-			}
-			prdcr_count++;
-			prdcr = ref->prdcr;
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				       "{\"name\":\"%s\","
-				       "\"host\":\"%s\","
-				       "\"port\":%hd,"
-				       "\"transport\":\"%s\","
-				       "\"state\":\"%s\"}",
-				       prdcr->obj.name,
-				       prdcr->host_name,
-				       prdcr->port_no,
-				       prdcr->xprt_name,
-				       prdcr_state_str(prdcr->conn_state));
-			rc = cb(reqc, reqc->line_buf, cnt, arg);
-			if (rc) {
-				ldmsd_updtr_unlock(updtr);
-				goto out;
-			}
-		}
-		cnt = snprintf(reqc->line_buf, reqc->line_len, "]}");
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
-		if (rc) {
-			ldmsd_updtr_unlock(updtr);
-			goto out;
-		}
-		ldmsd_updtr_unlock(updtr);
 	}
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
-out:
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+out:
 	return rc;
 }
 
@@ -2925,23 +2928,60 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 	int rc;
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
+	char *name;
+	ldmsd_updtr_t updtr = NULL;
+	reqc->errcode = 0;
 
-	rc = __updtr_status_json_obj(reqc, __get_json_obj_len_cb, (void*)&cnt);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	if (name) {
+		updtr = ldmsd_updtr_find(name);
+		if (!updtr) {
+			/* Not report any status */
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+				"updtr '%s' doesn't exist.", name);
+			reqc->errcode = ENOENT;
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+			return 0;
+		}
+	}
+
+	if (updtr) {
+		rc = __updtr_status_json_obj(reqc, updtr, __get_json_obj_len_cb,
+								(void*)&cnt);
+	} else {
+		rc = __all_updtr_status(reqc, __get_json_obj_len_cb, (void*)&cnt);
+	}
 	if (rc)
-		return rc;
+		goto out;
+	cnt += 2; /* +2 for '[' and ']' */
 	attr.discrim = 1;
 	attr.attr_len = cnt;
 	attr.attr_id = LDMSD_ATTR_JSON;
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
-		return rc;
+		goto out;
 
-	rc = __updtr_status_json_obj(reqc, __append_json_obj_cb, NULL);
+	rc = ldmsd_append_reply(reqc, "[", 1, 0);
 	if (rc)
-		return rc;
+		goto out;
+	if (updtr) {
+		rc = __updtr_status_json_obj(reqc, updtr, __append_json_obj_cb, NULL);
+	} else {
+		rc = __all_updtr_status(reqc, __append_json_obj_cb, NULL);
+	}
+	if (rc)
+		goto out;
+	rc = ldmsd_append_reply(reqc, "]", 1, 0);
+	if (rc)
+		goto out;
+
 	attr.discrim = 0;
-	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t), LDMSD_REQ_EOM_F);
+	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t),
+								LDMSD_REQ_EOM_F);
+out:
+	if (name)
+		free(name);
 	return rc;
 }
 

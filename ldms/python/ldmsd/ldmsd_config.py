@@ -112,7 +112,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'updtr_start': {'req_attr': ['name'],
                                       'opt_attr': ['interval', 'offset']},
                       'updtr_stop': {'req_attr': ['name']},
-                      'udptr_status': {'req_attr': [], 'opt_attr': []},
+                      'udptr_status': {'req_attr': [], 'opt_attr': ['name']},
                       ##### Storage Policy #####
                       'strgp_add': {'req_attr': ['name', 'plugin', 'container',
                                               'schema']},
