@@ -124,6 +124,7 @@ static int32_t user_pos = 0;
 
 #define JI_SIZE 32768
 static char ji_buf[JI_SIZE];
+static int parse_err_logged = 0;
 static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t js) {
 	int rc = 0;
 	ji->jobid = ji->uid = 0;
@@ -132,21 +133,34 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 	FILE *mf = fopen(file, "r");
 	struct attr_value_list *kvl = NULL;
 	struct attr_value_list *avl = NULL;
+	int recovery = 0;
+	if (parse_err_logged) {
+		recovery = 1;
+	}
 
 	if (!mf) {
-		msglog(LDMSD_LINFO,"Could not open the jobid file '%s'\n", procfile);
+		if (!parse_err_logged) {
+			msglog(LDMSD_LINFO,"Could not open the jobid file '%s'\n", procfile);
+			parse_err_logged = 1;
+		}
 		rc = EINVAL;
 		goto err;
 	}
 	rc = fseek(mf, 0, SEEK_END);
 	if (rc) {
-		msglog(LDMSD_LINFO,"Could not seek '%s'\n", procfile);
+		if (!parse_err_logged) {
+			msglog(LDMSD_LINFO,"Could not seek '%s'\n", procfile);
+			parse_err_logged = 1;
+		}
 		goto err;
 	}
 	long flen = ftell(mf);
 	if (flen >= JI_SIZE) {
 		rc = E2BIG;
-		msglog(LDMSD_LINFO,"File %s too big (>%d).\n", procfile, JI_SIZE);
+		if (!parse_err_logged) {
+			msglog(LDMSD_LINFO,"File %s too big (>%d).\n", procfile, JI_SIZE);
+			parse_err_logged = 1;
+		}
 		goto err;
 	}
 	rewind(mf);
@@ -169,7 +183,11 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 		avl = av_new(maxlist);
 		rc = tokenize(ji_buf,kvl,avl);
 		if (rc) {
-			goto err;
+			if (!parse_err_logged) {
+				msglog(LDMSD_LERROR,"Fail tokenizing '%s'\n", file);
+				parse_err_logged = 1;
+			}
+			goto update_set;
 		}
 
 		char *tmp = av_value(avl, "JOBID");
@@ -178,9 +196,12 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 			errno = 0;
 			uint64_t j = strtoull(tmp, &endp, 0);
 			if (endp == tmp || errno) {
-				msglog(LDMSD_LERROR,"Fail parsing JOBID '%s'\n", tmp);
+				if (!parse_err_logged) {
+					msglog(LDMSD_LERROR,"Fail parsing JOBID '%s'\n", tmp);
+					parse_err_logged = 1;
+				}
 				rc = EINVAL;
-				goto err;
+				goto update_set;
 			}
 			ji->jobid = j;
 
@@ -190,10 +211,13 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 				errno = 0;
 				j = strtoull(tmp, &endp, 0);
 				if (endp == tmp || errno) {
-					msglog(LDMSD_LINFO,"Fail parsing UID '%s'\n",
-						tmp);
+					if (!parse_err_logged) {
+						msglog(LDMSD_LINFO,"Fail parsing UID '%s'\n",
+							tmp);
+						parse_err_logged = 1;
+					}
 					rc = EINVAL;
-					goto err;
+					goto update_set;
 				}
 				ji->uid = j;
 			}
@@ -201,19 +225,30 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 			tmp = av_value(avl, "USER");
 			if (tmp) {
 				if (strlen(tmp) >= LJI_USER_NAME_MAX) {
-					msglog(LDMSD_LINFO,"Username too long '%s'\n",
-						tmp);
+					if (!parse_err_logged) {
+						msglog(LDMSD_LINFO,"Username too long '%s'\n",
+							tmp);
+						parse_err_logged = 1;
+					}
 					rc = EINVAL;
-					goto err;
+					goto update_set;
 				} else {
 					strcpy(ji->user,tmp);
 				}
 			}
+			parse_err_logged = 0; /* reset after success */
+			if (recovery) {
+				msglog(LDMSD_LDEBUG, "jobid parse recovered for '%s'\n",
+					file);
+			}
+		} else {
+			if (!parse_err_logged) {
+				msglog(LDMSD_LERROR,"No JOBID in '%s'\n",file);
+				parse_err_logged = 1;
+			}
 		}
-
-
+	update_set:
 		ldms_transaction_begin(js);
-
 		union ldms_value v;
 		v.v_u64 = compid;
 		ldms_metric_set(js, compid_pos, &v);
@@ -295,8 +330,7 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	 */
 	rc = parse_jobinfo(procfile, &ji, set);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": parse_jobinfo fail.\n");
-		goto err;
+		msglog(LDMSD_LERROR, SAMP ": first parse_jobinfo fail.\n");
 	}
 	return 0;
 
