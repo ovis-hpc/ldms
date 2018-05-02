@@ -334,27 +334,26 @@ struct recv_arg * __recv_arg_new(ldms_t x)
         return arg;
 }
 
+/* Caller must hold the recv arg list lock */
 struct recv_arg *__recv_arg_find(ldms_t x)
 {
         struct recv_arg *arg;
-        pthread_mutex_lock(&recv_arg_list_lock);
         arg = LIST_FIRST(&recv_arg_list);
         while (arg) {
                 if (arg->x == x)
                         goto out;
         }
 out:
-        pthread_mutex_unlock(&recv_arg_list_lock);
         return arg;
 }
 
+/* Caller must hold the recv arg list lock */
 void __recv_arg_destroy(struct recv_arg *arg)
 {
-        pthread_mutex_lock(&recv_arg_list_lock);
         LIST_REMOVE(arg, entry);
-        pthread_mutex_unlock(&recv_arg_list_lock);
         __cleanup_recv_buf_q(arg);
         arg->x = NULL;
+        sem_post(&arg->sem_ready); /* In case someone is waiting for a data chunk */
         sem_destroy(&arg->sem_ready);
         pthread_mutex_destroy(&arg->lock);
         free(arg);
@@ -364,16 +363,33 @@ PyObject *LDMS_xprt_recv(ldms_t x)
 {
         PyObject *data;
         struct recv_buf *buf;
+        struct xprt_arg *xprt_arg = __xprt_arg_find(x);
+        if (!xprt_arg) {
+                PyErr_SetString(PyExc_RuntimeError, "The transport context is missing");
+                return NULL;
+        }
+        if (xprt_arg->state != CONNECTED)
+                Py_RETURN_NONE;
+        pthread_mutex_lock(&recv_arg_list_lock);
         struct recv_arg *arg = __recv_arg_find(x);
-        if (!arg)
-                assert(0);
+        if (!arg) {
+                pthread_mutex_unlock(&recv_arg_list_lock);
+                if (!xprt_arg->state != CONNECTED)
+                        Py_RETURN_NONE;
+                PyErr_SetString(PyExc_RuntimeError, "The receive context is missing");
+                return NULL;
+        }
+        pthread_mutex_unlock(&recv_arg_list_lock);
+        if (xprt_arg->state != CONNECTED)
+                Py_RETURN_NONE;
         sem_wait(&arg->sem_ready);
         buf = __recv_buf_next(arg);
-	if (buf) {
-		data = PyByteArray_FromStringAndSize(buf->data, buf->data_len);
-		__recv_buf_destroy(buf, arg);
-		return data;
-	}
+        if (buf) {
+                data = PyByteArray_FromStringAndSize(buf->data, buf->data_len);
+                __recv_buf_destroy(buf, arg);
+                pthread_mutex_unlock(&recv_arg_list_lock);
+                return data;
+        }
         Py_RETURN_NONE;
 }
 
@@ -443,7 +459,9 @@ static void __passive_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
                 sem_post(&event_arg->sem);
                 break;
         case LDMS_XPRT_EVENT_DISCONNECTED:
+                pthread_mutex_lock(&recv_arg_list_lock);
                 __recv_arg_destroy(event_arg->recv_arg);
+                pthread_mutex_unlock(&recv_arg_list_lock);
                 free(event_arg);
                 ldms_xprt_put(x);
                 break;
@@ -517,9 +535,11 @@ static void __active_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
                 if (xprt_arg->state != DESTROYED) {
                         /* Application hasn't delete the transport object yet */
                         xprt_arg->state = DISCONNECTED;
+                        pthread_mutex_lock(&recv_arg_list_lock);
+                        __recv_arg_destroy(event_arg->recv_arg);
+                        pthread_mutex_unlock(&recv_arg_list_lock);
                 } else {
                         __xprt_arg_destroy(xprt_arg);
-                        __recv_arg_destroy(event_arg->recv_arg);
                         ldms_xprt_put(x);
                 }
                 sem_destroy(&event_arg->sem);
