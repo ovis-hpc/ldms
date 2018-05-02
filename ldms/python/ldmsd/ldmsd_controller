@@ -689,7 +689,12 @@ class LdmsdCmdParser(cmd.Cmd):
         return self.__complete_attr_list('updtr_status', text)
 
     def do_strgp_status(self, arg):
-        resp = self.handle('strgp_status', None)
+        """
+        Get the status of storage policies
+        Parameters:
+            [name=]    a storage policy name
+        """
+        resp = self.handle('strgp_status', arg)
         if resp['errcode'] == 0:
             policies = json.loads(resp['msg'])
             print("Name             Container        Schema           Plugin           State")

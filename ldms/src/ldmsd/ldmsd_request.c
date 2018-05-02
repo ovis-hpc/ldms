@@ -2186,101 +2186,93 @@ send_reply:
 	return 0;
 }
 
-int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
+int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
+						  action_fn cb, void *arg)
 {
-	ldmsd_strgp_t strgp;
 	size_t cnt;
-	int rc, metric_count, match_count, count = 0;
+	int rc;
+	int match_count, metric_count;
 	ldmsd_name_match_t match;
 	ldmsd_strgp_metric_t metric;
-	reqc->errcode = 0;
 
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "[");
+	ldmsd_strgp_lock(strgp);
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+		       "{\"name\":\"%s\","
+		       "\"container\":\"%s\","
+		       "\"schema\":\"%s\","
+		       "\"plugin\":\"%s\","
+		       "\"state\":\"%s\","
+		       "\"producers\":[",
+		       strgp->obj.name,
+		       strgp->container,
+		       strgp->schema,
+		       strgp->plugin_name,
+		       ldmsd_strgp_state_str(strgp->state));
 	rc = cb(reqc, reqc->line_buf, cnt, arg);
 	if (rc)
-		return rc;
-	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
-		if (count) {
-			cnt = snprintf(reqc->line_buf, reqc->line_len, ",\n");
-			rc = cb(reqc, ",\n", cnt, arg);
+		goto out;
+	match_count = 0;
+	for (match = ldmsd_strgp_prdcr_first(strgp); match;
+	     match = ldmsd_strgp_prdcr_next(match)) {
+		if (match_count) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
+			rc = cb(reqc, reqc->line_buf, cnt, arg);
 			if (rc)
 				goto out;
 		}
-
-		ldmsd_strgp_lock(strgp);
+		match_count++;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "{\"name\":\"%s\","
-			       "\"container\":\"%s\","
-			       "\"schema\":\"%s\","
-			       "\"plugin\":\"%s\","
-			       "\"state\":\"%s\","
-			       "\"producers\":[",
-			       strgp->obj.name,
-			       strgp->container,
-			       strgp->schema,
-			       strgp->plugin_name,
-			       ldmsd_strgp_state_str(strgp->state));
+			       "\"%s\"", match->regex_str);
 		rc = cb(reqc, reqc->line_buf, cnt, arg);
-		if (rc) {
-			ldmsd_strgp_unlock(strgp);
+		if (rc)
 			goto out;
-		}
-		match_count = 0;
-		for (match = ldmsd_strgp_prdcr_first(strgp); match;
-		     match = ldmsd_strgp_prdcr_next(match)) {
-			if (match_count) {
-				cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
-				rc = cb(reqc, reqc->line_buf, cnt, arg);
-				if (rc) {
-					ldmsd_strgp_unlock(strgp);
-					goto out;
-				}
-			}
-			match_count++;
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				       "\"%s\"", match->regex_str);
+	}
+	cnt = snprintf(reqc->line_buf, reqc->line_len, "],\"metrics\":[");
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	if (rc)
+		goto out;
+	metric_count = 0;
+	for (metric = ldmsd_strgp_metric_first(strgp); metric;
+	     metric = ldmsd_strgp_metric_next(metric)) {
+		if (metric_count) {
+			cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
 			rc = cb(reqc, reqc->line_buf, cnt, arg);
-			if (rc) {
-				ldmsd_strgp_unlock(strgp);
+			if (rc)
 				goto out;
-			}
 		}
-		cnt = snprintf(reqc->line_buf, reqc->line_len, "],\"metrics\":[");
+		metric_count++;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "\"%s\"", metric->name);
 		rc = cb(reqc, reqc->line_buf, cnt, arg);
-		if (rc) {
-			ldmsd_strgp_unlock(strgp);
+		if (rc)
 			goto out;
-		}
-		metric_count = 0;
-		for (metric = ldmsd_strgp_metric_first(strgp); metric;
-		     metric = ldmsd_strgp_metric_next(metric)) {
-			if (metric_count) {
-				cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
-				rc = cb(reqc, reqc->line_buf, cnt, arg);
-				if (rc) {
-					ldmsd_strgp_unlock(strgp);
-					goto out;
-				}
-			}
-			metric_count++;
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				       "\"%s\"", metric->name);
-			rc = cb(reqc, reqc->line_buf, cnt, arg);
-			if (rc) {
-				ldmsd_strgp_unlock(strgp);
+	}
+	cnt = snprintf(reqc->line_buf, reqc->line_len, "]}");
+	rc = cb(reqc, reqc->line_buf, cnt, arg);
+out:
+	ldmsd_strgp_unlock(strgp);
+	return rc;
+}
+
+int __all_strgp_status(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
+{
+	ldmsd_strgp_t strgp;
+	size_t cnt;
+	int rc, count;
+	rc = count = 0;
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
+	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
+		if (count) {
+			rc = cb(reqc, ",\n", 2, arg);
+			if (rc)
 				goto out;
-			}
 		}
-		cnt = snprintf(reqc->line_buf, reqc->line_len, "]}");
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
-		ldmsd_strgp_unlock(strgp);
+		rc = __strgp_status_json_obj(reqc, strgp, cb, arg);
 		if (rc)
 			goto out;
 		count++;
 	}
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
 out:
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 	return rc;
@@ -2291,23 +2283,59 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 	int rc;
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
+	char *name;
+	ldmsd_strgp_t strgp = NULL;
+	reqc->errcode = 0;
+	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	if (name) {
+		strgp = ldmsd_strgp_find(name);
+		if (!strgp) {
+			/* Not report any status */
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+				"strgp '%s' doesn't exist.", name);
+			reqc->errcode = ENOENT;
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+			return 0;
+		}
+	}
 
-	rc = __strgp_status_json_obj(reqc, __get_json_obj_len_cb, (void*)&cnt);
+	if (strgp) {
+		rc = __strgp_status_json_obj(reqc, strgp, __get_json_obj_len_cb,
+								(void*)&cnt);
+	} else {
+		rc = __all_strgp_status(reqc, __get_json_obj_len_cb, (void*)&cnt);
+	}
 	if (rc)
-		return rc;
+		goto out;
+	cnt += 2; /* +2 for '[' and ']' */
 	attr.discrim = 1;
 	attr.attr_len = cnt;
 	attr.attr_id = LDMSD_ATTR_JSON;
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
-		return rc;
+		goto out;
 
-	rc = __strgp_status_json_obj(reqc, __append_json_obj_cb, NULL);
+	rc = ldmsd_append_reply(reqc, "[", 1, 0);
 	if (rc)
-		return rc;
+		goto out;
+	if (strgp) {
+		rc = __strgp_status_json_obj(reqc, strgp, __append_json_obj_cb, NULL);
+	} else {
+		rc = __all_strgp_status(reqc, __append_json_obj_cb, NULL);
+	}
+	if (rc)
+		goto out;
+	rc = ldmsd_append_reply(reqc, "]", 1, 0);
+	if (rc)
+		goto out;
+
 	attr.discrim = 0;
-	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t), LDMSD_REQ_EOM_F);
+	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t),
+								LDMSD_REQ_EOM_F);
+out:
+	if (name)
+		free(name);
 	return rc;
 }
 
