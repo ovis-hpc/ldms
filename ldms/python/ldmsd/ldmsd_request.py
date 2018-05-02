@@ -376,6 +376,8 @@ class LDMSD_Request(object):
         resp = None
         while True:
             record = ctrl.receive_response()
+            if record is None:
+                raise LDMSDRequestException(message="No data received", errcode=errno.ECONNRESET)
             (marker, msg_type, msg_flags, msg_no,
              errcode, rec_len) = struct.unpack('!LLLLLL',
                                                record[:self.header_size])
