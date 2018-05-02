@@ -61,10 +61,61 @@ void __init__()
 	PyEval_InitThreads();
 }
 
+struct xprt_arg {
+        ldms_t x;
+        enum {
+        	INIT = 1,
+        	CONNECTED, /* Received a CONNECTED event */
+        	DISCONNECTED, /* Received a DISCONNECTED event */
+        	DESTROYED, /* Python deletes the transport object. (LDMS_xprt_destroy() is called. */
+        } state;
+        LIST_ENTRY(xprt_arg) entry;
+};
+LIST_HEAD(xprt_arg_list, xprt_arg) xprt_arg_list;
+pthread_mutex_t xprt_arg_list_lock;
+
+struct xprt_arg * __xprt_arg_new(ldms_t x)
+{
+        struct xprt_arg *arg = malloc(sizeof(*arg));
+        if (!arg)
+                return NULL;
+        arg->x = x;
+        arg->state = INIT;
+        pthread_mutex_lock(&xprt_arg_list_lock);
+        LIST_INSERT_HEAD(&xprt_arg_list, arg, entry);
+        pthread_mutex_unlock(&xprt_arg_list_lock);
+        return arg;
+}
+
+struct xprt_arg *__xprt_arg_find(ldms_t x)
+{
+        struct xprt_arg *arg;
+        pthread_mutex_lock(&xprt_arg_list_lock);
+        arg = LIST_FIRST(&xprt_arg_list);
+        while (arg) {
+                if (arg->x == x)
+                        goto out;
+                arg = LIST_NEXT(arg, entry);
+        }
+out:
+        pthread_mutex_unlock(&xprt_arg_list_lock);
+        return arg;
+}
+
+void __xprt_arg_destroy(struct xprt_arg *arg)
+{
+        pthread_mutex_lock(&xprt_arg_list_lock);
+        LIST_REMOVE(arg, entry);
+        pthread_mutex_unlock(&xprt_arg_list_lock);
+        arg->x = NULL;
+        free(arg);
+}
+
 ldms_t LDMS_xprt_new(const char *xprt)
 {
         ldms_t x;
-	x = ldms_xprt_new(xprt, NULL);
+        x = ldms_xprt_new(xprt, NULL);
+        (void) __xprt_arg_new(x);
         return x;
 }
 
@@ -122,6 +173,7 @@ ldms_t LDMS_xprt_new_with_auth(const char *xprt, const char *auth_name,
 
 call:
 	x = ldms_xprt_new_with_auth(xprt, NULL, auth_name, av_list);
+	(void) __xprt_arg_new(x);
 	goto cleanup;
 
 nomem:
@@ -444,8 +496,15 @@ static void __active_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
         struct active_event_arg *event_arg = cb_arg;
         struct recv_arg *recv_arg;
         struct recv_buf *recv_buf;
+        struct xprt_arg *xprt_arg;
+        xprt_arg = __xprt_arg_find(x);
+        if (!xprt_arg) {
+                PyErr_SetString(PyExc_RuntimeError, "The transport context is missing.");
+                return;
+        }
         switch(e->type) {
         case LDMS_XPRT_EVENT_CONNECTED:
+                xprt_arg->state = CONNECTED;
                 recv_arg = __recv_arg_new(x);
                 if (!recv_arg) {
                         printf("Out of memory\n");
@@ -455,10 +514,16 @@ static void __active_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
                 sem_post(&event_arg->sem);
                 break;
         case LDMS_XPRT_EVENT_DISCONNECTED:
-                __recv_arg_destroy(event_arg->recv_arg);
+                if (xprt_arg->state != DESTROYED) {
+                        /* Application hasn't delete the transport object yet */
+                        xprt_arg->state = DISCONNECTED;
+                } else {
+                        __xprt_arg_destroy(xprt_arg);
+                        __recv_arg_destroy(event_arg->recv_arg);
+                        ldms_xprt_put(x);
+                }
                 sem_destroy(&event_arg->sem);
                 free(event_arg);
-                ldms_xprt_put(x);
                 break;
         case LDMS_XPRT_EVENT_ERROR:
         case LDMS_XPRT_EVENT_REJECTED:
@@ -492,8 +557,28 @@ int LDMS_xprt_connect_by_name(ldms_t x, const char *host, const char *port)
                 sem_destroy(&arg->sem);
                 free(arg);
         }
-
+        ldms_xprt_get(x);
         return arg->errcode;
+}
+
+/* Python __del__ will call this API */
+void LDMS_xprt_destroy(ldms_t x)
+{
+        int close = 0;
+        struct xprt_arg *arg = __xprt_arg_find(x);
+        if (!arg) {
+                PyErr_SetString(PyExc_RuntimeError, "The transport context is missing.");
+                return;
+        }
+        if (arg->state == CONNECTED)
+                close = 1;
+        arg->state = DESTROYED;
+        if (close) {
+                ldms_xprt_close(x);
+        } else {
+                __xprt_arg_destroy(arg);
+                ldms_xprt_put(x); /* Put back the reference taken when the transport is created */
+        }
 }
 
 PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
@@ -656,7 +741,7 @@ ldms_t LDMS_xprt_new_with_auth(const char *xprt, const char *auth_name,
 int LDMS_xprt_listen_by_name(ldms_t x, const char *host, const char *port);
 ldms_t LDMS_xprt_accept(ldms_t x);
 int LDMS_xprt_connect_by_name(ldms_t x, const char *host, const char *port);
-
+void LDMS_xprt_destroy(ldms_t x);
 PyObject *LDMS_xprt_recv(ldms_t x);
 
 ldms_set_t LDMS_xprt_lookup(ldms_t x, const char *name, enum ldms_lookup_flags flags);
@@ -994,6 +1079,19 @@ struct ldms_xprt {};
 %extend ldms_xprt {
 	inline int msg_max_get() {
 		return ldms_xprt_msg_max(self);
+	}
+	inline PyObject *state_get() {
+		struct xprt_arg *arg = __xprt_arg_find(self);
+		if (arg->state == INIT)
+			return PyString_FromString("INIT");
+		else if (arg->state == CONNECTED)
+			return PyString_FromString("CONNECTED");
+		else if (arg->state == DISCONNECTED)
+			return PyString_FromString("DISCONNECTED");
+		else if (arg->state == DESTROYED)
+			return PyString_FromString("DESTROYED");
+		else
+			PyErr_SetString(PyExc_TypeError, "Unrecognized ldms transport state");
 	}
 }
 
