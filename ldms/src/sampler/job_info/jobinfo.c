@@ -82,22 +82,24 @@ char * jobinfo_datafile = LDMS_JOBINFO_DATA_FILE;
 
 
 char *job_metrics[] = {
-	"job_id",
-	"job_status",
-	"app_id",
-	"user_id",
 	"component_id",
+	"job_id",
+	"app_id",
+	"job_status",
+	"user_id",
 	"job_start",
 	"job_end",
 	"job_exit_status",
 	NULL
 };
 
-#define	JOBINFO_JOB_ID		0
-#define	JOBINFO_JOB_STATUS	1
+/* The first three metrics must match the sampler_base order */
+#define	JOBINFO_COMP_ID		0
+#define	JOBINFO_JOB_ID		1
 #define	JOBINFO_APP_ID		2
-#define	JOBINFO_USER_ID		3
-#define	JOBINFO_COMP_ID		4
+
+#define	JOBINFO_JOB_STATUS	3
+#define	JOBINFO_USER_ID		4
 #define	JOBINFO_JOB_START	5
 #define	JOBINFO_JOB_END		6
 #define	JOBINFO_EXIT_STATUS	7
@@ -163,10 +165,13 @@ static void jobinfo_read_data(void)
 				*s = '\0';
 			switch (av->metric_id) {
 			case JOBINFO_JOB_NAME:
+				ldms_metric_array_set_str(set,
+							  av->metric_id, value);
 				break;
 			case JOBINFO_JOB_USER:
 				ldms_metric_array_set_str(set,
 							  av->metric_id, value);
+				break;
 			default:
 				ldms_metric_set_u64(set, av->metric_id,
 						    strtol(value, NULL, 0));
@@ -344,6 +349,7 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
+	ldms_set_publish(set);
 
 	rc = pthread_create(&jobinfo_thread, NULL, jobinfo_thread_proc, 0);
 	if (rc != 0) {
