@@ -418,7 +418,7 @@ class LDMSD(object):
         self.proc.poll()
         if self.proc.returncode != None:
             # process terminated
-            raise RuntimeError("LDMSD terminated prematurely")
+            raise RuntimeError("LDMSD terminated prematurely with exit code %d" % self.proc.returncode)
 
     def term(self):
         """Terminate the daemon"""
