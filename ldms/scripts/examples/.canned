@@ -26,6 +26,7 @@ procstat.job
 # not yet tested
 rabbitv3
 sampler_atasmart
+opa2
 sysclassib
 sysclassib.job
 

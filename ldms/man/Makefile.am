@@ -21,6 +21,7 @@ Plugin_meminfo.man \
 Plugin_fptrans.man \
 Plugin_clock.man \
 Plugin_procstat.man \
+Plugin_opa2.man \
 Plugin_sysclassib.man \
 Plugin_jobid.man \
 Plugin_lustre2_client.man \
