@@ -532,7 +532,7 @@ out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
 out_0:
-	return 0;
+	return rc;
 }
 
 int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
