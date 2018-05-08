@@ -609,7 +609,7 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Get the statuses of all producers
         Parameters:
-            NONE
+        [name=]        producer name
         """
         resp = self.handle('prdcr_status', None)
         if resp['errcode'] != 0:
@@ -668,9 +668,9 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Get the statuses of all Updaters.
         Parameters:
-            NONE
+        [name=]        updater name
         """
-        resp = self.handle('updtr_status', None)
+        resp = self.handle('updtr_status', arg)
         if resp['errcode'] == 0:
             updaters = json.loads(resp['msg'])
             print("Name             Interval     Offset       Mode            State")
@@ -688,7 +688,12 @@ class LdmsdCmdParser(cmd.Cmd):
         return self.__complete_attr_list('updtr_status', text)
 
     def do_strgp_status(self, arg):
-        resp = self.handle('strgp_status', None)
+        """
+        Get the status of storage policies
+        Parameters:
+            [name=]    a storage policy name
+        """
+        resp = self.handle('strgp_status', arg)
         if resp['errcode'] == 0:
             policies = json.loads(resp['msg'])
             print("Name             Container        Schema           Plugin           State")

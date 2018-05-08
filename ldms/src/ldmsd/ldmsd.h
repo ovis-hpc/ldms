@@ -732,6 +732,7 @@ int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt
 
 /** Producer configuration object management */
 int ldmsd_prdcr_str2type(const char *type);
+const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type);
 ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const short port_no,
