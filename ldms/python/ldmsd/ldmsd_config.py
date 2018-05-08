@@ -55,6 +55,8 @@ from os.path import basename, dirname
 import struct
 import cmd
 from argparse import ArgumentError
+from ldmsd_request import LDMSD_Request, LDMSD_Req_Attr
+
 """
 @module ldmsd_config
 
@@ -258,6 +260,38 @@ class ldmsdInbandConfig(ldmsdConfig):
         if self.state != "CONNECTED":
             raise RuntimeError("The connection isn't connected")
         return self.ldms_module.LDMS_xprt_recv(self.ldms)
+
+    def comm(self, cmd, attrs=None, **kwargs):
+        """Communicate
+
+        Params:
+          cmd (str) - The name of the command (e.g. "prdcr_add").
+          attrs (dict <str:str>) - The attribute-value dict.
+          **kwargs - The attribute-value parameters. The value of the attribute
+                     will be encapsulated with `str()`. The attributes in kwargs
+                     precede those in `attrs` parameter.
+
+        Return:
+          resp
+
+        Example:
+          resp = ctrl.comm("prdcr_add", name="lala", xprt="sock",
+                           host="localhost", port=12345, type="active",
+                           interval=1000000)
+        """
+        _args = dict()
+        if attrs:
+            _args.update(attrs)
+        _args.update(kwargs)
+        _attrs = dict()
+        for k, v in _args.iteritems():
+            _k = str(k)
+            a = LDMSD_Req_Attr(attr_name = _k, value = str(v))
+            _attrs[_k] = a
+        cmd = LDMSD_Request(command=cmd, attrs = _attrs.values())
+        cmd.send(self)
+        resp = cmd.receive(self)
+        return resp
 
     def close(self):
         if self.state != "CONNECTED":
