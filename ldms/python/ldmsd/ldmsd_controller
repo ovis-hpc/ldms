@@ -193,7 +193,7 @@ class LdmsdCmdParser(cmd.Cmd):
         attr_list = []
         if args:
             attr_s = []
-            attr_str_list = args.split(' ')
+            attr_str_list = args.split()
 
             for attr_str in attr_str_list:
                 name = None
