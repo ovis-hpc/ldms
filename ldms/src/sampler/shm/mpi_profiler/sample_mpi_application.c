@@ -79,6 +79,10 @@ static void init_ddot()
 	waste_n = ((DDOT_MAX_MEMORY) / 2) / sizeof(double);
 	waste_v = calloc(waste_n, sizeof(double));
 	waste_u = calloc(waste_n, sizeof(double));
+	if (!waste_v || !waste_u) {
+		waste_n = 0;
+		printf("unable to allocate ddot memory\n");
+	}
 	int i = 0;
 	for(i = 0; i < waste_n; i++) {
 		waste_v[i] = i % sizeof(double);
