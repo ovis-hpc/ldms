@@ -1489,12 +1489,13 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	struct sockaddr lcl, rmt;
 	socklen_t xlen;
 	struct ldms_conn_msg msg;
-	char rmt_name[16];
+#define RMT_NM_SZ 256
+	char rmt_name[RMT_NM_SZ];
 	const char *tmp;
 	int rc;
 	zap_err_t zerr;
 	zap_get_name(zep, &lcl, &rmt, &xlen);
-	getnameinfo(&rmt, sizeof(rmt), rmt_name, 128, NULL, 0, NI_NUMERICHOST);
+	getnameinfo(&rmt, sizeof(rmt), rmt_name, RMT_NM_SZ, NULL, 0, NI_NUMERICHOST);
 
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	struct ldms_auth *auth;
