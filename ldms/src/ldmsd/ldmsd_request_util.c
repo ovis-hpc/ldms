@@ -361,6 +361,7 @@ last_attr:
 	free(dummy);
 	return request;
 err:
+	errno = rc;
 	free(dummy);
 	return NULL;
 }
