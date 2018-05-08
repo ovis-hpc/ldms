@@ -1541,6 +1541,7 @@ int __prdcr_set_status_handler(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr,
 				return rc;
 			(*count)++;
 		}
+		rc = 0;
 	}
 	return rc;
 }
@@ -3284,6 +3285,8 @@ int __plugn_list_string(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
 		rc = cb(reqc, reqc->line_buf, cnt, arg);
 	}
 out:
+	if (name)
+		free(name);
 	return rc;
 }
 
@@ -3735,7 +3738,6 @@ out:
 	return rc;
 }
 
-extern int process_config_file(const char *path, int *lineno);
 static int include_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *path = NULL;
@@ -3759,7 +3761,7 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 				"This attribute 'path' is required by include.");
 		goto out;
 	}
-	int lineno;
+	int lineno = -1;
 	reqc->errcode = process_config_file(path, &lineno);
 	if (reqc->errcode) {
 		if (lineno == 0) {
@@ -3954,6 +3956,7 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 			cnt = snprintf(buf, rep_len + 1, "%0*d", rep_len, rep_len);
 		}
 		ldmsd_send_req_response(reqc, buf);
+		free(buf);
 	} else if (num_rec_str) {
 		num_rec = atoi(num_rec_str);
 		if (num_rec <= 1) {
@@ -4008,6 +4011,10 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_send_req_response(reqc, NULL);
 	}
 out:
+	if (rep_len_str)
+		free(rep_len_str);
+	if (num_rec_str)
+		free(num_rec_str);
 	return 0;
 }
 

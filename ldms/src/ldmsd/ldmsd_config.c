@@ -204,6 +204,7 @@ enomem:
 	snprintf(errstr, errlen, "No memory");
 err:
 	if (pi) {
+		pthread_mutex_destroy(&pi->lock);
 		if (pi->name)
 			free(pi->name);
 		if (pi->libpath)
@@ -478,7 +479,7 @@ static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 	return 0;
 }
 
-int process_config_file(const char *path)
+int process_config_file(const char *path, int *lno)
 {
 	static uint32_t msg_no = 0;
 	int rc = 0;
@@ -488,13 +489,21 @@ int process_config_file(const char *path)
 	char *line;
 	char *comment;
 	ssize_t off = 0;
-	size_t cfg_buf_len = LDMSD_MAX_CONFIG_STR_LEN;
+	size_t cfg_buf_len = LDMSD_DEF_CONFIG_STR_LEN;
 	struct ldmsd_cfg_xprt_s xprt;
 	ldmsd_req_hdr_t request;
 
 	char *env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
-	if (env)
+	if (env) {
 		cfg_buf_len = strtol(env, NULL, 0);
+		if (cfg_buf_len < LDMSD_MIN_CONFIG_STR_LEN || 
+			cfg_buf_len > LDMSD_HUGE_CONFIG_STR_LEN) {
+			ldmsd_log(LDMSD_LERROR, "env(LDMSD_MAX_CONFIG_STR_LEN) %zu too %s\n",
+				cfg_buf_len, (cfg_buf_len < LDMSD_MIN_CONFIG_STR_LEN 
+						? "small" : "big"));
+			cfg_buf_len = LDMSD_DEF_CONFIG_STR_LEN;
+		}
+	}
 
 	buff = malloc(cfg_buf_len);
 	if (!buff) {
@@ -586,6 +595,8 @@ cleanup:
 		fclose(fin);
 	if (buff)
 		free(buff);
+	if (lno)
+		*lno = lineno;
 	return rc;
 }
 
