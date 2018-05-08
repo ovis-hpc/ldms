@@ -722,6 +722,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	compid = av_value(avl, "component_id");
 	jobid = av_value(avl, "jobid");
 
+	if (!compid)
+		compid = "0";
+	if (!jobid)
+		jobid = "0";
+
 	struct test_sampler_set *ts_set;
 	union ldms_value vcompid, vjobid;
 	sscanf(compid, "%" SCNu64, &vcompid.v_u64);
