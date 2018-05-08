@@ -169,6 +169,7 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 		ji_buf[nread] = '\0';
 	}
 	fclose(mf);
+	mf = NULL;
 
 	int maxlist = 1;
 	char *t = ji_buf;
@@ -248,6 +249,9 @@ err:
 	ji->uid = 0;
 	ji->appid = 0;
 	ji->jobid = 0;
+	if (mf) {
+		fclose(mf);
+	}
 out:
 	ldms_transaction_begin(js);
 
@@ -285,7 +289,7 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 
 	schema = ldms_schema_new(schema_name);
 	if (!schema) {
-		rc = ENOMEM;
+		rc = errno;
 		msglog(LDMSD_LERROR, SAMP ": ldms_schema_new fail.\n");
 		goto err;
 	}
