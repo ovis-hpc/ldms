@@ -262,12 +262,12 @@ typedef struct ldmsd_req_ctxt {
 
 typedef struct ldmsd_req_cmd *ldmsd_req_cmd_t;
 typedef int (* ldmsd_req_resp_fn)(ldmsd_req_cmd_t rcmd);
-typedef struct ldmsd_req_cmd {
+struct ldmsd_req_cmd {
 	ldmsd_req_ctxt_t reqc; /* The request context containing request to be forwarded */
 	ldmsd_req_ctxt_t org_reqc; /* The original request context */
 	ldmsd_req_resp_fn resp_handler; /* Pointer to the function to handle the response */
 	void *ctxt;
-} *ldmsd_req_cmd_t;
+};
 
 #pragma pack(push, 1)
 typedef struct ldmsd_req_attr_s {
