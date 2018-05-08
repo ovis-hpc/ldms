@@ -235,6 +235,11 @@ int ovis_get_rabbit_secretword(const char *file, char *buf, int buflen,
 		msglog("Problem reading rabbit pw from %s\n", file);
 		return errno;
 	} else {
+		if (strlen(sw) >= buflen) {
+			msglog("Rabbit pw longer than %d from %s\n", buflen, file);
+			free(sw);
+			return EINVAL;
+		}
 		strncpy(buf, sw, buflen);
 		free(sw);
 		int sz = strlen(buf);
