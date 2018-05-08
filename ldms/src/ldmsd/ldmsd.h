@@ -881,6 +881,8 @@ void ldmsd_strgp_update(ldmsd_prdcr_set_t prd_set);
 int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set);
 int ldmsd_strgp_prdcr_add(const char *strgp_name, const char *regex_str,
 			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
+int ldmsd_strgp_prdcr_del(const char *strgp_name, const char *regex_str,
+			ldmsd_sec_ctxt_t ctxt);
 int ldmsd_strgp_metric_del(const char *strgp_name, const char *metric_name,
 			   ldmsd_sec_ctxt_t ctxt);
 int ldmsd_strgp_metric_add(const char *strgp_name, const char *metric_name,

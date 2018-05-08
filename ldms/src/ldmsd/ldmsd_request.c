@@ -1913,8 +1913,7 @@ static int strgp_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 		goto einval;
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
-	reqc->errcode = ldmsd_strgp_prdcr_add(name, regex_str,
-				reqc->line_buf, reqc->line_len, &sctxt);
+	reqc->errcode = ldmsd_strgp_prdcr_del(name, regex_str, &sctxt);
 	switch (reqc->errcode) {
 	case 0:
 		break;
@@ -1932,6 +1931,7 @@ static int strgp_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The specified regex does not match "
 				"any condition.");
+		reqc->errcode = ENOENT;
 		break;
 	case EACCES:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -2060,6 +2060,7 @@ static int strgp_metric_del_handler(ldmsd_req_ctxt_t reqc)
 	case EEXIST:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The specified metric was not found.");
+		reqc->errcode = ENOENT;
 		break;
 	case EACCES:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,

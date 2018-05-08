@@ -245,7 +245,8 @@ out_0:
 	return rc;
 }
 
-int ldmsd_strgp_prdcr_del(const char *strgp_name, const char *regex_str)
+int ldmsd_strgp_prdcr_del(const char *strgp_name, const char *regex_str,
+			ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
@@ -253,6 +254,9 @@ int ldmsd_strgp_prdcr_del(const char *strgp_name, const char *regex_str)
 		return ENOENT;
 
 	ldmsd_strgp_lock(strgp);
+	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
 	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
 		rc = EBUSY;
 		goto out_1;
@@ -528,7 +532,7 @@ out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
 out_0:
-	return 0;
+	return rc;
 }
 
 int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
