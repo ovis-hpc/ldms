@@ -227,9 +227,7 @@ class ldmsdInbandConfig(ldmsdConfig):
 
     def __del__(self):
         if self.ldms:
-            if self.state == "CONNECTED":
-                self.ldms_module.ldms_xprt_close(self.ldms)
-                self.state = "CLOSED"
+            self.ldms_module.LDMS_xprt_destroy(self.ldms)
             self.ldms = None
 
     def __repr__(self):
