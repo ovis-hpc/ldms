@@ -570,8 +570,9 @@ next_line:
 	request = ldmsd_parse_config_str(line, msg_no);
 	msg_no += 1;
 	if (!request) {
+		rc = errno;
 		ldmsd_log(LDMSD_LERROR, "Process config file error at line %d "
-				"(%s). %s\n", lineno, path, strerror(errno));
+				"(%s). %s\n", lineno, path, strerror(rc));
 		goto cleanup;
 	}
 
