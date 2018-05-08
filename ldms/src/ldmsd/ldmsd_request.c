@@ -1172,7 +1172,7 @@ static int prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"This attribute '%s' is required by prdcr_del.",
+				"The attribute '%s' is required by prdcr_del.",
 			       	attr_name);
 		goto send_reply;
 	}
@@ -1221,7 +1221,7 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"This attribute 'name' is required by prdcr_start.");
+				"The attribute 'name' is required by prdcr_start.");
 		goto send_reply;
 	}
 
@@ -1271,7 +1271,7 @@ static int prdcr_stop_handler(ldmsd_req_ctxt_t reqc)
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"This attribute 'name' is required by prdcr_stop.");
+				"The attribute 'name' is required by prdcr_stop.");
 		goto send_reply;
 	}
 
@@ -1319,7 +1319,7 @@ static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
 	if (!prdcr_regex) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"This attribute 'regex' is required by prdcr_start_regex.");
+				"The attribute 'regex' is required by prdcr_start_regex.");
 		goto send_reply;
 	}
 
@@ -1352,7 +1352,7 @@ static int prdcr_stop_regex_handler(ldmsd_req_ctxt_t reqc)
 	if (!prdcr_regex) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"This attribute 'regex' is required by prdcr_stop_regex.");
+				"The attribute 'regex' is required by prdcr_stop_regex.");
 		goto send_reply;
 	}
 
@@ -1723,7 +1723,7 @@ eexist:
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by strgp_add.",
+			"The attribute '%s' is required by strgp_add.",
 		       	attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -1752,7 +1752,7 @@ static int strgp_del_handler(ldmsd_req_ctxt_t reqc)
 	if (!name) {
 		reqc->errcode= EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"This attribute 'name' is required"
+				"The attribute 'name' is required"
 				"by strgp_del.");
 		goto send_reply;
 	}
@@ -1840,7 +1840,7 @@ static int strgp_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by %s.", attr_name,
+			"The attribute '%s' is required by %s.", attr_name,
 			"strgp_prdcr_add");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -1904,7 +1904,7 @@ static int strgp_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by %s.", attr_name,
+			"The attribute '%s' is required by %s.", attr_name,
 			"strgp_prdcr_del");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -1970,7 +1970,7 @@ static int strgp_metric_add_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by %s.", attr_name,
+			"The attribute '%s' is required by %s.", attr_name,
 			"strgp_metric_add");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -2032,7 +2032,7 @@ static int strgp_metric_del_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by %s.", attr_name,
+			"The attribute '%s' is required by %s.", attr_name,
 			"strgp_metric_del");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -2057,7 +2057,7 @@ static int strgp_start_handler(ldmsd_req_ctxt_t reqc)
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"%dThis attribute '%s' is required by %s.",
+				"%dThe attribute '%s' is required by %s.",
 				EINVAL, attr_name, "strgp_start");
 		goto send_reply;
 	}
@@ -2111,7 +2111,7 @@ static int strgp_stop_handler(ldmsd_req_ctxt_t reqc)
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"This attribute '%s' is required by %s.",
+				"The attribute '%s' is required by %s.",
 			       	attr_name, "strgp_stop");
 		goto send_reply;
 	}
@@ -2342,7 +2342,7 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by %s.", attr_name,
+			"The attribute '%s' is required by %s.", attr_name,
 			"updtr_add");
 	goto send_reply;
 enomem:
@@ -2407,7 +2407,7 @@ static int updtr_del_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute 'name' is required by updtr_del.");
+			"The attribute 'name' is required by updtr_del.");
 	goto send_reply;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -2467,7 +2467,7 @@ static int updtr_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by %s.", attr_name,
+			"The attribute '%s' is required by %s.", attr_name,
 			"updtr_prdcr_add");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -2529,7 +2529,7 @@ static int updtr_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by %s.", attr_name,
+			"The attribute '%s' is required by %s.", attr_name,
 			"updtr_prdcr_del");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -2598,7 +2598,7 @@ static int updtr_match_add_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by %s.", attr_name,
+			"The attribute '%s' is required by %s.", attr_name,
 			"updtr_match_add");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -2667,7 +2667,7 @@ static int updtr_match_del_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by %s.", attr_name,
+			"The attribute '%s' is required by %s.", attr_name,
 			"updtr_match_del");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -2973,7 +2973,7 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by start.", attr_name);
+			"The attribute '%s' is required by start.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (plugin_name)
@@ -3019,7 +3019,7 @@ static int plugn_stop_handler(ldmsd_req_ctxt_t reqc)
 
 einval:
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by stop.", attr_name);
+			"The attribute '%s' is required by stop.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (plugin_name)
@@ -3114,7 +3114,7 @@ static int plugn_load_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by load.", attr_name);
+			"The attribute '%s' is required by load.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (plugin_name)
@@ -3154,7 +3154,7 @@ static int plugn_term_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by term.", attr_name);
+			"The attribute '%s' is required by term.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (plugin_name)
@@ -3229,7 +3229,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by config.",
+			"The attribute '%s' is required by config.",
 		       	attr_name);
 	goto send_reply;
 err:
@@ -3508,7 +3508,7 @@ static int set_udata_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required.", attr_name);
+			"The attribute '%s' is required.", attr_name);
 out:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (set_name)
@@ -3554,7 +3554,7 @@ static int set_udata_regex_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required.", attr_name);
+			"The attribute '%s' is required.", attr_name);
 out:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (set_name)
@@ -3577,7 +3577,7 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
 	if (!level_s) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"This attribute 'level' is required.");
+				"The attribute 'level' is required.");
 		goto out;
 	}
 
@@ -3758,7 +3758,7 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 	if (!path) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"This attribute 'path' is required by include.");
+				"The attribute 'path' is required by include.");
 		goto out;
 	}
 	int lineno = -1;
@@ -3816,7 +3816,7 @@ static int oneshot_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"This attribute '%s' is required by oneshot.",
+			"The attribute '%s' is required by oneshot.",
 		       	attr_name);
 
 out:
