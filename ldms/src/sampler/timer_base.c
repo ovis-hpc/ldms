@@ -165,6 +165,9 @@ int timer_base_add_hfmetric(struct timer_base *tb,
 	TAILQ_INSERT_TAIL(&tb->timer_list, t, entry);
 	/* timer will be activated later in sample() function */
 out:
+	if (rc && t) {
+		free(t);
+	}
 	return rc;
 }
 
