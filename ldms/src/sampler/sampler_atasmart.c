@@ -297,17 +297,33 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	value = av_value(avl, "disks");
 	if (value) {
 		s = strdup(value);
+		if (!s) {
+			msglog(LDMSD_LERROR, SAMP ": enomem.\n");
+			return ENOMEM;
+		}
 		tmp = strtok(s, ",");
 		while (tmp) {
 			num_disks++;
 			tmp = strtok(NULL, ",");
 		}
-		disknames = malloc(num_disks * sizeof(char *));
+		disknames = calloc(num_disks , sizeof(char *));
 		free(s);
+		if (!disknames) {
+			msglog(LDMSD_LERROR, SAMP ": enomem.\n");
+			return ENOMEM;
+		}
 		tmp = strtok(value, ",");
 		i = 0;
 		while (tmp) {
 			disknames[i] = strdup(tmp);
+			if (!disknames[i]) {
+				for (i = 0; disknames[i] != NULL; i++){
+					free(disknames[i]);
+				}
+				free(disknames);
+				disknames = NULL;
+				return ENOMEM;
+			}
 			tmp = strtok(NULL, ",");
 			i++;
 		}
