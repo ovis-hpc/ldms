@@ -209,7 +209,7 @@ static void print_set_info(ldms_set_t set)
 
 static void usage() {
 	printf(
-"   Test the ldms lookup operation. WORK-IN-PROGRESS\n"
+"   Test LDMS set_info APIs and network operations to transport the info\n"
 "	-p port		listener port\n"
 "	-x xprt		sock, rdma, or ugni\n"
 "	-s		Server mode\n"
