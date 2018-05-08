@@ -222,7 +222,6 @@ class LdmsdCmdParser(cmd.Cmd):
                 attr = LDMSD_Req_Attr(value = attr_str, attr_id = LDMSD_Req_Attr.STRING)
                 attr_list.append(attr)
 
-        attr_list.append(LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.LAST))
         try:
             request = LDMSD_Request(command = verb, attrs = attr_list)
         except KeyError:
