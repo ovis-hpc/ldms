@@ -59,7 +59,7 @@ do
 			gzip -f $file
 		fi
 	else
-		echo "File \"$file\" not found, skipping"
+		: echo "File \"$file\" not found, skipping" ;# expected case
 		continue
 	fi
 done
