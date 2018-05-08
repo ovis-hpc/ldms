@@ -102,7 +102,7 @@ int max_mc;
 int max_csrow;
 int totalCommands;
 #define MAXSZ 70
-char command[MAXSZ][MAXSZ];
+char command[MAXSZ][MAXSZ+1];
 char edac_name[MAXSZ][MAXSZ];
 
 static ldms_set_t set = NULL;
@@ -138,7 +138,7 @@ static int create_metric_set(base_data_t base)
 	if (!schema) {
 		msglog(LDMSD_LERROR, SAMP ": schema_new(%s) failed.\n",
 			base->schema_name);
-		return ENOMEM;
+		return errno;
 	}
 
 	/* Location of first metric */
