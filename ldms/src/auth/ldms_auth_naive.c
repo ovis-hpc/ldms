@@ -97,6 +97,10 @@ ldms_auth_t __auth_new(ldms_auth_plugin_t plugin,
 		       struct attr_value_list *av_list)
 {
 	struct ldms_auth_naive *a = calloc(1, sizeof(*a));
+	if (!a) {
+		errno = ENOMEM;
+		return NULL;
+	}
 	const char *val;
 	val = av_value(av_list, "uid");
 	if (!val)
