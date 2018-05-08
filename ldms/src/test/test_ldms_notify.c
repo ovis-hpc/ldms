@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015,2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015,2018 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -69,9 +69,9 @@
 
 #define USER_DATA_LEN 32
 
-static char *host;
-static char *xprt;
-static int port;
+static char *host = "localhost";
+static char *xprt = "sock";
+static int port = 10001;
 static int is_server;
 static char *setname;
 static int want_modified;
@@ -80,7 +80,7 @@ static int want_update;
 static int is_set_modified;
 static int is_uevents;
 static int is_cancel;
-static int interval;
+static int interval = 1;
 static int is_recvd_uevent;
 static int is_recvd_modified;
 static int need_close;
@@ -178,6 +178,16 @@ static void process_args(int argc, char **argv) {
 			exit(1);
 		}
 	}
+}
+
+static void check_args()
+{
+	int is_exit = 0;
+	if (!setname) {
+		printf("-S is required.\n");
+		is_exit = 1;
+	}
+
 }
 
 static void _log(const char *fmt, ...)
@@ -307,7 +317,11 @@ static ldms_set_t __server_create_set(const char *name)
 		_log("Failed to create the set '%s'\n", name);
 		assert(set);
 	}
-
+	rc = ldms_set_publish(set);
+	if (rc) {
+		_log("Failed to publish the set '%s'\n", name);
+		assert(set);
+	}
 	ldms_metric_set_u64(set, 0, 0);
 	return set;
 }
@@ -379,7 +393,7 @@ static void client_update_cb(ldms_t x, ldms_set_t set, int status, void *arg)
 static void client_notify_cb(ldms_t x, ldms_set_t set,
 		ldms_notify_event_t e, void *arg)
 {
-	char *uevent = (char *)arg;
+	char *uevent = (char *)e->u_data;
 	switch (e->type) {
 	case LDMS_SET_MODIFIED:
 		is_recvd_modified = 1;

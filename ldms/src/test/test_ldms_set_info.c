@@ -209,7 +209,7 @@ static void print_set_info(ldms_set_t set)
 
 static void usage() {
 	printf(
-"   Test the ldms lookup operation. WORK-IN-PROGRESS\n"
+"   Test LDMS set_info APIs and network operations to transport the info\n"
 "	-p port		listener port\n"
 "	-x xprt		sock, rdma, or ugni\n"
 "	-s		Server mode\n"
@@ -998,7 +998,11 @@ ldms_set_t test_local_set_info()
 		printf("Failed to create the set\n");
 		assert(0);
 	}
-
+	rc = ldms_set_publish(set);
+	if (rc) {
+		printf("Failed to publish the set %s\n", SET_NAME);
+		assert(0);
+	}
 	total_cnt = 0;
 	printf("Adding set info key value pairs");
 	rc = test_ldms_set_info_set(set, SET_INFO_INT_KEY, SET_INFO_INT_VALUE);

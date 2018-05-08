@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2017 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2017 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2017-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2017-2018 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -199,8 +199,10 @@ static struct test_schema *__find_test_schema(const char *name)
 	return NULL;
 }
 
-static struct test_set *__set_new(struct test_schema *tschema, const char *name)
+static struct test_set *__set_new(struct test_schema *tschema, const char *name,
+							const char *published)
 {
+	int rc;
 	printf("Creating set %s\n", name);
 	struct test_set *tset = malloc(sizeof(*tset));
 	if (!tset) {
@@ -218,6 +220,13 @@ static struct test_set *__set_new(struct test_schema *tschema, const char *name)
 	if (!tset->set) {
 		printf("ldms_set_new failed: set %s, schema %s\n", name, tschema->name);
 		exit(1);
+	}
+	if (0 == strcmp(published, "true")) {
+		rc = ldms_set_publish(tset->set);
+		if (rc) {
+			printf("Failed to publish the set '%s'\n", name);
+			exit(rc);
+		}
 	}
 
 	tset->tschema = tschema;
@@ -342,17 +351,18 @@ void usage()
 	printf("	-a path		Path to the secretword file\n");
 	printf("	-p port		listener port\n");
 	printf("	-x xprt		sock, rdma, or ugni\n");
-	printf("	-s name  	Create a schema with the given name."
-	       "                        This might be given multiple time.\n");
-	printf("	-i schema:name	Create a set with the give name from the schema"
-	       "                        This might be given multiple time.\n");
+	printf("	-s name		Create a schema with the given name."
+	       "			This might be given multiple time.\n");
+	printf("	-i schema:name:[true|false]	Create a set with the schema.\n"
+	       "					The set is published if 'true' is given.\n"
+	       "					This might be given multiple time.\n");
 }
 
 void process_arg(int argc, char **argv)
 {
 	struct test_schema *tschema;
 	struct test_set *tset;
-	char *dummy, *delim;
+	char *dummy, *inst_name, *delim;
 	char op;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
@@ -372,6 +382,9 @@ void process_arg(int argc, char **argv)
 			dummy = strdup(optarg);
 			delim = strchr(dummy, ':');
 			*delim = '\0';
+			inst_name = delim + 1;
+			delim = strchr(inst_name, ':');
+			*delim = '\0';
 			tschema = __find_test_schema(dummy);
 			if (!tschema) {
 				printf("Failed to create set '%s' "
@@ -379,7 +392,7 @@ void process_arg(int argc, char **argv)
 					delim+1, dummy);
 				exit(ENOENT);
 			}
-			(void)__set_new(tschema, delim+1);
+			(void)__set_new(tschema, inst_name, delim + 1);
 			free(dummy);
 			break;
 		case '?':
