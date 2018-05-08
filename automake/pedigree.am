@@ -18,7 +18,7 @@ install-exec-local:
 	echo echo "\"`cd $(abs_top_srcdir) && git status -suno .`\"" >> $(PEDIGREE) ; \
 	echo echo "------------------------" >> $(PEDIGREE) ; \
 	echo fi >> $(PEDIGREE); \
-	chmod 555 $(PEDIGREE) ;
+	chmod 755 $(PEDIGREE) ;
 
 SHA.txt:
 	echo "$(OVIS_GIT_LONG)" > SHA.txt

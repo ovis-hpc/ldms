@@ -1,0 +1,66 @@
+#!/bin/sh
+
+USR=$1
+ETC=$2
+VAR=$3
+MANIFEST=$4	# File containing file names to swizzle, one per line
+
+# For normal builds the commented-out sedargs definition here is sufficient,
+# since autoconf will always set '@-prefix-@' to the value '/@ovis_prefix@',
+# and so the /usr/bin/env string can't possibly be corrupted.  The additional
+# swizzles of /usr/bin/env in the active sedargs definition make it possible
+# to use this script for other purposes, like for finding man pages that might
+# need to be modified to use '@-prefix-@'.  In that case one might want to
+# substitute '/usr' for the value of '@-prefix-@'.  Note that other strings
+# that start with /usr will still get corrupted, but for this use case that
+# is not a concern.
+
+# sedargs="-es:@prefix@:$USR:g -es:@sysconfdir@:$ETC:g -es:@localstatedir@:$VAR:g"
+
+sedargs="-es%/usr/bin/env[[:space:]]%UsRbInEnV%g -es:@prefix@:$USR:g -es:@sysconfdir@:$ETC:g -es:@localstatedir@:$VAR:g -es%UsRbInEnV%/usr/bin/env\d032%g"
+
+# Perform path relocation within the contents of each file in the manifest.
+
+tmp1=$(mktemp .XXXXXX)
+tmp2=$(mktemp .XXXXXX)
+
+cat $MANIFEST | while read dir path
+do
+	# Compute the full pathname of the relocated file.
+
+	if test "$dir" = USR; then
+		file=${USR}/${path}
+	elif test "$dir" = ETC; then
+		file=${ETC}/${path}
+	elif test "$dir" = VAR; then
+		file=${VAR}/${path}
+	else
+		echo "Prefix \"$dir\" file \"$path\"not recognised, skipping"
+		continue
+	fi
+
+	# Replace pathnames in the file with their relocated equivalents.
+	# The file may need to be uncompressed before it can be swizzled.
+	# File contents are replaced only if a path relocation actually
+	# occurred, so this script can be run multiple times without issue.
+
+	if test -f $file; then
+		sed $sedargs $file > $tmp1
+		if ! cmp -s $file $tmp1; then
+			# echo "File \"$file\" has been modified"
+			cp $tmp1 $file
+		fi
+	elif test -f $file.gz; then
+		zcat $file > $tmp1
+		sed $sedargs $tmp1 > $tmp2
+		if ! cmp -s $tmp1 $tmp2; then
+			# echo "File \"$file\" has been modified"
+			cp $tmp2 $file
+			gzip -f $file
+		fi
+	else
+		: echo "File \"$file\" not found, skipping" ; #this is a normal case for split rpms
+		continue
+	fi
+done
+rm -f $tmp1 $tmp2

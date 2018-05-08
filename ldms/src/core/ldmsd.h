@@ -612,6 +612,7 @@ void ldmsd_host_sampler_cb(int fd, short sig, void *arg);
 void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
 int ldmsd_logrotate();
 int ldmsd_plugins_usage(const char *plugin_name);
+void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix);
 
 char *ldmsd_get_max_mem_sz_str();
 

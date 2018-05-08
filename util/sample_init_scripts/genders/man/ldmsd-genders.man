@@ -185,13 +185,6 @@ If neither specifies a core number, 67 is the default.
 .PP
 Defining the following variables in the configuration file may lead to surprises in the behavior of a hierarchical ldmsd setup. In particular, the environment on one node may be made inconsistent with the environment on other nodes.
 
-.B LDMS_BUILDTYPE=T
-
-The build type determines what ldms installation to use, if it is defined.
-For T=experimental, the LDMS_PREFIX environment variable is used and rather than /etc, $LDMS_PREFIX/etc is used as sysconfdir in daemon startup. For T=toss2, the Redhat 6 64 bit file system is assumed, with ovis-provided libevent2 expected. For any other T, the Redhat 7 64 bit file system is assumed. This default works in Cray environments as well.
-
-Note for experimenters: LDMS_PREFIX must be set in the systemd service file  /etc/systemd/system/ldmsd[@].service or in /etc/init.d/ldmsd. It is not a configuration file variable.
-
 .B LDMSD_METRIC_PLUGINS=plugin-name-list
 
 If defined, this overrides the ldmsd_metric_plugins gender. In hierarchical aggregation settings, this may lead to incorrect storage configuration and loss of data unless a corresponding value is set on all other nodes in the hierarchy.
@@ -229,16 +222,16 @@ entire configuration files are kept. The fragments, files, and generators are us
 Environment variables and override settings for storage ldmsd serving remote system $LDMSCLUSTER.
 .TP
 .I /usr/lib/systemd/system/ldmsd.service
-Systemd service file for the local ldmsd. This is where LDMS_PREFIX must be set to use any experimental (other than /usr) location of ldmsd with the hosts regular boot script processes.
+Systemd service file for the local ldmsd.
 .TP
 .I /usr/lib/systemd/system/ldmsd@.service
-Systemd service file for all the storage ldmsds serving remote systems. This is where LDMS_PREFIX must be set to use any experimental (other than /usr) location of ldmsd with the hosts regular boot script processes.
+Systemd service file for all the storage ldmsds serving remote systems.
 .TP
 .I /etc/init.d/ldmsd
-The sysvinit boot script for the local host, on systems where systemd is not supported. This is where LDMS_PREFIX must be set to use any experimental (other than /usr) location of ldmsd with the hosts regular boot script processes.
+The sysvinit boot script for the local host, on systems where systemd is not supported.
 .TP
 .I /etc/init.d/ldmsd.*
-The sysvinit boot script for storage ldmsd serving remote system $LDMSCLUSTER. This is where LDMS_PREFIX must be set to use any experimental (other than /usr) location of ldmsd with the hosts regular boot script processes.
+The sysvinit boot script for storage ldmsd serving remote system $LDMSCLUSTER.
 .TP
 .I /usr/bin/ldmsd-pre-systemd
 .I /usr/bin/ldmsd-pre-sysvinit

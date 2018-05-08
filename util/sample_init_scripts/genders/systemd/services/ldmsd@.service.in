@@ -1,0 +1,74 @@
+# Copyright (c) 2017, Sandia National Laboratories All rights reserved.
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; version 2 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301 USA
+#
+# systemd service file for LDMS forking server
+#
+
+[Unit]
+Description=LDMS service for multiple configurations
+After=network.target
+After=syslog.target
+
+[Install]
+WantedBy=multi-user.target
+
+[Service]
+# In most installations, ldms must run as root to sample protected resource counters.
+#User=ldms
+#Group=ldms
+
+Type=forking
+
+PIDFile=@localstatedir@/run/ldmsd/ldmsd-%I.pid
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ldmsd@%i
+
+# Disable service start and stop timeout logic of systemd for ldmsd service.
+TimeoutSec=0
+
+# Execute pre and post scripts as root
+PermissionsStartOnly=true
+
+# This script is the same as ldmsd.service (except that LDMSCLUSTER is %I)
+
+# Needed to create env file
+ExecStartPre = /usr/bin/test -x @bindir@/ldmsd-pre-systemd
+ExecStartPre = /bin/mkdir -p @localstatedir@/run/ldmsd
+ExecStartPre = /bin/rm -f @localstatedir@/run/ldmsd/ldmsd.env.%I
+ExecStartPre = @bindir@/ldmsd-pre-systemd %I @localstatedir@/run/ldmsd/ldmsd.env.%I
+ExecStartPre = /usr/bin/test @localstatedir@/run/ldmsd/ldmsd.env.%I -nt @bindir@/ldmsd-pre-systemd
+
+EnvironmentFile = -@localstatedir@/run/ldmsd/ldmsd.env.%I
+
+# Start main service
+# This is all one line so it is easily converted to sysvinit, not so
+# it is easy to read.
+ExecStart= /bin/bash -c '/bin/rm -f $LDMSD_SOCKPATH ; @bindir@/ldmsd-wrapper.sh %I $LDMSD_GLOBAL_OPTS $MEM_OPT $LDMSAGGD_MEM_RES -c $LDMSD_PLUGIN_CONFIG_FILE -a $LDMS_AUTH_FILE -r @localstatedir@/run/ldmsd/ldmsd-%I.pid -x $LDMSD_XPRT:$LDMSD_PORT -P $LDMSD_EVENT_THDS $LDMSD_INET_OPT $LDMSD_CONFIG_PORT $LDMSD_SOCK_OPT $LDMSD_SOCKPATH -v $LDMSD_DBG $LDMS_LOG_OPT $LDMS_LOG_FILE 2>&1'
+
+# Sets open_files_limit
+LimitNOFILE = 65536
+# Set RAM limit on daemon instance cgrpup
+#LimitRSS = infinity
+# delay between sigterm and sigkill during stop.
+TimeoutStopSec=60
+
+#Restart=on-failure
+Restart=no
+
+RestartPreventExitStatus=1
+# We don't use /tmp. If test-installing to /tmp subdir, privatetmp breaks startup.
+PrivateTmp=0
+#LDMS_POST_INSTALLED=0 do not change this line

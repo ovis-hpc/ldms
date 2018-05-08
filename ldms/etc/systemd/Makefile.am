@@ -1,11 +1,6 @@
 SYSTEMD_DIR = $(DESTDIR)$(sysconfdir)/systemd/system
 
-do_subst = sed -e 's,[@]datadir[@],$(datadir),g' \
-	   -e 's,[@]localstatedir[@],$(localstatedir),g' \
-	   -e 's,[@]sysconfdir[@],$(sysconfdir),g' \
-	   -e 's,[@]LDMSD_PLUGIN_LIBPATH[@],$(LDMSD_PLUGIN_LIBPATH),g' \
-	   -e 's,[@]ZAP_LIBPATH[@],$(ZAP_LIBPATH),g' \
-	   -e 's,[@]sbindir[@],$(sbindir),g'
+do_subst = @LDMS_SUBST_RULE@
 
 SVC_FILES = $(builddir)/ldmsd.sampler.service \
 	    $(builddir)/ldmsd.aggregator.service

@@ -1,0 +1,833 @@
+
+sysconfdir=@sysconfdir@
+localstatedir=@localstatedir@
+
+#
+# Functions for ldmsd and ldms-aggd config file generation.
+# These may depend on variables defined in the respective .conf files
+# or the calling script.
+# Some things here assume systemd (where noted).
+
+# dump where we called from and exit with argument given
+dietrace () {
+	if systemd-cat --help 2>1 > /dev/null; then
+		OUTLINE="systemd-cat -p err -t backtrace"
+	else
+		OUTLINE="logger -p syslog.err"
+	fi
+        if [[ $VERBOSE = "-v" ]]; then
+		local frame=0
+		(echo start
+		while caller $frame; do
+			((frame++));
+		done
+		echo end) | $OUTLINE
+        fi
+	exit $1
+}
+
+# Make sure log options are sane and consistent.
+# This assumes systemd, which makes syslog and journal equivalent
+# and allows the daemons to simply write to stderr/stdout (though at
+# loss of syslog level information).
+check_log_option () {
+
+	case $LDMS_LOG_PATH in
+		journal)
+			sdok=0
+			if ps -p 1 -o command --no-headers |grep systemd >/dev/null; then
+				sdok=1
+				LDMS_LOG_OPT=""
+				LDMS_LOG_PATH=""
+				LDMS_LOG_FILE=""
+			fi
+			if /bin/ls -l /sbin/init |grep systemd >/dev/null; then
+				sdok=1
+				LDMS_LOG_OPT=""
+				LDMS_LOG_PATH=""
+				LDMS_LOG_FILE=""
+			fi
+			if test $sdok = "0"; then
+				logger -p syslog.err -s "journal log not available without systemd."
+				dietrace 1
+			fi
+			;;
+		syslog)
+			if ps -p 1 -o command --no-headers |grep systemd >/dev/null; then
+				LDMS_LOG_OPT=""
+				LDMS_LOG_PATH=""
+				LDMS_LOG_FILE=""
+			else
+				LDMS_LOG_OPT="-l"
+				LDMS_LOG_FILE="syslog"
+			fi
+			;;
+		NONE)
+			LDMS_LOG_OPT=""
+			LDMS_LOG_PATH=""
+			LDMS_LOG_FILE=">/dev/null"
+			;;
+		/*)
+			LDMS_LOG_OPT="-l"
+			mkdir -p $LDMS_LOG_PATH
+			if ! test -d $LDMS_LOG_PATH; then
+				logger -p syslog.err -s "$0: cannot make log directory $LDMS_LOG_PATH"
+				dietrace 1
+			fi
+			LDMS_LOG_FILE=$LDMS_LOG_PATH/ldmsd.log.$LDMSCLUSTER
+			;;
+	esac
+	export LDMS_LOG_OPT
+	export LDMS_LOG_PATH
+	export LDMS_LOG_FILE
+}
+
+# check consistency of auth variables.
+check_auth_option () {
+	# auth file check and warning.
+	if test -z $LDMS_AUTH_FILE; then
+		echoq "LDMS_AUTH_FILE not set."
+		echoq "Will try running without it (but this is a bad idea)"
+		LDMS_AUTH_OPT=""
+	else
+		LDMS_AUTH_OPT="-a"
+		if ! test -f $LDMS_AUTH_FILE; then
+			echoq "LDMS_AUTH_FILE $LDMS_AUTH_FILE not found"
+		fi
+	fi
+	export LDMS_AUTH_OPT
+	export LDMS_AUTH_FILE
+}
+
+# check for migration errors v2 -> v3
+check_genders_file() {
+	consolidated="ldmsaggd_dbg:ldmsd_dbg ldmsaggd_port:ldmsd_port ldmsaggd_xprt:ldmsd_xprt ldmsaggd_host:ldmsd_host ldmsaggd_num_procs:ldmsd_event_thds"
+	# do not rename these.
+	# renamed="ldmsaggd_interval_default:ldmsd_agg_interval_default ldmsaggd_offset_default:ldmsd_agg_offset_default"
+	renamed="ldmsaggd_stores:ldmsd_store_plugins ldmsd_metric_sets:ldmsd_metric_plugins ldmsaggd_store_csv:ldmsd_store_csv ldmsaggd_conn_thds:ldmsd_event_thds"
+	# common typos in prefixes here
+	prefixtypo="ldmsd_schema_:ldmsd_schemas_ ldmsd_exclude_schema_:ldmsd_exclude_schemas_ ldms_:ldmsd_ ldmsd_metric_plugin$:ldmsd_metric_plugins"
+	commatypo="clock cray_power_sampler fptrans lnet_stats job_info jobid meminfo perfevent procdiskstats procinterrupts procnetdev procnfs procsensors procstat sampler_atasmart sysclassib vmstat store_csv lustre2_client lustre2_mds lustre2_oss store_csv store_rabbitv3 store_flatfile store_sos"
+	n=0
+	v=""
+	for p in $consolidated; do
+		arr=(${p//:/ })
+		val=`$NODEATTR $NODEATTRFILE -c ${arr[0]} 2>/dev/null`
+		if test -n "$val"; then
+			logger -p syslog.err "Remove gender ${arr[0]} or use ${arr[1]} instead."
+			((n++))
+			v="$v, ${arr[0]}"
+		fi
+	done
+	for p in $renamed; do
+		arr=(${p//:/ })
+		val=`$NODEATTR $NODEATTRFILE -c ${arr[0]} 2>/dev/null`
+		if test -n "$val"; then
+			logger -p syslog.err "Rename gender ${arr[0]} to ${arr[1]}."
+			((n++))
+			v="$v, ${arr[0]}"
+		fi
+	done
+	for p in $prefixtypo; do
+		arr=(${p//:/ })
+		val=`$NODEATTR $NODEATTRFILE -l | grep ^${arr[0]} 2>/dev/null`
+		if test -n "$val"; then
+			logger -p syslog.err "Correct gender(s) starting with ${arr[0]} to start with ${arr[1]}."
+			((n++))
+			v="$v, $val"
+		fi
+	done
+	for p in $commatypo; do
+		arr=(${p//:/ })
+		val=`$NODEATTR $NODEATTRFILE -l | grep ^${arr[0]} 2>/dev/null`
+		if test -n "$val"; then
+			logger -p syslog.err "Found plugin name(s) as a gender: $val. Use : or & instead of , in ldmsd plugin lists, as noted in man ldms-attributes."
+			((n++))
+			v="$v, $val"
+		fi
+	done
+	if test $n -gt 0; then
+		logger -p syslog.err "Gender file problems: $n ($v). These genders need to be removed, replaced, correctly spelled, or punctuated as noted."
+		logger -p syslog.err "Review $NODEATTRFILE"
+		exit 1
+	fi
+}
+
+# Dig up genders file or set LDMS_USE_GENDERS=0 and warn.
+# If LDMS_GENDERS is empty computes the default file and sets LDMS_GENDERS.
+# Copies/concatenates genders files into a scratch file
+# to accomodate level2 and beyond daemons.
+# The default file content always depends on LDMSCLUSTER.
+build_genders_file () {
+	if test "x$LDMS_USE_GENDERS" = "x0"; then
+		NODEATTR=:
+		NODEATTRFILE=""
+		CLUSTER_GENDERS=""
+		AGG_GENDERS=""
+		ALLDIR=""
+		LDMS_GENDERS=""
+		export LDMS_GENDERS
+		return
+	fi
+	if test -z "$LDMS_GENDERS"; then
+		# if not specified, take first of files found
+		GENDERBASE=$sysconfdir/sysconfig/ldms.d/ClusterGenders
+		LDMS_GENDERS="$GENDERBASE/genders.$LDMSCLUSTER $sysconfdir/genders"
+		havefiles=0
+		for f in $LDMS_GENDERS; do
+			if test -f $f -a -r $f; then
+				LDMS_GENDERS=$f
+				havefiles=1
+				break
+			fi
+		done
+		if test "$havefiles" = "0"; then
+			NODEATTR=:
+			NODEATTRFILE=""
+			CLUSTER_GENDERS=""
+			AGG_GENDERS=""
+			ALLDIR=""
+			LDMS_GENDERS=""
+			export LDMS_GENDERS NODEATTR NODEATTRFILE
+			return
+		fi
+	else
+		# die if user named something missing
+		for i in $LDMS_GENDERS; do
+			if ! test -f $i -a -r $i; then
+				logger -p syslog.err Unable to read genders file $i
+				dietrace 1
+			fi
+		done
+	fi
+	# now put multiple files together.
+	ALLDIR=$localstatedir/run/ldmsd/genderscratch
+	mkdir -p $ALLDIR
+	if ! test -d $ALLDIR; then
+		echoq "Unable to find/make $ALLDIR. make or mount it."
+		dietrace 1
+	fi
+	ALLGENDERS=$ALLDIR/genders.$LDMSCLUSTER
+	/bin/rm -f $ALLGENDERS
+	for i in $LDMS_GENDERS; do
+		echo "#-------------------" >> $ALLGENDERS
+		echo "# from $i:" >> $ALLGENDERS
+		cat $i >> $ALLGENDERS
+	done
+
+	if ! test -f "$ALLGENDERS"; then
+		echoq Unable to create $ALLGENDERS. Check filesystem.
+		dietrace 1
+	fi
+	LDMS_GENDERS=$ALLGENDERS
+	export LDMS_GENDERS
+	echoq LDMS_GENDERS=$LDMS_GENDERS
+	NODEATTRFILE="-f $LDMS_GENDERS"
+	NODEATTR=nodeattr
+	export NODEATTRFILE NODEATTR
+}
+
+failure() {
+	echo stop using function \'failure\'.
+	return 1
+}
+
+# save exported env vars
+# safe in privatetmp environment
+save_env_init () {
+	mkdir -p $localstatedir/run/ldmsd/tmp
+	env1=`mktemp $localstatedir/run/ldmsd/tmp/env1.$1.XXX`
+	if test -z "$env1"; then
+		logger -p syslog.error -s "$0: cannot make env tempfile"
+		dietrace 1
+	fi
+	printenv |sort > $env1
+}
+
+# append changed exported env vars to $2
+save_env_finish () {
+	env2=`mktemp $localstatedir/run/ldmsd/tmp/env2.$1.XXX`
+	if test -z "$env2"; then
+		logger -p syslog.error -s "$0: cannot make env tempfile"
+		dietrace 1
+	fi
+	printenv |sort > $env2
+	diff $env1 $env2 |sed -e 's/< .*//g' \
+		-e 's/^-*//g' \
+		-e 's/^[0-9].*//g' \
+		-e 's/^> //g' \
+		-e 's/"/\"/g' \
+		-e "s/'/'\"'\"'/g" \
+		-e "s/=/='/" \
+		-e "s/$/'/" \
+		|grep = > $2
+	if ! test "$DEBUG" = "yes"; then
+		/bin/rm -f $env1 $env2
+	fi
+}
+
+# append changed exported env vars to $2
+# prepend export to all lines
+save_env_finish_sysvinit () {
+	env2=`mktemp $localstatedir/run/ldmsd/tmp/env2.$1.XXX`
+	printenv |sort > $env2
+	diff $env1 $env2 |sed -e 's/< .*//g' \
+		-e 's/^-*//g' \
+		-e 's/^[0-9].*//g' \
+		-e 's/^> //g' \
+		-e 's/"/\"/g' \
+		-e "s/'/'\"'\"'/g" \
+		-e "s/=/='/" \
+		-e "s/$/'/" \
+		| grep = | sed -e 's/^/export /'> $2
+	if ! test "$DEBUG" = "yes"; then
+		/bin/rm -f $env1 $env2
+	fi
+}
+
+
+# translate genders encoded args to key=value args.
+# reformat : -> spc; 1st / to =; & to , .
+config_from_gender() {
+	# echoq "genderin: $1"
+	oldIFS=$IFS
+	IFS=:
+	for i in $1; do
+		x="$x `echo $i |sed -e 's%/%=%' -e 's%&%,%g'`"
+	done
+	if ! test -z $oldIFS; then
+		IFS=$oldIFS
+	else
+		unset IFS
+		# unset and the empty string for ifs are not the same
+	fi
+	# echoq "genderout: $x"
+	echo $x
+}
+
+# log a message at info level if VERBOSE = -v
+echoq()
+{
+        if [[ $VERBOSE != "-v" ]]; then
+                return;
+        fi
+        logger -p syslog.info "$@";
+}
+
+
+# return the substituted value based on host name.
+# genders provides %n replacement prior; we do the rest here.
+# input: hostname input_val
+# output: substituted value based on the following:
+# replace %#d with the #'th integer substring split from hostname
+# replace %#m with the #'th - separated substring split from hostname
+# replace %#u with the #'th _ separated substring split from hostname
+# Any case where # is greater than the number of such
+# elements in the input is left unsubstituted without warning.
+# gender usage examples:
+# extract the number suffix and use in related names
+# chama-login[1-8] ldmsd_host=chama-lsm%0d-ib0,ldmsd_clientof=chama-rps%0d,ldmsd_producer=ln%0d
+# extract the number - suffix and use as producer name
+# chama-rps[1-8] ldmsd_producer=%1m
+gender_substitute () {
+	ghost=$1
+	val=$2
+	if test -z $2; then
+		echo ""
+		return
+	fi
+	ilist=$(echo $ghost | sed -e 's/[-_a-zA-Z]*/ /g')
+	wlist=$(echo $ghost | sed -e 's/-/ /g')
+	ulist=$(echo $ghost | sed -e 's/_/ /g')
+	vnew=$val
+	n=0
+	for i in $ilist; do
+		sub="%${n}d"
+		vnew=$(echo ${vnew//$sub/$i})
+		((n++))
+	done
+	n=0
+	for w in $wlist; do
+		sub="%${n}m"
+		vnew=$(echo ${vnew//$sub/$w})
+		((n++))
+	done
+	n=0
+	for u in $ulist; do
+		sub="%${n}u"
+		vnew=$(echo ${vnew//$sub/$u})
+		((n++))
+	done
+	echo $vnew
+}
+
+# warn about old v2 names and anything else deprecated.
+plugin_name_check () {
+	case $1 in
+	slurmjobid)
+		logger -p syslog.err -t ldmsd.config.$1 "Unknown plugin. Consider ldms_jobid instead"
+		return 0
+		;;
+	procstatutil)
+		logger -p syslog.err -t ldmsd.config.$1 "Unknown plugin. Consider procstat instead"
+		return 0
+		;;
+	procstatutil2)
+		logger -p syslog.err -t ldmsd.config.$1 "Unknown plugin. Consider procstat instead"
+		return 0
+		;;
+	store_derived_csv)
+		logger -p syslog.err -t ldmsd.config.$1 "Unknown plugin. Consider store_function_csv instead"
+		return 0
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+# Generate metric plugin configuration, using the set of plugins from
+# genders # on each host.
+# Individual plugin config generation failures do not stop other
+# plugins, but will be logged.
+# Failed plugins may cause ldmsd itself to not start later when
+# the config file is read.
+#
+# Each plugin listed in LDMSD_METRIC_PLUGINS is started.
+#
+# The options for starting plugin P are taken from (if present)
+# plugin-suffixed genders:
+# (1) ldmsd_${P} gender value as the options (as in v2)
+# OR
+# (2) ldmsd_config_text_${P} gender value as a file containing a plugin
+# 	specific configuration text line or lines
+# 	excluding the start command line.
+# 	As a special case, value yes means use
+# 	$sysconfdir/sysconfig/ldms.d/plugins-conf/$P.
+# 	The first line of the file is unconditionally appended to
+# 	standard arguments for name producer instance & component_id.
+# 	Any additional lines that a plugin may support should use the full
+# 	"config name=PLUGIN <more options>" syntax
+# 	This works well for plugin-specific options standard across
+# 	an entire cluster.
+# 	Comments within this file should never begin the first line,
+# 	but may appear any where else.
+# OR
+# (3) ldmsd_config_gen_${P} gender value as a program which will generate
+# 	plugin configuration text *and start command* on stdout.
+# 	As a special case, value yes means run
+# 	$sysconfdir/sysconfig/ldms.d/plugins-conf/gen.$P
+# 	The generation program is passed the arguments:
+# 	plugin-name producer-name host sample-interval sample-offset
+# 	The environment variables visible to the daemon runtime
+# 	are also visible when the generator programs are called to
+# 	generate their portions of the complete plugin configuration file.
+# OR
+# (4) The defaults.
+# NOTES:
+# 	Only one configuration method is allowed for each plugin.
+# 	host and producer-name may differ. Multiple configurations of the
+# 	same plugin should be handled with options 2 or 3.
+#
+start_ldmsd_plugins () {
+
+	out=$1
+	echoq $LDMSD_METRIC_PLUGINS
+	echoq $out
+
+	producer=$(gender_substitute $host $($NODEATTR $NODEATTRFILE -v $host ldmsd_producer 2>/dev/null))
+	if test -z $producer; then
+		producer=$host
+	fi
+
+	for pi in $(eval echo ${LDMSD_METRIC_PLUGINS} | tr ":;'\`" "\n"); do
+
+		if plugin_name_check $pi; then
+			logger -p syslog.err -t ldmsd.config.$1 "Skipping plugin $pi"
+			continue
+		fi
+
+		interval=`$NODEATTR $NODEATTRFILE -v $host ldmsd_interval_${pi} 2>/dev/null`
+		if test -z $interval; then
+			interval=$LDMSD_INTERVAL_DEFAULT
+		fi
+
+		offset=`$NODEATTR $NODEATTRFILE -v $host ldmsd_offset_${pi} 2>/dev/null`
+		if test -z $offset; then
+			offset=$LDMSD_OFFSET_DEFAULT
+		fi
+
+		# plugin options from gender files.
+		configtmp=`$NODEATTR $NODEATTRFILE -v $host ldmsd_${pi} 2>/dev/null`
+		grok="`config_from_gender $configtmp`"
+		eval extraconfig='$grok'
+		conf="0"
+		if test -n "$extraconfig"; then
+			conf="v2"
+		fi
+
+		# plugin options from per-plugin plain text file
+		cattext=`$NODEATTR $NODEATTRFILE -v $host ldmsd_config_text_${pi} 2>/dev/null`
+		if test -n "$cattext"; then
+			if test $conf = "1"; then
+				logger -p syslog.warning -t ldmsd.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_text_${pi} and ldmsd_${pi} is not allowed."
+				continue
+			fi
+			conf="text"
+			if ! test -f $cattext; then
+				if test -f $sysconfdir/sysconfig/ldms.d/plugins-conf/$cattext; then
+					cattext=$sysconfdir/sysconfig/ldms.d/plugins-conf/$cattext
+				fi
+				if test $cattext = "yes"; then
+					cattext=$sysconfdir/sysconfig/ldms.d/plugins-conf/$pi
+				fi
+			fi
+			if ! test -f $cattext; then
+				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_text_${pi} file $cattext not a regular file."
+				continue
+			fi
+			if ! test -r $cattext; then
+				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_text_${pi} file $cattext not readable."
+				continue
+			fi
+		fi
+
+		# plugin options from per-plugin config/start generators
+		genprog=`$NODEATTR $NODEATTRFILE -v $host ldmsd_config_gen_${pi} 2>/dev/null`
+		if test -n "$genprog"; then
+			if ! test $conf = "0"; then
+				logger -p syslog.warning -t ldmsd.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_gen_${pi} and ldmsd_${pi} or ldmsd_config_text_${pi} not allowed."
+				continue
+			fi
+			conf="generate"
+			if ! test -f $genprog; then
+				if test -f $sysconfdir/sysconfig/ldms.d/plugins-conf/$genprog; then
+					genprog=$sysconfdir/sysconfig/ldms.d/plugins-conf/$genprog
+				fi
+				if test $genprog = "yes"; then
+					genprog=$sysconfdir/sysconfig/ldms.d/plugins-conf/gen.$pi
+				fi
+			fi
+			if ! test -f $genprog; then
+				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not a regular file."
+				continue
+			fi
+			if ! test -r $genprog; then
+				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not readable."
+				continue
+			fi
+			if ! test -x $genprog; then
+				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not executable."
+				continue
+			fi
+		fi
+
+		echoq "Generating config for metric plugin <${pi}>"
+		# write stuff to out as determined from gender values
+		ARGS_START="name=$pi interval=$interval offset=$offset"
+		ARGS_CONFIG="name=$pi producer=$producer instance=${producer}/${pi} component_id=${COMPONENT_ID}"
+		echo load name=${pi} >> $out
+		case $conf in
+		v2)
+			echo "# config from gender ldmsd_${pi}" >> $out
+			echo "config $ARGS_CONFIG $extraconfig" >> $out
+			echo "start $ARGS_START" >> $out
+			;;
+		text)
+			echo "# config from $cattext" >> $out
+			echo -n "config $ARGS_CONFIG " >> $out
+			cat $cattext >> $out
+			echo "" >> $out
+			echo "start $ARGS_START" >> $out
+			;;
+		generate)
+			echo "# config from $genprog $pi $producer $host $interval $offset" >> $out
+			$genprog $pi $producer $host $interval $offset >> $out
+			;;
+		*)
+			echo "# config sampler with defaults" >> $out
+			echo "config $ARGS_CONFIG" >> $out
+			echo "start $ARGS_START" >> $out
+			;;
+		esac
+	done
+
+	echo "# " >> $out
+	echo "# end metric sets section" >> $out
+	echo "# " >> $out
+	return $?
+}
+
+generate_collector_config  () {
+	LDMSD_PLUGIN_CONFIG_FILE=$localstatedir/run/ldmsd/all-config.$LDMSCLUSTER
+	export LDMSD_PLUGIN_CONFIG_FILE
+	/bin/rm -f $LDMSD_PLUGIN_CONFIG_FILE
+	start_ldmsd_plugins $LDMSD_PLUGIN_CONFIG_FILE
+	return 0
+}
+
+# Generate aggregation configuration, using the set of plugins from
+# genders on each host.
+start_add_hosts () {
+	# This function generates and sends lines like the next few
+	# to the local aggregator.
+	# prdcr_add name=$producer host=$host type=active xprt=sock interval=$retry port=$port1
+	# prdcr_start name=$producer
+	# updtr_add name=$producer interval=1000000 offset=10000
+	# updtr_prdcr_add name=$producer regex=$producer
+	# updtr_start name=$producer
+	#
+	#
+	# where each line is tailored to the remote host collected from.
+	# This potentially requires 1000s of nodeattr calls if done in shell
+	# rather than C/C++, so a C++ wrapper on libgenders  is used.
+	out=$1
+
+	if test "$DEBUG" = "yes"; then
+		ldmsctl_args3 -n $LDMS_HOSTNAME -g $LDMS_GENDERS -v 1
+	fi
+	# actually do it.
+	echo "# aggregator config args computed with ldmsctl_args3 -n $LDMS_HOSTNAME -g $LDMS_GENDERS" >> $out
+	ldmsctl_args3 -n $LDMS_HOSTNAME -g $LDMS_GENDERS >> $out
+	echo "# " >> $out
+	echo "# end aggregation section" >> $out
+	echo "# " >> $out
+}
+
+generate_aggregator_config () {
+	start_add_hosts $LDMSD_PLUGIN_CONFIG_FILE
+	return 0
+}
+
+# extract schemas for a specific store from genders or environment
+# into a space separated list.
+get_schema_list () {
+	schema_host=$1
+	plugin=$2
+	# string in gender is : separated list of schema names
+
+	# List of schemas specifically fed to plugin. if empty, use
+	# plugin names and ldmsd_schemas_extra values.
+	schemas=`$NODEATTR $NODEATTRFILE -v $schema_host ldmsd_schemas_${plugin} 2>/dev/null`
+
+	# schemas not wanted on this plugin
+	badschemas=`$NODEATTR $NODEATTRFILE -v $schema_host ldmsd_exclude_schemas_${plugin} 2>/dev/null`
+
+	# schemas not wanted on any plugin
+	reallybadschemas=`$NODEATTR $NODEATTRFILE -v $schema_host ldmsd_exclude_schemas 2>/dev/null`
+
+	if test -z "$schemas"; then
+		# by default give all schemas to every store unless listed in env.
+		# string in env is , separated list of schema names
+		if test -z "$LDMSD_SCHEMA_LIST"; then
+			# recursive genders analysis to get set names expected.
+			if test "$DEBUG" = "yes"; then
+				ldmsctl_args3 -n $schema_host -g $LDMS_GENDERS -t store-list -v 1
+			fi
+			schemas=`ldmsctl_args3 -n $schema_host -g $LDMS_GENDERS -t store-list`
+		else
+			schemas="$LDMSD_SCHEMA_LIST"
+		fi
+	fi
+	if test -n "$LDMSD_EXCLUDE_SCHEMA_LIST"; then
+		envbadschemas="$LDMSD_EXCLUDE_SCHEMA_LIST"
+	fi
+	excludelist="${envbadschemas},${badschemas},${reallybadschemas}"
+	keepfile=`mktemp $localstatedir/run/ldmsd/tmp/schemas.1.XXX`
+	badfile=`mktemp $localstatedir/run/ldmsd/tmp/schemas.2.XXX`
+	echo $schemas | tr ",: " "\n" | sort -u > $keepfile
+	echo $excludelist | tr ",: " "\n" | sort -u > $badfile
+	slist=`comm -23 $keepfile $badfile`
+	if ! test "$DEBUG" = "yes"; then
+		/bin/rm -f $keepfile $badfile
+	fi
+	echo $slist
+}
+
+# Generate storage plugin configuration, using the set of plugins from
+# genders # on each host.
+# Individual plugin config generation failures do not stop other
+# plugins, but will be logged.
+# Failed plugins may cause ldmsd itself to not start later when
+# the config file is read.
+#
+# Each plugin listed in LDMSD_STORE_PLUGINS is started.
+#
+# The options for starting plugin P are taken from (if present)
+# plugin-suffixed genders:
+# (1) ldmsd_${P} gender value as the options (as in v2)
+# OR
+# (2) ldmsd_config_text_${P} gender value as a file containing a plugin
+# 	specific configuration text line or lines.
+# 	The text must include policy start command lines, unlike for samplers.
+# 	As a special case, value yes means use
+# 	$sysconfdir/sysconfig/ldms.d/plugins-conf/$P.
+# 	The first line of the file is unconditionally appended to
+# 	standard arguments for named store instance.
+# 	Any additional lines that a plugin may support should use the full
+# 	"config name=PLUGIN <more options>" syntax
+# 	This works well for plugin-specific options standard across
+# 	an entire cluster.
+# 	Comments within this file should never begin the first line,
+# 	but may appear any where else.
+# OR
+# (3) ldmsd_config_gen_${P} gender value as a program which will generate
+# 	storage plugin configuration text *and start command* on stdout.
+# 	As a special case, value yes means run
+# 	$sysconfdir/sysconfig/ldms.d/plugins-conf/gen.$P
+# 	The generation program is passed the arguments:
+# 	plugin-name host [schemas for plugin if defined]
+# 	The environment variables visible to the daemon runtime
+# 	are also visible when the generator programs are called to
+# 	generate their portions of the complete plugin configuration file.
+# OR
+# (4) The defaults.
+# NOTES:
+# 	Only one configuration method (1-4) is allowed for each plugin.
+# 	host and producer-name may differ. Multiple configurations of the
+# 	same plugin should be handled with options 2 or 3.
+#
+start_stores () {
+	if test -z $LDMSD_STORE_PLUGINS; then
+		echo "No stores required."
+		return;
+	fi
+	out=$1
+	echoq $LDMSD_STORE_PLUGINS
+	echoq $out
+
+#if ! test -d $STORE_PATH; then
+#	mkdir -p $STORE_PATH
+#fi
+	for pi in $(eval echo $LDMSD_STORE_PLUGINS | tr ":;'\`" "\n"); do
+		# schemas from env or genders
+		schemas=`get_schema_list $host $pi`
+		# plugin options from gender files
+		config=`$NODEATTR $NODEATTRFILE -v $host ldmsd_${pi} 2>/dev/null`
+		grok="`config_from_gender $config`"
+		eval STORE_CONFIG_${pi}='$grok'
+		eval extraconfig='$'"STORE_CONFIG_${pi}"
+
+		conf="0"
+		if test -n "$extraconfig"; then
+			conf="v2"
+		fi
+
+		# plugin options from per-plugin plain text file
+		cattext=`$NODEATTR $NODEATTRFILE -v $host ldmsd_config_text_${pi} 2>/dev/null`
+		if test -n "$cattext"; then
+			if test $conf = "1"; then
+				logger -p syslog.warning -t ldmsd.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_text_${pi} and ldmsd_${pi} is not allowed."
+				continue
+			fi
+			conf="text"
+			if ! test -f $cattext; then
+				if test -f $sysconfdir/sysconfig/ldms.d/plugins-conf/$cattext; then
+					cattext=$sysconfdir/sysconfig/ldms.d/plugins-conf/$cattext
+				fi
+				if test $cattext = "yes"; then
+					cattext=$sysconfdir/sysconfig/ldms.d/plugins-conf/$pi
+				fi
+			fi
+			if ! test -f $cattext; then
+				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_text_${pi} file $cattext not a regular file."
+				continue
+			fi
+			if ! test -r $cattext; then
+				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_text_${pi} file $cattext not readable."
+				continue
+			fi
+		fi
+
+		# plugin options from per-plugin config/start generators
+		genprog=`$NODEATTR $NODEATTRFILE -v $host ldmsd_config_gen_${pi} 2>/dev/null`
+		if test -n "$genprog"; then
+			if ! test $conf = "0"; then
+				logger -p syslog.warning -t ldmsd.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_gen_${pi} and ldmsd_${pi} or ldmsd_config_text_${pi} not allowed."
+				continue
+			fi
+			conf="generate"
+			if ! test -f $genprog; then
+				if test -f $sysconfdir/sysconfig/ldms.d/plugins-conf/$genprog; then
+					genprog=$sysconfdir/sysconfig/ldms.d/plugins-conf/$genprog
+				fi
+				if test $genprog = "yes"; then
+					genprog=$sysconfdir/sysconfig/ldms.d/plugins-conf/gen.$pi
+				fi
+			fi
+			if ! test -f $genprog; then
+				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not a regular file."
+				continue
+			fi
+			if ! test -r $genprog; then
+				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not readable."
+				continue
+			fi
+			if ! test -x $genprog; then
+				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not executable."
+				continue
+			fi
+		fi
+
+		echoq "Generating config for store plugin <${pi}>"
+		# write stuff to out as determined from gender values
+		# dead: ARGS_START="name=$pi interval=$interval offset=$offset"
+		ARGS_CONFIG="name=$pi action=init $extraconfig"
+		echo load name=${pi} >> $out
+# strgp_add name=aries_nic_mmr_store_csv plugin=store_csv container=csv schema=metric_set_nic
+# strgp_start name=aries_nic_mmr_store_csv
+#strgp_add name=store_csv_meminfo plugin=store_csv schema=meminfo container=csv
+#strgp_prdcr_add name=store_csv_meminfo regex=.*
+#strgp_start name=store_csv_meminfo
+		case $conf in
+		v2)
+			echo "# config store from gender ldmsd_${pi}" >> $out
+			echo "config $ARGS_CONFIG" >> $out
+			for s in $schemas; do
+				policy=${s}_${pi}
+				echo "strgp_add name=$policy plugin=$pi container=$pi schema=$s" >> $out
+				echo "strgp_prdcr_add name=$policy regex=.*" >> $out
+				echo "strgp_start name=$policy" >> $out
+			done
+			;;
+		text)
+			echo "# config store from $cattext" >> $out
+			echo -n "config $ARGS_CONFIG " >> $out
+			cat $cattext >> $out
+			echo "" >> $out
+			;;
+		generate)
+			echo "# config store from $genprog $pi $host $schemas" >> $out
+			$genprog $pi $host $schemas >> $out
+			;;
+		*)
+			echo "# config store from defaults" >> $out
+			echo "config $ARGS_CONFIG" >> $out
+			for s in $schemas; do
+				echo "strgp_add name=$policy plugin=$pi container=$pi schema=$s" >> $out
+				echo "strgp_prdcr_add name=$policy regex=.*" >> $out
+				echo "strgp_start name=$policy" >> $out
+			done
+			;;
+		esac
+	done
+
+	echo "# " >> $out
+	echo "# end stores section" >> $out
+	echo "# " >> $out
+
+	return $?
+}
+
+generate_store_config() {
+	start_stores $LDMSD_PLUGIN_CONFIG_FILE
+}
+
+generate_transform_config() {
+	: # pending transform api
+}
+
+#export -f start_ldms_plugins start_add_hosts start_stores
+export generate_collector_config generate_aggregator_config generate_store_config generate_transform_config build_genders_file check_genders_file
+
+#LDMS_POST_INSTALLED=0 do not change this line

@@ -78,6 +78,7 @@ SUBST_MAYBE([me])
 SUBST_MAYBE([komondor])
 
 OPTION_DEFAULT_DISABLE([libgenders], [ENABLE_LIBGENDERS],[  requires C++,boost])
+OPTION_DEFAULT_DISABLE([genderssystemd], [ENABLE_TOSS_SYSTEMD],[  toss systemd init scripts])
 
 if test -z "$ENABLE_LIBGENDERS_TRUE"
 then
@@ -98,11 +99,39 @@ OVIS_PKGLIBDIR
 OPTION_GITINFO
 OPTION_HOSTINFO
 
+# define substitutions for configvars and other sed-generated files.
+# note carefully the escapes.
+OVIS_DO_SUBST([OVIS_SUBST_RULE], ["sed \
+-e 's,[[@]]mandir[[@]],\$(mandir),g' \
+-e 's,[[@]]localedir[[@]],\$(localedir),g' \
+-e 's,[[@]]libdir[[@]],\$(libdir),g' \
+-e 's,[[@]]psdir[[@]],\$(psdir),g' \
+-e 's,[[@]]pdfdir[[@]],\$(pdfdir),g' \
+-e 's,[[@]]dvidir[[@]],\$(dvidir),g' \
+-e 's,[[@]]htmldir[[@]],\$(htmldir),g' \
+-e 's,[[@]]infodir[[@]],\$(infodir),g' \
+-e 's,[[@]]docdir[[@]],\$(docdir),g' \
+-e 's,[[@]]includedir[[@]],\$(includedir),g' \
+-e 's,[[@]]localstatedir[[@]],\$(localstatedir),g' \
+-e 's,[[@]]sharedstatedir[[@]],\$(sharedstatedir),g' \
+-e 's,[[@]]sysconfdir[[@]],\$(sysconfdir),g' \
+-e 's,[[@]]datadir[[@]],\$(datadir),g' \
+-e 's,[[@]]datarootdir[[@]],\$(datarootdir),g' \
+-e 's,[[@]]libexecdir[[@]],\$(libexecdir),g' \
+-e 's,[[@]]sbindir[[@]],\$(sbindir),g' \
+-e 's,[[@]]bindir[[@]],\$(bindir),g' \
+-e 's,[[@]]prefix[[@]],\$(prefix),g' \
+-e 's,[[@]]exec_prefix[[@]],\$(exec_prefix),g' \
+-e 's,[[@]]pkglibdir[[@]],\$(pkglibdir),g' \
+-e 's,[[@]]pythondir[[@]],\$(pythondir),g' \
+"
+])
 
 AC_SUBST(ac_configure_args)
 
 AC_CONFIG_FILES([Makefile
 util/Makefile
+util/relocation/Makefile
 util/sample_init_scripts/Makefile
 util/sample_init_scripts/genders/Makefile
 util/sample_init_scripts/genders/man/Makefile
@@ -119,9 +148,32 @@ util/sample_init_scripts/genders/sysv/Makefile
 util/sample_init_scripts/genders/sysv/etc/Makefile
 util/sample_init_scripts/genders/sysv/etc/init.d/Makefile
 util/sample_init_scripts/genders/examples/Makefile
-packaging/ovis-trinity.spec
-packaging/ovis-rhine.spec
-packaging/ovis-mon7.spec
-packaging/ovis-mon6.spec
-packaging/ovis-base.spec])
+])
+
+OVIS_EXEC_SCRIPTS(
+	util/relocation/bld_manifest.sh
+	util/relocation/relocate-paths.sh
+	util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/ldmsd
+	util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/ldms-functions
+	util/sample_init_scripts/genders/systemd/ldmsd-pre-systemd
+	util/sample_init_scripts/genders/systemd/ldmsd-wrapper.sh
+	util/sample_init_scripts/genders/sysv/etc/init.d/ldmsd
+	util/sample_init_scripts/genders/sysv/etc/init.d/ldmsd.template
+	util/sample_init_scripts/genders/sysv/ldmsd-pre-sysvinit
+)
+
+AC_CONFIG_COMMANDS([scripts],[ echo fixing script perms.
+for i in $ovis_exec_scripts; do
+	if test -f $ovis_exec_scripts_objdir/$i; then
+		chmod a+x $ovis_exec_scripts_objdir/$i;
+	else
+		echo failing chmod on missing $ovis_exec_scripts_objdir/$i;
+	fi
+done
+],[
+	ovis_exec_scripts="$ovis_exec_scripts"
+	ovis_extra_dist="$ovis_extra_dist"
+	ovis_exec_scripts_objdir="$ac_pwd"
+])
+
 AC_OUTPUT

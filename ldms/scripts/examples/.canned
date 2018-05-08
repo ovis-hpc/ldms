@@ -1,0 +1,40 @@
+# working
+aggl2 # ldms_ls inconsistent, set duplicates at L2
+aggl2simple
+all_example
+array_example
+clock
+lnet_stats
+meminfo
+procdiskstats
+procinterrupts
+procnetdev # produces inconsistent sets
+procsensors # produces 0s (hardcoded path)
+procstat
+vmstat
+sequence_unsupp
+synthetic
+edac
+fptrans
+procnfs
+
+# working with job metrics
+clock.job
+meminfo.job
+procstat.job
+
+# not yet tested
+rabbitv3
+sampler_atasmart
+opa2
+sysclassib
+sysclassib.job
+
+# crashing due to known bugs
+variable
+
+# not yet implemented
+# vmstat.job
+# procnetdev.job
+# lustre2_client # not generically possible due to lustre site specificity
+# all cray samplers # not generically possible due to lustre site specificity

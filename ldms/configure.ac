@@ -114,6 +114,7 @@ OPTION_WITH([pow], [POW], [/usr/local])
 
 
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
+OPTION_DEFAULT_DISABLE([opa2], [ENABLE_OPA2])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
 OPTION_DEFAULT_DISABLE([cray_system_sampler], [ENABLE_CRAY_SYSTEM_SAMPLER])
@@ -291,7 +292,7 @@ if test -z "$ENABLE_RABBITV3_TRUE" ; then
 #endif
 ]])],
 	[AC_DEFINE([HAVE_RABBITMQ],[],[Is librabbitmq >= 0.7.0 available?])],
-	[ AC_MSG_ERROR([librabbitmq version < 0.7 not found])])
+	[ AC_MSG_ERROR([librabbitmq version > 0.7 not found])])
 	AC_LANG_POP([C])
 fi
 
@@ -345,7 +346,7 @@ then
 
 	if test -z "$ENABLE_SPACELESS_NAMES_TRUE"; then
 	   AC_DEFINE([HAVE_SPACELESS_NAMES],[1],[cray_system_sampler: Using spaceless names.])
-        fi
+	fi
 
 	if !(test -z "$ENABLE_GEMINI_GPCDR_TRUE") && !(test -z "$ENABLE_ARIES_GPCDR_TRUE")
 	then
@@ -426,11 +427,43 @@ LIBS=""
 OPTION_GITINFO
 OPTION_HOSTINFO
 
+# define substitutions for configvars and other sed-generated files.
+# note carefully the escapes.
+OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
+-e 's,[[@]]mandir[[@]],\$(mandir),g' \
+-e 's,[[@]]localedir[[@]],\$(localedir),g' \
+-e 's,[[@]]libdir[[@]],\$(libdir),g' \
+-e 's,[[@]]psdir[[@]],\$(psdir),g' \
+-e 's,[[@]]pdfdir[[@]],\$(pdfdir),g' \
+-e 's,[[@]]dvidir[[@]],\$(dvidir),g' \
+-e 's,[[@]]htmldir[[@]],\$(htmldir),g' \
+-e 's,[[@]]infodir[[@]],\$(infodir),g' \
+-e 's,[[@]]docdir[[@]],\$(docdir),g' \
+-e 's,[[@]]includedir[[@]],\$(includedir),g' \
+-e 's,[[@]]localstatedir[[@]],\$(localstatedir),g' \
+-e 's,[[@]]sharedstatedir[[@]],\$(sharedstatedir),g' \
+-e 's,[[@]]sysconfdir[[@]],\$(sysconfdir),g' \
+-e 's,[[@]]datadir[[@]],\$(datadir),g' \
+-e 's,[[@]]datarootdir[[@]],\$(datarootdir),g' \
+-e 's,[[@]]libexecdir[[@]],\$(libexecdir),g' \
+-e 's,[[@]]sbindir[[@]],\$(sbindir),g' \
+-e 's,[[@]]bindir[[@]],\$(bindir),g' \
+-e 's,[[@]]prefix[[@]],\$(prefix),g' \
+-e 's,[[@]]exec_prefix[[@]],\$(exec_prefix),g' \
+-e 's,[[@]]LDMSD_PLUGIN_LIBPATH[[@]],\$(LDMSD_PLUGIN_LIBPATH),g' \
+-e 's,[[@]]ZAP_LIBPATH[[@]],\$(ZAP_LIBPATH),g' \
+-e 's,[[@]]pkglibdir[[@]],\$(pkglibdir),g' \
+-e 's,[[@]]pythondir[[@]],\$(pythondir),g' \
+"
+])
+
 AC_SUBST(ac_configure_args)
 AC_SUBST(configure_input)
 
 dnl handle test generation and chmod
 OVIS_EXEC_SCRIPTS(
+		 scripts/ldms-wrapper
+		 scripts/ldms-static-test.sh
 		 scripts/ldms_ban.sh
 		 scripts/ldms-py-fptrans_test.sh
 		 scripts/ldms_plugins_list.sh
@@ -442,7 +475,6 @@ OVIS_EXEC_SCRIPTS(
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
-		 src/ovis-ldms-configvars.sh
 		 swig/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/lustre/Makefile
@@ -458,7 +490,6 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 etc/systemd/Makefile
 		 python/Makefile
 		 python/ldmsd/Makefile
-		 packaging/ovis-ldms.spec
 		 Doxyfile
 		 scripts/ldmsd
 		 scripts/envldms.sh

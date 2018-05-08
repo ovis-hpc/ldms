@@ -1,8 +1,9 @@
 
 docdir = $(datadir)/doc/@PACKAGE@-@VERSION@/sample_init_scripts/genders/systemd
-EXTRA_DIST = ldmsd-pre-systemd  ldmsd-wrapper.sh ldms-manpatch.sh
+EXTRA_DIST = ldmsd-pre-systemd.in ldmsd-wrapper.sh.in ldms-manpatch.sh
+DISTCLEANFILES = ldmsd-pre-systemd ldmsd-wrapper.sh
 bin_SCRIPTS=
-if ENABLE_LIBGENDERS
+if ENABLE_TOSS_SYSTEMD
 SUBDIRS = etc services
 bin_SCRIPTS+= ldmsd-pre-systemd ldmsd-wrapper.sh
 endif

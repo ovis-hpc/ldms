@@ -420,7 +420,7 @@ static int sample(struct ldmsd_sampler *self)
 	union ldms_value v;
 
 	// My variables
-	FILE * myFile;
+	FILE * myFile = NULL;
 	char * s;
 	char lineBuffer[256];
 	int i;
@@ -455,7 +455,6 @@ static int sample(struct ldmsd_sampler *self)
 		rc = sscanf(lineBuffer, "%" PRIu64, &v.v_u64);
 		if (rc != 1) {
 			rc = EINVAL;
-			fclose(myFile);
 			msglog(LDMSD_LERROR, SAMP ": read as uint64_t failed.\n");
 			edac_valid=0;
 			goto out;
@@ -463,10 +462,13 @@ static int sample(struct ldmsd_sampler *self)
 		ldms_metric_set(set, metric_no, &v);
 		metric_no++;
 		fclose(myFile);
+		myFile = NULL;
 	}
 
 out:
 	rc = ldms_transaction_end(set);
+	if (myFile)
+		fclose(myFile);
 	return rc;
 }
 

@@ -1,0 +1,11 @@
+export plugname=fptrans
+portbase=61014
+LDMSD -p prolog.sampler 1
+LDMSD -p prolog.sampler -p prolog.store2 2
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -l
+SLEEP 5
+KILL_LDMSD 1 2
+file_created $STOREDIR/node/$testname

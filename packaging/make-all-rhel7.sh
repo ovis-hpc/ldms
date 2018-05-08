@@ -1,4 +1,5 @@
 #!/bin/bash -x
+echo "$0 `date`" >> .last-make
 eventname=libevent-2.0.21-stable
 export LOCALEVENT=0 ; # else expect /usr to be a good libevent2
 # we build libevent once, then reinstall it as first built if
@@ -17,7 +18,7 @@ build_subdir=LDMS_objdir
 # full path of where we want things installed
 prefix=`pwd`/LDMS_install
 
-if test -f lib/packaging/ovis-lib-toss.spec.in; then
+if test -f ldms/src/sampler/meminfo.c; then
 	mkdir -p $prefix
 	# Are we at the top?
 	if test -f ldms/configure; then
@@ -81,7 +82,7 @@ if test -f lib/packaging/ovis-lib-toss.spec.in; then
 	cd $build_subdir
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=/badsos
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --disable-swig --enable-authentication --enable-sysclassib --with-pkglibdir=ovis-ldms --enable-libgenders --enable-jobid --enable-llnl-edac"
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --enable-swig --enable-authentication --enable-sysclassib --with-pkglibdir=ovis-ldms --enable-libgenders --enable-jobid --enable-llnl-edac--enable-genderssystemd"
 	../configure $allconfig && \
 	make && \
 	make install && \

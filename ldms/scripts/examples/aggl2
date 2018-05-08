@@ -1,0 +1,17 @@
+# This tests what happens when redundant paths from source to L2 agg occur
+portbase=61300
+export plugname=meminfo
+export storename=store_csv
+LDMSD `seq 4`
+SLEEP 5
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2
+MESSAGE ldms_ls on host 3:
+LDMS_LS 3
+MESSAGE ldms_ls on host 4:
+LDMS_LS 4 -l -v
+SLEEP 5
+KILL_LDMSD `seq 4`
+file_created $STOREDIR/store_csv/meminfo

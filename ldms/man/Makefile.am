@@ -2,8 +2,10 @@
 dist_man8_MANS= \
 ldms_build_install.man \
 ldms_ls.man \
+ldms-static-test.man \
 ldmsd.man \
 ldmsd_exits.man \
+ldms-static-test.man \
 ldmsd_controller.man \
 ldmsctl.man
 
@@ -17,7 +19,12 @@ Plugin_knc_sampler.man \
 Plugin_lnet_stats.man \
 Plugin_meminfo.man \
 Plugin_fptrans.man \
+Plugin_clock.man \
+Plugin_procstat.man \
+Plugin_opa2.man \
+Plugin_sysclassib.man \
 Plugin_jobid.man \
+Plugin_lustre2_client.man \
 Plugin_msr_interlagos.man \
 Plugin_procinterrupts.man \
 Plugin_procnetdev.man \
@@ -32,10 +39,7 @@ dist_man7_MANS += Plugin_all_example.man
 endif
 
 pending_dist_man7_MANS= \
-Plugin_lustre2_client.man \
-Plugin_procsensors.man \
-Plugin_procstat.man \
-Plugin_sysclassib.man
+Plugin_procsensors.man
 
 dist_man7_MANS += Plugin_store_rabbitv3.man
 
