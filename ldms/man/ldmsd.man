@@ -91,7 +91,7 @@ MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
 The given size must be less than 1 petabytes.
 For example, 20M or 20mb are 20 megabytes. The default is adequate for most ldmsd acting in the collector role.
 For aggregating ldmsd, a rough estimate of preallocated memory needed is (Number of nodes aggregated) x (Number of metric sets per node) x 4k.
-Data sets containing arrays may require more.
+Data sets containing arrays may require more. The estimate can be checked by enabling DEBUG logging and examining the mm_stat bytes_used+holes value at ldmsd exit.
 .TP
 .BI -r " pid_file"
 The path to the pid file and prefix of the .version banner file for daemon mode.

@@ -261,20 +261,59 @@ void mm_free(void *d)
 	pthread_mutex_unlock(&mmr->lock);
 }
 
+static int heap_stat(struct rbn *rbn, void *fn_data, int level)
+{
+	struct mm_stat *s = fn_data;
+	struct mm_prefix *mm =
+		container_of(rbn, struct mm_prefix, addr_node);
+	s->chunks++;
+	s->bytes += mm->count;
+	if (mm->count < s->smallest)
+		s->smallest = mm->count;
+	if (mm->count > s->largest)
+		s->largest = mm->count;
+	return 0;
+}
+
+void mm_stats(struct mm_stat *s)
+{
+	if (!s)
+		return;
+	memset(s,0,sizeof(*s));
+	if (!mmr)
+		return;
+	s->size = mmr->size;
+	s->grain = mmr->grain;
+	s->smallest = s->size + 1;
+	rbt_traverse(&mmr->addr_tree, heap_stat, s);
+}
+
 #ifdef MMR_TEST
 int node_count;
-void heap_print(struct rbn *rbn, void *fn_data, int level)
+int heap_print(struct rbn *rbn, void *fn_data, int level)
 {
 	struct mm_prefix *mm =
 		container_of(rbn, struct mm_prefix, addr_node);
-	printf("#%*p[%d]\n", 80 - (level * 20), mm, mm->count);
+	printf("#%*p[%zu]\n", 80 - (level * 20), mm, mm->count);
 	node_count++;
+	return 0;
+}
+
+void print_mm_stats(struct mm_stat *s) {
+	if (!s) {
+		printf("mm_stat: null\n");
+		return;
+	}
+	printf("mm_stat: size=%zu grain=%zu chunks_free=%zu grains_free=%zu grains_largest=%zu grains_smallest=%zu bytes_free=%zu bytes_largest=%zu bytes_smallest=%zu\n",
+	s->size, s->grain, s->chunks, s->bytes, s->largest, s->smallest,
+	s->grain*s->bytes, s->grain*s->largest, s->grain*s->smallest);
 }
 
 int main(int argc, char *argv[])
 {
 	void *b[6];
 	int i;
+	struct mm_stat s;
 	/*
 	 * After init, there is a single free block in the heap.
 	 */
@@ -291,6 +330,9 @@ int main(int argc, char *argv[])
 	rbt_traverse(&mmr->addr_tree, heap_print, NULL);
 	TEST_ASSERT((node_count == 1),
 		    "There is only a single node in the heap after mm_init.\n");
+	mm_stats(&s);
+	print_mm_stats(&s);
+
 	/*
 	 * Allocate six blocks without intervening frees.
 	 */
@@ -303,6 +345,8 @@ int main(int argc, char *argv[])
 		     && (b[4] < b[5])),
 		    "The six allocations are in address-wise "
 		    "increasing order.\n");
+	mm_stats(&s);
+	print_mm_stats(&s);
 
 	/*
 	 * +---++---++---++---++---++---++--~~--+
@@ -314,6 +358,8 @@ int main(int argc, char *argv[])
 	TEST_ASSERT((node_count == 1),
 		    "There is only a single node in the heap "
 		    "after six allocations.\n");
+	mm_stats(&s);
+	print_mm_stats(&s);
 	/*
 	 * free 1,3 and 5. Because there are allocated blocks between
 	 * each of these newly freed blocks, they can't be coelesced.
@@ -331,6 +377,8 @@ int main(int argc, char *argv[])
 	TEST_ASSERT((node_count == 4),
 		    "There are four nodes in the heap "
 		    "after three discontiguous frees.\n");
+	mm_stats(&s);
+	print_mm_stats(&s);
 	/*
 	 * Then free 2. 1F, 2 and 3F should get coelesced.
 	 */
@@ -345,6 +393,8 @@ int main(int argc, char *argv[])
 	TEST_ASSERT((node_count == 3),
 		    "There are three nodes in the heap "
 		    "after a contiguous free coelesces a block.\n");
+	mm_stats(&s);
+	print_mm_stats(&s);
 	/*
 	 * Then free 6, and 5H, 6 and the remainder of the
 	 * heap should get coelesced.
@@ -360,6 +410,8 @@ int main(int argc, char *argv[])
 	TEST_ASSERT((node_count == 2),
 		    "There are two nodes in the heap "
 		    "after a contiguous free coelesces another block.\n");
+	mm_stats(&s);
+	print_mm_stats(&s);
 	/*
 	 * Then free 4, and the heap should have a single
 	 * free block in it.
@@ -376,5 +428,8 @@ int main(int argc, char *argv[])
 		    "There is one node in the heap "
 		    "after a contiguous free coelesces the "
 		    "remaining block.\n");
+	mm_stats(&s);
+	print_mm_stats(&s);
+	return 0;
 }
 #endif
