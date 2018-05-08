@@ -1,0 +1,15 @@
+# This tests simple sampler/l1 agg/l2 agg
+portbase=61300
+export plugname=meminfo
+export storename=store_csv
+LDMSD `seq 3`
+SLEEP 5
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2
+MESSAGE ldms_ls on host 3:
+LDMS_LS 3 -v
+SLEEP 5
+KILL_LDMSD `seq 3`
+file_created $STOREDIR/store_csv/meminfo

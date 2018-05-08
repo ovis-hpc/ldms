@@ -1,5 +1,6 @@
 # working
 aggl2 # ldms_ls inconsistent, set duplicates at L2
+aggl2simple
 all_example
 array_example
 clock
@@ -13,28 +14,26 @@ procstat
 vmstat
 sequence_unsupp
 synthetic
+edac
+fptrans
+procnfs
 
 # working with job metrics
 clock.job
 meminfo.job
-
-# not yet tested with job metrics
-vmstat.job
-procnetdev.job
 procstat.job
 
 # not yet tested
-edac
-fptrans
-procnfs
 rabbitv3
 sampler_atasmart
 sysclassib
 sysclassib.job
 
-# crashing
+# crashing due to known bugs
 variable
 
-# missing
-# lustre2_client
-# all cray samplers
+# not yet implemented
+# vmstat.job
+# procnetdev.job
+# lustre2_client # not generically possible due to lustre site specificity
+# all cray samplers # not generically possible due to lustre site specificity
