@@ -254,13 +254,17 @@ static int create_metric_set(const char *osts)
 	int rc, i, j;
 
 	struct str_list_head *lh = construct_ost_list(osts);
-	if (!lh)
+	if (!lh) {
+		rc = errno;
 		goto err0;
+	}
 
 	/* Done calculating, now it is time to construct set */
 	ldms_schema_t schema = base_schema_new(base);
-	if (!schema)
+	if (!schema) {
+		rc = errno;
 		goto err1;
+	}
 	char suffix[128];
 	for (i = 0; i < OSS_SERVICES_LEN; i++) {
 		sprintf(tmp_path, "/proc/fs/lustre/ost/OSS/%s/stats",
@@ -296,6 +300,7 @@ static int create_metric_set(const char *osts)
 		rc = errno;
 		goto err2;
 	}
+	free_str_list(lh);
 	return 0;
 err2:
 	msglog(LDMSD_LINFO, "lustre_oss.c:create_metric_set@err2\n");
@@ -308,7 +313,7 @@ err1:
 err0:
 	msglog(LDMSD_LDEBUG, "%s:%s@err0\n", __FILE__, __func__);
 	msglog(LDMSD_LDEBUG, "%s:%s: osts: %s\n", __FILE__, __func__, osts);
-	return errno;
+	return rc;
 }
 
 static void term(struct ldmsd_plugin *self)

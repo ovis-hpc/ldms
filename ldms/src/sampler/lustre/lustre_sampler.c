@@ -447,13 +447,19 @@ void free_str_list(struct str_list_head *h)
 
 struct str_list_head* construct_str_list(const char *strlist)
 {
+	if (!strlist) {
+		return NULL;
+	}
 	struct str_list_head *h = calloc(1, sizeof(*h));
-	struct str_list *sl;
-	static const char *delim = ",";
-	if (!strlist)
+	if (!h)
 		return NULL;
 
+	struct str_list *sl = NULL;
+	static const char *delim = ",";
+
 	char *tmp = strdup(strlist);
+	if (!tmp)
+		goto err1;
 	char *s = strtok(tmp, delim);
 	while (s) {
 		sl = calloc(1, sizeof(*sl));
@@ -464,22 +470,29 @@ struct str_list_head* construct_str_list(const char *strlist)
 			goto err1;
 		LIST_INSERT_HEAD(h, sl, link);
 		s = strtok(NULL, delim);
+		sl = NULL;
 	}
 	free(tmp);
 	return h;
 err1:
+	if (sl)
+		free(sl);
 	free_str_list(h);
 	return NULL;
 }
 
 struct str_list_head* construct_dir_list(const char *path)
 {
-	DIR *d;
+	DIR *d = NULL;
 	struct dirent *dir;
+	struct str_list_head *h = calloc(1, sizeof(*h));
+	if (!h) {
+		errno = ENOMEM;
+		goto err0;
+	}
 	d = opendir(path);
 	if (!d)
 		goto err0;
-	struct str_list_head *h = calloc(1, sizeof(*h));
 	struct str_list *sl;
 	while ((dir = readdir(d))) {
 		if (dir->d_type & DT_DIR) {
@@ -495,9 +508,15 @@ struct str_list_head* construct_dir_list(const char *path)
 			LIST_INSERT_HEAD(h, sl, link);
 		}
 	}
+	closedir(d);
 	return h;
 err1:
-	free_str_list(h);
+	if (sl)
+		free(sl);
 err0:
+	if (h)
+		free_str_list(h);
+	if (d)
+		closedir(d);
 	return NULL;
 }
