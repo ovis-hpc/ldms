@@ -360,6 +360,7 @@ err:
 		if (newb->instance_name) {
 			free(newb->instance_name);
 		}
+		free(newb);
 	}
 	errno = ENOMEM;
 	return NULL;
@@ -374,7 +375,7 @@ static int create_schema()
 
 	if (!schema) {
 		msglog(LDMSD_LERROR, SAMP "create_schema: base failed\n");
-		return ENOMEM;
+		return errno;
 	}
 
 	metric_offset = ldms_schema_metric_count_get(schema);
