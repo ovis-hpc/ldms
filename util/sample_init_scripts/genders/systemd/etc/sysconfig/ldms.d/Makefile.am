@@ -10,6 +10,7 @@ dist_doc_DATA = \
 ldmsd \
 ldms-functions \
 ldmsd.local.conf \
+ldmsd.agg.conf \
 README
 endif
 

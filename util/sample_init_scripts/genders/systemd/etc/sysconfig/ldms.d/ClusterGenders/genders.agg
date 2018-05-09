@@ -1,0 +1,6 @@
+twain ldmsaggd=localhost
+twain ldmsd_port=412
+twain ldmsd_store_plugins=store_csv
+twain ldmsd_schemas_store_csv=meminfo:procstat:procnetdev
+twain ldmsd_store_csv=path//tmp/twain-store:altheader/1:rolltype/2:rollover/0
+
