@@ -88,13 +88,16 @@ check_auth_option () {
 	if test -z $LDMS_AUTH_FILE; then
 		echoq "LDMS_AUTH_FILE not set."
 		echoq "Will try running without it (but this is a bad idea)"
+		LDMS_AUTH_TYPE="ovis"
 		LDMS_AUTH_OPT=""
 	else
+		LDMS_AUTH_TYPE="ovis"
 		LDMS_AUTH_OPT="-a"
 		if ! test -f $LDMS_AUTH_FILE; then
 			echoq "LDMS_AUTH_FILE $LDMS_AUTH_FILE not found"
 		fi
 	fi
+	export LDMS_AUTH_TYPE
 	export LDMS_AUTH_OPT
 	export LDMS_AUTH_FILE
 }
