@@ -131,7 +131,7 @@ static int32_t jend_pos = 0;
 #define JI_SIZE 32768
 static char ji_buf[JI_SIZE];
 static int set_meta_new = 0;
-static int nojobidfile = 1;
+static int parse_err_logged = 0;
 static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t js) {
 	int rc = 0;
 	ji->appid = ji->jobid = ji->uid = 0;
@@ -140,25 +140,34 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 	FILE *mf = fopen(file, "r");
 	struct attr_value_list *kvl = NULL;
 	struct attr_value_list *avl = NULL;
+	int recovery = 0;
+	if (parse_err_logged) {
+		recovery = 1;
+	}
 
 	if (!mf) {
-		if (nojobidfile) {
-			nojobidfile = 0;
-			msglog(LDMSD_LINFO,"Could not open the jobid file '%s'\n",
-				procfile);
+		if (!parse_err_logged) {
+			msglog(LDMSD_LINFO,"Could not open the jobid file '%s'\n", procfile);
+			parse_err_logged = 1;
 		}
 		rc = EINVAL;
 		goto err;
 	}
 	rc = fseek(mf, 0, SEEK_END);
 	if (rc) {
-		msglog(LDMSD_LINFO,"Could not seek '%s'\n", procfile);
+		if (!parse_err_logged) {
+			msglog(LDMSD_LINFO,"Could not seek '%s'\n", file);
+			parse_err_logged = 1;
+		}
 		goto err;
 	}
 	long flen = ftell(mf);
 	if (flen >= JI_SIZE) {
 		rc = E2BIG;
-		msglog(LDMSD_LINFO,"File %s too big (>%d).\n", procfile, JI_SIZE);
+		if (!parse_err_logged) {
+			msglog(LDMSD_LINFO,"File %s too big (>%d).\n", file, JI_SIZE);
+			parse_err_logged = 1;
+		}
 		goto err;
 	}
 	rewind(mf);
@@ -183,6 +192,10 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 	av_free(kvl);
 	kvl = NULL;
 	if (rc) {
+		if (!parse_err_logged) {
+			msglog(LDMSD_LERROR,"Fail tokenizing '%s'\n", file);
+			parse_err_logged = 1;
+		}
 		goto err;
 	}
 
@@ -194,11 +207,21 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 		errno = 0;
 		j = strtoull(tmp, &endp, 0);
 		if (endp == tmp || errno) {
-			msglog(LDMSD_LERROR,"Fail parsing JOBID '%s'\n", tmp);
+			if (!parse_err_logged) {
+				msglog(LDMSD_LERROR,"Fail parsing JOBID '%s'\n", tmp);
+				parse_err_logged = 1;
+			}
 			rc = EINVAL;
+			goto err;
 		}
 		ji->jobid = j;
 	} else {
+		if (!parse_err_logged) {
+			msglog(LDMSD_LERROR,"JOBID= missing from '%s'\n", file);
+			parse_err_logged = 1;
+		}
+		rc = EINVAL;
+		goto err;
 		ji->jobid = 0;
 	}
 
@@ -209,8 +232,13 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 		errno = 0;
 		j = strtoull(tmp, &endp, 0);
 		if (endp == tmp || errno) {
-			msglog(LDMSD_LINFO,"Fail parsing UID '%s'\n", tmp);
+			if (!parse_err_logged) {
+				msglog(LDMSD_LINFO,"Fail parsing UID '%s'\n",
+					tmp);
+				parse_err_logged = 1;
+			}
 			rc = EINVAL;
+			goto err;
 		}
 		ji->uid = j;
 	} else {
@@ -224,7 +252,13 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 		j = strtoull(tmp, &endp, 0);
 		if (endp == tmp || errno) {
 			msglog(LDMSD_LINFO,"Fail parsing APPID '%s'\n", tmp);
+			if (!parse_err_logged) {
+				msglog(LDMSD_LINFO,"Fail parsing APPID '%s'\n",
+					tmp);
+				parse_err_logged = 1;
+			}
 			rc = EINVAL;
+			goto err;
 		}
 		ji->appid = j;
 	} else {
@@ -234,7 +268,11 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 	tmp = av_value(avl, "USER");
 	if (tmp) {
 		if (strlen(tmp) >= LJI_USER_NAME_MAX) {
-			msglog(LDMSD_LINFO,"Username too long '%s'\n", tmp);
+			if (!parse_err_logged) {
+				msglog(LDMSD_LINFO,"Username too long '%s'\n",
+					tmp);
+				parse_err_logged = 1;
+			}
 			rc = EINVAL;
 		} else {
 			strcpy(ji->user, tmp);
@@ -243,6 +281,10 @@ static int parse_jobinfo(const char* file, struct ldms_job_info *ji, ldms_set_t 
 		strcpy(ji->user, "root");
 	}
 
+	if (!rc && recovery) {
+		msglog(LDMSD_LDEBUG, "jobid parse recovered for '%s'\n", file);
+		parse_err_logged = 0;
+	}
 	goto out;
 err:
 	strcpy(ji->user, "root");
@@ -283,7 +325,8 @@ out:
 	return rc;
 }
 
-static int create_metric_set(const char *instance_name, char* schema_name)
+static int create_metric_set(const char *instance_name, char* schema_name,
+	uid_t uid, gid_t gid, int perm, int set_array_card)
 {
 	int rc = 0;
 
@@ -349,6 +392,11 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 		goto err;
 	}
 	jend_pos = rc;
+	rc = ldms_schema_array_card_set(schema, set_array_card);
+	if (rc < 0) {
+		errno = rc;
+		goto err;
+	}
 
 	set = ldms_set_new(instance_name, schema);
 	if (!set) {
@@ -358,12 +406,23 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	}
 	set_meta_new = 1;
 
+	ldms_set_config_auth(set, uid, gid, perm);
+	rc = ldms_set_publish(set);
+	if (rc) {
+		msglog(LDMSD_LERROR, SAMP ": ldms_set_publish fail.\n");
+		errno = rc;
+		goto err;
+	} else {
+		ldmsd_set_register(set, SAMP);
+	}
+
+
 	/*
 	 * Process the file to init jobid.
 	 */
-	rc = parse_jobinfo(procfile, &ji, set);
+	(void)parse_jobinfo(procfile, &ji, set);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": parse_jobinfo fail ignored;"
+		msglog(LDMSD_LERROR, SAMP ": first parse_jobinfo fail ignored;"
 			"expect 0/root data values. Queue system silent?\n");
 	}
 	return 0;
@@ -372,6 +431,10 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	if (set) {
 		ldms_set_delete(set);
 		set = NULL;
+	}
+	if (schema) {
+		ldms_schema_delete(schema);
+		schema = NULL;
 	}
 	msglog(LDMSD_LDEBUG, SAMP ": rc=%d: %s.\n", rc, strerror(-rc));
 	return -rc;
@@ -474,7 +537,20 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 
 
-	rc = create_metric_set(iname, sname);
+	uid_t uid;
+	gid_t gid;
+	int perm;
+	value = av_value(avl, "uid");
+	uid = (value)?(strtol(value, NULL, 0)):(-1);
+	value = av_value(avl, "gid");
+	gid = (value)?(strtol(value, NULL, 0)):(-1);
+	value = av_value(avl, "perm");
+	perm = (value)?(strtol(value, NULL, 0)):(0777);
+	value = av_value(avl, "set_array_card");
+	int set_array_card = (value)?(strtol(value, NULL, 0)):(1);
+
+
+	rc = create_metric_set(iname, sname, uid, gid, perm, set_array_card);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		return rc;
@@ -528,12 +604,14 @@ int ldms_job_info_get(struct ldms_job_info *ji, unsigned flags)
 
 static void term(struct ldmsd_plugin *self)
 {
+	if (set) {
+		ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
+		ldms_set_delete(set);
+	}
+	set = NULL;
 	if (schema)
 		ldms_schema_delete(schema);
 	schema = NULL;
-	if (set)
-		ldms_set_delete(set);
-	set = NULL;
 
 	if (metric_name && metric_name != JOBID_COLNAME ) {
 		free(metric_name);

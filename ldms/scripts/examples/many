@@ -1,0 +1,8 @@
+portbase=61076
+MESSAGE starting agg and two collectors
+JOBDATA $TESTDIR/job.data 1 2 3
+LDMSD -p prolog.jobidinfo `seq 3`
+LDMS_LS 1
+SLEEP 15
+KILL_LDMSD `seq 3`
+MESSAGE logs and data under ${TESTDIR}
