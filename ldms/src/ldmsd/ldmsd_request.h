@@ -297,10 +297,11 @@ typedef struct ldmsd_req_attr_s {
  *
  * \param cfg A string containing the configuaration command text
  * \param msg_no The next unique message number
+ * \param pf Destination for error messages.
  *
  * \return The request parsed from the string
  */
-ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no);
+ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, ldmsd_msg_log_f pf);
 
 /**
  * \brief Convert a command string to the request ID.
