@@ -342,6 +342,7 @@ struct recv_arg *__recv_arg_find(ldms_t x)
         while (arg) {
                 if (arg->x == x)
                         goto out;
+                arg = LIST_NEXT(arg, entry);
         }
 out:
         return arg;
