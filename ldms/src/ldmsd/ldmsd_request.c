@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2017 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015-2017 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2018 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -3684,6 +3684,7 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *level_s = NULL;
 	size_t cnt = 0;
+	int is_test = 0;
 
 	level_s = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_LEVEL);
 	if (!level_s) {
@@ -3702,13 +3703,18 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
 		goto out;
 	}
 
-#ifdef DEBUG
-	ldmsd_log(LDMSD_LDEBUG, "TEST DEBUG\n");
-	ldmsd_log(LDMSD_LINFO, "TEST INFO\n");
-	ldmsd_log(LDMSD_LERROR, "TEST ERROR\n");
-	ldmsd_log(LDMSD_LCRITICAL, "TEST CRITICAL\n");
-	ldmsd_log(LDMSD_LALL, "TEST SUPREME\n");
-#endif /* DEBUG */
+	if (ldmsd_req_attr_keyword_exist_by_id(reqc->req_buf, LDMSD_ATTR_TEST))
+		is_test = 1;
+
+	if (is_test) {
+		ldmsd_log(LDMSD_LDEBUG, "TEST DEBUG\n");
+		ldmsd_log(LDMSD_LINFO, "TEST INFO\n");
+		ldmsd_log(LDMSD_LWARNING, "TEST WARNING\n");
+		ldmsd_log(LDMSD_LERROR, "TEST ERROR\n");
+		ldmsd_log(LDMSD_LCRITICAL, "TEST CRITICAL\n");
+		ldmsd_log(LDMSD_LALL, "TEST ALWAYS\n");
+	}
+
 out:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (level_s)
