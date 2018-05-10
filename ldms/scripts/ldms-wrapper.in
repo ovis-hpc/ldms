@@ -1,0 +1,28 @@
+#! /bin/sh
+# this solves the rpm relocatability problem of toss for ldms sbin programs
+# when installed appropriately.
+# Appropriately:
+# 1 all ovis sbin/x files are renamed sbin/.x
+# 2 this file is installed
+# 3 for all x, a symlink to this file is made named x
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+export PYTHONPATH=@pythondir@
+. $libdir/ovis-lib-configvars.sh
+. $libdir/ovis-ldms-configvars.sh
+if test -z "$ZAP_LIBPATH"; then
+	ZAP_LIBPATH=$ovis_lib_plugins
+fi
+export ZAP_LIBPATH
+if test -z "$LDMSD_PLUGIN_LIBPATH"; then
+	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins:$ovis_lib_plugins
+fi
+export LDMSD_PLUGIN_LIBPATH
+LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$ovis_lib_plugins:$LD_LIBRARY_PATH
+bname=`basename $0`
+if test -x $ovis_ldms_sbindir/$bname; then
+	$ovis_ldms_pkglibdir/$bname $*
+else
+	echo "$0: $ovis_ldms_sbindir/.ldms-wrapper: missing or unexpected $bname"
+fi

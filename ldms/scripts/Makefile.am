@@ -3,6 +3,7 @@
 EXTRA_DIST=@OVIS_EXTRA_DIST@ examples
 
 if ENABLE_SCRIPTS
+sbin_SCRIPTS= ldms-wrapper
 bin_SCRIPTS= envldms.sh
 bin_SCRIPTS += ldms-static-test.sh
 
@@ -33,6 +34,9 @@ install-data-local:
 		echo $$(basename $$f) >> $$uf; \
 	done
 	$(INSTALL_DATA) $(srcdir)/examples/.canned $(DESTDIR)$(docdir)$(OPV)/examples/static-test
+
+install-exec-hook:
+	mv $(DESTDIR)/$(sbindir)/ldms-wrapper $(DESTDIR)/$(sbindir)/.ldms-wrapper
 
 uninstall-local:
 	echo removing files:
