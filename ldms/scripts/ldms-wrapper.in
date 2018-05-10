@@ -22,7 +22,7 @@ export LDMSD_PLUGIN_LIBPATH
 LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$ovis_lib_plugins:$LD_LIBRARY_PATH
 bname=`basename $0`
 if test -x $ovis_ldms_sbindir/$bname; then
-	$ovis_ldms_sbindir/.$bname $*
+	$ovis_ldms_pkglibdir/$bname $*
 else
 	echo "$0: $ovis_ldms_sbindir/.ldms-wrapper: missing or unexpected $bname"
 fi
