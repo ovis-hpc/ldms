@@ -322,6 +322,7 @@ static int set_cfg( struct hfi_port_comb *hpc)
 		msglog(LDMSD_LERROR, SAMP "set_new failed for %s\n", inst);
 		return errno;
 	}
+	ldms_set_producer_name_set(hpc->set, producer_name);
 	return 0;
 }
 
