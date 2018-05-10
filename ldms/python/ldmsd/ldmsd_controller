@@ -895,7 +895,8 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         Quit the LDMSD shell
         """
-        self.ctrl.close()
+        if self.ctrl:
+            self.ctrl.close()
         return True
 
     def do_oneshot(self, arg):
