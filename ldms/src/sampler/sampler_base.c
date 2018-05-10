@@ -257,6 +257,7 @@ ldms_set_t base_set_new(base_data_t base)
 		ldms_set_delete(base->set);
 		base->set = NULL;
 		errno = rc;
+		return NULL;
 	}
 	ldmsd_set_register(base->set, base->pi_name);
 	return base->set;
