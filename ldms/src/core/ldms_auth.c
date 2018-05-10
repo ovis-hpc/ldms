@@ -71,11 +71,15 @@ ldms_auth_plugin_t ldms_auth_plugin_get(const char *name)
 		goto err;
 	}
 	d = dlopen(libname, RTLD_NOW);
-	if (!d)
+	if (!d) {
+		errno = ENOENT;
 		goto err;
+	}
 	f = dlsym(d, "__ldms_auth_plugin_get");
-	if (!f)
+	if (!f) {
+		errno = ENOENT;
 		goto err;
+	}
 	p = f();
 	if (!p)
 		goto err;

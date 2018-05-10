@@ -497,10 +497,10 @@ int process_config_file(const char *path, int *lno)
 	char *env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
 	if (env) {
 		cfg_buf_len = strtol(env, NULL, 0);
-		if (cfg_buf_len < LDMSD_MIN_CONFIG_STR_LEN || 
+		if (cfg_buf_len < LDMSD_MIN_CONFIG_STR_LEN ||
 			cfg_buf_len > LDMSD_HUGE_CONFIG_STR_LEN) {
 			ldmsd_log(LDMSD_LERROR, "env(LDMSD_MAX_CONFIG_STR_LEN) %zu too %s\n",
-				cfg_buf_len, (cfg_buf_len < LDMSD_MIN_CONFIG_STR_LEN 
+				cfg_buf_len, (cfg_buf_len < LDMSD_MIN_CONFIG_STR_LEN
 						? "small" : "big"));
 			cfg_buf_len = LDMSD_DEF_CONFIG_STR_LEN;
 		}
@@ -663,8 +663,15 @@ ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
 		port_no = atoi(port_str);
 	l = ldms_xprt_new_with_auth(xprt_str, ldmsd_linfo, auth_name, auth_opt);
 	if (!l) {
-		ldmsd_log(LDMSD_LERROR, "The transport specified, "
-				"'%s', is invalid. Check setting of ZAP_LIBPATH\n", xprt_str);
+		ldmsd_log(LDMSD_LERROR,
+			  "'%s' transport creation with auth '%s' "
+			  "failed, error: %s(%d). Please check transpot "
+			  "configuration, authentication configuration, "
+			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.",
+			  xprt_str,
+			  auth_name,
+			  ovis_errno_abbvr(errno),
+			  errno);
 		cleanup(6, "error creating transport");
 	}
 	sin.sin_family = AF_INET;
