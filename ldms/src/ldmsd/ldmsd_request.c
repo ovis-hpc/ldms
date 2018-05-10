@@ -2720,6 +2720,7 @@ static int updtr_match_del_handler(ldmsd_req_ctxt_t reqc)
 	case -ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The specified regex does not match any condition.");
+		reqc->errcode = -reqc->errcode;
 		break;
 	case EINVAL:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
