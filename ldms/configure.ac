@@ -447,6 +447,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms-meminfo.sh
 		 scripts/ldms_local_opa2test.sh
 		 scripts/ldms-l2_test.sh
+		 scripts/ldms-wrapper
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile

@@ -311,6 +311,10 @@ if test "x$LDMSD_USE_UNIX_SOCK" = "xyes"; then
 	LDMSD_SOCK_OPT="-S"
 	sockdir=`dirname $LDMSD_SOCKPATH`
 	mkdir -p $sockdir 2>/dev/null
+	logger syslog.err "LDMSD_USE_UNIX_SOCK is not supported by ldmsd in this release."
+	LDMSD_SOCK_OPT=""
+	unset LDMSD_SOCKPATH
+	# the unix socket option is not yet available in v4.
 else
 	LDMSD_SOCK_OPT=""
 	unset LDMSD_SOCKPATH
@@ -339,12 +343,22 @@ fi
 
 if test -z "$LDMSD_CONFIG_PORT"; then
 	LDMSD_CONFIG_PORT=`$NODEATTR $NODEATTRFILE -v $host ldmsd_config_port 2>/dev/null`
+	LDMSD_CONFIG_PORT="sock:$LDMSD_CONFIG_PORT"
+else
+	case $LDMSD_CONFIG_PORT in
+	sock:*)
+		;;
+	*)
+		LDMSD_CONFIG_PORT="sock:$LDMSD_CONFIG_PORT"
+		;;
+	esac
+		
 fi
 
 if test "x$LDMSD_USE_INET_SOCK" = "xyes"; then
-	LDMSD_INET_OPT="-p"
+	LDMSD_INET_OPT="-x"
 	if test -z "LDMSD_CONFIG_PORT"; then
-		LDMSD_CONFIG_PORT="410"
+		LDMSD_CONFIG_PORT="sock:410"
 	fi
 else
 	LDMSD_INET_OPT=""

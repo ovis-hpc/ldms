@@ -664,7 +664,7 @@ ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
 	l = ldms_xprt_new_with_auth(xprt_str, ldmsd_linfo, auth_name, auth_opt);
 	if (!l) {
 		ldmsd_log(LDMSD_LERROR, "The transport specified, "
-				"'%s', is invalid.\n", xprt_str);
+				"'%s', is invalid. Check setting of ZAP_LIBPATH\n", xprt_str);
 		cleanup(6, "error creating transport");
 	}
 	sin.sin_family = AF_INET;
