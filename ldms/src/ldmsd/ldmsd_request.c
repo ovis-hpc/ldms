@@ -4181,11 +4181,11 @@ int ldmsd_set_info_request(ldmsd_prdcr_t prdcr,
 	rc = __ldmsd_append_buffer(rcmd->reqc, (char *)&attr, sizeof(attr),
 					LDMSD_REQ_SOM_F, LDMSD_REQ_TYPE_CONFIG_CMD);
 	if (rc)
-		return rc;
+		goto out;
 	rc = __ldmsd_append_buffer(rcmd->reqc, inst_name, inst_name_len,
 						0, LDMSD_REQ_TYPE_CONFIG_CMD);
 	if (rc)
-		return rc;
+		goto out;
 
 	/* Keyword type to specify that this is an internal request */
 	attr.attr_id = LDMSD_ATTR_TYPE;
@@ -4195,12 +4195,19 @@ int ldmsd_set_info_request(ldmsd_prdcr_t prdcr,
 	rc = __ldmsd_append_buffer(rcmd->reqc, (char *)&attr, sizeof(attr),
 						0, LDMSD_REQ_TYPE_CONFIG_CMD);
 	if (rc)
-		return rc;
+		goto out;
 
 	/* Terminating discrim */
 	attr.discrim = 0;
 	rc = __ldmsd_append_buffer(rcmd->reqc, (char *)&attr.discrim, sizeof(uint32_t),
 					LDMSD_REQ_EOM_F, LDMSD_REQ_TYPE_CONFIG_CMD);
+out:
+	if (rc) {
+		/* rc is not zero only if sending fails (a transport error) so
+		 * no need to keep the request command context around */
+		free_req_cmd_ctxt(rcmd);
+	}
+
 	return rc;
 }
 
@@ -4375,6 +4382,7 @@ static int set_info_handler(ldmsd_req_ctxt_t reqc)
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
 						"ldmsd: Out of memory");
 			ldmsd_send_req_response(reqc, reqc->line_buf);
+			goto err0;
 		}
 		ctxt->is_internal = is_internal;
 		ctxt->my_info = malloc(cnt + 1);
@@ -4383,6 +4391,7 @@ static int set_info_handler(ldmsd_req_ctxt_t reqc)
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
 						"ldmsd: Out of memory");
 			ldmsd_send_req_response(reqc, reqc->line_buf);
+			goto err1;
 		}
 		memcpy(ctxt->my_info, reqc->line_buf, cnt + 1);
 		rc = ldmsd_set_info_request(info->prd_set->prdcr,
@@ -4394,6 +4403,7 @@ static int set_info_handler(ldmsd_req_ctxt_t reqc)
 					"prdcr '%s'", ldmsd_myhostname_get(),
 					info->origin_name);
 			ldmsd_send_req_response(reqc, reqc->line_buf);
+			goto err2;
 		}
 	} else {
 		attr.attr_id = LDMSD_ATTR_JSON;
@@ -4409,6 +4419,12 @@ static int set_info_handler(ldmsd_req_ctxt_t reqc)
 				sizeof(uint32_t),
 				LDMSD_REQ_EOM_F, LDMSD_REQ_TYPE_CONFIG_RESP);
 	}
+	return 0;
+err2:
+	free(ctxt->my_info);
+err1:
+	free(ctxt);
+err0:
 	ldmsd_set_info_delete(info);
 out:
 	return rc;
