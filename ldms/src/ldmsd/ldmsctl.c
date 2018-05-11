@@ -156,7 +156,6 @@ static void ldmsctl_log(enum ldmsd_loglevel level, const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
-	printf(stdout,"L=%d: ",level);
 	vfprintf(stdout, fmt, ap);
 	va_end(ap);
 }
