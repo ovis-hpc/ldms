@@ -147,12 +147,16 @@ function LDMSD {
 		if test -f $input.$i -a -r $input.$i; then
 			if test "$usevg" = "1"; then
 				if test -z "$VG"; then
-					VG=valgrind
+					XVG=valgrind
+				else
+					XVG=$VG
 				fi
 				if test -z "$VGARGS"; then
-					VGARGS="-v --log-file=${LOGDIR}/vg.$i"
+					XVGARGS="-v --log-file=${LOGDIR}/vg.$i"
+				else
+					XVGARGS="-v --log-file=${LOGDIR}/vg.$i $VGARGS"
 				fi
-				wrap="$VG $VGARGS"
+				wrap="$XVG $XVGARGS"
 			else
 				wrap=""
 			fi
