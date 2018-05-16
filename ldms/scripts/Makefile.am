@@ -7,7 +7,7 @@ sbin_SCRIPTS= ldms-wrapper
 bin_SCRIPTS= envldms.sh
 bin_SCRIPTS += ldms-static-test.sh
 
-DISTCLEANFILES = $(bin_SCRIPTS)
+DISTCLEANFILES = $(bin_SCRIPTS) $(sbin_SCRIPTS)
 OPV=-$(PACKAGE_VERSION)
 
 bin_SCRIPTS += ldms_ban.sh
@@ -43,4 +43,5 @@ uninstall-local:
 	done < $(DESTDIR)$(docdir)$(OPV)/examples/static-test/.uninst.ldms
 	$(RM) $(DESTDIR)$(docdir)$(OPV)/examples/static-test/.canned
 	$(RM) $(DESTDIR)$(docdir)$(OPV)/examples/static-test/.uninst.ldms
+	$(RM) $(DESTDIR)/$(sbindir)/.ldms-wrapper
 endif
