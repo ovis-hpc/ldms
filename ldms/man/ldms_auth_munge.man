@@ -1,0 +1,24 @@
+.\" Manpage for ldms_auth_munge
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "10 May 2018" "v4" "ldms_auth_munge"
+
+
+.SH NAME
+ldms_auth_munge \- LDMS authentication using munge
+
+
+.SH SYNOPSIS
+.HP
+.I ldms_app
+.BI "-a munge [-A socket=" PATH ]
+
+
+.SH DESCRIPTION
+\fBldms_auth_munge\fR relies on \fBmunge\fR service (see \fBmunge\fR(7)) to
+authenticate users. Munge daemon (\fBmunged\fR) must be up and running. The
+optional \fBsocket\fR option can be used to specify the path to munged unix
+domain socket in the case that munged wasn't using the default path.
+
+
+.SH SEE ALSO
+\fBmunge\fR(7), \fBmunged\fR(8)
