@@ -266,6 +266,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 	return set;
 }
 
+static int logdisappeared = 1;
 static int sample(struct ldmsd_sampler *self)
 {
 	int rc;
@@ -281,10 +282,30 @@ static int sample(struct ldmsd_sampler *self)
 	}
 	ldms_transaction_begin(set);
 
-	LJI_SAMPLE(set, 1);
 
 	metric_no = metric_offset;
-	fseek(mf, 0, SEEK_SET);
+	if (mf) {
+		rc = fseek(mf, 0, SEEK_SET);
+	} else {
+		rc = ENOENT;
+	}
+	if (rc) {
+		/* /proc/meminfo is temporarily a goner. may reappear */
+		if (logdisappeared) {
+			msglog(LDMSD_LERROR, SAMP ": %s disappeared.\n", procfile);
+			logdisappeared = 0;
+		}
+		if (mf)
+			fclose(mf);
+		mf = fopen(procfile, "r");
+		if (!mf) {
+			msglog(LDMSD_LINFO, SAMP ": %s reopen fail.\n", procfile);
+			goto out;
+		}
+	}
+	logdisappeared = 1;
+
+	LJI_SAMPLE(set, 1);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)

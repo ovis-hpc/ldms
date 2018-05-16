@@ -248,6 +248,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return 0;
 }
 
+static int logdisappear = 1;
 static int sample(struct ldmsd_sampler *self)
 {
 	int rc;
@@ -261,10 +262,34 @@ static int sample(struct ldmsd_sampler *self)
 		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
+	if (!mf) {
+		mf = fopen(procfile, "r");
+		if (!mf) {
+			if (logdisappear) {
+				msglog(LDMSD_LERROR, SAMP ": Disappeared %s.\n",
+					procfile);
+				logdisappear = 0;
+			}
+			return 0;
+		}
+	}
+
+	rc = fseek(mf, 0, SEEK_SET);
+	if (rc) {
+		fclose(mf);
+		mf = NULL;
+		if (logdisappear) {
+			msglog(LDMSD_LERROR, SAMP ": Disappeared %s.\n",
+				procfile);
+			logdisappear = 0;
+		}
+		rc = 0;
+		goto out;
+	}
+	logdisappear = 1;
 	ldms_transaction_begin(set);
-	LJI_SAMPLE(set,1);
 	metric_no = metric_offset;
-	fseek(mf, 0, SEEK_SET);
+	LJI_SAMPLE(set,1);
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)

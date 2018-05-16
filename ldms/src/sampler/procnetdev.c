@@ -315,13 +315,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 }
 
+static int logdisappeared = 1;
 static int sample(struct ldmsd_sampler *self)
 {
 	char *s;
 	char lbuf[256];
 	char curriface[20];
 	union ldms_value v[NVARS];
-	int i, j, metric_no;
+	int i, j, metric_no, rc;
 
 	if (!set){
 		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
@@ -333,11 +334,18 @@ static int sample(struct ldmsd_sampler *self)
 	if (!mf) {
 		msglog(LDMSD_LERROR, "Could not open /proc/net/dev file "
 				"'%s'...exiting\n", procfile);
-		return ENOENT;
+		return 0;
 	}
 
 	metric_no = metric_offset;
-	fseek(mf, 0, SEEK_SET); //seek should work if get to EOF
+	rc = fseek(mf, 0, SEEK_SET); //seek should work if get to EOF
+	if (rc) {
+		fclose(mf);
+		mf = NULL;
+		msglog(LDMSD_LERROR, SAMP ": /proc/net/dev disappeared.");
+		logdisappeared = 0;
+		return 0;
+	}
 	int usedifaces = 0;
 	s = fgets(lbuf, sizeof(lbuf), mf);
 	s = fgets(lbuf, sizeof(lbuf), mf);
@@ -391,6 +399,7 @@ static int sample(struct ldmsd_sampler *self)
 		} /* end for*/
 	} while (s);
 	ldms_transaction_end(set);
+	logdisappeared = 1;
 
 	return 0;
 }
