@@ -136,19 +136,27 @@ function LDMSD {
 		binname=ldmsd.${ports[$i]}
 		pkill -9 $binname
 		/bin/rm -f $LDMSD_RUN/$binname
-		ln -s ${BUILDDIR}/sbin/ldmsd $LDMSD_RUN/$binname
+		if test -f $pkglibdir/ldmsd; then
+			ln -s $pkglibdir/ldmsd $LDMSD_RUN/$binname
+		else
+			ln -s ${BUILDDIR}/sbin/ldmsd $LDMSD_RUN/$binname
+		fi
 	done
 	for i in $*; do
 		export i
 		if test -f $input.$i -a -r $input.$i; then
 			if test "$usevg" = "1"; then
 				if test -z "$VG"; then
-					VG=valgrind
+					XVG=valgrind
+				else
+					XVG=$VG
 				fi
 				if test -z "$VGARGS"; then
-					VGARGS="-v --log-file=${LOGDIR}/vg.$i"
+					XVGARGS="-v --log-file=${LOGDIR}/vg.$i"
+				else
+					XVGARGS="-v --log-file=${LOGDIR}/vg.$i $VGARGS"
 				fi
-				wrap="$VG $VGARGS"
+				wrap="$XVG $XVGARGS"
 			else
 				wrap=""
 			fi
@@ -289,6 +297,7 @@ if test ! -x $BUILDDIR/sbin/ldmsd; then
 	echo "can't find ldmsd binary. set destdir in $0 before testing?"
 	exit 1
 fi
+if test "$allowroot" = "0"; then
 case "x$USER" in
 	x)
 	echo "must be run in user environment. USER not set"
@@ -301,6 +310,7 @@ case "x$USER" in
 	exit 1
 	;;
 esac
+fi
 
 # use our pid in dirname to prevent collisions in dir & file naming
 export STOREDIR=$TESTDIR/store
