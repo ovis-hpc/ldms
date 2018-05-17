@@ -305,6 +305,7 @@ PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
 PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
 	PRIu64 " %" PRIu64 " %" PRIu64 " %s\n"
 
+static int logdisappear = 1;
 static int sample(struct ldmsd_sampler *self)
 {
 	int rc, i;
@@ -316,11 +317,30 @@ static int sample(struct ldmsd_sampler *self)
 		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
+	if (!mf) {
+		/* it was there in config, so disappear may be temporary*/
+		mf = fopen(procfile, "r");
+		if (!mf)
+			return 0;
+	}
+
+	rc = fseek(mf, 0, SEEK_SET);
+	if (rc) {
+		if (logdisappear) {
+			msglog(LDMSD_LERROR, SAMP ": %s disappeared.\n",
+				procfile);
+			logdisappear = 0;
+		}
+		fclose(mf);
+		mf = NULL;
+		return 0;
+	} else {
+		logdisappear = 1;
+	}
 	ldms_transaction_begin(set);
 
 	LJI_SAMPLE(set, 1);
 
-	fseek(mf, 0, SEEK_SET);
 	/*
 	 * Format of the file is well known --
 	 * We want lines 1 and 3 (starting with 0)
