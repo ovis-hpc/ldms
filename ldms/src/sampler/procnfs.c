@@ -305,6 +305,7 @@ PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
 PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
 	PRIu64 " %" PRIu64 " %" PRIu64 " %s\n"
 
+static int nfs3_warn_once = 1;
 static int logdisappear = 1;
 static int sample(struct ldmsd_sampler *self)
 {
@@ -345,47 +346,54 @@ static int sample(struct ldmsd_sampler *self)
 	 * Format of the file is well known --
 	 * We want lines 1 and 3 (starting with 0)
 	 */
-	int currlinenum = 0;
+	int found = 0;
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
 
 		char junk[5][100];
-		switch (currlinenum) {
-			case 1:
-				rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 "%s\n",
-						junk[0], &v[0].v_u64, &v[1].v_u64, junk[1]);
-				if (rc != 4) {
-					rc = EINVAL;
-					goto out;
-				}
-				ldms_metric_set(set, (0 + metric_offset), &v[0]);
-				ldms_metric_set(set, (1 + metric_offset), &v[1]);
-				break;
-			case 3:
-				rc = sscanf(lbuf, LINE_FMT,
-						junk[0], junk[1], junk[2], &v[2].v_u64,
-						&v[3].v_u64, &v[4].v_u64, &v[5].v_u64,
-						&v[6].v_u64, &v[7].v_u64, &v[8].v_u64,
-						&v[9].v_u64, &v[10].v_u64, &v[11].v_u64,
-						&v[12].v_u64, &v[13].v_u64,	&v[14].v_u64,
-						&v[15].v_u64, &v[16].v_u64, &v[17].v_u64,
-						&v[18].v_u64, &v[19].v_u64, &v[20].v_u64,
-						&v[21].v_u64, &v[22].v_u64, junk[3]);
-				if (rc < 24) {
-					rc = EINVAL;
-					goto out;
-				}
-				for (i = 2; i < 23; i++)
-					ldms_metric_set(set, (i+metric_offset), &v[i]);
-				break;
-			default:
-				break;
+		if (strncmp(s,"rpc ", 4) == 0) {
+			rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 "%s\n",
+					junk[0], &v[0].v_u64, &v[1].v_u64, junk[1]);
+			if (rc != 4) {
+				rc = EINVAL;
+				msglog(LDMSD_LERROR, SAMP ": rpc fail " PROC_FILE "\n");
+				goto out;
+			}
+			ldms_metric_set(set, (0 + metric_offset), &v[0]);
+			ldms_metric_set(set, (1 + metric_offset), &v[1]);
+			found++;
 		}
-		currlinenum++;
+		if (strncmp(s,"proc3 ", 6) == 0) {
+			rc = sscanf(lbuf, LINE_FMT,
+				junk[0], junk[1], junk[2], &v[2].v_u64,
+				&v[3].v_u64, &v[4].v_u64, &v[5].v_u64,
+				&v[6].v_u64, &v[7].v_u64, &v[8].v_u64,
+				&v[9].v_u64, &v[10].v_u64, &v[11].v_u64,
+				&v[12].v_u64, &v[13].v_u64, &v[14].v_u64,
+				&v[15].v_u64, &v[16].v_u64, &v[17].v_u64,
+				&v[18].v_u64, &v[19].v_u64, &v[20].v_u64,
+				&v[21].v_u64, &v[22].v_u64, junk[3]);
+			if (rc < 24) {
+				rc = EINVAL;
+				msglog(LDMSD_LERROR, SAMP ": proc3 fail " PROC_FILE "\n");
+				goto out;
+			}
+			for (i = 2; i < 23; i++) {
+				ldms_metric_set(set, (i+metric_offset), &v[i]);
+			}
+			found++;
+		}
 	} while (s); /* must get to EOF for the switch to work */
 	rc = 0;
+	if (found != 2) {
+		if (nfs3_warn_once) {
+			nfs3_warn_once = 0;
+			msglog(LDMSD_LERROR, SAMP ": " PROC_FILE " file "
+				"does not contain nfs3 statistics. found=$d\n", found);
+		}
+	}
 out:
 	ldms_transaction_end(set);
 	return rc;
