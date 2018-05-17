@@ -433,6 +433,9 @@ class LDMSD(object):
         if self.cfg:
             self.cfg.close()
 
+    def __repr__(self):
+        return """<LDMSD %s>""" % " ".join(self.cmd_args)
+
 class LDMSD_Controller(object):
     """ldmsd_controller subprocess handler"""
 
@@ -541,3 +544,6 @@ class LDMSD_Controller(object):
     def __del__(self):
         if self.proc:
             self.term()
+
+    def __repr__(self):
+        return """<LDMSD_Controller %s>""" % " ".join(self.cmd_args)

@@ -221,7 +221,7 @@ class ldmsdInbandConfig(ldmsdConfig):
         self.max_recv_len = self.ldms.msg_max_get()
         self.rc = ldms.LDMS_xprt_connect_by_name(self.ldms, self.host, str(self.port))
         if self.rc != 0:
-            raise RuntimeError("Failed to connect to ldmsd")
+            raise RuntimeError("Failed to connect to ldmsd. %s" % (self.ldms.event_errcode2str(self.rc)))
         self.type = "inband"
         self.state = "CONNECTED"
 
@@ -252,7 +252,7 @@ class ldmsdInbandConfig(ldmsdConfig):
             raise RuntimeError("The connection isn't connected.")
         rc = self.ldms_module.ldms_xprt_send(self.ldms, cmd, len(cmd))
         if rc != 0:
-            raise RuntimeError("Failed to send the command")
+            raise RuntimeError("Failed to send the command. %s" % os.strerror(rc))
 
     def receive_response(self, recv_len = None):
         if self.state != "CONNECTED":
