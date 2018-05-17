@@ -76,7 +76,7 @@ htbl_t htbl_alloc(htbl_cmp_fn_t cmp_fn, size_t depth)
 			  + (depth * sizeof(struct hent_list_head)));
 	if (t) {
 		t->table_depth = depth;
-		t->entry_count;
+		t->entry_count = 0;
 		t->cmp_fn = cmp_fn;
 		t->hash_fn = default_hash_fn;
 		memset(t->table, 0, (depth * sizeof(struct hent_list_head)));
