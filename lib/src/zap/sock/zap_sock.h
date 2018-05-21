@@ -110,6 +110,7 @@ typedef enum sock_msg_type {
 	SOCK_MSG_WRITE_RESP,  /*  Write       response      */
 	SOCK_MSG_ACCEPTED,    /*  Connection  accepted      */
 	SOCK_MSG_REJECTED,    /*  Reject      data */
+	SOCK_MSG_ACK_ACCEPTED,/*  Acknowledge accepted msg  */
 	SOCK_MSG_TYPE_LAST,   /*  Range limiter, upper  */
 	SOCK_MSG_FIRST = SOCK_MSG_CONNECT /* Range limiter, lower */
 } sock_msg_type_t;;
@@ -125,6 +126,7 @@ static const char *__sock_msg_type_str[SOCK_MSG_TYPE_LAST] = {
 	[SOCK_MSG_WRITE_RESP]  =  "SOCK_MSG_WRITE_RESP",
 	[SOCK_MSG_ACCEPTED]    =  "SOCK_MSG_ACCEPTED",
 	[SOCK_MSG_REJECTED]    =  "SOCK_MSG_REJECTED",
+	[SOCK_MSG_ACK_ACCEPTED] = "SOCK_MSG_ACK_ACCEPTED",
 };
 
 static inline
@@ -277,6 +279,7 @@ struct z_sock_ep {
 	uint8_t rejecting;
 
 	int sock_connected;
+	int app_accepted;
 
 	struct ovis_event_s ev;
 	struct z_sock_buff_s buff;
