@@ -23,6 +23,7 @@ clock.job
 meminfo.job
 procstat.job
 lustre2_client
+dstat.job
 
 # not yet tested
 rabbitv3
