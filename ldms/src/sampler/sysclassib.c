@@ -207,6 +207,7 @@ const int scib_idx[] = {
 struct scib_port {
 	char *ca; /**< CA name */
 	int portno; /**< port number */
+	int query_fail_logged; /**< 1 if prior fail logged, 0 if last query ok. */
 	uint64_t comp_id; /**< comp_id */
 	ib_portid_t portid; /**< IB port id */
 
@@ -641,8 +642,11 @@ int query_port(struct scib_port *port, float dt)
 			IB_GSI_PORT_COUNTERS, port->srcport);
 	if (!p) {
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP ": Error querying %s.%d, errno: %d\n",
+		if (! port->query_fail_logged) {
+			msglog(LDMSD_LERROR, SAMP ": Error querying %s.%d, errno: %d\n",
 				port->ca, port->portno, rc);
+			port->query_fail_logged = 1;
+		}
 		close_port(port);
 		return rc;
 	}
@@ -678,8 +682,11 @@ int query_port(struct scib_port *port, float dt)
 			IB_GSI_PORT_COUNTERS_EXT, port->srcport);
 	if (!p) {
 		rc = errno;
-		msglog(LDMSD_LERROR, SAMP ": Error extended querying %s.%d, "
+		if (! port->query_fail_logged) {
+			msglog(LDMSD_LERROR, SAMP ": Error extended querying %s.%d, "
 				"errno: %d\n", port->ca, port->portno, rc);
+			port->query_fail_logged = 1;
+		}
 		close_port(port);
 		return rc;
 	}
@@ -689,6 +696,7 @@ int query_port(struct scib_port *port, float dt)
 		j = scib_idx[i];
 		update_metric(port, j, v, dt);
 	}
+	port->query_fail_logged = 0;
 
 	return 0;
 }
