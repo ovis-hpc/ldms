@@ -78,6 +78,7 @@
 #include <pthread.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldms_jobid.h"
 
 #include "lustre_sampler.h"
 
@@ -88,8 +89,11 @@ static struct lustre_metric_src_list lms_list = {0};
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
-
+static uint64_t compid;
 static char tmp_path[PATH_MAX];
+
+static int metric_offset = 1;
+LJI_GLOBALS;
 
 char *llite_key[] = {
 	/* metric source status (sampler induced) */
@@ -213,6 +217,17 @@ static int create_metric_set(const char *path, const char *oscs,
 	if (!schema)
 		goto err0;
 
+	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
+	if (rc < 0) {
+		rc = ENOMEM;
+		goto err1;
+	}
+	metric_offset++;
+	rc = LJI_ADD_JOBID(schema);
+	if (rc < 0) {
+		goto err1;
+
+	}
 	char *namebase[] = {"osc", "mdc", "llite"};
 	struct str_list *sl;
 
@@ -283,6 +298,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		msglog(LDMSD_LERROR, "lustre2_client: missing producer\n");
 		return ENOENT;
 	}
+	value = av_value(avl, "component_id");
+	if (value)
+		compid = (uint64_t)(atoi(value));
+	else
+		compid = 0;
+
+	LJI_CONFIG(value,avl);
 
 	value = av_value(avl, "instance");
 	if (!value) {
@@ -300,6 +322,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc = create_metric_set(value, oscs, mdcs, llites);
 	if (rc)
 		return rc;
+	//add specialized metrics
+	ldms_metric_set_u64(set, 0, compid);
 	ldms_set_producer_name_set(set, producer_name);
 	return 0;
 }
@@ -314,6 +338,9 @@ static const char *usage(struct ldmsd_plugin *self)
 "	osc=STR,STR,...	      The list of OCSs.\n"
 "	mdc=STR,STR,...	      The list of MDCs.\n"
 "	llite=STR,STR,...     The list of llites.\n"
+"	with_jobid=<jid>      Collect jobid data or not.\n"
+"       component_id=<id>     Numeric identifier for host.\n"
+LJI_DESC
 "For oscs,mdcs and llites: if not specified, NONE of the\n"
 "oscs/mdcs/llites will be added. If {oscs,mdcs,llites} is set to *, all\n"
 "of the available {oscs,mdcs,llites} at the time will be added.\n"
@@ -337,7 +364,7 @@ static int sample(struct ldmsd_sampler *self)
 	ldms_transaction_begin(set);
 
 	struct lustre_metric_src *lms;
-
+	LJI_SAMPLE(set, 1);
 	/* For all stats */
 	LIST_FOREACH(lms, &lms_list, link) {
 		lms_sample(set, lms);

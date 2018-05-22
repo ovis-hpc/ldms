@@ -22,6 +22,7 @@ procnfs
 clock.job
 meminfo.job
 procstat.job
+lustre2_client
 
 # not yet tested
 rabbitv3
