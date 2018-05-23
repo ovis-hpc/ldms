@@ -45,16 +45,16 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 /**
- * \file self.c
- * \brief info about ldmsd itself.
- * Quis custodiet ipsos custodes?
- *
- * Collects os view of ldmsd
- * Eventual other items may include
- * mm_stat from mmalloc
- * /proc/self/io
- * /proc/self/stat [subset of items up to #42]
- * /proc/self/statm
+  * \file dstat.c
+  * \brief info about ldmsd itself.
+  * This is who monitors the monitors.
+  *
+  * Collects os view of ldmsd.
+  * /proc/self/io
+  * /proc/self/stat [subset of items up to #42]
+  * /proc/self/statm
+  * Count of actively used mmalloc bytes.
+  * Eventual other items may include the file descriptor count.
  */
 #define _GNU_SOURCE
 #include <inttypes.h>
