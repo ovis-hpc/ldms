@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2014-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2014-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2014-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2014-2018 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -220,8 +220,6 @@ static int __sock_nonblock(int fd)
 	return 0;
 }
 
-/* TODO: remove this function */
-
 static z_sock_buff_t z_sock_buff_new(size_t bytes)
 {
 	int rc;
@@ -437,9 +435,8 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 /**
  * Process an unknown message in the end point.
  */
-static void process_sep_msg_unknown(struct z_sock_ep *sep)
+static void process_sep_read_error(struct z_sock_ep *sep)
 {
-	LOG_(sep, "zap_sock: Unknown zap message.\n");
 	pthread_mutex_lock(&sep->ep.lock);
 	if (sep->ep.state == ZAP_EP_CONNECTED)
 		sep->ep.state = ZAP_EP_CLOSE;
@@ -511,7 +508,7 @@ static void process_sep_msg_accepted(struct z_sock_ep *sep)
 	if (zerr != ZAP_ERR_OK) {
 		LOG_(sep, "'Accept' message received in unexpected state %d.\n",
 				sep->ep.state);
-		return;
+		goto err;
 	}
 	sep->ep.cb((void*)sep, &ev);
 	return;
@@ -1231,6 +1228,7 @@ static void sock_read(ovis_event_t ev)
 	struct z_sock_ep *sep = (struct z_sock_ep *)ev->param.ctxt;
 	struct sock_msg_hdr *hdr;
 	enum sock_msg_type msg_type;
+	struct zap_version ver;
 	int rc;
 	do {
 		rc = __recv_msg(sep);
@@ -1252,7 +1250,7 @@ static void sock_read(ovis_event_t ev)
 			if (msg_type != SOCK_MSG_CONNECT &&
 					msg_type != SOCK_MSG_ACK_ACCEPTED) {
 				/* invalid */
-				goto bad;
+				goto protocol_error;
 			}
 			break;
 		case ZAP_EP_CONNECTING:
@@ -1260,27 +1258,31 @@ static void sock_read(ovis_event_t ev)
 			if (msg_type != SOCK_MSG_ACCEPTED &&
 					msg_type != SOCK_MSG_REJECTED) {
 				/* invalid */
-				goto bad;
+				goto protocol_error;
 			}
 			break;
+		case ZAP_EP_ERROR:
+			ZAP_ASSERT(0, &(sep->ep), "%s bad ep state (ZAP_EP_ERROR)", __func__);
+			goto protocol_error;
 		case ZAP_EP_CONNECTED:
 			/* good */
 			break;
 		case ZAP_EP_CLOSE:
-			assert(0 == "sock_read() bad ep state (ZAP_EP_CLOSE)");
-			break;
-		case ZAP_EP_ERROR:
-			assert(0 == "sock_read() bad ep state (ZAP_EP_ERROR)");
-			break;
+			/* shutdown is called already. No need to shut it down agian. */
+			ZAP_ASSERT(0, &(sep->ep), "%s bad ep state (ZAP_EP_CLOSE)", __func__);
+			return;
 		case ZAP_EP_INIT:
-			assert(0 == "bad state (ZAP_EP_INIT)");
-			break;
+			/* No connection. Impossible to reach this. */
+			ZAP_ASSERT(0, &(sep->ep), "%s bad ep state (ZAP_EP_INIT)", __func__);
+			return;
 		case ZAP_EP_LISTENING:
-			assert(0 == "bad state (ZAP_EP_LISTENING)");
-			break;
+			/* No connection. Impossible to reach this. */
+			ZAP_ASSERT(0, &(sep->ep), "%s bad ep state (ZAP_EP_LISTENING)", __func__);
+			return;
 		case ZAP_EP_PEER_CLOSE:
-			assert(0 == "bad state (ZAP_EP_CLOSE)");
-			break;
+			/* The connection is gone already. Impossible to reach this. */
+			ZAP_ASSERT(0, &(sep->ep), "%s bad ep state (ZAP_EP_PEER_CLOSE)", __func__);
+			return;
 		}
 		/* Then call the process function accordingly */
 		DEBUG_LOG_RECV_MSG(sep, sep->buff.data);
@@ -1288,14 +1290,19 @@ static void sock_read(ovis_event_t ev)
 				&& msg_type < SOCK_MSG_TYPE_LAST) {
 			process_sep_msg_fns[msg_type](sep);
 		} else {
-			assert(0);
-			process_sep_msg_unknown(sep);
+			process_sep_read_error(sep);
 		}
 		z_sock_buff_reset(&sep->buff);
 	} while (1);
 	return;
+
+ protocol_error:
+	ZAP_VERSION_SET(ver);
+	LOG_(sep, "Protocol error: version = %hhu.%hhu.%hhu.%hhu\n",
+			ver.major, ver.minor, ver.patch, ver.flags);
  bad:
-	sock_event(ev);
+ 	/* shutdown the connection */
+	process_sep_read_error(sep);
 }
 
 static void *io_thread_proc(void *arg)
@@ -1304,7 +1311,7 @@ static void *io_thread_proc(void *arg)
 	int rc;
 	sigset_t sigset;
 	sigfillset(&sigset);
-	// rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL); /* TODO: remove this */
+	// rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 	rc = sigprocmask(SIG_SETMASK, &sigset, NULL);
 	assert(rc == 0 && "pthread_sigmask error");
 	rc = ovis_scheduler_loop(sched, 0);
@@ -1643,8 +1650,6 @@ out:
 static int init_once()
 {
 	int rc = ENOMEM;
-
-	__zap_assert_flag(1);	/* TODO: remove this */
 
 	sched = ovis_scheduler_new();
 	if (!sched)
