@@ -130,6 +130,7 @@ typedef enum zap_ugni_msg_type {
 	ZAP_UGNI_MSG_RENDEZVOUS,  /**< Share zap_map */
 	ZAP_UGNI_MSG_ACCEPTED,    /**< Connection accepted */
 	ZAP_UGNI_MSG_REJECTED,    /**< Connection rejected */
+	ZAP_UGNI_MSG_ACK_ACCEPTED,/**< Acknowledge accepted msg */
 	ZAP_UGNI_MSG_TYPE_LAST    /**< Dummy last type (for type count) */
 } zap_ugni_msg_type_t;
 
@@ -141,6 +142,7 @@ static const char *__zap_ugni_msg_type_str[] = {
 	[ZAP_UGNI_MSG_ACCEPTED]    =  "ZAP_UGNI_MSG_ACCEPTED",
 	[ZAP_UGNI_MSG_CONNECT]     =  "ZAP_UGNI_MSG_CONNECT",
 	[ZAP_UGNI_MSG_REJECTED]    =  "ZAP_UGNI_MSG_REJECTED",
+	[ZAP_UGNI_MSG_ACK_ACCEPTED]=  "ZAP_UGNI_MSG_ACK_ACCEPTED",
 	[ZAP_UGNI_MSG_TYPE_LAST]   =  "ZAP_UGNI_MSG_TYPE_LAST"
 };
 
@@ -292,6 +294,8 @@ struct z_ugni_ep {
 	size_t conn_data_len;
 	uint8_t rejecting;
 	uint8_t sock_connected;
+	uint8_t app_accepted;
+	uint8_t ugni_ep_bound;
 	gni_ep_handle_t gni_ep;
 
 	struct zap_ugni_post_desc_list post_desc_list;
