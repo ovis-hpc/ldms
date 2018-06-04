@@ -153,13 +153,22 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	struct flatfile_store_instance *si;
 	struct flatfile_metric_store *ms;
 	int i;
+	char *key = NULL;
+	size_t len;
+
+	len = strlen(container) + strlen(schema) + 2;
+	key = malloc(len);
+	if (!key) {
+		return NULL;
+	}
+	snprintf(key, len, "%s:%s", container, schema);
 
 	pthread_mutex_lock(&cfg_lock);
 	/*
 	 * Add a component type directory if one does not
 	 * already exist
 	 */
-	si = idx_find(store_idx, (void *)schema, strlen(schema));
+	si = idx_find(store_idx, (void *)key, strlen(key));
 	if (!si) {
 		/*
 		 * First, count the metric.
@@ -237,7 +246,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 			LIST_INSERT_HEAD(&si->ms_list, ms, entry);
 			si->ms[i++] = ms;
 		}
-		idx_add(store_idx, (void *)schema, strlen(schema), si);
+		idx_add(store_idx, (void *)key, strlen(key), si);
 	}
 	goto out;
 err4:
@@ -267,6 +276,8 @@ err1:
 	si = NULL;
 out:
 	pthread_mutex_unlock(&cfg_lock);
+	if (key)
+		free(key);
 	return si;
 }
 
