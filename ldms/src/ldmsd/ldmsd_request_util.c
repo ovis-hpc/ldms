@@ -90,7 +90,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "prdcr_status",       LDMSD_PRDCR_STATUS_REQ  },
 	{  "prdcr_stop",         LDMSD_PRDCR_STOP_REQ  },
 	{  "prdcr_stop_regex",   LDMSD_PRDCR_STOP_REGEX_REQ  },
-	{  "set_info",           LDMSD_SET_INFO_REQ  },
+	{  "set_route",          LDMSD_SET_ROUTE_REQ  },
 	{  "start",              LDMSD_PLUGN_START_REQ  },
 	{  "stop",               LDMSD_PLUGN_STOP_REQ  },
 	{  "strgp_add",          LDMSD_STRGP_ADD_REQ  },

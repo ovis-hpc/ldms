@@ -111,7 +111,7 @@ enum ldmsd_request {
 	LDMSD_LOGROTATE_REQ,
 	LDMSD_EXIT_DAEMON_REQ,
 	LDMSD_RECORD_LEN_ADVICE_REQ,
-	LDMSD_SET_INFO_REQ,
+	LDMSD_SET_ROUTE_REQ,
 
 	/* failover requests by user */
 	LDMSD_FAILOVER_CONFIG_REQ = 0x700, /* "failover_config" user command */
@@ -465,7 +465,7 @@ void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms);
 /**
  * \brief Send a request to \c prdcr for the set_info of \c inst_name
  */
-int ldmsd_set_info_request(ldmsd_prdcr_t prdcr,
+int ldmsd_set_route_request(ldmsd_prdcr_t prdcr,
 			ldmsd_req_ctxt_t org_reqc, char *inst_name,
 			ldmsd_req_resp_fn resp_handler, void *ctxt);
 

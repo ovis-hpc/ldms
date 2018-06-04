@@ -272,7 +272,7 @@ class LDMSD_Request(object):
     ONESHOT = 0x600 + 7
     LOGROTATE = 0x600 + 8
     EXIT_DAEMON = 0x600 + 9
-    SET_INFO = 0X600 + 11
+    SET_ROUTE = 0X600 + 11
 
     FAILOVER_CONFIG       =  0x700
     FAILOVER_DO_FAILOVER  =  0x700  +  1
@@ -335,13 +335,12 @@ class LDMSD_Request(object):
             'oneshot': {'id': ONESHOT},
             'logrotate': {'id': LOGROTATE},
             'daemon_exit': {'id': EXIT_DAEMON},
-            'set_info': {'id': SET_INFO},
-
             'failover_config'  :  {'id':  FAILOVER_CONFIG},
             'failover'         :  {'id':  FAILOVER_DO_FAILOVER},
             'failback'         :  {'id':  FAILOVER_DO_FAILBACK},
             'failover_mod'     :  {'id':  FAILOVER_MOD},
             'failover_status'  :  {'id':  FAILOVER_STATUS},
+            'set_route': {'id': SET_ROUTE},
         }
 
     TYPE_CONFIG_CMD = 1
