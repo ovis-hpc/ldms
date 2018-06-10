@@ -33,6 +33,13 @@ libstore_rabbitv3_la_LIBADD = -lrabbitmq $(STORE_LIBADD)
 pkglib_LTLIBRARIES += libstore_rabbitv3.la
 endif
 
+if ENABLE_RABBITKW
+libstore_rabbitkw_la_SOURCES = store_rabbitkw.c rabbit_utils.c rabbit_utils.h
+libstore_rabbitkw_la_CFLAGS = $(AM_CFLAGS)
+libstore_rabbitkw_la_LIBADD = -lrabbitmq $(STORE_LIBADD)
+pkglib_LTLIBRARIES += libstore_rabbitkw.la
+endif
+
 if ENABLE_CSV
 CSV_COMMON_LIBFLAGS = libldms_store_csv_common.la -lpthread
 

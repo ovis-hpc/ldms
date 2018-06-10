@@ -64,6 +64,7 @@ dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
 OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
+OPTION_DEFAULT_DISABLE([rabbitkw], [ENABLE_RABBITKW])
 OPTION_DEFAULT_DISABLE([rabbitv3], [ENABLE_RABBITV3])
 
 dnl AMQP
@@ -282,7 +283,7 @@ if test -z "$ENABLE_ATASMART_TRUE" ; then
 fi
 
 
-if test -z "$ENABLE_RABBITV3_TRUE" ; then
+if test -z "$ENABLE_RABBITV3_TRUE" -o -z "$ENABLE_RABBITKW_TRUE"; then
 	AC_CHECK_LIB(rabbitmq, amqp_version, [],
 		AC_MSG_ERROR([librabbitmq not found. store_rabbitv3 requires librabbitmq and amqp headers.]))
 	AC_LANG_PUSH([C])
