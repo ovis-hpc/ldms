@@ -1081,6 +1081,29 @@ cleanup:
 	return rc;
 }
 
+/* find # standing alone in a line, indicating rest of line is comment.
+ * e.g. ^# rest is comment
+ * or: ^         # indented comment
+ * or: ^dosomething foo a=b c=d #rest is comment
+ * or: ^dosomething foo a=b c=d # rest is comment
+ * but not: ^dosomething foo a=#channel c=foo#disk1"
+ */
+char *find_comment(const char *line)
+{
+	char *s = line;
+	int leadingspc = 1;
+	while (*s != '\0') {
+		if (*s == '#' && leadingspc)
+			return s;
+		if (isspace(*s))
+			leadingspc = 1;
+		else 
+			leadingspc = 0;
+		s++;
+	}
+	return NULL;
+}
+
 int process_config_file(const char *path)
 {
 	int rc = 0;
@@ -1111,7 +1134,7 @@ next_line:
 		goto cleanup;
 	line_no++;
 
-	comment = strchr(line, '#');
+	comment = find_comment(line);
 
 	if (comment) {
 		*comment = '\0';
