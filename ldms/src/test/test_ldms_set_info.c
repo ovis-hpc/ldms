@@ -60,7 +60,7 @@
 
 #define STR_INIT_LEN 124
 
-#define FMT "p:x:h:c:sAB"
+#define FMT "p:x:h:c:sABE"
 
 #define SECRETWORD "test_lookup"
 
@@ -100,6 +100,7 @@ static int connect_port;
 static int is_server;
 static int is_A;
 static int is_B;
+static int no_wait;
 static int alive_sec = 1800;
 static int is_local;
 
@@ -215,6 +216,7 @@ static void usage() {
 "	-s		Server mode\n"
 "	-A		1st client. Connect to the server\n"
 "	-B		2nd client. Connect to the 1st client\n"
+"	-E		Don't wait for a connection request\n"
 "Client options:\n"
 "	-h host		Host name to connect to.\n"
 "	-c port		port to connect to\n"
@@ -241,6 +243,9 @@ static void process_args(int argc, char **argv)
 			break;
 		case 'B':
 			is_B = 1;
+			break;
+		case 'E':
+			no_wait = 1;
 			break;
 		case '?':
 			usage();
@@ -913,6 +918,8 @@ static void do_client_A(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 
 	IS_DONE = 1;
 	printf("DONE\n");
+	if (no_wait)
+		return;
 	printf("Waiting for clients\n");
 	sleep(alive_sec);
 }
@@ -973,6 +980,7 @@ static void do_client_B(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 	test_lookup_set_info(clnt, LDMS_LOOKUP_BY_INSTANCE);
 	sem_wait(&clnt->lookup_set_info_sem);
 	printf(" ----- PASSED\n");
+	printf("DONE\n");
 }
 
 ldms_set_t test_local_set_info()
@@ -1075,6 +1083,8 @@ int do_server(struct sockaddr_in *sin)
 
 	IS_DONE = 1;
 	printf("DONE\n");
+	if (no_wait)
+		return 0;
 	printf("Waiting for clients\n");
 	sleep(alive_sec);
 	return 0;
@@ -1097,6 +1107,7 @@ int main(int argc, char **argv)
 	if (is_local) {
 		s = test_local_set_info();
 		ldms_set_delete(s);
+		printf("DONE\n");
 		goto done;
 	} else {
 		listen_sin.sin_port = htons(port);
@@ -1116,7 +1127,6 @@ int main(int argc, char **argv)
 		}
 	}
 done:
-	printf("DONE\n");
 	return 0;
 }
 

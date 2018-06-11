@@ -79,11 +79,19 @@ static int is_pull;
 static int interval = 1;
 static int is_verbose;
 static int is_closed;
+static int push_meta;
+static int push_data;
+static int is_json;
 
 static ldms_t ldms;
 static sem_t exit_sem;
 
 static const int num_sets = 1;
+
+static int META_METRIC_ID;
+static int DATA_METRIC_ID;
+static int METRIC_TYPE_METRIC_ID;
+static int EXPLICIT_PUSH_METRIC_ID;
 
 struct push_set {
 	ldms_set_t set;
@@ -103,7 +111,12 @@ static const char *set_names[] = {
 		"test_set_3"
 };
 
-#define FMT "x:p:h:i:svcoud"
+enum metric_type {
+	META = 1,
+	DATA = 2
+};
+
+#define FMT "x:p:h:i:svcoudMDj"
 
 static void desc() {
 	printf(
@@ -131,10 +144,13 @@ static void usage() {
 "	-x xprt		sock, rdma, or ugni\n"
 "	-s		Server mode\n"
 "	-v		Verbose\n"
+"	-j		Print the set as a json string format\n"
 "Server options:\n"
 "	-i interval	Interval to make changes\n"
+"	-M		Explicitly push the set every other time when the meta metric is changed\n"
+"	-D		Explicitly push the set every other time when the data metric is changed\n"
 "Client options:\n"
-"	-c		Cancel the pull request\n"
+"	-c		Cancel the push registration request\n"
 "	-h host		Host name to connect to.\n"
 "	-o		Request 'onchange' push\n"
 "	-u		Pull set content\n"
@@ -180,6 +196,15 @@ static void process_args(int argc, char **argv) {
 		case 'd':
 			desc();
 			exit(0);
+		case 'M':
+			push_meta = 1;
+			break;
+		case 'D':
+			push_data = 1;
+			break;
+		case 'j':
+			is_json = 1;
+			break;
 		default:
 			printf("Unrecognized option '%c'\n", op);
 			usage();
@@ -196,6 +221,76 @@ static void _log(const char *fmt, ...)
 	va_end(l);
 }
 
+enum update_type {
+	SAMPLE = 0,
+	PUSH = 1,
+	LAST_PUSH,
+	DUP_LAST_PUSH,
+	PULL,
+};
+
+static const char *update_type_enum2str(enum update_type type)
+{
+	if (type == PUSH)
+		return "PUSH";
+	else if (type == PULL)
+		return "PULL";
+	else if (type == SAMPLE)
+		return "SAMPLE";
+	else if (type == LAST_PUSH)
+		return "LAST_PUSH";
+	else if (type == DUP_LAST_PUSH)
+		return "DUP_LAST_PUSH";
+	_log("unrecognized update type %d\n", type);
+	assert(0);
+}
+
+static const char *metric_type_enum2str(enum metric_type type)
+{
+	if (type == META)
+		return "META";
+	else if (type == DATA)
+		return "DATA";
+	_log("unrecognized metric type %d\n", type);
+	assert(0);
+}
+
+static void __print_json_set(ldms_set_t s, enum update_type type)
+{
+	int i;
+	struct ldms_set *set = (struct ldms_set *)s->set;
+	printf("{"
+		"\"type\":\"%s\","
+		"\"set_name\":\"%s\","
+		"\"meta_meta_gn\":%" PRIu64 ","
+		"\"data_meta_gn\":%" PRIu64 ","
+		"\"data_gn\":%" PRIu64 ","
+		"\"cardinality\":%d,"
+		"\"metrics\":[",
+		update_type_enum2str(type),
+		ldms_set_instance_name_get(s),
+		set->meta->meta_gn,
+		set->data->meta_gn,
+		set->data->gn,
+		ldms_set_card_get(s));
+	for (i = 0; i < ldms_set_card_get(s); i++) {
+		if (i > 0)
+			printf(",");
+		printf("{\"name\":\"%s\",", ldms_metric_name_get(s, i));
+		if (i == METRIC_TYPE_METRIC_ID) {
+			printf("\"value\":\"%s\"}",
+				metric_type_enum2str(ldms_metric_get_u8(s, i)));
+		} else if (i == EXPLICIT_PUSH_METRIC_ID) {
+			printf("\"value\":\"%s\"}",
+				(ldms_metric_get_u8(s, i)?"true":"false"));
+		} else {
+			printf("\"value\":\"%" PRIu64 "\"}",
+					ldms_metric_get_u64(s, i));
+		}
+	}
+	printf("]}\n");
+}
+
 static void __print_set(ldms_set_t s)
 {
 	struct ldms_set *set = (struct ldms_set *)s->set;
@@ -207,10 +302,18 @@ static void __print_set(ldms_set_t s)
 	printf("       data->meta_gn: %" PRIu64 "\n", set->data->meta_gn);
 	printf("            data->gn: %" PRIu64 "\n", set->data->gn);
 	printf("   Number of metrics: %d\n", card);
-	printf("	%-10s %16s %10s\n", "MetricName", "Value", "UserData");
+	printf("	%-10s %16s\n", "MetricName", "Value");
 	int i, j, n;
 	for (i = 0; i < card; i++) {
 		printf("	%-10s", ldms_metric_name_get(s, i));
+		if (i == METRIC_TYPE_METRIC_ID) {
+			printf("%16s", metric_type_enum2str(ldms_metric_get_u8(s, i)));
+			goto out;
+		}
+		if (i == EXPLICIT_PUSH_METRIC_ID) {
+			printf("%16s", (ldms_metric_get_u8(s, i)?"true":"false"));
+			goto out;
+		}
 		type = ldms_metric_type_get(s, i);
 		n = ldms_metric_array_get_len(s, i);
 		if (n > 10)
@@ -289,7 +392,7 @@ static void __print_set(ldms_set_t s)
 		j++;
 		goto loop;
 	out:
-		printf("%10" PRIu64 "\n", ldms_metric_user_data_get(s, i));
+		printf("\n");
 	}
 	printf("--------------------------------\n");
 }
@@ -303,16 +406,26 @@ static struct push_set *__server_create_set(const char *name)
 	}
 
 	int rc;
-	rc = ldms_schema_meta_add(schema, "FOO_META", LDMS_V_U64);
-	if (rc < 0) {
+	METRIC_TYPE_METRIC_ID = ldms_schema_metric_add(schema, "METRIC_TYPE", LDMS_V_U8);
+	if (METRIC_TYPE_METRIC_ID < 0) {
+		_log("Failed to add a metric\n");
+		assert(METRIC_TYPE_METRIC_ID >= 0);
+	}
+	EXPLICIT_PUSH_METRIC_ID = ldms_schema_metric_add(schema, "EXPLICIT_PUSH", LDMS_V_U8);
+	if (EXPLICIT_PUSH_METRIC_ID < 0) {
+		_log("Failed to add a metric\n");
+		assert(EXPLICIT_PUSH_METRIC_ID >= 0);
+	}
+	META_METRIC_ID = ldms_schema_meta_add(schema, "meta_metric", LDMS_V_U64);
+	if (META_METRIC_ID < 0) {
 		_log("Failed to add meta metric.\n");
-		assert(rc >= 0);
+		assert(META_METRIC_ID >= 0);
 	}
 
-	rc = ldms_schema_metric_add(schema, "FOO", LDMS_V_U64);
-	if (rc < 0) {
+	DATA_METRIC_ID = ldms_schema_metric_add(schema, "data_metric", LDMS_V_U64);
+	if (DATA_METRIC_ID < 0) {
 		_log("Failed to add metric\n");
-		assert(rc >= 0);
+		assert(DATA_METRIC_ID >= 0);
 	}
 
 	ldms_set_t set = ldms_set_new(name, schema);
@@ -337,7 +450,8 @@ static struct push_set *__server_create_set(const char *name)
 	return push_set;
 }
 
-#define USER_EVENT "udata is changed\n"
+#define DO_META(round) (((round) % 2) == 1)
+#define DO_PUSH(round) ((((round) % 4) == 1) || (((round) % 4) == 2))
 
 static void do_server(struct sockaddr_in *sin)
 {
@@ -357,39 +471,56 @@ static void do_server(struct sockaddr_in *sin)
 	}
 
 	_log("Listening on port '%d'\n", port);
-
 	ldms_set_t set;
-	uint64_t round = 0;
+	uint64_t round = 1;
 	uint64_t meta_value = 1;
 	uint64_t metric_value = 1;
 	while (1) {
 		for (i = 0; i < num_sets; i++) {
 			set = set_array[i]->set;
 			ldms_transaction_begin(set);
-			if ((round % 2) == 1) {
-				_log("%s: Update meta value to %" PRIu64 "\n",
-						set_names[i], meta_value);
-				ldms_metric_set_u64(set, 0, meta_value);
+			if (DO_META(round)) {
+				ldms_metric_set_u8(set, METRIC_TYPE_METRIC_ID, META);
+				/* new meta metric value */
+				_log("%s:     %s --> %" PRIu64 "\n",
+						set_names[i],
+						ldms_metric_name_get(set, META_METRIC_ID),
+						meta_value);
+				ldms_metric_set_u64(set, META_METRIC_ID, meta_value);
 				meta_value++;
 			} else {
-				_log("%s: Update metric value to %" PRIu64 "\n",
-						set_names[i], metric_value);
-				ldms_metric_set_u64(set, 1, metric_value);
+				ldms_metric_set_u8(set, METRIC_TYPE_METRIC_ID, DATA);
+				/* new data metric value */
+				_log("%s:     %s --> %" PRIu64 "\n",
+						set_names[i],
+						ldms_metric_name_get(set, DATA_METRIC_ID),
+						metric_value);
+				ldms_metric_set_u64(set, DATA_METRIC_ID, metric_value);
 				metric_value++;
+			}
+			if (DO_PUSH(round)) {
+				if ((push_meta && DO_META(round)) ||
+						(push_data && !DO_META(round))) {
+					ldms_metric_set_u8(set, EXPLICIT_PUSH_METRIC_ID, 1);
+				}
+			} else {
+				ldms_metric_set_u8(set, EXPLICIT_PUSH_METRIC_ID, 0);
 			}
 			_log("%s: End a transaction\n", set_names[i]);
 			ldms_transaction_end(set);
-
-			if (is_verbose)
-				__print_set(set);
-
-			if ((round % 4) == 1) {
-				_log("%s: Push the set\n", set_names[i]);
-				ldms_xprt_push(set);
+			if (DO_PUSH(round)) {
+				if ((push_meta && DO_META(round)) ||
+						(push_data && !DO_META(round))) {
+						_log("%s: Push the set\n", set_names[i]);
+						ldms_xprt_push(set);
+				}
 			}
-
+			if (is_verbose)
+				if (is_json)
+					__print_json_set(set, SAMPLE);
+				else
+					__print_set(set);
 		}
-
 		round++;
 		sleep(interval);
 	}
@@ -403,9 +534,13 @@ static void client_update_cb(ldms_t x, ldms_set_t set, int status, void *arg)
 		assert(0);
 	}
 	setname = (char *)ldms_set_instance_name_get(set);
-	_log("%s: update_cb\n", setname);
 
-	__print_set(set);
+	if (is_json) {
+		__print_json_set(set, PULL);
+	} else {
+		_log("%s: update_cb\n", setname);
+		__print_set(set);
+	}
 
 	if (is_closed)
 		return;
@@ -446,11 +581,19 @@ static void client_push_update_cb(ldms_t x, ldms_set_t set,
 			assert(0);
 		}
 		if (status & LDMS_UPD_F_PUSH_LAST) {
-			_log("%s: last push update\n", setname);
-			__print_set(set);
+			if (is_json) {
+				__print_json_set(set, LAST_PUSH);
+			} else {
+				_log("%s: last push update\n", setname);
+				__print_set(set);
+			}
 			if (push_set->state == PUSH_SET_RECEIVED_LAST_PUSH) {
-				_log("%s: Already received the last push update\n",
-						setname);
+				if (is_json) {
+					__print_json_set(set, DUP_LAST_PUSH);
+				} else {
+					_log("%s: Already received "
+						"the last push update\n", setname);
+				}
 			} else {
 				push_set->state = PUSH_SET_RECEIVED_LAST_PUSH;
 			}
@@ -459,9 +602,12 @@ static void client_push_update_cb(ldms_t x, ldms_set_t set,
 		}
 	}
 
-	_log("%s: push_update_cb\n", setname);
-
-	__print_set(set);
+	if (is_json) {
+		__print_json_set(set, PUSH);
+	} else {
+		_log("%s: push_update_cb\n", setname);
+		__print_set(set);
+	}
 
 	if (is_cancel) {
 		if (push_set->state == PUSH_SET_CANCELED)
@@ -474,7 +620,6 @@ static void client_push_update_cb(ldms_t x, ldms_set_t set,
 			assert(0);
 		}
 		push_set->state = PUSH_SET_CANCELED;
-		goto out;
 	}
 out:
 	_log("==============================================\n");
@@ -542,7 +687,6 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 				assert(0);
 			}
 		}
-
 		break;
 	case LDMS_XPRT_EVENT_ERROR:
 		printf("%d: conn_error\n", port);
@@ -580,6 +724,8 @@ int main(int argc, char **argv) {
 	process_args(argc, argv);
 
 	ldms_init(1024);
+
+	setlinebuf(stdout);
 
 	struct sockaddr_in sin = {0};
 	sin.sin_port = htons(port);
