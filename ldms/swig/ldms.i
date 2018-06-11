@@ -504,9 +504,14 @@ ldms_t LDMS_xprt_accept(ldms_t x)
         return arg->connected_x;
 }
 
+enum LDMS_event_errcode {
+        LDMS_EVENT_ERRCODE_CONN_ERROR = 1,
+        LDMS_EVENT_ERRCODE_REJECTED,
+};
+
 struct active_event_arg {
         sem_t sem;
-        int errcode;
+        enum LDMS_event_errcode errcode;
         struct recv_arg *recv_arg;
 };
 
@@ -547,8 +552,11 @@ static void __active_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
                 free(event_arg);
                 break;
         case LDMS_XPRT_EVENT_ERROR:
+                event_arg->errcode = LDMS_EVENT_ERRCODE_CONN_ERROR;
+                sem_post(&event_arg->sem);
+                break;
         case LDMS_XPRT_EVENT_REJECTED:
-                event_arg->errcode = ECONNREFUSED;
+                event_arg->errcode = LDMS_EVENT_ERRCODE_REJECTED;
                 sem_post(&event_arg->sem);
                 break;
         case LDMS_XPRT_EVENT_RECV:
@@ -1113,6 +1121,14 @@ struct ldms_xprt {};
 			return PyString_FromString("DESTROYED");
 		else
 			PyErr_SetString(PyExc_TypeError, "Unrecognized ldms transport state");
+	}
+	inline PyObject *event_errcode2str(enum LDMS_event_errcode errcode) {
+		if (errcode == LDMS_EVENT_ERRCODE_CONN_ERROR)
+			return PyString_FromString("CONNECTION ERROR");
+		else if (errcode == LDMS_EVENT_ERRCODE_REJECTED)
+			return PyString_FromString("REJECTED");
+		else
+			PyErr_SetString(PyExc_TypeError, "Unrecognized LDMS event");
 	}
 }
 
