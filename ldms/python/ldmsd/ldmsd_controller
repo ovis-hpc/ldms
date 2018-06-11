@@ -65,6 +65,7 @@ import re
 from ldmsd import ldmsd_config, ldmsd_util, ldmsd_request
 from ldmsd.ldmsd_request import LDMSD_Request, LDMSD_Req_Attr
 from ldmsd.ldmsd_request import LDMSD_Req_Attr
+import errno
 
 LDMSD_REQ_SOM_F=1
 LDMSD_REQ_EOM_F=2
@@ -230,9 +231,14 @@ class LdmsdCmdParser(cmd.Cmd):
         except:
             raise
 
-        request.send(self.ctrl)
-        if is_debug:
-            print("Sent request {0}".format(request.message_number_get()))
+        try:
+            request.send(self.ctrl)
+            if is_debug:
+                print("Sent request {0}".format(request.message_number_get()))
+        except:
+            print("Failed to send the command. The connection might be disconnected.")
+            print("Please 'quit' the interative session")
+            return {'msg': "", 'errcode': errno.EINTR}
 
         resp = request.receive(self.ctrl)
         if is_debug:
