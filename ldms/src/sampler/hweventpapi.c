@@ -64,6 +64,7 @@
 #include <sys/inotify.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "sampler_base.h"
 
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
@@ -78,7 +79,8 @@ static int pids_count = 0;
 /* 0-Sampler not attached yet 1-Sampler is attached to a process */
 static int attach = 0;
 static int multiplex = 0;
-static uint64_t compid;
+//static uint64_t compid;
+char* compid;
 static int* papi_event_sets;
 static int* events_codes;
 static int* apppid; /* Application PIDS array */
@@ -97,6 +99,7 @@ static int inot_wd;
 static char inot_buffer[16];
 static char *metadata_filename;
 char *producer_name;
+static base_data_t base;
 
 struct attr_value_list *av_list_local;
 struct attr_value_list *kw_list_local;
@@ -173,23 +176,13 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 			goto err;
 		}
 	}
-	schema = ldms_schema_new(schema_name);
+
+	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create schema!\n");
-		rc = ENOMEM;
-		goto err;
-	}
-
-	/* Add component id */
-	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
-		goto err;
-	}
-
-	rc = ldms_schema_meta_add(schema, "job_id", LDMS_V_U64);
-	if (rc < 0) {
-		rc = ENOMEM;
+		msglog(LDMSD_LERROR,
+			"%s: schema '%s' could not be created, errno=%d.\n",
+			__FILE__, base->schema_name, errno);
+		rc = errno;
 		goto err;
 	}
 
@@ -247,7 +240,8 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 		goto err;
 	}
 
-	metric_offset = 8;
+	/* Location of first metric from proc/meminfo file */
+	metric_offset = ldms_schema_metric_count_get(schema);
 
 	ldms_schema_metric_array_add(schema, "Pid", LDMS_V_U64_ARRAY, max_pids);
 	if (rc < 0) {
@@ -263,8 +257,8 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 	for (pec = 0; events_tmp[pec]; events_tmp[pec] == ',' ? pec++ :
 		*events_tmp++);
 
-	msglog(LDMSD_LDEBUG, SAMP ": pec = %d and events length "
-		"is %d\n", pec, strlen(events));
+	msglog(LDMSD_LDEBUG, SAMP ": user input papi event counts are %d and "
+		"events length are %d\n", pec, strlen(events));
 
 	/* Allocate the memory space from papi events names and codes */
 	events_codes = (int*) calloc(pec + 1, sizeof (int));
@@ -309,8 +303,8 @@ static int create_metric_set(const char* instance_name, const char* schema_name,
 			goto err;
 		}
 
-		msglog(LDMSD_LINFO, "papi: event [name: %s, code: 0x%x] has"
-			" been added.\n", event_name, event_code);
+		msglog(LDMSD_LINFO, SAMP ": event [name: %s, code: 0x%x] "
+			"has been added.\n", event_name, event_code);
 
 next_event:
 		event_name = strtok_r(NULL, ",", &status);
@@ -331,24 +325,20 @@ next_event:
 		goto err;
 	}
 
-	set = ldms_set_new(instance_name, schema);
+	set = base_set_new(base);
 	if (!set) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create metric set %s.\n",
 			instance_name);
 		rc = errno;
 		goto err;
-		return rc;
 	}
 
-	metric_id = 0;
-	/* Add component id metric 0 */
-	v.v_u64 = compid;
-	ldms_metric_set(set, metric_id++, &v);
-
-	/* Add SOS Job_id metric 1 */
-	v.v_u64 = (uint64_t) atoi(jobid);
-	//v.v_u64 = 0;
-	ldms_metric_set(set, metric_id++, &v);
+	/*
+	 * This number was created based on the number of the
+	 * default metrics created by base_set_new()
+	 * TODO: need to find this number dynamically
+	 */
+	metric_id = 3;
 
 	/* papi_event_set is saved in location */
 	ldms_metric_user_data_set(set, 0, papi_event_set);
@@ -370,10 +360,14 @@ next_event:
 	return 0;
 
 err:
-	msglog(LDMSD_LDEBUG, SAMP ": Error out\n");
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
+	msglog(LDMSD_LDEBUG, SAMP ": error in create metric set function\n");
+
+	if (base)
+		base_del(base);
+	base = NULL;
+	if (set)
+		ldms_set_delete(set);
+	set = NULL;
 	return rc;
 }
 
@@ -391,19 +385,21 @@ static struct sampler_meta * read_sup_file()
 	if (!meta)
 		return NULL;
 
-	msglog(LDMSD_LDEBUG, SAMP ": Start Reading the File\n");
+	msglog(LDMSD_LDEBUG, SAMP ": start reading the file\n");
 
-	msglog(LDMSD_LDEBUG, SAMP ": Open the "
-		"File: %s\n", metadata_filename);
+	msglog(LDMSD_LDEBUG, SAMP ": open the file: %s\n", metadata_filename);
 	file = fopen(metadata_filename, "r");
 	fseek(file, 0, SEEK_SET);
 
 	if ((file != NULL)) { /* APPNAME is set */
 		int token_number = 1;
-		if (getline(&line, &len, file) == -1)
+		if (getline(&line, &len, file) == -1) {
+			msglog(LDMSD_LDEBUG, SAMP ": no new data written into"
+				" the file\n");
 			goto nextread;
+		}
 
-		msglog(LDMSD_LDEBUG, SAMP ": line = %s\n", line);
+		msglog(LDMSD_LDEBUG, SAMP ": existing line = %s\n", line);
 		msglog(LDMSD_LDEBUG, SAMP ": oldline = %s\n", oldline);
 		/* Check if the same job line read before */
 		if (strcmp(line, oldline) == 0) {
@@ -437,15 +433,15 @@ static struct sampler_meta * read_sup_file()
 			token_number++;
 		}
 
-		msglog(LDMSD_LDEBUG, SAMP ": End reading new data exist\n");
+		msglog(LDMSD_LDEBUG, SAMP ": end reading new data exist\n");
 		return meta;
 nextread:
-		msglog(LDMSD_LDEBUG, SAMP ": End reading no new data\n");
+		msglog(LDMSD_LDEBUG, SAMP ": end reading no new data\n");
 		free(meta);
 		return NULL;
 	} else {
-		msglog(LDMSD_LERROR, SAMP ": Error in open the "
-			"metada file: %d \n", errno);
+		msglog(LDMSD_LERROR, SAMP ": error opening the "
+			"file: %d \n", errno);
 		free(meta);
 		return NULL;
 	}
@@ -472,13 +468,37 @@ static int string2attr_list_local(char *str, struct attr_value_list **__av_list,
 		while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
 			cmd_s++;
 	}
+
+	/* add the producer the compid to the tokens */
+	char *new_str;
+	char s1[] = " producer=";
+	char s2[] = " component_id=";
+
+	if ((new_str = malloc(strlen(str) + strlen(s1) + strlen(producer_name)
+		+ strlen(s2) + strlen(compid) + 1)) != NULL) {
+		/* ensures the memory is an empty string */
+		new_str[0] = '\0';
+		strcat(new_str, str);
+		strcat(new_str, s1);
+		strcat(new_str, producer_name);
+		strcat(new_str, s2);
+		strcat(new_str, compid);
+	} else {
+		msglog(LDMSD_LERROR, SAMP ": malloc failed!\n");
+		goto err;
+	}
+	tokens += 2;
+
+	msglog(LDMSD_LDEBUG, SAMP ": the configuration string to be tokenized "
+		"is %s -- number of tokens are %d\n", new_str, tokens);
+
 	rc = ENOMEM;
 	av_list = av_new(tokens);
 	kw_list = av_new(tokens);
 	if (!av_list || !kw_list)
 		goto err;
 
-	rc = tokenize(str, kw_list, av_list);
+	rc = tokenize(new_str, kw_list, av_list);
 	if (rc)
 		goto err;
 	*__av_list = av_list;
@@ -522,7 +542,7 @@ int deatach_pids()
 			PAPI_cleanup_eventset(papi_event_sets[c]);
 			PAPI_destroy_eventset(&papi_event_sets[c]);
 		} else {
-			msglog(LDMSD_LDEBUG, SAMP ": Event set does not "
+			msglog(LDMSD_LDEBUG, SAMP ": event set does not "
 				"exist\n");
 		}
 	}
@@ -541,7 +561,7 @@ int deatach_pids()
 	pids_count = 0;
 	strcpy(appname_str, "");
 
-	msglog(LDMSD_LDEBUG, "The application is dead Detach\n");
+	msglog(LDMSD_LDEBUG, SAMP ": application is dead de-attach done!\n");
 
 	return 0;
 }
@@ -578,9 +598,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 
 	component_id = av_value(avl, "component_id");
 	if (component_id)
-		compid = (uint64_t) (atoi(component_id));
+		compid = strdup(component_id);
 	else
-		compid = 0;
+		compid = strdup("0");
 
 	filename = av_value(avl, "metafile");
 	if (!filename) {
@@ -592,7 +612,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	/* Check to see if we were successful */
 	if (metadata_filename == NULL) {
 		/* We were not so display a message */
-		msglog(LDMSD_LERROR, SAMP ": Could not allocate required "
+		msglog(LDMSD_LERROR, SAMP ": could not allocate required "
 			"memory for the string file name\n");
 		goto out;
 	}
@@ -613,9 +633,7 @@ out:
 }
 
 /*
- *
  * Use the new configuration parameters to create a new schema and set
- *
  */
 int config_local(struct attr_value_list *kwl,
 	struct attr_value_list * avl)
@@ -630,9 +648,11 @@ int config_local(struct attr_value_list *kwl,
 	char *pp_n;
 	char *numthreads;
 
-	instance_name = av_value(avl, "instance");
-	if (!instance_name) {
-		msglog(LDMSD_LERROR, SAMP ": missing instance.\n");
+	msglog(LDMSD_LDEBUG, SAMP ": re-configure the sampler\n");
+
+	base = base_config(avl, SAMP, SAMP, msglog);
+	if (!base) {
+		rc = errno;
 		goto out;
 	}
 
@@ -648,11 +668,11 @@ int config_local(struct attr_value_list *kwl,
 	else
 		multiplex = 0;
 
-	msglog(LDMSD_LDEBUG, SAMP ": Maximum PIDs are %d.\n", max_pids);
+	msglog(LDMSD_LDEBUG, SAMP ": maximum PIDs are %d.\n", max_pids);
 
 	events = av_value(avl, "events");
 	if (!events) {
-		msglog(LDMSD_LERROR, SAMP ": missing events.\n");
+		msglog(LDMSD_LERROR, SAMP ": missing papi events.\n");
 		goto out;
 	}
 
@@ -664,8 +684,8 @@ int config_local(struct attr_value_list *kwl,
 	 * configuration
 	 *
 	 */
-	msglog(LDMSD_LDEBUG, SAMP ": Application name passed to "
-		"configuration \n");
+	msglog(LDMSD_LDEBUG, SAMP ": application name passed to "
+		"the configuration \n");
 
 	/*
 	 * When the app name file is not used, the user have to supply
@@ -673,7 +693,7 @@ int config_local(struct attr_value_list *kwl,
 	 */
 	appname_str = strdup(av_value(avl, "appname"));
 	if (!appname_str) {
-		msglog(LDMSD_LERROR, SAMP ": Application name is "
+		msglog(LDMSD_LERROR, SAMP ": application name is "
 			"required\n");
 		goto out;
 	}
@@ -709,16 +729,8 @@ int config_local(struct attr_value_list *kwl,
 	else
 		num_threads = 0;
 
-	schema_name = av_value(avl, "schema");
-	if (!schema_name)
-		schema_name = default_schema_name;
-	if (strlen(schema_name) == 0) {
-		msglog(LDMSD_LERROR, SAMP ": schema name invalid.\n");
-		goto out;
-	}
-
 	if (set) {
-		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
+		msglog(LDMSD_LERROR, SAMP ": set already created.\n");
 		goto out;
 	}
 
@@ -740,13 +752,12 @@ out:
 	if (papi_event_val)
 		free(papi_event_val);
 
+	if (base)
+		base_del(base);
+	base = NULL;
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
-
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
 	free(events_codes);
 	return EINVAL;
 }
@@ -766,7 +777,7 @@ static int papi_events(int c)
 	int rc;
 	/* Create an event set for each pid */
 	papi_event_sets[c] = PAPI_NULL;
-	msglog(LDMSD_LDEBUG, SAMP ": Application PID[%d] = %d\n", c,
+	msglog(LDMSD_LDEBUG, SAMP ": application PID[%d] = %d\n", c,
 		apppid[c]);
 	rc = PAPI_create_eventset(&papi_event_sets[c]);
 	if (rc != PAPI_OK) {
@@ -776,7 +787,7 @@ static int papi_events(int c)
 	}
 
 	if (multiplex) {
-		msglog(LDMSD_LDEBUG, SAMP ": multiplex in funct is %d\n",
+		msglog(LDMSD_LDEBUG, SAMP ": multiplex in function is %d\n",
 			multiplex);
 		/* Explicitly bind event set to cpu component.
 		 * PAPI documentation states that this must be done after
@@ -830,8 +841,8 @@ static int create_event_sets()
 	sprintf(command, "pgrep %s | wc -l", appname_str);
 	FILE *pipe_fp1;
 	if ((pipe_fp1 = popen(command, "r")) == NULL) {
-		msglog(LDMSD_LERROR, SAMP ": pipe - pid counts "
-			"failed pgrep %s | wc -l\n", appname_str);
+		msglog(LDMSD_LERROR, SAMP ": failed "
+			"pgrep %s | wc -l\n", appname_str);
 		pids_count = 0;
 	} else {
 		/* Get the application PID counts */
@@ -850,8 +861,8 @@ static int create_event_sets()
 		c = 0;
 		/* Get the application pid */
 		if ((pipe_fp1 = popen(command, "r")) == NULL) {
-			msglog(LDMSD_LERROR, SAMP ": pipe - pid counts"
-				" failed pgrep %s\n", appname_str);
+			msglog(LDMSD_LERROR, SAMP ": failed "
+				"pgrep %s\n", appname_str);
 			pids_count = 0;
 		} else {
 			while (fscanf(pipe_fp1, "%d", &apppid[c]) != -1
@@ -922,8 +933,11 @@ static int sample(struct ldmsd_sampler * self)
 
 	/* Check if the file exist */
 	err = stat(metadata_filename, &file_stat);
-	msglog(LDMSD_LDEBUG, SAMP ": file exist? %d\n", err);
+	msglog(LDMSD_LDEBUG, SAMP ": start the sample function, check if the "
+		"file exist (0-yes)? %d\n", err);
 	if (err != 0) {
+		msglog(LDMSD_LDEBUG, SAMP ": file does not exist, create "
+			"one\n");
 		/* if not exist create one */
 		file = fopen(metadata_filename, "w+");
 		exist_before = 0;
@@ -935,6 +949,8 @@ static int sample(struct ldmsd_sampler * self)
 		 * exist_before used to add the watch one time
 		 */
 		if (exist_before == 0) {
+			msglog(LDMSD_LDEBUG, SAMP ": add inotify watch to "
+				"the file\n");
 			file = fopen(metadata_filename, "w+");
 			inot_wd = inotify_add_watch(inot_fd,
 				metadata_filename,
@@ -943,43 +959,57 @@ static int sample(struct ldmsd_sampler * self)
 			meta = read_sup_file();
 			exist_before = 1;
 		} else {
+			msglog(LDMSD_LDEBUG, SAMP ": inotify, check if there is"
+				" new data written to the file\n");
 			inot_length = read(inot_fd,
 				inot_buffer, 16);
 			if (inot_length > 0) {
 				/* File changed */
 				/* Read the support file */
+				msglog(LDMSD_LDEBUG, SAMP ": inotify, file was"
+					" changed!\n");
 				meta = read_sup_file();
 
+				msglog(LDMSD_LDEBUG, SAMP ": remove the old "
+					"base, schema, set, and papi stuff\n");
 				/* remove the old configuration */
+				msglog(LDMSD_LDEBUG, SAMP ": free base\n");
+				if (base)
+					base_del(base);
+				base = NULL;
+				msglog(LDMSD_LDEBUG, SAMP ": free set\n");
 				if (set)
 					ldms_set_delete(set);
 				set = NULL;
 
-				if (schema) {
-					ldms_schema_delete(schema);
-					//deatach_pids();
-				}
-				schema = NULL;
-
+				msglog(LDMSD_LDEBUG, SAMP ": free "
+					"papi_event_set\n");
 				if (papi_event_set) {
 					PAPI_destroy_eventset(&papi_event_set);
 					PAPI_shutdown();
 				}
 				papi_event_set = PAPI_NULL;
 
+				msglog(LDMSD_LDEBUG, SAMP ": free "
+					"papi_event_val\n");
 				if (papi_event_val) {
 					free(papi_event_val);
 					papi_event_val = NULL;
 				}
+				msglog(LDMSD_LDEBUG, SAMP ": free appid\n");
 				if (apppid) {
 					free(apppid);
 					apppid = NULL;
 				}
 
+				msglog(LDMSD_LDEBUG, SAMP ": free "
+					"papi_event_sets\n");
 				if (papi_event_sets) {
 					free(papi_event_sets);
 				}
 
+				msglog(LDMSD_LDEBUG, SAMP ": free "
+					"papi_event_codes\n");
 				if (events_codes) {
 					free(events_codes);
 					events_codes = NULL;
@@ -990,55 +1020,68 @@ static int sample(struct ldmsd_sampler * self)
 				 * set
 				 */
 				if (meta != NULL) {
+					msglog(LDMSD_LDEBUG, SAMP ": new data "
+						"exist, form the av_list from "
+						"the file content\n");
+
+					/* create the avl list */
 					string2attr_list_local(meta->conf_line,
 						&av_list_local,
 						&kw_list_local);
+					msglog(LDMSD_LDEBUG, SAMP ": run "
+						"config_local to configure the "
+						"sampler\n");
+
+					/* Configure the sampler */
 					config_local(kw_list_local,
 						av_list_local);
 				}
-
 			}
 		}
 	}
 
 	if (!set || schema == NULL) {
-		msglog(LDMSD_LDEBUG, SAMP ": Wait for file to set the schema\n");
+		msglog(LDMSD_LDEBUG, SAMP ": wait for new data in the file to "
+			"configure the sampler\n");
 		return 0;
 	}
 
 	/* The shell command to grep the application PID */
 	char* command = calloc(strlen(appname_str) + 14, sizeof (char));
 
-	msglog(LDMSD_LDEBUG, "PID counts = %d \n", pids_count);
+	msglog(LDMSD_LDEBUG, SAMP ": sampler configured successfully, watch "
+		"for application PIDs (count = %d) \n", pids_count);
 
 	if (pids_count == 0) {
-
+		msglog(LDMSD_LDEBUG, SAMP ": watch for application, no PIDs,"
+			" application not running\n");
 		if (strlen(appname_str) > 1) {
-			msglog(LDMSD_LDEBUG, "pgrep %s | wc -l\n", appname_str);
+			msglog(LDMSD_LDEBUG, SAMP ": pgrep %s | wc -l\n", appname_str);
 			sprintf(command, "pgrep %s | wc -l", appname_str);
 			FILE *fp = popen(command, "r");
 			/* Get the application PID counts */
 			fscanf(fp, "%d", &pids_count);
-			msglog(LDMSD_LDEBUG, "Pids count = %d\n", pids_count);
+			msglog(LDMSD_LDEBUG, SAMP ": pids count = %d\n", pids_count);
 			pclose(fp);
 
 			if (pids_count >= ppn) {
-				msglog(LDMSD_LDEBUG, "Create Eventsets for"
-					" %d PIDs\n", pids_count);
+				msglog(LDMSD_LDEBUG, SAMP ": create eventsets"
+					" for %d PIDs\n", pids_count);
 				if (create_event_sets() < 0) {
 					goto err1;
 				}
 			} else {
-				msglog(LDMSD_LDEBUG, "Waiting for application to"
-					" start\n");
+				msglog(LDMSD_LDEBUG, SAMP ": Waiting for "
+					"application to start\n");
 				pids_count = 0;
 			}
-		} else msglog(LDMSD_LDEBUG, "Waiting for the meta file to be"
-			" changed\n");
+		} else msglog(LDMSD_LDEBUG, SAMP ": Waiting for the file "
+			"to be changed\n");
 	} else { /* When PID exist */
 		/* check if the attach happened before, no need to attach */
 		if (attach == 0) {
-
+			msglog(LDMSD_LDEBUG, SAMP ": application started, papi"
+				" start attaching now\n");
 			c = 0;
 			/* Attach to all PIDs */
 			while (c < pids_count) {
@@ -1059,25 +1102,32 @@ static int sample(struct ldmsd_sampler * self)
 				attach = 1;
 				c++;
 			}
+			msglog(LDMSD_LDEBUG, SAMP ": application started, papi"
+				" attach done!\n");
 		} else {
 
 			/* Check if the PAPI is attached and the the application
 			 *  is a life by searching for the process number
 			 * if note exist then De-attach PAPI
 			 */
+			msglog(LDMSD_LDEBUG, SAMP ": papi already attached, "
+				"check if the application is alive \n");
 			pid0_exist = kill(apppid[0], 0);
 
 			if (pid0_exist == 0) {
-				ldms_transaction_begin(set);
+				msglog(LDMSD_LDEBUG, SAMP ": application is "
+					"alive, read papi events \n");
+				base_sample_begin(base);
 				if (save_events_data() < 0) {
-					ldms_transaction_end(set);
+					base_sample_end(base);
 					goto err1;
 				}
-				ldms_transaction_end(set);
+				base_sample_end(base);
 			} else {
+				msglog(LDMSD_LDEBUG, SAMP ": application is "
+					"dead, papi de-attach now \n");
 				deatach_pids();
 			}
-			ldms_transaction_end(set);
 		}
 	}
 
@@ -1094,7 +1144,6 @@ err1:
 
 static void term(struct ldmsd_plugin * self)
 {
-
 	if (papi_event_set) {
 		PAPI_destroy_eventset(&papi_event_set);
 		PAPI_shutdown();
@@ -1102,14 +1151,12 @@ static void term(struct ldmsd_plugin * self)
 
 	if (papi_event_val)
 		free(papi_event_val);
-
+	if (base)
+		base_del(base);
+	base = NULL;
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
-
-	if (schema)
-		ldms_schema_delete(schema);
-	schema = NULL;
 }
 
 static const char *usage(struct ldmsd_plugin * self)
