@@ -59,9 +59,10 @@
 #include <netdb.h>
 #include <pthread.h>
 #include <errno.h>
+#include <ovis_util/util.h>
 #include "ldms.h"
 
-#define FMT "x:p:a:s:i:"
+#define FMT "x:p:a:A:s:i:"
 
 #define METRIC_NAME_PREFIX "metric_"
 #define MARRAY_NUM_ELE 5
@@ -69,7 +70,8 @@
 static char *xprt;
 static int port;
 
-static char *secretword_path;
+static char *auth_name = "none";
+static struct attr_value_list *auth_opt;
 
 struct test_schema {
 	const char *name;
@@ -221,7 +223,7 @@ static struct test_set *__set_new(struct test_schema *tschema, const char *name,
 		printf("ldms_set_new failed: set %s, schema %s\n", name, tschema->name);
 		exit(1);
 	}
-	if (0 == strcmp(published, "true")) {
+	if (0 == strcasecmp(published, "true")) {
 		rc = ldms_set_publish(tset->set);
 		if (rc) {
 			printf("Failed to publish the set '%s'\n", name);
@@ -323,16 +325,16 @@ void do_server(struct sockaddr_in *sin)
 	int rc;
 	ldms_t ldms;
 
-	ldms = ldms_xprt_new(xprt, _log);
+	ldms = ldms_xprt_new_with_auth(xprt, _log, auth_name, auth_opt);
 	if (!ldms) {
-		printf("ldms_xprt_new error\n");
-		exit(-1);
+		printf("ldms_xprt_new_with_auth error\n");
+		exit(errno);
 	}
 
 	rc = ldms_xprt_listen(ldms, (void *)sin, sizeof(*sin), NULL, NULL);
 	if (rc) {
 		printf("ldms_xprt_listen: %d\n", rc);
-		exit(-1);
+		exit(rc);
 	}
 
 	printf("Listening on port %hu\n", port);
@@ -341,21 +343,47 @@ void do_server(struct sockaddr_in *sin)
 	rc = pthread_create(&t, NULL, __sample_sets, (void *)ldms);
 	if (rc) {
 		printf("pthread_create error %d\n", rc);
-		exit(-1);
+		exit(rc);
 	}
 	pthread_join(t, NULL);
 }
 
 void usage()
 {
-	printf("	-a path		Path to the secretword file\n");
+	printf("\ntest_ldms usage\n");
+	printf("	-a auth_name	the same list as for ldmsd\n");
+	printf("	-A auht_arg	the arguments for the authentication\n");
 	printf("	-p port		listener port\n");
 	printf("	-x xprt		sock, rdma, or ugni\n");
-	printf("	-s name		Create a schema with the given name."
+	printf("	-s name		Create a schema with the given name.\n"
 	       "			This might be given multiple time.\n");
 	printf("	-i schema:name:[true|false]	Create a set with the schema.\n"
 	       "					The set is published if 'true' is given.\n"
 	       "					This might be given multiple time.\n");
+}
+
+static size_t AUTH_OPT_MAX = 10;
+
+static void process_auth_arg(char *arg)
+{
+	char *key, *value;
+	if (!auth_opt) {
+		auth_opt = av_new(AUTH_OPT_MAX);
+		if (!auth_opt) {
+			printf("Out of memory\n");
+			exit(ENOMEM);
+		}
+	}
+	if (auth_opt->count == auth_opt->size) {
+		printf("Too many auth arguments");
+		exit(EINVAL);
+	}
+
+	key = strtok(arg, "=");
+	value = strtok(NULL, "=");
+	auth_opt->list[auth_opt->count].name = key;
+	auth_opt->list[auth_opt->count].value = value;
+	auth_opt->count++;
 }
 
 void process_arg(int argc, char **argv)
@@ -364,6 +392,8 @@ void process_arg(int argc, char **argv)
 	struct test_set *tset;
 	char *dummy, *inst_name, *delim;
 	char op;
+
+
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'x':
@@ -373,7 +403,10 @@ void process_arg(int argc, char **argv)
 			port = atoi(optarg);
 			break;
 		case 'a':
-			secretword_path = strdup(optarg);
+			auth_name = strdup(optarg);
+			break;
+		case 'A':
+			process_auth_arg(optarg);
 			break;
 		case 's':
 			(void)__schema_new(optarg);
@@ -381,9 +414,19 @@ void process_arg(int argc, char **argv)
 		case 'i':
 			dummy = strdup(optarg);
 			delim = strchr(dummy, ':');
+			if (!delim) {
+				printf("Wrong -i value format\n");
+				usage();
+				exit(EINVAL);
+			}
 			*delim = '\0';
 			inst_name = delim + 1;
 			delim = strchr(inst_name, ':');
+			if (!delim) {
+				printf("Wrong -i value format\n");
+				usage();
+				exit(EINVAL);
+			}
 			*delim = '\0';
 			tschema = __find_test_schema(dummy);
 			if (!tschema) {
