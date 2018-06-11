@@ -667,7 +667,7 @@ ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
 			  "'%s' transport creation with auth '%s' "
 			  "failed, error: %s(%d). Please check transpot "
 			  "configuration, authentication configuration, "
-			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.",
+			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
 			  xprt_str,
 			  auth_name,
 			  ovis_errno_abbvr(errno),
