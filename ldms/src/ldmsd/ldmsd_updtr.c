@@ -804,15 +804,22 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 		goto out_1;
 	}
 	updtr->state = LDMSD_UPDTR_STATE_RUNNING;
-	if (interval_str)
+
+	interval_us = updtr->default_task.sched.intrvl_us;
+	offset_us = updtr->default_task.hint.offset_us;
+	if (interval_str) {
+		/* A new interval is given. */
 		interval_us = strtol(interval_str, NULL, 0);
-	else
-		interval_us = updtr->default_task.sched.intrvl_us;
+		if (!offset_str) {
+			/* An offset isn't given. We assume that
+			 * users want the updater to schedule asynchronously.
+			 */
+			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+		}
+	}
 	if (offset_str)
 		offset_us = strtol(offset_str, NULL, 0)
 					- updtr_sched_offset_skew_get();
-	else
-		offset_us = updtr->default_task.hint.offset_us;
 
 	/* Initialize the default task */
 	updtr_task_init(&updtr->default_task, updtr, 1, interval_us, offset_us);
