@@ -53,6 +53,7 @@
 # This file contains the test cases for ldmsd message boundary protocol logic in
 # ldmsd_controller and ldmsctl
 
+import sys
 import unittest
 from time import sleep
 import logging
@@ -165,4 +166,6 @@ if __name__ == "__main__":
     ldmsctl_suite = unittest.TestLoader().loadTestsFromTestCase(TestLdmsCtlMsgBoundary)
     ldmsd_controller_suite = unittest.TestLoader().loadTestsFromTestCase(TestLdmsdControllerMsgBoundary)
     suite = unittest.TestSuite([ldmsctl_suite, ldmsd_controller_suite])
-    unittest.TextTestRunner(failfast = True, verbosity = 2).run(suite)
+    result = unittest.TextTestRunner(failfast = True, verbosity = 2).run(suite)
+    if not result.wasSuccessful():
+        sys.exit(-1)
