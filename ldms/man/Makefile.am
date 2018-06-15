@@ -42,6 +42,7 @@ pending_dist_man7_MANS= \
 Plugin_procsensors.man
 
 dist_man7_MANS += Plugin_store_rabbitv3.man
+dist_man7_MANS += Plugin_store_rabbitkw.man
 
 ldmsd_exits.man: $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c
 	$(srcdir)/make_exits_man.sh $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c > ldmsd_exits.man
