@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2014-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2014-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2014-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2014-2018 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -435,9 +435,8 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 /**
  * Process an unknown message in the end point.
  */
-static void process_sep_msg_unknown(struct z_sock_ep *sep)
+static void process_sep_read_error(struct z_sock_ep *sep)
 {
-	LOG_(sep, "zap_sock: Unknown zap message.\n");
 	pthread_mutex_lock(&sep->ep.lock);
 	if (sep->ep.state == ZAP_EP_CONNECTED)
 		sep->ep.state = ZAP_EP_CLOSE;
@@ -481,6 +480,8 @@ static void process_sep_msg_connect(struct z_sock_ep *sep)
 	return;
 }
 
+static zap_err_t __sock_send(struct z_sock_ep *sep, uint16_t msg_type,
+						char *buf, size_t len);
 /**
  * Process accept msg
  */
@@ -489,6 +490,12 @@ static void process_sep_msg_accepted(struct z_sock_ep *sep)
 	struct sock_msg_sendrecv *msg;
 	struct zap_event ev;
 	zap_err_t zerr;
+
+	pthread_mutex_lock(&sep->ep.lock);
+	zerr = __sock_send(sep, SOCK_MSG_ACK_ACCEPTED, NULL, 0);
+	pthread_mutex_unlock(&sep->ep.lock);
+	if (zerr)
+		goto err;
 
 	msg = sep->buff.data;
 
@@ -501,9 +508,12 @@ static void process_sep_msg_accepted(struct z_sock_ep *sep)
 	if (zerr != ZAP_ERR_OK) {
 		LOG_(sep, "'Accept' message received in unexpected state %d.\n",
 				sep->ep.state);
-		return;
+		goto err;
 	}
 	sep->ep.cb((void*)sep, &ev);
+	return;
+err:
+	shutdown(sep->sock, SHUT_RDWR);
 }
 
 /**
@@ -532,6 +542,30 @@ static void process_sep_msg_rejected(struct z_sock_ep *sep)
 	sep->ep.cb((void*)sep, &ev);
 	shutdown(sep->sock, SHUT_RDWR);
 	return;
+}
+
+/*
+ * Process the acknowledge message sent by the active side
+ */
+
+static void process_sep_msg_ack_accepted(struct z_sock_ep *sep)
+{
+	struct sock_msg_sendrecv *msg;
+	zap_err_t zerr;
+
+	zerr = zap_ep_change_state(&sep->ep, ZAP_EP_ACCEPTING, ZAP_EP_CONNECTED);
+	if (zerr != ZAP_ERR_OK) {
+		LOG_(sep, "'Acknowledged' message received in unexpected state %d.\n",
+				sep->ep.state);
+		shutdown(sep->sock, SHUT_RDWR);
+		return;
+	}
+	struct zap_event ev = {
+		.type = ZAP_EVENT_CONNECTED,
+		.status = ZAP_ERR_OK,
+	};
+	zap_get_ep(&sep->ep); /* Release when receive disconnect/error event. */
+	sep->ep.cb(&sep->ep, &ev);
 }
 
 /**
@@ -1058,6 +1092,7 @@ static process_sep_msg_fn_t process_sep_msg_fns[SOCK_MSG_TYPE_LAST] = {
 	[SOCK_MSG_CONNECT] = process_sep_msg_connect,
 	[SOCK_MSG_ACCEPTED] = process_sep_msg_accepted,
 	[SOCK_MSG_REJECTED] = process_sep_msg_rejected,
+	[SOCK_MSG_ACK_ACCEPTED] = process_sep_msg_ack_accepted,
 };
 
 static zap_err_t __sock_send_connect(struct z_sock_ep *sep, char *buf, size_t len);
@@ -1193,6 +1228,7 @@ static void sock_read(ovis_event_t ev)
 	struct z_sock_ep *sep = (struct z_sock_ep *)ev->param.ctxt;
 	struct sock_msg_hdr *hdr;
 	enum sock_msg_type msg_type;
+	struct zap_version ver;
 	int rc;
 	do {
 		rc = __recv_msg(sep);
@@ -1210,10 +1246,11 @@ static void sock_read(ovis_event_t ev)
 		/* validate by ep state */
 		switch (sep->ep.state) {
 		case ZAP_EP_ACCEPTING:
-			/* expecting only `connect` message */
-			if (msg_type != SOCK_MSG_CONNECT) {
+			/* expecting `connect` or `ack_accepted` message */
+			if (msg_type != SOCK_MSG_CONNECT &&
+					msg_type != SOCK_MSG_ACK_ACCEPTED) {
 				/* invalid */
-				goto bad;
+				goto protocol_error;
 			}
 			break;
 		case ZAP_EP_CONNECTING:
@@ -1221,27 +1258,31 @@ static void sock_read(ovis_event_t ev)
 			if (msg_type != SOCK_MSG_ACCEPTED &&
 					msg_type != SOCK_MSG_REJECTED) {
 				/* invalid */
-				goto bad;
+				goto protocol_error;
 			}
 			break;
+		case ZAP_EP_ERROR:
+			ZAP_ASSERT(0, &(sep->ep), "%s bad ep state (ZAP_EP_ERROR)", __func__);
+			goto protocol_error;
 		case ZAP_EP_CONNECTED:
 			/* good */
 			break;
 		case ZAP_EP_CLOSE:
-			assert(0 == "sock_read() bad ep state (ZAP_EP_CLOSE)");
-			break;
-		case ZAP_EP_ERROR:
-			assert(0 == "sock_read() bad ep state (ZAP_EP_ERROR)");
-			break;
+			/* shutdown is called already. No need to shut it down agian. */
+			ZAP_ASSERT(0, &(sep->ep), "%s bad ep state (ZAP_EP_CLOSE)", __func__);
+			return;
 		case ZAP_EP_INIT:
-			assert(0 == "bad state (ZAP_EP_INIT)");
-			break;
+			/* No connection. Impossible to reach this. */
+			ZAP_ASSERT(0, &(sep->ep), "%s bad ep state (ZAP_EP_INIT)", __func__);
+			return;
 		case ZAP_EP_LISTENING:
-			assert(0 == "bad state (ZAP_EP_LISTENING)");
-			break;
+			/* No connection. Impossible to reach this. */
+			ZAP_ASSERT(0, &(sep->ep), "%s bad ep state (ZAP_EP_LISTENING)", __func__);
+			return;
 		case ZAP_EP_PEER_CLOSE:
-			assert(0 == "bad state (ZAP_EP_CLOSE)");
-			break;
+			/* The connection is gone already. Impossible to reach this. */
+			ZAP_ASSERT(0, &(sep->ep), "%s bad ep state (ZAP_EP_PEER_CLOSE)", __func__);
+			return;
 		}
 		/* Then call the process function accordingly */
 		DEBUG_LOG_RECV_MSG(sep, sep->buff.data);
@@ -1249,14 +1290,19 @@ static void sock_read(ovis_event_t ev)
 				&& msg_type < SOCK_MSG_TYPE_LAST) {
 			process_sep_msg_fns[msg_type](sep);
 		} else {
-			assert(0);
-			process_sep_msg_unknown(sep);
+			process_sep_read_error(sep);
 		}
 		z_sock_buff_reset(&sep->buff);
 	} while (1);
 	return;
+
+ protocol_error:
+	ZAP_VERSION_SET(ver);
+	LOG_(sep, "Protocol error: version = %hhu.%hhu.%hhu.%hhu\n",
+			ver.major, ver.minor, ver.patch, ver.flags);
  bad:
-	sock_event(ev);
+ 	/* shutdown the connection */
+	process_sep_read_error(sep);
 }
 
 static void *io_thread_proc(void *arg)
@@ -1398,7 +1444,12 @@ static void sock_event(ovis_event_t ev)
 	switch (sep->ep.state) {
 	case ZAP_EP_ACCEPTING:
 		sep->ep.state = ZAP_EP_ERROR;
-		do_cb = 0;
+		if (sep->app_accepted) {
+			zev.type = ZAP_EVENT_CONNECT_ERROR;
+			do_cb = 1;
+		} else {
+			do_cb = 0;
+		}
 		break;
 	case ZAP_EP_CONNECTING:
 		zev.type = ZAP_EVENT_CONNECT_ERROR;
@@ -1600,8 +1651,6 @@ static int init_once()
 {
 	int rc = ENOMEM;
 
-	__zap_assert_flag(1);
-
 	sched = ovis_scheduler_new();
 	if (!sched)
 		return errno;
@@ -1700,15 +1749,9 @@ zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 	zerr = __sock_send(sep, SOCK_MSG_ACCEPTED, data, data_len);
 	if (zerr)
 		goto err_1;
-	sep->ep.state = ZAP_EP_CONNECTED;
+	sep->app_accepted = 1;
 	pthread_mutex_unlock(&sep->ep.lock);
 
-	struct zap_event ev = {
-		.type = ZAP_EVENT_CONNECTED,
-		.status = ZAP_ERR_OK,
-	};
-	zap_get_ep(&sep->ep); /* Release when receive disconnect/error event. */
-	sep->ep.cb(&sep->ep, &ev);
 	return ZAP_ERR_OK;
 
 err_1:
