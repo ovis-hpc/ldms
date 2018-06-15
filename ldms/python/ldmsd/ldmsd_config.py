@@ -212,7 +212,7 @@ class ldmsdInbandConfig(ldmsdConfig):
         if auth:
             self.ldms = ldms.LDMS_xprt_new_with_auth(self.xprt, auth, auth_opt)
         else:
-            self.ldms = ldms.ldms_xprt_new(self.xprt, None)
+            self.ldms = ldms.LDMS_xprt_new(self.xprt)
 
         if not self.ldms:
             raise ValueError("Failed to create LDMS transport")
