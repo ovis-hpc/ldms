@@ -301,6 +301,7 @@ static struct test_sampler_set *__create_test_sampler_set(ldms_set_t set,
 	ts_set->skip_push = 1;
 	LIST_INSERT_HEAD(&set_list, ts_set, entry);
 	ldms_set_publish(set);
+	ldmsd_set_register(set, "test_sampler");
 	return ts_set;
 }
 
