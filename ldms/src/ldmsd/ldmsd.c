@@ -93,12 +93,15 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:v:Vz:Z:q:c:u:a:A:"
+#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:v:Vz:Z:q:c:u:a:A:n:"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"
 #define LDMSD_MEM_SIZE_DEFAULT 512L * 1024L
 
+char myname[512]; /* name to identify ldmsd */
+		  /* NOTE: fqdn limit: 255 characters */
+		  /* DEFAULT: myhostname:port */
 char myhostname[80];
 char ldmstype[20];
 int foreground;
@@ -297,6 +300,11 @@ const char *ldmsd_myhostname_get()
 	return myhostname;
 }
 
+const char *ldmsd_myname_get()
+{
+	return myname;
+}
+
 #ifdef LDMSD_UPDATE_TIME
 double ldmsd_timeval_diff(struct timeval *start, struct timeval *end)
 {
@@ -455,6 +463,7 @@ void usage_hint(char *argv[],char *hint)
 	       "		   giving the -m option. If both are given, the -m option\n"
 	       "		   takes precedence over the environment variable.\n",
 	       LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
+	printf("    -n NAME        The name of the daemon. By default, it is \"IHOSTNAME:PORT\".");
 	printf("    -r pid_file    The path to the pid file for daemon mode.\n"
 	       "		   [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
 	printf("  Log Verbosity Options\n");
@@ -1346,6 +1355,7 @@ int main(int argc, char *argv[])
 	char *lval = NULL;
 	char *rval = NULL;
 	char *plug_name = NULL;
+	const char *port;
 	int list_plugins = 0;
 	int ret;
 	int sample_interval = 2000000;
@@ -1490,6 +1500,15 @@ int main(int argc, char *argv[])
 			plug_name = strdup(optarg);
 			break;
 		case 'x':
+			/* Listening port processing is handled below */
+			port = strchr(optarg, ':');
+			if (!port) {
+				printf("Bad xprt format, expecting XPRT:PORT, "
+				       "but got: %s\n", optarg);
+				exit(1);
+			}
+			port++;
+			break;
 		case 'c':
 			/* Handle below */
 			break;
@@ -1519,6 +1538,9 @@ int main(int argc, char *argv[])
 			auth_opt->list[auth_opt->count].name = lval;
 			auth_opt->list[auth_opt->count].value = rval;
 			auth_opt->count++;
+			break;
+		case 'n':
+			snprintf(myname, sizeof(myname), "%s", optarg);
 			break;
 		case '?':
 			printf("Error: unknown argument: %c\n", optopt);
@@ -1565,6 +1587,16 @@ int main(int argc, char *argv[])
 		ldmsd_log(LDMSD_LCRITICAL, "LDMS could not pre-allocate "
 				"the memory of size %s.\n", max_mem_sz_str);
 		exit(1);
+	}
+
+	if (myhostname[0] == '\0') {
+		ret = gethostname(myhostname, sizeof(myhostname));
+		if (ret)
+			myhostname[0] = '\0';
+	}
+
+	if (myname[0] == '\0') {
+		snprintf(myname, sizeof(myname), "%s:%s", myhostname, port);
 	}
 
 	if (!foreground) {
@@ -1672,11 +1704,6 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (myhostname[0] == '\0') {
-		ret = gethostname(myhostname, sizeof(myhostname));
-		if (ret)
-			myhostname[0] = '\0';
-	}
 	/* Create the test sets */
 	ldms_set_t *test_sets = calloc(test_set_count, sizeof(ldms_set_t));
 	int job_id, comp_id;
