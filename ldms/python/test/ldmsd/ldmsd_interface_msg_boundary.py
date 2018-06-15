@@ -53,6 +53,7 @@
 # This file contains the test cases for ldmsd message boundary protocol logic in
 # ldmsd_controller and ldmsctl
 
+import sys
 import unittest
 from time import sleep
 import logging
@@ -76,18 +77,18 @@ class TestLdmsdInterfaceMsgBoundary(unittest.TestCase):
     def setUpClass(cls):
         log.info("Setting up " + cls.__name__)
         try:
-            cls.ldmsd = LDMSD(port = cls.PORT, xprt = cls.XPRT, 
-                              logfile = cls.LOG, auth = cls.AUTH, 
+            cls.ldmsd = LDMSD(port = cls.PORT, xprt = cls.XPRT,
+                              logfile = cls.LOG, auth = cls.AUTH,
                               auth_opt = cls.AUTH_OPT)
             log.info("starting ldmsd")
             cls.ldmsd.run()
             sleep(1)
-            
+
             cls.ldmsd_interface = LDMSD_Controller(port = cls.PORT, host = cls.HOST,
                                    xprt = cls.XPRT, auth = cls.AUTH,
                                    auth_opt = cls.AUTH_OPT, ldmsctl = cls.is_ldmsctl)
             cls.ldmsd_interface.run()
-            cls.ldmsd_interface.read_pty() # Read the welcome message and the prompt 
+            cls.ldmsd_interface.read_pty() # Read the welcome message and the prompt
         except:
             if cls.ldmsd:
                 del cls.ldmsd
@@ -131,7 +132,7 @@ class TestLdmsdInterfaceMsgBoundary(unittest.TestCase):
         resp = self._comm("greeting name={0}".format(s))
         self.assertEqual(len(resp), 1)
         self.assertEqual(resp[0], "Hello '{0}'".format(s))
-        self.assertTrue(self.ldmsd.is_running())        
+        self.assertTrue(self.ldmsd.is_running())
 
     def test_recv_n_rec_resp(self):
         num_rec = 10
@@ -165,4 +166,6 @@ if __name__ == "__main__":
     ldmsctl_suite = unittest.TestLoader().loadTestsFromTestCase(TestLdmsCtlMsgBoundary)
     ldmsd_controller_suite = unittest.TestLoader().loadTestsFromTestCase(TestLdmsdControllerMsgBoundary)
     suite = unittest.TestSuite([ldmsctl_suite, ldmsd_controller_suite])
-    unittest.TextTestRunner(failfast = True, verbosity = 2).run(suite)
+    result = unittest.TextTestRunner(failfast = True, verbosity = 2).run(suite)
+    if not result.wasSuccessful():
+        sys.exit(-1)
