@@ -1,7 +1,7 @@
 #######################################################################
 # -*- c-basic-offset: 8 -*-
-# Copyright (c) 2016-2017 Open Grid Computing, Inc. All rights reserved.
-# Copyright (c) 2016-2017 Sandia Corporation. All rights reserved.
+# Copyright (c) 2016-2018 Open Grid Computing, Inc. All rights reserved.
+# Copyright (c) 2016-2018 Sandia Corporation. All rights reserved.
 # Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
 # license for use of this work by or on behalf of the U.S. Government.
 # Export of this program may require a license from the United States
@@ -95,7 +95,10 @@ class LDMSD_Req_Attr(object):
     REC_LEN = 25
     JSON = 26
     PERM = 27
-    LAST = 28
+    AUTO_SWITCH = 28
+    PEER_NAME = 29
+    TIMEOUT_FACTOR = 30
+    LAST = 31
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -125,6 +128,9 @@ class LDMSD_Req_Attr(object):
                    "REC_LEN": REC_LEN,
                    "json": JSON,
                    'perm': PERM,
+                   'auto_switch': AUTO_SWITCH,
+                   'peer_name': PEER_NAME,
+                   'timeout_factor': TIMEOUT_FACTOR,
                    'TERMINATING': LAST
         }
 
@@ -268,6 +274,12 @@ class LDMSD_Request(object):
     EXIT_DAEMON = 0x600 + 9
     SET_INFO = 0X600 + 11
 
+    FAILOVER_CONFIG       =  0x700
+    FAILOVER_DO_FAILOVER  =  0x700  +  1
+    FAILOVER_DO_FAILBACK  =  0x700  +  2
+    FAILOVER_MOD          =  0x700  +  3
+    FAILOVER_STATUS       =  0x700  +  4
+
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
             'greeting': {'id': GREETING},
@@ -324,6 +336,12 @@ class LDMSD_Request(object):
             'logrotate': {'id': LOGROTATE},
             'daemon_exit': {'id': EXIT_DAEMON},
             'set_info': {'id': SET_INFO},
+
+            'failover_config'  :  {'id':  FAILOVER_CONFIG},
+            'failover'         :  {'id':  FAILOVER_DO_FAILOVER},
+            'failback'         :  {'id':  FAILOVER_DO_FAILBACK},
+            'failover_mod'     :  {'id':  FAILOVER_MOD},
+            'failover_status'  :  {'id':  FAILOVER_STATUS},
         }
 
     TYPE_CONFIG_CMD = 1

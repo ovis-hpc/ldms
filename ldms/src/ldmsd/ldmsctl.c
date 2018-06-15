@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2011-2017 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2011-2017 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2011-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2011-2018 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -1068,6 +1068,118 @@ static void resp_set_info(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 	json_value_free(json);
 }
 
+/* failover related functions */
+
+static void help_failback()
+{
+	printf("Execute failback routine.\n\n");
+}
+
+static void help_failover()
+{
+	printf("Execute failover routine.\n\n");
+}
+
+static void help_failover_config()
+{
+	printf("Configure LDMSD failover.\n\n");
+	printf("Parameters:\n");
+	printf("    host=             The host name of the failover partner.\n");
+	printf("    xprt=             The transport of the failover partner.\n");
+	printf("    port=             The LDMS port of the failover partner.\n");
+	printf("    [auto_switch=0|1] Auto switching (failover/failback).\n");
+	printf("    [interval=]       The interval of the heartbeat.\n");
+	printf("    [timeout_factor=] The heartbeat timeout factor.\n");
+	printf("    [peer_name=]      The failover partner name. If not given,\n");
+	printf("                      the ldmsd will accept any partner.\n");
+}
+
+static void help_failover_mod()
+{
+	printf("Modify LDMSD failover.\n\n");
+	printf("Parameters:\n");
+	printf("    [auto_switch=0|1] Auto switching (failover/failback).\n");
+}
+
+static void help_failover_status()
+{
+	printf("Get failover status.\n\n");
+}
+
+static void __indent_print(int indent)
+{
+	int i;
+	for (i = 0; i < indent; i++) {
+		printf("    ");
+	}
+}
+
+static void __json_value_print(json_value *v, int indent)
+{
+	int i;
+	switch (v->type) {
+	case json_object:
+		for (i = 0; i < v->u.object.length; i++) {
+			printf("\n");
+			__indent_print(indent);
+			printf("%s: ", v->u.object.values[i].name);
+			__json_value_print(v->u.object.values[i].value,
+					   indent + 1);
+		}
+		break;
+	case json_array:
+		for (i = 0; i < v->u.array.length; i++) {
+			printf("\n");
+			__indent_print(indent);
+			printf("* ");
+			__json_value_print(v->u.array.values[i], indent + 1);
+		}
+		break;
+	case json_none:
+		printf("NONE");
+		break;
+	case json_null:
+		printf("NULL");
+		break;
+	case json_integer:
+		printf("%ld", v->u.integer);
+		break;
+	case json_double:
+		printf("%lf", v->u.dbl);
+		break;
+	case json_string:
+		printf("%s", v->u.string.ptr);
+		break;
+	case json_boolean:
+		printf("%s", v->u.boolean?"True":"False");
+		break;
+	}
+}
+
+static void resp_failover_status(ldmsd_req_hdr_t resp, size_t len,
+				 uint32_t rsp_err)
+{
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+
+	json_value *json;
+	json = json_parse((char*)attr->attr_value, len);
+	if (!json)
+		return;
+
+	if (json->type != json_object) {
+		printf("Unrecognized failover status format\n");
+		return;
+	}
+
+	printf("--- Failover Status ---");
+	__json_value_print(json, 0);
+	printf("\n\n");
+
+	json_value_free(json);
+}
+
 static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
 static int handle_source(struct ldmsctl_ctrl *ctrl, char *path);
 static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
@@ -1076,6 +1188,16 @@ static struct command command_tbl[] = {
 	{ "?", LDMSCTL_HELP, handle_help, NULL, NULL },
 	{ "config", LDMSD_PLUGN_CONFIG_REQ, NULL, help_config, resp_generic },
 	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status, resp_generic },
+	{ "failback", LDMSD_FAILOVER_DO_FAILBACK_REQ, NULL,
+		      help_failback, resp_generic},
+	{ "failover", LDMSD_FAILOVER_DO_FAILOVER_REQ, NULL,
+		      help_failover, resp_generic},
+	{ "failover_config", LDMSD_FAILOVER_CONFIG_REQ, NULL,
+			     help_failover_config, resp_generic },
+	{ "failover_mod", LDMSD_FAILOVER_MOD_REQ, NULL,
+			  help_failover_mod, resp_generic },
+	{ "failover_status", LDMSD_FAILOVER_STATUS_REQ, NULL,
+			     help_failover_status, resp_failover_status },
 	{ "greeting", LDMSD_GREETING_REQ, NULL, help_greeting, resp_greeting },
 	{ "help", LDMSCTL_HELP, handle_help, NULL, NULL },
 	{ "load", LDMSD_PLUGN_LOAD_REQ, NULL, help_load, resp_generic },

@@ -2,8 +2,8 @@
 
 #######################################################################
 # -*- c-basic-offset: 8 -*-
-# Copyright (c) 2015-2016 Open Grid Computing, Inc. All rights reserved.
-# Copyright (c) 2015-2016 Sandia Corporation. All rights reserved.
+# Copyright (c) 2015-2018 Open Grid Computing, Inc. All rights reserved.
+# Copyright (c) 2015-2018 Sandia Corporation. All rights reserved.
 # Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
 # license for use of this work by or on behalf of the U.S. Government.
 # Export of this program may require a license from the United States
@@ -944,12 +944,67 @@ class LdmsdCmdParser(cmd.Cmd):
         resp = self.handle('example', arg)
         if resp['msg'] == "":
             return
-        
+
         attr_list = json.loads(resp['msg'])
         print("{0:10} {1:10} {2}".format("ATTR_ID", "VALUE_LENGTH", "VALUE"))
         print("---------- ---------- ----------")
         for attr in attr_list:
             print("{0:10} {1:10} {2}".format(attr['attr_id'], attr['attr_len'], attr['attr_value']))
+
+    def do_failover_config(self, arg):
+        """Configure LDMSD failover.
+
+        Parameters:
+            host=               The host name of the failover partner.
+            xprt=               The transport of the failover partner.
+            port=               The LDMS port of the failover partner.
+            [auto_switch=0|1]   Auto switching (failover/failback).
+            [interval=]         The interval of the heartbeat.
+            [timeout_factor=]   The hearbeat timeout factor.
+            [peer_name=]        The failover partner name. If not given,
+                                the ldmsd will accept any partner.
+        """
+        self.handle('failover_config', arg)
+
+    def complete_failover_config(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('failover_config', text)
+
+    def do_failover_mod(self, arg):
+        """Modify LDMSD failover.
+
+        Parameters:
+            [auto_switch=0|1]   Auto switching (failover/failback).
+        """
+        self.handle('failover_mod', arg)
+
+    def do_failover_status(self, arg):
+        """Get failover status."""
+        resp = self.handle('failover_status', None)
+        if resp['errcode'] != 0:
+            print("Request returned error {0}".format(resp['errcode']))
+            return
+
+        fobj =  json.loads(resp['msg'])
+        # print fobj['attr']
+        print('Failover Status:')
+        keys = ['host', 'port', 'xprt', 'auto_switch', 'peer_name',
+                'interval', 'timeout_factor']
+        for k in keys:
+            print('    %s: %s' % (k, str(fobj[k])))
+        print('    flags: ')
+        for fl, v in fobj['flags'].iteritems():
+            print('        %s: %s' % (fl, str(v)))
+
+    def complete_failover_mod(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('failover_mod', text)
+
+    def do_failover(self, arg):
+        """Execute failover routine."""
+        self.handle('failover', arg)
+
+    def do_failback(self, arg):
+        """Execute failback routine."""
+        self.handle('failback', arg)
 
     def complete_example(self, text, line, begidx, endidx):
         return self.__complete_attr_list('example', text)
@@ -992,17 +1047,17 @@ class LdmsdCmdParser(cmd.Cmd):
                 if hop['type'] == "producer":
                     print("{0:20} {1:15} {2:15} {3:15} {4:10} {5:10} {6:5} {7:25} {8:25}".format(
                         hop['host'], hop['type'], detail['name'], detail['host'], detail['update_int'],
-                        detail['update_off'], detail['update_sync'], 
+                        detail['update_off'], detail['update_sync'],
                         self.__ts2human(detail['last_start_sec'], detail['last_start_usec']),
                         self.__ts2human(detail['last_end_sec'], detail['last_end_usec'])))
                 else:
                     print("{0:20} {1:15} {2:15} {3:15} {4:10} {5:10} {6:5} {7:25} {8:25}".format(
                         hop['host'], hop['type'], detail['name'], "---", detail['interval_us'],
-                        detail['offset_us'], detail['sync'], 
-                        self.__ts2human(detail['trans_start_sec'], detail['trans_start_usec']), 
+                        detail['offset_us'], detail['sync'],
+                        self.__ts2human(detail['trans_start_sec'], detail['trans_start_usec']),
                         self.__ts2human(detail['trans_end_sec'], detail['trans_end_usec'])))
         except:
-            raise                    
+            raise
 
     def complete_set_info(self, text, line, begidx, endidx):
         return self.__complete_attr_list('set_info', text)

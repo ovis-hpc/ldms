@@ -74,6 +74,8 @@
 
 #define LDMSD_DEFAULT_FILE_PERM 0600
 
+#define LDMSD_FAILOVER_NAME_PREFIX "#"
+
 struct ldmsd_version {
 	uint8_t major;
 	uint8_t minor;
@@ -891,6 +893,11 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
 int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
+
+/* Failover routines */
+int ldmsd_failover_config(const char *host, const char *port, const char *xprt,
+			  int auto_switch, uint64_t interval_us);
+
 
 /** Task scheduling */
 void ldmsd_task_init(ldmsd_task_t task);

@@ -1,7 +1,7 @@
 #######################################################################
 # -*- c-basic-offset: 8 -*-
-# Copyright (c) 2015-2017 Open Grid Computing, Inc. All rights reserved.
-# Copyright (c) 2015-2017 Sandia Corporation. All rights reserved.
+# Copyright (c) 2015-2018 Open Grid Computing, Inc. All rights reserved.
+# Copyright (c) 2015-2018 Sandia Corporation. All rights reserved.
 # Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
 # license for use of this work by or on behalf of the U.S. Government.
 # Export of this program may require a license from the United States
@@ -133,7 +133,24 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       ##### Misc. #####
                       'greeting': {'req_attr': [], 'opt_attr': ['name', 'offset', 'level']},
                       'example': {'req_attr': [], 'opt_attr': []},
-                      'set_info': {'req_attr': ['instance'], 'opt_attr': []}
+                      'set_info': {'req_attr': ['instance'], 'opt_attr': []},
+                      ##### Failover. #####
+                      'failover_config': {
+                                'req_attr': [
+                                    'host',
+                                    'port',
+                                    'xprt',
+                                ],
+                                'opt_attr': [
+                                    'interval',
+                                    'peer_name',
+                                    'auto_switch',
+                                    'timeout_factor',
+                                ]
+                            },
+                      'failover_mod': {'req_attr': [], 'opt_attr': ['auto_switch']},
+                      'failover': {'req_attr': [], 'opt_attr': []},
+                      'failback': {'req_attr': [], 'opt_attr': []},
                       }
 
 """@var MAX_RECV_LEN
