@@ -717,6 +717,32 @@ ldmsd_prdcr_ref_t prdcr_ref_find_regex(ldmsd_updtr_t updtr, regex_t *regex)
 	return NULL;
 }
 
+int __ldmsd_updtr_prdcr_add(ldmsd_updtr_t updtr, ldmsd_prdcr_t prdcr)
+{
+	int rc = 0;
+	ldmsd_prdcr_ref_t ref;
+
+	ldmsd_updtr_lock(updtr);
+	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out;
+	}
+	ref = prdcr_ref_find(updtr, prdcr->obj.name);
+	if (ref) {
+		rc = EEXIST;
+		goto out;
+	}
+	ref = prdcr_ref_new(prdcr);
+	if (!ref) {
+		rc = errno;
+		goto out;
+	}
+	LIST_INSERT_HEAD(&updtr->prdcr_list, ref, entry);
+out:
+	ldmsd_updtr_unlock(updtr);
+	return rc;
+}
+
 int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt)
 {
