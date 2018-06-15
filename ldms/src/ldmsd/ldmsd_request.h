@@ -117,6 +117,7 @@ enum ldmsd_request {
 
 enum ldmsd_request_attr {
 	/* Common attribute */
+	LDMSD_ATTR_TERM = 0,
 	LDMSD_ATTR_NAME = 1,
 	LDMSD_ATTR_INTERVAL,
 	LDMSD_ATTR_OFFSET,
@@ -149,8 +150,8 @@ enum ldmsd_request_attr {
 
 #define LDMSD_RECORD_MARKER 0xffffffff
 
-#define LDMSD_REQ_SOM_F	1
-#define LDMSD_REQ_EOM_F	2
+#define LDMSD_REQ_SOM_F	1 /* start of message */
+#define LDMSD_REQ_EOM_F	2 /* end of message */
 
 #define LDMSD_REQ_TYPE_CONFIG_CMD 1
 #define LDMSD_REQ_TYPE_CONFIG_RESP 2
@@ -449,5 +450,81 @@ void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms);
 int ldmsd_set_info_request(ldmsd_prdcr_t prdcr,
 			ldmsd_req_ctxt_t org_reqc, char *inst_name,
 			ldmsd_req_resp_fn resp_handler, void *ctxt);
+
+/**
+ * \brief Construct ldmsd request command.
+ *
+ * The request command is created with a message buffer. The buffer is flushed
+ * when the request command is terminated with ::ldmsd_req_cmd_attr_term()
+ * or when the buffer is full. The caller doesn't have to handle
+ * start-of-message or end-of-message logic.
+ *
+ * The \c resp_handler() is called if the peer respond to the request command.
+ *
+ * \param ldms         The LDMS transport handle.
+ * \param req_id       Request ID (see ::ldmsd_request enumeration).
+ * \param orgn_reqc    The associated original request (can be NULL). This is
+ *                     primarily for relaying commands.
+ * \param resp_handler The response handling callback function.
+ * \param ctxt         The generic context to this command.
+ */
+ldmsd_req_cmd_t ldmsd_req_cmd_new(ldms_t ldms,
+				    uint32_t req_id,
+				    ldmsd_req_ctxt_t orgn_reqc,
+				    ldmsd_req_resp_fn resp_handler,
+				    void *ctxt);
+
+/**
+ * \brief Free the request command.
+ */
+void ldmsd_req_cmd_free(ldmsd_req_cmd_t rcmd);
+
+/**
+ * \brief Append a request attribute to the command.
+ */
+int ldmsd_req_cmd_attr_append(ldmsd_req_cmd_t rcmd,
+			      enum ldmsd_request_attr req_id,
+			      const void *value, int value_len);
+
+static inline
+int ldmsd_req_cmd_attr_append_str(ldmsd_req_cmd_t rcmd,
+				  enum ldmsd_request_attr req_id,
+				  const char *str)
+{
+	return ldmsd_req_cmd_attr_append(rcmd, req_id, str, strlen(str) + 1);
+}
+
+static inline
+int ldmsd_req_cmd_attr_append_u16(ldmsd_req_cmd_t rcmd,
+				  enum ldmsd_request_attr req_id,
+				  uint16_t u16)
+{
+	return ldmsd_req_cmd_attr_append(rcmd, req_id, &u16, sizeof(u16));
+}
+
+static inline
+int ldmsd_req_cmd_attr_append_u32(ldmsd_req_cmd_t rcmd,
+				  enum ldmsd_request_attr req_id,
+				  uint32_t u32)
+{
+	return ldmsd_req_cmd_attr_append(rcmd, req_id, &u32, sizeof(u32));
+}
+
+static inline
+int ldmsd_req_cmd_attr_append_u64(ldmsd_req_cmd_t rcmd,
+				  enum ldmsd_request_attr req_id,
+				  uint64_t u64)
+{
+	return ldmsd_req_cmd_attr_append(rcmd, req_id, &u64, sizeof(u64));
+}
+
+/**
+ * Terminate the attribute list.
+ */
+static inline
+int ldmsd_req_cmd_attr_term(ldmsd_req_cmd_t rcmd)
+{
+	return ldmsd_req_cmd_attr_append(rcmd, LDMSD_ATTR_TERM, NULL, 0);
+}
 
 #endif /* LDMS_SRC_LDMSD_LDMSD_REQUEST_H_ */
