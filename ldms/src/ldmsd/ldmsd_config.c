@@ -490,7 +490,7 @@ static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
  */
 char *find_comment(const char *line)
 {
-	char *s = line;
+	char *s = (char *)line;
 	int leadingspc = 1;
 	while (*s != '\0') {
 		if (*s == '#' && leadingspc)
