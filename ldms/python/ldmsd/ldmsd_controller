@@ -1062,6 +1062,56 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_set_route(self, text, line, begidx, endidx):
         return self.__complete_attr_list('set_info', text)
 
+    def do_updtr_task(self, arg):
+        """
+        Report the task tree of an updater
+        Parameters:
+        [name=]   Updater name
+        """
+        resp = self.handle('updtr_task', arg)
+        if resp['msg'] == "":
+            return
+        if resp['errcode'] != 0:
+            return
+        updtrs = json.loads(resp['msg'])
+        for updtr in updtrs:
+            print("Updater : {0}".format(updtr['name']))
+            print("   tasks: <interval_us>:<offset_us>")
+            tasks = updtr['tasks']
+            for task in tasks:
+                if task['default_task'] == "true":
+                    print("     {0}:{1}   default".format(task['interval_us'], task['offset_us']))
+                else:
+                    print("     {0}:{1}".format(task['interval_us'], task['offset_us']))
+
+    def complete_updtr_task(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('updtr_task', text)
+
+    def do_prdcr_hint_tree(self, arg):
+        """
+        Report the set tree by update hints of a producer
+        Parameters:
+        [name=]   Producer name
+        """
+        resp = self.handle('prdcr_hint_tree', arg)
+        if resp['msg'] == "":
+            return
+        if resp['errcode'] != 0:
+            return
+        prdcrs = json.loads(resp['msg'])
+        for prdcr in prdcrs:
+            print("prdcr: {0}".format(prdcr['name']))
+            hints = prdcr['hints']
+            for hint in hints:
+                print("   update hint: {0}:{1}".format(hint['interval_us'],
+                                                       hint['offset_us']))
+                sets = hint['sets']
+                for s in sets:
+                    print("      {0}".format(s))
+
+    def complete_prdcr_hint_tree(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_hint_tree', text)
+
     def parseline(self, line):
         """Parse the line into a command name and a string containing
         the arguments.  Returns a tuple containing (command, args, line).

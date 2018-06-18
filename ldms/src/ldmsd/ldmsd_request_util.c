@@ -84,6 +84,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "plugn_sets",         LDMSD_PLUGN_SETS_REQ  },
 	{  "prdcr_add",          LDMSD_PRDCR_ADD_REQ  },
 	{  "prdcr_del",          LDMSD_PRDCR_DEL_REQ  },
+	{  "prdcr_hint_tree",    LDMSD_PRDCR_HINT_TREE_REQ  },
 	{  "prdcr_set_status",   LDMSD_PRDCR_SET_REQ  },
 	{  "prdcr_start",        LDMSD_PRDCR_START_REQ  },
 	{  "prdcr_start_regex",  LDMSD_PRDCR_START_REGEX_REQ  },
@@ -114,6 +115,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "updtr_start",        LDMSD_UPDTR_START_REQ  },
 	{  "updtr_status",       LDMSD_UPDTR_STATUS_REQ  },
 	{  "updtr_stop",         LDMSD_UPDTR_STOP_REQ  },
+	{  "updtr_task",         LDMSD_UPDTR_TASK_REQ  },
 	{  "usage",              LDMSD_PLUGN_LIST_REQ  },
 	{  "version",            LDMSD_VERSION_REQ  },
 };

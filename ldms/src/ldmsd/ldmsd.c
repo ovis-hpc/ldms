@@ -712,12 +712,12 @@ int ldmsd_set_register(ldms_set_t set, const char *pluing_name)
 	struct rbn *rbn;
 	ldmsd_plugin_set_t s;
 	ldmsd_plugin_set_list_t list;
+	struct ldmsd_plugin_cfg *pi;
 	int rc;
 
 	s = malloc(sizeof(*s));
-	if (!s) {
+	if (!s)
 		return ENOMEM;
-	}
 	s->plugin_name = strdup(pluing_name);
 	if (!s->plugin_name) {
 		rc = ENOMEM;
@@ -751,8 +751,26 @@ int ldmsd_set_register(ldms_set_t set, const char *pluing_name)
 	}
 	LIST_INSERT_HEAD(&list->list, s, entry);
 	ldmsd_set_tree_unlock();
-	return 0;
 
+	pi = ldmsd_get_plugin((char *)pluing_name);
+	if (!pi) {
+		ldmsd_set_deregister(s->inst_name, pluing_name);
+		return EINVAL;
+	}
+	if (pi->plugin->type == LDMSD_PLUGIN_SAMPLER) {
+		if (pi->sample_interval_us) {
+			/* Add the update hint to the set_info */
+			rc = ldmsd_set_update_hint_set(s->set,
+					pi->sample_interval_us, pi->sample_offset_us);
+			if (rc) {
+				/* Leave the ldmsd plugin set in the tree, so return 0. */
+				ldmsd_log(LDMSD_LERROR, "Error %d: Failed to add "
+						"the update hint to set '%s'\n",
+						rc, s->inst_name);
+			}
+		}
+	}
+	return 0;
 free_inst_name:
 	free(s->inst_name);
 free_plugin:
@@ -787,6 +805,35 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name)
 	}
 out:
 	ldmsd_set_tree_unlock();
+}
+
+int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us)
+{
+	char value[128];
+	if (offset_us == LDMSD_UPDT_HINT_OFFSET_NONE)
+		snprintf(value, 127, "%ld:", interval_us);
+	else
+		snprintf(value, 127, "%ld:%ld", interval_us, offset_us);
+	return ldms_set_info_set(set, LDMSD_SET_INFO_UPDATE_HINT_KEY, value);
+}
+
+int ldmsd_set_update_hint_get(ldms_set_t set, long *interval_us, long *offset_us)
+{
+	char *value, *tmp, *endptr;
+	*interval_us = 0;
+	*offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+	value = ldms_set_info_get(set, LDMSD_SET_INFO_UPDATE_HINT_KEY);
+	if (!value)
+		return 0;
+	tmp = strtok_r(value, ":", &endptr);
+	*interval_us = strtol(tmp, NULL, 0);
+	tmp = strtok_r(NULL, ":", &endptr);
+	if (tmp)
+		*offset_us = strtol(tmp, NULL, 0);
+	free(value);
+	ldmsd_log(LDMSD_LDEBUG, "set '%s': getting updtr hint '%s'\n",
+			ldms_set_instance_name_get(set), value);
+	return 0;
 }
 
 static void resched_task(ldmsd_task_t task)
@@ -881,9 +928,27 @@ out:
 	pthread_mutex_unlock(&task->lock);
 }
 
+int ldmsd_task_resched(ldmsd_task_t task, int flags, long sched_us, long offset_us)
+{
+	int rc = 0;
+	pthread_mutex_lock(&task->lock);
+	if ((task->state != LDMSD_TASK_STATE_RUNNING)
+			&& (task->state != LDMSD_TASK_STATE_STARTED))
+		goto out;
+	ovis_scheduler_event_del(task->os, &task->oev);
+	task->flags = flags;
+	task->sched_us = sched_us;
+	task->offset_us = offset_us;
+	resched_task(task);
+	rc = ovis_scheduler_event_add(task->os, &task->oev);
+out:
+	pthread_mutex_unlock(&task->lock);
+	return rc;
+}
+
 int ldmsd_task_start(ldmsd_task_t task,
 		     ldmsd_task_fn_t task_fn, void *task_arg,
-		     int flags, int sched_us, int offset_us)
+		     int flags, long sched_us, long offset_us)
 {
 	int rc = 0;
 	pthread_mutex_lock(&task->lock);
@@ -1075,6 +1140,35 @@ void ldmsd_set_info_delete(ldmsd_set_info_t info)
 	free(info);
 }
 
+int __sampler_set_info_add(struct ldmsd_plugin *pi, char *interval, char *offset)
+{
+	ldmsd_plugin_set_t set;
+	int rc;
+	long interval_us;
+	long offset_us;
+
+	if (pi->type != LDMSD_PLUGIN_SAMPLER)
+		return EINVAL;
+	if (!interval)
+		return EINVAL;
+	interval_us = strtol(interval, NULL, 0);
+	if (offset)
+		offset_us = strtol(offset, NULL, 0);
+	else
+		offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+	for (set = ldmsd_plugin_set_first(pi->name); set;
+				set = ldmsd_plugin_set_next(set)) {
+		rc = ldmsd_set_update_hint_set(set->set, interval_us, offset_us);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR, "Error %d: Failed to add "
+					"the update hint to set '%s'\n",
+					rc, ldms_set_instance_name_get(set->set));
+			return rc;
+		}
+	}
+	return 0;
+}
+
 /*
  * Start the sampler
  */
@@ -1104,6 +1198,10 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 		rc = EBUSY;
 		goto out;
 	}
+
+	rc = __sampler_set_info_add(pi->plugin, interval, offset);
+	if (rc)
+		goto out;
 
 	if (offset) {
 		sample_offset = strtol(offset, NULL, 0);

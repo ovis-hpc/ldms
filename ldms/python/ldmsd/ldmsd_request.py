@@ -225,6 +225,7 @@ class LDMSD_Request(object):
     PRDCR_START_REGEX = 0x100 + 5
     PRDCR_STOP_REGEX = 0x100 + 6
     PRDCR_SET_STATUS = 0x100 + 7
+    PRDCR_HINT_TREE = 0x600 + 8
 
     STRGP_ADD = 0x200
     STRGP_DEL = 0x200 + 1
@@ -245,6 +246,7 @@ class LDMSD_Request(object):
     UPDTR_PRDCR_DEL = 0X300 + 6
     UPDTR_MATCH_ADD = 0X300 + 7
     UPDTR_MATCH_DEL = 0X300 + 8
+    UPDTR_TASK = 0x300 + 9
 
     SMPLR_ADD = 0X400
     SMPLR_DEL = 0X400 + 1
@@ -294,6 +296,7 @@ class LDMSD_Request(object):
             'prdcr_stop': {'id': PRDCR_STOP},
             'prdcr_stop_regex': {'id': PRDCR_STOP_REGEX},
             'prdcr_set_status': {'id': PRDCR_SET_STATUS},
+            'prdcr_hint_tree': {'id': PRDCR_HINT_TREE},
 
             'strgp_add': {'id': STRGP_ADD},
             'strgp_del': {'id': STRGP_DEL},
@@ -314,6 +317,7 @@ class LDMSD_Request(object):
             'updtr_prdcr_del': {'id': UPDTR_PRDCR_DEL},
             'updtr_match_add': {'id': UPDTR_MATCH_ADD},
             'updtr_match_del': {'id': UPDTR_MATCH_DEL},
+            'updtr_task': {'id': UPDTR_TASK},
 
             'start': {'id': PLUGN_START},
             'stop': {'id': PLUGN_STOP},

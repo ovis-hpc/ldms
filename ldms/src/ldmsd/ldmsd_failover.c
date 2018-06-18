@@ -372,7 +372,7 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 		goto cleanup;
 
 	/* INTERVAL */
-	snprintf(buff, sizeof(buff), "%d", p->conn_intrvl_us);
+	snprintf(buff, sizeof(buff), "%ld", p->conn_intrvl_us);
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_INTERVAL, buff);
 	if (rc)
 		goto cleanup;
@@ -406,6 +406,7 @@ int __failover_send_updtr(ldmsd_failover_t f, ldms_t x, ldmsd_updtr_t u)
 	ldmsd_name_match_t nm;
 	ldmsd_prdcr_t p;
 	ldmsd_req_cmd_t rcmd;
+	struct rbn *rbn;
 
 	if (0 == strncmp(LDMSD_FAILOVER_NAME_PREFIX, u->obj.name,
 				sizeof(LDMSD_FAILOVER_NAME_PREFIX)-1)) {
@@ -428,14 +429,14 @@ int __failover_send_updtr(ldmsd_failover_t f, ldms_t x, ldmsd_updtr_t u)
 		goto cleanup;
 
 	/* INTERVAL */
-	snprintf(buff, sizeof(buff), "%d", u->updt_intrvl_us);
+	snprintf(buff, sizeof(buff), "%ld", u->default_task.hint.intrvl_us);
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_INTERVAL, buff);
 	if (rc)
 		goto cleanup;
 
 	/* OFFSET */
-	if (u->updt_task_flags & LDMSD_TASK_F_SYNCHRONOUS) {
-		snprintf(buff, sizeof(buff), "%d", u->updt_offset_us);
+	if (u->default_task.task_flags & LDMSD_TASK_F_SYNCHRONOUS) {
+		snprintf(buff, sizeof(buff), "%ld", u->default_task.hint.offset_us);
 		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_OFFSET,
 						   buff);
 		if (rc)
@@ -460,7 +461,8 @@ int __failover_send_updtr(ldmsd_failover_t f, ldms_t x, ldmsd_updtr_t u)
 	rcmd = NULL;
 
 	/* list of PRODUCERs in this updater */
-	LIST_FOREACH(pref, &u->prdcr_list, entry) {
+	for (rbn = rbt_min(&u->prdcr_tree); rbn; rbn = rbn_succ(rbn)) {
+		pref = container_of(rbn, struct ldmsd_prdcr_ref, rbn);
 		rcmd = ldmsd_req_cmd_new(x, LDMSD_FAILOVER_CFGUPDTR_REQ,
 					   NULL, NULL, NULL);
 		if (!rcmd) {
@@ -1364,7 +1366,7 @@ int __ldmsd_updtr_prdcr_add(ldmsd_updtr_t updtr, ldmsd_prdcr_t prdcr);
 int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 {
 	/* create new cfg if not existed, or update if exited */
-
+	int push_flags = 0;
 	ldmsd_failover_t f = __ldmsd_req_failover_get(req);
 
 	char *name = __req_attr_gets(req, LDMSD_ATTR_NAME);
@@ -1389,14 +1391,23 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 		goto out;
 	}
 
+	if (push) {
+		if (0 == strcasecmp("onchange", push)) {
+			push_flags = LDMSD_UPDTR_F_PUSH |
+					LDMSD_UPDTR_F_PUSH_CHANGE;
+		} else {
+			push_flags = LDMSD_UPDTR_F_PUSH;
+		}
+	}
+
 	u = ldmsd_updtr_find(name);
 	if (!u) {
 		/* create */
 		srbn = str_rbn_new(name);
 		if (!srbn)
 			goto out;
-		u = ldmsd_updtr_new_with_auth(name, sctxt.crd.uid,
-					      sctxt.crd.gid, 0700);
+		u = ldmsd_updtr_new_with_auth(name, interval, offset, push_flags,
+						sctxt.crd.uid, sctxt.crd.gid, 0700);
 		if (!u) {
 			rc = errno;
 			str_rbn_free(srbn);
@@ -1404,14 +1415,18 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 		}
 		rbt_ins(&f->updtr_rbt, &srbn->rbn);
 		ldmsd_updtr_get(u); /* so that we can `put` without del */
-	}
-	/* update by parameters */
-	if (interval) {
-		u->updt_intrvl_us = atoi(interval);
-	}
-	if (offset) {
-		u->updt_offset_us = atoi(offset);
-		u->updt_task_flags = LDMSD_TASK_F_SYNCHRONOUS;
+	} else {
+		/* update by parameters */
+		if (interval) {
+			u->default_task.hint.intrvl_us = atoi(interval);
+		}
+		if (offset) {
+			u->default_task.hint.offset_us = atoi(offset);
+			u->default_task.task_flags = LDMSD_TASK_F_SYNCHRONOUS;
+		}
+		u->push_flags = push_flags;
+		if (push_flags)
+			u->default_task.task_flags = LDMSD_TASK_F_IMMEDIATE;
 	}
 	if (producer) {
 		/* add producer */
@@ -1427,14 +1442,6 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 		/* add matching condition */
 		rc = ldmsd_updtr_match_add(name, regex, match, req->line_buf,
 					   req->line_len, &sctxt);
-	}
-	if (push) {
-		if (0 == strcasecmp("onchange", push)) {
-			u->push_flags = LDMSD_UPDTR_F_PUSH |
-					LDMSD_UPDTR_F_PUSH_CHANGE;
-		} else {
-			u->push_flags = LDMSD_UPDTR_F_PUSH;
-		}
 	}
 updtr_put:
 	ldmsd_updtr_put(u);

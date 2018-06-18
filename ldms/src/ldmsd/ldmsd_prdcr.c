@@ -162,6 +162,39 @@ static void prdcr_set_del(ldmsd_prdcr_set_t set)
 	ldmsd_prdcr_set_ref_put(set);
 }
 
+#define UPDT_HINT_TREE_ADD 1
+#define UPDT_HINT_TREE_REMOVE 2
+void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
+				struct ldmsd_updtr_schedule *hint, int op)
+{
+	struct rbn *rbn;
+	struct ldmsd_updt_hint_set_list *list;
+	if (0 == hint->intrvl_us)
+		return;
+	rbn = rbt_find(&prdcr->hint_set_tree, hint);
+	if (op == UPDT_HINT_TREE_REMOVE) {
+		if (!rbn)
+			return;
+		list = container_of(rbn, struct ldmsd_updt_hint_set_list, rbn);
+		LIST_REMOVE(prd_set, updt_hint_entry);
+		if (LIST_EMPTY(&list->list)) {
+			rbt_del(&prdcr->hint_set_tree, &list->rbn);
+			free(list);
+		}
+	} else if (op == UPDT_HINT_TREE_ADD) {
+		if (!rbn) {
+			list = malloc(sizeof(*list));
+			rbn_init(&list->rbn, hint);
+			rbt_ins(&prdcr->hint_set_tree, &list->rbn);
+			LIST_INIT(&list->list);
+		} else {
+			list = container_of(rbn,
+					struct ldmsd_updt_hint_set_list, rbn);
+		}
+		LIST_INSERT_HEAD(&list->list, prd_set, updt_hint_entry);
+	}
+}
+
 /**
  * Destroy all sets for the producer
  */
@@ -175,6 +208,8 @@ static void prdcr_reset_sets(ldmsd_prdcr_t prdcr)
 			/* Put back the reference taken when register for push */
 			ldmsd_prdcr_set_ref_put(prd_set);
 		}
+		prdcr_hint_tree_update(prdcr, prd_set,
+				&prd_set->updt_hint, UPDT_HINT_TREE_REMOVE);
 		rbt_del(&prdcr->set_tree, rbn);
 		prdcr_set_del(prd_set);
 	}
@@ -193,11 +228,101 @@ static ldmsd_prdcr_set_t _find_set(ldmsd_prdcr_t prdcr, const char *inst_name)
 	return NULL;
 }
 
+/* Caller must hold prdcr lock and prdcr_set lock */
+static void prdcr_set_updt_hint_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set)
+{
+	struct rbn *rbn;
+	ldmsd_updt_hint_set_list_t list;
+	char *value;
+	ldms_set_t set = prd_set->set;
+
+	prd_set->prev_hint.intrvl_us = prd_set->updt_hint.intrvl_us;
+	prd_set->prev_hint.offset_us = prd_set->updt_hint.offset_us;
+
+	ldms_set_info_unset(set, LDMSD_SET_INFO_UPDATE_HINT_KEY);
+	(void) ldmsd_set_update_hint_get(prd_set->set,
+			&prd_set->updt_hint.intrvl_us, &prd_set->updt_hint.offset_us);
+
+	/* Remove set from the previous-hint list */
+	if (0 != prd_set->prev_hint.intrvl_us) {
+		prdcr_hint_tree_update(prdcr, prd_set,
+				&prd_set->prev_hint, UPDT_HINT_TREE_REMOVE);
+	}
+
+	/* Add set to the current-hint list*/
+	if (0 != prd_set->updt_hint.intrvl_us) {
+		ldmsd_log(LDMSD_LDEBUG, "producer '%s' add set '%s' to hint tree\n",
+						prdcr->obj.name, prd_set->inst_name);
+		prdcr_hint_tree_update(prdcr, prd_set,
+				&prd_set->updt_hint, UPDT_HINT_TREE_ADD);
+	} else {
+		/* No new hint. done */
+		ldmsd_log(LDMSD_LDEBUG, "set '%s' contains no updtr hint\n",
+							prd_set->inst_name);
+		return;
+	}
+
+	return;
+}
+
+static void prdcr_set_updtr_task_update(ldmsd_prdcr_set_t prd_set)
+{
+	ldmsd_updtr_t updtr;
+	ldmsd_name_match_t match;
+	char *str;
+	int rc;
+	pthread_mutex_lock(&prd_set->lock);
+	if (0 == ldmsd_updtr_schedule_cmp(&prd_set->prev_hint,
+						&prd_set->updt_hint)) {
+		/* Do nothing */
+		pthread_mutex_unlock(&prd_set->lock);
+		return;
+	}
+	pthread_mutex_unlock(&prd_set->lock);
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
+	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
+		ldmsd_updtr_lock(updtr);
+		if (updtr->state != LDMSD_UPDTR_STATE_RUNNING) {
+			ldmsd_updtr_unlock(updtr);
+			continue;
+		}
+		/* Updaters for push don't schedule any updates. */
+		if (0 != updtr->push_flags) {
+			ldmsd_updtr_unlock(updtr);
+			continue;
+		}
+		if (!ldmsd_updtr_prdcr_find(updtr, prd_set->prdcr->obj.name)) {
+			ldmsd_updtr_unlock(updtr);
+			continue;
+		}
+		if (!LIST_EMPTY(&updtr->match_list)) {
+			LIST_FOREACH(match, &updtr->match_list, entry) {
+				if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
+					str = prd_set->inst_name;
+				else
+					str = prd_set->schema_name;
+				rc = regexec(&match->regex, str, 0, NULL, 0);
+				if (!rc)
+					goto update_task;
+			}
+			continue;
+		}
+update_task:
+		pthread_mutex_lock(&prd_set->lock);
+		ldmsd_updtr_task_tree_update(updtr, prd_set);
+		pthread_mutex_unlock(&prd_set->lock);
+		ldmsd_updtr_unlock(updtr);
+	}
+
+
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+}
+
 static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 			    int more, ldms_set_t set, void *arg)
 {
 	ldmsd_prdcr_set_t prd_set = arg;
-
+	int update_updtr_tree = 0;
 	pthread_mutex_lock(&prd_set->lock);
 	if (status != LDMS_LOOKUP_OK) {
 		status = (status < 0 ? -status : status);
@@ -215,21 +340,43 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 				  "Error %d in lookup callback for set '%s'\n",
 					  status, prd_set->inst_name);
 		}
-		if (prd_set->set) {
-			/* prd_set should not have a handle to an ldms set at this point. */
-			assert(0);
-		}
 		prd_set->state = LDMSD_PRDCR_SET_STATE_START;
 		goto out;
 	}
-	prd_set->set = set;
-	prd_set->schema_name = strdup(ldms_set_schema_name_get(set));
+	if (!prd_set->set) {
+		/* This is the first lookup of the set. */
+		prd_set->set = set;
+		prd_set->schema_name = strdup(ldms_set_schema_name_get(set));
+	}
+
+	/*
+	 * Unlocking producer set to lock producer and then producer set
+	 * for locking order consistency
+	 */
+	pthread_mutex_unlock(&prd_set->lock);
+
+	ldmsd_prdcr_lock(prd_set->prdcr);
+	pthread_mutex_lock(&prd_set->lock);
+	prdcr_set_updt_hint_update(prd_set->prdcr, prd_set);
+	if (0 != prd_set->updt_hint.intrvl_us)
+		update_updtr_tree = 1;
+	pthread_mutex_unlock(&prd_set->lock);
+	ldmsd_prdcr_unlock(prd_set->prdcr);
+
+	pthread_mutex_lock(&prd_set->lock);
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
 	ldmsd_strgp_update(prd_set);
 
 out:
 	pthread_mutex_unlock(&prd_set->lock);
+	if ((status == LDMS_LOOKUP_OK) && (update_updtr_tree)) {
+		/*
+		 * Update the task tree of all updaters
+		 * that get updates for the producer set.
+		 */
+		prdcr_set_updtr_task_update(prd_set);
+	}
 	ldmsd_prdcr_set_ref_put(prd_set); /* The ref is taken before calling lookup */
 	return;
 }
@@ -298,8 +445,35 @@ static void prdcr_dir_cb_del(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 		if (!rbn)
 			continue;
 		set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
+		prdcr_hint_tree_update(prdcr, set,
+				&set->updt_hint, UPDT_HINT_TREE_REMOVE);
 		rbt_del(&prdcr->set_tree, &set->rbn);
 		prdcr_set_del(set);
+	}
+}
+
+static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
+{
+	ldmsd_prdcr_set_t set;
+	int i, rc;
+
+	for (i = 0; i < dir->set_count; i++) {
+		set = ldmsd_prdcr_set_find(prdcr, dir->set_names[i]);
+		if (!set) {
+			/* We must have added this set before. */
+			assert(0);
+		}
+		ldmsd_prdcr_set_ref_get(set);
+		pthread_mutex_lock(&set->lock);
+		set->state = LDMSD_PRDCR_SET_STATE_START;
+		pthread_mutex_unlock(&set->lock);
+		rc = ldms_xprt_lookup(xprt, set->inst_name, LDMS_LOOKUP_SET_INFO,
+						prdcr_lookup_cb, (void *)set);
+		if (rc) {
+			ldmsd_log(LDMSD_LINFO, "Synchronous error %d from "
+					"		SET_INFO lookup\n", rc);
+			ldmsd_prdcr_set_ref_put(set);
+		}
 	}
 }
 
@@ -325,6 +499,9 @@ static void prdcr_dir_cb(ldms_t xprt, int status, ldms_dir_t dir, void *arg)
 		break;
 	case LDMS_DIR_DEL:
 		prdcr_dir_cb_del(xprt, dir, prdcr);
+		break;
+	case LDMS_DIR_UPD:
+		prdcr_dir_cb_upd(xprt, dir, prdcr);
 		break;
 	}
 	ldmsd_prdcr_unlock(prdcr);
@@ -495,6 +672,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	prdcr->port_no = port_no;
 	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
 	rbt_init(&prdcr->set_tree, set_cmp);
+	rbt_init(&prdcr->hint_set_tree, ldmsd_updtr_schedule_cmp);
 	prdcr->host_name = strdup(host_name);
 	if (!prdcr->host_name)
 		goto out;
@@ -741,6 +919,35 @@ ldmsd_prdcr_set_t ldmsd_prdcr_set_find(ldmsd_prdcr_t prdcr, const char *setname)
 	if (rbn)
 		return container_of(rbn, struct ldmsd_prdcr_set, rbn);
 	return NULL;
+}
+
+/**
+ * Get the first set with the given update hint \c intrvl and \c offset.
+ *
+ * Caller must hold the producer lock.
+ */
+ldmsd_prdcr_set_t ldmsd_prdcr_set_first_by_hint(ldmsd_prdcr_t prdcr,
+					struct ldmsd_updtr_schedule *hint)
+{
+	struct rbn *rbn;
+	ldmsd_updt_hint_set_list_t list;
+	rbn = rbt_find(&prdcr->hint_set_tree, hint);
+	if (!rbn)
+		return NULL;
+	list = container_of(rbn, struct ldmsd_updt_hint_set_list, rbn);
+	if (LIST_EMPTY(&list->list))
+		assert(0);
+	return LIST_FIRST(&list->list);
+}
+
+/**
+ * Get the next set with the given update hint \c intrvl and \c offset.
+ *
+ * Caller must hold the producer lock.
+ */
+ldmsd_prdcr_set_t ldmsd_prdcr_set_next_by_hint(ldmsd_prdcr_set_t prd_set)
+{
+	return LIST_NEXT(prd_set, updt_hint_entry);
 }
 
 /* Must be called with strgp lock held. */
