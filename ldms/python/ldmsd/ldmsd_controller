@@ -1016,13 +1016,13 @@ class LdmsdCmdParser(cmd.Cmd):
         ts_str = "{0} [{1}]".format(ts_sec, usec)
         return ts_str
 
-    def do_set_info(self, arg):
+    def do_set_route(self, arg):
         """
         Display the route of the set from aggregators to the sampler daemon.
         Parameters:
         instance=   Set instance name
         """
-        resp = self.handle('set_info', arg)
+        resp = self.handle('set_route', arg)
         attr_list = resp['attr_list']
         if attr_list is None:
             print("No response back")
@@ -1059,7 +1059,7 @@ class LdmsdCmdParser(cmd.Cmd):
         except:
             raise
 
-    def complete_set_info(self, text, line, begidx, endidx):
+    def complete_set_route(self, text, line, begidx, endidx):
         return self.__complete_attr_list('set_info', text)
 
     def parseline(self, line):

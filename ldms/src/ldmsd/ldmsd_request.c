@@ -170,7 +170,7 @@ static int oneshot_handler(ldmsd_req_ctxt_t req_ctxt);
 static int logrotate_handler(ldmsd_req_ctxt_t req_ctxt);
 static int exit_daemon_handler(ldmsd_req_ctxt_t req_ctxt);
 static int greeting_handler(ldmsd_req_ctxt_t req_ctxt);
-static int set_info_handler(ldmsd_req_ctxt_t req_ctxt);
+static int set_route_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
 
@@ -341,8 +341,8 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_GREETING_REQ] = {
 		LDMSD_GREETING_REQ, greeting_handler, XUG
 	},
-	[LDMSD_SET_INFO_REQ] = {
-		LDMSD_SET_INFO_REQ, set_info_handler, XUG
+	[LDMSD_SET_ROUTE_REQ] = {
+		LDMSD_SET_ROUTE_REQ, set_route_handler, XUG
 	},
 
 	/* FAILOVER */
@@ -4274,7 +4274,7 @@ static int eperm_handler(ldmsd_req_ctxt_t reqc)
 	return 0;
 }
 
-int ldmsd_set_info_request(ldmsd_prdcr_t prdcr,
+int ldmsd_set_route_request(ldmsd_prdcr_t prdcr,
 			ldmsd_req_ctxt_t org_reqc, char *inst_name,
 			ldmsd_req_resp_fn resp_handler, void *ctxt)
 {
@@ -4285,7 +4285,7 @@ int ldmsd_set_info_request(ldmsd_prdcr_t prdcr,
 	int rc;
 
 	rcmd = alloc_req_cmd_ctxt(prdcr->xprt, prdcr->xprt->max_msg,
-					LDMSD_SET_INFO_REQ, org_reqc,
+					LDMSD_SET_ROUTE_REQ, org_reqc,
 					resp_handler, ctxt);
 	if (!rcmd)
 		return ENOMEM;
@@ -4329,7 +4329,7 @@ out:
 	return rc;
 }
 
-size_t __set_info_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
+size_t __set_route_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
 						ldmsd_set_info_t info)
 {
 	size_t cnt = 0;
@@ -4417,18 +4417,18 @@ size_t __set_info_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
 	return cnt;
 }
 
-struct set_info_req_ctxt {
+struct set_route_req_ctxt {
 	char *my_info;
 	int is_internal;
 };
 
-static int set_info_resp_handler(ldmsd_req_cmd_t rcmd)
+static int set_route_resp_handler(ldmsd_req_cmd_t rcmd)
 {
 	struct ldmsd_req_attr_s my_attr;
 	ldmsd_req_attr_t attr;
 	ldmsd_req_ctxt_t reqc = rcmd->reqc;
 	ldmsd_req_ctxt_t org_reqc = rcmd->org_reqc;
-	struct set_info_req_ctxt *ctxt = (struct set_info_req_ctxt *)rcmd->ctxt;
+	struct set_route_req_ctxt *ctxt = (struct set_route_req_ctxt *)rcmd->ctxt;
 
 	attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->req_buf);
 
@@ -4460,11 +4460,11 @@ static int set_info_resp_handler(ldmsd_req_cmd_t rcmd)
 	return 0;
 }
 
-static int set_info_handler(ldmsd_req_ctxt_t reqc)
+static int set_route_handler(ldmsd_req_ctxt_t reqc)
 {
 	size_t cnt;
 	char *inst_name;
-	struct set_info_req_ctxt *ctxt;
+	struct set_route_req_ctxt *ctxt;
 	int is_internal = 0;
 	int rc = 0;
 	ldmsd_set_info_t info;
@@ -4492,7 +4492,7 @@ static int set_info_handler(ldmsd_req_ctxt_t reqc)
 		goto out;
 	}
 
-	cnt = __set_info_json_get(is_internal, reqc, info);
+	cnt = __set_route_json_get(is_internal, reqc, info);
 	if (info->origin_type == LDMSD_SET_ORIGIN_PRDCR) {
 		ctxt = malloc(sizeof(*ctxt));
 		if (!ctxt) {
@@ -4512,12 +4512,12 @@ static int set_info_handler(ldmsd_req_ctxt_t reqc)
 			goto err1;
 		}
 		memcpy(ctxt->my_info, reqc->line_buf, cnt + 1);
-		rc = ldmsd_set_info_request(info->prd_set->prdcr,
-				reqc, inst_name, set_info_resp_handler, ctxt);
+		rc = ldmsd_set_route_request(info->prd_set->prdcr,
+				reqc, inst_name, set_route_resp_handler, ctxt);
 		if (rc) {
 			reqc->errcode = rc;
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
-					"%s: error forwarding set_info_request to "
+					"%s: error forwarding set_route_request to "
 					"prdcr '%s'", ldmsd_myhostname_get(),
 					info->origin_name);
 			ldmsd_send_req_response(reqc, reqc->line_buf);

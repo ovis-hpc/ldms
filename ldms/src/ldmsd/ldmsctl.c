@@ -978,14 +978,14 @@ static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 	}
 }
 
-static void help_set_info()
+static void help_set_route()
 {
 	printf("\nDisplay the route of the set from aggregators to the sampler daemon.\n"
 	       "Parameters:\n"
 	       "     instance=   Set instance name\n");
 }
 
-static void resp_set_info(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+static void resp_set_route(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
@@ -1014,7 +1014,7 @@ static void resp_set_info(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 	printf("instance: %s\n", inst_name);
 	printf("schema_name: %s\n", schema_name);
 	printf("=============================\n");
-	printf("%20s %15s %15s %15s %10s %10s %5s %25s %25s",
+	printf("%20s %15s %15s %15s %10s %10s %5s %25s %25s\n",
 			"host", "type", "name", "prdcr_host",
 			"interval", "offset", "sync", "start", "end");
 	printf("-------------------- --------------- --------------- --------------- "
@@ -1059,7 +1059,7 @@ static void resp_set_info(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 		sec = strtoul(end_sec, NULL, 0);
 		usec = strtoul(end_usec, NULL, 0);
 		end = ldmsctl_ts_str(sec, usec);
-		printf("%20s %15s %15s %15s %10s %10s %5s %25s %25s",
+		printf("%20s %15s %15s %15s %10s %10s %5s %25s %25s\n",
 					host, type, name, prdcr_host, intrvl,
 					offset, is_sync, start, end);
 		free(start);
@@ -1214,7 +1214,7 @@ static struct command command_tbl[] = {
 	{ "prdcr_stop_regex", LDMSD_PRDCR_STOP_REGEX_REQ, NULL, help_prdcr_stop_regex, resp_generic },
 	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit, resp_generic },
 	{ "script", LDMSCTL_SCRIPT, handle_script, help_script, resp_generic },
-	{ "set_info", LDMSD_SET_INFO_REQ, NULL, help_set_info, resp_set_info },
+	{ "set_route", LDMSD_SET_ROUTE_REQ, NULL, help_set_route, resp_set_route },
 	{ "source", LDMSCTL_SOURCE, handle_source, help_source, resp_generic },
 	{ "start", LDMSD_PLUGN_START_REQ, NULL, help_start, resp_generic },
 	{ "stop", LDMSD_PLUGN_STOP_REQ, NULL, help_stop, resp_generic },
