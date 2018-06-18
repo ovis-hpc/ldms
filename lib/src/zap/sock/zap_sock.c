@@ -96,7 +96,6 @@
 
 int init_complete = 0;
 
-static struct event_base *io_event_loop;
 static pthread_t io_thread;
 
 ovis_scheduler_t sched;
@@ -122,14 +121,10 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 					size_t msg_size,
 					const char *data, size_t data_len);
 
-static z_sock_buff_t z_sock_buff_new(size_t bytes);
 static int z_sock_buff_init(z_sock_buff_t buff, size_t bytes);
 static void z_sock_buff_cleanup(z_sock_buff_t buff);
-static void z_sock_buff_free(z_sock_buff_t buff);
 static void z_sock_buff_reset(z_sock_buff_t buff);
 static int z_sock_buff_extend(z_sock_buff_t buff, size_t new_sz);
-
-static void timeout_cb(int fd , short events, void *arg);
 
 uint32_t z_last_key;
 struct rbt z_key_tree;
@@ -220,20 +215,6 @@ static int __sock_nonblock(int fd)
 	return 0;
 }
 
-static z_sock_buff_t z_sock_buff_new(size_t bytes)
-{
-	int rc;
-	z_sock_buff_t buff = malloc(sizeof(*buff));
-	if (!buff)
-		return NULL;
-	rc = z_sock_buff_init(buff, bytes);
-	if (rc) {
-		free(buff);
-		return NULL;
-	}
-	return buff;
-}
-
 static int z_sock_buff_init(z_sock_buff_t buff, size_t bytes)
 {
 	buff->data = malloc(bytes);
@@ -250,12 +231,6 @@ static void z_sock_buff_cleanup(z_sock_buff_t buff)
 	buff->data = NULL;
 	buff->len = 0;
 	buff->alen = 0;
-}
-
-static void z_sock_buff_free(z_sock_buff_t buff)
-{
-	z_sock_buff_cleanup(buff);
-	free(buff);
 }
 
 static void z_sock_buff_reset(z_sock_buff_t buff)
@@ -959,6 +934,7 @@ static int __recv_msg(struct z_sock_ep *sep)
 	return rc;
 }
 
+/* For debugging */
 static void __log_sep_msg(struct z_sock_ep *sep, int is_recv,
 			  const struct sock_msg_hdr *hdr)
 {
@@ -1311,7 +1287,6 @@ static void *io_thread_proc(void *arg)
 	int rc;
 	sigset_t sigset;
 	sigfillset(&sigset);
-	// rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
 	rc = sigprocmask(SIG_SETMASK, &sigset, NULL);
 	assert(rc == 0 && "pthread_sigmask error");
 	rc = ovis_scheduler_loop(sched, 0);
@@ -1664,6 +1639,7 @@ static int init_once()
 	z_key_tree.root = NULL;
 	z_key_tree.comparator = z_rbn_cmp;
 	pthread_mutex_init(&z_key_tree_mutex, NULL);
+	atexit(z_sock_cleanup);
 	return 0;
 
  err_1:
