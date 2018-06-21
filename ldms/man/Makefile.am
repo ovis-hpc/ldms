@@ -1,4 +1,7 @@
 
+dist_man1_MANS= \
+lsdate
+
 dist_man8_MANS= \
 ldms_build_install.man \
 ldms_ls.man \
