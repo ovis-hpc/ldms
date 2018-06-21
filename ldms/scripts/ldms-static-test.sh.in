@@ -96,39 +96,13 @@ function vgoff {
   usevg=0
 }
 
-# LDMSD number-list launch a daemon for each number
-# expecting to find $input.$i configuration files.
-# ${i} will be exported to the environment of ldmsd.
-function LDMSD {
-	if test "$bypass" = "1"; then
-		return 0
-	fi
-	prologs=""
-	bug=0
-	local OPTIND
-	while getopts ":p:" opt; do
-		case $opt in
-		p)
-			f="$OPTARG"
-			prologs="$prologs $OPTARG"
-			if test "${f:0:1}" = "-"; then
-				echo "LDMSD: -f expected filename"
-				file=""
-				bug=2
-				((OPTIND--))
-			fi
-			;;
-		\?)
-			echo "Invalid option: -$OPTARG" >&2
-			bug=1
-			;;
-		esac
-	done
-	shift "$((OPTIND - 1))"
-	if test "$bug" != "0"; then
+# clear old daemons in the range we're expected and define the
+# port variables.
+did_daemons=0
+function DAEMONS {
+	if test $did_daemons = "1"; then
 		return
 	fi
-
 	for i in $*; do
 		/bin/rm -f ${LOGDIR}/$i.txt ${LOGDIR}/vg.$i
 		ports[$i]=$(($portbase + $i))
@@ -142,26 +116,102 @@ function LDMSD {
 			ln -s ${BUILDDIR}/sbin/ldmsd $LDMSD_RUN/$binname
 		fi
 	done
+}
+
+# LDMSD number-list launch a daemon for each number
+# expecting to find $input.$i configuration files.
+# ${i} will be exported to the environment of ldmsd.
+function LDMSD {
+	if test "$bypass" = "1"; then
+		echo skipping sleep
+		return 0
+	fi
+	prologs=""
+	loopprologs=""
+	bug=0
+	local OPTIND
+	local cloneinput=0
+	startwait=2000000
+	while getopts ":p:P:s:c" opt; do
+		case $opt in
+		p)
+			f="$OPTARG"
+			prologs="$prologs $OPTARG"
+			if test "${f:0:1}" = "-"; then
+				echo "LDMSD: -p expected filename"
+				file=""
+				bug=2
+				((OPTIND--))
+			fi
+			;;
+		P)
+			f="$OPTARG"
+			# arg is filename,$PLIST
+			# fixme: order should matter, which means we
+			# would need to expand args here and include
+			# tmp result in prologs list
+			loopprologs="$loopprologs $OPTARG"
+			if test "${f:0:1}" = "-"; then
+				echo "LDMSD: -P expected filename,PLIST"
+				file=""
+				bug=2
+				((OPTIND--))
+			fi
+			;;
+		c)
+			cloneinput=1;
+			# recycle input to list of similar daemons
+			# after all prolog processing is done
+			;;
+		s)
+			startwait="$OPTARG";
+			;;
+		\?)
+			echo "Invalid option: -$OPTARG" >&2
+			bug=1
+			;;
+		esac
+	done
+	shift "$((OPTIND - 1))"
+	if test "$bug" != "0"; then
+		return
+	fi
+
+	DAEMONS $*
+	clonefile=""
 	for i in $*; do
 		export i
-		if test -f $input.$i -a -r $input.$i; then
-			if test "$usevg" = "1"; then
-				if test -z "$VG"; then
-					XVG=valgrind
-				else
-					XVG=$VG
-				fi
-				if test -z "$VGARGS"; then
-					XVGARGS="-v --log-file=${LOGDIR}/vg.$i"
-				else
-					XVGARGS="-v --log-file=${LOGDIR}/vg.$i $VGARGS"
-				fi
-				wrap="$XVG $XVGARGS"
+		if test "$usevg" = "1"; then
+			if test -z "$VG"; then
+				XVG=valgrind
 			else
-				wrap=""
+				XVG=$VG
 			fi
-			echo starting daemon $i
+			if test -z "$VGARGS"; then
+				XVGARGS="-v --trace-children=yes --log-file=${LOGDIR}/vg.$i.%p"
+			else
+				XVGARGS="-v --trace-children=yes --log-file=${LOGDIR}/vg.$i.%p $VGARGS"
+			fi
+			wrap="$XVG $XVGARGS"
+		else
+			wrap=""
+		fi
+		echo starting daemon $i
+		if test -f $input.$i -a -r $input.$i; then
 			echo "# generated from $input" > $LDMSD_RUN/conf.$i
+			for lf in $loopprologs; do
+				loopfile=0
+				alist=$(echo $lf | tr , " ")
+				for j in $alist; do
+					if test $loopfile = "0"; then
+						loopfile=$j
+						pfn=`get_prolog_name $loopfile $input`
+						echo "# looped prolog from $pfn" >> $LDMSD_RUN/conf.$i
+					else
+						cat $pfn | sed -e "s/\${j}/$j/g" >> $LDMSD_RUN/conf.$i
+					fi
+				done
+			done
 			for pf in $prologs; do
 				pfn=`get_prolog_name $pf $input`
 				echo "# prolog from $pfn" >> $LDMSD_RUN/conf.$i
@@ -169,19 +219,31 @@ function LDMSD {
 			done
 			echo "# generated from $input.$i" >> $LDMSD_RUN/conf.$i
 			cat $input.$i >> $LDMSD_RUN/conf.$i
-			$wrap ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]} \
+			clonefile=$LDMSD_RUN/conf.$i
+			$wrap ldmsd.${ports[$i]} \
+				-x ${XPRT}:${ports[$i]} \
 				-c $LDMSD_RUN/conf.$i \
 				-l ${LOGDIR}/$i.txt \
-				-v DEBUG \
+				-v DEBUG $LDMSD_EXTRA \
 				-r $LDMSD_PIDFILE.$i
 		else
-			echo starting idle daemon $i
-			ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]} \
-				-l ${LOGDIR}/$i.txt \
-				-v DEBUG \
-				-r $LDMSD_PIDFILE.$i
+			if test -f $clonefile -a $cloneinput = "1"; then
+				cp $clonefile $LDMSD_RUN/conf.$i
+				$wrap ldmsd.${ports[$i]} \
+					-x ${XPRT}:${ports[$i]} \
+					-c $LDMSD_RUN/conf.$i \
+					-l ${LOGDIR}/$i.txt \
+					-v DEBUG $LDMSD_EXTRA \
+					-r $LDMSD_PIDFILE.$i
+			else
+				echo IDLE DAEMON $i
+				ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]} \
+					-l ${LOGDIR}/$i.txt \
+					-v DEBUG \
+					-r $LDMSD_PIDFILE.$i
+			fi
 		fi
-		SLEEP 2
+		usleep $startwait
 		if ! test -f $LDMSD_PIDFILE.$i; then
 			echo FAIL: failed to start $i. check ${LOGDIR}/$i.txt
 			bypass=1
@@ -255,6 +317,7 @@ function file_created {
 # pause some seconds
 function SLEEP() {
 	if test "$bypass" = "1"; then
+		echo skipping sleep
 		return 0
 	fi
 	echo -n sleep $1 ...

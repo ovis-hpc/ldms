@@ -1,6 +1,6 @@
 .\" Manpage for ldms-static-test.sh
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "26 Feb 2018" "v3.6" "ldms-static-test.sh man page"
+.TH man 8 "26 Feb 2018" "v3.4.7" "ldms-static-test.sh man page"
 
 .SH NAME
 ldms-static-test.sh \- Run a canned test scenario
@@ -29,12 +29,19 @@ The following macro language is provided as extensions on bash.
 Other bash use is also possible, but not recommended.
 
 .TP
-LDMSD <daemon-numbers>
+DAEMONS <daemon-numbers>
+.br
+Give all the numbers that will be used in the  LDMSD invocations anywhere in the test.
+This causes port variables to be defined so that any daemon can connect to any other by referencing $portN as explained in ENVIRONMENT below. If omitted, the ordering and aggregation relationships of LDMSD calls may be infeasible.
+.TP
+LDMSD [conf-options] <daemon-numbers>
 .br
 This starts a number of daemons described by daemon-numbers. The numbers can
 be a given list, such as "1 2 3". The environment of each daemon (and its config script)
 will contain the variable i set to one of the given values, as described in
 ENVIRONMENT. For each value of i, a configuration fragment $input_file.$i must also exist. Use seq(1) to generate large number sequences.
+
+See CONFIGURATION OPTIONS below for the explanation of [conf-options].
 .TP
 MESSAGE [arguments]
 .br
@@ -85,8 +92,49 @@ macro LDMSD. It is a good idea (to support automated testing) if portbase is set
 in <input_file> so that each test uses a unique range of ports. This enables tests
 to proceed in parallel.
 
+.SH CONFIGURATION OPTIONS
+
+The LDMSD command supports the following options. Note that all -P options are processed before all -p options in a single LDMSD call.
+
+.TP
+-p <prolog file>
+.br
+The prolog file is included before the usually expected input file. The location of prolog files is handled as are the test input files. See FILES below. Multiple -p options are allowed.
+.TP
+-P <looped-prolog-file,daemon-csl>
+.br
+The looped-prolog-file is included before the usually expected input file, once for each value in daemon-csl.
+Daemon-csl is a comma separated list of daemon numbers, e.g. a complete argument example is "-P producer,3,4,5". The variable ${j} is substituted with a daemon number from the list for each inclusion.
+
+The location of looped prolog files is handled as are the test input files. See FILES below. Multiple -P options are allowed.
+.TP
+-c
+.br
+Where multiple daemon numbers are specified, the input generated for the first number is cloned to all subsequent daemons. See FILES. This allows a single file to serve many similar daemon instances in scale testing.
+.TP
+-s <wait_microseconds>
+.br
+After an ldmsd is started, wait wait_microseconds before checking for the daemon PID file to exist. The appropriate wait time is variable depending on the complexity of the configuration. If not specified, the default is 2 seconds wait time.
 
 .SH ENVIRONMENT
+The following variables can be set in the script to affect the launch of ldmsd:
+.TP
+LDMSD_EXTRA
+.br
+If set, these arguments are are appended to the ldmsd launch. Typical use is
+to specify "-m MEMSIZE" or other unusual arguments. The following flags are 
+always determined for the user and must not be present in LDMSD_EXTRA: -x -c -l -v -r.
+.TP
+VG
+.br
+If valgrind is used (see vgon, vgoff), then $VG is the name of the debugging
+tool wrapped around the launch of ldmsd. The default is 'valgrind'.
+.TP
+VGARGS
+.br
+If valgrind is used (see vgon, vgoff), then $VGARGS is appended to the defaults
+valgrind arguments.
+.TP
 The following variables are visible to the input file and the configuration file.
 .TP
 i
@@ -141,6 +189,9 @@ expansion of values in plugin configuration.
 .br
 For each value of i specifed to start an ldmsd, a configuration file named
 $input_file.$i must also exist. This configuration file is used when starting the daemon.
+
+Exception: For any single "LDMSD -c <daemon-numbers>", only $input_file.$i for the first listed number is needed; the first file will be used for all subsequent numbers and any matching files except the first are ignored. Where prologs are also specified, the regular prolog inclusion process is applied to the first file.
+
 .TP
 .I [test_dir]
 .br
@@ -151,6 +202,10 @@ The default output location is `pwd`/ldmstest/$testname.
 .br
 If input_file is not found in the current directory, it is checked for in $docdir/examples/static-test/$input_file.
 .SH GENERATED FILES
+.TP
+.I $test_dir/logs/vg.$k.%p
+.br
+The valgrind log for the kth daemon, if valgrind is active.
 .TP
 .I $test_dir/logs/$k.txt
 .br
