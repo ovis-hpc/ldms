@@ -15,7 +15,7 @@ AM_YFLAGS = -d
 libkokkos_store_la_SOURCES = json_lexer.l json_parser.y kokkos_store.c \
 	json.h kvd_svc.c kvd_svc.h kvd_log.h kvd_log.c
 libkokkos_store_la_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS) -g -O0
-libkokkos_store_la_LIBADD = -ly -lfl -lc $(COMMON_LIBADD) \
+libkokkos_store_la_LIBADD = -lc $(COMMON_LIBADD) \
 	@SOS_LIB64DIR_FLAG@ @SOS_LIBDIR_FLAG@ -lsos \
 	-lssl \
 	-levent -levent_openssl -levent_pthreads

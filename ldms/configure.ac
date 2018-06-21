@@ -127,7 +127,7 @@ OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
 OPTION_DEFAULT_DISABLE([switchx], [ENABLE_SWITCHX])
 OPTION_WITH([switchx], [SWITCHX],[/usr/local])
-OPTION_DEFAULT_ENABLE([kokkos], [ENABLE_KOKKOS])
+OPTION_DEFAULT_DISABLE([kokkos], [ENABLE_KOKKOS])
 OPTION_DEFAULT_ENABLE([jobinfo-sampler], [ENABLE_JOBINFO])
 OPTION_DEFAULT_DISABLE([jobinfo-slurm], [ENABLE_SLURM_JOBINFO])
 
@@ -136,8 +136,17 @@ OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
 dnl check for Flex/Bison if Kokkos is enabled
 if test -z "$ENABLE_KOKKOS_TRUE"; then
-   AC_PROG_LEX
-   AC_PROG_YACC
+	if test -z "$ENABLE_SOS_TRUE"; then
+		AC_PROG_LEX
+		if test "x$LEX" != xflex; then
+			LEX="$SHELL $missing_dir/missing flex"
+			AC_SUBST([LEX_OUTPUT_ROOT], [lex.yy])
+			AC_SUBST([LEXLIB], [''])
+		fi
+		AC_PROG_YACC
+	else
+	    AC_MSG_ERROR([--enable-kokkos requires --enable-sos])
+	fi
 fi
 
 dnl Other libraries
