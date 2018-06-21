@@ -1086,6 +1086,7 @@ ldmsd_prdcr_ref_t prdcr_ref_find_regex(ldmsd_updtr_t updtr, regex_t *regex)
 	if (!rbn)
 		return NULL;
 	while (rbn) {
+		ref = container_of(rbn, struct ldmsd_prdcr_ref, rbn);
 		if (0 == regexec(regex, ref->prdcr->obj.name, 0, NULL, 0))
 			return container_of(rbn, struct ldmsd_prdcr_ref, rbn);
 		rbn = rbn_succ(rbn);

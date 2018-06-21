@@ -2983,9 +2983,12 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 	ldmsd_prdcr_ref_t ref;
 	ldmsd_prdcr_t prdcr;
 	int prdcr_count;
+	long default_offset = 0;
 	const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 
 	ldmsd_updtr_lock(updtr);
+	if (updtr->default_task.sched.offset_us != LDMSD_UPDT_HINT_OFFSET_NONE)
+		default_offset = updtr->default_task.sched.offset_us;
 	cnt = snprintf(reqc->line_buf, reqc->line_len,
 		       "{\"name\":\"%s\","
 		       "\"interval\":\"%ld\","
@@ -2996,7 +2999,7 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 		       "\"producers\":[",
 		       updtr->obj.name,
 		       updtr->default_task.sched.intrvl_us,
-		       updtr->default_task.sched.offset_us,
+		       default_offset,
 		       ((updtr->default_task.task_flags==LDMSD_TASK_F_SYNCHRONOUS)?"true":"false"),
 		       update_mode(updtr->push_flags),
 		       ldmsd_updtr_state_str(updtr->state));
