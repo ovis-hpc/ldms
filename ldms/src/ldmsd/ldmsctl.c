@@ -739,7 +739,9 @@ static void help_updtr_start()
 		"     [interval=] The update interval in micro-seconds.\n"
 		"                 If this is not specified, the previously\n"
 		"                 configured value will be used.\n"
-		"     [offset=]   Offset for synchronization\n");
+		"     [offset=]   Offset for synchronization\n"
+		"                 If 'interval' is given but not 'offset',\n"
+		"                 the updater will update sets asynchronously.\n");
 }
 
 static void help_updtr_stop()

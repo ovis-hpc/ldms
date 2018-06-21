@@ -479,6 +479,8 @@ class LdmsdCmdParser(cmd.Cmd):
         [interval=] The update interval in micro-seconds. If this is not
                   specified, the previously configured value will be used.
         [offset=]   Offset for synchronization
+                    If 'interval' is given but not 'offset,
+                    the updater will update sets asynchronously.
         """
         self.handle('updtr_start', arg);
 
