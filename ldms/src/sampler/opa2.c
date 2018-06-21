@@ -447,7 +447,7 @@ static int SAPI(config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, 
 		msglog(LDMSD_LERROR, SAMP "config: cannot be done twice.\n");
 		return ENOTSUP;
 	}
-	msglog(LDMSD_LERROR, SAMP "config: started.\n");
+	msglog(LDMSD_LINFO, SAMP "config: started.\n");
 
 	rc = find_all_connected_hfis(); /* get umad interface list */
 	if (rc != 0) {
@@ -501,7 +501,7 @@ static int SAPI(config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, 
 		}
 	}
 	init_portid();
-	msglog(LDMSD_LERROR, SAMP "config: ok.\n");
+	msglog(LDMSD_LINFO, SAMP "config: ok.\n");
 	return 0;
 }
 
