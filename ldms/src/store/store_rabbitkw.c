@@ -239,14 +239,14 @@ void cleanup_amqp()
 			amqp_channel_close(as.conn, 1, AMQP_REPLY_SUCCESS),
 			"Closing channel");
 		if (s) {
-			msglog(LDMSD_LDEBUG,"rabbitkw: skipping connection close.\n");
+			msglog(LDMSD_LDEBUG, STOR ": skipping connection close.\n");
 			goto out;
 		}
 		s = lrmq_die_on_amqp_error(msglog,
 			amqp_connection_close(as.conn, AMQP_REPLY_SUCCESS),
 			"Closing connection");
 		if (s) {
-			msglog(LDMSD_LDEBUG,"rabbitkw: skipping connection destroy.\n");
+			msglog(LDMSD_LDEBUG, STOR ": skipping connection destroy.\n");
 			goto out;
 		}
 		s = lrmq_die_on_error(msglog, amqp_destroy_connection(as.conn), "Ending connection");
@@ -297,26 +297,29 @@ static int make_connection()
 	if (!retry)
 		return EAGAIN;
 	if (as.broker_failed && as.broker_failed % warn_every == 1) {
-		msglog(LDMSD_LINFO, "rabbitkw: connect amqp retry number %d\n",
+		msglog(LDMSD_LINFO, STOR ": connect amqp retry number %d\n",
 			as.broker_failed);
 	}	
 	int rc;
 	as.conn = amqp_new_connection();
 	if (!as.conn ) {
-		msglog(LDMSD_LERROR,
-			"rabbitkw: config: amqp_new_connection failed.\n");
+		msglog(LDMSD_LERROR, STOR ": amqp_new_connection failed.\n");
 		rc = ENOMEM;
 		as.broker_failed++;
 		goto fail;
+	} else {
+		msglog(LDMSD_LDEBUG, STOR ": amqp_new_connection ok.\n");
 	}
 	amqp_socket_t *asocket = NULL;
 	asocket = amqp_tcp_socket_new(as.conn); /* stores asocket in conn, fyi. */
 	if (!asocket) {
 		msglog(LDMSD_LERROR,
-			"rabbitkw: config: amqp_tcp_socket_new failed.\n");
+			STOR ": config: amqp_tcp_socket_new failed.\n");
 		as.broker_failed++;
 		rc = ENOMEM;
 		goto fail;
+	} else {
+		msglog(LDMSD_LDEBUG, STOR ": amqp_tcp_socket_new ok.\n");
 	}
 	if (doserver) {
 		int status = amqp_socket_open_noblock(asocket, host_name, as.amqp_port, &as.timeout);
@@ -324,7 +327,7 @@ static int make_connection()
 			if (!as.broker_failed ||
 				as.broker_failed % warn_every == 1) {
 				msglog(LDMSD_LERROR,
-					"rabbitkw: config: amqp_socket_open failed. %s\n",
+					STOR ": config: amqp_socket_open failed. %s\n",
 					amqp_error_string2(status));
 			}
 			as.broker_failed++;
@@ -338,19 +341,21 @@ static int make_connection()
 				AMQP_SASL_METHOD_PLAIN, as.user, as.pw),
 				"Logging in");
 		if (status < 0 ) {
-			msglog(LDMSD_LDEBUG,"amqp_login failed\n");
+			msglog(LDMSD_LDEBUG, STOR ": amqp_login failed\n");
 			rc = EKEYREJECTED;
 			goto fail;
+		} else {
+			msglog(LDMSD_LDEBUG, STOR ": amqp_login ok\n");
 		}
 
 		void * vstatus = amqp_channel_open(as.conn, 1);
 		if (!vstatus) {
-			msglog(LDMSD_LDEBUG,"amqp_channel_open failed\n");
+			msglog(LDMSD_LDEBUG, STOR ": amqp_channel_open failed\n");
 			status = lrmq_die_on_amqp_error(msglog,
 				amqp_get_rpc_reply(as.conn),
 				"Opening channel");
 			if (status  < 0 ) {
-				msglog(LDMSD_LDEBUG,"amqp_get_rpc_reply failed\n");
+				msglog(LDMSD_LDEBUG, STOR ": amqp_get_rpc_reply failed\n");
 			}
 			rc = ENOMEM;
 			goto fail;
@@ -366,6 +371,7 @@ static int make_connection()
 	return 0;
 again:
 	if (as.conn) {
+		msglog(LDMSD_LDEBUG, STOR ": destroy conn; try later.\n");
 		amqp_destroy_connection(as.conn);
 		as.conn = NULL;
 	}
@@ -374,6 +380,7 @@ again:
 fail:
 	as.next_connect = TIME_MAX;
 	if (as.conn) {
+		msglog(LDMSD_LDEBUG, STOR ": destroy conn; no retry.\n");
 		amqp_destroy_connection(as.conn);
 		as.conn = NULL;
 	}
@@ -385,7 +392,7 @@ fail:
  */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	msglog(LDMSD_LDEBUG,"rabbitkw: config start.\n");
+	msglog(LDMSD_LDEBUG, STOR ": config start.\n");
 	char *value;
 
 	value = av_value(avl, "logmsg");
@@ -441,12 +448,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	} else {
 		as.amqp_port = atoi(p);
 		if (as.amqp_port < 1)  {
-			msglog(LDMSD_LERROR,
-				"rabbitkw: config port=%s invalid.\n", p);
+			msglog(LDMSD_LERROR, STOR ": config port=%s invalid.\n",
+				p);
 			return EINVAL;
 		}
 	}
-	msglog(LDMSD_LINFO,"rabbitkw: config host=%s port=%d vhost=%s user=%s\n",
+	msglog(LDMSD_LINFO, STOR ": config host=%s port=%d vhost=%s user=%s\n",
 	       value, as.amqp_port, vhvalue, user);
 
 	char *rt = av_value(avl, "retry");
@@ -456,7 +463,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		int rts = atoi(rt);
 		if (rts < 1) {
 			msglog(LDMSD_LERROR,
-				"rabbitkw: config retry=%s invalid.\n", rts);
+				STOR ": config retry=%s invalid.\n", rts);
 			return EINVAL;
 		} else {
 			as.retry_sec = rts;
@@ -470,7 +477,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		int rts = atoi(rt);
 		if (rts < 1) {
 			msglog(LDMSD_LERROR,
-				"rabbitkw: config timeout=%s invalid.\n", rts);
+				STOR ": config timeout=%s invalid.\n", rts);
 			return EINVAL;
 		} else {
 			as.timeout.tv_sec = rts / 1000;
@@ -478,17 +485,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		}
 	}
 
-	msglog(LDMSD_LINFO,"rabbitkw: config timeout=%d retry=%d\n", 
+	msglog(LDMSD_LINFO, STOR ": config timeout=%d retry=%d\n", 
 		(int)(1000*as.timeout.tv_sec + as.timeout.tv_usec/1000),
 		as.retry_sec);
 	sprintf(as.pw, "guest");
 	pwfile = av_value(avl, "pwfile");
 	if (pwfile) {
-		msglog(LDMSD_LINFO,"rabbitkw: config pwfile=%s\n", pwfile);
+		msglog(LDMSD_LINFO, STOR ": config pwfile=%s\n", pwfile);
 		int pwerr = ovis_get_rabbit_secretword(pwfile,as.pw,PWSIZE,
 			rabbit_lerror_tmp);
 		if (pwerr) {
-			msglog(LDMSD_LERROR,"rabbitkw: config pwfile failed\n");
+			msglog(LDMSD_LERROR, STOR ": config pwfile failed\n");
 			return EINVAL;
 		}
 	}
@@ -504,9 +511,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (!evalue) {
 		evalue = "amq.topic";
 	}
-	msglog(LDMSD_LINFO,"rabbitkw: routing_key=%s exchange=%s\n",
+	msglog(LDMSD_LINFO, STOR ": routing_key=%s exchange=%s\n",
 		rvalue, evalue);
-	msglog(LDMSD_LINFO,"rabbitkw: logmsg=%d doserver=%d\n",
+	msglog(LDMSD_LINFO, STOR ": logmsg=%d doserver=%d\n",
 		logmsg, doserver);
 
 
@@ -537,7 +544,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	if (!routing_key_path || !rmq_exchange ||
 		!host_name) {
-		msglog(LDMSD_LERROR,"rabbitkw: config strdup failed.\n");
+		msglog(LDMSD_LERROR, STOR ": config strdup failed.\n");
 		return ENOMEM;
 	}
 
@@ -550,14 +557,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	pthread_mutex_unlock(&cfg_lock);
 	switch (rc) {
 	case EAGAIN:
-		msglog(LDMSD_LERROR,"rabbitkw: config: rabbitmq connection delayed.\n");
-		msglog(LDMSD_LERROR,"rabbitkw: config: Verify config values or start broker.\n");
+		msglog(LDMSD_LERROR, STOR ": config: rabbitmq connection delayed.\n");
+		msglog(LDMSD_LERROR, STOR ": config: Verify config values or start broker.\n");
 		/* fall through */
 	case 0:
-		msglog(LDMSD_LINFO,"rabbitkw: config done.\n");
+		msglog(LDMSD_LINFO, STOR ": config done.\n");
 		return 0;
 	default:
-		msglog(LDMSD_LINFO,"rabbitkw: config failed.\n");
+		msglog(LDMSD_LINFO, STOR ": config failed.\n");
 		return rc;
 	}
 }
@@ -903,7 +910,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	size_t klen = bdstrlen(&ds);
 	char *key = dsdone(ds);
 	if (!key) {
-		msglog(LDMSD_LERROR,"rabbitkw: oom ds\n");
+		msglog(LDMSD_LERROR, STOR ": oom ds\n");
 	}
 
 	si = idx_find(store_idx, (void *)key, klen);
@@ -913,7 +920,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		 */
 		si = calloc(1, sizeof(*si));
 		if (!si) {
-			msglog(LDMSD_LERROR,"rabbitkw: oom si\n");
+			msglog(LDMSD_LERROR, STOR ": oom si\n");
 			goto out;
 		}
 		si->key = key;
@@ -924,7 +931,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		si->container = strdup(container);
 		si->schema = strdup(schema);
 		if (!si->container || ! si->schema || ! si->routingkey) {
-			msglog(LDMSD_LERROR,"rabbitkw: out of memory\n");
+			msglog(LDMSD_LERROR, STOR ": out of memory\n");
 			goto err3;
 		}
 
@@ -963,6 +970,9 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	const struct ldms_timestamp _ts = ldms_transaction_timestamp_get(set);
 	const struct ldms_timestamp *ts = &_ts;
 	pthread_mutex_lock(&cfg_lock); /* because of async close, need lock here ?*/
+#ifdef DEBUG
+	msglog(LDMSD_LDEBUG, STOR ": trying %s\n", ldms_set_instance_name_get(set));
+#endif
 	if (doserver ) {
 		if (!as.conn) {
 			rc = make_connection();
@@ -1043,10 +1053,18 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	}
 
 skip:
+#ifdef DEBUG
+	if (!rc) {
+		msglog(LDMSD_LDEBUG, STOR ": done %s\n",ldms_set_instance_name_get(set));
+	} else {
+		msglog(LDMSD_LDEBUG, STOR ": skipped (no connection)\n");
+	}
+#endif
 	pthread_mutex_unlock(&cfg_lock);
 	return rc;
 
 estr:
+	msglog(LDMSD_LDEBUG, STOR ": err\n");
 	pthread_mutex_unlock(&cfg_lock);
 	return ENOMEM;
 
