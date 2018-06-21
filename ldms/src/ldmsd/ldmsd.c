@@ -1924,6 +1924,7 @@ int main(int argc, char *argv[])
 					 ret, optarg);
 				cleanup(ret, errstr);
 			}
+			ldmsd_log(LDMSD_LINFO, "Processing the config file '%s' is done.\n", optarg);
 			break;
 		}
 	}
