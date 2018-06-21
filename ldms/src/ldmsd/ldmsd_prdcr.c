@@ -459,6 +459,8 @@ ldmsd_prdcr_new(const char *name, const char *xprt_name,
 {
 	struct ldmsd_prdcr *prdcr;
 
+	ldmsd_log(LDMSD_LDEBUG, "ldmsd_prdcr_new(name %s, xprt %s, host %s, port %u, type %u, intv %d\n",
+		name, xprt_name, host_name,(unsigned) port_no, (unsigned)type, conn_intrvl_us);
 	prdcr = (struct ldmsd_prdcr *)
 		ldmsd_cfgobj_new(name, LDMSD_CFGOBJ_PRDCR,
 				 sizeof *prdcr, ldmsd_prdcr___del);
@@ -479,6 +481,8 @@ ldmsd_prdcr_new(const char *name, const char *xprt_name,
 
 	if (prdcr_resolve(host_name, port_no, &prdcr->ss, &prdcr->ss_len)) {
 		errno = EAFNOSUPPORT;
+		ldmsd_log(LDMSD_LERROR, "ldmsd_prdcr_new: %s:%u not resolved.\n",
+			host_name,(unsigned) port_no);
 		goto out;
 	}
 	ldmsd_task_init(&prdcr->task);
