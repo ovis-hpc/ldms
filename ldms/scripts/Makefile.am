@@ -5,6 +5,7 @@ EXTRA_DIST=@OVIS_EXTRA_DIST@ examples
 if ENABLE_SCRIPTS
 sbin_SCRIPTS= ldms-wrapper
 bin_SCRIPTS= envldms.sh
+bin_SCRIPTS += lsdate
 bin_SCRIPTS += ldms-static-test.sh
 
 DISTCLEANFILES = $(bin_SCRIPTS) $(sbin_SCRIPTS)
