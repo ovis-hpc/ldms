@@ -2449,14 +2449,14 @@ out:
 
 static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *name, *offset_str, *interval_str, *push, *attr_name;
-	name = offset_str = interval_str = push = NULL;
+	char *name, *offset_str, *interval_str, *push, *auto_interval, *attr_name;
+	name = offset_str = interval_str = push = auto_interval = NULL;
 	size_t cnt = 0;
 	uid_t uid;
 	gid_t gid;
 	int perm;
 	char *perm_s = NULL;
-	int interval_us, offset_us, push_flags;
+	int interval_us, offset_us, push_flags, is_auto_task;
 
 	reqc->errcode = 0;
 
@@ -2474,6 +2474,7 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
 	offset_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
 	push = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PUSH);
+	auto_interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTO_INTERVAL);
 
 	struct ldmsd_sec_ctxt sctxt;
 	if (reqc->xprt->xprt) {
@@ -2498,8 +2499,14 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 			push_flags = LDMSD_UPDTR_F_PUSH;
 		}
 	}
+	if (auto_interval && (0 == strcasecmp(auto_interval, "false")))
+		is_auto_task = 0;
+	else
+		is_auto_task = 1;
 	ldmsd_updtr_t updtr = ldmsd_updtr_new_with_auth(name, interval_str,
-					offset_str, push_flags, uid, gid, perm);
+							offset_str, push_flags,
+							is_auto_task,
+							uid, gid, perm);
 	if (!updtr) {
 		if (errno == EEXIST)
 			goto eexist;
@@ -2868,8 +2875,8 @@ send_reply:
 
 static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *updtr_name, *interval_str, *offset_str;
-	updtr_name = interval_str = offset_str = NULL;
+	char *updtr_name, *interval_str, *offset_str, *auto_interval;
+	updtr_name = interval_str = offset_str = auto_interval = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
 
@@ -2884,10 +2891,11 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 	}
 	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
 	offset_str  = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
+	auto_interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTO_INTERVAL);
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_updtr_start(updtr_name, interval_str, offset_str,
-					  &sctxt);
+					  auto_interval, &sctxt);
 	switch (reqc->errcode) {
 	case 0:
 		break;

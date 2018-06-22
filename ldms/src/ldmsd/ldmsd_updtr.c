@@ -407,9 +407,14 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 	ldmsd_prdcr_lock(prdcr);
 	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED)
 		goto out;
+
 	ldmsd_prdcr_set_t prd_set;
-	for (prd_set = ldmsd_prdcr_set_first_by_hint(prdcr, &task->hint); prd_set;
-	     prd_set = ldmsd_prdcr_set_next_by_hint(prd_set)) {
+	if (updtr->is_auto_task)
+		prd_set = ldmsd_prdcr_set_first_by_hint(prdcr, &task->hint);
+	else
+		prd_set = ldmsd_prdcr_set_first(prdcr);
+
+	while (prd_set) {
 		ldmsd_log(LDMSD_LDEBUG, "updtr_task sched '%ld': set '%s'\n",
 				task->sched.intrvl_us, prd_set->inst_name);
 		updtr_task_set_add(task);
@@ -421,11 +426,11 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 				__func__, prd_set->inst_name);
 		}
 		if (prd_set->state != LDMSD_PRDCR_SET_STATE_READY)
-			continue;
+			goto next_prd_set;
 		/* If a match condition is not specified, everything matches */
 		if (!match) {
 			schedule_set_updates(prd_set, task);
-			continue;
+			goto next_prd_set;
 		}
 		rc = 1;
 		if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
@@ -436,6 +441,11 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 		if (!rc) {
 			schedule_set_updates(prd_set, task);
 		}
+next_prd_set:
+		if (updtr->is_auto_task)
+			prd_set = ldmsd_prdcr_set_next_by_hint(prd_set);
+		else
+			prd_set = ldmsd_prdcr_set_next(prd_set);
 	}
 out:
 	ldmsd_prdcr_unlock(prdcr);
@@ -605,11 +615,20 @@ void __prdcr_set_update_sched(ldmsd_prdcr_set_t prd_set,
  *
  * Assume that the updater is in RUNNING state.
  */
-int ldmsd_updtr_task_tree_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
+int ldmsd_updtr_tasks_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 {
 	struct rbn *rbn;
 	ldmsd_updtr_task_t task;
 	int rc;
+
+	if (!updtr->is_auto_task) {
+		/*
+		 * Ignore the update hint and use the default schedule.
+		 */
+		task = &updtr->default_task;
+		goto out;
+	}
+
 	if ((updtr->default_task.hint.intrvl_us == prd_set->updt_hint.intrvl_us) &&
 		(updtr->default_task.hint.offset_us == prd_set->updt_hint.offset_us)) {
 		/* The root task will update the producer set. */
@@ -635,7 +654,7 @@ out:
 }
 
 /* Caller must hold the updtr lock. */
-static int updtr_task_tree_create(ldmsd_updtr_t updtr)
+static int updtr_tasks_create(ldmsd_updtr_t updtr)
 {
 	ldmsd_prdcr_ref_t prd_ref;
 	ldmsd_prdcr_t prdcr;
@@ -659,7 +678,7 @@ static int updtr_task_tree_create(ldmsd_updtr_t updtr)
 			}
 
 			if (LIST_EMPTY(&updtr->match_list)) {
-				rc = ldmsd_updtr_task_tree_update(updtr, prd_set);
+				rc = ldmsd_updtr_tasks_update(updtr, prd_set);
 				if (!rc)
 					goto out;
 			} else {
@@ -670,7 +689,7 @@ static int updtr_task_tree_create(ldmsd_updtr_t updtr)
 						str = prd_set->schema_name;
 					rc = regexec(&match->regex, str, 0, NULL, 0);
 					if (!rc) {
-						rc = ldmsd_updtr_task_tree_update(
+						rc = ldmsd_updtr_tasks_update(
 								updtr, prd_set);
 						if (!rc)
 							goto out;
@@ -698,7 +717,8 @@ int prdcr_ref_cmp(void *a, const void *b)
 
 ldmsd_updtr_t
 ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str,
-				int push_flags, uid_t uid, gid_t gid, int perm)
+					int push_flags, int is_auto_task,
+					uid_t uid, gid_t gid, int perm)
 {
 	struct ldmsd_updtr *updtr;
 	long interval_us, offset_us;
@@ -711,6 +731,7 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 
 	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
 	updtr->default_task.is_default = 1;
+	updtr->is_auto_task = is_auto_task;
 	if (interval_str) {
 		interval_us = strtol(interval_str, NULL, 0);
 		if (offset_str) {
@@ -737,13 +758,15 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 }
 
 ldmsd_updtr_t
-ldmsd_updtr_new(const char *name, char *interval_str, char *offset_str,
-							int push_flags)
+ldmsd_updtr_new(const char *name, char *interval_str,
+		char *offset_str, int push_flags,
+		int is_auto_interval)
 {
 	struct ldmsd_sec_ctxt sctxt;
 	ldmsd_sec_ctxt_get(&sctxt);
 	return ldmsd_updtr_new_with_auth(name,
-				interval_str, offset_str, push_flags,
+				interval_str, offset_str,
+				push_flags, is_auto_interval,
 				sctxt.crd.uid, sctxt.crd.gid, 0777);
 }
 
@@ -787,7 +810,8 @@ out:
 }
 
 int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
-		      const char *offset_str, ldmsd_sec_ctxt_t ctxt)
+		      const char *offset_str, const char *auto_interval,
+		      ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	long interval_us, offset_us;
@@ -805,6 +829,11 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 	}
 	updtr->state = LDMSD_UPDTR_STATE_RUNNING;
 
+	if (auto_interval)
+		if(0 == strcasecmp(auto_interval, "false"))
+			updtr->is_auto_task = 0;
+		else
+			updtr->is_auto_task = 1;
 	interval_us = updtr->default_task.sched.intrvl_us;
 	offset_us = updtr->default_task.hint.offset_us;
 	if (interval_str) {
@@ -826,20 +855,22 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 	/* Start the default task */
 	updtr_update_task_start(&updtr->default_task);
 
-	ldmsd_task_start(&updtr->tree_mgmt_task.task, updtr_tree_task_cb,
-			&updtr->tree_mgmt_task,
-			updtr->tree_mgmt_task.task_flags,
-			updtr->tree_mgmt_task.sched.intrvl_us,
-			updtr->tree_mgmt_task.sched.offset_us);
+	if (updtr->is_auto_task) {
+		ldmsd_task_start(&updtr->tree_mgmt_task.task, updtr_tree_task_cb,
+				&updtr->tree_mgmt_task,
+				updtr->tree_mgmt_task.task_flags,
+				updtr->tree_mgmt_task.sched.intrvl_us,
+				updtr->tree_mgmt_task.sched.offset_us);
+	}
 
-	if (0 == updtr->push_flags) {
+	if ((0 == updtr->push_flags) || (updtr->is_auto_task)) {
 		/* Task tree isn't needed for updaters that are for 'push' */
 		/*
 		 * Create the task tree that contains
 		 * the tasks that handle the producer sets
 		 * that have different hint different from the default task.
 		 */
-		updtr_task_tree_create(updtr);
+		updtr_tasks_create(updtr);
 	}
 
 out_1:

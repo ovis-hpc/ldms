@@ -681,7 +681,15 @@ static void help_updtr_add()
 		"Parameters:\n"
 		"     name=       The update policy name\n"
 		"     interval=   The update/collect interval\n"
-		"     [offset=]   Offset for synchronized aggregation\n");
+		"     [offset=]   Offset for synchronized aggregation\n"
+		"     [push=]     Push mode: 'onchange' and 'onpush'. 'onchange' means the\n"
+		"                 Updater will get an update whenever the set source ends a\n"
+		"                 transaction or pushes the update. 'onpush' means the Updater\n"
+		"                 will receive an update only when the set source pushes the update.\n"
+		"     [auto_interval=]   [true|false] If true, the updater will schedule\n"
+		"                        set updates according to the update hint. If false,\n"
+		"                        the updater will schedule the set updates according\n"
+		"                        to the default schedule, i.e., the given interval and offset values.\n");
 }
 
 static void help_updtr_del()
@@ -741,7 +749,11 @@ static void help_updtr_start()
 		"                 configured value will be used.\n"
 		"     [offset=]   Offset for synchronization\n"
 		"                 If 'interval' is given but not 'offset',\n"
-		"                 the updater will update sets asynchronously.\n");
+		"                 the updater will update sets asynchronously.\n"
+		"     [auto_interval=]   [true|false] If true, the updater will schedule\n"
+		"                        set updates according to the update hint. If false,\n"
+		"                        the updater will schedule the set updates according\n"
+		"                        to the default schedule, i.e., the given interval and offset values.\n");
 }
 
 static void help_updtr_stop()
