@@ -1,6 +1,6 @@
 
 # consider adding ldmsd to bin_SCRIPTS if ldmsd script ever stabilizes
-EXTRA_DIST=@OVIS_EXTRA_DIST@ examples
+EXTRA_DIST=@OVIS_EXTRA_DIST@ examples lsdate
 
 if ENABLE_SCRIPTS
 sbin_SCRIPTS= ldms-wrapper
@@ -22,6 +22,9 @@ bin_SCRIPTS += ldms-py-varset.sh
 bin_SCRIPTS += ldms-py-rename.sh
 bin_SCRIPTS += ldms_local_opa2test.sh
 bin_SCRIPTS += ldms-l2_test.sh
+
+lsdate:
+	cp ${srcdir}/lsdate .
 
 install-data-local:
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/examples/static-test && \
