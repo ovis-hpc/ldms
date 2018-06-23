@@ -134,17 +134,12 @@ OPTION_DEFAULT_DISABLE([jobinfo-slurm], [ENABLE_SLURM_JOBINFO])
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
-dnl check for Flex/Bison if Kokkos is enabled
+dnl if LEX and/or YACC are not available, the configure still won't fail
+AC_PROG_LEX
+AC_PROG_YACC
 if test -z "$ENABLE_KOKKOS_TRUE"; then
+	dnl kokkos needs sos (not the storesos).
 	CHECK_SOS=1
-	dnl Kokkos sampler plugin requires Lex/Yacc
-	AC_PROG_LEX
-	if test "x$LEX" != xflex; then
-		LEX="$SHELL $missing_dir/missing flex"
-		AC_SUBST([LEX_OUTPUT_ROOT], [lex.yy])
-		AC_SUBST([LEXLIB], [''])
-	fi
-	AC_PROG_YACC
 fi
 
 dnl Other libraries
