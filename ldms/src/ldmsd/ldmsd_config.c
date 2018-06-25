@@ -497,7 +497,7 @@ char *find_comment(const char *line)
 			return s;
 		if (isspace(*s))
 			leadingspc = 1;
-		else 
+		else
 			leadingspc = 0;
 		s++;
 	}
@@ -549,6 +549,7 @@ int process_config_file(const char *path, int *lno)
 	xprt.xprt = NULL;
 	xprt.send_fn = log_response_fn;
 	xprt.max_msg = REP_BUF_LEN;
+	xprt.trust = 1;
 
 next_line:
 	line = fgets(buff + off, cfg_buf_len - off, fin);
@@ -638,6 +639,7 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 	xprt.ldms.ldms = x;
 	xprt.send_fn = send_ldms_fn;
 	xprt.max_msg = x->max_msg;
+	xprt.trust = 0; /* don't trust any network for CMD expansion */
 
 	switch (ntohl(request->type)) {
 	case LDMSD_REQ_TYPE_CONFIG_CMD:
@@ -720,6 +722,7 @@ void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
 	xprt->send_fn = send_ldms_fn;
 	xprt->max_msg = ldms->max_msg;
 	xprt->cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
+	xprt->trust = 0;
 }
 
 void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix)

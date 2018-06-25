@@ -4292,9 +4292,9 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 	char *env_s = NULL;
 	struct attr_value_list *av_list = NULL;
 	struct attr_value_list *kw_list = NULL;
+	char *exp_val = NULL;
 
-	ldmsd_req_attr_t attr;
-	attr = (ldmsd_req_attr_t)reqc->req_buf;
+	ldmsd_req_attr_t attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->req_buf);
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_STRING:
@@ -4310,6 +4310,15 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 				"No environment names/values are given.");
 		reqc->errcode = EINVAL;
 		goto out;
+	}
+
+	if (reqc->xprt->trust) {
+		exp_val = str_repl_cmd(env_s);
+		if (!exp_val) {
+			rc = errno;
+			goto out;
+		}
+		env_s = exp_val;
 	}
 
 	rc = string2attr_list(env_s, &av_list, &kw_list);
@@ -4338,6 +4347,8 @@ out:
 		av_free(kw_list);
 	if (av_list)
 		av_free(av_list);
+	if (exp_val)
+		free(exp_val);
 	return rc;
 }
 
@@ -4347,7 +4358,7 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 	int rc = 0;
 	size_t cnt = 0;
 
-	ldmsd_req_attr_t attr = (ldmsd_req_attr_t)reqc->req_buf;
+	ldmsd_req_attr_t attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->req_buf);
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_PATH:

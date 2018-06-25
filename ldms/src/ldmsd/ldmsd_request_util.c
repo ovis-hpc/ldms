@@ -272,14 +272,152 @@ void __get_attr_name_value(char *av, char **name, char **value)
 	}
 }
 
+static const char *__ldmsd_cfg_delim = " \t";
+struct ldmsd_parse_ctxt {
+	ldmsd_req_hdr_t request;
+	size_t rec_len;
+	size_t rec_off;
+	char *av;
+	int line_no;
+	uint32_t msg_no;
+	ldmsd_msg_log_f msglog;
+};
+
+int __ldmsd_parse_generic(struct ldmsd_parse_ctxt *ctxt)
+{
+	int rc;
+	char *ptr, *name, *value;
+	char *av = ctxt->av;
+	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
+	while (av) {
+		__get_attr_name_value(av, &name, &value);
+		if (!name) {
+			/* av is neither attribute value nor keyword */
+			rc = EINVAL;
+			goto out;
+		}
+		rc = add_attr_from_attr_str(name, value,
+					    &ctxt->request,
+					    &ctxt->rec_off,
+					    &ctxt->rec_len,
+					    ctxt->msglog);
+		if (rc)
+			goto out;
+		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+	}
+	rc = 0;
+out:
+	return rc;
+}
+
+int __ldmsd_parse_plugin_config(struct ldmsd_parse_ctxt *ctxt)
+{
+	char *av = ctxt->av;
+	size_t len = strlen(av);
+	size_t cnt = 0;
+	char *tmp, *name, *value, *ptr;
+	int rc;
+	tmp = malloc(len);
+	if (!tmp) {
+		rc = ENOMEM;
+		goto out;
+	}
+	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
+	while (av) {
+		__get_attr_name_value(av, &name, &value);
+		if (!name) {
+			/* av is neither attribute value nor keyword */
+			rc = EINVAL;
+			goto out;
+		}
+		if (0 == strncmp(name, "name", 4)) {
+			/* Find the name attribute */
+			rc = add_attr_from_attr_str(name, value,
+						    &ctxt->request,
+						    &ctxt->rec_off,
+						    &ctxt->rec_len,
+						    ctxt->msglog);
+			if (rc) {
+				free(tmp);
+				goto out;
+			}
+
+		} else {
+			/* Construct the other attribute into a ATTR_STRING */
+			if (value) {
+				cnt += snprintf(&tmp[cnt], len - cnt,
+						"%s=%s ", name, value);
+			} else {
+				cnt += snprintf(&tmp[cnt], len - cnt,
+						"%s ", name);
+			}
+		}
+		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+	}
+	tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
+	/* Add an attribute of type 'STRING' */
+	rc = add_attr_from_attr_str(NULL, tmp,
+				    &ctxt->request,
+				    &ctxt->rec_off,
+				    &ctxt->rec_len,
+				    ctxt->msglog);
+out:
+	if (tmp)
+		free(tmp);
+	return rc;
+}
+
+int __ldmsd_parse_env(struct ldmsd_parse_ctxt *ctxt)
+{
+	char *av = ctxt->av;
+	size_t len = strlen(av) + 1;
+	size_t cnt = 0;
+	char *tmp, *name, *value, *ptr;
+	int rc;
+	tmp = malloc(len);
+	if (!tmp) {
+		rc = ENOMEM;
+		goto out;
+	}
+	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
+	while (av) {
+		__get_attr_name_value(av, &name, &value);
+		if (!name) {
+			/* av is neither attribute value nor keyword */
+			rc = EINVAL;
+			goto out;
+		}
+		/* Construct the other attribute into a ATTR_STRING */
+		if (value) {
+			cnt += snprintf(&tmp[cnt], len - cnt,
+					"%s=%s ", name, value);
+		} else {
+			cnt += snprintf(&tmp[cnt], len - cnt,
+					"%s ", name);
+		}
+		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+	}
+	tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
+	/* Add an attribute of type 'STRING' */
+	rc = add_attr_from_attr_str(NULL, tmp,
+				    &ctxt->request,
+				    &ctxt->rec_off,
+				    &ctxt->rec_len,
+				    ctxt->msglog);
+out:
+	if (tmp)
+		free(tmp);
+	return rc;
+}
+
 ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, ldmsd_msg_log_f msglog)
 {
 	static const char *delim = " \t";
 	char *av, *verb, *tmp, *ptr, *name, *value, *dummy;
 	int rc;
-	ldmsd_req_hdr_t request;
 	size_t cfg_len = strlen(cfg);
 	size_t rec_off, rec_len;
+	struct ldmsd_parse_ctxt ctxt = {0};
 	dummy = strdup(cfg);
 	if (!dummy)
 		return NULL;
@@ -292,91 +430,50 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, ldmsd_m
 		av++;
 	}
 
-	request = calloc(1, LDMSD_DEF_CONFIG_STR_LEN); /* arbitrary but substantial */
-	if (!request)
+	ctxt.msglog = msglog;
+	ctxt.request = calloc(1, LDMSD_DEF_CONFIG_STR_LEN); /* arbitrary but substantial */
+	if (!ctxt.request)
 		goto err;
-	request->marker = LDMSD_RECORD_MARKER;
-	request->type = LDMSD_REQ_TYPE_CONFIG_CMD;
-	request->flags = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
-	request->msg_no = msg_no;
-	request->req_id = ldmsd_req_str2id(verb);
-	if (((int)request->req_id < 0) || (request->req_id == LDMSD_NOTSUPPORT_REQ)) {
+	ctxt.request->marker = LDMSD_RECORD_MARKER;
+	ctxt.request->type = LDMSD_REQ_TYPE_CONFIG_CMD;
+	ctxt.request->flags = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
+	ctxt.request->msg_no = msg_no;
+	ctxt.request->req_id = ldmsd_req_str2id(verb);
+	if (((int)ctxt.request->req_id < 0) || (ctxt.request->req_id == LDMSD_NOTSUPPORT_REQ)) {
 		rc = ENOSYS;
 		goto err;
 	}
-	rec_len = LDMSD_DEF_CONFIG_STR_LEN;
-	request->rec_len = rec_off = sizeof(*request);
+	ctxt.rec_len = LDMSD_DEF_CONFIG_STR_LEN;
+	ctxt.request->rec_len = ctxt.rec_off = sizeof(*ctxt.request);
 	if (!av)
 		goto last_attr;
 
-	if (request->req_id == LDMSD_PLUGN_CONFIG_REQ) {
-		size_t len = strlen(av);
-		size_t cnt = 0;
-		tmp = malloc(len);
-		if (!tmp) {
-			rc = ENOMEM;
-			goto err;
-		}
-		av = strtok_r(av, delim, &ptr);
-		while (av) {
-			__get_attr_name_value(av, &name, &value);
-			if (!name) {
-				/* av is neither attribute value nor keyword */
-				rc = EINVAL;
-				free(tmp);
-				goto err;
-			}
-			if (0 == strncmp(name, "name", 4)) {
-				/* Find the name attribute */
-				rc = add_attr_from_attr_str(name, value, &request,
-							    &rec_off, &rec_len, msglog);
-				if (rc) {
-					free(tmp);
-					goto err;
-				}
-
-			} else {
-				/* Construct the other attribute into a ATTR_STRING */
-				if (value) {
-					cnt += snprintf(&tmp[cnt], len - cnt,
-							"%s=%s ", name, value);
-				} else {
-					cnt += snprintf(&tmp[cnt], len - cnt,
-							"%s ", name);
-				}
-			}
-			av = strtok_r(NULL, delim, &ptr);
-		}
-		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
-		/* Add an attribute of type 'STRING' */
-		rc = add_attr_from_attr_str(NULL, tmp, &request, &rec_off, &rec_len, msglog);
-		free(tmp);
-		if (rc)
-			goto err;
-	} else {
-		av = strtok_r(av, delim, &ptr);
-		while (av) {
-			__get_attr_name_value(av, &name, &value);
-			if (!name) {
-				/* av is neither attribute value nor keyword */
-				rc = EINVAL;
-				goto err;
-			}
-			rc = add_attr_from_attr_str(name, value,
-						    &request, &rec_off, &rec_len, msglog);
-			if (rc)
-				goto err;
-			av = strtok_r(NULL, delim, &ptr);
-		}
+	ctxt.av = av;
+	switch (ctxt.request->req_id) {
+	case LDMSD_PLUGN_CONFIG_REQ:
+		rc = __ldmsd_parse_plugin_config(&ctxt);
+		break;
+	case LDMSD_ENV_REQ:
+		rc = __ldmsd_parse_env(&ctxt);
+		break;
+	default:
+		rc = __ldmsd_parse_generic(&ctxt);
+		break;
 	}
+	if (rc)
+		goto err;
 last_attr:
 	/* Add the end attribute */
-	rc = add_attr_from_attr_str(NULL, NULL, &request, &rec_off, &rec_len, msglog);
+	rc = add_attr_from_attr_str(NULL, NULL, &ctxt.request,
+					&ctxt.rec_off, &ctxt.rec_len, msglog);
+	if (rc)
+		goto err;
 	free(dummy);
-	return request;
+	return ctxt.request;
 err:
 	errno = rc;
 	free(dummy);
+	free(ctxt.request);
 	return NULL;
 }
 
