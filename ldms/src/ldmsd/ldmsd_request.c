@@ -1149,12 +1149,12 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name)
 		goto einval;
 
 	attr_name = "type";
-	type_s = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_TYPE);
+	type_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_TYPE);
 	if (!type_s) {
 		goto einval;
 	} else {
@@ -1175,17 +1175,17 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	attr_name = "xprt";
-	xprt = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_XPRT);
+	xprt = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_XPRT);
 	if (!xprt)
 		goto einval;
 
 	attr_name = "host";
-	host = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_HOST);
+	host = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
 	if (!host)
 		goto einval;
 
 	attr_name = "port";
-	port_s = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_PORT);
+	port_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
 	if (!port_s) {
 		goto einval;
 	} else {
@@ -1193,7 +1193,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	attr_name = "interval";
-	interval_s = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INTERVAL);
+	interval_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
 	if (!interval_s) {
 		goto einval;
 	} else {
@@ -1211,7 +1211,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	gid = sctxt.crd.gid;
 
 	perm = 0770;
-	perm_s = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "perm");
+	perm_s = ldmsd_req_attr_str_value_get_by_name(reqc, "perm");
 	if (perm_s)
 		perm = strtol(perm_s, NULL, 0);
 
@@ -1274,7 +1274,7 @@ static int prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -1323,7 +1323,7 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 
 	reqc->errcode = 0;
 
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -1332,7 +1332,7 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
-	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf,
+	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc,
 							LDMSD_ATTR_INTERVAL);
 	reqc->errcode = ldmsd_prdcr_start(name, interval_str, &sctxt);
 	switch (reqc->errcode) {
@@ -1373,7 +1373,7 @@ static int prdcr_stop_handler(ldmsd_req_ctxt_t reqc)
 
 	reqc->errcode = 0;
 
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -1421,7 +1421,7 @@ static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
 
 	reqc->errcode = 0;
 
-	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_REGEX);
+	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!prdcr_regex) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -1429,7 +1429,7 @@ static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
-	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INTERVAL);
+	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 
@@ -1454,7 +1454,7 @@ static int prdcr_stop_regex_handler(ldmsd_req_ctxt_t reqc)
 
 	reqc->errcode = 0;
 
-	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_REGEX);
+	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!prdcr_regex) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -1542,7 +1542,7 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 	char *name;
 	int count;
 
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (name) {
 		prdcr = ldmsd_prdcr_find(name);
 		if (!prdcr) {
@@ -1703,9 +1703,9 @@ int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
 	int rc, count = 0;
 	reqc->errcode = 0;
 
-	prdcr_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_PRODUCER);
-	setname = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INSTANCE);
-	schema = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_SCHEMA);
+	prdcr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PRODUCER);
+	setname = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
+	schema = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SCHEMA);
 
 	cnt = snprintf(reqc->line_buf, reqc->line_len, "[");
 	rc = cb(reqc, reqc->line_buf, cnt, arg);
@@ -1788,22 +1788,22 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name)
 		goto einval;
 
 	attr_name = "plugin";
-	plugin = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_PLUGIN);
+	plugin = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PLUGIN);
 	if (!plugin)
 		goto einval;
 
 	attr_name = "container";
-	container = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_CONTAINER);
+	container = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_CONTAINER);
 	if (!container)
 		goto einval;
 
 	attr_name = "schema";
-	schema = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_SCHEMA);
+	schema = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SCHEMA);
 	if (!schema)
 		goto einval;
 
@@ -1826,7 +1826,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	gid = sctxt.crd.gid;
 
 	perm = 0770;
-	perm_s = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "perm");
+	perm_s = ldmsd_req_attr_str_value_get_by_name(reqc, "perm");
 	if (perm_s)
 		perm = strtol(perm_s, NULL, 0);
 
@@ -1896,7 +1896,7 @@ static int strgp_del_handler(ldmsd_req_ctxt_t reqc)
 
 	reqc->errcode = 0;
 
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
 		reqc->errcode= EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -1946,12 +1946,12 @@ static int strgp_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name)
 		goto einval;
 
 	attr_name = "regex";
-	regex_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_REGEX);
+	regex_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!regex_str)
 		goto einval;
 
@@ -2009,12 +2009,12 @@ static int strgp_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name)
 		goto einval;
 
 	attr_name = "regex";
-	regex_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_REGEX);
+	regex_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!regex_str)
 		goto einval;
 
@@ -2073,12 +2073,12 @@ static int strgp_metric_add_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name)
 		goto einval;
 
 	attr_name = "metric";
-	metric_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_METRIC);
+	metric_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_METRIC);
 	if (!metric_name)
 		goto einval;
 
@@ -2139,12 +2139,12 @@ static int strgp_metric_del_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name)
 		goto einval;
 
 	attr_name = "metric";
-	metric_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_METRIC);
+	metric_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_METRIC);
 	if (!metric_name)
 		goto einval;
 
@@ -2202,7 +2202,7 @@ static int strgp_start_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -2256,7 +2256,7 @@ static int strgp_stop_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -2394,7 +2394,7 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 	char *name;
 	ldmsd_strgp_t strgp = NULL;
 	reqc->errcode = 0;
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (name) {
 		strgp = ldmsd_strgp_find(name);
 		if (!strgp) {
@@ -2461,7 +2461,7 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name)
 		goto einval;
 
@@ -2471,9 +2471,9 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	attr_name = "interval";
-	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INTERVAL);
-	offset_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_OFFSET);
-	push = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_PUSH);
+	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
+	offset_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
+	push = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PUSH);
 
 	struct ldmsd_sec_ctxt sctxt;
 	if (reqc->xprt->xprt) {
@@ -2485,7 +2485,7 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	gid = sctxt.crd.gid;
 
 	perm = 0770;
-	perm_s = ldmsd_req_attr_str_value_get_by_name(reqc->req_buf, "perm");
+	perm_s = ldmsd_req_attr_str_value_get_by_name(reqc, "perm");
 	if (perm_s)
 		perm = strtoul(perm_s, NULL, 0);
 
@@ -2551,7 +2551,7 @@ static int updtr_del_handler(ldmsd_req_ctxt_t reqc)
 
 	reqc->errcode = 0;
 
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name)
 		goto einval;
 
@@ -2600,7 +2600,7 @@ static int updtr_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!updtr_name)
 		goto einval;
 
@@ -2610,7 +2610,7 @@ static int updtr_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	attr_name = "regex";
-	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_REGEX);
+	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!prdcr_regex)
 		goto einval;
 
@@ -2673,12 +2673,12 @@ static int updtr_prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!updtr_name)
 		goto einval;
 
 	attr_name = "regex";
-	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_REGEX);
+	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!prdcr_regex)
 		goto einval;
 
@@ -2735,15 +2735,15 @@ static int updtr_match_add_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!updtr_name)
 		goto einval;
 	attr_name = "regex";
-	regex_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_REGEX);
+	regex_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!regex_str)
 		goto einval;
 
-	match_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_MATCH);
+	match_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MATCH);
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_updtr_match_add(updtr_name, regex_str, match_str,
@@ -2806,15 +2806,15 @@ static int updtr_match_del_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!updtr_name)
 		goto einval;
 	attr_name = "regex";
-	regex_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_REGEX);
+	regex_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!regex_str)
 		goto einval;
 
-	match_str  = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_MATCH);
+	match_str  = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_MATCH);
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_updtr_match_del(updtr_name, regex_str, match_str,
@@ -2875,15 +2875,15 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 
 	reqc->errcode = 0;
 
-	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!updtr_name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The updater name must be specified.");
 		goto send_reply;
 	}
-	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INTERVAL);
-	offset_str  = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_OFFSET);
+	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
+	offset_str  = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_updtr_start(updtr_name, interval_str, offset_str,
@@ -2928,7 +2928,7 @@ static int updtr_stop_handler(ldmsd_req_ctxt_t reqc)
 
 	reqc->errcode = 0;
 
-	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!updtr_name) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -3080,7 +3080,7 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_updtr_t updtr = NULL;
 	reqc->errcode = 0;
 
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (name) {
 		updtr = ldmsd_updtr_find(name);
 		if (!updtr) {
@@ -3204,7 +3204,7 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_updtr_t updtr;
 	struct ldmsd_req_attr_s attr;
 
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (name) {
 		updtr = ldmsd_updtr_find(name);
 		if (!updtr) {
@@ -3406,7 +3406,7 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
 	char *name;
 	struct ldmsd_req_attr_s attr;
 
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (name) {
 		prdcr = ldmsd_prdcr_find(name);
 		if (!prdcr) {
@@ -3529,15 +3529,15 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 	size_t cnt = 0;
 
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!plugin_name)
 		goto einval;
 	attr_name = "interval";
-	interval_us = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INTERVAL);
+	interval_us = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
 	if (!interval_us)
 		goto einval;
 
-	offset = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_OFFSET);
+	offset = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
 
 	reqc->errcode = ldmsd_start_sampler(plugin_name, interval_us, offset);
 	if (reqc->errcode == 0) {
@@ -3589,7 +3589,7 @@ static int plugn_stop_handler(ldmsd_req_ctxt_t reqc)
 	size_t cnt = 0;
 
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!plugin_name)
 		goto einval;
 
@@ -3696,7 +3696,7 @@ static int plugn_load_handler(ldmsd_req_ctxt_t reqc)
 	size_t cnt = 0;
 
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!plugin_name) {
 		ldmsd_log(LDMSD_LERROR, "load plugin called without name=$plugin");
 		goto einval;
@@ -3726,7 +3726,7 @@ static int plugn_term_handler(ldmsd_req_ctxt_t reqc)
 	size_t cnt = 0;
 
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!plugin_name)
 		goto einval;
 
@@ -3769,10 +3769,10 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!plugin_name)
 		goto einval;
-	config_attr = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_STRING);
+	config_attr = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
 	if (!config_attr) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"No config attributes are provided.");
@@ -3858,7 +3858,7 @@ int __plugn_list_string(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
 	struct ldmsd_plugin_cfg *p;
 	rc = 0;
 
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 
 	LIST_FOREACH(p, &plugin_list, entry) {
 		if (name && (0 != strcmp(name, p->name)))
@@ -3958,7 +3958,7 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 	char *plugin;
 	int plugn_count;
 
-	plugin = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	plugin = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	ldmsd_set_tree_lock();
 	if (plugin) {
 		list = ldmsd_plugin_set_list_find(plugin);
@@ -4060,15 +4060,15 @@ static int set_udata_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "instance";
-	set_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INSTANCE);
+	set_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
 	if (!set_name)
 		goto einval;
 	attr_name = "metric";
-	metric_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_METRIC);
+	metric_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_METRIC);
 	if (!metric_name)
 		goto einval;
 	attr_name = "udata";
-	udata = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_UDATA);
+	udata = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_UDATA);
 	if (!udata)
 		goto einval;
 
@@ -4130,19 +4130,19 @@ static int set_udata_regex_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = 0;
 
 	attr_name = "instance";
-	set_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INSTANCE);
+	set_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
 	if (!set_name)
 		goto einval;
 	attr_name = "regex";
-	regex = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_REGEX);
+	regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
 	if (!regex)
 		goto einval;
 	attr_name = "base";
-	base_s = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_BASE);
+	base_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_BASE);
 	if (!base_s)
 		goto einval;
 
-	inc_s = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INCREMENT);
+	inc_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INCREMENT);
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_set_udata_regex(set_name, regex, base_s, inc_s,
@@ -4171,7 +4171,7 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
 	size_t cnt = 0;
 	int is_test = 0;
 
-	level_s = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_LEVEL);
+	level_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_LEVEL);
 	if (!level_s) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -4392,12 +4392,12 @@ static int oneshot_handler(ldmsd_req_ctxt_t reqc)
 	size_t cnt = 0;
 	int rc = 0;
 
-	name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
 		attr_name = "name";
 		goto einval;
 	}
-	time_s = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_TIME);
+	time_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_TIME);
 	if (!time_s) {
 		attr_name = "time";
 		goto einval;
@@ -4538,9 +4538,9 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 	size_t cnt = 0;
 	int i;
 
-	rep_len_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_OFFSET);
-	num_rec_str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_LEVEL);
-	str = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_NAME);
+	rep_len_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
+	num_rec_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_LEVEL);
+	str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (str) {
 		cnt = snprintf(reqc->line_buf, reqc->line_len, "Hello '%s'", str);
 		ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -4837,7 +4837,7 @@ static int set_route_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_set_info_t info;
 	struct ldmsd_req_attr_s attr;
 
-	inst_name = ldmsd_req_attr_str_value_get_by_id(reqc->req_buf, LDMSD_ATTR_INSTANCE);
+	inst_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
 	if (!inst_name) {
 		cnt = snprintf(reqc->line_buf, reqc->line_len,
 				"The attribute 'instance' is required.");

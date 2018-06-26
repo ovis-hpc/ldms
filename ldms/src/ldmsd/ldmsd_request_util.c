@@ -401,9 +401,9 @@ ldmsd_req_attr_t ldmsd_req_attr_get_by_name(char *request, const char *name)
 	return ldmsd_req_attr_get_by_id(request, attr_id);
 }
 
-char *ldmsd_req_attr_str_value_get_by_id(char *request, uint32_t attr_id)
+char *ldmsd_req_attr_str_value_get_by_id(ldmsd_req_ctxt_t req, uint32_t attr_id)
 {
-	ldmsd_req_attr_t attr = ldmsd_req_attr_get_by_id(request, attr_id);
+	ldmsd_req_attr_t attr = ldmsd_req_attr_get_by_id(req->req_buf, attr_id);
 	if (!attr)
 		return NULL;
 	return str_repl_env_vars((char *)attr->attr_value);
@@ -417,12 +417,12 @@ int ldmsd_req_attr_keyword_exist_by_id(char *request, uint32_t attr_id)
 	return 0;
 }
 
-char *ldmsd_req_attr_str_value_get_by_name(char *request, const char *name)
+char *ldmsd_req_attr_str_value_get_by_name(ldmsd_req_ctxt_t req, const char *name)
 {
 	int32_t attr_id = ldmsd_req_attr_str2id(name);
 	if (attr_id < 0)
 		return NULL;
-	return ldmsd_req_attr_str_value_get_by_id(request, attr_id);
+	return ldmsd_req_attr_str_value_get_by_id(req, attr_id);
 }
 
 int ldmsd_req_attr_keyword_exist_by_name(char *request, const char *name)
