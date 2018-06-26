@@ -12,7 +12,16 @@ COMMON_LIBADD = $(CORE)/libldms.la -lovis_util
 BUILT_SOURCES = json_parser.h
 AM_YFLAGS = -d
 
-libkokkos_store_la_SOURCES = json_lexer.l json_parser.y kokkos_store.c \
+EXTRA_DIST = json_lexer.l json_parser.y
+
+json_lexer.c: json_lexer.l
+	$(LEX) -o $@ $<
+json_parser.c: json_parser.h
+json_parser.h: json_parser.y
+	$(YACC) --defines=json_parser.h -o json_parser.c $<
+
+nodist_libkokkos_store_la_SOURCES = json_lexer.c json_parser.c json_parser.h
+libkokkos_store_la_SOURCES = kokkos_store.c \
 	json.h kvd_svc.c kvd_svc.h kvd_log.h kvd_log.c
 libkokkos_store_la_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS) -g -O0
 libkokkos_store_la_LIBADD = -lc $(COMMON_LIBADD) \

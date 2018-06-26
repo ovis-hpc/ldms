@@ -134,19 +134,12 @@ OPTION_DEFAULT_DISABLE([jobinfo-slurm], [ENABLE_SLURM_JOBINFO])
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
-dnl check for Flex/Bison if Kokkos is enabled
+dnl if LEX and/or YACC are not available, the configure still won't fail
+AC_PROG_LEX
+AC_PROG_YACC
 if test -z "$ENABLE_KOKKOS_TRUE"; then
-	if test -z "$ENABLE_SOS_TRUE"; then
-		AC_PROG_LEX
-		if test "x$LEX" != xflex; then
-			LEX="$SHELL $missing_dir/missing flex"
-			AC_SUBST([LEX_OUTPUT_ROOT], [lex.yy])
-			AC_SUBST([LEXLIB], [''])
-		fi
-		AC_PROG_YACC
-	else
-	    AC_MSG_ERROR([--enable-kokkos requires --enable-sos])
-	fi
+	dnl kokkos needs sos (not the storesos).
+	CHECK_SOS=1
 fi
 
 dnl Other libraries
@@ -256,6 +249,10 @@ if test "x$WITH_OVIS_LIB" != "xbuild" && test -z "$ENABLE_TSAMPLER_TRUE"; then
 fi
 
 if test -z "$ENABLE_SOS_TRUE"; then
+	CHECK_SOS=1
+fi
+
+if test -n "$CHECK_SOS"; then
 	if test "x$WITH_SOS" != "xbuild"; then
 		OCFLAGS=$CFLAGS
 		CFLAGS=-I$SOS_INCDIR
@@ -265,7 +262,7 @@ if test -z "$ENABLE_SOS_TRUE"; then
 		)
 		AC_CHECK_LIB( sos, sos_container_open,
 			[],
-			AC_MSG_FAILURE(libsos not found),
+			AC_MSG_FAILURE(libsos not found: required by either --enable-sos or --enable-kokkos),
 			[ $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ]
 		)
 		CFLAGS=$OCFLAGS
