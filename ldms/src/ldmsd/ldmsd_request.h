@@ -249,6 +249,7 @@ typedef struct ldmsd_cfg_xprt_s {
 	size_t max_msg;
 	ldmsd_cfg_send_fn_t send_fn;
 	ldmsd_cfg_cleanup_fn_t cleanup_fn;
+	int trust; /* trust (to perform command expansion) */
 } *ldmsd_cfg_xprt_t;
 
 #define LINE_BUF_LEN 1024
@@ -372,7 +373,7 @@ ldmsd_req_attr_t ldmsd_req_attr_get_by_name(char *request, const char *name);
  *
  * \return a string. NULL if it does not exist.
  */
-char *ldmsd_req_attr_str_value_get_by_id(char *request, uint32_t attr_id);
+char *ldmsd_req_attr_str_value_get_by_id(ldmsd_req_ctxt_t req, uint32_t attr_id);
 
 /**
  * \brief Verify whether the given attribute/keyword ID exists or not.
@@ -392,7 +393,7 @@ int ldmsd_req_attr_keyword_exist_by_id(char *request, uint32_t attr_id);
  *
  * \return a string. NULL if it does not exist.*
  */
-char *ldmsd_req_attr_str_value_get_by_name(char *request, const char *name);
+char *ldmsd_req_attr_str_value_get_by_name(ldmsd_req_ctxt_t req, const char *name);
 
 /**
  * \brief Verify whether the given attribute/keyword name exists or not.

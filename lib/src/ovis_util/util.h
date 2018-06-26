@@ -258,6 +258,14 @@ int f_mkdir_p(const char *path, __mode_t mode);
 char *str_repl_env_vars(const char *str);
 
 /**
+ * \brief Expand `$(COMMAND)` with the output of the COMMAND.
+ *
+ * \retval ptr The expanded string. The caller is responsible for freeing it.
+ * \retval NULL If error. \c errno is also set accordingly.
+ */
+char *str_repl_cmd(const char *_str);
+
+/**
  * \brief The \c fopen() wrapper with permission \c o_mode for new file.
  *
  * Open the file \c path for write (\c f_mode "w" or "w+") or append (\c f_mode

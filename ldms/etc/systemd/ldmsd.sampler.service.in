@@ -30,9 +30,9 @@ Environment = HOSTNAME=%H
 ExecStartPre = /bin/mkdir -p @localstatedir@/run/ldmsd
 ExecStart = @sbindir@/ldmsd \
 		-x ${LDMSD_XPRT}:${LDMSD_PORT} \
-		-p sock:${LDMSD_CONFIG_PORT} \
 		-c ${LDMSD_PLUGIN_CONFIG_FILE} \
-		-a @sysconfdir@/ldms/ldmsauth.conf \
+		-a ${LDMSD_AUTH_PLUGIN} \
+		$LDMSD_AUTH_OPTS \
 		-r @localstatedir@/run/ldmsd/sampler.pid
 
 [Install]

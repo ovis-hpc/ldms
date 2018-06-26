@@ -919,7 +919,7 @@ ldmsd_failover_t __ldmsd_req_failover_get(ldmsd_req_ctxt_t req)
 static inline
 char *__req_attr_gets(ldmsd_req_ctxt_t req, enum ldmsd_request_attr aid)
 {
-	return ldmsd_req_attr_str_value_get_by_id(req->req_buf, aid);
+	return ldmsd_req_attr_str_value_get_by_id(req, aid);
 }
 
 int failover_config_handler(ldmsd_req_ctxt_t req)

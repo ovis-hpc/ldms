@@ -62,6 +62,7 @@
 #include <errno.h>
 #include <pwd.h>
 #include <grp.h>
+#include <ctype.h>
 
 #include "util.h"
 #define DSTRING_USE_SHORT
@@ -86,6 +87,134 @@ static const char *get_env_var(const char *src, size_t start_off, size_t end_off
 	strncpy(name,  &src[start_off], name_len);
 	name[name_len] = '\0';
 	return name;
+}
+
+int _scpy(char **buff, size_t *slen, size_t *alen,
+	    const char *str, size_t len)
+{
+	size_t xlen;
+	char *xbuff;
+	if (len >= *alen) {
+		/* need extension */
+		xlen = ((len-1)|4095) + 1;
+		xbuff = realloc(*buff, *slen+*alen+xlen);
+		if (!xbuff) {
+			return errno;
+		}
+		*buff = xbuff;
+	}
+	strncpy(*buff+*slen, str, len);
+	*alen -= len;
+	*slen += len;
+	(*buff)[*slen] = 0;
+	return 0;
+}
+
+char *str_repl_cmd(const char *_str)
+{
+	char *str = strdup(_str);
+	char *buff = NULL;
+	char *xbuff;
+	const char *eos = str + strlen(str);
+	size_t slen = 0; /* strlen of buff */
+	size_t alen = 4096; /* available len */
+	size_t len;
+	size_t xlen;
+	char *p0 = str, *p1;
+	char *cmd;
+	int rc;
+	int count;
+	FILE *p;
+	char line[4096];
+
+	if (!str)
+		goto err;
+
+	buff = malloc(alen);
+	if (!buff)
+		goto err;
+
+	while (p0 < eos) {
+		p1 = strstr(p0, "$(");
+		if (!p1) {
+			/* no more expansion */
+			len = strlen(p0);
+			rc = _scpy(&buff, &slen, &alen, p0, len);
+			if (rc)
+				goto err;
+			break;
+		}
+		/* otherwise, do the expansion */
+		/* copy the non-expandable part */
+		len = p1 - p0;
+		rc = _scpy(&buff, &slen, &alen, p0, len);
+		if (rc)
+			goto err;
+		/* expansion */
+		cmd = p1 + 2;
+		p0 = cmd;
+		count = 1;
+		/* matching parenthesis */
+		while (count && p0 < eos) {
+			if (*p0 == '(')
+				count++;
+			if (*p0 == ')')
+				count--;
+			if (*p0 == '\\') {
+				/* escape */
+				p0++;
+			}
+			p0++;
+		}
+		if (count) {
+			/* end unexpectedly */
+			errno = EINVAL;
+			goto err;
+		}
+		/* p0 points to the char behind ')' */
+		*(p0-1) = 0; /* terminate the cmd */
+		p = popen(cmd, "re"); /* read & close-on-exec */
+		if (!p)
+			goto err;
+		/* copy the output over */
+		while (fgets(buff+slen, alen, p)) {
+			len = strlen(buff+slen);
+			slen += len;
+			alen -= len;
+			/* replace trailing spaces with one space */
+			while (isspace(buff[slen-1])) {
+				slen--;
+				alen++;
+			}
+			if (isspace(buff[slen])) {
+				buff[slen] = ' ';
+				buff[++slen] = 0;
+				alen--;
+			}
+			if (alen == 1) {
+				/* need buff extension */
+				xbuff = realloc(buff, slen+alen+4096);
+				if (!xbuff)
+					goto err;
+				buff = xbuff;
+				alen += 4096;
+			}
+		}
+		pclose(p);
+		/* remove the trailing spaces at the end */
+		while (isspace(buff[slen-1])) {
+			buff[slen-1] = 0;
+			slen--;
+			alen++;
+		}
+	}
+	free(str); /* cleanup */
+	return buff;
+
+err:
+	free(str);
+	free(buff);
+	return NULL;
 }
 
 char *str_repl_env_vars(const char *str)
