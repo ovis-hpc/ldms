@@ -442,7 +442,9 @@ class LDMSD_Controller(object):
     """ldmsd_controller subprocess handler"""
 
     def __init__(self, port, host="localhost", xprt="sock",
-                       auth="none", auth_opt={}, ldmsctl=False):
+                       auth="none", auth_opt={},
+                       source=None, script=None,
+                       ldmsctl=False):
         """LDMSD_Controller initialization
 
         @param port(str): the port of ldmsd to connect to.
@@ -451,6 +453,9 @@ class LDMSD_Controller(object):
         @param auth_opt(dict): the dictionary of key-value specifying
                                authentication plugin options.
         """
+        self.term_immediately = False
+        if source is not None or script is not None:
+            self.term_immediately = True
         self.is_ldmsctl = ldmsctl
         if self.is_ldmsctl:
             self.cmd_args = [
@@ -460,6 +465,10 @@ class LDMSD_Controller(object):
                 "-x", xprt,
                 "-a", auth,
             ]
+            if source is not None:
+                self.cmd_args.extend(["-s", source])
+            if script is not None:
+                self.cmd_args.extend(["-X", script])
         else:
             self.cmd_args = [
                 "exec ldmsd_controller",
@@ -468,6 +477,10 @@ class LDMSD_Controller(object):
                 "--xprt", xprt,
                 "-a", auth,
             ]
+            if source is not None:
+                self.cmd_args.extend(["--source", source])
+            if script is not None:
+                self.cmd_args.extend(["--script", script])
         for a, v in auth_opt.iteritems():
             self.cmd_args.extend(["-A", "%s=%s" % (a, v)])
         self.proc = None
@@ -500,6 +513,8 @@ class LDMSD_Controller(object):
                           close_fds = True,
                           shell = True,
                           )
+        if self.term_immediately:
+            return
         time.sleep(0.5)
         if not self.is_running():
             raise RuntimeError("process terminated prematurely")

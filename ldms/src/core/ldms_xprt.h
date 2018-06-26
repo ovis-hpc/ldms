@@ -340,7 +340,7 @@ struct ldms_xprt {
 	sem_t sem;
 	int sem_rc;
 
-	/* Maximum size of a send/recv message */
+	/* Maximum size of the underlying transport send/recv message */
 	int max_msg;
 	/* Points to local ctxt expected when dir updates returned to this endpoint */
 	uint64_t local_dir_xid;

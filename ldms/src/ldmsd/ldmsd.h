@@ -465,10 +465,7 @@ char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type);
 int process_config_file(const char *path, int *lineno, int trust);
 
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
-#define LDMSD_DEF_CONFIG_STR_LEN 8192
-#define LDMSD_HUGE_CONFIG_STR_LEN INT_MAX/4096
-#define LDMSD_MIN_CONFIG_STR_LEN 256
-#define LDMSD_MAX_CONFIG_REC_LEN 4096
+#define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 struct attr_value_list;
 struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN];

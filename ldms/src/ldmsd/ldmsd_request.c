@@ -60,6 +60,7 @@
 #include <sys/socket.h>
 #include <coll/rbt.h>
 #include <pthread.h>
+#include <ovis_util/util.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_request.h"
@@ -451,9 +452,9 @@ ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key, size_t max_msg_len)
 	if (!reqc->line_buf)
 		goto err;
 	reqc->line_buf[0] = '\0';
-	reqc->req_len = REQ_BUF_LEN - 1;
+	reqc->req_len = max_msg_len * 2 - 1;
 	reqc->req_off = sizeof(struct ldmsd_req_hdr_s);
-	reqc->req_buf = malloc(REQ_BUF_LEN);
+	reqc->req_buf = malloc(max_msg_len * 2);
 	if (!reqc->req_buf)
 		goto err;
 	*(uint32_t *)&reqc->req_buf[reqc->req_off] = 0; /* terminating discrim */
@@ -542,8 +543,9 @@ ldmsd_req_cmd_t ldmsd_req_cmd_new(ldms_t ldms,
 {
 	ldmsd_req_cmd_t ret;
 	req_ctxt_tree_lock();
-	ret = alloc_req_cmd_ctxt(ldms, ldms->max_msg, req_id, orgn_reqc,
-				 resp_handler, ctxt);
+	ret = alloc_req_cmd_ctxt(ldms, ldms_xprt_msg_max(ldms),
+					req_id, orgn_reqc,
+					resp_handler, ctxt);
 	req_ctxt_tree_unlock();
 	return ret;
 }
@@ -862,12 +864,14 @@ void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec
 	xprt->send_fn(xprt, (char *)req_reply, reply_size);
 }
 
-int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request, size_t req_len)
+int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 {
 	struct req_ctxt_key key;
 	ldmsd_req_ctxt_t reqc = NULL;
 	size_t cnt;
 	int rc = 0;
+	char *oom_errstr = "ldmsd out of memory";
+	size_t rec_len = ntohl(request->rec_len);
 
 	key.msg_no = ntohl(request->msg_no);
 	key.conn_id = (uint64_t)(long unsigned)xprt;
@@ -893,24 +897,11 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 			goto err_out;
 		}
 		reqc = alloc_req_ctxt(&key, xprt->max_msg);
-		if (!reqc) {
-			char errstr[64];
-			snprintf(errstr, 63, "ldmsd out of memory");
-			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
-			rc = ENOMEM;
-			ldmsd_send_error_reply(xprt, key.msg_no, rc,
-						errstr, strlen(errstr));
-			goto err_out;
-		}
-		if (reqc->req_len < req_len) {
-			/* Send record length advice */
-			ldmsd_send_cfg_rec_adv(xprt, key.msg_no, reqc->req_len);
-			req_ctxt_ref_put(reqc);
-			goto err_out;
-		}
+		if (!reqc)
+			goto oom;
 		reqc->xprt = xprt;
-		memcpy(reqc->req_buf, request, req_len);
-		reqc->req_off = req_len;
+		memcpy(reqc->req_buf, request, rec_len);
+		reqc->req_off = rec_len;
 	} else {
 		reqc = find_req_ctxt(&key);
 		if (!reqc) {
@@ -925,7 +916,13 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 			goto err_out;
 		}
 		/* Copy the data from this record to the tail of the request context */
-		cnt = req_len - sizeof(*request);
+		cnt = rec_len - sizeof(*request);
+		if (reqc->req_len - reqc->req_off < cnt) {
+			reqc->req_buf = realloc(reqc->req_buf, 2 * (reqc->req_len + 1));
+			if (!reqc->req_buf)
+				goto oom;
+			reqc->req_len = reqc->req_len * 2 + 1; /* req_len = req_buf sz - 1 */
+		}
 		memcpy(&reqc->req_buf[reqc->req_off], request + 1, cnt);
 		reqc->req_off += cnt;
 	}
@@ -946,6 +943,10 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 	req_ctxt_tree_unlock();
  out:
 	return rc;
+ oom:
+	ldmsd_log(LDMSD_LCRITICAL, "%s\n", oom_errstr);
+	rc = ENOMEM;
+	ldmsd_send_error_reply(xprt, key.msg_no, rc, oom_errstr, strlen(oom_errstr));
  err_out:
 	req_ctxt_tree_unlock();
 	return rc;
@@ -954,14 +955,14 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 /*
  * This function assumes that the response is sent using ldms xprt.
  */
-int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t response,
-								size_t resp_len)
+int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t response)
 {
 	struct req_ctxt_key key;
 	ldmsd_req_cmd_t rcmd = NULL;
 	ldmsd_req_ctxt_t reqc = NULL;
 	size_t cnt;
 	int rc = 0;
+	size_t rec_len = ntohl(response->rec_len);
 
 	key.msg_no = ntohl(response->msg_no);
 	key.conn_id = (uint64_t)(long unsigned)xprt->ldms.ldms;
@@ -987,18 +988,21 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 	}
 	/* Copy the data from this record to the tail of the request context */
 	if (ntohl(response->flags) & LDMSD_REQ_SOM_F) {
-		if (resp_len > reqc->req_len) {
-			ldmsd_send_cfg_rec_adv(xprt, key.msg_no, reqc->req_len);
-			goto err_out;
-		}
-		memcpy(reqc->req_buf, response, resp_len);
-		reqc->req_off = resp_len;
+		memcpy(reqc->req_buf, response, rec_len);
+		reqc->req_off = rec_len;
 	} else {
-		cnt = resp_len - sizeof(*response);
-		if (cnt > (reqc->req_len - reqc->req_off)) {
-			ldmsd_send_cfg_rec_adv(xprt, key.msg_no,
-					reqc->req_len - reqc->req_off);
-			goto err_out;
+		cnt = rec_len - sizeof(*response);
+		if (reqc->req_len - reqc->req_off < cnt) {
+			reqc->req_buf = realloc(reqc->req_buf, 2 * (reqc->req_len + 1));
+			if (!reqc->req_buf) {
+				char errstr[64];
+				cnt = snprintf(errstr, 63, "Out of memory");
+				ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+				ldmsd_send_error_reply(xprt, key.msg_no, ENOMEM, errstr, cnt);
+				rc = ENOMEM;
+				goto err_out;
+			}
+			reqc->req_len = reqc->req_len * 2 + 1; /* req_len = req_buf sz - 1 */
 		}
 		memcpy(&reqc->req_buf[reqc->req_off], response + 1, cnt);
 		reqc->req_off += cnt;
@@ -4516,7 +4520,7 @@ static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(attr.discrim), LDMSD_REQ_EOM_F);
 	} else {
 		ldmsd_prdcr_lock(prdcr);
-		rcmd = alloc_req_cmd_ctxt(prdcr->xprt, prdcr->xprt->max_msg,
+		rcmd = alloc_req_cmd_ctxt(prdcr->xprt, ldms_xprt_msg_max(prdcr->xprt),
 						LDMSD_GREETING_REQ, reqc,
 						__greeting_path_resp_handler, myself);
 		ldmsd_prdcr_unlock(prdcr);
@@ -4554,6 +4558,7 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 	str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (str) {
 		cnt = snprintf(reqc->line_buf, reqc->line_len, "Hello '%s'", str);
+		ldmsd_log(LDMSD_LDEBUG, "strlen(name)=%zu. %s\n", strlen(str), str);
 		ldmsd_send_req_response(reqc, reqc->line_buf);
 	} else if (ldmsd_req_attr_keyword_exist_by_name(reqc->req_buf, "test")) {
 		cnt = snprintf(reqc->line_buf, reqc->line_len, "Hi");
@@ -4662,7 +4667,7 @@ int ldmsd_set_route_request(ldmsd_prdcr_t prdcr,
 	char *buf;
 	int rc;
 
-	rcmd = alloc_req_cmd_ctxt(prdcr->xprt, prdcr->xprt->max_msg,
+	rcmd = alloc_req_cmd_ctxt(prdcr->xprt, ldms_xprt_msg_max(prdcr->xprt),
 					LDMSD_SET_ROUTE_REQ, org_reqc,
 					resp_handler, ctxt);
 	if (!rcmd)

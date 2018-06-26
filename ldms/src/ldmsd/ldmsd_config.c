@@ -509,38 +509,32 @@ int process_config_file(const char *path, int *lno, int trust)
 	static uint32_t msg_no = 0;
 	int rc = 0;
 	int lineno = 0;
+	int i;
 	FILE *fin = NULL;
 	char *buff = NULL;
-	char *line;
+	char *line = NULL;
+	char *tmp;
+	size_t line_sz = 0;
 	char *comment;
 	ssize_t off = 0;
-	size_t cfg_buf_len = LDMSD_DEF_CONFIG_STR_LEN;
+	ssize_t cnt;
+	size_t buf_len = 0;
 	struct ldmsd_cfg_xprt_s xprt;
 	ldmsd_req_hdr_t request;
+	struct ldmsd_req_array *req_array = NULL;
 
-	char *env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
-	if (env) {
-		cfg_buf_len = strtol(env, NULL, 0);
-		if (cfg_buf_len < LDMSD_MIN_CONFIG_STR_LEN ||
-			cfg_buf_len > LDMSD_HUGE_CONFIG_STR_LEN) {
-			ldmsd_log(LDMSD_LERROR, "env(LDMSD_MAX_CONFIG_STR_LEN) %zu too %s\n",
-				cfg_buf_len, (cfg_buf_len < LDMSD_MIN_CONFIG_STR_LEN
-						? "small" : "big"));
-			cfg_buf_len = LDMSD_DEF_CONFIG_STR_LEN;
-		}
-	}
-
-	buff = malloc(cfg_buf_len);
-	if (!buff) {
+	line = malloc(LDMSD_CFG_FILE_XPRT_MAX_REC);
+	if (!line) {
 		rc = errno;
 		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
 		goto cleanup;
 	}
+	line_sz = LDMSD_CFG_FILE_XPRT_MAX_REC;
 
 	fin = fopen(path, "rt");
 	if (!fin) {
 		rc = errno;
-		strerror_r(rc, buff, cfg_buf_len - 1);
+		strerror_r(rc, line, line_sz - 1);
 		ldmsd_log(LDMSD_LERROR, "Failed to open the config file '%s'. %s\n",
 				path, buff);
 		goto cleanup;
@@ -548,72 +542,92 @@ int process_config_file(const char *path, int *lno, int trust)
 
 	xprt.xprt = NULL;
 	xprt.send_fn = log_response_fn;
-	xprt.max_msg = REP_BUF_LEN;
+	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
 	xprt.trust = trust;
 
 next_line:
-	line = fgets(buff + off, cfg_buf_len - off, fin);
-	if (!line)
+	errno = 0;
+	if (buff)
+		memset(buff, 0, buf_len);
+	cnt = getline(&buff, &buf_len, fin);
+	if ((cnt == -1) && (0 == errno))
 		goto cleanup;
+
 	lineno++;
+	tmp = buff;
+	comment = find_comment(tmp);
 
-	comment = find_comment(line);
-
-	if (comment) {
+	if (comment)
 		*comment = '\0';
-	}
 
-	off = strlen(buff);
-	while (off && isspace(line[off-1])) {
-		off--;
-	}
+	/* Get rid of trailing spaces */
+	while (cnt && isspace(tmp[cnt-1]))
+		cnt--;
 
-	if (!off) {
+	if (!cnt) {
 		/* empty string */
-		off = 0;
+		goto parse;
+	}
+
+	tmp[cnt] = '\0';
+
+	/* Get rid of leading spaces */
+	while (isspace(*tmp)) {
+		tmp++;
+		cnt--;
+	}
+
+	if (!cnt) {
+		/* empty buffer */
+		goto parse;
+	}
+
+	if (tmp[cnt-1] == '\\') {
+		if (cnt == 1)
+			goto parse;
+	}
+
+	if (cnt + off > line_sz) {
+		line = realloc(line, ((cnt + off)/line_sz + 1) * line_sz);
+		if (!line) {
+			rc = errno;
+			ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+			goto cleanup;
+		}
+		line_sz = ((cnt + off)/line_sz + 1) * line_sz;
+	}
+	off += snprintf(&line[off], line_sz, "%s", tmp);
+
+	/* attempt to merge multiple lines together */
+	if (line[off-1] == '\\') {
+		line[off-1] = ' ';
 		goto next_line;
 	}
 
-	buff[off] = '\0';
-
-	if (buff[off-1] == '\\') {
-		buff[off-1] = ' ';
+parse:
+	if (!off)
 		goto next_line;
-	}
 
-	line = buff;
-	while (isspace(*line)) {
-		line++;
-	}
-
-	if (!*line) {
-		/* buff contain empty string */
-		off = 0;
-		goto next_line;
-	}
-
-	request = ldmsd_parse_config_str(line, msg_no, ldmsd_log);
-	msg_no += 1;
-	if (!request) {
+	req_array = ldmsd_parse_config_str(line, msg_no, xprt.max_msg, ldmsd_log);
+	if (!req_array) {
 		rc = errno;
 		ldmsd_log(LDMSD_LERROR, "Process config file error at line %d "
 				"(%s). %s\n", lineno, path, strerror(rc));
 		goto cleanup;
 	}
-
-	/*
-	 * Convert the request byte order from host to network
-	 * to be compatible with the other config methods.
-	 */
-	ldmsd_hton_req_msg(request);
-	rc = ldmsd_process_config_request(&xprt, request, htonl(request->rec_len));
-	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
-				lineno, path);
+	for (i = 0; i < req_array->num_reqs; i++) {
+		request = req_array->reqs[i];
+		rc = ldmsd_process_config_request(&xprt, request);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
+					lineno, path);
+			free(request);
+			goto cleanup;
+		}
 		free(request);
-		goto cleanup;
 	}
-	free(request);
+	msg_no += 1;
+
 	off = 0;
 	goto next_line;
 
@@ -622,8 +636,17 @@ cleanup:
 		fclose(fin);
 	if (buff)
 		free(buff);
+	if (line)
+		free(line);
 	if (lno)
 		*lno = lineno;
+	if (req_array) {
+		while (i < req_array->num_reqs) {
+			free(req_array->reqs[i]);
+			i++;
+		}
+		free(req_array);
+	}
 	return rc;
 }
 
@@ -638,19 +661,25 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 	struct ldmsd_cfg_xprt_s xprt;
 	xprt.ldms.ldms = x;
 	xprt.send_fn = send_ldms_fn;
-	xprt.max_msg = x->max_msg;
+	xprt.max_msg = ldms_xprt_msg_max(x);
 	xprt.trust = 0; /* don't trust any network for CMD expansion */
+
+	if (ntohl(request->rec_len) > xprt.max_msg) {
+		/* Send the record length advice */
+		ldmsd_send_cfg_rec_adv(&xprt, ntohl(request->msg_no), xprt.max_msg);
+		return;
+	}
 
 	switch (ntohl(request->type)) {
 	case LDMSD_REQ_TYPE_CONFIG_CMD:
-		(void)ldmsd_process_config_request(&xprt, request, data_len);
+		(void)ldmsd_process_config_request(&xprt, request);
 		break;
 	case LDMSD_REQ_TYPE_CONFIG_RESP:
-		(void)ldmsd_process_config_response(&xprt, request, data_len);
+		(void)ldmsd_process_config_response(&xprt, request);
 		break;
 	default:
 		break;
-}
+	}
 }
 
 static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
@@ -720,7 +749,7 @@ void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
 	ldms_xprt_get(ldms);
 	xprt->ldms.ldms = ldms;
 	xprt->send_fn = send_ldms_fn;
-	xprt->max_msg = ldms->max_msg;
+	xprt->max_msg = ldms_xprt_msg_max(ldms);
 	xprt->cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
 	xprt->trust = 0;
 }
