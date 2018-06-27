@@ -16,15 +16,24 @@ do_subst = @LDMS_SUBST_RULE@
 
 EXTRA_DIST = ldmsauth.conf \
 	     ldmsplugin.sampler.conf \
+	     ldmsplugin.sampler.conf.cray_xc.example \
 	     ldmsplugin.aggregator.conf \
+	     ldmsplugin.aggregator.conf.cray_xc.example \
 	     ldmsd.aggregator.env.in \
+	     ldmsd.aggregator.env.cray_xc.example \
 	     ldmsd.sampler.env.in \
+	     ldmsd.sampler.env.cray_xc.example \
 	     ldms.plugstack.env.in \
 	     ldms.cfg
 
 ENV_FILES = $(builddir)/ldmsd.sampler.env \
 	    $(builddir)/ldmsd.aggregator.env \
 	    $(builddir)/ldms.plugstack.env
+
+EXAMPLE_FILES = $(srcdir)/ldmsplugin.aggregator.conf.cray_xc.example \
+		$(srcdir)/ldmsplugin.sampler.conf.cray_xc.example \
+		$(srcdir)/ldmsd.aggregator.env.cray_xc.example \
+		$(srcdir)/ldmsd.sampler.env.cray_xc.example
 
 $(builddir)/%.env: $(srcdir)/%.env.in
 	$(do_subst) < $< > $@
@@ -39,6 +48,7 @@ install-data-local: $(ENV_FILES)
 	$(INSTALL_DATA) $(srcdir)/ldms.cfg $(CONF_DIR)
 	$(INSTALL_DATA) $(srcdir)/ldmsplugin.sampler.conf $(CONF_DIR)
 	$(INSTALL_DATA) $(srcdir)/ldmsplugin.aggregator.conf $(CONF_DIR)
+	$(INSTALL_DATA) $(EXAMPLE_FILES) $(CONF_DIR)/
 
 uninstall-local:
 	rm -f $(CONF_DIR)/ldmsd.aggregator.env
@@ -48,3 +58,7 @@ uninstall-local:
 	rm -f $(CONF_DIR)/ldmsplugin.aggregator.conf
 	rm -f $(CONF_DIR)/ldms.cfg
 	rm -f $(CONF_DIR)/ldms.plugstack.env
+	rm -f $(CONF_DIR)/ldmsplugin.aggregator.conf.cray_xc.example
+	rm -f $(CONF_DIR)/ldmsplugin.sampler.conf.cray_xc.example
+	rm -f $(CONF_DIR)/ldmsd.aggregator.env.cray_xc.example
+	rm -f $(CONF_DIR)/ldmsd.sampler.env.cray_xc.example
