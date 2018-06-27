@@ -12,5 +12,3 @@ export PATH=$PATH:@bindir@:@sbindir@
 # for uGNI transport
 # export ZAP_UGNI_PTAG=<your ptag>
 # export ZAP_UGNI_COOKIE=<your cookie>
-
-ulimit -c unlimited
