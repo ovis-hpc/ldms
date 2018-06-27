@@ -34,7 +34,7 @@ class KokkosData(object):
             self.sha256_idx = Sos.Index(self.sha256_attr)
             self.sha256_key = Sos.Key(attr=self.sha256_attr)
         except:
-            pass
+            return False
         return True
 
     def close(self):
@@ -72,11 +72,11 @@ class KokkosData(object):
         return f
 
     def _print_summary_header(self):
-        print("{0:5} {1:10} {2:8} {3:20} {4:32}".format("Job", "Job Name",
+        print("{0:5} {1:16} {2:8} {3:20} {4:32}".format("Job", "Job Name",
                                                         "User", "Start Time",
                                                         "Instance Data"))
-        print("{0:5} {1:10} {2:8} {3:20} {4:32}".format('-'.ljust(5, '-'),
-                                                        '-'.ljust(10, '-'),
+        print("{0:5} {1:16} {2:8} {3:20} {4:32}".format('-'.ljust(5, '-'),
+                                                        '-'.ljust(16, '-'),
                                                         '-'.ljust(8, '-'),
                                                         '-'.ljust(20, '-'),
                                                         '-'.ljust(32, '-')))
@@ -93,12 +93,12 @@ class KokkosData(object):
     def _print_job_data(self, job, args):
         self.sha256_key.set_value(job['inst_data'])
         inst = self.sha256_idx.find(self.sha256_key)
-        ts = dt.datetime.fromtimestamp(int(job['start_time']))
+        ts = dt.datetime.fromtimestamp(int(job['start_time'][0]))
         try:
             uid = pwd.getpwuid(int(job['user_id'])).pw_name
         except:
             uid = job['user_id']
-        print("{0:5} {1:10} {2:8} {3:20} {4}".format(job['job_id'],
+        print("{0:5} {1:16} {2:8} {3:20} {4}".format(job['job_id'],
                                                      job['job_name'],
                                                      uid,
                                                      str(ts),
