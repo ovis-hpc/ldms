@@ -650,6 +650,18 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	for (i = 0, attr = si->first_attr; i < metric_count;
 	     i++, attr = sos_schema_attr_next(attr)) {
 		size_t count;
+		if (!attr) {
+			errno = E2BIG;
+			msglog(LDMSD_LERROR,
+			       "The set '%s' with schema '%s' has fewer "
+			       "attributes than the SOS schema '%s' to which "
+			       "it is being stored.\n",
+			       ldms_set_instance_name_get(set),
+			       ldms_set_schema_name_get(set),
+			       sos_schema_name(si->sos_schema),
+			       __FILE__, __LINE__);
+			goto err;
+		}
 		metric_type = ldms_metric_type_get(set, metric_arry[i]);
 		if (metric_type < LDMS_V_CHAR_ARRAY) {
 			value = sos_value_init(value, obj, attr);
