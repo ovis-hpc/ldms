@@ -1915,7 +1915,7 @@ int main(int argc, char *argv[])
 		switch (op) {
 		case 'c':
 			dup_arg = strdup(optarg);
-			ret = process_config_file(dup_arg, &lln);
+			ret = process_config_file(dup_arg, &lln, 1);
 			free(dup_arg);
 			if (ret) {
 				char errstr[128];

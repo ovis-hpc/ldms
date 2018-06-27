@@ -451,7 +451,7 @@ void ldmsd_set_info_delete(ldmsd_set_info_t info);
  */
 char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type);
 
-int process_config_file(const char *path, int *lineno);
+int process_config_file(const char *path, int *lineno, int trust);
 
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_DEF_CONFIG_STR_LEN 8192

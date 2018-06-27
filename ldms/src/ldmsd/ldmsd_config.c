@@ -504,7 +504,7 @@ char *find_comment(const char *line)
 	return NULL;
 }
 
-int process_config_file(const char *path, int *lno)
+int process_config_file(const char *path, int *lno, int trust)
 {
 	static uint32_t msg_no = 0;
 	int rc = 0;
@@ -549,7 +549,7 @@ int process_config_file(const char *path, int *lno)
 	xprt.xprt = NULL;
 	xprt.send_fn = log_response_fn;
 	xprt.max_msg = REP_BUF_LEN;
-	xprt.trust = 1;
+	xprt.trust = trust;
 
 next_line:
 	line = fgets(buff + off, cfg_buf_len - off, fin);

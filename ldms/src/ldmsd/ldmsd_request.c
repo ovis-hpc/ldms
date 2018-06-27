@@ -4358,17 +4358,7 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 	int rc = 0;
 	size_t cnt = 0;
 
-	ldmsd_req_attr_t attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->req_buf);
-	while (attr->discrim) {
-		switch (attr->attr_id) {
-		case LDMSD_ATTR_PATH:
-			path = (char *)attr->attr_value;
-			break;
-		default:
-			break;
-		}
-		attr = ldmsd_next_attr(attr);
-	}
+	path = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PATH);
 	if (!path) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -4376,7 +4366,7 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 		goto out;
 	}
 	int lineno = -1;
-	reqc->errcode = process_config_file(path, &lineno);
+	reqc->errcode = process_config_file(path, &lineno, reqc->xprt->trust);
 	if (reqc->errcode) {
 		if (lineno == 0) {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -4390,6 +4380,8 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 out:
+	if (path)
+		free(path);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
 }
