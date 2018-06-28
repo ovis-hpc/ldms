@@ -1038,7 +1038,7 @@ resp:
 int failover_mod_handler(ldmsd_req_ctxt_t req)
 {
 	char *auto_switch;
-	char *errmsg;
+	char *errmsg = NULL;
 	ldmsd_failover_t f;
 	int rc = 0;
 	f = __ldmsd_req_failover_get(req);
@@ -1068,7 +1068,7 @@ int failover_status_handler(ldmsd_req_ctxt_t req)
 	size_t sz = 4096;
 	int i, rc, len;
 	uint32_t term;
-	const char *errmsg;
+	const char *errmsg = NULL;
 	ldmsd_req_attr_t attr;
 	static uint64_t fl[] = {
 		__FAILOVER_CONFIGURED,
