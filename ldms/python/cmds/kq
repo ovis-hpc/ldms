@@ -33,7 +33,8 @@ class KokkosData(object):
             self.sha256_attr = self.sha256_schema['sha256']
             self.sha256_idx = Sos.Index(self.sha256_attr)
             self.sha256_key = Sos.Key(attr=self.sha256_attr)
-        except:
+        except Exception as e:
+            print("Error: {0}.".format(e.message))
             return False
         return True
 
@@ -433,10 +434,6 @@ if __name__ == "__main__":
                         help="Show extra detail.")
     args = parser.parse_args()
 
-    k = KokkosData()
-    if not k.open(args.path):
-        print("The container {0} could not be opened.".format(args.path))
-
     if args.like and not args.job_id:
         print("--like requires the --job_id option")
         sys.exit(1)
@@ -448,7 +445,13 @@ if __name__ == "__main__":
             uid = pwd.getpwnam(args.user).pw_uid
         except:
             print("The user {0} could not be found".format(args.user))
+            sys.exit(2)
         args.user_id = uid
+
+    k = KokkosData()
+    if not k.open(args.path):
+        print("The container {0} could not be opened.".format(args.path))
+        sys.exit(2)
 
     if args.summary or args.detail:
         k.show_job_data(args)
