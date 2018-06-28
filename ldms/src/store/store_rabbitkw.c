@@ -175,6 +175,7 @@ struct rabbitkw_store_instance {
 	char *schema;
 	char *key; /* 'container schema' */
 	void *ucontext;
+	bool conflict_warned;
 	bool extraprops; /* include ldmsd (not sampler) metadata in basic message headers */
 	/* was ms */
 	char *routingkey; /**< routing_key.container.schema.metric.producer */
@@ -187,7 +188,7 @@ struct rabbitkw_store_instance {
 };
 
 static pthread_mutex_t cfg_lock;
-
+/*#define DEBUG 1 */
 /* Make sure the strings passed in do not disappear before props is */
 /* out of use or they are literals. */
 /* Take care of specific fields and bit flags. */
@@ -786,7 +787,7 @@ static int append_value(union dval *uv, big_dstring_t *m, enum ldms_value_type t
 static
 int write_kw(struct rabbitkw_store_instance *si,
                const struct ldms_timestamp *ts,
-               ldms_set_t set, int id)
+               ldms_set_t set, int id, int arr_idx)
 {
 	big_dstring_t *m = &(si->message);
 
@@ -795,6 +796,15 @@ int write_kw(struct rabbitkw_store_instance *si,
 	const char *name = ldms_metric_name_get(set, id);
 	enum ldms_value_type t = ldms_metric_type_get(set, id);
 	const char *stype = ldms_metric_type_to_str(t);
+	if (!name) {
+		if (!si->conflict_warned) {
+			msglog(LDMSD_LERROR, STOR ": write_kw: metric id %d: no name at list index %d.\n", id, arr_idx);
+			msglog(LDMSD_LERROR, STOR ": reconfigure to resolve schema definition conflict for schema=%s and instance=%s.\n", 
+				si->schema, ldms_set_instance_name_get(set));
+			si->conflict_warned = 1;
+		}
+		return ERANGE;
+	}
 	CHKLIT("\t" KEY_METRIC "=");
 	CHKSTR(name);
 	CHKLIT("\t" KEY_TYPE "=");
@@ -963,16 +973,14 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 {
 	struct rabbitkw_store_instance *si;
 	int i, rc = 0;
-	if (!_sh) {
+	if (!_sh || !set || (metric_count && !metric_arry)) {
+		msglog(LDMSD_LERROR, STOR ": store() null input received\n");
 		return EINVAL;
 	}
 	si = _sh;
 	const struct ldms_timestamp _ts = ldms_transaction_timestamp_get(set);
 	const struct ldms_timestamp *ts = &_ts;
 	pthread_mutex_lock(&cfg_lock); /* because of async close, need lock here ?*/
-#ifdef DEBUG
-	msglog(LDMSD_LDEBUG, STOR ": trying %s\n", ldms_set_instance_name_get(set));
-#endif
 	if (doserver ) {
 		if (!as.conn) {
 			rc = make_connection();
@@ -1009,11 +1017,15 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 
 		for (i = 0; i < metric_count; i++) {
 			int metric_id = metric_arry[i];
-			rc = write_kw(si, ts, set, metric_id);
-			if (rc < 0) {
-				msglog(LDMSD_LDEBUG,"Error %d: %s at %s:%d\n",
+			rc = write_kw(si, ts, set, metric_id, i);
+			switch(rc) {
+			case 0:
+			case ERANGE:
+				continue;
+			default:
+				msglog(LDMSD_LDEBUG,"Error %d: %s at %s:%d: loop index %d, metric_id %d\n",
 				       rc, strerror(rc),
-					__FILE__, __LINE__);
+					__FILE__, __LINE__, i, metric_id);
 				goto estr;
 			}
 		}
@@ -1053,13 +1065,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	}
 
 skip:
-#ifdef DEBUG
-	if (!rc) {
-		msglog(LDMSD_LDEBUG, STOR ": done %s\n",ldms_set_instance_name_get(set));
-	} else {
-		msglog(LDMSD_LDEBUG, STOR ": skipped (no connection)\n");
-	}
-#endif
 	pthread_mutex_unlock(&cfg_lock);
 	return rc;
 
