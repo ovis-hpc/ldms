@@ -202,10 +202,9 @@ static int process_string(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_a
 {
 	kokkos_parser_t k = (kokkos_parser_t)p;
 	struct sos_value_s v_;
-	sos_value_t v = sos_array_new(&v_, attr, obj, e->value.str_->str_len + 2);
+	sos_value_t v = sos_array_new(&v_, attr, obj, e->value.str_->str_len);
 	if (v) {
 		memcpy(v->data->array.data.char_, e->value.str_->str, e->value.str_->str_len);
-		v->data->array.data.char_[e->value.str_->str_len] = '\0';
 		return 0;
 	}
 	return ENOMEM;
@@ -250,7 +249,7 @@ static sos_visit_action_t add_digest_cb(sos_index_t index,
 	memcpy(digest->prim.struc_, ctxt->e->value.str_->str_digest,
 	       sos_attr_size(sha256_digest_attr));
 
-	v = sos_array_new(&v_, sha256_string_attr, obj, ctxt->e->value.str_->str_len + 2);
+	v = sos_array_new(&v_, sha256_string_attr, obj, ctxt->e->value.str_->str_len);
 	if (!v) {
 		msglog(LDMSD_LERROR,
 		       "%s: Error %d allocating the digest string.\n",
@@ -921,6 +920,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return ENOENT;
 	}
 
+	if (act_table)
+		goto out;
+
 	act_table = htbl_alloc(cmp_json_name, 1123);
 	if (!act_table) {
 		msglog(LDMSD_LERROR,
@@ -949,9 +951,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	kvd_set_svc_handler(&svc, "/upload", kokkos_handle_sample);
 	pthread_create(&sample_thread, NULL, sample_proc, &svc);
 
+ out:
 	return 0;
+
  err_1:
 	free(act_table);
+	act_table = NULL;
 	return rc;
 }
 
