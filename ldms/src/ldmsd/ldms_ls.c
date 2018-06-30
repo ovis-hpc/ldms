@@ -70,6 +70,8 @@
 #include <ovis_util/util.h>
 #include <semaphore.h>
 #include <regex.h>
+#include <pwd.h>
+#include <grp.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "config.h"
@@ -325,6 +327,35 @@ int print_set_info(const char *key, const char *value, void *cb_arg)
 	return 0;
 }
 
+const char *perm_string(uint32_t perm)
+{
+	static char str[16];
+	char *s = str;
+	int i;
+	*s = '-';
+	s++;
+	for (i = 6; i >= 0; i -= 3) {
+		uint32_t mask = perm >> i;
+		if (mask & 4)
+			*s = 'r';
+		else
+			*s = '-';
+		s++;
+		if (mask & 2)
+			*s = 'w';
+		else
+			*s = '-';
+		s++;
+		if (mask & 1)
+			*s = 'x';
+		else
+			*s = '-';
+		*s++;
+	}
+	*s = '\0';
+	return str;
+}
+
 void print_detail(ldms_set_t s)
 {
 	const struct ldms_set_info_pair *pair;
@@ -334,6 +365,9 @@ void print_detail(ldms_set_t s)
 	struct ldms_timestamp const *dur = &_dur;
 	int consistent = ldms_set_is_consistent(s);
 	struct tm *tm;
+	struct passwd *pwd;
+	struct group *grp;
+	int rc;
 	char dtsz[200];
 
 	time_t t = ts->sec;
@@ -346,6 +380,7 @@ void print_detail(ldms_set_t s)
 	if (0 == count)
 		printf("	none\n");
 
+
 	printf("  METADATA --------\n");
 	printf("    Producer Name : %s\n", ldms_set_producer_name_get(s));
 	printf("    Instance Name : %s\n", ldms_set_instance_name_get(s));
@@ -353,6 +388,19 @@ void print_detail(ldms_set_t s)
 	printf("             Size : %" PRIu32 "\n", ldms_set_meta_sz_get(s));
 	printf("     Metric Count : %" PRIu32 "\n", ldms_set_card_get(s));
 	printf("               GN : %" PRIu64 "\n", ldms_set_meta_gn_get(s));
+	pwd = getpwuid(ldms_set_uid_get(s));
+	if (pwd)
+		printf("             User : %s(%d)\n", pwd->pw_name,
+		       ldms_set_uid_get(s));
+	else
+		printf("             User : %d\n", ldms_set_uid_get(s));
+	grp = getgrgid(ldms_set_gid_get(s));
+	if (grp)
+		printf("            Group : %s(%d)\n", grp->gr_name,
+		       ldms_set_gid_get(s));
+	else
+		printf("            Group : %d\n", ldms_set_gid_get(s));
+	printf("      Permissions : %s\n", perm_string(ldms_set_perm_get(s)));
 	printf("  DATA ------------\n");
 	printf("        Timestamp : %s [%dus]\n", dtsz, ts->usec);
 	printf("         Duration : [%d.%06ds]\n", dur->sec, dur->usec);
