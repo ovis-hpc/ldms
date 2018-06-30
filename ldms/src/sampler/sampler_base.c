@@ -188,9 +188,9 @@ base_data_t base_config(struct attr_value_list *avl,
 	}
 	/* uid, gid, permission */
 	value = av_value(avl, "uid");
-	base->uid = (value)?(strtol(value, NULL, 0)):(-1);
+	base->uid = (value)?(strtol(value, NULL, 0)):(geteuid());
 	value = av_value(avl, "gid");
-	base->gid = (value)?(strtol(value, NULL, 0)):(-1);
+	base->gid = (value)?(strtol(value, NULL, 0)):(getegid());
 	value = av_value(avl, "perm");
 	base->perm = (value)?(strtol(value, NULL, 0)):(0777);
 	value = av_value(avl, "set_array_card");
