@@ -1,34 +1,34 @@
 # README
 # ======
-# Please copy this file and ldmsd.sampler.env to /etc/systemd/system/ before
+# Please copy this file and ldmsd.aggregator.env to /etc/systemd/system/ before
 # applying any of the following commands.
 #
 # To make ldmsd starts automatically at system startup time:
-#   systemctl enable ldmsd.sampler.service
+#   systemctl enable ldmsd.kokkos.service
 #
 # To disable automatic startup:
-#   systemctl disable ldmsd.sampler.service
+#   systemctl disable ldmsd.kokkos.service
 #
 # To manually start ldmsd service:
-#   systemctl start ldmsd.sampler.service
+#   systemctl start ldmsd.kokkos.service
 #
 # To check status:
-#   systemctl status ldmsd.sampler.service
+#   systemctl status ldmsd.kokkos.service
 #
 # To stop the service:
-#   sytemctl stop ldmsd.sampler.service
+#   sytemctl stop ldmsd.kokkos.service
 #
 
 [Unit]
-Description = LDMS Sampler Daemon
+Description = LDMS Kokkos Daemon
 Documentation = http://ovis.ca.sandia.gov
 
 [Service]
 Type = forking
-EnvironmentFile = @sysconfdir@/ldms/ldmsd.sampler.env
+EnvironmentFile = @sysconfdir@/ldms/ldmsd.kokkos.env
+LimitNOFILE = ${LDMSD_ULIMIT_NOFILE}
 Environment = HOSTNAME=%H
 ExecStartPre = /bin/mkdir -p @localstatedir@/run/ldmsd
-ExecStartPre = -/bin/bash -c "test -n \"${LDMS_JOBINFO_DATA_FILE}\" && rm -f ${LDMS_JOBINFO_DATA_FILE} || rm -f /var/run/ldms_jobinfo.data"
 ExecStart = @sbindir@/ldmsd \
 		-x ${LDMSD_XPRT}:${LDMSD_PORT} \
 		-c ${LDMSD_PLUGIN_CONFIG_FILE} \
@@ -37,7 +37,8 @@ ExecStart = @sbindir@/ldmsd \
 		-v ${LDMSD_VERBOSE} \
 		-m ${LDMSD_MEM} \
 		$LDMSD_LOG_OPTION \
-		-r @localstatedir@/run/ldmsd/sampler.pid
+		-P ${LDMSD_NUM_THREADS} \
+		-r @localstatedir@/run/ldmsd/kokkos.pid
 
 [Install]
 WantedBy = default.target
