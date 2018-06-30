@@ -765,7 +765,7 @@ void __ldms_metric_size_get(const char *name, enum ldms_value_type t,
 
 ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 				  ldms_schema_t schema,
-				  uid_t uid, gid_t gid, int perm)
+				  uid_t uid, gid_t gid, mode_t perm)
 {
 	struct ldms_data_hdr *data, *data_base;
 	struct ldms_set_hdr *meta;
@@ -905,10 +905,10 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 
 ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 {
-	return ldms_set_new_with_auth(instance_name, schema, -1, -1, 0777);
+	return ldms_set_new_with_auth(instance_name, schema, geteuid(), getegid(), 0777);
 }
 
-int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, int perm)
+int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, mode_t perm)
 {
 	set->set->meta->uid = __cpu_to_le32(uid);
 	set->set->meta->gid = __cpu_to_le32(gid);
