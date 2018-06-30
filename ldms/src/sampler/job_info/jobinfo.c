@@ -67,6 +67,9 @@
 #include <time.h>
 #include <pthread.h>
 #include <strings.h>
+#include <ctype.h>
+#include <pwd.h>
+#include <grp.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "jobinfo.h"
@@ -79,7 +82,9 @@ static ldms_schema_t job_schema;
 static uint64_t compid;
 pthread_t jobinfo_thread;
 char * jobinfo_datafile = LDMS_JOBINFO_DATA_FILE;
-
+uid_t uid;
+gid_t gid;
+uint32_t perm;
 
 char *job_metrics[] = {
 	"component_id",
@@ -146,11 +151,21 @@ static void jobinfo_read_data(void)
 	ldms_metric_set_u64(set, JOBINFO_COMP_ID, compid);
 
 	while (NULL != (s = fgets(buf, sizeof(buf), job_file))) {
-		char *name = strtok_r(s, "=", &p);
-		char *value = strtok_r(NULL, "=", &p);
+		char *name;
+		char *value;
 		struct attr_s key;
+		struct attr_s *av;
+
+		/* Ignore garbage lines */
+		name = strtok_r(s, "=", &p);
+		if (!name)
+			continue;
+		value = strtok_r(NULL, "=", &p);
+		if (!value)
+			continue;
+
 		key.av_name = name;
-		struct attr_s *av = (struct attr_s *)
+		av = (struct attr_s *)
 			bsearch(&key, attr_dict,
 				DICT_LEN, sizeof(*av),attr_cmp_fn);
 		if (av) {
@@ -266,7 +281,7 @@ create_metric_set(const char *instance_name, char* schema_name)
 		goto err;
 	}
 
-	set = ldms_set_new(instance_name, job_schema);
+	set = ldms_set_new_with_auth(instance_name, job_schema, uid, gid, perm);
 	if (!set) {
 		rc = errno;
 		goto err;
@@ -336,6 +351,52 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
 		return EINVAL;
 	}
+
+	/* uid, gid, permission */
+	value = av_value(avl, "uid");
+	if (value) {
+		if (isalpha(value[0])) {
+			/* Try to lookup the user name */
+			struct passwd *pwd = getpwnam(value);
+			if (!pwd) {
+				msglog(LDMSD_LERROR,
+				       SAMP ": The specified user '%s' does not exist\n",
+				       value);
+				return EINVAL;
+			}
+			uid = pwd->pw_uid;
+		} else {
+			uid = strtol(value, NULL, 0);
+		}
+	} else {
+		uid = geteuid();
+	}
+	value = av_value(avl, "gid");
+	if (value) {
+		if (isalpha(value[0])) {
+			/* Try to lookup the group name */
+			struct group *grp = getgrnam(value);
+			if (!grp) {
+				msglog(LDMSD_LERROR,
+				       SAMP ": The specified group '%s' does not exist\n",
+				       value);
+				return EINVAL;
+			}
+			gid = grp->gr_gid;
+		} else {
+			gid = strtol(value, NULL, 0);
+		}
+	} else {
+		gid = getegid();
+	}
+	value = av_value(avl, "perm");
+	if (value && value[0] != '0') {
+		msglog(LDMSD_LINFO,
+		    SAMP ": Warning, the permission bits '%s' are not specified "
+		    "as an Octal number.\n",
+		    value);
+	}
+	perm = (value)?(strtol(value, NULL, 0)):(0777);
 
 	value = av_value(avl, "instance");
 	if (!value) {
