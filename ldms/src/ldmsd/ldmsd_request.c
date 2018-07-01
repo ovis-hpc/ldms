@@ -2466,16 +2466,30 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 
 	attr_name = "name";
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!name)
-		goto einval;
-
+	if (!name) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "The attribute 'name' is required.");
+		goto send_reply;
+	}
 	if (0 == strncmp(LDMSD_FAILOVER_NAME_PREFIX, name,
 			 sizeof(LDMSD_FAILOVER_NAME_PREFIX)-1)) {
-		goto ename;
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "%s is an invalid updtr name",
+			       name);
+		goto send_reply;
 	}
 
 	attr_name = "interval";
 	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
+	if (!interval_str) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "The 'interval' attribute is required.");
+		goto send_reply;
+	}
+
 	offset_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
 	push = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PUSH);
 	auto_interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTO_INTERVAL);
@@ -2494,6 +2508,30 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (perm_s)
 		perm = strtoul(perm_s, NULL, 0);
 
+	if (auto_interval && (0 == strcasecmp(auto_interval, "false"))) {
+		is_auto_task = 0;
+	} else {
+		if (auto_interval) {
+			if (strcasecmp(auto_interval, "true")) {
+				reqc->errcode = EINVAL;
+				cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					       "The auto_interval option requires "
+					       "either 'true', or 'false'\n");
+				goto send_reply;
+			}
+			if (push) {
+				reqc->errcode = EINVAL;
+				cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					       "auto_interval and push are "
+					       "incompatible options");
+				goto send_reply;
+			}
+		}
+		if (push)
+			is_auto_task = 0;
+		else
+			is_auto_task = 1;
+	}
 	push_flags = 0;
 	if (push) {
 		if (0 == strcasecmp(push, "onchange")) {
@@ -2502,43 +2540,29 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 		} else {
 			push_flags = LDMSD_UPDTR_F_PUSH;
 		}
-	}
-	if (auto_interval && (0 == strcasecmp(auto_interval, "false")))
 		is_auto_task = 0;
-	else
-		is_auto_task = 1;
+	}
 	ldmsd_updtr_t updtr = ldmsd_updtr_new_with_auth(name, interval_str,
-							offset_str, push_flags,
+							offset_str ? offset_str : "0",
+							push_flags,
 							is_auto_task,
 							uid, gid, perm);
 	if (!updtr) {
-		if (errno == EEXIST)
-			goto eexist;
-		else if (errno == ENOMEM)
-			goto enomem;
+		reqc->errcode = errno;
+		if (errno == EEXIST) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				       "The updtr %s already exists.", name);
+		} else if (errno == ENOMEM) {
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				       "Out of memory");
+		} else {
+			if (!reqc->errcode)
+				reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				       "The updtr could not be created.");
+		}
 	}
 
-	goto send_reply;
-
-ename:
-	reqc->errcode = EINVAL;
-	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "Bad updtr name");
-	goto send_reply;
-
-einval:
-	reqc->errcode = EINVAL;
-	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"The attribute '%s' is required by %s.", attr_name,
-			"updtr_add");
-	goto send_reply;
-enomem:
-	reqc->errcode = ENOMEM;
-	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "Out of memory");
-	goto send_reply;
-eexist:
-	reqc->errcode = EEXIST;
-	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"The updtr %s already exists.", name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (name)
