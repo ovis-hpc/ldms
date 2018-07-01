@@ -2823,7 +2823,7 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 			size_t data_len;
 
 			if ((len + hdr_len) > max_len) {
-				data_len = htonl(max_len - hdr_len);
+				data_len = max_len - hdr_len;
 				reply->push.flags = htonl(LDMS_CMD_PUSH_REPLY_F_MORE);
 			} else {
 				reply->push.flags = 0;
