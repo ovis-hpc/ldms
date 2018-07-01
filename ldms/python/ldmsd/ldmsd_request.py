@@ -230,7 +230,7 @@ class LDMSD_Request(object):
     PRDCR_START_REGEX = 0x100 + 5
     PRDCR_STOP_REGEX = 0x100 + 6
     PRDCR_SET_STATUS = 0x100 + 7
-    PRDCR_HINT_TREE = 0x600 + 8
+    PRDCR_HINT_TREE = 0x100 + 8
 
     STRGP_ADD = 0x200
     STRGP_DEL = 0x200 + 1
