@@ -113,7 +113,7 @@ class KokkosData(object):
                                                          job['unique_kernel_calls']))
 
     def show_job_data(self, args, job_id=None):
-        if args.like and job_id is None:
+        if args.like:
             # Get the instance data for the job
             idx_attr = self.app_schema['job_id']
             f = Sos.Filter(idx_attr)
@@ -130,7 +130,6 @@ class KokkosData(object):
             f.add_condition(inst_data_attr, Sos.COND_EQ, inst_data)
 
             (start, end) = get_times_from_args(args)
-            print(start, end)
             if start != 0:
                 f.add_condition(self.app_schema['start_time'], Sos.COND_GE, start)
             if end != 0:
@@ -138,6 +137,11 @@ class KokkosData(object):
         else:
             idx_attr = self.app_schema['job_id']
             f = Sos.Filter(idx_attr)
+            (start, end) = get_times_from_args(args)
+            if start != 0:
+                f.add_condition(self.app_schema['start_time'], Sos.COND_GE, start)
+            if end != 0:
+                f.add_condition(self.app_schema['start_time'], Sos.COND_LE, end)
 
         if (args.job_id and not args.like) or job_id is not None:
             f.add_condition(self.app_schema['job_id'], Sos.COND_EQ, args.job_id)
@@ -395,12 +399,26 @@ def get_times_from_args(args):
         end = 0
     return (start, end)
 
+def fmt_begin_date(days):
+    now = int(dt.datetime.now().strftime('%s'))
+    now -= (days * 24 * 60 * 60)
+    return dt.datetime.fromtimestamp(now)
+
 def valid_date(date_str):
+    if '/' in date_str:
+        ccfmt_str = "%Y/%m/%d %H:%M"
+        fmt_str = "%y/%m/%d %H:%M"
+    else:
+        ccfmt_str = "%Y-%m-%d %H:%M"
+        fmt_str = "%y-%m-%d %H:%M"
     try:
-        return dt.datetime.strptime(date_str, "%Y/%m/%d %H:%M")
-    except:
-        msg = "{0} is not a valid date".format(date_str)
-        raise argparse.ArgumentTypeError(msg)
+        return dt.datetime.strptime(date_str, fmt_str)
+    except ValueError:
+        try:
+            return dt.datetime.strptime(date_str, ccfmt_str)
+        except:
+            msg = "{0} is not a valid date".format(date_str)
+            raise argparse.ArgumentTypeError(msg)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Query Kokkos Data")
@@ -416,10 +434,17 @@ if __name__ == "__main__":
                         help="Show jobs like --job_id")
     parser.add_argument("--begin", type=valid_date,
                         help="Specify the start time/date for similar jobs. " \
-                        "Format is YYYY/MM/DD HH:MM")
+                        "Format is [CC]YY/MM/DD HH:MM or [CC]YY-MM-DD HH:MM")
     parser.add_argument("--end", type=valid_date,
-                        help="Specify the end time/date for similar jobs. " \
-                        "Format is YYYY/MM/DD HH:MM")
+                        help="Specify the end time/date for similar jobs. ")
+    parser.add_argument("--monthly", action="store_true",
+                        help="Show results in the last 30 days")
+    parser.add_argument("--weekly", action="store_true",
+                        help="Show results in the last 7 days")
+    parser.add_argument("--daily", action="store_true",
+                        help="Show results in the last 24 hours")
+    parser.add_argument("--today", action="store_true",
+                        help="Show today's results (since midnight)")
     parser.add_argument("--job_id", required=False, type=int,
                         help="Show this job")
     parser.add_argument("--user", required=False,
@@ -433,6 +458,25 @@ if __name__ == "__main__":
     parser.add_argument("--verbose", action='store_true',
                         help="Show extra detail.")
     args = parser.parse_args()
+
+    if args.today or args.daily or args.weekly or args.monthly:
+        if args.begin or args.end:
+            print("--begin/end and the --daily/weekly/monthly options "
+                  "are mutually exclusive")
+            sys.exit(1)
+
+    if args.today:
+        now = dt.datetime.now()
+        args.begin = dt.datetime(now.year, now.month, now.day)
+
+    if args.daily:
+        args.begin = fmt_begin_date(1)
+
+    if args.weekly:
+        args.begin = fmt_begin_date(7)
+
+    if args.monthly:
+        args.begin = fmt_begin_date(30)
 
     if args.like and not args.job_id:
         print("--like requires the --job_id option")
