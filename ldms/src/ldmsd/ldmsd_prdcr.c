@@ -306,6 +306,7 @@ static void prdcr_set_updtr_task_update(ldmsd_prdcr_set_t prd_set)
 				if (!rc)
 					goto update_task;
 			}
+			ldmsd_updtr_unlock(updtr);
 			continue;
 		}
 update_task:
