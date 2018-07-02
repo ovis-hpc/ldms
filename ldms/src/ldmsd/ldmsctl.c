@@ -189,7 +189,7 @@ char *ldmsctl_ts_str(uint32_t sec, uint32_t usec)
 		return NULL;
 	time_t t = sec;
 	tm = localtime(&t);
-	strftime(dtsz, sizeof(dtsz), "%D %H:%M:%S", tm);
+	strftime(dtsz, sizeof(dtsz), "%D %H:%M:%S %z", tm);
 	snprintf(str, 200, "%s [%dus]", dtsz, usec);
 	return str;
 }
