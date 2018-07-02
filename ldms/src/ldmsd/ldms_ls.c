@@ -314,7 +314,7 @@ void print_detail(ldms_set_t s)
 	char dtsz[200];
 	time_t t = ts->sec;
 	tm = localtime(&t);
-	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm);
+	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y %z", tm);
 
 	printf("  METADATA --------\n");
 	printf("    Producer Name : %s\n", ldms_set_producer_name_get(s));
@@ -345,7 +345,7 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	char dtsz[200];
 	time_t ti = ts->sec;
 	tm = localtime(&ti);
-	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm);
+	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y %z", tm);
 
 	printf("%s: %s, last update: %s [%dus]\n",
 	       ldms_set_instance_name_get(s),
