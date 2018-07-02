@@ -1016,6 +1016,69 @@ class LdmsdCmdParser(cmd.Cmd):
         """Execute failback routine."""
         self.handle('failback', arg)
 
+    def do_setgroup_add(self, arg):
+        """Create a new setgroup.
+
+        Parameters:
+            name=           The set group name.
+            [producer=]     The producer name of the set group.
+            [interval=]     The update interval hint (in usec).
+            [offset=]       The update offset hint (in usec).
+        """
+        self.handle('setgroup_add', arg)
+
+    def complete_setgroup_add(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('setgroup_add', text)
+
+    def do_setgroup_mod(self, arg):
+        """Modify attributes of a set group.
+
+        Parameters:
+            name=           The set group name.
+            [interval=]     The update interval hint (in usec).
+            [offset=]       The update offset hint (in usec).
+        """
+        self.handle('setgroup_mod', arg)
+
+    def complete_setgroup_mod(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('setgroup_mod', text)
+
+    def do_setgroup_del(self, arg):
+        """Delete a set group
+
+        Parameters:
+            name=    The set group name to delete.
+        """
+        self.handle('setgroup_del', arg)
+
+    def complete_setgroup_del(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('setgroup_del', text)
+
+    def do_setgroup_ins(self, arg):
+        """Insert sets into the set group
+
+        Parameters:
+            name=     The set group name.
+            instance= The comma-separated list of set instances to add.
+        """
+        self.handle('setgroup_ins', arg)
+
+    def complete_setgroup_ins(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('setgroup_ins', text)
+
+    def do_setgroup_rm(self, arg):
+        """Remove sets from the set group
+
+        Parameters:
+            name=     The set group name.
+            instance= The comma-separated list of set instances to remove.
+        """
+        self.handle('setgroup_rm', arg)
+        pass
+
+    def complete_setgroup_ins(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('setgroup_rm', text)
+
     def complete_example(self, text, line, begidx, endidx):
         return self.__complete_attr_list('example', text)
 

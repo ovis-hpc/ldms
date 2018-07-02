@@ -129,6 +129,13 @@ enum ldmsd_request {
 	LDMSD_FAILOVER_CFGUPDTR_REQ, /* internal updater failover config */
 	LDMSD_FAILOVER_HEARTBEAT_REQ, /* heartbeat message over REQ protocol */
 
+	/* Set Group Requests */
+	LDMSD_SETGROUP_ADD_REQ = 0x800, /* Create new set group */
+	LDMSD_SETGROUP_MOD_REQ, /* Modify set group attributes */
+	LDMSD_SETGROUP_DEL_REQ, /* Delete an entire set group */
+	LDMSD_SETGROUP_INS_REQ, /* Insert a set into a group */
+	LDMSD_SETGROUP_RM_REQ, /* Remove a set from a group */
+
 	LDMSD_NOTSUPPORT_REQ,
 };
 
