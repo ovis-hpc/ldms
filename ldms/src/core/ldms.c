@@ -2141,6 +2141,8 @@ set_value:
 int ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
 {
 	int rc;
+	char *name;
+	int dir_updt = 0;
 
 	if (!key)
 		return EINVAL;
@@ -2150,8 +2152,22 @@ int ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
 
 	pthread_mutex_lock(&s->set->lock);
 	rc = __ldms_set_info_set(&s->set->local_info, key, value);
+	if (rc)
+		goto err;
+	name = strdup(ldms_set_instance_name_get(s));
+	if (!name) {
+		rc = ENOMEM;
+		goto err;
+	}
+	if (s->set->flags & LDMS_SET_F_PUBLISHED)
+		dir_updt = 1;
 	pthread_mutex_unlock(&s->set->lock);
-	__ldms_dir_upd_set(ldms_set_instance_name_get(s));
+	if (dir_updt)
+		__ldms_dir_upd_set(name);
+	free(name);
+	return 0;
+err:
+	pthread_mutex_unlock(&s->set->lock);
 	return rc;
 }
 
