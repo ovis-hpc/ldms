@@ -33,8 +33,9 @@ class KokkosData(object):
             self.sha256_attr = self.sha256_schema['sha256']
             self.sha256_idx = Sos.Index(self.sha256_attr)
             self.sha256_key = Sos.Key(attr=self.sha256_attr)
-        except:
-            pass
+        except Exception as e:
+            print("Error: {0}.".format(e.message))
+            return False
         return True
 
     def close(self):
@@ -72,11 +73,11 @@ class KokkosData(object):
         return f
 
     def _print_summary_header(self):
-        print("{0:5} {1:10} {2:8} {3:20} {4:32}".format("Job", "Job Name",
+        print("{0:5} {1:16} {2:8} {3:20} {4:32}".format("Job", "Job Name",
                                                         "User", "Start Time",
                                                         "Instance Data"))
-        print("{0:5} {1:10} {2:8} {3:20} {4:32}".format('-'.ljust(5, '-'),
-                                                        '-'.ljust(10, '-'),
+        print("{0:5} {1:16} {2:8} {3:20} {4:32}".format('-'.ljust(5, '-'),
+                                                        '-'.ljust(16, '-'),
                                                         '-'.ljust(8, '-'),
                                                         '-'.ljust(20, '-'),
                                                         '-'.ljust(32, '-')))
@@ -93,12 +94,12 @@ class KokkosData(object):
     def _print_job_data(self, job, args):
         self.sha256_key.set_value(job['inst_data'])
         inst = self.sha256_idx.find(self.sha256_key)
-        ts = dt.datetime.fromtimestamp(int(job['start_time']))
+        ts = dt.datetime.fromtimestamp(int(job['start_time'][0]))
         try:
             uid = pwd.getpwuid(int(job['user_id'])).pw_name
         except:
             uid = job['user_id']
-        print("{0:5} {1:10} {2:8} {3:20} {4}".format(job['job_id'],
+        print("{0:5} {1:16} {2:8} {3:20} {4}".format(job['job_id'],
                                                      job['job_name'],
                                                      uid,
                                                      str(ts),
@@ -112,7 +113,7 @@ class KokkosData(object):
                                                          job['unique_kernel_calls']))
 
     def show_job_data(self, args, job_id=None):
-        if args.like and job_id is None:
+        if args.like:
             # Get the instance data for the job
             idx_attr = self.app_schema['job_id']
             f = Sos.Filter(idx_attr)
@@ -129,7 +130,6 @@ class KokkosData(object):
             f.add_condition(inst_data_attr, Sos.COND_EQ, inst_data)
 
             (start, end) = get_times_from_args(args)
-            print(start, end)
             if start != 0:
                 f.add_condition(self.app_schema['start_time'], Sos.COND_GE, start)
             if end != 0:
@@ -137,6 +137,11 @@ class KokkosData(object):
         else:
             idx_attr = self.app_schema['job_id']
             f = Sos.Filter(idx_attr)
+            (start, end) = get_times_from_args(args)
+            if start != 0:
+                f.add_condition(self.app_schema['start_time'], Sos.COND_GE, start)
+            if end != 0:
+                f.add_condition(self.app_schema['start_time'], Sos.COND_LE, end)
 
         if (args.job_id and not args.like) or job_id is not None:
             f.add_condition(self.app_schema['job_id'], Sos.COND_EQ, args.job_id)
@@ -260,13 +265,14 @@ class KokkosData(object):
         return f.as_ndarray(count, shape=shape, order='index')
 
     def show_job_stats(self, args):
-        print("Comparison of Job {0} with Similar Jobs\n".format(args.job_id))
+        job_cnt, job_ids = self.get_matching_jobs(args)
+
+        print("Comparison of Job {0} with {1} Similar Jobs\n".format(args.job_id, job_cnt))
         if args.verbose:
             k.show_job_data(args)
         else:
             k.show_job_data(args, job_id=args.job_id)
 
-        job_cnt, job_ids = self.get_matching_jobs(args)
 
         shape = [ 'job_id', 'start_time',
                   'total_app_time',
@@ -394,12 +400,26 @@ def get_times_from_args(args):
         end = 0
     return (start, end)
 
+def fmt_begin_date(days):
+    now = int(dt.datetime.now().strftime('%s'))
+    now -= (days * 24 * 60 * 60)
+    return dt.datetime.fromtimestamp(now)
+
 def valid_date(date_str):
+    if '/' in date_str:
+        ccfmt_str = "%Y/%m/%d %H:%M"
+        fmt_str = "%y/%m/%d %H:%M"
+    else:
+        ccfmt_str = "%Y-%m-%d %H:%M"
+        fmt_str = "%y-%m-%d %H:%M"
     try:
-        return dt.datetime.strptime(date_str, "%Y/%m/%d %H:%M")
-    except:
-        msg = "{0} is not a valid date".format(date_str)
-        raise argparse.ArgumentTypeError(msg)
+        return dt.datetime.strptime(date_str, fmt_str)
+    except ValueError:
+        try:
+            return dt.datetime.strptime(date_str, ccfmt_str)
+        except:
+            msg = "{0} is not a valid date".format(date_str)
+            raise argparse.ArgumentTypeError(msg)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Query Kokkos Data")
@@ -415,10 +435,17 @@ if __name__ == "__main__":
                         help="Show jobs like --job_id")
     parser.add_argument("--begin", type=valid_date,
                         help="Specify the start time/date for similar jobs. " \
-                        "Format is YYYY/MM/DD HH:MM")
+                        "Format is [CC]YY/MM/DD HH:MM or [CC]YY-MM-DD HH:MM")
     parser.add_argument("--end", type=valid_date,
-                        help="Specify the end time/date for similar jobs. " \
-                        "Format is YYYY/MM/DD HH:MM")
+                        help="Specify the end time/date for similar jobs. ")
+    parser.add_argument("--monthly", action="store_true",
+                        help="Show results in the last 30 days")
+    parser.add_argument("--weekly", action="store_true",
+                        help="Show results in the last 7 days")
+    parser.add_argument("--daily", action="store_true",
+                        help="Show results in the last 24 hours")
+    parser.add_argument("--today", action="store_true",
+                        help="Show today's results (since midnight)")
     parser.add_argument("--job_id", required=False, type=int,
                         help="Show this job")
     parser.add_argument("--user", required=False,
@@ -433,9 +460,24 @@ if __name__ == "__main__":
                         help="Show extra detail.")
     args = parser.parse_args()
 
-    k = KokkosData()
-    if not k.open(args.path):
-        print("The container {0} could not be opened.".format(args.path))
+    if args.today or args.daily or args.weekly or args.monthly:
+        if args.begin or args.end:
+            print("--begin/end and the --daily/weekly/monthly options "
+                  "are mutually exclusive")
+            sys.exit(1)
+
+    if args.today:
+        now = dt.datetime.now()
+        args.begin = dt.datetime(now.year, now.month, now.day)
+
+    if args.daily:
+        args.begin = fmt_begin_date(1)
+
+    if args.weekly:
+        args.begin = fmt_begin_date(7)
+
+    if args.monthly:
+        args.begin = fmt_begin_date(30)
 
     if args.like and not args.job_id:
         print("--like requires the --job_id option")
@@ -448,7 +490,13 @@ if __name__ == "__main__":
             uid = pwd.getpwnam(args.user).pw_uid
         except:
             print("The user {0} could not be found".format(args.user))
+            sys.exit(2)
         args.user_id = uid
+
+    k = KokkosData()
+    if not k.open(args.path):
+        print("The container {0} could not be opened.".format(args.path))
+        sys.exit(2)
 
     if args.summary or args.detail:
         k.show_job_data(args)

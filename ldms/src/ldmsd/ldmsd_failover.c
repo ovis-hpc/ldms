@@ -443,6 +443,13 @@ int __failover_send_updtr(ldmsd_failover_t f, ldms_t x, ldmsd_updtr_t u)
 			goto cleanup;
 	}
 
+	/* AUTO INTERVAL */
+	if (!u->is_auto_task)
+	snprintf(buff, sizeof(buff), "false");
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_AUTO_INTERVAL, buff);
+	if (rc)
+		goto cleanup;
+
 	/* PUSH */
 	if (u->push_flags & LDMSD_UPDTR_F_PUSH) {
 		cstr = "onpush";
@@ -862,7 +869,7 @@ int __failover_do_failover(ldmsd_failover_t f)
 	}
 
 	RBT_FOREACH(rbn, &f->updtr_rbt) {
-		rc = ldmsd_updtr_start(STR_RBN(rbn)->str, NULL, NULL, &sctxt);
+		rc = ldmsd_updtr_start(STR_RBN(rbn)->str, NULL, NULL, NULL, &sctxt);
 		__ASSERT(rc == 0);
 	}
 
@@ -1376,12 +1383,14 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 	char *match = __req_attr_gets(req, LDMSD_ATTR_MATCH);
 	char *push = __req_attr_gets(req, LDMSD_ATTR_PUSH);
 	char *producer = __req_attr_gets(req, LDMSD_ATTR_PRODUCER);
+	char *auto_interval = __req_attr_gets(req, LDMSD_ATTR_AUTO_INTERVAL);
 
 	ldmsd_updtr_t u;
 	ldmsd_prdcr_t p;
 	struct str_rbn *srbn;
 	struct ldmsd_sec_ctxt sctxt = __get_sec_ctxt(req);
 	int rc = 0;
+	uint8_t is_auto_interval = (auto_interval)?0:1;
 
 	__failover_lock(f);
 
@@ -1406,7 +1415,8 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 		srbn = str_rbn_new(name);
 		if (!srbn)
 			goto out;
-		u = ldmsd_updtr_new_with_auth(name, interval, offset, push_flags,
+		u = ldmsd_updtr_new_with_auth(name, interval, offset,
+						push_flags, is_auto_interval,
 						sctxt.crd.uid, sctxt.crd.gid, 0700);
 		if (!u) {
 			rc = errno;

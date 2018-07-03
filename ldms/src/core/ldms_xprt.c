@@ -2402,7 +2402,8 @@ int ldms_xprt_send(ldms_t _x, char *msg_buf, size_t msg_len)
 
 size_t ldms_xprt_msg_max(ldms_t x)
 {
-	return x->max_msg;
+	return 	x->max_msg - (sizeof(struct ldms_request_hdr) +
+			sizeof(struct ldms_send_cmd_param));
 }
 
 int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
@@ -2822,7 +2823,7 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 			size_t data_len;
 
 			if ((len + hdr_len) > max_len) {
-				data_len = htonl(max_len - hdr_len);
+				data_len = max_len - hdr_len;
 				reply->push.flags = htonl(LDMS_CMD_PUSH_REPLY_F_MORE);
 			} else {
 				reply->push.flags = 0;

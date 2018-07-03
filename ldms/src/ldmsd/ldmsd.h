@@ -321,7 +321,6 @@ typedef struct ldmsd_updtr {
 	struct ldmsd_cfgobj obj;
 
 	int push_flags;
-	int is_auto;		/* automatically determine interval and/or offset */
 
 	enum ldmsd_updtr_state {
 		/** Initial updater state */
@@ -329,6 +328,18 @@ typedef struct ldmsd_updtr {
 		/** Ready for update attempts */
 		LDMSD_UPDTR_STATE_RUNNING,
 	} state;
+
+	/*
+	 * flag to enable or disable the functionality
+	 * that automatically schedules set updates according to
+	 * the update hint.
+	 *
+	 * 0 is disabled. Otherwise, it is enabled.
+	 *
+	 * If this value is 0, \c task_tree must contain
+	 * only the default task.
+	 */
+	uint8_t is_auto_task;
 
 	/* The default schedule specified from configuration */
 	struct ldmsd_updtr_task default_task;
@@ -451,13 +462,10 @@ void ldmsd_set_info_delete(ldmsd_set_info_t info);
  */
 char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type);
 
-int process_config_file(const char *path, int *lineno);
+int process_config_file(const char *path, int *lineno, int trust);
 
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
-#define LDMSD_DEF_CONFIG_STR_LEN 8192
-#define LDMSD_HUGE_CONFIG_STR_LEN INT_MAX/4096
-#define LDMSD_MIN_CONFIG_STR_LEN 256
-#define LDMSD_MAX_CONFIG_REC_LEN 4096
+#define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 struct attr_value_list;
 struct ldmsd_plugin {
 	char name[LDMSD_MAX_PLUGIN_NAME_LEN];
@@ -850,11 +858,13 @@ int ldmsd_prdcr_stop_regex(const char *prdcr_regex,
 
 /* updtr */
 ldmsd_updtr_t
-ldmsd_updtr_new(const char *name, char *interval_str, char *offset_str,
-							int push_flags);
+ldmsd_updtr_new(const char *name, char *interval_str,
+		char *offset_str, int push_flags,
+				int is_auto_interval);
 ldmsd_updtr_t
 ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str,
-				int push_flags, uid_t uid, gid_t gid, int perm);
+					int push_flags, int is_auto_task,
+					uid_t uid, gid_t gid, int perm);
 int ldmsd_updtr_del(const char *updtr_name, ldmsd_sec_ctxt_t ctxt);
 ldmsd_updtr_t ldmsd_updtr_first();
 ldmsd_updtr_t ldmsd_updtr_next(struct ldmsd_updtr *updtr);
@@ -889,7 +899,8 @@ static inline const char *ldmsd_updtr_state_str(enum ldmsd_updtr_state state) {
 	return "BAD STATE";
 }
 int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
-		      const char *offset_str, ldmsd_sec_ctxt_t ctxt);
+		      const char *offset_str, const char *auto_interval,
+		      ldmsd_sec_ctxt_t ctxt);
 int ldmsd_updtr_stop(const char *updtr_name, ldmsd_sec_ctxt_t ctxt);
 int ldmsd_updtr_match_add(const char *updtr_name, const char *regex_str,
 		const char *selector_str, char *rep_buf, size_t rep_len,
@@ -955,7 +966,7 @@ int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_find(ldmsd_updtr_t updtr,
 					const char *prdcr_name);
 int ldmsd_updtr_schedule_cmp(void *a, const void *b);
-int ldmsd_updtr_task_tree_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set);
+int ldmsd_updtr_tasks_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set);
 
 /* Failover routines */
 int ldmsd_failover_config(const char *host, const char *port, const char *xprt,

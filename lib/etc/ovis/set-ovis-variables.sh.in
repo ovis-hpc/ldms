@@ -9,4 +9,6 @@ export ZAP_LIBPATH=$OLIB/ovis-lib
 export PYTHONPATH=$PYTHONPATH:@pythondir@
 export PATH=$PATH:@bindir@:@sbindir@
 
-ulimit -c unlimited
+# for uGNI transport
+# export ZAP_UGNI_PTAG=<your ptag>
+# export ZAP_UGNI_COOKIE=<your cookie>

@@ -1,0 +1,59 @@
+env COMPONENT_ID=$(cat /proc/cray_xt/nid)
+env NID=$(printf nid%05d $COMPONENT_ID)
+env SAMPLE_INTERVAL_ARIES_LINKSTATUS=60000000
+env ARIES=$(cat /proc/cray_xt/cname | awk -F "n" '{print $1}')
+env NODENUM=$(cat /proc/cray_xt/cname | awk -F "n" '{print $2}')
+env SAMPLE_INTERVAL=1000000
+env SAMPLE_OFFSET=0
+env LLITE=snx11137
+env ARIES_REDUNDANCY=2
+env MMR_CONF_PATH=/opt/ovis/etc/ldms/aries_mmr_set_configs
+env NODETYPE=$( uname -r | awk -F "ari_" '{print $2}' )
+env PROCTYPE=$(cat /sys/devices/system/cpu/modalias | cut -d ':' -f 3 | tr ',' '_')
+
+load name=jobinfo
+config name=jobinfo producer=${NID} instance=${NID}/jobinfo uid=0 gid=0 perm=0700
+
+load name=aries_linkstatus
+config name=aries_linkstatus producer=${NID} instance=${NID}/aries_linkstatus component_id=${COMPONENT_ID} file_send=/sys/devices/virtual/gni/gpcdr0/metricsets/linksendstatus/metrics file_recv=/sys/devices/virtual/gni/gpcdr0/metricsets/linkrecvstatus/metrics job_set=${NID}/jobinfo uid=0 gid=0 perm=0700
+start name=aries_linkstatus interval=${SAMPLE_INTERVAL_ARIES_LINKSTATUS} offset=${SAMPLE_OFFSET}
+
+load name=cray_aries_r_sampler
+config name=cray_aries_r_sampler producer=${NID} component_id=${COMPONENT_ID} instance=${NID}/cray_aries_r_sampler off_hsn=1 llite=${LLITE} job_set=${NID}/jobinfo uid=0 gid=0 perm=0700
+start name=cray_aries_r_sampler interval=${SAMPLE_INTERVAL} offset=${SAMPLE_OFFSET}
+
+load name=aries_nic_mmr
+config name=aries_nic_mmr producer=${NID} instance=${NID}/aries_nic_mmr component_id=${COMPONENT_ID} aries_rtr_id=${ARIES} file=${MMR_CONF_PATH}/metric_set_nic schema=metric_set_nic job_set=${NID}/jobinfo uid=0 gid=0 perm=0700
+start name=aries_nic_mmr interval=${SAMPLE_INTERVAL} offset=${SAMPLE_OFFSET}
+
+load name=aries_rtr_mmr
+config name=aries_rtr_mmr producer=${NID} instance=${NID}/aries_rtr_mmr component_id=${COMPONENT_ID} aries_rtr_id=${ARIES} file=${MMR_CONF_PATH}/metric_set_rtr_${NODENUM}_${ARIES_REDUNDANCY}_${NODETYPE} schema=metric_set_rtr_${NODENUM}_${ARIES_REDUNDANCY}_${NODETYPE} job_set=${NID}/jobinfo uid=0 gid=0 perm=0700
+start name=aries_rtr_mmr interval=${SAMPLE_INTERVAL} offset=${SAMPLE_OFFSET}
+
+load name=vmstat
+config name=vmstat producer=${NID} instance=${NID}/vmstat component_id=${COMPONENT_ID} schema=vmstat_${PROCTYPE} job_set=${NID}/jobinfo uid=0 gid=0 perm=0700
+start name=vmstat interval=${SAMPLE_INTERVAL} offset=${SAMPLE_OFFSET}
+
+load name=meminfo
+config name=meminfo producer=${NID} instance=${NID}/meminfo component_id=${COMPONENT_ID} schema=meminfo_${PROCTYPE} job_set=${NID}/jobinfo uid=0 gid=0 perm=0700
+start name=meminfo interval=${SAMPLE_INTERVAL} offset=${SAMPLE_OFFSET}
+
+load name=procstat
+config name=procstat producer=${NID} instance=${NID}/procstat component_id=${COMPONENT_ID} schema=procstat_${PROCTYPE} job_set=${NID}/jobinfo uid=0 gid=0 perm=0700
+start name=procstat interval=${SAMPLE_INTERVAL} offset=${SAMPLE_OFFSET}
+
+# Note: The cray_dvs_sampler is currently under construction but works with the following caveats:
+# 1) It currently collects 514 metrics per mount point -- version with a configuration file to define
+# desired subset of metrics will be available soon
+# 2) Storing the output will give inconsistant results as all mount points currently have the same schema
+# and no feature to enable differention in the sets themselves -- this is a bug which should be resolved by
+# January 30, 2018
+ 
+load name=cray_dvs_sampler
+config name=cray_dvs_sampler producer=${NID} instance=${NID}/cray_dvs_sampler component_id=${COMPONENT_ID} job_set=${NID}/jobinfo conffile=/opt/ovis/etc/ldms/dvs.conf uid=0 gid=0 perm=0700
+start name=cray_dvs_sampler interval=${SAMPLE_INTERVAL} offset=${SAMPLE_OFFSET}
+
+# Note: The cray_power_sampler is currently under construction. This configuration should not be uncommented until it is released.
+#load name=cray_power_sampler
+#config name=cray_power_sampler producer=${NID} instance=${NID}/cray_power_sampler component_id=${COMPONENT_ID} hfinterval=100000 hfcount=10 job_set=${NID}/cray_power_sampler uid=0 gid=0 perm=0700
+#start name=cray_power_sampler interval=${SAMPLE_INTERVAL} offset=${SAMPLE_OFFSET}

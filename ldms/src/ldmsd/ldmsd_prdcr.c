@@ -286,6 +286,7 @@ static void prdcr_set_updtr_task_update(ldmsd_prdcr_set_t prd_set)
 			ldmsd_updtr_unlock(updtr);
 			continue;
 		}
+
 		/* Updaters for push don't schedule any updates. */
 		if (0 != updtr->push_flags) {
 			ldmsd_updtr_unlock(updtr);
@@ -305,11 +306,12 @@ static void prdcr_set_updtr_task_update(ldmsd_prdcr_set_t prd_set)
 				if (!rc)
 					goto update_task;
 			}
+			ldmsd_updtr_unlock(updtr);
 			continue;
 		}
 update_task:
 		pthread_mutex_lock(&prd_set->lock);
-		ldmsd_updtr_task_tree_update(updtr, prd_set);
+		ldmsd_updtr_tasks_update(updtr, prd_set);
 		pthread_mutex_unlock(&prd_set->lock);
 		ldmsd_updtr_unlock(updtr);
 	}

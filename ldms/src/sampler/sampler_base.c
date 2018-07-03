@@ -55,6 +55,9 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#include <pwd.h>
+#include <grp.h>
+#include <ctype.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "sampler_base.h"
@@ -179,7 +182,7 @@ base_data_t base_config(struct attr_value_list *avl,
 			value = "job_end";
 		base->job_end_idx = ldms_metric_by_name(base->job_set, value);
 		if (base->job_end_idx < 0) {
-			log(LDMSD_LINFO,
+			log(LDMSD_LERROR,
 			    "%s: The specified job_set '%s' is missing "
 			    "the 'job_end' attribute and cannot be used.\n",
 			    name, job_set_name);
@@ -188,10 +191,48 @@ base_data_t base_config(struct attr_value_list *avl,
 	}
 	/* uid, gid, permission */
 	value = av_value(avl, "uid");
-	base->uid = (value)?(strtol(value, NULL, 0)):(-1);
+	if (value) {
+		if (isalpha(value[0])) {
+			/* Try to lookup the user name */
+			struct passwd *pwd = getpwnam(value);
+			if (!pwd) {
+				log(LDMSD_LERROR,
+				    "%s: The specified user '%s' does not exist\n",
+				    value);
+				goto einval;
+			}
+			base->uid = pwd->pw_uid;
+		} else {
+			base->uid = strtol(value, NULL, 0);
+		}
+	} else {
+		base->uid = geteuid();
+	}
 	value = av_value(avl, "gid");
-	base->gid = (value)?(strtol(value, NULL, 0)):(-1);
+	if (value) {
+		if (isalpha(value[0])) {
+			/* Try to lookup the group name */
+			struct group *grp = getgrnam(value);
+			if (!grp) {
+				log(LDMSD_LERROR,
+				    "%s: The specified group '%s' does not exist\n",
+				    value);
+				goto einval;
+			}
+			base->gid = grp->gr_gid;
+		} else {
+			base->gid = strtol(value, NULL, 0);
+		}
+	} else {
+		base->gid = getegid();
+	}
 	value = av_value(avl, "perm");
+	if (value && value[0] != '0') {
+		log(LDMSD_LINFO,
+		    "%s: Warning, the permission bits '%s' are not specified "
+		    "as an Octal number.\n",
+		    value);
+	}
 	base->perm = (value)?(strtol(value, NULL, 0)):(0777);
 	value = av_value(avl, "set_array_card");
 	base->set_array_card = (value)?(strtol(value, NULL, 0)):(1);

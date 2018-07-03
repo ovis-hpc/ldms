@@ -165,6 +165,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_AUTO_SWITCH,
 	LDMSD_ATTR_PEER_NAME,
 	LDMSD_ATTR_TIMEOUT_FACTOR,
+	LDMSD_ATTR_AUTO_INTERVAL,
 	LDMSD_ATTR_LAST,
 };
 
@@ -254,7 +255,6 @@ typedef struct ldmsd_cfg_xprt_s {
 
 #define LINE_BUF_LEN 1024
 #define REQ_BUF_LEN 4096
-#define REP_BUF_LEN REQ_BUF_LEN
 
 typedef struct ldmsd_req_ctxt {
 	struct req_ctxt_key key;
@@ -305,25 +305,37 @@ typedef struct ldmsd_req_attr_s {
 } *ldmsd_req_attr_t;
 #pragma pack(pop)
 
+struct ldmsd_req_array {
+	int num_reqs; /**<  Number of request handles */
+	ldmsd_req_hdr_t reqs[OVIS_FLEX]; /**<  array of request handles */
+};
+
 /**
- * \brief Translate a config string to a LDMSD configuration request
+ * \brief Translate a config string to LDMSD configuration request(s)
  *
  * The configuration line is in the format of <verb>[ <attr=value> <attr=value>..]
- * The function performs the following tasks.
- * - Set the request ID stored in \c request
- * - Parser the non-null string \c cfg to ldmsd configuration message boundary
- *   protocol and store the request data in \c *buf.
- * - \c bufoffset is set to the end of the data.
- * - If \c buf is not large enough, it is re-allocated to the necessary size.
- *   \c *buflen is updated.
+ * The function translates \c cfg string into LDMSD requests. If the resulting request
+ * has the record length larger than \c xprt_max_msg, multiple request records will be
+ * created instead. The record length of each request (request->rec_len) will not exceed
+ * \c xprt_max_msg.
+ *
+ * Each record is already in the network byte order format.
+ *
+ * The caller must free each request in the \c ldmsd_request_array->reqs and
+ * the \c ldmsd_request_array.
  *
  * \param cfg A string containing the configuaration command text
  * \param msg_no The next unique message number
- * \param pf Destination for error messages.
+ * \param xprt_max_msg The
+ * \param msglog Destination for error messages.
  *
- * \return The request parsed from the string
+ * \return a handle to an ldmsd_request_array. NULL is returned in case of error
+ *         and errno is set.
+ *
+ * \seealso ldmsd_request_array
  */
-ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, ldmsd_msg_log_f pf);
+struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
+					size_t xprt_max_msg, ldmsd_msg_log_f msglog);
 
 /**
  * \brief Convert a command string to the request ID.
@@ -443,8 +455,8 @@ void ldmsd_ntoh_req_msg(ldmsd_req_hdr_t msg);
  * \param rec_len The record length
  */
 void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec_len);
-int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request, size_t req_len);
-int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t response, size_t resp_len);
+int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request);
+int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t response);
 int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc, const char *data, size_t data_len, int msg_flags);
 void ldmsd_send_error_reply(ldmsd_cfg_xprt_t xprt, uint32_t msg_no,
 			    uint32_t error, char *data, size_t data_len);

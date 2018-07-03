@@ -1202,7 +1202,7 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 	rc = __sampler_set_info_add(pi->plugin, interval, offset);
 	if (rc)
 		goto out;
-
+	pi->sample_interval_us = sample_interval;
 	if (offset) {
 		sample_offset = strtol(offset, NULL, 0);
 		if ( !((sample_interval >= 10) &&
@@ -1211,8 +1211,8 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 			goto out;
 		}
 		pi->synchronous = 1;
+		pi->sample_offset_us = sample_offset;
 	}
-
 	OVIS_EVENT_INIT(&pi->oev);
 	if (pi->synchronous) {
 		pi->oev.param.type = OVIS_EVENT_PERIODIC;
@@ -1915,7 +1915,7 @@ int main(int argc, char *argv[])
 		switch (op) {
 		case 'c':
 			dup_arg = strdup(optarg);
-			ret = process_config_file(dup_arg, &lln);
+			ret = process_config_file(dup_arg, &lln, 1);
 			free(dup_arg);
 			if (ret) {
 				char errstr[128];

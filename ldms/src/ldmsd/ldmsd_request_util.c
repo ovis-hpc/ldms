@@ -122,6 +122,7 @@ const struct req_str_id req_str_id_table[] = {
 
 /* This table need to be sorted by keyword for bsearch() */
 const struct req_str_id attr_str_id_table[] = {
+	{  "auto_interval",     LDMSD_ATTR_AUTO_INTERVAL  },
 	{  "auto_switch",       LDMSD_ATTR_AUTO_SWITCH  },
 	{  "base",              LDMSD_ATTR_BASE  },
 	{  "container",         LDMSD_ATTR_CONTAINER  },
@@ -187,65 +188,71 @@ int32_t ldmsd_req_attr_str2id(const char *name)
  * If \c name and \c value are not NULL, the attribute of the corresponding type
  * is added to req_buf.
  * Otherwise, EINVAL is returned.
+ *
+ * \c request_sz is the total size of the allocated memory for \c request including
+ * the data. If appending an attribute makes \c request->rec_len larger than
+ * \c request_sz, ENOMEM is returned.
  */
 static int add_attr_from_attr_str(const char *name, const char *value,
-				  ldmsd_req_hdr_t *request,
-				  size_t *rec_off, size_t *rec_len,
+				  ldmsd_req_hdr_t *request, size_t *_req_sz,
 				  ldmsd_msg_log_f msglog)
 {
 	ldmsd_req_attr_t attr;
 	size_t attr_sz, val_sz;
 	ldmsd_req_hdr_t req = *request;
 	char *buf = (char *)*request;
-	size_t offset = *rec_off;
-	size_t len = *rec_len;
+	size_t req_sz = *_req_sz;
+	int is_terminating = 0;
 
+	/* Calculating the attribute size */
 	if (!name && !value) {
 		/* Terminate the attribute list */
-		memset(&buf[offset], 0, sizeof(uint32_t));
+		value = NULL;
 		attr_sz = sizeof(uint32_t);
-		goto out;
+		is_terminating = 1;
+	} else {
+		if (value)
+			val_sz = strlen(value) + 1; /* include '\0' */
+		else
+			/* keyword */
+			val_sz = 0;
+		attr_sz = sizeof(struct ldmsd_req_attr_s) + val_sz;
 	}
 
-	if (value)
-		val_sz = strlen(value) + 1; /* include '\0' */
-	else
-		/* keyword */
-		val_sz = 0;
-
-	attr_sz = sizeof(struct ldmsd_req_attr_s) + val_sz;
-	while (len - offset < attr_sz) {
-		buf = realloc(buf, len * 2);
+	/* Make sure that the buffer is large enough */
+	while (req_sz - req->rec_len < attr_sz) {
+		buf = realloc(buf, req_sz * 2);
 		if (!buf) {
 			msglog(LDMSD_LERROR, "out of memory\n", name);
 			return ENOMEM;
 		}
 		*request = req = (ldmsd_req_hdr_t)buf;
-		len = len * 2;
+		req_sz = req_sz * 2;
 	}
 
-	attr = (ldmsd_req_attr_t)&buf[offset];
-	attr->discrim = 1;
-	attr->attr_len = val_sz;
-	if (!name) {
-		/* Caller wants the attribute id of ATTR_STRING */
-		attr->attr_id = LDMSD_ATTR_STRING;
-	} else {
-		attr->attr_id = ldmsd_req_attr_str2id(name);
-		if ((int)attr->attr_id < 0) {
-			msglog(LDMSD_LERROR, "Invalid attribute: %s\n", name);
-			return EINVAL;
+	if (!is_terminating) {
+		attr = (ldmsd_req_attr_t)&buf[req->rec_len];
+		attr->discrim = 1;
+		attr->attr_len = val_sz;
+		if (!name) {
+			/* Caller wants the attribute id of ATTR_STRING */
+			attr->attr_id = LDMSD_ATTR_STRING;
+		} else {
+			attr->attr_id = ldmsd_req_attr_str2id(name);
+			if ((int)attr->attr_id < 0) {
+				msglog(LDMSD_LERROR, "Invalid attribute: %s\n", name);
+				return EINVAL;
+			}
 		}
+		if (val_sz)
+			memcpy(attr->attr_value, value, val_sz);
+	} else {
+		memset(&buf[req->rec_len], 0, sizeof(uint32_t));
 	}
-
-	if (val_sz)
-		memcpy(attr->attr_value, value, val_sz);
 
  out:
-	offset += attr_sz;
 	(*request)->rec_len += attr_sz;
-	*rec_len = len;
-	*rec_off = offset;
+	*_req_sz = req_sz;
 	return 0;
 }
 
@@ -275,22 +282,29 @@ void __get_attr_name_value(char *av, char **name, char **value)
 static const char *__ldmsd_cfg_delim = " \t";
 struct ldmsd_parse_ctxt {
 	ldmsd_req_hdr_t request;
-	size_t rec_len;
-	size_t rec_off;
+	size_t request_sz;
 	char *av;
 	int line_no;
 	uint32_t msg_no;
 	ldmsd_msg_log_f msglog;
 };
 
+#define LDMSD_REQ_ARRAY_CARD_INIT 5
+
 int __ldmsd_parse_generic(struct ldmsd_parse_ctxt *ctxt)
 {
 	int rc;
-	char *ptr, *name, *value;
+	char *ptr, *name, *value, *dummy;
 	char *av = ctxt->av;
+	dummy = NULL;
 	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
 	while (av) {
-		__get_attr_name_value(av, &name, &value);
+		dummy = strdup(av); /* preserve the original string if we need to create multiple records */
+		if (!dummy) {
+			rc = ENOMEM;
+			goto out;
+		}
+		__get_attr_name_value(dummy, &name, &value);
 		if (!name) {
 			/* av is neither attribute value nor keyword */
 			rc = EINVAL;
@@ -298,15 +312,19 @@ int __ldmsd_parse_generic(struct ldmsd_parse_ctxt *ctxt)
 		}
 		rc = add_attr_from_attr_str(name, value,
 					    &ctxt->request,
-					    &ctxt->rec_off,
-					    &ctxt->rec_len,
+					    &ctxt->request_sz,
 					    ctxt->msglog);
 		if (rc)
 			goto out;
 		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+		free(dummy);
+		dummy = NULL;
 	}
 	rc = 0;
 out:
+	ctxt->av = av;
+	if (dummy)
+		free(dummy);
 	return rc;
 }
 
@@ -315,8 +333,9 @@ int __ldmsd_parse_plugin_config(struct ldmsd_parse_ctxt *ctxt)
 	char *av = ctxt->av;
 	size_t len = strlen(av);
 	size_t cnt = 0;
-	char *tmp, *name, *value, *ptr;
+	char *tmp, *name, *value, *ptr, *dummy;
 	int rc;
+	dummy = NULL;
 	tmp = malloc(len);
 	if (!tmp) {
 		rc = ENOMEM;
@@ -324,7 +343,13 @@ int __ldmsd_parse_plugin_config(struct ldmsd_parse_ctxt *ctxt)
 	}
 	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
 	while (av) {
-		__get_attr_name_value(av, &name, &value);
+		ctxt->av = av;
+		dummy = strdup(av);
+		if (!dummy) {
+			rc = ENOMEM;
+			goto out;
+		}
+		__get_attr_name_value(dummy, &name, &value);
 		if (!name) {
 			/* av is neither attribute value nor keyword */
 			rc = EINVAL;
@@ -334,14 +359,10 @@ int __ldmsd_parse_plugin_config(struct ldmsd_parse_ctxt *ctxt)
 			/* Find the name attribute */
 			rc = add_attr_from_attr_str(name, value,
 						    &ctxt->request,
-						    &ctxt->rec_off,
-						    &ctxt->rec_len,
+						    &ctxt->request_sz,
 						    ctxt->msglog);
-			if (rc) {
-				free(tmp);
+			if (rc)
 				goto out;
-			}
-
 		} else {
 			/* Construct the other attribute into a ATTR_STRING */
 			if (value) {
@@ -353,17 +374,20 @@ int __ldmsd_parse_plugin_config(struct ldmsd_parse_ctxt *ctxt)
 			}
 		}
 		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+		free(dummy);
+		dummy = NULL;
 	}
 	tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
 	/* Add an attribute of type 'STRING' */
 	rc = add_attr_from_attr_str(NULL, tmp,
 				    &ctxt->request,
-				    &ctxt->rec_off,
-				    &ctxt->rec_len,
+				    &ctxt->request_sz,
 				    ctxt->msglog);
 out:
 	if (tmp)
 		free(tmp);
+	if (dummy)
+		free(dummy);
 	return rc;
 }
 
@@ -372,8 +396,9 @@ int __ldmsd_parse_env(struct ldmsd_parse_ctxt *ctxt)
 	char *av = ctxt->av;
 	size_t len = strlen(av) + 1;
 	size_t cnt = 0;
-	char *tmp, *name, *value, *ptr;
+	char *tmp, *name, *value, *ptr, *dummy;
 	int rc;
+	dummy = NULL;
 	tmp = malloc(len);
 	if (!tmp) {
 		rc = ENOMEM;
@@ -381,7 +406,13 @@ int __ldmsd_parse_env(struct ldmsd_parse_ctxt *ctxt)
 	}
 	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
 	while (av) {
-		__get_attr_name_value(av, &name, &value);
+		ctxt->av = av;
+		dummy = strdup(av);
+		if (!dummy) {
+			rc = ENOMEM;
+			goto out;
+		}
+		__get_attr_name_value(dummy, &name, &value);
 		if (!name) {
 			/* av is neither attribute value nor keyword */
 			rc = EINVAL;
@@ -396,31 +427,49 @@ int __ldmsd_parse_env(struct ldmsd_parse_ctxt *ctxt)
 					"%s ", name);
 		}
 		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+		free(dummy);
+		dummy = NULL;
 	}
 	tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
 	/* Add an attribute of type 'STRING' */
 	rc = add_attr_from_attr_str(NULL, tmp,
 				    &ctxt->request,
-				    &ctxt->rec_off,
-				    &ctxt->rec_len,
+				    &ctxt->request_sz,
 				    ctxt->msglog);
 out:
 	if (tmp)
 		free(tmp);
+	if (dummy)
+		free(dummy);
 	return rc;
 }
 
-ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, ldmsd_msg_log_f msglog)
+struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
+					size_t xprt_max_msg, ldmsd_msg_log_f msglog)
 {
 	static const char *delim = " \t";
 	char *av, *verb, *tmp, *ptr, *name, *value, *dummy;
-	int rc;
 	size_t cfg_len = strlen(cfg);
-	size_t rec_off, rec_len;
 	struct ldmsd_parse_ctxt ctxt = {0};
-	dummy = strdup(cfg);
-	if (!dummy)
+	struct ldmsd_req_array *req_array;
+	int rc, i, array_sz;
+	ldmsd_req_hdr_t req;
+	size_t req_off, remaining;
+	size_t req_hdr_sz = sizeof(struct ldmsd_req_hdr_s);
+	size_t attr_discrim_sz = sizeof(uint32_t);
+
+	errno = ENOMEM;
+	req_array = calloc(1, sizeof(*req_array) + LDMSD_REQ_ARRAY_CARD_INIT * sizeof(ldmsd_req_hdr_t));
+	if (!req_array)
 		return NULL;
+	req_array->num_reqs = 0;
+	array_sz = LDMSD_REQ_ARRAY_CARD_INIT;
+
+	dummy = strdup(cfg);
+	if (!dummy) {
+		free(req_array);
+		return NULL;
+	}
 
 	verb = dummy;
 	/* Get the request id */
@@ -430,10 +479,14 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, ldmsd_m
 		av++;
 	}
 
+	ctxt.request_sz = xprt_max_msg;
 	ctxt.msglog = msglog;
-	ctxt.request = calloc(1, LDMSD_DEF_CONFIG_STR_LEN); /* arbitrary but substantial */
+	ctxt.av = av;
+new_req:
+	ctxt.request = calloc(1, ctxt.request_sz);
 	if (!ctxt.request)
 		goto err;
+
 	ctxt.request->marker = LDMSD_RECORD_MARKER;
 	ctxt.request->type = LDMSD_REQ_TYPE_CONFIG_CMD;
 	ctxt.request->flags = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
@@ -443,12 +496,10 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, ldmsd_m
 		rc = ENOSYS;
 		goto err;
 	}
-	ctxt.rec_len = LDMSD_DEF_CONFIG_STR_LEN;
-	ctxt.request->rec_len = ctxt.rec_off = sizeof(*ctxt.request);
-	if (!av)
-		goto last_attr;
+	ctxt.request->rec_len = sizeof(*ctxt.request);
+	if (!ctxt.av)
+		goto out;
 
-	ctxt.av = av;
 	switch (ctxt.request->req_id) {
 	case LDMSD_PLUGN_CONFIG_REQ:
 		rc = __ldmsd_parse_plugin_config(&ctxt);
@@ -462,18 +513,82 @@ ldmsd_req_hdr_t ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, ldmsd_m
 	}
 	if (rc)
 		goto err;
-last_attr:
-	/* Add the end attribute */
-	rc = add_attr_from_attr_str(NULL, NULL, &ctxt.request,
-					&ctxt.rec_off, &ctxt.rec_len, msglog);
-	if (rc)
-		goto err;
+
+out:
+	/*
+	 * Assume that ctxt->request does _not_ contain the terminating attribute.
+	 */
+
+	/* Make sure that all records aren't larger than xprt_max_msg. */
+	req_off = 0; /* offset from the end of the header */
+	/*
+	 * Size of the attribute list in \c ctxt.request.
+	 */
+	size_t data_len = ctxt.request->rec_len - req_hdr_sz;
+	ldmsd_hton_req_msg(ctxt.request);
+	while (1) {
+		if (req_array->num_reqs == array_sz) {
+			req_array = realloc(req_array, sizeof(*req_array) +
+					(array_sz * 2) * sizeof(ldmsd_req_hdr_t));
+			if (!req_array) {
+				rc = ENOMEM;
+				goto err;
+			}
+			array_sz *= 2;
+		}
+		req_array->reqs[req_array->num_reqs] = calloc(1, xprt_max_msg);
+		if (!req_array->reqs[req_array->num_reqs]) {
+			rc = ENOMEM;
+			goto err;
+		}
+		req = req_array->reqs[req_array->num_reqs];
+		memcpy(req, ctxt.request, req_hdr_sz);
+		if (0 == req_array->num_reqs)
+			req->flags = LDMSD_REQ_SOM_F;
+		else
+			req->flags= 0;
+		req->rec_len = req_hdr_sz;
+		/* To guarantee that the last record will have enough space for the terminating attribute */
+		remaining = xprt_max_msg - req_hdr_sz - attr_discrim_sz;
+		if (remaining >= data_len) {
+			/* Last record */
+			remaining = data_len;
+		}
+		/* the terminating attribute isn't copied */
+		memcpy(req + 1, &((char *)(ctxt.request + 1))[req_off], remaining);
+		req_off += remaining;
+		data_len -= remaining;
+		req->rec_len += remaining;
+		req_array->num_reqs++;
+		/* convert to network-byte-order */
+		req->flags = htonl(req->flags);
+		req->rec_len = htonl(req->rec_len);
+		if (data_len == 0) {
+			/*
+			 * All data has been copied to a record.
+			 * This is the last record.
+			 */
+			req->flags |= htonl(LDMSD_REQ_EOM_F);
+			/*
+			 * Count the terminating attribute size toward the record length.
+			 * No need to set it to 0 because the request is allocated by using calloc.
+			 */
+			req->rec_len = htonl(ntohl(req->rec_len) + attr_discrim_sz);
+			break;
+		}
+	}
+	free(ctxt.request);
 	free(dummy);
-	return ctxt.request;
+	errno = 0;
+	return req_array;
 err:
 	errno = rc;
 	free(dummy);
-	free(ctxt.request);
+	for (i = 0; i < req_array->num_reqs; i++)
+		free(req_array->reqs[i]);
+	free(req_array);
+	if (ctxt.request)
+		free(ctxt.request);
 	return NULL;
 }
 

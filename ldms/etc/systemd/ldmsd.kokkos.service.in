@@ -4,29 +4,29 @@
 # applying any of the following commands.
 #
 # To make ldmsd starts automatically at system startup time:
-#   systemctl enable ldmsd
+#   systemctl enable ldmsd.kokkos.service
 #
 # To disable automatic startup:
-#   systemctl disable ldmsd
+#   systemctl disable ldmsd.kokkos.service
 #
 # To manually start ldmsd service:
-#   systemctl start ldmsd
+#   systemctl start ldmsd.kokkos.service
 #
 # To check status:
-#   systemctl status ldmsd
+#   systemctl status ldmsd.kokkos.service
 #
 # To stop the service:
-#   sytemctl stop ldmsd
+#   sytemctl stop ldmsd.kokkos.service
 #
 
 [Unit]
-Description = LDMS Daemon
+Description = LDMS Kokkos Daemon
 Documentation = http://ovis.ca.sandia.gov
 
 [Service]
 Type = forking
+EnvironmentFile = @sysconfdir@/ldms/ldmsd.kokkos.env
 LimitNOFILE = ${LDMSD_ULIMIT_NOFILE}
-EnvironmentFile = @sysconfdir@/ldms/ldmsd.aggregator.env
 Environment = HOSTNAME=%H
 ExecStartPre = /bin/mkdir -p @localstatedir@/run/ldmsd
 ExecStart = @sbindir@/ldmsd \
@@ -38,7 +38,7 @@ ExecStart = @sbindir@/ldmsd \
 		-m ${LDMSD_MEM} \
 		$LDMSD_LOG_OPTION \
 		-P ${LDMSD_NUM_THREADS} \
-		-r @localstatedir@/run/ldmsd/aggregator.pid
+		-r @localstatedir@/run/ldmsd/kokkos.pid
 
 [Install]
 WantedBy = default.target

@@ -67,6 +67,7 @@ class LDMSDRequestException(Exception):
 
 class LDMSD_Req_Attr(object):
     LDMSD_REQ_ATTR_SZ = 12
+    LDMSD_REQ_ATTR_DISCRIM_SZ = 4
 
     NAME = 1
     INTERVAL = 2
@@ -190,6 +191,10 @@ class LDMSD_Req_Attr(object):
             return "<LDMSD_Req_Attr discrim=0>"
 
     @classmethod
+    def getDiscrimSize(cls):
+        return cls.LDMSD_REQ_ATTR_DISCRIM_SZ
+
+    @classmethod
     def unpack(cls, buf):
         (discrim, ) = struct.unpack('!L', buf[:4])
         if discrim == 0:
@@ -225,7 +230,7 @@ class LDMSD_Request(object):
     PRDCR_START_REGEX = 0x100 + 5
     PRDCR_STOP_REGEX = 0x100 + 6
     PRDCR_SET_STATUS = 0x100 + 7
-    PRDCR_HINT_TREE = 0x600 + 8
+    PRDCR_HINT_TREE = 0x100 + 8
 
     STRGP_ADD = 0x200
     STRGP_DEL = 0x200 + 1
@@ -368,30 +373,55 @@ class LDMSD_Request(object):
         self.attrs = attrs
         self.message = message
         self.request_size = self.header_size
+        self.message_number = LDMSD_Request.message_number
+
         if message:
             self.request_size += len(self.message)
-        self.message_number = LDMSD_Request.message_number
+
+        # store all packed attribute value pairs
+        self.packed_attrs = ""  # excluding the terminating attribute
+        self.packed_attrs_sz = 0 # excluding the terminating attribute
         # Compute the extra size occupied by the attributes and add it
         # to the request size in the request header
+        
+        # Aggregate the attributes
         if attrs:
             for attr in attrs:
-                self.request_size += len(attr)
+                self.packed_attrs += attr.pack()
+
+        self.request_size += len(self.packed_attrs)
         # Account for size of terminating 0
-        self.request_size += 4
+        self.request_size += LDMSD_Req_Attr.getDiscrimSize()
 
         self.request = struct.pack('!LLLLLL', self.MARKER, self.TYPE_CONFIG_CMD,
                                    LDMSD_Request.SOM_FLAG | LDMSD_Request.EOM_FLAG,
                                    self.message_number, command_id, self.request_size)
-        # Add the attributes after the message header
-        if attrs:
-            for attr in attrs:
-                self.request += attr.pack()
-        self.request += struct.pack('!L', 0) # terminate list
+
         # Add any message payload
         if message:
             self.request += message
+
+        self.request += self.packed_attrs
+        self.request += struct.pack('!L', 0) # terminate list
+
         self.response = {'errcode': None, 'msg': None}
         LDMSD_Request.message_number += 1
+
+    def _newRecord(self, flags, offset, sz):
+        """Create a record
+
+        offset is offset after the request header
+        sz is the size after the offset
+        """
+        rec_len = self.header_size + sz
+        if flags & LDMSD_Request.EOM_FLAG:
+            rec_len += LDMSD_Req_Attr.getDiscrimSize()
+        hdr = struct.pack('!LLLLLL', self.MARKER, self.TYPE_CONFIG_CMD, flags,
+                                   self.message_number, self.command_id, rec_len)
+        rec = hdr + self.packed_attrs[offset:offset+sz]
+        if flags & LDMSD_Request.EOM_FLAG:
+            rec += struct.pack('!L', 0) # adding the terminating attribute
+        return rec
 
     def __repr__(self):
         s = "<LDMSD_Request message_number=%d command_id=%d request_size=%d" % (
@@ -408,8 +438,28 @@ class LDMSD_Request(object):
         return self.message_number
 
     def send(self, ctrl):
+        data_len = self.request_size - self.header_size - LDMSD_Req_Attr.getDiscrimSize()
+        max_msg = ctrl.getMaxRecvLen()
+        offset = 0
         try:
-            ctrl.send_command(bytes(self.request))
+            while True:
+                remaining = max_msg - self.header_size - LDMSD_Req_Attr.getDiscrimSize()
+                if remaining >= data_len:
+                    remaining = data_len
+                if offset == 0:
+                    flags = LDMSD_Request.SOM_FLAG
+                else:
+                    flags = 0
+                if data_len == remaining:
+                    flags |= LDMSD_Request.EOM_FLAG
+                rec = self._newRecord(flags, offset, remaining)
+                if len(rec) > max_msg:
+                    raise RuntimeError("Record size exceeds the maximum of transport message length")
+                offset += remaining
+                data_len -= remaining
+                ctrl.send_command(bytes(rec))
+                if data_len == 0:
+                    break
         except:
             raise
 

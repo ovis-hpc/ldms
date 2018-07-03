@@ -4,23 +4,23 @@
 # applying any of the following commands.
 #
 # To make ldmsd starts automatically at system startup time:
-#   systemctl enable ldmsd
+#   systemctl enable ldmsd.sampler.service
 #
 # To disable automatic startup:
-#   systemctl disable ldmsd
+#   systemctl disable ldmsd.sampler.service
 #
 # To manually start ldmsd service:
-#   systemctl start ldmsd
+#   systemctl start ldmsd.sampler.service
 #
 # To check status:
-#   systemctl status ldmsd
+#   systemctl status ldmsd.sampler.service
 #
 # To stop the service:
-#   sytemctl stop ldmsd
+#   sytemctl stop ldmsd.sampler.service
 #
 
 [Unit]
-Description = LDMS Daemon
+Description = LDMS Sampler Daemon
 Documentation = http://ovis.ca.sandia.gov
 
 [Service]
@@ -28,11 +28,15 @@ Type = forking
 EnvironmentFile = @sysconfdir@/ldms/ldmsd.sampler.env
 Environment = HOSTNAME=%H
 ExecStartPre = /bin/mkdir -p @localstatedir@/run/ldmsd
+ExecStartPre = -/bin/bash -c "test -n \"${LDMS_JOBINFO_DATA_FILE}\" && rm -f ${LDMS_JOBINFO_DATA_FILE} || rm -f /var/run/ldms_jobinfo.data"
 ExecStart = @sbindir@/ldmsd \
 		-x ${LDMSD_XPRT}:${LDMSD_PORT} \
 		-c ${LDMSD_PLUGIN_CONFIG_FILE} \
 		-a ${LDMSD_AUTH_PLUGIN} \
-		$LDMSD_AUTH_OPTS \
+		$LDMSD_AUTH_OPTION \
+		-v ${LDMSD_VERBOSE} \
+		-m ${LDMSD_MEM} \
+		$LDMSD_LOG_OPTION \
 		-r @localstatedir@/run/ldmsd/sampler.pid
 
 [Install]

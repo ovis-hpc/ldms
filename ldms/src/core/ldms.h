@@ -516,9 +516,9 @@ extern void ldms_xprt_close(ldms_t x);
 extern int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len);
 
 /**
- * \brief Get transport max message size in bytes.
+ * \brief Get the maximum size of send/recv message.
  * \param x The transport handle.
- * \retval sz The maximum message size of the transport.
+ * \retval sz The maximum message size.
  */
 size_t ldms_xprt_msg_max(ldms_t x);
 
@@ -881,14 +881,14 @@ extern ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema);
  * \param schema        The schema of the set.
  * \param uid           The user ID of the set owner.
  * \param gid           The group ID of the set owner.
- * \param perm          The 9-bit UNIX style permission (e.g. 0640).
+ * \param perm          The UNIX mode_t bits (see chmod)
  *
  * \retval NULL If failed.
  * \retval setp The set pointer, if success.
  */
 ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 				  ldms_schema_t schema,
-				  uid_t uid, gid_t gid, int perm);
+				  uid_t uid, gid_t gid, mode_t perm);
 
 /**
  * \addtogroup ldms_set_config LDMS Set Configuration
@@ -911,11 +911,11 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
  *
  * \param uid  The UID.
  * \param gid  The GID.
- * \param perm The UNIX-style permission (e.g. 0644).
+ * \param perm The UNIX mode_t bits (see chmod)
  * \retval errno If failed.
  * \retval 0     If succeeded.
  */
-int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, int perm);
+int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, mode_t perm);
 
 /**
  * \}  (ldms_set_config)

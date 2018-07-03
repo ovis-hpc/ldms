@@ -541,9 +541,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	gid_t gid;
 	int perm;
 	value = av_value(avl, "uid");
-	uid = (value)?(strtol(value, NULL, 0)):(-1);
+	uid = (value)?(strtol(value, NULL, 0)):(geteuid());
 	value = av_value(avl, "gid");
-	gid = (value)?(strtol(value, NULL, 0)):(-1);
+	gid = (value)?(strtol(value, NULL, 0)):(getegid());
 	value = av_value(avl, "perm");
 	perm = (value)?(strtol(value, NULL, 0)):(0777);
 	value = av_value(avl, "set_array_card");

@@ -1,0 +1,5 @@
+env COMPONENT_ID=$(cat /proc/cray_xt/nid)
+env NID=$(printf nid%05d $COMPONENT_ID)
+env AGGCONF=$(ls /opt/ovis/etc/ldms/agg_conf/agg[0-9][0-9].$NID.$LDMSD_PORT)
+
+include path=${AGGCONF}

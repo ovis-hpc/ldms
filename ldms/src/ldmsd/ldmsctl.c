@@ -681,7 +681,15 @@ static void help_updtr_add()
 		"Parameters:\n"
 		"     name=       The update policy name\n"
 		"     interval=   The update/collect interval\n"
-		"     [offset=]   Offset for synchronized aggregation\n");
+		"     [offset=]   Offset for synchronized aggregation\n"
+		"     [push=]     Push mode: 'onchange' and 'onpush'. 'onchange' means the\n"
+		"                 Updater will get an update whenever the set source ends a\n"
+		"                 transaction or pushes the update. 'onpush' means the Updater\n"
+		"                 will receive an update only when the set source pushes the update.\n"
+		"     [auto_interval=]   [true|false] If true, the updater will schedule\n"
+		"                        set updates according to the update hint. If false,\n"
+		"                        the updater will schedule the set updates according\n"
+		"                        to the default schedule, i.e., the given interval and offset values.\n");
 }
 
 static void help_updtr_del()
@@ -741,7 +749,11 @@ static void help_updtr_start()
 		"                 configured value will be used.\n"
 		"     [offset=]   Offset for synchronization\n"
 		"                 If 'interval' is given but not 'offset',\n"
-		"                 the updater will update sets asynchronously.\n");
+		"                 the updater will update sets asynchronously.\n"
+		"     [auto_interval=]   [true|false] If true, the updater will schedule\n"
+		"                        set updates according to the update hint. If false,\n"
+		"                        the updater will schedule the set updates according\n"
+		"                        to the default schedule, i.e., the given interval and offset values.\n");
 }
 
 static void help_updtr_stop()
@@ -1508,8 +1520,9 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 {
 	static int msg_no = 0;
 	ldmsd_req_hdr_t request;
+	struct ldmsd_req_array *req_array = NULL;
 	size_t len;
-	int rc;
+	int rc, i;
 
 	struct command key, *cmd;
 	char *ptr, *args, *dummy;
@@ -1544,24 +1557,32 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 
 	size_t buffer_offset = 0;
 	memset(buffer, 0, buffer_len);
-	request = ldmsd_parse_config_str(cmd_str, msg_no, ldmsctl_log);
-	if (!request) {
-		printf("Failed to process the request. "
-			"Please make sure that there is no typo.\n");
+	req_array = ldmsd_parse_config_str(cmd_str, msg_no,
+					   ldms_xprt_msg_max(ctrl->ldms_xprt.x),
+					   ldmsctl_log);
+	if (!req_array) {
+		printf("Failed to process the request. ");
+		if (errno == ENOMEM)
+			printf("Out of memory\n");
+		else
+			printf("Please make sure that there is no typo.\n");
 		return EINVAL;
 	}
-
 	msg_no++;
 
-	len = request->rec_len;
-	/* Convert the request byte order from host to network */
-	ldmsd_hton_req_msg(request);
+	for (i = 0; i < req_array->num_reqs; i++) {
+		request = req_array->reqs[i];
+		len = ntohl(request->rec_len);
 
-	rc = ctrl->send_req(ctrl, request, len);
-	if (rc) {
-		printf("Failed to send data to ldmsd. %s\n", strerror(errno));
-		return rc;
+		rc = ctrl->send_req(ctrl, request, len);
+		if (rc) {
+			printf("Failed to send data to ldmsd. %s\n", strerror(errno));
+			return rc;
+		}
 	}
+	/*
+	 * Send all the records and handle the response now.
+	 */
 	ldmsd_req_hdr_t resp;
 	size_t req_hdr_sz = sizeof(*resp);
 	size_t lbufsz = 1024;
@@ -1606,6 +1627,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 		}
 	}
 	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)lbuf);
+
 	cmd->resp((ldmsd_req_hdr_t)lbuf, msglen, resp->rsp_err);
 out:
 	free(lbuf);
@@ -1699,8 +1721,8 @@ struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
 static int handle_source(struct ldmsctl_ctrl *ctrl, char *path)
 {
 	FILE *f;
-	char *s;
 	int rc = 0;
+	ssize_t cnt = 0;
 
 	f = fopen(path, "r");
 	if (!f) {
@@ -1710,13 +1732,12 @@ static int handle_source(struct ldmsctl_ctrl *ctrl, char *path)
 		return rc;
 	}
 	fseek(f, 0, SEEK_SET);
-
-	s = fgets(linebuf, linebuf_len, f);
-	while (s) {
+	cnt = getline(&linebuf, &linebuf_len, f);
+	while (cnt != -1) {
 		rc = __handle_cmd(ctrl, linebuf);
 		if (rc)
 			break;
-		s = fgets(linebuf, linebuf_len, f);
+		cnt = getline(&linebuf, &linebuf_len, f);
 	}
 	fclose(f);
 	return rc;
@@ -1726,7 +1747,7 @@ static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd)
 {
 	int rc = 0;
 	FILE *f;
-	char *s;
+	ssize_t cnt;
 
 	f = popen(cmd, "r");
 	if (!f) {
@@ -1737,12 +1758,12 @@ static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd)
 		return rc;
 	}
 
-	s = fgets(linebuf, linebuf_len, f);
-	while (s) {
+	cnt = getline(&linebuf, &linebuf_len, f);
+	while (cnt != -1) {
 		rc = __handle_cmd(ctrl, linebuf);
 		if (rc)
 			break;
-		s = fgets(linebuf, linebuf_len, f);
+		cnt = getline(&linebuf, &linebuf_len, f);
 	}
 	pclose(f);
 	return rc;
@@ -1751,14 +1772,15 @@ static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd)
 int main(int argc, char *argv[])
 {
 	int op;
-	char *host, *port, *auth, *sockname, *env, *s, *xprt;
+	char *host, *port, *auth, *sockname, *env, *xprt;
 	char *lval, *rval;
-	host = port = sockname = s = xprt = NULL;
+	host = port = sockname = xprt = NULL;
 	char *source, *script;
 	source = script = NULL;
 	int rc, is_inband = 1;
 	struct attr_value_list *auth_opt = NULL;
 	const int AUTH_OPT_MAX = 128;
+	ssize_t cnt;
 
 	auth = "none";
 
@@ -1814,14 +1836,11 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	env = getenv("LDMSD_MAX_CONFIG_STR_LEN");
-	if (env)
-		linebuf_len = buffer_len = strtol(env, NULL, 0);
-	else
-		linebuf_len = buffer_len = LDMSD_DEF_CONFIG_STR_LEN;
+	buffer_len = LDMSD_CFG_FILE_XPRT_MAX_REC;
 	buffer = malloc(buffer_len);
-	linebuf = malloc(buffer_len);
-	if (!buffer || !linebuf) {
+	linebuf = NULL;
+	linebuf_len = 0;
+	if (!buffer) {
 		printf("Out of memory\n");
 		exit(ENOMEM);
 	}
@@ -1854,31 +1873,35 @@ int main(int argc, char *argv[])
 	do {
 #ifdef HAVE_LIBREADLINE
 #ifndef HAVE_READLINE_HISTORY
-		if (s != NULL)
-			free(s); /* previous readline output must be freed if not in history */
+		if (linebuf != NULL) {
+			free(linebuf)); /* previous readline output must be freed if not in history */
+			linebuf = NULL;
+			linebuf_len = 0;
+		}
 #endif /* HAVE_READLINE_HISTORY */
-		if (isatty(0))
-			s = readline("ldmsctl> ");
-		else
-			s = fgets(linebuf, linebuf_len, stdin);
+		if (isatty(0)) {
+			linebuf = readline("ldmsctl> ");
+		} else {
+			cnt = getline(&linebuf, &linebuf_len, stdin);
+		}
 #else /* HAVE_LIBREADLINE */
 		if (isatty(0)) {
 			fputs("ldmsctl> ", stdout);
 		}
-		s = fgets(linebuf, linebuf_len, stdin);
+		cnt = getline(&linebuf, &linebuf_len, stdin);
 #endif /* HAVE_LIBREADLINE */
-		if (!s)
+		if (cnt == -1)
 			break;
-		if (s[0] == '\0')
+		if (linebuf[0] == '\0')
 			continue;
 #ifdef HAVE_READLINE_HISTORY
-		add_history(s);
+		add_history(linebuf);
 #endif /* HAVE_READLINE_HISTORY */
 
-		rc = __handle_cmd(ctrl, s);
+		rc = __handle_cmd(ctrl, linebuf);
 		if (rc)
 			break;
-	} while (s);
+	} while (linebuf);
 
 	ctrl->close(ctrl);
 	return 0;

@@ -75,7 +75,8 @@ typedef struct base_data_s {
 #define BASE_APP_ID		2
 #define BASE_CONFIG_SYNOPSIS \
 	"producer=<name> instance=<name> [component_id=<int>] [schema=<name>]\n" \
-	"       [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>]\n"
+	"       [job_set=<name>] [job_id=<name>] [app_id=<name>] [job_start=<name>] [job_end=<name>]\n" \
+	"       [uid=<user-id>] [gid=<group-id>] [perm=<mode_t permission bits>]\n"
 #define BASE_CONFIG_DESC \
 	"    producer     A unique name for the host providing the data\n" \
 	"    instance     A unique name for the metric set\n" \
@@ -85,7 +86,10 @@ typedef struct base_data_s {
 	"    job_id       The name of the metric containing the Job Id, default is 'job_id'\n" \
 	"    app_id       The name of the metric containing the Application Id, default is 'app_id'\n" \
 	"    job_start    The name of the metric containing the Job start time, default is 'job_start'\n" \
-	"    job_end      The name of the metric containing the Job end time, default is 'job_end'\n"
+	"    job_end      The name of the metric containing the Job end time, default is 'job_end'\n" \
+	"    uid          The user-id of the set's owner (defaults to geteuid())\n" \
+	"    gid          The group id of the set's owner (defaults to getegid())\n" \
+	"    perm         The set's access permissions (defaults to 0777)\n"
 
 #define BASE_CONFIG_USAGE BASE_CONFIG_SYNOPSIS BASE_CONFIG_DESC
 
