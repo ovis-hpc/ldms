@@ -132,7 +132,7 @@ OPTION_WITH([switchx], [SWITCHX],[/usr/local])
 OPTION_DEFAULT_DISABLE([kokkos], [ENABLE_KOKKOS])
 OPTION_DEFAULT_ENABLE([jobinfo-sampler], [ENABLE_JOBINFO])
 OPTION_DEFAULT_DISABLE([jobinfo-slurm], [ENABLE_SLURM_JOBINFO])
-
+OPTION_DEFAULT_DISABLE([appinfo], [ENABLE_APPINFO])
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
@@ -478,6 +478,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/cray_system_sampler/Makefile
 		 src/sampler/aries_mmr/Makefile
 		 src/sampler/aries_mmr/aries_mmr_set_configs/Makefile
+		 src/sampler/appinfo_lib/Makefile
 		 src/ldmsd/Makefile
 		 scripts/Makefile
 		 src/test/Makefile
