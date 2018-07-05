@@ -251,6 +251,7 @@ typedef struct ldmsd_cfg_xprt_s {
 	ldmsd_cfg_send_fn_t send_fn;
 	ldmsd_cfg_cleanup_fn_t cleanup_fn;
 	int trust; /* trust (to perform command expansion) */
+	int rsp_err; /* error from the response */
 } *ldmsd_cfg_xprt_t;
 
 #define LINE_BUF_LEN 1024
