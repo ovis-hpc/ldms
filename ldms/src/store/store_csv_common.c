@@ -426,6 +426,52 @@ void rename_output(const char *name,
 	free(newname);
 }
 
+void ch_output(FILE *f, const char *name,
+	struct csv_store_handle_common *s_handle,
+	struct csv_plugin_static *cps) {
+#define EBSIZE 512
+	char errbuf[EBSIZE];
+	if (!cps) {
+		return;
+	}
+	if (!s_handle) {
+		cps->msglog(LDMSD_LERROR,"ch_output: NULL store handle received.\n");
+		return;
+	}
+	if (!f) {
+		cps->msglog(LDMSD_LERROR,"ch_output: NULL FILE pointer received.\n");
+		return;
+	}
+	int fd = fileno(f);
+	mode_t mode = (mode_t) (s_handle->create_perm ? s_handle->create_perm : cps->create_perm);
+	if (mode > 0) {
+		errno = 0;
+		int merr = fchmod(fd, mode);
+		int rc = errno;
+		if (merr) {
+			strerror_r(rc, errbuf, EBSIZE);
+			cps->msglog(LDMSD_LERROR,"ch_output: unable to chmod(%s,%o): %s.\n",
+				name, s_handle->create_perm, errbuf);
+		}
+	}
+	
+	gid_t newgid = (gid_t) (s_handle->create_gid ? s_handle->create_gid : cps->create_gid);
+	gid_t newuid = (uid_t) (s_handle->create_uid ? s_handle->create_uid : cps->create_uid);
+	if (newuid > 0)
+	{
+		if (newgid == 0)
+			newgid = -1;
+		errno = 0;
+		int merr = fchown(fd, newuid, newgid);
+		int rc = errno;
+		if (merr) {
+			strerror_r(rc, errbuf, EBSIZE);
+			cps->msglog(LDMSD_LERROR,"ch_output: unable to chown(%s,%u, %u): %s.\n",
+				name, newuid, newgid, errbuf);
+		}
+	}
+}
+
 struct swap_data {
 	size_t nstorekeys;
 	size_t usedkeys;
@@ -446,6 +492,9 @@ int config_custom_common(struct attr_value_list *kwl, struct attr_value_list *av
 	sk->rename_uid = cps->rename_uid;
 	sk->rename_gid = cps->rename_gid;
 	sk->rename_perm = cps->rename_perm;
+	sk->create_uid = cps->create_uid;
+	sk->create_gid = cps->create_gid;
+	sk->create_perm = cps->create_perm;
 
 	int rc = 0;
 	char *notify =  av_value(avl, "notify");
@@ -544,6 +593,48 @@ int config_custom_common(struct attr_value_list *kwl, struct attr_value_list *av
 				cps->pname, rename_pval);
 		} else {
 			sk->rename_perm = perm;
+		}
+	}
+
+	char * create_uval = av_value(avl, "create_uid");
+	char * create_gval = av_value(avl, "create_gid");
+	char * create_pval = av_value(avl, "create_perm");
+	if (create_uval) {
+		int uid = atoi(create_uval);
+		if (uid < 1 || uid > USHRT_MAX) {
+			rc = EINVAL;
+			sk->create_uid = 0;
+			cps->msglog(LDMSD_LERROR,
+				"%s: config_custom_common ignoring bad create_uid=%s\n",
+				cps->pname, create_uval);
+		} else {
+			sk->create_uid = uid;
+		}
+	}
+
+	if (create_gval) {
+		int gid = atoi(create_gval);
+		if (gid < 1 || gid > USHRT_MAX) {
+			rc = EINVAL;
+			sk->create_gid = 0;
+			cps->msglog(LDMSD_LERROR,
+				"%s: config_custom_common ignoring bad create_gid=%s\n",
+				cps->pname, create_gval);
+		} else {
+			sk->create_gid = gid;
+		}
+	}
+
+	if (create_pval) {
+		int perm = strtol(create_pval, NULL, 8);
+		if (perm < 1 || perm > 4777) {
+			rc = EINVAL;
+			sk->create_perm = 0;
+			cps->msglog(LDMSD_LERROR,
+				"%s: config_custom_common ignoring bad create_perm=%s\n",
+				cps->pname, create_pval);
+		} else {
+			sk->create_perm = perm;
 		}
 	}
 
@@ -657,6 +748,54 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 			cps->rename_perm = perm;
 		}
 	}
+
+	char * create_uval = av_value(avl, "create_uid");
+	char * create_gval = av_value(avl, "create_gid");
+	char * create_pval = av_value(avl, "create_perm");
+	if (!create_uval) {
+		cps->create_uid = 0;
+	} else {
+		int uid = atoi(create_uval);
+		if (uid < 1 || uid > USHRT_MAX) {
+			rc = EINVAL;
+			cps->create_uid = 0;
+			cps->msglog(LDMSD_LERROR,
+				"%s: config_init_common ignoring bad create_uid=%s\n",
+				cps->pname, create_uval);
+		} else {
+			cps->create_uid = uid;
+		}
+	}
+
+	if (!create_gval) {
+		cps->create_gid = 0;
+	} else {
+		int gid = atoi(create_gval);
+		if (gid < 1 || gid > USHRT_MAX) {
+			rc = EINVAL;
+			cps->create_gid = 0;
+			cps->msglog(LDMSD_LERROR,
+				"%s: config_init_common ignoring bad create_gid=%s\n",
+				cps->pname, create_gval);
+		} else {
+			cps->create_gid = gid;
+		}
+	}
+
+	if (!create_pval) {
+		cps->create_perm = 0;
+	} else {
+		int perm = strtol(create_pval, NULL, 8);
+		if (perm < 1 || perm > 4777) {
+			rc = EINVAL;
+			cps->create_perm = 0;
+			cps->msglog(LDMSD_LERROR,
+				"%s: config_init_common ignoring bad create_perm=%s\n",
+				cps->pname, create_pval);
+		} else {
+			cps->create_perm = perm;
+		}
+	}
 	return rc;
 }
 
@@ -690,6 +829,9 @@ void print_csv_plugin_common(struct csv_plugin_static *cps)
 	cps->msglog(LDMSD_LALL, "rename_uid: %d\n", cps->rename_uid);
 	cps->msglog(LDMSD_LALL, "rename_gid: %d\n", cps->rename_gid);
 	cps->msglog(LDMSD_LALL, "rename_perm: %d\n", cps->rename_perm);
+	cps->msglog(LDMSD_LALL, "create_uid: %d\n", cps->create_uid);
+	cps->msglog(LDMSD_LALL, "create_gid: %d\n", cps->create_gid);
+	cps->msglog(LDMSD_LALL, "create_perm: %d\n", cps->create_perm);
 	cps->msglog(LDMSD_LALL, "onp: %p\n", cps->onp);
 }
 
@@ -711,5 +853,8 @@ void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv
 	p->msglog(LDMSD_LALL, "rename_uid: %d\n", h->rename_uid);
 	p->msglog(LDMSD_LALL, "rename_gid: %d\n", h->rename_gid);
 	p->msglog(LDMSD_LALL, "rename_perm: %d\n", h->rename_perm);
+	p->msglog(LDMSD_LALL, "create_uid: %d\n", h->create_uid);
+	p->msglog(LDMSD_LALL, "create_gid: %d\n", h->create_gid);
+	p->msglog(LDMSD_LALL, "create_perm: %d\n", h->create_perm);
 	p->msglog(LDMSD_LALL, "onp: %p\n", h->onp);
 }
