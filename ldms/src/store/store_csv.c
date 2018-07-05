@@ -276,6 +276,7 @@ static int handleRollover(struct csv_plugin_static *cps){
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
+				ch_output(nfp, tmp_path, CSHC(s_handle), cps);
 
 				notify_output(NOTE_OPEN, tmp_path, NOTE_DAT,
 					CSHC(s_handle), cps, s_handle->container,
@@ -294,6 +295,8 @@ static int handleRollover(struct csv_plugin_static *cps){
 						fclose(nfp);
 						msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
 						       __FILE__, tmp_headerpath);
+					} else {
+						ch_output(nhfp, tmp_headerpath, CSHC(s_handle), cps);
 					}
 					notify_output(NOTE_OPEN, tmp_headerpath,
 						NOTE_HDR, CSHC(s_handle), cps,
@@ -306,6 +309,8 @@ static int handleRollover(struct csv_plugin_static *cps){
 						fclose(nfp);
 						msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
 						       __FILE__, tmp_path);
+					} else {
+						ch_output(nhfp, tmp_path, CSHC(s_handle), cps);
 					}
 					notify_output(NOTE_OPEN, tmp_path, NOTE_HDR,
 						CSHC(s_handle), cps,
@@ -797,6 +802,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"           [buffer=<0/1/N> buffertype=<3/4>]\n"
 		"           [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid]\n"
 		"               rename_perm=<octal-mode>]]\n"
+		"           [create_uid=<int-uid> [create_gid=<int-gid] create_perm=<octal-mode>]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - path      The path to the root of the csv directory\n"
 		"         - altheader Header in a separate file (optional, default 0)\n"
@@ -1045,6 +1051,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		       __FILE__, errno, s_handle->path);
 		goto err2;
 	}
+	ch_output(s_handle->file, tmp_path, CSHC(s_handle), &PG);
 	strcpy(roc.filename, tmp_path);
 	replace_string(&(s_handle->filename), roc.filename);
 
@@ -1082,6 +1089,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 			       __FILE__);
 			goto err3;
 		}
+		ch_output(s_handle->headerfile, tmp_path, CSHC(s_handle), &PG);
 	}
 	replace_string(&(s_handle->headerfilename), roc.headerfilename);
 

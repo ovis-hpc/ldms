@@ -74,7 +74,10 @@
         char *rename_template; \
 	unsigned rename_uid; \
 	unsigned rename_gid; \
-	unsigned rename_perm
+	unsigned rename_perm; \
+	unsigned create_uid; \
+	unsigned create_gid; \
+	unsigned create_perm;
 
 struct storek_common {
 	STOREK_COMMON;
@@ -208,6 +211,13 @@ void rename_output(const char *name, const char *type,
 	struct csv_store_handle_common *s_handle,
 	struct csv_plugin_static *cps);
 
+/**
+ * Chmod/chown a new output file per the create_ parameters.
+ * Failures will be logged; there is no way to detect them here.
+ */
+void ch_output(FILE *f, const char *name,
+	struct csv_store_handle_common *s_handle,
+	struct csv_plugin_static *cps);
 
 /**
  * configurations custom for a container+schema that can override
@@ -244,6 +254,9 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 		"         - rename_uid  The numeric user id for output renaming.\n" \
 		"         - rename_gid  The numeric group id for output renaming.\n" \
 		"         - rename_perm  The octal permission bits for output renaming.\n" \
+		"         - create_uid  The numeric user id for output creation.\n" \
+		"         - create_gid  The numeric group id for output creation.\n" \
+		"         - create_perm  The octal permission bits for output creation.\n" \
 
 
 #define LIB_CTOR_COMMON(cps) \
@@ -253,6 +266,9 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 	cps.rename_uid = 0; \
 	cps.rename_gid = 0; \
 	cps.rename_perm = 0; \
+	cps.create_uid = 0; \
+	cps.create_gid = 0; \
+	cps.create_perm = 0; \
 	cps.hooks_closed = 0
 
 
