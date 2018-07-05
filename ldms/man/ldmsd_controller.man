@@ -243,8 +243,8 @@ attr=<value>
 .TP
 .BI name " name"
 .br
-The update policy name. The policy name should be unique. It is independent of any attributes specified
-for the metric sets or hosts.
+The update policy name. The policy name should be unique. It is independent of
+any attributes specified for the metric sets or hosts.
 .TP
 .BI interval " interval"
 .br
@@ -253,6 +253,19 @@ The update/collect interval
 .BI [offset " offset"]
 .br
 Offset for synchronized aggregation. Optional.
+.TP
+.BI [push " onchange|onpush" ]
+.br
+Push mode: 'onchange' and 'onpush'. 'onchange' means the Updater will get an
+update whenever the set source ends a transaction or pushes the update. 'onpush'
+means the Updater will receive an update only when the set source pushes the
+update. If `push` is used, `auto_interval` cannot be `true`.
+.TP
+.BI [auto_interval " true|false "]
+If true, the updater will schedule set updates according to the update hint. The
+sets with no hints will not be updated. If false, the updater will schedule the
+set updates according to the given interval and offset values. If not specified,
+the value is \fIfalse\fR.
 .RE
 
 .SS Remove an updater from the configuration
