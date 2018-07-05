@@ -685,11 +685,16 @@ static void help_updtr_add()
 		"     [push=]     Push mode: 'onchange' and 'onpush'. 'onchange' means the\n"
 		"                 Updater will get an update whenever the set source ends a\n"
 		"                 transaction or pushes the update. 'onpush' means the Updater\n"
-		"                 will receive an update only when the set source pushes the update.\n"
-		"     [auto_interval=]   [true|false] If true, the updater will schedule\n"
-		"                        set updates according to the update hint. If false,\n"
-		"                        the updater will schedule the set updates according\n"
-		"                        to the default schedule, i.e., the given interval and offset values.\n");
+		"                 will receive an update only when the set source pushes the\n"
+		"                 update. If `push` is used, `auto_interval` cannot be `true`.\n"
+		"    [auto_interval=]   [true|false] If true, the updater will schedule\n"
+		"                       set updates according to the update hint. The sets\n"
+		"                       with no hints will not be updated. If false, the\n"
+		"                       updater will schedule the set updates according to\n"
+		"                       the given interval and offset values. If not\n"
+		"                       specified, the value is `false`.\n"
+		);
+
 }
 
 static void help_updtr_del()

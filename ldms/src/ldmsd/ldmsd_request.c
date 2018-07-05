@@ -2508,29 +2508,27 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (perm_s)
 		perm = strtoul(perm_s, NULL, 0);
 
-	if (auto_interval && (0 == strcasecmp(auto_interval, "false"))) {
-		is_auto_task = 0;
-	} else {
-		if (auto_interval) {
-			if (strcasecmp(auto_interval, "true")) {
-				reqc->errcode = EINVAL;
-				cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					       "The auto_interval option requires "
-					       "either 'true', or 'false'\n");
-				goto send_reply;
-			}
+	if (auto_interval) {
+		if (0 == strcasecmp(auto_interval, "true")) {
 			if (push) {
 				reqc->errcode = EINVAL;
 				cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-					       "auto_interval and push are "
-					       "incompatible options");
+						"auto_interval and push are "
+						"incompatible options");
 				goto send_reply;
 			}
-		}
-		if (push)
-			is_auto_task = 0;
-		else
 			is_auto_task = 1;
+		} else if (0 == strcasecmp(auto_interval, "false")) {
+			is_auto_task = 0;
+		} else {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				       "The auto_interval option requires "
+				       "either 'true', or 'false'\n");
+			goto send_reply;
+		}
+	} else {
+		is_auto_task = 0;
 	}
 	push_flags = 0;
 	if (push) {

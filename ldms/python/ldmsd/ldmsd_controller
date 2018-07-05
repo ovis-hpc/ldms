@@ -397,11 +397,13 @@ class LdmsdCmdParser(cmd.Cmd):
                     Updater will get an update whenever the set source ends a
                     transaction or pushes the update. 'onpush' means the Updater
                     will receive an update only when the set source pushes the
-                    update.
+                    update. If `push` is used, `auto_interval` cannot be `true`.
         [auto_interval=]   [true|false] If true, the updater will schedule
-                           set updates according to the update hint. If false,
-                           the updater will schedule the set updates according
-                           to the default schedule, i.e., the given interval and offset values.
+                           set updates according to the update hint. The sets
+                           with no hints will not be updated. If false, the
+                           updater will schedule the set updates according to
+                           the given interval and offset values. If not
+                           specified, the value is `false`.
         """
         self.handle('updtr_add', arg)
 
