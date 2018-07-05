@@ -20,6 +20,7 @@ ldms_auth_naive.man \
 ldms_quickstart.man \
 ldms_sampler_base.man \
 ldmsd_failover.man \
+ldmsd_setgroup.man \
 Plugin_aries_linkstatus.man \
 Plugin_aries_mmr.man \
 Plugin_array_example.man \

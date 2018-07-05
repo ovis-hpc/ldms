@@ -287,6 +287,12 @@ class LDMSD_Request(object):
     FAILOVER_MOD          =  0x700  +  3
     FAILOVER_STATUS       =  0x700  +  4
 
+    SETGROUP_ADD = 0x800
+    SETGROUP_MOD = 0x800 + 1
+    SETGROUP_DEL = 0x800 + 2
+    SETGROUP_INS = 0x800 + 3
+    SETGROUP_RM  = 0x800 + 4
+
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
             'greeting': {'id': GREETING},
@@ -350,6 +356,12 @@ class LDMSD_Request(object):
             'failover_mod'     :  {'id':  FAILOVER_MOD},
             'failover_status'  :  {'id':  FAILOVER_STATUS},
             'set_route': {'id': SET_ROUTE},
+
+            'setgroup_add'  :  {'id':  SETGROUP_ADD},
+            'setgroup_mod'  :  {'id':  SETGROUP_MOD},
+            'setgroup_del'  :  {'id':  SETGROUP_DEL},
+            'setgroup_ins'  :  {'id':  SETGROUP_INS},
+            'setgroup_rm'   :  {'id':  SETGROUP_RM},
         }
 
     TYPE_CONFIG_CMD = 1
@@ -383,7 +395,7 @@ class LDMSD_Request(object):
         self.packed_attrs_sz = 0 # excluding the terminating attribute
         # Compute the extra size occupied by the attributes and add it
         # to the request size in the request header
-        
+
         # Aggregate the attributes
         if attrs:
             for attr in attrs:

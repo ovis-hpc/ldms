@@ -189,6 +189,12 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req_ctxt);
 int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req_ctxt);
 int failover_heartbeat_handler(ldmsd_req_ctxt_t req_ctxt);
 
+static int setgroup_add_handler(ldmsd_req_ctxt_t req_ctxt);
+static int setgroup_mod_handler(ldmsd_req_ctxt_t req_ctxt);
+static int setgroup_del_handler(ldmsd_req_ctxt_t req_ctxt);
+static int setgroup_ins_handler(ldmsd_req_ctxt_t req_ctxt);
+static int setgroup_rm_handler(ldmsd_req_ctxt_t req_ctxt);
+
 /* executable for all */
 #define XALL 0111
 /* executable for user, and group */
@@ -386,6 +392,23 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_FAILOVER_HEARTBEAT_REQ] = {
 		LDMSD_FAILOVER_HEARTBEAT_REQ, failover_heartbeat_handler, XUG,
+	},
+
+	/* SETGROUP */
+	[LDMSD_SETGROUP_ADD_REQ] = {
+		LDMSD_SETGROUP_ADD_REQ, setgroup_add_handler, XUG,
+	},
+	[LDMSD_SETGROUP_MOD_REQ] = {
+		LDMSD_SETGROUP_MOD_REQ, setgroup_mod_handler, XUG,
+	},
+	[LDMSD_SETGROUP_DEL_REQ] = {
+		LDMSD_SETGROUP_DEL_REQ, setgroup_del_handler, XUG,
+	},
+	[LDMSD_SETGROUP_INS_REQ] = {
+		LDMSD_SETGROUP_INS_REQ, setgroup_ins_handler, XUG,
+	},
+	[LDMSD_SETGROUP_RM_REQ] = {
+		LDMSD_SETGROUP_RM_REQ, setgroup_rm_handler, XUG,
 	},
 };
 
@@ -3532,6 +3555,343 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
 intr_err:
 	ldmsd_send_error_reply(reqc->xprt, reqc->rec_no, EINTR,
 					"interval error", 14);
+	return rc;
+}
+
+static int setgroup_add_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *name = NULL;
+	char *producer = NULL;
+	char *interval = NULL; /* for update hint */
+	char *offset = NULL; /* for update hint */
+	ldms_set_t grp = NULL;
+	long offset_us;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+			"missing `name` attribute");
+		rc = EINVAL;
+		goto out;
+	}
+
+	producer = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PRODUCER);
+	if (!producer) {
+		producer = strdup(ldmsd_myname_get());
+		if (!producer) {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Memory allocation error");
+			rc = ENOMEM;
+			goto out;
+		}
+	}
+
+	grp = ldmsd_group_new(name);
+	if (!grp) {
+		rc = errno;
+		if (errno == EEXIST) {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"A set or a group existed with the given name.");
+		} else {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group creation error: %d", rc);
+		}
+		goto out;
+	}
+	rc = ldms_set_producer_name_set(grp, producer);
+	if (rc) {
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group producer name set error: %d", rc);
+		goto err;
+	}
+	interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
+	offset = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
+	if (interval) {
+		if (offset) {
+			offset_us = atoi(offset);
+		} else {
+			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+		}
+		rc = ldmsd_set_update_hint_set(grp, atoi(interval), offset_us);
+		if (rc) {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Hint update error: %d", rc);
+			goto err;
+		}
+	}
+	rc = ldms_set_publish(grp);
+	if (rc) {
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group set publish error: %d", rc);
+		goto err;
+	}
+	/* rc is 0 */
+	goto out;
+
+err:
+	ldms_set_delete(grp);
+	grp = NULL;
+out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (name)
+		free(name);
+	if (producer)
+		free(producer);
+	if (interval)
+		free(interval);
+	if (offset)
+		free(offset);
+	if (grp)
+		ldms_set_put(grp);
+	return rc;
+}
+
+static int setgroup_mod_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *name = NULL;
+	char *interval = NULL; /* for update hint */
+	char *offset = NULL; /* for update hint */
+	ldms_set_t grp = NULL;
+	long offset_us;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+			"missing `name` attribute");
+		rc = EINVAL;
+		goto out;
+	}
+
+	grp = ldms_set_by_name(name);
+	if (!grp) {
+		rc = errno;
+		if (errno == ENOENT) {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group not found.");
+		} else {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group get error: %d", rc);
+		}
+		goto out;
+	}
+
+	if (0 == (ldmsd_group_check(grp) & LDMSD_GROUP_IS_GROUP)) {
+		/* not a group */
+		rc = EINVAL;
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Not a group");
+		goto out;
+	}
+
+	interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
+	offset = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
+	if (interval) {
+		if (offset) {
+			offset_us = atoi(offset);
+		} else {
+			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+		}
+		rc = ldmsd_set_update_hint_set(grp, atoi(interval), offset_us);
+		if (rc) {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+					"Hint update error: %d", rc);
+			goto err;
+		}
+	}
+	/* rc is 0 */
+	goto out;
+
+err:
+	ldms_set_put(grp);
+	grp = NULL;
+out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (name)
+		free(name);
+	if (interval)
+		free(interval);
+	if (offset)
+		free(offset);
+	if (grp)
+		ldms_set_put(grp);
+	return rc;
+}
+
+static int setgroup_del_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *name = NULL;
+	ldms_set_t grp;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+			"missing `name` attribute");
+		rc = EINVAL;
+		goto out;
+	}
+
+	grp = ldms_set_by_name(name);
+	if (!grp) {
+		rc = errno;
+		if (rc == ENOENT) {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group not found.");
+		} else {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group get error: %d", rc);
+		}
+		goto out;
+	}
+
+	if (0 == (ldmsd_group_check(grp) & LDMSD_GROUP_IS_GROUP)) {
+		/* not a group */
+		rc = EINVAL;
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Not a group");
+		goto out;
+	}
+
+	ldms_set_delete(grp);
+	rc = 0;
+
+out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (name)
+		free(name);
+	return rc;
+}
+
+static int setgroup_ins_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	const char *delim = ",";
+	char *name = NULL;
+	char *instance = NULL;
+	char *sname;
+	char *p;
+	ldms_set_t grp = NULL;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+			"missing `name` attribute");
+		rc = EINVAL;
+		goto out;
+	}
+
+	grp = ldms_set_by_name(name);
+	if (!grp) {
+		rc = errno;
+		if (rc == ENOENT) {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group not found.");
+		} else {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group get error: %d", rc);
+		}
+		goto out;
+	}
+
+	if (0 == (ldmsd_group_check(grp) & LDMSD_GROUP_IS_GROUP)) {
+		/* not a group */
+		rc = EINVAL;
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Not a group");
+		goto out;
+	}
+
+	instance = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
+	sname = strtok_r(instance, delim, &p);
+	while (sname) {
+		rc = ldmsd_group_set_add(grp, sname);
+		if (rc) {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group set insert error: %d", rc);
+			goto out;
+		}
+		sname = strtok_r(NULL, delim, &p);
+	}
+	/* rc is 0 */
+
+out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (name)
+		free(name);
+	if (instance)
+		free(instance);
+	if (grp)
+		ldms_set_put(grp);
+	return rc;
+}
+
+static int setgroup_rm_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	const char *delim = ",";
+	char *name = NULL;
+	char *instance = NULL;
+	char *sname;
+	char *p;
+	ldms_set_t grp = NULL;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+			"missing `name` attribute");
+		rc = EINVAL;
+		goto out;
+	}
+
+	grp = ldms_set_by_name(name);
+	if (!grp) {
+		rc = errno;
+		if (rc == ENOENT) {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group not found.");
+		} else {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group get error: %d", rc);
+		}
+		goto out;
+	}
+
+	if (0 == (ldmsd_group_check(grp) & LDMSD_GROUP_IS_GROUP)) {
+		/* not a group */
+		rc = EINVAL;
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Not a group");
+		goto out;
+	}
+
+	instance = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
+	sname = strtok_r(instance, delim, &p);
+	while (sname) {
+		rc = ldmsd_group_set_rm(grp, sname);
+		if (rc) {
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Group set remove error: %d", rc);
+			goto out;
+		}
+		sname = strtok_r(NULL, delim, &p);
+	}
+	/* rc is 0 */
+
+out:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (name)
+		free(name);
+	if (instance)
+		free(instance);
+	if (grp)
+		ldms_set_put(grp);
 	return rc;
 }
 

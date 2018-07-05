@@ -515,6 +515,11 @@ specified, the value should be a comma separated list of
 host names.
 
 
+.SH SETGROUP COMMAND SYNTAX
+
+Please see \fBldmsd_setgroup\fR(7).
+
+
 .SH MISC COMMAND SYNTAX
 
 .SS Tell the daemon to dump it's internal state to the log file.
@@ -729,4 +734,4 @@ Example to start an ldmsd and use ldmsd_controller to call a script
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldmsctl(8), ldms_quickstart(7)
+ldmsd(8), ldmsctl(8), ldms_quickstart(7), ldmsd_setgroup(7)

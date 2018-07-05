@@ -558,6 +558,13 @@ class LDMSD_Controller(object):
             raise RuntimeError("process not running")
         self.pty.write(s)
 
+    def comm_pty(self, cmd):
+        """Write `cmd` to pty and Read repsonse from the pty"""
+        _cmd = cmd.strip() + "\n"
+        self.write_pty(_cmd)
+        resp = self.read_pty()
+        return resp.splitlines()
+
     def __del__(self):
         if self.proc:
             self.term()

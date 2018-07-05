@@ -1246,6 +1246,48 @@ static void help_failover_status()
 	printf("Get failover status.\n\n");
 }
 
+static void help_setgroup_add()
+{
+	printf("Create a new setgroup.\n");
+	printf("Parameters:\n");
+	printf("    name=           The set group name.\n");
+	printf("    [producer=]     The producer name of the set group.\n");
+	printf("    [interval=]     The update interval hint (in usec).\n");
+	printf("    [offset=]       The update offset hint (in usec).\n");
+}
+
+static void help_setgroup_mod()
+{
+	printf("Modify attributes of a set group.\n");
+	printf("Parameters:\n");
+	printf("    name=           The set group name.\n");
+	printf("    [interval=]     The update interval hint (in usec).\n");
+	printf("    [offset=]       The update offset hint (in usec).\n");
+}
+
+static void help_setgroup_del()
+{
+	printf("Delete a set group\n");
+	printf("Parameters:\n");
+	printf("    name=    The set group name to delete.\n");
+}
+
+static void help_setgroup_ins()
+{
+	printf("Insert sets into the set group\n");
+	printf("Parameters:\n");
+	printf("    name=     The set group name.\n");
+	printf("    instance= The comma-separated list of set instances to add.\n");
+}
+
+static void help_setgroup_rm()
+{
+	printf("Remove sets from the set group\n");
+	printf("Parameters:\n");
+	printf("    name=     The set group name.\n");
+	printf("    instance= The comma-separated list of set instances to remove.\n");
+}
+
 static void __indent_print(int indent)
 {
 	int i;
@@ -1356,6 +1398,11 @@ static struct command command_tbl[] = {
 	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit, resp_generic },
 	{ "script", LDMSCTL_SCRIPT, handle_script, help_script, resp_generic },
 	{ "set_route", LDMSD_SET_ROUTE_REQ, NULL, help_set_route, resp_set_route },
+	{ "setgroup_add", LDMSD_SETGROUP_ADD_REQ, NULL, help_setgroup_add, resp_generic },
+	{ "setgroup_del", LDMSD_SETGROUP_DEL_REQ, NULL, help_setgroup_del, resp_generic },
+	{ "setgroup_ins", LDMSD_SETGROUP_INS_REQ, NULL, help_setgroup_ins, resp_generic },
+	{ "setgroup_mod", LDMSD_SETGROUP_MOD_REQ, NULL, help_setgroup_mod, resp_generic },
+	{ "setgroup_rm",  LDMSD_SETGROUP_RM_REQ,  NULL, help_setgroup_rm,  resp_generic },
 	{ "source", LDMSCTL_SOURCE, handle_source, help_source, resp_generic },
 	{ "start", LDMSD_PLUGN_START_REQ, NULL, help_start, resp_generic },
 	{ "stop", LDMSD_PLUGN_STOP_REQ, NULL, help_stop, resp_generic },

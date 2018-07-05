@@ -25,7 +25,7 @@ ldms_ls_LDFLAGS = $(AM_LDFLAGS) \
 ldmsd_SOURCES = ldmsd.c ldmsd_config.c ldmsd_request.c ldmsd_request_util.c \
 	ldmsd_request.h \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
-	ldmsd_failover.c
+	ldmsd_failover.c ldmsd_group.c
 ldmsd_CFLAGS = $(AM_CFLAGS) -rdynamic
 ldmsd_LDADD = $(CORE)/libldms.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) \

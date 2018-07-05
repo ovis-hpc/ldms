@@ -257,4 +257,8 @@ if ENABLE_LDMS_TEST
 libtest_sampler_la_SOURCES = test_sampler.c
 libtest_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libtest_sampler.la
+
+libgrptest_la_SOURCES = grptest.c $(BASE_SRC)
+libgrptest_la_LIBADD = $(COMMON_LIBADD)
+pkglib_LTLIBRARIES += libgrptest.la
 endif

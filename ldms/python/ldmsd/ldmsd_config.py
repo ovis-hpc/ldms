@@ -153,6 +153,30 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'failover_mod': {'req_attr': [], 'opt_attr': ['auto_switch']},
                       'failover': {'req_attr': [], 'opt_attr': []},
                       'failback': {'req_attr': [], 'opt_attr': []},
+                      'setgroup_add': {
+                                    'req_attr': ['name'],
+                                    'opt_attr': [
+                                        'producer',
+                                        'interval',
+                                        'offset'
+                                    ],
+                            },
+                      'setgroup_mod': {
+                                    'req_attr': ['name'],
+                                    'opt_attr': [
+                                        'interval',
+                                        'offset'
+                                    ],
+                            },
+                      'setgroup_del': {'req_attr': ['name'], 'opt_attr': [] },
+                      'setgroup_ins': {
+                                    'req_attr': ['name'],
+                                    'opt_attr': ['instance']
+                            },
+                      'setgroup_rm':  {
+                                    'req_attr': ['name'],
+                                    'opt_attr': ['instance']
+                            },
                       }
 
 """@var MAX_RECV_LEN
