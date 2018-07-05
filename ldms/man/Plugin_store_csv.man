@@ -28,7 +28,7 @@ The configuration parameters altheader, rolltype, rollover, buffer, buffertype, 
 A subset of these can be overriden by the action=custom values.
 .TP
 .BR config
-name=<plugin_name> action=init path=<path> [ altheader=<0/!0> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]]
+name=<plugin_name> action=init path=<path> [ altheader=<0/!0> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid> [create_gid=<int-gid] create_perm=<octal-mode>]
 .br
 ldmsd_controller configuration line
 .RS
@@ -96,6 +96,19 @@ notify_isfifo=<bool>
 .br
 Default false. If set true, notice_path will be handled in a nonblocking manner as a FIFO.
 .TP
+create_perm=<modebits>
+.br
+Only octal (e.g.0744) specifications are allowed. If unspecified or 0 is given, then no change is made. The default permission is 0600 for data files.
+.TP
+create_uid=<numeric-uid>
+.br
+Specify a new (non-zero) user id for data files. If unspecified or 0 is given, no change in ownership is made.
+Changes in ownership of the files do not affect intermediate directories.
+.TP
+create_gid=<numeric-gid>
+.br
+Specify a new (non-zero) group id for data files. If unspecified or 0 is given, no change in group is made. If create_uid is not given, create_gid is ignored.
+.TP
 rename_template=<metapath>
 .br
 This option provides relocating closed CSV files, typically to a subdirectory, for processing by other tools that watch directories. The metapath template is applied to define a rename after file closure. The rename is limited to location on the same mount point, per the C rename(2) call. The following substitutions in the template are performed: %P by plugin name, %C by container name, %S by schema name, %T by file event notification type, %B by basename(closed-file-name), %D by dirname(closed-file-name), %s by timestamp suffix, if it exists. Errors in template specification will cause the rename to be skipped. As part of the rename process, the mode and ownership of the file may also be adjusted by specifying rename_perm, rename_uid, and rename_gid. Missing intermediate directories will be created if possible. To enable greater flexibility than renaming, the notify option must be used instead of the rename_template option.
@@ -159,6 +172,18 @@ The path for the file event notices. If unspecified, no notices are sent. See NO
 notify_isfifo=<bool>
 .br
 Default false. If set true, notice_path will be handled in a nonblocking manner as a FIFO.
+.TP
+create_perm=<modebits>
+.br
+Overrides the default value set in action = init. Definition is as above.
+.TP
+create_uid=<numeric-uid>
+.br
+Overrides the default value set in action = init. Definition is as above.
+.TP
+create_gid=<numeric-gid>
+.br
+Overrides the default value set in action = init. Definition is as above.
 .TP
 rename_template=<metapath>
 .br
