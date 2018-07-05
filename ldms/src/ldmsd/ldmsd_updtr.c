@@ -114,6 +114,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 {
 	uint64_t gn;
 	ldmsd_prdcr_set_t prd_set = arg;
+	pthread_mutex_lock(&prd_set->lock);
 #ifdef LDMSD_UPDATE_TIME
 	struct timeval end;
 	gettimeofday(&end, NULL);
@@ -132,7 +133,6 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	}
 
 	gn = ldms_set_data_gn_get(set);
-	pthread_mutex_lock(&prd_set->lock);
 	if (prd_set->last_gn == gn) {
 		ldmsd_log(LDMSD_LINFO, "Set %s oversampled.\n", prd_set->inst_name, prd_set->last_gn);
 		goto set_ready;
@@ -149,8 +149,8 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	}
 set_ready:
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
-	pthread_mutex_unlock(&prd_set->lock);
 out:
+	pthread_mutex_unlock(&prd_set->lock);
 	ldmsd_prdcr_set_ref_put(prd_set); /* The ref was taken before update */
 	return;
 }
