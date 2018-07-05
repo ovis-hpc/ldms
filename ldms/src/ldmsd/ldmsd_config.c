@@ -477,6 +477,7 @@ static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 		ldmsd_log(LDMSD_LERROR, "msg_no %d: error %d: %s\n",
 				req_reply->msg_no, req_reply->rsp_err, attr->attr_value);
 	}
+	xprt->rsp_err = req_reply->rsp_err;
 	return 0;
 }
 
@@ -544,6 +545,7 @@ int process_config_file(const char *path, int *lno, int trust)
 	xprt.send_fn = log_response_fn;
 	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
 	xprt.trust = trust;
+	xprt.rsp_err = 0;
 
 next_line:
 	errno = 0;
@@ -618,10 +620,11 @@ parse:
 	for (i = 0; i < req_array->num_reqs; i++) {
 		request = req_array->reqs[i];
 		rc = ldmsd_process_config_request(&xprt, request);
-		if (rc) {
+		if (rc || xprt.rsp_err) {
+			if (!rc)
+				rc = xprt.rsp_err;
 			ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
 					lineno, path);
-			free(request);
 			goto cleanup;
 		}
 		free(request);
