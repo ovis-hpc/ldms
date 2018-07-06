@@ -99,7 +99,8 @@ class LDMSD_Req_Attr(object):
     AUTO_SWITCH = 28
     PEER_NAME = 29
     TIMEOUT_FACTOR = 30
-    LAST = 31
+    AUTO_INTERVAL = 31
+    LAST = 32
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -132,6 +133,7 @@ class LDMSD_Req_Attr(object):
                    'auto_switch': AUTO_SWITCH,
                    'peer_name': PEER_NAME,
                    'timeout_factor': TIMEOUT_FACTOR,
+                   'auto_interval': AUTO_INTERVAL,
                    'TERMINATING': LAST
         }
 

@@ -3284,7 +3284,8 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 			cnt += 1; /* +1 for the comma between updtr json objects */
 		}
 		ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
-		cnt -= 1; /* Get rid of the extra comma count following the last json object. */
+		if (cnt)
+			cnt -= 1; /* Get rid of the extra comma count following the last json object. */
 	}
 	cnt += 2; /* +2 for the [ and ]. */
 
