@@ -3274,18 +3274,19 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 		if (rc)
 			goto err;
 	} else {
+		updtr_count = 0;
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 		for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
+			if (updtr_count)
+				cnt += 1; /* +1 for the comma between updtr json objects */
 			rc = __updtr_task_tree_json_obj(reqc, updtr, __get_json_obj_len_cb, &cnt);
 			if (rc) {
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 				goto err;
 			}
-			cnt += 1; /* +1 for the comma between updtr json objects */
+			updtr_count += 1;
 		}
 		ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
-		if (cnt)
-			cnt -= 1; /* Get rid of the extra comma count following the last json object. */
 	}
 	cnt += 2; /* +2 for the [ and ]. */
 
@@ -3319,7 +3320,7 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 		for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
 			if (updtr_count) {
 				cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
-				rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_len, 0);
+				rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
 				if (rc) {
 					ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 					goto err;
@@ -4371,15 +4372,17 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 			goto err;
 
 	} else {
+		plugn_count = 0;
 		for (list = ldmsd_plugin_set_list_first(); list;
 				list = ldmsd_plugin_set_list_next(list)) {
+			if (plugn_count)
+				cnt += 1;
 			rc = __plugn_sets_json_obj(reqc, list,
 					__get_json_obj_len_cb, (void*)&cnt);
 			if (rc)
 				goto err;
-			cnt += 1; /* +1 for the comma between two json objects */
+			plugn_count += 1;
 		}
-		cnt -= 1; /* -1 substract the extra comma following the last object. */
 	}
 	cnt += 2; /* +2 for '[' and ']' and commas to separate plugin objects */
 
