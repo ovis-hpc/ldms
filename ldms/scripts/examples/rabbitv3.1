@@ -11,10 +11,10 @@ updtr_start name=allhosts
 load name=store_rabbitv3
 config name=store_rabbitv3 usemeta=y metainterval=3 host=localhost port=5672 exchange=amq.topic vhost=priv user=peter pwfile=${AUTHFILE}
 
-strgp_add name=rabbit_meminfo plugin=store_rabbitv3 schema=meminfo policy=meminfo container=bigiron
+strgp_add name=rabbit_meminfo plugin=store_rabbitv3 schema=meminfo container=bigiron
 strgp_prdcr_add name=rabbit_meminfo regex=.*
 strgp_start name=rabbit_meminfo
 
-strgp_add name=rabbit_vmstat plugin=store_rabbitv3 schema=vmstat policy=vmstat container=bigiron
+strgp_add name=rabbit_vmstat plugin=store_rabbitv3 schema=vmstat container=bigiron
 strgp_prdcr_add name=rabbit_vmstat regex=.*
 strgp_start name=rabbit_vmstat

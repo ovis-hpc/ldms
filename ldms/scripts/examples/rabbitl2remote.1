@@ -1,0 +1,30 @@
+prdcr_add name=localhost2 host=localhost type=active xprt=${XPRT} port=${port2} interval=1000000
+prdcr_start name=localhost2
+
+updtr_add name=allhosts interval=1000000 offset=200000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+load name=store_rabbitkw
+config name=store_rabbitkw useserver=y routing_key=ldms.kodiak host=localhost port=5672 exchange=amq.topic vhost=/ user=guest pwfile=${AUTHFILE} extraprops=y logmsg=n retry=1 timeout=2000
+
+
+strgp_add name=rabbit_meminfo plugin=store_rabbitkw schema=meminfo container=bigiron
+strgp_prdcr_add name=rabbit_meminfo regex=.*
+strgp_start name=rabbit_meminfo
+
+strgp_add name=rabbit_array_example plugin=store_rabbitkw schema=array_example container=curlingiron
+strgp_prdcr_add name=rabbit_array_example regex=.*
+strgp_start name=rabbit_array_example
+
+strgp_add name=rabbit_vmstat plugin=store_rabbitkw schema=vmstat container=bigiron
+strgp_prdcr_add name=rabbit_vmstat regex=.*
+strgp_start name=rabbit_vmstat
+
+strgp_add name=rabbit_procnetdev plugin=store_rabbitkw schema=procnetdev container=brandingiron
+strgp_prdcr_add name=rabbit_procnetdev regex=.*
+strgp_start name=rabbit_procnetdev
+
+strgp_add name=rabbit_dstat plugin=store_rabbitkw schema=dstat container=brandingiron
+strgp_prdcr_add name=rabbit_dstat regex=.*
+strgp_start name=rabbit_dstat

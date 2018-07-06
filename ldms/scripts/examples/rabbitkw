@@ -1,0 +1,17 @@
+# rabbitmq-server.service and epmd.service need to be running
+# in the default configuration (insecure) for this test to pass.
+portbase=61090
+AUTHFILE=$TESTDIR/run/authfile
+export AUTHFILE
+echo "secretword=guest" > $AUTHFILE
+chmod 600 $AUTHFILE
+file_created $AUTHFILE
+MESSAGE starting agg and two collectors
+LDMSD 2 3
+LDMSD 1
+LDMS_LS 1
+SLEEP 10
+KILL_LDMSD `seq 2 3`
+SLEEP 1
+KILL_LDMSD 1
+MESSAGE logs and data under ${TESTDIR}
