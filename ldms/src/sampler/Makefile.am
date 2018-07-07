@@ -219,6 +219,9 @@ libprocstat_la_CFLAGS = -I$(builddir) $(AM_CFLAGS)
 pkglib_LTLIBRARIES += libprocstat.la
 endif
 
+if ENABLE_DSTAT
+SUBDIRS += dstat
+endif
 
 if ENABLE_SYSCLASSIB
 libsysclassib_la_SOURCES = sysclassib.c

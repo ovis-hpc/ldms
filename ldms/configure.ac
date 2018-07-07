@@ -103,6 +103,7 @@ OPTION_DEFAULT_ENABLE([procinterrupts], [ENABLE_PROCINTERRUPTS])
 OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
+OPTION_DEFAULT_ENABLE([dstat], [ENABLE_DSTAT])
 OPTION_DEFAULT_ENABLE([procstat], [ENABLE_PROCSTAT])
 OPTION_DEFAULT_ENABLE([llnl-edac], [ENABLE_LLNL_EDAC])
 AM_CONDITIONAL([ENABLE_LLNL], [test "x$ENABLE_LLNL_EDAC_FALSE" = "x#"])
@@ -464,6 +465,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/auth/Makefile
 		 src/store/Makefile src/sampler/Makefile
+		 src/sampler/dstat/Makefile
 		 src/sampler/lustre/Makefile
 		 src/sampler/kokkos/Makefile
 		 src/sampler/job_info/Makefile

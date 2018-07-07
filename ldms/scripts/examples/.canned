@@ -22,6 +22,7 @@ procnfs
 clock.job
 meminfo.job
 procstat.job
+dstat.job
 many
 
 # not yet tested
