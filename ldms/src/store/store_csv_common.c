@@ -848,17 +848,17 @@ void close_store_common(struct csv_store_handle_common *s_handle, struct csv_plu
 
 void print_csv_plugin_common(struct csv_plugin_static *cps)
 {
-	cps->msglog(LDMSD_LALL, "notify: %s\n", cps->notify);
-	cps->msglog(LDMSD_LALL, "notify is fifo: %s\n", cps->notify_isfifo ?
+	cps->msglog(LDMSD_LALL, "%s: notify: %s\n", cps->pname, cps->notify);
+	cps->msglog(LDMSD_LALL, "%s: notify is fifo: %s\n", cps->pname, cps->notify_isfifo ?
 		"true" : "false");
-	cps->msglog(LDMSD_LALL, "rename_template: %s\n", cps->rename_template);
-	cps->msglog(LDMSD_LALL, "rename_uid: %" PRIu32 "\n", cps->rename_uid);
-	cps->msglog(LDMSD_LALL, "rename_gid: %" PRIu32 "\n", cps->rename_gid);
-	cps->msglog(LDMSD_LALL, "rename_perm: %d\n", cps->rename_perm);
-	cps->msglog(LDMSD_LALL, "create_uid: %" PRIu32 "\n", cps->create_uid);
-	cps->msglog(LDMSD_LALL, "create_gid: %" PRIu32 "\n", cps->create_gid);
-	cps->msglog(LDMSD_LALL, "create_perm: %d\n", cps->create_perm);
-	cps->msglog(LDMSD_LALL, "onp: %p\n", cps->onp);
+	cps->msglog(LDMSD_LALL, "%s: rename_template: %s\n", cps->pname, cps->rename_template);
+	cps->msglog(LDMSD_LALL, "%s: rename_uid: %" PRIu32 "\n", cps->pname, cps->rename_uid);
+	cps->msglog(LDMSD_LALL, "%s: rename_gid: %" PRIu32 "\n", cps->pname, cps->rename_gid);
+	cps->msglog(LDMSD_LALL, "%s: rename_perm: %d\n", cps->pname, cps->rename_perm);
+	cps->msglog(LDMSD_LALL, "%s: create_uid: %" PRIu32 "\n", cps->pname, cps->create_uid);
+	cps->msglog(LDMSD_LALL, "%s: create_gid: %" PRIu32 "\n", cps->pname, cps->create_gid);
+	cps->msglog(LDMSD_LALL, "%s: create_perm: %d\n", cps->pname, cps->create_perm);
+	cps->msglog(LDMSD_LALL, "%s: onp: %p\n", cps->pname, cps->onp);
 }
 
 void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv_plugin_static *p)
@@ -869,18 +869,18 @@ void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv
 		p->msglog(LDMSD_LALL, "csv store handle dump: NULL handle.\n");
 		return;
 	}
-	p->msglog(LDMSD_LALL, "csv store handle dump:\n");
-	p->msglog(LDMSD_LALL, "filename: %s\n", h->filename);
-	p->msglog(LDMSD_LALL, "headerfilename: %s\n", h->headerfilename);
-	p->msglog(LDMSD_LALL, "notify:%s\n", h->notify);
-	p->msglog(LDMSD_LALL, "notify_isfifo:%s\n", h->notify_isfifo ?
+	p->msglog(LDMSD_LALL, "%s handle dump:\n", p->pname);
+	p->msglog(LDMSD_LALL, "%s: filename: %s\n", p->pname, h->filename);
+	p->msglog(LDMSD_LALL, "%s: headerfilename: %s\n", p->pname, h->headerfilename);
+	p->msglog(LDMSD_LALL, "%s: notify:%s\n", p->pname, h->notify);
+	p->msglog(LDMSD_LALL, "%s: notify_isfifo:%s\n", p->pname, h->notify_isfifo ?
 			                "true" : "false");
-	p->msglog(LDMSD_LALL, "rename_template:%s\n", h->rename_template);
-	p->msglog(LDMSD_LALL, "rename_uid: %" PRIu32 "\n", h->rename_uid);
-	p->msglog(LDMSD_LALL, "rename_gid: %" PRIu32 "\n", h->rename_gid);
-	p->msglog(LDMSD_LALL, "rename_perm: %d\n", h->rename_perm);
-	p->msglog(LDMSD_LALL, "create_uid: %" PRIu32 "\n", h->create_uid);
-	p->msglog(LDMSD_LALL, "create_gid: %" PRIu32 "\n", h->create_gid);
-	p->msglog(LDMSD_LALL, "create_perm: %d\n", h->create_perm);
-	p->msglog(LDMSD_LALL, "onp: %p\n", h->onp);
+	p->msglog(LDMSD_LALL, "%s: rename_template:%s\n", p->pname, h->rename_template);
+	p->msglog(LDMSD_LALL, "%s: rename_uid: %" PRIu32 "\n", p->pname, h->rename_uid);
+	p->msglog(LDMSD_LALL, "%s: rename_gid: %" PRIu32 "\n", p->pname, h->rename_gid);
+	p->msglog(LDMSD_LALL, "%s: rename_perm: %d\n", p->pname, h->rename_perm);
+	p->msglog(LDMSD_LALL, "%s: create_uid: %" PRIu32 "\n", p->pname, h->create_uid);
+	p->msglog(LDMSD_LALL, "%s: create_gid: %" PRIu32 "\n", p->pname, h->create_gid);
+	p->msglog(LDMSD_LALL, "%s: create_perm: %d\n", p->pname, h->create_perm);
+	p->msglog(LDMSD_LALL, "%s: onp: %p\n", p->pname, h->onp);
 }

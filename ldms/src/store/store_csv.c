@@ -1028,7 +1028,6 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	} else {
 		s_handle->printheader = DO_PRINT_HEADER;
 	}
-	print_csv_store_handle_common(CSHC(s_handle), &PG);
 
 	/* Take the lock in case its a store that has been closed */
 	pthread_mutex_lock(&s_handle->lock);
