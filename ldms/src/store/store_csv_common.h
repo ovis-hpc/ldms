@@ -72,11 +72,11 @@
 	bool notify_isfifo; \
 	/** The full path template for renaming closed outputs. NULL indicates no renames wanted. */ \
         char *rename_template; \
-	unsigned rename_uid; \
-	unsigned rename_gid; \
+	uid_t rename_uid; \
+	gid_t rename_gid; \
 	unsigned rename_perm; \
-	unsigned create_uid; \
-	unsigned create_gid; \
+	uid_t create_uid; \
+	gid_t create_gid; \
 	unsigned create_perm;
 
 struct storek_common {
@@ -260,11 +260,11 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 	cps.notify = NULL; \
 	cps.notify_isfifo = false; \
 	cps.rename_template = false; \
-	cps.rename_uid = 0; \
-	cps.rename_gid = 0; \
+	cps.rename_uid = (uid_t)-1; \
+	cps.rename_gid = (gid_t)-1; \
 	cps.rename_perm = 0; \
-	cps.create_uid = 0; \
-	cps.create_gid = 0; \
+	cps.create_uid = (uid_t)-1; \
+	cps.create_gid = (gid_t)-1; \
 	cps.create_perm = 0; \
 	cps.hooks_closed = 0
 
