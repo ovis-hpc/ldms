@@ -205,7 +205,7 @@ If input_file is not found in the current directory, it is checked for in $docdi
 .TP
 .I $test_dir/logs/vg.$k.%p
 .br
-The valgrind log for the kth daemon, if valgrind is active.
+The valgrind log for the kth daemon with PID %p, if valgrind is active.
 .TP
 .I $test_dir/logs/$k.txt
 .br
