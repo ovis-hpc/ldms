@@ -116,6 +116,12 @@
  */
 #define SCIB_PC_EXT_LAST IB_PC_EXT_LAST_F
 
+typedef enum {
+	SYSCLASSIB_METRICS_COUNTER,
+	SYSCLASSIB_METRICS_BOTH
+} sysclassib_metrics_type_t;
+
+
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_jobid.h"
@@ -157,7 +163,7 @@ const char *all_metric_names[] = {
 /**
  * IB_PC_* to scib index map.
  */
-const int scib_idx[] = {
+static const int scib_idx[] = {
 	/* ignore these two */
 	[IB_PC_PORT_SELECT_F]         =  -1,
 	[IB_PC_COUNTER_SELECT_F]      =  -1,
@@ -250,6 +256,10 @@ struct timeval tv[2];
 struct timeval *tv_now = &tv[0];
 struct timeval *tv_prev = &tv[1];
 
+/*
+ * Which metrics - counter or both. default both.
+ */
+static sysclassib_metrics_type_t sysclassib_metrics_type;
 /**
  * \param setname The set name (e.g. nid00001/sysclassib)
  */
@@ -294,12 +304,14 @@ static int create_metric_set(const char *instance_name, char *schema_name)
 			port->handle[i] = ldms_schema_metric_add(schema, metric_name,
 							  LDMS_V_U64);
 			/* rates */
-			snprintf(metric_name, 128, "ib.%s.rate#%s.%d",
+			if (sysclassib_metrics_type == SYSCLASSIB_METRICS_BOTH) {
+				snprintf(metric_name, 128, "ib.%s.rate#%s.%d",
 					all_metric_names[i],
 					port->ca,
 					port->portno);
-			port->rate[i] = ldms_schema_metric_add(schema, metric_name,
+				port->rate[i] = ldms_schema_metric_add(schema, metric_name,
 							LDMS_V_F32);
+			}
 		}
 	}
 	/* create set and metrics */
@@ -394,6 +406,8 @@ int populate_ports(struct scib_port_list *list, char *ports)
 	while (*s) {
 		rc = sscanf(s, "%63[^.].%d%n", ca, &port_no, &n);
 		if (rc != 2) {
+			msglog(LDMSD_LERROR,"sysclassib: Cannot parse ports:%s."
+				"Need list of NAME.NUM, e.g. qib0.1,qib.1\n",s);
 			rc = EINVAL;  /* invalid format */
 			goto err;
 		}
@@ -477,9 +491,9 @@ int open_port(struct scib_port *port)
 			| IB_PM_EXT_WIDTH_NOIETF_SUP);
 
 	if (!port->ext) {
-		msglog(LDMSD_LERROR, SAMP ": WARNING: Extended query not "
-				"supported for %s:%d, the sampler will reset "
-				"counters every query\n", port->ca, port->portno);
+		msglog(LDMSD_LINFO, SAMP ": WARNING: Extended query not "
+			"supported for %s:%d, the sampler will reset "
+			"counters every query\n", port->ca, port->portno);
 	}
 
 	return 0;
@@ -521,7 +535,7 @@ int open_ports(struct scib_port_list *list)
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return
-"config name=sysclassib producer=<prod_name> instance=<inst_name> ports=<ports> [component_id=<compid> schema=<sname> with_jobid=<bool>]\n"
+"config name=sysclassib producer=<prod_name> instance=<inst_name> ports=<ports> [metrics_type=<mtype>] [component_id=<compid> schema=<sname> with_jobid=<bool>]\n"
 "    <prod_name>     The producer name\n"
 "    <inst_name>     The instance name\n"
 "    <ports>         A comma-separated list of ports (e.g. mlx4_0.1,mlx4_0.2) or\n"
@@ -529,6 +543,7 @@ static const char *usage(struct ldmsd_plugin *self)
 "    <compid>     Optional unique number identifier. Defaults to zero.\n"
 LJI_DESC
 "    <sname>      Optional schema name. Defaults to '" SAMP "'\n"
+"    <mtype>         0 (raw counters) or 1 (raw and also rates, default)\n"
 ;
 }
 
@@ -579,6 +594,16 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
+	value = av_value(avl,"metrics_type");
+	if (value) {
+		sysclassib_metrics_type = atoi(value);
+		if ((sysclassib_metrics_type < SYSCLASSIB_METRICS_COUNTER) ||
+		    (sysclassib_metrics_type > SYSCLASSIB_METRICS_BOTH)) {
+			return EINVAL;
+		}
+	} else {
+		sysclassib_metrics_type = SYSCLASSIB_METRICS_BOTH;
+	}
 	ports = av_value(avl, "ports");
 	if (!ports)
 		ports = "*";
@@ -614,6 +639,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 /**
  * Utility function for updating a single metric in a port.
  */
+static
 inline void update_metric(struct scib_port *port, int idx, uint64_t new_v,
 			float dt)
 {
@@ -621,7 +647,9 @@ inline void update_metric(struct scib_port *port, int idx, uint64_t new_v,
 	if (!port->ext)
 		new_v += old_v;
 	ldms_metric_set_u64(set, port->handle[idx], new_v);
-	ldms_metric_set_float(set, port->rate[idx], (new_v - old_v) / dt);
+	if (sysclassib_metrics_type == SYSCLASSIB_METRICS_BOTH) {
+		ldms_metric_set_float(set, port->rate[idx], (new_v - old_v) / dt);
+	}
 }
 
 /**
