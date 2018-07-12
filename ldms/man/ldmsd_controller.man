@@ -514,6 +514,10 @@ specified, the metric set will be saved for all hosts. If
 specified, the value should be a comma separated list of
 host names.
 
+.SH FAILOVER COMMAND SYNTAX
+
+Please see \fBldmsd_failover\fR(7).
+
 
 .SH SETGROUP COMMAND SYNTAX
 
@@ -734,4 +738,4 @@ Example to start an ldmsd and use ldmsd_controller to call a script
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldmsctl(8), ldms_quickstart(7), ldmsd_setgroup(7)
+ldmsd(8), ldmsctl(8), ldms_quickstart(7), ldmsd_failover(7), ldmsd_setgroup(7)
