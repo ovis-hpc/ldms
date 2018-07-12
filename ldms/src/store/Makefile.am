@@ -48,7 +48,7 @@ libldms_store_csv_common_la_CFLAGS = $(AM_CFLAGS)
 libldms_store_csv_common_la_LIBADD = $(STORE_LIBADD) -lpthread
 lib_LTLIBRARIES += libldms_store_csv_common.la
 
-libstore_csv_la_SOURCES = store_common.h store_csv.c
+libstore_csv_la_SOURCES = store_common.h store_csv.c store_csv_common.h
 libstore_csv_la_CFLAGS = $(AM_CFLAGS)
 libstore_csv_la_LIBADD = $(STORE_LIBADD) $(CSV_COMMON_LIBFLAGS)
 pkglib_LTLIBRARIES += libstore_csv.la

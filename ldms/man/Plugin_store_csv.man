@@ -102,12 +102,12 @@ Only octal (e.g.0744) specifications are allowed. If unspecified or 0 is given, 
 .TP
 create_uid=<numeric-uid>
 .br
-Specify a new (non-zero) user id for data files. If unspecified or 0 is given, no change in ownership is made.
+Specify a new user id for data files. If unspecified, no change in user ownership is made.
 Changes in ownership of the files do not affect intermediate directories.
 .TP
 create_gid=<numeric-gid>
 .br
-Specify a new (non-zero) group id for data files. If unspecified or 0 is given, no change in group is made. If create_uid is not given, create_gid is ignored.
+Specify a new group id for data files. If unspecified, no change in group ownership is made.
 .TP
 rename_template=<metapath>
 .br
@@ -119,12 +119,12 @@ Only octal (e.g.0744) specifications are allowed. If unspecified or 0 is given, 
 .TP
 rename_uid=<numeric-uid>
 .br
-Specify a new (non-zero) user id for the file. If unspecified or 0 is given, no change in ownership is made.
+Specify a new user id for the file. If unspecified, no change in user ownership is made.
 Changes in ownership of the files do not affect intermediate directories that might be created following the template.
 .TP
 rename_gid=<numeric-gid>
 .br
-Specify a new (non-zero) group id for the file. If unspecified or 0 is given, no change in group is made. If rename_uid is not given, rename_gid is ignored.
+Specify a new group id for the file. If unspecified, no change in group ownership is made.
 
 .RE
 
@@ -315,7 +315,7 @@ The 'sequence' option has been removed.
 There is a maximum of 20 concurrent CSV stores.
 
 .SH IMPERFECT FEATURES
-The rename options do not accept symbolic mode changes or uid or gid.
+The rename and create options do not accept symbolic permissions, uid, or gid.
 
 .SH EXAMPLES
 .PP

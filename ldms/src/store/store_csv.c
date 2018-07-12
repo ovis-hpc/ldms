@@ -994,6 +994,10 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		s_handle->store_count = 0;
 		s_handle->byte_count = 0;
 		s_handle->lastflush = 0;
+		s_handle->create_uid = (uid_t)-1;
+		s_handle->create_gid = (gid_t)-1;
+		s_handle->rename_uid = (uid_t)-1;
+		s_handle->rename_gid = (gid_t)-1;
 
 		idx = -1;
 		for (i = 0; i < nspecialkeys; i++){
@@ -1012,6 +1016,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 			s_handle->udata = specialkeys[idx].udata;
 			s_handle->buffer_sz = specialkeys[idx].buffer_sz;
 			s_handle->buffer_type = specialkeys[idx].buffer_type;
+			csv_update_handle_common(CSHC(s_handle), CSKC(&specialkeys[idx]), &PG);
 		} else {
 			s_handle->altheader = altheader;
 			s_handle->udata = udata;
