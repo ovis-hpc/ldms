@@ -305,7 +305,7 @@ static int create_metric_set(base_data_t base)
 					port->ca,
 					port->portno);
 				port->rate[i] = ldms_schema_metric_add(schema, metric_name,
-							LDMS_V_F32);
+							LDMS_V_D64);
 			}
 		}
 	}
@@ -616,21 +616,21 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
  */
 static
 inline void update_metric(struct scib_port *port, int idx, uint64_t new_v,
-			float dt)
+			double dt)
 {
 	uint64_t old_v = ldms_metric_get_u64(set, port->handle[idx]);
 	if (!port->ext)
 		new_v += old_v;
 	ldms_metric_set_u64(set, port->handle[idx], new_v);
 	if (sysclassib_metrics_type == SYSCLASSIB_METRICS_BOTH) {
-		ldms_metric_set_float(set, port->rate[idx], (new_v - old_v) / dt);
+		ldms_metric_set_double(set, port->rate[idx], ((double)new_v - (double)old_v) / dt);
 	}
 }
 
 /**
  * Port query (utility function).
  */
-int query_port(struct scib_port *port, float dt)
+int query_port(struct scib_port *port, double dt)
 {
 	void *p;
 	int rc;
@@ -705,7 +705,7 @@ static int sample(struct ldmsd_sampler *self)
 {
 	struct timeval *tmp;
 	struct timeval tv_diff;
-	float dt;
+	double dt;
 	struct scib_port *port;
 
 	if (!set) {
@@ -715,7 +715,7 @@ static int sample(struct ldmsd_sampler *self)
 
 	gettimeofday(tv_now, 0);
 	timersub(tv_now, tv_prev, &tv_diff);
-	dt = tv_diff.tv_sec + tv_diff.tv_usec / 1e06f;
+	dt = (double)tv_diff.tv_sec + tv_diff.tv_usec / 1.0e06;
 
 	base_sample_begin(base);
 	LIST_FOREACH(port, &scib_port_list, entry) {
