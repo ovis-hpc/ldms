@@ -33,8 +33,15 @@ endif
 if ENABLE_RABBITV3
 libstore_rabbitv3_la_SOURCES = store_rabbitv3.c rabbit_utils.c rabbit_utils.h
 libstore_rabbitv3_la_CFLAGS = $(AM_CFLAGS)
-libstore_rabbitv3_la_LIBADD = -lrabbitmq $(STORE_LIBADD)
+libstore_rabbitv3_la_LIBADD = -lrabbitmq $(STORE_LIBADD) @OVIS_AUTH_LIBS@
 pkglib_LTLIBRARIES += libstore_rabbitv3.la
+endif
+
+if ENABLE_RABBITKW
+libstore_rabbitkw_la_SOURCES = store_rabbitkw.c rabbit_utils.c rabbit_utils.h
+libstore_rabbitkw_la_CFLAGS = $(AM_CFLAGS)
+libstore_rabbitkw_la_LIBADD = -lrabbitmq $(STORE_LIBADD) @OVIS_AUTH_LIBS@
+pkglib_LTLIBRARIES += libstore_rabbitkw.la
 endif
 
 if ENABLE_CSV

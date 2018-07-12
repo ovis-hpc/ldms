@@ -160,6 +160,7 @@ struct csv_store_handle {
 	void *ucontext;
 	int buffer_type;
 	int buffer_sz;
+	bool conflict_warned;
 	int64_t lastflush;
 	int64_t store_count;
 	int64_t byte_count;
@@ -545,7 +546,6 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 
 
 static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
-	int rc;
 	int tempbs;
 	int tempbt;
 
@@ -1615,7 +1615,14 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				s_handle->byte_count += rc;
 			break;
 		default:
-			// print no value
+			if (!s_handle->conflict_warned) {
+				msglog(LDMSD_LERROR, PNAME ":  metric id %d: no name at list index %d.\n", metric_array[i], i);
+				msglog(LDMSD_LERROR, PNAME ": reconfigure to resolve schema definition conflict for schema=%s and instance=%s.\n",
+					ldms_set_schema_name_get(set),
+					ldms_set_instance_name_get(set));
+				s_handle->conflict_warned = true;
+			}
+			/* print no value */
 			if (s_handle->udata) {
 				rcu = fprintf(s_handle->file, ",");
 				if (rcu < 0)

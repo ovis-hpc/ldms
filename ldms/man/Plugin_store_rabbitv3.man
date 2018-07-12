@@ -75,7 +75,7 @@ The number of seconds between emission of time and host invariant (meta) metrics
 
 .TP
 .BR store
-name=<plugin_name> schema=<schema_name> policy=<policy> container=<container>
+name=<plugin_name> schema=<schema_name> container=<container>
 .br
 .RS
 .TP
@@ -86,10 +86,6 @@ This MUST be store_rabbitv3.
 schema=<schema_name>
 .br
 The name of the metric group, independent of the host name.
-.TP
-policy=<policy>
-.br
-Name of the policy filtering output.
 .TP
 container=<container>
 .br

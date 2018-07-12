@@ -1,0 +1,35 @@
+# rabbitmq-server.service and epmd.service need to be running
+# in the default configuration (insecure) for this test to pass.
+portbase=61094
+AUTHFILE=$TESTDIR/run/authfile
+export AUTHFILE
+echo "secretword=guest" > $AUTHFILE
+chmod 600 $AUTHFILE
+file_created $AUTHFILE
+MESSAGE starting l1, l2 aggs and collectors
+VGARGS="--tool=drd "
+VGARGS="--track-origins=yes "
+# start collector(s)
+maxdaemon=68
+#maxdaemon=3
+DAEMONS `seq 1 $maxdaemon`
+LDMSD_EXTRA="-m 20k"
+LDMSD -s 100000 -c `seq 3 $maxdaemon`
+# scale m to handle maxdaemon
+LDMSD_EXTRA="-P 8 -m 1M"
+# start L2
+#vgon
+LDMSD 1
+#vgoff
+# start L1
+#vgon
+LDMSD -s 3000000 -P producer,`seq -s, 3 $maxdaemon` 2
+#vgoff
+SLEEP 1
+LDMS_LS 1
+SLEEP 10
+KILL_LDMSD 1
+SLEEP 1
+KILL_LDMSD `seq 3 $maxdaemon` 2
+SLEEP 1
+MESSAGE logs and data under ${TESTDIR}

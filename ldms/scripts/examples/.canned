@@ -17,6 +17,9 @@ synthetic
 edac
 fptrans
 procnfs
+rabbitkw
+rabbitl2remote
+rabbitv3
 
 # working with job metrics
 clock.job
