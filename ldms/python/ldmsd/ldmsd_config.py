@@ -325,10 +325,25 @@ class ldmsdInbandConfig(ldmsdConfig):
             _args.update(attrs)
         _args.update(kwargs)
         _attrs = dict()
-        for k, v in _args.iteritems():
-            _k = str(k)
-            a = LDMSD_Req_Attr(attr_name = _k, value = str(v))
-            _attrs[_k] = a
+        if cmd == "config":
+            if 'name' in _args.keys():
+                # Let ldmsd handle the case that the attribute 'name' isn't given.
+                _attrs["name"] = LDMSD_Req_Attr(attr_name = "name", value = str(_args['name']))
+                _args.pop('name')
+            l = list()
+            for k, v in _args.iteritems():
+                l.append("%s=%s" % (str(k), str(v)))
+            _attrs["string"] = LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.STRING, value = " ".join(l))
+        elif cmd == "env":
+            l = list()
+            for k, v in _args.iteritems():
+                l.append("%s=%s" % (str(k), str(v)))
+            _attrs["string"] = LDMSD_Req_Attr(attr_id = LDMSD_Req_Attr.STRING, value = " ".join(l))
+        else:
+            for k, v in _args.iteritems():
+                _k = str(k)
+                a = LDMSD_Req_Attr(attr_name = _k, value = str(v))
+                _attrs[_k] = a
         cmd = LDMSD_Request(command=cmd, attrs = _attrs.values())
         cmd.send(self)
         resp = cmd.receive(self)
