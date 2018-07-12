@@ -67,6 +67,7 @@
 #include <assert.h>
 #include <netdb.h>
 #include <time.h>
+#include <ctype.h>
 #include "json_parser/json.h"
 #include "ldms.h"
 #include "ldmsd_request.h"
