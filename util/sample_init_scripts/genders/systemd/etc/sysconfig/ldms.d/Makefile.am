@@ -11,6 +11,7 @@ ldmsd \
 ldms-functions \
 ldmsd.local.conf \
 ldmsd.agg.conf \
+ldmsd.all_instances.conf.example \
 README
 endif
 
