@@ -935,8 +935,11 @@ static void term(struct ldmsd_plugin *self)
 	int i;
 	if (set_array) {
 		for (i = 0; i < num_sets; i++) {
-			if (set_array[i])
+			if (set_array[i]) {
+				ldmsd_set_deregister(ldms_set_instance_name_get(set_array[i]),
+							"test_sampler");
 				ldms_set_delete(set_array[i]);
+			}
 			set_array[i] = NULL;
 		}
 		free(set_array);
@@ -945,6 +948,7 @@ static void term(struct ldmsd_plugin *self)
 	ts = LIST_FIRST(&set_list);
 	while (ts) {
 		LIST_REMOVE(ts, entry);
+		ldmsd_set_deregister(ts->name, "test_sampler");
 		ldms_set_delete(ts->set);
 		free(ts->name);
 		free(ts);
