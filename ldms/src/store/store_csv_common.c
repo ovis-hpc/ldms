@@ -291,18 +291,16 @@ void rename_output(const char *name,
 		}
 	}
 	
-	gid_t newgid = (gid_t) (s_handle->rename_gid ? s_handle->rename_gid : cps->rename_gid);
-	gid_t newuid = (uid_t) (s_handle->rename_uid ? s_handle->rename_uid : cps->rename_uid);
-	if (newuid > 0)
+	gid_t newgid = s_handle->rename_gid != (gid_t)-1 ? s_handle->rename_gid : cps->rename_gid;
+	uid_t newuid = s_handle->rename_uid != (uid_t)-1 ? s_handle->rename_uid : cps->rename_uid;
+	if (newuid != (uid_t)-1 || newgid != (gid_t)-1)
 	{
-		if (newgid == 0)
-			newgid = -1;
 		errno = 0;
 		int merr = chown(name, newuid, newgid);
 		int rc = errno;
 		if (merr) {
 			strerror_r(rc, errbuf, EBSIZE);
-			cps->msglog(LDMSD_LERROR,"rename_output: unable to chown(%s,%u, %u): %s.\n",
+			cps->msglog(LDMSD_LERROR,"rename_output: unable to chown(%s, %u, %u): %s.\n",
 				name, newuid, newgid, errbuf);
 		}
 	}
@@ -465,20 +463,20 @@ void ch_output(FILE *f, const char *name,
 		}
 	}
 	
-	gid_t newgid = (gid_t) (s_handle->create_gid ? s_handle->create_gid : cps->create_gid);
-	gid_t newuid = (uid_t) (s_handle->create_uid ? s_handle->create_uid : cps->create_uid);
-	if (newuid > 0)
+	gid_t newgid = s_handle->create_gid != (gid_t)-1 ? s_handle->create_gid : cps->create_gid;
+	uid_t newuid = s_handle->create_uid != (uid_t)-1 ? s_handle->create_uid : cps->create_uid;
+	if (newuid != (uid_t)-1 || newgid != (gid_t)-1)
 	{
-		if (newgid == 0)
-			newgid = -1;
 		errno = 0;
 		int merr = fchown(fd, newuid, newgid);
 		int rc = errno;
 		if (merr) {
 			strerror_r(rc, errbuf, EBSIZE);
-			cps->msglog(LDMSD_LERROR,"ch_output: unable to chown(%s,%u, %u): %s.\n",
-				name, newuid, newgid, errbuf);
+			cps->msglog(LDMSD_LERROR,"ch_output: unable to fchown(%d, (%s),%lu, %lu): %s.\n",
+				fd, name, newuid, newgid, errbuf);
 		}
+		cps->msglog(LDMSD_LDEBUG,"ch_output: fchown(%d, (%s),%lu, %lu): %s.\n",
+			fd, name, newuid, newgid, errbuf);
 	}
 }
 
@@ -489,6 +487,21 @@ struct swap_data {
 	struct old_file *old;
 	struct csv_plugin_static *cps;
 };
+
+void csv_update_handle_common(struct csv_store_handle_common *h, struct storek_common *s, struct csv_plugin_static *cps)
+{
+	if (!h || !cps)
+		return;
+	if (s) {
+		h->notify_isfifo = s->notify_isfifo;
+		h->rename_uid = s->rename_uid;
+		h->rename_gid = s->rename_gid;
+		h->rename_perm = s->rename_perm;
+		h->create_uid = s->create_uid;
+		h->create_gid = s->create_gid;
+		h->create_perm = s->create_perm;
+	}
+}
 
 
 /**
@@ -568,28 +581,28 @@ int config_custom_common(struct attr_value_list *kwl, struct attr_value_list *av
 	char * rename_gval = av_value(avl, "rename_gid");
 	char * rename_pval = av_value(avl, "rename_perm");
 	if (rename_uval) {
-		int uid = atoi(rename_uval);
-		if (uid < 1 || uid > USHRT_MAX) {
+		long long uid = atoll(rename_uval);
+		if (uid < 0 || uid > UINT_MAX) {
 			rc = EINVAL;
-			sk->rename_uid = 0;
+			sk->rename_uid = (uid_t)-1;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_custom_common ignoring bad rename_uid=%s\n",
 				cps->pname, rename_uval);
 		} else {
-			sk->rename_uid = uid;
+			sk->rename_uid = (uid_t)uid;
 		}
 	}
 
 	if (rename_gval) {
-		int gid = atoi(rename_gval);
-		if (gid < 1 || gid > USHRT_MAX) {
+		long long gid = atoll(rename_gval);
+		if (gid < 0 || gid > UINT_MAX) {
 			rc = EINVAL;
-			sk->rename_gid = 0;
+			sk->rename_gid = (gid_t)-1;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_custom_common ignoring bad rename_gid=%s\n",
 				cps->pname, rename_gval);
 		} else {
-			sk->rename_gid = gid;
+			sk->rename_gid = (gid_t)gid;
 		}
 	}
 
@@ -610,28 +623,34 @@ int config_custom_common(struct attr_value_list *kwl, struct attr_value_list *av
 	char * create_gval = av_value(avl, "create_gid");
 	char * create_pval = av_value(avl, "create_perm");
 	if (create_uval) {
-		int uid = atoi(create_uval);
-		if (uid < 1 || uid > USHRT_MAX) {
+		long long uid = atoll(create_uval);
+		if (uid < 0 || uid > UINT_MAX) {
 			rc = EINVAL;
-			sk->create_uid = 0;
+			sk->create_uid = (uid_t)-1;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_custom_common ignoring bad create_uid=%s\n",
 				cps->pname, create_uval);
 		} else {
-			sk->create_uid = uid;
+			sk->create_uid = (uid_t)uid;
+			cps->msglog(LDMSD_LDEBUG,
+				"%s: config_custom_common create_uid=%s\n",
+				cps->pname, create_uval);
 		}
 	}
 
 	if (create_gval) {
-		int gid = atoi(create_gval);
-		if (gid < 1 || gid > USHRT_MAX) {
+		long long gid = atoll(create_gval);
+		if (gid < 0 || gid > UINT_MAX) {
 			rc = EINVAL;
-			sk->create_gid = 0;
+			sk->create_gid = (gid_t)-1;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_custom_common ignoring bad create_gid=%s\n",
 				cps->pname, create_gval);
 		} else {
-			sk->create_gid = gid;
+			sk->create_gid = (gid_t)gid;
+			cps->msglog(LDMSD_LDEBUG,
+				"%s: config_custom_common create_gid=%s\n",
+				cps->pname, create_gval);
 		}
 	}
 
@@ -668,6 +687,7 @@ void clear_storek_common(struct storek_common *s)
  */
 int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg, struct csv_plugin_static *cps)
 {
+	(void)arg;
 	if (!cps || !avl)
 		return EINVAL;
 
@@ -715,32 +735,32 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 	char * rename_gval = av_value(avl, "rename_gid");
 	char * rename_pval = av_value(avl, "rename_perm");
 	if (!rename_uval) {
-		cps->rename_uid = 0;
+		cps->rename_uid = (uid_t)-1;
 	} else {
-		int uid = atoi(rename_uval);
-		if (uid < 1 || uid > USHRT_MAX) {
+		long long uid = atoll(rename_uval);
+		if (uid < 0 || uid > UINT_MAX) {
 			rc = EINVAL;
-			cps->rename_uid = 0;
+			cps->rename_uid = (uid_t)-1;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_init_common ignoring bad rename_uid=%s\n",
 				cps->pname, rename_uval);
 		} else {
-			cps->rename_uid = uid;
+			cps->rename_uid = (uid_t)uid;
 		}
 	}
 
 	if (!rename_gval) {
-		cps->rename_gid = 0;
+		cps->rename_gid = (gid_t)-1;
 	} else {
-		int gid = atoi(rename_gval);
-		if (gid < 1 || gid > USHRT_MAX) {
+		long long gid = atoll(rename_gval);
+		if (gid < 0 || gid > UINT_MAX) {
 			rc = EINVAL;
-			cps->rename_gid = 0;
+			cps->rename_gid = (gid_t)-1;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_init_common ignoring bad rename_gid=%s\n",
 				cps->pname, rename_gval);
 		} else {
-			cps->rename_gid = gid;
+			cps->rename_gid = (gid_t)gid;
 		}
 	}
 
@@ -763,32 +783,38 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 	char * create_gval = av_value(avl, "create_gid");
 	char * create_pval = av_value(avl, "create_perm");
 	if (!create_uval) {
-		cps->create_uid = 0;
+		cps->create_uid = (uid_t)-1;
 	} else {
-		int uid = atoi(create_uval);
-		if (uid < 1 || uid > USHRT_MAX) {
+		long long uid = atoll(create_uval);
+		if (uid < 0 || uid > UINT_MAX) {
 			rc = EINVAL;
-			cps->create_uid = 0;
+			cps->create_uid = (uid_t)-1;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_init_common ignoring bad create_uid=%s\n",
 				cps->pname, create_uval);
 		} else {
-			cps->create_uid = uid;
+			cps->create_uid = (uid_t)uid;
+			cps->msglog(LDMSD_LDEBUG,
+				"%s: config_init_common create_uid=%s %lu\n",
+				cps->pname, create_uval, cps->create_uid);
 		}
 	}
 
 	if (!create_gval) {
-		cps->create_gid = 0;
+		cps->create_gid = (gid_t)-1;
 	} else {
-		int gid = atoi(create_gval);
-		if (gid < 1 || gid > USHRT_MAX) {
+		long long gid = atoll(create_gval);
+		if (gid < 0 || gid > UINT_MAX) {
 			rc = EINVAL;
-			cps->create_gid = 0;
+			cps->create_gid = (gid_t)-1;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_init_common ignoring bad create_gid=%s\n",
 				cps->pname, create_gval);
 		} else {
-			cps->create_gid = gid;
+			cps->create_gid = (gid_t)gid;
+			cps->msglog(LDMSD_LDEBUG,
+				"%s: config_init_common create_gid=%s %lu\n",
+				cps->pname, create_gval, cps->create_gid);
 		}
 	}
 
@@ -834,11 +860,11 @@ void print_csv_plugin_common(struct csv_plugin_static *cps)
 	cps->msglog(LDMSD_LALL, "notify is fifo: %s\n", cps->notify_isfifo ?
 		"true" : "false");
 	cps->msglog(LDMSD_LALL, "rename_template: %s\n", cps->rename_template);
-	cps->msglog(LDMSD_LALL, "rename_uid: %d\n", cps->rename_uid);
-	cps->msglog(LDMSD_LALL, "rename_gid: %d\n", cps->rename_gid);
+	cps->msglog(LDMSD_LALL, "rename_uid: %" PRIu32 "\n", cps->rename_uid);
+	cps->msglog(LDMSD_LALL, "rename_gid: %" PRIu32 "\n", cps->rename_gid);
 	cps->msglog(LDMSD_LALL, "rename_perm: %d\n", cps->rename_perm);
-	cps->msglog(LDMSD_LALL, "create_uid: %d\n", cps->create_uid);
-	cps->msglog(LDMSD_LALL, "create_gid: %d\n", cps->create_gid);
+	cps->msglog(LDMSD_LALL, "create_uid: %" PRIu32 "\n", cps->create_uid);
+	cps->msglog(LDMSD_LALL, "create_gid: %" PRIu32 "\n", cps->create_gid);
 	cps->msglog(LDMSD_LALL, "create_perm: %d\n", cps->create_perm);
 	cps->msglog(LDMSD_LALL, "onp: %p\n", cps->onp);
 }
@@ -858,11 +884,11 @@ void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv
 	p->msglog(LDMSD_LALL, "notify_isfifo:%s\n", h->notify_isfifo ?
 			                "true" : "false");
 	p->msglog(LDMSD_LALL, "rename_template:%s\n", h->rename_template);
-	p->msglog(LDMSD_LALL, "rename_uid: %d\n", h->rename_uid);
-	p->msglog(LDMSD_LALL, "rename_gid: %d\n", h->rename_gid);
+	p->msglog(LDMSD_LALL, "rename_uid: %" PRIu32 "\n", h->rename_uid);
+	p->msglog(LDMSD_LALL, "rename_gid: %" PRIu32 "\n", h->rename_gid);
 	p->msglog(LDMSD_LALL, "rename_perm: %d\n", h->rename_perm);
-	p->msglog(LDMSD_LALL, "create_uid: %d\n", h->create_uid);
-	p->msglog(LDMSD_LALL, "create_gid: %d\n", h->create_gid);
+	p->msglog(LDMSD_LALL, "create_uid: %" PRIu32 "\n", h->create_uid);
+	p->msglog(LDMSD_LALL, "create_gid: %" PRIu32 "\n", h->create_gid);
 	p->msglog(LDMSD_LALL, "create_perm: %d\n", h->create_perm);
 	p->msglog(LDMSD_LALL, "onp: %p\n", h->onp);
 }
