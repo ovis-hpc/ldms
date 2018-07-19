@@ -117,7 +117,6 @@ static char *routing_key_path; /**< store routing_key path */
 static char *host_name; /**< store hostname */
 static char *vhost; /**< broker vhost name */
 static char *pwfile; /**< broker secretword file */
-static int heartbeat = 0; /** broker heartbeat */
 static bool doserver = true; /** bypass server calls if false */
 static bool logmsg = false;
 static char *rmq_exchange; /**< store queue */
@@ -126,7 +125,8 @@ static ldmsd_msg_log_f msglog;
 #define SHORTSTR_MAX 255 /* from amqp 091 spec */
 
 #define PWSIZE 256
-#define TIMEOUT_DEFAULT_SEC 1
+#define HEARTBEAT_DEFAULT_SEC 10
+#define TIMEOUT_DEFAULT_SEC 10
 #define TIMEOUT_DEFAULT_USEC 0
 #define RETRY_DEFAULT 60
 /* The rabbit amqp implementation is not thread safe. lock around this.
@@ -136,11 +136,12 @@ static struct amqp_connection_state {
 	int amqp_port;
 	int retry_sec; /** seconds before retrying to connect to amqp server */
 	int broker_failed; /** Connecting to broker failed or failure in messaging */
+	int heartbeat; /** how often to check server heartbeat, but not checked between messages */
 	time_t next_connect; /** Time after which to try again connecting. */
 	struct timeval timeout;
 	char user[PWSIZE];
 	char pw[PWSIZE];
-} as = { NULL, 0, RETRY_DEFAULT, 0, 0};
+} as = { NULL, 0, RETRY_DEFAULT, 0, HEARTBEAT_DEFAULT_SEC, 0};
 
 /* valid to use only when config completes successfully. */
 static
@@ -338,7 +339,7 @@ static int make_connection()
 		status = lrmq_die_on_amqp_error(msglog, amqp_login(as.conn,
 				vhost,
 				AMQP_DEFAULT_MAX_CHANNELS,
-				AMQP_DEFAULT_FRAME_SIZE, heartbeat,
+				AMQP_DEFAULT_FRAME_SIZE, as.heartbeat,
 				AMQP_SASL_METHOD_PLAIN, as.user, as.pw),
 				"Logging in");
 		if (status < 0 ) {
@@ -486,9 +487,22 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		}
 	}
 
-	msglog(LDMSD_LINFO, STOR ": config timeout=%d retry=%d\n", 
+	as.heartbeat = HEARTBEAT_DEFAULT_SEC;
+	rt = av_value(avl, "heartbeat");
+	if (rt) {
+		int rts = atoi(rt);
+		if (rts < 0) {
+			msglog(LDMSD_LERROR,
+				STOR ": config heartbeat=%s invalid.\n", rts);
+			return EINVAL;
+		} else {
+			as.heartbeat = rts;
+		}
+	}
+
+	msglog(LDMSD_LINFO, STOR ": config timeout=%d retry=%d heartbeat=%d\n", 
 		(int)(1000*as.timeout.tv_sec + as.timeout.tv_usec/1000),
-		as.retry_sec);
+		as.retry_sec, as.heartbeat);
 	sprintf(as.pw, "guest");
 	pwfile = av_value(avl, "pwfile");
 	if (pwfile) {
