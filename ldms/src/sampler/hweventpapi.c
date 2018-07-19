@@ -100,6 +100,7 @@ static char inot_buffer[16];
 static char *metadata_filename;
 char *producer_name;
 static base_data_t base;
+FILE *file = NULL;
 
 struct attr_value_list *av_list_local;
 struct attr_value_list *kw_list_local;
@@ -639,8 +640,8 @@ int config_local(struct attr_value_list *kwl,
 	struct attr_value_list * avl)
 {
 	int rc;
-	char *instance_name;
-	char *schema_name;
+	char *instance_name = NULL;
+	char *schema_name = NULL;
 	char *events;
 	char *maxpids;
 	char *multiplx;
@@ -876,6 +877,8 @@ static int create_event_sets()
 			pclose(pipe_fp1);
 		}
 	}
+	if (command)
+                free(command);
 	return 0;
 }
 
@@ -927,7 +930,6 @@ static int sample(struct ldmsd_sampler * self)
 	int rc, c;
 	int pid0_exist;
 	int err;
-	FILE *file;
 	struct stat file_stat;
 	struct sampler_meta *meta = NULL;
 
@@ -1144,6 +1146,9 @@ err1:
 
 static void term(struct ldmsd_plugin * self)
 {
+	if (file)
+		fclose(file);
+
 	if (papi_event_set) {
 		PAPI_destroy_eventset(&papi_event_set);
 		PAPI_shutdown();
