@@ -1,10 +1,11 @@
 
 # consider adding ldmsd to bin_SCRIPTS if ldmsd script ever stabilizes
-EXTRA_DIST=@OVIS_EXTRA_DIST@ examples
+EXTRA_DIST=@OVIS_EXTRA_DIST@ examples lsdate
 
 if ENABLE_SCRIPTS
 sbin_SCRIPTS= ldms-wrapper
 bin_SCRIPTS= envldms.sh
+bin_SCRIPTS += lsdate
 bin_SCRIPTS += ldms-static-test.sh
 
 DISTCLEANFILES = $(bin_SCRIPTS) $(sbin_SCRIPTS)
@@ -18,6 +19,9 @@ bin_SCRIPTS += ldms-py-subset_test.sh
 bin_SCRIPTS += ldms-py-syslog.sh
 bin_SCRIPTS += ldms-meminfo.sh
 bin_SCRIPTS += ldms-py-rename.sh
+
+lsdate: ${srcdir}/lsdate
+	cp ${srcdir}/lsdate .
 
 install-data-local:
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/examples/static-test && \

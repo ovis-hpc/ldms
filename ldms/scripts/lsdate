@@ -1,0 +1,21 @@
+#! /usr/bin/bash
+# show trailing utc sec with readable dates.
+# files without trailing 10 digit seconds are listed plain.
+# allows usual ls options, but may annoy a bit with ls -l.
+
+raw=`mktemp`
+/usr/bin/ls -1 $*  > $raw
+if test -f $raw; then
+        while read -r f; do
+                g=`echo $f | sed -e 's/.[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$//'`
+                if test "x$g" = "x$f"; then
+                        echo $f
+                else
+			epoch=`echo $f | sed -e 's/.*\([0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$\)/\1/'`
+                        cdate=`date +%F:%H-%M-%S:%z --date=@$epoch`
+			echo "$f  ($g.$cdate)"
+                fi
+        done < $raw
+	/usr/bin/rm $raw
+fi
+
