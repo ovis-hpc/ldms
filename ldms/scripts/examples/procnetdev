@@ -1,6 +1,9 @@
 # This test produces inconsistent sets that the store_csv does not
 # handle correctly.
 export plugname=procnetdev
+IFACES=`ifconfig -a |grep UP |sed -e 's/:.*//g' | tr -s '[:space:]' , | sed -e 's/,$//g'`
+export IFACES
+
 portbase=61024
 LDMSD 1 2
 MESSAGE ldms_ls on host 1:
