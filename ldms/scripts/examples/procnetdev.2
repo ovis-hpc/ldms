@@ -1,5 +1,5 @@
 load name=${testname}
-config name=${testname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i} ifaces=lo,em1
+config name=${testname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i} ifaces=${IFACES}
 start name=${testname} interval=1000000 offset=0
 
 load name=store_csv
