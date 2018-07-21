@@ -8,7 +8,7 @@ lnet_stats
 meminfo
 procdiskstats
 procinterrupts
-procnetdev # produces inconsistent sets not trapped by csv
+procnetdev # produces inconsistent sets
 procsensors # produces 0s (hardcoded path)
 procstat
 vmstat
@@ -25,12 +25,14 @@ rabbitv3
 clock.job
 meminfo.job
 procstat.job
+lustre2_client
 dstat.job
 many
 
 # not yet tested
 rabbitv3
 sampler_atasmart
+opa2
 sysclassib
 sysclassib.job
 
@@ -40,5 +42,4 @@ variable
 # not yet implemented
 # vmstat.job
 # procnetdev.job
-# lustre2_client # not generically possible due to lustre site specificity
 # all cray samplers # not generically possible due to lustre site specificity
