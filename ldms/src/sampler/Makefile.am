@@ -171,6 +171,14 @@ libhweventpapi_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lpapi -lm
 pkglib_LTLIBRARIES += libhweventpapi.la
 endif
 
+if ENABLE_APPINFO
+libappinfo_la_SOURCES = appinfo.c
+libappinfo_la_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/appinfo_lib
+libappinfo_la_LIBADD = $(COMMON_LIBADD)
+pkglib_LTLIBRARIES += libappinfo.la
+SUBDIRS += appinfo_lib
+endif
+
 if ENABLE_MPI_SAMPLER
 SUBDIRS += shm
 endif
