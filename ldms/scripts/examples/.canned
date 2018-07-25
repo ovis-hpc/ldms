@@ -41,5 +41,4 @@ variable
 # not yet implemented
 # vmstat.job
 # procnetdev.job
-# lustre2_client # not generically possible due to lustre site specificity
 # all cray samplers # not generically possible due to lustre site specificity
