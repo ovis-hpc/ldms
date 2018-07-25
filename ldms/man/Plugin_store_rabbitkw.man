@@ -24,7 +24,7 @@ The configuration parameters routing_key, host, port, exchange, vhost, user, and
 
 .TP
 .BR config
-name=<plugin_name> exchange=<exch> routing_key=<route> host=<host> port=<port> vhost=<vhost> user=<user> pwfile=<auth> [extraprops=<y/n> logmsg=<y/n> useserver=[y/n> timeout=<msec> retry=<sec>]
+name=<plugin_name> exchange=<exch> routing_key=<route> host=<host> port=<port> vhost=<vhost> user=<user> pwfile=<auth> [extraprops=<y/n> logmsg=<y/n> useserver=[y/n> heartbeat=<sec> timeout=<msec> retry=<sec>]
 .br
 These parameters are:
 .RS
@@ -66,6 +66,10 @@ retry=<sec>
 .br
 If amqp connection fails due to network or server issue, retry every <sec> seconds. Default is 60.
 .TP
+heartbeat=<sec>
+.br
+Heartbeat interval used to detect failed connections.
+.TP
 timeout=<millisec>
 .br
 Timeout to use for connections, in milliseconds. Default is 1000.
@@ -89,7 +93,7 @@ Enable (y, the default) or disable (n) calls to the amqp server; this is a debug
 
 .TP
 .BR store
-name=<plugin_name> schema=<schema_name> policy=<policy> container=<container>
+name=<plugin_name> schema=<schema_name> container=<container>
 .br
 .RS
 .TP
@@ -101,10 +105,6 @@ schema=<schema_name>
 .br
 The name of the metric group, independent of the host name.
 The schema will be used as a header in messages if extraprops is y.
-.TP
-policy=<policy>
-.br
-Name of the policy filtering output.
 .TP
 container=<container>
 .br
