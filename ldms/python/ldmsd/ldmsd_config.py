@@ -149,8 +149,10 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                                 ]
                             },
                       'failover_mod': {'req_attr': [], 'opt_attr': ['auto_switch']},
-                      'failover': {'req_attr': [], 'opt_attr': []},
-                      'failback': {'req_attr': [], 'opt_attr': []},
+                      'failover_start': {'req_attr': [], 'opt_attr': []},
+                      'failover_stop': {'req_attr': [], 'opt_attr': []},
+                      'failover_peercfg_start': {'req_attr': [], 'opt_attr': []},
+                      'failover_peercfg_stop': {'req_attr': [], 'opt_attr': []},
                       'setgroup_add': {
                                     'req_attr': ['name'],
                                     'opt_attr': [

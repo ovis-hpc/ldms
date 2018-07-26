@@ -55,6 +55,8 @@
 #ifndef LDMS_SRC_LDMSD_LDMSD_REQUEST_H_
 #define LDMS_SRC_LDMSD_LDMSD_REQUEST_H_
 
+extern int ldmsd_req_debug;
+
 enum ldmsd_request {
 	LDMSD_EXAMPLE_REQ = 0x1,
 	LDMSD_GREETING_REQ = 0x2,
@@ -115,17 +117,23 @@ enum ldmsd_request {
 
 	/* failover requests by user */
 	LDMSD_FAILOVER_CONFIG_REQ = 0x700, /* "failover_config" user command */
-	LDMSD_FAILOVER_DO_FAILOVER_REQ, /* for user "failover" user command */
-	LDMSD_FAILOVER_DO_FAILBACK_REQ, /* for user "failback" user command */
-	LDMSD_FAILOVER_MOD_REQ, /* for "failove_mod" user command */
-	LDMSD_FAILOVER_STATUS_REQ, /* for "failover_status" user command */
+	LDMSD_FAILOVER_PEERCFG_START_REQ, /* "failover_peercfg_start" user command */
+	LDMSD_FAILOVER_PEERCFG_STOP_REQ, /* "failover_peercfg_stop" user command */
+	LDMSD_FAILOVER_MOD_REQ, /* DEPRECATED: "failove_mod" user command */
+	LDMSD_FAILOVER_STATUS_REQ, /* "failover_status" user command */
 
-	/* failover requests by ldmsd (not exposed to users) */
+	/* internal failover requests by ldmsd (not exposed to users) */
 	LDMSD_FAILOVER_PAIR_REQ, /* Pairing request */
 	LDMSD_FAILOVER_RESET_REQ, /* Request to reset failover */
 	LDMSD_FAILOVER_CFGPRDCR_REQ, /* internal producer failover config */
 	LDMSD_FAILOVER_CFGUPDTR_REQ, /* internal updater failover config */
-	LDMSD_FAILOVER_HEARTBEAT_REQ, /* heartbeat message over REQ protocol */
+	LDMSD_FAILOVER_CFGSTRGP_REQ, /* internal strgp failover config */
+	LDMSD_FAILOVER_PING_REQ, /* ping message over REQ protocol */
+	LDMSD_FAILOVER_PEERCFG_REQ, /* request peer cfg */
+
+	/* additional failover requests by user */
+	LDMSD_FAILOVER_START_REQ = 0x770, /* start the failover service */
+	LDMSD_FAILOVER_STOP_REQ, /* stop the failover service */
 
 	/* Set Group Requests */
 	LDMSD_SETGROUP_ADD_REQ = 0x800, /* Create new set group */
@@ -171,6 +179,8 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_PEER_NAME,
 	LDMSD_ATTR_TIMEOUT_FACTOR,
 	LDMSD_ATTR_AUTO_INTERVAL,
+	LDMSD_ATTR_UID,
+	LDMSD_ATTR_GID,
 	LDMSD_ATTR_LAST,
 };
 
@@ -352,6 +362,11 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
  *         if the command does not exist.
  */
 uint32_t ldmsd_req_str2id(const char *verb);
+/**
+ * \brief req_id to string (for debugging)
+ */
+const char *ldmsd_req_id2str(enum ldmsd_request req_id);
+
 
 /**
  * \brief Convert a attribute name to the attribute ID

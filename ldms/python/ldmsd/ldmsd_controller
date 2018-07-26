@@ -966,8 +966,11 @@ class LdmsdCmdParser(cmd.Cmd):
 
         Parameters:
             host=               The host name of the failover partner.
+                                This is optional in re-configuration.
             xprt=               The transport of the failover partner.
+                                This is optional in re-configuration.
             port=               The LDMS port of the failover partner.
+                                This is optional in re-configuration.
             [auto_switch=0|1]   Auto switching (failover/failback).
             [interval=]         The interval of the heartbeat.
             [timeout_factor=]   The hearbeat timeout factor.
@@ -979,13 +982,24 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_failover_config(self, text, line, begidx, endidx):
         return self.__complete_attr_list('failover_config', text)
 
-    def do_failover_mod(self, arg):
-        """Modify LDMSD failover.
+    def do_failover_start(self, arg):
+        """Start LDMSD failover service.
 
-        Parameters:
-            [auto_switch=0|1]   Auto switching (failover/failback).
+        NOTE: After the failover service has started, aggregator configuration
+        objects (prdcr, updtr, and strgp) are not allowed to be altered (start,
+        stop, or reconfigure).
         """
-        self.handle('failover_mod', arg)
+        self.handle('failover_start', arg)
+
+    def complete_failover_start(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('failover_start', text)
+
+    def do_failover_stop(self, arg):
+        """Stop LDMSD failover service."""
+        self.handle('failover_stop', arg)
+
+    def complete_failover_stop(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('failover_stop', text)
 
     def do_failover_status(self, arg):
         """Get failover status."""
@@ -997,8 +1011,8 @@ class LdmsdCmdParser(cmd.Cmd):
         fobj =  json.loads(resp['msg'])
         # print fobj['attr']
         print('Failover Status:')
-        keys = ['host', 'port', 'xprt', 'auto_switch', 'peer_name',
-                'interval', 'timeout_factor']
+        keys = fobj.keys()
+        keys.remove('flags')
         for k in keys:
             print('    %s: %s' % (k, str(fobj[k])))
         print('    flags: ')
@@ -1008,13 +1022,13 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_failover_mod(self, text, line, begidx, endidx):
         return self.__complete_attr_list('failover_mod', text)
 
-    def do_failover(self, arg):
-        """Execute failover routine."""
-        self.handle('failover', arg)
+    def do_failover_peercfg_start(self, arg):
+        """Manually start peer configuration."""
+        self.handle('failover_peercfg_start', arg)
 
-    def do_failback(self, arg):
-        """Execute failback routine."""
-        self.handle('failback', arg)
+    def do_failover_peercfg_stop(self, arg):
+        """Manually stop peer configuration."""
+        self.handle('failover_peercfg_stop', arg)
 
     def do_setgroup_add(self, arg):
         """Create a new setgroup.

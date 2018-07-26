@@ -184,7 +184,8 @@ class TestLDMSDController(unittest.TestCase):
         DEBUG.cmds = cmds
         for cmd in cmds.splitlines():
             resp = self._ctrl(cmd)
-            self.assertEqual(resp, [])
+            errmsg = "cmd: %s\nresp: %s\n" % (cmd, resp)
+            self.assertEqual(resp, [], msg = errmsg)
         time.sleep(2)
         # Now, check updtr and prdcr statuses
         resp = self._ctrl("prdcr_status")

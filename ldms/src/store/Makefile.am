@@ -9,6 +9,11 @@ STORE_LIBADD = $(CORE)/libldms.la -lcoll -lovis_util @OVIS_LIB_LIB64DIR_FLAG@ \
 ldmsstoreincludedir = $(includedir)/ldms
 ldmsstoreinclude_HEADERS = store_csv_common.h
 
+libstore_none_la_SOURCES = store_none.c
+libstore_none_la_CFLAGS = $(AM_CFLAGS)
+libstore_none_la_LIBADD = $(STORE_LIBADD)
+pkglib_LTLIBRARIES += libstore_none.la
+
 if ENABLE_AMQP
 libstore_amqp_la_SOURCES = store_amqp.c
 libstore_amqp_la_CFLAGS = $(AM_CFLAGS)
