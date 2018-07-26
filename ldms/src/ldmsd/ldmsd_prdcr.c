@@ -765,6 +765,29 @@ ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr)
 	return (ldmsd_prdcr_t)ldmsd_cfgobj_next(&prdcr->obj);
 }
 
+int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
+{
+	int rc;
+	ldmsd_prdcr_lock(prdcr);
+	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
+	if (rc)
+		goto out;
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out;
+	}
+
+	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+
+	prdcr->obj.perm |= LDMSD_PERM_DSTART;
+	ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
+			 LDMSD_TASK_F_IMMEDIATE,
+			 prdcr->conn_intrvl_us, 0);
+out:
+	ldmsd_prdcr_unlock(prdcr);
+	return rc;
+}
+
 int ldmsd_prdcr_start(const char *name, const char *interval_str,
 		      ldmsd_sec_ctxt_t ctxt)
 {
@@ -772,27 +795,34 @@ int ldmsd_prdcr_start(const char *name, const char *interval_str,
 	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(name);
 	if (!prdcr)
 		return ENOENT;
+	if (interval_str)
+		prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
+	rc = __ldmsd_prdcr_start(prdcr, ctxt);
+	ldmsd_prdcr_put(prdcr);
+	return rc;
+}
 
+int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
+{
+	int rc;
 	ldmsd_prdcr_lock(prdcr);
 	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
 	if (rc)
-		goto out_1;
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+		goto out;
+	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
 		rc = EBUSY;
-		goto out_1;
+		goto out;
 	}
-
-	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
-	if (interval_str)
-		prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
-
-	ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
-			 LDMSD_TASK_F_IMMEDIATE,
-			 prdcr->conn_intrvl_us, 0);
-out_1:
+	if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
+		prdcr_reset_sets(prdcr);
+	if (prdcr->xprt)
+		ldms_xprt_close(prdcr->xprt);
+	ldmsd_task_stop(&prdcr->task);
+	ldmsd_task_join(&prdcr->task);
+	prdcr->obj.perm &= ~LDMSD_PERM_DSTART;
+	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+out:
 	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_put(prdcr);
-out_0:
 	return rc;
 }
 
@@ -802,26 +832,8 @@ int ldmsd_prdcr_stop(const char *name, ldmsd_sec_ctxt_t ctxt)
 	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(name);
 	if (!prdcr)
 		return ENOENT;
-
-	ldmsd_prdcr_lock(prdcr);
-	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
-	if (rc)
-		goto out_1;
-	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out_1;
-	}
-	if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
-		prdcr_reset_sets(prdcr);
-	if (prdcr->xprt)
-		ldms_xprt_close(prdcr->xprt);
-	ldmsd_task_stop(&prdcr->task);
-	ldmsd_task_join(&prdcr->task);
-	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
-out_1:
-	ldmsd_prdcr_unlock(prdcr);
+	rc = __ldmsd_prdcr_stop(prdcr, ctxt);
 	ldmsd_prdcr_put(prdcr);
-out_0:
 	return rc;
 }
 

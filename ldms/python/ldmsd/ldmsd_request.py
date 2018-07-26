@@ -98,7 +98,9 @@ class LDMSD_Req_Attr(object):
     PEER_NAME = 29
     TIMEOUT_FACTOR = 30
     AUTO_INTERVAL = 31
-    LAST = 32
+    UID = 32
+    GID = 33
+    LAST = 34
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -132,6 +134,8 @@ class LDMSD_Req_Attr(object):
                    'peer_name': PEER_NAME,
                    'timeout_factor': TIMEOUT_FACTOR,
                    'auto_interval': AUTO_INTERVAL,
+                   'uid': UID,
+                   'gid': GID,
                    'TERMINATING': LAST
         }
 
@@ -281,11 +285,14 @@ class LDMSD_Request(object):
     EXIT_DAEMON = 0x600 + 9
     SET_ROUTE = 0X600 + 11
 
-    FAILOVER_CONFIG       =  0x700
-    FAILOVER_DO_FAILOVER  =  0x700  +  1
-    FAILOVER_DO_FAILBACK  =  0x700  +  2
-    FAILOVER_MOD          =  0x700  +  3
-    FAILOVER_STATUS       =  0x700  +  4
+    FAILOVER_CONFIG        = 0x700
+    FAILOVER_PEERCFG_START = 0x700  +  1
+    FAILOVER_PEERCFG_STOP  = 0x700  +  2
+    FAILOVER_MOD           = 0x700  +  3
+    FAILOVER_STATUS        = 0x700  +  4
+
+    FAILOVER_START        =  0x770
+    FAILOVER_STOP         =  0x770 + 1
 
     SETGROUP_ADD = 0x800
     SETGROUP_MOD = 0x800 + 1
@@ -350,11 +357,12 @@ class LDMSD_Request(object):
             'oneshot': {'id': ONESHOT},
             'logrotate': {'id': LOGROTATE},
             'daemon_exit': {'id': EXIT_DAEMON},
-            'failover_config'  :  {'id':  FAILOVER_CONFIG},
-            'failover'         :  {'id':  FAILOVER_DO_FAILOVER},
-            'failback'         :  {'id':  FAILOVER_DO_FAILBACK},
-            'failover_mod'     :  {'id':  FAILOVER_MOD},
-            'failover_status'  :  {'id':  FAILOVER_STATUS},
+            'failover_config'        : {'id' : FAILOVER_CONFIG},
+            'failover_peercfg_start' : {'id' : FAILOVER_PEERCFG_START},
+            'failover_peercfg_stop'  : {'id' : FAILOVER_PEERCFG_STOP},
+            'failover_status'        : {'id' : FAILOVER_STATUS},
+            'failover_start'         : {'id' : FAILOVER_START},
+            'failover_stop'          : {'id' : FAILOVER_STOP},
             'set_route': {'id': SET_ROUTE},
 
             'setgroup_add'  :  {'id':  SETGROUP_ADD},

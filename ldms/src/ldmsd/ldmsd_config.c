@@ -323,7 +323,6 @@ int ldmsd_config_plugin(char *plugin_name,
 	pthread_mutex_lock(&pi->lock);
 	rc = pi->plugin->config(pi->plugin, _kw_list, _av_list);
 	pthread_mutex_unlock(&pi->lock);
-out:
 	return rc;
 }
 
@@ -502,7 +501,14 @@ char *find_comment(const char *line)
 	return NULL;
 }
 
-int process_config_file(const char *path, int *lno, int trust)
+/*
+ * \param req_filter is a function that returns zero if we want to process the
+ *                   request, and returns non-zero otherwise.
+ */
+static
+int __process_config_file(const char *path, int *lno, int trust,
+		int (*req_filter)(ldmsd_cfg_xprt_t, ldmsd_req_hdr_t, void *),
+		void *ctxt)
 {
 	static uint32_t msg_no = 0;
 	int rc = 0;
@@ -616,6 +622,8 @@ parse:
 	}
 	for (i = 0; i < req_array->num_reqs; i++) {
 		request = req_array->reqs[i];
+		if (req_filter && req_filter(&xprt, request, ctxt))
+			goto next_req;
 		rc = ldmsd_process_config_request(&xprt, request);
 		if (rc || xprt.rsp_err) {
 			if (!rc)
@@ -624,6 +632,7 @@ parse:
 					lineno, path);
 			goto cleanup;
 		}
+	next_req:
 		free(request);
 	}
 	msg_no += 1;
@@ -650,8 +659,205 @@ cleanup:
 	return rc;
 }
 
+int __req_deferred_start_regex(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
+{
+	regex_t regex = {0};
+	ldmsd_req_attr_t attr;
+	ldmsd_cfgobj_t obj;
+	int rc;
+	attr = ldmsd_req_attr_get_by_id((void*)req, LDMSD_ATTR_REGEX);
+	if (!attr) {
+		return EINVAL;
+	}
+	rc = regcomp(&regex, (void*)attr->attr_value, REG_NOSUB);
+	if (rc)
+		return EBADMSG;
+	ldmsd_cfg_lock(type);
+	LDMSD_CFGOBJ_FOREACH(obj, type) {
+		rc = regexec(&regex, obj->name, 0, NULL, 0);
+		if (rc == 0) {
+			obj->perm |= LDMSD_PERM_DSTART;
+		}
+	}
+	ldmsd_cfg_unlock(type);
+	return 0;
+}
+
+int __req_deferred_start(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
+{
+	ldmsd_req_attr_t attr;
+	ldmsd_cfgobj_t obj;
+	attr = ldmsd_req_attr_get_by_id((void*)req, LDMSD_ATTR_NAME);
+	if (!attr) {
+		return EINVAL;
+	}
+	obj = ldmsd_cfgobj_find((char*)attr->attr_value, type);
+	if (!obj)
+		return ENOENT;
+	obj->perm |= LDMSD_PERM_DSTART;
+	ldmsd_cfgobj_put(obj);
+	return 0;
+}
+
+int __req_filter_failover(ldmsd_cfg_xprt_t x, ldmsd_req_hdr_t req, void *ctxt)
+{
+	int *use_failover = ctxt;
+	int rc;
+
+	/* req is in network byte order */
+	ldmsd_ntoh_req_msg(req);
+
+	switch (req->req_id) {
+	case LDMSD_FAILOVER_START_REQ:
+		*use_failover = 1;
+		rc = -1;
+		break;
+	case LDMSD_PRDCR_START_REGEX_REQ:
+		rc = __req_deferred_start_regex(req, LDMSD_CFGOBJ_PRDCR);
+		rc = -1;
+		break;
+	case LDMSD_PRDCR_START_REQ:
+		rc = __req_deferred_start(req, LDMSD_CFGOBJ_PRDCR);
+		rc = -1;
+		break;
+	case LDMSD_UPDTR_START_REQ:
+		rc = __req_deferred_start(req, LDMSD_CFGOBJ_UPDTR);
+		rc = -1;
+		break;
+	case LDMSD_STRGP_START_REQ:
+		rc = __req_deferred_start(req, LDMSD_CFGOBJ_STRGP);
+		rc = -1;
+		break;
+	default:
+		rc = 0;
+	}
+	/* convert req back to network byte order */
+	ldmsd_hton_req_msg(req);
+	return rc;
+}
+
+/*
+ * Start all cfgobjs for aggregators that `filter(obj) == 0`.
+ */
+int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t))
+{
+	int rc = 0;
+	ldmsd_cfgobj_t obj;
+	struct ldmsd_sec_ctxt sctxt;
+
+	ldmsd_sec_ctxt_get(&sctxt);
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_PRDCR) {
+		if (filter && filter(obj))
+			continue;
+		rc = __ldmsd_prdcr_start((ldmsd_prdcr_t)obj, &sctxt);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR,
+				  "prdcr_start failed, name: %s, rc: %d\n",
+				  obj->name, rc);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+			goto out;
+		}
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
+	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_UPDTR) {
+		if (filter && filter(obj))
+			continue;
+		rc = __ldmsd_updtr_start((ldmsd_updtr_t)obj, &sctxt);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR,
+				  "updtr_start failed, name: %s, rc: %d\n",
+				  obj->name, rc);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+			goto out;
+		}
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
+	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_STRGP) {
+		if (filter && filter(obj))
+			continue;
+		rc = __ldmsd_strgp_start((ldmsd_strgp_t)obj, &sctxt);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR,
+				  "strgp_start failed, name: %s, rc: %d\n",
+				  obj->name, rc);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+			goto out;
+		}
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+
+out:
+	return rc;
+}
+
+int __our_cfgobj_filter(ldmsd_cfgobj_t obj)
+{
+	if (!cfgobj_is_failover(obj) && (obj->perm & LDMSD_PERM_DSTART))
+		return 0;
+	return -1;
+}
+
+/*
+ * ldmsd config start prodcedure
+ */
+int ldmsd_ourcfg_start_proc()
+{
+	int rc;
+	rc = ldmsd_cfgobjs_start(__our_cfgobj_filter);
+	if (rc) {
+		exit(100);
+	}
+	return 0;
+}
+
+int process_config_file(const char *path, int *lno, int trust)
+{
+	int rc;
+	rc = __process_config_file(path, lno, trust,
+				   __req_filter_failover, &ldmsd_use_failover);
+	return rc;
+}
+
+static inline void __log_sent_req(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t req)
+{
+	if (!ldmsd_req_debug) /* defined in ldmsd_request.c */
+		return;
+	/* req is in network byte order */
+	struct ldmsd_req_hdr_s hdr;
+	hdr.marker = htonl(req->marker);
+	hdr.type = htonl(req->type);
+	hdr.flags = ntohl(req->flags);
+	hdr.msg_no = ntohl(req->msg_no);
+	hdr.req_id = ntohl(req->req_id);
+	hdr.rec_len = ntohl(req->rec_len);
+	switch (hdr.type) {
+	case LDMSD_REQ_TYPE_CONFIG_CMD:
+		ldmsd_lall("sending %s msg_no: %d:%lu, flags: %#o, "
+			   "rec_len: %u\n",
+			   ldmsd_req_id2str(hdr.req_id),
+			   hdr.msg_no, (uint64_t)xprt->xprt,
+			   hdr.flags, hdr.rec_len);
+		break;
+	case LDMSD_REQ_TYPE_CONFIG_RESP:
+		ldmsd_lall("sending RESP msg_no: %d, rsp_err: %d, flags: %#o, "
+			   "rec_len: %u\n",
+			   hdr.msg_no,
+			   hdr.rsp_err, hdr.flags, hdr.rec_len);
+		break;
+	default:
+		ldmsd_lall("sending BAD REQUEST\n");
+	}
+}
+
 static int send_ldms_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 {
+	__log_sent_req(xprt, (void*)data);
 	return ldms_xprt_send(xprt->ldms.ldms, data, data_len);
 }
 

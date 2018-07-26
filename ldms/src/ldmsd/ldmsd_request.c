@@ -90,6 +90,26 @@ pthread_mutex_t msg_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 static char *cfg_resp_buf;
 static size_t cfg_resp_buf_sz;
 
+int ldmsd_req_debug = 0; /* turn on / off using gdb or edit src to
+                                 * see request/response debugging messages */
+void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap);
+
+__attribute__((format(printf, 1, 2)))
+static inline
+void __dlog(const char *fmt, ...)
+{
+	if (!ldmsd_req_debug)
+		return;
+	va_list ap;
+	va_start(ap, fmt);
+	__ldmsd_log(LDMSD_LALL, fmt, ap);
+	va_end(ap);
+}
+
+
+__attribute__((format(printf, 3, 4)))
+size_t Snprintf(char **dst, size_t *len, char *fmt, ...);
+
 static int msg_comparator(void *a, const void *b)
 {
 	msg_key_t ak = (msg_key_t)a;
@@ -171,20 +191,26 @@ static int greeting_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_route_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
+static int ebusy_handler(ldmsd_req_ctxt_t reqc);
 static int updtr_task_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc);
 
 /* these are implemented in ldmsd_failover.c */
 int failover_config_handler(ldmsd_req_ctxt_t req_ctxt);
-int failover_do_failover_handler(ldmsd_req_ctxt_t req_ctxt);
-int failover_do_failback_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_peercfg_start_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_peercfg_stop_handler(ldmsd_req_ctxt_t req_ctxt);
 int failover_mod_handler(ldmsd_req_ctxt_t req_ctxt);
 int failover_status_handler(ldmsd_req_ctxt_t req_ctxt);
 int failover_pair_handler(ldmsd_req_ctxt_t req_ctxt);
 int failover_reset_handler(ldmsd_req_ctxt_t req_ctxt);
 int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req_ctxt);
 int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req_ctxt);
-int failover_heartbeat_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_cfgstrgp_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_ping_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_peercfg_handler(ldmsd_req_ctxt_t req);
+
+int failover_start_handler(ldmsd_req_ctxt_t req_ctxt);
+int failover_stop_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static int setgroup_add_handler(ldmsd_req_ctxt_t req_ctxt);
 static int setgroup_mod_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -214,10 +240,12 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_PRDCR_STOP_REQ, prdcr_stop_handler, XUG
 	},
 	[LDMSD_PRDCR_STATUS_REQ] = {
-		LDMSD_PRDCR_STATUS_REQ, prdcr_status_handler, XALL
+		LDMSD_PRDCR_STATUS_REQ, prdcr_status_handler,
+		XALL | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 	[LDMSD_PRDCR_SET_REQ] = {
-		LDMSD_PRDCR_SET_REQ, prdcr_set_status_handler, XUG
+		LDMSD_PRDCR_SET_REQ, prdcr_set_status_handler,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 	[LDMSD_PRDCR_START_REGEX_REQ] = {
 		LDMSD_PRDCR_START_REGEX_REQ, prdcr_start_regex_handler, XUG
@@ -226,7 +254,8 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_PRDCR_STOP_REGEX_REQ, prdcr_stop_regex_handler, XUG
 	},
 	[LDMSD_PRDCR_HINT_TREE_REQ] = {
-		LDMSD_PRDCR_HINT_TREE_REQ, prdcr_hint_tree_status_handler, XALL
+		LDMSD_PRDCR_HINT_TREE_REQ, prdcr_hint_tree_status_handler,
+		XALL | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 
 	/* STRGP */
@@ -255,7 +284,8 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_STRGP_STOP_REQ, strgp_stop_handler, XUG
 	},
 	[LDMSD_STRGP_STATUS_REQ] = {
-		LDMSD_STRGP_STATUS_REQ, strgp_status_handler, XALL
+		LDMSD_STRGP_STATUS_REQ, strgp_status_handler,
+		XALL | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 
 	/* UPDTR */
@@ -284,10 +314,12 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_UPDTR_MATCH_DEL_REQ, updtr_match_del_handler, XUG
 	},
 	[LDMSD_UPDTR_STATUS_REQ] = {
-		LDMSD_UPDTR_STATUS_REQ, updtr_status_handler, XALL
+		LDMSD_UPDTR_STATUS_REQ, updtr_status_handler,
+		XALL | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 	[LDMSD_UPDTR_TASK_REQ] = {
-		LDMSD_UPDTR_TASK_REQ, updtr_task_status_handler, XALL
+		LDMSD_UPDTR_TASK_REQ, updtr_task_status_handler,
+		XALL | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 
 	/* PLUGN */
@@ -298,7 +330,8 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_PLUGN_STOP_REQ, plugn_stop_handler, XUG
 	},
 	[LDMSD_PLUGN_STATUS_REQ] = {
-		LDMSD_PLUGN_STATUS_REQ, plugn_status_handler, XALL
+		LDMSD_PLUGN_STATUS_REQ, plugn_status_handler,
+		XALL | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 	[LDMSD_PLUGN_LOAD_REQ] = {
 		LDMSD_PLUGN_LOAD_REQ, plugn_load_handler, XUG
@@ -330,7 +363,8 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_VERBOSE_REQ, verbosity_change_handler, XUG
 	},
 	[LDMSD_DAEMON_STATUS_REQ] = {
-		LDMSD_DAEMON_STATUS_REQ, daemon_status_handler, XALL
+		LDMSD_DAEMON_STATUS_REQ, daemon_status_handler,
+		XALL | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 	[LDMSD_VERSION_REQ] = {
 		LDMSD_VERSION_REQ, version_handler, XALL
@@ -357,38 +391,60 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_SET_ROUTE_REQ, set_route_handler, XUG
 	},
 
-	/* FAILOVER */
+	/* FAILOVER user commands */
 	[LDMSD_FAILOVER_CONFIG_REQ] = {
 		LDMSD_FAILOVER_CONFIG_REQ, failover_config_handler, XUG,
 	},
-	[LDMSD_FAILOVER_DO_FAILBACK_REQ]  = {
-		LDMSD_FAILOVER_DO_FAILBACK_REQ, failover_do_failback_handler,
-									XUG,
+	[LDMSD_FAILOVER_PEERCFG_STOP_REQ]  = {
+		LDMSD_FAILOVER_PEERCFG_STOP_REQ,
+		failover_peercfg_stop_handler,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED,
 	},
-	[LDMSD_FAILOVER_DO_FAILOVER_REQ]  = {
-		LDMSD_FAILOVER_DO_FAILOVER_REQ, failover_do_failover_handler,
-									XUG,
-	},
-	[LDMSD_FAILOVER_MOD_REQ]  = {
-		LDMSD_FAILOVER_MOD_REQ, failover_mod_handler, XUG,
+	[LDMSD_FAILOVER_PEERCFG_START_REQ]  = {
+		LDMSD_FAILOVER_PEERCFG_START_REQ,
+		failover_peercfg_start_handler,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED,
 	},
 	[LDMSD_FAILOVER_STATUS_REQ]  = {
-		LDMSD_FAILOVER_STATUS_REQ, failover_status_handler, XUG,
+		LDMSD_FAILOVER_STATUS_REQ, failover_status_handler,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED,
 	},
+	[LDMSD_FAILOVER_START_REQ] = {
+		LDMSD_FAILOVER_START_REQ, failover_start_handler, XUG,
+	},
+	[LDMSD_FAILOVER_STOP_REQ] = {
+		LDMSD_FAILOVER_STOP_REQ, failover_stop_handler,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED,
+	},
+
+	/* FAILOVER internal requests */
 	[LDMSD_FAILOVER_PAIR_REQ] = {
-		LDMSD_FAILOVER_PAIR_REQ, failover_pair_handler, XUG,
+		LDMSD_FAILOVER_PAIR_REQ, failover_pair_handler,
+		XUG | LDMSD_PERM_FAILOVER_INTERNAL,
 	},
 	[LDMSD_FAILOVER_RESET_REQ] = {
-		LDMSD_FAILOVER_RESET_REQ, failover_reset_handler, XUG,
+		LDMSD_FAILOVER_RESET_REQ, failover_reset_handler,
+		XUG | LDMSD_PERM_FAILOVER_INTERNAL,
 	},
 	[LDMSD_FAILOVER_CFGPRDCR_REQ] = {
-		LDMSD_FAILOVER_CFGPRDCR_REQ, failover_cfgprdcr_handler, XUG,
+		LDMSD_FAILOVER_CFGPRDCR_REQ, failover_cfgprdcr_handler,
+		XUG | LDMSD_PERM_FAILOVER_INTERNAL,
 	},
 	[LDMSD_FAILOVER_CFGUPDTR_REQ] = {
-		LDMSD_FAILOVER_CFGUPDTR_REQ, failover_cfgupdtr_handler, XUG,
+		LDMSD_FAILOVER_CFGUPDTR_REQ, failover_cfgupdtr_handler,
+		XUG | LDMSD_PERM_FAILOVER_INTERNAL,
 	},
-	[LDMSD_FAILOVER_HEARTBEAT_REQ] = {
-		LDMSD_FAILOVER_HEARTBEAT_REQ, failover_heartbeat_handler, XUG,
+	[LDMSD_FAILOVER_CFGSTRGP_REQ] = {
+		LDMSD_FAILOVER_CFGSTRGP_REQ, failover_cfgstrgp_handler,
+		XUG | LDMSD_PERM_FAILOVER_INTERNAL,
+	},
+	[LDMSD_FAILOVER_PING_REQ] = {
+		LDMSD_FAILOVER_PING_REQ, failover_ping_handler,
+		XUG | LDMSD_PERM_FAILOVER_INTERNAL,
+	},
+	[LDMSD_FAILOVER_PEERCFG_REQ] = {
+		LDMSD_FAILOVER_PEERCFG_REQ, failover_peercfg_handler,
+		XUG | LDMSD_PERM_FAILOVER_INTERNAL,
 	},
 
 	/* SETGROUP */
@@ -637,6 +693,9 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 	ldms_t xprt = reqc->xprt->xprt;
 	uid_t luid;
 	gid_t lgid;
+	mode_t mask;
+
+	__dlog("handling req %s\n", ldmsd_req_id2str(reqc->req_id));
 
 	/* Check for request id outside of range */
 	if ((int)request->req_id < 0 ||
@@ -651,7 +710,15 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 
 	/* Check command permission */
 	if (xprt) {
-		/* NOTE: NULL xprt is a config file */
+		/* NOTE: NULL xprt is a config file.
+		 *       So, this is an in-band ldms xprt */
+
+		/* check against inband mask */
+		mask = ldmsd_inband_cfg_mask_get();
+		if (0 == (mask & ent->flag))
+			return ebusy_handler(reqc);
+
+		/* check against credential */
 		struct ldms_cred crd;
 		ldms_xprt_cred_get(xprt, &crd, NULL);
 		luid = crd.uid;
@@ -660,6 +727,7 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 				ent->flag & 0111))
 			return eperm_handler(reqc);
 	}
+
 	return request_handler[request->req_id].handler(reqc);
 }
 
@@ -903,6 +971,10 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 		goto out;
 	}
 
+	__dlog("processing message %d:%lu %s\n",
+		   key.msg_no, key.conn_id,
+		   ldmsd_req_id2str(ntohl(request->req_id)));
+
 	req_ctxt_tree_lock();
 	if (ntohl(request->flags) & LDMSD_REQ_SOM_F) {
 		/* Ensure that we don't already have this message in
@@ -993,6 +1065,8 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 		rc = EINVAL;
 		goto out;
 	}
+
+	__dlog("processing response %d:%lu\n", key.msg_no, key.conn_id);
 
 	req_ctxt_tree_lock();
 	reqc = find_req_ctxt(&key);
@@ -2231,34 +2305,28 @@ static int strgp_start_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 
-	ldmsd_strgp_t strgp = ldmsd_strgp_find(name);
-	if (!strgp) {
-		reqc->errcode = ENOENT;
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	reqc->errcode = ldmsd_strgp_start(name, &sctxt);
+	switch (reqc->errcode) {
+	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The storage policy does not exist.");
 		goto send_reply;
-	}
-	ldmsd_strgp_lock(strgp);
-	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
-	reqc->errcode = ldmsd_cfgobj_access_check(&strgp->obj, 0222, &sctxt);
-	if (reqc->errcode) {
+	case EPERM:
+	case EACCES:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"Permission denied.");
-		goto out_1;
-	}
-	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
-		reqc->errcode = EBUSY;
+		goto send_reply;
+	case EBUSY:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The storage policy is already running.");
-		goto out_1;
+		goto send_reply;
+	case 0:
+		break;
+	default:
+		break;
 	}
-	strgp->state = LDMSD_STRGP_STATE_RUNNING;
-	/* Update all the producers of our changed state */
-	ldmsd_prdcr_update(strgp);
 
-out_1:
-	ldmsd_strgp_unlock(strgp);
-	ldmsd_strgp_put(strgp);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (name)
@@ -5033,6 +5101,15 @@ static int eperm_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = EPERM;
 	Snprintf(&reqc->line_buf, &reqc->line_len,
 			"Operation not permitted.");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
+static int ebusy_handler(ldmsd_req_ctxt_t reqc)
+{
+	reqc->errcode = EBUSY;
+	Snprintf(&reqc->line_buf, &reqc->line_len,
+			"Daemon busy.");
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }

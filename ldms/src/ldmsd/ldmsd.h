@@ -148,6 +148,25 @@ typedef enum ldmsd_cfgobj_type {
 struct ldmsd_cfgobj;
 typedef void (*ldmsd_cfgobj_del_fn_t)(struct ldmsd_cfgobj *);
 
+#define LDMSD_PERM_UEX 0100
+#define LDMSD_PERM_UWR 0200
+#define LDMSD_PERM_URD 0400
+#define LDMSD_PERM_GEX 0010
+#define LDMSD_PERM_GWR 0020
+#define LDMSD_PERM_GRD 0040
+#define LDMSD_PERM_OEX 0001
+#define LDMSD_PERM_OWR 0002
+#define LDMSD_PERM_ORD 0004
+
+/* for deferred start */
+#define LDMSD_PERM_DSTART 01000
+
+/* for failover internal requests */
+#define LDMSD_PERM_FAILOVER_INTERNAL 02000
+
+/* can execute even if the failover is turned on */
+#define LDMSD_PERM_FAILOVER_ALLOWED 04000
+
 typedef struct ldmsd_cfgobj {
 	char *name;		/* Unique producer name */
 	uint32_t ref_count;
@@ -795,6 +814,10 @@ ldmsd_cfgobj_t ldmsd_cfgobj_first(ldmsd_cfgobj_type_t type);
 ldmsd_cfgobj_t ldmsd_cfgobj_next(ldmsd_cfgobj_t obj);
 int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt);
 
+#define LDMSD_CFGOBJ_FOREACH(obj, type) \
+	for ((obj) = ldmsd_cfgobj_first(type); (obj);  \
+			(obj) = ldmsd_cfgobj_next(obj))
+
 /** Producer configuration object management */
 int ldmsd_prdcr_str2type(const char *type);
 const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type);
@@ -858,6 +881,9 @@ int ldmsd_prdcr_stop(const char *name, ldmsd_sec_ctxt_t ctxt);
 int ldmsd_prdcr_stop_regex(const char *prdcr_regex,
 			char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
 
+int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt);
+int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt);
+
 /* updtr */
 ldmsd_updtr_t
 ldmsd_updtr_new(const char *name, char *interval_str,
@@ -910,6 +936,9 @@ int ldmsd_updtr_match_add(const char *updtr_name, const char *regex_str,
 int ldmsd_updtr_match_del(const char *updtr_name, const char *regex_str,
 			  const char *selector_str, ldmsd_sec_ctxt_t ctxt);
 
+int __ldmsd_updtr_start(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt);
+int __ldmsd_updtr_stop(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt);
+
 /* strgp */
 ldmsd_strgp_t ldmsd_strgp_new(const char *name);
 ldmsd_strgp_t ldmsd_strgp_new_with_auth(const char *name,
@@ -947,6 +976,10 @@ static inline const char *ldmsd_strgp_state_str(enum ldmsd_strgp_state state) {
 	return "BAD STATE";
 }
 int ldmsd_strgp_stop(const char *strgp_name, ldmsd_sec_ctxt_t ctxt);
+int ldmsd_strgp_start(const char *name, ldmsd_sec_ctxt_t ctxt);
+
+int __ldmsd_strgp_start(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt);
+int __ldmsd_strgp_stop(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt);
 
 
 /* Function to update inter-dependent configuration objects */
@@ -971,8 +1004,14 @@ int ldmsd_updtr_schedule_cmp(void *a, const void *b);
 int ldmsd_updtr_tasks_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set);
 
 /* Failover routines */
+extern int ldmsd_use_failover;
 int ldmsd_failover_config(const char *host, const char *port, const char *xprt,
 			  int auto_switch, uint64_t interval_us);
+int ldmsd_failover_start();
+int cfgobj_is_failover(ldmsd_cfgobj_t obj);
+int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t));
+
+int ldmsd_ourcfg_start_proc();
 
 
 /** Task scheduling */
@@ -1010,6 +1049,11 @@ extern const char *ldmsd_myhostname_get();
 
 /* Get the name of this ldmsd */
 const char *ldmsd_myname_get();
+
+mode_t ldmsd_inband_cfg_mask_get();
+void ldmsd_inband_cfg_mask_set(mode_t mask);
+void ldmsd_inband_cfg_mask_add(mode_t mask);
+void ldmsd_inband_cfg_mask_rm(mode_t mask);
 
 /* Listen for a connection either on Unix domain socket or Socket. A dedicated thread is assigned to a new connection. */
 extern int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword);

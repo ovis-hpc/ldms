@@ -56,6 +56,8 @@
 #include <assert.h>
 #include <pthread.h>
 #include <netdb.h>
+#include <stdint.h>
+#include <math.h>
 
 #include "coll/rbt.h"
 #include "ovis_event/ovis_event.h"
@@ -65,12 +67,14 @@
 
 #include "config.h"
 
-#define DEFAULT_HEARTBEAT 1000000 /* unit: uSec */
+#define DEFAULT_PING_INTERVAL 1000000 /* unit: uSec */
 #define DEFAULT_AUTOSWITCH 1
 #define DEFAULT_TIMEOUT_FACTOR 2
 
+#define ARRAY_LEN(x) (sizeof(x)/sizeof(*(x)))
+
 /* So that we can change this in gdb */
-static int failover_debug = 0;
+static int failover_debug = 1;
 
 #define __ASSERT(x) assert(x)
 
@@ -102,21 +106,34 @@ void __dlog(const char *fmt, ...)
  */
 
 typedef enum {
-	__FAILOVER_CONFIGURED  =  0x1,
-	__FAILOVER_ACTIVATED   =  0x2,
-	__FAILOVER_NOHB_ARMED  =  0x4,
-	/* for ax state */
-	__FAILOVER_AX_DISCONNECTED  =  0x00,
-	__FAILOVER_AX_CONNECTING    =  0x08,
-	__FAILOVER_AX_CONNECTED     =  0x10,
-	__FAILOVER_AX_MASK = __FAILOVER_AX_CONNECTING|__FAILOVER_AX_CONNECTED,
-} __failover_flags_t;
+	FAILOVER_STATE_STOP,
+	FAILOVER_STATE_START,
+	FAILOVER_STATE_STOPPING,
+	FAILOVER_STATE_LAST,
+} failover_state_t;
 
-#define __AX_GET(f) ((f)->flags & __FAILOVER_AX_MASK)
-#define __AX_SET(f, val) do {\
-		(f)->flags = (((f)->flags & ~__FAILOVER_AX_MASK) | \
-			((val) & __FAILOVER_AX_MASK)); \
-	} while(0)
+typedef enum {
+	FAILOVER_CONN_STATE_DISCONNECTED,
+	FAILOVER_CONN_STATE_CONNECTING,
+	FAILOVER_CONN_STATE_PAIRING,     /* connected, pairing in progress */
+	FAILOVER_CONN_STATE_PAIRING_RETRY, /* connected, retry pairing */
+	FAILOVER_CONN_STATE_RESETTING,   /* paired, resetting failover state */
+	FAILOVER_CONN_STATE_CONFIGURING, /* paired, requesting peer config */
+	FAILOVER_CONN_STATE_CONFIGURED,  /* peer config received */
+	FAILOVER_CONN_STATE_UNPAIRING, /* unpairing (for stopping) */
+	FAILOVER_CONN_STATE_ERROR,       /* error */
+	FAILOVER_CONN_STATE_LAST,
+} failover_conn_state_t;
+
+typedef enum {
+	__FAILOVER_CONFIGURED         = 0x0001,
+	__FAILOVER_PEERCFG_ACTIVATED  = 0x0002,
+	__FAILOVER_PEERCFG_RECEIVED   = 0x0004,
+	__FAILOVER_OUTSTANDING_PING   = 0x0008,
+	__FAILOVER_OURCFG_ACTIVATED   = 0x0010,
+	__FAILOVER_OUTSTANDING_UNPAIR = 0x0020,
+
+} __failover_flags_t;
 
 #define __F_ON(f, x) do { \
 		(f)->flags |= x; \
@@ -128,7 +145,6 @@ typedef enum {
 
 #define __F_GET(f, x) ((f)->flags & x)
 
-
 typedef
 struct ldmsd_failover {
 	uint64_t flags;
@@ -137,21 +153,41 @@ struct ldmsd_failover {
 	char xprt[16];
 	char peer_name[512];
 	int auto_switch;
-	uint64_t interval;
+	uint64_t ping_interval;
+	uint64_t task_interval; /* interval for the task */
 	double timeout_factor;
 	pthread_mutex_t mutex;
 	ldms_t ax; /* active xprt */
-	struct ovis_event_s hb_ev; /* For active side (sending heartbeat) */
-	struct ovis_event_s no_hb_ev; /* For passive side (heartbeat timeout) */
+
+	failover_state_t state;
+	failover_conn_state_t conn_state;
+
+	struct timeval ping_ts;
+	struct timeval echo_ts;
+	struct timeval timeout_ts;
+
+	struct ldmsd_task task;
 
 	/* store redundant pdrcr and updtr names instead of relying on cfgobj
 	 * tree so that we don't have to mess with cfgobj global locks */
 	struct rbt prdcr_rbt;
 	struct rbt updtr_rbt;
+	struct rbt strgp_rbt;
+
+	uint64_t moving_sum;
+	int ping_idx;
+	int ping_n;
+	uint64_t ping_rtt[8]; /* ping round-trip time */
+	uint64_t ping_max;    /* ping round-trip time max */
+	uint64_t ping_avg;    /* ping round-trip time average */
+	double ping_sse;      /* ping round-trip time sum of squared error */
+	double ping_sd;       /* ping round-trip time standard deviation */
 } *ldmsd_failover_t;
 
 struct str_rbn {
 	struct rbn rbn;
+	int started;
+	int will_start;
 	char str[OVIS_FLEX];
 };
 
@@ -180,8 +216,40 @@ void str_rbn_free(struct str_rbn *srbn)
 }
 
 static struct ldmsd_failover __failover;
-static ovis_scheduler_t sched;
 static pthread_t sched_thread;
+
+static
+const char *__failover_state_str(ldmsd_failover_t f)
+{
+	static const char *str[] = {
+		[FAILOVER_STATE_STOP]     = "STOP"     ,
+		[FAILOVER_STATE_START]    = "START"    ,
+		[FAILOVER_STATE_STOPPING] = "STOPPING" ,
+	};
+	if (f->state < FAILOVER_STATE_LAST)
+		return str[f->state];
+	return "UNKNOWN";
+}
+
+static
+const char *__failover_conn_state_str(ldmsd_failover_t f)
+{
+	static const char *str[] = {
+		[FAILOVER_CONN_STATE_DISCONNECTED]  = "DISCONNECTED"  ,
+		[FAILOVER_CONN_STATE_CONNECTING]    = "CONNECTING"    ,
+		[FAILOVER_CONN_STATE_PAIRING]       = "PAIRING"       ,
+		[FAILOVER_CONN_STATE_PAIRING_RETRY] = "PAIRING_RETRY" ,
+		[FAILOVER_CONN_STATE_RESETTING]     = "RESETTING"     ,
+		[FAILOVER_CONN_STATE_CONFIGURING]   = "CONFIGURING"   ,
+		[FAILOVER_CONN_STATE_CONFIGURED]    = "CONFIGURED"    ,
+		[FAILOVER_CONN_STATE_UNPAIRING]     = "UNPAIRING"     ,
+		[FAILOVER_CONN_STATE_ERROR]         = "ERROR"         ,
+	};
+	if (f->conn_state < FAILOVER_CONN_STATE_LAST) {
+		return str[f->conn_state];
+	}
+	return "UNKNOWN";
+}
 
 static
 void __failover_print(ldmsd_failover_t f)
@@ -189,27 +257,29 @@ void __failover_print(ldmsd_failover_t f)
 	int i;
 	static uint64_t fl[] = {
 		__FAILOVER_CONFIGURED,
-		__FAILOVER_ACTIVATED,
-		__FAILOVER_NOHB_ARMED,
-		__FAILOVER_AX_CONNECTING,
-		__FAILOVER_AX_CONNECTED,
+		__FAILOVER_PEERCFG_ACTIVATED,
+		__FAILOVER_PEERCFG_RECEIVED,
+		__FAILOVER_OUTSTANDING_PING,
+		__FAILOVER_OURCFG_ACTIVATED,
 	};
 	static const char *fls[] = {
 		"CONFIGURED",
-		"ACTIVATED",
-		"NOHB_ARMED",
-		"AX_CONNECTING",
-		"AX_CONNECTED",
+		"PEERCFG_ACTIVATED",
+		"PEERCFG_RECEIVED",
+		"OUTSTANDING_PING",
+		"OURCFG_ACTIVATED",
 	};
 	printf("-- failover info %p:\n", f);
+	printf("    failover service state: %s\n", __failover_state_str(f));
+	printf("    connection state: %s\n", __failover_conn_state_str(f));
 	printf("    flags:\n");
 	for (i = 0; i < (sizeof(fl)/sizeof(*fl)); i++) {
-		printf("        %s: %d\n", fls[i], !!__F_GET(f, fl[i]));
+		printf("	%s: %d\n", fls[i], !!__F_GET(f, fl[i]));
 	}
 	printf("    host: %s\n", f->host);
 	printf("    port: %s\n", f->port);
 	printf("    auto_switch: %d\n", f->auto_switch);
-	printf("    interval: %ld\n", f->interval);
+	printf("    task_interval: %ld\n", f->task_interval);
 }
 
 /* for debugging */
@@ -219,29 +289,26 @@ void print_failover_info()
 }
 
 static
-void __failover_hb_ev_cb(ovis_event_t oev);
+int __peercfg_reset(ldmsd_failover_t f);
 static
-void __failover_no_hb_ev_cb(ovis_event_t oev);
+int __peercfg_start(ldmsd_failover_t f);
+static
+int __peercfg_stop(ldmsd_failover_t f);
+static
+int __failover_reset_and_request_peercfg(ldmsd_failover_t f);
 
-static
-int __failover_do_failover(ldmsd_failover_t f);
-static
-int __failover_do_failback(ldmsd_failover_t f);
-
-void __failover_set_hb_timeout(ldmsd_failover_t f, uint64_t usec)
+static inline
+void __failover_task_resched(ldmsd_failover_t f)
 {
-	f->no_hb_ev.param.timeout.tv_sec = usec / 1000000;
-	f->no_hb_ev.param.timeout.tv_usec = usec % 1000000;
+	/* f->lock is held */
+	ldmsd_task_resched(&f->task, 0, f->task_interval, 0);
 }
 
-void __failover_set_interval(ldmsd_failover_t f, uint64_t i)
+void __failover_set_ping_interval(ldmsd_failover_t f, uint64_t i)
 {
 	if (!i)
-		i = DEFAULT_HEARTBEAT;
-	f->interval = i;
-	f->hb_ev.param.periodic.period_us = i;
-	f->hb_ev.param.periodic.phase_us = 0;
-	__failover_set_hb_timeout(f, f->timeout_factor * i);
+		i = DEFAULT_PING_INTERVAL;
+	f->ping_interval = i;
 }
 
 void __failover_init(ldmsd_failover_t f)
@@ -250,25 +317,18 @@ void __failover_init(ldmsd_failover_t f)
 	pthread_mutex_init(&f->mutex, NULL);
 	f->flags = 0;
 
-	f->interval = DEFAULT_HEARTBEAT;
+	f->task_interval = DEFAULT_PING_INTERVAL;
 	f->auto_switch = DEFAULT_AUTOSWITCH;
 
 	rbt_init(&f->prdcr_rbt, str_rbn_cmp);
 	rbt_init(&f->updtr_rbt, str_rbn_cmp);
+	rbt_init(&f->strgp_rbt, str_rbn_cmp);
 
-	OVIS_EVENT_INIT(&f->no_hb_ev);
-	f->no_hb_ev.param.type = OVIS_EVENT_TIMEOUT;
-	f->no_hb_ev.param.cb_fn = __failover_no_hb_ev_cb;
-	f->no_hb_ev.param.ctxt = f;
-
-	OVIS_EVENT_INIT(&f->hb_ev);
-	f->hb_ev.param.type = OVIS_EVENT_PERIODIC;
-	f->hb_ev.param.cb_fn = __failover_hb_ev_cb;
-	f->hb_ev.param.ctxt = f;
+	ldmsd_task_init(&f->task);
 
 	f->timeout_factor = DEFAULT_TIMEOUT_FACTOR;
 
-	__failover_set_interval(f, DEFAULT_HEARTBEAT);
+	__failover_set_ping_interval(f, DEFAULT_PING_INTERVAL);
 }
 
 static inline
@@ -296,6 +356,11 @@ int __cfgobj_is_failover(ldmsd_cfgobj_t obj)
 	return __name_is_failover(obj->name);
 }
 
+int cfgobj_is_failover(ldmsd_cfgobj_t obj)
+{
+	return __name_is_failover(obj->name);
+}
+
 static inline
 void __failover_lock(ldmsd_failover_t f)
 {
@@ -306,23 +371,6 @@ static inline
 void __failover_unlock(ldmsd_failover_t f)
 {
 	pthread_mutex_unlock(&f->mutex);
-}
-
-static
-int __failover_no_hb_reset(ldmsd_failover_t f)
-{
-	/* f->lock is held */
-	int rc;
-	if (__F_GET(f, __FAILOVER_NOHB_ARMED)) {
-		/* removed before re-arm */
-		rc = ovis_scheduler_event_del(sched, &f->no_hb_ev);
-		__ASSERT(rc == 0);
-	}
-	rc = ovis_scheduler_event_add(sched, &f->no_hb_ev);
-	__ASSERT(rc == 0);
-	if (!rc)
-		__F_ON(f, __FAILOVER_NOHB_ARMED);
-	return rc;
 }
 
 static
@@ -377,6 +425,24 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 	/* TYPE */
 	cstr = (p->type == LDMSD_PRDCR_TYPE_ACTIVE)?("active"):("passive");
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_TYPE, cstr);
+	if (rc)
+		goto cleanup;
+
+	/* UID */
+	snprintf(buff, sizeof(buff), "%u", p->obj.uid);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_UID, buff);
+	if (rc)
+		goto cleanup;
+
+	/* GID */
+	snprintf(buff, sizeof(buff), "%u", p->obj.gid);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_GID, buff);
+	if (rc)
+		goto cleanup;
+
+	/* PERM */
+	snprintf(buff, sizeof(buff), "%#o", p->obj.perm);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_PERM, buff);
 	if (rc)
 		goto cleanup;
 
@@ -456,6 +522,24 @@ int __failover_send_updtr(ldmsd_failover_t f, ldms_t x, ldmsd_updtr_t u)
 		if (rc)
 			goto cleanup;
 	}
+
+	/* UID */
+	snprintf(buff, sizeof(buff), "%u", u->obj.uid);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_UID, buff);
+	if (rc)
+		goto cleanup;
+
+	/* GID */
+	snprintf(buff, sizeof(buff), "%u", u->obj.gid);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_GID, buff);
+	if (rc)
+		goto cleanup;
+
+	/* PERM */
+	snprintf(buff, sizeof(buff), "%#o", u->obj.perm);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_PERM, buff);
+	if (rc)
+		goto cleanup;
 
 	/* TERM */
 	rc = ldmsd_req_cmd_attr_term(rcmd);
@@ -545,14 +629,156 @@ out:
 }
 
 static
+int __failover_send_strgp(ldmsd_failover_t f, ldms_t x, ldmsd_strgp_t s)
+{
+
+	/* NOTE: Send a bunch of small messages due to msg size limitation. */
+	int rc = 0;
+	char buff[128];
+	ldmsd_name_match_t nm;
+	ldmsd_strgp_metric_t sm;
+	ldmsd_req_cmd_t rcmd;
+
+	if (0 == strncmp(LDMSD_FAILOVER_NAME_PREFIX, s->obj.name,
+				sizeof(LDMSD_FAILOVER_NAME_PREFIX)-1)) {
+		rc = EINVAL;
+		goto out;
+	}
+
+	rcmd = ldmsd_req_cmd_new(x, LDMSD_FAILOVER_CFGSTRGP_REQ,
+				 NULL, NULL, NULL);
+
+	if (!rcmd) {
+		rc = errno;
+		goto out;
+	}
+
+	/* NAME */
+	snprintf(buff, sizeof(buff), LDMSD_FAILOVER_NAME_PREFIX "%s",
+				     s->obj.name);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, buff);
+	if (rc)
+		goto cleanup;
+
+	/* PLUGIN */
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_PLUGIN,
+					   s->plugin_name);
+	if (rc)
+		goto cleanup;
+
+	/* CONTAINER */
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_CONTAINER,
+					   s->container);
+	if (rc)
+		goto cleanup;
+
+	/* SCHEMA */
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_SCHEMA, s->schema);
+	if (rc)
+		goto cleanup;
+
+	/* TERM */
+	rc = ldmsd_req_cmd_attr_term(rcmd);
+	if (rc)
+		goto cleanup;
+	ldmsd_req_cmd_free(rcmd);
+	rcmd = NULL;
+
+	/* list of PRDCR_MATCHES */
+	LIST_FOREACH(nm, &s->prdcr_list, entry) {
+		rcmd = ldmsd_req_cmd_new(x, LDMSD_FAILOVER_CFGSTRGP_REQ,
+					 NULL, NULL, NULL);
+		/* NAME */
+		snprintf(buff, sizeof(buff), LDMSD_FAILOVER_NAME_PREFIX "%s",
+					     s->obj.name);
+		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, buff);
+		if (rc)
+			goto cleanup;
+
+		/* REGEX */
+		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_REGEX,
+						   nm->regex_str);
+		if (rc)
+			goto cleanup;
+
+		/* TERM */
+		rc = ldmsd_req_cmd_attr_term(rcmd);
+		if (rc)
+			goto cleanup;
+		ldmsd_req_cmd_free(rcmd);
+		rcmd = NULL;
+	}
+
+	/* list of METRICs in this strgp */
+	TAILQ_FOREACH(sm, &s->metric_list, entry) {
+		rcmd = ldmsd_req_cmd_new(x, LDMSD_FAILOVER_CFGSTRGP_REQ,
+					 NULL, NULL, NULL);
+		/* NAME */
+		snprintf(buff, sizeof(buff), LDMSD_FAILOVER_NAME_PREFIX "%s",
+					     s->obj.name);
+		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, buff);
+		if (rc)
+			goto cleanup;
+
+		/* METRIC */
+		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_METRIC,
+						   sm->name);
+		if (rc)
+			goto cleanup;
+
+		/* TERM */
+		rc = ldmsd_req_cmd_attr_term(rcmd);
+		if (rc)
+			goto cleanup;
+		ldmsd_req_cmd_free(rcmd);
+		rcmd = NULL;
+	}
+
+	/* let through */
+
+cleanup:
+	if (rcmd)
+		ldmsd_req_cmd_free(rcmd);
+out:
+	return rc;
+}
+
+static int __on_reset_resp(ldmsd_req_cmd_t rcmd)
+{
+	int rc = 0;
+	ldmsd_failover_t f = rcmd->ctxt;
+	ldmsd_req_hdr_t hdr = (void*)rcmd->reqc->req_buf;
+	__failover_lock(f);
+	__F_OFF(f, __FAILOVER_OUTSTANDING_UNPAIR);
+	switch (hdr->rsp_err) {
+	case EAGAIN:
+		/* try again later */
+		break;
+	case 0:
+	default:
+		f->conn_state = FAILOVER_CONN_STATE_ERROR;
+		ldms_xprt_close(f->ax);
+		break;
+	}
+	__failover_unlock(f);
+	return rc;
+}
+
+static
 int __failover_send_reset(ldmsd_failover_t f, ldms_t xprt)
 {
 	/* f->lock is held */
 	int rc;
-	ldmsd_req_cmd_t rcmd;
+	ldmsd_req_cmd_t rcmd = NULL;
+
+	if (__F_GET(f, __FAILOVER_OUTSTANDING_UNPAIR)) {
+		__dlog("(DEBUG) ERROR: Outstanding unpair.\n");
+		rc = EINPROGRESS;
+		goto out;
+	}
 
 	rcmd = ldmsd_req_cmd_new(xprt, LDMSD_FAILOVER_RESET_REQ,
-				 NULL, NULL, NULL);
+				 NULL, __on_reset_resp, f);
 	if (!rcmd) {
 		rc = errno;
 		goto out;
@@ -560,8 +786,9 @@ int __failover_send_reset(ldmsd_failover_t f, ldms_t xprt)
 	/* reset has no attribute */
 	rc = ldmsd_req_cmd_attr_term(rcmd);
 	__ASSERT(rc == 0);
+	__F_ON(f, __FAILOVER_OUTSTANDING_UNPAIR);
 out:
-	if (rcmd)
+	if (rc && rcmd)
 		ldmsd_req_cmd_free(rcmd);
 	return rc;
 }
@@ -572,6 +799,7 @@ int __failover_send_cfgobjs(ldmsd_failover_t f, ldms_t x)
 	/* f->lock is held */
 	ldmsd_prdcr_t p;
 	ldmsd_updtr_t u;
+	ldmsd_strgp_t s;
 	int rc = 0;
 
 	/* Send PRDCR update */
@@ -604,8 +832,81 @@ int __failover_send_cfgobjs(ldmsd_failover_t f, ldms_t x)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
+	for (s = ldmsd_strgp_first(); s; s = ldmsd_strgp_next(s)) {
+		if (__cfgobj_is_failover(&s->obj))
+			continue;
+		rc = __failover_send_strgp(f, x, s);
+		__ASSERT(rc == 0);
+		if (rc) {
+			ldmsd_strgp_put(s);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+			goto out;
+		}
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+
 out:
 	return rc;
+}
+
+int __on_peercfg_resp(ldmsd_req_cmd_t rcmd)
+{
+	ldmsd_failover_t f = rcmd->ctxt;
+	ldmsd_req_hdr_t hdr = (void*)rcmd->reqc->req_buf;
+	__failover_lock(f);
+	if (hdr->rsp_err) {
+		ldmsd_lerror("Failover: peer config request remote error: %d\n",
+			     hdr->rsp_err);
+		f->conn_state = FAILOVER_CONN_STATE_ERROR;
+		ldms_xprt_close(f->ax);
+	} else {
+		/* all peercfg have been received at this point */
+		__F_ON(f, __FAILOVER_PEERCFG_RECEIVED);
+		f->conn_state = FAILOVER_CONN_STATE_CONFIGURED;
+		ldmsd_linfo("Failover: peer config recv success\n");
+	}
+	__failover_unlock(f);
+	return 0;
+}
+
+static
+int __failover_request_peercfg(ldmsd_failover_t f)
+{
+	/* f->lock is held */
+	ldmsd_req_cmd_t rcmd;
+	int rc;
+
+	ldmsd_linfo("Failover: requesting peer config\n");
+
+	rcmd = ldmsd_req_cmd_new(f->ax, LDMSD_FAILOVER_PEERCFG_REQ,
+				 NULL, __on_peercfg_resp, f);
+	if (!rcmd) {
+		rc = errno;
+		goto out;
+	}
+	rc = ldmsd_req_cmd_attr_term(rcmd);
+out:
+	if (rc) {
+		ldmsd_lerror("Failover: peer config request local error: %d\n",
+			    rc);
+	}
+	return rc;
+}
+
+static
+int __failover_reset_and_request_peercfg(ldmsd_failover_t f)
+{
+	/* f->lock is held */
+	int rc = 0;
+	__ASSERT(f->conn_state == FAILOVER_CONN_STATE_RESETTING);
+	if (f->conn_state != FAILOVER_CONN_STATE_RESETTING)
+		return EINVAL;
+	rc = __peercfg_reset(f);
+	if (rc)
+		return rc; /* the f->task will retry this later */
+	f->conn_state = FAILOVER_CONN_STATE_CONFIGURING;
+	return __failover_request_peercfg(f);
 }
 
 static
@@ -613,27 +914,54 @@ int __on_pair_resp(ldmsd_req_cmd_t rcmd)
 {
 	ldmsd_failover_t f = rcmd->ctxt;
 	ldmsd_req_hdr_t hdr = (void*)rcmd->reqc->req_buf;
+	int rc = 0;
 
 	__failover_lock(f);
-	__ASSERT(__AX_GET(f) == __FAILOVER_AX_CONNECTING);
+	__ASSERT(f->conn_state == FAILOVER_CONN_STATE_PAIRING);
+
 	if (hdr->rsp_err) {
-		ldmsd_linfo("Failover pairing error: %d\n", hdr->rsp_err);
+		if (hdr->rsp_err == EAGAIN) {
+			f->conn_state = FAILOVER_CONN_STATE_PAIRING_RETRY;
+			goto out; /* the task will try pairing again */
+		}
+		ldmsd_lerror("Failover pairing error: %d\n", hdr->rsp_err);
+		rc = hdr->rsp_err;
+		goto err;
+	}
+	ldmsd_linfo("Failover pairing success, peer: %s\n", f->peer_name);
+
+	f->conn_state = FAILOVER_CONN_STATE_RESETTING;
+	rc = __failover_reset_and_request_peercfg(f);
+
+err:
+	if (rc) {
+		f->conn_state = FAILOVER_CONN_STATE_ERROR;
 		ldms_xprt_close(f->ax);
 		/* the disconnect path will handle the state change */
-	} else {
-		__AX_SET(f, __FAILOVER_AX_CONNECTED);
 	}
+out:
 	__failover_unlock(f);
-	return 0;
+	return rc;
 }
 
 static
-void __failover_on_active_connected(ldmsd_failover_t f)
+void __failover_pair(ldmsd_failover_t f)
 {
 	/* f->lock is held */
 	ldmsd_req_cmd_t rcmd;
 	const char *myname;
 	int rc;
+
+	if (f->auto_switch == 0 && __F_GET(f, __FAILOVER_PEERCFG_ACTIVATED)) {
+		/* Don't start new pairing when the peercfg is manually turned
+		 * on and auto_switch is off. Otherwise, peercfg will be
+		 * automatically stopped and deleted in the pairing process.
+		 */
+		f->conn_state = FAILOVER_CONN_STATE_PAIRING_RETRY;
+		return;
+	}
+
+	ldmsd_linfo("Failover pairing with peer: %s\n", f->peer_name);
 
 	/* just become connected ... request pairing */
 	myname = ldmsd_myname_get();
@@ -645,38 +973,54 @@ void __failover_on_active_connected(ldmsd_failover_t f)
 	rc = ldmsd_req_cmd_attr_term(rcmd);
 	if (rc)
 		goto err;
+	f->conn_state = FAILOVER_CONN_STATE_PAIRING;
 	/* rcmd will be freed when the reply is received */
 	return;
 err:
+	ldmsd_linfo("Failover pairing error (local), rc: %d\n", rc);
 	if (rcmd)
 		ldmsd_req_cmd_free(rcmd);
+	f->conn_state = FAILOVER_CONN_STATE_ERROR;
 	/* no need to change the state .. the xprt event will drive the state
 	 * change later */
 	ldms_xprt_close(f->ax);
 }
 
 static
-void __failover_active_xprt_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+void __failover_xprt_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
+	int need_start;
 	ldmsd_failover_t f = cb_arg;
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
+		__dlog("Failover: xprt connected\n");
 		__failover_lock(f);
-		__ASSERT(__AX_GET(f) == __FAILOVER_AX_CONNECTING);
-		__failover_on_active_connected(f);
+		/* so that retry operations can follow up not too slow */
+		f->task_interval = 1000000;
+		__failover_task_resched(f);
+		__ASSERT(f->conn_state == FAILOVER_CONN_STATE_CONNECTING);
+		__failover_pair(f);
 		__failover_unlock(f);
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
+		__dlog("Failover: xprt disconnected\n");
 	case LDMS_XPRT_EVENT_ERROR:
 	case LDMS_XPRT_EVENT_REJECTED:
 		__failover_lock(f);
-		__AX_SET(f, __FAILOVER_AX_DISCONNECTED);
+		f->task_interval = f->ping_interval;
+		__failover_task_resched(f);
+		f->conn_state = FAILOVER_CONN_STATE_DISCONNECTED;
 		ldms_xprt_put(f->ax);
 		f->ax = NULL;
+		need_start = !__F_GET(f, __FAILOVER_OURCFG_ACTIVATED);
+		__F_ON(f, __FAILOVER_OURCFG_ACTIVATED);
 		__failover_unlock(f);
+		if (need_start) {
+			ldmsd_ourcfg_start_proc();
+		}
 		break;
 	case LDMS_XPRT_EVENT_RECV:
-                ldmsd_recv_msg(x, e->data, e->data_len);
+		ldmsd_recv_msg(x, e->data, e->data_len);
 		break;
 	default:
 		__ASSERT(0 == "Unknown Event");
@@ -691,9 +1035,9 @@ int __failover_active_connect(ldmsd_failover_t f)
 {
 	/* f->lock is held */
 	int rc = 0;
-	__dlog("Failover connecting, flags: %#lx\n", f->flags);
+	__dlog("Failover: connecting, flags: %#lx\n", f->flags);
 	__ASSERT(f->ax == NULL);
-	__ASSERT(__AX_GET(f) == __FAILOVER_AX_DISCONNECTED);
+	__ASSERT(f->conn_state == FAILOVER_CONN_STATE_DISCONNECTED);
 	f->ax = ldms_xprt_new_with_auth(f->xprt, ldmsd_linfo,
 					auth_name, auth_opt);
 	if (!f->ax) {
@@ -701,209 +1045,456 @@ int __failover_active_connect(ldmsd_failover_t f)
 		goto out;
 	}
 	rc = ldms_xprt_connect_by_name(f->ax, f->host, f->port,
-				       __failover_active_xprt_cb, f);
+				       __failover_xprt_cb, f);
 	if (rc)
 		goto err1;
-	__AX_SET(f, __FAILOVER_AX_CONNECTING);
+	f->conn_state = FAILOVER_CONN_STATE_CONNECTING;
 	goto out;
 err1:
 	ldms_xprt_put(f->ax);
 	f->ax = NULL;
-	__AX_SET(f, __FAILOVER_AX_DISCONNECTED);
+	f->conn_state = FAILOVER_CONN_STATE_DISCONNECTED;
 out:
-	__dlog("__failover_active_connect() rc: %d, flags: %#lx\n", rc, f->flags);
+	__dlog("Failover: __failover_active_connect() rc: %d, flags: %#lx\n",
+	       rc, f->flags);
+	return rc;
+}
+
+
+static
+void __ping_stat_dlog(ldmsd_failover_t f)
+{
+	/* f->lock is held */
+	__dlog("Failover stat: number of pings: %d\n", f->ping_n);
+	__dlog("Failover stat: ping MAX: %ld\n", f->ping_max);
+	__dlog("Failover stat: ping AVG: %ld\n", f->ping_avg);
+	__dlog("Failover stat: ping SSE: %lf\n", f->ping_sse);
+	__dlog("Failover stat: ping SD: %lf\n", f->ping_sd);
+}
+
+struct failover_ping_data {
+	failover_state_t state;
+	failover_conn_state_t conn_state;
+	uint64_t flags;
+};
+
+void __ping_data_hton(struct failover_ping_data *data)
+{
+	data->state = htonl(data->state);
+	data->conn_state = htonl(data->conn_state);
+	data->flags = htobe64(data->flags);
+}
+
+void __ping_data_ntoh(struct failover_ping_data *data)
+{
+	data->state = ntohl(data->state);
+	data->conn_state = ntohl(data->conn_state);
+	data->flags = be64toh(data->flags);
+}
+
+static
+int __on_ping_resp(ldmsd_req_cmd_t rcmd)
+{
+	struct timeval tv;
+	uint64_t dur;
+	uint64_t dur2;
+	ldmsd_failover_t f = rcmd->ctxt;
+	int will_start = 0;
+	struct failover_ping_data *ping_data;
+	ldmsd_req_attr_t attr;
+	int i;
+	__failover_lock(f);
+
+	__dlog("Failover: PING resp recv\n");
+
+	/* Update ping statistics */
+	gettimeofday(&f->echo_ts, NULL);
+	timersub(&f->echo_ts, &f->ping_ts, &tv);
+	dur = tv.tv_sec * 1000000 + tv.tv_usec;
+	if (f->ping_n == ARRAY_LEN(f->ping_rtt)) {
+		/* remove before insert */
+		f->moving_sum -= f->ping_rtt[f->ping_idx];
+	} else {
+		f->ping_n++;
+	}
+	f->moving_sum += dur;
+	f->ping_rtt[f->ping_idx] = dur;
+	f->ping_idx = (f->ping_idx + 1) % ARRAY_LEN(f->ping_rtt);
+	f->ping_avg = f->moving_sum / f->ping_n;
+	f->ping_max = 0;
+	for (i = 0; i < f->ping_n; i++) {
+		if (f->ping_max < f->ping_rtt[i])
+			f->ping_max = f->ping_rtt[i];
+	}
+	f->ping_sse = 0;
+	for (i = 0; i < f->ping_n; i++) {
+		f->ping_sse += pow(f->ping_rtt[i] - f->ping_avg, 2);
+	}
+	if (f->ping_n < 2) {
+		f->ping_sd = sqrt(f->ping_sse);
+	} else {
+		f->ping_sd = sqrt(f->ping_sse / (f->ping_n - 1));
+	}
+
+	__ping_stat_dlog(f);
+
+	/* stop peercfg on our side */
+	if (f->auto_switch && __F_GET(f, __FAILOVER_PEERCFG_ACTIVATED)) {
+		__peercfg_stop(f);
+	}
+
+	/* get peer state */
+	attr = ldmsd_req_attr_get_by_id(rcmd->reqc->req_buf, LDMSD_ATTR_UDATA);
+	if (!attr)
+		goto out;
+	ping_data = (void*)attr->attr_value;
+	__ping_data_ntoh(ping_data);
+	if (ping_data->flags & __FAILOVER_PEERCFG_ACTIVATED) {
+		/* cannot start ours yet */
+		goto out;
+	}
+
+	/* Check our config status */
+	if (!__F_GET(f, __FAILOVER_OURCFG_ACTIVATED)) {
+		will_start = 1;
+		__F_ON(f, __FAILOVER_OURCFG_ACTIVATED);
+	}
+
+	/* calculate & update timeout_ts */
+	/* pick larger base, between ping_interval and ping_max */
+	dur = (f->ping_max < f->ping_interval)?(f->ping_interval):(f->ping_max);
+	/* adjust with 4 sd */
+	dur2 = dur + 4*f->ping_sd;
+	/* in contrast, adjust with timeout factor */
+	dur *= f->timeout_factor;
+	/* pick the larger of the two */
+	dur = (dur > dur2)?(dur):(dur2);
+
+	__dlog("Failover: timeout (duration): %lu\n", dur);
+
+	tv.tv_sec = dur / 1000000;
+	tv.tv_usec = dur % 1000000;
+	timeradd(&f->echo_ts, &tv, &f->timeout_ts);
+	__dlog("Failover: timeout (timestamp): %lu.%06lu\n",
+		f->timeout_ts.tv_sec, f->timeout_ts.tv_usec);
+
+out:
+	__failover_unlock(f);
+	if (will_start) {
+		ldmsd_ourcfg_start_proc();
+	}
+	__F_OFF(f, __FAILOVER_OUTSTANDING_PING);
+	return 0;
+}
+
+/* see also failover_ping_handler() */
+static
+void __failover_ping(ldmsd_failover_t f)
+{
+	int rc;
+	ldmsd_req_cmd_t rcmd;
+	const char *name;
+	if (__F_GET(f, __FAILOVER_OUTSTANDING_PING)) {
+		__dlog("Failover: OUTSTANDING_PING ... will not ping\n");
+		return;
+	}
+	rcmd = ldmsd_req_cmd_new(f->ax, LDMSD_FAILOVER_PING_REQ,
+				 NULL, __on_ping_resp, f);
+	if (!rcmd)
+		goto err;
+	name = ldmsd_myname_get();
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, name);
+	if (rc)
+		goto err;
+	rc = ldmsd_req_cmd_attr_term(rcmd);
+	if (rc)
+		goto err;
+	f->task_interval = f->ping_interval;
+	__F_ON(f, __FAILOVER_OUTSTANDING_PING);
+	gettimeofday(&f->ping_ts, NULL);
+	/* rcmd will be automatically freed in the ldmsd resp handler */
+	return;
+err:
+	f->conn_state = FAILOVER_CONN_STATE_ERROR;
+	return;
+}
+
+static
+int __peercfg_delete(ldmsd_failover_t f)
+{
+	/* f->lock is held */
+	int rc, i;
+	struct rbn *rbn;
+	struct str_rbn *ent;
+	struct ldmsd_sec_ctxt sctxt = __get_sec_ctxt(NULL);
+	struct rbt *t[] = {&f->strgp_rbt, &f->updtr_rbt, &f->prdcr_rbt};
+	void *del[] = {ldmsd_strgp_del, ldmsd_updtr_del, ldmsd_prdcr_del};
+	int (*fn)(void*, void*);
+
+	ldmsd_linfo("Failover: deleting peer config\n");
+
+	/* cfgobjs have all already stopped */
+	for (i = 0; i < 3; i++) {
+		fn = del[i];
+		while ((rbn = rbt_min(t[i]))) {
+			ent = STR_RBN(rbn);
+			rc = fn(ent->str, &sctxt);
+			if (rc) {
+				ldmsd_linfo("Failover: peer config deletion "
+					    "failed, rc: %d\n", rc);
+				return rc;
+			}
+			rbt_del(t[i], rbn);
+			str_rbn_free((void*)rbn);
+		}
+	}
+
+	ldmsd_linfo("Failover: peer config deleted\n");
+
+	return 0;
+}
+
+static
+int __peercfg_stop(ldmsd_failover_t f)
+{
+	/* f->lock is held */
+	int rc = 0, _rc, i;
+	struct rbn *rbn;
+	struct str_rbn *ent;
+	struct ldmsd_sec_ctxt sctxt = __get_sec_ctxt(NULL);
+	struct rbt *t[] = {&f->updtr_rbt, &f->prdcr_rbt};
+	void *stop[] = {ldmsd_updtr_stop, ldmsd_prdcr_stop};
+	int (*fn)(void*, void*);
+
+	/* NOTE: Leaving out peer storage policy in the favor of letting our
+	 *       storage policy picks up the data. */
+
+	ldmsd_linfo("Failover: stopping peercfg\n");
+	for (i = 0; i < ARRAY_LEN(t); i++) {
+		fn = stop[i];
+		RBT_FOREACH(rbn, t[i]) {
+			ent = STR_RBN(rbn);
+			if (!ent->started)
+				continue;
+			_rc = fn(ent->str, &sctxt);
+			if (0 == _rc)
+				ent->started = 0;
+			else
+				rc = EAGAIN;
+		}
+	}
+
+	if (rc) {
+		ldmsd_linfo("Failover: peer config stopping failed: %d\n", rc);
+	} else {
+		ldmsd_linfo("Failover: peer config stopped\n");
+		__F_OFF(f, __FAILOVER_PEERCFG_ACTIVATED);
+		f->timeout_ts.tv_sec = INT64_MAX;
+	}
+
 	return rc;
 }
 
 static
-void __failover_send_heartbeat(ldmsd_failover_t f)
+int __peercfg_reset(ldmsd_failover_t f)
 {
-	int buff[sizeof(struct ldmsd_req_hdr_s)/sizeof(int) + 2];
-	struct ldmsd_req_hdr_s *hb = (void*)buff;
-	int rc, len;
-
-	hb->marker = LDMSD_RECORD_MARKER;
-	hb->type = LDMSD_REQ_TYPE_CONFIG_CMD;
-	hb->flags = LDMSD_REQ_SOM_F|LDMSD_REQ_EOM_F;
-	hb->req_id = LDMSD_FAILOVER_HEARTBEAT_REQ;
-	/* terminate the message */
-	*(int*)&hb[1] = 0;
-	len = hb->rec_len = sizeof(*hb) + sizeof(int);
-	ldmsd_hton_req_msg(hb);
-
-	__dlog("Sending HB, flags: %#lx\n", f->flags);
-
-	rc = ldms_xprt_send(f->ax, (void*)hb, len);
-	if (rc) {
-		ldmsd_linfo("heartbeat send failed, rc: %d\n", rc);
-	}
+	/* f->lock is held */
+	ldmsd_linfo("Failover: resetting peer config\n");
+	int rc = 0;
+	rc = __peercfg_stop(f);
+	if (rc)
+		return rc;
+	__peercfg_delete(f);
+	__F_OFF(f, __FAILOVER_PEERCFG_RECEIVED);
+	return 0;
 }
 
 static
-void __failover_hb_ev_cb(ovis_event_t oev)
+int __try_stop(ldmsd_failover_t f)
 {
-	ldmsd_failover_t f = oev->param.ctxt;
-	__failover_lock(f);
-	switch (__AX_GET(f)) {
-	case __FAILOVER_AX_DISCONNECTED:
-		/* connect to peer */
-		(void)__failover_active_connect(f);
+	/* f->lock is held */
+	int rc;
+
+	rc = __peercfg_reset(f);
+	if (rc)
+		return rc;
+
+	switch (f->conn_state) {
+	case FAILOVER_CONN_STATE_ERROR:
+		return EAGAIN;
+	case FAILOVER_CONN_STATE_UNPAIRING:
+		if (!__F_GET(f, __FAILOVER_OUTSTANDING_UNPAIR))
+			__failover_send_reset(f, f->ax);
+		return EAGAIN;
+	case FAILOVER_CONN_STATE_CONNECTING:
+		f->conn_state = FAILOVER_CONN_STATE_ERROR;
+		ldms_xprt_close(f->ax);
 		break;
-	case __FAILOVER_AX_CONNECTING:
-		/* do nothing */
-		break;
-	case __FAILOVER_AX_CONNECTED:
-		/* send heartbeat */
-		__failover_send_heartbeat(f);
+	case FAILOVER_CONN_STATE_PAIRING:
+	case FAILOVER_CONN_STATE_PAIRING_RETRY:
+	case FAILOVER_CONN_STATE_RESETTING:
+	case FAILOVER_CONN_STATE_CONFIGURING:
+	case FAILOVER_CONN_STATE_CONFIGURED:
+		f->conn_state = FAILOVER_CONN_STATE_UNPAIRING;
+		__failover_send_reset(f, f->ax);
+		return EAGAIN;
+	case FAILOVER_CONN_STATE_DISCONNECTED:
+		/* good */
 		break;
 	default:
-		__ASSERT(0 == "UNKNOWN STATE");
+		__ASSERT(0 == "BAD FAILOVER CONN STATE");
+		return EINVAL;
 	}
-	__failover_unlock(f);
+
+	ldmsd_task_stop(&f->task);
+	f->state = FAILOVER_STATE_STOP;
+	ldmsd_inband_cfg_mask_set(LDMSD_PERM_FAILOVER_ALLOWED | 0777);
+	return 0;
 }
 
 static
-void __failover_no_hb_ev_cb(ovis_event_t oev)
+void __failover_active_routine(ldmsd_failover_t f);
+static
+void __failover_task(ldmsd_task_t task, void *arg)
 {
-	/* Heartbeat timeout */
-	int rc;
-	ldmsd_failover_t f = oev->param.ctxt;
-
+	ldmsd_failover_t f = arg;
 	__failover_lock(f);
-
-	__dlog("NOHB ev triggered, flags: %#lx\n", f->flags);
-
-	/* Disable heartbeat timeout */
-	/* oev is &f->no_hb_ev */
-	__ASSERT(oev == &f->no_hb_ev);
-	rc = ovis_scheduler_event_del(sched, oev);
-	__ASSERT(rc == 0);
-	__F_OFF(f, __FAILOVER_NOHB_ARMED);
-
-	if (f->auto_switch) {
-		(void)__failover_do_failover(f);
+	switch (f->state) {
+	case FAILOVER_STATE_STOP:
+		__ASSERT(0 == "BAD STATE");
+		break;
+	case FAILOVER_STATE_START:
+		__failover_active_routine(f);
+		break;
+	case FAILOVER_STATE_STOPPING:
+		__try_stop(f);
+		break;
+	default:
+		__ASSERT(0 == "BAD FAILOVER STATE");
 	}
-
+	if (f->state != FAILOVER_STATE_STOP) {
+		__failover_task_resched(f);
+	}
 	__failover_unlock(f);
 }
 
+/*
+ * Check if conditions are right, then start peercfg.
+ */
 static
-void *__failover_sched_proc(void *arg)
-{
-	int rc;
-	rc = ovis_scheduler_loop(sched, 0);
-	ldmsd_log(LDMSD_LDEBUG, "Failover thread exiting, rc: %d\n", rc);
-	return NULL;
-}
-
-static
-int __failover_sched_init()
-{
-	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-	static int once = 0;
-	int rc = 0;
-	pthread_mutex_lock(&mutex);
-	if (once)
-		goto out;
-
-	rc = pthread_create(&sched_thread, NULL, __failover_sched_proc, NULL);
-	if (rc)
-		goto out;
-
-	once = 1;
-out:
-	pthread_mutex_unlock(&mutex);
-	return rc;
-}
-
-static
-int __failover_start(ldmsd_failover_t f)
+void __try_start_peercfg(ldmsd_failover_t f)
 {
 	/* f->lock is held */
 
-	int rc = 0;
+	struct timeval tv;
 
-	rc = __failover_sched_init();
-	if (rc)
-		goto out;
+	if (!f->auto_switch)
+		return; /* do not start peercfg automatically */
 
-	__ASSERT(__AX_GET(f) == __FAILOVER_AX_DISCONNECTED);
-	rc = __failover_active_connect(f);
-	if (rc) {
-		goto out;
-	}
+	if (!__F_GET(f, __FAILOVER_PEERCFG_RECEIVED))
+		return; /* no peercfg ... can't do anything */
 
-	/* Start hb_ev for heartbeat */
-	rc = ovis_scheduler_event_add(sched, &f->hb_ev);
-	__ASSERT(rc == 0);
-	if (rc) {
-		ldmsd_log(LDMSD_LINFO, "ldmsd_failover: active event_add failed"
-				       ", rc: %d\n", rc);
-		goto out;
-	}
+	if (__F_GET(f, __FAILOVER_PEERCFG_ACTIVATED))
+		return; /* already activated */
 
-out:
-	return rc;
+	/* check timeout */
+	gettimeofday(&tv, NULL);
+	if (timercmp(&tv, &f->timeout_ts, <))
+		return; /* not timeout yet */
+
+	/* timeout, start peercfg */
+	__peercfg_start(f);
 }
 
 static
-int __failover_do_failover(ldmsd_failover_t f)
+void __failover_active_routine(ldmsd_failover_t f)
+{
+	/* f->lock is held */
+	switch (f->conn_state) {
+	case FAILOVER_CONN_STATE_DISCONNECTED:
+		(void)__failover_active_connect(f);
+		break;
+	case FAILOVER_CONN_STATE_PAIRING_RETRY:
+		__failover_pair(f);
+		break;
+	case FAILOVER_CONN_STATE_RESETTING:
+		(void)__failover_reset_and_request_peercfg(f);
+		break;
+	case FAILOVER_CONN_STATE_CONNECTING:
+	case FAILOVER_CONN_STATE_PAIRING:
+	case FAILOVER_CONN_STATE_CONFIGURING:
+	case FAILOVER_CONN_STATE_ERROR:
+		/* do nothing */
+		/* The main driver of these states are in xprt cb path */
+		/* ERROR will eventually become DISCONNECTED */
+		break;
+	case FAILOVER_CONN_STATE_CONFIGURED:
+		__failover_ping(f);
+		break;
+	default:
+		__ASSERT(0 == "BAD STATE");
+		break;
+	}
+	__try_start_peercfg(f);
+}
+
+static
+int __peercfg_start(ldmsd_failover_t f)
 {
 	/* f->lock is held */
 	int rc = 0;
 	struct rbn *rbn;
+	struct str_rbn *srbn;
 	struct ldmsd_sec_ctxt sctxt = __get_sec_ctxt(NULL);
 
-	__dlog("Executing failover, flags: %#lx\n", f->flags);
-	if (f->flags & __FAILOVER_ACTIVATED) {
+	ldmsd_linfo("Failover: starting peercfg, flags: %#lo\n", f->flags);
+	if (__F_GET(f, __FAILOVER_PEERCFG_ACTIVATED)) {
 		rc = EINVAL;
 		goto out;
 	}
 
 	RBT_FOREACH(rbn, &f->prdcr_rbt) {
-		rc = ldmsd_prdcr_start(STR_RBN(rbn)->str, NULL, &sctxt);
+		srbn = STR_RBN(rbn);
+		if (srbn->started)
+			continue;
+		rc = ldmsd_prdcr_start(srbn->str, NULL, &sctxt);
 		__ASSERT(rc == 0);
+		if (rc)
+			goto out;
+		srbn->started = 1;
 	}
 
 	RBT_FOREACH(rbn, &f->updtr_rbt) {
-		rc = ldmsd_updtr_start(STR_RBN(rbn)->str, NULL, NULL, NULL, &sctxt);
+		srbn = STR_RBN(rbn);
+		if (srbn->started)
+			continue;
+		rc = ldmsd_updtr_start(srbn->str, NULL, NULL, NULL, &sctxt);
 		__ASSERT(rc == 0);
+		if (rc)
+			goto out;
+		srbn->started = 1;
 	}
 
-	__F_ON(f, __FAILOVER_ACTIVATED);
+	# if 0
+	/* NOTE: Leaving out peer storage policy in the favor of letting our
+	 *       storage policy picks up the data.
+	 */
+	RBT_FOREACH(rbn, &f->strgp_rbt) {
+		srbn = STR_RBN(rbn);
+		if (srbn->started)
+			continue;
+		rc = ldmsd_strgp_start(srbn->str, &sctxt);
+		__ASSERT(rc == 0);
+		if (rc)
+			goto out;
+		srbn->started = 1;
+	}
+	#endif
+
+	__F_ON(f, __FAILOVER_PEERCFG_ACTIVATED);
 out:
-	__dlog("__failover_do_failover(), flags: %#lx, rc: %d\n", f->flags, rc);
-	return rc;
-}
-
-static
-int __failover_do_failback(ldmsd_failover_t f)
-{
-	/* f->lock is held. */
-	int rc = 0;
-	struct rbn *rbn;
-	struct ldmsd_sec_ctxt sctxt = __get_sec_ctxt(NULL);
-
-	__dlog("Executing failback, flags: %#lx\n", f->flags);
-
-	if (0 == (f->flags & __FAILOVER_ACTIVATED)) {
-		rc = EINVAL;
-		goto out;
-	}
-
-	RBT_FOREACH(rbn, &f->prdcr_rbt) {
-		rc = ldmsd_prdcr_stop(STR_RBN(rbn)->str, &sctxt);
-		__ASSERT(rc == 0);
-	}
-
-	RBT_FOREACH(rbn, &f->updtr_rbt) {
-		rc = ldmsd_updtr_stop(STR_RBN(rbn)->str, &sctxt);
-		__ASSERT(rc == 0);
-	}
-
-	__F_OFF(f, __FAILOVER_ACTIVATED);
-out:
-	__dlog("__failover_do_failback(), flags: %#lx, rc: %d\n", f->flags, rc);
+	__dlog("Failover: __peercfg_start(), flags: %#lx, rc: %d\n",
+	       f->flags, rc);
 	return rc;
 }
 
@@ -935,7 +1526,6 @@ int failover_config_handler(ldmsd_req_ctxt_t req)
 	char *interval;
 	char *peer_name;
 	char *timeout_factor;
-	char buff[64];
 	const char *errmsg = NULL;
 	ldmsd_failover_t f;
 	int len;
@@ -958,29 +1548,36 @@ int failover_config_handler(ldmsd_req_ctxt_t req)
 	timeout_factor = __req_attr_gets(req, LDMSD_ATTR_TIMEOUT_FACTOR);
 
 	__failover_lock(f);
-	if (f->flags & __FAILOVER_CONFIGURED) {
-		rc = EEXIST;
-		errmsg = "failover cannot be reconfigured";
+	if (f->state != FAILOVER_STATE_STOP) {
+		rc = EBUSY;
+		errmsg = "cannot reconfigure due to busy failover service";
 		goto out;
 	}
-	if (!host || !port || !xprt) {
+	if (host) {
+		len = snprintf(f->host, sizeof(f->host), "%s", host);
+		if (len >= sizeof(f->host)) {
+			rc = ENAMETOOLONG;
+			goto out;
+		}
+	}
+
+	if (port) {
+		len = snprintf(f->port, sizeof(f->port), "%s", port);
+		if (len >= sizeof(f->port)) {
+			rc = ENAMETOOLONG;
+			goto out;
+		}
+	}
+	if (xprt) {
+		len = snprintf(f->xprt, sizeof(f->xprt), "%s", xprt);
+		if (len >= sizeof(f->xprt)) {
+			rc = ENAMETOOLONG;
+			goto out;
+		}
+	}
+	if (!*f->host || !*f->port || !*f->xprt) {
 		rc = EINVAL;
 		errmsg = "missing host, port or xprt attribute";
-		goto out;
-	}
-	len = snprintf(f->host, sizeof(f->host), "%s", host);
-	if (len >= sizeof(f->host)) {
-		rc = ENAMETOOLONG;
-		goto out;
-	}
-	len = snprintf(f->port, sizeof(f->port), "%s", port);
-	if (len >= sizeof(f->port)) {
-		rc = ENAMETOOLONG;
-		goto out;
-	}
-	len = snprintf(f->xprt, sizeof(f->xprt), "%s", xprt);
-	if (len >= sizeof(f->xprt)) {
-		rc = ENAMETOOLONG;
 		goto out;
 	}
 	if (peer_name) {
@@ -990,9 +1587,6 @@ int failover_config_handler(ldmsd_req_ctxt_t req)
 			rc = ENAMETOOLONG;
 			errmsg = "";
 		}
-	} else {
-		f->peer_name[0] = 0;
-		/* accept all */
 	}
 	if (auto_switch) {
 		f->auto_switch = atoi(auto_switch);
@@ -1005,19 +1599,15 @@ int failover_config_handler(ldmsd_req_ctxt_t req)
 		f->timeout_factor = d;
 	}
 	if (interval) {
-		__failover_set_interval(f, strtoul(interval, NULL, 0));
-	}
-
-	rc = __failover_start(f);
-	if (rc) {
-		snprintf(buff, sizeof(buff), "failover start failed: %d\n", rc);
-		errmsg = buff;
-		goto out;
+		__failover_set_ping_interval(f, strtoul(interval, NULL, 0));
 	}
 
 	__F_ON(f, __FAILOVER_CONFIGURED);
 
 out:
+	if (rc) {
+		__F_OFF(f, __FAILOVER_CONFIGURED);
+	}
 	__failover_unlock(f);
 	if (host)
 		free(host);
@@ -1076,17 +1666,17 @@ int failover_status_handler(ldmsd_req_ctxt_t req)
 	ldmsd_req_attr_t attr;
 	static uint64_t fl[] = {
 		__FAILOVER_CONFIGURED,
-		__FAILOVER_ACTIVATED,
-		__FAILOVER_NOHB_ARMED,
-		__FAILOVER_AX_CONNECTING,
-		__FAILOVER_AX_CONNECTED,
+		__FAILOVER_PEERCFG_ACTIVATED,
+		__FAILOVER_PEERCFG_RECEIVED,
+		__FAILOVER_OUTSTANDING_PING,
+		__FAILOVER_OURCFG_ACTIVATED,
 	};
 	static const char *fls[] = {
 		"CONFIGURED",
-		"ACTIVATED",
-		"NOHB_ARMED",
-		"AX_CONNECTING",
-		"AX_CONNECTED",
+		"PEERCFG_ACTIVATED",
+		"PEERCFG_RECEIVED",
+		"OUTSTANDING_PING",
+		"OURCFG_ACTIVATED",
 	};
 	f = __ldmsd_req_failover_get(req);
 	if (!f) {
@@ -1125,9 +1715,12 @@ int failover_status_handler(ldmsd_req_ctxt_t req)
 	__APPEND(", \"port\": \"%s\"", f->port);
 	__APPEND(", \"xprt\": \"%s\"", f->xprt);
 	__APPEND(", \"peer_name\": \"%s\"", f->peer_name);
-	__APPEND(", \"interval\": \"%ld\"", f->interval);
+	__APPEND(", \"task_interval\": \"%ld\"", f->task_interval);
+	__APPEND(", \"ping_interval\": \"%ld\"", f->ping_interval);
 	__APPEND(", \"timeout_factor\": \"%lf\"", f->timeout_factor);
 	__APPEND(", \"auto_switch\": \"%d\"", f->auto_switch);
+	__APPEND(", \"failover_state\": \"%s\"", __failover_state_str(f));
+	__APPEND(", \"conn_state\": \"%s\"", __failover_conn_state_str(f));
 	__APPEND(", \"flags\": {");
 	for (i = 0; i < (sizeof(fl)/sizeof(*fl)); i++) {
 		if (i)
@@ -1161,7 +1754,59 @@ err:
 	return rc;
 }
 
-int failover_do_failover_handler(ldmsd_req_ctxt_t req)
+int failover_start_handler(ldmsd_req_ctxt_t req)
+{
+	int rc;
+	char errbuf[128];
+	const char *errmsg = NULL;
+
+	rc = ldmsd_failover_start();
+	switch (rc) {
+	case 0:
+		/* OK, do nothing */
+		break;
+	case EBUSY:
+		errmsg = "failover service busy";
+		break;
+	default:
+		/* other errors */
+		snprintf(errbuf, sizeof(errbuf),
+			 "failover_start failed, rc: %d", rc);
+		errmsg = errbuf;
+		break;
+	}
+
+	req->errcode = rc;
+	ldmsd_send_req_response(req, errmsg);
+	return rc;
+}
+
+int failover_stop_handler(ldmsd_req_ctxt_t req)
+{
+	/* `failover_stop` will stop the service on both daemons in the pair. */
+	int rc = 0;
+	char errbuf[128];
+	const char *errmsg = errbuf;
+	ldmsd_failover_t f;
+	f = __ldmsd_req_failover_get(req);
+	__failover_lock(f);
+	if (f->state != FAILOVER_STATE_START) {
+		rc = EBUSY;
+		errmsg = "failover service busy";
+		goto out;
+	}
+	f->state = FAILOVER_STATE_STOPPING;
+	/* so that we keep __try_stop() fairly quickly */
+	f->task_interval = 1000000;
+	ldmsd_task_resched(&f->task, LDMSD_TASK_F_IMMEDIATE, f->task_interval, 0);
+out:
+	__failover_unlock(f);
+	req->errcode = rc;
+	ldmsd_send_req_response(req, errmsg);
+	return rc;
+}
+
+int failover_peercfg_start_handler(ldmsd_req_ctxt_t req)
 {
 	int rc = 0;
 	const char *errmsg = NULL;
@@ -1170,7 +1815,7 @@ int failover_do_failover_handler(ldmsd_req_ctxt_t req)
 
 	__failover_lock(f);
 
-	rc = __failover_do_failover(f);
+	rc = __peercfg_start(f);
 	if (rc) {
 		snprintf(buff, sizeof(buff), "error: %d\n", rc);
 		errmsg = buff;
@@ -1182,7 +1827,7 @@ int failover_do_failover_handler(ldmsd_req_ctxt_t req)
 	return rc;
 }
 
-int failover_do_failback_handler(ldmsd_req_ctxt_t req)
+int failover_peercfg_stop_handler(ldmsd_req_ctxt_t req)
 {
 	int rc = 0;
 	const char *errmsg = NULL;
@@ -1191,7 +1836,7 @@ int failover_do_failback_handler(ldmsd_req_ctxt_t req)
 
 	__failover_lock(f);
 
-	rc = __failover_do_failback(f);
+	rc = __peercfg_stop(f);
 	if (rc) {
 		snprintf(buff, sizeof(buff), "error: %d\n", rc);
 		errmsg = buff;
@@ -1232,28 +1877,12 @@ int failover_pair_handler(ldmsd_req_ctxt_t req)
 	}
 
 	__failover_lock(f);
-	if (!(f->flags & __FAILOVER_CONFIGURED)) {
+	if (!__F_GET(f, __FAILOVER_CONFIGURED)) {
 		rc = EAGAIN; /* we are not ready */
 		goto err1;
 	}
 
 	rc = __verify_pair_req(f, req);
-	if (rc)
-		goto err1;
-	/* pairing accepted */
-	if ((f->flags & __FAILOVER_ACTIVATED) && f->auto_switch) {
-		__failover_do_failback(f);
-	}
-	req->errcode = rc;
-	ldmsd_send_req_response(req, NULL);
-
-	/* then, request a reset and share our objects */
-	rc = __failover_send_reset(f, req->xprt->ldms.ldms);
-	__ASSERT(rc == 0);
-	rc = __failover_send_cfgobjs(f, req->xprt->ldms.ldms);
-	__ASSERT(rc == 0);
-	__failover_unlock(f);
-	return 0;
 
 err1:
 	__failover_unlock(f);
@@ -1266,26 +1895,31 @@ err0:
 int failover_reset_handler(ldmsd_req_ctxt_t req)
 {
 	ldmsd_failover_t f;
-	struct rbn *rbn;
-	struct ldmsd_sec_ctxt sctxt = __get_sec_ctxt(req);
-	int rc;
+	int rc = 0;
 
 	f = __ldmsd_req_failover_get(req);
 	if (!f)
 		return ENOENT;
 	__failover_lock(f);
-	if (f->flags & __FAILOVER_ACTIVATED)
-		(void)__failover_do_failback(f); /* intentionally ignore rc */
-	RBT_FOREACH(rbn, &f->updtr_rbt) {
-		rc = ldmsd_updtr_del(STR_RBN(rbn)->str, &sctxt);
-		__ASSERT(rc == 0);
-	}
-	RBT_FOREACH(rbn, &f->prdcr_rbt) {
-		rc = ldmsd_prdcr_del(STR_RBN(rbn)->str, &sctxt);
-		__ASSERT(rc == 0);
+	switch (f->state) {
+	case FAILOVER_STATE_START:
+		f->state = FAILOVER_STATE_STOPPING;
+		f->task_interval = 1000000;
+		ldmsd_task_resched(&f->task, LDMSD_TASK_F_IMMEDIATE,
+				   f->task_interval, 0);
+		/* let through */
+	case FAILOVER_STATE_STOPPING:
+		rc = __peercfg_reset(f);
+		break;
+	case FAILOVER_STATE_STOP:
+		/* already stop, do nothing */
+	default:
+		__ASSERT("BAD FAILOVER STATE\n");
 	}
 	__failover_unlock(f);
 	/* this req needs no resp */
+	req->errcode = rc;
+	ldmsd_send_req_response(req, NULL);
 	return 0;
 }
 
@@ -1301,6 +1935,13 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	char *xprt = __req_attr_gets(req, LDMSD_ATTR_XPRT);
 	char *interval = __req_attr_gets(req, LDMSD_ATTR_INTERVAL);
 	char *type = __req_attr_gets(req, LDMSD_ATTR_TYPE);
+	char *uid = __req_attr_gets(req, LDMSD_ATTR_UID);
+	char *gid = __req_attr_gets(req, LDMSD_ATTR_GID);
+	char *perm = __req_attr_gets(req, LDMSD_ATTR_PERM);
+
+	uid_t _uid;
+	gid_t _gid;
+	mode_t _perm;
 
 	enum ldmsd_prdcr_type ptype;
 	ldmsd_prdcr_t p;
@@ -1315,6 +1956,12 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 		rc = EINVAL;
 		goto out;
 	}
+
+	_uid = (uid)?(strtoul(uid, NULL, 0)):(sctxt.crd.uid);
+	_gid = (gid)?(strtoul(gid, NULL, 0)):(sctxt.crd.gid);
+	_perm = (perm)?(strtoul(perm, NULL, 0)):(0700);
+	sctxt.crd.uid = _uid;
+	sctxt.crd.gid = _gid;
 
 	p = ldmsd_prdcr_find(name);
 	if (p) {
@@ -1340,7 +1987,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 		goto out;
 	}
 	p = ldmsd_prdcr_new_with_auth(name, xprt, host, atoi(port), ptype,
-			atoi(interval), sctxt.crd.uid, sctxt.crd.gid, 0700);
+			atoi(interval), _uid, _gid, _perm);
 	if (!p) {
 		rc = errno;
 		str_rbn_free(srbn);
@@ -1361,6 +2008,12 @@ out:
 		free(interval);
 	if (type)
 		free(type);
+	if (uid)
+		free(uid);
+	if (gid)
+		free(gid);
+	if (perm)
+		free(perm);
 	/* this req needs no resp */
 	return rc;
 }
@@ -1381,6 +2034,13 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 	char *push = __req_attr_gets(req, LDMSD_ATTR_PUSH);
 	char *producer = __req_attr_gets(req, LDMSD_ATTR_PRODUCER);
 	char *auto_interval = __req_attr_gets(req, LDMSD_ATTR_AUTO_INTERVAL);
+	char *uid = __req_attr_gets(req, LDMSD_ATTR_UID);
+	char *gid = __req_attr_gets(req, LDMSD_ATTR_GID);
+	char *perm = __req_attr_gets(req, LDMSD_ATTR_PERM);
+
+	uid_t _uid;
+	gid_t _gid;
+	mode_t _perm;
 
 	ldmsd_updtr_t u;
 	ldmsd_prdcr_t p;
@@ -1396,6 +2056,12 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 		rc = EINVAL;
 		goto out;
 	}
+
+	_uid = (uid)?(strtoul(uid, NULL, 0)):(sctxt.crd.uid);
+	_gid = (gid)?(strtoul(gid, NULL, 0)):(sctxt.crd.gid);
+	_perm = (perm)?(strtoul(perm, NULL, 0)):(0700);
+	sctxt.crd.uid = _uid;
+	sctxt.crd.gid = _gid;
 
 	if (push) {
 		if (0 == strcasecmp("onchange", push)) {
@@ -1414,7 +2080,7 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 			goto out;
 		u = ldmsd_updtr_new_with_auth(name, interval, offset,
 						push_flags, is_auto_interval,
-						sctxt.crd.uid, sctxt.crd.gid, 0700);
+						_uid, _gid, _perm);
 		if (!u) {
 			rc = errno;
 			str_rbn_free(srbn);
@@ -1468,31 +2134,212 @@ out:
 		free(push);
 	if (producer)
 		free(producer);
+	if (uid)
+		free(uid);
+	if (gid)
+		free(gid);
+	if (perm)
+		free(perm);
 	/* this req need no resp */
 	return rc;
 }
 
-int failover_heartbeat_handler(ldmsd_req_ctxt_t req)
+int failover_cfgstrgp_handler(ldmsd_req_ctxt_t req)
 {
-	int rc;
+	/* create new cfg if not existed, or update if exited */
+	ldmsd_failover_t f = __ldmsd_req_failover_get(req);
+
+	char *name = __req_attr_gets(req, LDMSD_ATTR_NAME);
+	char *regex = __req_attr_gets(req, LDMSD_ATTR_REGEX);
+	char *metric = __req_attr_gets(req, LDMSD_ATTR_METRIC);
+	char *plugin = __req_attr_gets(req, LDMSD_ATTR_PLUGIN);
+	char *schema = __req_attr_gets(req, LDMSD_ATTR_SCHEMA);
+	char *container = __req_attr_gets(req, LDMSD_ATTR_CONTAINER);
+	char *uid = __req_attr_gets(req, LDMSD_ATTR_UID);
+	char *gid = __req_attr_gets(req, LDMSD_ATTR_GID);
+	char *perm = __req_attr_gets(req, LDMSD_ATTR_PERM);
+
+	uid_t _uid;
+	gid_t _gid;
+	mode_t _perm;
+
+	struct str_rbn *srbn;
+
+	ldmsd_strgp_t s;
+	struct ldmsd_sec_ctxt sctxt = __get_sec_ctxt(req);
+	int rc = 0;
+
+	__failover_lock(f);
+
+	if (!name || !__name_is_failover(name)) {
+		__ASSERT(0 == "BAD MESSAGE");
+		rc = EINVAL;
+		goto out;
+	}
+
+	_uid = (uid)?(strtoul(uid, NULL, 0)):(sctxt.crd.uid);
+	_gid = (gid)?(strtoul(gid, NULL, 0)):(sctxt.crd.gid);
+	_perm = (perm)?(strtoul(perm, NULL, 0)):(0700);
+	sctxt.crd.uid = _uid;
+	sctxt.crd.gid = _gid;
+
+	s = ldmsd_strgp_find(name);
+	if (!s) {
+		/* create */
+		/* check if the required parameters are all there */
+		if (!schema || !plugin || !container) {
+			rc = EINVAL;
+			goto out;
+		}
+		srbn = str_rbn_new(name);
+		if (!srbn)
+			goto out;
+		s = ldmsd_strgp_new_with_auth(name, _uid, _gid, _perm);
+		if (!s) {
+			rc = errno;
+			str_rbn_free(srbn);
+			goto out;
+		}
+		rbt_ins(&f->strgp_rbt, &srbn->rbn);
+		ldmsd_strgp_get(s); /* so that we can `put` without del */
+		s->plugin_name = plugin;
+		plugin = NULL; /* give plugin to s */
+		s->schema = schema;
+		schema = NULL;
+		s->container = container;
+		container = NULL;
+	}
+
+	if (regex) {
+		/* strgp_prdcr_add */
+		rc = ldmsd_strgp_prdcr_add(name, regex, req->line_buf,
+					   req->line_len, &sctxt);
+		if (rc)
+			goto put;
+	}
+
+	if (metric) {
+		/* strgp_metric_add */
+		rc = ldmsd_strgp_metric_add(name, metric, &sctxt);
+		if (rc)
+			goto put;
+	}
+
+put:
+	ldmsd_strgp_put(s);
+out:
+	__failover_unlock(f);
+	if (name)
+		free(name);
+	if (regex)
+		free(regex);
+	if (metric)
+		free(metric);
+	if (plugin)
+		free(plugin);
+	if (container)
+		free(container);
+	if (schema)
+		free(schema);
+	if (uid)
+		free(uid);
+	if (gid)
+		free(gid);
+	if (perm)
+		free(perm);
+	/* this req need no resp */
+	return rc;
+}
+
+int failover_ping_handler(ldmsd_req_ctxt_t req)
+{
+	int rc = 0;
 	ldmsd_failover_t f;
+	struct ldmsd_req_attr_s attr;
+	struct failover_ping_data data;
+	const char *name;
+	const char *errstr = NULL;
 
 	f = __ldmsd_req_failover_get(req);
 	if (!f)
 		return ENOENT;
 
-	/* heart beat received ... reset the timeout event */
 	__failover_lock(f);
-	__dlog("HB received, flags: %#lx\n", f->flags);
-	rc = __failover_no_hb_reset(f);
-	__ASSERT(rc == 0);
+	name = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_NAME);
+	if (!name) {
+		rc = EINVAL;
+		errstr = "missing `name` attribute";
+		goto err;
+	}
+	if (strlen(f->peer_name) && 0 != strcmp(f->peer_name, name)) {
+		rc = EINVAL;
+		errstr = "peer name unmatched";
+		goto err;
+	}
+	__dlog("Failover: PING received, our flags: %#lx\n", f->flags);
+	data.state = f->state;
+	data.conn_state = f->conn_state;
+	data.flags = f->flags;
+	__ping_data_hton(&data);
+	attr.attr_id = LDMSD_ATTR_UDATA;
+	attr.discrim = 1;
+	attr.attr_len = sizeof(data);
+	ldmsd_hton_req_attr(&attr);
+	__failover_unlock(f);
+	req->errcode = 0;
+	ldmsd_append_reply(req, (void*)&attr, sizeof(attr),
+			   LDMSD_REQ_SOM_F);
+	ldmsd_append_reply(req, (void*)&data, sizeof(data), 0);
+	attr.discrim = 0;
+	ldmsd_append_reply(req, (char *)&attr.discrim, sizeof(uint32_t),
+			   LDMSD_REQ_EOM_F);
+	return rc;
+err:
+	__failover_unlock(f);
+	req->errcode = rc;
+	ldmsd_send_req_response(req, errstr);
+	return rc;
+}
+
+int failover_peercfg_handler(ldmsd_req_ctxt_t req)
+{
+	int rc = 0;
+	ldmsd_failover_t f;
+
+	f = __ldmsd_req_failover_get(req);
+	if (!f) {
+		rc = ENOENT;
+		goto out;
+	}
+	__failover_lock(f);
+	rc = __failover_send_cfgobjs(f, req->xprt->ldms.ldms);
+	__failover_unlock(f);
+out:
+	req->errcode = rc;
+	ldmsd_send_req_response(req, NULL);
+	return rc;
+}
+
+int ldmsd_failover_start()
+{
+	int rc;
+	ldmsd_failover_t f;
+	f = &__failover;
+	__failover_lock(f);
+	if (f->state != FAILOVER_STATE_STOP) {
+		rc = EBUSY;
+		goto out;
+	}
+	f->task_interval = f->ping_interval;
+	rc = ldmsd_task_start(&f->task, __failover_task, f,
+			      LDMSD_TASK_F_IMMEDIATE, f->task_interval, 0);
 	if (rc)
 		goto out;
-	if (f->auto_switch && (f->flags & __FAILOVER_ACTIVATED)) {
-		/* need failback */
-		rc = __failover_do_failback(f);
-		__ASSERT(rc == 0);
-	}
+
+	f->state = FAILOVER_STATE_START;
+	/* allows only failover-safe and failover-internal commands */
+	ldmsd_inband_cfg_mask_set(LDMSD_PERM_FAILOVER_ALLOWED |
+				  LDMSD_PERM_FAILOVER_INTERNAL);
 out:
 	__failover_unlock(f);
 	return rc;
@@ -1501,7 +2348,5 @@ out:
 __attribute__((constructor))
 void __failover_init_once()
 {
-	sched = ovis_scheduler_new();
-	__ASSERT(sched);
 	__failover_init(&__failover);
 }

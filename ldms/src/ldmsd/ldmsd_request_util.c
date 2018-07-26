@@ -67,11 +67,12 @@ const struct req_str_id req_str_id_table[] = {
 	{  "daemon",             LDMSD_DAEMON_STATUS_REQ  },
 	{  "env",                LDMSD_ENV_REQ  },
 	{  "exit",               LDMSD_EXIT_DAEMON_REQ  },
-	{  "failback",           LDMSD_FAILOVER_DO_FAILBACK_REQ  },
-	{  "failover",           LDMSD_FAILOVER_DO_FAILOVER_REQ  },
 	{  "failover_config",    LDMSD_FAILOVER_CONFIG_REQ  },
-	{  "failover_mod",       LDMSD_FAILOVER_MOD_REQ  },
+	{  "failover_peercfg_start", LDMSD_FAILOVER_PEERCFG_START_REQ  },
+	{  "failover_peercfg_stop",  LDMSD_FAILOVER_PEERCFG_STOP_REQ  },
+	{  "failover_start",     LDMSD_FAILOVER_START_REQ  },
 	{  "failover_status",    LDMSD_FAILOVER_STATUS_REQ  },
+	{  "failover_stop",      LDMSD_FAILOVER_STOP_REQ  },
 	{  "greeting",           LDMSD_GREETING_REQ  },
 	{  "include",            LDMSD_INCLUDE_REQ  },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ  },
@@ -128,6 +129,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "auto_switch",       LDMSD_ATTR_AUTO_SWITCH  },
 	{  "base",              LDMSD_ATTR_BASE  },
 	{  "container",         LDMSD_ATTR_CONTAINER  },
+	{  "gid",               LDMSD_ATTR_GID  },
 	{  "host",              LDMSD_ATTR_HOST  },
 	{  "incr",              LDMSD_ATTR_INCREMENT  },
 	{  "instance",          LDMSD_ATTR_INSTANCE  },
@@ -153,6 +155,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "timeout_factor",    LDMSD_ATTR_TIMEOUT_FACTOR  },
 	{  "type",              LDMSD_ATTR_TYPE  },
 	{  "udata",             LDMSD_ATTR_UDATA  },
+	{  "uid",               LDMSD_ATTR_UID  },
 	{  "xprt",              LDMSD_ATTR_XPRT  },
 };
 
@@ -181,6 +184,103 @@ int32_t ldmsd_req_attr_str2id(const char *name)
 	if (!x)
 		return -1;
 	return x->id;
+}
+
+const char *ldmsd_req_id2str(enum ldmsd_request req_id)
+{
+	switch (req_id) {
+	case LDMSD_EXAMPLE_REQ  : return "EXAMPLE_REQ";
+	case LDMSD_GREETING_REQ : return "GREETING_REQ";
+
+	case LDMSD_PRDCR_ADD_REQ         : return "PRDCR_ADD_REQ";
+	case LDMSD_PRDCR_DEL_REQ         : return "PRDCR_DEL_REQ";
+	case LDMSD_PRDCR_START_REQ       : return "PRDCR_START_REQ";
+	case LDMSD_PRDCR_STOP_REQ        : return "PRDCR_STOP_REQ";
+	case LDMSD_PRDCR_STATUS_REQ      : return "PRDCR_STATUS_REQ";
+	case LDMSD_PRDCR_START_REGEX_REQ : return "PRDCR_START_REGEX_REQ";
+	case LDMSD_PRDCR_STOP_REGEX_REQ  : return "PRDCR_STOP_REGEX_REQ";
+	case LDMSD_PRDCR_SET_REQ         : return "PRDCR_SET_REQ";
+	case LDMSD_PRDCR_HINT_TREE_REQ   : return "PRDCR_HINT_TREE_REQ";
+
+	case LDMSD_STRGP_ADD_REQ        : return "STRGP_ADD_REQ";
+	case LDMSD_STRGP_DEL_REQ        : return "STRGP_DEL_REQ";
+	case LDMSD_STRGP_START_REQ      : return "STRGP_START_REQ";
+	case LDMSD_STRGP_STOP_REQ       : return "STRGP_STOP_REQ";
+	case LDMSD_STRGP_STATUS_REQ     : return "STRGP_STATUS_REQ";
+	case LDMSD_STRGP_PRDCR_ADD_REQ  : return "STRGP_PRDCR_ADD_REQ";
+	case LDMSD_STRGP_PRDCR_DEL_REQ  : return "STRGP_PRDCR_DEL_REQ";
+	case LDMSD_STRGP_METRIC_ADD_REQ : return "STRGP_METRIC_ADD_REQ";
+	case LDMSD_STRGP_METRIC_DEL_REQ : return "STRGP_METRIC_DEL_REQ";
+
+	case LDMSD_UPDTR_ADD_REQ       : return "UPDTR_ADD_REQ";
+	case LDMSD_UPDTR_DEL_REQ       : return "UPDTR_DEL_REQ";
+	case LDMSD_UPDTR_START_REQ     : return "UPDTR_START_REQ";
+	case LDMSD_UPDTR_STOP_REQ      : return "UPDTR_STOP_REQ";
+	case LDMSD_UPDTR_STATUS_REQ    : return "UPDTR_STATUS_REQ";
+	case LDMSD_UPDTR_PRDCR_ADD_REQ : return "UPDTR_PRDCR_ADD_REQ";
+	case LDMSD_UPDTR_PRDCR_DEL_REQ : return "UPDTR_PRDCR_DEL_REQ";
+	case LDMSD_UPDTR_MATCH_ADD_REQ : return "UPDTR_MATCH_ADD_REQ";
+	case LDMSD_UPDTR_MATCH_DEL_REQ : return "UPDTR_MATCH_DEL_REQ";
+	case LDMSD_UPDTR_TASK_REQ      : return "UPDTR_TASK_REQ";
+
+	case LDMSD_SMPLR_ADD_REQ   : return "SMPLR_ADD_REQ";
+	case LDMSD_SMPLR_DEL_REQ   : return "SMPLR_DEL_REQ";
+	case LDMSD_SMPLR_START_REQ : return "SMPLR_START_REQ";
+	case LDMSD_SMPLR_STOP_REQ  : return "SMPLR_STOP_REQ";
+
+	case LDMSD_PLUGN_ADD_REQ    : return "PLUGN_ADD_REQ";
+	case LDMSD_PLUGN_DEL_REQ    : return "PLUGN_DEL_REQ";
+	case LDMSD_PLUGN_START_REQ  : return "PLUGN_START_REQ";
+	case LDMSD_PLUGN_STOP_REQ   : return "PLUGN_STOP_REQ";
+	case LDMSD_PLUGN_STATUS_REQ : return "PLUGN_STATUS_REQ";
+	case LDMSD_PLUGN_LOAD_REQ   : return "PLUGN_LOAD_REQ";
+	case LDMSD_PLUGN_TERM_REQ   : return "PLUGN_TERM_REQ";
+	case LDMSD_PLUGN_CONFIG_REQ : return "PLUGN_CONFIG_REQ";
+	case LDMSD_PLUGN_LIST_REQ   : return "PLUGN_LIST_REQ";
+	case LDMSD_PLUGN_SETS_REQ   : return "PLUGN_SETS_REQ";
+
+	case LDMSD_SET_UDATA_REQ         : return "SET_UDATA_REQ";
+	case LDMSD_SET_UDATA_REGEX_REQ   : return "SET_UDATA_REGEX_REQ";
+	case LDMSD_VERBOSE_REQ           : return "VERBOSE_REQ";
+	case LDMSD_DAEMON_STATUS_REQ     : return "DAEMON_STATUS_REQ";
+	case LDMSD_VERSION_REQ           : return "VERSION_REQ";
+	case LDMSD_ENV_REQ               : return "ENV_REQ";
+	case LDMSD_INCLUDE_REQ           : return "INCLUDE_REQ";
+	case LDMSD_ONESHOT_REQ           : return "ONESHOT_REQ";
+	case LDMSD_LOGROTATE_REQ         : return "LOGROTATE_REQ";
+	case LDMSD_EXIT_DAEMON_REQ       : return "EXIT_DAEMON_REQ";
+	case LDMSD_RECORD_LEN_ADVICE_REQ : return "RECORD_LEN_ADVICE_REQ";
+	case LDMSD_SET_ROUTE_REQ         : return "SET_ROUTE_REQ";
+
+	/* failover requests by user */
+	case LDMSD_FAILOVER_CONFIG_REQ        : return "FAILOVER_CONFIG_REQ";
+	case LDMSD_FAILOVER_PEERCFG_START_REQ : return "FAILOVER_PEERCFG_START_REQ";
+	case LDMSD_FAILOVER_PEERCFG_STOP_REQ  : return "FAILOVER_PEERCFG_STOP_REQ";
+	case LDMSD_FAILOVER_MOD_REQ           : return "FAILOVER_MOD_REQ";
+	case LDMSD_FAILOVER_STATUS_REQ        : return "FAILOVER_STATUS_REQ";
+
+	/* failover requests by ldmsd (not exposed to users) */
+	case LDMSD_FAILOVER_PAIR_REQ      : return "FAILOVER_PAIR_REQ";
+	case LDMSD_FAILOVER_RESET_REQ     : return "FAILOVER_RESET_REQ";
+	case LDMSD_FAILOVER_CFGPRDCR_REQ  : return "FAILOVER_CFGPRDCR_REQ";
+	case LDMSD_FAILOVER_CFGUPDTR_REQ  : return "FAILOVER_CFGUPDTR_REQ";
+	case LDMSD_FAILOVER_CFGSTRGP_REQ  : return "FAILOVER_CFGSTRGP_REQ";
+	case LDMSD_FAILOVER_PING_REQ      : return "FAILOVER_PING_REQ";
+	case LDMSD_FAILOVER_PEERCFG_REQ   : return "FAILOVER_PEERCFG_REQ";
+
+	/* additional failover requests by user */
+	case LDMSD_FAILOVER_START_REQ : return "FAILOVER_START_REQ";
+	case LDMSD_FAILOVER_STOP_REQ  : return "FAILOVER_STOP_REQ";
+
+	/* Set Group Requests */
+	case LDMSD_SETGROUP_ADD_REQ : return "SETGROUP_ADD_REQ";
+	case LDMSD_SETGROUP_MOD_REQ : return "SETGROUP_MOD_REQ";
+	case LDMSD_SETGROUP_DEL_REQ : return "SETGROUP_DEL_REQ";
+	case LDMSD_SETGROUP_INS_REQ : return "SETGROUP_INS_REQ";
+	case LDMSD_SETGROUP_RM_REQ  : return "SETGROUP_RM_REQ";
+
+	default: return "UNKNOWN_REQ";
+	}
 }
 
 /*
