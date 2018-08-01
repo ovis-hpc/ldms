@@ -3,6 +3,8 @@ lib_LTLIBRARIES =
 AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir) -I..
 
 check_PROGRAMS =
+libmapinclude_HEADERS =
+libmapincludedir = $(includedir)/coll
 
 if ENABLE_COLL
 libcoll_la_SOURCES = rbt.c rbt.h \
@@ -44,6 +46,13 @@ test_label_set_LDADD = libcoll.la
 test_idx_SOURCES = idx.c
 test_idx_CFLAGS = $(AM_CFLAGS) -DIDX_TEST
 
+endif
+if ENABLE_SOS
+libmap_la_SOURCES = libmap.c
+libmap_la_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
+libmap_la_LIBADD = @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@ -lsos
+lib_LTLIBRARIES += libmap.la
+libmapinclude_HEADERS += map.h
 endif
 
 #install-exec-hook:
