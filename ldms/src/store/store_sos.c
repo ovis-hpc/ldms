@@ -533,9 +533,18 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 		goto err_0;
 	rc = sos_schema_add(si->sos_handle->sos, schema);
 	if (rc) {
+		sos_schema_free(schema);
+		if (rc == EEXIST) {
+			/* Added by our failover peer? */
+			schema = sos_schema_by_name(si->sos_handle->sos,
+						    si->schema_name);
+			if (schema)
+				goto out;
+		}
 		msglog(LDMSD_LERROR, "Error %d adding the schema to the container\n", rc);
 		goto err_1;
 	}
+ out:
 	si->sos_schema = schema;
 	return 0;
  err_1:
