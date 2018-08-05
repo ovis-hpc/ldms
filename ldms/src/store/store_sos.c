@@ -669,7 +669,15 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			sos_value_put(value);
 		} else {
 			esz = __element_byte_len(metric_type);
-			array_len = ldms_metric_array_get_len(set, metric_arry[i]);
+			if (metric_type == LDMS_V_CHAR_ARRAY) {
+				ldms_mval_t mval = ldms_metric_array_get(set, metric_arry[i]);
+				array_len = strlen(mval->a_char);
+				if (array_len > ldms_metric_array_get_len(set, metric_arry[i])) {
+					array_len = ldms_metric_array_get_len(set, metric_arry[i]);
+				}
+			} else {
+				array_len = ldms_metric_array_get_len(set, metric_arry[i]);
+			}
 			array_value = sos_array_new(array_value, attr,
 							obj, array_len);
 			if (!array_value) {
