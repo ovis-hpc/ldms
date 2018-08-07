@@ -29,14 +29,25 @@ if test -z "$FUNCTIONS" -o ! -r "$FUNCTIONS"; then
 	exit 1
 fi
 
+COMMONFILE=$sysconfdir/sysconfig/ldms.d/ldmsd.all_instances.conf
+if test -f $COMMONFILE; then
+ALL_PICKY=1
+. $COMMONFILE
+fi
+
 if test -z "$LDMSCLUSTER"; then
 	NODEFILE=$sysconfdir/sysconfig/ldms.d/ldmsd.local.conf
 else
 	NODEFILE=$sysconfdir/sysconfig/ldms.d/ldmsd.$LDMSCLUSTER.conf
 fi
 
+if test -f $NODEFILE; then
 # load ldmsd localizations source
 . $NODEFILE
+else
+	logger syslog.warning "Missing $NODEFILE. Most likely this means \"$LDMSCLUSTER \" is a command-line typo."
+ 	logger syslog.warning "EXPECT ERRORS TO FOLLOW."
+fi
 
 if test -n "$LDMSD_GENDERS_HOST"; then
 	echo 'set LDMS_GENDERS_HOST not LDMSD_GENDERS_HOST'
@@ -104,7 +115,7 @@ if [ $RETVAL -eq 0 ]; then
 	fi
 	export CNAME NIDNUM NODENUM NODETYPE ARIES IS_PHI
 else
-	hostnumber="$(echo $LDMS_HOSTNAME | sed 's/[a-z\-]//g')"
+	hostnumber="$(echo $LDMS_HOSTNAME | sed 's/[a-z\-]//g' | sed 's/^0*//g')"
 	if [ -z $hostnumber ]; then
 		echoq "WARNING: $host (no digits in hostname?)"
 		hostnumber=0
@@ -140,6 +151,11 @@ if test -n "$NODE_ID_BASE"; then
 		LDMSD_IDBASE=$NODE_ID_BASE
 	fi
 fi
+# precedence:
+# shell defined COMPONENT_ID
+# ldmsd_id defined number
+# ldmsd_idbase + ldmsd_idsuffix
+# ldmsd_idbase + detected number suffix
 if test -z "$LDMSD_IDBASE"; then
 	LDMSD_IDBASE=`$NODEATTR $NODEATTRFILE -v $host ldmsd_idbase 2>/dev/null`
 	if test -z "$LDMSD_IDBASE" ; then
@@ -149,6 +165,16 @@ fi
 export LDMSD_IDBASE
 
 if test -z $COMPONENT_ID; then
+	LDMSD_ID=`$NODEATTR $NODEATTRFILE -v $host ldmsd_id 2>/dev/null`
+	if test -n "$LDMSD_ID" ; then
+		COMPONENT_ID=$LDMSD_ID
+	fi
+fi
+if test -z $COMPONENT_ID; then
+	suff=`$NODEATTR $NODEATTRFILE -v $host ldmsd_idsuffix 2>/dev/null`
+	if test -n "$suff" ; then
+		hostnumber=$suff
+	fi
 	if test -n "$AGG_ID_BASE"; then
 		COMPONENT_ID="$(( $AGG_ID_BASE + $hostnumber ))"
 	fi
@@ -211,6 +237,19 @@ if test -z $LDMSD_PORT; then
 	LDMSD_PORT=`$NODEATTR $NODEATTRFILE -v $host ldmsd_port 2>/dev/null`
 	if test -z $LDMSD_PORT; then
 		LDMSD_PORT=411
+	else
+		case $LDMSD_PORT in
+		[0-9]*)
+			: 
+		;;
+		'$'*)
+			LDMSD_PORT=`eval echo $LDMSD_PORT`
+		;;
+		*)
+			logger syslog.error "Unexpected LDMSD_PORT=$LDMSD_PORT"
+			dietrace 1
+		;;
+		esac
 	fi
 fi
 export LDMSD_PORT
@@ -289,11 +328,14 @@ export LDMSD_OFFSET_DEFAULT
 # Note the LDMS_LOG_PATH may become a problem if
 # on a shared file system that goes down and daemon debugging is enabled.
 if test -z "$LDMS_LOG_PATH"; then
-	LDMSD_LOG_PATH=`$NODEATTR $NODEATTRFILE -v $host ldmsd_log 2>/dev/null`
-	if test -z "$LDMSD_LOG_PATH"; then
+	LDMS_LOG_PATH=`$NODEATTR $NODEATTRFILE -v $host ldmsd_log 2>/dev/null`
+	if test -z "$LDMS_LOG_PATH"; then
 		LDMS_LOG_PATH=journal
 	fi
 fi
+export LDMS_LOG_PATH
+export LDMS_LOG_OPT
+export LDMS_LOG_FILE
 
 if test -z "$LDMSD_USE_UNIX_SOCK"; then
 	LDMSD_USE_UNIX_SOCK=`$NODEATTR $NODEATTRFILE -v $host ldmsd_use_unix_socket 2>/dev/null`
@@ -321,9 +363,12 @@ else
 fi
 export LDMSD_SOCK_OPT LDMSD_SOCKPATH
 
-VGBIN=`$NODEATTR $NODEATTRFILE -v $host ldmsd_vg 2>/dev/null`
+if test -z "$VGBIN"; then
+	VGBIN=`$NODEATTR $NODEATTRFILE -v $host ldmsd_vg 2>/dev/null`
+fi
 if test -n "$VGBIN"; then
 	export VGBIN
+	if test -z "$VGOPT"; then
 	if test -x $VGBIN; then
 		VGOPTFILE=`$NODEATTR $NODEATTRFILE -v $host ldmsd_vgargfile 2>/dev/null`
 	else
@@ -331,11 +376,18 @@ if test -n "$VGBIN"; then
 		dietrace 1
 	fi
 	if test -n "$VGOPTFILE"; then
+			if test -f $VGOPTFILE; then
 		VGOPT=`cat $VGOPTFILE`	
-		export VGOPT
+			else
+				logger syslog.err "VGOPTFILE $VGOPTFILE missing. Fix in $NODEATTRFILE"
+				dietrace 1
 	fi
 fi
-		
+	fi
+fi
+if test -n "$VGOPT"; then
+	export VGOPT
+fi
 
 if test -z "$LDMSD_USE_INET_SOCK"; then
 	LDMSD_USE_INET_SOCK=`$NODEATTR $NODEATTRFILE -v $host ldmsd_use_inet_socket 2>/dev/null`
