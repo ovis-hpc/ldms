@@ -86,7 +86,6 @@
 
 static char *procfile = NULL;
 static ldms_set_t set = NULL;
-static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
 #define SAMP "lnet_stats"
 
@@ -117,16 +116,23 @@ static char statsbuf[ROUTER_STAT_BUF_SIZE];
 
 static int parse_err_cnt;
 
-static int parse_stats(FILE *fp)
+static int parse_stats()
 {
-	int rc;
-	if ((rc = fseek(fp, 0, SEEK_SET))) {
-		return rc;
+	int i;
+	for (i = 0; i < NAME_CNT; i++) {
+		stats_val[i] = 0;
 	}
+	FILE *fp;
+	fp = fopen(procfile, "r");
+	if (!fp) {
+		return ENOENT;
+	}
+	int rc;
 	char *s = fgets(statsbuf, sizeof(statsbuf) - 1, fp);
 	if (!s)
 	{
-		return EIO;
+		rc = EIO;
+		goto err;
 	}
 
 	assert(NAME_CNT == 11); /* fix scanf call if this fails */
@@ -156,13 +162,15 @@ static int parse_stats(FILE *fp)
 
 	if (n < 11)
 	{
-		return EIO;
+		rc = EIO;
+		goto err;
 	}
 
-	if ((rc = fseek(fp, 0, SEEK_SET))) {
-		return rc;
-	}
-	return 0;
+	rc = 0;
+
+err:
+	fclose(fp);
+	return rc;
 
 }
 
@@ -172,14 +180,8 @@ static int create_metric_set(base_data_t base)
 	ldms_schema_t schema;
 	union ldms_value v;
 
-	mf = fopen(procfile, "r");
-	if (!mf) {
-		msglog(LDMSD_LERROR, "Could not open the " SAMP " file "
-				"'%s'...exiting sampler\n", procfile);
-		return ENOENT;
-	}
 
-	int parse_err = parse_stats(mf);
+	int parse_err = parse_stats();
 	if (parse_err) {
 		msglog(LDMSD_LERROR, "Could not parse the " SAMP " file "
 				"'%s'\n", procfile);
@@ -222,9 +224,6 @@ static int create_metric_set(base_data_t base)
 
  err:
 
-	if (mf)
-		fclose(mf);
-	mf = NULL;
 	return rc;
 }
 
@@ -318,7 +317,7 @@ static int sample(struct ldmsd_sampler *self)
 	base_sample_begin(base);
 
 	metric_no = metric_offset;
-	int parse_err = parse_stats(mf);
+	int parse_err = parse_stats();
 	if (parse_err) {
 		if (parse_err_cnt < 2) {
 			msglog(LDMSD_LERROR, SAMP "Could not parse the " SAMP
@@ -335,14 +334,11 @@ static int sample(struct ldmsd_sampler *self)
 	}
  out:
 	base_sample_end(base);
-	return rc;
+	return 0;
 }
 
 static void term(struct ldmsd_plugin *self)
 {
-	if (mf)
-		fclose(mf);
-	mf = NULL;
 	if (base)
 		base_del(base);
 	base = NULL;
