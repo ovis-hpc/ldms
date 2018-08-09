@@ -198,7 +198,18 @@ If defined, this overrides the ldmsd_store_plugins gender.
 If set, overrides gender ldmsd_interval_default used to control sampling rate.
 
 .B LDMSD_OFFSET_DEFAULT=DT
+
 If set, overrides gender ldmsd_interval_default used to control sampling rate.
+
+.B VGBIN=/usr/bin/valgrind
+
+If set, overrides gender ldmsd_vg defining the wrapper tool location. Must be a full path.
+May be any wrapper tool, not just valgrind.
+
+.B VGOPT="argument list"
+
+If set, overrides argument data pointed to in gender ldmsd_vgargfile.
+Ignored if VGBIN and gender ldmsd_vg are both undefined.
 
 .PP
 
@@ -213,6 +224,9 @@ Home of the ldmsd configuration processing scripts: ldmsd, ldms-functions.
 .TP
 .I /etc/sysconfig/ldms.d/ldmsd.local.conf
 Environment variables and override settings for monitoring the local host.
+.TP
+.I /etc/sysconfig/ldms.d/ldmsd.all_instances.conf
+Optional environment variables and override settings for multiple hosts.
 .TP
 .I /etc/sysconfig/ldms.d/plugins-conf
 Plugin configuration text fragments, configuration text generation programs, or

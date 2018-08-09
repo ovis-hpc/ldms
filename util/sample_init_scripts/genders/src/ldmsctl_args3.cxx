@@ -159,6 +159,7 @@ private:
 	 *
 	 * output: substituted genderval based on the following:
 	 * replace %#d with the #'th integer substring in hostname
+	 * replace %#D with the #'th integer substring in hostname 0 left stripped
 	 * replace %#m with the #'th - separated substring in hostname
 	 * replace %#u with the #'th _ separated substring in hostname
 	 * Any case where # is greater than the number of such
@@ -184,9 +185,25 @@ private:
 		string ghost(host);
 		regex ire("[0-9]*");
 		sregex_iterator i(ghost.begin(), ghost.end(), ire);
+		sregex_iterator j(ghost.begin(), ghost.end(), ire);
 		sregex_iterator end;
 
 		int n = 0;
+		// make number-based replacements %#D
+		while ( j != end) {
+			if ((*j).length()) {
+				ostringstream oss;
+				oss << "%" << n << "D";
+				string sub = oss.str();
+				string jval = j->str();
+				string kval = jval.substr( jval.find_first_not_of( "0" ) );
+				replace_all(val, sub, kval);
+				n++;
+			}
+			++j;
+		}
+
+		n = 0;
 		// make number-based replacements %#d
 		while ( i != end) {
 			if ((*i).length()) {
@@ -289,19 +306,16 @@ public:
 		string offsets = prefix + "_offset_default";
 		string tmp;
 		if (has_property(host, ports, tmp)) {
-			if (dbg > 0) {
-				cerr << "For port of " << prefix << " parsed " << tmp << endl;
-			}
+			t.port = tmp;
 			istringstream ss(tmp);
 			int chk;
 			ss >> chk;
 			if (chk < 1) {
-				cerr << ports << " of " << tmp << " bogus for " << host <<endl;
+				cerr << "INFO: " << ports << " of " << tmp << " not integer for " << host <<endl;
 			} else {
 				if (dbg > 0) {
 					cerr << "For port of " << prefix << " parsed " << tmp << endl;
 				}
-				t.port = tmp;
 			}
 		} else {
 			t.port = LDMS_PORT_DEFAULT;

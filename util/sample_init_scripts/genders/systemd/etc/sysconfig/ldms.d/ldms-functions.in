@@ -102,7 +102,7 @@ check_auth_option () {
 	export LDMS_AUTH_FILE
 }
 
-# check for migration errors v2 -> v3
+# check for migration errors v2 -> v3, etc
 check_genders_file() {
 	consolidated="ldmsaggd_dbg:ldmsd_dbg ldmsaggd_port:ldmsd_port ldmsaggd_xprt:ldmsd_xprt ldmsaggd_host:ldmsd_host ldmsaggd_num_procs:ldmsd_event_thds"
 	# do not rename these.
@@ -149,9 +149,24 @@ check_genders_file() {
 			v="$v, $val"
 		fi
 	done
+	x=`$NODEATTR $NODEATTRFILE -n -A |grep ^ldmsd`
+	y=`$NODEATTR $NODEATTRFILE -n -A |grep ^ldmsaggd`
+	z=`$NODEATTR $NODEATTRFILE -n -A |grep ^${LDMS_HOSTNAME}$`
+	if test -n "$x" -o -n "$y"; then
+		logger -p syslog.err "Found ldms genders without hostnames: $x $y."
+		((n++))
+	fi
+	if test -z "$z"; then
+		logger -p syslog.err "Found no genders at all for $LDMS_HOSTNAME."
+		logger -p syslog.err "Review $NODEATTRFILE or setting of LDMS_HOSTNAME"
+		logger -p syslog.err "Input created from $LDMS_GENDERS_INPUT"
+		exit 1
+		((n++))
+	fi
 	if test $n -gt 0; then
 		logger -p syslog.err "Gender file problems: $n ($v). These genders need to be removed, replaced, correctly spelled, or punctuated as noted."
 		logger -p syslog.err "Review $NODEATTRFILE"
+		logger -p syslog.err "Input created from $LDMS_GENDERS_INPUT"
 		exit 1
 	fi
 }
@@ -222,6 +237,8 @@ build_genders_file () {
 		echoq Unable to create $ALLGENDERS. Check filesystem.
 		dietrace 1
 	fi
+	LDMS_GENDERS_INPUT=`echo $LDMS_GENDERS | tr " " ,`
+	export LDMS_GENDERS_INPUT
 	LDMS_GENDERS=$ALLGENDERS
 	export LDMS_GENDERS
 	echoq LDMS_GENDERS=$LDMS_GENDERS
@@ -323,6 +340,7 @@ echoq()
 # input: hostname input_val
 # output: substituted value based on the following:
 # replace %#d with the #'th integer substring split from hostname
+# replace %#D with the #'th integer substring split from hostname less lead 0s
 # replace %#m with the #'th - separated substring split from hostname
 # replace %#u with the #'th _ separated substring split from hostname
 # Any case where # is greater than the number of such
@@ -339,10 +357,20 @@ gender_substitute () {
 		echo ""
 		return
 	fi
-	ilist=$(echo $ghost | sed -e 's/[-_a-zA-Z]*/ /g')
+	ilist=`echo $ghost | sed -e 's/[-_a-zA-Z]\+/ /g'`
 	wlist=$(echo $ghost | sed -e 's/-/ /g')
 	ulist=$(echo $ghost | sed -e 's/_/ /g')
 	vnew=$val
+	n=0
+	for i in $ilist; do
+		sub="%${n}D"
+		j=`echo $i | sed -e 's/^0*//'`
+		if test -z "$j"; then
+			j=0
+		fi
+		vnew=$(echo ${vnew//$sub/$j})
+		((n++))
+	done
 	n=0
 	for i in $ilist; do
 		sub="%${n}d"
@@ -465,14 +493,23 @@ start_ldmsd_plugins () {
 		grok="`config_from_gender $configtmp`"
 		eval extraconfig='$grok'
 		conf="0"
+		schema=""
 		if test -n "$extraconfig"; then
 			conf="v2"
+			if echo "$extraconfig" |grep schema=; then
+				schema=`echo $extraconfig|sed -e 's/.*schema=//g' -e  's/ .*//g'`
+			fi > /dev/null
+			if test -n "$schema"; then
+				instance=${producer}/$schema
+			else
+				instance=${producer}/${pi}
+			fi
 		fi
 
 		# plugin options from per-plugin plain text file
 		cattext=`$NODEATTR $NODEATTRFILE -v $host ldmsd_config_text_${pi} 2>/dev/null`
 		if test -n "$cattext"; then
-			if test $conf = "1"; then
+			if test $conf != "0"; then
 				logger -p syslog.warning -t ldmsd.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_text_${pi} and ldmsd_${pi} is not allowed."
 				continue
 			fi
@@ -527,8 +564,11 @@ start_ldmsd_plugins () {
 
 		echoq "Generating config for metric plugin <${pi}>"
 		# write stuff to out as determined from gender values
+		if test -z "$instance"; then
+			instance=${producer}/${pi}
+		fi
 		ARGS_START="name=$pi interval=$interval offset=$offset"
-		ARGS_CONFIG="name=$pi producer=$producer instance=${producer}/${pi} component_id=${COMPONENT_ID}"
+		ARGS_CONFIG="name=$pi producer=$producer instance=${instance} component_id=${COMPONENT_ID}"
 		echo load name=${pi} >> $out
 		case $conf in
 		v2)
@@ -831,6 +871,6 @@ generate_transform_config() {
 }
 
 #export -f start_ldms_plugins start_add_hosts start_stores
-export generate_collector_config generate_aggregator_config generate_store_config generate_transform_config build_genders_file check_genders_file
+export generate_collector_config generate_aggregator_config generate_store_config generate_transform_config build_genders_file check_genders_file check_log_option
 
-#LDMS_POST_INSTALLED=0 do not change this line
+
