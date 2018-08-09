@@ -991,8 +991,8 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 	key.conn_id = (uint64_t)(long unsigned)xprt->ldms.ldms;
 
 	if (ntohl(response->marker) != LDMSD_RECORD_MARKER) {
-		char *msg = "Config request is missing record marker";
-		ldmsd_send_error_reply(xprt, -1, EINVAL, msg, strlen(msg));
+		ldmsd_log(LDMSD_LERROR,
+			  "Config request is missing record marker\n");
 		rc = EINVAL;
 		goto out;
 	}
@@ -1005,7 +1005,6 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 					" of a response number %d:%" PRIu64,
 					key.msg_no, key.conn_id);
 		ldmsd_log(LDMSD_LERROR, "%s\n", errstr);
-		ldmsd_send_error_reply(xprt, key.msg_no, ENOENT, errstr, cnt);
 		rc = ENOENT;
 		goto err_out;
 	}
@@ -1018,10 +1017,7 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 		if (reqc->req_len - reqc->req_off < cnt) {
 			reqc->req_buf = realloc(reqc->req_buf, 2 * (reqc->req_len + 1));
 			if (!reqc->req_buf) {
-				char errstr[64];
-				cnt = snprintf(errstr, 63, "Out of memory");
 				ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
-				ldmsd_send_error_reply(xprt, key.msg_no, ENOMEM, errstr, cnt);
 				rc = ENOMEM;
 				goto err_out;
 			}
