@@ -4013,6 +4013,7 @@ static int plugn_stop_handler(ldmsd_req_ctxt_t reqc)
 einval:
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The attribute '%s' is required by stop.", attr_name);
+	reqc->errcode = EINVAL;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (plugin_name)
