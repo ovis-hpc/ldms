@@ -1044,20 +1044,6 @@ static inline ldms_mdesc_t __desc_get(ldms_set_t s, int idx)
 	return NULL;
 }
 
-static ldms_mval_t __value_get(struct ldms_set *s, int idx, ldms_mdesc_t *pd)
-{
-	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->meta,
-			__le32_to_cpu(s->meta->dict[idx]));
-	if (pd)
-		*pd = desc;
-	if (desc->vd_flags & LDMS_MDESC_F_DATA) {
-		return ldms_ptr_(union ldms_value, s->data,
-				 __le32_to_cpu(desc->vd_data_offset));
-	}
-	return ldms_ptr_(union ldms_value, s->meta,
-			__le32_to_cpu(desc->vd_data_offset));
-}
-
 const char *ldms_metric_name_get(ldms_set_t set, int i)
 {
 	ldms_mdesc_t desc = __desc_get(set, i);
@@ -1263,12 +1249,52 @@ void ldms_metric_modify(ldms_set_t s, int i)
 		assert(0 == "Invalid metric index");
 }
 
+static ldms_mval_t __mval_to_set(struct ldms_set *s, int idx, ldms_mdesc_t *pd)
+{
+	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->meta,
+			__le32_to_cpu(s->meta->dict[idx]));
+	if (pd)
+		*pd = desc;
+	if (desc->vd_flags & LDMS_MDESC_F_DATA) {
+		return ldms_ptr_(union ldms_value, s->data,
+				 __le32_to_cpu(desc->vd_data_offset));
+	}
+	return ldms_ptr_(union ldms_value, s->meta,
+			__le32_to_cpu(desc->vd_data_offset));
+}
+
+static ldms_mval_t __mval_to_get(struct ldms_set *s, int idx, ldms_mdesc_t *pd)
+{
+	struct ldms_data_hdr *prev_data;
+	int n;
+	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->meta,
+				__le32_to_cpu(s->meta->dict[idx]));
+	if (pd)
+		*pd = desc;
+	if (desc->vd_flags & LDMS_MDESC_F_DATA) {
+		/* Check if it is being called inside a transaction */
+		if (s->data->trans.flags != LDMS_TRANSACTION_END) {
+			/* Inside a transaction */
+			n = __le32_to_cpu(s->meta->array_card);
+			prev_data = __set_array_get(s, (s->curr_idx + (n - 1)) % n);
+			/* Return the metric from the previous set in the ring buffer */
+			return ldms_ptr_(union ldms_value, prev_data,
+					__le32_to_cpu(desc->vd_data_offset));
+		} else {
+			return ldms_ptr_(union ldms_value, s->data,
+					 __le32_to_cpu(desc->vd_data_offset));
+		}
+	}
+	return ldms_ptr_(union ldms_value, s->meta,
+			__le32_to_cpu(desc->vd_data_offset));
+}
+
 ldms_mval_t ldms_metric_get(ldms_set_t s, int i)
 {
 	if (i < 0 || i >= __le32_to_cpu(s->set->meta->card))
 		return NULL;
 
-	return __value_get(s->set, i, NULL);
+	return __mval_to_get(s->set, i, NULL);
 }
 
 ldms_mval_t ldms_metric_get_addr(ldms_set_t s, int i)
@@ -1276,7 +1302,7 @@ ldms_mval_t ldms_metric_get_addr(ldms_set_t s, int i)
 	if (i < 0 || i >= __le32_to_cpu(s->set->meta->card))
 		return NULL;
 
-	return __value_get(s->set, i, NULL);
+	return __mval_to_get(s->set, i, NULL);
 }
 
 uint32_t ldms_metric_array_get_len(ldms_set_t s, int i)
@@ -1290,7 +1316,7 @@ uint32_t ldms_metric_array_get_len(ldms_set_t s, int i)
 ldms_mval_t ldms_metric_array_get(ldms_set_t s, int i)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t ret = __value_get(s->set, i, &desc);
+	ldms_mval_t ret = __mval_to_get(s->set, i, &desc);
 	if (metric_is_array(desc))
 		return ret;
 	return NULL;
@@ -1336,7 +1362,7 @@ void ldms_metric_set(ldms_set_t s, int i, ldms_mval_t v)
 	if (i < 0 || i >= __le32_to_cpu(s->set->meta->card))
 		assert(0 == "Invalid metric index");
 
-	mv = __value_get(s->set, i, &desc);
+	mv = __mval_to_set(s->set, i, &desc);
 
 	__metric_set(s, desc, mv, v);
 	__ldms_gn_inc(s->set, desc);
@@ -1394,7 +1420,7 @@ void ldms_metric_array_set_val(ldms_set_t s, int metric_idx, int array_idx, ldms
 	if (metric_idx >= __le32_to_cpu(s->set->meta->card))
 		assert(0 == "Invalid metric index");
 
-	dst = __value_get(s->set, metric_idx, &desc);
+	dst = __mval_to_set(s->set, metric_idx, &desc);
 
 	__metric_array_set(s, desc, dst, array_idx, src);
 	__ldms_gn_inc(s->set, desc);
@@ -1403,7 +1429,7 @@ void ldms_metric_array_set_val(ldms_set_t s, int metric_idx, int array_idx, ldms
 void ldms_metric_set_char(ldms_set_t s, int i, char v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, i, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, i, &desc);
 	if (mv) {
 		mv->v_char = v;
 		__ldms_gn_inc(s->set, desc);
@@ -1414,7 +1440,7 @@ void ldms_metric_set_char(ldms_set_t s, int i, char v)
 void ldms_metric_set_u8(ldms_set_t s, int i, uint8_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, i, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, i, &desc);
 	if (mv) {
 		mv->v_u8 = v;
 		__ldms_gn_inc(s->set, desc);
@@ -1425,7 +1451,7 @@ void ldms_metric_set_u8(ldms_set_t s, int i, uint8_t v)
 void ldms_metric_set_s8(ldms_set_t s, int i, int8_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, i, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, i, &desc);
 	if (mv) {
 		mv->v_s8 = v;
 		__ldms_gn_inc(s->set, desc);
@@ -1436,7 +1462,7 @@ void ldms_metric_set_s8(ldms_set_t s, int i, int8_t v)
 void ldms_metric_set_u16(ldms_set_t s, int i, uint16_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, i, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, i, &desc);
 	if (mv) {
 		mv->v_u16 = __cpu_to_le16(v);
 		__ldms_gn_inc(s->set, desc);
@@ -1447,7 +1473,7 @@ void ldms_metric_set_u16(ldms_set_t s, int i, uint16_t v)
 void ldms_metric_set_s16(ldms_set_t s, int i, int16_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, i, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, i, &desc);
 	if (mv) {
 		mv->v_s16 = __cpu_to_le16(v);
 		__ldms_gn_inc(s->set, desc);
@@ -1458,7 +1484,7 @@ void ldms_metric_set_s16(ldms_set_t s, int i, int16_t v)
 void ldms_metric_set_u32(ldms_set_t s, int i, uint32_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, i, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, i, &desc);
 	if (mv) {
 		mv->v_u32 = __cpu_to_le32(v);
 		__ldms_gn_inc(s->set, desc);
@@ -1469,7 +1495,7 @@ void ldms_metric_set_u32(ldms_set_t s, int i, uint32_t v)
 void ldms_metric_set_s32(ldms_set_t s, int i, int32_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, i, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, i, &desc);
 	if (mv) {
 		mv->v_s32 = __cpu_to_le32(v);
 		__ldms_gn_inc(s->set, desc);
@@ -1480,7 +1506,7 @@ void ldms_metric_set_s32(ldms_set_t s, int i, int32_t v)
 void ldms_metric_set_u64(ldms_set_t s, int i, uint64_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, i, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, i, &desc);
 	if (mv) {
 		mv->v_u64 = __cpu_to_le64(v);
 		__ldms_gn_inc(s->set, desc);
@@ -1491,7 +1517,7 @@ void ldms_metric_set_u64(ldms_set_t s, int i, uint64_t v)
 void ldms_metric_set_s64(ldms_set_t s, int i, int64_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, i, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, i, &desc);
 	if (mv) {
 		mv->v_s64 = __cpu_to_le64(v);
 		__ldms_gn_inc(s->set, desc);
@@ -1502,7 +1528,7 @@ void ldms_metric_set_s64(ldms_set_t s, int i, int64_t v)
 void ldms_metric_set_float(ldms_set_t s, int i, float v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, i, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, i, &desc);
 	if (mv) {
 #if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
 		mv->v_f = v;
@@ -1517,7 +1543,7 @@ void ldms_metric_set_float(ldms_set_t s, int i, float v)
 void ldms_metric_set_double(ldms_set_t s, int i, double v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, i, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, i, &desc);
 	if (mv) {
 #if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
 		mv->v_d = v;
@@ -1532,7 +1558,7 @@ void ldms_metric_set_double(ldms_set_t s, int i, double v)
 void ldms_metric_array_set_str(ldms_set_t s, int mid, const char *str)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, mid, &desc);
 	if (mv) {
 		strncpy(mv->a_char, str, desc->vd_array_count);
 		__ldms_gn_inc(s->set, desc);
@@ -1543,7 +1569,7 @@ void ldms_metric_array_set_str(ldms_set_t s, int mid, const char *str)
 void ldms_metric_array_set_char(ldms_set_t s, int mid, int idx, char v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 		mv->a_char[idx] = v;
 		__ldms_gn_inc(s->set, desc);
@@ -1554,7 +1580,7 @@ void ldms_metric_array_set_char(ldms_set_t s, int mid, int idx, char v)
 void ldms_metric_array_set_u8(ldms_set_t s, int mid, int idx, uint8_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 		mv->a_u8[idx] = v;
 		__ldms_gn_inc(s->set, desc);
@@ -1565,7 +1591,7 @@ void ldms_metric_array_set_u8(ldms_set_t s, int mid, int idx, uint8_t v)
 void ldms_metric_array_set_s8(ldms_set_t s, int mid, int idx, int8_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 		mv->a_s8[idx] = v;
 		__ldms_gn_inc(s->set, desc);
@@ -1576,7 +1602,7 @@ void ldms_metric_array_set_s8(ldms_set_t s, int mid, int idx, int8_t v)
 void ldms_metric_array_set_u16(ldms_set_t s, int mid, int idx, uint16_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 		mv->a_u16[idx] = __cpu_to_le16(v);
 		__ldms_gn_inc(s->set, desc);
@@ -1587,7 +1613,7 @@ void ldms_metric_array_set_u16(ldms_set_t s, int mid, int idx, uint16_t v)
 void ldms_metric_array_set_s16(ldms_set_t s, int mid, int idx, int16_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 		mv->a_s16[idx] = __cpu_to_le16(v);
 		__ldms_gn_inc(s->set, desc);
@@ -1598,7 +1624,7 @@ void ldms_metric_array_set_s16(ldms_set_t s, int mid, int idx, int16_t v)
 void ldms_metric_array_set_u32(ldms_set_t s, int mid, int idx, uint32_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 		mv->a_u32[idx] = __cpu_to_le32(v);
 		__ldms_gn_inc(s->set, desc);
@@ -1609,7 +1635,7 @@ void ldms_metric_array_set_u32(ldms_set_t s, int mid, int idx, uint32_t v)
 void ldms_metric_array_set_s32(ldms_set_t s, int mid, int idx, int32_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 		mv->a_s32[idx] = __cpu_to_le32(v);
 		__ldms_gn_inc(s->set, desc);
@@ -1620,7 +1646,7 @@ void ldms_metric_array_set_s32(ldms_set_t s, int mid, int idx, int32_t v)
 void ldms_metric_array_set_u64(ldms_set_t s, int mid, int idx, uint64_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 		mv->a_u64[idx] = __cpu_to_le64(v);
 		__ldms_gn_inc(s->set, desc);
@@ -1631,7 +1657,7 @@ void ldms_metric_array_set_u64(ldms_set_t s, int mid, int idx, uint64_t v)
 void ldms_metric_array_set_s64(ldms_set_t s, int mid, int idx, int64_t v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 		mv->a_s64[idx] = __cpu_to_le64(v);
 		__ldms_gn_inc(s->set, desc);
@@ -1642,7 +1668,7 @@ void ldms_metric_array_set_s64(ldms_set_t s, int mid, int idx, int64_t v)
 void ldms_metric_array_set_float(ldms_set_t s, int mid, int idx, float v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 #if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
 		mv->a_f[idx] = v;
@@ -1660,7 +1686,7 @@ void ldms_metric_array_set_float(ldms_set_t s, int mid, int idx, float v)
 void ldms_metric_array_set_double(ldms_set_t s, int mid, int idx, double v)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_set(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 #if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
 		mv->a_d[idx] = v;
@@ -1679,7 +1705,7 @@ void ldms_metric_array_set(ldms_set_t s, int mid, ldms_mval_t mval,
 	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->set->meta,
 				      __le32_to_cpu(s->set->meta->dict[mid]));
 	int i;
-	ldms_mval_t val = __value_get(s->set, mid, &desc);
+	ldms_mval_t val = __mval_to_set(s->set, mid, &desc);
 	switch (desc->vd_type) {
 	case LDMS_V_CHAR_ARRAY:
 	case LDMS_V_U8_ARRAY:
@@ -1712,7 +1738,7 @@ void ldms_metric_array_set(ldms_set_t s, int mid, ldms_mval_t mval,
 
 char ldms_metric_get_char(ldms_set_t s, int i)
 {
-	ldms_mval_t mv = __value_get(s->set, i, NULL);
+	ldms_mval_t mv = __mval_to_get(s->set, i, NULL);
 	if (mv)
 		return mv->v_char;
 	else
@@ -1722,7 +1748,7 @@ char ldms_metric_get_char(ldms_set_t s, int i)
 
 uint8_t ldms_metric_get_u8(ldms_set_t s, int i)
 {
-	ldms_mval_t mv = __value_get(s->set, i, NULL);
+	ldms_mval_t mv = __mval_to_get(s->set, i, NULL);
 	if (mv)
 		return mv->v_u8;
 	else
@@ -1732,7 +1758,7 @@ uint8_t ldms_metric_get_u8(ldms_set_t s, int i)
 
 int8_t ldms_metric_get_s8(ldms_set_t s, int i)
 {
-	ldms_mval_t mv = __value_get(s->set, i, NULL);
+	ldms_mval_t mv = __mval_to_get(s->set, i, NULL);
 	if (mv)
 		return mv->v_s8;
 	else
@@ -1742,7 +1768,7 @@ int8_t ldms_metric_get_s8(ldms_set_t s, int i)
 
 uint16_t ldms_metric_get_u16(ldms_set_t s, int i)
 {
-	ldms_mval_t mv = __value_get(s->set, i, NULL);
+	ldms_mval_t mv = __mval_to_get(s->set, i, NULL);
 	if (mv)
 		return __le16_to_cpu(mv->v_u16);
 	else
@@ -1752,7 +1778,7 @@ uint16_t ldms_metric_get_u16(ldms_set_t s, int i)
 
 int16_t ldms_metric_get_s16(ldms_set_t s, int i)
 {
-	ldms_mval_t mv = __value_get(s->set, i, NULL);
+	ldms_mval_t mv = __mval_to_get(s->set, i, NULL);
 	if (mv)
 		return __le16_to_cpu(mv->v_s16);
 	else
@@ -1762,7 +1788,7 @@ int16_t ldms_metric_get_s16(ldms_set_t s, int i)
 
 uint32_t ldms_metric_get_u32(ldms_set_t s, int i)
 {
-	ldms_mval_t mv = __value_get(s->set, i, NULL);
+	ldms_mval_t mv = __mval_to_get(s->set, i, NULL);
 	if (mv)
 		return __le32_to_cpu(mv->v_u32);
 	else
@@ -1772,7 +1798,7 @@ uint32_t ldms_metric_get_u32(ldms_set_t s, int i)
 
 int32_t ldms_metric_get_s32(ldms_set_t s, int i)
 {
-	ldms_mval_t mv = __value_get(s->set, i, NULL);
+	ldms_mval_t mv = __mval_to_get(s->set, i, NULL);
 	if (mv)
 		return __le32_to_cpu(mv->v_s32);
 	else
@@ -1782,7 +1808,7 @@ int32_t ldms_metric_get_s32(ldms_set_t s, int i)
 
 uint64_t ldms_metric_get_u64(ldms_set_t s, int i)
 {
-	ldms_mval_t mv = __value_get(s->set, i, NULL);
+	ldms_mval_t mv = __mval_to_get(s->set, i, NULL);
 	if (mv)
 		return __le64_to_cpu(mv->v_u64);
 	else
@@ -1792,7 +1818,7 @@ uint64_t ldms_metric_get_u64(ldms_set_t s, int i)
 
 int64_t ldms_metric_get_s64(ldms_set_t s, int i)
 {
-	ldms_mval_t mv = __value_get(s->set, i, NULL);
+	ldms_mval_t mv = __mval_to_get(s->set, i, NULL);
 	if (mv)
 		return __le64_to_cpu(mv->v_s64);
 	else
@@ -1802,7 +1828,7 @@ int64_t ldms_metric_get_s64(ldms_set_t s, int i)
 
 float ldms_metric_get_float(ldms_set_t s, int i)
 {
-	ldms_mval_t mv = __value_get(s->set, i, NULL);
+	ldms_mval_t mv = __mval_to_get(s->set, i, NULL);
 	if (mv) {
 #if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
 		return mv->v_f;
@@ -1817,7 +1843,7 @@ float ldms_metric_get_float(ldms_set_t s, int i)
 
 double ldms_metric_get_double(ldms_set_t s, int i)
 {
-	ldms_mval_t mv = __value_get(s->set, i, NULL);
+	ldms_mval_t mv = __mval_to_get(s->set, i, NULL);
 	if (mv) {
 #if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
 		return mv->v_d;
@@ -1833,7 +1859,7 @@ double ldms_metric_get_double(ldms_set_t s, int i)
 const char *ldms_metric_array_get_str(ldms_set_t s, int mid)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_get(s->set, mid, &desc);
 	if (mv)
 		return mv->a_char;
 	else
@@ -1844,7 +1870,7 @@ const char *ldms_metric_array_get_str(ldms_set_t s, int mid)
 char ldms_metric_array_get_char(ldms_set_t s, int mid, int idx)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_get(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count))
 		return mv->a_char[idx];
 	else
@@ -1855,7 +1881,7 @@ char ldms_metric_array_get_char(ldms_set_t s, int mid, int idx)
 uint8_t ldms_metric_array_get_u8(ldms_set_t s, int mid, int idx)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_get(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count))
 		return mv->a_u8[idx];
 	else
@@ -1866,7 +1892,7 @@ uint8_t ldms_metric_array_get_u8(ldms_set_t s, int mid, int idx)
 int8_t ldms_metric_array_get_s8(ldms_set_t s, int mid, int idx)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_get(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count))
 		return mv->a_s8[idx];
 	else
@@ -1877,7 +1903,7 @@ int8_t ldms_metric_array_get_s8(ldms_set_t s, int mid, int idx)
 uint16_t ldms_metric_array_get_u16(ldms_set_t s, int mid, int idx)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_get(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count))
 		return mv->a_u16[idx];
 	else
@@ -1888,7 +1914,7 @@ uint16_t ldms_metric_array_get_u16(ldms_set_t s, int mid, int idx)
 int16_t ldms_metric_array_get_s16(ldms_set_t s, int mid, int idx)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_get(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count))
 		return mv->a_s16[idx];
 	else
@@ -1899,7 +1925,7 @@ int16_t ldms_metric_array_get_s16(ldms_set_t s, int mid, int idx)
 uint32_t ldms_metric_array_get_u32(ldms_set_t s, int mid, int idx)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_get(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count))
 		return mv->a_u32[idx];
 	else
@@ -1910,7 +1936,7 @@ uint32_t ldms_metric_array_get_u32(ldms_set_t s, int mid, int idx)
 int32_t ldms_metric_array_get_s32(ldms_set_t s, int mid, int idx)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_get(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count))
 		return mv->a_s32[idx];
 	else
@@ -1921,7 +1947,7 @@ int32_t ldms_metric_array_get_s32(ldms_set_t s, int mid, int idx)
 uint64_t ldms_metric_array_get_u64(ldms_set_t s, int mid, int idx)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_get(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count))
 		return mv->a_u64[idx];
 	else
@@ -1932,7 +1958,7 @@ uint64_t ldms_metric_array_get_u64(ldms_set_t s, int mid, int idx)
 int64_t ldms_metric_array_get_s64(ldms_set_t s, int mid, int idx)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_get(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count))
 		return mv->a_s64[idx];
 	else
@@ -1943,7 +1969,7 @@ int64_t ldms_metric_array_get_s64(ldms_set_t s, int mid, int idx)
 float ldms_metric_array_get_float(ldms_set_t s, int mid, int idx)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_get(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 #if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
 		return mv->a_f[idx];
@@ -1959,7 +1985,7 @@ float ldms_metric_array_get_float(ldms_set_t s, int mid, int idx)
 double ldms_metric_array_get_double(ldms_set_t s, int mid, int idx)
 {
 	ldms_mdesc_t desc;
-	ldms_mval_t mv = __value_get(s->set, mid, &desc);
+	ldms_mval_t mv = __mval_to_get(s->set, mid, &desc);
 	if (mv && (idx < desc->vd_array_count)) {
 #if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
 		return mv->a_d[idx];
