@@ -48,6 +48,7 @@
 %include "carrays.i"
 %include "exception.i"
 %include "typemaps.i"
+%include "stdint.i"
 %{
 #include <stdio.h>
 #include <sys/queue.h>
@@ -752,15 +753,6 @@ void __update_cb2(ldms_t xprt, ldms_set_t set, int flags, void *_ctxt)
 	PyGILState_Release(gstate);
 }
 %}
-
-typedef unsigned char uint8_t;
-typedef unsigned short uint16_t;
-typedef unsigned int uint32_t;
-typedef unsigned long uint64_t;
-typedef char int8_t;
-typedef short int16_t;
-typedef int int32_t;
-typedef long int64_t;
 
 %include "ldms.h"
 %include "ldms_core.h"
