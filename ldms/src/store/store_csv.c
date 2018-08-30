@@ -961,7 +961,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 			goto out;
 
 		sprintf(path, "%s/%s", root_path, container);
-		rc = mkdir(path, 0777);
+		rc = mkdir(path, 0750);
 		if ((rc != 0) && (errno != EEXIST)){
 			msglog(LDMSD_LDEBUG,"%s: Error: %d creating directory '%s'\n",
 				 __FILE__, errno, path);
