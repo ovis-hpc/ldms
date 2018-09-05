@@ -85,9 +85,9 @@ echo "JOBID=0" > /var/run/ldms.jobinfo
 
 and
 
-echo JOBID=$SLURM_JOBID > /var/run/ldms.slurm.jobinfo
+echo JOBID=$SLURM_JOBID > /var/run/ldms.jobinfo
 echo UID=$SLURM_UID >> /var/run/ldms.jobinfo
-echo USER=$SLURM_USER >> /var/run/ldms.jobinfo
+echo USER=$SLURM_JOB_USER >> /var/run/ldms.jobinfo
 
 .fi
 These slurm files might be found in /etc/nodestate/bin/.
