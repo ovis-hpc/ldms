@@ -633,7 +633,7 @@ int f_mkdir_p(const char *path, __mode_t mode)
 		*_str = '/';
 		_str++;
 	}
-	rc = mkdir(str, 0755);
+	rc = mkdir(str, mode);
 	if (rc)
 		rc = errno;
 cleanup:
