@@ -960,13 +960,6 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		if (!path)
 			goto out;
 
-		sprintf(path, "%s/%s", root_path, container);
-		rc = mkdir(path, 0777);
-		if ((rc != 0) && (errno != EEXIST)){
-			msglog(LDMSD_LDEBUG,"%s: Error: %d creating directory '%s'\n",
-				 __FILE__, errno, path);
-			goto err0;
-		}
 		/* New in v3: this is a name change */
 		sprintf(path, "%s/%s/%s", root_path, container, schema);
 		s_handle = calloc(1, sizeof *s_handle);
@@ -1032,6 +1025,21 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	/* Take the lock in case its a store that has been closed */
 	pthread_mutex_lock(&s_handle->lock);
 
+	/* create path if not already there. */
+	char *dpath = strdup(s_handle->path);
+	if (!dpath) {
+		msglog(LDMSD_LERROR,"%s: strdup failed creating directory '%s'\n",
+			 __FILE__, errno, s_handle->path);
+		goto err2;
+	}
+	sprintf(dpath, "%s/%s", root_path, container);
+	rc = create_outdir(dpath, CSHC(s_handle), &PG);
+	free(dpath);
+	if ((rc != 0) && (errno != EEXIST)) {
+		msglog(LDMSD_LERROR,"%s: Failure %d creating directory containing '%s'\n",
+			 __FILE__, errno, path);
+		goto err2;
+	}
 
 	/* For both actual new store and reopened store, open the data file */
 	char tmp_path[PATH_MAX];

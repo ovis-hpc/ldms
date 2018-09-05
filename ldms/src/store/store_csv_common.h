@@ -179,6 +179,18 @@ extern
 void notify_output(const char *event, const char *name, const char *type, struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps, const char * container, const char *schema);
 
 /**
+ * Make a directory and apply permissions to any new intermediate directories
+ * needed in the process. (perm on existing directories are not modified).
+ * \param path
+ * \param s_handle the store instance
+ * \param cps the store plugin instance
+ * \return 0 or errno value, in which case see log messages.
+ */
+int create_outdir(const char *path,
+	struct csv_store_handle_common *s_handle,
+	struct csv_plugin_static *cps);
+
+/**
  * Rename a closed file, following the rename template,
  * and applying permissions, uid, gid.
  * The rename_template of s_handle is a string containing a path including
