@@ -98,7 +98,7 @@ Default false. If set true, notice_path will be handled in a nonblocking manner 
 .TP
 create_perm=<modebits>
 .br
-Only octal (e.g.0744) specifications are allowed. If unspecified or 0 is given, then no change is made. The default permission is 0600 for data files.
+Only octal (e.g.0744) specifications are allowed. If unspecified or 0 is given, then no change is made. The default permission is 0600 for data files. The mode specified can include execute bits which will apply to intermediate directories created but not data files. For example 0755 will yield 0755 for new directories and 0644 for data files.
 .TP
 create_uid=<numeric-uid>
 .br

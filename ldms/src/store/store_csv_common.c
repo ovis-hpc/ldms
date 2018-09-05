@@ -249,6 +249,55 @@ void notify_output(const char *event, const char *name, const char *ftype,
 	free(msg);
 }
 
+int create_outdir(const char *path, struct csv_store_handle_common *s_handle,
+	struct csv_plugin_static *cps) {
+#define EBSIZE 512
+	char errbuf[EBSIZE];
+	if (!cps) {
+		return EINVAL;
+	}
+	if (!s_handle) {
+		cps->msglog(LDMSD_LERROR,"create_outdir: NULL store handle received.\n");
+		return EINVAL;
+	}
+	const char *container = s_handle->container;
+	const char *schema = s_handle->schema;
+	mode_t mode = (mode_t) (s_handle->create_perm ? s_handle->create_perm : cps->create_perm);
+
+	int err = 0;
+	if (mode > 0) {
+		/* derive directory mode from perm */
+		mode |= S_IWUSR;
+		if (mode & S_IROTH)
+			mode |= S_IXOTH;
+		if (mode & S_IRGRP)
+			mode |= S_IXGRP;
+		if (mode & S_IRUSR)
+			mode |= S_IXUSR;
+	} else {
+		/* default 750 */
+		mode = S_IXGRP | S_IXUSR | S_IRGRP | S_IRUSR |S_IWUSR;
+	}
+	cps->msglog(LDMSD_LDEBUG,"f_mkdir_p %o %s\n", (int)mode, path);
+	err = f_mkdir_p(path, mode);
+	if (err) {
+		err = errno;
+		switch (err) {
+		case EEXIST:
+			break;
+		default:
+			strerror_r(err, errbuf, EBSIZE);
+			cps->msglog(LDMSD_LERROR,"create_outdir: failed to create directory for %s: %s\n",
+				path, errbuf);
+			return err;
+		}
+	}
+
+	cps->msglog(LDMSD_LDEBUG,"create_outdir: f_mkdir+p(%s, %o)\n", path, mode);
+	return 0;
+#undef EBSIZE
+}
+
 void rename_output(const char *name,
 	const char *ftype, struct csv_store_handle_common *s_handle,
 	struct csv_plugin_static *cps) {
@@ -431,6 +480,7 @@ void rename_output(const char *name,
 			name, newname, errbuf);
 	}
 	free(newname);
+#undef EBSIZE
 }
 
 void ch_output(FILE *f, const char *name,
@@ -450,7 +500,10 @@ void ch_output(FILE *f, const char *name,
 		return;
 	}
 	int fd = fileno(f);
+	const mode_t ex = S_IXUSR | S_IXGRP | S_IXOTH;
 	mode_t mode = (mode_t) (s_handle->create_perm ? s_handle->create_perm : cps->create_perm);
+	mode &= 0777;
+	mode &= ~ex;
 	if (mode > 0) {
 		errno = 0;
 		int merr = fchmod(fd, mode);
