@@ -204,8 +204,12 @@ __test_sampler_metric_new(const char *name, const char *mtype,
 {
 	int count = 0;
 	struct test_sampler_metric *metric;
+	if (!count_str) {
+		count = 0;
+	} else {
+		count = atoi(count_str);
+	}
 
-	count = atoi(count_str);
 	if (vtype == LDMS_V_CHAR_ARRAY) {
 		if (init_value && (count < strlen(init_value) + 1))
 			count = strlen(init_value) + 1;
@@ -699,6 +703,245 @@ static int config_add_default(struct attr_value_list *avl)
 
 }
 
+struct test_sampler_schema *__test_sampler_schema_new(const char *name,
+				enum schema_type type, ldms_schema_t schema)
+{
+	struct test_sampler_schema *ts_schema;
+	ts_schema = calloc(1, sizeof(*ts_schema));
+	if (!ts_schema) {
+		msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
+		return NULL;
+	}
+	ts_schema->name = strdup(name);
+	if (!ts_schema->name) {
+		free(ts_schema);
+		msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
+		return NULL;
+	}
+	ts_schema->type = type;
+	ts_schema->schema = schema;
+	TAILQ_INIT(&ts_schema->list);
+	LIST_INSERT_HEAD(&schema_list, ts_schema, entry);
+	return ts_schema;
+}
+
+static void __test_sampler_schema_delete(struct test_sampler_schema *ts_schema)
+{
+	struct test_sampler_metric *metric;
+	LIST_REMOVE(ts_schema, entry);
+	while ((metric = TAILQ_FIRST(&ts_schema->list))) {
+		TAILQ_REMOVE(&ts_schema->list, metric, entry);
+		__schema_metric_destroy(metric);
+	}
+	if (ts_schema->schema)
+		ldms_schema_delete(ts_schema->schema);
+	if (ts_schema->name)
+		free(ts_schema->name);
+	free(ts_schema);
+}
+
+static int __add_all_scalar(struct test_sampler_schema *ts_schema)
+{
+	int rc;
+	const char *mname;
+	ldms_schema_t schema = ts_schema->schema;
+	struct test_sampler_metric *metric;
+	enum ldms_value_type type;
+	for (type = LDMS_V_FIRST; type < LDMS_V_LAST; type++) {
+		if (ldms_type_is_array(type))
+			break;
+		mname = ldms_metric_type_to_str(type);
+		metric = __test_sampler_metric_new(mname, "data",
+						type, "0", NULL);
+		metric->idx = ldms_schema_metric_add(schema, mname, type);
+		if (metric->idx < 0)
+			return metric->idx;
+		TAILQ_INSERT_TAIL(&ts_schema->list, metric, entry);
+	}
+	return 0;
+}
+
+static int __add_all_array(struct test_sampler_schema *ts_schema, const char *array_sz_str)
+{
+	int rc;
+	const char *mname;
+	ldms_schema_t schema = ts_schema->schema;
+	struct test_sampler_metric *metric;
+	enum ldms_value_type type;
+	for (type = LDMS_V_FIRST; type < LDMS_V_LAST; type++) {
+		if (!ldms_type_is_array(type))
+			continue;
+		mname = ldms_metric_type_to_str(type);
+		metric = __test_sampler_metric_new(mname, "data",
+						type, "0", array_sz_str);
+		metric->idx = ldms_schema_metric_array_add(schema, mname, type, metric->count);
+		if (metric->idx < 0)
+			return metric->idx;
+		TAILQ_INSERT_TAIL(&ts_schema->list, metric, entry);
+	}
+	return 0;
+}
+
+static int config_add_scalar(struct attr_value_list *avl)
+{
+	char *schema_name, *set_array_card_str;
+	int set_array_card;
+	struct test_sampler_schema *ts_schema;
+	ldms_schema_t schema;
+	int rc;
+
+	schema_name = av_value(avl, "schema");
+	if (!schema_name)
+		schema_name = "test_sampler_scalar";
+	if (strlen(schema_name) == 0){
+		msglog(LDMSD_LERROR, "test_sampler: schema name invalid.\n");
+		return EINVAL;
+	}
+	set_array_card_str = av_value(avl, "set_array_card");
+	if (!set_array_card_str)
+		set_array_card = 1;
+	else
+		set_array_card = strtol(set_array_card_str, NULL, 0);
+	schema = ldms_schema_new(schema_name);
+	if (!schema) {
+		msglog(LDMSD_LERROR, "test_sampler: Failed to create "
+				"schema '%s'\n", schema_name);
+		return ENOMEM;
+	}
+
+	ts_schema = __schema_find(&schema_list, schema_name);
+	if (ts_schema) {
+		msglog(LDMSD_LERROR, "test_sampler: Schema '%s' "
+				"already exists.\n", schema_name);
+		ldms_schema_delete(schema);
+		return EEXIST;
+	}
+	ts_schema = __test_sampler_schema_new(schema_name,
+				TEST_SAMPLER_SCHEMA_TYPE_AUTO, schema);
+	if (!ts_schema)
+		return ENOMEM;
+
+	ldms_schema_array_card_set(schema, set_array_card);
+	rc = __add_all_scalar(ts_schema);
+	if (rc < 0) {
+		__test_sampler_schema_delete(ts_schema);
+		rc = -rc;
+	}
+	return rc;
+}
+
+static int config_add_array(struct attr_value_list *avl)
+{
+	char *schema_name, *set_array_card_str, *array_sz;
+	int set_array_card;
+	struct test_sampler_schema *ts_schema;
+	ldms_schema_t schema;
+	int rc;
+
+	schema_name = av_value(avl, "schema");
+	if (!schema_name)
+		schema_name = "test_sampler_array";
+	if (strlen(schema_name) == 0){
+		msglog(LDMSD_LERROR, "test_sampler: schema name invalid.\n");
+		return EINVAL;
+	}
+	set_array_card_str = av_value(avl, "set_array_card");
+	if (!set_array_card_str)
+		set_array_card = 1;
+	else
+		set_array_card = strtol(set_array_card_str, NULL, 0);
+	array_sz = av_value(avl, "metric_array_sz");
+	if (!array_sz) {
+		msglog(LDMSD_LERROR, "test_sampler: metric_array_sz is required\n");
+		return EINVAL;
+	}
+	schema = ldms_schema_new(schema_name);
+	if (!schema) {
+		msglog(LDMSD_LERROR, "test_sampler: Failed to create "
+				"schema '%s'\n", schema_name);
+		return ENOMEM;
+	}
+
+	ts_schema = __schema_find(&schema_list, schema_name);
+	if (ts_schema) {
+		msglog(LDMSD_LERROR, "test_sampler: Schema '%s' "
+				"already exists.\n", schema_name);
+		ldms_schema_delete(schema);
+		return EEXIST;
+	}
+	ts_schema = __test_sampler_schema_new(schema_name,
+				TEST_SAMPLER_SCHEMA_TYPE_AUTO, schema);
+	if (!ts_schema)
+		return ENOMEM;
+
+	ldms_schema_array_card_set(schema, set_array_card);
+	rc = __add_all_array(ts_schema, array_sz);
+	if (rc < 0) {
+		__test_sampler_schema_delete(ts_schema);
+		rc = -rc;
+	}
+	return rc;
+}
+
+static int config_add_all(struct attr_value_list *avl)
+{
+	char *schema_name, *set_array_card_str, *array_sz;
+	int set_array_card;
+	struct test_sampler_schema *ts_schema;
+	ldms_schema_t schema;
+	int rc;
+
+	schema_name = av_value(avl, "schema");
+	if (!schema_name)
+		schema_name = "test_sampler_all";
+	if (strlen(schema_name) == 0){
+		msglog(LDMSD_LERROR, "test_sampler: schema name invalid.\n");
+		return EINVAL;
+	}
+	set_array_card_str = av_value(avl, "set_array_card");
+	if (!set_array_card_str)
+		set_array_card = 1;
+	else
+		set_array_card = strtol(set_array_card_str, NULL, 0);
+	array_sz = av_value(avl, "metric_array_sz");
+	if (!array_sz) {
+		msglog(LDMSD_LERROR, "test_sampler: metric_array_sz is required\n");
+		return EINVAL;
+	}
+	schema = ldms_schema_new(schema_name);
+	if (!schema) {
+		msglog(LDMSD_LERROR, "test_sampler: Failed to create "
+				"schema '%s'\n", schema_name);
+		return ENOMEM;
+	}
+
+	ts_schema = __schema_find(&schema_list, schema_name);
+	if (ts_schema) {
+		msglog(LDMSD_LERROR, "test_sampler: Schema '%s' "
+				"already exists.\n", schema_name);
+		ldms_schema_delete(schema);
+		return EEXIST;
+	}
+	ts_schema = __test_sampler_schema_new(schema_name,
+				TEST_SAMPLER_SCHEMA_TYPE_AUTO, schema);
+	if (!ts_schema)
+		return ENOMEM;
+
+	ldms_schema_array_card_set(schema, set_array_card);
+	rc = __add_all_scalar(ts_schema);
+	if (rc < 0) {
+		__test_sampler_schema_delete(ts_schema);
+		rc = -rc;
+		return rc;
+	}
+	rc = __add_all_array(ts_schema, array_sz);
+	if (rc < 0) {
+		__test_sampler_schema_delete(ts_schema);
+		rc = -rc;
+	}
+	return rc;
+}
+
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
@@ -719,6 +962,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			rc = config_add_set(avl);
 		} else if (0 == strcmp(action, "default")) {
 			rc = config_add_default(avl);
+		} else if (0 == strcmp(action, "add_scalar")) {
+			rc = config_add_scalar(avl);
+		} else if (0 == strcmp(action, "add_array")) {
+			rc = config_add_array(avl);
+		} else if (0 == strcmp(action, "add_all")) {
+			rc = config_add_all(avl);
 		} else {
 			msglog(LDMSD_LERROR, "test_sampler: Unrecognized "
 				"action '%s'.\n", action);
@@ -777,55 +1026,121 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static void __metric_increment(struct test_sampler_metric *metric, ldms_set_t set)
 {
-	union ldms_value v = metric->latest_value;
+	union ldms_value v;
 	int i = 0;
 
 	if (ldms_type_is_array(metric->vtype)) {
 		for (i = 0; i < metric->count; i++) {
 			switch (metric->vtype) {
 			case LDMS_V_U8_ARRAY:
+				v.v_u8 = ldms_metric_array_get_u8(set, metric->idx, i);
+				v.v_u8++;
+				ldms_metric_array_set_u8(set, metric->idx, i, v.v_u8);
+				break;
 			case LDMS_V_S8_ARRAY:
+				v.v_s8 = ldms_metric_array_get_s8(set, metric->idx, i);
+				v.v_s8++;
+				ldms_metric_array_set_s8(set, metric->idx, i, v.v_s8);
+				break;
 			case LDMS_V_U16_ARRAY:
+				v.v_u16 = ldms_metric_array_get_u16(set, metric->idx, i);
+				v.v_u16++;
+				ldms_metric_array_set_u16(set, metric->idx, i, v.v_u16);
+				break;
 			case LDMS_V_S16_ARRAY:
+				v.v_s16 = ldms_metric_array_get_s16(set, metric->idx, i);
+				v.v_s16++;
+				ldms_metric_array_set_s16(set, metric->idx, i, v.v_s16);
+				break;
 			case LDMS_V_U32_ARRAY:
+				v.v_u32 = ldms_metric_array_get_u32(set, metric->idx, i);
+				v.v_u32++;
+				ldms_metric_array_set_u32(set, metric->idx, i, v.v_u32);
+				break;
 			case LDMS_V_S32_ARRAY:
+				v.v_s32 = ldms_metric_array_get_s32(set, metric->idx, i);
+				v.v_s32++;
+				ldms_metric_array_set_s32(set, metric->idx, i, v.v_s32);
+				break;
 			case LDMS_V_S64_ARRAY:
+				v.v_s64 = ldms_metric_array_get_s64(set, metric->idx, i);
+				v.v_s64++;
+				ldms_metric_array_set_s64(set, metric->idx, i, v.v_s64);
+				break;
 			case LDMS_V_U64_ARRAY:
-				metric->latest_value.v_u64++;
+				v.v_u64 = ldms_metric_array_get_u64(set, metric->idx, i);
+				v.v_u64++;
+				ldms_metric_array_set_u64(set, metric->idx, i, v.v_u64);
 				break;
 			case LDMS_V_F32_ARRAY:
-				metric->latest_value.v_f++;
+				v.v_f = ldms_metric_array_get_float(set, metric->idx, i);
+				v.v_f++;
+				ldms_metric_array_set_float(set, metric->idx, i, v.v_f);
 				break;
 			case LDMS_V_D64_ARRAY:
-				metric->latest_value.v_d++;
+				v.v_d = ldms_metric_array_get_double(set, metric->idx, i);
+				v.v_d++;
+				ldms_metric_array_set_double(set, metric->idx, i, v.v_d);
 				break;
 			default:
 				return;
 			}
-			ldms_metric_array_set_val(set, metric->idx, i, &metric->latest_value);
 		}
 	} else {
 		switch (metric->vtype) {
 		case LDMS_V_U8:
+			v.v_u8 = ldms_metric_get_u8(set, metric->idx);
+			v.v_u8++;
+			ldms_metric_set_u8(set, metric->idx, v.v_u8);
+			break;
 		case LDMS_V_S8:
+			v.v_s8 = ldms_metric_get_s8(set, metric->idx);
+			v.v_s8++;
+			ldms_metric_set_s8(set, metric->idx, v.v_s8);
+			break;
 		case LDMS_V_U16:
+			v.v_u16 = ldms_metric_get_u16(set, metric->idx);
+			v.v_u16++;
+			ldms_metric_set_u16(set, metric->idx, v.v_u16);
+			break;
 		case LDMS_V_S16:
+			v.v_s16 = ldms_metric_get_s16(set, metric->idx);
+			v.v_s16++;
+			ldms_metric_set_s16(set, metric->idx, v.v_s16);
+			break;
 		case LDMS_V_U32:
+			v.v_u32 = ldms_metric_get_u32(set, metric->idx);
+			v.v_u32++;
+			ldms_metric_set_u32(set, metric->idx, v.v_u32);
+			break;
 		case LDMS_V_S32:
+			v.v_s32 = ldms_metric_get_s32(set, metric->idx);
+			v.v_s32++;
+			ldms_metric_set_s32(set, metric->idx, v.v_s32);
+			break;
 		case LDMS_V_S64:
+			v.v_s64 = ldms_metric_get_s64(set, metric->idx);
+			v.v_s64++;
+			ldms_metric_set_s64(set, metric->idx, v.v_s64);
+			break;
 		case LDMS_V_U64:
-			metric->latest_value.v_u64++;
+			v.v_u64 = ldms_metric_get_u64(set, metric->idx);
+			v.v_u64++;
+			ldms_metric_set_u64(set, metric->idx, v.v_u64);
 			break;
 		case LDMS_V_F32:
-			metric->latest_value.v_f++;
+			v.v_f = ldms_metric_get_float(set, metric->idx);
+			v.v_f++;
+			ldms_metric_set_float(set, metric->idx, v.v_f);
 			break;
 		case LDMS_V_D64:
-			metric->latest_value.v_d++;
+			v.v_d = ldms_metric_get_double(set, metric->idx);
+			v.v_d++;
+			ldms_metric_set_double(set, metric->idx, v.v_d);
 			break;
 		default:
 			return;
 		}
-		ldms_metric_set(set, metric->idx, &v);
 	}
 }
 
@@ -939,6 +1254,31 @@ static const char *usage(struct ldmsd_plugin *self)
 		"    The valid metric types are either 'meta' or 'data'.\n"
 		"    The valid value types are, for example, D64, F32, S64, U64, S64_ARRAY\n"
 		""
+		"\n"
+		"config name=test_sampler action=add_scalar [schema=<schema name>]\n"
+		"       [set_array_card=set_array_card]\n"
+		"\n"
+		"    Create a schema with the metrics of each scalar type\n"
+		"\n"
+		"    <set_array_card>     number of elements in the set ring buffer\n"
+		"\n"
+		"config name=test_sampler action=add_array [schema=<schema name>]\n"
+		"       [set_array_card=<set_array_card>]\n"
+		"       metric_array_sz=<metric_array_sz>\n"
+		"\n"
+		"    Create a schema with the metrics of each array type\n"
+		"\n"
+		"    <set_array_card>     number of elements in the set ring buffer\n"
+		"    <metric_array_sz>    number of elements in each array metric\n"
+		"\n"
+		"config name=test_sampler action=add_all [schema=<schema name>]\n"
+		"       [set_array_card=<set_array_card>]\n"
+		"       metric_array_sz=<metric_array_sz>\n"
+		"\n"
+		"    Create a schema with the metrics of each scalar and array type\n"
+		"\n"
+		"    <set_array_card>>    number of elements in the set ring buffer\n"
+		"    <metric_array_sz>    number of elements in each array metric\n"
 		"\n"
 		"config name=test_sampler action=add_set instance=<set_name>\n"
 		"       schema=<schema_name>\n"
