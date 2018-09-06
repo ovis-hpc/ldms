@@ -37,4 +37,4 @@ twain ldmsd_config_gen_vmstat=/etc/sysconfig/ldms.d/plugins-conf/gen.vmstat
 #
 # data storage
 #
-ldmsd_store_plugins=store_csv
+twain ldmsd_store_plugins=store_csv
