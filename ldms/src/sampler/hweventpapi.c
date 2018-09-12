@@ -525,7 +525,7 @@ int deatach_pids()
 
 	event_count = PAPI_num_events(ldms_metric_user_data_get(set, 0));
 	long_long values[event_count];
-	for (c = 0; c < pids_count; c++) {
+	for (c = 0; c < pids_count && papi_event_sets; c++) {
 		rc = PAPI_stop(papi_event_sets[c], values);
 		if (rc != PAPI_OK) {
 			msglog(LDMSD_LERROR, SAMP ": failed to stop process"
@@ -1008,6 +1008,7 @@ static int sample(struct ldmsd_sampler * self)
 					"papi_event_sets\n");
 				if (papi_event_sets) {
 					free(papi_event_sets);
+					papi_event_sets = NULL;
 				}
 
 				msglog(LDMSD_LDEBUG, SAMP ": free "
@@ -1114,7 +1115,10 @@ static int sample(struct ldmsd_sampler * self)
 			 */
 			msglog(LDMSD_LDEBUG, SAMP ": papi already attached, "
 				"check if the application is alive \n");
-			pid0_exist = kill(apppid[0], 0);
+			if (apppid)
+				pid0_exist = kill(apppid[0], 0);
+			else
+				pid0_exist = ENOENT;
 
 			if (pid0_exist == 0) {
 				msglog(LDMSD_LDEBUG, SAMP ": application is "
