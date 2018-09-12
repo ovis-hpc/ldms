@@ -2364,6 +2364,7 @@ int ldms_xprt_send(ldms_t _x, char *msg_buf, size_t msg_len)
 	struct ldms_context *ctxt;
 	int rc;
 
+	assert(msg_len > 4);
 	if (!msg_buf)
 		return EINVAL;
 
@@ -2416,6 +2417,11 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	if (LDMS_XPRT_AUTH_GUARD(x))
 		return EPERM;
 
+	/* If a dir has previously been done and updates were asked
+	 * for, return EBUSY. No need for application to do dir request again. */
+	if (x->local_dir_xid)
+		return EBUSY;
+
 	/* Prevent x being destroyed if DISCONNECTED is delivered in another thread */
 	ldms_xprt_get(x);
 	pthread_mutex_lock(&x->lock);
@@ -2424,11 +2430,6 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 		ldms_xprt_put(x);
 		return ENOMEM;
 	}
-
-	/* If a dir has previously been done and updates were asked
-	 * for, return EBUSY. No need for application to do dir request again. */
-	if (x->local_dir_xid)
-		goto ebusy;
 
 	len = format_dir_req(req, (uint64_t)(unsigned long)ctxt, flags);
 	ctxt->dir.cb = cb;
@@ -2460,12 +2461,6 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	}
 	ldms_xprt_put(x);
 	return rc;
-ebusy:
-	__ldms_free_ctxt(x, ctxt);
-	x->local_dir_xid = 0;
-	pthread_mutex_unlock(&x->lock);
-	ldms_xprt_put(x);
-	return EBUSY;
 }
 
 /* This request has no reply */
