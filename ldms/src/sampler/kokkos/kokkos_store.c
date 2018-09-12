@@ -103,10 +103,11 @@ typedef struct kokkos_parser_s {
 	sos_obj_t app_obj;
 	sos_obj_t kernel_obj;
 
-	/* These atttributes inherited are the kernel objects */
+	/* These atttributes are inherited by the kernel objects */
 	uint64_t job_id;
 	uint64_t app_id;
 	uint64_t mpi_rank;
+	uint64_t component_id;
 	uint32_t start_time;
 	uint8_t inst_data[SHA256_DIGEST_LENGTH];
 
@@ -373,12 +374,30 @@ static int process_app_id(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_a
 	return 0;
 }
 
+static int process_component_id(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	kokkos_parser_t k = (kokkos_parser_t)p;
+	sos_value_data_t data = sos_obj_attr_data(obj, attr, NULL);
+	if (e->value.int_ < 0)
+		k->component_id = 0;
+	else
+		k->component_id = e->value.int_;
+	data->prim.uint64_ = k->component_id;
+	return 0;
+}
+
 static int process_mpi_rank(json_parser_t p, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
 {
 	kokkos_parser_t k = (kokkos_parser_t)p;
 	sos_value_data_t data = sos_obj_attr_data(obj, attr, NULL);
-	k->mpi_rank = e->value.int_;
-	data->prim.uint64_ = e->value.int_;
+
+	/* If the kokkos job wasn't MPI, use the component-id for the rank */
+	if (e->value.int_ < 0)
+		k->mpi_rank = k->component_id;
+	else
+		k->mpi_rank = e->value.int_;
+	data->prim.uint64_ = k->mpi_rank;
+
 	return 0;
 }
 
@@ -527,7 +546,7 @@ static void kokkos_handle_sample(struct kvd_req_ctxt *ctxt)
 
 	json_parser_t parser = json_parser_new(sizeof(struct kokkos_parser_s));
 	kokkos_parser_t k = (kokkos_parser_t)parser;
-	k->job_id = k->app_id = k->mpi_rank = 0;
+	k->job_id = k->app_id = k->component_id = k->mpi_rank = 0;
 	k->app_obj = sos_obj_new(app_schema);
 	if (!k->app_obj) {
 		msglog(LDMSD_LERROR, "%s: Error %d creating Kokkos App object.\n",
@@ -540,10 +559,15 @@ static void kokkos_handle_sample(struct kvd_req_ctxt *ctxt)
 		process_dict_entity(parser, entity, NULL, NULL);
 		json_entity_free(entity);
 		json_result(ctxt, 0);
+		sos_obj_index(k->app_obj);
+		sos_obj_put(k->app_obj);
 	} else {
+		if (k->app_obj) {
+			sos_obj_delete(k->app_obj);
+			sos_obj_put(k->app_obj);
+		}
 		json_result(ctxt, EINVAL);
 	}
-	sos_obj_index(k->app_obj);
  out:
 	free(parser);
 	free(decoded);
@@ -580,6 +604,7 @@ static struct sos_schema_template kokkos_app_template = {
 		{ .name = "inst_data", .type = SOS_TYPE_STRUCT,	.size = 32 },
 		{ .name = "start_time",	.type = SOS_TYPE_TIMESTAMP },
 		{ .name = "mpi_rank", .type = SOS_TYPE_UINT64 },
+		{ .name = "hostname", .type = SOS_TYPE_STRING },
 		{ .name = "user_id", .type = SOS_TYPE_UINT32, .indexed = 1 },
 		{ .name = "component_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "total_app_time", .type = SOS_TYPE_DOUBLE },
@@ -793,6 +818,8 @@ static struct schema_spec kokkos_app_spec = {
 		{ "job_name", "job-name", process_string, 1 },
 		{ "app_id", "app-id", process_app_id, 1 },
 		{ "mpi_rank", "mpi-rank", process_mpi_rank, 1 },
+		{ "component_id", "component-id", process_int, 1 },
+		{ "hostname", "hostname", process_string, 1 },
 		{ "inst_data", "inst-data", process_inst_data, 1 },
 		{ "start_time", "start-time", process_start_time, 1 },
 		{ "user_id", "user-id", process_int, 1 },
@@ -879,7 +906,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 {
 	char *value;
 	char *producer_name;
-	int rc, sz;
+	int rc;
 
 	svc.log_path = "/var/log/kokkos_svc.log";
 	svc.port = "18080";
@@ -903,15 +930,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	if (root_path)
 		free(root_path);
-	sz = strlen(value) + strlen("%s/kokkos");
-	root_path = malloc(sz + 1);
+	root_path = strdup(value);
 	if (!root_path) {
 		msglog(LDMSD_LERROR,
 		       "%s: Error allocating %d bytes for the container path.\n",
-		       kokkos_store.name, sz + 1);
-		return ENOENT;
+		       strlen(value) + 1);
+		return ENOMEM;
 	}
-	snprintf(root_path, sz, "%s/kokkos", value);
 
 	rc = reopen_container(root_path);
 	if (rc) {
