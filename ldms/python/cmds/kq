@@ -17,17 +17,17 @@ class KokkosData(object):
             self.db = Sos.Container(path, Sos.PERM_RW)
             self.app_schema = self.db.schema_by_name('kokkos_app')
             if self.app_schema is None:
-                printf("The {0} database is not a Kokkos Data Store.".format(path))
+                print("The {0} database is not a Kokkos Data Store.".format(path))
                 self.db.close()
                 return False
             self.kernel_schema = self.db.schema_by_name('kokkos_kernel')
             if self.app_schema is None:
-                printf("The {0} database is not a Kokkos Data Store.".format(path))
+                print("The {0} database is not a Kokkos Data Store.".format(path))
                 self.db.close()
                 return False
             self.sha256_schema = self.db.schema_by_name('sha256_string')
             if self.sha256_schema is None:
-                printf("The {0} database is not a Kokkos Data Store.".format(path))
+                print("The {0} database is not a Kokkos Data Store.".format(path))
                 self.db.close()
                 return False
             self.sha256_attr = self.sha256_schema['sha256']
