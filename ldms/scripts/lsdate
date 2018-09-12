@@ -1,4 +1,4 @@
-#! /usr/bin/bash
+#!/bin/bash
 # show trailing utc sec with readable dates.
 # files without trailing 10 digit seconds are listed plain.
 # allows usual ls options, but may annoy a bit with ls -l.
