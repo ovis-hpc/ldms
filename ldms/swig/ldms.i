@@ -466,7 +466,6 @@ static void __passive_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
                 pthread_mutex_lock(&recv_arg_list_lock);
                 __recv_arg_destroy(event_arg->recv_arg);
                 pthread_mutex_unlock(&recv_arg_list_lock);
-                free(event_arg);
                 ldms_xprt_put(x);
                 break;
         case LDMS_XPRT_EVENT_RECV:
