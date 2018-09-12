@@ -59,19 +59,4 @@
 #define	JOBINFO_JOB_STARTED	1
 #define	JOBINFO_JOB_EXITED	2
 
-/*
- * Structure to contain jobinfo state while the job is running
- */
-struct jobinfo {
-	u_int		job_id;
-	u_int		job_status;
-	u_int		job_app_id;
-	uid_t		job_user_id;
-	long int	job_start;
-	long int	job_end;
-	u_int		job_exit_status;
-	char		job_name[JOBINFO_MAX_JOBNAME];
-	char		job_user[JOBINFO_MAX_USERNAME];
-};
-
 #endif /* __JOBINFO_H */

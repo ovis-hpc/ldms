@@ -9,7 +9,7 @@ COMMON_LIBADD = $(CORE)/libldms.la
 		@LDFLAGS_GETTIME@ -lovis_util -lcoll
 
 
-libjobinfo_slurm_la_SOURCES = jobinfo_slurm.c ../job_info/jobinfo.h
+libjobinfo_slurm_la_SOURCES = jobinfo_slurm.c
 libjobinfo_slurm_la_LIBADD = $(COMMON_LIBADD)
 libjobinfo_slurm_la_CFLAGS = $(AM_CFLAGS) $(SLURM_INCDIR_FLAG) \
 	-I$(top_srcdir)/src/sampler/job_info -DSYSCONFDIR='"$(sysconfdir)"'
