@@ -941,6 +941,35 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 	fail:
 		return;
         }
+	inline void __setitem__(PyObject *key, PyObject *val) {
+		int i = -1;
+		if (PyInt_Check(key)) {
+			/* access by index */
+			i = PyInt_AS_LONG(key);
+		}
+		if (PyLong_Check(key)) {
+			/* access by index */
+			i = PyLong_AsLong(key);
+		}
+		if (PyString_Check(key)) {
+			char *s = PyString_AS_STRING(key);
+			i = ldms_metric_by_name(self, s);
+		}
+		if (i >= 0) {
+			/* good */
+			enum ldms_value_type t = ldms_metric_type_get(self, i);
+			if (ldms_type_is_array(t)) {
+				PyErr_SetString(PyExc_KeyError,
+					"Array set using attr key not "
+					"supported, please use "
+					".array_metric_value_set() instead.");
+				return;
+			}
+			ldms_rbuf_desc_metric_value_set(self, i, val);
+			return;
+		}
+		PyErr_SetString(PyExc_KeyError, "Bad key");
+	}
 	inline const char *instance_name_get() {
 		return ldms_set_instance_name_get(self);
 	}
@@ -1065,6 +1094,12 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 			__uctxt_free(ctxt);
 		}
 	}
+	inline void transaction_begin() {
+		ldms_transaction_begin(self);
+	}
+	inline void transaction_end() {
+		ldms_transaction_end(self);
+	}
 }
 
 %extend ldms_timestamp {
@@ -1131,5 +1166,17 @@ def set_update(self, cb=None, ctxt=None):
 		return _ldms.ldms_rbuf_desc__update_blocking(self)
 	return _ldms.ldms_rbuf_desc__update_nonblocking(self, self, cb, ctxt)
 setattr(ldms_rbuf_desc, "update", set_update)
+
+def set_iter(self):
+	n = len(self)
+	for i in range(0, n):
+		yield self[i]
+setattr(ldms_rbuf_desc, "__iter__", set_iter)
+
+def set_iter_items(self):
+	n = len(self)
+	for i in range(0, n):
+		yield (i, self[i])
+setattr(ldms_rbuf_desc, "iter_items", set_iter_items)
 
 %}
