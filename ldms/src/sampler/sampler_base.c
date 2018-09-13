@@ -79,7 +79,7 @@ void base_del(base_data_t base)
 	if (base->schema)
 		ldms_schema_delete(base->schema);
 	if (base->job_set)
-		ldms_set_delete(base->job_set);
+		ldms_set_put(base->job_set);
 	free(base);
 }
 
