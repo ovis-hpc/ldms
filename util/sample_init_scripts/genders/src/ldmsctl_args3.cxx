@@ -461,10 +461,6 @@ private:
 	void add_collectors(int level, vector<string>& node_list, vector<string>& out, const set<string>& ban, set<string>& sets_seen) {
 		ostringstream oss;
 		oss << "# ac top\n";
-		oss << "updtr_add name=all_" << hostname;
-		oss << " interval=" << aggdt.interval;
-		oss << " offset=" << aggdt.offset;
-		oss << endl;
 		string ehdummy;
 		for (vector<string>::size_type j = 0; j < node_list.size(); j++) {
 			if (in->get_exclude_host(node_list[j], "ldmsd", ehdummy)) {
@@ -492,10 +488,6 @@ private:
 				// ; sets=" << sets;
 			}
 		}
-		oss << "updtr_prdcr_add name=all_" << hostname;
-		oss << " regex=" << ".*";
-		oss << endl;
-		oss << "updtr_start name=all_" << hostname;
 		adds.push_back(oss.str());
 	}
 
@@ -529,8 +521,16 @@ public:
 		}
 		vector<string> parts;
 		split(parts,ldmsaggd,is_any_of(":"), boost::token_compress_on);
-		bool didbootnode, didclientof, didaggclientof, didldmsdall;
-		didbootnode = didclientof = didaggclientof = didldmsdall = false;
+		bool didbootnode, didclientof, didaggclientof, didldmsdall, didsingle;
+		didsingle = didbootnode = didclientof = didaggclientof = didldmsdall = false;
+		if (parts.size() > 0) {
+			ostringstream oss;
+			oss << "updtr_add name=all_" << hostname;
+			oss << " interval=" << aggdt.interval;
+			oss << " offset=" << aggdt.offset;
+			oss << endl;
+			adds.push_back(oss.str());
+		}
 		for (vector<string>::size_type i = 0; i < parts.size(); i++) {
 			if (parts[i] == "BOOTNODELIST" && ! didbootnode) {
 				didbootnode = true;
@@ -554,15 +554,12 @@ public:
 				continue;
 			}
 			if (parts[i] == "AGGCLIENTOFLIST" && !didaggclientof) {
+				didaggclientof = true;
 				vector<string> aggclientof_list;
 				in->get_aggclientof(hostname,aggclientof_list);
 
 				ostringstream oss;
 				oss << "# aggclient list\n";
-				oss << "updtr_add name=all_" << hostname;
-				oss << " interval=" << aggdt.interval;
-				oss << " offset=" << aggdt.offset;
-				oss << endl;
 				for (vector<string>::size_type j = 0; j < aggclientof_list.size(); j++) {
 					hdata sub(aggclientof_list[j],in);
 					if (! sub.isaggd) {
@@ -597,18 +594,24 @@ public:
 						oss << endl;
 					}
 				}
-				oss << "updtr_prdcr_add name=all_" << hostname;
-				oss << " regex=" << ".*";
-				oss << endl;
-				oss << "updtr_start name=all_" << hostname;
-				// ; sets=" << sets;
 				adds.push_back(oss.str());
 				continue;
 			}
 			// else it's a hostname or a typo in LDMSDALL.
+			didsingle = true;
 			vector<string> singleton;
 			singleton.push_back(parts[i]);
 			add_collectors(level, singleton, out, ban, sets_seen);
+		}
+		bool didadd = 
+			didbootnode || didclientof || didaggclientof || didldmsdall || didsingle;
+		if (didadd) {
+			ostringstream oss;
+			oss << "updtr_prdcr_add name=all_" << hostname;
+			oss << " regex=" << ".*";
+			oss << endl;
+			oss << "updtr_start name=all_" << hostname;
+			adds.push_back(oss.str());
 		}
 	}
 
