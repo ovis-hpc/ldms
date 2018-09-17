@@ -63,6 +63,7 @@
 #include <pwd.h>
 #include <grp.h>
 #include <ctype.h>
+#include <dirent.h>
 
 #include "util.h"
 #define DSTRING_USE_SHORT
@@ -863,4 +864,128 @@ const char* ovis_errno_abbvr(int e)
 		return estr[e];
 	}
 	return "UNKNOWN_ERRNO";
+}
+
+/*
+ * alen[in/out] - available length
+ * dlen[in/out] - buff data length
+ *
+ * (total buff length := alen + dlen)
+ *
+ * returns 0 if EOF,
+ *         -1 if error.
+ */
+int __read_all(int fd, void **buff, size_t *alen, size_t *dlen)
+{
+	size_t sz;
+	void *new;
+loop:
+	if (!*alen) {
+		new = realloc(*buff, *dlen + 4096);
+		if (!new)
+			return -1; /* errno is ENOMEM */
+		*buff = new;
+		*alen = 4096;
+	}
+	sz = read(fd, (*buff) + *dlen, *alen);
+	if (sz == 0) /* EOF */
+		return 0;
+	if (sz < 0)
+		return sz;
+	*dlen += sz;
+	*alen -= sz;
+	goto loop;
+}
+
+ovis_pgrep_array_t ovis_pgrep(const char *text)
+{
+	DIR *dir;
+	struct dirent *dent;
+	int rc = 0;
+	int dfd, fd;
+	ssize_t sz;
+	struct stat st;
+	ovis_pgrep_t ent;
+	char path[512];
+	int i, n;
+	int pid;
+	size_t alen, dlen;
+	TAILQ_HEAD(, ovis_pgrep_s) head;
+	ovis_pgrep_array_t array = NULL;
+
+	TAILQ_INIT(&head);
+	n = 0;
+
+	dir = opendir("/proc");
+	if (!dir)
+		goto out;
+	dfd = dirfd(dir);
+	while ((dent = readdir(dir))) {
+		pid = atoi(dent->d_name);
+		if (!pid)
+			continue; /* skip non PID entries */
+		snprintf(path, sizeof(path), "/proc/%s/cmdline", dent->d_name);
+		rc = lstat(path, &st);
+		if (rc)
+			continue;
+		fd = open(path, O_RDONLY);
+		if (fd < 0)
+			continue;
+		ent = calloc(1, sizeof(*ent) + 256);
+		if (!ent) {
+			close(fd);
+			goto err1;
+		}
+		alen = 256;
+		dlen = sizeof(*ent);
+		rc = __read_all(fd, (void*)&ent, &alen, &dlen);
+		close(fd);
+		if (rc) {
+			free(ent);
+			goto err1;
+		}
+		/* replace '\0' between args with ' ' */
+		for (i = 0; i < dlen - sizeof(*ent); i++) {
+			if (ent->cmd[i] == 0) {
+				ent->cmd[i] = ' ';
+			}
+		}
+		if (strstr(ent->cmd, text)) {
+			n++;
+			ent->pid = pid;
+			TAILQ_INSERT_TAIL(&head, ent, entry);
+		} else {
+			/* does not match; clean up */
+			free(ent);
+		}
+	}
+
+	array = calloc(1, sizeof(*array) + n*sizeof(*array->ent));
+	if (!array)
+		goto err1;
+	array->len = n;
+	i = 0;
+	TAILQ_FOREACH(ent, &head, entry) {
+		array->ent[i] = ent;
+		i++;
+	}
+
+	rc = 0;
+	goto out;
+err1:
+	while ((ent = TAILQ_FIRST(&head))) {
+		TAILQ_REMOVE(&head, ent, entry);
+		free(ent);
+	}
+out:
+	return array;
+}
+
+void ovis_pgrep_free(ovis_pgrep_array_t a)
+{
+	int i;
+	for (i = 0; i < a->len; i++) {
+		free(a->ent[i]);
+	}
+	free(a);
 }

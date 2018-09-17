@@ -311,4 +311,52 @@ int ovis_access_check(uid_t auid, gid_t agid, int acc,
  */
 const char* ovis_errno_abbvr(int e);
 
+typedef
+struct ovis_pgrep_s {
+	TAILQ_ENTRY(ovis_pgrep_s) entry;
+	pid_t pid;
+	char cmd[];
+} *ovis_pgrep_t;
+
+typedef
+struct ovis_pgrep_array_s {
+	int len;
+	ovis_pgrep_t ent[];
+} *ovis_pgrep_array_t;
+
+/**
+ * \brief A `pgrep`-like utility.
+ *
+ * This is a simplified utility function that acts similar to `pgrep`
+ * command-line utility. This function go thorugh all \c /proc/PID/cmdline and
+ * put the entries matching the search text (by \c strstr()) into the returned
+ * array.
+ *
+ * The application must free the returned array with \c ovis_pgrep_free().
+ *
+ * The pgrep entries can be access as the following example:
+ *
+ * \code
+ * arr = ovis_pgrep("some_prog");
+ * if (!arr)
+ *     goto err;
+ * for (i = 0; i < arr->len; i++) {
+ *     printf("pid: %d\n", arr->ent[i]->pid);
+ *     printf("cmd: %d\n", arr->ent[i]->cmd);
+ * }
+ * ovis_pgrep_free(arr);
+ * \endcode
+ *
+ * \param text The \c /proc/PID/cmdline text search term
+ *
+ * \retval array If there is no error.
+ * \retval NULL  If there is an error.
+ */
+ovis_pgrep_array_t ovis_pgrep(const char *text);
+
+/**
+ * \brief Free the \c array created by \c ovis_pgrep().
+ */
+void ovis_pgrep_free(ovis_pgrep_array_t array);
+
 #endif /* OVIS_UTIL_H_ */
