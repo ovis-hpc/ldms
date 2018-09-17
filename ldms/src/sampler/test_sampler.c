@@ -101,7 +101,6 @@ struct test_sampler_set {
 };
 LIST_HEAD(test_sampler_set_list, test_sampler_set);
 
-static ldms_set_t *set_array;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
 static ldms_schema_t schema;
@@ -112,6 +111,8 @@ static int num_metrics;
 static char *default_schema_name = "test_sampler";
 static struct test_sampler_schema_list schema_list;
 static struct test_sampler_set_list set_list;
+static int set_del_int = 0;
+static int ts_suffix = 0; /* switch to append ts at the end of set name */
 
 static struct test_sampler_schema *__schema_find(
 		struct test_sampler_schema_list *list, char *name)
@@ -288,24 +289,82 @@ void __schema_metric_destroy(struct test_sampler_metric *metric)
 	free(metric);
 }
 
-static struct test_sampler_set *__create_test_sampler_set(ldms_set_t set,
-					char *instance_name, int push,
+static int test_sampler_set_new(struct test_sampler_set *ts_set);
+static int test_sampler_set_del(struct test_sampler_set *ts_set);
+
+static struct test_sampler_set *__create_test_sampler_set(
+				char *instance_name, int push,
 				struct test_sampler_schema *ts_schema)
 {
-	struct test_sampler_set *ts_set = malloc(sizeof(*ts_set));
+	int rc;
+	struct test_sampler_set *ts_set = calloc(1, sizeof(*ts_set));
 	if (!ts_set) {
 		msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
 		return NULL;
 	}
-	ts_set->set = set;
 	ts_set->name = strdup(instance_name);
+	if (!ts_set->name)
+		goto err0;
 	ts_set->ts_schema = ts_schema;
 	ts_set->push = push;
 	ts_set->skip_push = 1;
+	rc = test_sampler_set_new(ts_set);
+	if (rc)
+		goto err1;
 	LIST_INSERT_HEAD(&set_list, ts_set, entry);
-	ldms_set_publish(set);
-	ldmsd_set_register(set, "test_sampler");
 	return ts_set;
+
+err1:
+	free(ts_set->name);
+err0:
+	free(ts_set);
+	return NULL;
+}
+
+static void __delete_test_sampler_set(struct test_sampler_set *ts_set)
+{
+	if (ts_set->set)
+		test_sampler_set_del(ts_set);
+	if (ts_set->name)
+		free(ts_set->name);
+	LIST_REMOVE(ts_set, entry);
+	free(ts_set);
+}
+
+/* create a new set for test_sampler_set */
+static int test_sampler_set_new(struct test_sampler_set *ts_set)
+{
+	char buff[512];
+	const char *name;
+	struct timeval tv;
+	if (ts_set->set)
+		return EEXIST;
+	if (ts_suffix) {
+		gettimeofday(&tv, NULL);
+		snprintf(buff, sizeof(buff), "%s:%ld.%06ld",
+			 ts_set->name, tv.tv_sec, tv.tv_usec);
+		name = buff;
+	} else {
+		name = ts_set->name;
+	}
+	ts_set->set = ldms_set_new(name, ts_set->ts_schema->schema);
+	if (!ts_set->set)
+		return errno;
+	ldms_set_publish(ts_set->set);
+	ldmsd_set_register(ts_set->set, "test_sampler");
+	return 0;
+}
+
+static int test_sampler_set_del(struct test_sampler_set *ts_set)
+{
+	const char *name;
+	if (!ts_set->set)
+		return ENOENT;
+	name = ldms_set_instance_name_get(ts_set->set);
+	ldmsd_set_deregister(name, "test_sampler");
+	ldms_set_unpublish(ts_set->set);
+	ts_set->set = NULL;
+	return 0;
 }
 
 static int create_metric_set(const char *schema_name, int push)
@@ -344,29 +403,17 @@ static int create_metric_set(const char *schema_name, int push)
 	}
 
 	struct test_sampler_set *ts_set, *next_ts_set;
-	set_array = calloc(num_sets, sizeof(ldms_set_t));
-	if (!set_array) {
-		msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
-		return ENOMEM;
-	}
 
 	for (i = 0; i < num_sets; i++) {
 		snprintf(instance_name, 127, "%s_%d", base_set_name, i);
-		set = ldms_set_new(instance_name, schema);
-		if (!set) {
-			rc = ENOMEM;
+		ts_set = __create_test_sampler_set(instance_name, push, ts_schema);
+		if (!ts_set)
 			goto free_sets;
-		}
-
+		set = ts_set->set;
 		for (j = 0; j < num_metrics; j++) {
 			v.v_u64 = j;
 			ldms_metric_set(set, j, &v);
 		}
-		set_array[i] = set;
-		ts_set = __create_test_sampler_set(set, instance_name,
-						push, ts_schema);
-		if (!ts_set)
-			goto free_sets;
 	}
 
 	return 0;
@@ -375,17 +422,13 @@ free_sets:
 	ts_set = LIST_FIRST(&set_list);
 	if (!ts_set)
 		goto free_schema;
-	next_ts_set = LIST_NEXT(ts_set, entry);
 	while (ts_set) {
-		if (0 == strcmp(schema_name, ldms_set_schema_name_get(ts_set->set))) {
-			LIST_REMOVE(ts_set, entry);
-			ldms_set_delete(ts_set->set);
-			free(ts_set->name);
-			free(ts_set);
+		next_ts_set = LIST_NEXT(ts_set, entry);
+		const char *sname = ldms_set_schema_name_get(ts_set->set);
+		if (0 == strcmp(schema_name, sname)) {
+			__delete_test_sampler_set(ts_set);
 		}
 		ts_set = next_ts_set;
-		if (!ts_set)
-			break;
 	}
 free_schema:
 	if (schema)
@@ -581,17 +624,12 @@ static int config_add_set(struct attr_value_list *avl)
 		return EINVAL;
 	}
 
-	set = ldms_set_new(set_name, ts_schema->schema);
-	if (!set) {
-		msglog(LDMSD_LERROR, "test_sampler: Cannot create "
-				"set '%s'\n", set_name);
-		return ENOMEM;
-	}
-	ts_set = __create_test_sampler_set(set, set_name, push, ts_schema);
+	ts_set = __create_test_sampler_set(set_name, push, ts_schema);
 	if (!ts_set) {
-		rc = ENOMEM;
+		rc = errno;
 		goto err0;
 	}
+	set = ts_set->set;
 
 	union ldms_value v;
 	int mid = 0;
@@ -649,10 +687,9 @@ static int config_add_set(struct attr_value_list *avl)
 	}
 
 	return 0;
-err0:
-	ldms_set_delete(set);
 err1:
-	free(ts_set);
+	__delete_test_sampler_set(ts_set);
+err0:
 	return rc;
 }
 
@@ -948,6 +985,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *compid;
 	char *jobid;
 	char *push;
+	char *set_del_int_str;
+	char *ts_suffix_str;
 	void * arg = NULL;
 	int rc;
 
@@ -977,11 +1016,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	producer_name = av_value(avl, "producer");
 	compid = av_value(avl, "component_id");
 	jobid = av_value(avl, "jobid");
+	set_del_int_str = av_value(avl, "set_delete_interval");
+	ts_suffix_str = av_value(avl, "ts_suffix");
 
 	if (!compid)
 		compid = "0";
 	if (!jobid)
 		jobid = "0";
+	if (set_del_int_str)
+		set_del_int = atoi(set_del_int_str);
+	if (ts_suffix_str)
+		ts_suffix = atoi(ts_suffix_str);
 
 	struct test_sampler_set *ts_set;
 	union ldms_value vcompid, vjobid;
@@ -1147,12 +1192,34 @@ static int sample(struct ldmsd_sampler *self)
 	int rc;
 	union ldms_value v;
 	ldms_set_t set;
+	static int sample_count = 0;
 
 	int j;
 	struct test_sampler_set *ts_set;
 	struct test_sampler_metric *metric;
+
+	sample_count += 1;
+
 	LIST_FOREACH(ts_set, &set_list, entry) {
+		if (set_del_int > 0) {
+			j = (sample_count) % set_del_int;
+			if (j == 0) {
+				if (!ts_set->set)
+					continue; /* no need to delete */
+				/* delete the set */
+				test_sampler_set_del(ts_set);
+				continue;
+			}
+			/* else, let through */
+		}
+		if (!ts_set->set) {
+			/* try re-creating the set */
+			rc = test_sampler_set_new(ts_set);
+			if (rc)
+				continue;
+		}
 		set = ts_set->set;
+		assert(set);
 		ldms_transaction_begin(set);
 		TAILQ_FOREACH(metric, &ts_set->ts_schema->list, entry) {
 			if (metric->mtype == LDMS_MDESC_F_META)
@@ -1205,25 +1272,11 @@ static void term(struct ldmsd_plugin *self)
 		ldms_schema_delete(schema);
 	schema = NULL;
 	int i;
-	if (set_array) {
-		for (i = 0; i < num_sets; i++) {
-			if (set_array[i]) {
-				ldmsd_set_deregister(ldms_set_instance_name_get(set_array[i]),
-							"test_sampler");
-				ldms_set_delete(set_array[i]);
-			}
-			set_array[i] = NULL;
-		}
-		free(set_array);
-	}
 	struct test_sampler_set *ts;
+	const char *name;
 	ts = LIST_FIRST(&set_list);
 	while (ts) {
-		LIST_REMOVE(ts, entry);
-		ldmsd_set_deregister(ts->name, "test_sampler");
-		ldms_set_delete(ts->set);
-		free(ts->name);
-		free(ts);
+		__delete_test_sampler_set(ts);
 		ts = LIST_FIRST(&set_list);
 	}
 
@@ -1308,9 +1361,15 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                 and so on.\n"
 		"\n"
 		"config name=test_sampler [producer=<prod_name>] [component_id=<comp_id>] [jobid=<jobid>]\n"
+		"    [set_delete_interval=<interval>] [ts_suffix=<0|1>]"
 		"    <prod_name>  The producer name\n"
 		"    <comp_id>    The component ID\n"
-		"    <jobid>      The job ID\n";
+		"    <jobid>      The job ID\n"
+		"    <interval>   The number of samples before deleting the sets\n"
+		"    ts_suffix    If this option is 1, the sets will be created\n"
+		"                 with `:timestamp` appending at the end of the\n"
+		"                 set name."
+		;
 
 }
 
