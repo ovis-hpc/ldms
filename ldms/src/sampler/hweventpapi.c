@@ -831,25 +831,21 @@ static int papi_events(int c)
  */
 static int create_event_sets()
 {
+	ovis_pgrep_array_t opa;
 	int c;
-	/* The shell command to grep the application PID */
-	char* command = calloc(strlen(appname_str) + 14, sizeof (char));
 	/*
 	 * Save the number of pids again because sometimes
 	 * the number in the first read is incorrect
 	 */
-	msglog(LDMSD_LDEBUG, SAMP ": pgrep %s | wc -l\n", appname_str);
-	sprintf(command, "pgrep %s | wc -l", appname_str);
-	FILE *pipe_fp1;
-	if ((pipe_fp1 = popen(command, "r")) == NULL) {
+	msglog(LDMSD_LDEBUG, SAMP ": ovis_pgrep(%s)\n", appname_str);
+	opa = ovis_pgrep(appname_str);
+	if (!opa || opa->len == 0) {
 		msglog(LDMSD_LERROR, SAMP ": failed "
-			"pgrep %s | wc -l\n", appname_str);
+			"ovis_pgrep(%s)\n", appname_str);
 		pids_count = 0;
 	} else {
 		/* Get the application PID counts */
-		fscanf(pipe_fp1, "%d", &pids_count);
-
-		pclose(pipe_fp1);
+		pids_count = opa->len;
 
 		msglog(LDMSD_LDEBUG, SAMP ": create_event_sets pids_count"
 			" = %d\n", pids_count);
@@ -857,28 +853,13 @@ static int create_event_sets()
 
 		papi_event_sets = (int*) calloc(pids_count, sizeof (int));
 
-		sprintf(command, "pgrep %s", appname_str);
-
-		c = 0;
 		/* Get the application pid */
-		if ((pipe_fp1 = popen(command, "r")) == NULL) {
-			msglog(LDMSD_LERROR, SAMP ": failed "
-				"pgrep %s\n", appname_str);
-			pids_count = 0;
-		} else {
-			while (fscanf(pipe_fp1, "%d", &apppid[c]) != -1
-				&& c < pids_count) {
-				if (papi_events(c) < 0) {
-					pclose(pipe_fp1);
-					return -1;
-				}
-				c++;
-			}
-			pclose(pipe_fp1);
+		c = 0;
+		for (c = 0; c < opa->len; c++) {
+			apppid[c] = opa->ent[c]->pid;
 		}
+		ovis_pgrep_free(opa);
 	}
-	if (command)
-                free(command);
 	return 0;
 }
 
@@ -1049,9 +1030,6 @@ static int sample(struct ldmsd_sampler * self)
 		return 0;
 	}
 
-	/* The shell command to grep the application PID */
-	char* command = calloc(strlen(appname_str) + 14, sizeof (char));
-
 	msglog(LDMSD_LDEBUG, SAMP ": sampler configured successfully, watch "
 		"for application PIDs (count = %d) \n", pids_count);
 
@@ -1059,13 +1037,13 @@ static int sample(struct ldmsd_sampler * self)
 		msglog(LDMSD_LDEBUG, SAMP ": watch for application, no PIDs,"
 			" application not running\n");
 		if (strlen(appname_str) > 1) {
-			msglog(LDMSD_LDEBUG, SAMP ": pgrep %s | wc -l\n", appname_str);
-			sprintf(command, "pgrep %s | wc -l", appname_str);
-			FILE *fp = popen(command, "r");
-			/* Get the application PID counts */
-			fscanf(fp, "%d", &pids_count);
-			msglog(LDMSD_LDEBUG, SAMP ": pids count = %d\n", pids_count);
-			pclose(fp);
+			msglog(LDMSD_LDEBUG, SAMP ": ovis_pgrep(%s)\n", appname_str);
+			pids_count = 0;
+			ovis_pgrep_array_t opa = ovis_pgrep(appname_str);
+			if (opa) {
+				pids_count = opa->len;
+				ovis_pgrep_free(opa);
+			}
 
 			if (pids_count >= ppn) {
 				msglog(LDMSD_LDEBUG, SAMP ": create eventsets"
