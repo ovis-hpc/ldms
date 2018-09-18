@@ -16,11 +16,26 @@ export PACKAGE_TARNAME=@PACKAGE_TARNAME@
 export docdir=@docdir@
 export exdir=@docdir@-@PACKAGE_VERSION@
 
+function clusage {
+cat << EOF
+$0: usage:
+$0 -l 
+$0 -h
+$0 <input_file> [test_dir]
+	-h produces help message
+	-l produces list of canned test names
+See man ldms-static-test(8) for details.
+EOF
+}
 input=$1
 export input
 if test -z "$1"; then
 	echo "FAIL: no input file to $0"
 	exit 1
+fi
+if test "$1" = "-h"; then
+	clusage
+	exit 0
 fi
 if test "$1" = "-l"; then
 	echo "Canned tests are:"
@@ -298,6 +313,25 @@ function KILL_LDMSD {
 	done
 }
 
+function rollover_created {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	x=`ls $1.[0-9]*`
+	if test -z "$x"; then
+		echo "FAIL: roll-over files $1.* not created."
+		bypass=1
+		return 1
+	fi
+	for i in $x; do
+		if ! test -r $i; then
+			echo FAIL: file $i not readable.
+			bypass=1
+			return 1
+		fi
+	done
+	return 0
+}
 function file_created {
 	if test "$bypass" = "1"; then
 		return 0
