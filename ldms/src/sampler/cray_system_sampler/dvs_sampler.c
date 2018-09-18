@@ -416,7 +416,7 @@ static int local_config(struct attr_value_list *avl,
 
 	fclose(cf);
 
-	return rc;
+	return 0;
 
 }
 
