@@ -204,7 +204,8 @@ int create_outdir(const char *path,
  *	%B expands to basename(name),
  *	%D expands to dirname(name),
  *	%s timestamp suffix, if it exists.
- * Specifying both output event notification and output
+ *	%{var} expands to env(var)
+ * Specifying both output event notification and output 
  * renaming produces a race condition between this function
  * and the event-processor and should be avoided.
  *

@@ -20,6 +20,7 @@ procnfs
 rabbitkw
 rabbitl2remote
 rabbitv3
+renamecsv
 
 # working with job metrics
 clock.job
