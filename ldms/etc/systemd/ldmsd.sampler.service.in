@@ -33,7 +33,6 @@ ExecStart = @sbindir@/ldmsd \
 		-x ${LDMSD_XPRT}:${LDMSD_PORT} \
 		-c ${LDMSD_PLUGIN_CONFIG_FILE} \
 		-a ${LDMSD_AUTH_PLUGIN} \
-		$LDMSD_AUTH_OPTION \
 		-v ${LDMSD_VERBOSE} \
 		-m ${LDMSD_MEM} \
 		$LDMSD_LOG_OPTION \
