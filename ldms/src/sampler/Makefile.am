@@ -6,8 +6,10 @@ pkglib_LTLIBRARIES =
 CORE = ../core
 
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I.. @OVIS_LIB_INCDIR_FLAG@ \
-	    -I$(srcdir)/../ldmsd
-AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+	    -I$(srcdir)/../ldmsd \
+ 	    -I/opt/cray/pe/papi/5.6.0.1/include
+AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
+	    -L/opt/cray/pe/papi/5.6.0.2/lib
 
 CORE_LIBADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ -lovis_util
 
