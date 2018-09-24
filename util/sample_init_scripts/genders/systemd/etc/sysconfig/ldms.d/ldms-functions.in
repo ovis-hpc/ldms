@@ -490,6 +490,7 @@ start_ldmsd_plugins () {
 		grok="`config_from_gender $configtmp`"
 		eval extraconfig='$grok'
 		conf="0"
+		instance=""
 		schema=""
 		if test -n "$extraconfig"; then
 			conf="v2"
