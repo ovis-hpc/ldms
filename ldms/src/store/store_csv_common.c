@@ -240,6 +240,41 @@ void notify_output(const char *event, const char *name, const char *ftype,
 	free(msg);
 }
 
+/* Disallow odd characters and space in environment variables
+ * for template assembly.
+ * Allow A-z0-9%@()+-_./:=
+ */
+static int validate_env(const char *var, const char *val, struct csv_plugin_static *cps) {
+	int rc = 0;
+	const char *c = val;
+	const char *b = NULL;
+	for ( ; *c != '\0'; c++) {
+		switch (*c) {
+		case '%':
+		case '(':
+		case ')':
+		case '+':
+		case '-':
+		case '=':
+		case '_':
+		case '.':
+		case '/':
+		case ':':
+		case '@':
+			break;
+		default:
+			if (!rc && !isalnum(*c)) {
+				rc = ENOTSUP;
+				b = c;
+			}
+		}
+	}
+	if (rc)
+		cps->msglog(LDMSD_LERROR, "%s: rename_output: unsupported character %c in template use of env(%s): %s\n",
+			cps->pname, *b, var, val);
+	return rc;
+}
+
 int create_outdir(const char *path, struct csv_store_handle_common *s_handle,
 	struct csv_plugin_static *cps) {
 #define EBSIZE 512
@@ -325,8 +360,8 @@ void rename_output(const char *name,
 		int rc = errno;
 		if (merr) {
 			strerror_r(rc, errbuf, EBSIZE);
-			cps->msglog(LDMSD_LERROR,"rename_output: unable to chmod(%s,%o): %s.\n",
-				name, s_handle->rename_perm, errbuf);
+			cps->msglog(LDMSD_LERROR,"%s: rename_output: unable to chmod(%s,%o): %s.\n",
+				cps->pname, name, s_handle->rename_perm, errbuf);
 		}
 	}
 	
@@ -339,8 +374,8 @@ void rename_output(const char *name,
 		int rc = errno;
 		if (merr) {
 			strerror_r(rc, errbuf, EBSIZE);
-			cps->msglog(LDMSD_LERROR,"rename_output: unable to chown(%s, %u, %u): %s.\n",
-				name, newuid, newgid, errbuf);
+			cps->msglog(LDMSD_LERROR,"%s: rename_output: unable to chown(%s, %u, %u): %s.\n",
+				cps->pname, name, newuid, newgid, errbuf);
 		}
 	}
 
@@ -375,7 +410,7 @@ void rename_output(const char *name,
 				dscat(ds, bname);
 				free(namedup);
 			} else {
-				cps->msglog(LDMSD_LERROR,"rename_output: ENOMEM\n");
+				cps->msglog(LDMSD_LERROR,"%s: rename_output: ENOMEM\n", cps->pname);
 				dstr_free(&ds);
 				return;
 			}
@@ -388,16 +423,51 @@ void rename_output(const char *name,
 				dscat(ds, dname);
 				free(namedup);
 			} else {
-				cps->msglog(LDMSD_LERROR,"rename_output: ENOMEM\n");
+				cps->msglog(LDMSD_LERROR,"%s: rename_output: ENOMEM\n", cps->pname);
 				dstr_free(&ds);
 				return;
+			}
+			break;
+		case '{':
+			head = end + 2;
+			char *vend = strchr(head,'}');
+			if (!vend) {
+				cps->msglog(LDMSD_LERROR,
+					"%s: rename_output: unterminated %%{ in template at %s\n",
+					cps->pname, head);
+				dstr_free(&ds);
+				return;
+			} else {
+				size_t vlen = vend - head + 1;
+				char var[vlen];
+				memset(var, 0, vlen);
+				strncpy(var, head, vlen-1);
+				var[vlen] = '\0';
+				head = vend + 1;
+				char *val = getenv(var);
+				if (val) {
+					cps->msglog(LDMSD_LDEBUG,
+						"%s: rename_output: getenv(%s) = %s\n", cps->pname, var, val);
+					if (validate_env(var, val, cps)) {
+						dstr_free(&ds);
+						cps->msglog(LDMSD_LERROR,
+							"%s: rename_output: rename cancelled\n",
+							cps->pname);
+						return;
+					}
+					dscat(ds, val);
+				} else {
+					cps->msglog(LDMSD_LDEBUG,
+						"%s: rename_output: empty %%{%s}\n",
+						cps->pname, var);
+				}
 			}
 			break;
 		case 's':
 			head = end + 2;
 			char *dot = strrchr(name,'.');
 			if (!dot) {
-				cps->msglog(LDMSD_LERROR,"rename_output: no timestamp\n");
+				cps->msglog(LDMSD_LERROR,"%s: rename_output: no timestamp\n", cps->pname);
 				dstr_free(&ds);
 				return;
 			}
@@ -407,7 +477,7 @@ void rename_output(const char *name,
 				num++;
 			}	
 			if (*num != '\0') {
-				cps->msglog(LDMSD_LERROR,"rename_output: no timestamp at end\n");
+				cps->msglog(LDMSD_LERROR,"%s: rename_output: no timestamp at end\n", cps->pname);
 				dstr_free(&ds);
 				return;
 			}
@@ -424,8 +494,8 @@ void rename_output(const char *name,
 	char *newname = dsdone(ds);
 	dstr_free(&ds);
 	if (!newname) {
-		cps->msglog(LDMSD_LERROR,"rename_output: failed to create new filename for %s\n",
-			name);
+		cps->msglog(LDMSD_LERROR,"%s: rename_output: failed to create new filename for %s\n",
+			cps->pname, name);
 		return;
 	}
 	
@@ -455,20 +525,24 @@ void rename_output(const char *name,
 			break;
 		default:
 			strerror_r(err, errbuf, EBSIZE);
-			cps->msglog(LDMSD_LERROR,"rename_output: failed to create directory for %s: %s\n",
-				newname, errbuf);
+			cps->msglog(LDMSD_LERROR, "%s: rename_output: failed to create directory for %s: %s\n",
+				cps->pname, newname, errbuf);
 			return;
 		}
 	
 	}
 
-	cps->msglog(LDMSD_LDEBUG,"rename_output: rename(%s, %s)\n", name, newname);
+	cps->msglog(LDMSD_LDEBUG, "%s: rename_output: rename(%s, %s)\n",
+		cps->pname, name, newname);
 	err = rename(name, newname);
 	if (err) {
 		int ec = errno;
+		if (ec != ENOENT) {
 		strerror_r(ec, errbuf, EBSIZE);
-		cps->msglog(LDMSD_LERROR,"rename_output: failed rename(%s, %s): %s\n",
-			name, newname, errbuf);
+			cps->msglog(LDMSD_LERROR,"%s: rename_output: failed rename(%s, %s): %s\n",
+				cps->pname, name, newname, errbuf);
+		}
+		/* enoent happens if altheader = 0 */
 	}
 	free(newname);
 #undef EBSIZE
