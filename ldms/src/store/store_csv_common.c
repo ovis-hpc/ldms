@@ -250,6 +250,41 @@ void notify_output(const char *event, const char *name, const char *ftype,
 	free(msg);
 }
 
+/* Disallow odd characters and space in environment variables
+ * for template assembly.
+ * Allow A-z0-9%@()+-_./:=
+ */
+static int validate_env(const char *var, const char *val, struct csv_plugin_static *cps) {
+	int rc = 0;
+	const char *c = val;
+	const char *b = NULL;
+	for ( ; *c != '\0'; c++) {
+		switch (*c) {
+		case '%':
+		case '(':
+		case ')':
+		case '+':
+		case '-':
+		case '=':
+		case '_':
+		case '.':
+		case '/':
+		case ':':
+		case '@':
+			break;
+		default:
+			if (!rc && !isalnum(*c)) {
+				rc = ENOTSUP;
+				b = c;
+			}
+		}
+	}
+	if (rc)
+		cps->msglog(LDMSD_LERROR, "%s: rename_output: unsupported character %c in template use of env(%s): %s\n",
+			cps->pname, *b, var, val);
+	return rc;
+}
+
 int create_outdir(const char *path, struct csv_store_handle_common *s_handle,
 	struct csv_plugin_static *cps) {
 #define EBSIZE 512
@@ -335,8 +370,8 @@ void rename_output(const char *name,
 		int rc = errno;
 		if (merr) {
 			strerror_r(rc, errbuf, EBSIZE);
-			cps->msglog(LDMSD_LERROR,"rename_output: unable to chmod(%s,%o): %s.\n",
-				name, s_handle->rename_perm, errbuf);
+			cps->msglog(LDMSD_LERROR,"%s: rename_output: unable to chmod(%s,%o): %s.\n",
+				cps->pname, name, s_handle->rename_perm, errbuf);
 		}
 	}
 	
@@ -349,8 +384,8 @@ void rename_output(const char *name,
 		int rc = errno;
 		if (merr) {
 			strerror_r(rc, errbuf, EBSIZE);
-			cps->msglog(LDMSD_LERROR,"rename_output: unable to chown(%s, %u, %u): %s.\n",
-				name, newuid, newgid, errbuf);
+			cps->msglog(LDMSD_LERROR,"%s: rename_output: unable to chown(%s, %u, %u): %s.\n",
+				cps->pname, name, newuid, newgid, errbuf);
 		}
 	}
 
@@ -385,7 +420,7 @@ void rename_output(const char *name,
 				dscat(ds, bname);
 				free(namedup);
 			} else {
-				cps->msglog(LDMSD_LERROR,"rename_output: ENOMEM\n");
+				cps->msglog(LDMSD_LERROR,"%s: rename_output: ENOMEM\n", cps->pname);
 				dstr_free(&ds);
 				return;
 			}
@@ -398,16 +433,51 @@ void rename_output(const char *name,
 				dscat(ds, dname);
 				free(namedup);
 			} else {
-				cps->msglog(LDMSD_LERROR,"rename_output: ENOMEM\n");
+				cps->msglog(LDMSD_LERROR,"%s: rename_output: ENOMEM\n", cps->pname);
 				dstr_free(&ds);
 				return;
+			}
+			break;
+		case '{':
+			head = end + 2;
+			char *vend = strchr(head,'}');
+			if (!vend) {
+				cps->msglog(LDMSD_LERROR,
+					"%s: rename_output: unterminated %%{ in template at %s\n",
+					cps->pname, head);
+				dstr_free(&ds);
+				return;
+			} else {
+				size_t vlen = vend - head + 1;
+				char var[vlen];
+				memset(var, 0, vlen);
+				strncpy(var, head, vlen-1);
+				var[vlen] = '\0';
+				head = vend + 1;
+				char *val = getenv(var);
+				if (val) {
+					cps->msglog(LDMSD_LDEBUG,
+						"%s: rename_output: getenv(%s) = %s\n", cps->pname, var, val);
+					if (validate_env(var, val, cps)) {
+						dstr_free(&ds);
+						cps->msglog(LDMSD_LERROR,
+							"%s: rename_output: rename cancelled\n",
+							cps->pname);
+						return;
+					}
+					dscat(ds, val);
+				} else {
+					cps->msglog(LDMSD_LDEBUG,
+						"%s: rename_output: empty %%{%s}\n",
+						cps->pname, var);
+				}
 			}
 			break;
 		case 's':
 			head = end + 2;
 			char *dot = strrchr(name,'.');
 			if (!dot) {
-				cps->msglog(LDMSD_LERROR,"rename_output: no timestamp\n");
+				cps->msglog(LDMSD_LERROR,"%s: rename_output: no timestamp\n", cps->pname);
 				dstr_free(&ds);
 				return;
 			}
@@ -417,7 +487,7 @@ void rename_output(const char *name,
 				num++;
 			}	
 			if (*num != '\0') {
-				cps->msglog(LDMSD_LERROR,"rename_output: no timestamp at end\n");
+				cps->msglog(LDMSD_LERROR,"%s: rename_output: no timestamp at end\n", cps->pname);
 				dstr_free(&ds);
 				return;
 			}
@@ -434,8 +504,8 @@ void rename_output(const char *name,
 	char *newname = dsdone(ds);
 	dstr_free(&ds);
 	if (!newname) {
-		cps->msglog(LDMSD_LERROR,"rename_output: failed to create new filename for %s\n",
-			name);
+		cps->msglog(LDMSD_LERROR,"%s: rename_output: failed to create new filename for %s\n",
+			cps->pname, name);
 		return;
 	}
 	
@@ -465,20 +535,24 @@ void rename_output(const char *name,
 			break;
 		default:
 			strerror_r(err, errbuf, EBSIZE);
-			cps->msglog(LDMSD_LERROR,"rename_output: failed to create directory for %s: %s\n",
-				newname, errbuf);
+			cps->msglog(LDMSD_LERROR, "%s: rename_output: failed to create directory for %s: %s\n",
+				cps->pname, newname, errbuf);
 			return;
 		}
 	
 	}
 
-	cps->msglog(LDMSD_LDEBUG,"rename_output: rename(%s, %s)\n", name, newname);
+	cps->msglog(LDMSD_LDEBUG, "%s: rename_output: rename(%s, %s)\n",
+		cps->pname, name, newname);
 	err = rename(name, newname);
 	if (err) {
 		int ec = errno;
-		strerror_r(ec, errbuf, EBSIZE);
-		cps->msglog(LDMSD_LERROR,"rename_output: failed rename(%s, %s): %s\n",
-			name, newname, errbuf);
+		if (ec != ENOENT) {
+			strerror_r(ec, errbuf, EBSIZE);
+			cps->msglog(LDMSD_LERROR,"%s: rename_output: failed rename(%s, %s): %s\n",
+				cps->pname, name, newname, errbuf);
+		}
+		/* enoent happens if altheader = 0 */
 	}
 	free(newname);
 #undef EBSIZE
@@ -890,7 +964,9 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 void close_store_common(struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps) {
 	if (!s_handle || !cps) {
-		assert(NULL == "close_store_common invalid arguments");
+		cps->msglog(LDMSD_LERROR,
+			"%s: close_store_common with null argument\n",
+			cps->pname);
 		return;
 	}
 
@@ -909,17 +985,17 @@ void close_store_common(struct csv_store_handle_common *s_handle, struct csv_plu
 
 void print_csv_plugin_common(struct csv_plugin_static *cps)
 {
-	cps->msglog(LDMSD_LALL, "notify: %s\n", cps->notify);
-	cps->msglog(LDMSD_LALL, "notify is fifo: %s\n", cps->notify_isfifo ?
+	cps->msglog(LDMSD_LALL, "%s: notify: %s\n", cps->pname, cps->notify);
+	cps->msglog(LDMSD_LALL, "%s: notify is fifo: %s\n", cps->pname, cps->notify_isfifo ?
 		"true" : "false");
-	cps->msglog(LDMSD_LALL, "rename_template: %s\n", cps->rename_template);
-	cps->msglog(LDMSD_LALL, "rename_uid: %" PRIu32 "\n", cps->rename_uid);
-	cps->msglog(LDMSD_LALL, "rename_gid: %" PRIu32 "\n", cps->rename_gid);
-	cps->msglog(LDMSD_LALL, "rename_perm: %d\n", cps->rename_perm);
-	cps->msglog(LDMSD_LALL, "create_uid: %" PRIu32 "\n", cps->create_uid);
-	cps->msglog(LDMSD_LALL, "create_gid: %" PRIu32 "\n", cps->create_gid);
-	cps->msglog(LDMSD_LALL, "create_perm: %d\n", cps->create_perm);
-	cps->msglog(LDMSD_LALL, "onp: %p\n", cps->onp);
+	cps->msglog(LDMSD_LALL, "%s: rename_template: %s\n", cps->pname, cps->rename_template);
+	cps->msglog(LDMSD_LALL, "%s: rename_uid: %" PRIu32 "\n", cps->pname, cps->rename_uid);
+	cps->msglog(LDMSD_LALL, "%s: rename_gid: %" PRIu32 "\n", cps->pname, cps->rename_gid);
+	cps->msglog(LDMSD_LALL, "%s: rename_perm: %d\n", cps->pname, cps->rename_perm);
+	cps->msglog(LDMSD_LALL, "%s: create_uid: %" PRIu32 "\n", cps->pname, cps->create_uid);
+	cps->msglog(LDMSD_LALL, "%s: create_gid: %" PRIu32 "\n", cps->pname, cps->create_gid);
+	cps->msglog(LDMSD_LALL, "%s: create_perm: %d\n", cps->pname, cps->create_perm);
+	cps->msglog(LDMSD_LALL, "%s: onp: %p\n", cps->pname, cps->onp);
 }
 
 void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv_plugin_static *p)
@@ -930,18 +1006,18 @@ void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv
 		p->msglog(LDMSD_LALL, "csv store handle dump: NULL handle.\n");
 		return;
 	}
-	p->msglog(LDMSD_LALL, "csv store handle dump:\n");
-	p->msglog(LDMSD_LALL, "filename: %s\n", h->filename);
-	p->msglog(LDMSD_LALL, "headerfilename: %s\n", h->headerfilename);
-	p->msglog(LDMSD_LALL, "notify:%s\n", h->notify);
-	p->msglog(LDMSD_LALL, "notify_isfifo:%s\n", h->notify_isfifo ?
+	p->msglog(LDMSD_LALL, "%s handle dump:\n", p->pname);
+	p->msglog(LDMSD_LALL, "%s: filename: %s\n", p->pname, h->filename);
+	p->msglog(LDMSD_LALL, "%s: headerfilename: %s\n", p->pname, h->headerfilename);
+	p->msglog(LDMSD_LALL, "%s: notify:%s\n", p->pname, h->notify);
+	p->msglog(LDMSD_LALL, "%s: notify_isfifo:%s\n", p->pname, h->notify_isfifo ?
 			                "true" : "false");
-	p->msglog(LDMSD_LALL, "rename_template:%s\n", h->rename_template);
-	p->msglog(LDMSD_LALL, "rename_uid: %" PRIu32 "\n", h->rename_uid);
-	p->msglog(LDMSD_LALL, "rename_gid: %" PRIu32 "\n", h->rename_gid);
-	p->msglog(LDMSD_LALL, "rename_perm: %d\n", h->rename_perm);
-	p->msglog(LDMSD_LALL, "create_uid: %" PRIu32 "\n", h->create_uid);
-	p->msglog(LDMSD_LALL, "create_gid: %" PRIu32 "\n", h->create_gid);
-	p->msglog(LDMSD_LALL, "create_perm: %d\n", h->create_perm);
-	p->msglog(LDMSD_LALL, "onp: %p\n", h->onp);
+	p->msglog(LDMSD_LALL, "%s: rename_template:%s\n", p->pname, h->rename_template);
+	p->msglog(LDMSD_LALL, "%s: rename_uid: %" PRIu32 "\n", p->pname, h->rename_uid);
+	p->msglog(LDMSD_LALL, "%s: rename_gid: %" PRIu32 "\n", p->pname, h->rename_gid);
+	p->msglog(LDMSD_LALL, "%s: rename_perm: %d\n", p->pname, h->rename_perm);
+	p->msglog(LDMSD_LALL, "%s: create_uid: %" PRIu32 "\n", p->pname, h->create_uid);
+	p->msglog(LDMSD_LALL, "%s: create_gid: %" PRIu32 "\n", p->pname, h->create_gid);
+	p->msglog(LDMSD_LALL, "%s: create_perm: %d\n", p->pname, h->create_perm);
+	p->msglog(LDMSD_LALL, "%s: onp: %p\n", p->pname, h->onp);
 }
