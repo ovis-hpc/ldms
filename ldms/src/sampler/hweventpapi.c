@@ -62,9 +62,12 @@
 #include <string.h>
 #include <papi.h>
 #include <sys/inotify.h>
+#include <ctype.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "sampler_base.h"
+
+#define DEFAULT_HWEVENTS "PAPI_TOT_CYC,PAPI_TOT_IIS,PAPI_TOT_INS"
 
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
@@ -102,8 +105,24 @@ char *producer_name;
 static base_data_t base;
 FILE *file = NULL;
 
+static int hw_only = 0;
+
+typedef
+struct papi_ctxt_s {
+	int evset; /* PAPI_eventset_t */
+	int num; /* number of events in the set */
+	int started; /* start flag */
+	int midx_len; /* alloc len (in elements) of midx */
+	int *midx; /* metric index corresponding to counters */
+	long long *counters; /* for PAPI_read() */
+} *papi_ctxt_t;
+
+papi_ctxt_t hwc = NULL;
+
 struct attr_value_list *av_list_local;
 struct attr_value_list *kw_list_local;
+
+#define ERRLOG(FMT, ...) msglog(LDMSD_LERROR, SAMP FMT, ##__VA_ARGS__)
 
 pthread_t meta_thread;
 
@@ -525,7 +544,7 @@ int deatach_pids()
 
 	event_count = PAPI_num_events(ldms_metric_user_data_get(set, 0));
 	long_long values[event_count];
-	for (c = 0; c < pids_count; c++) {
+	for (c = 0; c < pids_count && papi_event_sets; c++) {
 		rc = PAPI_stop(papi_event_sets[c], values);
 		if (rc != PAPI_OK) {
 			msglog(LDMSD_LERROR, SAMP ": failed to stop process"
@@ -567,6 +586,151 @@ int deatach_pids()
 	return 0;
 }
 
+static int config_hw(struct ldmsd_plugin *self, struct attr_value_list *kwl,
+		     struct attr_value_list *avl)
+{
+	int rc = 0;
+	int papi_rc;
+	char default_events[256] = DEFAULT_HWEVENTS;
+	char *ev, *ptr;
+	int i, n;
+	void *tmp;
+	/* params */
+	char *multiplx = NULL;
+	char *events = NULL;
+
+	if (set) {
+		rc = EEXIST;
+		goto out;
+	}
+
+	base = base_config(avl, SAMP, default_schema_name, msglog);
+	if (!base) {
+		rc = errno;
+		goto out;
+	}
+
+	hwc = calloc(1, sizeof(*hwc));
+	if (!hwc) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	hwc->evset = PAPI_NULL;
+	hwc->midx_len = 128;
+	hwc->midx = calloc(hwc->midx_len, sizeof(hwc->midx[0]));
+	if (!hwc->midx) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	multiplx = av_value(avl, "multiplex");
+	if (multiplx)
+		multiplex = (uint64_t) (atoi(multiplx));
+	else
+		multiplex = 0;
+
+	events = av_value(avl, "events");
+	if (events)
+		ev = events;
+	else
+		ev = default_events;
+
+	rc = PAPI_library_init(PAPI_VER_CURRENT);
+	if (rc != PAPI_VER_CURRENT) {
+		ERRLOG("PAPI init error! %d: %s\n", rc, PAPI_strerror(rc));
+		rc = EINVAL;
+		goto err;
+	}
+
+	/* construct PAPI_eventset and ldms_set */
+	rc = PAPI_create_eventset(&hwc->evset);
+	if (rc != PAPI_OK) {
+		goto err;
+	}
+	schema = base_schema_new(base);
+	if (!schema) {
+		rc = errno;
+		goto err;
+	}
+
+	if (multiplex) {
+		rc = PAPI_assign_eventset_component(hwc->evset, 0);
+		if (rc != PAPI_OK)
+			goto err;
+		rc = PAPI_set_multiplex(hwc->evset);
+		if (rc != PAPI_OK)
+			goto err;
+	}
+
+	hwc->num = 0;
+	for (ev = strtok_r(ev, ",", &ptr); ev; ev = strtok_r(NULL, ",", &ptr)) {
+		i = ldms_schema_metric_add(schema, ev, LDMS_V_S64);
+		if (i < 0) {
+			rc = ENOMEM;
+			goto err;
+		}
+		rc = PAPI_add_named_event(hwc->evset, ev);
+		if (rc != PAPI_OK) {
+			ERRLOG("Skipping '%s', PAPI_add_named_event() "
+				"failed, rc: %d\n", ev, rc);
+			continue;
+		}
+		if (hwc->num >= hwc->midx_len) {
+			/* need realloc */
+			tmp = realloc(hwc->midx, (hwc->midx_len + 128) *
+						 sizeof(hwc->midx[0]));
+			if (!tmp)  {
+				rc = ENOMEM;
+				goto err;
+			}
+			hwc->midx_len += 128;
+			hwc->midx = tmp;
+		}
+		hwc->midx[hwc->num] = i;
+		hwc->num++;
+	}
+
+	hwc->num = PAPI_num_events(hwc->evset);
+	hwc->counters = calloc(n, sizeof(*hwc->counters));
+	if (!hwc->counters) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	set = base_set_new(base);
+	if (!set) {
+		rc = errno;
+		goto err;
+	}
+
+	rc = 0;
+	goto out;
+err:
+	/* cleanup base (schema will also be deleted) */
+	if (base) {
+		base_del(base);
+		schema = NULL;
+	}
+	/* clean up hwc */
+	if (hwc) {
+		if (hwc->evset) {
+			PAPI_cleanup_eventset(hwc->evset);
+			PAPI_destroy_eventset(&hwc->evset);
+		}
+		if (hwc->counters) {
+			free(hwc->counters);
+		}
+		if (hwc->midx) {
+			free(hwc->midx);
+		}
+		free(hwc);
+		hwc = NULL;
+	}
+out:
+	return rc;
+}
+
 /**
  * \brief Configuration
  *
@@ -584,10 +748,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	char *component_id;
 	char* filename;
 	char* producername;
+	char *mode;
 
 	msglog(LDMSD_LDEBUG, SAMP ": config start \n");
 
 	schema = NULL;
+
+	mode = av_value(avl, "mode");
+	if (mode && strcasecmp("hw", mode) == 0) {
+		/* running hardware-only mode */
+		hw_only = 1;
+		return config_hw(self, kwl, avl);
+	}
 
 	producername = av_value(avl, "producer");
 	if (!producername) {
@@ -831,25 +1003,21 @@ static int papi_events(int c)
  */
 static int create_event_sets()
 {
+	ovis_pgrep_array_t opa;
 	int c;
-	/* The shell command to grep the application PID */
-	char* command = calloc(strlen(appname_str) + 14, sizeof (char));
 	/*
 	 * Save the number of pids again because sometimes
 	 * the number in the first read is incorrect
 	 */
-	msglog(LDMSD_LDEBUG, SAMP ": pgrep %s | wc -l\n", appname_str);
-	sprintf(command, "pgrep %s | wc -l", appname_str);
-	FILE *pipe_fp1;
-	if ((pipe_fp1 = popen(command, "r")) == NULL) {
+	msglog(LDMSD_LDEBUG, SAMP ": ovis_pgrep(%s)\n", appname_str);
+	opa = ovis_pgrep(appname_str);
+	if (!opa || opa->len == 0) {
 		msglog(LDMSD_LERROR, SAMP ": failed "
-			"pgrep %s | wc -l\n", appname_str);
+			"ovis_pgrep(%s)\n", appname_str);
 		pids_count = 0;
 	} else {
 		/* Get the application PID counts */
-		fscanf(pipe_fp1, "%d", &pids_count);
-
-		pclose(pipe_fp1);
+		pids_count = opa->len;
 
 		msglog(LDMSD_LDEBUG, SAMP ": create_event_sets pids_count"
 			" = %d\n", pids_count);
@@ -857,28 +1025,13 @@ static int create_event_sets()
 
 		papi_event_sets = (int*) calloc(pids_count, sizeof (int));
 
-		sprintf(command, "pgrep %s", appname_str);
-
-		c = 0;
 		/* Get the application pid */
-		if ((pipe_fp1 = popen(command, "r")) == NULL) {
-			msglog(LDMSD_LERROR, SAMP ": failed "
-				"pgrep %s\n", appname_str);
-			pids_count = 0;
-		} else {
-			while (fscanf(pipe_fp1, "%d", &apppid[c]) != -1
-				&& c < pids_count) {
-				if (papi_events(c) < 0) {
-					pclose(pipe_fp1);
-					return -1;
-				}
-				c++;
-			}
-			pclose(pipe_fp1);
+		c = 0;
+		for (c = 0; c < opa->len; c++) {
+			apppid[c] = opa->ent[c]->pid;
 		}
+		ovis_pgrep_free(opa);
 	}
-	if (command)
-                free(command);
 	return 0;
 }
 
@@ -925,6 +1078,35 @@ static int save_events_data()
 	return 0;
 }
 
+static int sample_hw(struct ldmsd_sampler *self)
+{
+	int i;
+	int rc = 0;
+
+	if (!hwc || !set) {
+		rc = ENOENT;
+		goto out;
+	}
+
+	base_sample_begin(base);
+	if (!hwc->started) {
+		rc = PAPI_start(hwc->evset);
+		if (rc != PAPI_OK)
+			goto sample_out;
+		hwc->started = 1;
+	}
+	rc = PAPI_read(hwc->evset, hwc->counters);
+	if (rc != PAPI_OK)
+		goto out;
+	for (i = 0; i < hwc->num; i++) {
+		ldms_metric_set_s64(set, hwc->midx[i], hwc->counters[i]);
+	}
+sample_out:
+	base_sample_end(base);
+out:
+	return rc;
+}
+
 static int sample(struct ldmsd_sampler * self)
 {
 	int rc, c;
@@ -932,6 +1114,10 @@ static int sample(struct ldmsd_sampler * self)
 	int err;
 	struct stat file_stat;
 	struct sampler_meta *meta = NULL;
+
+	if (hw_only) {
+		return sample_hw(self);
+	}
 
 	/* Check if the file exist */
 	err = stat(metadata_filename, &file_stat);
@@ -1008,6 +1194,7 @@ static int sample(struct ldmsd_sampler * self)
 					"papi_event_sets\n");
 				if (papi_event_sets) {
 					free(papi_event_sets);
+					papi_event_sets = NULL;
 				}
 
 				msglog(LDMSD_LDEBUG, SAMP ": free "
@@ -1048,9 +1235,6 @@ static int sample(struct ldmsd_sampler * self)
 		return 0;
 	}
 
-	/* The shell command to grep the application PID */
-	char* command = calloc(strlen(appname_str) + 14, sizeof (char));
-
 	msglog(LDMSD_LDEBUG, SAMP ": sampler configured successfully, watch "
 		"for application PIDs (count = %d) \n", pids_count);
 
@@ -1058,13 +1242,13 @@ static int sample(struct ldmsd_sampler * self)
 		msglog(LDMSD_LDEBUG, SAMP ": watch for application, no PIDs,"
 			" application not running\n");
 		if (strlen(appname_str) > 1) {
-			msglog(LDMSD_LDEBUG, SAMP ": pgrep %s | wc -l\n", appname_str);
-			sprintf(command, "pgrep %s | wc -l", appname_str);
-			FILE *fp = popen(command, "r");
-			/* Get the application PID counts */
-			fscanf(fp, "%d", &pids_count);
-			msglog(LDMSD_LDEBUG, SAMP ": pids count = %d\n", pids_count);
-			pclose(fp);
+			msglog(LDMSD_LDEBUG, SAMP ": ovis_pgrep(%s)\n", appname_str);
+			pids_count = 0;
+			ovis_pgrep_array_t opa = ovis_pgrep(appname_str);
+			if (opa) {
+				pids_count = opa->len;
+				ovis_pgrep_free(opa);
+			}
 
 			if (pids_count >= ppn) {
 				msglog(LDMSD_LDEBUG, SAMP ": create eventsets"
@@ -1114,7 +1298,10 @@ static int sample(struct ldmsd_sampler * self)
 			 */
 			msglog(LDMSD_LDEBUG, SAMP ": papi already attached, "
 				"check if the application is alive \n");
-			pid0_exist = kill(apppid[0], 0);
+			if (apppid)
+				pid0_exist = kill(apppid[0], 0);
+			else
+				pid0_exist = ENOENT;
 
 			if (pid0_exist == 0) {
 				msglog(LDMSD_LDEBUG, SAMP ": application is "
@@ -1144,8 +1331,40 @@ err1:
 	return 0;
 }
 
+static void term_hw(struct ldmsd_plugin *self)
+{
+	if (hwc) {
+		if (hwc->started) {
+			PAPI_stop(hwc->evset, hwc->counters);
+		}
+		if (hwc->evset != PAPI_NULL) {
+			PAPI_cleanup_eventset(hwc->evset);
+			PAPI_destroy_eventset(&hwc->evset);
+		}
+		if (hwc->counters) {
+			free(hwc->counters);
+		}
+		if (hwc->midx) {
+			free(hwc->midx);
+		}
+		free(hwc);
+	}
+	if (base) {
+		base_del(base);
+		base = NULL;
+	}
+	if (set) {
+		ldms_set_delete(set);
+		set = NULL;
+	}
+}
+
 static void term(struct ldmsd_plugin * self)
 {
+	if (hw_only) {
+		term_hw(self);
+		return;
+	}
 	if (file)
 		fclose(file);
 
@@ -1166,10 +1385,21 @@ static void term(struct ldmsd_plugin * self)
 
 static const char *usage(struct ldmsd_plugin * self)
 {
-	return "config name=spapi producer=<producer_name> metafile=<file>\n"
+	return
+	"config name=spapi producer=<producer_name> metafile=<file>\n"
+	"       [mode=hw] [multiplex=0|1] [events=CSVSTR]\n"
 	"    producer	  The producer name.\n"
 	"    component_id The component id value.\n"
-	"    metafile	  The PAPI configuration file name and path.\n";
+	"    metafile	  The PAPI configuration file name and path.\n"
+	"    [mode=hw]    Set papi sampler in hw-only mode. This means \n"
+	"                 no application attachment, and the set stay alive\n"
+	"                 forever.\n"
+	"    [multiplex=0|1]  (for mode=hw)\n"
+	"                 Create the papi set with multiplex.\n"
+	"    [events=CSVSTR]  (for mode=hw)\n"
+	"                 The comma-separated list of PAPI events. If not\n"
+	"                 specified, the default is " DEFAULT_HWEVENTS "\n"
+	;
 
 }
 
