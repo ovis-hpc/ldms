@@ -598,6 +598,8 @@ static int config_hw(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	/* params */
 	char *multiplx = NULL;
 	char *events = NULL;
+	
+	msglog(LDMSD_LDEBUG, SAMP ": HW mode configuration\n");
 
 	if (set) {
 		rc = EEXIST;
@@ -1004,7 +1006,7 @@ static int papi_events(int c)
 static int create_event_sets()
 {
 	ovis_pgrep_array_t opa;
-	int c;
+	int c, i;
 	/*
 	 * Save the number of pids again because sometimes
 	 * the number in the first read is incorrect
@@ -1021,6 +1023,12 @@ static int create_event_sets()
 
 		msglog(LDMSD_LDEBUG, SAMP ": create_event_sets pids_count"
 			" = %d\n", pids_count);
+
+		/* Print the PIDs in the log */
+		for (i = 0; i < opa->len; i++) {
+			msglog(LDMSD_LDEBUG, SAMP ": PID[%d] = %d\n", i, opa->ent[i]->pid);
+		}
+		
 		apppid = (int*) calloc(pids_count, sizeof (int));
 
 		papi_event_sets = (int*) calloc(pids_count, sizeof (int));
@@ -1029,6 +1037,10 @@ static int create_event_sets()
 		c = 0;
 		for (c = 0; c < opa->len; c++) {
 			apppid[c] = opa->ent[c]->pid;
+			if (papi_events(c) < 0) {
+				return -1;
+			}
+
 		}
 		ovis_pgrep_free(opa);
 	}
