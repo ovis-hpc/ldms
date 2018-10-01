@@ -924,7 +924,7 @@ ovis_pgrep_array_t ovis_pgrep(const char *text)
 		pid = atoi(dent->d_name);
 		if (!pid)
 			continue; /* skip non PID entries */
-		snprintf(path, sizeof(path), "/proc/%s/cmdline", dent->d_name);
+		snprintf(path, sizeof (path), "/proc/%s/stat", dent->d_name);
 		rc = lstat(path, &st);
 		if (rc)
 			continue;
@@ -950,7 +950,7 @@ ovis_pgrep_array_t ovis_pgrep(const char *text)
 				ent->cmd[i] = ' ';
 			}
 		}
-		if (strstr(ent->cmd, text)) {
+		if (strstr(ent->cmd, text) && strstr(ent->cmd, " R")) {
 			n++;
 			ent->pid = pid;
 			TAILQ_INSERT_TAIL(&head, ent, entry);
