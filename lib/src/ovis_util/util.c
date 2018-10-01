@@ -950,7 +950,7 @@ ovis_pgrep_array_t ovis_pgrep(const char *text)
 				ent->cmd[i] = ' ';
 			}
 		}
-		if (strstr(ent->cmd, text) && strstr(ent->cmd, " R")) {
+		if (strstr(ent->cmd, text)) {
 			n++;
 			ent->pid = pid;
 			TAILQ_INSERT_TAIL(&head, ent, entry);
