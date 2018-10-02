@@ -60,7 +60,13 @@
 #include <regex.h>
 #include <assert.h>
 #include <errno.h>
+#include <pwd.h>
+#include <grp.h>
+#include <ctype.h>
+
 #include "util.h"
+#define DSTRING_USE_SHORT
+#include "dstring.h"
 
 static const char *get_env_var(const char *src, size_t start_off, size_t end_off)
 {
@@ -83,6 +89,132 @@ static const char *get_env_var(const char *src, size_t start_off, size_t end_off
 	return name;
 }
 
+int _scpy(char **buff, size_t *slen, size_t *alen,
+	    const char *str, size_t len)
+{
+	size_t xlen;
+	char *xbuff;
+	if (len >= *alen) {
+		/* need extension */
+		xlen = ((len-1)|4095) + 1;
+		xbuff = realloc(*buff, *slen+*alen+xlen);
+		if (!xbuff) {
+			return errno;
+		}
+		*buff = xbuff;
+	}
+	strncpy(*buff+*slen, str, len);
+	*alen -= len;
+	*slen += len;
+	(*buff)[*slen] = 0;
+	return 0;
+}
+
+char *str_repl_cmd(const char *_str)
+{
+	char *str = strdup(_str);
+	char *buff = NULL;
+	char *xbuff;
+	const char *eos = str + strlen(str);
+	size_t slen = 0; /* strlen of buff */
+	size_t alen = 4096; /* available len */
+	size_t len;
+	char *p0 = str, *p1;
+	char *cmd;
+	int rc;
+	int count;
+	FILE *p;
+
+	if (!str)
+		goto err;
+
+	buff = malloc(alen);
+	if (!buff)
+		goto err;
+
+	while (p0 < eos) {
+		p1 = strstr(p0, "$(");
+		if (!p1) {
+			/* no more expansion */
+			len = strlen(p0);
+			rc = _scpy(&buff, &slen, &alen, p0, len);
+			if (rc)
+				goto err;
+			break;
+		}
+		/* otherwise, do the expansion */
+		/* copy the non-expandable part */
+		len = p1 - p0;
+		rc = _scpy(&buff, &slen, &alen, p0, len);
+		if (rc)
+			goto err;
+		/* expansion */
+		cmd = p1 + 2;
+		p0 = cmd;
+		count = 1;
+		/* matching parenthesis */
+		while (count && p0 < eos) {
+			if (*p0 == '(')
+				count++;
+			if (*p0 == ')')
+				count--;
+			if (*p0 == '\\') {
+				/* escape */
+				p0++;
+			}
+			p0++;
+		}
+		if (count) {
+			/* end unexpectedly */
+			errno = EINVAL;
+			goto err;
+		}
+		/* p0 points to the char behind ')' */
+		*(p0-1) = 0; /* terminate the cmd */
+		p = popen(cmd, "re"); /* read & close-on-exec */
+		if (!p)
+			goto err;
+		/* copy the output over */
+		while (fgets(buff+slen, alen, p)) {
+			len = strlen(buff+slen);
+			slen += len;
+			alen -= len;
+			/* replace trailing spaces with one space */
+			while (isspace(buff[slen-1])) {
+				slen--;
+				alen++;
+			}
+			if (isspace(buff[slen])) {
+				buff[slen] = ' ';
+				buff[++slen] = 0;
+				alen--;
+			}
+			if (alen == 1) {
+				/* need buff extension */
+				xbuff = realloc(buff, slen+alen+4096);
+				if (!xbuff)
+					goto err;
+				buff = xbuff;
+				alen += 4096;
+			}
+		}
+		pclose(p);
+		/* remove the trailing spaces at the end */
+		while (isspace(buff[slen-1])) {
+			buff[slen-1] = 0;
+			slen--;
+			alen++;
+		}
+	}
+	free(str); /* cleanup */
+	return buff;
+
+err:
+	free(str);
+	free(buff);
+	return NULL;
+}
+
 char *str_repl_env_vars(const char *str)
 {
 	if (!str)
@@ -96,7 +228,7 @@ char *str_repl_env_vars(const char *str)
 	char *expr = "\\$\\{[[:alnum:]_]+\\}";
 	int rc, i;
 	regmatch_t match[100];
-	size_t name_len, value_len, name_total, value_total;
+	size_t name_total, value_total;
 
 	name_total = value_total = 0;
 
@@ -135,7 +267,6 @@ char *str_repl_env_vars(const char *str)
 	}
 
 	size_t so = 0;
-	size_t eo = 0;
 
 	res_ptr = res;
 	res[0] = '\0';
@@ -153,7 +284,7 @@ char *str_repl_env_vars(const char *str)
 	/* Copy the remainder of str into the result */
 	strcpy(res_ptr, &str[so]);
 	assert(res_len == (strlen(res) + 1));
- out:
+
 	return res;
 }
 
@@ -269,6 +400,50 @@ struct attr_value_list *av_new(size_t size)
 		LIST_INIT(&avl->strings);
 	}
 	return avl;
+}
+
+char *av_to_string(struct attr_value_list *av, int replacements)
+{
+	if (!av)
+		return NULL;
+	char *val;
+	int i;
+	dsinit(ds);
+	if (av->count < 1)
+		dscat(ds, "(empty)");
+	if (replacements) {
+		for (i=0; i < av->count; i++) {
+			dscat(ds, av->list[i].name);
+			if ( (val = av_value_at_idx(av, i)) != NULL) {
+				dscat(ds, "=");
+				dscat(ds, val);
+			}
+			dscat(ds, "\n");
+		}
+	} else {
+		for (i=0; i < av->count; i++) {
+			dscat(ds, av->list[i].name);
+			if ( av->list[i].value != NULL) {
+				dscat(ds, "=");
+				dscat(ds, av->list[i].value);
+			}
+			dscat(ds, "\n");
+		}
+	}
+	val = dsdone(ds);
+	dstr_free(&ds);
+	return val;
+}
+
+int av_check_expansion(printf_t log, const char *n, const char *s)
+{
+	if (!s)
+		return 0;
+	if (strchr(s,'$') != NULL) {
+		log("Unbraced or undefined variable in %s=%s\n", n, s);
+		return 1;
+	}
+	return 0;
 }
 
 size_t ovis_get_mem_size(const char *s)
@@ -474,4 +649,215 @@ FILE *fopen_perm(const char *path, const char *f_mode, int o_mode)
 	if (fd < 0)
 		return NULL;
 	return fdopen(fd, f_mode);
+}
+
+/*
+ * \retval 0 OK
+ * \retval errno for error
+ */
+int __uid_gid_check(uid_t uid, gid_t gid)
+{
+	struct passwd pw;
+	struct passwd *p;
+	int rc;
+	char *buf;
+	int i;
+	int n = 128;
+	gid_t gid_list[n];
+
+	buf = malloc(BUFSIZ);
+	if (!buf) {
+		rc = ENOMEM;
+		goto out;
+	}
+
+	rc = getpwuid_r(uid, &pw, buf, BUFSIZ, &p);
+	if (!p) {
+		rc = rc?rc:ENOENT;
+		goto out;
+	}
+
+	rc = getgrouplist(p->pw_name, p->pw_gid, gid_list, &n);
+	if (rc == -1) {
+		rc = ENOBUFS;
+		goto out;
+	}
+
+	for (i = 0; i < n; i++) {
+		if (gid == gid_list[i]) {
+			rc = 0;
+			goto out;
+		}
+	}
+
+	rc = ENOENT;
+
+out:
+	if (buf)
+		free(buf);
+	return rc;
+}
+int ovis_access_check(uid_t auid, gid_t agid, int acc,
+		      uid_t ouid, gid_t ogid, int perm)
+{
+	int macc = acc & perm;
+	/* other */
+	if (07 & macc) {
+		return 0;
+	}
+	/* owner */
+	if (0700 & macc) {
+		if (auid == ouid)
+			return 0;
+	}
+	/* group  */
+	if (070 & macc) {
+		if (agid == ogid)
+			return 0;
+		/* else need to check x->ruid group list */
+		if (0 == __uid_gid_check(auid, ouid))
+			return 0;
+	}
+	return EACCES;
+}
+
+const char* ovis_errno_abbvr(int e)
+{
+	const char *estr[] = {
+		[EPERM]            =  "EPERM",
+		[ENOENT]           =  "ENOENT",
+		[ESRCH]            =  "ESRCH",
+		[EINTR]            =  "EINTR",
+		[EIO]              =  "EIO",
+		[ENXIO]            =  "ENXIO",
+		[E2BIG]            =  "E2BIG",
+		[ENOEXEC]          =  "ENOEXEC",
+		[EBADF]            =  "EBADF",
+		[ECHILD]           =  "ECHILD",
+		[EAGAIN]           =  "EAGAIN",
+		[ENOMEM]           =  "ENOMEM",
+		[EACCES]           =  "EACCES",
+		[EFAULT]           =  "EFAULT",
+		[ENOTBLK]          =  "ENOTBLK",
+		[EBUSY]            =  "EBUSY",
+		[EEXIST]           =  "EEXIST",
+		[EXDEV]            =  "EXDEV",
+		[ENODEV]           =  "ENODEV",
+		[ENOTDIR]          =  "ENOTDIR",
+		[EISDIR]           =  "EISDIR",
+		[EINVAL]           =  "EINVAL",
+		[ENFILE]           =  "ENFILE",
+		[EMFILE]           =  "EMFILE",
+		[ENOTTY]           =  "ENOTTY",
+		[ETXTBSY]          =  "ETXTBSY",
+		[EFBIG]            =  "EFBIG",
+		[ENOSPC]           =  "ENOSPC",
+		[ESPIPE]           =  "ESPIPE",
+		[EROFS]            =  "EROFS",
+		[EMLINK]           =  "EMLINK",
+		[EPIPE]            =  "EPIPE",
+		[EDOM]             =  "EDOM",
+		[ERANGE]           =  "ERANGE",
+		[EDEADLK]          =  "EDEADLK",
+		[ENAMETOOLONG]     =  "ENAMETOOLONG",
+		[ENOLCK]           =  "ENOLCK",
+		[ENOSYS]           =  "ENOSYS",
+		[ENOTEMPTY]        =  "ENOTEMPTY",
+		[ELOOP]            =  "ELOOP",
+		[ENOMSG]           =  "ENOMSG",
+		[EIDRM]            =  "EIDRM",
+		[ECHRNG]           =  "ECHRNG",
+		[EL2NSYNC]         =  "EL2NSYNC",
+		[EL3HLT]           =  "EL3HLT",
+		[EL3RST]           =  "EL3RST",
+		[ELNRNG]           =  "ELNRNG",
+		[EUNATCH]          =  "EUNATCH",
+		[ENOCSI]           =  "ENOCSI",
+		[EL2HLT]           =  "EL2HLT",
+		[EBADE]            =  "EBADE",
+		[EBADR]            =  "EBADR",
+		[EXFULL]           =  "EXFULL",
+		[ENOANO]           =  "ENOANO",
+		[EBADRQC]          =  "EBADRQC",
+		[EBADSLT]          =  "EBADSLT",
+		[EBFONT]           =  "EBFONT",
+		[ENOSTR]           =  "ENOSTR",
+		[ENODATA]          =  "ENODATA",
+		[ETIME]            =  "ETIME",
+		[ENOSR]            =  "ENOSR",
+		[ENONET]           =  "ENONET",
+		[ENOPKG]           =  "ENOPKG",
+		[EREMOTE]          =  "EREMOTE",
+		[ENOLINK]          =  "ENOLINK",
+		[EADV]             =  "EADV",
+		[ESRMNT]           =  "ESRMNT",
+		[ECOMM]            =  "ECOMM",
+		[EPROTO]           =  "EPROTO",
+		[EMULTIHOP]        =  "EMULTIHOP",
+		[EDOTDOT]          =  "EDOTDOT",
+		[EBADMSG]          =  "EBADMSG",
+		[EOVERFLOW]        =  "EOVERFLOW",
+		[ENOTUNIQ]         =  "ENOTUNIQ",
+		[EBADFD]           =  "EBADFD",
+		[EREMCHG]          =  "EREMCHG",
+		[ELIBACC]          =  "ELIBACC",
+		[ELIBBAD]          =  "ELIBBAD",
+		[ELIBSCN]          =  "ELIBSCN",
+		[ELIBMAX]          =  "ELIBMAX",
+		[ELIBEXEC]         =  "ELIBEXEC",
+		[EILSEQ]           =  "EILSEQ",
+		[ERESTART]         =  "ERESTART",
+		[ESTRPIPE]         =  "ESTRPIPE",
+		[EUSERS]           =  "EUSERS",
+		[ENOTSOCK]         =  "ENOTSOCK",
+		[EDESTADDRREQ]     =  "EDESTADDRREQ",
+		[EMSGSIZE]         =  "EMSGSIZE",
+		[EPROTOTYPE]       =  "EPROTOTYPE",
+		[ENOPROTOOPT]      =  "ENOPROTOOPT",
+		[EPROTONOSUPPORT]  =  "EPROTONOSUPPORT",
+		[ESOCKTNOSUPPORT]  =  "ESOCKTNOSUPPORT",
+		[EOPNOTSUPP]       =  "EOPNOTSUPP",
+		[EPFNOSUPPORT]     =  "EPFNOSUPPORT",
+		[EAFNOSUPPORT]     =  "EAFNOSUPPORT",
+		[EADDRINUSE]       =  "EADDRINUSE",
+		[EADDRNOTAVAIL]    =  "EADDRNOTAVAIL",
+		[ENETDOWN]         =  "ENETDOWN",
+		[ENETUNREACH]      =  "ENETUNREACH",
+		[ENETRESET]        =  "ENETRESET",
+		[ECONNABORTED]     =  "ECONNABORTED",
+		[ECONNRESET]       =  "ECONNRESET",
+		[ENOBUFS]          =  "ENOBUFS",
+		[EISCONN]          =  "EISCONN",
+		[ENOTCONN]         =  "ENOTCONN",
+		[ESHUTDOWN]        =  "ESHUTDOWN",
+		[ETOOMANYREFS]     =  "ETOOMANYREFS",
+		[ETIMEDOUT]        =  "ETIMEDOUT",
+		[ECONNREFUSED]     =  "ECONNREFUSED",
+		[EHOSTDOWN]        =  "EHOSTDOWN",
+		[EHOSTUNREACH]     =  "EHOSTUNREACH",
+		[EALREADY]         =  "EALREADY",
+		[EINPROGRESS]      =  "EINPROGRESS",
+		[ESTALE]           =  "ESTALE",
+		[EUCLEAN]          =  "EUCLEAN",
+		[ENOTNAM]          =  "ENOTNAM",
+		[ENAVAIL]          =  "ENAVAIL",
+		[EISNAM]           =  "EISNAM",
+		[EREMOTEIO]        =  "EREMOTEIO",
+		[EDQUOT]           =  "EDQUOT",
+		[ENOMEDIUM]        =  "ENOMEDIUM",
+		[EMEDIUMTYPE]      =  "EMEDIUMTYPE",
+		[ECANCELED]        =  "ECANCELED",
+		[ENOKEY]           =  "ENOKEY",
+		[EKEYEXPIRED]      =  "EKEYEXPIRED",
+		[EKEYREVOKED]      =  "EKEYREVOKED",
+		[EKEYREJECTED]     =  "EKEYREJECTED",
+		[EOWNERDEAD]       =  "EOWNERDEAD",
+		[ENOTRECOVERABLE]  =  "ENOTRECOVERABLE",
+		[ERFKILL]          =  "ERFKILL",
+		[EHWPOISON]        =  "EHWPOISON",
+	};
+	if (e < sizeof(estr)/sizeof(*estr) && estr[e]) {
+		return estr[e];
+	}
+	return "UNKNOWN_ERRNO";
 }
