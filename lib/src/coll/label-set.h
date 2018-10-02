@@ -173,6 +173,16 @@ extern struct ovis_name ovis_label_set_insert_pair(struct ovis_label_set * s, co
 extern struct ovis_name ovis_label_set_insert(struct ovis_label_set * s, const struct ovis_name label);
 
 /**
+ * \brief Add a label henceforth owned by set, transforming as needed.
+ *
+ * Set becomes responsible for ensuring the ovis_name given's string pointer
+ * is freed at end of set life.
+ * 
+ * \return ovis_name from derived id, or OVIS_NAME_NULL and set errno.
+ */
+extern struct ovis_name ovis_label_set_own(struct ovis_label_set * s, const struct ovis_name label);
+
+/**
  * \brief Find the label for an id.
  * \return pair, if id present, or OVIS_NAME_NULL
  */
