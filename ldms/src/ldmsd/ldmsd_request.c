@@ -631,7 +631,7 @@ static int prdcr_add_handler(int sock, req_msg_t rm)
 	char *name, *host, *xprt, *attr_name;
 	name = host = xprt = NULL;
 	enum ldmsd_prdcr_type type = -1;
-	short port_no = -1;
+	unsigned short port_no = 0;
 	int interval_us = -1;
 	size_t cnt;
 
