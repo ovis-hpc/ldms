@@ -5,6 +5,9 @@ AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I.. @OVIS_LIB_INCDIR_FLAG@
 STORE_LIBADD = $(CORE)/libldms.la -lcoll -lovis_util @OVIS_LIB_LIB64DIR_FLAG@ \
 	       @OVIS_LIB_LIBDIR_FLAG@
 
+ldmsstoreincludedir = $(includedir)/ldms
+ldmsstoreinclude_HEADERS = store_csv_common.h
+
 if ENABLE_AMQP
 libstore_amqp_la_SOURCES = store_amqp.c
 libstore_amqp_la_CFLAGS = $(AM_CFLAGS)
