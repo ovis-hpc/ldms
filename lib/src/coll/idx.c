@@ -143,7 +143,6 @@ void idx_destroy(idx_t t)
  */
 void *idx_find(idx_t t, idx_key_t key, size_t keylen)
 {
-	int l = 0;
 	unsigned char *pkey = key;
 	struct idx_layer_s *pl;
 
