@@ -710,15 +710,23 @@ extern struct attr_value_list *auth_opt;
 
 ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
 {
-	int port_no;
+	unsigned short port_no;
+	int ptmp;
 	ldms_t l = NULL;
 	int ret;
 	struct sockaddr_in sin;
 
-	if (!port_str || port_str[0] == '\0')
+	if (!port_str || port_str[0] == '\0') {
 		port_no = LDMS_DEFAULT_PORT;
-	else
-		port_no = atoi(port_str);
+	} else {
+		ptmp = atoi(port_str);
+		if (ptmp < 1 || ptmp > USHRT_MAX) {
+			ldmsd_log(LDMSD_LERROR, "'%s' transport with invalid port"
+				"'%s'\n",xprt_str,port_str);
+			cleanup(6, "error specifying transport.");
+		}
+		port_no = (unsigned)ptmp;
+	}
 	l = ldms_xprt_new_with_auth(xprt_str, ldmsd_linfo, auth_name, auth_opt);
 	if (!l) {
 		ldmsd_log(LDMSD_LERROR,
