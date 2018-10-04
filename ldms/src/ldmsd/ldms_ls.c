@@ -612,7 +612,7 @@ int main(int argc, char *argv[])
 	int ret;
 	struct hostent *h;
 	char *hostname = "localhost";
-	short port_no = LDMS_DEFAULT_PORT;
+	unsigned short port_no = LDMS_DEFAULT_PORT;
 	int op;
 	int i;
 	char *xprt = "sock";
@@ -639,6 +639,7 @@ int main(int argc, char *argv[])
 	}
 
 	opterr = 0;
+	long ptmp;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'E':
@@ -654,7 +655,12 @@ int main(int argc, char *argv[])
 			hostname = strdup(optarg);
 			break;
 		case 'p':
-			port_no = atoi(optarg);
+			ptmp = atol(optarg);
+			if (ptmp < 1 || ptmp > USHRT_MAX) {
+				printf("ERROR: -p %s invalid port number\n", optarg);
+				exit(1);
+			}
+			port_no = ptmp;
 			break;
 		case 'l':
 			long_format = 1;

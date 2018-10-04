@@ -90,7 +90,7 @@ struct amqp_instance {
 	char *schema;
 	char *vhost;
 	char *host;
-	short port;
+	unsigned short port;
 	char *user;
 	char *pwd;
 	char *routing_key;
@@ -292,10 +292,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		}
 	}
 	value = av_value(avl, "port");
-	if (value)
-		ai->port = (unsigned short)strtoul(value, NULL, 0);
-	else
+	if (value) {
+		long sl;
+		sl = strtol(value, NULL, 0);
+		if (sl < 1 || sl > USHRT_MAX) {
+			LERR("Invalid port number %s.\n", value);
+			goto err_1;
+		}
+		ai->port = sl;
+	} else {
 		ai->port = DEF_AMQP_TCP_PORT;
+	}
 	value = av_value(avl, "vhost");
 	if (value)
 		ai->vhost = strdup(value);

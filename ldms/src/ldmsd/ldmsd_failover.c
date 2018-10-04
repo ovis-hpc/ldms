@@ -361,7 +361,7 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 		goto cleanup;
 
 	/* PORT */
-	snprintf(buff, sizeof(buff), "%d", p->port_no);
+	snprintf(buff, sizeof(buff), "%d", (int)p->port_no);
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_PORT, buff);
 	if (rc)
 		goto cleanup;

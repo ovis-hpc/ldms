@@ -96,6 +96,7 @@
  */
 #include <unistd.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <getopt.h>
 #include <stdlib.h>
@@ -709,7 +710,8 @@ int main(int argc, char *argv[])
 {
 	int rc;
 	int is_server = 0;
-	short port_no = -1;
+	unsigned short port_no = 0;
+	int ptmp = -1;
 	struct sockaddr_in sin;
 	zap_err_t err;
 
@@ -725,7 +727,10 @@ int main(int argc, char *argv[])
 			transport = optarg;
 			break;
 		case 'p':
-			port_no = atoi(optarg);
+			ptmp = atoi(optarg);
+			if (ptmp > 0 && ptmp < USHRT_MAX) {
+				port_no = ptmp;
+			}
 			break;
 		default:
 			usage(argc, argv);
@@ -735,7 +740,7 @@ int main(int argc, char *argv[])
 	if (!transport)
 		usage(argc, argv);
 
-	if (port_no == -1)
+	if (port_no == 0)
 		usage(argc, argv);
 
 	if (!is_server && !host)

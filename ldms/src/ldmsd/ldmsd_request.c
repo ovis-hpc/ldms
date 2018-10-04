@@ -1212,7 +1212,12 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!port_s) {
 		goto einval;
 	} else {
-		port_no = strtol(port_s, NULL, 0);
+		long ptmp = 0;
+		ptmp = strtol(port_s, NULL, 0);
+		if (ptmp < 1 || ptmp > USHRT_MAX) {
+			goto einval;
+		}
+		port_no = (unsigned)ptmp;
 	}
 
 	attr_name = "interval";
@@ -3074,7 +3079,7 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			       "{\"name\":\"%s\","
 			       "\"host\":\"%s\","
-			       "\"port\":%hd,"
+			       "\"port\":%hu,"
 			       "\"transport\":\"%s\","
 			       "\"state\":\"%s\"}",
 			       prdcr->obj.name,
