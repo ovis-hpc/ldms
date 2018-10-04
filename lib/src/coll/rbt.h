@@ -110,6 +110,9 @@ int rbt_is_leaf(struct rbn *n);
 	const __typeof__(((type *)0)->member ) *__mptr = (ptr); \
 	(type *)((char *)__mptr - offsetof(type,member));})
 
+#define RBT_FOREACH(rbn, rbt) \
+	for ((rbn) = rbt_min((rbt)); (rbn); (rbn) = rbn_succ((rbn)))
+
 #ifdef __cplusplus
 }
 #endif

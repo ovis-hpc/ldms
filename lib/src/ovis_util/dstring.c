@@ -199,6 +199,24 @@ char *dstr_set_int(dstring_t * dsPtr, int64_t val)
 	return dsPtr->string;
 }
 
+char *dstrcat_int(dstring_t * dsPtr, int64_t val)
+{
+	char string[FMT_INT64_LEN];
+
+	sprintf(string, "%" PRId64, val);
+	return dstrcat(dsPtr, string, DSTRING_ALL);
+
+}
+
+char *dstrcat_uint(dstring_t * dsPtr, uint64_t val)
+{
+	char string[FMT_INT64_LEN];
+
+	sprintf(string, "%" PRIu64, val);
+	return dstrcat(dsPtr, string, DSTRING_ALL);
+
+}
+
 char *dstrcat(dstring_t * dsPtr, const char *string, int length)
 {
 	size_t input_length = 0;

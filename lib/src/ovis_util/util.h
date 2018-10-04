@@ -141,6 +141,14 @@ int tokenize(char *cmd, struct attr_value_list *kwl,
 	     struct attr_value_list *avl);
 
 /**
+ * \brief format the list to a string, with optional env expansion.
+ * \param replacements if 0, use raw values. if !=0, use expanded values.
+ * \param av_list list to print.
+ * \return string the caller must free, or null from bad input.
+ */
+char *av_to_string(struct attr_value_list *av_list, int replacements);
+
+/**
  * \brief Allocate memory for a new attribute list of size \c size
  */
 struct attr_value_list *av_new(size_t size);
@@ -149,6 +157,15 @@ struct attr_value_list *av_new(size_t size);
  * \brief Free the memory consumed by the avl
  */
 void av_free(struct attr_value_list *avl);
+
+typedef void (*printf_t)(const char *fmt, ...);
+
+/**
+ * \brief Check value for $ and if found write message with log
+ * about name=value pair.
+ * \return 0 if no $ found (all expanded).
+ */
+int av_check_expansion(printf_t log, const char *name, const char *value);
 
 /**
  * \brief Parse the memory size
@@ -241,6 +258,14 @@ int f_mkdir_p(const char *path, __mode_t mode);
 char *str_repl_env_vars(const char *str);
 
 /**
+ * \brief Expand `$(COMMAND)` with the output of the COMMAND.
+ *
+ * \retval ptr The expanded string. The caller is responsible for freeing it.
+ * \retval NULL If error. \c errno is also set accordingly.
+ */
+char *str_repl_cmd(const char *_str);
+
+/**
  * \brief The \c fopen() wrapper with permission \c o_mode for new file.
  *
  * Open the file \c path for write (\c f_mode "w" or "w+") or append (\c f_mode
@@ -257,4 +282,33 @@ char *str_repl_env_vars(const char *str);
  *              also set to describe the error.
  */
 FILE *fopen_perm(const char *path, const char *f_mode, int o_mode);
+
+/**
+ * \brief Generic object access check function
+ *
+ * Check if an object of ogid:ouid with permission \c perm is accessible (\c
+ * acc) by auid:agid.
+ *
+ * \param auid accessor's UID
+ * \param agid accessor's GID
+ * \param acc  access bits (Unix mode 0777 style)
+ * \param ouid object owner's UID
+ * \param ogid object owner's GID
+ * \param perm object's permission
+ *
+ * \retval 0 if \c acc is allowed.
+ * \retval EACCES if \c acc is not allowed.
+ *
+ */
+int ovis_access_check(uid_t auid, gid_t agid, int acc,
+		      uid_t ouid, gid_t ogid, int perm);
+
+/**
+ * \brief errno to string abbreviation.
+ *
+ * \retval str The abbrevation of the errno \c e (e.g. "ENOMEM")
+ * \retval "UNKNOWN_ERRNO" if the errno \c e is unknown.
+ */
+const char* ovis_errno_abbvr(int e);
+
 #endif /* OVIS_UTIL_H_ */

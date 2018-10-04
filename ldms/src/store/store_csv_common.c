@@ -538,7 +538,7 @@ void rename_output(const char *name,
 	if (err) {
 		int ec = errno;
 		if (ec != ENOENT) {
-		strerror_r(ec, errbuf, EBSIZE);
+			strerror_r(ec, errbuf, EBSIZE);
 			cps->msglog(LDMSD_LERROR,"%s: rename_output: failed rename(%s, %s): %s\n",
 				cps->pname, name, newname, errbuf);
 		}

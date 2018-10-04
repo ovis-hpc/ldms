@@ -1,6 +1,25 @@
 #include "util.h"
 #include <string.h>
 #include <stdlib.h>
+#include <assert.h>
+
+void __test_str_repl_cmd(const char *s)
+{
+	char *out;
+	printf("  s_in: %s\n", s);
+	out = str_repl_cmd(s);
+	printf("  s_out: %s\n", out);
+	free(out);
+}
+
+void test_str_repl_cmd()
+{
+	printf("--- test_str_repl_cmd ---\n");
+	__test_str_repl_cmd("verb opt=$(hostname)");
+	__test_str_repl_cmd("verb opt=$(hostname) opt2=$(hostname)");
+	__test_str_repl_cmd("verb opt=$(echo $PPID) opt2=$(hostname)");
+	__test_str_repl_cmd("verb opt=$(hostname)/bal haha");
+}
 
 int main(int argc, char **argv)
 {
@@ -38,6 +57,8 @@ int main(int argc, char **argv)
 		printf("error 3: %s\n",buf);
 		errcnt++;
 	}
+
+	test_str_repl_cmd();
 
 	/* odd cases */
 
