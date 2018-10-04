@@ -65,7 +65,7 @@
 
 static void prdcr_task_cb(ldmsd_task_t task, void *arg);
 
-int prdcr_resolve(const char *hostname, short port_no,
+int prdcr_resolve(const char *hostname, unsigned short port_no,
 		  struct sockaddr_storage *ss, socklen_t *ss_len)
 {
 	struct hostent *h;
@@ -686,7 +686,7 @@ const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type)
 
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
-		const char *host_name, const short port_no,
+		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us, uid_t uid, gid_t gid, int perm)
 {
@@ -731,7 +731,7 @@ out:
 
 ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
-		const char *host_name, const short port_no,
+		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us)
 {

@@ -2981,7 +2981,12 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no,
 		rc = ldms_xprt_listen(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
 		freeaddrinfo(ai);
 	} else {
-		short port = atoi(port_no);
+		long ptmp;
+		ptmp = atol(port_no);
+		if (ptmp < 1 || ptmp > USHRT_MAX) {
+			return EINVAL;
+		}
+		unsigned short port = ptmp;
 		memset(&sin, 0, sizeof(sin));
 		sin.sin_family = AF_INET;
 		sin.sin_addr.s_addr = 0;
