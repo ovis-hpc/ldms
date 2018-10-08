@@ -1,6 +1,6 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2016 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2015-2016,2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2016,2018 Sandia Corporation. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -500,9 +500,20 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 void ldmsd_strgp_update(ldmsd_prdcr_set_t prd_set)
 {
 	ldmsd_strgp_t strgp;
+	int rc;
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
 	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
 		ldmsd_strgp_lock(strgp);
+		ldmsd_name_match_t match = ldmsd_strgp_prdcr_first(strgp);
+		for (rc = 0; match; match = ldmsd_strgp_prdcr_next(match)) {
+			rc = regexec(&match->regex, prd_set->prdcr->obj.name, 0, NULL, 0);
+			if (!rc)
+				break;
+		}
+		if (rc) {
+			ldmsd_strgp_unlock(strgp);
+			continue;
+		}
 		ldmsd_strgp_update_prdcr_set(strgp, prd_set);
 		ldmsd_strgp_unlock(strgp);
 	}
