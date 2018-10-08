@@ -164,7 +164,7 @@ void usage(char *argv[])
 int __compile_regex(regex_t *regex, const char *regex_str) {
 	char errmsg[128];
 	memset(regex, 0, sizeof(*regex));
-	int rc = regcomp(regex, regex_str, REG_NOSUB);
+	int rc = regcomp(regex, regex_str, REG_EXTENDED | REG_NOSUB);
 	if (rc) {
 		(void)regerror(rc, regex, errmsg, 128);
 		printf("%s\n", errmsg);
