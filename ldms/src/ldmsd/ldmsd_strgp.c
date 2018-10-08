@@ -497,9 +497,20 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 void ldmsd_strgp_update(ldmsd_prdcr_set_t prd_set)
 {
 	ldmsd_strgp_t strgp;
+	int rc;
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
 	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
 		ldmsd_strgp_lock(strgp);
+		ldmsd_name_match_t match = ldmsd_strgp_prdcr_first(strgp);
+		for (rc = 0; match; match = ldmsd_strgp_prdcr_next(match)) {
+			rc = regexec(&match->regex, prd_set->prdcr->obj.name, 0, NULL, 0);
+			if (!rc)
+				break;
+		}
+		if (rc) {
+			ldmsd_strgp_unlock(strgp);
+			continue;
+		}
 		ldmsd_strgp_update_prdcr_set(strgp, prd_set);
 		ldmsd_strgp_unlock(strgp);
 	}
