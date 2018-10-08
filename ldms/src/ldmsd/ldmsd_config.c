@@ -255,7 +255,7 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 				char *errbuf, size_t errsz)
 {
 	memset(regex, 0, sizeof *regex);
-	int rc = regcomp(regex, regex_str, REG_NOSUB);
+	int rc = regcomp(regex, regex_str, REG_EXTENDED | REG_NOSUB);
 	if (rc) {
 		snprintf(errbuf, errsz, "22");
 		(void)regerror(rc,
