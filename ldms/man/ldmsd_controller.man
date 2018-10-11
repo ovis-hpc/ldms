@@ -70,6 +70,14 @@ Display help
 .BR --help
 Display help
 
+
+.SH REGULAR EXPRESSION
+
+The regular expression specified in \fIregex=\fR option of the commands is a
+POSIX Extended (modern) Regular Expression. In short, "*+?{}|^$." are special
+regular expression characters. Please see \fBregex(7)\fR for more information.
+
+
 .SH PLUGIN COMMAND SYNTAX
 
 .SS Load a plugin
