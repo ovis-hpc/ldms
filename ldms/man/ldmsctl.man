@@ -71,6 +71,14 @@ COMMAND is a shell command to be executed. The output will be sent to ldmsd.
 .BR -V
 Display LDMS version information and then exit.
 
+
+.SH REGULAR EXPRESSION
+
+The regular expression specified in \fIregex=\fR option of the commands is a
+POSIX Extended (modern) Regular Expression. In short, "*+?{}|^$." are special
+regular expression characters. Please see \fBregex(7)\fR for more information.
+
+
 .SH LDMSCTL COMMANDS AND ATTRIBUTE SYNTAX
 After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl.
 
