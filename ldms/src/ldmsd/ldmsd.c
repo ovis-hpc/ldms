@@ -703,9 +703,9 @@ ldmsd_plugin_set_t ldmsd_plugin_set_next(ldmsd_plugin_set_t set)
 	return LIST_NEXT(set, entry);
 }
 
-int ldmsd_set_register(ldms_set_t set, const char *pluing_name)
+int ldmsd_set_register(ldms_set_t set, const char *plugin_name)
 {
-	if (!set || ! pluing_name)
+	if (!set || ! plugin_name)
 		return EINVAL;
 	struct rbn *rbn;
 	ldmsd_plugin_set_t s;
@@ -716,7 +716,7 @@ int ldmsd_set_register(ldms_set_t set, const char *pluing_name)
 	s = malloc(sizeof(*s));
 	if (!s)
 		return ENOMEM;
-	s->plugin_name = strdup(pluing_name);
+	s->plugin_name = strdup(plugin_name);
 	if (!s->plugin_name) {
 		rc = ENOMEM;
 		goto free_set;
@@ -750,9 +750,9 @@ int ldmsd_set_register(ldms_set_t set, const char *pluing_name)
 	LIST_INSERT_HEAD(&list->list, s, entry);
 	ldmsd_set_tree_unlock();
 
-	pi = ldmsd_get_plugin((char *)pluing_name);
+	pi = ldmsd_get_plugin((char *)plugin_name);
 	if (!pi) {
-		ldmsd_set_deregister(s->inst_name, pluing_name);
+		ldmsd_set_deregister(s->inst_name, plugin_name);
 		return EINVAL;
 	}
 	if (pi->plugin->type == LDMSD_PLUGIN_SAMPLER) {
