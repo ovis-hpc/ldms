@@ -1,1 +1,0 @@
-../build/src/ovis-ldms-config.h
