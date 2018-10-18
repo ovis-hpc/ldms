@@ -85,6 +85,7 @@ struct ldmsd_version {
 
 /** Get the ldmsd version  */
 void ldmsd_version_get(struct ldmsd_version *v);
+#pragma weak ldmsd_version_get
 
 /** Update hint */
 #define LDMSD_SET_INFO_UPDATE_HINT_KEY "updt_hint_us"
@@ -451,18 +452,22 @@ typedef struct ldmsd_set_info {
  * \return pointer to struct ldmsd_set_info is returned.
  */
 ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name);
+#pragma weak ldmsd_set_info_get
 
 /**
  * Delete the set info \c info
  */
 void ldmsd_set_info_delete(ldmsd_set_info_t info);
+#pragma weak ldmsd_set_info_delete
 
 /**
  * \brief Convert the set origin type from enum to string
  */
 char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type);
+#pragma weak ldmsd_set_info_origin_enum2str
 
 int process_config_file(const char *path, int *lineno, int trust);
+#pragma weak process_config_file
 
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
@@ -519,7 +524,9 @@ extern int ldmsd_config_init(char *name);
 struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name);
 
 int ldmsd_set_register(ldms_set_t set, const char *pluing_name);
+#pragma weak ldmsd_set_register
 void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
+#pragma weak ldmsd_set_deregister
 
 /**
  * \brief ldms_store
@@ -631,30 +638,42 @@ extern const char *ldmsd_loglevel_names[];
 
 __attribute__((format(printf, 2, 3)))
 void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...);
+#pragma weak ldmsd_log
 
 int ldmsd_loglevel_set(char *verbose_level);
+#pragma weak ldmsd_loglevel_set
 enum ldmsd_loglevel ldmsd_loglevel_get();
+#pragma weak ldmsd_loglevel_get
 
 enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s);
+#pragma weak ldmsd_str_to_loglevel
 const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level);
+#pragma weak ldmsd_loglevel_to_str
 
 __attribute__((format(printf, 1, 2)))
 void ldmsd_ldebug(const char *fmt, ...);
+#pragma weak ldmsd_ldebug
 __attribute__((format(printf, 1, 2)))
 void ldmsd_linfo(const char *fmt, ...);
+#pragma weak ldmsd_linfo
 __attribute__((format(printf, 1, 2)))
 void ldmsd_lwarning(const char *fmt, ...);
+#pragma weak ldmsd_lwarning
 __attribute__((format(printf, 1, 2)))
 void ldmsd_lerror(const char *fmt, ...);
+#pragma weak ldmsd_lerror
 __attribute__((format(printf, 1, 2)))
 void ldmsd_lcritical(const char *fmt, ...);
+#pragma weak ldmsd_lcritical
 __attribute__((format(printf, 1, 2)))
 void ldmsd_lall(const char *fmt, ...);
+#pragma weak ldmsd_lall
 
 /** Get syslog int value for a level.
  *  \return LOG_CRIT for invalid inputs, NONE, & ENDLEVEL.
  */
 int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level);
+#pragma weak ldmsd_loglevel_to_syslog
 
 
 /**
@@ -663,6 +682,7 @@ int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level);
  * \param [out] sctxt the security context output buffer.
  */
 void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt);
+#pragma weak ldmsd_sec_ctxt_get
 
 
 int ldmsd_store_data_add(struct ldmsd_store_policy *lsp, ldms_set_t set);
@@ -762,11 +782,15 @@ extern ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND + 1];
 #define LEN_ERRSTR 256
 
 void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
+#pragma weak ldmsd_msg_logger
 int ldmsd_logrotate();
+#pragma weak ldmsd_logrotate
 int ldmsd_plugins_usage(const char *plugin_name);
 void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix);
+#pragma weak ldmsd_mm_status
 
 char *ldmsd_get_max_mem_sz_str();
+#pragma weak ldmsd_get_max_mem_sz_str
 
 /** Configuration object management */
 void ldmsd_cfgobj___del(ldmsd_cfgobj_t obj);
@@ -1005,9 +1029,11 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len);
 
 /* Get the hostname of this ldmsd */
 extern const char *ldmsd_myhostname_get();
+#pragma weak ldmsd_myhostname_get
 
 /* Get the name of this ldmsd */
 const char *ldmsd_myname_get();
+#pragma weak ldmsd_myname_get
 
 /* Listen for a connection either on Unix domain socket or Socket. A dedicated thread is assigned to a new connection. */
 extern int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword);
@@ -1023,6 +1049,7 @@ extern int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword);
  * \retval NULL If failed.
  */
 ldms_set_t ldmsd_group_new(const char *grp_name);
+#pragma weak ldmsd_group_new
 
 /**
  * \brief Add a set into the group.
@@ -1031,6 +1058,7 @@ ldms_set_t ldmsd_group_new(const char *grp_name);
  * \param set_name The name of the set to be added.
  */
 int ldmsd_group_set_add(ldms_set_t grp, const char *set_name);
+#pragma weak ldmsd_group_set_add
 
 /**
  * \brief Remove a set from the group.
@@ -1039,6 +1067,7 @@ int ldmsd_group_set_add(ldms_set_t grp, const char *set_name);
  * \param set_name The name of the set to be removed.
  */
 int ldmsd_group_set_rm(ldms_set_t grp, const char *set_name);
+#pragma weak ldmsd_group_set_rm
 
 enum ldmsd_group_check_flag {
 	LDMSD_GROUP_IS_GROUP = 0x00000001,
@@ -1053,6 +1082,7 @@ enum ldmsd_group_check_flag {
  *               flags against ::ldmsd_group_check_flag enumeration.
  */
 int ldmsd_group_check(ldms_set_t set);
+#pragma weak ldmsd_group_check
 
 /**
  * \brief Group member iteration callback signature.
@@ -1084,6 +1114,7 @@ typedef int (*ldmsd_group_iter_cb_t)(ldms_set_t grp, const char *name, void *arg
  * \retval errno If failed.
  */
 int ldmsd_group_iter(ldms_set_t grp, ldmsd_group_iter_cb_t cb, void *arg);
+#pragma weak ldmsd_group_iter
 
 /**
  * \brief Get the member name from a set info key.
@@ -1092,5 +1123,6 @@ int ldmsd_group_iter(ldms_set_t grp, ldmsd_group_iter_cb_t cb, void *arg);
  * \retval name If \c info_key is for set member entry.
  */
 const char *ldmsd_group_member_name(const char *info_key);
+#pragma weak ldmsd_group_member_name
 
 #endif
