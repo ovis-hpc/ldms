@@ -685,6 +685,23 @@ get_schema_list () {
 	echo $slist
 }
 
+get_strgp_container () {
+        # called with pi, policy name
+        pi=$1
+        policy=$2
+        config=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_${policy} 2>/dev/null`
+        grok="`config_from_gender $config`"
+        eval POL_CONFIG_${policy}='$grok'
+        eval config='$'"POL_CONFIG_${policy}"
+	if echo "$config" |grep container=; then
+		container=`echo $config|sed -e 's/.*container=//g' -e  's/ .*//g'`
+	fi > /dev/null
+	if test -z "$container"; then
+		container=${pi}
+	fi
+	echo $container
+}
+
 # Generate storage plugin configuration, using the set of plugins from
 # genders # on each host.
 # Individual plugin config generation failures do not stop other
@@ -826,7 +843,8 @@ start_stores () {
 			echo "config $ARGS_CONFIG" >> $out
 			for s in $schemas; do
 				policy=${s}_${pi}
-				echo "strgp_add name=$policy plugin=$pi container=$pi schema=$s" >> $out
+				container=`get_strgp_container $pi $policy`
+				echo "strgp_add name=$policy plugin=$pi container=$container schema=$s" >> $out
 				echo "strgp_prdcr_add name=$policy regex=.*" >> $out
 				echo "strgp_start name=$policy" >> $out
 			done
