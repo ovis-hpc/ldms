@@ -1950,6 +1950,9 @@ static int updtr_start_handler(int sock, req_msg_t rm)
 	} else if (rc == EBUSY) {
 		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
 				"%dThe updater is already running.", EBUSY);
+	} else if (rc == EINVAL) {
+		cnt = Snprintf_error(&rm->line_buf, &rm->line_len,
+				"%dThe updater interval is 0.", EINVAL);
 	} else {
 		cnt = Snprintf(&rm->line_buf, &rm->line_len, "0");
 	}
