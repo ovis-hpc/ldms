@@ -168,6 +168,11 @@ ldmsd_schemas_SUFFIX=S          Defines schemas S to route to store
                                 SUFFIX. Colon separated list S.
 ldmsd_exclude_schemas_SUFFIX=S  Defines schemas S to exclude from
                                 store SUFFIX. Colon separated list S.
+ldmsd_strgp_POLICYNAME=OPTS     Defines additional or overriding options
+                                for storage policy POLICYNAME. Presently
+                                only container/PATH is actually applied.
+                                By convention, POLICYNAME is defined as
+                                ${schema}_${store_plugin}.
 # for example:
 ldmsd_store_csv=PARAMLIST       defines config flags for store_csv.
 

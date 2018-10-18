@@ -479,7 +479,7 @@ fi
 export MEM_OPT
 
 if test -z "$LDMSD_EVENT_THDS"; then
-	LDMSD_EVENT_THDS=`$NODEATTR $NODEATTRFILE -v $host ldmsaggd_conn_thds 2>/dev/null`
+	LDMSD_EVENT_THDS=`$NODEATTR $NODEATTRFILE -v $host ldmsd_event_thds 2>/dev/null`
 	if test -z "$LDMSD_EVENT_THDS"; then
 		LDMSD_EVENT_THDS=4
 	fi
