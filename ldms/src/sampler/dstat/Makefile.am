@@ -18,7 +18,7 @@ lib_LTLIBRARIES += libparse_stat.la
 libparse_stat_la_SOURCES = parse_stat.c parse_stat.h
 
 libdstat_la_SOURCES = dstat.c
-libdstat_la_LIBADD = $(BASE_LIBADD) $(COMMON_LIBADD)
+libdstat_la_LIBADD = $(BASE_LIBADD) $(COMMON_LIBADD) -lmmalloc
 libdstat_la_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/$(SAMPLER)
 pkglib_LTLIBRARIES += libdstat.la
 dist_man7_MANS += Plugin_dstat.man
