@@ -356,6 +356,11 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 		updtr->updt_offset_us = strtol(offset_str, NULL, 0);
 		updtr->updt_task_flags = LDMSD_TASK_F_SYNCHRONOUS;
 	}
+	if ( updtr->updt_intrvl_us == 0) {
+		ldmsd_log(LDMSD_LERROR, "updtr_start fails for interval = 0\n");
+		rc = EINVAL;
+		goto out_1;
+	}
 
 	ldmsd_task_start(&updtr->task, updtr_task_cb, updtr,
 			 updtr->updt_task_flags,
@@ -444,6 +449,11 @@ int cmd_updtr_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 		goto out;
 	}
 	updtr->updt_intrvl_us = strtol(interval, NULL, 0);
+	if ( updtr->updt_intrvl_us == 0) {
+		ldmsd_log(LDMSD_LERROR, "updtr_add fails for interval = 0\n");
+		goto out;
+	}
+
 	if (offset) {
 		updtr->updt_offset_us = strtol(offset, NULL, 0);
 		updtr->updt_task_flags = LDMSD_TASK_F_SYNCHRONOUS;
@@ -658,6 +668,8 @@ int cmd_updtr_start(char *replybuf, struct attr_value_list *avl, struct attr_val
 				"not exist\n", ENOENT);
 	} else if (rc == EBUSY) {
 		sprintf(replybuf, "%dThe updater is already running\n", EBUSY);
+	} else if (rc == EINVAL) {
+		sprintf(replybuf, "%dThe updater interval is 0\n", EINVAL);
 	} else {
 		sprintf(replybuf, "0\n");
 	}
