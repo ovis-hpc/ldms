@@ -1,9 +1,7 @@
-/*
- * Copyright (c) 2015 Sandia Corporation. All rights reserved.
- * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
- * license for use of this work by or on behalf of the U.S. Government.
- * Export of this program may require a license from the United States
- * Government.
+/**
+ * Copyright (c) 2015,2017 National Technology & Engineering Solutions
+ * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
+ * NTESS, the U.S. Government retains certain rights in this software.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -26,6 +24,10 @@
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
  *      without specific prior written permission.
+ *
+ *      Neither the name of Open Grid Computing nor the names of any
+ *      contributors may be used to endorse or promote products derived
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
  *      must not be misrepresented as being the original software.
@@ -94,7 +96,7 @@ static char *ascii_munge[] = {
 "P", "Q", "R", "S", "T", "U", "V", "W",
 "x", "Y", "Z", "E", "F", "G", "R", "U",
 /* blank ! " # $ % & ' */
-"B", "1", "q", "H", "S", "P", "J", "f", 
+"B", "1", "q", "H", "S", "P", "J", "f",
 /* ( ) * + , - . / */
 "PL", "RP", "T", "P", "j", "M", "d", "D",
 /* numbers */
@@ -220,7 +222,7 @@ static void ovis_label_to_id_hex(const char *s, int abbr, dstring_t *dsp)
 			dstrcat(dsp,"_",1);
 			++pos;
 			first = 0;
-		}		
+		}
 		while ( s[pos] != '\0' &&
 			(iscntrl(s[pos]) || ispunct(s[pos]))) {
 			char buf[4];
@@ -262,7 +264,7 @@ static void ovis_label_to_id_amqp(const char *s, int abbr, dstring_t *dsp)
 	}
 }
 
-/* Map ascii to portable in a semi-intuitive way. 
+/* Map ascii to portable in a semi-intuitive way.
  UTF8 is ignored (bit 8 squashed).
 */
 static void ovis_label_to_id_alnum(const char *s, int abbr, dstring_t *dsp)
@@ -281,7 +283,7 @@ static void ovis_label_to_id_alnum(const char *s, int abbr, dstring_t *dsp)
 		if (!first) {
 			dstrcat(dsp, ascii_munge[index],
 				ascii_munge_len[index]);
-		} else { 
+		} else {
 			if (s[pos] != '_') {
 				dstrcat(dsp, ascii_munge[index],
 					ascii_munge_len[index]);

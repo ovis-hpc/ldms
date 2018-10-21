@@ -1,6 +1,6 @@
-/*
- * Copyright (c) 2015-16 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2015-16 Sandia Corporation. All rights reserved.
+/**
+ * Copyright (c) 2015-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2017 Sandia Corporation. All rights reserved.
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
  * Export of this program may require a license from the United States
@@ -89,7 +89,7 @@ int rim_update_test(struct resource_info *self, enum rim_task t, void * tinfo)
 		if (tp->tv_sec < data->tnext)
 			return 0;
 		self->v.i64 += 10;
-		data->tnext += data->tinc; 
+		data->tnext += data->tinc;
 		self->generation++;
 		return 0;
 	}
@@ -145,7 +145,7 @@ int main(int argc, char **argv)
 		sleep(1);
 		i++;
 	}
-	
+
 	release_resource_info(testri);
 
 	free(s);
