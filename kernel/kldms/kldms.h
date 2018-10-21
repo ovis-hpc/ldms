@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2010,2015 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010,2015-2016 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010,2015-2016 Sandia Corporation. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU

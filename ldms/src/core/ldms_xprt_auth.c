@@ -1,11 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
+ * Copyright (c) 2018 National Technology & Engineering Solutions
+ * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
+ * NTESS, the U.S. Government retains certain rights in this software.
  * Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2018 Sandia Corporation. All rights reserved.
- *
- * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
- * license for use of this work by or on behalf of the U.S. Government.
- * Export of this program may require a license from the United States
- * Government.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU

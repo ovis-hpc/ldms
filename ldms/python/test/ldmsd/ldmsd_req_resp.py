@@ -1,12 +1,9 @@
 #!/usr/bin/env python
 
+# Copyright (c) 2018 National Technology & Engineering Solutions
+# of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
+# NTESS, the U.S. Government retains certain rights in this software.
 # Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
-# Copyright (c) 2018 Sandia Corporation. All rights reserved.
-#
-# Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
-# license for use of this work by or on behalf of the U.S. Government.
-# Export of this program may require a license from the United States
-# Government.
 #
 # This software is available to you under a choice of one of two
 # licenses.  You may choose to be licensed under the terms of the GNU
@@ -84,12 +81,12 @@ class TestLdmsdReqResp(unittest.TestCase):
     def setUpClass(cls):
         log.info("Setting up " + cls.__name__)
         try:
-            cls.smp = LDMSD(port = cls.SMP_PORT, xprt = cls.SMP_XPRT, 
-                              logfile = cls.LOG, auth = cls.AUTH, 
+            cls.smp = LDMSD(port = cls.SMP_PORT, xprt = cls.SMP_XPRT,
+                              logfile = cls.LOG, auth = cls.AUTH,
                               auth_opt = cls.AUTH_OPT, host_name = cls.SMP_NAME)
             log.info("starting sampler")
             cls.smp.run()
-            
+
             agg1_cfg = """
             prdcr_add name=samplerd host=%(host)s xprt=%(xprt)s port=%(port)s type=active interval=20000000
             prdcr_start name=samplerd""" % {
@@ -97,7 +94,7 @@ class TestLdmsdReqResp(unittest.TestCase):
                 "xprt": cls.SMP_XPRT,
                 "port": cls.SMP_PORT,
             }
-                
+
             cls.agg1 = LDMSD(port = cls.AGG1_PORT, xprt = cls.AGG1_XPRT,
                             logfile = cls.LOG, auth = cls.AUTH, cfg = agg1_cfg,
                             auth_opt = cls.AUTH_OPT, host_name = cls.AGG1_NAME)
@@ -158,13 +155,13 @@ class TestLdmsdReqResp(unittest.TestCase):
     def test_comm_2_level_agg(self):
         ctrl = ldmsdInbandConfig(host = self.AGG2_HOST, port = self.AGG2_PORT,
                                      xprt = self.AGG2_XPRT, auth = self.AUTH,
-                                     auth_opt = self.AUTH_OPT)        
+                                     auth_opt = self.AUTH_OPT)
         attr = LDMSD_Req_Attr(value = None, attr_id = LDMSD_Req_Attr.PATH)
         attr_term = LDMSD_Req_Attr()
         req = LDMSD_Request(command_id = LDMSD_Request.GREETING, attrs = [attr, attr_term])
         req.send(ctrl)
         resp = req.receive(ctrl)
-        ctrl.close()        
+        ctrl.close()
         self.assertEqual(len(resp['attr_list']), 1)
         self.assertEqual(resp['attr_list'][0].attr_value,
                         "{0}:{1}:{2}".format(self.SMP_NAME, self.AGG1_NAME, self.AGG2_NAME))

@@ -1,4 +1,4 @@
-/*
+/**
  * Copyright © 2018 National Technology & Engineering Solutions of Sandia,
  * LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS, the
  * U.S. Government retains certain rights in this software.
@@ -137,7 +137,7 @@ LIST_HEAD(hfi_port_list, hfi_port_comb) hfi_port_list =
 } umad_port_t;
 */
 
-/* 
+/*
 IB_PC_EXT_FIRST_F,
 IB_PC_EXT_PORT_SELECT_F = IB_PC_EXT_FIRST_F,
 IB_PC_EXT_COUNTER_SELECT_F,
