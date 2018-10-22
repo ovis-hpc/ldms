@@ -50,7 +50,6 @@
  * auth.c
  *
  *  Created on: May 18, 2015
- *      Author: nichamon
  */
 
 #include <ctype.h>

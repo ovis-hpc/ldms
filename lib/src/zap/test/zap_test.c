@@ -48,8 +48,6 @@
  */
 /**
  * \file zap_test.c
- * \author Tom Tucker
- * \author Narate Taerat
  *
  * \brief Zap basic functionality test.
  *

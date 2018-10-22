@@ -48,7 +48,6 @@
  */
 /**
  * \file zap_test_big.c
- * \author Narate Taerat
  *
  * \brief Zap big read and big write tests.
  */

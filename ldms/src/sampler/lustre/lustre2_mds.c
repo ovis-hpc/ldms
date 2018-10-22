@@ -49,7 +49,6 @@
 /**
  * \file lustre_mds.c
  * \brief Lustre MDS data sampler.
- * \author Narate Taerat <narate@ogc.us>
  *
  * This plugin samples data from multiple MDTs in the MDS it is running on.
  * The plugin will sample stats in MDTs according to the targets given at

@@ -50,7 +50,6 @@
  */
 /**
  * \file generic_sampler.c
- * \author Narate Narate (narate at ogc dot us)
  * \brief reads data from /tmp/metrics.
  *
  * This sampler reads data from /tmp/metrics. The sampler expects the file to be

@@ -48,7 +48,6 @@
  */
 /**
  * \file cray_power_sampler.c
- * \author Narate Taerat (narate at ogc dot us)
  */
 #include <unistd.h>
 #include <stdlib.h>

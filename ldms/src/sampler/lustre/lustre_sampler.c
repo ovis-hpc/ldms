@@ -49,8 +49,6 @@
 /**
  * \file lustre_sampler.c
  * \brief Lustre sampler common routine implementation.
- *
- * \author Narate Taerat (narate at ogc dot us)
  */
 
 #include <stdlib.h>

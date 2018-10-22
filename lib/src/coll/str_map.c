@@ -49,7 +49,6 @@
 
 /**
  * \file str_map.c
- * \author Narate Taerat <narate@ogc.us>
  * \brief String-Object mapping utility.
  *
  */

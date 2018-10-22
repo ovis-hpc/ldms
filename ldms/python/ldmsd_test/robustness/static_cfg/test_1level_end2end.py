@@ -52,7 +52,6 @@
 '''
 Created on May 27, 2015
 
-@author: nichamon
 '''
 
 import pytest
