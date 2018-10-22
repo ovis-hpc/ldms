@@ -49,7 +49,6 @@
 /**
  * \file lustre_oss.c
  * \brief Lustre OSS data sampler.
- * \author Narate Taerat <narate@ogc.us>
  *
  * This plugin samples data from multiple OSTs in the OSS it is running on.
  * The plugin will sample stats in OSTs according to the targets given at

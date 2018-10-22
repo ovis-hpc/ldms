@@ -48,7 +48,6 @@
  */
 /**
  * \file ovis_event.h
- * \author Narate Taerat (narate at ogc dot us)
  */
 
 /**

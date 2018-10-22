@@ -47,9 +47,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*
- * Author: Narate Taerat <narate@ogc.us>
- */
 #include <sys/errno.h>
 #include <stdio.h>
 #include <stdlib.h>

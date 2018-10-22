@@ -49,7 +49,6 @@
 /**
  * \file lustre_client.c
  * \brief Lustre client data sampler.
- * \author Narate Taerat <narate@ogc.us>
  *
  * Stats files are from:
  * <code>

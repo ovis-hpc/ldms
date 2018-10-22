@@ -47,9 +47,6 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-/*
- * Author: Narate Taerat <narate@ogc.us>
- */
 #ifndef __LDMS_XPRT_SOCK_H__
 #define __LDMS_XPRT_SOCK_H__
 #include <semaphore.h>

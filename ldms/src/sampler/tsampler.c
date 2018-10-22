@@ -48,7 +48,6 @@
  */
 /**
  * \file tsampler.c
- * \author Narate Taerat (narate at ogc dot us)
  */
 
 #include <pthread.h>

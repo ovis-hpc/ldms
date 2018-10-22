@@ -48,7 +48,6 @@
  */
 /**
  * \file hfclock.c
- * \author Narate Taerat (narate at ogc dot us)
  */
 #include <unistd.h>
 #include <stdlib.h>

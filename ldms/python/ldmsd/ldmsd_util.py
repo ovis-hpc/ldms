@@ -50,7 +50,6 @@
 '''
 Created on Apr 28, 2015
 
-@author: nichamon
 '''
 """
 @module ovis_test_util

@@ -53,7 +53,6 @@ from ldmsd.ldmsd_util import remove_file
 '''
 Created on May 27, 2015
 
-@author: nichamon
 '''
 
 # py.test version 2.5.1

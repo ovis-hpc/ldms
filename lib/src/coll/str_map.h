@@ -50,7 +50,6 @@
  */
 /**
  * \file str_map.h
- * \author Narate Taerat <narate@ogc.us>
  * \brief String-Object mapping utility.
  *
  * \c str_map is a string-object mapping utility, in which \c string is a

@@ -50,8 +50,6 @@
  * \file lustre_sampler.h
  * \brief Lustre sampler header file.
  *
- * \author Narate Taerat (narate at ogc dot us)
- *
  * This header file contains contents shared among multiple Lustre samplers,
  * such as possible keys in a regular 'stats' file.
  */

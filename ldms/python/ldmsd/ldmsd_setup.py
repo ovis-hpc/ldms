@@ -52,7 +52,6 @@
 '''
 Created on Apr 9, 2015
 
-@author: nichamon
 '''
 from exceptions import TypeError
 from ldmsd.ldmsd_util import bash_exec

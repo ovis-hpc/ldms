@@ -50,7 +50,6 @@
  * test_ldms_xprt_send_recv.c
  *
  *  Created on: Jan 19, 2017
- *      Author: Nichamon
  */
 
 #include <stdlib.h>
