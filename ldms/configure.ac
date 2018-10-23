@@ -467,9 +467,7 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms-wrapper
 		 scripts/ldms-static-test.sh
 		 scripts/ldms_ban.sh
-		 scripts/ldms-py-fptrans_test.sh
 		 scripts/ldms_plugins_list.sh
-		 scripts/ldms-py-edac_test.sh
 		 scripts/ldms-py-subset_test.sh
 		 scripts/ldms-py-syslog.sh
 		 scripts/ldms-py-rename.sh
