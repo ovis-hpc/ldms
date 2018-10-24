@@ -72,6 +72,7 @@
 #include <regex.h>
 #include <pwd.h>
 #include <grp.h>
+#include <coll/rbt.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "config.h"
@@ -636,6 +637,11 @@ void ldms_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	sem_post(&conn_sem);
 }
 
+int rbt_str_cmp(void *tree_key, const void *key)
+{
+	return strcmp(tree_key, key);
+}
+
 int main(int argc, char *argv[])
 {
 	struct ldms_version version;
@@ -929,12 +935,24 @@ wait_dir:
 		done = 1;
 		goto done;
 	}
+	struct rbt processed_rbt;
+	struct rbn *rbn;
+	rbt_init(&processed_rbt, rbt_str_cmp);
 	while (!LIST_EMPTY(&set_list)) {
 		lss = LIST_FIRST(&set_list);
 		LIST_REMOVE(lss, entry);
 
 		if (verbose || long_format || (flags & LDMS_LOOKUP_BY_SCHEMA)) {
 			pthread_mutex_lock(&print_lock);
+			rbn = rbt_find(&processed_rbt, lss->name);
+			if (rbn) {
+				/* has been processed */
+				pthread_mutex_unlock(&print_lock);
+				continue;
+			}
+			rbn = calloc(1, sizeof(*rbn));
+			rbn->key = lss->name;
+			rbt_ins(&processed_rbt, rbn);
 			print_done = 0;
 			pthread_mutex_unlock(&print_lock);
 			ret = ldms_xprt_lookup(ldms, lss->name, flags,
@@ -952,6 +970,7 @@ wait_dir:
 		} else
 			printf("%s\n", lss->name);
 	}
+	done = 1;
 done:
 	pthread_mutex_lock(&done_lock);
 	while (!done)
