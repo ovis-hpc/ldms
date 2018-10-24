@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "18 Sep 2018" "v4" "LDMS Plugin store_csv man page"
+.TH man 7 "24 Oct 2018" "v4" "LDMS Plugin store_csv man page"
 
 .SH NAME
 Plugin_store_csv - man page for the LDMS store_csv plugin
@@ -24,7 +24,7 @@ the ldmsd_controller or a configuration file. The store_csv plugin is a CSV stor
 .PP
 
 .SH STORE_CSV INIT CONFIGURATION ATTRIBUTE SYNTAX
-The configuration parameters altheader, rolltype, rollover, buffer, buffertype, notify, and rename_template are applied to all metric sets alike.
+The configuration parameters altheader, rolltype, rollover, rollagain, buffer, buffertype, notify, and rename_template are applied to all metric sets alike.
 A subset of these can be overriden by the action=custom values.
 .TP
 .BR config
@@ -82,6 +82,10 @@ roll after approximately rollover records are written.
 .TP
 4
 roll after approximately rollover bytes are written.
+.TP
+5
+.br
+wake at rollover seconds after midnight (>=0) and roll, then repeat every rollagain (> rollover) seconds during the day. For example "rollagain=3600 rollover=0 rolltype=5" rolls files hourly.
 .RE
 .TP
 rollover=<rollover>
