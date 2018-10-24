@@ -75,6 +75,8 @@
 static idx_t store_idx;
 static char tmp_path[PATH_MAX];
 static char *root_path; /**< store root path */
+static char *ignore_path; /* file of metrics to blacklist */
+static char *include_path; /* file of metrics to whitelist */
 static ldmsd_msg_log_f msglog;
 
 #define _stringify(_x) #_x
@@ -86,6 +88,7 @@ static ldmsd_msg_log_f msglog;
 struct flatfile_metric_store {
 	FILE *file; /**< File handle */
 	pthread_mutex_t lock; /**< lock at metric store level */
+	int ignore; /* should we skip storing this metric. */
 	char *path; /**< path of the flatfile store */
 	LIST_ENTRY(flatfile_metric_store) entry; /**< Entry for free list. */
 };
@@ -95,6 +98,8 @@ struct flatfile_store_instance {
 	char *path; /**< (root_path)/(container)/schema */
 	char *schema;
 	void *ucontext;
+	idx_t include_idx;
+	idx_t ignore_idx;
 	idx_t ms_idx;
 	LIST_HEAD(ms_list, flatfile_metric_store) ms_list;
 	int metric_count;
@@ -102,6 +107,57 @@ struct flatfile_store_instance {
 };
 
 static pthread_mutex_t cfg_lock;
+
+#define IGNORE_MET (void *)16
+#define MAX_METRIC_NAME_LEN 1024
+/* return an idx of metric names to ignore */
+static idx_t parse_metrics(const char *fname)
+{
+	idx_t metrics = idx_create();
+	if (!metrics) {
+		msglog(LDMSD_LERROR, "Out of memory for %s at %s:%d\n",
+			fname, __FILE__, __LINE__);
+		errno = ENOMEM;
+		return NULL;
+	}
+	if (!fname) {
+		return NULL;
+	}
+	FILE *fp = fopen(fname, "r");
+	if (!fp) {
+		msglog(LDMSD_LERROR, "Can't open file %s at %s:%d\n",
+			fname, __FILE__, __LINE__);
+		errno = EINVAL;
+		return NULL;
+	}
+	char lbuf[MAX_METRIC_NAME_LEN];
+	char sbuf[MAX_METRIC_NAME_LEN];
+	lbuf[0] = '\0';
+	char *s;
+	int line = 0;
+	do {
+		line++;
+		s = fgets(lbuf, sizeof(lbuf), fp);
+		if (!s)
+			break;
+		int nw = sscanf(lbuf, "%s", sbuf);
+		if (!nw)
+			continue;
+		if (s[0] == '#')
+			continue;
+		size_t keylen = strlen(sbuf);
+		errno = 0;
+		idx_add(metrics, (void *)sbuf, keylen, IGNORE_MET);
+		if (errno) {
+			msglog(LDMSD_LERROR, "Out of memory for %s at %s:%d\n",
+				fname, __FILE__, __LINE__);
+			goto out;
+		}
+	} while (s);
+out:
+	fclose(fp);
+	return metrics;
+}
 
 /**
  * \brief Configuration
@@ -112,11 +168,30 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	value = av_value(avl, "path");
 	if (!value)
 		goto err;
+	char *ivalue = av_value(avl, "ignore");
+	char *kvalue = av_value(avl, "include");
 
 	pthread_mutex_lock(&cfg_lock);
-	if (root_path)
+	if (root_path) {
 		free(root_path);
+		root_path = NULL;
+	}
+	if (kvalue) {
+		if(include_path)
+			free(include_path);
+		include_path = strdup(kvalue);
+		if (!include_path)
+			goto err1;
+	}
+	if (ivalue) {
+		if(ignore_path)
+			free(ignore_path);
+		ignore_path = strdup(ivalue);
+		if (!ignore_path)
+			goto err1;
+	}
 	root_path = strdup(value);
+err1:
 	pthread_mutex_unlock(&cfg_lock);
 	if (!root_path)
 		return ENOMEM;
@@ -136,9 +211,14 @@ static void term(struct ldmsd_plugin *self)
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return
-"    config name=store_flatfile path=<path>\n"
+"    config name=store_flatfile path=<path> [include=white] [ignore=black]\n"
 "              - Set the root path for the storage of flatfiles.\n"
-"              path      The path to the root of the flatfile directory\n";
+"              path      The path to the root of the flatfile directory\n"
+"              white     The list of metrics to keep one per line in a file\n"
+"                        All others are ignored.\n"
+"              black     The list of metrics to ignore one per line in a file\n"
+"                        All others are kept.\n"
+"    Content black file is ignored when include= is present. Use only one.\n";
 }
 
 static void *get_ucontext(ldmsd_store_handle_t _sh)
@@ -154,13 +234,22 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	struct flatfile_store_instance *si;
 	struct flatfile_metric_store *ms;
 	int i;
+	char *key = NULL;
+	size_t len;
+
+	len = strlen(container) + strlen(schema) + 2;
+	key = malloc(len);
+	if (!key) {
+		return NULL;
+	}
+	snprintf(key, len, "%s:%s", container, schema);
 
 	pthread_mutex_lock(&cfg_lock);
 	/*
 	 * Add a component type directory if one does not
 	 * already exist
 	 */
-	si = idx_find(store_idx, (void *)schema, strlen(schema));
+	si = idx_find(store_idx, (void *)key, strlen(key));
 	if (!si) {
 		/*
 		 * First, count the metric.
@@ -183,9 +272,17 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		if (!si)
 			goto out;
 		si->metric_count = metric_count;
+		errno = 0;
+		si->ignore_idx = parse_metrics(ignore_path);
+		if (!si->ignore_idx && errno != 0)
+			goto err1;
+		errno = 0;
+		si->include_idx = parse_metrics(include_path);
+		if (!si->include_idx && errno != 0)
+			goto err2;
 		si->ms_idx = idx_create();
 		if (!si->ms_idx)
-			goto err1;
+			goto err2;
 		si->ucontext = ucontext;
 		si->store = s;
 		si->path = strdup(tmp_path);
@@ -197,8 +294,22 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		i = 0;
 		char mname[128];
 		char *name;
+		void *ign = NULL;
 		TAILQ_FOREACH(x, metric_list, entry) {
 			name = strchr(x->name, '#');
+			if (si->include_idx) {
+				ign = idx_find(si->include_idx, x->name,
+					strlen(x->name));
+				if (ign)
+					ign = 0;
+				else
+					ign = IGNORE_MET;
+			} else {
+				if (si->ignore_idx) {
+					ign = idx_find(si->ignore_idx, x->name,
+						   strlen(x->name));
+				}
+			}
 			if (name) {
 				int len = name - x->name;
 				name = strncpy(mname, x->name, len);
@@ -213,6 +324,11 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 			}
 			/* Create new metric store if not exist. */
 			ms = calloc(1, sizeof(*ms));
+			if (!ms) {
+				msglog(LDMSD_LERROR, "Out of memory at %s:%d\n",
+					__FILE__, __LINE__);
+				goto err4;
+			}
 			sprintf(tmp_path, "%s/%s", si->path, name);
 			ms->path = strdup(tmp_path);
 			if (!ms->path) {
@@ -220,23 +336,42 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 					__FILE__, __LINE__);
 				goto err4;
 			}
-			ms->file = fopen_perm(ms->path, "a+", LDMSD_DEFAULT_FILE_PERM);
-			if (!ms->file) {
-				int eno = errno;
-				msglog(LDMSD_LERROR, "Error opening %s: %d: %s at %s:%d\n",
-					ms->path, eno, strerror(eno),
-					__FILE__, __LINE__);
-				goto err4;
+			if (ign) {
+				ms->ignore = 1;
+				msglog(LDMSD_LDEBUG, "%s: ignoring %s\n",
+					__FILE__, x->name);
+			} else {
+				msglog(LDMSD_LDEBUG, "%s: storing %s\n",
+					__FILE__, x->name);
+				ms->ignore = 0;
+				ms->file = fopen_perm(ms->path, "a+",
+					LDMSD_DEFAULT_FILE_PERM);
+				if (!ms->file) {
+					int eno = errno;
+					msglog(LDMSD_LERROR, "Error opening %s: %d: %s at %s:%d\n",
+						ms->path, eno, strerror(eno),
+						__FILE__, __LINE__);
+					goto err4;
+				}
 			}
 			pthread_mutex_init(&ms->lock, NULL);
 			idx_add(si->ms_idx, name, strlen(name), ms);
 			LIST_INSERT_HEAD(&si->ms_list, ms, entry);
+			msglog(LDMSD_LDEBUG, "%s: ignore = %d, index = %d\n",
+				ms->path, ms->ignore, i);
 			si->ms[i++] = ms;
 		}
-		idx_add(store_idx, (void *)schema, strlen(schema), si);
+		idx_add(store_idx, (void *)key, strlen(key), si);
 	}
 	goto out;
 err4:
+	if (ms) {
+		if (ms->path)
+			free(ms->path);
+		if (ms->file)
+			fclose(ms->file);
+		free(ms);
+	}
 	while ((ms = LIST_FIRST(&si->ms_list))) {
 		LIST_REMOVE(ms, entry);
 		if (ms->path)
@@ -250,12 +385,19 @@ err4:
 err3:
 	free(si->path);
 err2:
-	idx_destroy(si->ms_idx);
+	if (si->ms_idx)
+		idx_destroy(si->ms_idx);
+	if (si->ignore_idx)
+		idx_destroy(si->ignore_idx);
+	if (si->include_idx)
+		idx_destroy(si->include_idx);
 err1:
 	free(si);
 	si = NULL;
 out:
 	pthread_mutex_unlock(&cfg_lock);
+	if (key)
+		free(key);
 	return si;
 }
 
@@ -279,6 +421,10 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	const char *prod;
 	prod = ldms_set_producer_name_get(set);
 	for (i=0; i<metric_count; i++) {
+		if (si->ms[i]->ignore) {
+			msglog(LDMSD_LDEBUG, "%s: ignoring %d because %d\n", __FILE__, i, &si->ms[i]->ignore);
+			continue;
+		}
 		pthread_mutex_lock(&si->ms[i]->lock);
 		comp_id = ldms_metric_user_data_get(set, metric_arry[i]);
 		/* time, host, compid, value */
@@ -408,6 +554,10 @@ static void close_store(ldmsd_store_handle_t _sh)
 	idx_delete(store_idx, (void *)(si->schema), strlen(si->schema));
 	free(si->path);
 	free(si->schema);
+	if (si->include_idx)
+		idx_destroy(si->include_idx);
+	if (si->ignore_idx)
+		idx_destroy(si->ignore_idx);
 	idx_destroy(si->ms_idx);
 	free(si);
 	pthread_mutex_unlock(&cfg_lock);

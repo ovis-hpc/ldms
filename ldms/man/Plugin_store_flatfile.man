@@ -10,16 +10,31 @@ Within ldmsd_controller script or a configuration file:
 .br
 load name=store_flatfile
 .br
-config name=store_flatfile path=datadir 
+config name=store_flatfile path=datadir [ignore=blacklist] [include=whitelist]
 .br
 strgp_add plugin=store_flatfile [ <attr> = <value> ]
 .br
 
 
 .SH DESCRIPTION
-The flatfile store generates one file per metric with time, producer, component id, and value columns separated by spaces. The file name is $datadir/$container/$schema/$metric_name. 
+The flatfile store generates one file per metric with time, producer, component id, and value columns separated by spaces. The file name is $datadir/$container/$schema/$metric_name. Metrics can be whitelisted or blacklisted independent of schema (globally).
 
 .PP
+.SH CONFIG GLOBAL OPTION
+Metric name whitelist/blacklist globally is allowed by supplying either ignore or include option, but not both. Schema-specific filtering is done via strgp configuration.
+.TP
+.BR ignore=blacklist_file
+.br
+Read metric names to ignore from file blacklist_file.
+.br
+.TP
+.BR include=whitelist_file
+.br
+Read metric names to include from file whitelist_file.
+.br
+.PP
+Lines may be commented out with a leading # in either file.
+Only one of ignore or include is used. If both are given, whitelist is used.
 
 .SH STRGP_ADD ATTRIBUTE SYNTAX
 The strgp_add sets the policies being added. This line determines the output files via
@@ -52,18 +67,12 @@ The container and schema determines where the output files will be written (see 
 
 .SH NOTES
 .PP
-.IP \[bu]
-We expect to develop additional options controlling output files and
-output file format.
-.IP \[bu]
 Please note the argument changes from v2.
 .PP
 
 .SH BUGS
 Numeric array metrics are not presently supported.
-There is a maximum of 20 concurrent flatfile stores.
 The store is brittle to schema with multiple definitions, though it ought not to be.
-Unchanged meta-metrics are always written anyway.
 There is no option to quote string values, handle rollover, or handle buffering.
 
 .SH EXAMPLES
@@ -71,7 +80,7 @@ There is no option to quote string values, handle rollover, or handle buffering.
 Within ldmsd_controller or in a configuration file
 .nf
 load name=store_flatfile
-config name=store_flatfile path=/XXX/datadir
+config name=store_flatfile path=/XXX/datadir whitelist=/XXX/whitelist.txt
 
 # log only Active from the meminfo sampler
 strgp_add name=store_flatfile_meminfo plugin=store_flatfile schema=meminfo container=flat
