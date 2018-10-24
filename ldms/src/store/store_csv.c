@@ -107,6 +107,7 @@ static int altheader;
 static int udata;
 static bool ietfcsv = false; /* we will add an option like v2 enabling this soon. */
 static int rollover;
+static int rollagain;
 /** rolltype determines how to interpret rollover values > 0. */
 static int rolltype;
 /** ROLLTYPES documents rolltype and is used in help output. Also used for buffering */
@@ -114,9 +115,10 @@ static int rolltype;
 "                     1: wake approximately every rollover seconds and roll.\n" \
 "                     2: wake daily at rollover seconds after midnight (>=0) and roll.\n" \
 "                     3: roll after approximately rollover records are written.\n" \
-"                     4: roll after approximately rollover bytes are written.\n"
+"                     4: roll after approximately rollover bytes are written.\n" \
+"                     5: wake daily at rollover seconds after midnight and every rollagain seconds thereafter.\n"
 
-#define MAXROLLTYPE 4
+#define MAXROLLTYPE 5
 #define MINROLLTYPE 1
 /** default -- do not roll */
 #define DEFAULT_ROLLTYPE -1
@@ -233,8 +235,8 @@ static int handleRollover(struct csv_plugin_static *cps){
 				pthread_mutex_lock(&s_handle->lock);
 				switch (rolltype) {
 				case 1:
-					break;
 				case 2:
+				case 5:
 					break;
 				case 3:
 					if (s_handle->store_count < rollover)  {
@@ -396,6 +398,27 @@ static void* rolloverThreadInit(void* m){
 			if (rollover < MIN_ROLL_BYTES)
 				rollover = MIN_ROLL_BYTES;
 			tsleep = ROLL_LIMIT_INTERVAL;
+			break;
+		case 5: {
+				time_t rawtime;
+				struct tm *info;
+
+				time( &rawtime );
+				info = localtime( &rawtime );
+				int secSinceMidnight = info->tm_hour*3600 +
+					info->tm_min*60 + info->tm_sec;
+
+				if (secSinceMidnight < rollover) {
+					tsleep = rollover - secSinceMidnight;
+				} else {
+					int y = secSinceMidnight - rollover;
+					int z = y / rollagain;
+					tsleep = (z + 1)*rollagain + rollover - secSinceMidnight;
+				}
+				if (tsleep < MIN_ROLL_1) {
+					tsleep += rollagain;
+				}
+			}
 			break;
 		default:
 			tsleep = 60;
@@ -669,6 +692,19 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	uvalue = av_value(avl, "userdata");
 
+	rvalue = av_value(avl, "rollagain");
+	int ragain = 0;
+	if (rvalue) {
+		ragain = atoi(rvalue);
+		if (ragain < 0) {
+			cfgstate = CSV_CFGINIT_FAILED;
+			msglog(LDMSD_LERROR, "%s: Error: bad rollagain value %d from %s\n",
+			       __FILE__, ragain, rvalue);
+			pthread_mutex_unlock(&cfg_lock);
+			return EINVAL;
+		}
+	}
+
 	rvalue = av_value(avl, "rollover");
 	if (rvalue){
 		roll = atoi(rvalue);
@@ -699,6 +735,16 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 			cfgstate = CSV_CFGINIT_FAILED;
 			return EINVAL;
 		}
+		if (rollmethod == 5 && (roll < 0 || ragain < roll || ragain < MIN_ROLL_1)) {
+			msglog(LDMSD_LERROR,
+				"%s: rollmethod=5 needs rollagain > max(rollover,10)\n");
+			msglog(LDMSD_LERROR, "%s: rollagain=%d rollover=%d\n",
+			       __FILE__, roll, ragain);
+			cfgstate = CSV_CFGINIT_FAILED;
+			pthread_mutex_unlock(&cfg_lock);
+			return EINVAL;
+		}
+
 	}
 
 	if (root_path)
@@ -707,6 +753,7 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	root_path = strdup(value);
 
 	rollover = roll;
+	rollagain = ragain;
 	if (rollmethod >= MINROLLTYPE) {
 		rolltype = rollmethod;
 		pthread_create(&rothread, NULL, rolloverThreadInit, NULL);
