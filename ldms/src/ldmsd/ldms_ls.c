@@ -80,6 +80,12 @@
 #define LDMS_LS_MAX_MEM_SIZE 512L * 1024L * 1024L
 #define LDMS_LS_MAX_MEM_SZ_STR "512MB"
 
+/* from ldmsd_group.c */
+#define GRP_SCHEMA_NAME "ldmsd_grp_schema"
+#define GRP_KEY_PREFIX "    grp_member: "
+#define GRP_GN_NAME "ldmsd_grp_gn"
+/* ----- */
+
 static size_t max_mem_size;
 static char *mem_sz;
 
@@ -475,6 +481,27 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	}
 }
 
+void lookup_cb(ldms_t t, enum ldms_lookup_status status, int more,
+	       ldms_set_t s, void *arg);
+const char *ldmsd_group_member_name(const char *info_key)
+{
+	if (0 != strncmp(GRP_KEY_PREFIX, info_key, sizeof(GRP_KEY_PREFIX)-1))
+		return NULL;
+	return info_key + sizeof(GRP_KEY_PREFIX) - 1;
+}
+
+static void add_set(char *name);
+
+static int
+__grp_traverse(const char *key, const char *value, void *arg)
+{
+	const char *name = ldmsd_group_member_name(key);
+	if (!name)
+		return 0; /* continue */
+	add_set(name);
+	return 0;
+}
+
 void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 	       int more,
 	       ldms_set_t s, void *arg)
@@ -488,7 +515,12 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 		pthread_mutex_unlock(&print_lock);
 		goto err;
 	}
-	ldms_xprt_update(s, print_cb, (void *)(unsigned long)(last && !more));
+	if (strcmp(GRP_SCHEMA_NAME, ldms_set_schema_name_get(s)) == 0) {
+		/* This is a group, add these members to the list */
+		ldms_set_info_traverse(s, __grp_traverse,
+					    LDMS_SET_INFO_F_REMOTE, t);
+	}
+	ldms_xprt_update(s, print_cb, (void *)(unsigned long)(LIST_EMPTY(&set_list) && !more));
 	return;
  err:
 	if (verbose || long_format)
