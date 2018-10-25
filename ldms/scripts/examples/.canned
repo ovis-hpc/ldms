@@ -12,6 +12,9 @@ procnetdev # produces inconsistent sets
 procsensors # produces 0s (hardcoded path)
 procstat
 vmstat
+flatfile
+flatfile-whitelist
+flatfile-blacklist
 sequence_unsupp
 synthetic
 edac

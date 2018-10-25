@@ -1,0 +1,33 @@
+export plugname=meminfo
+portbase=61096
+export IGFILE=$TESTDIR/whitelist
+cat << EOF > $IGFILE
+Active
+job_id
+component_id
+DirectMap2M
+DirectMap4k
+Dirty
+HardwareCorrupted
+HugePages_Free
+HugePages_Rsvd
+Inactive
+KernelStack
+Mapped
+MemAvailable
+MemFree
+Shmem
+EOF
+#export VGARGS="--track-origins=yes --leak-check=full"
+LDMSD -p prolog.sampler 1
+vgon
+LDMSD 2
+vgoff
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -l
+SLEEP 5
+KILL_LDMSD `seq 2`
+file_created $STOREDIR/node/flatfile-whitelist/Active
+

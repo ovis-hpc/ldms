@@ -262,6 +262,9 @@ function LDMSD {
 				-v DEBUG $LDMSD_EXTRA \
 				-r $LDMSD_PIDFILE.$i
 		else
+			if test -z "$clonefile"; then
+				echo MISSING input file for DAEMON $i
+			fi
 			if test -f $clonefile -a $cloneinput = "1"; then
 				cp $clonefile $LDMSD_RUN/conf.$i
 				$wrap ldmsd.${ports[$i]} \
