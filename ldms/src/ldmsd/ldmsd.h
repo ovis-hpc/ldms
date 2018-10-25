@@ -525,7 +525,7 @@ extern void ldmsd_config_cleanup(void);
 extern int ldmsd_config_init(char *name);
 struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name);
 
-int ldmsd_set_register(ldms_set_t set, const char *pluing_name);
+int ldmsd_set_register(ldms_set_t set, const char *plugin_name);
 #pragma weak ldmsd_set_register
 void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
 #pragma weak ldmsd_set_deregister
