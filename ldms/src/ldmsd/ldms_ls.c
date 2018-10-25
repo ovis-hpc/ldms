@@ -69,6 +69,7 @@
 #include <regex.h>
 #include <pwd.h>
 #include <grp.h>
+#include <coll/rbt.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "config.h"
@@ -76,6 +77,12 @@
 #define LDMS_LS_MEM_SZ_ENVVAR "LDMS_LS_MEM_SZ"
 #define LDMS_LS_MAX_MEM_SIZE 512L * 1024L * 1024L
 #define LDMS_LS_MAX_MEM_SZ_STR "512MB"
+
+/* from ldmsd_group.c */
+#define GRP_SCHEMA_NAME "ldmsd_grp_schema"
+#define GRP_KEY_PREFIX "    grp_member: "
+#define GRP_GN_NAME "ldmsd_grp_gn"
+/* ----- */
 
 static size_t max_mem_size;
 static char *mem_sz;
@@ -472,6 +479,27 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	}
 }
 
+void lookup_cb(ldms_t t, enum ldms_lookup_status status, int more,
+	       ldms_set_t s, void *arg);
+const char *ldmsd_group_member_name(const char *info_key)
+{
+	if (0 != strncmp(GRP_KEY_PREFIX, info_key, sizeof(GRP_KEY_PREFIX)-1))
+		return NULL;
+	return info_key + sizeof(GRP_KEY_PREFIX) - 1;
+}
+
+static void add_set(char *name);
+
+static int
+__grp_traverse(const char *key, const char *value, void *arg)
+{
+	const char *name = ldmsd_group_member_name(key);
+	if (!name)
+		return 0; /* continue */
+	add_set(name);
+	return 0;
+}
+
 void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 	       int more,
 	       ldms_set_t s, void *arg)
@@ -485,7 +513,12 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 		pthread_mutex_unlock(&print_lock);
 		goto err;
 	}
-	ldms_xprt_update(s, print_cb, (void *)(unsigned long)(last && !more));
+	if (strcmp(GRP_SCHEMA_NAME, ldms_set_schema_name_get(s)) == 0) {
+		/* This is a group, add these members to the list */
+		ldms_set_info_traverse(s, __grp_traverse,
+					    LDMS_SET_INFO_F_REMOTE, t);
+	}
+	ldms_xprt_update(s, print_cb, (void *)(unsigned long)(LIST_EMPTY(&set_list) && !more));
 	return;
  err:
 	if (verbose || long_format)
@@ -599,6 +632,11 @@ void ldms_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	}
 
 	sem_post(&conn_sem);
+}
+
+int rbt_str_cmp(void *tree_key, const void *key)
+{
+	return strcmp(tree_key, key);
 }
 
 int main(int argc, char *argv[])
@@ -900,12 +938,24 @@ wait_dir:
 		done = 1;
 		goto done;
 	}
+	struct rbt processed_rbt;
+	struct rbn *rbn;
+	rbt_init(&processed_rbt, rbt_str_cmp);
 	while (!LIST_EMPTY(&set_list)) {
 		lss = LIST_FIRST(&set_list);
 		LIST_REMOVE(lss, entry);
 
 		if (verbose || long_format || (flags & LDMS_LOOKUP_BY_SCHEMA)) {
 			pthread_mutex_lock(&print_lock);
+			rbn = rbt_find(&processed_rbt, lss->name);
+			if (rbn) {
+				/* has been processed */
+				pthread_mutex_unlock(&print_lock);
+				continue;
+			}
+			rbn = calloc(1, sizeof(*rbn));
+			rbn->key = lss->name;
+			rbt_ins(&processed_rbt, rbn);
 			print_done = 0;
 			pthread_mutex_unlock(&print_lock);
 			ret = ldms_xprt_lookup(ldms, lss->name, flags,
@@ -923,6 +973,7 @@ wait_dir:
 		} else
 			printf("%s\n", lss->name);
 	}
+	done = 1;
 done:
 	pthread_mutex_lock(&done_lock);
 	while (!done)

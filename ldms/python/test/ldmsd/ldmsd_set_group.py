@@ -75,6 +75,22 @@ DEBUG = Debug()
 
 ldms.ldms_init(128*1024*1024)
 
+def sh(cmd):
+    p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
+                         stderr=subprocess.PIPE)
+    (out, err) = p.communicate()
+    return out
+
+HDR_REGEX = re.compile(r'([^:]+): (\w+), last update: \w+ (\w+ \d+ \d+:\d+:\d+ \d+) .*')
+def parse_hdr(h):
+    m = HDR_REGEX.match(h)
+    if not m:
+        raise ValueError("Bad header format: %s" % h)
+    (name, consistent, ts_text) = m.groups()
+    tm = time.strptime(ts_text, "%b %d %H:%M:%S %Y")
+    ts = time.mktime(tm)
+    return (name, consistent, ts)
+
 class LdmsWrap(object):
     """Conveneint LDMS xprt wrapper"""
     def __init__(self, port, xprt="sock", hostname = "localhost"):
@@ -226,6 +242,36 @@ class TestLDMSDSetGroup(unittest.TestCase):
     def test_00_verify(self):
         self._verify_smp()
         self._verify_agg(['smp/set0', 'smp/set1', 'smp/set2', 'smp/set3'])
+
+    def test_00_1_ldms_ls_v(self):
+        cmd = "ldms_ls -x %(xprt)s -p %(port)s smp/grp -v|grep consis" % {
+                    "xprt": self.XPRT,
+                    "port": self.SMP_PORT,
+              }
+        out = sh(cmd)
+        names = []
+        for l in out.splitlines():
+            (name, consistent, ts) = parse_hdr(l)
+            self.assertGreater(ts, 0)
+            names.append(name)
+        _names = ['smp/grp', 'smp/set0', 'smp/set1', 'smp/set2', 'smp/set3']
+        self.assertEqual(len(names), len(_names))
+        self.assertEqual(set(names), set(_names))
+
+    def test_00_2_ldms_ls_l(self):
+        cmd = "ldms_ls -x %(xprt)s -p %(port)s smp/grp -l|grep consis" % {
+                    "xprt": self.XPRT,
+                    "port": self.SMP_PORT,
+              }
+        out = sh(cmd)
+        names = []
+        for l in out.splitlines():
+            (name, consistent, ts) = parse_hdr(l)
+            self.assertGreater(ts, 0)
+            names.append(name)
+        _names = ['smp/grp', 'smp/set0', 'smp/set1', 'smp/set2', 'smp/set3']
+        self.assertEqual(len(names), len(_names))
+        self.assertEqual(set(names), set(_names))
 
     def test_01_plugin_mod(self):
         # Now, setup the ldmsd_controller subprocess
