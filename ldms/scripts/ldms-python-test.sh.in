@@ -8,6 +8,28 @@ fi
 export prefix=@prefix@
 export exec_prefix=@exec_prefix@
 export libdir=@libdir@
+
+if ! test -f $libdir/ovis-lib-configvars.sh; then
+	echo "$libdir/ovis-lib-configvars.sh not found"
+	exit 1
+fi
+if ! test -f $libdir/ovis-ldms-configvars.sh; then
+	echo "$libdir/ovis-ldms-configvars.sh not found"
+	exit 1
+fi
+. $libdir/ovis-lib-configvars.sh
+. $libdir/ovis-ldms-configvars.sh
+if test -z "$ZAP_LIBPATH"; then
+	ZAP_LIBPATH=$ovis_lib_plugins
+fi
+export ZAP_LIBPATH
+if test -z "$LDMSD_PLUGIN_LIBPATH"; then
+	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins:$ovis_lib_plugins
+fi
+export LDMSD_PLUGIN_LIBPATH
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$ovis_lib_plugins:$LD_LIBRARY_PATH
+
+function clusage {
 export BUILDDIR=@prefix@
 export pkglibdir=@pkglibdir@
 export PYTHONPATH=@pythondir@
@@ -221,10 +243,7 @@ export LDMS_AUTH_FILE=$SECRET
 chmod go-rwx $SECRET
 echo "logs and data stored under $TESTDIR"
 
-export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
-export ZAP_LIBPATH=@pkglibdir@
 export PATH=$LDMSD_SOCKPATH:${BUILDDIR}/sbin:$PATH
-export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
 
 echo "Listing ldmsd's still running:"
 pgrep ldmsd

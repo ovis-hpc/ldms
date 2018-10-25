@@ -7,6 +7,27 @@ allowroot=0
 prefix=@prefix@
 exec_prefix=@exec_prefix@
 libdir=@libdir@
+
+if ! test -f $libdir/ovis-lib-configvars.sh; then
+	echo "$libdir/ovis-lib-configvars.sh not found"
+	exit 1
+fi
+if ! test -f $libdir/ovis-ldms-configvars.sh; then
+	echo "$libdir/ovis-ldms-configvars.sh not found"
+	exit 1
+fi
+. $libdir/ovis-lib-configvars.sh
+. $libdir/ovis-ldms-configvars.sh
+if test -z "$ZAP_LIBPATH"; then
+	ZAP_LIBPATH=$ovis_lib_plugins
+fi
+export ZAP_LIBPATH
+if test -z "$LDMSD_PLUGIN_LIBPATH"; then
+	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins:$ovis_lib_plugins
+fi
+export LDMSD_PLUGIN_LIBPATH
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$ovis_lib_plugins:$LD_LIBRARY_PATH
+
 BUILDDIR=@prefix@
 export PYTHONPATH=@pythondir@
 # Manually redefine portbase to avoid collisions.
@@ -66,15 +87,12 @@ if test ! -x $BUILDDIR/bin/ldmsd_controller; then
 	echo "can't find ldmsd_controller script. Included python in build?"
 	exit 1
 else
-	LC="$BUILDDIR/bin/ldmsd_controller --auth_file=$SECRET"
+	LC="$BUILDDIR/bin/ldmsd_controller --xprt sock --host localhost -a ovis -A conf=$SECRET"
 	CSO="--sockname"
 fi
 echo "logs and data stored under $TESTDIR"
 
-export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:${libdir}/ovis-ldms::$LD_LIBRARY_PATH
-export ZAP_LIBPATH=${libdir}/ovis-ldms
 export PATH=${BUILDDIR}/sbin:$PATH
-export LDMSD_PLUGIN_LIBPATH=${libdir}/ovis-ldms
 
 # whack the daemons we own
 pkill ldmsd
@@ -91,14 +109,15 @@ rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
 echo Starting daemons
-valgrind -v --track-origins=yes --log-file=${LOGDIR}/vg.1 ldmsd -x sock:$port1 -p unix:$SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1
+valgrind -v --track-origins=yes --log-file=${LOGDIR}/vg.1 \
+ldmsd -x sock:$port1 -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1 -a ovis -A conf=$SECRET
 die $?
 
 mysleep 1
 
 
 echo Starting plugins on daemon1
-cat << EOF | $LC $CSO $SOCKDIR/metric_socket_1
+cat << EOF | $LC --port $port1
 load name=variable
 config name=variable producer=localhost1 instance=localhost1/variable schema=variable component_id=1 udata_default=10 max_mc=2 max_csrow=4
 start name=variable interval=1000000
@@ -108,14 +127,14 @@ die $?
 mysleep 1
 echo list host1
 echo ldms_ls on host 1:
-ldms_ls -h localhost -x sock -p $port1 -l
+ldms_ls -h localhost -x sock -p $port1 -l -a ovis -A conf=$SECRET
 
 mysleep 3
-ldms_ls -h localhost -x sock -p $port1 -l
+ldms_ls -h localhost -x sock -p $port1 -l -a ovis -A conf=$SECRET
 mysleep 3
-ldms_ls -h localhost -x sock -p $port1 -l
+ldms_ls -h localhost -x sock -p $port1 -l -a ovis -A conf=$SECRET
 mysleep 3
-ldms_ls -h localhost -x sock -p $port1 -l
+ldms_ls -h localhost -x sock -p $port1 -l -a ovis -A conf=$SECRET
 mysleep 3
 
 #
