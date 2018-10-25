@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
+# Copyright (c) 2018 National Technology & Engineering Solutions
+# of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
+# NTESS, the U.S. Government retains certain rights in this software.
 # Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
-# Copyright (c) 2018 Sandia Corporation. All rights reserved.
 #
 # Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
 # license for use of this work by or on behalf of the U.S. Government.

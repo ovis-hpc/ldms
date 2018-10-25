@@ -52,7 +52,6 @@
 '''
 Created on May 28, 2015
 
-@author: nichamon
 '''
 import sys
 import traceback

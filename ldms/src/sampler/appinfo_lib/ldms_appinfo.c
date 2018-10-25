@@ -1,48 +1,46 @@
-/* -*- c-basic-offset: 8 -*-                                              
-  * Copyright (c) 2018 Sandia Corporation. All rights reserved.            
-  * Under the terms of Contract 1686010, there is a non-exclusive
-  * license for use of this work by or on behalf of the U.S. Government.   
-  * Export of this program may require a license from the United States    
-  * Government.                                                            
-  *                                                                        
-  * This software is available to you under a choice of one of two         
-  * licenses.  You may choose to be licensed under the terms of the GNU    
-  * General Public License (GPL) Version 2, available from the file        
-  * COPYING in the main directory of this source tree, or the BSD-type     
-  * license below:                                                         
-  *                                                                        
-  * Redistribution and use in source and binary forms, with or without     
-  * modification, are permitted provided that the following conditions     
-  * are met:                                                               
-  *                                                                        
-  *      Redistributions of source code must retain the above copyright    
-  *      notice, this list of conditions and the following disclaimer.     
-  *                                                                        
-  *      Redistributions in binary form must reproduce the above           
-  *      copyright notice, this list of conditions and the following       
-  *      disclaimer in the documentation and/or other materials provided   
-  *      with the distribution.                                            
-  *                                                                        
-  *      Neither the name of Sandia nor the names of any contributors may  
-  *      be used to endorse or promote products derived from this software 
-  *      without specific prior written permission.                        
-  *                                                                        
-  *      Modified source versions must be plainly marked as such, and      
-  *      must not be misrepresented as being the original software.        
-  *                                                                        
-  *                                                                        
-  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS    
-  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT      
-  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR  
-  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT   
-  * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,  
-  * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT       
-  * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,  
-  * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY  
-  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT    
-  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE  
-  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   
-  */                                                                       
+/* -*- c-basic-offset: 8 -*-
+  * Copyright (c) 2018 National Technology & Engineering Solutions
+  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
+  * NTESS, the U.S. Government retains certain rights in this software.
+  *
+  * This software is available to you under a choice of one of two
+  * licenses.  You may choose to be licensed under the terms of the GNU
+  * General Public License (GPL) Version 2, available from the file
+  * COPYING in the main directory of this source tree, or the BSD-type
+  * license below:
+  *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+  *
+  *      Redistributions of source code must retain the above copyright
+  *      notice, this list of conditions and the following disclaimer.
+  *
+  *      Redistributions in binary form must reproduce the above
+  *      copyright notice, this list of conditions and the following
+  *      disclaimer in the documentation and/or other materials provided
+  *      with the distribution.
+  *
+  *      Neither the name of Sandia nor the names of any contributors may
+  *      be used to endorse or promote products derived from this software
+  *      without specific prior written permission.
+  *
+  *      Modified source versions must be plainly marked as such, and
+  *      must not be misrepresented as being the original software.
+  *
+  *
+  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+  * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  */
 #include <sys/errno.h>
 #include <semaphore.h>
 #include <stdio.h>
@@ -151,7 +149,7 @@ int ldmsapp_initialize(int ldmsapp_enable, int appid, int jobid,
 	shmem_header = MAP_FAILED;
 	ldmsapp_mutex = SEM_FAILED;
 	shmem_fd = -1;
-	
+
 	if (ldmsapp_enable == LDMSAPP_DISABLE) {
 		ldmsapp_status = LDMSAPP_STAT_DISABLED;
 		return 0; /* done for disabled case */
@@ -159,7 +157,7 @@ int ldmsapp_initialize(int ldmsapp_enable, int appid, int jobid,
 		ldmsapp_status = LDMSAPP_STAT_OK;
 	}
 	silent = psilent;
-	
+
 	/* Set up job id if needed */
 	if (jobid == 0) {
 		char *js = getenv("PBS_JOBID");
@@ -237,7 +235,7 @@ int ldmsapp_initialize(int ldmsapp_enable, int appid, int jobid,
 	shmem_header->proc_metadata[shmem_pmid].job_id = jobid;
 	shmem_header->proc_metadata[shmem_pmid].process_id = getpid();
 	shmem_header->proc_metadata[shmem_pmid].rank_id = rank;
-	shmem_header->proc_metadata[shmem_pmid].start_offset = 
+	shmem_header->proc_metadata[shmem_pmid].start_offset =
 		sizeof(shmem_header_t) + (shmem_header->num_registered *
 					shmem_header->data_block_size);
 	/* calc position of next avail data block */
@@ -310,7 +308,7 @@ int ldmsapp_finalize()
 }
 
 /*
- * Metric reporting functions below are for each supported 
+ * Metric reporting functions below are for each supported
  * metric datatype. They all use the two macros at the top
  * to keep their source code short (maybe the macros should
  * be changed into functions).
@@ -516,4 +514,3 @@ int ldmsapp_get_metrics_count()
 	if (ldmsapp_status >= 1) return -1;
 	return shmem_header->metric_count;
 }
-

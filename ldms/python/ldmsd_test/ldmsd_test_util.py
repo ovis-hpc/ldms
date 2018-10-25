@@ -53,7 +53,6 @@ from time import sleep
 '''
 Created on Jun 1, 2015
 
-@author: nichamon
 '''
 
 from ovis_ldms import ldms

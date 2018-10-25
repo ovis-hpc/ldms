@@ -1,9 +1,8 @@
-/*
- * Copyright (c) 2016 Sandia Corporation. All rights reserved.
- * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
- * license for use of this work by or on behalf of the U.S. Government.
- * Export of this program may require a license from the United States
- * Government.
+/**
+ * Copyright (c) 2016-2018 National Technology & Engineering Solutions
+ * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
+ * NTESS, the U.S. Government retains certain rights in this software.
+ * Copyright (c) 2016-2018 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -205,11 +204,11 @@ int create_outdir(const char *path,
  *	%B expands to basename(name),
  *	%D expands to dirname(name),
  *	%s timestamp suffix, if it exists.
- *	%{var} expands to env(var) 
- * Specifying both output event notification and output 
+ *	%{var} expands to env(var)
+ * Specifying both output event notification and output
  * renaming produces a race condition between this function
  * and the event-processor and should be avoided.
- * 
+ *
  * The expanded name must be on the same file system (mount point)
  * as the original file, or the underlying C rename() call will fail.
  * This is not an interface that will implicitly copy and remove files.

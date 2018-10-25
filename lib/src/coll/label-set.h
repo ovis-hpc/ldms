@@ -1,9 +1,7 @@
-/*
- * Copyright (c) 2015 Sandia Corporation. All rights reserved.
- * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
- * license for use of this work by or on behalf of the U.S. Government.
- * Export of this program may require a license from the United States
- * Government.
+/**
+ * Copyright (c) 2015-2017 National Technology & Engineering Solutions
+ * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
+ * NTESS, the U.S. Government retains certain rights in this software.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -26,6 +24,10 @@
  *      Neither the name of Sandia nor the names of any contributors may
  *      be used to endorse or promote products derived from this software
  *      without specific prior written permission.
+ *
+ *      Neither the name of Open Grid Computing nor the names of any
+ *      contributors may be used to endorse or promote products derived
+ *      from this software without specific prior written permission.
  *
  *      Modified source versions must be plainly marked as such, and
  *      must not be misrepresented as being the original software.
@@ -53,7 +55,7 @@ equivalents for LDMS metric labels that come from human-readable sources
 and are not intended for use as programming language identifiers.
 
 The general problem is that metric labels can be morphed either:
-a) reliably (in context, uniquely) but often unreadably to any 
+a) reliably (in context, uniquely) but often unreadably to any
 given maximum length, or
 b) heuristically, still in moderately readable form, but requiring
 unlimited length, or
@@ -152,7 +154,7 @@ extern size_t ovis_label_set_size(struct ovis_label_set * set);
  *
  * Uniqueness and length are not checked.
  * Caller is responsible for ensuring the ovis_names given (string pointers)
- * remain valid during life of the set and are cleaned up at the end 
+ * remain valid during life of the set and are cleaned up at the end
  * in a manner consistent with the value of deep given.
  * \param s uniqueness group.
  * \param label human string.
@@ -167,7 +169,7 @@ extern struct ovis_name ovis_label_set_insert_pair(struct ovis_label_set * s, co
  *
  * Caller is responsible for ensuring the ovis_name given (string pointer)
  * remains valid during life of the set.
- * 
+ *
  * \return ovis_name from derived id, or OVIS_NAME_NULL and set errno.
  */
 extern struct ovis_name ovis_label_set_insert(struct ovis_label_set * s, const struct ovis_name label);
@@ -177,7 +179,7 @@ extern struct ovis_name ovis_label_set_insert(struct ovis_label_set * s, const s
  *
  * Set becomes responsible for ensuring the ovis_name given's string pointer
  * is freed at end of set life.
- * 
+ *
  * \return ovis_name from derived id, or OVIS_NAME_NULL and set errno.
  */
 extern struct ovis_name ovis_label_set_own(struct ovis_label_set * s, const struct ovis_name label);

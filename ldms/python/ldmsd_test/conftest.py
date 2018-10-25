@@ -53,7 +53,6 @@ from ldmsd_test.ldmsd_test_util import load_test_config
 '''
 Created on May 27, 2015
 
-@author: nichamon
 '''
 
 # py.test version 2.5.1

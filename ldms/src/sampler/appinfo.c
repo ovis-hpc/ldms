@@ -1,48 +1,46 @@
-/* -*- c-basic-offset: 8 -*-                                              
-  * Copyright (c) 2018 Sandia Corporation. All rights reserved.            
-  * Under the terms of Contract 1686010, there is a non-exclusive
-  * license for use of this work by or on behalf of the U.S. Government.   
-  * Export of this program may require a license from the United States    
-  * Government.                                                            
-  *                                                                        
-  * This software is available to you under a choice of one of two         
-  * licenses.  You may choose to be licensed under the terms of the GNU    
-  * General Public License (GPL) Version 2, available from the file        
-  * COPYING in the main directory of this source tree, or the BSD-type     
-  * license below:                                                         
-  *                                                                        
-  * Redistribution and use in source and binary forms, with or without     
-  * modification, are permitted provided that the following conditions     
-  * are met:                                                               
-  *                                                                        
-  *      Redistributions of source code must retain the above copyright    
-  *      notice, this list of conditions and the following disclaimer.     
-  *                                                                        
-  *      Redistributions in binary form must reproduce the above           
-  *      copyright notice, this list of conditions and the following       
-  *      disclaimer in the documentation and/or other materials provided   
-  *      with the distribution.                                            
-  *                                                                        
-  *      Neither the name of Sandia nor the names of any contributors may  
-  *      be used to endorse or promote products derived from this software 
-  *      without specific prior written permission.                        
-  *                                                                        
-  *      Modified source versions must be plainly marked as such, and      
-  *      must not be misrepresented as being the original software.        
-  *                                                                        
-  *                                                                        
-  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS    
-  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT      
-  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR  
-  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT   
-  * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,  
-  * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT       
-  * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,  
-  * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY  
-  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT    
-  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE  
-  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.   
-  */                                                                       
+/* -*- c-basic-offset: 8 -*-
+  * Copyright (c) 2018 National Technology & Engineering Solutions
+  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
+  * NTESS, the U.S. Government retains certain rights in this software.
+  *
+  * This software is available to you under a choice of one of two
+  * licenses.  You may choose to be licensed under the terms of the GNU
+  * General Public License (GPL) Version 2, available from the file
+  * COPYING in the main directory of this source tree, or the BSD-type
+  * license below:
+  *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+  *
+  *      Redistributions of source code must retain the above copyright
+  *      notice, this list of conditions and the following disclaimer.
+  *
+  *      Redistributions in binary form must reproduce the above
+  *      copyright notice, this list of conditions and the following
+  *      disclaimer in the documentation and/or other materials provided
+  *      with the distribution.
+  *
+  *      Neither the name of Sandia nor the names of any contributors may
+  *      be used to endorse or promote products derived from this software
+  *      without specific prior written permission.
+  *
+  *      Modified source versions must be plainly marked as such, and
+  *      must not be misrepresented as being the original software.
+  *
+  *
+  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+  * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+  * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+  * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+  * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+  * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  */
 /*
  * \file appinfo.c
  * \brief  Profiler metric sampler
@@ -78,7 +76,7 @@
 #include "sampler_base.h"
 
 static ldms_set_t set = NULL; /* metric set to fill in w/ data */
-static ldmsd_msg_log_f msglog; 
+static ldmsd_msg_log_f msglog;
 #define SAMP "appinfo"
 static int metric_offset; /* starting index for non-base metrics */
 static base_data_t base;  /* inherited base sampler data */
@@ -102,7 +100,7 @@ static int create_shmem_data(ldms_set_t set);
 
 /**
 * Create the metric set (and schema?). This is called from config()
-* and is responsible for creating the appinfo-specific metrics, 
+* and is responsible for creating the appinfo-specific metrics,
 * which is done after the base sampler code created its metrics.
 * @param base is the base sampler data structure
 **/
@@ -149,7 +147,7 @@ static int create_metric_set(base_data_t base, char *metrics_optstr)
 	rc = -7; /* placeholder for metrics error reporting
 	if (!metrics_optstr)
 		goto err; /* more error here??? */
-	
+
 	msglog(LDMSD_LDEBUG, SAMP ": Creating config-opt metrics.\n");
 
 	char *mptr, *mstr, *iptr, *mname, *mtype;
@@ -166,13 +164,13 @@ static int create_metric_set(base_data_t base, char *metrics_optstr)
 			goto err;
 		if (ldms_type_is_array(ldms_metric_str_to_type(mtype))) {
 			/* TODO Make a 256-byte char array as the data???? */
-			if (ldms_metric_str_to_type(mtype) == 
+			if (ldms_metric_str_to_type(mtype) ==
 					LDMS_V_CHAR_ARRAY) {
 				rc = ldms_schema_metric_array_add(schema, mname,
 					ldms_metric_str_to_type(mtype), 256);
 				if (rc < 0)
 					goto err;
-			} 
+			}
 		} else {
 			/* add a standard metric type */
 			rc = ldms_schema_metric_add(schema, mname,
@@ -186,7 +184,7 @@ static int create_metric_set(base_data_t base, char *metrics_optstr)
 	} /* end loop creating appinfo metrics from config string */
 
 
-	/* 
+	/*
 	 * From sampler_base.c this looks like it creates the whole
 	 * metric set and also sets the base metrics to initial values
 	 */
@@ -211,10 +209,10 @@ static int create_metric_set(base_data_t base, char *metrics_optstr)
 }
 
 /**
- * Check config data for validity. Check for invalid flags, with 
+ * Check config data for validity. Check for invalid flags, with
  * particular emphasis on warning the user about deprecated usage.
  **/
-static int config_check(struct attr_value_list *kwl, 
+static int config_check(struct attr_value_list *kwl,
 			struct attr_value_list *avl, void *arg)
 {
 	/* JEC -- meminfo had no config params specific? This looks generic. */
@@ -243,7 +241,7 @@ static int config_check(struct attr_value_list *kwl,
  **/
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return "config name=" SAMP BASE_CONFIG_USAGE 
+	return "config name=" SAMP BASE_CONFIG_USAGE
 		" producer=<prod_name> instance=<inst_name>\n"
 		"	metrics=<metric name>:<metric type>,<metric name>:<metric type>,...\n"
 		"	appname=<appname> jobid=<jobid> username=<username>\n"
@@ -266,7 +264,7 @@ static const char *usage(struct ldmsd_plugin *self)
  * @param kwl is the configuration keyword list
  * @param avl is the configuration attribute-value list
  **/
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, 
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		struct attr_value_list *avl)
 {
 	int rc;
@@ -301,12 +299,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		goto err;
 	}
 	/* create appinfo metrics beyond base */
-	rc = create_metric_set(base, metrics_str); 
+	rc = create_metric_set(base, metrics_str);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err;
 	}
-	
+
 	/* Do shared mem stuff after metrics create so that we know the size */
 	/* of the metric set TODO: somehow use this in creating shmem size */
 
@@ -334,7 +332,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 	/* Set size of shared memory segment */
 	/* This is just the max possible size, for now; must fix */
-	rc = ftruncate(shmem_fd, sizeof(shmem_header_t) + 
+	rc = ftruncate(shmem_fd, sizeof(shmem_header_t) +
 			MAX_PROCESSES*MAX_METRICS*(sizeof(app_metric_t)+256));
 	/* Get stats (size) of shared memory segment and check */
 	if (fstat(shmem_fd, &shmem_stat) == -1) {
@@ -349,7 +347,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 
 	/* map shared memory into our memory */
-	shmem_header = (shmem_header_t *) mmap(0, shmem_stat.st_size, 
+	shmem_header = (shmem_header_t *) mmap(0, shmem_stat.st_size,
 				PROT_READ|PROT_WRITE, MAP_SHARED, shmem_fd, 0);
 	if (shmem_header == MAP_FAILED) {
 		msglog(LDMSD_LERROR, SAMP ": Shmem mmap error: %s\n",
@@ -360,9 +358,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	/* Now set up all the sampler-specified data in shared memory */
 	actual_shmem_size = create_shmem_data(set);
 	/* TODO do another ftruncate here to shrink shmem to actual size */
-	
+
 	/* BACK to regular config stuff here */
-	
+
 	msglog(LDMSD_LDEBUG, SAMP ": Done configuring.\n");
 	return 0;
  err:
@@ -386,7 +384,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 /**
  * Sample data. In the appinfo sampler, we need to find in the shared
- * memory the next process data structure that is ready for sampling, 
+ * memory the next process data structure that is ready for sampling,
  * copy it into the metric set, and mark it as sampled.
  **/
 static int sample(struct ldmsd_sampler *self)
@@ -433,21 +431,21 @@ static int sample(struct ldmsd_sampler *self)
 	/* start our metrics at offset */
 	metric_no = metric_offset;
 	/* fill in process and rank ids */
-	ldms_metric_set_u32(set, metric_no++, 
-				shmem_header->proc_metadata[i].process_id);	
-	ldms_metric_set_u32(set, metric_no++, 
-				shmem_header->proc_metadata[i].rank_id);	
+	ldms_metric_set_u32(set, metric_no++,
+				shmem_header->proc_metadata[i].process_id);
+	ldms_metric_set_u32(set, metric_no++,
+				shmem_header->proc_metadata[i].rank_id);
 	/* then here fill in all of our metrics */
 	/* - copy process metrics over to metric set */
 	/* - create pointer to process data block */
-	proc_data = ((void *) shmem_header) + 
+	proc_data = ((void *) shmem_header) +
 				shmem_header->proc_metadata[i].start_offset;
 	for (i = metric_no; i < shmem_header->metric_count; i++) {
-		am = (app_metric_t *) (proc_data + 
+		am = (app_metric_t *) (proc_data +
 					shmem_header->metric_offset[i]);
 		sample_proc_metric(am, i);
 	}
-	
+
 out:
 	base_sample_end(base);
 	sem_post(ldmsapp_mutex); /* shared mem control */
@@ -513,19 +511,19 @@ static int create_shmem_data(ldms_set_t set)
 	const char *mname;
 	enum ldms_value_type mtype;
 	app_metric_t *am;
-	void *proc1_data, *tp; 
-	
+	void *proc1_data, *tp;
+
 	msglog(LDMSD_LDEBUG, SAMP ": Begin shmem data creation.\n");
 	sem_wait(ldmsapp_mutex); /* shared mem control */
-	
+
 	/* make pointer to first process data block in shared mem */
 	/* we will set the metric info in the proc1 data block as */
 	/* a template, and then copy it to the others */
 	proc1_data = ((void*) shmem_header) + sizeof(shmem_header_t);
-	
+
 	num_metrics = ldms_set_card_get(set);
 	if (num_metrics > MAX_METRICS) {
-		msglog(LDMSD_LERROR, SAMP 
+		msglog(LDMSD_LERROR, SAMP
 			": too many metrics (%d), truncating.\n", num_metrics);
 		num_metrics = MAX_METRICS;
 	}
@@ -537,11 +535,11 @@ static int create_shmem_data(ldms_set_t set)
 		mname = ldms_metric_name_get(set,i);
 		mtype = ldms_metric_type_get(set,i);
 		if (!mname || mtype==LDMS_V_NONE) {
-			msglog(LDMSD_LERROR, 
+			msglog(LDMSD_LERROR,
 				SAMP ": bad metric def at metric %d!\n", i);
 			continue;
 		}
-		shmem_header->metric_offset[i] = data_block_size; 
+		shmem_header->metric_offset[i] = data_block_size;
 		am = (app_metric_t *) (proc1_data + data_block_size);
 		am->status = 0;
 		strncpy(am->name, mname, sizeof(am->name));
@@ -555,7 +553,7 @@ static int create_shmem_data(ldms_set_t set)
 		} else {
 			/* only a 256-byte array type is supported */
 			/* must subtract the base data field */
-			am->size = sizeof(app_metric_t) - 
+			am->size = sizeof(app_metric_t) -
 				sizeof(union ldms_value) + 256;
 		}
 		data_block_size += am->size;
@@ -588,7 +586,7 @@ static int create_shmem_data(ldms_set_t set)
 }
 
 /**
- * Sample a process metric. 
+ * Sample a process metric.
  * @param metric is the pointer to the process metric struct
  * @param id is the metric index (for now, absolute)
  * @return 0 on success, nonzero on failure
@@ -602,7 +600,7 @@ static int sample_proc_metric(app_metric_t *metric, int id)
 			ldms_metric_set_char(set, id, metric->value.v_char);
 			break;
 		case LDMS_V_CHAR_ARRAY:
-			ldms_metric_array_set_str(set, id, 
+			ldms_metric_array_set_str(set, id,
 						metric->value.a_char);
 			break;
 		case LDMS_V_U8:
@@ -634,11 +632,10 @@ static int sample_proc_metric(app_metric_t *metric, int id)
 			ldms_metric_set_s64(set, id, metric->value.v_s64);
 			break;
 		default:
-			msglog(LDMSD_LERROR, 
+			msglog(LDMSD_LERROR,
 				SAMP ": Unrecognized or unsupported"
 				" metric type '%d'\n", metric->vtype);
 			return -1;
 	}
 	return 0;
 }
-

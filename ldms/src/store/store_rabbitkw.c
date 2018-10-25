@@ -1,9 +1,8 @@
-/*
- * Copyright © 2018 National Technology & Engineering Solutions of Sandia,
+/**
+ * Copyright (c) 2010-2018 National Technology & Engineering Solutions of Sandia,
  * LLC (NTESS). Under the terms of Contract DE-NA0003525 with NTESS, the
  * U.S. Government retains certain rights in this software.
- * Copyright (c) 2010-16 Open Grid Computing, Inc. All rights reserved.
- * Copyright (c) 2010-2016 Sandia Corporation. All rights reserved.
+ * Copyright (c) 2010-2018 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -264,10 +263,10 @@ static void reset_connection()
 		amqp_destroy_connection(as.conn);
 	as.conn = NULL;
 	as.broker_failed++;
-	as.next_connect = 0; 
+	as.next_connect = 0;
 	msglog(LDMSD_LINFO, STOR ": reset_connection.\n");
 }
-/*  
+/*
  * Try to make connection. (log 1st and every 1000th fail ).
  * \return 0, EINVAL, ENOMEM, EKEYREJECTED, EAGAIN. Connection is ready if 0.
  * Retry is possible if EAGAIN is returned.
@@ -301,7 +300,7 @@ static int make_connection()
 	if (as.broker_failed && as.broker_failed % warn_every == 1) {
 		msglog(LDMSD_LINFO, STOR ": connect amqp retry number %d\n",
 			as.broker_failed);
-	}	
+	}
 	int rc;
 	as.conn = amqp_new_connection();
 	if (!as.conn ) {
@@ -500,7 +499,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		}
 	}
 
-	msglog(LDMSD_LINFO, STOR ": config timeout=%d retry=%d heartbeat=%d\n", 
+	msglog(LDMSD_LINFO, STOR ": config timeout=%d retry=%d heartbeat=%d\n",
 		(int)(1000*as.timeout.tv_sec + as.timeout.tv_usec/1000),
 		as.retry_sec, as.heartbeat);
 	sprintf(as.pw, "guest");
@@ -813,7 +812,7 @@ int write_kw(struct rabbitkw_store_instance *si,
 	if (!name) {
 		if (!si->conflict_warned) {
 			msglog(LDMSD_LERROR, STOR ": write_kw: metric id %d: no name at list index %d.\n", id, arr_idx);
-			msglog(LDMSD_LERROR, STOR ": reconfigure to resolve schema definition conflict for schema=%s and instance=%s.\n", 
+			msglog(LDMSD_LERROR, STOR ": reconfigure to resolve schema definition conflict for schema=%s and instance=%s.\n",
 				si->schema, ldms_set_instance_name_get(set));
 			si->conflict_warned = 1;
 		}

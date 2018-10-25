@@ -53,7 +53,6 @@
  * auth.h
  *
  *  Created on: May 18, 2015
- *      Author: nichamon
  */
 
 #ifndef OVIS_AUTH_H_
@@ -83,7 +82,7 @@ uint64_t ovis_auth_unpack_challenge(struct ovis_auth_challenge *chl);
 
 char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log);
 
-int ovis_get_rabbit_secretword(const char *file, char *buf, int buflen, 
+int ovis_get_rabbit_secretword(const char *file, char *buf, int buflen,
 	ovis_auth_log_fn_t msglog);
 
 char *ovis_auth_encrypt_password(const uint64_t challenge,
