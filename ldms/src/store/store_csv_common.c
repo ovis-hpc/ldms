@@ -773,7 +773,7 @@ int config_custom_common(struct attr_value_list *kwl, struct attr_value_list *av
 
 	if (create_pval) {
 		int perm = strtol(create_pval, NULL, 8);
-		if (perm < 1 || perm > 4777) {
+		if (perm < 1 || perm > 04777) {
 			rc = EINVAL;
 			sk->create_perm = 0;
 			cps->msglog(LDMSD_LERROR,
@@ -939,7 +939,7 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 		cps->create_perm = 0;
 	} else {
 		int perm = strtol(create_pval, NULL, 8);
-		if (perm < 1 || perm > 4777) {
+		if (perm < 1 || perm > 04777) {
 			rc = EINVAL;
 			cps->create_perm = 0;
 			cps->msglog(LDMSD_LERROR,
@@ -981,10 +981,10 @@ void print_csv_plugin_common(struct csv_plugin_static *cps)
 	cps->msglog(LDMSD_LALL, "%s: rename_template: %s\n", cps->pname, cps->rename_template);
 	cps->msglog(LDMSD_LALL, "%s: rename_uid: %" PRIu32 "\n", cps->pname, cps->rename_uid);
 	cps->msglog(LDMSD_LALL, "%s: rename_gid: %" PRIu32 "\n", cps->pname, cps->rename_gid);
-	cps->msglog(LDMSD_LALL, "%s: rename_perm: %d\n", cps->pname, cps->rename_perm);
+	cps->msglog(LDMSD_LALL, "%s: rename_perm: %o\n", cps->pname, cps->rename_perm);
 	cps->msglog(LDMSD_LALL, "%s: create_uid: %" PRIu32 "\n", cps->pname, cps->create_uid);
 	cps->msglog(LDMSD_LALL, "%s: create_gid: %" PRIu32 "\n", cps->pname, cps->create_gid);
-	cps->msglog(LDMSD_LALL, "%s: create_perm: %d\n", cps->pname, cps->create_perm);
+	cps->msglog(LDMSD_LALL, "%s: create_perm: %o\n", cps->pname, cps->create_perm);
 	cps->msglog(LDMSD_LALL, "%s: onp: %p\n", cps->pname, cps->onp);
 }
 
@@ -1005,9 +1005,9 @@ void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv
 	p->msglog(LDMSD_LALL, "%s: rename_template:%s\n", p->pname, h->rename_template);
 	p->msglog(LDMSD_LALL, "%s: rename_uid: %" PRIu32 "\n", p->pname, h->rename_uid);
 	p->msglog(LDMSD_LALL, "%s: rename_gid: %" PRIu32 "\n", p->pname, h->rename_gid);
-	p->msglog(LDMSD_LALL, "%s: rename_perm: %d\n", p->pname, h->rename_perm);
+	p->msglog(LDMSD_LALL, "%s: rename_perm: %o\n", p->pname, h->rename_perm);
 	p->msglog(LDMSD_LALL, "%s: create_uid: %" PRIu32 "\n", p->pname, h->create_uid);
 	p->msglog(LDMSD_LALL, "%s: create_gid: %" PRIu32 "\n", p->pname, h->create_gid);
-	p->msglog(LDMSD_LALL, "%s: create_perm: %d\n", p->pname, h->create_perm);
+	p->msglog(LDMSD_LALL, "%s: create_perm: %o\n", p->pname, h->create_perm);
 	p->msglog(LDMSD_LALL, "%s: onp: %p\n", p->pname, h->onp);
 }
