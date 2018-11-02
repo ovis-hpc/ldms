@@ -27,7 +27,6 @@
 #include <linux/ktime.h>
 
 #include <asm/uaccess.h>
-#include <asm/cputhreads.h>
 #include "kldms.h"
 
 static uint64_t timer_interval_ns = 1e9;
@@ -42,8 +41,8 @@ static struct my_timer {
 } my_timer;
 static long set_count = 1;
 static long array_depth = 10;
-static char *instance_name;
-static char *producer_name;
+static char instance_name[256];
+static char schema_name[256];
 
 #define BE(x, s)	be_to_cpu(x, s)
 
@@ -523,13 +522,13 @@ enum hrtimer_restart timer_callback(struct hrtimer *timer_for_restart)
 	struct my_timer *mt = (struct my_timer *)timer_for_restart;
 	ktime_t currtime , interval;
 	currtime  = ktime_get();
-	interval = ktime_set(0, timer_interval_ns); 
+	interval = ktime_set(0, timer_interval_ns);
 	hrtimer_forward(timer_for_restart, currtime , interval);
 	sample(&mt->hr_ctxt);
 	return HRTIMER_RESTART;
 }
 
-static void start_sampler(void)
+static void __start_sampler(void)
 {
 	ktime_t ktime = ktime_set(0, timer_interval_ns);
 	pr_info("Starting sampler with interval of %llu ns.\n", timer_interval_ns);
@@ -541,194 +540,78 @@ static void start_sampler(void)
 	hrtimer_start(&my_timer.hr_timer, ktime, HRTIMER_MODE_REL);
 }
 
-static void stop_sampler(void)
+static int start_sampler(struct ctl_table *table, int write,
+			 void __user *buffer, size_t *lenp,
+			 loff_t *ppos)
+{
+	__start_sampler();
+	return 0;
+}
+
+static void __stop_sampler(void)
 {
 	int ret;
 	pr_info("Stopping sampler.\n");
 	ret = hrtimer_cancel(&my_timer.hr_timer);
 	if (ret)
 		pr_info("The timer was still in use...\n");
-
 }
 
-static int handle_timer_interval(ctl_table *table, int write,
-				 void __user *buffer, size_t *lenp,
-				 loff_t *ppos)
+static int stop_sampler(struct ctl_table *table, int write,
+			 void __user *buffer, size_t *lenp,
+			 loff_t *ppos)
 {
-	int n;
-	char req_buf[80];
-	if (!write)
-		return -EINVAL;
-
-	if (*lenp > sizeof(req_buf))
-		return -EFAULT;
-
-	if (copy_from_user(req_buf, buffer, *lenp))
-		return -EFAULT;
-
-	n = sscanf(req_buf, "%llu", &timer_interval_ns);
-	if (n != 1)
-		return -EINVAL;
-	if (timer_interval_ns < 500000) {
-		stop_sampler();
-		timer_interval_ns = 0;
-		pr_err("The sample interval cannot be less than 500us.\n");
-		return -EINVAL;
-	}
-	if (n <= 0)
-		stop_sampler();
-	else
-		start_sampler();
-	
-	return 0;
-}
-
-static int handle_set_count(ctl_table *table, int write,
-			    void __user *buffer, size_t *lenp,
-			    loff_t *ppos)
-{
-	int n;
-	char req_buf[80];
-	if (!write)
-		return -EINVAL;
-
-	if (*lenp > sizeof(req_buf))
-		return -EFAULT;
-
-	if (copy_from_user(req_buf, buffer, *lenp))
-		return -EFAULT;
-
-	n = sscanf(req_buf, "%ld", &set_count);
-	if (n != 1)
-		return -EINVAL;
-
-	return 0;
-}
-
-static int handle_array_depth(ctl_table *table, int write,
-			      void __user *buffer, size_t *lenp,
-			      loff_t *ppos)
-{
-	int n;
-	char req_buf[80];
-	if (!write)
-		return -EINVAL;
-
-	if (*lenp > sizeof(req_buf))
-		return -EFAULT;
-
-	if (copy_from_user(req_buf, buffer, *lenp))
-		return -EFAULT;
-
-	n = sscanf(req_buf, "%ld", &array_depth);
-	if (n != 1)
-		return -EINVAL;
-
-	return 0;
-}
-
-static int handle_instance_name(ctl_table *table, int write,
-				void __user *buffer, size_t *lenp,
-				loff_t *ppos)
-{
-	if (write) {
-		if (*lenp > 255)
-			return -EFAULT;
-
-		if (instance_name) {
-			kfree(instance_name);
-			instance_name = NULL;
-		}
-		instance_name = kmalloc(*lenp + 1, GFP_KERNEL);
-		if (!instance_name)
-			return -ENOMEM;
-
-		if (copy_from_user(instance_name, buffer, *lenp))
-			return -EFAULT;
-
-		instance_name[*lenp] = '\0';
-	} else {
-		*lenp = 0;
-		if (instance_name && *ppos < (strlen(instance_name)-1)) {
-			*lenp = strlen(instance_name);
-			strncpy(buffer, instance_name, *lenp);
-			*ppos = *lenp;
-			return 0;
-		}
-		return 0;
-	}
-	return 0;
-}
-
-static int handle_producer_name(ctl_table *table, int write,
-				void __user *buffer, size_t *lenp,
-				loff_t *ppos)
-{
-	if (write) {
-		if (*lenp > 255)
-			return -EFAULT;
-
-		if (producer_name) {
-			kfree(producer_name);
-			producer_name = NULL;
-		}
-		producer_name = kmalloc(*lenp + 1, GFP_KERNEL);
-		if (!producer_name)
-			return -ENOMEM;
-
-		if (copy_from_user(producer_name, buffer, *lenp))
-			return -EFAULT;
-
-		producer_name[*lenp] = '\0';
-	} else {
-		*lenp = 0;
-		if (producer_name && *ppos < (strlen(producer_name)-1)) {
-			*lenp = strlen(producer_name);
-			strncpy(buffer, producer_name, *lenp);
-			*ppos = *lenp;
-			return 0;
-		}
-		return 0;
-	}
+	__stop_sampler();
 	return 0;
 }
 
 static struct ctl_table_header *occ_sensor_table_header;
-static ctl_table occ_sensor_parm_table[] = {
+static struct ctl_table occ_sensor_parm_table[] = {
+	{
+		.procname	= "instance_name",
+		.data		= &instance_name,
+		.maxlen		= sizeof(instance_name),
+		.mode		= 0644,
+		.proc_handler	= proc_dostring
+	},
+	{
+		.procname	= "schema_name",
+		.data		= &schema_name,
+		.maxlen		= sizeof(schema_name),
+		.mode		= 0644,
+		.proc_handler	= proc_dostring
+	},
 	{
 		.procname	= "timer_interval_ns",
 		.data		= NULL,
-		.maxlen		= 0,
 		.mode		= 0644,
-		.proc_handler	= handle_timer_interval,
+		.proc_handler	= proc_doulongvec_minmax,
 	},
 	{
 		.procname	= "array_depth",
-		.data		= NULL,
-		.maxlen		= 0,
+		.data		= &array_depth,
 		.mode		= 0644,
-		.proc_handler	= handle_array_depth,
+		.proc_handler	= proc_doulongvec_minmax,
 	},
 	{
 		.procname	= "set_count",
-		.data		= NULL,
-		.maxlen		= 0,
+		.data		= &set_count,
 		.mode		= 0644,
-		.proc_handler	= handle_set_count,
+		.proc_handler	= proc_doulongvec_minmax,
 	},
 	{
-		.procname	= "instance_name",
-		.data		= NULL,
+		.procname	= "start",
+		.data		= 0,
 		.maxlen		= 0,
 		.mode		= 0644,
-		.proc_handler	= handle_instance_name,
+		.proc_handler	= start_sampler
 	},
 	{
-		.procname	= "producer_name",
-		.data		= NULL,
+		.procname	= "stop",
+		.data		= 0,
 		.maxlen		= 0,
 		.mode		= 0644,
-		.proc_handler	= handle_producer_name,
+		.proc_handler	= stop_sampler
 	},
 	{ },
 };
@@ -745,9 +628,11 @@ static struct ctl_table occ_sensor_root_table[] = {
 static int sensor_init(void)
 {
 	int rc, i;
+	pr_info("Loading the OCC Sensor Module");
 	rc = init_chip();
 	if (rc)
 		goto out;
+
 
 	occ_sensor_table_header = register_sysctl_table(occ_sensor_root_table);
 	occ_sensor_kobj = kobject_create_and_add("occ_sensors",
@@ -775,6 +660,7 @@ out_clean_kobj:
 out_free_chips:
 	clear_chips();
 out:
+	pr_err("Error %d loading OCC Sensor Module", rc);
 	return rc;
 }
 
@@ -782,7 +668,7 @@ static void sensor_exit(void)
 {
 	kldms_schema_t schema;
 
-	stop_sampler();
+	__stop_sampler();
 
 	if (occ_sensor_table_header) {
 		unregister_sysctl_table(occ_sensor_table_header);
