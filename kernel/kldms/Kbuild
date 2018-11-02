@@ -5,6 +5,6 @@ CONFIG_LDMS_VMSTAT=m
 
 obj-$(CONFIG_LDMS)		+= kldms.o
 obj-$(CONFIG_LDMS_VMSTAT)	+= kldms_vmstat.o
-obj-$(CONFIG_LDMS_GPCDR)	+= kldms_gpcdr.o
+# obj-$(CONFIG_LDMS_GPCDR)	+= kldms_gpcdr.o
 
 # kldms_gpcdr-objs		:= kgpcdr.o gpcdr.o ghal.o
