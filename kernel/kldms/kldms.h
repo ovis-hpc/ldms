@@ -141,37 +141,6 @@ typedef struct kldms_metric kldms_metric_t;
 	(_gn) = __cpu_to_le64(__le64_to_cpu((_gn)) + 1); \
 } while (0)
 
-static inline int ldms_transaction_begin(kldms_set_t set)
-{
-	struct ldms_data_hdr *dh = set->ks_data;
-	struct timeval tv;
-	dh->trans.flags = LDMS_TRANSACTION_BEGIN;
-	(void)do_gettimeofday(&tv);
-	dh->trans.ts.sec = __cpu_to_le32(tv.tv_sec);
-	dh->trans.ts.usec = __cpu_to_le32(tv.tv_usec);
-	return 0;
-}
-
-static inline int ldms_transaction_end(kldms_set_t set)
-{
-	struct ldms_data_hdr *dh = set->ks_data;
-	struct timeval tv;
-	(void)do_gettimeofday(&tv);
-	dh->trans.dur.sec = tv.tv_sec - __le32_to_cpu(dh->trans.ts.sec);
-	dh->trans.dur.usec = tv.tv_usec - __le32_to_cpu(dh->trans.ts.usec);
-	if ((int32_t)dh->trans.dur.usec < 0) {
-		dh->trans.dur.sec--;
-		dh->trans.dur.usec += 10000000;
-	}
-	dh->trans.dur.sec = __cpu_to_le32(dh->trans.dur.sec);
-	dh->trans.dur.usec = __cpu_to_le32(dh->trans.dur.usec);
-	dh->trans.ts.sec = __cpu_to_le32(tv.tv_sec);
-	dh->trans.ts.usec = __cpu_to_le32(tv.tv_usec);
-	dh->trans.flags = LDMS_TRANSACTION_END;
-	return 0;
-}
-
-
 /*
  * exported KLDMS API
  */
@@ -192,5 +161,6 @@ extern void kldms_schema_delete(kldms_schema_t schema);
 extern void kldms_set_delete(kldms_set_t schema);
 extern void kldms_transaction_begin(kldms_set_t s);
 extern void kldms_transaction_end(kldms_set_t s);
+extern void kldms_set_publish(struct kldms_set *set);
 
 #endif

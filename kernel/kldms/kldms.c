@@ -166,6 +166,36 @@ void kldms_transaction_begin(kldms_set_t s)
 }
 EXPORT_SYMBOL(kldms_transaction_begin);
 
+static void __send_update(kldms_set_t set)
+{
+        struct kldms_file *file, *n;
+        struct kldms_request *kreq;
+
+        if (!kldms_dev)
+                return;
+
+	pr_debug("Sending update for set %p\n", set);
+        if (list_empty(&kldms_dev->file_list)) {
+		pr_debug("No open files on %p\n", kldms_dev);
+                return;
+	}
+
+        kreq = kmalloc(sizeof(*kreq), GFP_KERNEL);
+        if (!kreq)
+                return;
+
+        kreq->update.hdr.req_id = KLDMS_REQ_UPDATE_SET;
+        kreq->update.set_id = set->ks_id;
+        INIT_LIST_HEAD(&kreq->list);
+        spin_lock(&kldms_dev->req_list_lock);
+        list_add_tail(&kreq->list, &kldms_dev->req_list);
+        spin_unlock(&kldms_dev->req_list_lock);
+        list_for_each_entry_safe(file, n, &kldms_dev->file_list, list) {
+                wake_up_interruptible(&file->poll_wait);
+                kill_fasync(&file->async_queue, SIGIO, POLL_IN);
+        }
+}
+
 void kldms_transaction_end(kldms_set_t s)
 {
 	struct ldms_data_hdr *dh = s->ks_data;
@@ -182,7 +212,7 @@ void kldms_transaction_end(kldms_set_t s)
 	dh->trans.ts.sec = __cpu_to_le32(ts.tv_sec);
 	dh->trans.ts.usec = __cpu_to_le32(ts.tv_nsec / 1000);
 	dh->trans.flags = LDMS_TRANSACTION_END;
-	// __ldms_xprt_push(s, LDMS_RBD_F_PUSH_CHANGE);
+	__send_update(s);
 }
 EXPORT_SYMBOL(kldms_transaction_end);
 
@@ -281,7 +311,9 @@ static kldms_set_t kldms_set_alloc(const char *instance_name,
 
 	/* Since the min size is one page, the 'sz' is guaranteed to be a
 	 * multiple of PAGE_SIZE after roundup_power_of_two. */
-	set->ks_page_order = ilog2(sz / 4096);
+	set->ks_page_order = ilog2(sz / PAGE_SIZE);
+	if (((1 << set->ks_page_order) * PAGE_SIZE) < sz)
+		set->ks_page_order++;
 
 	set->ks_page = alloc_pages(GFP_KERNEL | GFP_DMA, set->ks_page_order);
 	if (!set->ks_page) {
@@ -303,6 +335,10 @@ static kldms_set_t kldms_set_alloc(const char *instance_name,
 	meta->meta_gn = __cpu_to_le64(1);
 	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
 
+	meta->array_card = 1;
+	meta->uid = meta->gid = 0;
+	meta->perm = 0777;
+
 	/*
 	 * Set the instance name.
 	 * NB: Must be set first because get_schema_name uses the
@@ -318,11 +354,11 @@ static kldms_set_t kldms_set_alloc(const char *instance_name,
 	strcpy(lname->name, schema->name);
 
 	data->gn = data->meta_gn = meta->meta_gn;
+	data->curr_idx = 0;
 
 	/* Add the metrics from the schema */
 	vd = get_first_metric_desc(meta);
-	value_off = (uint8_t *)data - (uint8_t *)meta;
-	value_off = roundup(value_off + sizeof(*data), 8);
+	value_off = roundup(sizeof(*data), 8);
 	metric_idx = 0;
 	vd_size = 0;
 	list_for_each_entry(md, &schema->metric_list, entry) {
@@ -556,7 +592,7 @@ void kldms_metric_array_set_val(kldms_set_t set, int metric_idx, int array_idx, 
 
 	desc = ldms_ptr_(struct ldms_value_desc, set->ks_meta,
 			__le32_to_cpu(set->ks_meta->dict[metric_idx]));
-	dst = ldms_ptr_(union ldms_value, set->ks_meta,
+	dst = ldms_ptr_(union ldms_value, set->ks_data,
 			__le32_to_cpu(desc->vd_data_offset));
 
 	__metric_array_set(set, desc, dst, array_idx, src);
@@ -568,7 +604,7 @@ void kldms_metric_set(kldms_set_t s, int i, ldms_mval_t v)
 {
 	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->ks_meta,
 			__le32_to_cpu(s->ks_meta->dict[i]));
-	ldms_mval_t mv = ldms_ptr_(union ldms_value, s->ks_meta,
+	ldms_mval_t mv = ldms_ptr_(union ldms_value, s->ks_data,
 			__le32_to_cpu(desc->vd_data_offset));
 
 	switch (desc->vd_type) {
@@ -838,7 +874,7 @@ static int handle_metric_list(struct ctl_table *table, int write,
 	return 0;
 }
 
-void publish_set(struct kldms_set *set)
+void kldms_set_publish(struct kldms_set *set)
 {
 	struct kldms_file *file, *n;
 	struct kldms_request *kreq;
@@ -862,6 +898,7 @@ void publish_set(struct kldms_set *set)
 		kill_fasync(&file->async_queue, SIGIO, POLL_IN);
 	}
 }
+EXPORT_SYMBOL(kldms_set_publish);
 
 static int handle_publish(struct ctl_table *table, int write,
 			  void __user *buffer, size_t *lenp,
@@ -896,7 +933,7 @@ static int handle_publish(struct ctl_table *table, int write,
 		return -ENOENT;
 
 	/* Publish set to user-mode server */
-	publish_set(set);
+	kldms_set_publish(set);
 	return 0;
 }
 
@@ -1007,6 +1044,7 @@ static ssize_t kldms_file_read(struct file *filp, char __user *buf,
 		if (filp->f_flags & O_NONBLOCK)
 			return -EAGAIN;
 
+		pr_info("Waiting %p\n", file);
 		if (wait_event_interruptible(file->poll_wait,
 					     !list_empty(&kdev->req_list)))
 			return -ERESTARTSYS;
@@ -1015,6 +1053,7 @@ static ssize_t kldms_file_read(struct file *filp, char __user *buf,
 	}
 
 	req = list_entry(kdev->req_list.next, struct kldms_request, list);
+	pr_info("Handling req %p\n", req);
 
 	switch (req->hdr.req_id) {
 	case KLDMS_REQ_HELLO:
@@ -1025,6 +1064,9 @@ static ssize_t kldms_file_read(struct file *filp, char __user *buf,
 		break;
 	case KLDMS_REQ_UNPUBLISH_SET:
 		reqsz = sizeof(req->unpub);
+		break;
+	case KLDMS_REQ_UPDATE_SET:
+		reqsz = sizeof(req->update);
 		break;
 	default:
 		ret = -EINVAL;
@@ -1216,15 +1258,8 @@ static ssize_t show_dev_abi_version(struct device *device,
 }
 
 static DEVICE_ATTR(abi_version, S_IRUGO, show_dev_abi_version, NULL);
-#define KLDMS_ABI_VERSION 1
-static ssize_t show_abi_version(struct class *class,
-				struct class_attribute *attr,
-				char *buf)
-{
-	return sprintf(buf, "%d\n", KLDMS_ABI_VERSION);
-}
-
-static CLASS_ATTR(abi_version, S_IRUGO, show_abi_version, NULL);
+#define KLDMS_ABI_VERSION "2"
+static CLASS_ATTR_STRING(abi_version, S_IRUGO, KLDMS_ABI_VERSION);
 
 static struct kldms_device *create_kldms_device(void)
 {
@@ -1316,7 +1351,7 @@ int kldms_init(void)
 		goto out1;
 	}
 
-	ret = class_create_file(kldms_class, &class_attr_abi_version);
+	ret = class_create_file(kldms_class, &class_attr_abi_version.attr);
 	if (ret) {
 		pr_err("kldms: couldn't create abi_version attribute\n");
 		goto out2;

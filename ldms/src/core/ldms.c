@@ -962,25 +962,20 @@ int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *ps)
 {
 	struct ldms_set_hdr *sh = meta_addr;
 	struct ldms_data_hdr *dh = data_addr;
-	ldms_set_t s;
 	int flags;
-
-	s = calloc(1, sizeof(*s));
-	if (!s)
-		return ENOMEM;
 
 	flags = LDMS_SET_F_MEMMAP | LDMS_SET_F_LOCAL;
 	__ldms_set_tree_lock();
 	struct ldms_set *set = __record_set(get_instance_name(sh)->name, sh, dh, flags);
-	if (!set) {
-		__ldms_set_tree_unlock();
+	if (!set)
 		goto err;
-	}
 	int rc = __ldms_set_publish(set);
 	if (!rc) {
-		s->set = set;
-		s->type = LDMS_RBD_LOCAL;
-		*ps = s;
+		struct ldms_rbuf_desc *rbd;
+		rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
+		if (!rbd)
+			goto err;
+		*ps = rbd;
 	} else {
 		errno = rc;
 		goto err;
@@ -988,7 +983,7 @@ int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *ps)
 	__ldms_set_tree_unlock();
 	return 0;
  err:
-	free(s);
+	__ldms_set_tree_unlock();
 	return errno;
 }
 
