@@ -75,18 +75,9 @@
 
 SPANK_PLUGIN(jobinfo, 2)
 
-typedef struct job_pid {
-	pid_t j_pid;
-	LIST_ENTRY(job_pid) entry;
-} *job_pid_t;
-
-struct rbt job_tree;
-
 typedef struct job_info_s {
 	u_int		j_id;		/* S_JOB_ID */
 	u_int		j_app_id;	/* S_TASK_ID */
-	/* Collection of S_TASK_PID */
-	LIST_HEAD(job_list_s, job_pid) j_pid_list;
 	u_int		j_nnodes;	/* S_JOB_NNODES */
 	u_int		j_ncpus;	/* S_JOB_NCPUS */
 	u_int		j_step_id;	/* S_JOB_STEPID */
@@ -101,34 +92,9 @@ typedef struct job_info_s {
 
 	uid_t		j_user_id;	/* S_JOB_UID */
 	char		*j_name;	/* SLURM_JOB_NAME */
-
-	struct rbn	j_rbn;
 } *job_info_t;
 
-job_info_t find_job(u_int job_id)
-{
-	job_info_t job;
-	struct rbn *rbn = rbt_find(&job_tree, &job_id);
-	if (!rbn)
-		return NULL;
-	return container_of(rbn, struct job_info_s, j_rbn);
-}
-
-void free_job(job_info_t job)
-{
-	job_pid_t jp;
-
-	rbt_del(&job_tree, &job->j_rbn);
-
-	while (!LIST_EMPTY(&job->j_pid_list)) {
-		jp = LIST_FIRST(&job->j_pid_list);
-		LIST_REMOVE(jp, entry);
-		free(jp);
-	}
-	if (job->j_name)
-		free(job->j_name);
-	free(job);
-}
+struct job_info_s the_job;
 
 int update_job_info(job_info_t job)
 {
@@ -137,7 +103,6 @@ int update_job_info(job_info_t job)
 	char *datafile;
 	char path[PATH_MAX];
 	struct passwd *pw;
-	job_pid_t jp;
 
 	datafile = getenv("LDMS_JOBINFO_DATA_FILE");
 	if (datafile == NULL)
@@ -168,16 +133,6 @@ int update_job_info(job_info_t job)
 		rc = fprintf(f, "JOB_USER=\"anonymous\"\n");
 	}
 
-	rc = fprintf(f, "JOB_PIDS=\"");
-	int first = 1;
-	LIST_FOREACH(jp, &job->j_pid_list, entry) {
-		if (!first)
-			rc = fprintf(f, ",");
-		first = 0;
-		rc = fprintf(f, "%ld", jp->j_pid);
-	}
-	rc = fprintf(f, "\"\n");
-
 	fclose(f);
 	return rc;
 }
@@ -191,7 +146,7 @@ slurm_spank_init(spank_t sh, int argc, char *argv[])
 	spank_context_t context;
 	spank_err_t err;
 	char buf[512];
-	job_info_t job;
+	job_info_t job = &the_job;
 	u_int job_id;
 	u_int nnodes;
 
@@ -204,12 +159,6 @@ slurm_spank_init(spank_t sh, int argc, char *argv[])
 		return ESPANK_SUCCESS;
 
 	err = spank_get_item(sh, S_JOB_ID, &job_id);
-	job = find_job(job_id);
-	if (!job) {
-		job = calloc(1, sizeof *job);
-		if (!job)
-			return ESPANK_SUCCESS;
-	}
 	job->j_id = job_id;
 	err = spank_get_item(sh, S_JOB_STEPID, &job->j_step_id);
 	err = spank_get_item(sh, S_JOB_UID, &job->j_user_id);
@@ -223,50 +172,20 @@ slurm_spank_init(spank_t sh, int argc, char *argv[])
 	job->j_status = JOBINFO_JOB_STARTED;
 	job->j_start = time(NULL);
 
-	rbn_init(&job->j_rbn, &job->j_id);
-	rbt_ins(&job_tree, &job->j_rbn);
-
+	update_job_info(job);
 	return ESPANK_SUCCESS;
 }
 
 int
 slurm_spank_task_init(spank_t sh, int argc, char *argv[])
 {
-	pid_t pid;
-	job_info_t job;
-	u_int job_id;
-	spank_err_t err;
-	spank_context_t	context = spank_context();
-
-	if (context != S_CTX_REMOTE)
-		return ESPANK_SUCCESS;
-
-	err = spank_get_item(sh, S_JOB_ID, &job_id);
-	job = find_job(job_id);
-	if (!job)
-		return ESPANK_SUCCESS;
-
-	err = spank_get_item(sh, S_JOB_STEPID, &job->j_step_id);
-	err = spank_get_item(sh, S_TASK_PID, &pid);
-
-	job_pid_t jp = malloc(sizeof *jp);
-	if (!jp)
-		return ESPANK_SUCCESS;
-
-	jp->j_pid = pid;
-	job->j_init_count += 1;
-	LIST_INSERT_HEAD(&job->j_pid_list, jp, entry);
-
-	if (job->j_init_count == job->j_local_task_count) {
-		update_job_info(job);
-	}
 	return ESPANK_SUCCESS;
 }
 
 int
 slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 {
-	return slurm_spank_task_init(sh, argc, argv);
+	return ESPANK_SUCCESS;
 }
 
 /**
@@ -310,10 +229,15 @@ slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 int
 slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 {
+	return ESPANK_SUCCESS;
+}
+
+int slurm_spank_exit(spank_t sh, int argc, char *argv[])
+{
 	spank_err_t err;
 	int val;
 	u_int job_id;
-	job_info_t job;
+	job_info_t job = &the_job;
 
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
@@ -322,35 +246,18 @@ slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 	if (err)
 		return ESPANK_SUCCESS;
 
-	job = find_job(job_id);
-	if (!job)
-		return ESPANK_SUCCESS;
-
 	spank_get_item(sh, S_TASK_EXIT_STATUS, &val);
 	job->j_exit_status = WEXITSTATUS(val);
 	job->j_status = JOBINFO_JOB_EXITED;
 	job->j_end = time(NULL);
  	update_job_info(job);
-	free_job(job);
 	return ESPANK_SUCCESS;
-}
-
-static int job_cmp(void *a, const void *b)
-{
-	return (*(u_int *)a - *(u_int *)b);
 }
 
 static void __attribute__ ((constructor)) jobinfo_init(void)
 {
-	rbt_init(&job_tree, job_cmp);
 }
 
 static void __attribute__ ((destructor)) jobinfo_term(void)
 {
-	struct rbn *rbn;
-	job_info_t job;
-	while (NULL != (rbn = rbt_min(&job_tree))) {
-		job = container_of(rbn, struct job_info_s, j_rbn);
-		free_job(job);
-	}
 }
