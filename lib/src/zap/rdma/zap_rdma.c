@@ -122,6 +122,27 @@
 #define __rdma_context_free( _CTXT ) _rdma_context_free(_CTXT)
 #endif /* CTXT_DEBUG */
 
+#define WR_MSG(wr) ((struct z_rdma_message_hdr *)(wr)->sg_list[0].addr)
+
+#define WC_MSG(wc) ((struct z_rdma_message_hdr *)__rdma_get_context(wc)->rb->data)
+
+/*#define SEND_RECV_DEBUG*/
+#ifdef SEND_RECV_DEBUG
+#define SEND_LOG(rep, wr) \
+	LOG_(rep, "SEND MSG: {credits: %hd, msg_type: %hd, data_len: %d}\n", \
+		   ntohs(WR_MSG(wr)->credits), \
+		   ntohs(WR_MSG(wr)->msg_type), \
+		   (wr)->sg_list[0].length)
+#define RECV_LOG(rep, wc) \
+	LOG_(rep, "RECV MSG: {credits: %d, msg_type: %d, data_len: %d}\n", \
+		   ntohs(WC_MSG(wc)->credits), \
+		   ntohs(WC_MSG(wc)->msg_type), \
+		   wc->byte_len)
+#else
+#define SEND_LOG(rep, mp)
+#define RECV_LOG(rep, mp)
+#endif
+
 LIST_HEAD(ep_list, z_rdma_ep) ep_list;
 
 static int z_rdma_fill_rq(struct z_rdma_ep *ep);
@@ -462,6 +483,7 @@ post_send(struct z_rdma_ep *rep,
 			ctxt->wr.sg_list[0].addr;
 		msg->credits = htons(rep->lcl_rq_credits);
 		rep->lcl_rq_credits = 0;
+		SEND_LOG(rep, &ctxt->wr);
 	}
 
 	rc = ibv_post_send(rep->qp, &ctxt->wr, bad_wr);
@@ -871,6 +893,8 @@ static void process_recv_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
 	pthread_mutex_lock(&rep->credit_lock);
 	rep->rem_rq_credits += ntohs(msg->credits);
 	pthread_mutex_unlock(&rep->credit_lock);
+
+	RECV_LOG(rep, wc);
 
 	/*
 	 * If this was a credit update, there is no data to deliver
@@ -1820,6 +1844,7 @@ static int send_credit_update(struct z_rdma_ep *rep)
 
 	RDMA_SET_CONTEXT(&ctxt->wr, ctxt);
 
+	SEND_LOG(rep, &ctxt->wr);
 	if (ibv_post_send(rep->qp, &ctxt->wr, &bad_wr)) {
 		LOG_(rep,
 		     "%s: sq_credits %d lcl_rq_credits %d "
