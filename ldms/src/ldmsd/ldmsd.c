@@ -78,7 +78,7 @@
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
 #include "config.h"
-#include "../../kernel/kldms/kldms_req.h"
+#include "kldms_req.h"
 
 #include "ovis_event/ovis_event.h"
 
