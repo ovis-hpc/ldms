@@ -23,7 +23,7 @@ ldms_ls_LDFLAGS = $(AM_LDFLAGS) \
 	@LDFLAGS_GETTIME@
 
 ldmsd_SOURCES = ldmsd.c ldmsd_config.c ldmsd_request.c ldmsd_request_util.c \
-	ldmsd_request.h \
+	ldmsd_request.h kldms_req.h \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
 	ldmsd_failover.c ldmsd_group.c
 ldmsd_CFLAGS = $(AM_CFLAGS) -rdynamic
