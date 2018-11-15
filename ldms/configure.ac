@@ -481,29 +481,7 @@ OVIS_EXEC_SCRIPTS(
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/auth/Makefile
-		 src/store/Makefile src/sampler/Makefile
-		 src/store/kokkos/Makefile
-		 src/store/papi/Makefile
-		 src/store/slurm/Makefile
-		 src/sampler/dstat/Makefile
-		 src/sampler/filesingle/Makefile
-		 src/sampler/lustre/Makefile
-		 src/sampler/job_info/Makefile
-		 src/sampler/job_info_slurm/Makefile
-		 src/sampler/llnl/Makefile
-		 src/sampler/shm/Makefile
-		 src/sampler/shm/shm_util/Makefile
-		 src/sampler/shm/mpi_profiler/Makefile
-		 src/sampler/cray_system_sampler/Makefile
-		 src/sampler/aries_mmr/Makefile
-		 src/sampler/aries_mmr/aries_mmr_set_configs/Makefile
-		 src/sampler/slurm/Makefile
-		 src/sampler/spank/Makefile
-		 src/sampler/papi/Makefile
-		 src/sampler/appinfo_lib/Makefile
-		 src/sampler/contrib/Makefile
-		 src/sampler/contrib/ipmireader/Makefile
-		 src/sampler/ibm_occ/Makefile
+		 src/store/Makefile
 		 src/ldmsd/Makefile
 		 scripts/Makefile
 		 src/test/Makefile

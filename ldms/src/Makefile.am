@@ -24,10 +24,6 @@ if ENABLE_STORE
 SUBDIRS += store
 endif
 
-if ENABLE_SAMPLER
-SUBDIRS += sampler
-endif
-
 if ENABLE_LDMS_TEST
 SUBDIRS += test
 endif
