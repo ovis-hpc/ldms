@@ -4,6 +4,7 @@ lib_LTLIBRARIES =
 if ENABLE_SOS
 sbin_PROGRAMS += ldmsd_sos_init
 endif
+pkglib_LTLIBRARIES =
 CORE = ../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I.. @OVIS_LIB_INCDIR_FLAG@
 AM_CFLAGS += \
@@ -45,9 +46,10 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_request.h \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
 	ldmsd_smplr.c \
+	ldmsd_plugin.c \
 	ldmsd_failover.c ldmsd_group.c
 ldmsd_CFLAGS = $(AM_CFLAGS) -rdynamic
-ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
+ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la libsampler.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) \
 	-lzap -lmmalloc -lovis_util -lcoll -ljson_util \
 	-lovis_event -lev -lpthread -lm
@@ -78,6 +80,14 @@ test_plugattr_SOURCES = ldmsd_plugattr.c ldmsd_plugattr.h
 test_plugattr_CFLAGS = -DTEST_PLUGATTR $(AM_CFLAGS)
 test_plugattr_LDADD = -lovis_util -lcoll -lm -lpthread
 test_plugattr_LDFLAGS = $(AM_LDFLAGS)
+
+# sampler plugin
+ldmsdinclude_HEADERS += ldmsd_sampler.h
+libsampler_la_SOURCES = ldmsd_sampler.c
+libsampler_la_LIBADD = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
+		       $(CORE)/libldms.la
+libsampler_la_CFLAGS = $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libsampler.la
 
 # make sym links for aggd scripting support
 install-exec-hook:

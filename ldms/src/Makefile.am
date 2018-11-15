@@ -20,6 +20,10 @@ if ENABLE_LDMSD
 SUBDIRS += ldmsd
 endif
 
+if ENABLE_SAMPLER
+SUBDIRS += ldmsd-samplers
+endif
+
 if ENABLE_STORE
 SUBDIRS += store
 endif

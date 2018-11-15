@@ -482,6 +482,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/auth/Makefile
 		 src/ldmsd/Makefile
+		 src/ldmsd-samplers/Makefile
 		 scripts/Makefile
 		 src/test/Makefile
 		 etc/Makefile
