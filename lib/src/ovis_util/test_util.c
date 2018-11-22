@@ -21,6 +21,37 @@ void test_str_repl_cmd()
 	__test_str_repl_cmd("verb opt=$(hostname)/bal haha");
 }
 
+void test_av()
+{
+	struct attr_value_list *av_list, *kw_list, *cp;
+	av_list = av_new(4);
+	kw_list = av_new(4);
+	char *s = strdup("a=b c=d e f=ga");
+	char *s2 = strdup("a=b c=d e=1 f=g h=i");
+	int rc = tokenize(s, kw_list, av_list);
+	if (rc) {
+		printf("failed tokenize\n");
+		return;
+	}
+	cp = av_copy(av_list);
+	if (!cp) {
+		printf("av copy failed\n");
+		return;
+	}
+	char *p1 = av_to_string(cp, 0);
+	char *p2 = av_to_string(av_list, 0);
+	if (strcmp(p1,p2)) {
+		printf("copy: %s\norig: %s\nnot the same.", p1, p2);
+	} else {
+		printf("copy succeeded\n");
+	}
+	free(p1);
+	free(p2);
+	av_free(cp);
+	av_free(av_list);
+	av_free(kw_list);
+}
+
 int main(int argc, char **argv)
 {
 
@@ -59,6 +90,8 @@ int main(int argc, char **argv)
 	}
 
 	test_str_repl_cmd();
+
+	test_av();
 
 	/* odd cases */
 

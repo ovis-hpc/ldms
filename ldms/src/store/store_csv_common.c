@@ -65,14 +65,6 @@
  * string is "", so assume user meant name=true and absence of name
  * in options defaults to false.
  */
-int parse_bool(struct csv_plugin_static *cps, struct attr_value_list *avl,
-		const char *name, bool *bval)
-{
-	if (!cps)
-		return EINVAL;
-	return parse_bool2(cps->msglog, avl, name, bval, cps->pname);
-}
-
 int parse_bool2(ldmsd_msg_log_f mlg, struct attr_value_list *avl,
 		const char *name, bool *bval, const char *src)
 {
@@ -133,13 +125,8 @@ int replace_string(char **strp, const char *val)
 static struct ovis_notification **get_onph(struct csv_store_handle_common *s_handle,
 	struct csv_plugin_static *cps)
 {
-	if (!s_handle->notify && !cps->notify)
+	if (!s_handle->notify)
 		return NULL;
-	/* clean up case of redundant specification. */
-	if (s_handle->notify && cps->notify &&
-		strcmp(s_handle->notify, cps->notify) == 0) {
-		s_handle->notify = NULL;
-	}
 	uint32_t wto = 6000;
 	unsigned mqs = 1000;
 	unsigned retry = 10;
@@ -158,23 +145,10 @@ static struct ovis_notification **get_onph(struct csv_store_handle_common *s_han
 			cps->msglog(LDMSD_LDEBUG,"Create fail for sh.onp %s\n",
 				s_handle->notify);
 	}
-	if (cps->notify && !cps->onp) {
-		bool fifo = cps->notify_isfifo;
-		cps->onp = ovis_notification_open(cps->notify,
-				wto, mqs, retry,
-				(ovis_notification_log_fn)cps->msglog,
-				perm, fifo);
-		if (cps->onp)
-			cps->msglog(LDMSD_LDEBUG,"Created onp %s\n",
-				cps->notify);
-		else
-			cps->msglog(LDMSD_LDEBUG,"Create fail for cps.onp %s\n",
-				cps->notify);
-	}
 	if (s_handle->onp)
 		return &(s_handle->onp);
 	else
-		return &(cps->onp);
+		return NULL;
 }
 
 void notify_output(const char *event, const char *name, const char *ftype,
@@ -182,7 +156,7 @@ void notify_output(const char *event, const char *name, const char *ftype,
 	const char * container, const char *schema) {
 	if (!cps)
 		return;
-	if (s_handle && !s_handle->notify && !cps->notify)
+	if (s_handle && !s_handle->notify)
 		return;
 	if (!event || !name || !ftype || !s_handle ||
 		!container || !schema) {
@@ -231,7 +205,7 @@ void notify_output(const char *event, const char *name, const char *ftype,
 	int rc = ovis_notification_add(*onph, msg);
 	switch (rc) {
 	case 0:
-		cps->msglog(LDMSD_LDEBUG,"Notification of %s\n", msg); //
+		cps->msglog(LDMSD_LDEBUG,"Notification of %s\n", msg);
 		break;
 	case EINVAL:
 		cps->msglog(LDMSD_LERROR,"Notification error by %s for %s: %s\n",
@@ -295,9 +269,7 @@ int create_outdir(const char *path, struct csv_store_handle_common *s_handle,
 		cps->msglog(LDMSD_LERROR,"create_outdir: NULL store handle received.\n");
 		return EINVAL;
 	}
-	const char *container = s_handle->container;
-	const char *schema = s_handle->schema;
-	mode_t mode = (mode_t) (s_handle->create_perm ? s_handle->create_perm : cps->create_perm);
+	mode_t mode = (mode_t) s_handle->create_perm;
 
 	int err = 0;
 	if (mode > 0) {
@@ -313,7 +285,7 @@ int create_outdir(const char *path, struct csv_store_handle_common *s_handle,
 		/* default 750 */
 		mode = S_IXGRP | S_IXUSR | S_IRGRP | S_IRUSR |S_IWUSR;
 	}
-	cps->msglog(LDMSD_LDEBUG,"f_mkdir_p %o %s\n", (int)mode, path);
+	/* cps->msglog(LDMSD_LDEBUG,"f_mkdir_p %o %s\n", (int)mode, path); */
 	err = f_mkdir_p(path, mode);
 	if (err) {
 		err = errno;
@@ -328,7 +300,7 @@ int create_outdir(const char *path, struct csv_store_handle_common *s_handle,
 		}
 	}
 
-	cps->msglog(LDMSD_LDEBUG,"create_outdir: f_mkdir+p(%s, %o)\n", path, mode);
+	/* cps->msglog(LDMSD_LDEBUG,"create_outdir: f_mkdir+p(%s, %o)\n", path, mode); */
 	return 0;
 #undef EBSIZE
 }
@@ -347,10 +319,9 @@ void rename_output(const char *name,
 	}
 	const char *container = s_handle->container;
 	const char *schema = s_handle->schema;
-	if (s_handle && !s_handle->rename_template && !cps->rename_template)
+	if (s_handle && !s_handle->rename_template)
 		return;
-	char *rt = s_handle->rename_template ? s_handle->rename_template :
-		cps->rename_template;
+	char *rt = s_handle->rename_template;
 	if (!rt || !name || !ftype || !container || !schema) {
 		cps->msglog(LDMSD_LDEBUG,"Invalid argument in rename_output"
 				"(%s, %s, %s, %s, %s, %p, %p)\n",
@@ -362,7 +333,7 @@ void rename_output(const char *name,
 				s_handle, cps);
 		return;
 	}
-	mode_t mode = (mode_t) (s_handle->rename_perm ? s_handle->rename_perm : cps->rename_perm);
+	mode_t mode = (mode_t) s_handle->rename_perm;
 	if (mode > 0) {
 		errno = 0;
 		int merr = chmod(name, mode);
@@ -374,8 +345,8 @@ void rename_output(const char *name,
 		}
 	}
 
-	gid_t newgid = s_handle->rename_gid != (gid_t)-1 ? s_handle->rename_gid : cps->rename_gid;
-	uid_t newuid = s_handle->rename_uid != (uid_t)-1 ? s_handle->rename_uid : cps->rename_uid;
+	gid_t newgid = s_handle->rename_gid;
+	uid_t newuid = s_handle->rename_uid;
 	if (newuid != (uid_t)-1 || newgid != (gid_t)-1)
 	{
 		errno = 0;
@@ -575,7 +546,7 @@ void ch_output(FILE *f, const char *name,
 	}
 	int fd = fileno(f);
 	const mode_t ex = S_IXUSR | S_IXGRP | S_IXOTH;
-	mode_t mode = (mode_t) (s_handle->create_perm ? s_handle->create_perm : cps->create_perm);
+	mode_t mode = (mode_t) s_handle->create_perm;
 	mode &= 0777;
 	mode &= ~ex;
 	if (mode > 0) {
@@ -589,8 +560,8 @@ void ch_output(FILE *f, const char *name,
 		}
 	}
 
-	gid_t newgid = s_handle->create_gid != (gid_t)-1 ? s_handle->create_gid : cps->create_gid;
-	uid_t newuid = s_handle->create_uid != (uid_t)-1 ? s_handle->create_uid : cps->create_uid;
+	gid_t newgid = s_handle->create_gid;
+	uid_t newuid = s_handle->create_uid;
 	if (newuid != (uid_t)-1 || newgid != (gid_t)-1)
 	{
 		errno = 0;
@@ -606,6 +577,7 @@ void ch_output(FILE *f, const char *name,
 	}
 }
 
+#if 0 /* swap_data def */
 struct swap_data {
 	size_t nstorekeys;
 	size_t usedkeys;
@@ -613,75 +585,138 @@ struct swap_data {
 	struct old_file *old;
 	struct csv_plugin_static *cps;
 };
+#endif
 
-void csv_update_handle_common(struct csv_store_handle_common *h, struct storek_common *s, struct csv_plugin_static *cps)
-{
-	if (!h || !cps)
-		return;
-	if (s) {
-		h->notify_isfifo = s->notify_isfifo;
-		h->rename_uid = s->rename_uid;
-		h->rename_gid = s->rename_gid;
-		h->rename_perm = s->rename_perm;
-		h->create_uid = s->create_uid;
-		h->create_gid = s->create_gid;
-		h->create_perm = s->create_perm;
+static int config_buffer(const char *bs, const char *bt, int *rbs, int *rbt, const char *k) {
+	int tempbs;
+	int tempbt;
+	if (!rbs || !rbt) {
+		ldmsd_log(LDMSD_LERROR,
+		       "%s: config_buffer: bad arguments\n", __FILE__);
+		return EINVAL;
 	}
+
+	if (!bs && !bt){
+		*rbs = 1;
+		*rbt = 0;
+		return 0;
+	}
+
+	if (!bs && bt){
+		ldmsd_log(LDMSD_LERROR,
+		       "%s: Cannot have buffer type without buffer for %s\n",
+		       __FILE__, k);
+		return EINVAL;
+	}
+
+	tempbs = atoi(bs);
+	if (tempbs < 0){
+		ldmsd_log(LDMSD_LERROR,
+		       "%s: Bad val for buffer %d of %s\n",
+		       __FILE__, tempbs, k);
+		return EINVAL;
+	}
+	if ((tempbs == 0) || (tempbs == 1)){
+		if (bt){
+			ldmsd_log(LDMSD_LERROR,
+			       "%s: Cannot have no/autobuffer with buffer type for %s\n",
+			       __FILE__, k);
+			return EINVAL;
+		} else {
+			*rbs = tempbs;
+			*rbt = 0;
+			return 0;
+		}
+	}
+
+	if (!bt){
+		ldmsd_log(LDMSD_LERROR,
+		       "%s: Cannot have buffer size with no buffer type for %s\n",
+		       __FILE__,  k);
+		return EINVAL;
+	}
+
+	tempbt = atoi(bt);
+	if ((tempbt != 3) && (tempbt != 4)){
+		ldmsd_log(LDMSD_LERROR, "%s: Invalid buffer type %d for %s\n",
+		       __FILE__, tempbt, k);
+		return EINVAL;
+	}
+
+	if (tempbt == 4){
+		//adjust bs for kb
+		tempbs *= 1024;
+	}
+
+	*rbs = tempbs;
+	*rbt = tempbt;
+
+	return 0;
 }
 
-
 /**
- * configurations for a container+schema that can override the vals in config_init
- * Locking and cfgstate are caller's job.
+ * configurations for default (plugin name) and instances.
  */
-int config_custom_common(struct attr_value_list *kwl, struct attr_value_list *avl, struct storek_common *sk, struct csv_plugin_static *cps)
+int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps)
 {
-	//defaults to init
-	sk->notify_isfifo = cps->notify_isfifo;
-	sk->rename_uid = cps->rename_uid;
-	sk->rename_gid = cps->rename_gid;
-	sk->rename_perm = cps->rename_perm;
-	sk->create_uid = cps->create_uid;
-	sk->create_gid = cps->create_gid;
-	sk->create_perm = cps->create_perm;
+	if (!cps || !pa)
+		return EINVAL;
 
 	int rc = 0;
-	char *notify =  av_value(avl, "notify");
+	const char *k = s_handle->store_key;
+	const char *notify;
+	notify = ldmsd_plugattr_value(pa, "notify", k);
 	if (notify && strlen(notify) >= 2 ) {
 		char *tmp1 = strdup(notify);
 		if (!tmp1) {
 			rc = ENOMEM;
+			return rc;
 		} else {
-			sk->notify = tmp1;
-			rc = parse_bool(cps, avl, "notify_isfifo",
-				&(sk->notify_isfifo));
+			s_handle->notify = tmp1;
 		}
 	} else {
 		if (notify) {
-			cps->msglog(LDMSD_LERROR, "%s: notify "
+			cps->msglog(LDMSD_LERROR, "%s %s: notify "
 				"must be specificed correctly. "
-				"got instead %s\n", cps->pname,
-				notify ) ;
+				"got instead %s\n", cps->pname, k, notify);
 			rc = EINVAL;
-		} else {
-			if (cps->notify) {
-				sk->notify = strdup(cps->notify);
-				if (!sk->notify) {
-					rc = errno;
-					cps->msglog(LDMSD_LERROR,
-						"%s: config_custom_common out of memory\n",
-						cps->pname);
-				}
-			}
+			return rc;
 		}
 	}
-	char *rename_template =  av_value(avl, "rename_template");
+	if (!rc) {
+		s_handle->notify_isfifo =
+			ldmsd_plugattr_bool(pa, "notify_isfifo", k);
+		if (s_handle->notify_isfifo == -2)
+			s_handle->notify_isfifo = 0;
+		if (s_handle->notify_isfifo == -1) {
+			cps->msglog(LDMSD_LERROR, "%s:%s: notify_isfifo cannot be parsed.\n", cps->pname, k);
+			return EINVAL;
+		}
+	}
+
+	/* -1 means do not change */
+	s_handle->create_uid = (uid_t)-1;
+	s_handle->create_gid = (gid_t)-1;
+	s_handle->rename_uid = (uid_t)-1;
+	s_handle->rename_gid = (gid_t)-1;
+
+	s_handle->altheader = ldmsd_plugattr_bool(pa, "altheader", k);
+	if (s_handle->altheader == -2)
+		s_handle->altheader = 0;
+	if (s_handle->altheader == -1) {
+		cps->msglog(LDMSD_LERROR,"open_store_common altheader= cannot be parsed\n");
+		return EINVAL;
+	}
+
+	const char *rename_template =
+		ldmsd_plugattr_value(pa, "rename_template", k);
 	if (rename_template && strlen(rename_template) >= 2 ) {
 		char *tmp1 = strdup(rename_template);
 		if (!tmp1) {
 			rc = ENOMEM;
+			return rc;
 		} else {
-			sk->rename_template = tmp1;
+			s_handle->rename_template = tmp1;
 		}
 	} else {
 		if (rename_template) {
@@ -690,274 +725,115 @@ int config_custom_common(struct attr_value_list *kwl, struct attr_value_list *av
 				"got instead %s\n", cps->pname,
 				rename_template ) ;
 			rc = EINVAL;
-		} else {
-			if (cps->rename_template) {
-				sk->rename_template = strdup(cps->rename_template);
-				if (!sk->rename_template) {
-					rc = errno;
-					cps->msglog(LDMSD_LERROR,
-						"%s: config_custom_common out of memory\n",
-						cps->pname);
-				}
-			}
+			return rc;
 		}
 	}
 
-	char * rename_uval = av_value(avl, "rename_uid");
-	char * rename_gval = av_value(avl, "rename_gid");
-	char * rename_pval = av_value(avl, "rename_perm");
-	if (rename_uval) {
-		long long uid = atoll(rename_uval);
-		if (uid < 0 || uid > UINT_MAX) {
-			rc = EINVAL;
-			sk->rename_uid = (uid_t)-1;
-			cps->msglog(LDMSD_LERROR,
-				"%s: config_custom_common ignoring bad rename_uid=%s\n",
-				cps->pname, rename_uval);
-		} else {
-			sk->rename_uid = (uid_t)uid;
-		}
+	int32_t uid, gid, cvt;
+	cvt = ldmsd_plugattr_s32(pa, "rename_uid", k, &uid);
+	if (!cvt) {
+		if (uid >= 0)
+			s_handle->rename_uid = (uid_t)uid;
+		else
+			cvt = ERANGE;
 	}
+	if (cvt == ERANGE || cvt ==  ENOTSUP) {
+		rc = cvt;
+		s_handle->rename_uid = (uid_t)-1;
+		cps->msglog(LDMSD_LERROR,
+			"%s %s: open_store_common rename_uid= out of range\n",
+			cps->pname, k);
+		return rc;
+	} 
 
-	if (rename_gval) {
-		long long gid = atoll(rename_gval);
-		if (gid < 0 || gid > UINT_MAX) {
-			rc = EINVAL;
-			sk->rename_gid = (gid_t)-1;
-			cps->msglog(LDMSD_LERROR,
-				"%s: config_custom_common ignoring bad rename_gid=%s\n",
-				cps->pname, rename_gval);
-		} else {
-			sk->rename_gid = (gid_t)gid;
-		}
+	cvt = ldmsd_plugattr_s32(pa, "rename_gid", k, &gid);
+	if (!cvt) {
+	       	if (gid >= 0)
+			s_handle->rename_gid = (uid_t)gid;
+		else
+			cvt = ERANGE;
 	}
+	if (cvt == ERANGE || cvt ==  ENOTSUP) {
+		rc = cvt;
+		s_handle->rename_gid = (gid_t)-1;
+		cps->msglog(LDMSD_LERROR,
+			"%s %s: open_store_common rename_gid= out of range\n",
+			cps->pname, k);
+		return rc;
+	} 
 
+	const char * rename_pval = ldmsd_plugattr_value(pa, "rename_perm", k);
 	if (rename_pval) {
 		int perm = strtol(rename_pval, NULL, 8);
-		if (perm < 1 || perm > 4777) {
+		if (perm < 1 || perm > 04777) {
 			rc = EINVAL;
-			sk->rename_perm = 0;
+			s_handle->rename_perm = 0;
 			cps->msglog(LDMSD_LERROR,
-				"%s: config_custom_common ignoring bad rename_perm=%s\n",
-				cps->pname, rename_pval);
+				"%s %s: open_store_common ignoring bad rename_perm=%s\n",
+				cps->pname, k, rename_pval);
+			return rc;
 		} else {
-			sk->rename_perm = perm;
+			s_handle->rename_perm = perm;
 		}
 	}
 
-	char * create_uval = av_value(avl, "create_uid");
-	char * create_gval = av_value(avl, "create_gid");
-	char * create_pval = av_value(avl, "create_perm");
-	if (create_uval) {
-		long long uid = atoll(create_uval);
-		if (uid < 0 || uid > UINT_MAX) {
-			rc = EINVAL;
-			sk->create_uid = (uid_t)-1;
-			cps->msglog(LDMSD_LERROR,
-				"%s: config_custom_common ignoring bad create_uid=%s\n",
-				cps->pname, create_uval);
-		} else {
-			sk->create_uid = (uid_t)uid;
-			cps->msglog(LDMSD_LDEBUG,
-				"%s: config_custom_common create_uid=%s\n",
-				cps->pname, create_uval);
-		}
+	cvt = ldmsd_plugattr_s32(pa, "create_uid", k, &uid);
+	if (!cvt) {
+		if (uid >= 0)
+			s_handle->create_uid = (uid_t)uid;
+		else
+			cvt = ERANGE;
 	}
+	if (cvt == ERANGE || cvt ==  ENOTSUP) {
+		rc = cvt;
+		s_handle->create_uid = (uid_t)-1;
+		cps->msglog(LDMSD_LERROR,
+			"%s %s: open_store_common create_uid= out of range\n",
+			cps->pname, k);
+		return rc;
+	} 
 
-	if (create_gval) {
-		long long gid = atoll(create_gval);
-		if (gid < 0 || gid > UINT_MAX) {
-			rc = EINVAL;
-			sk->create_gid = (gid_t)-1;
-			cps->msglog(LDMSD_LERROR,
-				"%s: config_custom_common ignoring bad create_gid=%s\n",
-				cps->pname, create_gval);
-		} else {
-			sk->create_gid = (gid_t)gid;
-			cps->msglog(LDMSD_LDEBUG,
-				"%s: config_custom_common create_gid=%s\n",
-				cps->pname, create_gval);
-		}
+	cvt = ldmsd_plugattr_s32(pa, "create_gid", k, &gid);
+	if (!cvt) {
+		if (gid >= 0)
+			s_handle->create_gid = (uid_t)gid;
+		else
+			cvt = ERANGE;
 	}
+	if (cvt == ERANGE || cvt ==  ENOTSUP) {
+		rc = cvt;
+		s_handle->create_gid = (gid_t)-1;
+		cps->msglog(LDMSD_LERROR,
+			"%s %s: open_store_common create_gid= out of range\n",
+			cps->pname, k);
+		return rc;
+	} 
 
+	const char * create_pval = ldmsd_plugattr_value(pa, "create_perm", k);
 	if (create_pval) {
 		int perm = strtol(create_pval, NULL, 8);
 		if (perm < 1 || perm > 04777) {
 			rc = EINVAL;
-			sk->create_perm = 0;
+			s_handle->create_perm = 0;
 			cps->msglog(LDMSD_LERROR,
-				"%s: config_custom_common ignoring bad create_perm=%s\n",
-				cps->pname, create_pval);
+				"%s %s: open_store_common ignoring bad create_perm=%s\n",
+				cps->pname, k, create_pval);
+			return rc;
 		} else {
-			sk->create_perm = perm;
+			s_handle->create_perm = perm;
 		}
 	}
 
-	return rc;
-}
-
-
-void clear_storek_common(struct storek_common *s)
-{
-	if (!s)
-		return;
-	free(s->notify);
-	s->notify = NULL;
-	free(s->rename_template);
-	s->rename_template = NULL;
-}
-
-/**
- * configurations for the whole store. these will be defaults if not overridden.
- * some implementation details are for backwards compatibility
- */
-int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg, struct csv_plugin_static *cps)
-{
-	(void)arg;
-	if (!cps || !avl)
-		return EINVAL;
-
-	int rc = 0;
-	char *notify =  av_value(avl, "notify");
-	if (notify && strlen(notify) >= 2 ) {
-		char *tmp1 = strdup(notify);
-		if (!tmp1) {
-			rc = ENOMEM;
-		} else {
-			cps->notify = tmp1;
-		}
-	} else {
-		if (notify) {
-			cps->msglog(LDMSD_LERROR, "%s: notify "
-				"must be specificed correctly. "
-				"got instead %s\n", cps->pname,
-				notify ) ;
-			rc = EINVAL;
-		}
+	const char *value = ldmsd_plugattr_value(pa, "buffer", k);
+	const char *bvalue = ldmsd_plugattr_value(pa, "buffertype", k);
+	int buf = 1, buft = 0;
+	rc = config_buffer(value, bvalue, &buf, &buft, k);
+	if (rc){
+		return rc;
 	}
-	if (!rc)
-		rc = parse_bool(cps, avl, "notify_isfifo",
-			&(cps->notify_isfifo));
+	s_handle->buffer_sz = buf;
+	s_handle->buffer_type = buft;
 
-	char *rename_template =  av_value(avl, "rename_template");
-	if (rename_template && strlen(rename_template) >= 2 ) {
-		char *tmp1 = strdup(rename_template);
-		if (!tmp1) {
-			rc = ENOMEM;
-		} else {
-			cps->rename_template = tmp1;
-		}
-	} else {
-		if (rename_template) {
-			cps->msglog(LDMSD_LERROR, "%s: rename_template "
-				"must be specificed correctly. "
-				"got instead %s\n", cps->pname,
-				rename_template ) ;
-			rc = EINVAL;
-		}
-	}
-
-	char * rename_uval = av_value(avl, "rename_uid");
-	char * rename_gval = av_value(avl, "rename_gid");
-	char * rename_pval = av_value(avl, "rename_perm");
-	if (!rename_uval) {
-		cps->rename_uid = (uid_t)-1;
-	} else {
-		long long uid = atoll(rename_uval);
-		if (uid < 0 || uid > UINT_MAX) {
-			rc = EINVAL;
-			cps->rename_uid = (uid_t)-1;
-			cps->msglog(LDMSD_LERROR,
-				"%s: config_init_common ignoring bad rename_uid=%s\n",
-				cps->pname, rename_uval);
-		} else {
-			cps->rename_uid = (uid_t)uid;
-		}
-	}
-
-	if (!rename_gval) {
-		cps->rename_gid = (gid_t)-1;
-	} else {
-		long long gid = atoll(rename_gval);
-		if (gid < 0 || gid > UINT_MAX) {
-			rc = EINVAL;
-			cps->rename_gid = (gid_t)-1;
-			cps->msglog(LDMSD_LERROR,
-				"%s: config_init_common ignoring bad rename_gid=%s\n",
-				cps->pname, rename_gval);
-		} else {
-			cps->rename_gid = (gid_t)gid;
-		}
-	}
-
-	if (!rename_pval) {
-		cps->rename_perm = 0;
-	} else {
-		int perm = strtol(rename_pval, NULL, 8);
-		if (perm < 1 || perm > 4777) {
-			rc = EINVAL;
-			cps->rename_perm = 0;
-			cps->msglog(LDMSD_LERROR,
-				"%s: config_init_common ignoring bad rename_perm=%s\n",
-				cps->pname, rename_pval);
-		} else {
-			cps->rename_perm = perm;
-		}
-	}
-
-	char * create_uval = av_value(avl, "create_uid");
-	char * create_gval = av_value(avl, "create_gid");
-	char * create_pval = av_value(avl, "create_perm");
-	if (!create_uval) {
-		cps->create_uid = (uid_t)-1;
-	} else {
-		long long uid = atoll(create_uval);
-		if (uid < 0 || uid > UINT_MAX) {
-			rc = EINVAL;
-			cps->create_uid = (uid_t)-1;
-			cps->msglog(LDMSD_LERROR,
-				"%s: config_init_common ignoring bad create_uid=%s\n",
-				cps->pname, create_uval);
-		} else {
-			cps->create_uid = (uid_t)uid;
-			cps->msglog(LDMSD_LDEBUG,
-				"%s: config_init_common create_uid=%s %lu\n",
-				cps->pname, create_uval, cps->create_uid);
-		}
-	}
-
-	if (!create_gval) {
-		cps->create_gid = (gid_t)-1;
-	} else {
-		long long gid = atoll(create_gval);
-		if (gid < 0 || gid > UINT_MAX) {
-			rc = EINVAL;
-			cps->create_gid = (gid_t)-1;
-			cps->msglog(LDMSD_LERROR,
-				"%s: config_init_common ignoring bad create_gid=%s\n",
-				cps->pname, create_gval);
-		} else {
-			cps->create_gid = (gid_t)gid;
-			cps->msglog(LDMSD_LDEBUG,
-				"%s: config_init_common create_gid=%s %lu\n",
-				cps->pname, create_gval, cps->create_gid);
-		}
-	}
-
-	if (!create_pval) {
-		cps->create_perm = 0;
-	} else {
-		int perm = strtol(create_pval, NULL, 8);
-		if (perm < 1 || perm > 04777) {
-			rc = EINVAL;
-			cps->create_perm = 0;
-			cps->msglog(LDMSD_LERROR,
-				"%s: config_init_common ignoring bad create_perm=%s\n",
-				cps->pname, create_pval);
-		} else {
-			cps->create_perm = perm;
-		}
-	}
 	return rc;
 }
 
@@ -979,21 +855,12 @@ void close_store_common(struct csv_store_handle_common *s_handle, struct csv_plu
 	replace_string(&(s_handle->headerfilename),  NULL);
 	/* free(s_handle->notify); skip. handle notify is always copy of pg or sk notify or null */
 	s_handle->notify = NULL;
+	free(s_handle->rename_template);
 	s_handle->rename_template = NULL;
 }
 
 void print_csv_plugin_common(struct csv_plugin_static *cps)
 {
-	cps->msglog(LDMSD_LALL, "%s: notify: %s\n", cps->pname, cps->notify);
-	cps->msglog(LDMSD_LALL, "%s: notify is fifo: %s\n", cps->pname, cps->notify_isfifo ?
-		"true" : "false");
-	cps->msglog(LDMSD_LALL, "%s: rename_template: %s\n", cps->pname, cps->rename_template);
-	cps->msglog(LDMSD_LALL, "%s: rename_uid: %" PRIu32 "\n", cps->pname, cps->rename_uid);
-	cps->msglog(LDMSD_LALL, "%s: rename_gid: %" PRIu32 "\n", cps->pname, cps->rename_gid);
-	cps->msglog(LDMSD_LALL, "%s: rename_perm: %o\n", cps->pname, cps->rename_perm);
-	cps->msglog(LDMSD_LALL, "%s: create_uid: %" PRIu32 "\n", cps->pname, cps->create_uid);
-	cps->msglog(LDMSD_LALL, "%s: create_gid: %" PRIu32 "\n", cps->pname, cps->create_gid);
-	cps->msglog(LDMSD_LALL, "%s: create_perm: %o\n", cps->pname, cps->create_perm);
 	cps->msglog(LDMSD_LALL, "%s: onp: %p\n", cps->pname, cps->onp);
 }
 
@@ -1011,6 +878,10 @@ void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv
 	p->msglog(LDMSD_LALL, "%s: notify:%s\n", p->pname, h->notify);
 	p->msglog(LDMSD_LALL, "%s: notify_isfifo:%s\n", p->pname, h->notify_isfifo ?
 			                "true" : "false");
+	p->msglog(LDMSD_LALL, "%s: altheader:%s\n", p->pname, h->altheader ?
+			                "true" : "false");
+	p->msglog(LDMSD_LALL, "%s: buffertype: %d\n", p->pname, h->buffer_type);
+	p->msglog(LDMSD_LALL, "%s: buffer: %d\n", p->pname, h->buffer_sz);
 	p->msglog(LDMSD_LALL, "%s: rename_template:%s\n", p->pname, h->rename_template);
 	p->msglog(LDMSD_LALL, "%s: rename_uid: %" PRIu32 "\n", p->pname, h->rename_uid);
 	p->msglog(LDMSD_LALL, "%s: rename_gid: %" PRIu32 "\n", p->pname, h->rename_gid);
