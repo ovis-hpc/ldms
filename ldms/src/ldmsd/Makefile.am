@@ -1,4 +1,6 @@
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
+check_PROGRAMS = test_plugattr
+lib_LTLIBRARIES = 
 if ENABLE_SOS
 sbin_PROGRAMS += ldmsd_sos_init
 endif
@@ -50,7 +52,19 @@ ldmsd_sos_init_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
 ldmsd_sos_init_LDADD = -lsos -lods -lpthread @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@
 ldmsd_sos_init_LDFLAGS = $(AM_LDFLAGS)
 
+lib_LTLIBRARIES += libplugattr.la
+libplugattr_la_SOURCES = ldmsd_plugattr.c ldmsd_plugattr.h
+libplugattr_la_LIBADD = -lovis_util -lcoll
+
+test_plugattr_SOURCES = ldmsd_plugattr.c ldmsd_plugattr.h
+test_plugattr_CFLAGS = -DTEST_PLUGATTR $(AM_CFLAGS)
+test_plugattr_LDADD = -lovis_util -lcoll -lm -lpthread
+test_plugattr_LDFLAGS = $(AM_LDFLAGS)
+
 # make sym links for aggd scripting support
 install-exec-hook:
 	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsd ldms-aggd
 	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsctl ldmsaggctl
+
+check-local:
+	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) ./test_plugattr $(srcdir)/input/test_plugattr.txt

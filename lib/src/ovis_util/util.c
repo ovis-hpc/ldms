@@ -325,6 +325,27 @@ char *av_value(struct attr_value_list *av_list, const char *name)
 	return NULL;
 }
 
+int av_idx_of(const struct attr_value_list *av_list, const char *name)
+{
+	if (!av_list)
+		return -1;
+	int i;
+	int k = -1;
+	for (i = 0; i < av_list->count; i++) {
+		if (strcmp(name, av_list->list[i].name))
+			continue;
+		if (k == -1) {
+			k = i;
+			continue;
+		}
+		if (k < 0)
+			k--;
+		else
+			k = -2;
+	}
+	return k;
+}
+
 char *av_value_at_idx(struct attr_value_list *av_list, int i)
 {
 	if (i < av_list->count) {
@@ -406,6 +427,56 @@ struct attr_value_list *av_new(size_t size)
 	return avl;
 }
 
+
+/* copy s into string list. return copy, or null if malloc fails. */
+static char *copy_string(struct attr_value_list *av_list, const char *s)
+{
+	char *str = strdup(s);
+	if (!str)
+		return NULL;
+	string_ref_t ref = malloc(sizeof(*ref));
+	if (!ref) {
+		free(str);
+		return NULL;
+	}
+	ref->str = str;
+	LIST_INSERT_HEAD(&av_list->strings, ref, entry);
+	return str;
+}
+
+struct attr_value_list *av_copy(struct attr_value_list *src)
+{
+	struct attr_value *av;
+	int pos = 0;
+	if (!src)
+		return NULL;
+	struct attr_value_list *r = av_new(src->size);
+	for ( ; pos < src->count; pos++) {
+		char *name = src->list[pos].name;
+		char *value = src->list[pos].value;
+		av = &(r->list[pos]);
+		if (value) {
+			char *sv = copy_string(r, value);
+			if (!sv) {
+				errno = ENOMEM;
+				goto err;
+			}
+			av->value = sv;
+		}
+		char *sn = copy_string(r, name);
+		av->name = sn;
+		if (!sn) {
+			errno = ENOMEM;
+			goto err;
+		}
+	}
+	r->count = src->count;
+	return r;
+err:
+	av_free(r);
+	return NULL;
+}
+
 char *av_to_string(struct attr_value_list *av, int replacements)
 {
 	if (!av)
@@ -415,14 +486,17 @@ char *av_to_string(struct attr_value_list *av, int replacements)
 	dsinit(ds);
 	if (av->count < 1)
 		dscat(ds, "(empty)");
-	if (replacements) {
+	if (replacements & AV_EXPAND) {
 		for (i=0; i < av->count; i++) {
 			dscat(ds, av->list[i].name);
 			if ( (val = av_value_at_idx(av, i)) != NULL) {
 				dscat(ds, "=");
 				dscat(ds, val);
 			}
-			dscat(ds, "\n");
+			if (replacements & AV_NL)
+				dscat(ds, "\n");
+			else
+				dscat(ds, " ");
 		}
 	} else {
 		for (i=0; i < av->count; i++) {
@@ -431,7 +505,10 @@ char *av_to_string(struct attr_value_list *av, int replacements)
 				dscat(ds, "=");
 				dscat(ds, av->list[i].value);
 			}
-			dscat(ds, "\n");
+			if (replacements & AV_NL)
+				dscat(ds, "\n");
+			else
+				dscat(ds, " ");
 		}
 	}
 	val = dsdone(ds);

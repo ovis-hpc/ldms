@@ -65,6 +65,7 @@
 #include <coll/idx.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plugattr.h"
 #include "store_common.h"
 #include "store_csv_common.h"
 
@@ -79,35 +80,23 @@
 
 typedef enum{CSV_CFGINIT_PRE, CSV_CFGINIT_IN, CSV_CFGINIT_DONE, CSV_CFGINIT_FAILED} csvcfg_state;
 
+#if 0
 /* override for special keys. This may get deprecated. */
 struct storek{
 	char* key;
 	STOREK_COMMON;
-	int altheader;
 	int udata;
-	int buffer_type; /* In case some metrics store at a different rate */
-	int buffer_sz;
 };
-
+#endif
 #define PNAME "store_csv"
 
-static int buffer_type = 1; /* autobuffering */
-static int buffer_sz = 0;
 static csvcfg_state cfgstate = CSV_CFGINIT_PRE;
-#define MAX_ROLLOVER_STORE_KEYS 20
-static idx_t store_idx; //NOTE: this doesnt have an iterator. Hence storekeys.
-static char* storekeys[MAX_ROLLOVER_STORE_KEYS]; //FIXME: make this variable size
-static int nstorekeys = 0;
-static struct storek specialkeys[MAX_ROLLOVER_STORE_KEYS]; //FIXME: make this variable size
-static int nspecialkeys = 0;
-static char *root_path;
-static int altheader;
-static int udata;
-static bool ietfcsv = false; /* we will add an option like v2 enabling this soon. */
+static idx_t store_idx;
+struct plugattr *pa = NULL; /* plugin attributes from config */
 static int rollover;
 static int rollagain;
 /** rolltype determines how to interpret rollover values > 0. */
-static int rolltype;
+static int rolltype = -1;
 /** ROLLTYPES documents rolltype and is used in help output. Also used for buffering */
 #define ROLLTYPES \
 "                     1: wake approximately every rollover seconds and roll.\n" \
@@ -153,13 +142,10 @@ struct csv_store_handle {
 	FILE *file;
 	FILE *headerfile;
 	printheader_t printheader;
-	int altheader;
 	int udata;
-	char *store_key; /* this is the container+schema */
+	bool ietfcsv; /* we will add an option like v2 enabling this soon. */
 	pthread_mutex_t lock;
 	void *ucontext;
-	int buffer_type;
-	int buffer_sz;
 	bool conflict_warned;
 	int64_t lastflush;
 	int64_t store_count;
@@ -169,27 +155,12 @@ struct csv_store_handle {
 
 static pthread_mutex_t cfg_lock;
 
-struct kw {
-	char *token;
-	int (*action)(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg);
-};
-
-static int kw_comparator(const void *a, const void *b)
-{
-	struct kw *_a = (struct kw *)a;
-	struct kw *_b = (struct kw *)b;
-	return strcmp(_a->token, _b->token);
-}
-
-static int config_buffer(char *bs, char *bt, int *rbs, int *rbt);
-
 static char* allocStoreKey(const char* container, const char* schema){
 
   if ((container == NULL) || (schema == NULL) ||
       (strlen(container) == 0) ||
       (strlen(schema) == 0)){
-    msglog(LDMSD_LERROR, "%s: container or schema null or empty. cannot create key\n",
-	   __FILE__);
+    msglog(LDMSD_LERROR, PNAME ": container or schema null or empty. cannot create key\n");
     return NULL;
   }
 
@@ -202,6 +173,151 @@ static char* allocStoreKey(const char* container, const char* schema){
   return path;
 }
 
+
+struct roll_cb_arg {
+	struct csv_plugin_static *cps;
+	time_t appx;
+};
+
+static void roll_cb(void *obj, void *cb_arg)
+{
+	if (!obj || !cb_arg)
+		return;
+	struct csv_store_handle *s_handle = (struct csv_store_handle *)obj;
+	struct roll_cb_arg * args = (struct roll_cb_arg *)cb_arg;
+	time_t appx = args->appx;
+	struct csv_plugin_static *cps = args->cps;
+
+	FILE* nhfp = NULL;
+	FILE* nfp = NULL;
+	char tmp_path[PATH_MAX];
+	char tmp_headerpath[PATH_MAX];
+	char tp1[PATH_MAX];
+	char tp2[PATH_MAX];
+	struct roll_common roc = { tp1, tp2 };
+	//if we've got here then we've called new_store, but it might be closed
+	pthread_mutex_lock(&s_handle->lock);
+	switch (rolltype) {
+	case 1:
+	case 2:
+	case 5:
+		break;
+	case 3:
+		if (s_handle->store_count < rollover)  {
+			goto out;
+		} else {
+			s_handle->store_count = 0;
+			s_handle->lastflush = 0;
+		}
+		break;
+	case 4:
+		if (s_handle->byte_count < rollover) {
+			goto out;
+		} else {
+			s_handle->byte_count = 0;
+			s_handle->lastflush = 0;
+		}
+		break;
+	default:
+		msglog(LDMSD_LDEBUG, PNAME ": Error: unexpected rolltype in store(%d)\n",
+		       rolltype);
+		break;
+	}
+
+
+	if (s_handle->file)
+		fflush(s_handle->file);
+	if (s_handle->headerfile)
+		fflush(s_handle->headerfile);
+
+	//re name: if got here, then rollover requested
+	snprintf(tmp_path, PATH_MAX, "%s.%d",
+		 s_handle->path, (int) appx);
+	nfp = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
+	if (!nfp){
+		//we cant open the new file, skip
+		msglog(LDMSD_LERROR, PNAME ": Error: cannot open file <%s>\n",
+		       tmp_path);
+		goto out;
+	}
+	ch_output(nfp, tmp_path, CSHC(s_handle), cps);
+
+	notify_output(NOTE_OPEN, tmp_path, NOTE_DAT,
+		CSHC(s_handle), cps, s_handle->container,
+		s_handle->schema);
+	strcpy(roc.filename, tmp_path);
+
+	if (s_handle->altheader){
+		//re name: if got here, then rollover requested
+		snprintf(tmp_headerpath, PATH_MAX,
+			 "%s.HEADER.%d",
+			 s_handle->path, (int)appx);
+		/* truncate a separate headerfile if it exists.
+		 * FIXME: do we still want to do this? */
+		nhfp = fopen_perm(tmp_headerpath, "w", LDMSD_DEFAULT_FILE_PERM);
+		if (!nhfp){
+			fclose(nfp);
+			msglog(LDMSD_LERROR, PNAME ": Error: cannot open file <%s>\n",
+			       tmp_headerpath);
+		} else {
+			ch_output(nhfp, tmp_headerpath, CSHC(s_handle), cps);
+		}
+		notify_output(NOTE_OPEN, tmp_headerpath,
+			NOTE_HDR, CSHC(s_handle), cps,
+			s_handle->container,
+			s_handle->schema);
+		strcpy(roc.headerfilename, tmp_headerpath);
+	} else {
+		nhfp = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
+		if (!nhfp){
+			fclose(nfp);
+			msglog(LDMSD_LERROR, PNAME ": Error: cannot open file <%s>\n",
+			       tmp_path);
+		} else {
+			ch_output(nhfp, tmp_path, CSHC(s_handle), cps);
+		}
+		notify_output(NOTE_OPEN, tmp_path, NOTE_HDR,
+			CSHC(s_handle), cps,
+			s_handle->container,
+			s_handle->schema);
+		strcpy(roc.headerfilename, tmp_path);
+	}
+	if (!nhfp) {
+		goto out;
+	}
+
+	//close and swap
+	if (s_handle->file) {
+		fclose(s_handle->file);
+		notify_output(NOTE_CLOSE, s_handle->
+			filename, NOTE_DAT, CSHC(s_handle),
+			cps, s_handle->container,
+			s_handle->schema);
+		rename_output(s_handle->filename, NOTE_DAT,
+			CSHC(s_handle), cps);
+	}
+	if (s_handle->headerfile) {
+		fclose(s_handle->headerfile);
+	}
+	if (s_handle->headerfilename) {
+		notify_output(NOTE_CLOSE, s_handle->
+			headerfilename, NOTE_HDR,
+			CSHC(s_handle), cps,
+			s_handle->container,
+			s_handle->schema);
+		rename_output(s_handle->headerfilename, NOTE_HDR,
+			CSHC(s_handle), cps);
+	}
+	s_handle->file = nfp;
+	replace_string(&(s_handle->filename), roc.filename);
+	replace_string(&(s_handle->headerfilename), roc.headerfilename);
+	s_handle->headerfile = nhfp;
+	s_handle->printheader = DO_PRINT_HEADER;
+
+out:
+	pthread_mutex_unlock(&s_handle->lock);
+}
+
 /* Time-based rolltypes will always roll the files when this
 function is called.
 Volume-based rolltypes must check and shortcircuit within this
@@ -211,150 +327,13 @@ static int handleRollover(struct csv_plugin_static *cps){
 	//get the config lock
 	//for every handle we have, do the rollover
 
-	int i;
-	struct csv_store_handle *s_handle;
+	struct roll_cb_arg rca;
 
 	pthread_mutex_lock(&cfg_lock);
 
-	time_t appx = time(NULL);
-
-	for (i = 0; i < nstorekeys; i++){
-		if (storekeys[i] != NULL){
-			s_handle = idx_find(store_idx, (void *)(storekeys[i]), strlen(storekeys[i]));
-			if (s_handle){
-				FILE* nhfp = NULL;
-				FILE* nfp = NULL;
-				char tmp_path[PATH_MAX];
-				char tmp_headerpath[PATH_MAX];
-				char tp1[PATH_MAX];
-				char tp2[PATH_MAX];
-				struct roll_common roc = { tp1, tp2 };
-				//if we've got here then we've called new_store, but it might be closed
-				pthread_mutex_lock(&s_handle->lock);
-				switch (rolltype) {
-				case 1:
-				case 2:
-				case 5:
-					break;
-				case 3:
-					if (s_handle->store_count < rollover)  {
-						pthread_mutex_unlock(&s_handle->lock);
-						continue;
-					} else {
-						s_handle->store_count = 0;
-						s_handle->lastflush = 0;
-					}
-					break;
-				case 4:
-					if (s_handle->byte_count < rollover) {
-						pthread_mutex_unlock(&s_handle->lock);
-						continue;
-					} else {
-						s_handle->byte_count = 0;
-						s_handle->lastflush = 0;
-					}
-					break;
-				default:
-					msglog(LDMSD_LDEBUG, "%s: Error: unexpected rolltype in store(%d)\n",
-					       __FILE__, rolltype);
-					break;
-				}
-
-
-				if (s_handle->file)
-					fflush(s_handle->file);
-				if (s_handle->headerfile)
-					fflush(s_handle->headerfile);
-
-				//re name: if got here, then rollover requested
-				snprintf(tmp_path, PATH_MAX, "%s.%d",
-					 s_handle->path, (int) appx);
-				nfp = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
-				if (!nfp){
-					//we cant open the new file, skip
-					msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
-					       __FILE__, tmp_path);
-					pthread_mutex_unlock(&s_handle->lock);
-					continue;
-				}
-				ch_output(nfp, tmp_path, CSHC(s_handle), cps);
-
-				notify_output(NOTE_OPEN, tmp_path, NOTE_DAT,
-					CSHC(s_handle), cps, s_handle->container,
-					s_handle->schema);
-				strcpy(roc.filename, tmp_path);
-
-				if (s_handle->altheader){
-					//re name: if got here, then rollover requested
-					snprintf(tmp_headerpath, PATH_MAX,
-						 "%s.HEADER.%d",
-						 s_handle->path, (int)appx);
-					/* truncate a separate headerfile if it exists.
-					 * FIXME: do we still want to do this? */
-					nhfp = fopen_perm(tmp_headerpath, "w", LDMSD_DEFAULT_FILE_PERM);
-					if (!nhfp){
-						fclose(nfp);
-						msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
-						       __FILE__, tmp_headerpath);
-					} else {
-						ch_output(nhfp, tmp_headerpath, CSHC(s_handle), cps);
-					}
-					notify_output(NOTE_OPEN, tmp_headerpath,
-						NOTE_HDR, CSHC(s_handle), cps,
-						s_handle->container,
-						s_handle->schema);
-					strcpy(roc.headerfilename, tmp_headerpath);
-				} else {
-					nhfp = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
-					if (!nhfp){
-						fclose(nfp);
-						msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
-						       __FILE__, tmp_path);
-					} else {
-						ch_output(nhfp, tmp_path, CSHC(s_handle), cps);
-					}
-					notify_output(NOTE_OPEN, tmp_path, NOTE_HDR,
-						CSHC(s_handle), cps,
-						s_handle->container,
-						s_handle->schema);
-					strcpy(roc.headerfilename, tmp_path);
-				}
-				if (!nhfp) {
-					pthread_mutex_unlock(&s_handle->lock);
-					continue;
-				}
-
-				//close and swap
-				if (s_handle->file) {
-					fclose(s_handle->file);
-					notify_output(NOTE_CLOSE, s_handle->
-						filename, NOTE_DAT, CSHC(s_handle),
-						cps, s_handle->container,
-						s_handle->schema);
-					rename_output(s_handle->filename, NOTE_DAT,
-						CSHC(s_handle), cps);
-				}
-				if (s_handle->headerfile) {
-					fclose(s_handle->headerfile);
-				}
-				if (s_handle->headerfilename) {
-					notify_output(NOTE_CLOSE, s_handle->
-						headerfilename, NOTE_HDR,
-						CSHC(s_handle), cps,
-						s_handle->container,
-						s_handle->schema);
-					rename_output(s_handle->headerfilename, NOTE_HDR,
-						CSHC(s_handle), cps);
-				}
-				s_handle->file = nfp;
-				replace_string(&(s_handle->filename), roc.filename);
-				replace_string(&(s_handle->headerfilename), roc.headerfilename);
-				s_handle->headerfile = nhfp;
-				s_handle->printheader = DO_PRINT_HEADER;
-				pthread_mutex_unlock(&s_handle->lock);
-			} /* shandle */
-		} /* storekeys[i] */
-	} /* for */
+	rca.appx = time(NULL);
+	rca.cps = cps;
+	idx_traverse(store_idx, roll_cb, (void *)&rca);
 
 	pthread_mutex_unlock(&cfg_lock);
 
@@ -433,322 +412,274 @@ static void* rolloverThreadInit(void* m){
 }
 
 /**
- * check for invalid flags, with particular emphasis on warning the user about
- *
+ * configure a store handle from pa. protect by locking in open_store.
  */
-static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+static int config_handle(struct csv_store_handle *s_handle)
 {
-	char *value;
-	int i;
+	int cic_err = OPEN_STORE_COMMON(pa, s_handle);
+	if ( cic_err != 0 ) {
+		return cic_err;
+	}
+	const char *k = s_handle->store_key;
 
-	char* deprecated[]={"idpos", "id_pos"};
-	int numdep = 2;
-
-
-	for (i = 0; i < numdep; i++){
-		value = av_value(avl, deprecated[i]);
-		if (value){
-			msglog(LDMSD_LERROR, "store_csv: config argument %s has been deprecated.\n",
-				deprecated[i]);
-			return EINVAL;
-		}
+	s_handle->udata = ldmsd_plugattr_bool(pa, "userdata", k);
+	if (s_handle->udata == -2)
+		s_handle->udata = 0;
+	if (s_handle->udata == -1) {
+		msglog(LDMSD_LERROR, PNAME ": improper userdata= input.\n");
+		return EINVAL;
 	}
 
 	return 0;
 }
 
-/**
- * configurations for a container+schema that can override the vals in config_init
- */
-static int config_custom(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+/* return 1 if blacklisted attr/kw found in avl/kwl, else 0 */
+static int attr_blacklist(const char **bad, const struct attr_value_list *kwl, const struct attr_value_list *avl, const char *context)
 {
-	char *bvalue;
-	char *cvalue;
-	char *svalue;
-	char *value;
-	char *skey = NULL;
-	char *altvalue;
-	int buf;
-	int buft;
-	int idx;
-	int i;
-	int rc;
+	if (!bad) {
+		msglog(LDMSD_LERROR, PNAME ": attr_blacklist miscalled.\n");
+		return 1;
+	}
+	int badcount = 0;
+	if (kwl) {
+		const char **p = bad;
+		while (*p != NULL) {
+			int i = av_idx_of(kwl, *p);
+			if (i != -1) {
+				badcount++;
+				msglog(LDMSD_LERROR, PNAME ": %s %s.\n",
+					*p, context);
+			}
+			p++;
+		}
+	}
+	if (avl) {
+		const char **p = bad;
+		while (*p != NULL) {
+			int i = av_idx_of(avl, *p);
+			if (i != -1) {
+				badcount++;
+				msglog(LDMSD_LERROR, PNAME ": %s %s.\n",
+					*p, context);
+			}
+			p++;
+		}
+	}
+	if (badcount)
+		return 1;
+	return 0;
+}
 
+static const char *update_blacklist[] = {
+	"config",
+	"name",
+	"rollagain", 
+	"rollover", 
+	"rolltype", 
+	NULL
+};
+
+/* the container/schema value pair is the key for our plugin */
+#define KEY_PLUG_ATTR 2, "container", "schema"
+
+static int update_config(struct attr_value_list *kwl, struct attr_value_list *avl, const char *container, const char *schema)
+{
+	int rc = 0;
+	char *k = allocStoreKey(container, schema);
+	if (!k) {
+		return ENOMEM;
+	}
 	pthread_mutex_lock(&cfg_lock);
+	struct csv_store_handle *s_handle = NULL;
+	s_handle = idx_find(store_idx, (void *)k, strlen(k));
+	if (s_handle) {
+		msglog(LDMSD_LWARNING, PNAME " updating config on %s not allowed after store is running.\n", k);
+		/* s_handle *could* consult pa again, but that
+		is up to the implementation of store(). 
+		Right now it never uses pa after open_store.
+	       	*/
+	} else {
+		msglog(LDMSD_LINFO, PNAME " adding config on %s.\n", k);
+		int bl = attr_blacklist(update_blacklist, kwl, avl,
+			      	"not allowed in add");
+		if (bl) {
+			char *as = av_to_string(avl, 0);
+			char *ks = av_to_string(kwl, 0);
+			msglog(LDMSD_LINFO, PNAME ": fix config args %s %s\n",
+				       	as, ks);
 
-	//have to do this after config_init
-	if (cfgstate != CSV_CFGINIT_DONE){
-		msglog(LDMSD_LERROR, "%s: Error: wrong state for config_container %d\n",
-		       __FILE__, cfgstate);
-		pthread_mutex_unlock(&cfg_lock);
-		return EINVAL;
-	}
-
-	value = av_value(avl, "buffer");
-	bvalue = av_value(avl, "buffertype");
-	rc = config_buffer(value, bvalue, &buf, &buft);
-	if (rc){
-		cfgstate = CSV_CFGINIT_FAILED;
-		pthread_mutex_unlock(&cfg_lock);
-		return rc;
-	}
-
-	cvalue = av_value(avl, "container");
-	if (!cvalue){
-	  msglog(LDMSD_LERROR, "%s: Error: config missing container name\n", __FILE__);
-	  pthread_mutex_unlock(&cfg_lock);
-	  return EINVAL;
-	}
-
-	svalue = av_value(avl, "schema");
-	if (!svalue){
-	  msglog(LDMSD_LERROR, "%s: Error: config missing schema name\n", __FILE__);
-	  pthread_mutex_unlock(&cfg_lock);
-	  return EINVAL;
-	}
-
-	skey = allocStoreKey(cvalue, svalue);
-	if (skey == NULL){
-	  msglog(LDMSD_LERROR, "%s: Cannot create storekey for custom_config\n",
-		 __FILE__);
-	  pthread_mutex_unlock(&cfg_lock);
-	  return EINVAL;
-	}
-
-
-
-	//do we have this already. if so, then can update those values.
-	idx = -1;
-	for (i = 0; i < nspecialkeys; i++){
-		if (strcmp(skey, specialkeys[i].key) == 0){
-			idx = i;
-			break;
+			rc = EINVAL;
+			goto out;
+		}
+		rc = ldmsd_plugattr_add(pa, avl, kwl, update_blacklist, update_blacklist, KEY_PLUG_ATTR);
+		if (rc == EEXIST) {
+			msglog(LDMSD_LERROR, PNAME
+				" cannot repeat config on %s.\n", k);
+		} else if (rc != 0) {
+			msglog(LDMSD_LINFO, PNAME
+				" config failed (%d) on %s.\n", rc, k);
 		}
 	}
-	if (idx < 0){
-		if (nspecialkeys > (MAX_ROLLOVER_STORE_KEYS-1)){
-			msglog(LDMSD_LERROR, "%s: Error store_csv: Exceeded max store keys\n",
-				__FILE__);
-			if (skey)
-				  free(skey);
-			pthread_mutex_unlock(&cfg_lock);
-			return EINVAL;
-		}
-
-		idx = nspecialkeys;
-		specialkeys[idx].key = strdup(skey);
-	}
-	free(skey);
-	skey = NULL;
-
-	//defaults to init
-	specialkeys[idx].altheader = altheader;
-	specialkeys[idx].udata = udata;
-	specialkeys[idx].buffer_sz = buf;
-	specialkeys[idx].buffer_type = buft;
-	//increment nspecialkeys now. note that if the args are a problem, we will have incremented.
-	if (idx == nspecialkeys)
-		nspecialkeys++;
-
-	config_custom_common(kwl, avl, CSKC(&(specialkeys[idx])), &PG);
-	altvalue = av_value(avl, "altheader");
-	if (altvalue) {
-		specialkeys[idx].altheader = atoi(altvalue);
-	}
-
-	altvalue = av_value(avl, "userdata");
-	if (altvalue) {
-		specialkeys[idx].udata = atoi(altvalue);
-	}
-
+out:
+	free(k);
 	pthread_mutex_unlock(&cfg_lock);
-	return 0;
+	return rc;
 }
-
-
-static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
-	int tempbs;
-	int tempbt;
-
-
-	if (!bs && !bt){
-		*rbs = 1;
-		*rbt = 0;
-		return 0;
-	}
-
-	if (!bs && bt){
-		msglog(LDMSD_LERROR,
-		       "%s: Cannot have buffer type without buffer\n",
-		       __FILE__);
-		return EINVAL;
-	}
-
-	tempbs = atoi(bs);
-	if (tempbs < 0){
-		msglog(LDMSD_LERROR,
-		       "%s: Bad val for buffer %d\n",
-		       __FILE__, tempbs);
-		return EINVAL;
-	}
-	if ((tempbs == 0) || (tempbs == 1)){
-		if (bt){
-			msglog(LDMSD_LERROR,
-			       "%s: Cannot have no/autobuffer with buffer type\n",
-			       __FILE__);
-			return EINVAL;
-		} else {
-			*rbs = tempbs;
-			*rbt = 0;
-			return 0;
-		}
-	}
-
-	if (!bt){
-		msglog(LDMSD_LERROR,
-		       "%s: Cannot have buffer size with no buffer type\n",
-		       __FILE__);
-		return EINVAL;
-	}
-
-	tempbt = atoi(bt);
-	if ((tempbt != 3) && (tempbt != 4)){
-		msglog(LDMSD_LERROR,
-		       "%s: Invalid buffer type %d\n",
-		       __FILE__, tempbt);
-		return EINVAL;
-	}
-
-	if (tempbt == 4){
-		//adjust bs for kb
-		tempbs *= 1024;
-	}
-
-	*rbs = tempbs;
-	*rbt = tempbt;
-
-	return 0;
-
-}
-
 
 /**
- * configurations for the whole store. these will be defaults if not overridden.
- * some implementation details are for backwards compatibility
+ * \brief Configuration
  */
-static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
+static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value;
-	char *bvalue;
-	char *altvalue;
-	char *uvalue;
-	char *rvalue;
-	int buf = -1;
-	int buft = -1;
-	int roll = -1;
 	int rollmethod = DEFAULT_ROLLTYPE;
 	int rc;
 
+	static const char *attributes[] = {
+		"container",
+		"schema",
+		"path",
+		"userdata",
+		"rollagain",
+		"rollover",
+		"rolltype",
+		CSV_STORE_ATTR_COMMON,
+		NULL
+	};
+	static const char *keywords[] = { NULL };
+
+	rc = ldmsd_plugattr_config_check(attributes, keywords, avl, kwl, PG.pname);
+	if (rc != 0) {
+		int warnon = (ldmsd_loglevel_get() > LDMSD_LWARNING);
+		msglog(LDMSD_LERROR, PNAME " config arguments unexpected.%s\n",
+		       	(warnon ? " Enable log level WARNING for details." : ""));
+		return EINVAL;
+	}
+
+	char* cn = av_value(avl, "container");
+	char* sn = av_value(avl, "schema");
+	char* conf = av_value(avl, "opt_file");
+	/* this section changes if strgp name is store handle instance name */
+	if ((cn && !sn) || (sn && !cn)) {
+		msglog(LDMSD_LERROR, PNAME
+			" config arguments schema and container must be used together (for particular container/schema) or not used (to set defaults).\n");
+		if (sn)
+			msglog(LDMSD_LERROR, PNAME ": schema=%s.\n", cn);
+		if (cn)
+			msglog(LDMSD_LERROR, PNAME ": container=%s.\n", cn);
+		return EINVAL;
+	}
+	if (cn && conf) {
+		msglog(LDMSD_LERROR, PNAME
+			" config arguments schema and opt_file must not be used together.\n");
+		return EINVAL;
+	}
+	if (cn && !pa) {
+		msglog(LDMSD_LERROR, PNAME
+			"plugin defaults must be configured before specifics for container=%s schema=%s\n",
+			cn, sn);
+		return EINVAL;
+	}
+	if (cn && pa) {
+		msglog(LDMSD_LDEBUG, PNAME ": parsing specific schema option\n");
+		return update_config(kwl, avl, cn, sn);
+	}
+	if (pa) {
+		msglog(LDMSD_LINFO, PNAME ": config of defaults cannot be repeated.\n");
+		return EINVAL;
+	}
+
+	/* end strgp pseudo-instance region. */
+
 	pthread_mutex_lock(&cfg_lock);
 
-	if (cfgstate != CSV_CFGINIT_PRE){ //Cannot redo since might have already created the roll thread.
-	  msglog(LDMSD_LERROR, "%s: wrong state for config_init %d\n",
-		       __FILE__, cfgstate);
-		pthread_mutex_unlock(&cfg_lock);
-		return EINVAL;
+	pa = ldmsd_plugattr_create(conf, PNAME, avl, kwl,
+			update_blacklist, update_blacklist, KEY_PLUG_ATTR);
+	if (!pa) {
+		msglog(LDMSD_LERROR, PNAME ": Reminder: omit 'config name=<>' from lines in opt_file\n");
+		msglog(LDMSD_LERROR, PNAME ": error parsing %s\n", conf);
+		rc = EINVAL;
+		goto out;
 	}
 
-	int cic_err = 0;
-	if ( (cic_err = CONFIG_INIT_COMMON(kwl, avl, arg)) != 0 ) {
-		pthread_mutex_unlock(&cfg_lock);
-		cfgstate = CSV_CFGINIT_FAILED;
-		return cic_err;
-	}
-	cfgstate = CSV_CFGINIT_IN;
+	msglog(LDMSD_LDEBUG, PNAME ": parsed %s\n", conf);
 
-	value = av_value(avl, "buffer");
-	bvalue = av_value(avl, "buffertype");
-	rc = config_buffer(value, bvalue, &buf, &buft);
-	if (rc){
-		cfgstate = CSV_CFGINIT_FAILED;
-		pthread_mutex_unlock(&cfg_lock);
-		return rc;
-	}
-	buffer_sz = buf;
-	buffer_type = buft;
-
-	value = av_value(avl, "path");
-	if (!value) {
-		msglog(LDMSD_LERROR, "%s: config init: path option required\n",
-		       __FILE__);
-		cfgstate = CSV_CFGINIT_FAILED;
-		pthread_mutex_unlock(&cfg_lock);
-		return EINVAL;
+	const char *s = ldmsd_plugattr_value(pa, "path", NULL);
+	rc = 0;
+	if (!s) {
+		msglog(LDMSD_LERROR, PNAME
+			": config requires path=value be provided in opt_file or arguments.\n");
+		ldmsd_plugattr_destroy(pa);
+		pa = NULL;
+		rc = EINVAL;
+		goto out;
 	}
 
-	altvalue = av_value(avl, "altheader");
-
-	uvalue = av_value(avl, "userdata");
-
-	rvalue = av_value(avl, "rollagain");
+	if (rolltype != -1) {
+		msglog(LDMSD_LWARNING, "%s: repeated rollover config is ignored.\n", PNAME);
+		goto out; /* rollover configured exactly once */
+	}
 	int ragain = 0;
-	if (rvalue) {
-		ragain = atoi(rvalue);
+	int roll = -1;
+	int cvt;
+	cvt = ldmsd_plugattr_s32(pa, "rollagain", NULL, &ragain);
+	if (!cvt) {
 		if (ragain < 0) {
-			cfgstate = CSV_CFGINIT_FAILED;
-			msglog(LDMSD_LERROR, "%s: Error: bad rollagain value %d from %s\n",
-			       __FILE__, ragain, rvalue);
-			pthread_mutex_unlock(&cfg_lock);
-			return EINVAL;
+			msglog(LDMSD_LERROR, PNAME 
+				": bad rollagain= value %d\n", ragain);
+			rc = EINVAL;
+			goto out;
 		}
+	} 
+	if (cvt == ENOTSUP) {
+		msglog(LDMSD_LERROR, PNAME ": improper rollagain= input.\n");
+		rc = EINVAL;
+		goto out;
 	}
 
-	rvalue = av_value(avl, "rollover");
-	if (rvalue){
-		roll = atoi(rvalue);
+	cvt = ldmsd_plugattr_s32(pa, "rollover", NULL, &roll);
+	if (!cvt) {
 		if (roll < 0) {
-			cfgstate = CSV_CFGINIT_FAILED;
-			msglog(LDMSD_LERROR, "%s: Error: bad rollover value %d\n",
-			       __FILE__, roll);
-			pthread_mutex_unlock(&cfg_lock);
-			return EINVAL;
+			msglog(LDMSD_LERROR, PNAME
+				": Error: bad rollover value %d\n", roll);
+			rc = EINVAL;
+			goto out;
 		}
 	}
+	if (cvt == ENOTSUP) {
+		msglog(LDMSD_LERROR, PNAME ": improper rollover= input.\n");
+		rc = EINVAL;
+		goto out;
+	}
 
-	rvalue = av_value(avl, "rolltype");
-	if (rvalue){
-		if (roll < 0){
+	cvt = ldmsd_plugattr_s32(pa, "rolltype", NULL, &rollmethod);
+	if (!cvt) {
+		if (roll < 0) {
 			/* rolltype not valid without rollover also */
-			cfgstate = CSV_CFGINIT_FAILED;
-			pthread_mutex_unlock(&cfg_lock);
-			return EINVAL;
+			msglog(LDMSD_LERROR, PNAME
+				": rolltype given without rollover.\n");
+			rc = EINVAL;
+			goto out;
 		}
-		rollmethod = atoi(rvalue);
-		if (rollmethod < MINROLLTYPE ){
-			cfgstate = CSV_CFGINIT_FAILED;
-			pthread_mutex_unlock(&cfg_lock);
-			return EINVAL;
-		}
-		if (rollmethod > MAXROLLTYPE){
-			cfgstate = CSV_CFGINIT_FAILED;
-			return EINVAL;
+		if (rollmethod < MINROLLTYPE || rollmethod > MAXROLLTYPE) {
+			msglog(LDMSD_LERROR, PNAME
+				": rolltype out of range.\n");
+			rc = EINVAL;
+			goto out;
 		}
 		if (rollmethod == 5 && (roll < 0 || ragain < roll || ragain < MIN_ROLL_1)) {
 			msglog(LDMSD_LERROR,
-				"%s: rollmethod=5 needs rollagain > max(rollover,10)\n");
-			msglog(LDMSD_LERROR, "%s: rollagain=%d rollover=%d\n",
-			       __FILE__, roll, ragain);
-			cfgstate = CSV_CFGINIT_FAILED;
-			pthread_mutex_unlock(&cfg_lock);
-			return EINVAL;
+				"%s: rolltype=5 needs rollagain > max(rollover,10)\n");
+			msglog(LDMSD_LERROR, PNAME ": rollagain=%d rollover=%d\n",
+			       roll, ragain);
+			rc = EINVAL;
+			goto out;
 		}
-
 	}
-
-	if (root_path)
-		free(root_path);
-
-	root_path = strdup(value);
+	if (cvt == ENOTSUP) {
+		msglog(LDMSD_LERROR, PNAME ": improper rolltype= input.\n");
+		rc = EINVAL;
+		goto out;
+	}
 
 	rollover = roll;
 	rollagain = ragain;
@@ -757,92 +688,27 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 		pthread_create(&rothread, NULL, rolloverThreadInit, NULL);
 	}
 
-	if (altvalue)
-		altheader = atoi(altvalue);
-	else
-		altheader = 0;
+out:
+	if (!rc)
+		cfgstate = CSV_CFGINIT_DONE;
 
-	if (uvalue)
-		udata = atoi(uvalue);
-	else
-		udata = 0;
-
-	if (!root_path) {
-		cfgstate = CSV_CFGINIT_FAILED;
-		msglog(LDMSD_LERROR, "%s: Error: missing root_path\n",
-		       __FILE__, roll);
-		pthread_mutex_unlock(&cfg_lock);
-		return ENOMEM;
-	}
-
-	cfgstate = CSV_CFGINIT_DONE;
 	pthread_mutex_unlock(&cfg_lock);
 
-	return 0;
-}
-
-
-struct kw kw_tbl[] = {
-	{ "custom", config_custom},
-	{ "init", config_init},
-};
-
-
-/**
- * \brief Configuration
- */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
-{
-	struct kw *kw;
-	struct kw key;
-	void* arg = NULL;
-	int rc;
-
-	rc = config_check(kwl, avl, arg);
-	if (rc != 0)
-		return rc;
-
-	rc = 0;
-	char* action = av_value(avl, "action");
-	if (!action){
-		msglog(LDMSD_LERROR, "%s: Error: missing required keyword 'action'\n",
-		       __FILE__);
-		return EINVAL;
-	}
-
-	key.token = action;
-	kw = bsearch(&key, kw_tbl, ARRAY_SIZE(kw_tbl),
-		     sizeof(*kw), kw_comparator);
-	if (!kw) {
-		msglog(LDMSD_LERROR, "%s: Invalid configuration keyword action '%s'\n",
-		       __FILE__, action);
-		return EINVAL;
-	}
-	rc = kw->action(kwl, avl, NULL);
-	if (rc) {
-	  msglog(LDMSD_LERROR, "%s: error in '%s' %d\n",
-		 __FILE__, action, rc);
-	  return rc;
-	}
-
-	return 0;
+	return rc;
 }
 
 static void term(struct ldmsd_plugin *self)
 {
-	int i;
-
-	for (i = 0; i < nspecialkeys; i++){
-		free(specialkeys[i].key);
-		clear_storek_common(CSKC(&(specialkeys[i])));
-		specialkeys[i].key = NULL;
-	}
-
+/* clean up any allocated globals here that are not handled by store_csv_fini */
+	pthread_mutex_lock(&cfg_lock);
+	ldmsd_plugattr_destroy(pa);
+	pa = NULL;
+	pthread_mutex_unlock(&cfg_lock);
 }
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "    config name=store_csv action=init path=<path> rollover=<num> rolltype=<num>\n"
+	return  "    config name=store_csv path=<path> rollover=<num> rolltype=<num>\n"
 		"           [altheader=<0/!0> userdata=<0/!0>]\n"
 		"           [buffer=<0/1/N> buffertype=<3/4>]\n"
 		"           [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid]\n"
@@ -853,6 +719,8 @@ static const char *usage(struct ldmsd_plugin *self)
 		"         - altheader Header in a separate file (optional, default 0)\n"
 		NOTIFY_USAGE
 		"         - userdata     UserData in printout (optional, default 0)\n"
+		"         - metapath A string template for the file rename, where %[BCDPSTs]\n"
+		"           are replaced per the man page Plugin_store_csv.\n"
 		"         - rollover  Greater than or equal to zero; enables file rollover and sets interval\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
@@ -861,14 +729,6 @@ static const char *usage(struct ldmsd_plugin *self)
 		"         - buffertype [3,4] Defines the policy used to schedule buffer flush.\n"
 		"                      Only applies for N > 1. Same as rolltypes.\n"
 		"\n"
-		"    config name=store_csv action=custom container=<c_name> schema=<s_name>\n"
-		"           [altheader=<0/1> userdata=<0/1> buffer=<0/1/N> buffertype=<3/4>]\n"
-		"         - Override the default parameters set by action=init for particular containers\n"
-		"         - altheader Header in a separate file (optional, default to init)\n"
-		NOTIFY_USAGE
-		"         - userdata     UserData in printout (optional, default to init)\n"
-		"         - metapath A string template for the file rename, where %[BCDPSTs]\n"
-		"           are replaced per the man page Plugin_store_csv.\n"
 		;
 }
 
@@ -892,16 +752,14 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 	int i, j;
 
 	if (s_handle == NULL){
-		msglog(LDMSD_LERROR, "%s: Null store handle. Cannot print header\n",
-			__FILE__);
+		msglog(LDMSD_LERROR, PNAME ": Null store handle. Cannot print header\n");
 		return EINVAL;
 	}
 	s_handle->printheader = DONT_PRINT_HEADER;
 
 	fp = s_handle->headerfile;
 	if (!fp){
-		msglog(LDMSD_LERROR, "%s: Cannot print header for store_csv. No headerfile\n",
-			__FILE__);
+		msglog(LDMSD_LERROR, PNAME ": Cannot print header. No headerfile\n");
 		return EINVAL;
 	}
 
@@ -962,7 +820,7 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 /*
  *  Would like to do this instead, but cannot currently get array size in open_store
  */
-#if 0
+#if 0 /* print_header_from_open proto */
 static int print_header_from_open(struct csv_store_handle *s_handle,
 				  struct ldmsd_store_metric_list *metric_list,
 				  void *ucontext){
@@ -978,24 +836,27 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	int rc = 0;
 	char* skey = NULL;
 	char* path = NULL;
-	int idx;
-	int i;
 	char *hcontainer = NULL;
 	char *hschema = NULL;
+
+	if (!pa) {
+		msglog(LDMSD_LERROR, PNAME ": config not called. cannot open.\n");
+		return NULL;
+	}
 
 	pthread_mutex_lock(&cfg_lock);
 	skey = allocStoreKey(container, schema);
 	if (skey == NULL){
-	  msglog(LDMSD_LERROR, "%s: Cannot open store\n",
-		 __FILE__);
-	  goto out;
+		msglog(LDMSD_LERROR, PNAME ": Cannot open store\n");
+		goto out;
 	}
 
 	s_handle = idx_find(store_idx, (void *)skey, strlen(skey));
-	/* ideally, this should always be null, because we would have closed
+	const char *root_path = ldmsd_plugattr_value(pa, "path", skey);
+	/* ideally, s_handle should always be null, because we would have closed
 	 * and removed an existing container before reopening it. defensively
-	 * keeping this like v2 (note the lack of removal of some things in
-	 * the close). Otherwise then could always do all these steps.
+	 * keeping this like v2.
+	 * Otherwise then could always do all these steps.
 	 */
 	if (!s_handle) {
 		size_t pathlen = strlen(root_path) +
@@ -1020,7 +881,8 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		s_handle->store_key = strdup(skey);
 		hcontainer = container ? strdup(container) : NULL;
 		hschema = schema ? strdup(schema) : NULL;
-		if (!s_handle->store_key || ! hcontainer || ! hschema ) {
+		if (!s_handle->store_key || ! hcontainer || ! hschema ||
+			config_handle(s_handle)) {
 			/* Take the lock becauase we will unlock in the err path */
 			pthread_mutex_lock(&s_handle->lock);
 			goto err1;
@@ -1032,35 +894,6 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		s_handle->store_count = 0;
 		s_handle->byte_count = 0;
 		s_handle->lastflush = 0;
-		s_handle->create_uid = (uid_t)-1;
-		s_handle->create_gid = (gid_t)-1;
-		s_handle->rename_uid = (uid_t)-1;
-		s_handle->rename_gid = (gid_t)-1;
-
-		idx = -1;
-		for (i = 0; i < nspecialkeys; i++){
-			if (strcmp(s_handle->store_key, specialkeys[i].key) == 0){
-				idx = i;
-				break;
-			}
-		}
-		if (PG.notify)
-			s_handle->notify = PG.notify;
-		if (idx >= 0){
-			if (specialkeys[idx].notify != NULL)
-				s_handle->notify =
-					specialkeys[idx].notify;
-			s_handle->altheader = specialkeys[idx].altheader;
-			s_handle->udata = specialkeys[idx].udata;
-			s_handle->buffer_sz = specialkeys[idx].buffer_sz;
-			s_handle->buffer_type = specialkeys[idx].buffer_type;
-			csv_update_handle_common(CSHC(s_handle), CSKC(&specialkeys[idx]), &PG);
-		} else {
-			s_handle->altheader = altheader;
-			s_handle->udata = udata;
-			s_handle->buffer_sz = buffer_sz;
-			s_handle->buffer_type = buffer_type;
-		}
 
 		s_handle->printheader = FIRST_PRINT_HEADER;
 	} else {
@@ -1073,16 +906,16 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	/* create path if not already there. */
 	char *dpath = strdup(s_handle->path);
 	if (!dpath) {
-		msglog(LDMSD_LERROR,"%s: strdup failed creating directory '%s'\n",
-			 __FILE__, errno, s_handle->path);
+		msglog(LDMSD_LERROR, PNAME ": strdup failed creating directory '%s'\n",
+			 errno, s_handle->path);
 		goto err2;
 	}
 	sprintf(dpath, "%s/%s", root_path, container);
 	rc = create_outdir(dpath, CSHC(s_handle), &PG);
 	free(dpath);
 	if ((rc != 0) && (errno != EEXIST)) {
-		msglog(LDMSD_LERROR,"%s: Failure %d creating directory containing '%s'\n",
-			 __FILE__, errno, path);
+		msglog(LDMSD_LERROR, PNAME ": Failure %d creating directory containing '%s'\n",
+			 errno, path);
 		goto err2;
 	}
 
@@ -1105,8 +938,8 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		s_handle->file = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
 	}
 	if (!s_handle->file){
-		msglog(LDMSD_LERROR, "%s: Error %d opening the file %s.\n",
-		       __FILE__, errno, s_handle->path);
+		msglog(LDMSD_LERROR, PNAME ": Error %d opening the file %s.\n",
+		       errno, s_handle->path);
 		goto err2;
 	}
 	ch_output(s_handle->file, tmp_path, CSHC(s_handle), &PG);
@@ -1143,39 +976,27 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		}
 
 		if (!s_handle->headerfile) {
-			msglog(LDMSD_LERROR, "%s: Error: Cannot open headerfile\n",
-			       __FILE__);
+			msglog(LDMSD_LERROR, PNAME ": Error: Cannot open headerfile\n");
 			goto err3;
 		}
 		ch_output(s_handle->headerfile, tmp_path, CSHC(s_handle), &PG);
 	}
 	replace_string(&(s_handle->headerfilename), roc.headerfilename);
 
-	/* ideally here should always be the printing of the header, and we could drop keeping
-	 * track of printheader.
-	 * FIXME: cant do this yet, until we have an easy way to invert the metric order
+	/* ideally here should always be the printing of the header, and
+	 * we could drop keeping track of printheader.
+	 * FIXME: cant do this because only at store() do we know types/sizes
+	 * of metrics that go with names of metrics.
 	 * print_header_from_open(s_handle, struct ldmsd_store_metric_index_list *list, void *ucontext);
+	 * Must make open_store a conditional part of store() if
+	 * this is to be done.
 	 */
 
+#if 0
+	print_csv_store_handle_common(CSHC(s_handle), &PG);
+	ldmsd_plugattr_log(LDMSD_LINFO, pa, NULL);
+#endif
 	if (add_handle) {
-		// do we have an empty space?
-		int found = 0;
-		for (i = 0; i < nstorekeys; i++){
-			if (storekeys[i] == NULL){
-			  storekeys[i] = strdup(skey);
-				found = 1;
-				break;
-			}
-		}
-		if (!found){
-			if (nstorekeys == (MAX_ROLLOVER_STORE_KEYS-1)){
-				msglog(LDMSD_LDEBUG, "%s: Error: Exceeded max store keys\n",
-				       __FILE__);
-				goto err4;
-			} else {
-			  storekeys[nstorekeys++] = strdup(skey);
-			}
-		}
 		idx_add(store_idx, (void *)skey, strlen(skey), s_handle);
 	}
 
@@ -1186,7 +1007,6 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	pthread_mutex_unlock(&s_handle->lock);
 	goto out;
 
-err4:
 err3:
 	fclose(s_handle->file);
 	s_handle->file = NULL;
@@ -1228,8 +1048,8 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 
 	pthread_mutex_lock(&s_handle->lock);
 	if (!s_handle->file){
-		msglog(LDMSD_LERROR,"%s: Cannot insert values for <%s>: file is NULL\n",
-		       __FILE__, s_handle->path);
+		msglog(LDMSD_LERROR, PNAME ": Cannot insert values for <%s>: file is NULL\n",
+		       s_handle->path);
 		pthread_mutex_unlock(&s_handle->lock);
 		/* FIXME: will returning an error stop the store? */
 		return EPERM;
@@ -1243,8 +1063,8 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 	case FIRST_PRINT_HEADER:
 		rc = print_header_from_store(s_handle, set, metric_array, metric_count);
 		if (rc){
-			msglog(LDMSD_LERROR, "%s: %s cannot print header: %d. Not storing\n",
-			       __FILE__, s_handle->store_key, rc);
+			msglog(LDMSD_LERROR, PNAME ": %s cannot print header: %d. Not storing\n",
+			       s_handle->store_key, rc);
 			s_handle->printheader = BAD_HEADER;
 			pthread_mutex_unlock(&s_handle->lock);
 			/* FIXME: will returning an error stop the store? */
@@ -1272,7 +1092,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 
 	/* FIXME: will we want to throw an error if we cannot write? */
 	char *wsqt = ""; /* ietf quotation wrapping strings */
-	if (ietfcsv) {
+	if (s_handle->ietfcsv) {
 		wsqt = "\"";
 	}
 	const char * str;
@@ -1290,14 +1110,14 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (s_handle->udata) {
 				rc = fprintf(s_handle->file, ",%"PRIu64, udata);
 				if (rc < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
 			}
 			rc = fprintf(s_handle->file, ",%s%s%s", wsqt, str, wsqt);
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 				       rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1309,7 +1129,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				if (s_handle->udata) {
 					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 					if (rcu < 0)
-						msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						       rcu, s_handle->path);
 					else
 						s_handle->byte_count += rcu;
@@ -1317,7 +1137,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				rc = fprintf(s_handle->file, ",%hhu",
 					     ldms_metric_array_get_u8(set, metric_array[i], j));
 				if (rc < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
@@ -1327,7 +1147,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (s_handle->udata) {
 				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 				if (rcu < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rcu, s_handle->path);
 				else
 					s_handle->byte_count += rcu;
@@ -1335,7 +1155,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			rc = fprintf(s_handle->file, ",%hhu",
 				     ldms_metric_get_u8(set, metric_array[i]));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1346,7 +1166,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				if (s_handle->udata) {
 					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 					if (rcu < 0)
-						msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						       rcu, s_handle->path);
 					else
 						s_handle->byte_count += rcu;
@@ -1354,7 +1174,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				rc = fprintf(s_handle->file, ",%hhd",
 					     ldms_metric_array_get_s8(set, metric_array[i], j));
 				if (rc < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 							rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
@@ -1364,7 +1184,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (s_handle->udata) {
 				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 				if (rcu < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rcu, s_handle->path);
 				else
 					s_handle->byte_count += rcu;
@@ -1372,7 +1192,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			rc = fprintf(s_handle->file, ",%hhd",
 					     ldms_metric_get_s8(set, metric_array[i]));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 							rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1383,7 +1203,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				if (s_handle->udata) {
 					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 					if (rcu < 0)
-						msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						       rcu, s_handle->path);
 					else
 						s_handle->byte_count += rcu;
@@ -1391,7 +1211,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				rc = fprintf(s_handle->file, ",%hu",
 						ldms_metric_array_get_u16(set, metric_array[i], j));
 				if (rc < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 							rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
@@ -1401,7 +1221,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (s_handle->udata) {
 				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 				if (rcu < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rcu, s_handle->path);
 				else
 					s_handle->byte_count += rcu;
@@ -1409,7 +1229,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			rc = fprintf(s_handle->file, ",%hu",
 					ldms_metric_get_u16(set, metric_array[i]));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1420,7 +1240,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				if (s_handle->udata) {
 					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 					if (rcu < 0)
-						msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						       rcu, s_handle->path);
 					else
 						s_handle->byte_count += rcu;
@@ -1428,7 +1248,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				rc = fprintf(s_handle->file, ",%hd",
 						ldms_metric_array_get_s16(set, metric_array[i], j));
 				if (rc < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 							rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
@@ -1438,7 +1258,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (s_handle->udata) {
 				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 				if (rcu < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rcu, s_handle->path);
 				else
 					s_handle->byte_count += rcu;
@@ -1446,7 +1266,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			rc = fprintf(s_handle->file, ",%hd",
 					ldms_metric_get_s16(set, metric_array[i]));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1458,7 +1278,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				if (s_handle->udata) {
 					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 					if (rcu < 0)
-						msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						       rcu, s_handle->path);
 					else
 						s_handle->byte_count += rcu;
@@ -1466,7 +1286,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				rc = fprintf(s_handle->file, ",%" PRIu32,
 						ldms_metric_array_get_u32(set, metric_array[i], j));
 				if (rc < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
@@ -1476,7 +1296,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (s_handle->udata) {
 				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 				if (rcu < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rcu, s_handle->path);
 				else
 					s_handle->byte_count += rcu;
@@ -1484,7 +1304,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			rc = fprintf(s_handle->file, ",%" PRIu32,
 					ldms_metric_get_u32(set, metric_array[i]));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1495,7 +1315,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				if (s_handle->udata) {
 					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 					if (rcu < 0)
-						msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						       rcu, s_handle->path);
 					else
 						s_handle->byte_count += rcu;
@@ -1503,7 +1323,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				rc = fprintf(s_handle->file, ",%" PRId32,
 						ldms_metric_array_get_s32(set, metric_array[i], j));
 				if (rc < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 							rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
@@ -1513,7 +1333,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (s_handle->udata) {
 				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 				if (rcu < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rcu, s_handle->path);
 				else
 					s_handle->byte_count += rcu;
@@ -1521,7 +1341,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			rc = fprintf(s_handle->file, ",%" PRId32,
 					ldms_metric_get_s32(set, metric_array[i]));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1532,7 +1352,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				if (s_handle->udata) {
 					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 					if (rcu < 0)
-						msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						       rcu, s_handle->path);
 					else
 						s_handle->byte_count += rcu;
@@ -1540,7 +1360,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				rc = fprintf(s_handle->file, ",%" PRIu64,
 						ldms_metric_array_get_u64(set, metric_array[i], j));
 				if (rc < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 							rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
@@ -1550,7 +1370,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (s_handle->udata) {
 				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 				if (rcu < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rcu, s_handle->path);
 				else
 					s_handle->byte_count += rcu;
@@ -1558,7 +1378,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			rc = fprintf(s_handle->file, ",%"PRIu64,
 					ldms_metric_get_u64(set, metric_array[i]));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						rc, s_handle->path);
 			break;
 		case LDMS_V_S64_ARRAY:
@@ -1567,7 +1387,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				if (s_handle->udata) {
 					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 					if (rcu < 0)
-						msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						       rcu, s_handle->path);
 					else
 						s_handle->byte_count += rcu;
@@ -1575,7 +1395,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				rc = fprintf(s_handle->file, ",%" PRId64,
 						ldms_metric_array_get_s64(set, metric_array[i], j));
 				if (rc < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 							rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
@@ -1585,7 +1405,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (s_handle->udata) {
 				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 				if (rcu < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rcu, s_handle->path);
 				else
 					s_handle->byte_count += rcu;
@@ -1593,7 +1413,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			rc = fprintf(s_handle->file, ",%" PRId64,
 					ldms_metric_get_s64(set, metric_array[i]));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1604,7 +1424,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				if (s_handle->udata) {
 					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 					if (rcu < 0)
-						msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						       rcu, s_handle->path);
 					else
 						s_handle->byte_count += rcu;
@@ -1612,7 +1432,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				rc = fprintf(s_handle->file, ",%.9g",
 						ldms_metric_array_get_float(set, metric_array[i], j));
 				if (rc < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 							rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
@@ -1622,7 +1442,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (s_handle->udata) {
 				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 				if (rcu < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rcu, s_handle->path);
 				else
 					s_handle->byte_count += rcu;
@@ -1630,7 +1450,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			rc = fprintf(s_handle->file, ",%.9g",
 					ldms_metric_get_float(set, metric_array[i]));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1641,7 +1461,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				if (s_handle->udata) {
 					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 					if (rcu < 0)
-						msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						       rcu, s_handle->path);
 					else
 						s_handle->byte_count += rcu;
@@ -1649,7 +1469,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 				rc = fprintf(s_handle->file, ",%.17g",
 						ldms_metric_array_get_double(set, metric_array[i], j));
 				if (rc < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 							rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
@@ -1659,7 +1479,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (s_handle->udata) {
 				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 				if (rcu < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rcu, s_handle->path);
 				else
 					s_handle->byte_count += rcu;
@@ -1667,7 +1487,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			rc = fprintf(s_handle->file, ",%.17g",
 					ldms_metric_get_double(set, metric_array[i]));
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1684,14 +1504,14 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (s_handle->udata) {
 				rcu = fprintf(s_handle->file, ",");
 				if (rcu < 0)
-					msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 					       rcu, s_handle->path);
 				else
 					s_handle->byte_count += rcu;
 			}
 			rc = fprintf(s_handle->file, ",");
 			if (rc < 0)
-				msglog(LDMSD_LERROR, "store_csv: Error %d writing to '%s'\n",
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 						rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
@@ -1728,7 +1548,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 {
 	struct csv_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
-		msglog(LDMSD_LERROR,"%s: flush error.\n", __FILE__);
+		msglog(LDMSD_LERROR, PNAME ": flush error.\n");
 		return -1;
 	}
 	pthread_mutex_lock(&s_handle->lock);
@@ -1743,8 +1563,6 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	 * note: do not remove the specialkeys
 	 */
 
-	int i;
-
 	pthread_mutex_lock(&cfg_lock);
 	struct csv_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
@@ -1753,8 +1571,8 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	}
 
 	pthread_mutex_lock(&s_handle->lock);
-	msglog(LDMSD_LDEBUG,"%s: Closing store_csv with path <%s>\n",
-	       __FILE__, s_handle->path);
+	msglog(LDMSD_LDEBUG, PNAME ": Closing with path <%s>\n",
+	       s_handle->path);
 	fflush(s_handle->file);
 	s_handle->store = NULL;
 	if (s_handle->path)
@@ -1771,16 +1589,10 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 
 	idx_delete(store_idx, s_handle->store_key, strlen(s_handle->store_key));
 
-	for (i = 0; i < nstorekeys; i++) {
-		if (storekeys[i] && (0 == strcmp(storekeys[i], s_handle->store_key))) {
-			free(storekeys[i]);
-			storekeys[i] = NULL;
-			break;
-		}
-	}
-
 	if (s_handle->store_key)
 		free(s_handle->store_key);
+	free(s_handle->container);
+	free(s_handle->schema);
 	pthread_mutex_unlock(&s_handle->lock);
 	pthread_mutex_destroy(&s_handle->lock);
 	pthread_mutex_unlock(&cfg_lock);
@@ -1824,5 +1636,8 @@ static void store_csv_fini()
 {
 	pthread_mutex_destroy(&cfg_lock);
 	idx_destroy(store_idx);
+	ldmsd_plugattr_destroy(pa);
 	LIB_DTOR_COMMON(PG);
+	pa = NULL;
+	store_idx = NULL;
 }

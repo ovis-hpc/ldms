@@ -1,0 +1,33 @@
+portbase=61076
+DAEMONS `seq 3`
+MESSAGE starting agg and two collectors
+JOBDATA $TESTDIR/job.data 1 2 3
+export SC_CONF=$LDMSD_RUN/store_csv.conf
+cat << EOF > $SC_CONF
+# test conf comment
+# test conf comment \\
+continuation line
+store_csv path=${STOREDIR} altheader=0 
+# test conf continuation
+path=${STOREDIR} altheader=1 \\
+container=bigiron schema=vmstat
+
+# next line is trapped if uncommented. config name= not allowed.
+#config name=store_csv path=${STOREDIR} altheader=1 container=bigiron schema=clock
+
+path=${STOREDIR} altheader=1 container=bigiron schema=clock
+
+path=${STOREDIR} altheader=1 container=bigiron schema=job_info
+EOF
+VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=all"
+#VGARGS="-o ${STOREDIR}/stlog. -ff"
+#VG=strace
+vgon
+LDMSD -p prolog.jobidinfo 1
+vgoff
+LDMSD -p prolog.jobidinfo `seq 2 3`
+LDMS_LS 1
+SLEEP 5
+KILL_LDMSD `seq 3`
+MESSAGE logs and data under ${TESTDIR}
+echo $SC_CONF
