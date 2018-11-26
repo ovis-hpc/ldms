@@ -530,8 +530,9 @@ int av_check_expansion(printf_t log, const char *n, const char *s)
 size_t ovis_get_mem_size(const char *s)
 {
     char unit;
-    char tmp[256];
-    sprintf(tmp, "%s%s", s, "B");
+#define TSZ 256
+    char tmp[TSZ];
+    snprintf(tmp, TSZ, "%s%s", s, "B");
     size_t size;
     sscanf(tmp, "%lu %c", &size, &unit);
     switch (unit) {
