@@ -481,7 +481,6 @@ OVIS_EXEC_SCRIPTS(
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/auth/Makefile
-		 src/store/Makefile
 		 src/ldmsd/Makefile
 		 scripts/Makefile
 		 src/test/Makefile
