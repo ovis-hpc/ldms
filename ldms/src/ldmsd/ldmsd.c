@@ -878,9 +878,9 @@ int ldmsd_set_update_hint_get(ldms_set_t set, long *interval_us, long *offset_us
 	tmp = strtok_r(NULL, ":", &endptr);
 	if (tmp)
 		*offset_us = strtol(tmp, NULL, 0);
-	free(value);
 	ldmsd_log(LDMSD_LDEBUG, "set '%s': getting updtr hint '%s'\n",
 			ldms_set_instance_name_get(set), value);
+	free(value);
 	return 0;
 }
 
