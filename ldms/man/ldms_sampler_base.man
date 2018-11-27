@@ -1,87 +1,123 @@
 .\" Manpage for ldms_sampler_base
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "04 Feb 2018" "v4" "LDMS sampler_base  man page"
+.TH man 7 "27 Nov 2018" "v4" "LDMS sampler_base  man page"
 
 .SH NAME
 sampler_base - man page for the LDMS sampler_base which is the base class for sampler
 
 .SH SYNOPSIS
-Configuration variable base class for LDMS samplers.
+.\" adjusting left
+.ad l
+.\" no-hyphenation
+.nh
+.HP
+load name=\fIINST_NAME\fR plugin=\fIPLUGIN_NAME\fR
+.HP
+config name=\fIINST_NAME\fR [producer=\fIPRDCR\fR] [instance=\fISET_NAME\fR]
+[component_id=\fIINT\fR] [schema=\fISCHEMA_NAME\fR] [job_set=\fIJOB_SET_NAME\fR]
+[job_id=\fIMETRIC_NAME\fR] [app_id=\fIMETRIC_NAME\fR]
+[job_start=\fIMETRIC_NAME\fR] [job_end=\fIMETRIC_NAME\fR]
+.\" restore default adjusting
+.ad
+.\" restore default hyphenation
+.hy
 
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), sampler plugins for the ldmsd (ldms daemon)
-should inherit from the sampler_base base class. This class defines variables that should be common to
-all samplers. It also adds them to the sampler set set and handles their value assignment.
+With LDMS (Lightweight Distributed Metric Service), sampler plugins for the
+ldmsd (ldms daemon) should inherit from the sampler_base base class. This class
+defines variables that should be common to all samplers. It also adds them to
+the sampler set set and handles their value assignment.
 
-In order to configure a plugin, one should consult both the plugin specific man page for the
-information and configuration arguments specific to the plugin and this man page for the
-arguments in the sampler_base.
+In order to configure a plugin, one should consult both the plugin specific man
+page for the information and configuration arguments specific to the plugin and
+this man page for the arguments in the sampler_base.
 
 
-.SH CONFIGURATION ATTRIBUTE SYNTAX
+.SH LOADING PLUGIN INSTANCE
+Plugin instance can be loaded with the following syntax:
 
-.TP
-.BR config
-name=<plugin_name> producer=<name> instance=<name> [component_id=<int>] [schema=<name>] \
-	       [job_set=<name> job_id=<name> app_id=<name> job_start=<name> job_end=<name>]
+\fBload\fR name=\fIINST_NAME\fR plugin=\fIPLUGIN_NAME\fR
 
-.br
-configuration line
-.RS
+For example, "load name=mynetdev plugin=procnetdev" command will load procnetdev
+sampler plugin instance, and assign "mynetdev" instance name to it. The plugin
+instance name must be unique among all loaded plugin instances (not just
+samplers) within \fBldmsd\fR. A sampler plugin can can have multiple instances
+loaded.
+
+.SH PLUGIN INSTANCE CONFIGURATION
+
+The following is the syntax to configure a plugin instance:
+
+.ad l
+.HP
+\fBconfig\fR name=\fIINST_NAME\fR [producer=\fIPRDCR_NAME\fR]
+[instance=\fISET_NAME\fR] [component_id=\fIINT\fR] [schema=\fISCHEMA_NAME\fR]
+[job_set=\fIJOB_SET_NAME\fR] [job_id=\fIMETRIC_NAME\fR]
+[app_id=\fIMETRIC_NAME\fR] [job_start=\fIMETRIC_NAME\fR]
+[job_end=\fIMETRIC_NAME\fR]
+.ad
+
+.SS Options
 .TP
-name=<plugin_name>
+name=\fIINST_NAME\fR
 .br
-This will be the name of the plugin being loaded.
+This will be the name of the loaded plugin instance (from `load
+name=\fIINST_NAME\fR`). The name must be unique within an LDMS daemon.
 .TP
-producer=<pname>
+[producer=\fIPRDCR_NAME\fR]
 .br
-A unique name for the host providing the data.
+A unique name (across all daemons in the cluster )for \fBldmsd\fR producing the
+data. The default is the name assigned by ldmsd CLI option \fB-n
+\fIDAEMON_NAME\fR.
 .TP
-instance=<set_name>
+[instance=\fISET_NAME\fR]
 .br
-A unique name for the metric set.
+A unique name (across all daemons in the cluster) for the metric set created by
+the sampler. In the case of multi-set sampler, the sampler can use this as a
+prefix of the sets. The default value is \%"\fIPRDCR\fR/\fIINST_NAME\fR".
 .TP
-schema=<schema>
+[schema=\fISCHEMA_NAME\fR]
 .br
-Optional schema name. It is intended that the same sampler on different nodes with different metrics have a
-different schema. Defaults to the sampler name.
+Optional schema name. It is intended that the same sampler on different nodes
+with different metrics have a different schema. Defaults to \fIINST_NAME\fR.
 .TP
-component_id=<compid>
+[component_id=\fIINT\fR]
 .br
 Optional unique number for the component being monitored, Defaults to zero.
 .TP
-job_set=<name>
+[job_set=\fIJOB_SET_NAME\fR]
 .br
-The instance name of the set containing the job data, default is 'job_info'.
+The LDMS set instance name of the set containing the job data. The default is
+"job_info".
 .TP
-job_id=<name>
+[job_id=\fIMETRIC_NAME\fR]
 .br
-The name of the metric containing the Job Id, default is 'job_id'.
+The name of the metric in the job set containing the Job Id. The default is
+"job_id".
 .TP
-app_id=<name>
+[app_id=\fIMETRIC_NAME\fR]
 .br
-The name of the metric containing the Application Id, default is 'app_id'.
+The name of the metric in the job set containing the Application Id. The default
+is "app_id".
 .TP
-job_start=<name>
+[job_start=\fIMETRIC_NAME\fR]
 .br
-The name of the metric containing the Job start time, default is 'job_start'.
+The name of the metric in the job set containing the Job start time. The default
+is "job_start".
 .TP
-job_end=<name>
+[job_end=\fIMETRIC_NAME\fR]
 .br
-The name of the metric containing the Job end time, default is 'job_end'.
+The name of the metric in the job set containing the Job end time. The default
+is "job_end".
 .RE
 
 .SH NOTES
 
 .PP
 .IP \[bu]
-This man page does not cover usage of the base class for plugin writers.
-.IP \[bu]
-Not all plugins may have been converted to use the base class. The plugin specific
-man page should refer to the sampler_base where this has occurred.
+This man page does not cover usage of the base class in plugin development.
 .PP
-
 
 
 .SH BUGS
@@ -91,10 +127,40 @@ No known bugs.
 .PP
 Within ldmsd_controller or a configuration file:
 .nf
-load name=meminfo
-config name=meminfo producer=vm1_1 instance=vm1_1/meminfo
-start name=meminfo interval=1000000
+load name=mymem plugin=meminfo
+config name=mymem producer=vm1_1 instance=vm1_1/meminfo interval=1000000
+start name=mymem
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), Plugin_all_example(7), Plugin_aries_linkstatus(7), Plugin_aries_mmr(7), Plugin_array_example(7), Plugin_clock(7), Plugin_cray_sampler_variants(7), Plugin_cray_dvs_sampler(7), Plugin_procdiskstats(7), Plugin_fptrans(7), Plugin_kgnilnd(7), Plugin_lnet_stats(7), Plugin_meminfo(7), Plugin_msr_interlagos(7), Plugin_perfevent(7), Plugin_procinterrupts(7), Plugin_procnetdev(7), Plugin_procnfs(7), Plugin_rapl(7), Plugin_sampler_atasmart(7), Plugin_sysclassib(7), Plugin_synthetic(7), Plugin_vmstat(7)
+
+.\" no hyphenation
+.nh
+.\" left justify
+.ad l
+
+.BR ldmsd (8),
+.BR ldms_quickstart (7),
+.BR ldmsd_controller (8),
+.BR Plugin_all_example (7),
+.BR Plugin_aries_linkstatus (7),
+.BR Plugin_aries_mmr (7),
+.BR Plugin_array_example (7),
+.BR Plugin_clock (7),
+.BR Plugin_cray_sampler_variants (7),
+.BR Plugin_cray_dvs_sampler (7),
+.BR Plugin_procdiskstats (7),
+.BR Plugin_fptrans (7),
+.BR Plugin_kgnilnd (7),
+.BR Plugin_lnet_stats (7),
+.BR Plugin_meminfo (7),
+.BR Plugin_msr_interlagos (7),
+.BR Plugin_perfevent (7),
+.BR Plugin_procinterrupts (7),
+.BR Plugin_procnetdev (7),
+.BR Plugin_procnfs (7),
+.BR Plugin_rapl (7),
+.BR Plugin_sampler_atasmart (7),
+.BR Plugin_sysclassib (7),
+.BR Plugin_synthetic (7),
+.BR Plugin_vmstat (7)
