@@ -1,73 +1,82 @@
 .\" Manpage for Plugin_store_sos
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "21 Dec 2015" "v3" "LDMS Plugin store_sos man page"
+.TH man 7 "27 Nov 2018" "v5" "LDMS Plugin store_sos man page"
 
 .SH NAME
 Plugin_store_sos - man page for the LDMS store_sos plugin
 
 .SH SYNOPSIS
-Within ldmsd_controller script:
-.br
-ldmsd_controller> load name=store_sos
-.br
-ldmsd_controller> config name=store_sos path=path
-.br
-ldmsd_controller> strgp_add plugin=store_sos [ <attr> = <value> ]
-.br
+.SY load
+name=\fIINST_NAME\fR plugin=\fBstore_sos\fR
+.SY config
+name=\fIINST_NAME\fR path=\fIPATH\fR [uid=\fIUID_INT\fR] [gid=\fIGID_INT\fR]
+[perm=\fIPERM_INT\fR]
+.SY strgp_add
+name=\fISTRGP_NAME\fR container=\fIINST_NAME\fR [\fIOTHER_STRGP_OPTIONS\fR]
+.YS
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), store plugins for the ldmsd (ldms daemon) are configured via
-the ldmsd_controller. The store_sos plugin is a sos store.
+With LDMS (Lightweight Distributed Metric Service), store plugins for the ldmsd
+(ldms daemon) are configured via the ldmsd_controller. The store_sos plugin is a
+sos store.
 .PP
 To build the store_sos, build with the following flag:
 .B --enable_sos
+.BI --with_sos= SOS_PREFIX
 
-.SH STORE_SOS INIT CONFIGURATION ATTRIBUTE SYNTAX
+This manual only covers store_sos configuration. Please consult
+\fBldmsd_store\fR(7) for common ldmsd storage plugin options, and how to use
+ldmsd storage in general.
 
+.SH LOADING PLUGIN INSTANCE
+Plugin instance can be loaded with the following syntax:
+.P
+.SY load
+name=\fIINST_NAME\fR plugin=\fIstore_sos\fR
+.YS
+.P
+For example, "load name=mysos plugin=store_sos" command will load store_sos
+plugin instance, and assign "mysos" instance name to it. The plugin instance
+name must be unique among all loaded plugin instances (not just stores) within
+the \fBldmsd\fR. store_sos can can have multiple instances loaded.
+
+.SH STORE_SOS CONFIGURATION
+.SY config
+name=\fIINST_NAME\fR path=\fIPATH\fR [uid=\fIUID_INT\fR] [gid=\fIGID_INT\fR]
+[perm=\fIPERM_INT\fR]
+
+.SS Attribute Descriptions
 .TP
-.BR config
-name=<plugin_name> path=<path>
-.br
-ldmsd_controller configuration line
-.RS
+name=\fIINST_NAME\fR
+The instance name reference to the store_sos plugin instance.
 .TP
-name=<plugin_name>
-.br
-This MUST be store_sos.
+path=\fIPATH\fR
+The path to SOS store. If the store has not been created, it will be created
+using this \fIPATH\fR when \fBstrgp\fR open the storage.
 .TP
-path=<path>
-.br
-The store will be put into a directory whose root is specified by the path argument. This directory must exist; the store will be created. The full path to the store will be <path>/<container>. The schema(s) determine the schemas of the data base. Container and schema are set when the strgp is added.
+[uid=\fIUID_INT\fR]
+The optional UID number used when crating the store. If not specified, the
+default is the effective UID (\fBeuid\fR) of the \fBldmsd\fR.
+.TQ
+[gid=\fIGID_INT\fR]
+The optional GID number used when crating the store. If not specified, the
+default is the effective GID (\fBegid\fR) of the \fBldmsd\fR.
+.TQ
+[perm=\fIPERM_INT\fR]
+An optional permission used when creating the store. The default value is 0660.
+
 .RE
 
-.SH STRGP_ADD ATTRIBUTE SYNTAX
-The strgp_add sets the policies being added. This line identifies the container and schema for a store.
-.TP
-.BR strgp_add
-plugin=store_sos name=<policy_name> schema=<schema> container=<container>
-.br
-ldmsd_controller strgp_add line
-.br
-.RS
-.TP
-plugin=<plugin_name>
-.br
-This MUST be store_sos.
-.TP
-name=<policy_name>
-.br
-The policy name for this strgp.
-.TP
-container=<container>
-.br
-The container and schema define the store as described above (see path).
-.TP
-schema=<schema>
-.br
-The container and schema define the store as described above (see path).
-You can have multiples of the same path and container, but with different schema (which means they will have different metrics) and they will be stored in the same store.
-.RE
-
+.SH STORAGE POLICY (STRGP)
+A \fBstrgp\fR can be created and link to the storage plugin instance as follows:
+.PP
+.SY strgp_add
+name=\fISTRGP_NAME\fR container=\fIINST_NAME\fR [\fIOTHER_STRGP_OPTIONS\fR]
+.YS
+.PP
+Where the \fBname\fR attribute is the name of the strgp, \fBcontainer\fR is the
+name referring to the storage plugin instance. For more detail about \fBstrgp\fR
+and ldmsd storage in general, please see \fBldmsd_store\fR(7).
 
 .SH USING SOS COMMANDS TO MANAGE PARTITIONS
 Some of the basic sos commands are given below. SOS tools will be built into XXX.
@@ -339,4 +348,5 @@ timestamp                        AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_PKTS
 
 
 .SH SEE ALSO
-ldms(7), Plugin_store_csv(7)
+.BR ldmsd_store (7),
+.BR Plugin_store_csv (7)
