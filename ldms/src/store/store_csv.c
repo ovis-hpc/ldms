@@ -668,6 +668,11 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	}
 	cfgstate = CSV_CFGINIT_IN;
 
+	if (av_value(avl, "container") || av_value(avl, "schema")) {
+		msglog(LDMSD_LDEBUG, "%s: config action=init: schema= and container= are ignored.\n",
+		       __FILE__);
+	}
+
 	value = av_value(avl, "buffer");
 	bvalue = av_value(avl, "buffertype");
 	rc = config_buffer(value, bvalue, &buf, &buft);
@@ -847,6 +852,7 @@ static const char *usage(struct ldmsd_plugin *self)
 	return  "    config name=store_csv action=init path=<path> rollover=<num> rolltype=<num>\n"
 		"           [altheader=<0/!0> userdata=<0/!0>]\n"
 		"           [buffer=<0/1/N> buffertype=<3/4>]\n"
+		"           [transportdata=<metflags>]\n"
 		"           [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid]\n"
 		"               rename_perm=<octal-mode>]]\n"
 		"           [create_uid=<int-uid> [create_gid=<int-gid] create_perm=<octal-mode>]\n"
@@ -865,6 +871,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"\n"
 		"    config name=store_csv action=custom container=<c_name> schema=<s_name>\n"
 		"           [altheader=<0/1> userdata=<0/1> buffer=<0/1/N> buffertype=<3/4>]\n"
+		"           [transportdata=<metflags>]\n"
 		"         - Override the default parameters set by action=init for particular containers\n"
 		"         - altheader Header in a separate file (optional, default to init)\n"
 		NOTIFY_USAGE
@@ -910,7 +917,23 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 	/* This allows optional loading a float (Time) into an int field and
 	   retaining usec as a separate field */
 	fprintf(fp, "#Time,Time_usec,ProducerName");
+	if (s_handle->transflags != TRANS_LOG_NORMAL) {
+		if (s_handle->transflags & TRANS_LOG_CONSISTENT)
+			fprintf(fp, ",consistent");
+		if (s_handle->transflags & TRANS_LOG_DURATION)
+			fprintf(fp, ",duration");
+		if (s_handle->transflags & TRANS_LOG_TRIP)
+			fprintf(fp, ",trip");
+		if (s_handle->transflags & TRANS_LOG_GENERATION)
+			fprintf(fp, ",datagn");
+		if (s_handle->transflags & TRANS_LOG_METAGEN)
+			fprintf(fp, ",metagn");
+		if (s_handle->transflags & TRANS_LOG_SETPTR)
+			fprintf(fp, ",setptr");
+	}
 
+	if ( (s_handle->transflags & TRANS_LOG_NORMAL) == 0)
+		goto no_metrics;
 	for (i = 0; i != metric_count; i++){
 		const char* name = ldms_metric_name_get(set, metric_array[i]);
 		enum ldms_value_type metric_type = ldms_metric_type_get(set, metric_array[i]);
@@ -949,6 +972,7 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 		}
 	}
 
+no_metrics:
 	fprintf(fp, "\n");
 
 	/* Flush for the header, whether or not it is the data file as well */
@@ -1034,6 +1058,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		s_handle->store_count = 0;
 		s_handle->byte_count = 0;
 		s_handle->lastflush = 0;
+		s_handle->transflags = PG.transflags;
 		s_handle->create_uid = (uid_t)-1;
 		s_handle->create_gid = (gid_t)-1;
 		s_handle->rename_uid = (uid_t)-1;
@@ -1271,12 +1296,46 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 	} else {
 		fprintf(s_handle->file, ",");
 	}
+	if (s_handle->transflags != TRANS_LOG_NORMAL) {
+		if (s_handle->transflags & TRANS_LOG_CONSISTENT) {
+			int cons = ldms_set_is_consistent(set);
+			fprintf(s_handle->file, ",%d", (cons ? 1 : 0) );
+		}
+		if (s_handle->transflags & TRANS_LOG_DURATION) {
+			const struct ldms_timestamp dur = 
+				ldms_transaction_duration_get(set);
+			fprintf(s_handle->file, ",%" PRIu32 ".%06" PRIu32,
+				dur.sec, dur.usec);
+		}
+		if (s_handle->transflags & TRANS_LOG_TRIP) {
+			struct ldms_timestamp arr_ts;
+			struct ldms_timestamp *arr_tsp = &arr_ts;
+			struct timeval atv;
+			(void)gettimeofday(&atv, NULL);
+			arr_ts.sec = atv.tv_sec;
+			arr_ts.usec = atv.tv_usec;
+			double transit_time = ldms_difftimestamp(arr_tsp, ts);
+			fprintf(s_handle->file, ",%g", transit_time);
+		}
+		if (s_handle->transflags & TRANS_LOG_GENERATION) {
+			uint64_t gn = ldms_set_data_gn_get(set);
+			fprintf(s_handle->file, ",%" PRIu64, gn);
+		}
+		if (s_handle->transflags & TRANS_LOG_METAGEN) {
+			uint64_t mgn = ldms_set_meta_gn_get(set);
+			fprintf(s_handle->file, ",%" PRIu64, mgn);
+		}
+		if (s_handle->transflags & TRANS_LOG_SETPTR)
+			fprintf(s_handle->file, ",%p", set);
+	}
 
 	/* FIXME: will we want to throw an error if we cannot write? */
 	char *wsqt = ""; /* ietf quotation wrapping strings */
 	if (ietfcsv) {
 		wsqt = "\"";
 	}
+	if ((s_handle->transflags & TRANS_LOG_NORMAL) == 0)
+		goto no_metrics;
 	const char * str;
 	for (i = 0; i != metric_count; i++) {
 		udata = ldms_metric_user_data_get(set, metric_array[i]);
@@ -1700,6 +1759,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			break;
 		}
 	}
+no_metrics:
 	fprintf(s_handle->file,"\n");
 
 	s_handle->store_count++;

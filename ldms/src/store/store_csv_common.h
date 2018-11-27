@@ -70,6 +70,7 @@
 	/** The full path of an ovis notification output.  NULL indicates no notices wanted.  */ \
         char *notify; \
 	bool notify_isfifo; \
+	unsigned transflags; \
 	/** The full path template for renaming closed outputs. NULL indicates no renames wanted. */ \
         char *rename_template; \
 	uid_t rename_uid; \
@@ -77,7 +78,7 @@
 	unsigned rename_perm; \
 	uid_t create_uid; \
 	gid_t create_gid; \
-	unsigned create_perm;
+	unsigned create_perm
 
 struct storek_common {
 	STOREK_COMMON;
@@ -104,6 +105,16 @@ struct csv_plugin_static {
 	ldmsd_msg_log_f msglog;
 } plugin_globals;
 #define PG plugin_globals
+
+/* the following bit flags are or-d into transflags to control transit info metrics. */
+#define TRANS_LOG_NORMAL 1u /* log normal metrics */
+#define TRANS_LOG_DURATION 2u /* log sample duration */
+#define TRANS_LOG_GENERATION 4u /* log generation number */
+#define TRANS_LOG_METAGEN 8u /* log metadata generation number */
+#define TRANS_LOG_SETPTR 16u /* log set pointer (as %p) */
+#define TRANS_LOG_TRIP 32u /* log set pointer (as %p) */
+#define TRANS_LOG_CONSISTENT 64u /* log consistency flag */
+#define TRANS_LOG_START 128u /* reserved. could be computed from ts - duration */
 
 #define ROLL_COMMON \
 	char *filename; \
@@ -260,6 +271,7 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 #define NOTIFY_USAGE \
 		"         - notify  The path for the file event notices.\n" \
 		"         - notify_isfifo  0 if not (the default) or 1 if fifo.\n" \
+		"         - metflags The option characters for transportdata.\n" \
 		"         - rename_template  The template string for closed output renaming.\n" \
 		"         - rename_uid  The numeric user id for output renaming.\n" \
 		"         - rename_gid  The numeric group id for output renaming.\n" \
@@ -279,6 +291,7 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 	cps.create_uid = (uid_t)-1; \
 	cps.create_gid = (gid_t)-1; \
 	cps.create_perm = 0; \
+	cps.transflags = TRANS_LOG_NORMAL; \
 	cps.hooks_closed = 0
 
 

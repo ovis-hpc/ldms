@@ -1,0 +1,26 @@
+load name=store_csv
+config name=store_csv action=init path=${STOREDIR} altheader=0
+
+prdcr_add name=localhost1 host=localhost type=active xprt=${XPRT} port=${port1} interval=10000000
+prdcr_start name=localhost1
+
+prdcr_add name=localhost2 host=localhost type=active xprt=${XPRT} port=${port2} interval=10000000
+prdcr_start name=localhost2
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+strgp_add name=store_${testname} plugin=store_csv schema=${testname} container=plain
+strgp_prdcr_add name=store_${testname} regex=.*
+strgp_start name=store_${testname}
+
+config name=store_csv action=custom path=${STOREDIR} altheader=0 container=duration schema=${testname} transportdata=d
+strgp_add name=store_${testname}3 plugin=store_csv schema=${testname} container=duration
+strgp_prdcr_add name=store_${testname}3 regex=.*
+strgp_start name=store_${testname}3
+
+config name=store_csv action=custom path=${STOREDIR} altheader=0 container=debug schema=${testname} transportdata=Na
+strgp_add name=store_${testname}2 plugin=store_csv schema=${testname} container=debug
+strgp_prdcr_add name=store_${testname}2 regex=.*
+strgp_start name=store_${testname}2
