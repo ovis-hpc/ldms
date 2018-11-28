@@ -21,6 +21,7 @@ ldms_auth_munge.man \
 ldms_auth_naive.man \
 ldms_quickstart.man \
 ldms_sampler_base.man \
+ldmsd_store.man \
 ldmsd_failover.man \
 ldmsd_setgroup.man \
 Plugin_aries_linkstatus.man \
