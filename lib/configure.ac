@@ -62,17 +62,10 @@ OPTION_DEFAULT_ENABLE([ovis_auth], [ENABLE_OVIS_AUTH])
 OPTION_DEFAULT_ENABLE([zap], [ENABLE_ZAP])
 OPTION_DEFAULT_DISABLE([rdma], [ENABLE_RDMA])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
-dnl we need libevent to support zap
 have_zap=0
 
-OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
-OPTION_WITH([libevent], [LIBEVENT],[/usr])
-
-OPTION_WITH_EVENT
 if test "$disable_zap" != "yes"; then
   have_zap=1
-
-
 dnl we need libibverbs-devel and librdmacm-devel to support rdma
   if test "$enable_rdma" = "yes"; then
     AC_CHECK_HEADER([infiniband/verbs.h],
