@@ -13,3 +13,9 @@ libclock_la_SOURCES = clock.c
 libclock_la_CFLAGS = $(SAMPLER_CFLAGS)
 libclock_la_LIBADD = $(SAMPLER_LIBADD)
 libclock_la_LDFLAGS = $(SAMPLER_LDFLAGS)
+
+pkglib_LTLIBRARIES += libfaux_job_alt.la
+libfaux_job_alt_la_SOURCES = faux_job_alt.c
+libfaux_job_alt_la_CFLAGS = $(SAMPLER_CFLAGS)
+libfaux_job_alt_la_LIBADD = $(SAMPLER_LIBADD)
+libfaux_job_alt_la_LDFLAGS = $(SAMPLER_LDFLAGS)
