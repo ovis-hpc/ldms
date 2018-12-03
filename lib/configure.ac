@@ -67,14 +67,8 @@ OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
 dnl we need libevent to support zap
 have_zap=0
 
-OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
-OPTION_WITH([libevent], [LIBEVENT],[/usr])
-
-OPTION_WITH_EVENT
 if test "$disable_zap" != "yes"; then
   have_zap=1
-
-
 dnl we need libibverbs-devel and librdmacm-devel to support rdma
   if test "$enable_rdma" = "yes"; then
     AC_CHECK_HEADER([infiniband/verbs.h],
