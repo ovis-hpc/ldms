@@ -87,8 +87,19 @@ When run in daemon mode, controls the existence of the banner file.
 Mode 0 suppresses the version file. Mode 1 deletes it at daemon exit. Mode >= 2 leaves it in place for debugging after daemon exit. Default mode is 1.
 The banner contains the software and protocol versions information, which is also logged at the INFO level. The banner file name is always the pidfile name with .version appended.
 .TP
-.BR -c
-The path to configuration file (optional, default: <none>).
+.BI "-c " CONFIG_PATH
+The path to configuration file (optional, default: <none>). The configuration
+file contains a batch of ldmsd controlling commands, such as `load` for loading
+a plugin, and `prdcr_add` for defining a ldmsd producer to aggregate from (see
+\fBldmsd_controller\fR(8) for a complete list of commands, or simply run
+\fBldmsd_controller\fR then \fBhelp\fR). The commands in the configuration file
+are executed sequentially, except for \fBprdcr_start\fR, \fBupdtr_start\fR,
+\fBstrgp_start\fR, and \fBfailover_start\fR that will be deferred. If
+\fBfailover_start\fR is present, the failover service will start first (among
+the deferred). Then, upon failover pairing success or failure, the other
+deferred configuration objects will be started. Please also note that while
+failover service is in use, prdcr, updtr, and strgp cannot be altered (start,
+stop, or reconfigure) over in-band configuration.
 .TP
 .BI -m " MEMORY_SIZE"
 .br

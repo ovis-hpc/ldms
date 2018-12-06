@@ -1209,14 +1209,14 @@ static void resp_set_route(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 
 /* failover related functions */
 
-static void help_failback()
+static void help_failover_peercfg_stop()
 {
-	printf("Execute failback routine.\n\n");
+	printf("Stop peer configuration.\n\n");
 }
 
-static void help_failover()
+static void help_failover_peercfg_start()
 {
-	printf("Execute failover routine.\n\n");
+	printf("Start peer configuration.\n\n");
 }
 
 static void help_failover_config()
@@ -1224,8 +1224,11 @@ static void help_failover_config()
 	printf("Configure LDMSD failover.\n\n");
 	printf("Parameters:\n");
 	printf("    host=             The host name of the failover partner.\n");
+	printf("                      This is optional in re-configuration.\n");
 	printf("    xprt=             The transport of the failover partner.\n");
+	printf("                      This is optional in re-configuration.\n");
 	printf("    port=             The LDMS port of the failover partner.\n");
+	printf("                      This is optional in re-configuration.\n");
 	printf("    [auto_switch=0|1] Auto switching (failover/failback).\n");
 	printf("    [interval=]       The interval of the heartbeat.\n");
 	printf("    [timeout_factor=] The heartbeat timeout factor.\n");
@@ -1243,6 +1246,20 @@ static void help_failover_mod()
 static void help_failover_status()
 {
 	printf("Get failover status.\n\n");
+}
+
+static void help_failover_start()
+{
+	printf("Start LDMSD failover service.\n\n");
+	printf("    NOTE: After the failover service has started,\n");
+	printf("    aggregator configuration objects (prdcr, updtr, and \n");
+	printf("    strgp) are not allowed to be altered (start, stop, or \n");
+	printf("    reconfigure).\n\n");
+}
+
+static void help_failover_stop()
+{
+	printf("Stop LDMSD failover service.\n\n");
 }
 
 static void help_setgroup_add()
@@ -1369,16 +1386,18 @@ static struct command command_tbl[] = {
 	{ "?", LDMSCTL_HELP, handle_help, NULL, NULL },
 	{ "config", LDMSD_PLUGN_CONFIG_REQ, NULL, help_config, resp_generic },
 	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status, resp_generic },
-	{ "failback", LDMSD_FAILOVER_DO_FAILBACK_REQ, NULL,
-		      help_failback, resp_generic},
-	{ "failover", LDMSD_FAILOVER_DO_FAILOVER_REQ, NULL,
-		      help_failover, resp_generic},
 	{ "failover_config", LDMSD_FAILOVER_CONFIG_REQ, NULL,
 			     help_failover_config, resp_generic },
-	{ "failover_mod", LDMSD_FAILOVER_MOD_REQ, NULL,
-			  help_failover_mod, resp_generic },
+	{ "failover_peercfg_start", LDMSD_FAILOVER_PEERCFG_START_REQ, NULL,
+		      help_failover_peercfg_start, resp_generic },
+	{ "failover_peercfg_stop", LDMSD_FAILOVER_PEERCFG_STOP_REQ, NULL,
+		      help_failover_peercfg_stop, resp_generic },
+	{ "failover_start", LDMSD_FAILOVER_START_REQ, NULL,
+			     help_failover_start, resp_generic },
 	{ "failover_status", LDMSD_FAILOVER_STATUS_REQ, NULL,
 			     help_failover_status, resp_failover_status },
+	{ "failover_stop", LDMSD_FAILOVER_STOP_REQ, NULL,
+			     help_failover_stop, resp_generic },
 	{ "greeting", LDMSD_GREETING_REQ, NULL, help_greeting, resp_greeting },
 	{ "help", LDMSCTL_HELP, handle_help, NULL, NULL },
 	{ "load", LDMSD_PLUGN_LOAD_REQ, NULL, help_load, resp_generic },

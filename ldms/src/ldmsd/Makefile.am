@@ -30,7 +30,7 @@ ldmsd_CFLAGS = $(AM_CFLAGS) -rdynamic
 ldmsd_LDADD = $(CORE)/libldms.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) \
 	-lzap -lmmalloc -lovis_util -lcoll \
-	-lovis_event -lpthread
+	-lovis_event -lpthread -lm
 
 ldmsd_LDFLAGS += -lovis_util -lcoll -ldl -lovis_ctrl
 

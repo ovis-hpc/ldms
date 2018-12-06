@@ -115,6 +115,15 @@ pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size;
 char *max_mem_sz_str;
 
+mode_t inband_cfg_mask = LDMSD_PERM_FAILOVER_ALLOWED;
+	/* LDMSD_PERM_FAILOVER_INTERNAL will be added in `failover_start`
+	 * command.
+	 *
+	 * If failover is not in use, 0777 will later be added after
+	 * process_config_file.
+	 */
+int ldmsd_use_failover = 0;
+
 ldms_t ldms;
 FILE *log_fp;
 
@@ -301,6 +310,26 @@ const char *ldmsd_myhostname_get()
 const char *ldmsd_myname_get()
 {
 	return myname;
+}
+
+mode_t ldmsd_inband_cfg_mask_get()
+{
+	return inband_cfg_mask;
+}
+
+void ldmsd_inband_cfg_mask_set(mode_t mask)
+{
+	inband_cfg_mask = mask;
+}
+
+void ldmsd_inband_cfg_mask_add(mode_t mask)
+{
+	inband_cfg_mask |= mask;
+}
+
+void ldmsd_inband_cfg_mask_rm(mode_t mask)
+{
+	inband_cfg_mask &= ~mask;
 }
 
 #ifdef LDMSD_UPDATE_TIME
@@ -1925,6 +1954,25 @@ int main(int argc, char *argv[])
 			ldmsd_log(LDMSD_LINFO, "Processing the config file '%s' is done.\n", optarg);
 			break;
 		}
+	}
+	if (ldmsd_use_failover) {
+		/* failover will be the one starting cfgobjs */
+		ret = ldmsd_failover_start();
+		if (ret) {
+			ldmsd_log(LDMSD_LERROR,
+				  "failover_start failed, rc: %d\n", ret);
+			cleanup(100, "failover start failed");
+		}
+	} else {
+		/* we can start cfgobjs right away */
+		ret = ldmsd_ourcfg_start_proc();
+		if (ret) {
+			ldmsd_log(LDMSD_LERROR,
+				  "config start failed, rc: %d\n", ret);
+			cleanup(100, "config start failed");
+		}
+		ldmsd_linfo("Enabling in-band config\n");
+		ldmsd_inband_cfg_mask_add(0777);
 	}
 
 	uint64_t count = 1;

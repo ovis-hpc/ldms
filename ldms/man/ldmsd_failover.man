@@ -1,6 +1,6 @@
 .\" Manpage for ldmsd_failover
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "16 Apr 2018" "v4.1" "LDMSD Failover man page"
+.TH man 7 "13 Aug 2018" "v4.1" "LDMSD Failover man page"
 
 .\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""/.
 .SH NAME
@@ -18,14 +18,15 @@ ldmsd_failover - explanation, configuration, and commands for ldmsd failover
 .RI "[peer_name=" NAME "] [interval=" USEC "] [timeout_factor=" FLOAT "]"
 .RI "[auto_switch=" 0|1 "]"
 
-.IP \fBfailover_mod\fR 13
-.RI "[auto_switch=" 0|1 "]"
+.IP \fBfailover_start\fR
+
+.IP \fBfailover_stop\fR
 
 .IP \fBfailover_status\fR
 
-.IP \fBfailover\fR
+.IP \fBfailover_peercfg_start\fR
 
-.IP \fBfailback\fR
+.IP \fBfailover_peercfg_stop\fR
 
 .hy 14 \" default hyphenation
 .ad    \" restore text justification
@@ -38,57 +39,84 @@ In a nutshell, when a failover pair is formed, the ldmsd's exchange their
 updater and producer configuration so that when one goes down, the other will
 take over the LDMS set aggregation load (\fBfailover\fR).
 
-\fBHeartbeat\fR mechanism is used to detect the service unavailability. Each
-ldmsd in the pair sends heartbeats to the other to let its partner knows that it
-is in service. When the heartbeat is not detected, the failover mechanism is
-executed.
+\fBPing-echo\fR mechanism is used to detect the service unavailability. Each
+ldmsd in the pair sends ping requests to the other, the peer echo back along
+with its status. When the echo has not been received within the timeout period
+(see below), the peer configuration is automatically started (failover).
 
 The following paragraphs explain ldmsd configuration commands relating to ldmsd
 failover feature.
 
-\fBfailover_config\fR configure failover feature in an ldmsd. The following list
-describes the command parameters.
+\fBfailover_config\fR configure failover feature in an ldmsd. The failover
+service must be stopped before configuring it. The following list describes the
+command parameters.
 .RS
 .IP \fBhost\fR=\fIHOST\fR 16
-The hostname of the failover partner.
+The hostname of the failover partner. This is optional in re-configuration.
 .IP \fBport\fR=\fIPORT\fR
-The LDMS port of the failover partner.
+The LDMS port of the failover partner. This is optional in re-configuration.
 .IP \fBxprt\fR=\fIXPRT\fR
-The LDMS transport type (sock, rdma, or ugni) of the failover partner.
+The LDMS transport type (sock, rdma, or ugni) of the failover partner. This is
+optional in re-configuration.
 .IP \fBpeer_name\fR=\fINAME\fR
 (Optional) The ldmsd name of the failover parter (please see option \fB-n\fR in
 \fBldmsd\fR(8)). If this is specified, the ldmsd will only accept a pairing with
 other ldmsd with matching name. Otherwise, the ldmsd will pair with any ldmsd
 requesting a failover pairing.
 .IP \fBinterval\fR=\fIuSEC\fR
-(Optional) The interval (in micro-seconds) for heartbeat and transport
-re-connecting. The default is 1000000 (1 sec).
+(Optional) The interval (in micro-seconds) for ping and transport re-connecting.
+The default is 1000000 (1 sec).
 .IP \fBtimeout_factor\fR=\fIFLOAT\fR
-(Optional) The heartbeat timeout factor. The heartbeat timeout is calculated by
-\fB\%timeout_factor * \%interval\fR.
+(Optional) The echo timeout factor. The echo timeout is calculated by
+\fB\%timeout_factor * \%interval\fR. The default is 2.
 .IP \fBauto_switch\fR=\fI0|1\fR
-(Optional) If this is on (1), ldmsd will perform \fBfailover\fR or
-\fBfailback\fR automatically in the anbense or the presense of heartbeats
-respectively. Otherwise, the user need to issue \fBfailover\fR or \fBfailback\fR
-manually. By default, this value is 1.
+(Optional) If this is on (1), ldmsd will start \fBpeercfg\fR or stop
+\fBpeercfg\fR automatically. Otherwise, the user need to issue
+\fBfailover_peercfg_start\fR or \fBfailover_peercfg_stop\fR manually. By
+default, this value is 1.
 .RE
 
-\fBfailover_mod\fR is a command to modify the failover configuration. Currently,
-it accepts only \fBauto_switch\fR option.
+\fBfailover_start\fR is a command to start the (configured) failover service.
+After the failover service has started, it will pair with the peer, retreiving
+peer configurations and start peer configurations when it believes that the peer
+is not in service (with `auto_switch=1`, otherwise it does nothing).
+
+Please also note that when the failover service is in use (after
+\fBfailover_start\fR), prdcr, updtr, and strgp cannot be altered over the
+in-band configuration (start, stop, or reconfigure). The failover service must
+be stopped (\fBfailover_stop\fR) before altering those configuration objects.
+
+\fBfailover_stop\fR is a command to stop the failover service. When the service
+is stopped, the peer configurations will also be stopped and removed from the
+local memory. The peer also won't be able to pair with local ldmsd when the
+failover service is stopped. Issuing \fBfailover_stop\fR after the pairing
+process succeeded will stop failover service on both daemons in the pair.
 
 \fBfailover_status\fR is a command to report (via \fBldmsd_controller\fR) the
 failover statuses.
 
-\fBfailover\fR is a command to manually execute failover procedure. Please note
-that if the \fBauto_switch\fR is 1, the ldmsd will automatically invoke failback
-when it receives the next heartbeat.
+\fBfailover_peercfg_start\fR is a command to manually start peer configruation.
+Please note that if the \fBauto_switch\fR is 1, the ldmsd will automatically
+stop peer configuration when it receives the echo from the peer.
 
-\fBfailback\fR is a command to manually execute the failback procedure. Please
-note that if the \fBauto_switch\fR is 1, the ldmsd will automatically invoke
-failover then the heartbeat timeout expires.
+\fBfailover_peercfg_stop\fR is a command to manually stop peer configuration.
+Please note that if the \fBauto_switch\fR is 1, the ldmsd will automatically
+start peercfg when the echo has timed out.
 
-Currently, the \fBheartbeat timeout\fR is 2 times the heartbeat interval.
+.SH FAILOVER: AUTOMATIC PEERCFG ACTIVATION
 
+The peer configuration is automatically activated when an echo-timeout event
+occurred (with `auto_switch=1`). The echo-timeout is calculated based on ping interval, ping-echo
+round-trip time, `timeout_factor` and moving standard deviation of ping-echo
+round-trip time as follows:
+
+    rt_time[N] is an array of last N ping-echo round-trip time.
+
+    base = max( max(rt_time), ping_interval )
+    timeout1 = base + 4 * SD(rt_time)
+    timeout2 = base*timeout_factor
+
+    timeout = max( timeout1, timeout2 )
 
 .\""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""/.
 .SH EXAMPLES
@@ -168,6 +196,7 @@ updtr_prdcr_add name=upd regex.*
 updtr_start upd
 \fIfailover_config\fR host=a11.hostname port=12345 xprt=sock \\
                       interval=1000000 peer_name=a11
+\fIfailover_start\fR
 .B
 # a10 CLI
 $ ldmsd -c a10.cfg -x sock:12345 \fB-n\fR \fIa10\fR
@@ -186,6 +215,7 @@ updtr_prdcr_add name=upd regex.*
 updtr_start upd
 \fIfailover_config\fR host=a10.hostname port=12345 xprt=sock \\
                       interval=1000000 peer_name=a10
+\fIfailover_start\fR
 .B
 # a11 CLI
 $ ldmsd -c a11 -x sock:12345 \fB-n\fR \fIa11\fR

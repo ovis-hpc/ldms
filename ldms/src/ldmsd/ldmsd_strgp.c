@@ -517,29 +517,69 @@ void ldmsd_strgp_update(ldmsd_prdcr_set_t prd_set)
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 }
 
+int __ldmsd_strgp_start(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt)
+{
+	int rc;
+	ldmsd_strgp_lock(strgp);
+	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
+	if (rc) {
+		goto out;
+	}
+	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out;
+	}
+	strgp->state = LDMSD_STRGP_STATE_RUNNING;
+	strgp->obj.perm |= LDMSD_PERM_DSTART;
+	/* Update all the producers of our changed state */
+	ldmsd_prdcr_update(strgp);
+out:
+	ldmsd_strgp_unlock(strgp);
+	return rc;
+}
+
+int ldmsd_strgp_start(const char *name, ldmsd_sec_ctxt_t ctxt)
+{
+	int rc;
+	ldmsd_strgp_t strgp = ldmsd_strgp_find(name);
+	if (!strgp) {
+		return ENOENT;
+	}
+	rc = __ldmsd_strgp_start(strgp, ctxt);
+	ldmsd_strgp_put(strgp);
+	return rc;
+}
+
+int __ldmsd_strgp_stop(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt)
+{
+	int rc = 0;
+
+	ldmsd_strgp_lock(strgp);
+	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
+	if (rc)
+		goto out;
+	if (strgp->state != LDMSD_STRGP_STATE_RUNNING) {
+		rc = EBUSY;
+		goto out;
+	}
+	ldmsd_task_stop(&strgp->task);
+	strgp_close(strgp);
+	strgp->state = LDMSD_STRGP_STATE_STOPPED;
+	strgp->obj.perm &= ~LDMSD_PERM_DSTART;
+	ldmsd_prdcr_update(strgp);
+out:
+	ldmsd_strgp_unlock(strgp);
+	return rc;
+}
+
 int ldmsd_strgp_stop(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
 	if (!strgp)
 		return ENOENT;
-
-	ldmsd_strgp_lock(strgp);
-	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
-	if (rc)
-		goto out_1;
-	if (strgp->state != LDMSD_STRGP_STATE_RUNNING) {
-		rc = EBUSY;
-		goto out_1;
-	}
-	ldmsd_task_stop(&strgp->task);
-	strgp_close(strgp);
-	strgp->state = LDMSD_STRGP_STATE_STOPPED;
-	ldmsd_prdcr_update(strgp);
-out_1:
-	ldmsd_strgp_unlock(strgp);
+	rc = __ldmsd_strgp_stop(strgp, ctxt);
 	ldmsd_strgp_put(strgp);
-out_0:
 	return rc;
 }
 

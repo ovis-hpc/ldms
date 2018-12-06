@@ -849,50 +849,21 @@ out:
 	return rc;
 }
 
-int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
-		      const char *offset_str, const char *auto_interval,
-		      ldmsd_sec_ctxt_t ctxt)
+int __ldmsd_updtr_start(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
-	long interval_us, offset_us;
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr)
-		return ENOENT;
 
 	ldmsd_updtr_lock(updtr);
 	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
 	if (rc)
-		goto out_1;
+		goto out;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
 		rc = EBUSY;
-		goto out_1;
+		goto out;
 	}
 	updtr->state = LDMSD_UPDTR_STATE_RUNNING;
+	updtr->obj.perm |= LDMSD_PERM_DSTART;
 
-	if (auto_interval)
-		if(0 == strcasecmp(auto_interval, "false"))
-			updtr->is_auto_task = 0;
-		else
-			updtr->is_auto_task = 1;
-	interval_us = updtr->default_task.sched.intrvl_us;
-	offset_us = updtr->default_task.hint.offset_us;
-	if (interval_str) {
-		/* A new interval is given. */
-		interval_us = strtol(interval_str, NULL, 0);
-		if (!offset_str) {
-			/* An offset isn't given. We assume that
-			 * users want the updater to schedule asynchronously.
-			 */
-			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
-		}
-	}
-	if (offset_str)
-		offset_us = strtol(offset_str, NULL, 0)
-					- updtr_sched_offset_skew_get();
-
-	/* Initialize the default task */
-	updtr_task_init(&updtr->default_task, updtr, 1, interval_us, offset_us);
-	/* Start the default task */
 	updtr_update_task_start(&updtr->default_task);
 
 	if (updtr->is_auto_task) {
@@ -913,7 +884,61 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 		updtr_tasks_create(updtr);
 	}
 
-out_1:
+out:
+	ldmsd_updtr_unlock(updtr);
+	return rc;
+}
+
+int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
+		      const char *offset_str, const char *auto_interval,
+		      ldmsd_sec_ctxt_t ctxt)
+{
+	int rc = 0;
+	long interval_us, offset_us;
+	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
+	if (!updtr)
+		return ENOENT;
+
+	ldmsd_updtr_lock(updtr);
+
+	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
+	if (rc)
+		goto err;
+	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto err;
+	}
+
+	if (auto_interval) {
+		if(0 == strcasecmp(auto_interval, "false"))
+			updtr->is_auto_task = 0;
+		else
+			updtr->is_auto_task = 1;
+	}
+	interval_us = updtr->default_task.sched.intrvl_us;
+	offset_us = updtr->default_task.hint.offset_us;
+	if (interval_str) {
+		/* A new interval is given. */
+		interval_us = strtol(interval_str, NULL, 0);
+		if (!offset_str) {
+			/* An offset isn't given. We assume that
+			 * users want the updater to schedule asynchronously.
+			 */
+			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+		}
+	}
+	if (offset_str)
+		offset_us = strtol(offset_str, NULL, 0)
+					- updtr_sched_offset_skew_get();
+
+	/* Initialize the default task */
+	updtr_task_init(&updtr->default_task, updtr, 1, interval_us, offset_us);
+	ldmsd_updtr_unlock(updtr);
+	rc = __ldmsd_updtr_start(updtr, ctxt);
+	ldmsd_updtr_put(updtr);
+	return rc;
+
+err:
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
 	return rc;
@@ -939,13 +964,9 @@ static void __updtr_tasks_stop(ldmsd_updtr_t updtr)
 	}
 }
 
-int ldmsd_updtr_stop(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
+int __ldmsd_updtr_stop(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr)
-		return ENOENT;
-
 	ldmsd_updtr_lock(updtr);
 	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
 	if (rc)
@@ -956,12 +977,23 @@ int ldmsd_updtr_stop(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
 
 	}
 	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
+	updtr->obj.perm &= ~LDMSD_PERM_DSTART;
 	if (updtr->push_flags)
 		cancel_push(updtr);
 
 	__updtr_tasks_stop(updtr);
 out_1:
 	ldmsd_updtr_unlock(updtr);
+	return rc;
+}
+
+int ldmsd_updtr_stop(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
+{
+	int rc = 0;
+	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
+	if (!updtr)
+		return ENOENT;
+	rc = __ldmsd_updtr_stop(updtr, ctxt);
 	ldmsd_updtr_put(updtr);
 	return rc;
 }
