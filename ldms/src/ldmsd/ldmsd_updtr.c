@@ -762,6 +762,16 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 {
 	struct ldmsd_updtr *updtr;
 	long interval_us, offset_us;
+	char *task_mgmt_interval_str = NULL;
+	long task_mgmt_interval_us = 0;
+
+	task_mgmt_interval_str = getenv("LDMSD_UPDTR_TASK_MGMT_INTERVAL");
+	if (!task_mgmt_interval_str) {
+		task_mgmt_interval_us = UPDTR_TREE_MGMT_TASK_INTRVL;
+	} else {
+		task_mgmt_interval_us = strtol(task_mgmt_interval_str, NULL, 0);
+	}
+
 	updtr = (struct ldmsd_updtr *)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_UPDTR,
 				 sizeof *updtr, ldmsd_updtr___del,
@@ -785,9 +795,10 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 		if (push_flags)
 			updtr->default_task.task_flags = LDMSD_TASK_F_IMMEDIATE;
 	}
+
 	/* Initialize the default task */
 	updtr_task_init(&updtr->default_task, updtr, 1, interval_us, offset_us);
-	updtr_task_init(&updtr->tree_mgmt_task, updtr, 1, UPDTR_TREE_MGMT_TASK_INTRVL,
+	updtr_task_init(&updtr->tree_mgmt_task, updtr, 1, task_mgmt_interval_us,
 							LDMSD_UPDT_HINT_OFFSET_NONE);
 	rbt_init(&updtr->prdcr_tree, prdcr_ref_cmp);
 	LIST_INIT(&updtr->match_list);
