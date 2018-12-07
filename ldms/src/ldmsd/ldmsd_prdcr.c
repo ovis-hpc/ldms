@@ -405,7 +405,6 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
 	} else {
 		ldmsd_log(LDMSD_LCRITICAL, "Receive a duplicated dir_add update of "
 				"the set '%s'.\n", inst_name);
-		assert(0);
 	}
 	ldmsd_prdcr_set_ref_get(set); /* It will be put back in lookup_cb */
 	/* Refresh the set with a lookup */
