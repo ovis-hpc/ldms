@@ -657,7 +657,7 @@ static int create_container(char *path)
 	sos_part_t part;
 
 	rc = sos_container_new(path, 0660);
-	if (rc) {
+	if (rc && rc != EEXIST) {
 		msglog(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
 		       rc, path);
 		goto err_0;
@@ -768,6 +768,7 @@ static int reopen_container(char *path)
 	/* Check if the container at path is already present */
 	sos = sos_container_open(path, SOS_PERM_RW);
 	if (!sos) {
+	recreate:
 		rc = create_container(path);
 		if (rc)
 			return rc;
@@ -780,7 +781,8 @@ static int reopen_container(char *path)
 	} else {
 		app_schema = sos_schema_by_name(sos, kokkos_app_template.name);
 		if (!app_schema)
-			return EINVAL;
+			/* The container exists, but is missing the Kokkos schema */
+			goto recreate;
 		kernel_schema = sos_schema_by_name(sos, kokkos_kernel_template.name);
 		if (!app_schema)
 			return EINVAL;
