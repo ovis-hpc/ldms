@@ -294,9 +294,9 @@ static void resp_usage(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 static void help_usage()
 {
 	printf( "usage\n"
-		"   - Show loaded plugin usage information.\n"
+		"   - Show plugin usage information.\n"
 		"Parameters:\n"
-		"    [name=]     A loaded plugin name\n");
+		"    name=     The plugin instance.\n");
 }
 
 static void help_load()
@@ -307,6 +307,18 @@ static void help_load()
 		"Parameters:\n"
 		"     name=       The plugin name, this is used to locate a loadable\n"
 		"                 library named \"lib<name>.so\"\n");
+}
+
+static void resp_list(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
+		printf("%s\n", attr->attr_value);
+}
+
+static void help_list()
+{
+	printf("\nList plugin instances.\n");
 }
 
 static void help_term()
@@ -1134,6 +1146,58 @@ static void help_plugn_sets()
 	       "      [name]=   Plugin name\n");
 }
 
+static void __print_plugn_status(json_value *stat_json)
+{
+	char *name, *plugin, *type, *libpath, *interval, *offset;
+
+	name = ldmsctl_json_str_value_get(stat_json, "name");
+	plugin = ldmsctl_json_str_value_get(stat_json, "plugin");
+	type = ldmsctl_json_str_value_get(stat_json, "type");
+	libpath = ldmsctl_json_str_value_get(stat_json, "libpath");
+	interval = ldmsctl_json_str_value_get(stat_json, "sample_interval_us");
+	offset = ldmsctl_json_str_value_get(stat_json, "sample_offset_us");
+
+	if (!name || !plugin || !type || !libpath || !interval || !offset)
+		return;
+
+	printf("%12s %12s %12s %12s %12s %12s\n",
+	       name, plugin, type, interval, offset, libpath);
+}
+
+static void resp_plugn_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+	json_value *json, *stat_json;
+	json = json_parse((char*)attr->attr_value, len);
+	if (!json)
+		return;
+
+	if (json->type != json_array) {
+		printf("Unrecognized plugn_sets json object\n");
+		return;
+	}
+	int i;
+
+	printf("%12s %12s %12s %12s %12s %12s\n",
+	       "Name", "Plugin", "Type", "Interval", "Offset", "Libpath");
+	printf("------------ ------------ ------------ ------------ "
+	       "------------ ------------\n");
+
+	for (i = 0; i < json->u.array.length; i++) {
+		stat_json = json->u.array.values[i];
+		__print_plugn_status(stat_json);
+	}
+	json_value_free(json);
+
+}
+
+static void help_plugn_status()
+{
+	printf("\nPrint plugin status\n");
+}
+
 static void help_version()
 {
 	printf( "\nGet the LDMS version.\n");
@@ -1420,10 +1484,12 @@ static struct command command_tbl[] = {
 	{ "failover_stop", NULL, help_failover_stop, resp_generic },
 	{ "greeting", NULL, help_greeting, resp_greeting },
 	{ "help", handle_help, NULL, NULL },
+	{ "list", NULL, help_list, resp_list },
 	{ "load", NULL, help_load, resp_generic },
 	{ "loglevel", NULL, help_loglevel, resp_generic },
 	{ "oneshot", NULL, help_oneshot, resp_generic },
 	{ "plugn_sets", NULL, help_plugn_sets, resp_plugn_sets },
+	{ "plugn_status", NULL, help_plugn_status, resp_plugn_status },
 	{ "prdcr_add", NULL, help_prdcr_add, resp_generic },
 	{ "prdcr_del", NULL, help_prdcr_del, resp_generic },
 	{ "prdcr_hint_tree", NULL, help_prdcr_hint_tree, resp_prdcr_hint_tree },
