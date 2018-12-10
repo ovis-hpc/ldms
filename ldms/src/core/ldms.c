@@ -2400,3 +2400,13 @@ int ldms_mval_parse_scalar(ldms_mval_t v, enum ldms_value_type vt, const char *s
 		return EINVAL;
 	return 0;
 }
+
+void ldms_ctxt_set(ldms_set_t set, void *ctxt)
+{
+	set->set->ctxt = ctxt;
+}
+
+void *ldms_ctxt_get(ldms_set_t set)
+{
+	return set->set->ctxt;
+}

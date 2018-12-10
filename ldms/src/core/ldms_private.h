@@ -96,6 +96,7 @@ struct ldms_set {
 	pthread_mutex_t lock;
 	int curr_idx;
 	struct ldms_data_hdr *data_array;
+	void *ctxt; /* application context (local -- no data propagation) */
 };
 
 /* Convenience macro to roundup a value to a multiple of the _s parameter */

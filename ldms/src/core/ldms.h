@@ -1779,6 +1779,28 @@ void ldms_local_cred_get(ldms_t x, ldms_cred_t lcl);
  */
 int ldms_access_check(ldms_t x, uint32_t acc, uid_t obj_uid, gid_t obj_gid,
 		      int obj_perm);
+
+/**
+ * Setting LDMS application context.
+ *
+ * \note The application context is local, i.e. it will not be propagated to the
+ *       downstream sets. Please see ::ldms_set_info_set() and
+ *       ::ldms_set_info_get() for setting/getting LDMS set information that
+ *       will propagate to the downstream sets.
+ *
+ * \param set  The set handle.
+ * \param ctxt The application context.
+ */
+void ldms_ctxt_set(ldms_set_t set, void *ctxt);
+
+/**
+ * Getting LDMS application context.
+ *
+ * \param set The set handle.
+ *
+ * \retval ctxt The application context. By default, the context is \c NULL.
+ */
+void *ldms_ctxt_get(ldms_set_t set);
 /**
  * \}
  */
