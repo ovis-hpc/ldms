@@ -699,6 +699,12 @@ static void process_uep_msg_accepted(struct z_ugni_ep *uep)
 	DLOG_(uep, "ACCEPTED received: pe_addr: %#x, inst_id: %#x\n",
 			msg->pe_addr, msg->inst_id);
 
+#ifdef ZAP_UGNI_DEBUG
+	char *is_exit = getenv("ZAP_UGNI_CONN_EST_BEFORE_ACK_N_BINDING_TEST");
+	if (is_exit)
+		exit(0);
+#endif /* ZAP_UGNI_DEBUG */
+
 	pthread_mutex_lock(&uep->ep.lock);
 	zerr = __ugni_send(uep, ZAP_UGNI_MSG_ACK_ACCEPTED, NULL, 0);
 	pthread_mutex_unlock(&uep->ep.lock);
@@ -711,6 +717,13 @@ static void process_uep_msg_accepted(struct z_ugni_ep *uep)
 		LOG_(uep, "GNI_EpBind() error: %s\n", gni_ret_str(grc));
 		goto err;
 	}
+
+#ifdef ZAP_UGNI_DEBUG
+	is_exit = getenv("ZAP_UGNI_CONN_EST_BEFORE_ACK_AFTER_BINDING_TEST");
+	if (is_exit)
+		exit(0);
+#endif /* ZAP_UGNI_DEBUG */
+
 	uep->ugni_ep_bound = 1;
 	ev.type = ZAP_EVENT_CONNECTED;
 	ev.data_len = msg->data_len;
@@ -1401,10 +1414,19 @@ static void ugni_sock_connect(ovis_event_t ev)
 {
 	zap_err_t zerr;
 	struct z_ugni_ep *uep = ev->param.ctxt;
-
+#ifdef ZAP_UGNI_DEBUG
+	char *is_exit = getenv("ZAP_UGNI_CONN_EST_BEFORE_CONNECT_MSG_TEST");
+	if (is_exit)
+		exit(0);
+#endif /* ZAP_UGNI_DEBUG */
 	pthread_mutex_lock(&uep->ep.lock);
 	zerr = __ugni_send_connect(uep, uep->conn_data, uep->conn_data_len);
 	pthread_mutex_unlock(&uep->ep.lock);
+#ifdef ZAP_UGNI_DEBUG
+	is_exit = getenv("ZAP_UGNI_CONN_EST_AFTER_CONNECT_MSG_TEST");
+	if (is_exit)
+		exit(0);
+#endif /* ZAP_UGNI_DEBUG */
 	if (uep->conn_data)
 		free(uep->conn_data);
 	uep->conn_data = NULL;
