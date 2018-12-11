@@ -488,7 +488,7 @@ const char *ldmsd_group_member_name(const char *info_key)
 	return info_key + sizeof(GRP_KEY_PREFIX) - 1;
 }
 
-static void add_set(char *name);
+static void add_set(const char *name);
 
 static int
 __grp_traverse(const char *key, const char *value, void *arg)
@@ -571,7 +571,7 @@ void lookup_push_cb(ldms_t t, enum ldms_lookup_status status,
 	}
 }
 
-static void __add_set(char *name)
+static void __add_set(const char *name)
 {
 	struct ls_set *lss;
 	lss = calloc(1, sizeof(struct ls_set));
@@ -583,7 +583,7 @@ static void __add_set(char *name)
 	LIST_INSERT_HEAD(&set_list, lss, entry);
 }
 
-static void add_set(char *name)
+static void add_set(const char *name)
 {
 	struct match_str *match;
 	if (LIST_EMPTY(&match_list)) {
