@@ -1272,10 +1272,12 @@ extern int ldms_set_info_traverse(ldms_set_t s, ldms_set_info_traverse_cb_fn cb,
  * \param s	The ldms_set_t handle.
  * \param name	The name of the metric.
  * \param t	The type of the metric.
+ * \param units A 7-character unit string. May be \c NULL.
  * \retval >=0  The metric index.
  * \retval <0	Insufficient resources or duplicate name
  */
-extern int ldms_schema_metric_add(ldms_schema_t s, const char *name, enum ldms_value_type t);
+int ldms_schema_metric_add(ldms_schema_t s, const char *name,
+			   enum ldms_value_type t, const char *units);
 
 /**
  * \brief Add an attribute to schema
@@ -1286,30 +1288,48 @@ extern int ldms_schema_metric_add(ldms_schema_t s, const char *name, enum ldms_v
  * \param s	The ldms_set_t handle.
  * \param name	The name of the attribute.
  * \param t	The type of the attribute.
+ * \param units A 7-character unit string. May be \c NULL.
  * \retval >=0  The attribute index.
  * \retval <0	Insufficient resources or duplicate name
  */
-extern int ldms_schema_meta_add(ldms_schema_t s,
-				const char *name, enum ldms_value_type t);
+int ldms_schema_meta_add(ldms_schema_t s, const char *name,
+			 enum ldms_value_type t, const char *units);
 
 /**
  * \brief Add an array metric to schema
  *
  * Adds a metric of an array type to a metric set schema.
- * The \c name of the metric must be
- * unique within the metric set.
+ * The \c name of the metric must be unique within the metric set.
  *
  * \param s	The ldms_set_t handle.
  * \param name	The name of the metric.
  * \param t	The type of the metric.
+ * \param units A 7-character unit string. May be \c NULL.
  * \param count The number of elements in the array
  * \retval >=0  The metric index.
  * \retval <0	Insufficient resources or duplicate name
  */
-extern int ldms_schema_metric_array_add(ldms_schema_t s, const char *name,
-		enum ldms_value_type t, uint32_t count);
-extern int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
-		enum ldms_value_type t, uint32_t count);
+int ldms_schema_metric_array_add(ldms_schema_t s, const char *name,
+				 enum ldms_value_type t, const char *units,
+				 uint32_t count);
+
+/**
+ * \brief Add an array meta metric to schema
+ *
+ * Adds a metadata metric of an array type to a metric set schema.
+ * The \c name of the metric must be unique within the metric set.
+ *
+ * \param s	The ldms_set_t handle.
+ * \param name	The name of the metric.
+ * \param t	The type of the metric.
+ * \param units A 7-character unit string. May be \c NULL.
+ * \param count The number of elements in the array
+ * \retval >=0  The metric index.
+ * \retval <0	Insufficient resources or duplicate name
+ */
+int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
+			       enum ldms_value_type t, const char *units,
+			       uint32_t count);
 
 /**
  * \brief Get the metric index given a name
@@ -1334,6 +1354,15 @@ extern int ldms_metric_by_name(ldms_set_t s, const char *name);
  * \returns	A character string containing the name of the metric.
  */
 extern const char *ldms_metric_name_get(ldms_set_t s, int i);
+
+/**
+ * \brief Returns the units of the metric.
+ *
+ * \param  s     The set handle.
+ * \param  i     The metric index.
+ * \retval units The units of the metric. This can be "".
+ */
+const char *ldms_metric_units_get(ldms_set_t s, int i);
 
 /**
  * \brief Returns !0 (true) if the type is an array

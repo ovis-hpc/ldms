@@ -915,6 +915,7 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 		vd->vd_type = md->type;
 		vd->vd_flags = md->flags;
 		vd->vd_array_count = __cpu_to_le32(md->count);
+		memcpy(vd->vd_units, md->units, sizeof(vd->vd_units));
 		vd->vd_name_len = strlen(md->name) + 1;
 		strncpy(vd->vd_name, md->name, vd->vd_name_len);
 		if (md->flags & LDMS_MDESC_F_DATA) {
@@ -1138,7 +1139,8 @@ int ldms_metric_by_name(ldms_set_t set, const char *name)
 }
 
 int __schema_metric_add(ldms_schema_t s, const char *name, int flags,
-			enum ldms_value_type type, uint32_t array_count)
+			enum ldms_value_type type, const char *units,
+			uint32_t array_count)
 {
 	ldms_mdef_t m;
 
@@ -1158,6 +1160,8 @@ int __schema_metric_add(ldms_schema_t s, const char *name, int flags,
 	m->type = type;
 	m->flags = flags;
 	m->count = array_count;
+	if (units)
+		strncpy(m->units, units, sizeof(m->units) - 1);
 	__ldms_metric_size_get(name, type, m->count, &m->meta_sz, &m->data_sz);
 	STAILQ_INSERT_TAIL(&s->metric_list, m, entry);
 	s->card++;
@@ -1169,34 +1173,40 @@ int __schema_metric_add(ldms_schema_t s, const char *name, int flags,
 	return s->card - 1;
 }
 
-int ldms_schema_metric_add(ldms_schema_t s, const char *name, enum ldms_value_type type)
+int ldms_schema_metric_add(ldms_schema_t s, const char *name,
+			   enum ldms_value_type type, const char *units)
 {
 	if (type > LDMS_V_D64)
 		return -EINVAL;
-	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, 1);
+	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, units, 1);
 }
 
-int ldms_schema_meta_add(ldms_schema_t s, const char *name, enum ldms_value_type type)
+int ldms_schema_meta_add(ldms_schema_t s, const char *name,
+			 enum ldms_value_type type, const char *units)
 {
 	if (type > LDMS_V_D64)
 		return -EINVAL;
-	return __schema_metric_add(s, name, LDMS_MDESC_F_META, type, 1);
+	return __schema_metric_add(s, name, LDMS_MDESC_F_META, type, units, 1);
 }
 
 int ldms_schema_metric_array_add(ldms_schema_t s, const char *name,
-				 enum ldms_value_type type, uint32_t count)
+				 enum ldms_value_type type, const char *units,
+				 uint32_t count)
 {
 	if (!ldms_type_is_array(type))
 		return -EINVAL;
-	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, count);
+	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, units,
+				   count);
 }
 
 int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
-			       enum ldms_value_type type, uint32_t count)
+			       enum ldms_value_type type, const char *units,
+			       uint32_t count)
 {
 	if (!ldms_type_is_array(type))
 		return -EINVAL;
-	return __schema_metric_add(s, name, LDMS_MDESC_F_META, type, count);
+	return __schema_metric_add(s, name, LDMS_MDESC_F_META, type, units,
+				   count);
 }
 
 static struct _ldms_type_name_map {
@@ -2409,4 +2419,12 @@ void ldms_ctxt_set(ldms_set_t set, void *ctxt)
 void *ldms_ctxt_get(ldms_set_t set)
 {
 	return set->set->ctxt;
+}
+
+const char *ldms_metric_units_get(ldms_set_t s, int i)
+{
+	ldms_mdesc_t desc = __desc_get(s, i);
+	if (desc)
+		return desc->vd_units;
+	return "";
 }

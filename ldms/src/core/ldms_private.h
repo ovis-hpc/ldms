@@ -60,6 +60,7 @@
 typedef struct ldms_mdef_s {
 	char *name;
 	enum ldms_value_type type;
+	char units[8];
 	uint32_t flags;	/* DATA/MDATA flag */
 	uint32_t count; /* Number of elements in the array if this is of an array type */
 	size_t meta_sz;
