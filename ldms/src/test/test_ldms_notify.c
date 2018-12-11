@@ -303,7 +303,7 @@ static ldms_set_t __server_create_set(const char *name)
 	}
 
 	int rc;
-	rc = ldms_schema_metric_add(schema, "FOO", LDMS_V_U64);
+	rc = ldms_schema_metric_add(schema, "FOO", LDMS_V_U64, "");
 	if (rc) {
 		_log("Failed to add metric\n");
 		assert(rc == 0);

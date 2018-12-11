@@ -180,6 +180,6 @@ static void __ldmsd_grp_init()
 	grp_schema = ldms_schema_new(GRP_SCHEMA_NAME);
 	assert(grp_schema);
 
-	rc = ldms_schema_metric_add(grp_schema, GRP_GN_NAME, LDMS_V_U32);
+	rc = ldms_schema_metric_add(grp_schema, GRP_GN_NAME, LDMS_V_U32, "");
 	assert(rc == 0);
 }

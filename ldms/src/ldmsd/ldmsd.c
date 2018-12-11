@@ -1459,56 +1459,63 @@ int main(int argc, char *argv[])
 		ldms_schema_t schema = ldms_schema_new("test_set");
 		if (!schema)
 			cleanup(11, "test schema create failed");
-		job_id = ldms_schema_meta_add(schema, "job_id", LDMS_V_U32);
+		job_id = ldms_schema_meta_add(schema, "job_id", LDMS_V_U32, "");
 		if (job_id < 0)
 			cleanup(12, "test schema meta_add jid failed");
-		comp_id = ldms_schema_meta_add(schema, "component_id", LDMS_V_U32);
+		comp_id = ldms_schema_meta_add(schema, "component_id",
+					       LDMS_V_U32, "");
 		if (comp_id < 0)
 			cleanup(12, "test schema meta_add cid failed");
-		rc = ldms_schema_metric_add(schema, "u8_metric", LDMS_V_U8);
+		rc = ldms_schema_metric_add(schema, "u8_metric", LDMS_V_U8,
+					    "U8");
 		if (rc < 0)
 			cleanup(13, "test schema metric_add u8 failed");
-		rc = ldms_schema_metric_add(schema, "u16_metric", LDMS_V_U16);
+		rc = ldms_schema_metric_add(schema, "u16_metric", LDMS_V_U16,
+					    "U16");
 		if (rc < 0)
 			cleanup(13, "test schema metric_add u16 failed");
-		rc = ldms_schema_metric_add(schema, "u32_metric", LDMS_V_U32);
+		rc = ldms_schema_metric_add(schema, "u32_metric", LDMS_V_U32,
+					    "U32");
 		if (rc < 0)
 			cleanup(13, "test schema metric_add u32 failed");
-		rc = ldms_schema_metric_add(schema, "u64_metric", LDMS_V_U64);
+		rc = ldms_schema_metric_add(schema, "u64_metric", LDMS_V_U64,
+					    "U64");
 		if (rc < 0)
 			cleanup(13, "test schema metric_add u64 failed");
-		rc = ldms_schema_metric_add(schema, "float_metric", LDMS_V_F32);
+		rc = ldms_schema_metric_add(schema, "float_metric", LDMS_V_F32,
+					    "F32");
 		if (rc < 0)
 			cleanup(13, "test schema metric_add float failed");
-		rc = ldms_schema_metric_add(schema, "double_metric", LDMS_V_D64);
+		rc = ldms_schema_metric_add(schema, "double_metric", LDMS_V_D64,
+					    "D64");
 		if (rc < 0)
 			cleanup(13, "test schema metric_add double failed");
 		rc = ldms_schema_metric_array_add(schema, "char_array_metric",
-						  LDMS_V_CHAR_ARRAY, 16);
+						  LDMS_V_CHAR_ARRAY, "AC", 16);
 		if (rc < 0)
 			cleanup(13, "test schema metric_add char array failed");
 		rc = ldms_schema_metric_array_add(schema, "u8_array_metric",
-						  LDMS_V_U8_ARRAY, 4);
+						  LDMS_V_U8_ARRAY, "AU8", 4);
 		if (rc < 0)
 			cleanup(13, "test schema metric_add u8 array failed");
 		rc = ldms_schema_metric_array_add(schema, "u16_array_metric",
-						  LDMS_V_U16_ARRAY, 4);
+						  LDMS_V_U16_ARRAY, "AU16", 4);
 		if (rc < 0)
 			cleanup(13, "test schema metric_add u16 array failed");
 		rc = ldms_schema_metric_array_add(schema, "u32_array_metric",
-						  LDMS_V_U32_ARRAY, 4);
+						  LDMS_V_U32_ARRAY, "AU32", 4);
 		if (rc < 0)
 			cleanup(13, "test schema metric_add u32 array failed");
 		rc = ldms_schema_metric_array_add(schema, "u64_array_metric",
-						  LDMS_V_U64_ARRAY, 4);
+						  LDMS_V_U64_ARRAY, "AU64", 4);
 		if (rc < 0)
 			cleanup(13, "test schema metric_add u64 array failed");
 		rc = ldms_schema_metric_array_add(schema, "f32_array_metric",
-						  LDMS_V_F32_ARRAY, 4);
+						  LDMS_V_F32_ARRAY, "AF32", 4);
 		if (rc < 0)
 			cleanup(13, "test schema metric_add f32 array failed");
 		rc = ldms_schema_metric_array_add(schema, "d64_array_metric",
-						  LDMS_V_D64_ARRAY, 4);
+						  LDMS_V_D64_ARRAY, "AD64", 4);
 		if (rc < 0)
 			cleanup(13, "test schema metric_add d64 array failed");
 		for (set_no = 1; set_no <= test_set_count; set_no++) {

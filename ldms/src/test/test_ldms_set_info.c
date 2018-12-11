@@ -993,7 +993,7 @@ ldms_set_t test_local_set_info()
 		printf("Failed to create the schema\n");
 		assert(0);
 	}
-	rc = ldms_schema_metric_add(schema, METRIC_NAME, LDMS_V_U64);
+	rc = ldms_schema_metric_add(schema, METRIC_NAME, LDMS_V_U64, "");
 	if (rc < 0) {
 		printf("Error %d: Failed to add the metric\n", rc);
 		assert(0);

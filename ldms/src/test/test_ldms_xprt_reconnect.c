@@ -359,7 +359,7 @@ void *server_create_sets(void *arg)
 			printf("ldms_schema_new error\n");
 			pthread_exit(NULL);
 		}
-		rc = ldms_schema_metric_add(schema, METRIC_NAME, LDMS_V_U64);
+		rc = ldms_schema_metric_add(schema, METRIC_NAME, LDMS_V_U64, "");
 		snprintf(instance_name, 31, "%d/%s", port, SET_NAME);
 		ldms_set_t set = ldms_set_new(instance_name, schema);
 		if (!set) {

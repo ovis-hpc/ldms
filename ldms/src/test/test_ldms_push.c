@@ -403,23 +403,23 @@ static struct push_set *__server_create_set(const char *name)
 	}
 
 	int rc;
-	METRIC_TYPE_METRIC_ID = ldms_schema_metric_add(schema, "METRIC_TYPE", LDMS_V_U8);
+	METRIC_TYPE_METRIC_ID = ldms_schema_metric_add(schema, "METRIC_TYPE", LDMS_V_U8, "");
 	if (METRIC_TYPE_METRIC_ID < 0) {
 		_log("Failed to add a metric\n");
 		assert(METRIC_TYPE_METRIC_ID >= 0);
 	}
-	EXPLICIT_PUSH_METRIC_ID = ldms_schema_metric_add(schema, "EXPLICIT_PUSH", LDMS_V_U8);
+	EXPLICIT_PUSH_METRIC_ID = ldms_schema_metric_add(schema, "EXPLICIT_PUSH", LDMS_V_U8, "");
 	if (EXPLICIT_PUSH_METRIC_ID < 0) {
 		_log("Failed to add a metric\n");
 		assert(EXPLICIT_PUSH_METRIC_ID >= 0);
 	}
-	META_METRIC_ID = ldms_schema_meta_add(schema, "meta_metric", LDMS_V_U64);
+	META_METRIC_ID = ldms_schema_meta_add(schema, "meta_metric", LDMS_V_U64, "");
 	if (META_METRIC_ID < 0) {
 		_log("Failed to add meta metric.\n");
 		assert(META_METRIC_ID >= 0);
 	}
 
-	DATA_METRIC_ID = ldms_schema_metric_add(schema, "data_metric", LDMS_V_U64);
+	DATA_METRIC_ID = ldms_schema_metric_add(schema, "data_metric", LDMS_V_U64, "");
 	if (DATA_METRIC_ID < 0) {
 		_log("Failed to add metric\n");
 		assert(DATA_METRIC_ID >= 0);
