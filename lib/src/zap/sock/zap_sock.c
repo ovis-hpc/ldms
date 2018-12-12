@@ -1653,7 +1653,7 @@ static int init_once()
 	z_key_tree.root = NULL;
 	z_key_tree.comparator = z_rbn_cmp;
 	pthread_mutex_init(&z_key_tree_mutex, NULL);
-	atexit(z_sock_cleanup);
+	// atexit(z_sock_cleanup);
 	return 0;
 
  err_1:
