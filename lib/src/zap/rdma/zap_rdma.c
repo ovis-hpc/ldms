@@ -2151,7 +2151,7 @@ static int init_once()
 		goto err_3;
 
 	init_complete = 1;
-	atexit(z_rdma_cleanup);
+	// atexit(z_rdma_cleanup);
 	return 0;
 
  err_3:
