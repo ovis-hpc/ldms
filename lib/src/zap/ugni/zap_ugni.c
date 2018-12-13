@@ -584,8 +584,8 @@ static void ugni_sock_write(ovis_event_t ev)
 	return;
 
  err:
+	__shutdown_on_error(uep);
 	pthread_mutex_unlock(&uep->ep.lock);
-	ugni_sock_event(ev);
 }
 
 /**
@@ -595,9 +595,7 @@ static void process_uep_msg_unknown(struct z_ugni_ep *uep)
 {
 	LOG_(uep, "zap_ugni: Unknown zap message.\n");
 	pthread_mutex_lock(&uep->ep.lock);
-	if (uep->ep.state == ZAP_EP_CONNECTED)
-		uep->ep.state = ZAP_EP_CLOSE;
-	shutdown(uep->sock, SHUT_RDWR);
+	__shutdown_on_error(uep);
 	pthread_mutex_unlock(&uep->ep.lock);
 }
 
@@ -978,10 +976,11 @@ static void ugni_sock_read(ovis_event_t ev)
 			/* good */
 			break;
 		case ZAP_EP_CLOSE:
-			assert(0 == "sock_read() bad ep state (ZAP_EP_CLOSE)");
-			break;
 		case ZAP_EP_ERROR:
-			assert(0 == "sock_read() bad ep state (ZAP_EP_ERROR)");
+			/*
+			 * This could happened b/c the read event has not been
+			 * disabled yet. Process the received message as usual.
+			 */
 			break;
 		case ZAP_EP_INIT:
 			assert(0 == "bad state (ZAP_EP_INIT)");
@@ -1008,7 +1007,9 @@ static void ugni_sock_read(ovis_event_t ev)
 	} while (1);
 	return;
  bad:
-	ugni_sock_event(ev);
+	pthread_mutex_lock(&uep->ep.lock);
+	__shutdown_on_error(uep);
+	pthread_mutex_unlock(&uep->ep.lock);
 }
 
 static void *io_thread_proc(void *arg)
@@ -1326,42 +1327,15 @@ static void __deliver_ev(struct z_ugni_ep *uep)
 	zap_put_ep(&uep->ep);
 }
 
-void __ugni_defer_delivering_event(struct z_ugni_ep *uep);
-static void __unbind_and_deliver_ev(struct z_ugni_ep *uep)
-{
-	__sync_add_and_fetch(&uep->unbind_count, 1);
-	gni_return_t grc = GNI_EpUnbind(uep->gni_ep);
-	if (grc) {
-		/*
-		 * These code is to handle a bug in uGNI that causes
-		 * some outstanding completion events to be stalled.
-		 */
-		if (!__exceed_disconn_ev_timeout(uep)) {
-			DLOG_(uep, "GNI_EpUnbind() error: %s\n",
-					gni_ret_str(grc));
-			/*
-			 * Defer the disconnected event as long as
-			 * we cannot unbind the endpoint and not exceeding
-			 * the disconnect event delivering timeout.
-			 */
-			__ugni_defer_delivering_event(uep);
-			return;
-		} else {
-			DLOG_(uep, "Give up unbinding after %d retries .. delivering "
-				"the disconnected event.\n", uep->unbind_count);
-		}
-	} else {
-		DLOG_(uep, "Delivering the disconnected event after calling "
-			"EpUnbind() %d times\n", uep->unbind_count);
-	}
-	__deliver_ev(uep);
-}
-
 void __deferred_delivering_cb(ovis_event_t ev)
 {
 	struct z_ugni_ep *uep = ev->param.ctxt;
+	if (!LIST_EMPTY(&uep->post_desc_list))
+		return; /* There are still outstanding rdma ops.
+			 * NOTE: The timeout event is automatically re-armed
+			 * until it is deleted from the scheduler. */
 	ovis_scheduler_event_del(io_sched, ev);
-	__unbind_and_deliver_ev(uep);
+	__deliver_ev(uep);
 }
 
 void __ugni_defer_delivering_event(struct z_ugni_ep *uep)
@@ -1379,7 +1353,11 @@ void __ugni_defer_delivering_event(struct z_ugni_ep *uep)
 	pthread_mutex_unlock(&deferred_list_mutex);
 	pthread_mutex_unlock(&uep->ep.lock);
 #endif /* DEBUG */
-	/* NOTE: uep->deferred_ev initialization is in z_ugni_new() */
+	OVIS_EVENT_INIT(&uep->deferred_ev);
+	uep->deferred_ev.param.type = OVIS_EVENT_TIMEOUT;
+	uep->deferred_ev.param.timeout.tv_sec = zap_ugni_unbind_timeout;
+	uep->deferred_ev.param.cb_fn = __deferred_delivering_cb;
+	uep->deferred_ev.param.ctxt = uep;
 	rc = ovis_scheduler_event_add(io_sched, &uep->deferred_ev);
 	assert(rc == 0);
 }
@@ -1387,11 +1365,6 @@ void __ugni_defer_delivering_event(struct z_ugni_ep *uep)
 static void ugni_sock_ev_cb(ovis_event_t ev)
 {
 	struct z_ugni_ep *uep = ev->param.ctxt;
-
-	if (ev->cb.epoll_events & (EPOLLERR|EPOLLHUP)) {
-		ugni_sock_event(ev);
-		return;
-	}
 
 	if (ev->cb.epoll_events & EPOLLOUT) {
 		if (uep->sock_connected) {
@@ -1401,12 +1374,14 @@ static void ugni_sock_ev_cb(ovis_event_t ev)
 			uep->sock_connected = 1;
 			ugni_sock_connect(ev);
 		}
-		return;
 	}
 
 	if (ev->cb.epoll_events & EPOLLIN) {
 		ugni_sock_read(ev);
-		return;
+	}
+
+	if ((ev->cb.epoll_events & (EPOLLERR|EPOLLHUP))) {
+		ugni_sock_event(ev);
 	}
 }
 
@@ -1421,6 +1396,8 @@ static void ugni_sock_connect(ovis_event_t ev)
 #endif /* ZAP_UGNI_DEBUG */
 	pthread_mutex_lock(&uep->ep.lock);
 	zerr = __ugni_send_connect(uep, uep->conn_data, uep->conn_data_len);
+	if (zerr)
+		__shutdown_on_error(uep);
 	pthread_mutex_unlock(&uep->ep.lock);
 #ifdef ZAP_UGNI_DEBUG
 	is_exit = getenv("ZAP_UGNI_CONN_EST_AFTER_CONNECT_MSG_TEST");
@@ -1431,9 +1408,6 @@ static void ugni_sock_connect(ovis_event_t ev)
 		free(uep->conn_data);
 	uep->conn_data = NULL;
 	uep->conn_data_len = 0;
-	if (zerr) {
-		ugni_sock_event(ev);
-	}
 	return;
 }
 
@@ -1454,6 +1428,7 @@ static void ugni_sock_event(ovis_event_t ev)
 		if (uep->app_accepted) {
 			zev->type = ZAP_EVENT_CONNECT_ERROR;
 		} else {
+			/* app has rejected this, or doesn't know about this */
 			goto no_cb;
 		}
 		break;
@@ -1487,14 +1462,14 @@ static void ugni_sock_event(ovis_event_t ev)
 		 */
 		call_cb = 1;
 	}
+	if (uep->ugni_ep_bound) {
+		gni_return_t grc = GNI_EpUnbind(uep->gni_ep);
+		if (grc)
+			DLOG_(uep, "GNI_EpUnbind() error: %s\n", gni_ret_str(grc));
+	}
 	pthread_mutex_unlock(&uep->ep.lock);
 	if (call_cb) {
-		if (uep->ugni_ep_bound) {
-			__unbind_and_deliver_ev(uep);
-		} else {
-			uep->ep.cb((void*)uep, zev);
-			zap_put_ep(&uep->ep);
-		}
+		__deliver_ev(uep);
 	} else {
 		/* Defer to give time to uGNI to flush the outstanding
 		 * completion events */
@@ -1574,7 +1549,6 @@ static void __z_ugni_conn_request(ovis_event_t ev)
 		LOG_(uep, "__sock_nonblock() error %d:"
 			  " in %s at %s:%d\n",
 				zerr, __func__, __FILE__, __LINE__);
-		new_uep->ep.state = ZAP_EP_ERROR;
 		/* synchronous error */
 		zap_free(new_ep);
 	}
@@ -1591,7 +1565,6 @@ static void __z_ugni_conn_request(ovis_event_t ev)
 		LOG_(uep, "ovis_scheduler_event_add() error %d:"
 			  " in %s at %s:%d\n",
 				zerr, __func__, __FILE__, __LINE__);
-		new_uep->ep.state = ZAP_EP_ERROR;
 		/* synchronous error */
 		zap_free(new_ep);
 	}
@@ -2259,12 +2232,6 @@ zap_ep_t z_ugni_new(zap_t z, zap_cb_fn_t cb)
 	uep->rbuff->len = 0;
 	uep->rbuff->alen = ZAP_UGNI_INIT_RECV_BUFF_SZ - sizeof(*uep->rbuff);
 
-	OVIS_EVENT_INIT(&uep->deferred_ev);
-	uep->deferred_ev.param.type = OVIS_EVENT_TIMEOUT;
-	uep->deferred_ev.param.timeout.tv_sec = zap_ugni_unbind_timeout;
-	uep->deferred_ev.param.cb_fn = __deferred_delivering_cb;
-	uep->deferred_ev.param.ctxt = uep;
-
 	STAILQ_INIT(&uep->sq);
 	LIST_INIT(&uep->post_desc_list);
 	grc = GNI_EpCreate(_dom.nic, _dom.cq, &uep->gni_ep);
@@ -2396,7 +2363,6 @@ static zap_err_t z_ugni_reject(zap_ep_t ep, char *data, size_t data_len)
 	pthread_mutex_unlock(&uep->ep.lock);
 	return ZAP_ERR_OK;
 err:
-	uep->ep.state = ZAP_EP_ERROR;
 	shutdown(uep->sock, SHUT_RDWR);
 	pthread_mutex_unlock(&uep->ep.lock);
 	return zerr;
