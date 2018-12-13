@@ -473,11 +473,11 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 		ldms_set_delete(s);
  out:
 	printf("\n");
-	pthread_mutex_lock(&print_lock);
-	print_done = 1;
-	pthread_cond_signal(&print_cv);
-	pthread_mutex_unlock(&print_lock);
 	if (last) {
+		pthread_mutex_lock(&print_lock);
+		print_done = 1;
+		pthread_cond_signal(&print_cv);
+		pthread_mutex_unlock(&print_lock);
 		done = 1;
 		pthread_cond_signal(&done_cv);
 	}
@@ -522,7 +522,7 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 		ldms_set_info_traverse(s, __grp_traverse,
 					    LDMS_SET_INFO_F_REMOTE, t);
 	}
-	ldms_xprt_update(s, print_cb, (void *)(unsigned long)(LIST_EMPTY(&set_list) && !more));
+	ldms_xprt_update(s, print_cb, (void *)(unsigned long)(!more));
 	return;
  err:
 	if (verbose || long_format)
@@ -558,7 +558,7 @@ void lookup_push_cb(ldms_t t, enum ldms_lookup_status status,
 	}
 	/* Register this set for push updates */
 	ldms_xprt_register_push(s, LDMS_XPRT_PUSH_F_CHANGE, print_cb,
-				(void *)(unsigned long)(last && !more));
+					(void *)(unsigned long)(!more));
 	return;
  err:
 	printf("ldms_ls: Error %d looking up metric set.\n", status);
