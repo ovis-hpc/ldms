@@ -552,6 +552,14 @@ void lookup_push_cb(ldms_t t, enum ldms_lookup_status status,
 		pthread_mutex_unlock(&print_lock);
 		goto err;
 	}
+	if (strcmp(GRP_SCHEMA_NAME, ldms_set_schema_name_get(s)) == 0) {
+		/*
+		 * This is a set group. Don't register for push update otherwise
+		 * ldms_ls will wait indefinitely. Get the update by pulling.
+		 */
+		ldms_xprt_update(s, print_cb, (void *)(unsigned long)(!more));
+		return;
+	}
 	/* Register this set for push updates */
 	ldms_xprt_register_push(s, LDMS_XPRT_PUSH_F_CHANGE, print_cb,
 					(void *)(unsigned long)(!more));
