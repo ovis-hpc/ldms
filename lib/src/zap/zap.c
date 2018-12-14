@@ -360,6 +360,10 @@ void zap_interpose_event(zap_ep_t ep, void *ctxt)
 	/* delivering real io event callback */
 	struct zap_interpose_ctxt *ictxt = ctxt;
 	DLOG(ep, "%s: ep %p: ictxt %p\n", __func__, ep, ictxt);
+#if defined(ZAP_DEBUG) || defined(DEBUG)
+	if (ep->state == ZAP_EP_CLOSE)
+		default_log("Delivering event after close.\n");
+#endif /* ZAP_DEBUG || DEBUG */
 	ep->app_cb(ep, &ictxt->ev);
 	free(ictxt);
 	zap_put_ep(ep);
