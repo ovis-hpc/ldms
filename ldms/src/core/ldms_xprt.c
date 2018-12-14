@@ -2019,6 +2019,10 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 			.data_len = 0};
 	char rej_msg[128];
 	struct ldms_xprt *x = zap_get_ucontext(zep);
+#ifdef DEBUG
+	x->log("DEBUG: ldms_zap_cb: receive %s. %p: ref_count %d\n",
+			zap_event_str(ev->type), x, x->ref_count);
+#endif /* DEBUG */
 	switch(ev->type) {
 	case ZAP_EVENT_RECV_COMPLETE:
 		recv_cb(x, ev->data);
@@ -2065,10 +2069,6 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_xprt_put(x);
 		break;
 	case ZAP_EVENT_DISCONNECTED:
-		#ifdef DEBUG
-		x->log("DEBUG: ldms_zap_cb: receive DISCONNECTED %p: "
-				"ref_count %d\n", x, x->ref_count);
-		#endif /* DEBUG */
 		/* deliver only if CONNECTED has been delivered. */
 		/* i.e. auth_flag == APPROVED */
 		switch (x->auth_flag) {
