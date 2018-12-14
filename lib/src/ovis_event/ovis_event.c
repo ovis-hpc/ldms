@@ -556,8 +556,13 @@ int ovis_scheduler_event_del(ovis_scheduler_t m, ovis_event_t ev)
 		e.events = ev->param.epoll_events;
 		e.data.ptr = ev;
 		rc = epoll_ctl(m->efd, EPOLL_CTL_DEL, ev->param.fd, &e);
-		if (rc)
+		if (rc) {
+#ifdef DEBUG
+			printf("ovis_event: %s: epoll_ctl failed. ev->param.fd = %d\n",
+				__func__, ev->param.fd);
+#endif /* DEBUG */
 			goto out;
+		}
 		pthread_mutex_lock(&m->mutex);
 		m->evcount--;
 		pthread_mutex_unlock(&m->mutex);
