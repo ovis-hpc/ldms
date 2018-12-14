@@ -311,6 +311,13 @@ struct z_ugni_ep {
 
 	LIST_ENTRY(z_ugni_ep) link;
 	LIST_ENTRY(z_ugni_ep) deferred_link;
+
+#if defined(ZAP_DEBUG) || defined(DEBUG)
+
+#define UEP_EPOLL_RECORD_SZ 12
+	uint32_t epoll_record[UEP_EPOLL_RECORD_SZ];
+	uint32_t epoll_record_curr;
+#endif /* ZAP_DEBUG || DEBUG */
 };
 
 struct zap_ugni_post_desc {
