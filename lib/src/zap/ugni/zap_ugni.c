@@ -1459,13 +1459,6 @@ static void ugni_sock_event(ovis_event_t ev)
 	}
 	DLOG_(uep, "%s: ep %p: state %s\n", __func__, uep,
 				__zap_ep_state_str[uep->ep.state]);
-	if (LIST_EMPTY(&uep->post_desc_list)) {
-		/*
-		 * If the endpoint state is in either ACCEPTING or CONNECTING,
-		 * this should be true.
-		 */
-		call_cb = 1;
-	}
 	if (uep->ugni_ep_bound) {
 		gni_return_t grc = GNI_EpUnbind(uep->gni_ep);
 		if (grc)
