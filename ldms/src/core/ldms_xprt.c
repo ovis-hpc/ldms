@@ -1715,14 +1715,13 @@ int __is_lookup_name_good(struct ldms_xprt *x,
 			  struct ldms_context *ctxt)
 {
 	regex_t regex;
-	char *name;
+	ldms_name_t name;
 	int rc = 0;
 
-	if (ctxt->lookup.flags & LDMS_LOOKUP_BY_SCHEMA)
-		name = lu->set_info;
-	else
-		name = lu->set_info + lu->schema_len;
-
+	name = (ldms_name_t)lu->set_info;
+	if (!(ctxt->lookup.flags & LDMS_LOOKUP_BY_SCHEMA)) {
+		name = (ldms_name_t)(&name->name[name->len]);
+	}
 	if (ctxt->lookup.flags & LDMS_LOOKUP_RE) {
 		rc = regcomp(&regex, ctxt->lookup.path, REG_EXTENDED | REG_NOSUB);
 		if (rc) {
@@ -1732,9 +1731,9 @@ int __is_lookup_name_good(struct ldms_xprt *x,
 			assert(0 == "bad regcomp in __is_lookup_name_good");
 		}
 
-		rc = regexec(&regex, name, 0, NULL, 0);
+		rc = regexec(&regex, name->name, 0, NULL, 0);
 	} else {
-		rc = strcmp(ctxt->lookup.path, name);
+		rc = strncmp(ctxt->lookup.path, name->name, name->len);
 	}
 
 	return (rc == 0);
