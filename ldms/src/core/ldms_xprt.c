@@ -1648,7 +1648,7 @@ static void __handle_update_meta(ldms_t x, struct ldms_context *ctxt,
 static void __handle_lookup(ldms_t x, struct ldms_context *ctxt,
 			    zap_event_t ev)
 {
-	int status;
+	int status = 0;
 	if (!ctxt->lookup.cb)
 		goto ctxt_cleanup;
 	if (ev->status != ZAP_ERR_OK) {
@@ -1656,15 +1656,15 @@ static void __handle_lookup(ldms_t x, struct ldms_context *ctxt,
 		 * Application doesn't have the set handle yet,
 		 * so delete the set.
 		 */
+		status = EREMOTEIO;
+#ifdef DEBUG
+		x->log("DEBUG: %s: lookup read error: zap error %d. ldms lookup status %d\n",
+				ldms_set_instance_name_get(ctxt->lookup.s), ev->status, status);
+#endif /* DEBUG */
 		ldms_set_delete(ctxt->lookup.s);
 		ctxt->lookup.s = NULL;
 	} else {
 		ldms_set_publish(ctxt->lookup.s);
-	}
-	if (ev->status) {
-		status = EREMOTEIO;
-	} else {
-		status = 0;
 	}
 	ctxt->lookup.cb((ldms_t)x, status, ctxt->lookup.more, ctxt->lookup.s,
 			ctxt->lookup.cb_arg);
@@ -1894,6 +1894,11 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
  out_1:
 	ldms_set_delete(rbd);
  out:
+#ifdef DEBUG
+	x->log("DEBUG: %s: lookup error while ldms_xprt is processing the rendezvous "
+			"with error %d. NOTE: error %d indicates that it is "
+			"a synchronous error of zap_read\n", inst_name, rc, EIO);
+#endif /* DEBUG */
 	if (ctxt->lookup.cb)
 		ctxt->lookup.cb(x, rc, 0, rbd, ctxt->lookup.cb_arg);
 	if (!lu->more) {
