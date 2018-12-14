@@ -1365,6 +1365,10 @@ void __ugni_defer_delivering_event(struct z_ugni_ep *uep)
 static void ugni_sock_ev_cb(ovis_event_t ev)
 {
 	struct z_ugni_ep *uep = ev->param.ctxt;
+#if defined(ZAP_DEBUG) || defined(DEBUG)
+	uep->epoll_record[uep->epoll_record_curr++] = ev->cb.epoll_events;
+	uep->epoll_record_curr %= UEP_EPOLL_RECORD_SZ;
+#endif /* ZAP_DEBUG || DEBUG */
 
 	if (ev->cb.epoll_events & EPOLLOUT) {
 		if (uep->sock_connected) {
