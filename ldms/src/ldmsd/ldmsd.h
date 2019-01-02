@@ -1114,7 +1114,15 @@ int ldmsd_task_start(ldmsd_task_t task,
 		     int flags, long sched_us, long offset_us);
 int ldmsd_task_resched(ldmsd_task_t task,
 		     int flags, long sched_us, long offset_us);
-void ldmsd_task_stop(ldmsd_task_t task);
+/**
+ * Stop the task.
+ *
+ * \retval EINPROGRESS If `stop` has been issued and is in progress.
+ * \retval EBUSY       If the task has already been `stopped`.
+ * \retval 0           If `stop` command is issued successfully.
+ */
+int ldmsd_task_stop(ldmsd_task_t task);
+
 void ldmsd_task_join(ldmsd_task_t task);
 
 void ldmsd_set_tree_lock();

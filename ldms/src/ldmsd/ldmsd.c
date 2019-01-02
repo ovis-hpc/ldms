@@ -889,12 +889,18 @@ void ldmsd_task_init(ldmsd_task_t task)
 	pthread_cond_init(&task->join_cv, NULL);
 }
 
-void ldmsd_task_stop(ldmsd_task_t task)
+int ldmsd_task_stop(ldmsd_task_t task)
 {
-
+	int rc = 0;
 	pthread_mutex_lock(&task->lock);
-	if (task->state == LDMSD_TASK_STATE_STOPPED)
+	if (task->state == LDMSD_TASK_STATE_STOPPED) {
+		rc = EBUSY;
 		goto out;
+	}
+	if (task->flags & LDMSD_TASK_F_STOP) {
+		rc = EINPROGRESS;
+		goto out;
+	}
 	if (task->state != LDMSD_TASK_STATE_RUNNING) {
 		ovis_scheduler_event_del(task->os, &task->oev);
 		task->os = NULL;
@@ -906,6 +912,7 @@ void ldmsd_task_stop(ldmsd_task_t task)
 	}
 out:
 	pthread_mutex_unlock(&task->lock);
+	return rc;
 }
 
 int ldmsd_task_resched(ldmsd_task_t task, int flags, long sched_us, long offset_us)
