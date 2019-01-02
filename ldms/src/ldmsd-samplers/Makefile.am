@@ -2,7 +2,7 @@
 ### Individual sampler subdir ###
 #################################
 
-SUBDIRS =
+SUBDIRS = all_example
 
 if ENABLE_LDMS_TEST
 SUBDIRS += test-samplers
