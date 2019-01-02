@@ -3907,7 +3907,7 @@ static int smplr_stop_handler(ldmsd_req_ctxt_t reqc)
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The plugin '%s' is not a sampler.",
 				smplr_name);
-	} else if (reqc->errcode == -EBUSY) {
+	} else if (reqc->errcode == EBUSY) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The sampler '%s' is not running.", smplr_name);
