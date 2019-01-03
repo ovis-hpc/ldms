@@ -15,3 +15,7 @@ endif
 if ENABLE_CRAY_POWER_SAMPLER
 SUBDIRS += cray_power_sampler
 endif
+
+if ENABLE_FPTRANS
+SUBDIRS += fptrans
+endif
