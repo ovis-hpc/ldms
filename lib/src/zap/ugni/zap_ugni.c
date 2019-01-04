@@ -144,7 +144,6 @@ static zap_log_fn_t zap_ugni_log = NULL;
 
 /* objects for checking node states */
 #define ZAP_UGNI_NODE_GOOD 7
-static struct event_base *node_state_event_loop;
 static ovis_scheduler_t node_state_sched;
 static pthread_t node_state_thread;
 
@@ -255,6 +254,20 @@ int z_rbn_cmp(void *a, void *b)
 	uint32_t x = (uint32_t)(uint64_t)a;
 	uint32_t y = (uint32_t)(uint64_t)b;
 	return x - y;
+}
+
+const char *zap_ugni_msg_type_str(zap_ugni_msg_type_t type)
+{
+	if (type < ZAP_UGNI_MSG_NONE || ZAP_UGNI_MSG_TYPE_LAST < type)
+		return "ZAP_UGNI_MSG_OUT_OF_RANGE";
+	return __zap_ugni_msg_type_str[type];
+}
+
+const char *zap_ugni_type_str(zap_ugni_type_t type)
+{
+	if (type < ZAP_UGNI_TYPE_NONE || ZAP_UGNI_TYPE_LAST < type)
+		return "ZAP_UGNI_TYPE_OUT_OF_RANGE";
+	return __zap_ugni_type_str[type];
 }
 
 static int __sock_nonblock(int fd)
@@ -445,7 +458,7 @@ static zap_err_t z_ugni_close(zap_ep_t ep)
 	struct z_ugni_ep *uep = (struct z_ugni_ep *)ep;
 
 	DLOG_(uep, "Closing xprt: %p, state: %s\n", uep,
-			zap_ep_state_str(uep->ep.state));
+			__zap_ep_state_str(uep->ep.state));
 	pthread_mutex_lock(&uep->ep.lock);
 	switch (uep->ep.state) {
 	case ZAP_EP_LISTENING:
@@ -463,7 +476,7 @@ static zap_err_t z_ugni_close(zap_ep_t ep)
 		break;
 	default:
 		ZAP_ASSERT(0, ep, "%s: Unexpected state '%s'\n",
-				__func__, zap_ep_state_str(ep->state));
+				__func__, __zap_ep_state_str(ep->state));
 	}
 	pthread_mutex_unlock(&uep->ep.lock);
 	return ZAP_ERR_OK;
@@ -682,7 +695,7 @@ static void process_uep_msg_accepted(struct z_ugni_ep *uep)
 	ZAP_ASSERT(uep->ep.state == ZAP_EP_CONNECTING, &uep->ep,
 			"%s: Unexpected state '%s'. "
 			"Expected state 'ZAP_EP_CONNECTING'\n",
-			__func__, zap_ep_state_str(uep->ep.state));
+			__func__, __zap_ep_state_str(uep->ep.state));
 	struct zap_event ev;
 	struct zap_ugni_msg_accepted *msg;
 	zap_err_t zerr;
@@ -925,10 +938,10 @@ static int __recv_msg(struct z_ugni_ep *uep)
 			goto err;
 		}
 	}
-
 	return 0;
 
  err:
+	from_line += 0; /* avoid gcc's set-but-not-used warning*/
 	return rc;
 }
 
@@ -1280,14 +1293,6 @@ __ugni_send(struct z_ugni_ep *uep, enum zap_ugni_msg_type type,
 	return ZAP_ERR_OK;
 }
 
-static int __exceed_disconn_ev_timeout(struct z_ugni_ep *uep)
-{
-	if (uep->unbind_count * zap_ugni_unbind_timeout >=
-			zap_ugni_disc_ev_timeout)
-		return 1;
-	return 0;
-}
-
 static void __deliver_ev(struct z_ugni_ep *uep)
 {
 	/* Deliver the disconnected event */
@@ -1549,9 +1554,10 @@ static void __z_ugni_conn_request(ovis_event_t ev)
 	if (rc) {
 		LOG_(uep, "__sock_nonblock() error %d:"
 			  " in %s at %s:%d\n",
-				zerr, __func__, __FILE__, __LINE__);
+				rc, __func__, __FILE__, __LINE__);
 		/* synchronous error */
 		zap_free(new_ep);
+		return;
 	}
 
 	OVIS_EVENT_INIT(&new_uep->io_ev);
@@ -1565,7 +1571,7 @@ static void __z_ugni_conn_request(ovis_event_t ev)
 	if (rc) {
 		LOG_(uep, "ovis_scheduler_event_add() error %d:"
 			  " in %s at %s:%d\n",
-				zerr, __func__, __FILE__, __LINE__);
+				rc, __func__, __FILE__, __LINE__);
 		/* synchronous error */
 		zap_free(new_ep);
 	}
@@ -1856,15 +1862,11 @@ static int __check_node_state(int node_id)
 
 void ugni_node_state_cb(ovis_event_t ev)
 {
-	int rc;
-	struct timeval tv;
 	__get_node_state(); /* FIXME: what if this fails? */
 }
 
 void *node_state_proc(void *args)
 {
-	struct timeval tv;
-	struct event *ns;
 	rs_node_t node;
 	int rc;
 	struct ovis_event_s ns_ev;
@@ -2246,19 +2248,22 @@ zap_ep_t z_ugni_new(zap_t z, zap_cb_fn_t cb)
 #ifdef DEBUG
 	uep->ep_id = zap_ugni_get_ep_id();
 	if (uep->ep_id < 0) {
-		LOG_(uep, "%s: Failed to get the zap endpoint ID\n",
-				__func__);
+		LOG_(uep, "%s: %p: Failed to get the zap endpoint ID\n",
+				__func__, uep);
 		errno = ZAP_ERR_RESOURCE;
 		pthread_mutex_unlock(&z_ugni_list_mutex);
-		goto err3;
+		grc = GNI_EpDestroy(uep->gni_ep);
+		if (grc) {
+			LOG_(uep, "%s: %p: GNI_EpDestroy() failed: %s\n",
+					__func__, uep, gni_ret_str(grc));
+		}
+		goto err2;
 	}
 #endif /* DEBUG */
 	LIST_INSERT_HEAD(&z_ugni_list, uep, link);
 	pthread_mutex_unlock(&z_ugni_list_mutex);
 	DLOG_(uep, "Created gni_ep: %p\n", uep->gni_ep);
 	return (zap_ep_t)uep;
-err3:
-	grc = GNI_EpDestroy(uep->gni_ep);
 err2:
 	free(uep->rbuff);
 err1:

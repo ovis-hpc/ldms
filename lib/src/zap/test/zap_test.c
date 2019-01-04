@@ -708,7 +708,6 @@ int main(int argc, char *argv[])
 	unsigned short port_no = 0;
 	int ptmp = -1;
 	struct sockaddr_in sin;
-	zap_err_t err;
 
 	while (-1 != (rc = getopt(argc, argv, FMT_ARGS))) {
 		switch (rc) {

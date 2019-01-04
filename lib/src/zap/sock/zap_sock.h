@@ -292,4 +292,8 @@ static inline struct z_sock_ep *z_sock_from_ep(zap_ep_t *ep)
 	return (struct z_sock_ep *)ep;
 }
 
+/* For debugging */
+void __log_sep_msg(struct z_sock_ep *sep, int is_recv,
+			  const struct sock_msg_hdr *hdr);
+
 #endif
