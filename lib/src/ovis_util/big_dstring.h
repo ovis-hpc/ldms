@@ -171,8 +171,6 @@ static inline char *bdstr_set(big_dstring_t *dsPtr, const char *string) \
 static inline char *bdstr_set_int(big_dstring_t *dsPtr, int64_t val) \
 { \
 	return dstr_set_int((dstring_t*)dsPtr, val); \
-} \
-\
-static const int bd_static_size=DSTRING_STATIC_SIZE
+}
 
 #endif /* BIG_DSTRING_H */
