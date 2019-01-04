@@ -146,12 +146,7 @@ static const char *__zap_ugni_msg_type_str[] = {
 	[ZAP_UGNI_MSG_TYPE_LAST]   =  "ZAP_UGNI_MSG_TYPE_LAST"
 };
 
-static const char *zap_ugni_msg_type_str(zap_ugni_msg_type_t type)
-{
-	if (type < ZAP_UGNI_MSG_NONE || ZAP_UGNI_MSG_TYPE_LAST < type)
-		return "ZAP_UGNI_MSG_OUT_OF_RANGE";
-	return __zap_ugni_msg_type_str[type];
-}
+const char *zap_ugni_msg_type_str(zap_ugni_msg_type_t type);
 
 typedef enum zap_ugni_type {
 	ZAP_UGNI_TYPE_NONE,
@@ -167,12 +162,7 @@ static const char *__zap_ugni_type_str[] = {
 	[ZAP_UGNI_TYPE_LAST]    =  "ZAP_UGNI_TYPE_LAST",
 };
 
-static const char *zap_ugni_type_str(zap_ugni_type_t type)
-{
-	if (type < ZAP_UGNI_TYPE_NONE || ZAP_UGNI_TYPE_LAST < type)
-		return "ZAP_UGNI_TYPE_OUT_OF_RANGE";
-	return __zap_ugni_type_str[type];
-}
+const char *zap_ugni_type_str(zap_ugni_type_t type);
 
 static const char *__gni_ret_str[] = {
 	[GNI_RC_SUCCESS]            =  "GNI_RC_SUCCESS",

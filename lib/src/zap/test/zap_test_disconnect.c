@@ -268,7 +268,7 @@ void mutual_cb(zap_ep_t _ep, zap_event_t ev)
 	case ZAP_EVENT_CONNECT_REQUEST:
 		LOG("Accepting connection ...\n");
 		ep = _ep;
-		zerr = zap_accept(_ep, mutual_cb, ev->data, ev->data_len);
+		zerr = zap_accept(_ep, mutual_cb, (void *)ev->data, ev->data_len);
 		if (zerr) {
 			LOG("zap_accept error %d: %s\n", zerr,
 							zap_err_str(zerr));

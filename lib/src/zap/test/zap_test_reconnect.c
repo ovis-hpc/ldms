@@ -211,7 +211,7 @@ void server_cb(zap_ep_t zep, zap_event_t ev)
 
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
-		zap_accept(zep, server_cb, ev->data, ev->data_len);
+		zap_accept(zep, server_cb, (void*)ev->data, ev->data_len);
 		break;
 	case ZAP_EVENT_CONNECTED:
 		printf("connected\n");
@@ -239,11 +239,6 @@ void server_cb(zap_ep_t zep, zap_event_t ev)
 
 void client_cb(zap_ep_t zep, zap_event_t ev)
 {
-	zap_err_t zerr;
-	struct sockaddr_in lsin = {0};
-	struct sockaddr_in rsin = {0};
-	socklen_t slen;
-
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 
@@ -295,7 +290,6 @@ void do_server(struct sockaddr_in *sin)
 	}
 	printf("Listening on port %hu\n", port);
 	/* Run forever */
-	char c;
 	while (1) {
 		/* do nothing */
 		sleep(60);
@@ -382,7 +376,6 @@ void *send_msg(void *arg)
 void do_client(struct sockaddr_in *sin)
 {
 	struct addrinfo *ai;
-	zap_err_t zerr;
 	int rc;
 
 	rc = getaddrinfo(host, NULL, NULL, &ai);

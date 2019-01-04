@@ -96,9 +96,7 @@ extern int __zap_assert;
 	} \
 } while(0)
 
-static void __zap_assert_flag(int f) {
-	__zap_assert = f;
-}
+void __zap_assert_flag(int f);
 
 /*
  * State definitions
@@ -155,7 +153,7 @@ typedef enum zap_ep_state {
 	ZAP_EP_ERROR
 } zap_ep_state_t;
 
-static const char *__zap_ep_state_str[] = {
+const char *zap_ep_state_str[] = {
 	[ZAP_EP_INIT]        =  "ZAP_EP_INIT",
 	[ZAP_EP_LISTENING]   =  "ZAP_EP_LISTENING",
 	[ZAP_EP_ACCEPTING]   =  "ZAP_EP_ACCEPTING",
@@ -166,12 +164,7 @@ static const char *__zap_ep_state_str[] = {
 	[ZAP_EP_ERROR]       =  "ZAP_EP_ERROR"
 };
 
-static const char *zap_ep_state_str(zap_ep_state_t state)
-{
-	if (state < ZAP_EP_INIT || ZAP_EP_ERROR < state)
-		return "UNKNOWN_STATE";
-	return __zap_ep_state_str[state];
-}
+const char *__zap_ep_state_str(zap_ep_state_t state);
 
 struct zap_ep {
 	zap_t z;

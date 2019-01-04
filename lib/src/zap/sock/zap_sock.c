@@ -244,20 +244,6 @@ static int z_sock_buff_extend(z_sock_buff_t buff, size_t new_sz)
 	return 0;
 }
 
-static void z_sock_cleanup(void)
-{
-	if (sched)
-		ovis_scheduler_term(sched);
-	if (io_thread) {
-		pthread_cancel(io_thread);
-		pthread_join(io_thread, NULL);
-	}
-	if (sched) {
-		ovis_scheduler_free(sched);
-		sched = NULL;
-	}
-}
-
 static zap_err_t z_sock_close(zap_ep_t ep)
 {
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
@@ -279,7 +265,7 @@ static zap_err_t z_sock_close(zap_ep_t ep)
 		break;
 	default:
 		ZAP_ASSERT(0, ep, "%s: Unexpected state '%s'\n",
-				__func__, zap_ep_state_str(ep->state));
+				__func__, __zap_ep_state_str(ep->state));
 		break;
 	}
 	pthread_mutex_unlock(&sep->ep.lock);
@@ -519,7 +505,6 @@ static void process_sep_msg_rejected(struct z_sock_ep *sep)
 
 static void process_sep_msg_ack_accepted(struct z_sock_ep *sep)
 {
-	struct sock_msg_sendrecv *msg;
 	zap_err_t zerr;
 
 	zerr = zap_ep_change_state(&sep->ep, ZAP_EP_ACCEPTING, ZAP_EP_CONNECTED);
@@ -574,7 +559,7 @@ static void process_sep_msg_read_req(struct z_sock_ep *sep)
 	src = (char *)be64toh(msg->src_ptr);
 
 	/* Prepare response message */
-	struct sock_msg_read_resp rmsg = {0};
+	struct sock_msg_read_resp rmsg = {.status=0}; /* Work around gcc bug 53119 */
 	rmsg.hdr.msg_type = htons(SOCK_MSG_READ_RESP);
 	rmsg.hdr.xid = msg->hdr.xid;
 	rmsg.hdr.ctxt = msg->hdr.ctxt;
@@ -926,11 +911,12 @@ static int __recv_msg(struct z_sock_ep *sep)
 	return 0;
 
  err:
+	from_line += 0; /* Avoid gcc's set-but-not-used warning */
 	return rc;
 }
 
 /* For debugging */
-static void __log_sep_msg(struct z_sock_ep *sep, int is_recv,
+void __log_sep_msg(struct z_sock_ep *sep, int is_recv,
 			  const struct sock_msg_hdr *hdr)
 {
 	char _buff[128];
