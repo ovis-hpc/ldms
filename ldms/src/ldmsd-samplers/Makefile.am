@@ -19,3 +19,7 @@ endif
 if ENABLE_FPTRANS
 SUBDIRS += fptrans
 endif
+
+if ENABLE_GENERIC_SAMPLER
+SUBDIRS += generic_sampler
+endif
