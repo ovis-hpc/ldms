@@ -121,7 +121,7 @@ dnl cray_power_sampler won't build with --disable-tsampler
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_DISABLE([opa2], [ENABLE_OPA2])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
-OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
+OPTION_DEFAULT_ENABLE([sysclassblock], [ENABLE_SYSCLASSBLOCK])
 OPTION_DEFAULT_DISABLE([cray_system_sampler], [ENABLE_CRAY_SYSTEM_SAMPLER])
 dnl spaceless names in the cray_system_sampler. Default is with spaces for reverse compatibility
 OPTION_DEFAULT_ENABLE([spaceless_names], [ENABLE_SPACELESS_NAMES])
@@ -490,6 +490,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd-samplers/kgnilnd/Makefile
 		 src/ldmsd-samplers/meminfo/Makefile
 		 src/ldmsd-samplers/test-samplers/Makefile
+		 src/ldmsd-samplers/sysclassblock/Makefile
 		 src/ldmsd-samplers/procnetdev/Makefile
 		 src/ldmsd-stores/Makefile
 		 src/ldmsd-stores/store_sos/Makefile
