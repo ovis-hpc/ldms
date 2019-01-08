@@ -27,3 +27,7 @@ endif
 if ENABLE_KGNILND
 SUBDIRS += kgnilnd
 endif
+
+if ENABLE_MEMINFO
+SUBDIRS += meminfo
+endif

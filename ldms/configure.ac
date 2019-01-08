@@ -488,6 +488,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd-samplers/fptrans/Makefile
 		 src/ldmsd-samplers/generic_sampler/Makefile
 		 src/ldmsd-samplers/kgnilnd/Makefile
+		 src/ldmsd-samplers/meminfo/Makefile
 		 src/ldmsd-samplers/test-samplers/Makefile
 		 src/ldmsd-samplers/procnetdev/Makefile
 		 src/ldmsd-stores/Makefile
