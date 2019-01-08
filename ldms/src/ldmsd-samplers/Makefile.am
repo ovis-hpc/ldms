@@ -23,3 +23,7 @@ endif
 if ENABLE_GENERIC_SAMPLER
 SUBDIRS += generic_sampler
 endif
+
+if ENABLE_KGNILND
+SUBDIRS += kgnilnd
+endif
