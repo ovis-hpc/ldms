@@ -35,3 +35,7 @@ endif
 if ENABLE_SYSCLASSBLOCK
 SUBDIRS += sysclassblock
 endif
+
+if ENABLE_PROCINTERRUPTS
+SUBDIRS += procinterrupts
+endif
