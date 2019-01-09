@@ -39,3 +39,7 @@ endif
 if ENABLE_PROCINTERRUPTS
 SUBDIRS += procinterrupts
 endif
+
+if ENABLE_PROCNFS
+SUBDIRS += procnfs
+endif
