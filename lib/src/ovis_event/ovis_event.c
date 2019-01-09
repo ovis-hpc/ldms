@@ -549,6 +549,7 @@ int ovis_scheduler_event_del(ovis_scheduler_t m, ovis_event_t ev)
 {
 	int rc = 0;
 	ssize_t wb;
+
 	if (ev->param.type & OVIS_EVENT_EPOLL) {
 		/* remove from epoll */
 		struct epoll_event e;
@@ -614,6 +615,7 @@ int ovis_scheduler_loop(ovis_scheduler_t m, int return_on_empty)
 	int timeout;
 	int i;
 	int rc = 0;
+	int cnt;
 
 	ovis_scheduler_ref_get(m);
 	pthread_mutex_lock(&m->mutex);
@@ -641,17 +643,25 @@ loop:
 	}
 	pthread_mutex_unlock(&m->mutex);
 
-	rc = epoll_wait(m->efd, m->ev, MAX_EPOLL_EVENTS, timeout);
-	assert(rc >= 0 || errno == EINTR);
+	cnt = epoll_wait(m->efd, m->ev, MAX_EPOLL_EVENTS, timeout);
+	if (cnt < 0) {
+		if (errno == EINTR)
+			goto loop;
+		return errno;
+	}
+	if (cnt == 0)
+		goto loop;
+
 	pthread_mutex_lock(&m->mutex);
 	if (m->state == OVIS_EVENT_MANAGER_WAITING)
 		m->state = OVIS_EVENT_MANAGER_RUNNING;
 	pthread_mutex_unlock(&m->mutex);
 
-	for (i = 0; i < rc; i++) {
+	for (i = 0; i < cnt; i++) {
 		rc = ovis_event_term_check(m);
 		if (rc)
 			goto out;
+
 		ev = m->ev[i].data.ptr;
 		ev->cb.type = OVIS_EVENT_EPOLL;
 		ev->cb.epoll_events = m->ev[i].events;
