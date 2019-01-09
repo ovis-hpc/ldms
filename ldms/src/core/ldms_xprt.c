@@ -1482,7 +1482,7 @@ void __ldms_xprt_init(struct ldms_xprt *x, const char *name,
 					ldms_log_fn_t log_fn);
 static void ldms_zap_handle_conn_req(zap_ep_t zep)
 {
-	static char rej_msg[64] = "Not enough resources";
+	static char rej_msg[64] = "Insufficient resources";
 	struct sockaddr lcl, rmt;
 	socklen_t xlen;
 	struct ldms_conn_msg msg;
@@ -1491,8 +1491,8 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	const char *tmp;
 	int rc;
 	zap_err_t zerr;
-	zap_get_name(zep, &lcl, &rmt, &xlen);
-	getnameinfo(&rmt, sizeof(rmt), rmt_name, RMT_NM_SZ, NULL, 0, NI_NUMERICHOST);
+	zerr = zap_get_name(zep, &lcl, &rmt, &xlen);
+	rc = getnameinfo(&rmt, xlen, rmt_name, RMT_NM_SZ, NULL, 0, NI_NUMERICHOST);
 
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	struct ldms_auth *auth;
@@ -1534,7 +1534,7 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 
 	zerr = zap_accept(zep, ldms_zap_auto_cb, (void*)&msg, sizeof(msg));
 	if (zerr) {
-		x->log("ERROR: cannot accept connection from %s.\n", rmt_name);
+		x->log("ERROR: %d accepting connection from %s.\n", zerr, rmt_name);
 		goto err1;
 	}
 
