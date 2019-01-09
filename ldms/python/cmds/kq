@@ -94,6 +94,8 @@ class KokkosData(object):
     def _print_job_data(self, job, args):
         self.sha256_key.set_value(job['inst_data'])
         inst = self.sha256_idx.find(self.sha256_key)
+        if inst is None:
+            inst = { 'string' : 'Application data is missing' }
         ts = dt.datetime.fromtimestamp(int(job['start_time'][0]))
         try:
             uid = pwd.getpwuid(int(job['user_id'])).pw_name
