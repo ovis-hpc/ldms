@@ -641,7 +641,11 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	timestamp = ldms_transaction_timestamp_get(set);
 
 	/* timestamp */
-	value = sos_value_init(value, obj, si->ts_attr);
+	if (NULL == sos_value_init(value, obj, si->ts_attr)) {
+		msglog(LDMSD_LERROR, "Error initializing timestamp attribute\n");
+		errno = ENOMEM;
+		goto err;
+	}
 	value->data->prim.timestamp_.fine.secs = timestamp.sec;
 	value->data->prim.timestamp_.fine.usecs = timestamp.usec;
 	sos_value_put(value);
@@ -671,7 +675,12 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		}
 		metric_type = ldms_metric_type_get(set, metric_arry[i]);
 		if (metric_type < LDMS_V_CHAR_ARRAY) {
-			value = sos_value_init(value, obj, attr);
+			if (NULL == sos_value_init(value, obj, attr)) {
+				msglog(LDMSD_LERROR, "Error initializing '%s' attribute\n",
+				       sos_attr_name(attr));
+				errno = ENOMEM;
+				goto err;
+			}
 			sos_value_set[metric_type](value, set, metric_arry[i]);
 			sos_value_put(value);
 		} else {
@@ -688,6 +697,9 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			array_value = sos_array_new(array_value, attr,
 							obj, array_len);
 			if (!array_value) {
+				msglog(LDMSD_LERROR, "Error allocating '%s' array\n",
+				       sos_attr_name(attr));
+				errno = ENOMEM;
 				goto err;
 			}
 			array_len *= esz;
