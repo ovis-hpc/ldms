@@ -43,3 +43,7 @@ endif
 if ENABLE_PROCNFS
 SUBDIRS += procnfs
 endif
+
+if ENABLE_PROCSTAT
+SUBDIRS += procstat
+endif
