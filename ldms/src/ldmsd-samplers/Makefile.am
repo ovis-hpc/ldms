@@ -47,3 +47,7 @@ endif
 if ENABLE_PROCSTAT
 SUBDIRS += procstat
 endif
+
+if ENABLE_ATASMART
+SUBDIRS += sampler_atasmart
+endif
