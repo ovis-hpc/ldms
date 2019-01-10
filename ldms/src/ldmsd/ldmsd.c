@@ -1631,7 +1631,7 @@ int main(int argc, char *argv[])
 							ldms_version.minor,
 							ldms_version.patch,
 							ldms_version.flags);
-			printf("LDMSD Interface Version: %hhu.%hhu.%hhu.%hhu\n",
+			printf("LDMSD Plugin Interface Version: %hhu.%hhu.%hhu.%hhu\n",
 							ldmsd_version.major,
 							ldmsd_version.minor,
 							ldmsd_version.patch,
