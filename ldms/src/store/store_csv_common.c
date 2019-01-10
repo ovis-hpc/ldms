@@ -286,8 +286,6 @@ int create_outdir(const char *path, struct csv_store_handle_common *s_handle,
 		cps->msglog(LDMSD_LERROR,"create_outdir: NULL store handle received.\n");
 		return EINVAL;
 	}
-	const char *container = s_handle->container;
-	const char *schema = s_handle->schema;
 	mode_t mode = (mode_t) (s_handle->create_perm ? s_handle->create_perm : cps->create_perm);
 
 	int err = 0;
@@ -611,6 +609,7 @@ void csv_update_handle_common(struct csv_store_handle_common *h, struct storek_c
 		return;
 	if (s) {
 		h->notify_isfifo = s->notify_isfifo;
+		h->transflags = s->transflags;
 		h->rename_uid = s->rename_uid;
 		h->rename_gid = s->rename_gid;
 		h->rename_perm = s->rename_perm;
@@ -620,6 +619,88 @@ void csv_update_handle_common(struct csv_store_handle_common *h, struct storek_c
 	}
 }
 
+/* compute transflags from transdata */
+static int get_transflags(struct csv_plugin_static *cps, const char *transdata, unsigned *transflags)
+{
+	if (!cps || !transdata || !transflags)
+		return EINVAL;
+	int rc = 0;
+	const char *w = cps->pname;
+	unsigned tmp;
+	tmp = *transflags;
+	while (*transdata != '\0') {
+		switch (*transdata) {
+		case '0':
+			tmp = TRANS_LOG_NORMAL;
+			cps->msglog(LDMSD_LDEBUG,"%s: disabling transportdata\n",
+				w);
+			goto transdone;
+		case 'N':
+			tmp &= ~(TRANS_LOG_NORMAL);
+			cps->msglog(LDMSD_LDEBUG,"%s: disabling regular metrics\n",
+				w);
+			break;
+		case 'c':
+			tmp |= TRANS_LOG_CONSISTENT;
+			cps->msglog(LDMSD_LDEBUG,"%s: logging consistent flag\n",
+				w);
+			break;
+		case 'd':
+			tmp |= TRANS_LOG_DURATION;
+			cps->msglog(LDMSD_LDEBUG,"%s: logging sampling duration\n",
+				w);
+			break;
+		case 'g':
+			tmp |= TRANS_LOG_GENERATION;
+			cps->msglog(LDMSD_LDEBUG,"%s: logging generation numbers\n",
+				w);
+			break;
+		case 'm':
+			tmp |= TRANS_LOG_METAGEN;
+			cps->msglog(LDMSD_LDEBUG,"%s: logging metageneration numbers\n",
+				w);
+			break;
+		case 's':
+			tmp |= TRANS_LOG_START;
+			cps->msglog(LDMSD_LDEBUG,"%s: ignoring transportdata 's'\n",
+				w);
+			break;
+		case 'p':
+			tmp |= TRANS_LOG_SETPTR;
+			cps->msglog(LDMSD_LDEBUG,"%s: logging set pointers\n", w);
+			break;
+		case 't':
+			tmp |= TRANS_LOG_TRIP;
+			cps->msglog(LDMSD_LDEBUG,"%s: logging trip time\n",
+				w);
+			break;
+		case 'a': tmp =
+			(TRANS_LOG_DURATION | TRANS_LOG_GENERATION |
+			TRANS_LOG_METAGEN | TRANS_LOG_SETPTR |
+			TRANS_LOG_CONSISTENT | TRANS_LOG_TRIP);
+			cps->msglog(LDMSD_LDEBUG, "%s: logging all transport data\n",
+				w);
+			goto transdone;
+		default:
+			rc = EINVAL;
+			cps->msglog(LDMSD_LINFO,
+				"%s: get_transflags '%c' transportdata unknown\n",
+				w, *transdata);
+		}
+		transdata++;
+		continue;
+transdone:
+		transdata++;
+		if (*transdata != '\0') {
+			cps->msglog(LDMSD_LDEBUG,"%s: ignoring extra transportdata flags %s\n",
+				w, transdata);
+		}
+		break;
+	}
+	if (!rc)
+		*transflags = tmp;
+	return rc;
+}
 
 /**
  * configurations for a container+schema that can override the vals in config_init
@@ -629,6 +710,7 @@ int config_custom_common(struct attr_value_list *kwl, struct attr_value_list *av
 {
 	//defaults to init
 	sk->notify_isfifo = cps->notify_isfifo;
+	sk->transflags = cps->transflags;
 	sk->rename_uid = cps->rename_uid;
 	sk->rename_gid = cps->rename_gid;
 	sk->rename_perm = cps->rename_perm;
@@ -783,6 +865,9 @@ int config_custom_common(struct attr_value_list *kwl, struct attr_value_list *av
 			sk->create_perm = perm;
 		}
 	}
+	char * transportdata = av_value(avl, "transportdata");
+	if (!rc && transportdata)
+		rc = get_transflags(cps, transportdata, &(sk->transflags));
 
 	return rc;
 }
@@ -807,6 +892,7 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 	(void)arg;
 	if (!cps || !avl)
 		return EINVAL;
+	const char *w = cps->pname;
 
 	int rc = 0;
 	char *notify =  av_value(avl, "notify");
@@ -821,8 +907,7 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 		if (notify) {
 			cps->msglog(LDMSD_LERROR, "%s: notify "
 				"must be specificed correctly. "
-				"got instead %s\n", cps->pname,
-				notify ) ;
+				"got instead %s\n", w, notify ) ;
 			rc = EINVAL;
 		}
 	}
@@ -830,7 +915,7 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 		rc = parse_bool(cps, avl, "notify_isfifo",
 			&(cps->notify_isfifo));
 
-	char *rename_template =  av_value(avl, "rename_template");
+	char *rename_template = av_value(avl, "rename_template");
 	if (rename_template && strlen(rename_template) >= 2 ) {
 		char *tmp1 = strdup(rename_template);
 		if (!tmp1) {
@@ -842,8 +927,7 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 		if (rename_template) {
 			cps->msglog(LDMSD_LERROR, "%s: rename_template "
 				"must be specificed correctly. "
-				"got instead %s\n", cps->pname,
-				rename_template ) ;
+				"got instead %s\n", w, rename_template ) ;
 			rc = EINVAL;
 		}
 	}
@@ -860,7 +944,7 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 			cps->rename_uid = (uid_t)-1;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_init_common ignoring bad rename_uid=%s\n",
-				cps->pname, rename_uval);
+				w, rename_uval);
 		} else {
 			cps->rename_uid = (uid_t)uid;
 		}
@@ -875,7 +959,7 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 			cps->rename_gid = (gid_t)-1;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_init_common ignoring bad rename_gid=%s\n",
-				cps->pname, rename_gval);
+				w, rename_gval);
 		} else {
 			cps->rename_gid = (gid_t)gid;
 		}
@@ -890,7 +974,7 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 			cps->rename_perm = 0;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_init_common ignoring bad rename_perm=%s\n",
-				cps->pname, rename_pval);
+				w, rename_pval);
 		} else {
 			cps->rename_perm = perm;
 		}
@@ -908,12 +992,12 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 			cps->create_uid = (uid_t)-1;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_init_common ignoring bad create_uid=%s\n",
-				cps->pname, create_uval);
+				w, create_uval);
 		} else {
 			cps->create_uid = (uid_t)uid;
 			cps->msglog(LDMSD_LDEBUG,
 				"%s: config_init_common create_uid=%s %lu\n",
-				cps->pname, create_uval, cps->create_uid);
+				w, create_uval, cps->create_uid);
 		}
 	}
 
@@ -926,12 +1010,12 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 			cps->create_gid = (gid_t)-1;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_init_common ignoring bad create_gid=%s\n",
-				cps->pname, create_gval);
+				w, create_gval);
 		} else {
 			cps->create_gid = (gid_t)gid;
 			cps->msglog(LDMSD_LDEBUG,
 				"%s: config_init_common create_gid=%s %lu\n",
-				cps->pname, create_gval, cps->create_gid);
+				w, create_gval, cps->create_gid);
 		}
 	}
 
@@ -944,11 +1028,17 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 			cps->create_perm = 0;
 			cps->msglog(LDMSD_LERROR,
 				"%s: config_init_common ignoring bad create_perm=%s\n",
-				cps->pname, create_pval);
+				w, create_pval);
 		} else {
 			cps->create_perm = perm;
 		}
 	}
+	char * transdata = av_value(avl, "transportdata");
+	if (!transdata)
+		transdata = "0";
+	if (!rc)
+		rc = get_transflags(cps, transdata, &(cps->transflags));
+
 	return rc;
 }
 
@@ -1010,4 +1100,5 @@ void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv
 	p->msglog(LDMSD_LALL, "%s: create_gid: %" PRIu32 "\n", p->pname, h->create_gid);
 	p->msglog(LDMSD_LALL, "%s: create_perm: %o\n", p->pname, h->create_perm);
 	p->msglog(LDMSD_LALL, "%s: onp: %p\n", p->pname, h->onp);
+	p->msglog(LDMSD_LALL, "%s: transportdata: %x\n", p->pname, h->transflags);
 }

@@ -12,9 +12,9 @@ load name=store_csv
 .br
 config name=store_csv action=init [ <attr> = <value> ]
 .br
-config name=store_csv action=custom [ <attr> = <value> ]
+config name=store_csv action=custom container=<c_name> schema=<s_name> [ <attr> = <value> ]
 .br
-strgp_add plugin=store_csv [ <attr> = <value> ]
+strgp_add plugin=store_csv container=<c_name> schema=<s_name> [ <attr> = <value> ]
 .br
 
 
@@ -24,11 +24,11 @@ the ldmsd_controller or a configuration file. The store_csv plugin is a CSV stor
 .PP
 
 .SH STORE_CSV INIT CONFIGURATION ATTRIBUTE SYNTAX
-The configuration parameters altheader, rolltype, rollover, rollagain, buffer, buffertype, notify, and rename_template are applied to all metric sets alike.
+The configuration parameters altheader, rolltype, rollover, rollagain, buffer, buffertype, notify, transportdata and rename_template are applied to all metric sets alike.
 A subset of these can be overriden by the action=custom values.
 .TP
 .BR config
-name=<plugin_name> action=init path=<path> [ altheader=<0/!0> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>]
+name=<plugin_name> action=init path=<path> [ altheader=<0/!0> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>] [transportdata=<met_letters>]
 .br
 ldmsd_controller configuration line
 .RS
@@ -132,6 +132,10 @@ rename_gid=<numeric-gid>
 .br
 Specify a new group id for the file. If unspecified, no change in group ownership is made. This option is applied only if rename_template is applied.
 
+.TP
+transportdata=<met_letters>
+.br
+The supported met_letters are "acdgmpt0N", where inclusion of a character in the transportdata option turns on metrics as follows: "a" (all) is equivalent "cdgmpt"; "c" enables logging 'consistent'; "d" enables logging duration; "g" enables logging data generation number, "m" enables logging metadata generation number, "p" enables logging set memory address at the store, "t" enables logging trip time.  See TRANSPORT DATA below for the meaning of these metrics.  The character '0' turns off all transport data output and reenables regular metric output. The character 'N' turns off regular metric output.  The default if transportdata is not given is "0".  The 'regular' metrics for the case of 'N' are all non-transport data metrics after the 'ProducerName' column. Any characters following 'a' and '0' are ignored. For sampler performance analysis, only "d" is needed.
 .RE
 
 
@@ -141,7 +145,7 @@ unless overriden by the action=custom values. Only a subset can be overridden.
 
 .TP
 .BR config
-name=<plugin_name> action=custom container=<container> schema=<schema> [ altheader=<0/!0> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>]
+name=<plugin_name> action=custom container=<container> schema=<schema> [ altheader=<0/!0> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>] [transportdata=met_letters]
 
 .br
 ldmsd_controller configuration line
@@ -242,7 +246,7 @@ You can have multiples of the same sampler, but with different schema (which mea
 This store generates output columns in a sequence influenced by the sampler data registration. Specifically, the column ordering is
 .PP
 .RS
-Time, Time_usec, ProducerName, <sampled metric >*
+Time, Time_usec, ProducerName, <transportdata>*, <sampled metric >*
 .RE
 .PP
 where each <sampled metric> is either
@@ -256,6 +260,8 @@ or if userdata has been opted not to include, just:
 .RS
 <metric_name>
 .RE
+.PP
+and where each <transportdata> fields appear only if enabled.
 .PP
 .PP
 The column sequence of <sampled metrics> is the order in which the metrics are added into the metric set by the sampler (or the order they are specifed by the user).
@@ -353,6 +359,23 @@ Please note the argument changes from v2.
 .IP \[bu]
 The 'sequence' option has been removed.
 .PP
+
+.SH TRANSPORT DATA
+The consistency of the set (consistent) is 1 normally and 0 if the set data was transported in the middle of sampling. In the absence of ldmsd bugs, 0 is never be seen because the updater does not send inconsistent sets to the storage policies. If consistent is 0, all other metric values (excepting setptr, producer name and component_id, but including timestamp) are invalid.
+
+The duration value is the time spent in metric set collection at the producer. 
+It is usually under a millisecond.
+
+The trip value is the time spent in transit from the producer to the store.
+It includes the difference in offsets from sampler to updater and may be
+subject to clock skew. Ideally, the trip time is very similar within the sampling period for all sets similarly scheduled.
+
+The data generation number (datagn) is an increasing (with rollover possible at UINT64_MAX) indicating the number of times any metric value has been updated in the set. 
+
+The metadata generation number (metagn) is an increasing (with rollover possible at UINT64_MAX) indicating the number of times any metadata value has been updated in the set. 
+
+The memory address (setptr) is the hexadecimal pointer value for the set instance in store daemon (local) memory. It is only expected to change when connections change or the upstream data source changes the set definition.
+
 
 .SH BUGS
 There is a maximum of 20 concurrent CSV stores.
