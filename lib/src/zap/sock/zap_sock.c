@@ -1953,7 +1953,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	if (!init_complete && init_once())
 		goto err;
 
-	pthread_atfork(NULL, NULL, init_once);
+	pthread_atfork(NULL, NULL, (void*)init_once);
 
 	z = calloc(1, sizeof (*z));
 	if (!z)
