@@ -55,3 +55,7 @@ endif
 if ENABLE_SYNTHETIC
 SUBDIRS += synthetic
 endif
+
+if ENABLE_VMSTAT
+SUBDIRS += vmstat
+endif
