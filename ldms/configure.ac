@@ -498,6 +498,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd-samplers/sampler_atasmart/Makefile
 		 src/ldmsd-samplers/synthetic/Makefile
 		 src/ldmsd-samplers/vmstat/Makefile
+		 src/ldmsd-samplers/lnet_stats/Makefile
 		 src/ldmsd-stores/Makefile
 		 src/ldmsd-stores/store_sos/Makefile
 		 scripts/Makefile

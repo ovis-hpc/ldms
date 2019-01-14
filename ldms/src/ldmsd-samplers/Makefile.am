@@ -59,3 +59,7 @@ endif
 if ENABLE_VMSTAT
 SUBDIRS += vmstat
 endif
+
+if ENABLE_LNET_STATS
+SUBDIRS += lnet_stats
+endif
