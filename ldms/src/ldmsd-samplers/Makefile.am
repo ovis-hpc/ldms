@@ -51,3 +51,7 @@ endif
 if ENABLE_ATASMART
 SUBDIRS += sampler_atasmart
 endif
+
+if ENABLE_SYNTHETIC
+SUBDIRS += synthetic
+endif
