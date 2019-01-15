@@ -63,3 +63,7 @@ endif
 if ENABLE_LNET_STATS
 SUBDIRS += lnet_stats
 endif
+
+if ENABLE_LUSTRE
+SUBDIRS += lustre
+endif
