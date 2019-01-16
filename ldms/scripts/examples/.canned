@@ -16,6 +16,7 @@ sequence_unsupp
 synthetic
 edac
 fptrans
+filesingle
 procnfs
 rabbitkw
 rabbitl2remote
