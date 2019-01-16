@@ -206,6 +206,10 @@ libprocsensors_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libprocsensors.la
 endif
 
+if ENABLE_FILESINGLE
+SUBDIRS += filesingle
+endif
+
 if ENABLE_PROCSTAT
 libprocstat_la_SOURCES = procstat.c
 libprocstat_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
