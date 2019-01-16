@@ -1,0 +1,14 @@
+export plugname=filesingle
+portbase=61060
+ldms-sensors-config > $LDMSD_RUN/filesingle.conf
+export FSCONF=$LDMSD_RUN/filesingle.conf
+vgon
+LDMSD 1 2
+vgoff
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -l
+SLEEP 5
+KILL_LDMSD 1 2
+file_created $STOREDIR/node/$testname

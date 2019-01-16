@@ -15,9 +15,9 @@ BASE_SRC=sampler_base.c sampler_base.h
 libsampler_base_la_SOURCES = $(BASE_SRC)
 libsampler_base_la_LIBADD = $(CORE_LIBADD)
 lib_LTLIBRARIES += libsampler_base.la
-BASE_LIBADD = libsampler_base.la
+BASE_LIBLA = libsampler_base.la
 
-COMMON_LIBADD = $(BASE_LIBADD) $(CORE_LIBADD)
+COMMON_LIBADD = $(BASE_LIBLA) $(CORE_LIBADD)
 
 ldmssamplerincludedir = $(includedir)/ldms/sampler
 ldmssamplerinclude_HEADERS = sampler_base.h
@@ -218,6 +218,10 @@ if ENABLE_PROCSENSORS
 libprocsensors_la_SOURCES = procsensors.c
 libprocsensors_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocsensors.la
+endif
+
+if ENABLE_FILESINGLE
+SUBDIRS += filesingle
 endif
 
 if ENABLE_PROCSTAT
