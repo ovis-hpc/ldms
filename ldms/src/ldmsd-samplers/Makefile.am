@@ -71,3 +71,7 @@ endif
 if ENABLE_SWITCHX
 SUBDIRS += switchx
 endif
+
+if ENABLE_SYSCLASSIB
+SUBDIRS += sysclassib
+endif
