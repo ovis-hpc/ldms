@@ -1983,3 +1983,71 @@ int ldms_version_check(struct ldms_version *v)
 {
 	return LDMS_VERSION_EQUAL(*v);
 }
+
+int ldms_mval_parse_scalar(ldms_mval_t v, enum ldms_value_type vt, const char *str)
+{
+	int num = 0;
+	errno = 0;
+	char *endp = NULL;
+	switch (vt) {
+	case LDMS_V_CHAR_ARRAY:
+	case LDMS_V_U8_ARRAY:
+	case LDMS_V_U16_ARRAY:
+	case LDMS_V_U32_ARRAY:
+	case LDMS_V_U64_ARRAY:
+	case LDMS_V_S8_ARRAY:
+	case LDMS_V_S16_ARRAY:
+	case LDMS_V_S32_ARRAY:
+	case LDMS_V_S64_ARRAY:
+	case LDMS_V_F32_ARRAY:
+	case LDMS_V_D64_ARRAY:
+		return EINVAL;
+	case LDMS_V_CHAR:
+		v->v_char = str[0];
+		num = 1;
+		break;
+	case LDMS_V_U8:
+		num = sscanf(str, "%" SCNu8, &(v->v_u8));
+		break;
+	case LDMS_V_U16:
+		num = sscanf(str, "%" SCNu16, &(v->v_u16));
+		break;
+	case LDMS_V_U32:
+		num = sscanf(str, "%" SCNu32, &(v->v_u32));
+		break;
+	case LDMS_V_U64:
+		num = sscanf(str, "%" SCNu64, &(v->v_u64));
+		break;
+	case LDMS_V_S8:
+		num = sscanf(str, "%" SCNi8, &(v->v_s8));
+		break;
+	case LDMS_V_S16:
+		num = sscanf(str, "%" SCNi16, &(v->v_s16));
+		break;
+	case LDMS_V_S32:
+		num = sscanf(str, "%" SCNi32, &(v->v_s32));
+		break;
+	case LDMS_V_S64:
+		num = sscanf(str, "%" SCNi64, &(v->v_s64));
+		break;
+	case LDMS_V_F32:
+		v->v_f = strtof(str, &endp);
+		if (errno || endp == str)
+			num = 0;
+		else
+			num = 1;
+		break;
+	case LDMS_V_D64:
+		v->v_d = strtod(str, &endp);
+		if (errno || endp == str)
+			num = 0;
+		else
+			num = 1;
+		break;
+	default:
+		return EINVAL;
+	}
+	if (num != 1)
+		return EINVAL;
+	return 0;
+}
