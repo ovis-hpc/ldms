@@ -318,7 +318,7 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 	char lbuf[__LBUF_SIZ];
 	char name[64];
 	char unit[16];
-	uint64_t count, min, max, sum, sum2;
+	uint64_t n, count, min, max, sum, sum2;
 	union ldms_value value;
 	/* The first line is timestamp, we can ignore that */
 	char *s = fgets(lbuf, __LBUF_SIZ, lss->lms.f);
@@ -330,7 +330,7 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 	float dt = dtv.tv_sec + dtv.tv_usec / 1e06;
 
 	while (fgets(lbuf, __LBUF_SIZ, lss->lms.f)) {
-		sscanf(lbuf, "%s %lu samples %s %lu %lu %lu %lu",
+		n = sscanf(lbuf, "%s %lu samples %s %lu %lu %lu %lu",
 				name, &count, unit, &min, &max, &sum, &sum2);
 
 		struct lustre_metric_ctxt *ctxt =
@@ -340,12 +340,26 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 
 		struct lustre_metric_ctxt *rate_ctxt = (void*)ctxt->rate_ref;
 
-		if (strcmp("[regs]", unit) == 0)
-			/* We track the count for reqs */
-			value.v_u64 = count;
-		else
-			/* and track sum for everything else */
+		/*
+		 * From http://wiki.lustre.org/Lustre_Monitoring_and_Statistics_Guide#Stats
+		 *
+		 * There are 3 variations of a stat line:
+		 * - {name} {count of events} samples [{units}]
+		 * - {name} {count of events} samples [{units}] {min} {max} {sum}
+		 * - {name} {count of events} samples [{units}] {min} {max} {sum} {sum-of-square}
+		 */
+		if (n >= 6) {
+			/* `sum` available, use it */
 			value.v_u64 = sum;
+		} else if (n >= 3) {
+			/* otherwise, use count */
+			value.v_u64 = count;
+		} else {
+			/* bad format */
+			ldmsd_log(LDMSD_LWARNING, "lustre sample: "
+				  "bad line format: %s\n", lbuf);
+			continue;
+		}
 
 		if (rate_ctxt) {
 			uint64_t prev_counter =
