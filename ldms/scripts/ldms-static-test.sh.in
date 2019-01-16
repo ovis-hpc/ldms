@@ -2,6 +2,7 @@
 #
 # This tests ldmsd run with static config files (as would normally
 # happen as a system service) and shut down with a signal.
+# all daemons run on the same node as this script.
 #
 bypass=0
 if test -z "$allowroot"; then
