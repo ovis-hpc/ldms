@@ -75,3 +75,7 @@ endif
 if ENABLE_SYSCLASSIB
 SUBDIRS += sysclassib
 endif
+
+if ENABLE_LLNL
+SUBDIRS += llnl
+endif

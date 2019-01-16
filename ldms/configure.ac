@@ -502,6 +502,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd-samplers/lustre/Makefile
 		 src/ldmsd-samplers/switchx/Makefile
 		 src/ldmsd-samplers/sysclassib/Makefile
+		 src/ldmsd-samplers/llnl/Makefile
 		 src/ldmsd-stores/Makefile
 		 src/ldmsd-stores/store_sos/Makefile
 		 scripts/Makefile
