@@ -50,6 +50,7 @@ test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'
 
 OVIS_PKGLIBDIR
 OPTION_DEFAULT_ENABLE([scripts], [ENABLE_SCRIPTS])
+OPTION_DEFAULT_DISABLE([slurmtest], [ENABLE_SLURMTEST])
 OPTION_DEFAULT_DISABLE([developer], [ENABLE_DEVELOPER])
 OPTION_DOC
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
@@ -467,6 +468,7 @@ dnl handle test generation and chmod
 OVIS_EXEC_SCRIPTS(
 		 scripts/ldms-wrapper
 		 scripts/ldms-static-test.sh
+		 scripts/pll-ldms-static-test.sh
 		 scripts/ldms_ban.sh
 		 scripts/ldms_plugins_list.sh
 		 scripts/ldms-py-subset_test.sh

@@ -1,0 +1,567 @@
+#!/bin/bash
+#
+# This tests ldmsd run with static config files (as would normally
+# happen as a system service) and shut down with a signal.
+# This version is slurm aware and only does things when the daemon
+# number matches (1+$SLURM_PROCID).
+# This version expects the caller to prepopulate a file named in
+# env(TEST_HOSTFILE) with initialization of the hostnames
+# for the daemon numbers.
+# All actions are unlooped from the implementation viewpoint, because
+# slurm executes this NTASKS times.
+#
+bypass=0
+if test -z "$allowroot"; then
+	allowroot=0
+fi
+export prefix=@prefix@
+export exec_prefix=@exec_prefix@
+export libdir=@libdir@
+export BUILDDIR=@prefix@
+export pkglibdir=@pkglibdir@
+export PACKAGE_TARNAME=@PACKAGE_TARNAME@
+export docdir=@docdir@
+export exdir=@docdir@-@PACKAGE_VERSION@
+	
+if ! test -f $libdir/ovis-lib-configvars.sh; then
+	echo "$libdir/ovis-lib-configvars.sh not found"
+	exit 1
+fi
+if ! test -f $libdir/ovis-ldms-configvars.sh; then
+	echo "$libdir/ovis-ldms-configvars.sh not found"
+	exit 1
+fi
+. $libdir/ovis-lib-configvars.sh
+. $libdir/ovis-ldms-configvars.sh
+if test -z "$ZAP_LIBPATH"; then
+	ZAP_LIBPATH=$ovis_lib_plugins
+fi
+export ZAP_LIBPATH
+if test -z "$LDMSD_PLUGIN_LIBPATH"; then
+	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins:$ovis_lib_plugins
+fi
+export LDMSD_PLUGIN_LIBPATH
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$ovis_lib_plugins:$LD_LIBRARY_PATH
+
+function clusage {
+cat << EOF
+$0: usage:
+$0 -l 
+$0 -h
+$0 -b <input_file>
+$0 <input_file> [test_dir]
+	-h produces help message
+	-l produces list of canned test names
+See man pll-ldms-static-test(8) for details.
+EOF
+}
+input=$1
+export input
+if test -z "$1"; then
+	echo "FAIL: no input file to $0"
+	exit 1
+fi
+if test "$1" = "-h"; then
+	clusage
+	exit 0
+fi
+if test "$1" = "-l"; then
+	echo "Canned tests are:"
+	echo "$exdir/examples/slurm-test/"
+	(cd $exdir/examples/slurm-test; cat .canned)
+	exit 0
+fi
+if test "$1" = "-b"; then
+	# >&2 echo "Canned test batch script for $2 should be:"
+	echo "$exdir/examples/slurm-test/sbatch.$2"
+	exit 0
+fi
+if test $(basename $1) = $1 -a ! -f $1; then
+	if test -f $exdir/examples/slurm-test/$1; then
+		input=$exdir/examples/slurm-test/$1
+	fi
+fi
+if ! test -f $input -a -r $input; then
+	echo FAIL: cannot read test input $1
+	exit 1
+fi
+export testname=`basename $1`
+if ! test "x$SLURM_PROCID" = "x"; then
+	export myproc=$(($SLURM_PROCID + 1))
+else
+	echo "$0: must be run under slurm"
+	exit 1
+fi
+# get_prolog_name insertfile basefile
+# find prolog file in . or adjacent to basefile
+# or in standard directory
+function get_prolog_name () {
+	local rfile
+	if test "$#" = "0"; then
+		return ""
+	fi
+	pfile=$1
+	basefile=$2
+	rfile=$pfile
+	# check unqualified path names not existing in pwd
+	if test $(basename $pfile) = $pfile -a ! -f $pfile; then
+		# in standard place?
+		if test -f $exdir/examples/slurm-test/$pfile; then
+			rfile=$exdir/examples/slurm-test/$pfile
+		fi
+		if test -n "$2"; then
+			basedir=$(dirname $basefile)
+			if test -f $basedir/$pfile; then
+				rfile=$basedir/$pfile
+			fi
+		fi
+	fi
+	if ! test -f $rfile -a -r $rfile; then
+		echo "FAIL: $myproc: cannot find test prolog $pfile in . $exdir/examples/slurm-test or next to $basefile."
+		rfile=""
+		exit 1
+	fi
+	echo $rfile
+}
+
+TESTDIR=$2
+
+if test -z "$2"; then
+	TESTDIR=`pwd`/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_JOB_NUM_NODES
+fi
+export TESTDIR
+
+if test -z "$XPRT"; then
+	export XPRT=sock
+fi
+declare -a ports
+declare -a hosts
+
+# get the slurm job time remaining in seconds,
+# of if not set or unlimited, returns 600 (10 min)
+# if error in getting/parsing time, returns 10.
+# d-h:m:s
+# h:m:s
+# m:s
+shopt -s extglob
+function SEC_LEFT {
+	jt_left=$(squeue -h -j $SLURM_JOBID -o "%L")
+	jt_sec=600
+	case $jt_left in
+	NOTSET)
+		;;
+	UNLIMITED)
+		;;
+	+([0-9])-+([0-9]):+([0-9]):+([0-9]))
+		jt_sec=$(echo "$jt_left" | awk -F':' '{print $1 *86400 + $2 * 60 * 60 + $3 * 60 + $4}')
+		;;
+	+([0-9]):+([0-9]):+([0-9]))
+		jt_sec=$(echo "$jt_left" | awk -F':' '{print $1 * 60 * 60 + $2 * 60 + $3}')
+		;;
+	+([0-9]):+([0-9]))
+		jt_sec=$(echo "$jt_left" | awk -F':' '{print $1 * 60 + $2}')
+		;;
+	*)
+		jt_sec=10
+		;;
+	esac
+	echo $jt_sec
+}
+
+# turn on valgrind usage in ldmsd and ldms_ls.
+# VG and VGARGS may be specified to override the default
+# valgrind in path and the default valgrind options.
+# by default -v --log-file=something are provided.
+#
+function vgon {
+  usevg=1
+}
+
+# turn off valgrind usage
+function vgoff {
+  usevg=0
+}
+
+# clear old daemons in the range we're expected and define the
+# port variables. The ports are defined sequentially.
+# The hosts come from slurm.
+# More DAEMONS than tasks is an error.
+did_daemons=0
+function DAEMONS {
+	if test $did_daemons = "1"; then
+		return
+	fi
+	for i in $*; do
+		ports[$i]=$(($portbase + $i))
+		eval export port$i=${ports[$i]}
+		if test $i -ne $myproc; then
+			continue
+		fi
+		if test $i -gt $SLURM_NTASKS; then
+			echo "FAIL: DAEMON $i too big for SLURM_NTASKS=$SLURM_NTASKS"
+			bypass=1
+			return
+		fi
+			
+		/bin/rm -f ${LOGDIR}/$i.txt ${LOGDIR}/vg.$i
+		binname=ldmsd.${ports[$i]}
+		pkill -9 $binname
+		/bin/rm -f $LDMSD_RUN/$binname
+		if test -f $pkglibdir/ldmsd; then
+			ln -s $pkglibdir/ldmsd $LDMSD_RUN/$binname
+		else
+			ln -s ${BUILDDIR}/sbin/ldmsd $LDMSD_RUN/$binname
+		fi
+	done
+}
+
+# LDMSD number-list launch a daemon for each number
+# expecting to find $input.$i configuration files.
+# ${i} will be exported to the environment of ldmsd.
+function LDMSD {
+	if test "$bypass" = "1"; then
+		echo $myproc: skipping sleep
+		return 0
+	fi
+	prologs=""
+	loopprologs=""
+	bug=0
+	local OPTIND
+	local cloneinput=0
+	local first=""
+	startwait=2000000
+	while getopts ":p:P:s:c" opt; do
+		case $opt in
+		p)
+			f="$OPTARG"
+			prologs="$prologs $OPTARG"
+			if test "${f:0:1}" = "-"; then
+				echo "LDMSD: $myproc: -p expected filename"
+				file=""
+				bug=2
+				((OPTIND--))
+			fi
+			;;
+		P)
+			f="$OPTARG"
+			# arg is filename,$PLIST
+			# fixme: order should matter, which means we
+			# would need to expand args here and include
+			# tmp result in prologs list
+			loopprologs="$loopprologs $OPTARG"
+			if test "${f:0:1}" = "-"; then
+				echo "LDMSD: $myproc: -P expected filename,PLIST"
+				file=""
+				bug=2
+				((OPTIND--))
+			fi
+			;;
+		c)
+			cloneinput=1;
+			# recycle input to list of similar daemons
+			# after all prolog processing is done.
+			# in this (pll) case, clones must assemble anyway.
+			;;
+		s)
+			startwait="$OPTARG";
+			;;
+		\?)
+			echo "Invalid option: $myproc: -$OPTARG" >&2
+			bug=1
+			;;
+		esac
+	done
+	shift "$((OPTIND - 1))"
+	if test "$bug" != "0"; then
+		return
+	fi
+
+	DAEMONS $*
+	if test "x$cloneinput" = "x1"; then
+		first=$1
+	fi
+	clonefile=""
+	for i in $*; do
+		export i
+		if test $i -ne $myproc; then
+			continue
+		fi
+		if test "$usevg" = "1"; then
+			if test -z "$VG"; then
+				XVG=valgrind
+			else
+				XVG=$VG
+			fi
+			if test -z "$VGARGS"; then
+				XVGARGS="-v --trace-children=yes --log-file=${LOGDIR}/vg.$i.%p"
+			else
+				XVGARGS="-v --trace-children=yes --log-file=${LOGDIR}/vg.$i.%p $VGARGS"
+			fi
+			wrap="$XVG $XVGARGS"
+		else
+			wrap=""
+		fi
+		if test -n "$first"; then
+			insuff=$first
+		else
+			insuff=$i
+		fi
+		if test -f $input.$insuff -a -r $input.$insuff ; then
+			echo "# generated from $input" > $LDMSD_RUN/conf.$i
+			for lf in $loopprologs; do
+				loopfile=0
+				alist=$(echo $lf | tr , " ")
+				for j in $alist; do
+					if test $loopfile = "0"; then
+						loopfile=$j
+						pfn=`get_prolog_name $loopfile $input`
+						echo "# looped prolog from $pfn" >> $LDMSD_RUN/conf.$i
+					else
+						cat $pfn | sed -e "s/\${j}/$j/g" >> $LDMSD_RUN/conf.$i
+					fi
+				done
+			done
+			for pf in $prologs; do
+				pfn=`get_prolog_name $pf $input`
+				echo "# prolog from $pfn" >> $LDMSD_RUN/conf.$i
+				cat $pfn >> $LDMSD_RUN/conf.$i
+			done
+			echo "# generated from $input.$insuff" >> $LDMSD_RUN/conf.$i
+			cat $input.$insuff >> $LDMSD_RUN/conf.$i
+			clonefile=$LDMSD_RUN/conf.$i
+			echo $myproc: starting daemon $i
+			$wrap ldmsd.${ports[$i]} \
+				-x ${XPRT}:${ports[$i]} \
+				-c $LDMSD_RUN/conf.$i \
+				-l ${LOGDIR}/$i.txt \
+				-v DEBUG $LDMSD_EXTRA \
+				-r $LDMSD_PIDFILE.$i
+		else
+			if test -f $clonefile -a $cloneinput = "1"; then
+				cp $clonefile $LDMSD_RUN/conf.$i
+				echo $myproc: starting daemon $i
+				$wrap ldmsd.${ports[$i]} \
+					-x ${XPRT}:${ports[$i]} \
+					-c $LDMSD_RUN/conf.$i \
+					-l ${LOGDIR}/$i.txt \
+					-v DEBUG $LDMSD_EXTRA \
+					-r $LDMSD_PIDFILE.$i
+			else
+				echo $myproc: IDLE DAEMON $i
+				ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]} \
+					-l ${LOGDIR}/$i.txt \
+					-v DEBUG \
+					-r $LDMSD_PIDFILE.$i
+			fi
+		fi
+		usleep $startwait
+		if ! test -f $LDMSD_PIDFILE.$i; then
+			echo FAIL: $myproc: failed to start $i. check ${LOGDIR}/$i.txt
+			bypass=1
+			break;
+		fi
+	done
+}
+
+# MESSAGE print arguments to output
+function MESSAGE  {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	echo ${myproc}: $*
+}
+
+#
+function LDMS_LS {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	nodes=$1
+	shift
+	for i in $nodes; do
+		if test $i -ne $myproc; then
+			continue
+		fi
+		if test "$usevg" = "1"; then
+			if test -z "$VG"; then
+				VG=valgrind
+			fi
+			if test -z "$VGARGS"; then
+				VGARGS="-v --log-file=${LOGDIR}/vgls.$i.%p"
+			fi
+			wrap="$VG $VGARGS"
+		else
+			wrap=""
+		fi
+		if ! test -f "$LDMSD_PIDFILE.$i"; then
+			echo FAIL: $myproc: ls of missing daemon $i skipped. check ${LOGDIR}/$i.txt
+			bypass=1
+			break;
+		fi
+		# could use ${hosts[$i]} here but don't need to.
+		$wrap ldms_ls  -h localhost -x sock -p ${ports[$i]} $*
+	done
+}
+# KILL_LDMSD num list
+function KILL_LDMSD {
+	for i in $*; do
+		if test $i -ne $myproc; then
+			continue
+		fi
+		if test -f $LDMSD_PIDFILE.$i; then
+			kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
+		else
+			echo $myproc: cannot find pidfile for $i
+		fi
+	done
+}
+
+function rollover_created {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	local file=$1
+	shift
+	local x
+	local i
+	local k
+	for i in $*; do
+		if test $i -ne $myproc; then
+			continue
+		fi
+		x=`ls ${file}.[0-9]*`
+		if test -z "$x"; then
+			echo "FAIL: $myproc: roll-over files $file.* not created."
+			bypass=1
+			return 1
+		fi
+		for k in $x; do
+			if ! test -r $k; then
+				echo FAIL: $myproc: file $k not readable.
+				bypass=1
+				return 1
+			fi
+		done
+		return 0
+	done
+}
+
+function file_created {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	local file=$1
+	shift
+	for i in $*; do
+		if test $i -ne $myproc; then
+			continue
+		fi
+		if ! test -f $file; then
+			echo FAIL: $myproc: file $file not created.
+			bypass=1
+			return 1
+		fi
+		if ! test -r $file; then
+			echo FAIL: $myproc: file $file not readable.
+			bypass=1
+			return 1
+		fi
+		return 0
+	done
+}
+# pause some seconds
+function SLEEP() {
+	if test "$bypass" = "1"; then
+		echo skipping sleep
+		return 0
+	fi
+	echo -n $myproc: sleep $1 ...
+	sleep $1
+	echo $myproc: done
+}
+
+# generate a jobinfo file
+jobid=1002003004005006000
+uid=0
+appid=2000000000000006000
+function job_vals () {
+cat << EOF > $1
+JOBID=$jobid
+UID=$uid
+USER=fakeuser
+APPID=$appid
+EOF
+((jobid++))
+((uid+=1000))
+((appid+=10))
+}
+
+function JOBDATA () {
+# this fires on all nodes
+# last one wins, but file system results should be identical
+# even if the output fs is shared.
+if test "$#" = "1"; then
+	job_vals $1
+	return
+fi
+f=$1
+shift
+for i in $*; do
+	job_vals $f.$i
+done
+}
+
+portbase=61100
+if test ! -x $BUILDDIR/sbin/ldmsd; then
+	echo "can't find ldmsd binary. set destdir in $0 before testing?"
+	exit 1
+fi
+if test "$allowroot" = "0"; then
+case "x$USER" in
+	x)
+	echo "must be run in user environment. USER not set"
+	exit 1
+	;;
+	xroot)
+	echo "must be run in user environment. root detected."
+	echo "killing other folks ldmsd might be a bad idea"
+	echo "try 'allowroot=1 $0 $*' to force run."
+	exit 1
+	;;
+esac
+fi
+
+# use our pid in dirname to prevent collisions in dir & file naming
+export STOREDIR=$TESTDIR/store
+export SOCKDIR=$TESTDIR/run/ldmsd
+export LOGDIR=$TESTDIR/logs
+export LDMSD_PIDFILE=$TESTDIR/run/ldmsd.pid
+SECRET=$SOCKDIR/secret.$SLURM_JOBID
+export TSAN_OPTIONS=verbosity=1:log_path=$LOGDIR:strip_path_prefix=$prefix
+export ASAN_OPTIONS=verbosity=1:log_path=$LOGDIR:detect_stack_use_after_return=1:detect_leaks=1:strip_path_prefix=$prefix
+export LDMSD_RUN=${TESTDIR}/run
+mkdir -p $STOREDIR $SOCKDIR $LOGDIR $LDMSD_RUN
+if test $myproc -eq 1; then
+	echo "secretword="`openssl rand -hex 16` > $SECRET
+	chmod go-rwx $SECRET
+	echo $myproc: removing old output
+	rm -rf ${STOREDIR}/*
+	echo "$myproc: logs and data stored under $TESTDIR"
+else
+	while [ ! -f $SECRET ]; do usleep 1000; done
+	# if your system has no usleep, replace usleep 1000 with sleep 1
+fi
+export LDMS_AUTH_FILE=$SECRET
+chmod go-rwx $SECRET
+export PATH=$LDMSD_RUN:${BUILDDIR}/sbin:${BUILDDIR}/bin:$PATH
+
+echo "$myproc: Listing ldmsd's still running:"
+pgrep ldmsd
+echo "$myproc: Done."
+echo "$myproc: logs and data stored under $TESTDIR"
+
+. $input
+
+SLEEP 1
+echo "$myproc: logs and data stored under $TESTDIR"
+echo done;
