@@ -79,3 +79,7 @@ endif
 if ENABLE_LLNL
 SUBDIRS += llnl
 endif
+
+if ENABLE_ARIES_LINKSTATUS
+SUBDIRS += aries_linkstatus
+endif
