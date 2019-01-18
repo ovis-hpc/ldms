@@ -60,6 +60,8 @@
 #define ROUND(x, p) ( ((x)+((p)-1))/(p)*(p) )
 #define USEC 1000000
 
+#define OVIS_EVENT_HEAP_SIZE_DEFAULT 16384
+
 static
 void ovis_scheduler_destroy(ovis_scheduler_t m);
 
@@ -225,9 +227,18 @@ loop:
 	goto loop;
 }
 
+static inline int __ovis_event_get_heap_size()
+{
+	char *sz_str = getenv("OVIS_EVENT_HEAP_SIZE");
+	if (!sz_str)
+		return OVIS_EVENT_HEAP_SIZE_DEFAULT;
+	return strtoul(sz_str, NULL, 0);
+}
+
 ovis_scheduler_t ovis_scheduler_new()
 {
 	int rc;
+	uint32_t heap_sz;
 	ovis_scheduler_t m = malloc(sizeof(*m));
 	if (!m)
 		goto out;
@@ -245,7 +256,8 @@ ovis_scheduler_t ovis_scheduler_new()
 	m->refcount = 1;
 	m->state = OVIS_EVENT_MANAGER_INIT;
 
-	m->heap = ovis_event_heap_create(4096);
+	heap_sz = __ovis_event_get_heap_size();
+	m->heap = ovis_event_heap_create(heap_sz);
 	if (!m->heap)
 		goto err;
 
