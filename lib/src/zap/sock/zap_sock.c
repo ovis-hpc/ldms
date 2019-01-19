@@ -704,6 +704,7 @@ z_sock_hdr_init(struct sock_msg_hdr *hdr, uint32_t xid,
 		hdr->xid = __sync_add_and_fetch(&g_xid, 1);
 	else
 		hdr->xid = xid;
+	hdr->reserved = 0;
 	hdr->msg_type = htons(type);
 	hdr->msg_len = htonl(len);
 	hdr->ctxt = ctxt;
@@ -1693,10 +1694,18 @@ static void z_sock_destroy(zap_ep_t ep)
 {
 	struct z_sock_io *io;
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
+	z_sock_send_wr_t wr;
 
 #ifdef DEBUG
 	ep->z->log_fn("SOCK: destroying endpoint %p\n", ep);
 #endif
+
+	while (!TAILQ_EMPTY(&sep->sq)) {
+		wr = TAILQ_FIRST(&sep->sq);
+		TAILQ_REMOVE(&sep->sq, wr, link);
+		free(wr);
+	}
+
 	if (sep->conn_data)
 		free(sep->conn_data);
 	if (sep->sock > -1) {
