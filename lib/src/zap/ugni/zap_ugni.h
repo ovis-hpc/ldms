@@ -214,6 +214,7 @@ struct ugni_mh {
  */
 struct zap_ugni_msg_hdr {
 	uint16_t msg_type;
+	uint16_t reserved;
 	uint32_t msg_len; /** Length of the entire message, header included. */
 };
 

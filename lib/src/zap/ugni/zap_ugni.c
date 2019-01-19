@@ -626,6 +626,7 @@ static void process_uep_msg_rendezvous(struct z_ugni_ep *uep)
 	msg = (void*)uep->rbuff->data;
 
 	msg->hdr.msg_len = ntohl(msg->hdr.msg_len);
+	msg->hdr.reserved = 0;
 	msg->hdr.msg_type = ntohs(msg->hdr.msg_type);
 	msg->addr = be64toh(msg->addr);
 	msg->acc = ntohl(msg->acc);
@@ -689,6 +690,7 @@ static void process_uep_msg_accepted(struct z_ugni_ep *uep)
 	msg = (void*)uep->rbuff->data;
 
 	msg->hdr.msg_len = ntohl(msg->hdr.msg_len);
+	msg->hdr.reserved = 0;
 	msg->hdr.msg_type = ntohs(msg->hdr.msg_type);
 	msg->data_len = ntohl(msg->data_len);
 	msg->inst_id = ntohl(msg->inst_id);
@@ -766,6 +768,7 @@ static void process_uep_msg_connect(struct z_ugni_ep *uep)
 	}
 
 	msg->hdr.msg_len = ntohl(msg->hdr.msg_len);
+	msg->hdr.reserved = 0;
 	msg->hdr.msg_type = ntohs(msg->hdr.msg_type);
 	msg->data_len = ntohl(msg->data_len);
 	msg->inst_id = ntohl(msg->inst_id);
@@ -2267,6 +2270,7 @@ static void z_ugni_destroy(zap_ep_t ep)
 {
 	struct z_ugni_ep *uep = (void*)ep;
 	gni_return_t grc;
+	struct zap_ugni_send_wr *wr;
 	DLOG_(uep, "destroying endpoint %p\n", uep);
 	pthread_mutex_lock(&z_ugni_list_mutex);
 	ZUGNI_LIST_REMOVE(uep, link);
@@ -2275,6 +2279,13 @@ static void z_ugni_destroy(zap_ep_t ep)
 		zap_ugni_ep_id[uep->ep_id] = 0;
 #endif /* DEBUG */
 	pthread_mutex_unlock(&z_ugni_list_mutex);
+
+	while (!STAILQ_EMPTY(&uep->sq)) {
+		wr = STAILQ_FIRST(&uep->sq);
+		STAILQ_REMOVE_HEAD(&uep->sq, link);
+		free(wr);
+	}
+
 	if (uep->conn_data) {
 		free(uep->conn_data);
 		uep->conn_data = 0;
