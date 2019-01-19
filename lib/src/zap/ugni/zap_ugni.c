@@ -2286,6 +2286,9 @@ static void z_ugni_destroy(zap_ep_t ep)
 		free(wr);
 	}
 
+	if (uep->rbuff)
+		free(uep->rbuff);
+
 	if (uep->conn_data) {
 		free(uep->conn_data);
 		uep->conn_data = 0;
