@@ -1027,8 +1027,9 @@ static void *io_thread_proc(void *arg)
 	return NULL;
 }
 
-static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
+static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe_)
 {
+	gni_cq_entry_t cqe = cqe_;
 	gni_return_t grc;
 	gni_post_descriptor_t *post;
 	int count = 0;
