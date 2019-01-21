@@ -907,7 +907,8 @@ static void task_cb_fn(ovis_event_t ev)
 	task->fn(task, task->fn_arg);
 
 	pthread_mutex_lock(&task->lock);
-	if (task->flags & LDMSD_TASK_F_STOP) {
+	if ((task->flags & LDMSD_TASK_F_STOP)
+	    && (task->flags != LDMSD_TASK_STATE_STOPPED)) {
 		task->state = LDMSD_TASK_STATE_STOPPED;
 	} else
 		task->state = next_state;
