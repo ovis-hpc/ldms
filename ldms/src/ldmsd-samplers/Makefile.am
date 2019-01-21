@@ -83,3 +83,7 @@ endif
 if ENABLE_ARIES_LINKSTATUS
 SUBDIRS += aries_linkstatus
 endif
+
+if ENABLE_ARIES_MMR
+SUBDIRS += aries_mmr
+endif
