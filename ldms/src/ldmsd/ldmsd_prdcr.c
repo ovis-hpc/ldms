@@ -136,6 +136,10 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 		free(strgp_ref);
 		strgp_ref = LIST_FIRST(&set->strgp_list);
 	}
+
+	if (set->updt_hint_entry.le_prev)
+		LIST_REMOVE(set, updt_hint_entry);
+
 	free(set->inst_name);
 	free(set);
 }
@@ -174,7 +178,11 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 		if (!rbn)
 			return;
 		list = container_of(rbn, struct ldmsd_updt_hint_set_list, rbn);
-		LIST_REMOVE(prd_set, updt_hint_entry);
+		assert(prd_set->ref_count);
+		if (prd_set->updt_hint_entry.le_prev)
+			LIST_REMOVE(prd_set, updt_hint_entry);
+		prd_set->updt_hint_entry.le_next = NULL;
+		prd_set->updt_hint_entry.le_prev = NULL;
 		if (LIST_EMPTY(&list->list)) {
 			rbt_del(&prdcr->hint_set_tree, &list->rbn);
 			free(list->rbn.key);
@@ -462,8 +470,12 @@ static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 	for (i = 0; i < dir->set_count; i++) {
 		set = ldmsd_prdcr_set_find(prdcr, dir->set_names[i]);
 		if (!set) {
-			/* We must have added this set before. */
-			assert(0);
+                        /* Received an update, but the set is gone. */
+                        ldmsd_log(LDMSD_LERROR,
+                                  "Ignoring 'dir update' for the set, '%s', which "
+                                  "is not present in the prdcr_set tree.\n",
+                                  dir->set_names[i]);
+                        continue;
 		}
 		ldmsd_prdcr_set_ref_get(set);
 		pthread_mutex_lock(&set->lock);
