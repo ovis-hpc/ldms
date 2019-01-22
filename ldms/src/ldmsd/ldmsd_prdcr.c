@@ -183,6 +183,8 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 			LIST_REMOVE(prd_set, updt_hint_entry);
 		prd_set->updt_hint_entry.le_next = NULL;
 		prd_set->updt_hint_entry.le_prev = NULL;
+
+		ldmsd_prdcr_set_ref_put(prd_set);
 		if (LIST_EMPTY(&list->list)) {
 			rbt_del(&prdcr->hint_set_tree, &list->rbn);
 			free(list->rbn.key);
@@ -200,6 +202,7 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 			list = container_of(rbn,
 					struct ldmsd_updt_hint_set_list, rbn);
 		}
+		ldmsd_prdcr_set_ref_get(prd_set);
 		LIST_INSERT_HEAD(&list->list, prd_set, updt_hint_entry);
 	}
 }
