@@ -87,3 +87,7 @@ endif
 if ENABLE_ARIES_MMR
 SUBDIRS += aries_mmr
 endif
+
+if ENABLE_CRAY_SYSTEM_SAMPLER
+SUBDIRS += cray_system_sampler
+endif
