@@ -564,10 +564,19 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 
 reset_prdcr:
 	prdcr_reset_sets(prdcr);
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+	switch (prdcr->conn_state) {
+	case LDMSD_PRDCR_STATE_STOPPING:
+		prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+	case LDMSD_PRDCR_STATE_DISCONNECTED:
+	case LDMSD_PRDCR_STATE_CONNECTING:
+	case LDMSD_PRDCR_STATE_CONNECTED:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 		ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
 				 0, prdcr->conn_intrvl_us, 0);
+		break;
+	case LDMSD_PRDCR_STATE_STOPPED:
+		assert(0 == "STOPPED shouldn't have xprt event");
+		break;
 	}
 	if (prdcr->xprt)
 		ldms_xprt_put(prdcr->xprt);
@@ -809,18 +818,23 @@ int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
 	if (rc)
 		goto out;
-	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
+	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED ||
+			prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPING) {
 		rc = EBUSY;
 		goto out;
 	}
 	if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
 		prdcr_reset_sets(prdcr);
+	ldmsd_task_stop(&prdcr->task);
+	prdcr->obj.perm &= ~LDMSD_PERM_DSTART;
+	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPING;
 	if (prdcr->xprt)
 		ldms_xprt_close(prdcr->xprt);
-	ldmsd_task_stop(&prdcr->task);
+	ldmsd_prdcr_unlock(prdcr);
 	ldmsd_task_join(&prdcr->task);
-	prdcr->obj.perm &= ~LDMSD_PERM_DSTART;
-	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+	ldmsd_prdcr_lock(prdcr);
+	if (!prdcr->xprt)
+		prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
 out:
 	ldmsd_prdcr_unlock(prdcr);
 	return rc;
@@ -854,20 +868,9 @@ int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
 		if (rc)
 			continue;
-		ldmsd_prdcr_lock(prdcr);
-		rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
-		if (rc)
-			goto skip;
-		if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
-			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
-			if (interval_str)
-				prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
-			ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
-					 LDMSD_TASK_F_IMMEDIATE,
-					 prdcr->conn_intrvl_us, 0);
-		}
-	skip:
-		ldmsd_prdcr_unlock(prdcr);
+		if (interval_str)
+			prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
+		__ldmsd_prdcr_start(prdcr, ctxt);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	ldmsd_prdcr_put(prdcr);
@@ -890,21 +893,7 @@ int ldmsd_prdcr_stop_regex(const char *prdcr_regex, char *rep_buf,
 		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
 		if (rc)
 			continue;
-		ldmsd_prdcr_lock(prdcr);
-		rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
-		if (rc)
-			goto skip;
-		if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
-			if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
-				prdcr_reset_sets(prdcr);
-			if (prdcr->xprt)
-				ldms_xprt_close(prdcr->xprt);
-			ldmsd_task_stop(&prdcr->task);
-			ldmsd_task_join(&prdcr->task);
-			prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
-		}
-	skip:
-		ldmsd_prdcr_unlock(prdcr);
+		__ldmsd_prdcr_stop(prdcr, ctxt);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	regfree(&regex);
