@@ -352,6 +352,8 @@ __grp_iter_cb(ldms_set_t grp, const char *name, void *arg)
 	prd_set = ldmsd_prdcr_set_find(ctxt->prdcr, name);
 	if (!prd_set)
 		return 0; /* It is OK. Try again next iteration */
+	if (prd_set->state != LDMSD_PRDCR_SET_STATE_READY)
+		return 0; /* It is OK. The set might not be ready */
 	rc = schedule_set_updates(prd_set, ctxt->task);
 	return rc;
 }
