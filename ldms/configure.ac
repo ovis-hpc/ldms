@@ -362,11 +362,6 @@ then
 	   AC_DEFINE([HAVE_SPACELESS_NAMES],[1],[cray_system_sampler: Using spaceless names.])
 	fi
 
-	if !(test -z "$ENABLE_GEMINI_GPCDR_TRUE") && !(test -z "$ENABLE_ARIES_GPCDR_TRUE")
-	then
-		AC_MSG_ERROR([Must enable at least one of gemini-gpcdr, and aries-gpcdr.])
-	fi
-
 	if test -z "$ENABLE_GEMINI_GPCDR_TRUE"
 	then
 	gpcdrfile="/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
