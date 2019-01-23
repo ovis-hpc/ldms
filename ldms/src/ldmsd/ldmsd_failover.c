@@ -182,6 +182,8 @@ struct ldmsd_failover {
 	uint64_t ping_avg;    /* ping round-trip time average */
 	double ping_sse;      /* ping round-trip time sum of squared error */
 	double ping_sd;       /* ping round-trip time standard deviation */
+
+	int ping_skipped; /* the number of ping skipped due to outstanding */
 } *ldmsd_failover_t;
 
 struct str_rbn {
@@ -1195,6 +1197,7 @@ void __failover_ping(ldmsd_failover_t f)
 	ldmsd_req_cmd_t rcmd;
 	const char *name;
 	if (__F_GET(f, __FAILOVER_OUTSTANDING_PING)) {
+		f->ping_skipped++;
 		__dlog("Failover: OUTSTANDING_PING ... will not ping\n");
 		return;
 	}
@@ -1211,6 +1214,7 @@ void __failover_ping(ldmsd_failover_t f)
 		goto err;
 	f->task_interval = f->ping_interval;
 	__F_ON(f, __FAILOVER_OUTSTANDING_PING);
+	f->ping_skipped = 0;
 	gettimeofday(&f->ping_ts, NULL);
 	/* rcmd will be automatically freed in the ldmsd resp handler */
 	return;
@@ -1723,8 +1727,18 @@ int failover_status_handler(ldmsd_req_ctxt_t req)
 	__APPEND(", \"peer_name\": \"%s\"", f->peer_name);
 	__APPEND(", \"task_interval\": \"%ld\"", f->task_interval);
 	__APPEND(", \"ping_interval\": \"%ld\"", f->ping_interval);
+	__APPEND(", \"ping_skipped\": \"%d\"", f->ping_skipped);
+	__APPEND(", \"ping_max\": \"%ld\"", f->ping_max);
+	__APPEND(", \"ping_avg\": \"%ld\"", f->ping_avg);
+	__APPEND(", \"ping_sd\": \"%lf\"", f->ping_sd);
 	__APPEND(", \"timeout_factor\": \"%lf\"", f->timeout_factor);
 	__APPEND(", \"auto_switch\": \"%d\"", f->auto_switch);
+	__APPEND(", \"ping_ts\": \"%ld.%ld\"", f->ping_ts.tv_sec,
+					       f->ping_ts.tv_usec);
+	__APPEND(", \"echo_ts\": \"%ld.%ld\"", f->echo_ts.tv_sec,
+					       f->echo_ts.tv_usec);
+	__APPEND(", \"timeout_ts\": \"%ld.%ld\"", f->timeout_ts.tv_sec,
+						  f->timeout_ts.tv_usec);
 	__APPEND(", \"failover_state\": \"%s\"", __failover_state_str(f));
 	__APPEND(", \"conn_state\": \"%s\"", __failover_conn_state_str(f));
 	__APPEND(", \"flags\": {");
