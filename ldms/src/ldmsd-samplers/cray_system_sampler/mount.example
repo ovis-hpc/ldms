@@ -1,0 +1,7 @@
+local-mount /var/opt/cray/imps/image_roots/login-large_cle_6.0up05_sles_12sp3_x86-64_ari-created20181120.SNL
+remote-path /var/opt/cray/imps/image_roots/login-large_cle_6.0up05_sles_12sp3_x86-64_ari-created20181120.SNL
+options (ro,blksize=524288,nodename=c0-0c0s0n2,nodefile=/proc/fs/dvs/mounts/0/nodenames,statsfile=/proc/fs/dvs/mounts/0/stats,attrcache_timeout=14400,nodwfs,nodwcfs,noparallelwrite,nomultifsync,cache,nodatasync,noclosesync,retry,failover,userenv,clusterfs,killprocess,noatomic,nodeferopens,no_distribute_create_ops,noro_cache,loadbalance,maxnodes=1,nnodes=1,nomagic,nohash_on_nid,hash=fnv-1a)
+active_nodes c0-0c0s0n2
+inactive_nodes
+loadbalance_node c0-0c0s0n2
+remote-magic 0x6969
