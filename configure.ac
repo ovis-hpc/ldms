@@ -23,10 +23,6 @@ AC_CHECK_SIZEOF(long)
 
 AC_C_CONST
 
-# note: ocm, me, and komondor are not distributed products.
-# DIST automake rules must not include them and
-# enable-<one of them> is not supported on packaged distributions.
-
 OPTION_DEFAULT_DISABLE([gpcdlocal], [ENABLE_GPCDLOCAL], [  cray only])
 if test "$enable_gpcdlocal" = "yes"; then
 	AC_CONFIG_SUBDIRS([gpcd-support])
@@ -43,30 +39,13 @@ if test "$enable_sos" = "yes"; then
 	fi
 fi
 
-OPTION_DEFAULT_DISABLE([ocm], [ENABLE_OCM], [  requires lib])
-if test "$enable_ocm" = "yes"; then
-	AC_CONFIG_SUBDIRS([ocm])
-fi
-
 # ldms is not optional for now.
 OPTION_DEFAULT_ENABLE([ldms], [ENABLE_LDMS],[  requires lib])
 AC_CONFIG_SUBDIRS([ldms])
 
-OPTION_DEFAULT_DISABLE([me], [ENABLE_ME], [  requires lib])
-if test "$enable_me" = "yes"; then
-	AC_CONFIG_SUBDIRS([me])
-fi
-OPTION_DEFAULT_DISABLE([komondor], [ENABLE_KOMONDOR], [  requires lib])
-if test "$enable_komondor" = "yes"; then
-	AC_CONFIG_SUBDIRS([komondor])
-fi
-
 SUBST_MAYBE([gpcdlocal])
 SUBST_MAYBE([sos])
-SUBST_MAYBE([ocm])
 SUBST_MAYBE([ldms])
-SUBST_MAYBE([me])
-SUBST_MAYBE([komondor])
 
 OPTION_DEFAULT_DISABLE([libgenders], [ENABLE_LIBGENDERS],[  requires C++,boost])
 OPTION_DEFAULT_DISABLE([genderssystemd], [ENABLE_TOSS_SYSTEMD],[  toss systemd init scripts])
