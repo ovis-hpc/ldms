@@ -1135,7 +1135,7 @@ static void sock_connect(ovis_event_t ev)
 	sep->conn_data = NULL;
 	sep->conn_data_len = 0;
 	if (zerr) {
-		sock_event(ev);
+		shutdown(sep->sock, SHUT_RDWR);
 	}
 
 	return;
@@ -1203,8 +1203,8 @@ static void sock_write(ovis_event_t ev)
 	return;
 
  err:
+	shutdown(sep->sock, SHUT_RDWR);
 	pthread_mutex_unlock(&sep->ep.lock);
-	sock_event(ev);
 }
 
 #define min_t(t, x, y) (t)((t)x < (t)y?(t)x:(t)y)
