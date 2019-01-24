@@ -1,0 +1,8 @@
+load name=dstat
+config name=dstat producer=${host2} instance=localhost${i}/dstat schema=dstat component_id=${i} udata_default=${i} mmalloc=1
+start name=dstat interval=1000000 offset=0
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+

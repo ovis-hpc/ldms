@@ -1,0 +1,285 @@
+.\" Manpage for pll-ldms-static-test.sh
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "16 Jan 2019" "v3.4.12" "pll-ldms-static-test.sh man page"
+
+.SH NAME
+pll-ldms-static-test.sh \- Run a canned test scenario under slurm.
+
+.SH SYNOPSIS
+.PP
+pll-ldms-static-test.sh -l
+.PP
+pll-ldms-static-test.sh -h
+.PP
+pll-ldms-static-test.sh -b
+.PP
+pll-ldms-static-test.sh <input_file> [test_dir]
+
+.SH DESCRIPTION
+The pll-ldms-static-test.sh command starts a canned test defined in the input_file
+using a standard environment. The input file is written in a simple bash macro
+language described in LANGUAGE below. Supporting configuration file fragments
+will be used, as determined from the input file. See FILES below.
+This tests ldmsd run with static configuration files (as would normally
+happen as a system service) and shut down with a signal.
+
+The pll-ldms-static-test.sh command is expected to be driven in a Slurm sbatch script or interactively on nodes obtained with salloc.
+
+.SH OPTIONS
+.TP
+-l
+.br
+List the canned tests available. Each canned test has a corresponding
+sbatch script. See FILES below for the location of these.
+.TP
+-b
+.br
+Get the expected sbatch file location for the test.
+.TP
+-h
+.br
+List help message.
+
+.SH LANGUAGE
+
+The following macro language is provided as extensions on bash.
+Other bash use is also possible, but not recommended.
+
+.TP
+DAEMONS <daemon-numbers>
+.br
+Give all the numbers that will be used in the  LDMSD invocations anywhere in the test.
+This causes port variables to be defined so that any daemon can connect to any other by referencing $portN as explained in ENVIRONMENT below. If omitted, the ordering and aggregation relationships of LDMSD calls may be infeasible. In parallel execution, the Nth daemon will run as the (N-1)th slurm task, since Slurm numbers tasks from 0 and this tool numbers tasks from 1.
+.TP
+LDMSD [conf-options] <daemon-numbers>
+.br
+This starts a number of daemons described by daemon-numbers. The numbers can
+be a given list, such as "1 2 3". The environment of each daemon (and its config script)
+will contain the variable i set to one of the given values, as described in
+ENVIRONMENT. For each value of i, a configuration fragment $input_file.$i must also exist. Use seq(1) to generate large number sequences.
+
+See CONFIGURATION OPTIONS below for the explanation of [conf-options].
+.TP
+MESSAGE [arguments]
+.br
+The expanded arguments are logged.
+.TP
+LDMS_LS <k> [ldms_ls_args]
+.br
+This invokes ldms_ls on the k-th ldmsd.
+.TP
+KILL_LDMSD <daemon-numbers>
+.br
+Kills the listed daemons.
+.TP
+SLEEP <n>
+.br
+Sleeps n seconds and logs a message about it.
+.TP
+SEC_LEFT
+.br
+Prints the amount of seconds left in the Slurm job time limit. If time is
+unlimited, a default of 600 is returned since tests should never be allowed
+infinite time. This can be used to manage test with sleep time dependent
+on the requested job time limit.
+.TP
+JOBDATA jobfile [daemon-numbers]
+.br
+Creates jobfile with data for the jobid plugin to parse.
+If daemon numbers are specified, creates a jobfile.$k for each
+value of k listed in daemon-numbers. Each file will have
+unique numeric values, sequentially increasing.
+This does not provide data in the slurm-plugin sampler binary format.
+.TP
+vgon
+.br
+Turns on use of valgrind for any ldmsd or ldms_ls subsequently started.
+.TP
+vgoff
+.br
+Turns off use of valgrind for any ldmsd or ldms_ls subsequently started.
+.TP
+file_created <filename> <daemon numbers>
+.br
+Verifies the local existence and readability of filename for the listed daemon(s).
+.TP
+rollover_created <filename> <daemon numbers>
+.br
+Verifies the local existence and readability of rollover files matching pattern filename.[0-9]* for the listed daemon(s).
+.TP
+bypass=<0,1>
+.br
+This variable assignment disables (1) or enables (0) all the macros described
+above. Typical use is to skip one or more operations while debugging a
+test script.
+.TP
+portbase=<K>
+.br
+The listening port numbers assigned to the daemons will be K+i, where i is as described for
+macro LDMSD. It is a good idea (to support automated testing) if portbase is set
+in <input_file> so that each test uses a unique range of ports. This enables tests
+to proceed in parallel on the same node.
+
+.SH CONFIGURATION OPTIONS
+
+The LDMSD command supports the following options. Note that all -P options are processed before all -p options in a single LDMSD call.
+
+.TP
+-p <prolog file>
+.br
+The prolog file is included before the usually expected input file. The location of prolog files is handled as are the test input files. See FILES below. Multiple -p options are allowed.
+.TP
+-P <looped-prolog-file,daemon-csl>
+.br
+The looped-prolog-file is included before the usually expected input file, once for each value in daemon-csl.
+Daemon-csl is a comma separated list of daemon numbers, e.g. a complete argument example is "-P producer,3,4,5". The variable ${j} is substituted with a daemon number from the list for each inclusion.
+
+The location of looped prolog files is handled as are the test input files. See FILES below. Multiple -P options are allowed.
+.TP
+-c
+.br
+Where multiple daemon numbers are specified, the input generated for the first number is cloned to all subsequent daemons. See FILES. This allows a single input file to serve many similar daemon instances in scale testing.
+.TP
+-s <wait_microseconds>
+.br
+After an ldmsd is started, wait wait_microseconds before checking for the daemon PID file to exist. The appropriate wait time is variable depending on the complexity of the configuration. If not specified, the default is 2 seconds wait time. If the command usleep is not available, 0 wait is applied and work continues.
+
+.SH ENVIRONMENT
+The following variables can be set in the script to affect the launch of ldmsd:
+.TP
+LDMSD_EXTRA
+.br
+If set, these arguments are are appended to the ldmsd launch. Typical use is
+to specify "-m MEMSIZE" or other unusual arguments. The following flags are 
+always determined for the user and must not be present in LDMSD_EXTRA: -x -c -l -v -r.
+.TP
+VG
+.br
+If valgrind is used (see vgon, vgoff), then $VG is the name of the debugging
+tool wrapped around the launch of ldmsd. The default is 'valgrind'.
+.TP
+VGARGS
+.br
+If valgrind is used (see vgon, vgoff), then $VGARGS is appended to the defaults
+valgrind arguments.
+.TP
+The following variables are visible to the input file and the configuration file.
+.TP
+i
+.br
+Daemon configuration files and commands can refer to ${i} where i is the
+integer daemon number supplied via LDMSD for the specific
+daemon using the script.
+.TP
+hostN
+.br
+Daemon configuration files and commands can refer to ${hostN} where N is any
+value of 'i' described above. hostN is the network hostname for the N-th daemon.
+.TP
+portN
+.br
+Daemon configuration files and commands can refer to ${portN} where N is any
+value of 'i' described above. portN is the data port number of the N-th daemon.
+.TP
+input
+.br
+The name of the input file as specified when invoking this command.
+.TP
+testname
+.br
+The base name (directories stripped) of the input file name.
+This variable makes it possible to use similar input across many test
+files when the name of the input file is the same as the plugin tested.
+.TP
+TESTDIR
+.br
+Root directory of the testing setup.
+.TP
+STOREDIR
+.br
+A directory that should be used for store output configuration.
+.TP
+LOGDIR
+.br
+A directory that should be used for log outputs.
+.TP
+LDMS_AUTH_FILE
+.br
+Secret file used for daemon communication.
+.TP
+XPRT
+.br
+The transport used. It may be specified in the environment to override
+the default 'sock', and it is exported to the executed daemon environment.
+
+.SH NOTES
+Any other variable may be defined and exported for use in the attribute/value
+expansion of values in plugin configuration.
+
+.SH FILES
+.TP
+.I $input_file.$i
+.br
+For each value of i specifed to start an ldmsd, a configuration file named
+$input_file.$i must also exist. This configuration file is used when starting the daemon.
+
+Exception: For any single "LDMSD -c <daemon-numbers>", only $input_file.$i for the first listed number is needed; the first file will be used for all subsequent numbers and any matching files except the first are ignored. Where prologs are also specified, the regular prolog inclusion process is applied to the first file.
+.TP
+.I sbatch.$input_file
+.br
+Submitting the canned test $input_file listed with pll-ldms-static-test.sh is easily done with
+
+sbatch $(pll-ldms-static-test.sh -b $input_file)
+
+Which will give the full path to the batch file for test $input_file.
+
+
+.TP
+.I [test_dir]
+.br
+If test_dir is supplied, it is used as the test output directory.
+The default output location is `pwd`/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_NTASKS.
+It is the user's job to ensure test_dir is a globally writable directory
+in the cluster before pll-ldms-static-test.sh is run by the sbatch job script.
+.TP
+.I $docdir/examples/slurm-test/$input_file
+.br
+If input_file is not found in the current directory, it is checked for in $docdir/examples/slurm-test/$input_file.
+.SH GENERATED FILES
+.TP
+.I $test_dir/logs/vg.$k.%p
+.b
+The valgrind log for the kth daemon with PID %p, if valgrind is active.
+.TP
+.I $test_dir/logs/$k.txt
+.br
+The log for the kth daemon.
+.TP
+.I $test_dir/run/conf.$k
+.br
+The input for the kth daemon.
+.TP
+.I $test_dir/store/
+.br
+The root of store output locations.
+.TP
+.I $test_dir/run/ldmsd/secret.$SLURM_JOBID
+.br
+The secret file for authentication.
+
+.SH EXAMPLE
+With the ldms bin directory in your path, submit a job with
+.nf
+sbatch -n 16 --nodes=4 \\
+--time=1 \\
+--account=MUALN1 \\
+--job-name=ldms-demo \\
+-p debug \\
+$(pll-ldms-static-test.sh -b cluster)
+.if
+.PP
+.PP
+The slurm options shown here override the defaults listed in the sbatch input file to run with 16 daemons on 4 nodes for 1 minute. The defaults are site specific, but the example 'cluster' is coded to run on any number of nodes with any number of tasks >= 3. Adding more tasks adds more data producers. Specifying more tasks than nodes assigns daemons round-robin to available nodes. The options specified with --account, and partition (-p) are site specific.
+
+.SH SEE ALSO
+seq(1), sbatch(1), srun(1)

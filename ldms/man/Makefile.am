@@ -38,6 +38,10 @@ if ENABLE_ARRAY_EXAMPLE
 dist_man7_MANS += Plugin_all_example.man
 endif
 
+if ENABLE_SLURMTEST
+dist_man8_MANS += pll-ldms-static-test.man
+endif
+
 pending_dist_man7_MANS= \
 Plugin_procsensors.man
 
