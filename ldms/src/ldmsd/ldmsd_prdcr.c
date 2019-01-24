@@ -818,8 +818,13 @@ int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
 	if (rc)
 		goto out;
-	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED ||
-			prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPING) {
+	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
+		rc = 0; /* already stopped,
+			 * return 0 so that caller knows
+			 * stop succeeds. */
+		goto out;
+	}
+	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPING) {
 		rc = EBUSY;
 		goto out;
 	}
