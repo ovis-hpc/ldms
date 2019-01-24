@@ -23,8 +23,6 @@ AC_CHECK_SIZEOF(long)
 
 AC_C_CONST
 
-OPTION_DEFAULT_ENABLE([libevent], [ENABLE_LIBEVENT])
-
 # note: ocm, me, and komondor are not distributed products.
 # DIST automake rules must not include them and
 # enable-<one of them> is not supported on packaged distributions.
@@ -62,11 +60,6 @@ OPTION_DEFAULT_DISABLE([komondor], [ENABLE_KOMONDOR], [  requires lib])
 if test "$enable_komondor" = "yes"; then
 	AC_CONFIG_SUBDIRS([komondor])
 fi
-
-dnl Check for libevent
-OPTION_WITH([libevent], [LIBEVENT], [/usr])
-dnl extra setup
-OPTION_WITH_EVENT
 
 SUBST_MAYBE([gpcdlocal])
 SUBST_MAYBE([sos])
