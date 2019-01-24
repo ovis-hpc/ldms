@@ -37,10 +37,7 @@ MAYBE_KOMONDOR = @MAYBE_KOMONDOR@
 
 SUBDIRS += $(GPCDSUBDIR) \
 $(MAYBE_SOS) \
-$(MAYBE_OCM) \
 $(MAYBE_LDMS) \
-$(MAYBE_ME) \
-$(MAYBE_KOMONDOR) \
 util
 
 # this definition of DIST_SUBDIRS is unusual. May decide to improve later.
