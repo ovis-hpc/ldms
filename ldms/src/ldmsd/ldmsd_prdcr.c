@@ -166,6 +166,7 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 {
 	struct rbn *rbn;
 	struct ldmsd_updt_hint_set_list *list;
+	struct ldmsd_updtr_schedule *hint_key;
 	if (0 == hint->intrvl_us)
 		return;
 	rbn = rbt_find(&prdcr->hint_set_tree, hint);
@@ -176,12 +177,15 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 		LIST_REMOVE(prd_set, updt_hint_entry);
 		if (LIST_EMPTY(&list->list)) {
 			rbt_del(&prdcr->hint_set_tree, &list->rbn);
+			free(list->rbn.key);
 			free(list);
 		}
 	} else if (op == UPDT_HINT_TREE_ADD) {
 		if (!rbn) {
 			list = malloc(sizeof(*list));
-			rbn_init(&list->rbn, hint);
+			hint_key = malloc(sizeof(*hint_key));
+			*hint_key = *hint;
+			rbn_init(&list->rbn, hint_key);
 			rbt_ins(&prdcr->hint_set_tree, &list->rbn);
 			LIST_INIT(&list->list);
 		} else {
