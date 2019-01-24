@@ -291,6 +291,12 @@ void print_failover_info()
 }
 
 static
+int __peercfg_activated(ldmsd_failover_t f);
+static
+int __peercfg_prdcr_activated(ldmsd_failover_t f);
+static
+int __peercfg_updtr_activated(ldmsd_failover_t f);
+static
 int __peercfg_reset(ldmsd_failover_t f);
 static
 int __peercfg_start(ldmsd_failover_t f);
@@ -954,7 +960,7 @@ void __failover_pair(ldmsd_failover_t f)
 	const char *myname;
 	int rc;
 
-	if (f->auto_switch == 0 && __F_GET(f, __FAILOVER_PEERCFG_ACTIVATED)) {
+	if (f->auto_switch == 0 && __peercfg_activated(f)) {
 		/* Don't start new pairing when the peercfg is manually turned
 		 * on and auto_switch is off. Otherwise, peercfg will be
 		 * automatically stopped and deleted in the pairing process.
@@ -1113,24 +1119,22 @@ int __on_ping_resp(ldmsd_req_cmd_t rcmd)
 	gettimeofday(&f->echo_ts, NULL);
 	timersub(&f->echo_ts, &f->ping_ts, &tv);
 	dur = tv.tv_sec * 1000000 + tv.tv_usec;
-	if (f->ping_n == ARRAY_LEN(f->ping_rtt)) {
-		/* remove before insert */
-		f->moving_sum -= f->ping_rtt[f->ping_idx];
-	} else {
+	if (f->ping_n < ARRAY_LEN(f->ping_rtt)) {
 		f->ping_n++;
 	}
-	f->moving_sum += dur;
 	f->ping_rtt[f->ping_idx] = dur;
 	f->ping_idx = (f->ping_idx + 1) % ARRAY_LEN(f->ping_rtt);
-	f->ping_avg = f->moving_sum / f->ping_n;
 	f->ping_max = 0;
+	f->moving_sum = 0;
 	for (i = 0; i < f->ping_n; i++) {
+		f->moving_sum += f->ping_rtt[i];
 		if (f->ping_max < f->ping_rtt[i])
 			f->ping_max = f->ping_rtt[i];
 	}
+	f->ping_avg = f->moving_sum / f->ping_n;
 	f->ping_sse = 0;
 	for (i = 0; i < f->ping_n; i++) {
-		f->ping_sse += pow(f->ping_rtt[i] - f->ping_avg, 2);
+		f->ping_sse += pow(f->ping_rtt[i] - (double)f->ping_avg, 2);
 	}
 	if (f->ping_n < 2) {
 		f->ping_sd = sqrt(f->ping_sse);
@@ -1141,7 +1145,7 @@ int __on_ping_resp(ldmsd_req_cmd_t rcmd)
 	__ping_stat_dlog(f);
 
 	/* stop peercfg on our side */
-	if (f->auto_switch && __F_GET(f, __FAILOVER_PEERCFG_ACTIVATED)) {
+	if (f->auto_switch) {
 		__peercfg_stop(f);
 	}
 
@@ -1151,7 +1155,7 @@ int __on_ping_resp(ldmsd_req_cmd_t rcmd)
 		goto out;
 	ping_data = (void*)attr->attr_value;
 	__ping_data_ntoh(ping_data);
-	if (ping_data->flags & __FAILOVER_PEERCFG_ACTIVATED) {
+	if (ping_data->flags & __peercfg_activated(f)) {
 		/* cannot start ours yet */
 		goto out;
 	}
@@ -1278,8 +1282,6 @@ int __peercfg_stop(ldmsd_failover_t f)
 		fn = stop[i];
 		RBT_FOREACH(rbn, t[i]) {
 			ent = STR_RBN(rbn);
-			if (!ent->started)
-				continue;
 			_rc = fn(ent->str, &sctxt);
 			if (0 == _rc)
 				ent->started = 0;
@@ -1292,7 +1294,6 @@ int __peercfg_stop(ldmsd_failover_t f)
 		ldmsd_linfo("Failover: peer config stopping failed: %d\n", rc);
 	} else {
 		ldmsd_linfo("Failover: peer config stopped\n");
-		__F_OFF(f, __FAILOVER_PEERCFG_ACTIVATED);
 		f->timeout_ts.tv_sec = INT64_MAX;
 	}
 
@@ -1398,9 +1399,6 @@ void __try_start_peercfg(ldmsd_failover_t f)
 	if (!__F_GET(f, __FAILOVER_PEERCFG_RECEIVED))
 		return; /* no peercfg ... can't do anything */
 
-	if (__F_GET(f, __FAILOVER_PEERCFG_ACTIVATED))
-		return; /* already activated */
-
 	/* check timeout */
 	gettimeofday(&tv, NULL);
 	if (timercmp(&tv, &f->timeout_ts, <))
@@ -1443,6 +1441,52 @@ void __failover_active_routine(ldmsd_failover_t f)
 }
 
 static
+int __peercfg_prdcr_activated(ldmsd_failover_t f)
+{
+	struct rbn *rbn;
+	struct str_rbn *srbn;
+	int sum = 0;
+	RBT_FOREACH(rbn, &f->prdcr_rbt) {
+		srbn = STR_RBN(rbn);
+		if (srbn->started)
+			sum += 1;
+	}
+	return sum;
+}
+
+static
+int __peercfg_updtr_activated(ldmsd_failover_t f)
+{
+	struct rbn *rbn;
+	struct str_rbn *srbn;
+	int sum = 0;
+	RBT_FOREACH(rbn, &f->updtr_rbt) {
+		srbn = STR_RBN(rbn);
+		if (srbn->started)
+			sum += 1;
+	}
+	return sum;
+}
+
+static
+int __peercfg_activated(ldmsd_failover_t f)
+{
+	struct rbn *rbn;
+	struct str_rbn *srbn;
+	RBT_FOREACH(rbn, &f->prdcr_rbt) {
+		srbn = STR_RBN(rbn);
+		if (srbn->started)
+			return 1;
+	}
+	RBT_FOREACH(rbn, &f->updtr_rbt) {
+		srbn = STR_RBN(rbn);
+		if (srbn->started)
+			return 1;
+	}
+	return 0;
+}
+
+static
 int __peercfg_start(ldmsd_failover_t f)
 {
 	/* f->lock is held */
@@ -1452,10 +1496,6 @@ int __peercfg_start(ldmsd_failover_t f)
 	struct ldmsd_sec_ctxt sctxt = __get_sec_ctxt(NULL);
 
 	ldmsd_linfo("Failover: starting peercfg, flags: %#lo\n", f->flags);
-	if (__F_GET(f, __FAILOVER_PEERCFG_ACTIVATED)) {
-		rc = EINVAL;
-		goto out;
-	}
 
 	RBT_FOREACH(rbn, &f->prdcr_rbt) {
 		srbn = STR_RBN(rbn);
@@ -1485,27 +1525,10 @@ int __peercfg_start(ldmsd_failover_t f)
 		srbn->started = 1;
 	}
 
-	# if 0
-	/* NOTE: Leaving out peer storage policy in the favor of letting our
-	 *       storage policy picks up the data.
-	 */
-	RBT_FOREACH(rbn, &f->strgp_rbt) {
-		srbn = STR_RBN(rbn);
-		if (srbn->started)
-			continue;
-		rc = ldmsd_strgp_start(srbn->str, &sctxt);
-		__ASSERT(rc == 0);
-		if (rc)
-			goto out;
-		srbn->started = 1;
-	}
-	#endif
-
-	__F_ON(f, __FAILOVER_PEERCFG_ACTIVATED);
 out:
 	__dlog("Failover: __peercfg_start(), flags: %#lx, rc: %d\n",
 	       f->flags, rc);
-	return rc;
+	return 0;
 }
 
 /* ===============================
@@ -1676,14 +1699,12 @@ int failover_status_handler(ldmsd_req_ctxt_t req)
 	ldmsd_req_attr_t attr;
 	static uint64_t fl[] = {
 		__FAILOVER_CONFIGURED,
-		__FAILOVER_PEERCFG_ACTIVATED,
 		__FAILOVER_PEERCFG_RECEIVED,
 		__FAILOVER_OUTSTANDING_PING,
 		__FAILOVER_OURCFG_ACTIVATED,
 	};
 	static const char *fls[] = {
 		"CONFIGURED",
-		"PEERCFG_ACTIVATED",
 		"PEERCFG_RECEIVED",
 		"OUTSTANDING_PING",
 		"OURCFG_ACTIVATED",
@@ -1741,6 +1762,9 @@ int failover_status_handler(ldmsd_req_ctxt_t req)
 						  f->timeout_ts.tv_usec);
 	__APPEND(", \"failover_state\": \"%s\"", __failover_state_str(f));
 	__APPEND(", \"conn_state\": \"%s\"", __failover_conn_state_str(f));
+	__APPEND(", \"peercfg_activated\": \"%d\"", __peercfg_activated(f));
+	__APPEND(", \"peercfg_updtr_activated\": \"%d\"", __peercfg_updtr_activated(f));
+	__APPEND(", \"peercfg_prdcr_activated\": \"%d\"", __peercfg_prdcr_activated(f));
 	__APPEND(", \"flags\": {");
 	for (i = 0; i < (sizeof(fl)/sizeof(*fl)); i++) {
 		if (i)
