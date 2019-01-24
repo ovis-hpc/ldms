@@ -89,6 +89,7 @@ OPTION_DEFAULT_ENABLE([clock], [ENABLE_CLOCK])
 OPTION_DEFAULT_ENABLE([synthetic], [ENABLE_SYNTHETIC])
 OPTION_DEFAULT_ENABLE([lnet_stats], [ENABLE_LNET_STATS])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
+OPTION_DEFAULT_DISABLE([filesingle], [ENABLE_FILESINGLE])
 OPTION_DEFAULT_DISABLE([msr_interlagos], [ENABLE_MSR_INTERLAGOS])
 OPTION_DEFAULT_ENABLE([array_example], [ENABLE_ARRAY_EXAMPLE])
 OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
@@ -478,6 +479,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/dstat/Makefile
+		 src/sampler/filesingle/Makefile
 		 src/sampler/lustre/Makefile
 		 src/sampler/llnl/Makefile
 		 src/sampler/hadoop/Makefile

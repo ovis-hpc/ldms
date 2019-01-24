@@ -109,8 +109,8 @@ typedef struct string_ref_s {
 } *string_ref_t;
 
 struct attr_value_list {
-	int size;
-	int count;
+	int size; /* capacity of list */
+	int count; /* number of keys in the list */
 	LIST_HEAD(string_list, string_ref_s) strings;
 	struct attr_value list[OVIS_FLEX];
 };
@@ -132,6 +132,12 @@ char *av_name(struct attr_value_list *av_list, int idx);
 char *av_value_at_idx(struct attr_value_list *av_list, int idx);
 
 /**
+ * \brief Get index of name, if present, or -1 if not, or -k
+ * if the name is repeated k times.
+ */
+int av_idx_of(struct attr_value_list *av_list, const char *name);
+
+/**
  * \brief Tokenize the string \c cmd into the keyword list \c kwl
  * and the attribute list \c avl
  * \return nonzero if lists give are too small to hold all words or
@@ -140,18 +146,25 @@ char *av_value_at_idx(struct attr_value_list *av_list, int idx);
 int tokenize(char *cmd, struct attr_value_list *kwl,
 	     struct attr_value_list *avl);
 
+#define AV_EXPAND 1 /*< do environment expansion on values. */
+#define AV_NL 2 /* separate successive items by \n instead of space */
 /**
  * \brief format the list to a string, with optional env expansion.
- * \param replacements if 0, use raw values. if !=0, use expanded values.
+ * \param av_flags: bitwise or of the AV flags used in formatting the result.
  * \param av_list list to print.
  * \return string the caller must free, or null from bad input.
  */
-char *av_to_string(struct attr_value_list *av_list, int replacements);
+char *av_to_string(struct attr_value_list *av_list, int av_flags);
 
 /**
  * \brief Allocate memory for a new attribute list of size \c size
  */
 struct attr_value_list *av_new(size_t size);
+
+/**
+ * \brief Duplicate an existing list.
+ */
+struct attr_value_list *av_copy(struct attr_value_list *src);
 
 /**
  * \brief Free the memory consumed by the avl

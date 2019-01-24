@@ -25,6 +25,7 @@ rabbitl2remote
 rabbitv3
 renamecsv
 rollagain
+filesingle
 
 # working with job metrics
 clock.job

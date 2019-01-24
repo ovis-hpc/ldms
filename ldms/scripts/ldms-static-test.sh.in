@@ -447,7 +447,7 @@ export LDMS_AUTH_FILE=$SECRET
 chmod go-rwx $SECRET
 echo "logs and data stored under $TESTDIR"
 
-export PATH=$LDMSD_RUN:${BUILDDIR}/sbin:$PATH
+export PATH=$LDMSD_RUN:${BUILDDIR}/sbin:${BUILDDIR}/bin:$PATH
 
 echo "Listing ldmsd's still running:"
 pgrep ldmsd
