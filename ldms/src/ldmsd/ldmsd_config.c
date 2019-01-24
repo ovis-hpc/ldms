@@ -232,6 +232,8 @@ const char *prdcr_state_str(enum ldmsd_prdcr_state state)
 		return "CONNECTING";
 	case LDMSD_PRDCR_STATE_CONNECTED:
 		return "CONNECTED";
+	case LDMSD_PRDCR_STATE_STOPPING:
+		return "STOPPING";
 	}
 	return "BAD STATE";
 }
