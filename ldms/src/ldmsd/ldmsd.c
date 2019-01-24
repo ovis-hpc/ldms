@@ -921,10 +921,12 @@ static void task_cb_fn(ovis_event_t ev)
 {
 	ldmsd_task_t task = ev->param.ctxt;
 	enum ldmsd_task_state next_state;
-	ovis_scheduler_event_del(task->os, ev);
 
 	pthread_mutex_lock(&task->lock);
+	assert(task->os);
+	ovis_scheduler_event_del(task->os, ev);
 	if (task->flags & LDMSD_TASK_F_STOP) {
+		assert(task->state != LDMSD_TASK_STATE_STOPPED);
 		task->state = LDMSD_TASK_STATE_STOPPED;
 		goto out;
 	}
@@ -936,13 +938,14 @@ static void task_cb_fn(ovis_event_t ev)
 	task->fn(task, task->fn_arg);
 
 	pthread_mutex_lock(&task->lock);
-	if ((task->flags & LDMSD_TASK_F_STOP)
-	    && (task->flags != LDMSD_TASK_STATE_STOPPED)) {
-		task->state = LDMSD_TASK_STATE_STOPPED;
+	if (task->flags & LDMSD_TASK_F_STOP) {
+		if (task->state != LDMSD_TASK_STATE_STOPPED)
+			task->state = LDMSD_TASK_STATE_STOPPED;
 	} else
 		task->state = next_state;
  out:
 	if (task->state == LDMSD_TASK_STATE_STOPPED) {
+		assert(task->os);
 		ovis_scheduler_event_del(task->os, &task->oev);
 		task->os = NULL;
 		release_ovis_scheduler(task->thread_id);
