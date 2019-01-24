@@ -604,7 +604,7 @@ next_line:
 	off += snprintf(&line[off], line_sz, "%s", tmp);
 
 	/* attempt to merge multiple lines together */
-	if (line[off-1] == '\\') {
+	if (off > 0 && line[off-1] == '\\') {
 		line[off-1] = ' ';
 		goto next_line;
 	}

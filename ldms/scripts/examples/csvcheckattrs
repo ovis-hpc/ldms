@@ -1,0 +1,15 @@
+export plugname=meminfo
+portbase=61098
+#export VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=all"
+LDMSD -p prolog.sampler 1
+#vgon
+LDMSD 2
+#vgoff
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2
+SLEEP 10
+KILL_LDMSD `seq 2`
+file_created $STOREDIR/$HOSTNAME/$testname
+

@@ -1,6 +1,14 @@
+# strgp_prdcr commands works on object names and not producernames,
+# so logic needing the second semantics is bypassed for now.
+STRGPMATCHHOSTS=/bin/false
 
 sysconfdir=@sysconfdir@
 localstatedir=@localstatedir@
+if test "x$LDMSCLUSTER" = "local"; then
+	LTAG="ldmsd"
+else
+	LTAG="ldmsd@$LDMSCLUSTER"
+fi
 
 #
 # Functions for ldmsd and ldms-aggd config file generation.
@@ -13,7 +21,7 @@ dietrace () {
 	if systemd-cat --help 2>1 > /dev/null; then
 		OUTLINE="systemd-cat -p err -t backtrace"
 	else
-		OUTLINE="logger -p syslog.err"
+		OUTLINE="logger -t $LTAG -p syslog.err"
 	fi
         if [[ $VERBOSE = "-v" ]]; then
 		local frame=0
@@ -48,7 +56,7 @@ check_log_option () {
 				LDMS_LOG_FILE=""
 			fi
 			if test $sdok = "0"; then
-				logger -p syslog.err -s "journal log not available without systemd."
+				logger -t $LTAG -p syslog.err -s "journal log not available without systemd."
 				dietrace 1
 			fi
 			;;
@@ -71,7 +79,7 @@ check_log_option () {
 			LDMS_LOG_OPT="-l"
 			mkdir -p $LDMS_LOG_PATH
 			if ! test -d $LDMS_LOG_PATH; then
-				logger -p syslog.err -s "$0: cannot make log directory $LDMS_LOG_PATH"
+				logger -t $LTAG -p syslog.err -s "$0: cannot make log directory $LDMS_LOG_PATH"
 				dietrace 1
 			fi
 			LDMS_LOG_FILE=$LDMS_LOG_PATH/ldmsd.log.$LDMSCLUSTER
@@ -117,7 +125,7 @@ check_genders_file() {
 		arr=(${p//:/ })
 		val=`$NODEATTR $NODEATTRFILE -c ${arr[0]} 2>/dev/null`
 		if test -n "$val"; then
-			logger -p syslog.err "Remove gender ${arr[0]} or use ${arr[1]} instead."
+			logger -t $LTAG -p syslog.err "Remove gender ${arr[0]} or use ${arr[1]} instead."
 			((n++))
 			v="$v, ${arr[0]}"
 		fi
@@ -126,7 +134,7 @@ check_genders_file() {
 		arr=(${p//:/ })
 		val=`$NODEATTR $NODEATTRFILE -c ${arr[0]} 2>/dev/null`
 		if test -n "$val"; then
-			logger -p syslog.err "Rename gender ${arr[0]} to ${arr[1]}."
+			logger -t $LTAG -p syslog.err "Rename gender ${arr[0]} to ${arr[1]}."
 			((n++))
 			v="$v, ${arr[0]}"
 		fi
@@ -135,7 +143,7 @@ check_genders_file() {
 		arr=(${p//:/ })
 		val=`$NODEATTR $NODEATTRFILE -l | grep ^${arr[0]} 2>/dev/null`
 		if test -n "$val"; then
-			logger -p syslog.err "Correct gender(s) starting with ${arr[0]} to start with ${arr[1]}."
+			logger -t $LTAG -p syslog.err "Correct gender(s) starting with ${arr[0]} to start with ${arr[1]}."
 			((n++))
 			v="$v, $val"
 		fi
@@ -144,7 +152,7 @@ check_genders_file() {
 		arr=(${p//:/ })
 		val=`$NODEATTR $NODEATTRFILE -l | grep ^${arr[0]} 2>/dev/null`
 		if test -n "$val"; then
-			logger -p syslog.err "Found plugin name(s) as a gender: $val. Use : or & instead of , in ldmsd plugin lists, as noted in man ldms-attributes."
+			logger -t $LTAG -p syslog.err "Found plugin name(s) as a gender: $val. Use : or & instead of , in ldmsd plugin lists, as noted in man ldms-attributes."
 			((n++))
 			v="$v, $val"
 		fi
@@ -153,20 +161,20 @@ check_genders_file() {
 	y=`$NODEATTR $NODEATTRFILE -n -A |grep ^ldmsaggd`
 	z=`$NODEATTR $NODEATTRFILE -n -A |grep ^${LDMS_HOSTNAME}$`
 	if test -n "$x" -o -n "$y"; then
-		logger -p syslog.err "Found ldms genders without hostnames: $x $y."
+		logger -t $LTAG -p syslog.err "Found ldms genders without hostnames: $x $y."
 		((n++))
 	fi
 	if test -z "$z"; then
-		logger -p syslog.err "Found no genders at all for $LDMS_HOSTNAME."
-		logger -p syslog.err "Review $NODEATTRFILE or setting of LDMS_HOSTNAME"
-		logger -p syslog.err "Input created from $LDMS_GENDERS_INPUT"
+		logger -t $LTAG -p syslog.err "Found no genders at all for $LDMS_HOSTNAME."
+		logger -t $LTAG -p syslog.err "Review $NODEATTRFILE or setting of LDMS_HOSTNAME"
+		logger -t $LTAG -p syslog.err "Input created from $LDMS_GENDERS_INPUT"
 		exit 1
 		((n++))
 	fi
 	if test $n -gt 0; then
-		logger -p syslog.err "Gender file problems: $n ($v). These genders need to be removed, replaced, correctly spelled, or punctuated as noted."
-		logger -p syslog.err "Review $NODEATTRFILE"
-		logger -p syslog.err "Input created from $LDMS_GENDERS_INPUT"
+		logger -t $LTAG -p syslog.err "Gender file problems: $n ($v). These genders need to be removed, replaced, correctly spelled, or punctuated as noted."
+		logger -t $LTAG -p syslog.err "Review $NODEATTRFILE"
+		logger -t $LTAG -p syslog.err "Input created from $LDMS_GENDERS_INPUT"
 		exit 1
 	fi
 }
@@ -213,7 +221,7 @@ build_genders_file () {
 		# die if user named something missing
 		for i in $LDMS_GENDERS; do
 			if ! test -f $i -a -r $i; then
-				logger -p syslog.err Unable to read genders file $i
+				logger -t $LTAG -p syslog.err Unable to read genders file $i
 				dietrace 1
 			fi
 		done
@@ -258,7 +266,7 @@ save_env_init () {
 	mkdir -p $localstatedir/run/ldmsd/tmp
 	env1=`mktemp $localstatedir/run/ldmsd/tmp/env1.$1.XXX`
 	if test -z "$env1"; then
-		logger -p syslog.error -s "$0: cannot make env tempfile"
+		logger -t $LTAG -p syslog.error -s "$0: cannot make env tempfile"
 		dietrace 1
 	fi
 	printenv |sort > $env1
@@ -268,7 +276,7 @@ save_env_init () {
 save_env_finish () {
 	env2=`mktemp $localstatedir/run/ldmsd/tmp/env2.$1.XXX`
 	if test -z "$env2"; then
-		logger -p syslog.error -s "$0: cannot make env tempfile"
+		logger -t $LTAG -p syslog.error -s "$0: cannot make env tempfile"
 		dietrace 1
 	fi
 	printenv |sort > $env2
@@ -309,11 +317,12 @@ save_env_finish_sysvinit () {
 # translate genders encoded args to key=value args.
 # reformat : -> spc; 1st / to =; & to , .
 config_from_gender() {
-	# echoq "genderin: $1"
+        # logger -t $LTAG -p syslog.info "$1";
 	oldIFS=$IFS
 	IFS=:
+	avitems=""
 	for i in $1; do
-		x="$x `echo $i |sed -e 's%/%=%' -e 's%&%,%g'`"
+		avitems="$avitems `echo $i |sed -e 's%/%=%' -e 's%&%,%g'`"
 	done
 	if ! test -z $oldIFS; then
 		IFS=$oldIFS
@@ -321,8 +330,8 @@ config_from_gender() {
 		unset IFS
 		# unset and the empty string for ifs are not the same
 	fi
-	# echoq "genderout: $x"
-	echo $x
+        # logger -t $LTAG -p syslog.info "$avitems";
+	echo $avitems
 }
 
 # log a message at info level if VERBOSE = -v
@@ -331,7 +340,7 @@ echoq()
         if [[ $VERBOSE != "-v" ]]; then
                 return;
         fi
-        logger -p syslog.info "$@";
+        logger -t $LTAG -p syslog.info "$@";
 }
 
 
@@ -551,15 +560,15 @@ start_ldmsd_plugins () {
 			fi
 			if ! test -f $genprog; then
 				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not a regular file."
-				continue
+				dietrace 1
 			fi
 			if ! test -r $genprog; then
 				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not readable."
-				continue
+				dietrace 1
 			fi
 			if ! test -x $genprog; then
 				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not executable."
-				continue
+				dietrace 1
 			fi
 		fi
 
@@ -688,6 +697,157 @@ get_schema_list () {
 	echo $slist
 }
 
+
+generate_standard_storage_policies () {
+	# create the standard combination for pi/schema if allowed
+	pi=$1
+	out=$2
+	schemas=$3
+
+	stplist=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_names 2>/dev/null`
+	usedef=0
+	if test -n "$stplist"; then
+		for stp in $(echo $stplist | tr ':' ' '); do
+			if test "$stp" = "default"; then
+				usedef=1
+			fi
+		done
+		if test $usedef = "0"; then
+			return
+		fi
+	fi
+	
+	# get default producers
+	if $STRGPMATCHHOSTS; then
+		defpr=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_producers 2>/dev/null`
+	fi
+	if test -z "$defpr"; then
+		defpr='.*'
+	fi
+	logger -p syslog.info -t $LTAG "std strgp schemas $schemas"
+	for s in $schemas; do
+		stp=${s}_${pi}
+		stpconfig=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_custom_$stp 2>/dev/null`
+		if $STRGPMATCHHOSTS; then
+			stpprod=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_producers_$stp 2>/dev/null`
+			stpexcl=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_exclude_producers_$stp 2>/dev/null`
+		fi
+		stpmets=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_metrics_$stp 2>/dev/null`
+		stpexmets=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_exclude_metrics_$stp 2>/dev/null`
+		plugconfig=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_plugconf_$stp 2>/dev/null`
+
+		if test -n "$stpconfig"; then
+			substpconfig=$(config_from_gender $stpconfig)
+			if test -n "$plugconfig"; then
+				plugschema=$(echo $substpconfig | sed -e 's/plugin=/name=/')
+				grok="`config_from_gender $plugconfig`"
+				eval PLUG_CONFIG_${pi}='$grok'
+				eval extraconfig='$'"PLUG_CONFIG_${pi}"
+				echo "config $plugschema $extraconfig" >> $out
+			fi
+			echo "strgp_add name=$stp $substpconfig" >> $out
+		else
+			if test -n "$plugconfig"; then
+				grok="`config_from_gender $plugconfig`"
+				eval PLUG_CONFIG_${pi}='$grok'
+				eval extraconfig='$'"PLUG_CONFIG_${pi}"
+				echo "config name=$pi container=$pi schema=$s $extraconfig" >> $out
+			fi
+			echo "strgp_add name=$stp plugin=$pi container=$pi schema=$s" >> $out
+		fi
+		if $STRGPMATCHHOSTS; then
+			if test -n "$stpprod"; then
+				#substpprod=$(config_from_gender $stpprod)
+				echo "strgp_prdcr_add name=$stp regex=$stpprod" >> $out
+			else
+				echo "strgp_prdcr_add name=$stp regex=$defpr" >> $out
+			fi
+			if test -n "$stpexcl"; then
+				echo "strgp_prdcr_del name=$stp regex=$stpexcl" >> $out
+			fi
+		else
+			echo "strgp_prdcr_add name=$stp regex=$defpr" >> $out
+		fi
+		if test -n "$stpmets"; then
+			for metric in $(echo $stpmets | tr ':' ' '); do
+				echo "strgp_metric_add name=$stp metric=$metric" >> $out
+			done
+		fi
+		if test -n "$stpexmets"; then
+			for metric in $(echo $stpexmets | tr ':' ' '); do
+				echo "strgp_metric_del name=$stp metric=$metric" >> $out
+			done
+		fi
+		echo "strgp_start name=$stp" >> $out
+	done
+}
+
+generate_nonstandard_storage_policies () {
+	# create the user defined bits
+	out=$1
+
+	stplist=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_names 2>/dev/null`
+	if test -z "$stplist"; then
+		return
+	fi
+
+	# get default producers
+	if $STRGPMATCHHOSTS; then
+		defpr=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_producers 2>/dev/null`
+	fi
+	if test -z "$defpr"; then
+		defpr='.*'
+	fi
+	for stp in $(echo $stplist | tr ':' ' '); do
+		if test "$stp" = "default"; then
+			continue
+		fi
+		stpconfig=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_custom_$stp 2>/dev/null`
+		stpprod=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_producers_$stp 2>/dev/null`
+		stpexcl=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_exclude_producers_$stp 2>/dev/null`
+		stpmets=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_metrics_$stp 2>/dev/null`
+		stpexmets=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_exclude_metrics_$stp 2>/dev/null`
+		plugconfig=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_plugconf_$stp 2>/dev/null`
+
+		if test -z "$stpconfig"; then
+			logger -t $LTAG -p syslog.error -s "$0: ldmsd_strgp_custom_$stp is required for non-default storage policy $stp in ldmsd_strgp_names."
+			dietrace 1
+		fi
+		substpconfig=$(config_from_gender $stpconfig)
+		if test -n "$plugconfig"; then
+			plugschema=$(echo $substpconfig | sed -e 's/plugin=/name=/')
+			grok="`config_from_gender $plugconfig`"
+			eval PLUG_CONFIG_${pi}='$grok'
+			eval extraconfig='$'"PLUG_CONFIG_${pi}"
+			echo "config $plugschema $extraconfig" >> $out
+		fi
+		echo "strgp_add name=$stp $substpconfig" >> $out
+		if $STRGPMATCHHOSTS; then
+			if test -n "$stpprod"; then
+				echo "strgp_prdcr_add name=$stp regex=$stpprod" >> $out
+			else
+				echo "strgp_prdcr_add name=$stp regex=$defpr" >> $out
+			fi
+			if test -n "$stpexcl"; then
+				echo "strgp_prdcr_del name=$stp regex=$stpexcl" >> $out
+			fi
+		else
+			echo "strgp_prdcr_add name=$stp regex=$defpr" >> $out
+		fi
+		if test -n "$stpmets"; then
+			for metric in $(echo $stpmets | tr ':' ' '); do
+				echo "strgp_metric_add name=$stp metric=$metric" >> $out
+			done
+		fi
+		if test -n "$stpexmets"; then
+			for metric in $(echo $stpexmets | tr ':' ' '); do
+				echo "strgp_metric_del name=$stp metric=$metric" >> $out
+			done
+		fi
+		echo "strgp_start name=$stp" >> $out
+	done
+}
+
 # Generate storage plugin configuration, using the set of plugins from
 # genders # on each host.
 # Individual plugin config generation failures do not stop other
@@ -740,9 +900,6 @@ start_stores () {
 	echoq $LDMSD_STORE_PLUGINS
 	echoq $out
 
-#if ! test -d $STORE_PATH; then
-#	mkdir -p $STORE_PATH
-#fi
 	for pi in $(eval echo $LDMSD_STORE_PLUGINS | tr ":;'\`" "\n"); do
 		# schemas from env or genders
 		schemas=`get_schema_list $host $pi`
@@ -816,23 +973,15 @@ start_stores () {
 		echoq "Generating config for store plugin <${pi}>"
 		# write stuff to out as determined from gender values
 		# dead: ARGS_START="name=$pi interval=$interval offset=$offset"
-		ARGS_CONFIG="name=$pi action=init $extraconfig"
+		ARGS_CONFIG="name=$pi $extraconfig"
 		echo load name=${pi} >> $out
-# strgp_add name=aries_nic_mmr_store_csv plugin=store_csv container=csv schema=metric_set_nic
-# strgp_start name=aries_nic_mmr_store_csv
-#strgp_add name=store_csv_meminfo plugin=store_csv schema=meminfo container=csv
-#strgp_prdcr_add name=store_csv_meminfo regex=.*
-#strgp_start name=store_csv_meminfo
+
 		case $conf in
 		v2)
 			echo "# config store from gender ldmsd_${pi}" >> $out
+			# config the plugin defaults
 			echo "config $ARGS_CONFIG" >> $out
-			for s in $schemas; do
-				policy=${s}_${pi}
-				echo "strgp_add name=$policy plugin=$pi container=$pi schema=$s" >> $out
-				echo "strgp_prdcr_add name=$policy regex=.*" >> $out
-				echo "strgp_start name=$policy" >> $out
-			done
+			generate_standard_storage_policies $pi $out "$schemas"
 			;;
 		text)
 			echo "# config store from $cattext" >> $out
@@ -848,6 +997,7 @@ start_stores () {
 			echo "# config store from defaults" >> $out
 			echo "config $ARGS_CONFIG" >> $out
 			for s in $schemas; do
+				policy=${s}_${pi}
 				echo "strgp_add name=$policy plugin=$pi container=$pi schema=$s" >> $out
 				echo "strgp_prdcr_add name=$policy regex=.*" >> $out
 				echo "strgp_start name=$policy" >> $out
@@ -855,6 +1005,9 @@ start_stores () {
 			;;
 		esac
 	done
+
+	# generate storage policy explicitly requested by nonstandard names
+	generate_nonstandard_storage_policies $out
 
 	echo "# " >> $out
 	echo "# end stores section" >> $out
@@ -872,6 +1025,6 @@ generate_transform_config() {
 }
 
 #export -f start_ldms_plugins start_add_hosts start_stores
-export generate_collector_config generate_aggregator_config generate_store_config generate_transform_config build_genders_file check_genders_file check_log_option
+export generate_collector_config generate_aggregator_config generate_store_config generate_transform_config build_genders_file check_genders_file check_log_option generate_standart_storage_policies generate_nonstandard_storage_policies
 
 

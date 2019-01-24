@@ -168,9 +168,77 @@ ldmsd_schemas_SUFFIX=S          Defines schemas S to route to store
                                 SUFFIX. Colon separated list S.
 ldmsd_exclude_schemas_SUFFIX=S  Defines schemas S to exclude from
                                 store SUFFIX. Colon separated list S.
-# for example:
-ldmsd_store_csv=PARAMLIST       defines config flags for store_csv.
+ldmsd_strgp_custom_STP=PARAMLIST
+                                Defines STP storage policy config arguments
+                                for a policy not defined in the standard pattern
+                                ${SCHEMA}_${PLUGIN} with container=${PLUGIN}.
+                                PARAMLIST MUST include 
+                                container/$CNAME:schema/$SC:plugin/$PINAME.
+                                This provides for control of container names or
+                                arbitrary storage policy names as may be needed
+                                to store the same metric sets in multiple storage
+                                configurations.
+ldmsd_strgp_plugconf_STP=PARAMLIST
+                                Defines plugin configuration arguments of the
+                                plugin used by STP. This allows for overriding
+                                ldmsd_SUFFIX default store plugin options.
+.\ The strgp_producers commands operate on local producer object names, not
+.\ the name of hosts as expected, so these next attributes don't work yet.
+.\ldmsd_strgp_producers=S         Defines default producers for storage policies.
+.\                                If not defined, the default set is '.*' (all).
+.\ldmsd_strgp_producers_STP=S     Defines producers for storage policy STP.
+.\                                If not defined, the default set is as for
+.\                                ldmsd_strgp_producers.
+.\ldmsd_strgp_exclude_producers_STP=S
+.\                                Defines producers excluded from storage 
+.\                                policy STP.
+ldmsd_strgp_metrics_STP=M       Defines metrics to include in storage for STP.
+                                If not defined, ALL metrics are stored. M
+                                is a : separated list of metric names.
+ldmsd_strgp_exclude_metrics_STP=M
+                                Defines metrics to exclude in storage for STP.
+                                M is a : separated list of metric names.
+                                If both metrics and exclude_metrics are defined,
+                                the named included metrics are included, less
+                                any in the excluded list.
+ldmsd_strgp_names=STPLIST       Defines the names of storage policies to start.
+                                STPLIST is : separated.
+                                The default value of STPLIST if undefined is the
+                                combination of the plugins PI listed in 
+                                ldmsd_store_plugins iterated over their 
+                                respective schemas SC, yielding names in the
+                                format ${SC}_${PI}. ldmsd_schemas_${PI} defines
+                                the values of SC for that plugin.
+                                If STPLIST is defined, it may contain the name
+                                'default' to generate the standard combinations,
+                                and any additional custom storage policy names.
+                                If default is not included, only the policies
+                                named with be generated.
+                                
+For example:
+.nf
+ldmsd_strgp_names=default:memsmall
 
+ldmsd_store_csv=path//scratch/ldms/csv
+ldmsd_strgp_names=default:mem_small
+ldmsd_strgp_custom_meminfo_store_csv=container/memfull:schema/meminfo:plugin/store_csv
+ldmsd_strgp_plugconf_meminfo_store_csv=rolltype/2:rollover/40
+
+ldmsd_strgp_custom_memsmall=container/memsmall:schema/meminfo:plugin/store_csv
+ldmsd_strgp_plugconf_memsmall=altheader/1
+ldmsd_strgp_metrics_memsmall=Active:MemAvailable:Dirty
+ldmsd_strgp_exclude_metrics_memsmall=MemAvailable
+
+.\ NOT supported yet. need different strgp producers semantics
+.\ldmsd_strgp_producers_sysclassib_store_csv=gateway.*:admin.*
+.\                                Stores data from hostname prefix 'gateway'
+.\                                and from hostname prefix 'admin' nodes.
+.\ldmsd_strgp_exclude_producers_meminfo_store_csv=backup.*
+.\                                Excludes hosts with prefix 'backup' from
+.\                                policy meminfo_store_csv.
+ldmsd_strgp_metrics_meminfo_store_csv=Active:MemFree:Dirty:MemTotal:NFS_Unstable
+ldmsd_strgp_exclude_metrics_meminfo_store_csv=VmallocTotal
+.fi
 .br
 .PP
 .fi
@@ -226,8 +294,8 @@ plugin configuration attributes where needed.
 
 .SH Storage specific plugin configuration
 .PP
-To support the most common usage, the names of all active collector plugins found in the genders file are assumed to be valid schema names. LDMSD_SCHEMA_LIST overrides this assumption.
-When multiple schema are generated from the same collector plugin, the ldmsd_schemas_SUFFIX attribute or the LDMSD_SCHEMA_LIST environment variable should be defined in the ldmsd.local.conf file to ensure correct local storage configuration.
+To support the most common usage, the names of all active collector plugins found in the genders file are assumed to be valid schema names. LDMSD_SCHEMA_LIST or ldmsd_schemas_SUFFIX overrides this assumption. When the genders file omits data about the collector nodes (as may happen on a higher level LDMS aggregator) or the schema names do not match the collector plugin names, use of ldmsd_schemas_SUFFIX or LDMSD_SCHEMA_LIST is required.
+When multiple schema are generated from the same collector plugin, the ldmsd_schemas_SUFFIX attribute or the LDMSD_SCHEMA_LIST environment variable is required. ldmsd_schemas_SUFFIX is recommended.
 .PP
 By default (when no ldmsd_schemas_SUFFIX is defined), all schemas are routed to all loaded storage plugins.
 

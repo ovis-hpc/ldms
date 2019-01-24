@@ -1,0 +1,13 @@
+# stuff
+store_csv altheader=1 foof u32=123456789 u64=987654321987654321 s64=-987654321987654321 s32=-55555 f64=3.14159 szt=32M c=7
+store_csv dont do this
+mykey=key1 a=b c=d \
+d=3 f=g c=e \ 
+h c=f
+
+mykey=key2 j=k
+# foo bar \
+continue comment \ x
+mykey=key3 p=q r=s t=u
+ #
+
