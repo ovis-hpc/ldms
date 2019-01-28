@@ -667,11 +667,16 @@ int __req_deferred_start_regex(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
 	ldmsd_req_attr_t attr;
 	ldmsd_cfgobj_t obj;
 	int rc;
+	char *val;
 	attr = ldmsd_req_attr_get_by_id((void*)req, LDMSD_ATTR_REGEX);
 	if (!attr) {
 		return EINVAL;
 	}
-	rc = regcomp(&regex, (void*)attr->attr_value, REG_NOSUB);
+	val = str_repl_env_vars((char *)attr->attr_value);
+	if (!val)
+		return ENOMEM;
+	rc = regcomp(&regex, val, REG_NOSUB);
+	free(val);
 	if (rc)
 		return EBADMSG;
 	ldmsd_cfg_lock(type);
@@ -689,11 +694,16 @@ int __req_deferred_start(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
 {
 	ldmsd_req_attr_t attr;
 	ldmsd_cfgobj_t obj;
+	char *name;
 	attr = ldmsd_req_attr_get_by_id((void*)req, LDMSD_ATTR_NAME);
 	if (!attr) {
 		return EINVAL;
 	}
-	obj = ldmsd_cfgobj_find((char*)attr->attr_value, type);
+	name = str_repl_env_vars((char *)attr->attr_value);
+	if (!name)
+		return ENOMEM;
+	obj = ldmsd_cfgobj_find(name, type);
+	free(name);
 	if (!obj)
 		return ENOENT;
 	obj->perm |= LDMSD_PERM_DSTART;
