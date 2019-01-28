@@ -281,6 +281,9 @@ static inline struct ldms_value_desc *get_first_metric_desc(struct ldms_set_hdr 
 	return (struct ldms_value_desc *)p;
 }
 
+/** \brief convert string to scalar member of mval as directed by vt.
+ */
+int ldms_mval_parse_scalar(ldms_mval_t v, enum ldms_value_type vt, const char *str);
 
 #define ldms_ptr_(_t, _p, _o) (_t *)&((char *)_p)[_o]
 #define ldms_off_(_m, _p) (((char *)_p) - ((char *)_m))
