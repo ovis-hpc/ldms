@@ -951,6 +951,18 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 			rc = EINVAL;
 			goto err_0;
 		}
+	} else if (0 == (flags & LDMS_LOOKUP_BY_SCHEMA)) {
+		__ldms_set_tree_lock();
+		set = __ldms_find_local_set(req->lookup.path);
+		if (!set) {
+			rc = ENOENT;
+			goto err_1;
+		}
+		rc = __send_lookup_reply(x, set, req->hdr.xid, 0);
+		if (rc)
+			goto err_1;
+		__ldms_set_tree_unlock();
+		return;
 	}
 
 	/* Get the first match */
