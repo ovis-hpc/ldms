@@ -1022,6 +1022,8 @@ void __failover_xprt_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		f->ax = NULL;
 		need_start = !__F_GET(f, __FAILOVER_OURCFG_ACTIVATED);
 		__F_ON(f, __FAILOVER_OURCFG_ACTIVATED);
+		__F_OFF(f, __FAILOVER_OUTSTANDING_PING);
+		__F_OFF(f, __FAILOVER_OUTSTANDING_UNPAIR);
 		__failover_unlock(f);
 		if (need_start) {
 			ldmsd_ourcfg_start_proc();
