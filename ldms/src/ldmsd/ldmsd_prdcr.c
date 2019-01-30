@@ -570,6 +570,7 @@ reset_prdcr:
 	switch (prdcr->conn_state) {
 	case LDMSD_PRDCR_STATE_STOPPING:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+		break;
 	case LDMSD_PRDCR_STATE_DISCONNECTED:
 	case LDMSD_PRDCR_STATE_CONNECTING:
 	case LDMSD_PRDCR_STATE_CONNECTED:
@@ -633,6 +634,7 @@ static void prdcr_task_cb(ldmsd_task_t task, void *arg)
 	ldmsd_prdcr_lock(prdcr);
 	switch (prdcr->conn_state) {
 	case LDMSD_PRDCR_STATE_STOPPED:
+	case LDMSD_PRDCR_STATE_STOPPING:
 		ldmsd_task_stop(&prdcr->task);
 		break;
 	case LDMSD_PRDCR_STATE_DISCONNECTED:
