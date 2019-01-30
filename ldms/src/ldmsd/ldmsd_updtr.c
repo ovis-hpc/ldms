@@ -984,6 +984,10 @@ int __ldmsd_updtr_stop(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt)
 	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
 	if (rc)
 		goto out_1;
+	if (updtr->state == LDMSD_UPDTR_STATE_STOPPED) {
+		/* already stopped, return 0 */
+		goto out_1;
+	}
 	if (updtr->state != LDMSD_UPDTR_STATE_RUNNING) {
 		rc = EBUSY;
 		goto out_1;
