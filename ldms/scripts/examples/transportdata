@@ -8,4 +8,6 @@ MESSAGE ldms_ls on host 2:
 LDMS_LS 2 -l
 SLEEP 5
 KILL_LDMSD 1 2
-file_created $STOREDIR/node/$testname
+file_created $STOREDIR/plain/$testname
+file_created $STOREDIR/duration/$testname
+file_created $STOREDIR/debug/$testname

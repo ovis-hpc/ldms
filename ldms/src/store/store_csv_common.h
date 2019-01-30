@@ -112,9 +112,10 @@ struct csv_plugin_static {
 #define TRANS_LOG_GENERATION 4u /* log generation number */
 #define TRANS_LOG_METAGEN 8u /* log metadata generation number */
 #define TRANS_LOG_SETPTR 16u /* log set pointer (as %p) */
-#define TRANS_LOG_TRIP 32u /* log set pointer (as %p) */
+#define TRANS_LOG_TRIP 32u /* log delivery time as now - ts */
 #define TRANS_LOG_CONSISTENT 64u /* log consistency flag */
-#define TRANS_LOG_START 128u /* reserved. could be computed from ts - duration */
+#define TRANS_LOG_ARRIVAL 128u /* log arrival time 'now' formatted as timestamp */
+#define TRANS_LOG_START 256u /* reserved. could be computed from ts - duration */
 
 #define ROLL_COMMON \
 	char *filename; \

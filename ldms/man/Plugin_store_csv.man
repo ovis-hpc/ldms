@@ -135,7 +135,7 @@ Specify a new group id for the file. If unspecified, no change in group ownershi
 .TP
 transportdata=<met_letters>
 .br
-The supported met_letters are "acdgmpt0N", where inclusion of a character in the transportdata option turns on metrics as follows: "a" (all) is equivalent "cdgmpt"; "c" enables logging 'consistent'; "d" enables logging duration; "g" enables logging data generation number, "m" enables logging metadata generation number, "p" enables logging set memory address at the store, "t" enables logging trip time.  See TRANSPORT DATA below for the meaning of these metrics.  The character '0' turns off all transport data output and reenables regular metric output. The character 'N' turns off regular metric output.  The default if transportdata is not given is "0".  The 'regular' metrics for the case of 'N' are all non-transport data metrics after the 'ProducerName' column. Any characters following 'a' and '0' are ignored. For sampler performance analysis, only "d" is needed.
+The supported met_letters are "acdgmpt0N", where inclusion of a character in the transportdata option turns on metrics as follows: "a" (all) is equivalent "cdgmprt"; "c" enables logging 'consistent'; "d" enables logging duration; "g" enables logging data generation number, "m" enables logging metadata generation number, "p" enables logging set memory address at the store, "r" enables logging store arrival timestamp, "t" enables logging trip time.  See TRANSPORT DATA below for the meaning of these metrics.  The character '0' turns off all transport data output and reenables regular metric output. The character 'N' turns off regular metric output.  The default if transportdata is not given is "0".  The 'regular' metrics for the case of 'N' are all non-transport data metrics after the 'ProducerName' column. Any characters following 'a' and '0' are ignored. For sampler performance analysis, only "d" is needed.
 .RE
 
 
@@ -366,7 +366,10 @@ The consistency of the set (consistent) is 1 normally and 0 if the set data was 
 The duration value is the time spent in metric set collection at the producer. 
 It is usually under a millisecond.
 
-The trip value is the time spent in transit from the producer to the store.
+The arrival value is approximately the wall clock time when the set is passed to the store function.
+It may be subject to clock skew relative to the data producer.
+
+The trip value is the time spent in transit from the producer to the store arrival.
 It includes the difference in offsets from sampler to updater and may be
 subject to clock skew. Ideally, the trip time is very similar within the sampling period for all sets similarly scheduled.
 
