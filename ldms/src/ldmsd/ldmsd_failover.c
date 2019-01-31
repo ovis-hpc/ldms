@@ -1002,6 +1002,7 @@ void __failover_xprt_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
 		__dlog("Failover: xprt connected\n");
+		ldms_xprt_priority_set(f->ax, 1);
 		__failover_lock(f);
 		/* so that retry operations can follow up not too slow */
 		f->task_interval = 1000000;
@@ -2306,6 +2307,7 @@ int failover_ping_handler(ldmsd_req_ctxt_t req)
 	const char *name;
 	const char *errstr = NULL;
 
+	ldms_xprt_priority_set(req->xprt->ldms.ldms, 1);
 	f = __ldmsd_req_failover_get(req);
 	if (!f)
 		return ENOENT;
