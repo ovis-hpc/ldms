@@ -343,6 +343,21 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name, ldms_log_fn_t log_fn,
 			       const char *auth_name,
 			       struct attr_value_list *auth_av_list);
 
+/**
+ * \brief Set the ldms transport priority
+ *
+ * An transport can be HIGH or NORMAL priority. By default
+ * transports are NORMAL priority. Events on HIGH priority transports
+ * are delivered before events for NORMAL priority transports.
+ *
+ * A non-zero value for the \c prio argument will set the priority to
+ * HIGH.
+ *
+ * \param x	The transport handle
+ * \param prio	The priority level
+ */
+void ldms_xprt_priority_set(ldms_t x, int prio);
+
 enum ldms_xprt_event_type {
 	/*! A new connection is established */
 	LDMS_XPRT_EVENT_CONNECTED,

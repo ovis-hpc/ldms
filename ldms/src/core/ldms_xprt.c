@@ -2228,6 +2228,11 @@ void __ldms_xprt_init(struct ldms_xprt *x, const char *name,
 	pthread_mutex_unlock(&xprt_list_lock);
 }
 
+void ldms_xprt_priority_set(ldms_t x, int prio)
+{
+	zap_set_priority(x->zap_ep, prio);
+}
+
 ldms_t ldms_xprt_new_with_auth(const char *xprt_name, ldms_log_fn_t log_fn,
 			       const char *auth_name,
 			       struct attr_value_list *auth_av_list)
