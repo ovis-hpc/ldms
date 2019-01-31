@@ -15,14 +15,14 @@ dietrace () {
 	else
 		OUTLINE="logger -p syslog.err"
 	fi
-        if [[ $VERBOSE = "-v" ]]; then
+	if [[ $VERBOSE = "-v" ]]; then
 		local frame=0
 		(echo start
 		while caller $frame; do
 			((frame++));
 		done
 		echo end) | $OUTLINE
-        fi
+	fi
 	exit $1
 }
 
@@ -325,10 +325,10 @@ config_from_gender() {
 # log a message at info level if VERBOSE = -v
 echoq()
 {
-        if [[ $VERBOSE != "-v" ]]; then
-                return;
-        fi
-        logger -p syslog.info "$@";
+	if [[ $VERBOSE != "-v" ]]; then
+		return;
+	fi
+	logger -p syslog.info "$@";
 }
 
 
@@ -643,19 +643,19 @@ generate_aggregator_config () {
 # extract schemas for a specific store from genders or environment
 # into a space separated list.
 get_schema_list () {
-	schema_host=$1
-	plugin=$2
+	local schema_host=$1
+	local plugin=$2
 	# string in gender is : separated list of schema names
 
 	# List of schemas specifically fed to plugin. if empty, use
 	# plugin names and ldmsd_schemas_extra values.
-	schemas=`$NODEATTR $NODEATTRFILE -v $schema_host ldmsd_schemas_${plugin} 2>/dev/null`
+	local schemas=`$NODEATTR $NODEATTRFILE -v $schema_host ldmsd_schemas_${plugin} 2>/dev/null`
 
 	# schemas not wanted on this plugin
-	badschemas=`$NODEATTR $NODEATTRFILE -v $schema_host ldmsd_exclude_schemas_${plugin} 2>/dev/null`
+	local badschemas=`$NODEATTR $NODEATTRFILE -v $schema_host ldmsd_exclude_schemas_${plugin} 2>/dev/null`
 
 	# schemas not wanted on any plugin
-	reallybadschemas=`$NODEATTR $NODEATTRFILE -v $schema_host ldmsd_exclude_schemas 2>/dev/null`
+	local reallybadschemas=`$NODEATTR $NODEATTRFILE -v $schema_host ldmsd_exclude_schemas 2>/dev/null`
 
 	if test -z "$schemas"; then
 		# by default give all schemas to every store unless listed in env.
@@ -673,12 +673,12 @@ get_schema_list () {
 	if test -n "$LDMSD_EXCLUDE_SCHEMA_LIST"; then
 		envbadschemas="$LDMSD_EXCLUDE_SCHEMA_LIST"
 	fi
-	excludelist="${envbadschemas},${badschemas},${reallybadschemas}"
-	keepfile=`mktemp $localstatedir/run/ldmsd/tmp/schemas.1.XXX`
-	badfile=`mktemp $localstatedir/run/ldmsd/tmp/schemas.2.XXX`
+	local excludelist="${envbadschemas},${badschemas},${reallybadschemas}"
+	local keepfile=`mktemp $localstatedir/run/ldmsd/tmp/schemas.1.XXX`
+	local badfile=`mktemp $localstatedir/run/ldmsd/tmp/schemas.2.XXX`
 	echo $schemas | tr ",: " "\n" | sort -u > $keepfile
 	echo $excludelist | tr ",: " "\n" | sort -u > $badfile
-	slist=`comm -23 $keepfile $badfile`
+	local slist=`comm -23 $keepfile $badfile`
 	if ! test "$DEBUG" = "yes"; then
 		/bin/rm -f $keepfile $badfile
 	fi
@@ -686,13 +686,14 @@ get_schema_list () {
 }
 
 get_strgp_container () {
-        # called with pi, policy name
-        pi=$1
-        policy=$2
-        config=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_${policy} 2>/dev/null`
-        grok="`config_from_gender $config`"
-        eval POL_CONFIG_${policy}='$grok'
-        eval config='$'"POL_CONFIG_${policy}"
+	# called with pi, policy name
+	local pi=$1
+	local policy=$2
+	local container=""
+	config=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_${policy} 2>/dev/null`
+	grok="`config_from_gender $config`"
+	eval POL_CONFIG_${policy}='$grok'
+	eval config='$'"POL_CONFIG_${policy}"
 	if echo "$config" |grep container=; then
 		container=`echo $config|sed -e 's/.*container=//g' -e  's/ .*//g'`
 	fi > /dev/null
