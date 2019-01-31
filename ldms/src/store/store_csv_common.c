@@ -669,6 +669,11 @@ static int get_transflags(struct csv_plugin_static *cps, const char *transdata, 
 			tmp |= TRANS_LOG_SETPTR;
 			cps->msglog(LDMSD_LDEBUG,"%s: logging set pointers\n", w);
 			break;
+		case 'r':
+			tmp |= TRANS_LOG_ARRIVAL;
+			cps->msglog(LDMSD_LDEBUG,"%s: logging arrival time\n",
+				w);
+			break;
 		case 't':
 			tmp |= TRANS_LOG_TRIP;
 			cps->msglog(LDMSD_LDEBUG,"%s: logging trip time\n",
@@ -677,7 +682,7 @@ static int get_transflags(struct csv_plugin_static *cps, const char *transdata, 
 		case 'a': tmp =
 			(TRANS_LOG_DURATION | TRANS_LOG_GENERATION |
 			TRANS_LOG_METAGEN | TRANS_LOG_SETPTR |
-			TRANS_LOG_CONSISTENT | TRANS_LOG_TRIP);
+			TRANS_LOG_CONSISTENT | TRANS_LOG_TRIP | TRANS_LOG_ARRIVAL);
 			cps->msglog(LDMSD_LDEBUG, "%s: logging all transport data\n",
 				w);
 			goto transdone;

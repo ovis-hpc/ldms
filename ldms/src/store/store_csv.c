@@ -922,6 +922,8 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 			fprintf(fp, ",consistent");
 		if (s_handle->transflags & TRANS_LOG_DURATION)
 			fprintf(fp, ",duration");
+		if (s_handle->transflags & TRANS_LOG_ARRIVAL)
+			fprintf(fp, ",arrival");
 		if (s_handle->transflags & TRANS_LOG_TRIP)
 			fprintf(fp, ",trip");
 		if (s_handle->transflags & TRANS_LOG_GENERATION)
@@ -1307,15 +1309,21 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			fprintf(s_handle->file, ",%" PRIu32 ".%06" PRIu32,
 				dur.sec, dur.usec);
 		}
-		if (s_handle->transflags & TRANS_LOG_TRIP) {
+		if (s_handle->transflags & (TRANS_LOG_TRIP|TRANS_LOG_ARRIVAL)) {
 			struct ldms_timestamp arr_ts;
 			struct ldms_timestamp *arr_tsp = &arr_ts;
 			struct timeval atv;
 			(void)gettimeofday(&atv, NULL);
 			arr_ts.sec = atv.tv_sec;
 			arr_ts.usec = atv.tv_usec;
-			double transit_time = ldms_difftimestamp(arr_tsp, ts);
-			fprintf(s_handle->file, ",%g", transit_time);
+			if (s_handle->transflags & TRANS_LOG_ARRIVAL) {
+				fprintf(s_handle->file, ",%" PRIu32 ".%06" PRIu32,
+					arr_ts.sec, arr_ts.usec);
+			}
+			if (s_handle->transflags & TRANS_LOG_TRIP) {
+				double transit_time = ldms_difftimestamp(arr_tsp, ts);
+				fprintf(s_handle->file, ",%g", transit_time);
+			}
 		}
 		if (s_handle->transflags & TRANS_LOG_GENERATION) {
 			uint64_t gn = ldms_set_data_gn_get(set);
