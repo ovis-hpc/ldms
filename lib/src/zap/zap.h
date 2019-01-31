@@ -329,6 +329,23 @@ size_t zap_max_msg(zap_t z);
  */
 zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb);
 
+#define ZAP_EP_PRIO_NORMAL	0
+#define ZAP_EP_PRIO_HIGH	1
+
+/** \brief Set endpoint priority
+ *
+ * An endpoint can be HIGH or NORMAL priority. By default all
+ * endpoints are NORMAL priority. Events on HIGH priority endpoints
+ * are queued ahead of events for NORMAL priority endpoints.
+ *
+ * A non-zero value for the \c prio argument will set the endpoint to
+ * HIGH priority.
+ *
+ * \param ep	The Zap endpoint handle
+ * \param prio	The priority level
+ */
+void zap_set_priority(zap_ep_t ep, int prio);
+
 /** \brief Release an endpoint
  *
  * Drop the implicit zap_new() reference. This is functionally
