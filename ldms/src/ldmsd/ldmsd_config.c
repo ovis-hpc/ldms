@@ -622,8 +622,20 @@ parse:
 	}
 	for (i = 0; i < req_array->num_reqs; i++) {
 		request = req_array->reqs[i];
-		if (req_filter && req_filter(&xprt, request, ctxt))
-			goto next_req;
+		if (req_filter) {
+			rc = req_filter(&xprt, request, ctxt);
+			/* rc = 0, filter OK */
+			if (rc == 0)
+				goto next_req;
+			/* rc == errno */
+			if (rc > 0) {
+				ldmsd_log(LDMSD_LERROR,
+					  "Configuration error at "
+					  "line %d (%s)\n", lineno, path);
+				goto cleanup;
+			}
+			/* rc < 0, filter not applied */
+		}
 		rc = ldmsd_process_config_request(&xprt, request);
 		if (rc || xprt.rsp_err) {
 			if (!rc)
@@ -665,13 +677,24 @@ int __req_deferred_start_regex(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
 	ldmsd_req_attr_t attr;
 	ldmsd_cfgobj_t obj;
 	int rc;
+	char *val;
 	attr = ldmsd_req_attr_get_by_id((void*)req, LDMSD_ATTR_REGEX);
 	if (!attr) {
+		ldmsd_log(LDMSD_LERROR, "`regex` attribute is required.\n");
 		return EINVAL;
 	}
-	rc = regcomp(&regex, (void*)attr->attr_value, REG_NOSUB);
-	if (rc)
+	val = str_repl_env_vars((char *)attr->attr_value);
+	if (!val) {
+		ldmsd_log(LDMSD_LERROR, "Not enough memory.\n");
+		return ENOMEM;
+	}
+	rc = regcomp(&regex, val, REG_NOSUB);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Bad regex: %s\n", val);
+		free(val);
 		return EBADMSG;
+	}
+	free(val);
 	ldmsd_cfg_lock(type);
 	LDMSD_CFGOBJ_FOREACH(obj, type) {
 		rc = regexec(&regex, obj->name, 0, NULL, 0);
@@ -687,18 +710,34 @@ int __req_deferred_start(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
 {
 	ldmsd_req_attr_t attr;
 	ldmsd_cfgobj_t obj;
+	char *name;
 	attr = ldmsd_req_attr_get_by_id((void*)req, LDMSD_ATTR_NAME);
 	if (!attr) {
+		ldmsd_log(LDMSD_LERROR, "`name` attribute is required.\n");
 		return EINVAL;
 	}
-	obj = ldmsd_cfgobj_find((char*)attr->attr_value, type);
-	if (!obj)
+	name = str_repl_env_vars((char *)attr->attr_value);
+	if (!name) {
+		ldmsd_log(LDMSD_LERROR, "Not enough memory.\n");
+		return ENOMEM;
+	}
+	obj = ldmsd_cfgobj_find(name, type);
+	if (!obj) {
+		ldmsd_log(LDMSD_LERROR, "Config object not found: %s\n", name);
+		free(name);
 		return ENOENT;
+	}
+	free(name);
 	obj->perm |= LDMSD_PERM_DSTART;
 	ldmsd_cfgobj_put(obj);
 	return 0;
 }
 
+/*
+ * rc = 0, filter applied OK
+ * rc > 0, rc == -errno, error
+ * rc = -1, filter not applied (but not an error)
+ */
 int __req_filter_failover(ldmsd_cfg_xprt_t x, ldmsd_req_hdr_t req, void *ctxt)
 {
 	int *use_failover = ctxt;
@@ -710,26 +749,22 @@ int __req_filter_failover(ldmsd_cfg_xprt_t x, ldmsd_req_hdr_t req, void *ctxt)
 	switch (req->req_id) {
 	case LDMSD_FAILOVER_START_REQ:
 		*use_failover = 1;
-		rc = -1;
+		rc = 0;
 		break;
 	case LDMSD_PRDCR_START_REGEX_REQ:
 		rc = __req_deferred_start_regex(req, LDMSD_CFGOBJ_PRDCR);
-		rc = -1;
 		break;
 	case LDMSD_PRDCR_START_REQ:
 		rc = __req_deferred_start(req, LDMSD_CFGOBJ_PRDCR);
-		rc = -1;
 		break;
 	case LDMSD_UPDTR_START_REQ:
 		rc = __req_deferred_start(req, LDMSD_CFGOBJ_UPDTR);
-		rc = -1;
 		break;
 	case LDMSD_STRGP_START_REQ:
 		rc = __req_deferred_start(req, LDMSD_CFGOBJ_STRGP);
-		rc = -1;
 		break;
 	default:
-		rc = 0;
+		rc = -1;
 	}
 	/* convert req back to network byte order */
 	ldmsd_hton_req_msg(req);
