@@ -642,7 +642,7 @@ void *k_proc(void *arg)
 			break;
 		case KLDMS_REQ_UNPUBLISH_SET:
 			ldmsd_ldebug("KLDMS_REQ_UNPUBLISH_SET: set_id %d data_len %zu\n",
-				     k_req.unpublish.set_id);
+				     k_req.unpublish.set_id, k_req.publish.data_len);
 			break;
 		case KLDMS_REQ_UPDATE_SET:
 			ldmsd_ldebug("KLDMS_REQ_UPDATE_SET: set_id %d\n",
