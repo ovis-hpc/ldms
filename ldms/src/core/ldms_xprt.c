@@ -2235,27 +2235,25 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name, ldms_log_fn_t log_fn,
 	auth_plugin = ldms_auth_plugin_get(auth_name);
 	if (!auth_plugin) {
 		ret = errno;
-		goto err2;
+		goto err1;
 	}
 
 	auth = ldms_auth_new(auth_plugin, auth_av_list);
 	if (!auth) {
 		ret = errno;
-		goto err2;
+		goto err1;
 	}
 	x->auth_flag = LDMS_XPRT_AUTH_INIT;
 
 	ret = ldms_xprt_auth_bind(x, auth);
 	if (ret)
-		goto err3;
+		goto err2;
 	return x;
 
-err3:
-	ldms_auth_free(auth);
 err2:
-	zap_free(x->zap_ep);
+	ldms_auth_free(auth);
 err1:
-	free(x);
+	ldms_xprt_put(x);
 err0:
 	errno = ret;
 	return NULL;
