@@ -279,7 +279,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	}
 
 	flags = ldmsd_group_check(prd_set->set);
-	if (flags & (LDMSD_GROUP_IS_GROUP|LDMSD_GROUP_MODIFIED)) {
+	if (flags & LDMSD_GROUP_MODIFIED) {
 		/* Group modified, need info update --> re-lookup the info */
 		ldmsd_prdcr_set_ref_get(prd_set);
 		name = ldms_set_instance_name_get(prd_set->set);
