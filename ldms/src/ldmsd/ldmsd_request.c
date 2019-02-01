@@ -2406,7 +2406,7 @@ send_reply:
 }
 
 int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
-						  action_fn cb, void *arg)
+							int strgp_cnt)
 {
 	size_t cnt;
 	int rc;
@@ -2414,8 +2414,14 @@ int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
 	ldmsd_name_match_t match;
 	ldmsd_strgp_metric_t metric;
 
+	if (strgp_cnt) {
+		rc = linebuf_printf(reqc, ",\n");
+		if (rc)
+			goto out;
+	}
+
 	ldmsd_strgp_lock(strgp);
-	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+	rc = linebuf_printf(reqc,
 		       "{\"name\":\"%s\","
 		       "\"container\":\"%s\","
 		       "\"schema\":\"%s\","
@@ -2427,73 +2433,42 @@ int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
 		       strgp->schema,
 		       strgp->plugin_name,
 		       ldmsd_strgp_state_str(strgp->state));
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
 	if (rc)
 		goto out;
+
 	match_count = 0;
 	for (match = ldmsd_strgp_prdcr_first(strgp); match;
 	     match = ldmsd_strgp_prdcr_next(match)) {
 		if (match_count) {
-			cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
-			rc = cb(reqc, reqc->line_buf, cnt, arg);
+			rc = linebuf_printf(reqc, ",");
 			if (rc)
 				goto out;
 		}
 		match_count++;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "\"%s\"", match->regex_str);
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
+		rc = linebuf_printf(reqc, "\"%s\"", match->regex_str);
 		if (rc)
 			goto out;
 	}
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "],\"metrics\":[");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	rc = linebuf_printf(reqc, "],\"metrics\":[");
 	if (rc)
 		goto out;
+
 	metric_count = 0;
 	for (metric = ldmsd_strgp_metric_first(strgp); metric;
 	     metric = ldmsd_strgp_metric_next(metric)) {
 		if (metric_count) {
-			cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
-			rc = cb(reqc, reqc->line_buf, cnt, arg);
+			rc = linebuf_printf(reqc, ",");
 			if (rc)
 				goto out;
 		}
 		metric_count++;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "\"%s\"", metric->name);
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
+		rc = linebuf_printf(reqc, "\"%s\"", metric->name);
 		if (rc)
 			goto out;
 	}
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]}");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	rc = linebuf_printf(reqc, "]}");
 out:
 	ldmsd_strgp_unlock(strgp);
-	return rc;
-}
-
-int __all_strgp_status(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
-{
-	ldmsd_strgp_t strgp;
-	size_t cnt;
-	int rc, count;
-	rc = count = 0;
-
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
-	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
-		if (count) {
-			rc = cb(reqc, ",\n", 2, arg);
-			if (rc)
-				goto out;
-		}
-		rc = __strgp_status_json_obj(reqc, strgp, cb, arg);
-		if (rc)
-			goto out;
-		count++;
-	}
-out:
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 	return rc;
 }
 
@@ -2504,6 +2479,8 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 	struct ldmsd_req_attr_s attr;
 	char *name;
 	ldmsd_strgp_t strgp = NULL;
+	int strgp_cnt;
+
 	reqc->errcode = 0;
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (name) {
@@ -2518,15 +2495,26 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 		}
 	}
 
+	/* Construct the json object of the strgp(s) */
 	if (strgp) {
-		rc = __strgp_status_json_obj(reqc, strgp, __get_json_obj_len_cb,
-								(void*)&cnt);
+		rc = __strgp_status_json_obj(reqc, strgp, 0);
 	} else {
-		rc = __all_strgp_status(reqc, __get_json_obj_len_cb, (void*)&cnt);
+		strgp_cnt = 0;
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
+		for (strgp = ldmsd_strgp_first(); strgp;
+			strgp = ldmsd_strgp_next(strgp)) {
+			rc = __strgp_status_json_obj(reqc, strgp, strgp_cnt);
+			if (rc) {
+				ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+				goto out;
+			}
+			strgp_cnt++;
+		}
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 	}
-	if (rc)
-		goto out;
-	cnt += 2; /* +2 for '[' and ']' */
+	cnt = reqc->line_off + 2; /* +2 for '[' and ']' */
+
+	/* Send the json attribute header */
 	attr.discrim = 1;
 	attr.attr_len = cnt;
 	attr.attr_id = LDMSD_ATTR_JSON;
@@ -2535,20 +2523,18 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 	if (rc)
 		goto out;
 
+	/* Send the json object */
 	rc = ldmsd_append_reply(reqc, "[", 1, 0);
 	if (rc)
 		goto out;
-	if (strgp) {
-		rc = __strgp_status_json_obj(reqc, strgp, __append_json_obj_cb, NULL);
-	} else {
-		rc = __all_strgp_status(reqc, __append_json_obj_cb, NULL);
-	}
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
 	if (rc)
 		goto out;
 	rc = ldmsd_append_reply(reqc, "]", 1, 0);
 	if (rc)
 		goto out;
 
+	/* Send the terminating attribute */
 	attr.discrim = 0;
 	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t),
 								LDMSD_REQ_EOM_F);
