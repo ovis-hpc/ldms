@@ -3241,60 +3241,58 @@ out:
 
 static int __updtr_task_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_task_t task)
 {
-	size_t cnt;
-	cnt = snprintf(reqc->line_buf, reqc->line_len,
+	int rc;
+	rc = linebuf_printf(reqc,
 			"{\"interval_us\":\"%ld\",", task->sched.intrvl_us);
+	if (rc)
+		return rc;
 	if (task->sched.offset_us == LDMSD_UPDT_HINT_OFFSET_NONE) {
-		cnt += snprintf(reqc->line_buf + cnt, reqc->line_len - cnt,
-			"\"offset_us\":\"None\",");
+		rc = linebuf_printf(reqc, "\"offset_us\":\"None\",");
 	} else {
-		cnt += snprintf(reqc->line_buf + cnt, reqc->line_len - cnt,
+		rc = linebuf_printf(reqc,
 			"\"offset_us\":\"%ld\",", task->sched.offset_us);
 	}
-	cnt += snprintf(reqc->line_buf + cnt, reqc->line_len - cnt,
-			"\"default_task\":\"%s\"}", (task->is_default)?"true":"false");
-	return cnt;
+	if (rc)
+		return rc;
+	rc = linebuf_printf(reqc, "\"default_task\":\"%s\"}",
+			(task->is_default)?"true":"false");
+	return rc;
 }
 
 int __updtr_task_tree_json_obj(ldmsd_req_ctxt_t reqc,
-				ldmsd_updtr_t updtr,
-				action_fn cb, void *arg)
+				ldmsd_updtr_t updtr)
 {
 	ldmsd_plugin_set_t set;
 	size_t cnt;
 	int rc, set_count;
 	ldmsd_updtr_task_t task;
 	struct rbn *rbn;
+	rc = 0;
 
 	ldmsd_updtr_lock(updtr);
-	cnt = snprintf(reqc->line_buf, reqc->line_len,
+	rc = linebuf_printf(reqc,
 			"{\"name\":\"%s\","
 			"\"tasks\":[", updtr->obj.name);
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
 	if (rc)
 		goto out;
 
 	task = &updtr->default_task;
-	cnt = __updtr_task_json_obj(reqc, task);
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	rc = __updtr_task_json_obj(reqc, task);
 	if (rc)
 		goto out;
 
 	rbn = rbt_min(&updtr->task_tree);
 	while (rbn) {
-		cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
+		rc = linebuf_printf(reqc, ",");
 		if (rc)
 			goto out;
 		task = container_of(rbn, struct ldmsd_updtr_task, rbn);
-		cnt = __updtr_task_json_obj(reqc, task);
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
+		rc = __updtr_task_json_obj(reqc, task);
 		if (rc)
 			goto out;
 		rbn = rbn_succ(rbn);
 	}
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]}");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	rc = linebuf_printf(reqc, "]}");
 out:
 	ldmsd_updtr_unlock(updtr);
 	return rc;
@@ -3307,7 +3305,7 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_updtr_task_t task;
 	struct rbn *rbn;
 	char *name;
-	ldmsd_updtr_t updtr;
+	ldmsd_updtr_t updtr = NULL;
 	struct ldmsd_req_attr_s attr;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -3319,16 +3317,21 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 							reqc->line_buf, cnt);
 			return 0;
 		}
-		rc = __updtr_task_tree_json_obj(reqc, updtr, __get_json_obj_len_cb, &cnt);
+		rc = __updtr_task_tree_json_obj(reqc, updtr);
 		if (rc)
 			goto err;
 	} else {
 		updtr_count = 0;
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 		for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
-			if (updtr_count)
-				cnt += 1; /* +1 for the comma between updtr json objects */
-			rc = __updtr_task_tree_json_obj(reqc, updtr, __get_json_obj_len_cb, &cnt);
+			if (updtr_count) {
+				rc = linebuf_printf(reqc, ",\n");
+				if (rc) {
+					ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+					goto err;
+				}
+			}
+			rc = __updtr_task_tree_json_obj(reqc, updtr);
 			if (rc) {
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 				goto err;
@@ -3337,7 +3340,7 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 		}
 		ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 	}
-	cnt += 2; /* +2 for the [ and ]. */
+	cnt = reqc->line_off + 2; /* +2 for the [ and ]. */
 
 	attr.discrim = 1;
 	attr.attr_len = cnt;
@@ -3347,58 +3350,29 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 	if (rc)
 		goto err;
 
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "[");
-	rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+	rc = ldmsd_append_reply(reqc, "[", 1, 0);
 	if (rc)
 		goto err;
-	if (name) {
-		updtr = ldmsd_updtr_find(name);
-		if (!updtr) {
-			cnt = snprintf(reqc->line_buf, reqc->line_len,
-					"updtr '%s' not found", name);
-			ldmsd_send_error_reply(reqc->xprt, reqc->rec_no, ENOENT,
-							reqc->line_buf, cnt);
-			return 0;
-		}
-		rc = __updtr_task_tree_json_obj(reqc, updtr, __append_json_obj_cb, NULL);
-		if (rc)
-			goto err;
-	} else {
-		updtr_count = 0;
-		ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
-		for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
-			if (updtr_count) {
-				cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
-				rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
-				if (rc) {
-					ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
-					goto err;
-				}
-			}
-			rc = __updtr_task_tree_json_obj(reqc, updtr, __append_json_obj_cb, NULL);
-			if (rc) {
-				ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
-				goto err;
-			}
-			updtr_count++;
-		}
-		ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
-	}
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]");
-	rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+	if (rc)
+		goto err;
+	rc = ldmsd_append_reply(reqc, "]", 1, 0);
 	if (rc)
 		goto err;
 
 	attr.discrim = 0;
 	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
 				sizeof(uint32_t), LDMSD_REQ_EOM_F);
-	if (name)
-		free(name);
+	goto out;
 
-	return rc;
 err:
 	ldmsd_send_error_reply(reqc->xprt, reqc->rec_no, rc,
 						"internal error", 15);
+out:
+	if (name)
+		free(name);
+	if (updtr)
+		ldmsd_updtr_put(updtr);
 	return rc;
 }
 
