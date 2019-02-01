@@ -5,6 +5,7 @@ all_example
 array_example
 clock
 lnet_stats
+chkmeminfo
 meminfo
 procdiskstats
 procinterrupts

@@ -130,6 +130,11 @@ if ENABLE_MEMINFO
 libmeminfo_la_SOURCES = meminfo.c
 libmeminfo_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libmeminfo.la
+
+libchkmeminfo_la_SOURCES = meminfo.c
+libchkmeminfo_la_CFLAGS = $(AM_CFLAGS) -DCHKMEMINFO
+libchkmeminfo_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+pkglib_LTLIBRARIES += libchkmeminfo.la
 endif
 
 if ENABLE_MSR_INTERLAGOS
