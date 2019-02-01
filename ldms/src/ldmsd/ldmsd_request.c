@@ -2540,6 +2540,8 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 out:
 	if (name)
 		free(name);
+	if (strgp)
+		ldmsd_strgp_put(strgp);
 	return rc;
 }
 
