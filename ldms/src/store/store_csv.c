@@ -70,6 +70,17 @@
 #include "store_common.h"
 #include "store_csv_common.h"
 
+#ifdef __linux__
+#include <sys/syscall.h>
+#ifdef SYS_gettid
+#define gettid() syscall(SYS_gettid);
+#else
+#define gettid() 0
+#endif
+#else
+#define gettid() 0
+#endif
+
 #define TV_SEC_COL    0
 #define TV_USEC_COL    1
 #define GROUP_COL    2
@@ -930,6 +941,10 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 			fprintf(fp, ",datagn");
 		if (s_handle->transflags & TRANS_LOG_METAGEN)
 			fprintf(fp, ",metagn");
+		if (s_handle->transflags & TRANS_LOG_THREAD) {
+			fprintf(fp, ",pthread");
+			fprintf(fp, ",kthread");
+		}
 		if (s_handle->transflags & TRANS_LOG_SETPTR)
 			fprintf(fp, ",setptr");
 	}
@@ -1332,6 +1347,11 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 		if (s_handle->transflags & TRANS_LOG_METAGEN) {
 			uint64_t mgn = ldms_set_meta_gn_get(set);
 			fprintf(s_handle->file, ",%" PRIu64, mgn);
+		}
+		if (s_handle->transflags & TRANS_LOG_THREAD) {
+			uint64_t tid = gettid();
+			pthread_t ptid = pthread_self();
+			fprintf(s_handle->file, ",%lu,%" PRIu64, ptid, tid);
 		}
 		if (s_handle->transflags & TRANS_LOG_SETPTR)
 			fprintf(s_handle->file, ",%p", set);

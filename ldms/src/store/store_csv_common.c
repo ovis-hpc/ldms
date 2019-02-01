@@ -655,6 +655,11 @@ static int get_transflags(struct csv_plugin_static *cps, const char *transdata, 
 			cps->msglog(LDMSD_LDEBUG,"%s: logging generation numbers\n",
 				w);
 			break;
+		case 'i':
+			tmp |= TRANS_LOG_THREAD;
+			cps->msglog(LDMSD_LDEBUG,"%s: logging thread id numbers\n",
+				w);
+			break;
 		case 'm':
 			tmp |= TRANS_LOG_METAGEN;
 			cps->msglog(LDMSD_LDEBUG,"%s: logging metageneration numbers\n",
@@ -681,7 +686,7 @@ static int get_transflags(struct csv_plugin_static *cps, const char *transdata, 
 			break;
 		case 'a': tmp =
 			(TRANS_LOG_DURATION | TRANS_LOG_GENERATION |
-			TRANS_LOG_METAGEN | TRANS_LOG_SETPTR |
+			TRANS_LOG_METAGEN | TRANS_LOG_SETPTR | TRANS_LOG_THREAD |
 			TRANS_LOG_CONSISTENT | TRANS_LOG_TRIP | TRANS_LOG_ARRIVAL);
 			cps->msglog(LDMSD_LDEBUG, "%s: logging all transport data\n",
 				w);

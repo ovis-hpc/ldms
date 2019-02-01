@@ -135,7 +135,7 @@ Specify a new group id for the file. If unspecified, no change in group ownershi
 .TP
 transportdata=<met_letters>
 .br
-The supported met_letters are "acdgmpt0N", where inclusion of a character in the transportdata option turns on metrics as follows: "a" (all) is equivalent "cdgmprt"; "c" enables logging 'consistent'; "d" enables logging duration; "g" enables logging data generation number, "m" enables logging metadata generation number, "p" enables logging set memory address at the store, "r" enables logging store arrival timestamp, "t" enables logging trip time.  See TRANSPORT DATA below for the meaning of these metrics.  The character '0' turns off all transport data output and reenables regular metric output. The character 'N' turns off regular metric output.  The default if transportdata is not given is "0".  The 'regular' metrics for the case of 'N' are all non-transport data metrics after the 'ProducerName' column. Any characters following 'a' and '0' are ignored. For sampler performance analysis, only "d" is needed.
+The supported met_letters are "acdgimprst0N", where inclusion of a character in the transportdata option turns on metrics as follows: "a" (all) is equivalent "cdgimprt"; "c" enables logging 'consistent'; "d" enables logging duration; "g" enables logging data generation number; "i" enables logging pthread and kthread identifiers; "m" enables logging metadata generation number, "p" enables logging set memory address at the store, "r" enables logging store arrival timestamp, "t" enables logging trip time.  See TRANSPORT DATA below for the meaning of these metrics.  The character '0' turns off all transport data output and reenables regular metric output. The character 'N' turns off regular metric output.  The default if transportdata is not given is "0".  The 'regular' metrics for the case of 'N' are all non-transport data metrics after the 'ProducerName' column. Any characters following 'a' and '0' are ignored. For sampler performance analysis, only "d" is needed.
 .RE
 
 
@@ -376,6 +376,8 @@ subject to clock skew. Ideally, the trip time is very similar within the samplin
 The data generation number (datagn) is an increasing (with rollover possible at UINT64_MAX) indicating the number of times any metric value has been updated in the set. 
 
 The metadata generation number (metagn) is an increasing (with rollover possible at UINT64_MAX) indicating the number of times any metadata value has been updated in the set. 
+
+The thread metrics refer to the thread delivering the metric set instance; pthread is the pthread integer identifier from pthread_self() and kthread is the kernel thread id from gettid().
 
 The memory address (setptr) is the hexadecimal pointer value for the set instance in store daemon (local) memory. It is only expected to change when connections change or the upstream data source changes the set definition.
 
