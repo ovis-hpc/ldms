@@ -1742,7 +1742,7 @@ size_t __prdcr_set_status(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_set_t prd_set)
 	struct ldms_timestamp ts, dur;
 	ts = ldms_transaction_timestamp_get(prd_set->set);
 	dur = ldms_transaction_duration_get(prd_set->set);
-	return Snprintf(&reqc->line_buf, &reqc->line_len,
+	return linebuf_printf(reqc,
 		"{ "
 		"\"inst_name\":\"%s\","
 		"\"schema_name\":\"%s\","
@@ -1764,11 +1764,9 @@ size_t __prdcr_set_status(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_set_t prd_set)
 
 /* This function must be called with producer lock held */
 int __prdcr_set_status_handler(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr,
-			int *count, const char *setname, const char *schema,
-			action_fn cb, void *arg)
+			int *count, const char *setname, const char *schema)
 {
-	int rc;
-	size_t cnt;
+	int rc = 0;
 	ldmsd_prdcr_set_t prd_set;
 
 	if (setname) {
@@ -1778,13 +1776,11 @@ int __prdcr_set_status_handler(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr,
 		if (schema && (0 != strcmp(prd_set->schema_name, schema)))
 			return 0;
 		if (*count) {
-			cnt = snprintf(reqc->line_buf, reqc->line_len, ",\n");
-			rc = cb(reqc, reqc->line_buf, cnt, arg);
+			rc = linebuf_printf(reqc, ",\n");
 			if (rc)
 				return rc;
 		}
-		cnt = __prdcr_set_status(reqc, prd_set);
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
+		rc = __prdcr_set_status(reqc, prd_set);
 		if (rc)
 			return rc;
 		(*count)++;
@@ -1795,28 +1791,24 @@ int __prdcr_set_status_handler(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr,
 				continue;
 
 			if (*count) {
-				cnt = snprintf(reqc->line_buf, reqc->line_len, ",\n");
-				rc = cb(reqc, reqc->line_buf, cnt, arg);
+				rc = linebuf_printf(reqc, ",\n");
 				if (rc)
 					return rc;
 			}
-			cnt = __prdcr_set_status(reqc, prd_set);
-			rc = cb(reqc, reqc->line_buf, cnt, arg);
+			rc = __prdcr_set_status(reqc, prd_set);
 			if (rc)
 				return rc;
 			(*count)++;
 		}
-		rc = 0;
 	}
 	return rc;
 }
 
-int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
+int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc)
 {
 	char *prdcr_name, *setname, *schema;
 	prdcr_name = setname = schema = NULL;
 	ldmsd_prdcr_t prdcr = NULL;
-	size_t cnt = 0;
 	int rc, count = 0;
 	reqc->errcode = 0;
 
@@ -1824,8 +1816,7 @@ int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
 	setname = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
 	schema = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SCHEMA);
 
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "[");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	rc = linebuf_printf(reqc, "[");
 	if (rc)
 		return rc;
 	if (prdcr_name) {
@@ -1837,7 +1828,7 @@ int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
 	if (prdcr) {
 		ldmsd_prdcr_lock(prdcr);
 		rc = __prdcr_set_status_handler(reqc, prdcr, &count,
-				setname, schema, cb, arg);
+						setname, schema);
 		ldmsd_prdcr_unlock(prdcr);
 	} else {
 		ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
@@ -1845,7 +1836,7 @@ int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
 				prdcr = ldmsd_prdcr_next(prdcr)) {
 			ldmsd_prdcr_lock(prdcr);
 			rc = __prdcr_set_status_handler(reqc, prdcr, &count,
-					setname, schema, cb, arg);
+							setname, schema);
 			ldmsd_prdcr_unlock(prdcr);
 			if (rc) {
 				ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
@@ -1856,8 +1847,7 @@ int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
 	}
 
 out:
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	rc = linebuf_printf(reqc, "]");
 	if (prdcr_name)
 		free(prdcr_name);
 	if (setname)
@@ -1870,25 +1860,26 @@ out:
 static int prdcr_set_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
-	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
 
-	rc = __prdcr_set_status_json_obj(reqc, __get_json_obj_len_cb, (void*)&cnt);
+	rc = __prdcr_set_status_json_obj(reqc);
 	if (rc)
 		return rc;
 	attr.discrim = 1;
-	attr.attr_len = cnt;
+	attr.attr_len = reqc->line_off;
 	attr.attr_id = LDMSD_ATTR_JSON;
 	ldmsd_hton_req_attr(&attr);
-	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	rc = ldmsd_append_reply(reqc, (char *)&attr,
+				sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
 		return rc;
 
-	rc = __prdcr_set_status_json_obj(reqc, __append_json_obj_cb, NULL);
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
 	if (rc)
 		return rc;
 	attr.discrim = 0;
-	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t), LDMSD_REQ_EOM_F);
+	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
+			sizeof(uint32_t), LDMSD_REQ_EOM_F);
 	return rc;
 }
 
