@@ -4581,9 +4581,8 @@ out:
 	return 0;
 }
 
-int __daemon_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
+int __daemon_status_json_obj(ldmsd_req_ctxt_t reqc)
 {
-	size_t cnt = 0;
 	int rc = 0;
 
 	extern int ev_thread_count;
@@ -4591,45 +4590,44 @@ int __daemon_status_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
 	extern int *ev_count;
 	int i;
 
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "[");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	rc = linebuf_printf(reqc, "[");
 	if (rc)
 		return rc;
 	for (i = 0; i < ev_thread_count; i++) {
 		if (i) {
-			cnt = snprintf(reqc->line_buf, reqc->line_len, "\n");
-			rc = cb(reqc, reqc->line_buf, cnt, arg);
+			rc = linebuf_printf(reqc, ",\n");
 			if (rc)
 				return rc;
 		}
 
-		cnt = snprintf(reqc->line_buf, reqc->line_len,
+		rc = linebuf_printf(reqc,
 				"{ \"thread\":\"%p\","
 				"\"task_count\":\"%d\"}",
 				(void *)ev_thread[i], ev_count[i]);
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
+		if (rc)
+			return rc;
 	}
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]");
-	rc = cb(reqc, reqc->line_buf, cnt + 1, arg);
+	rc = linebuf_printf(reqc, "]");
 	return rc;
 }
 
 static int daemon_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
-	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
 
-	rc = __daemon_status_json_obj(reqc, __get_json_obj_len_cb, (void*)&cnt);
+	rc = __daemon_status_json_obj(reqc);
 	if (rc)
 		return rc;
+
 	attr.discrim = 1;
-	attr.attr_len = cnt;
+	attr.attr_len = reqc->line_off;
 	attr.attr_id = LDMSD_ATTR_JSON;
 	ldmsd_hton_req_attr(&attr);
-	ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
-
-	rc = __daemon_status_json_obj(reqc, __append_json_obj_cb, NULL);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		return rc;
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
 	if (rc)
 		return rc;
 	attr.discrim = 0;
