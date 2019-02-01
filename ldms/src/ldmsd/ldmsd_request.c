@@ -1182,79 +1182,64 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
  * The example below takes a variable length argument list, formats
  * the arguments as a JSON array and returns the array to the caller.
  */
-typedef int (*action_fn)(ldmsd_req_ctxt_t reqc, char *data, size_t len, void *arg);
 
-int __get_json_obj_len_cb(ldmsd_req_ctxt_t reqc, char *data, size_t len, void *arg)
+int __example_json_obj(ldmsd_req_ctxt_t reqc)
 {
-	size_t *tot_cnt = (size_t *)arg;
-	*tot_cnt += len;
-	return 0;
-}
-
-int __append_json_obj_cb(ldmsd_req_ctxt_t reqc, char *data, size_t len, void *arg)
-{
-	return ldmsd_append_reply(reqc, data, len, 0);
-}
-
-int __example_json_obj(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
-{
-	size_t cnt;
 	int rc, count = 0;
 	ldmsd_req_attr_t attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->req_buf);
 	reqc->errcode = 0;
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "[");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	rc = linebuf_printf(reqc, "[");
 	if (rc)
 		return rc;
 	while (attr->discrim) {
 		if (count) {
-			cnt = snprintf(reqc->line_buf, reqc->line_len, ",\n");
-			rc = cb(reqc, reqc->line_buf, cnt, arg);
+			rc = linebuf_printf(reqc, ",\n");
 			if (rc)
 				return rc;
 		}
-
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+		rc = linebuf_printf(reqc,
 			       "{ \"attr_len\":%d,"
 			       "\"attr_id\":%d,"
 			       "\"attr_value\": \"%s\" }",
 			       attr->attr_len,
 			       attr->attr_id,
 			       (char *)attr->attr_value);
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
 		if (rc)
 			return rc;
 		count++;
 		attr = ldmsd_next_attr(attr);
 	}
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]");
-	rc = cb(reqc, reqc->line_buf, cnt + 1, arg); /* +1 for '\0' */
+	rc = linebuf_printf(reqc, "]");
 	return rc;
-
 }
 
 static int example_handler(ldmsd_req_ctxt_t reqc)
 {
 	size_t cnt = 0;
+	int rc;
 	int flags = 0;
 	struct ldmsd_req_attr_s attr;
-	__example_json_obj(reqc, __get_json_obj_len_cb, (void *)&cnt);
-	if (!cnt) {
-		flags = LDMSD_REQ_SOM_F;
-		goto endresp;
-	} else {
-		attr.discrim = 1;
-		attr.attr_len = cnt;
-		attr.attr_id = LDMSD_ATTR_JSON;
-		ldmsd_hton_req_attr(&attr);
-	}
-	(void) ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
-	__example_json_obj(reqc, __append_json_obj_cb, NULL);
-endresp:
+	rc = __example_json_obj(reqc);
+	if (rc)
+		return rc;
+
+	/* Send the json attribut header */
+	attr.discrim = 1;
+	attr.attr_len = reqc->line_off;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		return rc;
+	/* Send the json object string */
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+	if (rc)
+		return rc;
+	/* Send the terminating attribute header */
 	attr.discrim = 0;
-	(void)ldmsd_append_reply(reqc, (char *)&(attr.discrim), sizeof(uint32_t),
+	rc = ldmsd_append_reply(reqc, (char *)&(attr.discrim), sizeof(uint32_t),
 							flags | LDMSD_REQ_EOM_F);
-	return 0;
+	return rc;
 }
 
 static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
