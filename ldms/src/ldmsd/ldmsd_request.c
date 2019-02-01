@@ -4222,11 +4222,10 @@ send_reply:
 }
 
 extern struct plugin_list plugin_list;
-int __plugn_list_string(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
+int __plugn_list_string(ldmsd_req_ctxt_t reqc)
 {
 	char *name = NULL;
 	int rc, count = 0;
-	size_t cnt = 0;
 	struct ldmsd_plugin_cfg *p;
 	rc = 0;
 
@@ -4237,21 +4236,19 @@ int __plugn_list_string(ldmsd_req_ctxt_t reqc, action_fn cb, void *arg)
 			continue;
 
 		if (p->plugin->usage) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "%s\n%s",
+			rc = linebuf_printf(reqc, "%s\n%s",
 					p->name, p->plugin->usage(p->plugin));
 		} else {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "%s\n", p->name);
+			rc = linebuf_printf(reqc, "%s\n", p->name);
 		}
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
 		if (rc)
 			goto out;
 		count++;
 	}
 	if (name && (0 == count)) {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
 				"Plugin '%s' not loaded.", name);
 		reqc->errcode = ENOENT;
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
 	}
 out:
 	if (name)
@@ -4265,18 +4262,18 @@ static int plugn_list_handler(ldmsd_req_ctxt_t reqc)
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
 
-	rc = __plugn_list_string(reqc, __get_json_obj_len_cb, (void*)&cnt);
+	rc = __plugn_list_string(reqc);
 	if (rc)
 		return rc;
+
 	attr.discrim = 1;
-	attr.attr_len = cnt;
+	attr.attr_len = reqc->line_off;
 	attr.attr_id = LDMSD_ATTR_STRING;
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
 		return rc;
-
-	rc = __plugn_list_string(reqc, __append_json_obj_cb, NULL);
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
 	if (rc)
 		return rc;
 	attr.discrim = 0;
