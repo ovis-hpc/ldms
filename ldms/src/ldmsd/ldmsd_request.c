@@ -1634,7 +1634,7 @@ out:
 
 static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 {
-	int rc;
+	int rc = 0;
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
 	ldmsd_prdcr_t prdcr = NULL;
@@ -1659,7 +1659,7 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 		rc = __prdcr_status_json_obj(reqc, __get_json_obj_len_cb,
 							prdcr, (void*)&cnt);
 		if (rc)
-			return rc;
+			goto out;
 	} else {
 		count = 0;
 		for (prdcr = ldmsd_prdcr_first(); prdcr;
@@ -1669,7 +1669,7 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 			rc = __prdcr_status_json_obj(reqc, __get_json_obj_len_cb,
 							prdcr, (void*)&cnt);
 			if (rc)
-				return rc;
+				goto out;
 			count++;
 		}
 	}
@@ -1681,16 +1681,16 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
-		return rc;
+		goto out;
 
 	/* Construct the json object string */
 	rc = ldmsd_append_reply(reqc, "[", 1, 0);
 	if (rc)
-		return rc;
+		goto out;
 	if (prdcr) {
 		rc = __prdcr_status_json_obj(reqc, __append_json_obj_cb, prdcr, NULL);
 		if (rc)
-			return rc;
+			goto out;
 	} else {
 		count = 0;
 		for (prdcr = ldmsd_prdcr_first(); prdcr;
@@ -1698,24 +1698,27 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 			if (count) {
 				rc = ldmsd_append_reply(reqc, ",\n", 2, 0);
 				if (rc)
-					return rc;
+					goto out;
 			}
 			rc = __prdcr_status_json_obj(reqc, __append_json_obj_cb,
 								prdcr, NULL);
 			if (rc)
-				return rc;
+				goto out;
 			count++;
 		}
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	rc = ldmsd_append_reply(reqc, "]", 1, 0);
 	if (rc) {
-		return rc;
+		goto out;
 	}
 	attr.discrim = 0;
 	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t), LDMSD_REQ_EOM_F);
+out:
 	if (name)
 		free(name);
+	if (prdcr)
+		ldmsd_prdcr_put(prdcr);
 	return rc;
 }
 
@@ -2481,7 +2484,7 @@ out:
 
 static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 {
-	int rc;
+	int rc = 0;
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
 	char *name;
