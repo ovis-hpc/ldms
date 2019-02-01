@@ -56,6 +56,11 @@ libstore_csv_la_CFLAGS = $(AM_CFLAGS)
 libstore_csv_la_LIBADD = $(STORE_LIBADD) $(CSV_COMMON_LIBFLAGS)
 pkglib_LTLIBRARIES += libstore_csv.la
 
+libstore_csvdbg_la_SOURCES = store_common.h store_csv.c store_csv_common.h
+libstore_csvdbg_la_CFLAGS = $(AM_CFLAGS) -DCSVDBG
+libstore_csvdbg_la_LIBADD = $(STORE_LIBADD) $(CSV_COMMON_LIBFLAGS)
+pkglib_LTLIBRARIES += libstore_csvdbg.la
+
 libstore_function_csv_la_SOURCES = store_common.h store_function_csv.c
 libstore_function_csv_la_CFLAGS = $(AM_CFLAGS)
 libstore_function_csv_la_LIBADD = $(STORE_LIBADD) -lpthread

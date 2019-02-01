@@ -16,11 +16,14 @@ config name=store_csv action=custom container=<c_name> schema=<s_name> [ <attr> 
 .br
 strgp_add plugin=store_csv container=<c_name> schema=<s_name> [ <attr> = <value> ]
 .br
+.br
+load name=store_csvdbg
 
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), store plugins for the ldmsd (ldms daemon) are configured via
 the ldmsd_controller or a configuration file. The store_csv plugin is a CSV store.
+The store_csvdbg plugin is a CSV store that by default includes all transportdata metrics.
 .PP
 
 .SH STORE_CSV INIT CONFIGURATION ATTRIBUTE SYNTAX

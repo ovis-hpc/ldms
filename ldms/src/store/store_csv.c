@@ -102,7 +102,11 @@ struct storek{
 	int buffer_sz;
 };
 
+#ifdef CSVDBG
+#define PNAME "store_csvdbg"
+#else
 #define PNAME "store_csv"
+#endif
 
 static int buffer_type = 1; /* autobuffering */
 static int buffer_sz = 0;
@@ -1907,6 +1911,12 @@ static void store_csv_init()
 	store_idx = idx_create();
 	pthread_mutex_init(&cfg_lock, NULL);
 	LIB_CTOR_COMMON(PG);
+#ifdef CSVDBG
+	PG.transflags = (TRANS_LOG_NORMAL | 
+		TRANS_LOG_DURATION | TRANS_LOG_GENERATION |
+		TRANS_LOG_METAGEN | TRANS_LOG_SETPTR | TRANS_LOG_THREAD |
+		TRANS_LOG_CONSISTENT | TRANS_LOG_TRIP | TRANS_LOG_ARRIVAL);
+#endif
 }
 
 static void __attribute__ ((destructor)) store_csv_fini(void);
