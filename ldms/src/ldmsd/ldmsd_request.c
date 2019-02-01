@@ -4283,37 +4283,35 @@ static int plugn_list_handler(ldmsd_req_ctxt_t reqc)
 
 /* Caller must hold the set tree lock. */
 int __plugn_sets_json_obj(ldmsd_req_ctxt_t reqc,
-				ldmsd_plugin_set_list_t list,
-				action_fn cb, void *arg)
+				ldmsd_plugin_set_list_t list)
 {
 	ldmsd_plugin_set_t set;
-	size_t cnt;
 	int rc, set_count;
 	set = LIST_FIRST(&list->list);
 	if (!set)
 		return 0;
-	cnt = snprintf(reqc->line_buf, reqc->line_len,
+	rc = linebuf_printf(reqc,
 			"{"
 			"\"plugin\":\"%s\","
 			"\"sets\":[",
-			set->plugin_name
-			);
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+			set->plugin_name);
 	if (rc)
 		return rc;
 	set_count = 0;
 	LIST_FOREACH(set, &list->list, entry) {
-		if (set_count)
-			cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
-		cnt = snprintf(reqc->line_buf, reqc->line_len,
-				"\"%s\"", set->inst_name);
+		if (set_count) {
+			rc = linebuf_printf(reqc, ",");
+			if (rc)
+				return rc;
+		}
+		rc = linebuf_printf(reqc, "\"%s\"", set->inst_name);
+		if (rc)
+			return rc;
 		set_count++;
-		rc = cb(reqc, reqc->line_buf, cnt, arg);
 		if (rc)
 			return rc;
 	}
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]}");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	rc = linebuf_printf(reqc, "]}");
 	return rc;
 }
 
@@ -4337,27 +4335,33 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 					"or the plugin isn't loaded",
 					plugin);
 			reqc->errcode = ENOENT;
+			ldmsd_set_tree_unlock();
 			goto err0;
 		}
-		rc = __plugn_sets_json_obj(reqc, list,
-					__get_json_obj_len_cb, (void*)&cnt);
-		if (rc)
+		rc = __plugn_sets_json_obj(reqc, list);
+		if (rc) {
+			ldmsd_set_tree_unlock();
 			goto err;
-
+		}
 	} else {
 		plugn_count = 0;
 		for (list = ldmsd_plugin_set_list_first(); list;
 				list = ldmsd_plugin_set_list_next(list)) {
-			if (plugn_count)
-				cnt += 1;
-			rc = __plugn_sets_json_obj(reqc, list,
-					__get_json_obj_len_cb, (void*)&cnt);
-			if (rc)
+			if (plugn_count) {
+				rc = linebuf_printf(reqc, ",");
+				if (rc)
+					goto err;
+			}
+			rc = __plugn_sets_json_obj(reqc, list);
+			if (rc) {
+				ldmsd_set_tree_unlock();
 				goto err;
+			}
 			plugn_count += 1;
 		}
 	}
-	cnt += 2; /* +2 for '[' and ']' and commas to separate plugin objects */
+	ldmsd_set_tree_unlock();
+	cnt = reqc->line_off + 2; /* +2 for '[' and ']'*/
 
 	attr.discrim = 1;
 	attr.attr_len = cnt;
@@ -4365,58 +4369,32 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 	if (rc)
-		goto err;
+		goto out;
 
-	/* Construct the json object */
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "[");
-	rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
-	if (plugin) {
-		list = ldmsd_plugin_set_list_find(plugin);
-		rc = __plugn_sets_json_obj(reqc, list,
-					__append_json_obj_cb, NULL);
-		if (rc)
-			goto err;
-	} else {
-		plugn_count = 0;
-		for (list = ldmsd_plugin_set_list_first(); list;
-				list = ldmsd_plugin_set_list_next(list)) {
-			if (plugn_count) {
-				cnt = snprintf(reqc->line_buf, reqc->line_len,
-						",");
-				rc = ldmsd_append_reply(reqc, reqc->line_buf,
-									cnt, 0);
-				if (rc)
-					goto err;
-			}
-			rc = __plugn_sets_json_obj(reqc, list,
-					__append_json_obj_cb, NULL);
-			if (rc)
-				goto err;
-			plugn_count++;
-		}
-	}
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]");
-	rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+	rc = ldmsd_append_reply(reqc, "[", 1, 0);
+	if (rc)
+		goto out;
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+	if (rc)
+		goto out;
+	rc = ldmsd_append_reply(reqc, "]", 1, 0);
+	if (rc)
+		goto out;
 	attr.discrim = 0;
-	ldmsd_set_tree_unlock();
-	if (plugin)
-		free(plugin);
 	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
 				sizeof(uint32_t), LDMSD_REQ_EOM_F);
-	return rc;
-err:
-	ldmsd_set_tree_unlock();
+out:
 	if (plugin)
 		free(plugin);
+	return rc;
+
+err:
 	ldmsd_send_error_reply(reqc->xprt, reqc->rec_no, rc,
 						"internal error", 15);
-	return rc;
+	goto out;
 err0:
-	ldmsd_set_tree_unlock();
-	if (plugin)
-		free(plugin);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	return rc;
+	goto out;
 }
 
 extern int ldmsd_set_udata(const char *set_name, const char *metric_name,
