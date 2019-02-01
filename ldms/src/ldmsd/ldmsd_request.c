@@ -3377,10 +3377,8 @@ out:
 }
 
 int __prdcr_hint_set_list_json_obj(ldmsd_req_ctxt_t reqc,
-				ldmsd_updt_hint_set_list_t list,
-				action_fn cb, void *arg)
+				ldmsd_updt_hint_set_list_t list)
 {
-	size_t cnt;
 	ldmsd_prdcr_set_t set;
 	int rc, set_count;
 	set_count = 0;
@@ -3389,48 +3387,32 @@ int __prdcr_hint_set_list_json_obj(ldmsd_req_ctxt_t reqc,
 		return 0;
 	set = LIST_FIRST(&list->list);
 	pthread_mutex_lock(&set->lock);
-	cnt = snprintf(reqc->line_buf, reqc->line_len,
+	rc = linebuf_printf(reqc,
 				"{\"interval_us\":\"%ld\",",
 				set->updt_hint.intrvl_us);
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
 	if (rc)
 		goto err;
 	if (set->updt_hint.offset_us == LDMSD_UPDT_HINT_OFFSET_NONE) {
-		cnt = snprintf(reqc->line_buf, reqc->line_len,
-				"\"offset_us\":\"None\",");
+		rc = linebuf_printf(reqc, "\"offset_us\":\"None\",");
 	} else {
-		cnt = snprintf(reqc->line_buf, reqc->line_len,
+		rc = linebuf_printf(reqc,
 				"\"offset_us\":\"%ld\",",
 				set->updt_hint.offset_us);
 	}
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
 	if (rc)
 		goto err;
-	cnt = snprintf(reqc->line_buf, reqc->line_len,
-			"\"sets\":[");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	rc = linebuf_printf(reqc, "\"sets\":[");
 	if (rc)
 		goto err;
 	while (set) {
-		if (0 == set_count) {
-			cnt = snprintf(reqc->line_buf, reqc->line_len,
-					"\"%s\"",
-					set->inst_name);
-			rc = cb(reqc, reqc->line_buf, cnt, arg);
-			if (rc)
-				goto err;
-		} else {
-			cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
-			rc = cb(reqc, reqc->line_buf, cnt, arg);
-			if (rc)
-				goto err;
-			cnt = snprintf(reqc->line_buf, reqc->line_len,
-					"\"%s\"",
-					set->inst_name);
-			rc = cb(reqc, reqc->line_buf, cnt, arg);
+		if (set_count) {
+			rc = linebuf_printf(reqc, ",");
 			if (rc)
 				goto err;
 		}
+		rc = linebuf_printf(reqc, "\"%s\"", set->inst_name);
+		if (rc)
+			goto err;
 		set_count++;
 		pthread_mutex_unlock(&set->lock);
 		set = LIST_NEXT(set, updt_hint_entry);
@@ -3438,43 +3420,39 @@ int __prdcr_hint_set_list_json_obj(ldmsd_req_ctxt_t reqc,
 			break;
 		pthread_mutex_lock(&set->lock);
 	}
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]}");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	rc = linebuf_printf(reqc, "]}");
 	return rc;
 err:
 	pthread_mutex_unlock(&set->lock);
 	return rc;
 }
 
-int __prdcr_hint_set_tree_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr,
-							action_fn cb, void *arg)
+/* The caller must hold the prdcr lock */
+int __prdcr_hint_set_tree_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr)
 {
-	size_t cnt;
 	int rc, count;
 	struct rbn *rbn;
 	ldmsd_updt_hint_set_list_t list;
 
-	cnt = snprintf(reqc->line_buf, reqc->line_len,
+	rc = linebuf_printf(reqc,
 			"{\"name\":\"%s\","
 			"\"hints\":[", prdcr->obj.name);
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
 	if (rc)
 		return rc;
 	count = 0;
 	rbn = rbt_min(&prdcr->hint_set_tree);
 	while (rbn) {
 		if (0 < count)
-			rc = cb(reqc, ",", 1, arg);
+			rc = linebuf_printf(reqc, ",");
 		list = container_of(rbn, struct ldmsd_updt_hint_set_list, rbn);
-		rc = __prdcr_hint_set_list_json_obj(reqc, list, cb, arg);
+		rc = __prdcr_hint_set_list_json_obj(reqc, list);
 		if (rc)
 			return rc;
 		count++;
 		rbn = rbn_succ(rbn);
 	}
 out:
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]}");
-	rc = cb(reqc, reqc->line_buf, cnt, arg);
+	rc = linebuf_printf(reqc, "]}");
 	return rc;
 }
 
@@ -3482,9 +3460,8 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	size_t cnt = 0;
 	int rc, prdcr_count;
-	ldmsd_prdcr_t prdcr;
+	ldmsd_prdcr_t prdcr = NULL;
 	ldmsd_updt_hint_set_list_t list;
-	struct rbn *rbn;
 	char *name;
 	struct ldmsd_req_attr_s attr;
 
@@ -3499,27 +3476,31 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
 			return 0;
 		}
 		ldmsd_prdcr_lock(prdcr);
-		rc = __prdcr_hint_set_tree_json_obj(reqc, prdcr,
-				__get_json_obj_len_cb, (void*)&cnt);
+		rc = __prdcr_hint_set_tree_json_obj(reqc, prdcr);
 		ldmsd_prdcr_unlock(prdcr);
 		if (rc)
 			goto intr_err;
 	} else {
 		prdcr_count = 0;
+		ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 		for (prdcr = ldmsd_prdcr_first(); prdcr;
 				prdcr = ldmsd_prdcr_next(prdcr)) {
+			if (prdcr_count) {
+				rc = linebuf_printf(reqc, ",\n");
+			}
 			ldmsd_prdcr_lock(prdcr);
-			rc = __prdcr_hint_set_tree_json_obj(reqc, prdcr,
-					__get_json_obj_len_cb, (void*)&cnt);
+			rc = __prdcr_hint_set_tree_json_obj(reqc, prdcr);
 			ldmsd_prdcr_unlock(prdcr);
-			if (rc)
+			if (rc) {
+				ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 				goto intr_err;
+			}
 			prdcr_count +=1;
 		}
-		cnt += (prdcr_count  - 1); /* Count the commas */
+		ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	}
 
-	cnt += 2; /*   +2 for [ and ] */
+	cnt = reqc->line_off + 2; /*   +2 for [ and ] */
 
 	attr.discrim = 1;
 	attr.attr_id = LDMSD_ATTR_JSON;
@@ -3529,46 +3510,13 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
 			sizeof(struct ldmsd_req_attr_s), LDMSD_REQ_SOM_F);
 	if (rc)
 		goto intr_err;
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "[");
-	rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+	rc = ldmsd_append_reply(reqc, "[", 1, 0);
 	if (rc)
 		goto intr_err;
-	if (name) {
-		prdcr = ldmsd_prdcr_find(name);
-		if (!prdcr) {
-			cnt = snprintf(reqc->line_buf, reqc->line_len,
-					"prdcr '%s' not found", name);
-			reqc->errcode = ENOENT;
-			ldmsd_send_req_response(reqc, reqc->line_buf);
-			return 0;
-		}
-		ldmsd_prdcr_lock(prdcr);
-		rc = __prdcr_hint_set_tree_json_obj(reqc, prdcr,
-				__append_json_obj_cb, (void*)&cnt);
-		ldmsd_prdcr_unlock(prdcr);
-		if (rc)
-			goto intr_err;
-	} else {
-		prdcr_count = 0;
-		for (prdcr = ldmsd_prdcr_first(); prdcr;
-				prdcr = ldmsd_prdcr_next(prdcr)) {
-			if (prdcr_count) {
-				cnt = snprintf(reqc->line_buf, reqc->line_len, ",");
-				rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
-				if (rc)
-					goto intr_err;
-			}
-			ldmsd_prdcr_lock(prdcr);
-			rc = __prdcr_hint_set_tree_json_obj(reqc, prdcr,
-					__append_json_obj_cb, (void*)&cnt);
-			ldmsd_prdcr_unlock(prdcr);
-			if (rc)
-				goto intr_err;
-			prdcr_count++;
-		}
-	}
-	cnt = snprintf(reqc->line_buf, reqc->line_len, "]");
-	rc = ldmsd_append_reply(reqc, reqc->line_buf, cnt, 0);
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+	if (rc)
+		goto intr_err;
+	rc = ldmsd_append_reply(reqc, "]", 1, 0);
 	if (rc)
 		goto intr_err;
 	attr.discrim = 0;
@@ -3576,10 +3524,16 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
 				sizeof(uint32_t), LDMSD_REQ_EOM_F);
 	if (rc)
 		goto intr_err;
-	return 0;
+	goto out;
+
 intr_err:
 	ldmsd_send_error_reply(reqc->xprt, reqc->rec_no, EINTR,
-					"interval error", 14);
+				"interval error", 14);
+out:
+	if (name)
+		free(name);
+	if (prdcr)
+		ldmsd_prdcr_put(prdcr);
 	return rc;
 }
 
