@@ -628,23 +628,20 @@ class LdmsdCmdParser(cmd.Cmd):
         [name=]        producer name
         """
         resp = self.handle('prdcr_status', None)
-        if resp['errcode'] != 0:
-            print("Request returned error {0}".format(resp['errcode']))
-            return
-
-        producers =  json.loads(resp['msg'])
-        print("Name             Host             Port         Transport    State")
-        print("---------------- ---------------- ------------ ------------ ------------")
-        for prdcr in producers:
-            print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
-                                                              prdcr['host'],
-                                                              prdcr['port'],
-                                                              prdcr['transport'],
-                                                              prdcr['state']))
-            for pset in prdcr['sets']:
-                print("    {0:16} {1:16} {2}".format(pset['inst_name'],
-                                                     pset['schema_name'],
-                                                     pset['state']))
+        if resp['errcode'] == 0:
+            producers =  json.loads(resp['msg'])
+            print("Name             Host             Port         Transport    State")
+            print("---------------- ---------------- ------------ ------------ ------------")
+            for prdcr in producers:
+                print("{0:16} {1:16} {2:12} {3:12} {4:12}".format(prdcr['name'],
+                                                                  prdcr['host'],
+                                                                  prdcr['port'],
+                                                                  prdcr['transport'],
+                                                                  prdcr['state']))
+                for pset in prdcr['sets']:
+                    print("    {0:16} {1:16} {2}".format(pset['inst_name'],
+                                                         pset['schema_name'],
+                                                         pset['state']))
 
     def complete_prdcr_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_status', text)
