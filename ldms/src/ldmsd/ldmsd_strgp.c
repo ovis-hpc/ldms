@@ -755,7 +755,7 @@ out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
 
-	return 0; /* return rc here? */
+	return rc; /* return rc here */
 }
 
 int cmd_strgp_stop(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)

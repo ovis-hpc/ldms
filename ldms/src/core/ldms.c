@@ -194,11 +194,6 @@ uint64_t ldms_set_data_gn_get(ldms_set_t _set)
 	return __le64_to_cpu(sd->set->data->gn);
 }
 
-static void rem_local_set(struct ldms_set *s)
-{
-	rbt_del(&set_tree, &s->rb_node);
-}
-
 struct cb_arg {
 	void *user_arg;
 	int (*user_cb)(struct ldms_set *, void *);
@@ -328,7 +323,6 @@ static int __record_set(const char *instance_name, ldms_set_t *s,
 static
 int __ldms_set_publish(struct ldms_set *set)
 {
-	struct ldms_set *_set;
 	if (set->flags & LDMS_SET_F_PUBLISHED)
 		return EEXIST;
 
@@ -350,7 +344,6 @@ int ldms_set_publish(ldms_set_t sd)
 static
 int __ldms_set_unpublish(struct ldms_set *set)
 {
-	struct ldms_set *_set;
 	if (!(set->flags & LDMS_SET_F_PUBLISHED))
 		return ENOENT;
 

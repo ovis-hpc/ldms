@@ -158,7 +158,6 @@ out:
 static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 {
 	int rc;
-	struct timeval end;
 	/* The reference will be put back in update_cb */
 	ldmsd_log(LDMSD_LDEBUG, "Schedule an update for set %s\n",
 					prd_set->inst_name);
@@ -195,14 +194,12 @@ static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 	struct timeval start, end;
 	gettimeofday(&start, NULL);
 #endif /* LDMSD_UPDATE_TIME */
-	int rc;
 	ldmsd_prdcr_lock(prdcr);
 	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED)
 		goto out;
 	ldmsd_prdcr_set_t prd_set;
 	for (prd_set = ldmsd_prdcr_set_first(prdcr); prd_set;
 	     prd_set = ldmsd_prdcr_set_next(prd_set)) {
-		int rc;
 		const char *str;
 		if (prd_set->state == LDMSD_PRDCR_SET_STATE_UPDATING) {
 			ldmsd_log(LDMSD_LINFO, "%s: Set %s: "
@@ -216,12 +213,11 @@ static void schedule_prdcr_updates(ldmsd_updtr_t updtr,
 			schedule_set_updates(prd_set, updtr);
 			continue;
 		}
-		rc = 1;
 		if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
 			str = prd_set->inst_name;
 		else
 			str = prd_set->schema_name;
-		rc = regexec(&match->regex, str, 0, NULL, 0);
+		int rc = regexec(&match->regex, str, 0, NULL, 0);
 		if (!rc) {
 			schedule_set_updates(prd_set, updtr);
 		}
@@ -390,7 +386,7 @@ int ldmsd_updtr_stop(const char *updtr_name)
 out_1:
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
-	return 0;
+	return rc;
 }
 
 ldmsd_updtr_t ldmsd_updtr_first()
@@ -535,7 +531,6 @@ out_2:
 out_1:
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
-out_0:
 	return rc;
 }
 
@@ -612,7 +607,6 @@ int ldmsd_updtr_match_del(const char *updtr_name, const char *regex_str,
 out_1:
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
-out_0:
 	return rc;
 }
 
@@ -873,8 +867,6 @@ out_0:
 
 int cmd_updtr_prdcr_add(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	ldmsd_prdcr_t prdcr;
-	regex_t regex;
 	char *updtr_name, *prdcr_regex;
 	int rc;
 

@@ -557,7 +557,6 @@ int ldmsd_prdcr_start(const char *name, const char *interval_str)
 out_1:
 	ldmsd_prdcr_unlock(prdcr);
 	ldmsd_prdcr_put(prdcr);
-out_0:
 	return rc;
 }
 
@@ -583,7 +582,6 @@ int ldmsd_prdcr_stop(const char *name)
 out_1:
 	ldmsd_prdcr_unlock(prdcr);
 	ldmsd_prdcr_put(prdcr);
-out_0:
 	return rc;
 }
 
@@ -838,9 +836,6 @@ out_0:
 
 int cmd_prdcr_start_regex(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	regex_t regex;
-	ldmsd_prdcr_t prdcr;
-	size_t cnt;
 	char *prdcr_regex, *interval_str;
 
 	prdcr_regex = av_value(avl, "regex");
@@ -861,8 +856,6 @@ out_0:
 
 int cmd_prdcr_stop_regex(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
-	regex_t regex;
-	ldmsd_prdcr_t prdcr;
 	char *prdcr_regex;
 
 	prdcr_regex = av_value(avl, "regex");
@@ -882,12 +875,13 @@ int cmd_prdcr_del(char *replybuf, struct attr_value_list *avl, struct attr_value
 {
 	char *prdcr_name;
 	prdcr_name = av_value(avl, "name");
+	int rc;
 	if (!prdcr_name) {
 		sprintf(replybuf, "%dThe prdcr name must be specified\n", EINVAL);
+		rc = EINVAL;
 		goto out_0;
 	}
-
-	int rc = ldmsd_prdcr_del(prdcr_name);
+	rc = ldmsd_prdcr_del(prdcr_name);
 	if (rc == ENOENT) {
 		sprintf(replybuf, "%dThe producer specified does not exist\n", ENOENT);
 	} else if (rc == EBUSY) {
