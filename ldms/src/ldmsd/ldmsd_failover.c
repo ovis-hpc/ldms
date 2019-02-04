@@ -74,7 +74,7 @@
 #define ARRAY_LEN(x) (sizeof(x)/sizeof(*(x)))
 
 /* So that we can change this in gdb */
-static int failover_debug = 1;
+static int failover_debug = 0;
 
 #define __ASSERT(x) assert(x)
 
