@@ -1450,7 +1450,9 @@ static void sock_event(ovis_event_t ev)
 			.context = (void *)io->hdr.ctxt
 		};
 		free(io);	/* Don't put back on free_q, we're closing */
+		pthread_mutex_unlock(&sep->ep.lock);
 		sep->ep.cb(&sep->ep, &zev);
+		pthread_mutex_lock(&sep->ep.lock);
 	}
 
 	switch (sep->ep.state) {
