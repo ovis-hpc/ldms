@@ -351,7 +351,11 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 	if (data_len)
 		memcpy(ictxt->data, ev->data, data_len);
 	zap_get_ep(ep);
-	zap_event_add(ep->event_queue, ep, ictxt);
+	if (zap_event_add(ep->event_queue, ep, ictxt)) {
+		ep->z->log_fn("%s[%d]: event could not be added.",
+			      __func__, __LINE__);
+		zap_put_ep(ep);
+	}
 }
 
 static
