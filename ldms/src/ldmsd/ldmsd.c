@@ -923,15 +923,11 @@ static void task_cb_fn(ovis_event_t ev)
 	enum ldmsd_task_state next_state;
 
 	pthread_mutex_lock(&task->lock);
-	assert(task->os);
-	ovis_scheduler_event_del(task->os, ev);
-	if (task->flags & LDMSD_TASK_F_STOP) {
-		assert(task->state != LDMSD_TASK_STATE_STOPPED);
-		task->state = LDMSD_TASK_STATE_STOPPED;
-		goto out;
+	if (task->os) {
+		ovis_scheduler_event_del(task->os, ev);
+		resched_task(task);
+		next_state = start_task(task);
 	}
-	resched_task(task);
-	next_state = start_task(task);
 	task->state = LDMSD_TASK_STATE_RUNNING;
 	pthread_mutex_unlock(&task->lock);
 
@@ -939,14 +935,15 @@ static void task_cb_fn(ovis_event_t ev)
 
 	pthread_mutex_lock(&task->lock);
 	if (task->flags & LDMSD_TASK_F_STOP) {
+		task->flags &= ~LDMSD_TASK_F_STOP;
 		if (task->state != LDMSD_TASK_STATE_STOPPED)
 			task->state = LDMSD_TASK_STATE_STOPPED;
 	} else
 		task->state = next_state;
  out:
 	if (task->state == LDMSD_TASK_STATE_STOPPED) {
-		assert(task->os);
-		ovis_scheduler_event_del(task->os, &task->oev);
+		if (task->os)
+			ovis_scheduler_event_del(task->os, &task->oev);
 		task->os = NULL;
 		release_ovis_scheduler(task->thread_id);
 		pthread_cond_signal(&task->join_cv);
@@ -968,13 +965,14 @@ void ldmsd_task_stop(ldmsd_task_t task)
 	pthread_mutex_lock(&task->lock);
 	if (task->state == LDMSD_TASK_STATE_STOPPED)
 		goto out;
-	task->flags |= LDMSD_TASK_F_STOP;
 	if (task->state != LDMSD_TASK_STATE_RUNNING) {
 		ovis_scheduler_event_del(task->os, &task->oev);
 		task->os = NULL;
 		release_ovis_scheduler(task->thread_id);
 		task->state = LDMSD_TASK_STATE_STOPPED;
 		pthread_cond_signal(&task->join_cv);
+	} else {
+		task->flags |= LDMSD_TASK_F_STOP;
 	}
 out:
 	pthread_mutex_unlock(&task->lock);
