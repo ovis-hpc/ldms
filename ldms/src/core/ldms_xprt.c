@@ -1893,7 +1893,8 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	return;
 
  unlock_out:
-	if (rc) {
+	if (rc || (rbd && rbd->rmap != ev->map)) {
+		/* unmap ev->map if it is not used */
 		zap_unmap(x->zap_ep, ev->map);
 	}
 	__ldms_set_tree_unlock();
