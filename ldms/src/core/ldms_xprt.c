@@ -388,9 +388,10 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 		__ldms_free_ctxt(x, ctxt);
 	}
 
+	struct rbn *rbn;
 	struct ldms_rbuf_desc *rbd;
-	while (!LIST_EMPTY(&x->rbd_list)) {
-		rbd = LIST_FIRST(&x->rbd_list);
+	while ((rbn = rbt_min(&x->rbd_rbt))) {
+		rbd = RBN_RBD(rbn);
 		if (rbd->type == LDMS_RBD_LOCAL || rbd->type == LDMS_RBD_TARGET)
 			__ldms_free_rbd(rbd);
 		else
@@ -1807,20 +1808,18 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 			goto unlock_out;
 		}
 
-		LIST_FOREACH(rbd, &x->rbd_list, xprt_link) {
-			if (rbd->set == lset) {
-				if (!(ctxt->lookup.flags & LDMS_LOOKUP_SET_INFO)) {
-					rc = EEXIST;
-				} else {
-					pthread_mutex_lock(&lset->lock);
-					rc = __handle_set_info(lset,
-						&inst_name->name[inst_name->len]);
-					pthread_mutex_unlock(&lset->lock);
-				}
-				goto unlock_out;
+		rbd = ldms_lookup_rbd(x, lset);
+		if (rbd) {
+			if (!(ctxt->lookup.flags & LDMS_LOOKUP_SET_INFO)) {
+				rc = EEXIST;
+			} else {
+				pthread_mutex_lock(&lset->lock);
+				rc = __handle_set_info(lset,
+					&inst_name->name[inst_name->len]);
+				pthread_mutex_unlock(&lset->lock);
 			}
+			goto unlock_out;
 		}
-
 	} else {
 		lset = __ldms_create_set(inst_name->name, schema_name->name,
 				       ntohl(lu->meta_len), ntohl(lu->data_len),
@@ -1946,12 +1945,11 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 	/* See if we already have a push RBD for this set and
 	 * transport.
 	 */
-	LIST_FOREACH(push_rbd, &x->rbd_list, xprt_link) {
-		if (push_rbd->set == my_rbd->set) {
-			if (push_rbd->push_flags & LDMS_RBD_F_PUSH) {
-				/* Update the push flags, but otherwise, do nothing */
-				goto out;
-			}
+	push_rbd = ldms_lookup_rbd(x, my_rbd->set);
+	if (push_rbd) {
+		if (push_rbd->push_flags & LDMS_RBD_F_PUSH) {
+			/* Update the push flags, but otherwise, do nothing */
+			goto out;
 		}
 	}
 
@@ -2211,6 +2209,17 @@ err0:
 	return ret;
 }
 
+static int __rbd_rbt_key_comp(void *tree_key, const void *key)
+{
+	uint64_t k0 = (uint64_t)tree_key;
+	uint64_t k1 = (uint64_t)key;
+	if (k0 < k1)
+		return -1;
+	if (k0 > k1)
+		return 1;
+	return 0;
+}
+
 void __ldms_xprt_init(struct ldms_xprt *x, const char *name,
 					ldms_log_fn_t log_fn)
 {
@@ -2226,6 +2235,7 @@ void __ldms_xprt_init(struct ldms_xprt *x, const char *name,
 	x->log = log_fn;
 	TAILQ_INIT(&x->ctxt_list);
 	sem_init(&x->sem, 0, 0);
+	rbt_init(&x->rbd_rbt, __rbd_rbt_key_comp);
 	pthread_mutex_init(&x->lock, NULL);
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_INSERT_HEAD(&xprt_list, x, xprt_link);
@@ -2545,18 +2555,15 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	__ldms_set_tree_lock();
 	struct ldms_set *set = __ldms_find_local_set(path);
 	if (set) {
-		LIST_FOREACH(rbd, &x->rbd_list, xprt_link) {
-			if (rbd->set == set) {
-				if (!(flags & LDMS_LOOKUP_SET_INFO)) {
-					/*
-					 * The set has been already looked up
-					 * from the host corresponding to
-					 * the transport.
-					 */
-					__ldms_set_tree_unlock();
-					return EEXIST;
-				}
-			}
+		rbd = ldms_lookup_rbd(x, set);
+		if (rbd && !(flags & LDMS_LOOKUP_SET_INFO)) {
+			/*
+			 * The set has been already looked up
+			 * from the host corresponding to
+			 * the transport.
+			 */
+			__ldms_set_tree_unlock();
+			return EEXIST;
 		}
 	}
 	__ldms_set_tree_unlock();
@@ -2996,6 +3003,7 @@ __ldms_alloc_rbd(struct ldms_xprt *x, struct ldms_set *s, enum ldms_rbd_type typ
 
 	rbd->xprt = x;
 	rbd->set = s;
+	rbn_init(&rbd->xprt_rbn, s);
 	size_t set_sz = __ldms_set_size_get(s);
 	if (x) {
 		zerr = zap_map(x->zap_ep, &rbd->lmap, s->meta, set_sz,
@@ -3013,7 +3021,7 @@ __ldms_alloc_rbd(struct ldms_xprt *x, struct ldms_set *s, enum ldms_rbd_type typ
 		LIST_INSERT_HEAD(&s->remote_rbd_list, rbd, set_link);
 	pthread_mutex_unlock(&s->lock);
 	if (x)
-		LIST_INSERT_HEAD(&x->rbd_list, rbd, xprt_link);
+		rbt_ins(&x->rbd_rbt, &rbd->xprt_rbn);
 
 	goto out;
 
@@ -3046,7 +3054,7 @@ void __ldms_rbd_xprt_release(struct ldms_rbuf_desc *rbd)
 		zap_unmap(rbd->xprt->zap_ep, rbd->rmap);
 	rbd->rmap = NULL;
 #endif /* DEBUG */
-	LIST_REMOVE(rbd, xprt_link);
+	rbt_del(&rbd->xprt->rbd_rbt, &rbd->xprt_rbn);
 	rbd->xprt = NULL;
 }
 
@@ -3058,18 +3066,21 @@ void __ldms_free_rbd(struct ldms_rbuf_desc *rbd)
 	free(rbd);
 }
 
-static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *x, struct ldms_set *set)
+static struct ldms_rbuf_desc *ldms_lookup_rbd(struct ldms_xprt *x,
+					      struct ldms_set *set)
 {
+	struct rbn *rbn;
 	struct ldms_rbuf_desc *r;
 	if (!set)
 		return NULL;
 
-	if (LIST_EMPTY(&x->rbd_list))
+	if (rbt_empty(&x->rbd_rbt))
 		return NULL;
 
-	LIST_FOREACH(r, &x->rbd_list, xprt_link) {
-		if (r->set == set)
-			return r;
+	rbn = rbt_find(&x->rbd_rbt, set);
+	if (rbn) {
+		r = RBN_RBD(rbn);
+		return r;
 	}
 
 	return NULL;
