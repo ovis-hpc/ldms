@@ -27,6 +27,7 @@ rabbitv3
 renamecsv
 rollagain
 filesingle
+many
 
 # working with job metrics
 clock.job

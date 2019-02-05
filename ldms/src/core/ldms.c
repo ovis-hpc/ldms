@@ -645,6 +645,11 @@ uint32_t __ldms_set_size_get(struct ldms_set *s)
 int ldms_init(size_t max_size)
 {
 	size_t grain = LDMS_GRAIN_MMALLOC;
+#ifdef OVIS_LIB_MM_DEBUG
+	if (getenv("LDMS_ENABLE_MMALLOC_DEBUG") != NULL) {
+		mm_enable_debug();
+	}
+#endif
 	if (mm_init(max_size, grain))
 		return -1;
 	return 0;

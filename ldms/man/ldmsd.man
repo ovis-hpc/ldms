@@ -48,6 +48,11 @@ LDMSD_MEM_SZ
 The size of memory reserved for metric sets. Set this variable or specify "-m"
 to ldmsd. See the -m option for further details. If both are specified, the -m
 option takes precedence over this environment variable.
+.TP
+LDMS_ENABLE_MMALLOC_DEBUG
+If present (any value), enables debugging of set allocations by disabling
+mmapped memory management. Not compatible with transports (ugni) that
+expect mapped memory.
 
 .SS CRAY Specific Environment variables for ugni transport
 LDMS_UGNI_PTAG

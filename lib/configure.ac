@@ -125,6 +125,10 @@ OPTION_DEFAULT_ENABLE([sock], [ENABLE_SOCK])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 OPTION_DEFAULT_DISABLE([ssl], [ENABLE_SSL])
 OPTION_DEFAULT_DISABLE([zaptest], [ENABLE_ZAPTEST])
+OPTION_DEFAULT_DISABLE([mmdebug], [ENABLE_MM_DEBUG])
+if test "$enable_mmdebug" == "yes"; then
+	AC_DEFINE([MM_DEBUG],[1],["enable mmalloc debug functions (and disable mmap)"])
+fi
 OPTION_DEFAULT_DISABLE([ovis_event_test], [ENABLE_OVIS_EVENT_TEST])
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 

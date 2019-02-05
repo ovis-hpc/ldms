@@ -50,6 +50,7 @@
  */
 #ifndef __MMALLOC_H__
 #define __MMALLOC_H__
+#include "ovis-lib-config.h"
 struct mm_info {
 	size_t grain;		/*! The minimum allocation size as 2^x  */
 	size_t grain_bits;	/*! x in 2^x*/
@@ -65,6 +66,25 @@ struct mm_stat {
 	size_t largest;		/*< largest unallocated chunk size in grains */
 	size_t smallest;	/*< smallest unallocated chunk size in grains */
 };
+
+#ifdef OVIS_LIB_MM_DEBUG
+/**
+ * \brief Disable mmap-ing and preallocation of memory.
+ *
+ * Without preallocations, all allocations are independent.
+ *
+ * Has no effect if mm_init is already called.
+ * N.b.: enabling debug is incompatible with transports, e.g. ugni,
+ * which require pinned memory. Compatible with sock transport.
+ *
+ * When mmap is disabled, chunks is the count of allocations,
+ * bytes is the count of allocated bytes,
+ * largest and smallest refer to allocated size,
+ * and size is upper limit imposed on the total of all requests,
+ * beyond which alloc will return NULL.
+ */
+void mm_enable_debug();
+#endif
 
 /**
  * \brief Get information about the heap configuration
@@ -84,6 +104,19 @@ void mm_get_info(struct mm_info *mmi);
  *		failure.
  */
 int mm_init(size_t size, size_t grain);
+
+/** \brief format mm_stats into a string, buf, up to buflen.
+ * 512 is an adequate buflen.  
+ * \return the result of sprintf into buf.
+ */
+int mm_format_stats(struct mm_stat *s, char *buf, size_t buflen);
+
+#ifdef OVIS_LIB_MM_DEBUG
+/**
+ * \brief destroy the heap. Will fail if heap is in use.
+ */
+int mm_final();
+#endif
 
 /**
  * \brief Allocate memory from the heap.
