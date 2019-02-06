@@ -812,42 +812,40 @@ ldmsd_updtr_new(const char *name, char *interval_str,
 				sctxt.crd.uid, sctxt.crd.gid, 0777);
 }
 
+extern struct rbt *cfgobj_trees[];
+extern pthread_mutex_t *cfgobj_locks[];
+ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
+
 int ldmsd_updtr_del(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
-	ldmsd_updtr_task_t task;
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
+	ldmsd_updtr_t updtr;
+
+	pthread_mutex_lock(cfgobj_locks[LDMSD_CFGOBJ_UPDTR]);
+	updtr = (ldmsd_updtr_t)__cfgobj_find(updtr_name, LDMSD_CFGOBJ_UPDTR);
 	if (!updtr) {
-		return ENOENT;
+		rc = ENOENT;
+		goto out_0;
 	}
 	ldmsd_updtr_lock(updtr);
 	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
 	if (rc)
-		goto out;
+		goto out_1;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
 		rc = EBUSY;
-		goto out;
+		goto out_1;
 	}
-	if (ldmsd_cfgobj_refcount(&updtr->obj) > 2) {
-		rc = EBUSY;
-		goto out;
-	}
-	/* Make sure any outstanding callbacks are complete */
-	ldmsd_task_join(&updtr->default_task.task);
-	task = updtr_task_first(updtr);
-	while (task) {
-		ldmsd_task_join(&task->task);
-		task = updtr_task_next(task);
-	}
-	/* Put the find reference */
-	ldmsd_updtr_put(updtr);
-	/* Drop the lock and drop the create reference */
+
+	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_UPDTR], &updtr->obj.rbn);
+	ldmsd_updtr_put(updtr); /* tree reference */
+	rc = 0;
+	/* let-through */
+out_1:
 	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
-	return 0;
-out:
-	ldmsd_updtr_put(updtr);
-	ldmsd_updtr_unlock(updtr);
+out_0:
+	pthread_mutex_unlock(cfgobj_locks[LDMSD_CFGOBJ_UPDTR]);
+	if (updtr)
+		ldmsd_updtr_put(updtr); /* `find` reference */
 	return rc;
 }
 
@@ -982,12 +980,19 @@ int __ldmsd_updtr_stop(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt)
 		goto out_1;
 
 	}
-	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
+	updtr->state = LDMSD_UPDTR_STATE_STOPPING;
 	updtr->obj.perm &= ~LDMSD_PERM_DSTART;
 	if (updtr->push_flags)
 		cancel_push(updtr);
+	ldmsd_updtr_unlock(updtr);
 
+	/* joining tasks, need to unlock as task cb also took updtr lock */
 	__updtr_tasks_stop(updtr);
+
+	ldmsd_updtr_lock(updtr);
+	/* tasks stopped */
+	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
+	/* let-through */
 out_1:
 	ldmsd_updtr_unlock(updtr);
 	return rc;
