@@ -179,12 +179,15 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 			return;
 		list = container_of(rbn, struct ldmsd_updt_hint_set_list, rbn);
 		assert(prd_set->ref_count);
-		if (prd_set->updt_hint_entry.le_prev)
-			LIST_REMOVE(prd_set, updt_hint_entry);
+		if (!prd_set->updt_hint_entry.le_prev)
+			return; /* Already removed. This can happen when
+				 * we receive DIR_DEL before outstanding
+				 * SET_INFO lookup has completed. */
+		LIST_REMOVE(prd_set, updt_hint_entry);
 		prd_set->updt_hint_entry.le_next = NULL;
 		prd_set->updt_hint_entry.le_prev = NULL;
-
 		ldmsd_prdcr_set_ref_put(prd_set);
+
 		if (LIST_EMPTY(&list->list)) {
 			rbt_del(&prdcr->hint_set_tree, &list->rbn);
 			free(list->rbn.key);
