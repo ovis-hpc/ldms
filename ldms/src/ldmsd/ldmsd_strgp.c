@@ -583,12 +583,21 @@ int ldmsd_strgp_stop(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 	return rc;
 }
 
+extern struct rbt *cfgobj_trees[];
+extern pthread_mutex_t *cfgobj_locks[];
+ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
+
 int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
-	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
-	if (!strgp)
-		return ENOENT;
+	ldmsd_strgp_t strgp;
+
+	pthread_mutex_lock(cfgobj_locks[LDMSD_CFGOBJ_STRGP]);
+	strgp = (ldmsd_strgp_t)__cfgobj_find(strgp_name, LDMSD_CFGOBJ_STRGP);
+	if (!strgp) {
+		rc = ENOENT;
+		goto out_0;
+	}
 
 	ldmsd_strgp_lock(strgp);
 	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
@@ -602,16 +611,17 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out_1;
 	}
-	/* Put the find reference */
-	ldmsd_strgp_put(strgp);
-	/* Drop the lock and drop the create reference */
-	ldmsd_strgp_unlock(strgp);
-	ldmsd_strgp_put(strgp);
-	goto out_0;
+
+	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STRGP], &strgp->obj.rbn);
+	ldmsd_strgp_put(strgp); /* tree reference */
+
+	/* let through */
 out_1:
-	ldmsd_strgp_put(strgp);
 	ldmsd_strgp_unlock(strgp);
 out_0:
+	pthread_mutex_unlock(cfgobj_locks[LDMSD_CFGOBJ_STRGP]);
+	if (strgp)
+		ldmsd_strgp_put(strgp); /* `find` reference */
 	return rc;
 }
 

@@ -98,15 +98,8 @@ void ldmsd_cfgobj_init(void)
 
 void ldmsd_cfgobj___del(ldmsd_cfgobj_t obj)
 {
-	ldmsd_cfgobj_type_t t = obj->type;
-	struct rbn *n;
-	pthread_mutex_lock(cfgobj_locks[t]);
-	n = rbt_find(cfgobj_trees[t], obj->name);
-	if (n)
-		rbt_del(cfgobj_trees[t], &obj->rbn);
 	free(obj->name);
 	free(obj);
-	pthread_mutex_unlock(cfgobj_locks[t]);
 }
 
 void ldmsd_cfg_lock(ldmsd_cfgobj_type_t type)
@@ -155,7 +148,7 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
 		goto out_2;
 
 	obj->type = type;
-	obj->ref_count = 1;
+	obj->ref_count = 1; /* for obj->rbn inserting into the tree */
 	if (__del)
 		obj->__del = __del;
 	else
@@ -212,6 +205,9 @@ int ldmsd_cfgobj_refcount(ldmsd_cfgobj_t obj)
 	return obj->ref_count;
 }
 
+/*
+ * *** Must be called with `cfgobj_locks[type]` held.
+ */
 ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type)
 {
 	ldmsd_cfgobj_t obj = NULL;

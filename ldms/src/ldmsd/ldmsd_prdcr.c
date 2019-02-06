@@ -740,12 +740,20 @@ ldmsd_prdcr_new(const char *name, const char *xprt_name,
 			getgid(), 0777);
 }
 
+extern struct rbt *cfgobj_trees[];
+extern pthread_mutex_t *cfgobj_locks[];
+ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
+
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
-	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(prdcr_name);
-	if (!prdcr)
-		return ENOENT;
+	ldmsd_prdcr_t prdcr;
+	pthread_mutex_lock(cfgobj_locks[LDMSD_CFGOBJ_PRDCR]);
+	prdcr = (ldmsd_prdcr_t) __cfgobj_find(prdcr_name, LDMSD_CFGOBJ_PRDCR);
+	if (!prdcr) {
+		rc = ENOENT;
+		goto out_0;
+	}
 
 	ldmsd_prdcr_lock(prdcr);
 	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
@@ -759,17 +767,19 @@ int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out_1;
 	}
-	/* Make sure any outstanding callbacks are complete */
-	ldmsd_task_join(&prdcr->task);
-	/* Put the find reference */
-	ldmsd_prdcr_put(prdcr);
-	/* Drop the lock and drop the create reference */
-	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_put(prdcr);
-	return 0;
+
+	/* removing from the tree */
+	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR], &prdcr->obj.rbn);
+	ldmsd_prdcr_put(prdcr); /* putting down reference from the tree */
+
+	rc = 0;
+	/* let-through */
 out_1:
-	ldmsd_prdcr_put(prdcr);
 	ldmsd_prdcr_unlock(prdcr);
+out_0:
+	pthread_mutex_unlock(cfgobj_locks[LDMSD_CFGOBJ_PRDCR]);
+	if (prdcr)
+		ldmsd_prdcr_put(prdcr); /* `find` reference */
 	return rc;
 }
 

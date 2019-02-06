@@ -351,6 +351,8 @@ typedef struct ldmsd_updtr {
 		LDMSD_UPDTR_STATE_STOPPED = 0,
 		/** Ready for update attempts */
 		LDMSD_UPDTR_STATE_RUNNING,
+		/** Stopping, waiting for callback tasks to finish */
+		LDMSD_UPDTR_STATE_STOPPING,
 	} state;
 
 	/*
