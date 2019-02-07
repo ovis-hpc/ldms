@@ -897,7 +897,6 @@ int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 		__ldmsd_prdcr_start(prdcr, ctxt);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	ldmsd_prdcr_put(prdcr);
 	regfree(&regex);
 	return 0;
 }
@@ -921,7 +920,6 @@ int ldmsd_prdcr_stop_regex(const char *prdcr_regex, char *rep_buf,
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	regfree(&regex);
-	ldmsd_prdcr_put(prdcr);
 	return 0;
 }
 
