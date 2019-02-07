@@ -1,0 +1,42 @@
+#!/bin/bash
+
+# minimum n is 3 for this test.
+# all SBATCH options below may need to be overridden to change
+# test scale or match user site resources
+#SBATCH -n 4
+#SBATCH --nodes=4
+#SBATCH --time=00:10:00
+#SBATCH --account=FY140030
+#SBATCH --job-name=ldms_test
+#SBATCH -p short,batch
+
+export SLURM_HOSTFILE=$(pwd)/Slurm-nodefile.$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_NTASKS
+export TEST_HOSTFILE=$(pwd)/Slurm-ldmsfile.$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_NTASKS
+export maxdaemon=$SLURM_NTASKS
+jl=$(scontrol show hostnames $SLURM_JOB_NODELIST)
+echo nodelist is $jl
+function less1 {
+	shift
+	echo $*
+}
+# srun ignore ntasks when distribution arbitrary is applied and follows 
+# hostfile with 1 task/line
+workers=$(less1 $jl)
+echo $(hostname) > $SLURM_HOSTFILE
+k=1
+echo "export host${k}=$(hostname)" > $TEST_HOSTFILE
+for i in $(seq $SLURM_NTASKS); do
+	for j in $workers; do
+		echo $j >> $SLURM_HOSTFILE
+		echo "export host$((k + 1))=$j" >> $TEST_HOSTFILE
+		((k++))
+		if test $k -ge $SLURM_NTASKS; then
+			break
+		fi
+	done
+	if test $k -ge $SLURM_NTASKS; then
+		break
+	fi
+done
+. $TEST_HOSTFILE
+srun --cpu-bind=none --distribution=arbitrary /ascldap/users/baallan/serrano/gh-ovis/LDMS_install/bin/pll-ldms-static-test.sh cluster
