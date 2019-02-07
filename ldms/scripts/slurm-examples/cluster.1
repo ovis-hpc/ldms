@@ -1,0 +1,31 @@
+# this is the aggregator for the many nodes
+# daemon 2 monitors localhost resource usage
+prdcr_add name=${host2} host=${host2} type=active xprt=${XPRT} port=${port2} interval=1000000
+prdcr_start name=${host2}
+
+updtr_add name=allhosts interval=1000000 offset=300000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+load name=store_csv
+config name=store_csv path=${STOREDIR}
+
+strgp_add name=csv_meminfo plugin=store_csv schema=meminfo container=csv
+strgp_prdcr_add name=csv_meminfo regex=.*
+strgp_start name=csv_meminfo
+
+strgp_add name=csv_array_example plugin=store_csv schema=array_example container=csv
+strgp_prdcr_add name=csv_array_example regex=.*
+strgp_start name=csv_array_example
+
+strgp_add name=csv_vmstat plugin=store_csv schema=vmstat container=csv
+strgp_prdcr_add name=csv_vmstat regex=.*
+strgp_start name=csv_vmstat
+
+strgp_add name=csv_procnetdev plugin=store_csv schema=procnetdev container=csv
+strgp_prdcr_add name=csv_procnetdev regex=.*
+strgp_start name=csv_procnetdev
+
+strgp_add name=csv_dstat plugin=store_csv schema=dstat container=csv
+strgp_prdcr_add name=csv_dstat regex=.*
+strgp_start name=csv_dstat
