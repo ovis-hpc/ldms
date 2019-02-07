@@ -3,6 +3,7 @@ lib_LTLIBRARIES =
 bin_SCRIPTS=
 dist_man7_MANS =
 dist_man1_MANS =
+EXTRA_DIST = ldms-sensors-config
 
 CORE = ../../core
 SAMPLER= ../../sampler

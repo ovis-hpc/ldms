@@ -4,7 +4,7 @@
 # allows usual ls options, but may annoy a bit with ls -l.
 
 raw=`mktemp`
-/usr/bin/ls -1 $*  > $raw
+/bin/ls -1 $*  > $raw
 if test -f $raw; then
         while read -r f; do
                 g=`echo $f | sed -e 's/.[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]$//'`
@@ -16,6 +16,6 @@ if test -f $raw; then
 			echo "$f  ($g.$cdate)"
                 fi
         done < $raw
-	/usr/bin/rm $raw
+	/bin/rm $raw
 fi
 
