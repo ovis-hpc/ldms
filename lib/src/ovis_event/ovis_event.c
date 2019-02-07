@@ -682,12 +682,12 @@ loop:
 		ev = m->ev[i].data.ptr;
 		ev->cb.type = OVIS_EVENT_EPOLL;
 		ev->cb.epoll_events = m->ev[i].events;
-		if (ev->param.cb_fn) {
-			ev->param.cb_fn(ev);
-		}
 		if (ev->param.type & OVIS_EVENT_TIMEOUT && ev->priv.idx != -1) {
 			/* i/o event has an active timeout */
 			rc = __ovis_event_timer_update(m, ev);
+		}
+		if (ev->param.cb_fn) {
+			ev->param.cb_fn(ev);
 		}
 	}
 
