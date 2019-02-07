@@ -249,6 +249,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	uint64_t gn;
 	const char *name;
 	ldmsd_prdcr_set_t prd_set = arg;
+	int ready = 0;
 	int errcode;
 
 	pthread_mutex_lock(&prd_set->lock);
@@ -312,7 +313,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	}
 set_ready:
 	if ((status & LDMS_UPD_F_MORE) == 0)
-		prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+		ready = 1;
 out:
 	pthread_mutex_unlock(&prd_set->lock);
 	if (0 == errcode) {
@@ -323,6 +324,11 @@ out:
 			ldmsd_log(LDMSD_LERROR, "Failed to push set %s\n",
 						prd_set->inst_name);
 		}
+	}
+	if (ready) {
+		pthread_mutex_lock(&prd_set->lock);
+		prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+		pthread_mutex_unlock(&prd_set->lock);
 	}
 	if (0 == (status & (LDMS_UPD_F_PUSH|LDMS_UPD_F_MORE)))
 		/*
