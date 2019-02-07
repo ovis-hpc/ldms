@@ -470,6 +470,10 @@ static int attr_blacklist(const char **bad, const struct attr_value_list *kwl, c
 	return 0;
 }
 
+static const char *init_blacklist[] = {
+	NULL
+};
+
 static const char *update_blacklist[] = {
 	"config",
 	"name",
@@ -593,7 +597,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	pthread_mutex_lock(&cfg_lock);
 
 	pa = ldmsd_plugattr_create(conf, PNAME, avl, kwl,
-			update_blacklist, update_blacklist, KEY_PLUG_ATTR);
+			init_blacklist, init_blacklist, KEY_PLUG_ATTR);
 	if (!pa) {
 		msglog(LDMSD_LERROR, PNAME ": Reminder: omit 'config name=<>' from lines in opt_file\n");
 		msglog(LDMSD_LERROR, PNAME ": error parsing %s\n", conf);
