@@ -1,0 +1,5 @@
+This directory should contain only ldms installed slurm examples
+that go with pll-ldms-static-test.sh.
+Editing them or adding to them may cause loss of the user
+additions when unistalling or updating ldms.
+Editing them may be necessary on novel cluster or slurm deployments.
