@@ -1,3 +1,4 @@
+lib_LTLIBRARIES=
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
 lib_LTLIBRARIES = 
@@ -11,7 +12,7 @@ AM_CFLAGS += \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
 
 ldmsdincludedir = $(includedir)/ldms
-ldmsdinclude_HEADERS = ldmsd.h
+ldmsdinclude_HEADERS = ldmsd.h ldmsd_stream.h
 
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
@@ -24,14 +25,31 @@ ldms_ls_LDFLAGS = $(AM_LDFLAGS) \
 	-lpthread \
 	@LDFLAGS_GETTIME@
 
-ldmsd_SOURCES = ldmsd.c ldmsd_config.c ldmsd_request.c ldmsd_request_util.c \
+sbin_PROGRAMS += ldmsd_upload
+ldmsd_upload_SOURCES = ldmsd_upload.c
+ldmsd_upload_CFLAGS = $(AM_CFLAGS) -DLDMSD_UPLOAD_CMD
+ldmsd_upload_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
+ldmsd_upload_LDFLAGS = $(AM_LDFLAGS)
+
+lib_LTLIBRARIES += libldmsd_stream.la
+libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h ldms.h ldms_core.h ldmsd_request_util.c
+libldmsd_stream_la_LIBADD = \
+	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ -lldms
+
+lib_LTLIBRARIES += librequest.la
+librequest_la_SOURCES = ldms.h ldms_core.h ldmsd_request_util.c
+librequest_la_LIBADD = \
+	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ -lldms
+
+ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
+	ldmsd_request.c \
 	ldmsd_request.h \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
 	ldmsd_failover.c ldmsd_group.c
 ldmsd_CFLAGS = $(AM_CFLAGS) -rdynamic
-ldmsd_LDADD = $(CORE)/libldms.la
+ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) \
-	-lzap -lmmalloc -lovis_util -lcoll \
+	-lzap -lmmalloc -lovis_util -lcoll -ljson_util \
 	-lovis_event -lpthread -lm
 
 ldmsd_LDFLAGS += -lovis_util -lcoll -ldl -lovis_ctrl
@@ -41,8 +59,8 @@ ldmsd_LDFLAGS += -lrabbitmq
 ldmsd_CFLAGS += -DENABLE_RABBITMQ
 endif
 
-ldmsctl_SOURCES = ldmsctl.c ldmsd_request_util.c
-ldmsctl_LDADD = $(CORE)/libldms.la
+ldmsctl_SOURCES = ldmsctl.c
+ldmsctl_LDADD = $(CORE)/libldms.la librequest.la
 ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ \
 		-lovis_ctrl -lovis_util -lmmalloc -lcoll -lzap -pthread \
 		 -ljson_parser -lm @LDFLAGS_GETTIME@

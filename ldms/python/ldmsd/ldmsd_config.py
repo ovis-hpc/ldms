@@ -102,6 +102,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_status': {'opt_attr': [], 'req_attr': ['name']},
                       'prdcr_set_status': {'opt_attr': ['producer', 'instance', 'schema']},
                       'prdcr_hint_tree': {'req_attr':['name'], 'opt_attr': []},
+                      'prdcr_subscribe': {'req_attr':['regex', 'stream'], 'opt_attr': []},
                       ##### Updater Policy #####
                       'updtr_add': {'req_attr': ['name'],
                                     'opt_attr': ['offset', 'push', 'interval', 'auto_interval']},
@@ -128,6 +129,9 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'strgp_status': {'req_attr': [], 'opt_attr': ['name']},
                       ##### Plugin #####
                       'plugn_sets': {'req_attr': [], 'opt_attr': []},
+                      ##### Streams ###
+                      'publish': {'req_attr': ['name'], 'opt_attr': []},
+                      'subscribe': {'req_attr': ['name'], 'opt_attr': []},
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': []},
                       ##### Misc. #####

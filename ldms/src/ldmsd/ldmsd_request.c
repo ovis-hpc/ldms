@@ -58,9 +58,11 @@
 #include <coll/rbt.h>
 #include <pthread.h>
 #include <ovis_util/util.h>
+#include <json/json_util.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_request.h"
+#include "ldmsd_stream.h"
 #include "ldms_xprt.h"
 
 /*
@@ -151,6 +153,7 @@ static int prdcr_start_regex_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_stop_regex_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_set_status_handler(ldmsd_req_ctxt_t req_ctxt);
+static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_add_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_start_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -218,6 +221,9 @@ static int setgroup_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int setgroup_ins_handler(ldmsd_req_ctxt_t req_ctxt);
 static int setgroup_rm_handler(ldmsd_req_ctxt_t req_ctxt);
 
+static int stream_publish_handler(ldmsd_req_ctxt_t req_ctxt);
+static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc);
+
 /* executable for all */
 #define XALL 0111
 /* executable for user, and group */
@@ -256,6 +262,10 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_PRDCR_HINT_TREE_REQ] = {
 		LDMSD_PRDCR_HINT_TREE_REQ, prdcr_hint_tree_status_handler,
 		XALL | LDMSD_PERM_FAILOVER_ALLOWED
+	},
+	[LDMSD_PRDCR_SUBSCRIBE_REQ] = {
+		LDMSD_PRDCR_SUBSCRIBE_REQ, prdcr_subscribe_regex_handler,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 
 	/* STRGP */
@@ -462,6 +472,14 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_SETGROUP_RM_REQ] = {
 		LDMSD_SETGROUP_RM_REQ, setgroup_rm_handler, XUG,
+	},
+
+	/* STREAM */
+	[LDMSD_STREAM_PUBLISH_REQ] = {
+		LDMSD_STREAM_PUBLISH_REQ, stream_publish_handler, XALL
+	},
+	[LDMSD_STREAM_SUBSCRIBE_REQ] = {
+		LDMSD_STREAM_SUBSCRIBE_REQ, stream_subscribe_handler, XUG
 	},
 };
 
@@ -735,7 +753,7 @@ int ldmsd_handle_response(ldmsd_req_cmd_t rcmd)
 {
 	if (!rcmd->resp_handler) {
 		ldmsd_log(LDMSD_LERROR, "No response handler "
-				"for requeset id %" PRIu32, rcmd->reqc->req_id);
+				"for requeset id %" PRIu32 "\n", rcmd->reqc->req_id);
 		return ENOTSUP;
 	}
 
@@ -1579,6 +1597,45 @@ static int prdcr_stop_regex_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	reqc->errcode = ldmsd_prdcr_stop_regex(prdcr_regex,
 				reqc->line_buf, reqc->line_len, &sctxt);
+	/* on error, reqc->line_buf will be filled */
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (prdcr_regex)
+		free(prdcr_regex);
+	return 0;
+}
+
+static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *prdcr_regex;
+	char *stream_name;
+	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+
+	reqc->errcode = 0;
+
+	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
+	if (!prdcr_regex) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The attribute 'regex' is required by prdcr_stop_regex.");
+		goto send_reply;
+	}
+
+	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
+	if (!stream_name) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The attribute 'stream' is required by prdcr_subscribe_regex.");
+		goto send_reply;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	reqc->errcode = ldmsd_prdcr_subscribe_regex(prdcr_regex,
+						    stream_name,
+						    reqc->line_buf,
+						    reqc->line_len, &sctxt);
 	/* on error, reqc->line_buf will be filled */
 
 send_reply:
@@ -5259,3 +5316,121 @@ err0:
 out:
 	return rc;
 }
+
+static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *stream_name;
+	ldmsd_stream_type_t stream_type = LDMSD_STREAM_STRING;
+	ldmsd_req_attr_t attr;
+	json_parser_t parser;
+	json_entity_t entity = NULL;
+	int cnt;
+
+	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!stream_name) {
+		reqc->errcode = EINVAL;
+		ldmsd_log(LDMSD_LERROR, "%s: The stream name is missing "
+			  "in the config message\n", __func__);
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "The stream name is missing.");
+		goto err_reply;
+	}
+
+	/* Check for string */
+	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_STRING);
+	if (attr)
+		goto out;
+
+	/* Check for JSon */
+	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_JSON);
+	if (attr) {
+		parser = json_parser_new(0);
+		if (!parser) {
+			ldmsd_log(LDMSD_LERROR,
+				  "%s: error creating JSon parser.\n", __func__);
+			reqc->errcode = ENOMEM;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				       "Could not create the JSon parser.");
+			goto err_reply;
+		}
+		int rc = json_parse_buffer(parser,
+					   attr->attr_value, attr->attr_len,
+					   &entity);
+		json_parser_free(parser);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR,
+				  "%s: syntax error parsing JSon payload.\n", __func__);
+			reqc->errcode = EINVAL;
+			goto err_reply;
+		}
+		stream_type = LDMSD_STREAM_JSON;
+	} else {
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"No data provided.");
+		reqc->errcode = EINVAL;
+		goto err_reply;
+	}
+out:
+	ldmsd_stream_deliver(stream_name, stream_type,
+			     attr->attr_value, attr->attr_len, entity);
+	json_entity_free(entity);
+	reqc->errcode = 0;
+	ldmsd_send_req_response(reqc, NULL);
+	return 0;
+err_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
+static int __on_republish_resp(ldmsd_req_cmd_t rcmd)
+{
+	return 0;
+}
+
+static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
+			       ldmsd_stream_type_t stream_type,
+			       const char *data, size_t data_len,
+			       json_entity_t entity)
+{
+	ldms_t ldms = ldms_xprt_get(ctxt);
+	int rc, attr_id = LDMSD_ATTR_STRING;
+	const char *stream = ldmsd_stream_client_name(c);
+	ldmsd_req_cmd_t rcmd = ldmsd_req_cmd_new(ldms, LDMSD_STREAM_PUBLISH_REQ,
+						 NULL, __on_republish_resp, NULL);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, stream);
+	if (rc)
+		goto out;
+	if (stream_type == LDMSD_STREAM_JSON)
+		attr_id = LDMSD_ATTR_JSON;
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, attr_id, data);
+	if (rc)
+		goto out;
+	rc = ldmsd_req_cmd_attr_term(rcmd);
+ out:
+	return rc;
+}
+
+static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
+
+{
+	char *stream_name;
+	ldmsd_req_attr_t attr;
+	ldmsd_prdcr_t prdcr;
+	int cnt;
+
+	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!stream_name) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "The stream name is missing.");
+		goto send_reply;
+	}
+
+	ldmsd_stream_subscribe(stream_name, stream_republish_cb, reqc->xprt->ldms.ldms);
+	reqc->errcode = 0;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+

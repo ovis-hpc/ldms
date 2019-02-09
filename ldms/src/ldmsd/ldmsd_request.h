@@ -69,6 +69,7 @@ enum ldmsd_request {
 	LDMSD_PRDCR_STOP_REGEX_REQ,
 	LDMSD_PRDCR_SET_REQ,
 	LDMSD_PRDCR_HINT_TREE_REQ,
+	LDMSD_PRDCR_SUBSCRIBE_REQ,
 	LDMSD_STRGP_ADD_REQ = 0x200,
 	LDMSD_STRGP_DEL_REQ,
 	LDMSD_STRGP_START_REQ,
@@ -142,6 +143,10 @@ enum ldmsd_request {
 	LDMSD_SETGROUP_INS_REQ, /* Insert a set into a group */
 	LDMSD_SETGROUP_RM_REQ, /* Remove a set from a group */
 
+	/* Publish/Subscribe Requests */
+	LDMSD_STREAM_PUBLISH_REQ = 0x900, /* Publish data to a stream */
+	LDMSD_STREAM_SUBSCRIBE_REQ,	  /* Subscribe to a stream */
+
 	LDMSD_NOTSUPPORT_REQ,
 };
 
@@ -181,6 +186,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_AUTO_INTERVAL,
 	LDMSD_ATTR_UID,
 	LDMSD_ATTR_GID,
+	LDMSD_ATTR_STREAM,
 	LDMSD_ATTR_LAST,
 };
 

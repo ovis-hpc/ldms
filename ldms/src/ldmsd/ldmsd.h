@@ -180,6 +180,11 @@ typedef struct ldmsd_cfgobj {
 	int perm;
 } *ldmsd_cfgobj_t;
 
+typedef struct ldmsd_prdcr_stream_s {
+	const char *name;
+	LIST_ENTRY(prdcr_subs_s) entry;
+} *ldmsd_prdcr_stream_t;
+
 /**
  * Producer: Named instance of an LDMSD
  *
@@ -220,7 +225,13 @@ typedef struct ldmsd_prdcr {
 
 	struct ldmsd_task task;
 
-	/** Maintains a tree of all metric sets available from this
+	/**
+	 * list of subscribed streams from this producer
+	 */
+	LIST_HEAD(,ldmsd_prdcr_stream_s) stream_list;
+
+	/**
+	 * Maintains a tree of all metric sets available from this
 	 * producer. It is a tree to allow quick lookup by the logic
 	 * that handles dir_add and dir_del directory updates from the
 	 * producer.
@@ -908,6 +919,9 @@ int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 int ldmsd_prdcr_stop(const char *name, ldmsd_sec_ctxt_t ctxt);
 int ldmsd_prdcr_stop_regex(const char *prdcr_regex,
 			char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
+int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, char *stream_name,
+				char *rep_buf, size_t rep_len,
+				ldmsd_sec_ctxt_t ctxt);
 
 int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt);
 int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt);
