@@ -381,6 +381,18 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_prdcr_stop_regex(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_stop_regex', text)
 
+    def do_prdcr_subscribe(self, arg):
+        """
+        Subscribe for stream data from all matching producers
+        Parameters:
+        regex=     A regular expression matching producer names
+        stream=    The stream name
+        """
+        self.handle('prdcr_subscribe', arg);
+
+    def complete_prdcr_subscribe(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_subscribe', text)
+
     def do_updtr_add(self, arg):
         """
         Add an Updater that will periodically update Producer metric sets either
@@ -755,6 +767,28 @@ class LdmsdCmdParser(cmd.Cmd):
             print("{0}:".format(p['plugin']))
             for s in p['sets']:
                 print("   {0}".format(s))
+
+    def do_publish(self, arg):
+        """
+        Publish data to the named stream
+        Parameters:
+        name=   The stream name
+        data=   The data to publish
+        """
+        resp = self.handle('publish', arg)
+        print(resp['errcode'])
+
+    def do_subscribe(self, arg):
+        """
+        Subscribe to a stream.
+
+        The aggregator will listen for published data on the specified stream.
+
+        Parameters:
+        name=   The stream name
+        """
+        resp = self.handle('subscribe', arg)
+        print(resp['errcode'])
 
     def do_status(self, arg):
         all__ = (len(arg) == 0)

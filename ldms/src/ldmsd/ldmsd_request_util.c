@@ -90,6 +90,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "prdcr_status",       LDMSD_PRDCR_STATUS_REQ  },
 	{  "prdcr_stop",         LDMSD_PRDCR_STOP_REQ  },
 	{  "prdcr_stop_regex",   LDMSD_PRDCR_STOP_REGEX_REQ  },
+	{  "prdcr_subscribe",    LDMSD_PRDCR_SUBSCRIBE_REQ },
 	{  "set_route",          LDMSD_SET_ROUTE_REQ  },
 	{  "setgroup_add",       LDMSD_SETGROUP_ADD_REQ  },
 	{  "setgroup_del",       LDMSD_SETGROUP_DEL_REQ  },
@@ -149,6 +150,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "push",              LDMSD_ATTR_PUSH  },
 	{  "regex",             LDMSD_ATTR_REGEX  },
 	{  "schema",            LDMSD_ATTR_SCHEMA  },
+	{  "stream",            LDMSD_ATTR_STREAM  },
 	{  "string",            LDMSD_ATTR_STRING  },
 	{  "test",              LDMSD_ATTR_TEST  },
 	{  "time",              LDMSD_ATTR_TIME  },
@@ -201,6 +203,7 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_PRDCR_STOP_REGEX_REQ  : return "PRDCR_STOP_REGEX_REQ";
 	case LDMSD_PRDCR_SET_REQ         : return "PRDCR_SET_REQ";
 	case LDMSD_PRDCR_HINT_TREE_REQ   : return "PRDCR_HINT_TREE_REQ";
+	case LDMSD_PRDCR_SUBSCRIBE_REQ   : return "PRDCR_SUBSCRIBE_REQ";
 
 	case LDMSD_STRGP_ADD_REQ        : return "STRGP_ADD_REQ";
 	case LDMSD_STRGP_DEL_REQ        : return "STRGP_DEL_REQ";
@@ -279,6 +282,8 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_SETGROUP_INS_REQ : return "SETGROUP_INS_REQ";
 	case LDMSD_SETGROUP_RM_REQ  : return "SETGROUP_RM_REQ";
 
+	case LDMSD_STREAM_SUBSCRIBE_REQ : return "STREAM_SUBSCRIBE_REQ";
+	case LDMSD_STREAM_PUBLISH_REQ : return "STREAM_PUBLISH_REQ";
 	default: return "UNKNOWN_REQ";
 	}
 }

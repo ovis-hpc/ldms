@@ -61,6 +61,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
+#include "ldmsd_request.h"
 #include "config.h"
 
 static void prdcr_task_cb(ldmsd_task_t task, void *arg);
@@ -529,6 +530,37 @@ static void prdcr_dir_cb(ldms_t xprt, int status, ldms_dir_t dir, void *arg)
 	ldms_xprt_dir_free(xprt, dir);
 }
 
+static int __on_subs_resp(ldmsd_req_cmd_t rcmd)
+{
+	return 0;
+}
+
+/* Send subscribe request to peer */
+static int __prdcr_subscribe(ldmsd_prdcr_t prdcr)
+{
+	ldmsd_req_cmd_t rcmd;
+	int rc;
+	ldmsd_prdcr_stream_t s;
+	LIST_FOREACH(s, &prdcr->stream_list, entry) {
+		rcmd = ldmsd_req_cmd_new(prdcr->xprt, LDMSD_STREAM_SUBSCRIBE_REQ,
+					 NULL, __on_subs_resp, prdcr);
+		rc = errno;
+		if (!rcmd)
+			goto err_0;
+		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, s->name);
+		if (rc)
+			goto err_1;
+		rc = ldmsd_req_cmd_attr_term(rcmd);
+		if (rc)
+			goto err_1;
+	}
+	return 0;
+ err_1:
+	ldmsd_req_cmd_free(rcmd);
+ err_0:
+	return rc;
+}
+
 static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	ldmsd_prdcr_t prdcr = cb_arg;
@@ -539,6 +571,10 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
+		if (__prdcr_subscribe(prdcr)) {
+			ldmsd_log(LDMSD_LERROR, "Could not subscribe to stream data on producer %s\n",
+				  prdcr->obj.name);
+		}
 		if (ldms_xprt_dir(prdcr->xprt, prdcr_dir_cb, prdcr,
 				  LDMS_DIR_F_NOTIFY))
 			ldms_xprt_close(prdcr->xprt);
@@ -875,6 +911,24 @@ int ldmsd_prdcr_stop(const char *name, ldmsd_sec_ctxt_t ctxt)
 	return rc;
 }
 
+int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
+{
+	ldmsd_prdcr_stream_t s = calloc(1, sizeof *s);
+	if (!s)
+		goto err;
+	s->name = strdup(stream);
+	if (!s->name)
+		goto err;
+	ldmsd_prdcr_lock(prdcr);
+	LIST_INSERT_HEAD(&prdcr->stream_list, s, entry);
+	ldmsd_prdcr_unlock(prdcr);
+	return 0;
+ err:
+	if (s)
+		free(s);
+		return ENOMEM;
+}
+
 int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 			    char *rep_buf, size_t rep_len,
 			    ldmsd_sec_ctxt_t ctxt)
@@ -1035,3 +1089,27 @@ void ldmsd_prdcr_update(ldmsd_strgp_t strgp)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 }
+
+int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, char *stream_name,
+				char *rep_buf, size_t rep_len,
+				ldmsd_sec_ctxt_t ctxt)
+{
+	regex_t regex;
+	ldmsd_prdcr_t prdcr;
+	int rc;
+
+	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
+	if (rc)
+		return rc;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
+		if (rc)
+			continue;
+		ldmsd_prdcr_subscribe(prdcr, stream_name);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	regfree(&regex);
+	return 0;
+}
+

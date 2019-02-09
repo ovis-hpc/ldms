@@ -100,7 +100,8 @@ class LDMSD_Req_Attr(object):
     AUTO_INTERVAL = 31
     UID = 32
     GID = 33
-    LAST = 34
+    STREAM = 34
+    LAST = 35
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -136,6 +137,7 @@ class LDMSD_Req_Attr(object):
                    'auto_interval': AUTO_INTERVAL,
                    'uid': UID,
                    'gid': GID,
+                   'stream': STREAM,
                    'TERMINATING': LAST
         }
 
@@ -235,6 +237,7 @@ class LDMSD_Request(object):
     PRDCR_STOP_REGEX = 0x100 + 6
     PRDCR_SET_STATUS = 0x100 + 7
     PRDCR_HINT_TREE = 0x100 + 8
+    PRDCR_SUBSCRIBE = 0x100 + 9
 
     STRGP_ADD = 0x200
     STRGP_DEL = 0x200 + 1
@@ -300,6 +303,9 @@ class LDMSD_Request(object):
     SETGROUP_INS = 0x800 + 3
     SETGROUP_RM  = 0x800 + 4
 
+    STREAM_PUBLISH = 0x900
+    STREAM_SUBSCRIBE = STREAM_PUBLISH + 1
+
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
             'greeting': {'id': GREETING},
@@ -315,6 +321,7 @@ class LDMSD_Request(object):
             'prdcr_stop_regex': {'id': PRDCR_STOP_REGEX},
             'prdcr_set_status': {'id': PRDCR_SET_STATUS},
             'prdcr_hint_tree': {'id': PRDCR_HINT_TREE},
+            'prdcr_subscribe': {'id': PRDCR_SUBSCRIBE},
 
             'strgp_add': {'id': STRGP_ADD},
             'strgp_del': {'id': STRGP_DEL},
@@ -370,6 +377,9 @@ class LDMSD_Request(object):
             'setgroup_del'  :  {'id':  SETGROUP_DEL},
             'setgroup_ins'  :  {'id':  SETGROUP_INS},
             'setgroup_rm'   :  {'id':  SETGROUP_RM},
+
+            'publish'       :  {'id': STREAM_PUBLISH },
+            'subscribe'     :  {'id' : STREAM_SUBSCRIBE },
         }
 
     TYPE_CONFIG_CMD = 1

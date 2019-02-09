@@ -453,6 +453,14 @@ static void help_prdcr_stop_regex()
 		"     regex=        A regular expression\n");
 }
 
+static void help_prdcr_subscribe_regex()
+{
+	printf( "\nRegister for stream data from the producer.\n\n"
+		"Parameters:\n"
+		"     regex=        A regular expression to match producers\n"
+		"     stream=       The stream name\n");
+}
+
 static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
 	ldmsd_req_attr_t attr;
@@ -1433,6 +1441,7 @@ static struct command command_tbl[] = {
 	{ "prdcr_status", LDMSD_PRDCR_STATUS_REQ, NULL, help_prdcr_status, resp_prdcr_status },
 	{ "prdcr_stop", LDMSD_PRDCR_STOP_REQ, NULL, help_prdcr_stop, resp_generic },
 	{ "prdcr_stop_regex", LDMSD_PRDCR_STOP_REGEX_REQ, NULL, help_prdcr_stop_regex, resp_generic },
+	{ "prdcr_subscribe", LDMSD_PRDCR_SUBSCRIBE_REQ, NULL, help_prdcr_subscribe_regex, resp_generic },
 	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit, resp_generic },
 	{ "script", LDMSCTL_SCRIPT, handle_script, help_script, resp_generic },
 	{ "set_route", LDMSD_SET_ROUTE_REQ, NULL, help_set_route, resp_set_route },
