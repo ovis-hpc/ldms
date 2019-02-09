@@ -84,6 +84,11 @@ htbl_t htbl_alloc(htbl_cmp_fn_t cmp_fn, size_t depth)
 	return t;
 }
 
+void htbl_free(htbl_t t)
+{
+	free(t);
+}
+
 /**
  * \brief Returns TRUE if the tree is empty.
  *
@@ -91,7 +96,7 @@ htbl_t htbl_alloc(htbl_cmp_fn_t cmp_fn, size_t depth)
  * \retval 0	The tree is not empty
  * \retval 1	The tree is empty
  */
-int hbtl_empty(htbl_t t)
+int htbl_empty(htbl_t t)
 {
 	return (0 == t->entry_count);
 }
@@ -123,6 +128,7 @@ void htbl_ins(htbl_t t, hent_t e)
 {
 	uint64_t h = t->hash_fn(e->key, e->key_len);
 	h %= t->table_depth;
+	e->tbl = t;
 	LIST_INSERT_HEAD(&t->table[h], e, hash_link);
 	t->entry_count++;
 }
@@ -167,17 +173,14 @@ hent_t htbl_find(htbl_t t, const void *key, size_t key_len)
  */
 hent_t htbl_first(htbl_t t)
 {
-	return NULL;
-}
+	uint64_t h;
+	hent_t ent;
 
-/**
- * \brief Return the last entry in the Hash Table
- *
- * \param t	Pointer to the RBT.
- * \return	Pointer to the node or NULL if the tree is empty.
- */
-hent_t htbl_last(htbl_t t)
-{
+	for (h = 0; h < t->table_depth; h++) {
+		ent = LIST_FIRST(&t->table[h]);
+		if (ent)
+			return ent;
+	}
 	return NULL;
 }
 
@@ -189,21 +192,20 @@ hent_t htbl_last(htbl_t t)
  * \param e Pointer to the entry
  * \returns Pointer to the successor entry
  */
-hent_t hent_succ(hent_t e)
+hent_t htbl_next(hent_t e)
 {
-	return NULL;
-}
-
-/**
- * \brief Return the predecessor entry
- *
- * Given an entry in the tree, return it's predecessor.
- *
- * \param e Pointer to the entry
- * \returns Pointer to the predecessor entry
- */
-hent_t hent_pred(hent_t e)
-{
+	uint64_t h;
+	hent_t ent = LIST_NEXT(e, hash_link);
+	if (ent)
+		return ent;
+	h = e->tbl->hash_fn(e->key, e->key_len);
+	h %= e->tbl->table_depth;
+	h += 1;
+	for (; h < e->tbl->table_depth; h++) {
+		ent = LIST_FIRST(&e->tbl->table[h]);
+		if (ent)
+			return ent;
+	}
 	return NULL;
 }
 
