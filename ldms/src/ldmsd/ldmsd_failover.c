@@ -793,7 +793,6 @@ int __failover_send_reset(ldmsd_failover_t f, ldms_t xprt)
 	}
 	/* reset has no attribute */
 	rc = ldmsd_req_cmd_attr_term(rcmd);
-	__ASSERT(rc == 0);
 	__F_ON(f, __FAILOVER_OUTSTANDING_UNPAIR);
 out:
 	if (rc && rcmd)
@@ -816,7 +815,6 @@ int __failover_send_cfgobjs(ldmsd_failover_t f, ldms_t x)
 		if (__cfgobj_is_failover(&p->obj))
 			continue;
 		rc = __failover_send_prdcr(f, x, p);
-		__ASSERT(rc == 0); /* for testing/debugging */
 		if (rc) {
 			ldmsd_prdcr_put(p);
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
@@ -831,7 +829,6 @@ int __failover_send_cfgobjs(ldmsd_failover_t f, ldms_t x)
 		if (__cfgobj_is_failover(&u->obj))
 			continue;
 		rc = __failover_send_updtr(f, x, u);
-		__ASSERT(rc == 0);
 		if (rc) {
 			ldmsd_updtr_put(u);
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
@@ -845,7 +842,6 @@ int __failover_send_cfgobjs(ldmsd_failover_t f, ldms_t x)
 		if (__cfgobj_is_failover(&s->obj))
 			continue;
 		rc = __failover_send_strgp(f, x, s);
-		__ASSERT(rc == 0);
 		if (rc) {
 			ldmsd_strgp_put(s);
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
