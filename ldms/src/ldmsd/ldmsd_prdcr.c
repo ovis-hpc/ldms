@@ -66,7 +66,7 @@
 
 static void prdcr_task_cb(ldmsd_task_t task, void *arg);
 
-int prdcr_resolve(const char *hostname, short port_no,
+int prdcr_resolve(const char *hostname, unsigned short port_no,
 		  struct sockaddr_storage *ss, socklen_t *ss_len)
 {
 	struct hostent *h;
@@ -453,14 +453,14 @@ int ldmsd_prdcr_str2type(const char *type)
 
 ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
-		const char *host_name, const short port_no,
+		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us)
 {
 	struct ldmsd_prdcr *prdcr;
 
 	ldmsd_log(LDMSD_LDEBUG, "ldmsd_prdcr_new(name %s, xprt %s, host %s, port %hu, type %u, intv %d\n",
-		name, xprt_name, host_name,(unsigned short) port_no, (unsigned)type, conn_intrvl_us);
+		name, xprt_name, host_name, port_no, (unsigned)type, conn_intrvl_us);
 	prdcr = (struct ldmsd_prdcr *)
 		ldmsd_cfgobj_new(name, LDMSD_CFGOBJ_PRDCR,
 				 sizeof *prdcr, ldmsd_prdcr___del);
@@ -482,7 +482,7 @@ ldmsd_prdcr_new(const char *name, const char *xprt_name,
 	if (prdcr_resolve(host_name, port_no, &prdcr->ss, &prdcr->ss_len)) {
 		errno = EAFNOSUPPORT;
 		ldmsd_log(LDMSD_LERROR, "ldmsd_prdcr_new: %s:%hu not resolved.\n",
-			host_name,(unsigned short) port_no);
+			host_name, port_no);
 		goto out;
 	}
 	ldmsd_task_init(&prdcr->task);
@@ -682,7 +682,7 @@ int cmd_prdcr_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 	char *type, *name, *xprt_name, *host_name, *port, *interval_us;
 	int intrvl_us;
 	enum ldmsd_prdcr_type prdcr_type;
-	short port_no;
+	unsigned short port_no;
 
 	attr = "name";
 	name = av_value(avl, attr);
@@ -712,7 +712,13 @@ int cmd_prdcr_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 	port = av_value(avl, attr);
 	if (!port)
 		goto einval;
-	port_no = strtol(port, NULL, 0);
+	long ptmp = strtol(port, NULL, 0);
+	if (ptmp < 0 || ptmp > USHRT_MAX) {
+		sprintf(replybuf, "%dThe attribute '%s' is out of range.\n",
+			EINVAL, attr);
+		goto einval;
+	}
+	port_no = (unsigned short) ptmp;
 
 	attr = "interval";
 	interval_us = av_value(avl, attr);

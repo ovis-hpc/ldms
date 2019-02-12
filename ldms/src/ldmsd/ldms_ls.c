@@ -477,7 +477,7 @@ int main(int argc, char *argv[])
 	int ret;
 	struct hostent *h;
 	char *hostname = "localhost";
-	short port_no = LDMS_DEFAULT_PORT;
+	unsigned short port_no = LDMS_DEFAULT_PORT;
 	int op;
 	int i;
 	char *xprt = "sock";
