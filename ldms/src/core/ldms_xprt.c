@@ -1665,16 +1665,15 @@ static void __handle_lookup(ldms_t x, struct ldms_context *ctxt,
 	if (!ctxt->lookup.cb)
 		goto ctxt_cleanup;
 	if (ev->status != ZAP_ERR_OK) {
-		/*
-		 * Application doesn't have the set handle yet,
-		 * so delete the set.
-		 */
 		status = EREMOTEIO;
 #ifdef DEBUG
 		x->log("DEBUG: %s: lookup read error: zap error %d. ldms lookup status %d\n",
 				ldms_set_instance_name_get(ctxt->lookup.s), ev->status, status);
 #endif /* DEBUG */
-		ldms_set_delete(ctxt->lookup.s);
+		/*
+		 * The rbd is in the xprt list, and will be cleaned up by the
+		 * transport.
+		 */
 		ctxt->lookup.s = NULL;
 	} else {
 		ldms_set_publish(ctxt->lookup.s);
