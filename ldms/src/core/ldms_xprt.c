@@ -1581,7 +1581,7 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 	int i, rc;
 	ldms_set_t s = ctxt->update.s;
 	struct ldms_set *set = s->set;
-	int n = __le32_to_cpu(set->meta->array_card);
+	int n;
 	struct ldms_data_hdr *data, *prev_data;
 	int flags, upd_curr_idx;
 
@@ -1592,7 +1592,7 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 		ctxt->update.cb(x, s, rc, ctxt->update.arg);
 		goto cleanup;
 	}
-
+	n = __le32_to_cpu(set->meta->array_card);
 	/* update current index from the update */
 	data = __ldms_set_array_get(s, ctxt->update.idx_from);
 	upd_curr_idx = __le32_to_cpu(data->curr_idx);
