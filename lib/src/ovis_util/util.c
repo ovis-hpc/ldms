@@ -938,3 +938,101 @@ const char* ovis_errno_abbvr(int e)
 	}
 	return "UNKNOWN_ERRNO";
 }
+
+
+#define _GNU_SOURCE     /* To get defns of and NI_MAXHOST */
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <ifaddrs.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <linux/if_link.h>
+
+int ovis_host_is_self(const char *remote)
+{
+	struct ifaddrs *ifaddr, *ifa;
+	int family, s, n;
+	char host[NI_MAXHOST];
+	if (!remote) {
+		return EINVAL;
+	}
+	/* not any loopback number ?*/
+	if (!(strncmp(remote, "127." , 4)))
+		return 1;
+
+	/* not any alias from hosts file ?*/
+	struct hostent *h, he;
+	h = &he;
+#define BSZ 20000
+	char buf[BSZ];
+	int gherrno;
+	struct hostent *ghr = NULL;
+	int gherr = gethostbyname_r(remote, h, buf, BSZ, &ghr, &gherrno);
+	if (!gherr) {
+		int nh = 0;
+		 while (h->h_aliases[nh] != NULL) {
+			 if (!strcmp(remote, h->h_aliases[nh])) {
+				 return 1;
+			 }
+			 nh++;
+		 }
+	}
+
+	/* not self in dns registration */
+	if (getifaddrs(&ifaddr) == -1) {
+		return 0;
+	}
+
+	/* Walk through linked list, maintaining head pointer so we
+	can free list later */
+	int rc = 0;
+	for (ifa = ifaddr, n = 0; ifa != NULL; ifa = ifa->ifa_next, n++) {
+		if (ifa->ifa_addr == NULL) {
+			continue;
+		}
+		family = ifa->ifa_addr->sa_family;
+		if (family != AF_INET) {
+			continue;
+		}
+
+		s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
+			host, NI_MAXHOST, NULL, 0, 0);
+		if (s != 0) {
+			rc = ENOENT;
+			break;
+		}
+		if (!(strcmp(remote, host))) {
+			rc = 1;
+			break;
+		}
+
+		s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
+			host, NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+		if (s != 0) {
+			rc = ENOENT;
+			break;
+		}
+		if (!(strcmp(remote, host))) {
+			rc = 1;
+			break;
+		}
+
+		s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in),
+			host, NI_MAXHOST, NULL, 0, NI_NOFQDN);
+		if (s != 0) {
+			rc = ENOENT;
+			break;
+		}
+		if (!(strcmp(remote, host))) {
+			rc = 1;
+			break;
+		}
+	}
+
+	freeifaddrs(ifaddr);
+	return rc;
+}
+

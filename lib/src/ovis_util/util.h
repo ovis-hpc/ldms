@@ -224,6 +224,13 @@ char *ovis_join(char *joiner, ...);
 int ovis_join_buf(char *buf, size_t buflen, char *joiner, ...);
 
 /**
+ * \brief check a hostname for being a name of current host.
+ * \param host name to check.
+ * \return 0 if apparently not the current host, 1 if host.
+ */
+int ovis_host_is_self(const char *host);
+
+/**
  * \brief A convenient function checking if the given \a path exists.
  * \return 1 if the \a path exists. \a path is not necessary a file though.
  * \return 0 if the \a path does not exist.

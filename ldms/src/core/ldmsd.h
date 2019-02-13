@@ -509,6 +509,11 @@ void ldmsd_lall(const char *fmt, ...);
  */
 int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level);
 
+/* Store the transport listener port of the daemon, so it can check
+ * that it is not its own producer directly upstream.
+ */
+void ldmsd_self_port_set(unsigned short port_self);
+unsigned short ldmsd_self_port_get();
 
 int ldmsd_store_data_add(struct ldmsd_store_policy *lsp, ldms_set_t set);
 
