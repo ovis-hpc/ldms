@@ -695,10 +695,10 @@ get_strgp_container () {
 	eval POL_CONFIG_${policy}='$grok'
 	eval config='$'"POL_CONFIG_${policy}"
 	if echo "$config" |grep container=; then
-		container=`echo $config|sed -e 's/.*container=//g' -e  's/ .*//g'`
+		local container=`echo $config|sed -e 's/.*container=//g' -e  's/ .*//g'`
 	fi > /dev/null
 	if test -z "$container"; then
-		container=${pi}
+		local container=${pi}
 	fi
 	echo $container
 }
