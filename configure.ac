@@ -143,6 +143,7 @@ util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/Makefile
 util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/ClusterGenders/Makefile
 util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/ClusterSecrets/Makefile
 util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/plugins-conf/Makefile
+util/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/debug/Makefile
 util/sample_init_scripts/genders/systemd/services/Makefile
 util/sample_init_scripts/genders/sysv/Makefile
 util/sample_init_scripts/genders/sysv/etc/Makefile

@@ -124,7 +124,9 @@ fi
 export hostnumber
 
 build_genders_file
-check_genders_file
+check_genders_file 0
+check_genders_file 1
+check_genders_file 2
 
 if ! $NODEATTR $NODEATTRFILE -k > /dev/null 2>&1; then
 	echoq "problem with $NODEATTRFILE"
@@ -135,12 +137,7 @@ fi
 export NODEATTR NODEATTRFILE
 
 if ! $NODEATTR $NODEATTRFILE $host ldmsaggd >/dev/null 2>&1; then
-	not_aggregator=1
 	echoq "$host is is not an LDMSD aggregation host."
-else
-	if test -z $AGG_ID_BASE; then
-		AGG_ID_BASE=1000000
-	fi
 fi
 
 if test -n "$NODE_ID_BASE"; then
@@ -494,6 +491,7 @@ if test -z "$LDMSD_PLUGIN_CONFIG_FILE"; then
 		generate_aggregator_config
 		generate_transform_config
 		generate_store_config
+		generate_debug_config
 	else
 		logger syslog.error "Generating LDMSD configuration file without genders file not yet supported."
 		exit 1

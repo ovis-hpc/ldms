@@ -64,6 +64,12 @@ They are grouped by role: generally applicable, collection, aggregation, or stor
 
 If defined, this overrides the plugin configuration from gender information completely. The file is staged to /var/run/ldmsd/ at daemon launch.
 
+.B LDMSD_DEBUG_CONFIG_FILE=/path/to/debug/file
+
+If defined pointing to an ldmsd configuration file and LDMSD_PLUGIN_CONFIG_FILE
+is not defined, then the content of this file is appended to the generated
+configuration file. It is used to send custom ldmsd debugging commands at startup after the generated commands are all sent.
+
 .B LDMSD_DBG=level
 
 If not defined, defaults to 'error' level of logging from the daemon binary.
@@ -108,6 +114,12 @@ If unset, /etc/sysconfig/ldms.d/ClusterGenders/genders.$LDMSCLUSTER and /etc/gen
 .PP
 The normal reasons for setting an LDMS_GENDERS list is to support splitting administrative duties. For example, on a storage machine, join a copy if the genders file from a cluster monitored to the genders needed for configuring stores on the specific storage machine. Since more than one storage machine might be serving a cluster or the storage machine may be in a different administrative domain, this splitting of the gender file maintenance duties is often desirable.
 
+.B LDMS_GENDERS_1="file list"
+.B LDMS_GENDERS_2="file list"
+
+The files listed in LDMS_GENDERS_1 or LDMS_GENDERS_2 are concatenated and used for genders queries about upstream ldmsd daemons not configured in LDMS_GENDERS.
+This allows an aggregator or storage daemon instances to query at startup the possible metric plugins and schemas of collector daemon instances configured in LDMS_GENDERS_1 or LDMS_GENDERS_2. There is no default assumed if these variables are undefined. The files in LDMS_GENDERS_1 are handled as a group separately from LDMS_GENDERS_2 when making queries.
+
 .B LDMS_GENDERS_HOST=name
 
 If defined, this overrides the name of the local host when making gender queries. If undefined, the leading word from the output of `hostname` is used by default. The use of this variable is to allow independent redundant servers to run using the same genders file.
@@ -133,6 +145,7 @@ If defined, this overrides gender ldmsd_config_port. If neither gender nor envir
 Overrides with N the ldmsd_event_thds gender value. If neither is specified, the default is 4.
 
 
+
 .SH Tuning variables for ldmsd in a collection role
 
 .B COMPONENT_ID=K
@@ -145,8 +158,7 @@ If defined when COMPONENT_ID is not, P is added to the number extracted from the
 
 .B AGG_ID_BASE=Q
 
-If defined when COMPONENT_ID is not, Q is added to the number extracted from the host name and used as the COMPONENT_ID in non-Cray environments. This overrides NODE_ID_BASE.
-
+If defined when COMPONENT_ID (or ldmsd_id) is not, Q is added to the number extracted from the host name and used as the COMPONENT_ID in non-Cray environments. This overrides NODE_ID_BASE.
 
 .SH Tuning variables for ldmsd in an aggregation role
 
