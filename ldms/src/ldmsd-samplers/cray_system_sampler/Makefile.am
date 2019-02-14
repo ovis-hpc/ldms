@@ -37,3 +37,14 @@ libcray_aries_r_sampler_la_LDFLAGS = $(CRAY_LDFLAGS_)
 libcray_aries_r_sampler_la_LIBADD = $(CRAY_LIBADD_)
 pkglib_LTLIBRARIES += libcray_aries_r_sampler.la
 endif
+
+if ENABLE_GEMINI_GPCDR
+libcray_gemini_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_)
+libcray_gemini_r_sampler_la_SOURCES = $(CRAY_SOURCES_) \
+	cray_gemini_r_sampler.c \
+	rtr_util.h rtr_util.c gemini.h \
+	gemini_metrics_gpcdr.c gemini_metrics_gpcdr.h
+libcray_gemini_r_sampler_la_LDFLAGS = $(CRAY_LDFLAGS_)
+libcray_gemini_r_sampler_la_LIBADD = $(CRAY_LIBADD_)
+pkglib_LTLIBRARIES += libcray_gemini_r_sampler.la
+endif
