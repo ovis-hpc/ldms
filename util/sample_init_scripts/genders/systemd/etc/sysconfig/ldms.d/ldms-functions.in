@@ -1,6 +1,11 @@
 
 sysconfdir=@sysconfdir@
 localstatedir=@localstatedir@
+if test "x$LDMSCLUSTER" = "local"; then
+	LTAG="ldmsd"
+else
+	LTAG="ldmsd@$LDMSCLUSTER"
+fi
 
 #
 # Functions for ldmsd and ldms-aggd config file generation.
@@ -13,7 +18,7 @@ dietrace () {
 	if systemd-cat --help 2>1 > /dev/null; then
 		OUTLINE="systemd-cat -p err -t backtrace"
 	else
-		OUTLINE="logger -p syslog.err"
+		OUTLINE="logger -t $LTAG -p syslog.err"
 	fi
 	if [[ $VERBOSE = "-v" ]]; then
 		local frame=0
@@ -48,7 +53,7 @@ check_log_option () {
 				LDMS_LOG_FILE=""
 			fi
 			if test $sdok = "0"; then
-				logger -p syslog.err -s "journal log not available without systemd."
+				logger -t $LTAG -p syslog.err -s "journal log not available without systemd."
 				dietrace 1
 			fi
 			;;
@@ -71,7 +76,7 @@ check_log_option () {
 			LDMS_LOG_OPT="-l"
 			mkdir -p $LDMS_LOG_PATH
 			if ! test -d $LDMS_LOG_PATH; then
-				logger -p syslog.err -s "$0: cannot make log directory $LDMS_LOG_PATH"
+				logger -t $LTAG -p syslog.err -s "$0: cannot make log directory $LDMS_LOG_PATH"
 				dietrace 1
 			fi
 			LDMS_LOG_FILE=$LDMS_LOG_PATH/ldmsd.log.$LDMSCLUSTER
@@ -147,7 +152,7 @@ check_genders_file() {
 		arr=(${p//:/ })
 		val=$($NODEATTR $naf -c ${arr[0]} 2>/dev/null)
 		if test -n "$val"; then
-			logger -p syslog.err "Remove gender ${arr[0]} or use ${arr[1]} instead."
+			logger -t $LTAG -p syslog.err "Remove gender ${arr[0]} or use ${arr[1]} instead."
 			((n++))
 			v="$v, ${arr[0]}"
 		fi
@@ -156,7 +161,7 @@ check_genders_file() {
 		arr=(${p//:/ })
 		val=$($NODEATTR $naf -c ${arr[0]} 2>/dev/null)
 		if test -n "$val"; then
-			logger -p syslog.err "Rename gender ${arr[0]} to ${arr[1]}."
+			logger -t $LTAG -p syslog.err "Rename gender ${arr[0]} to ${arr[1]}."
 			((n++))
 			v="$v, ${arr[0]}"
 		fi
@@ -165,7 +170,7 @@ check_genders_file() {
 		arr=(${p//:/ })
 		val=$($NODEATTR $naf -l | grep ^${arr[0]} 2>/dev/null)
 		if test -n "$val"; then
-			logger -p syslog.err "Correct gender(s) starting with ${arr[0]} to start with ${arr[1]}."
+			logger -t $LTAG -p syslog.err "Correct gender(s) starting with ${arr[0]} to start with ${arr[1]}."
 			((n++))
 			v="$v, $val"
 		fi
@@ -174,7 +179,7 @@ check_genders_file() {
 		arr=(${p//:/ })
 		val=$(grep [:=]${arr[0]}/ $af | grep -v ^# | grep ' ldmsd_' 2>/dev/null)
 		if test -n "$val"; then
-			logger -p syslog.err "Correct option(s) containing ${arr[0]} to use ${arr[1]}."
+			logger -t $LTAG -p syslog.err "Correct option(s) containing ${arr[0]} to use ${arr[1]}."
 			((n++))
 			v="$v, $val"
 		fi
@@ -183,7 +188,7 @@ check_genders_file() {
 		arr=(${p//:/ })
 		val=$($NODEATTR $naf -l | grep ^${arr[0]} 2>/dev/null)
 		if test -n "$val"; then
-			logger -p syslog.err "Found plugin name(s) as a gender: $val. Use : or & instead of , in ldmsd plugin lists, as noted in man ldms-attributes."
+			logger -t $LTAG -p syslog.err "Found plugin name(s) as a gender: $val. Use : or & instead of , in ldmsd plugin lists, as noted in man ldms-attributes."
 			((n++))
 			v="$v, $val"
 		fi
@@ -192,20 +197,20 @@ check_genders_file() {
 	y=$($NODEATTR $naf -n -A |grep ^ldmsaggd)
 	z=$($NODEATTR $naf -n -A |grep ^${LDMS_HOSTNAME}$)
 	if test -n "$x" -o -n "$y"; then
-		logger -p syslog.err "Found ldms genders without hostnames: $x $y."
+		logger -t $LTAG -p syslog.err "Found ldms genders without hostnames: $x $y."
 		((n++))
 	fi
 	if test -z "$z"; then
-		logger -p syslog.err "Found no genders at all for $LDMS_HOSTNAME."
-		logger -p syslog.err "Review $af or setting of LDMS_HOSTNAME"
-		logger -p syslog.err "Input created from $lgi"
+		logger -t $LTAG -p syslog.err "Found no genders at all for $LDMS_HOSTNAME."
+		logger -t $LTAG -p syslog.err "Review $af or setting of LDMS_HOSTNAME"
+		logger -t $LTAG -p syslog.err "Input created from $lgi"
 		exit 1
 		((n++))
 	fi
 	if test $n -gt 0; then
-		logger -p syslog.err "Gender file problems: $n ($v). These genders or options need to be removed, replaced, correctly spelled, or punctuated as noted."
-		logger -p syslog.err "Review $af"
-		logger -p syslog.err "Input created from $lgi"
+		logger -t $LTAG -p syslog.err "Gender file problems: $n ($v). These genders or options need to be removed, replaced, correctly spelled, or punctuated as noted."
+		logger -t $LTAG -p syslog.err "Review $af"
+		logger -t $LTAG -p syslog.err "Input created from $lgi"
 		exit 1
 	fi
 }
@@ -216,7 +221,7 @@ check_files () {
 	shift
 	for i in $*; do
 		if ! test -f $i -a -r $i; then
-			logger -p syslog.err Unable to read genders file $i listed in $context
+			logger -t $LTAG -p syslog.err Unable to read genders file $i listed in $context
 			dietrace 1
 		fi
 	done
@@ -352,7 +357,7 @@ save_env_init () {
 	mkdir -p $localstatedir/run/ldmsd/tmp
 	env1=$(mktemp $localstatedir/run/ldmsd/tmp/env1.$1.XXX)
 	if test -z "$env1"; then
-		logger -p syslog.error -s "$0: cannot make env tempfile"
+		logger -t $LTAG -p syslog.error -s "$0: cannot make env tempfile"
 		dietrace 1
 	fi
 	printenv |sort > $env1
@@ -362,7 +367,7 @@ save_env_init () {
 save_env_finish () {
 	env2=$(mktemp $localstatedir/run/ldmsd/tmp/env2.$1.XXX)
 	if test -z "$env2"; then
-		logger -p syslog.error -s "$0: cannot make env tempfile"
+		logger -t $LTAG -p syslog.error -s "$0: cannot make env tempfile"
 		dietrace 1
 	fi
 	printenv |sort > $env2
@@ -425,7 +430,7 @@ echoq()
 	if [[ $VERBOSE != "-v" ]]; then
 		return;
 	fi
-	logger -p syslog.info "$@";
+	logger -t $LTAG -p syslog.info "$@";
 }
 
 
@@ -490,19 +495,19 @@ gender_substitute () {
 plugin_name_check () {
 	case $1 in
 	slurmjobid)
-		logger -p syslog.err -t ldmsd.config.$1 "Unknown plugin. Consider ldms_jobid instead"
+		logger -p syslog.err -t $LTAG.config.$1 "Unknown plugin. Consider ldms_jobid instead"
 		return 0
 		;;
 	procstatutil)
-		logger -p syslog.err -t ldmsd.config.$1 "Unknown plugin. Consider procstat instead"
+		logger -p syslog.err -t $LTAG.config.$1 "Unknown plugin. Consider procstat instead"
 		return 0
 		;;
 	procstatutil2)
-		logger -p syslog.err -t ldmsd.config.$1 "Unknown plugin. Consider procstat instead"
+		logger -p syslog.err -t $LTAG.config.$1 "Unknown plugin. Consider procstat instead"
 		return 0
 		;;
 	store_derived_csv)
-		logger -p syslog.err -t ldmsd.config.$1 "Unknown plugin. Consider store_function_csv instead"
+		logger -p syslog.err -t $LTAG.config.$1 "Unknown plugin. Consider store_function_csv instead"
 		return 0
 		;;
 	*)
@@ -568,7 +573,7 @@ start_ldmsd_plugins () {
 	for pi in $(eval echo ${LDMSD_METRIC_PLUGINS} | tr ":;'\`" "\n"); do
 
 		if plugin_name_check $pi; then
-			logger -p syslog.err -t ldmsd.config.$1 "Skipping plugin $pi"
+			logger -p syslog.err -t $LTAG.config.$1 "Skipping plugin $pi"
 			continue
 		fi
 
@@ -605,7 +610,7 @@ start_ldmsd_plugins () {
 		cattext=$($NODEATTR $NODEATTRFILE -v $host ldmsd_config_text_${pi} 2>/dev/null)
 		if test -n "$cattext"; then
 			if test $conf != "0"; then
-				logger -p syslog.warning -t ldmsd.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_text_${pi} and ldmsd_${pi} is not allowed."
+				logger -p syslog.warning -t $LTAG.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_text_${pi} and ldmsd_${pi} is not allowed."
 				continue
 			fi
 			conf="text"
@@ -618,11 +623,11 @@ start_ldmsd_plugins () {
 				fi
 			fi
 			if ! test -f $cattext; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_text_${pi} file $cattext not a regular file."
+				logger -p syslog.warning -t $LTAG.config.$pi "ldmsd_config_text_${pi} file $cattext not a regular file."
 				continue
 			fi
 			if ! test -r $cattext; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_text_${pi} file $cattext not readable."
+				logger -p syslog.warning -t $LTAG.config.$pi "ldmsd_config_text_${pi} file $cattext not readable."
 				continue
 			fi
 		fi
@@ -631,7 +636,7 @@ start_ldmsd_plugins () {
 		genprog=$($NODEATTR $NODEATTRFILE -v $host ldmsd_config_gen_${pi} 2>/dev/null)
 		if test -n "$genprog"; then
 			if ! test $conf = "0"; then
-				logger -p syslog.warning -t ldmsd.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_gen_${pi} and ldmsd_${pi} or ldmsd_config_text_${pi} not allowed."
+				logger -p syslog.warning -t $LTAG.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_gen_${pi} and ldmsd_${pi} or ldmsd_config_text_${pi} not allowed."
 				continue
 			fi
 			conf="generate"
@@ -644,16 +649,16 @@ start_ldmsd_plugins () {
 				fi
 			fi
 			if ! test -f $genprog; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not a regular file."
-				continue
+				logger -p syslog.warning -t $LTAG.config.$pi "ldmsd_config_gen_${pi} $genprog not a regular file."
+				dietrace 1
 			fi
 			if ! test -r $genprog; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not readable."
-				continue
+				logger -p syslog.warning -t $LTAG.config.$pi "ldmsd_config_gen_${pi} $genprog not readable."
+				dietrace 1
 			fi
 			if ! test -x $genprog; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not executable."
-				continue
+				logger -p syslog.warning -t $LTAG.config.$pi "ldmsd_config_gen_${pi} $genprog not executable."
+				dietrace 1
 			fi
 		fi
 
@@ -899,7 +904,7 @@ start_stores () {
 		cattext=$($NODEATTR $NODEATTRFILE -v $host ldmsd_config_text_${pi} 2>/dev/null)
 		if test -n "$cattext"; then
 			if test $conf = "1"; then
-				logger -p syslog.warning -t ldmsd.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_text_${pi} and ldmsd_${pi} is not allowed."
+				logger -p syslog.warning -t $LTAG.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_text_${pi} and ldmsd_${pi} is not allowed."
 				continue
 			fi
 			conf="text"
@@ -912,11 +917,11 @@ start_stores () {
 				fi
 			fi
 			if ! test -f $cattext; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_text_${pi} file $cattext not a regular file."
+				logger -p syslog.warning -t $LTAG.config.$pi "ldmsd_config_text_${pi} file $cattext not a regular file."
 				continue
 			fi
 			if ! test -r $cattext; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_text_${pi} file $cattext not readable."
+				logger -p syslog.warning -t $LTAG.config.$pi "ldmsd_config_text_${pi} file $cattext not readable."
 				continue
 			fi
 		fi
@@ -925,7 +930,7 @@ start_stores () {
 		genprog=$($NODEATTR $NODEATTRFILE -v $host ldmsd_config_gen_${pi} 2>/dev/null)
 		if test -n "$genprog"; then
 			if ! test $conf = "0"; then
-				logger -p syslog.warning -t ldmsd.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_gen_${pi} and ldmsd_${pi} or ldmsd_config_text_${pi} not allowed."
+				logger -p syslog.warning -t $LTAG.config.$pi "Skipping plugin $pi. Specifying both ldmsd_config_gen_${pi} and ldmsd_${pi} or ldmsd_config_text_${pi} not allowed."
 				continue
 			fi
 			conf="generate"
@@ -938,15 +943,15 @@ start_stores () {
 				fi
 			fi
 			if ! test -f $genprog; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not a regular file."
+				logger -p syslog.warning -t $LTAG.config.$pi "ldmsd_config_gen_${pi} $genprog not a regular file."
 				continue
 			fi
 			if ! test -r $genprog; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not readable."
+				logger -p syslog.warning -t $LTAG.config.$pi "ldmsd_config_gen_${pi} $genprog not readable."
 				continue
 			fi
 			if ! test -x $genprog; then
-				logger -p syslog.warning -t ldmsd.config.$pi "ldmsd_config_gen_${pi} $genprog not executable."
+				logger -p syslog.warning -t $LTAG.config.$pi "ldmsd_config_gen_${pi} $genprog not executable."
 				continue
 			fi
 		fi
