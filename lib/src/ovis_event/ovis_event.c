@@ -506,7 +506,7 @@ void ovis_event_free(ovis_event_t ev)
 static
 int ovis_event_term_check(ovis_event_manager_t m)
 {
-	int rc;
+	int rc = EINVAL;
 	pthread_mutex_lock(&m->mutex);
 	switch (m->state) {
 	case OVIS_EVENT_MANAGER_INIT:
@@ -527,11 +527,9 @@ int ovis_event_term_check(ovis_event_manager_t m)
 
 int ovis_event_loop(ovis_event_manager_t m, int return_on_empty)
 {
-	struct timeval tv, dtv, etv;
 	ovis_event_t ev;
 	int timeout;
 	int i;
-	int fd;
 	int rc = 0;
 
 	ovis_event_manager_ref_get(m);
@@ -593,7 +591,7 @@ out:
 
 int ovis_event_term(ovis_event_manager_t m)
 {
-	int rc;
+	int rc = EINVAL;
 	ssize_t wb;
 	ovis_event_t none = NULL;
 	pthread_mutex_lock(&m->mutex);
