@@ -1,6 +1,6 @@
 
 # consider adding ldmsd to bin_SCRIPTS if ldmsd script ever stabilizes
-EXTRA_DIST=@OVIS_EXTRA_DIST@ examples lsdate
+EXTRA_DIST=@OVIS_EXTRA_DIST@ examples lsdate slurm-examples
 
 if ENABLE_SCRIPTS
 sbin_SCRIPTS= ldms-wrapper
