@@ -676,6 +676,15 @@ ldmsd_prdcr_set_t ldmsd_prdcr_set_next(ldmsd_prdcr_set_t prd_set)
 	return NULL;
 }
 
+static int prdcr_is_self(const char *host, unsigned short port_no)
+{
+	if (port_no != ldmsd_self_port_get())
+		return 0;
+	if (ovis_host_is_self(host))
+		return 1;
+	return 0;
+}
+
 int cmd_prdcr_add(char *replybuf, struct attr_value_list *avl, struct attr_value_list *kwl)
 {
 	char *attr;
@@ -720,6 +729,9 @@ int cmd_prdcr_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 	}
 	port_no = (unsigned short) ptmp;
 
+	if (prdcr_is_self(host_name, port_no))
+		goto issame;
+
 	attr = "interval";
 	interval_us = av_value(avl, attr);
 	if (!interval_us)
@@ -738,6 +750,10 @@ int cmd_prdcr_add(char *replybuf, struct attr_value_list *avl, struct attr_value
 	strcpy(replybuf, "0");
 	goto out;
 
+issame:
+	sprintf(replybuf, "%dThe prdcr %s is self (%s:%hu). Cannot connect to self.\n",
+		EEXIST, name, host_name, port_no);
+	goto out;
 eexist:
 	sprintf(replybuf, "%dThe prdcr %s already exists.\n", EEXIST, name);
 	goto out;

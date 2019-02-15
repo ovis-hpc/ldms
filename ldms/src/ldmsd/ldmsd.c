@@ -1029,6 +1029,18 @@ void *event_proc(void *v)
 	return NULL;
 }
 
+static unsigned short self_port;
+
+unsigned short ldmsd_self_port_get()
+{
+	return self_port;
+}
+
+void ldmsd_self_port_set(unsigned short port_no)
+{
+	self_port = port_no;
+}
+
 void listen_on_transport(char *xprt_str, char *port_str)
 {
 	int iport_no;
@@ -1061,6 +1073,7 @@ void listen_on_transport(char *xprt_str, char *port_str)
 		cleanup(6, "error creating transport");
 	}
 	ldms = l;
+	ldmsd_self_port_set(port_no);
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = 0;
 	sin.sin_port = htons(port_no);
