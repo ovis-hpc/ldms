@@ -637,7 +637,7 @@ ldmsd_cfgobj_t ldmsd_cfgobj_next(ldmsd_cfgobj_t obj);
 int ldmsd_prdcr_str2type(const char *type);
 ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
-		const char *host_name, const short port_no,
+		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us);
 int ldmsd_prdcr_del(const char *prdcr_name);

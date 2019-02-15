@@ -1031,15 +1031,24 @@ void *event_proc(void *v)
 
 void listen_on_transport(char *xprt_str, char *port_str)
 {
-	int port_no;
+	int iport_no;
+	unsigned short port_no;
 	ldms_t l = NULL;
 	int ret;
 	struct sockaddr_in sin;
 
-	if (!port_str || port_str[0] == '\0')
+	if (!port_str || port_str[0] == '\0') {
 		port_no = LDMS_DEFAULT_PORT;
-	else
-		port_no = atoi(port_str);
+	} else {
+		iport_no = atoi(port_str);
+		if (iport_no < 0 || iport_no > USHRT_MAX) {
+			ldmsd_log(LDMSD_LERROR, "The port specified, "
+				"'%s', is out of unsigned short range.\n",
+				port_str);
+			cleanup(6, "error creating transport");
+		}
+		port_no = (unsigned short) iport_no;
+	}
 #if OVIS_LIB_HAVE_AUTH
 	l = ldms_xprt_with_auth_new(xprt_str, ldmsd_linfo,
 		secretword);

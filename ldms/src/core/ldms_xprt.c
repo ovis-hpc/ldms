@@ -2470,7 +2470,10 @@ int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port_no)
 		rc = ldms_xprt_listen(x, ai->ai_addr, ai->ai_addrlen);
 		freeaddrinfo(ai);
 	} else {
-		short port = atoi(port_no);
+		int iport = atoi(port_no);
+		if (iport > USHRT_MAX || iport < 0)
+			return EINVAL;
+		unsigned short port = (unsigned short)iport;
 		memset(&sin, 0, sizeof(sin));
 		sin.sin_family = AF_INET;
 		sin.sin_addr.s_addr = 0;
