@@ -95,7 +95,7 @@ void str_map_free(str_map_t m)
 		if (!LIST_FIRST(lh))
 			continue;
 		struct obj_list *ol;
-		while (ol = LIST_FIRST(lh)) {
+		while ( (ol = LIST_FIRST(lh)) ) {
 			LIST_REMOVE(ol, link);
 			free(ol->key);
 			free(ol);
