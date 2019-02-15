@@ -70,6 +70,17 @@
 #include "store_common.h"
 #include "store_csv_common.h"
 
+#ifdef __linux__
+#include <sys/syscall.h>
+#ifdef SYS_gettid
+#define gettid() syscall(SYS_gettid);
+#else
+#define gettid() 0
+#endif
+#else
+#define gettid() 0
+#endif
+
 #define TV_SEC_COL    0
 #define TV_USEC_COL    1
 #define GROUP_COL    2
@@ -91,7 +102,11 @@ struct storek{
 	int buffer_sz;
 };
 
+#ifdef CSVDBG
+#define PNAME "store_csvdbg"
+#else
 #define PNAME "store_csv"
+#endif
 
 static int buffer_type = 1; /* autobuffering */
 static int buffer_sz = 0;
@@ -930,6 +945,10 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 			fprintf(fp, ",datagn");
 		if (s_handle->transflags & TRANS_LOG_METAGEN)
 			fprintf(fp, ",metagn");
+		if (s_handle->transflags & TRANS_LOG_THREAD) {
+			fprintf(fp, ",pthread");
+			fprintf(fp, ",kthread");
+		}
 		if (s_handle->transflags & TRANS_LOG_SETPTR)
 			fprintf(fp, ",setptr");
 	}
@@ -1332,6 +1351,11 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 		if (s_handle->transflags & TRANS_LOG_METAGEN) {
 			uint64_t mgn = ldms_set_meta_gn_get(set);
 			fprintf(s_handle->file, ",%" PRIu64, mgn);
+		}
+		if (s_handle->transflags & TRANS_LOG_THREAD) {
+			uint64_t tid = gettid();
+			pthread_t ptid = pthread_self();
+			fprintf(s_handle->file, ",%lu,%" PRIu64, ptid, tid);
 		}
 		if (s_handle->transflags & TRANS_LOG_SETPTR)
 			fprintf(s_handle->file, ",%p", set);
@@ -1887,6 +1911,12 @@ static void store_csv_init()
 	store_idx = idx_create();
 	pthread_mutex_init(&cfg_lock, NULL);
 	LIB_CTOR_COMMON(PG);
+#ifdef CSVDBG
+	PG.transflags = (TRANS_LOG_NORMAL | 
+		TRANS_LOG_DURATION | TRANS_LOG_GENERATION |
+		TRANS_LOG_METAGEN | TRANS_LOG_SETPTR | TRANS_LOG_THREAD |
+		TRANS_LOG_CONSISTENT | TRANS_LOG_TRIP | TRANS_LOG_ARRIVAL);
+#endif
 }
 
 static void __attribute__ ((destructor)) store_csv_fini(void);

@@ -75,13 +75,18 @@ static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
 static char *producer_name;
 static ldms_schema_t schema;
+#ifndef CHKMEMINFO
 #define SAMP "meminfo"
+#else
+#define SAMP "chkmeminfo"
+#endif
 static char *default_schema_name = SAMP;
 static uint64_t compid;
 
 static int metric_offset = 1;
 LJI_GLOBALS;
 
+static int init_size = 0;
 static int create_metric_set(const char *instance_name, char* schema_name)
 {
 	int rc, i;
@@ -115,6 +120,7 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 	if (rc < 0) {
 		goto err;
 	}
+	init_size = metric_offset;
 
 	/*
 	 * Process the file to define all the metrics.
@@ -136,6 +142,7 @@ static int create_metric_set(const char *instance_name, char* schema_name)
 			metric_name[i-1] = '\0';
 
 		rc = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
+		init_size++;
 		if (rc < 0) {
 			rc = ENOMEM;
 			goto err;
@@ -258,6 +265,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
+	msglog(LDMSD_LDEBUG, SAMP ": plugin configured for schema %s size %d.\n",
+		sname, init_size);
 	return 0;
 }
 
@@ -266,9 +275,15 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 	return set;
 }
 
+#ifdef CHKMEMINFO
+static uint64_t sample_number = 0;
+#endif
 static int logdisappeared = 1;
 static int sample(struct ldmsd_sampler *self)
 {
+#ifdef CHKMEMINFO
+	sample_number++;
+#endif
 	int rc;
 	int metric_no;
 	char *s;
@@ -315,7 +330,16 @@ static int sample(struct ldmsd_sampler *self)
 			rc = EINVAL;
 			goto out;
 		}
-
+		if (metric_no >= init_size) {
+			rc = EINVAL;
+			msglog(LDMSD_LERROR, SAMP ": %s new metrics appeared.\n", procfile);
+			goto out;
+		}
+#ifdef CHKMEMINFO
+		uint64_t lmno = metric_no * 10000000000000 +
+			(sample_number % 1000 ) * 10000000000000 * 1000;
+		v.v_u64 += lmno;
+#endif
 		ldms_metric_set(set, metric_no, &v);
 		metric_no++;
 	} while (s);

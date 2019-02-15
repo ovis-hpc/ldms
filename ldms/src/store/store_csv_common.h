@@ -115,7 +115,8 @@ struct csv_plugin_static {
 #define TRANS_LOG_TRIP 32u /* log delivery time as now - ts */
 #define TRANS_LOG_CONSISTENT 64u /* log consistency flag */
 #define TRANS_LOG_ARRIVAL 128u /* log arrival time 'now' formatted as timestamp */
-#define TRANS_LOG_START 256u /* reserved. could be computed from ts - duration */
+#define TRANS_LOG_THREAD 256u /* log thread id of delivery */
+#define TRANS_LOG_START 512u /* reserved. could be computed from ts - duration */
 
 #define ROLL_COMMON \
 	char *filename; \

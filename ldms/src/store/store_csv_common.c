@@ -628,6 +628,9 @@ static int get_transflags(struct csv_plugin_static *cps, const char *transdata, 
 	const char *w = cps->pname;
 	unsigned tmp;
 	tmp = *transflags;
+	if (strlen(transdata) == 0) {
+		cps->msglog(LDMSD_LDEBUG,"%s: empty transportdata\n", w);
+	}
 	while (*transdata != '\0') {
 		switch (*transdata) {
 		case '0':
@@ -653,6 +656,11 @@ static int get_transflags(struct csv_plugin_static *cps, const char *transdata, 
 		case 'g':
 			tmp |= TRANS_LOG_GENERATION;
 			cps->msglog(LDMSD_LDEBUG,"%s: logging generation numbers\n",
+				w);
+			break;
+		case 'i':
+			tmp |= TRANS_LOG_THREAD;
+			cps->msglog(LDMSD_LDEBUG,"%s: logging thread id numbers\n",
 				w);
 			break;
 		case 'm':
@@ -681,7 +689,7 @@ static int get_transflags(struct csv_plugin_static *cps, const char *transdata, 
 			break;
 		case 'a': tmp =
 			(TRANS_LOG_DURATION | TRANS_LOG_GENERATION |
-			TRANS_LOG_METAGEN | TRANS_LOG_SETPTR |
+			TRANS_LOG_METAGEN | TRANS_LOG_SETPTR | TRANS_LOG_THREAD |
 			TRANS_LOG_CONSISTENT | TRANS_LOG_TRIP | TRANS_LOG_ARRIVAL);
 			cps->msglog(LDMSD_LDEBUG, "%s: logging all transport data\n",
 				w);
@@ -1039,8 +1047,12 @@ int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl,
 		}
 	}
 	char * transdata = av_value(avl, "transportdata");
-	if (!transdata)
-		transdata = "0";
+	if (!transdata) {
+		if (cps->transflags != TRANS_LOG_NORMAL)
+			transdata = "";
+		else
+			transdata = "0";
+	}
 	if (!rc)
 		rc = get_transflags(cps, transdata, &(cps->transflags));
 
