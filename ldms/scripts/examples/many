@@ -1,0 +1,12 @@
+portbase=61076
+export LDMS_ENABLE_MMALLOC_DEBUG=1
+MESSAGE starting agg and two collectors
+JOBDATA $TESTDIR/job.data 1 2 3
+LDMSD -p prolog.jobid `seq 2 3`
+#vgon
+LDMSD -p prolog.jobid 1
+LDMS_LS 1
+#vgoff
+SLEEP 15
+KILL_LDMSD `seq 3`
+MESSAGE logs and data under ${TESTDIR}

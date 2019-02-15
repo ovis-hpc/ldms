@@ -9,6 +9,12 @@ libmmallocinclude_HEADERS =  mmalloc.h
 libmmallocincludedir = $(includedir)/mmalloc
 libmmalloc_conf = /etc/ld.so.conf.d/libmmalloc.conf
 lib_LTLIBRARIES += libmmalloc.la
+
+mmrtest_SOURCES = mmalloc.c mmalloc.h
+mmrtest_LDADD = ../coll/libcoll.la
+mmrtest_CFLAGS = $(AM_CFLAGS) -DMMR_TEST
+bin_PROGRAMS = mmrtest
+
 endif
 
 #install-exec-hook:

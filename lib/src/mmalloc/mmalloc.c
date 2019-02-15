@@ -65,8 +65,12 @@
 #include "mmalloc.h"
 #include "../coll/rbt.h"
 #include "ovis-test/test.h"
+#ifdef OVIS_LIB_MM_DEBUG
+#define MM_DEBUG OVIS_LIB_MM_DEBUG
+#endif
 
 static int mm_is_disable_mm_free = 0;
+
 
 struct mm_prefix {
 	struct rbn addr_node;
@@ -100,12 +104,67 @@ static int compare_addr(void *node_key, const void *val_key)
 
 static mm_region_t mmr;
 
+#ifdef MM_DEBUG
+static int mm_mmap = 1;
+
+/* if mm_mmap is set to 0, then mmr and nommr are used to manage a
+	list of pointers and sizes shoe-horned into mm_prefix structures.
+- destroy searches are linear.
+- mmr->start is returned NULL in info queries, which should prevent
+	any code that requires start to be valid and point to mmapped RAM
+	from functioning correctly.
+*/
+static struct mm_prefix nommr;
+/**  nommr.size_node.color is count updated with allocs and frees. */
+#define NOMM_COUNT nommr.size_node.color
+
+/**  nommr.count is byte count updated with allocs and frees.
+ mmr->size is the limit set in init. */
+#define NOMM_SIZE nommr.count
+#define NOMM_SIZE_MAX mmr->size
+
+/** nommr->pfx is the first element of a list of mm_prefix which use pfx as the next pointer. */
+#define NOMM_LIST (nommr.pfx)
+
+/** mm_prefix->pfx is next pointer. */
+#define NOMM_NEXT(p) ((p)->pfx)
+
+/** mm_prefix->addr_node.key is the allocated memory. */
+#define NOMM_DATA(p) (p->addr_node.key)
+
+/** mm_prefix->count is the size of the allocation with that list element. */
+#define NOMM_ALLOCSIZE(p) (p)->count
+
+void mm_enable_debug()
+{
+	if (mmr)
+		return;
+	mm_mmap = 0;
+}
+#endif
+
 void mm_get_info(struct mm_info *mmi)
 {
-	mmi->grain = mmr->grain;
-	mmi->grain_bits = mmr->grain_bits;
-	mmi->size = mmr->size;
-	mmi->start = mmr->start;
+	if (!mmr)
+		return;
+#ifdef MM_DEBUG
+	if (mm_mmap) {
+#endif
+		mmi->grain = mmr->grain;
+		mmi->grain_bits = mmr->grain_bits;
+		mmi->size = mmr->size;
+		mmi->start = mmr->start;
+		return;
+#ifdef MM_DEBUG
+	}
+	if (!mm_mmap) {
+		mmi->grain = mmr->grain;
+		mmi->grain_bits = mmr->grain_bits;
+		mmi->size = mmr->size;
+		mmi->start = NULL;
+		return;
+	}
+#endif
 }
 
 static void get_pow2(size_t n, size_t *pow2, size_t *bits)
@@ -119,36 +178,49 @@ static void get_pow2(size_t n, size_t *pow2, size_t *bits)
 
 int mm_init(size_t size, size_t grain)
 {
+	if (mmr)
+		return ENOMEM;
 	mmr = calloc(1, sizeof (*mmr));
 	if (!mmr)
 		return ENOMEM;
 	pthread_mutex_init(&mmr->lock, NULL);
 	size = MMR_ROUNDUP(size, 4096);
-	mmr->start = mmap(NULL, size, PROT_READ | PROT_WRITE,
-			  MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
-	if (MAP_FAILED == mmr->start)
-		goto out;
+#ifdef MM_DEBUG
+	if (mm_mmap) {
+#endif
+		mmr->start = mmap(NULL, size, PROT_READ | PROT_WRITE,
+				  MAP_ANONYMOUS | MAP_PRIVATE, -1, 0);
+		if (MAP_FAILED == mmr->start)
+			goto out;
 
-	memset(mmr->start, 0XAA, size);
+		memset(mmr->start, 0XAA, size);
+#ifdef MM_DEBUG
+	}
+#endif
 
 	get_pow2(grain, &mmr->grain, &mmr->grain_bits);
 	mmr->size = size;
 
-	/* Inialize the size and address r-b trees */
-	rbt_init(&mmr->size_tree, compare_count);
-	rbt_init(&mmr->addr_tree, compare_addr);
+#ifdef MM_DEBUG
+	if (mm_mmap) {
+#endif
+		/* Inialize the size and address r-b trees */
+		rbt_init(&mmr->size_tree, compare_count);
+		rbt_init(&mmr->addr_tree, compare_addr);
 
-	/* Initialize the prefix */
-	struct mm_prefix *pfx = mmr->start;
-	pfx->count = size / mmr->grain;
-	pfx->pfx = pfx;
-	rbn_init(&pfx->size_node, &pfx->count);
-	rbn_init(&pfx->addr_node, &pfx->pfx);
+		/* Initialize the prefix */
+		struct mm_prefix *pfx = mmr->start;
+		pfx->count = size / mmr->grain;
+		pfx->pfx = pfx;
+		rbn_init(&pfx->size_node, &pfx->count);
+		rbn_init(&pfx->addr_node, &pfx->pfx);
 
-	/* Insert the chunk into the r-b trees */
-	rbt_ins(&mmr->size_tree, &pfx->size_node);
-	rbt_ins(&mmr->addr_tree, &pfx->addr_node);
-
+		/* Insert the chunk into the r-b trees */
+		rbt_ins(&mmr->size_tree, &pfx->size_node);
+		rbt_ins(&mmr->addr_tree, &pfx->addr_node);
+#ifdef MM_DEBUG
+	}
+#endif
 	const char *tmp = getenv("MMALLOC_DISABLE_MM_FREE");
 	if (tmp)
 		mm_is_disable_mm_free = atoi(tmp);
@@ -159,47 +231,115 @@ int mm_init(size_t size, size_t grain)
 	return errno;
 }
 
+#ifdef MM_DEBUG
+int mm_final()
+{
+	if (!mmr)
+		return 0;
+	if (mm_mmap) {
+		size_t x = 0;
+		struct rbn *rn;
+		RBT_FOREACH(rn, &mmr->size_tree) {
+			x++;
+		}
+		if (x == 1) {
+			pthread_mutex_lock(&mmr->lock);
+			munmap(mmr->start, mmr->size);
+			memset(mmr, 0, sizeof(*mmr));
+			pthread_mutex_unlock(&mmr->lock);
+			goto out;
+		} else {
+			return EINVAL;
+		}
+	}
+	if (NOMM_COUNT != 0) {
+		return EINVAL;
+	}
+out:
+	pthread_mutex_destroy(&mmr->lock);
+	free(mmr);
+	mmr = NULL;
+	return 0;
+}
+#endif
+
 void *mm_alloc(size_t size)
 {
-	struct mm_prefix *p, *n;
-	struct rbn *rbn;
-	uint64_t count;
-	uint64_t remainder;
+#ifdef MM_DEBUG
+	if (mm_mmap) {
+#endif
+		struct mm_prefix *p, *n;
+		struct rbn *rbn;
+		uint64_t count;
+		uint64_t remainder;
 
-	size += sizeof(*p);
-	size = MMR_ROUNDUP(size, mmr->grain);
-	count = size >> mmr->grain_bits;
+		size += sizeof(*p);
+		size = MMR_ROUNDUP(size, mmr->grain);
+		count = size >> mmr->grain_bits;
 
-	pthread_mutex_lock(&mmr->lock);
-	rbn = rbt_find_lub(&mmr->size_tree, &count);
-	if (!rbn) {
+		pthread_mutex_lock(&mmr->lock);
+		rbn = rbt_find_lub(&mmr->size_tree, &count);
+		if (!rbn) {
+			pthread_mutex_unlock(&mmr->lock);
+			return NULL;
+		}
+
+		p = container_of(rbn, struct mm_prefix, size_node);
+
+		/* Remove the node from the size and address trees */
+		rbt_del(&mmr->size_tree, &p->size_node);
+		rbt_del(&mmr->addr_tree, &p->addr_node);
+
+		/* Create a new node from the remainder of p if any */
+		remainder = p->count - count;
+		if (remainder) {
+			n = (struct mm_prefix *)
+				((unsigned char *)p + (count << mmr->grain_bits));
+			n->count = remainder;
+			n->pfx = n;
+			rbn_init(&n->size_node, &n->count);
+			rbn_init(&n->addr_node, &n->pfx);
+
+			rbt_ins(&mmr->size_tree, &n->size_node);
+			rbt_ins(&mmr->addr_tree, &n->addr_node);
+		}
+		p->count = count;
+		p->pfx = p;
 		pthread_mutex_unlock(&mmr->lock);
-		return NULL;
+		return ++p;
+#ifdef MM_DEBUG
 	}
-
-	p = container_of(rbn, struct mm_prefix, size_node);
-
-	/* Remove the node from the size and address trees */
-	rbt_del(&mmr->size_tree, &p->size_node);
-	rbt_del(&mmr->addr_tree, &p->addr_node);
-
-	/* Create a new node from the remainder of p if any */
-	remainder = p->count - count;
-	if (remainder) {
-		n = (struct mm_prefix *)
-			((unsigned char *)p + (count << mmr->grain_bits));
-		n->count = remainder;
-		n->pfx = n;
-		rbn_init(&n->size_node, &n->count);
-		rbn_init(&n->addr_node, &n->pfx);
-
-		rbt_ins(&mmr->size_tree, &n->size_node);
-		rbt_ins(&mmr->addr_tree, &n->addr_node);
+	size = MMR_ROUNDUP(size, mmr->grain);
+	void *d = NULL;
+	int pmerr = posix_memalign(&d, mmr->grain, size);
+	if (pmerr)
+		d = NULL;
+	struct mm_prefix *newelt = calloc(1, sizeof(*newelt));
+	if (d && newelt) {
+		memset(d, 0XAA, size);
+		NOMM_ALLOCSIZE(newelt) = size;
+		pthread_mutex_lock(&mmr->lock);
+		NOMM_SIZE += size;
+		if (NOMM_SIZE <= NOMM_SIZE_MAX) {
+			NOMM_COUNT++;
+			NOMM_DATA(newelt) = d;
+			NOMM_NEXT(newelt) = NOMM_LIST;
+			NOMM_LIST = newelt;
+		} else {
+			NOMM_SIZE -= size;
+			free(d);
+			free(newelt);
+			d = NULL;
+			newelt = NULL;
+		}
+		pthread_mutex_unlock(&mmr->lock);
+	} else {
+		free(d);
+		free(newelt);
+		d = NULL;
 	}
-	p->count = count;
-	p->pfx = p;
-	pthread_mutex_unlock(&mmr->lock);
-	return ++p;
+	return d;
+#endif
 }
 
 void mm_free(void *d)
@@ -207,58 +347,88 @@ void mm_free(void *d)
 	if (mm_is_disable_mm_free)
 		return;
 
-	struct mm_prefix *p = d;
-	struct mm_prefix *q, *r;
-	struct rbn *rbn;
+	if (!d)
+		return;
 
-	p --;
+#ifdef MM_DEBUG
+	if (mm_mmap) {
+#endif
+		struct mm_prefix *p = d;
+		struct mm_prefix *q, *r;
+		struct rbn *rbn;
 
+		p --;
+
+		pthread_mutex_lock(&mmr->lock);
+		/* See if we can coalesce with our lesser sibling */
+		rbn = rbt_find_glb(&mmr->addr_tree, &p->pfx);
+		if (rbn) {
+			q = container_of(rbn, struct mm_prefix, addr_node);
+
+			/* See if q is contiguous with us */
+			r = (struct mm_prefix *)
+				((unsigned char *)q + (q->count << mmr->grain_bits));
+			if (r == p) {
+				/* Remove the sibling from the tree and coelesce */
+				rbt_del(&mmr->size_tree, &q->size_node);
+				rbt_del(&mmr->addr_tree, &q->addr_node);
+
+				q->count += p->count;
+				p = q;
+			}
+		}
+
+		/* See if we can coalesce with our greater sibling */
+		rbn = rbt_find_lub(&mmr->addr_tree, &p->pfx);
+		if (rbn) {
+			q = container_of(rbn, struct mm_prefix, addr_node);
+
+			/* See if q is contiguous with us */
+			r = (struct mm_prefix *)
+				((unsigned char *)p + (p->count << mmr->grain_bits));
+			if (r == q) {
+				/* Remove the sibling from the tree and coelesce */
+				rbt_del(&mmr->size_tree, &q->size_node);
+				rbt_del(&mmr->addr_tree, &q->addr_node);
+
+				p->count += q->count;
+			}
+		}
+		/* Fix-up our nodes' key in case we coelesced */
+		p->pfx = p;
+		rbn_init(&p->size_node, &p->count);
+		rbn_init(&p->addr_node, &p->pfx);
+
+		memset(p+1, 0xff, (p->count << mmr->grain_bits) - sizeof(*p));
+
+		/* Put 'p' back in the trees */
+		rbt_ins(&mmr->size_tree, &p->size_node);
+		rbt_ins(&mmr->addr_tree, &p->addr_node);
+		pthread_mutex_unlock(&mmr->lock);
+		return;
+#ifdef MM_DEBUG
+	}
+	if (!NOMM_LIST)
+		return;
 	pthread_mutex_lock(&mmr->lock);
-	/* See if we can coalesce with our lesser sibling */
-	rbn = rbt_find_glb(&mmr->addr_tree, &p->pfx);
-	if (rbn) {
-		q = container_of(rbn, struct mm_prefix, addr_node);
-
-		/* See if q is contiguous with us */
-		r = (struct mm_prefix *)
-			((unsigned char *)q + (q->count << mmr->grain_bits));
-		if (r == p) {
-			/* Remove the sibling from the tree and coelesce */
-			rbt_del(&mmr->size_tree, &q->size_node);
-			rbt_del(&mmr->addr_tree, &q->addr_node);
-
-			q->count += p->count;
-			p = q;
-		}
+	struct mm_prefix *oldelt = NOMM_LIST;
+	struct mm_prefix *prev = NULL;
+	while (oldelt && NOMM_DATA(oldelt) != d) {
+		prev = oldelt;
+		oldelt = NOMM_NEXT(oldelt);
 	}
-
-	/* See if we can coalesce with our greater sibling */
-	rbn = rbt_find_lub(&mmr->addr_tree, &p->pfx);
-	if (rbn) {
-		q = container_of(rbn, struct mm_prefix, addr_node);
-
-		/* See if q is contiguous with us */
-		r = (struct mm_prefix *)
-			((unsigned char *)p + (p->count << mmr->grain_bits));
-		if (r == q) {
-			/* Remove the sibling from the tree and coelesce */
-			rbt_del(&mmr->size_tree, &q->size_node);
-			rbt_del(&mmr->addr_tree, &q->addr_node);
-
-			p->count += q->count;
-		}
+	if (oldelt) {
+		if (prev)
+			NOMM_NEXT(prev) = NOMM_NEXT(oldelt);
+		else
+			NOMM_LIST = NOMM_NEXT(oldelt);
+		NOMM_SIZE -= NOMM_ALLOCSIZE(oldelt);
+		NOMM_COUNT--;
+		free(NOMM_DATA(oldelt));
+		free(oldelt);
 	}
-	/* Fix-up our nodes' key in case we coelesced */
-	p->pfx = p;
-	rbn_init(&p->size_node, &p->count);
-	rbn_init(&p->addr_node, &p->pfx);
-
-	memset(p+1, 0xff, (p->count << mmr->grain_bits) - sizeof(*p));
-
-	/* Put 'p' back in the trees */
-	rbt_ins(&mmr->size_tree, &p->size_node);
-	rbt_ins(&mmr->addr_tree, &p->addr_node);
 	pthread_mutex_unlock(&mmr->lock);
+#endif
 }
 
 static int heap_stat(struct rbn *rbn, void *fn_data, int level)
@@ -284,8 +454,50 @@ void mm_stats(struct mm_stat *s)
 		return;
 	s->size = mmr->size;
 	s->grain = mmr->grain;
-	s->smallest = s->size + 1;
-	rbt_traverse(&mmr->addr_tree, heap_stat, s);
+#ifdef MM_DEBUG
+	if (mm_mmap) {
+#endif
+		s->smallest = s->size + 1;
+		rbt_traverse(&mmr->addr_tree, heap_stat, s);
+		return;
+#ifdef MM_DEBUG
+	}
+	s->bytes = NOMM_SIZE;
+	s->chunks = NOMM_COUNT;
+	struct mm_prefix *oldelt = NOMM_LIST;
+	while (oldelt != NULL) {
+		if (s->smallest > NOMM_ALLOCSIZE(oldelt))
+			s->smallest = NOMM_ALLOCSIZE(oldelt);
+		if (s->largest < NOMM_ALLOCSIZE(oldelt))
+			s->largest = NOMM_ALLOCSIZE(oldelt);
+		oldelt = NOMM_NEXT(oldelt);
+	}
+#endif
+}
+
+int mm_format_stats(struct mm_stat *s, char *buf, size_t buflen)
+{
+	if (!buf || !buflen)
+		return 0;
+	if (!s) {
+		return snprintf(buf, buflen, "mm_stat: null\n");
+	}
+#ifdef MM_DEBUG
+	if (mm_mmap) {
+#endif
+		size_t used = s->size - s->grain*s->largest;
+		return snprintf(buf, buflen,
+			"mm_stat: size=%zu grain=%zu chunks_free=%zu grains_free=%zu grains_largest=%zu grains_smallest=%zu bytes_free=%zu bytes_largest=%zu bytes_smallest=%zu bytes_used+holes=%zu\n",
+		s->size, s->grain, s->chunks, s->bytes, s->largest, s->smallest,
+		s->grain*s->bytes, s->grain*s->largest, s->grain*s->smallest, used);
+#ifdef MM_DEBUG
+	} else {
+		return snprintf(buf, buflen,
+			"mm_stat_debug: size=%zu grain=%zu chunks_used=%zu bytes_used=%zu chunk_largest=%zu chunk_smallest=%zu bytes_free=%zu bytes_largest=na bytes_smallest=na bytes_used+holes=%zu\n",
+		s->size, s->grain, s->chunks, s->bytes, s->largest, s->smallest,
+		s->size - s->bytes, s->bytes);
+	}
+#endif
 }
 
 #ifdef MMR_TEST
@@ -300,14 +512,12 @@ int heap_print(struct rbn *rbn, void *fn_data, int level)
 }
 
 void print_mm_stats(struct mm_stat *s) {
-	if (!s) {
-		printf("mm_stat: null\n");
-		return;
-	}
-	printf("mm_stat: size=%zu grain=%zu chunks_free=%zu grains_free=%zu grains_largest=%zu grains_smallest=%zu bytes_free=%zu bytes_largest=%zu bytes_smallest=%zu\n",
-	s->size, s->grain, s->chunks, s->bytes, s->largest, s->smallest,
-	s->grain*s->bytes, s->grain*s->largest, s->grain*s->smallest);
+#define MMBUFSZ 512
+	char buf[MMBUFSZ];
+	mm_format_stats(s, buf, MMBUFSZ);
+	printf("%s", buf);
 }
+
 
 int main(int argc, char *argv[])
 {
@@ -412,6 +622,10 @@ int main(int argc, char *argv[])
 		    "after a contiguous free coelesces another block.\n");
 	mm_stats(&s);
 	print_mm_stats(&s);
+#ifdef MM_DEBUG
+	int ferr = mm_final();
+	TEST_ASSERT((ferr != 0), "Final does not work on active data\n");
+#endif
 	/*
 	 * Then free 4, and the heap should have a single
 	 * free block in it.
@@ -430,6 +644,46 @@ int main(int argc, char *argv[])
 		    "remaining block.\n");
 	mm_stats(&s);
 	print_mm_stats(&s);
+#ifdef MM_DEBUG
+	ferr = mm_final();
+	TEST_ASSERT((ferr == 0), "mm_final works on empty allocation list.\n");
+	/* test nommap verison */
+	mm_enable_debug();
+	TEST_ASSERT((mm_mmap == 0), "No mmap enabled.\n");
+	/*
+	 * After init, there is a single free block in the heap.
+	 */
+	if (mm_init(1024 * 1024 * 16, 64)) {
+		printf("Error initializing memory region!\n");
+		perror("mm_create: ");
+		exit(1);
+	}
+	/* +-----~~---------------~~------------+
+	 * |               Heap                 |
+	 * +---------~~------~~--------~~-------+
+	 */
+	node_count = 0;
+	mm_stats(&s);
+	print_mm_stats(&s);
+
+	/*
+	 * Allocate six blocks without intervening frees.
+	 */
+	for (i = 0; i < 6; i++) {
+		b[i] = mm_alloc(2048);
+		printf("alloc %d at %p\n", i, b[i]);
+	}
+	mm_stats(&s);
+	print_mm_stats(&s);
+	ferr = mm_final();
+	TEST_ASSERT((ferr != 0), "Final debug does not work on active data\n");
+	for (i = 0; i < 6; i++)
+		mm_free(b[i]);
+	mm_stats(&s);
+	print_mm_stats(&s);
+	ferr = mm_final();
+	TEST_ASSERT((ferr == 0), "mm_final works on empty debug allocation list.\n");
+#endif
 	return 0;
 }
 #endif

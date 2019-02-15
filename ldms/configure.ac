@@ -52,6 +52,11 @@ OVIS_PKGLIBDIR
 OPTION_DEFAULT_ENABLE([scripts], [ENABLE_SCRIPTS])
 OPTION_DEFAULT_DISABLE([slurmtest], [ENABLE_SLURMTEST])
 OPTION_DEFAULT_DISABLE([developer], [ENABLE_DEVELOPER])
+OPTION_DEFAULT_DISABLE([mmdebug], [ENABLE_MM_DEBUG])
+if test "$enable_mmdebug" == "yes"; then
+	AC_DEFINE([MM_DEBUG],[1],
+		["enable mmalloc debug (and disable mmap) to be controlled by env(LDMS_ENABLE_MMALLOC_DEBUG)"])
+fi
 OPTION_DOC
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 

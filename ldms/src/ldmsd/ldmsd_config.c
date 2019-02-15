@@ -1831,14 +1831,13 @@ err:
 
 void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix)
 {
+#define MMBUFSZ 512
 	struct mm_stat s;
 	mm_stats(&s);
+	char buf[MMBUFSZ];
+	mm_format_stats(&s, buf, MMBUFSZ);
 	/* compute bound based on current usage */
-	size_t used = s.size - s.grain*s.largest;
-	ldmsd_log(level, "%s: mm_stat: size=%zu grain=%zu chunks_free=%zu grains_free=%zu grains_largest=%zu grains_smallest=%zu bytes_free=%zu bytes_largest=%zu bytes_smallest=%zu bytes_used+holes=%zu\n",
-	prefix,
-	s.size, s.grain, s.chunks, s.bytes, s.largest, s.smallest,
-	s.grain*s.bytes, s.grain*s.largest, s.grain*s.smallest, used);
+	ldmsd_log(level, "%s: %s\n", prefix, buf);
 }
 
 const char * blacklist[] = {
