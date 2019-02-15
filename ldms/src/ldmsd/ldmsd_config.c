@@ -498,13 +498,12 @@ int process_info(char *replybuf, struct attr_value_list *avl, struct attr_value_
 	extern pthread_t *ev_thread;
 	extern int *ev_count;
 	int i;
-	struct hostspec *hs;
 	int verbose = 0;
 	char *vb = av_value(avl, "verbose");
 	if (vb && (strcasecmp(vb, "true") == 0 ||
 			strcasecmp(vb, "t") == 0))
 		verbose = 1;
-
+	(void)verbose;
 	ldmsd_log(llevel, "Event Thread Info:\n");
 	ldmsd_log(llevel, "%-16s %s\n", "----------------", "------------");
 	ldmsd_log(llevel, "%-16s %s\n", "Thread", "Task Count");
@@ -1088,7 +1087,7 @@ cleanup:
  * or: ^dosomething foo a=b c=d # rest is comment
  * but not: ^dosomething foo a=#channel c=foo#disk1"
  */
-char *find_comment(const char *line)
+char *find_comment(char *line)
 {
 	char *s = line;
 	int leadingspc = 1;
@@ -1627,6 +1626,7 @@ void *config_proc(void *arg)
 		cleanup(0, "user quit");
 		return NULL;
 	}
+	return NULL;
 }
 
 void *inet_ctrl_thread_proc(void *args)
@@ -1636,7 +1636,6 @@ void *inet_ctrl_thread_proc(void *args)
 #endif
 	int inet_sock;
 	int accept_err;
-	struct iovec iov;
 	unsigned char *lbuf;
 	struct sockaddr_in rem_sin;
 	socklen_t addrlen = sizeof(rem_sin);
@@ -1651,7 +1650,6 @@ void *inet_ctrl_thread_proc(void *args)
 			  cfg_buf_len);
 		cleanup(1, "inet ctrl thread out of memory");
 	}
-	iov.iov_base = lbuf;
 	accept_err = 0;
 loop:
 	inet_sock = accept(inet_listener, (struct sockaddr *)&rem_sin, &addrlen);
