@@ -339,10 +339,16 @@ out:
 	return;
 }
 
+struct str_list_ent_s {
+	LIST_ENTRY(str_list_ent_s) entry;
+	char str[]; /* '\0' terminated string */
+};
+
 struct ldmsd_group_traverse_ctxt {
 	ldmsd_prdcr_t prdcr;
 	ldmsd_updtr_t updtr;
 	ldmsd_updtr_task_t task;
+	LIST_HEAD(, str_list_ent_s) str_list;
 };
 
 static int schedule_set_updates(ldmsd_prdcr_set_t prd_set,
@@ -351,17 +357,18 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set,
 static int
 __grp_iter_cb(ldms_set_t grp, const char *name, void *arg)
 {
-	int rc;
-	ldmsd_prdcr_set_t prd_set;
+	int len, sz;
+	struct str_list_ent_s *ent;
 	struct ldmsd_group_traverse_ctxt *ctxt = arg;
 
-	prd_set = ldmsd_prdcr_set_find(ctxt->prdcr, name);
-	if (!prd_set)
-		return 0; /* It is OK. Try again next iteration */
-	if (prd_set->state != LDMSD_PRDCR_SET_STATE_READY)
-		return 0; /* It is OK. The set might not be ready */
-	rc = schedule_set_updates(prd_set, ctxt->task);
-	return rc;
+	len = strlen(name);
+	sz = sizeof(*ent) + len + 1;
+	ent = malloc(sz);
+	if (!ent)
+		return ENOMEM;
+	snprintf(ent->str, len+1, "%s", name);
+	LIST_INSERT_HEAD(&ctxt->str_list, ent, entry);
+	return 0;
 }
 
 static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t task)
@@ -369,12 +376,15 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 	int rc = 0;
 	int flags;
 	char *op_s;
+	ldmsd_prdcr_set_t pset;
 	ldmsd_updtr_t updtr = task->updtr;
 	struct ldmsd_group_traverse_ctxt ctxt;
 	/* The reference will be put back in update_cb */
 	ldmsd_log(LDMSD_LDEBUG, "Schedule an update for set %s\n",
 					prd_set->inst_name);
 	int push_flags = 0;
+	struct str_list_ent_s *ent;
+	LIST_INIT(&ctxt.str_list);
 	gettimeofday(&prd_set->updt_start, NULL);
 #ifdef LDMSD_UPDATE_TIME
 	__updt_time_get(prd_set->updt_time);
@@ -390,10 +400,21 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 			ctxt.prdcr = prd_set->prdcr;
 			ctxt.updtr = updtr;
 			ctxt.task = task;
+			/* __grp_iter_cb() will populate ctxt.str_list */
 			rc = ldmsd_group_iter(prd_set->set,
 					      __grp_iter_cb, &ctxt);
 			if (rc)
 				goto out;
+			LIST_FOREACH(ent, &ctxt.str_list, entry) {
+				pset = ldmsd_prdcr_set_find(prd_set->prdcr, ent->str);
+				if (!pset)
+					continue; /* It is OK. Try again next iteration */
+				if (pset->state != LDMSD_PRDCR_SET_STATE_READY)
+					continue; /* It is OK. The set might not be ready */
+				rc = schedule_set_updates(pset, task);
+				if (rc)
+					goto out;
+			}
 		}
 		rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
 		op_s = "Updating";
@@ -412,6 +433,10 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 		op_s = "Registering push for";
 	}
 out:
+	while ((ent = LIST_FIRST(&ctxt.str_list))) {
+		LIST_REMOVE(ent, entry);
+		free(ent);
+	}
 	if (rc) {
 #ifdef LDMSD_UPDATE_TIME
 		__updt_time_put(prd_set->updt_time);
