@@ -91,3 +91,7 @@ endif
 if ENABLE_CRAY_SYSTEM_SAMPLER
 SUBDIRS += cray_system_sampler
 endif
+
+if ENABLE_MSR_INTERLAGOS
+SUBDIRS += msr_interlagos
+endif
