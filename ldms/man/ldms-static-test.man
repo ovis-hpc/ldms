@@ -6,7 +6,11 @@
 ldms-static-test.sh \- Run a canned test scenario
 
 .SH SYNOPSIS
-ldms-static-test.sh [-l]
+.PP
+ldms-static-test.sh -l
+.PP
+ldms-static-test.sh -h
+.PP
 ldms-static-test.sh <input_file> [test_dir]
 
 .SH DESCRIPTION
@@ -22,6 +26,10 @@ happen as a system service) and shut down with a signal.
 -l
 .br
 List the canned tests available.
+.TP
+-h
+.br
+List help message.
 
 .SH LANGUAGE
 
