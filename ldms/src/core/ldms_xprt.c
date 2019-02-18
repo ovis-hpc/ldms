@@ -2871,8 +2871,8 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 		pthread_mutex_unlock(&set->lock);
 		pthread_mutex_unlock(&xprt_list_lock);
 		ldms_xprt_put(x);
-		pthread_mutex_lock(&set->lock);
 		pthread_mutex_lock(&xprt_list_lock);
+		pthread_mutex_lock(&set->lock);
 		free(reply);
 	skip:
 #ifdef DEBUG
