@@ -95,3 +95,7 @@ endif
 if ENABLE_MSR_INTERLAGOS
 SUBDIRS += msr_interlagos
 endif
+
+if ENABLE_PROCSENSORS
+SUBDIRS += procsensors
+endif
