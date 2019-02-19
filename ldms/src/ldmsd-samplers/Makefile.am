@@ -99,3 +99,7 @@ endif
 if ENABLE_PROCSENSORS
 SUBDIRS += procsensors
 endif
+
+if ENABLE_PERFEVENT
+SUBDIRS += perfevent
+endif
