@@ -111,3 +111,5 @@ endif
 if ENABLE_APPINFO
 SUBDIRS += appinfo
 endif
+
+SUBDIRS += variable
