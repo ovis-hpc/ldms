@@ -103,3 +103,7 @@ endif
 if ENABLE_PERFEVENT
 SUBDIRS += perfevent
 endif
+
+if ENABLE_OPA2
+SUBDIRS += opa2
+endif
