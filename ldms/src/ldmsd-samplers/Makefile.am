@@ -113,3 +113,7 @@ SUBDIRS += appinfo
 endif
 
 SUBDIRS += variable
+
+if ENABLE_DSTAT
+SUBDIRS += dstat
+endif
