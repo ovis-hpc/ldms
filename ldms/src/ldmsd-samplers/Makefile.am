@@ -107,3 +107,7 @@ endif
 if ENABLE_OPA2
 SUBDIRS += opa2
 endif
+
+if ENABLE_APPINFO
+SUBDIRS += appinfo
+endif
