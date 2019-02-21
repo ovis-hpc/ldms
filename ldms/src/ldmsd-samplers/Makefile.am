@@ -117,3 +117,7 @@ SUBDIRS += variable
 if ENABLE_DSTAT
 SUBDIRS += dstat
 endif
+
+if ENABLE_JOBINFO
+SUBDIRS += jobinfo
+endif
