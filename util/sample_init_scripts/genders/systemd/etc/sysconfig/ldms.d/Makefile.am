@@ -5,7 +5,7 @@ EXTRA_DIST = ldmsd.in ldms-functions.in
 DISTCLEANFILES = ldmsd ldms-functions
 
 if ENABLE_TOSS_SYSTEMD
-SUBDIRS = plugins-conf ClusterGenders ClusterSecrets
+SUBDIRS = plugins-conf ClusterGenders ClusterSecrets debug
 dist_doc_DATA = \
 ldmsd \
 ldms-functions \

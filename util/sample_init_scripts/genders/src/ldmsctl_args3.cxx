@@ -111,6 +111,7 @@ public:
 	// get list of local data collector. may be empty result.
 	virtual void collectornodes(vector<string>& bnl) = 0;
 	// collect *_port,_xprt,_hostname values for t and host. host may be empty results.
+	// if multiple files are searched, last on command line wins.
 	virtual void get_trans(const string& host, trans& t, string prefix) = 0;
 	// get fail over host if host goes down. may be empty result.
 	virtual bool has_backup(const string& host, string& val) = 0;
@@ -139,9 +140,20 @@ public:
 class genders_api : public virtual ldms_config_info {
 private:
 	Genders& g;
+	vector< genders_api *> upstream;
 	// return true and set val to genders file value if prop present.
-	bool has_property(const string& host, const string& prop, string& val) {
+	bool has_property(const string& host, const string& prop, string& val, bool deep=false) {
 		try {
+			if (deep) {
+				// look at deepest (last on command line) 1st.
+				size_t k = upstream.size();
+				while (k > 0) {
+					k--;
+					if (upstream[k]->g.testattr(prop, val, host)) {
+						return true;
+					}
+				}
+			}
 			if (g.testattr(prop, val, host)) {
 				return true;
 			}
@@ -274,9 +286,20 @@ private:
 		}
 		return result;
 	}
+
 public:
+	~genders_api() {
+		size_t k = upstream.size();
+		while ( k > 0) {
+			k--;
+			delete upstream[k];
+		}
+	}
 	// given g must outlive this object.
 	genders_api(Genders& g) : g(g) {}
+	void add_upstream(genders_api *up) {
+		upstream.push_back(up);
+	}
 	virtual void dump_host_info(const string& hostname) {
 		vector< pair< string, string > >  all = g.getattr(hostname);
 		map<string, string> m(all.begin(),all.end());
@@ -305,7 +328,7 @@ public:
 		string intervals = prefix + "_interval_default";
 		string offsets = prefix + "_offset_default";
 		string tmp;
-		if (has_property(host, ports, tmp)) {
+		if (has_property(host, ports, tmp, true)) {
 			t.port = tmp;
 			istringstream ss(tmp);
 			int chk;
@@ -323,26 +346,26 @@ public:
 				cerr << "Using port default " << t.port <<  endl;
 			}
 		}
-		if (! has_property(host, hosts, t.host) ) {
+		if (! has_property(host, hosts, t.host, true) ) {
 			t.host = host;
 		} else {
 			gender_substitute(host, t.host);
 		}
-		if (! has_property(host, producer, t.producer) ) {
+		if (! has_property(host, producer, t.producer, true) ) {
 			t.producer = host;
 		} else {
 			gender_substitute(host, t.producer);
 		}
-		if (! has_property(host, xprts, t.xprt) ) {
+		if (! has_property(host, xprts, t.xprt, true) ) {
 			t.xprt = "sock";
 		}
-		if (! has_property(host, retry, t.retry) ) {
+		if (! has_property(host, retry, t.retry, true) ) {
 			t.retry = "2000000"; // 2 sec
 		}
-		if (! has_property(host, intervals, t.interval) ) {
+		if (! has_property(host, intervals, t.interval, true) ) {
 			t.interval = "10000000"; // 10 sec
 		}
-		if (! has_property(host, offsets, t.offset) ) {
+		if (! has_property(host, offsets, t.offset, true) ) {
 			t.offset = "100000"; // 0.1 sec
 		}
 	}
@@ -643,7 +666,7 @@ class ctloptions {
 public:
 	bool ok; // if !true, options parsing failed.
 	int log_level; // higher is louder
-	string genders;
+	vector< string > genders_vec;
 	string task;
 	string hostname;
 	string outname;
@@ -656,7 +679,9 @@ public:
 	void dump() {
 		#define DUMP(x) cerr << #x << " is " << x << endl
 		DUMP(log_level);
-		DUMP(genders);
+		for (size_t k = genders_vec.size(); k > 0; k--)
+			cerr << "genders[" << k-1 << "] is " 
+				<< genders_vec[k-1] << endl;
 		DUMP(task);
 		DUMP(hostname);
 		DUMP(outname);
@@ -670,13 +695,11 @@ public:
 	ctloptions(int argc, char **argv) :
 		ok(true),
 		log_level(0),
-		genders("/etc/genders") ,
 		task("host-list"),
 		useoutname(false),
 		useinterval(false),
 		useoffset(false)
 	{
-#if 1
 		char hostbuf[HOST_NAME_MAX+1];
 		if (!gethostname(hostbuf,sizeof(hostbuf)))
 			hostname = hostbuf;
@@ -685,15 +708,19 @@ public:
 			ok = false;
 			return;
 		}
+		// The preset paths are overwritten entirely
+		// by -g options, if present.
 		char *envgenders = getenv("LDMS_GENDERS");
 		if (envgenders != NULL) {
-			genders = envgenders;
+			genders_vec.push_back(envgenders);
+		} else {
+			genders_vec.push_back("/etc/genders");
 		}
 
 		po::options_description desc("Allowed options");
 		desc.add_options()
-		("genders,g", po::value <  string  >(&genders),
-		 "genders input file name (default env(LDMS_GENDERS) else /etc/genders)")
+		("genders,g", po::value < vector< string > >(&genders_vec),
+		 "(repeatable) genders input file name (default env(LDMS_GENDERS) else /etc/genders). Order matter.")
 		("node,n", po::value <  string  >(&hostname),
 		 "network node the query will describe (default from gethostname())")
 		("task,t", po::value <  string  >(&task),
@@ -724,7 +751,6 @@ public:
 		if (vm.count("interval")) {
 			useinterval = true;
 		}
-#endif
 	}
 
 };
@@ -739,11 +765,20 @@ int main(int argc, char **argv)
 		opt.dump();
 		dbg = opt.log_level;
 	}
+	vector <Genders *> freelist;
 
 	try {
-		Genders g0(opt.genders);
+		Genders g0(opt.genders_vec[0]);
 		genders_api gapi(g0);
 		ldms_config_info *info = &gapi;
+		size_t upstream = 1;
+		for ( ; upstream < opt.genders_vec.size(); upstream++) {
+			Genders *ng = new Genders(opt.genders_vec[upstream]);
+			freelist.push_back(ng);
+			genders_api *up = new genders_api(*ng);
+			gapi.add_upstream(up);
+			// we know this leaks ng and maybe up eventually
+		}
 
 		set<string> ban, hosts_seen, sets_seen;
 		vector<string> out;
@@ -760,18 +795,24 @@ int main(int argc, char **argv)
 		string storesets = join(sets_seen,",");
 		if (opt.task == "store-list") {
 			cout << storesets << endl;
-			return 0;
+			goto cleanup;
 		}
 		if (opt.task == "host-list") {
 			top.print_add_hosts("");
-			return 0;
+			goto cleanup;
 		}
 		cerr << argv[0] << ": unexpected task " << opt.task << endl;
 		return 1;
 	} catch ( GendersException ge) {
-		cerr << argv[0] << ": Error parsing " << opt.genders <<
-			": " << ge.errormsg() << endl;
+		cerr << argv[0] << ": Error parsing " << opt.genders_vec[0] <<
+			" or friends: " << ge.errormsg() << endl;
 	}
 
+cleanup:
+	size_t f = freelist.size();
+	while (f > 0) {
+		f--;
+		delete freelist[f];
+	}
 	return 0;
 }

@@ -45,8 +45,8 @@ if test -f $NODEFILE; then
 # load ldmsd localizations source
 . $NODEFILE
 else
-	logger syslog.warning "Missing $NODEFILE. Most likely this means \"$LDMSCLUSTER \" is a command-line typo."
- 	logger syslog.warning "EXPECT ERRORS TO FOLLOW."
+	logger -t $LTAG syslog.warning "Missing $NODEFILE. Most likely this means \"$LDMSCLUSTER \" is a command-line typo."
+ 	logger -t $LTAG syslog.warning "EXPECT ERRORS TO FOLLOW."
 fi
 
 if test -n "$LDMSD_GENDERS_HOST"; then
@@ -63,11 +63,11 @@ LDMS_HOSTNAME=$host
 export host hostfull
 
 if ! test -f $libdir/ovis-lib-configvars.sh; then
-	logger syslog.err "Missing $libdir/ovis-lib-configvars.sh"
+	logger -t $LTAG syslog.err "Missing $libdir/ovis-lib-configvars.sh"
 	dietrace 1
 fi
 if ! test -f $libdir/ovis-ldms-configvars.sh; then
-	logger syslog.err "Missing $libdir/ovis-ldms-configvars.sh"
+	logger -t $LTAG syslog.err "Missing $libdir/ovis-ldms-configvars.sh"
 	dietrace 1
 fi
 
@@ -124,28 +124,25 @@ fi
 export hostnumber
 
 build_genders_file
-check_genders_file
+check_genders_file 0
+check_genders_file 1
+check_genders_file 2
 
 if ! $NODEATTR $NODEATTRFILE -k > /dev/null 2>&1; then
 	echoq "problem with $NODEATTRFILE"
-	logger -p syslog.crit -s "BAD GENDERS $NODEATTRFILE"
+	logger -t $LTAG -p syslog.crit -s "BAD GENDERS $NODEATTRFILE"
 	$NODEATTR $NODEATTRFILE -k
 	dietrace 1
 fi
 export NODEATTR NODEATTRFILE
 
 if ! $NODEATTR $NODEATTRFILE $host ldmsaggd >/dev/null 2>&1; then
-	not_aggregator=1
 	echoq "$host is is not an LDMSD aggregation host."
-else
-	if test -z $AGG_ID_BASE; then
-		AGG_ID_BASE=1000000
-	fi
 fi
 
 if test -n "$NODE_ID_BASE"; then
 	if test -n "$LDMSD_IDBASE"; then
-		logger -p syslog.info "Ignoring NODE_ID_BASE for LDMSD_IDBASE";
+		logger -t $LTAG -p syslog.info "Ignoring NODE_ID_BASE for LDMSD_IDBASE";
 	else
 		# support legacy usage
 		LDMSD_IDBASE=$NODE_ID_BASE
@@ -188,8 +185,8 @@ fi
 export COMPONENT_ID
 
 if [ $COMPONENT_ID -lt 1 ]; then
-	logger syslog.err "Component_ID for $host is $COMPONENT_ID. Exiting..."
-	logger syslog.info "set COMPONENT_ID in conf file or LDMSD_IDBASE in genders file."
+	logger -t $LTAG syslog.err "Component_ID for $host is $COMPONENT_ID. Exiting..."
+	logger -t $LTAG syslog.info "set COMPONENT_ID in conf file or LDMSD_IDBASE in genders file."
 	dietrace 1
 fi
 
@@ -246,7 +243,7 @@ if test -z $LDMSD_PORT; then
 			LDMSD_PORT=`eval echo $LDMSD_PORT`
 		;;
 		*)
-			logger syslog.error "Unexpected LDMSD_PORT=$LDMSD_PORT"
+			logger -t $LTAG syslog.error "Unexpected LDMSD_PORT=$LDMSD_PORT"
 			dietrace 1
 		;;
 		esac
@@ -268,17 +265,17 @@ if test "$LDMSD_XPRT" = "ugni"; then
 	kern_rel=$(uname -r)
 	if test "${kern_rel#*-cray_ari}" != "$kern_rel"; then
 		if test -z "$ZAP_UGNI_COOKIE"; then
-			logger syslog.error "When LDMSD_XPRT is 'ugni' on a Cray XC, ZAP_UGNI_COOKIE must also be set"
+			logger -t $LTAG syslog.error "When LDMSD_XPRT is 'ugni' on a Cray XC, ZAP_UGNI_COOKIE must also be set"
 			dietrace 1
 		fi
 		export ZAP_UGNI_COOKIE
 	elif test "${kern_rel#*-cray_gem}" != "$kern_rel"; then
 		if test -z "$ZAP_UGNI_PTAG"; then
-			logger syslog.error "When LDMSD_XPRT is 'ugni' on a Cray XE, ZAP_UGNI_PTAG must also be set"
+			logger -t $LTAG syslog.error "When LDMSD_XPRT is 'ugni' on a Cray XE, ZAP_UGNI_PTAG must also be set"
 			dietrace 1
 		fi
 		if test -z "$ZAP_UGNI_COOKIE"; then
-			logger syslog.error "When LDMSD_XPRT is 'ugni' on a Cray XE, ZAP_UGNI_COOKIE must also be set"
+			logger -t $LTAG syslog.error "When LDMSD_XPRT is 'ugni' on a Cray XE, ZAP_UGNI_COOKIE must also be set"
 			dietrace 1
 		fi
 		export ZAP_UGNI_PTAG ZAP_UGNI_COOKIE
@@ -368,14 +365,14 @@ if test -n "$VGBIN"; then
 		if test -x $VGBIN; then
 			VGOPTFILE=`$NODEATTR $NODEATTRFILE -v $host ldmsd_vgargfile 2>/dev/null`
 		else
-			logger syslog.err "VGBIN $VGBIN missing. Fix in $NODEATTRFILE"
+			logger -t $LTAG syslog.err "VGBIN $VGBIN missing. Fix in $NODEATTRFILE"
 			dietrace 1
 		fi
 		if test -n "$VGOPTFILE"; then
 			if test -f $VGOPTFILE; then
 				VGOPT=`cat $VGOPTFILE`	
 			else
-				logger syslog.err "VGOPTFILE $VGOPTFILE missing. Fix in $NODEATTRFILE"
+				logger -t $LTAG syslog.err "VGOPTFILE $VGOPTFILE missing. Fix in $NODEATTRFILE"
 				dietrace 1
 			fi
 		fi
@@ -406,11 +403,11 @@ export LDMSD_INET_OPT LDMSD_CONFIG_PORT
 
 # deal with store plugins
 if test -n "$LDMSAGGD_STORES"; then
-	logger syslog.error "LDMSAGGD_STORES defined is obsolete. Use LDMSD_STORE_PLUGINS"
+	logger -t $LTAG syslog.error "LDMSAGGD_STORES defined is obsolete. Use LDMSD_STORE_PLUGINS"
 	dietrace 1
 fi
 if test -n "$STORE_PATH"; then
-	logger syslog.error "STORE_PATH defined is obsolete. Set it in store_csv plugin option instead."
+	logger -t $LTAG syslog.error "STORE_PATH defined is obsolete. Set it in store_csv plugin option instead."
 	dietrace 1
 fi
 if test -z "$LDMSD_STORE_PLUGINS"; then
@@ -463,7 +460,7 @@ fi
 export LDMSAGGD_OFFSET_DEFAULT
 
 if test -n "$LDMSAGGD_NUM_PROCS"; then
-	logger syslog.error "LDMSAGGD_NUM_PROCS defined is obsolete. Use LDMSD_EVENT_THDS or gender ldmsd_event_thds instead."
+	logger -t $LTAG syslog.error "LDMSAGGD_NUM_PROCS defined is obsolete. Use LDMSD_EVENT_THDS or gender ldmsd_event_thds instead."
 	dietrace 1
 fi
 
@@ -494,8 +491,9 @@ if test -z "$LDMSD_PLUGIN_CONFIG_FILE"; then
 		generate_aggregator_config
 		generate_transform_config
 		generate_store_config
+		generate_debug_config
 	else
-		logger syslog.error "Generating LDMSD configuration file without genders file not yet supported."
+		logger -t $LTAG syslog.error "Generating LDMSD configuration file without genders file not yet supported."
 		exit 1
 		# here we would like instead an automated process that just assembles
 		# snippets from plugins-conf driven by shell variables.
@@ -503,12 +501,12 @@ if test -z "$LDMSD_PLUGIN_CONFIG_FILE"; then
 	fi
 else
 	if ! test -f $LDMSD_PLUGIN_CONFIG_FILE; then
-		logger syslog.info "Missing $LDMSD_PLUGIN_CONFIG_FILE config file specified by user in LDMSD_PLUGIN_CONFIG_FILE variable."
+		logger -t $LTAG syslog.info "Missing $LDMSD_PLUGIN_CONFIG_FILE config file specified by user in LDMSD_PLUGIN_CONFIG_FILE variable."
 		dietrace 1
 	fi
 fi
 if ! test -s $LDMSD_PLUGIN_CONFIG_FILE; then
-	logger syslog.warning "LDMSD configuration $LDMSD_PLUGIN_CONFIG_FILE is empty. Daemon idling."
+	logger -t $LTAG syslog.warning "LDMSD configuration $LDMSD_PLUGIN_CONFIG_FILE is empty. Daemon idling."
 fi
 
 export LDMSD_PLUGIN_CONFIG_FILE
