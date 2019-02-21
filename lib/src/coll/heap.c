@@ -46,6 +46,7 @@
 
 #include "ovis-lib-config.h"
 #include "heap.h"
+#include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -63,8 +64,10 @@ struct ovis_heap {
 ovis_heap_t ovis_heap_create(int heapsize, ovis_heap_comp comp)
 {
 	ovis_heap_t heap = malloc(sizeof(*heap) + sizeof(void*)*heapsize);
-	if (!heap)
+	if (!heap) {
+		errno = ENOMEM;
 		return NULL;
+	}
 	heap->alloc_sz = heapsize;
 	heap->sz = 0;
 	heap->comp = comp;
@@ -83,7 +86,7 @@ void ovis_heap_sink_down(ovis_heap_t heap, ovis_heap_node_t node);
 
 int ovis_heap_insert(ovis_heap_t heap, ovis_heap_node_t node)
 {
-	int c, p, rc;
+	assert(heap || NULL == "ovis_heap_pop called with null heap");
 	if (heap->sz == heap->alloc_sz)
 		return ENOMEM;
 	heap->heap[heap->sz] = node;
@@ -96,8 +99,7 @@ int ovis_heap_insert(ovis_heap_t heap, ovis_heap_node_t node)
 ovis_heap_node_t ovis_heap_pop(ovis_heap_t heap)
 {
 	ovis_heap_node_t node = NULL;
-	ovis_heap_node_t tmp;
-	int c, l, r, x, rc;
+	assert(heap || NULL == "ovis_heap_pop called with null heap");
 	if (heap->sz == 0)
 		return NULL;
 	node = heap->heap[0];
@@ -113,6 +115,7 @@ void ovis_heap_float_up(ovis_heap_t heap, ovis_heap_node_t node)
 {
 	int c, p;
 	int rc;
+	assert((heap && node) || NULL == "ovis_heap_float_up called with null node or heap");
 	c = node->idx;
 	while (c > 0) {
 		p = c / 2;
@@ -130,6 +133,7 @@ void ovis_heap_float_up(ovis_heap_t heap, ovis_heap_node_t node)
 static
 void ovis_heap_sink_down(ovis_heap_t heap, ovis_heap_node_t node)
 {
+	assert((heap && node) || NULL == "ovis_heap_sink_down called with null node or heap");
 	int c, l, r, x, rc;
 	c = node->idx;
 	l = c*2+1;
@@ -165,6 +169,7 @@ void ovis_heap_sink_down(ovis_heap_t heap, ovis_heap_node_t node)
 
 void ovis_heap_remove(ovis_heap_t heap, ovis_heap_node_t node)
 {
+	assert((heap && node) || NULL == "ovis_heap_update called with null node or heap");
 	/* move last node to replace the removed node */
 	heap->heap[node->idx] = heap->heap[--heap->sz];
 	heap->heap[node->idx]->idx = node->idx;
@@ -178,6 +183,7 @@ void ovis_heap_remove(ovis_heap_t heap, ovis_heap_node_t node)
 
 void ovis_heap_update(ovis_heap_t heap, ovis_heap_node_t node)
 {
+	assert(node || NULL == "ovis_heap_update called with null node");
 	int old_idx = node->idx;
 	ovis_heap_float_up(heap, node);
 	if (node->idx == old_idx) /* if index does not change, it may need sink down */
@@ -186,6 +192,7 @@ void ovis_heap_update(ovis_heap_t heap, ovis_heap_node_t node)
 
 ovis_heap_node_t ovis_heap_top(ovis_heap_t heap)
 {
+	assert(heap || NULL == "ovis_heap_top called with null");
 	if (heap->sz)
 		return heap->heap[0];
 	return NULL;
@@ -193,5 +200,6 @@ ovis_heap_node_t ovis_heap_top(ovis_heap_t heap)
 
 int ovis_heap_size(ovis_heap_t heap)
 {
+	assert(heap || NULL == "ovis_heap_size called with null");
 	return heap->sz;
 }

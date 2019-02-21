@@ -46,6 +46,13 @@
 #ifndef __OVIS_HEAP_H
 #define __OVIS_HEAP_H
 
+/*
+ * The functions in this file assume input pointers are valid.
+ * Unless specifically documented, the result of calls with NULL pointers are
+ * undefined. Unless compiled with -DNDEBUG, assert() is used to convert
+ * undefined behavior into exits with a message string.
+ */
+
 #define OVIS_HEAP_NODE_INIT(n) ((n)->idx = -1)
 
 typedef struct ovis_heap_node {
