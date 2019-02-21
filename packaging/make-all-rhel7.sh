@@ -82,7 +82,7 @@ if test -f ldms/src/sampler/meminfo.c; then
 	cd $build_subdir
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=/badsos
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --enable-swig --enable-authentication --enable-sysclassib --with-pkglibdir=ovis-ldms --enable-libgenders --enable-jobid --enable-llnl-edac --enable-opa2 --enable-genderssystemd --enable-atasmart --enable-fptrans"
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --enable-swig --enable-authentication --enable-sysclassib --with-pkglibdir=ovis-ldms --enable-libgenders --enable-jobid --enable-llnl-edac --enable-opa2 --enable-genderssystemd --enable-atasmart --enable-fptrans --enable-slurmtest --enable-filesingle --enable-dstat"
 	../configure $allconfig && \
 	make && \
 	make install && \

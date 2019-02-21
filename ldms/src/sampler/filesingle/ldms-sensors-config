@@ -61,7 +61,7 @@ def main():
         tf = args.test_sensors
     else:
         cmd = "script -c 'strace -e trace=open,read " + \
-                sensorsbin + " -u' > " + tf
+                sensorsbin + " -u' " + tf + " > /dev/null"
         trval = subprocess.call(cmd, shell=True)
         if trval != 0:
             print "Unable to collect sensors config output"
