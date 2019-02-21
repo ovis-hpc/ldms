@@ -449,7 +449,9 @@ AC_SUBST(configure_input)
 
 dnl handle test generation and chmod
 OVIS_EXEC_SCRIPTS(
+		 scripts/ldms-wrapper
 		 scripts/ldms-static-test.sh
+		 scripts/pll-ldms-static-test.sh
 		 scripts/ldms_ban.sh
 		 scripts/ldms-plugins.sh
 		 scripts/ldms-py-subset_test.sh
@@ -459,7 +461,6 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms-meminfo.sh
 		 scripts/ldms_local_opa2test.sh
 		 scripts/ldms-l2_test.sh
-		 scripts/ldms-wrapper
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile

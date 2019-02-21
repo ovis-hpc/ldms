@@ -59,7 +59,7 @@ do
 			gzip -f $file
 		fi
 	else
-		: echo "File \"$file\" not found, skipping" ;# expected case
+		: echo "File \"$file\" not found, skipping" ; #this is a normal case for split rpms
 		continue
 	fi
 done
