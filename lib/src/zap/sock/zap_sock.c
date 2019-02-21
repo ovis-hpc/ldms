@@ -173,20 +173,6 @@ static int z_sock_map_key_access_validate(uint32_t key, char *p, size_t sz,
 	return z_map_access_validate((zap_map_t)k->map, p, sz, acc);
 }
 
-static void z_sock_cleanup(void)
-{
-	void *dontcare;
-
-	if (io_event_loop)
-		event_base_loopbreak(io_event_loop);
-	if (io_thread) {
-		pthread_cancel(io_thread);
-		pthread_join(io_thread, &dontcare);
-	}
-	if (io_event_loop)
-		event_base_free(io_event_loop);
-}
-
 static zap_err_t z_sock_close(zap_ep_t ep)
 {
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
@@ -362,7 +348,6 @@ static zap_err_t __sock_recv(struct z_sock_ep *sep, size_t reqlen,
 			     struct sock_msg_sendrecv **pmsg)
 {
 	int rc;
-	zap_err_t zerr;
 	struct sock_msg_sendrecv *msg;
 
 	msg = malloc(reqlen);
@@ -385,7 +370,6 @@ static zap_err_t __sock_recv(struct z_sock_ep *sep, size_t reqlen,
 static void process_sep_msg_connect(struct z_sock_ep *sep, size_t reqlen)
 {
 	struct sock_msg_connect *msg;
-	zap_err_t zerr;
 
 	msg = malloc(reqlen);
 	if (!msg) {
@@ -631,7 +615,6 @@ static void process_sep_msg_read_resp(struct z_sock_ep *sep, size_t reqlen)
 	struct z_sock_io *io;
 	struct sock_msg_read_resp msg;
 	uint32_t data_len;
-	char *dst;
 	int rc;
 
 	bufferevent_read(sep->buf_event, &msg, sizeof(msg));
@@ -865,7 +848,6 @@ static void sock_read(struct bufferevent *buf_event, void *arg)
 	struct z_sock_ep *sep = (struct z_sock_ep *)arg;
 	struct evbuffer *evb;
 	struct sock_msg_hdr hdr;
-	size_t len;
 	size_t reqlen;
 	size_t buflen;
 	enum sock_msg_type msg_type;
@@ -988,8 +970,6 @@ static void sock_event(struct bufferevent *buf_event, short bev, void *arg)
 	zap_err_t zerr;
 	struct z_sock_ep *sep = arg;
 	struct zap_event ev = { 0 };
-	static const short bev_mask = BEV_EVENT_EOF | BEV_EVENT_ERROR |
-				     BEV_EVENT_TIMEOUT;
 
 	if (bev & BEV_EVENT_CONNECTED) {
 		/*

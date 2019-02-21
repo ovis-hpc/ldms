@@ -73,6 +73,10 @@
  * Zap is event-driven. Application will be notifiedt via a callback function
  * per occurring events (e.g. read complete, data received, connection
  * requested, etc). Please see \c ::zap_cb_fn_t for more information.
+ *
+ * Unless specifically documented, zap functions assume here that pointer arguments
+ * given are never NULL. Unless compiled with -DNDEBUG, assert() calls convert
+ * undefined behaviors caused by NULL into assert failures with a message string.
  */
 #ifndef __ZAP_H__
 #define __ZAP_H__
