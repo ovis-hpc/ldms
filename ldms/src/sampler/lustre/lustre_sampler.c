@@ -356,7 +356,7 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 			value.v_u64 = count;
 		} else {
 			/* bad format */
-			ldmsd_log(LDMSD_LWARNING, "lustre sample: "
+			msglog(LDMSD_LWARNING, "lustre sample: "
 				  "bad line format: %s\n", lbuf);
 			continue;
 		}
