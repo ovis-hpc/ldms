@@ -510,6 +510,9 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd-samplers/dstat/Makefile
 		 src/ldmsd-samplers/jobinfo/Makefile
 		 src/ldmsd-samplers/jobinfo/jobinfo_slurm/Makefile
+		 src/ldmsd-samplers/shm/Makefile
+		 src/ldmsd-samplers/shm/shm_util/Makefile
+		 src/ldmsd-samplers/shm/mpi_profiler/Makefile
 		 src/ldmsd-stores/Makefile
 		 src/ldmsd-stores/store_sos/Makefile
 		 scripts/Makefile
