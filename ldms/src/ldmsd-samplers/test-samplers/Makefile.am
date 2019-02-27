@@ -25,3 +25,9 @@ libgrptest_la_SOURCES = grptest.c
 libgrptest_la_CFLAGS = $(SAMPLER_CFLAGS)
 libgrptest_la_LIBADD = $(SAMPLER_LIBADD)
 libgrptest_la_LDFLAGS = $(SAMPLER_LDFLAGS)
+
+pkglib_LTLIBRARIES += libtest_sampler.la
+libtest_sampler_la_SOURCES = test_sampler.c
+libtest_sampler_la_CFLAGS = $(SAMPLER_CFLAGS)
+libtest_sampler_la_LIBADD = $(SAMPLER_LIBADD)
+libtest_sampler_la_LDFLAGS = $(SAMPLER_LDFLAGS)
