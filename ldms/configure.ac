@@ -485,6 +485,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd-samplers/Makefile
 		 src/ldmsd-samplers/procnetdev/Makefile
 		 src/ldmsd-stores/Makefile
+		 src/ldmsd-stores/store_sos/Makefile
 		 scripts/Makefile
 		 src/test/Makefile
 		 etc/Makefile

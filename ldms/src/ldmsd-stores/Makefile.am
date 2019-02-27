@@ -3,3 +3,7 @@
 #################################
 
 SUBDIRS =
+
+if ENABLE_SOS
+SUBDIRS += store_sos
+endif
