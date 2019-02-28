@@ -1905,7 +1905,8 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	}
 
  out_1:
-	ldms_set_delete(rbd);
+	if (rbd)
+		ldms_set_delete(rbd);
  out:
 #ifdef DEBUG
 	x->log("DEBUG: %s: lookup error while ldms_xprt is processing the rendezvous "
