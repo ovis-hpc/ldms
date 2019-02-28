@@ -48,7 +48,7 @@ test_idx_CFLAGS = $(AM_CFLAGS) -DIDX_TEST
 
 endif
 if ENABLE_SOS
-libmap_la_SOURCES = libmap.c
+libmap_la_SOURCES = libmap.c map_priv.h map.h
 libmap_la_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
 libmap_la_LIBADD = @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@ -lsos
 lib_LTLIBRARIES += libmap.la
