@@ -274,14 +274,22 @@ class LdmsdCmdParser(cmd.Cmd):
         print(self.__complete_attr_list(arg, ""))
 
     def do_usage(self, arg):
-        """List the usage of the plugins loaded on the server.
-        """
+        """Show the usage of the plugin instance."""
         resp = self.handle('usage', arg)
         if resp['errcode'] == 0:
             print(resp['msg'])
 
     def complete_usage(self, text, line, begidx, endidx):
         return self.__complete_attr_list('usage', text)
+
+    def do_list(self, arg):
+        """List all plugin instances in the ldmsd."""
+        resp = self.handle('list', arg)
+        if resp['errcode'] == 0:
+            print(resp['msg'])
+
+    def complete_usage(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('list', text)
 
     def do_load(self, arg):
         """
@@ -746,14 +754,40 @@ class LdmsdCmdParser(cmd.Cmd):
         return self.__complete_attr_list('strgp_status', text)
 
     def do_plugn_status(self, arg):
+        """
+        List statuses of plugin instances
+        Parameters:
+        [name=]  The plugin instance name
+        """
         resp = self.handle('plugn_status', None)
         if resp:
             plugins = json.loads(resp['msg'])
-            print("Name             Type         Libpath")
-            print("---------------- ------------ ------------")
+            print("Name         Plugin       Type         Libpath")
+            print("------------ ------------ ------------ ------------")
             for plugn in plugins:
-                print("{0:16} {1:12} {2}".format(
-                    plugn['name'], plugn['type'], plugn['libpath']))
+                print("{0:12} {1:12} {2:12} {3:12}".format(
+                    plugn['name'], plugn['plugin'], plugn['type'],
+                    plugn['libpath']))
+
+    def complete_plugn_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('plugn_status', text)
+
+    def do_plugn_query(self, arg):
+        """
+        Query plugin instances
+        Parameters:
+        query=   The query text (e.g. `status` or `config`)
+        [name=]  The plugin instance name
+        """
+        resp = self.handle('plugn_query', arg)
+        if resp:
+            plugins = json.loads(resp['msg'])
+            # pretty-print json object
+            s = json.dumps(plugins, indent = 4)
+            print(s)
+
+    def complete_plugn_query(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('plugn_query', text)
 
     def do_plugn_sets(self, arg):
         """
@@ -833,6 +867,7 @@ class LdmsdCmdParser(cmd.Cmd):
         Add an LDMS Sampler
         Parameters:
         name=         A unique name for this Sampler
+        plugin=       The plugin instance name to associate to
         producer=     The producer name (e.g. the host name)
         instance=     The unique instance name for the set (e.g. ${HOSTNAME}/myset)
         """

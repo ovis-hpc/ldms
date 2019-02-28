@@ -102,7 +102,8 @@ class LDMSD_Req_Attr(object):
     GID = 33
     STREAM = 34
     COMP_ID = 35
-    LAST = 36
+    QUERY = 37
+    LAST = 38
 
     NAME_ID_MAP = {'name': NAME,
                    'component_id':COMP_ID,
@@ -140,6 +141,7 @@ class LDMSD_Req_Attr(object):
                    'uid': UID,
                    'gid': GID,
                    'stream': STREAM,
+                   'query': QUERY,
                    'TERMINATING': LAST
         }
 
@@ -278,6 +280,8 @@ class LDMSD_Request(object):
     PLUGN_CONFIG = 0X500 + 7
     PLUGN_LIST = 0x500 + 8
     PLUGN_SETS = 0x500 + 9
+    PLUGN_USAGE = 0x500 + 10
+    PLUGN_QUERY = 0x500 + 11
 
     SET_UDATA = 0x600
     SET_UDATA_REGEX = 0x600 + 1
@@ -359,9 +363,11 @@ class LDMSD_Request(object):
             'load': {'id': PLUGN_LOAD},
             'term': {'id': PLUGN_TERM},
             'config': {'id': PLUGN_CONFIG},
-            'usage': {'id': PLUGN_LIST},
+            'usage': {'id': PLUGN_USAGE},
+            'list': {'id': PLUGN_LIST},
 
             'plugn_sets': {'id': PLUGN_SETS},
+            'plugn_query': {'id': PLUGN_QUERY},
 
             'udata': {'id': SET_UDATA},
             'udata_regex': {'id': SET_UDATA_REGEX},

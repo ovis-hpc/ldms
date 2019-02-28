@@ -69,7 +69,8 @@ import socket
 #:of the load command.
 #:LDMSD_CTRL_CMD_MAP['load']['opt_attr'] is the list of the optional attributes
 #:of the load command.
-LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
+LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': ['name'], 'opt_attr': []},
+                      'list': {'req_attr': []},
                       'load': {'req_attr': ['name']},
                       'term': {'req_attr': ['name']},
                       'config': {'req_attr': ['name', 'producer', 'instance']},
@@ -132,7 +133,9 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'strgp_stop': {'req_attr': ['name']},
                       'strgp_status': {'req_attr': [], 'opt_attr': ['name']},
                       ##### Plugin #####
-                      'plugn_sets': {'req_attr': [], 'opt_attr': []},
+                      'plugn_sets': {'req_attr': [], 'opt_attr': ['name']},
+                      'plugn_status': {'req_attr': [], 'opt_attr': ['name']},
+                      'plugn_query': {'req_attr': ['query'], 'opt_attr': ['name']},
                       ##### Streams ###
                       'publish': {'req_attr': ['name'], 'opt_attr': []},
                       'subscribe': {'req_attr': ['name'], 'opt_attr': []},

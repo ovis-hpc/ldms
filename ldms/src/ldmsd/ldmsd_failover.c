@@ -63,6 +63,7 @@
 #include "ovis_event/ovis_event.h"
 
 #include "ldmsd.h"
+#include "ldmsd_plugin.h"
 #include "ldmsd_request.h"
 
 #include "config.h"
@@ -667,13 +668,13 @@ int __failover_send_strgp(ldmsd_failover_t f, ldms_t x, ldmsd_strgp_t s)
 
 	/* PLUGIN */
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_PLUGIN,
-					   s->plugin_name);
+					   s->inst->plugin_name);
 	if (rc)
 		goto cleanup;
 
 	/* CONTAINER */
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_CONTAINER,
-					   s->container);
+					   s->inst->inst_name);
 	if (rc)
 		goto cleanup;
 
@@ -1521,7 +1522,6 @@ int __peercfg_start(ldmsd_failover_t f)
 		srbn->started = 1;
 	}
 
-out:
 	__dlog("Failover: __peercfg_start(), flags: %#lx, rc: %d\n",
 	       f->flags, rc);
 	return 0;
@@ -2239,12 +2239,14 @@ int failover_cfgstrgp_handler(ldmsd_req_ctxt_t req)
 		}
 		rbt_ins(&f->strgp_rbt, &srbn->rbn);
 		ldmsd_strgp_get(s); /* so that we can `put` without del */
-		s->plugin_name = plugin;
-		plugin = NULL; /* give plugin to s */
 		s->schema = schema;
 		schema = NULL;
+		#if 0
+		s->plugin_name = plugin;
+		plugin = NULL; /* give plugin to s */
 		s->container = container;
 		container = NULL;
+		#endif
 	}
 
 	if (regex) {

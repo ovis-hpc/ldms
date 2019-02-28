@@ -75,6 +75,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "failover_stop",      LDMSD_FAILOVER_STOP_REQ  },
 	{  "greeting",           LDMSD_GREETING_REQ  },
 	{  "include",            LDMSD_INCLUDE_REQ  },
+	{  "list",               LDMSD_PLUGN_LIST_REQ  },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ  },
 	{  "loglevel",           LDMSD_VERBOSE_REQ  },
 	{  "logrotate",          LDMSD_LOGROTATE_REQ  },
@@ -123,7 +124,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "updtr_status",       LDMSD_UPDTR_STATUS_REQ  },
 	{  "updtr_stop",         LDMSD_UPDTR_STOP_REQ  },
 	{  "updtr_task",         LDMSD_UPDTR_TASK_REQ  },
-	{  "usage",              LDMSD_PLUGN_LIST_REQ  },
+	{  "usage",              LDMSD_PLUGN_USAGE_REQ  },
 	{  "version",            LDMSD_VERSION_REQ  },
 };
 

@@ -58,6 +58,8 @@
 #include <ovis_util/util.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plugin.h"
+#include "ldmsd_store.h"
 #include "ldms_xprt.h"
 #include "config.h"
 
@@ -67,8 +69,6 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 
 	if (strgp->schema)
 		free(strgp->schema);
-	if (strgp->container)
-		free(strgp->container);
 	if (strgp->metric_arry)
 		free(strgp->metric_arry);
 
@@ -89,21 +89,16 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 		LIST_REMOVE(match, entry);
 		free(match);
 	}
-	if (strgp->plugin_name)
-		free(strgp->plugin_name);
+	if (strgp->inst)
+		ldmsd_plugin_inst_put(strgp->inst);
 	ldmsd_cfgobj___del(obj);
 }
 
 static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 {
-	if (strgp->state != LDMSD_STRGP_STATE_RUNNING)
+	if (strgp->state != LDMSD_STRGP_STATE_OPENED)
 		return;
-	if (!strgp->store_handle) {
-		strgp->state = LDMSD_STRGP_STATE_STOPPED;
-		return;
-	}
-	strgp->store->store(strgp->store_handle, prd_set->set,
-			    strgp->metric_arry, strgp->metric_count);
+	ldmsd_store_store(strgp->inst, prd_set->set, strgp);
 }
 
 int store_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
@@ -427,14 +422,7 @@ static ldmsd_strgp_ref_t strgp_ref_find(ldmsd_prdcr_set_t prd_set, ldmsd_strgp_t
 
 static void strgp_close(ldmsd_strgp_t strgp)
 {
-	if (strgp->store) {
-		if (strgp->store_handle)
-			ldmsd_store_close(strgp->store, strgp->store_handle);
-		if (strgp->next_store_handle)
-			ldmsd_store_close(strgp->store, strgp->next_store_handle);
-	}
-	strgp->store_handle = NULL;
-	strgp->next_store_handle = NULL;
+	ldmsd_store_close(strgp->inst);
 }
 
 static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
@@ -442,17 +430,10 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	int i, idx, rc;
 	const char *name;
 	ldmsd_strgp_metric_t metric;
-	struct ldmsd_plugin_cfg *store;
 
 	if (!prd_set->set)
 		return ENOENT;
 
-	if (!strgp->store) {
-		store = ldmsd_get_plugin(strgp->plugin_name);
-		if (!store)
-			return ENOENT;
-		strgp->store = store->store;
-	}
 	/* Build metric list from the schema in the producer set */
 	strgp->metric_count = 0;
 	strgp->metric_arry = calloc(ldms_set_card_get(prd_set->set), sizeof(int));
@@ -477,15 +458,13 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		idx = ldms_metric_by_name(prd_set->set, name);
 		if (idx < 0)
 			goto err;
+		metric->idx = idx;
 		metric->type = ldms_metric_type_get(prd_set->set, idx);
 		strgp->metric_arry[i] = idx;
 	}
 	strgp->metric_count = i;
-
-	strgp->store_handle = ldmsd_store_open(strgp->store, strgp->container,
-			strgp->schema, &strgp->metric_list, strgp);
-	rc = EINVAL;
-	if (!strgp->store_handle)
+	rc = ldmsd_store_open(strgp->inst, strgp);
+	if (rc)
 		goto err;
 	return 0;
 err:
@@ -515,14 +494,16 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		}
 		break;
 	case LDMSD_STRGP_STATE_RUNNING:
+		rc = strgp_open(strgp, prd_set);
+		if (rc)
+			break;
+		/* open success */
+		strgp->state = LDMSD_STRGP_STATE_OPENED;
+		/* let through */
+	case LDMSD_STRGP_STATE_OPENED:
 		rc = EEXIST;
 		if (ref)
 			break;
-		if (!strgp->store_handle) {
-			rc = strgp_open(strgp, prd_set);
-			if (rc)
-				break;
-		}
 		rc = ENOMEM;
 		ref = strgp_ref_new(strgp, prd_set);
 		if (!ref)
@@ -605,11 +586,12 @@ int __ldmsd_strgp_stop(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt)
 	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
 	if (rc)
 		goto out;
-	if (strgp->state != LDMSD_STRGP_STATE_RUNNING) {
+	if (strgp->state < LDMSD_STRGP_STATE_RUNNING) {
 		rc = EBUSY;
 		goto out;
 	}
-	strgp_close(strgp);
+	if (strgp->state == LDMSD_STRGP_STATE_OPENED)
+		strgp_close(strgp);
 	strgp->state = LDMSD_STRGP_STATE_STOPPED;
 	strgp->obj.perm &= ~LDMSD_PERM_DSTART;
 	ldmsd_prdcr_update(strgp);
@@ -673,14 +655,11 @@ out_0:
 
 void ldmsd_strgp_close()
 {
-	int rc = 0;
 	ldmsd_strgp_t strgp = ldmsd_strgp_first();
 	while (strgp) {
 		ldmsd_strgp_lock(strgp);
-		if (strgp->state != LDMSD_STRGP_STATE_RUNNING) {
-			goto next;
-		}
-		strgp_close(strgp);
+		if (strgp->state == LDMSD_STRGP_STATE_OPENED)
+			strgp_close(strgp);
 		strgp->state = LDMSD_STRGP_STATE_STOPPED;
 		ldmsd_strgp_unlock(strgp);
 		/*
@@ -688,7 +667,6 @@ void ldmsd_strgp_close()
 		 * because the strgp isn't deleted yet.
 		 */
 		ldmsd_strgp_put(strgp);
-next:
 		strgp = ldmsd_strgp_next(strgp);
 	}
 }

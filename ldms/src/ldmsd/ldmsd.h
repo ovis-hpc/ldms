@@ -98,17 +98,6 @@ void ldmsd_version_get(struct ldmsd_version *v);
 typedef struct ldmsd_plugin_inst_s *ldmsd_plugin_inst_t;
 typedef struct ldmsd_plugin_type_s *ldmsd_plugin_type_t;
 
-typedef struct ldmsd_plugin_set {
-	ldms_set_t set;
-	char *plugin_name;
-	char *inst_name;
-	LIST_ENTRY(ldmsd_plugin_set) entry;
-} *ldmsd_plugin_set_t;
-typedef struct ldmsd_plugin_set_list {
-	struct rbn rbn;
-	LIST_HEAD(, ldmsd_plugin_set) list;
-} *ldmsd_plugin_set_list_t;
-
 /** Set information */
 #define LDMSD_SET_INFO_INTERVAL_KEY "interval_us"
 #define LDMSD_SET_INFO_OFFSET_KEY "offset_us"
@@ -194,7 +183,7 @@ typedef struct ldmsd_smplr {
 		LDMSD_SMPLR_STATE_RUNNING,
 	} state;
 
-	struct ldmsd_plugin_cfg *plugin;
+	ldmsd_plugin_inst_t pi;
 
 	ev_t start_ev;
 	ev_t stop_ev;
@@ -285,6 +274,13 @@ typedef struct ldmsd_strgp_ref {
 
 #define LDMSD_PRDCR_SET_F_PUSH_REG	1
 
+typedef struct ldmsd_set_ctxt_s {
+	enum {
+		LDMSD_SET_CTXT_PRDCR,
+		LDMSD_SET_CTXT_SAMP,
+	} type;
+} *ldmsd_set_ctxt_t;
+
 typedef struct ldmsd_updt_hint_set_list {
 	struct rbn rbn;
 	LIST_HEAD(, ldmsd_prdcr_set) list;
@@ -330,7 +326,10 @@ typedef struct ldmsd_prdcr_set {
 	double updt_duration;
 #endif /* LDMSD_UPDATE_TIME */
 
+	int ref_count;
 	struct ref_s ref;
+
+	struct ldmsd_set_ctxt_s set_ctxt;
 } *ldmsd_prdcr_set_t;
 
 #ifdef LDMSD_UPDATE_TIME
@@ -516,24 +515,6 @@ int process_config_file(const char *path, int *lineno, int trust);
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 struct attr_value_list;
-struct ldmsd_plugin {
-	char name[LDMSD_MAX_PLUGIN_NAME_LEN];
-	enum ldmsd_plugin_type {
-		LDMSD_PLUGIN_OTHER = 0,
-		LDMSD_PLUGIN_SAMPLER,
-		LDMSD_PLUGIN_STORE
-	} type;
-	enum ldmsd_plugin_type (*get_type)(struct ldmsd_plugin *self);
-	int (*config)(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl);
-	void (*term)(struct ldmsd_plugin *self);
-	const char *(*usage)(struct ldmsd_plugin *self);
-};
-
-struct ldmsd_sampler {
-	struct ldmsd_plugin base;
-	ldms_set_t (*get_set)(struct ldmsd_sampler *self);
-	int (*sample)(struct ldmsd_sampler *self);
-};
 
 struct ldmsd_plugin_cfg {
 	void *handle;
@@ -558,63 +539,7 @@ LIST_HEAD(plugin_list, ldmsd_plugin_cfg);
 
 extern void ldmsd_config_cleanup(void);
 extern int ldmsd_config_init(char *name);
-struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name);
-
-int ldmsd_set_register(ldms_set_t set, const char *plugin_name);
-#pragma weak ldmsd_set_register
-void ldmsd_set_deregister(const char *inst_name, const char *plugin_name);
-#pragma weak ldmsd_set_deregister
-
-/**
- * \brief ldms_store
- *
- * A \c ldms_store encapsulates a storage strategy. For example,
- * MySQL, or SOS. Each strategy provides a library that exports the \c
- * ldms_store structure. This structure contains strategy routines for
- * initializing, configuring and storing metric set data to the
- * persistent storage used by the strategy. When a metric set is
- * sampled, if metrics in the set are associated with a storage
- * strategy, the sample is saved automatically by \c ldmsd.
- *
- * An \c ldms_store manages Metric Series. A Metric Series is a named,
- * grouped, and time ordered series of metric samples. A Metric Series
- * is indexed by Component ID, and Time.
- *
- */
-struct ldmsd_store {
-	struct ldmsd_plugin base;
-	void *ucontext;
-	ldmsd_store_handle_t (*open)(struct ldmsd_store *s,
-				    const char *container, const char *schema,
-				    struct ldmsd_strgp_metric_list *metric_list,
-				    void *ucontext);
-	void (*close)(ldmsd_store_handle_t sh);
-	int (*flush)(ldmsd_store_handle_t sh);
-	void *(*get_context)(ldmsd_store_handle_t sh);
-	int (*store)(ldmsd_store_handle_t sh, ldms_set_t set, int *, size_t count);
-};
-
-struct store_instance;
-typedef void (*io_work_fn)(struct store_instance *);
-struct store_instance {
-	struct ldmsd_store *plugin; /**< The store plugin. */
-	ldmsd_store_handle_t store_handle; /**< The store handle from store->new
-						or store->get */
-	struct flush_thread *ft; /**< The pointer to the assigned
-				      flush_thread */
-	enum {
-		STORE_STATE_INIT=0,
-		STORE_STATE_OPEN,
-		STORE_STATE_CLOSED,
-		STORE_STATE_ERROR
-	} state;
-	size_t dirty_count;
-	pthread_mutex_t lock;
-	TAILQ_ENTRY(store_instance) lru_entry;
-	LIST_ENTRY(store_instance) flush_entry;
-	io_work_fn work_fn;
-	int work_pending;
-};
+struct ldmsd_plugin_cfg *ldmsd_get_plugin(const char *name);
 
 struct ldmsd_store_host {
 	char *name;
@@ -630,7 +555,6 @@ struct ldmsd_store_policy {
 	struct ldmsd_strgp_metric_list metric_list;
 	struct rbt host_tree;
 	struct ldmsd_store *plugin;
-	struct store_instance *si;
 
 	enum {
 		STORE_POLICY_CONFIGURING=0, /* Need metric index list */
@@ -827,7 +751,7 @@ int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt
 /** Sampler configuration object management */
 ldmsd_smplr_t
 ldmsd_smplr_new_with_auth(const char *name,
-			  struct ldmsd_plugin_cfg *plugin,
+			  ldmsd_plugin_inst_t plugin_inst,
 			  uint64_t component_id,
 			  const char *producer, const char *instance,
 			  uid_t uid, gid_t gid, int perm);
@@ -1088,14 +1012,6 @@ int ldmsd_task_resched(ldmsd_task_t task,
 int ldmsd_task_stop(ldmsd_task_t task);
 
 void ldmsd_task_join(ldmsd_task_t task);
-
-void ldmsd_set_tree_lock();
-void ldmsd_set_tree_unlock();
-ldmsd_plugin_set_list_t ldmsd_plugin_set_list_first();
-ldmsd_plugin_set_list_t ldmsd_plugin_set_list_next(ldmsd_plugin_set_list_t list);
-ldmsd_plugin_set_list_t ldmsd_plugin_set_list_find(const char *plugin_name);
-ldmsd_plugin_set_t ldmsd_plugin_set_first(const char *plugin_name);
-ldmsd_plugin_set_t ldmsd_plugin_set_next(ldmsd_plugin_set_t set);
 
 int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us);
 int ldmsd_set_update_hint_get(ldms_set_t set, long *interva_us, long *offset_us);

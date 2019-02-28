@@ -61,6 +61,9 @@
 #include <json/json_util.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plugin.h"
+#include "ldmsd_sampler.h"
+#include "ldmsd_store.h"
 #include "ldmsd_request.h"
 #include "ldmsd_stream.h"
 #include "ldms_xprt.h"
@@ -184,6 +187,8 @@ static int plugn_term_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_config_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_list_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_sets_handler(ldmsd_req_ctxt_t req_ctxt);
+static int plugn_usage_handler(ldmsd_req_ctxt_t req_ctxt);
+static int plugn_query_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_udata_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_udata_regex_handler(ldmsd_req_ctxt_t req_ctxt);
 static int verbosity_change_handler(ldmsd_req_ctxt_t reqc);
@@ -350,6 +355,13 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_PLUGN_SETS_REQ] = {
 		LDMSD_PLUGN_SETS_REQ, plugn_sets_handler, XALL
+	},
+	[LDMSD_PLUGN_USAGE_REQ] = {
+		LDMSD_PLUGN_USAGE_REQ, plugn_usage_handler, XALL
+	},
+	[LDMSD_PLUGN_QUERY_REQ] = {
+		LDMSD_PLUGN_QUERY_REQ, plugn_query_handler,
+		XALL | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 
 	/* SET */
@@ -1420,7 +1432,7 @@ static int prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The attribute '%s' is required by prdcr_del.",
-			       	attr_name);
+				attr_name);
 		goto send_reply;
 	}
 
@@ -1954,13 +1966,14 @@ static int prdcr_set_status_handler(ldmsd_req_ctxt_t reqc)
 
 static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *attr_name, *name, *plugin, *container, *schema;
-	name = plugin = container = schema = NULL;
+	char *attr_name, *name, *container, *schema;
+	name = container = schema = NULL;
 	size_t cnt = 0;
 	uid_t uid;
 	gid_t gid;
 	int perm;
 	char *perm_s = NULL;
+	ldmsd_plugin_inst_t inst = NULL;
 
 	reqc->errcode = 0;
 
@@ -1969,29 +1982,19 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!name)
 		goto einval;
 
-	attr_name = "plugin";
-	plugin = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PLUGIN);
-	if (!plugin)
-		goto einval;
-
 	attr_name = "container";
 	container = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_CONTAINER);
 	if (!container)
 		goto einval;
 
+	inst = ldmsd_plugin_inst_find(container);
+	if (!inst)
+		goto enoent;
+
 	attr_name = "schema";
 	schema = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SCHEMA);
 	if (!schema)
 		goto einval;
-
-	struct ldmsd_plugin_cfg *store;
-	store = ldmsd_get_plugin(plugin);
-	if (!store) {
-		reqc->errcode = ENOENT;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The plugin %s does not exist. Forgot load?\n", plugin);
-		goto send_reply;
-	}
 
 	struct ldmsd_sec_ctxt sctxt;
 	if (reqc->xprt->xprt) {
@@ -2014,27 +2017,17 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 		else
 			goto enomem;
 	}
-
-	strgp->plugin_name = strdup(plugin);
-	if (!strgp->plugin_name)
-		goto enomem_1;
-
+	ldmsd_plugin_inst_get(inst); /* for attaching inst to strgp,
+				      * this is put down on strgp delete. */
+	strgp->inst = inst;
 	strgp->schema = strdup(schema);
 	if (!strgp->schema)
-		goto enomem_2;
-
-	strgp->container = strdup(container);
-	if (!strgp->container)
-		goto enomem_3;
+		goto enomem_1;
 
 	goto send_reply;
 
-enomem_3:
-	free(strgp->schema);
-enomem_2:
-	free(strgp->plugin_name);
 enomem_1:
-	free(strgp);
+	ldmsd_strgp_del(name, &sctxt);
 enomem:
 	reqc->errcode = ENOMEM;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -2045,23 +2038,29 @@ eexist:
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The prdcr %s already exists.", name);
 	goto send_reply;
+enoent:
+	reqc->errcode = ENOENT;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Store instance (container '%s') not found.",
+				container);
+	goto send_reply;
 einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"The attribute '%s' is required by strgp_add.",
-		       	attr_name);
+		       "The attribute '%s' is required by strgp_add.",
+		       attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (name)
 		free(name);
-	if (plugin)
-		free(plugin);
 	if (container)
 		free(container);
 	if (schema)
 		free(schema);
 	if (perm_s)
 		free(perm_s);
+	if (inst)
+		ldmsd_plugin_inst_put(inst); /* put down ref from `find` */
 	return 0;
 }
 
@@ -2154,19 +2153,18 @@ static int smplr_add_handler(ldmsd_req_ctxt_t reqc)
 		goto einval;
 	component_id = strtoul(value, NULL, 0);
 
-	struct ldmsd_plugin_cfg *sampler = ldmsd_get_plugin(plugin);
-	if (!sampler) {
-		rc = ldmsd_load_plugin(plugin, errstr, sizeof(errstr));
-		if (rc) {
-			reqc->errcode = rc;
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "%s\n");
-			goto send_reply;
-		}
-	}
-	if (sampler->plugin->type != LDMSD_PLUGIN_SAMPLER) {
+	ldmsd_plugin_inst_t pi = ldmsd_plugin_inst_find(plugin);
+	if (!pi) {
 		reqc->errcode = ENOENT;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The plugin %s is not a sampler.\n", plugin);
+			       "Plugin instance `%s` not found\n", plugin);
+		goto send_reply;
+	}
+	if (!LDMSD_INST_IS_SAMPLER(pi)) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The plugin instance `%s` is not a sampler.\n",
+				plugin);
 		goto send_reply;
 	}
 
@@ -2184,7 +2182,7 @@ static int smplr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (perm_s)
 		perm = strtol(perm_s, NULL, 0);
 
-	ldmsd_smplr_t smplr = ldmsd_smplr_new_with_auth(name, sampler,
+	ldmsd_smplr_t smplr = ldmsd_smplr_new_with_auth(name, pi,
 							component_id,
 							prod, inst,
 							uid, gid, perm);
@@ -2589,7 +2587,7 @@ static int strgp_stop_handler(ldmsd_req_ctxt_t reqc)
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The attribute '%s' is required by %s.",
-			       	attr_name, "strgp_stop");
+				attr_name, "strgp_stop");
 		goto send_reply;
 	}
 
@@ -2640,14 +2638,14 @@ int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
 	rc = linebuf_printf(reqc,
 		       "{\"name\":\"%s\","
 		       "\"container\":\"%s\","
-		       "\"schema\":\"%s\","
 		       "\"plugin\":\"%s\","
+		       "\"schema\":\"%s\","
 		       "\"state\":\"%s\","
 		       "\"producers\":[",
 		       strgp->obj.name,
-		       strgp->container,
+		       strgp->inst->inst_name,
+		       strgp->inst->plugin_name,
 		       strgp->schema,
-		       strgp->plugin_name,
 		       ldmsd_strgp_state_str(strgp->state));
 	if (rc)
 		goto out;
@@ -3804,26 +3802,13 @@ out:
 	return rc;
 }
 
-static char *type_str[] = {
-	[LDMSD_PLUGIN_OTHER] = "other",
-	[LDMSD_PLUGIN_SAMPLER] = "sampler",
-	[LDMSD_PLUGIN_STORE] = "store",
-};
-
-static char *plugn_type_str(enum ldmsd_plugin_type type)
-{
-	if (type <= LDMSD_PLUGIN_STORE)
-		return type_str[type];
-	return "unknown";
-}
-
 extern int ldmsd_start_smplr(char *plugin_name, char *interval, char *offset);
 extern int ldmsd_stop_smplr(char *plugin);
-extern int ldmsd_load_plugin(char *plugin_name, char *errstr, size_t errlen);
-extern int ldmsd_term_plugin(char *plugin_name);
-extern int ldmsd_config_plugin(char *plugin_name,
-			struct attr_value_list *_av_list,
-			struct attr_value_list *_kw_list);
+extern int ldmsd_load_plugin(const char *inst_name,
+			     const char *plugin_name,
+			     char *errstr, size_t errlen);
+extern int ldmsd_term_plugin(const char *plugin_name);
+
 
 static int smplr_start_handler(ldmsd_req_ctxt_t reqc)
 {
@@ -3836,11 +3821,7 @@ static int smplr_start_handler(ldmsd_req_ctxt_t reqc)
 	smplr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!smplr_name)
 		goto einval;
-	attr_name = "interval";
 	interval_us = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
-	if (!interval_us)
-		goto einval;
-
 	offset = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
 
 	reqc->errcode = ldmsd_start_smplr(smplr_name, interval_us, offset);
@@ -3949,7 +3930,7 @@ int __smplr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_smplr_t smplr)
 		       "\"state\":\"%s\","
 		       "\"sets\": [ \"%s\" ] }",
 		       smplr->obj.name,
-		       smplr->plugin->name,
+		       smplr->pi->inst_name,
 		       smplr->producer,
 		       smplr->instance,
 		       smplr->component_id,
@@ -4025,30 +4006,41 @@ static int smplr_status_handler(ldmsd_req_ctxt_t reqc)
 int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 {
 	extern struct plugin_list plugin_list;
-	struct ldmsd_plugin_cfg *p;
 	int rc, count;
+	char *tmp = NULL;
+	int off = 0, alen = 0;
+	ldmsd_plugin_inst_t inst;
+	ldmsd_plugin_qresult_t qr;
 	reqc->errcode = 0;
 
 	rc = linebuf_printf(reqc, "[");
 	if (rc)
 		return rc;
 	count = 0;
-	LIST_FOREACH(p, &plugin_list, entry) {
+	LDMSD_PLUGIN_INST_FOREACH(inst) {
 		if (count) {
 			rc = linebuf_printf(reqc, ",\n");
 			if (rc)
 				return rc;
 		}
-
 		count++;
-		rc = linebuf_printf(reqc,
-			       "{\"name\":\"%s\",\"type\":\"%s\","
-			       "\"libpath\":\"%s\"}",
-			       p->plugin->name,
-			       plugn_type_str(p->plugin->type),
-			       p->libpath);
-		if (rc)
+		qr = inst->base->query(inst, "status");
+		if (qr->rc) {
+			rc = qr->rc;
 			return rc;
+		}
+		if (qr->rc == 0) {
+			rc = ldmsd_plugin_qrent_coll_json_print(&qr->coll,
+							&tmp, &off, &alen);
+			if (rc) {
+				free(tmp);
+				return rc;
+			}
+			rc = linebuf_printf(reqc, "%s", tmp);
+			free(tmp);
+			tmp = NULL;
+			off = alen = 0;
+		}
 	}
 	rc = linebuf_printf(reqc, "]");
 	return rc;
@@ -4080,21 +4072,126 @@ static int plugn_status_handler(ldmsd_req_ctxt_t reqc)
 	return rc;
 }
 
+static int __query_inst(ldmsd_req_ctxt_t reqc, const char *query,
+			ldmsd_plugin_inst_t inst,
+			char **tmp, int *off, int *alen)
+{
+	int rc;
+	ldmsd_plugin_qresult_t qr;
+	qr = inst->base->query(inst, query);
+	if (qr->rc) {
+		rc = qr->rc;
+		goto out;
+	}
+	rc = ldmsd_plugin_qrent_coll_json_print(&qr->coll, tmp, off, alen);
+out:
+	if (qr)
+		ldmsd_plugin_qresult_free(qr);
+	return rc;
+}
+
+static int plugn_query_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	int cnt = 0;
+	char *query;
+	char *name;
+	extern struct plugin_list plugin_list;
+	int count;
+	char *tmp = NULL;
+	int off = 0, alen = 0;
+	ldmsd_plugin_inst_t inst;
+
+	query = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_QUERY);
+	if (!query) {
+		rc = reqc->errcode = EINVAL;
+		snprintf(reqc->line_buf, reqc->line_len,
+			 "Missing `query` attribute");
+		ldmsd_send_req_response(reqc, reqc->line_buf);
+		goto out;
+	}
+
+	/* optional */
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+
+	cnt = sappendf(&tmp, &off, &alen, "[");
+	if (cnt < 0) {
+		rc = errno;
+		goto out;
+	}
+	count = 0;
+
+	if (name) {
+		inst = ldmsd_plugin_inst_find(name);
+		if (!inst) {
+			rc = reqc->errcode = ENOENT;
+			snprintf(reqc->line_buf, reqc->line_len,
+				 "Plugin instance \"%s\" not found", name);
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+			goto out;
+		}
+		rc = __query_inst(reqc, query, inst, &tmp, &off, &alen);
+		if (rc)
+			goto err;
+		goto end;
+	}
+	/* else, query all instances */
+	LDMSD_PLUGIN_INST_FOREACH(inst) {
+		if (count) {
+			cnt = sappendf(&tmp, &off, &alen, ",\n");
+			if (cnt < 0) {
+				rc = errno;
+				goto err;
+			}
+		}
+		count++;
+		rc = __query_inst(reqc, query, inst, &tmp, &off, &alen);
+		if (rc)
+			goto err;
+	}
+end:
+	cnt = sappendf(&tmp, &off, &alen, "]");
+	if (cnt < 0) {
+		rc = errno;
+		snprintf(reqc->line_buf, reqc->line_len,
+			 "Internal error: %d", rc);
+		ldmsd_send_req_response(reqc, reqc->line_buf);
+		goto out;
+	}
+	rc = reqc->errcode = 0;
+	ldmsd_send_req_response(reqc, tmp);
+	goto out;
+err:
+	reqc->errcode = rc;
+	snprintf(reqc->line_buf, reqc->line_len, "query error: %d", rc);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+
+out:
+	if (tmp)
+		free(tmp);
+	return rc;
+}
+
 static int plugn_load_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *plugin_name, *attr_name;
+	char *plugin_name, *inst_name, *attr_name;
 	plugin_name = NULL;
 	size_t cnt = 0;
 
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!plugin_name) {
-		ldmsd_log(LDMSD_LERROR, "load plugin called without name=$plugin");
+	inst_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!inst_name) {
+		ldmsd_log(LDMSD_LERROR,
+			  "load plugin called without `name` attribute");
 		goto einval;
 	}
 
-	reqc->errcode = ldmsd_load_plugin(plugin_name, reqc->line_buf,
-							reqc->line_len);
+	attr_name = "plugin";
+	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PLUGIN);
+
+	reqc->errcode = ldmsd_load_plugin(inst_name,
+					  plugin_name?plugin_name:inst_name,
+					  reqc->line_buf, reqc->line_len);
 	if (reqc->errcode)
 		cnt = strlen(reqc->line_buf) + 1;
 	goto send_reply;
@@ -4107,6 +4204,8 @@ send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (plugin_name)
 		free(plugin_name);
+	if (inst_name)
+		free(inst_name);
 	return 0;
 }
 
@@ -4152,73 +4251,75 @@ send_reply:
 
 static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *plugin_name, *config_attr, *attr_name;
-	plugin_name = config_attr = NULL;
+	char *name, *config_attr, *attr_name;
+	name = config_attr = NULL;
 	struct attr_value_list *av_list = NULL;
 	struct attr_value_list *kw_list = NULL;
-	size_t cnt = 0;
-	reqc->errcode = 0;
-
-	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!plugin_name)
-		goto einval;
-	config_attr = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
-	if (!config_attr) {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"No config attributes are provided.");
-		reqc->errcode = EINVAL;
-		goto send_reply;
-	}
-
+	ldmsd_plugin_inst_t inst = NULL;
 	char *cmd_s;
 	int tokens;
 
-	/*
-	 * Count the numebr of spaces. That's the maximum number of
-	 * tokens that could be present.
-	 */
-	for (tokens = 0, cmd_s = config_attr; cmd_s[0] != '\0';) {
-		tokens++;
-		/* find whitespace */
-		while (cmd_s[0] != '\0' && !isspace(cmd_s[0]))
-			cmd_s++;
-		/* Now skip whitespace to next token */
-		while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
-			cmd_s++;
+	reqc->errcode = 0;
+
+	attr_name = "name";
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name)
+		goto einval;
+	config_attr = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+	tokens = 0;
+	if (config_attr) {
+		/*
+		 * Count the numebr of spaces. That's the maximum number of
+		 * tokens that could be present.
+		 */
+		for (tokens = 0, cmd_s = config_attr; cmd_s[0] != '\0';) {
+			tokens++;
+			/* find whitespace */
+			while (cmd_s[0] != '\0' && !isspace(cmd_s[0]))
+				cmd_s++;
+			/* Now skip whitespace to next token */
+			while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
+				cmd_s++;
+		}
 	}
+
 	reqc->errcode = ENOMEM;
 	av_list = av_new(tokens);
 	kw_list = av_new(tokens);
 	if (!av_list || !kw_list) {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Out of memory");
+		Snprintf(&reqc->line_buf, &reqc->line_len, "Out of memory");
 		goto err;
 	}
 
-	reqc->errcode = tokenize(config_attr, kw_list, av_list);
-	if (reqc->errcode) {
-		ldmsd_log(LDMSD_LERROR, "Memory allocation failure "
-				"processing '%s'\n", config_attr);
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Out of memory");
-		reqc->errcode = ENOMEM;
-		goto err;
+	if (config_attr) {
+		reqc->errcode = tokenize(config_attr, kw_list, av_list);
+		if (reqc->errcode) {
+			ldmsd_log(LDMSD_LERROR, "Memory allocation failure "
+				  "processing '%s'\n", config_attr);
+			Snprintf(&reqc->line_buf, &reqc->line_len,
+				 "Out of memory");
+			reqc->errcode = ENOMEM;
+			goto err;
+		}
 	}
 
-	reqc->errcode = ldmsd_config_plugin(plugin_name, av_list, kw_list);
-	if (reqc->errcode) {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Plugin '%s' configuration error.",
-				plugin_name);
+	inst = ldmsd_plugin_inst_find(name);
+	if (!inst) {
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+			 "Instance not found: %s", name);
+		reqc->errcode = ENOENT;
+		goto err;
 	}
+	reqc->errcode = ldmsd_plugin_inst_config(inst, av_list, kw_list,
+						 reqc->line_buf,
+						 reqc->line_len);
+	/* if there is an error, the plugin should already fill line_buf */
 	goto send_reply;
 
 einval:
 	reqc->errcode = EINVAL;
-	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"The attribute '%s' is required by config.",
-		       	attr_name);
+	Snprintf(&reqc->line_buf, &reqc->line_len,
+		 "The attribute '%s' is required by config.", attr_name);
 	goto send_reply;
 err:
 	if (kw_list)
@@ -4229,49 +4330,51 @@ err:
 	av_list = NULL;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (plugin_name)
-		free(plugin_name);
+	if (name)
+		free(name);
 	if (config_attr)
 		free(config_attr);
 	if (kw_list)
 		av_free(kw_list);
 	if (av_list)
 		av_free(av_list);
+	if (inst)
+		ldmsd_plugin_inst_put(inst); /* put ref from find */
 	return 0;
 }
 
 extern struct plugin_list plugin_list;
 int __plugn_list_string(ldmsd_req_ctxt_t reqc)
 {
-	char *name = NULL;
+	char *plugin;
+	const char *desc;
 	int rc, count = 0;
-	struct ldmsd_plugin_cfg *p;
+	ldmsd_plugin_inst_t inst;
 	rc = 0;
 
-	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-
-	LIST_FOREACH(p, &plugin_list, entry) {
-		if (name && (0 != strcmp(name, p->name)))
+	plugin = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PLUGIN);
+	LDMSD_PLUGIN_INST_FOREACH(inst) {
+		if (plugin && strcmp(plugin, inst->type_name)
+			   && strcmp(plugin, inst->plugin_name)) {
+			/* does not match type nor plugin name */
 			continue;
-
-		if (p->plugin->usage) {
-			rc = linebuf_printf(reqc, "%s\n%s",
-					p->name, p->plugin->usage(p->plugin));
-		} else {
-			rc = linebuf_printf(reqc, "%s\n", p->name);
 		}
+		desc = ldmsd_plugin_inst_desc(inst);
+		if (!desc)
+			desc = inst->plugin_name;
+		rc = linebuf_printf(reqc, "%s - %s\n", inst->inst_name, desc);
 		if (rc)
 			goto out;
 		count++;
 	}
-	if (name && (0 == count)) {
-		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
-				"Plugin '%s' not loaded.", name);
+
+	if (!count) {
+		rc = linebuf_printf(reqc, "-- No plugin instances --");
 		reqc->errcode = ENOENT;
 	}
 out:
-	if (name)
-		free(name);
+	if (plugin)
+		free(plugin);
 	return rc;
 }
 
@@ -4288,43 +4391,84 @@ static int plugn_list_handler(ldmsd_req_ctxt_t reqc)
 	attr.attr_len = reqc->line_off;
 	attr.attr_id = LDMSD_ATTR_STRING;
 	ldmsd_hton_req_attr(&attr);
-	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr),
+				LDMSD_REQ_SOM_F);
 	if (rc)
 		return rc;
 	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
 	if (rc)
 		return rc;
 	attr.discrim = 0;
-	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t), LDMSD_REQ_EOM_F);
+	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t),
+				LDMSD_REQ_EOM_F);
+	return rc;
+}
+
+static int plugn_usage_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	char *name = NULL;
+	const char *usage = NULL;
+	ldmsd_plugin_inst_t inst = NULL;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		rc = reqc->errcode = EINVAL;
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+			 "`name` attribute is needed.");
+		goto err_reply;
+	}
+	inst = ldmsd_plugin_inst_find(name);
+	if (!inst) {
+		rc = reqc->errcode = ENOENT;
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+			 "Plugin instance `%s` not found.", name);
+		goto err_reply;
+	}
+	usage = ldmsd_plugin_inst_help(inst);
+	if (!usage) {
+		rc = reqc->errcode = ENOSYS;
+		Snprintf(&reqc->line_buf, &reqc->line_len,
+			 "`%s` has no usage", name);
+		goto err_reply;
+	}
+	ldmsd_send_req_response(reqc, usage);
+	goto out;
+
+ err_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+ out:
+	if (name)
+		free(name);
+	if (inst)
+		ldmsd_plugin_inst_put(inst); /* put ref from find */
 	return rc;
 }
 
 /* Caller must hold the set tree lock. */
 int __plugn_sets_json_obj(ldmsd_req_ctxt_t reqc,
-				ldmsd_plugin_set_list_t list)
+				ldmsd_plugin_inst_t inst)
 {
-	ldmsd_plugin_set_t set;
+	ldmsd_set_entry_t ent;
+	ldmsd_sampler_type_t samp = (void*)inst->base;
+	size_t cnt;
 	int rc, set_count;
-	set = LIST_FIRST(&list->list);
-	if (!set)
-		return 0;
 	rc = linebuf_printf(reqc,
 			"{"
 			"\"plugin\":\"%s\","
 			"\"sets\":[",
-			set->plugin_name);
+			inst->inst_name);
 	if (rc)
 		return rc;
 	set_count = 0;
-	LIST_FOREACH(set, &list->list, entry) {
+	LIST_FOREACH(ent, &samp->set_list, entry) {
 		if (set_count) {
-			rc = linebuf_printf(reqc, ",");
-			if (rc)
-				return rc;
+			cnt = linebuf_printf(reqc, ",\"%s\"",
+				       ldms_set_instance_name_get(ent->set));
+		} else {
+			cnt = linebuf_printf(reqc, "\"%s\"",
+				       ldms_set_instance_name_get(ent->set));
 		}
-		rc = linebuf_printf(reqc, "\"%s\"", set->inst_name);
-		if (rc)
-			return rc;
 		set_count++;
 		if (rc)
 			return rc;
@@ -4338,71 +4482,54 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 	int rc = 0;
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
-	ldmsd_plugin_set_list_t list;
-	char *plugin;
-	int plugn_count;
 
-	plugin = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	ldmsd_set_tree_lock();
-	if (plugin) {
-		list = ldmsd_plugin_set_list_find(plugin);
-		if (!list) {
+	char *name;
+	int plugn_count;
+	ldmsd_plugin_inst_t inst;
+
+	rc = linebuf_printf(reqc, "[");
+	if (rc)
+		goto err;
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (name) {
+		inst = ldmsd_plugin_inst_find(name);
+		if (!inst) {
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
-					"No sets registered for the plugin '%s' "
-					"or the plugin isn't loaded",
-					plugin);
+					"Plugin instance '%s' not found",
+					name);
 			reqc->errcode = ENOENT;
-			ldmsd_set_tree_unlock();
 			goto err0;
 		}
-		rc = __plugn_sets_json_obj(reqc, list);
-		if (rc) {
-			ldmsd_set_tree_unlock();
+		rc = __plugn_sets_json_obj(reqc, inst);
+		ldmsd_plugin_inst_put(inst);
+		if (rc)
 			goto err;
-		}
 	} else {
 		plugn_count = 0;
-		for (list = ldmsd_plugin_set_list_first(); list;
-				list = ldmsd_plugin_set_list_next(list)) {
+		LDMSD_PLUGIN_INST_FOREACH(inst) {
+			if (strcmp(inst->type_name, "sampler"))
+				continue; /* skip non-sampler instance */
 			if (plugn_count) {
 				rc = linebuf_printf(reqc, ",");
 				if (rc)
 					goto err;
 			}
-			rc = __plugn_sets_json_obj(reqc, list);
-			if (rc) {
-				ldmsd_set_tree_unlock();
+			rc = __plugn_sets_json_obj(reqc, inst);
+			if (rc)
 				goto err;
-			}
 			plugn_count += 1;
 		}
 	}
-	ldmsd_set_tree_unlock();
-	cnt = reqc->line_off + 2; /* +2 for '[' and ']'*/
+	rc = linebuf_printf(reqc, "]");
+	if (rc)
+		goto err;
 
 	attr.discrim = 1;
-	attr.attr_len = cnt;
+	attr.attr_len = reqc->line_off;
 	attr.attr_id = LDMSD_ATTR_JSON;
 	ldmsd_hton_req_attr(&attr);
-	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
-	if (rc)
-		goto out;
-
-	rc = ldmsd_append_reply(reqc, "[", 1, 0);
-	if (rc)
-		goto out;
-	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
-	if (rc)
-		goto out;
-	rc = ldmsd_append_reply(reqc, "]", 1, 0);
-	if (rc)
-		goto out;
-	attr.discrim = 0;
-	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
-				sizeof(uint32_t), LDMSD_REQ_EOM_F);
-out:
-	if (plugin)
-		free(plugin);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr),
+				LDMSD_REQ_SOM_F);
 	return rc;
 
 err:
@@ -4410,8 +4537,12 @@ err:
 						"internal error", 15);
 	goto out;
 err0:
+	if (name)
+		free(name);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	goto out;
+out:
+	return rc;
 }
 
 extern int ldmsd_set_udata(const char *set_name, const char *metric_name,
@@ -4787,7 +4918,7 @@ einval:
 	reqc->errcode = EINVAL;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			"The attribute '%s' is required by oneshot.",
-		       	attr_name);
+			attr_name);
 
 out:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -5281,6 +5412,7 @@ static int set_route_handler(ldmsd_req_ctxt_t reqc)
 				sizeof(uint32_t),
 				LDMSD_REQ_EOM_F, LDMSD_REQ_TYPE_CONFIG_RESP);
 	}
+	ldmsd_set_info_delete(info);
 	return 0;
 err2:
 	free(ctxt->my_info);

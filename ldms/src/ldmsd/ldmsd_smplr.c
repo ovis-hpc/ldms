@@ -58,6 +58,8 @@
 #include <ev/ev.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plugin.h"
+#include "ldmsd_sampler.h"
 #include "ldms_xprt.h"
 #include "config.h"
 #include "ovis_event/ovis_event.h"
@@ -87,7 +89,7 @@ const char *smplr_state_str(enum ldmsd_smplr_state state)
 
 ldmsd_smplr_t
 ldmsd_smplr_new_with_auth(const char *name,
-			  struct ldmsd_plugin_cfg *plugin,
+			  ldmsd_plugin_inst_t pi,
 			  uint64_t component_id,
 			  const char *producer, const char *instance,
 			  uid_t uid, gid_t gid, int perm)
@@ -98,8 +100,8 @@ ldmsd_smplr_new_with_auth(const char *name,
 
 	ldmsd_log(LDMSD_LDEBUG, "ldmsd_smplr_new(name %s plugin %s "
 		  "component_id %ld "
-		  "producer %s instance uid %d gid %d perm %x\n",
-		  name, plugin->name, component_id,
+		  "producer %s instance %s, uid %d gid %d perm %x\n",
+		  name, pi->inst_name, component_id,
 		  producer, instance, uid, gid, perm);
 
 	prod = strdup(producer);
@@ -128,10 +130,12 @@ ldmsd_smplr_new_with_auth(const char *name,
 	if (!smplr)
 		goto err_5;
 
+
 	smplr->interval_us = 0;
 	smplr->offset_us = 0;
 	smplr->state = LDMSD_SMPLR_STATE_STOPPED;
-	smplr->plugin = plugin;
+	ldmsd_plugin_inst_get(pi);
+	smplr->pi = pi;
 	smplr->producer = prod;
 	smplr->instance = inst;
 	smplr->component_id = component_id;
@@ -267,12 +271,19 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 	ldmsd_set_info_t info;
 	struct ldms_timestamp t;
 	struct timeval dur;
-	struct ldmsd_plugin_set_list *plugn_set_list;
-	struct ldmsd_plugin_set *plugn_set = NULL;
+
+	ldmsd_set_ctxt_t set_ctxt;
+	ldmsd_sampler_type_t samp;
+	ldmsd_prdcr_set_t prd_set;
+	ldmsd_prdcr_t prdcr;
+
 	ldmsd_smplr_t smplr;
 
 	ldms_set_t lset = ldms_set_by_name(inst_name);
 	if (!lset)
+		return NULL;
+	set_ctxt = ldms_ctxt_get(lset);
+	if (!set_ctxt) /* set w/o ref to prdcr or sampler */
 		return NULL;
 
 	info = calloc(1, sizeof(*info));
@@ -281,26 +292,23 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 
 	info->set = lset;
 
-	ldmsd_set_tree_lock();
-	plugn_set_list = ldmsd_plugin_set_list_first();
-	smplr = NULL;
-	while (plugn_set_list) {
-		LIST_FOREACH(plugn_set, &plugn_set_list->list, entry) {
-			if (0 == strcmp(plugn_set->inst_name, inst_name)) {
-				smplr =  find_smplr_by_plugn(plugn_set->plugin_name);
-			}
-		}
-		if (plugn_set)
-			break;
- 		plugn_set_list = ldmsd_plugin_set_list_next(plugn_set_list);
-	}
-	ldmsd_set_tree_unlock();
-	if (smplr) {
-		info->interval_us = smplr->interval_us;
-		info->offset_us = smplr->offset_us;
-		info->sync = smplr->synchronous;
-		info->origin_name = strdup(plugn_set->plugin_name);
+	if (set_ctxt->type == LDMSD_SET_CTXT_SAMP) {
+		/* created by sampler */
+		samp = container_of(set_ctxt, struct ldmsd_sampler_type_s,
+				    set_ctxt);
 		info->origin_type = LDMSD_SET_ORIGIN_SMPLR;
+		info->origin_name = strdup(samp->base.inst->inst_name);
+		smplr = samp->smplr;
+		if (smplr) {
+			info->interval_us = smplr->interval_us;
+			info->offset_us = smplr->offset_us;
+			info->sync = smplr->synchronous;
+		} else {
+			/* not associated with smplr yet */
+			info->interval_us = 0;
+			info->offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+			info->sync = 0;
+		}
 
 		t = ldms_transaction_timestamp_get(lset);
 		info->start.tv_sec = (long int)t.sec;
@@ -318,41 +326,23 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 		goto out;
 	}
 
-	/*
-	 * The set isn't created by a sampler plugin.
-	 *
-	 * Now search in the producer list.
-	 */
-	ldmsd_prdcr_t prdcr;
-	ldmsd_prdcr_set_t prd_set = NULL;
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	prdcr = ldmsd_prdcr_first();
-	while (prdcr) {
-		ldmsd_prdcr_lock(prdcr);
-		prd_set = ldmsd_prdcr_set_find(prdcr, inst_name);
-		if (prd_set) {
-			info->origin_name = strdup(prdcr->obj.name);
-			ldmsd_prdcr_unlock(prdcr);
-			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-			info->origin_type = LDMSD_SET_ORIGIN_PRDCR;
-			ldmsd_prdcr_set_ref_get(prd_set, "sampler");
-			info->prd_set = prd_set;
-			info->interval_us = prd_set->updt_interval;
-			info->offset_us = prd_set->updt_offset;
-			info->sync = prd_set->updt_sync;
-			info->start = prd_set->updt_start;
-			if (prd_set->state == LDMSD_PRDCR_SET_STATE_UPDATING) {
-				info->end.tv_sec = 0;
-				info->end.tv_usec = 0;
-			} else {
-				info->end = prd_set->updt_end;
-			}
-			goto out;
-		}
-		ldmsd_prdcr_unlock(prdcr);
-		prdcr = ldmsd_prdcr_next(prdcr);
+	/* created by prdcr (lookup) */
+	prd_set = container_of(set_ctxt, struct ldmsd_prdcr_set, set_ctxt);
+	prdcr = prd_set->prdcr;
+	info->origin_name = strdup(prdcr->obj.name);
+	info->origin_type = LDMSD_SET_ORIGIN_PRDCR;
+	ldmsd_prdcr_set_ref_get(prd_set, "sampler");
+	info->prd_set = prd_set;
+	info->interval_us = prd_set->updt_interval;
+	info->offset_us = prd_set->updt_offset;
+	info->sync = prd_set->updt_sync;
+	info->start = prd_set->updt_start;
+	if (prd_set->state == LDMSD_PRDCR_SET_STATE_UPDATING) {
+		info->end.tv_sec = 0;
+		info->end.tv_usec = 0;
+	} else {
+		info->end = prd_set->updt_end;
 	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 out:
 
 	return info;
@@ -380,20 +370,17 @@ void ldmsd_set_info_delete(ldmsd_set_info_t info)
 
 int __sampler_set_info_add(ldmsd_smplr_t smplr)
 {
-	ldmsd_plugin_set_t set;
-	int rc;
-
-	for (set = ldmsd_plugin_set_first(smplr->plugin->name); set;
-	     set = ldmsd_plugin_set_next(set)) {
-		rc = ldmsd_set_update_hint_set(set->set, smplr->interval_us, smplr->offset_us);
-		if (rc) {
-			ldmsd_log(LDMSD_LERROR, "Error %d: Failed to add "
-					"the update hint to set '%s'\n",
-					rc, ldms_set_instance_name_get(set->set));
+	int rc = 0;
+	ldmsd_sampler_type_t samp = LDMSD_SAMPLER(smplr->pi);
+	ldmsd_set_entry_t ent;
+	LIST_FOREACH(ent, &samp->set_list, entry) {
+		rc = ldmsd_set_update_hint_set(ent->set,
+				smplr->interval_us * samp->set_array_card,
+				smplr->offset_us);
+		if (rc)
 			return rc;
-		}
 	}
-	return 0;
+	return rc;
 }
 
 static void stop_sampler(ldmsd_smplr_t smplr)
@@ -404,8 +391,11 @@ static void stop_sampler(ldmsd_smplr_t smplr)
 int sample_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	ldmsd_smplr_t smplr = EV_DATA(ev, struct sample_data)->smplr;
+	ldmsd_sampler_type_t samp = LDMSD_SAMPLER(smplr->pi);
 	ldmsd_smplr_lock(smplr);
-	int rc = smplr->plugin->sampler->sample(smplr->plugin->sampler);
+	int rc = 0;
+	/* TODO Revisit this after updating sample() interface */
+	samp->sample(smplr->pi);
 	if (rc) {
 		/*
 		 * If the sampler reports an error don't reschedule
@@ -428,7 +418,8 @@ int sample_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 /*
  * Start the sampler
  */
-static int _start_smplr(char *smplr_name, char *interval, char *offset, int is_one_shot)
+static int _start_smplr(char *smplr_name, char *interval, char *offset,
+			int is_one_shot)
 {
 	int rc;
 	unsigned long sample_interval;

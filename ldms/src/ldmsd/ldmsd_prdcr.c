@@ -247,6 +247,7 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 		/* This is the first lookup of the set. */
 		prd_set->set = set;
 		prd_set->schema_name = strdup(ldms_set_schema_name_get(set));
+		ldms_ctxt_set(set, &prd_set->set_ctxt);
 	}
 
 	/*
