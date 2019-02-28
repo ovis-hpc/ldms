@@ -64,6 +64,8 @@ ldmsd_log=DEST          Defines where to send log output. This may be
                         one of syslog, journal, NONE, or a directory
                         name. If a name, the directory will be created
                         and ldmsd.log.$LDMSCLUSTER is the file name.
+                        DEST may contain ${} environment variables for
+                        expansion.
 ldmsd_vg=VGBIN          Defines the full path to an executable wrapper
                         such as valgrind to be used for daemon launch.
                         Note this may be any audit tool, not just valgrind.
