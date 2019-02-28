@@ -392,6 +392,7 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 		prd_set->updt_time->update_start = prd_set->updt_start;
 #endif
 	if (!updtr->push_flags) {
+		op_s = "Updating";
 		prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
 		ldmsd_prdcr_set_ref_get(prd_set);
 		flags = ldmsd_group_check(prd_set->set);
@@ -417,8 +418,8 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 			}
 		}
 		rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
-		op_s = "Updating";
 	} else if (0 == (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG)) {
+		op_s = "Registering push for";
 		prd_set->push_flags |= LDMSD_PRDCR_SET_F_PUSH_REG;
 		ldmsd_prdcr_set_ref_get(prd_set);
 		if (updtr->push_flags & LDMSD_UPDTR_F_PUSH_CHANGE)
@@ -430,7 +431,6 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 			ldmsd_log(LDMSD_LERROR, "Register push error %d Set %s\n",
 						rc, prd_set->inst_name);
 		}
-		op_s = "Registering push for";
 	}
 out:
 	while ((ent = LIST_FIRST(&ctxt.str_list))) {
