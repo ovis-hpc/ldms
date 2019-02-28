@@ -95,6 +95,9 @@ void ldmsd_version_get(struct ldmsd_version *v);
 #define LDMSD_SET_INFO_UPDATE_HINT_KEY "updt_hint_us"
 #define LDMSD_UPDT_HINT_OFFSET_NONE LONG_MIN
 
+typedef struct ldmsd_plugin_inst_s *ldmsd_plugin_inst_t;
+typedef struct ldmsd_plugin_type_s *ldmsd_plugin_type_t;
+
 typedef struct ldmsd_plugin_set {
 	ldms_set_t set;
 	char *plugin_name;
@@ -434,6 +437,7 @@ typedef struct ldmsd_strgp_metric {
 	char *name;
 	enum ldms_value_type type;
 	int flags;
+	int idx;
 	TAILQ_ENTRY(ldmsd_strgp_metric) entry;
 } *ldmsd_strgp_metric_t;
 
@@ -452,20 +456,12 @@ struct ldmsd_strgp {
 	/** Schema name of the metric set on the producer */
 	char *schema;
 
-	/** The container name in which the storage backend will place data */
-	char *container;
-
-	/** The storage backend plugin */
-	char *plugin_name;
-	struct ldmsd_store *store;
-
-	/** The open instance of the container */
-	ldmsd_store_handle_t store_handle;
-	ldmsd_store_handle_t next_store_handle;
+	ldmsd_plugin_inst_t inst;
 
 	enum ldmsd_strgp_state {
 		LDMSD_STRGP_STATE_STOPPED,
-		LDMSD_STRGP_STATE_RUNNING
+		LDMSD_STRGP_STATE_RUNNING,
+		LDMSD_STRGP_STATE_OPENED,
 	} state;
 
 	ev_worker_t worker;
@@ -724,40 +720,6 @@ int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level);
  */
 void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt);
 #pragma weak ldmsd_sec_ctxt_get
-
-
-int ldmsd_store_data_add(struct ldmsd_store_policy *lsp, ldms_set_t set);
-
-struct store_instance *
-ldmsd_store_instance_get(struct ldmsd_store *store,
-			 struct ldmsd_store_policy *sp);
-
-static inline ldmsd_store_handle_t
-ldmsd_store_open(struct ldmsd_store *store,
-		const char *container, const char *schema,
-		struct ldmsd_strgp_metric_list *metric_list,
-		void *ucontext)
-{
-	return store->open(store, container, schema, metric_list, ucontext);
-}
-
-static inline void *ldmsd_store_get_context(struct ldmsd_store *store,
-					    ldmsd_store_handle_t sh)
-{
-	return store->get_context(sh);
-}
-
-static inline void
-ldmsd_store_flush(struct ldmsd_store *store, ldmsd_store_handle_t sh)
-{
-	store->flush(sh);
-}
-
-static inline void
-ldmsd_store_close(struct ldmsd_store *store, ldmsd_store_handle_t sh)
-{
-	store->close(sh);
-}
 
 typedef void (*ldmsd_msg_log_f)(enum ldmsd_loglevel level, const char *fmt, ...);
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)(ldmsd_msg_log_f pf);
@@ -1065,6 +1027,8 @@ static inline const char *ldmsd_strgp_state_str(enum ldmsd_strgp_state state) {
 		return "STOPPED";
 	case LDMSD_STRGP_STATE_RUNNING:
 		return "RUNNING";
+	case LDMSD_STRGP_STATE_OPENED:
+		return "RUNNING+OPENED";
 	}
 	return "BAD STATE";
 }

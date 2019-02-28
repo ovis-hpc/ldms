@@ -49,7 +49,8 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_plugin.c \
 	ldmsd_failover.c ldmsd_group.c
 ldmsd_CFLAGS = $(AM_CFLAGS) -rdynamic
-ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la libsampler.la
+ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la libsampler.la\
+	      libstore.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) \
 	-lzap -lmmalloc -lovis_util -lcoll -ljson_util \
 	-lovis_event -lev -lpthread -lm
@@ -88,6 +89,15 @@ libsampler_la_LIBADD = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
 		       $(CORE)/libldms.la
 libsampler_la_CFLAGS = $(AM_CFLAGS)
 pkglib_LTLIBRARIES += libsampler.la
+
+# store plugin
+ldmsdinclude_HEADERS += ldmsd_store.h
+libstore_la_SOURCES = ldmsd_store.c
+libstore_la_LIBADD = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
+		     $(CORE)/libldms.la
+libstore_la_CFLAGS = $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libstore.la
+
 
 # make sym links for aggd scripting support
 install-exec-hook:

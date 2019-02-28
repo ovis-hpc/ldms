@@ -483,6 +483,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/auth/Makefile
 		 src/ldmsd/Makefile
 		 src/ldmsd-samplers/Makefile
+		 src/ldmsd-stores/Makefile
 		 scripts/Makefile
 		 src/test/Makefile
 		 etc/Makefile

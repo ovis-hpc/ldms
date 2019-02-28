@@ -25,7 +25,7 @@ SUBDIRS += ldmsd-samplers
 endif
 
 if ENABLE_STORE
-SUBDIRS += store
+SUBDIRS += ldmsd-stores
 endif
 
 if ENABLE_LDMS_TEST
