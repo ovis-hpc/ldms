@@ -760,6 +760,47 @@ void __ldms_metric_size_get(const char *name, enum ldms_value_type t,
 	*data_sz = __ldms_value_size_get(t, count);
 }
 
+/* in: name, schema;
+ * out: set_array_card, meta_sz, array_data_sz assigned.
+ * \return 0 on error, or size of set if allocated from name, schema.
+ * sets errno if error.
+ */
+static size_t compute_set_sizes(const char *instance_name, ldms_schema_t schema,
+		int *set_array_card, 
+		size_t *meta_sz, size_t *array_data_sz)
+{
+	assert(instance_name && schema && set_array_card && meta_sz && 
+		array_data_sz && NULL != "bad call to compute_set_sizes");
+	*set_array_card = schema->array_card;
+
+	if (*set_array_card < 0) {
+		errno = EINVAL;
+		return 0;
+	}
+
+	if (!*set_array_card) {
+		*set_array_card = 1;
+	}
+
+	*meta_sz = schema->meta_sz /* header + metric dict */
+		+ strlen(schema->name) + 2 /* schema name + '\0' + len */
+		+ strlen(instance_name) + 2; /* instance name + '\0' + len */
+	*meta_sz = roundup(*meta_sz, 8);
+	assert(schema->data_sz == roundup(schema->data_sz, 8) ||
+			NULL == "bad schema.data_sz");
+	*array_data_sz = schema->data_sz * *set_array_card;
+	return *meta_sz + *array_data_sz;
+}
+
+size_t ldms_schema_set_size(const char *instance_name, const ldms_schema_t schema)
+{
+	int set_array_card = 0;
+	size_t meta_sz = 0, array_data_sz = 0;
+	size_t result = compute_set_sizes(instance_name, schema,
+			&set_array_card, &meta_sz, &array_data_sz);
+	return result;
+}
+
 ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 				  ldms_schema_t schema,
 				  uid_t uid, gid_t gid, mode_t perm)
@@ -767,36 +808,24 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	struct ldms_data_hdr *data, *data_base;
 	struct ldms_set_hdr *meta;
 	struct ldms_value_desc *vd;
-	size_t meta_sz, array_data_sz;
+	size_t meta_sz = 0, array_data_sz = 0;
 	uint64_t value_off;
 	ldms_mdef_t md;
 	int metric_idx;
 	int rc, i;
-	int set_array_card;
+	int set_array_card = 0;
 
 	if (!instance_name || !schema) {
 		errno = EINVAL;
 		return NULL;
 	}
 
-	set_array_card = schema->array_card;
-
-	if (set_array_card < 0) {
-		errno = EINVAL;
+	int ssz = compute_set_sizes(instance_name, schema,
+		&set_array_card, &meta_sz, &array_data_sz);
+	if (!ssz) {
 		return NULL;
 	}
-
-	if (!set_array_card) {
-		set_array_card = 1;
-	}
-
-	meta_sz = schema->meta_sz /* header + metric dict */
-		+ strlen(schema->name) + 2 /* schema name + '\0' + len */
-		+ strlen(instance_name) + 2; /* instance name + '\0' + len */
-	meta_sz = roundup(meta_sz, 8);
-	assert(schema->data_sz == roundup(schema->data_sz, 8));
-	array_data_sz = schema->data_sz * set_array_card;
-	meta = mm_alloc(meta_sz + array_data_sz);
+	meta = mm_alloc(ssz);
 	if (!meta) {
 		errno = ENOMEM;
 		return NULL;
