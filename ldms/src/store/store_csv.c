@@ -422,13 +422,13 @@ static int config_handle(struct csv_store_handle *s_handle)
 	}
 	const char *k = s_handle->store_key;
 
-	s_handle->udata = ldmsd_plugattr_bool(pa, "userdata", k);
-	if (s_handle->udata == -2)
-		s_handle->udata = 0;
-	if (s_handle->udata == -1) {
+	bool r = false; /* default if not in pa */
+	int cvt = ldmsd_plugattr_bool(pa, "userdata", k, &r);
+	if (cvt == -1) {
 		msglog(LDMSD_LERROR, PNAME ": improper userdata= input.\n");
 		return EINVAL;
 	}
+	s_handle->udata = r;
 
 	return 0;
 }
