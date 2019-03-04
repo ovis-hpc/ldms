@@ -125,3 +125,7 @@ endif
 if ENABLE_MPI_SAMPLER
 SUBDIRS += shm
 endif
+
+if ENABLE_FILESINGLE
+SUBDIRS += filesingle
+endif
