@@ -107,6 +107,10 @@ if ENABLE_LUSTRE
 SUBDIRS += lustre
 endif
 
+if ENABLE_SLURM_SAMPLER
+SUBDIRS += slurm
+endif
+
 if ENABLE_SPANK_PLUGIN
 SUBDIRS += spank
 endif
