@@ -107,6 +107,10 @@ if ENABLE_LUSTRE
 SUBDIRS += lustre
 endif
 
+if ENABLE_PAPI_SAMPLER
+SUBDIRS += papi
+endif
+
 if ENABLE_SLURM_SAMPLER
 SUBDIRS += slurm
 endif
