@@ -103,6 +103,10 @@ if ENABLE_LUSTRE
 SUBDIRS += lustre
 endif
 
+if ENABLE_SPANK_PLUGIN
+SUBDIRS += spank
+endif
+
 if ENABLE_CRAY_SYSTEM_SAMPLER
 SUBDIRS += cray_system_sampler
 endif
