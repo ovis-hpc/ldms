@@ -373,6 +373,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	sem_timedwait(&recv_sem, &ts);
 	ldmsd_req_hdr_t reply = (ldmsd_req_hdr_t)recv_buf;
 	rc = ntohl(reply->rsp_err);
+	ldms_xprt_close(x);
  err:
 	return rc;
 }
