@@ -477,10 +477,10 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/auth/Makefile
 		 src/store/Makefile src/sampler/Makefile
+		 src/store/kokkos/Makefile
 		 src/sampler/dstat/Makefile
 		 src/sampler/filesingle/Makefile
 		 src/sampler/lustre/Makefile
-		 src/sampler/kokkos/Makefile
 		 src/sampler/job_info/Makefile
 		 src/sampler/job_info_slurm/Makefile
 		 src/sampler/llnl/Makefile
