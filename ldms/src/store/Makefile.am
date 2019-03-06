@@ -35,6 +35,7 @@ libstore_sos_la_LIBADD = @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@ $(STORE_LIBADD) -
 pkglib_LTLIBRARIES += libstore_sos.la
 
 SUBDIRS += slurm
+SUBDIRS += papi
 endif
 
 if ENABLE_FLATFILE
