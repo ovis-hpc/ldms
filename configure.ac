@@ -23,19 +23,10 @@ AC_CHECK_SIZEOF(long)
 
 AC_C_CONST
 
-OPTION_DEFAULT_DISABLE([gpcdlocal], [ENABLE_GPCDLOCAL], [  cray only])
-if test "$enable_gpcdlocal" = "yes"; then
-	AC_CONFIG_SUBDIRS([gpcd-support])
-	if ! test -d $srcdir/gpcd-support/gpcd; then
-		AC_MSG_ERROR([You need the gpcd-support submodule to enable it.])
-	fi
-fi
-
 # ldms is not optional for now.
 OPTION_DEFAULT_ENABLE([ldms], [ENABLE_LDMS],[  requires lib])
 AC_CONFIG_SUBDIRS([ldms])
 
-SUBST_MAYBE([gpcdlocal])
 SUBST_MAYBE([ldms])
 
 OPTION_DEFAULT_DISABLE([libgenders], [ENABLE_LIBGENDERS],[  requires C++,boost])
