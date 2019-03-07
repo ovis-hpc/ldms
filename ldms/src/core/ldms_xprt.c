@@ -263,9 +263,8 @@ static void send_dir_update(struct ldms_xprt *x,
 	zap_err_t zerr;
 	zerr = zap_send(x->zap_ep, reply, len);
 	if (zerr != ZAP_ERR_OK) {
-		x->log("%s: x %p: zap_send synchronously error. '%s'\n",
+		x->log("%s: x %p: zap_send synchronous error. '%s'\n",
 				__FUNCTION__, x, zap_err_str(zerr));
-		ldms_xprt_close(x);
 	}
 	free(reply);
 	return;
@@ -657,7 +656,6 @@ process_cancel_push_request(struct ldms_xprt *x, struct ldms_request *req)
 	struct ldms_rbuf_desc *push_rbd;
 	struct ldms_set *set;
 	uint64_t remote_set_id;
-	int rc;
 
 	r = (struct ldms_rbuf_desc *)req->cancel_push.set_id;
 	push_rbd = (struct ldms_rbuf_desc *)r->remote_set_id;
@@ -702,7 +700,7 @@ out:
 	reply.push.data_len = 0;
 	reply.push.data_off = 0;
 	reply.push.flags = htonl(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST);
-	rc = zap_send(x->zap_ep, &reply, len);
+	(void)zap_send(x->zap_ep, &reply, len);
 	ldms_xprt_put(x);
 	return;
 }
@@ -1501,7 +1499,6 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	struct ldms_conn_msg msg;
 #define RMT_NM_SZ 256
 	char rmt_name[RMT_NM_SZ];
-	const char *tmp;
 	int rc;
 	zap_err_t zerr;
 	zerr = zap_get_name(zep, &lcl, &rmt, &xlen);
@@ -1539,9 +1536,6 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	rc = ldms_xprt_auth_bind(_x, auth);
 	if (rc)
 		goto err1;
-
-	char *data = 0;
-	size_t datalen = 0;
 
 	__ldms_xprt_conn_msg_init(x, &msg);
 
@@ -1754,9 +1748,8 @@ int __is_lookup_name_good(struct ldms_xprt *x,
 
 static int __handle_set_info(struct ldms_set *lset, char *set_info)
 {
-	int rc, i;
+	int rc;
 	ldms_name_t key, value;
-	struct ldms_set_info_pair *pair;
 
 	__ldms_set_info_delete(&lset->remote_info);
 	/* Add the new key value pair or replace the value of an existing key */
@@ -1780,10 +1773,8 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	struct ldms_rendezvous_lookup_param *lu = &lm->lookup;
 	struct ldms_context *ctxt = (void*)lm->hdr.xid;
 	ldms_set_t rbd = NULL;
-	int rc, i, is_no_rbd;
+	int rc;
 	ldms_name_t schema_name, inst_name;
-
-	is_no_rbd = 0;
 
 #ifdef DEBUG
 	if (!__is_lookup_name_good(x, lu, ctxt)) {
@@ -1936,8 +1927,6 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 {
 	struct ldms_rendezvous_push_param *push = &lm->push;
 	struct ldms_rbuf_desc *my_rbd, *push_rbd;
-	int rc;
-	ldms_set_t set_t;
 
 	/* Get the RBD provided in lookup to the peer */
 	my_rbd = (void *)push->lookup_set_id;
@@ -2005,7 +1994,6 @@ static int __ldms_conn_msg_verify(struct ldms_xprt *x, const void *data,
 {
 	const struct ldms_conn_msg *msg = data;
 	const struct ldms_version *ver = &msg->ver;
-	int rc = 0;
 	if (data_len < sizeof(*ver)) {
 		snprintf(err_msg, err_msg_len, "Bad conn msg");
 		return EINVAL;
@@ -2026,7 +2014,6 @@ static int __ldms_conn_msg_verify(struct ldms_xprt *x, const void *data,
  */
 static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 {
-	int rc;
 	struct ldms_xprt_event event = {
 			.type = LDMS_XPRT_EVENT_LAST,
 			.data = NULL,
@@ -2120,10 +2107,6 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 
 static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 {
-	struct ldms_xprt_event event = {
-			.data = NULL,
-			.data_len = 0
-	};
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	switch(ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
@@ -2778,8 +2761,6 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 	uint32_t meta_meta_sz = __le32_to_cpu(set->meta->meta_sz);
 	uint32_t meta_data_sz = __le32_to_cpu(set->meta->data_sz);
 	struct ldms_rbuf_desc *rbd, *next_rbd;
-	ldms_t x;
-	zap_map_t rmap, lmap;
 
 	/*
 	 * We have to lock all the transports since we are racing with
@@ -2883,7 +2864,6 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 			break;
 		rbd = next_rbd;
 	}
- out:
 	pthread_mutex_unlock(&set->lock);
 	pthread_mutex_unlock(&xprt_list_lock);
 	return rc;
@@ -3105,6 +3085,8 @@ int ldms_xprt_sockaddr(ldms_t _x, struct sockaddr *local_sa,
 {
 	struct ldms_xprt *x = _x;
 	zap_err_t zerr;
+	if (!_x->zap_ep)
+		return -1;
 	zerr = zap_get_name(x->zap_ep, local_sa, remote_sa, sa_len);
 	if (zerr)
 		return -1;
