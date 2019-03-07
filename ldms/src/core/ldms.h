@@ -1084,6 +1084,14 @@ extern uint32_t ldms_set_data_sz_get(ldms_set_t s);
 extern ldms_set_t ldms_set_by_name(const char *set_name);
 
 /**
+ * \brief Get the name of a set
+ *
+ * \param set	The set handle
+ * \returns	The set name
+ */
+extern const char *ldms_set_name_get(ldms_set_t s);
+
+/**
  * \brief Get the metric schema generation number.
  *
  * A metric set has a \c generation number that chnages when metrics
