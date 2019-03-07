@@ -308,12 +308,18 @@ void metric_printer(ldms_set_t s, int i)
 	enum ldms_value_type type = ldms_metric_type_get(s, i);
 	char name_str[256];
 
+	const char *metname;
+	if (type != LDMS_V_NONE) {
+		metname = ldms_metric_name_get(s, i);
+	} else {
+		metname = "SET_ERROR";
+	}
 	if (user_data)
 		sprintf(name_str, "%-42s 0x%" PRIx64,
-			ldms_metric_name_get(s, i),
+			metname,
 			ldms_metric_user_data_get(s, i));
 	else
-		strcpy(name_str, ldms_metric_name_get(s, i));
+		strcpy(name_str, metname);
 
 	printf("%c %-10s %-42s ",
 	       (ldms_metric_flags_get(s, i) & LDMS_MDESC_F_DATA ? 'D' : 'M'),
@@ -354,7 +360,7 @@ const char *perm_string(uint32_t perm)
 			*s = 'x';
 		else
 			*s = '-';
-		*s++;
+		s++;
 	}
 	*s = '\0';
 	return str;
@@ -362,7 +368,6 @@ const char *perm_string(uint32_t perm)
 
 void print_detail(ldms_set_t s)
 {
-	const struct ldms_set_info_pair *pair;
 	struct ldms_timestamp _ts = ldms_transaction_timestamp_get(s);
 	struct ldms_timestamp _dur = ldms_transaction_duration_get(s);
 	struct ldms_timestamp const *ts = &_ts;
@@ -371,7 +376,6 @@ void print_detail(ldms_set_t s)
 	struct tm *tm;
 	struct passwd *pwd;
 	struct group *grp;
-	int rc;
 	char dtsz[200];
 
 	time_t t = ts->sec;
@@ -655,7 +659,7 @@ int main(int argc, char *argv[])
 	int ret;
 	struct hostent *h;
 	char *hostname = "localhost";
-	short port_no = LDMS_DEFAULT_PORT;
+	unsigned short port_no = LDMS_DEFAULT_PORT;
 	int op;
 	int i;
 	char *xprt = "sock";
@@ -682,6 +686,7 @@ int main(int argc, char *argv[])
 	}
 
 	opterr = 0;
+	long ptmp;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'E':
@@ -697,7 +702,12 @@ int main(int argc, char *argv[])
 			hostname = strdup(optarg);
 			break;
 		case 'p':
-			port_no = atoi(optarg);
+			ptmp = atol(optarg);
+			if (ptmp < 1 || ptmp > USHRT_MAX) {
+				printf("ERROR: -p %s invalid port number\n", optarg);
+				exit(1);
+			}
+			port_no = ptmp;
 			break;
 		case 'l':
 			long_format = 1;

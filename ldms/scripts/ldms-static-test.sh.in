@@ -2,6 +2,7 @@
 #
 # This tests ldmsd run with static config files (as would normally
 # happen as a system service) and shut down with a signal.
+# all daemons run on the same node as this script.
 #
 bypass=0
 if test -z "$allowroot"; then
@@ -16,11 +17,46 @@ export PACKAGE_TARNAME=@PACKAGE_TARNAME@
 export docdir=@docdir@
 export exdir=@docdir@-@PACKAGE_VERSION@
 
+if ! test -f $libdir/ovis-lib-configvars.sh; then
+	echo "$libdir/ovis-lib-configvars.sh not found"
+	exit 1
+fi
+if ! test -f $libdir/ovis-ldms-configvars.sh; then
+	echo "$libdir/ovis-ldms-configvars.sh not found"
+	exit 1
+fi
+. $libdir/ovis-lib-configvars.sh
+. $libdir/ovis-ldms-configvars.sh
+if test -z "$ZAP_LIBPATH"; then
+	ZAP_LIBPATH=$ovis_lib_plugins
+fi
+export ZAP_LIBPATH
+if test -z "$LDMSD_PLUGIN_LIBPATH"; then
+	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins:$ovis_lib_plugins
+fi
+export LDMSD_PLUGIN_LIBPATH
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$ovis_lib_plugins:$LD_LIBRARY_PATH
+
+function clusage {
+cat << EOF
+$0: usage:
+$0 -l 
+$0 -h
+$0 <input_file> [test_dir]
+	-h produces help message
+	-l produces list of canned test names
+See man ldms-static-test(8) for details.
+EOF
+}
 input=$1
 export input
 if test -z "$1"; then
 	echo "FAIL: no input file to $0"
 	exit 1
+fi
+if test "$1" = "-h"; then
+	clusage
+	exit 0
 fi
 if test "$1" = "-l"; then
 	echo "Canned tests are:"
@@ -227,6 +263,9 @@ function LDMSD {
 				-v DEBUG $LDMSD_EXTRA \
 				-r $LDMSD_PIDFILE.$i
 		else
+			if test -z "$clonefile"; then
+				echo MISSING input file for DAEMON $i
+			fi
 			if test -f $clonefile -a $cloneinput = "1"; then
 				cp $clonefile $LDMSD_RUN/conf.$i
 				$wrap ldmsd.${ports[$i]} \
@@ -298,6 +337,25 @@ function KILL_LDMSD {
 	done
 }
 
+function rollover_created {
+	if test "$bypass" = "1"; then
+		return 0
+	fi
+	x=`ls $1.[0-9]*`
+	if test -z "$x"; then
+		echo "FAIL: roll-over files $1.* not created."
+		bypass=1
+		return 1
+	fi
+	for i in $x; do
+		if ! test -r $i; then
+			echo FAIL: file $i not readable.
+			bypass=1
+			return 1
+		fi
+	done
+	return 0
+}
 function file_created {
 	if test "$bypass" = "1"; then
 		return 0
@@ -390,10 +448,7 @@ export LDMS_AUTH_FILE=$SECRET
 chmod go-rwx $SECRET
 echo "logs and data stored under $TESTDIR"
 
-export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
-export ZAP_LIBPATH=@pkglibdir@
-export PATH=$LDMSD_RUN:${BUILDDIR}/sbin:$PATH
-export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
+export PATH=$LDMSD_RUN:${BUILDDIR}/sbin:${BUILDDIR}/bin:$PATH
 
 echo "Listing ldmsd's still running:"
 pgrep ldmsd

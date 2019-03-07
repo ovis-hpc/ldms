@@ -1,12 +1,16 @@
 .\" Manpage for ldms-static-test.sh
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "6 Jul 2018" "v4.1" "ldms-static-test.sh man page"
+.TH man 8 "18 Sep 2018" "v4.1" "ldms-static-test.sh man page"
 
 .SH NAME
 ldms-static-test.sh \- Run a canned test scenario
 
 .SH SYNOPSIS
-ldms-static-test.sh [-l]
+.PP
+ldms-static-test.sh -l
+.PP
+ldms-static-test.sh -h
+.PP
 ldms-static-test.sh <input_file> [test_dir]
 
 .SH DESCRIPTION
@@ -22,6 +26,10 @@ happen as a system service) and shut down with a signal.
 -l
 .br
 List the canned tests available.
+.TP
+-h
+.br
+List help message.
 
 .SH LANGUAGE
 
@@ -78,6 +86,10 @@ Turns off use of valgrind for any ldmsd or ldms_ls subsequently started.
 file_created <filename>
 .br
 Verifies the existence and readability of filename.
+.TP
+rollover_created <filename>
+.br
+Verifies the existence and readability of rollover files matching pattern filename.[0-9]*.
 .TP
 bypass=<0,1>
 .br

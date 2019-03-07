@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_store_csv
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "22 Oct 2017" "v3.5" "LDMS Plugin store_csv man page"
+.TH man 7 "26 Nov 2018" "v4" "LDMS Plugin store_csv man page"
 
 .SH NAME
 Plugin_store_csv - man page for the LDMS store_csv plugin
@@ -10,11 +10,13 @@ Within ldmsd_controller script or a configuration file:
 .br
 load name=store_csv
 .br
-config name=store_csv action=init [ <attr> = <value> ]
+config name=store_csv [ <attr> = <value> ]
 .br
-config name=store_csv action=custom [ <attr> = <value> ]
+config name=store_csv [opt_file=filename] [ <attr> = <value> ]
 .br
-strgp_add plugin=store_csv [ <attr> = <value> ]
+config name=store_csv [container=c schema=s] [ <attr> = <value> ]
+.br
+strgp_add name=<policyname> plugin=store_csv container=<c> schema=<s>
 .br
 
 
@@ -23,12 +25,24 @@ With LDMS (Lightweight Distributed Metric Service), store plugins for the ldmsd 
 the ldmsd_controller or a configuration file. The store_csv plugin is a CSV store.
 .PP
 
-.SH STORE_CSV INIT CONFIGURATION ATTRIBUTE SYNTAX
-The configuration parameters altheader, rolltype, rollover, buffer, buffertype, notify, and rename_template are applied to all metric sets alike.
-A subset of these can be overriden by the action=custom values.
+.SH STORE_CSV CONFIGURATION SOURCES
+Default configuration options can be defined on the config line or in the store_csv line of the options file.
+Options for the specific instance matching 'container=c schema=s" can be given in the file
+indicated by opt_file=filename when configuring the defaults (see section OPTIONS FILE below) or can be scripted.
+
+The configuration parameters rolltype, rollover, and rollagain are applied to all metric sets alike
+from the values given on the command line or in the "store_csv" line of the options file. All other options can be specified per instance.
+
+The config defaults (a config line without container or schema defined) can be specified once in scripting or the opt_file. They are used for any container/schema pair not explicitly configured.
+
+The config values for a specific container/schema pair can be specified once
+in scripting or in the opt_file. Any attribute not specifically defined will
+take on the value configured in the default config line or opt_file.
+
+.SH STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
 .TP
 .BR config
-name=<plugin_name> action=init path=<path> [ altheader=<0/!0> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid> [create_gid=<int-gid]] [create_perm=<octal-mode>]
+name=<plugin_name> path=<path> [ altheader=<0/!0> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>] [opt_file=filename]
 .br
 ldmsd_controller configuration line
 .RS
@@ -37,14 +51,13 @@ name=<plugin_name>
 .br
 This MUST be store_csv.
 .TP
-action=init
+opt_file=<filename>
 .br
-For action=init, the remaining attributes can be specified and will be used for
-all metric sets, unless overriden by the action=custom values.
+The options for the plugin and specific instances will be read from the named file. See OPTIONS FILE.
 .TP
 path=<path>
 .br
-The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<container>/<schema>. Container and schema are set when the strgp is added. If you choose a rollover option, then the filename will also be postpended by "-" followed by the epochtime e.g., XXX/meminfo_ctr/meminfo-123456789.
+This option is required; the config line or the options file must supply a default value. The output files will be put into a directory whose root is specified by the path argument. This directory must exist; the subdirectories and files will be created. The full path to the output files will be <path>/<container>/<schema>. Container and schema are set when the strgp is added. If you choose a rollover option, then the filename will also be postpended by "." followed by the epoch time e.g., XXX/meminfo_ctr/meminfo-123456789.
 .TP
 altheader=<0/!0>
 .br
@@ -82,6 +95,10 @@ roll after approximately rollover records are written.
 .TP
 4
 roll after approximately rollover bytes are written.
+.TP
+5
+.br
+wake at rollover seconds after midnight (>=0) and roll, then repeat every rollagain (> rollover) seconds during the day. For example "rollagain=3600 rollover=0 rolltype=5" rolls files hourly.
 .RE
 .TP
 rollover=<rollover>
@@ -102,105 +119,45 @@ Only octal (e.g.0744) specifications are allowed. If unspecified or 0 is given, 
 .TP
 create_uid=<numeric-uid>
 .br
-Specify a new (non-zero) user id for data files. If unspecified or 0 is given, no change in ownership is made.
+Specify a new user id for data files. If unspecified, no change in user ownership is made.
 Changes in ownership of the files do not affect intermediate directories.
 .TP
 create_gid=<numeric-gid>
 .br
-Specify a new (non-zero) group id for data files. If unspecified or 0 is given, no change in group is made. If create_uid is not given, create_gid is ignored.
+Specify a new group id for data files. If unspecified, no change in group ownership is made.
 .TP
 rename_template=<metapath>
 .br
-This option provides relocating closed CSV files, typically to a subdirectory, for processing by other tools that watch directories. The metapath template is applied to define a rename after file closure. The rename is limited to location on the same mount point, per the C rename(2) call. The following substitutions in the template are performed: %P by plugin name, %C by container name, %S by schema name, %T by file event notification type, %B by basename(closed-file-name), %D by dirname(closed-file-name), %s by timestamp suffix, if it exists. Errors in template specification will cause the rename to be skipped. As part of the rename process, the mode and ownership of the file may also be adjusted by specifying rename_perm, rename_uid, and rename_gid. Missing intermediate directories will be created if possible. To enable greater flexibility than renaming, the notify option must be used instead of the rename_template option.
+This option relocates closed CSV files, typically to a subdirectory, for processing by other tools that watch directories. The metapath template is applied to define a new name after file closure. The rename is limited to locations on the same mount point, per the C rename(2) call. Substitutions (%) in the provided template are performed as described in METAPATH SUBSTITUTIONS below.
+Errors in template specification will cause the rename to be skipped. As part of the renaming process, the mode and ownership of the file may also be adjusted by specifying rename_perm, rename_uid, and rename_gid. Missing intermediate directories will be created if possible. To enable greater flexibility than the renaming just described (e.g. crossing file systems), the notify option must be used to call another program.
+
 .TP
 rename_perm=<modebits>
 .br
-Only octal (e.g.0744) specifications are allowed. If unspecified or 0 is given, then no change is made. The permissions are changed before the rename and even if the rename fails.
+Only octal (e.g.0744) specifications are allowed. If unspecified or 0 is given, then no change is made. The permissions are changed before the rename and even if the rename fails. This option is applied only if rename_template is applied.
 .TP
 rename_uid=<numeric-uid>
 .br
-Specify a new (non-zero) user id for the file. If unspecified or 0 is given, no change in ownership is made.
-Changes in ownership of the files do not affect intermediate directories that might be created following the template.
+Specify a new user id for the file. If unspecified, no change in user ownership is made.
+Changes in ownership of the files do not affect intermediate directories that might be created following the template. This option is applied only if rename_template is applied.
 .TP
 rename_gid=<numeric-gid>
 .br
-Specify a new (non-zero) group id for the file. If unspecified or 0 is given, no change in group is made. If rename_uid is not given, rename_gid is ignored.
+Specify a new group id for the file. If unspecified, no change in group ownership is made. This option is applied only if rename_template is applied.
 
 .RE
 
+.SH OPTIONS FILE
+The plug-in options file or repeated scripted config calls replace the LDMS v3 'action' keyword for defining instance specific settings. 
 
-.SH STORE_CSV CUSTOM CONFIGURATION ATTRIBUTE SYNTAX
-The configuration parameters set by action=init are applied to all metric sets alike,
-unless overriden by the action=custom values. Only a subset can be overridden.
 
-.TP
-.BR config
-name=<plugin_name> action=custom container=<container> schema=<schema> [ altheader=<0/!0> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]]
+The options file recognizes lines starting with # as comments. Continuation lines are allowed (end lines with a \\ to continue them).
+Comment lines are continued if ended with a \\. See EXAMPLES below.
 
-.br
-ldmsd_controller configuration line
-.RS
-.TP
-name=<plugin_name>
-.br
-This MUST be store_csv.
-.TP
-action=custom
-.br
-This MUST be custom
-.TP
-altheader=<0/!0>
-.br
-Overrides the default value set in action = init. Definition is as above.
-.TP
-container=<container>
-.br
-The container and the schema together uniquely distinguish the sets that the custom arguments will target
-.TP
-schema=<schema>
-.br
-The container and the schema together uniquely distinguish the sets that the custom arguments will target
-.TP
-userdata=<0/!0>
-.br
-Overrides the default value set in action = init. Definition is as above.
-.TP
-notify=<notice_path>
-.br
-The path for the file event notices. If unspecified, no notices are sent. See NOTICES below for details of event notices.
-.TP
-notify_isfifo=<bool>
-.br
-Default false. If set true, notice_path will be handled in a nonblocking manner as a FIFO.
-.TP
-create_perm=<modebits>
-.br
-Overrides the default value set in action = init. Definition is as above.
-.TP
-create_uid=<numeric-uid>
-.br
-Overrides the default value set in action = init. Definition is as above.
-.TP
-create_gid=<numeric-gid>
-.br
-Overrides the default value set in action = init. Definition is as above.
-.TP
-rename_template=<metapath>
-.br
-Overrides the default value set in action = init. Definition is as above.
-.TP
-rename_perm=<modebits>
-.br
-Overrides the default value set in action = init. Definition is as above.
-.TP
-rename_uid=<numeric-uid>
-.br
-Overrides the default value set in action = init. Definition is as above.
-.TP
-rename_gid=<numeric-gid>
-.br
-Overrides the default value set in action = init. Definition is as above.
-.RE
+When an option is needed for a plugin instance, the content of the options file is searched beginning with the options line holding
+"container=$c schema=$s". If the matching container/schema is not found in the options file or the option is not
+defined among the options on that line of the file, then the option value from the ldmsd script 'config' command line is used. If the option is not set on the command line, the defaults are taken from the line of the options file containing the keyword 'store_csv'.
+If the option is found in none of these places, the compiled default is applied.
 
 .SH STRGP_ADD ATTRIBUTE SYNTAX
 The strgp_add sets the policies being added. This line determines the output files via
@@ -223,12 +180,12 @@ The policy name for this strgp.
 .TP
 container=<container>
 .br
-The container and the schema determine where the output files will be written (see path above). They also are used to match any action=custom configuration.node/meminfo.
+The container and the schema determine where the output files will be written (see path above). They also are used to match any specific config lines.
 .TP
 schema=<schema>
 .br
-The container and the schema determine where the output files will be written (see path above). They also are used to match any action=custom configuration.node/meminfo.
-You can have multiples of the same sampler, but with different schema (which means they will have different metrics) and they will be stored in different files.
+The container and the schema determine where the output files will be written (see path above).
+You can have multiples of the same sampler, but with different schema (which means they will have different metrics) and they will be stored in different containers (and therefore files).
 .RE
 
 .SH STORE COLUMN ORDERING
@@ -301,31 +258,103 @@ The name of the file.
 
 .RE
 
+.SH METAPATH SUBSTITUTION
 
+The following % escape sequence replacements are performed on the rename_template value for file renamings:
+.PP
+.TP
+%P 
+.br
+plugin name
+.TP
+%C
+.br
+container name
+.TP
+%S
+.br
+schema name
+.TP
+%T 
+.br
+file event notification type
+.TP
+%B
+.br
+basename(closed-file-name)
+.TP
+%D
+.br
+dirname(closed-file-name)
+.TP
+%{ENV_VAR_NAME}
+.br
+getenv(ENV_VAR_NAME). The use of undefined or empty environment vars yields an empty substitution, not an error.
+Characters in the environment variable are restricted to: 'A-Za-z0-9%@()+-_./:='; other characters present will prevent the rename.
+.TP
+%s
+.br
+timestamp suffix, if it exists. 
+.PP
 
 .SH NOTES
 .PP
 .IP \[bu]
-Please note the argument changes from v2.
+Please note the argument changes from v2 and v3.
 .IP \[bu]
-The 'sequence' option has been removed.
+The 'sequence' option has been removed. The 'action' option has been replaced; see "OPTIONS FILE" above.
 .PP
+.IP \[bu]
+In the opt_file passed by name to store_csv, including the line prefix "config name=store_csv" is redundant and is disallowed. The opt_file syntax is plugin specific and is not an ldmsd configuration script. 
+Scripts written in the store_csv opt_file syntax cannot be used directly with the ldmsd include statement.
 
 .SH BUGS
-There is a maximum of 20 concurrent CSV stores.
+None known.
 
 .SH IMPERFECT FEATURES
-The rename options do not accept symbolic mode changes or uid or gid.
+The rename and create options do not accept symbolic permissions, uid, or gid. There is no metapath substitution for file creation.
 
 .SH EXAMPLES
 .PP
-Within ldmsd_controller or in a configuration file
+Within ldmsd_controller or in a ldmsd command script file
+
 .nf
 load name=store_csv
-config name=store_csv action=init altheader=1 path=/XXX/storedir
-config name=store_csv action=custom container=loadavg_store schema=loadavg
+config name=store_csv opt_file=/etc/sysconfig/ldms.d/store-plugins/store_csv.conf
 strgp_add name=csv_mem_policy plugin=store_csv container=loadavg_store schema=loadavg
 .fi
+
+Or with interactive modifications to override file properties:
+
+.nf
+load name=store_csv
+config name=store_csv altheader=1 rolltype=2 rollover=0 path=/mprojects/ovis/ClusterData/${LDMSCLUSTER} create_gid=1000000039 create_perm=640 rename_template=%D/archive-spool/%{HOSTNAME}/%B rename_perm=444
+.fi
+
+And in the options file for store_csv (/etc/sysconfig/ldms.d/store-plugins/store_csv.conf by convention)
+
+.nf
+# defaults for csv, unless overridden on ldmsd script config line.
+store_csv altheader=1 path=/XXX/storedir rolltype=2 rollover=0
+# tailored setting for loadavg instance
+container=loadavg_store schema=loadavg altheader=0 path=/XXX/loaddir \\
+	create_gid=1000000039 create_perm=640 \\
+	rename_template=%D/archive-spool/%{HOSTNAME}/%B \\
+	rename_perm=444
+.fi
+
+
+Updating from v3:
+
+If in version 3 "config name=store_csv action=custom container=cstore schema=meminfo" was used for a specific csv instance, then put the additional options for that store instance in the store_csv options file on a line:
+
+container=cstore schema=meminfo <op=val >* 
+
+or use them interactively or in a script as:
+
+config name=store_csv container=cstore schema=meminfo <op=val >*
+
+after the store_csv defaults have been set.
 
 .SH SEE ALSO
 ldmsd(8), ldms_quickstart(7), ldmsd_controller(8)

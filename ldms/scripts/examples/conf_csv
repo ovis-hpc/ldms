@@ -1,0 +1,11 @@
+portbase=61076
+MESSAGE starting agg and two collectors
+JOBDATA $TESTDIR/job.data 1 2 3
+#vgon
+#VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=all"
+LDMSD -p prolog.jobidinfo `seq 3`
+#vgoff
+LDMS_LS 1
+SLEEP 15
+KILL_LDMSD `seq 3`
+MESSAGE logs and data under ${TESTDIR}

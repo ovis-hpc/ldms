@@ -16,10 +16,14 @@ sequence_unsupp
 synthetic
 edac
 fptrans
+filesingle
 procnfs
 rabbitkw
 rabbitl2remote
 rabbitv3
+renamecsv
+rollagain
+csvcheckattrs # one ok and one failed config_check
 
 # working with job metrics
 clock.job
@@ -28,6 +32,7 @@ procstat.job
 lustre2_client
 dstat.job
 many
+conf_csv
 
 # not yet tested
 rabbitv3

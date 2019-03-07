@@ -50,6 +50,7 @@ test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'
 
 OVIS_PKGLIBDIR
 OPTION_DEFAULT_ENABLE([scripts], [ENABLE_SCRIPTS])
+OPTION_DEFAULT_DISABLE([slurmtest], [ENABLE_SLURMTEST])
 OPTION_DEFAULT_DISABLE([developer], [ENABLE_DEVELOPER])
 OPTION_DOC
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
@@ -89,6 +90,7 @@ OPTION_DEFAULT_ENABLE([synthetic], [ENABLE_SYNTHETIC])
 OPTION_DEFAULT_ENABLE([varset], [ENABLE_VARSET])
 OPTION_DEFAULT_ENABLE([lnet_stats], [ENABLE_LNET_STATS])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
+OPTION_DEFAULT_DISABLE([filesingle], [ENABLE_FILESINGLE])
 OPTION_DEFAULT_DISABLE([msr_interlagos], [ENABLE_MSR_INTERLAGOS])
 OPTION_DEFAULT_ENABLE([array_example], [ENABLE_ARRAY_EXAMPLE])
 OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
@@ -447,11 +449,11 @@ AC_SUBST(configure_input)
 
 dnl handle test generation and chmod
 OVIS_EXEC_SCRIPTS(
+		 scripts/ldms-wrapper
 		 scripts/ldms-static-test.sh
+		 scripts/pll-ldms-static-test.sh
 		 scripts/ldms_ban.sh
-		 scripts/ldms-py-fptrans_test.sh
 		 scripts/ldms-plugins.sh
-		 scripts/ldms-py-edac_test.sh
 		 scripts/ldms-py-subset_test.sh
 		 scripts/ldms-py-varset.sh
 		 scripts/ldms-py-syslog.sh
@@ -459,7 +461,6 @@ OVIS_EXEC_SCRIPTS(
 		 scripts/ldms-meminfo.sh
 		 scripts/ldms_local_opa2test.sh
 		 scripts/ldms-l2_test.sh
-		 scripts/ldms-wrapper
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
@@ -467,6 +468,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/auth/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/sampler/dstat/Makefile
+		 src/sampler/filesingle/Makefile
 		 src/sampler/lustre/Makefile
 		 src/sampler/kokkos/Makefile
 		 src/sampler/job_info/Makefile

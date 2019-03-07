@@ -17,7 +17,7 @@ twain ldmsd_host=twain
 #
 
 twain ldmsd_metric_plugins=meminfo:vmstat:procstat:procnetdev
-twain ldmsd_idbase=1
+twain ldmsd_idbase=2
 
 # procstatutil2 plugin settings
 twain ldmsd_procstat=maxcpu/8:with_jobid/0
@@ -32,9 +32,9 @@ twain ldmsd_config_text_meminfo=yes
 # vmstat plugin settings from config generator by full path name
 # generator program named is passed arguments as documented in the
 # man page ldms-attributes
-twain ldmsd_config_gen_vmstat=/etc/sysconfig/ldms.d/plugins-conf/gen.vmstat
+#twain ldmsd_config_gen_vmstat=/etc/sysconfig/ldms.d/plugins-conf/gen.vmstat
 
 #
 # data storage
 #
-ldmsd_store_plugins=store_csv
+#twain ldmsd_store_plugins=store_csv

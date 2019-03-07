@@ -59,6 +59,7 @@
 #include <ovis_util/util.h>
 #include <ovis_util/notification.h>
 #include "ldmsd.h"
+#include "ldmsd_plugattr.h"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -76,7 +77,11 @@
 	unsigned rename_perm; \
 	uid_t create_uid; \
 	gid_t create_gid; \
-	unsigned create_perm;
+	unsigned create_perm; \
+	int altheader; \
+	int buffer_type; \
+	int buffer_sz; \
+	char *store_key; /* this is the container/schema */
 
 struct storek_common {
 	STOREK_COMMON;
@@ -88,8 +93,8 @@ struct storek_common {
 #define CSKC(x) \
 	((struct storek_common *)&((x)->notify))
 
+// STOREK_COMMON; 
 #define NOTIFY_COMMON \
-	STOREK_COMMON; \
 	struct ovis_notification *onp; \
 	int hooks_closed
 
@@ -114,6 +119,7 @@ struct csv_plugin_static {
 	char *schema; \
 	/* handle roll_common strings with replace_string in store handle */ \
 	ROLL_COMMON; \
+	STOREK_COMMON; \
 	NOTIFY_COMMON
 
 struct roll_common {
@@ -145,10 +151,10 @@ struct csv_store_handle_common {
  * \param param_value address of bool to assign if parameter found in avl.
  * \return 0 if ok or errno value otherwise.
  */
-int parse_bool(struct csv_plugin_static *cps, struct attr_value_list *avl, const char *param_name, bool *param_value);
+#define parse_bool(a,b,c,d) parse_bool2((a)->msglog, b, c, d)
 
 /** As parse_bool, but log pointer and source instead of plugin pointer */
-int parse_bool2(ldmsd_msg_log_f log, struct attr_value_list *avl, const char *param_name, bool *param_value, const char *source);
+int parse_bool2(ldmsd_msg_log_f log, struct attr_value_list *avl, const char *param_name, bool *param_value, const char *source) __attribute__ ((deprecated("Use ldmsd_plugattr_bool instead")));
 
 /* Replace the *strp with allocated duplicate of val.
  * String pointers managed with this function should not be set
@@ -204,7 +210,8 @@ int create_outdir(const char *path,
  *	%B expands to basename(name),
  *	%D expands to dirname(name),
  *	%s timestamp suffix, if it exists.
- * Specifying both output event notification and output
+ *	%{var} expands to env(var)
+ * Specifying both output event notification and output 
  * renaming produces a race condition between this function
  * and the event-processor and should be avoided.
  *
@@ -230,25 +237,11 @@ void ch_output(FILE *f, const char *name,
 	struct csv_store_handle_common *s_handle,
 	struct csv_plugin_static *cps);
 
+#define OPEN_STORE_COMMON(pa, h) open_store_common(pa, CSHC(h), &PG)
 /**
- * configurations custom for a container+schema that can override
- * the vals in config_init.
- * Locking and cfgstate are caller's job.
+ * configurations for the store plugin.
  */
-int config_custom_common(struct attr_value_list *kwl, struct attr_value_list *avl, struct storek_common *sk, struct csv_plugin_static *cps);
-
-#define CONFIG_INIT_COMMON(k, a, arg) config_init_common(k, a, arg, &plugin_globals )
-/**
- * configurations for the whole store. these will be defaults if not overridden.
- * some implementation details are for backwards compatibility
- */
-int config_init_common(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg, struct csv_plugin_static *cps);
-
-/** \brief clean up storek fields configured by config_custom_common. */
-void clear_storek_common(struct storek_common *skc);
-
-/** \brief init common fields from custom or default. */
-void csv_update_handle_common(struct csv_store_handle_common *s_handle, struct storek_common *skc, struct csv_plugin_static *cps);
+int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps);
 
 #define CLOSE_STORE_COMMON(h) close_store_common(CSHC(h), &PG)
 /** \brief clean up handle fields configured by CONFIG_INIT_COMMON */
@@ -256,6 +249,22 @@ extern void close_store_common(struct csv_store_handle_common *s_handle, struct 
 
 /** \brief Dump the common csv handle to log */
 void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps);
+
+/** include the common config items in the anames array for store_config_check, if wanted. */
+#define CSV_STORE_ATTR_COMMON \
+	"opt_file", \
+	"notify", \
+	"notify_isfifo", \
+	"altheader", \
+	"buffer", \
+	"buffertype", \
+	"rename_template", \
+	"rename_uid", \
+	"rename_gid", \
+	"rename_perm", \
+	"create_uid", \
+	"create_gid", \
+	"create_perm"
 
 
 #define NOTIFY_USAGE \
@@ -271,21 +280,10 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 
 
 #define LIB_CTOR_COMMON(cps) \
-	cps.notify = NULL; \
-	cps.notify_isfifo = false; \
-	cps.rename_template = false; \
-	cps.rename_uid = (uid_t)-1; \
-	cps.rename_gid = (gid_t)-1; \
-	cps.rename_perm = 0; \
-	cps.create_uid = (uid_t)-1; \
-	cps.create_gid = (gid_t)-1; \
-	cps.create_perm = 0; \
 	cps.hooks_closed = 0
 
 
 #define LIB_DTOR_COMMON(cps) \
-	ovis_notification_close(cps.onp); \
-	free(cps.notify); \
-	free(cps.rename_template)
+	ovis_notification_close(cps.onp)
 
 #endif /* store_csv_common_h_seen */

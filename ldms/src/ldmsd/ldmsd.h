@@ -827,12 +827,12 @@ int ldmsd_prdcr_str2type(const char *type);
 const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type);
 ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
-		const char *host_name, const short port_no,
+		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us);
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
-		const char *host_name, const short port_no,
+		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us, uid_t uid, gid_t gid, int perm);
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt);

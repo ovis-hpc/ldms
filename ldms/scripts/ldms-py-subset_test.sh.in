@@ -7,6 +7,27 @@ allowroot=0
 prefix=@prefix@
 exec_prefix=@exec_prefix@
 libdir=@libdir@
+
+if ! test -f $libdir/ovis-lib-configvars.sh; then
+	echo "$libdir/ovis-lib-configvars.sh not found"
+	exit 1
+fi
+if ! test -f $libdir/ovis-ldms-configvars.sh; then
+	echo "$libdir/ovis-ldms-configvars.sh not found"
+	exit 1
+fi
+. $libdir/ovis-lib-configvars.sh
+. $libdir/ovis-ldms-configvars.sh
+if test -z "$ZAP_LIBPATH"; then
+	ZAP_LIBPATH=$ovis_lib_plugins
+fi
+export ZAP_LIBPATH
+if test -z "$LDMSD_PLUGIN_LIBPATH"; then
+	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins:$ovis_lib_plugins
+fi
+export LDMSD_PLUGIN_LIBPATH
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$ovis_lib_plugins:$LD_LIBRARY_PATH
+
 BUILDDIR=@prefix@
 export PYTHONPATH=@pythondir@
 # Manually redefine portbase to avoid collisions.
@@ -67,15 +88,12 @@ if test ! -x $BUILDDIR/bin/ldmsd_controller; then
 	echo "can't find ldmsd_controller script. Included python in build?"
 	exit 1
 else
-	LC="$BUILDDIR/bin/ldmsd_controller --auth_file=$SECRET"
+	LC="$BUILDDIR/bin/ldmsd_controller --xprt sock --host localhost -a ovis -A conf=$SECRET"
 	CSO="--sockname"
 fi
 echo "logs and data stored under $TESTDIR"
 
-export LD_LIBRARY_PATH=${BUILDDIR}/lib:@libdir@:@pkglibdir@:@libeventpath@:$LD_LIBRARY_PATH
-export ZAP_LIBPATH=@pkglibdir@
 export PATH=${BUILDDIR}/sbin:$PATH
-export LDMSD_PLUGIN_LIBPATH=@pkglibdir@
 
 # whack the daemons we own
 pkill ldmsd
@@ -93,17 +111,17 @@ rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
 echo Starting daemons
-ldmsd -x sock:$port1 -p unix:$SOCKDIR/metric_socket_1  -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1
+ldmsd -x sock:$port1 -l ${LOGDIR}/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1 -a ovis -A conf=$SECRET
 die $?
 
-ldmsd -x sock:$port4 -p unix:$SOCKDIR/metric_socket_4  -l ${LOGDIR}/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4
+ldmsd -x sock:$port4 -l ${LOGDIR}/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4 -a ovis -A conf=$SECRET
 die $?
 
 mysleep 1
 
 
 echo Starting plugins on daemon1
-cat << EOF | $LC $CSO $SOCKDIR/metric_socket_1
+cat << EOF | $LC --port $port1
 load name=meminfo
 config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=1 udata_default=10 max_mc=2 max_csrow=4
 start name=meminfo interval=1000000
@@ -113,12 +131,12 @@ die $?
 mysleep 2
 echo list host1
 echo ldms_ls on host 1:
-ldms_ls -h localhost -x sock -p $port1 
+ldms_ls -h localhost -x sock -p $port1 -a ovis -A conf=$SECRET
 
 # is conn retry interval in sec or u-sec? man not specific.
 ARI=1000000
 echo Adding host1 to aggregator4
-cat << EOF  | $LC $CSO $SOCKDIR/metric_socket_4
+cat << EOF  | $LC --port $port4
 prdcr_add name=localhost1 host=localhost type=active xprt=sock interval=$ARI port=$port1
 prdcr_start name=localhost1
 updtr_add name=localhost1 interval=1000000 offset=10000
@@ -130,15 +148,15 @@ die $?
 mysleep 2
 for i in 4 ; do
 echo Loading store_csv on aggregator$i
-echo "load name=store_csv" | $LC $CSO $SOCKDIR/metric_socket_$i
+echo "load name=store_csv" | $LC --port $port4
 die $?
 done
 mysleep 2
 echo Config store_csv on aggregator4
-echo "config name=store_csv action=init path=${STOREDIR} altheader=1" | $LC $CSO $SOCKDIR/metric_socket_4
+echo "config name=store_csv action=init path=${STOREDIR} altheader=1" | $LC --port $port4
 die $?
 echo Start store_csv on aggregator4
-cat << EOF | $LC $CSO $SOCKDIR/metric_socket_4
+cat << EOF | $LC --port $port4
 strgp_add name=store_csv plugin=store_csv schema=meminfo container=fmeminfo
 strgp_prdcr_add name=store_csv regex=localhost1
 strgp_metric_add name=store_csv metric=Active
@@ -154,11 +172,11 @@ echo List aggregator4
 
 
 echo ldms_ls on host 4:
-ldms_ls -h localhost -x sock -p $port4 
+ldms_ls -h localhost -x sock -p $port4 -a ovis -A conf=$SECRET
 
 sleep 2
 echo quitting
-echo $LC $CSO $SOCKDIR/metric_socket_4
+echo $LC --port $port4
 kill -SIGTERM `cat  $TESTDIR/run/ldmsd.pid.1` `cat  $TESTDIR/run/ldmsd.pid.4`
 echo done;
 sleep 1

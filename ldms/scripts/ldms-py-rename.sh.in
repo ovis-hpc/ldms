@@ -7,10 +7,27 @@ allowroot=0
 prefix=@prefix@
 exec_prefix=@exec_prefix@
 libdir=@libdir@
-BUILDDIR=@prefix@
-export PYTHONPATH=@pythondir@
+if ! test -f $libdir/ovis-lib-configvars.sh; then
+	echo "$libdir/ovis-lib-configvars.sh not found"
+	exit 1
+fi
+if ! test -f $libdir/ovis-ldms-configvars.sh; then
+	echo "$libdir/ovis-ldms-configvars.sh not found"
+	exit 1
+fi
 . $libdir/ovis-lib-configvars.sh
 . $libdir/ovis-ldms-configvars.sh
+if test -z "$ZAP_LIBPATH"; then
+	ZAP_LIBPATH=$ovis_lib_plugins
+fi
+export ZAP_LIBPATH
+if test -z "$LDMSD_PLUGIN_LIBPATH"; then
+	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins:$ovis_lib_plugins
+fi
+export LDMSD_PLUGIN_LIBPATH
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$ovis_lib_plugins:$LD_LIBRARY_PATH
+BUILDDIR=@prefix@
+export PYTHONPATH=@pythondir@
 # Manually redefine portbase to avoid collisions.
 # Base should be above the maximum in :
 #  cat /proc/sys/net/ipv4/ip_local_port_range
@@ -69,15 +86,12 @@ if test ! -x $BUILDDIR/bin/ldmsd_controller; then
 	echo "can't find ldmsd_controller script. Included python in build?"
 	exit 1
 else
-	LC="$BUILDDIR/bin/ldmsd_controller --auth_file=$SECRET"
+	LC="$BUILDDIR/bin/ldmsd_controller --xprt sock --host localhost -a ovis -A conf=$SECRET"
 	CSO="--sockname"
 fi
 echo "logs and data stored under $TESTDIR"
 
-export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$ovis_lib_plugins::$LD_LIBRARY_PATH
-export ZAP_LIBPATH=$ovis_lib_plugins
 export PATH=${BUILDDIR}/sbin:$PATH
-export LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins:$ovis_lib_plugins
 
 # whack the daemons we own
 pkill ldmsd
@@ -95,65 +109,65 @@ rm -rf ${STOREDIR}/node
 rm -f ${STOREDIR}/*
 
 echo Starting daemons
-ldmsd -x sock:$port1 -p unix:$SOCKDIR/metric_socket_1  -l $LOGDIR/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1
+ldmsd -x sock:$port1 -l $LOGDIR/1.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.1 -a ovis -A conf=$SECRET
 die $?
 
-ldmsd -x sock:$port4 -p unix:$SOCKDIR/metric_socket_4  -l $LOGDIR/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4
+ldmsd -x sock:$port4 -l $LOGDIR/4.txt -v DEBUG -r $TESTDIR/run/ldmsd.pid.4 -a ovis -A conf=$SECRET
 die $?
 
 mysleep 1
 
 
 echo Starting plugins on daemon1
-echo load name=meminfo | $LC $CSO $SOCKDIR/metric_socket_1
+echo load name=meminfo | $LC --port $port1
 die $?
-echo config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=1 udata_default=10 | $LC $CSO $SOCKDIR/metric_socket_1
+echo config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=1 udata_default=10 | $LC --port $port1
 die $?
-echo start name=meminfo interval=1000000 | $LC $CSO $SOCKDIR/metric_socket_1
+echo start name=meminfo interval=1000000 | $LC --port $port1
 die $?
-echo load name=sysclassib | $LC $CSO $SOCKDIR/metric_socket_1
+echo load name=sysclassib | $LC --port $port1
 die $?
-echo config name=sysclassib producer=localhost1 instance=localhost1/sysclassib schema=sysclassib ports=mlx4_0.1,qib_0.1 component_id=1 udata_default=10 | $LC $CSO $SOCKDIR/metric_socket_1
+echo config name=sysclassib producer=localhost1 instance=localhost1/sysclassib schema=sysclassib ports=mlx4_0.1,qib_0.1 component_id=1 udata_default=10 | $LC --port $port1
 die $?
-echo start name=sysclassib interval=1000000 | $LC $CSO $SOCKDIR/metric_socket_1
+echo start name=sysclassib interval=1000000 | $LC --port $port1
 die $?
 
 mysleep 2
 echo list host1
 echo ldms_ls on host 1:
-ldms_ls -h localhost -x sock -p $port1
+ldms_ls -h localhost -x sock -p $port1 -a ovis -A conf=$SECRET
 
 # is conn retry interval in sec or u-sec? man not specific.
 ARI=1000000
 echo Adding host1 to aggregator4
-echo prdcr_add name=localhost1 host=localhost type=active xprt=sock port=$port1 interval=$ARI | $LC $CSO $SOCKDIR/metric_socket_4
+echo prdcr_add name=localhost1 host=localhost type=active xprt=sock port=$port1 interval=$ARI | $LC --port $port4
 die $?
-echo prdcr_start name=localhost1 | $LC $CSO $SOCKDIR/metric_socket_4
+echo prdcr_start name=localhost1 | $LC --port $port4
 die $?
-echo updtr_add name=localhost1 interval=1000000 offset=10000 | $LC $CSO $SOCKDIR/metric_socket_4
+echo updtr_add name=localhost1 interval=1000000 offset=10000 | $LC --port $port4
 die $?
-echo updtr_prdcr_add name=localhost1 regex=localhost1 | $LC $CSO $SOCKDIR/metric_socket_4
+echo updtr_prdcr_add name=localhost1 regex=localhost1 | $LC --port $port4
 die $?
-echo updtr_start name=localhost1 | $LC $CSO $SOCKDIR/metric_socket_4
+echo updtr_start name=localhost1 | $LC --port $port4
 die $?
 
 mysleep 2
 for i in 4 ; do
 echo Loading store_csv on aggregator$i
-echo "load name=store_csv" | $LC $CSO $SOCKDIR/metric_socket_$i
+echo "load name=store_csv" | $LC --port $port4
 die $?
 done
 mysleep 2
 echo Config store_csv on aggregator4
-echo "config name=store_csv action=init path=${STOREDIR} rename_template=$STOREDIR/spool/%D/p-%P/c-%C/S-%S/T-%T/s-%s/B-%B/p-%P-c-%C-S-%S-T-%T-s-%s-B-%B rename_perm=0704 altheader=1 rolltype=1 rollover=7" | $LC $CSO $SOCKDIR/metric_socket_4
+echo "config name=store_csv action=init path=${STOREDIR} rename_template=$STOREDIR/spool/%D/p-%P/c-%C/S-%S/T-%T/s-%s/B-%B/p-%P-c-%C-S-%S-T-%T-s-%s-B-%B rename_perm=0704 altheader=1 rolltype=1 rollover=7" | $LC --port $port4
 die $?
 echo Start store_csv on aggregator4
 die $?
-echo strgp_add name=store_csv plugin=store_csv schema=meminfo container=fmeminfo | $LC $CSO $SOCKDIR/metric_socket_4
+echo strgp_add name=store_csv plugin=store_csv schema=meminfo container=fmeminfo | $LC --port $port4
 die $?
-echo strgp_prdcr_add name=store_csv regex=localhost1 | $LC $CSO $SOCKDIR/metric_socket_4
+echo strgp_prdcr_add name=store_csv regex=localhost1 | $LC --port $port4
 die $?
-echo strgp_start name=store_csv regex=localhost1 | $LC $CSO $SOCKDIR/metric_socket_4
+echo strgp_start name=store_csv regex=localhost1 | $LC --port $port4
 die $?
 mysleep 16
 #
@@ -161,11 +175,11 @@ echo List aggregator4
 
 
 echo ldms_ls on host 4:
-ldms_ls -h localhost -x sock -p $port4
+ldms_ls -h localhost -x sock -p $port4 -a ovis -A conf=$SECRET
 
 sleep 2
 echo quitting
-echo $LC $CSO $SOCKDIR/metric_socket_4
+echo $LC --port $port4
 kill -SIGTERM `cat  $TESTDIR/run/ldmsd.pid.1` `cat  $TESTDIR/run/ldmsd.pid.4`
 echo done;
 sleep 1

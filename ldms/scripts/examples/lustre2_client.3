@@ -9,8 +9,8 @@ updtr_prdcr_add name=allhosts regex=.*
 updtr_start name=allhosts
 
 load name=store_csv
-config name=store_csv action=init path=${STOREDIR} altheader=0 container=node1
-#config name=store_csv action=custom schema=${testname} path=${STOREDIR} altheader=1 container=node2
+config name=store_csv path=${STOREDIR} altheader=0
+config name=store_csv schema=${testname} path=${STOREDIR} altheader=1 container=node2
 
 strgp_add name=store_${testname} plugin=store_csv schema=Lustre_Client container=node
 strgp_prdcr_add name=store_${testname} regex=.*
