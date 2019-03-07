@@ -68,10 +68,9 @@ err0:
 
 int map_inverse_query(map_t map, uint64_t match_val)
 {
-	int rc;
 	uint64_t retval;
 
-	rc = map_inverse(map, match_val, &retval);
+	(void)map_inverse(map, match_val, &retval);
 	if (!retval) {
 		printf("Could not match inverse value %" PRIu64 " with a transform value\n", match_val);
 		return -1;
@@ -82,10 +81,9 @@ int map_inverse_query(map_t map, uint64_t match_val)
 
 int map_transform_query(map_t map, uint64_t match_val)
 {
-	int rc;
 	uint64_t retval;
 
-	rc = map_transform(map, match_val, &retval);
+	(void)map_transform(map, match_val, &retval);
 	if (!retval) {
 		printf("Could not match transform value %" PRIu64 " with an inverse value\n", match_val);
 		return -1;
