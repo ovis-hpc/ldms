@@ -59,7 +59,9 @@
 #include <sys/user.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include <limits.h>
 #include <assert.h>
 #include <mmalloc/mmalloc.h>
@@ -189,11 +191,6 @@ uint64_t ldms_set_data_gn_get(ldms_set_t s)
 	return __le64_to_cpu(s->set->data->gn);
 }
 
-static void rem_local_set(struct ldms_set *s)
-{
-	rbt_del(&set_tree, &s->rb_node);
-}
-
 struct cb_arg {
 	void *user_arg;
 	int (*user_cb)(struct ldms_set *, void *);
@@ -320,10 +317,8 @@ __record_set(const char *instance_name,
 }
 
 /* Caller must hold the set tree lock. */
-static
 int __ldms_set_publish(struct ldms_set *set)
 {
-	struct ldms_set *_set;
 	if (set->flags & LDMS_SET_F_PUBLISHED)
 		return EEXIST;
 
@@ -342,10 +337,8 @@ int ldms_set_publish(ldms_set_t sd)
 }
 
 /* Caller must hold the set tree lock */
-static
 int __ldms_set_unpublish(struct ldms_set *set)
 {
-	struct ldms_set *_set;
 	if (!(set->flags & LDMS_SET_F_PUBLISHED))
 		return ENOENT;
 
@@ -460,9 +453,35 @@ void __ldms_set_info_delete(struct ldms_set_info_list *info)
 	}
 }
 
+static void print_xprt_addrs(ldms_t xprt)
+{
+	char lbuf[32];
+	char rbuf[32];
+	char *s;
+	struct sockaddr_in l_sin, r_sin;
+	socklen_t sa_len;
+	int rc;
+	rc = ldms_xprt_sockaddr(xprt, (struct sockaddr *)&l_sin,
+				(struct sockaddr *)&r_sin, &sa_len);
+	if (!rc) {
+		s = inet_ntoa(l_sin.sin_addr);
+		strcpy(lbuf, s);
+		s = inet_ntoa(r_sin.sin_addr);
+		strcpy(rbuf, s);
+		fprintf(stderr, "local=%s:%hu remote=%s:%hu",
+			lbuf, ntohs(l_sin.sin_port),
+			rbuf, ntohs(r_sin.sin_port)
+			);
+	}
+}
+
+/**
+ * Destroy the set and all transport references to the set. It is the
+ * caller's responsibility to ensure that there are no concurrent
+ * local or remote users of this set.
+ */
 void ldms_set_delete(ldms_set_t s)
 {
-	int destroy_set = 0;
 	if (!s) {
 		assert(NULL == "The metric set passed in is NULL");
 	}
@@ -470,20 +489,38 @@ void ldms_set_delete(ldms_set_t s)
 	struct ldms_set *set = s->set;
 	pthread_mutex_lock(&set->lock);
 	__ldms_free_rbd(s);	/* removes the RBD from the local/remote rbd list */
-	if (LIST_EMPTY(&set->remote_rbd_list)) {
-		__ldms_set_unpublish(set);
-		if (LIST_EMPTY(&set->local_rbd_list)) {
-			destroy_set = 1;
+	__ldms_set_unpublish(set);
+
+	while (!LIST_EMPTY(&set->remote_rbd_list)) {
+		s = LIST_FIRST(&set->remote_rbd_list);
+		if (s->xprt) {
+			fprintf(stderr, "%s: Warning, the remote rbd for '%s' has an active transport...",
+				__func__, ldms_set_name_get(s));
+			print_xprt_addrs(s->xprt);
+			fprintf(stderr, "\n");
+			fflush(stderr);
 		}
+		__ldms_free_rbd(s);
 	}
-	pthread_mutex_unlock(&set->lock);
-	if (destroy_set) {
-		rbt_del(&set_tree, &set->rb_node);
-		mm_free(set->meta);
-		__ldms_set_info_delete(&set->local_info);
-		__ldms_set_info_delete(&set->remote_info);
-		free(set);
+
+	while (!LIST_EMPTY(&set->local_rbd_list)) {
+		s = LIST_FIRST(&set->local_rbd_list);
+		if (s->xprt) {
+			fprintf(stderr, "%s: Warning, the local rbd for '%s' has an active transport...",
+				__func__, ldms_set_name_get(s));
+			print_xprt_addrs(s->xprt);
+			fprintf(stderr, "\n");
+			fflush(stderr);
+		}
+		__ldms_free_rbd(s);
 	}
+
+	rbt_del(&set_tree, &set->rb_node);
+	mm_free(set->meta);
+	__ldms_set_info_delete(&set->local_info);
+	__ldms_set_info_delete(&set->remote_info);
+	free(set);
+
 	__ldms_set_tree_unlock();
 }
 
@@ -607,7 +644,7 @@ struct ldms_set *__ldms_create_set(const char *instance_name,
 				   size_t array_card,
 				   uint32_t flags)
 {
-	int i, n;
+	int i;
 	struct ldms_data_hdr *data, *data_base;
 	struct ldms_set_hdr *meta;
 	struct ldms_set *set = NULL;
@@ -711,7 +748,7 @@ int ldms_schema_metric_count_get(ldms_schema_t schema)
 int ldms_schema_array_card_set(ldms_schema_t schema, int card)
 {
 	if (card < 0)
-		return EINVAL;
+		return -EINVAL;
 	schema->array_card = card;
 	return 0;
 }
@@ -766,10 +803,10 @@ void __ldms_metric_size_get(const char *name, enum ldms_value_type t,
  * sets errno if error.
  */
 static size_t compute_set_sizes(const char *instance_name, ldms_schema_t schema,
-		int *set_array_card, 
+		int *set_array_card,
 		size_t *meta_sz, size_t *array_data_sz)
 {
-	assert(instance_name && schema && set_array_card && meta_sz && 
+	assert(instance_name && schema && set_array_card && meta_sz &&
 		array_data_sz && NULL != "bad call to compute_set_sizes");
 	*set_array_card = schema->array_card;
 
@@ -812,7 +849,7 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	uint64_t value_off;
 	ldms_mdef_t md;
 	int metric_idx;
-	int rc, i;
+	int i;
 	int set_array_card = 0;
 
 	if (!instance_name || !schema) {
@@ -1144,14 +1181,14 @@ int __schema_metric_add(ldms_schema_t s, const char *name, int flags,
 int ldms_schema_metric_add(ldms_schema_t s, const char *name, enum ldms_value_type type)
 {
 	if (type > LDMS_V_D64)
-		return EINVAL;
+		return -EINVAL;
 	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, 1);
 }
 
 int ldms_schema_meta_add(ldms_schema_t s, const char *name, enum ldms_value_type type)
 {
 	if (type > LDMS_V_D64)
-		return EINVAL;
+		return -EINVAL;
 	return __schema_metric_add(s, name, LDMS_MDESC_F_META, type, 1);
 }
 
@@ -1159,13 +1196,15 @@ int ldms_schema_metric_array_add(ldms_schema_t s, const char *name,
 				 enum ldms_value_type type, uint32_t count)
 {
 	if (!ldms_type_is_array(type))
-		return EINVAL;
+		return -EINVAL;
 	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, count);
 }
 
 int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
 			       enum ldms_value_type type, uint32_t count)
 {
+	if (!ldms_type_is_array(type))
+		return -EINVAL;
 	return __schema_metric_add(s, name, LDMS_MDESC_F_META, type, count);
 }
 
@@ -2231,7 +2270,6 @@ struct ldms_set_info_pair *__ldms_set_info_find(struct ldms_set_info_list *info,
 
 void ldms_set_info_unset(ldms_set_t s, const char *key)
 {
-	int rc;
 	struct ldms_set_info_pair *pair;
 	pthread_mutex_lock(&s->set->lock);
 	pair = __ldms_set_info_find(&s->set->local_info, key);
