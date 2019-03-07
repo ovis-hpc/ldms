@@ -690,7 +690,7 @@ bool ldmsd_plugattr_kw(struct plugattr *pa, const char *kw, const char *key)
 	return false;
 }
 
-int ldmsd_plugattr_bool(struct plugattr *pa, const char *attr, const char *key)
+int ldmsd_plugattr_bool(struct plugattr *pa, const char *attr, const char *key,  bool *result)
 {
 	if (!pa || !attr) {
 		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_bool: bad call.\n");
@@ -705,18 +705,21 @@ int ldmsd_plugattr_bool(struct plugattr *pa, const char *attr, const char *key)
 		case 'y':
 		case 'Y':
 		case '\0':
-			return 1;
+			*result = true;
+			break;
 		case '0':
 		case 'f':
 		case 'F':
 		case 'n':
 		case 'N':
-			return 0;
+			*result = false;
+			break;
 		default:
 			ldmsd_log(LDMSD_LERROR, "%s: non-boolean %s=%s\n",
 					key, attr, val);
 			return -1;
 		}
+		return 0;
 	}
 	return -2;
 }

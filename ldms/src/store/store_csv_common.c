@@ -683,15 +683,16 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 			return rc;
 		}
 	}
+	int32_t cvt;
+	bool r;
 	if (!rc) {
-		s_handle->notify_isfifo =
-			ldmsd_plugattr_bool(pa, "notify_isfifo", k);
-		if (s_handle->notify_isfifo == -2)
-			s_handle->notify_isfifo = 0;
+		r = false;
+		cvt = ldmsd_plugattr_bool(pa, "notify_isfifo", k, &r);
 		if (s_handle->notify_isfifo == -1) {
 			cps->msglog(LDMSD_LERROR, "%s:%s: notify_isfifo cannot be parsed.\n", cps->pname, k);
 			return EINVAL;
 		}
+		s_handle->notify_isfifo = r;
 	}
 
 	/* -1 means do not change */
@@ -700,13 +701,13 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 	s_handle->rename_uid = (uid_t)-1;
 	s_handle->rename_gid = (gid_t)-1;
 
-	s_handle->altheader = ldmsd_plugattr_bool(pa, "altheader", k);
-	if (s_handle->altheader == -2)
-		s_handle->altheader = 0;
+	r = false;
+	cvt = ldmsd_plugattr_bool(pa, "altheader", k, &r);
 	if (s_handle->altheader == -1) {
 		cps->msglog(LDMSD_LERROR,"open_store_common altheader= cannot be parsed\n");
 		return EINVAL;
 	}
+	s_handle->altheader = r;
 
 	const char *rename_template =
 		ldmsd_plugattr_value(pa, "rename_template", k);
@@ -729,7 +730,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 		}
 	}
 
-	int32_t uid, gid, cvt;
+	int32_t uid, gid;
 	cvt = ldmsd_plugattr_s32(pa, "rename_uid", k, &uid);
 	if (!cvt) {
 		if (uid >= 0)
