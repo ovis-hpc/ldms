@@ -150,7 +150,6 @@ int __auth_xprt_begin(ldms_auth_t auth, ldms_t xprt)
 		.uid = htonl(a->luid),
 		.gid = htonl(a->lgid)
 	};
-	int rc;
 	return ldms_xprt_auth_send(xprt, (void*)&crd, sizeof(crd));
 }
 
@@ -158,7 +157,6 @@ static
 int __auth_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 		const char *data, uint32_t data_len)
 {
-	struct ldms_auth_naive *a = (void*)auth;
 	struct naive_cred crd;
 	if (data_len != sizeof(crd))
 		return EINVAL;
