@@ -20,14 +20,8 @@ SUBDIRS = lib
 
 # we build of the maybe vars to control build order, which
 # AM_CONDITIONAL does not preserve.
-# ocm needs lib
-MAYBE_OCM = @MAYBE_OCM@
 # ldms needs lib; optional sos, ocm
 MAYBE_LDMS = @MAYBE_LDMS@
-# me needs lib; optional ocm
-MAYBE_ME = @MAYBE_ME@
-# komondor needs lib; optional ocm
-MAYBE_KOMONDOR = @MAYBE_KOMONDOR@
 
 SUBDIRS += \
 $(MAYBE_LDMS) \
@@ -40,7 +34,7 @@ util
 DIST_SUBDIRS = lib ldms util
 # make dist _will_ fail for these unless we mod their .am files
 # so not included in dist.
-NODIST_SUBDIRS = ocm me komondor
+NODIST_SUBDIRS =
 
 BASE = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 BASE_TARBALL = $(BASE).tar.gz
