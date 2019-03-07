@@ -1,3 +1,0 @@
-[submodule "gpcd-support"]
-	path = gpcd-support
-	url = https://github.com/ovis-hpc/gpcd.git
