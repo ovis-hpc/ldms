@@ -31,20 +31,11 @@ if test "$enable_gpcdlocal" = "yes"; then
 	fi
 fi
 
-OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS], [  requires lib])
-if test "$enable_sos" = "yes"; then
-	AC_CONFIG_SUBDIRS([sos])
-	if ! test -d $srcdir/sos/sos; then
-		AC_MSG_ERROR([You need the sos submodule to enable it.])
-	fi
-fi
-
 # ldms is not optional for now.
 OPTION_DEFAULT_ENABLE([ldms], [ENABLE_LDMS],[  requires lib])
 AC_CONFIG_SUBDIRS([ldms])
 
 SUBST_MAYBE([gpcdlocal])
-SUBST_MAYBE([sos])
 SUBST_MAYBE([ldms])
 
 OPTION_DEFAULT_DISABLE([libgenders], [ENABLE_LIBGENDERS],[  requires C++,boost])
