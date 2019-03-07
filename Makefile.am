@@ -24,8 +24,6 @@ MAYBE_GPCDLOCAL = @MAYBE_GPCDLOCAL@
 if ENABLE_GPCDLOCAL
 GPCDSUBDIR = gpcd-support
 endif
-# sos needs lib in properly refactored world
-MAYBE_SOS = @MAYBE_SOS@
 # ocm needs lib
 MAYBE_OCM = @MAYBE_OCM@
 # ldms needs lib; optional sos, ocm
@@ -36,7 +34,6 @@ MAYBE_ME = @MAYBE_ME@
 MAYBE_KOMONDOR = @MAYBE_KOMONDOR@
 
 SUBDIRS += $(GPCDSUBDIR) \
-$(MAYBE_SOS) \
 $(MAYBE_LDMS) \
 util
 
@@ -44,7 +41,7 @@ util
 # For now, we ship as we expect to configure.
 # Perhaps all should be included all the time but we surround their
 # make content for dist with enable conditionals.
-DIST_SUBDIRS = $(GPCDSUBDIR) lib $(MAYBE_SOS) ldms util
+DIST_SUBDIRS = $(GPCDSUBDIR) lib ldms util
 # make dist _will_ fail for these unless we mod their .am files
 # so not included in dist.
 NODIST_SUBDIRS = ocm me komondor
