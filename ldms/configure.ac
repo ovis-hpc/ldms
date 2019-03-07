@@ -139,6 +139,7 @@ OPTION_DEFAULT_DISABLE([jobinfo-slurm], [ENABLE_SLURM_JOBINFO])
 OPTION_DEFAULT_DISABLE([spank-plugin], [ENABLE_SPANK_PLUGIN])
 OPTION_DEFAULT_ENABLE([slurm-sampler], [ENABLE_SLURM_SAMPLER])
 OPTION_DEFAULT_DISABLE([papi-sampler], [ENABLE_PAPI_SAMPLER])
+OPTION_DEFAULT_DISABLE([ibm_occ], [ENABLE_IBM_OCC_SAMPLER])
 OPTION_DEFAULT_DISABLE([appinfo], [ENABLE_APPINFO])
 OPTION_DEFAULT_DISABLE([test_sampler], [ENABLE_TEST_SAMPLER])
 dnl test_sampler will also build with --enable-ldms-test
@@ -501,6 +502,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/appinfo_lib/Makefile
 		 src/sampler/contrib/Makefile
 		 src/sampler/contrib/ipmireader/Makefile
+		 src/sampler/ibm_occ/Makefile
 		 src/ldmsd/Makefile
 		 scripts/Makefile
 		 src/test/Makefile

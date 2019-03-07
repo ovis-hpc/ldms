@@ -115,6 +115,10 @@ if ENABLE_SPANK_PLUGIN
 SUBDIRS += spank
 endif
 
+if ENABLE_IBM_OCC_SAMPLER
+SUBDIRS += ibm_occ
+endif
+
 if ENABLE_CRAY_SYSTEM_SAMPLER
 SUBDIRS += cray_system_sampler
 endif
