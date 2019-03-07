@@ -179,6 +179,7 @@ struct zap_ep {
 	pthread_mutex_t lock;
 	zap_ep_state_t state;
 	void *ucontext;
+	int prio;		/* !0 for high priority endpoints */
 
 	sem_t block_sem; /**< Semaphore to support blocking operations */
 
@@ -305,7 +306,8 @@ struct zap_event_queue {
 	pthread_mutex_t mutex; /* queue mutex */
 	pthread_cond_t cond_nonempty; /* nonempty */
 	pthread_cond_t cond_vacant; /* vacant */
-	TAILQ_HEAD(, zap_event_entry) queue; /* queue */
+	TAILQ_HEAD(, zap_event_entry) queue;
+	TAILQ_HEAD(, zap_event_entry) prio_q;
 };
 
 typedef zap_err_t (*zap_get_fn_t)(zap_t *pz, zap_log_fn_t log_fn,

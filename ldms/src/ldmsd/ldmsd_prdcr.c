@@ -136,6 +136,10 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 		free(strgp_ref);
 		strgp_ref = LIST_FIRST(&set->strgp_list);
 	}
+
+	if (set->updt_hint_entry.le_prev)
+		LIST_REMOVE(set, updt_hint_entry);
+
 	free(set->inst_name);
 	free(set);
 }
@@ -174,7 +178,16 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 		if (!rbn)
 			return;
 		list = container_of(rbn, struct ldmsd_updt_hint_set_list, rbn);
+		assert(prd_set->ref_count);
+		if (!prd_set->updt_hint_entry.le_prev)
+			return; /* Already removed. This can happen when
+				 * we receive DIR_DEL before outstanding
+				 * SET_INFO lookup has completed. */
 		LIST_REMOVE(prd_set, updt_hint_entry);
+		prd_set->updt_hint_entry.le_next = NULL;
+		prd_set->updt_hint_entry.le_prev = NULL;
+		ldmsd_prdcr_set_ref_put(prd_set);
+
 		if (LIST_EMPTY(&list->list)) {
 			rbt_del(&prdcr->hint_set_tree, &list->rbn);
 			free(list->rbn.key);
@@ -192,6 +205,7 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 			list = container_of(rbn,
 					struct ldmsd_updt_hint_set_list, rbn);
 		}
+		ldmsd_prdcr_set_ref_get(prd_set);
 		LIST_INSERT_HEAD(&list->list, prd_set, updt_hint_entry);
 	}
 }
@@ -406,7 +420,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
 	} else {
 		ldmsd_log(LDMSD_LCRITICAL, "Receive a duplicated dir_add update of "
 				"the set '%s'.\n", inst_name);
-		assert(0);
+		return;
 	}
 	ldmsd_prdcr_set_ref_get(set); /* It will be put back in lookup_cb */
 	/* Refresh the set with a lookup */
@@ -463,8 +477,12 @@ static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 	for (i = 0; i < dir->set_count; i++) {
 		set = ldmsd_prdcr_set_find(prdcr, dir->set_names[i]);
 		if (!set) {
-			/* We must have added this set before. */
-			assert(0);
+                        /* Received an update, but the set is gone. */
+                        ldmsd_log(LDMSD_LERROR,
+                                  "Ignoring 'dir update' for the set, '%s', which "
+                                  "is not present in the prdcr_set tree.\n",
+                                  dir->set_names[i]);
+                        continue;
 		}
 		ldmsd_prdcr_set_ref_get(set);
 		pthread_mutex_lock(&set->lock);
@@ -553,10 +571,20 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 
 reset_prdcr:
 	prdcr_reset_sets(prdcr);
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
+	switch (prdcr->conn_state) {
+	case LDMSD_PRDCR_STATE_STOPPING:
+		prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+		break;
+	case LDMSD_PRDCR_STATE_DISCONNECTED:
+	case LDMSD_PRDCR_STATE_CONNECTING:
+	case LDMSD_PRDCR_STATE_CONNECTED:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 		ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
 				 0, prdcr->conn_intrvl_us, 0);
+		break;
+	case LDMSD_PRDCR_STATE_STOPPED:
+		assert(0 == "STOPPED shouldn't have xprt event");
+		break;
 	}
 	if (prdcr->xprt)
 		ldms_xprt_put(prdcr->xprt);
@@ -610,6 +638,7 @@ static void prdcr_task_cb(ldmsd_task_t task, void *arg)
 	ldmsd_prdcr_lock(prdcr);
 	switch (prdcr->conn_state) {
 	case LDMSD_PRDCR_STATE_STOPPED:
+	case LDMSD_PRDCR_STATE_STOPPING:
 		ldmsd_task_stop(&prdcr->task);
 		break;
 	case LDMSD_PRDCR_STATE_DISCONNECTED:
@@ -711,12 +740,20 @@ ldmsd_prdcr_new(const char *name, const char *xprt_name,
 			getgid(), 0777);
 }
 
+extern struct rbt *cfgobj_trees[];
+extern pthread_mutex_t *cfgobj_locks[];
+ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
+
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
-	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(prdcr_name);
-	if (!prdcr)
-		return ENOENT;
+	ldmsd_prdcr_t prdcr;
+	pthread_mutex_lock(cfgobj_locks[LDMSD_CFGOBJ_PRDCR]);
+	prdcr = (ldmsd_prdcr_t) __cfgobj_find(prdcr_name, LDMSD_CFGOBJ_PRDCR);
+	if (!prdcr) {
+		rc = ENOENT;
+		goto out_0;
+	}
 
 	ldmsd_prdcr_lock(prdcr);
 	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
@@ -730,17 +767,19 @@ int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out_1;
 	}
-	/* Make sure any outstanding callbacks are complete */
-	ldmsd_task_join(&prdcr->task);
-	/* Put the find reference */
-	ldmsd_prdcr_put(prdcr);
-	/* Drop the lock and drop the create reference */
-	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_put(prdcr);
-	return 0;
+
+	/* removing from the tree */
+	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR], &prdcr->obj.rbn);
+	ldmsd_prdcr_put(prdcr); /* putting down reference from the tree */
+
+	rc = 0;
+	/* let-through */
 out_1:
-	ldmsd_prdcr_put(prdcr);
 	ldmsd_prdcr_unlock(prdcr);
+out_0:
+	pthread_mutex_unlock(cfgobj_locks[LDMSD_CFGOBJ_PRDCR]);
+	if (prdcr)
+		ldmsd_prdcr_put(prdcr); /* `find` reference */
 	return rc;
 }
 
@@ -799,17 +838,27 @@ int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 	if (rc)
 		goto out;
 	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
+		rc = 0; /* already stopped,
+			 * return 0 so that caller knows
+			 * stop succeeds. */
+		goto out;
+	}
+	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPING) {
 		rc = EBUSY;
 		goto out;
 	}
 	if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
 		prdcr_reset_sets(prdcr);
+	ldmsd_task_stop(&prdcr->task);
+	prdcr->obj.perm &= ~LDMSD_PERM_DSTART;
+	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPING;
 	if (prdcr->xprt)
 		ldms_xprt_close(prdcr->xprt);
-	ldmsd_task_stop(&prdcr->task);
+	ldmsd_prdcr_unlock(prdcr);
 	ldmsd_task_join(&prdcr->task);
-	prdcr->obj.perm &= ~LDMSD_PERM_DSTART;
-	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+	ldmsd_prdcr_lock(prdcr);
+	if (!prdcr->xprt)
+		prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
 out:
 	ldmsd_prdcr_unlock(prdcr);
 	return rc;
@@ -843,23 +892,11 @@ int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
 		if (rc)
 			continue;
-		ldmsd_prdcr_lock(prdcr);
-		rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
-		if (rc)
-			goto skip;
-		if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
-			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
-			if (interval_str)
-				prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
-			ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
-					 LDMSD_TASK_F_IMMEDIATE,
-					 prdcr->conn_intrvl_us, 0);
-		}
-	skip:
-		ldmsd_prdcr_unlock(prdcr);
+		if (interval_str)
+			prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
+		__ldmsd_prdcr_start(prdcr, ctxt);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	ldmsd_prdcr_put(prdcr);
 	regfree(&regex);
 	return 0;
 }
@@ -879,25 +916,10 @@ int ldmsd_prdcr_stop_regex(const char *prdcr_regex, char *rep_buf,
 		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
 		if (rc)
 			continue;
-		ldmsd_prdcr_lock(prdcr);
-		rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
-		if (rc)
-			goto skip;
-		if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
-			if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
-				prdcr_reset_sets(prdcr);
-			if (prdcr->xprt)
-				ldms_xprt_close(prdcr->xprt);
-			ldmsd_task_stop(&prdcr->task);
-			ldmsd_task_join(&prdcr->task);
-			prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
-		}
-	skip:
-		ldmsd_prdcr_unlock(prdcr);
+		__ldmsd_prdcr_stop(prdcr, ctxt);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	regfree(&regex);
-	ldmsd_prdcr_put(prdcr);
 	return 0;
 }
 

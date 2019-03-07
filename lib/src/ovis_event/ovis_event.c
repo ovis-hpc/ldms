@@ -60,6 +60,8 @@
 #define ROUND(x, p) ( ((x)+((p)-1))/(p)*(p) )
 #define USEC 1000000
 
+#define OVIS_EVENT_HEAP_SIZE_DEFAULT 16384
+
 static
 void ovis_scheduler_destroy(ovis_scheduler_t m);
 
@@ -225,9 +227,18 @@ loop:
 	goto loop;
 }
 
+static inline int __ovis_event_get_heap_size()
+{
+	char *sz_str = getenv("OVIS_EVENT_HEAP_SIZE");
+	if (!sz_str)
+		return OVIS_EVENT_HEAP_SIZE_DEFAULT;
+	return strtoul(sz_str, NULL, 0);
+}
+
 ovis_scheduler_t ovis_scheduler_new()
 {
 	int rc;
+	uint32_t heap_sz;
 	ovis_scheduler_t m = malloc(sizeof(*m));
 	if (!m)
 		goto out;
@@ -245,7 +256,8 @@ ovis_scheduler_t ovis_scheduler_new()
 	m->refcount = 1;
 	m->state = OVIS_EVENT_MANAGER_INIT;
 
-	m->heap = ovis_event_heap_create(4096);
+	heap_sz = __ovis_event_get_heap_size();
+	m->heap = ovis_event_heap_create(heap_sz);
 	if (!m->heap)
 		goto err;
 
@@ -549,14 +561,20 @@ int ovis_scheduler_event_del(ovis_scheduler_t m, ovis_event_t ev)
 {
 	int rc = 0;
 	ssize_t wb;
+
 	if (ev->param.type & OVIS_EVENT_EPOLL) {
 		/* remove from epoll */
 		struct epoll_event e;
 		e.events = ev->param.epoll_events;
 		e.data.ptr = ev;
 		rc = epoll_ctl(m->efd, EPOLL_CTL_DEL, ev->param.fd, &e);
-		if (rc)
+		if (rc) {
+#ifdef DEBUG
+			printf("ovis_event: %s: epoll_ctl failed. ev->param.fd = %d\n",
+				__func__, ev->param.fd);
+#endif /* DEBUG */
 			goto out;
+		}
 		pthread_mutex_lock(&m->mutex);
 		m->evcount--;
 		pthread_mutex_unlock(&m->mutex);
@@ -614,6 +632,7 @@ int ovis_scheduler_loop(ovis_scheduler_t m, int return_on_empty)
 	int timeout;
 	int i;
 	int rc = 0;
+	int cnt;
 
 	ovis_scheduler_ref_get(m);
 	pthread_mutex_lock(&m->mutex);
@@ -641,26 +660,34 @@ loop:
 	}
 	pthread_mutex_unlock(&m->mutex);
 
-	rc = epoll_wait(m->efd, m->ev, MAX_EPOLL_EVENTS, timeout);
-	assert(rc >= 0 || errno == EINTR);
+	cnt = epoll_wait(m->efd, m->ev, MAX_EPOLL_EVENTS, timeout);
+	if (cnt < 0) {
+		if (errno == EINTR)
+			goto loop;
+		return errno;
+	}
+	if (cnt == 0)
+		goto loop;
+
 	pthread_mutex_lock(&m->mutex);
 	if (m->state == OVIS_EVENT_MANAGER_WAITING)
 		m->state = OVIS_EVENT_MANAGER_RUNNING;
 	pthread_mutex_unlock(&m->mutex);
 
-	for (i = 0; i < rc; i++) {
+	for (i = 0; i < cnt; i++) {
 		rc = ovis_event_term_check(m);
 		if (rc)
 			goto out;
+
 		ev = m->ev[i].data.ptr;
 		ev->cb.type = OVIS_EVENT_EPOLL;
 		ev->cb.epoll_events = m->ev[i].events;
-		if (ev->param.cb_fn) {
-			ev->param.cb_fn(ev);
-		}
 		if (ev->param.type & OVIS_EVENT_TIMEOUT && ev->priv.idx != -1) {
 			/* i/o event has an active timeout */
 			rc = __ovis_event_timer_update(m, ev);
+		}
+		if (ev->param.cb_fn) {
+			ev->param.cb_fn(ev);
 		}
 	}
 

@@ -1,0 +1,17 @@
+[Unit]
+Description = LDMS PAPI Daemon
+Documentation = http://ovis.ca.sandia.gov
+
+[Service]
+Type = forking
+EnvironmentFile = /opt/ovis/etc/ldms/papi-sampler.env
+Environment=HOSTNAME=%H
+ExecStartPre = /bin/mkdir -p /opt/ovis/var/run/ldmsd
+ExecStart = /opt/ovis/sbin/ldmsd \
+		-x ${PAPI_XPRT}:${PAPI_PORT} \
+		-c ${PAPI_CONFIG} \
+		-a ${PAPI_AUTH} \
+		-r /opt/ovis/var/run/ldmsd/papi.pid
+
+[Install]
+WantedBy = default.target

@@ -3253,6 +3253,8 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 out:
 	if (name)
 		free(name);
+	if (updtr)
+		ldmsd_updtr_put(updtr);
 	return rc;
 }
 

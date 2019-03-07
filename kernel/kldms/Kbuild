@@ -1,0 +1,12 @@
+
+CONFIG_LDMS=m
+CONFIG_LDMS_VMSTAT=m
+# CONFIG_LDMS_IBM_PWR=m - requires CONFIG_OF
+# CONFIG_LDMS_GPCDR=m
+
+obj-$(CONFIG_LDMS)		+= kldms.o
+obj-$(CONFIG_LDMS_VMSTAT)	+= kldms_vmstat.o
+obj-$(CONFIG_LDMS_IBM_PWR)	+= kldms_ibm_pwr.o
+# obj-$(CONFIG_LDMS_GPCDR)	+= kldms_gpcdr.o
+
+# kldms_gpcdr-objs		:= kgpcdr.o gpcdr.o ghal.o

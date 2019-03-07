@@ -66,6 +66,7 @@ struct kldms_request {
 		struct kldms_req_hello		hello;
 		struct kldms_req_publish_set	publish;
 		struct kldms_req_unpublish_set	unpub;
+		struct kldms_req_update_set	update;
 	};
 };
 
@@ -97,6 +98,8 @@ struct kldms_file {
 struct kldms_mdef_s {
 	char *name;
 	enum ldms_value_type type;
+	char units[8];
+	uint32_t flags;	/* DATA/MDATA flag */
 	uint32_t count; /* Number of elements in the array if this is of an array type */
 	size_t meta_sz;
 	size_t data_sz;
@@ -138,50 +141,26 @@ typedef struct kldms_metric kldms_metric_t;
 	(_gn) = __cpu_to_le64(__le64_to_cpu((_gn)) + 1); \
 } while (0)
 
-void __ldms_data_gn_inc(struct kldms_set *set)
-{
-	LDMS_GN_INCREMENT(set->ks_data->gn);
-}
-
-static inline int ldms_transaction_begin(kldms_set_t set)
-{
-	struct ldms_data_hdr *dh = set->ks_data;
-	struct timeval tv;
-	dh->trans.flags = LDMS_TRANSACTION_BEGIN;
-	(void)do_gettimeofday(&tv);
-	dh->trans.ts.sec = __cpu_to_le32(tv.tv_sec);
-	dh->trans.ts.usec = __cpu_to_le32(tv.tv_usec);
-	return 0;
-}
-
-static inline int ldms_transaction_end(kldms_set_t set)
-{
-	struct ldms_data_hdr *dh = set->ks_data;
-	struct timeval tv;
-	(void)do_gettimeofday(&tv);
-	dh->trans.dur.sec = tv.tv_sec - __le32_to_cpu(dh->trans.ts.sec);
-	dh->trans.dur.usec = tv.tv_usec - __le32_to_cpu(dh->trans.ts.usec);
-	if ((int32_t)dh->trans.dur.usec < 0) {
-		dh->trans.dur.sec--;
-		dh->trans.dur.usec += 10000000;
-	}
-	dh->trans.dur.sec = __cpu_to_le32(dh->trans.dur.sec);
-	dh->trans.dur.usec = __cpu_to_le32(dh->trans.dur.usec);
-	dh->trans.ts.sec = __cpu_to_le32(tv.tv_sec);
-	dh->trans.ts.usec = __cpu_to_le32(tv.tv_usec);
-	dh->trans.flags = LDMS_TRANSACTION_END;
-	return 0;
-}
-
-
 /*
  * exported KLDMS API
  */
-extern int kldms_schema_metric_add(kldms_schema_t s, const char *name, enum ldms_value_type type);
+extern int kldms_schema_metric_add(kldms_schema_t s, const char *name, enum ldms_value_type type,
+				   const char *units);
+extern int kldms_schema_meta_add(kldms_schema_t s, const char *name, enum ldms_value_type type,
+				 const char *units);
+extern int kldms_schema_metric_array_add(kldms_schema_t s, const char *name, enum ldms_value_type type,
+					 const char *units, uint32_t count);
+extern int kldms_schema_meta_array_add(kldms_schema_t s, const char *name, enum ldms_value_type type,
+				       const char *units, uint32_t count);
+void kldms_metric_array_set_val(kldms_set_t set, int metric_idx, int array_idx, ldms_mval_t src);
 extern void kldms_metric_set(kldms_set_t s, int i, ldms_mval_t v);
 extern kldms_schema_t kldms_schema_new(const char * schema_name);
+extern kldms_schema_t kldms_schema_find(const char *schema_name);
 extern kldms_set_t kldms_set_new(const char *name, kldms_schema_t schema);
 extern void kldms_schema_delete(kldms_schema_t schema);
 extern void kldms_set_delete(kldms_set_t schema);
+extern void kldms_transaction_begin(kldms_set_t s);
+extern void kldms_transaction_end(kldms_set_t s);
+extern void kldms_set_publish(struct kldms_set *set);
 
 #endif

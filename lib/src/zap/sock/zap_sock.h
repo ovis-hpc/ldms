@@ -141,6 +141,7 @@ const char *sock_msg_type_str(sock_msg_type_t t)
  */
 struct sock_msg_hdr {
 	uint16_t msg_type; /**< The request type */
+	uint16_t reserved;
 	uint32_t msg_len;  /**< Length of the entire message, header included. */
 	uint32_t xid;	   /**< Transaction Id to check against reply */
 	uint64_t ctxt;	   /**< User context to be returned in reply */

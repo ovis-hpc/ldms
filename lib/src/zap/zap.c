@@ -351,7 +351,11 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 	if (data_len)
 		memcpy(ictxt->data, ev->data, data_len);
 	zap_get_ep(ep);
-	zap_event_add(ep->event_queue, ep, ictxt);
+	if (zap_event_add(ep->event_queue, ep, ictxt)) {
+		ep->z->log_fn("%s[%d]: event could not be added.",
+			      __func__, __LINE__);
+		zap_put_ep(ep);
+	}
 }
 
 static
@@ -360,6 +364,10 @@ void zap_interpose_event(zap_ep_t ep, void *ctxt)
 	/* delivering real io event callback */
 	struct zap_interpose_ctxt *ictxt = ctxt;
 	DLOG(ep, "%s: ep %p: ictxt %p\n", __func__, ep, ictxt);
+#if defined(ZAP_DEBUG) || defined(DEBUG)
+	if (ep->state == ZAP_EP_CLOSE)
+		default_log("Delivering event after close.\n");
+#endif /* ZAP_DEBUG || DEBUG */
 	ep->app_cb(ep, &ictxt->ev);
 	free(ictxt);
 	zap_put_ep(ep);
@@ -385,6 +393,11 @@ zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 	sem_init(&zep->block_sem, 0, 0);
 	zep->event_queue = __get_least_busy_zap_event_queue();
 	return zep;
+}
+
+void zap_set_priority(zap_ep_t ep, int prio)
+{
+	ep->prio = prio;
 }
 
 zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len)
@@ -584,13 +597,20 @@ int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc)
 void *zap_event_thread_proc(void *arg)
 {
 	struct zap_event_queue *q = arg;
-	struct zap_event_entry *ent;
+	struct zap_event_entry *ent, *pent;
 loop:
 	pthread_mutex_lock(&q->mutex);
-	while (NULL == (ent = TAILQ_FIRST(&q->queue))) {
+	while (NULL == (pent = TAILQ_FIRST(&q->prio_q))
+	       &&
+	       NULL == (ent = TAILQ_FIRST(&q->queue))) {
 		pthread_cond_wait(&q->cond_nonempty, &q->mutex);
 	}
-	TAILQ_REMOVE(&q->queue, ent, entry);
+	if (pent) {
+		TAILQ_REMOVE(&q->prio_q, pent, entry);
+		ent = pent;
+	} else {
+		TAILQ_REMOVE(&q->queue, ent, entry);
+	}
 	q->depth++;
 	pthread_cond_broadcast(&q->cond_vacant);
 	pthread_mutex_unlock(&q->mutex);
@@ -614,7 +634,11 @@ int zap_event_add(struct zap_event_queue *q, zap_ep_t ep, void *ctxt)
 		pthread_cond_wait(&q->cond_vacant, &q->mutex);
 	}
 	q->depth--;
-	TAILQ_INSERT_TAIL(&q->queue, ent, entry);
+	if (ep->prio)
+		TAILQ_INSERT_TAIL(&q->prio_q, ent, entry);
+	else
+		TAILQ_INSERT_TAIL(&q->queue, ent, entry);
+
 	pthread_cond_broadcast(&q->cond_nonempty);
 	pthread_mutex_unlock(&q->mutex);
 	return 0;
@@ -628,6 +652,7 @@ void zap_event_queue_init(struct zap_event_queue *q, int qdepth)
 	pthread_cond_init(&q->cond_nonempty, NULL);
 	pthread_cond_init(&q->cond_vacant, NULL);
 	TAILQ_INIT(&q->queue);
+	TAILQ_INIT(&q->prio_q);
 }
 
 struct zap_event_queue *zap_event_queue_new(int qdepth)

@@ -50,10 +50,16 @@
 #ifndef __LDMS_CORE_H__
 #define __LDMS_CORE_H__
 
+#ifndef __KERNEL__
 #include <stdint.h>
+#include "ovis-ldms-config.h"
+#else
+#define OVIS_FLEX	0
+#define OVIS_FLEX_UNION	0
+#endif
+
 #include <asm/byteorder.h>
 
-#include "ovis-ldms-config.h"
 
 #define LDMS_SETH_F_BE		0x0001
 #define LDMS_SETH_F_LE		0x0002
@@ -138,12 +144,20 @@ struct ldms_version {
 	uint8_t flags;	/* version flags */
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * An interface to get LDMS version.
  * \param[out] v A buffer to store LDMS version.
  */
 
 void ldms_version_get(struct ldms_version *v);
+
+#ifdef __cplusplus
+}
+#endif
 
 /* 4.1.0.0 */
 #define LDMS_VERSION_MAJOR	 0x04

@@ -1,1 +1,0 @@
-SUBDIRS = oparser_sqlite

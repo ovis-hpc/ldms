@@ -17,7 +17,16 @@ EXTRA_DIST = \
 	metric_set_rtr_3 \
 	metric_set_rtr_3_1_c \
 	metric_set_rtr_3_2_c \
-	metric_set_rtr_3_2_s
+	metric_set_rtr_3_2_s \
+	metric_set_rtr_0_4_c \
+	metric_set_rtr_0_4_s \
+	metric_set_rtr_1_4_c \
+	metric_set_rtr_1_4_s \
+	metric_set_rtr_2_4_c \
+	metric_set_rtr_2_4_s \
+	metric_set_rtr_3_4_c \
+	metric_set_rtr_3_4_s
+
 
 MMR_FILES = \
 	$(srcdir)/metric_set_nic \
@@ -38,7 +47,15 @@ MMR_FILES = \
 	$(srcdir)/metric_set_rtr_3 \
 	$(srcdir)/metric_set_rtr_3_1_c \
 	$(srcdir)/metric_set_rtr_3_2_c \
-	$(srcdir)/metric_set_rtr_3_2_s
+	$(srcdir)/metric_set_rtr_3_2_s \
+	$(srcdir)/metric_set_rtr_0_4_c \
+	$(srcdir)/metric_set_rtr_0_4_s \
+	$(srcdir)/metric_set_rtr_1_4_c \
+	$(srcdir)/metric_set_rtr_1_4_s \
+	$(srcdir)/metric_set_rtr_2_4_c \
+	$(srcdir)/metric_set_rtr_2_4_s \
+	$(srcdir)/metric_set_rtr_3_4_c \
+	$(srcdir)/metric_set_rtr_3_4_s
 
 MMR_DIR = $(DESTDIR)$(sysconfdir)/ldms/aries_mmr_set_configs
 install-data-local: $(MMR_FILES)

@@ -55,6 +55,7 @@
 #include <sys/types.h>
 
 #include <zap/zap.h>
+#include <coll/rbt.h>
 
 #include "ldms.h"
 #include "ldms_auth.h"
@@ -111,8 +112,10 @@ struct ldms_rbuf_desc {
 	} type;
 
 	LIST_ENTRY(ldms_rbuf_desc) set_link; /* list of RBD for a set */
-	LIST_ENTRY(ldms_rbuf_desc) xprt_link; /* list of RBD for a transport */
+	struct rbn xprt_rbn; /* rbn for xprt->rbd_rbt */
 };
+
+#define RBN_RBD(rbn) container_of(rbn, struct ldms_rbuf_desc, xprt_rbn)
 
 enum ldms_request_cmd {
 	LDMS_CMD_DIR = 0,
@@ -383,7 +386,7 @@ struct ldms_xprt {
 	/** Transport message logging callback */
 	ldms_log_fn_t log;
 
-	LIST_HEAD(xprt_rbd_list, ldms_rbuf_desc) rbd_list;
+	struct rbt rbd_rbt;
 	LIST_ENTRY(ldms_xprt) xprt_link;
 };
 

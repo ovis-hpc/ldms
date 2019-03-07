@@ -127,7 +127,9 @@ int mm_init(size_t size, size_t grain)
 	if (MAP_FAILED == mmr->start)
 		goto out;
 
+#ifdef DEBUG
 	memset(mmr->start, 0XAA, size);
+#endif
 
 	get_pow2(grain, &mmr->grain, &mmr->grain_bits);
 	mmr->size = size;
@@ -251,7 +253,9 @@ void mm_free(void *d)
 	rbn_init(&p->size_node, &p->count);
 	rbn_init(&p->addr_node, &p->pfx);
 
-	memset(p+1, 0xff, (p->count << mmr->grain_bits) - sizeof(*p));
+#ifdef DEBUG
+	memset(p+1, 0xFF, (p->count << mmr->grain_bits) - sizeof(*p));
+#endif
 
 	/* Put 'p' back in the trees */
 	rbt_ins(&mmr->size_tree, &p->size_node);

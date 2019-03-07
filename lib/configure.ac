@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT([ovis-lib], 4.1.1, ovis-help@sandia.gov)
+AC_INIT([ovis-lib], 4.2.1, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
@@ -62,6 +62,8 @@ OPTION_DEFAULT_ENABLE([ovis_auth], [ENABLE_OVIS_AUTH])
 OPTION_DEFAULT_ENABLE([zap], [ENABLE_ZAP])
 OPTION_DEFAULT_DISABLE([rdma], [ENABLE_RDMA])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
+OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
+OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
 have_zap=0
 
 if test "$disable_zap" != "yes"; then
@@ -98,6 +100,29 @@ AM_CONDITIONAL([ENABLE_libibverbs], [test "$HAVE_libibverbs" = "yes"])
 AM_CONDITIONAL([ENABLE_librdmacm], [test "$HAVE_librdmacm" = "yes"])
 
 AC_DEFINE_UNQUOTED([HAVE_ZAP],["$have_zap"],[configured with zap transport (1) or not (0)])
+
+if test -z "$ENABLE_SOS_TRUE"; then
+	AM_PATH_PYTHON(,,[:])
+	which cython >/dev/null 2>&1 || AC_MSG_ERROR("cython not found")
+	AX_PYTHON_DEVEL()
+	if test "x$WITH_SOS" != "xbuild"; then
+		OCFLAGS=$CFLAGS
+		CFLAGS=-I$SOS_INCDIR
+		AC_CHECK_HEADERS(sos/sos.h,
+			[],
+			AC_MSG_FAILURE([sos/sos.h not found])
+		)
+		AC_CHECK_LIB(sos, sos_container_open,
+			[],
+			AC_MSG_FAILURE(libsos not found: required by --enable-sos),
+			[ $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ]
+		)
+		CFLAGS=$OCFLAGS
+		LIBS=""
+	else
+		AC_MSG_NOTICE([Using staged ovis-sos $OPVIS_SOS_LIB64DIR_FLAG $OVIS_SOS_LIBDIR_FLAG])
+	fi
+fi
 
 with_ssl=0
 have_auth=0
@@ -184,6 +209,9 @@ AC_CONFIG_FILES([ovis-lib.spec
 		src/zap/sock/Makefile
 		src/zap/ugni/Makefile
 		src/zap/test/Makefile
+		bin/Makefile
+		bin/src/Makefile
+		python/Makefile
 		swig/Makefile
 		swig/zap/Makefile
 		swig/ovis_auth/Makefile

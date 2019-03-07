@@ -88,11 +88,11 @@
 #define DEBUG_LOG_RECV_MSG(sep, msg)
 #endif
 
-int init_complete = 0;
+static int init_complete = 0;
 
 static pthread_t io_thread;
 
-ovis_scheduler_t sched;
+static ovis_scheduler_t sched;
 
 static void *io_thread_proc(void *arg);
 
@@ -120,12 +120,12 @@ static void z_sock_buff_cleanup(z_sock_buff_t buff);
 static void z_sock_buff_reset(z_sock_buff_t buff);
 static int z_sock_buff_extend(z_sock_buff_t buff, size_t new_sz);
 
-uint32_t z_last_key;
-struct rbt z_key_tree;
-pthread_mutex_t z_key_tree_mutex;
+static uint32_t z_last_key;
+static struct rbt z_key_tree;
+static pthread_mutex_t z_key_tree_mutex;
 
-LIST_HEAD(, z_sock_ep) z_sock_list = LIST_HEAD_INITIALIZER(0);
-pthread_mutex_t z_sock_list_mutex = PTHREAD_MUTEX_INITIALIZER;
+static LIST_HEAD(, z_sock_ep) z_sock_list = LIST_HEAD_INITIALIZER(0);
+static pthread_mutex_t z_sock_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int z_rbn_cmp(void *a, const void *b)
 {
@@ -704,6 +704,7 @@ z_sock_hdr_init(struct sock_msg_hdr *hdr, uint32_t xid,
 		hdr->xid = __sync_add_and_fetch(&g_xid, 1);
 	else
 		hdr->xid = xid;
+	hdr->reserved = 0;
 	hdr->msg_type = htons(type);
 	hdr->msg_len = htonl(len);
 	hdr->ctxt = ctxt;
@@ -1068,7 +1069,12 @@ static process_sep_msg_fn_t process_sep_msg_fns[SOCK_MSG_TYPE_LAST] = {
 static zap_err_t __sock_send_connect(struct z_sock_ep *sep, char *buf, size_t len);
 
 /*
- * This is the callback function for non-listening endpoints.
+ * This is the callback function for connecting/connected endpoints.
+ *
+ * This function queues events to the interpose event queues. The
+ * priority of events queued is write, read, disconnect. This order is
+ * important to avoid queuing a disconnect prior to the last
+ * send/recv.
  */
 static void sock_ev_cb(ovis_event_t ev)
 {
@@ -1076,15 +1082,8 @@ static void sock_ev_cb(ovis_event_t ev)
 
 	zap_get_ep(&sep->ep);
 	DEBUG_LOG(sep, "ep: %p, sock_ev_cb() -- BEGIN --\n", sep);
-	if (ev->cb.epoll_events & (EPOLLERR|EPOLLHUP)) {
-		/* for debugging */
-		int err;
-		socklen_t err_len = sizeof(err);
-		getsockopt(ev->param.fd, SOL_SOCKET, SO_ERROR, &err, &err_len);
-		sock_event(ev);
-		goto out;
-	}
 
+	/* Handle write */
 	if (ev->cb.epoll_events & EPOLLOUT) {
 		pthread_mutex_lock(&sep->ep.lock);
 		if (sep->sock_connected) {
@@ -1100,8 +1099,24 @@ static void sock_ev_cb(ovis_event_t ev)
 		}
 	}
 
+	/* Handle read */
 	if (ev->cb.epoll_events & EPOLLIN) {
 		sock_read(ev);
+	}
+
+	/* Handle disconnect
+	 *
+	 * This must be last to avoid disconnecting before
+	 * sending/receiving all data
+	 */
+	if (ev->cb.epoll_events & (EPOLLERR|EPOLLHUP)) {
+		int err;
+		socklen_t err_len = sizeof(err);
+		getsockopt(ev->param.fd, SOL_SOCKET, SO_ERROR, &err, &err_len);
+		DEBUG_LOG(sep, "ep: %p, sock_ev_cb() events %04x err %d\n",
+			  sep, ev->cb.epoll_events, err);
+		sock_event(ev);
+		goto out;
 	}
  out:
 	DEBUG_LOG(sep, "ep: %p, sock_ev_cb() -- END --\n", sep);
@@ -1120,7 +1135,7 @@ static void sock_connect(ovis_event_t ev)
 	sep->conn_data = NULL;
 	sep->conn_data_len = 0;
 	if (zerr) {
-		sock_event(ev);
+		shutdown(sep->sock, SHUT_RDWR);
 	}
 
 	return;
@@ -1188,8 +1203,8 @@ static void sock_write(ovis_event_t ev)
 	return;
 
  err:
+	shutdown(sep->sock, SHUT_RDWR);
 	pthread_mutex_unlock(&sep->ep.lock);
-	sock_event(ev);
 }
 
 #define min_t(t, x, y) (t)((t)x < (t)y?(t)x:(t)y)
@@ -1271,7 +1286,7 @@ static void sock_read(ovis_event_t ev)
 	LOG_(sep, "Protocol error: version = %hhu.%hhu.%hhu.%hhu\n",
 			ver.major, ver.minor, ver.patch, ver.flags);
  bad:
- 	/* shutdown the connection */
+	/* shutdown the connection */
 	process_sep_read_error(sep);
 }
 
@@ -1407,40 +1422,13 @@ static void sock_event(ovis_event_t ev)
 	struct z_sock_ep *sep = ev->param.ctxt;
 	struct zap_event zev = { 0 };
 
-	int do_cb;
+	int do_cb = 0;
+	int drop_conn_ref = 0;
+
 	pthread_mutex_lock(&sep->ep.lock);
+
+	assert(&sep->ev == ev);
 	ovis_scheduler_event_del(sched, &sep->ev);
-	switch (sep->ep.state) {
-	case ZAP_EP_ACCEPTING:
-		sep->ep.state = ZAP_EP_ERROR;
-		if (sep->app_accepted) {
-			zev.type = ZAP_EVENT_CONNECT_ERROR;
-			do_cb = 1;
-		} else {
-			do_cb = 0;
-		}
-		break;
-	case ZAP_EP_CONNECTING:
-		zev.type = ZAP_EVENT_CONNECT_ERROR;
-		sep->ep.state = ZAP_EP_ERROR;
-		do_cb = 1;
-		break;
-	case ZAP_EP_CONNECTED:	/* Peer closed. */
-		sep->ep.state = ZAP_EP_PEER_CLOSE;
-	case ZAP_EP_CLOSE:	/* App called close. */
-		zev.type = ZAP_EVENT_DISCONNECTED;
-		do_cb = 1;
-		break;
-	case ZAP_EP_ERROR:
-		do_cb = 0;
-		break;
-	default:
-		LOG_(sep, "Unexpected state for EOF %d.\n",
-		     sep->ep.state);
-		sep->ep.state = ZAP_EP_ERROR;
-		do_cb = 0;
-		break;
-	}
 
 	/* Complete all outstanding I/O with ZEP_ERR_FLUSH */
 	while (!TAILQ_EMPTY(&sep->io_q)) {
@@ -1462,13 +1450,48 @@ static void sock_event(ovis_event_t ev)
 			.context = (void *)io->hdr.ctxt
 		};
 		free(io);	/* Don't put back on free_q, we're closing */
+		pthread_mutex_unlock(&sep->ep.lock);
 		sep->ep.cb(&sep->ep, &zev);
+		pthread_mutex_lock(&sep->ep.lock);
 	}
+
+	switch (sep->ep.state) {
+	case ZAP_EP_ACCEPTING:
+		sep->ep.state = ZAP_EP_ERROR;
+		if (sep->app_accepted) {
+			zev.type = ZAP_EVENT_CONNECT_ERROR;
+			do_cb = drop_conn_ref = 1;
+		}
+		break;
+	case ZAP_EP_CONNECTING:
+		zev.type = ZAP_EVENT_CONNECT_ERROR;
+		sep->ep.state = ZAP_EP_ERROR;
+		do_cb = drop_conn_ref = 1;
+		break;
+	case ZAP_EP_CONNECTED:	/* Peer closed. */
+		sep->ep.state = ZAP_EP_PEER_CLOSE;
+	case ZAP_EP_CLOSE:	/* App called close. */
+		zev.type = ZAP_EVENT_DISCONNECTED;
+		do_cb = drop_conn_ref = 1;
+		break;
+	case ZAP_EP_ERROR:
+		do_cb = 0;
+		break;
+	default:
+		LOG_(sep, "Unexpected state for EOF %d.\n",
+		     sep->ep.state);
+		sep->ep.state = ZAP_EP_ERROR;
+		do_cb = 0;
+		break;
+	}
+
 	pthread_mutex_unlock(&sep->ep.lock);
 	if (do_cb)
 		sep->ep.cb((void*)sep, &zev);
 
-	zap_put_ep(&sep->ep); /* Taken when connect or accept */
+	if (drop_conn_ref)
+		/* Taken in z_sock_connect and process_sep_msg_accepted */
+		zap_put_ep(&sep->ep);
 	return;
 }
 
@@ -1633,14 +1656,12 @@ static int init_once()
 	z_key_tree.root = NULL;
 	z_key_tree.comparator = z_rbn_cmp;
 	pthread_mutex_init(&z_key_tree_mutex, NULL);
-	atexit(z_sock_cleanup);
+	// atexit(z_sock_cleanup);
 	return 0;
 
  err_1:
-	if (sched) {
-		ovis_scheduler_free(sched);
-		sched = NULL;
-	}
+	ovis_scheduler_free(sched);
+	sched = NULL;
 	return rc;
 }
 
@@ -1675,10 +1696,18 @@ static void z_sock_destroy(zap_ep_t ep)
 {
 	struct z_sock_io *io;
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
+	z_sock_send_wr_t wr;
 
 #ifdef DEBUG
 	ep->z->log_fn("SOCK: destroying endpoint %p\n", ep);
 #endif
+
+	while (!TAILQ_EMPTY(&sep->sq)) {
+		wr = TAILQ_FIRST(&sep->sq);
+		TAILQ_REMOVE(&sep->sq, wr, link);
+		free(wr);
+	}
+
 	if (sep->conn_data)
 		free(sep->conn_data);
 	if (sep->sock > -1) {
@@ -1934,6 +1963,8 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 
 	if (!init_complete && init_once())
 		goto err;
+
+	pthread_atfork(NULL, NULL, (void*)init_once);
 
 	z = calloc(1, sizeof (*z));
 	if (!z)

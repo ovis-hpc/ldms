@@ -197,14 +197,16 @@ typedef struct ldmsd_prdcr {
 	long conn_intrvl_us;	/* connect interval */
 
 	enum ldmsd_prdcr_state {
-		/** Producer is disabled and idle */
+		/** Producer task has stopped & no outstanding xprt */
 		LDMSD_PRDCR_STATE_STOPPED,
-		/** Ready for connect attempts */
+		/** Ready for connect attempts (no outstanding xprt) */
 		LDMSD_PRDCR_STATE_DISCONNECTED,
 		/** Connection request is outstanding */
 		LDMSD_PRDCR_STATE_CONNECTING,
 		/** Connect complete */
 		LDMSD_PRDCR_STATE_CONNECTED,
+		/** Waiting for task join and xprt cleanup */
+		LDMSD_PRDCR_STATE_STOPPING,
 	} conn_state;
 
 	enum ldmsd_prdcr_type {
@@ -349,6 +351,8 @@ typedef struct ldmsd_updtr {
 		LDMSD_UPDTR_STATE_STOPPED = 0,
 		/** Ready for update attempts */
 		LDMSD_UPDTR_STATE_RUNNING,
+		/** Stopping, waiting for callback tasks to finish */
+		LDMSD_UPDTR_STATE_STOPPING,
 	} state;
 
 	/*

@@ -584,8 +584,8 @@ static void ugni_sock_write(ovis_event_t ev)
 	return;
 
  err:
+	__shutdown_on_error(uep);
 	pthread_mutex_unlock(&uep->ep.lock);
-	ugni_sock_event(ev);
 }
 
 /**
@@ -595,9 +595,7 @@ static void process_uep_msg_unknown(struct z_ugni_ep *uep)
 {
 	LOG_(uep, "zap_ugni: Unknown zap message.\n");
 	pthread_mutex_lock(&uep->ep.lock);
-	if (uep->ep.state == ZAP_EP_CONNECTED)
-		uep->ep.state = ZAP_EP_CLOSE;
-	shutdown(uep->sock, SHUT_RDWR);
+	__shutdown_on_error(uep);
 	pthread_mutex_unlock(&uep->ep.lock);
 }
 
@@ -628,6 +626,7 @@ static void process_uep_msg_rendezvous(struct z_ugni_ep *uep)
 	msg = (void*)uep->rbuff->data;
 
 	msg->hdr.msg_len = ntohl(msg->hdr.msg_len);
+	msg->hdr.reserved = 0;
 	msg->hdr.msg_type = ntohs(msg->hdr.msg_type);
 	msg->addr = be64toh(msg->addr);
 	msg->acc = ntohl(msg->acc);
@@ -675,6 +674,9 @@ err0:
 	return;
 }
 
+static zap_err_t
+__ugni_send(struct z_ugni_ep *uep, enum zap_ugni_msg_type type,
+						char *buf, size_t len);
 static void process_uep_msg_accepted(struct z_ugni_ep *uep)
 {
 	ZAP_ASSERT(uep->ep.state == ZAP_EP_CONNECTING, &uep->ep,
@@ -683,10 +685,12 @@ static void process_uep_msg_accepted(struct z_ugni_ep *uep)
 			__func__, zap_ep_state_str(uep->ep.state));
 	struct zap_event ev;
 	struct zap_ugni_msg_accepted *msg;
+	zap_err_t zerr;
 
 	msg = (void*)uep->rbuff->data;
 
 	msg->hdr.msg_len = ntohl(msg->hdr.msg_len);
+	msg->hdr.reserved = 0;
 	msg->hdr.msg_type = ntohs(msg->hdr.msg_type);
 	msg->data_len = ntohl(msg->data_len);
 	msg->inst_id = ntohl(msg->inst_id);
@@ -694,6 +698,19 @@ static void process_uep_msg_accepted(struct z_ugni_ep *uep)
 
 	DLOG_(uep, "ACCEPTED received: pe_addr: %#x, inst_id: %#x\n",
 			msg->pe_addr, msg->inst_id);
+
+#ifdef ZAP_UGNI_DEBUG
+	char *is_exit = getenv("ZAP_UGNI_CONN_EST_BEFORE_ACK_N_BINDING_TEST");
+	if (is_exit)
+		exit(0);
+#endif /* ZAP_UGNI_DEBUG */
+
+	pthread_mutex_lock(&uep->ep.lock);
+	zerr = __ugni_send(uep, ZAP_UGNI_MSG_ACK_ACCEPTED, NULL, 0);
+	pthread_mutex_unlock(&uep->ep.lock);
+	if (zerr)
+		goto err;
+
 	gni_return_t grc;
 	grc = GNI_EpBind(uep->gni_ep, msg->pe_addr, msg->inst_id);
 	if (grc) {
@@ -701,22 +718,27 @@ static void process_uep_msg_accepted(struct z_ugni_ep *uep)
 		goto err;
 	}
 
+#ifdef ZAP_UGNI_DEBUG
+	is_exit = getenv("ZAP_UGNI_CONN_EST_BEFORE_ACK_AFTER_BINDING_TEST");
+	if (is_exit)
+		exit(0);
+#endif /* ZAP_UGNI_DEBUG */
+
+	uep->ugni_ep_bound = 1;
 	ev.type = ZAP_EVENT_CONNECTED;
 	ev.data_len = msg->data_len;
 	ev.data = (msg->data_len)?((void*)msg->data):(NULL);
-	if (!zap_ep_change_state(&uep->ep, ZAP_EP_CONNECTING, ZAP_EP_CONNECTED))
+	if (!zap_ep_change_state(&uep->ep, ZAP_EP_CONNECTING, ZAP_EP_CONNECTED)) {
 		uep->ep.cb((void*)uep, &ev);
-	else
+	} else {
 		LOG_(uep, "'Accept' message received in unexpected state %d.\n",
 		     uep->ep.state);
+		goto err;
+	}
 	return;
 
 err:
-	ev.type = ZAP_EVENT_CONNECT_ERROR;
-	ev.data = NULL;
-	ev.data_len = 0;
-	ev.status = ZAP_ERR_RESOURCE;
-	uep->ep.cb(&uep->ep, &ev);
+	shutdown(uep->sock, SHUT_RDWR);
 	return;
 }
 
@@ -746,6 +768,7 @@ static void process_uep_msg_connect(struct z_ugni_ep *uep)
 	}
 
 	msg->hdr.msg_len = ntohl(msg->hdr.msg_len);
+	msg->hdr.reserved = 0;
 	msg->hdr.msg_type = ntohs(msg->hdr.msg_type);
 	msg->data_len = ntohl(msg->data_len);
 	msg->inst_id = ntohl(msg->inst_id);
@@ -759,6 +782,7 @@ static void process_uep_msg_connect(struct z_ugni_ep *uep)
 		LOG_(uep, "GNI_EpBind() error: %s\n", gni_ret_str(grc));
 		goto err1;
 	}
+	uep->ugni_ep_bound = 1;
 	pthread_mutex_unlock(&uep->ep.lock);
 
 	ev.type = ZAP_EVENT_CONNECT_REQUEST;
@@ -794,13 +818,32 @@ static void process_uep_msg_rejected(struct z_ugni_ep *uep)
 	return;
 }
 
+static void process_uep_msg_ack_accepted(struct z_ugni_ep *uep)
+{
+	int rc;
+
+	rc = zap_ep_change_state(&uep->ep, ZAP_EP_ACCEPTING, ZAP_EP_CONNECTED);
+	if (rc != ZAP_ERR_OK) {
+		shutdown(uep->sock, SHUT_RDWR);
+		return;
+	}
+	struct zap_event ev = {
+		.type = ZAP_EVENT_CONNECTED,
+		.status = ZAP_ERR_OK,
+	};
+	zap_get_ep(&uep->ep); /* Release when receive disconnect/error event */
+	uep->ep.cb(&uep->ep, &ev);
+	return;
+}
+
 typedef void(*process_uep_msg_fn_t)(struct z_ugni_ep*);
 process_uep_msg_fn_t process_uep_msg_fns[] = {
-	[ZAP_UGNI_MSG_REGULAR]     =  process_uep_msg_regular,
-	[ZAP_UGNI_MSG_RENDEZVOUS]  =  process_uep_msg_rendezvous,
-	[ZAP_UGNI_MSG_ACCEPTED]    =  process_uep_msg_accepted,
-	[ZAP_UGNI_MSG_CONNECT]    =  process_uep_msg_connect,
-	[ZAP_UGNI_MSG_REJECTED]   = process_uep_msg_rejected,
+	[ZAP_UGNI_MSG_REGULAR]      =  process_uep_msg_regular,
+	[ZAP_UGNI_MSG_RENDEZVOUS]   =  process_uep_msg_rendezvous,
+	[ZAP_UGNI_MSG_ACCEPTED]     =  process_uep_msg_accepted,
+	[ZAP_UGNI_MSG_CONNECT]      =  process_uep_msg_connect,
+	[ZAP_UGNI_MSG_REJECTED]     =  process_uep_msg_rejected,
+	[ZAP_UGNI_MSG_ACK_ACCEPTED] =  process_uep_msg_ack_accepted,
 };
 
 static int __recv_msg(struct z_ugni_ep *uep)
@@ -916,7 +959,8 @@ static void ugni_sock_read(ovis_event_t ev)
 		switch (uep->ep.state) {
 		case ZAP_EP_ACCEPTING:
 			/* expecting only `connect` message */
-			if (msg_type != ZAP_UGNI_MSG_CONNECT) {
+			if ((msg_type != ZAP_UGNI_MSG_CONNECT) &&
+			      (msg_type != ZAP_UGNI_MSG_ACK_ACCEPTED)) {
 				/* invalid */
 				pthread_mutex_unlock(&uep->ep.lock);
 				goto bad;
@@ -935,10 +979,11 @@ static void ugni_sock_read(ovis_event_t ev)
 			/* good */
 			break;
 		case ZAP_EP_CLOSE:
-			assert(0 == "sock_read() bad ep state (ZAP_EP_CLOSE)");
-			break;
 		case ZAP_EP_ERROR:
-			assert(0 == "sock_read() bad ep state (ZAP_EP_ERROR)");
+			/*
+			 * This could happened b/c the read event has not been
+			 * disabled yet. Process the received message as usual.
+			 */
 			break;
 		case ZAP_EP_INIT:
 			assert(0 == "bad state (ZAP_EP_INIT)");
@@ -965,7 +1010,9 @@ static void ugni_sock_read(ovis_event_t ev)
 	} while (1);
 	return;
  bad:
-	ugni_sock_event(ev);
+	pthread_mutex_lock(&uep->ep.lock);
+	__shutdown_on_error(uep);
+	pthread_mutex_unlock(&uep->ep.lock);
 }
 
 static void *io_thread_proc(void *arg)
@@ -980,8 +1027,9 @@ static void *io_thread_proc(void *arg)
 	return NULL;
 }
 
-static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe)
+static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe_)
 {
+	gni_cq_entry_t cqe = cqe_;
 	gni_return_t grc;
 	gni_post_descriptor_t *post;
 	int count = 0;
@@ -1240,7 +1288,7 @@ static int __exceed_disconn_ev_timeout(struct z_ugni_ep *uep)
 	return 0;
 }
 
-static void __deliver_disconn_ev(struct z_ugni_ep *uep)
+static void __deliver_ev(struct z_ugni_ep *uep)
 {
 	/* Deliver the disconnected event */
 	pthread_mutex_lock(&z_ugni_list_mutex);
@@ -1269,58 +1317,37 @@ static void __deliver_disconn_ev(struct z_ugni_ep *uep)
 	}
 	pthread_mutex_unlock(&uep->ep.lock);
 	pthread_mutex_unlock(&z_ugni_list_mutex);
-	ZAP_ASSERT(uep->conn_ev.type == ZAP_EVENT_DISCONNECTED, &uep->ep,
-			"%s: uep->conn_ev.type (%s) is not ZAP_EVENT_"
-			"DISCONNECTED\n", __func__,
+	ZAP_ASSERT(uep->conn_ev.type == ZAP_EVENT_DISCONNECTED ||
+			uep->conn_ev.type == ZAP_EVENT_CONNECT_ERROR, &uep->ep,
+			"%s: uep->conn_ev.type (%s) is neither ZAP_EVENT_"
+			"DISCONNECTED nor ZAP_EVENT_CONNECT_ERROR\n", __func__,
 			zap_event_str(uep->conn_ev.type));
-	/* If we reach here with conn_ev, we have a deferred disconnect event */
-	/* the disconnect path in ugni_sock_event()
-	 * has already prep conn_ev for us. */
+	/*
+	 * If we reach here with conn_ev, we have a deferred disconnect event
+	 * the disconnect path in ugni_sock_event() has already prep conn_ev for us.
+	 */
 	/* Sending DISCONNECTED event to application */
 	uep->ep.cb((void*)uep, &uep->conn_ev);
 	zap_put_ep(&uep->ep);
 }
 
-void __ugni_defer_disconnected_event(struct z_ugni_ep *uep);
-static void __unbind_and_deliver_disconn_ev(struct z_ugni_ep *uep)
-{
-	__sync_add_and_fetch(&uep->unbind_count, 1);
-	gni_return_t grc = GNI_EpUnbind(uep->gni_ep);
-	if (grc) {
-		if (!__exceed_disconn_ev_timeout(uep)) {
-			DLOG_(uep, "GNI_EpUnbind() error: %s\n",
-					gni_ret_str(grc));
-			/*
-			 * Defer the disconnected event as long as
-			 * we cannot unbind the endpoint and not exceeding
-			 * the disconnect event delivering timeout.
-			 */
-			__ugni_defer_disconnected_event(uep);
-			return;
-		} else {
-			DLOG_(uep, "Give up unbinding after %d retries .. delivering "
-				"the disconnected event.\n", uep->unbind_count);
-		}
-	} else {
-		DLOG_(uep, "Delivering the disconnected event after calling "
-			"EpUnbind() %d times\n", uep->unbind_count);
-	}
-	__deliver_disconn_ev(uep);
-}
-
-void __deferred_disconnected_cb(ovis_event_t ev)
+void __deferred_delivering_cb(ovis_event_t ev)
 {
 	struct z_ugni_ep *uep = ev->param.ctxt;
+	if (!LIST_EMPTY(&uep->post_desc_list))
+		return; /* There are still outstanding rdma ops.
+			 * NOTE: The timeout event is automatically re-armed
+			 * until it is deleted from the scheduler. */
 	ovis_scheduler_event_del(io_sched, ev);
-	__unbind_and_deliver_disconn_ev(uep);
+	__deliver_ev(uep);
 }
 
-void __ugni_defer_disconnected_event(struct z_ugni_ep *uep)
+void __ugni_defer_delivering_event(struct z_ugni_ep *uep)
 {
 	int rc;
 	DLOG("defer_disconnected: uep %p\n", uep);
-	pthread_mutex_lock(&uep->ep.lock);
 #ifdef DEBUG
+	pthread_mutex_lock(&uep->ep.lock);
 	pthread_mutex_lock(&deferred_list_mutex);
 	if (uep->deferred_link.le_prev == 0) {
 		/* It is not in the deferred list yet ... add it in. */
@@ -1328,9 +1355,13 @@ void __ugni_defer_disconnected_event(struct z_ugni_ep *uep)
 		LIST_INSERT_HEAD(&deferred_list, uep, deferred_link);
 	}
 	pthread_mutex_unlock(&deferred_list_mutex);
-#endif /* DEBUG */
 	pthread_mutex_unlock(&uep->ep.lock);
-	/* NOTE: uep->deferred_ev initialization is in z_ugni_new() */
+#endif /* DEBUG */
+	OVIS_EVENT_INIT(&uep->deferred_ev);
+	uep->deferred_ev.param.type = OVIS_EVENT_TIMEOUT;
+	uep->deferred_ev.param.timeout.tv_sec = zap_ugni_unbind_timeout;
+	uep->deferred_ev.param.cb_fn = __deferred_delivering_cb;
+	uep->deferred_ev.param.ctxt = uep;
 	rc = ovis_scheduler_event_add(io_sched, &uep->deferred_ev);
 	assert(rc == 0);
 }
@@ -1338,11 +1369,10 @@ void __ugni_defer_disconnected_event(struct z_ugni_ep *uep)
 static void ugni_sock_ev_cb(ovis_event_t ev)
 {
 	struct z_ugni_ep *uep = ev->param.ctxt;
-
-	if (ev->cb.epoll_events & (EPOLLERR|EPOLLHUP)) {
-		ugni_sock_event(ev);
-		return;
-	}
+#if defined(ZAP_DEBUG) || defined(DEBUG)
+	uep->epoll_record[uep->epoll_record_curr++] = ev->cb.epoll_events;
+	uep->epoll_record_curr %= UEP_EPOLL_RECORD_SZ;
+#endif /* ZAP_DEBUG || DEBUG */
 
 	if (ev->cb.epoll_events & EPOLLOUT) {
 		if (uep->sock_connected) {
@@ -1352,12 +1382,14 @@ static void ugni_sock_ev_cb(ovis_event_t ev)
 			uep->sock_connected = 1;
 			ugni_sock_connect(ev);
 		}
-		return;
 	}
 
 	if (ev->cb.epoll_events & EPOLLIN) {
 		ugni_sock_read(ev);
-		return;
+	}
+
+	if ((ev->cb.epoll_events & (EPOLLERR|EPOLLHUP))) {
+		ugni_sock_event(ev);
 	}
 }
 
@@ -1365,17 +1397,25 @@ static void ugni_sock_connect(ovis_event_t ev)
 {
 	zap_err_t zerr;
 	struct z_ugni_ep *uep = ev->param.ctxt;
-
+#ifdef ZAP_UGNI_DEBUG
+	char *is_exit = getenv("ZAP_UGNI_CONN_EST_BEFORE_CONNECT_MSG_TEST");
+	if (is_exit)
+		exit(0);
+#endif /* ZAP_UGNI_DEBUG */
 	pthread_mutex_lock(&uep->ep.lock);
 	zerr = __ugni_send_connect(uep, uep->conn_data, uep->conn_data_len);
+	if (zerr)
+		__shutdown_on_error(uep);
 	pthread_mutex_unlock(&uep->ep.lock);
+#ifdef ZAP_UGNI_DEBUG
+	is_exit = getenv("ZAP_UGNI_CONN_EST_AFTER_CONNECT_MSG_TEST");
+	if (is_exit)
+		exit(0);
+#endif /* ZAP_UGNI_DEBUG */
 	if (uep->conn_data)
 		free(uep->conn_data);
 	uep->conn_data = NULL;
 	uep->conn_data_len = 0;
-	if (zerr) {
-		ugni_sock_event(ev);
-	}
 	return;
 }
 
@@ -1393,7 +1433,13 @@ static void ugni_sock_event(ovis_event_t ev)
 	switch (uep->ep.state) {
 	case ZAP_EP_ACCEPTING:
 		uep->ep.state = ZAP_EP_ERROR;
-		goto no_cb;
+		if (uep->app_accepted) {
+			zev->type = ZAP_EVENT_CONNECT_ERROR;
+		} else {
+			/* app has rejected this, or doesn't know about this */
+			goto no_cb;
+		}
+		break;
 	case ZAP_EP_CONNECTING:
 		zev->type = ZAP_EVENT_CONNECT_ERROR;
 		uep->ep.state = ZAP_EP_ERROR;
@@ -1417,19 +1463,18 @@ static void ugni_sock_event(ovis_event_t ev)
 	}
 	DLOG_(uep, "%s: ep %p: state %s\n", __func__, uep,
 				__zap_ep_state_str[uep->ep.state]);
-	if (LIST_EMPTY(&uep->post_desc_list)) {
-		call_cb = 1;
+	if (uep->ugni_ep_bound) {
+		gni_return_t grc = GNI_EpUnbind(uep->gni_ep);
+		if (grc)
+			DLOG_(uep, "GNI_EpUnbind() error: %s\n", gni_ret_str(grc));
 	}
 	pthread_mutex_unlock(&uep->ep.lock);
 	if (call_cb) {
-		if (zev->type == ZAP_EVENT_DISCONNECTED) {
-			__unbind_and_deliver_disconn_ev(uep);
-		} else {
-			uep->ep.cb((void*)uep, zev);
-			zap_put_ep(&uep->ep);
-		}
+		__deliver_ev(uep);
 	} else {
-		__ugni_defer_disconnected_event(uep);
+		/* Defer to give time to uGNI to flush the outstanding
+		 * completion events */
+		__ugni_defer_delivering_event(uep);
 	}
 	return;
 no_cb:
@@ -1505,7 +1550,6 @@ static void __z_ugni_conn_request(ovis_event_t ev)
 		LOG_(uep, "__sock_nonblock() error %d:"
 			  " in %s at %s:%d\n",
 				zerr, __func__, __FILE__, __LINE__);
-		new_uep->ep.state = ZAP_EP_ERROR;
 		/* synchronous error */
 		zap_free(new_ep);
 	}
@@ -1522,7 +1566,6 @@ static void __z_ugni_conn_request(ovis_event_t ev)
 		LOG_(uep, "ovis_scheduler_event_add() error %d:"
 			  " in %s at %s:%d\n",
 				zerr, __func__, __FILE__, __LINE__);
-		new_uep->ep.state = ZAP_EP_ERROR;
 		/* synchronous error */
 		zap_free(new_ep);
 	}
@@ -2190,12 +2233,6 @@ zap_ep_t z_ugni_new(zap_t z, zap_cb_fn_t cb)
 	uep->rbuff->len = 0;
 	uep->rbuff->alen = ZAP_UGNI_INIT_RECV_BUFF_SZ - sizeof(*uep->rbuff);
 
-	OVIS_EVENT_INIT(&uep->deferred_ev);
-	uep->deferred_ev.param.type = OVIS_EVENT_TIMEOUT;
-	uep->deferred_ev.param.timeout.tv_sec = zap_ugni_unbind_timeout;
-	uep->deferred_ev.param.cb_fn = __deferred_disconnected_cb;
-	uep->deferred_ev.param.ctxt = uep;
-
 	STAILQ_INIT(&uep->sq);
 	LIST_INIT(&uep->post_desc_list);
 	grc = GNI_EpCreate(_dom.nic, _dom.cq, &uep->gni_ep);
@@ -2234,6 +2271,7 @@ static void z_ugni_destroy(zap_ep_t ep)
 {
 	struct z_ugni_ep *uep = (void*)ep;
 	gni_return_t grc;
+	struct zap_ugni_send_wr *wr;
 	DLOG_(uep, "destroying endpoint %p\n", uep);
 	pthread_mutex_lock(&z_ugni_list_mutex);
 	ZUGNI_LIST_REMOVE(uep, link);
@@ -2242,6 +2280,16 @@ static void z_ugni_destroy(zap_ep_t ep)
 		zap_ugni_ep_id[uep->ep_id] = 0;
 #endif /* DEBUG */
 	pthread_mutex_unlock(&z_ugni_list_mutex);
+
+	while (!STAILQ_EMPTY(&uep->sq)) {
+		wr = STAILQ_FIRST(&uep->sq);
+		STAILQ_REMOVE_HEAD(&uep->sq, link);
+		free(wr);
+	}
+
+	if (uep->rbuff)
+		free(uep->rbuff);
+
 	if (uep->conn_data) {
 		free(uep->conn_data);
 		uep->conn_data = 0;
@@ -2291,28 +2339,25 @@ zap_err_t z_ugni_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 
 	if (uep->ep.state != ZAP_EP_ACCEPTING) {
 		zerr = ZAP_ERR_ENDPOINT;
-		goto err_0;
+		goto err;
 	}
 
 	uep->ep.cb = cb;
 
 	zerr = __ugni_send_accept(uep, data, data_len);
-	if (zerr)
-		goto err_1;
-
-	uep->ep.state = ZAP_EP_CONNECTED;
+	if (zerr) {
+		/*
+		 * shutdown() and return ZAP_ERR_OK
+		 * and let the ugni_sock_event()
+		 * deliver the CONNECT_ERROR event and cleanup and unbind the endpoint.
+		 * This is to avoid having multiple cleanup path.
+		 */
+		shutdown(uep->sock, SHUT_RDWR);
+	}
+	uep->app_accepted = 1;
 	pthread_mutex_unlock(&uep->ep.lock);
-	struct zap_event ev = {
-		.type = ZAP_EVENT_CONNECTED,
-		.status = ZAP_ERR_OK,
-	};
-	zap_get_ep(&uep->ep); /* Release when disconnect */
-	uep->ep.cb(&uep->ep, &ev);
 	return ZAP_ERR_OK;
-err_1:
-	uep->ep.state = ZAP_EP_ERROR;
-	shutdown(uep->sock, SHUT_RDWR);
-err_0:
+err:
 	pthread_mutex_unlock(&uep->ep.lock);
 	return zerr;
 }
@@ -2330,7 +2375,6 @@ static zap_err_t z_ugni_reject(zap_ep_t ep, char *data, size_t data_len)
 	pthread_mutex_unlock(&uep->ep.lock);
 	return ZAP_ERR_OK;
 err:
-	uep->ep.state = ZAP_EP_ERROR;
 	shutdown(uep->sock, SHUT_RDWR);
 	pthread_mutex_unlock(&uep->ep.lock);
 	return zerr;

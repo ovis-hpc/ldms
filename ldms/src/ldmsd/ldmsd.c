@@ -78,6 +78,7 @@
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
 #include "config.h"
+#include "kldms_req.h"
 
 #include "ovis_event/ovis_event.h"
 
@@ -572,75 +573,95 @@ pthread_t get_thread(int idx)
 	return ev_thread[idx];
 }
 
-/*
- * This function opens the device file specified by 'devname' and
- * mmaps the metric set 'set_no'.
- */
-int map_fd;
-ldms_set_t map_set;
-int publish_kernel(const char *setfile)
+void kpublish(int map_fd, int set_no, int set_size, char *set_name)
 {
-	int rc;
+	ldms_set_t map_set;
+	int rc, id = set_no << 13;
+	void *meta_addr, *data_addr;
+	struct ldms_set_hdr *sh;
+
+	ldmsd_linfo("Mapping set %d:%d:%s\n", set_no, set_size, set_name);
+	meta_addr = mmap((void *)0, set_size,
+			 PROT_READ | PROT_WRITE, MAP_SHARED,
+			 map_fd, id);
+	if (meta_addr == MAP_FAILED) {
+		ldmsd_lerror("Error %d mapping %d bytes for kernel "
+			     "metric set\n", errno, set_size);
+		return;
+	}
+	data_addr = (struct ldms_data_hdr *)((unsigned char*)meta_addr + sh->meta_sz);
+	rc = ldms_mmap_set(meta_addr, data_addr, &map_set);
+	if (rc) {
+		munmap(meta_addr, set_size);
+		ldmsd_lerror("Error %d mmapping the set '%s'\n", rc, set_name);
+		return;
+	}
+	sh = meta_addr;
+	sprintf(sh->producer_name, "%s", myhostname);
+}
+
+pthread_t k_thread;
+void *k_proc(void *arg)
+{
+	int rc, map_fd;
 	int i, j;
-	void *meta_addr;
-	void *data_addr;
 	int set_no;
 	int set_size;
-	struct ldms_set_hdr *sh;
-	unsigned char *p;
-	char set_name[80];
+	char set_name[128];
 	FILE *fp;
+	union kldms_req k_req;
 
 	fp = fopen(setfile, "r");
 	if (!fp) {
-		ldmsd_log(LDMSD_LERROR, "The specified kernel metric set file '%s' could not be opened.\n",
-			 setfile);
-		return 0;
+		ldmsd_lerror("The specified kernel metric set file '%s' "
+			     "could not be opened.\n", setfile);
+		cleanup(1, "Could not open kldms set file");
 	}
 
 	map_fd = open("/dev/kldms0", O_RDWR);
 	if (map_fd < 0) {
-		ldmsd_log(LDMSD_LERROR, "Error %d opening the KLDMS device file '/dev/kldms0'\n", map_fd);
-		return map_fd;
+		ldmsd_lerror("Error %d opening the KLDMS device file "
+			     "'/dev/kldms0'\n", map_fd);
+		cleanup(1, "Could not open the kernel device /dev/kldms0");
 	}
 
-	while (3 == fscanf(fp, "%d %d %s", &set_no, &set_size, set_name)) {
-		int id = set_no << 13;
-		ldmsd_log(LDMSD_LERROR, "Mapping set %d name %s\n", set_no, set_name);
-		meta_addr = mmap((void *)0, set_size, PROT_READ|PROT_WRITE, MAP_SHARED, map_fd, id);
-		if (meta_addr == MAP_FAILED)
-			return -ENOMEM;
-		sh = meta_addr;
-		if (set_name[0] == '/')
-			sprintf(sh->producer_name, "%s%s", myhostname, set_name);
-		else
-			sprintf(sh->producer_name, "%s/%s", myhostname, set_name);
-		data_addr = (struct ldms_data_hdr *)((unsigned char*)meta_addr + sh->meta_sz);
-
-		rc = ldms_mmap_set(meta_addr, data_addr, &map_set);
-		if (rc) {
-			ldmsd_log(LDMSD_LERROR, "Error encountered mmaping the set '%s', rc %d\n",
-				 set_name, rc);
-			return rc;
-		}
-		sh = meta_addr;
-		p = meta_addr;
-		ldmsd_log(LDMSD_LERROR, "addr: %p\n", meta_addr);
-		for (i = 0; i < 256; i = i + j) {
-			for (j = 0; j < 16; j++)
-				ldmsd_log(LDMSD_LERROR, "%02x ", p[i+j]);
-			ldmsd_log(LDMSD_LERROR, "\n");
-			for (j = 0; j < 16; j++) {
-				if (isalnum(p[i+j]))
-					ldmsd_log(LDMSD_LERROR, "%2c ", p[i+j]);
-				else
-					ldmsd_log(LDMSD_LERROR, "%2s ", ".");
-			}
-			ldmsd_log(LDMSD_LERROR, "\n");
-		}
-		ldmsd_log(LDMSD_LERROR, "name: '%s'\n", sh->producer_name);
-		ldmsd_log(LDMSD_LERROR, "size: %d\n", __le32_to_cpu(sh->meta_sz));
+	while (3 == fscanf(fp, "%d %d %128s", &set_no, &set_size, set_name)) {
+		kpublish(map_fd, set_no, set_size, set_name);
 	}
+
+	/* Read from map_fd and process events as they are delivered by the kernel */
+	while (0 < (rc = read(map_fd, &k_req, sizeof(k_req)))) {
+		switch (k_req.hdr.req_id) {
+		case KLDMS_REQ_HELLO:
+			ldmsd_ldebug("KLDMS_REQ_HELLO: %s\n", k_req.hello.msg);
+			break;
+		case KLDMS_REQ_PUBLISH_SET:
+			ldmsd_ldebug("KLDMS_REQ_PUBLISH_SET: set_id %d data_len %zu\n",
+				     k_req.publish.set_id, k_req.publish.data_len);
+			kpublish(map_fd, k_req.publish.set_id, k_req.publish.data_len, "");
+			break;
+		case KLDMS_REQ_UNPUBLISH_SET:
+			ldmsd_ldebug("KLDMS_REQ_UNPUBLISH_SET: set_id %d data_len %zu\n",
+				     k_req.unpublish.set_id, k_req.publish.data_len);
+			break;
+		case KLDMS_REQ_UPDATE_SET:
+			ldmsd_ldebug("KLDMS_REQ_UPDATE_SET: set_id %d\n",
+				     k_req.update.set_id);
+			break;
+		default:
+			ldmsd_lerror("Unrecognized kernel request %d\n",
+				     k_req.hdr.req_id);
+			break;
+		}
+	}
+}
+/*
+ * This function opens the device file specified by 'devname' and
+ * mmaps the metric set 'set_no'.
+ */
+int publish_kernel(const char *setfile)
+{
+	pthread_create(&k_thread, NULL, k_proc, (void *)setfile);
 	return 0;
 }
 
@@ -900,15 +921,13 @@ static void task_cb_fn(ovis_event_t ev)
 {
 	ldmsd_task_t task = ev->param.ctxt;
 	enum ldmsd_task_state next_state;
-	ovis_scheduler_event_del(task->os, ev);
 
 	pthread_mutex_lock(&task->lock);
-	if (task->flags & LDMSD_TASK_F_STOP) {
-		task->state = LDMSD_TASK_STATE_STOPPED;
-		goto out;
+	if (task->os) {
+		ovis_scheduler_event_del(task->os, ev);
+		resched_task(task);
+		next_state = start_task(task);
 	}
-	resched_task(task);
-	next_state = start_task(task);
 	task->state = LDMSD_TASK_STATE_RUNNING;
 	pthread_mutex_unlock(&task->lock);
 
@@ -916,12 +935,15 @@ static void task_cb_fn(ovis_event_t ev)
 
 	pthread_mutex_lock(&task->lock);
 	if (task->flags & LDMSD_TASK_F_STOP) {
-		task->state = LDMSD_TASK_STATE_STOPPED;
+		task->flags &= ~LDMSD_TASK_F_STOP;
+		if (task->state != LDMSD_TASK_STATE_STOPPED)
+			task->state = LDMSD_TASK_STATE_STOPPED;
 	} else
 		task->state = next_state;
  out:
 	if (task->state == LDMSD_TASK_STATE_STOPPED) {
-		ovis_scheduler_event_del(task->os, &task->oev);
+		if (task->os)
+			ovis_scheduler_event_del(task->os, &task->oev);
 		task->os = NULL;
 		release_ovis_scheduler(task->thread_id);
 		pthread_cond_signal(&task->join_cv);
@@ -943,13 +965,14 @@ void ldmsd_task_stop(ldmsd_task_t task)
 	pthread_mutex_lock(&task->lock);
 	if (task->state == LDMSD_TASK_STATE_STOPPED)
 		goto out;
-	task->flags |= LDMSD_TASK_F_STOP;
 	if (task->state != LDMSD_TASK_STATE_RUNNING) {
 		ovis_scheduler_event_del(task->os, &task->oev);
 		task->os = NULL;
 		release_ovis_scheduler(task->thread_id);
 		task->state = LDMSD_TASK_STATE_STOPPED;
 		pthread_cond_signal(&task->join_cv);
+	} else {
+		task->flags |= LDMSD_TASK_F_STOP;
 	}
 out:
 	pthread_mutex_unlock(&task->lock);
@@ -1610,7 +1633,7 @@ int main(int argc, char *argv[])
 							ldms_version.minor,
 							ldms_version.patch,
 							ldms_version.flags);
-			printf("LDMSD Interface Version: %hhu.%hhu.%hhu.%hhu\n",
+			printf("LDMSD Plugin Interface Version: %hhu.%hhu.%hhu.%hhu\n",
 							ldmsd_version.major,
 							ldmsd_version.minor,
 							ldmsd_version.patch,

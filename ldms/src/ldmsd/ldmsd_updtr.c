@@ -249,6 +249,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	uint64_t gn;
 	const char *name;
 	ldmsd_prdcr_set_t prd_set = arg;
+	int ready = 0;
 	int errcode;
 
 	pthread_mutex_lock(&prd_set->lock);
@@ -279,7 +280,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	}
 
 	flags = ldmsd_group_check(prd_set->set);
-	if (flags & (LDMSD_GROUP_IS_GROUP|LDMSD_GROUP_MODIFIED)) {
+	if (flags & LDMSD_GROUP_MODIFIED) {
 		/* Group modified, need info update --> re-lookup the info */
 		ldmsd_prdcr_set_ref_get(prd_set);
 		name = ldms_set_instance_name_get(prd_set->set);
@@ -312,7 +313,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	}
 set_ready:
 	if ((status & LDMS_UPD_F_MORE) == 0)
-		prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+		ready = 1;
 out:
 	pthread_mutex_unlock(&prd_set->lock);
 	if (0 == errcode) {
@@ -324,6 +325,11 @@ out:
 						prd_set->inst_name);
 		}
 	}
+	if (ready) {
+		pthread_mutex_lock(&prd_set->lock);
+		prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+		pthread_mutex_unlock(&prd_set->lock);
+	}
 	if (0 == (status & (LDMS_UPD_F_PUSH|LDMS_UPD_F_MORE)))
 		/*
 		 * This is an pull update, so put back the reference
@@ -333,10 +339,16 @@ out:
 	return;
 }
 
+struct str_list_ent_s {
+	LIST_ENTRY(str_list_ent_s) entry;
+	char str[]; /* '\0' terminated string */
+};
+
 struct ldmsd_group_traverse_ctxt {
 	ldmsd_prdcr_t prdcr;
 	ldmsd_updtr_t updtr;
 	ldmsd_updtr_task_t task;
+	LIST_HEAD(, str_list_ent_s) str_list;
 };
 
 static int schedule_set_updates(ldmsd_prdcr_set_t prd_set,
@@ -345,15 +357,18 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set,
 static int
 __grp_iter_cb(ldms_set_t grp, const char *name, void *arg)
 {
-	int rc;
-	ldmsd_prdcr_set_t prd_set;
+	int len, sz;
+	struct str_list_ent_s *ent;
 	struct ldmsd_group_traverse_ctxt *ctxt = arg;
 
-	prd_set = ldmsd_prdcr_set_find(ctxt->prdcr, name);
-	if (!prd_set)
-		return 0; /* It is OK. Try again next iteration */
-	rc = schedule_set_updates(prd_set, ctxt->task);
-	return rc;
+	len = strlen(name);
+	sz = sizeof(*ent) + len + 1;
+	ent = malloc(sz);
+	if (!ent)
+		return ENOMEM;
+	snprintf(ent->str, len+1, "%s", name);
+	LIST_INSERT_HEAD(&ctxt->str_list, ent, entry);
+	return 0;
 }
 
 static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t task)
@@ -361,12 +376,15 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 	int rc = 0;
 	int flags;
 	char *op_s;
+	ldmsd_prdcr_set_t pset;
 	ldmsd_updtr_t updtr = task->updtr;
 	struct ldmsd_group_traverse_ctxt ctxt;
 	/* The reference will be put back in update_cb */
 	ldmsd_log(LDMSD_LDEBUG, "Schedule an update for set %s\n",
 					prd_set->inst_name);
 	int push_flags = 0;
+	struct str_list_ent_s *ent;
+	LIST_INIT(&ctxt.str_list);
 	gettimeofday(&prd_set->updt_start, NULL);
 #ifdef LDMSD_UPDATE_TIME
 	__updt_time_get(prd_set->updt_time);
@@ -374,6 +392,7 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 		prd_set->updt_time->update_start = prd_set->updt_start;
 #endif
 	if (!updtr->push_flags) {
+		op_s = "Updating";
 		prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
 		ldmsd_prdcr_set_ref_get(prd_set);
 		flags = ldmsd_group_check(prd_set->set);
@@ -382,14 +401,25 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 			ctxt.prdcr = prd_set->prdcr;
 			ctxt.updtr = updtr;
 			ctxt.task = task;
+			/* __grp_iter_cb() will populate ctxt.str_list */
 			rc = ldmsd_group_iter(prd_set->set,
 					      __grp_iter_cb, &ctxt);
 			if (rc)
 				goto out;
+			LIST_FOREACH(ent, &ctxt.str_list, entry) {
+				pset = ldmsd_prdcr_set_find(prd_set->prdcr, ent->str);
+				if (!pset)
+					continue; /* It is OK. Try again next iteration */
+				if (pset->state != LDMSD_PRDCR_SET_STATE_READY)
+					continue; /* It is OK. The set might not be ready */
+				rc = schedule_set_updates(pset, task);
+				if (rc)
+					goto out;
+			}
 		}
 		rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
-		op_s = "Updating";
 	} else if (0 == (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG)) {
+		op_s = "Registering push for";
 		prd_set->push_flags |= LDMSD_PRDCR_SET_F_PUSH_REG;
 		ldmsd_prdcr_set_ref_get(prd_set);
 		if (updtr->push_flags & LDMSD_UPDTR_F_PUSH_CHANGE)
@@ -401,9 +431,12 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 			ldmsd_log(LDMSD_LERROR, "Register push error %d Set %s\n",
 						rc, prd_set->inst_name);
 		}
-		op_s = "Registering push for";
 	}
 out:
+	while ((ent = LIST_FIRST(&ctxt.str_list))) {
+		LIST_REMOVE(ent, entry);
+		free(ent);
+	}
 	if (rc) {
 #ifdef LDMSD_UPDATE_TIME
 		__updt_time_put(prd_set->updt_time);
@@ -821,42 +854,40 @@ ldmsd_updtr_new(const char *name, char *interval_str,
 				sctxt.crd.uid, sctxt.crd.gid, 0777);
 }
 
+extern struct rbt *cfgobj_trees[];
+extern pthread_mutex_t *cfgobj_locks[];
+ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
+
 int ldmsd_updtr_del(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
-	ldmsd_updtr_task_t task;
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
+	ldmsd_updtr_t updtr;
+
+	pthread_mutex_lock(cfgobj_locks[LDMSD_CFGOBJ_UPDTR]);
+	updtr = (ldmsd_updtr_t)__cfgobj_find(updtr_name, LDMSD_CFGOBJ_UPDTR);
 	if (!updtr) {
-		return ENOENT;
+		rc = ENOENT;
+		goto out_0;
 	}
 	ldmsd_updtr_lock(updtr);
 	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
 	if (rc)
-		goto out;
+		goto out_1;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
 		rc = EBUSY;
-		goto out;
+		goto out_1;
 	}
-	if (ldmsd_cfgobj_refcount(&updtr->obj) > 2) {
-		rc = EBUSY;
-		goto out;
-	}
-	/* Make sure any outstanding callbacks are complete */
-	ldmsd_task_join(&updtr->default_task.task);
-	task = updtr_task_first(updtr);
-	while (task) {
-		ldmsd_task_join(&task->task);
-		task = updtr_task_next(task);
-	}
-	/* Put the find reference */
-	ldmsd_updtr_put(updtr);
-	/* Drop the lock and drop the create reference */
+
+	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_UPDTR], &updtr->obj.rbn);
+	ldmsd_updtr_put(updtr); /* tree reference */
+	rc = 0;
+	/* let-through */
+out_1:
 	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
-	return 0;
-out:
-	ldmsd_updtr_put(updtr);
-	ldmsd_updtr_unlock(updtr);
+out_0:
+	pthread_mutex_unlock(cfgobj_locks[LDMSD_CFGOBJ_UPDTR]);
+	if (updtr)
+		ldmsd_updtr_put(updtr); /* `find` reference */
 	return rc;
 }
 
@@ -982,17 +1013,28 @@ int __ldmsd_updtr_stop(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt)
 	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
 	if (rc)
 		goto out_1;
+	if (updtr->state == LDMSD_UPDTR_STATE_STOPPED) {
+		/* already stopped, return 0 */
+		goto out_1;
+	}
 	if (updtr->state != LDMSD_UPDTR_STATE_RUNNING) {
 		rc = EBUSY;
 		goto out_1;
 
 	}
-	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
+	updtr->state = LDMSD_UPDTR_STATE_STOPPING;
 	updtr->obj.perm &= ~LDMSD_PERM_DSTART;
 	if (updtr->push_flags)
 		cancel_push(updtr);
+	ldmsd_updtr_unlock(updtr);
 
+	/* joining tasks, need to unlock as task cb also took updtr lock */
 	__updtr_tasks_stop(updtr);
+
+	ldmsd_updtr_lock(updtr);
+	/* tasks stopped */
+	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
+	/* let-through */
 out_1:
 	ldmsd_updtr_unlock(updtr);
 	return rc;
