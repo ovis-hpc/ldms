@@ -323,6 +323,9 @@ int ldmsd_config_plugin(char *plugin_name,
 	pthread_mutex_lock(&pi->lock);
 	rc = pi->plugin->config(pi->plugin, _kw_list, _av_list);
 	pthread_mutex_unlock(&pi->lock);
+	if (rc) {
+		ldmsd_mm_status(LDMSD_LINFO, "config_plugin");
+	}
 	return rc;
 }
 

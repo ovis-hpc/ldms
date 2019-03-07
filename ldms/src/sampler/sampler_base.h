@@ -54,6 +54,7 @@ typedef struct base_data_s {
 	char *instance_name;
 	char *producer_name;
 	char *schema_name;
+	ldmsd_msg_log_f log;
 	ldms_schema_t schema;
 	ldms_set_t job_set;
 	ldms_set_t set;

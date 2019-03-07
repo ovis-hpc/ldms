@@ -866,6 +866,13 @@ extern int ldms_schema_array_card_set(ldms_schema_t schema, int card);
 extern ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema);
 
 /**
+ * \brief Get the size of the set required by the given schema.
+ * \param schema The schema to compute an mmalloc size.
+ * \return the computed size.
+ */
+extern size_t ldms_schema_set_size(const char *instance_name, const ldms_schema_t schema);
+
+/**
  * \brief Create an LDMS metric set with owner and permission
  *
  * Create a metric set, like ::ldms_set_new(), but with a specified owner \c

@@ -95,6 +95,7 @@ base_data_t base_config(struct attr_value_list *avl,
 		errno = ENOMEM;
 		return NULL;
 	}
+	base->log = log;
 
 	base->pi_name = strdup(name);
 	if (!base->pi_name) {
@@ -284,8 +285,17 @@ ldms_set_t base_set_new(base_data_t base)
 {
 	int rc;
 	base->set = ldms_set_new(base->instance_name, base->schema);
-	if (!base->set)
+	if (!base->set) {
+		size_t ssz = ldms_schema_set_size(base->instance_name,
+			base->schema);
+		if (ssz) {
+			base->log(LDMSD_LERROR, "ldms_set_new failed for %s. Needs %zu additional memory reservation.\n",
+			base->instance_name, ssz);
+		} else {
+			base->log(LDMSD_LERROR, "ldms_set_new failed for %s. Schema problem.\n");
+		}
 		return NULL;
+	}
 	ldms_set_producer_name_set(base->set, base->producer_name);
 	ldms_metric_set_u64(base->set, BASE_COMPONENT_ID, base->component_id);
 	ldms_metric_set_u64(base->set, BASE_JOB_ID, 0);
