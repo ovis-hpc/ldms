@@ -26,4 +26,6 @@ pkglib_LTLIBRARIES += libfilesingle.la
 bin_SCRIPTS += ldms-sensors-config
 dist_man7_MANS += Plugin_filesingle.man
 dist_man1_MANS += ldms-sensors-config.man
+
+TESTS = test_sensors test_lscpu
 endif
