@@ -917,10 +917,6 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	}
 }
 
-/* from ldmsd */
-extern const char *auth_name;
-extern struct attr_value_list *auth_opt;
-
 ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
 {
 	unsigned short port_no;
@@ -940,7 +936,8 @@ ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
 		}
 		port_no = (unsigned)ptmp;
 	}
-	l = ldms_xprt_new_with_auth(xprt_str, ldmsd_linfo, auth_name, auth_opt);
+	l = ldms_xprt_new_with_auth(xprt_str, ldmsd_linfo,
+			ldmsd_auth_name_get(), ldmsd_auth_attr_get());
 	if (!l) {
 		ldmsd_log(LDMSD_LERROR,
 			  "'%s' transport creation with auth '%s' "
@@ -948,7 +945,7 @@ ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
 			  "configuration, authentication configuration, "
 			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
 			  xprt_str,
-			  auth_name,
+			  ldmsd_auth_name_get(),
 			  ovis_errno_abbvr(errno),
 			  errno);
 		cleanup(6, "error creating transport");
@@ -1015,6 +1012,9 @@ int ldmsd_plugins_usage(const char *plugname)
 	char *pathdir = library_path;
 	char *libpath;
 	char *saveptr = NULL;
+
+	if (0 == strcasecmp(plugname, "all"))
+		plugname = NULL;
 
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
 	if (!path)

@@ -92,6 +92,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "prdcr_stop",         LDMSD_PRDCR_STOP_REQ  },
 	{  "prdcr_stop_regex",   LDMSD_PRDCR_STOP_REGEX_REQ  },
 	{  "prdcr_subscribe",    LDMSD_PRDCR_SUBSCRIBE_REQ },
+	{  "set",                LDMSD_CMD_LINE_SET_REQ  },
 	{  "set_route",          LDMSD_SET_ROUTE_REQ  },
 	{  "setgroup_add",       LDMSD_SETGROUP_ADD_REQ  },
 	{  "setgroup_del",       LDMSD_SETGROUP_DEL_REQ  },
@@ -556,6 +557,13 @@ out:
 	return rc;
 }
 
+int __ldmsd_parse_cmd_line_req(struct ldmsd_parse_ctxt *ctxt)
+{
+	/* Treat the attribute string as a single STRING attribute value */
+	return add_attr_from_attr_str(NULL, ctxt->av,
+			&ctxt->request, &ctxt->request_sz, ctxt->msglog);
+}
+
 struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 					size_t xprt_max_msg, ldmsd_msg_log_f msglog)
 {
@@ -618,6 +626,9 @@ new_req:
 		break;
 	case LDMSD_ENV_REQ:
 		rc = __ldmsd_parse_env(&ctxt);
+		break;
+	case LDMSD_CMD_LINE_SET_REQ:
+		rc = __ldmsd_parse_cmd_line_req(&ctxt);
 		break;
 	default:
 		rc = __ldmsd_parse_generic(&ctxt);

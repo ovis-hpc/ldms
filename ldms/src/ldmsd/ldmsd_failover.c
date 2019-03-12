@@ -1032,9 +1032,6 @@ void __failover_xprt_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	}
 }
 
-extern const char *auth_name;
-extern struct attr_value_list *auth_opt;
-
 static
 int __failover_active_connect(ldmsd_failover_t f)
 {
@@ -1044,7 +1041,8 @@ int __failover_active_connect(ldmsd_failover_t f)
 	__ASSERT(f->ax == NULL);
 	__ASSERT(f->conn_state == FAILOVER_CONN_STATE_DISCONNECTED);
 	f->ax = ldms_xprt_new_with_auth(f->xprt, ldmsd_linfo,
-					auth_name, auth_opt);
+					ldmsd_auth_name_get(),
+					ldmsd_auth_attr_get());
 	if (!f->ax) {
 		rc = errno;
 		goto out;

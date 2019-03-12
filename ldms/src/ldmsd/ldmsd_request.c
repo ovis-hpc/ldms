@@ -205,6 +205,7 @@ static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
 static int ebusy_handler(ldmsd_req_ctxt_t reqc);
 static int updtr_task_status_handler(ldmsd_req_ctxt_t req_ctxt);
+static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc);
 
 /* these are implemented in ldmsd_failover.c */
 int failover_config_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -404,6 +405,9 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_SET_ROUTE_REQ] = {
 		LDMSD_SET_ROUTE_REQ, set_route_handler, XUG
+	},
+	[LDMSD_CMD_LINE_SET_REQ] = {
+		LDMSD_CMD_LINE_SET_REQ, cmd_line_arg_set_handler, XUG
 	},
 
 	/* FAILOVER user commands */
@@ -3938,6 +3942,7 @@ static int smplr_status_handler(ldmsd_req_ctxt_t reqc)
 	int rc;
 	size_t cnt = 0;
 	ldmsd_smplr_t smplr = NULL;
+	struct ldmsd_req_attr_s attr;
 	char *name;
 	int count;
 
@@ -3981,11 +3986,24 @@ static int smplr_status_handler(ldmsd_req_ctxt_t reqc)
 	if (rc)
 		goto out;
 
-	ldmsd_send_req_response(reqc, reqc->line_buf);
+	attr.discrim = 1;
+	attr.attr_len = reqc->line_off;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		goto out;
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+	if (rc)
+		goto out;
 
+	attr.discrim = 0;
+	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
+				sizeof(uint32_t), LDMSD_REQ_EOM_F);
+
+ out:
 	if (name)
 		free(name);
- out:
 	if (smplr)
 		ldmsd_smplr_put(smplr);
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SMPLR);
@@ -5542,3 +5560,119 @@ send_reply:
 	return 0;
 }
 
+struct cmd_line_opts {
+	const char *l;
+};
+struct cmd_line_opts opts[] = {
+		['a'] = { "default-auth"   },
+		['B'] = { "banner"         },
+		['H'] = { "hostname"       },
+		['k'] = { "publish-kernel" },
+		['l'] = { "logfile"        },
+		['m'] = { "mem"            },
+		['n'] = { "daemon-name"    },
+		['P'] = { "num-threads"    },
+		['r'] = { "pidfile"        },
+		['s'] = { "kernel-file"    },
+		['v'] = { "loglevel"       },
+		['x'] = { "xprt"           },
+};
+
+static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *s, *token, *ptr1, *lval, *rval, *auth_name, *auth_attrs;
+	size_t cnt;
+	int rc = 0;
+	char opt;
+	s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+	for (token = strtok_r(s, " \t\n", &ptr1); token;
+			token = strtok_r(NULL, " \t\n", &ptr1)) {
+		char *ptr2;
+		lval = strtok_r(token, "=", &ptr2);
+		rval = strtok_r(NULL, "=", &ptr2);
+
+		if ((strcmp(lval, "B") == 0) || (strcasecmp(lval, opts['B'].l) == 0))
+			opt = 'B';
+		else if ((strcmp(lval, "m") == 0) || (strcasecmp(lval, opts['m'].l) == 0))
+			opt = 'm';
+		else if ((strcmp(lval, "n") == 0) || (strcasecmp(lval, opts['n'].l) == 0))
+			opt = 'n';
+		else if ((strcmp(lval, "l") == 0) || (strcasecmp(lval, opts['l'].l) == 0))
+			opt = 'l';
+		else if ((strcmp(lval, "v") == 0) || (strcasecmp(lval, opts['v'].l) == 0))
+			opt = 'v';
+		else if ((strcmp(lval, "x") == 0) || (strcasecmp(lval, opts['x'].l) == 0))
+			opt = 'x';
+		else if ((strcmp(lval, "P") == 0) || (strcasecmp(lval, opts['P'].l) == 0))
+			opt = 'P';
+		else if ((strcmp(lval, "k") == 0) || (strcasecmp(lval, opts['k'].l) == 0))
+			opt = 'k';
+		else if ((strcmp(lval, "s") == 0) || (strcasecmp(lval, opts['s'].l) == 0))
+			opt = 's';
+		else if ((strcmp(lval, "H") == 0) || (strcasecmp(lval, opts['H'].l) == 0))
+			opt = 'H';
+		else if ((strcmp(lval, "r") == 0) || (strcasecmp(lval, opts['r'].l) == 0))
+			opt = 'r';
+		else if ((strcmp(lval, "a") == 0) || (strcasecmp(lval, opts['a'].l) == 0)) {
+			/*
+			 * This is a special case. The authentication plugin and
+			 * its arguments need to be processed at the same time.
+			 * Any attributes following the auth attribute will be
+			 * interpret as authentication arguments.
+			 * E.g.
+			 * set default-auth=ovis path=/path/to/secretword
+			 */
+			goto auth;
+		} else {
+			/* Unknown cmd-line arguments */
+			reqc->errcode = EINVAL;
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"Unknown cmd-line option or it must be "
+					"given at the command line: %s\n", lval);
+			goto send_reply;
+		}
+
+		rc = ldmsd_process_cmd_line_arg(opt, rval);
+		if (rc)
+			goto cmdline_einval;
+
+	}
+	goto send_reply;
+auth:
+	auth_attrs = strchr(rval, ' ');
+	if (auth_attrs) {
+		auth_attrs[0] = '\0';
+		auth_attrs++;
+	}
+	/* auth plugin name */
+	rc = ldmsd_process_cmd_line_arg('a', rval);
+	if (rc) {
+		if (rc == EPERM)
+			goto cmdline_eperm;
+		else
+			goto cmdline_einval;
+	}
+	if (auth_attrs) {
+		/* auth plugin attributes */
+		rc = ldmsd_process_cmd_line_arg('A', auth_attrs);
+		if (rc)
+			goto cmdline_einval;
+	}
+	goto send_reply;
+
+cmdline_einval:
+	/* reset to 0 because the error caused by users */
+	rc = 0;
+	reqc->errcode = EINVAL;
+	cnt = snprintf(reqc->line_buf, reqc->line_len,
+			"Invalid cmd-line value: %s=%s\n", lval, rval);
+	goto send_reply;
+cmdline_eperm:
+	/* rc = 0; */
+	reqc->errcode = EPERM;
+	cnt = snprintf(reqc->line_buf, reqc->line_len,
+			"The value of '%s' has already been set.", lval);
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
+}

@@ -96,29 +96,29 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:v:Vz:Z:q:c:u:a:A:n:"
+#define FMT "A:a:B:c:FH:kl:m:n:P:r:s:u:Vv:x:"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
-#define LDMSD_MEM_SIZE_STR "512kB"
-#define LDMSD_MEM_SIZE_DEFAULT 512L * 1024L
+#define LDMSD_MEM_SIZE_DEFAULT "512kB"
+#define LDMSD_BANNER_DEFAULT 1
+#define LDMSD_VERBOSITY_DEFAULT LDMSD_LERROR
+#define LDMSD_EV_THREAD_CNT_DEFAULT 1
 
-char myname[512]; /* name to identify ldmsd */
-		  /* NOTE: fqdn limit: 255 characters */
-		  /* DEFAULT: myhostname:port */
-char myhostname[80];
+#define LDMSD_KEEP_ALIVE_30MIN 30*60*1000000 /* 30 mins */
+
 char ldmstype[20];
-int foreground;
-pthread_t event_thread = (pthread_t)-1;
-char *test_set_name;
-int test_set_count=1;
-int notify=0;
-char *logfile;
-char *pidfile;
 char *bannerfile;
-int banner = 1;
-pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size;
-char *max_mem_sz_str;
+char *progname;
+uint8_t is_ldmsd_initialized;
+
+uint8_t ldmsd_is_initialized()
+{
+	return is_ldmsd_initialized;
+}
+
+pthread_t event_thread = (pthread_t)-1;
+pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 
 mode_t inband_cfg_mask = LDMSD_PERM_FAILOVER_ALLOWED;
 	/* LDMSD_PERM_FAILOVER_INTERNAL will be added in `failover_start`
@@ -132,23 +132,19 @@ int ldmsd_use_failover = 0;
 ldms_t ldms;
 FILE *log_fp;
 
-int do_kernel = 0;
-char *setfile = NULL;
-
 int find_least_busy_thread();
 
 int passive = 0;
-int log_level_thr = LDMSD_LERROR;  /* log level threshold */
 int quiet = 0; /* Is verbosity quiet? 0 for no and 1 for yes */
 
-const char *auth_name = "none";
-struct attr_value_list *auth_opt = NULL;
 const int AUTH_OPT_MAX = 128;
 
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
 	NULL
 };
+
+struct ldmsd_cmd_line_args cmd_line_args;
 
 void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt)
 {
@@ -177,13 +173,13 @@ int ldmsd_loglevel_set(char *verbose_level)
 	}
 	if (level < 0)
 		return level;
-	log_level_thr = level;
+	cmd_line_args.verbosity = level;
 	return 0;
 }
 
 enum ldmsd_loglevel ldmsd_loglevel_get()
 {
-	return log_level_thr;
+	return cmd_line_args.verbosity;
 }
 
 int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level)
@@ -208,7 +204,7 @@ int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level)
 void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 {
 	if ((level != LDMSD_LALL) &&
-			(quiet || ((0 <= level) && (level < log_level_thr))))
+			(quiet || ((0 <= level) && (level < ldmsd_loglevel_get()))))
 		return;
 	if (log_fp == LDMSD_LOG_SYSLOG) {
 		vsyslog(ldmsd_loglevel_to_syslog(level),fmt,ap);
@@ -298,12 +294,22 @@ const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level)
 
 const char *ldmsd_myhostname_get()
 {
-	return myhostname;
+	return cmd_line_args.myhostname;
 }
 
 const char *ldmsd_myname_get()
 {
-	return myname;
+	return cmd_line_args.daemon_name;
+}
+
+const char *ldmsd_auth_name_get()
+{
+	return cmd_line_args.auth_name;
+}
+
+struct attr_value_list *ldmsd_auth_attr_get()
+{
+	return cmd_line_args.auth_attrs;
 }
 
 mode_t ldmsd_inband_cfg_mask_get()
@@ -350,58 +356,57 @@ void cleanup(int x, const char *reason)
 		ldms = NULL;
 	}
 
-	if (!foreground && pidfile) {
-		unlink(pidfile);
-		free(pidfile);
-		pidfile = NULL;
+	if (!cmd_line_args.foreground && cmd_line_args.pidfile) {
+		unlink(cmd_line_args.pidfile);
+		free(cmd_line_args.pidfile);
+		cmd_line_args.pidfile = NULL;
 		if (bannerfile) {
-			if ( banner < 2) {
+			if (cmd_line_args.banner < 2) {
 				unlink(bannerfile);
 			}
 			free(bannerfile);
 			bannerfile = NULL;
 		}
 	}
-	if (pidfile) {
-		free(pidfile);
-		pidfile = NULL;
+	if (cmd_line_args.pidfile) {
+		free(cmd_line_args.pidfile);
+		cmd_line_args.pidfile = NULL;
 	}
 	ldmsd_log(llevel, "LDMSD_ cleanup end.\n");
-	if (logfile) {
-		free(logfile);
-		logfile = NULL;
+	if (cmd_line_args.log_path) {
+		free(cmd_line_args.log_path);
+		cmd_line_args.log_path = NULL;
 	}
 
-	av_free(auth_opt);
 	exit(x);
 }
 
 /** return a file pointer or a special syslog pointer */
-FILE *ldmsd_open_log(const char *progname)
+FILE *ldmsd_open_log()
 {
 	FILE *f;
-	if (strcasecmp(logfile,"syslog")==0) {
+	if (strcasecmp(cmd_line_args.log_path, "syslog")==0) {
 		ldmsd_log(LDMSD_LDEBUG, "Switching to syslog.\n");
 		f = LDMSD_LOG_SYSLOG;
 		openlog(progname, LOG_NDELAY|LOG_PID, LOG_DAEMON);
 		return f;
 	}
 
-	f = fopen_perm(logfile, "a", LDMSD_DEFAULT_FILE_PERM);
+	f = fopen_perm(cmd_line_args.log_path, "a", LDMSD_DEFAULT_FILE_PERM);
 	if (!f) {
 		ldmsd_log(LDMSD_LERROR, "Could not open the log file named '%s'\n",
-							logfile);
+						cmd_line_args.log_path);
 		cleanup(9, "log open failed");
 	} else {
 		int fd = fileno(f);
 		if (dup2(fd, 1) < 0) {
 			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
-							logfile);
+						cmd_line_args.log_path);
 			cleanup(10, "error redirecting stdout");
 		}
 		if (dup2(fd, 2) < 0) {
 			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
-							logfile);
+						cmd_line_args.log_path);
 			cleanup(11, "error redirecting stderr");
 		}
 		stdout = f;
@@ -412,7 +417,7 @@ FILE *ldmsd_open_log(const char *progname)
 
 int ldmsd_logrotate() {
 	int rc;
-	if (!logfile) {
+	if (!cmd_line_args.log_path) {
 		ldmsd_log(LDMSD_LERROR, "Received a logrotate command but "
 			"the log messages are printed to the standard out.\n");
 		return EINVAL;
@@ -424,7 +429,7 @@ int ldmsd_logrotate() {
 	struct timeval tv;
 	char ofile_name[PATH_MAX];
 	gettimeofday(&tv, NULL);
-	sprintf(ofile_name, "%s-%ld", logfile, tv.tv_sec);
+	sprintf(ofile_name, "%s-%ld", cmd_line_args.log_path, tv.tv_sec);
 
 	pthread_mutex_lock(&log_lock);
 	if (!log_fp) {
@@ -433,8 +438,8 @@ int ldmsd_logrotate() {
 	}
 	fflush(log_fp);
 	fclose(log_fp);
-	rename(logfile, ofile_name);
-	log_fp = fopen_perm(logfile, "a", LDMSD_DEFAULT_FILE_PERM);
+	rename(cmd_line_args.log_path, ofile_name);
+	log_fp = fopen_perm(cmd_line_args.log_path, "a", LDMSD_DEFAULT_FILE_PERM);
 	if (!log_fp) {
 		printf("%-10s: Failed to rotate the log file. Cannot open a new "
 			"log file\n", "ERROR");
@@ -467,16 +472,17 @@ void cleanup_sa(int signal, siginfo_t *info, void *arg)
 }
 
 
-void usage_hint(char *argv[],char *hint)
+void usage_hint(char *hint)
 {
-	printf("%s: [%s]\n", argv[0], FMT);
+	printf("%s: [%s]\n", progname, FMT);
 	printf("  General Options\n");
-	printf("    -F	     Foreground mode, don't daemonize the program [false].\n");
-	printf("    -B mode  Daemon mode banner file with pidfile [1].\n"
-	       "   		modes:0-no banner file, 1-banner auto-deleted, 2-banner left.\n");
-	printf("    -u	name List named plugin if available, and where possible\n");
-	printf("       	its usage, then exit. Name all, sampler, and store limit output.\n");
-	printf("    -u	name List named plugin if available, and where possible their usage, then exit.\n");
+	printf("    -V	           Print LDMS version and exit [CMD LINE ONLY]\n");
+	printf("    -F	           Foreground mode, don't daemonize the program [false] [CMD LINE ONLY]\n");
+	printf("    -u name	   List named plugin if available, and where possible its usage,\n");
+	printf("		   then exit. Name all, sampler, and store limit output.[CMD LINE ONLY]\n");
+	printf("    -c path	   The path to configuration file (optional, default: <none>).\n");
+	printf("    -B mode        Daemon mode banner file with pidfile [1].\n"
+	       "		   modes:0-no banner file, 1-banner auto-deleted, 2-banner left.\n");
 	printf("    -m memory size Maximum size of pre-allocated memory for metric sets.\n"
 	       "		   The given size must be less than 1 petabytes.\n"
 	       "		   The default value is %s\n"
@@ -484,10 +490,10 @@ void usage_hint(char *argv[],char *hint)
 	       "		   - The environment variable %s could be set instead of\n"
 	       "		   giving the -m option. If both are given, the -m option\n"
 	       "		   takes precedence over the environment variable.\n",
-	       LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
-	printf("    -n NAME        The name of the daemon. By default, it is \"IHOSTNAME:PORT\".");
+	       LDMSD_MEM_SIZE_DEFAULT, LDMSD_MEM_SIZE_ENV);
+	printf("    -n daemon_name The name of the daemon. By default, it is \"IHOSTNAME:PORT\".\n");
 	printf("    -r pid_file    The path to the pid file for daemon mode.\n"
-	       "		   [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
+	       "		   [" LDMSD_PIDFILE_FMT "]\n", basename(progname));
 	printf("  Log Verbosity Options\n");
 	printf("    -l log_file    The path to the log file for status messages.\n"
 	       "		   [" LDMSD_LOGFILE "]\n");
@@ -499,36 +505,22 @@ void usage_hint(char *argv[],char *hint)
 	       "		   more than once for multiple transports. The transport string\n"
 	       "		   is one of 'rdma', 'sock' or 'ugni'. A transport specific port number\n"
 	       "		   is optionally specified following a ':', e.g. rdma:50000.\n");
-	printf("    -a AUTH        Transport authentication plugin (default: 'none')\n");
-	printf("    -A KEY=VALUE   Authentication plugin options (repeatable)\n");
+	printf("    -a auth        Transport authentication plugin (default: 'none')\n");
+	printf("    -A key=value   Authentication plugin options (repeatable)\n");
 	printf("  Kernel Metric Options\n");
-	printf("    -k	     Publish kernel metrics.\n");
+	printf("    -k	           Publish kernel metrics.\n");
 	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
 	       "		   [" LDMSD_SETFILE "]\n");
 	printf("  Thread Options\n");
 	printf("    -P thr_count   Count of event threads to start.\n");
-	printf("    -f count       The number of flush threads.\n");
-	printf("    -D num	 The dirty threshold.\n");
-	printf("  Test Options\n");
-	printf("    -H host_name   The host/producer name for metric sets.\n");
-	printf("    -i	     Test metric set sample interval.\n");
-	printf("    -t count       Create set_count instances of set_name.\n");
-	printf("    -T set_name    Test set prefix.\n");
-	printf("    -N	     Notify registered monitors of the test metric sets\n");
-	printf("  Configuration Options\n");
-	printf("    -c path	The path to configuration file (optional, default: <none>).\n");
-	printf("    -V	     Print LDMS version and exit\n.");
-	printf("   Deprecated Options\n");
-	printf("    -S     	   DEPRECATED.\n");
-	printf("    -p     	   DEPRECATED.\n");
 	if (hint) {
 		printf("\nHINT: %s\n",hint);
 	}
 	cleanup(1, "usage provided");
 }
 
-void usage(char *argv[]) {
-	usage_hint(argv,NULL);
+void usage() {
+	usage_hint(NULL);
 }
 
 #define EVTH_MAX 1024
@@ -591,7 +583,7 @@ void kpublish(int map_fd, int set_no, int set_size, char *set_name)
 		return;
 	}
 	sh = meta_addr;
-	sprintf(sh->producer_name, "%s", myhostname);
+	sprintf(sh->producer_name, "%s", cmd_line_args.myhostname);
 }
 
 pthread_t k_thread;
@@ -605,10 +597,10 @@ void *k_proc(void *arg)
 	FILE *fp;
 	union kldms_req k_req;
 
-	fp = fopen(setfile, "r");
+	fp = fopen(cmd_line_args.kernel_setfile, "r");
 	if (!fp) {
 		ldmsd_lerror("The specified kernel metric set file '%s' "
-			     "could not be opened.\n", setfile);
+			     "could not be opened.\n", cmd_line_args.kernel_setfile);
 		cleanup(1, "Could not open kldms set file");
 	}
 
@@ -839,7 +831,7 @@ void ev_log_cb(int sev, const char *msg)
 
 char *ldmsd_get_max_mem_sz_str()
 {
-	return max_mem_sz_str;
+	return cmd_line_args.mem_sz_str;
 }
 
 enum ldms_opttype {
@@ -931,25 +923,457 @@ void ldmsd_ev_init(void)
 	ev_dispatch(producer, updtr_stop_type, updtr_stop_actor);
 }
 
+void ldmsd_thread_count_set(char *str)
+{
+	int cnt;
+	cnt = atoi(str);
+	if (cnt < 1 )
+		cnt = 1;
+	if (cnt > EVTH_MAX)
+		cnt = EVTH_MAX;
+	cmd_line_args.ev_thread_count = cnt;
+}
+
+int ldmsd_auth_attr_add(char *name, char *val)
+{
+	struct attr_value *attr;
+	attr = &(cmd_line_args.auth_attrs->list[cmd_line_args.auth_attrs->count]);
+	if (cmd_line_args.auth_attrs->count == cmd_line_args.auth_attrs->size) {
+		printf("ERROR: Too many auth options\n");
+		return EINVAL;
+	}
+	attr->name = strdup(name);
+	if (!attr->name)
+		return ENOMEM;
+	attr->value = strdup(val);
+	if (!attr->value)
+		return ENOMEM;
+	cmd_line_args.auth_attrs->count++;
+	return 0;
+}
+
+int ldmsd_xprt_add(char *xprt_str)
+{
+	char *lval;
+	struct ldmsd_str_ent *xstr;
+
+
+	lval = strchr(xprt_str, ':');
+	if (!lval) {
+		printf("Bad xprt format, expecting XPRT:PORT, "
+				"but got: %s\n", xprt_str);
+		return EINVAL;
+	}
+	xstr = malloc(sizeof(*xstr));
+	if (!xstr) {
+		printf("Out of memory");
+		return ENOMEM;
+	}
+	xstr->str = strdup(xprt_str);
+	if (!xstr->str) {
+		printf("Out of memory");
+		return ENOMEM;
+	}
+	LIST_INSERT_HEAD(&cmd_line_args.xprt_list, xstr, entry);
+	return 0;
+}
+
+/*
+ * \return EPERM if the value is already given.
+ *
+ * The command-line options processed in the function
+ * can be specified both at the command line and in configuration files.
+ */
+int ldmsd_process_cmd_line_arg(char opt, char *value)
+{
+	char *lval, *rval;
+	int op, rc;
+	struct ldmsd_str_ent *xstr;
+	switch (opt) {
+	case 'A':
+		/* (multiple) auth options */
+		lval = strtok(value, "=");
+		if (!lval) {
+			printf("ERROR: Expecting -A name=value\n");
+			return EINVAL;
+		}
+		rval = strtok(NULL, "");
+		if (!rval) {
+			printf("ERROR: Expecting -A name=value\n");
+			return EINVAL;
+		}
+		rc = ldmsd_auth_attr_add(lval, rval);
+		if (rc)
+			return rc;
+		break;
+	case 'a':
+		/* auth name */
+		if (cmd_line_args.auth_name) {
+			ldmsd_log(LDMSD_LERROR, "Default-auth was already "
+					"specified to %s.\n",
+					cmd_line_args.auth_name);
+			return EPERM;
+		} else {
+			cmd_line_args.auth_name = strdup(value);
+		}
+		break;
+	case 'B':
+		if (check_arg("B", value, LO_UINT))
+			return EINVAL;
+		cmd_line_args.banner = atoi(value);
+		break;
+	case 'c':
+		/*
+		 * Must be specified at the command line.
+		 * Handle separately in the main() function.
+		 */
+		break;
+	case 'F':
+		/*
+		 * Must be specified at the command line.
+		 * Handle separately in the main() function.
+		 */
+		break;
+	case 'H':
+		if (check_arg("H", value, LO_NAME))
+			return EINVAL;
+		if (cmd_line_args.myhostname[0] != '\0') {
+			ldmsd_log(LDMSD_LERROR, "LDMSD hostname was already "
+				"specified to %s\n", cmd_line_args.myhostname);
+			return EPERM;
+		} else {
+			snprintf(cmd_line_args.myhostname,
+				sizeof(cmd_line_args.myhostname), "%s", value);
+		}
+		break;
+	case 'k':
+		cmd_line_args.do_kernel = 1;
+		break;
+	case 'l':
+		if (check_arg("l", value, LO_PATH))
+			return EINVAL;
+		if (cmd_line_args.log_path) {
+			ldmsd_log(LDMSD_LERROR, "The log path is already "
+					"specified to %s\n",
+					cmd_line_args.log_path);
+			return EPERM;
+		} else {
+			cmd_line_args.log_path = strdup(value);
+			log_fp = ldmsd_open_log();
+		}
+		break;
+	case 'm':
+		if (cmd_line_args.mem_sz_str) {
+			ldmsd_log(LDMSD_LERROR, "The memory limit was already "
+					"set to '%s'\n",
+					cmd_line_args.mem_sz_str);
+			return EPERM;
+		} else {
+			cmd_line_args.mem_sz_str = strdup(value);
+			if (!cmd_line_args.mem_sz_str) {
+				ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+				return ENOMEM;
+			}
+		}
+		break;
+	case 'n':
+		if (cmd_line_args.daemon_name[0] != '\0') {
+			ldmsd_log(LDMSD_LERROR, "LDMSD daemon name was "
+					"already set to %s\n",
+					cmd_line_args.daemon_name);
+			return EPERM;
+		} else {
+			snprintf(cmd_line_args.daemon_name,
+				sizeof(cmd_line_args.daemon_name), "%s", value);
+		}
+		break;
+	case 'P':
+		if (check_arg("P", value, LO_UINT))
+			return 1;
+		if (cmd_line_args.ev_thread_count > 0) {
+			ldmsd_log(LDMSD_LERROR, "LDMSD number of worker threads "
+					"was already set to %d\n",
+					cmd_line_args.ev_thread_count);
+			return EPERM;
+		} else {
+			ldmsd_thread_count_set(value);
+		}
+		break;
+	case 'r':
+		if (check_arg("r", value, LO_PATH))
+			return 1;
+		if (cmd_line_args.pidfile) {
+			ldmsd_log(LDMSD_LERROR, "The pidfile is already "
+					"specified to %s\n",
+					cmd_line_args.pidfile);
+			return EPERM;
+		} else {
+			cmd_line_args.pidfile = strdup(value);
+		}
+		break;
+
+	case 's':
+		if (check_arg("s", value, LO_PATH))
+			return 1;
+		if (cmd_line_args.kernel_setfile) {
+			ldmsd_log(LDMSD_LERROR, "The kernel set file is already "
+					"specified to %s\n",
+					cmd_line_args.kernel_setfile);
+			return EPERM;
+		} else {
+			cmd_line_args.kernel_setfile = strdup(value);
+		}
+		break;
+	case 'v':
+		if (check_arg("v", value, LO_NAME))
+			return 1;
+		rc = ldmsd_loglevel_set(value);
+		if (rc < 0) {
+			printf("Invalid verbosity levels '%s'. "
+				"See -v option.\n", value);
+			return 1;
+		}
+		break;
+	case 'x':
+		if (check_arg("x", value, LO_NAME))
+			return 1;
+		rc = ldmsd_xprt_add(value);
+		if (rc == EINVAL) {
+			printf("Bad xprt format, expecting XPRT:PORT, "
+					"but got: %s\n", value);
+			return EINVAL;
+		} else if (rc) {
+			printf("Error %d: failed to process xprt: %s\n",
+					rc, value);
+			return rc;
+		}
+		break;
+	case '?':
+		printf("Error: unknown argument: %c\n", opt);
+	default:
+		return ENOENT;
+	}
+	return 0;
+}
+
+void handle_pidfile_banner()
+{
+	struct ldms_version ldms_v;
+	struct ldmsd_version ldmsd_v;
+
+	ldms_version_get(&ldms_v);
+	ldmsd_version_get(&ldmsd_v);
+
+	char *pidfile;
+	if (!cmd_line_args.foreground) {
+		/* Create pidfile for daemon that usually goes away on exit. */
+		/* user arg, then env, then default to get pidfile name */
+		if (!cmd_line_args.pidfile) {
+			char *pidpath = getenv("LDMSD_PIDFILE");
+			if (!pidpath) {
+				pidfile = malloc(strlen(LDMSD_PIDFILE_FMT)
+						+ strlen(basename(progname) + 1));
+				if (pidfile)
+					sprintf(pidfile, LDMSD_PIDFILE_FMT, basename(progname));
+			} else {
+				pidfile = strdup(pidpath);
+			}
+			if (!pidfile) {
+				ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+				exit(1);
+			}
+			cmd_line_args.pidfile = pidfile;
+		}
+		if (!access(pidfile, F_OK)) {
+			ldmsd_log(LDMSD_LERROR, "Existing pid file named '%s': %s\n",
+				pidfile, "overwritten if writable");
+		}
+		FILE *pfile = fopen_perm(pidfile,"w", LDMSD_DEFAULT_FILE_PERM);
+		if (!pfile) {
+			int piderr = errno;
+			ldmsd_log(LDMSD_LERROR, "Could not open the pid file named '%s': %s\n",
+				pidfile, strerror(piderr));
+			free(pidfile);
+			pidfile = NULL;
+		} else {
+			pid_t mypid = getpid();
+			fprintf(pfile,"%ld\n", (long)mypid);
+			fclose(pfile);
+		}
+		if (pidfile && cmd_line_args.banner) {
+			char *suffix = ".version";
+			bannerfile = malloc(strlen(suffix) + strlen(pidfile) + 1);
+			if (!bannerfile) {
+				ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
+				exit(1);
+			}
+			sprintf(bannerfile, "%s%s", pidfile, suffix);
+			if (!access(bannerfile, F_OK)) {
+				ldmsd_log(LDMSD_LERROR, "Existing banner file named '%s': %s\n",
+					bannerfile, "overwritten if writable");
+			}
+			FILE *bfile = fopen_perm(bannerfile, "w", LDMSD_DEFAULT_FILE_PERM);
+			if (!bfile) {
+				int banerr = errno;
+				ldmsd_log(LDMSD_LERROR, "Could not open the banner file named '%s': %s\n",
+					bannerfile, strerror(banerr));
+			} else {
+
+#define BANNER_PART1_A "Started LDMS Daemon with default authentication "
+#define BANNER_PART1_NOA "Started LDMS Daemon without default authentication "
+#define BANNER_PART2 "version %s. LDMSD Interface Version " \
+	"%hhu.%hhu.%hhu.%hhu. LDMS Protocol Version %hhu.%hhu.%hhu.%hhu. " \
+	"git-SHA %s\n", PACKAGE_VERSION, \
+	ldmsd_v.major, ldmsd_v.minor, \
+	ldmsd_v.patch, ldmsd_v.flags, \
+	ldms_v.major, ldms_v.minor, ldms_v.patch, \
+	ldms_v.flags, OVIS_GIT_LONG
+
+				if (0 == strcmp(cmd_line_args.auth_name, "none"))
+					fprintf(bfile, BANNER_PART1_NOA BANNER_PART2);
+				else
+					fprintf(bfile, BANNER_PART1_A BANNER_PART2);
+				fclose(bfile);
+			}
+		}
+	}
+}
+
+void cmd_line_value_init()
+{
+	cmd_line_args.auth_attrs = av_new(AUTH_OPT_MAX);
+	if (!cmd_line_args.auth_attrs)
+		cleanup(ENOMEM, "Memory allocation failure.");
+
+	cmd_line_args.verbosity = LDMSD_VERBOSITY_DEFAULT;
+	cmd_line_args.banner = -1;
+}
+
+void ldmsd_init()
+{
+	int rc, i;
+	size_t mem_sz;
+
+	if (!cmd_line_args.mem_sz_str) {
+		cmd_line_args.mem_sz_str = getenv(LDMSD_MEM_SIZE_ENV);
+		if (!cmd_line_args.mem_sz_str) {
+			cmd_line_args.mem_sz_str = strdup(LDMSD_MEM_SIZE_DEFAULT);
+			if (!cmd_line_args.mem_sz_str)
+				cleanup(ENOMEM, "Memory allocation failure.");
+		}
+
+	}
+	if ((mem_sz = ovis_get_mem_size(cmd_line_args.mem_sz_str)) == 0) {
+		printf("Invalid memory size '%s'. See the -m option.\n",
+						cmd_line_args.mem_sz_str);
+		usage();
+		cleanup(EINVAL, "invalid -m value");
+	}
+	if (ldms_init(mem_sz)) {
+		ldmsd_log(LDMSD_LCRITICAL, "LDMS could not pre-allocate "
+				"the memory of size %s.\n",
+				cmd_line_args.mem_sz_str);
+		cleanup(ENOMEM, "Memory allocation failure.");
+	}
+
+	/*
+	 * No default authentication was specified.
+	 * Set the default authentication method to 'none'.
+	 */
+	if (!cmd_line_args.auth_name)
+		cmd_line_args.auth_name = strdup("none");
+
+	if (cmd_line_args.myhostname[0] == '\0') {
+		rc = gethostname(cmd_line_args.myhostname,
+				sizeof(cmd_line_args.myhostname));
+		if (rc)
+			cmd_line_args.myhostname[0] = '\0';
+	}
+
+	if (cmd_line_args.daemon_name[0] == '\0') {
+		struct ldmsd_str_ent *xstr = LIST_FIRST(&cmd_line_args.xprt_list);
+		char *delim = strchr(xstr->str, ':');
+		snprintf(cmd_line_args.daemon_name,
+				sizeof(cmd_line_args.daemon_name),
+				"%s:%s", cmd_line_args.myhostname,
+				delim + 1);
+	}
+
+	/* Initialize event threads and event schedulers */
+	if (cmd_line_args.ev_thread_count == 0)
+		cmd_line_args.ev_thread_count = LDMSD_EV_THREAD_CNT_DEFAULT;
+	ev_count = calloc(cmd_line_args.ev_thread_count, sizeof(int));
+	if (!ev_count)
+		cleanup(ENOMEM, "Memory allocation failure.");
+	ovis_scheduler = calloc(cmd_line_args.ev_thread_count, sizeof(*ovis_scheduler));
+	if (!ovis_scheduler)
+		cleanup(ENOMEM, "Memory allocation failure.");
+	ev_thread = calloc(cmd_line_args.ev_thread_count, sizeof(pthread_t));
+	if (!ev_thread)
+		cleanup(ENOMEM, "Memory allocation failure.");
+	for (i = 0; i < cmd_line_args.ev_thread_count; i++) {
+		ovis_scheduler[i] = ovis_scheduler_new();
+		if (!ovis_scheduler[i]) {
+			ldmsd_log(LDMSD_LERROR, "Error creating an OVIS scheduler.\n");
+			cleanup(6, "OVIS scheduler create failed");
+		}
+		rc = pthread_create(&ev_thread[i], NULL, event_proc, ovis_scheduler[i]);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR, "Error %d creating the event "
+					"thread.\n", rc);
+			cleanup(7, "event thread create fail");
+		}
+		pthread_setname_np(ev_thread[i], "ldmsd:scheduler");
+	}
+
+	/* handle kernel sets */
+	if (!cmd_line_args.kernel_setfile) {
+		cmd_line_args.kernel_setfile = strdup(LDMSD_SETFILE);
+		if (!cmd_line_args.kernel_setfile)
+			cleanup(ENOMEM, "Memory allocation failure.");
+	}
+	if (cmd_line_args.do_kernel && publish_kernel(cmd_line_args.kernel_setfile))
+		cleanup(3, "start kernel sampler failed");
+
+	if (cmd_line_args.banner < 0)
+		cmd_line_args.banner = LDMSD_BANNER_DEFAULT;
+
+	is_ldmsd_initialized = 1;
+}
+
+void handle_xprt_list()
+{
+	struct ldmsd_str_ent *xstr;
+	char *xprt, *port, *tmp, *ptr;
+
+	LIST_FOREACH(xstr, &cmd_line_args.xprt_list, entry) {
+		tmp = strdup(xstr->str);
+		xprt = strtok_r(tmp, ":", &ptr);
+		port = strtok_r(NULL, ":", &ptr);
+		ldms = listen_on_ldms_xprt(xprt, port);
+		free(tmp);
+		if (!ldms) {
+			/*
+			 * Do nothing. listen_on_ldms_xprt() cleans up
+			 * LDMSD on errors already.
+			 */
+		}
+	}
+}
+
+
 int main(int argc, char *argv[])
 {
 #ifdef DEBUG
 	mtrace();
 #endif /* DEBUG */
-
+	progname = argv[0];
 	struct ldms_version ldms_version;
 	struct ldmsd_version ldmsd_version;
 	ldms_version_get(&ldms_version);
 	ldmsd_version_get(&ldmsd_version);
-	char *lval = NULL;
-	char *rval = NULL;
-	char *plug_name = NULL;
-	const char *port;
-	int list_plugins = 0;
 	int ret;
-	int sample_interval = 2000000;
 	int op;
-	ldms_set_t test_set;
 	log_fp = stdout;
 	struct sigaction action;
 	sigset_t sigset;
@@ -970,102 +1394,21 @@ int main(int argc, char *argv[])
 	sigaddset(&sigset, SIGTERM);
 	sigaddset(&sigset, SIGABRT);
 
-	auth_opt = av_new(AUTH_OPT_MAX);
-	if (!auth_opt) {
-		printf("Not enough memory!!!\n");
-		exit(1);
-	}
+	umask(0);
+	cmd_line_value_init();
 
+	/* Process the options given at the command line. */
 	opterr = 0;
-
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
-		case 'B':
-			if (check_arg("B", optarg, LO_UINT))
-				return 1;
-			banner = atoi(optarg);
-			break;
-		case 'H':
-			if (check_arg("H", optarg, LO_NAME))
-				return 1;
-			strcpy(myhostname, optarg);
-			break;
-		case 'i':
-			if (check_arg("i", optarg, LO_UINT))
-				return 1;
-			sample_interval = atoi(optarg);
-			break;
-		case 'k':
-			do_kernel = 1;
-			break;
-		case 'r':
-			if (check_arg("r", optarg, LO_PATH))
-				return 1;
-			pidfile = strdup(optarg);
-			break;
-		case 'l':
-			if (check_arg("l", optarg, LO_PATH))
-				return 1;
-			logfile = strdup(optarg);
-			break;
-		case 's':
-			if (check_arg("s", optarg, LO_PATH))
-				return 1;
-			setfile = strdup(optarg);
-			break;
-		case 'v':
-			if (check_arg("v", optarg, LO_NAME))
-				return 1;
-			if (0 == strcmp(optarg, "QUIET")) {
-				quiet = 1;
-				log_level_thr = LDMSD_LLASTLEVEL;
-			} else {
-				log_level_thr = ldmsd_str_to_loglevel(optarg);
-			}
-			if (log_level_thr < 0) {
-				usage(argv);
-				printf("Invalid verbosity levels '%s'. "
-					"See -v option.\n", optarg);
-			}
-			break;
 		case 'F':
-			foreground = 1;
+			cmd_line_args.foreground = 1;
 			break;
-		case 'T':
-			if (check_arg("T", optarg, LO_NAME))
+		case 'u':
+			if (check_arg("u", optarg, LO_NAME))
 				return 1;
-			test_set_name = strdup(optarg);
-			break;
-		case 't':
-			if (check_arg("t", optarg, LO_UINT))
-				return 1;
-			test_set_count = atoi(optarg);
-			break;
-		case 'P':
-			if (check_arg("P", optarg, LO_UINT))
-				return 1;
-			ev_thread_count = atoi(optarg);
-			if (ev_thread_count < 1 )
-				ev_thread_count = 1;
-			if (ev_thread_count > EVTH_MAX)
-				ev_thread_count = EVTH_MAX;
-			break;
-		case 'N':
-			notify = 1;
-			break;
-		case 'm':
-			max_mem_sz_str = strdup(optarg);
-			break;
-		case 'q':
-			usage_hint(argv,"-q becomes -v in LDMS v3. Update your scripts.\n"
-				"This message will disappear in a future release.");
-		case 'z':
-			usage_hint(argv,"-z not available in LDMS v3.\n"
-				"This message will disappear in a future release.");
-			break;
-		case 'Z':
-			usage_hint(argv,"-Z not needed in LDMS v3. Remove it.\n"
-				"This message will disappear in a future release.");
+			ldmsd_plugins_usage(optarg);
+			exit(0);
 			break;
 		case 'V':
 			printf("LDMSD Version: %s\n", PACKAGE_VERSION);
@@ -1082,339 +1425,30 @@ int main(int argc, char *argv[])
 			printf("git-SHA: %s\n", OVIS_GIT_LONG);
 			exit(0);
 			break;
-		case 'u':
-			if (check_arg("u", optarg, LO_NAME))
-				return 1;
-			list_plugins = 1;
-			plug_name = strdup(optarg);
-			break;
-		case 'x':
-			/* Listening port processing is handled below */
-			port = strchr(optarg, ':');
-			if (!port) {
-				printf("Bad xprt format, expecting XPRT:PORT, "
-				       "but got: %s\n", optarg);
-				exit(1);
-			}
-			port++;
-			break;
-		case 'c':
-			/* Handle below */
-			break;
-		case 'p':
-			usage_hint(argv,"-p is deprecated.");
-			break;
-		case 'a':
-			/* auth name */
-			auth_name = optarg;
-			break;
-		case 'A':
-			/* (multiple) auth options */
-			lval = strtok(optarg, "=");
-			if (!lval) {
-				printf("ERROR: Expecting -A name=value\n");
-				exit(1);
-			}
-			rval = strtok(NULL, "");
-			if (!rval) {
-				printf("ERROR: Expecting -A name=value\n");
-				exit(1);
-			}
-			if (auth_opt->count == auth_opt->size) {
-				printf("ERROR: Too many auth options\n");
-				exit(1);
-			}
-			auth_opt->list[auth_opt->count].name = lval;
-			auth_opt->list[auth_opt->count].value = rval;
-			auth_opt->count++;
-			break;
-		case 'n':
-			snprintf(myname, sizeof(myname), "%s", optarg);
-			break;
-		case '?':
-			printf("Error: unknown argument: %c\n", optopt);
 		default:
-			usage(argv);
-		}
-	}
-	if (list_plugins) {
-		if (plug_name) {
-			if (strcmp(plug_name,"all") == 0) {
-				free(plug_name);
-				plug_name = NULL;
+			ret = ldmsd_process_cmd_line_arg(op, optarg);
+			if (ret) {
+				if (ret == ENOENT)
+					usage(argv);
+				cleanup(ret, "");
 			}
+
+			break;
 		}
-		ldmsd_plugins_usage(plug_name);
-		if (plug_name)
-			free(plug_name);
-		av_free(auth_opt);
-		exit(0);
 	}
 
-	if (logfile)
-		log_fp = ldmsd_open_log(argv[0]);
-
-	if (!foreground) {
+	if (!cmd_line_args.foreground) {
 		if (daemon(1, 1)) {
 			perror("ldmsd: ");
 			cleanup(8, "daemon failed to start");
 		}
 	}
 
+	/* Initialize LDMSD events */
 	ldmsd_ev_init();
 
-	/* Initialize LDMS */
 	umask(0);
-	if (!max_mem_sz_str) {
-		max_mem_sz_str = getenv(LDMSD_MEM_SIZE_ENV);
-		if (!max_mem_sz_str)
-			max_mem_sz_str = LDMSD_MEM_SIZE_STR;
-	}
-	if ((max_mem_size = ovis_get_mem_size(max_mem_sz_str)) == 0) {
-		printf("Invalid memory size '%s'. See the -m option.\n",
-							max_mem_sz_str);
-		usage(argv);
-	}
-	if (ldms_init(max_mem_size)) {
-		ldmsd_log(LDMSD_LCRITICAL, "LDMS could not pre-allocate "
-				"the memory of size %s.\n", max_mem_sz_str);
-		av_free(auth_opt);
-		exit(1);
-	}
-
-	if (myhostname[0] == '\0') {
-		ret = gethostname(myhostname, sizeof(myhostname));
-		if (ret)
-			myhostname[0] = '\0';
-	}
-
-	if (myname[0] == '\0') {
-		snprintf(myname, sizeof(myname), "%s:%s", myhostname, port);
-	}
-
-	if (!foreground) {
-		/* Create pidfile for daemon that usually goes away on exit. */
-		/* user arg, then env, then default to get pidfile name */
-		if (!pidfile) {
-			char *pidpath = getenv("LDMSD_PIDFILE");
-			if (!pidpath) {
-				pidfile = malloc(strlen(LDMSD_PIDFILE_FMT)
-						+ strlen(basename(argv[0]) + 1));
-				if (pidfile)
-					sprintf(pidfile, LDMSD_PIDFILE_FMT, basename(argv[0]));
-			} else {
-				pidfile = strdup(pidpath);
-			}
-			if (!pidfile) {
-				ldmsd_log(LDMSD_LERROR, "Out of memory\n");
-				av_free(auth_opt);
-				exit(1);
-			}
-		}
-		if( !access( pidfile, F_OK ) ) {
-			ldmsd_log(LDMSD_LERROR, "Existing pid file named '%s': %s\n",
-				pidfile, "overwritten if writable");
-		}
-		FILE *pfile = fopen_perm(pidfile,"w", LDMSD_DEFAULT_FILE_PERM);
-		if (!pfile) {
-			int piderr = errno;
-			ldmsd_log(LDMSD_LERROR, "Could not open the pid file named '%s': %s\n",
-				pidfile, strerror(piderr));
-			free(pidfile);
-			pidfile = NULL;
-		} else {
-			pid_t mypid = getpid();
-			fprintf(pfile,"%ld\n",(long)mypid);
-			fclose(pfile);
-		}
-		if (pidfile && banner) {
-			char *suffix = ".version";
-			bannerfile = malloc(strlen(suffix)+strlen(pidfile)+1);
-			if (!bannerfile) {
-				ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
-				av_free(auth_opt);
-				exit(1);
-			}
-			sprintf(bannerfile, "%s%s", pidfile, suffix);
-			if( !access( bannerfile, F_OK ) ) {
-				ldmsd_log(LDMSD_LERROR, "Existing banner file named '%s': %s\n",
-					bannerfile, "overwritten if writable");
-			}
-			FILE *bfile = fopen_perm(bannerfile,"w", LDMSD_DEFAULT_FILE_PERM);
-			if (!bfile) {
-				int banerr = errno;
-				ldmsd_log(LDMSD_LERROR, "Could not open the banner file named '%s': %s\n",
-					bannerfile, strerror(banerr));
-				free(bannerfile);
-				bannerfile = NULL;
-			} else {
-
-#define BANNER_PART1_A "Started LDMS Daemon with authentication "
-#define BANNER_PART1_NOA "Started LDMS Daemon without authentication "
-#define BANNER_PART2 "version %s. LDMSD Interface Version " \
-	"%hhu.%hhu.%hhu.%hhu. LDMS Protocol Version %hhu.%hhu.%hhu.%hhu. " \
-	"git-SHA %s\n", PACKAGE_VERSION, \
-	ldmsd_version.major, ldmsd_version.minor, \
-	ldmsd_version.patch, ldmsd_version.flags, \
-	ldms_version.major, ldms_version.minor, ldms_version.patch, \
-	ldms_version.flags, OVIS_GIT_LONG
-
-#if OVIS_LIB_HAVE_AUTH
-				fprintf(bfile, BANNER_PART1_A
-#else /* OVIS_LIB_HAVE_AUTH */
-				fprintf(bfile, BANNER_PART1_NOA
-#endif /* OVIS_LIB_HAVE_AUTH */
-					BANNER_PART2);
-				fclose(bfile);
-			}
-		}
-	}
-
-	ev_count = calloc(ev_thread_count, sizeof(int));
-	if (!ev_count) {
-		ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
-		av_free(auth_opt);
-		exit(1);
-	}
-	ovis_scheduler = calloc(ev_thread_count, sizeof(*ovis_scheduler));
-	if (!ovis_scheduler) {
-		ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
-		av_free(auth_opt);
-		exit(1);
-	}
-	ev_thread = calloc(ev_thread_count, sizeof(pthread_t));
-	if (!ev_thread) {
-		ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
-		av_free(auth_opt);
-		exit(1);
-	}
-	for (op = 0; op < ev_thread_count; op++) {
-		ovis_scheduler[op] = ovis_scheduler_new();
-		if (!ovis_scheduler[op]) {
-			ldmsd_log(LDMSD_LERROR, "Error creating an OVIS scheduler.\n");
-			cleanup(6, "OVIS scheduler create failed");
-		}
-		ret = pthread_create(&ev_thread[op], NULL, event_proc, ovis_scheduler[op]);
-		if (ret) {
-			ldmsd_log(LDMSD_LERROR, "Error %d creating the event "
-					"thread.\n", ret);
-			cleanup(7, "event thread create fail");
-		}
-		pthread_setname_np(ev_thread[op], "ldmsd:scheduler");
-	}
-
-	/* Create the test sets */
-	ldms_set_t *test_sets = calloc(test_set_count, sizeof(ldms_set_t));
-	int job_id, comp_id;
-	if (test_set_name) {
-		int rc, set_no;
-		static char test_set_name_no[1024];
-		ldms_schema_t schema = ldms_schema_new("test_set");
-		if (!schema)
-			cleanup(11, "test schema create failed");
-		job_id = ldms_schema_meta_add(schema, "job_id", LDMS_V_U32, "");
-		if (job_id < 0)
-			cleanup(12, "test schema meta_add jid failed");
-		comp_id = ldms_schema_meta_add(schema, "component_id",
-					       LDMS_V_U32, "");
-		if (comp_id < 0)
-			cleanup(12, "test schema meta_add cid failed");
-		rc = ldms_schema_metric_add(schema, "u8_metric", LDMS_V_U8,
-					    "U8");
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u8 failed");
-		rc = ldms_schema_metric_add(schema, "u16_metric", LDMS_V_U16,
-					    "U16");
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u16 failed");
-		rc = ldms_schema_metric_add(schema, "u32_metric", LDMS_V_U32,
-					    "U32");
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u32 failed");
-		rc = ldms_schema_metric_add(schema, "u64_metric", LDMS_V_U64,
-					    "U64");
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u64 failed");
-		rc = ldms_schema_metric_add(schema, "float_metric", LDMS_V_F32,
-					    "F32");
-		if (rc < 0)
-			cleanup(13, "test schema metric_add float failed");
-		rc = ldms_schema_metric_add(schema, "double_metric", LDMS_V_D64,
-					    "D64");
-		if (rc < 0)
-			cleanup(13, "test schema metric_add double failed");
-		rc = ldms_schema_metric_array_add(schema, "char_array_metric",
-						  LDMS_V_CHAR_ARRAY, "AC", 16);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add char array failed");
-		rc = ldms_schema_metric_array_add(schema, "u8_array_metric",
-						  LDMS_V_U8_ARRAY, "AU8", 4);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u8 array failed");
-		rc = ldms_schema_metric_array_add(schema, "u16_array_metric",
-						  LDMS_V_U16_ARRAY, "AU16", 4);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u16 array failed");
-		rc = ldms_schema_metric_array_add(schema, "u32_array_metric",
-						  LDMS_V_U32_ARRAY, "AU32", 4);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u32 array failed");
-		rc = ldms_schema_metric_array_add(schema, "u64_array_metric",
-						  LDMS_V_U64_ARRAY, "AU64", 4);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u64 array failed");
-		rc = ldms_schema_metric_array_add(schema, "f32_array_metric",
-						  LDMS_V_F32_ARRAY, "AF32", 4);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add f32 array failed");
-		rc = ldms_schema_metric_array_add(schema, "d64_array_metric",
-						  LDMS_V_D64_ARRAY, "AD64", 4);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add d64 array failed");
-		for (set_no = 1; set_no <= test_set_count; set_no++) {
-			sprintf(test_set_name_no, "%s/%s_%d", myhostname,
-				test_set_name, set_no);
-			test_set = ldms_set_new(test_set_name_no, schema);
-			if (!test_set)
-				cleanup(14, "test set new failed");
-			union ldms_value v;
-			v.v_u64 = set_no;
-			ldms_metric_set(test_set, comp_id, &v);
-			ldms_metric_set(test_set, job_id, &v);
-			ldms_set_producer_name_set(test_set, myhostname);
-			test_sets[set_no-1] = test_set;
-		}
-	} else
-		test_set_count = 0;
-
-	if (!setfile)
-		setfile = LDMSD_SETFILE;
-
-
-	if (do_kernel && publish_kernel(setfile))
-		cleanup(3, "start kernel sampler failed");
-
-	char *xprt_str, *port_str;
-	opterr = 0;
-	optind = 0;
-	while ((op = getopt(argc, argv, FMT)) != -1) {
-		char *dup_arg;
-		switch (op) {
-		case 'x':
-			if (check_arg("x", optarg, LO_NAME))
-				return 1;
-			dup_arg = strdup(optarg);
-			xprt_str = strtok(dup_arg, ":");
-			port_str = strtok(NULL, ":");
-			ldms = listen_on_ldms_xprt(xprt_str, port_str);
-			free(dup_arg);
-			if (!ldms) {
-				cleanup(ret, "Error setting up ldms transport");
-			}
-			break;
-		}
-	}
-
+	/* Process configuration files */
 	opterr = 0;
 	optind = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
@@ -1432,10 +1466,17 @@ int main(int argc, char *argv[])
 					 ret, optarg);
 				cleanup(ret, errstr);
 			}
-			ldmsd_log(LDMSD_LINFO, "Processing the config file '%s' is done.\n", optarg);
+			ldmsd_log(LDMSD_LINFO,
+				"Processing the config file '%s' is done.\n", optarg);
 			break;
 		}
 	}
+
+	ldmsd_init(argv);
+
+	handle_pidfile_banner();
+	handle_xprt_list();
+
 	if (ldmsd_use_failover) {
 		/* failover will be the one starting cfgobjs */
 		ret = ldmsd_failover_start();
@@ -1456,52 +1497,9 @@ int main(int argc, char *argv[])
 		ldmsd_inband_cfg_mask_add(0777);
 	}
 
-	uint64_t count = 1;
-	int name = 0;
-	char *names[] = {
-		"this",
-		"that",
-		"the other",
-		"biffle"
-	};
-	int set_no, i;
-	ldms_set_t set;
+	/* Keep the process alive */
 	do {
-		for (set_no = 0; set_no < test_set_count; set_no++) {
-			set = test_sets[set_no];
-			ldms_transaction_begin(set);
-
-			ldms_metric_set_u64(set, 0, count);
-			ldms_metric_set_u64(set, 1, count);
-			ldms_metric_set_u8 (set, 2, (uint8_t)count);
-			ldms_metric_user_data_set (set, 2, count);
-			ldms_metric_set_u16(set, 3, (uint16_t)count);
-			ldms_metric_set_u32(set, 4, (uint32_t)count);
-			ldms_metric_set_u64(set, 5, count);
-			ldms_metric_set_float(set, 6, (float)count * 3.1415);
-			ldms_metric_set_double(set, 7, (double)count * 3.1415);
-
-			name = (name + 1) % 4;
-			for (i = 0; i < 4; i++) {
-				ldms_metric_array_set_str(set, 8, names[name]);
-				ldms_metric_array_set_u8 (set, 9, i, (uint8_t)(count + i));
-				ldms_metric_array_set_u16(set, 10, i, (uint16_t)(count + i));
-				ldms_metric_array_set_u32(set, 11, i, (uint32_t)(count + i));
-				ldms_metric_array_set_u64(set, 12, i, i + count);
-				ldms_metric_array_set_float(set, 13, i,
-							    (float)(count + i) * 3.1415);
-				ldms_metric_array_set_double(set, 14, i,
-							     (double)(count + i) * 3.1415);
-			}
-			ldms_transaction_end(set);
-			if (notify) {
-				struct ldms_notify_event_s event;
-				ldms_init_notify_modified(&event);
-				ldms_notify(set, &event);
-			}
-		}
-		count++;
-		usleep(sample_interval);
+		usleep(LDMSD_KEEP_ALIVE_30MIN);
 	} while (1);
 
 	cleanup(0,NULL);

@@ -87,6 +87,74 @@ struct ldmsd_version {
 	uint8_t flags;
 };
 
+struct ldmsd_str_ent {
+	char *str;
+	LIST_ENTRY(ldmsd_str_ent) entry;
+};
+LIST_HEAD(ldmsd_str_list, ldmsd_str_ent);
+
+#define LDMSD_STR_WRAP(NAME) #NAME
+#define LDMSD_LWRAP(NAME) LDMSD_L ## NAME
+#define TOSTRING(x) LDMSD_STR_WRAP(x)
+/**
+ * \brief ldmsd log levels
+ *
+ * The ldmsd log levels, in order of increasing importance, are
+ *  - DEBUG
+ *  - INFO
+ *  - WARNING
+ *  - ERROR
+ *  - CRITICAL
+ *  - ALL
+ *
+ * ALL is for messages printed to the log file per users requests,
+ * e.g, messages printed from the 'info' command.
+ */
+#define LOGLEVELS(WRAP) \
+	WRAP (DEBUG), \
+	WRAP (INFO), \
+	WRAP (WARNING), \
+	WRAP (ERROR), \
+	WRAP (CRITICAL), \
+	WRAP (ALL), \
+	WRAP (LASTLEVEL),
+
+enum ldmsd_loglevel {
+	LDMSD_LNONE = -1,
+	LOGLEVELS(LDMSD_LWRAP)
+};
+
+/*
+ * struct ldmsd_cmd_line_args contains cmd-line values given in configuration files
+ * and/or at cmd-line.
+ */
+struct ldmsd_cmd_line_args {
+	char myhostname[80];
+	struct ldmsd_str_list xprt_list;
+	int banner;
+	/*
+	 * name to identify ldmsd
+	 * NOTE: fqdn limit: 255 characters
+	 * DEFAULT: myhostname:port
+	 */
+	char daemon_name[512];
+	char *pidfile;
+	int foreground;
+	int ev_thread_count;
+	char *mem_sz_str;
+	char *log_path;
+	enum ldmsd_loglevel verbosity;
+
+	char *auth_name;
+	struct attr_value_list *auth_attrs;
+
+	/* kernel-related arguments */
+	int do_kernel;
+	char *kernel_setfile;
+};
+
+uint8_t ldmsd_is_initialized();
+
 /** Get the ldmsd version  */
 void ldmsd_version_get(struct ldmsd_version *v);
 #pragma weak ldmsd_version_get
@@ -562,36 +630,6 @@ struct ldmsd_store_policy {
 	LIST_ENTRY(ldmsd_store_policy) link;
 };
 
-#define LDMSD_STR_WRAP(NAME) #NAME
-#define LDMSD_LWRAP(NAME) LDMSD_L ## NAME
-/**
- * \brief ldmsd log levels
- *
- * The ldmsd log levels, in order of increasing importance, are
- *  - DEBUG
- *  - INFO
- *  - WARNING
- *  - ERROR
- *  - CRITICAL
- *  - ALL
- *
- * ALL is for messages printed to the log file per users requests,
- * e.g, messages printed from the 'info' command.
- */
-#define LOGLEVELS(WRAP) \
-	WRAP (DEBUG), \
-	WRAP (INFO), \
-	WRAP (WARNING), \
-	WRAP (ERROR), \
-	WRAP (CRITICAL), \
-	WRAP (ALL), \
-	WRAP (LASTLEVEL),
-
-enum ldmsd_loglevel {
-	LDMSD_LNONE = -1,
-	LOGLEVELS(LDMSD_LWRAP)
-};
-
 extern const char *ldmsd_loglevel_names[];
 
 __attribute__((format(printf, 2, 3)))
@@ -1028,6 +1066,12 @@ extern const char *ldmsd_myhostname_get();
 const char *ldmsd_myname_get();
 #pragma weak ldmsd_myname_get
 
+/* Get the auth name of this ldmsd */
+const char *ldmsd_auth_name_get();
+
+/* Get the attribute of the auth method */
+struct attr_value_list *ldmsd_auth_attr_get();
+
 mode_t ldmsd_inband_cfg_mask_get();
 void ldmsd_inband_cfg_mask_set(mode_t mask);
 void ldmsd_inband_cfg_mask_add(mode_t mask);
@@ -1195,5 +1239,15 @@ int smplr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t 
 
 #define ldmsd_prdcr_set_ref_get(_s_, _n_) _ref_get(&((_s_)->ref), (_n_), __func__, __LINE__)
 #define ldmsd_prdcr_set_ref_put(_s_, _n_) _ref_put(&((_s_)->ref), (_n_), __func__, __LINE__)
+
+/**
+ * \brief Process a command-line option
+ *
+ * \param opt    The short-form of the command-line option
+ * \param value  Value of the cmd-line option.
+ *
+ * \retval non-zero is returned on error. Otherwise, 0 is returned.
+ */
+int ldmsd_process_cmd_line_arg(char opt, char *value);
 
 #endif

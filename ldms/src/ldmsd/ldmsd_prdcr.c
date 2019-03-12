@@ -490,9 +490,6 @@ reset_prdcr:
 	ldmsd_prdcr_unlock(prdcr);
 }
 
-extern const char *auth_name;
-extern struct attr_value_list *auth_opt;
-
 static void prdcr_connect(ldmsd_prdcr_t prdcr)
 {
 	int ret;
@@ -501,8 +498,9 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	switch (prdcr->type) {
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
-		prdcr->xprt = ldms_xprt_new_with_auth(prdcr->xprt_name,
-					ldmsd_linfo, auth_name, auth_opt);
+		prdcr->xprt = ldms_xprt_new_with_auth(prdcr->xprt_name, ldmsd_linfo,
+					ldmsd_auth_name_get(),
+					ldmsd_auth_attr_get());
 		if (prdcr->xprt) {
 			ret  = ldms_xprt_connect(prdcr->xprt,
 						 (struct sockaddr *)&prdcr->ss,

@@ -118,6 +118,10 @@ enum ldmsd_request {
 	LDMSD_EXIT_DAEMON_REQ,
 	LDMSD_RECORD_LEN_ADVICE_REQ,
 	LDMSD_SET_ROUTE_REQ,
+	LDMSD_EXPORT_CONFIG_REQ,
+
+	/* command-line options */
+	LDMSD_CMD_LINE_SET_REQ,
 
 	/* failover requests by user */
 	LDMSD_FAILOVER_CONFIG_REQ = 0x700, /* "failover_config" user command */
