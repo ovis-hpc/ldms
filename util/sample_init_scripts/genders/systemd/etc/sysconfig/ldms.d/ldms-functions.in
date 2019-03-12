@@ -826,6 +826,7 @@ generate_standard_storage_policies () {
 	pi=$1
 	out=$2
 	schemas=$3
+	local contopt schopt container schema pcontopt pschopt
 
 	stplist=`$NODEATTR $NODEATTRFILE -v $host ldmsd_strgp_names 2>/dev/null`
 	usedef=0
@@ -870,13 +871,33 @@ generate_standard_storage_policies () {
 			fi
 			echo "strgp_add name=$stp $substpconfig" >> $out
 		else
+			# default container and schema options
+			pschopt="schema=$s"
+			pcontopt="container=$pi"
+			schopt="schema=$s"
+			contopt="container=$pi"
 			if test -n "$plugconfig"; then
 				grok="`config_from_gender $plugconfig`"
 				eval PLUG_CONFIG_${pi}='$grok'
 				eval extraconfig='$'"PLUG_CONFIG_${pi}"
-				echo "config name=$pi container=$pi schema=$s $extraconfig" >> $out
+				# cancel default container and schema options if given
+				if echo "$extraconfig" |grep schema=; then
+					schema=$(echo $extraconfig|sed -e 's/.*schema=//g' -e  's/ .*//g')
+				fi > /dev/null
+				if test -n "$schema"; then
+					pschopt="schema=$schema"
+					schopt=""
+				fi
+				if echo "$extraconfig" |grep container=; then
+					container=$(echo $extraconfig|sed -e 's/.*container=//g' -e  's/ .*//g')
+				fi > /dev/null
+				if test -n "$container"; then
+					pcontopt="container=$container"
+					contopt=""
+				fi
+				echo "config name=$pi $contopt $schopt $extraconfig" >> $out
 			fi
-			echo "strgp_add name=$stp plugin=$pi container=$pi schema=$s" >> $out
+			echo "strgp_add name=$stp plugin=$pi $pcontopt $pschopt" >> $out
 		fi
 		if $STRGPMATCHHOSTS; then
 			if test -n "$stpprod"; then
