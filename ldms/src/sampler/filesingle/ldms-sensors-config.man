@@ -42,11 +42,17 @@ Specify the location of a pre-collected strace log of sensors to use instead of 
 
 The log file for sensors can be collected with:
 
-script -c 'strace -e trace=open,read sensors -u' sensors.log
+script -c 'strace -e trace=open,openat,read sensors -u' sensors.log
 
 The log file for lscpu can be collected with:
 
-script -c 'strace -e trace=open lscpu' /tmp/lscpu.tmp | grep '^open.*cpuinfo_max_freq' > lscpu.log; rm /tmp/lscpu.tmp
+script -c 'strace -e trace=open,openat lscpu' /tmp/lscpu.tmp | grep '^open.*cpuinfo_max_freq' > lscpu.log; rm /tmp/lscpu.tmp
+
+.SH NOTES
+
+When using test input file(s), the live system data will be used if the corresponding test file is not specified.
+
+Systems (kernels) lacking cpu frequency reporting produce no output from lscpu.
 
 .SH SEE ALSO
 sensors(1), lscpu(1), Plugin_filesingle(7), ldmsd.
