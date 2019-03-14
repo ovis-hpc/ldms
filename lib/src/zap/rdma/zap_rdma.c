@@ -1008,10 +1008,8 @@ static zap_err_t z_rdma_accept(zap_ep_t ep, zap_cb_fn_t cb,
 				char *data, size_t data_len)
 {
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
-	struct epoll_event cq_event;
 	struct rdma_conn_param conn_param;
 	struct z_rdma_accept_msg *msg;
-	struct ibv_qp_init_attr qp_attr;
 
 	int ret;
 
@@ -1344,7 +1342,6 @@ handle_connect_request(struct z_rdma_ep *rep, struct rdma_cm_event *event)
 {
 	zap_ep_t new_ep;
 	struct z_rdma_ep *new_rep;
-	zap_err_t zerr;
 	struct zap_event zev = {0};
 	assert(rep->ep.state == ZAP_EP_LISTENING);
 	zev.type = ZAP_EVENT_CONNECT_REQUEST;
@@ -1515,10 +1512,9 @@ handle_rejected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id,
 	rep->rejected_count++;
 #endif /* ZAP_DEBUG */
 	zev.data_len = rej_msg->len;
-	zev.data = (char *)rej_msg->msg;
+	zev.data = (unsigned char *)rej_msg->msg;
 	zev.type = ZAP_EVENT_REJECTED;
 
-callback:
 	__enable_cq_events(rep);
 	rep->ep.state = ZAP_EP_ERROR;
 	rep->ep.cb(&rep->ep, &zev);
@@ -1533,7 +1529,6 @@ handle_established(struct z_rdma_ep *rep, struct rdma_cm_event *event)
 		.type = ZAP_EVENT_CONNECTED,
 		.status = ZAP_ERR_OK,
 	};
-	struct rdma_cm_id *cma_id;
 	switch (rep->ep.state) {
 	case ZAP_EP_CONNECTING:
 	case ZAP_EP_ACCEPTING:
@@ -1577,7 +1572,6 @@ handle_disconnected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 {
 	DLOG_(rep, "RDMA: handle_disconnected %p, state '%s'\n",
 			rep, zap_ep_state_str(rep->ep.state));
-	struct zap_event zev;
 	pthread_mutex_lock(&rep->ep.lock);
 	switch (rep->ep.state) {
 	case ZAP_EP_CONNECTED:
@@ -2130,20 +2124,6 @@ static zap_err_t z_rdma_read(zap_ep_t ep,
 
 static int init_complete = 0;
 static pthread_t cm_thread, cq_thread;
-
-static void z_rdma_cleanup(void)
-{
-	void *dontcare;
-
-	if (cm_thread) {
-		pthread_cancel(cm_thread);
-		pthread_join(cm_thread, &dontcare);
-	}
-	if (cq_thread) {
-		pthread_cancel(cq_thread);
-		pthread_join(cq_thread, &dontcare);
-	}
-}
 
 static int init_once()
 {

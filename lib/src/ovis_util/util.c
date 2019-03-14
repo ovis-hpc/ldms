@@ -120,13 +120,11 @@ char *str_repl_cmd(const char *_str)
 	size_t slen = 0; /* strlen of buff */
 	size_t alen = 4096; /* available len */
 	size_t len;
-	size_t xlen;
 	char *p0 = str, *p1;
 	char *cmd;
 	int rc;
 	int count;
 	FILE *p;
-	char line[4096];
 
 	if (!str)
 		goto err;
@@ -231,7 +229,7 @@ char *str_repl_env_vars(const char *str)
 	char *expr = "\\$\\{[[:alnum:]_]+\\}";
 	int rc, i;
 	regmatch_t match[100];
-	size_t name_len, value_len, name_total, value_total;
+	size_t name_total, value_total;
 
 	name_total = value_total = 0;
 
@@ -270,7 +268,6 @@ char *str_repl_env_vars(const char *str)
 	}
 
 	size_t so = 0;
-	size_t eo = 0;
 
 	res_ptr = res;
 	res[0] = '\0';
@@ -288,7 +285,6 @@ char *str_repl_env_vars(const char *str)
 	/* Copy the remainder of str into the result */
 	strcpy(res_ptr, &str[so]);
 	assert(res_len == (strlen(res) + 1));
- out:
 	return res;
 }
 
@@ -980,8 +976,7 @@ ovis_pgrep_array_t ovis_pgrep(const char *text)
 	DIR *dir;
 	struct dirent *dent;
 	int rc = 0;
-	int dfd, fd;
-	ssize_t sz;
+	int fd;
 	struct stat st;
 	ovis_pgrep_t ent;
 	char path[512];
@@ -997,7 +992,6 @@ ovis_pgrep_array_t ovis_pgrep(const char *text)
 	dir = opendir("/proc");
 	if (!dir)
 		goto out;
-	dfd = dirfd(dir);
 	while ((dent = readdir(dir))) {
 		pid = atoi(dent->d_name);
 		if (!pid)

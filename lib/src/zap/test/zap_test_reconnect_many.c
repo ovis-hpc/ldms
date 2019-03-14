@@ -224,14 +224,11 @@ zap_mem_info_t zap_mem_info(void)
 
 void server_cb(zap_ep_t zep, zap_event_t ev)
 {
-	struct sockaddr_in lsin = {0};
-	struct sockaddr_in rsin = {0};
-	socklen_t slen;
 	char *data;
 
 	switch (ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
-		zap_accept(zep, server_cb, ev->data, ev->data_len);
+		zap_accept(zep, server_cb, (void *)ev->data, ev->data_len);
 		break;
 	case ZAP_EVENT_CONNECTED:
 		zap_log("connected\n");
@@ -258,12 +255,7 @@ void server_cb(zap_ep_t zep, zap_event_t ev)
 
 void client_cb(zap_ep_t zep, zap_event_t ev)
 {
-	zap_err_t zerr;
-	struct sockaddr_in lsin = {0};
-	struct sockaddr_in rsin = {0};
-	socklen_t slen;
 	struct conn *conn = (struct conn *)zap_get_ucontext(zep);
-	int reconnect = 0;
 
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
@@ -331,7 +323,6 @@ void do_server(struct sockaddr_in *sin)
 	}
 	zap_log("Listening on port %hu\n", port);
 	/* Run forever */
-	char c;
 	while (1) {
 		/* do nothing */
 		sleep(60);
@@ -381,7 +372,6 @@ void send_msg(struct conn *conn)
 	socklen_t slen;
 	struct timeval tv;
 	char data[512];
-	int rc;
 	zap_err_t zerr;
 
 	zap_ep_t ep = conn->ep;
@@ -441,7 +431,6 @@ void *client_routine(void *arg)
 void do_client(struct sockaddr_in *sin)
 {
 	struct addrinfo *ai;
-	zap_err_t zerr;
 	int rc;
 
 	conn_list = calloc(num_server, sizeof(struct conn));
@@ -481,7 +470,6 @@ void do_client(struct sockaddr_in *sin)
 
 int main(int argc, char **argv)
 {
-	zap_err_t zerr;
 	handle_args(argc, argv);
 
 	struct sockaddr_in sin = {0};

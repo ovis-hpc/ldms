@@ -188,7 +188,6 @@ int ctrl_request(struct ctrlsock *sock, int cmd_id,
 
 struct ctrlsock *ctrl_inet_connect(struct sockaddr_in *sin)
 {
-	int rc;
 	struct ctrlsock *sock;
 
 	sock = calloc(1, sizeof *sock);
