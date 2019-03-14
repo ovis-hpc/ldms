@@ -60,7 +60,7 @@ def main():
     if args.test_sensors != None:
         tf = args.test_sensors
     else:
-        cmd = "script -c 'strace -e trace=open,read " + \
+        cmd = "script -c 'strace -e trace=openat,open,read " + \
                 sensorsbin + " -u' " + tf + " > /dev/null"
         trval = subprocess.call(cmd, shell=True)
         if trval != 0:
@@ -88,9 +88,30 @@ def main():
         l = lf.strip()
         if len(l) < 5:
             continue
+        if "openat(" == l[:7]:
+            ## print "OPENAT", l
+            tmp = l.split(',')[1].strip().strip('"')
+            if tmp[:11] == '/sys/class/':
+                lastfile = tmp
+                if tmp[-5:] == "/name":
+                    lastdevice = os.path.dirname(tmp)
+                    ## print "DEVICE", lastdevice
+                    devices[lastdevice] = dict()
+                    # devices[lastdevice]["namefile"] = tmp
+                    devices[lastdevice]["items"] = []
+                    lastfiletype = "name"
+                else:
+                    suff = tmp.split('_')[-1]
+                    lastfiletype = suff
+                ## print "lastfiletype", lastfiletype, tmp
+            else:
+                lastfile = None
+                lastfiletype = None
+                lastdevice = None
+            continue
         if "open(" == l[:5]:
             ## print "OPEN", l
-            tmp = l.split(',')[0].split("(")[1].strip('"')
+            tmp = l.split(',')[0].split("(")[1].strip().strip('"')
             if tmp[:11] == '/sys/class/':
                 lastfile = tmp
                 if tmp[-5:] == "/name":
@@ -169,12 +190,12 @@ def main():
         tf = tempfile.mktemp(dir="/tmp", suffix=".trace",
                 prefix="ldms-config-sensors.")
         atf = tf + "a"
-        cmd = "script -c 'strace -e trace=open " + \
+        cmd = "script -c 'strace -e trace=open,openat " + \
             lscpubin + "' " + tf + "> /dev/null; grep cpuinfo_max_freq " + \
             tf + " > " + atf
         trval = subprocess.call(cmd, shell=True)
         if trval != 0:
-            print "Unable to collect lscpu config output"
+            print "#Unable to collect lscpu config output"
             return 1
     f = open(atf)
     lines = f.readlines()
@@ -186,7 +207,23 @@ def main():
         l = lf.strip()
         if len(l) < 5:
             continue
-        if "open(" == l[:5]:
+        if "openat(" == l[:7]:
+            ## print "OPENAT", l
+            tmp = l.split('"')[1]
+            metfile = tmp.replace("max_fr", "cur_fr")
+            parts = tmp.split("/")
+            device = parts[-3]
+            item = "cur_freq"
+            if not device in devices:
+                devices[device] = dict()
+            if not "items" in devices[device]:
+                devices[device]["items"] = []
+                devices[device]["group"] = device
+            devices[device]["items"].append(item)
+            devices[device][item] = dict()
+            devices[device][item]["label"] = "cur_freq"
+            devices[device][item]["inputfile"] = metfile
+        elif "open(" == l[:5]:
             ## print "OPEN", l
             tmp = l.split('"')[1]
             metfile = tmp.replace("max_fr", "cur_fr")
@@ -208,10 +245,14 @@ def main():
     # cpu temps reported in millicentigrade
     # intel power averages in microwatts, apparently
     # cpu freq reported in milliHz
+    llist=[]
     for k,d in devices.iteritems():
         if len(d["items"]) > 0:
             for i in d["items"]:
-                print ".".join([d["group"], d[i]["label"] ]), d[i]["inputfile"], "S64 -1"
+                ln = ".".join([d["group"], d[i]["label"] ]) + " " + d[i]["inputfile"] + " " + "S64 -1"
+                llist.append(ln)
+    for i in sorted(llist):
+        print i
 
 if __name__ == "__main__":
     main()
