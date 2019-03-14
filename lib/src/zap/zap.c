@@ -113,6 +113,17 @@ struct ovis_heap *zev_queue_heap;
 #define _SO_EXT ".so"
 #define MAX_ZAP_LIBPATH	1024
 
+const char *__zap_ep_state_str(zap_ep_state_t state)
+{
+	if (state < ZAP_EP_INIT || ZAP_EP_ERROR < state)
+		return "UNKNOWN_STATE";
+	return zap_ep_state_str[state];
+}
+
+void __zap_assert_flag(int f) {
+	__zap_assert = f;
+}
+
 static char *__zap_event_str[] = {
 	"ZAP_EVENT_ILLEGAL",
 	"ZAP_EVENT_CONNECT_REQUEST",
@@ -617,13 +628,11 @@ loop:
 	ent->ep->z->event_interpose(ent->ep, ent->ctxt);
 	free(ent);
 	goto loop;
-out:
 	return NULL;
 }
 
 int zap_event_add(struct zap_event_queue *q, zap_ep_t ep, void *ctxt)
 {
-	int rc = 0;
 	struct zap_event_entry *ent = malloc(sizeof(*ent));
 	if (!ent)
 		return errno;
@@ -703,7 +712,6 @@ static void __attribute__ ((constructor)) cs_init(void)
 	int rc;
 	pthread_atfork(NULL, NULL, cs_init);
 	pthread_mutex_init(&zap_list_lock, 0);
-	char *str;
 
 	zap_event_workers = ZAP_ENV_INT(ZAP_EVENT_WORKERS);
 	zap_event_qdepth = ZAP_ENV_INT(ZAP_EVENT_QDEPTH);

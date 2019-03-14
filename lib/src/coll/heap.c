@@ -83,7 +83,6 @@ void ovis_heap_sink_down(ovis_heap_t heap, ovis_heap_node_t node);
 
 int ovis_heap_insert(ovis_heap_t heap, ovis_heap_node_t node)
 {
-	int c, p, rc;
 	if (heap->sz == heap->alloc_sz)
 		return ENOMEM;
 	heap->heap[heap->sz] = node;
@@ -96,8 +95,6 @@ int ovis_heap_insert(ovis_heap_t heap, ovis_heap_node_t node)
 ovis_heap_node_t ovis_heap_pop(ovis_heap_t heap)
 {
 	ovis_heap_node_t node = NULL;
-	ovis_heap_node_t tmp;
-	int c, l, r, x, rc;
 	if (heap->sz == 0)
 		return NULL;
 	node = heap->heap[0];
