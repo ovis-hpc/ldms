@@ -217,14 +217,24 @@ struct ldmsd_plugin_type_s {
 	 *
 	 * If the query string is "config", the returned JSON dict MUST include
 	 *
-	 *  { ...
-	 *    "config": [JSON list of JSON dicts. Each dict represents a config line of the instance]
+	 *  {
+	 *    "config": [JSON list of JSON dicts. Each dict represents a config line of the instance],
+	 *    ...
 	 *  }
 	 *
 	 * If the query string is "status", the returned JSON dict MUST include
 	 *
-	 * { ...
-	 *    "status": {JSON dict}
+	 * {
+	 *   "rc" : return_code,
+	 *   "status": {JSON dict},
+	 *   ...
+	 *
+	 * }
+	 *
+	 * If the query srting is "env", the returned JSON dict MUST include
+	 * {
+	 *   "env": [ list of environment variable names used by the instance ],
+	 *   ...
 	 * }
 	 *
 	 * For other query strings, the returned JSON object MUST include the
@@ -233,9 +243,9 @@ struct ldmsd_plugin_type_s {
 	 * \param i The plugin instance.
 	 * \param q The query string.
 	 *
-	 * \retval qr The query result.
+	 * \retval qr A JSON object of the result.
 	 */
-	ldmsd_plugin_qresult_t (*query)(ldmsd_plugin_inst_t i, const char *q);
+	json_entity_t (*query)(ldmsd_plugin_inst_t i, const char *q);
 };
 
 /** Base structure of plugin instance. */

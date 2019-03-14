@@ -207,6 +207,7 @@ static int ebusy_handler(ldmsd_req_ctxt_t reqc);
 static int updtr_task_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc);
 static int listen_handler(ldmsd_req_ctxt_t reqc);
+static int export_config_handler(ldmsd_req_ctxt_t reqc);
 
 /* these are implemented in ldmsd_failover.c */
 int failover_config_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -414,6 +415,9 @@ static struct request_handler_entry request_handler[] = {
 	/* CMD-LINE */
 	[LDMSD_LISTEN_REQ] = {
 		LDMSD_LISTEN_REQ, listen_handler, XUG,
+	},
+	[LDMSD_EXPORT_CONFIG_REQ] = {
+		LDMSD_EXPORT_CONFIG_REQ, export_config_handler, XUG
 	},
 
 	/* FAILOVER user commands */
@@ -3997,7 +4001,7 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 			rc = ENOMEM;
 			goto out;
 		}
-		rc = json_value_int(json_attr_value(json_attr_find(qr, "rc")));
+		rc = json_attr_value_int(json_attr_find(qr, "rc"));
 		if (rc)
 			goto out;
 		jb = json_entity_dump(NULL, json_attr_find(qr, "status"));
@@ -4771,6 +4775,59 @@ static int version_handler(ldmsd_req_ctxt_t reqc)
 
 }
 
+/*
+ * The tree contains environment variables given in
+ * configuration files or via ldmsd_controller/ldmsctl.
+ */
+int env_cmp(void *a, const void *b)
+{
+	return strcmp(a, b);
+}
+struct rbt env_tree = RBT_INITIALIZER(env_cmp);
+pthread_mutex_t env_tree_lock  = PTHREAD_MUTEX_INITIALIZER;
+
+struct env_node {
+	char *name;
+	struct rbn rbn;
+};
+
+static int env_node_new(const char *name, struct rbt *tree, pthread_mutex_t *lock)
+{
+	struct env_node *env_node;
+	struct rbn *rbn;
+
+	rbn = rbt_find(tree, name);
+	if (rbn) {
+		/* The environment variable is already recorded.
+		 * Its value will be retrieved by calling getenv().
+		 */
+		return EEXIST;
+	}
+
+	env_node = malloc(sizeof(*env_node));
+	if (!env_node)
+		return ENOMEM;
+	env_node->name = strdup(name);
+	if (!env_node->name)
+		return ENOMEM;
+	rbn_init(&env_node->rbn, env_node->name);
+	if (lock) {
+		pthread_mutex_lock(lock);
+		rbt_ins(tree, &env_node->rbn);
+		pthread_mutex_unlock(lock);
+	} else {
+		rbt_ins(tree, &env_node->rbn);
+	}
+
+	return 0;
+}
+
+static void env_node_del(struct env_node *node)
+{
+	free(node->name);
+	free(node);
+}
+
 static int env_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc = 0;
@@ -4792,8 +4849,7 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 		attr = ldmsd_next_attr(attr);
 	}
 	if (!env_s) {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"No environment names/values are given.");
+		cnt = linebuf_printf(reqc, "No environment names/values are given.");
 		reqc->errcode = EINVAL;
 		goto out;
 	}
@@ -4825,6 +4881,17 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 					"Failed to set '%s=%s': %s",
 					v->name, v->value, strerror(rc));
 			goto out;
+		}
+		rc = env_node_new(v->name, &env_tree, &env_tree_lock);
+		if (rc == ENOMEM) {
+			ldmsd_log(LDMSD_LERROR, "Out of memory. "
+					"Failed to record a given env: %s=%s\n",
+					v->name, v->value);
+			/* Keep setting the remaining give environment variables */
+			continue;
+		} else if (rc == EEXIST) {
+			/* do nothing */
+			continue;
 		}
 	}
 out:
@@ -5735,5 +5802,625 @@ send_reply:
 		free(auth_args);
 	if (auth_opts)
 		av_free(auth_opts);
+	return 0;
+}
+
+struct envvar_name {
+	const char *env;
+	uint8_t is_exported;
+};
+
+static void __print_env(FILE *f, const char *env, struct rbt *exported_env_tree)
+{
+	int rc = env_node_new(env, exported_env_tree, NULL);
+	if (rc == EEXIST) {
+		/* The environment variable was already exported */
+		return;
+	}
+
+	char *v = getenv(env);
+	if (v)
+		fprintf(f, "env %s=%s\n", env, v);
+}
+
+struct env_trav_ctxt {
+	FILE *f;
+	struct rbt *exported_env_tree;;
+};
+
+static int __export_env(struct rbn *rbn, void *ctxt, int i)
+{
+	struct env_trav_ctxt *_ctxt = (struct env_trav_ctxt *)ctxt;
+	__print_env(_ctxt->f, (const char *)rbn->key, _ctxt->exported_env_tree);
+	return i;
+}
+
+static int __export_envs(ldmsd_req_ctxt_t reqc, FILE *f)
+{
+	int rc = 0;
+	struct rbt exported_env_tree = RBT_INITIALIZER(env_cmp);
+
+	char *ldmsd_envvar_tbl[] = {
+		"LDMS_AUTH_FILE",
+		"LDMSD_MEM_SIZE_ENV",
+		"LDMSD_PIDFILE",
+		"LDMSD_PLUGIN_LIBPATH",
+		"LDMSD_UPDTR_OFFSET_INCR",
+		"MMALLOC_DISABLE_MM_FREE",
+		"OVIS_EVENT_HEAP_SIZE",
+		"OVIS_NOTIFICATION_RETRY",
+		"ZAP_EVENT_WORKERS",
+		"ZAP_EVENT_QDEPTH",
+		"ZAP_LIBPATH",
+		NULL,
+	};
+
+	struct env_trav_ctxt ctxt = { f, &exported_env_tree };
+
+	fprintf(f, "# ----- environment variables -----\n");
+
+	/*
+	 *  Export all environment variables set with the env command.
+	 */
+	pthread_mutex_lock(&env_tree_lock);
+	rbt_traverse(&env_tree, __export_env, (void *)&ctxt);
+	pthread_mutex_unlock(&env_tree_lock);
+
+
+	/*
+	 * Export environment variables used in the LDMSD process that are
+	 * set directly in bash.
+	 */
+	/*
+	 * Environment variables used by core LDMSD (not plugins).
+	 */
+	int i;
+	for (i = 0; ldmsd_envvar_tbl[i]; i++) {
+		__print_env(f, ldmsd_envvar_tbl[i], &exported_env_tree);
+	}
+
+	/*
+	 * Environment variables used by zap transports
+	 */
+	char **zap_envs = ldms_xprt_zap_envvar_get();
+	if (!zap_envs) {
+		if (errno) {
+			rc = errno;
+			(void) linebuf_printf(reqc, "Failed to get zap "
+					"environment variables. Error %d\n", rc);
+			goto cleanup;
+		} else {
+			/*
+			 * nothing to do
+			 * no env var used by the loaded zap transports
+			 */
+		}
+	} else {
+		int i;
+		for (i = 0; zap_envs[i]; i++) {
+			__print_env(f, zap_envs[i], &exported_env_tree);
+			free(zap_envs[i]);
+		}
+		free(zap_envs);
+	}
+
+	/*
+	 * Environment variables used by loaded plugins.
+	 */
+	ldmsd_plugin_inst_t inst;
+	json_entity_t qr, env_attr, envs, item;
+	char *name;
+	LDMSD_PLUGIN_INST_FOREACH(inst) {
+		qr = inst->base->query(inst, "env"); /* Query env used by the pi instance */
+		if (!qr)
+			continue;
+		env_attr = json_attr_find(qr, "env");
+		if (!env_attr)
+			goto next;
+		envs = json_attr_value(env_attr);
+		if (JSON_LIST_VALUE != json_entity_type(envs)) {
+			(void) linebuf_printf(reqc, "Cannot get the environment "
+					"variable list from plugin instance '%s'",
+					inst->inst_name);
+			rc = EINTR;
+			goto cleanup;
+		}
+		for (item = json_item_first(envs); item; item = json_item_next(item)) {
+			name = json_value_str(item)->str;
+			__print_env(f, name, &exported_env_tree);
+		}
+	next:
+		json_entity_free(qr);
+	}
+
+	/*
+	 * Clean up the exported_env_tree;
+	 */
+	struct env_node *env_node;
+	struct rbn *rbn;
+cleanup:
+	rbn = rbt_min(&exported_env_tree);
+	while (rbn) {
+		rbt_del(&exported_env_tree, rbn);
+		env_node = container_of(rbn, struct env_node, rbn);
+		env_node_del(env_node);
+		rbn = rbt_min(&exported_env_tree);
+	}
+	return rc;
+}
+
+extern struct ldmsd_cmd_line_args cmd_line_args;
+static void __export_cmdline_args(FILE *f)
+{
+	int i = 0;
+	ldmsd_listen_t listen;
+
+	fprintf(f, "# ----- cmd-line options -----\n");
+	/* xprt */
+	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+			listen ; listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
+		fprintf(f, "listen xprt=%s port=%hu", listen->xprt, listen->port_no);
+		if (listen->host) {
+			fprintf(f, " host=%s", listen->host);
+		}
+		if (listen->auth_name) {
+			fprintf(f, " auth=%s", listen->auth_name);
+			if (!listen->auth_attrs)
+				continue;
+			for (i = 0; i < listen->auth_attrs->count; i++) {
+				fprintf(f, " %s=%s",
+					listen->auth_attrs->list[i].name,
+					listen->auth_attrs->list[i].value);
+			}
+		}
+	}
+	fprintf(f, "\n");
+
+	if (cmd_line_args.log_path) {
+		fprintf(f, "set %s=%s %s=%s\n",
+				opts['l'].l,
+				cmd_line_args.log_path,
+				opts['v'].l,
+				ldmsd_loglevel_to_str(cmd_line_args.verbosity));
+	} else {
+		fprintf(f, "set %s=%s\n", opts['v'].l,
+				ldmsd_loglevel_to_str(cmd_line_args.verbosity));
+	}
+	fprintf(f, "set %s=%s\n", opts['m'].l, cmd_line_args.mem_sz_str);
+	fprintf(f, "set %s=%d\n", opts['P'].l, cmd_line_args.ev_thread_count);
+
+	/* authentication */
+	if (cmd_line_args.auth_name) {
+		fprintf(f, "set %s=%s", opts['a'].l, cmd_line_args.auth_name);
+		for (i = 0; i < cmd_line_args.auth_attrs->count; i++) {
+			fprintf(f, " %s=%s", cmd_line_args.auth_attrs->list[i].name,
+					cmd_line_args.auth_attrs->list[i].value);
+		}
+		fprintf(f, "\n");
+	}
+	fprintf(f, "set %s=%d\n", opts['B'].l, cmd_line_args.banner);
+	if (cmd_line_args.pidfile)
+		fprintf(f, "set %s=%s\n", opts['r'].l, cmd_line_args.pidfile);
+	fprintf(f, "set %s=%s\n", opts['H'].l, cmd_line_args.myhostname);
+	fprintf(f, "set %s=%s\n", opts['n'].l, cmd_line_args.daemon_name);
+
+	/* kernel options */
+	if (cmd_line_args.do_kernel) {
+		fprintf(f, "set %s=true\n", opts['k'].l);
+		fprintf(f, "set %s=%s\n", opts['s'].l,
+				cmd_line_args.kernel_setfile);
+	}
+}
+
+static int __export_smplr_config(FILE *f)
+{
+	fprintf(f, "# ----- Sampler Policy ----- \n");
+	ldmsd_smplr_t smplr;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_SMPLR);
+	for (smplr = ldmsd_smplr_first(); smplr; smplr = ldmsd_smplr_next(smplr)) {
+		ldmsd_smplr_lock(smplr);
+		fprintf(f, "smplr_add name=%s instance=%s",
+				smplr->obj.name, smplr->pi->inst_name);
+		fprintf(f, " interval=%ld", smplr->interval_us);
+		if (smplr->offset_us != LDMSD_UPDT_HINT_OFFSET_NONE)
+			fprintf(f, " offset=%ld", smplr->offset_us);
+		fprintf(f, "\n");
+		if (smplr->state == LDMSD_SMPLR_STATE_RUNNING)
+			fprintf(f, "smplr_start name=%s\n", smplr->obj.name);
+		ldmsd_smplr_unlock(smplr);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SMPLR);
+	return 0;
+}
+
+static int __export_prdcrs_config(FILE *f)
+{
+	int rc = 0;
+	fprintf(f, "# ----- Producer Policies -----\n");
+	ldmsd_prdcr_t prdcr;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		ldmsd_prdcr_lock(prdcr);
+		fprintf(f, "prdcr_add name=%s type=%s host=%s port=%hu xprt=%s interval=%ld",
+				prdcr->obj.name,
+				ldmsd_prdcr_type2str(prdcr->type),
+				prdcr->host_name,
+				prdcr->port_no,
+				prdcr->xprt_name,
+				prdcr->conn_intrvl_us);
+		if (prdcr->conn_auth) {
+			fprintf(f, " auth=%s", prdcr->conn_auth);
+			if (prdcr->conn_auth_args) {
+				char *s = av_to_string(prdcr->conn_auth_args, 0);
+				if (!s) {
+					ldmsd_prdcr_unlock(prdcr);
+					rc =  ENOMEM;
+					goto out;
+				}
+				fprintf(f, " %s", s);
+				free(s);
+			}
+		}
+		fprintf(f, "\n");
+		if ((prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) &&
+				(prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPING)) {
+			fprintf(f, "prdcr_start name=%s\n", prdcr->obj.name);
+		}
+		ldmsd_prdcr_unlock(prdcr);
+	}
+out:
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	return rc;
+}
+
+static int __export_updtrs_config(FILE *f)
+{
+	ldmsd_updtr_t updtr;
+	ldmsd_str_ent_t regex_ent;
+	ldmsd_name_match_t match;
+
+	fprintf(f, "# ------ Updater Policies ------\n");
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
+	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
+		ldmsd_updtr_lock(updtr);
+		/* updtr_add */
+		fprintf(f, "updtr_add name=%s interval=%ld",
+				updtr->obj.name,
+				updtr->sched.intrvl_us);
+		if (updtr->sched.offset_us != LDMSD_UPDT_HINT_OFFSET_NONE) {
+			/* Specify offset */
+			fprintf(f, " offset=%ld", updtr->sched.offset_skew);
+		}
+		if (updtr->is_auto_task) {
+			/* Specify auto_interval */
+			fprintf(f, " auto_interval=true");
+		}
+		fprintf(f, "\n");
+		/*
+		 * Both updtr_prdcr_add and updtr_prdcr_del lines are exported because
+		 * producers that are matched the regex's in the add_prdcr_regex_list
+		 * but not matched the regex's in the del_prdcr_regex_list
+		 * are those in prdcr_tree. LDMSD processes prdcr_add and then prdcr_del
+		 * is faster than LDMSD processes updtr_prdcr_add line-by-line
+		 * for each prdcr in prdcr_tree.
+		 */
+
+		/* updtr_prdcr_add */
+		if (LIST_EMPTY(&updtr->added_prdcr_regex_list)) {
+			/* At least one prdcr_regex must be given.
+			 * Otherwise, there is nothing else to do with
+			 * this updater.
+			 */
+			ldmsd_updtr_unlock(updtr);
+			continue;
+		} else {
+			LIST_FOREACH(regex_ent, &updtr->added_prdcr_regex_list, entry) {
+				fprintf(f, "updtr_prdcr_add name=%s regex=%s\n",
+						updtr->obj.name,
+						regex_ent->str);
+			}
+		}
+
+		/* updtr_prdcr_del */
+		LIST_FOREACH(regex_ent, &updtr->del_prdcr_regex_list, entry) {
+			fprintf(f, "updtr_prdcr_del name=%s regex=%s\n",
+					updtr->obj.name, regex_ent->str);
+		}
+
+		/* updtr_match_add */
+		for (match = ldmsd_updtr_match_first(updtr); match;
+				match = ldmsd_updtr_match_next(match)) {
+			fprintf(f, "updtr_match_add name=%s regex=%s match=%s\n",
+					updtr->obj.name,
+					match->regex_str,
+					ldmsd_updtr_match_enum2str(match->selector));
+		}
+
+		/* updtr_start */
+		if (updtr->state == LDMSD_UPDTR_STATE_RUNNING)
+			fprintf(f, "updtr_start name=%s\n",
+					updtr->obj.name);
+		ldmsd_updtr_unlock(updtr);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+	return 0;
+}
+
+static int __export_strgps_config(FILE *f)
+{
+	ldmsd_strgp_t strgp;
+	ldmsd_name_match_t match;
+	ldmsd_strgp_metric_t metric;
+
+	fprintf(f, "# ----- Storage Policies -----\n");
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
+	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
+		ldmsd_strgp_lock(strgp);
+
+		/* strgp_add */
+		fprintf(f, "strgp_add name=%s container=%s schema=%s\n",
+				strgp->obj.name,
+				strgp->inst->inst_name,
+				strgp->schema);
+
+		/* strgp_prdcr_add */
+		LIST_FOREACH(match, &strgp->prdcr_list, entry) {
+			fprintf(f, "strgp_prdcr_add name=%s regex=%s\n",
+					strgp->obj.name,
+					match->regex_str);
+		}
+
+		/* strgp_metric_add */
+		TAILQ_FOREACH(metric, &strgp->metric_list, entry) {
+			fprintf(f, "strgp_metric_add name=%s metric=%s\n",
+					strgp->obj.name,
+					metric->name);
+		}
+
+		/* strgp_start */
+		if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
+			fprintf(f, "strgp_start name=%s\n", strgp->obj.name);
+		}
+		ldmsd_strgp_unlock(strgp);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+	return 0;
+}
+
+struct setgroup_ctxt {
+	FILE *f;
+	int cnt;
+};
+
+static int __export_setgroup_member(ldms_set_t set, const char *name, void *arg)
+{
+	struct setgroup_ctxt *ctxt = (struct setgroup_ctxt *)arg;
+	if (ctxt->cnt > 0)
+		fprintf(ctxt->f, ",%s", name);
+	else
+		fprintf(ctxt->f, "%s", name);
+	ctxt->cnt++;
+	return 0;
+}
+
+static int __export_setgroups_config(FILE *f)
+{
+	int rc = 0;
+	ldmsd_setgrp_t setgrp;
+	struct setgroup_ctxt ctxt = {f, 0};
+	fprintf(f, "# ----- Setgroups -----\n");
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_SETGRP);
+	for (setgrp = ldmsd_setgrp_first(); setgrp;
+			setgrp = ldmsd_setgrp_next(setgrp)) {
+		ldmsd_setgrp_lock(setgrp);
+		/* setrgroup_add */
+		fprintf(f, "setgroup_add name=%s producer=%s",
+				setgrp->obj.name, setgrp->producer);
+		if (setgrp->interval_us) {
+			fprintf(f, "interval=%ld", setgrp->interval_us);
+			if (setgrp->offset_us != LDMSD_UPDT_HINT_OFFSET_NONE)
+				fprintf(f, "offset=%ld", setgrp->offset_us);
+		}
+		fprintf(f, "\n");
+
+		/* setgroup_ins */
+		fprintf(f, "setgroup_ins name=%s instance=", setgrp->obj.name);
+		rc = ldmsd_group_iter(setgrp->set, __export_setgroup_member, &ctxt);
+		if (rc) {
+			ldmsd_setgrp_unlock(setgrp);
+			goto out;
+		}
+		fprintf(f, "\n"); /* newline of the setgroup_ins line */
+		ldmsd_setgrp_unlock(setgrp);
+	}
+out:
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SETGRP);
+	return rc;
+}
+
+static void __export_plugin_config_line(FILE *f, ldmsd_plugin_inst_t inst, json_entity_t d)
+{
+	json_entity_t a;
+
+	/*
+	 * Assume the JSON dict looks like
+	 *
+	 * { "attr_A": "value_A",
+	 *   "attr_B": "value_B",
+	 * }
+	 *
+	 * will convert it to
+	 *
+	 * config name=<pi inst name> attr_A=value_A attr_B=value_B
+	 */
+
+	fprintf(f, "config name=%s", inst->inst_name);
+	for (a = json_attr_first(d); a; a = json_attr_next(a)) {
+		fprintf(f, " %s=%s", json_attr_name(a)->str,
+				json_value_str(json_attr_value(a))->str);
+	}
+	fprintf(f, "\n");
+}
+
+static int __export_plugin_config(FILE *f)
+{
+	ldmsd_plugin_inst_t inst;
+	json_entity_t json, cfg, l, d, a;
+	json = NULL;
+
+	fprintf(f, "# ----- load plugins -----\n");
+	LDMSD_PLUGIN_INST_FOREACH(inst) {
+		fprintf(f, "load name=%s plugin=%s\n",
+				inst->inst_name,
+				inst->plugin_name);
+		json = inst->base->query(inst, "config");
+		if (!json || !(cfg = json_attr_find(json, "config"))) {
+			ldmsd_log(LDMSD_LERROR, "Failed to export the config of "
+					"plugin instance '%s'. "
+					"The config record cannot be founded.\n",
+					inst->inst_name);
+			goto next;
+		}
+		/*
+		 * Assume that \c json is a JSON dict that contains
+		 * the plugin instance configuration attributes.
+		 */
+		l = json_attr_value(cfg);
+		if (JSON_LIST_VALUE != json_entity_type(l)) {
+			ldmsd_log(LDMSD_LERROR, "Failed to export the config of "
+					"plugin instance '%s'. "
+					"LDMSD cannot intepret the query result.\n",
+					inst->inst_name);
+			goto next;
+		}
+		for (d = json_item_first(l); d; d = json_item_next(d)) {
+			fprintf(f, "config name=%s", inst->inst_name);
+			for (a = json_attr_first(d); a; a = json_attr_next(a)) {
+				fprintf(f, " %s=%s", json_attr_name(a)->str,
+						json_value_str(json_attr_value(a))->str);
+			}
+			/*
+			 * End of a config line.
+			 */
+			fprintf(f, "\n");
+		}
+next:
+		if (json) {
+			json_entity_free(json);
+			json = NULL;
+		}
+	}
+	return 0;
+}
+
+int failover_config_export(FILE *f);
+static int export_config_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	FILE *f = NULL;
+	ldmsd_req_attr_t attr_exist;
+	int mode = 0; /* 0x1 -- env, 0x10 -- cmdline, 0x100 -- cfgcmd */
+	char *path, *attr_name;
+	path = NULL;
+
+	path = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PATH);
+	if (!path) {
+		attr_name = "path";
+		goto einval;
+	}
+	f = fopen(path, "w");
+	if (!f) {
+		reqc->errcode = errno;
+		(void)snprintf(reqc->line_buf, reqc->line_len,
+				"Failed to open the file: %s", path);
+		goto send_reply;
+	}
+
+	attr_exist = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_ENV);
+	if (attr_exist)
+		mode = 0x1;
+	attr_exist = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_CMDLINE);
+	if (attr_exist)
+		mode |= 0x10;
+	attr_exist = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_CFGCMD);
+	if (attr_exist)
+		mode |= 0x100;
+
+	if (!mode || (mode && 0x1)) {
+		/* export environment variables */
+		__export_envs(reqc, f);
+	}
+	if (!mode || (mode && 0x10)) {
+		/* export command-line options */
+		__export_cmdline_args(f);
+	}
+	if (!mode || (mode && 0x100)) {
+		rc = __export_plugin_config(f);
+		if (rc) {
+			reqc->errcode = rc;
+			(void)snprintf(reqc->line_buf, reqc->line_len,
+					"Failed to export the plugin-related "
+					"config commands");
+			goto send_reply;
+		}
+		rc = __export_smplr_config(f);
+		if (rc) {
+			reqc->errcode = rc;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"Failed to export the configuration "
+					"of sampler policies");
+			goto send_reply;
+		}
+		rc = __export_prdcrs_config(f);
+		if (rc) {
+			reqc->errcode = rc;
+			(void)snprintf(reqc->line_buf, reqc->line_len,
+					"Failed to export the Producer-related "
+					"config commands");
+			goto send_reply;
+		}
+		rc = __export_updtrs_config(f);
+		if (rc) {
+			reqc->errcode = rc;
+			(void)snprintf(reqc->line_buf, reqc->line_len,
+					"Failed to export the Updater-related "
+					"config commands");
+			goto send_reply;
+		}
+		rc = __export_strgps_config(f);
+		if (rc) {
+			reqc->errcode = rc;
+			(void)snprintf(reqc->line_buf, reqc->line_len,
+					"Failed to export the Storage "
+					"policy-related config commands");
+			goto send_reply;
+		}
+		rc = __export_setgroups_config(f);
+		if (rc) {
+			reqc->errcode = rc;
+			(void)snprintf(reqc->line_buf, reqc->line_len,
+					"Failed to export the setgroup-related "
+					"config commands");
+			goto send_reply;
+		}
+		rc = failover_config_export(f);
+		if (rc) {
+			reqc->errcode = rc;
+			(void)snprintf(reqc->line_buf, reqc->line_len,
+					"Failed to export the failover-related "
+					"config commands");
+			goto send_reply;
+		}
+	}
+	goto send_reply;
+einval:
+	reqc->errcode = EINVAL;
+	(void)linebuf_printf(reqc, "The attribute '%s' is required.", attr_name);
+send_reply:
+	if (f)
+		fclose(f);
+	if (path)
+		free(path);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }

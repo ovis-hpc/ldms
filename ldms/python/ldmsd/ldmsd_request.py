@@ -102,8 +102,12 @@ class LDMSD_Req_Attr(object):
     GID = 33
     STREAM = 34
     COMP_ID = 35
-    QUERY = 37
-    LAST = 38
+    QUERY = 36
+    AUTH = 37,
+    ENV = 38,
+    CMDLINE = 39,
+    CFGCMD = 40,
+    LAST = 40
 
     NAME_ID_MAP = {'name': NAME,
                    'component_id':COMP_ID,
@@ -142,6 +146,9 @@ class LDMSD_Req_Attr(object):
                    'gid': GID,
                    'stream': STREAM,
                    'query': QUERY,
+                   'auth': AUTH,
+                   'cmdline': CMDLINE,
+                   'cfgcmd': CFGCMD,
                    'TERMINATING': LAST
         }
 
@@ -294,6 +301,7 @@ class LDMSD_Request(object):
     LOGROTATE = 0x600 + 8
     EXIT_DAEMON = 0x600 + 9
     SET_ROUTE = 0X600 + 11
+    EXPORT_CONFIG = 0x600 + 12
 
     FAILOVER_CONFIG        = 0x700
     FAILOVER_PEERCFG_START = 0x700  +  1
@@ -395,6 +403,8 @@ class LDMSD_Request(object):
 
             'publish'       :  {'id': STREAM_PUBLISH },
             'subscribe'     :  {'id' : STREAM_SUBSCRIBE },
+
+            'export' :  {'id':  EXPORT_CONFIG},
         }
 
     TYPE_CONFIG_CMD = 1

@@ -133,8 +133,6 @@ void __updt_time_put(struct ldmsd_updt_time *updt_time)
 }
 #endif /* LDMSD_UDPATE_TIME */
 
-static void updtr_task_cb(ldmsd_task_t task, void *arg);
-
 static void
 __grp_info_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 			    int more, ldms_set_t set, void *arg)
@@ -619,6 +617,8 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 	EV_DATA(updtr->stop_ev, struct start_data)->entity = updtr;
 
 	rbt_init(&updtr->prdcr_tree, prdcr_ref_cmp);
+	LIST_INIT(&updtr->added_prdcr_regex_list);
+	LIST_INIT(&updtr->del_prdcr_regex_list);
 	LIST_INIT(&updtr->match_list);
 	updtr->push_flags = push_flags;
 
@@ -827,6 +827,26 @@ ldmsd_name_match_t ldmsd_updtr_match_next(ldmsd_name_match_t cmp)
 	return LIST_NEXT(cmp, entry);
 }
 
+enum ldmsd_name_match_sel ldmsd_updtr_match_str2enum(const char *str)
+{
+	if (0 == strcasecmp(str, "schema"))
+		return LDMSD_NAME_MATCH_SCHEMA_NAME;
+	else if (0 == strcasecmp(str, "inst"))
+		return LDMSD_NAME_MATCH_INST_NAME;
+	else
+		return -1;
+}
+
+const char *ldmsd_updtr_match_enum2str(enum ldmsd_name_match_sel sel)
+{
+	if (sel == LDMSD_NAME_MATCH_INST_NAME)
+		return "inst";
+	else if (sel == LDMSD_NAME_MATCH_SCHEMA_NAME)
+		return "schema";
+	else
+		return NULL;
+}
+
 ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_first(ldmsd_updtr_t updtr)
 {
 	struct rbn *rbn = rbt_min(&updtr->prdcr_tree);
@@ -899,15 +919,14 @@ int ldmsd_updtr_match_add(const char *updtr_name, const char *regex_str,
 		goto out_2;
 	}
 
-	if (!selector_str)
+	if (!selector_str) {
 		match->selector = LDMSD_NAME_MATCH_INST_NAME;
-	else if (0 == strcasecmp(selector_str, "schema"))
-		match->selector = LDMSD_NAME_MATCH_SCHEMA_NAME;
-	else if (0 == strcasecmp(selector_str, "inst"))
-		match->selector = LDMSD_NAME_MATCH_INST_NAME;
-	else {
-		rc = EINVAL;
-		goto out_3;
+	} else {
+		match->selector = ldmsd_updtr_match_str2enum(selector_str);
+		if (match->selector < 0) {
+			rc = EINVAL;
+			goto out_3;
+		}
 	}
 
 	if (ldmsd_compile_regex(&match->regex, regex_str, rep_buf, rep_len))
@@ -1038,29 +1057,43 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 	regex_t regex;
 	ldmsd_updtr_t updtr;
 	ldmsd_prdcr_t prdcr;
+	ldmsd_str_ent_t regex_ent = NULL;
 	int rc;
 
+	regex_ent = malloc(sizeof(*regex_ent));
+	if (!regex_ent) {
+		snprintf(rep_buf, rep_len, "Out of memory");
+		return ENOMEM;
+	}
+	regex_ent->str = strdup(prdcr_regex);
+	if (!regex_ent->str) {
+		free(regex_ent);
+		snprintf(rep_buf, rep_len, "Out of memory");
+		return ENOMEM;
+	}
+
 	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
-	if (rc)
-		return rc;
+	if (rc) {
+		goto err;
+	}
 
 	updtr = ldmsd_updtr_find(updtr_name);
 	if (!updtr) {
 		sprintf(rep_buf, "%dThe updater specified does not "
 						"exist\n", ENOENT);
-		regfree(&regex);
-		return ENOENT;
+		rc = ENOENT;
+		goto err;
 	}
 
 	ldmsd_updtr_lock(updtr);
 	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
 	if (rc)
-		goto out_1;
+		goto err;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
 		sprintf(rep_buf, "%dConfiguration changes cannot be made "
 				"while the updater is running\n", EBUSY);
 		rc = EBUSY;
-		goto out_1;
+		goto err;
 	}
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
@@ -1076,13 +1109,20 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 			sprintf(rep_buf, "%dMemory allocation failure.\n", ENOMEM);
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 			ldmsd_prdcr_put(prdcr);
-			goto out_1;
+			goto err;
 		}
 		rbt_ins(&updtr->prdcr_tree, &ref->rbn);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	sprintf(rep_buf, "0\n");
-out_1:
+	LIST_INSERT_HEAD(&updtr->added_prdcr_regex_list, regex_ent, entry);
+	goto out;
+err:
+	if (regex_ent) {
+		free(regex_ent->str);
+		free(regex_ent);
+	}
+out:
 	regfree(&regex);
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
@@ -1095,24 +1135,37 @@ int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 	int rc = 0;
 	regex_t regex;
 	ldmsd_prdcr_ref_t ref;
+	ldmsd_str_ent_t regex_ent = NULL;
+
+	regex_ent = malloc(sizeof(*regex_ent));
+	if (!regex_ent) {
+		snprintf(rep_buf, rep_len, "Out of memory");
+		return ENOMEM;
+	}
+	regex_ent->str = strdup(prdcr_regex);
+	if (!regex_ent->str) {
+		free(regex_ent);
+		snprintf(rep_buf, rep_len, "Out of memory");
+		return ENOMEM;
+	}
 
 	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
 	if (rc)
-		goto out_0;
+		goto err;
 
 	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
 	if (!updtr) {
 		rc = ENOENT;
 		regfree(&regex);
-		goto out_0;
+		goto err;
 	}
 	ldmsd_updtr_lock(updtr);
 	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
 	if (rc)
-		goto out_1;
+		goto err;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
 		rc = EBUSY;
-		goto out_1;
+		goto err;
 	}
 	for (ref = prdcr_ref_find_regex(updtr, &regex);
 	     ref; ref = prdcr_ref_find_regex(updtr, &regex)) {
@@ -1120,10 +1173,15 @@ int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 		ldmsd_prdcr_put(ref->prdcr);
 		free(ref);
 	}
-out_1:
+	goto out;
+err:
+	if (regex_ent) {
+		free(regex_ent->str);
+		free(regex_ent);
+	}
+out:
 	regfree(&regex);
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
-out_0:
 	return rc;
 }

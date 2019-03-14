@@ -145,6 +145,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': ['name'], 'opt_attr': []},
                       'greeting': {'req_attr': [], 'opt_attr': ['name', 'offset', 'level']},
                       'example': {'req_attr': [], 'opt_attr': []},
                       'set_info': {'req_attr': ['instance'], 'opt_attr': []},
+                      'export': {'req_attr': ['path'], 'opt_attr': ['env', 'cmdline', 'cfgcmd']},
                       ##### Failover. #####
                       'failover_config': {
                                 'req_attr': [

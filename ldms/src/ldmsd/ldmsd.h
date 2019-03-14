@@ -87,10 +87,10 @@ struct ldmsd_version {
 	uint8_t flags;
 };
 
-struct ldmsd_str_ent {
+typedef struct ldmsd_str_ent {
 	char *str;
 	LIST_ENTRY(ldmsd_str_ent) entry;
-};
+} *ldmsd_str_ent_t;
 LIST_HEAD(ldmsd_str_list, ldmsd_str_ent);
 
 #define LDMSD_STR_WRAP(NAME) #NAME
@@ -495,6 +495,26 @@ typedef struct ldmsd_updtr {
 	 * For quick search when query for updater that updates a prdcr_set.
 	 */
 	struct rbt prdcr_tree;
+	/*
+	 * The list contains the regex strings given at
+	 * the updtr_prdcr_add line. The list is used
+	 * in exporting producer configuration.
+	 */
+	struct ldmsd_str_list added_prdcr_regex_list;
+	/*
+	 * The list contains the regex strings given at
+	 * the updtr_prdcr_del line. The list is used
+	 * in exporting producer configuration.
+	 *
+	 * When updtr_prdcr_del line is given, the regex string
+	 * may not matched any strings in the added_prdcr_regex_list.
+	 *
+	 * Producers that are matched the regex in the add_prdcr_regex_list
+	 * but not matched the regex in the del_prdcr_regex_list
+	 * are those in prdcr_tree. This fact is used in exporting
+	 * the updater configuration.
+	 */
+	struct ldmsd_str_list del_prdcr_regex_list;
 	LIST_HEAD(updtr_match_list, ldmsd_name_match) match_list;
 } *ldmsd_updtr_t;
 
@@ -930,6 +950,8 @@ ldmsd_updtr_t ldmsd_updtr_first();
 ldmsd_updtr_t ldmsd_updtr_next(struct ldmsd_updtr *updtr);
 ldmsd_name_match_t ldmsd_updtr_match_first(ldmsd_updtr_t updtr);
 ldmsd_name_match_t ldmsd_updtr_match_next(ldmsd_name_match_t match);
+enum ldmsd_name_match_sel ldmsd_updtr_match_str2enum(const char *str);
+const char *ldmsd_updtr_match_enum2str(enum ldmsd_name_match_sel sel);
 ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_first(ldmsd_updtr_t updtr);
 ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_next(ldmsd_prdcr_ref_t ref);
 static inline ldmsd_updtr_t ldmsd_updtr_get(ldmsd_updtr_t updtr) {
@@ -1040,6 +1062,80 @@ int ldmsd_updtr_schedule_cmp(void *a, const void *b);
 int ldmsd_updtr_tasks_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set);
 
 /* Failover routines */
+/*
+ * active-side tasks:
+ *   - pairing request
+ *   - heartbeat
+ *   - send redundant cfgobj
+ *
+ * passive-side tasks:
+ *   - accept / reject pairing
+ *   - receive + process redundant cfgobj
+ *   - failover: activate redundant cfgobjs
+ *   - failback: deactivate redundant cfgobjs
+ */
+
+typedef enum {
+	FAILOVER_STATE_STOP,
+	FAILOVER_STATE_START,
+	FAILOVER_STATE_STOPPING,
+	FAILOVER_STATE_LAST,
+} failover_state_t;
+
+typedef enum {
+	FAILOVER_CONN_STATE_DISCONNECTED,
+	FAILOVER_CONN_STATE_CONNECTING,
+	FAILOVER_CONN_STATE_PAIRING,     /* connected, pairing in progress */
+	FAILOVER_CONN_STATE_PAIRING_RETRY, /* connected, retry pairing */
+	FAILOVER_CONN_STATE_RESETTING,   /* paired, resetting failover state */
+	FAILOVER_CONN_STATE_CONFIGURING, /* paired, requesting peer config */
+	FAILOVER_CONN_STATE_CONFIGURED,  /* peer config received */
+	FAILOVER_CONN_STATE_UNPAIRING, /* unpairing (for stopping) */
+	FAILOVER_CONN_STATE_ERROR,       /* error */
+	FAILOVER_CONN_STATE_LAST,
+} failover_conn_state_t;
+
+typedef
+struct ldmsd_failover {
+	uint64_t flags;
+	char host[256];
+	char port[8];
+	char xprt[16];
+	char peer_name[512];
+	int auto_switch;
+	uint64_t ping_interval;
+	uint64_t task_interval; /* interval for the task */
+	double timeout_factor;
+	pthread_mutex_t mutex;
+	ldms_t ax; /* active xprt */
+
+	failover_state_t state;
+	failover_conn_state_t conn_state;
+
+	struct timeval ping_ts;
+	struct timeval echo_ts;
+	struct timeval timeout_ts;
+
+	struct ldmsd_task task;
+
+	/* store redundant pdrcr and updtr names instead of relying on cfgobj
+	 * tree so that we don't have to mess with cfgobj global locks */
+	struct rbt prdcr_rbt;
+	struct rbt updtr_rbt;
+	struct rbt strgp_rbt;
+
+	uint64_t moving_sum;
+	int ping_idx;
+	int ping_n;
+	uint64_t ping_rtt[8]; /* ping round-trip time */
+	uint64_t ping_max;    /* ping round-trip time max */
+	uint64_t ping_avg;    /* ping round-trip time average */
+	double ping_sse;      /* ping round-trip time sum of squared error */
+	double ping_sd;       /* ping round-trip time standard deviation */
+
+	int ping_skipped; /* the number of ping skipped due to outstanding */
+} *ldmsd_failover_t;
+
 extern int ldmsd_use_failover;
 int ldmsd_failover_config(const char *host, const char *port, const char *xprt,
 			  int auto_switch, uint64_t interval_us);

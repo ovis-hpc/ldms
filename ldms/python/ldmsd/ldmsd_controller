@@ -1341,6 +1341,19 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         self.handle('listen', arg)
 
+    def do_export(self, arg):
+        """Export running configuration to a local file on the node the daemon is running
+        Parameters:
+            path=        the path of the exported file
+            [env=]       true/false
+            [cmdline=]   true/false
+            [cfgcmd=]    true/false
+        """
+        self.handle('export', arg)
+
+    def complete_export_config(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('export', text)
+
     def parseline(self, line):
         """Parse the line into a command name and a string containing
         the arguments.  Returns a tuple containing (command, args, line).

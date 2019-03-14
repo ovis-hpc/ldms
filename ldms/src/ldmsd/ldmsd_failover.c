@@ -93,39 +93,6 @@ void __dlog(const char *fmt, ...)
 	va_end(ap);
 }
 
-/*
- * active-side tasks:
- *   - pairing request
- *   - heartbeat
- *   - send redundant cfgobj
- *
- * passive-side tasks:
- *   - accept / reject pairing
- *   - receive + process redundant cfgobj
- *   - failover: activate redundant cfgobjs
- *   - failback: deactivate redundant cfgobjs
- */
-
-typedef enum {
-	FAILOVER_STATE_STOP,
-	FAILOVER_STATE_START,
-	FAILOVER_STATE_STOPPING,
-	FAILOVER_STATE_LAST,
-} failover_state_t;
-
-typedef enum {
-	FAILOVER_CONN_STATE_DISCONNECTED,
-	FAILOVER_CONN_STATE_CONNECTING,
-	FAILOVER_CONN_STATE_PAIRING,     /* connected, pairing in progress */
-	FAILOVER_CONN_STATE_PAIRING_RETRY, /* connected, retry pairing */
-	FAILOVER_CONN_STATE_RESETTING,   /* paired, resetting failover state */
-	FAILOVER_CONN_STATE_CONFIGURING, /* paired, requesting peer config */
-	FAILOVER_CONN_STATE_CONFIGURED,  /* peer config received */
-	FAILOVER_CONN_STATE_UNPAIRING, /* unpairing (for stopping) */
-	FAILOVER_CONN_STATE_ERROR,       /* error */
-	FAILOVER_CONN_STATE_LAST,
-} failover_conn_state_t;
-
 typedef enum {
 	__FAILOVER_CONFIGURED         = 0x0001,
 	__FAILOVER_PEERCFG_ACTIVATED  = 0x0002,
@@ -145,47 +112,6 @@ typedef enum {
 	} while (0)
 
 #define __F_GET(f, x) ((f)->flags & x)
-
-typedef
-struct ldmsd_failover {
-	uint64_t flags;
-	char host[256];
-	char port[8];
-	char xprt[16];
-	char peer_name[512];
-	int auto_switch;
-	uint64_t ping_interval;
-	uint64_t task_interval; /* interval for the task */
-	double timeout_factor;
-	pthread_mutex_t mutex;
-	ldms_t ax; /* active xprt */
-
-	failover_state_t state;
-	failover_conn_state_t conn_state;
-
-	struct timeval ping_ts;
-	struct timeval echo_ts;
-	struct timeval timeout_ts;
-
-	struct ldmsd_task task;
-
-	/* store redundant pdrcr and updtr names instead of relying on cfgobj
-	 * tree so that we don't have to mess with cfgobj global locks */
-	struct rbt prdcr_rbt;
-	struct rbt updtr_rbt;
-	struct rbt strgp_rbt;
-
-	uint64_t moving_sum;
-	int ping_idx;
-	int ping_n;
-	uint64_t ping_rtt[8]; /* ping round-trip time */
-	uint64_t ping_max;    /* ping round-trip time max */
-	uint64_t ping_avg;    /* ping round-trip time average */
-	double ping_sse;      /* ping round-trip time sum of squared error */
-	double ping_sd;       /* ping round-trip time standard deviation */
-
-	int ping_skipped; /* the number of ping skipped due to outstanding */
-} *ldmsd_failover_t;
 
 struct str_rbn {
 	struct rbn rbn;
@@ -2397,6 +2323,29 @@ int ldmsd_failover_start()
 out:
 	__failover_unlock(f);
 	return rc;
+}
+
+int failover_config_export(FILE *f)
+{
+	ldmsd_failover_t fo = &__failover;
+	fprintf(f, "# ----- Failover -----\n");
+	/* failover_config */
+	if (0 == strlen(fo->host))
+		/* not configured yet */
+		return 0;
+
+	fprintf(f, "failover_config host=%s xprt=%s port=%s ",
+			fo->host, fo->xprt, fo->port);
+	fprintf(f, "auto_switch=%d interval=%ld timeout_factor=%f",
+			fo->auto_switch, fo->ping_interval, fo->timeout_factor);
+	if (0 != fo->peer_name[0])
+		fprintf(f, "peer_name=%s", fo->peer_name);
+	fprintf(f, "\n");
+
+	/* failover_start */
+	if (FAILOVER_STATE_START == fo->state)
+		fprintf(f, "failover_start\n");
+	return 0;
 }
 
 __attribute__((constructor))
