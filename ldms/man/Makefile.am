@@ -54,9 +54,6 @@ if ENABLE_SLURMTEST
 dist_man8_MANS += pll-ldms-static-test.man
 endif
 
-pending_dist_man7_MANS= \
-Plugin_procsensors.man
-
 dist_man7_MANS += Plugin_store_rabbitv3.man
 dist_man7_MANS += Plugin_store_rabbitkw.man
 
