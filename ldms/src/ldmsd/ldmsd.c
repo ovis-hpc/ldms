@@ -379,6 +379,7 @@ void cleanup(int x, const char *reason)
 		logfile = NULL;
 	}
 
+	av_free(auth_opt);
 	exit(x);
 }
 
@@ -467,8 +468,8 @@ err:
 
 void cleanup_sa(int signal, siginfo_t *info, void *arg)
 {
-	printf("signo : %d\n", info->si_signo);
-	printf("si_pid: %d\n", info->si_pid);
+	ldmsd_log(LDMSD_LINFO, "signo : %d\n", info->si_signo);
+	ldmsd_log(LDMSD_LINFO, "si_pid: %d\n", info->si_pid);
 	cleanup(0, "signal to exit caught");
 }
 
@@ -1706,6 +1707,7 @@ int main(int argc, char *argv[])
 		ldmsd_plugins_usage(plug_name);
 		if (plug_name)
 			free(plug_name);
+		av_free(auth_opt);
 		exit(0);
 	}
 
@@ -1734,6 +1736,7 @@ int main(int argc, char *argv[])
 	if (ldms_init(max_mem_size)) {
 		ldmsd_log(LDMSD_LCRITICAL, "LDMS could not pre-allocate "
 				"the memory of size %s.\n", max_mem_sz_str);
+		av_free(auth_opt);
 		exit(1);
 	}
 
@@ -1762,6 +1765,7 @@ int main(int argc, char *argv[])
 			}
 			if (!pidfile) {
 				ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+				av_free(auth_opt);
 				exit(1);
 			}
 		}
@@ -1786,6 +1790,7 @@ int main(int argc, char *argv[])
 			bannerfile = malloc(strlen(suffix)+strlen(pidfile)+1);
 			if (!bannerfile) {
 				ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
+				av_free(auth_opt);
 				exit(1);
 			}
 			sprintf(bannerfile, "%s%s", pidfile, suffix);
@@ -1826,16 +1831,19 @@ int main(int argc, char *argv[])
 	ev_count = calloc(ev_thread_count, sizeof(int));
 	if (!ev_count) {
 		ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
+		av_free(auth_opt);
 		exit(1);
 	}
 	ovis_scheduler = calloc(ev_thread_count, sizeof(*ovis_scheduler));
 	if (!ovis_scheduler) {
 		ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
+		av_free(auth_opt);
 		exit(1);
 	}
 	ev_thread = calloc(ev_thread_count, sizeof(pthread_t));
 	if (!ev_thread) {
 		ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
+		av_free(auth_opt);
 		exit(1);
 	}
 	for (op = 0; op < ev_thread_count; op++) {
