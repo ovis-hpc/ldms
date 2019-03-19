@@ -284,10 +284,12 @@ void mm_stats(struct mm_stat *s)
 	memset(s,0,sizeof(*s));
 	if (!mmr)
 		return;
+	pthread_mutex_lock(&mmr->lock);
 	s->size = mmr->size;
 	s->grain = mmr->grain;
 	s->smallest = s->size + 1;
 	rbt_traverse(&mmr->addr_tree, heap_stat, s);
+	pthread_mutex_unlock(&mmr->lock);
 }
 
 #ifdef MMR_TEST
