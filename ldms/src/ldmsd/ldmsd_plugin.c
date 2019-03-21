@@ -148,9 +148,86 @@ static void *dl_new(const char *dl_name, char *errstr, int errlen,
 }
 
 static
+int __status_json_new(ldmsd_plugin_inst_t inst)
+{
+	json_entity_t status, n, d, v, a;
+	int i = 0;
+	struct ldmsd_plugin_qjson_attrs pairs[] = {
+			{ "name"    , JSON_STRING_VALUE, { .s = inst->inst_name }  },
+			{ "plugin"  , JSON_STRING_VALUE, { .s = inst->plugin_name }},
+			{ "type"    , JSON_STRING_VALUE, { .s = inst->type_name }  },
+			{ "libpath" , JSON_STRING_VALUE, { .s = inst->libpath }    },
+			{NULL, 0, NULL}
+	};
+	d = json_entity_new(JSON_DICT_VALUE);
+	if (!d)
+		return ENOMEM;
+
+	while (pairs[i].name) {
+		n = json_entity_new(JSON_STRING_VALUE, pairs[i].name);
+		if (!n)
+			goto err0;
+		v = json_entity_new(JSON_STRING_VALUE, pairs[i].s);
+		if (!v) {
+			json_entity_free(n);
+			goto err0;
+		}
+		a = json_entity_new(JSON_ATTR_VALUE, n, v);
+		if (!a) {
+			json_entity_free(v);
+			json_entity_free(n);
+			goto err0;
+		}
+		json_attr_add(d, a);
+		i++;
+	}
+
+	n = json_entity_new(JSON_STRING_VALUE, "status");
+	if (!n)
+		goto err0;
+	status = json_entity_new(JSON_ATTR_VALUE, n, d);
+	if (!status) {
+		json_entity_free(n);
+		goto err0;
+	}
+	json_attr_add(inst->json, status);
+	return 0;
+err0:
+	json_entity_free(d);
+	return ENOMEM;
+}
+
+static
+int  __config_json_new(ldmsd_plugin_inst_t inst)
+{
+	json_entity_t cfg, n, l;
+
+	n = json_entity_new(JSON_STRING_VALUE, "config");
+	if (!n)
+		return ENOMEM;
+	l = json_entity_new(JSON_LIST_VALUE);
+	if (!l)
+		goto err0;
+	cfg = json_entity_new(JSON_ATTR_VALUE, n, l);
+	if (!cfg)
+		goto err1;
+	json_attr_add(inst->json, cfg);
+	return 0;
+
+err2:
+	json_entity_free(cfg);
+err1:
+	json_entity_free(l);
+err0:
+	json_entity_free(n);
+	return ENOMEM;
+}
+
+static
 ldmsd_plugin_inst_t ldmsd_plugin_inst_new(const char *plugin_name, char *errstr,
 					  int errlen)
 {
+	int rc;
 	char *libpath = NULL;
 	ldmsd_plugin_inst_t inst = NULL;
 	ldmsd_plugin_type_t base = NULL;
@@ -225,8 +302,6 @@ ldmsd_plugin_inst_t ldmsd_plugin_inst_new(const char *plugin_name, char *errstr,
 		base = NULL;
 	}
 	if (inst) {
-		if (inst->libpath)
-			free(inst->libpath);
 		free(inst);
 		inst = NULL;
 	}
@@ -258,16 +333,33 @@ ldmsd_plugin_inst_t ldmsd_plugin_inst_load(const char *inst_name,
 	if (!inst->inst_name)
 		goto err1;
 
+	/*
+	 * Create the JSON dict entity
+	 * {
+	 *  "cfg": [],
+	 *  "status": {...}
+	 * }
+	 */
+	inst->json = json_entity_new(JSON_DICT_VALUE);
+	if (!inst->json)
+		goto err2;
+	rc = __config_json_new(inst);
+	if (rc)
+		goto err3;
+	rc = __status_json_new(inst);
+	if (rc)
+		goto err3;
+
 	/* base init */
 	rc = inst->base->init(inst);
 	if (rc)
-		goto err2;
+		goto err3;
 
 	/* instance init */
 	if (inst->init) {
 		rc = inst->init(inst);
 		if (rc)
-			goto err3;
+			goto err4;
 	}
 
 	inst->ref_count = 1;
@@ -275,8 +367,10 @@ ldmsd_plugin_inst_t ldmsd_plugin_inst_load(const char *inst_name,
 	rbt_ins(&inst_rbt, &inst->rbn);
 	goto out;
 
- err3:
+ err4:
 	inst->base->del(inst); /* because inst->base->init() succeeded */
+ err3:
+	json_entity_free(inst->json);
  err2:
 	free(inst->inst_name);
  err1:
@@ -322,23 +416,21 @@ void ldmsd_plugin_inst_del(ldmsd_plugin_inst_t inst)
 }
 
 int ldmsd_plugin_inst_config(ldmsd_plugin_inst_t inst,
-			     struct attr_value_list *avl,
-			     struct attr_value_list *kwl,
+			     json_entity_t d,
 			     char *ebuf, int ebufsz)
 {
-	if (inst->config_avl)
-		av_free(inst->config_avl);
-	inst->config_avl = av_copy(avl);
-	if (!inst->config_avl)
-		return errno;
-	if (inst->config_kwl)
-		av_free(inst->config_kwl);
-	inst->config_kwl = av_copy(kwl);
-	if (!inst->config_kwl)
-		return errno;
+	json_entity_t cfg;
+	cfg = json_attr_find(inst->json, "config");
+	/*
+	 * cfg is created in ldmsd_plugin_inst_load()
+	 * cfg is a JSON attribute "config": []
+	 */
+	if (d)
+		json_item_add(json_attr_value(cfg), json_entity_copy(d));
+
 	if (inst->config)
-		return inst->config(inst, avl, kwl, ebuf, ebufsz);
-	return inst->base->config(inst, avl, kwl, ebuf, ebufsz);
+		return inst->config(inst, d, ebuf, ebufsz);
+	return inst->base->config(inst, d, ebuf, ebufsz);
 }
 
 const char *ldmsd_plugin_inst_help(ldmsd_plugin_inst_t inst)
@@ -532,6 +624,44 @@ int ldmsd_plugin_qrent_add_bulk(ldmsd_plugin_qrent_coll_t coll,
 	return rc;
 }
 
+int ldmsd_plugin_qrent_config_add(ldmsd_plugin_qresult_t r,
+					ldmsd_plugin_qrent_t config_ent)
+{
+	int rc, id = 1;
+	char id_str[8]; /* 8 digit numbers is large enough for the number of config lines */
+	struct rbn *rbn;
+	ldmsd_plugin_qrent_t config;
+
+	rbn = rbt_find(&r->coll.rbt, "config");
+	if (!rbn) {
+		config = malloc(sizeof(*config));
+		if (!config)
+			return ENOMEM;
+		config->coll = ldmsd_plugin_qrent_coll_new();
+		if (!config->coll) {
+			free(config);
+			return ENOMEM;
+		}
+		config->type = LDMSD_PLUGIN_QRENT_COLL;
+
+		ldmsd_plugin_qrent_add(&r->coll, "config",
+				LDMSD_PLUGIN_QRENT_COLL,
+				config);
+	} else {
+		config = container_of(rbn, struct ldmsd_plugin_qrent_s, rbn);
+		rbn = rbt_max(&config->coll->rbt);
+		if (rbn) {
+			id = atoi((char *)rbn->key);
+			id++;
+		}
+	}
+	snprintf(id_str, 7, "%d", id);
+	rc = ldmsd_plugin_qrent_add(config->coll, id_str,
+				LDMSD_PLUGIN_QRENT_COLL,
+				config_ent);
+	return rc;
+}
+
 static
 int __qrent_json_print(ldmsd_plugin_qrent_t qrent,
 		       char **buff, int *off, int *alen);
@@ -627,18 +757,50 @@ err:
 	return NULL;
 }
 
+json_entity_t ldmsd_plugin_qjson_new(ldmsd_plugin_inst_t inst)
+{
+	int rc;
+	json_entity_t result;
+	result = json_entity_new(JSON_DICT_VALUE);
+	if (!result)
+		return NULL;
+	struct ldmsd_plugin_qjson_attrs bulks[] = {
+			{ "rc",     JSON_INT_VALUE,    0 },
+			{ "errmsg", JSON_STRING_VALUE, "" },
+			{ "name",   JSON_STRING_VALUE, inst->inst_name },
+			{ "plugin", JSON_STRING_VALUE, inst->plugin_name },
+			{ "type",   JSON_STRING_VALUE, inst->type_name },
+			{0},
+	};
+	rc = ldmsd_plugin_qjson_attrs_add(result, bulks);
+	if (rc) {
+		json_entity_free(result);
+		return NULL;
+	}
+	return result;
+}
+
+void ldmsd_plugin_qjson_err_set(json_entity_t result, int rc, char *errmsg)
+{
+	json_attr_mod(result, "rc", rc);
+	if (errmsg)
+		json_attr_mod(result, "errmsg", errmsg);
+}
+
 typedef struct qtbl_ent_s {
 	const char *key;
-	void (*qfn)(ldmsd_plugin_inst_t pi, ldmsd_plugin_qresult_t r);
+	json_entity_t (*qfn)(ldmsd_plugin_inst_t pi, json_entity_t result);
 } *qtbl_ent_t;
 #define QTBL_ENT(x) ((qtbl_ent_t)(x))
 
-void qfn_config(ldmsd_plugin_inst_t pi, ldmsd_plugin_qresult_t r);
-void qfn_status(ldmsd_plugin_inst_t pi, ldmsd_plugin_qresult_t r);
+json_entity_t qfn_config(ldmsd_plugin_inst_t pi, json_entity_t result);
+json_entity_t qfn_status(ldmsd_plugin_inst_t pi, json_entity_t result);
+json_entity_t qfn_env(ldmsd_plugin_inst_t pi, json_entity_t result);
 
 struct qtbl_ent_s qtbl[] = {
-        { "config" , qfn_config },
-        { "status" , qfn_status },
+		{ "config" , qfn_config },
+		{ "env"    , qfn_env    },
+		{ "status" , qfn_status },
 };
 
 int qtbl_ent_cmp(const void *k0, const void *k1)
@@ -646,79 +808,100 @@ int qtbl_ent_cmp(const void *k0, const void *k1)
 	return strcmp(QTBL_ENT(k0)->key, QTBL_ENT(k1)->key);
 }
 
-ldmsd_plugin_qresult_t ldmsd_plugin_query(ldmsd_plugin_inst_t pi, const char *q)
+json_entity_t ldmsd_plugin_query(ldmsd_plugin_inst_t pi, const char *q)
 {
 	struct qtbl_ent_s *ent, key = {.key = q};
-	ldmsd_plugin_qresult_t r;
-
-	r = calloc(1, sizeof(*r));
-	if (!r)
+	json_entity_t result = ldmsd_plugin_qjson_new(pi);
+	if (!result) {
+		errno = ENOMEM;
 		return NULL;
-	ldmsd_plugin_qrent_coll_init(&r->coll);
+	}
+
 	ent = bsearch(&key, qtbl, sizeof(qtbl)/sizeof(*qtbl), sizeof(*qtbl),
 		      qtbl_ent_cmp);
 	if (ent) {
-		ent->qfn(pi, r);
+		return ent->qfn(pi, result);
 	} else {
-		r->rc = ENOENT;
+		char errmsg[64];
+		snprintf(errmsg, 63, "Unsupported query '%s'", q);
+		ldmsd_plugin_qjson_err_set(result, EINVAL, errmsg);
 	}
-	return r;
+	return result;
 }
 
-void qfn_config(ldmsd_plugin_inst_t pi, ldmsd_plugin_qresult_t r)
+int ldmsd_plugin_qjson_attrs_add(json_entity_t result,
+			struct ldmsd_plugin_qjson_attrs *bulks)
 {
-	int rc, i;
-	struct attr_value *av;
-	const ldmsd_plugin_qrent_type_t _str = LDMSD_PLUGIN_QRENT_STR;
+	int i;
+	json_entity_t a, n, v;
 
-	struct ldmsd_plugin_qrent_bulk_s bulk[] = {
-		{ "name"    , _str , pi->inst_name          },
-		{ "plugin"  , _str , (void*)pi->plugin_name },
-		{ "type"    , _str , (void*)pi->type_name   },
-		{NULL, 0, NULL}
-	};
-
-	rc = ldmsd_plugin_qrent_add_bulk(&r->coll, bulk);
-	if (rc) {
-		r->rc = rc;
-		return;
-	}
-	for (i = 0; pi->config_avl && i < pi->config_avl->count; i++) {
-		av = &pi->config_avl->list[i];
-		rc = ldmsd_plugin_qrent_add(&r->coll, av->name,
-					    LDMSD_PLUGIN_QRENT_STR, av->value);
-		if (rc) {
-			r->rc = rc;
-			return;
+	for (i = 0; bulks[i].name; i++) {
+		n = json_entity_new(JSON_STRING_VALUE, bulks[i].name);
+		if (!n) {
+			return ENOMEM;
 		}
-	}
-
-	for (i = 0; pi->config_kwl && i < pi->config_kwl->count; i++) {
-		av = &pi->config_kwl->list[i];
-		rc = ldmsd_plugin_qrent_add(&r->coll, av->name,
-					    LDMSD_PLUGIN_QRENT_STR, "");
-		if (rc) {
-			r->rc = rc;
-			return;
+		v = json_entity_new(bulks[i].type, bulks[i].s);
+		if (!v) {
+			json_entity_free(n);
+			return ENOMEM;
 		}
+		a = json_entity_new(JSON_ATTR_VALUE, n, v);
+		if (!a) {
+			json_entity_free(v);
+			json_entity_free(n);
+			return ENOMEM;
+		}
+		json_attr_add(result, a);
 	}
+	return 0;
 }
 
-void qfn_status(ldmsd_plugin_inst_t pi, ldmsd_plugin_qresult_t r)
+json_entity_t qfn_config(ldmsd_plugin_inst_t pi, json_entity_t result)
 {
-	/* populating common plugin status */
+	json_entity_t dup, cfg;
+	/*
+	 * cfg should not be NULL. It is created when the instance is created.
+	 * Its value could be an empty JSON list.
+	 */
+	cfg = json_attr_find(pi->json, "config");
+	/* Copy out the cfg json so that the caller could clean up the result. */
+	dup = json_entity_copy(cfg);
+	if (!dup) {
+		ldmsd_plugin_qjson_err_set(result, ENOMEM, "Out of memory");
+		return result;
+	}
+	json_attr_add(result, dup);
+	return result;
+}
+
+json_entity_t qfn_status(ldmsd_plugin_inst_t pi, json_entity_t result)
+{
+	json_entity_t status_attr, dup;
 	int rc;
-	const ldmsd_plugin_qrent_type_t _str = LDMSD_PLUGIN_QRENT_STR;
-	struct ldmsd_plugin_qrent_bulk_s bulk[] = {
-		{ "name"    , _str , pi->inst_name          },
-		{ "plugin"  , _str , (void*)pi->plugin_name },
-		{ "type"    , _str , (void*)pi->type_name   },
-		{ "libpath" , _str , pi->libpath            },
-		{NULL, 0, NULL}
+
+	struct ldmsd_plugin_qjson_attrs bulks[] = {
+			{ "libpath", JSON_STRING_VALUE, pi->libpath },
+			{0}
 	};
-	rc = ldmsd_plugin_qrent_add_bulk(&r->coll, bulk);
+	/*
+	 * status should not be NULL. It is created when the instance is created.
+	 */
+	status_attr = json_attr_find(pi->json, "status");
+	dup = json_entity_copy(status_attr);
+	if (!dup)
+		goto enomem;
+	rc = ldmsd_plugin_qjson_attrs_add(json_attr_value(dup), bulks);
 	if (rc)
-		goto err;
-err:
-	r->rc = rc;
+		goto enomem;
+	json_attr_add(result, dup);
+	return result;
+enomem:
+	ldmsd_plugin_qjson_err_set(result, ENOMEM, "Out of memory");
+	return result;
+}
+
+json_entity_t qfn_env(ldmsd_plugin_inst_t pi, json_entity_t result)
+{
+	 /* No environment variables to add */
+	return result;
 }

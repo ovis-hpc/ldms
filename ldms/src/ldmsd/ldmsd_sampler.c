@@ -114,16 +114,17 @@ void samp_del(ldmsd_plugin_inst_t inst)
 }
 
 static
-int samp_config(ldmsd_plugin_inst_t inst, struct attr_value_list *avl,
-		struct attr_value_list *kwl, char *ebuf, int ebufsz)
+int samp_config(ldmsd_plugin_inst_t inst, json_entity_t json,
+					char *ebuf, int ebufsz)
 {
+	json_entity_t attr;
 	ldmsd_sampler_type_t samp = (void*)inst->base;
 	char *job_set_name;
 	const char *value;
 	const char *name = inst->inst_name;
 	char buff[1024];
 
-	value = av_value(avl, "producer");
+	value = json_attr_find_str(json, "producer");
 	if (!value) {
 		value = ldmsd_myname_get();
 		ldmsd_log(LDMSD_LINFO, "%s: producer not specified, "
@@ -131,11 +132,12 @@ int samp_config(ldmsd_plugin_inst_t inst, struct attr_value_list *avl,
 	}
 	samp->producer_name = strdup(value);
 
-	value = av_value(avl, "component_id");
-	if (value)
-		samp->component_id = atol(value);
+	attr = json_attr_find(json, "component_id");
+	if (attr) {
+		samp->component_id = strtoull(json_attr_value_str(attr), NULL, 0);
+	}
 
-	value = av_value(avl, "instance");
+	value = json_attr_find_str(json, "instance");
 	if (!value) {
 		snprintf(buff, sizeof(buff), "%s/%s", samp->producer_name,
 			 inst->inst_name);
@@ -143,17 +145,20 @@ int samp_config(ldmsd_plugin_inst_t inst, struct attr_value_list *avl,
 	}
 	samp->set_inst_name = strdup(value);
 
-	value = av_value(avl, "schema");
-	if (!value || value[0] == '\0')
+	value = json_attr_find_str(json, "schema");
+	if (!value) {
 		samp->schema_name = strdup(inst->plugin_name);
-	else
+	} else {
 		samp->schema_name = strdup(value);
+	}
 
-	job_set_name = av_value(avl, "job_set");
-	if (!job_set_name) {
+	value = json_attr_find_str(json, "job_set");
+	if (!value) {
 		snprintf(buff, sizeof(buff), "%s/jobinfo",
 			 samp->producer_name);
 		job_set_name = buff;
+	} else {
+		job_set_name = (char *)value;
 	}
 	samp->job_set = ldms_set_by_name(job_set_name);
 	if (!samp->job_set) {
@@ -162,7 +167,7 @@ int samp_config(ldmsd_plugin_inst_t inst, struct attr_value_list *avl,
 			  "with the metric values.\n", name, job_set_name);
 		samp->job_id_idx = -1;
 	} else {
-		value = av_value(avl, "job_id");
+		value = json_attr_find_str(json, "job_id");
 		if (!value)
 			value = "job_id";
 		samp->job_id_idx = ldms_metric_by_name(samp->job_set, value);
@@ -173,7 +178,7 @@ int samp_config(ldmsd_plugin_inst_t inst, struct attr_value_list *avl,
 				 "cannot be used.\n", name, job_set_name);
 			goto einval;
 		}
-		value = av_value(avl, "app_id");
+		value = json_attr_find_str(json, "app_id");
 		if (!value)
 			value = "app_id";
 		samp->app_id_idx = ldms_metric_by_name(samp->job_set, value);
@@ -184,7 +189,7 @@ int samp_config(ldmsd_plugin_inst_t inst, struct attr_value_list *avl,
 				 "cannot be used.\n", name, job_set_name);
 			goto einval;
 		}
-		value = av_value(avl, "job_start");
+		value = json_attr_find_str(json, "job_start");
 		if (!value)
 			value = "job_start";
 		samp->job_start_idx = ldms_metric_by_name(samp->job_set, value);
@@ -195,7 +200,7 @@ int samp_config(ldmsd_plugin_inst_t inst, struct attr_value_list *avl,
 				 "cannot be used.\n", name, job_set_name);
 			goto einval;
 		}
-		value = av_value(avl, "job_end");
+		value = json_attr_find_str(json, "job_end");
 		if (!value)
 			value = "job_end";
 		samp->job_end_idx = ldms_metric_by_name(samp->job_set, value);
@@ -208,7 +213,7 @@ int samp_config(ldmsd_plugin_inst_t inst, struct attr_value_list *avl,
 		}
 	}
 	/* uid, gid, permission */
-	value = av_value(avl, "uid");
+	value = json_attr_find_str(json, "uid");
 	if (value) {
 		if (isalpha(value[0])) {
 			/* Try to lookup the user name */
@@ -228,7 +233,7 @@ int samp_config(ldmsd_plugin_inst_t inst, struct attr_value_list *avl,
 	} else {
 		samp->uid = geteuid();
 	}
-	value = av_value(avl, "gid");
+	value = json_attr_find_str(json, "gid");
 	if (value) {
 		if (isalpha(value[0])) {
 			/* Try to lookup the group name */
@@ -248,8 +253,8 @@ int samp_config(ldmsd_plugin_inst_t inst, struct attr_value_list *avl,
 	} else {
 		samp->gid = getegid();
 	}
-	value = av_value(avl, "perm");
-	if (value && value[0] != '0') {
+	value = json_attr_find_str(json, "perm");
+	if (!value) {
 		ldmsd_log(LDMSD_LINFO, "%s: Warning, the permission bits '%s' "
 			  "are not specified as an Octal number.\n",
 			  name, value);
@@ -257,7 +262,7 @@ int samp_config(ldmsd_plugin_inst_t inst, struct attr_value_list *avl,
 	samp->perm = (value)?(strtol(value, NULL, 0)):(0777);
 
 	/* set_array_card */
-	value = av_value(avl, "set_array_card");
+	value = json_attr_find_str(json, "set_array_card");
 	samp->set_array_card = (value)?(strtol(value, NULL, 0)):(1);
 
 	return 0;
@@ -265,57 +270,58 @@ int samp_config(ldmsd_plugin_inst_t inst, struct attr_value_list *avl,
 	return EINVAL;
 }
 
-ldmsd_plugin_qresult_t ldmsd_sampler_query(ldmsd_plugin_inst_t i, const char *q)
+json_entity_t ldmsd_sampler_query(ldmsd_plugin_inst_t inst, const char *q)
 {
-	ldmsd_sampler_type_t samp = (void*)i->base;
-	ldmsd_plugin_qresult_t qr;
+	ldmsd_sampler_type_t samp = (void*)inst->base;
+	json_entity_t result, status_attr, status;
+	int rc;
 
 	/* call `super` query first -- to handle the common plugin part */
-	qr = ldmsd_plugin_query(i, q);
-	if (!qr)
+	result = ldmsd_plugin_query(inst, q);
+	if (!result) {
+		/* No query result found */
 		return NULL;
-
-	if (qr->rc)
-		goto out;
-
-	if (0 != strcmp(q, "status"))
-		goto out;
-
-	/* currently, samp_query only handle `status` */
-
-	char sample_interval_us[32];
-	char sample_offset_us[32];
-	char uid[16];
-	char gid[16];
-	char perm[8];
-
-	if (samp->smplr) {
-		sprintf(sample_interval_us, "%ld", samp->smplr->interval_us);
-		sprintf(sample_offset_us, "%ld", samp->smplr->offset_us);
-	} else {
-		sprintf(sample_interval_us, "0");
-		sprintf(sample_offset_us, "%ld", LDMSD_UPDT_HINT_OFFSET_NONE);
 	}
-	sprintf(uid, "%d", samp->uid);
-	sprintf(gid, "%d", samp->gid);
-	sprintf(perm, "%#o", samp->perm);
 
-	const ldmsd_plugin_qrent_type_t _str = LDMSD_PLUGIN_QRENT_STR;
-	struct ldmsd_plugin_qrent_bulk_s bulk[] = {
-		{ "sample_interval_us" , _str , sample_interval_us        },
-		{ "sample_offset_us"   , _str , sample_offset_us          },
-		{ "producer"           , _str , samp->producer_name       },
-		{ "schema"             , _str , samp->schema_name         },
-		{ "set_instance_name"  , _str , samp->set_inst_name       },
-		{ "uid"                , _str , uid                       },
-		{ "gid"                , _str , gid                       },
-		{ "perm"               , _str , perm                      },
+	if (0 != strcmp(q, "status")) {
+		/*
+		 * No additional attribute to add
+		 */
+		goto out;
+	}
+
+	/* Extend the 'status' result */
+	status_attr = json_attr_find(result, "status");
+	status = json_attr_value(status_attr);
+	/* Add the additional attributes for the 'status' result. */
+	char perm[8];
+	long interval_us, offset_us;
+	if (samp->smplr) {
+		interval_us = samp->smplr->interval_us;
+		offset_us = samp->smplr->offset_us;
+	} else {
+		interval_us = 0;
+		offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+	}
+	sprintf(perm, "%#o", samp->perm);
+	enum json_value_e _str = JSON_STRING_VALUE;
+	enum json_value_e _int = JSON_INT_VALUE;
+	struct ldmsd_plugin_qjson_attrs  bulk[] = {
+		{ "sample_interval_us" , _int , { .d = interval_us }  },
+		{ "sample_offset_us"   , _int , { .d = offset_us }    },
+		{ "producer"           , _str , { .s = samp->producer_name }       },
+		{ "schema"             , _str , { .s = samp->schema_name }         },
+		{ "set_instance_name"  , _str , { .s = samp->set_inst_name }       },
+		{ "uid"                , _int , { .d = samp->uid }                 },
+		{ "gid"                , _int , { .d = samp->gid }                 },
+		{ "perm"               , _str , { .s = perm }                      },
 		{0},
 	};
-	qr->rc = ldmsd_plugin_qrent_add_bulk(&qr->coll, bulk);
-
+	rc = ldmsd_plugin_qjson_attrs_add(status, bulk);
+	if (rc)
+		ldmsd_plugin_qjson_err_set(result, ENOMEM, "Out of memory");
 out:
-	return qr;
+	return result;
 }
 
 #define SAMPLER_COMP_IDX 0

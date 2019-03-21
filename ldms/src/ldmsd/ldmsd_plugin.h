@@ -53,6 +53,7 @@
 
 #include "ldms.h"
 #include "ldmsd.h"
+#include "json/json_util.h"
 
 /**
  * \defgroup ldmsd_plugin LDMSD Plugin
@@ -170,11 +171,10 @@ struct ldmsd_plugin_type_s {
 	 *
 	 * \c i->config(), if not NULL, overloads this function, and the
 	 * application can invoke the base implementation by
-	 * \c i->base->config(i, avl, kwl).
+	 * \c i->base->config(i, d, ebuf, ebufsz).
 	 *
 	 * \param i   The instance pointer.
-	 * \param avl The list of attribute=value pairs.
-	 * \param kwl The list of (positional) keyword parameters.
+	 * \param json The JSON object containing the configuration infomation
 	 * \param ebuf The buffer for returning error message from the plugin.
 	 *             This may be \c NULL.
 	 * \param ebufsz The size of the \c ebuf. The plugin must not
@@ -184,14 +184,13 @@ struct ldmsd_plugin_type_s {
 	 * \retval 0     If succeeded.
 	 * \retval errno If failed.
 	 */
-	int (*config)(ldmsd_plugin_inst_t i, struct attr_value_list *avl,
-					     struct attr_value_list *kwl,
+	int (*config)(ldmsd_plugin_inst_t i, json_entity_t json,
 					     char *ebuf, int ebufsz);
 
 	/**
 	 * Plugin query interface.
 	 *
-	 * The default implemenation is ::ldmsd_plugin_query(). The default
+	 * The default implementation is ::ldmsd_plugin_query(). The default
 	 * implementation currently handles `status` and `config` queries.
 	 *
 	 * Sampler plugin overrides the default impementation with
@@ -206,6 +205,30 @@ struct ldmsd_plugin_type_s {
 	 *
 	 * Plugin implementation can override this function and may subsequently
 	 * call existing query functions as it sees fit.
+	 *
+	 * The returned JSON object MUST contain the following attributes.
+	 * { "rc":     <return code>,
+	 *   "errmsg": "Empty string if rc is 0",
+	 *   "name":   "plugin instance name",
+	 *   "plugin": "plugin name",
+	 *   "type":   "plugin type",
+	 *   ...
+	 * }
+	 *
+	 * If the query string is "config", the returned JSON dict MUST include
+	 *
+	 *  { ...
+	 *    "config": [JSON list of JSON dicts. Each dict represents a config line of the instance]
+	 *  }
+	 *
+	 * If the query string is "status", the returned JSON dict MUST include
+	 *
+	 * { ...
+	 *    "status": {JSON dict}
+	 * }
+	 *
+	 * For other query strings, the returned JSON object MUST include the
+	 * attribute of the query string name.
 	 *
 	 * \param i The plugin instance.
 	 * \param q The query string.
@@ -243,10 +266,14 @@ struct ldmsd_plugin_inst_s {
 	/** [private] Reference counter. */
 	int ref_count;
 
-	/** [private] A copy of list of attributes from the last config. */
-	struct attr_value_list *config_avl;
-	/** [private] A copy of list of keywords from the last config. */
-	struct attr_value_list *config_kwl;
+	/** [private] JSON object that defines the plugin instance configuration
+	 * {
+	 *   "config": [],
+	 *   "status": {},
+	 *   ...
+	 * }
+	 */
+	json_entity_t json;
 
 	/** A pointer to the plugin type object. */
 	ldmsd_plugin_type_t base;
@@ -291,8 +318,7 @@ struct ldmsd_plugin_inst_s {
 	 * the plugin.
 	 *
 	 * \param i   The instance pointer.
-	 * \param avl The list of attribute=value pairs.
-	 * \param kwl The list of (positional) keyword parameters.
+	 * \param json The JSON object containing configuration information
 	 * \param ebuf The buffer for returning error message from the plugin.
 	 *             This may be \c NULL.
 	 * \param ebufsz The size of the \c ebuf. The plugin must not
@@ -302,8 +328,7 @@ struct ldmsd_plugin_inst_s {
 	 * \retval 0     If succeed.
 	 * \retval errno If failed.
 	 */
-	int (*config)(ldmsd_plugin_inst_t i, struct attr_value_list *avl,
-					     struct attr_value_list *kwl,
+	int (*config)(ldmsd_plugin_inst_t i, json_entity_t json,
 					     char *ebuf, int ebufsz);
 };
 
@@ -375,8 +400,7 @@ void ldmsd_plugin_inst_del(ldmsd_plugin_inst_t inst);
  * \retval errno If failed.
  */
 int ldmsd_plugin_inst_config(ldmsd_plugin_inst_t inst,
-			     struct attr_value_list *avl,
-			     struct attr_value_list *kwl,
+			     json_entity_t d,
 			     char *ebuf, int ebufsz);
 
 /**
@@ -527,6 +551,26 @@ struct ldmsd_plugin_qrent_bulk_s {
 	void *val;
 };
 
+struct ldmsd_plugin_qjson_attrs {
+	char *name;
+	enum json_value_e type;
+	union {
+		const char *s;
+		int64_t d;
+	};
+};
+
+/**
+ * TODO: write doc
+ */
+int ldmsd_plugin_qjson_attrs_add(json_entity_t result,
+			struct ldmsd_plugin_qjson_attrs *bulks);
+
+/**
+ * TODO: write doc
+ */
+void ldmsd_plugin_qjson_err_set(json_entity_t result, int rc, char *errmsg);
+
 /**
  * Bulk add entries into the collection.
  *
@@ -548,9 +592,15 @@ int ldmsd_plugin_qrent_add_bulk(ldmsd_plugin_qrent_coll_t coll,
 				struct ldmsd_plugin_qrent_bulk_s *bulk);
 
 /**
+ * Add a config entry into the config collection.
+ */
+int ldmsd_plugin_qrent_config_add(ldmsd_plugin_qresult_t r,
+					ldmsd_plugin_qrent_t coll);
+
+/**
  * The default implementation of \c ldmsd_plugin_type_s.query().
  */
-ldmsd_plugin_qresult_t ldmsd_plugin_query(ldmsd_plugin_inst_t i, const char *q);
+json_entity_t ldmsd_plugin_query(ldmsd_plugin_inst_t i, const char *q);
 
 /**
  * Produces JSON string from query result.

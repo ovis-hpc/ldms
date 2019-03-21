@@ -77,6 +77,47 @@ struct plugattr {
 	char *buf;
 };
 
+struct attr_value_list *
+ldmsd_plugattr_json2attr_value_list(json_entity_t json)
+{
+	struct attr_value_list *avl;
+	json_entity_t attr, v;
+	jbuf_t jb;
+	int rc;
+	char *s;
+
+	avl = av_new(json_attr_count(json));
+	if (!avl) {
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	for (attr = json_attr_first(json); attr; attr = json_attr_next(attr)) {
+		jb = NULL;
+		v = json_attr_value(attr);
+		if (JSON_STRING_VALUE == json_entity_type(v)) {
+			s = json_value_str(v)->str;
+		} else {
+			jb = json_entity_dump(NULL, json_attr_value(attr));
+			if (!jb) {
+				errno = ENOMEM;
+				goto err;
+			}
+			s = jb->buf;
+		}
+		rc = av_add(avl, json_attr_name(attr)->str, s);
+		if (jb)
+			jbuf_free(jb);
+		if (rc) {
+			errno = rc;
+			goto err;
+		}
+	}
+	return avl;
+err:
+	av_free(avl);
+	return NULL;
+}
 
 static void list_pair_destroy(struct list_pair *lp, void *cbarg)
 {

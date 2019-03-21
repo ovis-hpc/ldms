@@ -307,7 +307,7 @@ struct ldmsd_sampler_type_s {
 /**
  * Default implementation of `query()` interface for sampler plugin.
  */
-ldmsd_plugin_qresult_t ldmsd_sampler_query(ldmsd_plugin_inst_t i,
+json_entity_t ldmsd_sampler_query(ldmsd_plugin_inst_t i,
 					   const char *q);
 
 /**

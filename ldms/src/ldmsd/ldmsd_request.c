@@ -3994,46 +3994,50 @@ static int smplr_status_handler(ldmsd_req_ctxt_t reqc)
 
 int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 {
-	extern struct plugin_list plugin_list;
 	int rc, count;
-	char *tmp = NULL;
-	int off = 0, alen = 0;
 	ldmsd_plugin_inst_t inst;
-	ldmsd_plugin_qresult_t qr;
+	json_entity_t qr = NULL;
+	jbuf_t jb = NULL;
 	reqc->errcode = 0;
 
 	rc = linebuf_printf(reqc, "[");
 	if (rc)
-		return rc;
+		goto out;
 	count = 0;
 	LDMSD_PLUGIN_INST_FOREACH(inst) {
 		if (count) {
 			rc = linebuf_printf(reqc, ",\n");
 			if (rc)
-				return rc;
+				goto out;
 		}
 		count++;
 		qr = inst->base->query(inst, "status");
-		if (qr->rc) {
-			rc = qr->rc;
-			return rc;
+		if (!qr) {
+			rc = ENOMEM;
+			goto out;
 		}
-		if (qr->rc == 0) {
-			rc = ldmsd_plugin_qrent_coll_json_print(&qr->coll,
-							&tmp, &off, &alen);
-			if (rc) {
-				free(tmp);
-				return rc;
-			}
-			rc = linebuf_printf(reqc, "%s", tmp);
-			free(tmp);
-			tmp = NULL;
-			off = alen = 0;
+		rc = json_value_int(json_attr_value(json_attr_find(qr, "rc")));
+		if (rc)
+			goto out;
+		jb = json_entity_dump(NULL, json_attr_find(qr, "status"));
+		if (!jb) {
+			rc = ENOMEM;
+			goto out;
 		}
+		rc = linebuf_printf(reqc, "%s", jb->buf);
+		if (rc)
+			goto out;
 	}
 	rc = linebuf_printf(reqc, "]");
+out:
+	if (qr)
+		json_entity_free(qr);
+	if (jb)
+		jbuf_free(jb);
+	reqc->errcode = rc;
 	return rc;
 }
+
 
 static int plugn_status_handler(ldmsd_req_ctxt_t reqc)
 {
@@ -4061,34 +4065,52 @@ static int plugn_status_handler(ldmsd_req_ctxt_t reqc)
 	return rc;
 }
 
+
 static int __query_inst(ldmsd_req_ctxt_t reqc, const char *query,
-			ldmsd_plugin_inst_t inst,
-			char **tmp, int *off, int *alen)
+			ldmsd_plugin_inst_t inst)
 {
-	int rc;
-	ldmsd_plugin_qresult_t qr;
+	int rc = 0;
+	json_entity_t qr = NULL;
+	json_entity_t ra;
+	jbuf_t jb = NULL;
 	qr = inst->base->query(inst, query);
-	if (qr->rc) {
-		rc = qr->rc;
+	if (!qr) {
+		rc = ENOMEM;
 		goto out;
 	}
-	rc = ldmsd_plugin_qrent_coll_json_print(&qr->coll, tmp, off, alen);
+	rc = json_value_int(json_attr_value(json_attr_find(qr, "rc")));
+	if (rc)
+		goto out;
+	ra = json_attr_find(qr, (char *)query);
+	if (!ra) {
+		/*
+		 * No query result
+		 */
+		rc = linebuf_printf(reqc, "%s", "");
+	} else {
+		jb = json_entity_dump(NULL, json_attr_value(ra));
+		if (!jb) {
+			rc = ENOMEM;
+			goto out;
+		}
+		rc = linebuf_printf(reqc, "%s", jb->buf);
+	}
+
 out:
 	if (qr)
-		ldmsd_plugin_qresult_free(qr);
+		json_entity_free(qr);
+	if (jb)
+		jbuf_free(jb);
+	reqc->errcode = rc;
 	return rc;
 }
 
 static int plugn_query_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
-	int cnt = 0;
 	char *query;
 	char *name;
-	extern struct plugin_list plugin_list;
 	int count;
-	char *tmp = NULL;
-	int off = 0, alen = 0;
 	ldmsd_plugin_inst_t inst;
 
 	query = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_QUERY);
@@ -4103,61 +4125,69 @@ static int plugn_query_handler(ldmsd_req_ctxt_t reqc)
 	/* optional */
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 
-	cnt = sappendf(&tmp, &off, &alen, "[");
-	if (cnt < 0) {
-		rc = errno;
-		goto out;
-	}
+	rc = linebuf_printf(reqc, "[");
+	if (rc)
+		goto err;
 	count = 0;
 
 	if (name) {
 		inst = ldmsd_plugin_inst_find(name);
 		if (!inst) {
 			rc = reqc->errcode = ENOENT;
-			snprintf(reqc->line_buf, reqc->line_len,
-				 "Plugin instance \"%s\" not found", name);
+			(void) linebuf_printf(reqc,
+				"Plugin instance '%s' not found", name);
 			ldmsd_send_req_response(reqc, reqc->line_buf);
 			goto out;
 		}
-		rc = __query_inst(reqc, query, inst, &tmp, &off, &alen);
+		rc = __query_inst(reqc, query, inst);
 		if (rc)
 			goto err;
-		goto end;
-	}
-	/* else, query all instances */
-	LDMSD_PLUGIN_INST_FOREACH(inst) {
-		if (count) {
-			cnt = sappendf(&tmp, &off, &alen, ",\n");
-			if (cnt < 0) {
-				rc = errno;
-				goto err;
+	} else {
+		/*  query all instances */
+		LDMSD_PLUGIN_INST_FOREACH(inst) {
+			if (count) {
+				rc = linebuf_printf(reqc, ",\n");
+				if (rc)
+					goto err;
 			}
+			count++;
+			rc = __query_inst(reqc, query, inst);
+			if (rc)
+				goto err;
 		}
-		count++;
-		rc = __query_inst(reqc, query, inst, &tmp, &off, &alen);
-		if (rc)
-			goto err;
 	}
-end:
-	cnt = sappendf(&tmp, &off, &alen, "]");
-	if (cnt < 0) {
-		rc = errno;
+
+	rc = linebuf_printf(reqc, "]");
+	if (rc) {
+		reqc->errcode = rc;
 		snprintf(reqc->line_buf, reqc->line_len,
 			 "Internal error: %d", rc);
 		ldmsd_send_req_response(reqc, reqc->line_buf);
 		goto out;
 	}
-	rc = reqc->errcode = 0;
-	ldmsd_send_req_response(reqc, tmp);
+
+	struct ldmsd_req_attr_s attr;
+	attr.discrim = 1;
+	attr.attr_len = reqc->line_off;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		goto out;
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+	if (rc)
+		goto out;
+	attr.discrim = 0;
+	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
+				sizeof(uint32_t), LDMSD_REQ_EOM_F);
+	if (rc)
+		goto out;
 	goto out;
 err:
 	reqc->errcode = rc;
 	snprintf(reqc->line_buf, reqc->line_len, "query error: %d", rc);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-
 out:
-	if (tmp)
-		free(tmp);
 	return rc;
 }
 
@@ -4242,53 +4272,41 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *config_attr, *attr_name;
 	name = config_attr = NULL;
-	struct attr_value_list *av_list = NULL;
-	struct attr_value_list *kw_list = NULL;
 	ldmsd_plugin_inst_t inst = NULL;
-	char *cmd_s;
-	int tokens;
+	char *token, *next_token, *ptr;
+	json_entity_t d, a;
+	int rc = 0;
 
 	reqc->errcode = 0;
+	d = NULL;
 
 	attr_name = "name";
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name)
 		goto einval;
 	config_attr = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
-	tokens = 0;
-	if (config_attr) {
-		/*
-		 * Count the numebr of spaces. That's the maximum number of
-		 * tokens that could be present.
-		 */
-		for (tokens = 0, cmd_s = config_attr; cmd_s[0] != '\0';) {
-			tokens++;
-			/* find whitespace */
-			while (cmd_s[0] != '\0' && !isspace(cmd_s[0]))
-				cmd_s++;
-			/* Now skip whitespace to next token */
-			while (cmd_s[0] != '\0' && isspace(cmd_s[0]))
-				cmd_s++;
-		}
-	}
 
-	reqc->errcode = ENOMEM;
-	av_list = av_new(tokens);
-	kw_list = av_new(tokens);
-	if (!av_list || !kw_list) {
-		Snprintf(&reqc->line_buf, &reqc->line_len, "Out of memory");
-		goto err;
-	}
+	d = json_entity_new(JSON_DICT_VALUE);
+	if (!d)
+		goto enomem;
 
 	if (config_attr) {
-		reqc->errcode = tokenize(config_attr, kw_list, av_list);
-		if (reqc->errcode) {
-			ldmsd_log(LDMSD_LERROR, "Memory allocation failure "
-				  "processing '%s'\n", config_attr);
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				 "Out of memory");
-			reqc->errcode = ENOMEM;
-			goto err;
+		for (token = strtok_r(config_attr, " \t\n", &ptr); token;) {
+			char *value = strchr(token, '=');
+			if (value) {
+				value[0] = '\0';
+				value++;
+			} else {
+				value = "";
+			}
+			a = json_entity_new(JSON_ATTR_VALUE,
+					json_entity_new(JSON_STRING_VALUE, token),
+					json_entity_new(JSON_STRING_VALUE, value));
+			if (!a)
+				goto enomem;
+			json_attr_add(d, a);
+			next_token = strtok_r(NULL, " \t\n", &ptr);
+			token = next_token;
 		}
 	}
 
@@ -4297,9 +4315,9 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 		Snprintf(&reqc->line_buf, &reqc->line_len,
 			 "Instance not found: %s", name);
 		reqc->errcode = ENOENT;
-		goto err;
+		goto send_reply;
 	}
-	reqc->errcode = ldmsd_plugin_inst_config(inst, av_list, kw_list,
+	reqc->errcode = ldmsd_plugin_inst_config(inst, d,
 						 reqc->line_buf,
 						 reqc->line_len);
 	/* if there is an error, the plugin should already fill line_buf */
@@ -4307,29 +4325,23 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 
 einval:
 	reqc->errcode = EINVAL;
-	Snprintf(&reqc->line_buf, &reqc->line_len,
+	(void)snprintf(reqc->line_buf, reqc->line_len,
 		 "The attribute '%s' is required by config.", attr_name);
 	goto send_reply;
-err:
-	if (kw_list)
-		av_free(kw_list);
-	if (av_list)
-		av_free(av_list);
-	kw_list = NULL;
-	av_list = NULL;
+enomem:
+	rc = reqc->errcode = ENOMEM;
+	(void)snprintf(reqc->line_buf, reqc->line_len, "Out of memory");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (name)
 		free(name);
 	if (config_attr)
 		free(config_attr);
-	if (kw_list)
-		av_free(kw_list);
-	if (av_list)
-		av_free(av_list);
+	if (d)
+		json_entity_free(d);
 	if (inst)
 		ldmsd_plugin_inst_put(inst); /* put ref from find */
-	return 0;
+	return rc;
 }
 
 extern struct plugin_list plugin_list;

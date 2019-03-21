@@ -102,48 +102,51 @@ void store_del(ldmsd_plugin_inst_t i)
 }
 
 static
-int store_config(ldmsd_plugin_inst_t i, struct attr_value_list *avl,
-		 struct attr_value_list *kwl, char *ebuf, int ebufsz)
+int store_config(ldmsd_plugin_inst_t i, json_entity_t json,
+					char *ebuf, int ebufsz)
 {
 	ldmsd_store_type_t store = (void*)i->base;
 	const char *val;
 
-	val = av_value(avl, "perm");
+	val = json_attr_find_str(json, "perm");
 	store->perm = (val)?(atol(val)):(0664);
 	return 0;
 }
 
-ldmsd_plugin_qresult_t ldmsd_store_query(ldmsd_plugin_inst_t i, const char *q)
+json_entity_t ldmsd_store_query(ldmsd_plugin_inst_t inst, const char *q)
 {
-	ldmsd_store_type_t store = (void*)i->base;
-	ldmsd_plugin_qresult_t qr;
+	ldmsd_store_type_t store = (void*)inst->base;
+	json_entity_t result;
+	int rc;
 
 	/* call `super` query first -- to handle the common plugin part */
-	qr = ldmsd_plugin_query(i, q);
-	if (!qr)
-		return NULL;
-
-	if (qr->rc)
+	result = ldmsd_plugin_query(inst, q);
+	if (!result) {
+		/*
+		 * No query result found.
+		 */
 		goto out;
+	}
 
-	if (0 != strcmp(q, "status"))
+	if (0 != strcmp(q, "status")) {
+		/*
+		 * No additional attribute to add to the query result.
+		 */
 		goto out;
+	}
 
 	/* currently, store_query only handle `status` */
-
 	char perm[8];
-
 	sprintf(perm, "%#o", store->perm);
-
-	const ldmsd_plugin_qrent_type_t _str = LDMSD_PLUGIN_QRENT_STR;
-	struct ldmsd_plugin_qrent_bulk_s bulk[] = {
-		{ "perm" , _str , perm },
+	struct ldmsd_plugin_qjson_attrs bulk[] = {
+		{ "perm" , JSON_STRING_VALUE , {.s = perm} },
 		{0},
 	};
-	qr->rc = ldmsd_plugin_qrent_add_bulk(&qr->coll, bulk);
-
+	rc = ldmsd_plugin_qjson_attrs_add(result, bulk);
+	if (rc)
+		ldmsd_plugin_qjson_err_set(result, ENOMEM, "Out of memory");
 out:
-	return qr;
+	return result;
 }
 struct ldmsd_store_type_s __store = {
 	.base = {

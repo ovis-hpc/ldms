@@ -119,7 +119,7 @@ int ldmsd_store_store(ldmsd_plugin_inst_t i, ldms_set_t set,
 /**
  * Default implementation of `query()` interface for store plugin.
  */
-ldmsd_plugin_qresult_t ldmsd_store_query(ldmsd_plugin_inst_t i, const char *q);
+json_entity_t ldmsd_store_query(ldmsd_plugin_inst_t i, const char *q);
 
 /** Obtaining store structure from inst. */
 #define LDMSD_STORE(inst) ((ldmsd_store_type_t)LDMSD_INST(inst)->base)
