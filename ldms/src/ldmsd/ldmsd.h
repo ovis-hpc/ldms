@@ -130,6 +130,7 @@ enum ldmsd_loglevel {
  */
 struct ldmsd_cmd_line_args {
 	char myhostname[80];
+	uint8_t is_syntax_check;
 	int banner;
 	/*
 	 * name to identify ldmsd
@@ -154,6 +155,7 @@ struct ldmsd_cmd_line_args {
 };
 
 uint8_t ldmsd_is_initialized();
+uint8_t ldmsd_is_check_syntax();
 
 /** Get the ldmsd version  */
 void ldmsd_version_get(struct ldmsd_version *v);

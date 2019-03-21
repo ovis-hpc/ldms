@@ -96,7 +96,7 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "A:a:B:c:FH:kl:m:n:P:r:s:u:Vv:x:"
+#define FMT "A:a:B:c:FH:kl:m:n:P:r:s:u:Vv:x:C"
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_DEFAULT "512kB"
@@ -395,6 +395,8 @@ void cleanup(int x, const char *reason)
 FILE *ldmsd_open_log()
 {
 	FILE *f;
+	int rc;
+	char *errstr;
 	if (strcasecmp(cmd_line_args.log_path, "syslog")==0) {
 		ldmsd_log(LDMSD_LDEBUG, "Switching to syslog.\n");
 		f = LDMSD_LOG_SYSLOG;
@@ -406,22 +408,34 @@ FILE *ldmsd_open_log()
 	if (!f) {
 		ldmsd_log(LDMSD_LERROR, "Could not open the log file named '%s'\n",
 						cmd_line_args.log_path);
-		cleanup(9, "log open failed");
-	} else {
+		rc = 9;
+		errstr= "log open failed";
+		goto err;
+	}
+	if (!ldmsd_is_check_syntax()) {
 		int fd = fileno(f);
 		if (dup2(fd, 1) < 0) {
 			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
 						cmd_line_args.log_path);
-			cleanup(10, "error redirecting stdout");
+			rc = 10;
+			errstr = "error redirecting stdout";
+			goto err;
 		}
 		if (dup2(fd, 2) < 0) {
 			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
 						cmd_line_args.log_path);
-			cleanup(11, "error redirecting stderr");
+			rc = 11;
+			errstr = "error redirecting stderr";
+			goto err;
 		}
 		stdout = f;
 		stderr = f;
 	}
+	return f;
+
+err:
+	if (!ldmsd_is_check_syntax())
+		cleanup(rc, errstr);
 	return f;
 }
 
@@ -488,6 +502,7 @@ void usage_hint(char *hint)
 	printf("  General Options\n");
 	printf("    -V	           Print LDMS version and exit [CMD LINE ONLY]\n");
 	printf("    -F	           Foreground mode, don't daemonize the program [false] [CMD LINE ONLY]\n");
+	printf("    -C	           Only perform syntax checking [CMD LINE ONLY]\n");
 	printf("    -u name	   List named plugin if available, and where possible its usage,\n");
 	printf("		   then exit. Name all, sampler, and store limit output.[CMD LINE ONLY]\n");
 	printf("    -c path	   The path to configuration file (optional, default: <none>).\n");
@@ -1112,6 +1127,9 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			return EINVAL;
 		cmd_line_args.banner = atoi(value);
 		break;
+	case 'C':
+		cmd_line_args.is_syntax_check = 1;
+		break;
 	case 'c':
 		/*
 		 * Must be specified at the command line.
@@ -1362,14 +1380,26 @@ void ldmsd_init()
 	if ((mem_sz = ovis_get_mem_size(cmd_line_args.mem_sz_str)) == 0) {
 		printf("Invalid memory size '%s'. See the -m option.\n",
 						cmd_line_args.mem_sz_str);
-		usage();
-		cleanup(EINVAL, "invalid -m value");
+
+		if (!ldmsd_is_check_syntax()) {
+			usage();
+			cleanup(EINVAL, "invalid -m value");
+		}
 	}
 	if (ldms_init(mem_sz)) {
 		ldmsd_log(LDMSD_LCRITICAL, "LDMS could not pre-allocate "
 				"the memory of size %s.\n",
 				cmd_line_args.mem_sz_str);
 		cleanup(ENOMEM, "Memory allocation failure.");
+	}
+
+	if (cmd_line_args.is_syntax_check) {
+		/*
+		 * We call ldms_init() above because
+		 * sampler plugin instances create sets at config time.
+		 * We still want to check the syntax of the config lines.
+		 */
+		return;
 	}
 
 	/*
@@ -1455,6 +1485,10 @@ void handle_listening_endpoints()
 	}
 }
 
+uint8_t ldmsd_is_check_syntax()
+{
+	return cmd_line_args.is_syntax_check;
+}
 
 int main(int argc, char *argv[])
 {
@@ -1537,6 +1571,19 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	if (ldmsd_is_check_syntax()) {
+		/*
+		 * If ldmsd starts to perform syntax checking,
+		 * it will not run in daemon mode.
+		 */
+		cmd_line_args.foreground = 1;
+		/*
+		 * Always prints errors to stdout if
+		 * syntax check is enabled.
+		 */
+		log_fp = stdout;
+	}
+
 	if (!cmd_line_args.foreground) {
 		if (daemon(1, 1)) {
 			perror("ldmsd: ");
@@ -1559,7 +1606,7 @@ int main(int argc, char *argv[])
 			dup_arg = strdup(optarg);
 			ret = process_config_file(dup_arg, &lln, 1);
 			free(dup_arg);
-			if (ret) {
+			if (ret && !ldmsd_is_check_syntax()) {
 				char errstr[128];
 				snprintf(errstr, sizeof(errstr),
 					 "Error %d processing configuration file '%s'",
@@ -1574,9 +1621,11 @@ int main(int argc, char *argv[])
 
 	ldmsd_init(argv);
 
+	if (cmd_line_args.is_syntax_check)
+		goto out;
+
 	handle_pidfile_banner();
 	handle_listening_endpoints();
-
 	ldmsd_handle_deferred_plugin_config();
 
 	if (ldmsd_use_failover) {
@@ -1604,6 +1653,7 @@ int main(int argc, char *argv[])
 		usleep(LDMSD_KEEP_ALIVE_30MIN);
 	} while (1);
 
+out:
 	cleanup(0,NULL);
 	return 0;
 }

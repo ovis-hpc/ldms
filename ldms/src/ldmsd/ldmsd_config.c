@@ -624,11 +624,18 @@ parse:
 		request = req_array->reqs[i];
 		rc = ldmsd_process_config_request(&xprt, request, req_filter_fn);
 		if (rc || xprt.rsp_err) {
-			if (!rc)
-				rc = xprt.rsp_err;
 			ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
 					lineno, path);
-			goto cleanup;
+			if (!ldmsd_is_check_syntax()) {
+				if (!rc)
+					rc = xprt.rsp_err;
+				goto cleanup;
+			} else {
+				/*
+				 * If LDMSD starts for syntax checking,
+				 * it will go through all configuration files.
+				 */
+			}
 		}
 	next_req:
 		free(request);
