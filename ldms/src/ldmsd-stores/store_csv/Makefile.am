@@ -20,3 +20,9 @@ libstore_csv_la_CFLAGS = $(STORE_CFLAGS)
 libstore_csv_la_LIBADD = $(STORE_LIBADD) libldms_store_csv_common.la
 libstore_csv_la_LDFLAGS = $(STORE_LDFLAGS)
 pkglib_LTLIBRARIES += libstore_csv.la
+
+libstore_function_csv_la_SOURCES = store_common.h store_function_csv.c
+libstore_function_csv_la_CFLAGS = $(STORE_CFLAGS)
+libstore_function_csv_la_LIBADD = $(STORE_LIBADD)
+libstore_function_csv_la_LDFLAGS = $(STORE_LDFLAGS)
+pkglib_LTLIBRARIES += libstore_function_csv.la
