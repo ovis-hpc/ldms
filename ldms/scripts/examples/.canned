@@ -24,6 +24,8 @@ rabbitv3
 renamecsv
 rollagain
 csvcheckattrs # one ok and one failed config_check
+vg_csv
+vg_sos
 
 # working with job metrics
 clock.job

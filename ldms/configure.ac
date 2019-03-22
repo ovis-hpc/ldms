@@ -441,6 +441,8 @@ OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
 -e 's,[[@]]ZAP_LIBPATH[[@]],\$(ZAP_LIBPATH),g' \
 -e 's,[[@]]pkglibdir[[@]],\$(pkglibdir),g' \
 -e 's,[[@]]pythondir[[@]],\$(pythondir),g' \
+-e 's,[[@]]SOS_LIB64DIR[[@]],\$(SOS_LIB64DIR),g' \
+-e 's,[[@]]SOS_LIBDIR[[@]],\$(SOS_LIBDIR),g' \
 "
 ])
 

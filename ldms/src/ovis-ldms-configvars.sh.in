@@ -22,3 +22,8 @@ ovis_ldms_prefix=@prefix@
 ovis_ldms_exec_prefix=@exec_prefix@
 ovis_ldms_pkglibdir=@pkglibdir@
 ovis_ldms_pythondir=@pythondir@
+if test -n "@SOS_LIB64DIR@"; then
+	ovis_ldms_soslibdir="@SOS_LIB64DIR@"
+else
+	ovis_ldms_soslibdir="@SOS_LIBDIR@"
+fi

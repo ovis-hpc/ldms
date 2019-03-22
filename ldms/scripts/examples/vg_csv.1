@@ -1,0 +1,52 @@
+load name=dstat
+config name=dstat producer=localhost${i} instance=localhost${i}/dstat schema=dstat component_id=${i} udata_default=${i}
+start name=dstat interval=1000000 offset=0
+
+prdcr_add name=localhost2 host=localhost type=active xprt=${XPRT} port=${port2} interval=2000000
+prdcr_start name=localhost2
+
+prdcr_add name=localhost3 host=localhost type=active xprt=${XPRT} port=${port3} interval=2000000
+prdcr_start name=localhost3
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0 
+
+strgp_add name=store_csv_meminfo plugin=store_csv schema=meminfo container=bigiron
+strgp_prdcr_add name=store_csv_meminfo regex=.*
+strgp_start name=store_csv_meminfo
+
+strgp_add name=store_csv_procstat plugin=store_csv schema=procstat container=cpu
+strgp_prdcr_add name=store_csv_procstat regex=.*
+strgp_start name=store_csv_procstat
+
+# this does not work as probably
+# expected because open_store happens async to strgp_start.
+# it also does not work as expected because schema,container from
+# strgp_add override config. We really need strgp instance to be the
+# store plugin instance name and be passed to open as instance= not the c/s pair.
+# This would allow the config key to be documented as 'instance' and multiple
+# instances with different metric lists for the same container/schema.
+# it would be up to the user to make sure the store semantics of path/container/schema
+# do not conflict.
+# we can introduce the instance terminology on the config line
+# and then remove it when the C api changes, or we can enforce instance=container/schema
+# internally until the store C api changes to pass the strgp name as instance name.
+config name=store_csv path=${STOREDIR} altheader=1 container=bigiron schema=vmstat
+config name=store_csv path=${STOREDIR} altheader=1 container=bigiron schema=clock
+config name=store_csv path=${STOREDIR} altheader=1 container=bigiron schema=job_info
+
+strgp_add name=store_csv_vmstat plugin=store_csv schema=vmstat container=bigiron
+strgp_prdcr_add name=store_csv_vmstat regex=.*
+strgp_start name=store_csv_vmstat
+
+strgp_add name=store_csv_clock plugin=store_csv schema=clock container=bigiron
+strgp_prdcr_add name=store_csv_clock regex=.*
+strgp_start name=store_csv_clock
+
+strgp_add name=store_csv_jobi plugin=store_csv schema=job_info container=bigiron
+strgp_prdcr_add name=store_csv_jobi regex=.*
+strgp_start name=store_csv_jobi
