@@ -1,5 +1,5 @@
 load name=store_csv
-config name=store_csv path=${STOREDIR} altheader=0
+config name=store_csv path=${STOREDIR} altheader=1 typeheader=2 ietfcsv=1 userdata=1
 
 prdcr_add name=localhost1 host=localhost type=active xprt=${XPRT} port=${port1} interval=10000000
 prdcr_start name=localhost1
