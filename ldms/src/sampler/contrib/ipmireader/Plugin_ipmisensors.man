@@ -14,10 +14,10 @@ config name=ipmisensors [ <attr>=<value> ]
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or a configuration file. The ipmisensors plugin provides data from the result of the ipmi-sensors command. Specific parameters for the command described below.
 All data is reported out as floats.
 
+.B This sampler is currently in pre-release development in V4.2.
+
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 The ipmisensors plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
-
-
 
 .TP
 .BR config
@@ -61,9 +61,9 @@ The ipmi-sensors call appears to have more overhead than the ipmitool commandfor
 .IP \[bu]
 Specific args to the command are:
 --comma-separated-output --no-header-output --session-timeout=500 --retransmission-timeout=250 --quiet-cache --no-sensor-type.
-Of note are the timeouts. These will limit how long the call will wait (and thus the duration of the sample) if a host is not responding. 
+Of note are the timeouts. These will limit how long the call will wait (and thus the duration of the sample) if a host is not responding.
 .IP \[bu]
-The ipmi-sensors call can be called with a fan out. This would cause significant parsing in the return, so it is not used here. Also the return of the fan out call will wait on the return of all the individual calls. Thus a non-responsive node can cause a long delay, affecting all values, without a timeout. 
+The ipmi-sensors call can be called with a fan out. This would cause significant parsing in the return, so it is not used here. Also the return of the fan out call will wait on the return of all the individual calls. Thus a non-responsive node can cause a long delay, affecting all values, without a timeout.
 .IP \[bu]
 Currently all the data is reported as type float.
 .IP \[bu]
@@ -77,7 +77,7 @@ the metric is set to the ERR value, which currently is -9999.
 Within ldmsd_controller or a configuration file:
 .nf
 load name=ipmisensors
-config name=ipmisensors producer=vm1_1 instance=vm1_1/ipmisensors address=cn1-ipmi 
+config name=ipmisensors producer=vm1_1 instance=vm1_1/ipmisensors address=cn1-ipmi
 start name=ipmisensors interval=1000000
 .fi
 

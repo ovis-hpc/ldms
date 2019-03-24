@@ -26,8 +26,6 @@ Plugin_aries_mmr.man \
 Plugin_array_example.man \
 Plugin_cray_system_sampler_variants.man \
 Plugin_cray_dvs_sampler.man \
-Plugin_ipmireader.man \
-Plugin_ipmisensors.man \
 Plugin_kgnilnd.man \
 Plugin_lnet_stats.man \
 Plugin_meminfo.man \
