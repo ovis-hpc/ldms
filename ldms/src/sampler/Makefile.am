@@ -54,16 +54,6 @@ endif
 
 endif #ENABLE_TSAMPLER
 
-if ENABLE_IPMIREADER
-libipmireader_la_SOURCES = ipmireader.c  $(BASE_SRC)
-libipmireader_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libipmireader.la
-
-libipmisensors_la_SOURCES = ipmisensors.c  $(BASE_SRC)
-libipmisensors_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libipmisensors.la
-endif
-
 if ENABLE_KGNILND
 libkgnilnd_la_SOURCES = kgnilnd.c  $(BASE_SRC)
 libkgnilnd_la_LIBADD = $(COMMON_LIBADD)
@@ -93,6 +83,9 @@ libvariable_la_SOURCES = variable.c
 libvariable_la_LIBADD = $(COMMON_LIBADD) -lm
 pkglib_LTLIBRARIES += libvariable.la
 endif
+
+# always include contrib
+SUBDIRS += contrib
 
 if ENABLE_LLNL
 SUBDIRS += llnl

@@ -484,6 +484,8 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/aries_mmr/Makefile
 		 src/sampler/aries_mmr/aries_mmr_set_configs/Makefile
 		 src/sampler/appinfo_lib/Makefile
+		 src/sampler/contrib/Makefile
+		 src/sampler/contrib/ipmireader/Makefile
 		 src/ldmsd/Makefile
 		 scripts/Makefile
 		 src/test/Makefile

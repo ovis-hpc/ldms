@@ -14,10 +14,10 @@ config name=ipmireader [ <attr>=<value> ]
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or a configuration file. The ipmireader plugin provides data from the result of the ipmitool sdr command.
 All data is reported out as floats.
 
+.B This sampler is currently in pre-release development in V4.2.
+
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 The ipmireader plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
-
-
 
 .TP
 .BR config
@@ -74,7 +74,7 @@ If the dump cache command fails, this is not reported. If the file does not exis
 .IP \[bu]
 There is a one time occurrence of a sleep of 2 seconds (empirically chosen) after the dump cache command, to enable the file to be written by the time of the next data call. If it takes longer, but is in place for later sample calls, it will be used then.
 .IP \[bu]
-There is currently no call to redump the file. 
+There is currently no call to redump the file.
 .IP \[bu]
 There is no way to check that a dumped file is still accurate for your system.
 .IP \[bu]
@@ -90,7 +90,7 @@ the metric is set to the ERR value, which currently is -9999.
 Within ldmsd_controller or a configuration file:
 .nf
 load name=ipmireader
-config name=ipmireader producer=vm1_1 instance=vm1_1/ipmireader address=cn1-ipmi 
+config name=ipmireader producer=vm1_1 instance=vm1_1/ipmireader address=cn1-ipmi
 start name=ipmireader interval=1000000
 .fi
 
