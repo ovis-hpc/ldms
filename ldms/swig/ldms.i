@@ -659,6 +659,10 @@ PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
 		tmp64 = __le64_to_cpu(*(uint64_t*)&mv->v_d);
                 d = *(double*)&tmp64;
 		break;
+        case LDMS_V_CHAR:
+                return PyString_FromFormat("%c", mv->v_char);
+        case LDMS_V_CHAR_ARRAY:
+                return PyString_FromString(mv->a_char);
 	default:
 		SWIG_exception(SWIG_TypeError, "Unrecognized ldms_value type");
 	}
@@ -804,27 +808,27 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 		union ldms_value *v = ldms_metric_get(self, i);
 		enum ldms_value_type t = ldms_metric_type_get(self, i);
 		int j, n;
-		PyObject *lst, *obj;
-		if (!ldms_type_is_array(t)) {
-			return PyObject_FromMetricValue(v, t);
-		}
+		PyObject *tpl, *obj;
+                if (t == LDMS_V_CHAR_ARRAY || !ldms_type_is_array(t)) {
+                        return PyObject_FromMetricValue(v, t);
+                }
 		n = ldms_metric_array_get_len(self, i);
-		lst = PyList_New(n);
-		if (!lst) {
-			PyErr_SetString(PyExc_RuntimeError, "Out of memory.");
-			return NULL;
-		}
-		for (j = 0; j < n; j++) {
-			obj = ldms_rbuf_desc_array_metric_value_get(self, i, j);
-			if (!obj) {
-				PyErr_SetString(PyExc_RuntimeError,
-						"Out of memory.");
-				Py_DECREF(lst);
-				return NULL;
-			}
-			PyList_SetItem(lst, j, obj); /* This steals obj ref */
-		}
-		return lst;
+                tpl = PyTuple_New(n);
+                if (!tpl) {
+                        PyErr_SetString(PyExc_RuntimeError, "Out of memory.");
+                        return NULL;
+                }
+                for (j = 0; j < n; j++) {
+                        obj = ldms_rbuf_desc_array_metric_value_get(self, i, j);
+                        if (!obj) {
+                                PyErr_SetString(PyExc_RuntimeError,
+                                                "Out of memory.");
+                                Py_DECREF(tpl);
+                                return NULL;
+                        }
+                        PyTuple_SetItem(tpl, j, obj); /* This steals obj ref */
+                }
+                return tpl;
 	}
 	inline PyObject *metric_value_get_by_name(const char *name) {
 		int i = ldms_metric_by_name(self, name);
@@ -875,6 +879,8 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
                         return PyFloat_FromDouble(ldms_metric_array_get_float(self, mid, idx));
                 case LDMS_V_D64_ARRAY:
                         return PyFloat_FromDouble(ldms_metric_array_get_double(self, mid, idx));
+                case LDMS_V_CHAR_ARRAY:
+                        return PyString_FromFormat("%c", ldms_metric_array_get_char(self, mid, idx));
 		default:
 			SWIG_exception(SWIG_TypeError, "Unrecognized ldms_value type");
                 }
