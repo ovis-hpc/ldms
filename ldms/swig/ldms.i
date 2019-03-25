@@ -656,7 +656,7 @@ PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
 		break;
 	case LDMS_V_D64:
 		is_int = 0;
-		tmp64 = __le64_to_cpu(*(uint32_t*)&mv->v_d);
+		tmp64 = __le64_to_cpu(*(uint64_t*)&mv->v_d);
                 d = *(double*)&tmp64;
 		break;
 	default:
