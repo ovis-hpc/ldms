@@ -127,11 +127,51 @@ typedef struct json_parser_s {
 	struct yy_buffer_state *buffer_state;
 } *json_parser_t;
 
+typedef struct jbuf_s {
+	size_t buf_len;
+	int cursor;
+	char buf[0];
+} *jbuf_t;
+
 extern json_parser_t json_parser_new(size_t user_data);
 extern void json_parser_free(json_parser_t p);
 extern void json_entity_free(json_entity_t e);
 extern enum json_value_e json_entity_type(json_entity_t e);
+/**
+ * \brief Dump the json entity into a json buffer (\c json_t)
+ *
+ * This function can be used to appended json string to an existing
+ * json buffer.
+ *
+ * \param jb	\c jbuf_t to hold the string.
+ *		If NULL is given, a new \c jbuf_t is allocated.
+ *		If it is not empty, the json string of \c e will
+ *		will appended to the buffer.
+ * \param e	a json entity
+ *
+ * \return a json buffer -- \c jbuf_t -- is returned.
+ * \see jbuf_free
+ */
+extern jbuf_t json_entity_dump(jbuf_t jb, json_entity_t e);
+
+/**
+ * \brief Create a new JSON entity exactly the same as the given entity.
+ *
+ * \param e     The original JSON entity
+ *
+ * \return a new JSON entity. NULL is returned if an out-of-memory error occurs.
+ */
+extern json_entity_t json_entity_copy(json_entity_t e);
 extern json_entity_t json_attr_find(json_entity_t d, char *name);
+/**
+ * \brief Return the number of attributes in the dictionary \c d
+ */
+extern int json_attr_count(json_entity_t d);
+
+/**
+ * \brief Find an attribute with name \c name and return the string value of the attribute
+ */
+extern const char *json_attr_find_str(json_entity_t d, char *name);
 extern json_entity_t json_attr_first(json_entity_t d);
 extern json_entity_t json_attr_next(json_entity_t a);
 extern int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_entity_t *e);
@@ -140,11 +180,37 @@ extern json_entity_t json_entity_new(enum json_value_e type, ...);
 
 extern size_t json_list_len(json_entity_t l);
 extern void json_item_add(json_entity_t a, json_entity_t e);
+/**
+ * \brief Add an attribute to the JSON dict \c d
+ *
+ * If the attribute name already exists, its value is replaced with the given
+ * attribute value.
+ *
+ * \param d   dict JSON entity
+ * \param a   attribute JSON entity
+ *
+ * \see json_entity_new, json_attr_rem
+ */
 extern void json_attr_add(json_entity_t d, json_entity_t a);
+/**
+ * Modify an attribute value in a dictionary.
+ *
+ * If the attribute value type is list or dictionary,
+ * the old value is freed.
+ */
+extern int json_attr_mod(json_entity_t d, char *name, ...);
+/**
+ * Remove and free an attribute in a dictionary
+ */
+extern int json_attr_rem(json_entity_t d, char *name);
 extern json_entity_t json_item_first(json_entity_t a);
 extern json_entity_t json_item_next(json_entity_t i);
 extern json_str_t json_attr_name(json_entity_t a);
 extern json_entity_t json_attr_value(json_entity_t a);
+extern const char *json_attr_value_str(json_entity_t a);
+extern int64_t json_attr_value_int(json_entity_t a);
+extern int json_attr_value_bool(json_entity_t a);
+extern double json_attr_value_float(json_entity_t a);
 
 extern int64_t json_value_int(json_entity_t e);
 extern int json_value_bool(json_entity_t e);
@@ -152,12 +218,6 @@ extern double json_value_float(json_entity_t e);
 extern json_str_t json_value_str(json_entity_t e);
 extern json_dict_t json_value_dict(json_entity_t e);
 extern json_list_t json_value_list(json_entity_t e);
-
-typedef struct jbuf_s {
-	size_t buf_len;
-	int cursor;
-	char buf[0];
-} *jbuf_t;
 
 extern jbuf_t jbuf_new(void);
 extern jbuf_t jbuf_append_attr(jbuf_t jb, const char *name, const char *fmt, ...);

@@ -34,3 +34,9 @@ json_test_LDADD = -ljson_util
 json_test_LDFLAGS = $(AM_LDFLAGS)
 
 sbin_PROGRAMS = json_test
+
+json_apis_test_SOURCES = json_apis_test.c json_util.h
+json_apis_test_CFLAGS = $(AM_CFLAGS) -g -O0
+json_apis_test_LDADD = -ljson_util
+json_apis_test_LDFLAGS = $(AM_LDFLAGS)
+sbin_PROGRAMS += json_apis_test

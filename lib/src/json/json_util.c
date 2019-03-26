@@ -1,5 +1,7 @@
-#include  <stdarg.h>
+#include <stdio.h>
+#include <stdarg.h>
 #include <assert.h>
+#include <errno.h>
 #include "json_util.h"
 
 #define JSON_BUF_START_LEN 8192
@@ -66,6 +68,8 @@ json_entity_t json_attr_first(json_entity_t d)
 	hent_t ent;
 	assert(d->type == JSON_DICT_VALUE);
 	ent = htbl_first(d->value.dict_->attr_table);
+	if (!ent)
+		return NULL;
 	json_attr_t a = container_of(ent, struct json_attr_s, attr_ent);
 	return &a->base;
 }
@@ -94,6 +98,22 @@ json_entity_t json_attr_find(json_entity_t d, char *name)
 		return &a->base;
 	}
 	return NULL;
+}
+
+int json_attr_count(json_entity_t d)
+{
+	assert(d->type == JSON_DICT_VALUE);
+	json_dict_t dict = (json_dict_t)d;
+	return dict->attr_table->entry_count;
+}
+
+const char *json_attr_find_str(json_entity_t d, char *name)
+{
+	json_entity_t attr;
+	attr = json_attr_find(d, name);
+	if (!attr)
+		return NULL;
+	return json_attr_value_str(attr);
 }
 
 int attr_cmp(const void *a, const void *b, size_t key_len)
@@ -222,6 +242,7 @@ json_entity_t json_entity_new(enum json_value_e type, ...)
 		break;
 	case JSON_ATTR_VALUE:
 		name = va_arg(ap, json_entity_t);
+		assert(JSON_STRING_VALUE == name->type);
 		value = va_arg(ap, json_entity_t);
 		e = json_attr_new(name, value);
 		break;
@@ -244,13 +265,236 @@ json_entity_t json_entity_new(enum json_value_e type, ...)
 	goto out;
 }
 
+static jbuf_t __entity_dump(jbuf_t jb, json_entity_t e);
+static jbuf_t __list_dump(jbuf_t jb, json_entity_t e)
+{
+	json_entity_t i;
+	int count = 0;
+	jb = jbuf_append_str(jb, "[");
+	for (i = json_item_first(e); i; i = json_item_next(i)) {
+		if (count)
+			jb = jbuf_append_str(jb, ",");
+		__entity_dump(jb, i);
+		count++;
+	}
+	jb = jbuf_append_str(jb, "]");
+	return jb;
+}
+
+static jbuf_t __dict_dump(jbuf_t jb, json_entity_t e)
+{
+	json_entity_t a;
+	hent_t ent;
+	int count = 0;
+	jb = jbuf_append_str(jb, "{");
+	for (a = json_attr_first(e); a; a = json_attr_next(a)) {
+		if (count)
+			jb = jbuf_append_str(jb, ",");
+		jb = jbuf_append_str(jb, "\"%s\":", a->value.attr_->name->value.str_->str);
+		__entity_dump(jb, a->value.attr_->value);
+		count++;
+	}
+	jb = jbuf_append_str(jb, "}");
+	return jb;
+}
+
+static jbuf_t __entity_dump(jbuf_t jb, json_entity_t e)
+{
+	switch (e->type) {
+	case JSON_INT_VALUE:
+		jb = jbuf_append_str(jb, "%ld", e->value.int_);
+		break;
+	case JSON_BOOL_VALUE:
+		if (e->value.bool_)
+			jb = jbuf_append_str(jb, "true");
+		else
+			jb = jbuf_append_str(jb, "false");
+		break;
+	case JSON_FLOAT_VALUE:
+		jb = jbuf_append_str(jb, "%f", e->value.double_);
+		break;
+	case JSON_STRING_VALUE:
+		jb = jbuf_append_str(jb, "\"%s\"", e->value.str_->str);
+		break;
+	case JSON_LIST_VALUE:
+		__list_dump(jb, e);
+		break;
+	case JSON_DICT_VALUE:
+		__dict_dump(jb, e);
+		break;
+	case JSON_NULL_VALUE:
+		jb = jbuf_append_str(jb, "null");
+		break;
+	default:
+		fprintf(stderr, "%d is an invalid entity type", e->type);
+	}
+	return jb;
+}
+
+jbuf_t json_entity_dump(jbuf_t jb, json_entity_t e)
+{
+	if (!jb) {
+		jb = jbuf_new();
+		if (!jb)
+			return NULL;
+	}
+	jb = __entity_dump(jb, e);
+	return jb;
+}
+
+json_entity_t json_entity_copy(json_entity_t e)
+{
+	json_entity_t new, n, v;
+	enum json_value_e type = json_entity_type(e);
+
+	switch (type) {
+	case JSON_INT_VALUE:
+	case JSON_BOOL_VALUE:
+		new = json_entity_new(type, e->value);
+		break;
+	case JSON_FLOAT_VALUE:
+		new = json_entity_new(type, e->value.double_);
+		break;
+	case JSON_STRING_VALUE:
+		new = json_entity_new(type, json_value_str(e)->str);
+		break;
+	case JSON_ATTR_VALUE:
+		n = json_entity_new(JSON_STRING_VALUE, json_attr_name(e)->str);
+		if (!n)
+			return NULL;
+		v = json_entity_copy(json_attr_value(e));
+		if (!v) {
+			json_entity_free(n);
+			return NULL;
+		}
+		new = json_entity_new(type, n, v);
+		if (!new) {
+			json_entity_free(n);
+			json_entity_free(v);
+			return NULL;
+		}
+		break;
+	case JSON_LIST_VALUE:
+		new = json_entity_new(type);
+		if (!new)
+			return NULL;
+		for (n = json_item_first(e); n; n = json_item_next(n)) {
+			v = json_entity_copy(n);
+			if (!v) {
+				json_entity_free(new);
+				return NULL;
+			}
+			json_item_add(new, v);
+		}
+		break;
+	case JSON_DICT_VALUE:
+		new = json_entity_new(type);
+		if (!new)
+			return NULL;
+		for (n = json_attr_first(e); n; n = json_attr_next(n)) {
+			v = json_entity_copy(n);
+			if (!v) {
+				json_entity_free(new);
+				return NULL;
+			}
+			json_attr_add(new, v);
+		}
+		break;
+	default:
+		assert(0 == "Invalid entity type");
+		break;
+	}
+	return new;
+}
+
+static void json_attr_free(json_attr_t a);
+static inline __attr_rem(json_entity_t d, json_entity_t a)
+{
+	htbl_del(d->value.dict_->attr_table, &a->value.attr_->attr_ent);
+	json_attr_free(a->value.attr_);
+}
+
 void json_attr_add(json_entity_t d, json_entity_t a)
 {
+	json_entity_t a_;
 	assert(d->type == JSON_DICT_VALUE);
 	assert(a->type == JSON_ATTR_VALUE);
 	json_str_t s = a->value.attr_->name->value.str_;
 	hent_init(&a->value.attr_->attr_ent, s->str, s->str_len);
+	a_ = json_attr_find(d, s->str);
+	if (a_) {
+		__attr_rem(d, a_);
+	}
 	htbl_ins(d->value.dict_->attr_table, &a->value.attr_->attr_ent);
+}
+
+static void json_dict_free(json_dict_t d);
+static void json_list_free(json_list_t l);
+int json_attr_mod(json_entity_t d, char *name, ...)
+{
+	int i;
+	double f;
+	char *s;
+	va_list ap;
+	json_entity_t a, av;
+	json_entity_t l, dd;
+
+	assert(d->type == JSON_DICT_VALUE);
+	a = json_attr_find(d, name);
+	if (!a)
+		return ENOENT;
+	av = json_attr_value(a);
+	va_start(ap, name);
+	switch (av->type) {
+	case JSON_INT_VALUE:
+		i = va_arg(ap, uint64_t);
+		av->value.int_ = i;
+		break;
+	case JSON_BOOL_VALUE:
+		i = va_arg(ap, int);
+		av->value.bool_ = i;
+		break;
+	case JSON_FLOAT_VALUE:
+		f = va_arg(ap, double);
+		av->value.double_ = f;
+		break;
+	case JSON_STRING_VALUE:
+		s = va_arg(ap, char *);
+		json_entity_free(av);
+		a->value.attr_->value = json_str_new(s);
+		break;
+	case JSON_ATTR_VALUE:
+		json_entity_free(av);
+		a->value.attr_->value = va_arg(ap, json_entity_t);
+		break;
+	case JSON_LIST_VALUE:
+		json_entity_free(av);
+		a->value.attr_->value = va_arg(ap, json_entity_t);
+		break;
+	case JSON_DICT_VALUE:
+		json_entity_free(av);
+		a->value.attr_->value = va_arg(ap, json_entity_t);
+		break;
+	case JSON_NULL_VALUE:
+		break;
+	default:
+		/* The attribute value must not be of ATTR type */
+		assert(0 == "Invalid entity type");
+	}
+	va_end(ap);
+	return 0;
+}
+
+static void json_attr_free(json_attr_t a);
+int json_attr_rem(json_entity_t d, char *name)
+{
+	json_entity_t a;
+	assert(d->type == JSON_DICT_VALUE);
+	a = json_attr_find(d, name);
+	if (!a)
+		return ENOENT;
+	__attr_rem(d, a);
+	return 0;
 }
 
 static void json_list_free(json_list_t a)
@@ -389,6 +633,26 @@ json_entity_t json_attr_value(json_entity_t attr)
 {
 	assert(attr->type == JSON_ATTR_VALUE);
 	return attr->value.attr_->value;
+}
+
+const char *json_attr_value_str(json_entity_t attr)
+{
+	return json_value_str(json_attr_value(attr))->str;
+}
+
+int64_t json_attr_value_int(json_entity_t attr)
+{
+	return json_value_int(json_attr_value(attr));
+}
+
+int json_attr_value_bool(json_entity_t attr)
+{
+	return json_value_bool(json_attr_value(attr));
+}
+
+double json_attr_value_float(json_entity_t attr)
+{
+	return json_value_float(json_attr_value(attr));
 }
 
 size_t json_list_len(json_entity_t list)
