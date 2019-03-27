@@ -11,3 +11,7 @@ endif
 if ENABLE_CSV
 SUBDIRS += store_csv
 endif
+
+if ENABLE_AMQP
+SUBDIRS += store_amqp
+endif
