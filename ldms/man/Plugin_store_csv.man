@@ -42,7 +42,7 @@ take on the value configured in the default config line or opt_file.
 .SH STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
 .TP
 .BR config
-name=<plugin_name> path=<path> [ altheader=<0/!0> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>] [opt_file=filename]
+name=<plugin_name> path=<path> [ altheader=<0/!0> typeheader=<typeformat> ietfcsv=<0/1> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>] [opt_file=filename] [ietfcsv=<0/1>] [typeheader=<0/1/2>]
 .br
 ldmsd_controller configuration line
 .RS
@@ -63,6 +63,18 @@ altheader=<0/!0>
 .br
 Distinguishes whether or not to write the header to a separate file than the data file. 0 = same file. Any non-zero is a separate file. Default is the same file.
 If a separate file is used then, if the data file is called "meminfo" the additional header file will be called "meminfo.HEADER"). If you choose a rollover option, the header file name will be postpended with the epochtime, similar to the data file, and a new one will be written at each rollover. Default is altheader=0.
+.TP
+typeheader=<typeformat>
+.br
+Controls the presence and format of a .KIND file. The kind CSV file gives type information on each metric (or metric array).
+For example, if the metric file is named meminfo, the kind file is named meminfo.KIND and if the metric file is named
+meminfo.15111111, the kind file is named meminfo.KIND.15111111. The typeformat parameter is 0 (no kind file), 
+1 (ldms kinds with arrays flattend out into scalars), 2 (LDMS kinds with arrays). 
+The typeformat supporting arrays uses the notation <typename>[]<len> for extraction of lengths by scripting tools. The default typeformat is 0.
+.TP
+ietfcsv=<0/1>
+.br
+Turns on (1) or off (0) use of IETF 4180 quoting for header column names.
 .TP
 userdata=<0/!0>
 .br

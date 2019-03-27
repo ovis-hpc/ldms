@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2016-2018 National Technology & Engineering Solutions
+ * Copyright (c) 2016-2019 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  * Copyright (c) 2016-2018 Open Grid Computing, Inc. All rights reserved.
@@ -55,6 +55,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <assert.h>
+#include "config.h"
 #include "store_csv_common.h"
 #define DSTRING_USE_SHORT
 #include "ovis_util/dstring.h"
@@ -152,14 +153,14 @@ static struct ovis_notification **get_onph(struct csv_store_handle_common *s_han
 }
 
 void notify_output(const char *event, const char *name, const char *ftype,
-	struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps,
-	const char * container, const char *schema) {
+	struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps) {
 	if (!cps)
 		return;
 	if (s_handle && !s_handle->notify)
 		return;
-	if (!event || !name || !ftype || !s_handle ||
-		!container || !schema) {
+	const char *container = s_handle->container;
+	const char *schema = s_handle->schema;
+	if (!event || !name || !ftype || !s_handle) {
 		cps->msglog(LDMSD_LDEBUG,"Invalid argument in notify_output"
 				"(%s, %s, %s, %p, %p)\n",
 				event ? event : "missing event",
@@ -426,8 +427,10 @@ void rename_output(const char *name,
 				head = vend + 1;
 				char *val = getenv(var);
 				if (val) {
+					/*
 					cps->msglog(LDMSD_LDEBUG,
 						"%s: rename_output: getenv(%s) = %s\n", cps->pname, var, val);
+					*/
 					if (validate_env(var, val, cps)) {
 						dstr_free(&ds);
 						cps->msglog(LDMSD_LERROR,
@@ -495,7 +498,7 @@ void rename_output(const char *name,
 		/* default 750 */
 		mode = S_IXGRP | S_IXUSR | S_IRGRP | S_IRUSR |S_IWUSR;
 	}
-	cps->msglog(LDMSD_LDEBUG,"f_mkdir_p %o %s\n", (int)mode, ndname);
+	/* cps->msglog(LDMSD_LDEBUG,"f_mkdir_p %o %s\n", (int)mode, ndname); */
 	err = f_mkdir_p(ndname, mode);
 	free(namedup);
 	if (err) {
@@ -522,7 +525,7 @@ void rename_output(const char *name,
 			cps->msglog(LDMSD_LERROR,"%s: rename_output: failed rename(%s, %s): %s\n",
 				cps->pname, name, newname, errbuf);
 		}
-		/* enoent happens if altheader = 0 */
+		/* enoent happens if altheader = 0 or typeheader = 0 */
 	}
 	free(newname);
 #undef EBSIZE
@@ -654,6 +657,178 @@ static int config_buffer(const char *bs, const char *bt, int *rbs, int *rbt, con
 	return 0;
 }
 
+
+int csv_format_types_common(int typeformat, FILE* file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count)
+{
+	if (typeformat < 1)
+		return 0;
+	if (!sh || !file || !fpath || !cps || !set || !metric_array)
+		return EINVAL;
+	const char *pn = cps->pname;
+	uint32_t len;
+	size_t i;
+	int j;
+	int rc;
+	const char *u64str = ldms_metric_type_to_str(LDMS_V_U64);
+	const char *castr = ldms_metric_type_to_str(LDMS_V_CHAR_ARRAY);
+
+#define CHECKERR(fprintfresult) \
+	if (fprintfresult < 0) { \
+		cps->msglog(LDMSD_LERROR, "%s: Error %d writing to type header '%s'\n", pn, \
+		       fprintfresult, fpath); \
+		goto error; \
+	}
+
+#define PRINT_UDATA \
+	if (doudata) { \
+		rc = fprintf(file, ",%s", u64str); \
+		CHECKERR(rc); \
+	}
+
+	const char *ud = "-udata";
+	if (!doudata) {
+		ud = "";
+	}
+	switch (typeformat) {
+	case TH_UNROLL:
+		rc = fprintf(file, "#!ldms-kinds%s!%s,%s,%s%d", ud, "timestamp",
+				u64str, castr, LDMS_PRODUCER_NAME_MAX);
+		break;
+	case TH_ARRAY:
+		rc = fprintf(file, "#!ldms-array-kinds%s!%s,%s,%s%d",
+				ud, "timestamp", u64str, castr,
+				LDMS_PRODUCER_NAME_MAX);
+		break;
+	default:
+		rc = EINVAL;
+		break;
+	}
+	CHECKERR(rc);
+
+	const char *mt;
+	for (i = 0; i < metric_count; i++) {
+		int m = metric_array[i];
+		enum ldms_value_type met_type = ldms_metric_type_get(set, m);
+		enum ldms_value_type base_type =
+			ldms_metric_type_to_scalar_type(met_type);
+		/* unroll arrays, except strings */
+		if (TH_UNROLL == typeformat) {
+			if ( met_type != LDMS_V_CHAR_ARRAY) {
+				len = ldms_metric_array_get_len(set, m);
+				for (j = 0; j < len; j++) {
+					PRINT_UDATA;
+					mt = ldms_metric_type_to_str(base_type);
+					rc = fprintf(file,",%s", mt);
+					CHECKERR(rc);
+				}
+			} else {
+				PRINT_UDATA;
+				mt = ldms_metric_type_to_str(met_type);
+				rc = fprintf(file,",%s", mt);
+				CHECKERR(rc);
+			}
+		}
+		/*  S32[]$len */
+		if (TH_ARRAY == typeformat) {
+			len = ldms_metric_array_get_len(set, m);
+			PRINT_UDATA;
+			mt = ldms_metric_type_to_str(met_type);
+			if (met_type != base_type)
+				rc = fprintf(file,",%s%d", mt, len);
+			else
+				rc = fprintf(file,",%s", mt);
+			CHECKERR(rc);
+			continue;
+		}
+	}
+	rc = fprintf(file,"\n");
+	CHECKERR(rc);
+
+	return 0;
+ error:
+	return 1;
+#undef CHECKERR
+#undef PRINT_UDATA
+}
+
+int csv_format_header_common(FILE *file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count)
+{
+	if (!sh || !file || !fpath || !cps || !set || !metric_array)
+		return EINVAL;
+	FILE *fp = file;
+	const char *pn = cps->pname;
+	size_t i;
+	int j;
+	uint32_t len;
+	int ec;
+
+#define CHECKERR(fprintfresult) \
+	if (fprintfresult < 0) { \
+		cps->msglog(LDMSD_LERROR, "%s: Error %d writing to header '%s'\n", pn, \
+		       fprintfresult, fpath); \
+		ec = errno; \
+		goto err; \
+	}
+
+	char *wsqt = ""; /* stub for ietfcsv */
+	if (sh->ietfcsv) {
+		wsqt = "\"";
+	}
+
+	/* This allows optional loading a float (Time) into an int field and
+	   retaining usec as a separate field */
+	ec = fprintf(fp, "#%sTime%s,%sTime_usec%s,%sProducerName%s",wsqt,wsqt,wsqt,wsqt,wsqt,wsqt);
+	CHECKERR(ec);
+
+	for (i = 0; i < metric_count; i++) {
+		const char* name = ldms_metric_name_get(set, metric_array[i]);
+		enum ldms_value_type metric_type = ldms_metric_type_get(set, metric_array[i]);
+
+		/* use same formats as ldms_ls */
+		switch (metric_type) {
+		case LDMS_V_U8_ARRAY:
+		case LDMS_V_S8_ARRAY:
+		case LDMS_V_U16_ARRAY:
+		case LDMS_V_S16_ARRAY:
+		case LDMS_V_U32_ARRAY:
+		case LDMS_V_S32_ARRAY:
+		case LDMS_V_U64_ARRAY:
+		case LDMS_V_S64_ARRAY:
+		case LDMS_V_F32_ARRAY:
+		case LDMS_V_D64_ARRAY:
+			len = ldms_metric_array_get_len(set, metric_array[i]);
+			if (doudata) {
+				for (j = 0; j < len; j++) { // only 1 name for all of them.
+					ec = fprintf(fp, ",%s%s%d.userdata%s,%s%s%d.value%s",
+						wsqt, name, j, wsqt, wsqt, name, j, wsqt);
+					CHECKERR(ec);
+				}
+			} else {
+				for (j = 0; j < len; j++) { // only 1 name for all of them.
+					ec = fprintf(fp, ",%s%s%d%s", wsqt, name, j, wsqt);
+					CHECKERR(ec);
+				}
+			}
+			break;
+		default:
+			if (doudata) {
+				ec = fprintf(fp, ",%s%s.userdata%s,%s%s.value%s",
+					wsqt, name, wsqt, wsqt, name, wsqt);
+				CHECKERR(ec);
+			} else {
+				ec = fprintf(fp, ",%s%s%s", wsqt, name, wsqt);
+				CHECKERR(ec);
+			}
+			break;
+		}
+	}
+
+	fprintf(fp, "\n");
+	return 0;
+ err:
+	return ec;
+}
+
 /**
  * configurations for default (plugin name) and instances.
  */
@@ -702,12 +877,32 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 	s_handle->rename_gid = (gid_t)-1;
 
 	r = false;
+	cvt = ldmsd_plugattr_bool(pa, "ietfcsv", k, &r);
+	if (cvt == -1) {
+		cps->msglog(LDMSD_LERROR, "%s:%s: ietfcsv cannot be parsed.\n", cps->pname, k);
+		return EINVAL;
+	}
+	s_handle->ietfcsv = r;
+
+	r = false;
 	cvt = ldmsd_plugattr_bool(pa, "altheader", k, &r);
-	if (s_handle->altheader == -1) {
+	if (cvt == -1) {
 		cps->msglog(LDMSD_LERROR,"open_store_common altheader= cannot be parsed\n");
 		return EINVAL;
 	}
 	s_handle->altheader = r;
+
+	uint32_t th = 0;
+	cvt = ldmsd_plugattr_u32(pa, "typeheader", k, &th);
+	if (cvt && cvt != ENOKEY) {
+		cps->msglog(LDMSD_LERROR,"open_store_common typeheader= cannot be parsed\n");
+		return EINVAL;
+	}
+	if (th > TH_MAX) {
+		cps->msglog(LDMSD_LERROR,"open_store_common typeheader=%u too large\n", th);
+		return EINVAL;
+	}
+	s_handle->typeheader = th;
 
 	const char *rename_template =
 		ldmsd_plugattr_value(pa, "rename_template", k);
@@ -829,11 +1024,12 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 	const char *bvalue = ldmsd_plugattr_value(pa, "buffertype", k);
 	int buf = 1, buft = 0;
 	rc = config_buffer(value, bvalue, &buf, &buft, k);
-	if (rc){
+	if (rc) {
 		return rc;
 	}
 	s_handle->buffer_sz = buf;
 	s_handle->buffer_type = buft;
+	s_handle->otime = time(NULL);
 
 	return rc;
 }
@@ -846,14 +1042,15 @@ void close_store_common(struct csv_store_handle_common *s_handle, struct csv_plu
 		return;
 	}
 
-	notify_output(NOTE_CLOSE, s_handle->filename, NOTE_DAT, s_handle, cps,
-		s_handle->container, s_handle->schema);
+	notify_output(NOTE_CLOSE, s_handle->filename, NOTE_DAT, s_handle, cps);
 	notify_output(NOTE_CLOSE, s_handle->headerfilename, NOTE_HDR, s_handle,
-		cps, s_handle->container, s_handle->schema);
+		cps);
 	rename_output(s_handle->filename, NOTE_DAT, s_handle, cps);
 	rename_output(s_handle->headerfilename, NOTE_HDR, s_handle, cps);
+	rename_output(s_handle->typefilename, NOTE_KIND, s_handle, cps);
 	replace_string(&(s_handle->filename), NULL);
 	replace_string(&(s_handle->headerfilename),  NULL);
+	replace_string(&(s_handle->typefilename),  NULL);
 	/* free(s_handle->notify); skip. handle notify is always copy of pg or sk notify or null */
 	s_handle->notify = NULL;
 	free(s_handle->rename_template);
@@ -876,11 +1073,13 @@ void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv
 	p->msglog(LDMSD_LALL, "%s handle dump:\n", p->pname);
 	p->msglog(LDMSD_LALL, "%s: filename: %s\n", p->pname, h->filename);
 	p->msglog(LDMSD_LALL, "%s: headerfilename: %s\n", p->pname, h->headerfilename);
+	p->msglog(LDMSD_LALL, "%s: typefilename: %s\n", p->pname, h->typefilename);
 	p->msglog(LDMSD_LALL, "%s: notify:%s\n", p->pname, h->notify);
 	p->msglog(LDMSD_LALL, "%s: notify_isfifo:%s\n", p->pname, h->notify_isfifo ?
 			                "true" : "false");
 	p->msglog(LDMSD_LALL, "%s: altheader:%s\n", p->pname, h->altheader ?
 			                "true" : "false");
+	p->msglog(LDMSD_LALL, "%s: typeheader:%d\n", p->pname, h->typeheader);
 	p->msglog(LDMSD_LALL, "%s: buffertype: %d\n", p->pname, h->buffer_type);
 	p->msglog(LDMSD_LALL, "%s: buffer: %d\n", p->pname, h->buffer_sz);
 	p->msglog(LDMSD_LALL, "%s: rename_template:%s\n", p->pname, h->rename_template);
