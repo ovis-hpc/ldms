@@ -16,11 +16,11 @@ cdef extern from "coll/map.h":
     int map_entry_new(map_t map_s, char *obj_cols)
     uint64_t map_transform(map_t map_s, uint64_t match_val, uint64_t *result)
     uint64_t map_inverse(map_t map_s, uint64_t match_val, uint64_t *result)
-    int map_transform_min(map_t _map, uint64_t *ret);
-    int map_transform_max(map_t _map, uint64_t *ret);
-    int map_inverse_min(map_t _map, uint64_t *ret);
-    int map_inverse_max(map_t _map, uint64_t *ret);
-    int map_transform_ge(map_t map, uint64_t src, uint64_t *dst);
-    int map_transform_le(map_t map, uint64_t src, uint64_t *dst);
-    int map_inverse_ge(map_t map, uint64_t dst, uint64_t *src);
-    int map_inverse_le(map_t map, uint64_t dst, uint64_t *src);
+    int map_transform_min(map_t _map, uint64_t *ret)
+    int map_transform_max(map_t _map, uint64_t *ret)
+    int map_inverse_min(map_t _map, uint64_t *ret)
+    int map_inverse_max(map_t _map, uint64_t *ret)
+    int map_transform_ge(map_t map, uint64_t src, uint64_t *dst)
+    int map_transform_le(map_t map, uint64_t src, uint64_t *dst)
+    int map_inverse_ge(map_t map, uint64_t dst, uint64_t *src)
+    int map_inverse_le(map_t map, uint64_t dst, uint64_t *src)
