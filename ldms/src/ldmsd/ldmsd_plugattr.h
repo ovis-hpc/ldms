@@ -173,21 +173,22 @@ int ldmsd_plugattr_multivalue(struct plugattr *pa, const char *attr, const char 
  */
 bool ldmsd_plugattr_kw(struct plugattr *pa, const char *kw, const char *key);
 
-/** \brief convert attr to boolean value and return 1 (true) 0 (false).
- * \return -1 if attr is undefined or unconvertible, or bool result of conversion.
+/** \brief convert attr to boolean value.
  * \param pa self
  * \param at attribute to look up.
  * \param key the plugin instance name.
- * \return 1 for true; 0 for false;
- * -1 for bad args or bad string data; -2 for nonexistence.
+ * \param result address to store the result at.
+ * \return -1 for bad args or bad string data; -2 for nonexistence.
+ *
  *  Any string value starting with the following letters yields true:
  *    1 t T y Y \0
  *  Any string value starting with the following letters yields false:
  *    0 f F n N
  * Any other string yields -1 and a logged error.
+ * E.g.: int cnv = ldmsd_plugattr_bool(pa, "param", key, &result);
  * This is a wrapper on ldmsd_plugattr_value; see it for precedence explanation.
  */
-int ldmsd_plugattr_bool(struct plugattr *pa, const char *at, const char *key);
+int ldmsd_plugattr_bool(struct plugattr *pa, const char *at, const char *key, bool *result);
 
 /** \brief convert attr to int.
  * Anything trailing the number in the value of at makes the conversion invalid.

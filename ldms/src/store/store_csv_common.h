@@ -78,7 +78,10 @@
 	uid_t create_uid; \
 	gid_t create_gid; \
 	unsigned create_perm; \
+	time_t otime; \
+	bool ietfcsv; \
 	int altheader; \
+	int typeheader; \
 	int buffer_type; \
 	int buffer_sz; \
 	char *store_key; /* this is the container/schema */
@@ -111,7 +114,8 @@ struct csv_plugin_static {
 
 #define ROLL_COMMON \
 	char *filename; \
-	char *headerfilename
+	char *headerfilename; \
+	char *typefilename
 
 /* Instance data we need for notification. */
 #define CSV_STORE_HANDLE_COMMON \
@@ -179,12 +183,9 @@ int replace_string(char **strp, const char *val);
 #define NOTE_UNIT "units"
 /**
  * Send hooks messages about a file close. Used in rollover and store stop.
- * The argument list would be shorter if csv_store_handle_common was a full
- * base type including container, schema, msglog instead of just the
- * common bits for notification.
  */
 extern
-void notify_output(const char *event, const char *name, const char *type, struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps, const char * container, const char *schema);
+void notify_output(const char *event, const char *name, const char *type, struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps);
 
 /**
  * Make a directory and apply permissions to any new intermediate directories
@@ -237,6 +238,39 @@ void ch_output(FILE *f, const char *name,
 	struct csv_store_handle_common *s_handle,
 	struct csv_plugin_static *cps);
 
+/** Format a metric names line to a file given following the
+ * metric_array indices and conventions of csv_format_common.
+ * \param file destination ready to use.
+ * \param fpath name of f for error messages.
+ * \param sh used for ietf (or not) formatting.
+ * \param doudata used for udata (or not) formatting.
+ * \param cps used for error message logging.
+ * \param set data to manage output
+ * \param metric_array list of indices to use from set.
+ * \param metric_count length of metric_array.
+ * \return 0 or errno value.
+ */
+int csv_format_header_common(FILE *file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count);
+
+/** Format a metric types line to a file given following the
+ * metric_array indices and conventions of csv_format_common.
+ * String quoting is never used.
+ * \param typeformat: 0 (do nothing), 
+ * 	1 expand arrays (ldmstype), 
+ * 	2 'ldmstype[]len' for arrays
+ * 	All other arguments ignored if typeformat is 0.
+ * 	CHAR_ARRAYs are never expanded, as with csv_format_common.
+ * \param f destination ready to use.
+ * \param fpath name of f for error messages.
+ * \param sh used for udata (or not) formatting.
+ * \param cps used for error message logging.
+ * \param set data to manage output
+ * \param metric_array list of indices to use from set.
+ * \param metric_count length of metric_array.
+ * \return 0 or errno value.
+ */
+extern int csv_format_types_common(int typeformat, FILE* f, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count);
+
 #define OPEN_STORE_COMMON(pa, h) open_store_common(pa, CSHC(h), &PG)
 /**
  * configurations for the store plugin.
@@ -255,7 +289,9 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 	"opt_file", \
 	"notify", \
 	"notify_isfifo", \
+	"ietfcsv", \
 	"altheader", \
+	"typeheader", \
 	"buffer", \
 	"buffertype", \
 	"rename_template", \
@@ -266,6 +302,12 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 	"create_gid", \
 	"create_perm"
 
+/** Loop unrolled array formatting of typeheader */
+#define TH_UNROLL 1
+/** Array metrics formatting of typeheader */
+#define TH_ARRAY 2
+/** Maximum valid typeheader value */
+#define TH_MAX TH_ARRAY
 
 #define NOTIFY_USAGE \
 		"         - notify  The path for the file event notices.\n" \
