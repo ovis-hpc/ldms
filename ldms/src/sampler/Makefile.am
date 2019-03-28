@@ -214,12 +214,6 @@ libprocnfs_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocnfs.la
 endif
 
-if ENABLE_PROCSENSORS
-libprocsensors_la_SOURCES = procsensors.c
-libprocsensors_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libprocsensors.la
-endif
-
 if ENABLE_FILESINGLE
 SUBDIRS += filesingle
 endif
