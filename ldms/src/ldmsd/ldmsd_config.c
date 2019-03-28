@@ -652,6 +652,8 @@ parse:
 	msg_no += 1;
 
 	off = 0;
+	free(req_array);
+	req_array = NULL;
 	goto next_line;
 
 cleanup:
