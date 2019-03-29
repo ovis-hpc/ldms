@@ -122,4 +122,18 @@ int ev_dispatch(ev_worker_t w, ev_type_t t, ev_actor_t fn);
  */
 int ev_posted(ev_t ev);
 
+/**
+* \brief Compare two timespec values
+*
+* Compares two timespace values *tsa and *tsb and returns:
+* -1 if tsa < tsb, 0 if tsa == tsb, and 1 if tsa > tsb.
+*
+* \param tsa Pointer to timespec structure
+* \param tsb Pointer to timespec structure
+* \retval -1 *tsa < *tsb
+* \retval 0 *tsa == *tsb
+* \retval 1 *tsa > *tsb
+*/
+int ev_time_cmp(struct timespec *tsa, const struct timespec *tsb);
+
 #endif

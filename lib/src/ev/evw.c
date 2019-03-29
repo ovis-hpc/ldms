@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <linux/param.h>
 #include <string.h>
 #include <stdlib.h>
