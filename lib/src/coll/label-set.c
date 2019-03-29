@@ -600,7 +600,7 @@ struct ovis_name ovis_label_set_own(struct ovis_label_set * s, const struct ovis
 	return ovis_label_set_insert2(s, label, true);
 }
 
-const struct ovis_name ovis_label_set_get_label(struct ovis_label_set * is, const struct ovis_name id)
+struct ovis_name ovis_label_set_get_label(struct ovis_label_set * is, const struct ovis_name id)
 {
 	struct ovis_name label;
 	memset(&label,0,sizeof(label));
@@ -608,7 +608,7 @@ const struct ovis_name ovis_label_set_get_label(struct ovis_label_set * is, cons
 	return label;
 }
 
-const struct ovis_name ovis_label_set_get_id(struct ovis_label_set * is, const struct ovis_name label)
+struct ovis_name ovis_label_set_get_id(struct ovis_label_set * is, const struct ovis_name label)
 {
 	struct ovis_name id;
 	memset(&id,0,sizeof(id));
@@ -622,7 +622,7 @@ struct ovis_label_set_iterator *ovis_label_set_iterator_get(struct ovis_label_se
 	/* fixme */
 }
 
-const struct ovis_label_id ovis_label_set_next(struct ovis_label_set * is, struct ovis_label_set_iterator *iter)
+struct ovis_label_id ovis_label_set_next(struct ovis_label_set * is, struct ovis_label_set_iterator *iter)
 {
 	struct ovis_label_id result;
 	memset(&result,0,sizeof(result));
