@@ -723,7 +723,12 @@ static void __attribute__ ((constructor)) cs_init(void)
 		zap_event_queue_init(&zev_queue[i], zap_event_qdepth);
 		rc = pthread_create(&zev_queue[i].thread, NULL,
 					zap_event_thread_proc, &zev_queue[i]);
-		assert(rc == 0);
+		if (rc) {
+			default_log("%s: Error %d creating an event thread\n",
+				    __func__, rc);
+		} else {
+			pthread_setname_np(zev_queue[i].thread, "zap:event");
+		}
 	}
 }
 

@@ -1984,6 +1984,7 @@ static int ugni_node_state_thread_init()
 	rc = pthread_create(&node_state_thread, NULL, node_state_proc, NULL);
 	if (rc)
 		return rc;
+	pthread_setname_np(node_state_thread, "zap:ugni:state");
 	return 0;
 }
 
@@ -2118,6 +2119,7 @@ static int z_ugni_init()
 		LOG("ERROR: pthread_create() failed: %d\n", rc);
 		goto out;
 	}
+	pthread_setname_np(cq_thread, "zap:ugni:cq");
 	zap_ugni_dom_initialized = 1;
 out:
 	pthread_mutex_unlock(&ugni_lock);
@@ -2209,6 +2211,7 @@ int init_once()
 	rc = pthread_create(&io_thread, NULL, io_thread_proc, 0);
 	if (rc)
 		goto err;
+	pthread_setname_np(io_thread, "zap:rdma:io");
 
 	init_complete = 1;
 

@@ -2146,6 +2146,7 @@ static int init_once()
 	if (rc)
 		goto err_2;
 
+	pthread_setname_np(cq_thread, "zap:rdma:cq");
 	/*
 	 * Create the CM event thread that will wait for events on
 	 * the CM channel
@@ -2154,6 +2155,7 @@ static int init_once()
 			    (void *)(unsigned long)cm_fd);
 	if (rc)
 		goto err_3;
+	pthread_setname_np(cm_thread, "zap:rdma:cm");
 
 	init_complete = 1;
 	// atexit(z_rdma_cleanup);

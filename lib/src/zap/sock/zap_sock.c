@@ -1636,6 +1636,7 @@ static int init_once()
 	rc = pthread_create(&io_thread, NULL, io_thread_proc, 0);
 	if (rc)
 		goto err_1;
+	pthread_setname_np(io_thread, "zap:sock:io");
 
 	init_complete = 1;
 
