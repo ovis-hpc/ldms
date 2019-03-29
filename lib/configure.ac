@@ -200,6 +200,7 @@ AC_CONFIG_FILES([ovis-lib.spec
 		Doxyfile
 		Makefile
 		src/Makefile
+		src/ev/Makefile
 		src/json/Makefile
 		src/third/Makefile
 		src/third/json_parser/Makefile
