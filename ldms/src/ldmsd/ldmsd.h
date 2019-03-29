@@ -63,6 +63,7 @@
 #include <coll/idx.h>
 #endif /* LDMSD_UPDATE_TIME */
 
+#include <ev/ev.h>
 #include <ovis_event/ovis_event.h>
 #include <ovis_util/util.h>
 #include "ldms.h"
@@ -169,7 +170,7 @@ typedef void (*ldmsd_cfgobj_del_fn_t)(struct ldmsd_cfgobj *);
 #define LDMSD_PERM_FAILOVER_ALLOWED 04000
 
 typedef struct ldmsd_cfgobj {
-	char *name;		/* Unique producer name */
+	char *name;		/* Unique object name */
 	uint32_t ref_count;
 	ldmsd_cfgobj_type_t type;
 	ldmsd_cfgobj_del_fn_t __del;
@@ -223,7 +224,10 @@ typedef struct ldmsd_prdcr {
 		LDMSD_PRDCR_TYPE_LOCAL
 	} type;
 
-	struct ldmsd_task task;
+	ev_t connect_ev;	/* sent to updater */
+	ev_t reconnect_ev;	/* sent to self */
+	ev_t start_ev;		/* sent to updater */
+	ev_t stop_ev;		/* sent to updater */
 
 	/**
 	 * list of subscribed streams from this producer
@@ -237,12 +241,7 @@ typedef struct ldmsd_prdcr {
 	 * producer.
 	 */
 	struct rbt set_tree;
-	/**
-	 * Maintains a free of all metric sets with update hint
-	 * available from this producer. It is a tree to allow
-	 * quick lookup by the logic that handles update schedule.
-	 */
-	struct rbt hint_set_tree;
+
 #ifdef LDMSD_UPDATE_TIME
 	double sched_update_time;
 #endif /* LDMSD_UPDATE_TIME */
@@ -253,6 +252,7 @@ typedef struct ldmsd_strgp *ldmsd_strgp_t;
 
 typedef struct ldmsd_strgp_ref {
 	ldmsd_strgp_t strgp;
+	ev_t store_ev;
 	LIST_ENTRY(ldmsd_strgp_ref) entry;
 } *ldmsd_strgp_ref_t;
 
@@ -265,6 +265,7 @@ typedef struct ldmsd_updt_hint_set_list {
 struct ldmsd_updtr_schedule {
 	long intrvl_us;
 	long offset_us;
+	long offset_skew;
 };
 typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
 typedef struct ldmsd_prdcr_set {
@@ -284,13 +285,13 @@ typedef struct ldmsd_prdcr_set {
 	LIST_HEAD(ldmsd_strgp_ref_list, ldmsd_strgp_ref) strgp_list;
 	struct rbn rbn;
 
-	LIST_ENTRY(ldmsd_prdcr_set) updt_hint_entry;
-
-	struct ldmsd_updtr_schedule prev_hint;
 	struct ldmsd_updtr_schedule updt_hint;
 
 	struct timeval updt_start;
 	struct timeval updt_end;
+
+	ev_t update_ev;
+	ev_t state_ev;
 
 	int updt_interval;
 	int updt_offset;
@@ -337,20 +338,6 @@ struct ldmsd_updt_time {
 #define LDMSD_UPDTR_OFFSET_INCR_DEFAULT	100000
 #define LDMSD_UPDTR_OFFSET_INCR_VAR	"LDMSD_UPDTR_OFFSET_INCR"
 
-struct ldmsd_updtr;
-typedef struct ldmsd_updtr_task {
-	struct ldmsd_updtr *updtr;
-	int is_default;
-	struct ldmsd_task task;
-	int task_flags;
-	struct ldmsd_updtr_schedule hint; /* Hint from producer set */
-	struct ldmsd_updtr_schedule sched; /* actual schedule */
-	int set_count;
-	struct rbn rbn;
-	LIST_ENTRY(ldmsd_updtr_task) entry; /* Entry in the list of to-be-deleted tasks */
-} *ldmsd_updtr_task_t;
-LIST_HEAD(ldmsd_updtr_task_list, ldmsd_updtr_task);
-
 struct ldmsd_name_match;
 typedef struct ldmsd_updtr {
 	struct ldmsd_cfgobj obj;
@@ -378,15 +365,12 @@ typedef struct ldmsd_updtr {
 	 */
 	uint8_t is_auto_task;
 
-	/* The default schedule specified from configuration */
-	struct ldmsd_updtr_task default_task;
-	/*
-	 * All tasks here don't have the same schedule as the root task.
-	 * The key is interval and offset hint.
-	 */
-	struct rbt task_tree;
-	/* Task to cleanup useless tasks from the task tree */
-	struct ldmsd_updtr_task tree_mgmt_task;
+	ev_t update_ev;
+	ev_t start_ev;
+	ev_t stop_ev;
+
+	struct ldmsd_updtr_schedule sched;
+	ev_worker_t worker;
 
 #ifdef LDMSD_UPDATE_TIME
 	struct ldmsd_updt_time *curr_updt_time;
@@ -449,6 +433,7 @@ struct ldmsd_strgp {
 	/** The storage backend plugin */
 	char *plugin_name;
 	struct ldmsd_store *store;
+
 	/** The open instance of the container */
 	ldmsd_store_handle_t store_handle;
 	ldmsd_store_handle_t next_store_handle;
@@ -458,7 +443,9 @@ struct ldmsd_strgp {
 		LDMSD_STRGP_STATE_RUNNING
 	} state;
 
-	struct ldmsd_task task;	/* rotate open task */
+	ev_worker_t worker;
+	ev_t start_ev;
+	ev_t stop_ev;
 
 	/** Update function */
 	strgp_update_fn_t update_fn;
@@ -534,7 +521,6 @@ struct ldmsd_plugin_cfg {
 	unsigned long sample_interval_us;
 	long sample_offset_us;
 	int synchronous;
-	int thread_id;
 	int ref_count;
 	union {
 		struct ldmsd_plugin *plugin;
@@ -543,8 +529,7 @@ struct ldmsd_plugin_cfg {
 	};
 	struct timeval timeout;
 	pthread_mutex_t lock;
-	ovis_scheduler_t os;
-	struct ovis_event_s oev;
+	ev_t sample_ev;
 	LIST_ENTRY(ldmsd_plugin_cfg) entry;
 };
 LIST_HEAD(plugin_list, ldmsd_plugin_cfg);
@@ -1188,5 +1173,71 @@ int ldmsd_group_iter(ldms_set_t grp, ldmsd_group_iter_cb_t cb, void *arg);
  */
 const char *ldmsd_group_member_name(const char *info_key);
 #pragma weak ldmsd_group_member_name
+
+struct update_data {
+	ldmsd_updtr_t updtr;
+	ldmsd_prdcr_set_t prd_set;
+	int reschedule;
+};
+
+struct store_data {
+	ldmsd_strgp_t strgp;
+	ldmsd_prdcr_set_t prd_set;
+};
+
+struct state_data {
+	ldmsd_prdcr_set_t prd_set;
+	int start_n_stop;
+};
+
+struct connect_data {
+	ldmsd_prdcr_t prdcr;
+	int is_connected;
+};
+
+struct sample_data {
+	struct ldmsd_plugin_cfg *pi;
+	int reschedule;
+};
+
+struct start_data {
+	void *entity;
+};
+
+struct stop_data {
+	void *entity;
+};
+
+ev_type_t smplr_sample_type;
+ev_type_t prdcr_connect_type;
+ev_type_t prdcr_set_store_type;
+ev_type_t prdcr_set_state_type;
+ev_type_t prdcr_set_update_type;
+ev_type_t prdcr_reconnect_type;
+ev_type_t updtr_start_type;
+ev_type_t prdcr_start_type;
+ev_type_t strgp_start_type;
+ev_type_t updtr_stop_type;
+ev_type_t prdcr_stop_type;
+ev_type_t strgp_stop_type;
+
+ev_worker_t producer;
+ev_worker_t updater;
+ev_worker_t sampler;
+ev_worker_t storage;
+
+int default_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int sample_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int prdcr_set_update_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int prdcr_connect_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int prdcr_set_state_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int prdcr_reconnect_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int updtr_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int updtr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int prdcr_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int prdcr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int store_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int strgp_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int strgp_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
 
 #endif

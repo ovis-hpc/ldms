@@ -671,20 +671,22 @@ class LdmsdCmdParser(cmd.Cmd):
             from datetime import datetime
             metric_sets = json.loads(resp['msg'])
 
-            print("Name                 Schema Name      State      Origin           Producer         timestamp                duration (sec)")
-            print("-------------------- ---------------- ---------- ---------------- ---------------- ------------------------- ---------------")
+            print("Name                 Schema Name      State      Origin           Producer         Update Hint          Timestamp                 Duration (sec)")
+            print("-------------------- ---------------- ---------- ---------------- ---------------- -------------------- ------------------------- ---------------")
             for pset in metric_sets:
                 ts = float(pset['timestamp.sec'])
                 ts_sec = datetime.fromtimestamp(ts).strftime('%m-%d-%y %H:%M:%S')
                 ts_str = "{0} [{1}]".format(ts_sec, pset['timestamp.usec'])
                 dur = pset['duration.sec'] + "." + pset['duration.usec'].zfill(6)
-                print("{0:20} {1:16} {2:10} {3:16} {4:16} {5:25} {6:12}".format(pset['inst_name'],
-                                                                                pset['schema_name'],
-                                                                                pset['state'],
-                                                                                pset['origin'],
-                                                                                pset['producer'],
-                                                                                ts_str,
-                                                                                dur))
+                print("{0:20} {1:16} {2:10} {3:16} {4:16} {5:20} {6:25} {7:12}".
+                      format(pset['inst_name'],
+                             pset['schema_name'],
+                             pset['state'],
+                             pset['origin'],
+                             pset['producer'],
+                             pset['hint.sec'] + ':' + pset['hint.usec'],
+                             ts_str,
+                             dur))
 
     def complete_prdcr_set_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_set_status', text)
@@ -698,12 +700,16 @@ class LdmsdCmdParser(cmd.Cmd):
         resp = self.handle('updtr_status', arg)
         if resp['errcode'] == 0:
             updaters = json.loads(resp['msg'])
-            print("Name             Interval     Offset       Mode            State")
-            print("---------------- ------------ ------------ --------------- ------------")
+            print("Name             Sample Period    Hop Incr     Auto  Mode            State")
+            print("---------------- ---------------- ------------ ----- --------------- ------------")
             for updtr in updaters:
-                print("{0:16} {1:12} {2:12} {3:15} {4}".format(
-                    updtr['name'], updtr['interval'], updtr['offset'],
-                    updtr['mode'], updtr['state']))
+                print("{0:16} {1:16} {2:12} {3:5} {4:15} {5}".format(
+                    updtr['name'],
+                    str(updtr['interval']) + ':' + str(updtr['offset']),
+                    updtr['offset_incr'],
+                    updtr['auto'],
+                    updtr['mode'],
+                    updtr['state']))
                 for prdcr in updtr['producers']:
                     print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
                         prdcr['name'], prdcr['host'], prdcr['port'],

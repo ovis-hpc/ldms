@@ -73,6 +73,7 @@
 #include <time.h>
 #include <coll/rbt.h>
 #include <coll/str_map.h>
+#include <ev/ev.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
@@ -662,36 +663,10 @@ void *k_proc(void *arg)
  */
 int publish_kernel(const char *setfile)
 {
-	pthread_create(&k_thread, NULL, k_proc, (void *)setfile);
+	int res = pthread_create(&k_thread, NULL, k_proc, (void *)setfile);
+	if (!res)
+		pthread_setname_np(k_thread, "ldmsd:kernel");
 	return 0;
-}
-
-static void stop_sampler(struct ldmsd_plugin_cfg *pi)
-{
-	ovis_scheduler_event_del(pi->os, &pi->oev);
-	pi->thread_id = -1;
-	pi->ref_count--;
-	pi->os = NULL;
-	release_ovis_scheduler(pi->thread_id);
-}
-
-void plugin_sampler_cb(ovis_event_t oev)
-{
-	struct ldmsd_plugin_cfg *pi = oev->param.ctxt;
-	pthread_mutex_lock(&pi->lock);
-	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
-	int rc = pi->sampler->sample(pi->sampler);
-	if (rc) {
-		/*
-		 * If the sampler reports an error don't reschedule
-		 * the timeout. This is an indication of a configuration
-		 * error that needs to be corrected.
-		*/
-		ldmsd_log(LDMSD_LERROR, "'%s': failed to sample. Stopping "
-				"the plug-in.\n", pi->name);
-		stop_sampler(pi);
-	}
-	pthread_mutex_unlock(&pi->lock);
 }
 
 void ldmsd_set_tree_lock()
@@ -1220,204 +1195,6 @@ int __sampler_set_info_add(struct ldmsd_plugin *pi, char *interval, char *offset
 	return 0;
 }
 
-/*
- * Start the sampler
- */
-int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
-{
-	char *endptr;
-	int rc = 0;
-	unsigned long sample_interval;
-	long sample_offset = 0;
-	int synchronous = 0;
-	struct ldmsd_plugin_cfg *pi;
-
-	sample_interval = strtoul(interval, &endptr, 0);
-	if (endptr[0] != '\0')
-		return EINVAL;
-
-	pi = ldmsd_get_plugin((char *)plugin_name);
-	if (!pi)
-		return ENOENT;
-
-	pthread_mutex_lock(&pi->lock);
-	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
-		rc = -EINVAL;
-		goto out;
-	}
-	if (pi->thread_id >= 0) {
-		rc = EBUSY;
-		goto out;
-	}
-
-	rc = __sampler_set_info_add(pi->plugin, interval, offset);
-	if (rc)
-		goto out;
-	pi->sample_interval_us = sample_interval;
-	if (offset) {
-		sample_offset = strtol(offset, NULL, 0);
-		if ( !((sample_interval >= 10) &&
-		       (sample_interval >= labs(sample_offset)*2)) ){
-			rc = EDOM;
-			goto out;
-		}
-		pi->synchronous = 1;
-		pi->sample_offset_us = sample_offset;
-	}
-	OVIS_EVENT_INIT(&pi->oev);
-	if (pi->synchronous) {
-		pi->oev.param.type = OVIS_EVENT_PERIODIC;
-		pi->oev.param.periodic.period_us = sample_interval;
-		pi->oev.param.periodic.phase_us = sample_offset;
-	} else {
-		pi->oev.param.type = OVIS_EVENT_TIMEOUT;
-		pi->oev.param.timeout.tv_sec = sample_interval / 1000000;
-		pi->oev.param.timeout.tv_usec = sample_interval % 1000000;
-	}
-	pi->oev.param.ctxt = pi;
-	pi->oev.param.cb_fn = plugin_sampler_cb;
-
-	pi->ref_count++;
-
-	pi->thread_id = find_least_busy_thread();
-	pi->os = get_ovis_scheduler(pi->thread_id);
-	rc = ovis_scheduler_event_add(pi->os, &pi->oev);
-out:
-	pthread_mutex_unlock(&pi->lock);
-	return rc;
-}
-
-struct oneshot {
-	struct ldmsd_plugin_cfg *pi;
-	ovis_scheduler_t os;
-	struct ovis_event_s oev;
-};
-
-void oneshot_sample_cb(ovis_event_t ev)
-{
-	struct oneshot *os = ev->param.ctxt;
-	struct ldmsd_plugin_cfg *pi = os->pi;
-	ovis_scheduler_event_del(os->os, ev);
-	pthread_mutex_lock(&pi->lock);
-	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
-	pi->sampler->sample(pi->sampler);
-	pi->ref_count--;
-	release_ovis_scheduler(pi->thread_id);
-	free(os);
-	pthread_mutex_unlock(&pi->lock);
-}
-
-int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
-					char *errstr, size_t errlen)
-{
-	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
-	time_t now, sched;
-	struct timeval tv;
-
-	if (0 == strncmp(ts, "now", 3)) {
-		ts = ts + 4;
-		tv.tv_sec = strtoul(ts, NULL, 10);
-	} else {
-		sched = strtoul(ts, NULL, 10);
-		now = time(NULL);
-		if (now < 0) {
-			snprintf(errstr, errlen, "Failed to get "
-						"the current time.");
-			rc = errno;
-			return rc;
-		}
-		double diff = difftime(sched, now);
-		if (diff < 0) {
-			snprintf(errstr, errlen, "The schedule time '%s' "
-				 "is ahead of the current time %jd",
-				 ts, (intmax_t)now);
-			rc = EINVAL;
-			return rc;
-		}
-		tv.tv_sec = diff;
-	}
-	tv.tv_usec = 0;
-
-	struct oneshot *ossample = malloc(sizeof(*ossample));
-	if (!ossample) {
-		snprintf(errstr, errlen, "Out of Memory");
-		rc = ENOMEM;
-		return rc;
-	}
-
-	pi = ldmsd_get_plugin((char *)plugin_name);
-	if (!pi) {
-		rc = ENOENT;
-		snprintf(errstr, errlen, "Sampler not found.");
-		free(ossample);
-		return rc;
-	}
-	pthread_mutex_lock(&pi->lock);
-	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
-		rc = EINVAL;
-		snprintf(errstr, errlen,
-				"The specified plugin is not a sampler.");
-		goto err;
-	}
-	pi->ref_count++;
-	ossample->pi = pi;
-	if (pi->thread_id < 0) {
-		snprintf(errstr, errlen, "Sampler '%s' not started yet.",
-								plugin_name);
-		rc = EPERM;
-		goto err;
-	}
-	ossample->os = get_ovis_scheduler(pi->thread_id);
-	OVIS_EVENT_INIT(&ossample->oev);
-	ossample->oev.param.type = OVIS_EVENT_TIMEOUT;
-	ossample->oev.param.ctxt = ossample;
-	ossample->oev.param.cb_fn = oneshot_sample_cb;
-	ossample->oev.param.timeout = tv;
-
-	rc = ovis_scheduler_event_add(ossample->os, &ossample->oev);
-
-	if (rc)
-		goto err;
-	goto out;
-err:
-	free(ossample);
-out:
-	pthread_mutex_unlock(&pi->lock);
-	return rc;
-}
-
-/*
- * Stop the sampler
- */
-int ldmsd_stop_sampler(char *plugin_name)
-{
-	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
-
-	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi)
-		return ENOENT;
-	pthread_mutex_lock(&pi->lock);
-	/* Ensure this is a sampler */
-	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
-		rc = EINVAL;
-		goto out;
-	}
-	if (pi->os) {
-		ovis_scheduler_event_del(pi->os, &pi->oev);
-		pi->os = NULL;
-		release_ovis_scheduler(pi->thread_id);
-		pi->thread_id = -1;
-		pi->ref_count--;
-	} else {
-		rc = -EBUSY;
-	}
-out:
-	pthread_mutex_unlock(&pi->lock);
-	return rc;
-}
-
 void *event_proc(void *v)
 {
 	ovis_scheduler_t os = v;
@@ -1488,6 +1265,46 @@ int check_arg(char *c, char *optarg, enum ldms_opttype t)
 		break;
 	}
 	return 0;
+}
+
+int default_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+{
+	ldmsd_log(LDMSD_LINFO, "Unhandled Event: type=%s, id=%d\n",
+		  ev_type_name(ev_type(ev)), ev_type_id(ev_type(ev)));
+	ldmsd_log(LDMSD_LINFO, "    src     : %s\n", ev_worker_name(src));
+	ldmsd_log(LDMSD_LINFO, "    dst     : %s\n", ev_worker_name(dst));
+	return 0;
+}
+
+void ldmsd_ev_init(void)
+{
+	smplr_sample_type = ev_type_new("smplr:sample", sizeof(struct sample_data));
+	prdcr_connect_type = ev_type_new("prdcr:connect", sizeof(struct connect_data));
+	prdcr_reconnect_type = ev_type_new("prdcr:reconnect", sizeof(struct connect_data));
+	prdcr_set_update_type = ev_type_new("prdcr_set:update", sizeof(struct update_data));
+	prdcr_set_store_type = ev_type_new("prdcr_set:store", sizeof(struct store_data));
+	prdcr_set_state_type = ev_type_new("prdcr_set:state", sizeof(struct state_data));
+	updtr_start_type = ev_type_new("updtr:start", sizeof(struct start_data));
+	prdcr_start_type = ev_type_new("prdcr:start", sizeof(struct start_data));
+	strgp_start_type = ev_type_new("strgp:start", sizeof(struct start_data));
+	updtr_stop_type = ev_type_new("updtr:stop", sizeof(struct stop_data));
+	prdcr_stop_type = ev_type_new("prdcr:stop", sizeof(struct stop_data));
+	strgp_stop_type = ev_type_new("strgp:stop", sizeof(struct start_data));
+
+	producer = ev_worker_new("producer", default_actor);
+	updater = ev_worker_new("updater", default_actor);
+	sampler = ev_worker_new("sampler", default_actor);
+	storage = ev_worker_new("storage", default_actor);
+
+	ev_dispatch(sampler, smplr_sample_type, sample_actor);
+	ev_dispatch(updater, prdcr_set_update_type, prdcr_set_update_actor);
+	ev_dispatch(updater, prdcr_set_state_type, prdcr_set_state_actor);
+	ev_dispatch(updater, prdcr_start_type, prdcr_start_actor);
+	ev_dispatch(updater, prdcr_stop_type, prdcr_stop_actor);
+	ev_dispatch(producer, prdcr_connect_type, prdcr_connect_actor);
+	ev_dispatch(producer, prdcr_reconnect_type, prdcr_reconnect_actor);
+	ev_dispatch(producer, updtr_start_type, updtr_start_actor);
+	ev_dispatch(producer, updtr_stop_type, updtr_stop_actor);
 }
 
 int main(int argc, char *argv[])
@@ -1721,6 +1538,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	ldmsd_ev_init();
+
 	/* Initialize LDMS */
 	umask(0);
 	if (!max_mem_sz_str) {
@@ -1858,6 +1677,7 @@ int main(int argc, char *argv[])
 					"thread.\n", ret);
 			cleanup(7, "event thread create fail");
 		}
+		pthread_setname_np(ev_thread[op], "ldmsd:scheduler");
 	}
 
 	/* Create the test sets */

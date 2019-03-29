@@ -500,23 +500,20 @@ int __failover_send_updtr(ldmsd_failover_t f, ldms_t x, ldmsd_updtr_t u)
 		goto cleanup;
 
 	/* INTERVAL */
-	snprintf(buff, sizeof(buff), "%ld", u->default_task.hint.intrvl_us);
+	snprintf(buff, sizeof(buff), "%ld", u->sched.intrvl_us);
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_INTERVAL, buff);
 	if (rc)
 		goto cleanup;
 
 	/* OFFSET */
-	if (u->default_task.task_flags & LDMSD_TASK_F_SYNCHRONOUS) {
-		snprintf(buff, sizeof(buff), "%ld", u->default_task.hint.offset_us);
-		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_OFFSET,
-						   buff);
-		if (rc)
-			goto cleanup;
-	}
+	snprintf(buff, sizeof(buff), "%ld", u->sched.offset_us);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_OFFSET, buff);
+	if (rc)
+		goto cleanup;
 
 	/* AUTO INTERVAL */
 	if (!u->is_auto_task)
-	snprintf(buff, sizeof(buff), "false");
+		snprintf(buff, sizeof(buff), "false");
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_AUTO_INTERVAL, buff);
 	if (rc)
 		goto cleanup;
@@ -2134,15 +2131,12 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 	} else {
 		/* update by parameters */
 		if (interval) {
-			u->default_task.hint.intrvl_us = atoi(interval);
+			u->sched.intrvl_us = atoi(interval);
 		}
 		if (offset) {
-			u->default_task.hint.offset_us = atoi(offset);
-			u->default_task.task_flags = LDMSD_TASK_F_SYNCHRONOUS;
+			u->sched.offset_us = atoi(offset);
 		}
 		u->push_flags = push_flags;
-		if (push_flags)
-			u->default_task.task_flags = LDMSD_TASK_F_IMMEDIATE;
 	}
 	if (producer) {
 		/* add producer */

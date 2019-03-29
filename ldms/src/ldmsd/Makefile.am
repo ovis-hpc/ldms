@@ -1,7 +1,7 @@
 lib_LTLIBRARIES=
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
-lib_LTLIBRARIES = 
+lib_LTLIBRARIES =
 if ENABLE_SOS
 sbin_PROGRAMS += ldmsd_sos_init
 endif
@@ -45,12 +45,13 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_request.c \
 	ldmsd_request.h \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
+	ldmsd_smplr.c \
 	ldmsd_failover.c ldmsd_group.c
 ldmsd_CFLAGS = $(AM_CFLAGS) -rdynamic
 ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) \
 	-lzap -lmmalloc -lovis_util -lcoll -ljson_util \
-	-lovis_event -lpthread -lm
+	-lovis_event -lev -lpthread -lm
 
 ldmsd_LDFLAGS += -lovis_util -lcoll -ldl -lovis_ctrl
 

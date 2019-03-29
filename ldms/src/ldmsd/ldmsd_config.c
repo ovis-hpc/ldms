@@ -184,7 +184,6 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 	if (!pi)
 		goto enomem;
 	pthread_mutex_init(&pi->lock, NULL);
-	pi->thread_id = -1;
 	pi->handle = d;
 	pi->name = strdup(plugin_name);
 	if (!pi->name)

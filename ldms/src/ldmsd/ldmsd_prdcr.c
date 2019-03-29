@@ -58,13 +58,12 @@
 #include <coll/rbt.h>
 #include <ovis_util/util.h>
 #include <netdb.h>
+#include <ev/ev.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
 #include "config.h"
-
-static void prdcr_task_cb(ldmsd_task_t task, void *arg);
 
 int prdcr_resolve(const char *hostname, unsigned short port_no,
 		  struct sockaddr_storage *ss, socklen_t *ss_len)
@@ -109,6 +108,11 @@ static ldmsd_prdcr_set_t prdcr_set_new(const char *inst_name)
 	pthread_mutex_init(&set->lock, NULL);
 	rbn_init(&set->rbn, set->inst_name);
 
+	set->state_ev = ev_new(prdcr_set_state_type);
+	EV_DATA(set->state_ev, struct state_data)->prd_set = set;
+	set->update_ev = ev_new(prdcr_set_update_type);
+	EV_DATA(set->update_ev, struct update_data)->prd_set = set;
+
 	set->ref_count = 1;
 	return set;
 err_1:
@@ -135,9 +139,6 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 		strgp_ref = LIST_FIRST(&set->strgp_list);
 	}
 
-	if (set->updt_hint_entry.le_prev)
-		LIST_REMOVE(set, updt_hint_entry);
-
 	free(set->inst_name);
 	free(set);
 }
@@ -160,53 +161,6 @@ static void prdcr_set_del(ldmsd_prdcr_set_t set)
 	ldmsd_prdcr_set_ref_put(set);
 }
 
-#define UPDT_HINT_TREE_ADD 1
-#define UPDT_HINT_TREE_REMOVE 2
-void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
-				struct ldmsd_updtr_schedule *hint, int op)
-{
-	struct rbn *rbn;
-	struct ldmsd_updt_hint_set_list *list;
-	struct ldmsd_updtr_schedule *hint_key;
-	if (0 == hint->intrvl_us)
-		return;
-	rbn = rbt_find(&prdcr->hint_set_tree, hint);
-	if (op == UPDT_HINT_TREE_REMOVE) {
-		if (!rbn)
-			return;
-		list = container_of(rbn, struct ldmsd_updt_hint_set_list, rbn);
-		assert(prd_set->ref_count);
-		if (!prd_set->updt_hint_entry.le_prev)
-			return; /* Already removed. This can happen when
-				 * we receive DIR_DEL before outstanding
-				 * SET_INFO lookup has completed. */
-		LIST_REMOVE(prd_set, updt_hint_entry);
-		prd_set->updt_hint_entry.le_next = NULL;
-		prd_set->updt_hint_entry.le_prev = NULL;
-		ldmsd_prdcr_set_ref_put(prd_set);
-
-		if (LIST_EMPTY(&list->list)) {
-			rbt_del(&prdcr->hint_set_tree, &list->rbn);
-			free(list->rbn.key);
-			free(list);
-		}
-	} else if (op == UPDT_HINT_TREE_ADD) {
-		if (!rbn) {
-			list = malloc(sizeof(*list));
-			hint_key = malloc(sizeof(*hint_key));
-			*hint_key = *hint;
-			rbn_init(&list->rbn, hint_key);
-			rbt_ins(&prdcr->hint_set_tree, &list->rbn);
-			LIST_INIT(&list->list);
-		} else {
-			list = container_of(rbn,
-					struct ldmsd_updt_hint_set_list, rbn);
-		}
-		ldmsd_prdcr_set_ref_get(prd_set);
-		LIST_INSERT_HEAD(&list->list, prd_set, updt_hint_entry);
-	}
-}
-
 /**
  * Destroy all sets for the producer
  */
@@ -216,12 +170,12 @@ static void prdcr_reset_sets(ldmsd_prdcr_t prdcr)
 	struct rbn *rbn;
 	while ((rbn = rbt_min(&prdcr->set_tree))) {
 		prd_set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
+		EV_DATA(prd_set->state_ev, struct state_data)->start_n_stop = 0;
+		ev_post(producer, updater, prd_set->state_ev, NULL);
 		if (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG) {
 			/* Put back the reference taken when register for push */
 			ldmsd_prdcr_set_ref_put(prd_set);
 		}
-		prdcr_hint_tree_update(prdcr, prd_set,
-				&prd_set->updt_hint, UPDT_HINT_TREE_REMOVE);
 		rbt_del(&prdcr->set_tree, rbn);
 		prdcr_set_del(prd_set);
 	}
@@ -248,95 +202,17 @@ static void prdcr_set_updt_hint_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t pr
 	char *value;
 	ldms_set_t set = prd_set->set;
 
-	prd_set->prev_hint.intrvl_us = prd_set->updt_hint.intrvl_us;
-	prd_set->prev_hint.offset_us = prd_set->updt_hint.offset_us;
-
 	ldms_set_info_unset(set, LDMSD_SET_INFO_UPDATE_HINT_KEY);
 	(void) ldmsd_set_update_hint_get(prd_set->set,
 			&prd_set->updt_hint.intrvl_us, &prd_set->updt_hint.offset_us);
 
-	/* Remove set from the previous-hint list */
-	if (0 != prd_set->prev_hint.intrvl_us) {
-		prdcr_hint_tree_update(prdcr, prd_set,
-				&prd_set->prev_hint, UPDT_HINT_TREE_REMOVE);
-	}
-
-	/* Add set to the current-hint list*/
-	if (0 != prd_set->updt_hint.intrvl_us) {
-		ldmsd_log(LDMSD_LDEBUG, "producer '%s' add set '%s' to hint tree\n",
-						prdcr->obj.name, prd_set->inst_name);
-		prdcr_hint_tree_update(prdcr, prd_set,
-				&prd_set->updt_hint, UPDT_HINT_TREE_ADD);
-	} else {
-		/* No new hint. done */
-		ldmsd_log(LDMSD_LDEBUG, "set '%s' contains no updtr hint\n",
-							prd_set->inst_name);
-		return;
-	}
-
 	return;
-}
-
-static void prdcr_set_updtr_task_update(ldmsd_prdcr_set_t prd_set)
-{
-	ldmsd_updtr_t updtr;
-	ldmsd_name_match_t match;
-	char *str;
-	int rc;
-	pthread_mutex_lock(&prd_set->lock);
-	if (0 == ldmsd_updtr_schedule_cmp(&prd_set->prev_hint,
-						&prd_set->updt_hint)) {
-		/* Do nothing */
-		pthread_mutex_unlock(&prd_set->lock);
-		return;
-	}
-	pthread_mutex_unlock(&prd_set->lock);
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
-	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
-		ldmsd_updtr_lock(updtr);
-		if (updtr->state != LDMSD_UPDTR_STATE_RUNNING) {
-			ldmsd_updtr_unlock(updtr);
-			continue;
-		}
-
-		/* Updaters for push don't schedule any updates. */
-		if (0 != updtr->push_flags) {
-			ldmsd_updtr_unlock(updtr);
-			continue;
-		}
-		if (!ldmsd_updtr_prdcr_find(updtr, prd_set->prdcr->obj.name)) {
-			ldmsd_updtr_unlock(updtr);
-			continue;
-		}
-		if (!LIST_EMPTY(&updtr->match_list)) {
-			LIST_FOREACH(match, &updtr->match_list, entry) {
-				if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
-					str = prd_set->inst_name;
-				else
-					str = prd_set->schema_name;
-				rc = regexec(&match->regex, str, 0, NULL, 0);
-				if (!rc)
-					goto update_task;
-			}
-			ldmsd_updtr_unlock(updtr);
-			continue;
-		}
-update_task:
-		pthread_mutex_lock(&prd_set->lock);
-		ldmsd_updtr_tasks_update(updtr, prd_set);
-		pthread_mutex_unlock(&prd_set->lock);
-		ldmsd_updtr_unlock(updtr);
-	}
-
-
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
 }
 
 static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 			    int more, ldms_set_t set, void *arg)
 {
 	ldmsd_prdcr_set_t prd_set = arg;
-	int update_updtr_tree = 0;
 	pthread_mutex_lock(&prd_set->lock);
 	if (status != LDMS_LOOKUP_OK) {
 		status = (status < 0 ? -status : status);
@@ -372,26 +248,20 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	ldmsd_prdcr_lock(prd_set->prdcr);
 	pthread_mutex_lock(&prd_set->lock);
 	prdcr_set_updt_hint_update(prd_set->prdcr, prd_set);
-	if (0 != prd_set->updt_hint.intrvl_us)
-		update_updtr_tree = 1;
 	pthread_mutex_unlock(&prd_set->lock);
 	ldmsd_prdcr_unlock(prd_set->prdcr);
 
 	pthread_mutex_lock(&prd_set->lock);
+
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+	EV_DATA(prd_set->state_ev, struct state_data)->start_n_stop = 1;
+	ev_post(producer, updater, prd_set->state_ev, NULL);
+
 	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
 	ldmsd_strgp_update(prd_set);
-
 out:
 	pthread_mutex_unlock(&prd_set->lock);
-	if ((status == LDMS_LOOKUP_OK) && (update_updtr_tree)) {
-		/*
-		 * Update the task tree of all updaters
-		 * that get updates for the producer set.
-		 */
-		prdcr_set_updtr_task_update(prd_set);
-	}
-	ldmsd_prdcr_set_ref_put(prd_set); /* The ref is taken before calling lookup */
+	/* The lookup reference will be dropped by the updater when it receives this event */
 	return;
 }
 
@@ -459,8 +329,6 @@ static void prdcr_dir_cb_del(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 		if (!rbn)
 			continue;
 		set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
-		prdcr_hint_tree_update(prdcr, set,
-				&set->updt_hint, UPDT_HINT_TREE_REMOVE);
 		rbt_del(&prdcr->set_tree, &set->rbn);
 		prdcr_set_del(set);
 	}
@@ -559,6 +427,7 @@ static int __prdcr_subscribe(ldmsd_prdcr_t prdcr)
 
 static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
+	struct timespec to;
 	ldmsd_prdcr_t prdcr = cb_arg;
 	ldmsd_prdcr_lock(prdcr);
 	switch (e->type) {
@@ -574,7 +443,7 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		if (ldms_xprt_dir(prdcr->xprt, prdcr_dir_cb, prdcr,
 				  LDMS_DIR_F_NOTIFY))
 			ldms_xprt_close(prdcr->xprt);
-		ldmsd_task_stop(&prdcr->task);
+		// ldmsd_task_stop(&prdcr->task);
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
 		ldmsd_log(LDMSD_LERROR, "Producer %s rejected the "
@@ -603,6 +472,9 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 
 reset_prdcr:
 	prdcr_reset_sets(prdcr);
+	if (prdcr->xprt)
+		ldms_xprt_put(prdcr->xprt);
+	prdcr->xprt = NULL;
 	switch (prdcr->conn_state) {
 	case LDMSD_PRDCR_STATE_STOPPING:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
@@ -611,16 +483,13 @@ reset_prdcr:
 	case LDMSD_PRDCR_STATE_CONNECTING:
 	case LDMSD_PRDCR_STATE_CONNECTED:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
-		ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
-				 0, prdcr->conn_intrvl_us, 0);
+		ev_sched_to(&to, prdcr->conn_intrvl_us / 1000000, 0);
+		ev_post(producer, producer, prdcr->connect_ev, &to);
 		break;
 	case LDMSD_PRDCR_STATE_STOPPED:
 		assert(0 == "STOPPED shouldn't have xprt event");
 		break;
 	}
-	if (prdcr->xprt)
-		ldms_xprt_put(prdcr->xprt);
-	prdcr->xprt = NULL;
 	ldmsd_prdcr_unlock(prdcr);
 }
 
@@ -663,28 +532,6 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 		assert(0);
 	}
 }
-static void prdcr_task_cb(ldmsd_task_t task, void *arg)
-{
-	ldmsd_prdcr_t prdcr = arg;
-
-	ldmsd_prdcr_lock(prdcr);
-	switch (prdcr->conn_state) {
-	case LDMSD_PRDCR_STATE_STOPPED:
-	case LDMSD_PRDCR_STATE_STOPPING:
-		ldmsd_task_stop(&prdcr->task);
-		break;
-	case LDMSD_PRDCR_STATE_DISCONNECTED:
-		prdcr_connect(prdcr);
-		break;
-	case LDMSD_PRDCR_STATE_CONNECTING:
-		break;
-	case LDMSD_PRDCR_STATE_CONNECTED:
-		ldmsd_task_stop(&prdcr->task);
-		break;
-	}
-	ldmsd_prdcr_unlock(prdcr);
-}
-
 static int set_cmp(void *a, const void *b)
 {
 	return strcmp(a, b);
@@ -716,6 +563,17 @@ const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type)
 		return NULL;
 }
 
+int prdcr_connect_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+{
+	prdcr_connect(EV_DATA(ev, struct connect_data)->prdcr);
+	return 0;
+}
+
+int prdcr_reconnect_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+{
+	return 0;
+}
+
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
@@ -738,7 +596,6 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	prdcr->port_no = port_no;
 	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
 	rbt_init(&prdcr->set_tree, set_cmp);
-	rbt_init(&prdcr->hint_set_tree, ldmsd_updtr_schedule_cmp);
 	prdcr->host_name = strdup(host_name);
 	if (!prdcr->host_name)
 		goto out;
@@ -752,7 +609,16 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 			host_name,(unsigned) port_no);
 		goto out;
 	}
-	ldmsd_task_init(&prdcr->task);
+	prdcr->connect_ev = ev_new(prdcr_connect_type);
+	EV_DATA(prdcr->connect_ev, struct connect_data)->prdcr = prdcr;
+	prdcr->reconnect_ev = ev_new(prdcr_reconnect_type);
+	EV_DATA(prdcr->reconnect_ev, struct connect_data)->prdcr = prdcr;
+	prdcr->start_ev = ev_new(prdcr_start_type);
+	EV_DATA(prdcr->start_ev, struct start_data)->entity = prdcr;
+	prdcr->stop_ev = ev_new(prdcr_stop_type);
+	EV_DATA(prdcr->stop_ev, struct stop_data)->entity = prdcr;
+
+	// ldmsd_task_init(&prdcr->task);
 	ldmsd_cfgobj_unlock(&prdcr->obj);
 	return prdcr;
 out:
@@ -825,6 +691,33 @@ ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr)
 	return (ldmsd_prdcr_t)ldmsd_cfgobj_next(&prdcr->obj);
 }
 
+/*
+ * An updater has start. Send the updtr all of the prdcr sets.
+ */
+int updtr_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+{
+	ldmsd_prdcr_t prdcr;
+	ldmsd_prdcr_set_t prd_set;
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		for (prd_set = ldmsd_prdcr_set_first(prdcr);
+		     prd_set; prd_set = ldmsd_prdcr_set_next(prd_set)) {
+			if (prd_set->state >= LDMSD_PRDCR_SET_STATE_READY) {
+				EV_DATA(prd_set->state_ev, struct state_data)->start_n_stop = 1;
+				ev_post(producer, updater, prd_set->state_ev, NULL);
+			}
+		}
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	return 0;
+}
+
+int updtr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+{
+	return 0;
+}
+
 int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc;
@@ -840,9 +733,9 @@ int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 
 	prdcr->obj.perm |= LDMSD_PERM_DSTART;
-	ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
-			 LDMSD_TASK_F_IMMEDIATE,
-			 prdcr->conn_intrvl_us, 0);
+
+	ev_post(producer, updater, prdcr->start_ev, NULL);
+	ev_post(producer, producer, prdcr->connect_ev, NULL);
 out:
 	ldmsd_prdcr_unlock(prdcr);
 	return rc;
@@ -881,16 +774,15 @@ int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 	}
 	if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
 		prdcr_reset_sets(prdcr);
-	ldmsd_task_stop(&prdcr->task);
 	prdcr->obj.perm &= ~LDMSD_PERM_DSTART;
 	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPING;
 	if (prdcr->xprt)
 		ldms_xprt_close(prdcr->xprt);
 	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_task_join(&prdcr->task);
 	ldmsd_prdcr_lock(prdcr);
 	if (!prdcr->xprt)
 		prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+	ev_post(producer, updater, prdcr->stop_ev, NULL);
 out:
 	ldmsd_prdcr_unlock(prdcr);
 	return rc;
@@ -1010,35 +902,6 @@ ldmsd_prdcr_set_t ldmsd_prdcr_set_find(ldmsd_prdcr_t prdcr, const char *setname)
 	if (rbn)
 		return container_of(rbn, struct ldmsd_prdcr_set, rbn);
 	return NULL;
-}
-
-/**
- * Get the first set with the given update hint \c intrvl and \c offset.
- *
- * Caller must hold the producer lock.
- */
-ldmsd_prdcr_set_t ldmsd_prdcr_set_first_by_hint(ldmsd_prdcr_t prdcr,
-					struct ldmsd_updtr_schedule *hint)
-{
-	struct rbn *rbn;
-	ldmsd_updt_hint_set_list_t list;
-	rbn = rbt_find(&prdcr->hint_set_tree, hint);
-	if (!rbn)
-		return NULL;
-	list = container_of(rbn, struct ldmsd_updt_hint_set_list, rbn);
-	if (LIST_EMPTY(&list->list))
-		assert(0);
-	return LIST_FIRST(&list->list);
-}
-
-/**
- * Get the next set with the given update hint \c intrvl and \c offset.
- *
- * Caller must hold the producer lock.
- */
-ldmsd_prdcr_set_t ldmsd_prdcr_set_next_by_hint(ldmsd_prdcr_set_t prd_set)
-{
-	return LIST_NEXT(prd_set, updt_hint_entry);
 }
 
 /* Must be called with strgp lock held. */
