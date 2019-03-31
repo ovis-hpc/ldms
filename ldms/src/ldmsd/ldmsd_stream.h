@@ -32,6 +32,9 @@ extern int ldmsd_stream_publish_file(const char *stream, const char *type,
 				     const char *xprt, const char *host, const char *port,
 				     const char *auth, struct attr_value_list *auth_opt,
 				     FILE *file);
+void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_type,
+			  const char *data, size_t data_len,
+			  json_entity_t entity);
 
 #ifdef __cplusplus
 }
