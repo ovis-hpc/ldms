@@ -183,7 +183,7 @@ typedef struct ldmsd_cfgobj {
 
 typedef struct ldmsd_prdcr_stream_s {
 	const char *name;
-	LIST_ENTRY(prdcr_subs_s) entry;
+	LIST_ENTRY(ldmsd_prdcr_stream_s) entry;
 } *ldmsd_prdcr_stream_t;
 
 /**
