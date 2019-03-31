@@ -34,12 +34,12 @@ ldmsd_upload_LDFLAGS = $(AM_LDFLAGS)
 lib_LTLIBRARIES += libldmsd_stream.la
 libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h ldms.h ldms_core.h ldmsd_request_util.c
 libldmsd_stream_la_LIBADD = \
-	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ -lldms
+	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ $(CORE)/libldms.la
 
 lib_LTLIBRARIES += librequest.la
 librequest_la_SOURCES = ldms.h ldms_core.h ldmsd_request_util.c
 librequest_la_LIBADD = \
-	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ -lldms
+	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ $(CORE)/libldms.la
 
 ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_request.c \
