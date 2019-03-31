@@ -64,8 +64,8 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <slurm/spank.h>
-#include <ldms/ldms.h>
 #include <json/json_util.h>
+#include "ldms.h"
 #include "../ldmsd/ldmsd_stream.h"
 
 static ldms_t ldms;

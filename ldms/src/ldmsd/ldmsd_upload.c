@@ -6,10 +6,10 @@
 #include <stdarg.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include <ldms/ldms.h>
 #include <getopt.h>
 #include <semaphore.h>
 #include <pthread.h>
+#include "ldms.h"
 #include "ldmsd_request.h"
 #include "ldmsd_stream.h"
 

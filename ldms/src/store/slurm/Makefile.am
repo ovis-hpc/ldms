@@ -4,7 +4,8 @@ pkglib_LTLIBRARIES =
 CORE = ../../core
 LDMSD = ../../ldmsd
 SAMPLER = ../../sampler
-AM_CFLAGS = -I$(srcdir)/$(CORE) \
+AM_CFLAGS = -I$(top_builddir)/src/ \
+	    -I$(srcdir)/$(CORE) \
 	    -I$(srcdir)/$(LDMSD) \
 	    -I$(srcdir)/$(SAMPLER)/slurm \
 	    @OVIS_LIB_INCDIR_FLAG@

@@ -6,9 +6,9 @@
 #include <stdarg.h>
 #include <sys/time.h>
 #include <unistd.h>
-#include <ldms/ldms.h>
 #include <semaphore.h>
 #include <json/json_util.h>
+#include "ldms.h"
 #include "ldmsd_request.h"
 #include "ldmsd_stream.h"
 
