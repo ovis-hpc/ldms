@@ -62,6 +62,220 @@
 #include "config.h"
 #include "ovis_event/ovis_event.h"
 
+int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us)
+{
+	char value[128];
+	if (offset_us == LDMSD_UPDT_HINT_OFFSET_NONE)
+		snprintf(value, 127, "%ld:", interval_us);
+	else
+		snprintf(value, 127, "%ld:%ld", interval_us, offset_us);
+	return ldms_set_info_set(set, LDMSD_SET_INFO_UPDATE_HINT_KEY, value);
+}
+
+int ldmsd_set_update_hint_get(ldms_set_t set, long *interval_us, long *offset_us)
+{
+	char *value, *tmp, *endptr;
+	*interval_us = 0;
+	*offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+	value = ldms_set_info_get(set, LDMSD_SET_INFO_UPDATE_HINT_KEY);
+	if (!value)
+		return 0;
+	tmp = strtok_r(value, ":", &endptr);
+	*interval_us = strtol(tmp, NULL, 0);
+	tmp = strtok_r(NULL, ":", &endptr);
+	if (tmp)
+		*offset_us = strtol(tmp, NULL, 0);
+	ldmsd_log(LDMSD_LDEBUG, "set '%s': getting updtr hint '%s'\n",
+			ldms_set_instance_name_get(set), value);
+	free(value);
+	return 0;
+}
+
+char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type)
+{
+	if (type == LDMSD_SET_ORIGIN_PRDCR)
+		return "producer";
+	else if (type == LDMSD_SET_ORIGIN_SAMP_PI)
+		return "sampler plugin";
+	else
+		return "";
+}
+
+void __transaction_end_time_get(struct timeval *start, struct timeval *dur,
+							struct timeval *end__)
+{
+	end__->tv_sec = start->tv_sec + dur->tv_sec;
+	end__->tv_usec = start->tv_usec + dur->tv_usec;
+	if (end__->tv_usec > 1000000) {
+		end__->tv_sec += 1;
+		end__->tv_usec -= 1000000;
+	}
+}
+
+/*
+ * Get the set information
+ *
+ * When \c info is unused, ldmsd_set_info_delete() must be called to free \c info.
+ */
+ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
+{
+	extern struct plugin_list plugin_list;
+	ldmsd_set_info_t info;
+	struct ldms_timestamp t;
+	struct timeval dur;
+	struct ldmsd_plugin_set_list *plugn_set_list;
+	struct ldmsd_plugin_set *plugn_set = NULL;
+	struct ldmsd_plugin_cfg *pi;
+
+	ldms_set_t lset = ldms_set_by_name(inst_name);
+	if (!lset)
+		return NULL;
+
+	info = calloc(1, sizeof(*info));
+	if (!info)
+		return NULL;
+
+	info->set = lset;
+	/* Determine if the set is responsible by a sampler plugin */
+	ldmsd_set_tree_lock();
+	plugn_set_list = ldmsd_plugin_set_list_first();
+	while (plugn_set_list) {
+		LIST_FOREACH(plugn_set, &plugn_set_list->list, entry) {
+			if (0 == strcmp(plugn_set->inst_name, inst_name)) {
+				break;
+			}
+		}
+		if (plugn_set)
+			break;
+ 		plugn_set_list = ldmsd_plugin_set_list_next(plugn_set_list);
+	}
+	ldmsd_set_tree_unlock();
+	if (plugn_set) {
+		/* The set is created by a sampler plugin */
+		pi = ldmsd_get_plugin(plugn_set->plugin_name);
+		if (!pi) {
+			ldmsd_log(LDMSD_LERROR, "Set '%s' is created by "
+					"an unloaded plugin '%s'\n",
+					inst_name, plugn_set->plugin_name);
+		} else {
+			pi->ref_count++;
+			info->interval_us = pi->sample_interval_us;
+			info->offset_us = pi->sample_offset_us;
+			info->sync = pi->synchronous;
+			info->pi = pi;
+		}
+		info->origin_name = strdup(plugn_set->plugin_name);
+		info->origin_type = LDMSD_SET_ORIGIN_SAMP_PI;
+
+		t = ldms_transaction_timestamp_get(lset);
+		info->start.tv_sec = (long int)t.sec;
+		info->start.tv_usec = (long int)t.usec;
+		if (!ldms_set_is_consistent(lset)) {
+			info->end.tv_sec = 0;
+			info->end.tv_usec = 0;
+		} else {
+			t = ldms_transaction_duration_get(lset);
+			dur.tv_sec = (long int)t.sec;
+			dur.tv_usec = (long int)t.usec;
+			__transaction_end_time_get(&info->start,
+					&dur, &info->end);
+		}
+		goto out;
+	}
+
+	/*
+	 * The set isn't created by a sampler plugin.
+	 *
+	 * Now search in the producer list.
+	 */
+	ldmsd_prdcr_t prdcr;
+	ldmsd_prdcr_set_t prd_set = NULL;
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	prdcr = ldmsd_prdcr_first();
+	while (prdcr) {
+		ldmsd_prdcr_lock(prdcr);
+		prd_set = ldmsd_prdcr_set_find(prdcr, inst_name);
+		if (prd_set) {
+			info->origin_name = strdup(prdcr->obj.name);
+			ldmsd_prdcr_unlock(prdcr);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+			info->origin_type = LDMSD_SET_ORIGIN_PRDCR;
+			ldmsd_prdcr_set_ref_get(prd_set);
+			info->prd_set = prd_set;
+			info->interval_us = prd_set->updt_interval;
+			info->offset_us = prd_set->updt_offset;
+			info->sync = prd_set->updt_sync;
+			info->start = prd_set->updt_start;
+			if (prd_set->state == LDMSD_PRDCR_SET_STATE_UPDATING) {
+				info->end.tv_sec = 0;
+				info->end.tv_usec = 0;
+			} else {
+				info->end = prd_set->updt_end;
+			}
+			goto out;
+		}
+		ldmsd_prdcr_unlock(prdcr);
+		prdcr = ldmsd_prdcr_next(prdcr);
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+out:
+
+	return info;
+}
+
+/*
+ * Delete the set information
+ */
+void ldmsd_set_info_delete(ldmsd_set_info_t info)
+{
+	if (info->set) {
+		ldms_set_put(info->set);
+		info->set = NULL;
+	}
+	if (info->origin_name) {
+		free(info->origin_name);
+		info->origin_name = NULL;
+	}
+	if ((info->origin_type == LDMSD_SET_ORIGIN_PRDCR) && info->prd_set) {
+		ldmsd_prdcr_set_ref_put(info->prd_set);
+		info->prd_set = NULL;
+	}
+	if (info->pi) {
+		info->pi->ref_count--;
+		info->pi = NULL;
+	}
+	free(info);
+}
+
+int __sampler_set_info_add(struct ldmsd_plugin *pi, char *interval, char *offset)
+{
+	ldmsd_plugin_set_t set;
+	int rc;
+	long interval_us;
+	long offset_us;
+
+	if (pi->type != LDMSD_PLUGIN_SAMPLER)
+		return EINVAL;
+	if (!interval)
+		return EINVAL;
+	interval_us = strtol(interval, NULL, 0);
+	if (offset)
+		offset_us = strtol(offset, NULL, 0);
+	else
+		offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+	for (set = ldmsd_plugin_set_first(pi->name); set;
+				set = ldmsd_plugin_set_next(set)) {
+		rc = ldmsd_set_update_hint_set(set->set, interval_us, offset_us);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR, "Error %d: Failed to add "
+					"the update hint to set '%s'\n",
+					rc, ldms_set_instance_name_get(set->set));
+			return rc;
+		}
+	}
+	return 0;
+}
+
 static void stop_sampler(struct ldmsd_plugin_cfg *pi)
 {
 	EV_DATA(pi->sample_ev, struct sample_data)->reschedule = 0;
