@@ -1,0 +1,76 @@
+.\" Manpage for Plugin_lustre_client
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "18 Feb 2018" "v4" "LDMS Plugin lustre_client man page"
+
+.SH NAME
+Plugin_lustre_client - man page for the LDMS lustre_client plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=lustre_client
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
+or a configuration file. The lustre_client plugin provide a metric set for each of the lustre client
+mounts found on a node.  The default schema is named "lustre_client".  The data for the metric sets is
+generally found in /proc/fs/lustre/llite/*/stats.
+
+This plugin requires zero configuration, but some options are provided.  The producer name is set to the hostname by default, and the metric set
+instance names are derived from the llite instance name.
+
+This plugin should work with at least Lustre versions 2.8 and 2.10.  It will not currently
+work with Lustre 2.12 because the llite stats were relocated from /proc to a permission restricted
+area under debugfs.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> [producer=<pname>] [instance=<set_name>] [schema=<sname>] [component_id=<compid>] [with_jobid=<bool>]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be lustre_client.
+.TP
+producer=<pname>
+.br
+The producer string value.  Default: hostname.
+.TP
+instance=<set_name>
+.br
+The name of the metric set.  This will be ignored, and the individual metric set instances will have dynamically generated instance names.
+.TP
+schema=<schema>
+.br
+The name of the schema. It is best to leave it to the plugin to name the schema, but users may override the plugin-choosen schema name if they wish.
+.TP
+rescan_sec=<rsec>
+.br
+The interval, in seconds, between rescanning for available lustre client mounts.  Default: 30 seconds.
+.TP
+with_jobid=<bool>
+.br
+1 to include jobid with set or 0 if not.
+.TP
+component_id=<compid>
+.br
+Optional component identifier. Defaults: zero.
+.RE
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=lustre_client
+config name=lustre_client
+start name=lustre_client interval=1000000
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7)

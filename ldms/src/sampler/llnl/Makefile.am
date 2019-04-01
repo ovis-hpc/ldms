@@ -22,3 +22,12 @@ libedac_la_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/$(SAMPLER)
 pkglib_LTLIBRARIES += libedac.la
 dist_man7_MANS += Plugin_edac.man
 endif
+
+# lustre client plugin
+if ENABLE_LLNL_LUSTRE
+liblustre_client_la_SOURCES = lustre_client.c
+liblustre_client_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
+liblustre_client_la_CFLAGS = $(AM_CFLAGS) -Wall -I$(srcdir)/$(SAMPLER)
+pkglib_LTLIBRARIES += liblustre_client.la
+dist_man7_MANS += Plugin_lustre_client.man
+endif
