@@ -1201,4 +1201,13 @@ def set_iter_items(self):
 		yield (i, self[i])
 setattr(ldms_rbuf_desc, "iter_items", set_iter_items)
 
+def set_as_dict(self):
+        return { self.metric_name_get(k) : v for k, v in self.iter_items() }
+setattr(ldms_rbuf_desc, "as_dict", set_as_dict)
+
+def set_as_tuple(self):
+        return tuple((self.metric_name_get(k), v) \
+                          for k, v in self.iter_items())
+setattr(ldms_rbuf_desc, "as_tuple", set_as_tuple)
+
 %}
