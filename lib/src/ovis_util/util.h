@@ -225,8 +225,9 @@ int ovis_join_buf(char *buf, size_t buflen, char *joiner, ...);
 
 /**
  * \brief check a hostname for being a name of current host.
+ * Checks the remote ip address of host given against local ip addrs.
  * \param host name to check.
- * \return 0 if apparently not the current host, 1 if host.
+ * \return 0 if apparently not the current host, 1 if host, errno if neither.
  */
 int ovis_host_is_self(const char *host);
 
