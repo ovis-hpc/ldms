@@ -1164,6 +1164,22 @@ struct ldms_xprt {};
 		else
 			PyErr_SetString(PyExc_TypeError, "Unrecognized LDMS event");
 	}
+        inline void connectByName(const char *host,
+                                              const char *port) {
+                int rc = LDMS_xprt_connect_by_name(self, host, port);
+                if (rc) {
+                        /* raise */
+			PyErr_Format(PyExc_RuntimeError,
+                                     "LDMS connect error: %d", rc);
+                }
+        }
+        inline PyObject *listDir() {
+                return LDMS_xprt_dir(self);
+        }
+        inline ldms_set_t lookupSet(const char *name,
+                                    enum ldms_lookup_flags flags) {
+                return LDMS_xprt_lookup(self, name, flags);
+        }
 }
 
 %pythoncode %{
