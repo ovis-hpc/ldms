@@ -118,6 +118,11 @@ ldms_t LDMS_xprt_new(const char *xprt)
 {
         ldms_t x;
         x = ldms_xprt_new(xprt, NULL);
+        if (!x) {
+                PyErr_Format(PyExc_RuntimeError,
+                             "LDMS_xprt_new() error: %d", errno);
+                return NULL;
+        }
         (void) __xprt_arg_new(x);
         return x;
 }
@@ -1051,8 +1056,8 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 		rc = ldms_xprt_update(self, __update_cb, ctxt);
 		if (rc) {
 			snprintf(err_buff, sizeof(err_buff),
-				 "ldms_xprt_update() failed, errno: %d",
-				 errno);
+				 "ldms_xprt_update() failed, rc: %d",
+				 rc);
 			goto err2;
 		}
 		rc = sem_wait(&ctxt->sem);
