@@ -115,6 +115,12 @@ int main(int argc, char **argv)
 		errcnt++;
 	}
 
+	int i;
+	for (i = 1; i < argc; i++) {
+		rc = ovis_host_is_self(argv[i]);
+		printf("host %s isself %d\n", argv[i], rc);
+	}
+
 	printf("expect crash soon\n");
 	r = ovis_join(NULL,s1,s2,s3); // unterminated list
 	if (r) {
