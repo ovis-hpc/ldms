@@ -137,7 +137,8 @@ static char *format_4tuple(struct zap_ep *ep, char *str, size_t len)
 
 int init_complete = 0;
 
-static zap_log_fn_t zap_ugni_log = NULL;
+static void zap_ugni_default_log(const char *fmt, ...);
+static zap_log_fn_t zap_ugni_log = zap_ugni_default_log;
 
 /* 100000 because the Cray node names have only 5 digits, e.g, nid00000  */
 #define ZAP_UGNI_MAX_NUM_NODE 100000
@@ -2675,12 +2676,8 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 {
 	zap_t z;
 
-	if (!zap_ugni_log) {
-		if (log_fn)
-			zap_ugni_log = log_fn;
-		else
-			zap_ugni_log = zap_ugni_default_log;
-	}
+	if (log_fn)
+		zap_ugni_log = log_fn;
 
 	if (!init_complete && init_once())
 		goto err;
