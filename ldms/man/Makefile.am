@@ -1,5 +1,7 @@
 
 dist_man1_MANS= \
+ldms-csv-anonymize.man \
+ldms-csv-export-sos.man \
 lsdate.man
 
 dist_man8_MANS= \

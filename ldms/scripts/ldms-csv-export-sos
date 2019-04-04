@@ -1,0 +1,905 @@
+#! /usr/bin/env python
+# currently dump sos import map and optionally schema
+import argparse
+import sys
+import os.path
+import json
+import os
+import tempfile
+# ASSUMPTIONS:
+# See name_to_ldms_kind(n) for canonical name to type assumptions.
+# the files processed are closed/stable, or fs races may occur.
+# NOTES:
+#-Currently sos-import-csv does not support arrays. This
+# takes a guess at what sos-import-csv support will look like.
+#-SOS does not have a single byte or char or uint8 type; widened
+# to u16.
+
+################### input processing ########################
+ldms_types = [ "char",
+                "u8",
+                "s8",
+                "u16",
+                "s16",
+                "u32",
+                "s32",
+                "u64",
+                "s64",
+                "f32",
+                "d64",
+                "char[]",
+                "u8[]",
+                "s8[]",
+                "u16[]",
+                "s16[]",
+                "u32[]",
+                "s32[]",
+                "u64[]",
+                "s64[]",
+                "f32[]",
+                "d64[]",
+                "timestamp",
+            ]
+
+ldms_type_sos_map = { "char" : "uint16",
+        "u8" : "uint16",
+        "s8" : "int16",
+        "u16" : "uint16",
+        "s16" : "int16",
+        "u32" : "uint32",
+        "s32": "int32",
+        "u64" : "uint64",
+        "s64" : "int64" ,
+        "f32" : "float",
+        "d64" : "double",
+        "char[]" : "char_array",
+        "u8[]" : "byte_array",
+        "s8[]" : "byte_array",
+        "u16[]" : "uint16_array",
+        "s16[]" : "int16_array",
+        "u32[]" : "uint32_array",
+        "s32[]" : "int32_array",
+        "u64[]" : "uint64_array",
+        "s64[]" : "int64_array",
+        "f32[]" : "float_array",
+        "d64[]" : "double_array",
+        "timestamp" : "timestamp"
+    }
+
+match_elements = lambda p, s: [i for (q, i) in zip(s, range(len(s))) if p == q]
+
+def sos_widen(s):
+    if s in ["uint16", "uint32", "uint64"]:
+        return "uint64"
+    if s in ["int16", "int32", "int64"]:
+        return "int64"
+    if s in ["float"]:
+        return "double"
+    if s in ["uint16_array", "uint32_array", "uint64_array"]:
+        return "uint64_array"
+    if s in ["int16_array", "int32_array", "int64_array"]:
+        return "int64_array"
+    if s in ["float_array"]:
+        return "double_array"
+    return s
+
+def ldms_type_to_sos_type(s):
+    x = s.rfind("[]")
+    if x == -1:
+        return ldms_type_sos_map[s]
+    else:
+        t = s[0:x+2]
+        return ldms_type_sos_map[t]
+
+def parse_header(fn):
+    with open(fn, "r") as f:
+        x = f.readline()
+        y = x.lstrip("#")
+        z = y.split(",")
+        return [item.strip().strip('"') for item in z]
+
+def kind_is_scalar(n):
+    x = n.rfind("[]")
+    if x == -1 or n[0:6] == "char[]":
+        return True
+    return False
+
+def parse_kind(fn, arr, udata, col_heads):
+    """get raw kind list from kind file fn"""
+    with open(fn, "r") as f:
+        x = f.readline().split("!")
+        y = '!'.join(x[2:])
+        z = [i.rstrip() for i in y.split(",")]
+        k = 0
+        for i in z:
+            a = i.rstrip("0123456789")
+            if i in ldms_types or a in ldms_types:
+                continue
+            print "invalid kind", "X"+i+"X", "in", fn
+            print i, a, ldms_types
+            sys.exit(1)
+    # validate kind list vs arr, udata, col_heads
+    if not arr:
+        if len(col_heads) != len(z):
+            print "column count of header does not match column count of kinds file", fn
+            sys.exit(1)
+    nc = 0
+    for i in z:
+        if kind_is_scalar(i):
+            nc += 1
+        else:
+            x = i.rfind("[]")
+            x = int(i[x+2:])
+            nc += x
+            if udata:
+                nc += x-1; # one udata appears explicitly
+    if nc != len(col_heads):
+        print "column count of header", len(col_heads), "does not match column count of kinds file", fn, ":", nc
+        sys.exit(1)
+    return z
+
+def name_to_ldms_kind(n):
+    """Map canonical headings to types"""
+    if n == "Time":
+        return "timestamp"
+    if n in ["ProducerName", "producer"]:
+        return "char[]"
+    if n in ["compid", "component_id", "Time_usec", "DT_usec", "jobid", "job_id", "app_id", "uid"]:
+        return "u64"
+    if n.endswith(".userdata"):
+        return "u64"
+    return None
+
+def assume_kind(atype, col_heads):
+    klist = []
+    for i in col_heads:
+        x = name_to_ldms_kind(i)
+        if x is None:
+            klist.append(atype)
+        else:
+            klist.append(x)
+    return klist
+
+def default_kind(col_heads):
+    klist = []
+    for i in col_heads:
+        x = name_to_ldms_kind(i)
+        klist.append(x)
+    return klist
+
+def value_type(v):
+    """ examine v and return the most restrictive type.
+    (signed)int of decreasing range, double, char, or string.
+    signed types are returned IFF a negative is seen.
+    """
+    if len(v) == 0:
+            return "u64"
+    try:
+        x = long(v)
+        if x < 0:
+            if x < -9223372036854775808:
+                # cannot happen on s64 data, so must be
+                # oddly formatted double3
+                return "d64"
+            if x < -2147483648:
+                return "s64"
+            if x < -32768:
+                return "s32"
+            if x < -128:
+                return "s16"
+            return "s8"
+        if x > 18446744073709551615:
+            return "d64"
+            # can't happen on u64 data, so must be
+            # oddly formatted double.
+        if x > 4294967296:
+            return "u64"
+        if x > 65536:
+            return "u32"
+        if x > 256:
+            return "u16"
+        return "u8"
+    except Exception:
+        pass
+    try:
+        x = float(v)
+        return "d64"
+    except Exception:
+        pass
+    if len(v) < 2:
+        return "char"
+    return "char[]"
+            
+def uncastable(old, new, val):
+    print "incompatible data in guessing column type"
+    print "oldtype=", old, "newtype=", new, "value=", val
+    sys.exit(1)
+    pass
+
+def update_type(oldtype, value):
+    """check oldtype and value and return promotion that works, or exit.
+    A signed type never returns unless a negative is seen."""
+    # types we may see:"char", "char[]" "s64", "s32", "s16", "s8" "u32", "u16", "u8" "u64"
+    x = value_type(value)
+    if oldtype is None:
+        return x
+    if x == "char[]":
+        if oldtype in ["s64", "s32", "s16", "s8", "u32", "u16", "u8", "u64", "char[]", "char"]:
+            return x
+        uncastable(oldtype, x, value)
+    if x == "char":
+        if oldtype in ["s64", "s32", "s16", "s8", "u32", "u16", "u8", "u64", "char[]"]:
+            return "char[]"
+        return x
+    if x == "d64":
+        if oldtype in ["char", "char[]"]:
+            return "char[]"
+        return x
+    if x == "u64":
+        if oldtype in ["char"]:
+            return "char[]"
+        if oldtype in ["char[]", "d64", "u64", "timestamp"]:
+            return oldtype
+        if oldtype in ["u32", "u16", "u8"]:
+            return x
+        if oldtype in ["s64", "s32", "s16", "s8"]:
+            return "d64"
+        uncastable(oldtype, x, value)
+    if x == "u32":
+        if oldtype in ["char"]:
+            return "char[]"
+        if oldtype == ["u64", "d64", "char[]", "s64", "u32", "timestamp"]:
+            return oldtype
+        if oldtype in ["u16", "u8"]:
+            return x
+        if oldtype in ["s32", "s16", "s8"]:
+            return "s64"
+        uncastable(oldtype, x, value)
+    if x == "u16":
+        if oldtype in ["char"]:
+            return "char[]"
+        if oldtype in ["d64", "u32", "u64", "char[]", "s64", "s32", "u16", "timestamp"]:
+            return oldtype
+        if oldtype in ["u8"]:
+            return x
+        if oldtype in ["s16", "s8"]:
+            return "s64"
+        uncastable(oldtype, x, value)
+    if x == "u8":
+        if oldtype in ["char"]:
+            return "char[]"
+        if oldtype in ["d64", "u32", "u64", "char[]", "u16", "s64", "s32", "s16", "u8", "timestamp"]:
+            return oldtype
+        if oldtype in ["s8"]:
+            return "s16"
+        uncastable(oldtype, x, value)
+    # make the assumption that columns are actually monotyped
+    # specifically oldvalue(u64 was < u64max/2 if a sign later appears)
+    if x == "s64":
+        if oldtype in ["char"]:
+            return "char[]"
+        if oldtype in ["s64", "char[]", "d64"]:
+            return oldtype
+        if oldtype in ["s32", "s16", "s8", "u64", "u32", "u16", "u8"]:
+            return x
+        uncastable(oldtype, x, value)
+    if x == "s32":
+        if oldtype in ["char"]:
+            return "char[]"
+        if oldtype in ["s64", "char[]", "d64", "s32"]:
+            return oldtype
+        if oldtype in ["s16", "s8", "u16", "u8"]:
+            return x
+        if oldtype in ["u32", "u64"]:
+            return "s64"
+        uncastable(oldtype, x, value)
+    if x == "s16":
+        if oldtype in ["char"]:
+            return "char[]"
+        if oldtype in ["s64", "char[]", "d64", "s32", "s16"]:
+            return oldtype
+        if oldtype in ["s8", "u8"]:
+            return x
+        if oldtype in ["u16"]:
+            return "s32"
+        if oldtype in ["u32", "u64"]:
+            return "s64"
+        uncastable(oldtype, x, value)
+    if x == "s8":
+        if oldtype in ["char"]:
+            return "char[]"
+        if oldtype in ["s64", "char[]", "d64", "s32", "s16", "s8"]:
+            return oldtype
+        if oldtype in ["u8"]:
+            return "s16"
+        if oldtype in ["u16"]:
+            return "s32"
+        if oldtype in ["u32", "u64"]:
+            return "s64"
+        uncastable(oldtype, x, value)
+    uncastable(oldtype, x, value)
+
+def guess_kind(col_heads, fn, maxlines):
+    """ loop over maxlines of data file and examine each column to determine type"""
+    line = 0
+    z = None; # array of type names to return
+    with open(fn, "r") as f:
+        for x in f:
+            if len(x) > 0 and x[0] == '#':
+                # get defaulted types from header names if present
+                if z is None:
+                    z = default_kind(col_heads)
+                continue
+            line += 1
+            if line > maxlines:
+                break
+            d = x.split(",")
+            if z == None:
+                # assume 0 is timestamp and rest init None
+                # this is what really makes this script ldms specific
+                z = []
+                for k in d:
+                    z.append(None)
+                z[0] = "timestamp"
+            
+            for pos in range(0,len(z)):
+                z[pos] = update_type(z[pos], d[pos])
+        return z
+ 
+def validate_assume(a):
+    """ return validated type or exit"""
+    if not a in ldms_types:
+        print "invalid option to --assume: ", a, "Try one of:", ldms_types
+        sys.exit(1)
+    return a
+
+def kind_format(fn):
+    """Check named file for containing kind line. 
+    Return None or (arr, udata) booleans.
+    """
+    with open(fn, "r") as f:
+        x = f.readline()
+        try:
+            fmt = x.split("!")[1]
+            if fmt == "ldms-kinds":
+                return (False, False)
+            if fmt == "ldms-kinds-udata":
+                return (False, True)
+            if fmt == "ldms-array-kinds":
+                return (True, False)
+            if fmt == "ldms-array-kinds-udata":
+                return (True, True)
+        except Exception:
+            return None
+        return None
+
+def internal_header(fn):
+    """Check named file for containing initial header line"""
+    try:
+        with open(fn, "r") as f:
+            x = f.readline()
+            if len(x) > 5 and x[0:5] == "#Time":
+                return True
+            return False
+    except Exception:
+        return False
+
+def get_filenames(fn, args):
+    """
+    Get canonical names of files based on a file name and ut options.
+    Does not verify existence or formats.
+    """
+    if fn is None:
+        print "define input with --data=<file>"
+        sys.exit(1)
+
+    if ".HEADER" in fn:
+        header = fn
+        schemafile = fn.replace(".HEADER",".SCHEMASOS")
+        mapfile = fn.replace(".HEADER",".MAPSOS")
+        kind = fn.replace(".HEADER",".KIND")
+        data = fn.replace(".HEADER","")
+        args.dataname = os.path.basename(data)
+    elif ".KIND" in fn:
+        kind = fn
+        schemafile = fn.replace(".KIND",".SCHEMASOS")
+        mapfile = fn.replace(".KIND",".MAPSOS")
+        header = fn.replace(".KIND",".HEADER")
+        data = fn.replace(".KIND","")
+        args.dataname = os.path.basename(data)
+    else:
+        data = fn
+        x = fn.split(".")[-1]
+        try:
+            ts = int(x)
+        except ValueError:
+            ts = None
+        if ts is None:
+            args.dataname = os.path.basename(fn)
+            header = fn + ".HEADER"
+            kind = fn + ".KIND"
+            schemafile = fn + ".SCHEMASOS"
+            mapfile = fn + ".MAPSOS"
+        else:
+            args.dataname = os.path.basename(fn).replace("." + x, "")
+            header = fn.replace("." + x, ".HEADER." + x)
+            kind = fn.replace("." + x, ".KIND." + x)
+            schemafile = fn.replace("." + x, ".SCHEMASOS." + x)
+            mapfile = fn.replace("." + x, ".MAPSOS." + x)
+    if args.map_file:
+        if os.path.isfile(mapfile) and args.map_file != mapfile:
+            if args.verbose:
+                print "WARNING: creating", args.map_file, "but", mapfile, " is also present."
+        mapfile = args.map_file
+    if args.schema_name:
+        args.dataname = args.schema_name
+    if args.schema_file:
+        if os.path.isfile(schemafile) and args.schema_file != schemafile:
+            if args.verbose:
+                print "WARNING: using", args.schema_file, "but", schemafile, " is also present."
+        schemafile = args.schema_file
+    return (data, header, kind, schemafile, mapfile)
+
+################### output processing #######################
+def format_schema_prolog(f, args):
+    s = """{
+    "name" : """ + "\"" + args.dataname + """",
+    "attrs" : ["""
+    print >> f, s
+
+def format_schema_epilog(f, args, col_heads):
+    s="\n"
+    # check heads for indices and list joins
+    s += """  ]
+}"""
+    print >>f, s
+
+def is_index(n, args):
+    if n in ["Time", "component_id", "job_id", "component_id.value", "job_id.value", "ProducerName"]:
+        return True
+    return False
+
+def array_size(n):
+    x = n.rfind("[]")
+    if x == -1 or n[:6] == "char[]":
+        return 0
+    else:
+        x = int(n[x+2:])
+        return x
+
+def format_schema_element(f, args, name, mtype, first):
+    """ format schema element; use bool first to determine comma use,
+    as json does not tolerate empty list elements in python json parser."""
+    stype = ldms_type_to_sos_type(mtype)
+    if args.widen:
+        stype = sos_widen(stype)
+    if first:
+        s = ""
+    else:
+        s = ",\n"
+    s += "\t{ \"name\" : \"" + name + "\",\t\"type\" : \"" + stype + "\""
+    if is_index(name, args):
+        s += ",\t\"index\" : {} "
+    s += " }"
+    print >>f, s,
+
+def format_map_prolog(f):
+    print >> f, "["
+
+def format_map_epilog(f):
+    print >>f, "\n]"
+
+def format_map_element(f, k, metric, first):
+    # this may need minor revisions if sos-import-csv array markup
+    # is incompatible with simple list.
+    if first:
+        s = ""
+    else:
+        s = ",\n"
+    s += "\t{ \"action\" : \"assign\", \"args\" : [\"" + metric + "\", " + str(k).strip("[]") +  "] }"
+    print >> f, s,
+
+def generate_map_new(col_heads, col_kinds, arr, udata, mapout, sout, mapvec):
+    """ generate map conforming to schema and input file. This skips type checking."""
+    with open(mapout, "w") as f:
+        format_map_prolog(f)
+        if len(mapvec) != len(col_heads):
+            print "metrics do not match map"
+            sys.exit(1)
+        kmax = len(mapvec)
+        k = 0
+        elts_done = []
+        first = True
+        while k < kmax:
+            if mapvec[k] == 1:
+                ch = col_heads[k]
+                format_map_element(f, k, ch, first)
+                first = False
+                # 0 and 2 mv definitely not print.
+            if mapvec[k] < 0:
+                ch = col_heads[k]
+                if mapvec[k] not in elts_done:
+                    elts = match_elements(mapvec[k], mapvec)
+                    format_map_element(f, elts, ch, first)
+                    first = False
+                    elts_done.append(mapvec[k])
+                # note: array case not yet implemented at sos-import-csv
+            k += 1
+        format_map_epilog(f)
+
+def get_metric_index(met, heads, arr, udata):
+    """find first index of met (or its relative) in heads, or return -1"""
+    try:
+        p = heads.index(met)
+        return p
+    except ValueError:
+        pass
+    if arr:
+        if udata:
+            try:
+                p = heads.index(met + ".0.value")
+                return p
+            except ValueError:
+                pass
+            try:
+                p = heads.index(met + "0.value")
+                return p
+            except ValueError:
+                pass
+        else:
+            try:
+                p = heads.index(met + ".0")
+                return p
+            except ValueError:
+                pass
+            try:
+                p = heads.index(met + "0")
+                return p
+            except ValueError:
+                pass
+    if udata:
+        # scalar case
+        try:
+            p = heads.index(met + ".value")
+            return p
+        except ValueError:
+            pass
+    return -1
+
+def generate_map_old(col_heads, col_kinds, arr, udata, mapout, sout, mapvec, strip_udata):
+    """loop over metrics in schema and if present in col_heads, use them"""
+    if len(mapvec) != len(col_heads):
+        print "metrics do not match map"
+        sys.exit(1)
+    with open(mapout, "w") as f:
+        format_map_prolog(f)
+        kmax = len(sout)
+        k = 0
+        first = True
+        while k < kmax:
+            p = get_metric_index(sout[k], col_heads, arr, udata)
+            if p != -1:
+                if mapvec[p] < 0:
+                    j = mapvec[p]
+                    q = match_elements(j, mapvec)
+                else:
+                    q = p
+                format_map_element(f, q, sout[k], first)
+                first = False
+            else:
+                print "schema element", sout[k], "not found in csv"
+                print "u=", udata
+                print "a=", arr
+                print col_heads
+                sys.exit(1)
+                # should this be fatal or are sos records allowed to have empty fields?
+            k += 1
+        format_map_epilog(f)
+
+def parse_schema(fn):
+    with open(fn, "r") as f:
+        sch = json.load(f)
+        x = sch["name"]
+        a = []
+        for i in sch["attrs"]:
+            a.append(i["name"])
+        return a
+
+def parse_metric_list(s):
+    if not s:
+        return None
+    z = s.split(",")
+    return z
+
+def parse_metric_file(fn):
+    if not fn:
+        return None
+    with open(fn, "r") as f:
+        l = []
+        for x in f:
+            y = x.strip()
+            if len(y) == 0 or y.startswith("#"):
+                continue
+            z = y.split(",")
+            l.extend(z)
+        return l
+
+def get_filter(args):
+    """return (include, exclude) lists"""
+    whitelist = parse_metric_file(args.whitelist)
+    blacklist = parse_metric_file(args.blacklist)
+    include = parse_metric_list(args.include)
+    exclude = parse_metric_list(args.exclude)
+    if whitelist:
+        if include:
+            include.extend(whitelist)
+        else:
+            include = whitelist
+    if blacklist:
+        if exclude:
+            exclude.extend(blacklist)
+        else:
+            exclude = blacklist
+    if args.verbose:
+        print "exclude=", exclude
+        print "include=", include
+    return (include, exclude)
+
+def is_excluded(include, exclude, n, udata):
+    """see if, stripped of .value and .userdata,
+    n passes the include, exclude lists.
+    Ignores whether or not udata is true, so user name
+    input does not care if userdata was present"""
+    if n.endswith(".userdata"):
+        n = n[0:-9]
+    if n.endswith(".value"):
+        n = n[0:-6]
+    if include:
+        if n in include:
+            return False
+        else:
+            return True
+    if exclude and n in exclude:
+        return True
+    return False
+
+def generate_schema(col_heads, col_kinds, arr, udata, args, schemaout, mapout):
+    if args.schema_file:
+        if args.verbose:
+            print "schema output suppressed by --schema-file"
+        old_schema = parse_schema(args.schema_file)
+        (include, exclude) = ([], [])
+    else:
+        (include, exclude) = get_filter(args)
+        old_schema = None
+    k = 0
+    h = 0
+    a = -1
+    mapvec = []; #< ints: 0 drop, 1 keep, 2 array element drop, -N keep element of Nth array declared
+    metvec = []; #< names: none or name used in schema
+    # filter process:
+    # in include overrides in exclude
+    # whitelist stops anything not named
+    # blacklist allows anything not named through
+    first = True
+    arraynum = 0
+    dname = os.path.dirname(schemaout)
+    (fd, schematmp) = tempfile.mkstemp(prefix="schematmp.", dir=dname)
+    try:
+        with os.fdopen(fd, "w") as f:
+            format_schema_prolog(f, args)
+            kmax = len(col_kinds)
+            while k < kmax:
+                amax = array_size(col_kinds[k])
+                # scalar case
+                if amax == 0:
+                    if is_excluded(include, exclude, col_heads[h], udata):
+                        if args.verbose:
+                            print "excluding", col_heads[h]
+                        h += 1
+                        k += 1
+                        mapvec.append(0)
+                        metvec.append(None)
+                        continue
+                    if udata:
+                        if args.strip_udata:
+                            if col_heads[h].endswith(".userdata"):
+                                h += 1
+                                k += 1
+                                mapvec.append(0)
+                                metvec.append(None)
+                                continue
+                            if col_heads[h].endswith(".value"):
+                                ch = col_heads[h][0:-6]
+                                format_schema_element(f, args, ch, col_kinds[k], first)
+                                first = False
+                                h += 1
+                                k += 1
+                                mapvec.append(1)
+                                metvec.append(ch)
+                                continue
+                            format_schema_element(f, args, col_heads[h], col_kinds[k], first)
+                            first = False
+                            mapvec.append(1)
+                            metvec.append(col_heads[h])
+                            h += 1
+                            k += 1
+                            continue
+                        else:
+                            format_schema_element(f, args, col_heads[h], col_kinds[k], first)
+                            first = False
+                            mapvec.append(1)
+                            metvec.append(col_heads[h])
+                            h += 1
+                            k += 1
+                            continue
+                    else:
+                        format_schema_element(f, args, col_heads[h], col_kinds[k], first)
+                        first = False
+                        mapvec.append(1)
+                        metvec.append(col_heads[h])
+                        h += 1
+                        k += 1
+                else:
+                # array case
+                    a = 0
+                    # note a udata scalar will have been seen before the 1st array element,
+                    # so we can unconditionally strip them inside this loop.
+                    if udata:
+                        amax = 2 * amax -1 ; # 1st udata is before array def.
+                    eltcols = [] ; # array element column indices
+                    arraynum -= 1
+                    while a < amax:
+                        a += 1
+                        if udata:
+                            if col_heads[h].endswith(".userdata"):
+                                h += 1
+                                mapvec.append(2)
+                                metvec.append(None)
+                                continue
+                            if col_heads[h].endswith(".value"):
+                                ch = col_heads[h][0:-6]
+                                mbase = ch.rstrip("0123456789").rstrip(".")
+                                if a == 1:
+                                    format_schema_element(f, args, mbase, col_kinds[k], first)
+                                    first = False
+                                h += 1
+                                metvec.append(mbase)
+                                mapvec.append(arraynum)
+                                continue
+                            format_schema_element(f, args, col_heads[h], col_kinds[k], first)
+                            first = False
+                            mapvec.append(arraynum)
+                            metvec.append(col_heads[h])
+                            h += 1
+                            continue
+                        else:
+                            ch = col_heads[h]
+                            mbase = ch.rstrip("0123456789").rstrip(".")
+                            if a == 1:
+                                format_schema_element(f, args, mbase, col_kinds[k], first)
+                                first = False
+                            mapvec.append(arraynum)
+                            metvec.append(mbase)
+                            h += 1
+                            continue
+                    k += 1
+                # end array case
+            # end k
+            format_schema_epilog(f, args, col_heads)
+     
+        if not old_schema:
+            os.rename(schematmp, schemaout)
+            schematmp = None
+            new_schema = parse_schema(schemaout)
+            generate_map_new(metvec, col_kinds, arr, udata, mapout, new_schema, mapvec)
+        else:
+            generate_map_old(metvec, col_kinds, arr, udata, mapout, old_schema, mapvec, args.strip_udata)
+    except Exception:
+        pass
+    if schematmp:
+        os.unlink(schematmp)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate sos input files from csv")
+    parser.add_argument("--data", default=None,
+            help="Specify the ldms data, .HEADER or .KIND file to parse. Adjacent files following naming conventions are expected.")
+    parser.add_argument("--blacklist", default=None,
+            help="Specify file of column names to exclude from import, one per line. leading # comments allowed.")
+    parser.add_argument("--whitelist", default=None,
+            help="Specify file of column names to include in import, one per line. leading # comments allowed")
+    parser.add_argument("--exclude", default="Time_usec",
+            help="Specify column names to exclude from export, separated by commas.")
+    parser.add_argument("--include", default=None,
+            help="Specify column names to include in export, separated by commas.")
+    parser.add_argument("--schema-name", default=None,
+            help="Override the output schema name derived from the data file name.")
+    parser.add_argument("--schema-file", default=None,
+            help="Use existing schema file named instead of generating one.")
+    parser.add_argument("--map-file", default=None,
+            help="Override the output map file name derived from the data file name.")
+    parser.add_argument("--strip-udata",
+            action="store_true", help="Suppress output of userdata and .value suffix.")
+    parser.add_argument("--guess",
+            action="store_true", help="Guess the ldms data column types. (can be slow on large files)")
+    parser.add_argument("--widen",
+            action="store_true", help="Widen numeric types discovered to 64 bits.")
+    parser.add_argument("--maxlines", default=100000, type=int,
+            help="parse no more than MAXLINES to guess data types")
+    parser.add_argument("--assume",
+            default=None, help="Assume all unknown data columns are type ASSUME.")
+    parser.add_argument("--verbose",
+            action="store_true", help="Show process debugging details.")
+    args = parser.parse_args()
+    # args.dataname will be derived by later code as the default schema name
+
+    if args.verbose:
+        print args
+
+    (data, header, kind, schemaout, mapout) = get_filenames(args.data, args)
+
+    if not os.path.isfile(data):
+        if args.verbose:
+            print "WARNING: input data", data, "does not exist"
+            if data != args.data:
+                print "  name derived from", args.data
+        if args.guess:
+            print "ERROR: cannot guess types without data file present", data
+            sys.exit(1)
+    else:
+        if args.guess:
+            if os.path.getsize(data) == 0:
+                print "input data", data, "empty. Cannot guess."
+                sys.exit(1)
+    if not os.path.isfile(header):
+        if args.verbose:
+            print "Header not present", header
+        if internal_header(data):
+            header = data
+            if args.verbose:
+                print "Found header in data file", data
+        else:
+            print "Data does not include header line or file is missing", data
+            sys.exit(1)
+    if os.path.isfile(kind) and (args.guess or args.assume):
+        if args.verbose:
+            print "Cowardly refusing to guess when there is kind input. Using kinds.", kind
+        args.guess = False
+        args.assume = False
+    if not os.path.isfile(kind) and not (args.guess or args.assume):
+        print "Cannot find", kind, "and not told --guess or --assume."
+        sys.exit(1)
+    if not (args.guess or args.assume):
+        kf = kind_format(kind)
+        if kf is None:
+            print "Invalid kind file format in", kind
+            sys.exit(1)
+        (arr, udata) = kf
+    else:
+        arr = False; # without kind file, we will not guess arrays from name decomp
+        udata = False; # without kind file, we will not guess udata from name decomp
+        if args.assume:
+            assume_type = validate_assume(args.assume)
+            if args.verbose:
+                print "Assuming data columns are type", assume_type
+
+    # raw header names list
+    col_heads = parse_header(header)
+    # raw kinds list, which may be shorter than heads if unroll vs arrayed
+    col_kinds = None
+    # temporarily, reject array-containing input, since there is not yet
+    # support for it in sos-import-csv
+    if arr:
+        print "Export failed:"
+        print "Import of array metrics is not yet supported by sos-import-csv."
+        sys.exit(1)
+    if not (args.assume or args.guess):
+        col_kinds = parse_kind(kind, arr, udata, col_heads)
+    else:
+        if args.assume:
+            col_kinds = assume_kind(assume_type, col_heads)
+        else:
+            col_kinds = guess_kind(col_heads, data, args.maxlines)
+    # by construction, we know col_heads and col_kinds are compatible sizewise
+    generate_schema(col_heads, col_kinds, arr, udata, args, schemaout, mapout)
