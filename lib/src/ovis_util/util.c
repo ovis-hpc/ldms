@@ -1,9 +1,9 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-2015,2017-2018 National Technology & Engineering
+ * Copyright (c) 2013-2015,2017-2019 National Technology & Engineering
  * Solutions of Sandia, LLC (NTESS). Under the terms of Contract
  * DE-NA0003525 with NTESS, the U.S. Government retains certain rights
  * in this software.
- * Copyright (c) 2013-2015,2017-2018 Open Grid Computing, Inc.
+ * Copyright (c) 2013-2015,2017-2019 Open Grid Computing, Inc.
  * All rights reserved.
  *
  * This software is available to you under a choice of one of two
