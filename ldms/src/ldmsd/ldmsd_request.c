@@ -1365,12 +1365,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	struct ldmsd_sec_ctxt sctxt;
-	if (reqc->xprt->xprt) {
-		/* the requester is the owner of the object */
-		ldms_xprt_cred_get(reqc->xprt->xprt, NULL, &sctxt.crd);
-	} else {
-		ldmsd_sec_ctxt_get(&sctxt);
-	}
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	uid = sctxt.crd.uid;
 	gid = sctxt.crd.gid;
 
@@ -2008,11 +2003,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 		goto einval;
 
 	struct ldmsd_sec_ctxt sctxt;
-	if (reqc->xprt->xprt) {
-		ldms_xprt_cred_get(reqc->xprt->xprt, NULL, &sctxt.crd);
-	} else {
-		ldmsd_sec_ctxt_get(&sctxt);
-	}
+	ldmsd_sec_ctxt_get(&sctxt);
 	uid = sctxt.crd.uid;
 	gid = sctxt.crd.gid;
 
@@ -2794,11 +2785,7 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	auto_interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTO_INTERVAL);
 
 	struct ldmsd_sec_ctxt sctxt;
-	if (reqc->xprt->xprt) {
-		ldms_xprt_cred_get(reqc->xprt->xprt, NULL, &sctxt.crd);
-	} else {
-		ldmsd_sec_ctxt_get(&sctxt);
-	}
+	ldmsd_sec_ctxt_get(&sctxt);
 	uid = sctxt.crd.uid;
 	gid = sctxt.crd.gid;
 

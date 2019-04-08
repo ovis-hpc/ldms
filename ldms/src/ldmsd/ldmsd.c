@@ -110,13 +110,14 @@ char ldmstype[20];
 char *bannerfile;
 size_t max_mem_size;
 char *progname;
+uid_t proc_uid;
+gid_t proc_gid;
 uint8_t is_ldmsd_initialized;
 
 uint8_t ldmsd_is_initialized()
 {
 	return is_ldmsd_initialized;
 }
-
 pthread_t event_thread = (pthread_t)-1;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -146,9 +147,8 @@ struct ldmsd_cmd_line_args cmd_line_args;
 
 void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt)
 {
-	if (!ldms)
-		return;
-	ldms_local_cred_get(ldms, &sctxt->crd);
+	sctxt->crd.gid = proc_gid;
+	sctxt->crd.uid = proc_uid;
 }
 
 void ldmsd_version_get(struct ldmsd_version *v)
@@ -1449,6 +1449,9 @@ int main(int argc, char *argv[])
 	sigaddset(&sigset, SIGINT);
 	sigaddset(&sigset, SIGTERM);
 	sigaddset(&sigset, SIGABRT);
+
+	proc_uid = geteuid();
+	proc_gid = getegid();
 
 	umask(0);
 	cmd_line_value_init();
