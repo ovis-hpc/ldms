@@ -117,6 +117,7 @@ static ldmsd_msg_log_f msglog;
 
 sos_type_t sos_type_map[] = {
 	[LDMS_V_NONE] = SOS_TYPE_UINT32,
+	[LDMS_V_CHAR] = SOS_TYPE_UINT32,
 	[LDMS_V_U8] = SOS_TYPE_UINT32,
 	[LDMS_V_S8] = SOS_TYPE_INT32,
 	[LDMS_V_U16] = SOS_TYPE_UINT16,
@@ -155,6 +156,9 @@ static void set_u16_fn(sos_value_t v, ldms_set_t s, int i) {
 static void set_s16_fn(sos_value_t v, ldms_set_t s, int i) {
 	v->data->prim.int16_ = ldms_metric_get_s16(s, i);
 }
+static void set_char_fn(sos_value_t v, ldms_set_t s, int i) {
+	v->data->prim.uint32_ = ldms_metric_get_char(s, i);
+}
 static void set_u32_fn(sos_value_t v, ldms_set_t s, int i) {
 	v->data->prim.uint32_ = ldms_metric_get_u32(s, i);
 }
@@ -177,6 +181,7 @@ static void set_double_fn(sos_value_t v, ldms_set_t s, int i) {
 typedef void (*sos_value_set_fn)(sos_value_t v, ldms_set_t set, int i);
 sos_value_set_fn sos_value_set[] = {
 	[LDMS_V_NONE] = set_none_fn,
+	[LDMS_V_CHAR] = set_char_fn,
 	[LDMS_V_U8] = set_u8_fn,
 	[LDMS_V_S8] = set_s8_fn,
 	[LDMS_V_U16] = set_u16_fn,
