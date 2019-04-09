@@ -2,6 +2,7 @@
 aggl2 # ldms_ls inconsistent, set duplicates at L2
 aggl2simple
 all_example
+all_example.sos
 array_example
 clock
 lnet_stats
