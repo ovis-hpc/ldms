@@ -767,7 +767,11 @@ get_schemas_from_genders () {
 	for i in $pl; do 
 		lines=$($NODEATTR $NODEATTRFILE -V -U ldmsd_$i )
 		x=$(echo $lines | tr ": " "\n" | grep ^schema/| sed -e 's%schema/%%'| sort -u)
-		extra_schema="$extra_schema $x"
+		if test -z "$x"; then
+			extra_schema="$extra_schema $i"
+		else
+			extra_schema="$extra_schema $x"
+		fi
 	done
 	echo $extra_schema
 }
