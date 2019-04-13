@@ -307,30 +307,43 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 	return;
 }
 
-static void dir_update(const char *set_name, enum ldms_dir_type t)
+static void _revoke_rbd(ldms_t x, ldms_set_t set)
+{
+	struct ldms_rbuf_desc *rbd;
+	struct ldms_rendezvous_msg msg;
+
+	msg.hdr.xid = 0;
+	msg.hdr.cmd = htonl(LDMS_XPRT_RENDEZVOUS_REVOKE);
+	msg.hdr.len = htonl(sizeof(msg.hdr) + sizeof(msg.revoke));
+
+	pthread_mutex_lock(&x->lock);
+	pthread_mutex_lock(&set->set->lock);
+
+	rbd = ldms_lookup_rbd(x, set->set);
+	if (rbd) {
+		if (rbd->lmap) {
+			msg.revoke.set_id = (uint64_t)(unsigned long)rbd;
+			zap_unshare(x->zap_ep, rbd->lmap,
+				    (void *)&msg,
+				    sizeof(msg.hdr) + sizeof(msg.revoke));
+		}
+		__ldms_free_rbd(rbd);
+	}
+
+	pthread_mutex_unlock(&set->set->lock);
+	pthread_mutex_unlock(&x->lock);
+}
+
+void __ldms_dir_update(ldms_set_t set, enum ldms_dir_type t)
 {
 	struct ldms_xprt *x;
-
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_FOREACH(x, &xprt_dir_list, remote_dir_link) {
-		send_dir_update(x, t, set_name);
+		if (t == LDMS_DIR_DEL)
+			_revoke_rbd(x, set);
+		send_dir_update(x, t, ldms_set_instance_name_get(set));
 	}
 	pthread_mutex_unlock(&xprt_list_lock);
-}
-
-void __ldms_dir_add_set(const char *set_name)
-{
-	dir_update(set_name, LDMS_DIR_ADD);
-}
-
-void __ldms_dir_del_set(const char *set_name)
-{
-	dir_update(set_name, LDMS_DIR_DEL);
-}
-
-void __ldms_dir_upd_set(const char *set_name)
-{
-	dir_update(set_name, LDMS_DIR_UPD);
 }
 
 void ldms_xprt_close(ldms_t x)
@@ -883,7 +896,7 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	pthread_mutex_unlock(&set->lock);
 	msg->hdr.xid = xid;
 	msg->hdr.cmd = htonl(LDMS_XPRT_RENDEZVOUS_LOOKUP);
-	msg->hdr.len = msg_len;
+	msg->hdr.len = htonl(msg_len);
 	msg->lookup.set_id = (uint64_t)(unsigned long)rbd;
 	msg->lookup.more = htonl(more);
 	msg->lookup.data_len = htonl(__le32_to_cpu(set->meta->data_sz));
@@ -1938,6 +1951,32 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	}
 }
 
+static void handle_rendezvous_revoke(zap_ep_t zep, zap_event_t ev,
+				     struct ldms_xprt *x,
+				     struct ldms_rendezvous_msg *lm)
+{
+	// There is no information in the message that allows me a)
+	// pass the event up to the cliet, or b) determine which rbd
+	// is being revoked.
+	struct ldms_rendezvous_revoke_param *revoke = &lm->revoke;
+	struct ldms_rbuf_desc *rbd;
+	struct rbn *rbn;
+#if 1
+	pthread_mutex_lock(&x->lock);
+	RBT_FOREACH(rbn, &x->rbd_rbt) {
+		rbd = RBN_RBD(rbn);
+		if (rbd->remote_set_id == revoke->set_id) {
+			x->log("%s: revoked rbd %p set_id %lx\n",
+			       __func__, rbd, revoke->set_id);
+			// __ldms_free_rbd(rbd);
+			break;
+		}
+	}
+	pthread_mutex_unlock(&x->lock);
+#endif
+	return;
+}
+
 static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 				   struct ldms_xprt *x,
 				   struct ldms_rendezvous_msg *lm)
@@ -1996,6 +2035,9 @@ static void handle_zap_rendezvous(zap_ep_t zep, zap_event_t ev)
 		break;
 	case LDMS_XPRT_RENDEZVOUS_PUSH:
 		handle_rendezvous_push(zep, ev, x, lm);
+		break;
+	case LDMS_XPRT_RENDEZVOUS_REVOKE:
+		handle_rendezvous_revoke(zep, ev, x, lm);
 		break;
 	default:
 #ifdef DEBUG
@@ -3062,8 +3104,10 @@ void __ldms_rbd_xprt_release(struct ldms_rbuf_desc *rbd)
 
 void __ldms_free_rbd(struct ldms_rbuf_desc *rbd)
 {
-	if (rbd->xprt)
+	if (rbd->xprt) {
+		rbd->xprt->log("%s: rbd %p\n", __func__, rbd);
 		__ldms_rbd_xprt_release(rbd);
+	}
 	LIST_REMOVE(rbd, set_link);
 	free(rbd);
 }

@@ -328,23 +328,23 @@ int ldms_set_publish(ldms_set_t sd)
 		return ENOMEM;
 
 	sd->set->flags |= LDMS_SET_F_PUBLISHED;
-	__ldms_dir_add_set(set_name);
+	__ldms_dir_update(sd, LDMS_DIR_ADD);
 	free(set_name);
 	return 0;
 }
 
 int ldms_set_unpublish(ldms_set_t sd)
 {
-	char *set_name;
-
 	if (!(sd->set->flags & LDMS_SET_F_PUBLISHED))
 		return ENOENT;
+#if 0
+	char *set_name;
 	set_name = strdup(get_instance_name(sd->set->meta)->name);
 	if (!set_name)
 		return ENOMEM;
+#endif
 	sd->set->flags &= ~LDMS_SET_F_PUBLISHED;
-	__ldms_dir_del_set(set_name);
-	free(set_name);
+	__ldms_dir_update(sd, LDMS_DIR_DEL);
 	return 0;
 }
 
@@ -468,9 +468,7 @@ static void print_xprt_addrs(ldms_t xprt)
 }
 
 /**
- * Destroy the set and all transport references to the set. It is the
- * caller's responsibility to ensure that there are no concurrent
- * local or remote users of this set.
+ * Destroy the set and all transport references to the set.
  */
 void ldms_set_delete(ldms_set_t s)
 {
@@ -500,8 +498,12 @@ void ldms_set_delete(ldms_set_t s)
 	while (!LIST_EMPTY(&set->local_rbd_list)) {
 		s = LIST_FIRST(&set->local_rbd_list);
 		if (s->xprt) {
-			fprintf(stderr, "%s: Warning, the local rbd for '%s' has an active transport...",
-				__func__, ldms_set_name_get(s));
+			/* Revoke the map from the peer */
+			ldms_name_t name = get_instance_name(s->set->meta);
+			if (s->lmap)
+				zap_unshare(s->xprt->zap_ep, s->lmap, name->name, name->len);
+			fprintf(stderr, "%s: unsharing map for set '%s'\n",
+				__func__, name->name);
 			print_xprt_addrs(s->xprt);
 			fprintf(stderr, "\n");
 			fflush(stderr);
@@ -2238,7 +2240,7 @@ int ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
 		dir_updt = 1;
 	pthread_mutex_unlock(&s->set->lock);
 	if (dir_updt)
-		__ldms_dir_upd_set(name);
+		__ldms_dir_update(s, LDMS_DIR_UPD);
 	free(name);
 	return 0;
 err:
@@ -2271,7 +2273,7 @@ void ldms_set_info_unset(ldms_set_t s, const char *key)
 	free(pair->value);
 	free(pair);
 	pthread_mutex_unlock(&s->set->lock);
-	__ldms_dir_upd_set(ldms_set_instance_name_get(s));
+	__ldms_dir_update(s, LDMS_DIR_UPD);
 }
 
 char *ldms_set_info_get(ldms_set_t s, const char *key)

@@ -119,9 +119,12 @@ __ldms_create_set(const char *instance_name, const char *schema_name,
 extern void __ldms_get_local_set_list_sz(int *set_count, int *set_list_len);
 extern int __ldms_get_local_set_list(char *set_list, size_t set_list_len,
 				     int *set_count, int *set_list_size);
+extern void __ldms_dir_update(ldms_set_t set, enum ldms_dir_type t);
+#if 0
 extern void __ldms_dir_add_set(const char *set_name);
 extern void __ldms_dir_del_set(const char *set_name);
 extern void __ldms_dir_upd_set(const char *set_name);
+#endif
 extern int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg);
 
 extern uint32_t __ldms_set_size_get(struct ldms_set *s);
