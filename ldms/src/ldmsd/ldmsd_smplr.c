@@ -201,6 +201,7 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 			info->origin_type = LDMSD_SET_ORIGIN_PRDCR;
 			ldmsd_prdcr_set_ref_get(prd_set);
+			ref_get(&prd_set->ref, "sampler");
 			info->prd_set = prd_set;
 			info->interval_us = prd_set->updt_interval;
 			info->offset_us = prd_set->updt_offset;
@@ -238,6 +239,7 @@ void ldmsd_set_info_delete(ldmsd_set_info_t info)
 	}
 	if ((info->origin_type == LDMSD_SET_ORIGIN_PRDCR) && info->prd_set) {
 		ldmsd_prdcr_set_ref_put(info->prd_set);
+		ref_put(&info->prd_set->ref, "sampler");
 		info->prd_set = NULL;
 	}
 	if (info->pi) {

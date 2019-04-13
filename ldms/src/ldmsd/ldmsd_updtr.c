@@ -143,6 +143,7 @@ __grp_info_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	pthread_mutex_lock(&prd_set->lock);
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 	ldmsd_prdcr_set_ref_put(prd_set); /* taken before re-lookup */
+	ref_put(&prd_set->ref, "grp_lookup");
 	pthread_mutex_unlock(&prd_set->lock);
 }
 
@@ -187,11 +188,13 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	if (flags & LDMSD_GROUP_MODIFIED) {
 		/* Group modified, need info update --> re-lookup the info */
 		ldmsd_prdcr_set_ref_get(prd_set);
+		ref_get(&prd_set->ref, "grp_lookup");
 		name = ldms_set_instance_name_get(prd_set->set);
 		rc = ldms_xprt_lookup(t, name, LDMS_LOOKUP_SET_INFO,
 				      __grp_info_lookup_cb, prd_set);
 		if (rc) {
 			ldmsd_prdcr_set_ref_put(prd_set);
+			ref_put(&prd_set->ref, "grp_lookup");
 			goto set_ready;
 		}
 		/* __grp_info_lookup_cb() will change the state */
@@ -211,8 +214,8 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	LIST_FOREACH(str_ref, &prd_set->strgp_list, entry) {
 		ldmsd_strgp_t strgp = str_ref->strgp;
 		ldmsd_prdcr_set_ref_get(prd_set);
+		ref_get(&prd_set->ref, "store_ev");
 		ev_post(updater, strgp->worker, str_ref->store_ev, NULL);
-
 	}
 set_ready:
 	if ((status & LDMS_UPD_F_MORE) == 0)
@@ -233,12 +236,14 @@ out:
 		prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 		pthread_mutex_unlock(&prd_set->lock);
 	}
-	if (0 == (status & (LDMS_UPD_F_PUSH|LDMS_UPD_F_MORE)))
+	if (0 == (status & (LDMS_UPD_F_PUSH|LDMS_UPD_F_MORE))) {
 		/*
 		 * This is an pull update. Put the reference
 		 * taken before calling ldms_xprt_update.
 		 */
 		ldmsd_prdcr_set_ref_put(prd_set);
+		ref_put(&prd_set->ref, "xprt_update");
+	}
 	return;
 }
 
@@ -326,7 +331,6 @@ static int schedule_set_updates(ldmsd_updtr_t updtr,
 	if (!updtr->push_flags) {
 		op_s = "Updating";
 		prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
-		ldmsd_prdcr_set_ref_get(prd_set);
 		flags = ldmsd_group_check(prd_set->set);
 		if (flags & LDMSD_GROUP_IS_GROUP) {
 			struct ldmsd_group_traverse_ctxt ctxt;
@@ -364,12 +368,14 @@ static int schedule_set_updates(ldmsd_updtr_t updtr,
 		struct timespec to;
 		resched_prd_set(updtr, prd_set, &to);
 		ldmsd_prdcr_set_ref_get(prd_set);
+		ref_get(&prd_set->ref, "update_ev");
 		ev_post(updtr->worker, updtr->worker, prd_set->update_ev, &to);
 
 	} else if (0 == (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG)) {
 		op_s = "Registering push for";
 		prd_set->push_flags |= LDMSD_PRDCR_SET_F_PUSH_REG;
 		ldmsd_prdcr_set_ref_get(prd_set);
+		ref_get(&prd_set->ref, "push");
 		if (updtr->push_flags & LDMSD_UPDTR_F_PUSH_CHANGE)
 			push_flags = LDMS_XPRT_PUSH_F_CHANGE;
 		rc = ldms_xprt_register_push(prd_set->set, push_flags,
@@ -387,8 +393,10 @@ out:
 #endif
 		ldmsd_log(LDMSD_LINFO, "Synchronous error %d: %s Set %s\n",
 						rc, op_s, prd_set->inst_name);
-		if (!updtr->push_flags)
+		if (!updtr->push_flags) {
 			ldmsd_prdcr_set_ref_put(prd_set);
+			ref_put(&prd_set->ref, "update");
+		}
 	}
 	return rc;
 }
@@ -411,6 +419,7 @@ static int cancel_set_updates(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 	/* Put the push reference */
 	prd_set->push_flags &= ~LDMSD_PRDCR_SET_F_PUSH_REG;
 	ldmsd_prdcr_set_ref_put(prd_set);
+	ref_put(&prd_set->ref, "push");
 	return rc;
 }
 
@@ -489,8 +498,11 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 	}
 
 	ldmsd_prdcr_set_ref_get(prd_set); /* Dropped in updtr_update_cb */
+	ref_get(&prd_set->ref, "xprt_update");
 	rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
 	if (rc) {
+		ldmsd_prdcr_set_ref_put(prd_set);
+		ref_put(&prd_set->ref, "xprt_update");
 		ldmsd_log(LDMSD_LINFO, "%s: ldms_xprt_update returned %d for %s\n",
 			  __func__, rc, prd_set->inst_name);
 		return;
@@ -498,6 +510,7 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 
 	resched_prd_set(updtr, prd_set, &to);
 	ldmsd_prdcr_set_ref_get(prd_set); /* Dropped when event is processed */
+	ref_get(&prd_set->ref, "update_ev");
 	ev_post(updtr->worker, updtr->worker, prd_set->update_ev, &to);
 	ldmsd_updtr_unlock(updtr);
 }
@@ -511,7 +524,7 @@ int prdcr_set_state_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
 	EV_DATA(prd_set->update_ev, struct update_data)->reschedule = state;
 
 	if (!state)
-		return 0;
+		goto out;
 
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
@@ -524,6 +537,9 @@ int prdcr_set_state_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
 		}
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+ out:
+	ldmsd_prdcr_set_ref_put(prd_set);
+	ref_put(&prd_set->ref, "state_ev");
 	return 0;
 }
 
@@ -544,6 +560,7 @@ int prdcr_set_update_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
 	}
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_prdcr_set_ref_put(prd_set);
+	ref_put(&prd_set->ref, "update_ev");
 }
 
 int prdcr_ref_cmp(void *a, const void *b)

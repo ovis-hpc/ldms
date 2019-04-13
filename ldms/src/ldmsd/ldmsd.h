@@ -67,6 +67,7 @@
 #include <ovis_event/ovis_event.h>
 #include <ovis_util/util.h>
 #include "ldms.h"
+#include "ref.h"
 
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
 
@@ -225,7 +226,6 @@ typedef struct ldmsd_prdcr {
 	} type;
 
 	ev_t connect_ev;	/* sent to updater */
-	ev_t reconnect_ev;	/* sent to self */
 	ev_t start_ev;		/* sent to updater */
 	ev_t stop_ev;		/* sent to updater */
 
@@ -267,6 +267,7 @@ struct ldmsd_updtr_schedule {
 	long offset_us;
 	long offset_skew;
 };
+
 typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
 typedef struct ldmsd_prdcr_set {
 	char *inst_name;
@@ -303,6 +304,7 @@ typedef struct ldmsd_prdcr_set {
 #endif /* LDMSD_UPDATE_TIME */
 
 	int ref_count;
+	struct ref_s ref;
 } *ldmsd_prdcr_set_t;
 
 #ifdef LDMSD_UPDATE_TIME

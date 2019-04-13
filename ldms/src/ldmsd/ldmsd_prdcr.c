@@ -65,6 +65,21 @@
 #include "ldmsd_request.h"
 #include "config.h"
 
+void ref_dump(ref_t r)
+{
+	void ldmsd_lcritical(const char *fmt, ...);
+	ref_inst_t inst;
+	pthread_mutex_lock(&r->lock);
+	ldmsd_lcritical("count %d\n", r->ref_count);
+	LIST_FOREACH(inst, &r->head, entry) {
+		ldmsd_lcritical("    name %-12s ref_count %8d get_func %-24s get_line %8d "
+				"put_func %-24s put_line %d\n",
+				inst->name, inst->ref_count, inst->get_func, inst->get_line,
+				inst->put_func, inst->put_line);
+	}
+	pthread_mutex_unlock(&r->lock);
+}
+
 int prdcr_resolve(const char *hostname, unsigned short port_no,
 		  struct sockaddr_storage *ss, socklen_t *ss_len)
 {
@@ -114,6 +129,7 @@ static ldmsd_prdcr_set_t prdcr_set_new(const char *inst_name)
 	EV_DATA(set->update_ev, struct update_data)->prd_set = set;
 
 	set->ref_count = 1;
+	ref_init(&set->ref, "create");
 	return set;
 err_1:
 	free(set);
@@ -146,7 +162,6 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 void ldmsd_prdcr_set_ref_get(ldmsd_prdcr_set_t set)
 {
 	(void)__sync_fetch_and_add(&set->ref_count, 1);
-
 }
 
 void ldmsd_prdcr_set_ref_put(ldmsd_prdcr_set_t set)
@@ -158,6 +173,8 @@ void ldmsd_prdcr_set_ref_put(ldmsd_prdcr_set_t set)
 
 static void prdcr_set_del(ldmsd_prdcr_set_t set)
 {
+	ref_put(&set->ref, "create");
+	ref_dump(&set->ref);
 	ldmsd_prdcr_set_ref_put(set);
 }
 
@@ -171,10 +188,16 @@ static void prdcr_reset_sets(ldmsd_prdcr_t prdcr)
 	while ((rbn = rbt_min(&prdcr->set_tree))) {
 		prd_set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
 		EV_DATA(prd_set->state_ev, struct state_data)->start_n_stop = 0;
-		ev_post(producer, updater, prd_set->state_ev, NULL);
+		ldmsd_prdcr_set_ref_get(prd_set);
+		ref_get(&prd_set->ref, "state_ev");
+		if (ev_post(producer, updater, prd_set->state_ev, NULL)) {
+			ldmsd_prdcr_set_ref_put(prd_set);
+			ref_put(&prd_set->ref, "state_ev");
+		}
 		if (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG) {
 			/* Put back the reference taken when register for push */
 			ldmsd_prdcr_set_ref_put(prd_set);
+			ref_put(&prd_set->ref, "push");
 		}
 		rbt_del(&prdcr->set_tree, rbn);
 		prdcr_set_del(prd_set);
@@ -255,13 +278,17 @@ static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 	EV_DATA(prd_set->state_ev, struct state_data)->start_n_stop = 1;
+	ldmsd_prdcr_set_ref_get(prd_set); /* state_ev */
+	ref_get(&prd_set->ref, "state_ev");
+	ldmsd_prdcr_set_ref_put(prd_set);
+	ref_put(&prd_set->ref, "xprt_lookup");
+	/* This is inheriting the lookup reference */
 	ev_post(producer, updater, prd_set->state_ev, NULL);
 
 	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
 	ldmsd_strgp_update(prd_set);
 out:
 	pthread_mutex_unlock(&prd_set->lock);
-	/* The lookup reference will be dropped by the updater when it receives this event */
 	return;
 }
 
@@ -290,6 +317,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
 		return;
 	}
 	ldmsd_prdcr_set_ref_get(set); /* It will be put back in lookup_cb */
+	ref_get(&set->ref, "xprt_lookup");
 	/* Refresh the set with a lookup */
 	rc = ldms_xprt_lookup(prdcr->xprt, inst_name,
 			      LDMS_LOOKUP_BY_INSTANCE | LDMS_LOOKUP_SET_INFO,
@@ -297,6 +325,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
 	if (rc) {
 		ldmsd_log(LDMSD_LINFO, "Synchronous error %d from ldms_lookup\n", rc);
 		ldmsd_prdcr_set_ref_put(set);
+		ref_put(&set->ref, "xprt_lookup");
 	}
 
 }
@@ -350,6 +379,7 @@ static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
                         continue;
 		}
 		ldmsd_prdcr_set_ref_get(set);
+		ref_get(&set->ref, "xprt_lookup");
 		pthread_mutex_lock(&set->lock);
 		set->state = LDMSD_PRDCR_SET_STATE_START;
 		pthread_mutex_unlock(&set->lock);
@@ -359,6 +389,7 @@ static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 			ldmsd_log(LDMSD_LINFO, "Synchronous error %d from "
 					"		SET_INFO lookup\n", rc);
 			ldmsd_prdcr_set_ref_put(set);
+			ref_put(&set->ref, "xprt_lookup");
 		}
 	}
 }
@@ -569,11 +600,6 @@ int prdcr_connect_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
 	return 0;
 }
 
-int prdcr_reconnect_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
-{
-	return 0;
-}
-
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
@@ -611,8 +637,6 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	}
 	prdcr->connect_ev = ev_new(prdcr_connect_type);
 	EV_DATA(prdcr->connect_ev, struct connect_data)->prdcr = prdcr;
-	prdcr->reconnect_ev = ev_new(prdcr_reconnect_type);
-	EV_DATA(prdcr->reconnect_ev, struct connect_data)->prdcr = prdcr;
 	prdcr->start_ev = ev_new(prdcr_start_type);
 	EV_DATA(prdcr->start_ev, struct start_data)->entity = prdcr;
 	prdcr->stop_ev = ev_new(prdcr_stop_type);
@@ -705,6 +729,8 @@ int updtr_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
 		     prd_set; prd_set = ldmsd_prdcr_set_next(prd_set)) {
 			if (prd_set->state >= LDMSD_PRDCR_SET_STATE_READY) {
 				EV_DATA(prd_set->state_ev, struct state_data)->start_n_stop = 1;
+				ldmsd_prdcr_set_ref_get(prd_set);
+				ref_get(&prd_set->ref, "state_ev");
 				ev_post(producer, updater, prd_set->state_ev, NULL);
 			}
 		}
