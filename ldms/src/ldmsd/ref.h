@@ -13,8 +13,11 @@ typedef struct ref_inst_s {
 	LIST_ENTRY(ref_inst_s) entry;
 } *ref_inst_t;
 
+typedef void (*ref_free_fn_t)(void *arg);
 typedef struct ref_s {
 	pthread_mutex_t lock;
+	ref_free_fn_t free_fn;
+	void *free_arg;
 	LIST_HEAD(, ref_inst_s) head;
 	int ref_count;		/* for all ref instances */
 } *ref_t;
@@ -43,6 +46,8 @@ static inline int _ref_put(ref_t r, const char *name, const char *func, int line
 	ldmsd_lcritical("name %s ref_count %d func %s line %d put but not taken\n",
 			name, r->ref_count, func, line);
  out:
+	if (!count)
+		r->free_fn(r->free_arg);
 	pthread_mutex_unlock(&r->lock);
 	return count;
 }
@@ -82,10 +87,14 @@ static inline void _ref_get(ref_t r, const char *name, const char *func, int lin
 }
 #define ref_get(_r_, _n_) _ref_get((_r_), (_n_), __func__, __LINE__)
 
-static inline void _ref_init(ref_t r, const char *name, const char *func, int line)
+static inline void _ref_init(ref_t r, const char *name,
+			     ref_free_fn_t fn, void *arg,
+			     const char *func, int line)
 {
 	ref_inst_t inst;
 	pthread_mutex_init(&r->lock, NULL);
+	r->free_fn = fn;
+	r->free_arg = arg;
 	LIST_INIT(&r->head);
 	inst = calloc(1, sizeof *inst); assert(inst);
 	inst->get_func = func;
@@ -95,6 +104,6 @@ static inline void _ref_init(ref_t r, const char *name, const char *func, int li
 	r->ref_count = 1;
 	LIST_INSERT_HEAD(&r->head, inst, entry);
 }
-#define ref_init(_r_, _n_) _ref_init((_r_), (_n_), __func__, __LINE__)
+#define ref_init(_r_, _n_, _f_, _a_) _ref_init((_r_), (_n_), (_f_), (_a_), __func__, __LINE__)
 
 #endif
