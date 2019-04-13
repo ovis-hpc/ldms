@@ -118,6 +118,7 @@ ldms_t ldms_xprt_get(ldms_t x)
 }
 
 LIST_HEAD(xprt_list, ldms_xprt) xprt_list;
+LIST_HEAD(xprt_dir_list, ldms_xprt) xprt_dir_list;
 ldms_t ldms_xprt_first()
 {
 	struct ldms_xprt *x = NULL;
@@ -308,15 +309,13 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 
 static void dir_update(const char *set_name, enum ldms_dir_type t)
 {
-	struct ldms_xprt *x, *next_x;
-	x = (struct ldms_xprt *)ldms_xprt_first();
-	while (x) {
-		if (x->remote_dir_xid)
-			send_dir_update(x, t, set_name);
-		next_x = (struct ldms_xprt *)ldms_xprt_next(x);
-		ldms_xprt_put(x);
-		x = next_x;
+	struct ldms_xprt *x;
+
+	pthread_mutex_lock(&xprt_list_lock);
+	LIST_FOREACH(x, &xprt_dir_list, remote_dir_link) {
+		send_dir_update(x, t, set_name);
 	}
+	pthread_mutex_unlock(&xprt_list_lock);
 }
 
 void __ldms_dir_add_set(const char *set_name)
@@ -413,6 +412,8 @@ void ldms_xprt_put(ldms_t x)
 	pthread_mutex_lock(&xprt_list_lock);
 	if (0 == __sync_sub_and_fetch(&x->ref_count, 1)) {
 		LIST_REMOVE(x, xprt_link);
+		if (x->remote_dir_xid)
+			LIST_REMOVE(x, remote_dir_link);
 #ifdef DEBUG
 		x->xprt_link.le_next = 0;
 		x->xprt_link.le_prev = 0;
@@ -498,14 +499,21 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	struct ldms_reply reply_;
 	struct ldms_reply *reply = NULL;
 
-	__ldms_set_tree_lock();
-	if (req->dir.flags)
+	pthread_mutex_lock(&xprt_list_lock);
+	if (req->dir.flags) {
 		/* Register for directory updates */
 		x->remote_dir_xid = req->hdr.xid;
-	else
-		/* Cancel any previous dir update */
-		x->remote_dir_xid = 0;
+		LIST_INSERT_HEAD(&xprt_dir_list, x, remote_dir_link);
+	} else {
+		if (x->remote_dir_xid) {
+			/* Cancel previous dir update */
+			LIST_REMOVE(x, remote_dir_link);
+			x->remote_dir_xid = 0;
+		}
+	}
+	pthread_mutex_unlock(&xprt_list_lock);
 
+	__ldms_set_tree_lock();
 	__ldms_get_local_set_list_sz(&set_count, &set_list_sz);
 	if (!set_count) {
 		rc = 0;
@@ -592,9 +600,18 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 static void
 process_dir_cancel_request(struct ldms_xprt *x, struct ldms_request *req)
 {
-	x->remote_dir_xid = 0;
 	struct ldms_reply_hdr hdr;
-	hdr.rc = 0;
+
+	if (x->remote_dir_xid) {
+		/* Cancel previous dir update */
+		pthread_mutex_lock(&xprt_list_lock);
+		LIST_INSERT_HEAD(&xprt_dir_list, x, remote_dir_link);
+		pthread_mutex_unlock(&xprt_list_lock);
+		x->remote_dir_xid = 0;
+		hdr.rc = 0;
+	} else {
+		hdr.rc = htonl(EINVAL);
+	}
 	hdr.xid = req->hdr.xid;
 	hdr.cmd = htonl(LDMS_CMD_DIR_CANCEL_REPLY);
 	hdr.len = htonl(sizeof(struct ldms_reply_hdr));

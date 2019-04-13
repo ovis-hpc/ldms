@@ -344,8 +344,9 @@ struct ldms_xprt {
 	int max_msg;
 	/* Points to local ctxt expected when dir updates returned to this endpoint */
 	uint64_t local_dir_xid;
-	/* This is the peers local_dir_xid that we provide when providing dir updates */
+	/* This is the peer's local_dir_xid that we provide when providing dir updates */
 	uint64_t remote_dir_xid;
+	LIST_ENTRY(ldms_xprt) remote_dir_link;
 
 #ifdef DEBUG
 	int active_dir; /* Number of outstanding dir requests */
