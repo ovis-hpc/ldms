@@ -1067,7 +1067,6 @@ void ldmsd_ev_init(void)
 {
 	smplr_sample_type = ev_type_new("smplr:sample", sizeof(struct sample_data));
 	prdcr_connect_type = ev_type_new("prdcr:connect", sizeof(struct connect_data));
-	prdcr_reconnect_type = ev_type_new("prdcr:reconnect", sizeof(struct connect_data));
 	prdcr_set_update_type = ev_type_new("prdcr_set:update", sizeof(struct update_data));
 	prdcr_set_store_type = ev_type_new("prdcr_set:store", sizeof(struct store_data));
 	prdcr_set_state_type = ev_type_new("prdcr_set:state", sizeof(struct state_data));
@@ -1089,7 +1088,6 @@ void ldmsd_ev_init(void)
 	ev_dispatch(updater, prdcr_start_type, prdcr_start_actor);
 	ev_dispatch(updater, prdcr_stop_type, prdcr_stop_actor);
 	ev_dispatch(producer, prdcr_connect_type, prdcr_connect_actor);
-	ev_dispatch(producer, prdcr_reconnect_type, prdcr_reconnect_actor);
 	ev_dispatch(producer, updtr_start_type, updtr_start_actor);
 	ev_dispatch(producer, updtr_stop_type, updtr_stop_actor);
 }
