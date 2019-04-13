@@ -592,6 +592,14 @@ zap_err_t zap_share(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len)
 	return zerr;
 }
 
+zap_err_t zap_unshare(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len)
+{
+	zap_err_t zerr = 0;
+	if (ep->z->unshare)
+		zerr = ep->z->unshare(ep, m, msg, msg_len);
+	return zerr;
+}
+
 zap_err_t zap_reject(zap_ep_t ep, char *data, size_t data_len)
 {
 	return ep->z->reject(ep, data, data_len);

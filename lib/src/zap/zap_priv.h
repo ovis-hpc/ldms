@@ -242,6 +242,11 @@ struct zap {
 			   const char *msg, size_t msg_len);
 
 
+	/** Stop sharing a mapping with a remote peer */
+	zap_err_t (*unshare)(zap_ep_t ep, zap_map_t m,
+			   const char *msg, size_t msg_len);
+
+
 	/** Get the local and remote sockaddr for the endpoint */
 	zap_err_t (*get_name)(zap_ep_t ep, struct sockaddr *local_sa,
 			      struct sockaddr *remote_sa, socklen_t *sa_len);

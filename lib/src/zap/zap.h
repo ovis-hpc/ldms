@@ -220,6 +220,8 @@ typedef struct zap_event {
 	zap_err_t status;
 	/*! Mapping information for \c ::ZAP_EVENT_RENDEZVOUS event */
 	zap_map_t map;
+	/*! 1 for share, 0 for unshare */
+	uint32_t share;
 	/**
 	 * Pointer to message data. This buffer is owned by Zap and
 	 * may be freed when the callback returns.
@@ -616,6 +618,20 @@ zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map);
  * \returns zap_error_code on error.
  */
 zap_err_t zap_share(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len);
+
+/** \brief Stop sharing a mapping with a remote peer
+ *
+ * Tell the remote peer that a previosly shared zap_map_t is no longer available.
+ *
+ * \param ep The endpoint handle
+ * \param m A Zap buffer mapping returned by \c zap_map_buf.
+ * \param msg The message that will tag along with unshare operation.
+ * \param msg_len The length of the message.
+ *
+ * \returns ZAP_ERR_OK if there is no errors.
+ * \returns zap_error_code on error.
+ */
+zap_err_t zap_unshare(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len);
 
 const char* zap_event_str(enum zap_event_type e);
 
