@@ -1,4 +1,3 @@
-lib_LTLIBRARIES=
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
 lib_LTLIBRARIES =
