@@ -87,8 +87,16 @@ int ev_listen(ev_worker_t evw, ev_type_t evt);
 
 /**
  * \brief Post an event to a worker
+ *
+ * \param src The source worker
+ * \param dst The destination worker
+ * \param ev The event
+ * \param to The scheduled event deliver time (null == now)
+ *
+ * \retval 0 Event posted
+ * \retval EBUSY The event is already posted
  */
-void ev_post(ev_worker_t src, ev_worker_t dst, ev_t ev, struct timespec *to);
+int ev_post(ev_worker_t src, ev_worker_t dst, ev_t ev, struct timespec *to);
 
 /**
  * \brief Flush all events queued to a worker

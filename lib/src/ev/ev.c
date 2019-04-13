@@ -111,14 +111,15 @@ int ev_posted(ev_t ev)
 	return ev->e_posted;
 }
 
-void ev_post(ev_worker_t src, ev_worker_t dst, ev_t ev, struct timespec *to)
+int ev_post(ev_worker_t src, ev_worker_t dst, ev_t ev, struct timespec *to)
 {
 	int rc;
 	struct timespec now;
 	ev_ref_t r;
 
-	if (ev->e_posted)
-		return;
+	if (ev->e_posted) {
+		return EBUSY;
+	}
 
 	r = malloc(sizeof *r);
 	if (to) {
@@ -139,6 +140,7 @@ void ev_post(ev_worker_t src, ev_worker_t dst, ev_t ev, struct timespec *to)
 	rc = clock_gettime(CLOCK_REALTIME, &now);
 	if (ev_time_cmp(&r->r_to, &now) <= 0)
 		sem_post(&dst->w_sem);
+	return 0;
 }
 
 static void __attribute__ ((constructor)) ev_init(void)
