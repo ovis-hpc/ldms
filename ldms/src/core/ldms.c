@@ -316,44 +316,36 @@ __record_set(const char *instance_name,
 	return set;
 }
 
-/* Caller must hold the set tree lock. */
-int __ldms_set_publish(struct ldms_set *set)
-{
-	if (set->flags & LDMS_SET_F_PUBLISHED)
-		return EEXIST;
-
-	set->flags |= LDMS_SET_F_PUBLISHED;
-	__ldms_dir_add_set(get_instance_name(set->meta)->name);
-	return 0;
-}
-
 int ldms_set_publish(ldms_set_t sd)
 {
-	int rc;
-	__ldms_set_tree_lock();
-	rc = __ldms_set_publish(sd->set);
-	__ldms_set_tree_unlock();
-	return rc;
-}
+	char *set_name;
 
-/* Caller must hold the set tree lock */
-int __ldms_set_unpublish(struct ldms_set *set)
-{
-	if (!(set->flags & LDMS_SET_F_PUBLISHED))
-		return ENOENT;
+	if (sd->set->flags & LDMS_SET_F_PUBLISHED)
+		return EEXIST;
 
-	set->flags &= ~LDMS_SET_F_PUBLISHED;
-	__ldms_dir_del_set(get_instance_name(set->meta)->name);
+	set_name = strdup(get_instance_name(sd->set->meta)->name);
+	if (!set_name)
+		return ENOMEM;
+
+	sd->set->flags |= LDMS_SET_F_PUBLISHED;
+	__ldms_dir_add_set(set_name);
+	free(set_name);
 	return 0;
 }
 
 int ldms_set_unpublish(ldms_set_t sd)
 {
-	int rc;
-	__ldms_set_tree_lock();
-	rc = __ldms_set_unpublish(sd->set);
-	__ldms_set_tree_unlock();
-	return rc;
+	char *set_name;
+
+	if (!(sd->set->flags & LDMS_SET_F_PUBLISHED))
+		return ENOENT;
+	set_name = strdup(get_instance_name(sd->set->meta)->name);
+	if (!set_name)
+		return ENOMEM;
+	sd->set->flags &= ~LDMS_SET_F_PUBLISHED;
+	__ldms_dir_del_set(set_name);
+	free(set_name);
+	return 0;
 }
 
 #define META_FILE 0
@@ -485,11 +477,13 @@ void ldms_set_delete(ldms_set_t s)
 	if (!s) {
 		assert(NULL == "The metric set passed in is NULL");
 	}
+
+	ldms_set_unpublish(s);
+
 	__ldms_set_tree_lock();
 	struct ldms_set *set = s->set;
 	pthread_mutex_lock(&set->lock);
 	__ldms_free_rbd(s);	/* removes the RBD from the local/remote rbd list */
-	__ldms_set_unpublish(set);
 
 	while (!LIST_EMPTY(&set->remote_rbd_list)) {
 		s = LIST_FIRST(&set->remote_rbd_list);
@@ -1025,26 +1019,21 @@ int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *ps)
 {
 	struct ldms_set_hdr *sh = meta_addr;
 	struct ldms_data_hdr *dh = data_addr;
-	int flags;
+	struct ldms_rbuf_desc *rbd;
+	int flags, rc;
 
 	flags = LDMS_SET_F_MEMMAP | LDMS_SET_F_LOCAL;
+
 	__ldms_set_tree_lock();
 	struct ldms_set *set = __record_set(get_instance_name(sh)->name, sh, dh, flags);
 	if (!set)
 		goto err;
-	int rc = __ldms_set_publish(set);
-	if (!rc) {
-		struct ldms_rbuf_desc *rbd;
-		rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
-		if (!rbd)
-			goto err;
-		*ps = rbd;
-	} else {
-		errno = rc;
+
+	rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
+	if (!rbd)
 		goto err;
-	}
-	__ldms_set_tree_unlock();
-	return 0;
+	*ps = rbd;
+	errno = ldms_set_publish(rbd);
  err:
 	__ldms_set_tree_unlock();
 	return errno;
