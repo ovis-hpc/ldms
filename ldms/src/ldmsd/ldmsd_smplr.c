@@ -62,6 +62,138 @@
 #include "config.h"
 #include "ovis_event/ovis_event.h"
 
+#ifndef HZ
+#define HZ 100
+#endif
+
+void ldmsd_smplr___del(ldmsd_cfgobj_t obj)
+{
+	ldmsd_smplr_t smplr = (ldmsd_smplr_t)obj;
+	free(smplr->instance);
+	free(smplr->producer);
+	ldmsd_cfgobj___del(obj);
+}
+
+const char *smplr_state_str(enum ldmsd_smplr_state state)
+{
+	switch (state) {
+	case LDMSD_SMPLR_STATE_STOPPED:
+		return "STOPPED";
+	case LDMSD_SMPLR_STATE_RUNNING:
+		return "RUNNING";
+	}
+	return "BAD STATE";
+}
+
+ldmsd_smplr_t
+ldmsd_smplr_new_with_auth(const char *name,
+			  struct ldmsd_plugin_cfg *plugin,
+			  uint64_t component_id,
+			  const char *producer, const char *instance,
+			  uid_t uid, gid_t gid, int perm)
+{
+	ldmsd_smplr_t smplr;
+	char *prod, *inst;
+	ev_t sample_ev, start_ev, stop_ev;
+
+	ldmsd_log(LDMSD_LDEBUG, "ldmsd_smplr_new(name %s plugin %s "
+		  "component_id %ld "
+		  "producer %s instance uid %d gid %d perm %x\n",
+		  name, plugin->name, component_id,
+		  producer, instance, uid, gid, perm);
+
+	prod = strdup(producer);
+	if (!prod)
+		goto err_0;
+
+	inst = strdup(producer);
+	if (!inst)
+		goto err_1;
+
+	sample_ev = ev_new(smplr_sample_type);
+	if (!sample_ev)
+		goto err_2;
+	start_ev = ev_new(smplr_start_type);
+	if (!start_ev)
+		goto err_3;
+
+	stop_ev = ev_new(smplr_stop_type);
+	if (!stop_ev)
+		goto err_4;
+
+	smplr = (struct ldmsd_smplr *)
+		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_SMPLR,
+				sizeof *smplr, ldmsd_smplr___del,
+				uid, gid, perm);
+	if (!smplr)
+		goto err_5;
+
+	smplr->interval_us = 0;
+	smplr->offset_us = 0;
+	smplr->state = LDMSD_SMPLR_STATE_STOPPED;
+	smplr->plugin = plugin;
+	smplr->producer = prod;
+	smplr->instance = inst;
+	smplr->component_id = component_id;
+
+	EV_DATA(sample_ev, struct sample_data)->smplr = smplr;
+	EV_DATA(sample_ev, struct sample_data)->reschedule = 0;
+	smplr->sample_ev = sample_ev;
+	EV_DATA(start_ev, struct start_data)->entity = smplr;
+	smplr->start_ev = start_ev;
+	EV_DATA(stop_ev, struct stop_data)->entity = smplr;
+	smplr->stop_ev = stop_ev;
+
+	ldmsd_smplr_unlock(smplr);
+	return smplr;
+ err_5:
+	ev_put(stop_ev);
+ err_4:
+	ev_put(start_ev);
+ err_3:
+	ev_put(sample_ev);
+ err_2:
+	free(inst);
+ err_1:
+	free(prod);
+ err_0:
+	return NULL;
+}
+
+int ldmsd_smplr_del(const char *smplr_name, ldmsd_sec_ctxt_t ctxt)
+{
+	int rc = 0;
+	ldmsd_smplr_t smplr;
+
+	smplr = (ldmsd_smplr_t)ldmsd_cfgobj_find(smplr_name, LDMSD_CFGOBJ_SMPLR);
+	if (!smplr) {
+		rc = ENOENT;
+		goto out_0;
+	}
+
+	ldmsd_smplr_lock(smplr);
+	rc = ldmsd_cfgobj_access_check(&smplr->obj, 0222, ctxt);
+	if (rc)
+		goto out_1;
+	if (smplr->state != LDMSD_SMPLR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out_1;
+	}
+	if (smplr->obj.ref_count > 2) {
+		rc = EBUSY;
+		goto out_1;
+	}
+
+	ldmsd_cfgobj_del(smplr_name, LDMSD_CFGOBJ_SMPLR);
+	ldmsd_smplr_put(smplr);
+	rc = 0;
+out_1:
+	ldmsd_smplr_unlock(smplr);
+	ldmsd_smplr_put(smplr); /* `find` reference */
+out_0:
+	return rc;
+}
+
 int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us)
 {
 	char value[128];
@@ -95,8 +227,8 @@ char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type)
 {
 	if (type == LDMSD_SET_ORIGIN_PRDCR)
 		return "producer";
-	else if (type == LDMSD_SET_ORIGIN_SAMP_PI)
-		return "sampler plugin";
+	else if (type == LDMSD_SET_ORIGIN_SMPLR)
+		return "sampler";
 	else
 		return "";
 }
@@ -112,6 +244,18 @@ void __transaction_end_time_get(struct timeval *start, struct timeval *dur,
 	}
 }
 
+static ldmsd_smplr_t find_smplr_by_plugn(const char *plugn_name)
+{
+	ldmsd_smplr_t smplr;
+
+	for (smplr = (ldmsd_smplr_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_SMPLR); smplr;
+	     smplr = (ldmsd_smplr_t)ldmsd_cfgobj_next(&smplr->obj)) {
+		if (0 == strcmp(smplr->obj.name, plugn_name))
+			return smplr;
+	}
+	return NULL;
+}
+
 /*
  * Get the set information
  *
@@ -125,7 +269,7 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 	struct timeval dur;
 	struct ldmsd_plugin_set_list *plugn_set_list;
 	struct ldmsd_plugin_set *plugn_set = NULL;
-	struct ldmsd_plugin_cfg *pi;
+	ldmsd_smplr_t smplr;
 
 	ldms_set_t lset = ldms_set_by_name(inst_name);
 	if (!lset)
@@ -136,13 +280,14 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 		return NULL;
 
 	info->set = lset;
-	/* Determine if the set is responsible by a sampler plugin */
+
 	ldmsd_set_tree_lock();
 	plugn_set_list = ldmsd_plugin_set_list_first();
+	smplr = NULL;
 	while (plugn_set_list) {
 		LIST_FOREACH(plugn_set, &plugn_set_list->list, entry) {
 			if (0 == strcmp(plugn_set->inst_name, inst_name)) {
-				break;
+				smplr =  find_smplr_by_plugn(plugn_set->plugin_name);
 			}
 		}
 		if (plugn_set)
@@ -150,22 +295,12 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
  		plugn_set_list = ldmsd_plugin_set_list_next(plugn_set_list);
 	}
 	ldmsd_set_tree_unlock();
-	if (plugn_set) {
-		/* The set is created by a sampler plugin */
-		pi = ldmsd_get_plugin(plugn_set->plugin_name);
-		if (!pi) {
-			ldmsd_log(LDMSD_LERROR, "Set '%s' is created by "
-					"an unloaded plugin '%s'\n",
-					inst_name, plugn_set->plugin_name);
-		} else {
-			pi->ref_count++;
-			info->interval_us = pi->sample_interval_us;
-			info->offset_us = pi->sample_offset_us;
-			info->sync = pi->synchronous;
-			info->pi = pi;
-		}
+	if (smplr) {
+		info->interval_us = smplr->interval_us;
+		info->offset_us = smplr->offset_us;
+		info->sync = smplr->synchronous;
 		info->origin_name = strdup(plugn_set->plugin_name);
-		info->origin_type = LDMSD_SET_ORIGIN_SAMP_PI;
+		info->origin_type = LDMSD_SET_ORIGIN_SMPLR;
 
 		t = ldms_transaction_timestamp_get(lset);
 		info->start.tv_sec = (long int)t.sec;
@@ -200,8 +335,7 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 			ldmsd_prdcr_unlock(prdcr);
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 			info->origin_type = LDMSD_SET_ORIGIN_PRDCR;
-			ldmsd_prdcr_set_ref_get(prd_set);
-			ref_get(&prd_set->ref, "sampler");
+			ldmsd_prdcr_set_ref_get(prd_set, "sampler");
 			info->prd_set = prd_set;
 			info->interval_us = prd_set->updt_interval;
 			info->offset_us = prd_set->updt_offset;
@@ -238,36 +372,20 @@ void ldmsd_set_info_delete(ldmsd_set_info_t info)
 		info->origin_name = NULL;
 	}
 	if ((info->origin_type == LDMSD_SET_ORIGIN_PRDCR) && info->prd_set) {
-		ldmsd_prdcr_set_ref_put(info->prd_set);
-		ref_put(&info->prd_set->ref, "sampler");
+		ldmsd_prdcr_set_ref_put(info->prd_set, "sampler");
 		info->prd_set = NULL;
-	}
-	if (info->pi) {
-		info->pi->ref_count--;
-		info->pi = NULL;
 	}
 	free(info);
 }
 
-int __sampler_set_info_add(struct ldmsd_plugin *pi, char *interval, char *offset)
+int __sampler_set_info_add(ldmsd_smplr_t smplr)
 {
 	ldmsd_plugin_set_t set;
 	int rc;
-	long interval_us;
-	long offset_us;
 
-	if (pi->type != LDMSD_PLUGIN_SAMPLER)
-		return EINVAL;
-	if (!interval)
-		return EINVAL;
-	interval_us = strtol(interval, NULL, 0);
-	if (offset)
-		offset_us = strtol(offset, NULL, 0);
-	else
-		offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
-	for (set = ldmsd_plugin_set_first(pi->name); set;
-				set = ldmsd_plugin_set_next(set)) {
-		rc = ldmsd_set_update_hint_set(set->set, interval_us, offset_us);
+	for (set = ldmsd_plugin_set_first(smplr->plugin->name); set;
+	     set = ldmsd_plugin_set_next(set)) {
+		rc = ldmsd_set_update_hint_set(set->set, smplr->interval_us, smplr->offset_us);
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR, "Error %d: Failed to add "
 					"the update hint to set '%s'\n",
@@ -278,191 +396,131 @@ int __sampler_set_info_add(struct ldmsd_plugin *pi, char *interval, char *offset
 	return 0;
 }
 
-static void stop_sampler(struct ldmsd_plugin_cfg *pi)
+static void stop_sampler(ldmsd_smplr_t smplr)
 {
-	EV_DATA(pi->sample_ev, struct sample_data)->reschedule = 0;
-	pi->ref_count--;
+	EV_DATA(smplr->sample_ev, struct sample_data)->reschedule = 0;
 }
 
 int sample_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
 {
-	struct ldmsd_plugin_cfg *pi = EV_DATA(ev, struct sample_data)->pi;
-	pthread_mutex_lock(&pi->lock);
-	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
-	int rc = pi->sampler->sample(pi->sampler);
+	ldmsd_smplr_t smplr = EV_DATA(ev, struct sample_data)->smplr;
+	ldmsd_smplr_lock(smplr);
+	int rc = smplr->plugin->sampler->sample(smplr->plugin->sampler);
 	if (rc) {
 		/*
 		 * If the sampler reports an error don't reschedule
 		 * the timeout. This is an indication of a configuration
 		 * error that needs to be corrected.
-		*/
+		 */
 		ldmsd_log(LDMSD_LERROR, "'%s': failed to sample. Stopping "
-				"the plug-in.\n", pi->name);
-	} else {
+				"the plug-in.\n", smplr->obj.name);
+	} else if (EV_DATA(ev, struct sample_data)->reschedule) {
 		struct timespec to;
 		clock_gettime(CLOCK_REALTIME, &to);
-		to.tv_sec += pi->sample_interval_us / 1000000;
-		to.tv_nsec = pi->sample_offset_us * 1000;
+		to.tv_sec += smplr->interval_us / 1000000;
+		to.tv_nsec = smplr->offset_us * 1000;
 		ev_post(src, dst, ev, &to);
 	}
-	pthread_mutex_unlock(&pi->lock);
+	ldmsd_smplr_unlock(smplr);
 }
 
 /*
  * Start the sampler
  */
-int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
+static int _start_smplr(char *smplr_name, char *interval, char *offset, int is_one_shot)
 {
-	char *endptr;
-	int rc = 0;
+	int rc;
 	unsigned long sample_interval;
-	long sample_offset = 0;
-	int synchronous = 0;
-	struct ldmsd_plugin_cfg *pi;
+	long sample_offset;
+	int synchronous;
+	ldmsd_smplr_t smplr;
 
-	sample_interval = strtoul(interval, &endptr, 0);
-	if (endptr[0] != '\0')
-		return EINVAL;
-
-	pi = ldmsd_get_plugin((char *)plugin_name);
-	if (!pi)
-		return ENOENT;
-
-	pthread_mutex_lock(&pi->lock);
-	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
-		rc = EINVAL;
-		goto out;
+	sample_interval = strtoul(interval, NULL, 0);
+	if (errno == ERANGE || sample_interval < HZ)
+		return ERANGE;
+	if (offset) {
+		sample_offset = strtoul(offset, NULL, 0);
+		if (errno == ERANGE
+		    || sample_offset > 999999
+		    || sample_offset > sample_interval)
+			return ERANGE;
+		synchronous = 1;
+	} else {
+		sample_offset = 0;
+		synchronous = 0;
 	}
 
-	rc = __sampler_set_info_add(pi->plugin, interval, offset);
-	if (rc)
-		goto out;
+	smplr = (ldmsd_smplr_t)ldmsd_cfgobj_find(smplr_name, LDMSD_CFGOBJ_SMPLR);
+	if (!smplr)
+		return ENOENT;
 
-	pi->sample_interval_us = sample_interval;
-	if (offset) {
-		sample_offset = strtol(offset, NULL, 0);
-		if ( !((sample_interval >= 10) &&
-		       (sample_interval >= labs(sample_offset)*2)) ){
-			rc = EDOM;
-			goto out;
+	ldmsd_smplr_lock(smplr);
+	if (smplr->state != LDMSD_SMPLR_STATE_STOPPED) {
+		rc = EBUSY;
+		goto out;
+	}
+	smplr->interval_us = sample_interval;
+	smplr->offset_us = sample_offset;
+	smplr->synchronous = synchronous;
+
+	if (!is_one_shot) {
+		rc = __sampler_set_info_add(smplr);
+		if (rc) {
+			ldmsd_lerror("%s: sampler %s was unable to update sample hint info.\n",
+				     __func__, smplr_name);
 		}
-		pi->synchronous = 1;
-		pi->sample_offset_us = sample_offset;
+		smplr->state = LDMSD_SMPLR_STATE_RUNNING;
 	}
 
 	struct timespec to;
-
 	clock_gettime(CLOCK_REALTIME, &to);
-	if (pi->synchronous) {
-		to.tv_sec += 1;
-		to.tv_nsec = sample_offset;
-	}
+	ev_sched_to(&to, smplr->interval_us / 1000000, smplr->offset_us * 1000);
+	if (smplr->synchronous)
+		to.tv_nsec = smplr->offset_us * 1000;
+	ldmsd_smplr_unlock(smplr);
+	ldmsd_smplr_put(smplr);
 
-	pi->ref_count++;
-
-	if (!pi->sample_ev) {
-		pi->sample_ev = ev_new(smplr_sample_type);
-		EV_DATA(pi->sample_ev, struct sample_data)->pi = pi;
-	}
-	ev_post(sampler, sampler, pi->sample_ev, &to);
-out:
-	pthread_mutex_unlock(&pi->lock);
+	EV_DATA(smplr->sample_ev, struct sample_data)->reschedule = !is_one_shot;
+	ev_post(sampler, sampler, smplr->sample_ev, &to);
+	return 0;
+ out:
+	ldmsd_smplr_unlock(smplr);
+	ldmsd_smplr_put(smplr);
 	return rc;
 }
 
-ev_worker_t oneshot_worker;
-struct oneshot {
-	struct ldmsd_plugin_cfg *pi;
-};
-ev_type_t oneshot_event;
-
-static int oneshot_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+int ldmsd_start_smplr(char *smplr_name, char *interval, char *offset)
 {
-	struct ldmsd_plugin_cfg *pi = EV_DATA(ev, struct oneshot)->pi;
-	pthread_mutex_lock(&pi->lock);
-	assert(pi->plugin->type == LDMSD_PLUGIN_SAMPLER);
-	pi->sampler->sample(pi->sampler);
-	pi->ref_count--;
-	pthread_mutex_unlock(&pi->lock);
-	/* Put the create reference on the event */
-	ev_put(ev);
+	return _start_smplr(smplr_name, interval, offset, 0);
 }
 
-int ldmsd_oneshot_sample(const char *plugin_name, const char *ts,
-			 char *errstr, size_t errlen)
-{
-	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
-	struct timespec to, now;
-
-	if (!oneshot_event)
-		oneshot_event = ev_type_new("smplr:oneshot", sizeof(struct oneshot));
-	if (!oneshot_worker)
-		oneshot_worker = ev_worker_new("smplr:oneshot", oneshot_actor);
-	if (!oneshot_event || !oneshot_worker) {
-		rc = ENOMEM;;
-		snprintf(errstr, errlen,
-			 "%s: memory allocation failure.", __func__);
-		goto out;
-	}
-
-	clock_gettime(CLOCK_REALTIME, &now);
-	if (0 == strncmp(ts, "now", 3)) {
-		to = now;
-	} else {
-		uint32_t sched = strtoul(ts, NULL, 0);
-		to = now;
-		to.tv_sec += sched;
-	}
-	to.tv_nsec = 0;
-
-	pi = ldmsd_get_plugin((char *)plugin_name);
-	if (!pi) {
-		rc = ENOENT;
-		snprintf(errstr, errlen, "Sampler not found.");
-		return rc;
-	}
-	pthread_mutex_lock(&pi->lock);
-	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
-		rc = EINVAL;
-		snprintf(errstr, errlen,
-			 "The specified plugin is not a sampler.");
-		goto out;
-	}
-	pi->ref_count++;
-
-	ev_t os_ev = ev_new(oneshot_event);
-	EV_DATA(os_ev, struct oneshot)->pi = pi;
-	ev_post(oneshot_worker, oneshot_worker, os_ev, &to);
-out:
-	pthread_mutex_unlock(&pi->lock);
-	return rc;
-}
 
 /*
  * Stop the sampler
  */
-int ldmsd_stop_sampler(char *plugin_name)
+int ldmsd_stop_smplr(char *smplr_name)
 {
-	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
-
-	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi)
+	ldmsd_smplr_t smplr = (ldmsd_smplr_t)ldmsd_cfgobj_find(smplr_name, LDMSD_CFGOBJ_SMPLR);
+	if (!smplr)
 		return ENOENT;
-	pthread_mutex_lock(&pi->lock);
-	/* Ensure this is a sampler */
-	if (pi->plugin->type != LDMSD_PLUGIN_SAMPLER) {
-		rc = EINVAL;
+
+	ldmsd_smplr_lock(smplr);
+	if (smplr->state != LDMSD_SMPLR_STATE_RUNNING)
 		goto out;
-	}
-	if (pi->sample_ev) {
-		EV_DATA(pi->sample_ev, struct sample_data)->reschedule = 0;
-	} else {
-		rc = -EBUSY;
-	}
-out:
-	pthread_mutex_unlock(&pi->lock);
-	return rc;
+
+	smplr->state = LDMSD_SMPLR_STATE_STOPPED;
+	EV_DATA(smplr->sample_ev, struct sample_data)->reschedule = 0;
+	ldmsd_smplr_unlock(smplr);
+	ldmsd_smplr_put(smplr);
+	return 0;
+ out:
+	ldmsd_smplr_unlock(smplr);
+	ldmsd_smplr_put(smplr);
+	return EBUSY;
+}
+
+int ldmsd_oneshot_smplr(char *smplr_name, char *interval, char *offset)
+{
+	return _start_smplr(smplr_name, interval, offset, 1);
 }
 

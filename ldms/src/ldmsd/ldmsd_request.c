@@ -145,6 +145,12 @@ struct request_handler_entry {
 };
 
 static int example_handler(ldmsd_req_ctxt_t req_ctxt);
+
+static int smplr_add_handler(ldmsd_req_ctxt_t req_ctxt);
+static int smplr_del_handler(ldmsd_req_ctxt_t req_ctxt);
+static int smplr_start_handler(ldmsd_req_ctxt_t req_ctxt);
+static int smplr_stop_handler(ldmsd_req_ctxt_t req_ctxt);
+static int smplr_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_add_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_start_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -172,8 +178,6 @@ static int updtr_match_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int updtr_start_handler(ldmsd_req_ctxt_t req_ctxt);
 static int updtr_stop_handler(ldmsd_req_ctxt_t req_ctxt);
 static int updtr_status_handler(ldmsd_req_ctxt_t req_ctxt);
-static int plugn_start_handler(ldmsd_req_ctxt_t req_ctxt);
-static int plugn_stop_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_load_handler(ldmsd_req_ctxt_t req_ctxt);
 static int plugn_term_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -328,12 +332,6 @@ static struct request_handler_entry request_handler[] = {
 	},
 
 	/* PLUGN */
-	[LDMSD_PLUGN_START_REQ] = {
-		LDMSD_PLUGN_START_REQ, plugn_start_handler, XUG
-	},
-	[LDMSD_PLUGN_STOP_REQ] = {
-		LDMSD_PLUGN_STOP_REQ, plugn_stop_handler, XUG
-	},
 	[LDMSD_PLUGN_STATUS_REQ] = {
 		LDMSD_PLUGN_STATUS_REQ, plugn_status_handler,
 		XALL | LDMSD_PERM_FAILOVER_ALLOWED
@@ -475,6 +473,23 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_STREAM_SUBSCRIBE_REQ] = {
 		LDMSD_STREAM_SUBSCRIBE_REQ, stream_subscribe_handler, XUG
+	},
+
+	/* SMPLR */
+	[LDMSD_SMPLR_ADD_REQ] = {
+		LDMSD_SMPLR_ADD_REQ, smplr_add_handler, XUG
+	},
+	[LDMSD_SMPLR_DEL_REQ] = {
+		LDMSD_SMPLR_DEL_REQ, smplr_del_handler, XUG
+	},
+	[LDMSD_SMPLR_START_REQ] = {
+		LDMSD_SMPLR_START_REQ, smplr_start_handler, XUG
+	},
+	[LDMSD_SMPLR_STOP_REQ] = {
+		LDMSD_SMPLR_STOP_REQ, smplr_stop_handler, XUG
+	},
+	[LDMSD_SMPLR_STATUS_REQ] = {
+		LDMSD_SMPLR_STATUS_REQ, smplr_status_handler, XUG
 	},
 };
 
@@ -2098,6 +2113,163 @@ send_reply:
 	return 0;
 }
 
+static int smplr_add_handler(ldmsd_req_ctxt_t reqc)
+{
+	char errstr[80];
+	char *attr_name, *name, *value, *plugin, *inst, *prod;
+	name = plugin = NULL;
+	size_t cnt = 0;
+	uid_t uid;
+	gid_t gid;
+	int perm;
+	char *perm_s = NULL;
+	uint64_t component_id;
+	int rc;
+
+	reqc->errcode = 0;
+
+	attr_name = "name";
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name)
+		goto einval;
+
+	attr_name = "plugin";
+	plugin = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PLUGIN);
+	if (!plugin)
+		goto einval;
+
+	attr_name = "instance";
+	inst = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
+	if (!inst)
+		goto einval;
+
+	attr_name = "producer";
+	prod = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PRODUCER);
+	if (!prod)
+		goto einval;
+
+	attr_name = "component_id";
+	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_COMP_ID);
+	if (!value)
+		goto einval;
+	component_id = strtoul(value, NULL, 0);
+
+	struct ldmsd_plugin_cfg *sampler = ldmsd_get_plugin(plugin);
+	if (!sampler) {
+		rc = ldmsd_load_plugin(plugin, errstr, sizeof(errstr));
+		if (rc) {
+			reqc->errcode = rc;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "%s\n");
+			goto send_reply;
+		}
+	}
+	if (sampler->plugin->type != LDMSD_PLUGIN_SAMPLER) {
+		reqc->errcode = ENOENT;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The plugin %s is not a sampler.\n", plugin);
+		goto send_reply;
+	}
+
+	struct ldmsd_sec_ctxt sctxt;
+	if (reqc->xprt->xprt) {
+		ldms_xprt_cred_get(reqc->xprt->xprt, NULL, &sctxt.crd);
+	} else {
+		ldmsd_sec_ctxt_get(&sctxt);
+	}
+	uid = sctxt.crd.uid;
+	gid = sctxt.crd.gid;
+
+	perm = 0770;
+	perm_s = ldmsd_req_attr_str_value_get_by_name(reqc, "perm");
+	if (perm_s)
+		perm = strtol(perm_s, NULL, 0);
+
+	ldmsd_smplr_t smplr = ldmsd_smplr_new_with_auth(name, sampler,
+							component_id,
+							prod, inst,
+							uid, gid, perm);
+	if (!smplr) {
+		if (errno == EEXIST)
+			goto eexist;
+		else
+			goto enomem;
+	}
+	goto send_reply;
+
+enomem:
+	reqc->errcode = ENOMEM;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Memory allocation failure.");
+	goto send_reply;
+eexist:
+	reqc->errcode = EEXIST;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The smplr %s already exists.", name);
+	goto send_reply;
+einval:
+	reqc->errcode = EINVAL;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"The '%s' attribute is required by smplr_add.",
+		       	attr_name);
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (name)
+		free(name);
+	if (plugin)
+		free(plugin);
+	if (perm_s)
+		free(perm_s);
+	return 0;
+}
+
+static int smplr_del_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *name = NULL;
+	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+
+	reqc->errcode = 0;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		reqc->errcode= EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The attribute 'name' is required"
+				"by strgp_del.");
+		goto send_reply;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	reqc->errcode = ldmsd_smplr_del(name, &sctxt);
+	switch (reqc->errcode) {
+	case 0:
+		break;
+	case ENOENT:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The sampler policy specified does not exist.");
+		break;
+	case EBUSY:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The sampler policy is in use.");
+		break;
+	case EACCES:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Permission denied.");
+		break;
+	default:
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Error %d %s", reqc->errcode,
+			       ovis_errno_abbvr(reqc->errcode));
+	}
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (name)
+		free(name);
+	return 0;
+}
+
 static int strgp_prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *regex_str, *attr_name;
@@ -3633,36 +3805,37 @@ out:
 	return rc;
 }
 
-static char *state_str[] = {
+static char *type_str[] = {
 	[LDMSD_PLUGIN_OTHER] = "other",
 	[LDMSD_PLUGIN_SAMPLER] = "sampler",
 	[LDMSD_PLUGIN_STORE] = "store",
 };
 
-static char *plugn_state_str(enum ldmsd_plugin_type type)
+static char *plugn_type_str(enum ldmsd_plugin_type type)
 {
 	if (type <= LDMSD_PLUGIN_STORE)
-		return state_str[type];
+		return type_str[type];
 	return "unknown";
 }
 
-extern int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset);
-extern int ldmsd_stop_sampler(char *plugin);
+extern int ldmsd_start_smplr(char *plugin_name, char *interval, char *offset);
+extern int ldmsd_stop_smplr(char *plugin);
 extern int ldmsd_load_plugin(char *plugin_name, char *errstr, size_t errlen);
 extern int ldmsd_term_plugin(char *plugin_name);
 extern int ldmsd_config_plugin(char *plugin_name,
 			struct attr_value_list *_av_list,
 			struct attr_value_list *_kw_list);
 
-static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
+static int smplr_start_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *plugin_name, *interval_us, *offset, *attr_name;
-	plugin_name = interval_us = offset = NULL;
+	char *smplr_name, *interval_us, *offset, *attr_name;
 	size_t cnt = 0;
 
+	smplr_name = interval_us = offset = NULL;
+
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!plugin_name)
+	smplr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!smplr_name)
 		goto einval;
 	attr_name = "interval";
 	interval_us = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
@@ -3671,7 +3844,7 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 
 	offset = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
 
-	reqc->errcode = ldmsd_start_sampler(plugin_name, interval_us, offset);
+	reqc->errcode = ldmsd_start_smplr(smplr_name, interval_us, offset);
 	if (reqc->errcode == 0) {
 		goto send_reply;
 	} else if (reqc->errcode == EINVAL) {
@@ -3683,10 +3856,10 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 				"The specified plugin is not a sampler.");
 	} else if (reqc->errcode == ENOENT) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Sampler '%s' not found.", plugin_name);
+				"Sampler '%s' not found.", smplr_name);
 	} else if (reqc->errcode == EBUSY) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Sampler '%s' is already running.", plugin_name);
+				"Sampler '%s' is already running.", smplr_name);
 	} else if (reqc->errcode == EDOM) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -3695,7 +3868,7 @@ static int plugn_start_handler(ldmsd_req_ctxt_t reqc)
 	} else {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Failed to start the sampler '%s'.", plugin_name);
+				"Failed to start the sampler '%s'.", smplr_name);
 	}
 	goto send_reply;
 
@@ -3705,8 +3878,8 @@ einval:
 			"The attribute '%s' is required by start.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (plugin_name)
-		free(plugin_name);
+	if (smplr_name)
+		free(smplr_name);
 	if (interval_us)
 		free(interval_us);
 	if (offset)
@@ -3714,35 +3887,35 @@ send_reply:
 	return 0;
 }
 
-static int plugn_stop_handler(ldmsd_req_ctxt_t reqc)
+static int smplr_stop_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *plugin_name, *attr_name;
-	plugin_name = NULL;
+	char *smplr_name = NULL;
+	char *attr_name;
 	size_t cnt = 0;
 
 	attr_name = "name";
-	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!plugin_name)
+	smplr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!smplr_name)
 		goto einval;
 
-	reqc->errcode = ldmsd_stop_sampler(plugin_name);
+	reqc->errcode = ldmsd_stop_smplr(smplr_name);
 	if (reqc->errcode == 0) {
 		goto send_reply;
 	} else if (reqc->errcode == ENOENT) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Sampler '%s' not found.", plugin_name);
+				"Sampler '%s' not found.", smplr_name);
 	} else if (reqc->errcode == EINVAL) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The plugin '%s' is not a sampler.",
-				plugin_name);
+				smplr_name);
 	} else if (reqc->errcode == -EBUSY) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The sampler '%s' is not running.", plugin_name);
+				"The sampler '%s' is not running.", smplr_name);
 	} else {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Failed to stop sampler '%s'", plugin_name);
+				"Failed to stop sampler '%s'", smplr_name);
 	}
 	goto send_reply;
 
@@ -3752,9 +3925,102 @@ einval:
 	reqc->errcode = EINVAL;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (plugin_name)
-		free(plugin_name);
+	if (smplr_name)
+		free(smplr_name);
 	return 0;
+}
+
+/* smplr_status */
+
+int __smplr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_smplr_t smplr)
+{
+	extern const char *smplr_state_str(enum ldmsd_smplr_state state);
+	int rc;
+
+	ldmsd_smplr_lock(smplr);
+	rc = linebuf_printf(reqc,
+		       "{ \"name\":\"%s\","
+		       "\"plugin\":\"%s\","
+		       "\"producer\":\"%s\","
+		       "\"instance\":\"%s\","
+		       "\"component_id\":\"%ld\","
+		       "\"interval_us\":\"%ld\","
+		       "\"offset_us\":\"%ld\","
+		       "\"synchronous\":\"%d\","
+		       "\"state\":\"%s\","
+		       "\"sets\": [ \"%s\" ] }",
+		       smplr->obj.name,
+		       smplr->plugin->name,
+		       smplr->producer,
+		       smplr->instance,
+		       smplr->component_id,
+		       smplr->interval_us,
+		       smplr->offset_us,
+		       smplr->synchronous,
+		       smplr_state_str(smplr->state),
+		       smplr->instance
+		       );
+	ldmsd_smplr_unlock(smplr);
+	return rc;
+}
+
+static int smplr_status_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	size_t cnt = 0;
+	ldmsd_smplr_t smplr = NULL;
+	char *name;
+	int count;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (name) {
+		smplr = ldmsd_smplr_find(name);
+		if (!smplr) {
+			/* Do not report any status */
+			cnt = snprintf(reqc->line_buf, reqc->line_len,
+					"smplr '%s' doesn't exist.", name);
+			reqc->errcode = ENOENT;
+			ldmsd_send_req_response(reqc, reqc->line_buf);
+			return 0;
+		}
+	}
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_SMPLR);
+	/* Determine the attribute value length */
+	rc = linebuf_printf(reqc, "[");
+	if (rc)
+		goto out;
+	if (smplr) {
+		rc = __smplr_status_json_obj(reqc, smplr);
+		if (rc)
+			goto out;
+	} else {
+		count = 0;
+		for (smplr = ldmsd_smplr_first(); smplr;
+		     smplr = ldmsd_smplr_next(smplr)) {
+			if (count) {
+				rc = linebuf_printf(reqc, ",\n");
+				if (rc)
+					goto out;
+			}
+			rc = __smplr_status_json_obj(reqc, smplr);
+			if (rc)
+				goto out;
+			count++;
+		}
+	}
+	rc = linebuf_printf(reqc, "]");
+	if (rc)
+		goto out;
+
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+
+	if (name)
+		free(name);
+ out:
+	if (smplr)
+		ldmsd_smplr_put(smplr);
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SMPLR);
+	return rc;
 }
 
 int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
@@ -3779,12 +4045,9 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 		count++;
 		rc = linebuf_printf(reqc,
 			       "{\"name\":\"%s\",\"type\":\"%s\","
-			       "\"sample_interval_us\":%ld,"
-			       "\"sample_offset_us\":%ld,"
 			       "\"libpath\":\"%s\"}",
 			       p->plugin->name,
-			       plugn_state_str(p->plugin->type),
-			       p->sample_interval_us, p->sample_offset_us,
+			       plugn_type_str(p->plugin->type),
 			       p->libpath);
 		if (rc)
 			return rc;
@@ -4492,7 +4755,7 @@ out:
 	return rc;
 }
 
-extern int ldmsd_oneshot_sample(const char *name, const char *time_s,
+extern int ldmsd_oneshot_smplr(const char *name, const char *time_s,
 					char *errstr, size_t errlen);
 static int oneshot_handler(ldmsd_req_ctxt_t reqc)
 {
@@ -4512,7 +4775,7 @@ static int oneshot_handler(ldmsd_req_ctxt_t reqc)
 		goto einval;
 	}
 
-	reqc->errcode = ldmsd_oneshot_sample(name, time_s,
+	reqc->errcode = ldmsd_oneshot_smplr(name, time_s,
 				reqc->line_buf, reqc->line_len);
 	if (reqc->errcode) {
 		cnt = strlen(reqc->line_buf) + 1;
@@ -4829,7 +5092,7 @@ size_t __set_route_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
 					ldms_set_instance_name_get(info->set),
 					ldms_set_schema_name_get(info->set));
 	}
-	if (info->origin_type == LDMSD_SET_ORIGIN_SAMP_PI) {
+	if (info->origin_type == LDMSD_SET_ORIGIN_SMPLR) {
 		if (!is_internal) {
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
 						"{"

@@ -86,9 +86,13 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'include': {'req_attr': ['path'] },
                       'env': {'req_attr': []},
                       'logrotate': {'req_attr': [], 'opt_attr': []},
-                      ###############################
-                      # LDMSD command version 3
-                      ###############################
+                      ##### Sampler Policy #####
+                      'smplr_add': {'req_attr': ['name', 'plugin', 'producer', 'instance']},
+                      'smplr_del': {'req_attr': ['name']},
+                      'smplr_start': {'req_attr': ['name', 'interval'],
+                                      'opt_attr': ['offset'] },
+                      'smplr_stop': {'req_attr': ['name']},
+                      'smplr_status': {'opt_attr': ['name']},
                       ##### Producer Policy #####
                       'prdcr_add': {'req_attr': ['name', 'type', 'xprt', 'host',
                                              'port', 'interval']},

@@ -749,13 +749,11 @@ class LdmsdCmdParser(cmd.Cmd):
         resp = self.handle('plugn_status', None)
         if resp:
             plugins = json.loads(resp['msg'])
-            print("Name         Type         Interval     Offset       Libpath")
-            print("------------ ------------ ------------ ------------ ------------")
+            print("Name             Type         Libpath")
+            print("---------------- ------------ ------------")
             for plugn in plugins:
-                print("{0:12} {1:12} {2:12} {3:12} {4:12}".format(
-                    plugn['name'], plugn['type'],
-                    plugn['sample_interval_us'], plugn['sample_offset_us'],
-                    plugn['libpath']))
+                print("{0:16} {1:12} {2}".format(
+                    plugn['name'], plugn['type'], plugn['libpath']))
 
     def do_plugn_sets(self, arg):
         """
@@ -830,9 +828,33 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_config(self, text, line, begidx, endidx):
         return self.__complete_attr_list('config', text)
 
-    def do_start(self, arg):
+    def do_smplr_add(self, arg):
         """
-        Start a sampler plugin
+        Add an LDMS Sampler
+        Parameters:
+        name=         A unique name for this Sampler
+        producer=     The producer name (e.g. the host name)
+        instance=     The unique instance name for the set (e.g. ${HOSTNAME}/myset)
+        """
+        self.handle('smplr_add', arg)
+
+    def complete_smplr_add(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('smplr_add', text)
+
+    def do_smplr_del(self, arg):
+        """
+        Delete an LDMS Sampler. The sampler cannot be running.
+        Parameters:
+        name=    The sampler name
+        """
+        self.handle('prdcr_del', arg)
+
+    def complete_smplr_del(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('smplr_del', text)
+
+    def do_smplr_start(self, arg):
+        """
+        Start a sampler
         Parameters:
         name=     The plugin name
         interval= The sample interval in microseconds
@@ -842,21 +864,49 @@ class LdmsdCmdParser(cmd.Cmd):
                   collection will be synchronous; if the offset is not specified,
                   collection will be asynchronous.
         """
-        self.handle('start', arg)
+        self.handle('smplr_start', arg)
 
     def complete_start(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('start', text)
+        return self.__complete_attr_list('smplr_start', text)
 
-    def do_stop(self, arg):
+    def do_smplr_stop(self, arg):
         """
-        Stop a sampler plugin
+        Stop a sampler
         Parameters:
-        name=     The plugin name
+        name=     The smplr name
         """
-        self.handle('stop', arg)
+        self.handle('smplr_stop', arg)
 
-    def complete_stop(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('stop', text)
+    def complete_smplr_stop(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('smplr_stop', text)
+
+    def do_smplr_status(self, arg):
+        """
+        Show the status for a sampler
+        Parameters:
+        name=     The smplr name
+        """
+        resp = self.handle('smplr_status', arg)
+        if resp['errcode'] != 0:
+            print("Request returned error {0}".format(resp['errcode']))
+            return
+        samplers = json.loads(resp['msg'])
+        print("Name             Plugin           Component  Interval   Offset     Sync State    Producer       Instance    ")
+        print("---------------- ---------------- ---------- ---------- ---------- ---- -------- -------------- --------------")
+        for smplr in samplers:
+            print("{0:16} {1:16} {2:>10} {3:>10} {4:>10} {5:>4} {6:8} {7:14} {8}".\
+                  format(smplr['name'],
+                         smplr['plugin'],
+                         smplr['component_id'],
+                         smplr['interval_us'],
+                         smplr['offset_us'],
+                         smplr['synchronous'],
+                         smplr['state'],
+                         smplr['producer'],
+                         smplr['instance']))
+
+    def complete_smplr_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('smplr_status', text)
 
     def do_udata(self, arg):
         """

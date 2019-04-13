@@ -777,24 +777,6 @@ int ldmsd_set_register(ldms_set_t set, const char *plugin_name)
 	LIST_INSERT_HEAD(&list->list, s, entry);
 	ldmsd_set_tree_unlock();
 
-	pi = ldmsd_get_plugin((char *)plugin_name);
-	if (!pi) {
-		ldmsd_set_deregister(s->inst_name, plugin_name);
-		return EINVAL;
-	}
-	if (pi->plugin->type == LDMSD_PLUGIN_SAMPLER) {
-		if (pi->sample_interval_us) {
-			/* Add the update hint to the set_info */
-			rc = ldmsd_set_update_hint_set(s->set,
-					pi->sample_interval_us, pi->sample_offset_us);
-			if (rc) {
-				/* Leave the ldmsd plugin set in the tree, so return 0. */
-				ldmsd_log(LDMSD_LERROR, "Error %d: Failed to add "
-						"the update hint to set '%s'\n",
-						rc, s->inst_name);
-			}
-		}
-	}
 	return 0;
 free_inst_name:
 	free(s->inst_name);
@@ -1073,9 +1055,11 @@ void ldmsd_ev_init(void)
 	updtr_start_type = ev_type_new("updtr:start", sizeof(struct start_data));
 	prdcr_start_type = ev_type_new("prdcr:start", sizeof(struct start_data));
 	strgp_start_type = ev_type_new("strgp:start", sizeof(struct start_data));
+	smplr_start_type = ev_type_new("smplr:start", sizeof(struct start_data));
 	updtr_stop_type = ev_type_new("updtr:stop", sizeof(struct stop_data));
 	prdcr_stop_type = ev_type_new("prdcr:stop", sizeof(struct stop_data));
-	strgp_stop_type = ev_type_new("strgp:stop", sizeof(struct start_data));
+	strgp_stop_type = ev_type_new("strgp:stop", sizeof(struct stop_data));
+	smplr_stop_type = ev_type_new("smplr:stop", sizeof(struct stop_data));
 
 	producer = ev_worker_new("producer", default_actor);
 	updater = ev_worker_new("updater", default_actor);

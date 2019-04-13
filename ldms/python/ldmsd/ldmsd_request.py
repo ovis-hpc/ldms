@@ -101,9 +101,11 @@ class LDMSD_Req_Attr(object):
     UID = 32
     GID = 33
     STREAM = 34
-    LAST = 35
+    COMP_ID = 35
+    LAST = 36
 
     NAME_ID_MAP = {'name': NAME,
+                   'component_id':COMP_ID,
                    'interval': INTERVAL,
                    'interval_us': INTERVAL,
                    'offset': OFFSET,
@@ -264,6 +266,7 @@ class LDMSD_Request(object):
     SMPLR_DEL = 0X400 + 1
     SMPLR_START = 0X400 + 2
     SMPLR_STOP = 0X400 + 3
+    SMPLR_STATUS = 0X400 + 4
 
     PLUGN_ADD = 0X500
     PLUGN_DEL = 0X500 + 1
@@ -309,6 +312,12 @@ class LDMSD_Request(object):
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
             'greeting': {'id': GREETING},
+
+            'smplr_add': {'id': SMPLR_ADD},
+            'smplr_del': {'id': SMPLR_DEL},
+            'smplr_start': {'id': SMPLR_START},
+            'smplr_stop': {'id': SMPLR_STOP},
+            'smplr_status': {'id': SMPLR_STATUS},
 
             'prdcr_add': {'id': PRDCR_ADD},
             'prdcr_del': {'id': PRDCR_DEL},

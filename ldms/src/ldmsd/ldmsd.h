@@ -146,6 +146,7 @@ typedef enum ldmsd_cfgobj_type {
 	LDMSD_CFGOBJ_PRDCR = 1,
 	LDMSD_CFGOBJ_UPDTR,
 	LDMSD_CFGOBJ_STRGP,
+	LDMSD_CFGOBJ_SMPLR,
 } ldmsd_cfgobj_type_t;
 
 struct ldmsd_cfgobj;
@@ -181,6 +182,29 @@ typedef struct ldmsd_cfgobj {
 	gid_t gid;
 	int perm;
 } *ldmsd_cfgobj_t;
+
+typedef struct ldmsd_smplr {
+	struct ldmsd_cfgobj obj;
+
+	enum ldmsd_smplr_state {
+		LDMSD_SMPLR_STATE_STOPPED,
+		LDMSD_SMPLR_STATE_RUNNING,
+	} state;
+
+	struct ldmsd_plugin_cfg *plugin;
+
+	ev_t start_ev;
+	ev_t stop_ev;
+	ev_t sample_ev;
+
+	char *producer;
+	char *instance;
+	uint64_t component_id;
+	long interval_us;
+	long offset_us;
+	int synchronous;
+
+} *ldmsd_smplr_t;
 
 typedef struct ldmsd_prdcr_stream_s {
 	const char *name;
@@ -303,7 +327,6 @@ typedef struct ldmsd_prdcr_set {
 	double updt_duration;
 #endif /* LDMSD_UPDATE_TIME */
 
-	int ref_count;
 	struct ref_s ref;
 } *ldmsd_prdcr_set_t;
 
@@ -457,7 +480,7 @@ typedef struct ldmsd_set_info {
 	ldms_set_t set;
 	char *origin_name;
 	enum ldmsd_set_origin_type {
-		LDMSD_SET_ORIGIN_SAMP_PI = 1,
+		LDMSD_SET_ORIGIN_SMPLR = 1,
 		LDMSD_SET_ORIGIN_PRDCR,
 	} origin_type; /* who is responsible of the set. */
 	unsigned long interval_us; /* sampling interval or update interval */
@@ -466,7 +489,7 @@ typedef struct ldmsd_set_info {
 	struct timeval start; /* Latest sampling/update timestamp */
 	struct timeval end; /* latest sampling/update timestamp */
 	union {
-		struct ldmsd_plugin_cfg *pi;
+		ldmsd_smplr_t smplr;
 		ldmsd_prdcr_set_t prd_set;
 	};
 } *ldmsd_set_info_t;
@@ -520,18 +543,13 @@ struct ldmsd_plugin_cfg {
 	void *handle;
 	char *name;
 	char *libpath;
-	unsigned long sample_interval_us;
-	long sample_offset_us;
-	int synchronous;
 	int ref_count;
 	union {
 		struct ldmsd_plugin *plugin;
 		struct ldmsd_sampler *sampler;
 		struct ldmsd_store *store;
 	};
-	struct timeval timeout;
 	pthread_mutex_t lock;
-	ev_t sample_ev;
 	LIST_ENTRY(ldmsd_plugin_cfg) entry;
 };
 LIST_HEAD(plugin_list, ldmsd_plugin_cfg);
@@ -844,6 +862,42 @@ int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt
 	for ((obj) = ldmsd_cfgobj_first(type); (obj);  \
 			(obj) = ldmsd_cfgobj_next(obj))
 
+/** Sampler configuration object management */
+ldmsd_smplr_t
+ldmsd_smplr_new_with_auth(const char *name,
+			  struct ldmsd_plugin_cfg *plugin,
+			  uint64_t component_id,
+			  const char *producer, const char *instance,
+			  uid_t uid, gid_t gid, int perm);
+int ldmsd_smplr_del(const char *smplr_name, ldmsd_sec_ctxt_t ctxt);
+static inline void ldmsd_smplr_lock(ldmsd_smplr_t smplr) {
+	ldmsd_cfgobj_lock(&smplr->obj);
+}
+static inline void ldmsd_smplr_unlock(ldmsd_smplr_t smplr) {
+	ldmsd_cfgobj_unlock(&smplr->obj);
+}
+static inline ldmsd_smplr_t ldmsd_smplr_find(const char *name)
+{
+	return (ldmsd_smplr_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_SMPLR);
+}
+static inline ldmsd_smplr_t ldmsd_smplr_first()
+{
+	return (ldmsd_smplr_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_SMPLR);
+}
+
+static inline ldmsd_smplr_t ldmsd_smplr_next(ldmsd_smplr_t smplr)
+{
+	return (ldmsd_smplr_t)ldmsd_cfgobj_next(&smplr->obj);
+}
+static inline void ldmsd_smplr_put(ldmsd_smplr_t smplr) {
+	ldmsd_cfgobj_put(&smplr->obj);
+}
+int ldmsd_smplr_start(const char *name,
+		      uint32_t interval_us, uint32_t offset_us,
+		      ldmsd_sec_ctxt_t ctxt);
+int ldmsd_smplr_stop(const char *name, ldmsd_sec_ctxt_t ctxt);
+
+
 /** Producer configuration object management */
 int ldmsd_prdcr_str2type(const char *type);
 const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type);
@@ -858,8 +912,16 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us, uid_t uid, gid_t gid, int perm);
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt);
-ldmsd_prdcr_t ldmsd_prdcr_first();
-ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr);
+static inline ldmsd_prdcr_t ldmsd_prdcr_first()
+{
+	return (ldmsd_prdcr_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_PRDCR);
+}
+
+static inline ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr)
+{
+	return (ldmsd_prdcr_t)ldmsd_cfgobj_next(&prdcr->obj);
+}
+
 ldmsd_prdcr_set_t ldmsd_prdcr_set_first(ldmsd_prdcr_t prdcr);
 ldmsd_prdcr_set_t ldmsd_prdcr_set_next(ldmsd_prdcr_set_t prv_set);
 ldmsd_prdcr_set_t ldmsd_prdcr_set_find(ldmsd_prdcr_t prdcr, const char *setname);
@@ -1198,7 +1260,7 @@ struct connect_data {
 };
 
 struct sample_data {
-	struct ldmsd_plugin_cfg *pi;
+	ldmsd_smplr_t smplr;
 	int reschedule;
 };
 
@@ -1219,9 +1281,11 @@ ev_type_t prdcr_reconnect_type;
 ev_type_t updtr_start_type;
 ev_type_t prdcr_start_type;
 ev_type_t strgp_start_type;
+ev_type_t smplr_start_type;
 ev_type_t updtr_stop_type;
 ev_type_t prdcr_stop_type;
 ev_type_t strgp_stop_type;
+ev_type_t smplr_stop_type;
 
 ev_worker_t producer;
 ev_worker_t updater;
@@ -1241,5 +1305,10 @@ int prdcr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
 int store_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
 int strgp_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
 int strgp_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int smplr_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int smplr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+
+#define ldmsd_prdcr_set_ref_get(_s_, _n_) _ref_get(&((_s_)->ref), (_n_), __func__, __LINE__)
+#define ldmsd_prdcr_set_ref_put(_s_, _n_) _ref_put(&((_s_)->ref), (_n_), __func__, __LINE__)
 
 #endif
