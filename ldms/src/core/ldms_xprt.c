@@ -311,13 +311,15 @@ static void _revoke_rbd(ldms_t x, ldms_set_t set)
 {
 	struct ldms_rbuf_desc *rbd;
 	struct ldms_rendezvous_msg msg;
+	struct ldms_set *s;
 
 	msg.hdr.xid = 0;
 	msg.hdr.cmd = htonl(LDMS_XPRT_RENDEZVOUS_REVOKE);
 	msg.hdr.len = htonl(sizeof(msg.hdr) + sizeof(msg.revoke));
 
 	pthread_mutex_lock(&x->lock);
-	pthread_mutex_lock(&set->set->lock);
+	s = set->set;
+	pthread_mutex_lock(&s->lock);
 
 	rbd = ldms_lookup_rbd(x, set->set);
 	if (rbd) {
@@ -330,7 +332,7 @@ static void _revoke_rbd(ldms_t x, ldms_set_t set)
 		__ldms_free_rbd(rbd);
 	}
 
-	pthread_mutex_unlock(&set->set->lock);
+	pthread_mutex_unlock(&s->lock);
 	pthread_mutex_unlock(&x->lock);
 }
 
@@ -403,10 +405,14 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 	struct ldms_rbuf_desc *rbd;
 	while ((rbn = rbt_min(&x->rbd_rbt))) {
 		rbd = RBN_RBD(rbn);
-		if (rbd->type == LDMS_RBD_LOCAL || rbd->type == LDMS_RBD_TARGET)
+		if (rbd->type == LDMS_RBD_LOCAL || rbd->type == LDMS_RBD_TARGET) {
+			struct ldms_set *s = rbd->set;
+			pthread_mutex_lock(&s->lock);
 			__ldms_free_rbd(rbd);
-		else
+			pthread_mutex_unlock(&s->lock);
+		} else {
 			__ldms_rbd_xprt_release(rbd);
+		}
 	}
 	if (x->auth)
 		ldms_auth_free(x->auth);
@@ -920,7 +926,9 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	free(msg);
 	return 0;
  err_1:
+	pthread_mutex_lock(&set->lock);
 	__ldms_free_rbd(rbd);
+	pthread_mutex_unlock(&set->lock);
  err_0:
 	pthread_mutex_unlock(&x->lock);
 	return rc;
@@ -1174,14 +1182,16 @@ out:
  */
 int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
+	int rc = EINVAL;
 	assert(x == s->xprt);
+	pthread_mutex_lock(&s->set->lock);
 	if (!s->lmap || !s->rmap)
-		return EINVAL;
+		goto out;
 
+	rc = EPERM;
 	if (LDMS_XPRT_AUTH_GUARD(x))
-		return EPERM;
+		goto out;
 
-	int rc;
 	struct ldms_set *set = s->set;
 	uint32_t meta_meta_gn = __le32_to_cpu(set->meta->meta_gn);
 	uint32_t data_meta_gn = __le32_to_cpu(set->data->meta_gn);
@@ -1210,6 +1220,8 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	}
 	if (rc)
 		zap_put_ep(x->zap_ep);
+ out:
+	pthread_mutex_unlock(&s->set->lock);
 	return rc;
 }
 
@@ -1955,25 +1967,32 @@ static void handle_rendezvous_revoke(zap_ep_t zep, zap_event_t ev,
 				     struct ldms_xprt *x,
 				     struct ldms_rendezvous_msg *lm)
 {
-	// There is no information in the message that allows me a)
-	// pass the event up to the cliet, or b) determine which rbd
-	// is being revoked.
 	struct ldms_rendezvous_revoke_param *revoke = &lm->revoke;
 	struct ldms_rbuf_desc *rbd;
 	struct rbn *rbn;
-#if 1
 	pthread_mutex_lock(&x->lock);
 	RBT_FOREACH(rbn, &x->rbd_rbt) {
 		rbd = RBN_RBD(rbn);
 		if (rbd->remote_set_id == revoke->set_id) {
 			x->log("%s: revoked rbd %p set_id %lx\n",
 			       __func__, rbd, revoke->set_id);
+#if 1
+			/* A producer set still refers to the this
+			 * RBD, so we can't destroy. The rmap is
+			 * unmapped and set to NULL so a subsequent
+			 * I/O request will fail without terring down
+			 * the connection.
+			 */
+			pthread_mutex_lock(&rbd->set->lock);
+			zap_unmap(zep, rbd->rmap);
+			rbd->rmap = NULL;
 			// __ldms_free_rbd(rbd);
+			pthread_mutex_unlock(&rbd->set->lock);
+#endif
 			break;
 		}
 	}
 	pthread_mutex_unlock(&x->lock);
-#endif
 	return;
 }
 
