@@ -18,6 +18,17 @@ static int type_cmp(void *a, const void *b)
 }
 static struct rbt worker_tree = RBT_INITIALIZER(type_cmp);
 
+/* Returns the time difference in seconds */
+double ev_time_diff(struct timespec *tsa, const struct timespec *tsb)
+{
+	double diff;
+	diff = tsa->tv_sec - tsb->tv_sec;
+	diff += (double)tsa->tv_sec / 1e9;
+	diff -= (double)tsb->tv_sec / 1e9;
+	return diff;
+
+}
+
 int ev_time_cmp(struct timespec *tsa, const struct timespec *tsb)
 {
 	if (tsa->tv_sec < tsb->tv_sec)
@@ -26,10 +37,42 @@ int ev_time_cmp(struct timespec *tsa, const struct timespec *tsb)
 		return 1;
 	if (tsa->tv_nsec < tsb->tv_nsec)
 		return -1;
-	if (tsa->tv_nsec < tsb->tv_nsec)
+	if (tsa->tv_nsec > tsb->tv_nsec)
 		return 1;
 	return 0;
 
+}
+
+/*
+ * Process all of the events in the worker's event list.
+ *
+ * Called with the worker lock held.
+ */
+static void process_immediate_events(ev_worker_t w)
+{
+	ev__t e;
+	ev_actor_t actor;
+ next:
+	if (TAILQ_EMPTY(&w->w_event_list))
+		return;
+
+	e = TAILQ_FIRST(&w->w_event_list);
+	TAILQ_REMOVE(&w->w_event_list, e, e_entry);
+	e->e_posted = 0;
+
+	if (w->w_state == EV_WORKER_FLUSHING)
+		e->e_status = EV_FLUSH;
+
+	pthread_mutex_unlock(&w->w_lock);
+	actor = NULL;
+	if (e->e_type->t_id < w->w_dispatch_len)
+		actor = w->w_dispatch[e->e_type->t_id];
+	if (!actor)
+		actor = w->w_actor;
+	actor(e->e_src, e->e_dst, e->e_status, &e->e_ev);
+	ev_put(&e->e_ev);
+	pthread_mutex_lock(&w->w_lock);
+	goto next;
 }
 
 /*
@@ -38,40 +81,42 @@ int ev_time_cmp(struct timespec *tsa, const struct timespec *tsb)
  *
  * Return the 1st event that has a timeout > now
  */
-static ev_ref_t process_worker_events(ev_worker_t w)
+static ev__t process_to_events(ev_worker_t w)
 {
-	ev_ref_t r;
+	ev__t e;
 	struct rbn *rbn;
 	struct timespec now;
 	ev_actor_t actor;
 	int rc = clock_gettime(CLOCK_REALTIME, &now);
-
  next:
-	r = NULL;
+	e = NULL;
 	rbn = rbt_min(&w->w_event_tree);
 	if (!rbn)
 		goto out;
 
-	r = container_of(rbn, struct ev_ref_s, r_to_rbn);
-	if (ev_time_cmp(&r->r_to, &now) > 0)
+	e = container_of(rbn, struct ev__s, e_to_rbn);
+	if (w->w_state == EV_WORKER_FLUSHING) {
+	e->e_status = EV_FLUSH;
+	} else {
+		if (ev_time_cmp(&e->e_to, &now) > 0)
 		goto out;
+	}
 
-	rbt_del(&w->w_event_tree, &r->r_to_rbn);
-	r->r_ev->e_posted = 0;
-	pthread_mutex_unlock(&w->w_event_tree_lock);
+	rbt_del(&w->w_event_tree, &e->e_to_rbn);
+	e->e_posted = 0;
+	pthread_mutex_unlock(&w->w_lock);
 	actor = NULL;
-	if (r->r_ev->e_type->t_id < w->w_dispatch_len)
-		actor = w->w_dispatch[r->r_ev->e_type->t_id];
+	if (e->e_type->t_id < w->w_dispatch_len)
+		actor = w->w_dispatch[e->e_type->t_id];
 	if (!actor)
 		actor = w->w_actor;
-	actor(r->r_src, r->r_dst, r->r_ev);
-	ev_put(r->r_ev);
-	free(r);
-	pthread_mutex_lock(&w->w_event_tree_lock);
+	actor(e->e_src, e->e_dst, e->e_status, &e->e_ev);
+	ev_put(&e->e_ev);
+	pthread_mutex_lock(&w->w_lock);
 	goto next;
 
  out:
-	return r;
+	return e;
 }
 
 void ev_sched_to(struct timespec *to, time_t secs, int nsecs)
@@ -84,42 +129,33 @@ void ev_sched_to(struct timespec *to, time_t secs, int nsecs)
 static void *worker_proc(void *arg)
 {
 	int res;
-	ev_ref_t r;
+	ev__t e;
 	ev_worker_t w = arg;
 	struct timespec wait;
 	w->w_state = EV_WORKER_RUNNING;
 	ev_sched_to(&wait, 0, 0);
 	res = sem_timedwait(&w->w_sem, &wait);
 	while (1) {
-		pthread_mutex_lock(&w->w_event_tree_lock);
-		r = process_worker_events(w);
-		if (r) {
-			wait = r->r_to;
+		pthread_mutex_lock(&w->w_lock);
+		process_immediate_events(w);
+		e = process_to_events(w);
+		if (e) {
+			wait = e->e_to;
 		} else {
 			ev_sched_to(&wait, 10, 0);
 		}
-		pthread_mutex_unlock(&w->w_event_tree_lock);
+		pthread_mutex_unlock(&w->w_lock);
 		res = sem_timedwait(&w->w_sem, &wait);
 	}
 	return NULL;
 }
 
-void ev_flush(ev_worker_t w, ev_actor_t actor)
+void ev_flush(ev_worker_t w)
 {
-	ev_ref_t r;
-	struct rbn *rbn;
-
-	pthread_mutex_lock(&w->w_event_tree_lock);
+	pthread_mutex_lock(&w->w_lock);
 	w->w_state = EV_WORKER_FLUSHING;
-	while (NULL != (rbn = rbt_min(&w->w_event_tree))) {
-		r = container_of(rbn, struct ev_ref_s, r_to_rbn);
-		rbt_del(&w->w_event_tree, &r->r_to_rbn);
-		actor(r->r_src, r->r_dst, r->r_ev);
-		ev_put(r->r_ev);
-		free(r);
-	}
-	w->w_state = EV_WORKER_STOPPED;
-	pthread_mutex_unlock(&w->w_event_tree_lock);
+	pthread_mutex_unlock(&w->w_lock);
+	sem_post(&w->w_sem);
 }
 
 ev_worker_t ev_worker_new(const char *name, ev_actor_t actor_fn)
@@ -140,8 +176,9 @@ ev_worker_t ev_worker_new(const char *name, ev_actor_t actor_fn)
 		goto err_2;
 
 	w->w_state = EV_WORKER_STOPPED;
-	pthread_mutex_init(&w->w_event_tree_lock, NULL);
+	pthread_mutex_init(&w->w_lock, NULL);
 	rbt_init(&w->w_event_tree, (int (*)(void *, const void*))ev_time_cmp);
+	TAILQ_INIT(&w->w_event_list);
 
 	pthread_mutex_lock(&worker_lock);
 	err = EEXIST;

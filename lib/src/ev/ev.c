@@ -67,7 +67,8 @@ ev_type_t ev_type_get(const char *name)
 
 ev_type_t ev_type(ev_t ev)
 {
-	return ev->e_type;
+	ev__t e = EV(ev);
+	return e->e_type;
 }
 
 uint32_t ev_type_id(ev_type_t t)
@@ -82,65 +83,118 @@ const char *ev_type_name(ev_type_t t)
 
 ev_t ev_new(ev_type_t evt)
 {
-	ev_t ev = malloc(sizeof(*ev) + evt->t_size);
-	if (!ev)
-		goto out;
-	ev->e_refcount = 1;
-	ev->e_type = evt;
-	ev->e_posted = 0;
- out:
-	return ev;
+	ev__t e = malloc(sizeof(*e) + evt->t_size);
+	if (!e)
+		return NULL;
+
+	e->e_refcount = 1;
+	e->e_type = evt;
+	e->e_posted = 0;
+
+	return (ev_t)&e->e_ev;
 }
 
 void ev_put(ev_t ev)
 {
-	assert(ev->e_refcount);
-	if (0 == __sync_sub_and_fetch(&ev->e_refcount, 1)) {
-		free(ev);
+	ev__t e = EV(ev);
+	assert(e->e_refcount);
+	if (0 == __sync_sub_and_fetch(&e->e_refcount, 1)) {
+		free(e);
 	}
 }
 
 ev_t ev_get(ev_t ev)
 {
-	assert(__sync_fetch_and_add(&ev->e_refcount, 1) > 0);
+	ev__t e = EV(ev);
+	assert(__sync_fetch_and_add(&e->e_refcount, 1) > 0);
 	return ev;
 }
 
 int ev_posted(ev_t ev)
 {
-	return ev->e_posted;
+	ev__t e = EV(ev);
+	return e->e_posted;
 }
 
 int ev_post(ev_worker_t src, ev_worker_t dst, ev_t ev, struct timespec *to)
 {
+	ev__t e = EV(ev);
 	int rc;
 	struct timespec now;
-	ev_ref_t r;
 
-	if (ev->e_posted) {
+	/* If multiple threads attempt to post the same event all but
+	 * one will receive EBUSY. If the event is already posted all
+	 * will receive EBUSY */
+	if (__sync_val_compare_and_swap(&e->e_posted, 0, 1))
 		return EBUSY;
+
+	e->e_status = EV_OK;
+
+	if (to) {
+		e->e_to = *to;
+	} else {
+		e->e_to.tv_sec = 0;
+		e->e_to.tv_nsec = 0;
 	}
 
-	r = malloc(sizeof *r);
-	if (to) {
-		r->r_to = *to;
-	} else {
-		r->r_to.tv_sec = 0;
-		r->r_to.tv_nsec = 0;
-	}
-	r->r_ev = ev_get(ev);
-	r->r_src = src;
-	r->r_dst = dst;
-	rbn_init(&r->r_to_rbn, &r->r_to);
-	pthread_mutex_lock(&dst->w_event_tree_lock);
-	rbt_ins(&dst->w_event_tree, &r->r_to_rbn);
-	r->r_ev->e_posted = 1;
-	pthread_mutex_unlock(&dst->w_event_tree_lock);
+	e->e_src = src;
+	e->e_dst = dst;
+	rbn_init(&e->e_to_rbn, &e->e_to);
+
+	pthread_mutex_lock(&dst->w_lock);
+	if (dst->w_state == EV_WORKER_FLUSHING)
+		goto err;
+	ev_get(&e->e_ev);
+	if (to)
+		rbt_ins(&dst->w_event_tree, &e->e_to_rbn);
+	else
+		TAILQ_INSERT_TAIL(&dst->w_event_list, e, e_entry);
+	pthread_mutex_unlock(&dst->w_lock);
 
 	rc = clock_gettime(CLOCK_REALTIME, &now);
-	if (ev_time_cmp(&r->r_to, &now) <= 0)
+	if (ev_time_cmp(&e->e_to, &now) <= 0)
 		sem_post(&dst->w_sem);
+
 	return 0;
+ err:
+	e->e_posted = 0;
+	pthread_mutex_unlock(&dst->w_lock);
+	return EBUSY;
+}
+
+int ev_cancel(ev_t ev)
+{
+	ev__t e = EV(ev);
+	int rc = EINVAL;
+	struct timespec now;
+	double diff;
+
+	pthread_mutex_lock(&e->e_dst->w_lock);
+	if (!e->e_posted)
+		goto out;
+
+	/*
+	 * Set the status to EV_CANCEL so the actor will see that
+	 * status
+	 */
+	e->e_status = EV_FLUSH;
+
+	/*
+	 * If the event is on the list or is soon to expire, do
+	 * nothing. This avoids racing with the worker.
+	 */
+	rc = 0;
+	(void)clock_gettime(CLOCK_REALTIME, &now);
+	if (ev_time_diff(&e->e_to, &now) < 1.0)
+		goto out;
+
+	rbt_del(&e->e_dst->w_event_tree, &e->e_to_rbn);
+	TAILQ_INSERT_TAIL(&e->e_dst->w_event_list, e, e_entry);
+ out:
+	pthread_mutex_unlock(&e->e_dst->w_lock);
+	if (!rc)
+		sem_post(&e->e_dst->w_sem);
+	return rc;
 }
 
 static void __attribute__ ((constructor)) ev_init(void)

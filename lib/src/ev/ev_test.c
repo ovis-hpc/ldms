@@ -14,13 +14,14 @@ struct data_s {
 
 pthread_mutex_t io_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static int timer_actor(ev_worker_t src, ev_worker_t dst, ev_t e)
+static int timer_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e)
 {
 	struct timespec to;
 	ev_sched_to(&to, 0, 0);
 
 	pthread_mutex_lock(&io_lock);
-	printf("%s: type=%s, id=%d\n", __func__, e->e_type->t_name, e->e_type->t_id);
+	printf("%s: type=%s, id=%d\n", __func__, ev_type_name(ev_type(e)), ev_type_id(ev_type(e)));
+	printf("    status  : %s\n", status ? "FLUSH" : "OK");
 	printf("    src     : %s\n", src->w_name);
 	printf("    dst     : %s\n", dst->w_name);
 	printf("    tv_sec  : %ld\n", to.tv_sec);
@@ -69,6 +70,10 @@ int main(int argc, char *argv[])
 	ev_sched_to(&to, 2, 0);
 	ev_post(timer, timer, to_ev, &to);
 
-	sleep(360);
+	sleep(30);
+	ev_flush(timer);
+	ev_flush(a);
+	ev_flush(b);
+	sleep(5);
 	return 0;
 }
