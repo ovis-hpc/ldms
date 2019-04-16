@@ -824,7 +824,8 @@ err0:
 }
 
 /**
- * Receiving a rendezvous (unshare) message.
+ * Receiving a rendezvous (unshare) message. Notify the application so
+ * that it can drop all references and unmap
  */
 static void process_sep_msg_unshare(struct z_sock_ep *sep,
 				    struct sock_msg_rendezvous *msg)
@@ -837,10 +838,8 @@ static void process_sep_msg_unshare(struct z_sock_ep *sep,
 
 	pthread_mutex_lock(&sep->ep.lock);
 	LIST_FOREACH(map, &sep->ep.map_list, link) {
-		if (((struct zap_sock_map *)map)->key == msg->rmap_key) {
-			LIST_REMOVE(map, link);
+		if (((struct zap_sock_map *)map)->key == msg->rmap_key)
 			break;
-		}
 	}
 	pthread_mutex_unlock(&sep->ep.lock);
 
@@ -853,7 +852,6 @@ static void process_sep_msg_unshare(struct z_sock_ep *sep,
 	};
 
 	sep->ep.cb((void*)sep, &ev);
-	zap_put_ep(&sep->ep);
 	return;
 }
 
