@@ -401,7 +401,7 @@ static void stop_sampler(ldmsd_smplr_t smplr)
 	EV_DATA(smplr->sample_ev, struct sample_data)->reschedule = 0;
 }
 
-int sample_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+int sample_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	ldmsd_smplr_t smplr = EV_DATA(ev, struct sample_data)->smplr;
 	ldmsd_smplr_lock(smplr);

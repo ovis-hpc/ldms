@@ -467,12 +467,12 @@ static void cancel_push(ldmsd_updtr_t updtr)
 	}
 }
 
-int prdcr_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+int prdcr_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	return 0;
 }
 
-int prdcr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+int prdcr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	return 0;
 }
@@ -503,7 +503,7 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 	ldmsd_updtr_unlock(updtr);
 }
 
-int prdcr_set_state_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+int prdcr_set_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	ldmsd_name_match_t match;
 	ldmsd_updtr_t updtr;
@@ -530,7 +530,7 @@ int prdcr_set_state_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
 	return 0;
 }
 
-int prdcr_set_update_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+int prdcr_set_update_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	ldmsd_updtr_t updtr = EV_DATA(ev, struct update_data)->updtr;
 	ldmsd_prdcr_set_t prd_set = EV_DATA(ev, struct update_data)->prd_set;
@@ -759,18 +759,10 @@ err:
 	return rc;
 }
 
-static int flush_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
-{
-	ldmsd_log(LDMSD_LDEBUG, "%s: cancelling updates to prd_set %s\n",
-		  __func__, EV_DATA(ev, struct update_data)->prd_set->inst_name);
-
-	EV_DATA(ev, struct update_data)->reschedule = 0;
-}
-
 /* Caller must hold the updater lock. */
 static void __updtr_tasks_stop(ldmsd_updtr_t updtr)
 {
-	ev_flush(updtr->worker, flush_actor);
+	ev_flush(updtr->worker);
 }
 
 int __ldmsd_updtr_stop(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt)

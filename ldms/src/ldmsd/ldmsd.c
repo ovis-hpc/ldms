@@ -1036,10 +1036,11 @@ int check_arg(char *c, char *optarg, enum ldms_opttype t)
 	return 0;
 }
 
-int default_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+int default_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	ldmsd_log(LDMSD_LINFO, "Unhandled Event: type=%s, id=%d\n",
 		  ev_type_name(ev_type(ev)), ev_type_id(ev_type(ev)));
+	ldmsd_log(LDMSD_LINFO, "    status  : %s\n", status ? "FLUSH" : "OK" );
 	ldmsd_log(LDMSD_LINFO, "    src     : %s\n", ev_worker_name(src));
 	ldmsd_log(LDMSD_LINFO, "    dst     : %s\n", ev_worker_name(dst));
 	return 0;

@@ -106,7 +106,7 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 			    strgp->metric_arry, strgp->metric_count);
 }
 
-int store_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+int store_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	ldmsd_strgp_t strgp = EV_DATA(ev, struct store_data)->strgp;
 	ldmsd_prdcr_set_t prd_set = EV_DATA(ev, struct store_data)->prd_set;

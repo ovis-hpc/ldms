@@ -1292,21 +1292,21 @@ ev_worker_t updater;
 ev_worker_t sampler;
 ev_worker_t storage;
 
-int default_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int sample_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int prdcr_set_update_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int prdcr_connect_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int prdcr_set_state_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int prdcr_reconnect_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int updtr_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int updtr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int prdcr_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int prdcr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int store_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int strgp_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int strgp_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int smplr_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
-int smplr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev);
+int default_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int sample_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int prdcr_set_update_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int prdcr_connect_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int prdcr_set_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int prdcr_reconnect_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int updtr_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int updtr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int prdcr_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int prdcr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int store_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int strgp_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int strgp_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int smplr_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int smplr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 
 #define ldmsd_prdcr_set_ref_get(_s_, _n_) _ref_get(&((_s_)->ref), (_n_), __func__, __LINE__)
 #define ldmsd_prdcr_set_ref_put(_s_, _n_) _ref_put(&((_s_)->ref), (_n_), __func__, __LINE__)

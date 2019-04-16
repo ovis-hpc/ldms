@@ -67,6 +67,7 @@
 
 void ref_dump(ref_t r)
 {
+#ifdef _REF_TRACK_
 	void ldmsd_lcritical(const char *fmt, ...);
 	ref_inst_t inst;
 	pthread_mutex_lock(&r->lock);
@@ -80,6 +81,7 @@ void ref_dump(ref_t r)
 	}
 	ldmsd_lcritical("%16s %8d\n", "Total", r->ref_count);
 	pthread_mutex_unlock(&r->lock);
+#endif
 }
 
 int prdcr_resolve(const char *hostname, unsigned short port_no,
@@ -575,7 +577,7 @@ const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type)
 		return NULL;
 }
 
-int prdcr_connect_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+int prdcr_connect_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	prdcr_connect(EV_DATA(ev, struct connect_data)->prdcr);
 	return 0;
@@ -707,7 +709,7 @@ out_0:
 /*
  * An updater has start. Send the updtr all of the prdcr sets.
  */
-int updtr_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+int updtr_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	ldmsd_prdcr_t prdcr;
 	ldmsd_prdcr_set_t prd_set;
@@ -728,7 +730,7 @@ int updtr_start_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
 	return 0;
 }
 
-int updtr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_t ev)
+int updtr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	return 0;
 }
