@@ -1,0 +1,18 @@
+snapshot_time:         1555444871.389552253 (secs.nsecs)
+read RPCs in flight:  0
+write RPCs in flight: 0
+pending write pages:  0
+pending read pages:   0
+
+			read			write
+pages per rpc         rpcs   % cum % |       rpcs   % cum %
+1:		         2 100 100   |          0   0   0
+
+			read			write
+rpcs in flight        rpcs   % cum % |       rpcs   % cum %
+0:		         0   0   0   |          0   0   0
+1:		         2 100 100   |          0   0   0
+
+			read			write
+offset                rpcs   % cum % |       rpcs   % cum %
+0:		         2 100 100   |          0   0   0

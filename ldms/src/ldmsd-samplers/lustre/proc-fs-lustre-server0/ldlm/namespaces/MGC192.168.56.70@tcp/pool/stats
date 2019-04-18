@@ -1,0 +1,8 @@
+snapshot_time             1555443631.100372378 secs.nsecs
+granted                   79757 samples [locks] 0 0 0 0
+grant_rate                79757 samples [locks/s] 0 0 0 0
+cancel_rate               79757 samples [locks/s] 0 0 0 0
+grant_plan                79757 samples [locks/s] 27570 27570 2198900490 60623686509300
+slv                       79757 samples [slv] 0 0 0 0
+recalc_freed              79757 samples [locks] 0 0 0 0
+recalc_timing             7976 samples [sec] 10 11 79761 797621

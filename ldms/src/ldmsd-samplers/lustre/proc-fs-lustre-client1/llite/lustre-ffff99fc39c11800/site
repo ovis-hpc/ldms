@@ -1,0 +1,4 @@
+4/4 4/524288 1 4 0 2 0 0 0
+        lookup     hit   total    busy  create
+pages:       0       0       0       0       0 [c: 0 o: 0 w: 0 r: 0 f: 0 ]
+ envs:       0       0       0       0       0

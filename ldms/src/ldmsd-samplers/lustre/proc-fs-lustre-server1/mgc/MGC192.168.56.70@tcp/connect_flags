@@ -1,0 +1,9 @@
+flags=0x2000011005002020
+flags2=0x0
+version
+barrier
+adaptive_timeouts
+mds_mds_connection
+full20
+imp_recov
+bulk_mbits

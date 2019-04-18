@@ -1,0 +1,3 @@
+imperative_recovery: ENABLED
+client_state:
+    - { client: lustre-client, nidtbl_version: 4 }

@@ -1,0 +1,40 @@
+import:
+    name: lustre-OST0000-osc-ffff99fc39c11800
+    target: lustre-OST0000_UUID
+    state: FULL
+    connect_flags: [ write_grant, server_lock, version, request_portal, truncate_lock, max_byte_per_rpc, early_lock_cancel, adaptive_timeouts, lru_resize, alt_checksum_algorithm, fid_is_enabled, version_recovery, full20, layout_lock, 64bithash, object_max_bytes, jobstats, einprogress, grant_param, lvb_type, lfsck, bulk_mbits ]
+    connect_data:
+       flags: 0x20405af0e3440478
+       instance: 1
+       target_version: 2.10.7.0
+       initial_grant: 8437760
+       max_brw_size: 4194304
+       grant_block_size: 4096
+       grant_inode_size: 32
+       grant_max_extent_size: 33554432
+       grant_extent_tax: 24576
+       cksum_types: 0x7
+       max_object_bytes: 17592186040320
+    import_flags: [ replayable, pingable, connect_tried ]
+    connection:
+       failover_nids: [ 192.168.56.70@tcp ]
+       current_connection: 192.168.56.70@tcp
+       connection_attempts: 1
+       generation: 1
+       in-progress_invalidations: 0
+    rpcs:
+       inflight: 0
+       unregistering: 0
+       timeouts: 0
+       avg_waittime: 927 usec
+    service_estimates:
+       services: 1 sec
+       network: 1 sec
+    transactions:
+       last_replay: 0
+       peer_committed: 0
+       last_checked: 0
+    read_data_averages:
+       bytes_per_rpc: 5
+       usec_per_rpc: 1089
+       MB_per_sec: 0.00

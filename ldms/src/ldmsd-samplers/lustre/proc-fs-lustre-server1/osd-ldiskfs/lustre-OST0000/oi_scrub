@@ -1,0 +1,26 @@
+name: OI_scrub
+magic: 0x4c5fd252
+oi_files: 64
+status: init
+flags:
+param:
+time_since_last_completed: N/A
+time_since_latest_start: N/A
+time_since_last_checkpoint: N/A
+latest_start_position: N/A
+last_checkpoint_position: N/A
+first_failure_position: N/A
+checked: 0
+updated: 0
+failed: 0
+prior_updated: 0
+noscrub: 0
+igif: 0
+success_count: 0
+run_time: 0 seconds
+average_speed: 0 objects/sec
+real-time_speed: N/A
+current_position: N/A
+lf_scanned: 0
+lf_repaired: 0
+lf_failed: 0

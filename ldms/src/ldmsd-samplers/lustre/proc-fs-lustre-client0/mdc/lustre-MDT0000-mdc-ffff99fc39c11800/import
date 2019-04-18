@@ -1,0 +1,32 @@
+import:
+    name: lustre-MDT0000-mdc-ffff99fc39c11800
+    target: lustre-MDT0000_UUID
+    state: FULL
+    connect_flags: [ version, acl, create_on_write, inode_bit_locks, getattr_by_fid, no_oh_for_devices, max_byte_per_rpc, early_lock_cancel, adaptive_timeouts, lru_resize, fid_is_enabled, version_recovery, pools, large_ea, full20, layout_lock, 64bithash, jobstats, umask, einprogress, lvb_type, flock_deadlock, disp_stripe, open_by_fid, lfsck, multi_mod_rpcs, dir_stripe, subtree, bulk_mbits, second_flags, file_secctx ]
+    connect_data:
+       flags: 0xae784e79c344d2a0
+       instance: 1
+       target_version: 2.10.7.0
+       max_brw_size: 1048576
+       ibits_known: 0x3f
+       max_easize: 4012
+       max_mod_rpcs: 8
+    import_flags: [ replayable, pingable, connect_tried ]
+    connection:
+       failover_nids: [ 192.168.56.70@tcp ]
+       current_connection: 192.168.56.70@tcp
+       connection_attempts: 1
+       generation: 1
+       in-progress_invalidations: 0
+    rpcs:
+       inflight: 0
+       unregistering: 0
+       timeouts: 0
+       avg_waittime: 911 usec
+    service_estimates:
+       services: 1 sec
+       network: 1 sec
+    transactions:
+       last_replay: 0
+       peer_committed: 4294967306
+       last_checked: 4294967306

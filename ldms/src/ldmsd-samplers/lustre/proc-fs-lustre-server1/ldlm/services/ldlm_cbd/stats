@@ -1,0 +1,8 @@
+snapshot_time             1555444794.664998330 secs.nsecs
+req_waittime              7 samples [usec] 14 396 546 160894
+req_qdepth                7 samples [reqs] 0 0 0 0
+req_active                7 samples [reqs] 1 1 7 7
+req_timeout               7 samples [sec] 1 10 16 106
+reqbuf_avail              17 samples [bufs] 0 1 16 16
+ldlm_bl_callback          6 samples [usec] 2 13 50 512
+ldlm_cp_callback          1 samples [usec] 14 14 14 196

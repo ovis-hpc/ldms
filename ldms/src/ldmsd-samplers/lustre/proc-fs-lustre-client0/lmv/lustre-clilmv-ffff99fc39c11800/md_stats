@@ -1,0 +1,7 @@
+snapshot_time             1555444870.290883766 secs.nsecs
+close                     2 samples [reqs]
+getattr                   1 samples [reqs]
+intent_lock               129 samples [reqs]
+read_page                 14 samples [reqs]
+getxattr                  3 samples [reqs]
+revalidate_lock           4 samples [reqs]

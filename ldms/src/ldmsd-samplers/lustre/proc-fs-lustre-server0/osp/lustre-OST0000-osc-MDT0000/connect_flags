@@ -1,0 +1,14 @@
+flags=0x2040401443000066
+flags2=0x0
+lov_index
+connect_from_mds
+version
+request_portal
+adaptive_timeouts
+lru_resize
+fid_is_enabled
+skip_orphan
+full20
+lvb_type
+lfsck
+bulk_mbits
