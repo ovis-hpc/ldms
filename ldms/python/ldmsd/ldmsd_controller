@@ -206,6 +206,8 @@ class LdmsdCmdParser(cmd.Cmd):
                     raise
                 if (verb == "config" and name != "name") or (verb == "env"):
                     attr_s.append(attr_str)
+                if (verb == "listen") and (name not in ["xprt", "port", "port", "auth"]):
+                        attr_s.append(attr_str)
                 else:
                     try:
                         attr = LDMSD_Req_Attr(value = value, attr_name = name)
@@ -1318,6 +1320,17 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_prdcr_hint_tree(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_hint_tree', text)
+
+    def do_listen(self, arg):
+        """Add a listening endpoint
+        Parameters:
+            xprt=     the transport name
+            [port=]   the port
+            [host=]   the hostname
+            [auth=]   the authentication plugin name
+            [...]     the authentication options, e.g., path=<path to file>
+        """
+        self.handle('listen', arg)
 
     def parseline(self, line):
         """Parse the line into a command name and a string containing

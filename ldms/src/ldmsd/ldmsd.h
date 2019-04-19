@@ -130,7 +130,6 @@ enum ldmsd_loglevel {
  */
 struct ldmsd_cmd_line_args {
 	char myhostname[80];
-	struct ldmsd_str_list xprt_list;
 	int banner;
 	/*
 	 * name to identify ldmsd
@@ -145,6 +144,7 @@ struct ldmsd_cmd_line_args {
 	char *log_path;
 	enum ldmsd_loglevel verbosity;
 
+	/* default authentication */
 	char *auth_name;
 	struct attr_value_list *auth_attrs;
 
@@ -207,6 +207,7 @@ typedef enum ldmsd_cfgobj_type {
 	LDMSD_CFGOBJ_UPDTR,
 	LDMSD_CFGOBJ_STRGP,
 	LDMSD_CFGOBJ_SMPLR,
+	LDMSD_CFGOBJ_LISTEN,
 } ldmsd_cfgobj_type_t;
 
 struct ldmsd_cfgobj;
@@ -267,6 +268,23 @@ typedef struct ldmsd_prdcr_stream_s {
 	const char *name;
 	LIST_ENTRY(ldmsd_prdcr_stream_s) entry;
 } *ldmsd_prdcr_stream_t;
+/*
+ * The maximum number of authentication options
+ */
+#define LDMSD_AUTH_OPT_MAX 128
+
+/**
+ * LDMSD object of the listener transport/port
+ */
+typedef struct ldmsd_listen {
+	struct ldmsd_cfgobj obj;
+	char *xprt;
+	unsigned short port_no;
+	char *host;
+	char *auth_name;
+	struct attr_value_list *auth_attrs;
+	ldms_t x;
+} *ldmsd_listen_t;
 
 /**
  * Producer: Named instance of an LDMSD
@@ -1053,7 +1071,7 @@ int ldmsd_set_update_hint_get(ldms_set_t set, long *interva_us, long *offset_us)
 int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t errsz);
 
 /* Listen for a connection request on an ldms xprt */
-extern ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str);
+extern int listen_on_ldms_xprt(ldmsd_listen_t listen);
 
 /* Receive a message from an ldms endpoint */
 void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len);
@@ -1066,11 +1084,25 @@ extern const char *ldmsd_myhostname_get();
 const char *ldmsd_myname_get();
 #pragma weak ldmsd_myname_get
 
-/* Get the auth name of this ldmsd */
-const char *ldmsd_auth_name_get();
+/*
+ * Get the auth name of this ldmsd
+ *
+ * If \c listen or \c listen->auth_name is NULL,
+ * the default authentication is returned.
+ *
+ * \see struct ldmsd_cmd_line_args
+ */
+const char *ldmsd_auth_name_get(ldmsd_listen_t listen);
 
-/* Get the attribute of the auth method */
-struct attr_value_list *ldmsd_auth_attr_get();
+/*
+ * Get the attribute of the auth method
+ *
+ * If \c listen or \c listen->auth_name is NULL,
+ * the default authentication is returned.
+ *
+ * \see struct ldmsd_cmd_line_args
+ */
+struct attr_value_list *ldmsd_auth_attr_get(ldmsd_listen_t listen);
 
 mode_t ldmsd_inband_cfg_mask_get();
 void ldmsd_inband_cfg_mask_set(mode_t mask);
@@ -1249,5 +1281,28 @@ int smplr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t 
  * \retval non-zero is returned on error. Otherwise, 0 is returned.
  */
 int ldmsd_process_cmd_line_arg(char opt, char *value);
+
+/**
+ * \brief Add an authentication attribute to the list \c auth_attrs
+ *
+ * \param auth_attrs   The authentication attribute list
+ * \param name         The attribute name
+ * \param value        The attribute value
+ */
+int ldmsd_auth_attr_add(struct attr_value_list *auth_attrs, char *name, char *val);
+
+/**
+ * \brief Create a listening endpoint
+ *
+ * \param xprt   transport name
+ * \param port   port
+ * \param host   hostname
+ * \param auth   authentication plugin name
+ * \param auth_args  authentication option list
+ *
+ * \return a listen cfgobj
+ */
+ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host,
+			char *auth, struct attr_value_list *auth_args);
 
 #endif

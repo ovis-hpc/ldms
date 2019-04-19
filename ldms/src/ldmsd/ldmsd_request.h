@@ -123,6 +123,9 @@ enum ldmsd_request {
 	/* command-line options */
 	LDMSD_CMD_LINE_SET_REQ,
 
+	/* command-line options */
+	LDMSD_LISTEN_REQ,
+
 	/* failover requests by user */
 	LDMSD_FAILOVER_CONFIG_REQ = 0x700, /* "failover_config" user command */
 	LDMSD_FAILOVER_PEERCFG_START_REQ, /* "failover_peercfg_start" user command */
@@ -196,6 +199,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_STREAM,
 	LDMSD_ATTR_COMP_ID,
 	LDMSD_ATTR_QUERY,
+	LDMSD_ATTR_AUTH,
 	LDMSD_ATTR_LAST,
 };
 

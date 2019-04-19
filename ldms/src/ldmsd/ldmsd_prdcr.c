@@ -499,8 +499,8 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 		prdcr->xprt = ldms_xprt_new_with_auth(prdcr->xprt_name, ldmsd_linfo,
-					ldmsd_auth_name_get(),
-					ldmsd_auth_attr_get());
+					ldmsd_auth_name_get(NULL),
+					ldmsd_auth_attr_get(NULL));
 		if (prdcr->xprt) {
 			ret  = ldms_xprt_connect(prdcr->xprt,
 						 (struct sockaddr *)&prdcr->ss,

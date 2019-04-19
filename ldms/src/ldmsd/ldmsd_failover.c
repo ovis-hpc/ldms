@@ -1041,8 +1041,8 @@ int __failover_active_connect(ldmsd_failover_t f)
 	__ASSERT(f->ax == NULL);
 	__ASSERT(f->conn_state == FAILOVER_CONN_STATE_DISCONNECTED);
 	f->ax = ldms_xprt_new_with_auth(f->xprt, ldmsd_linfo,
-					ldmsd_auth_name_get(),
-					ldmsd_auth_attr_get());
+					ldmsd_auth_name_get(NULL),
+					ldmsd_auth_attr_get(NULL));
 	if (!f->ax) {
 		rc = errno;
 		goto out;

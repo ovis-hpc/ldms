@@ -137,8 +137,6 @@ int find_least_busy_thread();
 int passive = 0;
 int quiet = 0; /* Is verbosity quiet? 0 for no and 1 for yes */
 
-const int AUTH_OPT_MAX = 128;
-
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
 	NULL
@@ -302,14 +300,20 @@ const char *ldmsd_myname_get()
 	return cmd_line_args.daemon_name;
 }
 
-const char *ldmsd_auth_name_get()
+const char *ldmsd_auth_name_get(ldmsd_listen_t listen)
 {
-	return cmd_line_args.auth_name;
+	if (listen && listen->auth_name)
+		return listen->auth_name;
+	else
+		return cmd_line_args.auth_name;
 }
 
-struct attr_value_list *ldmsd_auth_attr_get()
+struct attr_value_list *ldmsd_auth_attr_get(ldmsd_listen_t listen)
 {
-	return cmd_line_args.auth_attrs;
+	if (listen && listen->auth_name)
+		return listen->auth_attrs;
+	else
+		return cmd_line_args.auth_attrs;
 }
 
 mode_t ldmsd_inband_cfg_mask_get()
@@ -344,17 +348,23 @@ extern void ldmsd_strgp_close();
 void cleanup(int x, const char *reason)
 {
 	int llevel = LDMSD_LINFO;
+	ldmsd_listen_t listen, nxt_listen;
+
 	if (x)
 		llevel = LDMSD_LCRITICAL;
 	ldmsd_mm_status(LDMSD_LDEBUG,"mmap use at exit");
 	ldmsd_strgp_close();
 	ldmsd_log(llevel, "LDMSD_ LDMS Daemon exiting...status %d, %s\n", x,
 		       (reason && x) ? reason : "");
-	if (ldms) {
-		/* No need to close the xprt. It has never been connected. */
-		ldms_xprt_put(ldms);
-		ldms = NULL;
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_LISTEN);
+	listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+	while (listen) {
+		nxt_listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj);
+		ldmsd_cfgobj_put(&listen->obj);
+		listen = nxt_listen;
 	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_LISTEN);
 
 	if (!cmd_line_args.foreground && cmd_line_args.pidfile) {
 		unlink(cmd_line_args.pidfile);
@@ -934,12 +944,12 @@ void ldmsd_thread_count_set(char *str)
 	cmd_line_args.ev_thread_count = cnt;
 }
 
-int ldmsd_auth_attr_add(char *name, char *val)
+int ldmsd_auth_attr_add(struct attr_value_list *auth_attrs, char *name, char *val)
 {
 	struct attr_value *attr;
-	attr = &(cmd_line_args.auth_attrs->list[cmd_line_args.auth_attrs->count]);
-	if (cmd_line_args.auth_attrs->count == cmd_line_args.auth_attrs->size) {
-		printf("ERROR: Too many auth options\n");
+	attr = &(auth_attrs->list[auth_attrs->count]);
+	if (auth_attrs->count == auth_attrs->size) {
+		ldmsd_log(LDMSD_LERROR, "Too many auth options\n");
 		return EINVAL;
 	}
 	attr->name = strdup(name);
@@ -948,34 +958,76 @@ int ldmsd_auth_attr_add(char *name, char *val)
 	attr->value = strdup(val);
 	if (!attr->value)
 		return ENOMEM;
-	cmd_line_args.auth_attrs->count++;
+	auth_attrs->count++;
 	return 0;
 }
 
-int ldmsd_xprt_add(char *xprt_str)
+void ldmsd_listen___del(ldmsd_cfgobj_t obj)
 {
-	char *lval;
-	struct ldmsd_str_ent *xstr;
+	ldmsd_listen_t listen = (ldmsd_listen_t)obj;
+	if (listen->x)
+		ldms_xprt_put(listen->x);
+	if (listen->xprt)
+		free(listen->xprt);
+	if (listen->host)
+		free(listen->host);
+	if (listen->auth_name)
+		free(listen->auth_name);
+	if (listen->auth_attrs)
+		av_free(listen->auth_attrs);
+	ldmsd_cfgobj___del(obj);
+}
 
+ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host,
+		char *auth, struct attr_value_list *auth_args)
+{
+	char *name;
+	size_t cnt, len;
+	char *lval, *delim;
+	struct ldmsd_sec_ctxt sctxt;
+	struct ldmsd_listen *listen = NULL;
 
-	lval = strchr(xprt_str, ':');
-	if (!lval) {
-		printf("Bad xprt format, expecting XPRT:PORT, "
-				"but got: %s\n", xprt_str);
-		return EINVAL;
+	if (!port)
+		port = TOSTRING(LDMS_DEFAULT_PORT);
+
+	len = strlen(xprt) + strlen(port) + 2; /* +1 for ':' and +1 for \0 */
+	name = malloc(len);
+	if (!name)
+		return NULL;
+	(void) snprintf(name, len, "%s:%s", xprt, port);
+	listen = (struct ldmsd_listen *)
+		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_LISTEN,
+				sizeof *listen, ldmsd_listen___del,
+				getuid(), getgid(), 0550); /* No one can alter it */
+	if (!listen)
+		return NULL;
+
+	listen->xprt = strdup(xprt);
+	if (!listen->xprt)
+		goto err;
+	listen->port_no = atoi(port);
+	if (host) {
+		listen->host = strdup(host);
+		if (!listen->host)
+			goto err;
 	}
-	xstr = malloc(sizeof(*xstr));
-	if (!xstr) {
-		printf("Out of memory");
-		return ENOMEM;
+	if (auth) {
+		listen->auth_name = strdup(auth);
+		if (!listen->auth_name)
+			goto err;
+		if (auth_args) {
+			listen->auth_attrs = av_copy(auth_args);
+			if (!listen->auth_attrs)
+				goto err;
+		}
 	}
-	xstr->str = strdup(xprt_str);
-	if (!xstr->str) {
-		printf("Out of memory");
-		return ENOMEM;
-	}
-	LIST_INSERT_HEAD(&cmd_line_args.xprt_list, xstr, entry);
-	return 0;
+	ldmsd_cfgobj_unlock(&listen->obj);
+	return listen;
+err:
+	errno = ENOMEM;
+	ldmsd_cfgobj_unlock(&listen->obj);
+	ldmsd_cfgobj_put(&listen->obj);
+	return NULL;
 }
 
 /*
@@ -988,7 +1040,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 {
 	char *lval, *rval;
 	int op, rc;
-	struct ldmsd_str_ent *xstr;
+	ldmsd_listen_t listen;
 	switch (opt) {
 	case 'A':
 		/* (multiple) auth options */
@@ -1002,7 +1054,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			printf("ERROR: Expecting -A name=value\n");
 			return EINVAL;
 		}
-		rc = ldmsd_auth_attr_add(lval, rval);
+		rc = ldmsd_auth_attr_add(cmd_line_args.auth_attrs, lval, rval);
 		if (rc)
 			return rc;
 		break;
@@ -1137,14 +1189,20 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 	case 'x':
 		if (check_arg("x", value, LO_NAME))
 			return 1;
-		rc = ldmsd_xprt_add(value);
-		if (rc == EINVAL) {
+		rval = strchr(value, ':');
+		if (!rval) {
 			printf("Bad xprt format, expecting XPRT:PORT, "
 					"but got: %s\n", value);
 			return EINVAL;
-		} else if (rc) {
-			printf("Error %d: failed to process xprt: %s\n",
-					rc, value);
+		}
+		rval[0] = '\0';
+		rval = rval+1;
+		/* Use the default auth */
+		listen = ldmsd_listen_new(value, rval, NULL, NULL, NULL);
+		if (!listen) {
+			rc = errno;
+			printf("Error %d: failed to add listening endpoint: %s:%s\n",
+					rc, value, rval);
 			return rc;
 		}
 		break;
@@ -1241,7 +1299,7 @@ void handle_pidfile_banner()
 
 void cmd_line_value_init()
 {
-	cmd_line_args.auth_attrs = av_new(AUTH_OPT_MAX);
+	cmd_line_args.auth_attrs = av_new(LDMSD_AUTH_OPT_MAX);
 	if (!cmd_line_args.auth_attrs)
 		cleanup(ENOMEM, "Memory allocation failure.");
 
@@ -1291,12 +1349,18 @@ void ldmsd_init()
 	}
 
 	if (cmd_line_args.daemon_name[0] == '\0') {
-		struct ldmsd_str_ent *xstr = LIST_FIRST(&cmd_line_args.xprt_list);
-		char *delim = strchr(xstr->str, ':');
-		snprintf(cmd_line_args.daemon_name,
-				sizeof(cmd_line_args.daemon_name),
-				"%s:%s", cmd_line_args.myhostname,
-				delim + 1);
+		ldmsd_listen_t listen = (ldmsd_listen_t)
+					ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+		if (listen) {
+			snprintf(cmd_line_args.daemon_name,
+					sizeof(cmd_line_args.daemon_name),
+					"%s:%hu", cmd_line_args.myhostname,
+					listen->port_no);
+		} else {
+			snprintf(cmd_line_args.daemon_name,
+					sizeof(cmd_line_args.daemon_name),
+					"%s:", cmd_line_args.myhostname);
+		}
 	}
 
 	/* Initialize event threads and event schedulers */
@@ -1341,23 +1405,15 @@ void ldmsd_init()
 	is_ldmsd_initialized = 1;
 }
 
-void handle_xprt_list()
+void handle_listening_endpoints()
 {
-	struct ldmsd_str_ent *xstr;
-	char *xprt, *port, *tmp, *ptr;
-
-	LIST_FOREACH(xstr, &cmd_line_args.xprt_list, entry) {
-		tmp = strdup(xstr->str);
-		xprt = strtok_r(tmp, ":", &ptr);
-		port = strtok_r(NULL, ":", &ptr);
-		ldms = listen_on_ldms_xprt(xprt, port);
-		free(tmp);
-		if (!ldms) {
-			/*
-			 * Do nothing. listen_on_ldms_xprt() cleans up
-			 * LDMSD on errors already.
-			 */
-		}
+	struct ldmsd_listen *listen;
+	int rc;
+	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+		listen; listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
+		rc = listen_on_ldms_xprt(listen);
+		if (rc)
+			cleanup(rc, "error listening on transport");
 	}
 }
 
@@ -1475,7 +1531,7 @@ int main(int argc, char *argv[])
 	ldmsd_init(argv);
 
 	handle_pidfile_banner();
-	handle_xprt_list();
+	handle_listening_endpoints();
 
 	if (ldmsd_use_failover) {
 		/* failover will be the one starting cfgobjs */

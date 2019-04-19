@@ -206,6 +206,7 @@ static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
 static int ebusy_handler(ldmsd_req_ctxt_t reqc);
 static int updtr_task_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc);
+static int listen_handler(ldmsd_req_ctxt_t reqc);
 
 /* these are implemented in ldmsd_failover.c */
 int failover_config_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -408,6 +409,11 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_CMD_LINE_SET_REQ] = {
 		LDMSD_CMD_LINE_SET_REQ, cmd_line_arg_set_handler, XUG
+	},
+
+	/* CMD-LINE */
+	[LDMSD_LISTEN_REQ] = {
+		LDMSD_LISTEN_REQ, listen_handler, XUG,
 	},
 
 	/* FAILOVER user commands */
@@ -5675,4 +5681,93 @@ cmdline_eperm:
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
+}
+
+static int listen_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldmsd_listen_t listen;
+	int rc;
+	size_t cnt;
+	char *xprt, *port, *host, *auth, *auth_args, *attr_name;
+	char *str, *ptr1, *ptr2, *lval, *rval;
+	unsigned short port_no = -1;
+	struct attr_value_list *auth_opts = NULL;
+	xprt = port = host = auth = auth_args = NULL;
+
+	attr_name = "xprt";
+	xprt = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_XPRT);
+	if (!xprt)
+		goto einval;
+	port = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
+	if (port) {
+		port_no = atoi(port);
+		if (port_no < 1 || port_no > USHRT_MAX) {
+			reqc->errcode = EINVAL;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"'%s' transport with invalid port '%s'",
+					xprt, port);
+			goto send_reply;
+		}
+	}
+	host =ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
+	auth = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTH);
+	auth_args = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+
+	/* Parse the authentication options */
+	if (auth_args) {
+		auth_opts = av_new(LDMSD_AUTH_OPT_MAX);
+		if (!auth_opts)
+			goto enomem;
+		str = strtok_r(auth_args, " ", &ptr1);
+		while (str) {
+			lval = strtok_r(str, "=", &ptr2);
+			rval = strtok_r(NULL, "", &ptr2);
+			rc = ldmsd_auth_attr_add(auth_opts, lval, rval);
+			if (rc) {
+				(void) snprintf(reqc->line_buf, reqc->line_len,
+					"Failed to process the authentication options");
+				goto send_reply;
+			}
+			str = strtok_r(NULL, " ", &ptr1);
+		}
+	}
+
+	listen = ldmsd_listen_new(xprt, port, host, auth, auth_opts);
+	if (!listen) {
+		if (errno == EEXIST)
+			goto eexist;
+		else
+			goto enomem;
+	}
+	goto send_reply;
+
+eexist:
+	reqc->errcode = EEXIST;
+	(void) snprintf(reqc->line_buf, reqc->line_len,
+			"The listening endpoint %s:%s is already exists",
+			xprt, port);
+	goto send_reply;
+enomem:
+	reqc->errcode = ENOMEM;
+	(void) snprintf(reqc->line_buf, reqc->line_len, "Out of memory");
+	goto send_reply;
+einval:
+	reqc->errcode = EINVAL;
+	(void) snprintf(reqc->line_buf, reqc->line_len,
+			"The attribute '%s' is required.", attr_name);
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (xprt)
+		free(xprt);
+	if (port)
+		free(port);
+	if (host)
+		free(host);
+	if (auth)
+		free(auth);
+	if (auth_args)
+		free(auth_args);
+	if (auth_opts)
+		av_free(auth_opts);
+	return 0;
 }
