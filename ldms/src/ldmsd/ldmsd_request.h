@@ -287,6 +287,7 @@ typedef struct ldmsd_req_ctxt {
 	uint32_t req_id;
 
 	size_t line_len;
+	size_t line_off;
 	char *line_buf;
 
 	size_t req_len;

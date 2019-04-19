@@ -752,8 +752,8 @@ static int updtr_tasks_create(ldmsd_updtr_t updtr)
 
 			if (LIST_EMPTY(&updtr->match_list)) {
 				rc = ldmsd_updtr_tasks_update(updtr, prd_set);
-				if (!rc)
-					goto out;
+				if (rc)
+					goto err;
 			} else {
 				LIST_FOREACH(match, &updtr->match_list, entry) {
 					if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
@@ -761,24 +761,23 @@ static int updtr_tasks_create(ldmsd_updtr_t updtr)
 					else
 						str = prd_set->schema_name;
 					rc = regexec(&match->regex, str, 0, NULL, 0);
-					if (!rc) {
-						rc = ldmsd_updtr_tasks_update(
-								updtr, prd_set);
-						if (!rc)
-							goto out;
-
-					}
+					if (rc)
+						goto err;
+					rc = ldmsd_updtr_tasks_update(
+							updtr, prd_set);
+					if (rc)
+						goto err;
 				}
 			}
 			pthread_mutex_unlock(&prd_set->lock);
 		}
 		ldmsd_prdcr_unlock(prdcr);
 	}
-	return -1;
-out:
+	return 0;
+err:
 	pthread_mutex_unlock(&prd_set->lock);
 	ldmsd_prdcr_unlock(prdcr);
-	return 0;
+	return rc;
 }
 
 int prdcr_ref_cmp(void *a, const void *b)
