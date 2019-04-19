@@ -507,6 +507,10 @@ void __print_prdcr_status(json_value *jvalue)
 
 static void resp_prdcr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
@@ -577,6 +581,10 @@ void __print_prdcr_set_status(json_value *jvalue)
 
 static void resp_prdcr_set_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
@@ -815,6 +823,10 @@ void __print_updtr_status(json_value *jvalue)
 
 static void resp_updtr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
@@ -1027,6 +1039,10 @@ void __print_strgp_status(json_value *jvalue)
 
 static void resp_strgp_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
@@ -1357,6 +1373,10 @@ static void __json_value_print(json_value *v, int indent)
 static void resp_failover_status(ldmsd_req_hdr_t resp, size_t len,
 				 uint32_t rsp_err)
 {
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
