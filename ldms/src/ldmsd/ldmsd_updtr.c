@@ -1079,8 +1079,8 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 		if (!ref) {
 			rc = ENOMEM;
 			sprintf(rep_buf, "%dMemory allocation failure.\n", ENOMEM);
-			ldmsd_prdcr_put(prdcr);
 			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+			ldmsd_prdcr_put(prdcr);
 			goto out_1;
 		}
 		rbt_ins(&updtr->prdcr_tree, &ref->rbn);

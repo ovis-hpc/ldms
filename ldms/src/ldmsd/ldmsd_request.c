@@ -1923,6 +1923,8 @@ out:
 		free(setname);
 	if (schema)
 		free(schema);
+	if (prdcr) /* ref from find(), first(), or next() */
+		ldmsd_prdcr_put(prdcr);
 	return rc;
 }
 
@@ -4881,6 +4883,7 @@ static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
 						LDMSD_GREETING_REQ, reqc,
 						__greeting_path_resp_handler, myself);
 		ldmsd_prdcr_unlock(prdcr);
+		ldmsd_prdcr_put(prdcr);
 		if (!rcmd) {
 			reqc->errcode = ENOMEM;
 			ldmsd_send_req_response(reqc, "Out of Memory");
