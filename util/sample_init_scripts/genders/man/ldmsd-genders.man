@@ -144,6 +144,9 @@ If defined, this overrides gender ldmsd_config_port. If neither gender nor envir
 
 Overrides with N the ldmsd_event_thds gender value. If neither is specified, the default is 4.
 
+.B LDMSD_START_HOOKS="file list"
+
+Defines the list of bash fragments run in the ldmsd startup script environment just before the daemon binary. Any listed file not found is ignored with a log message. Files listed must be bash-compatible. The recommended location for fragment files is /etc/sysconfig/ldms.d/plugins-conf.
 
 .SH Tuning variables for ldmsd in a collection role
 
@@ -241,7 +244,8 @@ Optional environment variables and override settings for multiple hosts.
 .TP
 .I /etc/sysconfig/ldms.d/plugins-conf
 Plugin configuration text fragments, configuration text generation programs, or
-entire configuration files are kept. The fragments, files, and generators are used only as directed by genders. See ldms-attributes(5) for details of their use.
+entire configuration files are kept. The fragments, files, and generators are used only as directed by genders or 
+LDMSD_START_HOOKS. See ldms-attributes(5) for details of their use.
 .TP
 .I /etc/sysconfig/ldms.d/ldmsd.$LDMSCLUSTER.conf
 Environment variables and override settings for storage ldmsd serving remote system $LDMSCLUSTER.
