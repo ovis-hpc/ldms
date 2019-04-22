@@ -1,0 +1,26 @@
+export plugname=lustre_client
+x=`ls /proc/fs/lustre/llite |sed -e 's/-[^ ]*//g'`
+if test -z "$x"; then
+	echo FAIL: no lustre llites to test
+	exit 1
+fi
+export llites=`echo $x |sed -e 's/ /,/g'`
+portbase=61016
+DAEMONS $(seq 3)
+JOBDATA $TESTDIR/job.data 1 2 3
+LDMSD -p prolog.jobid -p prolog.jobid.sampler 1 2
+LDMSD -p prolog.jobid.store3 3
+MESSAGE ldms_ls on host 1:
+JOBDATA $TESTDIR/job.data 1 2 3
+LDMS_LS 1 -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -l
+MESSAGE ldms_ls on host 3:
+LDMS_LS 3
+JOBDATA $TESTDIR/job.data 1 2
+SLEEP 3
+JOBDATA $TESTDIR/job.data 1 3
+SLEEP 2
+KILL_LDMSD `seq 3`
+file_created $STOREDIR/node/$testname
+file_created $STOREDIR/node/jobid

@@ -36,6 +36,9 @@ procstat.job
 lustre2_client
 dstat.job
 
+# not working with job metrics
+lustre_client
+
 # not yet tested
 rabbitv3
 sampler_atasmart
