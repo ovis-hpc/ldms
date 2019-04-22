@@ -23,7 +23,8 @@ procnetdev \
 procnfs \
 procstat \
 sysclassib \
-vmstat
+vmstat \
+init_jobinfo.sh
 
 endif
 
