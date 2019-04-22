@@ -944,7 +944,7 @@ void ldmsd_thread_count_set(char *str)
 	cmd_line_args.ev_thread_count = cnt;
 }
 
-int ldmsd_auth_attr_add(struct attr_value_list *auth_attrs, char *name, char *val)
+int ldmsd_auth_opt_add(struct attr_value_list *auth_attrs, char *name, char *val)
 {
 	struct attr_value *attr;
 	attr = &(auth_attrs->list[auth_attrs->count]);
@@ -960,6 +960,44 @@ int ldmsd_auth_attr_add(struct attr_value_list *auth_attrs, char *name, char *va
 		return ENOMEM;
 	auth_attrs->count++;
 	return 0;
+}
+
+struct attr_value_list *ldmsd_auth_opts_str2avl(const char *auth_opts_s)
+{
+	struct attr_value_list *avl;
+	char *ptr, *name, *value, *s;
+
+	errno = 0;
+	s = strdup(auth_opts_s);
+	if (!s) {
+		errno = ENOMEM;
+		return NULL;
+	}
+	avl = av_new(LDMSD_AUTH_OPT_MAX);
+	if (!avl) {
+		errno = ENOMEM;
+		goto out;
+	}
+	name = strtok_r(s, " \t", &ptr);
+	while (name) {
+		value = strchr(name, '=');
+		if (value) {
+			value[0] = '\0';
+			value++;
+		} else {
+			errno = EINVAL;
+			goto err;
+		}
+		ldmsd_auth_opt_add(avl, name, value);
+		name = strtok_r(NULL, " \t", &ptr);
+	}
+	goto out;
+err:
+	av_free(avl);
+	avl = NULL;
+out:
+	free(s);
+	return avl;
 }
 
 void ldmsd_listen___del(ldmsd_cfgobj_t obj)
@@ -1054,7 +1092,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			printf("ERROR: Expecting -A name=value\n");
 			return EINVAL;
 		}
-		rc = ldmsd_auth_attr_add(cmd_line_args.auth_attrs, lval, rval);
+		rc = ldmsd_auth_opt_add(cmd_line_args.auth_attrs, lval, rval);
 		if (rc)
 			return rc;
 		break;

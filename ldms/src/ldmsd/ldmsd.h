@@ -301,6 +301,8 @@ typedef struct ldmsd_prdcr {
 	char *xprt_name;	/* Transport name */
 	ldms_t xprt;
 	long conn_intrvl_us;	/* connect interval */
+	char *conn_auth;			/* auth method for the connection */
+	struct attr_value_list *conn_auth_args;  /* auth options of the connection auth */
 
 	enum ldmsd_prdcr_state {
 		/** Producer task has stopped & no outstanding xprt */
@@ -841,13 +843,14 @@ const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type);
 ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
-		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us);
+		enum ldmsd_prdcr_type type, int conn_intrvl_us,
+		char *auth, char *auth_args);
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
-		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us, uid_t uid, gid_t gid, int perm);
+		enum ldmsd_prdcr_type type, int conn_intrvl_us,
+		const char *auth, char *auth_args,
+		uid_t uid, gid_t gid, int perm);
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt);
 static inline ldmsd_prdcr_t ldmsd_prdcr_first()
 {
@@ -1289,7 +1292,14 @@ int ldmsd_process_cmd_line_arg(char opt, char *value);
  * \param name         The attribute name
  * \param value        The attribute value
  */
-int ldmsd_auth_attr_add(struct attr_value_list *auth_attrs, char *name, char *val);
+int ldmsd_auth_opt_add(struct attr_value_list *auth_attrs, char *name, char *val);
+
+/**
+ * \brief Create an attribute value list (\c struct attr_value_list) of authentication options
+ *
+ * \param auth_args_s  String of authentication options, e.g., "foo=A bar=B"
+ */
+struct attr_value_list *ldmsd_auth_opts_str2avl(const char *auth_args_s);
 
 /**
  * \brief Create a listening endpoint

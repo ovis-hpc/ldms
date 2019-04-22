@@ -93,6 +93,10 @@ void ldmsd_prdcr___del(ldmsd_cfgobj_t obj)
 		free(prdcr->host_name);
 	if (prdcr->xprt_name)
 		free(prdcr->xprt_name);
+	if (prdcr->conn_auth)
+		free(prdcr->conn_auth);
+	if (prdcr->conn_auth_args)
+		av_free(prdcr->conn_auth_args);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -493,14 +497,23 @@ reset_prdcr:
 static void prdcr_connect(ldmsd_prdcr_t prdcr)
 {
 	int ret;
+	char *auth;
+	struct attr_value_list *auth_opts;
 
 	assert(prdcr->xprt == NULL);
 	switch (prdcr->type) {
 	case LDMSD_PRDCR_TYPE_ACTIVE:
+		if (!prdcr->conn_auth) {
+			/* Get the default auth and its options */
+			auth = (char *)ldmsd_auth_name_get(NULL);
+			auth_opts = ldmsd_auth_attr_get(NULL);
+		} else {
+			auth = prdcr->conn_auth;
+			auth_opts = prdcr->conn_auth_args;
+		}
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 		prdcr->xprt = ldms_xprt_new_with_auth(prdcr->xprt_name, ldmsd_linfo,
-					ldmsd_auth_name_get(NULL),
-					ldmsd_auth_attr_get(NULL));
+					auth, auth_opts);
 		if (prdcr->xprt) {
 			ret  = ldms_xprt_connect(prdcr->xprt,
 						 (struct sockaddr *)&prdcr->ss,
@@ -567,11 +580,14 @@ int prdcr_connect_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
-		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us, uid_t uid, gid_t gid, int perm)
+		enum ldmsd_prdcr_type type, int conn_intrvl_us,
+		const char *auth, char *auth_args,
+		uid_t uid, gid_t gid, int perm)
 {
 	struct ldmsd_prdcr *prdcr;
-	char *xprt, *host;
+	char *xprt, *host, *au;
+	struct attr_value_list *au_opts = NULL;
+	au = NULL;
 
 	errno = EINVAL;
 	if (!port_no)
@@ -585,6 +601,19 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	if (!host)
 		goto err_1;
 
+	if (auth) {
+		au = strdup(auth);
+		if (!au)
+			goto err_2;
+		if (auth_args) {
+			au_opts = ldmsd_auth_opts_str2avl(auth_args);
+			if (!au_opts) {
+				free(au);
+				goto err_2;
+			}
+		}
+	}
+
 	ldmsd_log(LDMSD_LDEBUG,
 		  "ldmsd_prdcr_new(name %s, xprt %s, host %s, "
 		  "port %hu, type %d, intv %d\n",
@@ -595,7 +624,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 				sizeof *prdcr, ldmsd_prdcr___del,
 				uid, gid, perm);
 	if (!prdcr)
-		goto err_2;
+		goto err_3;
 
 	prdcr->type = type;
 	prdcr->conn_intrvl_us = conn_intrvl_us;
@@ -604,12 +633,18 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	rbt_init(&prdcr->set_tree, set_cmp);
 	prdcr->host_name = host;
 	prdcr->xprt_name = xprt;
+	/*
+	 * If auth is NULL, the default authentication method will be used
+	 * when prdcr creates the LDMS transport.
+	 */
+	prdcr->conn_auth = au;
+	prdcr->conn_auth_args = au_opts;
 
 	if (prdcr_resolve(host_name, port_no, &prdcr->ss, &prdcr->ss_len)) {
 		errno = EAFNOSUPPORT;
 		ldmsd_log(LDMSD_LERROR, "ldmsd_prdcr_new: %s:%u not resolved.\n",
 			host_name,(unsigned) port_no);
-		goto err_3;
+		goto err_4;
 	}
 
 	prdcr->connect_ev = ev_new(prdcr_connect_type);
@@ -622,9 +657,15 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	ldmsd_prdcr_unlock(prdcr);
 	return prdcr;
 
- err_3:
+ err_4:
 	ldmsd_prdcr_unlock(prdcr);
 	ldmsd_prdcr_put(prdcr);
+ err_3:
+	if (au) {
+		free(au);
+	}
+	if (au_opts)
+		av_free(au_opts);
  err_2:
 	free(host);
  err_1:
@@ -636,12 +677,14 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
-		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us)
+		enum ldmsd_prdcr_type type, int conn_intrvl_us,
+		char *auth, char *auth_args)
 {
+	struct ldmsd_sec_ctxt sctxt;
+	ldmsd_sec_ctxt_get(&sctxt);
 	return ldmsd_prdcr_new_with_auth(name, xprt_name, host_name,
-			port_no, type, conn_intrvl_us, getuid(),
-			getgid(), 0777);
+			port_no, type, conn_intrvl_us, auth, auth_args,
+			sctxt.crd.uid, sctxt.crd.gid, 0777);
 }
 
 extern struct rbt *cfgobj_trees[];

@@ -1296,7 +1296,8 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_prdcr_t prdcr;
 	char *name, *host, *xprt, *attr_name, *type_s, *port_s, *interval_s;
-	name = host = xprt = type_s = port_s = interval_s = NULL;
+	char *auth, *auth_args;
+	name = host = xprt = type_s = port_s = interval_s = auth = auth_args = NULL;
 	enum ldmsd_prdcr_type type = -1;
 	unsigned short port_no = 0;
 	int interval_us = -1;
@@ -1364,6 +1365,10 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		 interval_us = strtol(interval_s, NULL, 0);
 	}
 
+	auth = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTH);
+	if (auth)
+		auth_args = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+
 	struct ldmsd_sec_ctxt sctxt;
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	uid = sctxt.crd.uid;
@@ -1375,16 +1380,24 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		perm = strtol(perm_s, NULL, 0);
 
 	prdcr = ldmsd_prdcr_new_with_auth(name, xprt, host, port_no, type,
-					  interval_us, uid, gid, perm);
+					  interval_us, auth, auth_args,
+					  uid, gid, perm);
 	if (!prdcr) {
 		if (errno == EEXIST)
 			goto eexist;
 		else if (errno == EAFNOSUPPORT)
 			goto eafnosupport;
+		else if (errno == EINVAL)
+			goto auth_args_inval;
 		else
 			goto enomem;
 	}
 
+	goto send_reply;
+auth_args_inval:
+	reqc->errcode = EINVAL;
+	cnt = snprintf(reqc->line_buf, reqc->line_len,
+			"Invalid auth options");
 	goto send_reply;
 enomem:
 	reqc->errcode = ENOMEM;
@@ -5709,7 +5722,7 @@ static int listen_handler(ldmsd_req_ctxt_t reqc)
 		while (str) {
 			lval = strtok_r(str, "=", &ptr2);
 			rval = strtok_r(NULL, "", &ptr2);
-			rc = ldmsd_auth_attr_add(auth_opts, lval, rval);
+			rc = ldmsd_auth_opt_add(auth_opts, lval, rval);
 			if (rc) {
 				(void) snprintf(reqc->line_buf, reqc->line_len,
 					"Failed to process the authentication options");

@@ -204,11 +204,18 @@ class LdmsdCmdParser(cmd.Cmd):
                     [name] = attr_str.split("=")
                 except:
                     raise
+                # Handle specific cases
                 if (verb == "config" and name != "name") or (verb == "env"):
                     attr_s.append(attr_str)
-                if (verb == "listen") and (name not in ["xprt", "port", "port", "auth"]):
+                elif (verb == "listen") and (name not in ["xprt", "port", "port", "auth"]):
+                        # auth args
+                        attr_s.append(attr_str)
+                elif (verb == "prdcr_add") and (name not in 
+                           ["name", "xprt", "port", "host", "type", "interval", "auth"]):
+                        # auth args
                         attr_s.append(attr_str)
                 else:
+                    # handle general cases
                     try:
                         attr = LDMSD_Req_Attr(value = value, attr_name = name)
                     except KeyError:
@@ -219,6 +226,7 @@ class LdmsdCmdParser(cmd.Cmd):
                         attr_list.append(attr)
 
             if len(attr_s) > 0:
+                # Construct the value of the STRING attribute
                 attr_str = " ".join(attr_s)
                 attr = LDMSD_Req_Attr(value = attr_str, attr_id = LDMSD_Req_Attr.STRING)
                 attr_list.append(attr)
