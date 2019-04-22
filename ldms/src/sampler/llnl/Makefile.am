@@ -12,6 +12,7 @@ COMMON_LIBADD = $(CORE)/libldms.la \
 
 if ENABLE_JOBID
 JOBID_LIBFLAGS = ../libjobid.la
+AM_CFLAGS += -DENABLE_JOBID
 endif
 
 if ENABLE_LLNL_EDAC
