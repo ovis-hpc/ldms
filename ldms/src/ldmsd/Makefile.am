@@ -13,7 +13,7 @@ AM_CFLAGS += \
 ldmsdincludedir = $(includedir)/ldms
 ldmsdinclude_HEADERS = ldmsd.h ldmsd_stream.h
 
-AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ -pthread
 AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
 
 ldms_ls_SOURCES = ldms_ls.c
@@ -28,7 +28,7 @@ sbin_PROGRAMS += ldmsd_upload
 ldmsd_upload_SOURCES = ldmsd_upload.c
 ldmsd_upload_CFLAGS = $(AM_CFLAGS) -DLDMSD_UPLOAD_CMD
 ldmsd_upload_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
-ldmsd_upload_LDFLAGS = $(AM_LDFLAGS)
+ldmsd_upload_LDFLAGS = $(AM_LDFLAGS) -lovis_util
 
 lib_LTLIBRARIES += libldmsd_stream.la
 libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h ldms.h ldms_core.h ldmsd_request_util.c
