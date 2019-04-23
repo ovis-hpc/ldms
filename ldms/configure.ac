@@ -525,11 +525,12 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 python/Makefile
 		 python/ldmsd/Makefile
 		 python/cmds/Makefile
-		 Doxyfile
 		 scripts/ldmsd
 		 scripts/envldms.sh
 		 ldms.spec
 		 man/Makefile
+		 doc/Makefile
+		 doc/Doxyfile
 ])
 
 AC_CONFIG_COMMANDS([scripts],[ echo fixing test script perms.
