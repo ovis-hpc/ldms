@@ -2,7 +2,7 @@ SUBDIRS =
 lib_LTLIBRARIES =
 
 AM_CFLAGS = -I$(srcdir) -I$(srcdir)/..
-AM_LDFLAGS = -L$(builddir)
+AM_LDFLAGS = -L$(builddir) -pthread
 
 ldmscoreincludedir = $(includedir)/ev
 ldmscoreinclude_HEADERS = ev.h
