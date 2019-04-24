@@ -1014,6 +1014,8 @@ static inline const char *ldmsd_updtr_state_str(enum ldmsd_updtr_state state) {
 		return "STOPPED";
 	case LDMSD_UPDTR_STATE_RUNNING:
 		return "RUNNING";
+	case LDMSD_UPDTR_STATE_STOPPING:
+		return "STOPPING";
 	}
 	return "BAD STATE";
 }
