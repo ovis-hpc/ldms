@@ -813,6 +813,7 @@ size_t Snprintf(char **dst, size_t *len, char *fmt, ...)
 	return cnt;
 }
 
+__attribute__ (( format(printf, 2, 3) ))
 int linebuf_printf(struct ldmsd_req_ctxt *reqc, char *fmt, ...)
 {
 	va_list ap;
