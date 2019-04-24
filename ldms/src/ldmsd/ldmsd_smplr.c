@@ -422,6 +422,7 @@ int sample_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 		ev_post(src, dst, ev, &to);
 	}
 	ldmsd_smplr_unlock(smplr);
+	return rc;
 }
 
 /*
