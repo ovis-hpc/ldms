@@ -714,15 +714,6 @@ enum ldms_lookup_flags {
  */
 extern int ldms_xprt_lookup(ldms_t t, const char *name, enum ldms_lookup_flags flags,
 		       ldms_lookup_cb_t cb, void *cb_arg);
-
-/**
- * \brief Revoke the set access given by ldms_xprt_lookup
- *
- * \param t The transport handle
- * \param set The set
- */
-extern int ldms_xprt_set_revoke(ldms_t t, ldms_set_t set);
-
 /** \} */
 
 /**
