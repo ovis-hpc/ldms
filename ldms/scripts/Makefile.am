@@ -1,6 +1,8 @@
 
 # consider adding ldmsd to bin_SCRIPTS if ldmsd script ever stabilizes
 EXTRA_DIST=@OVIS_EXTRA_DIST@ examples lsdate slurm-examples
+EXTRA_DIST += ldms-csv-anonymize ldms-csv-export-sos
+
 
 if ENABLE_SCRIPTS
 sbin_SCRIPTS= ldms-wrapper
@@ -20,6 +22,9 @@ bin_SCRIPTS += ldms-py-varset.sh
 bin_SCRIPTS += ldms-py-rename.sh
 bin_SCRIPTS += ldms_local_opa2test.sh
 bin_SCRIPTS += ldms-l2_test.sh
+bin_SCRIPTS += ldms-csv-anonymize
+bin_SCRIPTS += ldms-csv-export-sos
+
 
 testsets = install-serial
 untestsets = uninstall-serial
