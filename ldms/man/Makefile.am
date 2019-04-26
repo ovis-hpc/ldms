@@ -1,4 +1,9 @@
 
+dist_man1_MANS= \
+ldms-csv-anonymize.man \
+ldms-csv-export-sos.man \
+lsdate.man
+
 dist_man8_MANS= \
 ldms_build_install.man \
 ldms_ls.man \
@@ -33,6 +38,8 @@ Plugin_store_csv.man \
 Plugin_store_flatfile.man \
 Plugin_store_sos.man \
 Plugin_vmstat.man
+
+
 
 if ENABLE_ARRAY_EXAMPLE
 dist_man7_MANS += Plugin_all_example.man
