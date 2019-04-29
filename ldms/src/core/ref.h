@@ -5,6 +5,7 @@
 #include <pthread.h>
 
 #ifdef _REF_TRACK_
+#include <pthread.h>
 #include <stdlib.h>
 typedef struct ref_inst_s {
 	const char *get_func;
