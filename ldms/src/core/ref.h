@@ -53,6 +53,7 @@ static inline int _ref_put(ref_t r, const char *name, const char *func, int line
 	}
 	ldmsd_lcritical("name %s ref_count %d func %s line %d put but not taken\n",
 			name, r->ref_count, func, line);
+	count = -1;
  out:
 	if (!count)
 		r->free_fn(r->free_arg);
