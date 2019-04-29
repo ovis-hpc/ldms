@@ -189,9 +189,6 @@ typedef struct ldmsd_smplr {
 	ev_t stop_ev;
 	ev_t sample_ev;
 
-	char *producer;
-	char *instance;
-	uint64_t component_id;
 	long interval_us;
 	long offset_us;
 	int synchronous;
@@ -752,8 +749,6 @@ int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt
 ldmsd_smplr_t
 ldmsd_smplr_new_with_auth(const char *name,
 			  ldmsd_plugin_inst_t plugin_inst,
-			  uint64_t component_id,
-			  const char *producer, const char *instance,
 			  uid_t uid, gid_t gid, int perm);
 int ldmsd_smplr_del(const char *smplr_name, ldmsd_sec_ctxt_t ctxt);
 static inline void ldmsd_smplr_lock(ldmsd_smplr_t smplr) {

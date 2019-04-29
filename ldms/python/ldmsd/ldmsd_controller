@@ -867,9 +867,7 @@ class LdmsdCmdParser(cmd.Cmd):
         Add an LDMS Sampler
         Parameters:
         name=         A unique name for this Sampler
-        plugin=       The plugin instance name to associate to
-        producer=     The producer name (e.g. the host name)
-        instance=     The unique instance name for the set (e.g. ${HOSTNAME}/myset)
+        instance=     The plugin instance name
         """
         self.handle('smplr_add', arg)
 

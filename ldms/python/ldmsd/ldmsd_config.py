@@ -88,7 +88,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': ['name'], 'opt_attr': []},
                       'env': {'req_attr': []},
                       'logrotate': {'req_attr': [], 'opt_attr': []},
                       ##### Sampler Policy #####
-                      'smplr_add': {'req_attr': ['name', 'plugin', 'producer', 'instance']},
+                      'smplr_add': {'req_attr': ['name', 'instance']},
                       'smplr_del': {'req_attr': ['name']},
                       'smplr_start': {'req_attr': ['name', 'interval'],
                                       'opt_attr': ['offset'] },

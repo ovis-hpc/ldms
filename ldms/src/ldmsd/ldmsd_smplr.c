@@ -70,9 +70,6 @@
 
 void ldmsd_smplr___del(ldmsd_cfgobj_t obj)
 {
-	ldmsd_smplr_t smplr = (ldmsd_smplr_t)obj;
-	free(smplr->instance);
-	free(smplr->producer);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -90,55 +87,38 @@ const char *smplr_state_str(enum ldmsd_smplr_state state)
 ldmsd_smplr_t
 ldmsd_smplr_new_with_auth(const char *name,
 			  ldmsd_plugin_inst_t pi,
-			  uint64_t component_id,
-			  const char *producer, const char *instance,
 			  uid_t uid, gid_t gid, int perm)
 {
 	ldmsd_smplr_t smplr;
-	char *prod, *inst;
 	ev_t sample_ev, start_ev, stop_ev;
 
-	ldmsd_log(LDMSD_LDEBUG, "ldmsd_smplr_new(name %s plugin %s "
-		  "component_id %ld "
-		  "producer %s instance %s, uid %d gid %d perm %x\n",
-		  name, pi->inst_name, component_id,
-		  producer, instance, uid, gid, perm);
-
-	prod = strdup(producer);
-	if (!prod)
-		goto err_0;
-
-	inst = strdup(producer);
-	if (!inst)
-		goto err_1;
+	ldmsd_log(LDMSD_LDEBUG, "ldmsd_smplr_new(name %s instance %s "
+		  "uid %d gid %d perm %x\n",
+		  name, pi->inst_name, uid, gid, perm);
 
 	sample_ev = ev_new(smplr_sample_type);
 	if (!sample_ev)
-		goto err_2;
+		goto err_0;
 	start_ev = ev_new(smplr_start_type);
 	if (!start_ev)
-		goto err_3;
+		goto err_1;
 
 	stop_ev = ev_new(smplr_stop_type);
 	if (!stop_ev)
-		goto err_4;
+		goto err_2;
 
 	smplr = (struct ldmsd_smplr *)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_SMPLR,
 				sizeof *smplr, ldmsd_smplr___del,
 				uid, gid, perm);
 	if (!smplr)
-		goto err_5;
-
+		goto err_3;
 
 	smplr->interval_us = 0;
 	smplr->offset_us = 0;
 	smplr->state = LDMSD_SMPLR_STATE_STOPPED;
 	ldmsd_plugin_inst_get(pi);
 	smplr->pi = pi;
-	smplr->producer = prod;
-	smplr->instance = inst;
-	smplr->component_id = component_id;
 
 	EV_DATA(sample_ev, struct sample_data)->smplr = smplr;
 	EV_DATA(sample_ev, struct sample_data)->reschedule = 0;
@@ -150,16 +130,12 @@ ldmsd_smplr_new_with_auth(const char *name,
 
 	ldmsd_smplr_unlock(smplr);
 	return smplr;
- err_5:
-	ev_put(stop_ev);
- err_4:
-	ev_put(start_ev);
  err_3:
-	ev_put(sample_ev);
+	ev_put(stop_ev);
  err_2:
-	free(inst);
+	ev_put(start_ev);
  err_1:
-	free(prod);
+	ev_put(sample_ev);
  err_0:
 	return NULL;
 }

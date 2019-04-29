@@ -2115,16 +2115,13 @@ send_reply:
 
 static int smplr_add_handler(ldmsd_req_ctxt_t reqc)
 {
-	char errstr[80];
-	char *attr_name, *name, *value, *plugin, *inst, *prod;
-	name = plugin = NULL;
+	char *attr_name, *name, *inst;
+	name = inst = NULL;
 	size_t cnt = 0;
 	uid_t uid;
 	gid_t gid;
 	int perm;
 	char *perm_s = NULL;
-	uint64_t component_id;
-	int rc;
 
 	reqc->errcode = 0;
 
@@ -2133,39 +2130,23 @@ static int smplr_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!name)
 		goto einval;
 
-	attr_name = "plugin";
-	plugin = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PLUGIN);
-	if (!plugin)
-		goto einval;
-
 	attr_name = "instance";
 	inst = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
 	if (!inst)
 		goto einval;
 
-	attr_name = "producer";
-	prod = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PRODUCER);
-	if (!prod)
-		goto einval;
-
-	attr_name = "component_id";
-	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_COMP_ID);
-	if (!value)
-		goto einval;
-	component_id = strtoul(value, NULL, 0);
-
-	ldmsd_plugin_inst_t pi = ldmsd_plugin_inst_find(plugin);
+	ldmsd_plugin_inst_t pi = ldmsd_plugin_inst_find(inst);
 	if (!pi) {
 		reqc->errcode = ENOENT;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			       "Plugin instance `%s` not found\n", plugin);
+			       "Plugin instance `%s` not found\n", inst);
 		goto send_reply;
 	}
 	if (!LDMSD_INST_IS_SAMPLER(pi)) {
 		reqc->errcode = EINVAL;
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"The plugin instance `%s` is not a sampler.\n",
-				plugin);
+				inst);
 		goto send_reply;
 	}
 
@@ -2184,8 +2165,6 @@ static int smplr_add_handler(ldmsd_req_ctxt_t reqc)
 		perm = strtol(perm_s, NULL, 0);
 
 	ldmsd_smplr_t smplr = ldmsd_smplr_new_with_auth(name, pi,
-							component_id,
-							prod, inst,
 							uid, gid, perm);
 	if (!smplr) {
 		if (errno == EEXIST)
@@ -2214,10 +2193,10 @@ send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (name)
 		free(name);
-	if (plugin)
-		free(plugin);
 	if (perm_s)
 		free(perm_s);
+	if (inst)
+		free(inst);
 	return 0;
 }
 
@@ -3917,30 +3896,39 @@ int __smplr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_smplr_t smplr)
 {
 	extern const char *smplr_state_str(enum ldmsd_smplr_state state);
 	int rc;
+	ldmsd_set_entry_t sent;
+	ldmsd_sampler_type_t samp;
+	int first = 1;
 
 	ldmsd_smplr_lock(smplr);
 	rc = linebuf_printf(reqc,
 		       "{ \"name\":\"%s\","
-		       "\"plugin\":\"%s\","
-		       "\"producer\":\"%s\","
 		       "\"instance\":\"%s\","
-		       "\"component_id\":\"%ld\","
 		       "\"interval_us\":\"%ld\","
 		       "\"offset_us\":\"%ld\","
 		       "\"synchronous\":\"%d\","
 		       "\"state\":\"%s\","
-		       "\"sets\": [ \"%s\" ] }",
+		       "\"sets\": [ ",
 		       smplr->obj.name,
 		       smplr->pi->inst_name,
-		       smplr->producer,
-		       smplr->instance,
-		       smplr->component_id,
 		       smplr->interval_us,
 		       smplr->offset_us,
 		       smplr->synchronous,
-		       smplr_state_str(smplr->state),
-		       smplr->instance
+		       smplr_state_str(smplr->state)
 		       );
+	if (rc)
+		goto out;
+	samp = LDMSD_SAMPLER(smplr->pi);
+	first = 1;
+	LIST_FOREACH(sent, &samp->set_list, entry) {
+		const char *name = ldms_set_instance_name_get(sent->set);
+		rc = linebuf_printf(reqc, "%s\"%s\"", first?"":",", name);
+		if (rc)
+			goto out;
+		first = 0;
+	}
+	rc = linebuf_printf(reqc, "] }");
+ out:
 	ldmsd_smplr_unlock(smplr);
 	return rc;
 }
