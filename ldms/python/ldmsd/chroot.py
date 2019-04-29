@@ -433,8 +433,7 @@ class LDMSChrootTest(object):
         D.s = s = """
             load name=test plugin=%(PLUGIN_NAME)s
             config name=test component_id=%(COMPONENT_ID)d %(PLUGIN_PARAMS)s
-            smplr_add name=smplr_test plugin=test instance=NA producer=NA \
-                      component_id=0
+            smplr_add name=smplr_test instance=test
             smplr_start name=smplr_test interval=%(INTERVAL_USEC)d \
                         offset=%(OFFSET)d
         """
@@ -503,8 +502,7 @@ class LDMSChrootTest(object):
             cfg = '' if not cls.AUTO_JOB else """\
                 load name=jobinfo plugin=faux_job
                 config name=jobinfo job_id=%(JOB_ID)d app_id=%(APP_ID)d
-                smplr_add name=smplr_job plugin=jobinfo \
-                          producer=NA instance=NA component_id=NA
+                smplr_add name=smplr_job instance=jobinfo
                 smplr_start name=smplr_job interval=3600000000
             """ % xvars(cls)
             cls.initSources()
