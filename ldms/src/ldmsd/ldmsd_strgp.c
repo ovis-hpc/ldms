@@ -545,37 +545,36 @@ void ldmsd_strgp_update(ldmsd_prdcr_set_t prd_set)
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 }
 
+/* Caller must hold the strgp lock. */
 int __ldmsd_strgp_start(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc;
-	ldmsd_strgp_lock(strgp);
 	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
-	if (rc) {
-		goto out;
-	}
-	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out;
-	}
+	if (rc)
+		return rc;
+	if (strgp->state != LDMSD_STRGP_STATE_STOPPED)
+		return EBUSY;
 	strgp->state = LDMSD_STRGP_STATE_RUNNING;
 	strgp->obj.perm |= LDMSD_PERM_DSTART;
 	/* Update all the producers of our changed state */
 	ldmsd_prdcr_update(strgp);
-out:
-	ldmsd_strgp_unlock(strgp);
 	return rc;
 }
 
-int ldmsd_strgp_start(const char *name, ldmsd_sec_ctxt_t ctxt)
+int ldmsd_strgp_start(const char *name, ldmsd_sec_ctxt_t ctxt, int flags)
 {
 	int rc;
 	ldmsd_strgp_t strgp = ldmsd_strgp_find(name);
-	if (!strgp) {
+	if (!strgp)
 		return ENOENT;
-	}
-	rc = __ldmsd_strgp_start(strgp, ctxt);
+	ldmsd_strgp_lock(strgp);
+	if (flags & LDMSD_PERM_DSTART)
+		strgp->obj.perm |= LDMSD_PERM_DSTART;
+	else
+		rc = __ldmsd_strgp_start(strgp, ctxt);
+	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-	return rc;
+	return 0;
 }
 
 int __ldmsd_strgp_stop(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt)

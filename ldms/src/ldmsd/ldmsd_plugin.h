@@ -651,4 +651,26 @@ int ldmsd_plugin_qrent_coll_json_print(ldmsd_plugin_qrent_coll_t coll,
 __attribute__((format(printf, 4, 5)))
 int sappendf(char **buff, int *off, int *alen, const char *fmt, ...);
 
+/**
+ * Data structure to store the deferred plugin config request.
+ *
+ * Plugin config requests are deferred if LDMSD has not been initialized yet.
+ */
+typedef struct ldmsd_deferred_pi_config {
+	char *name;
+	json_entity_t d;
+	size_t buflen;
+	char *buf;
+	TAILQ_ENTRY(ldmsd_deferred_pi_config) entry;
+} *ldmsd_deferred_pi_config_t;
+TAILQ_HEAD(ldmsd_deferred_pi_config_q, ldmsd_deferred_pi_config);
+
+ldmsd_deferred_pi_config_t
+ldmsd_deferred_pi_config_new(const char *inst, json_entity_t d);
+
+/**
+ * Configure the plugin instances according to the deferred plugin config requests
+ */
+int ldmsd_handle_deferred_plugin_config();
+
 #endif /* __LDMSD_PLUGIN_H__ */

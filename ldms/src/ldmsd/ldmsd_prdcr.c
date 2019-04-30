@@ -761,15 +761,8 @@ int updtr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t 
 
 int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 {
-	int rc;
-	ldmsd_prdcr_lock(prdcr);
-	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
-	if (rc)
-		goto out;
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out;
-	}
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED)
+		return EBUSY;
 
 	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
 
@@ -777,21 +770,28 @@ int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 
 	ev_post(producer, updater, prdcr->start_ev, NULL);
 	ev_post(producer, producer, prdcr->connect_ev, NULL);
-out:
-	ldmsd_prdcr_unlock(prdcr);
-	return rc;
+	return 0;
 }
 
 int ldmsd_prdcr_start(const char *name, const char *interval_str,
-		      ldmsd_sec_ctxt_t ctxt)
+		      ldmsd_sec_ctxt_t ctxt, int flags)
 {
 	int rc = 0;
 	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(name);
 	if (!prdcr)
 		return ENOENT;
+	ldmsd_prdcr_lock(prdcr);
+	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
+	if (rc)
+		goto out;
 	if (interval_str)
 		prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
-	rc = __ldmsd_prdcr_start(prdcr, ctxt);
+	if (flags & LDMSD_PERM_DSTART)
+		prdcr->obj.perm |= LDMSD_PERM_DSTART;
+	else
+		rc = __ldmsd_prdcr_start(prdcr, ctxt);
+out:
+	ldmsd_prdcr_unlock(prdcr);
 	ldmsd_prdcr_put(prdcr);
 	return rc;
 }
@@ -860,7 +860,7 @@ int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
 
 int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 			    char *rep_buf, size_t rep_len,
-			    ldmsd_sec_ctxt_t ctxt)
+			    ldmsd_sec_ctxt_t ctxt, int flags)
 {
 	regex_t regex;
 	ldmsd_prdcr_t prdcr;
@@ -872,12 +872,21 @@ int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		ldmsd_prdcr_lock(prdcr);
+		rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
+		if (rc)
+			goto next;
 		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
 		if (rc)
-			continue;
+			goto next;
 		if (interval_str)
 			prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
-		__ldmsd_prdcr_start(prdcr, ctxt);
+		if (flags & LDMSD_PERM_DSTART)
+			prdcr->obj.perm |= LDMSD_PERM_DSTART;
+		else
+			__ldmsd_prdcr_start(prdcr, ctxt);
+	next:
+		ldmsd_prdcr_unlock(prdcr);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 	regfree(&regex);

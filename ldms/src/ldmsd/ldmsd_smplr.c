@@ -393,49 +393,20 @@ int sample_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 
 /*
  * Start the sampler
+ *
+ * The caller must hold the smplr lock.
  */
-static int _start_smplr(char *smplr_name, char *interval, char *offset,
-			int is_one_shot)
+int __ldmsd_start_smplr(ldmsd_smplr_t smplr, int is_one_shot)
 {
 	int rc;
-	unsigned long sample_interval;
-	long sample_offset;
-	int synchronous;
-	ldmsd_smplr_t smplr;
-
-	sample_interval = strtoul(interval, NULL, 0);
-	if (errno == ERANGE || sample_interval < HZ)
-		return ERANGE;
-	if (offset) {
-		sample_offset = strtoul(offset, NULL, 0);
-		if (errno == ERANGE
-		    || sample_offset > 999999
-		    || sample_offset > sample_interval)
-			return ERANGE;
-		synchronous = 1;
-	} else {
-		sample_offset = 0;
-		synchronous = 0;
-	}
-
-	smplr = (ldmsd_smplr_t)ldmsd_cfgobj_find(smplr_name, LDMSD_CFGOBJ_SMPLR);
-	if (!smplr)
-		return ENOENT;
-
-	ldmsd_smplr_lock(smplr);
-	if (smplr->state != LDMSD_SMPLR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out;
-	}
-	smplr->interval_us = sample_interval;
-	smplr->offset_us = sample_offset;
-	smplr->synchronous = synchronous;
+	if (smplr->state != LDMSD_SMPLR_STATE_STOPPED)
+		return EBUSY;
 
 	if (!is_one_shot) {
 		rc = __sampler_set_info_add(smplr);
 		if (rc) {
 			ldmsd_lerror("%s: sampler %s was unable to update sample hint info.\n",
-				     __func__, smplr_name);
+				     __func__, smplr->obj.name);
 		}
 		smplr->state = LDMSD_SMPLR_STATE_RUNNING;
 	}
@@ -445,23 +416,56 @@ static int _start_smplr(char *smplr_name, char *interval, char *offset,
 	ev_sched_to(&to, smplr->interval_us / 1000000, smplr->offset_us * 1000);
 	if (smplr->synchronous)
 		to.tv_nsec = smplr->offset_us * 1000;
-	ldmsd_smplr_unlock(smplr);
-	ldmsd_smplr_put(smplr);
 
 	EV_DATA(smplr->sample_ev, struct sample_data)->reschedule = !is_one_shot;
 	ev_post(sampler, sampler, smplr->sample_ev, &to);
 	return 0;
- out:
+}
+
+int ldmsd_start_smplr(char *smplr_name, char *interval, char *offset,
+					int is_one_shot, int flags)
+{
+	int rc = 0;
+	unsigned long sample_interval;
+	long sample_offset;
+	int synchronous;
+	ldmsd_smplr_t smplr;
+
+	if (interval) {
+		sample_interval = strtoul(interval, NULL, 0);
+		if (errno == ERANGE || sample_interval < HZ)
+			return ERANGE;
+	}
+
+	if (offset) {
+		sample_offset = strtoul(offset, NULL, 0);
+		if (errno == ERANGE
+		    || sample_offset > 999999
+		    || sample_offset > sample_interval)
+			return ERANGE;
+		synchronous = 1;
+	}
+
+	smplr = (ldmsd_smplr_t)ldmsd_cfgobj_find(smplr_name, LDMSD_CFGOBJ_SMPLR);
+	if (!smplr)
+		return ENOENT;
+
+	ldmsd_smplr_lock(smplr);
+	if (interval)
+		smplr->interval_us = sample_interval;
+	if (offset) {
+		smplr->offset_us = sample_offset;
+		smplr->synchronous = synchronous;
+	}
+
+	if (flags & LDMSD_PERM_DSTART)
+		smplr->obj.perm |= LDMSD_PERM_DSTART;
+	else
+		rc = __ldmsd_start_smplr(smplr, 0);
 	ldmsd_smplr_unlock(smplr);
 	ldmsd_smplr_put(smplr);
 	return rc;
 }
-
-int ldmsd_start_smplr(char *smplr_name, char *interval, char *offset)
-{
-	return _start_smplr(smplr_name, interval, offset, 0);
-}
-
 
 /*
  * Stop the sampler
@@ -489,6 +493,6 @@ int ldmsd_stop_smplr(char *smplr_name)
 
 int ldmsd_oneshot_smplr(char *smplr_name, char *interval, char *offset)
 {
-	return _start_smplr(smplr_name, interval, offset, 1);
+	return ldmsd_start_smplr(smplr_name, interval, offset, 1, 0);
 }
 

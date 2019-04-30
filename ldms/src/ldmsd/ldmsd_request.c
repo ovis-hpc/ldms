@@ -1033,7 +1033,8 @@ void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec
 	xprt->send_fn(xprt, (char *)req_reply, reply_size);
 }
 
-int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
+int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
+						ldmsd_req_filter_fn filter_fn)
 {
 	struct req_ctxt_key key;
 	ldmsd_req_ctxt_t reqc = NULL;
@@ -1109,8 +1110,14 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->req_buf);
 	reqc->req_id = ((ldmsd_req_hdr_t)reqc->req_buf)->req_id;
 
-	rc = ldmsd_handle_request(reqc);
+	if (filter_fn) {
+		rc = filter_fn(reqc, NULL);
+		if (rc)
+			goto out1;
+	}
 
+	rc = ldmsd_handle_request(reqc);
+ out1:
 	req_ctxt_tree_lock();
 	req_ctxt_ref_put(reqc);
 	req_ctxt_tree_unlock();
@@ -1492,6 +1499,7 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 	name = interval_str = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
+	int flags = 0;
 
 	reqc->errcode = 0;
 
@@ -1506,7 +1514,9 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc,
 							LDMSD_ATTR_INTERVAL);
-	reqc->errcode = ldmsd_prdcr_start(name, interval_str, &sctxt);
+	if (reqc->flags & LDMSD_REQ_DEFER_FLAG)
+		flags = LDMSD_PERM_DSTART;
+	reqc->errcode = ldmsd_prdcr_start(name, interval_str, &sctxt, flags);
 	switch (reqc->errcode) {
 	case 0:
 		break;
@@ -1590,7 +1600,7 @@ static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
 	prdcr_regex = interval_str = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
-
+	int flags = 0;
 	reqc->errcode = 0;
 
 	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
@@ -1604,9 +1614,10 @@ static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
 	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
-
+	flags = (reqc->flags & LDMSD_REQ_DEFER_FLAG)?(LDMSD_PERM_DSTART):0;
 	reqc->errcode = ldmsd_prdcr_start_regex(prdcr_regex, interval_str,
-					reqc->line_buf, reqc->line_len, &sctxt);
+					reqc->line_buf, reqc->line_len,
+					&sctxt, flags);
 	/* on error, reqc->line_buf will be filled */
 
 send_reply:
@@ -2524,6 +2535,7 @@ static int strgp_start_handler(ldmsd_req_ctxt_t reqc)
 	name = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
+	int flags = 0;
 
 	reqc->errcode = 0;
 
@@ -2538,7 +2550,9 @@ static int strgp_start_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
-	reqc->errcode = ldmsd_strgp_start(name, &sctxt);
+	if (reqc->flags & LDMSD_REQ_DEFER_FLAG)
+		flags = LDMSD_PERM_DSTART;
+	reqc->errcode = ldmsd_strgp_start(name, &sctxt, flags);
 	switch (reqc->errcode) {
 	case ENOENT:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -3204,7 +3218,7 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 	updtr_name = interval_str = offset_str = auto_interval = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
-
+	int flags;
 	reqc->errcode = 0;
 
 	updtr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -3219,8 +3233,9 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 	auto_interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTO_INTERVAL);
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	flags = (reqc->flags & LDMSD_REQ_DEFER_FLAG)?(LDMSD_PERM_DSTART):0;
 	reqc->errcode = ldmsd_updtr_start(updtr_name, interval_str, offset_str,
-					  auto_interval, &sctxt);
+					  auto_interval, &sctxt, flags);
 	switch (reqc->errcode) {
 	case 0:
 		break;
@@ -3792,7 +3807,6 @@ out:
 	return rc;
 }
 
-extern int ldmsd_start_smplr(char *plugin_name, char *interval, char *offset);
 extern int ldmsd_stop_smplr(char *plugin);
 extern int ldmsd_load_plugin(const char *inst_name,
 			     const char *plugin_name,
@@ -3804,6 +3818,7 @@ static int smplr_start_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *smplr_name, *interval_us, *offset, *attr_name;
 	size_t cnt = 0;
+	int flags = 0;
 
 	smplr_name = interval_us = offset = NULL;
 
@@ -3814,7 +3829,8 @@ static int smplr_start_handler(ldmsd_req_ctxt_t reqc)
 	interval_us = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
 	offset = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
 
-	reqc->errcode = ldmsd_start_smplr(smplr_name, interval_us, offset);
+	flags = (reqc->flags & LDMSD_REQ_DEFER_FLAG)?(LDMSD_PERM_DSTART):0;
+	reqc->errcode = ldmsd_start_smplr(smplr_name, interval_us, offset, 0, flags);
 	if (reqc->errcode == 0) {
 		goto send_reply;
 	} else if (reqc->errcode == EINVAL) {
@@ -4336,15 +4352,24 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 
 	inst = ldmsd_plugin_inst_find(name);
 	if (!inst) {
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-			 "Instance not found: %s", name);
+		linebuf_printf(reqc, "Instance not found: %s", name);
 		reqc->errcode = ENOENT;
 		goto send_reply;
 	}
-	reqc->errcode = ldmsd_plugin_inst_config(inst, d,
-						 reqc->line_buf,
-						 reqc->line_len);
-	/* if there is an error, the plugin should already fill line_buf */
+
+	if (reqc->flags & LDMSD_REQ_DEFER_FLAG) {
+		ldmsd_deferred_pi_config_t cfg;
+		cfg = ldmsd_deferred_pi_config_new(name, d);
+		if (!cfg) {
+			ldmsd_log(LDMSD_LERROR, "Memory allocation failure\n");
+			goto enomem;
+		}
+	} else {
+		reqc->errcode = ldmsd_plugin_inst_config(inst, d,
+							 reqc->line_buf,
+							 reqc->line_len);
+		/* if there is an error, the plugin should already fill line_buf */
+	}
 	goto send_reply;
 
 einval:

@@ -291,10 +291,12 @@ typedef struct ldmsd_cfg_xprt_s {
 #define LINE_BUF_LEN 1024
 #define REQ_BUF_LEN 4096
 
+#define LDMSD_REQ_DEFER_FLAG 0x10
 typedef struct ldmsd_req_ctxt {
 	struct req_ctxt_key key;
 	struct rbn rbn;
 	int ref_count;
+	int flags;
 
 	ldmsd_cfg_xprt_t xprt;	/* network transport */
 
@@ -496,7 +498,9 @@ void ldmsd_ntoh_req_msg(ldmsd_req_hdr_t msg);
  * \param rec_len The record length
  */
 void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec_len);
-int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request);
+typedef int (*ldmsd_req_filter_fn)(ldmsd_req_ctxt_t reqc, void *ctxt);
+int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
+						ldmsd_req_filter_fn filter_fn);
 int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t response);
 int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc, const char *data, size_t data_len, int msg_flags);
 void ldmsd_send_error_reply(ldmsd_cfg_xprt_t xprt, uint32_t msg_no,

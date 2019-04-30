@@ -1510,7 +1510,7 @@ int __peercfg_start(ldmsd_failover_t f)
 		srbn = STR_RBN(rbn);
 		if (srbn->started)
 			continue;
-		rc = ldmsd_prdcr_start(srbn->str, NULL, &sctxt);
+		rc = ldmsd_prdcr_start(srbn->str, NULL, &sctxt, 0);
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR,
 				  "failover: prdcr_start(%s) failed, "
@@ -1524,7 +1524,7 @@ int __peercfg_start(ldmsd_failover_t f)
 		srbn = STR_RBN(rbn);
 		if (srbn->started)
 			continue;
-		rc = ldmsd_updtr_start(srbn->str, NULL, NULL, NULL, &sctxt);
+		rc = ldmsd_updtr_start(srbn->str, NULL, NULL, NULL, &sctxt, 0);
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR,
 				  "failover: updtr_start(%s) failed, "

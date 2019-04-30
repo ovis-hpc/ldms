@@ -1494,6 +1494,9 @@ int main(int argc, char *argv[])
 	umask(0);
 	cmd_line_value_init();
 
+	extern struct ldmsd_deferred_pi_config_q deferred_pi_config_q;
+	TAILQ_INIT(&deferred_pi_config_q);
+
 	/* Process the options given at the command line. */
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
@@ -1573,6 +1576,8 @@ int main(int argc, char *argv[])
 
 	handle_pidfile_banner();
 	handle_listening_endpoints();
+
+	ldmsd_handle_deferred_plugin_config();
 
 	if (ldmsd_use_failover) {
 		/* failover will be the one starting cfgobjs */

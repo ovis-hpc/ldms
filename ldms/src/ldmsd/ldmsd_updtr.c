@@ -677,19 +677,17 @@ out_0:
 	return rc;
 }
 
+/* Caller must hold the updtr lock. */
 int __ldmsd_updtr_start(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
 	ldmsd_name_match_t match;
 
-	ldmsd_updtr_lock(updtr);
 	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
 	if (rc)
-		goto out;
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out;
-	}
+		return rc;
+	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED)
+		return EBUSY;
 	updtr->state = LDMSD_UPDTR_STATE_RUNNING;
 	updtr->obj.perm |= LDMSD_PERM_DSTART;
 
@@ -698,14 +696,12 @@ int __ldmsd_updtr_start(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt)
 	 * the sets that can be updated
 	 */
 	ev_post(updater, producer, updtr->start_ev, NULL);
- out:
-	ldmsd_updtr_unlock(updtr);
 	return rc;
 }
 
 int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 		      const char *offset_str, const char *auto_interval,
-		      ldmsd_sec_ctxt_t ctxt)
+		      ldmsd_sec_ctxt_t ctxt, int flags)
 {
 	int rc = 0;
 	long interval_us, offset_us;
@@ -717,10 +713,10 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 
 	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
 	if (rc)
-		goto err;
+		goto out;
 	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
 		rc = EBUSY;
-		goto err;
+		goto out;
 	}
 
 	if (auto_interval) {
@@ -748,12 +744,11 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 	updtr->sched.offset_us = offset_us;
 	updtr->sched.offset_skew = updtr_sched_offset_skew_get();
 
-	ldmsd_updtr_unlock(updtr);
-	rc = __ldmsd_updtr_start(updtr, ctxt);
-	ldmsd_updtr_put(updtr);
-	return rc;
-
-err:
+	if (flags & LDMSD_PERM_DSTART)
+		updtr->obj.perm |= LDMSD_PERM_DSTART;
+	else
+		rc = __ldmsd_updtr_start(updtr, ctxt);
+out:
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
 	return rc;

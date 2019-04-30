@@ -901,10 +901,10 @@ static inline const char *ldmsd_prdcr_set_state_str(enum ldmsd_prdcr_set_state s
 void ldmsd_prdcr_set_ref_get(ldmsd_prdcr_set_t set);
 void ldmsd_prdcr_set_ref_put(ldmsd_prdcr_set_t set);
 int ldmsd_prdcr_start(const char *name, const char *interval_str,
-		      ldmsd_sec_ctxt_t ctxt);
+		      ldmsd_sec_ctxt_t ctxt, int flags);
 int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
 			    char *rep_buf, size_t rep_len,
-			    ldmsd_sec_ctxt_t ctxt);
+			    ldmsd_sec_ctxt_t ctxt, int flags);
 int ldmsd_prdcr_stop(const char *name, ldmsd_sec_ctxt_t ctxt);
 int ldmsd_prdcr_stop_regex(const char *prdcr_regex,
 			char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
@@ -961,7 +961,7 @@ static inline const char *ldmsd_updtr_state_str(enum ldmsd_updtr_state state) {
 }
 int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 		      const char *offset_str, const char *auto_interval,
-		      ldmsd_sec_ctxt_t ctxt);
+		      ldmsd_sec_ctxt_t ctxt, int flags);
 int ldmsd_updtr_stop(const char *updtr_name, ldmsd_sec_ctxt_t ctxt);
 int ldmsd_updtr_match_add(const char *updtr_name, const char *regex_str,
 		const char *selector_str, char *rep_buf, size_t rep_len,
@@ -1011,7 +1011,7 @@ static inline const char *ldmsd_strgp_state_str(enum ldmsd_strgp_state state) {
 	return "BAD STATE";
 }
 int ldmsd_strgp_stop(const char *strgp_name, ldmsd_sec_ctxt_t ctxt);
-int ldmsd_strgp_start(const char *name, ldmsd_sec_ctxt_t ctxt);
+int ldmsd_strgp_start(const char *name, ldmsd_sec_ctxt_t ctxt, int flags);
 
 int __ldmsd_strgp_start(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt);
 int __ldmsd_strgp_stop(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt);
@@ -1314,5 +1314,9 @@ struct attr_value_list *ldmsd_auth_opts_str2avl(const char *auth_args_s);
  */
 ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host,
 			char *auth, struct attr_value_list *auth_args);
+
+int ldmsd_start_smplr(char *smplr_name, char *interval, char *offset,
+					int is_one_shot, int flags);
+int __ldmsd_start_smplr(ldmsd_smplr_t smplr, int is_one_shot);
 
 #endif

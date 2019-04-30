@@ -475,13 +475,33 @@ char *find_comment(const char *line)
 }
 
 /*
- * \param req_filter is a function that returns zero if we want to process the
- *                   request, and returns non-zero otherwise.
+ * rc = 0, filter applied OK
+ * rc > 0, rc == -errno, error
+ * rc = -1, filter not applied (but not an error)
  */
-static
-int __process_config_file(const char *path, int *lno, int trust,
-		int (*req_filter)(ldmsd_cfg_xprt_t, ldmsd_req_hdr_t, void *),
-		void *ctxt)
+int __req_filter(ldmsd_req_ctxt_t reqc, void *ctxt)
+{
+	int rc = 0;
+
+	switch (reqc->req_id) {
+	case LDMSD_FAILOVER_START_REQ:
+		ldmsd_use_failover = 1;
+		break;
+	case LDMSD_PLUGN_CONFIG_REQ:
+	case LDMSD_PRDCR_START_REGEX_REQ:
+	case LDMSD_PRDCR_START_REQ:
+	case LDMSD_UPDTR_START_REQ:
+	case LDMSD_STRGP_START_REQ:
+	case LDMSD_SMPLR_START_REQ:
+		reqc->flags |= LDMSD_REQ_DEFER_FLAG;
+		break;
+	default:
+		break;
+	}
+	return rc;
+}
+
+int process_config_file(const char *path, int *lno, int trust)
 {
 	static uint32_t msg_no = 0;
 	int rc = 0;
@@ -499,6 +519,12 @@ int __process_config_file(const char *path, int *lno, int trust,
 	struct ldmsd_cfg_xprt_s xprt;
 	ldmsd_req_hdr_t request;
 	struct ldmsd_req_array *req_array = NULL;
+	ldmsd_req_filter_fn req_filter_fn;
+
+	if (ldmsd_is_initialized())
+		req_filter_fn = NULL;
+	else
+		req_filter_fn = __req_filter;
 
 	line = malloc(LDMSD_CFG_FILE_XPRT_MAX_REC);
 	if (!line) {
@@ -595,21 +621,7 @@ parse:
 	}
 	for (i = 0; i < req_array->num_reqs; i++) {
 		request = req_array->reqs[i];
-		if (req_filter) {
-			rc = req_filter(&xprt, request, ctxt);
-			/* rc = 0, filter OK */
-			if (rc == 0)
-				goto next_req;
-			/* rc == errno */
-			if (rc > 0) {
-				ldmsd_log(LDMSD_LERROR,
-					  "Configuration error at "
-					  "line %d (%s)\n", lineno, path);
-				goto cleanup;
-			}
-			/* rc < 0, filter not applied */
-		}
-		rc = ldmsd_process_config_request(&xprt, request);
+		rc = ldmsd_process_config_request(&xprt, request, req_filter_fn);
 		if (rc || xprt.rsp_err) {
 			if (!rc)
 				rc = xprt.rsp_err;
@@ -709,44 +721,6 @@ int __req_deferred_start(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
 }
 
 /*
- * rc = 0, filter applied OK
- * rc > 0, rc == -errno, error
- * rc = -1, filter not applied (but not an error)
- */
-int __req_filter_failover(ldmsd_cfg_xprt_t x, ldmsd_req_hdr_t req, void *ctxt)
-{
-	int *use_failover = ctxt;
-	int rc;
-
-	/* req is in network byte order */
-	ldmsd_ntoh_req_msg(req);
-
-	switch (req->req_id) {
-	case LDMSD_FAILOVER_START_REQ:
-		*use_failover = 1;
-		rc = 0;
-		break;
-	case LDMSD_PRDCR_START_REGEX_REQ:
-		rc = __req_deferred_start_regex(req, LDMSD_CFGOBJ_PRDCR);
-		break;
-	case LDMSD_PRDCR_START_REQ:
-		rc = __req_deferred_start(req, LDMSD_CFGOBJ_PRDCR);
-		break;
-	case LDMSD_UPDTR_START_REQ:
-		rc = __req_deferred_start(req, LDMSD_CFGOBJ_UPDTR);
-		break;
-	case LDMSD_STRGP_START_REQ:
-		rc = __req_deferred_start(req, LDMSD_CFGOBJ_STRGP);
-		break;
-	default:
-		rc = -1;
-	}
-	/* convert req back to network byte order */
-	ldmsd_hton_req_msg(req);
-	return rc;
-}
-
-/*
  * Start all cfgobjs for aggregators that `filter(obj) == 0`.
  */
 int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t))
@@ -756,6 +730,21 @@ int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t))
 	struct ldmsd_sec_ctxt sctxt;
 
 	ldmsd_sec_ctxt_get(&sctxt);
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_SMPLR);
+	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_SMPLR) {
+		if (filter && filter(obj))
+			continue;
+		rc = __ldmsd_start_smplr((ldmsd_smplr_t)obj, 0);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR,
+				"smplr_start failed, name %s, rc: %d\n",
+				obj->name, rc);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_SMPLR);
+			goto out;
+		}
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SMPLR);
 
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_PRDCR) {
@@ -826,14 +815,6 @@ int ldmsd_ourcfg_start_proc()
 	return 0;
 }
 
-int process_config_file(const char *path, int *lno, int trust)
-{
-	int rc;
-	rc = __process_config_file(path, lno, trust,
-				   __req_filter_failover, &ldmsd_use_failover);
-	return rc;
-}
-
 static inline void __log_sent_req(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t req)
 {
 	if (!ldmsd_req_debug) /* defined in ldmsd_request.c */
@@ -888,7 +869,7 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 
 	switch (ntohl(request->type)) {
 	case LDMSD_REQ_TYPE_CONFIG_CMD:
-		(void)ldmsd_process_config_request(&xprt, request);
+		(void)ldmsd_process_config_request(&xprt, request, NULL);
 		break;
 	case LDMSD_REQ_TYPE_CONFIG_RESP:
 		(void)ldmsd_process_config_response(&xprt, request);

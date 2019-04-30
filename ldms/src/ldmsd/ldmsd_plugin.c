@@ -905,3 +905,65 @@ json_entity_t qfn_env(ldmsd_plugin_inst_t pi, json_entity_t result)
 	 /* No environment variables to add */
 	return result;
 }
+
+struct ldmsd_deferred_pi_config_q deferred_pi_config_q;
+void ldmsd_deferred_pi_config_free(ldmsd_deferred_pi_config_t cfg)
+{
+	TAILQ_REMOVE(&deferred_pi_config_q, cfg, entry);
+	if (cfg->d)
+		json_entity_free(cfg->d);
+	if (cfg->name)
+		free(cfg->name);
+	if (cfg->buf)
+		free(cfg->buf);
+	free(cfg);
+}
+
+ldmsd_deferred_pi_config_t
+ldmsd_deferred_pi_config_new(const char *name, json_entity_t d)
+{
+	struct ldmsd_deferred_pi_config *cfg = calloc(1, sizeof(*cfg));
+	errno = 0;
+	if (!cfg)
+		goto err;
+	cfg->buflen = 1024;
+	cfg->buf = malloc(cfg->buflen);
+	if (!cfg->buf)
+		goto err1;
+	cfg->name = strdup(name);
+	if (!cfg->name)
+		goto err1;
+	cfg->d = json_entity_copy(d);
+	if (!cfg->d)
+		goto err1;
+	TAILQ_INSERT_TAIL(&deferred_pi_config_q, cfg, entry);
+	return cfg;
+err1:
+	ldmsd_deferred_pi_config_free(cfg);
+err:
+	errno = ENOMEM;
+	return NULL;
+}
+
+int ldmsd_handle_deferred_plugin_config()
+{
+	struct ldmsd_deferred_pi_config *cfg, *nxt_cfg;
+	ldmsd_plugin_inst_t inst;
+	int rc;
+	cfg = TAILQ_FIRST(&deferred_pi_config_q);
+	while (cfg) {
+		nxt_cfg = TAILQ_NEXT(cfg, entry);
+		inst = ldmsd_plugin_inst_find(cfg->name);
+		rc = ldmsd_plugin_inst_config(inst, cfg->d, cfg->buf, cfg->buflen);
+		if (rc) {
+			jbuf_t jb = json_entity_dump(NULL, cfg->d);
+			ldmsd_log(LDMSD_LERROR, "Error config instance '%s': %s\n",
+					cfg->name, jb->buf);
+			jbuf_free(jb);
+			return rc;
+		}
+		ldmsd_deferred_pi_config_free(cfg);
+		cfg = nxt_cfg;
+	}
+	return 0;
+}
