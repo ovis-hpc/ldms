@@ -5624,6 +5624,22 @@ static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc)
 	int rc = 0;
 	char opt;
 	s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+
+	if (ldmsd_is_initialized()) {
+		/*
+		 * No changes to command-line options are allowed
+		 * after LDMSD is initialized.
+		 *
+		 * The only exception is loglevel which can be changed
+		 * using loglevel command.
+		 *
+		 */
+		reqc->errcode = EPERM;
+		linebuf_printf(reqc, "LDMSD is already initialized."
+				"The command-line options cannot be altered.");
+		goto send_reply;
+	}
+
 	for (token = strtok_r(s, " \t\n", &ptr1); token;
 			token = strtok_r(NULL, " \t\n", &ptr1)) {
 		char *ptr2;
