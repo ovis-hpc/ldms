@@ -4203,11 +4203,8 @@ static int plugn_load_handler(ldmsd_req_ctxt_t reqc)
 
 	attr_name = "name";
 	inst_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!inst_name) {
-		ldmsd_log(LDMSD_LERROR,
-			  "load plugin called without `name` attribute");
+	if (!inst_name)
 		goto einval;
-	}
 
 	attr_name = "plugin";
 	plugin_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PLUGIN);
