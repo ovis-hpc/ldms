@@ -28,6 +28,7 @@ sos-import-csv.
 DATA is a file name of a LDMS .HEADER, .KIND, or data file.
 The file name and at least the first line of the file are digested to determine
 the content and the column types. LDMS CSV file name conventions ($schema[.$date] is associated with $schema.HEADER.$date or $schema.KIND.$date in the same directory).
+The file may be gzipped; if so, the matching data/HEADER/KIND files must also be gzipped.
 .TP
 --blacklist=<BLACKLIST>
 .br
@@ -51,11 +52,15 @@ NAME overrides the default schema name determined from the data file name.
 .TP
 --schema-file=<FILE>
 .br
-Use an existing schema file FILE instead of generating a schema. When not specified, a schema file is always generated.
+Use an existing schema file FILE instead of generating a schema. When not specified, a schema file is always generated. Schema files may not be gzipped.
 .TP
 --map-file=<MAP_FILE> 
 .br
 Override the output map file name derived from the data file name.
+.TP
+--alias-file=<ALIASES> 
+.br
+Provide the list of metrics to rename when creating or matching a schema discovered from a header line.
 .TP
 --strip-udata 
 .br
@@ -99,13 +104,12 @@ file is formatted for editability, and it should be adjusted before use with
 SOS if any guess or assumption proves erroneous.
 
 .SH BUGS
-The initial release of this tool does not support export of LDMS CSV array metrics (other than char array), because their import specification is not yet defined for sos-import-csv.
 
 There is no pipeline filtering mode.
 
 .SH EXAMPLES
 
-To use sos-import-csv with the resulting files:
+To test sos-import-csv with the resulting files:
 .nf
 
 ldms-csv-export-sos --data=renamecsv.1553744481 \\
@@ -122,6 +126,8 @@ sos-import-csv \\
 	--map renamecsv.MAPSOS.1553744481 \\
 	--schema meminfo \\
 	--status
+sos_cmd -C container -l
+sos_cmd -C container -q -S meminfo -X Time
 .fi
 
 Other examples
