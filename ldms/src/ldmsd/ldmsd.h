@@ -829,7 +829,8 @@ int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt
 /** Sampler configuration object management */
 ldmsd_smplr_t
 ldmsd_smplr_new_with_auth(const char *name,
-			  ldmsd_plugin_inst_t plugin_inst,
+			  ldmsd_plugin_inst_t pi,
+			  long interval_us, long offset_us,
 			  uid_t uid, gid_t gid, int perm);
 int ldmsd_smplr_del(const char *smplr_name, ldmsd_sec_ctxt_t ctxt);
 static inline void ldmsd_smplr_lock(ldmsd_smplr_t smplr) {
@@ -854,10 +855,15 @@ static inline ldmsd_smplr_t ldmsd_smplr_next(ldmsd_smplr_t smplr)
 static inline void ldmsd_smplr_put(ldmsd_smplr_t smplr) {
 	ldmsd_cfgobj_put(&smplr->obj);
 }
-int ldmsd_smplr_start(const char *name,
-		      uint32_t interval_us, uint32_t offset_us,
-		      ldmsd_sec_ctxt_t ctxt);
-int ldmsd_smplr_stop(const char *name, ldmsd_sec_ctxt_t ctxt);
+
+int ldmsd_smplr_oneshot(char *smplr_name, char *ts, ldmsd_sec_ctxt_t sctxt);
+
+int ldmsd_smplr_start(char *smplr_name, char *interval, char *offset,
+					int is_one_shot, int flags,
+					ldmsd_sec_ctxt_t sctxt);
+int __ldmsd_smplr_start(ldmsd_smplr_t smplr, int is_one_shot);
+
+int ldmsd_smplr_stop(const char *name, ldmsd_sec_ctxt_t sctxt);
 
 
 /** Producer configuration object management */
@@ -1496,9 +1502,4 @@ struct attr_value_list *ldmsd_auth_opts_str2avl(const char *auth_args_s);
  */
 ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host,
 			char *auth, struct attr_value_list *auth_args);
-
-int ldmsd_start_smplr(char *smplr_name, char *interval, char *offset,
-					int is_one_shot, int flags);
-int __ldmsd_start_smplr(ldmsd_smplr_t smplr, int is_one_shot);
-
 #endif

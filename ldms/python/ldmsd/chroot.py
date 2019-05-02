@@ -431,12 +431,11 @@ class LDMSChrootTest(object):
         cls.PLUGIN_PARAMS = ' '.join([ str(k)+'='+str(v) \
                                           for k,v in p.iteritems() ])
         D.s = s = """
-            load name=test plugin=%(PLUGIN_NAME)s
-            config name=test component_id=%(COMPONENT_ID)d %(PLUGIN_PARAMS)s
-            smplr_add name=smplr_test instance=test
-            smplr_start name=smplr_test interval=%(INTERVAL_USEC)d \
-                        offset=%(OFFSET)d
-        """
+load name=test plugin=%(PLUGIN_NAME)s
+config name=test component_id=%(COMPONENT_ID)d %(PLUGIN_PARAMS)s
+smplr_add name=smplr_test instance=test interval=%(INTERVAL_USEC)d offset=%(OFFSET)d
+smplr_start name=smplr_test
+"""
         return s % xvars(cls)
 
     @classmethod
@@ -500,10 +499,10 @@ class LDMSChrootTest(object):
 
             # ldmsd
             cfg = '' if not cls.AUTO_JOB else """\
-                load name=jobinfo plugin=faux_job
-                config name=jobinfo job_id=%(JOB_ID)d app_id=%(APP_ID)d
-                smplr_add name=smplr_job instance=jobinfo
-                smplr_start name=smplr_job interval=3600000000
+load name=jobinfo plugin=faux_job
+config name=jobinfo job_id=%(JOB_ID)d app_id=%(APP_ID)d
+smplr_add name=smplr_job instance=jobinfo interval=3600000000
+smplr_start name=smplr_job
             """ % xvars(cls)
             cls.initSources()
             cfg += cls.getLdmsConfig()

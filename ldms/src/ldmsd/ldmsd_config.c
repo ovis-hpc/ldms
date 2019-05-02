@@ -743,7 +743,7 @@ int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t))
 	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_SMPLR) {
 		if (filter && filter(obj))
 			continue;
-		rc = __ldmsd_start_smplr((ldmsd_smplr_t)obj, 0);
+		rc = __ldmsd_smplr_start((ldmsd_smplr_t)obj, 0);
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR,
 				"smplr_start failed, name %s, rc: %d\n",

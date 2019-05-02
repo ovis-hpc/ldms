@@ -210,7 +210,7 @@ class LdmsdCmdParser(cmd.Cmd):
                 elif (verb == "listen") and (name not in ["xprt", "port", "port", "auth"]):
                         # auth args
                         attr_s.append(attr_str)
-                elif (verb == "prdcr_add") and (name not in 
+                elif (verb == "prdcr_add") and (name not in
                            ["name", "xprt", "port", "host", "type", "interval", "auth"]):
                         # auth args
                         attr_s.append(attr_str)
@@ -890,7 +890,7 @@ class LdmsdCmdParser(cmd.Cmd):
         Parameters:
         name=    The sampler name
         """
-        self.handle('prdcr_del', arg)
+        self.handle('smplr_del', arg)
 
     def complete_smplr_del(self, text, line, begidx, endidx):
         return self.__complete_attr_list('smplr_del', text)
@@ -930,23 +930,27 @@ class LdmsdCmdParser(cmd.Cmd):
         name=     The smplr name
         """
         resp = self.handle('smplr_status', arg)
-        if resp['errcode'] != 0:
-            print("Request returned error {0}".format(resp['errcode']))
-            return
-        samplers = json.loads(resp['msg'])
-        print("Name             Plugin           Component  Interval   Offset     Sync State    Producer       Instance    ")
-        print("---------------- ---------------- ---------- ---------- ---------- ---- -------- -------------- --------------")
-        for smplr in samplers:
-            print("{0:16} {1:16} {2:>10} {3:>10} {4:>10} {5:>4} {6:8} {7:14} {8}".\
-                  format(smplr['name'],
-                         smplr['plugin'],
-                         smplr['component_id'],
-                         smplr['interval_us'],
-                         smplr['offset_us'],
-                         smplr['synchronous'],
-                         smplr['state'],
-                         smplr['producer'],
-                         smplr['instance']))
+        if resp['errcode'] == 0:
+            samplers = json.loads(resp['msg'])
+
+            print("{0:16} {1:16} {2:16} {3:>10} {4:>7} {5:>10} {6:>8} {7}".format("Name", "Plugin Instance", "Plugin", "Interval", "Offset", "Sync State", "State", "Sets"))
+            print("--------------- ---------------- ---------------- ---------- -------- ----------- ------- --------------------")
+            for smplr in samplers:
+                print("{0:16} {1:16} {2:16} {3:>10} {4:>7} {5:>10} {6:>8}".format(smplr['name'],
+                             smplr['instance'],
+                             smplr['plugin'],
+                             smplr['interval_us'],
+                             smplr['offset_us'],
+                             "true" if smplr['synchronous'] else "false",
+                             smplr['state']), end='')
+                cnt = 0
+                for s in smplr['sets']:
+                    if cnt == 0:
+                        print(" " + s, end='')
+                    else:
+                        print("," + s, end='')
+                    cnt += 1
+                print("")
 
     def complete_smplr_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('smplr_status', text)

@@ -53,6 +53,7 @@
 #include <string.h>
 #include <errno.h>
 #include <assert.h>
+#include <math.h>
 #include <coll/rbt.h>
 #include <ovis_util/util.h>
 #include <ev/ev.h>
@@ -87,6 +88,7 @@ const char *smplr_state_str(enum ldmsd_smplr_state state)
 ldmsd_smplr_t
 ldmsd_smplr_new_with_auth(const char *name,
 			  ldmsd_plugin_inst_t pi,
+			  long interval_us, long offset_us,
 			  uid_t uid, gid_t gid, int perm)
 {
 	ldmsd_smplr_t smplr;
@@ -114,8 +116,12 @@ ldmsd_smplr_new_with_auth(const char *name,
 	if (!smplr)
 		goto err_3;
 
-	smplr->interval_us = 0;
-	smplr->offset_us = 0;
+	smplr->interval_us = interval_us;
+	smplr->offset_us = offset_us;
+	if (offset_us == LDMSD_UPDT_HINT_OFFSET_NONE)
+		smplr->synchronous = 0;
+	else
+		smplr->synchronous = 1;
 	smplr->state = LDMSD_SMPLR_STATE_STOPPED;
 	ldmsd_plugin_inst_get(pi);
 	smplr->pi = pi;
@@ -359,19 +365,14 @@ int __sampler_set_info_add(ldmsd_smplr_t smplr)
 	return rc;
 }
 
-static void stop_sampler(ldmsd_smplr_t smplr)
-{
-	EV_DATA(smplr->sample_ev, struct sample_data)->reschedule = 0;
-}
-
 int sample_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	ldmsd_smplr_t smplr = EV_DATA(ev, struct sample_data)->smplr;
 	ldmsd_sampler_type_t samp = LDMSD_SAMPLER(smplr->pi);
 	ldmsd_smplr_lock(smplr);
-	int rc = 0;
-	/* TODO Revisit this after updating sample() interface */
-	samp->sample(smplr->pi);
+	int rc;
+
+	rc = samp->sample(smplr->pi);
 	if (rc) {
 		/*
 		 * If the sampler reports an error don't reschedule
@@ -382,8 +383,7 @@ int sample_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 				"the plug-in.\n", smplr->obj.name);
 	} else if (EV_DATA(ev, struct sample_data)->reschedule) {
 		struct timespec to;
-		clock_gettime(CLOCK_REALTIME, &to);
-		to.tv_sec += smplr->interval_us / 1000000;
+		ev_sched_to(&to, smplr->interval_us / 1000000, 0);
 		to.tv_nsec = smplr->offset_us * 1000;
 		ev_post(src, dst, ev, &to);
 	}
@@ -396,7 +396,7 @@ int sample_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
  *
  * The caller must hold the smplr lock.
  */
-int __ldmsd_start_smplr(ldmsd_smplr_t smplr, int is_one_shot)
+int __ldmsd_smplr_start(ldmsd_smplr_t smplr, int is_one_shot)
 {
 	int rc;
 	if (smplr->state != LDMSD_SMPLR_STATE_STOPPED)
@@ -412,7 +412,6 @@ int __ldmsd_start_smplr(ldmsd_smplr_t smplr, int is_one_shot)
 	}
 
 	struct timespec to;
-	clock_gettime(CLOCK_REALTIME, &to);
 	ev_sched_to(&to, smplr->interval_us / 1000000, smplr->offset_us * 1000);
 	if (smplr->synchronous)
 		to.tv_nsec = smplr->offset_us * 1000;
@@ -422,8 +421,9 @@ int __ldmsd_start_smplr(ldmsd_smplr_t smplr, int is_one_shot)
 	return 0;
 }
 
-int ldmsd_start_smplr(char *smplr_name, char *interval, char *offset,
-					int is_one_shot, int flags)
+int ldmsd_smplr_start(char *smplr_name, char *interval, char *offset,
+					int is_one_shot, int flags,
+					ldmsd_sec_ctxt_t sctxt)
 {
 	int rc = 0;
 	unsigned long sample_interval;
@@ -451,6 +451,10 @@ int ldmsd_start_smplr(char *smplr_name, char *interval, char *offset,
 		return ENOENT;
 
 	ldmsd_smplr_lock(smplr);
+
+	rc = ldmsd_cfgobj_access_check(&smplr->obj, 0222, sctxt);
+	if (rc)
+		goto out;
 	if (interval)
 		smplr->interval_us = sample_interval;
 	if (offset) {
@@ -461,7 +465,8 @@ int ldmsd_start_smplr(char *smplr_name, char *interval, char *offset,
 	if (flags & LDMSD_PERM_DSTART)
 		smplr->obj.perm |= LDMSD_PERM_DSTART;
 	else
-		rc = __ldmsd_start_smplr(smplr, 0);
+		rc = __ldmsd_smplr_start(smplr, is_one_shot);
+out:
 	ldmsd_smplr_unlock(smplr);
 	ldmsd_smplr_put(smplr);
 	return rc;
@@ -470,16 +475,19 @@ int ldmsd_start_smplr(char *smplr_name, char *interval, char *offset,
 /*
  * Stop the sampler
  */
-int ldmsd_stop_smplr(char *smplr_name)
+int ldmsd_smplr_stop(const char *smplr_name, ldmsd_sec_ctxt_t sctxt)
 {
+	int rc;
 	ldmsd_smplr_t smplr = (ldmsd_smplr_t)ldmsd_cfgobj_find(smplr_name, LDMSD_CFGOBJ_SMPLR);
 	if (!smplr)
 		return ENOENT;
 
 	ldmsd_smplr_lock(smplr);
+	rc = ldmsd_cfgobj_access_check(&smplr->obj, 0222, sctxt);
+	if (rc)
+		goto out;
 	if (smplr->state != LDMSD_SMPLR_STATE_RUNNING)
 		goto out;
-
 	smplr->state = LDMSD_SMPLR_STATE_STOPPED;
 	EV_DATA(smplr->sample_ev, struct sample_data)->reschedule = 0;
 	ldmsd_smplr_unlock(smplr);
@@ -491,8 +499,46 @@ int ldmsd_stop_smplr(char *smplr_name)
 	return EBUSY;
 }
 
-int ldmsd_oneshot_smplr(char *smplr_name, char *interval, char *offset)
+int ldmsd_smplr_oneshot(char *smplr_name, char *ts, ldmsd_sec_ctxt_t sctxt)
 {
-	return ldmsd_start_smplr(smplr_name, interval, offset, 1, 0);
+	int rc;
+	ldmsd_smplr_t smplr;
+	time_t now, sched;
+	double diff;
+
+	if (0 == strncmp(ts, "now", 3)) {
+		if (3 == strlen(ts)) {
+			sched = 0;
+		} else {
+			ts += 4;
+			sched = strtoul(ts, NULL, 10);
+		}
+	} else {
+		sched = strtoul(ts, NULL, 10);
+		now = time(0);
+		if (now < 0) {
+			rc = errno;
+			return -rc;
+		}
+		diff = difftime(sched, now);
+		if (diff < 0)
+			return EINVAL;
+		sched = floor(diff);
+	}
+
+	smplr = ldmsd_smplr_find(smplr_name);
+	if (!smplr)
+		return ENOENT;
+
+	ldmsd_smplr_lock(smplr);
+	smplr->interval_us = sched * 1000000;
+	smplr->offset_us = 0;
+	smplr->synchronous = 1;
+
+	rc = __ldmsd_smplr_start(smplr, 1);
+out:
+	ldmsd_smplr_unlock(smplr);
+	ldmsd_smplr_put(smplr);
+	return rc;
 }
 

@@ -2144,9 +2144,10 @@ send_reply:
 
 static int smplr_add_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *attr_name, *name, *inst;
+	char *attr_name, *name, *inst, *interval_us, *offset_us;
 	name = inst = NULL;
 	size_t cnt = 0;
+	long interval, offset;
 	uid_t uid;
 	gid_t gid;
 	int perm;
@@ -2163,6 +2164,17 @@ static int smplr_add_handler(ldmsd_req_ctxt_t reqc)
 	inst = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
 	if (!inst)
 		goto einval;
+
+	attr_name = "interval";
+	interval_us = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
+	if (!interval_us)
+		goto einval;
+	interval = strtol(interval_us, NULL, 0);
+	offset_us = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
+	if (offset_us)
+		offset = strtol(offset_us, NULL, 0);
+	else
+		offset = LDMSD_UPDT_HINT_OFFSET_NONE;
 
 	ldmsd_plugin_inst_t pi = ldmsd_plugin_inst_find(inst);
 	if (!pi) {
@@ -2194,6 +2206,7 @@ static int smplr_add_handler(ldmsd_req_ctxt_t reqc)
 		perm = strtol(perm_s, NULL, 0);
 
 	ldmsd_smplr_t smplr = ldmsd_smplr_new_with_auth(name, pi,
+							interval, offset,
 							uid, gid, perm);
 	if (!smplr) {
 		if (errno == EEXIST)
@@ -3752,7 +3765,6 @@ send_reply:
 	return rc;
 }
 
-extern int ldmsd_stop_smplr(char *plugin);
 extern int ldmsd_load_plugin(const char *inst_name,
 			     const char *plugin_name,
 			     char *errstr, size_t errlen);
@@ -3764,8 +3776,10 @@ static int smplr_start_handler(ldmsd_req_ctxt_t reqc)
 	char *smplr_name, *interval_us, *offset, *attr_name;
 	size_t cnt = 0;
 	int flags = 0;
-
+	struct ldmsd_sec_ctxt sctxt;
 	smplr_name = interval_us = offset = NULL;
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 
 	attr_name = "name";
 	smplr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -3775,7 +3789,8 @@ static int smplr_start_handler(ldmsd_req_ctxt_t reqc)
 	offset = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
 
 	flags = (reqc->flags & LDMSD_REQ_DEFER_FLAG)?(LDMSD_PERM_DSTART):0;
-	reqc->errcode = ldmsd_start_smplr(smplr_name, interval_us, offset, 0, flags);
+	reqc->errcode = ldmsd_smplr_start(smplr_name, interval_us,
+					offset, 0, flags, &sctxt);
 	if (reqc->errcode == 0) {
 		goto send_reply;
 	} else if (reqc->errcode == EINVAL) {
@@ -3823,13 +3838,15 @@ static int smplr_stop_handler(ldmsd_req_ctxt_t reqc)
 	char *smplr_name = NULL;
 	char *attr_name;
 	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
 
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	attr_name = "name";
 	smplr_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!smplr_name)
 		goto einval;
 
-	reqc->errcode = ldmsd_stop_smplr(smplr_name);
+	reqc->errcode = ldmsd_smplr_stop(smplr_name, &sctxt);
 	if (reqc->errcode == 0) {
 		goto send_reply;
 	} else if (reqc->errcode == ENOENT) {
@@ -3874,6 +3891,7 @@ int __smplr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_smplr_t smplr)
 	ldmsd_smplr_lock(smplr);
 	rc = linebuf_printf(reqc,
 		       "{ \"name\":\"%s\","
+		       "\"plugin\":\"%s\","
 		       "\"instance\":\"%s\","
 		       "\"interval_us\":\"%ld\","
 		       "\"offset_us\":\"%ld\","
@@ -3881,6 +3899,7 @@ int __smplr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_smplr_t smplr)
 		       "\"state\":\"%s\","
 		       "\"sets\": [ ",
 		       smplr->obj.name,
+		       smplr->pi->plugin_name,
 		       smplr->pi->inst_name,
 		       smplr->interval_us,
 		       smplr->offset_us,
@@ -4939,14 +4958,13 @@ out:
 	return rc;
 }
 
-extern int ldmsd_oneshot_smplr(const char *name, const char *time_s,
-					char *errstr, size_t errlen);
 static int oneshot_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *name, *time_s, *attr_name;
 	name = time_s = NULL;
 	size_t cnt = 0;
 	int rc = 0;
+	struct ldmsd_sec_ctxt sctxt;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
@@ -4959,18 +4977,24 @@ static int oneshot_handler(ldmsd_req_ctxt_t reqc)
 		goto einval;
 	}
 
-	reqc->errcode = ldmsd_oneshot_smplr(name, time_s,
-				reqc->line_buf, reqc->line_len);
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	reqc->errcode = ldmsd_smplr_oneshot(name, time_s, &sctxt);
 	if (reqc->errcode) {
-		cnt = strlen(reqc->line_buf) + 1;
-		goto out;
+		if (reqc->errcode < 0) {
+			reqc->errcode = -reqc->errcode;
+			linebuf_printf(reqc, "Failed to get the current time. "
+					"Error %d", reqc->errcode);
+		} else if (reqc->errcode == EINVAL) {
+			linebuf_printf(reqc, "The given timestamp is in the past.");
+		} else if (reqc->errcode == ENOENT) {
+			linebuf_printf(reqc, "The sampler policy '%s' not found",
+									name);
+		} else {
+			linebuf_printf(reqc, "Failed to do the oneshot. Error %d",
+								reqc->errcode);
+		}
 	}
-	ldmsd_send_req_response(reqc, NULL);
-	if (name)
-		free(name);
-	if (time_s)
-		free(time_s);
-	return rc;
+	goto send_reply;
 
 einval:
 	reqc->errcode = EINVAL;
@@ -4978,7 +5002,7 @@ einval:
 			"The attribute '%s' is required by oneshot.",
 			attr_name);
 
-out:
+send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (name)
 		free(name);
