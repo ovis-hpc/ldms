@@ -5743,6 +5743,17 @@ static int listen_handler(ldmsd_req_ctxt_t reqc)
 	struct attr_value_list *auth_opts = NULL;
 	xprt = port = host = auth = auth_args = NULL;
 
+	if (ldmsd_is_initialized()) {
+		/*
+		 * Adding a new listening endpoint is prohibited
+		 * after LDMSD is initialized.
+		 */
+		reqc->errcode = EPERM;
+		linebuf_printf(reqc, "LDMSD is started. "
+				"Adding a listening endpoint is prohibited.");
+		goto send_reply;
+	}
+
 	attr_name = "xprt";
 	xprt = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_XPRT);
 	if (!xprt)
