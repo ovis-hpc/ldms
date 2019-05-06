@@ -122,9 +122,13 @@ struct ldms_set *__ldms_find_local_set(const char *set_name)
 	struct rbn *z;
 	struct ldms_set *s = NULL;
 
+	__ldms_set_tree_lock();
 	z = rbt_find(&set_tree, (void *)set_name);
-	if (z)
+	if (z) {
 		s = container_of(z, struct ldms_set, rb_node);
+		ref_get(&s->ref, __func__);
+	}
+	__ldms_set_tree_unlock();
 	return s;
 }
 
@@ -159,26 +163,44 @@ void __ldms_set_tree_unlock()
 	pthread_mutex_unlock(&set_tree_lock);
 }
 
-static ldms_set_t __set_by_name(const char *set_name)
+void dump_set_tree()
 {
-	struct ldms_set *set = __ldms_find_local_set(set_name);
-	struct ldms_rbuf_desc *rbd = NULL;
-	if (!set)
-		goto out;
+	struct rbn *z;
+	ldms_rbuf_t r;
+	struct ldms_set *s;
 
-	rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
+	__ldms_set_tree_lock();
 
- out:
-	return rbd;
+	RBT_FOREACH(z, &set_tree) {
+		s = container_of(z, struct ldms_set, rb_node);
+		fprintf(stderr, "Set %s\n", get_instance_name(s->meta)->name);
+		ref_dump_no_lock(&s->ref, __func__);
+		fprintf(stderr, "Local RBD ... \n");
+		LIST_FOREACH(r, &s->local_rbd_list, set_link) {
+			ref_dump_no_lock(&r->ref, __func__);
+		}
+		fprintf(stderr, "Remote RBD ... \n");
+		LIST_FOREACH(r, &s->remote_rbd_list, set_link) {
+			ref_dump_no_lock(&r->ref, __func__);
+		}
+	}
+	__ldms_set_tree_unlock();
 }
 
-extern ldms_set_t ldms_set_by_name(const char *set_name)
+/*
+ * ldms_set_by_name references are put with ldms_set_put
+ */
+ldms_set_t ldms_set_by_name(const char *set_name)
 {
-	ldms_set_t s;
-	__ldms_set_tree_lock();
-	s = __set_by_name(set_name);
-	__ldms_set_tree_unlock();
-	return s;
+	struct ldms_set *set = __ldms_find_local_set(set_name);
+	struct ldms_rbuf_desc *rbd;
+	if (!set)
+		return NULL;
+	rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
+	if (rbd)
+		ref_get(&set->ref, __func__);
+	ref_put(&set->ref, "__ldms_find_local_set");
+	return rbd;
 }
 
 uint64_t ldms_set_meta_gn_get(ldms_set_t s)
@@ -278,6 +300,17 @@ static int set_list_sz_cb(struct ldms_set *set, void *arg)
 	*set_list_size = arg.set_list_len;
 }
 
+static void __destroy_set(void *v)
+{
+	struct ldms_set *set = v;
+
+	ref_dump_no_lock(&set->ref, __func__);
+	mm_free(set->meta);
+	__ldms_set_info_delete(&set->local_info);
+	__ldms_set_info_delete(&set->remote_info);
+	free(set);
+}
+
  /* The caller must hold the set tree lock. */
 static struct ldms_set *
 __record_set(const char *instance_name,
@@ -287,6 +320,7 @@ __record_set(const char *instance_name,
 
 	set = __ldms_find_local_set(instance_name);
 	if (set) {
+		ref_put(&set->ref, "__ldms_find_local_set");
 		errno = EEXIST;
 		return NULL;
 	}
@@ -310,6 +344,7 @@ __record_set(const char *instance_name,
 	set->flags = flags;
 
 	set->rb_node.key = get_instance_name(set->meta)->name;
+	ref_init(&set->ref, __func__, __destroy_set, set);
 	rbt_ins(&set_tree, &set->rb_node);
 
  out:
@@ -337,12 +372,6 @@ int ldms_set_unpublish(ldms_set_t sd)
 {
 	if (!(sd->set->flags & LDMS_SET_F_PUBLISHED))
 		return ENOENT;
-#if 0
-	char *set_name;
-	set_name = strdup(get_instance_name(sd->set->meta)->name);
-	if (!set_name)
-		return ENOMEM;
-#endif
 	sd->set->flags &= ~LDMS_SET_F_PUBLISHED;
 	__ldms_dir_update(sd, LDMS_DIR_DEL);
 	return 0;
@@ -468,55 +497,41 @@ static void print_xprt_addrs(ldms_t xprt)
 }
 
 /**
- * Destroy the set and all transport references to the set.
+ * Destroy the set to which this rbd refers; and all other rbd that
+ * refer to this set.
  */
 void ldms_set_delete(ldms_set_t s)
 {
-	if (!s) {
-		assert(NULL == "The metric set passed in is NULL");
-	}
+	ref_dump(&s->set->ref, __func__);
 
+	if (!s)
+		assert(NULL == "The metric set passed to ldms_set_delete is NULL");
+
+	/* Send dir_upd to all transports */
 	ldms_set_unpublish(s);
 
-	__ldms_set_tree_lock();
 	struct ldms_set *set = s->set;
 	pthread_mutex_lock(&set->lock);
-	__ldms_free_rbd(s);	/* removes the RBD from the local/remote rbd list */
+
+	/*
+	 * This rbd (i.e. s) will be on either the remote or local rbd
+	 * list in the loops below and will be destroyed
+	 */
 
 	while (!LIST_EMPTY(&set->remote_rbd_list)) {
 		s = LIST_FIRST(&set->remote_rbd_list);
-		if (s->xprt) {
-			fprintf(stderr, "%s: Warning, the remote rbd for '%s' has an active transport...",
-				__func__, ldms_set_name_get(s));
-			print_xprt_addrs(s->xprt);
-			fprintf(stderr, "\n");
-			fflush(stderr);
-		}
 		__ldms_free_rbd(s);
 	}
 
 	while (!LIST_EMPTY(&set->local_rbd_list)) {
 		s = LIST_FIRST(&set->local_rbd_list);
-		if (s->xprt) {
-			/* Revoke the map from the peer */
-			ldms_name_t name = get_instance_name(s->set->meta);
-			if (s->lmap)
-				zap_unshare(s->xprt->zap_ep, s->lmap, name->name, name->len);
-			fprintf(stderr, "%s: unsharing map for set '%s'\n",
-				__func__, name->name);
-			print_xprt_addrs(s->xprt);
-			fprintf(stderr, "\n");
-			fflush(stderr);
-		}
 		__ldms_free_rbd(s);
 	}
 
+	__ldms_set_tree_lock();
 	rbt_del(&set_tree, &set->rb_node);
-	mm_free(set->meta);
-	__ldms_set_info_delete(&set->local_info);
-	__ldms_set_info_delete(&set->remote_info);
-	free(set);
-
+	pthread_mutex_unlock(&set->lock);
+	ref_put(&set->ref, "__record_set");
 	__ldms_set_tree_unlock();
 }
 
@@ -525,12 +540,11 @@ void ldms_set_put(ldms_set_t s)
 	if (!s)
 		return;
 
-	__ldms_set_tree_lock();
 	struct ldms_set *set = s->set;
 	pthread_mutex_lock(&set->lock);
 	__ldms_free_rbd(s); /* removes the RBD from the local/remote rbd list */
 	pthread_mutex_unlock(&set->lock);
-	__ldms_set_tree_unlock();
+	ref_put(&set->ref, "ldms_set_by_name");
 }
 
 static  void sync_lookup_cb(ldms_t x, enum ldms_lookup_status status, int more,
@@ -945,14 +959,12 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 		value_off += __ldms_value_size_get(vd->vd_type,
 						   __le32_to_cpu(vd->vd_array_count));
 	}
-	__ldms_set_tree_lock();
 	struct ldms_set *set = __record_set(instance_name, meta, data_base, LDMS_SET_F_LOCAL);
 	if (!set)
 		goto err_1;
 	ldms_set_t rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
 	if (!rbd)
 		goto err_2;
-	__ldms_set_tree_unlock();
 	return rbd;
  err_2:
 	rbt_del(&set_tree, &set->rb_node);

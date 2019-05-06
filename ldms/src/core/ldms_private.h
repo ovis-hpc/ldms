@@ -86,6 +86,7 @@ struct ldms_set_info_pair {
 LIST_HEAD(ldms_set_info_list, ldms_set_info_pair);
 LIST_HEAD(rbd_list, ldms_rbuf_desc);
 struct ldms_set {
+	struct ref_s ref;
 	unsigned long flags;
 	struct ldms_set_hdr *meta;
 	struct ldms_data_hdr *data; /* points to current entry of data array */

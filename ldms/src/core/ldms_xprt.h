@@ -73,6 +73,7 @@
 #define LDMS_RBD_F_PUSH_CANCEL	4	/* cancel pending */
 
 struct ldms_rbuf_desc {
+	struct ref_s ref;
 	struct ldms_xprt *xprt;
 	struct ldms_set *set;
 	uint64_t remote_set_id;	    /* Remote set id returned by lookup */

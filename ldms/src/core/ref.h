@@ -7,6 +7,7 @@
 #ifdef _REF_TRACK_
 #include <pthread.h>
 #include <stdlib.h>
+#include <stdio.h>
 typedef struct ref_inst_s {
 	const char *get_func;
 	const char *put_func;
@@ -33,15 +34,15 @@ static inline int _ref_put(ref_t r, const char *name, const char *func, int line
 {
 	int count;
 #ifdef _REF_TRACK_
-	void ldmsd_lcritical(const char *fmt, ...);
 	ref_inst_t inst;
 	pthread_mutex_lock(&r->lock);
 	LIST_FOREACH(inst, &r->head, entry) {
 		if (0 == strcmp(inst->name, name)) {
 			if (0 == inst->ref_count) {
-				ldmsd_lcritical("name %s func %s line %d put "
-						"of zero reference\n",
-						name, func, line);
+				fprintf(stderr,
+					"name %s func %s line %d put "
+					"of zero reference\n",
+					name, func, line);
 				assert(0);
 			}
 			inst->put_func = func;
@@ -51,8 +52,9 @@ static inline int _ref_put(ref_t r, const char *name, const char *func, int line
 			goto out;
 		}
 	}
-	ldmsd_lcritical("name %s ref_count %d func %s line %d put but not taken\n",
-			name, r->ref_count, func, line);
+	fprintf(stderr,
+		"name %s ref_count %d func %s line %d put but not taken\n",
+		name, r->ref_count, func, line);
 	count = -1;
  out:
 	if (!count)
@@ -71,13 +73,11 @@ static inline int _ref_put(ref_t r, const char *name, const char *func, int line
 static inline void _ref_get(ref_t r, const char *name, const char *func, int line)
 {
 #ifdef _REF_TRACK_
-	void ldmsd_lcritical(const char *fmt, ...);
 	ref_inst_t inst;
 	pthread_mutex_lock(&r->lock);
 	if (0 == r->ref_count) {
-		ldmsd_lcritical("name %s func %s line %d use "
-				"after free\n",
-				name, func, line);
+		fprintf(stderr, "name %s func %s line %d use after free\n",
+			name, func, line);
 		assert(0);
 	}
 	LIST_FOREACH(inst, &r->head, entry) {
@@ -126,5 +126,35 @@ static inline void _ref_init(ref_t r, const char *name,
 	r->ref_count = 1;
 }
 #define ref_init(_r_, _n_, _f_, _a_) _ref_init((_r_), (_n_), (_f_), (_a_), __func__, __LINE__)
+
+static void ref_dump_no_lock(ref_t r, const char *name)
+{
+#ifdef _REF_TRACK_
+	ref_inst_t inst;
+	fprintf(stderr, "... %s: ref %p free_fn %p free_arg %p ...\n",
+		name, r, r->free_fn, r->free_arg);
+	fprintf(stderr,
+		"%-16s %-8s %-32s %-32s\n", "Name", "Count", "Get Loc", "Put Loc");
+	fprintf(stderr,
+		"---------------- -------- -------------------------------- "
+		"--------------------------------\n");
+	LIST_FOREACH(inst, &r->head, entry) {
+		fprintf(stderr,
+			"%-16s %8d %-23s/%8d %-23s/%8d\n",
+			inst->name, inst->ref_count, inst->get_func, inst->get_line,
+			inst->put_func, inst->put_line);
+	}
+	fprintf(stderr, "%16s %8d\n", "Total", r->ref_count);
+#endif
+}
+
+static void ref_dump(ref_t r, const char *name)
+{
+#ifdef _REF_TRACK_
+	pthread_mutex_lock(&r->lock);
+	ref_dump_no_lock(r, name);
+	pthread_mutex_unlock(&r->lock);
+#endif
+}
 
 #endif

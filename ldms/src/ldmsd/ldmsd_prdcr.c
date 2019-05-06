@@ -65,25 +65,6 @@
 #include "ldmsd_request.h"
 #include "config.h"
 
-void ref_dump(ref_t r)
-{
-#ifdef _REF_TRACK_
-	void ldmsd_lcritical(const char *fmt, ...);
-	ref_inst_t inst;
-	pthread_mutex_lock(&r->lock);
-	ldmsd_lcritical("%-16s %-8s %-32s %-32s\n", "Name", "Count", "Get Loc", "Put Loc");
-	ldmsd_lcritical("---------------- -------- -------------------------------- "
-			"--------------------------------\n");
-	LIST_FOREACH(inst, &r->head, entry) {
-		ldmsd_lcritical("%-16s %8d %-23s/%8d %-23s/%8d\n",
-				inst->name, inst->ref_count, inst->get_func, inst->get_line,
-				inst->put_func, inst->put_line);
-	}
-	ldmsd_lcritical("%16s %8d\n", "Total", r->ref_count);
-	pthread_mutex_unlock(&r->lock);
-#endif
-}
-
 int prdcr_resolve(const char *hostname, unsigned short port_no,
 		  struct sockaddr_storage *ss, socklen_t *ss_len)
 {
@@ -117,6 +98,7 @@ void ldmsd_prdcr___del(ldmsd_cfgobj_t obj)
 
 static void __prdcr_set_del(ldmsd_prdcr_set_t set)
 {
+	ref_dump_no_lock(&set->ref, __func__);
 	ldmsd_log(LDMSD_LINFO, "Deleting producer set %s\n", set->inst_name);
 	if (set->schema_name) {
 		free(set->schema_name);
@@ -164,7 +146,7 @@ err_0:
 
 static void prdcr_set_del(ldmsd_prdcr_set_t set)
 {
-	ref_dump(&set->ref);
+	ref_dump(&set->ref, __func__);
 	ldmsd_prdcr_set_ref_put(set, "create");
 }
 
