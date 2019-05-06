@@ -38,6 +38,7 @@ struct ev_worker_s {
 	ev_actor_t w_actor;
 	pthread_t w_thread;
 	enum evw_state_e w_state;
+	struct timespec w_sem_wait;
 	sem_t w_sem;
 	struct rbn w_rbn;
 	pthread_mutex_t w_lock;

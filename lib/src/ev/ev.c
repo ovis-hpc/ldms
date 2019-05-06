@@ -120,7 +120,6 @@ int ev_post(ev_worker_t src, ev_worker_t dst, ev_t ev, struct timespec *to)
 {
 	ev__t e = EV(ev);
 	int rc;
-	struct timespec now;
 
 	/* If multiple threads attempt to post the same event all but
 	 * one will receive EBUSY. If the event is already posted all
@@ -149,10 +148,9 @@ int ev_post(ev_worker_t src, ev_worker_t dst, ev_t ev, struct timespec *to)
 		rbt_ins(&dst->w_event_tree, &e->e_to_rbn);
 	else
 		TAILQ_INSERT_TAIL(&dst->w_event_list, e, e_entry);
+	rc = (ev_time_cmp(&e->e_to, &dst->w_sem_wait) <= 0);
 	pthread_mutex_unlock(&dst->w_lock);
-
-	rc = clock_gettime(CLOCK_REALTIME, &now);
-	if (ev_time_cmp(&e->e_to, &now) <= 0)
+	if (rc)
 		sem_post(&dst->w_sem);
 
 	return 0;
@@ -185,8 +183,10 @@ int ev_cancel(ev_t ev)
 	 */
 	rc = 0;
 	(void)clock_gettime(CLOCK_REALTIME, &now);
-	if (ev_time_diff(&e->e_to, &now) < 1.0)
+	if (ev_time_diff(&e->e_to, &now) < 1.0) {
+		rc = EBUSY;
 		goto out;
+	}
 
 	rbt_del(&e->e_dst->w_event_tree, &e->e_to_rbn);
 	TAILQ_INSERT_TAIL(&e->e_dst->w_event_list, e, e_entry);

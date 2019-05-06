@@ -131,21 +131,20 @@ static void *worker_proc(void *arg)
 	int res;
 	ev__t e;
 	ev_worker_t w = arg;
-	struct timespec wait;
 	w->w_state = EV_WORKER_RUNNING;
-	ev_sched_to(&wait, 0, 0);
-	res = sem_timedwait(&w->w_sem, &wait);
+	ev_sched_to(&w->w_sem_wait, 0, 0);
+	res = sem_timedwait(&w->w_sem, &w->w_sem_wait);
 	while (1) {
 		pthread_mutex_lock(&w->w_lock);
 		process_immediate_events(w);
 		e = process_to_events(w);
 		if (e) {
-			wait = e->e_to;
+			w->w_sem_wait = e->e_to;
 		} else {
-			ev_sched_to(&wait, 10, 0);
+			ev_sched_to(&w->w_sem_wait, 10, 0);
 		}
 		pthread_mutex_unlock(&w->w_lock);
-		res = sem_timedwait(&w->w_sem, &wait);
+		res = sem_timedwait(&w->w_sem, &w->w_sem_wait);
 	}
 	return NULL;
 }
