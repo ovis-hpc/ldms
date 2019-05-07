@@ -1,2 +1,2 @@
 # ldms
-see the github ovis-hoc/ovis repo for LDMS
+see the github ovis-hpc/ovis repo for LDMS
