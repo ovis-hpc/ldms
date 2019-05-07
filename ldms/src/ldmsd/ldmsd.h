@@ -208,6 +208,7 @@ typedef enum ldmsd_cfgobj_type {
 	LDMSD_CFGOBJ_STRGP,
 	LDMSD_CFGOBJ_SMPLR,
 	LDMSD_CFGOBJ_LISTEN,
+	LDMSD_CFGOBJ_SETGRP,
 } ldmsd_cfgobj_type_t;
 
 struct ldmsd_cfgobj;
@@ -1115,18 +1116,101 @@ void ldmsd_inband_cfg_mask_rm(mode_t mask);
 /* Listen for a connection either on Unix domain socket or Socket. A dedicated thread is assigned to a new connection. */
 extern int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword);
 
+/*
+ * Setgroup
+ */
+typedef struct ldmsd_setgrp {
+	struct ldmsd_cfgobj obj;
+	char *producer;
+	long interval_us;
+	long offset_us;
+	struct ldmsd_str_list member_list;
+	ldms_set_t set;
+} *ldmsd_setgrp_t;
+
+static inline void ldmsd_setgrp_lock(ldmsd_setgrp_t grp) {
+	ldmsd_cfgobj_lock(&grp->obj);
+}
+static inline void ldmsd_setgrp_unlock(ldmsd_setgrp_t grp) {
+	ldmsd_cfgobj_unlock(&grp->obj);
+}
+static inline ldmsd_setgrp_t ldmsd_setgrp_get(ldmsd_setgrp_t grp) {
+	ldmsd_cfgobj_get(&grp->obj);
+	return grp;
+}
+static inline void ldmsd_setgrp_put(ldmsd_setgrp_t grp) {
+	ldmsd_cfgobj_put(&grp->obj);
+}
+
+static inline ldmsd_setgrp_t ldmsd_setgrp_find(const char *name)
+{
+	return (ldmsd_setgrp_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_SETGRP);
+}
+
+static inline ldmsd_setgrp_t ldmsd_setgrp_first()
+{
+	return (ldmsd_setgrp_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_SETGRP);
+}
+
+static inline ldmsd_setgrp_t ldmsd_setgrp_next(struct ldmsd_setgrp *setgrp)
+{
+	return (ldmsd_setgrp_t)ldmsd_cfgobj_next(&setgrp->obj);
+}
+
+/*
+ * \brief Create an LDMS set as a group set.
+ *
+ */
+
+ldms_set_t
+ldmsd_group_new_with_auth(const char *name, uid_t uid, gid_t gid, mode_t perm);
+#pragma weak ldmsd_group_new_with_auth
+
+ldms_set_t ldmsd_group_new(const char *name);
+#pragma weak ldmsd_group_new
+
 /**
- * \brief Create a new group of sets.
+ * \brief Create a cfgobj of setgroup
  *
- * To destroy the group, simply call \c ldms_set_delete().
- *
- * \param grp_name The name of the group.
+ * \param grp_name     The name of the group.
+ * \param producer     The name of the producer
+ * \param interval_us  The interval for update hint
+ * \param offset_us    The offset for update hint
+ * \param uid          UID of the cfgobj
+ * \param gid          GID of the cfgobj
+ * \param perm         permission of the cfgobj
  *
  * \retval grp  If success, the LDMS set handle that represents the group.
  * \retval NULL If failed.
  */
-ldms_set_t ldmsd_group_new(const char *grp_name);
-#pragma weak ldmsd_group_new
+ldmsd_setgrp_t
+ldmsd_setgrp_new_with_auth(const char *name, const char *producer,
+				long interval_us, long offset_us,
+				uid_t uid, gid_t gid, mode_t perm, int flags);
+#pragma weak ldmsd_setgrp_new_with_auth
+
+int __ldmsd_setgrp_start(ldmsd_setgrp_t grp);
+
+/*
+ * \brief Delete a setgroup cfgobject
+ */
+int ldmsd_setgrp_del(const char *name, ldmsd_sec_ctxt_t ctxt);
+
+/*
+ * \brief Insert a set member to a set group cfgobjs
+ *
+ * \param name      setgroup name
+ * \param instance  set instance name to be inserted or removed
+ */
+int ldmsd_setgrp_ins(const char *name, const char *instance);
+
+/*
+ * \brief Remove a set member from a set group cfgobjs
+ *
+ * \param name      setgroup name
+ * \param instance  set instance name to be inserted or removed
+ */
+int ldmsd_setgrp_rm(const char *name, const char *instance);
 
 /**
  * \brief Add a set into the group.

@@ -1168,6 +1168,7 @@ class LdmsdCmdParser(cmd.Cmd):
             [producer=]     The producer name of the set group.
             [interval=]     The update interval hint (in usec).
             [offset=]       The update offset hint (in usec).
+            [perm=]         The permission to modify the setgroup in the future.
         """
         self.handle('setgroup_add', arg)
 

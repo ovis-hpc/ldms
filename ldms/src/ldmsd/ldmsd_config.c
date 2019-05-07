@@ -493,6 +493,7 @@ int __req_filter(ldmsd_req_ctxt_t reqc, void *ctxt)
 	case LDMSD_UPDTR_START_REQ:
 	case LDMSD_STRGP_START_REQ:
 	case LDMSD_SMPLR_START_REQ:
+	case LDMSD_SETGROUP_ADD_REQ:
 		reqc->flags |= LDMSD_REQ_DEFER_FLAG;
 		break;
 	default:
@@ -790,6 +791,21 @@ int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t))
 		}
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_SETGRP);
+	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_SETGRP) {
+		if (filter && filter(obj))
+			continue;
+		rc = __ldmsd_setgrp_start((ldmsd_setgrp_t)obj);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR,
+				"Failed to create LDMS set group '%s', rc: %d\n",
+				obj->name, rc);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_SETGRP);
+			goto out;
+		}
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SETGRP);
 
 out:
 	return rc;

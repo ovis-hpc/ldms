@@ -401,12 +401,15 @@ ldms_set_t samp_create_set_group(ldmsd_plugin_inst_t inst,
 {
 	ldmsd_sampler_type_t samp = (void*)inst->base;
 	ldmsd_set_entry_t ent = NULL;
+	struct ldmsd_sec_ctxt sctxt;
 
 	ent = calloc(1, sizeof(*ent));
 	if (!ent)
 		goto err;
 	ent->ctxt = ctxt;
-	ent->set = ldmsd_group_new(grp_name);
+	ldmsd_sec_ctxt_get(&sctxt);
+	ent->set = ldmsd_group_new_with_auth(grp_name, sctxt.crd.uid,
+						sctxt.crd.gid, 0777);
 	if (!ent->set)
 		goto err;
 

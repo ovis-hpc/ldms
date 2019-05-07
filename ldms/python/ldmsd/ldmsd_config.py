@@ -169,7 +169,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': ['name'], 'opt_attr': []},
                                     'opt_attr': [
                                         'producer',
                                         'interval',
-                                        'offset'
+                                        'offset',
+                                        'perm',
                                     ],
                             },
                       'setgroup_mod': {

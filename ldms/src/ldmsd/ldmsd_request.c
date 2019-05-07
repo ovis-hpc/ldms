@@ -3477,73 +3477,59 @@ static int setgroup_add_handler(ldmsd_req_ctxt_t reqc)
 	char *producer = NULL;
 	char *interval = NULL; /* for update hint */
 	char *offset = NULL; /* for update hint */
-	ldms_set_t grp = NULL;
-	long offset_us;
+	char *perm_s = NULL;
+	ldmsd_setgrp_t grp = NULL;
+	long interval_us, offset_us;
+	struct ldmsd_sec_ctxt sctxt;
+	mode_t perm;
+	int flags = 0;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-			"missing `name` attribute");
+		linebuf_printf(reqc, "missing `name` attribute");
 		rc = EINVAL;
 		goto out;
 	}
 
 	producer = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PRODUCER);
-	if (!producer) {
-		producer = strdup(ldmsd_myname_get());
-		if (!producer) {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Memory allocation error");
-			rc = ENOMEM;
-			goto out;
-		}
-	}
-
-	grp = ldmsd_group_new(name);
-	if (!grp) {
-		rc = errno;
-		if (errno == EEXIST) {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"A set or a group existed with the given name.");
-		} else {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group creation error: %d", rc);
-		}
-		goto out;
-	}
-	rc = ldms_set_producer_name_set(grp, producer);
-	if (rc) {
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group producer name set error: %d", rc);
-		goto err;
-	}
 	interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
 	offset = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
 	if (interval) {
+		/*
+		 * The interval and offset values are used for
+		 * the auto-interval update in the next aggregation.
+		 */
+		interval_us = strtol(interval, NULL, 0);
 		if (offset) {
-			offset_us = atoi(offset);
+			offset_us = strtol(offset, NULL, 0);
 		} else {
 			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
 		}
-		rc = ldmsd_set_update_hint_set(grp, atoi(interval), offset_us);
-		if (rc) {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-					"Hint update error: %d", rc);
-			goto err;
+	} else {
+		interval_us = 0;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	perm = 0777;
+	perm_s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PERM);
+	if (perm_s)
+		perm = strtol(perm_s, NULL, 0);
+
+	if (reqc->flags & LDMSD_REQ_DEFER_FLAG)
+		flags |= LDMSD_PERM_DSTART;
+
+	grp = ldmsd_setgrp_new_with_auth(name, producer, interval_us, offset_us,
+					sctxt.crd.uid, sctxt.crd.gid, perm, flags);
+	if (!grp) {
+		rc = errno;
+		if (errno == EEXIST) {
+			linebuf_printf(reqc,
+				"A set or a group existed with the given name.");
+		} else {
+			linebuf_printf(reqc, "Group creation error: %d", rc);
 		}
 	}
-	rc = ldms_set_publish(grp);
-	if (rc) {
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group set publish error: %d", rc);
-		goto err;
-	}
-	/* rc is 0 */
-	goto out;
 
-err:
-	ldms_set_delete(grp);
-	grp = NULL;
 out:
 	reqc->errcode = rc;
 	ldmsd_send_req_response(reqc, reqc->line_buf);
@@ -3555,9 +3541,9 @@ out:
 		free(interval);
 	if (offset)
 		free(offset);
-	if (grp)
-		ldms_set_put(grp);
-	return rc;
+	if (perm_s)
+		free(perm_s);
+	return 0;
 }
 
 static int setgroup_mod_handler(ldmsd_req_ctxt_t reqc)
@@ -3566,60 +3552,40 @@ static int setgroup_mod_handler(ldmsd_req_ctxt_t reqc)
 	char *name = NULL;
 	char *interval = NULL; /* for update hint */
 	char *offset = NULL; /* for update hint */
-	ldms_set_t grp = NULL;
-	long offset_us;
+	long interval_us, offset_us;
+	ldmsd_setgrp_t grp = NULL;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-			"missing `name` attribute");
+		linebuf_printf(reqc, "missing `name` attribute");
 		rc = EINVAL;
-		goto out;
-	}
-
-	grp = ldms_set_by_name(name);
-	if (!grp) {
-		rc = errno;
-		if (errno == ENOENT) {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group not found.");
-		} else {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group get error: %d", rc);
-		}
-		goto out;
-	}
-
-	if (0 == (ldmsd_group_check(grp) & LDMSD_GROUP_IS_GROUP)) {
-		/* not a group */
-		rc = EINVAL;
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Not a group");
-		goto out;
+		goto send_reply;
 	}
 
 	interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
 	offset = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
 	if (interval) {
+		interval_us = strtol(interval, NULL, 0);
 		if (offset) {
-			offset_us = atoi(offset);
+			offset_us = strtol(offset, NULL, 0);
 		} else {
 			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
 		}
-		rc = ldmsd_set_update_hint_set(grp, atoi(interval), offset_us);
-		if (rc) {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-					"Hint update error: %d", rc);
-			goto err;
-		}
 	}
-	/* rc is 0 */
-	goto out;
 
-err:
-	ldms_set_put(grp);
-	grp = NULL;
-out:
+	grp = ldmsd_setgrp_find(name);
+	if (!grp) {
+		rc = ENOENT;
+		linebuf_printf(reqc, "Group '%s' not found.", name);
+		goto send_reply;
+	}
+	ldmsd_setgrp_lock(grp);
+	rc = ldmsd_set_update_hint_set(grp->set, atoi(interval), offset_us);
+	if (rc)
+		linebuf_printf(reqc, "Update hint update error: %d", rc);
+	/* rc is 0 */
+	ldmsd_setgrp_unlock(grp);
+send_reply:
 	reqc->errcode = rc;
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (name)
@@ -3629,7 +3595,7 @@ out:
 	if (offset)
 		free(offset);
 	if (grp)
-		ldms_set_put(grp);
+		ldmsd_setgrp_put(grp); /* `fine` reference */
 	return rc;
 }
 
@@ -3637,46 +3603,30 @@ static int setgroup_del_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc = 0;
 	char *name = NULL;
+	struct ldmsd_sec_ctxt sctxt;
 	ldms_set_t grp;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-			"missing `name` attribute");
+		linebuf_printf(reqc, "missing `name` attribute");
 		rc = EINVAL;
 		goto out;
 	}
-
-	grp = ldms_set_by_name(name);
-	if (!grp) {
-		rc = errno;
-		if (rc == ENOENT) {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group not found.");
-		} else {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group get error: %d", rc);
-		}
-		goto out;
+	rc = ldmsd_setgrp_del(name, &sctxt);
+	if (rc == ENOENT) {
+		linebuf_printf(reqc, "Setgroup '%s' not found.", name);
+	} else if (rc == EACCES) {
+		linebuf_printf(reqc, "Permission denied");
+	} else {
+		linebuf_printf(reqc, "Failed to delete setgroup '%s'", name);
 	}
-
-	if (0 == (ldmsd_group_check(grp) & LDMSD_GROUP_IS_GROUP)) {
-		/* not a group */
-		rc = EINVAL;
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Not a group");
-		goto out;
-	}
-
-	ldms_set_delete(grp);
-	rc = 0;
 
 out:
 	reqc->errcode = rc;
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (name)
 		free(name);
-	return rc;
+	return 0;
 }
 
 static int setgroup_ins_handler(ldmsd_req_ctxt_t reqc)
@@ -3687,59 +3637,48 @@ static int setgroup_ins_handler(ldmsd_req_ctxt_t reqc)
 	char *instance = NULL;
 	char *sname;
 	char *p;
-	ldms_set_t grp = NULL;
+	char *attr_name;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-			"missing `name` attribute");
-		rc = EINVAL;
-		goto out;
+		attr_name = "name";
+		goto einval;
 	}
-
-	grp = ldms_set_by_name(name);
-	if (!grp) {
-		rc = errno;
-		if (rc == ENOENT) {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group not found.");
-		} else {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group get error: %d", rc);
-		}
-		goto out;
-	}
-
-	if (0 == (ldmsd_group_check(grp) & LDMSD_GROUP_IS_GROUP)) {
-		/* not a group */
-		rc = EINVAL;
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Not a group");
-		goto out;
-	}
-
 	instance = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
+	if (!instance) {
+		attr_name = "instance";
+		goto einval;
+	}
+
 	sname = strtok_r(instance, delim, &p);
 	while (sname) {
-		rc = ldmsd_group_set_add(grp, sname);
+		rc = ldmsd_setgrp_ins(name, sname);
 		if (rc) {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group set insert error: %d", rc);
-			goto out;
+			if (rc == ENOENT) {
+				linebuf_printf(reqc,
+					"Either setgroup '%s' or member '%s' not exist",
+					name, sname);
+			} else {
+				linebuf_printf(reqc, "Error %d: Failed to add "
+						"member '%s' to setgroup '%s'",
+						rc, sname, name);
+			}
+			goto send_reply;
 		}
 		sname = strtok_r(NULL, delim, &p);
 	}
 	/* rc is 0 */
-
-out:
+	goto send_reply;
+einval:
+	linebuf_printf(reqc, "The attribute '%s' is missing.", attr_name);
+	rc = EINVAL;
+send_reply:
 	reqc->errcode = rc;
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (name)
 		free(name);
 	if (instance)
 		free(instance);
-	if (grp)
-		ldms_set_put(grp);
 	return rc;
 }
 
@@ -3751,51 +3690,53 @@ static int setgroup_rm_handler(ldmsd_req_ctxt_t reqc)
 	char *instance = NULL;
 	char *sname;
 	char *p;
-	ldms_set_t grp = NULL;
+	char *attr_name;
+	ldmsd_setgrp_t grp;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!name) {
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-			"missing `name` attribute");
-		rc = EINVAL;
-		goto out;
-	}
-
-	grp = ldms_set_by_name(name);
-	if (!grp) {
-		rc = errno;
-		if (rc == ENOENT) {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group not found.");
-		} else {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group get error: %d", rc);
-		}
-		goto out;
-	}
-
-	if (0 == (ldmsd_group_check(grp) & LDMSD_GROUP_IS_GROUP)) {
-		/* not a group */
-		rc = EINVAL;
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Not a group");
-		goto out;
+		attr_name = "name";
+		goto einval;
 	}
 
 	instance = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INSTANCE);
+	if (!instance) {
+		attr_name = "instance";
+		goto einval;
+	}
+
+	grp = ldmsd_setgrp_find(name);
+	if (!grp) {
+		rc = ENOENT;;
+		linebuf_printf(reqc, "Setgroup '%s' not found.", name);
+		goto send_reply;
+	}
+
+	ldmsd_setgrp_lock(grp);
 	sname = strtok_r(instance, delim, &p);
 	while (sname) {
-		rc = ldmsd_group_set_rm(grp, sname);
+		rc = ldmsd_setgrp_rm(name, sname);
 		if (rc) {
-			Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Group set remove error: %d", rc);
-			goto out;
+			if (rc == ENOENT) {
+				linebuf_printf(reqc,
+					"Either setgroup '%s' or member '%s' not exist",
+					name, sname);
+			} else {
+				linebuf_printf(reqc, "Error %d: Failed to remove "
+						"member '%s' from setgroup '%s'",
+						rc, sname, name);
+			}
+			goto send_reply;
 		}
 		sname = strtok_r(NULL, delim, &p);
 	}
+	ldmsd_setgrp_unlock(grp);
 	/* rc is 0 */
-
-out:
+	goto send_reply;
+einval:
+	linebuf_printf(reqc, "The attribute '%s' is missing.", attr_name);
+	rc = EINVAL;
+send_reply:
 	reqc->errcode = rc;
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (name)
@@ -3803,7 +3744,7 @@ out:
 	if (instance)
 		free(instance);
 	if (grp)
-		ldms_set_put(grp);
+		ldmsd_setgrp_put(grp); /* `find` reference */
 	return rc;
 }
 

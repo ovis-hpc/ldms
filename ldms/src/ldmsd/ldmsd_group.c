@@ -56,17 +56,237 @@ ldms_schema_t grp_schema;
 #define GRP_KEY_PREFIX "    grp_member: "
 #define GRP_GN_NAME "ldmsd_grp_gn"
 
-ldms_set_t ldmsd_group_new(const char *grp_name)
+void ldmsd_setgrp___del(ldmsd_cfgobj_t obj)
 {
-	ldms_set_t grp;
-	grp = ldms_set_new(grp_name, grp_schema);
+	ldmsd_str_ent_t str;
+	ldmsd_setgrp_t grp = (ldmsd_setgrp_t)obj;
+	if (grp->producer)
+		free(grp->producer);
+	str = LIST_FIRST(&grp->member_list);
+	while (str) {
+		LIST_REMOVE(str, entry);
+		free(str->str);
+		free(str);
+		str = LIST_FIRST(&grp->member_list);
+	}
+	if (grp->set)
+		ldms_set_delete(grp->set);
+	ldmsd_cfgobj___del(obj);
+}
+
+ldms_set_t __setgrp_start(const char *name, uid_t uid, gid_t gid, mode_t perm,
+			const char *producer, long interval_us, long offset_us)
+{
+	int rc;
+	ldms_set_t set;
+	set = ldms_set_new_with_auth(name, grp_schema, uid, gid, perm);
+	if (!set) {
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	if (producer) {
+		rc = ldms_set_producer_name_set(set, producer);
+		if (rc)
+			goto err;
+	}
+	if (interval_us > 0) {
+		rc = ldmsd_set_update_hint_set(set, interval_us, offset_us);
+		if (rc)
+			goto err;
+	}
+	ldms_transaction_begin(set);
+	ldms_metric_set_u32(set, 0, 0);
+	ldms_set_info_set(set, GRP_GN_NAME, "0");
+	ldms_transaction_end(set);
+	rc = ldms_set_publish(set);
+	if (rc)
+		goto err;
+	return set;
+err:
+	errno = rc;
+	ldms_set_delete(set);
+	return NULL;
+}
+
+/* Caller must hold the setgroup lock */
+int __ldmsd_setgrp_start(ldmsd_setgrp_t grp)
+{
+	int rc;
+	ldmsd_str_ent_t str;
+	grp->set = __setgrp_start(grp->obj.name, grp->obj.uid, grp->obj.gid,
+					grp->obj.perm, grp->producer,
+					grp->interval_us, grp->offset_us);
+	if (!grp->set) {
+		rc = errno;
+		return rc;
+	}
+	LIST_FOREACH(str, &grp->member_list, entry) {
+		rc = ldmsd_group_set_add(grp->set, str->str);
+		if (rc)
+			return rc;
+	}
+	grp->obj.perm &= ~LDMSD_PERM_DSTART;
+	return 0;
+}
+
+ldms_set_t
+ldmsd_group_new_with_auth(const char *name, uid_t uid, gid_t gid, mode_t perm)
+{
+	return __setgrp_start(name, uid, gid, perm, NULL, 0, 0);
+}
+
+ldms_set_t ldmsd_group_new(const char *name)
+{
+	struct ldmsd_sec_ctxt sctxt;
+	ldmsd_sec_ctxt_get(&sctxt);
+	return ldmsd_group_new_with_auth(name, sctxt.crd.uid, sctxt.crd.gid, 0777);
+}
+
+ldmsd_setgrp_t
+ldmsd_setgrp_new_with_auth(const char *name, const char *producer,
+				long interval_us, long offset_us,
+				uid_t uid, gid_t gid, mode_t perm, int flags)
+{
+	int rc;
+	ldmsd_setgrp_t grp;
+
+	rc = ENOMEM;
+	grp = (ldmsd_setgrp_t)ldmsd_cfgobj_new_with_auth(name,
+			LDMSD_CFGOBJ_SETGRP, sizeof(*grp),
+			ldmsd_setgrp___del, uid, gid, perm);
 	if (!grp)
 		return NULL;
-	ldms_transaction_begin(grp);
-	ldms_metric_set_u32(grp, 0, 0);
-	ldms_set_info_set(grp, GRP_GN_NAME, "0");
-	ldms_transaction_end(grp);
+
+	if (!producer)
+		producer = ldmsd_myname_get();
+	grp->producer = strdup(producer);
+	if (!grp->producer)
+		goto err1;
+	grp->interval_us = interval_us;
+	grp->offset_us = offset_us;
+	LIST_INIT(&grp->member_list);
+	if (flags & LDMSD_PERM_DSTART) {
+		grp->obj.perm |= LDMSD_PERM_DSTART;
+	} else {
+		rc = __ldmsd_setgrp_start(grp);
+		if (rc)
+			goto err1;
+	}
+
+	ldmsd_setgrp_unlock(grp);
 	return grp;
+err1:
+	ldmsd_setgrp_unlock(grp);
+err:
+	ldmsd_setgrp_put(grp);
+	return NULL;
+}
+
+extern struct rbt *cfgobj_trees[];
+ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
+
+int ldmsd_setgrp_del(const char *name, ldmsd_sec_ctxt_t ctxt)
+{
+	int rc;
+	ldmsd_setgrp_t grp;
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_SETGRP);
+	grp = (ldmsd_setgrp_t) __cfgobj_find(name, LDMSD_CFGOBJ_SETGRP);
+	if (!grp) {
+		rc = ENOENT;
+		goto out;
+	}
+	ldmsd_setgrp_lock(grp);
+	rc = ldmsd_cfgobj_access_check(&grp->obj, 0222, ctxt);
+	if (rc)
+		goto out1;
+	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_SETGRP], &grp->obj.rbn);
+	ldmsd_setgrp_put(grp); /* put down reference from the tree */
+	rc = 0;
+out1:
+	ldmsd_setgrp_unlock(grp);
+	ldmsd_setgrp_put(grp); /* `find` reference */
+out:
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SETGRP);
+	return rc;
+}
+
+int ldmsd_setgrp_ins(const char *name, const char *instance)
+{
+	int rc;
+	ldmsd_setgrp_t grp;
+	struct ldmsd_str_ent *str;
+
+	grp = ldmsd_setgrp_find(name);
+	if (!grp)
+		return ENOENT;
+
+	ldmsd_setgrp_lock(grp);
+	/* add a member */
+	str = malloc(sizeof(*str));
+	if (!str) {
+		rc = ENOMEM;
+		goto out;
+	}
+
+	str->str = strdup(instance);
+	if (!str->str) {
+		rc = ENOMEM;
+		free(str);
+		goto out;
+	}
+	LIST_INSERT_HEAD(&grp->member_list, str, entry);
+
+	if (grp->obj.perm & LDMSD_PERM_DSTART)
+		goto out;
+
+	/*
+	 * Since \c grp has been started, \c grp->set must be created already.
+	 */
+	rc = ldmsd_group_set_add(grp->set, instance);
+
+out:
+	ldmsd_setgrp_unlock(grp);
+	ldmsd_setgrp_put(grp); /* `find` reference */
+	return rc;
+}
+
+int ldmsd_setgrp_rm(const char *name, const char *instance)
+{
+	int rc;
+	ldmsd_setgrp_t grp;
+	struct ldmsd_str_ent *str;
+
+	grp = ldmsd_setgrp_find(name);
+	if (!grp)
+		return ENOENT;
+
+	ldmsd_setgrp_lock(grp);
+	LIST_FOREACH(str, &grp->member_list, entry) {
+		if (0 == strcmp(str->str, instance)) {
+			LIST_REMOVE(str, entry);
+			free(str->str);
+			free(str);
+			if (grp->obj.perm & LDMSD_PERM_DSTART) {
+				/*
+				 * The setgrp has never been started.
+				 *
+				 * Nothing to be done.
+				 */
+				rc = 0;
+			} else {
+				rc = ldmsd_group_set_rm(grp->set, instance);
+			}
+			goto out;
+		}
+	}
+	/* The set member not found */
+	rc = ENOENT;
+out:
+	ldmsd_setgrp_unlock(grp);
+	ldmsd_setgrp_put(grp); /* `find` reference */
+	return rc;
 }
 
 static
@@ -174,7 +394,7 @@ int ldmsd_group_check(ldms_set_t set)
 }
 
 __attribute__((constructor))
-static void __ldmsd_grp_init()
+static void __ldmsd_setgrp_init()
 {
 	int rc;
 	grp_schema = ldms_schema_new(GRP_SCHEMA_NAME);
