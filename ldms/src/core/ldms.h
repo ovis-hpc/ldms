@@ -59,7 +59,6 @@
 #include "ovis-lib-config.h"
 #include "ovis-ldms-config.h"
 #include "ldms_core.h"
-#define _REF_TRACK_		/* enable reference tracking */
 #include "ref.h"
 #include "coll/rbt.h"
 #include "ovis_util/os_util.h"
