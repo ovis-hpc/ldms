@@ -31,3 +31,5 @@ libtest_sampler_la_SOURCES = test_sampler.c
 libtest_sampler_la_CFLAGS = $(SAMPLER_CFLAGS)
 libtest_sampler_la_LIBADD = $(SAMPLER_LIBADD)
 libtest_sampler_la_LDFLAGS = $(SAMPLER_LDFLAGS)
+
+EXTRA_DIST = README.md

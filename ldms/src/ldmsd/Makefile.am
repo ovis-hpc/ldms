@@ -32,12 +32,14 @@ ldmsd_upload_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
 ldmsd_upload_LDFLAGS = $(AM_LDFLAGS) -lovis_util
 
 lib_LTLIBRARIES += libldmsd_stream.la
-libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h ldms.h ldms_core.h ldmsd_request_util.c
+libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h \
+			     ../core/ldms.h ../core/ldms_core.h \
+			     ldmsd_request_util.c
 libldmsd_stream_la_LIBADD = \
 	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ $(CORE)/libldms.la
 
 lib_LTLIBRARIES += librequest.la
-librequest_la_SOURCES = ldms.h ldms_core.h ldmsd_request_util.c
+librequest_la_SOURCES = ../core/ldms.h ../core/ldms_core.h ldmsd_request_util.c
 librequest_la_LIBADD = \
 	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ $(CORE)/libldms.la
 
@@ -46,7 +48,7 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_request.h \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
 	ldmsd_smplr.c \
-	ldmsd_plugin.c \
+	ldmsd_plugin.c ldmsd_plugin.h \
 	ldmsd_failover.c ldmsd_group.c
 ldmsd_CFLAGS = $(AM_CFLAGS) -rdynamic
 ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la libsampler.la\
