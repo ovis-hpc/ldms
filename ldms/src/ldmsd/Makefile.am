@@ -100,6 +100,9 @@ libstore_la_LIBADD = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
 libstore_la_CFLAGS = $(AM_CFLAGS)
 pkglib_LTLIBRARIES += libstore.la
 
+EXTRA_DIST = ldmsd-sampler.md \
+	     ldmsd-aggregator.md
+
 
 # make sym links for aggd scripting support
 install-exec-hook:

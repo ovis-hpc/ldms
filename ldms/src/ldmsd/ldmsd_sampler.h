@@ -315,6 +315,9 @@ ldmsd_plugin_qresult_t ldmsd_sampler_query(ldmsd_plugin_inst_t i,
  */
 #define LDMSD_SAMPLER(inst) ((ldmsd_sampler_type_t)LDMSD_INST(inst)->base)
 
+/**
+ * Check if the `pi` is a sampler plugin instance.
+ */
 #define LDMSD_INST_IS_SAMPLER(pi) (0 == strcmp((pi)->base->type_name, \
 				               LDMSD_SAMPLER_TYPENAME))
 

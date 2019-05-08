@@ -75,7 +75,7 @@ typedef struct ldms_value_s *ldms_value_t;
 typedef struct ldms_schema_s *ldms_schema_t;
 
 /**
- * \mainpage LDMS
+ * \page LDMS LDMS
  *
  * LDMS means Lightweight Distributed Metric Service. It is an
  * Application Programming Interface for publishing and gathering

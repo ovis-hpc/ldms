@@ -1,4 +1,5 @@
-EXTRA_DIST = pedigree.am SHA.txt TAG.txt
+EXTRA_DIST = pedigree.am SHA.txt TAG.txt \
+	     README.md
 
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = src
@@ -46,7 +47,7 @@ endif
 
 install-data-local:
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
-	for f in AUTHORS README COPYING ChangeLog ; do \
+	for f in AUTHORS README.md COPYING ChangeLog ; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
 	done
 
@@ -55,7 +56,7 @@ include $(top_srcdir)/pedigree.am
 
 uninstall-hook:
 	rm $(PEDIGREE)
-	for f in AUTHORS README COPYING ChangeLog ; do \
+	for f in AUTHORS README.md COPYING ChangeLog ; do \
 		rm $(DESTDIR)$(docdir)$(OPV)/$$f; \
 	done
 

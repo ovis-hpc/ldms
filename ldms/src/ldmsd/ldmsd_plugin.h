@@ -215,6 +215,7 @@ struct ldmsd_plugin_type_s {
 	ldmsd_plugin_qresult_t (*query)(ldmsd_plugin_inst_t i, const char *q);
 };
 
+/** Base structure of plugin instance. */
 struct ldmsd_plugin_inst_s {
 	/** The version of the instance implementation. */
 	struct ldmsd_plugin_version_s version;
