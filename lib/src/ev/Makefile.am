@@ -7,7 +7,7 @@ AM_LDFLAGS = -L$(builddir) -pthread
 ldmscoreincludedir = $(includedir)/ev
 ldmscoreinclude_HEADERS = ev.h
 
-libev_la_SOURCES = ev.c evw.c
+libev_la_SOURCES = ev.c evw.c ev_priv.h
 libev_la_CFLAGS = $(AM_CFLAGS) -g -O0
 libev_la_LIBADD = -lc ../coll/libcoll.la
 lib_LTLIBRARIES += libev.la
