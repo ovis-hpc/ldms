@@ -525,5 +525,12 @@ fi
 
 export LDMSD_PLUGIN_CONFIG_FILE
 
-
-#LDMS_POST_INSTALLED=0 do not change this line
+if test -n "$LDMSD_START_HOOKS"; then
+	for i in $LDMSD_START_HOOKS; do
+		if test -f $i; then
+			. $i
+		else
+			logger -t $LTAG syslog.info "Missing config file specified by user in LDMSD_START_HOOKS: $i" 
+		fi
+	done
+fi
