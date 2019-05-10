@@ -220,8 +220,7 @@ void lnet_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int lnet_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int lnet_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	lnet_inst_t inst = (void*)pi;
@@ -236,12 +235,12 @@ int lnet_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EALREADY;
         }
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	/* Plugin-specific config here */
-	val = av_value(avl, "file");
+	val = json_attr_find_str(json, "file");
 	inst->path = strdup(val?val:PROC_FILE_DEFAULT);
 	if (!inst->path) {
 		snprintf(ebuf, ebufsz, "%s: out of memory\n",

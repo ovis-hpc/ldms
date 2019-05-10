@@ -158,8 +158,7 @@ void vmstat_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int vmstat_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int vmstat_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	vmstat_inst_t inst = (void*)pi;
@@ -180,7 +179,7 @@ int vmstat_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return errno;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 

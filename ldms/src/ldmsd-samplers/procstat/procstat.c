@@ -605,14 +605,14 @@ void procstat_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int procstat_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int procstat_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	procstat_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
-	char *value, *endp;
+	const char *value;
+	char *endp;
 	int rc;
 	long long utmp;
 
@@ -622,11 +622,11 @@ int procstat_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EALREADY;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	value = av_value(avl, "maxcpu");
+	value = json_attr_find_str(json, "maxcpu");
 	if (value) {
 		utmp = strtoull(value, &endp, 0);
 		if (endp == value) {

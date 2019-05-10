@@ -209,8 +209,7 @@ void aries_linkstatus_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int aries_linkstatus_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int aries_linkstatus_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	aries_linkstatus_inst_t inst = (void*)pi;
@@ -226,11 +225,11 @@ int aries_linkstatus_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EALREADY;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	fname = av_value(avl, "file_send");
+	fname = json_attr_find_str(json, "file_send");
 	inst->lsfile = strdup(fname?fname:LINKSTATUS_FILE);
 	if (!inst->lsfile) {
 		snprintf(ebuf, ebufsz, "%s: not enough memory.\n",
@@ -250,7 +249,7 @@ int aries_linkstatus_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 	}
 	fclose(mf);
 
-	fname = av_value(avl, "file_recv");
+	fname = json_attr_find_str(json, "file_recv");
 	inst->lrfile = strdup(fname?fname:LINKSTATUS_FILE);
 	if (!inst->lrfile) {
 		snprintf(ebuf, ebufsz, "%s: not enough memory.\n",

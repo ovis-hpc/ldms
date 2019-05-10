@@ -127,8 +127,7 @@ struct perfevent_inst_s {
 
 struct kw {
 	const char *token;
-	int (*action)(perfevent_inst_t inst, struct attr_value_list *kwl,
-		      struct attr_value_list *avl, void *arg);
+	int (*action)(perfevent_inst_t inst, json_entity_t json, void *arg);
 };
 
 static int kw_comparator(const void *a, const void *b)
@@ -150,59 +149,54 @@ static inline int pe_open(struct perf_event_attr *attr, pid_t pid,
  * Specify the textual name that will appear for this event in the metric set.
  * Format: metricname=%s
  */
-static int add_event_name(perfevent_inst_t inst, struct attr_value_list *kwl,
-			  struct attr_value_list *avl, void *arg)
+static int add_event_name(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->name = strdup(av_value(avl, "metricname"));
+	pe->name = strdup(json_attr_find_str(dict, "metricname"));
 	return 0;
 }
 
 /**
  * Specify the event type
  */
-static int add_event_type(perfevent_inst_t inst, struct attr_value_list *kwl,
-			  struct attr_value_list *avl, void *arg)
+static int add_event_type(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->attr.type = strtol(av_value(avl, "type"), NULL, 0);
+	pe->attr.type = strtol(json_attr_find_str(dict, "type"), NULL, 0);
 	return 0;
 }
 
 /**
  * Specify the pid
  */
-static int add_event_pid(perfevent_inst_t inst, struct attr_value_list *kwl,
-			 struct attr_value_list *avl, void *arg)
+static int add_event_pid(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->pid = strtol(av_value(avl, "pid"), NULL, 0);
+	pe->pid = strtol(json_attr_find_str(dict, "pid"), NULL, 0);
 	return 0;
 }
 
 /**
  * Specify the event id
  */
-static int add_event_id(perfevent_inst_t inst, struct attr_value_list *kwl,
-			struct attr_value_list *avl, void *arg)
+static int add_event_id(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->attr.config = strtol(av_value(avl, "id"), NULL, 0);
+	pe->attr.config = strtol(json_attr_find_str(dict, "id"), NULL, 0);
 	return 0;
 }
 
 /**
  * Specify the cpuc core
  */
-static int add_event_cpu(perfevent_inst_t inst, struct attr_value_list *kwl,
-			 struct attr_value_list *avl, void *arg)
+static int add_event_cpu(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->cpu = strtol(av_value(avl, "cpu"), NULL, 0);
+	pe->cpu = strtol(json_attr_find_str(dict, "cpu"), NULL, 0);
 	return 0;
 }
 
-static struct pevent *find_event(perfevent_inst_t inst, char *name)
+static struct pevent *find_event(perfevent_inst_t inst, const char *name)
 {
 	struct pevent *pe;
 	LIST_FOREACH(pe, &inst->pevent_list, entry) {
@@ -231,8 +225,7 @@ static struct event_group *find_group(perfevent_inst_t inst, int event_pid,
 	return NULL;
 }
 
-static int add_event(perfevent_inst_t inst, struct attr_value_list *kwl,
-		     struct attr_value_list *avl, void *arg)
+static int add_event(perfevent_inst_t inst, json_entity_t json, void *arg)
 {
 	struct kw add_token_tbl[] = {
 		{ "cpu", add_event_cpu },
@@ -244,6 +237,7 @@ static int add_event(perfevent_inst_t inst, struct attr_value_list *kwl,
 
 	int rc;
 	struct pevent *pe;
+	json_entity_t attr;
 
 	pe = calloc(1, sizeof *pe);
 	if (!pe) {
@@ -260,15 +254,17 @@ static int add_event(perfevent_inst_t inst, struct attr_value_list *kwl,
 	pe->pid = -1;
 	pe->cpu = -1;
 
-	/* skipping 0=action */
-	for (i = 1; i < avl->count; i++) {
+	for (attr = json_attr_first(json); attr; attr = json_attr_next(attr)) {
 		struct kw key;
 		struct kw *kw;
-		char *token;
-		char *value;
+		const char *token;
 
-		token = av_name(avl, i);
-		value = av_value_at_idx(avl, i);
+		token = json_attr_name(attr)->str;
+
+		if (0 == strcmp(token, "action")) {
+			/* skipping attribute 'action' */
+			continue;
+		}
 
 		key.token = token;
 		kw = bsearch(&key, add_token_tbl, ARRAY_SIZE(add_token_tbl),
@@ -280,7 +276,7 @@ static int add_event(perfevent_inst_t inst, struct attr_value_list *kwl,
 				 "string.\n", token);
 			return -1;
 		}
-		rc = kw->action(inst, kwl, avl, pe);
+		rc = kw->action(inst, json, pe);
 		if (rc)
 			return rc;
 	}
@@ -351,10 +347,9 @@ err:
 	return -1;
 }
 
-static int del_event(perfevent_inst_t inst, struct attr_value_list *kwl,
-		     struct attr_value_list *avl, void *arg)
+static int del_event(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
-	char *name = av_value(avl, "metricname");
+	const char *name = json_attr_find_str(dict, "metricname");
 	struct pevent *pe = find_event(inst, name);
 	if (pe) {
 		LIST_REMOVE(pe, entry);
@@ -365,8 +360,7 @@ static int del_event(perfevent_inst_t inst, struct attr_value_list *kwl,
 	return 0;
 }
 
-static int list(perfevent_inst_t inst, struct attr_value_list *kwl,
-		struct attr_value_list *avl, void *arg)
+static int list(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
 	struct pevent *pe;
 	INST_LOG(inst, LDMSD_LINFO,
@@ -386,8 +380,7 @@ static int list(perfevent_inst_t inst, struct attr_value_list *kwl,
 	return 0;
 }
 
-static int init(perfevent_inst_t inst, struct attr_value_list *kwl,
-		struct attr_value_list *avl, void *arg)
+static int init(perfevent_inst_t inst, json_entity_t json, void *arg)
 {
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	/* Create the metric set */
@@ -396,7 +389,7 @@ static int init(perfevent_inst_t inst, struct attr_value_list *kwl,
 
 	ldms_schema_t schema;
 
-	rc = samp->base.config(&inst->base, avl, kwl, inst->ebuf, inst->ebufsz);
+	rc = samp->base.config(&inst->base, json, inst->ebuf, inst->ebufsz);
 	if (rc)
 		return rc;
 
@@ -551,8 +544,7 @@ const char *perfevent_help(ldmsd_plugin_inst_t pi)
 }
 
 static
-int perfevent_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int perfevent_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	perfevent_inst_t inst = (void*)pi;
@@ -567,7 +559,7 @@ int perfevent_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 
 	struct kw *kw;
 	struct kw key;
-	char *action = av_value(avl, "action");
+	const char *action = json_attr_find_str(json, "action");
 
 	if (!action) {
 		snprintf(ebuf, ebufsz, "Missing `action` attribute.\n");
@@ -584,7 +576,7 @@ int perfevent_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 
 	inst->ebuf = ebuf;
 	inst->ebufsz = ebufsz;
-	rc = kw->action(inst, kwl, avl, NULL);
+	rc = kw->action(inst, json, NULL);
 	inst->ebuf = NULL;
 	inst->ebufsz = 0;
 	return rc;

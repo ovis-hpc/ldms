@@ -189,8 +189,7 @@ const char *procsensors_help(ldmsd_plugin_inst_t pi)
 }
 
 static
-int procsensors_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int procsensors_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	procsensors_inst_t inst = (void*)pi;
@@ -198,7 +197,7 @@ int procsensors_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 	ldms_set_t set;
 	int rc;
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 

@@ -169,15 +169,14 @@ void synthetic_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int synthetic_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int synthetic_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	synthetic_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
 	int rc;
-	char *value;
+	const char *value;
 	char *endp = NULL;
 
 	if (!LIST_EMPTY(&samp->set_list)) {
@@ -186,12 +185,12 @@ int synthetic_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EALREADY;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	/* Plugin-specific config here */
-	value = av_value(avl, "origin");
+	value = json_attr_find_str(json, "origin");
 	if (value) {
 		double x = strtod(value, &endp);
 		if (x != 0) {
@@ -199,7 +198,7 @@ int synthetic_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		}
 	}
 
-	value = av_value(avl, "period");
+	value = json_attr_find_str(json, "period");
 	if (value) {
 		double x = strtod(value, &endp);
 		if (x != 0) {
@@ -207,7 +206,7 @@ int synthetic_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		}
 	}
 
-	value = av_value(avl, "height");
+	value = json_attr_find_str(json, "height");
 	if (value) {
 		double x = strtod(value, &endp);
 		if (x != 0) {

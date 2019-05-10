@@ -60,6 +60,7 @@
 #include "gpcd_lib.h"
 #include "ldmsd.h"
 #include "ldmsd_plugin.h"
+#include "json/json_util.h"
 
 //list types
 enum {REQ_T, RC_T, PTILE_T, NIC_T, OTHER_T, END_T};
@@ -98,8 +99,7 @@ struct aries_mmr_inst_s {
 int aries_mmr_init(ldmsd_plugin_inst_t pi);
 void aries_mmr_del(ldmsd_plugin_inst_t pi);
 int aries_mmr_recv(ldmsd_plugin_inst_t pi, ldms_t x, char *msg);
-int aries_mmr_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-		     struct attr_value_list *kwl, char *ebuf, int ebufsz);
+int aries_mmr_config(ldmsd_plugin_inst_t pi, json_entity_t json, char *ebuf, int ebufsz);
 int filterKeepAll(const char* name);
 int filterKeepNic(const char* name);
 int filterKeepRouter(const char* name);

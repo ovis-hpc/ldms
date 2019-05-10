@@ -199,23 +199,22 @@ void cray_power_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int cray_power_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int cray_power_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
 	int rc;
-	char *v;
+	const char *v;
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	/* Plugin-specific config here */
 
 	/* handling set_array_card with default being 600 */
-	v = av_value(avl, "set_array_card");
+	v = json_attr_find_str(json, "set_array_card");
 	if (!v)
 		samp->set_array_card = 600;
 	/* otherwise, it has been handled by base.config() */

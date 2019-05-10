@@ -161,8 +161,7 @@ void meminfo_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int meminfo_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int meminfo_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	meminfo_inst_t inst = (void*)pi;
@@ -176,7 +175,7 @@ int meminfo_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EALREADY;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 

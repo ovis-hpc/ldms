@@ -76,8 +76,7 @@
 #include "ldms.h"
 #include "cray_sampler_base.h"
 
-int config_nvidia(cray_sampler_inst_t inst, struct attr_value_list* kwl,
-		  struct attr_value_list* avl);
+int config_nvidia(cray_sampler_inst_t inst, json_entity_t json);
 int add_metrics_nvidia(cray_sampler_inst_t inst, ldms_schema_t schema);
 int nvidia_setup(cray_sampler_inst_t inst);
 int nvidia_shutdown(cray_sampler_inst_t inst);

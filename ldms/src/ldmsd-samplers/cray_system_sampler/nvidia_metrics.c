@@ -109,12 +109,11 @@ static char* NVIDIA_METRICS[] = {"gpu_power_usage",
 
 #define NUM_NVIDIA_METRICS (sizeof(NVIDIA_METRICS)/sizeof(NVIDIA_METRICS[0]))
 
-int config_nvidia(cray_sampler_inst_t inst, struct attr_value_list* kwl,
-		  struct attr_value_list* avl)
+int config_nvidia(cray_sampler_inst_t inst, json_entity_t json)
 {
-	char* value = NULL;
+	const char* value;
 
-	value = av_value(avl, "gpu_devices");
+	value = json_attr_find_str(json, "gpu_devices");
 	if (value){
 		INST_LOG(inst, LDMSD_LDEBUG,
 			 "cray_system_sampler configuring for "

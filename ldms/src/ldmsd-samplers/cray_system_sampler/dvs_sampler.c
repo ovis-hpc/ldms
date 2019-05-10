@@ -513,8 +513,7 @@ out:
 }
 
 static
-int dvs_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int dvs_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	dvs_sampler_inst_t inst = (void*)pi;
@@ -527,11 +526,11 @@ int dvs_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EALREADY;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	value = av_value(avl, "conffile");
+	value = json_attr_find_str(json, "conffile");
 	if (value) {
 		rc = __downselect(inst, value, ebuf, ebufsz);
 		return rc;

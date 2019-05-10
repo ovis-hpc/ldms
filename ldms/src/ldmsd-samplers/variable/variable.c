@@ -183,8 +183,7 @@ const char *variable_help(ldmsd_plugin_inst_t pi)
 }
 
 static
-int variable_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int variable_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	variable_inst_t inst = (void*)pi;
@@ -193,7 +192,7 @@ int variable_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 	ldms_set_t set;
 	int rc;
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 

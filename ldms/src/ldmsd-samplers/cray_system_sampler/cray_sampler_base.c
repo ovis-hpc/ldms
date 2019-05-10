@@ -94,10 +94,9 @@ int get_offns_generic(cray_system_sampler_sources_t i)
 }
 #endif
 
-int config_generic(cray_sampler_inst_t inst, struct attr_value_list* kwl,
-		   struct attr_value_list* avl)
+int config_generic(cray_sampler_inst_t inst, json_entity_t json)
 {
-	char *value = NULL;
+	const char *value = NULL;
 	int flag;
 	int rc = 0;
 
@@ -120,49 +119,48 @@ int config_generic(cray_sampler_inst_t inst, struct attr_value_list* kwl,
 	  just go thru the list
 	*/
 
-
-	value = av_value(avl, "off_nettopo");
-	if (value){
+	value = json_attr_find_str(json, "off_nettopo");
+	if (value) {
 		flag = atoi(value);
 		if (flag == 1){
 			inst->offns[NS_NETTOPO] = 1;
 		}
 	}
 
-	value = av_value(avl, "off_energy");
-	if (value){
+	value = json_attr_find_str(json, "off_energy");
+	if (value) {
 		flag = atoi(value);
 		if (flag == 1){
 			inst->offns[NS_ENERGY] = 1;
 		}
 	}
 
-	value = av_value(avl, "off_vmstat");
-	if (value){
+	value = json_attr_find_str(json, "off_vmstat");
+	if (value) {
 		flag = atoi(value);
 		if (flag == 1){
 			inst->offns[NS_VMSTAT] = 1;
 		}
 	}
 
-	value = av_value(avl, "off_loadavg");
-	if (value){
+	value = json_attr_find_str(json, "off_loadavg");
+	if (value) {
 		flag = atoi(value);
 		if (flag == 1){
 			inst->offns[NS_LOADAVG] = 1;
 		}
 	}
 
-	value = av_value(avl, "off_current_freemem");
-	if (value){
+	value = json_attr_find_str(json, "off_current_freemem");
+	if (value) {
 		flag = atoi(value);
 		if (flag == 1){
 			inst->offns[NS_CURRENT_FREEMEM] = 1;
 		}
 	}
 
-	value = av_value(avl, "off_kgnilnd");
-	if (value){
+	value = json_attr_find_str(json, "off_kgnilnd");
+	if (value) {
 		flag = atoi(value);
 		if (flag == 1){
 			inst->offns[NS_KGNILND] = 1;
@@ -172,12 +170,14 @@ int config_generic(cray_sampler_inst_t inst, struct attr_value_list* kwl,
 	//note: you can also turn off lustre but not specifying
 	//any llites. If you do specify llites, this has precedence
 #ifdef HAVE_LUSTRE
-	value = av_value(avl, "llite");
-	value = value?value:av_value(avl, "llites"); /* also try alt name */
-	if (value) {
-		construct_str_list(&inst->llites, value);
+	value = json_attr_find_str(json, "llite");
+	if (!value) {
+		value = json_attr_find_str(json, "llites"); /* also try alt name */
 	}
-	value = av_value(avl, "off_lustre");
+	if (value)
+		construct_str_list(&inst->llites, value);
+
+	value = json_attr_find_str(json, "off_lustre");
 	if (value) {
 		flag = atoi(value);
 		if (flag == 1){
@@ -186,8 +186,8 @@ int config_generic(cray_sampler_inst_t inst, struct attr_value_list* kwl,
 	}
 #endif
 
-	value = av_value(avl, "off_procnetdev");
-	if (value){
+	value = json_attr_find_str(json, "off_procnetdev");
+	if (value) {
 		flag = atoi(value);
 		if (flag == 1){
 			inst->offns[NS_PROCNETDEV] = 1;
@@ -195,8 +195,8 @@ int config_generic(cray_sampler_inst_t inst, struct attr_value_list* kwl,
 	}
 
 #ifdef HAVE_CRAY_NVIDIA
-	value = av_value(avl, "off_nvidia");
-	if (value){
+	value = json_attr_find_str(json, "off_nvidia");
+	if (value) {
 		flag = atoi(value);
 		if (flag == 1){
 			inst->offns[NS_NVIDIA] = 1;
@@ -204,7 +204,7 @@ int config_generic(cray_sampler_inst_t inst, struct attr_value_list* kwl,
 	}
 
 	if (!inst->offns[NS_NVIDIA]){
-		rc = config_nvidia(inst, kwl, avl);
+		rc = config_nvidia(inst, json);
 	}
 #endif
 

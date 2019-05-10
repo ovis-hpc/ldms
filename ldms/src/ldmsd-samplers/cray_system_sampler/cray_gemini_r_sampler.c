@@ -258,37 +258,35 @@ void cray_gemini_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int cray_gemini_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int cray_gemini_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	cray_gemini_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
-	char *value;
+	const char *value;
 	int rc;
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	/* Plugin-specific config here */
-	rc = config_generic(&inst->base, kwl, avl);
+	rc = config_generic(&inst->base, json);
 	if (rc) {
 		snprintf(ebuf, ebufsz, "configure error: %d\n", rc);
 		return rc;
 	}
 
-	value = av_value(avl, "off_hsn");
+	value = json_attr_find_str(json, "off_hsn");
 	if (value)
 		inst->off_hsn = (atoi(value) == 1);
 
 	if (!inst->off_hsn) {
-		value = av_value(avl,"hsn_metrics_type");
-		if (value) {
+		value = json_attr_find_str(json, "hsn_metrics_type");
+		if (value)
 			inst->hsn_metrics_type = atoi(value);
-		}
-		value = av_value(avl, "rtrfile");
+		value = json_attr_find_str(json, "rtrfile");
 		rc = hsn_metrics_config(inst, value);
 		if (rc)
 			return rc;

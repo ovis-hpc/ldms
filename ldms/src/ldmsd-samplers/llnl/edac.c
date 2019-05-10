@@ -281,8 +281,7 @@ void edac_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int edac_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int edac_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	edac_inst_t inst = (void*)pi;
@@ -297,12 +296,12 @@ int edac_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EALREADY;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	/* Plugin-specific config here */
-	char *mvalue = av_value(avl, "max_mc");
+	const char *mvalue = json_attr_find_str(json, "max_mc");
 	if (mvalue)
 	{
 		tmp=strtol(mvalue, NULL,10);
@@ -317,7 +316,7 @@ int edac_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		}
 
 	}
-	mvalue = av_value(avl, "max_csrow");
+	mvalue = json_attr_find_str(json, "max_csrow");
 	if (mvalue)
 	{
 		tmp=strtol(mvalue, NULL,10);

@@ -280,10 +280,10 @@ struct msr_interlagos_inst_s {
  * 1) could read different ctr independently (threads)
  */
 struct kw {
-	char *token;
+	const char *token;
 	int (*action)(msr_interlagos_inst_t inst,
-		      struct attr_value_list *kwl, struct attr_value_list *avl,
-		      char *ebuf, int ebufsz);
+			json_entity_t json,
+			char *ebuf, int ebufsz);
 };
 
 static int kw_comparator(const void *a, const void *b)
@@ -293,7 +293,7 @@ static int kw_comparator(const void *a, const void *b)
 	return strcmp(_a->token, _b->token);
 }
 
-static int parseConfig(msr_interlagos_inst_t inst, char* fname)
+static int parseConfig(msr_interlagos_inst_t inst, const char* fname)
 {
 	char name[MSR_CONFIGLINE_MAX];
 	uint64_t w_reg;
@@ -468,7 +468,7 @@ static int parseConfig(msr_interlagos_inst_t inst, char* fname)
 	return 0;
 }
 
-struct active_counter* findactivecounter(msr_interlagos_inst_t inst, char* name)
+struct active_counter* findactivecounter(msr_interlagos_inst_t inst, const char* name)
 {
 	struct active_counter* pe;
 
@@ -486,12 +486,11 @@ struct active_counter* findactivecounter(msr_interlagos_inst_t inst, char* name)
 }
 
 /* action=halt */
-static int halt(msr_interlagos_inst_t inst,
-		struct attr_value_list *kwl, struct attr_value_list *avl,
+static int halt(msr_interlagos_inst_t inst, json_entity_t json,
 		char *ebuf, int ebufsz)
 {
 	struct active_counter* pe;
-	char* value;
+	const char* value;
 
 	if (inst->cfgstate != CFG_DONE_FINAL){
 		snprintf(ebuf, ebufsz,
@@ -500,7 +499,7 @@ static int halt(msr_interlagos_inst_t inst,
 		return -1;
 	}
 
-	value = av_value(avl, "metricname");
+	value = json_attr_find_str(json, "metricname");
 	if (!value){
 		snprintf(ebuf, ebufsz, "no name to halt\n");
 		return -1;
@@ -548,12 +547,11 @@ static int halt(msr_interlagos_inst_t inst,
 }
 
 /* action=cont */
-static int cont(msr_interlagos_inst_t inst,
-		struct attr_value_list *kwl, struct attr_value_list *avl,
+static int cont(msr_interlagos_inst_t inst, json_entity_t json,
 		char *ebuf, int ebufsz)
 {
 	struct active_counter* pe;
-	char* value;
+	const char* value;
 
 	if (inst->cfgstate != CFG_DONE_FINAL){
 		snprintf(ebuf, ebufsz,
@@ -562,7 +560,7 @@ static int cont(msr_interlagos_inst_t inst,
 		return -1;
 	}
 
-	value = av_value(avl, "metricname");
+	value = json_attr_find_str(json, "metricname");
 	if (!value){
 		snprintf(ebuf, ebufsz, "no name to continue\n");
 		return -1;
@@ -604,12 +602,11 @@ static int cont(msr_interlagos_inst_t inst,
 }
 
 /* action=add_event */
-static int add_event(msr_interlagos_inst_t inst,
-		     struct attr_value_list *kwl, struct attr_value_list *avl,
+static int add_event(msr_interlagos_inst_t inst, json_entity_t json,
 		     char *ebuf, int ebufsz)
 {
 	int idx;
-	char* nam;
+	const char* nam;
 	int i;
 
 	pthread_mutex_lock(&inst->cfglock);
@@ -628,7 +625,7 @@ static int add_event(msr_interlagos_inst_t inst,
 		return -1;
 	}
 
-	nam = av_value(avl, "metricname");
+	nam = json_attr_find_str(json, "metricname");
 	if ((!nam) || (strlen(nam) == 0)) {
 		snprintf(ebuf, ebufsz, "Invalid event name\n");
 		pthread_mutex_unlock(&inst->cfglock);
@@ -952,8 +949,7 @@ static int assigncountersinit(msr_interlagos_inst_t inst)
 	return 0;
 }
 
-static int finalize(msr_interlagos_inst_t inst,
-		    struct attr_value_list *kwl, struct attr_value_list *avl,
+static int finalize(msr_interlagos_inst_t inst, json_entity_t json,
 		    char *ebuf, int ebufsz)
 {
 
@@ -1033,14 +1029,13 @@ static int dfilter(const struct dirent *dp)
 	return ((isdigit(dp->d_name[0])) ? 1 : 0);
 }
 
-static int init(msr_interlagos_inst_t inst,
-		struct attr_value_list *kwl, struct attr_value_list *avl,
-		char *ebuf, int ebufsz)
+static int init(msr_interlagos_inst_t inst, json_entity_t json,
+					char *ebuf, int ebufsz)
 {
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	struct dirent **dlist;
-	char* val;
-	char* cfile;
+	const char* val;
+	const char* cfile;
 	int rc;
 	int i;
 
@@ -1049,11 +1044,11 @@ static int init(msr_interlagos_inst_t inst,
 		return -1;
 	}
 
-	rc = samp->base.config(&inst->base, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(&inst->base, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	cfile = av_value(avl, "conffile");
+	cfile = json_attr_find_str(json, "conffile");
 	if (!cfile){
 		snprintf(ebuf, ebufsz, "no config file");
 		rc = EINVAL;
@@ -1081,7 +1076,7 @@ static int init(msr_interlagos_inst_t inst,
 	pthread_mutex_lock(&inst->cfglock);
 
 	inst->maxcore = inst->numcore;
-	val = av_value(avl, "maxcore");
+	val = json_attr_find_str(json, "maxcore");
 	if (val) {
 		inst->maxcore = atoi(val);
 		if ((inst->maxcore < inst->numcore) ||
@@ -1094,7 +1089,7 @@ static int init(msr_interlagos_inst_t inst,
 	}
 
 	int corespernuma = 1;
-	val = av_value(avl, "corespernuma");
+	val = json_attr_find_str(json, "corespernuma");
 	if (val) {
 		corespernuma = atoi(val);
 		if ((corespernuma < 1) || (corespernuma > MSR_TOOMANYMAX)){ //some big number. just a safety check.
@@ -1130,8 +1125,7 @@ static int init(msr_interlagos_inst_t inst,
 	return 0;
 }
 
-static int list(msr_interlagos_inst_t inst,
-		struct attr_value_list *kwl, struct attr_value_list *avl,
+static int list(msr_interlagos_inst_t inst, json_entity_t json,
 		char *ebuf, int ebufsz)
 {
 	struct active_counter* pe;
@@ -1197,7 +1191,8 @@ static int checkreassigncounter(msr_interlagos_inst_t inst,
 }
 
 static struct active_counter* reassigncounter(msr_interlagos_inst_t inst,
-					      char* oldname, char* newname)
+						const char* oldname,
+						const char* newname)
 {
 	struct active_counter *pe;
 	int j;
@@ -1252,13 +1247,12 @@ static struct active_counter* reassigncounter(msr_interlagos_inst_t inst,
 	return pe;
 }
 
-static int reassign(msr_interlagos_inst_t inst,
-		    struct attr_value_list *kwl, struct attr_value_list *avl,
+static int reassign(msr_interlagos_inst_t inst, json_entity_t json,
 		    char *ebuf, int ebufsz)
 {
 	struct active_counter* pe;
-	char* ovalue;
-	char* nvalue;
+	const char* ovalue;
+	const char* nvalue;
 
 	if (inst->cfgstate != CFG_DONE_FINAL){
 		snprintf(ebuf, ebufsz,
@@ -1267,13 +1261,13 @@ static int reassign(msr_interlagos_inst_t inst,
 		return -1;
 	}
 
-	ovalue = av_value(avl, "oldmetricname");
+	ovalue = json_attr_find_str(json, "oldmetricname");
 	if (!ovalue){
 		snprintf(ebuf, ebufsz, "no name to rewrite\n");
 		return -1;
 	}
 
-	nvalue = av_value(avl, "newmetricname");
+	nvalue = json_attr_find_str(json, "newmetricname");
 	if (!nvalue){
 		snprintf(ebuf, ebufsz, "no name to rewrite to\n");
 		return -1;
@@ -1292,13 +1286,12 @@ static int reassign(msr_interlagos_inst_t inst,
 
 }
 
-static int rewrite(msr_interlagos_inst_t inst,
-		   struct attr_value_list *kwl, struct attr_value_list *avl,
+static int rewrite(msr_interlagos_inst_t inst, json_entity_t json,
 		   char *ebuf, int ebufsz)
 {
 	struct active_counter* pe;
 	ctr_state s;
-	char* value;
+	const char* value;
 
 	if (inst->cfgstate != CFG_DONE_FINAL){
 		snprintf(ebuf, ebufsz,
@@ -1307,7 +1300,7 @@ static int rewrite(msr_interlagos_inst_t inst,
 		return -1;
 	}
 
-	value = av_value(avl, "metricname");
+	value = json_attr_find_str(json, "metricname");
 	if (!value){
 		snprintf(ebuf, ebufsz, "no name to rewrite\n");
 		return -1;
@@ -1698,17 +1691,16 @@ const char *msr_interlagos_help(ldmsd_plugin_inst_t pi)
 }
 
 static
-int msr_interlagos_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int msr_interlagos_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	msr_interlagos_inst_t inst = (void*)pi;
 	int rc;
 	struct kw *kw;
 	struct kw key;
-	char *action;
+	const char *action;
 
-	action = av_value(avl, "action");
+	action = json_attr_find_str(json, "action");
 	if (!action) {
 		snprintf(ebuf, ebufsz, "`action` attribute required.\n");
 		return EINVAL;
@@ -1720,7 +1712,7 @@ int msr_interlagos_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		snprintf(ebuf, ebufsz, "action '%s' not found\n", action);
 		return EINVAL;
 	}
-	rc = kw->action(inst, kwl, avl, ebuf, ebufsz);
+	rc = kw->action(inst, json, ebuf, ebufsz);
 
 	return 0;
 }

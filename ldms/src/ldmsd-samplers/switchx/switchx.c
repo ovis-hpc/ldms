@@ -372,18 +372,17 @@ const char *switchx_help(ldmsd_plugin_inst_t pi)
 }
 
 static
-int switchx_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int switchx_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
 	int rc;
-	char *path;
+	const char *path;
 	char *portstr, *end;
 	int port;
 
-	path = av_value(avl, "set");
+	path = json_attr_find_str(json, "set");
 	if (!path) {
 		snprintf(ebuf, ebufsz, "%s: `set` attribute is required.\n",
 			 pi->inst_name);
@@ -406,7 +405,7 @@ int switchx_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EINVAL;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 

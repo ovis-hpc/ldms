@@ -315,8 +315,7 @@ void lustre2_oss_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int lustre2_oss_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int lustre2_oss_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	lustre2_oss_inst_t inst = (void*)pi;
@@ -325,13 +324,13 @@ int lustre2_oss_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 	int rc;
 	const char *val;
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	/* Plugin-specific config here */
-	val = av_value(avl, "osts");
-	val = val?val:av_value(avl, "ost");
+	val = json_attr_find_str(json, "osts");
+	val = val?val:json_attr_find_str(json, "ost");
 	if (!val) {
 		snprintf(ebuf, ebufsz, "%s: missing `ost` attribute.\n",
 			 pi->inst_name);

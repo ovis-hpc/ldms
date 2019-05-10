@@ -173,7 +173,7 @@ typedef enum {
 
 
 /* config */
-int hsn_metrics_config(cray_gemini_inst_t inst, char* filename);
+int hsn_metrics_config(cray_gemini_inst_t inst, const char* filename);
 
 
 /* add metrics */

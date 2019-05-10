@@ -434,8 +434,7 @@ int __process_metrics(generic_sampler_inst_t inst, char *mx)
 }
 
 static
-int generic_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int generic_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	generic_sampler_inst_t inst = (void*)pi;
@@ -444,12 +443,12 @@ int generic_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 	int rc;
 	char *value;
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	/* Plugin-specific config here */
-	value = av_value(avl, "path");
+	value = (char *)json_attr_find_str(json, "path");
 	if (value) {
 		inst->path = strdup(value);
 		if (!inst->path) {
@@ -457,7 +456,7 @@ int generic_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		}
 	}
 
-	value = av_value(avl, "mx");
+	value = (char *)json_attr_find_str(json, "mx");
 	if (!value) {
 		ldmsd_log(LDMSD_LERROR, "%s: No 'mx' is given.\n",
 			  pi->inst_name);

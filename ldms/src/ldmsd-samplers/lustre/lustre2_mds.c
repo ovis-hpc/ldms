@@ -239,23 +239,22 @@ void lustre2_mds_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int lustre2_mds_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int lustre2_mds_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	lustre2_mds_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
 	int rc;
-	char *mdts;
+	const char *mdts;
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	/* Plugin-specific config here */
-	mdts = av_value(avl, "mdts");
-	mdts = mdts?mdts:av_value(avl, "mdt");
+	mdts = json_attr_find_str(json, "mdts");
+	mdts = mdts?mdts:json_attr_find_str(json, "mdt");
 	if (!mdts) {
 		snprintf(ebuf, ebufsz, "%s: `mdt` not specified.\n",
 			 pi->inst_name);

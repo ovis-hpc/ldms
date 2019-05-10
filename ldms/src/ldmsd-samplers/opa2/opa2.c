@@ -444,8 +444,7 @@ const char *opa2_help(ldmsd_plugin_inst_t pi)
 }
 
 static
-int opa2_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int opa2_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	opa2_inst_t inst = (void*)pi;
@@ -465,11 +464,11 @@ int opa2_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return rc;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	char *ports = av_value(avl, "ports");
+	char *ports = json_attr_find_str(json, "ports");
 	if (!ports) {
 		ports = "*";
 	}

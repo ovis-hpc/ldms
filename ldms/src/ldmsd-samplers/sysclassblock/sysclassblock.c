@@ -201,14 +201,13 @@ void sysclassblock_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int sysclassblock_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int sysclassblock_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	sysclassblock_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
-	char *dev;
+	const char *dev;
 	int rc;
 	ssize_t sz;
 	int bufsz = PATH_MAX;
@@ -227,14 +226,14 @@ int sysclassblock_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		goto out;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		goto out;
 
 	/* dev or device for backward comp */
-	dev = av_value(avl, "dev");
+	dev = json_attr_find_str(json, "dev");
 	if (!dev)
-		dev = av_value(avl, "device");
+		dev = json_attr_find_str(json, "device");
 	if (!dev) {
 		snprintf(ebuf, ebufsz, "%s: `dev` attribute is needed\n",
 			 pi->inst_name);

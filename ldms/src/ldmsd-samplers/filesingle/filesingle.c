@@ -320,26 +320,26 @@ const char *filesingle_help(ldmsd_plugin_inst_t pi)
 }
 
 static
-int filesingle_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int filesingle_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	filesingle_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	ldms_set_t set;
 	int rc;
+	json_entity_t attr;
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	int tidx = av_idx_of(kwl, "timing");
-	if (tidx != -1) {
+	attr = json_attr_find(json, "timing");
+	if (attr) {
 		inst->collect_times = 1;
 	}
 	INST_LOG(inst, LDMSD_LINFO, "timing = %d\n", inst->collect_times);
 
-	const char *conf = av_value(avl, "conf");
+	const char *conf = json_attr_find_str(json, "conf");
 	rc = parse_single_conf(inst, conf);
 	if (rc)
 		return rc;

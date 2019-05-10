@@ -132,8 +132,7 @@ void grptest_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int __init_config(grptest_inst_t inst, struct attr_value_list *avl,
-		  struct attr_value_list *kwl, char *ebuf, int ebufsz)
+int __init_config(grptest_inst_t inst, json_entity_t json, char *ebuf, int ebufsz)
 {
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	ldms_schema_t sch = NULL;
@@ -141,7 +140,7 @@ int __init_config(grptest_inst_t inst, struct attr_value_list *avl,
 	int rc = 0;
 	char buff[256];
 	ldms_set_t set;
-	rc = samp->base.config(&inst->base, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(&inst->base, json, ebuf, ebufsz);
 	if (rc)
 		goto out;
 	snprintf(buff, sizeof(buff), "%s/grp", samp->set_inst_name);
@@ -175,8 +174,7 @@ out:
 }
 
 static
-int grptest_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int grptest_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	grptest_inst_t inst = (void*)pi;
@@ -184,19 +182,19 @@ int grptest_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 	int rc;
 	int i, m;
 	int add, rm;
-	char *str;
+	const char *str;
 	char buff[256];
 
 	if (!inst->grp) {
 		/* do this only once */
-		rc = __init_config(inst, avl, kwl, ebuf, ebufsz);
+		rc = __init_config(inst, json, ebuf, ebufsz);
 		if (rc)
 			return rc;
 		/* let-through */
 	}
 
 	/* process `members` flag */
-	str = av_value(avl, "members");
+	str = json_attr_find_str(json, "members");
 	if (!str)
 		return 0;
 	m = strtoul(str, NULL, 0);

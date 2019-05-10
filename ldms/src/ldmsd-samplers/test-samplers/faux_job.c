@@ -165,16 +165,16 @@ void faux_job_del(ldmsd_plugin_inst_t i)
 }
 
 static
-int faux_job_config(ldmsd_plugin_inst_t i, struct attr_value_list *avl,
-		    struct attr_value_list *kwl, char *ebuf, int ebufsz)
+int faux_job_config(ldmsd_plugin_inst_t i, json_entity_t json,
+					char *ebuf, int ebufsz)
 {
 	faux_job_inst_t inst = (void*)i;
 	ldmsd_sampler_type_t samp = (void*)i->base;
 	ldms_set_t set;
 	int rc;
-	char *val;
+	const char *val;
 
-	rc = samp->base.config(&inst->base, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(&inst->base, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
@@ -192,10 +192,10 @@ int faux_job_config(ldmsd_plugin_inst_t i, struct attr_value_list *avl,
 	inst->job_id_idx = ldms_metric_by_name(set, "job_id");
 	inst->app_id_idx = ldms_metric_by_name(set, "app_id");
 
-	val = av_value(avl, "job_id");
+	val = json_attr_find_str(json, "job_id");
 	inst->job_id = val?atoi(val):1;
 
-	val = av_value(avl, "app_id");
+	val = json_attr_find_str(json, "app_id");
 	inst->app_id = val?atoi(val):10;
 
 	ldms_transaction_begin(set);

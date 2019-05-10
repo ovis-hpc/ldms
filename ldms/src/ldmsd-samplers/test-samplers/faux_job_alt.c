@@ -166,15 +166,15 @@ void faux_job_alt_del(ldmsd_plugin_inst_t i)
 }
 
 static
-int faux_job_alt_config(ldmsd_plugin_inst_t i, struct attr_value_list *avl,
-			struct attr_value_list *kwl, char *ebuf, int ebufsz)
+int faux_job_alt_config(ldmsd_plugin_inst_t i, json_entity_t json,
+					char *ebuf, int ebufsz)
 {
 	faux_job_alt_inst_t inst = (void*)i;
 	ldmsd_sampler_type_t samp = (void*)i->base;
 	ldms_set_t set;
 	int rc;
 
-	rc = samp->base.config(&inst->base, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(&inst->base, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 

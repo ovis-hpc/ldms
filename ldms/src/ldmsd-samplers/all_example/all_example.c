@@ -226,15 +226,14 @@ void all_example_del(ldmsd_plugin_inst_t i)
 }
 
 static
-int all_example_config(ldmsd_plugin_inst_t i, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int all_example_config(ldmsd_plugin_inst_t i, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	ldmsd_sampler_type_t samp = (void*)i->base;
 	ldms_set_t set;
 	int rc;
 
-	rc = samp->base.config(i, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(i, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 

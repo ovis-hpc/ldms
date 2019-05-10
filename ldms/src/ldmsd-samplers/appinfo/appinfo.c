@@ -356,8 +356,7 @@ const char *appinfo_help(ldmsd_plugin_inst_t pi)
 }
 
 static
-int appinfo_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int appinfo_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	appinfo_inst_t inst = (void*)pi;
@@ -366,12 +365,12 @@ int appinfo_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 	int rc;
 	int actual_shmem_size;
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	/* Plugin-specific config here */
-	inst->metrics_optstr = av_value(avl,"metrics");
+	inst->metrics_optstr = strdup(json_attr_find_str(json,"metrics"));
 	if (!inst->metrics_optstr) {
 		snprintf(ebuf, ebufsz, "no metrics option given.\n");
 		return EINVAL;
@@ -380,7 +379,6 @@ int appinfo_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 	samp->schema = samp->create_schema(pi);
 	if (!samp->schema)
 		return errno;
-	inst->metrics_optstr = NULL;
 	set = samp->create_set(pi, samp->set_inst_name, samp->schema, NULL);
 	if (!set)
 		return errno;
@@ -452,7 +450,8 @@ void appinfo_del(ldmsd_plugin_inst_t pi)
 	appinfo_inst_t inst = (void*)pi;
 
 	/* set is deleted by sampler_del() */
-
+	if (inst->metrics_optstr)
+		free(inst->metrics_optstr);
 	if (inst->shmem_header != MAP_FAILED)
 		munmap(inst->shmem_header, inst->shmem_stat.st_size);
 	if (inst->shmem_fd != -1) {

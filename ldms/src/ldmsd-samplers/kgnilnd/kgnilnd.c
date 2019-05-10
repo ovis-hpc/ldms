@@ -234,8 +234,7 @@ void kgnilnd_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int kgnilnd_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int kgnilnd_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	ldmsd_sampler_type_t samp = (void*)pi->base;
@@ -249,7 +248,7 @@ int kgnilnd_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EALREADY;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 

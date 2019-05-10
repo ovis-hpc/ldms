@@ -201,8 +201,7 @@ void procinterrupts_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int procinterrupts_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int procinterrupts_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	procinterrupts_inst_t inst = (void*)pi;
@@ -216,7 +215,7 @@ int procinterrupts_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EALREADY;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 

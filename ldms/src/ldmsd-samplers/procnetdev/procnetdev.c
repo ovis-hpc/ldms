@@ -69,8 +69,7 @@ int procnetdev_init(ldmsd_plugin_inst_t i);
 static
 void procnetdev_del(ldmsd_plugin_inst_t i);
 static
-int procnetdev_config(ldmsd_plugin_inst_t i, struct attr_value_list *avl,
-		struct attr_value_list *kwl, char *ebuf, int ebufsz);
+int procnetdev_config(ldmsd_plugin_inst_t i, json_entity_t json, char *ebuf, int ebufsz);
 static
 int procnetdev_update_schema(ldmsd_plugin_inst_t inst, ldms_schema_t schema);
 
@@ -182,20 +181,20 @@ void procnetdev_del(ldmsd_plugin_inst_t i)
 }
 
 static
-int procnetdev_config(ldmsd_plugin_inst_t i, struct attr_value_list *avl,
-		      struct attr_value_list *kwl, char *ebuf, int ebufsz)
+int procnetdev_config(ldmsd_plugin_inst_t i, json_entity_t json,
+					char *ebuf, int ebufsz)
 {
 	procnetdev_inst_t inst = (void*)i;
 	ldmsd_sampler_type_t samp = (void*)i->base;
 	ldms_set_t set;
-	char *val;
+	const char *val;
 	int rc;
 
-	rc = samp->base.config(i, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(i, json, ebuf, ebufsz);
 	if (rc)
 		goto out;
 
-	val = av_value(avl, "dev");
+	val = json_attr_find_str(json, "dev");
 	if (!val) {
 		rc = EINVAL;
 		snprintf(ebuf, ebufsz, "`dev=DEVICE` attribute is required.\n");

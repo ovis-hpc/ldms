@@ -852,25 +852,24 @@ const char *shm_sampler_help(ldmsd_plugin_inst_t pi)
 }
 
 static
-int shm_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int shm_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	shm_sampler_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	int rc;
 	const char* index_name;
-	char* boxmax;
-	char* shm_array_max;
-	char* shm_metric_max;
-	char* shm_set_timeout_str;
+	const char* boxmax;
+	const char* shm_array_max;
+	const char* shm_metric_max;
+	const char* shm_set_timeout_str;
 
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	boxmax = av_value(avl, "shm_boxmax");
+	boxmax = json_attr_find_str(json, "shm_boxmax");
 	int box_len = BOX_LEN_DEFAULT;
 	if (boxmax) {
 		int blen = atoi(boxmax);
@@ -883,7 +882,7 @@ int shm_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		box_len = blen;
 	}
 
-	shm_set_timeout_str = av_value(avl, "shm_set_timeout");
+	shm_set_timeout_str = json_attr_find_str(json, "shm_set_timeout");
 	int shm_set_timeout = SHM_TIMEOUT_DEFAULT;
 	if (shm_set_timeout_str) {
 		int amax = atoi(shm_set_timeout_str);
@@ -897,7 +896,7 @@ int shm_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		shm_set_timeout = amax;
 	}
 
-	shm_array_max = av_value(avl, "shm_array_max");
+	shm_array_max = json_attr_find_str(json, "shm_array_max");
 	int array_max = ARRAY_MAX_DEFAULT;
 	if (shm_array_max) {
 		int amax = atoi(shm_array_max);
@@ -911,7 +910,7 @@ int shm_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		array_max = amax;
 	}
 
-	shm_metric_max = av_value(avl, "shm_metric_max");
+	shm_metric_max = json_attr_find_str(json, "shm_metric_max");
 	int metric_max = METRIC_MAX_DEFAULT;
 	if (shm_metric_max) {
 		int amax = atoi(shm_metric_max);
@@ -925,7 +924,7 @@ int shm_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		metric_max = amax;
 	}
 
-	index_name = av_value(avl, "shm_index");
+	index_name = json_attr_find_str(json, "shm_index");
 	if (!index_name)
 		index_name = INDEX_NAME_DEFAULT;
 

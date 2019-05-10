@@ -350,8 +350,8 @@ const char *aries_mmr_help(ldmsd_plugin_inst_t pi)
 	return _help;
 }
 
-int aries_mmr_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-		     struct attr_value_list *kwl, char *ebuf, int ebufsz)
+int aries_mmr_config(ldmsd_plugin_inst_t pi, json_entity_t json,
+					char *ebuf, int ebufsz)
 {
 	aries_mmr_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
@@ -365,11 +365,11 @@ int aries_mmr_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EALREADY;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	value = av_value(avl, "aries_rtr_id");
+	value = json_attr_find_str(json, "aries_rtr_id");
 	inst->rtrid = strdup(value?value:"");
 	if (!inst->rtrid) {
 		snprintf(ebuf, ebufsz, "%s: out of memory.\n",
@@ -377,8 +377,8 @@ int aries_mmr_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return ENOMEM;
 	}
 
-	value = av_value(avl, "file");
-	if (value){
+	value = json_attr_find_str(json, "file");
+	if (value) {
 		rc = parseConfig(inst, value);
 		if (rc){
 			snprintf(ebuf, ebufsz,

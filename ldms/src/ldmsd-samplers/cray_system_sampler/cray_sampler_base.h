@@ -72,6 +72,7 @@
 
 #include "config.h"
 
+#include "json/json_util.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_sampler.h"
@@ -197,8 +198,7 @@ struct cray_sampler_inst_s {
 
 int set_offns_generic(cray_system_sampler_sources_t i);
 int get_offns_generic(cray_system_sampler_sources_t i);
-int config_generic(cray_sampler_inst_t inst, struct attr_value_list *kwl,
-		   struct attr_value_list *avl);
+int config_generic(cray_sampler_inst_t inst, json_entity_t json);
 int add_metrics_generic(cray_sampler_inst_t inst, ldms_schema_t schema,
 			cray_system_sampler_sources_t source_id);
 int sample_metrics_generic(cray_sampler_inst_t inst, ldms_set_t set,

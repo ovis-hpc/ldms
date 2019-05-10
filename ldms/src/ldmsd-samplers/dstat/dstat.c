@@ -310,25 +310,24 @@ static bool get_bool(dstat_inst_t inst, const char *val, char *name)
 }
 
 static
-int dstat_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int dstat_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	dstat_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	ldms_set_t set;
-	char *doio, *dostat, *dostatm, *dommalloc;
+	const char *doio, *dostat, *dostatm, *dommalloc;
 	struct proc_pid_stat stat;
 	int rc;
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	doio = av_value(avl, "io");
-	dostat = av_value(avl, "stat");
-	dostatm = av_value(avl, "statm");
-	dommalloc = av_value(avl, "mmalloc");
+	doio = json_attr_find_str(json, "io");
+	dostat = json_attr_find_str(json, "stat");
+	dostatm = json_attr_find_str(json, "statm");
+	dommalloc = json_attr_find_str(json, "mmalloc");
 	if (!doio && !dostat && !dostatm && !dommalloc) {
 		inst->pidopts = ( PID_IO | PID_STAT | PID_STATM );
 	} else {

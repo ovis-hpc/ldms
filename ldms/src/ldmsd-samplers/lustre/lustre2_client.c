@@ -263,8 +263,7 @@ int construct_client_list(struct str_list_head *h, const char *clients,
 }
 
 static
-int lustre2_client_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int lustre2_client_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	lustre2_client_inst_t inst = (void*)pi;
@@ -273,7 +272,7 @@ int lustre2_client_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 	int rc;
 	const char *val;
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
@@ -293,8 +292,8 @@ int lustre2_client_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 
 	/* processing `llite`, `osc`, and `mdc` attributes */
 	for (ent = ents; ent->name; ent++) {
-		val = av_value(avl, ent->name);
-		val = (val)?(val):av_value(avl, ent->alt_name);
+		val = json_attr_find_str(json, (char *)ent->name);
+		val = (val)?(val):json_attr_find_str(json, (char *)ent->alt_name);
 		if (!val)
 			continue;
 		rc = construct_client_list(ent->h, val, ent->path);

@@ -289,14 +289,13 @@ void atasmart_del(ldmsd_plugin_inst_t pi)
 }
 
 static
-int atasmart_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int atasmart_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	atasmart_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
-	char *val;
+	const char *val;
 	int rc;
 
 	if (inst->d) {
@@ -305,11 +304,11 @@ int atasmart_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EALREADY;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	val = av_value(avl, "disk");
+	val = json_attr_find_str(json, "disk");
 	if (!val) {
 		snprintf(ebuf, ebufsz, "%s: `disk` attribute required\n",
 			 pi->inst_name);

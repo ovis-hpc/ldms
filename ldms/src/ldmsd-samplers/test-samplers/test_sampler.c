@@ -148,7 +148,7 @@ static struct test_sampler_schema *__schema_find(
 }
 
 static struct test_sampler_set *__set_find(
-		struct test_sampler_set_list *list, char *name)
+		struct test_sampler_set_list *list, const char *name)
 {
 	struct test_sampler_set *ts_set;
 	LIST_FOREACH(ts_set, list, entry) {
@@ -319,7 +319,7 @@ static int test_sampler_set_del(test_sampler_inst_t inst,
 				struct test_sampler_set *ts_set);
 
 static struct test_sampler_set *
-__create_test_sampler_set(test_sampler_inst_t inst, char *instance_name,
+__create_test_sampler_set(test_sampler_inst_t inst, const char *instance_name,
 			  int push, struct test_sampler_schema *ts_schema)
 {
 	int rc;
@@ -468,13 +468,12 @@ free_schema:
 	return rc;
 }
 
-static int config_add_schema(test_sampler_inst_t inst,
-			     struct attr_value_list *avl)
+static int config_add_schema(test_sampler_inst_t inst, json_entity_t json)
 {
 	int rc = 0;
 	struct test_sampler_schema *ts_schema;
 	ldms_schema_t schema;
-	const char *schema_name = av_value(avl, "schema");
+	const char *schema_name = json_attr_find_str(json, "schema");
 	if (!schema_name) {
 		INST_LOG(inst, LDMSD_LERROR, "Need schema_name\n");
 		return EINVAL;
@@ -487,18 +486,18 @@ static int config_add_schema(test_sampler_inst_t inst,
 		return EEXIST;
 	}
 
-	char *metrics, *value, *set_array_card_str;
-	char *init_value = NULL;
+	const char *metrics, *value, *set_array_card_str;
+	const char *init_value = NULL;
 	int num_metrics, set_array_card;
-	metrics = av_value(avl, "metrics");
-	value = av_value(avl, "num_metrics");
+	metrics = json_attr_find_str(json, "metrics");
+	value = json_attr_find_str(json, "num_metrics");
 	if (!metrics && !value) {
 		INST_LOG(inst, LDMSD_LERROR, "Either metrics or num_metrics "
 			 "must be given\n");
 		return EINVAL;
 	}
 
-	set_array_card_str = av_value(avl, "set_array_card");
+	set_array_card_str = json_attr_find_str(json, "set_array_card");
 	if (!set_array_card_str)
 		set_array_card = 1; /* Default */
 	else
@@ -513,9 +512,14 @@ static int config_add_schema(test_sampler_inst_t inst,
 	LIST_INSERT_HEAD(&inst->schema_list, ts_schema, entry);
 	struct test_sampler_metric *metric;
 	if (metrics) {
+		char *_metrics = strdup(metrics);
+		if (!_metrics) {
+			INST_LOG(inst, LDMSD_LERROR, "Out of memory\n");
+			return ENOMEM;
+		}
 		ts_schema->type = TEST_SAMPLER_SCHEMA_TYPE_MANUAL;
 		char *s, *ptr;
-		s = strtok_r(metrics, ",", &ptr);
+		s = strtok_r(_metrics, ",", &ptr);
 		while (s) {
 			metric = __schema_metric_new(inst, s);
 			if (!metric) {
@@ -532,7 +536,7 @@ static int config_add_schema(test_sampler_inst_t inst,
 		int count = 1; /* Number of elements of an array metric */
 		num_metrics = atoi(value);
 
-		value = av_value(avl, "type");
+		value = json_attr_find_str(json, "type");
 		if (value) {
 			type = ldms_metric_str_to_type(value);
 			if (type == LDMS_V_NONE) {
@@ -543,11 +547,11 @@ static int config_add_schema(test_sampler_inst_t inst,
 			type = LDMS_V_U64;
 		}
 
-		value = av_value(avl, "count");
+		value = json_attr_find_str(json, "count");
 		if (value)
 			count = atoi(value);
 
-		init_value = av_value(avl, "init_value");
+		init_value = json_attr_find_str(json, "init_value");
 		if (!init_value)
 			init_value = "0";
 
@@ -685,19 +689,19 @@ void __val_inc(ldms_mval_t val, enum ldms_value_type type)
 	}
 }
 
-static int config_add_set(test_sampler_inst_t inst, struct attr_value_list *avl)
+static int config_add_set(test_sampler_inst_t inst, json_entity_t json)
 {
 	int rc = 0;
 	struct test_sampler_schema *ts_schema;
 	ldms_set_t set;
 
-	char *schema_name = av_value(avl, "schema");
+	const char *schema_name = json_attr_find_str(json, "schema");
 	if (!schema_name) {
 		INST_LOG(inst, LDMSD_LERROR, "Need schema name\n");
 		return EINVAL;
 	}
 
-	char *set_name = av_value(avl, "instance");
+	const char *set_name = json_attr_find_str(json, "instance");
 	if (!set_name) {
 		INST_LOG(inst, LDMSD_LERROR, "Need set name\n");
 		return EINVAL;
@@ -709,11 +713,11 @@ static int config_add_set(test_sampler_inst_t inst, struct attr_value_list *avl)
 		return EINVAL;
 	}
 
-	char *producer = av_value(avl, "producer");
-	char *compid = av_value(avl, "component_id");
-	char *jobid = av_value(avl, "jobid");
+	const char *producer = json_attr_find_str(json, "producer");
+	const char *compid = json_attr_find_str(json, "component_id");
+	const char *jobid = json_attr_find_str(json, "jobid");
 
-	char *push_s = av_value(avl, "push");
+	const char *push_s = json_attr_find_str(json, "push");
 	int push = 0;
 	if (push_s)
 		push = atoi(push_s);
@@ -797,15 +801,14 @@ err0:
 	return rc;
 }
 
-static int config_add_default(test_sampler_inst_t inst,
-			      struct attr_value_list *avl)
+static int config_add_default(test_sampler_inst_t inst, json_entity_t json)
 {
-	char *sname;
-	char *s;
-	char *push_s;
+	const char *sname;
+	const char *s;
+	const char *push_s;
 	int rc, push;
 	ldmsd_sampler_type_t samp = LDMSD_SAMPLER(inst);
-	sname = av_value(avl, "schema");
+	sname = json_attr_find_str(json, "schema");
 	if (!sname)
 		sname = samp->schema_name;
 	if (strlen(sname) == 0){
@@ -813,24 +816,24 @@ static int config_add_default(test_sampler_inst_t inst,
 		return EINVAL;
 	}
 
-	s = av_value(avl, "base");
+	s = json_attr_find_str(json, "base");
 	if (s)
 		snprintf(inst->base_set_name, sizeof(inst->base_set_name),
 			 "%s", s);
 
-	s = av_value(avl, "num_sets");
+	s = json_attr_find_str(json, "num_sets");
 	if (!s)
 		inst->num_sets = DEFAULT_NUM_SETS;
 	else
 		inst->num_sets = atoi(s);
 
-	s = av_value(avl, "num_metrics");
+	s = json_attr_find_str(json, "num_metrics");
 	if (!s)
 		inst->num_metrics = DEFAULT_NUM_METRICS;
 	else
 		inst->num_metrics = atoi(s);
 
-	push_s = av_value(avl, "push");
+	push_s = json_attr_find_str(json, "push");
 	if (push_s)
 		push = atoi(push_s);
 	else
@@ -928,23 +931,22 @@ static int __add_all_array(test_sampler_inst_t inst,
 	return 0;
 }
 
-static int config_add_scalar(test_sampler_inst_t inst,
-			     struct attr_value_list *avl)
+static int config_add_scalar(test_sampler_inst_t inst, json_entity_t json)
 {
-	char *schema_name, *set_array_card_str;
+	const char *schema_name, *set_array_card_str;
 	int set_array_card;
 	struct test_sampler_schema *ts_schema;
 	ldms_schema_t schema;
 	int rc;
 
-	schema_name = av_value(avl, "schema");
+	schema_name = json_attr_find_str(json, "schema");
 	if (!schema_name)
 		schema_name = "test_sampler_scalar";
 	if (strlen(schema_name) == 0){
 		INST_LOG(inst, LDMSD_LERROR, "schema name invalid.\n");
 		return EINVAL;
 	}
-	set_array_card_str = av_value(avl, "set_array_card");
+	set_array_card_str = json_attr_find_str(json, "set_array_card");
 	if (!set_array_card_str)
 		set_array_card = 1;
 	else
@@ -978,28 +980,27 @@ static int config_add_scalar(test_sampler_inst_t inst,
 	return rc;
 }
 
-static int config_add_array(test_sampler_inst_t inst,
-			    struct attr_value_list *avl)
+static int config_add_array(test_sampler_inst_t inst, json_entity_t json)
 {
-	char *schema_name, *set_array_card_str, *array_sz;
+	const char *schema_name, *set_array_card_str, *array_sz;
 	int set_array_card;
 	struct test_sampler_schema *ts_schema;
 	ldms_schema_t schema;
 	int rc;
 
-	schema_name = av_value(avl, "schema");
+	schema_name = json_attr_find_str(json, "schema");
 	if (!schema_name)
 		schema_name = "test_sampler_array";
 	if (strlen(schema_name) == 0){
 		INST_LOG(inst, LDMSD_LERROR, "schema name invalid.\n");
 		return EINVAL;
 	}
-	set_array_card_str = av_value(avl, "set_array_card");
+	set_array_card_str = json_attr_find_str(json, "set_array_card");
 	if (!set_array_card_str)
 		set_array_card = 1;
 	else
 		set_array_card = strtol(set_array_card_str, NULL, 0);
-	array_sz = av_value(avl, "metric_array_sz");
+	array_sz = json_attr_find_str(json, "metric_array_sz");
 	if (!array_sz) {
 		INST_LOG(inst, LDMSD_LERROR, "metric_array_sz is required\n");
 		return EINVAL;
@@ -1032,27 +1033,27 @@ static int config_add_array(test_sampler_inst_t inst,
 	return rc;
 }
 
-static int config_add_all(test_sampler_inst_t inst, struct attr_value_list *avl)
+static int config_add_all(test_sampler_inst_t inst, json_entity_t json)
 {
-	char *schema_name, *set_array_card_str, *array_sz;
+	const char *schema_name, *set_array_card_str, *array_sz;
 	int set_array_card;
 	struct test_sampler_schema *ts_schema;
 	ldms_schema_t schema;
 	int rc;
 
-	schema_name = av_value(avl, "schema");
+	schema_name = json_attr_find_str(json, "schema");
 	if (!schema_name)
 		schema_name = "test_sampler_all";
 	if (strlen(schema_name) == 0){
 		INST_LOG(inst, LDMSD_LERROR, "schema name invalid.\n");
 		return EINVAL;
 	}
-	set_array_card_str = av_value(avl, "set_array_card");
+	set_array_card_str = json_attr_find_str(json, "set_array_card");
 	if (!set_array_card_str)
 		set_array_card = 1;
 	else
 		set_array_card = strtol(set_array_card_str, NULL, 0);
-	array_sz = av_value(avl, "metric_array_sz");
+	array_sz = json_attr_find_str(json, "metric_array_sz");
 	if (!array_sz) {
 		INST_LOG(inst, LDMSD_LERROR, "metric_array_sz is required\n");
 		return EINVAL;
@@ -1429,37 +1430,36 @@ const char *test_sampler_help(ldmsd_plugin_inst_t pi)
 }
 
 static
-int test_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int test_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	test_sampler_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	int rc;
-	char *action;
-	char *compid;
-	char *jobid;
-	char *push;
-	char *set_del_int_str;
-	char *ts_suffix_str;
-	char *producer_name;
+	const char *action;
+	const char *compid;
+	const char *jobid;
+	const char *push;
+	const char *set_del_int_str;
+	const char *ts_suffix_str;
+	const char *producer_name;
 
 
-	action = av_value(avl, "action");
+	action = json_attr_find_str(json, "action");
 	if (action) {
 		rc = 0;
 		if (0 == strcmp(action, "add_schema")) {
-			rc = config_add_schema(inst, avl);
+			rc = config_add_schema(inst, json);
 		} else if (0 == strcmp(action, "add_set")) {
-			rc = config_add_set(inst, avl);
+			rc = config_add_set(inst, json);
 		} else if (0 == strcmp(action, "default")) {
-			rc = config_add_default(inst, avl);
+			rc = config_add_default(inst, json);
 		} else if (0 == strcmp(action, "add_scalar")) {
-			rc = config_add_scalar(inst, avl);
+			rc = config_add_scalar(inst, json);
 		} else if (0 == strcmp(action, "add_array")) {
-			rc = config_add_array(inst, avl);
+			rc = config_add_array(inst, json);
 		} else if (0 == strcmp(action, "add_all")) {
-			rc = config_add_all(inst, avl);
+			rc = config_add_all(inst, json);
 		} else {
 			INST_LOG(inst, LDMSD_LERROR,
 				 "Unrecognized action '%s'.\n", action);
@@ -1468,15 +1468,15 @@ int test_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return rc;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	producer_name = av_value(avl, "producer");
-	compid = av_value(avl, "component_id");
-	jobid = av_value(avl, "jobid");
-	set_del_int_str = av_value(avl, "set_delete_interval");
-	ts_suffix_str = av_value(avl, "ts_suffix");
+	producer_name = json_attr_find_str(json, "producer");
+	compid = json_attr_find_str(json, "component_id");
+	jobid = json_attr_find_str(json, "jobid");
+	set_del_int_str = json_attr_find_str(json, "set_delete_interval");
+	ts_suffix_str = json_attr_find_str(json, "ts_suffix");
 
 	if (!compid)
 		compid = "0";
@@ -1518,9 +1518,6 @@ int test_sampler_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 			ldms_metric_set(ts_set->set, mid, &vjobid);
 		}
 	}
-
-	push = av_value(avl, "push");
-
 	return 0;
 }
 
