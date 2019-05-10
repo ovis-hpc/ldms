@@ -127,15 +127,13 @@ XYZ_help(ldmsd_plugin_inst_t pi)
 }
 
 static int
-XYZ_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
-				      char *ebuf, int ebufsz)
+XYZ_config(ldmsd_plugin_inst_t pi, json_entity_t json, char *ebuf, int ebufsz)
 {
 	XYZ_inst_t inst = (void*)pi;
 	ldmsd_store_type_t store = (void*)inst->base.base;
 	int rc;
 
-	rc = store->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = store->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
