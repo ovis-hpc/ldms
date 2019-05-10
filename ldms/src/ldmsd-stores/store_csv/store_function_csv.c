@@ -1119,11 +1119,10 @@ static int derivedConfig(store_function_csv_inst_t inst, char* fname_s,
  * check for invalid flags, with particular emphasis on warning the user about
  */
 static int config_check(store_function_csv_inst_t inst,
-			struct attr_value_list *kwl,
-			struct attr_value_list *avl,
+			json_entity_t json,
 			char *ebuf, int ebufsz)
 {
-	char *value;
+	const char *value;
 	int i;
 
 	char* deprecated[] = {"comp_type", "id_pos", "idpos"};
@@ -1131,7 +1130,7 @@ static int config_check(store_function_csv_inst_t inst,
 
 
 	for (i = 0; i < numdep; i++) {
-		value = av_value(avl, deprecated[i]);
+		value = json_attr_find_str(json, deprecated[i]);
 		if (value){
 			snprintf(ebuf, ebufsz, "config argument %s has been "
 				 "deprecated.\n", deprecated[i]);
@@ -1139,7 +1138,7 @@ static int config_check(store_function_csv_inst_t inst,
 		}
 	}
 
-	value = av_value(avl, "agesec");
+	value = json_attr_find_str(json, "agesec");
 	if (value) {
 		snprintf(ebuf, ebufsz, "config argument agesec has been "
 			 "deprecated in favor of ageusec\n");
@@ -1153,7 +1152,7 @@ static int config_check(store_function_csv_inst_t inst,
  * configuration check for the buffer args
  */
 static int config_buffer(store_function_csv_inst_t inst,
-			 char *bs, char *bt, int *rbs, int *rbt)
+			 const char *bs, const char *bt, int *rbs, int *rbt)
 {
 	int tempbs;
 	int tempbt;
@@ -2489,20 +2488,19 @@ const char *store_function_csv_help(ldmsd_plugin_inst_t pi)
 
 static
 int store_function_csv_config(ldmsd_plugin_inst_t pi,
-			      struct attr_value_list *avl,
-			      struct attr_value_list *kwl,
+			      json_entity_t json,
 			      char *ebuf, int ebufsz)
 {
 	store_function_csv_inst_t inst = (void*)pi;
 	ldmsd_store_type_t store = (void*)inst->base.base;
 	int rc;
-	char *value = NULL;
-	char *bvalue = NULL;
+	const char *value = NULL;
+	const char *bvalue = NULL;
 	int roll = -1;
 	int rollmethod = DEFAULT_ROLLTYPE;
 	int tmp;
 
-	rc = config_check(inst, kwl, avl, ebuf, ebufsz);
+	rc = config_check(inst, json, ebuf, ebufsz);
 	if (rc != 0){
 		/* config_check also populate ebuf */
 		INST_LOG(inst, LDMSD_LERROR,
@@ -2510,12 +2508,12 @@ int store_function_csv_config(ldmsd_plugin_inst_t pi,
 		goto out;
 	}
 
-	rc = store->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = store->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		goto out;
 
-	value = av_value(avl, "buffer");
-	bvalue = av_value(avl, "buffertype");
+	value = json_attr_find_str(json, "buffer");
+	bvalue = json_attr_find_str(json, "buffertype");
 	rc = config_buffer(inst, value, bvalue, &inst->buffer_sz,
 			   &inst->buffer_type);
 	if (rc) {
@@ -2523,7 +2521,7 @@ int store_function_csv_config(ldmsd_plugin_inst_t pi,
 		goto out;
 	}
 
-	value = av_value(avl, "path");
+	value = json_attr_find_str(json, "path");
 	if (!value){
 		snprintf(ebuf, ebufsz, "store_function missing path\n");
 		rc = EINVAL;
@@ -2536,12 +2534,12 @@ int store_function_csv_config(ldmsd_plugin_inst_t pi,
 		goto out;
 	}
 
-	value = av_value(avl, "altheader");
+	value = json_attr_find_str(json, "altheader");
 	if (value)
 		inst->altheader = atoi(value);
 
 	/* rollover + rolltype */
-	value = av_value(avl, "rollover");
+	value = json_attr_find_str(json, "rollover");
 	if (value) {
 		roll = atoi(value);
 		if (roll < 0) {
@@ -2551,7 +2549,7 @@ int store_function_csv_config(ldmsd_plugin_inst_t pi,
 			goto out;
 		}
 	}
-	value = av_value(avl, "rolltype");
+	value = json_attr_find_str(json, "rolltype");
 	if (value) {
 		if (roll < 0) { /* rolltype not valid without rollover also */
 			snprintf(ebuf, ebufsz,
@@ -2570,7 +2568,7 @@ int store_function_csv_config(ldmsd_plugin_inst_t pi,
 	inst->rollover = roll;
 	inst->rolltype = rollmethod;
 
-	value = av_value(avl, "ageusec");
+	value = json_attr_find_str(json, "ageusec");
 	if (value){
 		tmp = atoi(value);
 		if (tmp < 0) {
@@ -2583,7 +2581,7 @@ int store_function_csv_config(ldmsd_plugin_inst_t pi,
 		inst->ageusec = tmp;
 	}
 
-	value = av_value(avl, "derivedconf");
+	value = json_attr_find_str(json, "derivedconf");
 	if (!value) {
 		snprintf(ebuf, ebufsz, "missing `derivedconf` attribute\n");
 		rc = EINVAL;

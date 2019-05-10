@@ -135,7 +135,7 @@ static size_t realloc_msg_buf(store_amqp_inst_t inst, size_t buf_len)
 	return 0;
 }
 
-static int setup_certs(store_amqp_inst_t inst, const char *cacert, struct attr_value_list *avl)
+static int setup_certs(store_amqp_inst_t inst, const char *cacert, json_entity_t json)
 {
 	int rc;
 	const char *key;
@@ -147,8 +147,8 @@ static int setup_certs(store_amqp_inst_t inst, const char *cacert, struct attr_v
 			 "Error %d setting the CA cert file.\n", rc);
 		goto out;
 	}
-	key = av_value(avl, "key");
-	cert = av_value(avl, "cert");
+	key = json_attr_find_str(json, "key");
+	cert = json_attr_find_str(json, "cert");
 	if (key) {
 		if ((key && !cert) || (cert && !key)) {
 			rc = EINVAL;
@@ -357,24 +357,23 @@ const char *store_amqp_help(ldmsd_plugin_inst_t pi)
 static void store_amqp_cleanup(store_amqp_inst_t inst);
 
 static
-int store_amqp_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int store_amqp_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	store_amqp_inst_t inst = (void*)pi;
 	ldmsd_store_type_t store = (void*)inst->base.base;
 	int rc;
 
-	char *value;
+	const char *value;
 	amqp_rpc_reply_t qrc;
 
-	rc = store->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = store->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	inst->formatter = formatters[JSON_FMT];
 	inst->routing_key = "JSON";
-	value = av_value(avl, "format");
+	value = json_attr_find_str(json, "format");
 	if (value) {
 		if (0 == strcasecmp(value, "csv")) {
 			inst->formatter = formatters[CSV_FMT];
@@ -388,7 +387,7 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 				 "defaulting to JSON.\n", value);
 		}
 	}
-	value = av_value(avl, "host");
+	value = json_attr_find_str(json, "host");
 	if (!value) {
 		snprintf(ebuf, ebufsz,
 			 "The host parameter must be specified.\n");
@@ -401,7 +400,7 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		rc = ENOMEM;
 		goto err_1;
 	}
-	value = av_value(avl, "exchange");
+	value = json_attr_find_str(json, "exchange");
 	if (value) {
 		inst->exchange = strdup(value);
 		if (!inst->exchange) {
@@ -411,7 +410,7 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 			goto err_1;
 		}
 	}
-	value = av_value(avl, "port");
+	value = json_attr_find_str(json, "port");
 	if (value) {
 		long sl;
 		sl = strtol(value, NULL, 0);
@@ -424,7 +423,7 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 	} else {
 		inst->port = DEF_AMQP_TCP_PORT;
 	}
-	value = av_value(avl, "vhost");
+	value = json_attr_find_str(json, "vhost");
 	if (value)
 		inst->vhost = strdup(value);
 	else
@@ -435,7 +434,7 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		rc = ENOMEM;
 		goto err_1;
 	}
-	value = av_value(avl, "user");
+	value = json_attr_find_str(json, "user");
 	if (value)
 		inst->user = strdup(value);
 	else
@@ -445,7 +444,7 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		rc = ENOMEM;
 		goto err_1;
 	}
-	value = av_value(avl, "pwd");
+	value = json_attr_find_str(json, "pwd");
 	if (value)
 		inst->pwd = strdup(value);
 	else
@@ -478,9 +477,9 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 			 "Error %d creating the AMQP socket.\n", rc);
 		goto err_2;
 	}
-	value = av_value(avl, "cacert");
+	value = json_attr_find_str(json, "cacert");
 	if (value) {
-		rc = setup_certs(inst, value, avl);
+		rc = setup_certs(inst, value, json);
 		if (rc)
 			goto err_3;
 	}

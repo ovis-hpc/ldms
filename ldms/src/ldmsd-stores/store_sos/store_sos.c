@@ -113,19 +113,19 @@ void store_sos_del(ldmsd_plugin_inst_t i)
 		sos_container_close(inst->sos, SOS_COMMIT_ASYNC);
 }
 
-int store_sos_config(ldmsd_plugin_inst_t i, struct attr_value_list *avl,
-		     struct attr_value_list *kwl, char *ebuf, int ebufsz)
+int store_sos_config(ldmsd_plugin_inst_t i, json_entity_t json,
+					char *ebuf, int ebufsz)
 {
 	ldmsd_store_type_t store = (void*)i->base;
 	store_sos_inst_t inst = (void*)i;
 	int rc;
 	const char *val;
 
-	rc = store->base.config(i, avl, kwl, ebuf, ebufsz);
+	rc = store->base.config(i, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	val = av_value(avl, "path");
+	val = json_attr_find_str(json, "path");
 	if (!val) {
 		snprintf(ebuf, ebufsz, "missing `path` attribute.\n");
 		return EINVAL;

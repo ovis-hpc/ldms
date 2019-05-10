@@ -534,10 +534,10 @@ static int update_config(store_csv_inst_t inst, struct attr_value_list *kwl,
 			char *ks = av_to_string(kwl, 0);
 			INST_LOG(inst, LDMSD_LINFO,
 				 "fix config args %s %s\n", as, ks);
-
 			rc = EINVAL;
 			goto out;
 		}
+
 		rc = ldmsd_plugattr_add(inst->pa, avl, kwl, update_blacklist,
 					update_blacklist, dep, KEY_PLUG_ATTR);
 		if (rc == EEXIST) {
@@ -1035,18 +1035,24 @@ const char *store_csv_help(ldmsd_plugin_inst_t pi)
 }
 
 static
-int store_csv_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-				      struct attr_value_list *kwl,
+int store_csv_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
 {
 	store_csv_inst_t inst = (void*)pi;
 	ldmsd_store_type_t store = (void*)inst->base.base;
 	int rc;
 	int rollmethod = DEFAULT_ROLLTYPE;
+	struct attr_value_list *avl, *kwl = NULL;
 
-	rc = store->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = store->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
+
+	avl = ldmsd_plugattr_json2attr_value_list(json);
+	if (!avl) {
+		rc = errno;
+		return rc;
+	}
 
 	static const char *attributes[] = {
 		"container",
