@@ -212,6 +212,85 @@ static int canonical(char *buf, size_t len)
 	} \
 }
 
+static int attr_deprecated(struct attr_value_list *avl, struct attr_value_list *kwl, struct pa_deprecated *dep, const char *context, const char *al, const char *kl)
+{
+	if (!avl && !kwl)
+		return 0;
+	if (!dep)
+		return 0;
+	if (!context) {
+		ldmsd_log(LDMSD_LERROR, "%s %s: attr_deprecated miscalled.\n", 
+			al ? al : "", kl ? kl : "");
+		return 1;
+	}
+	if (al == NULL || strcmp(al, "(empty)") == 0)
+		al = "";
+	if (kl == NULL || strcmp(kl, "(empty)") == 0)
+		kl = "";
+	int badcount = 0;
+	struct pa_deprecated *d = dep;
+	const char *last_name = NULL;
+	while (d->name != NULL) {
+		int i = (avl ? av_idx_of(avl, d->name) : -1);
+		int j = (kwl ? av_idx_of(kwl, d->name) : -1);
+		if (i != -1) {
+			if (last_name && 0 == strcmp(last_name, d->name)) {
+				goto skip_avl;
+			}
+			const char *v = av_value(avl, d->name);
+			if (d->value == NULL || strcmp(d->value, v) == 0) {
+				last_name = d->name;
+				if (d->error != 0) {
+					badcount++;
+					ldmsd_log(LDMSD_LERROR,
+						"No longer supported '%s=%s' in %s at line with: %s %s\n",
+						d->name, v, context, al, kl);
+					if (d->msg) {
+						ldmsd_log(LDMSD_LERROR, "%s\n",
+						d->msg);
+					}
+				} else {
+					ldmsd_log(LDMSD_LWARNING,
+						"deprecated '%s=%s' in %s at line with: %s %s\n",
+						d->name, v, context, al, kl);
+					if (d->msg) {
+						ldmsd_log(LDMSD_LERROR, "%s\n",
+						d->msg);
+					}
+				}
+			}
+			skip_avl: ;
+		}
+		if (j != -1) {
+			if (false && last_name && 0 == strcmp(last_name, d->name)) {
+				goto skip_kwl;
+			}
+			last_name = d->name;
+			if (d->error != 0) {
+				badcount++;
+				ldmsd_log(LDMSD_LERROR,
+					"No longer supported '%s' in %s at line with: %s %s\n",
+					d->name, context, al, kl);
+				if (d->msg) {
+					ldmsd_log(LDMSD_LERROR, "%s\n", d->msg);
+				}
+			} else {
+				ldmsd_log(LDMSD_LWARNING,
+					"Deprecated '%s' in %s at line with: %s %s\n",
+					d->name, context, al, kl);
+				if (d->msg) {
+					ldmsd_log(LDMSD_LERROR, "%s\n", d->msg);
+				}
+			}
+			skip_kwl: ;
+		}
+		d++;
+	}
+	if (badcount)
+		return 1;
+	return 0;
+}
+
 /* return 1 if blacklisted attr/kw found in avl/kwl, else 0 */
 static int attr_blacklist(const char **bad, struct attr_value_list *l, const char *context, const char *prefix)
 {
@@ -240,7 +319,7 @@ static int attr_blacklist(const char **bad, struct attr_value_list *l, const cha
 	return 0;
 }
 
-int ldmsd_plugattr_add(struct plugattr *pa, struct attr_value_list *avl, struct attr_value_list *kwl, const char **avban, const char **kwban, unsigned numkeys, ...)
+int ldmsd_plugattr_add(struct plugattr *pa, struct attr_value_list *avl, struct attr_value_list *kwl, const char **avban, const char **kwban, struct pa_deprecated *dep, unsigned numkeys, ...)
 {
 	if (!pa || !numkeys || (!avl && !kwl)) {
 		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_add: bad call\n");
@@ -248,6 +327,17 @@ int ldmsd_plugattr_add(struct plugattr *pa, struct attr_value_list *avl, struct 
 	}
 
 	int rc = 0;
+	if (dep) {
+		char *alist = av_to_string(avl, 0);
+		char *klist = av_to_string(kwl, 0);
+		rc = attr_deprecated(avl, kwl, dep, "ldmsd_plugattr_add", 
+			alist, klist);
+		free(alist);
+		free(klist);
+		if (rc)
+			return rc;
+	}
+
 	if (kwl && kwban) {
 		char *as = av_to_string(kwl, 0);
 		rc = attr_blacklist(kwban, kwl, "ldmsd_plugattr_add", as);
@@ -294,13 +384,25 @@ int ldmsd_plugattr_add(struct plugattr *pa, struct attr_value_list *avl, struct 
 	return rc;
 }
 
-struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_name, struct attr_value_list *avl, struct attr_value_list *kwl, const char **avban, const char **kwban, unsigned numkeys, ...)
+struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_name, struct attr_value_list *avl, struct attr_value_list *kwl, const char **avban, const char **kwban, struct pa_deprecated *dep, unsigned numkeys, ...)
 {
 	int rc = 0;
 	if (!plugin_name) {
 		ldmsd_log(LDMSD_LERROR, "ldmsd_plugattr_create: bad call\n");
 		errno = EINVAL;
 		return NULL;
+	}
+	if (dep) {
+		char *alist = av_to_string(avl, 0);
+		char *klist = av_to_string(kwl, 0);
+		rc = attr_deprecated(avl, kwl, dep, "ldmsd_plugattr_create", 
+			alist, klist);
+		free(alist);
+		free(klist);
+		if (rc) {
+			errno = EINVAL;
+			return NULL;
+		}
 	}
 	if (avl && avban) {
 		char *as = av_to_string(avl, 0);
@@ -894,18 +996,30 @@ void ldmsd_plugattr_log(enum ldmsd_loglevel lvl, struct plugattr *pa, const char
 	}	
 }
 
-int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct attr_value_list *avl, struct attr_value_list *kvl, const char *pname)
+int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct attr_value_list *avl, struct attr_value_list *kvl, struct pa_deprecated *dep, const char *pname)
 {
 	int i, count;
 	int unexpected = 0;
 
+	if (dep) {
+		char *alist = av_to_string(avl, 0);
+		char *klist = av_to_string(kvl, 0);
+		int rc = attr_deprecated(avl, kvl, dep, "ldmsd_plugattr_config_check", 
+			alist, klist);
+		free(alist);
+		free(klist);
+		if (rc) {
+			unexpected++;
+		}
+	}
 	if (avl && !anames && avl->count > 0) {
 		count = 0;
 		while (count < avl->count) {
 			if (pname) {
 				ldmsd_log(LDMSD_LWARNING,
-					"%s: unexpected config attribute %s\n",
-					pname, av_name(avl, count));
+					"%s: unexpected config attribute %s. "
+					"Check spelling and man page Plugin_%s?\n",
+					pname, av_name(avl, count), pname);
 			}
 			count++;
 			unexpected++;
@@ -927,8 +1041,8 @@ int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct
 				unexpected++;
 				if (pname) {
 					ldmsd_log(LDMSD_LWARNING,
-						"%s: unexpected config attribute %s\n",
-						pname, k);
+						"%s: unexpected config attribute %s. Check spelling and man page Plugin_%s?\n",
+						pname, k, pname);
 				}
 			}
 		}
@@ -939,8 +1053,8 @@ int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct
 		while (count < kvl->count) {
 			if (pname) {
 				ldmsd_log(LDMSD_LWARNING,
-					"%s: unexpected config keyword %s\n",
-					pname, av_name(kvl, count));
+					"%s: unexpected config keyword %s. Check spelling and man page Plugin_%s?\n",
+					pname, av_name(kvl, count), pname);
 			}
 			count++;
 			unexpected++;
@@ -962,8 +1076,8 @@ int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct
 				unexpected++;
 				if (pname) {
 					ldmsd_log(LDMSD_LWARNING,
-						"%s: unexpected config keyword %s\n",
-						pname, k);
+						"%s: unexpected config keyword %s. Check spelling and man page Plugin_%s?\n",
+						pname, k, pname);
 				}
 			}
 		}
@@ -972,6 +1086,7 @@ int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct
 }
 
 
+struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_name, struct attr_value_list *avl, struct attr_value_list *kwl, const char **avban, const char **kwban, struct pa_deprecated *dep, unsigned numkeys, ...);
 #ifdef TEST_PLUGATTR
 #include <libgen.h>
 #include <math.h>
@@ -979,7 +1094,7 @@ int main(int argc, char **argv)
 {
 	int i;
 	for (i = 1; i < argc; i++) {
-		struct plugattr *pa = ldmsd_plugattr_create(argv[i], "store_csv", NULL, NULL, 1, "mykey");
+		struct plugattr *pa = ldmsd_plugattr_create(argv[i], "store_csv", NULL, NULL, NULL, NULL, NULL, 1, "mykey");
 		printf("parsing %s returned %p\n", argv[i], pa);
 		if (pa) {
 			ldmsd_plugattr_log(LDMSD_LINFO, pa, NULL);
