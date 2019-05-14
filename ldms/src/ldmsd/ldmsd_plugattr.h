@@ -74,6 +74,16 @@ handling repeated options) is also provided.
 
 struct plugattr;
 
+/** description of a deprecated/retired attribute.
+*/
+struct pa_deprecated {
+	const char *name; /*< attribute name, or NULL if the last element of the input array. */
+	const char *value; /*< value, if value match is required, or NULL */
+	int error; /*< Is detecting name(/value) match fatal (!0) or a warning (0). */
+	const char *msg; /*< specific log detail to add to generic message, or NULL. */
+};
+#define NULL_PA_DEP {NULL, NULL, 0, NULL}
+
 /**
  * \brief parse the attributes from the attr_value_lists and file.
  * \param filename a file containing lines with attr=value 
@@ -87,6 +97,9 @@ struct plugattr;
  * plugin_name in filename.
  * \param kwl optional list that overrides/augments the defaults of 
  * plugin_name in filename.
+ * \param dep array of deprecated items; last item in the array must
+ * be NULL_PA_DEP. Multiple items of the same name handled as in
+ * ldmsd_plugattr_config_check().
  * \param numkeys the number of attributes used to form the key.
  * \param ... the numkeys names of attributes used to form the key.
  *
@@ -97,7 +110,7 @@ struct plugattr;
  * A file line which contains data but none of the named keys must contain the
  * plugin_name as a keyword. A repetition of this line is an error.
  */
-struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_name, struct attr_value_list *avl, struct attr_value_list *kwl, const char **avban, const char **kwban, unsigned numkeys, ...);
+struct plugattr *ldmsd_plugattr_create(const char *filename, const char *plugin_name, struct attr_value_list *avl, struct attr_value_list *kwl, const char **avban, const char **kwban, struct pa_deprecated *dep, unsigned numkeys, ...);
 
 /**
  * reclaim memory of pa.
@@ -111,13 +124,16 @@ void ldmsd_plugattr_destroy(struct plugattr *pa);
  * \param kwl new keywords for instance named in avl by assembled key.
  * \param avban null terminated array of banned attribute names.
  * \param kwban null terminated array of banned keyword names.
+ * \param dep array of deprecated items; last item in the array must
+ * be NULL_PA_DEP. Multiple items of the same name handled as in
+ * ldmsd_plugattr_config_check().
  * \param numkeys the number of attributes used to form the key.
  * \param ... the numkeys names of attributes used to form the key.
  * \return errno value.
  * As with ldmsd_plugattr_create
  * ldmsd_plugattr_add(pa, avl, kwl, 2, "container", "schema");
  */
-int ldmsd_plugattr_add(struct plugattr *pa, struct attr_value_list *avl, struct attr_value_list *kwl, const char **avban, const char **kwban, unsigned numkeys, ...);
+int ldmsd_plugattr_add(struct plugattr *pa, struct attr_value_list *avl, struct attr_value_list *kwl, const char **avban, const char **kwban, struct pa_deprecated *dep, unsigned numkeys, ...);
 
 /** \brief get the plugin_name of the plugattr. */
 const char *ldmsd_plugattr_plugin(struct plugattr *pa);
@@ -286,24 +302,28 @@ int ldmsd_plugattr_szt(struct plugattr *pa, const char *at, const char *key, siz
 /* \brief dump pa (or subset indicated by key to log file at the given level. */
 void ldmsd_plugattr_log(enum ldmsd_loglevel lvl, struct plugattr *pa, const char *key);
 
-/** \brief Screen config lists for unexpected keywords.
+/** \brief Screen config lists for unexpected keywords and deprecated.
  * \param anames null terminated array of k=v parameter names allowed.
  * \param knames null terminated array of k parameter names allowed.
  * \param avl the list to check against anames
  * \param kvl the list to check against knames
- * \param plugin name, or null if no logging wanted.
+ * \param dep array of deprecated items; last item in the array must
+ * be NULL_PA_DEP. Multiple items with the same name and alternate values
+ * should be placed consecutively to avoid redundant check messages.
+ * \param plugin name, or null if no logging wanted, but logging of deprecated
+ * is always performed.
  * \return the number of unexpected names found.
  *
  * examples:
  * char * attributes[] = { "altheader", "path", CSV_STORE_ATTR_COMMON, NULL };
  *
  * // logging and checking that kvl is empty and avl correct.
- * int unexpected = ldmsd_plugattr_config_check(attributes, NULL, avl, kvl, cps);
+ * int unexpected = ldmsd_plugattr_config_check(attributes, NULL, avl, kvl, NULL, name);
  *
  * // no logging and ignoring kvl (which might hide shell scripting errors)
- * int unexpected = ldmsd_plugattr_config_check(attributes, avl, kwl, NULL);
+ * int unexpected = ldmsd_plugattr_config_check(attributes, avl, kwl, NULL, NULL);
  */
-int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct attr_value_list *avl, struct attr_value_list *kwl, const char *plugin_name);
+int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct attr_value_list *avl, struct attr_value_list *kwl, struct pa_deprecated *dep, const char *plugin_name);
 
 
 #endif /* LDMS_SRC_LDMSD_LDMSD_PLUGATTR_H_ */
