@@ -143,6 +143,7 @@ struct csv_store_handle {
 	CSV_STORE_HANDLE_COMMON;
 };
 
+
 static pthread_mutex_t cfg_lock;
 
 static char* allocStoreKey(const char* container, const char* schema){
@@ -460,6 +461,17 @@ static int attr_blacklist(const char **bad, const struct attr_value_list *kwl, c
 	return 0;
 }
 
+/* list of everything deprecated from v3, with hints. */
+static struct pa_deprecated dep[] = {
+	{"action", "init", 1, "action= no longer supported; remove action=init (and if present container= and schema=) to configure default settings."},
+	{"action", "custom", 1, "action= no longer supported; remove action=custom and specify container=C schema=S to customize."},
+	{"action", NULL, 1, "action= no longer supported; remove action= and consult the man page Plugin_store_csv"},
+	{"idpos", NULL, 1, "v2 option idpos= no longer supported; remove it."},
+	{"id_pos", NULL, 1, "v2 option idpos= no longer supported; remove it."},
+	{"transportdata", NULL, 1, "v3 option transportdata= not yet supported; remove it and contact ovis-help if you need it."},
+	NULL_PA_DEP
+};
+
 static const char *init_blacklist[] = {
 	NULL
 };
@@ -505,7 +517,7 @@ static int update_config(struct attr_value_list *kwl, struct attr_value_list *av
 			rc = EINVAL;
 			goto out;
 		}
-		rc = ldmsd_plugattr_add(pa, avl, kwl, update_blacklist, update_blacklist, KEY_PLUG_ATTR);
+		rc = ldmsd_plugattr_add(pa, avl, kwl, update_blacklist, update_blacklist, dep, KEY_PLUG_ATTR);
 		if (rc == EEXIST) {
 			msglog(LDMSD_LERROR, PNAME
 				" cannot repeat config on %s.\n", k);
@@ -541,7 +553,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	};
 	static const char *keywords[] = { NULL };
 
-	rc = ldmsd_plugattr_config_check(attributes, keywords, avl, kwl, PG.pname);
+	rc = ldmsd_plugattr_config_check(attributes, keywords, avl, kwl, dep, PG.pname);
 	if (rc != 0) {
 		int warnon = (ldmsd_loglevel_get() > LDMSD_LWARNING);
 		msglog(LDMSD_LERROR, PNAME " config arguments unexpected.%s\n",
@@ -587,7 +599,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	pthread_mutex_lock(&cfg_lock);
 
 	pa = ldmsd_plugattr_create(conf, PNAME, avl, kwl,
-			init_blacklist, init_blacklist, KEY_PLUG_ATTR);
+			init_blacklist, init_blacklist, dep, KEY_PLUG_ATTR);
 	if (!pa) {
 		msglog(LDMSD_LERROR, PNAME ": Reminder: omit 'config name=<>' from lines in opt_file\n");
 		msglog(LDMSD_LERROR, PNAME ": error parsing %s\n", conf);
