@@ -262,6 +262,13 @@ ldms_t ldms_xprt_first();
  */
 ldms_t ldms_xprt_next(ldms_t);
 
+/**
+ * \brief Returns all environment variables used by the zap library.
+ *
+ * \returns An array of string in which the last string is NULL.
+ */
+char ** ldms_xprt_zap_envvar_get();
+
 enum ldms_lookup_status {
 	LDMS_LOOKUP_OK = 0,
 	LDMS_LOOKUP_ERROR = 1,

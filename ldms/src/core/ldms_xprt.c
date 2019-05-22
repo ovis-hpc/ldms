@@ -112,9 +112,9 @@ static void default_log(const char *fmt, ...)
 
 pthread_mutex_t xprt_list_lock;
 
-#define LDMS_ZAP_XPRT_SOCK 0;
-#define LDMS_ZAP_XPRT_RDMA 1;
-#define LDMS_ZAP_XPRT_UGNI 2;
+#define LDMS_ZAP_XPRT_SOCK 1
+#define LDMS_ZAP_XPRT_RDMA 2
+#define LDMS_ZAP_XPRT_UGNI 3
 pthread_mutex_t ldms_zap_list_lock;
 static zap_t ldms_zap_list[3] = {0};
 
@@ -1499,6 +1499,76 @@ zap_mem_info_t ldms_zap_mem_info()
 	zmmi.start = mmi.start;
 	zmmi.len = mmi.size;
 	return &zmmi;
+}
+
+char **ldms_xprt_zap_envvar_get()
+{
+	zap_t zap;
+	char **zap_envs[3] = {0};
+	char **env_list;
+	size_t cnt = 0;
+	int i, j;
+	int zap_types[] = {
+			LDMS_ZAP_XPRT_SOCK,
+			LDMS_ZAP_XPRT_RDMA,
+			LDMS_ZAP_XPRT_UGNI,
+			0
+	};
+
+	for (i = 0; zap_types[i]; i++) {
+		zap = ldms_zap_list[zap_types[i]];
+		if (zap) {
+			zap_envs[i] = zap_get_env(zap);
+			if (zap_envs[i]) {
+				cnt += sizeof(zap_envs[i])/
+					sizeof(*(zap_envs[i]));
+			}
+		} else {
+			if (errno)
+				goto err;
+		}
+	}
+
+	if (0 == cnt) {
+		/*
+		 * No environment variables used by the loaded zap transports.
+		 */
+		errno = 0;
+		return NULL;
+	}
+
+	/*
+	 * cnt + 1 to make sure that the last element is NULL.
+	 */
+	env_list = calloc(cnt + 1, sizeof(char *));
+	if (!env_list) {
+		errno = ENOMEM;
+		goto err;
+	}
+	cnt = 0;
+	for (i = 0; zap_types[i]; i++) {
+		if (!zap_envs[i])
+			continue;
+		for (j = 0; zap_envs[i][j]; j++) {
+			env_list[cnt++] = zap_envs[i][j];
+		}
+		/*
+		 * Free the array here. The string element
+		 * is allocated independently.
+		 */
+		free(zap_envs[i]);
+	}
+	return env_list;
+err:
+	for (i = 0; zap_types[i]; i++) {
+		if (zap_envs[i]) {
+			for (j = 0; zap_envs[i][j]; j++) {
+				free(zap_envs[i][j]);
+			}
+			free(zap_envs[i]);
+		}
+	}
+	return NULL;
 }
 
 void __ldms_passive_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
