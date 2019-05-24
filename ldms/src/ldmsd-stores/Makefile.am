@@ -15,3 +15,7 @@ endif
 if ENABLE_AMQP
 SUBDIRS += store_amqp
 endif
+
+if ENABLE_STORE_TEST
+SUBDIRS += store_test
+endif

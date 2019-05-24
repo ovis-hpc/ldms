@@ -68,6 +68,7 @@ OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
 OPTION_DEFAULT_DISABLE([rabbitkw], [ENABLE_RABBITKW])
 OPTION_DEFAULT_DISABLE([rabbitv3], [ENABLE_RABBITV3])
+OPTION_DEFAULT_DISABLE([store-test], [ENABLE_STORE_TEST])
 
 dnl AMQP
 OPTION_DEFAULT_DISABLE([amqp], [ENABLE_AMQP])
@@ -524,6 +525,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd-stores/store_sos/Makefile
 		 src/ldmsd-stores/store_csv/Makefile
 		 src/ldmsd-stores/store_amqp/Makefile
+		 src/ldmsd-stores/store_test/Makefile
 		 scripts/Makefile
 		 src/test/Makefile
 		 etc/Makefile
