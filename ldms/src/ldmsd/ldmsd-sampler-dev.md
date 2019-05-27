@@ -497,8 +497,9 @@ config name=t zone=0
 ```
 
 The configuration attributes are passed along to `ldmsd_plugin_inst_s.config()`
-API by `ldmsd`. If `ldmsd_plugin_inst_s.config()` is not implemented (`NULL`),
-the base `ldmsd_plugin_type_s.config()` is called instead.
+API by `ldmsd` via `json` parameter (see [json_util.h][json_util.h]). If
+`ldmsd_plugin_inst_s.config()` is not implemented (`NULL`), the base
+`ldmsd_plugin_type_s.config()` is called instead.
 
 `ldmsd_plugin_inst_s.config()` implementation should also call
 `ldmsd_plugin_type_s.config()` to process the common configuration attributes
@@ -509,14 +510,14 @@ The following is the config implementaion of `thermal`:
 
 ```c
 static int
-thermal_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-               struct attr_value_list *kwl, char *ebuf, int ebufsz)
+thermal_config(ldmsd_plugin_inst_t pi, json_entity_t json,
+		char *ebuf, int ebufsz)
 {
 	thermal_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = LDMSD_SAMPLER(pi);
 	ldms_schema_t sch;
 	ldms_set_t set;
-	char *val;
+	const char *val;
 	char path[128];
 	int rc;
 
@@ -526,10 +527,10 @@ thermal_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EINVAL;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc; /* base config should have `ebuf` filled */
-	val = av_value(avl, "zone");
+	val = json_attr_find_str(json, "zone");
 	if (val) {
 		/* `zone` is given */
 		inst->zone = atoi(val);
@@ -762,14 +763,14 @@ thermal_help(ldmsd_plugin_inst_t pi)
 }
 
 static int
-thermal_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-               struct attr_value_list *kwl, char *ebuf, int ebufsz)
+thermal_config(ldmsd_plugin_inst_t pi, json_entity_t json,
+		char *ebuf, int ebufsz)
 {
 	thermal_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = LDMSD_SAMPLER(pi);
 	ldms_schema_t sch;
 	ldms_set_t set;
-	char *val;
+	const char *val;
 	char path[128];
 	int rc;
 
@@ -779,10 +780,10 @@ thermal_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
 		return EINVAL;
 	}
 
-	rc = samp->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc; /* base config should have `ebuf` filled */
-	val = av_value(avl, "zone");
+	val = json_attr_find_str(json, "zone");
 	if (val) {
 		/* `zone` is given */
 		inst->zone = atoi(val);
@@ -1016,7 +1017,9 @@ SEE ALSO
 ========
 
 [ldmsd-sampler][ldmsd-sampler](7)
-[ldmsd-store-dev](ldms/src/ldmsd/ldmsd-store-dev.md)(7)
+[ldmsd-store-dev][ldmsd-store-dev](7)
 
 
 [ldmsd-sampler]: ldms/src/ldmsd/ldmsd-sampler.md
+[ldmsd-store-dev]: ldms/src/ldmsd/ldmsd-store-dev.md
+[json_util.h]: lib/src/json/json_util.h

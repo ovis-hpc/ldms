@@ -215,4 +215,6 @@ D u64        DirectMap2M                                32667648 kB
 SEE ALSO
 ========
 
-**ldmsd**(1) **ldmsd-aggregator**(7)
+**ldmsd**(1) [ldmsd-aggregator][ldmsd-aggregator](7)
+
+[ldmsd-aggregator]: ldms/src/ldmsd/ldmsd-aggregator.md

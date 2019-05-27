@@ -378,8 +378,9 @@ config name=x path=/tmp/plain
 ```
 
 The configuration attributes are passed along to `ldmsd_plugin_inst_s.config()`
-API by `ldmsd`. If `ldmsd_plugin_inst_s.config()` is not implemented (`NULL`),
-the base `ldmsd_plugin_type_s.config()` is called instead.
+API by `ldmsd` via `json` parameter (see [json_util.h][json_util.h]). If
+`ldmsd_plugin_inst_s.config()` is not implemented (`NULL`), the base
+`ldmsd_plugin_type_s.config()` is called instead.
 `ldmsd_plugin_inst_s.config()` implementation should also call
 `ldmsd_plugin_type_s.config()` to process the common configuration attributes.
 On configuration error, the plugin instance can `snprintf()` to `ebuf` to
@@ -390,19 +391,19 @@ The following is an implementation of `config()` for `plaintext`.
 ```c
 ...
 static int
-plaintext_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-		 struct attr_value_list *kwl, char *ebuf, int ebufsz)
+plaintext_config(ldmsd_plugin_inst_t pi, json_entity_t json,
+                 char *ebuf, int ebufsz)
 {
 	ldmsd_store_type_t store = LDMSD_STORE(pi);
 	plaintext_inst_t inst = (void*)pi;
 	int rc;
 	const char *val;
 
-	rc = store->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = store->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	val = av_value(avl, "path");
+	val = json_attr_find_str(json, "path");
 	if (!val) {
 		snprintf(ebuf, ebufsz, "missing `path` attribute.\n");
 		return EINVAL;
@@ -761,20 +762,19 @@ plaintext_help(ldmsd_plugin_inst_t pi)
 }
 
 static int
-plaintext_config(ldmsd_plugin_inst_t pi, struct attr_value_list *avl,
-					 struct attr_value_list *kwl,
-					 char *ebuf, int ebufsz)
+plaintext_config(ldmsd_plugin_inst_t pi, json_entity_t json,
+		 char *ebuf, int ebufsz)
 {
 	ldmsd_store_type_t store = LDMSD_STORE(pi);
 	plaintext_inst_t inst = (void*)pi;
 	int rc;
 	const char *val;
 
-	rc = store->base.config(pi, avl, kwl, ebuf, ebufsz);
+	rc = store->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	val = av_value(avl, "path");
+	val = json_attr_find_str(json, "path");
 	if (!val) {
 		snprintf(ebuf, ebufsz, "missing `path` attribute.\n");
 		return EINVAL;
@@ -987,3 +987,4 @@ SEE ALSO
 [agg]: ldms/src/ldmsd/ldmsd-aggregator.md
 [samp]: ldms/src/ldmsd/ldmsd-sampler.md
 [samp-dev]: ldms/src/ldmsd/ldmsd-sampler-dev.md
+[json_util.h]: lib/src/json/json_util.h
