@@ -1,0 +1,26 @@
+This directory contains files to test run ldmsd:slurm_sampler with
+slurm_notifier SPANK plugin.
+
+- plugstack.conf: the SPANK config file for slurmd (also see PlugStackConfig
+  option in slurm.conf) that load slurm_notifier SPANK plugin to send job data
+  to the ldmsd:slurm_sampler running on the same host.
+
+- ldmsd.sh: the script to run ldmsd with slurm_sampler that receive job data
+  from slurm_notifier.
+
+- ldms_ls.sh: a wrapper for `ldms_ls` to conveniently hide the long
+  munge authentication options.
+
+- job.sh: the job script
+
+
+How to use them?
+
+1) edit slurm.conf PlugStackConfig option to point to plugstack.conf. Then,
+   restart slurmd.
+2) run `./ldmsd.sh` on the node (or nodes) that plugstack.conf has been
+   deployed.
+3) run a slurm job, e.g.
+   - sbatch job.sh # for 1 process
+   - sbatch -n 16 job.sh # for 16 processes job
+4) `./ldms_ls.sh -x sock -p 10001 -h SOMEHOST -l` to see the job data.

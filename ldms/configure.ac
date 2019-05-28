@@ -242,9 +242,10 @@ if test -z "$ENABLE_SYSCLASSIB_TRUE"; then
 			libibumad-devel installed?]))
 fi
 
-dnl Checks for slurm includes
+dnl Checks for slurm/spank for spank plugins
 OPTION_WITH([slurm], [SLURM], [/usr])
-if test -z "$ENABLE_SLURM_JOBINFO_TRUE"; then
+if test -z "$ENABLE_SLURM_JOBINFO_TRUE" ||
+   test -z "$ENABLE_SPANK_PLUGIN_TRUE" ; then
 	OCFLAGS=$CFLAGS
 	CFLAGS=$SLURM_INCDIR_FLAG
 	AC_CHECK_HEADER(slurm/spank.h, [],
@@ -513,6 +514,8 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd-samplers/dstat/Makefile
 		 src/ldmsd-samplers/jobinfo/Makefile
 		 src/ldmsd-samplers/jobinfo/jobinfo_slurm/Makefile
+		 src/ldmsd-samplers/slurm/Makefile
+		 src/ldmsd-samplers/slurm/spank/Makefile
 		 src/ldmsd-samplers/shm/Makefile
 		 src/ldmsd-samplers/shm/shm_util/Makefile
 		 src/ldmsd-samplers/shm/mpi_profiler/Makefile

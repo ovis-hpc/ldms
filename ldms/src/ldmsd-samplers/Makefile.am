@@ -129,3 +129,7 @@ endif
 if ENABLE_FILESINGLE
 SUBDIRS += filesingle
 endif
+
+if ENABLE_SLURM_SAMPLER
+SUBDIRS += slurm
+endif
