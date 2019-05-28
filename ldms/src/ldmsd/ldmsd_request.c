@@ -1210,6 +1210,13 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 	return rc;
 }
 
+int __ldmsd_is_req_from_config_file(ldmsd_cfg_xprt_t xprt)
+{
+	if (NULL == xprt->xprt)
+		return 1;
+	return 0;
+}
+
 /**
  * This handler provides an example of how arguments are passed to
  * request handlers.
@@ -4930,7 +4937,7 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 	path = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PATH);
 	if (!path) {
 		reqc->errcode = EINVAL;
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+		cnt = linebuf_printf(reqc,
 				"The attribute 'path' is required by include.");
 		goto out;
 	}
@@ -4938,13 +4945,29 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 	reqc->errcode = process_config_file(path, &lineno, reqc->xprt->trust);
 	if (reqc->errcode) {
 		if (lineno == 0) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Failed to process cfg '%s' at line %d: %s",
-				path, lineno, strerror(reqc->errcode));
+			/*
+			 * There is an error before parsing any lines.
+			 */
+			cnt = linebuf_printf(reqc,
+				"Failed to open or read the config file '%s': %s",
+				path, strerror(reqc->errcode));
 		} else {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Failed to process cfg '%s' at line '%d'",
-				path, lineno);
+			/*
+			 * The actual error is always reported to the log file
+			 * with the line number of the config file path.
+			 */
+			if (!__ldmsd_is_req_from_config_file(reqc->xprt)) {
+				cnt = linebuf_printf(reqc,
+					"There is an error in the included file. "
+					"Please see the detail in the log file.");
+			} else {
+				/* Do nothing */
+				/*
+				 * If the request is from a config file,
+				 * printing the above message to log file is not
+				 * useful.
+				 */
+			}
 		}
 	}
 
