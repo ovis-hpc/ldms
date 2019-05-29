@@ -386,6 +386,48 @@ void jobinfo_del(ldmsd_plugin_inst_t pi)
 }
 
 static
+json_entity_t jobinfo_query(ldmsd_plugin_inst_t pi, const char *q)
+{
+	json_entity_t result = ldmsd_sampler_query(pi, q);
+	if (!result)
+		return NULL;
+
+	/* Only override the 'env' query. */
+	if (0 != strcmp(q, "env"))
+		return result;
+
+	json_entity_t attr, envs, str;
+
+	envs = json_entity_new(JSON_LIST_VALUE);
+	if (!envs)
+		goto enomem;
+	str = json_entity_new(JSON_STRING_VALUE, "envs");
+	if (!str) {
+		json_entity_free(envs);
+		goto enomem;
+	}
+	attr = json_entity_new(JSON_ATTR_VALUE, str, envs);
+	if (!attr) {
+		json_entity_free(str);
+		json_entity_free(envs);
+		goto enomem;
+	}
+	str = json_entity_new(JSON_STRING_VALUE, "LDMS_JOBINFO_DATA_FILE");
+	if (!str) {
+		json_entity_free(attr);
+		goto enomem;
+	}
+	json_item_add(envs, str);
+	json_attr_add(result, attr);
+	return result;
+
+enomem:
+	ldmsd_plugin_qjson_err_set(result, ENOMEM, "Out of memory");
+	return result;
+
+}
+
+static
 int jobinfo_init(ldmsd_plugin_inst_t pi)
 {
 	jobinfo_inst_t inst = (void*)pi;
@@ -394,6 +436,7 @@ int jobinfo_init(ldmsd_plugin_inst_t pi)
 	/* override update_schema() and update_set() */
 	samp->update_schema = jobinfo_update_schema;
 	samp->update_set = jobinfo_update_set;
+	samp->base.query = jobinfo_query;
 
 	/* NOTE More initialization code here if needed */
 	return 0;
@@ -406,7 +449,7 @@ struct jobinfo_inst_s __inst = {
 		.type_name   = "sampler",
 		.plugin_name = "jobinfo",
 
-                /* Common Plugin APIs */
+		/* Common Plugin APIs */
 		.desc   = jobinfo_desc,
 		.help   = jobinfo_help,
 		.init   = jobinfo_init,
