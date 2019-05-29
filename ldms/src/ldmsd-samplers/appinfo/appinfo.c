@@ -466,6 +466,55 @@ void appinfo_del(ldmsd_plugin_inst_t pi)
 }
 
 static
+json_entity_t appinfo_query(ldmsd_plugin_inst_t pi, const char *q)
+{
+	int i;
+	json_entity_t attr, envs, str;
+	json_entity_t result = ldmsd_sampler_query(pi, q);
+	if (!result)
+		return NULL;
+
+	/* Override only the 'env' query */
+	if (0 != strcmp(q, "env"))
+		return result;
+
+	const char *env_names[] = {
+			"PBS_JOBID",
+			"SLURM_JOB_ID",
+			NULL
+	};
+	envs = json_entity_new(JSON_LIST_VALUE);
+	if (!envs)
+		goto enomem;
+	str = json_entity_new(JSON_STRING_VALUE, "env");
+	if (!str) {
+		json_entity_free(envs);
+		goto enomem;
+	}
+	attr = json_entity_new(JSON_ATTR_VALUE, str, envs);
+	if (!attr) {
+		json_entity_free(envs);
+		json_entity_free(str);
+		goto enomem;
+	}
+
+	for (i = 0; env_names[i]; i++) {
+		str = json_entity_new(JSON_STRING_VALUE, env_names[i]);
+		if (!str) {
+			json_entity_free(attr);
+			goto enomem;
+		}
+		json_item_add(envs, str);
+	}
+	json_attr_add(result, attr);
+	return result;
+
+enomem:
+	ldmsd_plugin_qjson_err_set(result, ENOMEM, "Out of memory");
+	return result;
+}
+
+static
 int appinfo_init(ldmsd_plugin_inst_t pi)
 {
 	appinfo_inst_t inst = (void*)pi;
@@ -473,6 +522,7 @@ int appinfo_init(ldmsd_plugin_inst_t pi)
 	/* override update_schema() and update_set() */
 	samp->update_schema = appinfo_update_schema;
 	samp->update_set = appinfo_update_set;
+	samp->base.query = appinfo_query;
 
 	return 0;
 }
@@ -484,7 +534,7 @@ struct appinfo_inst_s __inst = {
 		.type_name   = "sampler",
 		.plugin_name = "appinfo",
 
-                /* Common Plugin APIs */
+		/* Common Plugin APIs */
 		.desc   = appinfo_desc,
 		.help   = appinfo_help,
 		.init   = appinfo_init,
@@ -493,8 +543,8 @@ struct appinfo_inst_s __inst = {
 
 	},
 	.shmem_fd   = -1,
-        .shmem_name = "/shm_ldmsapp",
-        .sem_name   = "/sem_ldmsapp",
+	.shmem_name = "/shm_ldmsapp",
+	.sem_name   = "/sem_ldmsapp",
 };
 
 ldmsd_plugin_inst_t new()
