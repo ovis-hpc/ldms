@@ -977,6 +977,62 @@ void shm_sampler_del(ldmsd_plugin_inst_t pi)
 }
 
 static
+json_entity_t shm_sampler_query(ldmsd_plugin_inst_t pi, const char *q)
+{
+	json_entity_t result = ldmsd_sampler_query(pi, q);
+	if (!result)
+		return result;
+
+	/*
+	 * Only override the 'env' query.
+	 */
+	if (0 != strcmp(q, "env"))
+		return result;
+
+	json_entity_t attr, envs, str;
+	envs = json_entity_new(JSON_LIST_VALUE);
+	if (!envs)
+		goto enomem;
+	str = json_entity_new(JSON_STRING_VALUE, "envs");
+	if (!str) {
+		json_entity_free(envs);
+		goto enomem;
+	}
+	attr = json_entity_new(JSON_ATTR_VALUE, str, envs);
+	if (!attr) {
+		json_entity_free(str);
+		json_entity_free(envs);
+		goto enomem;
+	}
+
+	const char *env_names[] = {
+			/* Environment variables used in mpi_profiler */
+			"LDMS_SHM_MPI_SHM_UPDATE_INTERVAL",
+			"LDMS_SHM_MPI_STAT_SCOPE",
+			"LDMS_SHM_MPI_PROFILER_LOG_LEVEL",
+			/* Environment variables used in mpi_profiler_configuration */
+			"LDMS_SHM_MPI_FUNC_INCLUDE",
+			"LDMS_SHM_MPI_FUNC_EXCLUDE",
+			NULL
+	};
+	int i;
+	for (i = 0; env_names[i]; i++) {
+		str = json_entity_new(JSON_STRING_VALUE, env_names[i]);
+		if (!str) {
+			json_entity_free(attr);
+			goto enomem;
+		}
+		json_item_add(envs, str);
+	}
+	json_attr_add(result, attr);
+	return result;
+
+enomem:
+	ldmsd_plugin_qjson_err_set(result, ENOMEM, "Out of memory");
+	return result;
+}
+
+static
 int shm_sampler_init(ldmsd_plugin_inst_t pi)
 {
 	shm_sampler_inst_t inst = (void*)pi;
@@ -985,6 +1041,9 @@ int shm_sampler_init(ldmsd_plugin_inst_t pi)
 	/* override update_schema() and update_set() */
 	samp->update_schema = shm_sampler_update_schema;
 	samp->update_set = shm_sampler_update_set;
+
+	/* override query() */
+	samp->base.query = shm_sampler_query;
 
 	/* save smap_sample & override it */
 	inst->samp_sample = samp->sample;
@@ -1001,7 +1060,7 @@ struct shm_sampler_inst_s __inst = {
 		.type_name   = "sampler",
 		.plugin_name = "shm_sampler",
 
-                /* Common Plugin APIs */
+		/* Common Plugin APIs */
 		.desc   = shm_sampler_desc,
 		.help   = shm_sampler_help,
 		.init   = shm_sampler_init,
