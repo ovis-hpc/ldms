@@ -480,3 +480,5 @@ int sample_metrics_generic(ldms_set_t set, cray_system_sampler_sources_t source_
 
 	return rc;
 }
+
+json_entity_t query_generic()

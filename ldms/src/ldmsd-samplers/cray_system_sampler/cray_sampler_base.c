@@ -503,3 +503,46 @@ void cray_sampler_base_del(cray_sampler_inst_t inst)
 	lustre_metric_src_list_free(&inst->lms_list);
 	free_str_list(&inst->llites);
 }
+
+json_entity_t query_generic(cray_sampler_inst_t inst, const char *query)
+{
+	json_entity_t attr, envs, str;
+	json_entity_t result = ldmsd_sampler_query(&inst->base, query);
+	if (!result)
+		return NULL;
+	if (0 != strcmp(query, "env")) {
+		/* Override only the 'env' query */
+		return result;
+	}
+
+	envs = json_entity_new(JSON_LIST_VALUE);
+	if (!envs)
+		goto enomem;
+	str = json_entity_new(JSON_STRING_VALUE, "env");
+	if (!str) {
+		json_entity_free(envs);
+		goto enomem;
+	}
+	attr = json_entity_new(JSON_ATTR_VALUE, str, envs);
+	if (!attr) {
+		json_entity_free(str);
+		json_entity_free(envs);
+		goto enomem;
+	}
+
+#ifdef HAVE_CRAY_NVIDIA
+
+	str = json_entity_new(JSON_STRING_VALUE, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH");
+	if (!str)
+		goto err;
+	json_item_add(envs, str);
+
+#endif /* HAVE_CRAY_NVIDIA */
+	json_attr_add(result, attr);
+	return result;
+err:
+	json_entity_free(attr);
+enomem:
+	ldmsd_plugin_qjson_err_set(result, ENOMEM, "Out of memory");
+	return result;
+}
