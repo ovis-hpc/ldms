@@ -407,6 +407,12 @@ zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 	return zep;
 }
 
+char **zap_get_env(zap_t z)
+{
+	errno = 0;
+	return z->get_env();
+}
+
 void zap_set_priority(zap_ep_t ep, int prio)
 {
 	ep->prio = prio;

@@ -1720,6 +1720,11 @@ static zap_ep_t z_sock_new(zap_t z, zap_cb_fn_t cb)
 	return (zap_ep_t)sep;
 }
 
+static char **z_sock_get_env()
+{
+	return NULL;
+}
+
 static void z_sock_destroy(zap_ep_t ep)
 {
 	struct z_sock_io *io;
@@ -2042,6 +2047,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->share = z_sock_share;
 	z->unshare = z_sock_unshare;
 	z->get_name = z_get_name;
+	z->get_env = z_sock_get_env;
 
 	/* is it needed? */
 	z->mem_info_fn = mem_info_fn;

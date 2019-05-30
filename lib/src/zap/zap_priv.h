@@ -196,6 +196,9 @@ struct zap {
 	/** Create a new endpoint */
 	zap_ep_t (*new)(zap_t z, zap_cb_fn_t cb);
 
+	/** Return an array of string of environment variable names*/
+	char **(*get_env)();
+
 	/** Destroy an endpoint. */
 	void (*destroy)(zap_ep_t ep);
 

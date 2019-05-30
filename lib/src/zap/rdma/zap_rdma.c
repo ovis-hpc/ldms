@@ -1343,6 +1343,11 @@ static zap_ep_t z_rdma_new(zap_t z, zap_cb_fn_t cb)
 	return (zap_ep_t)&rep->ep;
 }
 
+static char **z_rdma_get_env()
+{
+	return NULL;
+}
+
 char *cma_event_str[] = {
 	"RDMA_CM_EVENT_ADDR_RESOLVED",
 	"RDMA_CM_EVENT_ADDR_ERROR",
@@ -2296,6 +2301,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->share = z_rdma_share;
 	z->unshare = z_rdma_unshare;
 	z->get_name = z_get_name;
+	z->get_env = z_rdma_get_env;
 
 	*pz = z;
 	return ZAP_ERR_OK;

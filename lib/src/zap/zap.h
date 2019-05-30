@@ -331,6 +331,19 @@ size_t zap_max_msg(zap_t z);
  */
 zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb);
 
+/**
+ * \brief Return an array of environment variables used by the zap transport
+ *
+ * An array of strings ends with NULL is returned. Each string element
+ * is allocated independently from the array.
+ *
+ * If the transport does not use any environment variables,
+ * NULL is returned and errno is 0.
+ *
+ * \return An array of strings ends with NULL. NULL is returned on error and errno is set.
+ */
+char **zap_get_env(zap_t z);
+
 #define ZAP_EP_PRIO_NORMAL	0
 #define ZAP_EP_PRIO_HIGH	1
 

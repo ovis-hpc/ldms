@@ -2674,6 +2674,46 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	return ZAP_ERR_OK;
 }
 
+static char **z_ugni_get_env()
+{
+	char *ugni_envs[] = {
+		"ZAP_UGNI_PTAG",
+		"ZAP_UGNI_COOKIE",
+		"ZAP_UGNI_CQ_DEPTH",
+		"ZAP_UGNI_UNBIND_TIMEOUT",
+		"ZAP_UGNI_DISCONNECT_EV_TIMEOUT",
+		"ZAP_UGNI_STALLED_TIMEOUT",
+		"ZAP_UGNI_MAX_NUM_EP",
+		"ZAP_UGNI_STATE_INTERVAL",
+		"ZAP_UGNI_STATE_OFFSET",
+		"ZAP_UGNI_CONN_EST_BEFORE_ACK_N_BINDING_TEST",
+		"ZAP_UGNI_CONN_EST_BEFORE_CONNECT_MSG_TEST",
+		"ZAP_UGNI_CONN_EST_AFTER_CONNECT_MSG_TEST",
+		NULL
+	};
+
+	int i, j;
+	char **envs = calloc(13, sizeof(char *));
+	if (!envs) {
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	for (i = 0; ugni_envs[i]; i++) {
+		envs[i] = strdup(ugni_envs[i]);
+		if (!envs[i])
+			goto err;
+	}
+	return envs;
+err:
+	for (j = 0; j < j; j++) {
+		free(envs[j]);
+	}
+	free(envs);
+	errno = ENOMEM;
+	return NULL;
+}
+
 zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 			    zap_mem_info_fn_t mem_info_fn)
 {
