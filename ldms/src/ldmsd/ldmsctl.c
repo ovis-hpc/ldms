@@ -67,6 +67,7 @@
 #include <time.h>
 #include <ctype.h>
 #include "json_parser/json.h"
+#include "json/json_util.h"
 #include "ldms.h"
 #include "ldmsd_request.h"
 #include "config.h"
@@ -1468,6 +1469,109 @@ static void resp_failover_status(ldmsd_req_hdr_t resp, size_t len,
 	json_value_free(json);
 }
 
+static void help_smplr_add()
+{
+	printf( "\nAdd a sampler policy\n\n"
+		"Parameters:\n"
+		"     name=       A unique name for the sampler policy\n"
+		"     instance=   Sampler plugin instance name corresponding to this policy\n"
+		"     interval=   Sampling interval (us)\n"
+		"     [offset=]   Sampling offset (us)\n");
+}
+
+static void help_smplr_del()
+{
+	printf( "\nDelete a sampler policy\n\n"
+		"     name=      Sampler policy name\n");
+}
+
+static void help_smplr_start()
+{
+	printf( "\nStart a sampler policy\n\n"
+		"     name=         Sampler policy name\n"
+		"     [interval=]   Sampling interval (us)\n"
+		"     [offset=]     Sampling offset (us)\n");
+}
+
+static void help_smplr_stop()
+{
+	printf( "\nStop a sampler policy\n\n"
+		"     name=      Sampler policy name\n");
+}
+
+static void help_smplr_status()
+{
+	printf( "\nGet sampler policy status\n\n"
+		"     [name=]    Sampler policy name\n");
+}
+
+static void resp_smplr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim)
+		return;
+	if (attr->attr_id != LDMSD_ATTR_JSON) {
+		printf("Cannot interpret the result\n");
+		return;
+	}
+
+	json_parser_t parser = NULL;
+	json_entity_t json = NULL;
+	json_entity_t smplr, sets, set;
+	int rc, is_sync;
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Out of memory\n");
+		return;
+	}
+	rc = json_parse_buffer(parser, (char*)attr->attr_value,
+			strlen((char*)attr->attr_value), &json);
+	if (rc) {
+		printf("Error %d: cannot interpret the result.\n", rc);
+		goto out;
+	}
+
+	printf("%16s %16s %16s %-10s %-7s %10s %-8s %7s",
+			"Name", "Plugin Instance", "Plugin",
+			"Interval", "Offset", "Sync State",
+			"State", "Sets");
+	printf("--------------- ---------------- ---------------- ---------- "
+			"-------- ----------- ------- --------------------");
+	for (smplr = json_item_first(json); smplr; smplr = json_item_next(smplr)) {
+		is_sync = json_attr_value_bool(json_attr_find(smplr, "synchronous"));
+		printf("%16s %16s %16s %-10s %-7s %10s %-8s",
+				json_attr_find_str(smplr, "name"),
+				json_attr_find_str(smplr, "instance"),
+				json_attr_find_str(smplr, "plugin"),
+				json_attr_find_str(smplr, "interval_us"),
+				json_attr_find_str(smplr, "offset_us"),
+				((is_sync)?"True":"false"),
+				json_attr_find_str(smplr, "state"));
+		sets = json_attr_find(smplr, "sets");
+		int cnt = 0;
+		for (set = json_item_first(sets); set; set = json_item_next(set)) {
+			if (cnt == 0)
+				printf(" ");
+			else
+				printf(",");
+			printf("%s", json_value_str(set)->str);
+		}
+		printf("\n");
+	}
+out:
+	if (parser)
+		json_parser_free(parser);
+	if (json)
+		json_entity_free(json);
+	return;
+}
+
 static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
 static int handle_source(struct ldmsctl_ctrl *ctrl, char *path);
 static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
@@ -1509,6 +1613,11 @@ static struct command command_tbl[] = {
 	{ "setgroup_mod", NULL, help_setgroup_mod, resp_generic },
 	{ "setgroup_rm",  NULL, help_setgroup_rm, resp_generic },
 	{ "source", handle_source, help_source, resp_generic },
+	{ "smplr_add", NULL, help_smplr_add, resp_generic },
+	{ "smplr_del", NULL, help_smplr_del, resp_generic },
+	{ "smplr_start", NULL, help_smplr_start, resp_generic },
+	{ "smplr_status", NULL, help_smplr_status, resp_smplr_status },
+	{ "smplr_stop", NULL, help_smplr_stop, resp_generic },
 	{ "start", NULL, help_start, resp_generic },
 	{ "stop", NULL, help_stop, resp_generic },
 	{ "strgp_add", NULL, help_strgp_add, resp_generic },
