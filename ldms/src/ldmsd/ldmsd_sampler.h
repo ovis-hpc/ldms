@@ -126,6 +126,8 @@ struct ldmsd_sampler_type_s {
 	int job_start_idx;
 	/** Index of the job_end metric in the job_set. */
 	int job_end_idx;
+	/** [private] Index of the current_slot metric in the job_set. */
+	int current_slot_idx;
 	/** [private] Mutex. */
 	pthread_mutex_t lock;
 	/** [private] associated smplr object */

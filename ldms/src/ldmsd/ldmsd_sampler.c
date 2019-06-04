@@ -82,6 +82,7 @@ int samp_init(ldmsd_plugin_inst_t inst)
 	samp->app_id_idx = -1;
 	samp->job_start_idx = -1;
 	samp->job_end_idx = -1;
+	samp->current_slot_idx = -1;
 
 	pthread_mutex_init(&samp->lock, NULL);
 
@@ -211,6 +212,8 @@ int samp_config(ldmsd_plugin_inst_t inst, json_entity_t json,
 				 "cannot be used.\n", name, job_set_name);
 			goto einval;
 		}
+		samp->current_slot_idx = ldms_metric_by_name(samp->job_set,
+							     "current_slot");
 	}
 	/* uid, gid, permission */
 	value = json_attr_find_str(json, "uid");
@@ -449,6 +452,7 @@ int samp_base_update_set(ldmsd_plugin_inst_t inst, ldms_set_t set)
 	uint64_t job_id = 0;
 	uint64_t app_id = 0;
 	uint32_t start, end;
+	int curr_slot;
 	struct ldms_timestamp ts;
 	ldmsd_sampler_type_t samp = (void*)inst->base;
 
@@ -459,12 +463,37 @@ int samp_base_update_set(ldmsd_plugin_inst_t inst, ldms_set_t set)
 
 	if (!samp->job_set)
 		return 0; /* not an error */
-	start = ldms_metric_get_u64(samp->job_set, samp->job_start_idx);
-	end = ldms_metric_get_u64(samp->job_set, samp->job_end_idx);
-	ts = ldms_transaction_timestamp_get(set);
-	if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
-		job_id = ldms_metric_get_u64(samp->job_set, samp->job_id_idx);
-		app_id = ldms_metric_get_u64(samp->job_set, samp->app_id_idx);
+	if (samp->current_slot_idx > 0) {
+		/* multi-tenant slurm job set */
+		curr_slot = ldms_metric_get_u32(samp->job_set,
+						samp->current_slot_idx);
+		if (curr_slot >= 0) {
+		}
+		start = ldms_metric_array_get_u32(samp->job_set,
+						  samp->job_start_idx,
+						  curr_slot);
+		end = ldms_metric_array_get_u32(samp->job_set,
+						samp->job_end_idx,
+						curr_slot);
+		ts = ldms_transaction_timestamp_get(set);
+		if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
+			job_id = ldms_metric_array_get_u64(samp->job_set,
+							   samp->job_id_idx,
+							   curr_slot);
+			app_id = ldms_metric_get_u64(samp->job_set,
+						     samp->app_id_idx);
+		}
+	} else {
+		/* jobinfo job set */
+		start = ldms_metric_get_u64(samp->job_set, samp->job_start_idx);
+		end = ldms_metric_get_u64(samp->job_set, samp->job_end_idx);
+		ts = ldms_transaction_timestamp_get(set);
+		if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
+			job_id = ldms_metric_get_u64(samp->job_set,
+						     samp->job_id_idx);
+			app_id = ldms_metric_get_u64(samp->job_set,
+						     samp->app_id_idx);
+		}
 	}
 	ldms_metric_set_u64(set, SAMPLER_JOB_IDX, job_id);
 	ldms_metric_set_u64(set, SAMPLER_APP_IDX, app_id);
