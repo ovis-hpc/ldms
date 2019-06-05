@@ -1404,8 +1404,10 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 	if (mtype == SOCK_MSG_READ_RESP || mtype == SOCK_MSG_WRITE_REQ) {
 		/* allow big message, and do not copy `data`  */
 		wr = malloc(sizeof(*wr) + msg_size);
-		if (!wr)
+		if (!wr) {
+			LOG_(sep, "%s:%d malloc failed\n", __func__, __LINE__);
 			return ZAP_ERR_RESOURCE;
+		}
 		wr->msg_len = msg_size;
 		wr->data_len = data_len;
 		wr->data = data;
@@ -1413,13 +1415,15 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 		memcpy(wr->msg, m, msg_size);
 	} else {
 		if (mlen - sizeof(struct sock_msg_hdr) > sep->ep.z->max_msg) {
-			DEBUG_LOG(sep, "ep: %p, SEND invalid message length: %ld\n",
+			LOG_(sep, "ep: %p, SEND invalid message length: %ld\n",
 				  sep, mlen);
 			return ZAP_ERR_PARAMETER;
 		}
 		wr = malloc(sizeof(*wr) + msg_size + data_len);
-		if (!wr)
+		if (!wr) {
+			LOG_(sep, "%s:%d malloc failed\n", __func__, __LINE__);
 			return ZAP_ERR_RESOURCE;
+		}
 		wr->msg_len = msg_size + data_len;
 		wr->data_len = 0;
 		wr->data = NULL;
@@ -1428,8 +1432,11 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 		memcpy(wr->msg + msg_size, data, data_len);
 	}
 	TAILQ_INSERT_TAIL(&sep->sq, wr, link);
-	if (__enable_epoll_out(sep))
+	if (__enable_epoll_out(sep)) {
+		LOG_(sep, "%s:%d __enable_epoll_out failed, errno: %d\n",
+			  __func__, __LINE__, errno);
 		return ZAP_ERR_RESOURCE;
+	}
 	return ZAP_ERR_OK;
 }
 
