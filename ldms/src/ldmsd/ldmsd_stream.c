@@ -138,7 +138,7 @@ int ldmsd_stream_publish(ldms_t xprt,
 	static uint64_t msg_no = 1;
 	const char * data_ptr;
 	ldmsd_req_attr_t first_attr, attr, next_attr;
-	int rc;
+	int rc = 0;
 	size_t this_rec;
 
 	size_t max_msg = ldms_xprt_msg_max(xprt);
@@ -207,7 +207,7 @@ int ldmsd_stream_publish(ldms_t xprt,
 	}
  err:
 	msglog("%s:%d\n", __func__, __LINE__);
-	return 0;
+	return rc;
 }
 
 static char recv_buf[128];
