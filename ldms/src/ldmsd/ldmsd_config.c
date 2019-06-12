@@ -527,6 +527,7 @@ int __req_filter(ldmsd_req_ctxt_t reqc, void *ctxt)
 int process_config_file(const char *path, int *lno, int trust)
 {
 	static uint16_t file_no = 0; /* Config file ID */
+	static uint32_t cur_req_id = 0; /* For verifying command order */
 	file_no++;
 	uint32_t msg_no; /* file_no:line_no */
 	uint16_t lineno = 0; /* The max number of lines is 65536. */
@@ -641,12 +642,44 @@ parse:
 	req_array = ldmsd_parse_config_str(line, msg_no, fxprt.base.max_msg, ldmsd_log);
 	if (!req_array) {
 		rc = errno;
-		ldmsd_log(LDMSD_LERROR, "Failed to parse config file at line %d "
+		ldmsd_log(LDMSD_LCRITICAL, "Failed to parse config file at line %d "
 				"(%s). %s\n", lineno, path, strerror(rc));
 		goto cleanup;
 	}
 	for (i = 0; i < req_array->num_reqs; i++) {
 		request = req_array->reqs[i];
+		if (!ldmsd_is_initialized()) {
+			/*
+			 * Check the command type orders in the configuration files.
+			 * The order is as follows.
+			 * 1. Environment variables (LDMSD_ENV_REQ)
+			 * 2. Command-line options (LDMSD_CMD_LINE_SET_REQ)
+			 * 3. Configuration commands (Other requests, including 'listen')
+			 */
+			uint32_t req_id = ntohl(request->req_id);
+			if ((req_id == LDMSD_ENV_REQ) && cur_req_id &&
+					(cur_req_id != LDMSD_ENV_REQ)) {
+				ldmsd_log(LDMSD_LCRITICAL, "At line %d (%s): "
+						"The environment variable "
+						"is given after "
+						"a command-line option.\n",
+						lineno, path);
+				rc = EINVAL;
+				goto cleanup;
+			} else if ((req_id == LDMSD_CMD_LINE_SET_REQ) && cur_req_id &&
+					(cur_req_id != LDMSD_ENV_REQ) &&
+					(cur_req_id != LDMSD_CMD_LINE_SET_REQ) &&
+					(cur_req_id != LDMSD_LISTEN_REQ)) {
+				ldmsd_log(LDMSD_LCRITICAL, "At line %d (%s): "
+						"The command-line option "
+						"is given after a configuration "
+						"command.\n",
+						lineno, path);
+				rc = EINVAL;
+				goto cleanup;
+			}
+			cur_req_id = req_id;
+		}
 		rc = ldmsd_process_config_request(&fxprt.base, request, req_filter_fn);
 		if (rc || fxprt.base.rsp_err) {
 			if (!ldmsd_is_check_syntax()) {
