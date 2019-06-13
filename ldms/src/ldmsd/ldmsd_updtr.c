@@ -493,6 +493,18 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 		updtr_task_set_add(task);
 		int rc;
 		const char *str;
+		if (match) {
+			if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
+				str = prd_set->inst_name;
+			else
+				str = prd_set->schema_name;
+			rc = regexec(&match->regex, str, 0, NULL, 0);
+			if (rc) {
+				/* does not match */
+				goto next_prd_set;
+			}
+		}
+		/* If a match condition is not specified, everything matches */
 		if (prd_set->state == LDMSD_PRDCR_SET_STATE_UPDATING) {
 			ldmsd_log(LDMSD_LINFO, "%s: Set %s: "
 				"there is an outstanding update.\n",
@@ -500,20 +512,7 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 		}
 		if (prd_set->state != LDMSD_PRDCR_SET_STATE_READY)
 			goto next_prd_set;
-		/* If a match condition is not specified, everything matches */
-		if (!match) {
-			schedule_set_updates(prd_set, task);
-			goto next_prd_set;
-		}
-		rc = 1;
-		if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
-			str = prd_set->inst_name;
-		else
-			str = prd_set->schema_name;
-		rc = regexec(&match->regex, str, 0, NULL, 0);
-		if (!rc) {
-			schedule_set_updates(prd_set, task);
-		}
+		schedule_set_updates(prd_set, task);
 next_prd_set:
 		if (updtr->is_auto_task)
 			prd_set = ldmsd_prdcr_set_next_by_hint(prd_set);
