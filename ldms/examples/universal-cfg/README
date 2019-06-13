@@ -1,0 +1,15 @@
+This directory contains examples of LDMSD configuration files that define
+environment variables and command-line options besides the configuration
+commands, e.g., load, prdcr_*, updtr_*, etc.
+
+samplerd-master.conf contains the environment variables, command-line options
+and configuration commands to start an LDMSD as a sampler daemon.
+
+agg-master.conf contains the environment variables and command-line options. The
+configuration commands, e.g., prdcr_* and updtr_* are defined in
+agg-cfg.conf. The 'include' command is used in agg-master.conf to include
+agg-cfg.conf.
+
+To-do:
+	- in agg-master.conf, <PATH TO OVIS SRC DIR> must be replaced with the
+	  correct path to the OVIS source directory.
