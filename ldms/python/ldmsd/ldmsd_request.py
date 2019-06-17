@@ -620,6 +620,27 @@ class LDMSD_Request(object):
         av_list = (cls.ATTR_RE.match(x).groups() for x in tkns[1:])
         return cls.from_verb_attrs(verb, av_list)
 
+cmd_line_options = {'a': "default-auth",
+                    'B': "banner",
+                    'H': "hostname",
+                    'k': "publish-kernel",
+                    'l': "logfile",
+                    'm': "mem",
+                    'n': "daemon-name",
+                    'P': "num-threads",
+                    'r': "pidfile",
+                    's': "kernel-file",
+                    'v': "loglevel",
+                    'x': "xprt"           }
+
+def cmd_line_attr_name_get(s = None, l = None):
+    if s is not None:
+        return cmd_line_options[s]
+    if l is not None:
+        return cmd_line_options.keys()[cmd_line_options.values().index(l)]
+
+def cmd_line_options_supported_get():
+    return cmd_line_options
 
 class LdmsdReqCmd(cmd.Cmd):
     def __init__(self, host = None, port = None, infile=None):
