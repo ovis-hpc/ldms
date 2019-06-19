@@ -85,7 +85,7 @@ void ldmsd_updtr___del(ldmsd_cfgobj_t obj)
 }
 
 
-static int updtr_sched_offset_skew_get()
+int updtr_sched_offset_skew_get()
 {
 	int skew = LDMSD_UPDTR_OFFSET_INCR_DEFAULT;
 	char *str = getenv(LDMSD_UPDTR_OFFSET_INCR_VAR);
@@ -323,8 +323,7 @@ static int schedule_set_updates(ldmsd_updtr_t updtr,
 #endif
 	if (!updtr->push_flags) {
 		op_s = "Updating";
-		prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
-		flags = ldmsd_group_check(prd_set->set);
+		flags = (prd_set->set)?(ldmsd_group_check(prd_set->set)):(0);
 		if (flags & LDMSD_GROUP_IS_GROUP) {
 			struct ldmsd_group_traverse_ctxt ctxt;
 			LIST_INIT(&ctxt.str_list);
@@ -343,8 +342,6 @@ static int schedule_set_updates(ldmsd_updtr_t updtr,
 					ldmsd_prdcr_set_find(prd_set->prdcr, ent->str);
 				if (!pset)
 					continue; /* It is OK. Try again next iteration */
-				if (pset->state != LDMSD_PRDCR_SET_STATE_READY)
-					continue; /* It is OK. The set might not be ready */
 				rc = schedule_set_updates(updtr, pset, NULL);
 				if (rc)
 					break;
@@ -361,7 +358,8 @@ static int schedule_set_updates(ldmsd_updtr_t updtr,
 		struct timespec to;
 		resched_prd_set(updtr, prd_set, &to);
 		ldmsd_prdcr_set_ref_get(prd_set, "update_ev");
-		ev_post(updtr->worker, updtr->worker, prd_set->update_ev, &to);
+		if (ev_post(updtr->worker, updtr->worker, prd_set->update_ev, &to))
+			ldmsd_prdcr_set_ref_put(prd_set, "update_ev");
 
 	} else if (0 == (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG)) {
 		op_s = "Registering push for";
@@ -410,6 +408,46 @@ static int cancel_set_updates(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 	prd_set->push_flags &= ~LDMSD_PRDCR_SET_F_PUSH_REG;
 	ldmsd_prdcr_set_ref_put(prd_set, "push");
 	return rc;
+}
+
+static void prdcrset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
+			    int more, ldms_set_t set, void *arg)
+{
+	ldmsd_prdcr_set_t prd_set = arg;
+	pthread_mutex_lock(&prd_set->lock);
+	if (status != LDMS_LOOKUP_OK) {
+		status = ((int)status < 0 ? -status : status);
+		if ((int)status == ENOMEM) {
+			ldmsd_log(LDMSD_LERROR,
+				"Error %d in lookup callback for set '%s' "
+				"Consider changing the -m parameter on the "
+				"command line to a bigger value. "
+				"The current value is %s\n",
+				status, prd_set->inst_name,
+				ldmsd_get_max_mem_sz_str());
+
+		} else {
+			ldmsd_log(LDMSD_LERROR,
+				  "Error %d in lookup callback for set '%s'\n",
+					  status, prd_set->inst_name);
+		}
+		prd_set->state = LDMSD_PRDCR_SET_STATE_START;
+		goto out;
+	}
+	if (!prd_set->set) {
+		/* This is the first lookup of the set. */
+		prd_set->set = set;
+		ldms_ctxt_set(set, &prd_set->set_ctxt);
+	}
+
+	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+
+	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
+	ldmsd_strgp_update(prd_set);
+out:
+	pthread_mutex_unlock(&prd_set->lock);
+	ldmsd_prdcr_set_ref_put(prd_set, "xprt_lookup");
+	return;
 }
 
 static void cancel_prdcr_updates(ldmsd_updtr_t updtr,
@@ -480,24 +518,52 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 	struct timespec to;
 	int rc;
 
-	if (!prd_set->set) {
-		ldmsd_log(LDMSD_LINFO, "%s: metric set for producer set %s is NULL\n",
+	switch (prd_set->state) {
+	case LDMSD_PRDCR_SET_STATE_START:
+		prd_set->state = LDMSD_PRDCR_SET_STATE_LOOKUP;
+		ldmsd_prdcr_set_ref_get(prd_set, "xprt_lookup");
+		rc = ldms_xprt_lookup(prd_set->prdcr->xprt, prd_set->inst_name,
+				      LDMS_LOOKUP_BY_INSTANCE | LDMS_LOOKUP_SET_INFO,
+				      prdcrset_lookup_cb, prd_set);
+		if (rc) {
+			ldmsd_log(LDMSD_LINFO,
+					"Synchronous error %d "
+					"from ldms_lookup\n", rc);
+			ldmsd_prdcr_set_ref_put(prd_set, "xprt_lookup");
+			prd_set->state = LDMSD_PRDCR_SET_STATE_START;
+			return;
+		}
+		break;
+	case LDMSD_PRDCR_SET_STATE_LOOKUP:
+		/* outstanding lookup */
+		ldmsd_log(LDMSD_LDEBUG,
+			  "%s: there is an outstanding lookup %s\n",
 			  __func__, prd_set->inst_name);
-		return;
-	}
-
-	ldmsd_prdcr_set_ref_get(prd_set, "xprt_update");
-	rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
-	if (rc) {
-		ldmsd_prdcr_set_ref_put(prd_set, "xprt_update");
-		ldmsd_log(LDMSD_LINFO, "%s: ldms_xprt_update returned %d for %s\n",
-			  __func__, rc, prd_set->inst_name);
-		return;
+		break;
+	case LDMSD_PRDCR_SET_STATE_READY:
+		prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
+		ldmsd_prdcr_set_ref_get(prd_set, "xprt_update");
+		rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
+		if (rc) {
+			ldmsd_prdcr_set_ref_put(prd_set, "xprt_update");
+			ldmsd_log(LDMSD_LINFO,
+				  "%s: ldms_xprt_update returned %d for %s\n",
+				  __func__, rc, prd_set->inst_name);
+			prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+			return;
+		}
+		break;
+	case LDMSD_PRDCR_SET_STATE_UPDATING:
+		ldmsd_log(LDMSD_LDEBUG,
+			  "%s: there is an outstanding update %s\n",
+			  __func__, prd_set->inst_name);
+		break;
 	}
 
 	resched_prd_set(updtr, prd_set, &to);
 	ldmsd_prdcr_set_ref_get(prd_set, "update_ev"); /* Dropped when event is processed */
-	ev_post(updtr->worker, updtr->worker, prd_set->update_ev, &to);
+	if (ev_post(updtr->worker, updtr->worker, prd_set->update_ev, &to))
+		ldmsd_prdcr_set_ref_put(prd_set, "update_ev");
 	ldmsd_updtr_unlock(updtr);
 }
 

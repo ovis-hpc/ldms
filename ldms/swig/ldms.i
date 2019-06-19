@@ -58,6 +58,16 @@
 #include "ldms.h"
 #include "ovis_util/util.h"
 
+/*
+ * swig generates wrapper functions for arrays based on their
+ * dimensions. When OVIS_FLEX is defined to be empty, swig generates
+ * code that won't compile.
+ */
+#if ~(~OVIS_FLEX + 0) == 0 && ~(~OVIS_FLEX + 1) == 1
+#undef OVIS_FLEX
+#define OVIS_FLEX 0
+#endif
+
 __attribute__((constructor))
 void __init__()
 {
@@ -221,7 +231,7 @@ void dir_cb(ldms_t t, int status, ldms_dir_t dir, void *cb_arg)
 	}
 
 	for (i = 0; i < dir->set_count; i++) {
-		PyObject *py_str = PyString_FromString(dir->set_names[i]);
+		PyObject *py_str = PyString_FromString(dir->set_data[i].inst_name);
 		if (py_str) {
 			PyList_Append(arg->setList, py_str);
 		} else {
@@ -270,7 +280,7 @@ struct recv_buf {
         ldms_t x;
         TAILQ_ENTRY(recv_buf) entry;
         size_t data_len;
-        char data[OVIS_FLEX];
+        char data[0];
 };
 
 struct recv_arg {

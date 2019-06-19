@@ -246,12 +246,11 @@ struct ldms_rendezvous_msg {
 struct ldms_dir_reply {
 	uint32_t type;
 	uint32_t more;
-	uint32_t set_count;
 #ifdef SWIG
 %immutable;
 #endif
-	uint32_t set_list_len;
-	char set_list[OVIS_FLEX];
+	uint32_t json_data_len;
+	char json_data[OVIS_FLEX];
 };
 
 struct ldms_req_notify_reply {

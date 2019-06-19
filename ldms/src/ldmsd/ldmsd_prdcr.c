@@ -123,7 +123,7 @@ static void __prdcr_set_del(ldmsd_prdcr_set_t set)
 	free(set);
 }
 
-static ldmsd_prdcr_set_t prdcr_set_new(const char *inst_name)
+static ldmsd_prdcr_set_t prdcr_set_new(const char *inst_name, const char *schema_name)
 {
 	ldmsd_prdcr_set_t set = calloc(1, sizeof *set);
 	if (!set)
@@ -132,6 +132,9 @@ static ldmsd_prdcr_set_t prdcr_set_new(const char *inst_name)
 	set->inst_name = strdup(inst_name);
 	if (!set->inst_name)
 		goto err_1;
+	set->schema_name = strdup(schema_name);
+	if (!set->schema_name)
+		goto err_2;
 	pthread_mutex_init(&set->lock, NULL);
 	rbn_init(&set->rbn, set->inst_name);
 
@@ -142,9 +145,11 @@ static ldmsd_prdcr_set_t prdcr_set_new(const char *inst_name)
 
 	ref_init(&set->ref, "create", (ref_free_fn_t)__prdcr_set_del, set);
 	return set;
-err_1:
+ err_2:
+	free(set->inst_name);
+ err_1:
 	free(set);
-err_0:
+ err_0:
 	return NULL;
 }
 
@@ -196,108 +201,79 @@ static void prdcr_set_updt_hint_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t pr
 	struct rbn *rbn;
 	ldmsd_updt_hint_set_list_t list;
 	char *value;
-	ldms_set_t set = prd_set->set;
 
-	ldms_set_info_unset(set, LDMSD_SET_INFO_UPDATE_HINT_KEY);
-	(void) ldmsd_set_update_hint_get(prd_set->set,
-			&prd_set->updt_hint.intrvl_us, &prd_set->updt_hint.offset_us);
+	if (prd_set->set) {
+		ldms_set_info_unset(prd_set->set, LDMSD_SET_INFO_UPDATE_HINT_KEY);
+		(void) ldmsd_set_update_hint_get(prd_set->set,
+						 &prd_set->updt_hint.intrvl_us,
+						 &prd_set->updt_hint.offset_us);
+	}
 
 	return;
 }
 
-static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
-			    int more, ldms_set_t set, void *arg)
+static void __update_set_info(ldmsd_prdcr_set_t set, ldms_dir_set_t dset)
 {
-	ldmsd_prdcr_set_t prd_set = arg;
-	pthread_mutex_lock(&prd_set->lock);
-	if (status != LDMS_LOOKUP_OK) {
-		status = (status < 0 ? -status : status);
-		if (status == ENOMEM) {
-			ldmsd_log(LDMSD_LERROR,
-				"Error %d in lookup callback for set '%s' "
-				"Consider changing the -m parameter on the "
-				"command line to a bigger value. "
-				"The current value is %s\n",
-				status, prd_set->inst_name,
-				ldmsd_get_max_mem_sz_str());
-
-		} else {
-			ldmsd_log(LDMSD_LERROR,
-				  "Error %d in lookup callback for set '%s'\n",
-					  status, prd_set->inst_name);
+	long intrvl_us;
+	long offset_us;
+	char *hint = ldms_dir_set_info_get(dset, LDMSD_SET_INFO_UPDATE_HINT_KEY);
+	if (hint) {
+		char *endptr;
+		char *s = strdup(hint);
+		char *tok;
+		if (!s) {
+			ldmsd_lerror("%s:%d Memory allocation failure.\n",
+				     __func__, __LINE__);
+			return;
 		}
-		prd_set->state = LDMSD_PRDCR_SET_STATE_START;
-		goto out;
+		tok = strtok_r(s, ":", &endptr);
+		offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+		intrvl_us = strtol(tok, NULL, 0);
+		tok = strtok_r(NULL, ":", &endptr);
+		if (tok)
+			offset_us = strtol(tok, NULL, 0);
+
+		/* Sanity check the hints */
+		if (offset_us >= intrvl_us) {
+			ldmsd_lerror("Invalid hint '%s', ignoring hint\n", hint);
+		} else {
+			if (offset_us != LDMSD_UPDT_HINT_OFFSET_NONE)
+				set->updt_hint.offset_us = offset_us + updtr_sched_offset_skew_get();
+			set->updt_hint.intrvl_us = intrvl_us;
+		}
+		free(s);
 	}
-	if (!prd_set->set) {
-		/* This is the first lookup of the set. */
-		prd_set->set = set;
-		prd_set->schema_name = strdup(ldms_set_schema_name_get(set));
-		ldms_ctxt_set(set, &prd_set->set_ctxt);
-	}
-
-	/*
-	 * Unlocking producer set to lock producer and then producer set
-	 * for locking order consistency
-	 */
-	pthread_mutex_unlock(&prd_set->lock);
-
-	ldmsd_prdcr_lock(prd_set->prdcr);
-	pthread_mutex_lock(&prd_set->lock);
-	prdcr_set_updt_hint_update(prd_set->prdcr, prd_set);
-	pthread_mutex_unlock(&prd_set->lock);
-	ldmsd_prdcr_unlock(prd_set->prdcr);
-
-	pthread_mutex_lock(&prd_set->lock);
-
-	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
-	EV_DATA(prd_set->state_ev, struct state_data)->start_n_stop = 1;
-	ldmsd_prdcr_set_ref_get(prd_set, "state_ev");
-	ldmsd_prdcr_set_ref_put(prd_set, "xprt_lookup");
-	if (ev_post(producer, updater, prd_set->state_ev, NULL))
-		ldmsd_prdcr_set_ref_put(prd_set, "state_ev");
-
-	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
-	ldmsd_strgp_update(prd_set);
-out:
-	pthread_mutex_unlock(&prd_set->lock);
-	return;
 }
 
-static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, const char *inst_name)
+static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 {
 	ldmsd_prdcr_set_t set;
-	int rc;
 
-	ldmsd_log(LDMSD_LINFO, "Adding the metric set '%s'\n", inst_name);
+	ldmsd_log(LDMSD_LINFO, "Adding the metric set '%s'\n", dset->inst_name);
 
 	/* Check to see if it's already there */
-	set = _find_set(prdcr, inst_name);
+	set = _find_set(prdcr, dset->inst_name);
 	if (!set) {
-		set = prdcr_set_new(inst_name);
+		set = prdcr_set_new(dset->inst_name, dset->schema_name);
 		if (!set) {
 			ldmsd_log(LDMSD_LERROR, "Memory allocation failure in %s "
 				 "for set_name %s\n",
-				 __FUNCTION__, inst_name);
+				 __FUNCTION__, dset->inst_name);
 			return;
 		}
 		set->prdcr = prdcr;
 		rbt_ins(&prdcr->set_tree, &set->rbn);
 	} else {
 		ldmsd_log(LDMSD_LCRITICAL, "Receive a duplicated dir_add update of "
-				"the set '%s'.\n", inst_name);
+				"the set '%s'.\n", dset->inst_name);
 		return;
 	}
-	ldmsd_prdcr_set_ref_get(set, "xprt_lookup");
-	/* Refresh the set with a lookup */
-	rc = ldms_xprt_lookup(prdcr->xprt, inst_name,
-			      LDMS_LOOKUP_BY_INSTANCE | LDMS_LOOKUP_SET_INFO,
-			      prdcr_lookup_cb, set);
-	if (rc) {
-		ldmsd_log(LDMSD_LINFO, "Synchronous error %d from ldms_lookup\n", rc);
-		ldmsd_prdcr_set_ref_put(set, "xprt_lookup");
-	}
 
+	__update_set_info(set, dset);
+	EV_DATA(set->state_ev, struct state_data)->start_n_stop = 1;
+	ldmsd_prdcr_set_ref_get(set, "state_ev");
+	if (ev_post(producer, updater, set->state_ev, NULL))
+		ldmsd_prdcr_set_ref_put(set, "state_ev");
 }
 
 /*
@@ -307,7 +283,7 @@ static void prdcr_dir_cb_add(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 {
 	int i;
 	for (i = 0; i < dir->set_count; i++)
-		_add_cb(xprt, prdcr, dir->set_names[i]);
+		_add_cb(xprt, prdcr, &dir->set_data[i]);
 }
 
 static void prdcr_dir_cb_list(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
@@ -324,7 +300,7 @@ static void prdcr_dir_cb_del(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 	int i;
 
 	for (i = 0; i < dir->set_count; i++) {
-		struct rbn *rbn = rbt_find(&prdcr->set_tree, dir->set_names[i]);
+		struct rbn *rbn = rbt_find(&prdcr->set_tree, dir->set_data[i].inst_name);
 		if (!rbn)
 			continue;
 		set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
@@ -338,29 +314,23 @@ static void prdcr_dir_cb_del(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 {
 	ldmsd_prdcr_set_t set;
-	int i, rc;
+	int i;
 
 	for (i = 0; i < dir->set_count; i++) {
-		set = ldmsd_prdcr_set_find(prdcr, dir->set_names[i]);
+		set = ldmsd_prdcr_set_find(prdcr, dir->set_data[i].inst_name);
 		if (!set) {
                         /* Received an update, but the set is gone. */
                         ldmsd_log(LDMSD_LERROR,
                                   "Ignoring 'dir update' for the set, '%s', which "
                                   "is not present in the prdcr_set tree.\n",
-                                  dir->set_names[i]);
+                                  dir->set_data[i].inst_name);
                         continue;
 		}
-		ldmsd_prdcr_set_ref_get(set, "xprt_lookup");
 		pthread_mutex_lock(&set->lock);
 		set->state = LDMSD_PRDCR_SET_STATE_START;
+		__update_set_info(set, &dir->set_data[i]);
+		prdcr_set_updt_hint_update(prdcr, set);
 		pthread_mutex_unlock(&set->lock);
-		rc = ldms_xprt_lookup(xprt, set->inst_name, LDMS_LOOKUP_SET_INFO,
-						prdcr_lookup_cb, (void *)set);
-		if (rc) {
-			ldmsd_log(LDMSD_LINFO, "Synchronous error %d from "
-					"		SET_INFO lookup\n", rc);
-			ldmsd_prdcr_set_ref_put(set, "xprt_lookup");
-		}
 	}
 }
 
@@ -755,12 +725,10 @@ int updtr_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
 		for (prd_set = ldmsd_prdcr_set_first(prdcr);
 		     prd_set; prd_set = ldmsd_prdcr_set_next(prd_set)) {
-			if (prd_set->state >= LDMSD_PRDCR_SET_STATE_READY) {
-				EV_DATA(prd_set->state_ev, struct state_data)->start_n_stop = 1;
-				ldmsd_prdcr_set_ref_get(prd_set, "state_ev");
-				if (ev_post(producer, updater, prd_set->state_ev, NULL))
-					ldmsd_prdcr_set_ref_put(prd_set, "state_ev");
-			}
+			EV_DATA(prd_set->state_ev, struct state_data)->start_n_stop = 1;
+			ldmsd_prdcr_set_ref_get(prd_set, "state_ev");
+			if (ev_post(producer, updater, prd_set->state_ev, NULL))
+				ldmsd_prdcr_set_ref_put(prd_set, "state_ev");
 		}
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
