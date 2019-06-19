@@ -65,7 +65,7 @@
 #include <pwd.h>
 #include <unistd.h>
 #include <mmalloc/mmalloc.h>
-
+#include <json/json_util.h>
 #include "ovis_util/os_util.h"
 #include "ldms.h"
 #include "ldms_xprt.h"
@@ -203,57 +203,39 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 
 static void send_dir_update(struct ldms_xprt *x,
 			    enum ldms_dir_type t,
-			    const char *set_name)
+			    struct ldms_set *set)
 {
-	size_t len;
-	int set_count;
-	int set_list_sz;
-	int rc = 0;
+	size_t hdr_len;
+	size_t buf_len;
+	size_t cnt;
 	struct ldms_reply *reply;
 
-	switch (t) {
-	case LDMS_DIR_LIST:
-		__ldms_get_local_set_list_sz(&set_count, &set_list_sz);
-		break;
-	case LDMS_DIR_DEL:
-	case LDMS_DIR_ADD:
-	case LDMS_DIR_UPD:
-		set_count = 1;
-		set_list_sz = strlen(set_name) + 1;
-		break;
-	}
+	assert(t != LDMS_DIR_LIST);
 
-	len = sizeof(struct ldms_reply_hdr)
-		+ sizeof(struct ldms_dir_reply)
-		+ set_list_sz;
+	hdr_len = sizeof(struct ldms_reply_hdr)
+		+ sizeof(struct ldms_dir_reply);
+	buf_len = ldms_xprt_msg_max(x);
+	reply = malloc(buf_len);
 
-	reply = malloc(len);
-	if (!reply) {
-		x->log("Memory allocation failure "
-		       "in dir update of peer.\n");
-		return;
-	}
-
-	switch (t) {
-	case LDMS_DIR_LIST:
-		rc = __ldms_get_local_set_list(reply->dir.set_list,
-					       set_list_sz,
-					       &set_count, &set_list_sz);
-		break;
-	case LDMS_DIR_DEL:
-	case LDMS_DIR_ADD:
-	case LDMS_DIR_UPD:
-		memcpy(reply->dir.set_list, set_name, set_list_sz);
-		break;
-	}
+	cnt = snprintf(reply->dir.json_data, buf_len - hdr_len,
+		       "{ \"directory\" : [");
+	cnt += __ldms_format_set_meta_as_json(set, 0,
+					      &reply->dir.json_data[cnt],
+					      buf_len - hdr_len - cnt);
+	if (!cnt >= buf_len - hdr_len)
+		goto out;
+	cnt += snprintf(&reply->dir.json_data[cnt],
+			buf_len - hdr_len - cnt,
+			"]}");
+	if (!cnt >= buf_len - hdr_len)
+		goto out;
 
 	reply->hdr.xid = x->remote_dir_xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_UPDATE_REPLY);
-	reply->hdr.rc = htonl(rc);
+	reply->hdr.rc = 0;
 	reply->dir.type = htonl(t);
-	reply->dir.set_count = htonl(set_count);
-	reply->dir.set_list_len = htonl(set_list_sz);
-	reply->hdr.len = htonl(len);
+	reply->dir.json_data_len = cnt;
+	reply->hdr.len = htonl(hdr_len + cnt);
 
 #ifdef DEBUG
 	x->log("%s(): x %p: remote dir ctxt %p\n",
@@ -261,13 +243,17 @@ static void send_dir_update(struct ldms_xprt *x,
 #endif /* DEBUG */
 
 	zap_err_t zerr;
-	zerr = zap_send(x->zap_ep, reply, len);
+	zerr = zap_send(x->zap_ep, reply, hdr_len + cnt);
 	if (zerr != ZAP_ERR_OK) {
 		x->log("%s: x %p: zap_send synchronously error. '%s'\n",
 				__FUNCTION__, x, zap_err_str(zerr));
 		ldms_xprt_close(x);
 	}
 	free(reply);
+	return;
+ out:
+	free(reply);
+	x->log("Directory message is too large for the max transport message.\n");
 	return;
 }
 
@@ -307,32 +293,32 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 	return;
 }
 
-static void dir_update(const char *set_name, enum ldms_dir_type t)
+static void dir_update(struct ldms_set *set, enum ldms_dir_type t)
 {
 	struct ldms_xprt *x, *next_x;
 	x = (struct ldms_xprt *)ldms_xprt_first();
 	while (x) {
 		if (x->remote_dir_xid)
-			send_dir_update(x, t, set_name);
+			send_dir_update(x, t, set);
 		next_x = (struct ldms_xprt *)ldms_xprt_next(x);
 		ldms_xprt_put(x);
 		x = next_x;
 	}
 }
 
-void __ldms_dir_add_set(const char *set_name)
+void __ldms_dir_add_set(struct ldms_set *set)
 {
-	dir_update(set_name, LDMS_DIR_ADD);
+	dir_update(set, LDMS_DIR_ADD);
 }
 
-void __ldms_dir_del_set(const char *set_name)
+void __ldms_dir_del_set(struct ldms_set *set)
 {
-	dir_update(set_name, LDMS_DIR_DEL);
+	dir_update(set, LDMS_DIR_DEL);
 }
 
-void __ldms_dir_upd_set(const char *set_name)
+void __ldms_dir_upd_set(struct ldms_set *set)
 {
-	dir_update(set_name, LDMS_DIR_UPD);
+	dir_update(set, LDMS_DIR_UPD);
 }
 
 void ldms_xprt_close(ldms_t x)
@@ -436,70 +422,17 @@ struct make_dir_arg {
 	ssize_t set_list_len;	/* current length of this buffer */
 };
 
-static int send_dir_reply_cb(struct ldms_set *set, void *arg)
-{
-	struct make_dir_arg *mda = arg;
-	int len;
-	zap_err_t zerr;
-	uid_t set_uid = __le32_to_cpu(set->meta->uid);
-	gid_t set_gid = __le32_to_cpu(set->meta->gid);
-	uint32_t set_perm = __le32_to_cpu(set->meta->perm);
-
-	if (0 != ldms_access_check(mda->x, LDMS_ACCESS_READ,
-				  set_uid, set_gid, set_perm))
-		return 0; /* access denied, skip it */
-
-	/* keep filling the buffer until it is full */
-	len = strlen(get_instance_name(set->meta)->name) + 1;
-	if (mda->reply_size + len < ldms_xprt_msg_max(mda->x)) {
-		mda->reply_size += len;
-		strcpy(mda->set_list, get_instance_name(set->meta)->name);
-		mda->set_list += len;
-		mda->set_list_len += len;
-		mda->reply_count ++;
-		return 0;
-	}
-
-	/* buffer full, need a flush */
-	mda->reply->dir.more = 1;
-	mda->reply->dir.set_count = htonl(mda->reply_count);
-	mda->reply->dir.set_list_len = htonl(mda->set_list_len);
-	mda->reply->hdr.len = htonl(mda->reply_size);
-
-	zerr = zap_send(mda->x->zap_ep, mda->reply, mda->reply_size);
-	if (zerr != ZAP_ERR_OK) {
-		mda->x->log("%s: zap_send synchronously error. '%s'\n",
-				__FUNCTION__, zap_err_str(zerr));
-		ldms_xprt_close(mda->x);
-		return zerr;
-	}
-
-	/* Change the dir type to ADD for the subsequent sends */
-	mda->reply->dir.type = htonl(LDMS_DIR_ADD);
-
-	/* Initialize arg for remainder of walk */
-	mda->reply_size = sizeof(struct ldms_reply_hdr) +
-		sizeof(struct ldms_dir_reply) +
-		len;
-	strcpy(mda->reply->dir.set_list, get_instance_name(set->meta)->name);
-	mda->set_list = mda->reply->dir.set_list + len;
-	mda->set_list_len = len;
-	mda->reply_count = 1;
-	return 0;
-}
-
 static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 {
-	struct make_dir_arg arg;
 	size_t len;
-	int set_count;
-	int set_list_sz;
+	size_t set_count;
+	size_t hdrlen;
 	int rc;
 	zap_err_t zerr;
 	struct ldms_reply reply_;
 	struct ldms_reply *reply = NULL;
+	struct ldms_name_list name_list;
 
-	__ldms_set_tree_lock();
 	if (req->dir.flags)
 		/* Register for directory updates */
 		x->remote_dir_xid = req->hdr.xid;
@@ -507,17 +440,16 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 		/* Cancel any previous dir update */
 		x->remote_dir_xid = 0;
 
-	__ldms_get_local_set_list_sz(&set_count, &set_list_sz);
-	if (!set_count) {
-		rc = 0;
-		goto out;
-	}
+	hdrlen = sizeof(struct ldms_reply_hdr)
+		+ sizeof(struct ldms_dir_reply);
 
-	len = sizeof(struct ldms_reply_hdr)
-		+ sizeof(struct ldms_dir_reply)
-		+ set_list_sz;
-	if (len > ldms_xprt_msg_max(x))
-		len = ldms_xprt_msg_max(x);
+	__ldms_set_tree_lock();
+	rc = __ldms_get_local_set_list(&name_list);
+	__ldms_set_tree_unlock();
+	if (rc)
+		goto out;
+
+	len = ldms_xprt_msg_max(x);
 	reply = malloc(len);
 	if (!reply) {
 		rc = ENOMEM;
@@ -525,60 +457,114 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 		goto out;
 	}
 
-	/* Initialize the set_list walking callback argument */
-	arg.reply_size = sizeof(struct ldms_reply_hdr) +
-		sizeof(struct ldms_dir_reply);
-	arg.reply = reply;
-	memset(reply, 0, arg.reply_size);
-	arg.x = x;
-	arg.reply_count = 0;
-	arg.set_list = reply->dir.set_list;
-	arg.set_list_len = 0;
-
 	/* Initialize the reply header */
 	reply->hdr.xid = req->hdr.xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
+	reply->hdr.rc = 0;
 	reply->dir.type = htonl(LDMS_DIR_LIST);
 
-	/* go fill the reply buffer ... flushed it if full along the way */
-	rc = __ldms_for_all_sets(send_dir_reply_cb, &arg);
-	if (rc)
-		goto out;
-	if (0 == arg.reply_count)
-		goto out; /* nothing to send back */
+	size_t last_cnt, cnt = 0;
+	int last_set;
+	uid_t uid;
+	gid_t gid;
+	uint32_t perm;
+	struct ldms_name_entry *name;
 
-	__ldms_set_tree_unlock();
-
-	/* last chunk of unflushed buffer */
-	arg.reply->dir.more = 0;
-	arg.reply->dir.set_count = htonl(arg.reply_count);
-	arg.reply->dir.set_list_len = htonl(arg.set_list_len);
-	arg.reply->hdr.len = htonl(arg.reply_size);
-
-	zerr = zap_send(x->zap_ep, arg.reply, arg.reply_size);
-	if (zerr != ZAP_ERR_OK) {
-		x->log("%s: zap_send synchronously error. '%s'\n",
-				__FUNCTION__, zap_err_str(zerr));
-		ldms_xprt_close(arg.x);
+	if (LIST_EMPTY(&name_list)) {
+		cnt = snprintf(reply->dir.json_data,
+			       len - hdrlen,
+			       "{ \"directory\" : []}");
+		if (cnt >= len) {
+			rc = ENOMEM;
+			goto out;
+		}
+		reply->hdr.len = htonl(cnt + hdrlen);
+		reply->dir.json_data_len = htonl(cnt);
+		reply->dir.more = 0;
+		zerr = zap_send(x->zap_ep, reply, cnt + hdrlen);
+		if (zerr != ZAP_ERR_OK)
+			x->log("%s: x %p: zap_send synchronous error. '%s'\n",
+			       __FUNCTION__, x, zap_err_str(zerr));
+		return;
 	}
+	LIST_FOREACH(name, &name_list, entry) {
+		struct ldms_set *set = __ldms_find_local_set(name->name);
+		if (!set)
+			continue;
+		uid = __le32_to_cpu(set->meta->uid);
+		gid = __le32_to_cpu(set->meta->gid);
+		perm = __le32_to_cpu(set->meta->perm);
+		last_set = (LIST_NEXT(name, entry) == 0);
+	restart:
+		last_cnt = cnt;	/* save current end of json */
+		if (cnt == 0) {
+			/* Start new dir message */
+			cnt = snprintf(reply->dir.json_data, len - hdrlen,
+				       "{ \"directory\" : [");
+			if (cnt >= len - hdrlen)
+				goto out;
+		}
 
+		if (0 != ldms_access_check(x, LDMS_ACCESS_READ,
+					   uid, gid, perm)) {
+			/* no access, skip it */
+			continue;
+		}
+
+		cnt += __ldms_format_set_meta_as_json(set, last_cnt,
+						      &reply->dir.json_data[cnt],
+						      len - hdrlen - cnt - 3 /* ]}\0 */);
+
+		if (/* Too big to fit in transport message, send what we have */
+		    (cnt >= len - hdrlen - 3)) {
+			last_cnt += snprintf(&reply->dir.json_data[last_cnt],
+					     len - hdrlen - last_cnt,
+					     "]}");
+			if (last_cnt >= len - hdrlen)
+				goto out;
+			reply->hdr.len = htonl(last_cnt + hdrlen);
+			reply->dir.json_data_len = htonl(last_cnt);
+			reply->dir.more = htonl(1);
+			zerr = zap_send(x->zap_ep, reply, last_cnt + hdrlen);
+			if (zerr != ZAP_ERR_OK)
+				x->log("%s: x %p: zap_send synchronous error. '%s'\n",
+				       __FUNCTION__, x, zap_err_str(zerr));
+			cnt = 0;
+			goto restart;
+		}
+
+		if (last_set) {
+			/* If this is the last set, send the message */
+			cnt += snprintf(&reply->dir.json_data[cnt],
+				       len - hdrlen - last_cnt - 3,
+				       "]}");
+			if (cnt >= len - hdrlen - 3) {
+				rc = ENOMEM;
+				goto out;
+			}
+			reply->hdr.len = htonl(cnt + hdrlen);
+			reply->dir.json_data_len = htonl(cnt);
+			reply->dir.more = 0;
+			zerr = zap_send(x->zap_ep, reply, cnt + hdrlen);
+			if (zerr != ZAP_ERR_OK)
+				x->log("%s: x %p: zap_send synchronous error. '%s'\n",
+				       __FUNCTION__, x, zap_err_str(zerr));
+		}
+	}
 	free(reply);
+	__ldms_empty_name_list(&name_list);
 	return;
-
- out:
-	__ldms_set_tree_unlock();
+out:
 	if (reply)
 		free(reply);
 	reply = &reply_;
-	len = sizeof(struct ldms_reply_hdr)
-		+ sizeof(struct ldms_dir_reply);
+	len = hdrlen;
 	reply->hdr.xid = req->hdr.xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_REPLY);
 	reply->hdr.rc = htonl(rc);
 	reply->dir.more = 0;
 	reply->dir.type = htonl(LDMS_DIR_LIST);
-	reply->dir.set_count = 0;
-	reply->dir.set_list_len = 0;
+	reply->dir.json_data_len = 0;
 	reply->hdr.len = htonl(len);
 
 	zerr = zap_send(x->zap_ep, reply, len);
@@ -1278,19 +1264,47 @@ static
 void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		       struct ldms_context *ctxt, int more)
 {
-	int i;
-	char *src, *dst;
 	enum ldms_dir_type type = ntohl(reply->dir.type);
-	int rc = ntohl(reply->hdr.rc);
-	size_t len = ntohl(reply->dir.set_list_len);
-	unsigned count = ntohl(reply->dir.set_count);
+	int i, j, rc = ntohl(reply->hdr.rc);
+	size_t count, json_data_len = ntohl(reply->dir.json_data_len);
 	ldms_dir_t dir = NULL;
+	json_parser_t p;
+	json_entity_t dir_attr, dir_list, set_entity, info_list, info_entity;
+	json_entity_t dir_entity = NULL;
+	struct ldms_set *lset;
+
 	if (!ctxt->dir.cb)
 		return;
+
 	if (rc)
 		goto out;
+
+	p = json_parser_new(0);
+	if (!p) {
+		rc = ENOMEM;
+		goto out;
+	}
+
+	rc = json_parse_buffer(p, reply->dir.json_data, json_data_len, &dir_entity);
+	if (rc)
+		goto out;
+
+	dir_attr = json_attr_find(dir_entity, "directory");
+	if (!dir_attr) {
+		rc = EINVAL;
+		goto out;
+	}
+
+	dir_list = json_attr_value(dir_attr);
+	if (!dir_list) {
+		rc = EINVAL;
+		goto out;
+	}
+	count = json_list_len(dir_list);
+
 	dir = malloc(sizeof (*dir) +
-		     (count * sizeof(char *)) + len);
+		     (count * sizeof(void *)) +
+		     (count * sizeof(struct ldms_dir_set_s)));
 	rc = ENOMEM;
 	if (!dir)
 		goto out;
@@ -1298,18 +1312,118 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	dir->type = type;
 	dir->more = more;
 	dir->set_count = count;
-	src = reply->dir.set_list;
-	dst = (char *)&dir->set_names[count];
-	for (i = 0; i < count; i++) {
-		dir->set_names[i] = dst;
-		strcpy(dst, src);
-		len = strlen(src) + 1;
-		dst += len;
-		src += len;
+
+	for (i = 0, set_entity = json_item_first(dir_list); set_entity;
+	     set_entity = json_item_next(set_entity), i++) {
+		json_entity_t e = json_value_find(set_entity, "name");
+		dir->set_data[i].inst_name = strdup(json_value_str(e)->str);
+
+		e = json_value_find(set_entity, "schema");
+		dir->set_data[i].schema_name = strdup(json_value_str(e)->str);
+
+		e = json_value_find(set_entity, "flags");
+		dir->set_data[i].flags = strdup(json_value_str(e)->str);
+
+		e = json_value_find(set_entity, "meta_size");
+		dir->set_data[i].meta_size = json_value_int(e);
+
+		e = json_value_find(set_entity, "data_size");
+		dir->set_data[i].data_size = json_value_int(e);
+
+		e = json_value_find(set_entity, "uid");
+		dir->set_data[i].uid = json_value_int(e);
+
+		e = json_value_find(set_entity, "gid");
+		dir->set_data[i].gid = json_value_int(e);
+
+		e = json_value_find(set_entity, "perm");
+		dir->set_data[i].perm = strdup(json_value_str(e)->str);
+
+		e = json_value_find(set_entity, "card");
+		dir->set_data[i].card = json_value_int(e);
+
+		e = json_value_find(set_entity, "array_card");
+		dir->set_data[i].array_card = json_value_int(e);
+
+		e = json_value_find(set_entity, "meta_gn");
+		dir->set_data[i].meta_gn = json_value_int(e);
+
+		e = json_value_find(set_entity, "data_gn");
+		dir->set_data[i].data_gn = json_value_int(e);
+
+		e = json_value_find(set_entity, "timestamp");
+		json_entity_t s, u;
+		s = json_value_find(e, "sec");
+		u = json_value_find(e, "usec");
+		dir->set_data[i].timestamp.sec = json_value_int(s);
+		dir->set_data[i].timestamp.usec = json_value_int(u);
+
+		e = json_value_find(set_entity, "duration");
+		s = json_value_find(e, "sec");
+		u = json_value_find(e, "usec");
+		dir->set_data[i].duration.sec = json_value_int(s);
+		dir->set_data[i].duration.usec = json_value_int(u);
+
+		info_list = json_value_find(set_entity, "info");
+		size_t info_count = json_list_len(info_list);
+		if (!info_count) {
+			dir->set_data[i].info_count = 0;
+			dir->set_data[i].info = NULL;
+			continue;
+		}
+		dir->set_data[i].info = malloc(sizeof(struct ldms_key_value_s) * info_count);
+		if (!dir->set_data[i].info) {
+			rc = ENOMEM;
+			goto out;
+		}
+
+		/* If this set is in our local set tree, update it's set info */
+		__ldms_set_tree_lock();
+		lset = __ldms_find_local_set(dir->set_data[i].inst_name);
+
+		dir->set_data[i].info_count = info_count;
+		for (j = 0, info_entity = json_item_first(info_list); info_entity;
+		     info_entity = json_item_next(info_entity), j++) {
+			e = json_value_find(info_entity, "key");
+			dir->set_data[i].info[j].key = strdup(json_value_str(e)->str);
+			if (!dir->set_data[i].info[j].key) {
+				rc = ENOMEM;
+				break;
+			}
+			e = json_value_find(info_entity, "value");
+			dir->set_data[i].info[j].value = strdup(json_value_str(e)->str);
+			if (!dir->set_data[i].info[j].value) {
+				rc = ENOMEM;
+				break;
+			}
+			if (lset) {
+				const char *key = dir->set_data[i].info[j].key;
+				const char *val = dir->set_data[i].info[j].value;
+				struct ldms_set_info_pair *pair =
+					__ldms_set_info_find(&lset->remote_info, key);
+				if (pair) {
+					if (strcmp(pair->value, val)) {
+						free(pair->value);
+						pair->value = strdup(val);
+					}
+				} else {
+					__ldms_set_info_set(&lset->remote_info,
+							    key, val);
+				}
+			}
+		}
+		__ldms_set_tree_unlock();
+		if (rc)
+			break;
 	}
+
 out:
 	/* Callback owns dir memory. */
-	ctxt->dir.cb((ldms_t)x, rc, dir, ctxt->dir.cb_arg);
+	ctxt->dir.cb((ldms_t)x, rc, rc ? NULL : dir, ctxt->dir.cb_arg);
+	json_entity_free(dir_entity);
+	json_parser_free(p);
+	if (rc)
+		ldms_xprt_dir_free(x, dir);
 }
 
 static
@@ -1393,9 +1507,24 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	}
 }
 
-void ldms_xprt_dir_free(ldms_t t, ldms_dir_t d)
+void ldms_xprt_dir_free(ldms_t t, ldms_dir_t dir)
 {
-	free(d);
+	int i, j;
+	for (i = 0; i < dir->set_count; i++) {
+		free(dir->set_data[i].inst_name);
+		free(dir->set_data[i].schema_name);
+		free(dir->set_data[i].flags);
+		free(dir->set_data[i].perm);
+		if (NULL == dir->set_data[i].info)
+			continue;
+		for (j = 0; j < dir->set_data[i].info_count; j++) {
+			ldms_key_value_t kv = &dir->set_data[i].info[j];
+			free(kv->key);
+			free(kv->value);
+		}
+		free(dir->set_data[i].info);
+	}
+	free(dir);
 }
 
 void ldms_event_release(ldms_t t, ldms_notify_event_t e)

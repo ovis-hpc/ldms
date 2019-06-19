@@ -261,6 +261,7 @@ typedef struct ldmsd_updt_hint_set_list {
 	struct rbn rbn;
 	LIST_HEAD(, ldmsd_prdcr_set) list;
 } *ldmsd_updt_hint_set_list_t;
+
 struct ldmsd_updtr_schedule {
 	long intrvl_us;
 	long offset_us;
@@ -269,6 +270,7 @@ typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
 typedef struct ldmsd_prdcr_set {
 	char *inst_name;
 	char *schema_name;
+	char *producer_name;
 	ldmsd_prdcr_t prdcr;
 	ldms_set_t set;
 	int push_flags;
@@ -285,7 +287,6 @@ typedef struct ldmsd_prdcr_set {
 
 	LIST_ENTRY(ldmsd_prdcr_set) updt_hint_entry;
 
-	struct ldmsd_updtr_schedule prev_hint;
 	struct ldmsd_updtr_schedule updt_hint;
 
 	struct timeval updt_start;

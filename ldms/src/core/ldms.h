@@ -63,7 +63,6 @@
 #include "ovis_util/os_util.h"
 #include "ovis_util/util.h"
 
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -583,6 +582,33 @@ enum ldms_dir_type {
 	LDMS_DIR_UPD,		/*! The set_info of the listed metric set have been updated */
 };
 
+typedef struct ldms_key_value_s {
+	char *key;
+	char *value;
+} *ldms_key_value_t;
+
+/**
+ * \brief The data for a set in a the directory
+ */
+typedef struct ldms_dir_set_s {
+	char *inst_name;	/*! Instance name */
+	char *schema_name;	/*! Schema name */
+	char *flags;		/*! Set state flags */
+	size_t meta_size;	/*! Set meta-data size */
+	size_t data_size;	/*! Set data size */
+	uid_t uid;		/*! Set owner user-id  */
+	gid_t gid;		/*! Set owner group-id */
+	char *perm;		/*! Set owner permission string */
+	int card;		/*! Number of metrics */
+	int array_card;		/*! Number of set buffers */
+	uint64_t meta_gn;	/*! Meta-data generation number */
+	uint64_t data_gn;	/*! Data generation number  */
+	struct ldms_timestamp timestamp; /*! Update transaction timestamp */
+	struct ldms_timestamp duration;	 /*! Update transaction duration  */
+	size_t info_count;
+	ldms_key_value_t info;
+} *ldms_dir_set_t;
+
 /**
  * \brief The format of the directory data returned by
  * \c ldms_dir request.
@@ -600,8 +626,9 @@ typedef struct ldms_dir_s {
 	/** count of sets in the set_name array */
 	int set_count;
 
-	/** each string is null terminated. */
-	char *set_names[OVIS_FLEX];
+	/** Array of ldms_dir_set_s structures */
+	struct ldms_dir_set_s set_data[OVIS_FLEX];
+
 } *ldms_dir_t;
 
 typedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg);
@@ -616,6 +643,8 @@ typedef void (*ldms_dir_cb_t)(ldms_t t, int status, ldms_dir_t dir, void *cb_arg
  * \param dir	 Pointer to an ldms_dir_s structure to be released.
  */
 void ldms_xprt_dir_free(ldms_t t, ldms_dir_t dir);
+
+ char *ldms_dir_set_info_get(ldms_dir_set_t dset, const char *key);
 
 /**
  * \brief Cancel LDMS directory updates

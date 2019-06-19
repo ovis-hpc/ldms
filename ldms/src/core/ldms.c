@@ -102,7 +102,7 @@ static struct rbt set_tree = {
 	.root = NULL,
 	.comparator = set_comparator
 };
-pthread_mutex_t set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t __set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void __ldms_gn_inc(struct ldms_set *set, ldms_mdesc_t desc)
 {
@@ -149,12 +149,12 @@ struct ldms_set *__ldms_local_set_next(struct ldms_set *s)
 
 void __ldms_set_tree_lock()
 {
-	pthread_mutex_lock(&set_tree_lock);
+	pthread_mutex_lock(&__set_tree_lock);
 }
 
 void __ldms_set_tree_unlock()
 {
-	pthread_mutex_unlock(&set_tree_lock);
+	pthread_mutex_unlock(&__set_tree_lock);
 }
 
 static ldms_set_t __set_by_name(const char *set_name)
@@ -217,68 +217,236 @@ int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg)
 	return rc;
 }
 
-struct set_list_arg {
-	char *set_list;
-	ssize_t set_list_len;
-	int count;
+
+struct get_set_names_arg {
+	struct ldms_name_list *name_list;
 };
 
-int set_list_cb(struct ldms_set *set, void *arg)
+#define SNPRINTF_BUMP (64 * 1024)
+static char *Lnprintf(char *dst, size_t *len, size_t *off, char *fmt, ...)
 {
-	struct set_list_arg *a = arg;
-	int len;
+	va_list ap;
+	va_list ap_copy;
+	size_t cnt;
 
-	len = get_instance_name(set->meta)->len;
-	if (len > a->set_list_len)
-		return -ENOMEM;
+	if (!dst) {
+		dst = malloc(SNPRINTF_BUMP);
+		*len = SNPRINTF_BUMP;
+	}
 
-	a->count++;
-	strcpy(a->set_list, get_instance_name(set->meta)->name);
-	a->set_list += len;
-	a->set_list_len -= len;
+	va_start(ap, fmt);
+	va_copy(ap_copy, ap);
+	do {
+		cnt = vsnprintf(&dst[*off], *len - *off, fmt, ap_copy);
+		va_end(ap_copy);
+		if (cnt + *off >= *len) {
+			size_t newsize;
+			if (cnt  < SNPRINTF_BUMP)
+				newsize = *len + SNPRINTF_BUMP;
+			else
+				newsize = *len + cnt;
+			dst = realloc(dst, newsize);
+			if (!dst)
+				goto out;
+			*len = newsize;
+			va_copy(ap_copy, ap);
+			continue;
+		}
+		*off += cnt;
+	} while (0);
+ out:
+	va_end(ap);
+	return dst;
+}
 
+/*
+ * { "directory" : [
+ *   { "name" : <string>,
+ *     "schema" : <string>,
+ *     "meta-size" : <int>,
+ *     "data-size" : <int>,
+ *     "uid" : <int>,
+ *     "gid" : <int>,
+ *     "info" : [
+ *       { "name" : <string>, "value" : <string> },
+ *       . . .
+ *     ]
+ *   },
+ *   . . .
+ *   ]
+ * }
+ */
+
+static const char *perm_string(uint32_t perm)
+{
+	static char str[16];
+	char *s = str;
+	int i;
+	*s = '-';
+	s++;
+	for (i = 6; i >= 0; i -= 3) {
+		uint32_t mask = perm >> i;
+		if (mask & 4)
+			*s = 'r';
+		else
+			*s = '-';
+		s++;
+		if (mask & 2)
+			*s = 'w';
+		else
+			*s = '-';
+		s++;
+		if (mask & 1)
+			*s = 'x';
+		else
+			*s = '-';
+		s++;
+	}
+	*s = '\0';
+	return str;
+}
+
+char *set_state(struct ldms_set *set)
+{
+	static char str[8];
+	if (set->data->trans.flags == LDMS_TRANSACTION_END)
+		str[0] = 'C';
+	else
+		str[0] = ' ';
+	if (set->flags & LDMS_SET_F_LOCAL)
+		str[1] = 'L';
+	else if (set->flags & LDMS_SET_F_REMOTE)
+		str[1] = 'R';
+	else
+		str[1] = ' ';
+	if (set->flags & LDMS_SET_F_PUSH_CHANGE)
+		str[2] = 'P';
+	else
+		str[2] = ' ';
+	str[3] = '\0';
+	return str;
+}
+
+size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
+				      int need_comma,
+				      char *buf, size_t buf_size)
+{
+	size_t cnt;
+	cnt = snprintf(buf, buf_size,
+		       "%c{"
+		       "\"name\":\"%s\","
+		       "\"schema\":\"%s\","
+		       "\"flags\":\"%s\","
+		       "\"meta_size\":%d,"
+		       "\"data_size\":%d,"
+		       "\"uid\":%d,"
+		       "\"gid\":%d,"
+		       "\"perm\":\"%s\","
+		       "\"card\":%d,"
+		       "\"array_card\":%d,"
+		       "\"meta_gn\":%lld,"
+		       "\"data_gn\":%lld,"
+		       "\"timestamp\":{\"sec\":%d,\"usec\":%d},"
+		       "\"duration\":{\"sec\":%d,\"usec\":%d},"
+		       "\"info\":[",
+		       need_comma ? ',' : ' ',
+		       get_instance_name(set->meta)->name,
+		       get_schema_name(set->meta)->name,
+		       set_state(set),
+		       __le32_to_cpu(set->meta->meta_sz),
+		       __le32_to_cpu(set->meta->data_sz),
+		       __le32_to_cpu(set->meta->uid),
+		       __le32_to_cpu(set->meta->gid),
+		       perm_string(__le32_to_cpu(set->meta->perm)),
+		       __le32_to_cpu(set->meta->card),
+		       __le32_to_cpu(set->meta->array_card),
+		       __le32_to_cpu(set->meta->meta_gn),
+		       __le32_to_cpu(set->data->gn),
+		       __le32_to_cpu(set->data->trans.ts.sec), __le32_to_cpu(set->data->trans.ts.usec),
+		       __le32_to_cpu(set->data->trans.dur.sec), __le32_to_cpu(set->data->trans.dur.usec)
+		       );
+	if (cnt >= buf_size)
+		goto out;
+	struct ldms_set_info_pair *info, *linfo;
+	int comma = 0;
+	LIST_FOREACH(info, &set->local_info, entry) {
+		if (comma)
+			cnt += snprintf(&buf[cnt], buf_size - cnt, ",");
+		else
+			comma = 1;
+		if (cnt >= buf_size)
+			goto out;
+		cnt += snprintf(&buf[cnt], buf_size - cnt,
+				"{\"key\":\"%s\",\"value\":\"%s\"}",
+				info->key, info->value);
+		if (cnt >= buf_size)
+			goto out;
+	}
+	LIST_FOREACH(info, &set->remote_info, entry) {
+		/* Print remote info that is not overriden by local info */
+		linfo = __ldms_set_info_find(&set->local_info, info->key);
+		if (linfo)
+			continue;
+		if (comma)
+			cnt += snprintf(&buf[cnt], buf_size - cnt, ",");
+		if (cnt >= buf_size)
+			goto out;
+		cnt += snprintf(&buf[cnt], buf_size - cnt,
+				"{\"key\":\"%s\",\"value\":\"%s\"}",
+				info->key, info->value);
+		if (cnt >= buf_size)
+			goto out;
+	}
+	if (cnt >= buf_size)
+		return cnt;
+	cnt += snprintf(&buf[cnt], buf_size - cnt, "]}");
+ out:
+	return cnt;
+}
+
+static int get_set_list_cb(struct ldms_set *set, void *arg)
+{
+	struct get_set_names_arg *a = arg;
+	struct ldms_name_entry *entry;
+	ldms_name_t name = get_instance_name(set->meta);
+
+	entry = malloc(sizeof(*entry) + name->len);
+	if (!entry)
+		return ENOMEM;
+	memcpy(entry->name, name->name, name->len);
+	LIST_INSERT_HEAD(a->name_list, entry, entry);
 	return 0;
 }
 
-int __ldms_get_local_set_list(char *set_list, size_t set_list_len,
-			      int *set_count, int *set_list_size)
+void __ldms_empty_name_list(struct ldms_name_list *name_list)
 {
-	struct set_list_arg arg;
+	while (!LIST_EMPTY(name_list)) {
+		struct ldms_name_entry *e = LIST_FIRST(name_list);
+		LIST_REMOVE(e, entry);
+		free(e);
+	}
+}
+
+/**
+ * \brief Return a list of all of the local set names.
+ *
+ * This function is called with the set tree lock held. The
+ * ldms_name_list returned must be released by the caller using the
+ * __ldms_empty_name_list() function.
+ */
+int __ldms_get_local_set_list(struct ldms_name_list *head)
+{
+	struct get_set_names_arg arg;
 	int rc;
 
-	arg.set_list = set_list;
-	arg.set_list_len = set_list_len;
-	arg.count = 0;
-	rc = __ldms_for_all_sets(set_list_cb, &arg);
-	if (!rc) {
-		*set_count = arg.count;
-		/* Original len - remainder */
-		*set_list_size = set_list_len - arg.set_list_len;
-	}
+	LIST_INIT(head);
+	arg.name_list = head;
+
+	rc = __ldms_for_all_sets(get_set_list_cb, &arg);
+	if (rc)
+		__ldms_empty_name_list(arg.name_list);
+
 	return rc;
-}
-
-static int set_list_sz_cb(struct ldms_set *set, void *arg)
-{
-	struct set_list_arg *a = arg;
-	int len;
-
-	len = get_instance_name(set->meta)->len;
-	a->set_list_len += len;
-	a->count++;
-
-	return 0;
-}
-
- void __ldms_get_local_set_list_sz(int *set_count, int *set_list_size)
-{
-	struct set_list_arg arg;
-
-	arg.count = 0;
-	arg.set_list_len = 0;
-	(void)__ldms_for_all_sets(set_list_sz_cb, &arg);
-	*set_count = arg.count;
-	*set_list_size = arg.set_list_len;
 }
 
  /* The caller must hold the set tree lock. */
@@ -328,7 +496,7 @@ int __ldms_set_publish(struct ldms_set *set)
 		return EEXIST;
 
 	set->flags |= LDMS_SET_F_PUBLISHED;
-	__ldms_dir_add_set(get_instance_name(set->meta)->name);
+	__ldms_dir_add_set(set);
 	return 0;
 }
 
@@ -350,7 +518,7 @@ int __ldms_set_unpublish(struct ldms_set *set)
 		return ENOENT;
 
 	set->flags &= ~LDMS_SET_F_PUBLISHED;
-	__ldms_dir_del_set(get_instance_name(set->meta)->name);
+	__ldms_dir_del_set(set);
 	return 0;
 }
 
@@ -2181,7 +2349,7 @@ int ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
 		dir_updt = 1;
 	pthread_mutex_unlock(&s->set->lock);
 	if (dir_updt)
-		__ldms_dir_upd_set(name);
+		__ldms_dir_upd_set(s->set);
 	free(name);
 	return 0;
 err:
@@ -2215,7 +2383,7 @@ void ldms_set_info_unset(ldms_set_t s, const char *key)
 	free(pair->value);
 	free(pair);
 	pthread_mutex_unlock(&s->set->lock);
-	__ldms_dir_upd_set(ldms_set_instance_name_get(s));
+	__ldms_dir_upd_set(s->set);
 }
 
 char *ldms_set_info_get(ldms_set_t s, const char *key)
@@ -2237,6 +2405,16 @@ char *ldms_set_info_get(ldms_set_t s, const char *key)
 out:
 	pthread_mutex_unlock(&s->set->lock);
 	return value;
+}
+
+char *ldms_dir_set_info_get(ldms_dir_set_t dset, const char *key)
+{
+	int i;
+	for (i = 0; i < dset->info_count; i++) {
+		if (0 == strcmp(key, dset->info[i].key))
+			return dset->info[i].value;
+	}
+	return NULL;
 }
 
 int ldms_set_info_traverse(ldms_set_t s, ldms_set_info_traverse_cb_fn cb,

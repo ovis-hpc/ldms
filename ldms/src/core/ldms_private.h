@@ -116,12 +116,23 @@ __ldms_create_set(const char *instance_name, const char *schema_name,
 		  size_t meta_len, size_t data_len, size_t card,
 		  size_t array_card,
 		  uint32_t flags);
-extern void __ldms_get_local_set_list_sz(int *set_count, int *set_list_len);
-extern int __ldms_get_local_set_list(char *set_list, size_t set_list_len,
-				     int *set_count, int *set_list_size);
-extern void __ldms_dir_add_set(const char *set_name);
-extern void __ldms_dir_del_set(const char *set_name);
-extern void __ldms_dir_upd_set(const char *set_name);
+extern void __ldms_dir_add_set(struct ldms_set *set);
+extern void __ldms_dir_del_set(struct ldms_set *set);
+extern void __ldms_dir_upd_set(struct ldms_set *set);
+
+struct ldms_name_entry {
+	LIST_ENTRY(ldms_name_entry) entry;
+	char name[OVIS_FLEX];
+};
+LIST_HEAD(ldms_name_list, ldms_name_entry);
+
+extern int __ldms_get_local_set_list(struct ldms_name_list *head);
+extern void __ldms_empty_name_list(struct ldms_name_list *name_list);
+
+extern void __ldms_dir_update(ldms_set_t set, enum ldms_dir_type t);
+extern size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
+					     int need_comma,
+					     char *buf, size_t buf_size);
 extern int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg);
 
 extern uint32_t __ldms_set_size_get(struct ldms_set *s);

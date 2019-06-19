@@ -1781,9 +1781,13 @@ out:
 
 size_t __prdcr_set_status(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_set_t prd_set)
 {
-	struct ldms_timestamp ts, dur;
-	ts = ldms_transaction_timestamp_get(prd_set->set);
-	dur = ldms_transaction_duration_get(prd_set->set);
+	struct ldms_timestamp ts = { 0, 0 }, dur = { 0, 0 };
+	const char *producer_name = "";
+	if (prd_set->set) {
+		ts = ldms_transaction_timestamp_get(prd_set->set);
+		dur = ldms_transaction_duration_get(prd_set->set);
+		producer_name = ldms_set_producer_name_get(prd_set->set);
+	}
 	return linebuf_printf(reqc,
 		"{ "
 		"\"inst_name\":\"%s\","
@@ -1798,7 +1802,7 @@ size_t __prdcr_set_status(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_set_t prd_set)
 		"}",
 		prd_set->inst_name, prd_set->schema_name,
 		ldmsd_prdcr_set_state_str(prd_set->state),
-		ldms_set_producer_name_get(prd_set->set),
+		producer_name,
 		prd_set->prdcr->obj.name,
 		ts.sec, ts.usec,
 		dur.sec, dur.usec);
@@ -2695,6 +2699,8 @@ send_reply:
 		free(name);
 	if (interval_str)
 		free(interval_str);
+	if (auto_interval)
+		free(auto_interval);
 	if (offset_str)
 		free(offset_str);
 	if (push)

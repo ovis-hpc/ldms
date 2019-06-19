@@ -612,7 +612,45 @@ void add_set_list(ldms_t t, ldms_dir_t _dir)
 {
 	int i;
 	for (i = 0; i < _dir->set_count; i++)
-		add_set(_dir->set_names[i]);
+		add_set(_dir->set_data[i].inst_name);
+}
+
+long total_meta;
+long total_data;
+long total_sets;
+
+void print_dir(ldms_dir_t dir)
+{
+	int i;
+	if (!verbose) {
+		for (i = 0; i < dir->set_count; i++) {
+			printf("%s\n", dir->set_data[i].inst_name);
+		}
+	} else {
+		for (i = 0; i < dir->set_count; i++) {
+			printf("%-14s %-24s %6s %6d %6d %6d %6d %10s %10d.%06d %10d.%06d ",
+			       dir->set_data[i].schema_name,
+			       dir->set_data[i].inst_name,
+			       dir->set_data[i].flags,
+			       dir->set_data[i].meta_size,
+			       dir->set_data[i].data_size,
+			       dir->set_data[i].uid,
+			       dir->set_data[i].gid,
+			       dir->set_data[i].perm,
+			       dir->set_data[i].timestamp.sec,
+			       dir->set_data[i].timestamp.usec,
+			       dir->set_data[i].duration.sec,
+			       dir->set_data[i].duration.usec);
+			total_meta += dir->set_data[i].meta_size;
+			total_data += dir->set_data[i].data_size;
+			total_sets ++;
+			int j;
+			for (j = 0; j < dir->set_data[i].info_count; j++) {
+				printf("\"%s\"=\"%s\" ", dir->set_data[i].info[j].key, dir->set_data[i].info[j].value);
+			}
+			printf("\n");
+		}
+	}
 }
 
 void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
@@ -623,13 +661,19 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 		goto wakeup;
 	}
 	more = _dir->more;
-	add_set_list(t, _dir);
+
+	if (!long_format)
+		print_dir(_dir);
+	else
+		add_set_list(t, _dir);
+
 	ldms_xprt_dir_free(t, _dir);
+
 	if (more)
 		return;
 
  wakeup:
-	if (!verbose && !long_format)
+	if (!long_format)
 		done = 1;
 	dir_done = 1;
 	pthread_cond_signal(&dir_cv);
@@ -649,6 +693,17 @@ void ldms_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 int rbt_str_cmp(void *tree_key, const void *key)
 {
 	return strcmp(tree_key, key);
+}
+
+const char *repeat(char c, size_t count)
+{
+	int i;
+	static char buf[1024];
+	count = count >= 1024 ? 1023 : count;
+	for (i = 0; i < count; i++)
+		buf[i] = c;
+	buf[i] = '\0';
+	return buf;
 }
 
 int main(int argc, char *argv[])
@@ -834,6 +889,18 @@ int main(int argc, char *argv[])
 	if (schema)
 		flags |= LDMS_LOOKUP_BY_SCHEMA;
 
+	if (verbose && !long_format) {
+		printf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s\n",
+		       14, "Schema",
+		       24, "Instance",
+		       6, "Flags",
+		       6, "Msize", 6, "Dsize",
+		       6, "UID", 6, "GID", 10, "Perm",
+		       17, "Update", 17, "Duration", 8, "Info");
+		printf("-------------- ------------------------ ------ ------ "
+		       "------ ------ ------ ---------- ----------------- "
+		       "----------------- --------\n");
+	}
 	if (optind == argc) {
 		/* List all existing metric sets */
 		ret = ldms_xprt_dir(ldms, dir_cb, NULL, 0);
@@ -873,24 +940,18 @@ int main(int argc, char *argv[])
 						exit(2);
 					}
 				}
-				ret = __compile_regex(&match->regex,
-match->str);
+				ret = __compile_regex(&match->regex, match->str);
 				if (ret)
 					exit(1);
 				LIST_INSERT_HEAD(&match_list, match, entry);
 			}
-			if (!(flags & LDMS_LOOKUP_BY_SCHEMA)) {
-				/* Filter out metric sets using the instance
-				 * names, so no need to do lookup.
-				 */
-				ret = ldms_xprt_dir(ldms, dir_cb, NULL, 0);
-				if (ret) {
-					printf("ldms_dir returned synchronous "
-						"error %d\n", ret);
-					exit(1);
-				}
-				goto wait_dir;
-			 }
+			ret = ldms_xprt_dir(ldms, dir_cb, NULL, 0);
+			if (ret) {
+				printf("ldms_dir returned synchronous "
+				       "error %d\n", ret);
+				exit(1);
+			}
+			goto wait_dir;
 		}
 		/*
 		 * Set list specified on the command line. Dummy up a
@@ -908,13 +969,13 @@ match->str);
 		dir->type = LDMS_DIR_LIST;
 		if (LIST_EMPTY(&match_list)) {
 			for (i = optind; i < argc; i++)
-				dir->set_names[i - optind] = strdup(argv[i]);
+				dir->set_data[i - optind].inst_name = strdup(argv[i]);
 		} else {
 			struct match_str *match;
 			i = 0;
 			match = LIST_FIRST(&match_list);
 			while (match) {
-				dir->set_names[i++] = strdup(match->str);
+				dir->set_data[i++].inst_name = strdup(match->str);
 				LIST_REMOVE(match, entry);
 				regfree(&match->regex);
 				free(match->str);
@@ -957,7 +1018,7 @@ wait_dir:
 		lss = LIST_FIRST(&set_list);
 		LIST_REMOVE(lss, entry);
 
-		if (verbose || long_format || (flags & LDMS_LOOKUP_BY_SCHEMA)) {
+		if (long_format) {
 			pthread_mutex_lock(&print_lock);
 			rbn = rbt_find(&processed_rbt, lss->name);
 			if (rbn) {
@@ -987,6 +1048,14 @@ wait_dir:
 	}
 	done = 1;
 done:
+	if (verbose && !long_format) {
+		printf("-------------- ------------------------ ------ ------ "
+		       "------ ------ ------ ---------- ----------------- "
+		       "----------------- --------\n");
+		printf("Total Sets: %ld, Meta Data (kB): %.2f, Data (kB) %.2f, Memory (kB): %.2f",
+		       total_sets, (double)total_meta / 1000.0, (double)total_data / 1000.0,
+		       (double)(total_meta + total_data) / 1000.0);
+	}
 	pthread_mutex_lock(&done_lock);
 	while (!done)
 		pthread_cond_wait(&done_cv, &done_lock);

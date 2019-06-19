@@ -62,7 +62,7 @@ endif
 ldmsctl_SOURCES = ldmsctl.c
 ldmsctl_LDADD = $(CORE)/libldms.la librequest.la
 ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ \
-		-lovis_ctrl -lovis_util -lmmalloc -lcoll -lzap -pthread \
+		-lovis_ctrl -lovis_util -lmmalloc -lcoll -lzap -ljson_util \
 		 -ljson_parser -lm @LDFLAGS_GETTIME@
 
 ldmsd_sos_init_SOURCES = ldmsd_sos_init.c

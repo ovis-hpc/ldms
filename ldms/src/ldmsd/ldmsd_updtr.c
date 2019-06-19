@@ -85,7 +85,7 @@ void ldmsd_updtr___del(ldmsd_cfgobj_t obj)
 }
 
 
-static int updtr_sched_offset_skew_get()
+int updtr_sched_offset_skew_get()
 {
 	int skew = LDMSD_UPDTR_OFFSET_INCR_DEFAULT;
 	char *str = getenv(LDMSD_UPDTR_OFFSET_INCR_VAR);
@@ -176,7 +176,7 @@ static void updtr_task_init(ldmsd_updtr_task_t task, ldmsd_updtr_t updtr,
 		task->sched.offset_us = offset + offset_increment;
 	} else {
 		task->task_flags = 0;
-		task->sched.offset_us = offset;
+		task->sched.offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
 	}
 	task->hint.intrvl_us = task->sched.intrvl_us = interval;
 	task->hint.offset_us = offset;
@@ -468,6 +468,49 @@ static int cancel_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 	return rc;
 }
 
+static void prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
+			     int more, ldms_set_t set, void *arg)
+{
+	ldmsd_prdcr_set_t prd_set = arg;
+	int update_updtr_tree = 0;
+	int ready = 0;
+	pthread_mutex_lock(&prd_set->lock);
+	if (status != LDMS_LOOKUP_OK) {
+		status = (status < 0 ? -status : status);
+		if (status == ENOMEM) {
+			ldmsd_log(LDMSD_LERROR,
+				"Error %d in lookup callback for set '%s' "
+				"Consider changing the -m parameter on the "
+				"command line to a larger value. "
+				"The current value is %s\n",
+				status, prd_set->inst_name,
+				ldmsd_get_max_mem_sz_str());
+
+		} else {
+			ldmsd_log(LDMSD_LERROR,
+				  "Error %d in lookup callback for set '%s'\n",
+					  status, prd_set->inst_name);
+		}
+		prd_set->state = LDMSD_PRDCR_SET_STATE_START;
+		goto out;
+	}
+	if (!prd_set->set) {
+		/* This is the first lookup of the set. */
+		prd_set->set = set;
+	}
+
+	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
+	ldmsd_strgp_update(prd_set);
+	ready = 1;
+out:
+	pthread_mutex_unlock(&prd_set->lock);
+	if (ready)
+		prdcr_set_updtr_task_update(prd_set);
+	ldmsd_prdcr_set_ref_put(prd_set); /* The ref is taken before calling lookup */
+	return;
+}
+
 static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 				   ldmsd_prdcr_t prdcr, ldmsd_name_match_t match)
 {
@@ -493,27 +536,41 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 		updtr_task_set_add(task);
 		int rc;
 		const char *str;
-		if (prd_set->state == LDMSD_PRDCR_SET_STATE_UPDATING) {
+
+		if (match) {
+			if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
+				str = prd_set->inst_name;
+			else
+				str = prd_set->schema_name;
+			rc = regexec(&match->regex, str, 0, NULL, 0);
+			if (rc)
+				goto next_prd_set;
+		}
+
+		switch (prd_set->state) {
+		case LDMSD_PRDCR_SET_STATE_READY:
+			break;
+		case LDMSD_PRDCR_SET_STATE_START:
+			ldmsd_prdcr_set_ref_get(prd_set); /* It will be put back in lookup_cb */
+			/* Lookup the set */
+			rc = ldms_xprt_lookup(prdcr->xprt, prd_set->inst_name,
+					      LDMS_LOOKUP_BY_INSTANCE | LDMS_LOOKUP_SET_INFO,
+					      prdset_lookup_cb, prd_set);
+			if (rc) {
+				ldmsd_log(LDMSD_LINFO, "Synchronous error %d from ldms_lookup\n", rc);
+				ldmsd_prdcr_set_ref_put(prd_set);
+			}
+			goto next_prd_set;
+		case LDMSD_PRDCR_SET_STATE_UPDATING:
 			ldmsd_log(LDMSD_LINFO, "%s: Set %s: "
 				"there is an outstanding update.\n",
 				__func__, prd_set->inst_name);
-		}
-		if (prd_set->state != LDMSD_PRDCR_SET_STATE_READY)
-			goto next_prd_set;
-		/* If a match condition is not specified, everything matches */
-		if (!match) {
-			schedule_set_updates(prd_set, task);
+		default:
 			goto next_prd_set;
 		}
-		rc = 1;
-		if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
-			str = prd_set->inst_name;
-		else
-			str = prd_set->schema_name;
-		rc = regexec(&match->regex, str, 0, NULL, 0);
-		if (!rc) {
-			schedule_set_updates(prd_set, task);
-		}
+
+		schedule_set_updates(prd_set, task);
+
 next_prd_set:
 		if (updtr->is_auto_task)
 			prd_set = ldmsd_prdcr_set_next_by_hint(prd_set);
@@ -700,9 +757,10 @@ int ldmsd_updtr_tasks_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 		 */
 		task = &updtr->default_task;
 		goto out;
-	}
-
-	if ((updtr->default_task.hint.intrvl_us == prd_set->updt_hint.intrvl_us) &&
+	} else if (prd_set->updt_hint.intrvl_us == 0) {
+		task = &updtr->default_task;
+		goto out;
+	} else if ((updtr->default_task.hint.intrvl_us == prd_set->updt_hint.intrvl_us) &&
 		(updtr->default_task.hint.offset_us == prd_set->updt_hint.offset_us)) {
 		/* The root task will update the producer set. */
 		task = &updtr->default_task;
@@ -721,8 +779,9 @@ start_task:
 	updtr_update_task_start(task);
 out:
 	__prdcr_set_update_sched(prd_set, task);
-	rc = ldmsd_set_update_hint_set(prd_set->set, task->sched.intrvl_us,
-							task->sched.offset_us);
+	if (prd_set->set)
+		rc = ldmsd_set_update_hint_set(prd_set->set, task->sched.intrvl_us,
+					       task->sched.offset_us);
 	return rc;
 }
 
@@ -745,11 +804,6 @@ static int updtr_tasks_create(ldmsd_updtr_t updtr)
 		for (prd_set = ldmsd_prdcr_set_first(prdcr); prd_set;
 		     prd_set = ldmsd_prdcr_set_next(prd_set)) {
 			pthread_mutex_lock(&prd_set->lock);
-			if (prd_set->state != LDMSD_PRDCR_SET_STATE_READY) {
-				pthread_mutex_unlock(&prd_set->lock);
-				continue;
-			}
-
 			if (LIST_EMPTY(&updtr->match_list)) {
 				rc = ldmsd_updtr_tasks_update(updtr, prd_set);
 				if (rc)
