@@ -103,11 +103,11 @@ class LDMSD_Req_Attr(object):
     STREAM = 34
     COMP_ID = 35
     QUERY = 36
-    AUTH = 37,
-    ENV = 38,
-    CMDLINE = 39,
-    CFGCMD = 40,
-    LAST = 40
+    AUTH = 37
+    ENV = 38
+    CMDLINE = 39
+    CFGCMD = 40
+    LAST = 41
 
     NAME_ID_MAP = {'name': NAME,
                    'component_id':COMP_ID,
@@ -149,6 +149,8 @@ class LDMSD_Req_Attr(object):
                    'auth': AUTH,
                    'cmdline': CMDLINE,
                    'cfgcmd': CFGCMD,
+                   'env': ENV,
+                   'envvar': ENV,
                    'TERMINATING': LAST
         }
 

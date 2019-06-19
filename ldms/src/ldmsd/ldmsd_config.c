@@ -666,12 +666,14 @@ parse:
 						lineno, path);
 				rc = EINVAL;
 				goto cleanup;
-			} else if ((req_id == LDMSD_CMD_LINE_SET_REQ) && cur_req_id &&
+			} else if (((req_id == LDMSD_CMD_LINE_SET_REQ) ||
+					(req_id == LDMSD_LISTEN_REQ)) &&
+					cur_req_id &&
 					(cur_req_id != LDMSD_ENV_REQ) &&
 					(cur_req_id != LDMSD_CMD_LINE_SET_REQ) &&
 					(cur_req_id != LDMSD_LISTEN_REQ)) {
 				ldmsd_log(LDMSD_LCRITICAL, "At line %d (%s): "
-						"The command-line option "
+						"The command-line option or listen "
 						"is given after a configuration "
 						"command.\n",
 						lineno, path);

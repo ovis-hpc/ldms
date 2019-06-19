@@ -5733,32 +5733,33 @@ static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc)
 
 		rc = ldmsd_process_cmd_line_arg(opt, rval);
 		if (rc)
-			goto cmdline_einval;
+			goto proc_err;
 
 	}
 	goto send_reply;
 auth:
-	auth_attrs = strchr(rval, ' ');
+	auth_attrs = &rval[strlen(rval) + 1];
 	if (auth_attrs) {
 		auth_attrs[0] = '\0';
 		auth_attrs++;
 	}
 	/* auth plugin name */
 	rc = ldmsd_process_cmd_line_arg('a', rval);
-	if (rc) {
-		if (rc == EPERM)
-			goto cmdline_eperm;
-		else
-			goto cmdline_einval;
-	}
+	if (rc)
+		goto proc_err;
 	if (auth_attrs) {
 		/* auth plugin attributes */
 		rc = ldmsd_process_cmd_line_arg('A', auth_attrs);
 		if (rc)
-			goto cmdline_einval;
+			goto proc_err;
 	}
 	goto send_reply;
 
+proc_err:
+	if (rc == EPERM)
+		goto cmdline_eperm;
+	else
+		goto cmdline_einval;
 cmdline_einval:
 	/* reset to 0 because the error caused by users */
 	rc = 0;
@@ -5767,7 +5768,8 @@ cmdline_einval:
 			"Invalid cmd-line value: %s=%s\n", lval, rval);
 	goto send_reply;
 cmdline_eperm:
-	/* rc = 0; */
+	/* reset to 0 because the error caused by users */
+	rc = 0;
 	reqc->errcode = EPERM;
 	cnt = snprintf(reqc->line_buf, reqc->line_len,
 			"The value of '%s' has already been set.", lval);
@@ -5928,7 +5930,7 @@ static int __export_envs(ldmsd_req_ctxt_t reqc, FILE *f)
 
 	struct env_trav_ctxt ctxt = { f, &exported_env_tree };
 
-	fprintf(f, "# ----- environment variables -----\n");
+	fprintf(f, "# ---------- Environment Variables ----------\n");
 
 	/*
 	 *  Export all environment variables set with the env command.
@@ -6026,7 +6028,7 @@ static void __export_cmdline_args(FILE *f)
 	int i = 0;
 	ldmsd_listen_t listen;
 
-	fprintf(f, "# ----- cmd-line options -----\n");
+	fprintf(f, "# ---------- CMD-line Options ----------\n");
 	/* xprt */
 	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
 			listen ; listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
@@ -6085,7 +6087,7 @@ static void __export_cmdline_args(FILE *f)
 
 static int __export_smplr_config(FILE *f)
 {
-	fprintf(f, "# ----- Sampler Policy ----- \n");
+	fprintf(f, "# ----- Sampler Policies ----- \n");
 	ldmsd_smplr_t smplr;
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_SMPLR);
 	for (smplr = ldmsd_smplr_first(); smplr; smplr = ldmsd_smplr_next(smplr)) {
@@ -6150,7 +6152,7 @@ static int __export_updtrs_config(FILE *f)
 	ldmsd_str_ent_t regex_ent;
 	ldmsd_name_match_t match;
 
-	fprintf(f, "# ------ Updater Policies ------\n");
+	fprintf(f, "# ----- Updater Policies -----\n");
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
 		ldmsd_updtr_lock(updtr);
@@ -6309,37 +6311,13 @@ out:
 	return rc;
 }
 
-static void __export_plugin_config_line(FILE *f, ldmsd_plugin_inst_t inst, json_entity_t d)
-{
-	json_entity_t a;
-
-	/*
-	 * Assume the JSON dict looks like
-	 *
-	 * { "attr_A": "value_A",
-	 *   "attr_B": "value_B",
-	 * }
-	 *
-	 * will convert it to
-	 *
-	 * config name=<pi inst name> attr_A=value_A attr_B=value_B
-	 */
-
-	fprintf(f, "config name=%s", inst->inst_name);
-	for (a = json_attr_first(d); a; a = json_attr_next(a)) {
-		fprintf(f, " %s=%s", json_attr_name(a)->str,
-				json_value_str(json_attr_value(a))->str);
-	}
-	fprintf(f, "\n");
-}
-
 static int __export_plugin_config(FILE *f)
 {
 	ldmsd_plugin_inst_t inst;
 	json_entity_t json, cfg, l, d, a;
 	json = NULL;
 
-	fprintf(f, "# ----- load plugins -----\n");
+	fprintf(f, "# ----- Plugin Instances -----\n");
 	LDMSD_PLUGIN_INST_FOREACH(inst) {
 		fprintf(f, "load name=%s plugin=%s\n",
 				inst->inst_name,
@@ -6417,15 +6395,16 @@ static int export_config_handler(ldmsd_req_ctxt_t reqc)
 	if (attr_exist)
 		mode |= 0x100;
 
-	if (!mode || (mode && 0x1)) {
+	if (!mode || (mode & 0x1)) {
 		/* export environment variables */
 		__export_envs(reqc, f);
 	}
-	if (!mode || (mode && 0x10)) {
+	if (!mode || (mode & 0x10)) {
 		/* export command-line options */
 		__export_cmdline_args(f);
 	}
-	if (!mode || (mode && 0x100)) {
+	if (!mode || (mode & 0x100)) {
+		fprintf(f, "# ---------- CFG commands ----------\n");
 		rc = __export_plugin_config(f);
 		if (rc) {
 			reqc->errcode = rc;

@@ -1197,7 +1197,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		break;
 	case 'P':
 		if (check_arg("P", value, LO_UINT))
-			return 1;
+			return EINVAL;
 		if (cmd_line_args.ev_thread_count > 0) {
 			ldmsd_log(LDMSD_LERROR, "LDMSD number of worker threads "
 					"was already set to %d\n",
@@ -1209,7 +1209,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		break;
 	case 'r':
 		if (check_arg("r", value, LO_PATH))
-			return 1;
+			return EINVAL;
 		if (cmd_line_args.pidfile) {
 			ldmsd_log(LDMSD_LERROR, "The pidfile is already "
 					"specified to %s\n",
@@ -1222,7 +1222,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 
 	case 's':
 		if (check_arg("s", value, LO_PATH))
-			return 1;
+			return EINVAL;
 		if (cmd_line_args.kernel_setfile) {
 			ldmsd_log(LDMSD_LERROR, "The kernel set file is already "
 					"specified to %s\n",
@@ -1234,17 +1234,17 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		break;
 	case 'v':
 		if (check_arg("v", value, LO_NAME))
-			return 1;
+			return EINVAL;
 		rc = ldmsd_loglevel_set(value);
 		if (rc < 0) {
 			printf("Invalid verbosity levels '%s'. "
 				"See -v option.\n", value);
-			return 1;
+			return EINVAL;
 		}
 		break;
 	case 'x':
 		if (check_arg("x", value, LO_NAME))
-			return 1;
+			return EINVAL;
 		rval = strchr(value, ':');
 		if (!rval) {
 			printf("Bad xprt format, expecting XPRT:PORT, "
@@ -1296,7 +1296,6 @@ void handle_pidfile_banner()
 				ldmsd_log(LDMSD_LERROR, "Out of memory\n");
 				exit(1);
 			}
-			cmd_line_args.pidfile = pidfile;
 		}
 		if (!access(pidfile, F_OK)) {
 			ldmsd_log(LDMSD_LERROR, "Existing pid file named '%s': %s\n",
@@ -1314,6 +1313,7 @@ void handle_pidfile_banner()
 			fprintf(pfile,"%ld\n", (long)mypid);
 			fclose(pfile);
 		}
+		cmd_line_args.pidfile = pidfile;
 		if (pidfile && cmd_line_args.banner) {
 			char *suffix = ".version";
 			bannerfile = malloc(strlen(suffix) + strlen(pidfile) + 1);
@@ -1382,7 +1382,6 @@ void ldmsd_init()
 						cmd_line_args.mem_sz_str);
 
 		if (!ldmsd_is_check_syntax()) {
-			usage();
 			cleanup(EINVAL, "invalid -m value");
 		}
 	}
@@ -1540,7 +1539,7 @@ int main(int argc, char *argv[])
 			break;
 		case 'u':
 			if (check_arg("u", optarg, LO_NAME))
-				return 1;
+				return EINVAL;
 			ldmsd_plugins_usage(optarg);
 			exit(0);
 			break;
