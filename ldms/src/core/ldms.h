@@ -59,10 +59,10 @@
 #include "ovis-lib-config.h"
 #include "ovis-ldms-config.h"
 #include "ldms_core.h"
+#include "ref.h"
 #include "coll/rbt.h"
 #include "ovis_util/os_util.h"
 #include "ovis_util/util.h"
-
 
 #ifdef __cplusplus
 extern "C" {
@@ -74,7 +74,7 @@ typedef struct ldms_value_s *ldms_value_t;
 typedef struct ldms_schema_s *ldms_schema_t;
 
 /**
- * \mainpage LDMS
+ * \page LDMS LDMS
  *
  * LDMS means Lightweight Distributed Metric Service. It is an
  * Application Programming Interface for publishing and gathering
@@ -261,10 +261,18 @@ ldms_t ldms_xprt_first();
  */
 ldms_t ldms_xprt_next(ldms_t);
 
+/**
+ * \brief Returns all environment variables used by the zap library.
+ *
+ * \returns An array of string in which the last string is NULL.
+ */
+char ** ldms_xprt_zap_envvar_get();
+
 enum ldms_lookup_status {
-	LDMS_LOOKUP_ERROR = 1,
 	LDMS_LOOKUP_OK = 0,
-	LDMS_LOOKUP_NOTIFY = 1,
+	LDMS_LOOKUP_ERROR = 1,
+	LDMS_LOOKUP_REVOKE = 2,
+	//	LDMS_LOOKUP_NOTIFY = 1,
 };
 
 /**
@@ -712,7 +720,6 @@ enum ldms_lookup_flags {
  */
 extern int ldms_xprt_lookup(ldms_t t, const char *name, enum ldms_lookup_flags flags,
 		       ldms_lookup_cb_t cb, void *cb_arg);
-
 /** \} */
 
 /**
@@ -1084,6 +1091,14 @@ extern uint32_t ldms_set_data_sz_get(ldms_set_t s);
 extern ldms_set_t ldms_set_by_name(const char *set_name);
 
 /**
+ * \brief Get the name of a set
+ *
+ * \param set	The set handle
+ * \returns	The set name
+ */
+extern const char *ldms_set_name_get(ldms_set_t s);
+
+/**
  * \brief Get the metric schema generation number.
  *
  * A metric set has a \c generation number that chnages when metrics
@@ -1263,10 +1278,12 @@ extern int ldms_set_info_traverse(ldms_set_t s, ldms_set_info_traverse_cb_fn cb,
  * \param s	The ldms_set_t handle.
  * \param name	The name of the metric.
  * \param t	The type of the metric.
+ * \param units A 7-character unit string. May be \c NULL.
  * \retval >=0  The metric index.
  * \retval <0	Insufficient resources or duplicate name
  */
-extern int ldms_schema_metric_add(ldms_schema_t s, const char *name, enum ldms_value_type t);
+int ldms_schema_metric_add(ldms_schema_t s, const char *name,
+			   enum ldms_value_type t, const char *units);
 
 /**
  * \brief Add an attribute to schema
@@ -1277,30 +1294,48 @@ extern int ldms_schema_metric_add(ldms_schema_t s, const char *name, enum ldms_v
  * \param s	The ldms_set_t handle.
  * \param name	The name of the attribute.
  * \param t	The type of the attribute.
+ * \param units A 7-character unit string. May be \c NULL.
  * \retval >=0  The attribute index.
  * \retval <0	Insufficient resources or duplicate name
  */
-extern int ldms_schema_meta_add(ldms_schema_t s,
-				const char *name, enum ldms_value_type t);
+int ldms_schema_meta_add(ldms_schema_t s, const char *name,
+			 enum ldms_value_type t, const char *units);
 
 /**
  * \brief Add an array metric to schema
  *
  * Adds a metric of an array type to a metric set schema.
- * The \c name of the metric must be
- * unique within the metric set.
+ * The \c name of the metric must be unique within the metric set.
  *
  * \param s	The ldms_set_t handle.
  * \param name	The name of the metric.
  * \param t	The type of the metric.
+ * \param units A 7-character unit string. May be \c NULL.
  * \param count The number of elements in the array
  * \retval >=0  The metric index.
  * \retval <0	Insufficient resources or duplicate name
  */
-extern int ldms_schema_metric_array_add(ldms_schema_t s, const char *name,
-		enum ldms_value_type t, uint32_t count);
-extern int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
-		enum ldms_value_type t, uint32_t count);
+int ldms_schema_metric_array_add(ldms_schema_t s, const char *name,
+				 enum ldms_value_type t, const char *units,
+				 uint32_t count);
+
+/**
+ * \brief Add an array meta metric to schema
+ *
+ * Adds a metadata metric of an array type to a metric set schema.
+ * The \c name of the metric must be unique within the metric set.
+ *
+ * \param s	The ldms_set_t handle.
+ * \param name	The name of the metric.
+ * \param t	The type of the metric.
+ * \param units A 7-character unit string. May be \c NULL.
+ * \param count The number of elements in the array
+ * \retval >=0  The metric index.
+ * \retval <0	Insufficient resources or duplicate name
+ */
+int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
+			       enum ldms_value_type t, const char *units,
+			       uint32_t count);
 
 /**
  * \brief Get the metric index given a name
@@ -1325,6 +1360,15 @@ extern int ldms_metric_by_name(ldms_set_t s, const char *name);
  * \returns	A character string containing the name of the metric.
  */
 extern const char *ldms_metric_name_get(ldms_set_t s, int i);
+
+/**
+ * \brief Returns the units of the metric.
+ *
+ * \param  s     The set handle.
+ * \param  i     The metric index.
+ * \retval units The units of the metric. This can be "".
+ */
+const char *ldms_metric_units_get(ldms_set_t s, int i);
 
 /**
  * \brief Returns !0 (true) if the type is an array
@@ -1770,6 +1814,28 @@ void ldms_local_cred_get(ldms_t x, ldms_cred_t lcl);
  */
 int ldms_access_check(ldms_t x, uint32_t acc, uid_t obj_uid, gid_t obj_gid,
 		      int obj_perm);
+
+/**
+ * Setting LDMS application context.
+ *
+ * \note The application context is local, i.e. it will not be propagated to the
+ *       downstream sets. Please see ::ldms_set_info_set() and
+ *       ::ldms_set_info_get() for setting/getting LDMS set information that
+ *       will propagate to the downstream sets.
+ *
+ * \param set  The set handle.
+ * \param ctxt The application context.
+ */
+void ldms_ctxt_set(ldms_set_t set, void *ctxt);
+
+/**
+ * Getting LDMS application context.
+ *
+ * \param set The set handle.
+ *
+ * \retval ctxt The application context. By default, the context is \c NULL.
+ */
+void *ldms_ctxt_get(ldms_set_t set);
 /**
  * \}
  */

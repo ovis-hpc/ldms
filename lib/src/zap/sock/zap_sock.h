@@ -214,6 +214,7 @@ struct sock_msg_write_resp {
  */
 struct sock_msg_rendezvous {
 	struct sock_msg_hdr hdr;
+	uint32_t share;
 	uint32_t rmap_key; /**< Remote map reference */
 	uint32_t acc; /**< Access */
 	uint64_t addr; /**< Address in the map */

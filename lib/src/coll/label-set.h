@@ -188,13 +188,13 @@ extern struct ovis_name ovis_label_set_own(struct ovis_label_set * s, const stru
  * \brief Find the label for an id.
  * \return pair, if id present, or OVIS_NAME_NULL
  */
-extern const struct ovis_name ovis_label_set_get_label(struct ovis_label_set * is, const struct ovis_name id);
+extern struct ovis_name ovis_label_set_get_label(struct ovis_label_set * is, const struct ovis_name id);
 
 /**
  * \brief Find the id for a label.
  * \return pair, if label present, or OVIS_NAME_NULL.
  */
-extern const struct ovis_name ovis_label_set_get_id(struct ovis_label_set * is, const struct ovis_name label);
+extern struct ovis_name ovis_label_set_get_id(struct ovis_label_set * is, const struct ovis_name label);
 
 /**
  * \brief Get iterator.
@@ -208,7 +208,7 @@ extern struct ovis_label_set_iterator *ovis_label_set_iterator_get(struct ovis_l
  * Iteration stops if set content is changed.
  * \return NULL if done or changed, else next pair.
  */
-extern const struct ovis_label_id ovis_label_set_next(struct ovis_label_set * is, struct ovis_label_set_iterator *iter);
+extern struct ovis_label_id ovis_label_set_next(struct ovis_label_set * is, struct ovis_label_set_iterator *iter);
 
 
 #endif /* ovis_util_label_set_h_seen */

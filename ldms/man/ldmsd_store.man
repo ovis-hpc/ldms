@@ -1,0 +1,175 @@
+\" Manpage for ldmsd_store
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "28 Nov 2018" "v4" "ldmsd storage plugin user manual"
+
+.SH NAME
+ldmsd_store - ldmsd storage plugin user manual
+
+.SH SYNOPSIS
+.SY load
+name=\fIINST_NAME\fR plugin=\fIPLUGIN_NAME\fR
+.SY config
+name=\fIINST_NAME\fR [uid=\fIUID_INT\fR] [gid=\fIGID_INT\fR]
+[perm=\fIPERM_INT\fR] [\fIPLUGIN_SPECIFIC_OPTIONS\fR]
+.SY strgp_add
+name=\fISTRGP_NAME\fR container=\fIINST_NAME\fR schema=\fISCHEMA_NAME\fR
+.SY strgp_prdcr_add
+name=\fISTRGP_NAME\fR regex=\fIPRDCR_REGEX\fR
+.SY strgp_metric_add
+name=\fISTRGP_NAME\fR metric=\fIMETRIC_NAME\fR
+.SY strgp_start
+name=\fISTRGP_NAME\fR
+.YS
+
+.SH DESCRIPTION
+\fBldmsd\fR supports the storage of LDMS set data via storage policy
+(\fBstrgp\fR) and storage plugin instances. \fBstrgp\fR is an entity in the
+\fBldmsd\fR that associate LDMS sets from various producers to the target
+storage plugin intance. The steps required to configure and start data storage
+are as follows:
+
+.IP
+1. \fBLOADING PLUGIN INSTANCE\fR
+.br
+2. \fBPLUGIN INSTANCE CONFIGURATION\fR
+.br
+3. \fBCREATING STORAGE POLICY (STRGP)\fR
+.br
+4. \fBADD PRODUCER (PRDCR) TO STORAGE POLICY (STRGP)\fR
+.br
+5. \fBSPECIFY SUBSET OF METRICS TO STORAGE POLICY (STRGP)\fR
+.br
+6. \fBSTARTING STORAGE POLICY (STRGP)\fR
+
+.PP
+Please see the detail description of each corresponding step in the following
+sections below.
+
+.SH LOADING PLUGIN INSTANCE
+A storage plugin instance is loaded with the command:
+.SY load
+name=\fIINST_NAME\fR plugin=\fIPLUGIN_NAME\fR
+.YS
+
+For example, "load name=mysos plugin=store_sos" loads a `store_sos` plugin
+instance and assign "mysos" to its name. The name is used to refer to the plugin
+instance. So, it has to be unique among all plugin instances (not just store
+instances) in the \fBldmsd\fR.
+
+.SH STORE PLUGIN INSTANCE CONFIGURATION
+Before the storage plugin instance can be used by \fBstrgp\fR, it has to be
+configured first. This manual describes only options common to all storage
+plugins. However, please note that the common options can also be ignored by the
+plugin implementation. The store plugin instance can be configured as follows:
+
+.SY config
+name=\fIINST_NAME\fR [uid=\fIUID_INT\fR] [gid=\fIGID_INT\fR]
+[perm=\fIPERM_INT\fR] [\fIPLUGIN_SPECIFIC_OPTIONS\fR]
+.YS
+
+.SS Attribue Descriptions
+.TP 4
+name=\fIINST_NAME\fR
+The name of the instance to configure.
+.TP
+[uid=\fIUID_INT\fR]
+The optinal UID for store creation. If not specified, the default value is the
+effective uid (\fBeuid\fR) of the running \fBldmsd\fR.
+.TP
+[gid=\fIGID_INT\fR]
+The optinal GID for store creation. If not specified, the default value is the
+effective gid (\fBegid\fR) of the running \fBldmsd\fR.
+.TP
+[perm=\fIPERM_INT\fR]
+The optional permission for store creation. If not specified, the default value
+is 0660.
+.TP
+[\fIPLUGIN_SPECIFIC_OPTIONS\fR]
+Please see the specific plugin manual for its additional options.
+
+.SH CREATING STORAGE POLICY (STRGP)
+A storage policy (\fBstrgp\fR) is an entity in \fBldmsd\fR that holds
+information regarding what schema/metrics to store, from which producer, and
+into which storage. A storage policy associates to exactly one storage plugin
+instance. A storage policy can be created as follows:
+.SY strgp_add
+name=\fISTRGP_NAME\fR container=\fIINST_NAME\fR schema=\fISCHEMA_NAME\fR
+.YS
+.SS Attribute Descriptions
+.TP 4
+name=\fISTRGP_NAME\fR
+The name of the storage policy. This needs to be unique among storage policies
+in the \fBldmsd\fR.
+.TP
+container=\fIINST_NAME\fR
+The name reference to the storage plugin instance.
+.TP
+schema=\fISCHEMA_NAME\fR
+The schema name of the LDMS sets to be stored.
+
+.SH ADD PRODUCER (PRDCR) TO STORAGE POLICY (STRGP)
+After \fBstrgp\fR has been created, the user must add producers (\fBprdcr\fR) to
+the \fBstrgp\fR. Only the sets from the \fBprdcr\fR added to \fBstrgp\fR are
+stored. The user can add producers to a storage policy as follows:
+.SY strgp_prdcr_add
+name=\fISTRGP_NAME\fR regex=\fIPRDCR_REGEX\fR
+.YS
+.PP
+The \fBname\fR is the name reference to \fBstrgp\fR, and \fBregex\fR is
+the regular expression matching the name of the producers to be added.
+
+.SH SPECIFY SUBSET OF METRICS TO STORAGE POLICY (STRGP)
+This is OPTIONAL. By default, the storage policy stores all LDMS metrics
+available in the set. However, the user has an option to store only a subset of
+metrics by calling the following command:
+.SY strgp_metric_add
+name=\fISTRGP_NAME\fR metric=\fIMETRIC_NAME\fR
+.YS
+.PP
+The \fBname\fR is the name referring to the \fBstrgp\fR, and the \fBmetric\fR is
+the name of the metric to be included. The command receive only single metric
+name. If multiple metrics are needed, the user has to iteratively call this
+command for each metric.
+
+.SH STARTING STORAGE POLICY (STRGP)
+\fBldmsd\fR will store data according to a \fBstrgp\fR after it has been
+successfully started. \fBstrgp\fR can be started by:
+.SY strgp_start
+name=\fISTRGP_NAME\fR
+.YS
+.PP
+Where \fBname\fR is the name reference to the \fBstrgp\fR.
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.SS Example 1
+The following configuration example stores all procnetdev metric data from all
+producers into a store_sos.
+.IP
+.EX
+load name=mysos plugin=store_sos
+config name=mysos path=/sos
+strgp_add name=sos_netdev container=mysos schema=procnetdev
+strgp_prdcr_add name=sos_netdev regex=.*
+strgp_start name=sos_netdev
+.EE
+
+.SS Example 2
+The following configuration example stores only rx_bytes and tx_bytes metrics
+from procnetdev from all producers into a store_sos.
+.IP
+.EX
+load name=mysos plugin=store_sos
+config name=mysos path=/sos
+strgp_add name=sos_netdev container=mysos schema=procnetdev
+strgp_prdcr_add name=sos_netdev regex=.*
+strgp_metric_add name=sos_netdev metric=rx_bytes
+strgp_metric_add name=sos_netdev metric=tx_bytes
+strgp_start name=sos_netdev
+.EE
+
+.SH SEE ALSO
+.BR Plugin_store_sos (7),
+.BR Plugin_store_csv (7)

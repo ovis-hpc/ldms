@@ -69,6 +69,7 @@ enum ldmsd_request {
 	LDMSD_PRDCR_STOP_REGEX_REQ,
 	LDMSD_PRDCR_SET_REQ,
 	LDMSD_PRDCR_HINT_TREE_REQ,
+	LDMSD_PRDCR_SUBSCRIBE_REQ,
 	LDMSD_STRGP_ADD_REQ = 0x200,
 	LDMSD_STRGP_DEL_REQ,
 	LDMSD_STRGP_START_REQ,
@@ -88,10 +89,11 @@ enum ldmsd_request {
 	LDMSD_UPDTR_MATCH_ADD_REQ,
 	LDMSD_UPDTR_MATCH_DEL_REQ,
 	LDMSD_UPDTR_TASK_REQ,
-	LDMSD_SMPLR_ADD_REQ = 0X400,
+	LDMSD_SMPLR_ADD_REQ = 0x400,
 	LDMSD_SMPLR_DEL_REQ,
 	LDMSD_SMPLR_START_REQ,
 	LDMSD_SMPLR_STOP_REQ,
+	LDMSD_SMPLR_STATUS_REQ,
 	LDMSD_PLUGN_ADD_REQ = 0x500,
 	LDMSD_PLUGN_DEL_REQ,
 	LDMSD_PLUGN_START_REQ,
@@ -102,6 +104,8 @@ enum ldmsd_request {
 	LDMSD_PLUGN_CONFIG_REQ,
 	LDMSD_PLUGN_LIST_REQ,
 	LDMSD_PLUGN_SETS_REQ,
+	LDMSD_PLUGN_USAGE_REQ,
+	LDMSD_PLUGN_QUERY_REQ,
 	LDMSD_SET_UDATA_REQ = 0x600,
 	LDMSD_SET_UDATA_REGEX_REQ,
 	LDMSD_VERBOSE_REQ,
@@ -114,6 +118,13 @@ enum ldmsd_request {
 	LDMSD_EXIT_DAEMON_REQ,
 	LDMSD_RECORD_LEN_ADVICE_REQ,
 	LDMSD_SET_ROUTE_REQ,
+	LDMSD_EXPORT_CONFIG_REQ,
+
+	/* command-line options */
+	LDMSD_CMD_LINE_SET_REQ,
+
+	/* command-line options */
+	LDMSD_LISTEN_REQ,
 
 	/* failover requests by user */
 	LDMSD_FAILOVER_CONFIG_REQ = 0x700, /* "failover_config" user command */
@@ -141,6 +152,10 @@ enum ldmsd_request {
 	LDMSD_SETGROUP_DEL_REQ, /* Delete an entire set group */
 	LDMSD_SETGROUP_INS_REQ, /* Insert a set into a group */
 	LDMSD_SETGROUP_RM_REQ, /* Remove a set from a group */
+
+	/* Publish/Subscribe Requests */
+	LDMSD_STREAM_PUBLISH_REQ = 0x900, /* Publish data to a stream */
+	LDMSD_STREAM_SUBSCRIBE_REQ,	  /* Subscribe to a stream */
 
 	LDMSD_NOTSUPPORT_REQ,
 };
@@ -181,6 +196,13 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_AUTO_INTERVAL,
 	LDMSD_ATTR_UID,
 	LDMSD_ATTR_GID,
+	LDMSD_ATTR_STREAM,
+	LDMSD_ATTR_COMP_ID,
+	LDMSD_ATTR_QUERY,
+	LDMSD_ATTR_AUTH,
+	LDMSD_ATTR_ENV,
+	LDMSD_ATTR_CMDLINE,
+	LDMSD_ATTR_CFGCMD,
 	LDMSD_ATTR_LAST,
 };
 
@@ -272,10 +294,12 @@ typedef struct ldmsd_cfg_xprt_s {
 #define LINE_BUF_LEN 1024
 #define REQ_BUF_LEN 4096
 
+#define LDMSD_REQ_DEFER_FLAG 0x10
 typedef struct ldmsd_req_ctxt {
 	struct req_ctxt_key key;
 	struct rbn rbn;
 	int ref_count;
+	int flags;
 
 	ldmsd_cfg_xprt_t xprt;	/* network transport */
 
@@ -477,7 +501,9 @@ void ldmsd_ntoh_req_msg(ldmsd_req_hdr_t msg);
  * \param rec_len The record length
  */
 void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec_len);
-int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request);
+typedef int (*ldmsd_req_filter_fn)(ldmsd_req_ctxt_t reqc, void *ctxt);
+int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
+						ldmsd_req_filter_fn filter_fn);
 int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t response);
 int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc, const char *data, size_t data_len, int msg_flags);
 void ldmsd_send_error_reply(ldmsd_cfg_xprt_t xprt, uint32_t msg_no,

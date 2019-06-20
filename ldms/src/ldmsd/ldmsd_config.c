@@ -78,6 +78,7 @@
 #include <mmalloc/mmalloc.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_plugin.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
 #include "config.h"
@@ -109,7 +110,7 @@ void ldmsd_cfg_ldms_xprt_cleanup(ldmsd_cfg_xprt_t xprt)
 	/* nothing to do */
 }
 
-struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name)
+struct ldmsd_plugin_cfg *ldmsd_get_plugin(const char *name)
 {
 	struct ldmsd_plugin_cfg *p;
 	LIST_FOREACH(p, &plugin_list, entry) {
@@ -119,7 +120,7 @@ struct ldmsd_plugin_cfg *ldmsd_get_plugin(char *name)
 	return NULL;
 }
 
-struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
+struct ldmsd_plugin_cfg *new_plugin(const char *plugin_name,
 				char *errstr, size_t errlen)
 {
 	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
@@ -184,7 +185,6 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 	if (!pi)
 		goto enomem;
 	pthread_mutex_init(&pi->lock, NULL);
-	pi->thread_id = -1;
 	pi->handle = d;
 	pi->name = strdup(plugin_name);
 	if (!pi->name)
@@ -193,9 +193,6 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 	if (!pi->libpath)
 		goto enomem;
 	pi->plugin = lpi;
-	pi->sample_interval_us = 1000000;
-	pi->sample_offset_us = 0;
-	pi->synchronous = 0;
 	LIST_INSERT_HEAD(&plugin_list, pi, entry);
 	return pi;
 enomem:
@@ -269,66 +266,37 @@ int ldmsd_compile_regex(regex_t *regex, const char *regex_str,
 /*
  * Load a plugin
  */
-int ldmsd_load_plugin(char *plugin_name, char *errstr, size_t errlen)
+int ldmsd_load_plugin(const char *inst_name, const char *plugin_name,
+		      char *errstr, size_t errlen)
 {
-	struct ldmsd_plugin_cfg *pi = ldmsd_get_plugin(plugin_name);
-	if (pi) {
-		snprintf(errstr, errlen, "Plugin '%s' already loaded",
-							plugin_name);
-		return EEXIST;
+	ldmsd_plugin_inst_t inst = ldmsd_plugin_inst_load(inst_name,
+							  plugin_name,
+							  errstr,
+							  errlen);
+	if (!inst) {
+		if (errno == EEXIST) {
+			snprintf(errstr, errlen, "Plugin '%s' already loaded",
+				 inst_name);
+		} else {
+			snprintf(errstr, errlen, "Plugin '%s' load error: %d",
+				 inst_name, errno);
+		}
+		return errno;
 	}
-	pi = new_plugin(plugin_name, errstr, errlen);
-	if (!pi)
-		return -1;
 	return 0;
 }
 
 /*
  * Destroy and unload the plugin
  */
-int ldmsd_term_plugin(char *plugin_name)
+int ldmsd_term_plugin(const char *inst_name)
 {
-	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
-
-	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi)
+	ldmsd_plugin_inst_t inst = ldmsd_plugin_inst_find(inst_name);
+	if (!inst)
 		return ENOENT;
-
-	pthread_mutex_lock(&pi->lock);
-	if (pi->ref_count) {
-		rc = EINVAL;
-		pthread_mutex_unlock(&pi->lock);
-		goto out;
-	}
-	pi->plugin->term(pi->plugin);
-	pthread_mutex_unlock(&pi->lock);
-	destroy_plugin(pi);
-out:
-	return rc;
-}
-
-/*
- * Configure a plugin
- */
-int ldmsd_config_plugin(char *plugin_name,
-			struct attr_value_list *_av_list,
-			struct attr_value_list *_kw_list)
-{
-	int rc = 0;
-	struct ldmsd_plugin_cfg *pi;
-
-	pi = ldmsd_get_plugin(plugin_name);
-	if (!pi)
-		return ENOENT;
-
-	pthread_mutex_lock(&pi->lock);
-	rc = pi->plugin->config(pi->plugin, _kw_list, _av_list);
-	pthread_mutex_unlock(&pi->lock);
-	if (rc) {
-		ldmsd_mm_status(LDMSD_LINFO, "config_plugin");
-	}
-	return rc;
+	ldmsd_plugin_inst_del(inst);
+	ldmsd_plugin_inst_put(inst); /* put ref from find */
+	return 0;
 }
 
 int _ldmsd_set_udata(ldms_set_t set, char *metric_name, uint64_t udata,
@@ -460,11 +428,32 @@ void ldmsd_exit_daemon()
 	ldmsd_log(LDMSD_LINFO, "User requested exit.\n");
 }
 
+static uint32_t __config_file_msgno_get(uint16_t file_no, uint16_t lineno)
+{
+	return (file_no << 16) | lineno;
+}
+
+static uint16_t __config_file_msgno2lineno(uint32_t msgno)
+{
+	return msgno & 0xFFFF;
+}
+
+typedef struct ldmsd_cfg_file_xprt {
+	struct ldmsd_cfg_xprt_s base;
+	const char *filename; /* Config file name */
+} *ldmsd_cfg_file_xprt_t;
+
 static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 {
+	uint16_t lineno;
 	ldmsd_req_attr_t attr;
+	ldmsd_cfg_file_xprt_t fxprt;
 	ldmsd_req_hdr_t req_reply = (ldmsd_req_hdr_t)data;
 	ldmsd_ntoh_req_msg(req_reply);
+
+	fxprt = (ldmsd_cfg_file_xprt_t)xprt;
+
+	lineno = __config_file_msgno2lineno(req_reply->msg_no);
 
 	attr = ldmsd_first_attr(req_reply);
 
@@ -475,8 +464,9 @@ static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 
 	if (req_reply->rsp_err && (attr->attr_id == LDMSD_ATTR_STRING)) {
 		/* Print the error message to the log */
-		ldmsd_log(LDMSD_LERROR, "msg_no %d: error %d: %s\n",
-				req_reply->msg_no, req_reply->rsp_err, attr->attr_value);
+		ldmsd_log(LDMSD_LERROR, "At line %d (%s): error %d: %s\n",
+				lineno, fxprt->filename,
+				req_reply->rsp_err, attr->attr_value);
 	}
 	xprt->rsp_err = req_reply->rsp_err;
 	return 0;
@@ -507,17 +497,41 @@ char *find_comment(const char *line)
 }
 
 /*
- * \param req_filter is a function that returns zero if we want to process the
- *                   request, and returns non-zero otherwise.
+ * rc = 0, filter applied OK
+ * rc > 0, rc == -errno, error
+ * rc = -1, filter not applied (but not an error)
  */
-static
-int __process_config_file(const char *path, int *lno, int trust,
-		int (*req_filter)(ldmsd_cfg_xprt_t, ldmsd_req_hdr_t, void *),
-		void *ctxt)
+int __req_filter(ldmsd_req_ctxt_t reqc, void *ctxt)
 {
-	static uint32_t msg_no = 0;
 	int rc = 0;
-	int lineno = 0;
+
+	switch (reqc->req_id) {
+	case LDMSD_FAILOVER_START_REQ:
+		ldmsd_use_failover = 1;
+		break;
+	case LDMSD_PLUGN_CONFIG_REQ:
+	case LDMSD_PRDCR_START_REGEX_REQ:
+	case LDMSD_PRDCR_START_REQ:
+	case LDMSD_UPDTR_START_REQ:
+	case LDMSD_STRGP_START_REQ:
+	case LDMSD_SMPLR_START_REQ:
+	case LDMSD_SETGROUP_ADD_REQ:
+		reqc->flags |= LDMSD_REQ_DEFER_FLAG;
+		break;
+	default:
+		break;
+	}
+	return rc;
+}
+
+int process_config_file(const char *path, int *lno, int trust)
+{
+	static uint16_t file_no = 0; /* Config file ID */
+	static uint32_t cur_req_id = 0; /* For verifying command order */
+	file_no++;
+	uint32_t msg_no; /* file_no:line_no */
+	uint16_t lineno = 0; /* The max number of lines is 65536. */
+	int rc = 0;
 	int i;
 	FILE *fin = NULL;
 	char *buff = NULL;
@@ -528,9 +542,15 @@ int __process_config_file(const char *path, int *lno, int trust,
 	ssize_t off = 0;
 	ssize_t cnt;
 	size_t buf_len = 0;
-	struct ldmsd_cfg_xprt_s xprt;
+	struct ldmsd_cfg_file_xprt fxprt;
 	ldmsd_req_hdr_t request;
 	struct ldmsd_req_array *req_array = NULL;
+	ldmsd_req_filter_fn req_filter_fn;
+
+	if (ldmsd_is_initialized())
+		req_filter_fn = NULL;
+	else
+		req_filter_fn = __req_filter;
 
 	line = malloc(LDMSD_CFG_FILE_XPRT_MAX_REC);
 	if (!line) {
@@ -549,11 +569,12 @@ int __process_config_file(const char *path, int *lno, int trust,
 		goto cleanup;
 	}
 
-	xprt.xprt = NULL;
-	xprt.send_fn = log_response_fn;
-	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
-	xprt.trust = trust;
-	xprt.rsp_err = 0;
+	fxprt.filename = path;
+	fxprt.base.xprt = NULL;
+	fxprt.base.send_fn = log_response_fn;
+	fxprt.base.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
+	fxprt.base.trust = trust;
+	fxprt.base.rsp_err = 0;
 
 next_line:
 	errno = 0;
@@ -617,37 +638,60 @@ next_line:
 parse:
 	if (!off)
 		goto next_line;
-
-	req_array = ldmsd_parse_config_str(line, msg_no, xprt.max_msg, ldmsd_log);
+	msg_no = __config_file_msgno_get(file_no, lineno);
+	req_array = ldmsd_parse_config_str(line, msg_no, fxprt.base.max_msg, ldmsd_log);
 	if (!req_array) {
 		rc = errno;
-		ldmsd_log(LDMSD_LERROR, "Process config file error at line %d "
+		ldmsd_log(LDMSD_LCRITICAL, "Failed to parse config file at line %d "
 				"(%s). %s\n", lineno, path, strerror(rc));
 		goto cleanup;
 	}
 	for (i = 0; i < req_array->num_reqs; i++) {
 		request = req_array->reqs[i];
-		if (req_filter) {
-			rc = req_filter(&xprt, request, ctxt);
-			/* rc = 0, filter OK */
-			if (rc == 0)
-				goto next_req;
-			/* rc == errno */
-			if (rc > 0) {
-				ldmsd_log(LDMSD_LERROR,
-					  "Configuration error at "
-					  "line %d (%s)\n", lineno, path);
+		if (!ldmsd_is_initialized()) {
+			/*
+			 * Check the command type orders in the configuration files.
+			 * The order is as follows.
+			 * 1. Environment variables (LDMSD_ENV_REQ)
+			 * 2. Command-line options (LDMSD_CMD_LINE_SET_REQ)
+			 * 3. Configuration commands (Other requests, including 'listen')
+			 */
+			uint32_t req_id = ntohl(request->req_id);
+			if ((req_id == LDMSD_ENV_REQ) && cur_req_id &&
+					(cur_req_id != LDMSD_ENV_REQ)) {
+				ldmsd_log(LDMSD_LCRITICAL, "At line %d (%s): "
+						"The environment variable "
+						"is given after "
+						"a command-line option.\n",
+						lineno, path);
+				rc = EINVAL;
+				goto cleanup;
+			} else if ((req_id == LDMSD_CMD_LINE_SET_REQ) && cur_req_id &&
+					(cur_req_id != LDMSD_ENV_REQ) &&
+					(cur_req_id != LDMSD_CMD_LINE_SET_REQ) &&
+					(cur_req_id != LDMSD_LISTEN_REQ)) {
+				ldmsd_log(LDMSD_LCRITICAL, "At line %d (%s): "
+						"The command-line option "
+						"is given after a configuration "
+						"command.\n",
+						lineno, path);
+				rc = EINVAL;
 				goto cleanup;
 			}
-			/* rc < 0, filter not applied */
+			cur_req_id = req_id;
 		}
-		rc = ldmsd_process_config_request(&xprt, request);
-		if (rc || xprt.rsp_err) {
-			if (!rc)
-				rc = xprt.rsp_err;
-			ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
-					lineno, path);
-			goto cleanup;
+		rc = ldmsd_process_config_request(&fxprt.base, request, req_filter_fn);
+		if (rc || fxprt.base.rsp_err) {
+			if (!ldmsd_is_check_syntax()) {
+				if (!rc)
+					rc = fxprt.base.rsp_err;
+				goto cleanup;
+			} else {
+				/*
+				 * If LDMSD starts for syntax checking,
+				 * it will go through all configuration files.
+				 */
+			}
 		}
 	next_req:
 		free(request);
@@ -741,44 +785,6 @@ int __req_deferred_start(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
 }
 
 /*
- * rc = 0, filter applied OK
- * rc > 0, rc == -errno, error
- * rc = -1, filter not applied (but not an error)
- */
-int __req_filter_failover(ldmsd_cfg_xprt_t x, ldmsd_req_hdr_t req, void *ctxt)
-{
-	int *use_failover = ctxt;
-	int rc;
-
-	/* req is in network byte order */
-	ldmsd_ntoh_req_msg(req);
-
-	switch (req->req_id) {
-	case LDMSD_FAILOVER_START_REQ:
-		*use_failover = 1;
-		rc = 0;
-		break;
-	case LDMSD_PRDCR_START_REGEX_REQ:
-		rc = __req_deferred_start_regex(req, LDMSD_CFGOBJ_PRDCR);
-		break;
-	case LDMSD_PRDCR_START_REQ:
-		rc = __req_deferred_start(req, LDMSD_CFGOBJ_PRDCR);
-		break;
-	case LDMSD_UPDTR_START_REQ:
-		rc = __req_deferred_start(req, LDMSD_CFGOBJ_UPDTR);
-		break;
-	case LDMSD_STRGP_START_REQ:
-		rc = __req_deferred_start(req, LDMSD_CFGOBJ_STRGP);
-		break;
-	default:
-		rc = -1;
-	}
-	/* convert req back to network byte order */
-	ldmsd_hton_req_msg(req);
-	return rc;
-}
-
-/*
  * Start all cfgobjs for aggregators that `filter(obj) == 0`.
  */
 int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t))
@@ -788,6 +794,21 @@ int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t))
 	struct ldmsd_sec_ctxt sctxt;
 
 	ldmsd_sec_ctxt_get(&sctxt);
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_SMPLR);
+	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_SMPLR) {
+		if (filter && filter(obj))
+			continue;
+		rc = __ldmsd_smplr_start((ldmsd_smplr_t)obj, 0);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR,
+				"smplr_start failed, name %s, rc: %d\n",
+				obj->name, rc);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_SMPLR);
+			goto out;
+		}
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SMPLR);
 
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_PRDCR) {
@@ -834,6 +855,21 @@ int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t))
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
 
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_SETGRP);
+	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_SETGRP) {
+		if (filter && filter(obj))
+			continue;
+		rc = __ldmsd_setgrp_start((ldmsd_setgrp_t)obj);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR,
+				"Failed to create LDMS set group '%s', rc: %d\n",
+				obj->name, rc);
+			ldmsd_cfg_unlock(LDMSD_CFGOBJ_SETGRP);
+			goto out;
+		}
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_SETGRP);
+
 out:
 	return rc;
 }
@@ -856,14 +892,6 @@ int ldmsd_ourcfg_start_proc()
 		exit(100);
 	}
 	return 0;
-}
-
-int process_config_file(const char *path, int *lno, int trust)
-{
-	int rc;
-	rc = __process_config_file(path, lno, trust,
-				   __req_filter_failover, &ldmsd_use_failover);
-	return rc;
 }
 
 static inline void __log_sent_req(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t req)
@@ -920,7 +948,7 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 
 	switch (ntohl(request->type)) {
 	case LDMSD_REQ_TYPE_CONFIG_CMD:
-		(void)ldmsd_process_config_request(&xprt, request);
+		(void)ldmsd_process_config_request(&xprt, request, NULL);
 		break;
 	case LDMSD_REQ_TYPE_CONFIG_RESP:
 		(void)ldmsd_process_config_response(&xprt, request);
@@ -949,55 +977,39 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	}
 }
 
-/* from ldmsd */
-extern const char *auth_name;
-extern struct attr_value_list *auth_opt;
-
-ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
+int listen_on_ldms_xprt(ldmsd_listen_t listen)
 {
 	unsigned short port_no;
-	int ptmp;
-	ldms_t l = NULL;
 	int ret;
 	struct sockaddr_in sin;
 
-	if (!port_str || port_str[0] == '\0') {
-		port_no = LDMS_DEFAULT_PORT;
-	} else {
-		ptmp = atoi(port_str);
-		if (ptmp < 1 || ptmp > USHRT_MAX) {
-			ldmsd_log(LDMSD_LERROR, "'%s' transport with invalid port"
-				"'%s'\n",xprt_str,port_str);
-			cleanup(6, "error specifying transport.");
-		}
-		port_no = (unsigned)ptmp;
-	}
-	l = ldms_xprt_new_with_auth(xprt_str, ldmsd_linfo, auth_name, auth_opt);
-	if (!l) {
+	listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
+			ldmsd_auth_name_get(listen), ldmsd_auth_attr_get(listen));
+	if (!listen->x) {
 		ldmsd_log(LDMSD_LERROR,
 			  "'%s' transport creation with auth '%s' "
 			  "failed, error: %s(%d). Please check transpot "
 			  "configuration, authentication configuration, "
 			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
-			  xprt_str,
-			  auth_name,
+			  listen->xprt,
+			  ldmsd_auth_name_get(listen),
 			  ovis_errno_abbvr(errno),
 			  errno);
-		cleanup(6, "error creating transport");
+		return 6; /* legacy error code */
 	}
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = 0;
-	sin.sin_port = htons(port_no);
-	ret = ldms_xprt_listen(l, (struct sockaddr *)&sin, sizeof(sin),
+	sin.sin_port = htons(listen->port_no);
+	ret = ldms_xprt_listen(listen->x, (struct sockaddr *)&sin, sizeof(sin),
 			       __listen_connect_cb, NULL);
 	if (ret) {
 		ldmsd_log(LDMSD_LERROR, "Error %d listening on the '%s' "
-				"transport.\n", ret, xprt_str);
-		cleanup(7, "error listening on transport");
+				"transport.\n", ret, listen->xprt);
+		return 7; /* legacy error code */
 	}
-	ldmsd_log(LDMSD_LINFO, "Listening on transport %s:%s\n",
-			xprt_str, port_str);
-	return l;
+	ldmsd_log(LDMSD_LINFO, "Listening on transport %s:%hu\n",
+			listen->xprt, listen->port_no);
+	return 0;
 }
 
 void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
@@ -1048,6 +1060,9 @@ int ldmsd_plugins_usage(const char *plugname)
 	char *libpath;
 	char *saveptr = NULL;
 
+	if (0 == strcasecmp(plugname, "all"))
+		plugname = NULL;
+
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
 	if (!path)
 		path = PLUGINDIR;
@@ -1073,6 +1088,7 @@ static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 {
 	assert( path || "null dir name in ldmsd_plugins_usage" == NULL);
 	struct stat buf;
+	const char *type_name = NULL;
 	glob_t pglob;
 
 	if (stat(path, &buf) < 0) {
@@ -1083,16 +1099,15 @@ static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 	}
 
 	int rc = 0;
-	enum ldmsd_plugin_type tmatch = LDMSD_PLUGIN_OTHER;
 	bool matchtype = false;
 	if (plugname && strcmp(plugname,"store") == 0) {
 		matchtype = true;
-		tmatch = LDMSD_PLUGIN_STORE;
+		type_name = plugname;
 		plugname = NULL;
 	}
 	if (plugname && strcmp(plugname,"sampler") == 0) {
 		matchtype = true;
-		tmatch = LDMSD_PLUGIN_SAMPLER;
+		type_name = plugname;
 		plugname = NULL;
 	}
 
@@ -1142,6 +1157,7 @@ static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 		printf("LDMSD plugins in %s : \n", path);
 	}
 	for ( ; i  < pglob.gl_pathc; i++) {
+		ldmsd_plugin_inst_t inst = NULL;
 		char * library_name = pglob.gl_pathv[i];
 		char *tmp = strdup(library_name);
 		if (!tmp) {
@@ -1165,51 +1181,26 @@ static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 			char *suff = rindex(b, '.');
 			assert(suff != NULL || NULL == "plugin glob match means . will be found always");
 			*suff = '\0';
-			char err_str[LEN_ERRSTR];
-			if (ldmsd_load_plugin(b, err_str, LEN_ERRSTR)) {
-				fprintf(stderr, "Unable to load plugin %s: %s\n",
-					b, err_str);
+			inst = ldmsd_plugin_inst_load(b, b, NULL, 0);
+			if (!inst) {
+				/* EINVAL suggests non-inst load */
+				if (errno != EINVAL)
+					fprintf(stderr, "Unable to load plugin %s\n", b);
 				goto next;
 			}
-			struct ldmsd_plugin_cfg *pi = ldmsd_get_plugin(b);
-			if (!pi) {
-				fprintf(stderr, "Unable to get plugin %s\n",
-					b);
+
+			if (matchtype && strcmp(type_name, inst->type_name))
 				goto next;
-			}
-			const char *ptype;
-			switch (pi->plugin->type) {
-			case LDMSD_PLUGIN_OTHER:
-				ptype = "OTHER";
-				break;
-			case LDMSD_PLUGIN_STORE:
-				ptype = "STORE";
-				break;
-			case LDMSD_PLUGIN_SAMPLER:
-				ptype = "SAMPLER";
-				break;
-			default:
-				ptype = "BAD plugin";
-				break;
-			}
-			if (matchtype && tmatch != pi->plugin->type)
-				goto next;
-			printf("======= %s %s:\n", ptype, b);
-			const char *u = pi->plugin->usage(pi->plugin);
+
+			printf("======= %s %s:\n", inst->type_name, b);
+			const char *u = ldmsd_plugin_inst_help(inst);
 			printf("%s\n", u);
 			printf("=========================\n");
-			rc = ldmsd_term_plugin(b);
-			if (rc == ENOENT) {
-				fprintf(stderr, "plugin '%s' not found\n", b);
-			} else if (rc == EINVAL) {
-				fprintf(stderr, "The specified plugin '%s' has "
-					"active users and cannot be "
-					"terminated.\n", b);
-			} else if (rc) {
-				fprintf(stderr, "Failed to terminate "
-						"the plugin '%s'\n", b);
-			}
  next:
+			if (inst) {
+				ldmsd_plugin_inst_del(inst);
+				inst = NULL;
+			}
 			free(tmp);
 		}
 

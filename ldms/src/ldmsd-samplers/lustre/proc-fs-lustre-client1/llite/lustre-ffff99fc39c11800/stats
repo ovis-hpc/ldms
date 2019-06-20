@@ -1,0 +1,12 @@
+snapshot_time             1555444926.642018626 secs.nsecs
+read_bytes                4 samples [bytes] 5 13 28
+write_bytes               1 samples [bytes] 13 13 13
+open                      5 samples [regs]
+close                     5 samples [regs]
+readdir                   40 samples [regs]
+getattr                   68 samples [regs]
+statfs                    1 samples [regs]
+alloc_inode               3 samples [regs]
+getxattr                  8 samples [regs]
+getxattr_hits             1 samples [regs]
+inode_permission          328 samples [regs]

@@ -217,8 +217,8 @@ void __auth_ovis_free(ldms_auth_t auth)
 static
 int __auth_ovis_xprt_bind(ldms_auth_t auth, ldms_t xprt)
 {
-	xprt->luid = 0;
-	xprt->lgid = 0;
+	xprt->luid = geteuid();
+	xprt->lgid = getegid();
 	return 0;
 }
 
@@ -302,8 +302,12 @@ int __auth_ovis_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 		}
 		rc = (strcmp(msg->rpl.hash, a->hash))?(EBADE):(0);
 		if (rc == 0) {
-			xprt->rgid = 0;
-			xprt->ruid = 0;
+			/*
+			 * The client knows the secret word, so
+			 * I will trust you as if you were me.
+			 */
+			xprt->rgid = xprt->lgid;
+			xprt->ruid = xprt->luid;
 		}
 		ldms_xprt_auth_end(xprt, rc);
 		/* reset rc as this is not a real transport error */

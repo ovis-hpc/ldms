@@ -169,10 +169,10 @@ static struct test_schema *__schema_new(const char *name) {
 		sprintf(metric_name, "%s%s", METRIC_NAME_PREFIX, minfo->type_str);
 		if (ldms_type_is_array(minfo->type)) {
 			rc = ldms_schema_metric_array_add(tschema->schema, metric_name,
-							minfo->type, minfo->num_ele);
+							minfo->type, "", minfo->num_ele);
 		} else {
 			rc = ldms_schema_metric_add(tschema->schema,
-					metric_name, minfo->type);
+					metric_name, minfo->type, "");
 		}
 		if (rc < 0) {
 			printf("ldms_schema_metric_add error %d: schema %s, metric ID %d, "

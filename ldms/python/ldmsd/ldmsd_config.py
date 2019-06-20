@@ -69,7 +69,8 @@ import socket
 #:of the load command.
 #:LDMSD_CTRL_CMD_MAP['load']['opt_attr'] is the list of the optional attributes
 #:of the load command.
-LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
+LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': ['name'], 'opt_attr': []},
+                      'list': {'req_attr': []},
                       'load': {'req_attr': ['name']},
                       'term': {'req_attr': ['name']},
                       'config': {'req_attr': ['name', 'producer', 'instance']},
@@ -86,9 +87,13 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'include': {'req_attr': ['path'] },
                       'env': {'req_attr': []},
                       'logrotate': {'req_attr': [], 'opt_attr': []},
-                      ###############################
-                      # LDMSD command version 3
-                      ###############################
+                      ##### Sampler Policy #####
+                      'smplr_add': {'req_attr': ['name', 'instance']},
+                      'smplr_del': {'req_attr': ['name']},
+                      'smplr_start': {'req_attr': ['name', 'interval'],
+                                      'opt_attr': ['offset'] },
+                      'smplr_stop': {'req_attr': ['name']},
+                      'smplr_status': {'opt_attr': ['name']},
                       ##### Producer Policy #####
                       'prdcr_add': {'req_attr': ['name', 'type', 'xprt', 'host',
                                              'port', 'interval']},
@@ -102,6 +107,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_status': {'opt_attr': [], 'req_attr': ['name']},
                       'prdcr_set_status': {'opt_attr': ['producer', 'instance', 'schema']},
                       'prdcr_hint_tree': {'req_attr':['name'], 'opt_attr': []},
+                      'prdcr_subscribe': {'req_attr':['regex', 'stream'], 'opt_attr': []},
                       ##### Updater Policy #####
                       'updtr_add': {'req_attr': ['name'],
                                     'opt_attr': ['offset', 'push', 'interval', 'auto_interval']},
@@ -127,13 +133,19 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'strgp_stop': {'req_attr': ['name']},
                       'strgp_status': {'req_attr': [], 'opt_attr': ['name']},
                       ##### Plugin #####
-                      'plugn_sets': {'req_attr': [], 'opt_attr': []},
+                      'plugn_sets': {'req_attr': [], 'opt_attr': ['name']},
+                      'plugn_status': {'req_attr': [], 'opt_attr': ['name']},
+                      'plugn_query': {'req_attr': ['query'], 'opt_attr': ['name']},
+                      ##### Streams ###
+                      'publish': {'req_attr': ['name'], 'opt_attr': []},
+                      'subscribe': {'req_attr': ['name'], 'opt_attr': []},
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': []},
                       ##### Misc. #####
                       'greeting': {'req_attr': [], 'opt_attr': ['name', 'offset', 'level']},
                       'example': {'req_attr': [], 'opt_attr': []},
                       'set_info': {'req_attr': ['instance'], 'opt_attr': []},
+                      'export': {'req_attr': ['path'], 'opt_attr': ['env', 'cmdline', 'cfgcmd']},
                       ##### Failover. #####
                       'failover_config': {
                                 'req_attr': [
@@ -158,7 +170,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                                     'opt_attr': [
                                         'producer',
                                         'interval',
-                                        'offset'
+                                        'offset',
+                                        'perm',
                                     ],
                             },
                       'setgroup_mod': {

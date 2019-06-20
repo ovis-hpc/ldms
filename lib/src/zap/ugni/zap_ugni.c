@@ -46,7 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
+#define _GNU_SOURCE
 #include <sys/errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1984,6 +1984,7 @@ static int ugni_node_state_thread_init()
 	rc = pthread_create(&node_state_thread, NULL, node_state_proc, NULL);
 	if (rc)
 		return rc;
+	pthread_setname_np(node_state_thread, "zap:ugni:state");
 	return 0;
 }
 
@@ -2118,6 +2119,7 @@ static int z_ugni_init()
 		LOG("ERROR: pthread_create() failed: %d\n", rc);
 		goto out;
 	}
+	pthread_setname_np(cq_thread, "zap:ugni:cq");
 	zap_ugni_dom_initialized = 1;
 out:
 	pthread_mutex_unlock(&ugni_lock);
@@ -2209,6 +2211,7 @@ int init_once()
 	rc = pthread_create(&io_thread, NULL, io_thread_proc, 0);
 	if (rc)
 		goto err;
+	pthread_setname_np(io_thread, "zap:rdma:io");
 
 	init_complete = 1;
 
@@ -2669,6 +2672,46 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	}
 	pthread_mutex_unlock(&ugni_lock);
 	return ZAP_ERR_OK;
+}
+
+static char **z_ugni_get_env()
+{
+	char *ugni_envs[] = {
+		"ZAP_UGNI_PTAG",
+		"ZAP_UGNI_COOKIE",
+		"ZAP_UGNI_CQ_DEPTH",
+		"ZAP_UGNI_UNBIND_TIMEOUT",
+		"ZAP_UGNI_DISCONNECT_EV_TIMEOUT",
+		"ZAP_UGNI_STALLED_TIMEOUT",
+		"ZAP_UGNI_MAX_NUM_EP",
+		"ZAP_UGNI_STATE_INTERVAL",
+		"ZAP_UGNI_STATE_OFFSET",
+		"ZAP_UGNI_CONN_EST_BEFORE_ACK_N_BINDING_TEST",
+		"ZAP_UGNI_CONN_EST_BEFORE_CONNECT_MSG_TEST",
+		"ZAP_UGNI_CONN_EST_AFTER_CONNECT_MSG_TEST",
+		NULL
+	};
+
+	int i, j;
+	char **envs = calloc(13, sizeof(char *));
+	if (!envs) {
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	for (i = 0; ugni_envs[i]; i++) {
+		envs[i] = strdup(ugni_envs[i]);
+		if (!envs[i])
+			goto err;
+	}
+	return envs;
+err:
+	for (j = 0; j < j; j++) {
+		free(envs[j]);
+	}
+	free(envs);
+	errno = ENOMEM;
+	return NULL;
 }
 
 zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,

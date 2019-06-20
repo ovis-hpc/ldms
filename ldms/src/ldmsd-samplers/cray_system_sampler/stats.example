@@ -1,0 +1,113 @@
+RQ_LOOKUP: 1 0 0 0 0.000 0.000
+RQ_OPEN: 1 0 0 0 0.000 0.000
+RQ_CLOSE: 0 0 0 0 0.000 0.000
+RQ_READDIR: 0 0 0 0 0.000 0.000
+RQ_CREATE: 0 0 0 0 0.000 0.000
+RQ_UNLINK: 0 0 0 0 0.000 0.000
+RQ_IOCTL: 0 0 0 0 0.000 0.000
+RQ_FLUSH: 0 0 0 0 0.000 0.000
+RQ_FSYNC: 0 0 0 0 0.000 0.000
+RQ_FASYNC: 0 0 0 0 0.000 0.000
+RQ_LOCK: 0 0 0 0 0.000 0.000
+RQ_LINK: 0 0 0 0 0.000 0.000
+RQ_SYMLINK: 0 0 0 0 0.000 0.000
+RQ_MKDIR: 0 0 0 0 0.000 0.000
+RQ_RMDIR: 0 0 0 0 0.000 0.000
+RQ_MKNOD: 0 0 0 0 0.000 0.000
+RQ_RENAME: 0 0 0 0 0.000 0.000
+RQ_READLINK: 0 0 0 0 0.000 0.000
+RQ_TRUNCATE: 0 0 0 0 0.000 0.000
+RQ_SETATTR: 0 0 0 0 0.000 0.000
+RQ_GETATTR: 4 0 0 0 0.000 0.000
+RQ_PARALLEL_READ: 0 0 0 0 0.000 0.000
+RQ_PARALLEL_WRITE: 0 0 0 0 0.000 0.000
+RQ_STATFS: 0 0 0 0 0.000 0.000
+RQ_READPAGE_ASYNC: 0 0 0 0 0.000 0.000
+RQ_READPAGE_DATA: 0 0 0 0 0.000 0.000
+RQ_GETEOI: 0 0 0 0 0.000 0.000
+RQ_SETXATTR: 0 0 0 0 0.000 0.000
+RQ_GETXATTR: 0 0 0 0 0.000 0.000
+RQ_LISTXATTR: 0 0 0 0 0.000 0.000
+RQ_REMOVEXATTR: 0 0 0 0 0.000 0.000
+RQ_VERIFYFS: 0 0 0 0 0.000 0.000
+RQ_RO_CACHE_DISABLE: 0 0 0 0 0.000 0.000
+RQ_PERMISSION: 1 0 0 0 0.000 0.000
+RQ_SYNC_UPDATE: 0 0 0 0 0.000 0.000
+RQ_READPAGES_RQ: 11948 0 0 0 0.000 0.000
+RQ_READPAGES_RP: 0 0 0 0 0.000 0.000
+RQ_WRITEPAGES_RQ: 0 0 0 0 0.000 0.000
+RQ_WRITEPAGES_RP: 0 0 0 0 0.000 0.000
+llseek: 0 0 0.000 0.000
+read: 0 0 0.000 0.000
+aio_read: 683958 0 0.000 0.236
+write: 0 0 0.000 0.000
+aio_write: 0 0 0.000 0.000
+readdir: 0 0 0.000 0.000
+unlocked_ioctl: 0 0 0.000 0.000
+mmap: 0 0 0.000 0.000
+open: 1 0 0.004 0.004
+flush: 1 0 0.000 0.000
+release: 0 0 0.000 0.000
+fsync: 0 0 0.000 0.000
+fasync: 0 0 0.000 0.000
+lock: 0 0 0.000 0.000
+flock: 0 0 0.000 0.000
+writepage: 0 0 0.000 0.000
+writepages: 0 0 0.000 0.000
+readpage: 0 0 0.000 0.000
+readpages: 11115 0 0.000 0.004
+write_begin: 0 0 0.000 0.000
+write_end: 0 0 0.000 0.000
+direct_io: 0 0 0.000 0.000
+statfs: 0 0 0.000 0.000
+put_super: 0 0 0.000 0.000
+write_super: 0 0 0.000 0.000
+evict_inode: 0 0 0.000 0.000
+show_options: 6 0 0.000 0.000
+d_create: 0 0 0.000 0.000
+d_lookup: 1 0 0.000 0.000
+d_link: 0 0 0.000 0.000
+d_unlink: 0 0 0.000 0.000
+d_symlink: 0 0 0.000 0.000
+d_mkdir: 0 0 0.000 0.000
+d_rmdir: 0 0 0.000 0.000
+d_mknod: 0 0 0.000 0.000
+d_rename: 0 0 0.000 0.000
+d_truncate: 0 0 0.000 0.000
+d_permission: 6 6 0.000 0.000
+d_setattr: 0 0 0.000 0.000
+d_getattr: 4 0 0.000 0.000
+d_setxattr: 0 0 0.000 0.000
+d_getxattr: 0 0 0.000 0.000
+d_listxattr: 0 0 0.000 0.000
+d_removexattr: 0 0 0.000 0.000
+f_create: 0 0 0.000 0.000
+f_link: 0 0 0.000 0.000
+f_unlink: 0 0 0.000 0.000
+f_symlink: 0 0 0.000 0.000
+f_mkdir: 0 0 0.000 0.000
+f_rmdir: 0 0 0.000 0.000
+f_mknod: 0 0 0.000 0.000
+f_rename: 0 0 0.000 0.000
+f_truncate: 0 0 0.000 0.000
+f_permission: 1 0 0.000 0.000
+f_setattr: 0 0 0.000 0.000
+f_getattr: 8 0 0.000 0.000
+f_setxattr: 0 0 0.000 0.000
+f_getxattr: 0 0 0.000 0.000
+f_listxattr: 0 0 0.000 0.000
+f_removexattr: 0 0 0.000 0.000
+l_readlink: 0 0 0.000 0.000
+l_follow_link: 0 0 0.000 0.000
+l_put_link: 0 0 0.000 0.000
+l_setattr: 0 0 0.000 0.000
+l_getattr: 0 0 0.000 0.000
+d_revalidate: 5 0 0.000 0.000
+read_min_max: 0 0
+write_min_max: 0 0
+IPC requests: 0 0
+IPC async requests: 0 0
+IPC replies: 0 0
+Open files: 1
+Inodes created: 1
+Inodes removed: 0

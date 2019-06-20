@@ -77,6 +77,7 @@ struct z_rdma_message_hdr {
 
 struct z_rdma_share_msg {
 	struct z_rdma_message_hdr hdr;
+	uint32_t share;
 	uint32_t acc;
 	uint32_t len;
 	uint32_t rkey;

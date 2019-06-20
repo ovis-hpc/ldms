@@ -344,7 +344,7 @@ class LDMSD(object):
 
     def __init__(self, port, xprt="sock", logfile=None, auth="none",
                  auth_opt={}, verbose="INFO", cfg=None, host_name=None,
-                 gdb_port=None, name=None):
+                 gdb_port=None, name=None, chroot=None, env=None):
         """LDMSD subprocess handler initialization
 
         @param port(str): the LDMSD listening port.
@@ -360,8 +360,14 @@ class LDMSD(object):
         @param gdb_port(str): the port of the gdbserver. If this is `None`, the
                               process will NOT be under gdb. If the port is
                               specified, the process will run under gdbserver.
+        @param chroot(str): the chroot directory. If set, the ldmsd will be
+                            running under `chroot`.
+        @param env(map): the environment variables for ldmsd.
         """
+        self.env = env
         self.cmd_args = []
+        if chroot:
+            self.cmd_args.extend(["chroot", chroot])
         if gdb_port:
             ldmsd_path = find_executable("ldmsd")
             if not ldmsd_path:
@@ -412,6 +418,7 @@ class LDMSD(object):
                           stdout=open(os.devnull, "w"),
                           stderr=open(os.devnull, "w"),
                           close_fds = True,
+                          env = self.env
                           )
         time.sleep(0.01)
         self.proc.poll()

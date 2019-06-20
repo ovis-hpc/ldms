@@ -1,7 +1,7 @@
 dnl Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.63)
-AC_INIT(ovis-ldms, 4.2.1, ovis-help@sandia.gov)
+AC_INIT(ovis-ldms, 5.0.0, ovis-help@sandia.gov)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([src/core/ldms.h])
 AC_CONFIG_AUX_DIR(config)
@@ -68,6 +68,7 @@ OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
 OPTION_DEFAULT_DISABLE([rabbitkw], [ENABLE_RABBITKW])
 OPTION_DEFAULT_DISABLE([rabbitv3], [ENABLE_RABBITV3])
+OPTION_DEFAULT_DISABLE([store-test], [ENABLE_STORE_TEST])
 
 dnl AMQP
 OPTION_DEFAULT_DISABLE([amqp], [ENABLE_AMQP])
@@ -121,7 +122,7 @@ dnl cray_power_sampler won't build with --disable-tsampler
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_DISABLE([opa2], [ENABLE_OPA2])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
-OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
+OPTION_DEFAULT_ENABLE([sysclassblock], [ENABLE_SYSCLASSBLOCK])
 OPTION_DEFAULT_DISABLE([cray_system_sampler], [ENABLE_CRAY_SYSTEM_SAMPLER])
 dnl spaceless names in the cray_system_sampler. Default is with spaces for reverse compatibility
 OPTION_DEFAULT_ENABLE([spaceless_names], [ENABLE_SPACELESS_NAMES])
@@ -136,8 +137,13 @@ OPTION_WITH([switchx], [SWITCHX],[/usr/local])
 OPTION_DEFAULT_DISABLE([kokkos], [ENABLE_KOKKOS])
 OPTION_DEFAULT_ENABLE([jobinfo-sampler], [ENABLE_JOBINFO])
 OPTION_DEFAULT_DISABLE([jobinfo-slurm], [ENABLE_SLURM_JOBINFO])
+OPTION_DEFAULT_DISABLE([spank-plugin], [ENABLE_SPANK_PLUGIN])
+OPTION_DEFAULT_ENABLE([slurm-sampler], [ENABLE_SLURM_SAMPLER])
+OPTION_DEFAULT_DISABLE([papi-sampler], [ENABLE_PAPI_SAMPLER])
+OPTION_DEFAULT_DISABLE([ibm_occ], [ENABLE_IBM_OCC_SAMPLER])
 OPTION_DEFAULT_DISABLE([appinfo], [ENABLE_APPINFO])
 OPTION_DEFAULT_DISABLE([test_sampler], [ENABLE_TEST_SAMPLER])
+
 dnl test_sampler will also build with --enable-ldms-test
 AM_CONDITIONAL([ENABLE_TEST_SAMPLER_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_TEST_SAMPLER_FALSE" = "x#"])
 OPTION_DEFAULT_DISABLE([grptest], [ENABLE_GRPTEST])
@@ -175,7 +181,10 @@ OPTION_DEFAULT_DISABLE([munge], [ENABLE_MUNGE])
 OPTION_WITH([munge], [MUNGE])
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
-OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc third coll ovis_util zap ovis_ctrl ovis_event ovis_auth third/json_parser],[ovis-auth.sh],[ovis-lib],[ovis_auth])
+OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],
+		     [ mmalloc third coll ovis_util zap ovis_ctrl ovis_event \
+		       ovis_auth third/json_parser ev json ],
+		     [ovis-auth.sh],[ovis-lib],[ovis_auth])
 dnl substitute values we need from ovis-auth.sh during joint configure
 AC_SUBST(OVIS_AUTH_LIBS)
 
@@ -234,9 +243,10 @@ if test -z "$ENABLE_SYSCLASSIB_TRUE"; then
 			libibumad-devel installed?]))
 fi
 
-dnl Checks for slurm includes
+dnl Checks for slurm/spank for spank plugins
 OPTION_WITH([slurm], [SLURM], [/usr])
-if test -z "$ENABLE_SLURM_JOBINFO_TRUE"; then
+if test -z "$ENABLE_SLURM_JOBINFO_TRUE" ||
+   test -z "$ENABLE_SPANK_PLUGIN_TRUE" ; then
 	OCFLAGS=$CFLAGS
 	CFLAGS=$SLURM_INCDIR_FLAG
 	AC_CHECK_HEADER(slurm/spank.h, [],
@@ -357,11 +367,6 @@ then
 	   AC_DEFINE([HAVE_SPACELESS_NAMES],[1],[cray_system_sampler: Using spaceless names.])
 	fi
 
-	if !(test -z "$ENABLE_GEMINI_GPCDR_TRUE") && !(test -z "$ENABLE_ARIES_GPCDR_TRUE")
-	then
-		AC_MSG_ERROR([Must enable at least one of gemini-gpcdr, and aries-gpcdr.])
-	fi
-
 	if test -z "$ENABLE_GEMINI_GPCDR_TRUE"
 	then
 	gpcdrfile="/sys/devices/virtual/gni/gpcdr0/metricsets/links/metrics"
@@ -476,24 +481,51 @@ OVIS_EXEC_SCRIPTS(
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/auth/Makefile
-		 src/store/Makefile src/sampler/Makefile
-		 src/sampler/dstat/Makefile
-		 src/sampler/filesingle/Makefile
-		 src/sampler/lustre/Makefile
-		 src/sampler/kokkos/Makefile
-		 src/sampler/job_info/Makefile
-		 src/sampler/job_info_slurm/Makefile
-		 src/sampler/llnl/Makefile
-		 src/sampler/shm/Makefile
-		 src/sampler/shm/shm_util/Makefile
-		 src/sampler/shm/mpi_profiler/Makefile
-		 src/sampler/cray_system_sampler/Makefile
-		 src/sampler/aries_mmr/Makefile
-		 src/sampler/aries_mmr/aries_mmr_set_configs/Makefile
-		 src/sampler/appinfo_lib/Makefile
-		 src/sampler/contrib/Makefile
-		 src/sampler/contrib/ipmireader/Makefile
 		 src/ldmsd/Makefile
+		 src/ldmsd-samplers/Makefile
+		 src/ldmsd-samplers/all_example/Makefile
+		 src/ldmsd-samplers/cray_power_sampler/Makefile
+		 src/ldmsd-samplers/fptrans/Makefile
+		 src/ldmsd-samplers/generic_sampler/Makefile
+		 src/ldmsd-samplers/kgnilnd/Makefile
+		 src/ldmsd-samplers/meminfo/Makefile
+		 src/ldmsd-samplers/test-samplers/Makefile
+		 src/ldmsd-samplers/sysclassblock/Makefile
+		 src/ldmsd-samplers/procinterrupts/Makefile
+		 src/ldmsd-samplers/procnetdev/Makefile
+		 src/ldmsd-samplers/procnfs/Makefile
+		 src/ldmsd-samplers/procstat/Makefile
+		 src/ldmsd-samplers/sampler_atasmart/Makefile
+		 src/ldmsd-samplers/synthetic/Makefile
+		 src/ldmsd-samplers/vmstat/Makefile
+		 src/ldmsd-samplers/lnet_stats/Makefile
+		 src/ldmsd-samplers/lustre/Makefile
+		 src/ldmsd-samplers/switchx/Makefile
+		 src/ldmsd-samplers/sysclassib/Makefile
+		 src/ldmsd-samplers/llnl/Makefile
+		 src/ldmsd-samplers/aries_linkstatus/Makefile
+		 src/ldmsd-samplers/aries_mmr/Makefile
+		 src/ldmsd-samplers/cray_system_sampler/Makefile
+		 src/ldmsd-samplers/msr_interlagos/Makefile
+		 src/ldmsd-samplers/procsensors/Makefile
+		 src/ldmsd-samplers/perfevent/Makefile
+		 src/ldmsd-samplers/opa2/Makefile
+		 src/ldmsd-samplers/appinfo/Makefile
+		 src/ldmsd-samplers/variable/Makefile
+		 src/ldmsd-samplers/dstat/Makefile
+		 src/ldmsd-samplers/jobinfo/Makefile
+		 src/ldmsd-samplers/jobinfo/jobinfo_slurm/Makefile
+		 src/ldmsd-samplers/slurm/Makefile
+		 src/ldmsd-samplers/slurm/spank/Makefile
+		 src/ldmsd-samplers/shm/Makefile
+		 src/ldmsd-samplers/shm/shm_util/Makefile
+		 src/ldmsd-samplers/shm/mpi_profiler/Makefile
+		 src/ldmsd-samplers/filesingle/Makefile
+		 src/ldmsd-stores/Makefile
+		 src/ldmsd-stores/store_sos/Makefile
+		 src/ldmsd-stores/store_csv/Makefile
+		 src/ldmsd-stores/store_amqp/Makefile
+		 src/ldmsd-stores/store_test/Makefile
 		 scripts/Makefile
 		 src/test/Makefile
 		 etc/Makefile
@@ -501,11 +533,12 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 python/Makefile
 		 python/ldmsd/Makefile
 		 python/cmds/Makefile
-		 Doxyfile
 		 scripts/ldmsd
 		 scripts/envldms.sh
 		 ldms.spec
 		 man/Makefile
+		 doc/Makefile
+		 doc/Doxyfile
 ])
 
 AC_CONFIG_COMMANDS([scripts],[ echo fixing test script perms.

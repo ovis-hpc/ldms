@@ -1,0 +1,4 @@
+snapshot_time             1555444800.754742912 secs.nsecs
+get_page                  3 samples [usec] 0 0 0 0
+cache_access              2 samples [pages] 1 1 2
+cache_hit                 2 samples [pages] 1 1 2

@@ -1,0 +1,3 @@
+global_pool0_dt_usr
+- id:      0
+  limits:  { hard:                    0, soft:                    0, granted:                    0, time:               604800 }

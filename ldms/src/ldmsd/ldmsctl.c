@@ -67,6 +67,7 @@
 #include <time.h>
 #include <ctype.h>
 #include "json_parser/json.h"
+#include "json/json_util.h"
 #include "ldms.h"
 #include "ldmsd_request.h"
 #include "config.h"
@@ -133,7 +134,6 @@ struct ldmsctl_ctrl {
 
 struct command {
 	char *token;
-	int cmd_id;
 	int (*action)(struct ldmsctl_ctrl *ctrl, char *args);
 	void (*help)();
 	void (*resp)(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err);
@@ -248,7 +248,7 @@ static void resp_greeting(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 	while (attr->discrim) {
 		next_attr = ldmsd_next_attr(attr);
 		if ((0 == next_attr->discrim) && (count == 0)) {
-			char *str = strdup(attr->attr_value);
+			char *str = strdup((char*)attr->attr_value);
 			char *tok = strtok(str, " ");
 			if (!isdigit(tok[0])) {
 				/* The attribute 'level' isn't used. */
@@ -258,7 +258,7 @@ static void resp_greeting(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 			}
 			free(str);
 		} else {
-			printf("%s\n", strtok(attr->attr_value, " "));
+			printf("%s\n", strtok((char*)attr->attr_value, " "));
 		}
 		attr = next_attr;
 		count++;
@@ -295,9 +295,9 @@ static void resp_usage(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 static void help_usage()
 {
 	printf( "usage\n"
-		"   - Show loaded plugin usage information.\n"
+		"   - Show plugin usage information.\n"
 		"Parameters:\n"
-		"    [name=]     A loaded plugin name\n");
+		"    name=     The plugin instance.\n");
 }
 
 static void help_load()
@@ -308,6 +308,18 @@ static void help_load()
 		"Parameters:\n"
 		"     name=       The plugin name, this is used to locate a loadable\n"
 		"                 library named \"lib<name>.so\"\n");
+}
+
+static void resp_list(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
+		printf("%s\n", attr->attr_value);
+}
+
+static void help_list()
+{
+	printf("\nList plugin instances.\n");
 }
 
 static void help_term()
@@ -451,6 +463,14 @@ static void help_prdcr_stop_regex()
 	printf( "\nStop all producers matching a regular expression.\n\n"
 		"Parameters:\n"
 		"     regex=        A regular expression\n");
+}
+
+static void help_prdcr_subscribe_regex()
+{
+	printf( "\nRegister for stream data from the producer.\n\n"
+		"Parameters:\n"
+		"     regex=        A regular expression to match producers\n"
+		"     stream=       The stream name\n");
 }
 
 static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
@@ -990,7 +1010,6 @@ void __print_strgp_status(json_value *jvalue)
 	}
 
 	char *name, *container, *schema, *plugin, *state;
-	json_int_t offset;
 
 	name = ldmsctl_json_str_value_get(jvalue, "name");
 	container = ldmsctl_json_str_value_get(jvalue, "container");
@@ -1078,7 +1097,7 @@ static void help_strgp_status()
 static void __print_plugn_sets(json_value *plugin_sets)
 {
 	json_value *sets, *set_name;
-	char *pi_name, *sname;
+	char *pi_name;
 	int i;
 	pi_name = ldmsctl_json_str_value_get(plugin_sets, "plugin");
 	if (!pi_name) {
@@ -1126,6 +1145,58 @@ static void help_plugn_sets()
 	printf("\nPrint sets by plugins\n"
 	       "Parameters:\n"
 	       "      [name]=   Plugin name\n");
+}
+
+static void __print_plugn_status(json_value *stat_json)
+{
+	char *name, *plugin, *type, *libpath, *interval, *offset;
+
+	name = ldmsctl_json_str_value_get(stat_json, "name");
+	plugin = ldmsctl_json_str_value_get(stat_json, "plugin");
+	type = ldmsctl_json_str_value_get(stat_json, "type");
+	libpath = ldmsctl_json_str_value_get(stat_json, "libpath");
+	interval = ldmsctl_json_str_value_get(stat_json, "sample_interval_us");
+	offset = ldmsctl_json_str_value_get(stat_json, "sample_offset_us");
+
+	if (!name || !plugin || !type || !libpath || !interval || !offset)
+		return;
+
+	printf("%12s %12s %12s %12s %12s %12s\n",
+	       name, plugin, type, interval, offset, libpath);
+}
+
+static void resp_plugn_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+	json_value *json, *stat_json;
+	json = json_parse((char*)attr->attr_value, len);
+	if (!json)
+		return;
+
+	if (json->type != json_array) {
+		printf("Unrecognized plugn_sets json object\n");
+		return;
+	}
+	int i;
+
+	printf("%12s %12s %12s %12s %12s %12s\n",
+	       "Name", "Plugin", "Type", "Interval", "Offset", "Libpath");
+	printf("------------ ------------ ------------ ------------ "
+	       "------------ ------------\n");
+
+	for (i = 0; i < json->u.array.length; i++) {
+		stat_json = json->u.array.values[i];
+		__print_plugn_status(stat_json);
+	}
+	json_value_free(json);
+
+}
+
+static void help_plugn_status()
+{
+	printf("\nPrint plugin status\n");
 }
 
 static void help_version()
@@ -1398,76 +1469,181 @@ static void resp_failover_status(ldmsd_req_hdr_t resp, size_t len,
 	json_value_free(json);
 }
 
+static void help_smplr_add()
+{
+	printf( "\nAdd a sampler policy\n\n"
+		"Parameters:\n"
+		"     name=       A unique name for the sampler policy\n"
+		"     instance=   Sampler plugin instance name corresponding to this policy\n"
+		"     interval=   Sampling interval (us)\n"
+		"     [offset=]   Sampling offset (us)\n");
+}
+
+static void help_smplr_del()
+{
+	printf( "\nDelete a sampler policy\n\n"
+		"     name=      Sampler policy name\n");
+}
+
+static void help_smplr_start()
+{
+	printf( "\nStart a sampler policy\n\n"
+		"     name=         Sampler policy name\n"
+		"     [interval=]   Sampling interval (us)\n"
+		"     [offset=]     Sampling offset (us)\n");
+}
+
+static void help_smplr_stop()
+{
+	printf( "\nStop a sampler policy\n\n"
+		"     name=      Sampler policy name\n");
+}
+
+static void help_smplr_status()
+{
+	printf( "\nGet sampler policy status\n\n"
+		"     [name=]    Sampler policy name\n");
+}
+
+static void resp_smplr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim)
+		return;
+	if (attr->attr_id != LDMSD_ATTR_JSON) {
+		printf("Cannot interpret the result\n");
+		return;
+	}
+
+	json_parser_t parser = NULL;
+	json_entity_t json = NULL;
+	json_entity_t smplr, sets, set;
+	int rc, is_sync;
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Out of memory\n");
+		return;
+	}
+	rc = json_parse_buffer(parser, (char*)attr->attr_value,
+			strlen((char*)attr->attr_value), &json);
+	if (rc) {
+		printf("Error %d: cannot interpret the result.\n", rc);
+		goto out;
+	}
+
+	printf("%16s %16s %16s %-10s %-7s %10s %-8s %7s",
+			"Name", "Plugin Instance", "Plugin",
+			"Interval", "Offset", "Sync State",
+			"State", "Sets");
+	printf("--------------- ---------------- ---------------- ---------- "
+			"-------- ----------- ------- --------------------");
+	for (smplr = json_item_first(json); smplr; smplr = json_item_next(smplr)) {
+		is_sync = json_attr_value_bool(json_attr_find(smplr, "synchronous"));
+		printf("%16s %16s %16s %-10s %-7s %10s %-8s",
+				json_attr_find_str(smplr, "name"),
+				json_attr_find_str(smplr, "instance"),
+				json_attr_find_str(smplr, "plugin"),
+				json_attr_find_str(smplr, "interval_us"),
+				json_attr_find_str(smplr, "offset_us"),
+				((is_sync)?"True":"false"),
+				json_attr_find_str(smplr, "state"));
+		sets = json_attr_find(smplr, "sets");
+		int cnt = 0;
+		for (set = json_item_first(sets); set; set = json_item_next(set)) {
+			if (cnt == 0)
+				printf(" ");
+			else
+				printf(",");
+			printf("%s", json_value_str(set)->str);
+		}
+		printf("\n");
+	}
+out:
+	if (parser)
+		json_parser_free(parser);
+	if (json)
+		json_entity_free(json);
+	return;
+}
+
 static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
 static int handle_source(struct ldmsctl_ctrl *ctrl, char *path);
 static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
 
 static struct command command_tbl[] = {
-	{ "?", LDMSCTL_HELP, handle_help, NULL, NULL },
-	{ "config", LDMSD_PLUGN_CONFIG_REQ, NULL, help_config, resp_generic },
-	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status, resp_generic },
-	{ "failover_config", LDMSD_FAILOVER_CONFIG_REQ, NULL,
-			     help_failover_config, resp_generic },
-	{ "failover_peercfg_start", LDMSD_FAILOVER_PEERCFG_START_REQ, NULL,
-		      help_failover_peercfg_start, resp_generic },
-	{ "failover_peercfg_stop", LDMSD_FAILOVER_PEERCFG_STOP_REQ, NULL,
-		      help_failover_peercfg_stop, resp_generic },
-	{ "failover_start", LDMSD_FAILOVER_START_REQ, NULL,
-			     help_failover_start, resp_generic },
-	{ "failover_status", LDMSD_FAILOVER_STATUS_REQ, NULL,
-			     help_failover_status, resp_failover_status },
-	{ "failover_stop", LDMSD_FAILOVER_STOP_REQ, NULL,
-			     help_failover_stop, resp_generic },
-	{ "greeting", LDMSD_GREETING_REQ, NULL, help_greeting, resp_greeting },
-	{ "help", LDMSCTL_HELP, handle_help, NULL, NULL },
-	{ "load", LDMSD_PLUGN_LOAD_REQ, NULL, help_load, resp_generic },
-	{ "loglevel", LDMSD_VERBOSE_REQ, NULL, help_loglevel, resp_generic },
-	{ "oneshot", LDMSD_ONESHOT_REQ, NULL, help_oneshot, resp_generic },
-	{ "plugn_sets", LDMSD_PLUGN_SETS_REQ, NULL, help_plugn_sets, resp_plugn_sets },
-	{ "prdcr_add", LDMSD_PRDCR_ADD_REQ, NULL, help_prdcr_add, resp_generic },
-	{ "prdcr_del", LDMSD_PRDCR_DEL_REQ, NULL, help_prdcr_del, resp_generic },
-	{ "prdcr_hint_tree", LDMSD_PRDCR_HINT_TREE_REQ, NULL, help_prdcr_hint_tree, resp_prdcr_hint_tree },
-	{ "prdcr_set_status", LDMSD_PRDCR_SET_REQ, NULL, help_prdcr_set_status, resp_prdcr_set_status },
-	{ "prdcr_start", LDMSD_PRDCR_START_REQ, NULL, help_prdcr_start, resp_generic },
-	{ "prdcr_start_regex", LDMSD_PRDCR_START_REGEX_REQ, NULL, help_prdcr_start_regex, resp_generic },
-	{ "prdcr_status", LDMSD_PRDCR_STATUS_REQ, NULL, help_prdcr_status, resp_prdcr_status },
-	{ "prdcr_stop", LDMSD_PRDCR_STOP_REQ, NULL, help_prdcr_stop, resp_generic },
-	{ "prdcr_stop_regex", LDMSD_PRDCR_STOP_REGEX_REQ, NULL, help_prdcr_stop_regex, resp_generic },
-	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit, resp_generic },
-	{ "script", LDMSCTL_SCRIPT, handle_script, help_script, resp_generic },
-	{ "set_route", LDMSD_SET_ROUTE_REQ, NULL, help_set_route, resp_set_route },
-	{ "setgroup_add", LDMSD_SETGROUP_ADD_REQ, NULL, help_setgroup_add, resp_generic },
-	{ "setgroup_del", LDMSD_SETGROUP_DEL_REQ, NULL, help_setgroup_del, resp_generic },
-	{ "setgroup_ins", LDMSD_SETGROUP_INS_REQ, NULL, help_setgroup_ins, resp_generic },
-	{ "setgroup_mod", LDMSD_SETGROUP_MOD_REQ, NULL, help_setgroup_mod, resp_generic },
-	{ "setgroup_rm",  LDMSD_SETGROUP_RM_REQ,  NULL, help_setgroup_rm,  resp_generic },
-	{ "source", LDMSCTL_SOURCE, handle_source, help_source, resp_generic },
-	{ "start", LDMSD_PLUGN_START_REQ, NULL, help_start, resp_generic },
-	{ "stop", LDMSD_PLUGN_STOP_REQ, NULL, help_stop, resp_generic },
-	{ "strgp_add", LDMSD_STRGP_ADD_REQ, NULL, help_strgp_add, resp_generic },
-	{ "strgp_del", LDMSD_STRGP_DEL_REQ, NULL, help_strgp_del, resp_generic },
-	{ "strgp_metric_add", LDMSD_STRGP_METRIC_ADD_REQ, NULL, help_strgp_metric_add, resp_generic },
-	{ "strgp_metric_del", LDMSD_STRGP_METRIC_DEL_REQ, NULL, help_strgp_metric_del, resp_generic },
-	{ "strgp_prdcr_add", LDMSD_STRGP_PRDCR_ADD_REQ, NULL, help_strgp_prdcr_add, resp_generic },
-	{ "strgp_prdcr_del", LDMSD_STRGP_PRDCR_DEL_REQ, NULL, help_strgp_prdcr_del, resp_generic },
-	{ "strgp_start", LDMSD_STRGP_START_REQ, NULL, help_strgp_start, resp_generic },
-	{ "strgp_status", LDMSD_STRGP_STATUS_REQ, NULL, help_strgp_status, resp_strgp_status },
-	{ "strgp_stop", LDMSD_STRGP_STOP_REQ, NULL, help_strgp_stop, resp_generic },
-	{ "term", LDMSD_PLUGN_TERM_REQ, NULL, help_term, resp_generic },
-	{ "udata", LDMSD_SET_UDATA_REQ, NULL, help_udata, resp_generic },
-	{ "udata_regex", LDMSD_SET_UDATA_REGEX_REQ, NULL, help_udata_regex, resp_generic },
-	{ "updtr_add", LDMSD_UPDTR_ADD_REQ, NULL, help_updtr_add, resp_generic },
-	{ "updtr_del", LDMSD_UPDTR_DEL_REQ, NULL, help_updtr_del, resp_generic },
-	{ "updtr_match_add", LDMSD_UPDTR_MATCH_ADD_REQ, NULL, help_updtr_match_add, resp_generic },
-	{ "updtr_match_del", LDMSD_UPDTR_DEL_REQ, NULL, help_updtr_match_del, resp_generic },
-	{ "updtr_prdcr_add", LDMSD_UPDTR_PRDCR_ADD_REQ, NULL, help_updtr_prdcr_add, resp_generic },
-	{ "updtr_prdcr_del", LDMSD_UPDTR_PRDCR_DEL_REQ, NULL, help_updtr_prdcr_del, resp_generic },
-	{ "updtr_start", LDMSD_UPDTR_START_REQ, NULL, help_updtr_start, resp_generic },
-	{ "updtr_status", LDMSD_UPDTR_STATUS_REQ, NULL, help_updtr_status, resp_updtr_status },
-	{ "updtr_stop", LDMSD_UPDTR_STOP_REQ, NULL, help_updtr_stop, resp_generic },
-	{ "updtr_task", LDMSD_UPDTR_TASK_REQ, NULL, help_updtr_task, resp_updtr_task },
-	{ "usage", LDMSD_PLUGN_LIST_REQ, NULL, help_usage, resp_usage },
-	{ "version", LDMSD_VERSION_REQ, NULL, help_version , resp_generic },
+	{ "?", handle_help, NULL, NULL },
+	{ "config", NULL, help_config, resp_generic },
+	{ "daemon_status", NULL, help_daemon_status, resp_generic },
+	{ "failover_config", NULL, help_failover_config, resp_generic },
+	{ "failover_peercfg_start", NULL, help_failover_peercfg_start, resp_generic },
+	{ "failover_peercfg_stop", NULL, help_failover_peercfg_stop, resp_generic },
+	{ "failover_start", NULL, help_failover_start, resp_generic },
+	{ "failover_status", NULL, help_failover_status, resp_failover_status },
+	{ "failover_stop", NULL, help_failover_stop, resp_generic },
+	{ "greeting", NULL, help_greeting, resp_greeting },
+	{ "help", handle_help, NULL, NULL },
+	{ "list", NULL, help_list, resp_list },
+	{ "load", NULL, help_load, resp_generic },
+	{ "loglevel", NULL, help_loglevel, resp_generic },
+	{ "oneshot", NULL, help_oneshot, resp_generic },
+	{ "plugn_sets", NULL, help_plugn_sets, resp_plugn_sets },
+	{ "plugn_status", NULL, help_plugn_status, resp_plugn_status },
+	{ "prdcr_add", NULL, help_prdcr_add, resp_generic },
+	{ "prdcr_del", NULL, help_prdcr_del, resp_generic },
+	{ "prdcr_hint_tree", NULL, help_prdcr_hint_tree, resp_prdcr_hint_tree },
+	{ "prdcr_set_status", NULL, help_prdcr_set_status, resp_prdcr_set_status },
+	{ "prdcr_start", NULL, help_prdcr_start, resp_generic },
+	{ "prdcr_start_regex", NULL, help_prdcr_start_regex, resp_generic },
+	{ "prdcr_status", NULL, help_prdcr_status, resp_prdcr_status },
+	{ "prdcr_stop", NULL, help_prdcr_stop, resp_generic },
+	{ "prdcr_stop_regex", NULL, help_prdcr_stop_regex, resp_generic },
+	{ "prdcr_subscribe",  NULL, help_prdcr_subscribe_regex, resp_generic },
+	{ "quit", handle_quit, help_quit, resp_generic },
+	{ "script", handle_script, help_script, resp_generic },
+	{ "set_route", NULL, help_set_route, resp_set_route },
+	{ "setgroup_add", NULL, help_setgroup_add, resp_generic },
+	{ "setgroup_del", NULL, help_setgroup_del, resp_generic },
+	{ "setgroup_ins", NULL, help_setgroup_ins, resp_generic },
+	{ "setgroup_mod", NULL, help_setgroup_mod, resp_generic },
+	{ "setgroup_rm",  NULL, help_setgroup_rm, resp_generic },
+	{ "source", handle_source, help_source, resp_generic },
+	{ "smplr_add", NULL, help_smplr_add, resp_generic },
+	{ "smplr_del", NULL, help_smplr_del, resp_generic },
+	{ "smplr_start", NULL, help_smplr_start, resp_generic },
+	{ "smplr_status", NULL, help_smplr_status, resp_smplr_status },
+	{ "smplr_stop", NULL, help_smplr_stop, resp_generic },
+	{ "start", NULL, help_start, resp_generic },
+	{ "stop", NULL, help_stop, resp_generic },
+	{ "strgp_add", NULL, help_strgp_add, resp_generic },
+	{ "strgp_del", NULL, help_strgp_del, resp_generic },
+	{ "strgp_metric_add", NULL, help_strgp_metric_add, resp_generic },
+	{ "strgp_metric_del", NULL, help_strgp_metric_del, resp_generic },
+	{ "strgp_prdcr_add", NULL, help_strgp_prdcr_add, resp_generic },
+	{ "strgp_prdcr_del", NULL, help_strgp_prdcr_del, resp_generic },
+	{ "strgp_start", NULL, help_strgp_start, resp_generic },
+	{ "strgp_status", NULL, help_strgp_status, resp_strgp_status },
+	{ "strgp_stop", NULL, help_strgp_stop, resp_generic },
+	{ "term", NULL, help_term, resp_generic },
+	{ "udata", NULL, help_udata, resp_generic },
+	{ "udata_regex", NULL, help_udata_regex, resp_generic },
+	{ "updtr_add", NULL, help_updtr_add, resp_generic },
+	{ "updtr_del", NULL, help_updtr_del, resp_generic },
+	{ "updtr_match_add", NULL, help_updtr_match_add, resp_generic },
+	{ "updtr_match_del", NULL, help_updtr_match_del, resp_generic },
+	{ "updtr_prdcr_add", NULL, help_updtr_prdcr_add, resp_generic },
+	{ "updtr_prdcr_del", NULL, help_updtr_prdcr_del, resp_generic },
+	{ "updtr_start", NULL, help_updtr_start, resp_generic },
+	{ "updtr_status", NULL, help_updtr_status, resp_updtr_status },
+	{ "updtr_stop", NULL, help_updtr_stop, resp_generic },
+	{ "updtr_task", NULL, help_updtr_task, resp_updtr_task },
+	{ "usage", NULL, help_usage, resp_usage },
+	{ "version", NULL, help_version , resp_generic },
 };
 
 void __print_all_command()
@@ -1536,7 +1712,6 @@ static void __sock_close(struct ldmsctl_ctrl *ctrl)
 
 static int __ldms_xprt_send(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req, size_t len)
 {
-	size_t req_sz = sizeof(*req);
 	char *req_buf = malloc(len);
 	if (!req_buf) {
 		printf("Out of memory\n");
@@ -1598,7 +1773,6 @@ static char * __sock_recv(struct ldmsctl_ctrl *ctrl)
 
 static char *__ldms_xprt_recv(struct ldmsctl_ctrl *ctrl)
 {
-loop:
 	sem_wait(&ctrl->ldms_xprt.recv_sem);
 	if (!buffer) {
 		return NULL;
@@ -1616,7 +1790,6 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 
 	struct command key, *cmd;
 	char *ptr, *args, *dummy;
-	int cmd_id;
 
 	/* Strip the new-line character */
 	char *newline = strrchr(cmd_str, '\n');
@@ -1645,7 +1818,6 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	}
 	free(dummy);
 
-	size_t buffer_offset = 0;
 	memset(buffer, 0, buffer_len);
 	req_array = ldmsd_parse_config_str(cmd_str, msg_no,
 					   ldms_xprt_msg_max(ctrl->ldms_xprt.x),
@@ -1676,7 +1848,6 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	ldmsd_req_hdr_t resp;
 	size_t req_hdr_sz = sizeof(*resp);
 	size_t lbufsz = 1024;
-	size_t lbufoffset = 0;
 	char *lbuf = malloc(lbufsz);
 	if (!lbuf) {
 		printf("Out of memory\n");
@@ -1726,8 +1897,6 @@ out:
 
 void __ldms_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-	size_t msg_len;
-	static size_t resp_hdr_sz = sizeof(struct ldmsd_req_hdr_s);
 	struct ldmsctl_ctrl *ctrl = cb_arg;
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
@@ -1772,7 +1941,6 @@ struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
 			const char *xprt, const char *auth,
 			struct attr_value_list *auth_opt)
 {
-	ldms_t x;
 	struct ldmsctl_ctrl *ctrl;
 	int rc;
 
@@ -1862,7 +2030,7 @@ static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd)
 int main(int argc, char *argv[])
 {
 	int op;
-	char *host, *port, *auth, *sockname, *env, *xprt;
+	char *host, *port, *auth, *sockname, *xprt;
 	char *lval, *rval;
 	host = port = sockname = xprt = NULL;
 	char *source, *script;
@@ -1937,8 +2105,6 @@ int main(int argc, char *argv[])
 
 	if (!host || !port || !xprt)
 		goto arg_err;
-
-	char *secretword = NULL;
 
 	struct ldmsctl_ctrl *ctrl;
 	if (is_inband) {

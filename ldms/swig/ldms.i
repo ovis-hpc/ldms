@@ -118,6 +118,11 @@ ldms_t LDMS_xprt_new(const char *xprt)
 {
         ldms_t x;
         x = ldms_xprt_new(xprt, NULL);
+        if (!x) {
+                PyErr_Format(PyExc_RuntimeError,
+                             "LDMS_xprt_new() error: %d", errno);
+                return NULL;
+        }
         (void) __xprt_arg_new(x);
         return x;
 }
@@ -656,9 +661,13 @@ PyObject *PyObject_FromMetricValue(ldms_mval_t mv, enum ldms_value_type type)
 		break;
 	case LDMS_V_D64:
 		is_int = 0;
-		tmp64 = __le64_to_cpu(*(uint32_t*)&mv->v_d);
+		tmp64 = __le64_to_cpu(*(uint64_t*)&mv->v_d);
                 d = *(double*)&tmp64;
 		break;
+        case LDMS_V_CHAR:
+                return PyString_FromFormat("%c", mv->v_char);
+        case LDMS_V_CHAR_ARRAY:
+                return PyString_FromString(mv->a_char);
 	default:
 		SWIG_exception(SWIG_TypeError, "Unrecognized ldms_value type");
 	}
@@ -804,27 +813,27 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 		union ldms_value *v = ldms_metric_get(self, i);
 		enum ldms_value_type t = ldms_metric_type_get(self, i);
 		int j, n;
-		PyObject *lst, *obj;
-		if (!ldms_type_is_array(t)) {
-			return PyObject_FromMetricValue(v, t);
-		}
+		PyObject *tpl, *obj;
+                if (t == LDMS_V_CHAR_ARRAY || !ldms_type_is_array(t)) {
+                        return PyObject_FromMetricValue(v, t);
+                }
 		n = ldms_metric_array_get_len(self, i);
-		lst = PyList_New(n);
-		if (!lst) {
-			PyErr_SetString(PyExc_RuntimeError, "Out of memory.");
-			return NULL;
-		}
-		for (j = 0; j < n; j++) {
-			obj = ldms_rbuf_desc_array_metric_value_get(self, i, j);
-			if (!obj) {
-				PyErr_SetString(PyExc_RuntimeError,
-						"Out of memory.");
-				Py_DECREF(lst);
-				return NULL;
-			}
-			PyList_SetItem(lst, j, obj); /* This steals obj ref */
-		}
-		return lst;
+                tpl = PyTuple_New(n);
+                if (!tpl) {
+                        PyErr_SetString(PyExc_RuntimeError, "Out of memory.");
+                        return NULL;
+                }
+                for (j = 0; j < n; j++) {
+                        obj = ldms_rbuf_desc_array_metric_value_get(self, i, j);
+                        if (!obj) {
+                                PyErr_SetString(PyExc_RuntimeError,
+                                                "Out of memory.");
+                                Py_DECREF(tpl);
+                                return NULL;
+                        }
+                        PyTuple_SetItem(tpl, j, obj); /* This steals obj ref */
+                }
+                return tpl;
 	}
 	inline PyObject *metric_value_get_by_name(const char *name) {
 		int i = ldms_metric_by_name(self, name);
@@ -875,6 +884,8 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
                         return PyFloat_FromDouble(ldms_metric_array_get_float(self, mid, idx));
                 case LDMS_V_D64_ARRAY:
                         return PyFloat_FromDouble(ldms_metric_array_get_double(self, mid, idx));
+                case LDMS_V_CHAR_ARRAY:
+                        return PyString_FromFormat("%c", ldms_metric_array_get_char(self, mid, idx));
 		default:
 			SWIG_exception(SWIG_TypeError, "Unrecognized ldms_value type");
                 }
@@ -1045,8 +1056,8 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 		rc = ldms_xprt_update(self, __update_cb, ctxt);
 		if (rc) {
 			snprintf(err_buff, sizeof(err_buff),
-				 "ldms_xprt_update() failed, errno: %d",
-				 errno);
+				 "ldms_xprt_update() failed, rc: %d",
+				 rc);
 			goto err2;
 		}
 		rc = sem_wait(&ctxt->sem);
@@ -1158,6 +1169,22 @@ struct ldms_xprt {};
 		else
 			PyErr_SetString(PyExc_TypeError, "Unrecognized LDMS event");
 	}
+        inline void connectByName(const char *host,
+                                              const char *port) {
+                int rc = LDMS_xprt_connect_by_name(self, host, port);
+                if (rc) {
+                        /* raise */
+			PyErr_Format(PyExc_RuntimeError,
+                                     "LDMS connect error: %d", rc);
+                }
+        }
+        inline PyObject *listDir() {
+                return LDMS_xprt_dir(self);
+        }
+        inline ldms_set_t lookupSet(const char *name,
+                                    enum ldms_lookup_flags flags) {
+                return LDMS_xprt_lookup(self, name, flags);
+        }
 }
 
 %pythoncode %{
@@ -1178,5 +1205,14 @@ def set_iter_items(self):
 	for i in range(0, n):
 		yield (i, self[i])
 setattr(ldms_rbuf_desc, "iter_items", set_iter_items)
+
+def set_as_dict(self):
+        return { self.metric_name_get(k) : v for k, v in self.iter_items() }
+setattr(ldms_rbuf_desc, "as_dict", set_as_dict)
+
+def set_as_tuple(self):
+        return tuple((self.metric_name_get(k), v) \
+                          for k, v in self.iter_items())
+setattr(ldms_rbuf_desc, "as_tuple", set_as_tuple)
 
 %}

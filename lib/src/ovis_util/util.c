@@ -423,7 +423,6 @@ struct attr_value_list *av_new(size_t size)
 	return avl;
 }
 
-
 /* copy s into string list. return copy, or null if malloc fails. */
 static char *copy_string(struct attr_value_list *av_list, const char *s)
 {
@@ -438,6 +437,42 @@ static char *copy_string(struct attr_value_list *av_list, const char *s)
 	ref->str = str;
 	LIST_INSERT_HEAD(&av_list->strings, ref, entry);
 	return str;
+}
+
+int av_add(struct attr_value_list *avl, const char *name, const char *value)
+{
+	string_ref_t nref, vref;
+	struct attr_value *av;
+
+	if (avl->count == avl->size)
+		return ENOSPC;
+
+	av = &(avl->list[avl->count]);
+	nref = malloc(sizeof(*nref));
+	if (!nref)
+		return ENOMEM;
+	nref->str = strdup(name);
+	if (!nref->str)
+		goto err0;
+	av->name = nref->str;
+	if (value) {
+		vref = malloc(sizeof(*vref));
+		if (!vref)
+			goto err1;
+		vref->str = strdup(value);
+		if (!vref->str)
+			goto err2;
+		av->value = vref->str;
+	}
+	avl->count++;
+	return 0;
+err2:
+	free(vref);
+err1:
+	free(nref->str);
+err0:
+	free(nref);
+	return ENOMEM;
 }
 
 struct attr_value_list *av_copy(struct attr_value_list *src)
@@ -932,7 +967,9 @@ const char* ovis_errno_abbvr(int e)
 		[EOWNERDEAD]       =  "EOWNERDEAD",
 		[ENOTRECOVERABLE]  =  "ENOTRECOVERABLE",
 		[ERFKILL]          =  "ERFKILL",
+#ifdef EHWPOISON
 		[EHWPOISON]        =  "EHWPOISON",
+#endif
 	};
 	if (e < sizeof(estr)/sizeof(*estr) && estr[e]) {
 		return estr[e];
@@ -1061,3 +1098,5 @@ void ovis_pgrep_free(ovis_pgrep_array_t a)
 	}
 	free(a);
 }
+
+

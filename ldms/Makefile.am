@@ -1,4 +1,5 @@
-EXTRA_DIST = pedigree.am SHA.txt TAG.txt
+EXTRA_DIST = pedigree.am SHA.txt TAG.txt \
+	     README.md
 
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = src
@@ -21,8 +22,6 @@ LDMS = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 LDMS_TARBALL = $(LDMS).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-PHONY_doc = doxygen doc install-doc
-
 if ENABLE_DEVELOPER
 
 install-exec-hook:
@@ -38,46 +37,17 @@ banned:
 	bash $(srcdir)/scripts/ldms_ban.sh.in $(srcdir)/../
 
 if ENABLE_DOC
-
-PHONY_dox = install-dox
-
-if ENABLE_DOC_HTML
-DOCDEPS = $(top_srcdir)/src/*/*.c \
-          $(top_srcdir)/src/*/*.h \
-          $(top_srcdir)/src/*/*/*.h \
-          $(top_srcdir)/src/*/*/*.h
-all: doxygen-out
-doxygen-out: $(DOCDEPS)
-	doxygen Doxyfile
-	touch doxygen-out
-	@(errcnt=`wc -l ldms.doxygen.log|sed -e s'% .*%%g'`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
-
-install-doxygen: doxygen-out
-	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search
-	for f in doxygen/html/* ; do \
-		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html; \
-	done
-	if [ -d doxygen/html/search ]; then \
-	for f in doxygen/html/search/*; do \
-		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
-	done \
-	fi
-
-install-dox: install-doxygen
-endif
-else
-install-dox:
+SUBDIRS += doc
 endif
 
 if ENABLE_DOC_MAN
 SUBDIRS += man
 endif
 
-.PHONY: $(PHONY_doc) $(PHONY_dox)
 
-install-data-local: install-dox
+install-data-local:
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
-	for f in AUTHORS README COPYING ChangeLog ; do \
+	for f in AUTHORS README.md COPYING ChangeLog ; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
 	done
 
@@ -86,7 +56,7 @@ include $(top_srcdir)/pedigree.am
 
 uninstall-hook:
 	rm $(PEDIGREE)
-	for f in AUTHORS README COPYING ChangeLog ; do \
+	for f in AUTHORS README.md COPYING ChangeLog ; do \
 		rm $(DESTDIR)$(docdir)$(OPV)/$$f; \
 	done
 

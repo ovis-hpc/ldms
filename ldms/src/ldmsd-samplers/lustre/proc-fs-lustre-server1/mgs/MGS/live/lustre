@@ -1,0 +1,14 @@
+fsname: lustre
+flags: 0x20     gen: 10
+lustre-MDT0000
+lustre-OST0000
+
+Secure RPC Config Rules:
+
+imperative_recovery_state:
+    state: full
+    nonir_clients: 0
+    nidtbl_version: 4
+    notify_duration_total: 0.000584359
+    notify_duation_max: 0.000496248
+    notify_count: 2

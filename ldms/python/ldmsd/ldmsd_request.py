@@ -100,9 +100,17 @@ class LDMSD_Req_Attr(object):
     AUTO_INTERVAL = 31
     UID = 32
     GID = 33
-    LAST = 34
+    STREAM = 34
+    COMP_ID = 35
+    QUERY = 36
+    AUTH = 37,
+    ENV = 38,
+    CMDLINE = 39,
+    CFGCMD = 40,
+    LAST = 40
 
     NAME_ID_MAP = {'name': NAME,
+                   'component_id':COMP_ID,
                    'interval': INTERVAL,
                    'interval_us': INTERVAL,
                    'offset': OFFSET,
@@ -136,6 +144,11 @@ class LDMSD_Req_Attr(object):
                    'auto_interval': AUTO_INTERVAL,
                    'uid': UID,
                    'gid': GID,
+                   'stream': STREAM,
+                   'query': QUERY,
+                   'auth': AUTH,
+                   'cmdline': CMDLINE,
+                   'cfgcmd': CFGCMD,
                    'TERMINATING': LAST
         }
 
@@ -235,6 +248,7 @@ class LDMSD_Request(object):
     PRDCR_STOP_REGEX = 0x100 + 6
     PRDCR_SET_STATUS = 0x100 + 7
     PRDCR_HINT_TREE = 0x100 + 8
+    PRDCR_SUBSCRIBE = 0x100 + 9
 
     STRGP_ADD = 0x200
     STRGP_DEL = 0x200 + 1
@@ -261,6 +275,7 @@ class LDMSD_Request(object):
     SMPLR_DEL = 0X400 + 1
     SMPLR_START = 0X400 + 2
     SMPLR_STOP = 0X400 + 3
+    SMPLR_STATUS = 0X400 + 4
 
     PLUGN_ADD = 0X500
     PLUGN_DEL = 0X500 + 1
@@ -272,6 +287,8 @@ class LDMSD_Request(object):
     PLUGN_CONFIG = 0X500 + 7
     PLUGN_LIST = 0x500 + 8
     PLUGN_SETS = 0x500 + 9
+    PLUGN_USAGE = 0x500 + 10
+    PLUGN_QUERY = 0x500 + 11
 
     SET_UDATA = 0x600
     SET_UDATA_REGEX = 0x600 + 1
@@ -284,6 +301,7 @@ class LDMSD_Request(object):
     LOGROTATE = 0x600 + 8
     EXIT_DAEMON = 0x600 + 9
     SET_ROUTE = 0X600 + 11
+    EXPORT_CONFIG = 0x600 + 12
 
     FAILOVER_CONFIG        = 0x700
     FAILOVER_PEERCFG_START = 0x700  +  1
@@ -300,9 +318,18 @@ class LDMSD_Request(object):
     SETGROUP_INS = 0x800 + 3
     SETGROUP_RM  = 0x800 + 4
 
+    STREAM_PUBLISH = 0x900
+    STREAM_SUBSCRIBE = STREAM_PUBLISH + 1
+
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
             'greeting': {'id': GREETING},
+
+            'smplr_add': {'id': SMPLR_ADD},
+            'smplr_del': {'id': SMPLR_DEL},
+            'smplr_start': {'id': SMPLR_START},
+            'smplr_stop': {'id': SMPLR_STOP},
+            'smplr_status': {'id': SMPLR_STATUS},
 
             'prdcr_add': {'id': PRDCR_ADD},
             'prdcr_del': {'id': PRDCR_DEL},
@@ -315,6 +342,7 @@ class LDMSD_Request(object):
             'prdcr_stop_regex': {'id': PRDCR_STOP_REGEX},
             'prdcr_set_status': {'id': PRDCR_SET_STATUS},
             'prdcr_hint_tree': {'id': PRDCR_HINT_TREE},
+            'prdcr_subscribe': {'id': PRDCR_SUBSCRIBE},
 
             'strgp_add': {'id': STRGP_ADD},
             'strgp_del': {'id': STRGP_DEL},
@@ -343,9 +371,11 @@ class LDMSD_Request(object):
             'load': {'id': PLUGN_LOAD},
             'term': {'id': PLUGN_TERM},
             'config': {'id': PLUGN_CONFIG},
-            'usage': {'id': PLUGN_LIST},
+            'usage': {'id': PLUGN_USAGE},
+            'list': {'id': PLUGN_LIST},
 
             'plugn_sets': {'id': PLUGN_SETS},
+            'plugn_query': {'id': PLUGN_QUERY},
 
             'udata': {'id': SET_UDATA},
             'udata_regex': {'id': SET_UDATA_REGEX},
@@ -370,6 +400,11 @@ class LDMSD_Request(object):
             'setgroup_del'  :  {'id':  SETGROUP_DEL},
             'setgroup_ins'  :  {'id':  SETGROUP_INS},
             'setgroup_rm'   :  {'id':  SETGROUP_RM},
+
+            'publish'       :  {'id': STREAM_PUBLISH },
+            'subscribe'     :  {'id' : STREAM_SUBSCRIBE },
+
+            'export' :  {'id':  EXPORT_CONFIG},
         }
 
     TYPE_CONFIG_CMD = 1

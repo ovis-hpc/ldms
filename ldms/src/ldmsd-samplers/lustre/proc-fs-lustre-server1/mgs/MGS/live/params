@@ -1,0 +1,12 @@
+fsname: params
+flags: 0x20     gen: 1
+
+Secure RPC Config Rules:
+
+imperative_recovery_state:
+    state: full
+    nonir_clients: 0
+    nidtbl_version: 2
+    notify_duration_total: 0.000000000
+    notify_duation_max: 0.000000000
+    notify_count: 0

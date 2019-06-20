@@ -91,10 +91,6 @@ if ENABLE_LLNL
 SUBDIRS += llnl
 endif
 
-if ENABLE_KOKKOS
-SUBDIRS += kokkos
-endif
-
 if ENABLE_JOBINFO
 SUBDIRS += job_info
 endif
@@ -105,6 +101,22 @@ endif
 
 if ENABLE_LUSTRE
 SUBDIRS += lustre
+endif
+
+if ENABLE_PAPI_SAMPLER
+SUBDIRS += papi
+endif
+
+if ENABLE_SLURM_SAMPLER
+SUBDIRS += slurm
+endif
+
+if ENABLE_SPANK_PLUGIN
+SUBDIRS += spank
+endif
+
+if ENABLE_IBM_OCC_SAMPLER
+SUBDIRS += ibm_occ
 endif
 
 if ENABLE_CRAY_SYSTEM_SAMPLER

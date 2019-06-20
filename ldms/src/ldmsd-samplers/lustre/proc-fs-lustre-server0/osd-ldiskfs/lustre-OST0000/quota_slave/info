@@ -1,0 +1,9 @@
+target name:    lustre-OST0000
+pool ID:        0
+type:           dt
+quota enabled:  none
+conn to master: setup
+space acct:     ug
+user uptodate:  glb[0],slv[0],reint[0]
+group uptodate: glb[0],slv[0],reint[0]
+project uptodate: glb[0],slv[0],reint[0]

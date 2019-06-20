@@ -73,6 +73,7 @@
 #define LDMS_RBD_F_PUSH_CANCEL	4	/* cancel pending */
 
 struct ldms_rbuf_desc {
+	struct ref_s ref;
 	struct ldms_xprt *xprt;
 	struct ldms_set *set;
 	uint64_t remote_set_id;	    /* Remote set id returned by lookup */
@@ -85,7 +86,7 @@ struct ldms_rbuf_desc {
 	void * push_cb_arg;	    /* Argument for push_cb_fn() */
 	uint32_t meta_gn;
 
-	/* RMDA_WRITE (i.e. Push):
+	/* RDMA_WRITE (i.e. Push):
 	 *   Data flows from Initiator --> Target
 	 *   Initiator:
 	 * +--- rmap = map of remote set obtained via rendezvous-push request
@@ -213,6 +214,10 @@ struct ldms_rendezvous_lookup_param {
 	char set_info[OVIS_FLEX];
 };
 
+struct ldms_rendezvous_revoke_param {
+	uint64_t set_id;	/* set_id provided in the lookup */
+};
+
 struct ldms_rendezvous_push_param {
 	uint64_t lookup_set_id;	/* set_id provided in the lookup */
 	uint64_t push_set_id;	/* set_id to provide in push notifications */
@@ -221,6 +226,7 @@ struct ldms_rendezvous_push_param {
 
 #define LDMS_XPRT_RENDEZVOUS_LOOKUP	1
 #define LDMS_XPRT_RENDEZVOUS_PUSH	2
+#define LDMS_XPRT_RENDEZVOUS_REVOKE	3
 
 struct ldms_rendezvous_hdr {
 	uint64_t xid;
@@ -232,6 +238,7 @@ struct ldms_rendezvous_msg {
 	struct ldms_rendezvous_hdr hdr;
 	union {
 		struct ldms_rendezvous_lookup_param lookup;
+		struct ldms_rendezvous_revoke_param revoke;
 		struct ldms_rendezvous_push_param push;
 	};
 };
@@ -344,8 +351,9 @@ struct ldms_xprt {
 	int max_msg;
 	/* Points to local ctxt expected when dir updates returned to this endpoint */
 	uint64_t local_dir_xid;
-	/* This is the peers local_dir_xid that we provide when providing dir updates */
+	/* This is the peer's local_dir_xid that we provide when providing dir updates */
 	uint64_t remote_dir_xid;
+	LIST_ENTRY(ldms_xprt) remote_dir_link;
 
 #ifdef DEBUG
 	int active_dir; /* Number of outstanding dir requests */

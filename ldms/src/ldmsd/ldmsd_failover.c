@@ -63,6 +63,7 @@
 #include "ovis_event/ovis_event.h"
 
 #include "ldmsd.h"
+#include "ldmsd_plugin.h"
 #include "ldmsd_request.h"
 
 #include "config.h"
@@ -92,39 +93,6 @@ void __dlog(const char *fmt, ...)
 	va_end(ap);
 }
 
-/*
- * active-side tasks:
- *   - pairing request
- *   - heartbeat
- *   - send redundant cfgobj
- *
- * passive-side tasks:
- *   - accept / reject pairing
- *   - receive + process redundant cfgobj
- *   - failover: activate redundant cfgobjs
- *   - failback: deactivate redundant cfgobjs
- */
-
-typedef enum {
-	FAILOVER_STATE_STOP,
-	FAILOVER_STATE_START,
-	FAILOVER_STATE_STOPPING,
-	FAILOVER_STATE_LAST,
-} failover_state_t;
-
-typedef enum {
-	FAILOVER_CONN_STATE_DISCONNECTED,
-	FAILOVER_CONN_STATE_CONNECTING,
-	FAILOVER_CONN_STATE_PAIRING,     /* connected, pairing in progress */
-	FAILOVER_CONN_STATE_PAIRING_RETRY, /* connected, retry pairing */
-	FAILOVER_CONN_STATE_RESETTING,   /* paired, resetting failover state */
-	FAILOVER_CONN_STATE_CONFIGURING, /* paired, requesting peer config */
-	FAILOVER_CONN_STATE_CONFIGURED,  /* peer config received */
-	FAILOVER_CONN_STATE_UNPAIRING, /* unpairing (for stopping) */
-	FAILOVER_CONN_STATE_ERROR,       /* error */
-	FAILOVER_CONN_STATE_LAST,
-} failover_conn_state_t;
-
 typedef enum {
 	__FAILOVER_CONFIGURED         = 0x0001,
 	__FAILOVER_PEERCFG_ACTIVATED  = 0x0002,
@@ -144,47 +112,6 @@ typedef enum {
 	} while (0)
 
 #define __F_GET(f, x) ((f)->flags & x)
-
-typedef
-struct ldmsd_failover {
-	uint64_t flags;
-	char host[256];
-	char port[8];
-	char xprt[16];
-	char peer_name[512];
-	int auto_switch;
-	uint64_t ping_interval;
-	uint64_t task_interval; /* interval for the task */
-	double timeout_factor;
-	pthread_mutex_t mutex;
-	ldms_t ax; /* active xprt */
-
-	failover_state_t state;
-	failover_conn_state_t conn_state;
-
-	struct timeval ping_ts;
-	struct timeval echo_ts;
-	struct timeval timeout_ts;
-
-	struct ldmsd_task task;
-
-	/* store redundant pdrcr and updtr names instead of relying on cfgobj
-	 * tree so that we don't have to mess with cfgobj global locks */
-	struct rbt prdcr_rbt;
-	struct rbt updtr_rbt;
-	struct rbt strgp_rbt;
-
-	uint64_t moving_sum;
-	int ping_idx;
-	int ping_n;
-	uint64_t ping_rtt[8]; /* ping round-trip time */
-	uint64_t ping_max;    /* ping round-trip time max */
-	uint64_t ping_avg;    /* ping round-trip time average */
-	double ping_sse;      /* ping round-trip time sum of squared error */
-	double ping_sd;       /* ping round-trip time standard deviation */
-
-	int ping_skipped; /* the number of ping skipped due to outstanding */
-} *ldmsd_failover_t;
 
 struct str_rbn {
 	struct rbn rbn;
@@ -436,6 +363,20 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 	if (rc)
 		goto cleanup;
 
+	rc = ldmsd_req_cmd_attr_append_str(rcmd,
+			LDMSD_ATTR_AUTH, p->conn_auth);
+	if (rc)
+		goto cleanup;
+	if (p->conn_auth_args) {
+		char *tmp = av_to_string(p->conn_auth_args, 0);
+		if (!tmp)
+			goto cleanup;
+		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_STRING, tmp);
+		free(tmp);
+		if (rc)
+			goto cleanup;
+	}
+
 	/* UID */
 	snprintf(buff, sizeof(buff), "%u", p->obj.uid);
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_UID, buff);
@@ -500,23 +441,20 @@ int __failover_send_updtr(ldmsd_failover_t f, ldms_t x, ldmsd_updtr_t u)
 		goto cleanup;
 
 	/* INTERVAL */
-	snprintf(buff, sizeof(buff), "%ld", u->default_task.hint.intrvl_us);
+	snprintf(buff, sizeof(buff), "%ld", u->sched.intrvl_us);
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_INTERVAL, buff);
 	if (rc)
 		goto cleanup;
 
 	/* OFFSET */
-	if (u->default_task.task_flags & LDMSD_TASK_F_SYNCHRONOUS) {
-		snprintf(buff, sizeof(buff), "%ld", u->default_task.hint.offset_us);
-		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_OFFSET,
-						   buff);
-		if (rc)
-			goto cleanup;
-	}
+	snprintf(buff, sizeof(buff), "%ld", u->sched.offset_us);
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_OFFSET, buff);
+	if (rc)
+		goto cleanup;
 
 	/* AUTO INTERVAL */
 	if (!u->is_auto_task)
-	snprintf(buff, sizeof(buff), "false");
+		snprintf(buff, sizeof(buff), "false");
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_AUTO_INTERVAL, buff);
 	if (rc)
 		goto cleanup;
@@ -670,13 +608,13 @@ int __failover_send_strgp(ldmsd_failover_t f, ldms_t x, ldmsd_strgp_t s)
 
 	/* PLUGIN */
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_PLUGIN,
-					   s->plugin_name);
+					   s->inst->plugin_name);
 	if (rc)
 		goto cleanup;
 
 	/* CONTAINER */
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_CONTAINER,
-					   s->container);
+					   s->inst->inst_name);
 	if (rc)
 		goto cleanup;
 
@@ -1034,9 +972,6 @@ void __failover_xprt_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	}
 }
 
-extern const char *auth_name;
-extern struct attr_value_list *auth_opt;
-
 static
 int __failover_active_connect(ldmsd_failover_t f)
 {
@@ -1046,7 +981,8 @@ int __failover_active_connect(ldmsd_failover_t f)
 	__ASSERT(f->ax == NULL);
 	__ASSERT(f->conn_state == FAILOVER_CONN_STATE_DISCONNECTED);
 	f->ax = ldms_xprt_new_with_auth(f->xprt, ldmsd_linfo,
-					auth_name, auth_opt);
+					ldmsd_auth_name_get(NULL),
+					ldmsd_auth_attr_get(NULL));
 	if (!f->ax) {
 		rc = errno;
 		goto out;
@@ -1500,7 +1436,7 @@ int __peercfg_start(ldmsd_failover_t f)
 		srbn = STR_RBN(rbn);
 		if (srbn->started)
 			continue;
-		rc = ldmsd_prdcr_start(srbn->str, NULL, &sctxt);
+		rc = ldmsd_prdcr_start(srbn->str, NULL, &sctxt, 0);
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR,
 				  "failover: prdcr_start(%s) failed, "
@@ -1514,7 +1450,7 @@ int __peercfg_start(ldmsd_failover_t f)
 		srbn = STR_RBN(rbn);
 		if (srbn->started)
 			continue;
-		rc = ldmsd_updtr_start(srbn->str, NULL, NULL, NULL, &sctxt);
+		rc = ldmsd_updtr_start(srbn->str, NULL, NULL, NULL, &sctxt, 0);
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR,
 				  "failover: updtr_start(%s) failed, "
@@ -1524,7 +1460,6 @@ int __peercfg_start(ldmsd_failover_t f)
 		srbn->started = 1;
 	}
 
-out:
 	__dlog("Failover: __peercfg_start(), flags: %#lx, rc: %d\n",
 	       f->flags, rc);
 	return 0;
@@ -1981,6 +1916,8 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	char *uid = __req_attr_gets(req, LDMSD_ATTR_UID);
 	char *gid = __req_attr_gets(req, LDMSD_ATTR_GID);
 	char *perm = __req_attr_gets(req, LDMSD_ATTR_PERM);
+	char *auth = __req_attr_gets(req, LDMSD_ATTR_AUTH);
+	char *auth_opts = __req_attr_gets(req, LDMSD_ATTR_STRING);
 
 	uid_t _uid;
 	gid_t _gid;
@@ -2030,7 +1967,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 		goto out;
 	}
 	p = ldmsd_prdcr_new_with_auth(name, xprt, host, atoi(port), ptype,
-			atoi(interval), _uid, _gid, _perm);
+			atoi(interval), auth, auth_opts, _uid, _gid, _perm);
 	if (!p) {
 		rc = errno;
 		str_rbn_free(srbn);
@@ -2134,15 +2071,12 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 	} else {
 		/* update by parameters */
 		if (interval) {
-			u->default_task.hint.intrvl_us = atoi(interval);
+			u->sched.intrvl_us = atoi(interval);
 		}
 		if (offset) {
-			u->default_task.hint.offset_us = atoi(offset);
-			u->default_task.task_flags = LDMSD_TASK_F_SYNCHRONOUS;
+			u->sched.offset_us = atoi(offset);
 		}
 		u->push_flags = push_flags;
-		if (push_flags)
-			u->default_task.task_flags = LDMSD_TASK_F_IMMEDIATE;
 	}
 	if (producer) {
 		/* add producer */
@@ -2245,12 +2179,14 @@ int failover_cfgstrgp_handler(ldmsd_req_ctxt_t req)
 		}
 		rbt_ins(&f->strgp_rbt, &srbn->rbn);
 		ldmsd_strgp_get(s); /* so that we can `put` without del */
-		s->plugin_name = plugin;
-		plugin = NULL; /* give plugin to s */
 		s->schema = schema;
 		schema = NULL;
+		#if 0
+		s->plugin_name = plugin;
+		plugin = NULL; /* give plugin to s */
 		s->container = container;
 		container = NULL;
+		#endif
 	}
 
 	if (regex) {
@@ -2387,6 +2323,29 @@ int ldmsd_failover_start()
 out:
 	__failover_unlock(f);
 	return rc;
+}
+
+int failover_config_export(FILE *f)
+{
+	ldmsd_failover_t fo = &__failover;
+	fprintf(f, "# ----- Failover -----\n");
+	/* failover_config */
+	if (0 == strlen(fo->host))
+		/* not configured yet */
+		return 0;
+
+	fprintf(f, "failover_config host=%s xprt=%s port=%s ",
+			fo->host, fo->xprt, fo->port);
+	fprintf(f, "auto_switch=%d interval=%ld timeout_factor=%f",
+			fo->auto_switch, fo->ping_interval, fo->timeout_factor);
+	if (0 != fo->peer_name[0])
+		fprintf(f, "peer_name=%s", fo->peer_name);
+	fprintf(f, "\n");
+
+	/* failover_start */
+	if (FAILOVER_STATE_START == fo->state)
+		fprintf(f, "failover_start\n");
+	return 0;
 }
 
 __attribute__((constructor))

@@ -1,0 +1,5 @@
+users: 3
+max_cached_mb: 919
+used_mb: 0
+unused_mb: 919
+reclaim_count: 0

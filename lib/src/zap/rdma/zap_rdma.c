@@ -46,6 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#define _GNU_SOURCE
 #include <sys/errno.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -849,8 +850,8 @@ static void handle_recv(struct z_rdma_ep *rep,
 	rep->ep.cb(&rep->ep, &zev);
 }
 
-static void handle_rendezvous(struct z_rdma_ep *rep,
-			      struct z_rdma_message_hdr *msg, size_t len)
+static void handle_share(struct z_rdma_ep *rep,
+			 struct z_rdma_message_hdr *msg, size_t len)
 {
 	struct zap_event zev;
 	struct z_rdma_share_msg *sh = (struct z_rdma_share_msg *)msg;
@@ -876,11 +877,53 @@ static void handle_rendezvous(struct z_rdma_ep *rep,
 	memset(&zev, 0, sizeof zev);
 	zev.type = ZAP_EVENT_RENDEZVOUS;
 	zev.status = ZAP_ERR_OK;
+	zev.share = 1;
 	zev.map = &map->map;
 	zev.data_len = len - sizeof(*sh);
 	if (zev.data_len)
 		zev.data = (void*)sh->msg;
 	rep->ep.cb(&rep->ep, &zev);
+}
+
+static void handle_unshare(struct z_rdma_ep *rep,
+			   struct z_rdma_message_hdr *msg, size_t len)
+{
+	struct zap_event zev;
+	struct z_rdma_share_msg *sm = (struct z_rdma_share_msg *)msg;
+	zap_map_t lmap;
+
+	__zap_get_ep(&rep->ep);
+	pthread_mutex_lock(&rep->ep.lock);
+	LIST_FOREACH(lmap, &rep->ep.map_list, link) {
+		if (sm->rkey == ((struct z_rdma_map *)lmap)->rkey)
+			break;
+	}
+	pthread_mutex_unlock(&rep->ep.lock);
+	if (!lmap)
+		return;
+	memset(&zev, 0, sizeof zev);
+	zev.type = ZAP_EVENT_RENDEZVOUS;
+	zev.status = ZAP_ERR_OK;
+	zev.share = 0;
+	zev.map = lmap;
+	zev.data_len = len - sizeof(*sm);
+	if (zev.data_len)
+		zev.data = (void*)sm->msg;
+	rep->ep.cb(&rep->ep, &zev);
+}
+
+
+static void handle_rendezvous(struct z_rdma_ep *rep,
+			      struct z_rdma_message_hdr *msg, size_t len)
+{
+	struct zap_event zev;
+	struct z_rdma_share_msg *sh = (struct z_rdma_share_msg *)msg;
+	struct z_rdma_map *map;
+
+	if (sh->share)
+		handle_share(rep, msg, len);
+	else
+		handle_unshare(rep, msg, len);
 }
 
 static void process_recv_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
@@ -1298,6 +1341,11 @@ static zap_ep_t z_rdma_new(zap_t z, zap_cb_fn_t cb)
 	LIST_INIT(&rep->active_ctxt_list);
 	pthread_mutex_init(&rep->credit_lock, NULL);
 	return (zap_ep_t)&rep->ep;
+}
+
+static char **z_rdma_get_env()
+{
+	return NULL;
 }
 
 char *cma_event_str[] = {
@@ -1957,6 +2005,54 @@ static zap_err_t z_rdma_share(zap_ep_t ep, zap_map_t map,
 	return rc;
 }
 
+static zap_err_t z_rdma_unshare(zap_ep_t ep, zap_map_t map,
+				const char *msg, size_t msg_len)
+{
+	struct z_rdma_map *rmap = (struct z_rdma_map *)map;
+	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
+	struct z_rdma_share_msg *sm;
+	struct z_rdma_buffer *rbuf;
+	int rc;
+	size_t sz = sizeof(*sm) + msg_len;
+
+	pthread_mutex_lock(&rep->ep.lock);
+	rc = __ep_state_check(rep);
+	if (rc) {
+		pthread_mutex_unlock(&rep->ep.lock);
+		return rc;
+	}
+
+	if (sz > RQ_BUF_SZ) {
+		/* msg too big! */
+		pthread_mutex_unlock(&rep->ep.lock);
+		return ZAP_ERR_NO_SPACE;
+	}
+
+	rbuf = __rdma_buffer_alloc(rep, RQ_BUF_SZ, IBV_ACCESS_LOCAL_WRITE);
+	if (!rbuf) {
+		pthread_mutex_unlock(&rep->ep.lock);
+		return ZAP_ERR_RESOURCE;
+	}
+	pthread_mutex_unlock(&rep->ep.lock);
+
+	sm = (struct z_rdma_share_msg *)rbuf->data;
+	sm->hdr.msg_type = htons(Z_RDMA_MSG_RENDEZVOUS);
+	sm->share = 0;
+	sm->rkey = rmap->mr->rkey;
+	sm->va = (unsigned long)rmap->map.addr;
+	sm->len = htonl(rmap->map.len);
+	sm->acc = htonl(rmap->map.acc);
+	if (msg_len)
+		memcpy(sm->msg, msg, msg_len);
+
+	rbuf->data_len = sz;
+
+	rc = __rdma_post_send(rep, rbuf);
+	if (rc)
+		__rdma_buffer_free(rbuf);
+	return rc;
+}
+
 /* Map buffer */
 static zap_err_t
 z_rdma_map(zap_ep_t ep, zap_map_t *pm,
@@ -2146,6 +2242,7 @@ static int init_once()
 	if (rc)
 		goto err_2;
 
+	pthread_setname_np(cq_thread, "zap:rdma:cq");
 	/*
 	 * Create the CM event thread that will wait for events on
 	 * the CM channel
@@ -2154,6 +2251,7 @@ static int init_once()
 			    (void *)(unsigned long)cm_fd);
 	if (rc)
 		goto err_3;
+	pthread_setname_np(cm_thread, "zap:rdma:cm");
 
 	init_complete = 1;
 	// atexit(z_rdma_cleanup);
@@ -2201,7 +2299,9 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->map = z_rdma_map;
 	z->unmap = z_rdma_unmap;
 	z->share = z_rdma_share;
+	z->unshare = z_rdma_unshare;
 	z->get_name = z_get_name;
+	z->get_env = z_rdma_get_env;
 
 	*pz = z;
 	return ZAP_ERR_OK;

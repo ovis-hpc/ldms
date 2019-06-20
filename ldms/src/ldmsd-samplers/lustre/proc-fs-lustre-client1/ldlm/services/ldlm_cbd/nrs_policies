@@ -1,0 +1,8 @@
+
+regular_requests:
+  - name: fifo
+    state: started
+    fallback: yes
+    queued: 0                   
+    active: 0                   
+

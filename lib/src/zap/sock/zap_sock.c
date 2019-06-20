@@ -47,6 +47,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#define _GNU_SOURCE
 #include <sys/errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -778,12 +779,9 @@ static void process_sep_msg_write_resp(struct z_sock_ep *sep)
 /**
  * Receiving a rendezvous (share) message.
  */
-static void process_sep_msg_rendezvous(struct z_sock_ep *sep)
+static void process_sep_msg_share(struct z_sock_ep *sep,
+				  struct sock_msg_rendezvous *msg)
 {
-	struct sock_msg_rendezvous *msg;
-
-	msg = sep->buff.data;
-
 	struct zap_sock_map *map = calloc(1, sizeof(*map));
 	if (!map) {
 		LOG_(sep, "ENOMEM in %s at %s:%d\n",
@@ -805,7 +803,7 @@ static void process_sep_msg_rendezvous(struct z_sock_ep *sep)
 	map->map.addr = (void *)(uint64_t)be64toh((uint64_t)msg->addr);
 	map->map.len = ntohl(msg->data_len);
 
-	zap_get_ep(&sep->ep); /* Release when app calls zap_unmap(). */
+	zap_get_ep(&sep->ep); /* Released in process_msg_msg_rendezvous share=0 */
 	pthread_mutex_lock(&sep->ep.lock);
 	LIST_INSERT_HEAD(&sep->ep.map_list, &map->map, link);
 	pthread_mutex_unlock(&sep->ep.lock);
@@ -813,6 +811,7 @@ static void process_sep_msg_rendezvous(struct z_sock_ep *sep)
 	struct zap_event ev = {
 		.type = ZAP_EVENT_RENDEZVOUS,
 		.map = (void*)map,
+		.share = 1,
 		.data_len = amsg_len,
 		.data = (void*)amsg
 	};
@@ -821,6 +820,48 @@ static void process_sep_msg_rendezvous(struct z_sock_ep *sep)
 	return;
 
 err0:
+	return;
+}
+
+/**
+ * Receiving a rendezvous (unshare) message. Notify the application so
+ * that it can drop all references and unmap
+ */
+static void process_sep_msg_unshare(struct z_sock_ep *sep,
+				    struct sock_msg_rendezvous *msg)
+{
+	zap_map_t map;
+	char *amsg = NULL;
+	size_t amsg_len = ntohl(msg->hdr.msg_len) - sizeof(*msg);
+	if (amsg_len)
+		amsg = msg->msg;
+
+	pthread_mutex_lock(&sep->ep.lock);
+	LIST_FOREACH(map, &sep->ep.map_list, link) {
+		if (((struct zap_sock_map *)map)->key == msg->rmap_key)
+			break;
+	}
+	pthread_mutex_unlock(&sep->ep.lock);
+
+	struct zap_event ev = {
+		.type = ZAP_EVENT_RENDEZVOUS,
+		.map = (void*)map,
+		.share = 0,
+		.data_len = amsg_len,
+		.data = (void*)amsg
+	};
+
+	sep->ep.cb((void*)sep, &ev);
+	return;
+}
+
+static void process_sep_msg_rendezvous(struct z_sock_ep *sep)
+{
+	struct sock_msg_rendezvous *msg = sep->buff.data;
+	if (msg->share)
+		process_sep_msg_share(sep, msg);
+	else
+		process_sep_msg_unshare(sep, msg);
 	return;
 }
 
@@ -973,7 +1014,7 @@ void __log_sep_msg(struct z_sock_ep *sep, int is_recv,
 			ntohl(hdr->msg_len),
 			hdr->xid,
 			hdr->ctxt,
-			ntohl(msg->rendezvous.rmap_key),
+		        msg->rendezvous.rmap_key,
 			ntohl(msg->rendezvous.acc),
 			be64toh(msg->rendezvous.addr),
 			ntohl(msg->rendezvous.data_len)
@@ -1363,8 +1404,10 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 	if (mtype == SOCK_MSG_READ_RESP || mtype == SOCK_MSG_WRITE_REQ) {
 		/* allow big message, and do not copy `data`  */
 		wr = malloc(sizeof(*wr) + msg_size);
-		if (!wr)
+		if (!wr) {
+			LOG_(sep, "%s:%d malloc failed\n", __func__, __LINE__);
 			return ZAP_ERR_RESOURCE;
+		}
 		wr->msg_len = msg_size;
 		wr->data_len = data_len;
 		wr->data = data;
@@ -1372,13 +1415,15 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 		memcpy(wr->msg, m, msg_size);
 	} else {
 		if (mlen - sizeof(struct sock_msg_hdr) > sep->ep.z->max_msg) {
-			DEBUG_LOG(sep, "ep: %p, SEND invalid message length: %ld\n",
+			LOG_(sep, "ep: %p, SEND invalid message length: %ld\n",
 				  sep, mlen);
 			return ZAP_ERR_PARAMETER;
 		}
 		wr = malloc(sizeof(*wr) + msg_size + data_len);
-		if (!wr)
+		if (!wr) {
+			LOG_(sep, "%s:%d malloc failed\n", __func__, __LINE__);
 			return ZAP_ERR_RESOURCE;
+		}
 		wr->msg_len = msg_size + data_len;
 		wr->data_len = 0;
 		wr->data = NULL;
@@ -1387,8 +1432,11 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 		memcpy(wr->msg + msg_size, data, data_len);
 	}
 	TAILQ_INSERT_TAIL(&sep->sq, wr, link);
-	if (__enable_epoll_out(sep))
+	if (__enable_epoll_out(sep)) {
+		LOG_(sep, "%s:%d __enable_epoll_out failed, errno: %d\n",
+			  __func__, __LINE__, errno);
 		return ZAP_ERR_RESOURCE;
+	}
 	return ZAP_ERR_OK;
 }
 
@@ -1636,6 +1684,7 @@ static int init_once()
 	rc = pthread_create(&io_thread, NULL, io_thread_proc, 0);
 	if (rc)
 		goto err_1;
+	pthread_setname_np(io_thread, "zap:sock:io");
 
 	init_complete = 1;
 
@@ -1676,6 +1725,11 @@ static zap_ep_t z_sock_new(zap_t z, zap_cb_fn_t cb)
 	pthread_mutex_unlock(&z_sock_list_mutex);
 
 	return (zap_ep_t)sep;
+}
+
+static char **z_sock_get_env()
+{
+	return NULL;
 }
 
 static void z_sock_destroy(zap_ep_t ep)
@@ -1821,6 +1875,33 @@ static zap_err_t z_sock_share(zap_ep_t ep, zap_map_t map,
 	msgr.hdr.msg_type = htons(SOCK_MSG_RENDEZVOUS);
 	msgr.hdr.msg_len = htonl(sizeof(struct sock_msg_rendezvous) + msg_len);
 	msgr.rmap_key = smap->key;
+	msgr.share = 1;
+	msgr.acc = htonl(map->acc);
+	msgr.addr = htobe64((uint64_t)map->addr);
+	msgr.data_len = htonl(map->len);
+
+	/* write message with data */
+	zerr = __sock_send_msg(sep, &msgr.hdr, sizeof(msgr), msg, msg_len);
+	return zerr;
+}
+
+static zap_err_t z_sock_unshare(zap_ep_t ep, zap_map_t map,
+				const char *msg, size_t msg_len)
+{
+	struct z_sock_ep *sep = (void*) ep;
+	zap_err_t zerr;
+	struct zap_sock_map *smap = (void*)map;
+	struct sock_msg_rendezvous msgr;
+
+	/* validate */
+	if (ep->state != ZAP_EP_CONNECTED)
+		return ZAP_ERR_NOT_CONNECTED;
+
+	/* prepare message */
+	msgr.hdr.msg_type = htons(SOCK_MSG_RENDEZVOUS);
+	msgr.hdr.msg_len = htonl(sizeof(struct sock_msg_rendezvous) + msg_len);
+	msgr.rmap_key = smap->key;
+	msgr.share = 0;
 	msgr.acc = htonl(map->acc);
 	msgr.addr = htobe64((uint64_t)map->addr);
 	msgr.data_len = htonl(map->len);
@@ -1971,7 +2052,9 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->map = z_sock_map;
 	z->unmap = z_sock_unmap;
 	z->share = z_sock_share;
+	z->unshare = z_sock_unshare;
 	z->get_name = z_get_name;
+	z->get_env = z_sock_get_env;
 
 	/* is it needed? */
 	z->mem_info_fn = mem_info_fn;

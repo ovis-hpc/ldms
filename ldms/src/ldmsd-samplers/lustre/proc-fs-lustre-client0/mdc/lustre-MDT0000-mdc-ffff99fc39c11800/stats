@@ -1,0 +1,12 @@
+snapshot_time             1555444870.744563803 secs.nsecs
+req_waittime              3186 samples [usec] 250 20210 2902884 4038080558
+req_active                3186 samples [reqs] 1 2 3187 3189
+mds_getattr               1 samples [usec] 452 452 452 204304
+mds_close                 2 samples [usec] 443 1656 2099 2938585
+mds_readpage              2 samples [usec] 757 951 1708 1477450
+mds_connect               1 samples [usec] 1152 1152 1152 1327104
+mds_get_root              1 samples [usec] 551 551 551 303601
+mds_statfs                3 samples [usec] 449 884 1825 1225121
+mds_getxattr              3 samples [usec] 250 740 1405 782325
+ldlm_cancel               4 samples [usec] 815 1102 3801 3655157
+obd_ping                  3156 samples [usec] 447 20210 2866345 3892349013

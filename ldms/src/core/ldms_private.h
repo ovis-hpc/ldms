@@ -60,6 +60,7 @@
 typedef struct ldms_mdef_s {
 	char *name;
 	enum ldms_value_type type;
+	char units[8];
 	uint32_t flags;	/* DATA/MDATA flag */
 	uint32_t count; /* Number of elements in the array if this is of an array type */
 	size_t meta_sz;
@@ -85,6 +86,7 @@ struct ldms_set_info_pair {
 LIST_HEAD(ldms_set_info_list, ldms_set_info_pair);
 LIST_HEAD(rbd_list, ldms_rbuf_desc);
 struct ldms_set {
+	struct ref_s ref;
 	unsigned long flags;
 	struct ldms_set_hdr *meta;
 	struct ldms_data_hdr *data; /* points to current entry of data array */
@@ -96,6 +98,7 @@ struct ldms_set {
 	pthread_mutex_t lock;
 	int curr_idx;
 	struct ldms_data_hdr *data_array;
+	void *ctxt; /* application context (local -- no data propagation) */
 };
 
 /* Convenience macro to roundup a value to a multiple of the _s parameter */
@@ -119,9 +122,12 @@ __ldms_create_set(const char *instance_name, const char *schema_name,
 extern void __ldms_get_local_set_list_sz(int *set_count, int *set_list_len);
 extern int __ldms_get_local_set_list(char *set_list, size_t set_list_len,
 				     int *set_count, int *set_list_size);
+extern void __ldms_dir_update(ldms_set_t set, enum ldms_dir_type t);
+#if 0
 extern void __ldms_dir_add_set(const char *set_name);
 extern void __ldms_dir_del_set(const char *set_name);
 extern void __ldms_dir_upd_set(const char *set_name);
+#endif
 extern int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg);
 
 extern uint32_t __ldms_set_size_get(struct ldms_set *s);
@@ -135,9 +141,6 @@ extern struct ldms_set *__ldms_local_set_next(struct ldms_set *);
 extern int __ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, void *arg);
 extern void __ldms_set_tree_lock();
 extern void __ldms_set_tree_unlock();
-
-static int __ldms_set_publish(struct ldms_set *set);
-static int __ldms_set_unpublish(struct ldms_set *set);
 
 extern int __ldms_set_info_set(struct ldms_set_info_list *info,
 				const char *key, const char *value);

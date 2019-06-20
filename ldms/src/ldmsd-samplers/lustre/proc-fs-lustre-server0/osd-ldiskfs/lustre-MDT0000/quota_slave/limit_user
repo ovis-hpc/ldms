@@ -1,0 +1,3 @@
+global_index_copy:
+- id:      0
+  limits:  { hard:                    0, soft:                    0, granted:                    0, time:                    0 }

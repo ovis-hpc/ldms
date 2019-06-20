@@ -46,6 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#define _GNU_SOURCE
 #include <sys/errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -406,6 +407,12 @@ zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 	return zep;
 }
 
+char **zap_get_env(zap_t z)
+{
+	errno = 0;
+	return z->get_env();
+}
+
 void zap_set_priority(zap_ep_t ep, int prio)
 {
 	ep->prio = prio;
@@ -591,6 +598,14 @@ zap_err_t zap_share(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len)
 	return zerr;
 }
 
+zap_err_t zap_unshare(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len)
+{
+	zap_err_t zerr = 0;
+	if (ep->z->unshare)
+		zerr = ep->z->unshare(ep, m, msg, msg_len);
+	return zerr;
+}
+
 zap_err_t zap_reject(zap_ep_t ep, char *data, size_t data_len)
 {
 	return ep->z->reject(ep, data, data_len);
@@ -723,7 +738,12 @@ static void __attribute__ ((constructor)) cs_init(void)
 		zap_event_queue_init(&zev_queue[i], zap_event_qdepth);
 		rc = pthread_create(&zev_queue[i].thread, NULL,
 					zap_event_thread_proc, &zev_queue[i]);
-		assert(rc == 0);
+		if (rc) {
+			default_log("%s: Error %d creating an event thread\n",
+				    __func__, rc);
+		} else {
+			pthread_setname_np(zev_queue[i].thread, "zap:event");
+		}
 	}
 }
 

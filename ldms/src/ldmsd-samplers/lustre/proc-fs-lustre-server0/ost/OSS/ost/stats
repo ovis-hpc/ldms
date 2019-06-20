@@ -1,0 +1,14 @@
+snapshot_time             1555443637.574029417 secs.nsecs
+req_waittime              3120 samples [usec] 9 296 304294 30808752
+req_qdepth                3120 samples [reqs] 0 0 0 0
+req_active                3120 samples [reqs] 1 1 3120 3120
+req_timeout               3120 samples [sec] 1 10 3129 3219
+reqbuf_avail              9323 samples [bufs] 63 64 590462 37398338
+ldlm_glimpse_enqueue      3 samples [reqs] 1 1 3 3
+ldlm_extent_enqueue       1 samples [reqs] 1 1 1 1
+ost_setattr               1 samples [usec] 56 56 56 3136
+ost_create                2 samples [usec] 91 537 628 296650
+ost_get_info              1 samples [usec] 1250 1250 1250 1562500
+ost_connect               3 samples [usec] 91 160 385 51837
+ost_disconnect            1 samples [usec] 67 67 67 4489
+obd_ping                  3108 samples [usec] 5 72 33657 389475

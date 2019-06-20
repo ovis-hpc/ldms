@@ -1,0 +1,11 @@
+LDLM pool state (ldlm-pool-MGS-0):
+  SLV: 36000
+  CLV: 0
+  LVF: 1
+  GSP: 1%
+  GP:  0
+  GR:  0
+  CR:  0
+  GS:  0
+  G:   0
+  L:   1

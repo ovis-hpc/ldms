@@ -1,0 +1,3 @@
+[
+ { nid: 192.168.56.71@tcp, uuid: 3aeb80e5-8f31-c050-9fec-8d7f69498c2c }, { nid: 192.168.56.71@tcp, uuid: 3aeb80e5-8f31-c050-9fec-8d7f69498c2c }, { nid: 0@lo, uuid: lustre-MDT0000-mdtlov_UUID }, { nid: 0@lo, uuid: lustre-MDT0000-lwp-OST0000_UUID }, { nid: 0@lo, uuid: lustre-MDT0000-lwp-MDT0000_UUID },
+]

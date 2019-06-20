@@ -1,3 +1,4 @@
+SUBDIRS =
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 CORE = ../core
@@ -23,11 +24,18 @@ libstore_amqp_la_LIBADD = -lrabbitmq $(STORE_LIBADD)
 pkglib_LTLIBRARIES += libstore_amqp.la
 endif
 
+if ENABLE_KOKKOS
+SUBDIRS += kokkos
+endif
+
 if ENABLE_SOS
 libstore_sos_la_SOURCES = store_sos.c
 libstore_sos_la_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
 libstore_sos_la_LIBADD = @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@ $(STORE_LIBADD) -lsos
 pkglib_LTLIBRARIES += libstore_sos.la
+
+SUBDIRS += slurm
+SUBDIRS += papi
 endif
 
 if ENABLE_FLATFILE

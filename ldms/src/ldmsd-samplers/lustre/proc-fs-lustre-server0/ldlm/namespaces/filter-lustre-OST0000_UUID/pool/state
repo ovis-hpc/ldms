@@ -1,0 +1,11 @@
+LDLM pool state (ldlm-pool-filter-lustre-OST0000_UUID-2):
+  SLV: 1654164000
+  CLV: 0
+  LVF: 1
+  GSP: 1%
+  GP:  459
+  GR:  0
+  CR:  0
+  GS:  0
+  G:   0
+  L:   45949

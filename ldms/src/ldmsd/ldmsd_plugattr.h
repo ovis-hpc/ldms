@@ -50,6 +50,7 @@
 #include <stdbool.h>
 #include <inttypes.h>
 #include "ovis_util/util.h"
+#include "json/json_util.h"
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -83,6 +84,16 @@ struct pa_deprecated {
 	const char *msg; /*< specific log detail to add to generic message, or NULL. */
 };
 #define NULL_PA_DEP {NULL, NULL, 0, NULL}
+
+/**
+ * \brief Convert a JSON dictionary object to a struct attr_value_list object.
+ *
+ * \param json   A JSON entity of dictionary type
+ *
+ * \return the handle of an attr_value_list object
+ */
+struct attr_value_list *
+ldmsd_plugattr_json2attr_value_list(json_entity_t json);
 
 /**
  * \brief parse the attributes from the attr_value_lists and file.
@@ -324,6 +335,5 @@ void ldmsd_plugattr_log(enum ldmsd_loglevel lvl, struct plugattr *pa, const char
  * int unexpected = ldmsd_plugattr_config_check(attributes, avl, kwl, NULL, NULL);
  */
 int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct attr_value_list *avl, struct attr_value_list *kwl, struct pa_deprecated *dep, const char *plugin_name);
-
 
 #endif /* LDMS_SRC_LDMSD_LDMSD_PLUGATTR_H_ */

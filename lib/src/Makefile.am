@@ -10,6 +10,7 @@ do_subst = @LIB_SUBST_RULE@
 	chmod 755 $@
 
 SUBDIRS = third
+SUBDIRS += json
 
 if ENABLE_OVIS_UTIL
 SUBDIRS += ovis_util
@@ -38,6 +39,8 @@ endif
 if ENABLE_OVIS_CTRL
 SUBDIRS += ovis_ctrl
 endif
+
+SUBDIRS += ev
 
 install-data-hook: ovis-lib-configvars.sh
 	$(MKDIR_P) $(DESTDIR)$(libdir)

@@ -20,12 +20,12 @@ if ENABLE_LDMSD
 SUBDIRS += ldmsd
 endif
 
-if ENABLE_STORE
-SUBDIRS += store
+if ENABLE_SAMPLER
+SUBDIRS += ldmsd-samplers
 endif
 
-if ENABLE_SAMPLER
-SUBDIRS += sampler
+if ENABLE_STORE
+SUBDIRS += ldmsd-stores
 endif
 
 if ENABLE_LDMS_TEST

@@ -10,6 +10,8 @@ CITYSOURCE= city.c city.h citycrc.h
 B64SOURCE= cencode.c cencode.h
 B62SOURCE= b62encode.c b62encode.h
 
+libovis_thirdinclude_HEADERS = city.h citycrc.h b62encode.h
+libovis_thirdincludedir = $(includedir)/third
 libovis_third_la_SOURCES= $(CITYSOURCE) $(B62SOURCE)
 libovis_third_la_CFLAGS= -DCITYSLIM
 libovis_third_la_LDFLAGS=

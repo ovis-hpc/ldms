@@ -1,0 +1,26 @@
+
+regular_requests:
+  - name: fifo
+    state: started
+    fallback: yes
+    queued: 0                   
+    active: 0                   
+
+  - name: crrn
+    state: stopped
+    fallback: no
+    queued: 0                   
+    active: 0                   
+
+  - name: tbf
+    state: stopped
+    fallback: no
+    queued: 0                   
+    active: 0                   
+
+  - name: delay
+    state: stopped
+    fallback: no
+    queued: 0                   
+    active: 0                   
+

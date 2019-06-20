@@ -1,0 +1,57 @@
+name: lfsck_namespace
+magic: 0xa0621a0b
+version: 2
+status: init
+flags:
+param:
+last_completed_time: N/A
+time_since_last_completed: N/A
+latest_start_time: N/A
+time_since_latest_start: N/A
+last_checkpoint_time: N/A
+time_since_last_checkpoint: N/A
+latest_start_position: N/A, N/A, N/A
+last_checkpoint_position: N/A, N/A, N/A
+first_failure_position: N/A, N/A, N/A
+checked_phase1: 0
+checked_phase2: 0
+updated_phase1: 0
+updated_phase2: 0
+failed_phase1: 0
+failed_phase2: 0
+directories: 0
+dirent_repaired: 0
+linkea_repaired: 0
+nlinks_repaired: 0
+multiple_linked_checked: 0
+multiple_linked_repaired: 0
+unknown_inconsistency: 0
+unmatched_pairs_repaired: 0
+dangling_repaired: 0
+multiple_referenced_repaired: 0
+bad_file_type_repaired: 0
+lost_dirent_repaired: 0
+local_lost_found_scanned: 0
+local_lost_found_moved: 0
+local_lost_found_skipped: 0
+local_lost_found_failed: 0
+striped_dirs_scanned: 0
+striped_dirs_repaired: 0
+striped_dirs_failed: 0
+striped_dirs_disabled: 0
+striped_dirs_skipped: 0
+striped_shards_scanned: 0
+striped_shards_repaired: 0
+striped_shards_failed: 0
+striped_shards_skipped: 0
+name_hash_repaired: 0
+linkea_overflow_cleared: 0
+success_count: 0
+run_time_phase1: 0 seconds
+run_time_phase2: 0 seconds
+average_speed_phase1: 0 items/sec
+average_speed_phase2: 0 objs/sec
+average_speed_total: 0 items/sec
+real_time_speed_phase1: N/A
+real_time_speed_phase2: N/A
+current_position: N/A

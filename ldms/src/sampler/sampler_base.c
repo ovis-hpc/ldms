@@ -143,6 +143,23 @@ base_data_t base_config(struct attr_value_list *avl,
 		    name, job_set_name);
 		base->job_id_idx = -1;
 	} else {
+		/* Check the schema name to determine if this is a
+		 * multi-tenant sampler. If it is, we need the
+		 * current_idx metric to determine which job data to
+		 * pull at sample time.
+		 */
+		if (0 == strncmp(ldms_set_schema_name_get(base->job_set), "mtji", 4)) {
+			base->mtji = 1;
+			base->current_mid = ldms_metric_by_name(base->job_set, "current_idx");
+			if (base->current_mid < 0) {
+				log(LDMSD_LINFO,
+				    "%s: The current_idx attribute is missing. "
+				    "Disabling multi-tenancy");
+				base->mtji = 0;
+			}
+		} else {
+			base->mtji = 0;
+		}
 		value = av_value(avl, "job_id");
 		if (!value)
 			value = "job_id";
@@ -325,16 +342,38 @@ void base_sample_begin(base_data_t base)
 	if (!base->job_set)
 		return;
 
-	start = ldms_metric_get_u64(base->job_set, base->job_start_idx);
-	end = ldms_metric_get_u64(base->job_set, base->job_end_idx);
-	ts = ldms_transaction_timestamp_get(base->set);
+	if (!base->mtji) {
+		start = ldms_metric_get_u64(base->job_set, base->job_start_idx);
+		end = ldms_metric_get_u64(base->job_set, base->job_end_idx);
+		ts = ldms_transaction_timestamp_get(base->set);
 
-	if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
-		job_id = ldms_metric_get_u64(base->job_set, base->job_id_idx);
-		app_id = ldms_metric_get_u64(base->job_set, base->app_id_idx);
+		if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
+			job_id = ldms_metric_get_u64(base->job_set, base->job_id_idx);
+			app_id = ldms_metric_get_u64(base->job_set, base->app_id_idx);
+		}
+		ldms_metric_set_u64(base->set, BASE_JOB_ID, job_id);
+		ldms_metric_set_u64(base->set, BASE_APP_ID, app_id);
+	} else {
+		int current_idx = ldms_metric_get_u64(base->job_set, base->current_mid);
+		start = ldms_metric_array_get_u64(base->job_set,
+						  base->job_start_idx,
+						  current_idx);
+		end = ldms_metric_array_get_u64(base->job_set,
+						base->job_end_idx,
+						current_idx);
+		ts = ldms_transaction_timestamp_get(base->set);
+
+		if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
+			job_id = ldms_metric_array_get_u64(base->job_set,
+							   base->job_id_idx,
+							   current_idx);
+			app_id = ldms_metric_array_get_u64(base->job_set,
+							   base->app_id_idx,
+							   current_idx);
+		}
+		ldms_metric_set_u64(base->set, BASE_JOB_ID, job_id);
+		ldms_metric_set_u64(base->set, BASE_APP_ID, app_id);
 	}
-	ldms_metric_set_u64(base->set, BASE_JOB_ID, job_id);
-	ldms_metric_set_u64(base->set, BASE_APP_ID, app_id);
 }
 
 void base_sample_end(base_data_t base)

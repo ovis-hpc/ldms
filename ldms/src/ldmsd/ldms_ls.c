@@ -298,8 +298,10 @@ void value_printer(ldms_set_t s, int idx)
 		}
 		break;
 	default:
-		printf("Unknown metric type\n");
+		printf("Unknown metric type");
+		return;
 	}
+	printf(" %s", ldms_metric_units_get(s, idx));
 }
 
 static int user_data = 0;

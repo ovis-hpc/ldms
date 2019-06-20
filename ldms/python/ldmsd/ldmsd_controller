@@ -204,9 +204,18 @@ class LdmsdCmdParser(cmd.Cmd):
                     [name] = attr_str.split("=")
                 except:
                     raise
+                # Handle specific cases
                 if (verb == "config" and name != "name") or (verb == "env"):
                     attr_s.append(attr_str)
+                elif (verb == "listen") and (name not in ["xprt", "port", "port", "auth"]):
+                        # auth args
+                        attr_s.append(attr_str)
+                elif (verb == "prdcr_add") and (name not in
+                           ["name", "xprt", "port", "host", "type", "interval", "auth"]):
+                        # auth args
+                        attr_s.append(attr_str)
                 else:
+                    # handle general cases
                     try:
                         attr = LDMSD_Req_Attr(value = value, attr_name = name)
                     except KeyError:
@@ -217,6 +226,7 @@ class LdmsdCmdParser(cmd.Cmd):
                         attr_list.append(attr)
 
             if len(attr_s) > 0:
+                # Construct the value of the STRING attribute
                 attr_str = " ".join(attr_s)
                 attr = LDMSD_Req_Attr(value = attr_str, attr_id = LDMSD_Req_Attr.STRING)
                 attr_list.append(attr)
@@ -274,14 +284,22 @@ class LdmsdCmdParser(cmd.Cmd):
         print(self.__complete_attr_list(arg, ""))
 
     def do_usage(self, arg):
-        """List the usage of the plugins loaded on the server.
-        """
+        """Show the usage of the plugin instance."""
         resp = self.handle('usage', arg)
         if resp['errcode'] == 0:
             print(resp['msg'])
 
     def complete_usage(self, text, line, begidx, endidx):
         return self.__complete_attr_list('usage', text)
+
+    def do_list(self, arg):
+        """List all plugin instances in the ldmsd."""
+        resp = self.handle('list', arg)
+        if resp['errcode'] == 0:
+            print(resp['msg'])
+
+    def complete_usage(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('list', text)
 
     def do_load(self, arg):
         """
@@ -380,6 +398,18 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_prdcr_stop_regex(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_stop_regex', text)
+
+    def do_prdcr_subscribe(self, arg):
+        """
+        Subscribe for stream data from all matching producers
+        Parameters:
+        regex=     A regular expression matching producer names
+        stream=    The stream name
+        """
+        self.handle('prdcr_subscribe', arg);
+
+    def complete_prdcr_subscribe(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_subscribe', text)
 
     def do_updtr_add(self, arg):
         """
@@ -659,20 +689,22 @@ class LdmsdCmdParser(cmd.Cmd):
             from datetime import datetime
             metric_sets = json.loads(resp['msg'])
 
-            print("Name                 Schema Name      State      Origin           Producer         timestamp                duration (sec)")
-            print("-------------------- ---------------- ---------- ---------------- ---------------- ------------------------- ---------------")
+            print("Name                 Schema Name      State      Origin           Producer         Update Hint          Timestamp                 Duration (sec)")
+            print("-------------------- ---------------- ---------- ---------------- ---------------- -------------------- ------------------------- ---------------")
             for pset in metric_sets:
                 ts = float(pset['timestamp.sec'])
                 ts_sec = datetime.fromtimestamp(ts).strftime('%m-%d-%y %H:%M:%S')
                 ts_str = "{0} [{1}]".format(ts_sec, pset['timestamp.usec'])
                 dur = pset['duration.sec'] + "." + pset['duration.usec'].zfill(6)
-                print("{0:20} {1:16} {2:10} {3:16} {4:16} {5:25} {6:12}".format(pset['inst_name'],
-                                                                                pset['schema_name'],
-                                                                                pset['state'],
-                                                                                pset['origin'],
-                                                                                pset['producer'],
-                                                                                ts_str,
-                                                                                dur))
+                print("{0:20} {1:16} {2:10} {3:16} {4:16} {5:20} {6:25} {7:12}".
+                      format(pset['inst_name'],
+                             pset['schema_name'],
+                             pset['state'],
+                             pset['origin'],
+                             pset['producer'],
+                             pset['hint.sec'] + ':' + pset['hint.usec'],
+                             ts_str,
+                             dur))
 
     def complete_prdcr_set_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_set_status', text)
@@ -686,12 +718,16 @@ class LdmsdCmdParser(cmd.Cmd):
         resp = self.handle('updtr_status', arg)
         if resp['errcode'] == 0:
             updaters = json.loads(resp['msg'])
-            print("Name             Interval     Offset       Mode            State")
-            print("---------------- ------------ ------------ --------------- ------------")
+            print("Name             Sample Period    Hop Incr     Auto  Mode            State")
+            print("---------------- ---------------- ------------ ----- --------------- ------------")
             for updtr in updaters:
-                print("{0:16} {1:12} {2:12} {3:15} {4}".format(
-                    updtr['name'], updtr['interval'], updtr['offset'],
-                    updtr['mode'], updtr['state']))
+                print("{0:16} {1:16} {2:12} {3:5} {4:15} {5}".format(
+                    updtr['name'],
+                    str(updtr['interval']) + ':' + str(updtr['offset']),
+                    updtr['offset_incr'],
+                    updtr['auto'],
+                    updtr['mode'],
+                    updtr['state']))
                 for prdcr in updtr['producers']:
                     print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
                         prdcr['name'], prdcr['host'], prdcr['port'],
@@ -728,16 +764,40 @@ class LdmsdCmdParser(cmd.Cmd):
         return self.__complete_attr_list('strgp_status', text)
 
     def do_plugn_status(self, arg):
+        """
+        List statuses of plugin instances
+        Parameters:
+        [name=]  The plugin instance name
+        """
         resp = self.handle('plugn_status', None)
         if resp:
             plugins = json.loads(resp['msg'])
-            print("Name         Type         Interval     Offset       Libpath")
-            print("------------ ------------ ------------ ------------ ------------")
+            print("Name         Plugin       Type         Libpath")
+            print("------------ ------------ ------------ ------------")
             for plugn in plugins:
-                print("{0:12} {1:12} {2:12} {3:12} {4:12}".format(
-                    plugn['name'], plugn['type'],
-                    plugn['sample_interval_us'], plugn['sample_offset_us'],
+                print("{0:12} {1:12} {2:12} {3:12}".format(
+                    plugn['name'], plugn['plugin'], plugn['type'],
                     plugn['libpath']))
+
+    def complete_plugn_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('plugn_status', text)
+
+    def do_plugn_query(self, arg):
+        """
+        Query plugin instances
+        Parameters:
+        query=   The query text (e.g. `status` or `config`)
+        [name=]  The plugin instance name
+        """
+        resp = self.handle('plugn_query', arg)
+        if resp:
+            plugins = json.loads(resp['msg'])
+            # pretty-print json object
+            s = json.dumps(plugins, indent = 4)
+            print(s)
+
+    def complete_plugn_query(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('plugn_query', text)
 
     def do_plugn_sets(self, arg):
         """
@@ -755,6 +815,28 @@ class LdmsdCmdParser(cmd.Cmd):
             print("{0}:".format(p['plugin']))
             for s in p['sets']:
                 print("   {0}".format(s))
+
+    def do_publish(self, arg):
+        """
+        Publish data to the named stream
+        Parameters:
+        name=   The stream name
+        data=   The data to publish
+        """
+        resp = self.handle('publish', arg)
+        print(resp['errcode'])
+
+    def do_subscribe(self, arg):
+        """
+        Subscribe to a stream.
+
+        The aggregator will listen for published data on the specified stream.
+
+        Parameters:
+        name=   The stream name
+        """
+        resp = self.handle('subscribe', arg)
+        print(resp['errcode'])
 
     def do_status(self, arg):
         all__ = (len(arg) == 0)
@@ -790,9 +872,32 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_config(self, text, line, begidx, endidx):
         return self.__complete_attr_list('config', text)
 
-    def do_start(self, arg):
+    def do_smplr_add(self, arg):
         """
-        Start a sampler plugin
+        Add an LDMS Sampler
+        Parameters:
+        name=         A unique name for this Sampler
+        instance=     The plugin instance name
+        """
+        self.handle('smplr_add', arg)
+
+    def complete_smplr_add(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('smplr_add', text)
+
+    def do_smplr_del(self, arg):
+        """
+        Delete an LDMS Sampler. The sampler cannot be running.
+        Parameters:
+        name=    The sampler name
+        """
+        self.handle('smplr_del', arg)
+
+    def complete_smplr_del(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('smplr_del', text)
+
+    def do_smplr_start(self, arg):
+        """
+        Start a sampler
         Parameters:
         name=     The plugin name
         interval= The sample interval in microseconds
@@ -802,21 +907,53 @@ class LdmsdCmdParser(cmd.Cmd):
                   collection will be synchronous; if the offset is not specified,
                   collection will be asynchronous.
         """
-        self.handle('start', arg)
+        self.handle('smplr_start', arg)
 
     def complete_start(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('start', text)
+        return self.__complete_attr_list('smplr_start', text)
 
-    def do_stop(self, arg):
+    def do_smplr_stop(self, arg):
         """
-        Stop a sampler plugin
+        Stop a sampler
         Parameters:
-        name=     The plugin name
+        name=     The smplr name
         """
-        self.handle('stop', arg)
+        self.handle('smplr_stop', arg)
 
-    def complete_stop(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('stop', text)
+    def complete_smplr_stop(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('smplr_stop', text)
+
+    def do_smplr_status(self, arg):
+        """
+        Show the status for a sampler
+        Parameters:
+        name=     The smplr name
+        """
+        resp = self.handle('smplr_status', arg)
+        if resp['errcode'] == 0:
+            samplers = json.loads(resp['msg'])
+
+            print("{0:16} {1:16} {2:16} {3:>10} {4:>7} {5:>10} {6:>8} {7}".format("Name", "Plugin Instance", "Plugin", "Interval", "Offset", "Sync State", "State", "Sets"))
+            print("--------------- ---------------- ---------------- ---------- -------- ----------- ------- --------------------")
+            for smplr in samplers:
+                print("{0:16} {1:16} {2:16} {3:>10} {4:>7} {5:>10} {6:>8}".format(smplr['name'],
+                             smplr['instance'],
+                             smplr['plugin'],
+                             smplr['interval_us'],
+                             smplr['offset_us'],
+                             "true" if smplr['synchronous'] else "false",
+                             smplr['state']), end='')
+                cnt = 0
+                for s in smplr['sets']:
+                    if cnt == 0:
+                        print(" " + s, end='')
+                    else:
+                        print("," + s, end='')
+                    cnt += 1
+                print("")
+
+    def complete_smplr_status(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('smplr_status', text)
 
     def do_udata(self, arg):
         """
@@ -1035,6 +1172,7 @@ class LdmsdCmdParser(cmd.Cmd):
             [producer=]     The producer name of the set group.
             [interval=]     The update interval hint (in usec).
             [offset=]       The update offset hint (in usec).
+            [perm=]         The permission to modify the setgroup in the future.
         """
         self.handle('setgroup_add', arg)
 
@@ -1195,6 +1333,30 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_prdcr_hint_tree(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_hint_tree', text)
+
+    def do_listen(self, arg):
+        """Add a listening endpoint
+        Parameters:
+            xprt=     the transport name
+            [port=]   the port
+            [host=]   the hostname
+            [auth=]   the authentication plugin name
+            [...]     the authentication options, e.g., path=<path to file>
+        """
+        self.handle('listen', arg)
+
+    def do_export(self, arg):
+        """Export running configuration to a local file on the node the daemon is running
+        Parameters:
+            path=        the path of the exported file
+            [env=]       true/false
+            [cmdline=]   true/false
+            [cfgcmd=]    true/false
+        """
+        self.handle('export', arg)
+
+    def complete_export_config(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('export', text)
 
     def parseline(self, line):
         """Parse the line into a command name and a string containing
