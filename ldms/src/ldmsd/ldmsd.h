@@ -888,6 +888,7 @@ static inline const char *ldmsd_prdcr_set_state_str(enum ldmsd_prdcr_set_state s
 }
 void ldmsd_prdcr_set_ref_get(ldmsd_prdcr_set_t set);
 void ldmsd_prdcr_set_ref_put(ldmsd_prdcr_set_t set);
+void ldmsd_prd_set_updtr_task_update(ldmsd_prdcr_set_t prd_set);
 int ldmsd_prdcr_start(const char *name, const char *interval_str,
 		      ldmsd_sec_ctxt_t ctxt);
 int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,

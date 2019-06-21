@@ -185,10 +185,7 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 			return;
 		list = container_of(rbn, struct ldmsd_updt_hint_set_list, rbn);
 		assert(prd_set->ref_count);
-		if (!prd_set->updt_hint_entry.le_prev)
-			return; /* Already removed. This can happen when
-				 * we receive DIR_DEL before outstanding
-				 * SET_INFO lookup has completed. */
+		assert(prd_set->updt_hint_entry.le_prev);
 		LIST_REMOVE(prd_set, updt_hint_entry);
 		prd_set->updt_hint_entry.le_next = NULL;
 		prd_set->updt_hint_entry.le_prev = NULL;
@@ -249,56 +246,12 @@ static ldmsd_prdcr_set_t _find_set(ldmsd_prdcr_t prdcr, const char *inst_name)
 	return NULL;
 }
 
-/* Caller must hold prdcr lock and prdcr_set lock */
-static void prdcr_set_updt_hint_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set)
-{
-	struct rbn *rbn;
-	ldmsd_updt_hint_set_list_t list;
-	char *value;
-	ldms_set_t set = prd_set->set;
-
-	/* Remove set from the previous-hint list */
-	prdcr_hint_tree_update(prdcr, prd_set,
-			       &prd_set->updt_hint, UPDT_HINT_TREE_REMOVE);
-
-	if (prd_set->set) {
-		ldms_set_info_unset(set, LDMSD_SET_INFO_UPDATE_HINT_KEY);
-		(void) ldmsd_set_update_hint_get(prd_set->set,
-						 &prd_set->updt_hint.intrvl_us,
-						 &prd_set->updt_hint.offset_us);
-	}
-	/* Add set to the current-hint list*/
-	if (0 != prd_set->updt_hint.intrvl_us) {
-		ldmsd_log(LDMSD_LDEBUG, "producer '%s' add set '%s' to hint tree\n",
-						prdcr->obj.name, prd_set->inst_name);
-		prdcr_hint_tree_update(prdcr, prd_set,
-				&prd_set->updt_hint, UPDT_HINT_TREE_ADD);
- 	} else {
-		/* No new hint. done */
-		ldmsd_log(LDMSD_LDEBUG, "set '%s' contains no updtr hint\n",
-							prd_set->inst_name);
-		return;
-	}
-
-	return;
-}
-
-void prdcr_set_updtr_task_update(ldmsd_prdcr_set_t prd_set)
+void ldmsd_prd_set_updtr_task_update(ldmsd_prdcr_set_t prd_set)
 {
 	ldmsd_updtr_t updtr;
 	ldmsd_name_match_t match;
 	char *str;
 	int rc;
-	pthread_mutex_lock(&prd_set->lock);
-#if 0
-	if (0 == ldmsd_updtr_schedule_cmp(&prd_set->prev_hint,
-						&prd_set->updt_hint)) {
-		/* Do nothing */
-		pthread_mutex_unlock(&prd_set->lock);
-		return;
-	}
-#endif
-	pthread_mutex_unlock(&prd_set->lock);
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
 		ldmsd_updtr_lock(updtr);
@@ -324,82 +277,20 @@ void prdcr_set_updtr_task_update(ldmsd_prdcr_set_t prd_set)
 					str = prd_set->schema_name;
 				rc = regexec(&match->regex, str, 0, NULL, 0);
 				if (!rc)
-					goto update_task;
+					goto update_tasks;
 			}
-			ldmsd_updtr_unlock(updtr);
-			continue;
+			goto nxt_updtr;
 		}
-update_task:
+	update_tasks:
 		pthread_mutex_lock(&prd_set->lock);
 		ldmsd_updtr_tasks_update(updtr, prd_set);
 		pthread_mutex_unlock(&prd_set->lock);
+	nxt_updtr:
 		ldmsd_updtr_unlock(updtr);
 	}
 
 
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
-}
-
-static void prdcr_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
-			    int more, ldms_set_t set, void *arg)
-{
-	ldmsd_prdcr_set_t prd_set = arg;
-	int update_updtr_tree = 0;
-	pthread_mutex_lock(&prd_set->lock);
-	if (status != LDMS_LOOKUP_OK) {
-		status = (status < 0 ? -status : status);
-		if (status == ENOMEM) {
-			ldmsd_log(LDMSD_LERROR,
-				"Error %d in lookup callback for set '%s' "
-				"Consider changing the -m parameter on the "
-				"command line to a bigger value. "
-				"The current value is %s\n",
-				status, prd_set->inst_name,
-				ldmsd_get_max_mem_sz_str());
-
-		} else {
-			ldmsd_log(LDMSD_LERROR,
-				  "Error %d in lookup callback for set '%s'\n",
-					  status, prd_set->inst_name);
-		}
-		prd_set->state = LDMSD_PRDCR_SET_STATE_START;
-		goto out;
-	}
-	if (!prd_set->set) {
-		/* This is the first lookup of the set. */
-		prd_set->set = set;
-	}
-
-	/*
-	 * Unlocking producer set to lock producer and then producer set
-	 * for locking order consistency
-	 */
-	pthread_mutex_unlock(&prd_set->lock);
-
-	ldmsd_prdcr_lock(prd_set->prdcr);
-	pthread_mutex_lock(&prd_set->lock);
-	prdcr_set_updt_hint_update(prd_set->prdcr, prd_set);
-	if (0 != prd_set->updt_hint.intrvl_us)
-		update_updtr_tree = 1;
-	pthread_mutex_unlock(&prd_set->lock);
-	ldmsd_prdcr_unlock(prd_set->prdcr);
-
-	pthread_mutex_lock(&prd_set->lock);
-	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
-	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
-	ldmsd_strgp_update(prd_set);
-
-out:
-	pthread_mutex_unlock(&prd_set->lock);
-	if ((status == LDMS_LOOKUP_OK) && (update_updtr_tree)) {
-		/*
-		 * Update the task tree of all updaters
-		 * that get updates for the producer set.
-		 */
-		prdcr_set_updtr_task_update(prd_set);
-	}
-	ldmsd_prdcr_set_ref_put(prd_set); /* The ref is taken before calling lookup */
-	return;
 }
 
 static void __update_set_info(ldmsd_prdcr_set_t set, ldms_dir_set_t dset)
@@ -425,10 +316,11 @@ static void __update_set_info(ldmsd_prdcr_set_t set, ldms_dir_set_t dset)
 
 		/* Sanity check the hints */
 		if (offset_us >= intrvl_us) {
-			ldmsd_lerror("Invalid hint '%s', ignoring hint\n", hint);
+			ldmsd_lerror("set %s: Invalid hint '%s', ignoring hint\n",
+					set->inst_name, hint);
 		} else {
 			if (offset_us != LDMSD_UPDT_HINT_OFFSET_NONE)
-				set->updt_hint.offset_us = offset_us + updtr_sched_offset_skew_get();
+				set->updt_hint.offset_us = offset_us;
 			set->updt_hint.intrvl_us = intrvl_us;
 		}
 		free(s);
@@ -469,7 +361,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
  	}
 
 	ldmsd_prdcr_unlock(prdcr);
-	prdcr_set_updtr_task_update(set);
+	ldmsd_prd_set_updtr_task_update(set);
 	ldmsd_prdcr_lock(prdcr);
 }
 
@@ -512,25 +404,33 @@ static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 {
 	ldmsd_prdcr_set_t set;
 	int i, rc;
+	struct ldmsd_updtr_schedule prev_hint;
 
 	for (i = 0; i < dir->set_count; i++) {
 		set = ldmsd_prdcr_set_find(prdcr, dir->set_data[i].inst_name);
 		if (!set) {
-                        /* Received an update, but the set is gone. */
-                        ldmsd_log(LDMSD_LERROR,
-                                  "Ignoring 'dir update' for the set, '%s', which "
-                                  "is not present in the prdcr_set tree.\n",
-                                  dir->set_data[i].inst_name);
-                        continue;
+			/* Received an update, but the set is gone. */
+			ldmsd_log(LDMSD_LERROR,
+				  "Ignoring 'dir update' for the set, '%s', which "
+				  "is not present in the prdcr_set tree.\n",
+				  dir->set_data[i].inst_name);
+			continue;
 		}
 		pthread_mutex_lock(&set->lock);
 		set->state = LDMSD_PRDCR_SET_STATE_START;
 		prdcr_hint_tree_update(prdcr, set, &set->updt_hint, UPDT_HINT_TREE_REMOVE);
+		prev_hint = set->updt_hint;
 		__update_set_info(set, &dir->set_data[i]);
-		prdcr_set_updt_hint_update(prdcr, set);
+		prdcr_hint_tree_update(prdcr, set, &set->updt_hint, UPDT_HINT_TREE_ADD);
 		pthread_mutex_unlock(&set->lock);
-
-		prdcr_set_updtr_task_update(set);
+		if (0 != ldmsd_updtr_schedule_cmp(&prev_hint, &set->updt_hint)) {
+			/*
+			 * Update Updater tasks only when
+			 * there are any changes to
+			 * avoid unnecessary iterations.
+			 */
+			ldmsd_prd_set_updtr_task_update(set);
+		}
 	}
 }
 

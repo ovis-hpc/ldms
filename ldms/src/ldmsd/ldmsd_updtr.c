@@ -85,7 +85,7 @@ void ldmsd_updtr___del(ldmsd_cfgobj_t obj)
 }
 
 
-int updtr_sched_offset_skew_get()
+static int updtr_sched_offset_skew_get()
 {
 	int skew = LDMSD_UPDTR_OFFSET_INCR_DEFAULT;
 	char *str = getenv(LDMSD_UPDTR_OFFSET_INCR_VAR);
@@ -506,7 +506,7 @@ static void prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 out:
 	pthread_mutex_unlock(&prd_set->lock);
 	if (ready)
-		prdcr_set_updtr_task_update(prd_set);
+		ldmsd_prd_set_updtr_task_update(prd_set);
 	ldmsd_prdcr_set_ref_put(prd_set); /* The ref is taken before calling lookup */
 	return;
 }
@@ -743,7 +743,7 @@ void __prdcr_set_update_sched(ldmsd_prdcr_set_t prd_set,
  *
  * Caller must hold the updater lock and the prd_set lock.
  *
- * Assume that the updater is in RUNNING state.
+ * The updater MUST in RUNNING state.
  */
 int ldmsd_updtr_tasks_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 {
@@ -762,7 +762,7 @@ int ldmsd_updtr_tasks_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 		goto out;
 	} else if ((updtr->default_task.hint.intrvl_us == prd_set->updt_hint.intrvl_us) &&
 		(updtr->default_task.hint.offset_us == prd_set->updt_hint.offset_us)) {
-		/* The root task will update the producer set. */
+		/* The default task will update the producer set. */
 		task = &updtr->default_task;
 		goto out;
 	}
@@ -804,25 +804,23 @@ static int updtr_tasks_create(ldmsd_updtr_t updtr)
 		for (prd_set = ldmsd_prdcr_set_first(prdcr); prd_set;
 		     prd_set = ldmsd_prdcr_set_next(prd_set)) {
 			pthread_mutex_lock(&prd_set->lock);
-			if (LIST_EMPTY(&updtr->match_list)) {
-				rc = ldmsd_updtr_tasks_update(updtr, prd_set);
-				if (rc)
-					goto err;
-			} else {
+			if (!LIST_EMPTY(&updtr->match_list)) {
 				LIST_FOREACH(match, &updtr->match_list, entry) {
 					if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
 						str = prd_set->inst_name;
 					else
 						str = prd_set->schema_name;
 					rc = regexec(&match->regex, str, 0, NULL, 0);
-					if (rc)
-						goto err;
-					rc = ldmsd_updtr_tasks_update(
-							updtr, prd_set);
-					if (rc)
-						goto err;
+					if (!rc)
+						goto update_tasks;
 				}
+				goto nxt_prd_set;
 			}
+		update_tasks:
+			rc = ldmsd_updtr_tasks_update(updtr, prd_set);
+			if (rc)
+				goto err;
+		nxt_prd_set:
 			pthread_mutex_unlock(&prd_set->lock);
 		}
 		ldmsd_prdcr_unlock(prdcr);

@@ -152,6 +152,7 @@ static int __ldms_set_unpublish(struct ldms_set *set);
 
 extern int __ldms_set_info_set(struct ldms_set_info_list *info,
 				const char *key, const char *value);
+void __ldms_set_info_unset(struct ldms_set_info_pair *pair);
 extern void __ldms_set_info_delete(struct ldms_set_info_list *info);
 extern struct ldms_set_info_pair *__ldms_set_info_find(struct ldms_set_info_list *info,
 								const char *key);
