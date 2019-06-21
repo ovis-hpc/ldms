@@ -9,6 +9,7 @@
 #include <getopt.h>
 #include <semaphore.h>
 #include <pthread.h>
+#include <ovis_util/util.h>
 #include "ldms.h"
 #include "ldmsd_request.h"
 #include "ldmsd_stream.h"

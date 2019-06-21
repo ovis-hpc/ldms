@@ -29,7 +29,7 @@ sbin_PROGRAMS += ldmsd_upload
 ldmsd_upload_SOURCES = ldmsd_upload.c
 ldmsd_upload_CFLAGS = $(AM_CFLAGS) -DLDMSD_UPLOAD_CMD
 ldmsd_upload_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
-ldmsd_upload_LDFLAGS = $(AM_LDFLAGS) -lovis_util
+ldmsd_upload_LDFLAGS = $(AM_LDFLAGS) -lovis_util -pthread
 
 lib_LTLIBRARIES += libldmsd_stream.la
 libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h \
