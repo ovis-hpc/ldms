@@ -1,7 +1,7 @@
 lib_LTLIBRARIES=
+SUBDIRS = .
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
-lib_LTLIBRARIES = 
 if ENABLE_SOS
 sbin_PROGRAMS += ldmsd_sos_init
 endif
@@ -16,6 +16,8 @@ ldmsdinclude_HEADERS = ldmsd.h ldmsd_stream.h
 
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
+
+SUBDIRS += test
 
 ldms_ls_SOURCES = ldms_ls.c
 ldms_ls_CFLAGS = $(AM_CFLAGS)
