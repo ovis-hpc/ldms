@@ -628,7 +628,7 @@ void print_dir(ldms_dir_t dir)
 		}
 	} else {
 		for (i = 0; i < dir->set_count; i++) {
-			printf("%-14s %-24s %6s %6d %6d %6d %6d %10s %10d.%06d %10d.%06d ",
+			printf("%-14s %-24s %6s %6lu %6lu %6d %6d %10s %10d.%06d %10d.%06d ",
 			       dir->set_data[i].schema_name,
 			       dir->set_data[i].inst_name,
 			       dir->set_data[i].flags,

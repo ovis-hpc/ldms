@@ -21,10 +21,10 @@ sbin_PROGRAMS += ldmsd_stream_publish
 ldmsd_stream_publish_SOURCES = ldmsd_stream_publish.c
 ldmsd_stream_publish_CFLAGS = $(AM_CFLAGS)
 ldmsd_stream_publish_LDADD = $(CORE)/libldms.la $(LDMSD)/librequest.la $(LDMSD)/libldmsd_stream.la
-ldmsd_stream_publish_LDFLAGS = $(AM_LDFLAGS) -ljson_util
+ldmsd_stream_publish_LDFLAGS = $(AM_LDFLAGS) -ljson_util -ltada -lovis_util
 
 sbin_PROGRAMS += ldmsd_stream_subscribe
 ldmsd_stream_subscribe_SOURCES = ldmsd_stream_subscribe.c
 ldmsd_stream_subscribe_CFLAGS = $(AM_CFLAGS)
 ldmsd_stream_subscribe_LDADD = $(CORE)/libldms.la $(LDMSD)/librequest.la $(LDMSD)/libldmsd_stream.la
-ldmsd_stream_subscribe_LDFLAGS = $(AM_LDFLAGS) -ljson_util
+ldmsd_stream_subscribe_LDFLAGS = $(AM_LDFLAGS) -ljson_util -pthread -lovis_util

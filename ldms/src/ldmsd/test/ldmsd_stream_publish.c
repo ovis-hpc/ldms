@@ -10,6 +10,7 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <json/json_util.h>
+#include <ovis_util/util.h>
 #include "ldms.h"
 #include "../ldmsd_request.h"
 #include "../ldmsd_stream.h"

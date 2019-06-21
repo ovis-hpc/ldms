@@ -28,7 +28,7 @@ int yyparse(json_parser_t parser, char *input, size_t input_len, json_entity_t *
 void yy_delete_buffer(struct yy_buffer_state *);
 int yylex(void *, YYLTYPE *loctype, json_parser_t, char *input, size_t input_len, yyscan_t scanner);
 #define YYLEX_PARAM parser, input, input_len, parser->scanner
-
+#define PARSER_SCANNER parser->scanner
 
 static inline json_entity_t new_dict_val(void) {
 	return json_entity_new(JSON_DICT_VALUE);
@@ -62,7 +62,7 @@ static inline json_entity_t add_list_item(json_entity_t e, json_entity_t v)
 %lex-param { json_parser_t parser }
 %lex-param { char *input }
 %lex-param { size_t input_len }
-%lex-param { yyscan_t scanner }
+%lex-param { yyscan_t PARSER_SCANNER }
 
 %parse-param { json_parser_t parser }
 %parse-param { char *input }

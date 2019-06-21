@@ -52,6 +52,9 @@ typedef struct test_s {
 
 #define TEST_END(_c_name) {0}}}
 
+extern void tada_start(test_t test);
+extern void tada_finish(test_t test);
+extern int tada_assert(test_t test, int assert_no, int cond, const char *cond_str);
 #define TEST_START(c_name) tada_start(&c_name)
 #define TEST_FINISH(c_name) tada_finish(&c_name)
 #define TEST_ASSERT(_t_, _no_, _cond_) tada_assert(&_t_, _no_, _cond_, #_cond_)

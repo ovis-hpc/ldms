@@ -2,9 +2,11 @@ lib_LTLIBRARIES=
 SUBDIRS = . test
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
+
 if ENABLE_SOS
 sbin_PROGRAMS += ldmsd_sos_init
 endif
+
 CORE = ../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I.. @OVIS_LIB_INCDIR_FLAG@
 AM_CFLAGS += \
@@ -31,7 +33,7 @@ sbin_PROGRAMS += ldmsd_upload
 ldmsd_upload_SOURCES = ldmsd_upload.c
 ldmsd_upload_CFLAGS = $(AM_CFLAGS) -DLDMSD_UPLOAD_CMD
 ldmsd_upload_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
-ldmsd_upload_LDFLAGS = $(AM_LDFLAGS)
+ldmsd_upload_LDFLAGS = -lovis_util -pthread $(AM_LDFLAGS)
 
 lib_LTLIBRARIES += libldmsd_stream.la
 libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h ldms.h ldms_core.h ldmsd_request_util.c
@@ -65,7 +67,7 @@ ldmsctl_SOURCES = ldmsctl.c
 ldmsctl_LDADD = $(CORE)/libldms.la librequest.la
 ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ \
 		-lovis_ctrl -lovis_util -lmmalloc -lcoll -lzap -ljson_util \
-		 -ljson_parser -lm @LDFLAGS_GETTIME@
+		 -ljson_parser -lm -pthread @LDFLAGS_GETTIME@
 
 ldmsd_sos_init_SOURCES = ldmsd_sos_init.c
 ldmsd_sos_init_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
