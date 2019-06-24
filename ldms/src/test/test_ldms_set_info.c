@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2018 National Technology & Engineering Solutions
+ * Copyright (c) 2018-2019 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2018-2019 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -98,10 +98,10 @@ static int is_server;
 static int is_A;
 static int is_B;
 static int no_wait;
-static int alive_sec = 1800;
 static int is_local;
-
 static int IS_DONE;
+
+static sem_t exit_sem;
 
 struct pair {
 	char *key;
@@ -110,6 +110,44 @@ struct pair {
 };
 LIST_HEAD(pair_list, pair) removed_pair_list;
 struct pair_list replaced_pair_list;
+
+struct clnt_msg {
+	enum clnt_msg_type {
+		RESET = 0x1,
+		UNSET = 0x2,
+		ADD   = 0x3,
+		CHECK = 0x4,
+		FWD   = 0x10,
+		DONE  = 0x100,
+	} type;
+	char key_value[OVIS_FLEX];
+};
+
+struct exp_result {
+	int count;
+	char **keys;
+	char **values;
+	int *key_marks;
+};
+
+struct clnt;
+typedef void (*test_fn)(ldms_dir_set_t dset);
+typedef struct clnt {
+	ldms_t x;
+	const char *inst_name;
+	const char *schema_name;
+	ldms_set_t set;
+	test_fn test_fn;
+	struct clnt_msg *msg;
+	sem_t connect_sem;
+	sem_t dir_sem;
+	sem_t dir_upd_sem;
+	sem_t lookup_sem;
+	sem_t set_info_sem;
+	sem_t recv_sem;
+	int clnt_B_do_lookup;
+} *clnt_t;
+clnt_t clnt;
 
 void __add_pair(const char *key, const char *value)
 {
@@ -140,40 +178,6 @@ void __add_pair(const char *key, const char *value)
 	LIST_INSERT_HEAD(l, pair, entry);
 }
 
-struct clnt_msg {
-	enum clnt_msg_type {
-		RESET,
-		UNSET,
-		ADD,
-		CHECK,
-	} type;
-	char key_value[OVIS_FLEX];
-};
-
-struct exp_result {
-	int count;
-	char **keys;
-	char **values;
-	int *key_marks;
-};
-
-struct clnt;
-typedef void (*test_fn)(struct clnt *clnt);
-struct clnt {
-	ldms_t x;
-	const char *inst_name;
-	ldms_set_t set;
-	test_fn test_fn;
-	struct clnt_msg *msg;
-	sem_t connect_sem;
-	sem_t dir_sem;
-	sem_t dir_upd_sem;
-	sem_t lookup_set_info_sem;
-	sem_t set_info_sem;
-	sem_t recv_sem;
-	int clnt_B_do_lookup;
-};
-
 static struct clnt *clnt_new()
 {
 	struct clnt *clnt = calloc(1, sizeof(*clnt));
@@ -184,7 +188,7 @@ static struct clnt *clnt_new()
 	sem_init(&clnt->connect_sem, 0, 0);
 	sem_init(&clnt->dir_sem, 0, 0);
 	sem_init(&clnt->dir_upd_sem, 0, 0);
-	sem_init(&clnt->lookup_set_info_sem, 0, 0);
+	sem_init(&clnt->lookup_sem, 0, 0);
 	sem_init(&clnt->set_info_sem, 0, 0);
 	sem_init(&clnt->recv_sem, 0, 0);
 	return clnt;
@@ -430,157 +434,56 @@ void test_ldms_set_info_get(ldms_set_t s, const char *key, const char *exp_value
 	free(value);
 }
 
-static int __test_set_info_traverse_cb(const char *key, const char *value, void *arg)
+static void __test_set_info_key_value_pair(const char *key, const char *value,
+							struct exp_result *exp)
 {
-	struct exp_result *test_arg = (struct exp_result *)arg;
 	int i;
 
-	for (i = 0; i < test_arg->count; i++) {
-		if (0 == strcmp(key, test_arg->keys[i]))
+	for (i = 0; i < exp->count; i++) {
+		if (0 == strcmp(key, exp->keys[i]))
 			break;
 	}
-	if (i == test_arg->count) {
+	if (i == exp->count) {
 		printf("\n	Unexpected key '%s'\n", key);
 		assert(0);
 	}
 
-	if (0 != strcmp(value, test_arg->values[i])) {
+	if (0 != strcmp(value, exp->values[i])) {
 		printf("\n	Wrong value of key '%s'. Expecting '%s' vs '%s'\n",
-						key, test_arg->values[i], value);
+						key, exp->values[i], value);
 		assert(0);
 	}
 
-	if (test_arg->key_marks[i] == FOUND) {
+	if (exp->key_marks[i] == FOUND) {
 		printf("\n	Found duplicated key '%s' with value '%s'\n", key, value);
 		assert(0);
 	}
-	test_arg->key_marks[i] = FOUND;
-	return 0;
+	exp->key_marks[i] = FOUND;
 }
 
-static void __test_set_info_B(struct clnt *clnt)
+static  void __test_dir_set_info(ldms_dir_set_t dset, struct exp_result *exp)
 {
-	int rc;
-	ldms_set_t set = clnt->set;
-
-	char *keys[4] = {SET_INFO_CLNT1_RESET_KEY, SET_INFO_CLNT1_ADD_KEY,
-				SET_INFO_SYNC_KEY, CLNT_A_TO_SERVER_ADD_KEY};
-	char *values[4] = {SET_INFO_INT_VALUE, SET_INFO_CLNT1_ADD_VALUE,
-				CLNT_A_TO_SERVER_RESET_VALUE, CLNT_A_TO_SERVER_ADD_VALUE};
-	int key_marks[4] = {0, 0, 0, 0};
-	struct exp_result test_arg = {
-			.count = 4,
-			.keys = keys,
-			.values = values,
-			.key_marks = key_marks};
-	rc = ldms_set_info_traverse(set, __test_set_info_traverse_cb,
-					LDMS_SET_INFO_F_REMOTE, (void *)&test_arg);
-	if (rc) {
-		printf("\n	Error %d: Failed to iterate through the set info list.\n", rc);
-		assert(0);
-	}
 	int i;
-	for (i = 0; i < test_arg.count; i++) {
-		if (test_arg.key_marks[i] != FOUND) {
-			printf("\n	Failed a key missing from the list. key '%s'\n", test_arg.keys[i]);
+
+	for (i = 0; i < dset->info_count; i++)
+		__test_set_info_key_value_pair(dset->info[i].key,
+						dset->info[i].value, exp);
+
+	for (i = 0; i < exp->count; i++) {
+		if (exp->key_marks[i] != FOUND) {
+			printf("\n	Failed a key missing from the list. key '%s'\n",
+							exp->keys[i]);
 			assert(0);
 		}
 	}
 }
 
-static void __test_dir_upd_add_A(struct clnt *clnt)
+static void __test_dir_upd_add_A(ldms_dir_set_t dset)
 {
-	ldms_set_t set = clnt->set;
-	int rc;
 	char *keys[3] = {SET_INFO_INT_KEY, CLNT_A_TO_SERVER_RESET_KEY,
 						CLNT_A_TO_SERVER_ADD_KEY};
 	char *values[3] = {SET_INFO_INT_VALUE, CLNT_A_TO_SERVER_RESET_VALUE,
 						CLNT_A_TO_SERVER_ADD_VALUE};
-	int key_marks[3] = {0, 0, 0};
-	struct exp_result test_arg = {
-			.count = 3,
-			.keys = keys,
-			.values = values,
-			.key_marks = key_marks};
-	rc = ldms_set_info_traverse(set, __test_set_info_traverse_cb,
-					LDMS_SET_INFO_F_REMOTE, (void *)&test_arg);
-	if (rc) {
-		printf("\n	Error %d: Failed to iterate through the set info list.\n", rc);
-		assert(0);
-	}
-	int i;
-	for (i = 0; i < test_arg.count; i++) {
-		if (test_arg.key_marks[i] != FOUND) {
-			printf("\n	Failed a key missing from the list. key '%s'\n", test_arg.keys[i]);
-			assert(0);
-		}
-	}
-}
-
-static void __test_dir_upd_unset_A(struct clnt *clnt)
-{
-	ldms_set_t set = clnt->set;
-	int rc;
-	char *keys[2] = {SET_INFO_INT_KEY, CLNT_A_TO_SERVER_RESET_KEY};
-	char *values[2] = {SET_INFO_INT_VALUE, CLNT_A_TO_SERVER_RESET_VALUE};
-	int key_marks[2] = {0, 0};
-	struct exp_result test_arg = {
-			.count = 2,
-			.keys = keys,
-			.values = values,
-			.key_marks = key_marks};
-	rc = ldms_set_info_traverse(set, __test_set_info_traverse_cb,
-					LDMS_SET_INFO_F_REMOTE, (void *)&test_arg);
-	if (rc) {
-		printf("\n	Error %d: Failed to iterate through the set info list.\n", rc);
-		assert(0);
-	}
-	int i;
-	for (i = 0; i < test_arg.count; i++) {
-		if (test_arg.key_marks[i] != FOUND) {
-			printf("\n	Failed a key missing from the list. key '%s'\n", test_arg.keys[i]);
-			assert(0);
-		}
-	}
-}
-
-static void __test_dir_upd_reset_A(struct clnt *clnt)
-{
-	int rc;
-	ldms_set_t set = clnt->set;
-	char *keys[3] = {SET_INFO_INT_KEY, SET_INFO_OFFSET_KEY,
-						CLNT_A_TO_SERVER_RESET_KEY};
-	char *values[3] = {SET_INFO_INT_VALUE, SET_INFO_RESET_NEW_VALUE,
-						CLNT_A_TO_SERVER_RESET_VALUE};
-	int key_marks[3] = {0, 0, 0};
-	struct exp_result test_arg = {
-			.count = 3,
-			.keys = keys,
-			.values = values,
-			.key_marks = key_marks};
-	rc = ldms_set_info_traverse(set, __test_set_info_traverse_cb,
-					LDMS_SET_INFO_F_REMOTE, (void *)&test_arg);
-	if (rc) {
-		printf("\n	Error %d: Failed to iterate through the set info list.\n", rc);
-		assert(0);
-	}
-	int i;
-	for (i = 0; i < test_arg.count; i++) {
-		if (test_arg.key_marks[i] != FOUND) {
-			printf("\n	Failed a key missing from the list. key '%s'\n", test_arg.keys[i]);
-			assert(0);
-		}
-	}
-}
-
-static void __test_lookup_A(struct clnt *clnt)
-{
-	char *value;
-	int rc;
-	ldms_set_t set = clnt->set;
-
-	char *keys[3] = {SET_INFO_INT_KEY, SET_INFO_OFFSET_KEY, SET_INFO_SYNC_KEY};
-	char *values[3] = {SET_INFO_INT_VALUE, SET_INFO_RESET_NEW_VALUE, SET_INFO_SYNC_VALUE};
 	int key_marks[3] = {0, 0, 0};
 	struct exp_result exp = {
 			.count = 3,
@@ -588,23 +491,54 @@ static void __test_lookup_A(struct clnt *clnt)
 			.values = values,
 			.key_marks = key_marks,
 	};
-	rc = ldms_set_info_traverse(set, __test_set_info_traverse_cb,
-				LDMS_SET_INFO_F_REMOTE, (void *)&exp);
-	if (rc) {
-		printf("\n	Error %d: Failed to iterate through the set info list.\n", rc);
-		assert(0);
-	}
-	int i;
-	for (i = 0; i < exp.count; i++) {
-		if (exp.key_marks[i] != FOUND) {
-			printf("\n	Failed a key missing from the list. key '%s'\n",
-							exp.keys[i]);
-			assert(0);
-		}
-	}
+	__test_dir_set_info(dset, &exp);
 }
 
-static void test_lookup_set_info_cb(ldms_t ldms, enum ldms_lookup_status status,
+static void __test_dir_upd_unset_A(ldms_dir_set_t dset)
+{
+	char *keys[2] = {SET_INFO_INT_KEY, CLNT_A_TO_SERVER_RESET_KEY};
+	char *values[2] = {SET_INFO_INT_VALUE, CLNT_A_TO_SERVER_RESET_VALUE};
+	int key_marks[2] = {0, 0};
+	struct exp_result exp = {
+			.count = 2,
+			.keys = keys,
+			.values = values,
+			.key_marks = key_marks,
+	};
+	__test_dir_set_info(dset, &exp);
+}
+
+static void __test_dir_upd_reset_A(ldms_dir_set_t dset)
+{
+	char *keys[3] = {SET_INFO_INT_KEY, SET_INFO_OFFSET_KEY,
+						CLNT_A_TO_SERVER_RESET_KEY};
+	char *values[3] = {SET_INFO_INT_VALUE, SET_INFO_RESET_NEW_VALUE,
+						CLNT_A_TO_SERVER_RESET_VALUE};
+	int key_marks[3] = {0, 0, 0};
+	struct exp_result exp = {
+			.count = 3,
+			.keys = keys,
+			.values = values,
+			.key_marks = key_marks,
+	};
+	__test_dir_set_info(dset, &exp);
+}
+
+static void __test_dir_set_info_A(ldms_dir_set_t dset)
+{
+	char *keys[3] = {SET_INFO_INT_KEY, SET_INFO_OFFSET_KEY, SET_INFO_SYNC_KEY};
+	char *values[3] = {SET_INFO_INT_VALUE, SET_INFO_RESET_NEW_VALUE, SET_INFO_SYNC_VALUE};
+	int key_marks[3] = {0, 0, 0};
+	struct exp_result exp = {
+			.count = 3,
+			.keys = keys,
+			.values = values,
+			.key_marks = key_marks
+	};
+	__test_dir_set_info(dset, &exp);
+}
+
+static void __test_lookup_cb(ldms_t ldms, enum ldms_lookup_status status,
 				int more, ldms_set_t set, void *arg)
 {
 	struct clnt *clnt;
@@ -619,14 +553,14 @@ static void test_lookup_set_info_cb(ldms_t ldms, enum ldms_lookup_status status,
 	clnt->set = set;
 
 	inst_name = (char *)ldms_set_instance_name_get(set);
-	if (0 != strcmp(inst_name, SET_NAME)) {
+	if (0 != strcmp(inst_name, clnt->inst_name)) {
 		printf("\n	Lookup return wrong instance name. Expecting '%s' vs '%s'\n",
 								SET_NAME, inst_name);
 		assert(0);
 	}
 
 	schema_name = (char *)ldms_set_schema_name_get(set);
-	if (0 != strcmp(SCHEMA_NAME, schema_name)) {
+	if (0 != strcmp(clnt->schema_name, schema_name)) {
 		printf("\n	Lookup return wrong schema name. Expecting '%s' vs '%s'\n",
 							SCHEMA_NAME, schema_name);
 		assert(0);
@@ -645,16 +579,15 @@ static void test_lookup_set_info_cb(ldms_t ldms, enum ldms_lookup_status status,
 		assert(0);
 	}
 
-	clnt->test_fn(clnt);
-	sem_post(&clnt->lookup_set_info_sem);
+	sem_post(&clnt->lookup_sem);
 }
 
-static void test_lookup_set_info(struct clnt *clnt, int flags)
+static void test_lookup(struct clnt *clnt, int flags)
 {
 	int rc;
 
 	rc = ldms_xprt_lookup(clnt->x, clnt->inst_name, flags,
-				test_lookup_set_info_cb, clnt);
+				__test_lookup_cb, clnt);
 	if (rc) {
 		printf("\n	Error %d: Lookup failed synchronously\n", rc);
 		assert(0);
@@ -676,12 +609,12 @@ static void client_event_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 	case LDMS_XPRT_EVENT_ERROR:
 		printf("%d: conn_error\n", port);
 		ldms_xprt_put(x);
-		sem_post(&clnt->lookup_set_info_sem);
+		sem_post(&clnt->lookup_sem);
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		printf("%d: disconnected\n", port);
 		ldms_xprt_put(x);
-		sem_post(&clnt->lookup_set_info_sem);
+		sem_post(&clnt->lookup_sem);
 		break;
 	case LDMS_XPRT_EVENT_RECV:
 		if (0 == strcmp(e->data, "done"))
@@ -694,6 +627,8 @@ static void client_event_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 	}
 }
 
+static void clnt_send_msg(struct clnt *clnt, enum clnt_msg_type type,
+					const char *key, const char *value);
 static void server_process_recv(ldms_t x, char *data, size_t data_len, ldms_set_t set)
 {
 	struct clnt_msg *msg = (struct clnt_msg *)data;
@@ -701,6 +636,13 @@ static void server_process_recv(ldms_t x, char *data, size_t data_len, ldms_set_
 
 	key = strtok_r(msg->key_value, ":", &endptr);
 	value = strtok_r(NULL, ":", &endptr);
+
+	if (clnt && (msg->type & FWD)) {
+		assert(clnt->x);
+		msg->type = msg->type & ~FWD;
+		clnt_send_msg(clnt, msg->type, key, value);
+		return;
+	}
 
 	switch (msg->type) {
 	case RESET:
@@ -716,6 +658,11 @@ static void server_process_recv(ldms_t x, char *data, size_t data_len, ldms_set_
 		if (IS_DONE) {
 			ldms_xprt_send(x, "done", 5);
 		}
+		break;
+	case DONE:
+		if (clnt)
+			clnt_send_msg(clnt, DONE, "", "");
+		sem_post(&exit_sem);
 		break;
 	default:
 		printf("Unexpected client msg type '%d'\n", msg->type);
@@ -746,6 +693,9 @@ static void client_dir_cb(ldms_t x, int status, ldms_dir_t dir, void *arg)
 {
 	int rc;
 	struct clnt *clnt = arg;
+	char *set_name;
+	sem_t *sem;
+
 	if (status) {
 		printf("Error %d: dir callback failed\n", status);
 		assert(0);
@@ -755,35 +705,48 @@ static void client_dir_cb(ldms_t x, int status, ldms_dir_t dir, void *arg)
 				"from dir update\n", dir->set_count);
 		assert(0);
 	}
-
+	set_name = dir->set_data[0].inst_name;
 	switch (dir->type) {
 	case LDMS_DIR_LIST:
-		clnt->inst_name = strdup(dir->set_names[0]);
+		clnt->inst_name = strdup(set_name);
 		if (!clnt->inst_name) {
 			printf("Out of memory\n");
 			assert(0);
 		}
-		sem_post(&clnt->dir_sem);
-		break;
-	case LDMS_DIR_UPD:
-		if (0 != strcmp(clnt->inst_name, dir->set_names[0])) {
-			printf("Receive DIR_UPD with unknown set '%s'\n", dir->set_names[0]);
+		clnt->schema_name = strdup(dir->set_data[0].schema_name);
+		if (!clnt->schema_name) {
+			printf("Out of memory\n");
 			assert(0);
 		}
-		sem_post(&clnt->dir_upd_sem);
+		sem = &clnt->dir_sem;
+		break;
+	case LDMS_DIR_UPD:
+		if (0 != strcmp(clnt->inst_name, set_name)) {
+			printf("Receive DIR_UPD with unknown set '%s'\n", set_name);
+			assert(0);
+		}
+		sem = &clnt->dir_upd_sem;
 		break;
 	default:
 		printf("Received unexpected dir reply type '%d'\n", dir->type);
 		assert(0);
 		break;
 	}
+	if (clnt->test_fn)
+		clnt->test_fn(&dir->set_data[0]);
+	ldms_xprt_dir_free(x, dir);
+	sem_post(sem);
 }
 
 static void clnt_send_msg(struct clnt *clnt, enum clnt_msg_type type,
 					const char *key, const char *value)
 {
 	int rc;
-	size_t sz = sizeof(*(clnt->msg)) + strlen(key) + strlen(value) + 3;
+	size_t sz;
+	if (!value)
+		value = "";
+
+	sz = sizeof(*(clnt->msg)) + strlen(key) + strlen(value) + 3;
 	clnt->msg = malloc(sz);
 	if (!clnt->msg) {
 		printf("out of memory\n");
@@ -805,7 +768,8 @@ static void do_client_A(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 	ldms_t connect_ldms;
 	struct clnt_msg msg;
 
-	struct clnt *clnt = clnt_new();
+	sem_init(&exit_sem, 0, 0);
+	clnt = clnt_new();
 	listen_ldms = ldms_xprt_new(xprt, NULL);
 	if (!listen_ldms) {
 		printf("Failed to create ldms xprt\n");
@@ -833,46 +797,40 @@ static void do_client_A(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 	}
 	sem_wait(&clnt->connect_sem);
 
+	clnt->test_fn = __test_dir_set_info_A;
 	rc = ldms_xprt_dir(clnt->x, client_dir_cb, (void *)clnt, LDMS_DIR_F_NOTIFY);
 	if (rc) {
 		printf("Error %d: ldms_xprt_dir synchronously failed\n", rc);
 		assert(0);
 	}
 	sem_wait(&clnt->dir_sem);
-
-	clnt->test_fn = __test_lookup_A;
-	printf("Lookup a set and test the set info correctness");
-	test_lookup_set_info(clnt, LDMS_LOOKUP_BY_INSTANCE);
-	sem_wait(&clnt->lookup_set_info_sem);
 	printf(" ----- PASSED\n");
 
 	printf("Server resetting a key");
+	clnt->test_fn = __test_dir_upd_reset_A;
 	clnt_send_msg(clnt, RESET,
 		CLNT_A_TO_SERVER_RESET_KEY, CLNT_A_TO_SERVER_RESET_VALUE);
 	sem_wait(&clnt->dir_upd_sem);
 	free(clnt->msg);
-	clnt->test_fn = __test_dir_upd_reset_A;
-	test_lookup_set_info(clnt, LDMS_LOOKUP_SET_INFO);
-	sem_wait(&clnt->lookup_set_info_sem);
 	printf(" ----- PASSED\n");
 
 	printf("Server unset a key");
+	clnt->test_fn = __test_dir_upd_unset_A;
 	clnt_send_msg(clnt, UNSET, CLNT_A_TO_SERVER_UNSET_KEY, "");
 	sem_wait(&clnt->dir_upd_sem);
 	free(clnt->msg);
-	clnt->test_fn = __test_dir_upd_unset_A;
-	test_lookup_set_info(clnt, LDMS_LOOKUP_SET_INFO);
-	sem_wait(&clnt->lookup_set_info_sem);
 	printf(" ----- PASSED\n");
 
 	printf("Server add a key");
+	clnt->test_fn = __test_dir_upd_add_A;
 	clnt_send_msg(clnt, ADD, CLNT_A_TO_SERVER_ADD_KEY, CLNT_A_TO_SERVER_ADD_VALUE);
 	sem_wait(&clnt->dir_upd_sem);
 	free(clnt->msg);
-	clnt->test_fn = __test_dir_upd_add_A;
-	test_lookup_set_info(clnt, LDMS_LOOKUP_SET_INFO);
-	sem_wait(&clnt->lookup_set_info_sem);
 	printf(" ----- PASSED\n");
+
+	clnt->test_fn = NULL;
+	test_lookup(clnt, LDMS_LOOKUP_BY_INSTANCE);
+	sem_wait(&clnt->lookup_sem);
 
 	char *value;
 	printf("Adding a key");
@@ -886,7 +844,7 @@ static void do_client_A(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 	free(value);
 	printf(" ----- PASSED\n");
 
-	printf("Add a key that appears in the remote list");
+	printf("Add a key that is already in the remote list");
 	ldms_set_info_set(clnt->set, SET_INFO_CLNT1_RESET_KEY, SET_INFO_CLNT1_RESET_VALUE);
 	value = ldms_set_info_get(clnt->set, SET_INFO_CLNT1_RESET_KEY);
 	if (0 != strcmp(value, SET_INFO_CLNT1_RESET_VALUE)) {
@@ -918,15 +876,86 @@ static void do_client_A(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 	if (no_wait)
 		return;
 	printf("Waiting for clients\n");
-	sleep(alive_sec);
+	sem_wait(&exit_sem);
+}
+
+static void __test_set_info_B(ldms_dir_set_t dset)
+{
+	char *keys[4] = {SET_INFO_CLNT1_RESET_KEY, SET_INFO_CLNT1_ADD_KEY,
+				SET_INFO_SYNC_KEY, CLNT_A_TO_SERVER_ADD_KEY};
+	char *values[4] = {SET_INFO_INT_VALUE, SET_INFO_CLNT1_ADD_VALUE,
+				CLNT_A_TO_SERVER_RESET_VALUE, CLNT_A_TO_SERVER_ADD_VALUE};
+	int key_marks[4] = {0, 0, 0, 0};
+	struct exp_result exp = {
+			.count = 4,
+			.keys = keys,
+			.values = values,
+			.key_marks = key_marks
+	};
+	__test_dir_set_info(dset, &exp);
+}
+
+#define CLNT_B_PROP_UPD_RESET_KEY   "who"
+#define CLNT_B_PROP_UPD_RESET_VALUE "set_origin"
+static void __test_dir_upd_prop_reset_B(ldms_dir_set_t dset)
+{
+	char *keys[4] = {SET_INFO_CLNT1_RESET_KEY, SET_INFO_CLNT1_ADD_KEY,
+				SET_INFO_SYNC_KEY, CLNT_B_PROP_UPD_RESET_KEY};
+	char *values[4] = {SET_INFO_INT_VALUE, SET_INFO_CLNT1_ADD_VALUE,
+				CLNT_A_TO_SERVER_RESET_VALUE, CLNT_B_PROP_UPD_RESET_VALUE};
+	int key_marks[4] = {0, 0, 0, 0};
+	struct exp_result exp = {
+			.count = 4,
+			.keys = keys,
+			.values = values,
+			.key_marks = key_marks
+	};
+	__test_dir_set_info(dset, &exp);
+}
+
+#define CLNT_B_PROP_UPD_UNSET_KEY   "sync"
+static void __test_dir_upd_prop_unset_B(ldms_dir_set_t dset)
+{
+	char *keys[3] = {SET_INFO_CLNT1_RESET_KEY, SET_INFO_CLNT1_ADD_KEY,
+				CLNT_B_PROP_UPD_RESET_KEY};
+	char *values[3] = {SET_INFO_INT_VALUE, SET_INFO_CLNT1_ADD_VALUE,
+				CLNT_B_PROP_UPD_RESET_VALUE};
+	int key_marks[3] = {0, 0, 0};
+	struct exp_result exp = {
+			.count = 3,
+			.keys = keys,
+			.values = values,
+			.key_marks = key_marks
+	};
+	__test_dir_set_info(dset, &exp);
+}
+
+#define CLNT_B_PROP_UPD_ADD_KEY    "B_add"
+#define CLNT_B_PROP_UPD_ADD_VALUE  "this_value"
+static void __test_dir_upd_prop_add_B(ldms_dir_set_t dset)
+{
+	char *keys[4] = {SET_INFO_CLNT1_RESET_KEY, SET_INFO_CLNT1_ADD_KEY,
+				CLNT_B_PROP_UPD_RESET_KEY,
+				CLNT_B_PROP_UPD_ADD_KEY};
+	char *values[4] = {SET_INFO_INT_VALUE, SET_INFO_CLNT1_ADD_VALUE,
+				CLNT_B_PROP_UPD_RESET_VALUE,
+				CLNT_B_PROP_UPD_ADD_VALUE};
+	int key_marks[4] = {0, 0, 0, 0};
+	struct exp_result exp = {
+			.count = 4,
+			.keys = keys,
+			.values = values,
+			.key_marks = key_marks
+	};
+	__test_dir_set_info(dset, &exp);
 }
 
 static void do_client_B(struct sockaddr_in *listen_sin, struct sockaddr_in *connect_sin)
 {
 	int rc;
 	ldms_t listen_ldms;
-	ldms_t connect_ldms;
-	struct clnt *clnt = clnt_new();
+	ldms_t connect_ldms_server;
+	clnt = clnt_new();
 
 	listen_ldms = ldms_xprt_new(xprt, NULL);
 	if (!listen_ldms) {
@@ -934,8 +963,8 @@ static void do_client_B(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 		exit(1);
 	}
 
-	connect_ldms = ldms_xprt_new(xprt, NULL);
-	if (!connect_ldms) {
+	connect_ldms_server = ldms_xprt_new(xprt, NULL);
+	if (!connect_ldms_server) {
 		printf("Failed to create ldms xprt\n");
 		exit(1);
 	}
@@ -947,20 +976,13 @@ static void do_client_B(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 		exit(1);
 	}
 
-	rc = ldms_xprt_connect(connect_ldms, (void *)connect_sin, sizeof(*connect_sin),
+	rc = ldms_xprt_connect(connect_ldms_server, (void *)connect_sin, sizeof(*connect_sin),
 							client_event_cb, clnt);
 	if (rc) {
 		printf("Error %d: Failed to connect to the server\n", rc);
 		assert(0);
 	}
 	sem_wait(&clnt->connect_sem);
-
-	rc = ldms_xprt_dir(clnt->x, client_dir_cb, (void *)clnt, LDMS_DIR_F_NOTIFY);
-	if (rc) {
-		printf("Error %d: ldms_xprt_dir synchronously failed\n", rc);
-		assert(0);
-	}
-	sem_wait(&clnt->dir_sem);
 
 	clnt_send_msg(clnt, CHECK, "", "");
 	sem_wait(&clnt->recv_sem);
@@ -972,11 +994,38 @@ static void do_client_B(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 		free(clnt->msg);
 	}
 
-	printf("lookup the set and the set info");
 	clnt->test_fn = __test_set_info_B;
-	test_lookup_set_info(clnt, LDMS_LOOKUP_BY_INSTANCE);
-	sem_wait(&clnt->lookup_set_info_sem);
+	rc = ldms_xprt_dir(clnt->x, client_dir_cb, (void *)clnt, LDMS_DIR_F_NOTIFY);
+	if (rc) {
+		printf("Error %d: ldms_xprt_dir synchronously failed\n", rc);
+		assert(0);
+	}
+	sem_wait(&clnt->dir_sem);
 	printf(" ----- PASSED\n");
+
+	printf("Test set info propagation\n");
+	printf("       resetting a key on the set origin\n");
+	clnt->test_fn = __test_dir_upd_prop_reset_B;
+	clnt_send_msg(clnt, FWD | RESET, CLNT_B_PROP_UPD_RESET_KEY, CLNT_B_PROP_UPD_RESET_VALUE);
+	sem_wait(&clnt->dir_upd_sem);
+	free(clnt->msg);
+	printf(" ----- PASSED\n");
+
+	printf("       unsetting a key on the set origin\n");
+	clnt->test_fn = __test_dir_upd_prop_unset_B;
+	clnt_send_msg(clnt, FWD | UNSET, CLNT_B_PROP_UPD_UNSET_KEY, "");
+	sem_wait(&clnt->dir_upd_sem);
+	free(clnt->msg);
+	printf(" ----- PASSED\n");
+
+	printf("       adding a key on the set origin\n");
+	clnt->test_fn = __test_dir_upd_prop_add_B;
+	clnt_send_msg(clnt, FWD | ADD, CLNT_B_PROP_UPD_ADD_KEY, CLNT_B_PROP_UPD_ADD_VALUE);
+	sem_wait(&clnt->dir_upd_sem);
+	free(clnt->msg);
+	printf(" ----- PASSED\n");
+
+	clnt_send_msg(clnt, DONE, "", "");
 	printf("DONE\n");
 }
 
@@ -1058,6 +1107,7 @@ int do_server(struct sockaddr_in *sin)
 	ldms_t my_ldms;
 	int rc;
 
+	sem_init(&exit_sem, 0, 0);
 	set = test_local_set_info();
 
 	rc = ldms_set_info_set(set, SET_INFO_SYNC_KEY, SET_INFO_SYNC_VALUE);
@@ -1083,7 +1133,7 @@ int do_server(struct sockaddr_in *sin)
 	if (no_wait)
 		return 0;
 	printf("Waiting for clients\n");
-	sleep(alive_sec);
+	sem_wait(&exit_sem);
 	return 0;
 }
 
