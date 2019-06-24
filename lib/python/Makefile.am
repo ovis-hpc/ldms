@@ -2,6 +2,8 @@ CFLAGS := $(filter-out -Werror, ${CFLAGS})
 PY_INCLUDES = -I$(srcdir)/../include \
 	-I$(srcdir)/../src
 
+pkgpython_PYTHON = __init__.py TADA.py
+
 pkgpyexec_LTLIBRARIES = Map.la
 
 Map_la_SOURCES = Map.pyx Map.pxd

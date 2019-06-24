@@ -1,0 +1,73 @@
+#!/usr/bin/env python
+import logging
+import socket
+import json
+import datetime as dt
+
+log = logging.getLogger('tada_server')
+
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+def tada_server(host='0.0.0.0', port=9862):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+
+    log.info("Listening on udp %s:%s" % (host, port))
+    s.bind((host, port))
+    while True:
+        (data, addr) = s.recvfrom(128*1024)
+        yield addr, data
+
+
+def test_start(addr, result):
+    print("{0} - [{1}:{2:5}]".format(result['test-suite'], addr[0], addr[1]))
+    timestamp = dt.datetime.fromtimestamp(int(result['timestamp']))
+    print("    {0} {1}".format(str(timestamp), result['test-name']))
+
+def test_finish(addr, result):
+    pass
+
+def test_assert(addr, result):
+
+    status = result['test-status']
+    if status == 'passed':
+        status = bcolors.OKGREEN + 'passed' + bcolors.ENDC
+    elif status == 'failed':
+        status = bcolors.FAIL + 'failed' + bcolors.ENDC
+    elif status == 'skipped':
+        status = bcolors.WARNING + status + bcolors.ENDC
+
+    print("        {0:10} {1:4} {2} {3}"
+          .format(status,
+                  result['assert-no'],
+                  result['assert-desc'],
+                  result['assert-cond']))
+
+FORMAT_CONS = '%(asctime)s %(name)-12s %(levelname)8s\t%(message)s'
+logging.basicConfig(level=logging.DEBUG, format=FORMAT_CONS)
+
+for addr, data in tada_server():
+    try:
+        result = json.loads(data)
+    except:
+        log.debug("Could not parse the test result message")
+        log.debug("{0}: {1}".format(addr, data))
+        continue
+
+    msg_type = result['msg-type']
+    if msg_type == 'test-start':
+        test_start(addr, result)
+    elif msg_type == 'test-finish':
+        test_finish(addr, result)
+    elif msg_type == 'assert-status':
+        test_assert(addr, result)
+    else:
+        log.debug("Unrecognized message type {0}".format(msg_type))
