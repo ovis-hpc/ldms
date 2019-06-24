@@ -75,15 +75,35 @@
 #include "ldms.h"
 #include "../ldmsd.h"
 #include "../ldmsd_stream.h"
+#include "tada/tada.h"
+
+TEST_BEGIN("LDMSD_Communications", "JSON_Stream_Test", "FVT", t_1)
+TEST_ASSERTION(t_1, 0, "'schema' STRING Present")
+TEST_ASSERTION(t_1, 1, "'schema' STRING Correct")
+TEST_ASSERTION(t_1, 2, "'timestamp' INT Present")
+TEST_ASSERTION(t_1, 3, "'timestamp' INT Correct")
+TEST_ASSERTION(t_1, 4, "'data' DICT Present")
+TEST_ASSERTION(t_1, 5, "'id' INT Present")
+TEST_ASSERTION(t_1, 6, "'id' INT Value Correct")
+TEST_ASSERTION(t_1, 7, "'list' LIST Present")
+TEST_ASSERTION(t_1, 8, "'list' LIST Value Correct")
+TEST_END(t_1);
+
+TEST_BEGIN("LDMSD_Communications", "STRING_Stream_Test", "FVT", t_2)
+TEST_ASSERTION(t_2, 0, "Expect file is present")
+TEST_ASSERTION(t_2, 1, "All stream data received")
+TEST_ASSERTION(t_2, 2, "Stream data is correct")
+TEST_END(t_2);
 
 static ldmsd_msg_log_f msglog;
 static char *stream;
+static char *result_file = "/tmp/stream_test_out.txt";
 
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=test_stream_sampler path=<path> port=<port_no> log=<path>\n"
-		"     path      The path to the root of the SOS container store.\n"
-		"     stream    The stream name to subscribe to.\n";
+		"     stream    The stream name to subscribe to.\n"
+		"     expect    The path to a file containing the expected stream text\n";
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -101,6 +121,8 @@ static int test_stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			 const char *msg, size_t msg_len,
 			 json_entity_t entity);
 
+char *expect_file_name;
+
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
@@ -112,6 +134,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	else
 		stream = strdup("test_stream");
 	ldmsd_stream_subscribe(stream, test_stream_recv_cb, self);
+
+	value = av_value(avl, "expect");
+	if (value)
+		expect_file_name = strdup(value);
+
 	rc = 0;
 	return rc;
 }
@@ -123,60 +150,56 @@ static int test_stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 {
 	int rc;
 	json_entity_t attr, dict, data, schema, timestamp, test_list;
-	uint64_t tstamp;
 	json_str_t schema_name;
-	FILE *fp;
-
-	fp = fopen("/tmp/stream_test_out.txt", "w+");
-	fprintf(fp, "Test LDMSD_STREAM_STRING\n");
 
 	if (stream_type != LDMSD_STREAM_JSON) {
-		msglog(LDMSD_LDEBUG, "test_stream_sampler: Unexpected stream type data...ignoring\n");
-		msglog(LDMSD_LDEBUG, "test_stream_sampler:" "%s\n", msg);
-		return EINVAL;
+		char expect_text[512];
+		FILE *expect_file = fopen(expect_file_name, "r");
+		TEST_START(t_2);
+		if (TEST_ASSERT(t_2, 0, (expect_file != NULL))) {
+			rc = fread(expect_text, 1, sizeof(expect_text), expect_file);
+			TEST_ASSERT(t_2, 1, (rc <= msg_len));
+			TEST_ASSERT(t_2, 2, (0 == memcmp(msg, expect_text, rc)));
+		}
+		TEST_FINISH(t_2);
+		return 0;
 	}
+	TEST_START(t_1);
 	rc = 0;
 	schema = json_attr_find(entity, "schema");
-	schema_name = json_value_str(json_attr_value(schema));
-	if (strcmp(schema_name->str,"stream_test") == 0)
-		fprintf(fp, "\nTest 1: LDMSD_STRING_ATTR PASS\n");
-	else
-		fprintf(fp, "\nTest 1: LDMSD_STRING_ATTR FAIL\n");
+	if (TEST_ASSERT(t_1, 0, (schema != NULL))) {
+		schema_name = json_value_str(json_attr_value(schema));
+		TEST_ASSERT(t_1, 1, (0 == strcmp(schema_name->str,"stream_test")));
+	}
 
 	timestamp = json_attr_find(entity, "timestamp");
-	tstamp = json_value_int(json_attr_value(timestamp));
-	if (tstamp == 1559242264)
-		fprintf(fp, "\nTest 2: json int PASS\n");
-	else
-		fprintf(fp, "\nTest 2: json int FAIL\n");
+	if (TEST_ASSERT(t_1, 2, (timestamp != NULL)))
+		TEST_ASSERT(t_1, 3, (1559242264 == json_value_int(json_attr_value(timestamp))));
 
 	data = json_attr_find(entity, "data");
-	dict = json_attr_value(data);
-	attr = json_attr_find(dict, "id");
-	uint64_t id = json_value_int(json_attr_value(attr));
-	if (id == 12345)
-		fprintf(fp, "\nTest 3: attr in nested dict PASS\n");
-	else
-		fprintf(fp, "\n Test 3: attr in nested dict FAIL\n");
+	if (TEST_ASSERT(t_1, 4, (data != NULL))) {
+		dict = json_attr_value(data);
+		attr = json_attr_find(dict, "id");
+		if (TEST_ASSERT(t_1, 5, (attr != NULL)))
+			TEST_ASSERT(t_1, 6, (12345 == json_value_int(json_attr_value(attr))));
 
-	attr = json_attr_find(dict, "test_list");
-	test_list = json_attr_value(attr);
-	int i = 1;
-	int tc = 0;
-	for (test_list = json_item_first(test_list); test_list;
-	     test_list = json_item_next(test_list)) {
-		if (json_value_int(test_list) != i) {
-			tc = 1;
-			break;
+		attr = json_attr_find(dict, "list");
+		if (TEST_ASSERT(t_1, 7, (attr != NULL))) {
+			test_list = json_attr_value(attr);
+			int i = 1;
+			int list_values_match = TADA_TRUE;
+			for (test_list = json_item_first(test_list); test_list;
+			     test_list = json_item_next(test_list)) {
+				if (json_value_int(test_list) != i) {
+					list_values_match = TADA_FALSE;
+					break;
+				}
+				i += 1;
+			}
+			TEST_ASSERT(t_1, 8, (list_values_match == TADA_TRUE));
 		}
-		i += 1;
 	}
-	if (tc) 
-		fprintf(fp, "\nTest 4: List attr FAIL\n");
-	else
-		fprintf(fp, "\nTest 4: List attr PASS\n");
-
-	fclose(fp);
+	TEST_FINISH(t_1);
 	return rc;
 }
 

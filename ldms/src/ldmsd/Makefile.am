@@ -1,5 +1,5 @@
 lib_LTLIBRARIES=
-SUBDIRS = .
+SUBDIRS = . test
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
 if ENABLE_SOS

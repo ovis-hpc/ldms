@@ -13,12 +13,12 @@ COMMON_LIBADD = $(CORE)/libldms.la $(LDMSD)/libldmsd_stream.la \
 
 libtest_stream_sampler_la_SOURCES = test_stream_sampler.c
 libtest_stream_sampler_la_LIBADD = $(COMMON_LIBADD) $(CORE)/libldms.la \
-        ../libldmsd_stream.la @LDFLAGS_GETTIME@ -lovis_util -lcoll -lpthread -ljson_util
+        ../libldmsd_stream.la @LDFLAGS_GETTIME@ -lovis_util -lcoll -lpthread -ljson_util -ltada
 libtest_stream_sampler_la_CFLAGS = $(AM_CFLAGS) -DSYSCONFDIR='"$(sysconfdir)"'
 pkglib_LTLIBRARIES += libtest_stream_sampler.la
 
-sbin_PROGRAMS += ldmsd_test_stream
-ldmsd_test_stream_SOURCES = ldmsd_test_stream.c
-ldmsd_test_stream_CFLAGS = $(AM_CFLAGS) -DLDMSD_TEST_STREAM_CMD
-ldmsd_test_stream_LDADD = $(CORE)/libldms.la $(LDMSD)/librequest.la $(LDMSD)/libldmsd_stream.la
-ldmsd_test_stream_LDFLAGS = $(AM_LDFLAGS) -ljson_util
+sbin_PROGRAMS += ldmsd_stream_publish
+ldmsd_stream_publish_SOURCES = ldmsd_stream_publish.c
+ldmsd_stream_publish_CFLAGS = $(AM_CFLAGS)
+ldmsd_stream_publish_LDADD = $(CORE)/libldms.la $(LDMSD)/librequest.la $(LDMSD)/libldmsd_stream.la
+ldmsd_stream_publish_LDFLAGS = $(AM_LDFLAGS) -ljson_util

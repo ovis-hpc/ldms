@@ -1,0 +1,62 @@
+{
+    "name" : "Stream_Test",
+    "description" : "Test the LDMSD Stream Publish/Subscribe API",
+    "type" : "FVT",
+    "define" : [
+	{
+	    "name" : "stream-subscriber",
+	    "type" : "sampler",
+	    "listen_port" : 10000,
+	    "listen_xprt" : "sock",
+	    "listen_auth" : "munge",
+	    "env" : [
+		"INTERVAL=1000000",
+		"OFFSET=0"
+	    ],
+	    "samplers" : [
+		{
+		    "plugin" : "test_stream_sampler",
+		    "config" : [
+			"stream=test_stream",
+			"expect=/data/Stream_Test-data.json"
+		    ],
+		    "start" : true
+		}
+	    ]
+	}
+    ],
+    "daemons" : [
+	{
+	    "host" : "stream-sampler-1",
+	    "asset" : "stream-subscriber",
+	    "env" : [
+		"COMPONENT_ID=10001",
+		"HOSTNAME=%host%"
+	    ]
+	},
+	{
+	    "host" : "agg-1",
+	    "listen_port" : 20000,
+	    "listen_xprt" : "sock",
+	    "listen_auth" : "munge",
+	    "env" : [
+		"HOSTNAME=%host%"
+	    ],
+	    "samplers" : [
+		{
+		    "plugin" : "test_stream_sampler",
+		    "config" : [
+			"stream=test_stream",
+			"expect=/data/Stream_Test-data.json"
+		    ],
+		    "start" : true
+		}
+	    ],
+	    "config" : [
+		"prdcr_add name=s1 type=active xprt=sock host=stream-sampler-1 port=10000 auth=munge interval=20000000",
+		"prdcr_subscribe regex=.* stream=test_stream",
+		"prdcr_start_regex regex=.*"
+	    ]
+	}
+    ]
+}
