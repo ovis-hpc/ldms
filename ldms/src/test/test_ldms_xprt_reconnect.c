@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2018 National Technology & Engineering Solutions
+ * Copyright (c) 2015-2019 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2015-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2019 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -183,18 +183,21 @@ void client_lookup_cb(ldms_t ldms, enum ldms_lookup_status status,
 void client_dir_cb(ldms_t ldms, int status, ldms_dir_t dir, void *arg)
 {
 	int rc;
+	char *set_name = NULL;
 	struct conn *conn = (struct conn *)arg;
 	switch (dir->type) {
 	case LDMS_DIR_LIST:
 		printf("%s: dir_cb: DIR_LIST", conn->port);
 		conn->set_state = DIR;
-		if (dir->set_count > 0)
-			printf(": %s\n", dir->set_names[0]);
-		else
+		if (dir->set_count > 0) {
+			set_name = dir->set_data[0].inst_name;
+			printf(": %s\n", set_name);
+		} else {
 			printf(": No sets\n");
-		if (lookup && dir->set_count > 0) {
-			printf("%s: doing lookup '%s'\n", conn->port, dir->set_names[0]);
-			rc = ldms_xprt_lookup(ldms, dir->set_names[0], LDMS_LOOKUP_BY_INSTANCE,
+		}
+		if (lookup && (dir->set_count > 0)) {
+			printf("%s: doing lookup '%s'\n", conn->port, set_name);
+			rc = ldms_xprt_lookup(ldms, set_name, LDMS_LOOKUP_BY_INSTANCE,
 					client_lookup_cb, (void *)conn);
 			if (rc) {
 				printf("Error: ldms_xprt_lookup: %d\n", rc);
