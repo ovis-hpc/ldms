@@ -198,7 +198,6 @@ int ldmsd_stream_publish(ldms_t xprt,
 		req->flags = flags;
 		ldmsd_hton_req_hdr(req);
 
-		msglog("%s:%d\n", __func__, __LINE__);
 		rc = ldms_xprt_send(xprt, (char *)req, this_rec);
 		if (rc)
 			goto err;
@@ -206,7 +205,6 @@ int ldmsd_stream_publish(ldms_t xprt,
 		flags = 0;
 	}
  err:
-	msglog("%s:%d\n", __func__, __LINE__);
 	return rc;
 }
 
@@ -222,27 +220,22 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	case LDMS_XPRT_EVENT_CONNECTED:
 		sem_post(&conn_sem);
 		conn_status = 0;
-		msglog("%s:%d\n", __func__, __LINE__);
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
 		ldms_xprt_put(x);
 		conn_status = ECONNREFUSED;
-		msglog("%s:%d\n", __func__, __LINE__);
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		ldms_xprt_put(x);
 		conn_status = ENOTCONN;
-		msglog("%s:%d\n", __func__, __LINE__);
 		break;
 	case LDMS_XPRT_EVENT_ERROR:
 		conn_status = ECONNREFUSED;
-		msglog("%s:%d\n", __func__, __LINE__);
 		break;
 	case LDMS_XPRT_EVENT_RECV:
 		memcpy(recv_buf, e->data,
 		       e->data_len < sizeof(recv_buf) ? e->data_len : sizeof(recv_buf));
 		sem_post(&recv_sem);
-		msglog("%s:%d\n", __func__, __LINE__);
 		break;
 	default:
 		msglog("Received invalid event type %d\n", e->type);
@@ -368,7 +361,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	}
 
 	/* Wait for the reply */
-	ts.tv_sec = time(NULL) + 2;
+	ts.tv_sec = time(NULL) + 10;
 	ts.tv_nsec = 0;
 	sem_timedwait(&recv_sem, &ts);
 	ldmsd_req_hdr_t reply = (ldmsd_req_hdr_t)recv_buf;
@@ -376,5 +369,5 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	ldms_xprt_close(x);
  err:
 	return rc;
-}
 
+}
