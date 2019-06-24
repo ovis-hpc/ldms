@@ -761,6 +761,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		enum ldmsd_prdcr_type type,
 		int conn_intrvl_us, uid_t uid, gid_t gid, int perm)
 {
+	extern struct rbt *cfgobj_trees[];
 	struct ldmsd_prdcr *prdcr;
 
 	ldmsd_log(LDMSD_LDEBUG, "ldmsd_prdcr_new(name %s, xprt %s, host %s, port %u, type %u, intv %d\n",
@@ -795,6 +796,7 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	ldmsd_cfgobj_unlock(&prdcr->obj);
 	return prdcr;
 out:
+	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR], &prdcr->obj.rbn);
 	ldmsd_cfgobj_unlock(&prdcr->obj);
 	ldmsd_cfgobj_put(&prdcr->obj);
 	return NULL;
