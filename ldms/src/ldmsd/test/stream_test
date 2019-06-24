@@ -43,15 +43,16 @@ if __name__ == "__main__":
     data_file = '/data/' + host_a.hostname + '-data.json'
 
     # Test a JSON formatted stream
-    rc, out = host_a.exec_run("ldmsd_stream_publish -h {host} -x {xprt} -p {port} "
-                              " -a {auth} -s test_stream -t json -f {fname}"
-                              .format(fname=data_file,
-                                      host=host_a.hostname,
-                                      xprt=host_a.listen_xprt,
-                                      port=host_a.listen_port,
-                                      auth=host_a.auth_name
-                                  ))
-    print(out)
+    for host, cont in test.servers():
+        rc, out = host_a.exec_run("ldmsd_stream_publish -h {host} -x {xprt} -p {port} "
+                                  " -a {auth} -s test_stream -t json -f {fname}"
+                                  .format(fname=data_file,
+                                          host=host,
+                                          xprt=cont.listen_xprt,
+                                          port=cont.listen_port,
+                                          auth=cont.auth_name
+                                      ))
+        print(out)
 
     # Test a STRING formatted stream
     rc, out = host_a.exec_run("ldmsd_stream_publish -h {host} -x {xprt} -p {port} "

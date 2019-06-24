@@ -35,6 +35,14 @@
 	    ]
 	},
 	{
+	    "host" : "stream-sampler-2",
+	    "asset" : "stream-subscriber",
+	    "env" : [
+		"COMPONENT_ID=10002",
+		"HOSTNAME=%host%"
+	    ]
+	},
+	{
 	    "host" : "agg-1",
 	    "listen_port" : 20000,
 	    "listen_xprt" : "sock",
@@ -54,6 +62,7 @@
 	    ],
 	    "config" : [
 		"prdcr_add name=s1 type=active xprt=sock host=stream-sampler-1 port=10000 auth=munge interval=20000000",
+		"prdcr_add name=s2 type=active xprt=sock host=stream-sampler-2 port=10000 auth=munge interval=20000000",
 		"prdcr_subscribe regex=.* stream=test_stream",
 		"prdcr_start_regex regex=.*"
 	    ]
