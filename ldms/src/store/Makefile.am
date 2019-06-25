@@ -1,3 +1,4 @@
+SUBDIRS =
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 CORE = ../core
@@ -21,6 +22,10 @@ libstore_amqp_la_SOURCES = store_amqp.c
 libstore_amqp_la_CFLAGS = $(AM_CFLAGS)
 libstore_amqp_la_LIBADD = -lrabbitmq $(STORE_LIBADD)
 pkglib_LTLIBRARIES += libstore_amqp.la
+endif
+
+if ENABLE_KOKKOS
+SUBDIRS += kokkos
 endif
 
 if ENABLE_SOS

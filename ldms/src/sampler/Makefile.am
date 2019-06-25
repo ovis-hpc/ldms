@@ -91,10 +91,6 @@ if ENABLE_LLNL
 SUBDIRS += llnl
 endif
 
-if ENABLE_KOKKOS
-SUBDIRS += kokkos
-endif
-
 if ENABLE_JOBINFO
 SUBDIRS += job_info
 endif

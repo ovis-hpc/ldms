@@ -483,7 +483,6 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/dstat/Makefile
 		 src/sampler/filesingle/Makefile
 		 src/sampler/lustre/Makefile
-		 src/sampler/kokkos/Makefile
 		 src/sampler/job_info/Makefile
 		 src/sampler/job_info_slurm/Makefile
 		 src/sampler/llnl/Makefile
