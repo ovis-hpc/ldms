@@ -5,6 +5,7 @@ import time
 import os
 import json
 import copy
+import socket
 
 class Network(object):
     def __init__(self, name, driver='bridge', scope='local'):
@@ -208,6 +209,12 @@ class LdmsdContainer(object):
         return rc, output
 
 class Test(object):
+    TEST_PASSED = 0
+    TEST_FAILED = 1
+    TEST_SKIPPED = 2
+    TADA_HOST = "tada-host"
+    TADA_PORT = 9862
+
     def __init__(self, fname, prefix, data_root, tada_addr):
         self.config = None
         self.daemons = None
@@ -216,12 +223,17 @@ class Test(object):
         self.prefix = prefix
         self.data_root = data_root
         self.tada_addr = tada_addr # host:port
+        self.assertions = {}
 
         try:
             self.config = json.load(open(fname))
         except Exception as e:
             print(e)
             raise ValueError("The specified configuration file is invalid.")
+
+        self.test_suite = self.config['test_suite']
+        self.test_name = self.config['test_name']
+        self.test_type = self.config['test_type']
 
         daemons = []
         if 'daemons' in self.config:
@@ -249,18 +261,46 @@ class Test(object):
                         daemon[attr] = sd[attr]
                 daemons.append(daemon)
         self.daemons = daemons
-        self.network = Network(self.config['name'])
+        self.network = Network(self.config['test_suite'])
+
+    def send_assert_status(self, assert_no, cond_str):
+        status = self.assertions[assert_no]['result']
+        if status == self.TEST_PASSED:
+            resstr = "passed"
+        elif status == self.TEST_FAILED:
+            resstr = "failed"
+        else:
+            resstr = "skipped"
+        msg = '{{ "msg-type" : "assert-status",'\
+              '"test-suite" : "{0}",'\
+              '"test-type" : "{1}",'\
+              '"test-name" : "{2}",'\
+              '"assert-no\" : {3},'\
+              '"assert-desc" : "{4}",'\
+              '"assert-cond" : "{5}",'\
+              '"test-status" : "{6}" }}'\
+                  .format(self.test_suite,
+                          self.test_type,
+                          self.test_name,
+                          assert_no,
+                          self.assertions[assert_no]['description'],
+                          cond_str,
+                          resstr)
+        self.sock_fd.sendto(msg.encode('utf-8'), (self.tada_host, self.tada_port))
+
+    def assert_test(self, assert_no, condition, cond_str):
+        if condition:
+            self.assertions[assert_no]['result'] = self.TEST_PASSED
+        else:
+            self.assertions[assert_no]['result'] = self.TEST_FAILED
+        self.send_assert_status(assert_no, cond_str)
+        return condition
+
+    def assertion(self, assert_no, description):
+        self.assertions[assert_no] = { "result" : self.TEST_SKIPPED, "description" : description }
 
     def get_host(self, name):
         return self.ldmsd[name]
-
-    @property
-    def name(self):
-        return self.config['name']
-
-    @property
-    def description(self):
-        return self.config['description']
 
     def start(self, hosts=[]):
         # Create our own namespace for the daemon host names
@@ -268,7 +308,7 @@ class Test(object):
 
         # Start each daemon in a container
         for d in self.daemons:
-            cont = LdmsdContainer(self.config['name']+'-'+d['host'],
+            cont = LdmsdContainer(self.config['test_suite']+'-'+d['host'],
                                   self.network,
                                   listen_port=d['listen_port'],
                                   listen_xprt=d['listen_xprt'],
@@ -320,7 +360,47 @@ class Test(object):
             if 'config' in d:
                 cont.config_ldmsd(d['config'])
 
+        # Send the start message to the TADA daemon
+        self.sock_fd = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        h = self.tada_addr.split(":")
+        if len(h) > 1:
+            self.tada_host = h[0]
+            self.tada_port = int(h[1])
+        else:
+            self.tada_host = h[0]
+            self.tada_port = TADA_PORT
+
+        msg = '{{ "msg-type" : "test-start",'\
+              '"test-suite" : "{0}",'\
+              '"test-type" : "{1}",'\
+              '"test-name" : "{2}",'\
+              '"timestamp" : {3} }}'\
+                  .format(self.test_suite,
+                          self.test_type,
+                          self.test_name,
+                          time.time())
+
+        self.sock_fd.sendto(msg.encode('utf-8'), (self.tada_host, self.tada_port))
         return 0
+
+    def finish(self):
+        for assert_no, assert_data in self.assertions.iteritems():
+            if assert_data['result'] != self.TEST_SKIPPED:
+                continue
+            self.send_assert_status(assert_no, 'none')
+
+        msg = '{{ "msg-type" : "test-finish",'\
+              '"test-suite" : "{0}",'\
+              '"test-type" : "{1}",'\
+              '"test-name" : "{2}",'\
+              '"timestamp" : {3} }}'\
+              .format(self.test_suite,
+                      self.test_type,
+                      self.test_name,
+                      time.time())
+        self.sock_fd.sendto(msg.encode('utf-8'), (self.tada_host, self.tada_port))
+        self.sock_fd.close()
+        self.sock_fd = None
 
     def servers(self):
         return self.ldmsd.iteritems()
@@ -328,3 +408,4 @@ class Test(object):
     def cleanup(self):
         for c in self.ldmsd:
             self.ldmsd[c].kill()
+

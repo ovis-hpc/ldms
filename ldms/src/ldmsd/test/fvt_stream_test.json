@@ -1,7 +1,7 @@
 {
-    "name" : "Stream_Test",
-    "description" : "Test the LDMSD Stream Publish/Subscribe API",
-    "type" : "FVT",
+    "test_suite" : "Stream_Test",
+    "test_name" : "LDMSD Stream Service",
+    "test_type" : "SVT",
     "define" : [
 	{
 	    "name" : "stream-subscriber",

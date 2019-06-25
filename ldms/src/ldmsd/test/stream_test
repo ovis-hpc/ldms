@@ -6,6 +6,13 @@ from ovis_lib import TADA
 import time
 import json
 
+def update_expect_file(fname, data):
+    s = json.dumps(data)
+    f = open(fname, 'w')
+    f.write(s)
+    f.close()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run an FVT test")
     parser.add_argument("--cfg", help="JSON formatted test definition", required=True)
@@ -20,14 +27,25 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     test = TADA.Test(args.cfg, args.prefix, args.data_root, args.tada_addr)
+    test.assertion(0, 'ldmsd_stream_publish of JSON data to stream-sampler-1 succeeds')
+    test.assertion(1, 'ldmsd_stream_publish of STRING data to stream-sampler-1 succeeds')
+    test.assertion(2, 'ldmsd_stream_publish to JSON data to stream-sampler-2 succeeds')
+    test.assertion(3, 'ldmsd_stream_publish of STRING data to stream-sampler-2 succeeds')
+    test.assertion(4, 'Stopping the producers succeeds')
+    test.assertion(5, 'Restarting the producers succeeds')
+    test.assertion(6, 'ldmsd_stream_publish after restart of JSON data to stream-sampler-1 succeeds')
+    test.assertion(7, 'ldmsd_stream_publish after restart of STRING data to stream-sampler-1 succeeds')
+    test.assertion(8, 'ldmsd_stream_publish after restart of JSON data to stream-sampler-2 succeeds')
+    test.assertion(9, 'ldmsd_stream_publish after restart of STRING data to stream-sampler-2 succeeds')
+
     rc = test.start()
 
     # Give the daemons a few seconds to start
     time.sleep(5)
 
     # Send data to the stream sampler
-    host_a = test.get_host('stream-sampler-1')
-    data = { "schema" : "stream_test",
+    data = { "gen" : 1,
+             "schema" : "stream_test",
              "timestamp" : 1559242264,
              "data" : {
                  "id" : 12345,
@@ -35,34 +53,68 @@ if __name__ == "__main__":
              }
          }
 
-    data_file = args.data_root + "/Stream_Test-data.json"
-    s = json.dumps(data)
-    f = open(data_file, 'w')
-    f.write(s)
-    f.close()
-    data_file = '/data/' + host_a.hostname + '-data.json'
+    update_expect_file(args.data_root + "/Stream_Test-data.json", data)
+    data_file = '/data/Stream_Test-data.json'
 
-    # Test a JSON formatted stream
-    for host, cont in test.servers():
-        rc, out = host_a.exec_run("ldmsd_stream_publish -h {host} -x {xprt} -p {port} "
-                                  " -a {auth} -s test_stream -t json -f {fname}"
-                                  .format(fname=data_file,
-                                          host=host,
-                                          xprt=cont.listen_xprt,
-                                          port=cont.listen_port,
-                                          auth=cont.auth_name
-                                      ))
-        print(out)
+    assert_no = 0
+    for host in [ 'stream-sampler-1', 'stream-sampler-2' ]:
+        cont = test.get_host(host)
+        rc, out = cont.exec_run("ldmsd_stream_publish -h {host} -x {xprt} -p {port} "
+                                " -a {auth} -s test_stream -t json -f {fname}"
+                                .format(fname=data_file,
+                                        host=host,
+                                        xprt=cont.listen_xprt,
+                                        port=cont.listen_port,
+                                        auth=cont.auth_name
+                                    ))
+        test.assert_test(assert_no, (len(out) == 0), out)
+        assert_no += 1
 
-    # Test a STRING formatted stream
-    rc, out = host_a.exec_run("ldmsd_stream_publish -h {host} -x {xprt} -p {port} "
-                              " -a {auth} -s test_stream -t string -f {fname}"
-                              .format(fname=data_file,
-                                      host=host_a.hostname,
-                                      xprt=host_a.listen_xprt,
-                                      port=host_a.listen_port,
-                                      auth=host_a.auth_name
-                                  ))
-    print(out)
+        # Test a STRING formatted stream
+        rc, out = cont.exec_run("ldmsd_stream_publish -h {host} -x {xprt} -p {port} "
+                                " -a {auth} -s test_stream -t string -f {fname}"
+                                .format(fname=data_file,
+                                        host=host,
+                                        xprt=cont.listen_xprt,
+                                        port=cont.listen_port,
+                                        auth=cont.auth_name
+                                    ))
+        test.assert_test(assert_no, (len(out) == 0), out)
+        assert_no += 1
 
+    agg_h = test.get_host('agg-1')
+    rc, out = agg_h.config_ldmsd([ "prdcr_stop_regex regex=.*" ])
+    test.assert_test(assert_no, (len(out) == 0), out)
+    assert_no += 1
+
+    rc, out = agg_h.config_ldmsd([ "prdcr_start_regex regex=.*" ])
+    test.assert_test(assert_no, (len(out) == 0), out)
+    assert_no += 1
+
+    for host in [ 'stream-sampler-1', 'stream-sampler-2' ]:
+        cont = test.get_host(host)
+        rc, out = cont.exec_run("ldmsd_stream_publish -h {host} -x {xprt} -p {port} "
+                                " -a {auth} -s test_stream -t json -f {fname}"
+                                .format(fname=data_file,
+                                        host=host,
+                                        xprt=cont.listen_xprt,
+                                        port=cont.listen_port,
+                                        auth=cont.auth_name
+                                    ))
+        test.assert_test(assert_no, (len(out) == 0), out)
+        assert_no += 1
+
+        # Test a STRING formatted stream
+        rc, out = cont.exec_run("ldmsd_stream_publish -h {host} -x {xprt} -p {port} "
+                                " -a {auth} -s test_stream -t string -f {fname}"
+                                .format(fname=data_file,
+                                        host=host,
+                                        xprt=cont.listen_xprt,
+                                        port=cont.listen_port,
+                                        auth=cont.auth_name
+                                    ))
+        test.assert_test(assert_no, (len(out) == 0), out)
+        assert_no += 1
+
+    test.finish()
     test.cleanup()

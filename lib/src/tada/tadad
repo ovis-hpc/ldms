@@ -43,7 +43,7 @@ def test_assert(addr, result):
     elif status == 'skipped':
         status = bcolors.WARNING + status + bcolors.ENDC
 
-    print("        {0:10} {1:4} {2} {3}"
+    print("        {0:10} {1:4} {2}, {3}"
           .format(status,
                   result['assert-no'],
                   result['assert-desc'],
