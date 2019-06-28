@@ -396,18 +396,28 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	struct timespec wait_ts;
 	int rc = ENOTCONN;
 	slurm_info("%s:%d ", __func__, __LINE__);
+
+	ldms = setup_connection(argc, argv);
 	if (!ldms)
-		ldms = setup_connection(argc, argv);
-	if (ldms)
-		rc = ldmsd_stream_publish(ldms, stream, LDMSD_STREAM_JSON, jb->buf, jb->cursor);
-	wait_ts.tv_sec = time(NULL) + io_timeout;
-	wait_ts.tv_nsec = 0;
-	sem_timedwait(&recv_sem, &wait_ts);
+		return ENOTCONN;
+
+	slurm_info("%s:%d ", __func__, __LINE__);
+	rc = ldmsd_stream_publish(ldms, stream, LDMSD_STREAM_JSON, jb->buf, jb->cursor);
+	slurm_info("%s:%d rc=%d", __func__, __LINE__, rc);
+	if (!rc) {
+		wait_ts.tv_sec = time(NULL) + io_timeout;
+		wait_ts.tv_nsec = 0;
+		sem_timedwait(&recv_sem, &wait_ts);
+	}
+	slurm_info("%s:%d ", __func__, __LINE__);
+	ldms_xprt_close(ldms);
+	ldms = NULL;
 	return rc;
 }
 
 jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 {
+	char subscriber_data[PATH_MAX];
 	char job_name[80];
 	jbuf_t jb;
 	spank_err_t err;
@@ -417,6 +427,9 @@ jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 	jb = jbuf_append_attr(jb, "event", "\"%s\",", event); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "context", "\"%s\",", context); if (!jb) goto out_1;
+	subscriber_data[0] = '\0';
+	err = spank_getenv(sh, "LDMS_SUBSCRIBER_DATA", subscriber_data, sizeof(subscriber_data));
+	jb = jbuf_append_attr(jb, "subscriber_data", "\"%s\",", subscriber_data); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 	job_name[0] = '\0';
@@ -436,7 +449,6 @@ jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 
 jbuf_t make_exit_data(spank_t sh, const char *event, const char *context)
 {
-	char job_name[80];
 	jbuf_t jb;
 	spank_err_t err;
 	jb = jbuf_new(); if (!jb) goto out_1;
@@ -455,7 +467,6 @@ jbuf_t make_exit_data(spank_t sh, const char *event, const char *context)
 
 jbuf_t make_task_init_data(spank_t sh, const char *event, const char *context)
 {
-	char job_name[80];
 	jbuf_t jb;
 	spank_err_t err;
 	jb = jbuf_new(); if (!jb) goto out_1;
@@ -547,6 +558,7 @@ int slurm_spank_init(spank_t sh, int argc, char *argv[])
 
 int slurm_spank_task_init(spank_t sh, int argc, char *argv[])
 {
+	slurm_info("%s:%d", __func__, __LINE__);
 #if 0
 	/* Runs as uid */
 	spank_context_t context = spank_context();
@@ -574,8 +586,8 @@ int slurm_spank_task_init(spank_t sh, int argc, char *argv[])
 		send_event(jb);
 		jbuf_free(jb);
 	}
-	slurm_info("%s:%d", __func__, __LINE__);
 #endif
+	slurm_info("%s:%d", __func__, __LINE__);
 	return ESPANK_SUCCESS;
 }
 
