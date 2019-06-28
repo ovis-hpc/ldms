@@ -189,11 +189,6 @@ uint64_t ldms_set_data_gn_get(ldms_set_t s)
 	return __le64_to_cpu(s->set->data->gn);
 }
 
-static void rem_local_set(struct ldms_set *s)
-{
-	rbt_del(&set_tree, &s->rb_node);
-}
-
 struct cb_arg {
 	void *user_arg;
 	int (*user_cb)(struct ldms_set *, void *);
@@ -221,43 +216,6 @@ int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg)
 struct get_set_names_arg {
 	struct ldms_name_list *name_list;
 };
-
-#define SNPRINTF_BUMP (64 * 1024)
-static char *Lnprintf(char *dst, size_t *len, size_t *off, char *fmt, ...)
-{
-	va_list ap;
-	va_list ap_copy;
-	size_t cnt;
-
-	if (!dst) {
-		dst = malloc(SNPRINTF_BUMP);
-		*len = SNPRINTF_BUMP;
-	}
-
-	va_start(ap, fmt);
-	va_copy(ap_copy, ap);
-	do {
-		cnt = vsnprintf(&dst[*off], *len - *off, fmt, ap_copy);
-		va_end(ap_copy);
-		if (cnt + *off >= *len) {
-			size_t newsize;
-			if (cnt  < SNPRINTF_BUMP)
-				newsize = *len + SNPRINTF_BUMP;
-			else
-				newsize = *len + cnt;
-			dst = realloc(dst, newsize);
-			if (!dst)
-				goto out;
-			*len = newsize;
-			va_copy(ap_copy, ap);
-			continue;
-		}
-		*off += cnt;
-	} while (0);
- out:
-	va_end(ap);
-	return dst;
-}
 
 /*
  * { "directory" : [
@@ -491,7 +449,6 @@ __record_set(const char *instance_name,
 static
 int __ldms_set_publish(struct ldms_set *set)
 {
-	struct ldms_set *_set;
 	if (set->flags & LDMS_SET_F_PUBLISHED)
 		return EEXIST;
 
@@ -513,7 +470,6 @@ int ldms_set_publish(ldms_set_t sd)
 static
 int __ldms_set_unpublish(struct ldms_set *set)
 {
-	struct ldms_set *_set;
 	if (!(set->flags & LDMS_SET_F_PUBLISHED))
 		return ENOENT;
 
@@ -775,7 +731,7 @@ struct ldms_set *__ldms_create_set(const char *instance_name,
 				   size_t array_card,
 				   uint32_t flags)
 {
-	int i, n;
+	int i;
 	struct ldms_data_hdr *data, *data_base;
 	struct ldms_set_hdr *meta;
 	struct ldms_set *set = NULL;
@@ -939,7 +895,7 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	uint64_t value_off;
 	ldms_mdef_t md;
 	int metric_idx;
-	int rc, i;
+	int i;
 	int set_array_card;
 
 	if (!instance_name || !schema) {
@@ -2370,7 +2326,6 @@ struct ldms_set_info_pair *__ldms_set_info_find(struct ldms_set_info_list *info,
 
 void ldms_set_info_unset(ldms_set_t s, const char *key)
 {
-	int rc;
 	struct ldms_set_info_pair *pair;
 	pthread_mutex_lock(&s->set->lock);
 	pair = __ldms_set_info_find(&s->set->local_info, key);
