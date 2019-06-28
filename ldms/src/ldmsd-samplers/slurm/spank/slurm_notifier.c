@@ -407,37 +407,44 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	struct timespec wait_ts;
 	int rc = ENOTCONN;
 	slurm_info("%s:%d ", __func__, __LINE__);
-	if (!ldms) {
-		ldms = setup_connection(argc, argv);
-		if (!ldms)
-			return rc;
-	}
+	ldms = setup_connection(argc, argv);
+	if (!ldms)
+		return ENOTCONN;
 	slurm_info("%s:%d publishing: %.*s",
 		   __func__, __LINE__, jb->cursor, jb->buf);
 	rc = ldmsd_stream_publish(ldms, stream, LDMSD_STREAM_JSON, jb->buf,
 				  jb->cursor);
 	slurm_info("%s:%d rc: %d", __func__, __LINE__, rc);
-	wait_ts.tv_sec = time(NULL) + io_timeout;
-	wait_ts.tv_nsec = 0;
-	sem_timedwait(&recv_sem, &wait_ts);
+	if (!rc) {
+		wait_ts.tv_sec = time(NULL) + io_timeout;
+		wait_ts.tv_nsec = 0;
+		sem_timedwait(&recv_sem, &wait_ts);
+	}
 	slurm_info("%s:%d event sent", __func__, __LINE__);
+	ldms_xprt_close(ldms);
+	ldms = NULL;
 	return rc;
 }
 
 jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 {
+	char subscriber_data[PATH_MAX];
 	char job_name[80];
 	jbuf_t jb;
+	spank_err_t err;
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "schema", "\"slurm_job_data\","); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "event", "\"%s\",", event); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "context", "\"%s\",", context); if (!jb) goto out_1;
+	subscriber_data[0] = '\0';
+	err = spank_getenv(sh, "LDMS_SUBSCRIBER_DATA", subscriber_data, sizeof(subscriber_data));
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 	job_name[0] = '\0';
 	spank_getenv(sh, "SLURM_JOB_NAME", job_name, sizeof(job_name));
+	jb = jbuf_append_attr(jb, "subscriber_data", "\"%s\",", subscriber_data); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "job_name", "\"%s\",", job_name); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "uid", S_JOB_UID, ','); if (!jb) goto out_1;
