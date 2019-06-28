@@ -368,10 +368,16 @@ static int create_metric_set(void)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=kokkos_store path=<path> port=<port_no> log=<path>\n"
-		"     path      The path to the root of the SOS container store.\n"
-		"     port      The port number to listen on for incoming connections (defaults to 18080).\n"
-		"     log       The log file for sample updates (defaults to /var/log/kokkos.log).\n";
+	return  "config name=slurm_sampler producer=<producer_name> instance=<instance_name>\n"
+		"         [stream=<stream_name>] [component_id=<component_id>] [perm=<permissions>]\n"
+                "         [uid=<user_name>] [gid=<group_name>] [job_count=<job_length>]\n"
+                "         [task_count=<task_length>]\n"
+		"     producer      A unique name for the host providing the data\n"
+		"     instance      A unique name for the metric set\n"
+		"     stream        A stream name to subscribe the slurm sampler to. Defaults to 'slurm'\n"
+		"     component_id  A unique number for the component being monitored. Defaults to zero.\n"
+                "     job_count     Set the length of the job_set. Defaults to 8\n"
+                "     task_count    Set the length of the max number of tasks per job. Default set based on CPU\n";
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
