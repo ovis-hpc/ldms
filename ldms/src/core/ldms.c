@@ -241,43 +241,6 @@ struct get_set_names_arg {
 	struct ldms_name_list *name_list;
 };
 
-#define SNPRINTF_BUMP (64 * 1024)
-static char *Lnprintf(char *dst, size_t *len, size_t *off, char *fmt, ...)
-{
-	va_list ap;
-	va_list ap_copy;
-	size_t cnt;
-
-	if (!dst) {
-		dst = malloc(SNPRINTF_BUMP);
-		*len = SNPRINTF_BUMP;
-	}
-
-	va_start(ap, fmt);
-	va_copy(ap_copy, ap);
-	do {
-		cnt = vsnprintf(&dst[*off], *len - *off, fmt, ap_copy);
-		va_end(ap_copy);
-		if (cnt + *off >= *len) {
-			size_t newsize;
-			if (cnt  < SNPRINTF_BUMP)
-				newsize = *len + SNPRINTF_BUMP;
-			else
-				newsize = *len + cnt;
-			dst = realloc(dst, newsize);
-			if (!dst)
-				goto out;
-			*len = newsize;
-			va_copy(ap_copy, ap);
-			continue;
-		}
-		*off += cnt;
-	} while (0);
- out:
-	va_end(ap);
-	return dst;
-}
-
 /*
  * { "directory" : [
  *   { "name" : <string>,
