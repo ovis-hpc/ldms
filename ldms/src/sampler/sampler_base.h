@@ -54,6 +54,7 @@ typedef struct base_data_s {
 	char *instance_name;
 	char *producer_name;
 	char *schema_name;
+	char *job_set_name;
 	ldms_schema_t schema;
 	ldms_set_t job_set;
 	ldms_set_t set;
@@ -66,6 +67,7 @@ typedef struct base_data_s {
 	int app_id_idx;
 	int job_start_idx;
 	int job_end_idx;
+	ldmsd_msg_log_f log;
 } *base_data_t;
 
 #define BASE_COMPONENT_ID	0

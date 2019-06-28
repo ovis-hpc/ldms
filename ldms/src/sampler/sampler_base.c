@@ -81,6 +81,58 @@ void base_del(base_data_t base)
 	free(base);
 }
 
+static void init_job_data(base_data_t base)
+{
+	if (base->job_set)
+		return;
+
+	base->job_set = ldms_set_by_name(base->job_set_name);
+	if (!base->job_set) {
+		base->log(LDMSD_LINFO,
+		    "%s: The job data set named, %s, does not exist. Job "
+		    "data will not be associated with the metric values.\n",
+		    base->pi_name, base->job_set_name);
+		base->job_id_idx = -1;
+	} else {
+		base->job_id_idx = ldms_metric_by_name(base->job_set, "job_id");
+		if (base->job_id_idx < 0) {
+			base->log(LDMSD_LINFO,
+			    "%s: The specified job_set '%s' is missing "
+			    "the 'job_id' attribute and cannot be used.\n",
+			    base->pi_name, base->job_set_name);
+			goto err;
+		}
+		base->app_id_idx = ldms_metric_by_name(base->job_set, "app_id");
+		if (base->app_id_idx < 0) {
+			base->log(LDMSD_LINFO,
+			    "%s: The specified job_set '%s' is missing "
+			    "the 'app_id' attribute and cannot be used.\n",
+			    base->pi_name, base->job_set_name);
+			goto err;
+		}
+		base->job_start_idx = ldms_metric_by_name(base->job_set, "job_start");
+		if (base->job_start_idx < 0) {
+			base->log(LDMSD_LINFO,
+			    "%s: The specified job_set '%s' is missing "
+			    "the 'job_start' attribute and cannot be used.\n",
+			    base->pi_name, base->job_set_name);
+			goto err;
+		}
+		base->job_end_idx = ldms_metric_by_name(base->job_set, "job_end");
+		if (base->job_end_idx < 0) {
+			base->log(LDMSD_LERROR,
+			    "%s: The specified job_set '%s' is missing "
+			    "the 'job_end' attribute and cannot be used.\n",
+			    base->pi_name, base->job_set_name);
+			goto err;
+		}
+	}
+	return;
+ err:
+	base->job_set = NULL;
+	base->job_id_idx = -1;
+}
+
 base_data_t base_config(struct attr_value_list *avl,
 			const char *name, const char *def_schema,
 			ldmsd_msg_log_f log)
@@ -133,60 +185,10 @@ base_data_t base_config(struct attr_value_list *avl,
 	base->job_id_idx = BASE_JOB_ID;
 	job_set_name = av_value(avl, "job_set");
 	if (!job_set_name)
-		job_set_name = "job_info";
-	base->job_set = ldms_set_by_name(job_set_name);
-	if (!base->job_set) {
-		log(LDMSD_LINFO,
-		    "%s: The job data set named, %s, does not exist. Job "
-		    "data will not be associated with the metric values.\n",
-		    name, job_set_name);
-		base->job_id_idx = -1;
-	} else {
-		value = av_value(avl, "job_id");
-		if (!value)
-			value = "job_id";
-		base->job_id_idx = ldms_metric_by_name(base->job_set, value);
-		if (base->job_id_idx < 0) {
-			log(LDMSD_LINFO,
-			    "%s: The specified job_set '%s' is missing "
-			    "the 'job_id' attribute and cannot be used.\n",
-			    name, job_set_name);
-			goto einval;
-		}
-		value = av_value(avl, "app_id");
-		if (!value)
-			value = "app_id";
-		base->app_id_idx = ldms_metric_by_name(base->job_set, value);
-		if (base->app_id_idx < 0) {
-			log(LDMSD_LINFO,
-			    "%s: The specified job_set '%s' is missing "
-			    "the 'app_id' attribute and cannot be used.\n",
-			    name, job_set_name);
-			goto einval;
-		}
-		value = av_value(avl, "job_start");
-		if (!value)
-			value = "job_start";
-		base->job_start_idx = ldms_metric_by_name(base->job_set, value);
-		if (base->job_start_idx < 0) {
-			log(LDMSD_LINFO,
-			    "%s: The specified job_set '%s' is missing "
-			    "the 'job_start' attribute and cannot be used.\n",
-			    name, job_set_name);
-			goto einval;
-		}
-		value = av_value(avl, "job_end");
-		if (!value)
-			value = "job_end";
-		base->job_end_idx = ldms_metric_by_name(base->job_set, value);
-		if (base->job_end_idx < 0) {
-			log(LDMSD_LERROR,
-			    "%s: The specified job_set '%s' is missing "
-			    "the 'job_end' attribute and cannot be used.\n",
-			    name, job_set_name);
-			goto einval;
-		}
-	}
+		base->job_set_name = strdup("job_info");
+	else
+		base->job_set_name = strdup(job_set_name);
+
 	/* uid, gid, permission */
 	value = av_value(avl, "uid");
 	if (value) {
@@ -234,6 +236,7 @@ base_data_t base_config(struct attr_value_list *avl,
 	base->perm = (value)?(strtol(value, NULL, 0)):(0777);
 	value = av_value(avl, "set_array_card");
 	base->set_array_card = (value)?(strtol(value, NULL, 0)):(1);
+	base->log = log;
 	return base;
 einval:
 	errno = EINVAL;
@@ -308,11 +311,16 @@ void base_sample_begin(base_data_t base)
 	uint64_t app_id = 0;
 	uint32_t start, end;
 	struct ldms_timestamp ts;
+
 	if (!base->set)
 		return;
 
-	ldms_transaction_begin(base->set);
+	/* Check if job data is available */
 	if (!base->job_set)
+		init_job_data(base);
+
+	ldms_transaction_begin(base->set);
+	if (base->job_id_idx < 0)
 		return;
 
 	start = ldms_metric_get_u64(base->job_set, base->job_start_idx);
