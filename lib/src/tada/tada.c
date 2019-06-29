@@ -2,6 +2,8 @@
 #include <netdb.h>
 #include <assert.h>
 #include <string.h>
+#include <time.h>
+#include <unistd.h>
 #include "tada.h"
 
 /*
@@ -42,7 +44,7 @@ void tada_start(test_t test)
 		       "\"test-suite\" : \"%s\","
 		       "\"test-type\" : \"%s\","
 		       "\"test-name\" : \"%s\","
-		       "\"timestamp\" : %d"
+		       "\"timestamp\" : %lu"
 		       "}",
 		       test->suite_name,
 		       test->test_type,
@@ -59,7 +61,6 @@ void tada_finish(test_t test)
 {
 	size_t cnt;
 	char msg_buf[1024];
-	struct hostent *h;
 	int assert_no;
 
 	/*
@@ -95,7 +96,7 @@ void tada_finish(test_t test)
 		       "\"test-suite\" : \"%s\","
 		       "\"test-type\" : \"%s\","
 		       "\"test-name\" : \"%s\","
-		       "\"timestamp\" : %d"
+		       "\"timestamp\" : %lu"
 		       "}",
 		       test->suite_name,
 		       test->test_type,
@@ -113,7 +114,6 @@ int tada_assert(test_t test, int assert_no, int cond, const char *cond_str)
 	size_t cnt;
 	char msg_buf[1024];
 	char esc_str[512];
-	struct hostent *h;
 	const char *s;
 	char *e;
 
