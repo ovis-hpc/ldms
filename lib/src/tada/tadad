@@ -1,8 +1,10 @@
 #!/usr/bin/env python
+import argparse
 import logging
 import socket
 import json
 import datetime as dt
+import sys
 
 log = logging.getLogger('tada_server')
 
@@ -62,22 +64,29 @@ def test_finish(addr, results):
 FORMAT_CONS = '%(asctime)s %(name)-12s %(levelname)8s\t%(message)s'
 logging.basicConfig(level=logging.DEBUG, format=FORMAT_CONS)
 
-for addr, data in tada_server():
-    try:
-        result = json.loads(data)
-    except:
-        log.debug("Could not parse the test result message")
-        log.debug("{0}: {1}".format(addr, data))
-        continue
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--port", help="Port number for tada server",
+                        type=int, default=9862)
+    args = parser.parse_args() 
+    if not args.port:
+        print("tada server requires port to deploy to")
+    for addr, data in tada_server(port=args.port):
+        try:
+            result = json.loads(data)
+        except:
+            log.debug("Could not parse the test result message")
+            log.debug("{0}: {1}".format(addr, data))
+            continue
 
-    msg_type = result['msg-type']
-    test_key = result['test-suite'] + ':' + result['test-name'] + ':' + str(addr[0]) + ':' + str(addr[1])
-    if msg_type == 'test-start':
-        results[test_key] = [ result ]
-    elif msg_type == 'assert-status':
-        results[test_key].append(result)
-    elif msg_type == 'test-finish':
-        test_finish(addr, results[test_key])
-        del results[test_key]
-    else:
-        log.debug("Unrecognized message type {0}".format(msg_type))
+        msg_type = result['msg-type']
+        test_key = result['test-suite'] + ':' + result['test-name'] + ':' + str(addr[0]) + ':' + str(addr[1])
+        if msg_type == 'test-start':
+            results[test_key] = [ result ]
+        elif msg_type == 'assert-status':
+            results[test_key].append(result)
+        elif msg_type == 'test-finish':
+            test_finish(addr, results[test_key])
+            del results[test_key]
+        else:
+            log.debug("Unrecognized message type {0}".format(msg_type))
