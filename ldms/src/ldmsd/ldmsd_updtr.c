@@ -279,22 +279,6 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 		goto set_ready;
 	}
 
-	flags = ldmsd_group_check(prd_set->set);
-	if (flags & LDMSD_GROUP_MODIFIED) {
-		/* Group modified, need info update --> re-lookup the info */
-		ldmsd_prdcr_set_ref_get(prd_set);
-		name = ldms_set_instance_name_get(prd_set->set);
-		rc = ldms_xprt_lookup(t, name, LDMS_LOOKUP_SET_INFO,
-				      __grp_info_lookup_cb, prd_set);
-		if (rc) {
-			ldmsd_prdcr_set_ref_put(prd_set);
-			goto set_ready;
-		}
-		/* __grp_info_lookup_cb() will change the state */
-		pthread_mutex_unlock(&prd_set->lock);
-		goto out;
-	}
-
 	gn = ldms_set_data_gn_get(set);
 	if (prd_set->last_gn == gn) {
 		ldmsd_log(LDMSD_LINFO, "Set %s oversampled %"PRIu64" == %"PRIu64".\n",
@@ -351,9 +335,6 @@ struct ldmsd_group_traverse_ctxt {
 	LIST_HEAD(, str_list_ent_s) str_list;
 };
 
-static int schedule_set_updates(ldmsd_prdcr_set_t prd_set,
-				ldmsd_updtr_task_t updtr);
-
 static int
 __grp_iter_cb(ldms_set_t grp, const char *name, void *arg)
 {
@@ -371,6 +352,8 @@ __grp_iter_cb(ldms_set_t grp, const char *name, void *arg)
 	return 0;
 }
 
+static void prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
+			     int more, ldms_set_t set, void *arg);
 static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t task)
 {
 	int rc = 0;
@@ -410,14 +393,35 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 				pset = ldmsd_prdcr_set_find(prd_set->prdcr, ent->str);
 				if (!pset)
 					continue; /* It is OK. Try again next iteration */
+				if (pset->state == LDMSD_PRDCR_SET_STATE_START) {
+					/*
+					 * The lookup callback of the setgroup
+					 * is received before the DIR_ADD
+					 * of this set member (pset).
+					 *
+					 * Thus, do the lookup here.
+					 */
+					rc = ldms_xprt_lookup(pset->prdcr->xprt,
+							pset->inst_name,
+							LDMS_LOOKUP_BY_INSTANCE,
+							prdset_lookup_cb, pset);
+					if (rc)
+						goto out;
+				}
 				if (pset->state != LDMSD_PRDCR_SET_STATE_READY)
 					continue; /* It is OK. The set might not be ready */
 				rc = schedule_set_updates(pset, task);
 				if (rc)
 					goto out;
 			}
+			prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
+			/*
+			 * No metrics in the setgroup, so
+			 * do not update the setgroup.
+			 */
+		} else {
+			rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
 		}
-		rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
 	} else if (0 == (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG)) {
 		op_s = "Registering push for";
 		prd_set->push_flags |= LDMSD_PRDCR_SET_F_PUSH_REG;
@@ -468,12 +472,89 @@ static int cancel_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 	return rc;
 }
 
+static int __setgrp_members_lookup(ldmsd_prdcr_set_t setgrp)
+{
+	struct ldmsd_group_traverse_ctxt ctxt;
+	struct str_list_ent_s *ent;
+	ldmsd_prdcr_set_t pset;
+	int rc;
+
+	LIST_INIT(&ctxt.str_list);
+	ctxt.prdcr = setgrp->prdcr;
+	ctxt.updtr = NULL;
+	ctxt.task = NULL;
+
+	/*
+	 * __grp_iter_cb() will populate ctxt.str_list
+	 */
+	rc = ldmsd_group_iter(setgrp->set, __grp_iter_cb, &ctxt);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Error %d: Failed to get the set member "
+				"list of ssetgroup %s\n", rc, setgrp->inst_name);
+		return rc;
+	}
+	LIST_FOREACH(ent, &ctxt.str_list, entry) {
+		pset = ldmsd_prdcr_set_find(setgrp->prdcr, ent->str);
+		if (!pset) {
+			/*
+			 * LDMSD has not received the DIR_ADD of
+			 * this pset yet.
+			 *
+			 * Do lookup when schedule an update for
+			 * the set group.
+			 */
+			continue;
+		}
+		switch (pset->state) {
+			case LDMSD_PRDCR_SET_STATE_READY:
+			case LDMSD_PRDCR_SET_STATE_LOOKUP:
+				/*
+				 * This could occur if the set group stays
+				 * in the START state due to the synchronous
+				 * lookup error of a set member.
+				 */
+				continue;
+			case LDMSD_PRDCR_SET_STATE_UPDATING:
+				ldmsd_log(LDMSD_LINFO, "%s: %s in an "
+						"unexpected state (%s)\n",
+						__func__, pset->inst_name,
+						ldmsd_prdcr_set_state_str(pset->state));
+				continue;
+			case LDMSD_PRDCR_SET_STATE_START:
+				ldmsd_prdcr_set_ref_get(pset);
+				pset->state = LDMSD_PRDCR_SET_STATE_LOOKUP;
+				rc = ldms_xprt_lookup(setgrp->prdcr->xprt,
+						pset->inst_name,
+						LDMS_LOOKUP_BY_INSTANCE,
+						prdset_lookup_cb, pset);
+				if (rc) {
+					ldmsd_log(LDMSD_LINFO,
+						"Synchronous error %d "
+						"from ldms_lookup\n", rc);
+					ldmsd_prdcr_set_ref_put(pset);
+					goto out;
+				}
+				break;
+			default:
+				continue;
+		}
+	}
+out:
+	while ((ent = LIST_FIRST(&ctxt.str_list))) {
+		LIST_REMOVE(ent, entry);
+		free(ent);
+	}
+	return rc;
+}
+
 static void prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 			     int more, ldms_set_t set, void *arg)
 {
 	ldmsd_prdcr_set_t prd_set = arg;
 	int update_updtr_tree = 0;
 	int ready = 0;
+	int flags;
+	int rc;
 	pthread_mutex_lock(&prd_set->lock);
 	if (status != LDMS_LOOKUP_OK) {
 		status = (status < 0 ? -status : status);
@@ -498,7 +579,14 @@ static void prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 		/* This is the first lookup of the set. */
 		prd_set->set = set;
 	}
-
+	flags = ldmsd_group_check(prd_set->set);
+	if (flags & LDMSD_GROUP_IS_GROUP) {
+		/*
+		 * Lookup the member sets
+		 */
+		if (__setgrp_members_lookup(prd_set))
+			goto out;
+	}
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
 	ldmsd_strgp_update(prd_set);
@@ -553,6 +641,7 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 		case LDMSD_PRDCR_SET_STATE_START:
 			ldmsd_prdcr_set_ref_get(prd_set); /* It will be put back in lookup_cb */
 			/* Lookup the set */
+			prd_set->state = LDMSD_PRDCR_SET_STATE_LOOKUP;
 			rc = ldms_xprt_lookup(prdcr->xprt, prd_set->inst_name,
 					      LDMS_LOOKUP_BY_INSTANCE | LDMS_LOOKUP_SET_INFO,
 					      prdset_lookup_cb, prd_set);
@@ -560,6 +649,11 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 				ldmsd_log(LDMSD_LINFO, "Synchronous error %d from ldms_lookup\n", rc);
 				ldmsd_prdcr_set_ref_put(prd_set);
 			}
+			goto next_prd_set;
+		case LDMSD_PRDCR_SET_STATE_LOOKUP:
+			ldmsd_log(LDMSD_LINFO, "%s: Set %s: "
+				"there is an outstanding lookup.\n",
+				__func__, prd_set->inst_name);
 			goto next_prd_set;
 		case LDMSD_PRDCR_SET_STATE_UPDATING:
 			ldmsd_log(LDMSD_LINFO, "%s: Set %s: "
