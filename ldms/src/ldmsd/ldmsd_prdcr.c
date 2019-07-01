@@ -330,6 +330,10 @@ static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 		pthread_mutex_lock(&set->lock);
 		set->state = LDMSD_PRDCR_SET_STATE_START;
 		__update_set_info(set, &dir->set_data[i]);
+		EV_DATA(set->state_ev, struct state_data)->start_n_stop = 1;
+		ldmsd_prdcr_set_ref_get(set, "state_ev");
+		if (ev_post(producer, updater, set->state_ev, NULL))
+			ldmsd_prdcr_set_ref_put(set, "state_ev");
 		pthread_mutex_unlock(&set->lock);
 	}
 }

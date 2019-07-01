@@ -181,22 +181,6 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 		goto set_ready;
 	}
 
-	flags = ldmsd_group_check(prd_set->set);
-	if (flags & LDMSD_GROUP_MODIFIED) {
-		/* Group modified, need info update --> re-lookup the info */
-		ldmsd_prdcr_set_ref_get(prd_set, "grp_lookup");
-		name = ldms_set_instance_name_get(prd_set->set);
-		rc = ldms_xprt_lookup(t, name, LDMS_LOOKUP_SET_INFO,
-				      __grp_info_lookup_cb, prd_set);
-		if (rc) {
-			ldmsd_prdcr_set_ref_put(prd_set, "grp_lookup");
-			goto set_ready;
-		}
-		/* __grp_info_lookup_cb() will change the state */
-		pthread_mutex_unlock(&prd_set->lock);
-		goto out;
-	}
-
 	gn = ldms_set_data_gn_get(set);
 	if (prd_set->last_gn == gn) {
 		ldmsd_log(LDMSD_LINFO, "Set %s oversampled %"PRIu64" == %"PRIu64".\n",
@@ -513,6 +497,42 @@ int prdcr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t 
 	return 0;
 }
 
+static void __group_update(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
+{
+	int flags, rc;
+	flags = ldmsd_group_check(prd_set->set);
+	if (flags & LDMSD_GROUP_IS_GROUP) {
+		struct ldmsd_group_traverse_ctxt ctxt;
+		LIST_INIT(&ctxt.str_list);
+
+		/* This is a group */
+		ctxt.prdcr = prd_set->prdcr;
+		ctxt.updtr = updtr;
+		/* __grp_iter_cb() will populate ctxt.str_list */
+		rc = ldmsd_group_iter(prd_set->set,
+				      __grp_iter_cb, &ctxt);
+		if (rc)
+			goto out;
+
+		struct str_list_ent_s *ent;
+		LIST_FOREACH(ent, &ctxt.str_list, entry) {
+			ldmsd_prdcr_set_t pset =
+				ldmsd_prdcr_set_find(prd_set->prdcr, ent->str);
+			if (!pset)
+				continue; /* It is OK. Try again next iteration */
+			rc = schedule_set_updates(updtr, pset, NULL);
+			if (rc)
+				break;
+		}
+		while ((ent = LIST_FIRST(&ctxt.str_list))) {
+			LIST_REMOVE(ent, entry);
+			free(ent);
+		}
+	}
+out:
+	/* no-op */;
+}
+
 static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 {
 	struct timespec to;
@@ -541,6 +561,13 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 			  __func__, prd_set->inst_name);
 		break;
 	case LDMSD_PRDCR_SET_STATE_READY:
+		if (ldmsd_group_check(prd_set->set) & LDMSD_GROUP_IS_GROUP) {
+			__group_update(prd_set, updtr);
+			/* Do not reschedule the update of the group
+			 * as its members are being rescheduled independently.
+			 * The new prd_set member */
+			return;
+		}
 		prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
 		ldmsd_prdcr_set_ref_get(prd_set, "xprt_update");
 		rc = ldms_xprt_update(prd_set->set, updtr_update_cb, prd_set);
@@ -560,6 +587,7 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 		break;
 	}
 
+	/* prd_set update reschedule */
 	resched_prd_set(updtr, prd_set, &to);
 	ldmsd_prdcr_set_ref_get(prd_set, "update_ev"); /* Dropped when event is processed */
 	if (ev_post(updtr->worker, updtr->worker, prd_set->update_ev, &to))

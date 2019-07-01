@@ -54,7 +54,6 @@ ldms_schema_t grp_schema;
 
 #define GRP_SCHEMA_NAME "ldmsd_grp_schema"
 #define GRP_KEY_PREFIX "    grp_member: "
-#define GRP_GN_NAME "ldmsd_grp_gn"
 
 void ldmsd_setgrp___del(ldmsd_cfgobj_t obj)
 {
@@ -95,10 +94,6 @@ ldms_set_t __setgrp_start(const char *name, uid_t uid, gid_t gid, mode_t perm,
 		if (rc)
 			goto err;
 	}
-	ldms_transaction_begin(set);
-	ldms_metric_set_u32(set, 0, 0);
-	ldms_set_info_set(set, GRP_GN_NAME, "0");
-	ldms_transaction_end(set);
 	rc = ldms_set_publish(set);
 	if (rc)
 		goto err;
@@ -297,18 +292,6 @@ out:
 	return rc;
 }
 
-static
-int __update_group_gn(ldms_set_t grp)
-{
-	uint32_t gn;
-	char buff[32];
-	gn = ldms_metric_get_u32(grp, 0);
-	gn += 1;
-	ldms_metric_set_u32(grp, 0, gn);
-	sprintf(buff, "%u", gn);
-	return ldms_set_info_set(grp, GRP_GN_NAME, buff);
-}
-
 int ldmsd_group_set_add(ldms_set_t grp, const char *set_name)
 {
 	int rc = 0;
@@ -317,13 +300,7 @@ int ldmsd_group_set_add(ldms_set_t grp, const char *set_name)
 	rc = snprintf(buff, sizeof(buff), GRP_KEY_PREFIX "%s", set_name);
 	if (rc >= sizeof(buff))
 		return ENAMETOOLONG;
-	ldms_transaction_begin(grp);
 	rc = ldms_set_info_set(grp, buff, "-");
-	if (rc)
-		goto out;
-	rc = __update_group_gn(grp);
-out:
-	ldms_transaction_end(grp);
 	return rc;
 }
 
@@ -335,11 +312,8 @@ int ldmsd_group_set_rm(ldms_set_t grp, const char *set_name)
 	rc = snprintf(buff, sizeof(buff), GRP_KEY_PREFIX "%s", set_name);
 	if (rc >= sizeof(buff))
 		return ENAMETOOLONG;
-	ldms_transaction_begin(grp);
 	ldms_set_info_unset(grp, buff);
-	rc = __update_group_gn(grp);
-	ldms_transaction_end(grp);
-	return rc;
+	return 0;
 }
 
 const char *ldmsd_group_member_name(const char *info_key)
@@ -382,32 +356,17 @@ int ldmsd_group_iter(ldms_set_t grp, ldmsd_group_iter_cb_t cb, void *arg)
 int ldmsd_group_check(ldms_set_t set)
 {
 	const char *sname;
-	char *s_gn;
-	uint32_t info_gn;
-	uint32_t set_gn;
 	int flags = 0;
 	sname = ldms_set_schema_name_get(set);
 	if (0 != strcmp(sname, GRP_SCHEMA_NAME))
 		return 0; /* not a group */
 	flags |= LDMSD_GROUP_IS_GROUP;
-	s_gn = ldms_set_info_get(set, GRP_GN_NAME);
-	if (!s_gn)
-		return LDMSD_GROUP_ERROR;
-	info_gn = atoi(s_gn);
-	free(s_gn);
-	set_gn = ldms_metric_get_u32(set, 0);
-	if (info_gn != set_gn)
-		flags |= LDMSD_GROUP_MODIFIED;
 	return flags;
 }
 
 __attribute__((constructor))
 static void __ldmsd_setgrp_init()
 {
-	int rc;
 	grp_schema = ldms_schema_new(GRP_SCHEMA_NAME);
 	assert(grp_schema);
-
-	rc = ldms_schema_metric_add(grp_schema, GRP_GN_NAME, LDMS_V_U32, "");
-	assert(rc == 0);
 }
