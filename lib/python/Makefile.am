@@ -2,6 +2,7 @@ CFLAGS := $(filter-out -Werror, ${CFLAGS})
 PY_INCLUDES = -I$(srcdir)/../include \
 	-I$(srcdir)/../src
 
+pkgpythondir=${pythondir}/ovis_lib
 pkgpython_PYTHON = __init__.py TADA.py
 
 pkgpyexec_LTLIBRARIES = Map.la

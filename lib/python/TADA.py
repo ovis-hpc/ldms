@@ -147,6 +147,7 @@ class LdmsdContainer(object):
 
     def kill_ldmsd(self):
         rc, output = self.container.exec_run('pkill ldmsd')
+        return rc, output
 
     def start_ldmsd(self):
         if self.auth_name == 'munge':
@@ -217,8 +218,8 @@ class Test(object):
 
     def __init__(self, fname, prefix, data_root, tada_addr):
         self.config = None
-        self.daemons = None
-        self.ldmsd = []
+        self.daemons = {}
+        self.ldmsd = {}
         self.network = None
         self.prefix = prefix
         self.data_root = data_root
@@ -235,7 +236,6 @@ class Test(object):
         self.test_name = self.config['test_name']
         self.test_type = self.config['test_type']
 
-        daemons = []
         if 'daemons' in self.config:
             for sd in self.config['daemons']:
                 daemon = {}
@@ -259,8 +259,7 @@ class Test(object):
                     else:
                         # set attribute from config
                         daemon[attr] = sd[attr]
-                daemons.append(daemon)
-        self.daemons = daemons
+                self.daemons[sd['host']] = daemon
         self.network = Network(self.config['test_suite'])
 
     def send_assert_status(self, assert_no, cond_str):
@@ -302,7 +301,126 @@ class Test(object):
     def get_host(self, name):
         return self.ldmsd[name]
 
-    def start(self, hosts=[]):
+    def start_hosts(self):
+        # Create our own namespace for the daemon host names
+        conts = {}
+
+        # Start each daemon in a container
+        for host, d in self.daemons.iteritems():
+            cont = LdmsdContainer(self.config['test_suite']+'-'+host,
+                                  self.network,
+                                  listen_port=d['listen_port'],
+                                  listen_xprt=d['listen_xprt'],
+                                  prefix=self.prefix,
+                                  data_root=self.data_root,
+                                  log_level='DEBUG')
+            cont.environment.append("TADA_ADDR={0}".format(self.tada_addr))
+            conts[host] = cont
+
+        self.ldmsd = conts
+
+        # Add host entries for test
+        for s_host, server in self.servers():
+            # Add implicit hosts
+            hostent = "{0} {1}".format(server.ip4_address, s_host)
+            for c_host, client in self.servers():
+                rc, out = client.exec_run("/bin/bash -c 'echo {0} >> /etc/hosts'".format(hostent))
+
+    def start(self):
+        # Send the start message to the TADA daemon
+        self.sock_fd = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        h = self.tada_addr.split(":")
+        if len(h) > 1:
+            self.tada_host = h[0]
+            self.tada_port = int(h[1])
+        else:
+            self.tada_host = h[0]
+            self.tada_port = TADA_PORT
+
+        msg = '{{ "msg-type" : "test-start",'\
+              '"test-suite" : "{0}",'\
+              '"test-type" : "{1}",'\
+              '"test-name" : "{2}",'\
+              '"timestamp" : {3} }}'\
+                  .format(self.test_suite,
+                          self.test_type,
+                          self.test_name,
+                          time.time())
+
+        self.sock_fd.sendto(msg.encode('utf-8'), (self.tada_host, self.tada_port))
+
+    def start_daemons(self):
+        """start all ldmsd daemons configured for this Test harness"""
+        for host, daemon in self.daemons.iteritems():
+            self.start_daemon(host)
+
+    def kill_daemons(self):
+        """kill all ldmsd daemons configured for this Test harness"""
+        for host, daemon in self.daemons.iteritems():
+            self.kill_daemon(host)
+
+    def kill_daemon(self, host):
+        """Kill the ldmsd daemon
+
+        Postional Parameters:
+        -- The host name of the container running the ldmsd daemon
+
+        Returns:
+        !0 if the ldmsd daemon was not running or permission denied
+        """
+        d = self.daemons[host]
+        cont = self.ldmsd[host]
+
+        rc, out = cont.kill_ldmsd()
+        if rc != 0:
+            print("The LDMSD container could not be killed: {0}.".format(out))
+        return rc, out
+
+    def start_daemon(self, host):
+        """Start the ldmsd daemon
+
+        Positional Parameters:
+        -- The host name of the container
+
+        Returns:
+        !0 if the ldmsd daemon could not be started
+        """
+        d = self.daemons[host]
+        cont = self.ldmsd[host]
+
+        rc = cont.start_ldmsd()
+        if rc != 0:
+            print("The LDMSD container could not be created.")
+            return rc
+
+        # configure the samplers
+        if 'samplers' in d:
+            for s in d['samplers']:
+                cmds = []
+                cmds.append('load name={0}'.format(s['plugin']))
+                if 'config' in s:
+                    cmd = 'config name={0} '.format(s['plugin'])
+                    for c in s['config']:
+                        cmd += c + ' '
+                    for a in s:
+                        cmd = cmd.replace('%' + a + '%', str(s[a]))
+                    cmds.append(cmd)
+                    cont.config_ldmsd(cmds)
+
+                if 'start' in s and s['start']:
+                    cont.config_ldmsd([ 'start name={0} interval=1000000 offset=0'.\
+                                        format(s['plugin']) ])
+
+        # Apply any explicit daemon configuration
+        if 'config' in d:
+            cont.config_ldmsd(d['config'])
+
+        return 0
+
+    def restart(self, hosts=None):
+        pass
+
+    def old_start(self):
         # Create our own namespace for the daemon host names
         conts = {}
 
@@ -327,10 +445,6 @@ class Test(object):
 
         # Add host entries for test
         for s_host, server in self.servers():
-            # Add explicit hosts
-            for h in hosts:
-                rc, out = server.exec_run("/bin/bash -c 'echo {0} >> /etc/hosts'".format(h))
-
             # Add implicit hosts
             hostent = "{0} {1}".format(server.ip4_address, s_host)
             for c_host, client in self.servers():
@@ -387,17 +501,17 @@ class Test(object):
         for assert_no, assert_data in self.assertions.iteritems():
             if assert_data['result'] != self.TEST_SKIPPED:
                 continue
-            self.send_assert_status(assert_no, 'none')
+                self.send_assert_status(assert_no, 'none')
 
         msg = '{{ "msg-type" : "test-finish",'\
               '"test-suite" : "{0}",'\
               '"test-type" : "{1}",'\
               '"test-name" : "{2}",'\
               '"timestamp" : {3} }}'\
-              .format(self.test_suite,
-                      self.test_type,
-                      self.test_name,
-                      time.time())
+                  .format(self.test_suite,
+                          self.test_type,
+                          self.test_name,
+                          time.time())
         self.sock_fd.sendto(msg.encode('utf-8'), (self.tada_host, self.tada_port))
         self.sock_fd.close()
         self.sock_fd = None
