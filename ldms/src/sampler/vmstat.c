@@ -85,7 +85,6 @@ static int create_metric_set(base_data_t base)
 {
 	int rc;
 	uint64_t metric_value;
-	union ldms_value v;
 	char *s;
 	char lbuf[256];
 	char metric_name[128];

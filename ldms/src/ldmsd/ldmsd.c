@@ -590,6 +590,7 @@ void kpublish(int map_fd, int set_no, int set_size, char *set_name)
 			     "metric set\n", errno, set_size);
 		return;
 	}
+	sh = meta_addr;
 	data_addr = (struct ldms_data_hdr *)((unsigned char*)meta_addr + sh->meta_sz);
 	rc = ldms_mmap_set(meta_addr, data_addr, &map_set);
 	if (rc) {
@@ -605,7 +606,6 @@ pthread_t k_thread;
 void *k_proc(void *arg)
 {
 	int rc, map_fd;
-	int i, j;
 	int set_no;
 	int set_size;
 	char set_name[128];
@@ -655,7 +655,9 @@ void *k_proc(void *arg)
 			break;
 		}
 	}
+	return NULL;
 }
+
 /*
  * This function opens the device file specified by 'devname' and
  * mmaps the metric set 'set_no'.
@@ -708,7 +710,6 @@ void ldmsd_set_tree_unlock()
 ldmsd_plugin_set_list_t ldmsd_plugin_set_list_first()
 {
 	struct rbn *rbn;
-	ldmsd_plugin_set_list_t list;
 
 	rbn = rbt_min(&set_tree);
 	if (!rbn)
@@ -739,7 +740,6 @@ ldmsd_plugin_set_list_t ldmsd_plugin_set_list_find(const char *plugin_name)
 ldmsd_plugin_set_t ldmsd_plugin_set_first(const char *plugin_name)
 {
 	struct rbn *rbn;
-	ldmsd_plugin_set_t set;
 	ldmsd_plugin_set_list_t list;
 	rbn = rbt_find(&set_tree, plugin_name);
 	if (!rbn)
@@ -941,7 +941,6 @@ static void task_cb_fn(ovis_event_t ev)
 			task->state = LDMSD_TASK_STATE_STOPPED;
 	} else
 		task->state = next_state;
- out:
 	if (task->state == LDMSD_TASK_STATE_STOPPED) {
 		if (task->os)
 			ovis_scheduler_event_del(task->os, &task->oev);
@@ -1063,7 +1062,6 @@ void __transaction_end_time_get(struct timeval *start, struct timeval *dur,
  */
 ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 {
-	extern struct plugin_list plugin_list;
 	ldmsd_set_info_t info;
 	struct ldms_timestamp t;
 	struct timeval dur;
@@ -1229,7 +1227,6 @@ int ldmsd_start_sampler(char *plugin_name, char *interval, char *offset)
 	int rc = 0;
 	unsigned long sample_interval;
 	long sample_offset = 0;
-	int synchronous = 0;
 	struct ldmsd_plugin_cfg *pi;
 
 	sample_interval = strtoul(interval, &endptr, 0);
@@ -1500,7 +1497,6 @@ int main(int argc, char *argv[])
 	struct ldmsd_version ldmsd_version;
 	ldms_version_get(&ldms_version);
 	ldmsd_version_get(&ldmsd_version);
-	char *sockname = NULL;
 	char *lval = NULL;
 	char *rval = NULL;
 	char *plug_name = NULL;

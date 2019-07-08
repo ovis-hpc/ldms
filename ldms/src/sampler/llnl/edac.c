@@ -130,7 +130,6 @@ static char *replace_slash(char *s)
 static int create_metric_set(base_data_t base)
 {
 	int rc;
-	union ldms_value v;
 	ldms_schema_t schema;
 
 

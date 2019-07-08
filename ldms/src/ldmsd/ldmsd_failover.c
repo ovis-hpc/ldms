@@ -218,7 +218,6 @@ void str_rbn_free(struct str_rbn *srbn)
 }
 
 static struct ldmsd_failover __failover;
-static pthread_t sched_thread;
 
 static
 const char *__failover_state_str(ldmsd_failover_t f)
@@ -1524,7 +1523,6 @@ int __peercfg_start(ldmsd_failover_t f)
 		srbn->started = 1;
 	}
 
-out:
 	__dlog("Failover: __peercfg_start(), flags: %#lx, rc: %d\n",
 	       f->flags, rc);
 	return 0;

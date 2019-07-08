@@ -133,7 +133,6 @@ int timer_base_add_hfmetric(struct timer_base *tb,
 				void *ctxt)
 {
 	int rc = 0;
-	enum ldms_value_type atype;
 	struct tsampler_timer_entry *t = calloc(1, sizeof(*t));
 	if (!t) {
 		rc = errno;
@@ -173,8 +172,6 @@ int timer_base_config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		      struct attr_value_list *avl, ldmsd_msg_log_f msglog)
 {
 	struct timer_base *tb;
-	char *v;
-	char *timer;
 	int rc = 0;
 
 	tb = (void*)self;
@@ -249,12 +246,7 @@ void timer_base_term(struct ldmsd_plugin *self)
 int timer_base_sample(struct ldmsd_sampler *self)
 {
 	struct timer_base *tb = (void*)self;
-	struct timeval tv;
-	uint64_t ts;
-	ldms_mval_t mval;
-	ldms_value_t v;
-	int i, rc = 0;
-	static uint64_t count;
+	int rc = 0;
 	struct tsampler_timer_entry *ent;
 
 
@@ -266,7 +258,6 @@ int timer_base_sample(struct ldmsd_sampler *self)
 		break;
 	case TBS_CONFIGURED:
 		/* add timers if this is the first sample() */
-		count = 0;
 		TAILQ_FOREACH(ent, &tb->timer_list, entry) {
 			ent->timer.set = tb->set;
 			rc = tsampler_timer_add(&ent->timer);

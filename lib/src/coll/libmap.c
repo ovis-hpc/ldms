@@ -264,14 +264,14 @@ int map_inverse(map_t map_s, uint64_t match_val, uint64_t *inversed_val)
 }
 
 static
-int __attr_find(uint64_t *ret, sos_attr_t attr, sos_obj_t (*find)(sos_index_t))
+int __attr_find(uint64_t *ret, sos_attr_t attr, sos_obj_t (*find)(sos_index_t, sos_key_t *))
 {
 	sos_value_data_t data;
 	sos_obj_t obj;
 	sos_index_t idx = sos_attr_index(attr);
 	if (!idx)
 		return errno;
-	obj = find(idx);
+	obj = find(idx, NULL);
 	if (!obj)
 		return ENOENT;
 	data = sos_obj_attr_data(obj, attr, NULL);

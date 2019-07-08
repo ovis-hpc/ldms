@@ -238,7 +238,6 @@ out_2:
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
 	return rc;
 }
 
@@ -270,7 +269,6 @@ int ldmsd_strgp_prdcr_del(const char *strgp_name, const char *regex_str,
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
 	return rc;
 }
 
@@ -326,7 +324,6 @@ int ldmsd_strgp_metric_add(const char *strgp_name, const char *metric_name,
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
 	return rc;
 }
 
@@ -356,7 +353,6 @@ int ldmsd_strgp_metric_del(const char *strgp_name, const char *metric_name,
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
 	return rc;
 }
 
@@ -627,7 +623,6 @@ out_0:
 
 void ldmsd_strgp_close()
 {
-	int rc = 0;
 	ldmsd_strgp_t strgp = ldmsd_strgp_first();
 	while (strgp) {
 		ldmsd_strgp_lock(strgp);

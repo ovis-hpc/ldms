@@ -68,7 +68,6 @@ ldms_set_t ldmsd_group_new(const char *grp_name)
 int ldmsd_group_set_add(ldms_set_t grp, const char *set_name)
 {
 	int rc = 0;
-	uint32_t gn;
 	char buff[512]; /* should be enough for setname */
 	rc = snprintf(buff, sizeof(buff), GRP_KEY_PREFIX "%s", set_name);
 	if (rc >= sizeof(buff))
@@ -80,7 +79,6 @@ int ldmsd_group_set_add(ldms_set_t grp, const char *set_name)
 int ldmsd_group_set_rm(ldms_set_t grp, const char *set_name)
 {
 	int rc;
-	uint32_t gn;
 	char buff[512]; /* should be enough for setname */
 	rc = snprintf(buff, sizeof(buff), GRP_KEY_PREFIX "%s", set_name);
 	if (rc >= sizeof(buff))
@@ -129,7 +127,6 @@ int ldmsd_group_iter(ldms_set_t grp, ldmsd_group_iter_cb_t cb, void *arg)
 int ldmsd_group_check(ldms_set_t set)
 {
 	const char *sname;
-	uint32_t info_gn;
 	int flags = 0;
 	sname = ldms_set_schema_name_get(set);
 	if (0 != strcmp(sname, GRP_SCHEMA_NAME))
@@ -141,7 +138,6 @@ int ldmsd_group_check(ldms_set_t set)
 __attribute__((constructor))
 static void __ldmsd_grp_init()
 {
-	int rc;
 	grp_schema = ldms_schema_new(GRP_SCHEMA_NAME);
 	assert(grp_schema);
 }

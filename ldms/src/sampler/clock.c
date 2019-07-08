@@ -186,7 +186,6 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static int sample(struct ldmsd_sampler *self)
 {
-	int rc;
 	union ldms_value v;
 
 	if (!set) {

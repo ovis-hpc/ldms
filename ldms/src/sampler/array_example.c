@@ -92,7 +92,6 @@ static int create_metric_set(int num_metrics, int num_ele, enum ldms_value_type 
 			     base_data_t base)
 {
 	ldms_schema_t schema;
-	union ldms_value v;
 	int rc;
 
 	schema = base_schema_new(base);

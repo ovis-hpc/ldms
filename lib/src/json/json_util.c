@@ -5,6 +5,16 @@
 
 #define JSON_BUF_START_LEN 8192
 
+const char *json_type_name(enum json_value_e typ)
+{
+	static const char *json_type_names[] = {
+		"INT", "BOOL", "FLOAT", "STRING", "ATTR", "LIST", "DICT", "NULL"
+	};
+	if (typ >= JSON_INT_VALUE && typ <= JSON_NULL_VALUE)
+		return json_type_names[typ];
+	return "Invalid Value Type";
+}
+
 jbuf_t jbuf_new(void)
 {
 	jbuf_t jb = malloc(sizeof(*jb) + JSON_BUF_START_LEN);

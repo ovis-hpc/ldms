@@ -159,7 +159,7 @@ int ldmsd_stream_publish(ldms_t xprt,
 		sizeof(*attr) + attr->attr_len + /* plugin name */
 		sizeof(*attr) +			 /* plugin data */
 		sizeof(attr->discrim);		 /* terminator */
-	strcpy(attr->attr_value, stream_name);
+	strcpy((char *)attr->attr_value, stream_name);
 	first_attr = ldmsd_next_attr(attr);
 	ldmsd_hton_req_attr(attr);
 	uint32_t flags = LDMSD_REQ_SOM_F;
@@ -214,8 +214,6 @@ int conn_status;
 sem_t recv_sem;
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-	size_t msg_len;
-	static size_t resp_hdr_sz = sizeof(struct ldmsd_req_hdr_s);
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
 		sem_post(&conn_sem);
@@ -316,7 +314,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		sizeof(*attr) + attr->attr_len + /* plugin name */
 		sizeof(*attr) +			 /* plugin data */
 		sizeof(attr->discrim);		 /* terminator */
-	strcpy(attr->attr_value, stream);
+	strcpy((char *)attr->attr_value, stream);
 	first_attr = ldmsd_next_attr(attr);
 	ldmsd_hton_req_attr(attr);
 

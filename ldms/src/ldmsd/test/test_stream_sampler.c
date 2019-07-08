@@ -97,7 +97,6 @@ TEST_END(t_2);
 
 static ldmsd_msg_log_f msglog;
 static char *stream;
-static char *result_file = "/tmp/stream_test_out.txt";
 
 static const char *usage(struct ldmsd_plugin *self)
 {

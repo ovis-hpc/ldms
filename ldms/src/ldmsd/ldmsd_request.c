@@ -65,6 +65,7 @@
 #include "ldmsd_stream.h"
 #include "ldms_xprt.h"
 
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 /*
  * This file implements an LDMSD control protocol. The protocol is
  * message oriented and has message boundary markers.
@@ -89,8 +90,6 @@
  */
 
 pthread_mutex_t msg_tree_lock = PTHREAD_MUTEX_INITIALIZER;
-static char *cfg_resp_buf;
-static size_t cfg_resp_buf_sz;
 
 int ldmsd_req_debug = 0; /* turn on / off using gdb or edit src to
                                  * see request/response debugging messages */
@@ -1233,7 +1232,6 @@ int __example_json_obj(ldmsd_req_ctxt_t reqc)
 
 static int example_handler(ldmsd_req_ctxt_t reqc)
 {
-	size_t cnt = 0;
 	int rc;
 	int flags = 0;
 	struct ldmsd_req_attr_s attr;
@@ -1268,7 +1266,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	enum ldmsd_prdcr_type type = -1;
 	unsigned short port_no = 0;
 	int interval_us = -1;
-	size_t cnt = 0;
+	size_t cnt;
 	uid_t uid;
 	gid_t gid;
 	int perm;
@@ -1649,7 +1647,6 @@ int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdc
 {
 	extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 	ldmsd_prdcr_set_t prv_set;
-	size_t cnt = 0;
 	int set_count = 0;
 	int rc = 0;
 
@@ -2445,7 +2442,6 @@ send_reply:
 int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
 							int strgp_cnt)
 {
-	size_t cnt;
 	int rc;
 	int match_count, metric_count;
 	ldmsd_name_match_t match;
@@ -2592,7 +2588,7 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	gid_t gid;
 	int perm;
 	char *perm_s = NULL;
-	int interval_us, offset_us, push_flags, is_auto_task;
+	int push_flags, is_auto_task;
 
 	reqc->errcode = 0;
 
@@ -3146,7 +3142,6 @@ static const char *update_mode(int push_flags)
 int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 							int updtr_cnt)
 {
-	size_t cnt;
 	int rc;
 	ldmsd_prdcr_ref_t ref;
 	ldmsd_prdcr_t prdcr;
@@ -3310,9 +3305,7 @@ static int __updtr_task_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_task_t task)
 int __updtr_task_tree_json_obj(ldmsd_req_ctxt_t reqc,
 				ldmsd_updtr_t updtr)
 {
-	ldmsd_plugin_set_t set;
-	size_t cnt;
-	int rc, set_count;
+	int rc;
 	ldmsd_updtr_task_t task;
 	struct rbn *rbn;
 	rc = 0;
@@ -3350,8 +3343,6 @@ static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc, updtr_count;
 	size_t cnt = 0;
-	ldmsd_updtr_task_t task;
-	struct rbn *rbn;
 	char *name;
 	ldmsd_updtr_t updtr = NULL;
 	struct ldmsd_req_attr_s attr;
@@ -3499,7 +3490,6 @@ int __prdcr_hint_set_tree_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr)
 		count++;
 		rbn = rbn_succ(rbn);
 	}
-out:
 	rc = linebuf_printf(reqc, "]}");
 	return rc;
 }
@@ -3509,7 +3499,6 @@ static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc)
 	size_t cnt = 0;
 	int rc, prdcr_count;
 	ldmsd_prdcr_t prdcr = NULL;
-	ldmsd_updt_hint_set_list_t list;
 	char *name;
 	struct ldmsd_req_attr_s attr;
 
@@ -4050,7 +4039,6 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 {
 	extern struct plugin_list plugin_list;
 	struct ldmsd_plugin_cfg *p;
-	size_t cnt;
 	int rc, count;
 	reqc->errcode = 0;
 
@@ -4085,7 +4073,6 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 static int plugn_status_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
-	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
 
 	rc = __plugn_status_json_obj(reqc);
@@ -4307,7 +4294,6 @@ out:
 static int plugn_list_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc;
-	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
 
 	rc = __plugn_list_string(reqc);
@@ -4368,7 +4354,6 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 	int rc = 0;
 	size_t cnt = 0;
 	struct ldmsd_req_attr_s attr;
-	struct rbn *rbn;
 	ldmsd_plugin_set_list_t list;
 	char *plugin;
 	int plugn_count;
@@ -5056,7 +5041,6 @@ int ldmsd_set_route_request(ldmsd_prdcr_t prdcr,
 	size_t inst_name_len;
 	ldmsd_req_cmd_t rcmd;
 	struct ldmsd_req_attr_s attr;
-	char *buf;
 	int rc;
 
 	rcmd = alloc_req_cmd_ctxt(prdcr->xprt, ldms_xprt_msg_max(prdcr->xprt),
@@ -5221,10 +5205,10 @@ static int set_route_resp_handler(ldmsd_req_cmd_t rcmd)
 	(void) ldmsd_append_reply(org_reqc, ",", 1, 0);
 	if (!ctxt->is_internal) {
 		/* -1 to exclude the terminating character */
-		(void) ldmsd_append_reply(org_reqc, attr->attr_value, attr->attr_len - 1, 0);
+		(void) ldmsd_append_reply(org_reqc, (char *)attr->attr_value, attr->attr_len - 1, 0);
 		(void) ldmsd_append_reply(org_reqc, "]}", 3, 0);
 	} else {
-		(void) ldmsd_append_reply(org_reqc, attr->attr_value, attr->attr_len, 0);
+		(void) ldmsd_append_reply(org_reqc, (char *)attr->attr_value, attr->attr_len, 0);
 	}
 
 	my_attr.discrim = 0;
@@ -5360,7 +5344,7 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 			goto err_reply;
 		}
 		int rc = json_parse_buffer(parser,
-					   attr->attr_value, attr->attr_len,
+					   (char *)attr->attr_value, attr->attr_len,
 					   &entity);
 		json_parser_free(parser);
 		if (rc) {
@@ -5378,7 +5362,7 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 	}
 out:
 	ldmsd_stream_deliver(stream_name, stream_type,
-			     attr->attr_value, attr->attr_len, entity);
+			     (char *)attr->attr_value, attr->attr_len, entity);
 	json_entity_free(entity);
 	reqc->errcode = 0;
 	ldmsd_send_req_response(reqc, NULL);
@@ -5420,8 +5404,6 @@ static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
 
 {
 	char *stream_name;
-	ldmsd_req_attr_t attr;
-	ldmsd_prdcr_t prdcr;
 	int cnt;
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);

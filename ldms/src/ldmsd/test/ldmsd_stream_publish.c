@@ -15,12 +15,6 @@
 #include "../ldmsd_request.h"
 #include "../ldmsd_stream.h"
 
-static ldms_t ldms;
-static char *stream;
-static sem_t conn_sem;
-static int conn_status;
-static sem_t recv_sem;
-
 static struct option long_opts[] = {
 	{"host",     required_argument, 0,  'h' },
 	{"port",     required_argument, 0,  'p' },
@@ -30,7 +24,6 @@ static struct option long_opts[] = {
 	{"xprt",     required_argument, 0,  'x' },
 	{"auth",     required_argument, 0,  'a' },
 	{"auth_arg", required_argument, 0,  'A' },
-	{"verbose",  no_argument,       0,  'v' },
 	{0,          0,                 0,  0 }
 };
 
@@ -55,13 +48,11 @@ int main(int argc, char **argv)
 	char *filename = NULL;
 	char *stream = NULL;
 	int opt, opt_idx;
-	int verbose = 0;
 	char *lval, *rval;
 	char *auth = "none";
 	struct attr_value_list *auth_opt = NULL;
 	const int auth_opt_max = AUTH_OPT_MAX;
 	FILE *file;
-	jbuf_t test_json;
 	const char *stream_type = "string";
 
 	auth_opt = av_new(auth_opt_max);
@@ -106,9 +97,6 @@ int main(int argc, char **argv)
 			break;
 		case 'f':
 			filename = strdup(optarg);
-			break;
-		case 'v':
-			verbose = 1;
 			break;
 		case 't':
 			if (0 == strcmp("json", optarg)) {

@@ -176,8 +176,6 @@ static int create_metric_set(base_data_t base)
 {
 	int rc, i;
 	ldms_schema_t schema;
-	union ldms_value v;
-
 
 	int parse_err = parse_stats();
 	if (parse_err) {
@@ -332,7 +330,7 @@ static int sample(struct ldmsd_sampler *self)
 	}
  out:
 	base_sample_end(base);
-	return 0;
+	return rc;
 }
 
 static void term(struct ldmsd_plugin *self)

@@ -425,7 +425,6 @@ struct make_dir_arg {
 static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 	size_t len;
-	size_t set_count;
 	size_t hdrlen;
 	int rc;
 	zap_err_t zerr;
@@ -689,6 +688,10 @@ out:
 	reply.push.data_off = 0;
 	reply.push.flags = htonl(LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST);
 	rc = zap_send(x->zap_ep, &reply, len);
+	if (rc) {
+		x->log("%s(): x %p: error %d sending PUSH_REPLY\n",
+		       __func__, x, rc);
+	}
 	ldms_xprt_put(x);
 	return;
 }
@@ -1324,14 +1327,13 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		       struct ldms_context *ctxt, int more)
 {
 	enum ldms_dir_type type = ntohl(reply->dir.type);
-	int i, j, rc = ntohl(reply->hdr.rc);
+	int i, rc = ntohl(reply->hdr.rc);
 	size_t count, json_data_len = ntohl(reply->dir.json_data_len);
 	ldms_dir_t dir = NULL;
 	json_parser_t p;
-	json_entity_t dir_attr, dir_list, set_entity, info_list, info_entity;
+	json_entity_t dir_attr, dir_list, set_entity, info_list;
 	json_entity_t dir_entity = NULL;
 	struct ldms_set *lset;
-	int dir_upd = 0;
 
 	if (!ctxt->dir.cb)
 		return;
@@ -1660,7 +1662,6 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	struct ldms_conn_msg msg;
 #define RMT_NM_SZ 256
 	char rmt_name[RMT_NM_SZ];
-	const char *tmp;
 	int rc;
 	zap_err_t zerr;
 	zerr = zap_get_name(zep, &lcl, &rmt, &xlen);
@@ -1698,9 +1699,6 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	rc = ldms_xprt_auth_bind(_x, auth);
 	if (rc)
 		goto err1;
-
-	char *data = 0;
-	size_t datalen = 0;
 
 	__ldms_xprt_conn_msg_init(x, &msg);
 
@@ -1927,7 +1925,7 @@ static const ldms_name_t __lookup_set_info_find(const char *set_info,
 
 static int __process_lookup_set_info(struct ldms_set *lset, char *set_info)
 {
-	int rc = 0, i;
+	int rc = 0;
 	ldms_name_t key, value;
 	struct ldms_set_info_pair *pair, *nxt_pair;
 	int dir_upd = 0;
@@ -1978,10 +1976,8 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	struct ldms_rendezvous_lookup_param *lu = &lm->lookup;
 	struct ldms_context *ctxt = (void*)lm->hdr.xid;
 	ldms_set_t rbd = NULL;
-	int rc, i, is_no_rbd;
+	int rc;
 	ldms_name_t schema_name, inst_name;
-
-	is_no_rbd = 0;
 
 #ifdef DEBUG
 	if (!__is_lookup_name_good(x, lu, ctxt)) {
@@ -2134,8 +2130,6 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 {
 	struct ldms_rendezvous_push_param *push = &lm->push;
 	struct ldms_rbuf_desc *my_rbd, *push_rbd;
-	int rc;
-	ldms_set_t set_t;
 
 	/* Get the RBD provided in lookup to the peer */
 	my_rbd = (void *)push->lookup_set_id;
@@ -2203,7 +2197,6 @@ static int __ldms_conn_msg_verify(struct ldms_xprt *x, const void *data,
 {
 	const struct ldms_conn_msg *msg = data;
 	const struct ldms_version *ver = &msg->ver;
-	int rc = 0;
 	if (data_len < sizeof(*ver)) {
 		snprintf(err_msg, err_msg_len, "Bad conn msg");
 		return EINVAL;
@@ -2224,7 +2217,6 @@ static int __ldms_conn_msg_verify(struct ldms_xprt *x, const void *data,
  */
 static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 {
-	int rc;
 	struct ldms_xprt_event event = {
 			.type = LDMS_XPRT_EVENT_LAST,
 			.data = NULL,
@@ -2318,10 +2310,6 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 
 static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 {
-	struct ldms_xprt_event event = {
-			.data = NULL,
-			.data_len = 0
-	};
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	switch(ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
@@ -2843,6 +2831,10 @@ static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
 
 	pthread_mutex_unlock(&x->lock);
 	rc = zap_send(x->zap_ep, req, len);
+	if (rc) {
+		x->log("%s(): x %p: error %d sending REQ_NOTIFY\n",
+		       __func__, x, rc);
+	}
 	ldms_xprt_put(x);
 	return rc;
 }
@@ -2976,8 +2968,6 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 	uint32_t meta_meta_sz = __le32_to_cpu(set->meta->meta_sz);
 	uint32_t meta_data_sz = __le32_to_cpu(set->meta->data_sz);
 	struct ldms_rbuf_desc *rbd, *next_rbd;
-	ldms_t x;
-	zap_map_t rmap, lmap;
 
 	/*
 	 * We have to lock all the transports since we are racing with
@@ -3081,7 +3071,6 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 			break;
 		rbd = next_rbd;
 	}
- out:
 	pthread_mutex_unlock(&set->lock);
 	pthread_mutex_unlock(&xprt_list_lock);
 	return rc;

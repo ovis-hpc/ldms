@@ -248,7 +248,7 @@ static void resp_greeting(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 	while (attr->discrim) {
 		next_attr = ldmsd_next_attr(attr);
 		if ((0 == next_attr->discrim) && (count == 0)) {
-			char *str = strdup(attr->attr_value);
+			char *str = strdup((char *)attr->attr_value);
 			char *tok = strtok(str, " ");
 			if (!isdigit(tok[0])) {
 				/* The attribute 'level' isn't used. */
@@ -258,7 +258,7 @@ static void resp_greeting(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 			}
 			free(str);
 		} else {
-			printf("%s\n", strtok(attr->attr_value, " "));
+			printf("%s\n", strtok((char *)attr->attr_value, " "));
 		}
 		attr = next_attr;
 		count++;
@@ -998,7 +998,6 @@ void __print_strgp_status(json_value *jvalue)
 	}
 
 	char *name, *container, *schema, *plugin, *state;
-	json_int_t offset;
 
 	name = ldmsctl_json_str_value_get(jvalue, "name");
 	container = ldmsctl_json_str_value_get(jvalue, "container");
@@ -1086,7 +1085,7 @@ static void help_strgp_status()
 static void __print_plugn_sets(json_value *plugin_sets)
 {
 	json_value *sets, *set_name;
-	char *pi_name, *sname;
+	char *pi_name;
 	int i;
 	pi_name = ldmsctl_json_str_value_get(plugin_sets, "plugin");
 	if (!pi_name) {
@@ -1258,13 +1257,6 @@ static void help_failover_config()
 	printf("    [timeout_factor=] The heartbeat timeout factor.\n");
 	printf("    [peer_name=]      The failover partner name. If not given,\n");
 	printf("                      the ldmsd will accept any partner.\n");
-}
-
-static void help_failover_mod()
-{
-	printf("Modify LDMSD failover.\n\n");
-	printf("Parameters:\n");
-	printf("    [auto_switch=0|1] Auto switching (failover/failback).\n");
 }
 
 static void help_failover_status()
@@ -1527,25 +1519,8 @@ static int handle_help(struct ldmsctl_ctrl *ctrl, char *args)
 	return 0;
 }
 
-static int __sock_send(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req, size_t len)
-{
-	int rc;
-	rc = send(ctrl->sock.sock, req, len, 0);
-	if (rc == -1) {
-		printf("Error %d: Failed to send the request.\n", errno);
-		exit(1);
-	}
-	return 0;
-}
-
-static void __sock_close(struct ldmsctl_ctrl *ctrl)
-{
-	close(ctrl->sock.sock);
-}
-
 static int __ldms_xprt_send(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req, size_t len)
 {
-	size_t req_sz = sizeof(*req);
 	char *req_buf = malloc(len);
 	if (!req_buf) {
 		printf("Out of memory\n");
@@ -1565,49 +1540,8 @@ static void __ldms_xprt_close(struct ldmsctl_ctrl *ctrl)
 	ldms_xprt_close(ctrl->ldms_xprt.x);
 }
 
-static char * __sock_recv(struct ldmsctl_ctrl *ctrl)
-{
-	struct ldmsd_req_hdr_s resp;
-	ssize_t msglen;
-
-	msglen = recv(ctrl->sock.sock, &resp, sizeof(resp), MSG_PEEK);
-	if (msglen <= 0)
-		/* closing */
-		return NULL;
-
-	/* Convert the response byte order from network to host */
-	ldmsd_ntoh_req_hdr(&resp);
-
-	/* Verify the marker */
-	if (resp.marker != LDMSD_RECORD_MARKER
-			|| (msglen < sizeof(resp))) {
-		printf("Invalid response: missing record marker.\n");
-		return NULL;
-	}
-
-	if (buffer_len < resp.rec_len) {
-		free(buffer);
-		buffer = malloc(resp.rec_len);
-		if (!buffer) {
-			printf("Out of memory\n");
-			exit(ENOMEM);
-		}
-		buffer_len = resp.rec_len;
-	}
-	memset(buffer, 0, buffer_len);
-
-	msglen = recv(ctrl->sock.sock, buffer, resp.rec_len, MSG_WAITALL);
-	if (msglen < resp.rec_len) {
-		printf("Error: Received short response record.\n");
-		return NULL;
-	}
-
-	return buffer;
-}
-
 static char *__ldms_xprt_recv(struct ldmsctl_ctrl *ctrl)
 {
-loop:
 	sem_wait(&ctrl->ldms_xprt.recv_sem);
 	if (!buffer) {
 		return NULL;
@@ -1625,7 +1559,6 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 
 	struct command key, *cmd;
 	char *ptr, *args, *dummy;
-	int cmd_id;
 
 	/* Strip the new-line character */
 	char *newline = strrchr(cmd_str, '\n');
@@ -1654,7 +1587,6 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	}
 	free(dummy);
 
-	size_t buffer_offset = 0;
 	memset(buffer, 0, buffer_len);
 	req_array = ldmsd_parse_config_str(cmd_str, msg_no,
 					   ldms_xprt_msg_max(ctrl->ldms_xprt.x),
@@ -1685,7 +1617,6 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	ldmsd_req_hdr_t resp;
 	size_t req_hdr_sz = sizeof(*resp);
 	size_t lbufsz = 1024;
-	size_t lbufoffset = 0;
 	char *lbuf = malloc(lbufsz);
 	if (!lbuf) {
 		printf("Out of memory\n");
@@ -1735,8 +1666,6 @@ out:
 
 void __ldms_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-	size_t msg_len;
-	static size_t resp_hdr_sz = sizeof(struct ldmsd_req_hdr_s);
 	struct ldmsctl_ctrl *ctrl = cb_arg;
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
@@ -1781,7 +1710,6 @@ struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
 			const char *xprt, const char *auth,
 			struct attr_value_list *auth_opt)
 {
-	ldms_t x;
 	struct ldmsctl_ctrl *ctrl;
 	int rc;
 
@@ -1871,7 +1799,7 @@ static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd)
 int main(int argc, char *argv[])
 {
 	int op;
-	char *host, *port, *auth, *sockname, *env, *xprt;
+	char *host, *port, *auth, *sockname, *xprt;
 	char *lval, *rval;
 	host = port = sockname = xprt = NULL;
 	char *source, *script;
@@ -1946,8 +1874,6 @@ int main(int argc, char *argv[])
 
 	if (!host || !port || !xprt)
 		goto arg_err;
-
-	char *secretword = NULL;
 
 	struct ldmsctl_ctrl *ctrl;
 	if (is_inband) {

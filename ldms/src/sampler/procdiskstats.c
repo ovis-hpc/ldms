@@ -319,8 +319,6 @@ err:
 
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value;
-	char *attr;
 	int rc = 0;
 
 

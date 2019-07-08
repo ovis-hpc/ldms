@@ -93,7 +93,6 @@ static uint64_t comp_id;
 #define PID_LIST_LEN 64
 #define JOB_LIST_LEN 8
 static int job_list_len = JOB_LIST_LEN;		/* The size of the job list in job_set */
-static int job_slot;				/* The slot to be used by the next call to get_job */
 static int task_list_len = -1;			/* The size of the task list (i.e. max pids per job) */
 
 typedef struct job_data {
@@ -128,7 +127,7 @@ struct action_s {
 /*
  * Find the job_data record with the specified job_id
  */
-static job_data_t get_job_data(uint64_t job_id)
+static job_data_t get_job_data(uint64_t tstamp, uint64_t job_id)
 {
 	job_data_t jd = NULL;
 	struct rbn *rbn;
@@ -489,6 +488,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value)
 		job_list_len = atoi(value);
 	int i;
+	rc = ENOMEM;
 	for (i = 0; i < job_list_len; i++) {
 		job_data_t job = malloc(sizeof *job);
 		if (!job) {
@@ -521,15 +521,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		msglog(LDMSD_LERROR, "slurm-sampler: error %d creating "
 		       "the slurm job data metric set\n", rc);
 	}
-
-	return rc;
  err:
 	return rc;
 }
 
 static void handle_job_init(job_data_t job, json_entity_t e)
 {
-	int task;
 	int int_v;
 	uint64_t timestamp;
 	json_entity_t attr, data, dict;
@@ -720,8 +717,9 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 
 	pthread_mutex_lock(&job_lock);
 	ldms_transaction_begin(job_set);
+	rc = ENOENT;
 	if (0 == strncmp(event_name->str, "init", 4)) {
-		job = get_job_data(job_id); /* protect against duplicate entries */
+		job = get_job_data(tstamp, job_id); /* protect against duplicate entries */
 		if (!job) {
 			uint64_t local_task_count;
 			attr = json_attr_find(dict, "local_tasks");
@@ -742,7 +740,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			handle_job_init(job, entity);
 		}
 	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
-		job = get_job_data(job_id);
+		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			msglog(LDMSD_LERROR, "slurm_sampler: '%s' event "
 			       "was received for job %d with no job_data\n",
@@ -751,7 +749,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		}
 		handle_task_init(job, entity);
 	} else if (0 == strncmp(event_name->str, "task_exit", 9)) {
-		job = get_job_data(job_id);
+		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			msglog(LDMSD_LERROR, "slurm_sampler: '%s' event "
 			       "was received for job %d with no job_data\n",
@@ -760,7 +758,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		}
 		handle_task_exit(job, entity);
 	} else if (0 == strncmp(event_name->str, "exit", 4)) {
-		job = get_job_data(job_id);
+		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			msglog(LDMSD_LERROR, "slurm_sampler: '%s' event "
 			       "was received for job %d with no job_data\n",

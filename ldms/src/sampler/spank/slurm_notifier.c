@@ -212,14 +212,6 @@ static spank_err_t _get_item_u32(spank_t s, int id, uint32_t *pv)
 	return 0;
 }
 
-static spank_err_t _get_item_u64(spank_t s, int id, uint64_t *pv)
-{
-	spank_err_t err = spank_get_item(s, id, pv);
-	if (err)
-		slurm_info("Spank returned %d accessing item %d\n", err, id);
-	return err;
-}
-
 static jbuf_t _append_item_u16(spank_t s, jbuf_t jb, const char *name, spank_item_t id, char term)
 {
 	uint16_t v;
@@ -240,17 +232,6 @@ static jbuf_t _append_item_u32(spank_t s, jbuf_t jb, const char *name, spank_ite
 		return NULL;
 	}
 	return jbuf_append_attr(jb, name, "%d%c", v, term);
-}
-
-static jbuf_t _append_item_u64(spank_t s, jbuf_t jb, const char *name, spank_item_t id, char term)
-{
-	uint64_t v;
-	spank_err_t err = _get_item_u64(s, id, &v);
-	if (err) {
-		jbuf_free(jb);
-		return NULL;
-	}
-	return jbuf_append_attr(jb, name, "%ld%c", v, term);
 }
 
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
@@ -348,7 +329,7 @@ static ldms_t setup_connection(int argc, char *argv[])
 		io_timeout = SLURM_NOTIFY_TIMEOUT;
 	else
 		io_timeout = strtoul(timeout, NULL, 0);
-	slurm_info("%s[%d]: timeout %s io_timeout %d", __func__, __LINE__, timeout, io_timeout);
+	slurm_info("%s[%d]: timeout %s io_timeout %ld", __func__, __LINE__, timeout, io_timeout);
 	wait_ts.tv_sec = time(NULL) + io_timeout;
 	wait_ts.tv_nsec = 0;
 
@@ -429,11 +410,15 @@ jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 	jb = jbuf_append_attr(jb, "context", "\"%s\",", context); if (!jb) goto out_1;
 	subscriber_data[0] = '\0';
 	err = spank_getenv(sh, "LDMS_SUBSCRIBER_DATA", subscriber_data, sizeof(subscriber_data));
+	if (err)
+		subscriber_data[0] = '\0';
 	jb = jbuf_append_attr(jb, "subscriber_data", "\"%s\",", subscriber_data); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 	job_name[0] = '\0';
 	err = spank_getenv(sh, "SLURM_JOB_NAME", job_name, sizeof(job_name));
+	if (err)
+		job_name[0] = '\0';
 	jb = jbuf_append_attr(jb, "job_name", "\"%s\",", job_name); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "uid", S_JOB_UID, ','); if (!jb) goto out_1;
@@ -450,7 +435,6 @@ jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 jbuf_t make_exit_data(spank_t sh, const char *event, const char *context)
 {
 	jbuf_t jb;
-	spank_err_t err;
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "schema", "\"slurm_job_data\","); if (!jb) goto out_1;
@@ -468,7 +452,6 @@ jbuf_t make_exit_data(spank_t sh, const char *event, const char *context)
 jbuf_t make_task_init_data(spank_t sh, const char *event, const char *context)
 {
 	jbuf_t jb;
-	spank_err_t err;
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "schema", "\"slurm_job_data\","); if (!jb) goto out_1;
@@ -494,9 +477,7 @@ jbuf_t make_task_init_data(spank_t sh, const char *event, const char *context)
 
 jbuf_t make_task_exit_data(spank_t sh, const char *event, const char *context)
 {
-	char job_name[80];
 	jbuf_t jb;
-	spank_err_t err;
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "event", "\"%s\",", event); if (!jb) goto out_1;

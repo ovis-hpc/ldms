@@ -939,6 +939,8 @@ static inline ldmsd_updtr_t ldmsd_updtr_find(const char *name) {
 
 static inline const char *ldmsd_updtr_state_str(enum ldmsd_updtr_state state) {
 	switch (state) {
+	case LDMSD_UPDTR_STATE_STOPPING:
+		return "STOPPING";
 	case LDMSD_UPDTR_STATE_STOPPED:
 		return "STOPPED";
 	case LDMSD_UPDTR_STATE_RUNNING:

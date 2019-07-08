@@ -256,7 +256,7 @@ static int create_metric_set(job_data_t job)
 	}
 
 	job->instance_name = malloc(256);
-	snprintf(job->instance_name, 256, "%s/%s/%llu",
+	snprintf(job->instance_name, 256, "%s/%s/%lu",
 		 job->base->producer_name, job->base->schema_name,
 		 job->job_id);
 	job->set = ldms_set_new_with_auth(job->instance_name, schema,
@@ -330,7 +330,6 @@ static void sample_job(job_data_t job)
 		}
 		task_idx++;
 	}
- out:
 	ldms_transaction_end(job->set);
 }
 

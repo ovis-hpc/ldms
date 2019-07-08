@@ -377,7 +377,7 @@ static int process_sample_entity(kokkos_context_t k, json_entity_t e, sos_obj_t 
 
 	if (e->type != JSON_DICT_VALUE) {
 		msglog(LDMSD_LERROR, "%s: The sample entity must be a dictionary, not a %s\n",
-		       kokkos_store.name, json_type_names[e->type]);
+		       kokkos_store.name, json_type_name(e->type));
 		return EINVAL;
 	}
 
@@ -456,7 +456,7 @@ static int process_dict_entity(kokkos_context_t k, json_entity_t e, sos_obj_t ob
 
 	if (e->type != JSON_DICT_VALUE) {
 		msglog(LDMSD_LERROR, "%s: Expected a dictionary object, not a %s.\n",
-			  kokkos_store.name, json_type_names[e->type]);
+		       kokkos_store.name, json_type_name(e->type));
 		return EINVAL;
 	}
 

@@ -974,8 +974,8 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 /**
  * configuration check for the buffer args
  */
-static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
-	int rc;
+static int config_buffer(char *bs, char *bt, int *rbs, int *rbt)
+{
 	int tempbs;
 	int tempbt;
 
@@ -2868,20 +2868,17 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 
 	for (i = 0; i < s_handle->numder; i++){ //go thru all the vals....only write the writeout vals
 
-		int rvalid;
-
-
 //		msglog(LDMSD_LDEBUG, "%s: Schema %s Updating variable %d of %d: %s\n",
 //		       pname, s_handle->schema, i, s_handle->numder, s_handle->der[i]->name);
 
 		if (s_handle->der[i]->fct == RAWTERM) {
 			//this will also do its writeout
 			if (!skip)
-				rvalid = doRAWTERMFunc(set, s_handle, metric_arry, s_handle->der[i]);
+				(void)doRAWTERMFunc(set, s_handle, metric_arry, s_handle->der[i]);
 		} else {
-			rvalid = doFunc(set, metric_arry,
-					dp, s_handle->der[i],
-					diff, setflagtime);
+			(void)doFunc(set, metric_arry,
+				     dp, s_handle->der[i],
+				     diff, setflagtime);
 			//write it out, if its writeout and not skip
 			//FIXME: Should the writeout be moved in so its like doRAWTERMFunc ?
 			if (!skip && s_handle->der[i]->writeout){

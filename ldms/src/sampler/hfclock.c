@@ -182,7 +182,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 
 	goto out;
 
-cleanup:
 	hfclock_cleanup(hf);
 	hf = NULL;
 out:

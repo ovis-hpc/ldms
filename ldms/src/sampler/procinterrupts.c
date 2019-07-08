@@ -106,7 +106,6 @@ static int create_metric_set(base_data_t base)
 	char *s;
 	char metric_name[128];
 	char beg_name[128];
-	union ldms_value v;
 
 	mf = fopen(procfile, "r");
 	if (!mf) {

@@ -357,7 +357,6 @@ static int add_attr_from_attr_str(const char *name, const char *value,
 		memset(&buf[req->rec_len], 0, sizeof(uint32_t));
 	}
 
- out:
 	(*request)->rec_len += attr_sz;
 	*_req_sz = req_sz;
 	return 0;
@@ -554,9 +553,7 @@ out:
 struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 					size_t xprt_max_msg, ldmsd_msg_log_f msglog)
 {
-	static const char *delim = " \t";
-	char *av, *verb, *tmp, *ptr, *name, *value, *dummy;
-	size_t cfg_len = strlen(cfg);
+	char *av, *verb, *dummy;
 	struct ldmsd_parse_ctxt ctxt = {0};
 	struct ldmsd_req_array *req_array;
 	int rc, i, array_sz;
@@ -589,7 +586,6 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 	ctxt.request_sz = xprt_max_msg;
 	ctxt.msglog = msglog;
 	ctxt.av = av;
-new_req:
 	ctxt.request = calloc(1, ctxt.request_sz);
 	if (!ctxt.request)
 		goto err;

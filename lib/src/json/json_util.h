@@ -71,10 +71,6 @@ enum json_value_e {
 	JSON_NULL_VALUE
 };
 
-static const char *json_type_names[] = {
-	"INT", "BOOL", "FLOAT", "STRING", "ATTR", "LIST", "DICT", "NULL"
-};
-
 struct json_entity_s {
 	enum json_value_e type;
 	union {
@@ -130,6 +126,7 @@ typedef struct json_parser_s {
 extern json_parser_t json_parser_new(size_t user_data);
 extern void json_parser_free(json_parser_t p);
 extern void json_entity_free(json_entity_t e);
+extern const char *json_type_name(enum json_value_e typ);
 extern enum json_value_e json_entity_type(json_entity_t e);
 extern json_entity_t json_attr_find(json_entity_t d, char *name);
 extern json_entity_t json_attr_first(json_entity_t d);

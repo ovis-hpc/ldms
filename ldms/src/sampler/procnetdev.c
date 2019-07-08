@@ -105,7 +105,6 @@ static int create_metric_set(base_data_t base)
 	int rc;
 	ldms_schema_t schema;
 	char metric_name[128];
-	union ldms_value v;
 	int i, j;
 
 	mf = fopen(procfile, "r");
@@ -333,7 +332,6 @@ static int sample(struct ldmsd_sampler *self)
 		} /* end for*/
 	} while (s);
 
-out:
 	base_sample_end(base);
 	return 0;
 }

@@ -55,7 +55,7 @@ if __name__ == "__main__":
     # Give the daemons a few seconds to start
     time.sleep(5)
 
-    # Send data to the stream sampler
+    # Create the test data
     data = { "gen" : 1,
              "schema" : "stream_test",
              "timestamp" : 1559242264,

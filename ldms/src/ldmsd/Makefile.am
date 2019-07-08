@@ -29,12 +29,6 @@ ldms_ls_LDFLAGS = $(AM_LDFLAGS) \
 	-lpthread \
 	@LDFLAGS_GETTIME@
 
-sbin_PROGRAMS += ldmsd_upload
-ldmsd_upload_SOURCES = ldmsd_upload.c
-ldmsd_upload_CFLAGS = $(AM_CFLAGS) -DLDMSD_UPLOAD_CMD
-ldmsd_upload_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
-ldmsd_upload_LDFLAGS = -lovis_util -pthread $(AM_LDFLAGS)
-
 lib_LTLIBRARIES += libldmsd_stream.la
 libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h ldms.h ldms_core.h ldmsd_request_util.c
 libldmsd_stream_la_LIBADD = \

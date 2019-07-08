@@ -140,8 +140,6 @@ void cray_power_sampler_term(struct ldmsd_plugin *self)
 static
 void cray_power_sampler_timer_cb(tsampler_timer_t t)
 {
-	int m;
-	ldms_mval_t mv;
 	int rc;
 	int cps_idx;
 	off_t off;
@@ -262,7 +260,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 
 	goto out;
 
-cleanup:
 	cray_power_sampler_cleanup(cps);
 	cps = NULL;
 out:

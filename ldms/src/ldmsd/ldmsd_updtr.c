@@ -231,23 +231,9 @@ static void updtr_task_set_reset(ldmsd_updtr_task_t task)
 	task->set_count = 0;
 }
 
-static void
-__grp_info_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
-			    int more, ldms_set_t set, void *arg)
-{
-	ldmsd_prdcr_set_t prd_set = arg;
-	pthread_mutex_lock(&prd_set->lock);
-	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
-	ldmsd_prdcr_set_ref_put(prd_set); /* taken before re-lookup */
-	pthread_mutex_unlock(&prd_set->lock);
-}
-
 static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 {
-	int flags;
-	int rc;
 	uint64_t gn;
-	const char *name;
 	ldmsd_prdcr_set_t prd_set = arg;
 	int ready = 0;
 	int errcode;
@@ -456,7 +442,6 @@ out:
 static int cancel_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 {
 	int rc;
-	struct timeval end;
 	ldmsd_log(LDMSD_LDEBUG, "Cancel push for set %s\n", prd_set->inst_name);
 	assert(prd_set->set);
 	if (!(prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG))
@@ -551,10 +536,8 @@ static void prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 			     int more, ldms_set_t set, void *arg)
 {
 	ldmsd_prdcr_set_t prd_set = arg;
-	int update_updtr_tree = 0;
 	int ready = 0;
 	int flags;
-	int rc;
 	pthread_mutex_lock(&prd_set->lock);
 	if (status != LDMS_LOOKUP_OK) {
 		status = (status < 0 ? -status : status);
@@ -603,7 +586,6 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 				   ldmsd_prdcr_t prdcr, ldmsd_name_match_t match)
 {
 	ldmsd_updtr_t updtr = task->updtr;
-	int rc;
 #ifdef LDMSD_UPDATE_TIME
 	struct timeval start, end;
 	gettimeofday(&start, NULL);
@@ -683,7 +665,6 @@ out:
 static void cancel_prdcr_updates(ldmsd_updtr_t updtr,
 				 ldmsd_prdcr_t prdcr, ldmsd_name_match_t match)
 {
-	int rc;
 	ldmsd_prdcr_lock(prdcr);
 	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED)
 		goto out;
@@ -781,6 +762,7 @@ static void updtr_task_cb(ldmsd_task_t task, void *arg)
 	ldmsd_updtr_t updtr = utask->updtr;
 	ldmsd_updtr_lock(updtr);
 	switch (updtr->state) {
+	case LDMSD_UPDTR_STATE_STOPPING:
 	case LDMSD_UPDTR_STATE_STOPPED:
 		break;
 	case LDMSD_UPDTR_STATE_RUNNING:
@@ -815,6 +797,7 @@ static void updtr_tree_task_cb(ldmsd_task_t task, void *arg)
 	ldmsd_updtr_t updtr = utask->updtr;
 	ldmsd_updtr_lock(updtr);
 	switch (updtr->state) {
+	case LDMSD_UPDTR_STATE_STOPPING:
 	case LDMSD_UPDTR_STATE_STOPPED:
 		break;
 	case LDMSD_UPDTR_STATE_RUNNING:
@@ -841,7 +824,6 @@ void __prdcr_set_update_sched(ldmsd_prdcr_set_t prd_set,
  */
 int ldmsd_updtr_tasks_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 {
-	struct rbn *rbn;
 	ldmsd_updtr_task_t task;
 	int rc;
 
@@ -1228,7 +1210,6 @@ ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_next(ldmsd_prdcr_ref_t ref)
 ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_find(ldmsd_updtr_t updtr,
 					const char *prdcr_name)
 {
-	ldmsd_prdcr_ref_t ref;
 	struct rbn *rbn = rbt_find(&updtr->prdcr_tree, prdcr_name);
 	if (!rbn)
 		return NULL;
@@ -1301,7 +1282,6 @@ out_2:
 out_1:
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
-out_0:
 	return rc;
 }
 
@@ -1344,7 +1324,6 @@ int ldmsd_updtr_match_del(const char *updtr_name, const char *regex_str,
 out_1:
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
-out_0:
 	return rc;
 }
 

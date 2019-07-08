@@ -130,7 +130,6 @@ static struct lustre_metric_src_list lms_list = {0};
 
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
 
 static base_data_t base;
 
@@ -166,7 +165,7 @@ struct str_list_head* construct_mdt_list(const char *mdts)
  * \returns 0 on success.
  * \returns \c errno on error.
  */
-static int create_metric_set(const char *path, const char *mdts)
+static int create_metric_set(const char *mdts)
 {
 	int rc, i;
 	struct str_list_head *lh = construct_mdt_list(mdts);
@@ -259,7 +258,7 @@ static void term(struct ldmsd_plugin *self)
  */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value, *mdts;
+	char *mdts;
 
 	if (set) {
 		msglog(LDMSD_LERROR, "lustre2_mds: Set already created.\n");
@@ -272,7 +271,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	mdts = av_value(avl, "mdts");
 
-	int rc = create_metric_set(value, mdts);
+	int rc = create_metric_set(mdts);
 	if (rc) {
 		base_del(base);
 		base = NULL;
@@ -334,7 +333,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	set = NULL;
 	lustre_sampler_set_msglog(pf);
 	return &lustre_mds_plugin.base;
-err_nomem:
 	errno = ENOMEM;
 	return NULL;
 }

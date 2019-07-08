@@ -147,9 +147,6 @@ extern int __ldms_remote_update(ldms_t t, ldms_set_t s, ldms_update_cb_t cb, voi
 extern void __ldms_set_tree_lock();
 extern void __ldms_set_tree_unlock();
 
-static int __ldms_set_publish(struct ldms_set *set);
-static int __ldms_set_unpublish(struct ldms_set *set);
-
 extern int __ldms_set_info_set(struct ldms_set_info_list *info,
 				const char *key, const char *value);
 void __ldms_set_info_unset(struct ldms_set_info_pair *pair);

@@ -330,7 +330,6 @@ static void __update_set_info(ldmsd_prdcr_set_t set, ldms_dir_set_t dset)
 static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 {
 	ldmsd_prdcr_set_t set;
-	int rc;
 
 	ldmsd_log(LDMSD_LINFO, "Adding the metric set '%s'\n", dset->inst_name);
 
@@ -403,7 +402,7 @@ static void prdcr_dir_cb_del(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 {
 	ldmsd_prdcr_set_t set;
-	int i, rc;
+	int i;
 	struct ldmsd_updtr_schedule prev_hint;
 
 	for (i = 0; i < dir->set_count; i++) {

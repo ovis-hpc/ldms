@@ -209,7 +209,6 @@ struct lustre_metric_src_list lms_list = {0};
 
 static ldms_set_t set;
 static ldmsd_msg_log_f msglog;
-static char *producer_name;
 
 static base_data_t base;
 
@@ -423,7 +422,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 out:
 	return &lustre_oss_plugin.base;
 
-err_nomem:
 	errno = ENOMEM;
 	return NULL;
 }

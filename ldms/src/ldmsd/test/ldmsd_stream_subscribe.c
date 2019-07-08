@@ -11,14 +11,12 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <json/json_util.h>
+#include <assert.h>
 #include "ldms.h"
 #include "../ldmsd_request.h"
 #include "../ldmsd_stream.h"
 
 static ldms_t ldms;
-static char *stream;
-static sem_t conn_sem;
-static int conn_status;
 static sem_t recv_sem;
 
 void msglog(const char *fmt, ...)
@@ -37,7 +35,6 @@ static struct option long_opts[] = {
 	{"xprt",     required_argument, 0,  'x' },
 	{"auth",     required_argument, 0,  'a' },
 	{"auth_arg", required_argument, 0,  'A' },
-	{"verbose",  no_argument,       0,  'v' },
 	{0,          0,                 0,  0 }
 };
 
@@ -70,11 +67,9 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 static int stream_publish_handler(ldmsd_req_hdr_t req)
 {
 	char *stream_name;
-	ldmsd_stream_type_t stream_type;
 	ldmsd_req_attr_t attr;
 	json_parser_t parser;
 	json_entity_t entity = NULL;
-	int cnt;
 
 	attr = ldmsd_first_attr(req);
 	while (attr->discrim) {
@@ -86,7 +81,7 @@ static int stream_publish_handler(ldmsd_req_hdr_t req)
 		msglog("The stream name is missing, malformed stream request.\n");
 		exit(5);
 	}
-	stream_name = strdup(attr->attr_value);
+	stream_name = strdup((char *)attr->attr_value);
 
 	attr = ldmsd_first_attr(req);
 	while (attr->discrim) {
@@ -96,7 +91,7 @@ static int stream_publish_handler(ldmsd_req_hdr_t req)
 	}
 	if (attr->discrim) {
 		ldmsd_stream_deliver(stream_name, LDMSD_STREAM_STRING,
-				     attr->attr_value, attr->attr_len, NULL);
+				     (char *)attr->attr_value, attr->attr_len, NULL);
 		free(stream_name);
 		return 0;
 	}
@@ -118,7 +113,7 @@ static int stream_publish_handler(ldmsd_req_hdr_t req)
 		exit(7);
 	}
 	int rc = json_parse_buffer(parser,
-				   attr->attr_value, attr->attr_len,
+				   (char *)attr->attr_value, attr->attr_len,
 				   &entity);
 	json_parser_free(parser);
 	if (rc) {
@@ -126,8 +121,8 @@ static int stream_publish_handler(ldmsd_req_hdr_t req)
 		msglog("%s\n", attr->attr_value);
 		exit(8);
 	}
-	ldmsd_stream_deliver(stream_name, stream_type,
-			     attr->attr_value, attr->attr_len, entity);
+	ldmsd_stream_deliver(stream_name, LDMSD_STREAM_JSON,
+			     (char *)attr->attr_value, attr->attr_len, entity);
 	free(stream_name);
 	json_entity_free(entity);
 	return 0;
@@ -151,8 +146,6 @@ int process_request(ldms_t x, ldmsd_req_hdr_t request)
 
 	int rc = stream_publish_handler(request);
 
-	struct ldmsd_req_attr_s attr;
-	attr.discrim = 0;
 	request->flags = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
 	request->rsp_err = rc;
 	request->rec_len = sizeof(*request);
@@ -226,13 +219,11 @@ int main(int argc, char **argv)
 	char *filename = NULL;
 	char *stream = NULL;
 	int opt, opt_idx;
-	int verbose = 0;
 	char *lval, *rval;
 	char *auth = "none";
 	struct attr_value_list *auth_opt = NULL;
 	const int auth_opt_max = AUTH_OPT_MAX;
 	FILE *file;
-	const char *stream_type = "string";
 	short port_no = 0;
 
 	auth_opt = av_new(auth_opt_max);
@@ -273,9 +264,6 @@ int main(int argc, char **argv)
 		case 'f':
 			filename = strdup(optarg);
 			break;
-		case 'v':
-			verbose = 1;
-			break;
 		default:
 			usage(argc, argv);
 		}
@@ -299,6 +287,7 @@ int main(int argc, char **argv)
 		perror("Could not listen");
 	}
 	ldmsd_stream_client_t client = ldmsd_stream_subscribe(stream, stream_recv_cb, NULL);
+	assert(client);
 	while (1) {
 		/* wait for ctrl-c */
 		sleep(10);

@@ -118,7 +118,6 @@ static int numvars[MAXOPTS] = { 2, 21 };
 
 static ldms_set_t set;
 #define SAMP "procnfs"
-static char *default_schema_name = SAMP;
 static FILE *mf;
 static ldmsd_msg_log_f msglog;
 static int metric_offset;
@@ -134,7 +133,6 @@ static int create_metric_set(base_data_t base)
 	ldms_schema_t schema;
 	int rc;
 	int i, j;
-	union ldms_value v;
 	char metric_name[128];
 
 	mf = fopen(procfile, "r");
