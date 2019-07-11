@@ -1572,6 +1572,32 @@ out:
 	return;
 }
 
+static void help_set()
+{
+	printf( "\nSet command-line options\n\n"
+		"It is only supported in the configuration files given at the command line.\n");
+}
+
+static int handle_set(struct ldmsctl_ctrl *ctrl, char *args)
+{
+	printf("Not supported in ldmsctl. It is only supported in config files "
+			"given at the command line.\n");
+	return 0;
+}
+
+static void help_listen()
+{
+	printf( "\nAdd a listening endpoint\n\n"
+		"It is only supported in the configuration files given at the command line.\n");
+}
+
+static int handle_listen(struct ldmsctl_ctrl *ctrl, char *args)
+{
+	printf("Not supported in ldmsctl. It is only supported in config files "
+			"given at the command line.\n");
+	return 0;
+}
+
 static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
 static int handle_source(struct ldmsctl_ctrl *ctrl, char *path);
 static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
@@ -1589,6 +1615,7 @@ static struct command command_tbl[] = {
 	{ "greeting", NULL, help_greeting, resp_greeting },
 	{ "help", handle_help, NULL, NULL },
 	{ "list", NULL, help_list, resp_list },
+	{ "listen", handle_listen, help_listen, NULL },
 	{ "load", NULL, help_load, resp_generic },
 	{ "loglevel", NULL, help_loglevel, resp_generic },
 	{ "oneshot", NULL, help_oneshot, resp_generic },
@@ -1606,6 +1633,7 @@ static struct command command_tbl[] = {
 	{ "prdcr_subscribe",  NULL, help_prdcr_subscribe_regex, resp_generic },
 	{ "quit", handle_quit, help_quit, resp_generic },
 	{ "script", handle_script, help_script, resp_generic },
+	{ "set", handle_set, help_set, NULL },
 	{ "set_route", NULL, help_set_route, resp_set_route },
 	{ "setgroup_add", NULL, help_setgroup_add, resp_generic },
 	{ "setgroup_del", NULL, help_setgroup_del, resp_generic },
@@ -1694,22 +1722,6 @@ static int handle_help(struct ldmsctl_ctrl *ctrl, char *args)
 	return 0;
 }
 
-static int __sock_send(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req, size_t len)
-{
-	int rc;
-	rc = send(ctrl->sock.sock, req, len, 0);
-	if (rc == -1) {
-		printf("Error %d: Failed to send the request.\n", errno);
-		exit(1);
-	}
-	return 0;
-}
-
-static void __sock_close(struct ldmsctl_ctrl *ctrl)
-{
-	close(ctrl->sock.sock);
-}
-
 static int __ldms_xprt_send(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req, size_t len)
 {
 	char *req_buf = malloc(len);
@@ -1729,46 +1741,6 @@ static void __ldms_xprt_close(struct ldmsctl_ctrl *ctrl)
 	sem_destroy(&ctrl->ldms_xprt.connected_sem);
 	sem_destroy(&ctrl->ldms_xprt.recv_sem);
 	ldms_xprt_close(ctrl->ldms_xprt.x);
-}
-
-static char * __sock_recv(struct ldmsctl_ctrl *ctrl)
-{
-	struct ldmsd_req_hdr_s resp;
-	ssize_t msglen;
-
-	msglen = recv(ctrl->sock.sock, &resp, sizeof(resp), MSG_PEEK);
-	if (msglen <= 0)
-		/* closing */
-		return NULL;
-
-	/* Convert the response byte order from network to host */
-	ldmsd_ntoh_req_hdr(&resp);
-
-	/* Verify the marker */
-	if (resp.marker != LDMSD_RECORD_MARKER
-			|| (msglen < sizeof(resp))) {
-		printf("Invalid response: missing record marker.\n");
-		return NULL;
-	}
-
-	if (buffer_len < resp.rec_len) {
-		free(buffer);
-		buffer = malloc(resp.rec_len);
-		if (!buffer) {
-			printf("Out of memory\n");
-			exit(ENOMEM);
-		}
-		buffer_len = resp.rec_len;
-	}
-	memset(buffer, 0, buffer_len);
-
-	msglen = recv(ctrl->sock.sock, buffer, resp.rec_len, MSG_WAITALL);
-	if (msglen < resp.rec_len) {
-		printf("Error: Received short response record.\n");
-		return NULL;
-	}
-
-	return buffer;
 }
 
 static char *__ldms_xprt_recv(struct ldmsctl_ctrl *ctrl)
@@ -2162,7 +2134,7 @@ int main(int argc, char *argv[])
 	ctrl->close(ctrl);
 	return 0;
 arg_err:
-	printf("Please specify the connection type.\n");
+	printf("Please specify the host, port and transport type.\n");
 	usage(argv);
 	return 0;
 }

@@ -399,7 +399,7 @@ static int create_metric_set(test_sampler_inst_t inst,
 	int rc, i, j;
 	union ldms_value v;
 	char metric_name[128];
-	char instance_name[128];
+	char instance_name[512];
 	ldms_schema_t schema;
 	ldmsd_sampler_type_t samp = LDMSD_SAMPLER(inst);
 
@@ -434,7 +434,7 @@ static int create_metric_set(test_sampler_inst_t inst,
 	struct test_sampler_set *ts_set, *next_ts_set;
 
 	for (i = 0; i < inst->num_sets; i++) {
-		snprintf(instance_name, 127, "%s_%d", inst->base_set_name, i);
+		snprintf(instance_name, 511, "%s_%d", inst->base_set_name, i);
 		ts_set = __create_test_sampler_set(inst, instance_name,
 						   push, ts_schema);
 		if (!ts_set) {

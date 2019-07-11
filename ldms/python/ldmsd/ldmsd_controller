@@ -1336,14 +1336,15 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_listen(self, arg):
         """Add a listening endpoint
-        Parameters:
-            xprt=     the transport name
-            [port=]   the port
-            [host=]   the hostname
-            [auth=]   the authentication plugin name
-            [...]     the authentication options, e.g., path=<path to file>
+        It is only supported in the configuration files given at the command line
         """
-        self.handle('listen', arg)
+        print("Not supported in ldmsd_controller. It is only supported in the config files given at the command line.")
+
+    def do_set(self, arg):
+        """Set a command-line option
+        It is only supported in the configuration files given at the command line
+        """
+        print("Not supported in ldmsd_controller. It is only supported in the config files given at the command line.")
 
     def do_export(self, arg):
         """Export running configuration to a local file on the node the daemon is running
