@@ -245,8 +245,9 @@ static void send_dir_update(struct ldms_xprt *x,
 	zap_err_t zerr;
 	zerr = zap_send(x->zap_ep, reply, hdr_len + cnt);
 	if (zerr != ZAP_ERR_OK) {
-		x->log("%s: x %p: zap_send synchronously error. '%s'\n",
-				__FUNCTION__, x, zap_err_str(zerr));
+		if (x->log)
+			x->log("%s: x %p: zap_send synchronously error. '%s'\n",
+			       __FUNCTION__, x, zap_err_str(zerr));
 		ldms_xprt_close(x);
 	}
 	free(reply);
