@@ -102,6 +102,8 @@ static void init_job_data(base_data_t base)
 			    base->pi_name, base->job_set_name);
 			goto err;
 		}
+		/* If current_slot is present, we know it's the mt-slurm sampler */
+		base->job_slot_idx = ldms_metric_by_name(base->job_set, "current_slot");
 		base->app_id_idx = ldms_metric_by_name(base->job_set, "app_id");
 		if (base->app_id_idx < 0) {
 			base->log(LDMSD_LINFO,
@@ -323,13 +325,23 @@ void base_sample_begin(base_data_t base)
 	if (base->job_id_idx < 0)
 		return;
 
-	start = ldms_metric_get_u64(base->job_set, base->job_start_idx);
-	end = ldms_metric_get_u64(base->job_set, base->job_end_idx);
 	ts = ldms_transaction_timestamp_get(base->set);
 
-	if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
-		job_id = ldms_metric_get_u64(base->job_set, base->job_id_idx);
-		app_id = ldms_metric_get_u64(base->job_set, base->app_id_idx);
+	if (base->job_slot_idx < 0) {
+		start = ldms_metric_get_u64(base->job_set, base->job_start_idx);
+		end = ldms_metric_get_u64(base->job_set, base->job_end_idx);
+		if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
+			job_id = ldms_metric_get_u64(base->job_set, base->job_id_idx);
+			app_id = ldms_metric_get_u64(base->job_set, base->app_id_idx);
+		}
+	} else {
+		uint64_t slot = ldms_metric_get_u32(base->job_set, base->job_slot_idx);
+		start = ldms_metric_array_get_u32(base->job_set, base->job_start_idx, slot);
+		end = ldms_metric_array_get_u32(base->job_set, base->job_end_idx, slot);
+		if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
+			job_id = ldms_metric_array_get_u32(base->job_set, base->job_id_idx, slot);
+			app_id = ldms_metric_array_get_u32(base->job_set, base->app_id_idx, slot);
+		}
 	}
 	ldms_metric_set_u64(base->set, BASE_JOB_ID, job_id);
 	ldms_metric_set_u64(base->set, BASE_APP_ID, app_id);
