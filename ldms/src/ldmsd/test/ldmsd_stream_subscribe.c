@@ -18,14 +18,15 @@
 
 static ldms_t ldms;
 static sem_t recv_sem;
+FILE *file;
 
 void msglog(const char *fmt, ...)
 {
 	va_list ap;
 
 	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	fflush(stderr);
+	vfprintf(file, fmt, ap);
+	fflush(file);
 }
 
 static struct option long_opts[] = {
@@ -35,6 +36,7 @@ static struct option long_opts[] = {
 	{"xprt",     required_argument, 0,  'x' },
 	{"auth",     required_argument, 0,  'a' },
 	{"auth_arg", required_argument, 0,  'A' },
+	{"daemonize",no_argument,       0,  'D' },
 	{0,          0,                 0,  0 }
 };
 
@@ -42,12 +44,13 @@ void usage(int argc, char **argv)
 {
 	printf("usage: %s -x <xprt> -p <port> "
 	       "-s <stream-name> "
-	       "-f <file> -a <auth> -A <auth-opt>\n",
+	       "-f <file> -a <auth> -A <auth-opt> "
+	       "-D\n",
 	       argv[0]);
 	exit(1);
 }
 
-static const char *short_opts = "p:f:s:x:a:A:v";
+static const char *short_opts = "p:f:s:x:a:A:D";
 
 #define AUTH_OPT_MAX 128
 
@@ -57,10 +60,11 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			 json_entity_t entity)
 {
 	if (stream_type == LDMSD_STREAM_STRING)
-		msglog("Received %d bytes of STRING data:\n", msg_len);
+		msglog("EVENT:{\"type\":\"string\",\"size\":%d,\"event\":", msg_len);
 	else
-		msglog("Received %d bytes of JSON data:\n", msg_len);
+		msglog("EVENT:{\"type\":\"json\",\"size\":%d,\"event\":", msg_len);
 	msglog(msg);
+	msglog("}");
 	return 0;
 }
 
@@ -223,8 +227,8 @@ int main(int argc, char **argv)
 	char *auth = "none";
 	struct attr_value_list *auth_opt = NULL;
 	const int auth_opt_max = AUTH_OPT_MAX;
-	FILE *file;
 	short port_no = 0;
+	int daemonize = 0;
 
 	auth_opt = av_new(auth_opt_max);
 	if (!auth_opt) {
@@ -264,6 +268,9 @@ int main(int argc, char **argv)
 		case 'f':
 			filename = strdup(optarg);
 			break;
+		case 'D':
+			daemonize = 1;
+			break;
 		default:
 			usage(argc, argv);
 		}
@@ -271,8 +278,15 @@ int main(int argc, char **argv)
 	if (!port_no || !stream)
 		usage(argc, argv);
 
+	if (daemonize) {
+		if (daemon(0, 0)) {
+			perror("ldmsd_stream_subscribe: ");
+			return 2;
+		}
+	}
+
 	if (filename) {
-		file = fopen(filename, "r");
+		file = fopen(filename, "w");
 		if (!file) {
 			perror("The file could not be opened.");
 			exit(1);
@@ -287,10 +301,11 @@ int main(int argc, char **argv)
 		perror("Could not listen");
 	}
 	ldmsd_stream_client_t client = ldmsd_stream_subscribe(stream, stream_recv_cb, NULL);
-	assert(client);
-	while (1) {
-		/* wait for ctrl-c */
-		sleep(10);
+	if (!client)
+		return 1;
+
+	while (0 == sleep(10)) {
+		/* wait for signal or kill */
 	}
 	return 0;
 }
