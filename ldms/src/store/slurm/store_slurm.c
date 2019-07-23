@@ -431,7 +431,7 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "    config name=store_papi path=<path>\n"
+	return  "    config name=store_slurm path=<path>\n"
 		"       path The path to primary storage\n";
 }
 
