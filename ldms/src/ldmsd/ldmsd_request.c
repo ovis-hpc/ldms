@@ -6254,42 +6254,59 @@ static int __export_strgps_config(FILE *f)
 
 struct setgroup_ctxt {
 	FILE *f;
+	ldmsd_setgrp_t setgrp;
 	int cnt;
 };
 
 static int __export_setgroup_member(ldms_set_t set, const char *name, void *arg)
 {
 	struct setgroup_ctxt *ctxt = (struct setgroup_ctxt *)arg;
-	if (ctxt->cnt > 0)
+	if (ctxt->cnt == 0) {
+		fprintf(ctxt->f, "setgroup_ins name=%s instance=%s",
+					ctxt->setgrp->obj.name, name);
+	} else {
 		fprintf(ctxt->f, ",%s", name);
-	else
-		fprintf(ctxt->f, "%s", name);
+	}
 	ctxt->cnt++;
 	return 0;
+}
+
+static int __decimal_to_octal(int decimal)
+{
+	int octal = 0;
+	int i = 1;
+	while (0 != decimal) {
+		octal += (decimal % 8) * i;
+		decimal /= 8;
+		i *= 10;
+	}
+	return octal;
 }
 
 static int __export_setgroups_config(FILE *f)
 {
 	int rc = 0;
 	ldmsd_setgrp_t setgrp;
-	struct setgroup_ctxt ctxt = {f, 0};
+	struct ldmsd_str_ent *member;
+	struct setgroup_ctxt ctxt = {f, 0, 0};
 	fprintf(f, "# ----- Setgroups -----\n");
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_SETGRP);
 	for (setgrp = ldmsd_setgrp_first(); setgrp;
 			setgrp = ldmsd_setgrp_next(setgrp)) {
 		ldmsd_setgrp_lock(setgrp);
 		/* setrgroup_add */
-		fprintf(f, "setgroup_add name=%s producer=%s",
-				setgrp->obj.name, setgrp->producer);
+		fprintf(f, "setgroup_add name=%s producer=%s perm=0%d",
+					setgrp->obj.name, setgrp->producer,
+					__decimal_to_octal(setgrp->obj.perm));
 		if (setgrp->interval_us) {
-			fprintf(f, "interval=%ld", setgrp->interval_us);
+			fprintf(f, " interval=%ld", setgrp->interval_us);
 			if (setgrp->offset_us != LDMSD_UPDT_HINT_OFFSET_NONE)
-				fprintf(f, "offset=%ld", setgrp->offset_us);
+				fprintf(f, " offset=%ld", setgrp->offset_us);
 		}
 		fprintf(f, "\n");
 
 		/* setgroup_ins */
-		fprintf(f, "setgroup_ins name=%s instance=", setgrp->obj.name);
+		ctxt.setgrp = setgrp;
 		rc = ldmsd_group_iter(setgrp->set, __export_setgroup_member, &ctxt);
 		if (rc) {
 			ldmsd_setgrp_unlock(setgrp);

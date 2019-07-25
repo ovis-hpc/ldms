@@ -114,6 +114,14 @@ int __ldmsd_setgrp_start(ldmsd_setgrp_t grp)
 {
 	int rc;
 	ldmsd_str_ent_t str;
+
+	if (!grp->producer) {
+		grp->producer = strdup(ldmsd_myname_get());
+		if (!grp->producer) {
+			return ENOMEM;
+		}
+	}
+
 	grp->set = __setgrp_start(grp->obj.name, grp->obj.uid, grp->obj.gid,
 					grp->obj.perm, grp->producer,
 					grp->interval_us, grp->offset_us);
@@ -158,11 +166,11 @@ ldmsd_setgrp_new_with_auth(const char *name, const char *producer,
 	if (!grp)
 		return NULL;
 
-	if (!producer)
-		producer = ldmsd_myname_get();
-	grp->producer = strdup(producer);
-	if (!grp->producer)
-		goto err1;
+	if (producer) {
+		grp->producer = strdup(producer);
+		if (!grp->producer)
+			goto err1;
+	}
 	grp->interval_us = interval_us;
 	grp->offset_us = offset_us;
 	LIST_INIT(&grp->member_list);
@@ -214,7 +222,7 @@ out:
 
 int ldmsd_setgrp_ins(const char *name, const char *instance)
 {
-	int rc;
+	int rc = 0;
 	ldmsd_setgrp_t grp;
 	struct ldmsd_str_ent *str;
 
