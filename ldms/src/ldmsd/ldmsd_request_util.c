@@ -566,6 +566,38 @@ int __ldmsd_parse_cmd_line_req(struct ldmsd_parse_ctxt *ctxt)
 			&ctxt->request, &ctxt->request_sz, ctxt->msglog);
 }
 
+int __parse_xprt_endpoint(struct ldmsd_parse_ctxt *ctxt,
+		const char *name, const char *value,
+		char *buf, size_t buflen, size_t *bufcnt)
+{
+	int rc = 0;
+	size_t cnt = *bufcnt;
+	if ((0 == strncmp(name, "xprt", 4)) ||
+		(0 == strncmp(name, "port", 4)) ||
+		(0 == strncmp(name, "host", 4)) ||
+		(0 == strncmp(name, "auth", 4))) {
+		/* xprt, port, host, auth */
+		rc = add_attr_from_attr_str(name, value,
+					    &ctxt->request,
+					    &ctxt->request_sz,
+					    ctxt->msglog);
+		if (rc)
+			goto out;
+	} else {
+		/* Construct the auth attributes into a ATTR_STRING */
+		if (value) {
+			cnt += snprintf(&buf[cnt], buflen - cnt,
+					"%s=%s ", name, value);
+		} else {
+			cnt += snprintf(&buf[cnt], buflen - cnt,
+					"%s ", name);
+		}
+	}
+	*bufcnt = cnt;
+out:
+	return rc;
+}
+
 int __ldmsd_parse_listen_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	char *av = ctxt->av;
@@ -593,27 +625,70 @@ int __ldmsd_parse_listen_req(struct ldmsd_parse_ctxt *ctxt)
 			rc = EINVAL;
 			goto out;
 		}
-		if ((0 == strncmp(name, "xprt", 4)) ||
-			(0 == strncmp(name, "port", 4)) ||
-			(0 == strncmp(name, "host", 4)) ||
-			(0 == strncmp(name, "auth", 4))) {
-			/* xprt, port, host, auth */
+		rc = __parse_xprt_endpoint(ctxt, name, value, tmp, len, &cnt);
+		if (rc)
+			goto out;
+		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+		free(dummy);
+		dummy = NULL;
+	}
+
+	if (cnt) {
+		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
+		/* Add an attribute of type 'STRING' */
+		rc = add_attr_from_attr_str(NULL, tmp,
+					    &ctxt->request,
+					    &ctxt->request_sz,
+					    ctxt->msglog);
+	}
+
+out:
+	if (tmp)
+		free(tmp);
+	if (dummy)
+		free(dummy);
+	return rc;
+}
+
+int __ldmsd_parse_prdcr_add_req(struct ldmsd_parse_ctxt *ctxt)
+{
+	char *av = ctxt->av;
+	size_t len = strlen(av);
+	size_t cnt = 0;
+	char *tmp, *name, *value, *ptr, *dummy;
+	int rc;
+	dummy = NULL;
+	tmp = malloc(len);
+	if (!tmp) {
+		rc = ENOMEM;
+		goto out;
+	}
+	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
+	while (av) {
+		ctxt->av = av;
+		dummy = strdup(av);
+		if (!dummy) {
+			rc = ENOMEM;
+			goto out;
+		}
+		__get_attr_name_value(dummy, &name, &value);
+		if (!name) {
+			/* av is neither attribute value nor keyword */
+			rc = EINVAL;
+			goto out;
+		}
+		if ((0 == strncmp(name, "name", 4)) ||
+			(0 == strncmp(name, "interval", 8)) ||
+			(0 == strncmp(name, "type", 4))) {
 			rc = add_attr_from_attr_str(name, value,
 						    &ctxt->request,
 						    &ctxt->request_sz,
 						    ctxt->msglog);
-			if (rc)
-				goto out;
 		} else {
-			/* Construct the auth attributes into a ATTR_STRING */
-			if (value) {
-				cnt += snprintf(&tmp[cnt], len - cnt,
-						"%s=%s ", name, value);
-			} else {
-				cnt += snprintf(&tmp[cnt], len - cnt,
-						"%s ", name);
-			}
+			rc = __parse_xprt_endpoint(ctxt, name, value, tmp, len, &cnt);
 		}
+		if (rc)
+			goto out;
 		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
 		free(dummy);
 		dummy = NULL;
@@ -704,6 +779,9 @@ new_req:
 		break;
 	case LDMSD_LISTEN_REQ:
 		rc = __ldmsd_parse_listen_req(&ctxt);
+		break;
+	case LDMSD_PRDCR_ADD_REQ:
+		rc = __ldmsd_parse_prdcr_add_req(&ctxt);
 		break;
 	default:
 		rc = __ldmsd_parse_generic(&ctxt);
