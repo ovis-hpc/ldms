@@ -538,6 +538,7 @@ _open_store(struct sos_instance *si, ldms_set_t set)
  out:
 	si->sos_schema = schema;
 	si->job_comp_time_attr = sos_schema_attr_by_name(schema, "job_comp_time");
+	si->job_rank_comp_time_attr = sos_schema_attr_by_name(schema, "job_rank_comp_time");
 	return 0;
  err_1:
 	sos_schema_free(schema);
@@ -703,7 +704,7 @@ store_ranks(struct sos_instance *si, ldms_set_t set, int slot)
 	job_id = ldms_metric_array_get_u64(set, JOB_ID_MID(set), slot);
 	component_id = ldms_metric_array_get_u64(set, COMPONENT_ID_MID(set), slot);
 
-	for (task = 0; task < ldms_metric_array_get_len(set, JOB_ID_MID(set)); task++) {
+	for (task = 0; task < ldms_metric_array_get_u32(set, TASK_COUNT_MID(set), slot); task++) {
 		rank = ldms_metric_array_get_u32(set, TASK_RANK_MID(set) + slot, task);
 		k = sos_key_for_attr(key, si->job_rank_comp_time_attr,
 				     job_id, rank, component_id, 0);
@@ -748,7 +749,7 @@ store_times(struct sos_instance *si, ldms_set_t set, int slot)
 	sos_obj_t obj;
 	int task;
 
-	for (task = 0; task < ldms_metric_array_get_len(set, JOB_ID_MID(set)); task++) {
+	for (task = 0; task < ldms_metric_array_get_u32(set, TASK_COUNT_MID(set), slot); task++) {
 		obj = sos_obj_new(si->sos_schema);
 		if (!obj) {
 			rc = errno;
