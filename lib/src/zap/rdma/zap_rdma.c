@@ -59,7 +59,7 @@
 #include <arpa/inet.h>
 #include <signal.h>
 #include <infiniband/verbs.h>
-
+#include "coll/rbt.h"
 #include "zap_rdma.h"
 
 #define LOG__(ep, fmt, ...) do { \
@@ -121,6 +121,53 @@
 #define __rdma_context_alloc( _REP, _CTXT, _OP, _RBUF ) _rdma_context_alloc(_REP, _CTXT, _OP, _RBUF)
 #define __rdma_context_free( _CTXT ) _rdma_context_free(_CTXT)
 #endif /* CTXT_DEBUG */
+
+static int context_cmp(void *a, const void *b)
+{
+	if (a < b)
+		return -1;
+	if (a > b)
+		return 1;
+	return 0;
+}
+
+struct context_tree_entry {
+	struct ibv_context *context;
+	struct ibv_pd *pd;
+	struct rbn rbn;
+};
+struct rbt context_tree = { 0, context_cmp };
+pthread_mutex_t context_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct ibv_pd *__rdma_get_pd(struct ibv_context *context)
+{
+	struct ibv_pd *pd = NULL;
+	struct context_tree_entry *ce;
+	struct rbn *rbn;
+
+	pthread_mutex_lock(&context_tree_lock);
+	rbn = rbt_find(&context_tree, context);
+	if (rbn) {
+		ce = container_of(rbn, struct context_tree_entry, rbn);
+		pd = ce->pd;
+		goto out;
+	}
+	pd = ibv_alloc_pd(context);
+	if (!pd)
+		goto out;
+	ce = calloc(1, sizeof(*ce));
+	if (!ce) {
+		ibv_dealloc_pd(pd);
+		pd = NULL;
+		goto out;
+	}
+	ce->pd = pd;
+	ce->context = context;
+	rbn_init(&ce->rbn, context);
+	rbt_ins(&context_tree, &ce->rbn);
+ out:
+	pthread_mutex_unlock(&context_tree_lock);
+	return pd;
+}
 
 LIST_HEAD(ep_list, z_rdma_ep) ep_list;
 
@@ -205,14 +252,6 @@ static void __rdma_teardown_conn(struct z_rdma_ep *ep)
 		else
 			rep->sq_cq = NULL;
 	}
-	/* Destroy the PD */
-	if (rep->pd) {
-		if (ibv_dealloc_pd(rep->pd))
-			LOG_(rep, "RDMA: Error %d : ibv_dealloc_pd failed\n",
-			     errno);
-		else
-			rep->pd = NULL;
-	}
 	/* Destroy the CM id */
 	if (rep->cm_id) {
 		if (rdma_destroy_id(rep->cm_id))
@@ -258,7 +297,7 @@ static int __rdma_setup_conn(struct z_rdma_ep *rep)
 	int ret = -ENOMEM;
 
 	/* Allocate PD */
-	rep->pd = ibv_alloc_pd(rep->cm_id->verbs);
+	rep->pd = __rdma_get_pd(rep->cm_id->verbs);
 	if (!rep->pd) {
 		LOG_(rep, "RDMA: ibv_alloc_pd failed\n");
 		goto err_0;
