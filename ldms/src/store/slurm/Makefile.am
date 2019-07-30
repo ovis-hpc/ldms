@@ -7,6 +7,7 @@ SAMPLER = ../../sampler
 AM_CFLAGS = -I$(srcdir)/$(CORE) \
 	    -I$(srcdir)/$(LDMSD) \
 	    -I$(srcdir)/$(SAMPLER)/slurm \
+	    -I../.. \
 	    @OVIS_LIB_INCDIR_FLAG@
 STORE_LIBADD = $(CORE)/libldms.la -lcoll -lovis_util @OVIS_LIB_LIB64DIR_FLAG@ \
 	       @OVIS_LIB_LIBDIR_FLAG@
