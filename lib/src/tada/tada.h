@@ -23,8 +23,10 @@ typedef struct test_s {
 	const char *suite_name;
 	const char *test_name;
 	const char *test_type;
-	const char *data_dir;
-	const char *result_dir;
+	const char *test_user;
+	const char *commit_id;
+	const char *test_desc;
+	char test_id[65];
 	struct sockaddr_in sin;
 	int udp_fd;
 	struct test_assertion_s test_asserts[];
@@ -35,11 +37,15 @@ typedef struct test_s {
 #define TADAD_HOST	"tadad-host"
 #define TADAD_PORT	9862
 
-#define TEST_BEGIN(_suite_name, _test_name, _test_type, c_name) \
+#define TEST_BEGIN(_suite_name, _test_name, _test_type, \
+		   _test_user, _commit_id, _test_desc, c_name) \
 	struct test_s c_name = {			    \
 		.suite_name = _suite_name,		    \
 		.test_name = _test_name,		    \
 		.test_type = _test_type,		    \
+		.test_user = _test_user,		    \
+		.test_desc = _test_desc,		    \
+		.commit_id = _commit_id,		    \
 		.test_asserts = {			    \
 
 

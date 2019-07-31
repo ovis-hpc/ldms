@@ -77,7 +77,15 @@
 #include "../ldmsd_stream.h"
 #include "tada/tada.h"
 
-TEST_BEGIN("LDMSD_Communications", "JSON_Stream_Test", "FVT", t_1)
+#include "config.h" /* for OVIS_GIT_LONG */
+
+static char tada_user[64]; /* populated in get_plugin */
+
+TEST_BEGIN("LDMSD_Communications", "JSON_Stream_Test", "FVT",
+	   tada_user,
+	   OVIS_GIT_LONG, /* commit ID */
+	   "LDMSD stream test with JSON data format",
+	   t_1)
 TEST_ASSERTION(t_1, 0, "'schema' STRING Present")
 TEST_ASSERTION(t_1, 1, "'schema' STRING Correct")
 TEST_ASSERTION(t_1, 2, "'timestamp' INT Present")
@@ -89,7 +97,11 @@ TEST_ASSERTION(t_1, 7, "'list' LIST Present")
 TEST_ASSERTION(t_1, 8, "'list' LIST Value Correct")
 TEST_END(t_1);
 
-TEST_BEGIN("LDMSD_Communications", "STRING_Stream_Test", "FVT", t_2)
+TEST_BEGIN("LDMSD_Communications", "STRING_Stream_Test", "FVT",
+	   tada_user,
+	   OVIS_GIT_LONG, /* commit ID */
+	   "LDMSD stream test with plain text data format",
+	   t_2)
 TEST_ASSERTION(t_2, 0, "Expect file is present")
 TEST_ASSERTION(t_2, 1, "All stream data received")
 TEST_ASSERTION(t_2, 2, "Stream data is correct")
@@ -221,5 +233,10 @@ static struct ldmsd_sampler test_stream_sampler = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	char *__user = getenv("TADA_USER");
+	if (__user)
+		snprintf(tada_user, sizeof(tada_user), "%s", __user);
+	else
+		getlogin_r(tada_user, sizeof(tada_user));
 	return &test_stream_sampler.base;
 }

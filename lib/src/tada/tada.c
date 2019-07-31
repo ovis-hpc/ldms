@@ -4,6 +4,7 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
+#include <openssl/sha.h>
 #include "tada.h"
 
 /*
@@ -22,6 +23,9 @@ void tada_start(test_t test)
 	char *tada_host;
 	short tada_port;
 	struct hostent *h;
+	unsigned char md[32];
+	int i;
+	time_t ts;
 
 	if (!tada_addr) {
 		tada_host = TADAD_HOST;
@@ -35,6 +39,22 @@ void tada_start(test_t test)
 	assert(h);
 	assert (h->h_addrtype == AF_INET);
 
+	ts = time(NULL);
+
+	/* calculate sha256 */
+	cnt = snprintf(msg_buf, sizeof(msg_buf),
+		 "%s:%s:%s:%s:%s:%ld",
+		 test->suite_name,
+		 test->test_type,
+		 test->test_name,
+		 test->test_user,
+		 test->commit_id,
+		 ts);
+	SHA256((unsigned char *)msg_buf, cnt, md);
+	for (i = 0; i < 32; i++) {
+		snprintf(&test->test_id[i*2], 3, "%02hhx", md[i]);
+	}
+
 	test->sin.sin_addr.s_addr = *(unsigned int *)(h->h_addr_list[0]);
 	test->sin.sin_family = h->h_addrtype;
 	test->sin.sin_port = tada_port;
@@ -44,12 +64,20 @@ void tada_start(test_t test)
 		       "\"test-suite\" : \"%s\","
 		       "\"test-type\" : \"%s\","
 		       "\"test-name\" : \"%s\","
-		       "\"timestamp\" : %lu"
+		       "\"test-user\" : \"%s\","
+		       "\"test-desc\" : \"%s\","
+		       "\"commit-id\" : \"%s\","
+		       "\"timestamp\" : %lu,"
+		       "\"test-id\" : \"%s\""
 		       "}",
 		       test->suite_name,
 		       test->test_type,
 		       test->test_name,
-		       time(NULL)
+		       test->test_user,
+		       test->test_desc,
+		       test->commit_id,
+		       ts,
+		       test->test_id
 		       );
 	assert(cnt < sizeof(msg_buf));
 	test->udp_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -72,17 +100,13 @@ void tada_finish(test_t test)
 			continue;
 		cnt = snprintf(msg_buf, sizeof(msg_buf),
 			       "{ \"msg-type\" : \"assert-status\","
-			       "\"test-suite\" : \"%s\","
-			       "\"test-type\" : \"%s\","
-			       "\"test-name\" : \"%s\","
+			       "\"test-id\" : \"%s\","
 			       "\"assert-no\" : %d,"
 			       "\"assert-desc\" : \"%s\","
 			       "\"assert-cond\" : \"none\","
 			       "\"test-status\" : \"skipped\""
 			       "}",
-			       test->suite_name,
-			       test->test_type,
-			       test->test_name,
+			       test->test_id,
 			       assert_no,
 			       test->test_asserts[assert_no].description
 			       );
@@ -93,14 +117,10 @@ void tada_finish(test_t test)
 
 	cnt = snprintf(msg_buf, sizeof(msg_buf),
 		       "{ \"msg-type\" : \"test-finish\","
-		       "\"test-suite\" : \"%s\","
-		       "\"test-type\" : \"%s\","
-		       "\"test-name\" : \"%s\","
+		       "\"test-id\" : \"%s\","
 		       "\"timestamp\" : %lu"
 		       "}",
-		       test->suite_name,
-		       test->test_type,
-		       test->test_name,
+		       test->test_id,
 		       time(NULL)
 		       );
 	assert(cnt < sizeof(msg_buf));
@@ -135,17 +155,13 @@ int tada_assert(test_t test, int assert_no, int cond, const char *cond_str)
 		test->test_asserts[assert_no].result = TEST_FAILED;
 	cnt = snprintf(msg_buf, sizeof(msg_buf),
 		       "{ \"msg-type\" : \"assert-status\","
-		       "\"test-suite\" : \"%s\","
-		       "\"test-type\" : \"%s\","
-		       "\"test-name\" : \"%s\","
+		       "\"test-id\" : \"%s\","
 		       "\"assert-no\" : %d,"
 		       "\"assert-desc\" : \"%s\","
 		       "\"assert-cond\" : \"%s\","
 		       "\"test-status\" : \"%s\""
 		       "}",
-		       test->suite_name,
-		       test->test_type,
-		       test->test_name,
+		       test->test_id,
 		       assert_no,
 		       test->test_asserts[assert_no].description,
 		       esc_str,
