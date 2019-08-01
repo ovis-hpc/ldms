@@ -438,17 +438,22 @@ jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 	jb = jbuf_append_attr(jb, "event", "\"%s\",", event); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "context", "\"%s\",", context); if (!jb) goto out_1;
-	subscriber_data[0] = '\0';
-	err = spank_getenv(sh, "LDMS_SUBSCRIBER_DATA", subscriber_data, sizeof(subscriber_data));
-	if (err)
-		subscriber_data[0] = '\0';
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
+	subscriber_data[0] = '\0';
+	err = spank_getenv(sh, "SUBSCRIBER_DATA", subscriber_data, sizeof(subscriber_data));
+	if (err)
+		strcpy(subscriber_data, "{}");
+	slurm_info("%s:%d SUBSCRIBER_DATA '%s'.\n", __func__, __LINE__, subscriber_data);
+	if (json_verify_string(subscriber_data)) {
+		slurm_info("%s:%d subscriber_data %s' is not valid JSON and is being ignored.\n", __func__, __LINE__, subscriber_data);
+		strcpy(subscriber_data, "{}");
+	}
+	jb = jbuf_append_attr(jb, "subscriber_data", "\"%s\",", subscriber_data); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 	job_name[0] = '\0';
 	err = spank_getenv(sh, "SLURM_JOB_NAME", job_name, sizeof(job_name));
 	if (err)
 		job_name[0] = '\0';
-	jb = jbuf_append_attr(jb, "subscriber_data", "\"%s\",", subscriber_data); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "job_name", "\"%s\",", job_name); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "uid", S_JOB_UID, ','); if (!jb) goto out_1;
