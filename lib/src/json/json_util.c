@@ -6,6 +6,21 @@
 
 #define JSON_BUF_START_LEN 8192
 
+int json_verify_string(char *s)
+{
+	json_entity_t e;
+	json_parser_t p;
+	int rc;
+	p = json_parser_new(0);
+	if (!p)
+		return ENOMEM;
+	rc = json_parse_buffer(p, s, strlen(s), &e);
+	if (!rc)
+		json_entity_free(e);
+	json_parser_free(p);
+	return rc;
+}
+
 jbuf_t jbuf_new(void)
 {
 	jbuf_t jb = malloc(sizeof(*jb) + JSON_BUF_START_LEN);

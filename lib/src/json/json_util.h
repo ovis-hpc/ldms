@@ -135,6 +135,7 @@ typedef struct jbuf_s {
 
 extern json_parser_t json_parser_new(size_t user_data);
 extern void json_parser_free(json_parser_t p);
+extern int json_verify_string(char *s);
 extern void json_entity_free(json_entity_t e);
 extern enum json_value_e json_entity_type(json_entity_t e);
 /**
