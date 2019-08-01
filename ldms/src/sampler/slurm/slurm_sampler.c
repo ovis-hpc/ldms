@@ -171,7 +171,6 @@ static int comp_id_idx;
 static int job_id_idx;
 static int app_id_idx;
 static int job_state_idx;
-static int job_tstamp_idx;
 static int job_start_idx;
 static int job_end_idx;
 static int job_uid_idx;
@@ -192,8 +191,6 @@ static int task_exit_status_idx;
  * app_id_idx             | | |   | |
  *                        +-+-+...+-+
  * job_id_idx             | | |   | |
- *                        +-+-+...+-+
- * job_tstamp_idx         | | |   | |
  *                        +-+-+...+-+
  * job_state_idx          | | |   | |
  *                        +-+-+...+-+
@@ -262,11 +259,6 @@ static int create_metric_set(void)
 					     LDMS_V_U8_ARRAY,
 					     job_list_len);
 	if (job_state_idx < 0)
-		goto err;
-	/* job_stamp */
-	job_tstamp_idx = ldms_schema_metric_array_add(job_schema, "job_tstamp",
-						  LDMS_V_U32_ARRAY, job_list_len);
-	if (job_tstamp_idx < 0)
 		goto err;
 	/* job_size */
 	job_size_idx =
