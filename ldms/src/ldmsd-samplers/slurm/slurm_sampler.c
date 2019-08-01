@@ -106,7 +106,6 @@ struct slurm_sampler_inst_s {
 	int job_id_idx;
 	int app_id_idx;
 	int job_state_idx;
-	int job_tstamp_idx;
 	int job_start_idx;
 	int job_end_idx;
 	int job_uid_idx;
@@ -469,8 +468,6 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
  *                        +-+-+...+-+
  * job_id_idx             | | |   | |
  *                        +-+-+...+-+
- * job_tstamp_idx         | | |   | |
- *                        +-+-+...+-+
  * job_state_idx          | | |   | |
  *                        +-+-+...+-+
  * job_size_idx           | | |   | |
@@ -542,12 +539,6 @@ slurm_sampler_create_schema(ldmsd_plugin_inst_t pi)
 					     LDMS_V_U8_ARRAY, "",
 					     inst->job_list_len);
 	if (inst->job_state_idx < 0)
-		goto err;
-	/* job_stamp */
-	inst->job_tstamp_idx = ldms_schema_metric_array_add(schema,
-					"job_tstamp", LDMS_V_U32_ARRAY, "",
-					inst->job_list_len);
-	if (inst->job_tstamp_idx < 0)
 		goto err;
 	/* job_size */
 	inst->job_size_idx =
