@@ -508,7 +508,6 @@ int __req_filter(ldmsd_req_ctxt_t reqc, void *ctxt)
 	switch (reqc->req_id) {
 	case LDMSD_FAILOVER_START_REQ:
 		ldmsd_use_failover = 1;
-		break;
 	case LDMSD_PLUGN_CONFIG_REQ:
 	case LDMSD_PRDCR_START_REGEX_REQ:
 	case LDMSD_PRDCR_START_REQ:

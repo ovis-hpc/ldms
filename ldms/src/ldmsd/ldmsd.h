@@ -1142,6 +1142,8 @@ struct ldmsd_failover {
 	double ping_sd;       /* ping round-trip time standard deviation */
 
 	int ping_skipped; /* the number of ping skipped due to outstanding */
+
+	int perm; /* Similar to cfgobj perm */
 } *ldmsd_failover_t;
 
 extern int ldmsd_use_failover;
