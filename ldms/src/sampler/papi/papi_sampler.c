@@ -64,7 +64,6 @@
 
 static ldmsd_msg_log_f msglog;
 static char *papi_stream_name;
-static char *papi_config_path;
 base_data_t papi_base;
 
 pthread_mutex_t job_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -110,9 +109,6 @@ static job_data_t alloc_job_data(uint64_t job_id)
 		rbt_ins(&job_tree, &jd->job_ent);
 	}
 	return jd;
- 	free(jd);
-	errno = ENOMEM;
-	return NULL;
 }
 
 static void release_job_data(job_data_t jd)
@@ -354,10 +350,13 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			  const char *msg, size_t msg_len,
 			  json_entity_t entity);
 
-static int handle_job_init(job_data_t job, json_entity_t e)
+static int handle_job_init(uint64_t job_id, json_entity_t e)
 {
-	int int_v;
+	int rc;
+	int local_tasks;
+	uint64_t job_start;
 	json_entity_t attr, data, dict;
+	job_data_t job = NULL;
 
 	attr = json_attr_find(e, "timestamp");
 	if (!attr) {
@@ -365,9 +364,7 @@ static int handle_job_init(job_data_t job, json_entity_t e)
 		       "in 'init' event.\n");
 		return EINVAL;
 	}
-	job->job_state = JOB_PAPI_INIT;
-	job->job_start = json_value_int(json_attr_value(attr));
-	job->job_end = 0;
+	job_start = json_value_int(json_attr_value(attr));
 
 	data = json_attr_find(e, "data");
 	if (!data) {
@@ -375,19 +372,119 @@ static int handle_job_init(job_data_t job, json_entity_t e)
 		       "in 'init' event.\n");
 		return EINVAL;
 	}
-	dict = json_attr_value(data);
 
+	dict = json_attr_value(data);
 	attr = json_attr_find(dict, "local_tasks");
 	if (attr) {
-		int_v = json_value_int(json_attr_value(attr));
+		local_tasks = json_value_int(json_attr_value(attr));
 	} else {
 		msglog(LDMSD_LERROR, "papi_sampler: Missing 'local_tasks' attribute "
 		       "in 'init' event.\n");
 		return EINVAL;
 	}
-	int_v = json_value_int(json_attr_value(attr));
-	job->task_count = int_v;
-	return 0;
+
+	/* Parse the the subscriber_data attribute*/
+	attr = json_attr_find(dict, "subscriber_data");
+	if (!attr) {
+		msglog(LDMSD_LERROR,
+		       "papi_sampler[%d]: subscriber_data missing from init message, job %d ignored.\n",
+		       __LINE__, job_id);
+		return EINVAL;
+	}
+
+	/*
+	 * The subscriber data is a JSON string. The data destined for
+	 * this sampler is in the "papi_sampler" attribute. It has the
+	 * following format:
+	 *
+	 * { . . .
+	 *   "papi_sampler" :
+	 *       { "file" : <config-file-path>,
+	 *         "config" : <config>
+	 *       },
+	 *   . . .
+	 * }
+	 *
+	 * The sampler ignores the job if:
+	 * - The subscriber data is missing the "papi_sampler" attribute
+	 * - The papi_sampler dictionary has neither the "file" nor the "config" attributes.
+	 * - The papi configuration is invalid
+	 *
+	 * Otherwise,
+	 * - If the "file" attribute is present, it is the path to a
+         *   file containing the sampler configuration.
+	 * - If the "file" attribute is missing, the "config"
+         *   attribute contains the papi sampler configuration.
+	 * - In either case, the format of the configuration is JSON
+	 */
+	json_entity_t subs_data = json_attr_value(attr);
+	if (json_entity_type(subs_data) != JSON_DICT_VALUE) {
+		msglog(LDMSD_LINFO,
+		       "papi_sampler[%d]: subscriber_data is not a dictionary, job %d ignored.\n",
+		       __LINE__);
+		rc = EINVAL;
+		goto out;
+	}
+	attr = json_attr_find(subs_data, "papi_sampler");
+	if (!attr)  {
+		msglog(LDMSD_LINFO,
+		       "papi_sampler[%d]: subscriber_data missing papi_sampler attribute, job is ignored.\n",
+		       __LINE__);
+		rc = EINVAL;
+		goto out;
+	}
+	dict = json_attr_value(attr);
+
+	json_entity_t file_attr, config_attr;
+	file_attr = json_attr_find(dict, "file");
+	config_attr = json_attr_find(dict, "config");
+	if (!file_attr && !config_attr) {
+		msglog(LDMSD_LERROR,
+		       "papi_sampler[%d]: papi_config object must contain "
+		       "either the 'file' or 'config' attribute.\n",
+		       __LINE__);
+		rc = EINVAL;
+		goto out;
+	}
+	job = alloc_job_data(job_id);
+	if (!job) {
+		msglog(LDMSD_LERROR,
+		       "papi_sampler[%d]: Memory allocation failure, job ignored.\n",
+		       __LINE__);
+		rc = ENOMEM;
+		goto out;
+	}
+	if (file_attr) {
+		json_entity_t file_name = json_attr_value(file_attr);
+		if (json_entity_type(file_name) != JSON_STRING_VALUE) {
+			msglog(LDMSD_LERROR,
+			       "papi_sampler[%d]: papi_config 'file' attribute must be a string, job %d ignored.",
+			       job_id, __LINE__);
+			rc = EINVAL;
+			goto out;
+		}
+		rc = papi_process_config_file(job, json_value_str(file_name)->str, msglog);
+	} else {
+		json_entity_t config_string = json_attr_value(config_attr);
+		if (json_entity_type(config_string) != JSON_STRING_VALUE) {
+			msglog(LDMSD_LERROR,
+			       "papi_sampler[%d]: papi_config 'config' attribute must be a string, job %d ignored.",
+			       job_id, __LINE__);
+			rc = EINVAL;
+			goto out;
+		}
+		rc = papi_process_config_data(job, json_value_str(config_string)->str, msglog);
+	}
+	if (rc) {
+		release_job_data(job);
+		goto out;
+	}
+	job->job_state = JOB_PAPI_INIT;
+	job->job_start = job_start;
+	job->task_count = local_tasks;
+	job->job_end = 0;
+ out:
+	return rc;
 }
 
 static void handle_papi_error(job_data_t job)
@@ -613,17 +710,13 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	pthread_mutex_lock(&job_lock);
 	if (0 == strncmp(event_name->str, "init", 4)) {
 		job = get_job_data(job_id); /* protect against duplicate entries */
-		if (!job) {
-			job = alloc_job_data(job_id);
-			if (!job) {
-				msglog(LDMSD_LERROR,
-				       "papi_sampler[%d]: Memory allocation failure.\n",
-				       __LINE__);
-				goto out_1;
-			}
-			rc = papi_process_config_file(job, papi_config_path, msglog);
-			rc = handle_job_init(job, entity);
+		if (job) {
+			msglog(LDMSD_LINFO,
+			       "papi_sampler[%d]: ignoring duplicate init event received for job %d.\n",
+			       __LINE__, job_id);
+			goto out_0;
 		}
+		rc = handle_job_init(job_id, entity);
 	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
 		job = get_job_data(job_id);
 		if (!job) {
@@ -664,18 +757,6 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *value;
-	value = av_value(avl, "config_path");
-	if (!value) {
-		msglog(LDMSD_LERROR, "papi_sampler: The 'config_path' option "
-		       "must be speciifed.\n", __LINE__);
-		return EINVAL;
-	}
-	papi_config_path = strdup(value);
-	if (!papi_config_path) {
-		msglog(LDMSD_LERROR, "papi_sampler[%d]: Memory allocation failure.\n", __LINE__);
-		return ENOMEM;
-	}
-
 	value = av_value(avl, "job_expiry");
 	if (value)
 		papi_job_expiry = strtol(value, NULL, 0);

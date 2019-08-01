@@ -55,53 +55,15 @@
 #include  "../sampler_base.h"
 #include "papi_sampler.h"
 
-/**
- * Process the configuration file:
- *
- * \param path The path to the configuration file
- * \param schema_ptr Pointer to string to receive schema name
- * \param event_set Pointer to EventSet
- * \retval 0 - success
- * \retval errno
- */
-int papi_process_config_file(job_data_t job, const char *path, ldmsd_msg_log_f msglog)
+int papi_process_config_data(job_data_t job, char *buf, ldmsd_msg_log_f msglog)
 {
 	json_parser_t p = NULL;
 	json_entity_t e = NULL;
 	json_entity_t schema_attr;
 	json_entity_t events_attr;
 	json_entity_t events_list;
-	struct stat statbuf;
-	char *buf;
-	FILE *fp;
-	int rc = stat(path, &statbuf);
-	if (rc)
-		return errno;
+	int rc;
 
-	buf = malloc(statbuf.st_size+2);
-	if (!buf) {
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: configuration file of size %d is too large\n",
-		       statbuf.st_size);
-		return ENOMEM;
-	}
-	fp = fopen(path, "r");
-	rc = errno;
-	if (!fp) {
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: Error %d opening configuration file '%s'\n",
-		       errno, path);
-		goto out;
-	}
-	rc = fread(buf, 1, statbuf.st_size, fp);
-	fclose(fp);
-	if (rc <= 0) {
-		rc = errno;
-		msglog(LDMSD_LERROR,
-		       "papi_sampler: Error %d reading configuration file '%s'\n",
-		       rc, path);
-		goto out;
-	}
 	p = json_parser_new(0);
 	if (!p) {
 		msglog(LDMSD_LERROR,
@@ -109,7 +71,7 @@ int papi_process_config_file(job_data_t job, const char *path, ldmsd_msg_log_f m
 		goto out;
 	}
 
-	rc = json_parse_buffer(p, buf, statbuf.st_size, &e);
+	rc = json_parse_buffer(p, buf, strlen(buf), &e);
 	if (rc) {
 		msglog(LDMSD_LERROR,
 		       "papi_sampler: configuration file syntax error.\n");
@@ -199,12 +161,58 @@ int papi_process_config_file(job_data_t job, const char *path, ldmsd_msg_log_f m
 		}
 		TAILQ_INSERT_TAIL(&job->event_list, ev, entry);
 	}
-
  out:
 	if (e)
 		json_entity_free(e);
 	if (p)
 		json_parser_free(p);
+	return rc;
+}
+
+/**
+ * Process the configuration file:
+ *
+ * \param path The path to the configuration file
+ * \param schema_ptr Pointer to string to receive schema name
+ * \param event_set Pointer to EventSet
+ * \retval 0 - success
+ * \retval errno
+ */
+int papi_process_config_file(job_data_t job, const char *path, ldmsd_msg_log_f msglog)
+{
+	struct stat statbuf;
+	char *buf;
+	FILE *fp;
+	int rc = stat(path, &statbuf);
+	if (rc)
+		return errno;
+
+	buf = malloc(statbuf.st_size+2);
+	if (!buf) {
+		msglog(LDMSD_LERROR,
+		       "papi_sampler: configuration file of size %d is too large\n",
+		       statbuf.st_size);
+		return ENOMEM;
+	}
+	fp = fopen(path, "r");
+	rc = errno;
+	if (!fp) {
+		msglog(LDMSD_LERROR,
+		       "papi_sampler: Error %d opening configuration file '%s'\n",
+		       errno, path);
+		goto out;
+	}
+	rc = fread(buf, 1, statbuf.st_size, fp);
+	fclose(fp);
+	if (rc <= 0) {
+		rc = errno;
+		msglog(LDMSD_LERROR,
+		       "papi_sampler: Error %d reading configuration file '%s'\n",
+		       rc, path);
+		goto out;
+	}
+	rc = papi_process_config_data(job, buf, msglog);
+ out:
 	free(buf);
 	return rc;
 }
