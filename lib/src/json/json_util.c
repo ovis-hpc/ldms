@@ -1,6 +1,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <assert.h>
+#include <errno.h>
 #include "json_util.h"
 
 #define JSON_BUF_START_LEN 8192
@@ -13,6 +14,21 @@ const char *json_type_name(enum json_value_e typ)
 	if (typ >= JSON_INT_VALUE && typ <= JSON_NULL_VALUE)
 		return json_type_names[typ];
 	return "Invalid Value Type";
+}
+
+int json_verify_string(char *s)
+{
+	json_entity_t e;
+	json_parser_t p;
+	int rc;
+	p = json_parser_new(0);
+	if (!p)
+		return ENOMEM;
+	rc = json_parse_buffer(p, s, strlen(s), &e);
+	if (!rc)
+		json_entity_free(e);
+	json_parser_free(p);
+	return rc;
 }
 
 jbuf_t jbuf_new(void)
