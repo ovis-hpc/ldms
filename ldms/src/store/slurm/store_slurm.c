@@ -804,7 +804,7 @@ store(ldmsd_store_handle_t _sh,
 	int slot_count = ldms_metric_array_get_len(set, JOB_ID_MID(set));
 	for (slot = 0; slot < slot_count; slot++) {
 		uint8_t state = ldms_metric_array_get_u8(set, JOB_STATE_MID(set), slot);
-		if (state == JOB_FREE)
+		if (state < JOB_RUNNING)
 			continue;
 		switch (verbosity) {
 		case SUMMARY:
