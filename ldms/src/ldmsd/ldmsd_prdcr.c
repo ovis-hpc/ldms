@@ -416,7 +416,6 @@ static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 			continue;
 		}
 		pthread_mutex_lock(&set->lock);
-		set->state = LDMSD_PRDCR_SET_STATE_START;
 		prdcr_hint_tree_update(prdcr, set, &set->updt_hint, UPDT_HINT_TREE_REMOVE);
 		prev_hint = set->updt_hint;
 		__update_set_info(set, &dir->set_data[i]);
