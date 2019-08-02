@@ -290,10 +290,15 @@ static int create_metric_set(job_data_t job)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=kokkos_store path=<path> port=<port_no> log=<path>\n"
-		"     path      The path to the root of the SOS container store.\n"
-		"     port      The port number to listen on for incoming connections (defaults to 18080).\n"
-		"     log       The log file for sample updates (defaults to /var/log/kokkos.log).\n";
+	return  "config name=papi_sampler producer=<producer_name> instance=<instance_name>\n"
+		"         [stream=<stream_name>] [component_id=<component_id>] [perm=<permissions>]\n"
+                "         [uid=<user_name>] [gid=<group_name>]\n"
+                "         [job_expiry=<seconds>]\n"
+		"     producer      A unique name for the host providing the data\n"
+		"     instance      A unique name for the metric set\n"
+		"     stream        A stream name to subscribe to. Defaults to 'slurm'\n"
+		"     component_id  A unique number for the component being monitored. Defaults to zero.\n"
+		"     job_expiry    Number of seconds to retain sets for completed jobs. Defaults to 60s\n";
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
