@@ -601,9 +601,6 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 		prd_set = ldmsd_prdcr_set_first(prdcr);
 
 	while (prd_set) {
-		ldmsd_log(LDMSD_LDEBUG, "updtr_task sched '%ld': set '%s'\n",
-				task->sched.intrvl_us, prd_set->inst_name);
-		updtr_task_set_add(task);
 		int rc;
 		const char *str;
 
@@ -616,6 +613,10 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 			if (rc)
 				goto next_prd_set;
 		}
+
+		ldmsd_log(LDMSD_LDEBUG, "updtr_task sched '%ld': set '%s'\n",
+				task->sched.intrvl_us, prd_set->inst_name);
+		updtr_task_set_add(task);
 
 		switch (prd_set->state) {
 		case LDMSD_PRDCR_SET_STATE_READY:
