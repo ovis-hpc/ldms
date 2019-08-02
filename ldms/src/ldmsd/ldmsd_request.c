@@ -2661,10 +2661,15 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	push_flags = 0;
 	if (push) {
 		if (0 == strcasecmp(push, "onchange")) {
-			push_flags = LDMSD_UPDTR_F_PUSH |
-						LDMSD_UPDTR_F_PUSH_CHANGE;
-		} else {
+			push_flags = LDMSD_UPDTR_F_PUSH | LDMSD_UPDTR_F_PUSH_CHANGE;
+		} else if (0 == strcasecmp(push, "true") || 0 == strcasecmp(push, "yes")) {
 			push_flags = LDMSD_UPDTR_F_PUSH;
+		} else {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				       "The valud push options are \"onchange\", \"true\" "
+				       "or \"yes\"\n");
+			goto send_reply;
 		}
 		is_auto_task = 0;
 	}
