@@ -1780,7 +1780,8 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	zap_err_t zerr;
 	zerr = zap_get_name(zep, &lcl, &rmt, &xlen);
 	rc = getnameinfo(&rmt, xlen, rmt_name, RMT_NM_SZ, NULL, 0, NI_NUMERICHOST);
-
+	if (rc)
+		rmt_name[0] = '\0';
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	struct ldms_auth *auth;
 	/*
