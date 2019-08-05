@@ -5738,16 +5738,13 @@ static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc)
 	}
 	goto send_reply;
 auth:
-	auth_attrs = &rval[strlen(rval) + 1];
-	if (auth_attrs) {
-		auth_attrs[0] = '\0';
-		auth_attrs++;
-	}
 	/* auth plugin name */
 	rc = ldmsd_process_cmd_line_arg('a', rval);
 	if (rc)
 		goto proc_err;
-	if (auth_attrs) {
+	for (auth_attrs = strtok_r(NULL, " \t\n", &ptr1); auth_attrs;
+			auth_attrs = strtok_r(NULL, " \t\n", &ptr1)) {
+
 		/* auth plugin attributes */
 		rc = ldmsd_process_cmd_line_arg('A', auth_attrs);
 		if (rc)
