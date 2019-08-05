@@ -417,7 +417,8 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_LISTEN_REQ, listen_handler, XUG,
 	},
 	[LDMSD_EXPORT_CONFIG_REQ] = {
-		LDMSD_EXPORT_CONFIG_REQ, export_config_handler, XUG
+		LDMSD_EXPORT_CONFIG_REQ, export_config_handler,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 
 	/* FAILOVER user commands */
@@ -5744,7 +5745,6 @@ auth:
 		goto proc_err;
 	for (auth_attrs = strtok_r(NULL, " \t\n", &ptr1); auth_attrs;
 			auth_attrs = strtok_r(NULL, " \t\n", &ptr1)) {
-
 		/* auth plugin attributes */
 		rc = ldmsd_process_cmd_line_arg('A', auth_attrs);
 		if (rc)
@@ -6036,15 +6036,16 @@ static void __export_cmdline_args(FILE *f)
 		if (listen->auth_name) {
 			fprintf(f, " auth=%s", listen->auth_name);
 			if (!listen->auth_attrs)
-				continue;
+				goto next_lend;
 			for (i = 0; i < listen->auth_attrs->count; i++) {
 				fprintf(f, " %s=%s",
 					listen->auth_attrs->list[i].name,
 					listen->auth_attrs->list[i].value);
 			}
 		}
+	next_lend:
+		fprintf(f, "\n");
 	}
-	fprintf(f, "\n");
 
 	if (cmd_line_args.log_path) {
 		fprintf(f, "set %s=%s %s=%s\n",
@@ -6087,7 +6088,7 @@ static void __export_cmdline_args(FILE *f)
 
 static int __export_smplr_config(FILE *f)
 {
-	fprintf(f, "# ----- Sampler Policies ----- \n");
+	fprintf(f, "# ----- Sampler Policies -----\n");
 	ldmsd_smplr_t smplr;
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_SMPLR);
 	for (smplr = ldmsd_smplr_first(); smplr; smplr = ldmsd_smplr_next(smplr)) {
@@ -6162,7 +6163,7 @@ static int __export_updtrs_config(FILE *f)
 				updtr->sched.intrvl_us);
 		if (updtr->sched.offset_us != LDMSD_UPDT_HINT_OFFSET_NONE) {
 			/* Specify offset */
-			fprintf(f, " offset=%ld", updtr->sched.offset_skew);
+			fprintf(f, " offset=%ld", updtr->sched.offset_us);
 		}
 		if (updtr->is_auto_task) {
 			/* Specify auto_interval */
@@ -6179,19 +6180,10 @@ static int __export_updtrs_config(FILE *f)
 		 */
 
 		/* updtr_prdcr_add */
-		if (LIST_EMPTY(&updtr->added_prdcr_regex_list)) {
-			/* At least one prdcr_regex must be given.
-			 * Otherwise, there is nothing else to do with
-			 * this updater.
-			 */
-			ldmsd_updtr_unlock(updtr);
-			continue;
-		} else {
-			LIST_FOREACH(regex_ent, &updtr->added_prdcr_regex_list, entry) {
-				fprintf(f, "updtr_prdcr_add name=%s regex=%s\n",
-						updtr->obj.name,
-						regex_ent->str);
-			}
+		LIST_FOREACH(regex_ent, &updtr->added_prdcr_regex_list, entry) {
+			fprintf(f, "updtr_prdcr_add name=%s regex=%s\n",
+					updtr->obj.name,
+					regex_ent->str);
 		}
 
 		/* updtr_prdcr_del */
