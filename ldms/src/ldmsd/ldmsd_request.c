@@ -6065,9 +6065,12 @@ static void __export_cmdline_args(FILE *f)
 	/* authentication */
 	if (cmd_line_args.auth_name) {
 		fprintf(f, "set %s=%s", opts['a'].l, cmd_line_args.auth_name);
-		for (i = 0; i < cmd_line_args.auth_attrs->count; i++) {
-			fprintf(f, " %s=%s", cmd_line_args.auth_attrs->list[i].name,
+		if (cmd_line_args.auth_attrs) {
+			for (i = 0; i < cmd_line_args.auth_attrs->count; i++) {
+				fprintf(f, " %s=%s",
+					cmd_line_args.auth_attrs->list[i].name,
 					cmd_line_args.auth_attrs->list[i].value);
+			}
 		}
 		fprintf(f, "\n");
 	}

@@ -505,8 +505,8 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 		if (!prdcr->conn_auth) {
 			/* Get the default auth and its options */
-			auth = (char *)ldmsd_auth_name_get(NULL);
-			auth_opts = ldmsd_auth_attr_get(NULL);
+			auth = (char *)ldmsd_default_auth_get();
+			auth_opts = ldmsd_default_auth_attr_get();
 		} else {
 			auth = prdcr->conn_auth;
 			auth_opts = prdcr->conn_auth_args;

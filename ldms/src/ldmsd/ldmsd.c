@@ -302,18 +302,28 @@ const char *ldmsd_myname_get()
 
 const char *ldmsd_auth_name_get(ldmsd_listen_t listen)
 {
-	if (listen && listen->auth_name)
-		return listen->auth_name;
-	else
-		return cmd_line_args.auth_name;
+	if (!listen->auth_name)
+		return ldmsd_default_auth_get();
+	return listen->auth_name;
 }
 
 struct attr_value_list *ldmsd_auth_attr_get(ldmsd_listen_t listen)
 {
-	if (listen && listen->auth_name)
-		return listen->auth_attrs;
-	else
-		return cmd_line_args.auth_attrs;
+	if (!listen->auth_name)
+		return ldmsd_default_auth_attr_get();
+	return listen->auth_attrs;
+}
+
+const char *ldmsd_default_auth_get()
+{
+	if (!cmd_line_args.auth_name)
+		return "none";
+	return cmd_line_args.auth_name;
+}
+
+struct attr_value_list *ldmsd_default_auth_attr_get()
+{
+	return cmd_line_args.auth_attrs;
 }
 
 mode_t ldmsd_inband_cfg_mask_get()
@@ -1107,6 +1117,11 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			printf("ERROR: Expecting -A name=value\n");
 			return EINVAL;
 		}
+		if (!cmd_line_args.auth_attrs) {
+			cmd_line_args.auth_attrs = av_new(LDMSD_AUTH_OPT_MAX);
+			if (!cmd_line_args.auth_attrs)
+				return ENOMEM;
+		}
 		rc = ldmsd_auth_opt_add(cmd_line_args.auth_attrs, lval, rval);
 		if (rc)
 			return rc;
@@ -1353,16 +1368,6 @@ void handle_pidfile_banner()
 	}
 }
 
-void cmd_line_value_init()
-{
-	cmd_line_args.auth_attrs = av_new(LDMSD_AUTH_OPT_MAX);
-	if (!cmd_line_args.auth_attrs)
-		cleanup(ENOMEM, "Memory allocation failure.");
-
-	cmd_line_args.verbosity = LDMSD_VERBOSITY_DEFAULT;
-	cmd_line_args.banner = -1;
-}
-
 void ldmsd_init()
 {
 	int rc, i;
@@ -1525,10 +1530,12 @@ int main(int argc, char *argv[])
 	proc_gid = getegid();
 
 	umask(0);
-	cmd_line_value_init();
 
 	extern struct ldmsd_deferred_pi_config_q deferred_pi_config_q;
 	TAILQ_INIT(&deferred_pi_config_q);
+
+	cmd_line_args.verbosity = LDMSD_VERBOSITY_DEFAULT;
+	cmd_line_args.banner = -1;
 
 	/* Process the options given at the command line. */
 	opterr = 0;

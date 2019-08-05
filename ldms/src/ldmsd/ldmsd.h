@@ -1212,6 +1212,18 @@ const char *ldmsd_auth_name_get(ldmsd_listen_t listen);
  */
 struct attr_value_list *ldmsd_auth_attr_get(ldmsd_listen_t listen);
 
+/*
+ * Get the default authentication method
+ */
+const char *ldmsd_default_auth_get();
+
+/*
+ * Get the attributes of the default authentication method
+ *
+ * The caller MUST not modify the content in the returned list.
+ */
+struct attr_value_list *ldmsd_default_auth_attr_get();
+
 mode_t ldmsd_inband_cfg_mask_get();
 void ldmsd_inband_cfg_mask_set(mode_t mask);
 void ldmsd_inband_cfg_mask_add(mode_t mask);
