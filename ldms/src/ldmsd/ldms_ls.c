@@ -69,7 +69,6 @@
 #include <regex.h>
 #include <pwd.h>
 #include <grp.h>
-#include <coll/rbt.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "config.h"
@@ -102,11 +101,25 @@ static int done;
 
 static sem_t conn_sem;
 
+static int schema;
+
 struct ls_set {
-	char *name;
+	struct ldms_dir_set_s *set_data;
 	LIST_ENTRY(ls_set) entry;
 };
 LIST_HEAD(set_list, ls_set) set_list;
+
+/*
+ * A wrapper so that we can keep all received dir's
+ * so that we can
+ * 1) store all dir sets without copying them
+ * 2) free all dirs and dir sets when we are done.
+ */
+struct ldms_ls_dir {
+	ldms_dir_t dir;
+	LIST_ENTRY(ldms_ls_dir) entry;
+};
+LIST_HEAD(ldms_ls_dir_list, ldms_ls_dir) dir_list;
 
 struct match_str {
 	char *str;
@@ -329,93 +342,22 @@ void metric_printer(ldms_set_t s, int i)
 	printf("\n");
 }
 
-int print_set_info(const char *key, const char *value, void *cb_arg)
+static int is_matched(char *inst_name, char *schema_name)
 {
-	int *count = (int *)cb_arg;
-	printf("     %*s : %s\n", 20, key, value);
-	(*count)++;
-	return 0;
-}
+	if (LIST_EMPTY(&match_list))
+		return 1;
 
-const char *perm_string(uint32_t perm)
-{
-	static char str[16];
-	char *s = str;
-	int i;
-	*s = '-';
-	s++;
-	for (i = 6; i >= 0; i -= 3) {
-		uint32_t mask = perm >> i;
-		if (mask & 4)
-			*s = 'r';
-		else
-			*s = '-';
-		s++;
-		if (mask & 2)
-			*s = 'w';
-		else
-			*s = '-';
-		s++;
-		if (mask & 1)
-			*s = 'x';
-		else
-			*s = '-';
-		s++;
+	char *name;
+	struct match_str *match;
+	if (schema)
+		name = schema_name;
+	else
+		name = inst_name;
+	LIST_FOREACH(match, &match_list, entry) {
+		if (0 == regexec(&match->regex, name, 0, NULL, 0))
+			return 1;
 	}
-	*s = '\0';
-	return str;
-}
-
-void print_detail(ldms_set_t s)
-{
-	struct ldms_timestamp _ts = ldms_transaction_timestamp_get(s);
-	struct ldms_timestamp _dur = ldms_transaction_duration_get(s);
-	struct ldms_timestamp const *ts = &_ts;
-	struct ldms_timestamp const *dur = &_dur;
-	int consistent = ldms_set_is_consistent(s);
-	struct tm *tm;
-	struct passwd *pwd;
-	struct group *grp;
-	char dtsz[200];
-
-	time_t t = ts->sec;
-	tm = localtime(&t);
-	strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y %z", tm);
-
-	int count = 0;
-	printf("  APPLICATION SET INFORMATION ------\n");
-	(void) ldms_set_info_traverse(s, print_set_info, LDMS_SET_INFO_F_REMOTE, &count);
-	if (0 == count)
-		printf("	none\n");
-
-
-	printf("  METADATA --------\n");
-	printf("    Producer Name : %s\n", ldms_set_producer_name_get(s));
-	printf("    Instance Name : %s\n", ldms_set_instance_name_get(s));
-	printf("      Schema Name : %s\n", ldms_set_schema_name_get(s));
-	printf("             Size : %" PRIu32 "\n", ldms_set_meta_sz_get(s));
-	printf("     Metric Count : %" PRIu32 "\n", ldms_set_card_get(s));
-	printf("               GN : %" PRIu64 "\n", ldms_set_meta_gn_get(s));
-	pwd = getpwuid(ldms_set_uid_get(s));
-	if (pwd)
-		printf("             User : %s(%d)\n", pwd->pw_name,
-		       ldms_set_uid_get(s));
-	else
-		printf("             User : %d\n", ldms_set_uid_get(s));
-	grp = getgrgid(ldms_set_gid_get(s));
-	if (grp)
-		printf("            Group : %s(%d)\n", grp->gr_name,
-		       ldms_set_gid_get(s));
-	else
-		printf("            Group : %d\n", ldms_set_gid_get(s));
-	printf("      Permissions : %s\n", perm_string(ldms_set_perm_get(s)));
-	printf("  DATA ------------\n");
-	printf("        Timestamp : %s [%dus]\n", dtsz, ts->usec);
-	printf("         Duration : [%d.%06ds]\n", dur->sec, dur->usec);
-	printf("       Consistent : %s\n", (consistent?"TRUE":"FALSE"));
-	printf("             Size : %" PRIu32 "\n", ldms_set_data_sz_get(s));
-	printf("               GN : %" PRIu64 "\n", ldms_set_data_gn_get(s));
-	printf("  -----------------\n");
+	return 0;
 }
 
 static int verbose = 0;
@@ -425,10 +367,6 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 {
 	int err;
 	unsigned long last = (unsigned long)arg;
-	if (!verbose && !long_format) {
-		printf("%s", ldms_set_instance_name_get(s));
-		goto out;
-	}
 	err = LDMS_UPD_ERROR(rc);
 	if (err) {
 		printf("    Error %x updating metric set.\n", err);
@@ -462,8 +400,6 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 	if (rc & LDMS_UPD_F_PUSH_LAST)
 		printf("LAST ");
 	printf("\n");
-	if (verbose)
-		print_detail(s);
 	if (long_format) {
 		int i;
 		for (i = 0; i < ldms_set_card_get(s); i++)
@@ -485,23 +421,11 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 
 void lookup_cb(ldms_t t, enum ldms_lookup_status status, int more,
 	       ldms_set_t s, void *arg);
-const char *ldmsd_group_member_name(const char *info_key)
+static const char *ldmsd_group_member_name(const char *info_key)
 {
 	if (0 != strncmp(GRP_KEY_PREFIX, info_key, sizeof(GRP_KEY_PREFIX)-1))
 		return NULL;
 	return info_key + sizeof(GRP_KEY_PREFIX) - 1;
-}
-
-static void add_set(const char *name);
-
-static int
-__grp_traverse(const char *key, const char *value, void *arg)
-{
-	const char *name = ldmsd_group_member_name(key);
-	if (!name)
-		return 0; /* continue */
-	add_set(name);
-	return 0;
 }
 
 void lookup_cb(ldms_t t, enum ldms_lookup_status status,
@@ -517,18 +441,10 @@ void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 		pthread_mutex_unlock(&print_lock);
 		goto err;
 	}
-	if (strcmp(GRP_SCHEMA_NAME, ldms_set_schema_name_get(s)) == 0) {
-		/* This is a group, add these members to the list */
-		ldms_set_info_traverse(s, __grp_traverse,
-					    LDMS_SET_INFO_F_REMOTE, t);
-	}
 	ldms_xprt_update(s, print_cb, (void *)(unsigned long)(!more));
 	return;
  err:
-	if (verbose || long_format)
-		printf("ldms_ls: Error %d looking up metric set.\n", status);
-	else
-		printf("ldms_ls: No metric sets matched the given criteria\n");
+	printf("ldms_ls: Error %d looking up metric set.\n", status);
 	if (status == ENOMEM) {
 		printf("Change the LDMS_LS_MEM_SZ environment variable or the "
 		       "-m option to a bigger value. The current "
@@ -583,78 +499,78 @@ void lookup_push_cb(ldms_t t, enum ldms_lookup_status status,
 	}
 }
 
-static void __add_set(const char *name)
-{
-	struct ls_set *lss;
-	lss = calloc(1, sizeof(struct ls_set));
-	if (!lss) {
-		dir_status = ENOMEM;
-		return;
-	}
-	lss->name = strdup(name);
-	LIST_INSERT_HEAD(&set_list, lss, entry);
-}
-
-static void add_set(const char *name)
-{
-	struct match_str *match;
-	if (LIST_EMPTY(&match_list)) {
-		__add_set(name);
-	} else {
-		LIST_FOREACH(match, &match_list, entry) {
-			if (0 == regexec(&match->regex, name, 0, NULL, 0))
-				__add_set(name);
-		}
-	}
-}
-
-void add_set_list(ldms_t t, ldms_dir_t _dir)
-{
-	int i;
-	for (i = 0; i < _dir->set_count; i++)
-		add_set(_dir->set_data[i].inst_name);
-}
-
 long total_meta;
 long total_data;
 long total_sets;
 
-void print_dir(ldms_dir_t dir)
+void print_set(struct ldms_dir_set_s *set_data)
 {
-	int i;
 	if (!verbose) {
-		for (i = 0; i < dir->set_count; i++) {
-			printf("%s\n", dir->set_data[i].inst_name);
-		}
+		printf("%s\n", set_data->inst_name);
 	} else {
-		for (i = 0; i < dir->set_count; i++) {
-			printf("%-14s %-24s %6s %6lu %6lu %6d %6d %10s %10d.%06d %10d.%06d ",
-			       dir->set_data[i].schema_name,
-			       dir->set_data[i].inst_name,
-			       dir->set_data[i].flags,
-			       dir->set_data[i].meta_size,
-			       dir->set_data[i].data_size,
-			       dir->set_data[i].uid,
-			       dir->set_data[i].gid,
-			       dir->set_data[i].perm,
-			       dir->set_data[i].timestamp.sec,
-			       dir->set_data[i].timestamp.usec,
-			       dir->set_data[i].duration.sec,
-			       dir->set_data[i].duration.usec);
-			total_meta += dir->set_data[i].meta_size;
-			total_data += dir->set_data[i].data_size;
-			total_sets ++;
-			int j;
-			for (j = 0; j < dir->set_data[i].info_count; j++) {
-				printf("\"%s\"=\"%s\" ", dir->set_data[i].info[j].key, dir->set_data[i].info[j].value);
-			}
-			printf("\n");
+		printf("%-14s %-24s %6s %6lu %6lu %6d %6d %10s %10d.%06d %10d.%06d ",
+		       set_data->schema_name,
+		       set_data->inst_name,
+		       set_data->flags,
+		       set_data->meta_size,
+		       set_data->data_size,
+		       set_data->uid,
+		       set_data->gid,
+		       set_data->perm,
+		       set_data->timestamp.sec,
+		       set_data->timestamp.usec,
+		       set_data->duration.sec,
+		       set_data->duration.usec);
+		total_meta += set_data->meta_size;
+		total_data += set_data->data_size;
+		total_sets ++;
+		int j;
+		for (j = 0; j < set_data->info_count; j++) {
+			printf("\"%s\"=\"%s\" ", set_data->info[j].key, set_data->info[j].value);
+		}
+		printf("\n");
+	}
+}
+
+static int add_set(struct ldms_dir_set_s *set_data)
+{
+	struct ls_set *lss;
+	LIST_FOREACH(lss, &set_list, entry) {
+		if (0 == strcmp(lss->set_data->inst_name, set_data->inst_name)) {
+			/*
+			 * Already in the list.
+			 *
+			 * This could happen if the set is added because
+			 * it is a member of a set group and is added
+			 * after all dirs have been delivered.
+			 */
+			return EEXIST;
 		}
 	}
+	lss = calloc(1, sizeof(struct ls_set));
+	if (!lss) {
+		return ENOMEM;
+	}
+	lss->set_data = set_data;
+	LIST_INSERT_HEAD(&set_list, lss, entry);
+	return 0;
+}
+
+void __add_dir(ldms_dir_t dir)
+{
+	struct ldms_ls_dir *lsdir;
+	lsdir = malloc(sizeof(*lsdir));
+	if (!lsdir) {
+		dir_status = ENOMEM;
+		return;
+	}
+	lsdir->dir = dir;
+	LIST_INSERT_HEAD(&dir_list, lsdir, entry);
 }
 
 void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 {
+	int i;
 	int more;
 	if (status) {
 		dir_status = status;
@@ -662,19 +578,27 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 	}
 	more = _dir->more;
 
-	if (!long_format)
-		print_dir(_dir);
-	else
-		add_set_list(t, _dir);
-
-	ldms_xprt_dir_free(t, _dir);
+	__add_dir(_dir);
+	for (i = 0; i < _dir->set_count; i++) {
+		if (is_matched(_dir->set_data[i].inst_name, _dir->set_data[i].schema_name)) {
+			/*
+			 * Always add matched sets to the set list.
+			 *
+			 * After the dir is done
+			 * the set_list is checked whether it is empty or not,
+			 * to print an error message in case there are no
+			 * sets matched the given criteria.
+			 */
+			dir_status = add_set(&_dir->set_data[i]);
+			if (verbose || (!verbose && !long_format))
+				print_set(&_dir->set_data[i]);
+		}
+	}
 
 	if (more)
 		return;
 
  wakeup:
-	if (!long_format)
-		done = 1;
 	dir_done = 1;
 	pthread_cond_signal(&dir_cv);
 }
@@ -690,11 +614,6 @@ void ldms_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	sem_post(&conn_sem);
 }
 
-int rbt_str_cmp(void *tree_key, const void *key)
-{
-	return strcmp(tree_key, key);
-}
-
 const char *repeat(char c, size_t count)
 {
 	int i;
@@ -704,6 +623,38 @@ const char *repeat(char c, size_t count)
 		buf[i] = c;
 	buf[i] = '\0';
 	return buf;
+}
+
+struct ldms_dir_set_s *find_set_data_in_dirs(const char *inst_name)
+{
+	struct ldms_ls_dir *lsdir;
+	int i;
+
+	LIST_FOREACH(lsdir, &dir_list, entry) {
+		for (i = 0; i < lsdir->dir->set_count; i++) {
+			if (0 == strcmp(lsdir->dir->set_data[i].inst_name, inst_name))
+				return &lsdir->dir->set_data[i];
+		}
+	}
+	return NULL;
+}
+
+int is_in_set_list(const char *name)
+{
+	struct ls_set *lss;
+	LIST_FOREACH(lss, &set_list, entry) {
+		if (0 == strcmp(lss->set_data->inst_name, name)) {
+			/*
+			 * Already in the list.
+			 *
+			 * This could happen if the set is added because
+			 * it is a member of a set group and is added
+			 * after all dirs have been delivered.
+			 */
+			return 1;
+		}
+	}
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -720,10 +671,10 @@ int main(int argc, char *argv[])
 	char *xprt = "sock";
 	int waitsecs = 10;
 	int regex = 0;
-	int schema = 0;
 	ldms_lookup_cb_t lu_cb_fn = lookup_cb;
 	struct timespec ts;
 	char *lval, *rval;
+	struct ldms_ls_dir *dir;
 
 	/* If no arguments are given, print usage. */
 	if (argc == 1)
@@ -886,10 +837,8 @@ int main(int argc, char *argv[])
 	int is_filter_list = 0;
 	if (regex)
 		flags |= LDMS_LOOKUP_RE;
-	if (schema)
-		flags |= LDMS_LOOKUP_BY_SCHEMA;
 
-	if (verbose && !long_format) {
+	if (verbose) {
 		printf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s\n",
 		       14, "Schema",
 		       24, "Instance",
@@ -910,85 +859,48 @@ int main(int argc, char *argv[])
 			exit(1);
 		}
 	} else {
-		if (!verbose && !long_format) {
-			is_filter_list = 1;
-			/*
-			 * List the metric sets that the instance name or
-			 * schema name matched the given criteria.
-			 */
-			struct match_str *match;
-			for (i = optind; i < argc; i++) {
-				match = malloc(sizeof(*match));
-				if (!match) {
+		is_filter_list = 1;
+		/*
+		 * List the metric sets that the instance name or
+		 * schema name matched the given criteria.
+		 */
+		struct match_str *match;
+		for (i = optind; i < argc; i++) {
+			match = malloc(sizeof(*match));
+			if (!match) {
+				perror("ldms: ");
+				exit(2);
+			}
+			if (!(flags & LDMS_LOOKUP_RE)) {
+				/* Take the given string literally */
+				match->str = malloc(strlen(argv[i] + 3));
+				if (!match->str) {
 					perror("ldms: ");
 					exit(2);
 				}
-				if (!(flags & LDMS_LOOKUP_RE)) {
-					/* Take the given string literally */
-					match->str = malloc(strlen(argv[i] + 3));
-					if (!match->str) {
-						perror("ldms: ");
-						exit(2);
-					}
-					sprintf(match->str, "^%s$", argv[i]);
-					flags |= LDMS_LOOKUP_RE;
-				} else {
-					/* Take the given string as regular expression */
-					match->str = strdup(argv[i]);
-					if (!match->str) {
-						perror("ldms: ");
-						exit(2);
-					}
+				sprintf(match->str, "^%s$", argv[i]);
+				flags |= LDMS_LOOKUP_RE;
+			} else {
+				/* Take the given string as regular expression */
+				match->str = strdup(argv[i]);
+				if (!match->str) {
+					perror("ldms: ");
+					exit(2);
 				}
-				ret = __compile_regex(&match->regex, match->str);
-				if (ret)
-					exit(1);
-				LIST_INSERT_HEAD(&match_list, match, entry);
 			}
-			ret = ldms_xprt_dir(ldms, dir_cb, NULL, 0);
-			if (ret) {
-				printf("ldms_dir returned synchronous "
-				       "error %d\n", ret);
+			ret = __compile_regex(&match->regex, match->str);
+			if (ret)
 				exit(1);
-			}
-			goto wait_dir;
+			LIST_INSERT_HEAD(&match_list, match, entry);
 		}
-		/*
-		 * Set list specified on the command line. Dummy up a
-		 * directory and call our ldms_dir callback
-		 * function
-		 */
-		struct ldms_dir_s *dir =
-			calloc(1, sizeof(*dir) +
-			       ((argc - optind) * sizeof (char *)));
-		if (!dir) {
-			perror("ldms: ");
-			exit(2);
+		ret = ldms_xprt_dir(ldms, dir_cb, NULL, 0);
+		if (ret) {
+			printf("ldms_dir returned synchronous "
+			       "error %d\n", ret);
+			exit(1);
 		}
-		dir->set_count = argc - optind;
-		dir->type = LDMS_DIR_LIST;
-		if (LIST_EMPTY(&match_list)) {
-			for (i = optind; i < argc; i++)
-				dir->set_data[i - optind].inst_name = strdup(argv[i]);
-		} else {
-			struct match_str *match;
-			i = 0;
-			match = LIST_FIRST(&match_list);
-			while (match) {
-				dir->set_data[i++].inst_name = strdup(match->str);
-				LIST_REMOVE(match, entry);
-				regfree(&match->regex);
-				free(match->str);
-				free(match);
-				match = LIST_FIRST(&match_list);
-			}
-		}
-		add_set_list(ldms, dir);
-		dir_done = 1;	/* no need to wait */
-		dir_status = 0;
 	}
 
-wait_dir:
 	clock_gettime(CLOCK_REALTIME, &ts);
 	ts.tv_sec += waitsecs;
 	pthread_mutex_lock(&dir_lock);
@@ -1011,44 +923,41 @@ wait_dir:
 		done = 1;
 		goto done;
 	}
-	struct rbt processed_rbt;
-	struct rbn *rbn;
-	rbt_init(&processed_rbt, rbt_str_cmp);
-	while (!LIST_EMPTY(&set_list)) {
-		lss = LIST_FIRST(&set_list);
-		LIST_REMOVE(lss, entry);
 
-		if (long_format) {
-			pthread_mutex_lock(&print_lock);
-			rbn = rbt_find(&processed_rbt, lss->name);
-			if (rbn) {
-				/* has been processed */
-				pthread_mutex_unlock(&print_lock);
-				continue;
+	/* Take care of set groups */
+	char *name;
+	ldms_key_value_t info;
+	struct ldms_dir_set_s *set_data;
+	LIST_FOREACH(lss, &set_list, entry) {
+		if (0 == strcmp(GRP_SCHEMA_NAME, lss->set_data->schema_name)) {
+			info = lss->set_data->info;
+			for (i = 0; i < lss->set_data->info_count; i++) {
+				name = (char *)ldmsd_group_member_name(info[i].key);
+				if (!name)
+					continue;
+
+				set_data = find_set_data_in_dirs(name);
+				if (set_data && !is_in_set_list(set_data->inst_name)) {
+					rc = add_set(set_data);
+					if (!rc) {
+						if (verbose || (!verbose && !long_format))
+							print_set(set_data);
+					}
+				} else {
+					/*
+					 * do nothing.
+					 *
+					 * It is possible that the LDMS set
+					 * does not exist although it is a
+					 * member of a set group which
+					 * is manually created by users.
+					 */
+				}
 			}
-			rbn = calloc(1, sizeof(*rbn));
-			rbn->key = lss->name;
-			rbt_ins(&processed_rbt, rbn);
-			print_done = 0;
-			pthread_mutex_unlock(&print_lock);
-			ret = ldms_xprt_lookup(ldms, lss->name, flags,
-					       lu_cb_fn,
-					       (void *)(unsigned long)
-					       LIST_EMPTY(&set_list));
-			if (ret) {
-				printf("ldms_xprt_lookup returned %d for set '%s'\n",
-				       ret, lss->name);
-			}
-			pthread_mutex_lock(&print_lock);
-			while (!print_done)
-				pthread_cond_wait(&print_cv, &print_lock);
-			pthread_mutex_unlock(&print_lock);
-		} else
-			printf("%s\n", lss->name);
+		}
 	}
-	done = 1;
-done:
-	if (verbose && !long_format) {
+
+	if (verbose) {
 		printf("-------------- ------------------------ ------ ------ "
 		       "------ ------ ------ ---------- ----------------- "
 		       "----------------- --------\n");
@@ -1056,10 +965,62 @@ done:
 		       total_sets, (double)total_meta / 1000.0, (double)total_data / 1000.0,
 		       (double)(total_meta + total_data) / 1000.0);
 	}
+
+	/*
+	 * At this point,
+	 * - set_list contains all and only set data
+	 *   that are matched the criteria including the members of
+	 *   set groups.
+	 * - the set instance name and/or the information of all sets
+	 *   are printed.
+	 */
+
+	if (!long_format) {
+		done = 1;
+		goto done;
+	}
+
+	if (verbose && long_format)
+		printf("\n=======================================================================\n\n");
+
+	/*
+	 * Handle the long format (-l)
+	 */
+
+	while (!LIST_EMPTY(&set_list)) {
+		lss = LIST_FIRST(&set_list);
+		LIST_REMOVE(lss, entry);
+
+		pthread_mutex_lock(&print_lock);
+		print_done = 0;
+		pthread_mutex_unlock(&print_lock);
+
+		ret = ldms_xprt_lookup(ldms, lss->set_data->inst_name, flags,
+				       lu_cb_fn,
+				       (void *)(unsigned long)
+				       LIST_EMPTY(&set_list));
+		if (ret) {
+			printf("ldms_xprt_lookup returned %d for set '%s'\n",
+			       ret, lss->set_data->inst_name);
+		}
+		pthread_mutex_lock(&print_lock);
+		while (!print_done)
+			pthread_cond_wait(&print_cv, &print_lock);
+		pthread_mutex_unlock(&print_lock);
+		free(lss);
+	}
+	done = 1;
+done:
 	pthread_mutex_lock(&done_lock);
 	while (!done)
 		pthread_cond_wait(&done_cv, &done_lock);
 	pthread_mutex_unlock(&done_lock);
+
+	while ((dir = LIST_FIRST(&dir_list))) {
+		LIST_REMOVE(dir, entry);
+		ldms_xprt_dir_free(ldms, dir->dir);
+		free(dir);
+	}
 
 	ldms_xprt_close(ldms);
 	exit(0);
