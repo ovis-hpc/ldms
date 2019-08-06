@@ -130,8 +130,8 @@ struct sos_instance {
 	sos_schema_t sos_schema;
 	pthread_mutex_t lock; /**< lock at metric store level */
 
-	sos_attr_t job_comp_time_attr;
-	sos_attr_t job_rank_comp_time_attr;
+	sos_attr_t job_rank_time_attr;
+	sos_attr_t job_time_rank_attr;
 
 	LIST_ENTRY(sos_instance) entry;
 };
@@ -143,8 +143,9 @@ static char root_path[PATH_MAX]; /**< store root path */
 static ldmsd_msg_log_f msglog;
 
 static const char *comp_time_attrs[] = { "component_id", "timestamp" };
-static const char *job_comp_time_attrs[] = { "job_id", "component_id", "timestamp" };
-static const char *job_rank_comp_time_attrs[] = { "job_id", "task_rank", "component_id", "timestamp" };
+static const char *time_job_attrs[] = { "timestamp", "job_id" };
+static const char *job_rank_time_attrs[] = { "job_id", "task_rank", "timestamp" };
+static const char *job_time_rank_attrs[] = { "job_id", "timestamp", "task_rank" };
 
 struct sos_schema_template slurm_schema_template = {
 	.name = "job",
@@ -152,17 +153,17 @@ struct sos_schema_template slurm_schema_template = {
 		{
 			.name = "timestamp",
 			.type = SOS_TYPE_TIMESTAMP,
-			.indexed = 1,
+			.indexed = 0,
 		},
 		{
 			.name = "component_id",
 			.type = SOS_TYPE_UINT64,
-			.indexed = 1,
+			.indexed = 0,
 		},
 		{
 			.name = "job_id",
 			.type = SOS_TYPE_UINT64,
-			.indexed = 1,
+			.indexed = 0,
 		},
 		{
 			.name = "app_id",
@@ -212,7 +213,13 @@ struct sos_schema_template slurm_schema_template = {
 			.name = "task_exit_status",
 			.type = SOS_TYPE_UINT32,
 		},
-
+		{
+			.name = "time_job",
+			.type = SOS_TYPE_JOIN,
+			.indexed = 1,
+			.join_list = time_job_attrs,
+			.size = 2
+		},
 		{
 			.name = "comp_time",
 			.type = SOS_TYPE_JOIN,
@@ -221,18 +228,18 @@ struct sos_schema_template slurm_schema_template = {
 			.size = 2
 		},
 		{
-			.name = "job_comp_time",
+			.name = "job_rank_time",
 			.type = SOS_TYPE_JOIN,
 			.indexed = 1,
-			.join_list = job_comp_time_attrs,
+			.join_list = job_rank_time_attrs,
 			.size = 3
 		},
 		{
-			.name = "job_rank_comp_time",
+			.name = "job_time_rank",
 			.type = SOS_TYPE_JOIN,
 			.indexed = 1,
-			.join_list = job_rank_comp_time_attrs,
-			.size = 4
+			.join_list = job_time_rank_attrs,
+			.size = 3
 		},
 		{ NULL }
 	}
@@ -254,9 +261,9 @@ enum schema_attr_ids {
 	TASK_PID_ATTR,
 	TASK_RANK_ATTR,
 	TASK_EXIT_STATUS_ATTR,
+	TIME_JOB_ATTR,
 	COMP_TIME_ATTR,
-	JOB_COMP_TIME_ATTR,
-	JOB_RANK_COMP_TIME_ATTR
+	JOB_RANK_TIME_ATTR
 };
 
 sos_handle_t create_handle(const char *path, sos_t sos)
@@ -537,13 +544,14 @@ _open_store(struct sos_instance *si, ldms_set_t set)
 	}
  out:
 	si->sos_schema = schema;
-	si->job_comp_time_attr = sos_schema_attr_by_name(schema, "job_comp_time");
-	si->job_rank_comp_time_attr = sos_schema_attr_by_name(schema, "job_rank_comp_time");
+	si->job_rank_time_attr = sos_schema_attr_by_name(schema, "job_rank_time");
+	si->job_time_rank_attr = sos_schema_attr_by_name(schema, "job_time_rank");
 	return 0;
  err_1:
 	sos_schema_free(schema);
  err_0:
 	put_container(si->sos_handle);
+	si->sos_handle = NULL;
 	return EINVAL;
 }
 
@@ -641,25 +649,15 @@ store_summary(struct sos_instance *si, ldms_set_t set, int slot)
 	sos_obj_t obj;
 	SOS_KEY(key);
 	sos_key_t k;
-	uint64_t job_id, component_id;
+	uint64_t job_id;
 
 	job_id = ldms_metric_array_get_u64(set, JOB_ID_MID(set), slot);
-	component_id = ldms_metric_array_get_u64(set, COMPONENT_ID_MID(set), slot);
-	k = sos_key_for_attr(key, si->job_comp_time_attr,
-			     job_id, component_id, 0);
+	k = sos_key_for_attr(key, si->job_rank_time_attr,
+			     job_id, 0, 0);
 	if (!k)
 		return errno;
 
-	obj = sos_index_find_sup(sos_attr_index(si->job_comp_time_attr), key);
-	if (obj) {
-		/* Check the component id */
-		v = sos_value_by_id(&v_, obj, COMPONENT_ID_ATTR);
-		if (v->data->prim.uint64_ != component_id) {
-			sos_obj_put(obj);
-			obj = NULL;
-		}
-		sos_value_put(v);
-	}
+	obj = sos_index_find_sup(sos_attr_index(si->job_rank_time_attr), key);
 	if (!obj) {
 		obj = sos_obj_new(si->sos_schema);
 		if (!obj) {
@@ -699,19 +697,36 @@ store_ranks(struct sos_instance *si, ldms_set_t set, int slot)
 	int task;
 	uint64_t job_id;
 	uint32_t rank;
-	uint64_t component_id;
 
 	job_id = ldms_metric_array_get_u64(set, JOB_ID_MID(set), slot);
-	component_id = ldms_metric_array_get_u64(set, COMPONENT_ID_MID(set), slot);
-
 	for (task = 0; task < ldms_metric_array_get_u32(set, TASK_COUNT_MID(set), slot); task++) {
 		rank = ldms_metric_array_get_u32(set, TASK_RANK_MID(set) + slot, task);
-		k = sos_key_for_attr(key, si->job_rank_comp_time_attr,
-				     job_id, rank, component_id, 0);
+		k = sos_key_for_attr(key, si->job_rank_time_attr,
+				     job_id, rank, 0);
 		if (!k)
 			return errno;
 
-		obj = sos_index_find_sup(sos_attr_index(si->job_rank_comp_time_attr), key);
+		obj = sos_index_find_sup(sos_attr_index(si->job_rank_time_attr), key);
+		if (obj) {
+			int match;
+			/* Check check the job_id and rank matches */
+			v = sos_value_by_id(&v_, obj, JOB_ID_ATTR);
+			match = (v->data->prim.uint64_ == job_id);
+			sos_value_put(v);
+			if (match) {
+				/* check rank */
+				v = sos_value_by_id(&v_, obj, TASK_RANK_ATTR);
+				match = (v->data->prim.uint32_ == rank);
+				sos_value_put(v);
+				if (!match) {
+					sos_obj_put(obj);
+					obj = NULL;
+				}
+			} else {
+				sos_obj_put(obj);
+				obj = NULL;
+			}
+		}
 		if (!obj) {
 			obj = sos_obj_new(si->sos_schema);
 			if (!obj) {
@@ -776,6 +791,16 @@ store_times(struct sos_instance *si, ldms_set_t set, int slot)
 	return 0;
 }
 
+int first_slot(ldms_set_t set, int *last_idx)
+{
+	return -1;
+}
+
+int next_slot()
+{
+	return -1;
+}
+
 static int
 store(ldmsd_store_handle_t _sh,
       ldms_set_t set,
@@ -802,10 +827,26 @@ store(ldmsd_store_handle_t _sh,
 
 	int slot;
 	int slot_count = ldms_metric_array_get_len(set, JOB_ID_MID(set));
-	for (slot = 0; slot < slot_count; slot++) {
-		uint8_t state = ldms_metric_array_get_u8(set, JOB_STATE_MID(set), slot);
-		if (state < JOB_RUNNING)
-			continue;
+	int list_tail = ldms_metric_get_u32(set, JOB_SLOT_LIST_TAIL_MID(set));
+	int list_idx = list_tail;
+
+	/*
+	 * Scrub the the set from list_tail + 1 ... list_tail */
+	do {
+		int job_id;
+		uint8_t state;
+		slot = ldms_metric_array_get_s32(set, JOB_SLOT_LIST_MID(set), list_idx);
+		if (slot < 0)
+			goto skip;
+		job_id = ldms_metric_array_get_u64(set, JOB_ID_MID(set), slot);
+		state = ldms_metric_array_get_u8(set, JOB_STATE_MID(set), slot);
+		if (state < JOB_RUNNING) {
+			msglog(LDMSD_LINFO,
+			       "store_sos: Ignoring job %d in slot %d in state %d\n",
+			       job_id, slot, state);
+			goto skip;
+		}
+		/* Store the new job data */
 		switch (verbosity) {
 		case SUMMARY:
 			store_summary(si, set, slot);
@@ -817,8 +858,11 @@ store(ldmsd_store_handle_t _sh,
 			store_times(si, set, slot);
 			break;
 		}
-	}
-
+	skip:
+		list_idx++;
+		if (list_idx >= slot_count)
+			list_idx = 0;
+	} while (list_idx != list_tail);
 	pthread_mutex_unlock(&si->lock);
 	return rc;
 err:
