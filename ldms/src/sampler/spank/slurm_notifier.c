@@ -543,41 +543,6 @@ int slurm_spank_init(spank_t sh, int argc, char *argv[])
 	return ESPANK_SUCCESS;
 }
 
-int slurm_spank_task_init(spank_t sh, int argc, char *argv[])
-{
-	slurm_info("%s:%d", __func__, __LINE__);
-#if 0
-	/* Runs as uid */
-	spank_context_t context = spank_context();
-	const char *context_str;
-	jbuf_t jb;
-
-	slurm_info("%s:%d", __func__, __LINE__);
-
-	if (0 == nnodes(sh))
-		/* Ignore events before node assignment */
-		return ESPANK_SUCCESS;
-
-	switch (context) {
-	case S_CTX_REMOTE:
-		context_str = "remote";
-		break;
-	case S_CTX_LOCAL:
-	default:
-		return ESPANK_SUCCESS;
-	}
-
-	jb = make_task_init_data(sh, "task_init", context_str);
-	if (jb) {
-		slurm_info("%s:%d %s", __func__, __LINE__, jb->buf);
-		send_event(jb);
-		jbuf_free(jb);
-	}
-#endif
-	slurm_info("%s:%d", __func__, __LINE__);
-	return ESPANK_SUCCESS;
-}
-
 int
 slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 {
@@ -659,7 +624,6 @@ slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 
 	slurm_info("%s:%d", __func__, __LINE__);
 
-
 	if (0 == nnodes(sh))
 		/* Ignore events before node assignment */
 		return ESPANK_SUCCESS;
@@ -718,12 +682,4 @@ int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 	wait_ts.tv_nsec = 0;
 	sem_timedwait(&close_sem, &wait_ts);
 	return ESPANK_SUCCESS;
-}
-
-static void __attribute__ ((constructor)) slurm_notifier_init(void)
-{
-}
-
-static void __attribute__ ((destructor)) slurm_notifier_term(void)
-{
 }
