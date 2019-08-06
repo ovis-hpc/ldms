@@ -166,10 +166,11 @@ static void release_job_data(job_data_t jd)
 	TAILQ_INSERT_TAIL(&free_slot_list, jd, slot_ent);
 }
 
-static int cur_idx;
 static int comp_id_idx;
 static int job_id_idx;
 static int app_id_idx;
+static int job_slot_list_tail_idx;
+static int job_slot_list_idx;
 static int job_state_idx;
 static int job_start_idx;
 static int job_end_idx;
@@ -183,39 +184,49 @@ static int task_rank_idx;
 static int task_exit_status_idx;
 
 /* MT (Mutli-Tenant) Schema
- *                        +-+-+...+-+
- * cur_idx                | | |   | |
- *                        +-+-+...+-+
- * comp_id_idx            | | |   | |
- *                        +-+-+...+-+
- * app_id_idx             | | |   | |
- *                        +-+-+...+-+
- * job_id_idx             | | |   | |
- *                        +-+-+...+-+
- * job_state_idx          | | |   | |
- *                        +-+-+...+-+
- * job_size_idx           | | |   | |
- *                        +-+-+...+-+
- * job_uid_idx            | | |   | |
- *                        +-+-+...+-+
- * job_gid_idx            | | |   | |
- *                        +-+-+...+-+
- * job_start_idx          | | |   | |
- *                        +-+-+...+-+
- * job_end_idx            | | |   | |
- *                        +-+-+...+-+
- * node_count_idx         | | |   | |
- *                        +-+-+...+-+
- * task_count_idx         | | |   | |
- *                        +-+-+...+-+
- *
- *                        +-+-+-+-+-+...+-+
- * task_pid_idx           | | | | | |   | |
- *                        +-+-+-+-+-+...+-+
- * task_rank_idx          | | | | | |   | |
- *                        +-+-+-+-+-+...+-+
- * task_exit_status_idx   | | | | | |   | |
- *                        +-+-+-+-+-+...+-+
+ *                max jobs +
+ *                         |
+ *                         v
+ *                    |<------->|
+ *                    |         |
+ *                    +-+-+...+-+
+ * comp_id            | | |   | |
+ *                    +-+-+...+-+
+ * app_id             | | |   | |
+ *                    +-+-+...+-+
+ * job_id             | | |   | |
+ *                    +-+-+...+-+
+ * job_slot_list_tail | |
+ *                    +-+-+...+-+
+ * job_slot_list      | | |   | |
+ *                    +-+-+...+-+
+ * job_state          | | |   | |
+ *                    +-+-+...+-+
+ * job_size           | | |   | |
+ *                    +-+-+...+-+
+ * job_uid            | | |   | |
+ *                    +-+-+...+-+
+ * job_gid            | | |   | |
+ *                    +-+-+...+-+
+ * job_start          | | |   | |
+ *                    +-+-+...+-+
+ * job_end            | | |   | |
+ *                    +-+-+...+-+
+ * node_count         | | |   | |
+ *                    +-+-+...+-+
+ * task_count         | | |   | |
+ *                    +-+-+-+-+-+...+-+
+ * task_pid           | | | | | |   | |
+ *                    +-+-+-+-+-+...+-+
+ * task_rank          | | | | | |   | |
+ *                    +-+-+-+-+-+...+-+
+ * task_exit_status   | | | | | |   | |
+ *                    +-+-+-+-+-+...+-+
+ *                    |               |
+ *                    |<------------->|
+ *                            ^
+ *                            |
+ *                  max tasks +
  */
 static int create_metric_set(void)
 {
@@ -249,9 +260,14 @@ static int create_metric_set(void)
 						  LDMS_V_U64_ARRAY, job_list_len);
 	if (app_id_idx < 0)
 		goto err;
-	/* cur_idx */
-	cur_idx = ldms_schema_metric_add(job_schema, "current_slot", LDMS_V_U32);
-	if (cur_idx < 0)
+	/* job_slot_list_tail */
+	job_slot_list_tail_idx = ldms_schema_metric_add(job_schema, "job_slot_list_tail", LDMS_V_S32);
+	if (job_slot_list_tail_idx < 0)
+		goto err;
+	/* job_slot_list */
+	job_slot_list_idx = ldms_schema_metric_array_add(job_schema, "job_slot_list",
+							 LDMS_V_S32_ARRAY, job_list_len);
+	if (job_slot_list_idx < 0)
 		goto err;
 	/* job_state */
 	job_state_idx =
@@ -346,8 +362,10 @@ static int create_metric_set(void)
 		goto err;
 	}
 	ldms_set_producer_name_set(job_set, producer_name);
-	for (i = 0; i < job_list_len; i++)
+	for (i = 0; i < job_list_len; i++) {
 		ldms_metric_array_set_u64(job_set, comp_id_idx, i, comp_id);
+		ldms_metric_array_set_s32(job_set, job_slot_list_idx, i, -1);
+	}
 	ldms_set_publish(job_set);
 	return 0;
  err:
@@ -517,6 +535,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	return rc;
 }
 
+static int next_list_idx;
 static void handle_job_init(job_data_t job, json_entity_t e)
 {
 	int int_v;
@@ -539,7 +558,11 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 	}
 	dict = json_attr_value(data);
 
-	ldms_metric_set_u32(job_set, cur_idx, job->job_slot);
+	ldms_transaction_begin(job_set);
+	ldms_metric_set_u32(job_set, job_slot_list_tail_idx, next_list_idx);
+	ldms_metric_array_set_s32(job_set, job_slot_list_idx, next_list_idx, job->job_slot);
+	next_list_idx = (++next_list_idx < job_list_len ? next_list_idx : 0);
+
 	ldms_metric_array_set_u64(job_set, job_id_idx, job->job_slot, job->job_id);
 	ldms_metric_array_set_u8(job_set, job_state_idx, job->job_slot, JOB_STARTING);
 	ldms_metric_array_set_u32(job_set, job_start_idx, job->job_slot, timestamp);
@@ -573,7 +596,7 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 	if (!attr) {
 		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'total_tasks' attribute "
 		       "in 'init' event.\n");
-		return;
+		goto out;
 	}
 	int_v = json_value_int(json_attr_value(attr));
 	ldms_metric_array_set_u32(job_set, job_size_idx, job->job_slot, int_v);
@@ -584,6 +607,8 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 		ldms_metric_array_set_u32(job_set, task_rank_idx + job->job_slot, i, 0);
 		ldms_metric_array_set_u32(job_set, task_exit_status_idx + job->job_slot, i, 0);
 	}
+ out:
+	ldms_transaction_end(job_set);
 }
 
 static void handle_task_init(job_data_t job, json_entity_t e)
@@ -615,6 +640,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 		       "in 'task_init' event.\n");
 		return;
 	}
+	ldms_transaction_begin(job_set);
 	int_v = json_value_int(json_attr_value(attr));
 	ldms_metric_array_set_u32(job_set, task_pid_idx + job->job_slot, task_id, int_v);
 
@@ -622,7 +648,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 	if (!attr) {
 		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'task_global_id' attribute "
 		       "in 'task_init' event.\n");
-		return;
+		goto out;
 	}
 	int_v = json_value_int(json_attr_value(attr));
 	ldms_metric_array_set_u32(job_set, task_rank_idx + job->job_slot, task_id, int_v);
@@ -630,6 +656,8 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 	job->task_init_count += 1;
 	if (job->task_init_count == job->local_task_count)
 		ldms_metric_array_set_u8(job_set, job_state_idx, job->job_slot, JOB_RUNNING);
+ out:
+	ldms_transaction_end(job_set);
 }
 
 static void handle_task_exit(job_data_t job, json_entity_t e)
@@ -640,6 +668,7 @@ static void handle_task_exit(job_data_t job, json_entity_t e)
 	int task_id;
 	int int_v;
 
+	ldms_transaction_begin(job_set);
 	ldms_metric_array_set_u8(job_set, job_state_idx, job->job_slot, JOB_STOPPING);
 
 	attr = json_attr_find(dict, "task_id");
@@ -650,6 +679,7 @@ static void handle_task_exit(job_data_t job, json_entity_t e)
 	ldms_metric_array_set_u32(job_set, task_exit_status_idx + job->job_slot, task_id, int_v);
 
 	job->task_init_count -= 1;
+	ldms_transaction_end(job_set);
 }
 
 static void handle_job_exit(job_data_t job, json_entity_t e)
@@ -657,8 +687,10 @@ static void handle_job_exit(job_data_t job, json_entity_t e)
 	json_entity_t attr = json_attr_find(e, "timestamp");
 	uint64_t timestamp = json_value_int(json_attr_value(attr));
 
+	ldms_transaction_begin(job_set);
 	ldms_metric_array_set_u32(job_set, job_end_idx, job->job_slot, timestamp);
 	ldms_metric_array_set_u8(job_set, job_state_idx, job->job_slot, JOB_COMPLETE);
+	ldms_transaction_end(job_set);
 }
 
 static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
@@ -708,7 +740,6 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	job_data_t job;
 
 	pthread_mutex_lock(&job_lock);
-	ldms_transaction_begin(job_set);
 	rc = ENOENT;
 	if (0 == strncmp(event_name->str, "init", 4)) {
 		job = get_job_data(tstamp, job_id); /* protect against duplicate entries */
@@ -764,7 +795,6 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		       "slurm_sampler: ignoring event '%s'\n", event_name->str);
 	}
  out_1:
-	ldms_transaction_end(job_set);
 	pthread_mutex_unlock(&job_lock);
  out_0:
 	return rc;
