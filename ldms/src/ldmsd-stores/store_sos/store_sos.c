@@ -267,6 +267,16 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 	if (rc)
 		goto err1;
 	/*
+	 * Time/Job_Id Index
+	 */
+	char *time_job_attrs[] = { "timestamp", "job_id" };
+	rc = sos_schema_attr_add(inst->sos_schema, "time_job", SOS_TYPE_JOIN, 2, time_job_attrs);
+	if (rc)
+		goto err1;
+	rc = sos_schema_index_add(inst->sos_schema, "time_job");
+	if (rc)
+		goto err1;
+	/*
 	 * Job/Component/Time Index
 	 */
 	char *job_comp_time_attrs[] = { "job_id", "component_id", "timestamp" };
