@@ -287,8 +287,8 @@ set_ready:
 out:
 	pthread_mutex_unlock(&prd_set->lock);
 	if (0 == errcode) {
-		ldmsd_log(LDMSD_LINFO, "Pushing set %p %s\n", prd_set->set,
-						prd_set->inst_name);
+		ldmsd_log(LDMSD_LDEBUG, "Pushing set %p %s\n",
+			  prd_set->set, prd_set->inst_name);
 		int rc = ldms_xprt_push(prd_set->set);
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR, "Failed to push set %s\n",
