@@ -461,6 +461,16 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	if (rc)
 		goto err_1;
 	/*
+	 * Time/Job_Id Index
+	 */
+	char *time_job_attrs[] = { "timestamp", "job_id" };
+	rc = sos_schema_attr_add(schema, "time_job", SOS_TYPE_JOIN, 2, time_job_attrs);
+	if (rc)
+		goto err_1;
+	rc = sos_schema_index_add(schema, "time_job");
+	if (rc)
+		goto err_1;
+	/*
 	 * Job/Component/Time Index
 	 */
 	char *job_comp_time_attrs[] = { "job_id", "component_id", "timestamp" };
