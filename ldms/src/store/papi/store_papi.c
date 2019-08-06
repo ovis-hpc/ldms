@@ -143,7 +143,14 @@ sos_handle_t create_handle(const char *path, sos_t sos)
 	return h;
 }
 
+/* Analyze data across time for a given job/rank */
 static const char *job_rank_time_attrs[] = { "job_id", "rank", "timestamp" };
+/* Analyze data across rank for a given job/time */
+static const char *job_time_rank_attrs[] = { "job_id", "timestamp", "rank" };
+/* Find all jobs in a given time period */
+static const char *time_job_attrs[] = { "timestamp", "job_id" };
+/* Component-wide analysis by time */
+static const char *comp_time_attrs[] = { "component_id", "timestamp" };
 
 /*
  * All PAPI-event schema use the template below. The schema.name and
@@ -155,36 +162,57 @@ struct sos_schema_template papi_event_schema = {
 		{
 			.name = "timestamp",
 			.type = SOS_TYPE_TIMESTAMP,
-			.indexed = 1,
+			.indexed = 0,
 		},
 		{
 			.name = "component_id",
 			.type = SOS_TYPE_UINT64,
-			.indexed = 1,
+			.indexed = 0,
 		},
 		{
 			.name = "job_id",
 			.type = SOS_TYPE_UINT64,
-			.indexed = 1,
+			.indexed = 0,
 		},
 		{
 			.name = "app_id",
 			.type = SOS_TYPE_UINT64,
-			.indexed = 1,
+			.indexed = 0,
 		},
 		{
 			.name = "rank",
 			.type = SOS_TYPE_UINT64,
 		},
 		{
-			.name = NULL, /* This is the actual event */
+			.name = NULL, /* Placeholder for the PAPI event name */
 			.type = SOS_TYPE_UINT64,
+		},
+		{
+			.name = "comp_time",
+			.type = SOS_TYPE_JOIN,
+			.size = 2,
+			.join_list = comp_time_attrs,
+			.indexed = 1,
+		},
+		{	/* time_job */
+			.name = "time_job",
+			.type = SOS_TYPE_JOIN,
+			.size = 2,
+			.join_list = time_job_attrs,
+			.indexed = 1,
 		},
 		{	/* job_rank_time */
 			.name = "job_rank_time",
 			.type = SOS_TYPE_JOIN,
-			.size = 3,
+			.size = 2,
 			.join_list = job_rank_time_attrs,
+			.indexed = 1,
+		},
+		{	/* job_time_rank */
+			.name = "job_time_rank",
+			.type = SOS_TYPE_JOIN,
+			.size = 3,
+			.join_list = job_time_rank_attrs,
 			.indexed = 1,
 		},
 		{ NULL }
