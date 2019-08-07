@@ -1,0 +1,46 @@
+# run meminfo with openmpir+gcc based shm_sampler set
+# Uses localhost interface and Ramin's test MPIApp.
+# bugs: 
+# Schema names are indefinite so store configs
+# are impossible except in clean-room operation.
+# Ompi generates verbose warnings if fast network is
+# also present.
+# ldms compile: ../configure CC=gcc MPICC=$(which mpicc) CXX=g++ $allconfig
+# where allconfig must include --enable-mpi_sampler 
+# e.g.; module purge; module load openmpi-gnu/3.0
+export plugname=meminfo
+portbase=60000
+# meminfo on daemon 1
+LDMSD 1
+# daemon 2shm is configured in shm.2
+LDMSD 2
+# collect both to aggregator
+LDMSD 3
+
+LDMS_MPI_PROFILER_LIB_NAME=libldms_mpi_profiler.so
+LDMS_MPI_PROFILER_PATH=$pkglibdir/$LDMS_MPI_PROFILER_LIB_NAME
+export LD_PRELOAD=$LDMS_MPI_PROFILER_PATH:$MPI_ROOT/lib/libmpi.so:$LD_PRELOAD
+export LDMS_SHM_INDEX=/ldms_shm_mpi_index
+export LDMS_SHM_MPI_PROFILER_LOG_LEVEL=1
+export LDMS_SHM_MPI_FUNC_INCLUDE=MPI_Init:calls,MPI_Finalize:calls,MPI_Send
+export LDMS_SHM_MPI_STAT_SCOPE=0
+export LDMS_SHM_MPI_EVENT_UPDATE=1
+# disable ib/omnipath/etc
+export OMPI_MCA_mtl=^psm2
+export OMPI_MCA_pml=^cm
+echo LDP=$LD_LIBRARY_PATH
+env |sort > $LOGDIR/mpienv
+mpirun --host localhost,localhost \
+	--mca btl_tcp_if_include localhost \
+	--mca orte_base_help_aggregate 0 \
+	-n 2 $prefix/bin/MPIApp 500000 CONF2 &
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -l
+SLEEP 2
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -lv
+MESSAGE ldms_ls on host 3:
+LDMS_LS 3
+SLEEP 5
+KILL_LDMSD `seq 3`
+file_created $STOREDIR/node/$testname
