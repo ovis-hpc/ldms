@@ -147,6 +147,31 @@ OPTION_DEFAULT_DISABLE([grptest], [ENABLE_GRPTEST])
 dnl grptest will also build with --enable-ldms-test
 AM_CONDITIONAL([ENABLE_GRPTEST_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_GRPTEST_FALSE" = "x#"])
 
+OPTION_WITH([libpfm], [LIBPFM])
+OPTION_DEFAULT_DISABLE([syspapi], [ENABLE_SYSPAPI])
+if test -z "$ENABLE_SYSPAPI_TRUE"; then
+	TMPLIBS="$LIBS"
+	TMPCFLAGS="$CFLAGS"
+	LIBS=""
+	AC_CHECK_LIB(papi, PAPI_library_init, [],
+		AC_MSG_ERROR([libpapi not found (required by syspapi).]),
+		$LIBPAPI_LIBDIR_FLAG $LIBPAPI_LIB64DIR_FLAG)
+	LIBS=""
+	AC_CHECK_LIB(pfm, pfm_initialize, [],
+		AC_MSG_ERROR([libpfm not found (required by syspapi).]),
+		$LIBPFM_LIBDIR_FLAG $LIBPFM_LIB64DIR_FLAG)
+	LIBS=""
+	dnl Check headers
+	CFLAGS=$LIBPAPI_INCDIR_FLAG
+	AC_CHECK_HEADER(papi.h, [],
+		AC_MSG_ERROR([`papi.h` not found (required by syspapi).]))
+	CFLAGS=$LIBPFM_INCDIR_FLAG
+	AC_CHECK_HEADER(perfmon/pfmlib_perf_event.h, [],
+		AC_MSG_ERROR([`perfmon/pfmlib_perf_event.h` not found
+			      (required by syspapi).]))
+	LIBS="$TMPLIBS"
+	CFLAGS="$TMPCFLAGS"
+fi
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
@@ -504,6 +529,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/contrib/Makefile
 		 src/sampler/contrib/ipmireader/Makefile
 		 src/sampler/ibm_occ/Makefile
+		 src/sampler/syspapi/Makefile
 		 src/ldmsd/Makefile
 		 src/ldmsd/test/Makefile
 		 scripts/Makefile

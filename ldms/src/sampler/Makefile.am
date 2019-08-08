@@ -288,3 +288,7 @@ libgrptest_la_SOURCES = grptest.c $(BASE_SRC)
 libgrptest_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libgrptest.la
 endif
+
+if ENABLE_SYSPAPI
+SUBDIRS += syspapi
+endif
