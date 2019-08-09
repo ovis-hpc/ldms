@@ -526,7 +526,8 @@ int __req_filter(ldmsd_req_ctxt_t reqc, void *ctxt)
 int process_config_file(const char *path, int *lno, int trust)
 {
 	static uint16_t file_no = 0; /* Config file ID */
-	static uint32_t cur_req_id = 0; /* For verifying command order */
+	static int have_cmdline = 0;
+	static int have_cfgcmd = 0;
 	file_no++;
 	uint32_t msg_no; /* file_no:line_no */
 	uint16_t lineno = 0; /* The max number of lines is 65536. */
@@ -656,30 +657,40 @@ parse:
 			 * 3. Configuration commands (Other requests, including 'listen')
 			 */
 			uint32_t req_id = ntohl(request->req_id);
-			if ((req_id == LDMSD_ENV_REQ) && cur_req_id &&
-					(cur_req_id != LDMSD_ENV_REQ)) {
-				ldmsd_log(LDMSD_LCRITICAL, "At line %d (%s): "
-						"The environment variable "
-						"is given after "
-						"a command-line option.\n",
-						lineno, path);
-				rc = EINVAL;
-				goto cleanup;
-			} else if (((req_id == LDMSD_CMD_LINE_SET_REQ) ||
-					(req_id == LDMSD_LISTEN_REQ)) &&
-					cur_req_id &&
-					(cur_req_id != LDMSD_ENV_REQ) &&
-					(cur_req_id != LDMSD_CMD_LINE_SET_REQ) &&
-					(cur_req_id != LDMSD_LISTEN_REQ)) {
-				ldmsd_log(LDMSD_LCRITICAL, "At line %d (%s): "
-						"The command-line option or listen "
+			if (req_id == LDMSD_ENV_REQ) {
+				if (have_cmdline || have_cfgcmd) {
+					ldmsd_log(LDMSD_LCRITICAL,
+							"At line %d (%s): "
+							"The environment variable "
+							"is given after "
+							"a command-line option or"
+							"a config command.\n",
+							lineno, path);
+					rc = EINVAL;
+					goto cleanup;
+				}
+			} else if ((req_id == LDMSD_CMD_LINE_SET_REQ) ||
+					(req_id == LDMSD_LISTEN_REQ)) {
+				have_cmdline = 1;
+				if (have_cfgcmd) {
+					ldmsd_log(LDMSD_LCRITICAL,
+						"At line %d (%s): "
+						"The set or listen command "
 						"is given after a configuration "
-						"command.\n",
+						"command, e.g., load, prdcr_#.\n",
 						lineno, path);
-				rc = EINVAL;
-				goto cleanup;
+					rc = EINVAL;
+					goto cleanup;
+				}
+			} else if (req_id == LDMSD_INCLUDE_REQ) {
+				/* do nothing */
+			} else {
+				/*
+				 * The other commands are all
+				 * config commands.
+				 */
+				have_cfgcmd = 1;
 			}
-			cur_req_id = req_id;
 		}
 		rc = ldmsd_process_config_request(&fxprt.base, request, req_filter_fn);
 		if (rc || fxprt.base.rsp_err) {
