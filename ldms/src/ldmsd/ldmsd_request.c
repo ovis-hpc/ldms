@@ -5755,6 +5755,8 @@ auth:
 proc_err:
 	if (rc == EPERM)
 		goto cmdline_eperm;
+	else if (rc == ENOTSUP)
+		goto cmdline_enotsup;
 	else
 		goto cmdline_einval;
 cmdline_einval:
@@ -5770,6 +5772,12 @@ cmdline_eperm:
 	reqc->errcode = EPERM;
 	cnt = snprintf(reqc->line_buf, reqc->line_len,
 			"The value of '%s' has already been set.", lval);
+	goto send_reply;
+cmdline_enotsup:
+	rc = 0;
+	reqc->errcode = ENOTSUP;
+	cnt = snprintf(reqc->line_buf, reqc->line_len,
+			"The option -%s must be given at the command line.", lval);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;

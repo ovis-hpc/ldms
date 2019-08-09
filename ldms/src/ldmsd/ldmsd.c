@@ -1096,7 +1096,7 @@ err:
 /*
  * \return EPERM if the value is already given.
  *
- * The command-line options processed in the function
+ * The function processes only the cmd-line options that
  * can be specified both at the command line and in configuration files.
  */
 int ldmsd_process_cmd_line_arg(char opt, char *value)
@@ -1143,20 +1143,13 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		cmd_line_args.banner = atoi(value);
 		break;
 	case 'C':
-		cmd_line_args.is_syntax_check = 1;
-		break;
 	case 'c':
-		/*
-		 * Must be specified at the command line.
-		 * Handle separately in the main() function.
-		 */
-		break;
 	case 'F':
 		/*
 		 * Must be specified at the command line.
 		 * Handle separately in the main() function.
 		 */
-		break;
+		return ENOTSUP;
 	case 'H':
 		if (check_arg("H", value, LO_NAME))
 			return EINVAL;
@@ -1182,7 +1175,12 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			return EPERM;
 		} else {
 			cmd_line_args.log_path = strdup(value);
-			log_fp = ldmsd_open_log();
+			/*
+			 * Print all messages to stdout
+			 * if the syntax check flag is turned on.
+			 */
+			if (!ldmsd_is_check_syntax())
+				log_fp = ldmsd_open_log();
 		}
 		break;
 	case 'm':
@@ -1541,6 +1539,14 @@ int main(int argc, char *argv[])
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
+		case 'C':
+			cmd_line_args.is_syntax_check = 1;
+			break;
+		case 'c':
+			/*
+			 * Handle configuration files later
+			 */
+			break;
 		case 'F':
 			cmd_line_args.foreground = 1;
 			break;
