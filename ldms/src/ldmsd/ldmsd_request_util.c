@@ -355,7 +355,7 @@ static int add_attr_from_attr_str(const char *name, const char *value,
 		} else {
 			attr->attr_id = ldmsd_req_attr_str2id(name);
 			if ((int)attr->attr_id < 0) {
-				msglog(LDMSD_LERROR, "Invalid attribute: %s\n", name);
+				msglog(LDMSD_LERROR, "Invalid attribute: '%s'\n", name);
 				return EINVAL;
 			}
 		}

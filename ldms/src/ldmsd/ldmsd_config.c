@@ -642,9 +642,9 @@ parse:
 	req_array = ldmsd_parse_config_str(line, msg_no, fxprt.base.max_msg, ldmsd_log);
 	if (!req_array) {
 		rc = errno;
-		ldmsd_log(LDMSD_LCRITICAL, "Failed to parse config file at line %d "
-				"(%s). %s\n", lineno, path, strerror(rc));
-		goto cleanup;
+		ldmsd_log(LDMSD_LERROR, "At line %d (%s): Failed to parse "
+				"config line. %s\n", lineno, path, strerror(rc));
+		goto cleanup_line;
 	}
 	for (i = 0; i < req_array->num_reqs; i++) {
 		request = req_array->reqs[i];
@@ -659,7 +659,7 @@ parse:
 			uint32_t req_id = ntohl(request->req_id);
 			if (req_id == LDMSD_ENV_REQ) {
 				if (have_cmdline || have_cfgcmd) {
-					ldmsd_log(LDMSD_LCRITICAL,
+					ldmsd_log(LDMSD_LERROR,
 							"At line %d (%s): "
 							"The environment variable "
 							"is given after "
@@ -667,20 +667,20 @@ parse:
 							"a config command.\n",
 							lineno, path);
 					rc = EINVAL;
-					goto cleanup;
+					goto cleanup_record;
 				}
 			} else if ((req_id == LDMSD_CMD_LINE_SET_REQ) ||
 					(req_id == LDMSD_LISTEN_REQ)) {
 				have_cmdline = 1;
 				if (have_cfgcmd) {
-					ldmsd_log(LDMSD_LCRITICAL,
+					ldmsd_log(LDMSD_LERROR,
 						"At line %d (%s): "
 						"The set or listen command "
 						"is given after a configuration "
 						"command, e.g., load, prdcr_#.\n",
 						lineno, path);
 					rc = EINVAL;
-					goto cleanup;
+					goto cleanup_record;
 				}
 			} else if (req_id == LDMSD_INCLUDE_REQ) {
 				/* do nothing */
@@ -693,27 +693,28 @@ parse:
 			}
 		}
 		rc = ldmsd_process_config_request(&fxprt.base, request, req_filter_fn);
-		if (rc || fxprt.base.rsp_err) {
-			if (!ldmsd_is_check_syntax()) {
-				if (!rc)
-					rc = fxprt.base.rsp_err;
-				goto cleanup;
-			} else {
-				/*
-				 * If LDMSD starts for syntax checking,
-				 * it will go through all configuration files.
-				 */
-			}
-		}
-	next_req:
+cleanup_record:
 		free(request);
+		if ((rc || fxprt.base.rsp_err) && !ldmsd_is_check_syntax()) {
+			if (!rc)
+				rc = fxprt.base.rsp_err;
+			goto cleanup_line;
+		}
 	}
+
+cleanup_line:
 	msg_no += 1;
 
 	off = 0;
-	free(req_array);
-	req_array = NULL;
-	goto next_line;
+	if (req_array) {
+		free(req_array);
+		req_array = NULL;
+	}
+
+	if (ldmsd_is_check_syntax())
+		goto next_line;
+	if (!rc && !fxprt.base.rsp_err)
+		goto next_line;
 
 cleanup:
 	if (fin)
