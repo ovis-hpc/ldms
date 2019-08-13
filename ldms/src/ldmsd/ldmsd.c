@@ -1632,13 +1632,13 @@ int main(int argc, char *argv[])
 	}
 
 	ldmsd_init(argv);
+	ldmsd_handle_deferred_plugin_config();
 
 	if (cmd_line_args.is_syntax_check)
 		goto out;
 
 	handle_pidfile_banner();
 	handle_listening_endpoints();
-	ldmsd_handle_deferred_plugin_config();
 
 	if (ldmsd_use_failover) {
 		/* failover will be the one starting cfgobjs */

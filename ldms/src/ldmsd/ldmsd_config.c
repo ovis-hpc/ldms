@@ -561,7 +561,7 @@ int process_config_file(const char *path, int *lno, int trust)
 		goto cleanup;
 	}
 
-	xprt.xprt = NULL;
+	xprt.type = LDMSD_CFG_XPRT_CONFIG_FILE;
 	xprt.file.filename = path;
 	xprt.send_fn = log_response_fn;
 	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
@@ -940,10 +940,8 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 {
 	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)data;
 	struct ldmsd_cfg_xprt_s xprt;
-	xprt.ldms.ldms = x;
-	xprt.send_fn = send_ldms_fn;
-	xprt.max_msg = ldms_xprt_msg_max(x);
-	xprt.trust = 0; /* don't trust any network for CMD expansion */
+
+	ldmsd_cfg_ldms_init(&xprt, x);
 
 	if (ntohl(request->rec_len) > xprt.max_msg) {
 		/* Send the record length advice */
@@ -1017,14 +1015,44 @@ int listen_on_ldms_xprt(ldmsd_listen_t listen)
 	return 0;
 }
 
+int ldmsd_handle_deferred_plugin_config()
+{
+	struct ldmsd_deferred_pi_config *cfg, *nxt_cfg;
+	ldmsd_plugin_inst_t inst;
+	int rc;
+	uint16_t lineno;
+	cfg = ldmsd_deferred_pi_config_first();
+	while (cfg) {
+		nxt_cfg = ldmsd_deffered_pi_config_next(cfg);
+		lineno = __config_file_msgno2lineno(cfg->msg_no);
+		inst = ldmsd_plugin_inst_find(cfg->name);
+		rc = ldmsd_plugin_inst_config(inst, cfg->d, cfg->buf, cfg->buflen);
+		if (rc) {
+			jbuf_t jb = json_entity_dump(NULL, cfg->d);
+			ldmsd_log(LDMSD_LERROR, "At line %d (%s): "
+					"Error config plugin instance "
+					"'%s': %s\n", lineno, cfg->config_file,
+					cfg->name, cfg->buf);
+			jbuf_free(jb);
+			if (!ldmsd_is_check_syntax())
+				return rc;
+		}
+		ldmsd_deferred_pi_config_free(cfg);
+		cfg = nxt_cfg;
+	}
+	return 0;
+}
+
+
 void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
 {
 	ldms_xprt_get(ldms);
+	xprt->type = LDMSD_CFG_XPRT_LDMS;
 	xprt->ldms.ldms = ldms;
 	xprt->send_fn = send_ldms_fn;
 	xprt->max_msg = ldms_xprt_msg_max(ldms);
 	xprt->cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
-	xprt->trust = 0;
+	xprt->trust = 0; /* don't trust any network for CMD expansion */
 }
 
 void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix)

@@ -284,6 +284,11 @@ typedef struct ldmsd_cfg_xprt_s {
 		struct ldmsd_cfg_sock_s sock;
 		struct ldmsd_cfg_ldms_s ldms;
 	};
+	enum {
+		LDMSD_CFG_XPRT_CONFIG_FILE = 1,
+		LDMSD_CFG_XPRT_SOCK,
+		LDMSD_CFG_XPRT_LDMS,
+	} type;
 	size_t max_msg;
 	ldmsd_cfg_send_fn_t send_fn;
 	ldmsd_cfg_cleanup_fn_t cleanup_fn;

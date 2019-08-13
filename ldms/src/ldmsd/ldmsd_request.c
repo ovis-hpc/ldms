@@ -745,7 +745,7 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 {
 	struct request_handler_entry *ent;
 	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)reqc->req_buf;
-	ldms_t xprt = reqc->xprt->xprt;
+	ldms_t xprt;
 	uid_t luid;
 	gid_t lgid;
 	mode_t mask;
@@ -764,10 +764,8 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 		return unimplemented_handler(reqc);
 
 	/* Check command permission */
-	if (xprt) {
-		/* NOTE: NULL xprt is a config file.
-		 *       So, this is an in-band ldms xprt */
-
+	if (reqc->xprt->type == LDMSD_CFG_XPRT_LDMS) {
+		xprt = reqc->xprt->xprt;
 		/* check against inband mask */
 		mask = ldmsd_inband_cfg_mask_get();
 		if (0 == (mask & ent->flag))
@@ -4329,7 +4327,9 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 
 	if (reqc->flags & LDMSD_REQ_DEFER_FLAG) {
 		ldmsd_deferred_pi_config_t cfg;
-		cfg = ldmsd_deferred_pi_config_new(name, d);
+		cfg = ldmsd_deferred_pi_config_new(name, d,
+							reqc->key.msg_no,
+							reqc->xprt->file.filename);
 		if (!cfg) {
 			ldmsd_log(LDMSD_LERROR, "Memory allocation failure\n");
 			goto enomem;
