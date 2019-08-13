@@ -1342,6 +1342,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 					"The attribute type '%s' is invalid.",
 					type_s);
+			reqc->errcode = EINVAL;
 			goto send_reply;
 		}
 		if (type == LDMSD_PRDCR_TYPE_LOCAL) {
