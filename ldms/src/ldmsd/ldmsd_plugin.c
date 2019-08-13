@@ -957,8 +957,8 @@ int ldmsd_handle_deferred_plugin_config()
 		rc = ldmsd_plugin_inst_config(inst, cfg->d, cfg->buf, cfg->buflen);
 		if (rc) {
 			jbuf_t jb = json_entity_dump(NULL, cfg->d);
-			ldmsd_log(LDMSD_LERROR, "Error config instance '%s': %s\n",
-					cfg->name, jb->buf);
+			ldmsd_log(LDMSD_LERROR, "Error config plugin instance "
+					"'%s': %s\n", cfg->name, jb->buf);
 			jbuf_free(jb);
 			return rc;
 		}
