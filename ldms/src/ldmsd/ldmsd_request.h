@@ -271,7 +271,7 @@ typedef struct ldmsd_cfg_sock_s {
 } *ldmsd_cfg_sock_t;
 
 typedef struct ldmsd_cfg_file_s {
-	uint32_t next_msg_no;
+	const char *filename; /* Config file name */
 } *ldmsd_cfg_file_t;
 
 struct ldmsd_cfg_xprt_s;

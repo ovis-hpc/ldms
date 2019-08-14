@@ -438,20 +438,12 @@ static uint16_t __config_file_msgno2lineno(uint32_t msgno)
 	return msgno & 0xFFFF;
 }
 
-typedef struct ldmsd_cfg_file_xprt {
-	struct ldmsd_cfg_xprt_s base;
-	const char *filename; /* Config file name */
-} *ldmsd_cfg_file_xprt_t;
-
 static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 {
 	uint16_t lineno;
 	ldmsd_req_attr_t attr;
-	ldmsd_cfg_file_xprt_t fxprt;
 	ldmsd_req_hdr_t req_reply = (ldmsd_req_hdr_t)data;
 	ldmsd_ntoh_req_msg(req_reply);
-
-	fxprt = (ldmsd_cfg_file_xprt_t)xprt;
 
 	lineno = __config_file_msgno2lineno(req_reply->msg_no);
 
@@ -465,7 +457,7 @@ static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 	if (req_reply->rsp_err && (attr->attr_id == LDMSD_ATTR_STRING)) {
 		/* Print the error message to the log */
 		ldmsd_log(LDMSD_LERROR, "At line %d (%s): error %d: %s\n",
-				lineno, fxprt->filename,
+				lineno, xprt->file.filename,
 				req_reply->rsp_err, attr->attr_value);
 	}
 	xprt->rsp_err = req_reply->rsp_err;
@@ -542,7 +534,7 @@ int process_config_file(const char *path, int *lno, int trust)
 	ssize_t off = 0;
 	ssize_t cnt;
 	size_t buf_len = 0;
-	struct ldmsd_cfg_file_xprt fxprt;
+	struct ldmsd_cfg_xprt_s xprt;
 	ldmsd_req_hdr_t request;
 	struct ldmsd_req_array *req_array = NULL;
 	ldmsd_req_filter_fn req_filter_fn;
@@ -569,12 +561,12 @@ int process_config_file(const char *path, int *lno, int trust)
 		goto cleanup;
 	}
 
-	fxprt.filename = path;
-	fxprt.base.xprt = NULL;
-	fxprt.base.send_fn = log_response_fn;
-	fxprt.base.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
-	fxprt.base.trust = trust;
-	fxprt.base.rsp_err = 0;
+	xprt.xprt = NULL;
+	xprt.file.filename = path;
+	xprt.send_fn = log_response_fn;
+	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
+	xprt.trust = trust;
+	xprt.rsp_err = 0;
 
 next_line:
 	errno = 0;
@@ -639,7 +631,7 @@ parse:
 	if (!off)
 		goto next_line;
 	msg_no = __config_file_msgno_get(file_no, lineno);
-	req_array = ldmsd_parse_config_str(line, msg_no, fxprt.base.max_msg, ldmsd_log);
+	req_array = ldmsd_parse_config_str(line, msg_no, xprt.max_msg, ldmsd_log);
 	if (!req_array) {
 		rc = errno;
 		ldmsd_log(LDMSD_LERROR, "At line %d (%s): Failed to parse "
@@ -692,12 +684,12 @@ parse:
 				have_cfgcmd = 1;
 			}
 		}
-		rc = ldmsd_process_config_request(&fxprt.base, request, req_filter_fn);
+		rc = ldmsd_process_config_request(&xprt, request, req_filter_fn);
 cleanup_record:
 		free(request);
-		if ((rc || fxprt.base.rsp_err) && !ldmsd_is_check_syntax()) {
+		if ((rc || xprt.rsp_err) && !ldmsd_is_check_syntax()) {
 			if (!rc)
-				rc = fxprt.base.rsp_err;
+				rc = xprt.rsp_err;
 			goto cleanup_line;
 		}
 	}
@@ -713,7 +705,7 @@ cleanup_line:
 
 	if (ldmsd_is_check_syntax())
 		goto next_line;
-	if (!rc && !fxprt.base.rsp_err)
+	if (!rc && !xprt.rsp_err)
 		goto next_line;
 
 cleanup:
