@@ -420,5 +420,5 @@ It presents a small cluster, shaun, in ldmsd attributes, with a single aggregato
 
 
 .SH SEE ALSO
-libgenders(3), ldmsd(8), ldmsd-genders(8)
+libgenders(3), ldmsd(8), ldmsd-genders(8), ldms-genders-examples(8)
 
