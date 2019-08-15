@@ -298,7 +298,7 @@ See /usr/share/doc/ovis-$version/sample_init_scripts/genders/README
 .fi
 
 .SH SEE ALSO
-libgenders(3), ldmsd(8), ldms-attributes(5), ldms_authentication(7)
+libgenders(3), ldmsd(8), ldms-attributes(5), ldms_authentication(7), ldms-genders-examples(8)
 
 
 
