@@ -6,4 +6,5 @@ ldms-attributes.man
 
 dist_man8_MANS= \
 ldmsd-genders.man \
+ldms-genders-examples.man \
 ldmsctl_args3.man
