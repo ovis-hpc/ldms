@@ -1475,15 +1475,71 @@ void ldmsd_init()
 	is_ldmsd_initialized = 1;
 }
 
+int create_listening_ldms_xprt(ldmsd_listen_t listen)
+{
+	listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
+			ldmsd_auth_name_get(listen), ldmsd_auth_attr_get(listen));
+	if (!listen->x) {
+		ldmsd_log(LDMSD_LERROR,
+			  "'%s' transport creation with auth '%s' "
+			  "failed, error: %s(%d). Please check transpot "
+			  "configuration, authentication configuration, "
+			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
+			  listen->xprt,
+			  ldmsd_auth_name_get(listen),
+			  ovis_errno_abbvr(errno),
+			  errno);
+		return 6; /* legacy error code */
+	}
+	return 0;
+}
+
 void handle_listening_endpoints()
 {
 	struct ldmsd_listen *listen;
 	int rc;
 	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
 		listen; listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
+		rc = create_listening_ldms_xprt(listen);
+		if (rc)
+			cleanup(rc, "error creating transport");
 		rc = listen_on_ldms_xprt(listen);
 		if (rc)
 			cleanup(rc, "error listening on transport");
+	}
+}
+
+void try_creating_listening_ldms_xprts()
+{
+	struct ldmsd_listen *listen;
+	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+		listen; listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
+		(void)create_listening_ldms_xprt(listen);
+	}
+}
+
+void try_creating_default_auth()
+{
+	ldms_auth_plugin_t default_auth_pi;
+	ldms_auth_t default_auth;
+	if (!cmd_line_args.auth_name)
+		return;
+	default_auth_pi = ldms_auth_plugin_get(cmd_line_args.auth_name);
+	if (!default_auth_pi) {
+		ldmsd_log(LDMSD_LERROR, "Invalid default auth '%s'."
+				"Please check ZAP_LIBPATH (env var), "
+				"and LD_LIBRARY_PATH",
+				cmd_line_args.auth_name);
+	} else {
+		default_auth = ldms_auth_new(default_auth_pi, cmd_line_args.auth_attrs);
+		if (!default_auth) {
+			ldmsd_log(LDMSD_LERROR, "Failed to create "
+				"the default authentication object. "
+				"Please check the given auth arguments (%s)\n",
+				av_to_string(cmd_line_args.auth_attrs, 0));
+		} else {
+			ldms_auth_free(default_auth);
+		}
 	}
 }
 
@@ -1634,8 +1690,15 @@ int main(int argc, char *argv[])
 	ldmsd_init(argv);
 	ldmsd_handle_deferred_plugin_config();
 
-	if (cmd_line_args.is_syntax_check)
+	if (cmd_line_args.is_syntax_check) {
+		try_creating_default_auth();
+		/*
+		 * Check whether the given transport, authentication methods
+		 * and their arguments are valid or not.
+		 */
+		try_creating_listening_ldms_xprts();
 		goto out;
+	}
 
 	handle_pidfile_banner();
 	handle_listening_endpoints();

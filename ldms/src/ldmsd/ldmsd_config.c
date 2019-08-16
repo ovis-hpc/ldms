@@ -986,20 +986,6 @@ int listen_on_ldms_xprt(ldmsd_listen_t listen)
 	int ret;
 	struct sockaddr_in sin;
 
-	listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
-			ldmsd_auth_name_get(listen), ldmsd_auth_attr_get(listen));
-	if (!listen->x) {
-		ldmsd_log(LDMSD_LERROR,
-			  "'%s' transport creation with auth '%s' "
-			  "failed, error: %s(%d). Please check transpot "
-			  "configuration, authentication configuration, "
-			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
-			  listen->xprt,
-			  ldmsd_auth_name_get(listen),
-			  ovis_errno_abbvr(errno),
-			  errno);
-		return 6; /* legacy error code */
-	}
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = 0;
 	sin.sin_port = htons(listen->port_no);
