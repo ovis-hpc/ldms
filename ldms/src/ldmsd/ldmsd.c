@@ -1190,6 +1190,13 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 					cmd_line_args.mem_sz_str);
 			return EPERM;
 		} else {
+			if (0 == ovis_get_mem_size(value)) {
+				ldmsd_log(LDMSD_LERROR,
+						"Invalid memory size '%s'. "
+						"See the -m option.\n",
+						value);
+				return EINVAL;
+			}
 			cmd_line_args.mem_sz_str = strdup(value);
 			if (!cmd_line_args.mem_sz_str) {
 				ldmsd_log(LDMSD_LERROR, "Out of memory\n");
@@ -1380,14 +1387,7 @@ void ldmsd_init()
 		}
 
 	}
-	if ((mem_sz = ovis_get_mem_size(cmd_line_args.mem_sz_str)) == 0) {
-		printf("Invalid memory size '%s'. See the -m option.\n",
-						cmd_line_args.mem_sz_str);
-
-		if (!ldmsd_is_check_syntax()) {
-			cleanup(EINVAL, "invalid -m value");
-		}
-	}
+	mem_sz = ovis_get_mem_size(cmd_line_args.mem_sz_str);
 	if (ldms_init(mem_sz)) {
 		ldmsd_log(LDMSD_LCRITICAL, "LDMS could not pre-allocate "
 				"the memory of size %s.\n",
