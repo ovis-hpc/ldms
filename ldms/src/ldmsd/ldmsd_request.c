@@ -5729,7 +5729,7 @@ static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc)
 			reqc->errcode = EINVAL;
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
 					"Unknown cmd-line option or it must be "
-					"given at the command line: %s\n", lval);
+					"given at the command line: %s", lval);
 			goto send_reply;
 		}
 
@@ -5765,7 +5765,7 @@ cmdline_einval:
 	rc = 0;
 	reqc->errcode = EINVAL;
 	cnt = snprintf(reqc->line_buf, reqc->line_len,
-			"Invalid cmd-line value: %s=%s\n", lval, rval);
+			"Invalid cmd-line value: %s=%s.", lval, rval);
 	goto send_reply;
 cmdline_eperm:
 	/* reset to 0 because the error caused by users */
