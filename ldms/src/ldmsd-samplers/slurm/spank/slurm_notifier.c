@@ -429,7 +429,7 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 {
 	char subscriber_data[PATH_MAX];
-	char job_name[80];
+	char name[80];
 	jbuf_t jb;
 	spank_err_t err;
 	jb = jbuf_new(); if (!jb) goto out_1;
@@ -450,11 +450,19 @@ jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 	}
 	jb = jbuf_append_attr(jb, "subscriber_data", "\"%s\",", subscriber_data); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
-	job_name[0] = '\0';
-	err = spank_getenv(sh, "SLURM_JOB_NAME", job_name, sizeof(job_name));
+
+	name[0] = '\0';
+	err = spank_getenv(sh, "SLURM_JOB_NAME", name, sizeof(name));
 	if (err)
-		job_name[0] = '\0';
-	jb = jbuf_append_attr(jb, "job_name", "\"%s\",", job_name); if (!jb) goto out_1;
+		name[0] = '\0';
+	jb = jbuf_append_attr(jb, "job_name", "\"%s\",", name); if (!jb) goto out_1;
+
+	name[0] = '\0';
+	err = spank_getenv(sh, "SLURM_JOB_USER", name, sizeof(name));
+	if (err)
+		name[0] = '\0';
+	jb = jbuf_append_attr(jb, "job_user", "\"%s\",", name); if (!jb) goto out_1;
+
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "uid", S_JOB_UID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "gid", S_JOB_GID, ','); if (!jb) goto out_1;
