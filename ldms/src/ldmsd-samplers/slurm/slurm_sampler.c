@@ -117,6 +117,9 @@ struct slurm_sampler_inst_s {
 	int task_pid_idx;
 	int task_rank_idx;
 	int task_exit_status_idx;
+	int user_name_idx;
+	int job_name_idx;
+	int job_tag_idx;
 
 	int next_list_idx;
 };
@@ -261,6 +264,42 @@ static void handle_job_init(slurm_sampler_inst_t inst,
 		ldms_metric_array_set_u32(inst->job_set, inst->task_pid_idx + job->job_slot, i, 0);
 		ldms_metric_array_set_u32(inst->job_set, inst->task_rank_idx + job->job_slot, i, 0);
 		ldms_metric_array_set_u32(inst->job_set, inst->task_exit_status_idx + job->job_slot, i, 0);
+	}
+
+	attr = json_attr_find(dict, "job_user");
+	if (attr) {
+		json_entity_t user_name = json_attr_value(attr);
+		if (json_entity_type(user_name) == JSON_STRING_VALUE) {
+			ldms_metric_array_set_str(inst->job_set,
+					inst->user_name_idx + job->job_slot,
+					json_value_str(user_name)->str);
+		}
+	}
+	attr = json_attr_find(dict, "job_name");
+	if (attr) {
+		json_entity_t job_name = json_attr_value(attr);
+		if (json_entity_type(job_name) == JSON_STRING_VALUE) {
+			ldms_metric_array_set_str(inst->job_set,
+					inst->job_name_idx + job->job_slot,
+					json_value_str(job_name)->str);
+		}
+	}
+	/* If subscriber data is present, look for an instance tag */
+	attr = json_attr_find(dict, "subscriber_data");
+	while (attr) {
+		json_entity_t subs_dict = json_attr_value(attr);
+		if (json_entity_type(subs_dict) != JSON_DICT_VALUE)
+			break;
+		attr = json_attr_find(subs_dict, "job_tag");
+		if (!attr)
+			break;
+		json_entity_t job_tag = json_attr_value(attr);
+		if (json_entity_type(job_tag) != JSON_STRING_VALUE)
+			break;
+		ldms_metric_array_set_str(inst->job_set,
+				inst->job_tag_idx + job->job_slot,
+				json_value_str(job_tag)->str);
+		break;
 	}
  out:
 	ldms_transaction_end(inst->job_set);
@@ -505,17 +544,37 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
  *                    +-+-+...+-+
  * task_count         | | |   | |
  *                    +-+-+-+-+-+...+-+
- * task_pid           | | | | | |   | |
+ * task_pid_0         | | | | | |   | |
+ * ...
+ * task_pid_N         | | | | | |   | |
  *                    +-+-+-+-+-+...+-+
- * task_rank          | | | | | |   | |
+ * task_rank_0        | | | | | |   | |
+ * ...
+ * task_rank_N        | | | | | |   | |
  *                    +-+-+-+-+-+...+-+
- * task_exit_status   | | | | | |   | |
+ * task_exit_status_0 | | | | | |   | |
+ * ...
+ * task_exit_status_N | | | | | |   | |
  *                    +-+-+-+-+-+...+-+
  *                    |               |
  *                    |<------------->|
  *                            ^
  *                            |
  *                  max tasks +
+ *
+ *                    +--------+
+ * user_name_0        | string |
+ * ...
+ * user_name_N        | string |
+ *                    +--------+
+ * job_name_0         | string |
+ * ...
+ * job_name_N         | string |
+ *                    +--------+
+ * job_tag_0          | string |
+ * ...
+ * job_tag_N          | string |
+ *                    +--------+
  */
 
 /*
@@ -652,6 +711,39 @@ slurm_sampler_create_schema(ldmsd_plugin_inst_t pi)
 		rc = ldms_schema_metric_array_add(schema, metric_name,
 						  LDMS_V_U32_ARRAY,
 						  "", inst->task_list_len);
+		if (rc < 0)
+			goto err;
+	}
+
+	/* user name */
+	inst->user_name_idx = rc + 1;
+	for (i = 0; i < inst->job_list_len; i++) {
+		char metric_name[80];
+		sprintf(metric_name, "user_%d", i);
+		rc = ldms_schema_metric_array_add(schema, metric_name,
+				LDMS_V_CHAR_ARRAY, "", 32);
+		if (rc < 0)
+			goto err;
+	}
+
+	/* job name */
+	inst->job_name_idx = rc + 1;
+	for (i = 0; i < inst->job_list_len; i++) {
+		char metric_name[80];
+		sprintf(metric_name, "job_name_%d", i);
+		rc = ldms_schema_metric_array_add(schema, metric_name,
+				LDMS_V_CHAR_ARRAY, "", 256);
+		if (rc < 0)
+			goto err;
+	}
+
+	/* job tag */
+	inst->job_tag_idx = rc + 1;
+	for (i = 0; i < inst->job_list_len; i++) {
+		char metric_name[80];
+		sprintf(metric_name, "job_tag_%d", i);
+		rc = ldms_schema_metric_array_add(schema, metric_name,
+				LDMS_V_CHAR_ARRAY, "", 256);
 		if (rc < 0)
 			goto err;
 	}
