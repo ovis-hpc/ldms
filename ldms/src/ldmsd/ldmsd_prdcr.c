@@ -104,14 +104,11 @@ static void __prdcr_set_del(ldmsd_prdcr_set_t set)
 {
 	ref_dump_no_lock(&set->ref, __func__);
 	ldmsd_log(LDMSD_LINFO, "Deleting producer set %s\n", set->inst_name);
-	if (set->schema_name) {
+	if (set->schema_name)
 		free(set->schema_name);
-	}
-	if (set->set) {
+	if (set->set)
 		ldms_set_delete(set->set);
-	}
-	ldmsd_strgp_ref_t strgp_ref;
-	strgp_ref = LIST_FIRST(&set->strgp_list);
+	ldmsd_strgp_ref_t strgp_ref = LIST_FIRST(&set->strgp_list);
 	while (strgp_ref) {
 		LIST_REMOVE(strgp_ref, entry);
 		ldmsd_strgp_put(strgp_ref->strgp);
@@ -159,6 +156,17 @@ static void prdcr_set_del(ldmsd_prdcr_set_t set)
 	ldmsd_prdcr_set_ref_put(set, "create");
 }
 
+static void prdcr_reset_set(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set)
+{
+	EV_DATA(prd_set->state_ev, struct state_data)->start_n_stop = 0;
+	ldmsd_prdcr_set_ref_get(prd_set, "state_ev");
+	if (ev_post(producer, updater, prd_set->state_ev, NULL)) {
+		ldmsd_prdcr_set_ref_put(prd_set, "state_ev");
+	}
+	rbt_del(&prdcr->set_tree, &prd_set->rbn);
+	prdcr_set_del(prd_set);
+}
+
 /**
  * Destroy all sets for the producer
  */
@@ -168,17 +176,7 @@ static void prdcr_reset_sets(ldmsd_prdcr_t prdcr)
 	struct rbn *rbn;
 	while ((rbn = rbt_min(&prdcr->set_tree))) {
 		prd_set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
-		EV_DATA(prd_set->state_ev, struct state_data)->start_n_stop = 0;
-		ldmsd_prdcr_set_ref_get(prd_set, "state_ev");
-		if (ev_post(producer, updater, prd_set->state_ev, NULL)) {
-			ldmsd_prdcr_set_ref_put(prd_set, "state_ev");
-		}
-		if (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG) {
-			/* Put back the reference taken when register for push */
-			ldmsd_prdcr_set_ref_put(prd_set, "push");
-		}
-		rbt_del(&prdcr->set_tree, rbn);
-		prdcr_set_del(prd_set);
+		prdcr_reset_set(prdcr, prd_set);
 	}
 }
 
@@ -305,10 +303,8 @@ static void prdcr_dir_cb_del(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 		if (!rbn)
 			continue;
 		set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
-
-		// UNSHARE ldms_xprt_set_release(xprt, set->set);
-		rbt_del(&prdcr->set_tree, &set->rbn);
-		prdcr_set_del(set);
+		assert(set->ref_count);
+		prdcr_reset_set(prdcr, set);
 	}
 }
 
