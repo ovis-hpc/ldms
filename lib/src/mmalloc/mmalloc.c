@@ -90,7 +90,13 @@ static int compare_count(void *node_key, const void *val_key)
 
 static int compare_addr(void *node_key, const void *val_key)
 {
-	return (int)(*(char **)node_key - *(char **)val_key);
+	char *a = *(char **)node_key;
+	char *b = *(char **)val_key;
+	if (a > b)
+		return 1;
+	if (a < b)
+		return -1;
+	return 0;
 }
 
 /* NB: only works for power of two r */
