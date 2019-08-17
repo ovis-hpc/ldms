@@ -125,17 +125,12 @@ static ldmsd_prdcr_set_t prdcr_set_new(const char *inst_name, const char *schema
 void __prdcr_set_del(ldmsd_prdcr_set_t set)
 {
 	ldmsd_log(LDMSD_LINFO, "Deleting producer set %s\n", set->inst_name);
-	if (set->schema_name) {
+	if (set->schema_name)
 		free(set->schema_name);
-		set->schema_name = NULL;
-	}
-	if (set->set) {
+
+	if (set->set)
 		ldms_set_delete(set->set);
-		set->set = NULL;
-	}
-	set->state = LDMSD_PRDCR_SET_STATE_START;
-	ldmsd_strgp_ref_t strgp_ref;
-	strgp_ref = LIST_FIRST(&set->strgp_list);
+	ldmsd_strgp_ref_t strgp_ref = LIST_FIRST(&set->strgp_list);
 	while (strgp_ref) {
 		LIST_REMOVE(strgp_ref, entry);
 		ldmsd_strgp_put(strgp_ref->strgp);
@@ -153,7 +148,6 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 void ldmsd_prdcr_set_ref_get(ldmsd_prdcr_set_t set)
 {
 	(void)__sync_fetch_and_add(&set->ref_count, 1);
-
 }
 
 void ldmsd_prdcr_set_ref_put(ldmsd_prdcr_set_t set)
@@ -213,6 +207,14 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 	}
 }
 
+static void prdcr_reset_set(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set)
+{
+	prdcr_hint_tree_update(prdcr, prd_set,
+			       &prd_set->updt_hint, UPDT_HINT_TREE_REMOVE);
+	rbt_del(&prdcr->set_tree, &prd_set->rbn);
+	prdcr_set_del(prd_set);
+}
+
 /**
  * Destroy all sets for the producer
  */
@@ -222,14 +224,7 @@ static void prdcr_reset_sets(ldmsd_prdcr_t prdcr)
 	struct rbn *rbn;
 	while ((rbn = rbt_min(&prdcr->set_tree))) {
 		prd_set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
-		if (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG) {
-			/* Put back the reference taken when register for push */
-			ldmsd_prdcr_set_ref_put(prd_set);
-		}
-		prdcr_hint_tree_update(prdcr, prd_set,
-				&prd_set->updt_hint, UPDT_HINT_TREE_REMOVE);
-		rbt_del(&prdcr->set_tree, rbn);
-		prdcr_set_del(prd_set);
+		prdcr_reset_set(prdcr, prd_set);
 	}
 }
 
@@ -392,10 +387,8 @@ static void prdcr_dir_cb_del(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 		if (!rbn)
 			continue;
 		set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
-		prdcr_hint_tree_update(prdcr, set,
-				&set->updt_hint, UPDT_HINT_TREE_REMOVE);
-		rbt_del(&prdcr->set_tree, &set->rbn);
-		prdcr_set_del(set);
+		assert(set->ref_count);
+		prdcr_reset_set(prdcr, set);
 	}
 }
 
