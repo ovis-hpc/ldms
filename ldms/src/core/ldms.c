@@ -100,10 +100,29 @@ static int set_comparator(void *a, const void *b)
 
 	return strcmp(x, y);
 }
+
 static struct rbt set_tree = {
 	.root = NULL,
 	.comparator = set_comparator
 };
+
+static int id_comparator(void *a, const void *b)
+{
+	uint64_t _a = (uint64_t)a;
+	uint64_t _b = (uint64_t)b;
+
+	if (_a > _b)
+		return 1;
+	if (_a < _b)
+		return -1;
+	return 0;
+}
+
+static struct rbt id_tree = {
+	.root = NULL,
+	.comparator = id_comparator
+};
+
 static pthread_mutex_t __set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void __ldms_gn_inc(struct ldms_set *set, ldms_mdesc_t desc)
@@ -444,6 +463,8 @@ static void __destroy_set(void *v)
 	free(set);
 }
 
+uint64_t __next_set_id = 1;
+
  /* The caller must hold the set tree lock. */
 static struct ldms_set *
 __record_set(const char *instance_name,
@@ -470,18 +491,37 @@ __record_set(const char *instance_name,
 	LIST_INIT(&set->local_rbd_list);
 	pthread_mutex_init(&set->lock, NULL);
 	set->curr_idx = __le32_to_cpu(sh->array_card) - 1;
-
+	set->set_id = __sync_fetch_and_add(&__next_set_id, 1);
 	set->meta = sh;
 	set->data_array = dh;
 	set->data = __set_array_get(set, set->curr_idx);
 	set->flags = flags;
 
-	set->rb_node.key = get_instance_name(set->meta)->name;
 	ref_init(&set->ref, __func__, __destroy_set, set);
+	rbn_init(&set->rb_node, get_instance_name(set->meta)->name);
 	rbt_ins(&set_tree, &set->rb_node);
-
+	rbn_init(&set->id_node, (void *)set->set_id);
+	rbt_ins(&id_tree, &set->id_node);
  out:
 	return set;
+}
+
+/**
+ * Callers must hold the set_tree lock
+ */
+extern struct ldms_set *__ldms_set_by_id(uint64_t id)
+{
+	struct ldms_set *set = NULL;
+	struct rbn *rbn;
+	rbn = rbt_find(&id_tree, (void *)id);
+	if (rbn)
+		set = container_of(rbn, struct ldms_set, id_node);
+	return set;
+}
+
+uint64_t ldms_set_id(ldms_set_t set)
+{
+	return set->set->set_id;
 }
 
 int ldms_set_publish(ldms_set_t sd)
@@ -635,6 +675,7 @@ static void print_xprt_addrs(ldms_t xprt)
  */
 void ldms_set_delete(ldms_set_t s)
 {
+	struct ldms_rbuf_desc *rbd;
 	ref_dump(&s->set->ref, __func__);
 
 	if (!s)
@@ -644,6 +685,12 @@ void ldms_set_delete(ldms_set_t s)
 	ldms_set_unpublish(s);
 
 	struct ldms_set *set = s->set;
+
+	__ldms_set_tree_lock();
+	rbt_del(&set_tree, &set->rb_node);
+	rbt_del(&id_tree, &set->id_node);
+	__ldms_set_tree_unlock();
+
 	pthread_mutex_lock(&set->lock);
 
 	/*
@@ -652,20 +699,19 @@ void ldms_set_delete(ldms_set_t s)
 	 */
 
 	while (!LIST_EMPTY(&set->remote_rbd_list)) {
-		s = LIST_FIRST(&set->remote_rbd_list);
-		__ldms_free_rbd(s);
+		rbd = LIST_FIRST(&set->remote_rbd_list);
+		__ldms_free_rbd(rbd);
 	}
 
 	while (!LIST_EMPTY(&set->local_rbd_list)) {
-		s = LIST_FIRST(&set->local_rbd_list);
-		__ldms_free_rbd(s);
+		rbd = LIST_FIRST(&set->local_rbd_list);
+		__ldms_free_rbd(rbd);
 	}
 
-	__ldms_set_tree_lock();
-	rbt_del(&set_tree, &set->rb_node);
 	pthread_mutex_unlock(&set->lock);
+
 	ref_put(&set->ref, "__record_set");
-	__ldms_set_tree_unlock();
+
 }
 
 void ldms_set_put(ldms_set_t s)
@@ -675,7 +721,11 @@ void ldms_set_put(ldms_set_t s)
 
 	struct ldms_set *set = s->set;
 	pthread_mutex_lock(&set->lock);
+	if (s->xprt)
+		pthread_mutex_lock(&s->xprt->lock);
 	__ldms_free_rbd(s); /* removes the RBD from the local/remote rbd list */
+	if (s->xprt)
+		pthread_mutex_unlock(&s->xprt->lock);
 	pthread_mutex_unlock(&set->lock);
 	ref_put(&set->ref, "ldms_set_by_name");
 }
@@ -1101,6 +1151,7 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	return rbd;
  err_2:
 	rbt_del(&set_tree, &set->rb_node);
+	rbt_del(&id_tree, &set->id_node);
 	free(set);
  err_1:
 	__ldms_set_tree_unlock();

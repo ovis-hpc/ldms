@@ -660,24 +660,39 @@ process_auth_msg(struct ldms_xprt *x, struct ldms_request *req)
 				req->send.msg, ntohl(req->send.msg_len));
 }
 
+static struct ldms_rbuf_desc *
+__rbd_by_set_id(struct ldms_xprt *x, uint64_t id)
+{
+	ldms_rbuf_t r = NULL;
+	struct ldms_set *set;
+	/* 1st check if the set still exits */
+	__ldms_set_tree_lock();
+	set = __ldms_set_by_id(id);
+	if (!set)
+		goto out;
+	r = ldms_lookup_rbd(x, set);
+ out:
+	__ldms_set_tree_unlock();
+	return r;
+}
 
 static void
 process_req_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 
-	struct ldms_rbuf_desc *r =
-		(struct ldms_rbuf_desc *)req->req_notify.set_id;
-
-	r->remote_notify_xid = req->hdr.xid;
-	r->notify_flags = ntohl(req->req_notify.flags);
+	struct ldms_rbuf_desc *r = __rbd_by_set_id(x, req->req_notify.set_id);
+	if (r) {
+		r->remote_notify_xid = req->hdr.xid;
+		r->notify_flags = ntohl(req->req_notify.flags);
+	}
 }
 
 static void
 process_cancel_notify_request(struct ldms_xprt *x, struct ldms_request *req)
 {
-	struct ldms_rbuf_desc *r =
-		(struct ldms_rbuf_desc *)req->cancel_notify.set_id;
-	r->remote_notify_xid = 0;
+	struct ldms_rbuf_desc *r = __rbd_by_set_id(x, req->cancel_notify.set_id);
+	if (r)
+		r->remote_notify_xid = 0;
 }
 
 static void
@@ -688,11 +703,15 @@ process_cancel_push_request(struct ldms_xprt *x, struct ldms_request *req)
 	struct ldms_set *set;
 	uint64_t remote_set_id;
 
-	r = (struct ldms_rbuf_desc *)req->cancel_push.set_id;
-	push_rbd = (struct ldms_rbuf_desc *)r->remote_set_id;
-	if (!push_rbd || 0 == (push_rbd->push_flags & LDMS_RBD_F_PUSH))
+	push_rbd = __rbd_by_set_id(x, req->cancel_push.set_id);
+	if (!push_rbd) {
+		x->log("%s: the specified set_id %ld no longer exits.\n",
+		       __func__, req->cancel_push.set_id);
+	}
+	if (0 == (push_rbd->push_flags & LDMS_RBD_F_PUSH))
 		return;
-	set = r->set;
+
+	set = push_rbd->set;
 
 	/* Peer will get push notification with UPD_F_PUSH_LAST set. */
 	assert(!(push_rbd->push_flags & LDMS_RBD_F_PUSH_CANCEL));
@@ -705,7 +724,7 @@ process_cancel_push_request(struct ldms_xprt *x, struct ldms_request *req)
 	 * If any remaining RBD still want automatic push updates,
 	 * leave it on for the set, otherwise, turn it off for the set
 	 */
-	r->remote_set_id = 0;
+	push_rbd->remote_set_id = 0;
 
 	__ldms_free_rbd(push_rbd);
 
@@ -898,7 +917,7 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	msg->hdr.xid = xid;
 	msg->hdr.cmd = htonl(LDMS_XPRT_RENDEZVOUS_LOOKUP);
 	msg->hdr.len = htonl(msg_len);
-	msg->lookup.set_id = (uint64_t)(unsigned long)rbd;
+	msg->lookup.set_id = set->set_id;
 	msg->lookup.more = htonl(more);
 	msg->lookup.data_len = htonl(__le32_to_cpu(set->meta->data_sz));
 	msg->lookup.meta_len = htonl(__le32_to_cpu(set->meta->meta_sz));
@@ -1560,12 +1579,16 @@ static void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *rep
 static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 			      struct ldms_context *ctxt)
 {
-	struct ldms_rbuf_desc *push_rbd =
-		(typeof(push_rbd))(unsigned long)reply->push.set_id;
+	struct ldms_rbuf_desc *push_rbd;
 	uint32_t data_off = ntohl(reply->push.data_off);
 	uint32_t data_len = ntohl(reply->push.data_len);
 	int rc;
 
+	push_rbd = __rbd_by_set_id(x, reply->push.set_id);
+	if (!push_rbd) {
+		x->log("%s: set_id %ld not found\n", __func__, reply->push.set_id);
+		return;
+	}
 	rc = __xprt_set_access_check(x, push_rbd->set, LDMS_ACCESS_WRITE);
 	if (rc)
 		return; /* NOTE should we terminate the xprt? */
@@ -2272,15 +2295,15 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 				   struct ldms_rendezvous_msg *lm)
 {
 	struct ldms_rendezvous_push_param *push = &lm->push;
-	struct ldms_rbuf_desc *my_rbd, *push_rbd;
+	struct ldms_rbuf_desc *push_rbd;
+	struct ldms_set *set;
 
-	/* Get the RBD provided in lookup to the peer */
-	my_rbd = (void *)push->lookup_set_id;
+	set = __ldms_set_by_id(push->lookup_set_id);
 
 	/* See if we already have a push RBD for this set and
 	 * transport.
 	 */
-	push_rbd = ldms_lookup_rbd(x, my_rbd->set);
+	push_rbd = ldms_lookup_rbd(x, set);
 	if (push_rbd) {
 		if (push_rbd->push_flags & LDMS_RBD_F_PUSH) {
 			/* Update the push flags, but otherwise, do nothing */
@@ -2289,7 +2312,7 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 	}
 
 	/* We will be the target of RDMA_WRITE */
-	push_rbd = __ldms_alloc_rbd(x, my_rbd->set, LDMS_RBD_TARGET);
+	push_rbd = __ldms_alloc_rbd(x, set, LDMS_RBD_TARGET);
 	if (!push_rbd) {
 		struct ldms_xprt *x = zap_get_ucontext(zep);
 		x->log("handle_rendezvous_push: __ldms_alloc_rbd out of memory\n");
@@ -2297,8 +2320,6 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 	}
 	push_rbd->rmap = ev->map;
 	push_rbd->remote_set_id = push->push_set_id;
-	/* When the peer cancels the push, it will be my_rbd, not the push_rbd */
-	my_rbd->remote_set_id = (uint64_t)(unsigned long)push_rbd;
  out:
 	push_rbd->push_flags = ntohl(push->flags) | LDMS_RBD_F_PUSH;
 	return;
@@ -3054,7 +3075,7 @@ static int send_req_register_push(struct ldms_rbuf_desc *r, uint32_t push_change
 	req.hdr.cmd = htonl(LDMS_XPRT_RENDEZVOUS_PUSH);
 	req.hdr.len = htonl(len);
 	req.push.lookup_set_id = r->remote_set_id;
-	req.push.push_set_id = (uint64_t)(unsigned long)r;
+	req.push.push_set_id = r->set->set_id;
 	req.push.flags = htonl(LDMS_RBD_F_PUSH);
 	if (push_change)
 		req.push.flags |= htonl(LDMS_RBD_F_PUSH_CHANGE);

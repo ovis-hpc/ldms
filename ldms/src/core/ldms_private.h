@@ -88,11 +88,13 @@ LIST_HEAD(rbd_list, ldms_rbuf_desc);
 struct ldms_set {
 	struct ref_s ref;
 	unsigned long flags;
+	uint64_t set_id;	/* unique identifier for a set in this daemon */
 	struct ldms_set_hdr *meta;
 	struct ldms_data_hdr *data; /* points to current entry of data array */
 	struct ldms_set_info_list local_info;
 	struct ldms_set_info_list remote_info; /*set info from the lookup operation */
 	struct rbn rb_node;
+	struct rbn id_node;
 	struct rbd_list local_rbd_list;
 	struct rbd_list remote_rbd_list;
 	pthread_mutex_t lock;
@@ -133,6 +135,7 @@ struct ldms_name_entry {
 };
 LIST_HEAD(ldms_name_list, ldms_name_entry);
 
+extern struct ldms_set *__ldms_set_by_id(uint64_t id);
 extern int __ldms_get_local_set_list(struct ldms_name_list *head);
 extern void __ldms_empty_name_list(struct ldms_name_list *name_list);
 
