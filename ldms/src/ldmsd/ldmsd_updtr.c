@@ -151,7 +151,6 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	uint64_t gn;
 	const char *name;
 	ldmsd_prdcr_set_t prd_set = arg;
-	int ready = 0;
 	int errcode;
 
 	pthread_mutex_lock(&prd_set->lock);
@@ -197,7 +196,8 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	}
 set_ready:
 	if ((status & LDMS_UPD_F_MORE) == 0)
-		ready = 1;
+		/* No more data pending move prdcr_set state UPDATING --> READY */
+		prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 out:
 	pthread_mutex_unlock(&prd_set->lock);
 	if (0 == errcode) {
@@ -209,16 +209,8 @@ out:
 						prd_set->inst_name);
 		}
 	}
-	if (ready) {
-		pthread_mutex_lock(&prd_set->lock);
-		prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
-		pthread_mutex_unlock(&prd_set->lock);
-	}
 	if (0 == (status & (LDMS_UPD_F_PUSH|LDMS_UPD_F_MORE))) {
-		/*
-		 * This is an pull update. Put the reference
-		 * taken before calling ldms_xprt_update.
-		 */
+		/* Put reference taken before calling ldms_xprt_update. */
 		ldmsd_prdcr_set_ref_put(prd_set, "xprt_update");
 	}
 	return;
@@ -347,8 +339,14 @@ static int schedule_set_updates(ldmsd_updtr_t updtr,
 
 	} else if (0 == (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG)) {
 		op_s = "Registering push for";
-		prd_set->push_flags |= LDMSD_PRDCR_SET_F_PUSH_REG;
-		ldmsd_prdcr_set_ref_get(prd_set, "push");
+
+		/* this doesn't work because it's taken after lookup
+		 * which may fail or the updater is never started at
+		 * all. since the flags don't tell yuou one way or the
+		 * other this is just broken */
+		/* prd_set->push_flags |= LDMSD_PRDCR_SET_F_PUSH_REG; */
+		/* ldmsd_prdcr_set_ref_get(prd_set, "push"); */
+
 		if (updtr->push_flags & LDMSD_UPDTR_F_PUSH_CHANGE)
 			push_flags = LDMS_XPRT_PUSH_F_CHANGE;
 		rc = ldms_xprt_register_push(prd_set->set, push_flags,
@@ -357,6 +355,9 @@ static int schedule_set_updates(ldmsd_updtr_t updtr,
 			/* This message does not repeat */
 			ldmsd_log(LDMSD_LERROR, "Register push error %d Set %s\n",
 						rc, prd_set->inst_name);
+		} else {
+			/* Only set the flag if we succeed */
+			prd_set->push_flags |= LDMSD_PRDCR_SET_F_PUSH_REG;
 		}
 	}
 out:
@@ -390,7 +391,7 @@ static int cancel_set_updates(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 	}
 	/* Put the push reference */
 	prd_set->push_flags &= ~LDMSD_PRDCR_SET_F_PUSH_REG;
-	ldmsd_prdcr_set_ref_put(prd_set, "push");
+	/* ldmsd_prdcr_set_ref_put(prd_set, "push"); */
 	return rc;
 }
 
