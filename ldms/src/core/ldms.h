@@ -908,6 +908,7 @@ extern int ldms_schema_array_card_set(ldms_schema_t schema, int card);
  * - EINVAL A parameter or the schema itself is invalid
  */
 extern ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema);
+extern uint64_t ldms_set_id(ldms_set_t set);
 
 /**
  * \brief Create an LDMS metric set with owner and permission
