@@ -170,6 +170,11 @@ static void *cleanup_proc(void *arg)
 		}
 		while (!LIST_EMPTY(&delete_list)) {
 			job = LIST_FIRST(&delete_list);
+			msglog(LDMSD_LINFO,
+			       "papi_sampler [%d]: deleting instance '%s', "
+			       "set %p, set_id %ld.\n",
+			       __LINE__, job->instance_name, job->set,
+			       ldms_set_id(job->set));
 			LIST_REMOVE(job, expiry_entry);
 			LIST_REMOVE(job, delete_entry);
 			free_job_data(job);
@@ -262,7 +267,7 @@ static int create_metric_set(job_data_t job)
 		rc = errno;
 		msglog(LDMSD_LERROR,
 		       "papi_sampler [%d]: Error %d creating the metric set '%s'.\n",
-		       __LINE__, rc);
+		       __LINE__, rc, job->instance_name);
 		goto err;
 	}
 	ldms_set_producer_name_set(job->set, job->base->producer_name);
@@ -478,7 +483,10 @@ static int handle_job_init(uint64_t job_id, json_entity_t e)
 			rc = EINVAL;
 			goto out;
 		}
-		rc = papi_process_config_data(job, json_value_str(config_string)->str, msglog);
+		rc = papi_process_config_data(job,
+					      json_value_str(config_string)->str,
+					      json_value_str(config_string)->str_len,
+					      msglog);
 	}
 	if (rc) {
 		release_job_data(job);
@@ -717,7 +725,8 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		job = get_job_data(job_id); /* protect against duplicate entries */
 		if (job) {
 			msglog(LDMSD_LINFO,
-			       "papi_sampler[%d]: ignoring duplicate init event received for job %d.\n",
+			       "papi_sampler[%d]: ignoring duplicate init event "
+			       "received for job %d.\n",
 			       __LINE__, job_id);
 			goto out_0;
 		}

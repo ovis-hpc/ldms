@@ -55,7 +55,7 @@
 #include  "../sampler_base.h"
 #include "papi_sampler.h"
 
-int papi_process_config_data(job_data_t job, char *buf, ldmsd_msg_log_f msglog)
+int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg_log_f msglog)
 {
 	json_parser_t p = NULL;
 	json_entity_t e = NULL;
@@ -71,7 +71,7 @@ int papi_process_config_data(job_data_t job, char *buf, ldmsd_msg_log_f msglog)
 		goto out;
 	}
 
-	rc = json_parse_buffer(p, buf, strlen(buf), &e);
+	rc = json_parse_buffer(p, buf, buflen, &e);
 	if (rc) {
 		msglog(LDMSD_LERROR,
 		       "papi_sampler: configuration file syntax error.\n");
@@ -211,7 +211,7 @@ int papi_process_config_file(job_data_t job, const char *path, ldmsd_msg_log_f m
 		       rc, path);
 		goto out;
 	}
-	rc = papi_process_config_data(job, buf, msglog);
+	rc = papi_process_config_data(job, buf, rc, msglog);
  out:
 	free(buf);
 	return rc;
