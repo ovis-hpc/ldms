@@ -25,5 +25,8 @@ enum slurm_job_state {
 #define TASK_PID_MID(s)		13
 #define TASK_RANK_MID(s)	(TASK_PID_MID(s) + ldms_metric_array_get_len(s, JOB_ID_MID(s)))
 #define TASK_EXIT_STATUS_MID(s)	(TASK_PID_MID(s) + (2 * ldms_metric_array_get_len(s, JOB_ID_MID(s))))
+#define JOB_USER_MID(s)	(TASK_PID_MID(s) + (3 * ldms_metric_array_get_len(s, JOB_ID_MID(s))))
+#define JOB_NAME_MID(s)	(TASK_PID_MID(s) + (4 * ldms_metric_array_get_len(s, JOB_ID_MID(s))))
+#define JOB_TAG_MID(s) (TASK_PID_MID(s) + (5 * ldms_metric_array_get_len(s, JOB_ID_MID(s))))
 
 #endif

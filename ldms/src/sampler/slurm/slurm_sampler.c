@@ -182,6 +182,9 @@ static int task_count_idx;
 static int task_pid_idx;
 static int task_rank_idx;
 static int task_exit_status_idx;
+static int user_name_idx;
+static int job_name_idx;
+static int job_tag_idx;
 
 /* MT (Mutli-Tenant) Schema
  *                max jobs +
@@ -216,17 +219,37 @@ static int task_exit_status_idx;
  *                    +-+-+...+-+
  * task_count         | | |   | |
  *                    +-+-+-+-+-+...+-+
- * task_pid           | | | | | |   | |
+ * task_pid_0         | | | | | |   | |
+ * ...
+ * task_pid_N         | | | | | |   | |
  *                    +-+-+-+-+-+...+-+
- * task_rank          | | | | | |   | |
+ * task_rank_0        | | | | | |   | |
+ * ...
+ * task_rank_N        | | | | | |   | |
  *                    +-+-+-+-+-+...+-+
- * task_exit_status   | | | | | |   | |
+ * task_exit_status_0 | | | | | |   | |
+ * ...
+ * task_exit_status_N | | | | | |   | |
  *                    +-+-+-+-+-+...+-+
  *                    |               |
  *                    |<------------->|
  *                            ^
  *                            |
  *                  max tasks +
+ *
+ *                    +--------+
+ * user_name_0        | string |
+ * ...
+ * user_name_N        | string |
+ *                    +--------+
+ * job_name_0         | string |
+ * ...
+ * job_name_N         | string |
+ *                    +--------+
+ * job_tag_0          | string |
+ * ...
+ * job_tag_N          | string |
+ *                    +--------+
  */
 static int create_metric_set(void)
 {
@@ -351,6 +374,39 @@ static int create_metric_set(void)
 		rc = ldms_schema_metric_array_add(job_schema, metric_name,
 						  LDMS_V_U32_ARRAY,
 						  task_list_len);
+		if (rc < 0)
+			goto err;
+	}
+
+	/* user name */
+	user_name_idx = rc + 1;
+	for (i = 0; i < job_list_len; i++) {
+		char metric_name[80];
+		sprintf(metric_name, "user_%d", i);
+		rc = ldms_schema_metric_array_add(job_schema, metric_name,
+						  LDMS_V_CHAR_ARRAY, 32);
+		if (rc < 0)
+			goto err;
+	}
+
+	/* job name */
+	job_name_idx = rc + 1;
+	for (i = 0; i < job_list_len; i++) {
+		char metric_name[80];
+		sprintf(metric_name, "job_name_%d", i);
+		rc = ldms_schema_metric_array_add(job_schema, metric_name,
+						  LDMS_V_CHAR_ARRAY, 256);
+		if (rc < 0)
+			goto err;
+	}
+
+	/* job tag */
+	job_tag_idx = rc + 1;
+	for (i = 0; i < job_list_len; i++) {
+		char metric_name[80];
+		sprintf(metric_name, "job_tag_%d", i);
+		rc = ldms_schema_metric_array_add(job_schema, metric_name,
+						  LDMS_V_CHAR_ARRAY, 256);
 		if (rc < 0)
 			goto err;
 	}
@@ -606,6 +662,42 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 		ldms_metric_array_set_u32(job_set, task_pid_idx + job->job_slot, i, 0);
 		ldms_metric_array_set_u32(job_set, task_rank_idx + job->job_slot, i, 0);
 		ldms_metric_array_set_u32(job_set, task_exit_status_idx + job->job_slot, i, 0);
+	}
+
+	attr = json_attr_find(dict, "job_user");
+	if (attr) {
+		json_entity_t user_name = json_attr_value(attr);
+		if (json_entity_type(user_name) == JSON_STRING_VALUE) {
+			ldms_metric_array_set_str(job_set,
+						  user_name_idx + job->job_slot,
+						  json_value_str(user_name)->str);
+		}
+	}
+	attr = json_attr_find(dict, "job_name");
+	if (attr) {
+		json_entity_t job_name = json_attr_value(attr);
+		if (json_entity_type(job_name) == JSON_STRING_VALUE) {
+			ldms_metric_array_set_str(job_set,
+						  job_name_idx + job->job_slot,
+						  json_value_str(job_name)->str);
+		}
+	}
+	/* If subscriber data is present, look for an instance tag */
+	attr = json_attr_find(dict, "subscriber_data");
+	while (attr) {
+		json_entity_t subs_dict = json_attr_value(attr);
+		if (json_entity_type(subs_dict) != JSON_DICT_VALUE)
+			break;
+		attr = json_attr_find(subs_dict, "job_tag");
+		if (!attr)
+			break;
+		json_entity_t job_tag = json_attr_value(attr);
+		if (json_entity_type(job_tag) != JSON_STRING_VALUE)
+			break;
+		ldms_metric_array_set_str(job_set,
+					  job_tag_idx + job->job_slot,
+					  json_value_str(job_tag)->str);
+		break;
 	}
  out:
 	ldms_transaction_end(job_set);
