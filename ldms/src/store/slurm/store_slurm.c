@@ -69,39 +69,38 @@ enum store_slurm_verbosity {
 	/**
 	 * \brief SUMMARY
 	 * timestamp-start, component_id, job_id, state, rank, start_time, end_time
-	 * timestamp-end, component_id, job_id, state, rank, start_time, end_time
 	 */
 	SUMMARY,
 
 	/**
 	 * \brief BY_RANK
-	 * timestamp-start, component_id-0,   job_id, state, rank-0,   start_time, end_time
-	 * timestamp-start, component_id-..., job_id, state, rank-..., start_time, end_time
-	 * timestamp-start, component_id-M,   job_id, state, rank-N,   start_time, end_time
+	 * timestamp-start, component_id-0,   job_id, status, rank-0,   start_time, end_time
+	 * timestamp-start, component_id-..., job_id, status, rank-..., start_time, end_time
+	 * timestamp-start, component_id-M,   job_id, status, rank-N,   start_time, end_time
 	 *
-	 * timestamp-end, component_id-0,   job_id, state, rank-0,   start_time, end_time
-	 * timestamp-end, component_id-..., job_id, state, rank-..., start_time, end_time
-	 * timestamp-end, component_id-M,   job_id, state, rank-N,   start_time, end_time
+	 * timestamp-end, component_id-0,   job_id, status, rank-0,   start_time, end_time
+	 * timestamp-end, component_id-..., job_id, status, rank-..., start_time, end_time
+	 * timestamp-end, component_id-M,   job_id, status, rank-N,   start_time, end_time
 	 */
 	BY_RANK,
 
 	/**
 	 * \brief BY_TIME
-	 * timestamp-start, component_id-0,   job_id, state, rank-0,   start_time, end_time
-	 * timestamp-start, component_id-..., job_id, state, rank-..., start_time, end_time
-	 * timestamp-start, component_id-M,   job_id, state, rank-N,   start_time, end_time
+	 * timestamp-start, component_id-0,   job_id, status, rank-0,   start_time, end_time
+	 * timestamp-start, component_id-..., job_id, status, rank-..., start_time, end_time
+	 * timestamp-start, component_id-M,   job_id, status, rank-N,   start_time, end_time
 	 *
-	 * timestamp-1, component_id-0,   job_id, state, rank-0,   start_time, end_time
-	 * timestamp-1, component_id-..., job_id, state, rank-..., start_time, end_time
-	 * timestamp-1, component_id-M,   job_id, state, rank-N,   start_time, end_time
+	 * timestamp-1, component_id-0,   job_id, status, rank-0,   start_time, end_time
+	 * timestamp-1, component_id-..., job_id, status, rank-..., start_time, end_time
+	 * timestamp-1, component_id-M,   job_id, status, rank-N,   start_time, end_time
 	 *
-	 * timestamp-..., component_id-0,   job_id, state, rank-0,   start_time, end_time
-	 * timestamp-..., component_id-..., job_id, state, rank-..., start_time, end_time
-	 * timestamp-..., component_id-M,   job_id, state, rank-N,   start_time, end_time
+	 * timestamp-..., component_id-0,   job_id, status, rank-0,   start_time, end_time
+	 * timestamp-..., component_id-..., job_id, status, rank-..., start_time, end_time
+	 * timestamp-..., component_id-M,   job_id, status, rank-N,   start_time, end_time
 	 *
-	 * timestamp-end, component_id-0,   job_id, state, rank-0,   start_time, end_time
-	 * timestamp-end, component_id-..., job_id, state, rank-..., start_time, end_time
-	 * timestamp-end, component_id-M,   job_id, state, rank-N,   start_time, end_time
+	 * timestamp-end, component_id-0,   job_id, status, rank-0,   start_time, end_time
+	 * timestamp-end, component_id-..., job_id, status, rank-..., start_time, end_time
+	 * timestamp-end, component_id-M,   job_id, status, rank-N,   start_time, end_time
 	 */
 	BY_TIME
 };
@@ -146,6 +145,7 @@ static const char *comp_time_attrs[] = { "component_id", "timestamp" };
 static const char *time_job_attrs[] = { "timestamp", "job_id" };
 static const char *job_rank_time_attrs[] = { "job_id", "task_rank", "timestamp" };
 static const char *job_time_rank_attrs[] = { "job_id", "timestamp", "task_rank" };
+static const char *tag_start_job_attrs[] = { "job_tag", "job_start", "job_id" };
 
 struct sos_schema_template slurm_schema_template = {
 	.name = "job",
@@ -170,11 +170,23 @@ struct sos_schema_template slurm_schema_template = {
 			.type = SOS_TYPE_UINT64,
 		},
 		{
+			.name = "job_name",
+			.type = SOS_TYPE_CHAR_ARRAY,
+		},
+		{
+			.name = "job_tag",
+			.type = SOS_TYPE_CHAR_ARRAY,
+		},
+		{
+			.name = "job_user",
+			.type = SOS_TYPE_CHAR_ARRAY,
+		},
+		{
 			.name = "job_size",
 			.type = SOS_TYPE_UINT32,
 		},
 		{
-			.name = "job_state",
+			.name = "job_status",
 			.type = SOS_TYPE_UINT16,
 		},
 		{
@@ -241,6 +253,13 @@ struct sos_schema_template slurm_schema_template = {
 			.join_list = job_time_rank_attrs,
 			.size = 3
 		},
+		{
+			.name = "tag_start_job",
+			.type = SOS_TYPE_JOIN,
+			.indexed = 1,
+			.join_list = tag_start_job_attrs,
+			.size = 3
+		},
 		{ NULL }
 	}
 };
@@ -250,8 +269,11 @@ enum schema_attr_ids {
 	COMPONENT_ID_ATTR,
 	JOB_ID_ATTR,
 	APP_ID_ATTR,
+	JOB_NAME_ATTR,
+	JOB_TAG_ATTR,
+	JOB_USER_ATTR,
 	JOB_SIZE_ATTR,
-	JOB_STATE_ATTR,
+	JOB_STATUS_ATTR,
 	UID_ATTR,
 	GID_ATTR,
 	JOB_START_ATTR,
@@ -588,6 +610,28 @@ make_obj(ldms_set_t set, int slot, int task, sos_obj_t obj)
 	v->data->prim.uint64_ = u64;
 	sos_value_put(v);
 
+	/* job_name */
+	sos_attr_t attr;
+	attr = sos_schema_attr_by_id(sos_obj_schema(obj), JOB_NAME_ATTR);
+	sos_obj_attr_from_str(obj, attr,
+			      ldms_metric_array_get_str(set,
+							JOB_NAME_MID(set) + slot),
+			      NULL);
+
+	/* job_tag */
+	attr = sos_schema_attr_by_id(sos_obj_schema(obj), JOB_TAG_ATTR);
+	sos_obj_attr_from_str(obj, attr,
+			      ldms_metric_array_get_str(set,
+							JOB_TAG_MID(set) + slot),
+			      NULL);
+
+	/* job_user */
+	attr = sos_schema_attr_by_id(sos_obj_schema(obj), JOB_USER_ATTR);
+	sos_obj_attr_from_str(obj, attr,
+			      ldms_metric_array_get_str(set,
+							JOB_USER_MID(set) + slot),
+			      NULL);
+
 	/* UID */
 	u32 = ldms_metric_array_get_u32(set, JOB_UID_MID(set), slot);
 	v = sos_value_by_id(&v_, obj, UID_ATTR);
@@ -634,7 +678,6 @@ make_obj(ldms_set_t set, int slot, int task, sos_obj_t obj)
 	/* task_exit_status */
 	v = sos_value_by_id(&v_, obj, TASK_EXIT_STATUS_ATTR);
 	v->data->prim.uint32_ = ldms_metric_array_get_u32(set, TASK_EXIT_STATUS_MID(set) + slot, task);
-	sos_value_put(v);
 
 	return 0;
 }
@@ -658,6 +701,17 @@ store_summary(struct sos_instance *si, ldms_set_t set, int slot)
 		return errno;
 
 	obj = sos_index_find_sup(sos_attr_index(si->job_rank_time_attr), key);
+	if (obj) {
+		int match;
+		/* Check check the job_id and rank matches */
+		v = sos_value_by_id(&v_, obj, JOB_ID_ATTR);
+		match = (v->data->prim.uint64_ == job_id);
+		sos_value_put(v);
+		if (!match) {
+			sos_obj_put(obj);
+			obj = NULL;
+		}
+	}
 	if (!obj) {
 		obj = sos_obj_new(si->sos_schema);
 		if (!obj) {
@@ -670,9 +724,14 @@ store_summary(struct sos_instance *si, ldms_set_t set, int slot)
 		sos_obj_index(obj);
 	}
 
-	/* job_state */
-	v = sos_value_by_id(&v_, obj, JOB_STATE_ATTR);
-	v->data->prim.uint16_ = ldms_metric_array_get_u8(set, JOB_STATE_MID(set), slot);
+	/* job_status */
+	v = sos_value_by_id(&v_, obj, JOB_STATUS_ATTR);
+	if (ldms_metric_array_get_u8(set, JOB_STATE_MID(set), slot) <= JOB_RUNNING)
+		/* running */
+		v->data->prim.uint16_ = 1;
+	else
+		/* complete */
+		v->data->prim.uint16_ = 2;
 	sos_value_put(v);
 
 	/* job_end */
@@ -739,9 +798,14 @@ store_ranks(struct sos_instance *si, ldms_set_t set, int slot)
 			sos_obj_index(obj);
 		}
 
-		/* job_state */
-		v = sos_value_by_id(&v_, obj, JOB_STATE_ATTR);
-		v->data->prim.uint16_ = ldms_metric_array_get_u8(set, JOB_STATE_MID(set), slot);
+		/* job_status */
+		v = sos_value_by_id(&v_, obj, JOB_STATUS_ATTR);
+		if (ldms_metric_array_get_u8(set, JOB_STATE_MID(set), slot) <= JOB_RUNNING)
+			/* running */
+			v->data->prim.uint16_ = 1;
+		else
+			/* complete */
+			v->data->prim.uint16_ = 2;
 		sos_value_put(v);
 
 		/* job_end */
@@ -775,9 +839,14 @@ store_times(struct sos_instance *si, ldms_set_t set, int slot)
 		make_obj(set, slot, task, obj);
 		sos_obj_index(obj);
 
-		/* job_state */
-		v = sos_value_by_id(&v_, obj, JOB_STATE_ATTR);
-		v->data->prim.uint16_ = ldms_metric_array_get_u8(set, JOB_STATE_MID(set), slot);
+		/* job_status */
+		v = sos_value_by_id(&v_, obj, JOB_STATUS_ATTR);
+		if (ldms_metric_array_get_u8(set, JOB_STATE_MID(set), slot) <= JOB_RUNNING)
+			/* running */
+			v->data->prim.uint16_ = 1;
+		else
+			/* complete */
+			v->data->prim.uint16_ = 2;
 		sos_value_put(v);
 
 		/* job_end */
@@ -818,7 +887,7 @@ store(ldmsd_store_handle_t _sh,
 		rc = _open_store(si, set);
 		if (rc) {
 			pthread_mutex_unlock(&si->lock);
-			msglog(LDMSD_LERROR, "store_sos: Failed to create store "
+			msglog(LDMSD_LERROR, "store_slurm: Failed to create store "
 			       "for %s.\n", si->container);
 			errno = rc;
 			goto err;
@@ -842,7 +911,7 @@ store(ldmsd_store_handle_t _sh,
 		state = ldms_metric_array_get_u8(set, JOB_STATE_MID(set), slot);
 		if (state < JOB_RUNNING) {
 			msglog(LDMSD_LINFO,
-			       "store_sos: Ignoring job %d in slot %d in state %d\n",
+			       "store_slurm: Ignoring job %d in slot %d in state %d\n",
 			       job_id, slot, state);
 			goto skip;
 		}
@@ -903,7 +972,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 
 static struct ldmsd_store slurm_store = {
 	.base = {
-		.name = "slurm_store",
+		.name = "store_slurm",
 		.term = term,
 		.config = config,
 		.usage = usage,
@@ -922,15 +991,15 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	return &slurm_store.base;
 }
 
-static void __attribute__ ((constructor)) store_sos_init();
-static void store_sos_init()
+static void __attribute__ ((constructor)) store_slurm_init();
+static void store_slurm_init()
 {
 	pthread_mutex_init(&cfg_lock, NULL);
 	LIST_INIT(&sos_handle_list);
 }
 
-static void __attribute__ ((destructor)) store_sos_fini(void);
-static void store_sos_fini()
+static void __attribute__ ((destructor)) store_slurm_fini(void);
+static void store_slurm_fini()
 {
 	pthread_mutex_destroy(&cfg_lock);
 	/* TODO: clean up container and metric trees */
