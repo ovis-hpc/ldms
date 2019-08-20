@@ -120,6 +120,9 @@ static void z_sock_buff_cleanup(z_sock_buff_t buff);
 static void z_sock_buff_reset(z_sock_buff_t buff);
 static int z_sock_buff_extend(z_sock_buff_t buff, size_t new_sz);
 
+static void z_sock_hdr_init(struct sock_msg_hdr *hdr, uint32_t xid,
+			    uint16_t type, uint32_t len, uint64_t ctxt);
+
 static uint32_t z_last_key;
 static struct rbt z_key_tree;
 static pthread_mutex_t z_key_tree_mutex;
@@ -550,19 +553,13 @@ static void process_sep_msg_read_req(struct z_sock_ep *sep)
 	struct sock_msg_read_req *msg;
 	uint32_t data_len;
 	char *src;
-	zap_err_t zerr;
+	struct sock_msg_read_resp rmsg;
 
 	msg = sep->buff.data;
 
 	/* Need to swap locally interpreted values */
 	data_len = ntohl(msg->data_len);
 	src = (char *)be64toh(msg->src_ptr);
-
-	/* Prepare response message */
-	struct sock_msg_read_resp rmsg = {.status=0}; /* Work around gcc bug 53119 */
-	rmsg.hdr.msg_type = htons(SOCK_MSG_READ_RESP);
-	rmsg.hdr.xid = msg->hdr.xid;
-	rmsg.hdr.ctxt = msg->hdr.ctxt;
 
 	int rc = 0;
 	pthread_mutex_lock(&z_key_tree_mutex);
@@ -573,12 +570,9 @@ static void process_sep_msg_read_req(struct z_sock_ep *sep)
 	 * The data the other side receives could be garbage
 	 * if the map is deleted after this point.
 	 */
-	rmsg.data_len = 0;
 	switch (rc) {
 	case 0:	/* OK */
-
 		rmsg.status = 0;
-		rmsg.data_len = msg->data_len; /* Still in BE */
 		break;
 	case EACCES:
 		rmsg.status = htons(ZAP_ERR_REMOTE_PERMISSION);
@@ -593,15 +587,14 @@ static void process_sep_msg_read_req(struct z_sock_ep *sep)
 		rmsg.status = htons(ZAP_ERR_PARAMETER);
 		break;
 	}
+	if (rc)
+		rmsg.data_len = data_len = 0;
+	else
+		rmsg.data_len = msg->data_len; /* Still in BE */
 
-	rmsg.hdr.msg_len = htonl(sizeof(rmsg) + data_len);
-	zerr = __sock_send_msg(sep, &rmsg.hdr, sizeof(rmsg), src, data_len);
-	if (zerr)
-		goto res_err;
-	return;
-
-res_err:
-	shutdown(sep->sock, SHUT_RDWR);
+	z_sock_hdr_init(&rmsg.hdr, msg->hdr.xid, SOCK_MSG_READ_RESP, sizeof(rmsg) + data_len, msg->hdr.ctxt);
+	if (__sock_send_msg(sep, &rmsg.hdr, sizeof(rmsg), src, data_len))
+		shutdown(sep->sock, SHUT_RDWR);
 }
 
 struct z_sock_io *__sock_io_alloc(struct z_sock_ep *sep)
@@ -1818,8 +1811,8 @@ static zap_err_t z_sock_share(zap_ep_t ep, zap_map_t map,
 		return ZAP_ERR_INVALID_MAP_TYPE;
 
 	/* prepare message */
-	msgr.hdr.msg_type = htons(SOCK_MSG_RENDEZVOUS);
-	msgr.hdr.msg_len = htonl(sizeof(struct sock_msg_rendezvous) + msg_len);
+	z_sock_hdr_init(&msgr.hdr, 0, SOCK_MSG_RENDEZVOUS,
+			sizeof(struct sock_msg_rendezvous) + msg_len, 0);
 	msgr.rmap_key = smap->key;
 	msgr.acc = htonl(map->acc);
 	msgr.addr = htobe64((uint64_t)map->addr);
