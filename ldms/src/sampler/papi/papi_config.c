@@ -211,6 +211,8 @@ int papi_process_config_file(job_data_t job, const char *path, ldmsd_msg_log_f m
 		       rc, path);
 		goto out;
 	}
+	buf[rc] = '\0';
+	buf[rc+1] = '\0';
 	rc = papi_process_config_data(job, buf, rc, msglog);
  out:
 	free(buf);

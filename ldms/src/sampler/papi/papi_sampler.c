@@ -100,6 +100,7 @@ static job_data_t alloc_job_data(uint64_t job_id)
 		jd->base = papi_base;
 		jd->job_id = job_id;
 		jd->job_state = JOB_PAPI_IDLE;
+		jd->job_state_time = time(NULL);
 		jd->task_init_count = 0;
 
 		TAILQ_INIT(&jd->event_list);
@@ -115,6 +116,7 @@ static void release_job_data(job_data_t jd)
 {
 	job_task_t t;
 	jd->job_state = JOB_PAPI_COMPLETE;
+	jd->job_state_time = time(NULL);
 	if (jd->papi_init) {
 		LIST_FOREACH(t, &jd->task_list, entry) {
 			PAPI_cleanup_eventset(t->event_set);
@@ -193,6 +195,7 @@ static int create_metric_set(job_data_t job)
 	schema = ldms_schema_new(job->schema_name);
 	if (schema == NULL) {
 		job->job_state = JOB_PAPI_ERROR;
+		job->job_state_time = time(NULL);
 		return ENOMEM;
 	}
 
@@ -288,6 +291,7 @@ static int create_metric_set(job_data_t job)
 	return 0;
  err:
 	job->job_state = JOB_PAPI_ERROR;
+	job->job_state_time = time(NULL);
 	if (schema)
 		ldms_schema_delete(schema);
 	return rc;
@@ -343,13 +347,36 @@ static int sample(struct ldmsd_sampler *self)
 {
 	job_data_t job;
 	struct rbn *rbn;
+	LIST_HEAD(,job_data) delete_list;
+	LIST_INIT(&delete_list);
+
 	pthread_mutex_lock(&job_lock);
 	RBT_FOREACH(rbn, &job_tree) {
 		job = container_of(rbn, struct job_data, job_ent);
-		if (job->job_state != JOB_PAPI_RUNNING)
+		if (job->job_state != JOB_PAPI_RUNNING) {
+			uint64_t now = time(NULL);
+			/*
+			 * Don't let sets linger in !RUNNING state for
+			 * longer than the cleanup time. This is
+			 * typically a sign that a slurm event was
+			 * dropped due to a crashed process.
+			 */
+			if (now - job->job_state_time > papi_job_expiry)
+				LIST_INSERT_HEAD(&delete_list, job, delete_entry);
 			continue;
+		}
 		assert(job->set);
 		sample_job(job);
+	}
+	while (!LIST_EMPTY(&delete_list)) {
+		job = LIST_FIRST(&delete_list);
+		msglog(LDMSD_LINFO,
+		       "papi_sampler [%d]: forcing cleanup of instance '%s', "
+		       "set %p, set_id %ld.\n",
+		       __LINE__, job->instance_name, job->set,
+		       ldms_set_id(job->set));
+		LIST_REMOVE(job, delete_entry);
+		release_job_data(job);
 	}
 	pthread_mutex_unlock(&job_lock);
 	return 0;
@@ -493,6 +520,7 @@ static int handle_job_init(uint64_t job_id, json_entity_t e)
 		goto out;
 	}
 	job->job_state = JOB_PAPI_INIT;
+	job->job_state_time = time(NULL);
 	job->job_start = job_start;
 	job->task_count = local_tasks;
 	job->job_end = 0;
@@ -516,6 +544,7 @@ static void handle_papi_error(job_data_t job)
 		}
 	}
 	job->job_state = JOB_PAPI_ERROR;
+	job->job_state_time = time(NULL);
 }
 
 static void handle_task_init(job_data_t job, json_entity_t e)
@@ -579,6 +608,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 			msglog(LDMSD_LERROR, "papi_sampler [%d]: PAPI error '%s' "
 			       "creating EventSet.\n", __LINE__, PAPI_strerror(rc));
 			job->job_state = JOB_PAPI_ERROR;
+			job->job_state_time = time(NULL);
 			goto err;
 		}
 		rc = PAPI_assign_eventset_component(t->event_set, 0);
@@ -586,6 +616,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 			msglog(LDMSD_LERROR, "papi_sampler [%d]: PAPI error '%s' "
 			       "assign EventSet to CPU.\n", __LINE__, PAPI_strerror(rc));
 			job->job_state = JOB_PAPI_ERROR;
+			job->job_state_time = time(NULL);
 			goto err;
 		}
 		rc = PAPI_set_multiplex(t->event_set);
@@ -593,6 +624,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 			msglog(LDMSD_LERROR, "papi_sampler [%d]: PAPI error '%s' "
 			       "setting multiplex.\n", __LINE__, PAPI_strerror(rc));
 			job->job_state = JOB_PAPI_ERROR;
+			job->job_state_time = time(NULL);
 			goto err;
 		}
 		t->papi_init = 1;
@@ -603,6 +635,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 				       "adding event '%s'.\n", __LINE__, PAPI_strerror(rc),
 				       ev->event_name);
 				job->job_state = JOB_PAPI_ERROR;
+				job->job_state_time = time(NULL);
 				goto err;
 			}
 		}
@@ -612,6 +645,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 			       "attaching EventSet to pid %d.\n", __LINE__,
 			       PAPI_strerror(rc), t->pid);
 			job->job_state = JOB_PAPI_ERROR;
+			job->job_state_time = time(NULL);
 			goto err;
 		}
 	}
@@ -622,11 +656,13 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 			       "starting EventSet for pid %d.\n", __LINE__,
 			       PAPI_strerror(rc), t->pid);
 			job->job_state = JOB_PAPI_ERROR;
+			job->job_state_time = time(NULL);
 			goto err;
 		}
 		t->papi_start = 1;
 	}
 	job->job_state = JOB_PAPI_RUNNING;
+	job->job_state_time = time(NULL);
 	return;
  err:
 	handle_papi_error(job);
@@ -644,6 +680,7 @@ static void handle_task_exit(job_data_t job, json_entity_t e)
 
 	/* Tell sampler to stop sampling */
 	job->job_state = JOB_PAPI_STOPPING;
+	job->job_state_time = time(NULL);
 
 	attr = json_attr_find(dict, "task_pid");
 	task_pid = json_value_int(json_attr_value(attr));
@@ -678,6 +715,7 @@ static void handle_job_exit(job_data_t job, json_entity_t e)
 	uint64_t timestamp = json_value_int(json_attr_value(attr));
 
 	job->job_state = JOB_PAPI_COMPLETE;
+	job->job_state_time = time(NULL);
 	job->job_end = timestamp;
 	release_job_data(job);
 }

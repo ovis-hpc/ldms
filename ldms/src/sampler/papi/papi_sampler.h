@@ -92,6 +92,7 @@ typedef struct job_data {
 	uint64_t job_id;
 	uint64_t app_id;
 	enum job_state job_state;
+	uint64_t job_state_time; /* Last time the state was changed */
 	uint64_t job_start;
 	uint64_t job_end;
 
