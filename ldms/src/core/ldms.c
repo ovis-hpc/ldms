@@ -521,7 +521,9 @@ extern struct ldms_set *__ldms_set_by_id(uint64_t id)
 
 uint64_t ldms_set_id(ldms_set_t set)
 {
-	return set->set->set_id;
+	if (set)
+		return set->set->set_id;
+	return 0;
 }
 
 int ldms_set_publish(ldms_set_t sd)
@@ -676,6 +678,7 @@ static void print_xprt_addrs(ldms_t xprt)
 void ldms_set_delete(ldms_set_t s)
 {
 	struct ldms_rbuf_desc *rbd;
+	struct ldms_xprt *xprt;
 	ref_dump(&s->set->ref, __func__);
 
 	if (!s)
@@ -700,12 +703,22 @@ void ldms_set_delete(ldms_set_t s)
 
 	while (!LIST_EMPTY(&set->remote_rbd_list)) {
 		rbd = LIST_FIRST(&set->remote_rbd_list);
+		xprt = rbd->xprt;
+		if (xprt)
+			pthread_mutex_lock(&xprt->lock);
 		__ldms_free_rbd(rbd);
+		if (xprt)
+			pthread_mutex_unlock(&xprt->lock);
 	}
 
 	while (!LIST_EMPTY(&set->local_rbd_list)) {
 		rbd = LIST_FIRST(&set->local_rbd_list);
+		xprt = rbd->xprt;
+		if (xprt)
+			pthread_mutex_lock(&xprt->lock);
 		__ldms_free_rbd(rbd);
+		if (xprt)
+			pthread_mutex_unlock(&xprt->lock);
 	}
 
 	pthread_mutex_unlock(&set->lock);
