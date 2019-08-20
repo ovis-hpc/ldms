@@ -5368,11 +5368,14 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 out:
 	ldmsd_stream_deliver(stream_name, stream_type,
 			     (char *)attr->attr_value, attr->attr_len, entity);
+	free(stream_name);
 	json_entity_free(entity);
 	reqc->errcode = 0;
 	ldmsd_send_req_response(reqc, NULL);
 	return 0;
 err_reply:
+	if (stream_name)
+		free(stream_name);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }
