@@ -496,7 +496,9 @@ int __ldms_set_publish(struct ldms_set *set)
 
 uint64_t ldms_set_id(ldms_set_t set)
 {
-	return set->set->set_id;
+	if (set)
+		return set->set->set_id;
+	return 0;
 }
 
 int ldms_set_publish(ldms_set_t sd)
@@ -629,35 +631,46 @@ void __ldms_set_info_delete(struct ldms_set_info_list *info)
 void ldms_set_delete(ldms_set_t s)
 {
 	struct ldms_rbuf_desc *rbd;
+	struct ldms_set *set;
+	struct ldms_xprt *xprt;
+
  	if (!s)
 		assert(NULL == "The metric set passed in is NULL");
 
 	__ldms_set_tree_lock();
-	struct ldms_set *set = s->set;
+	set = s->set;
 	rbt_del(&set_tree, &set->rb_node);
 	rbt_del(&id_tree, &set->id_node);
 	__ldms_set_tree_unlock();
-
+#if 0
 	pthread_mutex_lock(&set->lock);
-	struct ldms_xprt *xprt = s->xprt;
+	xprt = s->xprt;
 	if (xprt)
 		pthread_mutex_lock(&xprt->lock);
 	__ldms_free_rbd(s);	/* removes the RBD from the local/remote rbd list */
 	if (xprt)
 		pthread_mutex_unlock(&xprt->lock);
 	__ldms_set_unpublish(set);
-
+#endif
 	while (!LIST_EMPTY(&set->remote_rbd_list)) {
 		rbd = LIST_FIRST(&set->remote_rbd_list);
-		if (rbd->lmap && rbd->xprt)
-			zap_unmap(rbd->xprt->zap_ep, rbd->lmap);
-		LIST_REMOVE(rbd, set_link);
+		xprt = rbd->xprt;
+		if (xprt) {
+			pthread_mutex_lock(&xprt->lock);
+			__ldms_rbd_xprt_release(rbd);
+			pthread_mutex_unlock(&xprt->lock);
+		}
+		__ldms_free_rbd(rbd);
 	}
 	while (!LIST_EMPTY(&set->local_rbd_list)) {
 		rbd = LIST_FIRST(&set->local_rbd_list);
-		if (rbd->lmap && rbd->xprt)
-			zap_unmap(rbd->xprt->zap_ep, rbd->lmap);
-		LIST_REMOVE(rbd, set_link);
+		xprt = rbd->xprt;
+		if (xprt) {
+			pthread_mutex_lock(&xprt->lock);
+			__ldms_rbd_xprt_release(rbd);
+			pthread_mutex_unlock(&xprt->lock);
+		}
+		__ldms_free_rbd(rbd);
 	}
 	pthread_mutex_unlock(&set->lock);
 
@@ -669,17 +682,19 @@ void ldms_set_delete(ldms_set_t s)
 
 void ldms_set_put(ldms_set_t s)
 {
+	struct ldms_set *set;
+	struct ldms_xprt *xprt;
 	if (!s)
 		return;
-
 	__ldms_set_tree_lock();
-	struct ldms_set *set = s->set;
+	set = s->set;
 	pthread_mutex_lock(&set->lock);
-	if (s->xprt)
-		pthread_mutex_lock(&s->xprt->lock);
+	xprt = s->xprt;
+	if (xprt)
+		pthread_mutex_lock(&xprt->lock);
 	__ldms_free_rbd(s); /* removes the RBD from the local/remote rbd list */
-	if (s->xprt)
-		pthread_mutex_unlock(&s->xprt->lock);
+	if (xprt)
+		pthread_mutex_unlock(&xprt->lock);
 	pthread_mutex_unlock(&set->lock);
 	__ldms_set_tree_unlock();
 }

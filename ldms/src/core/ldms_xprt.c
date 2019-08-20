@@ -683,7 +683,10 @@ process_cancel_push_request(struct ldms_xprt *x, struct ldms_request *req)
 	 */
 	push_rbd->remote_set_id = 0;
 
+	struct ldms_xprt *xprt = push_rbd->xprt;
+	pthread_mutex_lock(&xprt->lock);
 	__ldms_free_rbd(push_rbd);
+	pthread_mutex_unlock(&xprt->lock);
 
 	LIST_FOREACH(r, &set->remote_rbd_list, set_link) {
 		if (r->push_flags & LDMS_RBD_F_PUSH_CHANGE)
@@ -871,7 +874,7 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 			+ name->len + schema->len + set_info_len;
 	msg = malloc(msg_len);
 	if (!msg)
-		goto err_1;
+		goto err_0;
 
 	__copy_set_info_to_lookup_msg(msg->lookup.set_info, schema, name, set);
 	pthread_mutex_unlock(&set->lock);
@@ -895,13 +898,11 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 				__FUNCTION__, x, zap_err_str(zerr));
 		free(msg);
 		rc = zerr;
-		goto err_1;
+		goto err_0;
 	}
 	pthread_mutex_unlock(&x->lock);
 	free(msg);
 	return 0;
- err_1:
-	__ldms_free_rbd(rbd);
  err_0:
 	pthread_mutex_unlock(&x->lock);
 	return rc;
