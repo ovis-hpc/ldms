@@ -392,10 +392,11 @@ dnl SYNOPSIS: OPTION_GITINFO
 dnl dnl queries git for version hash and branch info.
 AC_DEFUN([OPTION_GITINFO], [
 
-	TOP_LEVEL="$(git rev-parse --show-toplevel 2>/dev/null)"
-	GITSHORT="$(git describe --tags 2>/dev/null)"
-	GITLONG="$(git rev-parse HEAD 2>/dev/null)"
-	GITDIRTY="$(git status -uno -s 2>/dev/null)"
+	export srcdir
+	TOP_LEVEL="$(cd "$srcdir" && git rev-parse --show-toplevel 2>/dev/null)"
+	GITSHORT="$(cd "$srcdir" && git describe --tags 2>/dev/null)"
+	GITLONG="$(cd "$srcdir" && git rev-parse HEAD 2>/dev/null)"
+	GITDIRTY="$(cd "$srcdir" && git status -uno -s 2>/dev/null)"
 	if test -n "$GITLONG" -a -n "$GITDIRTY"; then
 		GITLONG="${GITLONG}-dirty"
 	fi
