@@ -4,6 +4,10 @@ if ENABLE_RDMA
 SUBDIRS += rdma
 endif
 
+if ENABLE_FABRIC
+SUBDIRS += fabric
+endif
+
 if ENABLE_SOCK
 SUBDIRS += sock
 endif
