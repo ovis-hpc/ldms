@@ -66,6 +66,7 @@ OPTION_DEFAULT_ENABLE([ovis_util], [ENABLE_OVIS_UTIL])
 OPTION_DEFAULT_ENABLE([ovis_auth], [ENABLE_OVIS_AUTH])
 OPTION_DEFAULT_ENABLE([zap], [ENABLE_ZAP])
 OPTION_DEFAULT_DISABLE([rdma], [ENABLE_RDMA])
+OPTION_DEFAULT_DISABLE([fabric], [ENABLE_FABRIC])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
@@ -97,6 +98,23 @@ dnl we need libibverbs-devel and librdmacm-devel to support rdma
 		      [AC_DEFINE([HAVE_CRAY_RCA],[1],[if cray-rca module present.])],
 		      AC_MSG_ERROR([pkg-config cray-rca failed])
 		      )
+  fi
+  if test "$enable_fabric" = "yes"; then
+    AC_ARG_WITH([libfabric],
+      AC_HELP_STRING([--with-libfabric], [Specify libfabric location]),
+        [AS_IF([test -d "$withval/lib"], [LIB_FABRIC="$withval"],
+          AC_MSG_ERROR([libfabric not found at $withval]))],
+          AC_MSG_ERROR([must specify --with-libfabric]))
+    LDFLAGS="$LDFLAGS -L${LIB_FABRIC}/lib"
+    AC_SUBST([LIBFABRIC_INCDIR], [${LIB_FABRIC}/include])
+    saveCPPFLAGS=$CPPFLAGS
+    CPPFLAGS="$CPPFLAGS -I${LIB_FABRIC}/include"
+    AC_CHECK_LIB([fabric], fi_getinfo, [],
+      AC_MSG_ERROR([fi_getinfo() not found. zap requires fabric.]))
+    AC_CHECK_HEADER([rdma/fabric.h], [],
+      [AC_MSG_ERROR([<rdma/fabric.h> not found. zap requires fabric.])])
+    AC_MSG_RESULT([Using fabric at $LIB_FABRIC])
+    CPPFLAGS=$saveCPPFLAGS
   fi
 fi
 OPTION_WITH([libibverbs], [LIBIBVERBS])
@@ -214,6 +232,7 @@ AC_CONFIG_FILES([ovis-lib.spec
 		src/ovis_auth/ovis-auth.sh
 		src/zap/Makefile
 		src/zap/rdma/Makefile
+		src/zap/fabric/Makefile
 		src/zap/sock/Makefile
 		src/zap/ugni/Makefile
 		src/zap/test/Makefile
