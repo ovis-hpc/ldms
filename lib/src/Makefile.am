@@ -11,7 +11,6 @@ do_subst = @LIB_SUBST_RULE@
 
 SUBDIRS = third
 SUBDIRS += json
-SUBDIRS += tada
 
 if ENABLE_OVIS_UTIL
 SUBDIRS += ovis_util
