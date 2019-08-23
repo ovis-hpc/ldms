@@ -38,6 +38,10 @@ SUBDIRS += slurm
 SUBDIRS += papi
 endif
 
+if ENABLE_INFLUX
+SUBDIRS += influx
+endif
+
 if ENABLE_FLATFILE
 libstore_flatfile_la_SOURCES = store_flatfile.c
 libstore_flatfile_la_CFLAGS = $(AM_CFLAGS)

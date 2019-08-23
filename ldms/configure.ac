@@ -67,6 +67,7 @@ OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
 OPTION_DEFAULT_DISABLE([rabbitkw], [ENABLE_RABBITKW])
 OPTION_DEFAULT_DISABLE([rabbitv3], [ENABLE_RABBITV3])
+OPTION_DEFAULT_ENABLE([influx], [ENABLE_INFLUX])
 
 dnl AMQP
 OPTION_DEFAULT_DISABLE([amqp], [ENABLE_AMQP])
@@ -483,6 +484,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/store/kokkos/Makefile
 		 src/store/papi/Makefile
 		 src/store/slurm/Makefile
+		 src/store/influx/Makefile
 		 src/sampler/dstat/Makefile
 		 src/sampler/filesingle/Makefile
 		 src/sampler/lustre/Makefile
