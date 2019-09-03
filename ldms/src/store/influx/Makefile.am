@@ -5,7 +5,7 @@ CORE = ../../core
 LDMSD = ../../ldmsd
 AM_CFLAGS = -I$(srcdir)/$(CORE) \
 	    -I$(srcdir)/$(LDMSD) \
-	    -I$../.. \
+	    -I../.. \
 	    @OVIS_LIB_INCDIR_FLAG@
 STORE_LIBADD = $(CORE)/libldms.la -lcoll -lcurl -lovis_util @OVIS_LIB_LIB64DIR_FLAG@ \
 	       @OVIS_LIB_LIBDIR_FLAG@
