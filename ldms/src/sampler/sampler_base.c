@@ -102,16 +102,13 @@ static void init_job_data(base_data_t base)
 			    base->pi_name, base->job_set_name);
 			goto err;
 		}
-		/* If current_slot is present, we know it's the mt-slurm sampler */
-		base->job_slot_idx = ldms_metric_by_name(base->job_set, "current_slot");
+		/* app_id is optional */
 		base->app_id_idx = ldms_metric_by_name(base->job_set, "app_id");
-		if (base->app_id_idx < 0) {
-			base->log(LDMSD_LINFO,
-			    "%s: The specified job_set '%s' is missing "
-			    "the 'app_id' attribute and cannot be used.\n",
-			    base->pi_name, base->job_set_name);
-			goto err;
-		}
+
+		/* If job_slot_list is present, we know it's the mt-slurm sampler */
+		base->job_slot_list_idx = ldms_metric_by_name(base->job_set, "job_slot_list");
+		base->job_slot_list_tail_idx = ldms_metric_by_name(base->job_set, "job_slot_list_tail");
+
 		base->job_start_idx = ldms_metric_by_name(base->job_set, "job_start");
 		if (base->job_start_idx < 0) {
 			base->log(LDMSD_LINFO,
@@ -327,7 +324,7 @@ void base_sample_begin(base_data_t base)
 
 	ts = ldms_transaction_timestamp_get(base->set);
 
-	if (base->job_slot_idx < 0) {
+	if (base->job_slot_list_idx < 0) {
 		start = ldms_metric_get_u64(base->job_set, base->job_start_idx);
 		end = ldms_metric_get_u64(base->job_set, base->job_end_idx);
 		if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
@@ -335,7 +332,12 @@ void base_sample_begin(base_data_t base)
 			app_id = ldms_metric_get_u64(base->job_set, base->app_id_idx);
 		}
 	} else {
-		uint64_t slot = ldms_metric_get_u32(base->job_set, base->job_slot_idx);
+		int slot_idx = ldms_metric_get_s32(base->job_set, base->job_slot_list_tail_idx);
+		int slot = ldms_metric_array_get_s32(base->job_set, base->job_slot_list_idx, slot_idx);
+		if (slot < 0) {
+			job_id = app_id = 0;
+			goto out;
+		}
 		start = ldms_metric_array_get_u32(base->job_set, base->job_start_idx, slot);
 		end = ldms_metric_array_get_u32(base->job_set, base->job_end_idx, slot);
 		if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
@@ -343,6 +345,7 @@ void base_sample_begin(base_data_t base)
 			app_id = ldms_metric_array_get_u32(base->job_set, base->app_id_idx, slot);
 		}
 	}
+ out:
 	ldms_metric_set_u64(base->set, BASE_JOB_ID, job_id);
 	ldms_metric_set_u64(base->set, BASE_APP_ID, app_id);
 }

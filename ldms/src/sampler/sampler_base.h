@@ -64,7 +64,8 @@ typedef struct base_data_s {
 	int set_array_card;
 	uint64_t component_id;
 	int job_id_idx;
-	int job_slot_idx;
+	int job_slot_list_idx;
+	int job_slot_list_tail_idx;
 	int app_id_idx;
 	int job_start_idx;
 	int job_end_idx;
