@@ -223,7 +223,7 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 					namebase[i], sl->str);
 			sprintf(suffix, "#%s.%s", namebase[i], sl->str);
 			rc = stats_construct_routine(schema, tmp_path,
-					"client.lstats.", suffix, &lms_list, keys[i],
+					"client.", suffix, &lms_list, keys[i],
 					keylen[i]);
 			if (rc)
 				goto err1;
@@ -333,7 +333,9 @@ static int sample(struct ldmsd_sampler *self)
 {
 	if (!set)
 		return EINVAL;
-	ldms_transaction_begin(set);
+
+
+	base_sample_begin(base);
 
 	struct lustre_metric_src *lms;
 
@@ -342,7 +344,7 @@ static int sample(struct ldmsd_sampler *self)
 		lms_sample(set, lms);
 	}
 
-	ldms_transaction_end(set);
+	base_sample_end(base);
 	return 0;
 }
 
