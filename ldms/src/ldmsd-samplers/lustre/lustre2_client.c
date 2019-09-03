@@ -176,7 +176,7 @@ int lustre2_client_update_schema(ldmsd_plugin_inst_t pi, ldms_schema_t schema)
 			snprintf(suffix, sizeof(suffix),
 				 "#%s.%s", namebase[i], sl->str);
 			rc = stats_construct_routine(schema, tmp_path,
-					"client.lstats.", suffix,
+					"client.", suffix,
 					&inst->lms_list, keys[i], keylen[i]);
 			if (rc)
 				goto out;

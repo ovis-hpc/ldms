@@ -50,10 +50,11 @@
  * \file lustre_sampler.c
  * \brief Lustre sampler common routine implementation.
  */
-
 #include <stdlib.h>
 #include <dirent.h>
 #include <wordexp.h>
+#include <pthread.h>
+#include <coll/rbt.h>
 #pragma GCC diagnostic ignored "-Wunused-variable"
 #include "lustre_sampler.h"
 #pragma GCC diagnostic warning "-Wunused-variable"
@@ -64,6 +65,27 @@
 #include <unistd.h>
 
 static ldmsd_msg_log_f msglog = NULL;
+
+uint64_t mount_id = 1;
+struct mount_context {
+	uint64_t context_id;
+	uint64_t mount_id;
+	struct rbn rbn;
+};
+
+static int cmp_context_id(void *a, const void *b)
+{
+	uint64_t a_ = *(uint64_t *)a;
+	uint64_t b_ = *(uint64_t *)b;
+	if (a_ < b_)
+		return -1;
+	if (a_ > b_)
+		return 1;
+	return 0;
+}
+
+struct rbt context_tree = { .comparator = cmp_context_id };
+pthread_mutex_t context_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void lustre_sampler_set_msglog(ldmsd_msg_log_f f)
 {
@@ -263,6 +285,64 @@ void lms_close_file(struct lustre_metric_src *lms)
 	lms->f = NULL;
 }
 
+static int del_str(char *str, char *tgt)
+{
+	int i;
+	size_t rep_len = strlen(tgt);
+	char *xstr = strstr(str, tgt);
+	if (xstr) {
+		i = 0;
+		do {
+			xstr[i] = xstr[rep_len+i];
+		} while (xstr[i++] != '\0');
+		return 1;
+	}
+	return 0;
+}
+
+/* Replace the mount 0xfff.... context with a number 1..x */
+static void fixup_context(char *str)
+{
+	struct mount_context *context;
+	struct rbn *rbn;
+	uint64_t key;
+	char skey[32];
+	regex_t re;
+	regmatch_t match[4];
+	int i, j, rc;
+
+	rc = regcomp(&re, "[[:xdigit:]]{16}.*", REG_EXTENDED);
+	if (rc)
+		return;
+	rc = regexec(&re, str, 4, match, 0);
+	if (rc)
+		return;
+	j = 0;
+	for (i = match[0].rm_so; i < match[0].rm_eo; i++,j++)
+		skey[j] = str[i];
+	skey[j] = '\0';
+	key = strtoul(skey, NULL, 16);
+
+	pthread_mutex_lock(&context_lock);
+	rbn = rbt_find(&context_tree, &key);
+	if (!rbn) {
+		context = calloc(1, sizeof(*context));
+		context->mount_id = __sync_fetch_and_add(&mount_id, 1);
+		context->context_id = key;
+		rbn_init(&context->rbn, &context->context_id);
+		rbt_ins(&context_tree, &context->rbn);
+		rbn = &context->rbn;
+	}
+	pthread_mutex_unlock(&context_lock);
+	context = container_of(rbn, struct mount_context, rbn);
+
+	sprintf(&str[match[0].rm_so], "%02ld", context->mount_id);
+	j = match[0].rm_eo;
+	for (i = 2 + match[0].rm_so; str[j] != '\0'; i++)
+		str[i] = str[j];
+	str[i] = '\0';
+}
+
 int stats_construct_routine(ldms_schema_t schema,
 			    const char *stats_path,
 			    const char *prefix,
@@ -270,10 +350,26 @@ int stats_construct_routine(ldms_schema_t schema,
 			    struct lustre_metric_src_list *list,
 			    char **keys, int nkeys)
 {
+	char *strip_suffix = strdup(suffix);
 	char metric_name[128];
 	struct lustre_metric_ctxt *ctxt;
 	int rc;
 	int j;
+
+	/*
+	 * Strip out osc.lustre-, llite.lustre-, mdc.lustre-, and mdt.lustre- from
+	 * the suffix as these are redundant
+	 */
+	if (!del_str(strip_suffix, "osc.lustre-"))
+		if (!del_str(strip_suffix, "llite.lustre-"))
+			if (!del_str(strip_suffix, "mdc.lustre-"))
+				del_str(strip_suffix, "mdt.lustre-");
+
+	/*
+	 * Replace the mount-ptr (fffff...) with a 2 digit #, i.e.up to 100 lustre mounts
+	 */
+	fixup_context(strip_suffix);
+
 	struct lustre_svc_stats *lss =
 		lustre_svc_stats_alloc(stats_path, nkeys);
 	if (!lss) {
@@ -290,7 +386,7 @@ int stats_construct_routine(ldms_schema_t schema,
 	}
 	LIST_INSERT_HEAD(list, &lss->lms, link);
 	for (j = 0; j < nkeys; j++) {
-		sprintf(metric_name, "%s%s%s", prefix, keys[j], suffix);
+		sprintf(metric_name, "%s%s%s", prefix, keys[j], strip_suffix);
 		rc = __add_lss_metric_routine(schema, metric_name,
 					      &lss->mctxt[j], keys[j], lss);
 		if (rc)
@@ -301,9 +397,11 @@ int stats_construct_routine(ldms_schema_t schema,
 	else
 		lss->mh_status_idx = -1;
 
+	free(strip_suffix);
 	return 0;
 
 err1:
+	free(strip_suffix);
 	lustre_svc_stats_free(lss);
 err0:
 	return rc;
