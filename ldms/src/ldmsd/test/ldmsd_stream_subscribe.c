@@ -23,10 +23,13 @@ FILE *file;
 void msglog(const char *fmt, ...)
 {
 	va_list ap;
+	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
+	pthread_mutex_lock(&mutex);
 	va_start(ap, fmt);
 	vfprintf(file, fmt, ap);
 	fflush(file);
+	pthread_mutex_unlock(&mutex);
 }
 
 static struct option long_opts[] = {
