@@ -615,6 +615,7 @@ jbuf_t make_exit_data(spank_t sh, const char *event, const char *context)
 jbuf_t make_task_init_data(spank_t sh, const char *event, const char *context)
 {
 	jbuf_t jb;
+	pid_t pid = -1;
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "schema", "\"slurm_job_data\","); if (!jb) goto out_1;
@@ -625,7 +626,11 @@ jbuf_t make_task_init_data(spank_t sh, const char *event, const char *context)
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_id", S_TASK_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_global_id", S_TASK_GLOBAL_ID, ','); if (!jb) goto out_1;
-	jb = _append_item_u32(sh, jb, "task_pid", S_TASK_PID, ','); if (!jb) goto out_1;
+	_get_item_u32(sh, S_TASK_PID, (uint32_t*)&pid);
+	if (pid == 0 || pid == -1) {
+		pid = getpid();
+	}
+	jb = jbuf_append_attr(jb, "task_pid", "%d,", pid); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "uid", S_JOB_UID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "gid", S_JOB_GID, ','); if (!jb) goto out_1;
