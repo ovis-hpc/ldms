@@ -354,6 +354,10 @@ static int sample(struct ldmsd_sampler *self)
 	RBT_FOREACH(rbn, &job_tree) {
 		job = container_of(rbn, struct job_data, job_ent);
 		if (job->job_state != JOB_PAPI_RUNNING) {
+			/* also update job state in the set */
+			ldms_transaction_begin(job->set);
+			ldms_metric_set_u8(job->set, job->job_state_mid, job->job_state);
+			ldms_transaction_end(job->set);
 			uint64_t now = time(NULL);
 			/*
 			 * Don't let sets linger in !RUNNING state for
@@ -545,6 +549,12 @@ static void handle_papi_error(job_data_t job)
 	}
 	job->job_state = JOB_PAPI_ERROR;
 	job->job_state_time = time(NULL);
+	/* job_lock is held, call chain: stream_recv_cb
+	 *                               -> handle_task_init
+	 *                               -> handle_papi_error */
+	ldms_transaction_begin(job->set);
+	ldms_metric_set_u8(job->set, job->job_state_mid, job->job_state);
+	ldms_transaction_end(job->set);
 }
 
 static void handle_task_init(job_data_t job, json_entity_t e)
@@ -663,6 +673,11 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 	}
 	job->job_state = JOB_PAPI_RUNNING;
 	job->job_state_time = time(NULL);
+	/* job_lock is held, call chain: stream_recv_cb
+	 *                               -> handle_task_init */
+	ldms_transaction_begin(job->set);
+	ldms_metric_set_u8(job->set, job->job_state_mid, job->job_state);
+	ldms_transaction_end(job->set);
 	return;
  err:
 	handle_papi_error(job);
@@ -681,6 +696,11 @@ static void handle_task_exit(job_data_t job, json_entity_t e)
 	/* Tell sampler to stop sampling */
 	job->job_state = JOB_PAPI_STOPPING;
 	job->job_state_time = time(NULL);
+	/* job_lock is held, call chain: stream_recv_cb
+	 *                               -> handle_task_exit */
+	ldms_transaction_begin(job->set);
+	ldms_metric_set_u8(job->set, job->job_state_mid, job->job_state);
+	ldms_transaction_end(job->set);
 
 	attr = json_attr_find(dict, "task_pid");
 	task_pid = json_value_int(json_attr_value(attr));
@@ -715,6 +735,11 @@ static void handle_job_exit(job_data_t job, json_entity_t e)
 	uint64_t timestamp = json_value_int(json_attr_value(attr));
 
 	job->job_state = JOB_PAPI_COMPLETE;
+	/* job_lock is held, call chain: stream_recv_cb
+	 *                               -> handle_job_exit */
+	ldms_transaction_begin(job->set);
+	ldms_metric_set_u8(job->set, job->job_state_mid, job->job_state);
+	ldms_transaction_end(job->set);
 	job->job_state_time = time(NULL);
 	job->job_end = timestamp;
 	release_job_data(job);
