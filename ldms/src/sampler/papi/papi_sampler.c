@@ -372,16 +372,6 @@ static int sample(struct ldmsd_sampler *self)
 		assert(job->set);
 		sample_job(job);
 	}
-	while (!LIST_EMPTY(&delete_list)) {
-		job = LIST_FIRST(&delete_list);
-		msglog(LDMSD_LINFO,
-		       "papi_sampler [%d]: forcing cleanup of instance '%s', "
-		       "set %p, set_id %ld.\n",
-		       __LINE__, job->instance_name, job->set,
-		       ldms_set_id(job->set));
-		LIST_REMOVE(job, delete_entry);
-		release_job_data(job);
-	}
 	pthread_mutex_unlock(&job_lock);
 	return 0;
 }
