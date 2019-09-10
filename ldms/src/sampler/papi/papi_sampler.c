@@ -124,8 +124,6 @@ static void release_job_data(job_data_t jd)
 		}
 		jd->papi_init = 0;
 	}
-	if (jd->set)
-		ldms_set_unpublish(jd->set);
 	rbt_del(&job_tree, &jd->job_ent);
 	LIST_INSERT_HEAD(&job_expiry_list, jd, expiry_entry);
 }
@@ -135,8 +133,10 @@ static void free_job_data(job_data_t jd)
 	papi_event_t ev;
 	job_task_t t;
 
-	if (jd->set)
+	if (jd->set) {
+		ldms_set_unpublish(jd->set);
 		ldms_set_delete(jd->set);
+	}
 
 	while (!TAILQ_EMPTY(&jd->event_list)) {
 		ev = TAILQ_FIRST(&jd->event_list);
