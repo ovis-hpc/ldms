@@ -66,14 +66,10 @@
 #include <slurm/spank.h>
 #include "ldms.h"
 #include <json/json_util.h>
+#include <assert.h>
 #include "../ldmsd/ldmsd_stream.h"
 
-static ldms_t ldms;
 static char *stream;
-static sem_t conn_sem;
-static int conn_status;
-static sem_t recv_sem;
-static sem_t close_sem;
 #define SLURM_NOTIFY_TIMEOUT 5
 static time_t io_timeout = SLURM_NOTIFY_TIMEOUT;
 
@@ -197,7 +193,7 @@ static spank_err_t _get_item_u16(spank_t s, int id, uint16_t *pv)
 	spank_err_t err = spank_get_item(s, id, pv);
 	if (err) {
 		*pv = 0;
-		slurm_info("Spank returned %d accessing item %d", err, id);
+		slurm_debug2("Spank returned %d accessing item %d", err, id);
 	}
 	return 0;
 }
@@ -207,7 +203,7 @@ static spank_err_t _get_item_u32(spank_t s, int id, uint32_t *pv)
 	spank_err_t err = spank_get_item(s, id, pv);
 	if (err) {
 		*pv = 0;
-		slurm_info("Spank returned %d accessing item %d", err, id);
+		slurm_debug2("Spank returned %d accessing item %d", err, id);
 	}
 	return 0;
 }
@@ -234,35 +230,63 @@ static jbuf_t _append_item_u32(spank_t s, jbuf_t jb, const char *name, spank_ite
 	return jbuf_append_attr(jb, name, "%d%c", v, term);
 }
 
+struct client {
+	char xprt[16];
+	char host[64];
+	char port[16];
+	char auth[16];
+	ldms_t ldms;
+	pthread_cond_t wait_cond;
+	pthread_mutex_t wait_lock;
+	int state;
+	LIST_ENTRY(client) entry;
+	LIST_ENTRY(client) delete;
+};
+
+#define IDLE		0
+#define CONNECTING	1
+#define CONNECTED	2
+#define ACKED		3
+#define DISCONNECTED	4
+
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-	slurm_info("%s[%d]: Event %d received",
-		   __func__, __LINE__, e->type);
+	struct client *client = cb_arg;
+	const char *event;
+	if (!client->ldms)
+		return;
+	pthread_mutex_lock(&client->wait_lock);
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
-		sem_post(&conn_sem);
-		conn_status = 0;
-		break;
-	case LDMS_XPRT_EVENT_REJECTED:
-		ldms_xprt_put(x);
-		ldms = NULL;
-		conn_status = ECONNREFUSED;
-		break;
-	case LDMS_XPRT_EVENT_DISCONNECTED:
-		ldms_xprt_put(x);
-		conn_status = ENOTCONN;
-		sem_post(&close_sem);
-		break;
-	case LDMS_XPRT_EVENT_ERROR:
-		conn_status = ECONNREFUSED;
+		client->state = CONNECTED;
+		event = "connected";
 		break;
 	case LDMS_XPRT_EVENT_RECV:
-		sem_post(&recv_sem);
+		event = "recv";
+		client->state = ACKED;
+		break;
+	case LDMS_XPRT_EVENT_REJECTED:
+		client->state = DISCONNECTED;
+		event = "rejected";
+		break;
+	case LDMS_XPRT_EVENT_DISCONNECTED:
+		client->state = DISCONNECTED;
+		event = "disconnected";
+		break;
+	case LDMS_XPRT_EVENT_ERROR:
+		client->state = DISCONNECTED;
+		event = "error";
 		break;
 	default:
-		slurm_info("%s[%d]: Received invalid event type",
+		slurm_debug2("%s[%d]: Received invalid event type",
 			   __func__, __LINE__);
 	}
+	pthread_mutex_unlock(&client->wait_lock);
+	pthread_cond_signal(&client->wait_cond);
+	slurm_debug2("%s[%d]: Event %s received for "
+		   "client xprt=%s host=%s port=%s auth=%s\n",
+		   __func__, __LINE__, event,
+		   client->xprt, client->host, client->port, client->auth);
 }
 
 static char *get_arg_value(const char *arg)
@@ -275,36 +299,84 @@ static char *get_arg_value(const char *arg)
 	return NULL;
 }
 
-static ldms_t setup_connection(int argc, char *argv[])
+/*
+ * The client spec syntax is:
+ * xprt:host:port:auth
+ *
+ * All entries except port are optional. Missing entries have defaults
+ * as follows:
+ *
+ * xprt - 'sock'
+ * host - 'localhost'
+ * port - '411'
+ * auth - 'munge'
+ *
+ * Therefore:
+ *
+ * :::: is sock:localhost:10001:munge
+ */
+LIST_HEAD(client_list, client);
+void add_client(struct client_list *cl, const char *spec)
 {
-	struct timespec wait_ts;
-	char hostname[PATH_MAX];
-	const char *xprt = NULL;
-	const char *host = NULL;
-	const char *port = NULL;
-	const char *auth = NULL;
+	const char *r;
+	int i;
+	struct client *client;
+
+	client = calloc(1, sizeof(*client));
+	if (!client)
+		goto err;
+	/* Transport */
+	r = spec;
+	for (i = 0; *r != '\0' && *r != ':' && i < sizeof(client->xprt); i++)
+		client->xprt[i] = *r++;
+	if (i == 0)
+		strcpy(client->xprt, "sock");
+	if (*r == ':')
+		r++;
+	/* Host */
+	for (i = 0; *r != '\0' && *r != ':' && i < sizeof(client->host); i++)
+		client->host[i] = *r++;
+	if (i == 0)
+		strcpy(client->host, "localhost");
+	if (*r == ':')
+		r++;
+	/* Port */
+	for (i = 0; *r != '\0' && *r != ':' && i < sizeof(client->port); i++)
+		client->port[i] = *r++;
+	if (i == 0)
+		strcpy(client->port, "411");
+	if (*r == ':')
+		r++;
+	/* Auth */
+	for (i = 0; *r != '\0' && *r != ':' && i < sizeof(client->auth); i++)
+		client->auth[i] = *r++;
+	if (i == 0)
+		strcpy(client->auth, "munge");
+
+	client->state = IDLE;
+	pthread_mutex_init(&client->wait_lock, NULL);
+	pthread_cond_init(&client->wait_cond, NULL);
+	LIST_INSERT_HEAD(cl, client, entry);
+	slurm_debug2("%s[%d] client xprt=%s host=%s port=%s auth=%s\n", __func__, __LINE__,
+		   client->xprt, client->host, client->port, client->auth);
+	return;
+ err:
+	if (client)
+		free(client);
+	slurm_debug2("%s - Memory allocation failure.\n", __func__);
+}
+
+void setup_clients(int argc, char *argv[], struct client_list *cl)
+{
 	const char *timeout = NULL;
 	int rc;
 
 	for (rc = 0; rc < argc; rc++) {
+		if (0 == strncasecmp(argv[rc], "client", 6)) {
+			add_client(cl, get_arg_value(argv[rc]));
+		}
 		if (0 == strncasecmp(argv[rc], "stream", 6)) {
 			stream = get_arg_value(argv[rc]);
-			continue;
-		}
-		if (0 == strncasecmp(argv[rc], "xprt", 4)) {
-			xprt = get_arg_value(argv[rc]);
-			continue;
-		}
-		if (0 == strncasecmp(argv[rc], "host", 4)) {
-			host = get_arg_value(argv[rc]);
-			continue;
-		}
-		if (0 == strncasecmp(argv[rc], "port", 4)) {
-			port = get_arg_value(argv[rc]);
-			continue;
-		}
-		if (0 == strncasecmp(argv[rc], "auth", 4)) {
-			auth = get_arg_value(argv[rc]);
 			continue;
 		}
 		if (0 == strncasecmp(argv[rc], "timeout", 7)) {
@@ -312,88 +384,163 @@ static ldms_t setup_connection(int argc, char *argv[])
 			continue;
 		}
 	}
-
-	if (!host) {
-		if (0 == gethostname(hostname, sizeof(hostname)))
-			host = hostname;
-	}
-	if (!xprt)
-		xprt = "sock";
 	if (!stream)
 		stream = "slurm";
-	if (!auth)
-		auth = "munge";
-	if (!port)
-		port = "10001";
 	if (!timeout)
 		io_timeout = SLURM_NOTIFY_TIMEOUT;
 	else
 		io_timeout = strtoul(timeout, NULL, 0);
-	slurm_info("%s[%d]: timeout %s io_timeout %ld", __func__, __LINE__, timeout, io_timeout);
-	wait_ts.tv_sec = time(NULL) + io_timeout;
-	wait_ts.tv_nsec = 0;
+	slurm_debug2("%s[%d]: timeout %s io_timeout %ld", __func__, __LINE__, timeout, io_timeout);
+}
 
-	slurm_info("%s:%d ", __func__, __LINE__);
-	if (!stream || !port || !auth) {
-		slurm_info("slurm_notifier: SLURM_NOTIFY_{STREAM,XPRT,HOST,PORT,AUTH} "
-			   "must be set");
-		return NULL;
+int purge(struct client_list *client_list, struct client_list *delete_list)
+{
+	struct client *client;
+	while (!LIST_EMPTY(delete_list)) {
+		client = LIST_FIRST(delete_list);
+		LIST_REMOVE(client, delete);
+		LIST_REMOVE(client, entry);
 	}
-	slurm_info("%s:%d stream=%s xprt=%s host=%s port=%s auth=%s",
-		   __func__, __LINE__, stream, xprt, host, port, auth);
-
-	ldms = ldms_xprt_new_with_auth(xprt, msglog, auth, NULL);
-	if (!ldms) {
-		slurm_info("%s[%d]: Error %d creating the '%s' transport\n",
-			   __func__, __LINE__,
-			   errno, xprt);
-		return NULL;
-	}
-
-	sem_init(&recv_sem, 1, 0);
-	sem_init(&conn_sem, 1, 0);
-	sem_init(&close_sem, 1, 0);
-
-	rc = ldms_xprt_connect_by_name(ldms, host, port, event_cb, NULL);
-	if (rc) {
-		slurm_info("%s[%d]: Error %d connecting to %s:%s\n",
-			   __func__, __LINE__,
-			   rc, host, port);
-		ldms_xprt_close(ldms);
-		ldms = NULL;
-		return NULL;
-	}
-	sem_timedwait(&conn_sem, &wait_ts);
-	if (conn_status) {
-		ldms_xprt_close(ldms);
-		ldms = NULL;
-		return NULL;
-	}
-	return ldms;
+	if (LIST_EMPTY(client_list))
+		return ENOTCONN;
+	return 0;
 }
 
 static int send_event(int argc, char *argv[], jbuf_t jb)
 {
+	struct client_list client_list;
+	struct client_list delete_list;
+	struct client *client;
 	struct timespec wait_ts;
 	int rc = ENOTCONN;
-	slurm_info("%s:%d ", __func__, __LINE__);
 
-	ldms = setup_connection(argc, argv);
-	if (!ldms)
+	LIST_INIT(&client_list);
+	LIST_INIT(&delete_list);
+
+	setup_clients(argc, argv, &client_list);
+
+	LIST_FOREACH(client, &client_list, entry) {
+		client->ldms =
+			ldms_xprt_new_with_auth(client->xprt,
+						msglog, client->auth, NULL);
+		if (!client->ldms) {
+			slurm_debug2("%s[%d]: ERROR %d creating the '%s' transport\n",
+				     __func__, __LINE__,
+				     errno, client->xprt);
+			continue;
+		}
+		client->state = IDLE;
+	}
+	if (LIST_EMPTY(&client_list))
 		return ENOTCONN;
 
-	slurm_info("%s:%d ", __func__, __LINE__);
-	rc = ldmsd_stream_publish(ldms, stream, LDMSD_STREAM_JSON, jb->buf, jb->cursor);
-	slurm_info("%s:%d rc=%d", __func__, __LINE__, rc);
-	if (!rc) {
-		wait_ts.tv_sec = time(NULL) + io_timeout;
-		wait_ts.tv_nsec = 0;
-		sem_timedwait(&recv_sem, &wait_ts);
+	/* Attempt to connect to each client */
+	LIST_FOREACH(client, &client_list, entry) {
+		client->state = CONNECTING;
+		assert(client->ldms);
+		rc = ldms_xprt_connect_by_name(client->ldms, client->host,
+					       client->port, event_cb, client);
+		if (rc) {
+			slurm_debug2("%s[%d]: Synchronous ERROR %d connecting to %s:%s\n",
+				     __func__, __LINE__,
+				     rc, client->host, client->port);
+			LIST_INSERT_HEAD(&delete_list, client, delete);
+		}
 	}
-	slurm_info("%s:%d ", __func__, __LINE__);
-	ldms_xprt_close(ldms);
-	ldms = NULL;
-	return rc;
+	rc = purge(&client_list, &delete_list);
+	if (rc)
+		return rc;
+	/*
+	 * Wait for the connections to complete and purge clients who
+	 * failed to connect
+	 */
+	LIST_INIT(&delete_list);
+	wait_ts.tv_sec = time(NULL) + io_timeout;
+	wait_ts.tv_nsec = 0;
+	LIST_FOREACH(client, &client_list, entry) {
+		pthread_mutex_lock(&client->wait_lock);
+		if (client->state == CONNECTING)
+			pthread_cond_timedwait(&client->wait_cond, &client->wait_lock, &wait_ts);
+		if (client->state != CONNECTED) {
+			slurm_debug2("%s[%d]: ERROR state=%d connecting to %s:%s\n",
+				   __func__, __LINE__,
+				   client->state, client->host, client->port);
+			LIST_INSERT_HEAD(&delete_list, client, delete);
+		}
+		pthread_mutex_unlock(&client->wait_lock);
+	}
+	/*
+	 * Purge clients who failed to connect or timed-out
+	 */
+	rc = purge(&client_list, &delete_list);
+	if (rc)
+		return rc;
+
+	/*
+	 * Publish event to connected clents
+	 */
+	wait_ts.tv_sec = time(NULL) + io_timeout;
+	wait_ts.tv_nsec = 0;
+	LIST_INIT(&delete_list);
+	LIST_FOREACH(client, &client_list, entry) {
+		slurm_debug2("%s:%d publishing to %s:%s\n", __func__, __LINE__,
+			   client->host, client->port);
+		rc = ldmsd_stream_publish(client->ldms, stream,
+					  LDMSD_STREAM_JSON, jb->buf, jb->cursor);
+		if (rc) {
+			slurm_debug2("%s:%d ERROR %d publishing to %s:%s\n", __func__, __LINE__, rc,
+				   client->host, client->port);
+			LIST_INSERT_HEAD(&delete_list, client, delete);
+			continue;
+		}
+	}
+	rc = purge(&client_list, &delete_list);
+	if (rc)
+		return rc;
+	/*
+	 * Wait for the event to be acknowledged by the client before
+	 * disconnecting
+	*/
+	wait_ts.tv_sec = time(NULL) + io_timeout;
+	wait_ts.tv_nsec = 0;
+	LIST_FOREACH(client, &client_list, entry) {
+		pthread_mutex_lock(&client->wait_lock);
+		if (client->state == CONNECTED)
+			pthread_cond_timedwait(&client->wait_cond, &client->wait_lock, &wait_ts);
+		if (client->state == ACKED)
+			slurm_debug2("%s:%d ACKED %s:%s\n", __func__, __LINE__,
+				   client->host, client->port);
+		else
+			slurm_debug2("%s:%d ACK TIMEOUT state=%d %s:%s\n", __func__, __LINE__,
+				   client->state, client->host, client->port);
+		pthread_mutex_unlock(&client->wait_lock);
+	}
+	/*
+	 * Disconnect client
+	 */
+	LIST_FOREACH(client, &client_list, entry) {
+		pthread_mutex_lock(&client->wait_lock);
+		if (client->state != DISCONNECTED) {
+			slurm_debug2("%s[%d] CLOSING client xprt=%s host=%s "
+				   "port=%s auth=%s\n", __func__, __LINE__,
+				   client->xprt, client->host, client->port, client->auth);
+			ldms_xprt_close(client->ldms);
+		}
+		pthread_mutex_unlock(&client->wait_lock);
+	}
+	/*
+	 * Wait for close complete
+	 */
+	LIST_FOREACH(client, &client_list, entry) {
+		pthread_mutex_lock(&client->wait_lock);
+		if (client->state != DISCONNECTED) {
+			slurm_debug2("%s[%d] CLOSE WAIT for client %s:%s\n",
+				   __func__, __LINE__, client->host, client->port);
+			pthread_cond_timedwait(&client->wait_cond, &client->wait_lock, &wait_ts);
+		}
+		pthread_mutex_unlock(&client->wait_lock);
+	}
+	return 0;
 }
 
 jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
@@ -413,9 +560,9 @@ jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 	err = spank_getenv(sh, "SUBSCRIBER_DATA", subscriber_data, sizeof(subscriber_data));
 	if (err)
 		strcpy(subscriber_data, "{}");
-	slurm_info("%s:%d SUBSCRIBER_DATA '%s'.\n", __func__, __LINE__, subscriber_data);
+	slurm_debug2("%s:%d SUBSCRIBER_DATA '%s'.\n", __func__, __LINE__, subscriber_data);
 	if (json_verify_string(subscriber_data)) {
-		slurm_info("%s:%d subscriber_data '%s' is not valid JSON and is being ignored.\n",
+		slurm_debug2("%s:%d subscriber_data '%s' is not valid JSON and is being ignored.\n",
 			   __func__, __LINE__, subscriber_data);
 		strcpy(subscriber_data, "{}");
 	}
@@ -523,11 +670,7 @@ int slurm_spank_init(spank_t sh, int argc, char *argv[])
 	spank_context_t context = spank_context();
 	const char *context_str;
 	jbuf_t jb;
-	int i;
 
-	slurm_info("%s:%d nnodes=%d", __func__, __LINE__, nnodes(sh));
-	for (i = 0; i < argc; i++)
-		slurm_info("argc[%d] is %s", i, argv[i]);
 	if (0 == nnodes(sh))
 		/* Ignore events before node assignment */
 		return ESPANK_SUCCESS;
@@ -543,11 +686,10 @@ int slurm_spank_init(spank_t sh, int argc, char *argv[])
 
 	jb = make_init_data(sh, "init", context_str);
 	if (jb) {
-		slurm_info("%s:%d %s", __func__, __LINE__, jb->buf);
+		slurm_debug2("%s:%d %s", __func__, __LINE__, jb->buf);
 		send_event(argc, argv, jb);
 		jbuf_free(jb);
 	}
-	slurm_info("%s:%d", __func__, __LINE__);
 	return ESPANK_SUCCESS;
 }
 
@@ -558,8 +700,6 @@ slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 	spank_context_t context = spank_context();
 	const char *context_str;
 	jbuf_t jb;
-
-	slurm_info("%s:%d", __func__, __LINE__);
 
 	if (0 == nnodes(sh))
 		/* Ignore events before node assignment */
@@ -576,11 +716,10 @@ slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 
 	jb = make_task_init_data(sh, "task_init_priv", context_str);
 	if (jb) {
-		slurm_info("%s:%d %s", __func__, __LINE__, jb->buf);
+		slurm_debug2("%s:%d %s", __func__, __LINE__, jb->buf);
 		send_event(argc, argv, jb);
 		jbuf_free(jb);
 	}
-	slurm_info("%s:%d", __func__, __LINE__);
 	return ESPANK_SUCCESS;
 }
 
@@ -630,8 +769,6 @@ slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 	const char *context_str;
 	jbuf_t jb;
 
-	slurm_info("%s:%d", __func__, __LINE__);
-
 	if (0 == nnodes(sh))
 		/* Ignore events before node assignment */
 		return ESPANK_SUCCESS;
@@ -647,11 +784,10 @@ slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 
 	jb = make_task_exit_data(sh, "task_exit", context_str);
 	if (jb) {
-		slurm_info("%s:%d %s", __func__, __LINE__, jb->buf);
+		slurm_debug2("%s:%d %s", __func__, __LINE__, jb->buf);
 		send_event(argc, argv, jb);
 		jbuf_free(jb);
 	}
-	slurm_info("%s:%d", __func__, __LINE__);
 	return ESPANK_SUCCESS;
 }
 
@@ -661,9 +797,6 @@ int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 	spank_context_t context = spank_context();
 	const char *context_str;
 	jbuf_t jb;
-
-	slurm_info("%s:%d", __func__, __LINE__);
-
 
 	if (0 == nnodes(sh))
 		/* Ignore events before node assignment */
@@ -680,14 +813,9 @@ int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 
 	jb = make_exit_data(sh, "exit", context_str);
 	if (jb) {
-		slurm_info("%s:%d %s", __func__, __LINE__, jb->buf);
+		slurm_debug2("%s:%d %s", __func__, __LINE__, jb->buf);
 		send_event(argc, argv, jb);
 		jbuf_free(jb);
 	}
-	slurm_info("%s:%d", __func__, __LINE__);
-	struct timespec wait_ts;
-	wait_ts.tv_sec = time(NULL) + io_timeout;
-	wait_ts.tv_nsec = 0;
-	sem_timedwait(&close_sem, &wait_ts);
 	return ESPANK_SUCCESS;
 }
