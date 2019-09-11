@@ -420,7 +420,9 @@ static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 			 * there are any changes to
 			 * avoid unnecessary iterations.
 			 */
+			ldmsd_prdcr_unlock(prdcr);
 			ldmsd_prd_set_updtr_task_update(set);
+			ldmsd_prdcr_lock(prdcr);
 		}
 	}
 }
