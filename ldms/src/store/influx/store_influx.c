@@ -270,9 +270,7 @@ static inline size_t __element_byte_len(enum ldms_value_type t)
 		assert(0 == "Invalid type specified");
 	return __element_byte_len_[t];
 }
-/*
-meminfo,job_id=12344i,component_id=100000i MemTotal=263518917i,MemFree=97231768i,MemAvailable=245401372i,Buffers=16i,Cached=145691728i,SwapCached=178148i,Active=64993868i,Inactive=94022496i,Active_anon_=12229548i,Inactive_anon_=1872492i,Active_file_=52764320i,Inactive_file_=92150004i,Unevictable=0i,Mlocked=0i,SwapTotal=4194300i,SwapFree=3335952i,Dirty=2680i,Writeback=0i,AnonPages=13141804i,Mapped=22500768i,Shmem=789460i,Slab=5957340i,SReclaimable=5103028i,SUnreclaim=854312i,KernelStack=36096i,PageTables=218840i,NFS_Unstable=0i,Bounce=0i,WritebackTmp=0i,CommitLimit=135953756i,Committed_AS=31471980i,VmallocTotal=34359738367i,VmallocUsed=0i,VmallocChunk=0i,HardwareCorrupted=0i,AnonHugePages=10162176i,ShmemHugePages=0i,ShmemPmdMapped=0i,CmaTotal=0i,CmaFree=0i,HugePages_Total=0i,HugePages_Free=0i,HugePages_Rsvd=0i,HugePages_Surp=0,Hugepagesize=2048i,DirectMap4k=2261260i,DirectMap2M=169596928i,DirectMap1G=98566144i 1566489644000000000
-*/
+
 static int
 store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_count)
 {
