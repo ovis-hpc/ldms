@@ -1173,6 +1173,7 @@ int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 		ldmsd_prdcr_put(ref->prdcr);
 		free(ref);
 	}
+	LIST_INSERT_HEAD(&updtr->del_prdcr_regex_list, regex_ent, entry);
 	goto out;
 err:
 	if (regex_ent) {

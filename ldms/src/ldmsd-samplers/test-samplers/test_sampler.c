@@ -468,21 +468,21 @@ free_schema:
 	return rc;
 }
 
-static int config_add_schema(test_sampler_inst_t inst, json_entity_t json)
+static int config_add_schema(test_sampler_inst_t inst, json_entity_t json,
+						char *ebuf, size_t ebufsz)
 {
 	int rc = 0;
 	struct test_sampler_schema *ts_schema;
 	ldms_schema_t schema;
 	const char *schema_name = json_attr_find_str(json, "schema");
 	if (!schema_name) {
-		INST_LOG(inst, LDMSD_LERROR, "Need schema_name\n");
+		snprintf(ebuf, ebufsz, "Schema name is missing.");
 		return EINVAL;
 	}
 
 	ts_schema = __schema_find(&inst->schema_list, schema_name);
 	if (ts_schema) {
-		INST_LOG(inst, LDMSD_LERROR, "Schema '%s' already exists.\n",
-			 schema_name);
+		snprintf(ebuf, ebufsz, "Schema '%s' already exists.", schema_name);
 		return EEXIST;
 	}
 
@@ -492,8 +492,8 @@ static int config_add_schema(test_sampler_inst_t inst, json_entity_t json)
 	metrics = json_attr_find_str(json, "metrics");
 	value = json_attr_find_str(json, "num_metrics");
 	if (!metrics && !value) {
-		INST_LOG(inst, LDMSD_LERROR, "Either metrics or num_metrics "
-			 "must be given\n");
+		snprintf(ebuf, ebufsz, "Either metrics or num_metrics "
+						"must be given.");
 		return EINVAL;
 	}
 
@@ -689,7 +689,8 @@ void __val_inc(ldms_mval_t val, enum ldms_value_type type)
 	}
 }
 
-static int config_add_set(test_sampler_inst_t inst, json_entity_t json)
+static int config_add_set(test_sampler_inst_t inst, json_entity_t json,
+						char *ebuf, size_t ebufsz)
 {
 	int rc = 0;
 	struct test_sampler_schema *ts_schema;
@@ -697,19 +698,18 @@ static int config_add_set(test_sampler_inst_t inst, json_entity_t json)
 
 	const char *schema_name = json_attr_find_str(json, "schema");
 	if (!schema_name) {
-		INST_LOG(inst, LDMSD_LERROR, "Need schema name\n");
+		snprintf(ebuf, ebufsz, "Schema name is missing.");
 		return EINVAL;
 	}
 
 	const char *set_name = json_attr_find_str(json, "instance");
 	if (!set_name) {
-		INST_LOG(inst, LDMSD_LERROR, "Need set name\n");
+		snprintf(ebuf, ebufsz, "Set instance name is missing.");
 		return EINVAL;
 	}
 	ts_schema = __schema_find(&inst->schema_list, schema_name);
 	if (!ts_schema) {
-		INST_LOG(inst, LDMSD_LERROR, "Schema '%s' does not exist.\n",
-			 schema_name);
+		snprintf(ebuf, ebufsz, "Schema '%s' does not exist.", schema_name);
 		return EINVAL;
 	}
 
@@ -725,8 +725,7 @@ static int config_add_set(test_sampler_inst_t inst, json_entity_t json)
 	struct test_sampler_set *ts_set;
 	ts_set = __set_find(&inst->set_list, set_name);
 	if (ts_set) {
-		INST_LOG(inst, LDMSD_LERROR,
-			 "Set '%s' already exists\n", set_name);
+		snprintf(ebuf, ebufsz, "Set '%s' already exists\n", set_name);
 		return EINVAL;
 	}
 
@@ -743,8 +742,7 @@ static int config_add_set(test_sampler_inst_t inst, json_entity_t json)
 	if (compid) {
 		v.v_u64 = strtoull(compid, &endptr, 0);
 		if (*endptr != '\0') {
-			INST_LOG(inst, LDMSD_LERROR,
-				 "invalid component_id %s\n", compid);
+			snprintf(ebuf, ebufsz, "invalid component_id %s\n", compid);
 			rc = EINVAL;
 			goto err1;
 		}
@@ -757,8 +755,7 @@ static int config_add_set(test_sampler_inst_t inst, json_entity_t json)
 	if (jobid) {
 		v.v_u64 = strtoull(jobid, &endptr, 0);
 		if (*endptr != '\0') {
-			INST_LOG(inst, LDMSD_LERROR, "invalid jobid %s\n",
-				 jobid);
+			snprintf(ebuf, ebufsz, "invalid jobid %s\n", jobid);
 			rc = EINVAL;
 			goto err1;
 		}
@@ -801,7 +798,8 @@ err0:
 	return rc;
 }
 
-static int config_add_default(test_sampler_inst_t inst, json_entity_t json)
+static int config_add_default(test_sampler_inst_t inst, json_entity_t json,
+						char *ebuf, size_t ebufsz)
 {
 	const char *sname;
 	const char *s;
@@ -812,7 +810,7 @@ static int config_add_default(test_sampler_inst_t inst, json_entity_t json)
 	if (!sname)
 		sname = samp->schema_name;
 	if (strlen(sname) == 0){
-		INST_LOG(inst, LDMSD_LERROR, "schema name invalid.\n");
+		snprintf(ebuf, ebufsz, "schema name '%s' is invalid.", sname);
 		return EINVAL;
 	}
 
@@ -931,7 +929,8 @@ static int __add_all_array(test_sampler_inst_t inst,
 	return 0;
 }
 
-static int config_add_scalar(test_sampler_inst_t inst, json_entity_t json)
+static int config_add_scalar(test_sampler_inst_t inst, json_entity_t json,
+						char *ebuf, size_t ebufsz)
 {
 	const char *schema_name, *set_array_card_str;
 	int set_array_card;
@@ -943,7 +942,7 @@ static int config_add_scalar(test_sampler_inst_t inst, json_entity_t json)
 	if (!schema_name)
 		schema_name = "test_sampler_scalar";
 	if (strlen(schema_name) == 0){
-		INST_LOG(inst, LDMSD_LERROR, "schema name invalid.\n");
+		snprintf(ebuf, ebufsz, "schema name '%s' is invalid.", schema_name);
 		return EINVAL;
 	}
 	set_array_card_str = json_attr_find_str(json, "set_array_card");
@@ -951,6 +950,14 @@ static int config_add_scalar(test_sampler_inst_t inst, json_entity_t json)
 		set_array_card = 1;
 	else
 		set_array_card = strtol(set_array_card_str, NULL, 0);
+
+	ts_schema = __schema_find(&inst->schema_list, schema_name);
+	if (ts_schema) {
+		snprintf(ebuf, ebufsz, "Schema '%s' already exists.\n",
+			 schema_name);
+		return EEXIST;
+	}
+
 	schema = __schema_new(inst, schema_name);
 	if (!schema) {
 		INST_LOG(inst, LDMSD_LERROR,
@@ -959,13 +966,6 @@ static int config_add_scalar(test_sampler_inst_t inst, json_entity_t json)
 		return ENOMEM;
 	}
 
-	ts_schema = __schema_find(&inst->schema_list, schema_name);
-	if (ts_schema) {
-		INST_LOG(inst, LDMSD_LERROR, "Schema '%s' already exists.\n",
-			 schema_name);
-		ldms_schema_delete(schema);
-		return EEXIST;
-	}
 	ts_schema = __test_sampler_schema_new(inst, schema_name,
 				TEST_SAMPLER_SCHEMA_TYPE_AUTO, schema);
 	if (!ts_schema)
@@ -980,7 +980,8 @@ static int config_add_scalar(test_sampler_inst_t inst, json_entity_t json)
 	return rc;
 }
 
-static int config_add_array(test_sampler_inst_t inst, json_entity_t json)
+static int config_add_array(test_sampler_inst_t inst, json_entity_t json,
+						char *ebuf, size_t ebufsz)
 {
 	const char *schema_name, *set_array_card_str, *array_sz;
 	int set_array_card;
@@ -992,7 +993,7 @@ static int config_add_array(test_sampler_inst_t inst, json_entity_t json)
 	if (!schema_name)
 		schema_name = "test_sampler_array";
 	if (strlen(schema_name) == 0){
-		INST_LOG(inst, LDMSD_LERROR, "schema name invalid.\n");
+		snprintf(ebuf, ebufsz, "schema name '%s' is invalid.", schema_name);
 		return EINVAL;
 	}
 	set_array_card_str = json_attr_find_str(json, "set_array_card");
@@ -1002,9 +1003,16 @@ static int config_add_array(test_sampler_inst_t inst, json_entity_t json)
 		set_array_card = strtol(set_array_card_str, NULL, 0);
 	array_sz = json_attr_find_str(json, "metric_array_sz");
 	if (!array_sz) {
-		INST_LOG(inst, LDMSD_LERROR, "metric_array_sz is required\n");
+		snprintf(ebuf, ebufsz, "metric_array_sz is required");
 		return EINVAL;
 	}
+
+	ts_schema = __schema_find(&inst->schema_list, schema_name);
+	if (ts_schema) {
+		snprintf(ebuf, ebufsz, "Schema '%s' already exists.", schema_name);
+		return EEXIST;
+	}
+
 	schema = __schema_new(inst, schema_name);
 	if (!schema) {
 		INST_LOG(inst, LDMSD_LERROR, "Failed to create "
@@ -1012,13 +1020,6 @@ static int config_add_array(test_sampler_inst_t inst, json_entity_t json)
 		return ENOMEM;
 	}
 
-	ts_schema = __schema_find(&inst->schema_list, schema_name);
-	if (ts_schema) {
-		INST_LOG(inst, LDMSD_LERROR,
-			 "Schema '%s' already exists.\n", schema_name);
-		ldms_schema_delete(schema);
-		return EEXIST;
-	}
 	ts_schema = __test_sampler_schema_new(inst, schema_name,
 				TEST_SAMPLER_SCHEMA_TYPE_AUTO, schema);
 	if (!ts_schema)
@@ -1033,7 +1034,8 @@ static int config_add_array(test_sampler_inst_t inst, json_entity_t json)
 	return rc;
 }
 
-static int config_add_all(test_sampler_inst_t inst, json_entity_t json)
+static int config_add_all(test_sampler_inst_t inst, json_entity_t json,
+					char *ebuf, size_t ebufsz)
 {
 	const char *schema_name, *set_array_card_str, *array_sz;
 	int set_array_card;
@@ -1045,7 +1047,7 @@ static int config_add_all(test_sampler_inst_t inst, json_entity_t json)
 	if (!schema_name)
 		schema_name = "test_sampler_all";
 	if (strlen(schema_name) == 0){
-		INST_LOG(inst, LDMSD_LERROR, "schema name invalid.\n");
+		snprintf(ebuf, ebufsz, "schema name '%s' is invalid.", schema_name);
 		return EINVAL;
 	}
 	set_array_card_str = json_attr_find_str(json, "set_array_card");
@@ -1055,9 +1057,17 @@ static int config_add_all(test_sampler_inst_t inst, json_entity_t json)
 		set_array_card = strtol(set_array_card_str, NULL, 0);
 	array_sz = json_attr_find_str(json, "metric_array_sz");
 	if (!array_sz) {
-		INST_LOG(inst, LDMSD_LERROR, "metric_array_sz is required\n");
+		snprintf(ebuf, ebufsz, "metric_array_sz is required\n");
 		return EINVAL;
 	}
+
+	ts_schema = __schema_find(&inst->schema_list, schema_name);
+	if (ts_schema) {
+		snprintf(ebuf, ebufsz, "Schema '%s' already exists.",
+			 schema_name);
+		return EEXIST;
+	}
+
 	schema = __schema_new(inst, schema_name);
 	if (!schema) {
 		INST_LOG(inst, LDMSD_LERROR, "Failed to create schema '%s'\n",
@@ -1065,13 +1075,6 @@ static int config_add_all(test_sampler_inst_t inst, json_entity_t json)
 		return ENOMEM;
 	}
 
-	ts_schema = __schema_find(&inst->schema_list, schema_name);
-	if (ts_schema) {
-		INST_LOG(inst, LDMSD_LERROR, "Schema '%s' already exists.\n",
-			 schema_name);
-		ldms_schema_delete(schema);
-		return EEXIST;
-	}
 	ts_schema = __test_sampler_schema_new(inst, schema_name,
 				TEST_SAMPLER_SCHEMA_TYPE_AUTO, schema);
 	if (!ts_schema)
@@ -1429,6 +1432,9 @@ const char *test_sampler_help(ldmsd_plugin_inst_t pi)
 	return _help;
 }
 
+typedef int (*action_fn)(test_sampler_inst_t inst, json_entity_t json,
+					char *ebuf, size_t ebufsz);
+
 static
 int test_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
@@ -1443,34 +1449,37 @@ int test_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	const char *set_del_int_str;
 	const char *ts_suffix_str;
 	const char *producer_name;
+	action_fn act_fn;
 
+	rc = samp->base.config(pi, json, ebuf, ebufsz);
+	if (rc)
+		return rc;
 
 	action = json_attr_find_str(json, "action");
 	if (action) {
 		rc = 0;
 		if (0 == strcmp(action, "add_schema")) {
-			rc = config_add_schema(inst, json);
+			act_fn = config_add_schema;
 		} else if (0 == strcmp(action, "add_set")) {
-			rc = config_add_set(inst, json);
+			act_fn = config_add_set;
 		} else if (0 == strcmp(action, "default")) {
-			rc = config_add_default(inst, json);
+			act_fn = config_add_default;
 		} else if (0 == strcmp(action, "add_scalar")) {
-			rc = config_add_scalar(inst, json);
+			act_fn = config_add_scalar;
 		} else if (0 == strcmp(action, "add_array")) {
-			rc = config_add_array(inst, json);
+			act_fn = config_add_array;
 		} else if (0 == strcmp(action, "add_all")) {
-			rc = config_add_all(inst, json);
+			act_fn = config_add_all;
 		} else {
-			INST_LOG(inst, LDMSD_LERROR,
-				 "Unrecognized action '%s'.\n", action);
+			act_fn = NULL;
+			snprintf(ebuf, ebufsz,
+					"Unrecognized action '%s'.\n", action);
 			rc = EINVAL;
 		}
+		if (act_fn)
+			rc = act_fn(inst, json, ebuf, ebufsz);
 		return rc;
 	}
-
-	rc = samp->base.config(pi, json, ebuf, ebufsz);
-	if (rc)
-		return rc;
 
 	producer_name = json_attr_find_str(json, "producer");
 	compid = json_attr_find_str(json, "component_id");
@@ -1539,6 +1548,46 @@ void test_sampler_del(ldmsd_plugin_inst_t pi)
 }
 
 static
+json_entity_t test_sampler_query(ldmsd_plugin_inst_t pi, const char *q)
+{
+	json_entity_t result = ldmsd_sampler_query(pi, q);
+	if (!result)
+		return NULL;
+
+	/* Only override the 'env' query. */
+	if (0 != strcmp(q, "env"))
+		return result;
+
+	json_entity_t attr, envs, str;
+	envs = json_entity_new(JSON_LIST_VALUE);
+	if (!envs)
+		goto enomem;
+	str = json_entity_new(JSON_STRING_VALUE, "envs");
+	if (!str) {
+		json_entity_free(envs);
+		goto enomem;
+	}
+	attr = json_entity_new(JSON_ATTR_VALUE, str, envs);
+	if (!attr) {
+		json_entity_free(str);
+		json_entity_free(envs);
+		goto enomem;
+	}
+	str = json_entity_new(JSON_STRING_VALUE, "TEST_SAMPLER_ENV");
+	if (!str) {
+		json_entity_free(attr);
+		goto enomem;
+	}
+	json_item_add(envs, str);
+	json_attr_add(result, attr);
+	return result;
+
+enomem:
+	ldmsd_plugin_qjson_err_set(result, ENOMEM, "Out of memory");
+	return result;
+}
+
+static
 int test_sampler_init(ldmsd_plugin_inst_t pi)
 {
 	test_sampler_inst_t inst = (void*)pi;
@@ -1550,6 +1599,7 @@ int test_sampler_init(ldmsd_plugin_inst_t pi)
 	samp->sample = test_sampler_sample;
 
 	/* NOTE More initialization code here if needed */
+	samp->base.query = test_sampler_query;
 	return 0;
 }
 

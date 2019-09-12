@@ -417,7 +417,8 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_LISTEN_REQ, listen_handler, XUG,
 	},
 	[LDMSD_EXPORT_CONFIG_REQ] = {
-		LDMSD_EXPORT_CONFIG_REQ, export_config_handler, XUG
+		LDMSD_EXPORT_CONFIG_REQ, export_config_handler,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 
 	/* FAILOVER user commands */
@@ -744,7 +745,7 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 {
 	struct request_handler_entry *ent;
 	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)reqc->req_buf;
-	ldms_t xprt = reqc->xprt->xprt;
+	ldms_t xprt;
 	uid_t luid;
 	gid_t lgid;
 	mode_t mask;
@@ -763,10 +764,8 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 		return unimplemented_handler(reqc);
 
 	/* Check command permission */
-	if (xprt) {
-		/* NOTE: NULL xprt is a config file.
-		 *       So, this is an in-band ldms xprt */
-
+	if (reqc->xprt->type == LDMSD_CFG_XPRT_LDMS) {
+		xprt = reqc->xprt->xprt;
 		/* check against inband mask */
 		mask = ldmsd_inband_cfg_mask_get();
 		if (0 == (mask & ent->flag))
@@ -1341,6 +1340,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 					"The attribute type '%s' is invalid.",
 					type_s);
+			reqc->errcode = EINVAL;
 			goto send_reply;
 		}
 		if (type == LDMSD_PRDCR_TYPE_LOCAL) {
@@ -4327,7 +4327,9 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 
 	if (reqc->flags & LDMSD_REQ_DEFER_FLAG) {
 		ldmsd_deferred_pi_config_t cfg;
-		cfg = ldmsd_deferred_pi_config_new(name, d);
+		cfg = ldmsd_deferred_pi_config_new(name, d,
+							reqc->key.msg_no,
+							reqc->xprt->file.filename);
 		if (!cfg) {
 			ldmsd_log(LDMSD_LERROR, "Memory allocation failure\n");
 			goto enomem;
@@ -5727,7 +5729,7 @@ static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc)
 			reqc->errcode = EINVAL;
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
 					"Unknown cmd-line option or it must be "
-					"given at the command line: %s\n", lval);
+					"given at the command line: %s", lval);
 			goto send_reply;
 		}
 
@@ -5738,16 +5740,12 @@ static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc)
 	}
 	goto send_reply;
 auth:
-	auth_attrs = &rval[strlen(rval) + 1];
-	if (auth_attrs) {
-		auth_attrs[0] = '\0';
-		auth_attrs++;
-	}
 	/* auth plugin name */
 	rc = ldmsd_process_cmd_line_arg('a', rval);
 	if (rc)
 		goto proc_err;
-	if (auth_attrs) {
+	for (auth_attrs = strtok_r(NULL, " \t\n", &ptr1); auth_attrs;
+			auth_attrs = strtok_r(NULL, " \t\n", &ptr1)) {
 		/* auth plugin attributes */
 		rc = ldmsd_process_cmd_line_arg('A', auth_attrs);
 		if (rc)
@@ -5758,6 +5756,8 @@ auth:
 proc_err:
 	if (rc == EPERM)
 		goto cmdline_eperm;
+	else if (rc == ENOTSUP)
+		goto cmdline_enotsup;
 	else
 		goto cmdline_einval;
 cmdline_einval:
@@ -5765,7 +5765,7 @@ cmdline_einval:
 	rc = 0;
 	reqc->errcode = EINVAL;
 	cnt = snprintf(reqc->line_buf, reqc->line_len,
-			"Invalid cmd-line value: %s=%s\n", lval, rval);
+			"Invalid cmd-line value: %s=%s.", lval, rval);
 	goto send_reply;
 cmdline_eperm:
 	/* reset to 0 because the error caused by users */
@@ -5773,6 +5773,12 @@ cmdline_eperm:
 	reqc->errcode = EPERM;
 	cnt = snprintf(reqc->line_buf, reqc->line_len,
 			"The value of '%s' has already been set.", lval);
+	goto send_reply;
+cmdline_enotsup:
+	rc = 0;
+	reqc->errcode = ENOTSUP;
+	cnt = snprintf(reqc->line_buf, reqc->line_len,
+			"The option -%s must be given at the command line.", lval);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
@@ -6039,15 +6045,16 @@ static void __export_cmdline_args(FILE *f)
 		if (listen->auth_name) {
 			fprintf(f, " auth=%s", listen->auth_name);
 			if (!listen->auth_attrs)
-				continue;
+				goto next_lend;
 			for (i = 0; i < listen->auth_attrs->count; i++) {
 				fprintf(f, " %s=%s",
 					listen->auth_attrs->list[i].name,
 					listen->auth_attrs->list[i].value);
 			}
 		}
+	next_lend:
+		fprintf(f, "\n");
 	}
-	fprintf(f, "\n");
 
 	if (cmd_line_args.log_path) {
 		fprintf(f, "set %s=%s %s=%s\n",
@@ -6065,9 +6072,12 @@ static void __export_cmdline_args(FILE *f)
 	/* authentication */
 	if (cmd_line_args.auth_name) {
 		fprintf(f, "set %s=%s", opts['a'].l, cmd_line_args.auth_name);
-		for (i = 0; i < cmd_line_args.auth_attrs->count; i++) {
-			fprintf(f, " %s=%s", cmd_line_args.auth_attrs->list[i].name,
+		if (cmd_line_args.auth_attrs) {
+			for (i = 0; i < cmd_line_args.auth_attrs->count; i++) {
+				fprintf(f, " %s=%s",
+					cmd_line_args.auth_attrs->list[i].name,
 					cmd_line_args.auth_attrs->list[i].value);
+			}
 		}
 		fprintf(f, "\n");
 	}
@@ -6087,7 +6097,7 @@ static void __export_cmdline_args(FILE *f)
 
 static int __export_smplr_config(FILE *f)
 {
-	fprintf(f, "# ----- Sampler Policies ----- \n");
+	fprintf(f, "# ----- Sampler Policies -----\n");
 	ldmsd_smplr_t smplr;
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_SMPLR);
 	for (smplr = ldmsd_smplr_first(); smplr; smplr = ldmsd_smplr_next(smplr)) {
@@ -6162,7 +6172,7 @@ static int __export_updtrs_config(FILE *f)
 				updtr->sched.intrvl_us);
 		if (updtr->sched.offset_us != LDMSD_UPDT_HINT_OFFSET_NONE) {
 			/* Specify offset */
-			fprintf(f, " offset=%ld", updtr->sched.offset_skew);
+			fprintf(f, " offset=%ld", updtr->sched.offset_us);
 		}
 		if (updtr->is_auto_task) {
 			/* Specify auto_interval */
@@ -6179,19 +6189,10 @@ static int __export_updtrs_config(FILE *f)
 		 */
 
 		/* updtr_prdcr_add */
-		if (LIST_EMPTY(&updtr->added_prdcr_regex_list)) {
-			/* At least one prdcr_regex must be given.
-			 * Otherwise, there is nothing else to do with
-			 * this updater.
-			 */
-			ldmsd_updtr_unlock(updtr);
-			continue;
-		} else {
-			LIST_FOREACH(regex_ent, &updtr->added_prdcr_regex_list, entry) {
-				fprintf(f, "updtr_prdcr_add name=%s regex=%s\n",
-						updtr->obj.name,
-						regex_ent->str);
-			}
+		LIST_FOREACH(regex_ent, &updtr->added_prdcr_regex_list, entry) {
+			fprintf(f, "updtr_prdcr_add name=%s regex=%s\n",
+					updtr->obj.name,
+					regex_ent->str);
 		}
 
 		/* updtr_prdcr_del */
@@ -6262,42 +6263,59 @@ static int __export_strgps_config(FILE *f)
 
 struct setgroup_ctxt {
 	FILE *f;
+	ldmsd_setgrp_t setgrp;
 	int cnt;
 };
 
 static int __export_setgroup_member(ldms_set_t set, const char *name, void *arg)
 {
 	struct setgroup_ctxt *ctxt = (struct setgroup_ctxt *)arg;
-	if (ctxt->cnt > 0)
+	if (ctxt->cnt == 0) {
+		fprintf(ctxt->f, "setgroup_ins name=%s instance=%s",
+					ctxt->setgrp->obj.name, name);
+	} else {
 		fprintf(ctxt->f, ",%s", name);
-	else
-		fprintf(ctxt->f, "%s", name);
+	}
 	ctxt->cnt++;
 	return 0;
+}
+
+static int __decimal_to_octal(int decimal)
+{
+	int octal = 0;
+	int i = 1;
+	while (0 != decimal) {
+		octal += (decimal % 8) * i;
+		decimal /= 8;
+		i *= 10;
+	}
+	return octal;
 }
 
 static int __export_setgroups_config(FILE *f)
 {
 	int rc = 0;
 	ldmsd_setgrp_t setgrp;
-	struct setgroup_ctxt ctxt = {f, 0};
+	struct ldmsd_str_ent *member;
+	struct setgroup_ctxt ctxt = {f, 0, 0};
 	fprintf(f, "# ----- Setgroups -----\n");
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_SETGRP);
 	for (setgrp = ldmsd_setgrp_first(); setgrp;
 			setgrp = ldmsd_setgrp_next(setgrp)) {
 		ldmsd_setgrp_lock(setgrp);
 		/* setrgroup_add */
-		fprintf(f, "setgroup_add name=%s producer=%s",
-				setgrp->obj.name, setgrp->producer);
+		fprintf(f, "setgroup_add name=%s producer=%s perm=0%d",
+					setgrp->obj.name, setgrp->producer,
+					__decimal_to_octal(setgrp->obj.perm));
 		if (setgrp->interval_us) {
-			fprintf(f, "interval=%ld", setgrp->interval_us);
+			fprintf(f, " interval=%ld", setgrp->interval_us);
 			if (setgrp->offset_us != LDMSD_UPDT_HINT_OFFSET_NONE)
-				fprintf(f, "offset=%ld", setgrp->offset_us);
+				fprintf(f, " offset=%ld", setgrp->offset_us);
 		}
 		fprintf(f, "\n");
 
 		/* setgroup_ins */
-		fprintf(f, "setgroup_ins name=%s instance=", setgrp->obj.name);
+		ctxt.setgrp = setgrp;
 		rc = ldmsd_group_iter(setgrp->set, __export_setgroup_member, &ctxt);
 		if (rc) {
 			ldmsd_setgrp_unlock(setgrp);

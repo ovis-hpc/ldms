@@ -302,18 +302,28 @@ const char *ldmsd_myname_get()
 
 const char *ldmsd_auth_name_get(ldmsd_listen_t listen)
 {
-	if (listen && listen->auth_name)
-		return listen->auth_name;
-	else
-		return cmd_line_args.auth_name;
+	if (!listen->auth_name)
+		return ldmsd_default_auth_get();
+	return listen->auth_name;
 }
 
 struct attr_value_list *ldmsd_auth_attr_get(ldmsd_listen_t listen)
 {
-	if (listen && listen->auth_name)
-		return listen->auth_attrs;
-	else
-		return cmd_line_args.auth_attrs;
+	if (!listen->auth_name)
+		return ldmsd_default_auth_attr_get();
+	return listen->auth_attrs;
+}
+
+const char *ldmsd_default_auth_get()
+{
+	if (!cmd_line_args.auth_name)
+		return "none";
+	return cmd_line_args.auth_name;
+}
+
+struct attr_value_list *ldmsd_default_auth_attr_get()
+{
+	return cmd_line_args.auth_attrs;
 }
 
 mode_t ldmsd_inband_cfg_mask_get()
@@ -1086,7 +1096,7 @@ err:
 /*
  * \return EPERM if the value is already given.
  *
- * The command-line options processed in the function
+ * The function processes only the cmd-line options that
  * can be specified both at the command line and in configuration files.
  */
 int ldmsd_process_cmd_line_arg(char opt, char *value)
@@ -1106,6 +1116,11 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		if (!rval) {
 			printf("ERROR: Expecting -A name=value\n");
 			return EINVAL;
+		}
+		if (!cmd_line_args.auth_attrs) {
+			cmd_line_args.auth_attrs = av_new(LDMSD_AUTH_OPT_MAX);
+			if (!cmd_line_args.auth_attrs)
+				return ENOMEM;
 		}
 		rc = ldmsd_auth_opt_add(cmd_line_args.auth_attrs, lval, rval);
 		if (rc)
@@ -1128,20 +1143,13 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		cmd_line_args.banner = atoi(value);
 		break;
 	case 'C':
-		cmd_line_args.is_syntax_check = 1;
-		break;
 	case 'c':
-		/*
-		 * Must be specified at the command line.
-		 * Handle separately in the main() function.
-		 */
-		break;
 	case 'F':
 		/*
 		 * Must be specified at the command line.
 		 * Handle separately in the main() function.
 		 */
-		break;
+		return ENOTSUP;
 	case 'H':
 		if (check_arg("H", value, LO_NAME))
 			return EINVAL;
@@ -1167,7 +1175,12 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			return EPERM;
 		} else {
 			cmd_line_args.log_path = strdup(value);
-			log_fp = ldmsd_open_log();
+			/*
+			 * Print all messages to stdout
+			 * if the syntax check flag is turned on.
+			 */
+			if (!ldmsd_is_check_syntax())
+				log_fp = ldmsd_open_log();
 		}
 		break;
 	case 'm':
@@ -1177,6 +1190,13 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 					cmd_line_args.mem_sz_str);
 			return EPERM;
 		} else {
+			if (0 == ovis_get_mem_size(value)) {
+				ldmsd_log(LDMSD_LERROR,
+						"Invalid memory size '%s'. "
+						"See the -m option.\n",
+						value);
+				return EINVAL;
+			}
 			cmd_line_args.mem_sz_str = strdup(value);
 			if (!cmd_line_args.mem_sz_str) {
 				ldmsd_log(LDMSD_LERROR, "Out of memory\n");
@@ -1353,16 +1373,6 @@ void handle_pidfile_banner()
 	}
 }
 
-void cmd_line_value_init()
-{
-	cmd_line_args.auth_attrs = av_new(LDMSD_AUTH_OPT_MAX);
-	if (!cmd_line_args.auth_attrs)
-		cleanup(ENOMEM, "Memory allocation failure.");
-
-	cmd_line_args.verbosity = LDMSD_VERBOSITY_DEFAULT;
-	cmd_line_args.banner = -1;
-}
-
 void ldmsd_init()
 {
 	int rc, i;
@@ -1377,14 +1387,7 @@ void ldmsd_init()
 		}
 
 	}
-	if ((mem_sz = ovis_get_mem_size(cmd_line_args.mem_sz_str)) == 0) {
-		printf("Invalid memory size '%s'. See the -m option.\n",
-						cmd_line_args.mem_sz_str);
-
-		if (!ldmsd_is_check_syntax()) {
-			cleanup(EINVAL, "invalid -m value");
-		}
-	}
+	mem_sz = ovis_get_mem_size(cmd_line_args.mem_sz_str);
 	if (ldms_init(mem_sz)) {
 		ldmsd_log(LDMSD_LCRITICAL, "LDMS could not pre-allocate "
 				"the memory of size %s.\n",
@@ -1472,15 +1475,71 @@ void ldmsd_init()
 	is_ldmsd_initialized = 1;
 }
 
+int create_listening_ldms_xprt(ldmsd_listen_t listen)
+{
+	listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
+			ldmsd_auth_name_get(listen), ldmsd_auth_attr_get(listen));
+	if (!listen->x) {
+		ldmsd_log(LDMSD_LERROR,
+			  "'%s' transport creation with auth '%s' "
+			  "failed, error: %s(%d). Please check transpot "
+			  "configuration, authentication configuration, "
+			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
+			  listen->xprt,
+			  ldmsd_auth_name_get(listen),
+			  ovis_errno_abbvr(errno),
+			  errno);
+		return 6; /* legacy error code */
+	}
+	return 0;
+}
+
 void handle_listening_endpoints()
 {
 	struct ldmsd_listen *listen;
 	int rc;
 	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
 		listen; listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
+		rc = create_listening_ldms_xprt(listen);
+		if (rc)
+			cleanup(rc, "error creating transport");
 		rc = listen_on_ldms_xprt(listen);
 		if (rc)
 			cleanup(rc, "error listening on transport");
+	}
+}
+
+void try_creating_listening_ldms_xprts()
+{
+	struct ldmsd_listen *listen;
+	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+		listen; listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
+		(void)create_listening_ldms_xprt(listen);
+	}
+}
+
+void try_creating_default_auth()
+{
+	ldms_auth_plugin_t default_auth_pi;
+	ldms_auth_t default_auth;
+	if (!cmd_line_args.auth_name)
+		return;
+	default_auth_pi = ldms_auth_plugin_get(cmd_line_args.auth_name);
+	if (!default_auth_pi) {
+		ldmsd_log(LDMSD_LERROR, "Invalid default auth '%s'."
+				"Please check ZAP_LIBPATH (env var), "
+				"and LD_LIBRARY_PATH",
+				cmd_line_args.auth_name);
+	} else {
+		default_auth = ldms_auth_new(default_auth_pi, cmd_line_args.auth_attrs);
+		if (!default_auth) {
+			ldmsd_log(LDMSD_LERROR, "Failed to create "
+				"the default authentication object. "
+				"Please check the given auth arguments (%s)\n",
+				av_to_string(cmd_line_args.auth_attrs, 0));
+		} else {
+			ldms_auth_free(default_auth);
+		}
 	}
 }
 
@@ -1525,15 +1584,25 @@ int main(int argc, char *argv[])
 	proc_gid = getegid();
 
 	umask(0);
-	cmd_line_value_init();
 
 	extern struct ldmsd_deferred_pi_config_q deferred_pi_config_q;
 	TAILQ_INIT(&deferred_pi_config_q);
+
+	cmd_line_args.verbosity = LDMSD_VERBOSITY_DEFAULT;
+	cmd_line_args.banner = -1;
 
 	/* Process the options given at the command line. */
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
+		case 'C':
+			cmd_line_args.is_syntax_check = 1;
+			break;
+		case 'c':
+			/*
+			 * Handle configuration files later
+			 */
+			break;
 		case 'F':
 			cmd_line_args.foreground = 1;
 			break;
@@ -1619,13 +1688,20 @@ int main(int argc, char *argv[])
 	}
 
 	ldmsd_init(argv);
+	ldmsd_handle_deferred_plugin_config();
 
-	if (cmd_line_args.is_syntax_check)
+	if (cmd_line_args.is_syntax_check) {
+		try_creating_default_auth();
+		/*
+		 * Check whether the given transport, authentication methods
+		 * and their arguments are valid or not.
+		 */
+		try_creating_listening_ldms_xprts();
 		goto out;
+	}
 
 	handle_pidfile_banner();
 	handle_listening_endpoints();
-	ldmsd_handle_deferred_plugin_config();
 
 	if (ldmsd_use_failover) {
 		/* failover will be the one starting cfgobjs */

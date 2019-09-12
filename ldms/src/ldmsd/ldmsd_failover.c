@@ -981,8 +981,8 @@ int __failover_active_connect(ldmsd_failover_t f)
 	__ASSERT(f->ax == NULL);
 	__ASSERT(f->conn_state == FAILOVER_CONN_STATE_DISCONNECTED);
 	f->ax = ldms_xprt_new_with_auth(f->xprt, ldmsd_linfo,
-					ldmsd_auth_name_get(NULL),
-					ldmsd_auth_attr_get(NULL));
+					ldmsd_default_auth_get(),
+					ldmsd_default_auth_attr_get());
 	if (!f->ax) {
 		rc = errno;
 		goto out;
@@ -1734,9 +1734,17 @@ err:
 
 int failover_start_handler(ldmsd_req_ctxt_t req)
 {
-	int rc;
+	int rc = 0;
 	char errbuf[128];
 	const char *errmsg = NULL;
+
+	if (req->flags & LDMSD_REQ_DEFER_FLAG) {
+		/*
+		 * Defer starting the failover.
+		 * It will be started after LDMSD is initialized.
+		 */
+		goto out;
+	}
 
 	rc = ldmsd_failover_start();
 	switch (rc) {
@@ -1753,7 +1761,7 @@ int failover_start_handler(ldmsd_req_ctxt_t req)
 		errmsg = errbuf;
 		break;
 	}
-
+out:
 	req->errcode = rc;
 	ldmsd_send_req_response(req, errmsg);
 	return rc;
@@ -2334,12 +2342,12 @@ int failover_config_export(FILE *f)
 		/* not configured yet */
 		return 0;
 
-	fprintf(f, "failover_config host=%s xprt=%s port=%s ",
+	fprintf(f, "failover_config host=%s xprt=%s port=%s",
 			fo->host, fo->xprt, fo->port);
-	fprintf(f, "auto_switch=%d interval=%ld timeout_factor=%f",
+	fprintf(f, " auto_switch=%d interval=%ld timeout_factor=%f",
 			fo->auto_switch, fo->ping_interval, fo->timeout_factor);
 	if (0 != fo->peer_name[0])
-		fprintf(f, "peer_name=%s", fo->peer_name);
+		fprintf(f, " peer_name=%s", fo->peer_name);
 	fprintf(f, "\n");
 
 	/* failover_start */

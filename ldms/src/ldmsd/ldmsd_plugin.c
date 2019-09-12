@@ -907,6 +907,17 @@ json_entity_t qfn_env(ldmsd_plugin_inst_t pi, json_entity_t result)
 }
 
 struct ldmsd_deferred_pi_config_q deferred_pi_config_q;
+struct ldmsd_deferred_pi_config *ldmsd_deferred_pi_config_first()
+{
+	return TAILQ_FIRST(&deferred_pi_config_q);
+}
+
+struct ldmsd_deferred_pi_config *
+ldmsd_deffered_pi_config_next(struct ldmsd_deferred_pi_config *cfg)
+{
+	return TAILQ_NEXT(cfg, entry);
+}
+
 void ldmsd_deferred_pi_config_free(ldmsd_deferred_pi_config_t cfg)
 {
 	TAILQ_REMOVE(&deferred_pi_config_q, cfg, entry);
@@ -916,11 +927,14 @@ void ldmsd_deferred_pi_config_free(ldmsd_deferred_pi_config_t cfg)
 		free(cfg->name);
 	if (cfg->buf)
 		free(cfg->buf);
+	if (cfg->config_file)
+		free(cfg->config_file);
 	free(cfg);
 }
 
 ldmsd_deferred_pi_config_t
-ldmsd_deferred_pi_config_new(const char *name, json_entity_t d)
+ldmsd_deferred_pi_config_new(const char *name, json_entity_t d,
+			uint32_t msg_no, const char *config_file)
 {
 	struct ldmsd_deferred_pi_config *cfg = calloc(1, sizeof(*cfg));
 	errno = 0;
@@ -936,6 +950,14 @@ ldmsd_deferred_pi_config_new(const char *name, json_entity_t d)
 	cfg->d = json_entity_copy(d);
 	if (!cfg->d)
 		goto err1;
+	cfg->msg_no = msg_no;
+	/*
+	 * The only way the config command will be deferred is that it must be
+	 * given in a config file at the start time.
+	 */
+	cfg->config_file = strdup(config_file);
+	if (!cfg->config_file)
+		goto err1;
 	TAILQ_INSERT_TAIL(&deferred_pi_config_q, cfg, entry);
 	return cfg;
 err1:
@@ -943,27 +965,4 @@ err1:
 err:
 	errno = ENOMEM;
 	return NULL;
-}
-
-int ldmsd_handle_deferred_plugin_config()
-{
-	struct ldmsd_deferred_pi_config *cfg, *nxt_cfg;
-	ldmsd_plugin_inst_t inst;
-	int rc;
-	cfg = TAILQ_FIRST(&deferred_pi_config_q);
-	while (cfg) {
-		nxt_cfg = TAILQ_NEXT(cfg, entry);
-		inst = ldmsd_plugin_inst_find(cfg->name);
-		rc = ldmsd_plugin_inst_config(inst, cfg->d, cfg->buf, cfg->buflen);
-		if (rc) {
-			jbuf_t jb = json_entity_dump(NULL, cfg->d);
-			ldmsd_log(LDMSD_LERROR, "Error config instance '%s': %s\n",
-					cfg->name, jb->buf);
-			jbuf_free(jb);
-			return rc;
-		}
-		ldmsd_deferred_pi_config_free(cfg);
-		cfg = nxt_cfg;
-	}
-	return 0;
 }

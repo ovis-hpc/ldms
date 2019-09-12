@@ -1142,6 +1142,8 @@ struct ldmsd_failover {
 	double ping_sd;       /* ping round-trip time standard deviation */
 
 	int ping_skipped; /* the number of ping skipped due to outstanding */
+
+	int perm; /* Similar to cfgobj perm */
 } *ldmsd_failover_t;
 
 extern int ldmsd_use_failover;
@@ -1211,6 +1213,18 @@ const char *ldmsd_auth_name_get(ldmsd_listen_t listen);
  * \see struct ldmsd_cmd_line_args
  */
 struct attr_value_list *ldmsd_auth_attr_get(ldmsd_listen_t listen);
+
+/*
+ * Get the default authentication method
+ */
+const char *ldmsd_default_auth_get();
+
+/*
+ * Get the attributes of the default authentication method
+ *
+ * The caller MUST not modify the content in the returned list.
+ */
+struct attr_value_list *ldmsd_default_auth_attr_get();
 
 mode_t ldmsd_inband_cfg_mask_get();
 void ldmsd_inband_cfg_mask_set(mode_t mask);

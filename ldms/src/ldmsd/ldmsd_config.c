@@ -438,20 +438,12 @@ static uint16_t __config_file_msgno2lineno(uint32_t msgno)
 	return msgno & 0xFFFF;
 }
 
-typedef struct ldmsd_cfg_file_xprt {
-	struct ldmsd_cfg_xprt_s base;
-	const char *filename; /* Config file name */
-} *ldmsd_cfg_file_xprt_t;
-
 static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 {
 	uint16_t lineno;
 	ldmsd_req_attr_t attr;
-	ldmsd_cfg_file_xprt_t fxprt;
 	ldmsd_req_hdr_t req_reply = (ldmsd_req_hdr_t)data;
 	ldmsd_ntoh_req_msg(req_reply);
-
-	fxprt = (ldmsd_cfg_file_xprt_t)xprt;
 
 	lineno = __config_file_msgno2lineno(req_reply->msg_no);
 
@@ -465,7 +457,7 @@ static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
 	if (req_reply->rsp_err && (attr->attr_id == LDMSD_ATTR_STRING)) {
 		/* Print the error message to the log */
 		ldmsd_log(LDMSD_LERROR, "At line %d (%s): error %d: %s\n",
-				lineno, fxprt->filename,
+				lineno, xprt->file.filename,
 				req_reply->rsp_err, attr->attr_value);
 	}
 	xprt->rsp_err = req_reply->rsp_err;
@@ -508,7 +500,6 @@ int __req_filter(ldmsd_req_ctxt_t reqc, void *ctxt)
 	switch (reqc->req_id) {
 	case LDMSD_FAILOVER_START_REQ:
 		ldmsd_use_failover = 1;
-		break;
 	case LDMSD_PLUGN_CONFIG_REQ:
 	case LDMSD_PRDCR_START_REGEX_REQ:
 	case LDMSD_PRDCR_START_REQ:
@@ -527,7 +518,8 @@ int __req_filter(ldmsd_req_ctxt_t reqc, void *ctxt)
 int process_config_file(const char *path, int *lno, int trust)
 {
 	static uint16_t file_no = 0; /* Config file ID */
-	static uint32_t cur_req_id = 0; /* For verifying command order */
+	static int have_cmdline = 0;
+	static int have_cfgcmd = 0;
 	file_no++;
 	uint32_t msg_no; /* file_no:line_no */
 	uint16_t lineno = 0; /* The max number of lines is 65536. */
@@ -542,7 +534,7 @@ int process_config_file(const char *path, int *lno, int trust)
 	ssize_t off = 0;
 	ssize_t cnt;
 	size_t buf_len = 0;
-	struct ldmsd_cfg_file_xprt fxprt;
+	struct ldmsd_cfg_xprt_s xprt;
 	ldmsd_req_hdr_t request;
 	struct ldmsd_req_array *req_array = NULL;
 	ldmsd_req_filter_fn req_filter_fn;
@@ -569,12 +561,12 @@ int process_config_file(const char *path, int *lno, int trust)
 		goto cleanup;
 	}
 
-	fxprt.filename = path;
-	fxprt.base.xprt = NULL;
-	fxprt.base.send_fn = log_response_fn;
-	fxprt.base.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
-	fxprt.base.trust = trust;
-	fxprt.base.rsp_err = 0;
+	xprt.type = LDMSD_CFG_XPRT_CONFIG_FILE;
+	xprt.file.filename = path;
+	xprt.send_fn = log_response_fn;
+	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
+	xprt.trust = trust;
+	xprt.rsp_err = 0;
 
 next_line:
 	errno = 0;
@@ -639,12 +631,12 @@ parse:
 	if (!off)
 		goto next_line;
 	msg_no = __config_file_msgno_get(file_no, lineno);
-	req_array = ldmsd_parse_config_str(line, msg_no, fxprt.base.max_msg, ldmsd_log);
+	req_array = ldmsd_parse_config_str(line, msg_no, xprt.max_msg, ldmsd_log);
 	if (!req_array) {
 		rc = errno;
-		ldmsd_log(LDMSD_LCRITICAL, "Failed to parse config file at line %d "
-				"(%s). %s\n", lineno, path, strerror(rc));
-		goto cleanup;
+		ldmsd_log(LDMSD_LERROR, "At line %d (%s): Failed to parse "
+				"config line. %s\n", lineno, path, strerror(rc));
+		goto cleanup_line;
 	}
 	for (i = 0; i < req_array->num_reqs; i++) {
 		request = req_array->reqs[i];
@@ -657,53 +649,64 @@ parse:
 			 * 3. Configuration commands (Other requests, including 'listen')
 			 */
 			uint32_t req_id = ntohl(request->req_id);
-			if ((req_id == LDMSD_ENV_REQ) && cur_req_id &&
-					(cur_req_id != LDMSD_ENV_REQ)) {
-				ldmsd_log(LDMSD_LCRITICAL, "At line %d (%s): "
-						"The environment variable "
-						"is given after "
-						"a command-line option.\n",
-						lineno, path);
-				rc = EINVAL;
-				goto cleanup;
-			} else if (((req_id == LDMSD_CMD_LINE_SET_REQ) ||
-					(req_id == LDMSD_LISTEN_REQ)) &&
-					cur_req_id &&
-					(cur_req_id != LDMSD_ENV_REQ) &&
-					(cur_req_id != LDMSD_CMD_LINE_SET_REQ) &&
-					(cur_req_id != LDMSD_LISTEN_REQ)) {
-				ldmsd_log(LDMSD_LCRITICAL, "At line %d (%s): "
-						"The command-line option or listen "
+			if (req_id == LDMSD_ENV_REQ) {
+				if (have_cmdline || have_cfgcmd) {
+					ldmsd_log(LDMSD_LERROR,
+							"At line %d (%s): "
+							"The environment variable "
+							"is given after "
+							"a command-line option or"
+							"a config command.\n",
+							lineno, path);
+					rc = EINVAL;
+					goto cleanup_record;
+				}
+			} else if ((req_id == LDMSD_CMD_LINE_SET_REQ) ||
+					(req_id == LDMSD_LISTEN_REQ)) {
+				have_cmdline = 1;
+				if (have_cfgcmd) {
+					ldmsd_log(LDMSD_LERROR,
+						"At line %d (%s): "
+						"The set or listen command "
 						"is given after a configuration "
-						"command.\n",
+						"command, e.g., load, prdcr_#.\n",
 						lineno, path);
-				rc = EINVAL;
-				goto cleanup;
-			}
-			cur_req_id = req_id;
-		}
-		rc = ldmsd_process_config_request(&fxprt.base, request, req_filter_fn);
-		if (rc || fxprt.base.rsp_err) {
-			if (!ldmsd_is_check_syntax()) {
-				if (!rc)
-					rc = fxprt.base.rsp_err;
-				goto cleanup;
+					rc = EINVAL;
+					goto cleanup_record;
+				}
+			} else if (req_id == LDMSD_INCLUDE_REQ) {
+				/* do nothing */
 			} else {
 				/*
-				 * If LDMSD starts for syntax checking,
-				 * it will go through all configuration files.
+				 * The other commands are all
+				 * config commands.
 				 */
+				have_cfgcmd = 1;
 			}
 		}
-	next_req:
+		rc = ldmsd_process_config_request(&xprt, request, req_filter_fn);
+cleanup_record:
 		free(request);
+		if ((rc || xprt.rsp_err) && !ldmsd_is_check_syntax()) {
+			if (!rc)
+				rc = xprt.rsp_err;
+			goto cleanup_line;
+		}
 	}
+
+cleanup_line:
 	msg_no += 1;
 
 	off = 0;
-	free(req_array);
-	req_array = NULL;
-	goto next_line;
+	if (req_array) {
+		free(req_array);
+		req_array = NULL;
+	}
+
+	if (ldmsd_is_check_syntax())
+		goto next_line;
+	if (!rc && !xprt.rsp_err)
+		goto next_line;
 
 cleanup:
 	if (fin)
@@ -937,10 +940,8 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 {
 	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)data;
 	struct ldmsd_cfg_xprt_s xprt;
-	xprt.ldms.ldms = x;
-	xprt.send_fn = send_ldms_fn;
-	xprt.max_msg = ldms_xprt_msg_max(x);
-	xprt.trust = 0; /* don't trust any network for CMD expansion */
+
+	ldmsd_cfg_ldms_init(&xprt, x);
 
 	if (ntohl(request->rec_len) > xprt.max_msg) {
 		/* Send the record length advice */
@@ -985,20 +986,6 @@ int listen_on_ldms_xprt(ldmsd_listen_t listen)
 	int ret;
 	struct sockaddr_in sin;
 
-	listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
-			ldmsd_auth_name_get(listen), ldmsd_auth_attr_get(listen));
-	if (!listen->x) {
-		ldmsd_log(LDMSD_LERROR,
-			  "'%s' transport creation with auth '%s' "
-			  "failed, error: %s(%d). Please check transpot "
-			  "configuration, authentication configuration, "
-			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
-			  listen->xprt,
-			  ldmsd_auth_name_get(listen),
-			  ovis_errno_abbvr(errno),
-			  errno);
-		return 6; /* legacy error code */
-	}
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = 0;
 	sin.sin_port = htons(listen->port_no);
@@ -1014,14 +1001,44 @@ int listen_on_ldms_xprt(ldmsd_listen_t listen)
 	return 0;
 }
 
+int ldmsd_handle_deferred_plugin_config()
+{
+	struct ldmsd_deferred_pi_config *cfg, *nxt_cfg;
+	ldmsd_plugin_inst_t inst;
+	int rc;
+	uint16_t lineno;
+	cfg = ldmsd_deferred_pi_config_first();
+	while (cfg) {
+		nxt_cfg = ldmsd_deffered_pi_config_next(cfg);
+		lineno = __config_file_msgno2lineno(cfg->msg_no);
+		inst = ldmsd_plugin_inst_find(cfg->name);
+		rc = ldmsd_plugin_inst_config(inst, cfg->d, cfg->buf, cfg->buflen);
+		if (rc) {
+			jbuf_t jb = json_entity_dump(NULL, cfg->d);
+			ldmsd_log(LDMSD_LERROR, "At line %d (%s): "
+					"Error config plugin instance "
+					"'%s': %s\n", lineno, cfg->config_file,
+					cfg->name, cfg->buf);
+			jbuf_free(jb);
+			if (!ldmsd_is_check_syntax())
+				return rc;
+		}
+		ldmsd_deferred_pi_config_free(cfg);
+		cfg = nxt_cfg;
+	}
+	return 0;
+}
+
+
 void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
 {
 	ldms_xprt_get(ldms);
+	xprt->type = LDMSD_CFG_XPRT_LDMS;
 	xprt->ldms.ldms = ldms;
 	xprt->send_fn = send_ldms_fn;
 	xprt->max_msg = ldms_xprt_msg_max(ldms);
 	xprt->cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
-	xprt->trust = 0;
+	xprt->trust = 0; /* don't trust any network for CMD expansion */
 }
 
 void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix)

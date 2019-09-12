@@ -271,7 +271,7 @@ typedef struct ldmsd_cfg_sock_s {
 } *ldmsd_cfg_sock_t;
 
 typedef struct ldmsd_cfg_file_s {
-	uint32_t next_msg_no;
+	const char *filename; /* Config file name */
 } *ldmsd_cfg_file_t;
 
 struct ldmsd_cfg_xprt_s;
@@ -284,6 +284,11 @@ typedef struct ldmsd_cfg_xprt_s {
 		struct ldmsd_cfg_sock_s sock;
 		struct ldmsd_cfg_ldms_s ldms;
 	};
+	enum {
+		LDMSD_CFG_XPRT_CONFIG_FILE = 1,
+		LDMSD_CFG_XPRT_SOCK,
+		LDMSD_CFG_XPRT_LDMS,
+	} type;
 	size_t max_msg;
 	ldmsd_cfg_send_fn_t send_fn;
 	ldmsd_cfg_cleanup_fn_t cleanup_fn;

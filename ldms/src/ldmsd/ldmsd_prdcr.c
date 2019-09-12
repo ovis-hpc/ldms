@@ -505,8 +505,8 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 		if (!prdcr->conn_auth) {
 			/* Get the default auth and its options */
-			auth = (char *)ldmsd_auth_name_get(NULL);
-			auth_opts = ldmsd_auth_attr_get(NULL);
+			auth = (char *)ldmsd_default_auth_get();
+			auth_opts = ldmsd_default_auth_attr_get();
 		} else {
 			auth = prdcr->conn_auth;
 			auth_opts = prdcr->conn_auth_args;
@@ -587,7 +587,6 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	struct ldmsd_prdcr *prdcr;
 	char *xprt, *host, *au;
 	struct attr_value_list *au_opts = NULL;
-	au = NULL;
 
 	errno = EINVAL;
 	if (!port_no)
@@ -607,6 +606,17 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 			goto err_2;
 		if (auth_args) {
 			au_opts = ldmsd_auth_opts_str2avl(auth_args);
+			if (!au_opts) {
+				free(au);
+				goto err_2;
+			}
+		}
+	} else {
+		au = strdup(ldmsd_default_auth_get());
+		if (!au)
+			goto err_2;
+		if (ldmsd_default_auth_attr_get()) {
+			au_opts = av_copy(ldmsd_default_auth_attr_get());
 			if (!au_opts) {
 				free(au);
 				goto err_2;
@@ -636,6 +646,9 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	/*
 	 * If auth is NULL, the default authentication method will be used
 	 * when prdcr creates the LDMS transport.
+	 * Always assign the authentication method even if it is the default
+	 * authentication method so that the failover buddy will receive
+	 * the whole information.
 	 */
 	prdcr->conn_auth = au;
 	prdcr->conn_auth_args = au_opts;
