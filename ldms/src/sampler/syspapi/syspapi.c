@@ -75,6 +75,7 @@ static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
 static int metric_offset;
 static base_data_t base;
+static int cumulative = 1;
 static const char *default_events = "PAPI_TOT_INS,PAPI_TOT_CYC,"
 				    "PAPI_LD_INS,PAPI_SR_INS,PAPI_BR_INS,"
 				    "PAPI_FP_OPS,"
@@ -142,7 +143,14 @@ create_metric_set(base_data_t base)
 static const char *
 usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP BASE_CONFIG_USAGE;
+	return  "config name=" SAMP BASE_CONFIG_SYNOPSIS
+		"        cfg_file=CFG_PATH [cumulative=0|1]\n"
+		BASE_CONFIG_DESC
+		"    cfg_file     The path to configuration file.\n"
+		"    cumulative   1 (default) for cumulative counters,\n"
+		"                 0 for non-cumulative counters (reset after\n"
+		"                   each read),\n"
+		;
 }
 
 static int
@@ -165,7 +173,7 @@ syspapi_metric_init(syspapi_metric_t m, const char *papi_name)
 	}
 
 	/* get the pfm name */
-	rc = PAPI_event_name_to_code(papi_name, &papi_code);
+	rc = PAPI_event_name_to_code((char*)papi_name, &papi_code);
 	if (rc != PAPI_OK) {
 		ldmsd_lerror(SAMP": PAPI_event_name_to_code for %s failed, "
 				 "error: %d\n", papi_name, rc);
@@ -479,6 +487,7 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
        struct attr_value_list *avl)
 {
 	int rc;
+	char *value;
 	char *events;
 	char *cfg_file;
 
@@ -513,6 +522,12 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		if (rc)
 			goto err;
 	}
+
+	value = av_value(avl, "cumulative");
+	if (value) {
+		cumulative = atoi(value);
+	}
+
 	rc = syspapi_open(&mlist);
 	if (rc) /* error has already been logged */
 		goto err;
@@ -552,8 +567,12 @@ sample(struct ldmsd_sampler *self)
 	TAILQ_FOREACH(m, &mlist, entry) {
 		for (i = 0; i < NCPU; i++) {
 			v = 0;
-			if (m->pfd[i] >= 0)
+			if (m->pfd[i] >= 0) {
 				read(m->pfd[i], &v, sizeof(v));
+				if (!cumulative) {
+					ioctl(m->pfd[i], PERF_EVENT_IOC_RESET, 0);
+				}
+			}
 			ldms_metric_array_set_u64(set, m->midx, i, v);
 		}
 	}
