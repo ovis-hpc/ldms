@@ -841,5 +841,6 @@ void __init__()
 __attribute__((destructor))
 void __del__()
 {
+	ldms_xprt_term(0);
 	DEBUG2("Unloading slurm_notifier\n");
 }
