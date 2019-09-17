@@ -872,6 +872,11 @@ int ldms_init(size_t max_size)
 	return 0;
 }
 
+int ldms_term(int sec)
+{
+	return zap_term(sec);
+}
+
 ldms_schema_t ldms_schema_new(const char *schema_name)
 {
 	ldms_schema_t s = calloc(1, sizeof *s);

@@ -46,6 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#define _GNU_SOURCE
 #include <sys/errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -625,7 +626,9 @@ loop:
 	q->depth++;
 	pthread_cond_broadcast(&q->cond_vacant);
 	pthread_mutex_unlock(&q->mutex);
+	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
 	ent->ep->z->event_interpose(ent->ep, ent->ctxt);
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	free(ent);
 	goto loop;
 	return NULL;
@@ -704,6 +707,30 @@ struct zap_event_queue *__get_least_busy_zap_event_queue()
 	}
 	zap_event_queue_ep_get(q);
 	return q;
+}
+
+int zap_term(int timeout_sec)
+{
+	int i, tmp;
+	int rc = 0;
+	struct timespec ts;
+	for (i = 0; i < zap_event_workers; i++) {
+		pthread_cancel(zev_queue[i].thread);
+	}
+	if (timeout_sec > 0) {
+		ts.tv_sec = time(NULL) + timeout_sec;
+		ts.tv_nsec = 0;
+	}
+	for (i = 0; i < zap_event_workers; i++) {
+		if (timeout_sec > 0) {
+			tmp = pthread_timedjoin_np(zev_queue[i].thread, NULL, &ts);
+			if (tmp)
+				rc = tmp;
+		} else {
+			pthread_join(zev_queue[i].thread, NULL);
+		}
+	}
+	return rc;
 }
 
 static void __attribute__ ((constructor)) cs_init(void)
