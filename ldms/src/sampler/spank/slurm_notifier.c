@@ -73,6 +73,8 @@ static char *stream;
 #define SLURM_NOTIFY_TIMEOUT 5
 static time_t io_timeout = SLURM_NOTIFY_TIMEOUT;
 
+#define DEBUG2(FMT, ...) slurm_debug2("(%d) %s:%d " FMT, getpid(), __func__, __LINE__, ##__VA_ARGS__)
+
 static void msglog(const char *format, ...)
 {
 	va_list ap;
@@ -193,7 +195,7 @@ static spank_err_t _get_item_u16(spank_t s, int id, uint16_t *pv)
 	spank_err_t err = spank_get_item(s, id, pv);
 	if (err) {
 		*pv = 0;
-		slurm_debug2("Spank returned %d accessing item %d", err, id);
+		DEBUG2("Spank returned %d accessing item %d", err, id);
 	}
 	return 0;
 }
@@ -203,7 +205,7 @@ static spank_err_t _get_item_u32(spank_t s, int id, uint32_t *pv)
 	spank_err_t err = spank_get_item(s, id, pv);
 	if (err) {
 		*pv = 0;
-		slurm_debug2("Spank returned %d accessing item %d", err, id);
+		DEBUG2("Spank returned %d accessing item %d", err, id);
 	}
 	return 0;
 }
@@ -278,15 +280,12 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		event = "error";
 		break;
 	default:
-		slurm_debug2("%s[%d]: Received invalid event type",
-			   __func__, __LINE__);
+		DEBUG2("Received invalid event type\n");
 	}
 	pthread_mutex_unlock(&client->wait_lock);
 	pthread_cond_signal(&client->wait_cond);
-	slurm_debug2("%s[%d]: Event %s received for "
-		   "client xprt=%s host=%s port=%s auth=%s\n",
-		   __func__, __LINE__, event,
-		   client->xprt, client->host, client->port, client->auth);
+	DEBUG2("Event %s received for client xprt=%s host=%s port=%s auth=%s\n",
+		event, client->xprt, client->host, client->port, client->auth);
 }
 
 static char *get_arg_value(const char *arg)
@@ -357,13 +356,13 @@ void add_client(struct client_list *cl, const char *spec)
 	pthread_mutex_init(&client->wait_lock, NULL);
 	pthread_cond_init(&client->wait_cond, NULL);
 	LIST_INSERT_HEAD(cl, client, entry);
-	slurm_debug2("%s[%d] client xprt=%s host=%s port=%s auth=%s\n", __func__, __LINE__,
+	DEBUG2("client xprt=%s host=%s port=%s auth=%s\n",
 		   client->xprt, client->host, client->port, client->auth);
 	return;
  err:
 	if (client)
 		free(client);
-	slurm_debug2("%s - Memory allocation failure.\n", __func__);
+	DEBUG2("Memory allocation failure.\n");
 }
 
 void setup_clients(int argc, char *argv[], struct client_list *cl)
@@ -390,7 +389,7 @@ void setup_clients(int argc, char *argv[], struct client_list *cl)
 		io_timeout = SLURM_NOTIFY_TIMEOUT;
 	else
 		io_timeout = strtoul(timeout, NULL, 0);
-	slurm_debug2("%s[%d]: timeout %s io_timeout %ld", __func__, __LINE__, timeout, io_timeout);
+	DEBUG2("timeout %s io_timeout %ld\n", timeout, io_timeout);
 }
 
 int purge(struct client_list *client_list, struct client_list *delete_list)
@@ -424,8 +423,7 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 			ldms_xprt_new_with_auth(client->xprt,
 						msglog, client->auth, NULL);
 		if (!client->ldms) {
-			slurm_debug2("%s[%d]: ERROR %d creating the '%s' transport\n",
-				     __func__, __LINE__,
+			DEBUG2("ERROR %d creating the '%s' transport\n",
 				     errno, client->xprt);
 			continue;
 		}
@@ -441,9 +439,8 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 		rc = ldms_xprt_connect_by_name(client->ldms, client->host,
 					       client->port, event_cb, client);
 		if (rc) {
-			slurm_debug2("%s[%d]: Synchronous ERROR %d connecting to %s:%s\n",
-				     __func__, __LINE__,
-				     rc, client->host, client->port);
+			DEBUG2("Synchronous ERROR %d connecting to %s:%s\n",
+				rc, client->host, client->port);
 			LIST_INSERT_HEAD(&delete_list, client, delete);
 		}
 	}
@@ -459,12 +456,14 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	wait_ts.tv_nsec = 0;
 	LIST_FOREACH(client, &client_list, entry) {
 		pthread_mutex_lock(&client->wait_lock);
-		if (client->state == CONNECTING)
-			pthread_cond_timedwait(&client->wait_cond, &client->wait_lock, &wait_ts);
+		if (client->state == CONNECTING) {
+			rc = pthread_cond_timedwait(&client->wait_cond, &client->wait_lock, &wait_ts);
+			if (rc == ETIMEDOUT)
+				DEBUG2("CONNECTING timed out.\n");
+		}
 		if (client->state != CONNECTED) {
-			slurm_debug2("%s[%d]: ERROR state=%d connecting to %s:%s\n",
-				   __func__, __LINE__,
-				   client->state, client->host, client->port);
+			DEBUG2("ERROR state=%d connecting to %s:%s\n",
+				client->state, client->host, client->port);
 			LIST_INSERT_HEAD(&delete_list, client, delete);
 		}
 		pthread_mutex_unlock(&client->wait_lock);
@@ -483,13 +482,12 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	wait_ts.tv_nsec = 0;
 	LIST_INIT(&delete_list);
 	LIST_FOREACH(client, &client_list, entry) {
-		slurm_debug2("%s:%d publishing to %s:%s\n", __func__, __LINE__,
-			   client->host, client->port);
+		DEBUG2("publishing to %s:%s\n", client->host, client->port);
 		rc = ldmsd_stream_publish(client->ldms, stream,
 					  LDMSD_STREAM_JSON, jb->buf, jb->cursor);
 		if (rc) {
-			slurm_debug2("%s:%d ERROR %d publishing to %s:%s\n", __func__, __LINE__, rc,
-				   client->host, client->port);
+			DEBUG2("ERROR %d publishing to %s:%s\n",
+				rc, client->host, client->port);
 			LIST_INSERT_HEAD(&delete_list, client, delete);
 			continue;
 		}
@@ -505,14 +503,14 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	wait_ts.tv_nsec = 0;
 	LIST_FOREACH(client, &client_list, entry) {
 		pthread_mutex_lock(&client->wait_lock);
-		if (client->state == CONNECTED)
+		if (client->state == CONNECTED) {
 			pthread_cond_timedwait(&client->wait_cond, &client->wait_lock, &wait_ts);
+		}
 		if (client->state == ACKED)
-			slurm_debug2("%s:%d ACKED %s:%s\n", __func__, __LINE__,
-				   client->host, client->port);
+			DEBUG2("ACKED %s:%s\n", client->host, client->port);
 		else
-			slurm_debug2("%s:%d ACK TIMEOUT state=%d %s:%s\n", __func__, __LINE__,
-				   client->state, client->host, client->port);
+			DEBUG2("ACK TIMEOUT state=%d %s:%s\n",
+				client->state, client->host, client->port);
 		pthread_mutex_unlock(&client->wait_lock);
 	}
 	/*
@@ -521,9 +519,9 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	LIST_FOREACH(client, &client_list, entry) {
 		pthread_mutex_lock(&client->wait_lock);
 		if (client->state != DISCONNECTED) {
-			slurm_debug2("%s[%d] CLOSING client xprt=%s host=%s "
-				   "port=%s auth=%s\n", __func__, __LINE__,
-				   client->xprt, client->host, client->port, client->auth);
+			DEBUG2("CLOSING client xprt=%s host=%s "
+				"port=%s auth=%s\n", client->xprt, client->host,
+				client->port, client->auth);
 			ldms_xprt_close(client->ldms);
 		}
 		pthread_mutex_unlock(&client->wait_lock);
@@ -534,9 +532,12 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	LIST_FOREACH(client, &client_list, entry) {
 		pthread_mutex_lock(&client->wait_lock);
 		if (client->state != DISCONNECTED) {
-			slurm_debug2("%s[%d] CLOSE WAIT for client %s:%s\n",
-				   __func__, __LINE__, client->host, client->port);
-			pthread_cond_timedwait(&client->wait_cond, &client->wait_lock, &wait_ts);
+			DEBUG2("CLOSE WAIT for client %s:%s\n",
+				client->host, client->port);
+			rc = pthread_cond_timedwait(&client->wait_cond,
+						&client->wait_lock, &wait_ts);
+			if (rc == ETIMEDOUT)
+				DEBUG2("CLOSE timed out.\n");
 		}
 		pthread_mutex_unlock(&client->wait_lock);
 	}
@@ -560,10 +561,10 @@ jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 	err = spank_getenv(sh, "SUBSCRIBER_DATA", subscriber_data, sizeof(subscriber_data));
 	if (err)
 		strcpy(subscriber_data, "{}");
-	slurm_debug2("%s:%d SUBSCRIBER_DATA '%s'.\n", __func__, __LINE__, subscriber_data);
+	DEBUG2("SUBSCRIBER_DATA '%s'.\n", subscriber_data);
 	if (json_verify_string(subscriber_data)) {
-		slurm_debug2("%s:%d subscriber_data '%s' is not valid JSON and is being ignored.\n",
-			   __func__, __LINE__, subscriber_data);
+		DEBUG2("subscriber_data '%s' is not valid JSON and is being "
+			"ignored.\n", subscriber_data);
 		strcpy(subscriber_data, "{}");
 	}
 	jb = jbuf_append_attr(jb, "subscriber_data", "%s,", subscriber_data); if (!jb) goto out_1;
@@ -691,7 +692,7 @@ int slurm_spank_init(spank_t sh, int argc, char *argv[])
 
 	jb = make_init_data(sh, "init", context_str);
 	if (jb) {
-		slurm_debug2("%s:%d %s", __func__, __LINE__, jb->buf);
+		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
 		jbuf_free(jb);
 	}
@@ -721,7 +722,7 @@ slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 
 	jb = make_task_init_data(sh, "task_init_priv", context_str);
 	if (jb) {
-		slurm_debug2("%s:%d %s", __func__, __LINE__, jb->buf);
+		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
 		jbuf_free(jb);
 	}
@@ -789,7 +790,7 @@ slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 
 	jb = make_task_exit_data(sh, "task_exit", context_str);
 	if (jb) {
-		slurm_debug2("%s:%d %s", __func__, __LINE__, jb->buf);
+		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
 		jbuf_free(jb);
 	}
@@ -818,9 +819,21 @@ int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 
 	jb = make_exit_data(sh, "exit", context_str);
 	if (jb) {
-		slurm_debug2("%s:%d %s", __func__, __LINE__, jb->buf);
+		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
 		jbuf_free(jb);
 	}
 	return ESPANK_SUCCESS;
+}
+
+__attribute__((constructor))
+void __init__()
+{
+	DEBUG2("Loading slurm_notifier\n");
+}
+
+__attribute__((destructor))
+void __del__()
+{
+	DEBUG2("Unloading slurm_notifier\n");
 }
