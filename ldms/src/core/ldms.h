@@ -201,6 +201,17 @@ typedef struct ldms_schema_s *ldms_schema_t;
 int ldms_init(size_t max_size);
 
 /**
+ * \brief Terminate underlying LDMS threads
+ *
+ * \param timeout_sec The time, in seconds, to wait for the threads to
+ *                    terminate, 0 for waiting indefinitely.
+ *
+ * \retval 0         The threads terminated successfully.
+ * \retval ETIMEDOUT A timeout occurred before the threads terminated.
+ */
+int ldms_term(int timeout_sec);
+
+/**
  * \brief Take a reference on a transport
  *
  * \param x	The transport handle

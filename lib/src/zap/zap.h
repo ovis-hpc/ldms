@@ -648,4 +648,15 @@ zap_err_t zap_unshare(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len)
 
 const char* zap_event_str(enum zap_event_type e);
 
+/**
+ * \brief Terminate zap threads
+ *
+ * \param timeout_sec The time, in seconds, to wait for the threads to
+ *                    terminate, 0 for waiting indefinitely.
+ *
+ * \retval 0         The threads terminated successfully.
+ * \retval ETIMEDOUT A timeout occurred before the threads terminated.
+ */
+int zap_term(int timeout_sec);
+
 #endif
