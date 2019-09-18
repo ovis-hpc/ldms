@@ -76,12 +76,6 @@ static ldmsd_msg_log_f msglog;
 static int metric_offset;
 static base_data_t base;
 static int cumulative = 1;
-static const char *default_events = "PAPI_TOT_INS,PAPI_TOT_CYC,"
-				    "PAPI_LD_INS,PAPI_SR_INS,PAPI_BR_INS,"
-				    "PAPI_FP_OPS,"
-				    "PAPI_L1_ICM,PAPI_L1_DCM,"
-				    "PAPI_L2_ICA,PAPI_L2_TCA,PAPI_L2_TCM,"
-				    "PAPI_L3_TCA,PAPI_L3_TCM";
 
 typedef struct syspapi_metric_s {
 	TAILQ_ENTRY(syspapi_metric_s) entry;
