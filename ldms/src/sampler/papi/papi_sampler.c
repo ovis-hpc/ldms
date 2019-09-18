@@ -536,7 +536,7 @@ static int handle_job_init(uint64_t job_id, json_entity_t e)
 	job->task_count = local_tasks;
 	job->job_end = 0;
  out:
-	if (rc)
+	if (rc && job)
 		release_job_data(job);
 	return rc;
 }
