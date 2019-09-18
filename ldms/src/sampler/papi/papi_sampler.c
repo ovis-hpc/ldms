@@ -347,30 +347,51 @@ static int sample(struct ldmsd_sampler *self)
 {
 	job_data_t job;
 	struct rbn *rbn;
+	uint64_t now = time(NULL);
 	LIST_HEAD(,job_data) delete_list;
 	LIST_INIT(&delete_list);
 
 	pthread_mutex_lock(&job_lock);
 	RBT_FOREACH(rbn, &job_tree) {
 		job = container_of(rbn, struct job_data, job_ent);
-		if (job->job_state != JOB_PAPI_RUNNING) {
-			/* also update job state in the set */
-			ldms_transaction_begin(job->set);
-			ldms_metric_set_u8(job->set, job->job_state_mid, job->job_state);
-			ldms_transaction_end(job->set);
-			uint64_t now = time(NULL);
+		switch (job->job_state) {
+		case JOB_PAPI_IDLE:
+		case JOB_PAPI_COMPLETE:
+			assert(0 == "IDLE and COMPLETE Jobs must not be in job tree");
+		case JOB_PAPI_RUNNING:
+			assert(job->set);
+			sample_job(job);
+			break;
+		case JOB_PAPI_STOPPING:
+		case JOB_PAPI_ERROR:
+			assert(job->set);
+			if (job->job_state != ldms_metric_get_u8(job->set, job->job_state_mid)) {
+				/* Update job state in the set */
+				ldms_transaction_begin(job->set);
+				ldms_metric_set_u8(job->set, job->job_state_mid, job->job_state);
+				ldms_transaction_end(job->set);
+			}
+		case JOB_PAPI_INIT:
 			/*
 			 * Don't let sets linger in !RUNNING state for
 			 * longer than the cleanup time. This is
 			 * typically a sign that a slurm event was
 			 * dropped due to a crashed process.
 			 */
-			if (now - job->job_state_time > papi_job_expiry)
+			if (now - job->job_state_time > (2 * papi_job_expiry))
 				LIST_INSERT_HEAD(&delete_list, job, delete_entry);
-			continue;
+			break;
 		}
-		assert(job->set);
-		sample_job(job);
+	}
+	while (!LIST_EMPTY(&delete_list)) {
+		job = LIST_FIRST(&delete_list);
+		msglog(LDMSD_LINFO,
+		       "papi_sampler [%d]: forcing cleanup of instance '%s', "
+		       "set %p, set_id %ld.\n",
+		       __LINE__, job->instance_name, job->set,
+		       ldms_set_id(job->set));
+		LIST_REMOVE(job, delete_entry);
+		release_job_data(job);
 	}
 	pthread_mutex_unlock(&job_lock);
 	return 0;
@@ -509,16 +530,14 @@ static int handle_job_init(uint64_t job_id, json_entity_t e)
 					      json_value_str(config_string)->str_len,
 					      msglog);
 	}
-	if (rc) {
-		release_job_data(job);
-		goto out;
-	}
 	job->job_state = JOB_PAPI_INIT;
 	job->job_state_time = time(NULL);
 	job->job_start = job_start;
 	job->task_count = local_tasks;
 	job->job_end = 0;
  out:
+	if (rc)
+		release_job_data(job);
 	return rc;
 }
 
