@@ -88,15 +88,15 @@ static void init_job_data(base_data_t base)
 
 	base->job_set = ldms_set_by_name(base->job_set_name);
 	if (!base->job_set) {
-		base->log(LDMSD_LINFO,
+		base->log(base->job_log_lvl,
 		    "%s: The job data set named, %s, does not exist. Job "
 		    "data will not be associated with the metric values.\n",
 		    base->pi_name, base->job_set_name);
-		base->job_id_idx = -1;
+		goto err;
 	} else {
 		base->job_id_idx = ldms_metric_by_name(base->job_set, "job_id");
 		if (base->job_id_idx < 0) {
-			base->log(LDMSD_LINFO,
+			base->log(base->job_log_lvl,
 			    "%s: The specified job_set '%s' is missing "
 			    "the 'job_id' attribute and cannot be used.\n",
 			    base->pi_name, base->job_set_name);
@@ -111,7 +111,7 @@ static void init_job_data(base_data_t base)
 
 		base->job_start_idx = ldms_metric_by_name(base->job_set, "job_start");
 		if (base->job_start_idx < 0) {
-			base->log(LDMSD_LINFO,
+			base->log(base->job_log_lvl,
 			    "%s: The specified job_set '%s' is missing "
 			    "the 'job_start' attribute and cannot be used.\n",
 			    base->pi_name, base->job_set_name);
@@ -119,7 +119,7 @@ static void init_job_data(base_data_t base)
 		}
 		base->job_end_idx = ldms_metric_by_name(base->job_set, "job_end");
 		if (base->job_end_idx < 0) {
-			base->log(LDMSD_LERROR,
+			base->log(base->job_log_lvl,
 			    "%s: The specified job_set '%s' is missing "
 			    "the 'job_end' attribute and cannot be used.\n",
 			    base->pi_name, base->job_set_name);
@@ -130,6 +130,8 @@ static void init_job_data(base_data_t base)
  err:
 	base->job_set = NULL;
 	base->job_id_idx = -1;
+	/* reduce job log level to DEBUG after first error report */
+	base->job_log_lvl = LDMSD_LDEBUG;
 }
 
 base_data_t base_config(struct attr_value_list *avl,
@@ -146,6 +148,8 @@ base_data_t base_config(struct attr_value_list *avl,
 		errno = ENOMEM;
 		return NULL;
 	}
+
+	base->job_log_lvl = LDMSD_LINFO;
 
 	base->pi_name = strdup(name);
 	if (!base->pi_name) {

@@ -70,6 +70,7 @@ typedef struct base_data_s {
 	int job_start_idx;
 	int job_end_idx;
 	ldmsd_msg_log_f log;
+	int job_log_lvl;
 } *base_data_t;
 
 #define BASE_COMPONENT_ID	0
