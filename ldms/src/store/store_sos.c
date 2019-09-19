@@ -98,9 +98,7 @@ struct sos_instance {
 	int comp_id_idx;
 	sos_attr_t ts_attr;
 	sos_attr_t comp_id;
-	sos_attr_t comp_time_attr;
 	sos_attr_t job_id;
-	sos_attr_t job_comp_time_attr;
 	sos_attr_t first_attr;
 
 	LIST_ENTRY(sos_instance) entry;
@@ -408,25 +406,13 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	if (!schema)
 		goto err_0;
 
-	/*
-	 * Time Index
-	 */
 	rc = sos_schema_attr_add(schema, "timestamp", SOS_TYPE_TIMESTAMP);
-	if (rc)
-		goto err_1;
-	rc = sos_schema_index_add(schema, "timestamp");
 	if (rc)
 		goto err_1;
 	rc = sos_schema_attr_add(schema, "component_id", SOS_TYPE_UINT64);
 	if (rc)
 		goto err_1;
-	rc = sos_schema_index_add(schema, "component_id");
-	if (rc)
-		goto err_1;
 	rc = sos_schema_attr_add(schema, "job_id", SOS_TYPE_UINT64);
-	if (rc)
-		goto err_1;
-	rc = sos_schema_index_add(schema, "job_id");
 	if (rc)
 		goto err_1;
 
@@ -451,27 +437,28 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	}
 
 	/*
-	 * Component/Time Index
+	 * Time/Job_Id/Component_Id Index
 	 */
-	char *comp_time_attrs[] = { "component_id", "timestamp" };
-	rc = sos_schema_attr_add(schema, "comp_time", SOS_TYPE_JOIN, 2, comp_time_attrs);
+	char *time_job_comp_attrs[] = { "timestamp", "job_id", "component_id" };
+	rc = sos_schema_attr_add(schema, "time_job_comp", SOS_TYPE_JOIN, 3, time_job_comp_attrs);
 	if (rc)
 		goto err_1;
-	rc = sos_schema_index_add(schema, "comp_time");
+	rc = sos_schema_index_add(schema, "time_job_comp");
 	if (rc)
 		goto err_1;
 	/*
-	 * Time/Job_Id Index
+	 * Time/Component/Job_Id Index
 	 */
-	char *time_job_attrs[] = { "timestamp", "job_id" };
-	rc = sos_schema_attr_add(schema, "time_job", SOS_TYPE_JOIN, 2, time_job_attrs);
+	char *time_comp_job_attrs[] = { "timestamp", "component_id", "job_id" };
+	rc = sos_schema_attr_add(schema, "time_comp_job", SOS_TYPE_JOIN, 3, time_comp_job_attrs);
 	if (rc)
 		goto err_1;
-	rc = sos_schema_index_add(schema, "time_job");
+	rc = sos_schema_index_add(schema, "time_comp_job");
 	if (rc)
 		goto err_1;
+
 	/*
-	 * Job/Component/Time Index
+	 * Job_Id/Component_Id/Timestamp Index
 	 */
 	char *job_comp_time_attrs[] = { "job_id", "component_id", "timestamp" };
 	rc = sos_schema_attr_add(schema, "job_comp_time", SOS_TYPE_JOIN, 3, job_comp_time_attrs);
@@ -480,15 +467,36 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	rc = sos_schema_index_add(schema, "job_comp_time");
 	if (rc)
 		goto err_1;
-
 	/*
-	 * Job/Time/Component Index
+	 * Job_Id/Timestamp/Component_Id Index
 	 */
 	char *job_time_comp_attrs[] = { "job_id", "timestamp", "component_id" };
 	rc = sos_schema_attr_add(schema, "job_time_comp", SOS_TYPE_JOIN, 3, job_time_comp_attrs);
 	if (rc)
 		goto err_1;
 	rc = sos_schema_index_add(schema, "job_time_comp");
+	if (rc)
+		goto err_1;
+
+	/*
+	 * Component_Id/Timestamp/Job_Id Index
+	 */
+	char *comp_time_job_attrs[] = { "component_id", "timestamp", "job_id" };
+	rc = sos_schema_attr_add(schema, "comp_time_job", SOS_TYPE_JOIN, 3, comp_time_job_attrs);
+	if (rc)
+		goto err_1;
+	rc = sos_schema_index_add(schema, "comp_time_job");
+	if (rc)
+		goto err_1;
+
+	/*
+	 * Component_Id/Job_Id/Timestamp Index
+	 */
+	char *comp_job_time_attrs[] = { "component_id", "job_id", "timestamp" };
+	rc = sos_schema_attr_add(schema, "comp_job_time", SOS_TYPE_JOIN, 3, comp_job_time_attrs);
+	if (rc)
+		goto err_1;
+	rc = sos_schema_index_add(schema, "comp_job_time");
 	if (rc)
 		goto err_1;
 
@@ -631,8 +639,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		si->job_id_idx = ldms_metric_by_name(set, "job_id");
 		si->comp_id_idx = ldms_metric_by_name(set, "component_id");
 		si->ts_attr = sos_schema_attr_by_name(si->sos_schema, "timestamp");
-		si->job_comp_time_attr = sos_schema_attr_by_name(si->sos_schema, "job_comp_time");
-		si->comp_time_attr = sos_schema_attr_by_name(si->sos_schema, "comp_time");
 		si->first_attr = sos_schema_attr_by_name(si->sos_schema,
 				ldms_metric_name_get(set, metric_arry[0]));
 		if (si->comp_id_idx < 0)
@@ -641,8 +647,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		if (si->job_id_idx < 0)
 			msglog(LDMSD_LERROR,
 			       "The job_id is missing from the metric set/schema.\n");
-		assert(si->comp_time_attr);
-		assert(si->job_comp_time_attr);
 		assert(si->ts_attr);
 	}
 	obj = sos_obj_new(si->sos_schema);
