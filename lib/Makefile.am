@@ -6,9 +6,6 @@ endif
 if ENABLE_SWIG
 SUBDIRS += swig
 endif
-if ENABLE_SOS
-SUBDIRS += bin python
-endif
 
 EXTRA_DIST = autogen.sh COPYING SHA.txt TAG.txt pedigree.am
 
