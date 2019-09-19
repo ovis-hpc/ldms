@@ -189,7 +189,7 @@ static void *cleanup_proc(void *arg)
 static int create_metric_set(job_data_t job)
 {
 	ldms_schema_t schema;
-	int i, rc;
+	int i, rc = -1;
 	job_task_t t;
 
 	schema = ldms_schema_new(job->schema_name);
@@ -759,7 +759,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			  const char *msg, size_t msg_len,
 			  json_entity_t entity)
 {
-	int rc;
+	int rc = 0;
 	json_entity_t event, data, dict, attr;
 
 	if (stream_type != LDMSD_STREAM_JSON) {
