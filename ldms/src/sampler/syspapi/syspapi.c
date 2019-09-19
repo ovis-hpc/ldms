@@ -58,12 +58,14 @@
 #include <time.h>
 #include <pthread.h>
 #include <sys/fcntl.h>
+#include <assert.h>
 
 #include "papi.h"
 #include "perfmon/pfmlib_perf_event.h"
 
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_stream.h"
 #include "../sampler_base.h"
 
 #include "json/json_util.h"
@@ -75,7 +77,8 @@ static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
 static int metric_offset;
 static base_data_t base;
-static int cumulative = 1;
+static int cumulative = 0;
+static int auto_pause = 1;
 
 typedef struct syspapi_metric_s {
 	TAILQ_ENTRY(syspapi_metric_s) entry;
@@ -89,6 +92,20 @@ typedef struct syspapi_metric_s {
 
 TAILQ_HEAD(syspapi_metric_list, syspapi_metric_s);
 static struct syspapi_metric_list mlist = TAILQ_HEAD_INITIALIZER(mlist);
+
+/* The mutex for `sample()` and syspapi state change (e.g. stream handling). */
+pthread_mutex_t syspapi_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/* flags for syspapi_flags */
+#define  SYSPAPI_PAUSED      0x1
+#define  SYSPAPI_OPENED      0x2
+#define  SYSPAPI_CONFIGURED  0x4
+
+int syspapi_flags = 0;
+
+#define FLAG_ON(var, flag)    (var) |= (flag)
+#define FLAG_OFF(var, flag)   (var) &= (~flag)
+#define FLAG_CHECK(var, flag) ((var) & (flag))
 
 /*
  * Create metric set using global `mlist`. For `m` in `mlist`, `m->midx` is the
@@ -141,9 +158,12 @@ usage(struct ldmsd_plugin *self)
 		"        cfg_file=CFG_PATH [cumulative=0|1]\n"
 		BASE_CONFIG_DESC
 		"    cfg_file     The path to configuration file.\n"
-		"    cumulative   1 (default) for cumulative counters,\n"
-		"                 0 for non-cumulative counters (reset after\n"
-		"                   each read),\n"
+		"    cumulative   0 (default) for non-cumulative counters \n"
+		"                   (reset after read),\n"
+		"                 1 for cumulative counters,\n"
+		"    auto_pause   1 (default) to enable pausing when \n"
+		"                   getting a notification from papi_sampler,\n"
+		"                 0 to ignore papi_sampler notification.\n"
 		;
 }
 
@@ -271,6 +291,22 @@ populate_mlist(char *events, struct syspapi_metric_list *mlist)
 }
 
 static void
+purge_mlist(struct syspapi_metric_list *mlist)
+{
+	int i;
+	syspapi_metric_t m;
+	while ((m = TAILQ_FIRST(mlist))) {
+		TAILQ_REMOVE(mlist, m, entry);
+		for (i = 0; i < NCPU; i++) {
+			if (m->pfd[i] < 0)
+				continue;
+			close(m->pfd[i]);
+		}
+		free(m);
+	}
+}
+
+static void
 syspapi_close(struct syspapi_metric_list *mlist)
 {
 	syspapi_metric_t m;
@@ -279,6 +315,7 @@ syspapi_close(struct syspapi_metric_list *mlist)
 		for (i = 0; i < NCPU; i++) {
 			if (m->pfd[i] < 0)
 				continue;
+			ioctl(m->pfd[i], PERF_EVENT_IOC_DISABLE, 0);
 			close(m->pfd[i]);
 			m->pfd[i] = -1;
 		}
@@ -485,9 +522,12 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	char *events;
 	char *cfg_file;
 
+	pthread_mutex_lock(&syspapi_mutex);
+
 	if (set) {
 		msglog(LDMSD_LERROR, SAMP": Set already created.\n");
-		return EINVAL;
+		rc = EINVAL;
+		goto out;
 	}
 
 	cfg_file = av_value(avl, "cfg_file"); /* JSON config file */
@@ -496,13 +536,14 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	if (!events && !cfg_file) {
 		msglog(LDMSD_LERROR, SAMP": `events` and `cfg_file` "
 					 "not specified\n");
-		return EINVAL;
+		rc = EINVAL;
+		goto out;
 	}
 
 	base = base_config(avl, SAMP, SAMP, msglog);
 	if (!base) {
 		rc = errno;
-		goto err;
+		goto out;
 	}
 
 	if (cfg_file) {
@@ -517,24 +558,40 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 			goto err;
 	}
 
+	value = av_value(avl, "auto_pause");
+	if (value) {
+		auto_pause = atoi(value);
+	}
+
 	value = av_value(avl, "cumulative");
 	if (value) {
 		cumulative = atoi(value);
 	}
 
-	rc = syspapi_open(&mlist);
-	if (rc) /* error has already been logged */
-		goto err;
+	if (!FLAG_CHECK(syspapi_flags, SYSPAPI_PAUSED)) {
+		/* state may be in SYSPAPI_PAUSED, and we won't open fd */
+		rc = syspapi_open(&mlist);
+		if (rc) /* error has already been logged */
+			goto err;
+		FLAG_ON(syspapi_flags, SYSPAPI_OPENED);
+	}
 
 	rc = create_metric_set(base);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err;
 	}
-	return 0;
+	FLAG_ON(syspapi_flags, SYSPAPI_CONFIGURED);
+	rc = 0;
+	goto out;
  err:
+	FLAG_OFF(syspapi_flags, SYSPAPI_CONFIGURED);
+	FLAG_OFF(syspapi_flags, SYSPAPI_OPENED);
+	purge_mlist(&mlist);
 	if (base)
 		base_del(base);
+ out:
+	pthread_mutex_unlock(&syspapi_mutex);
 	return rc;
 }
 
@@ -556,6 +613,9 @@ sample(struct ldmsd_sampler *self)
 		return EINVAL;
 	}
 
+	pthread_mutex_lock(&syspapi_mutex);
+	if (!FLAG_CHECK(syspapi_flags, SYSPAPI_OPENED))
+		goto out;
 	base_sample_begin(base);
 
 	TAILQ_FOREACH(m, &mlist, entry) {
@@ -572,24 +632,73 @@ sample(struct ldmsd_sampler *self)
 	}
 
 	base_sample_end(base);
-
+ out:
+	pthread_mutex_unlock(&syspapi_mutex);
 	return 0;
 }
 
 static void
 term(struct ldmsd_plugin *self)
 {
-	syspapi_metric_t m;
+	pthread_mutex_lock(&syspapi_mutex);
 	if (base)
 		base_del(base);
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
-	syspapi_close(&mlist);
-	while ((m = TAILQ_FIRST(&mlist))) {
-		TAILQ_REMOVE(&mlist, m, entry);
-		free(m);
+	purge_mlist(&mlist);
+	FLAG_OFF(syspapi_flags, SYSPAPI_CONFIGURED);
+	FLAG_OFF(syspapi_flags, SYSPAPI_OPENED);
+	pthread_mutex_unlock(&syspapi_mutex);
+}
+
+/* syspapi_mutex is held */
+static void
+__pause()
+{
+	if (FLAG_CHECK(syspapi_flags, SYSPAPI_PAUSED))
+		return; /* already paused, do nothing */
+	FLAG_ON(syspapi_flags, SYSPAPI_PAUSED);
+	if (FLAG_CHECK(syspapi_flags, SYSPAPI_OPENED)) {
+		syspapi_close(&mlist);
+		FLAG_OFF(syspapi_flags, SYSPAPI_OPENED);
 	}
+}
+
+/* syspapi_mutex is held */
+static void
+__resume()
+{
+	if (!FLAG_CHECK(syspapi_flags, SYSPAPI_PAUSED))
+		return; /* not paused, do nothing */
+	FLAG_OFF(syspapi_flags, SYSPAPI_PAUSED);
+	if (FLAG_CHECK(syspapi_flags, SYSPAPI_CONFIGURED)) {
+		assert(0 == FLAG_CHECK(syspapi_flags, SYSPAPI_OPENED));
+		syspapi_open(&mlist);
+		FLAG_ON(syspapi_flags, SYSPAPI_OPENED);
+	}
+}
+
+static int
+__stream_cb(ldmsd_stream_client_t c, void *ctxt,
+		ldmsd_stream_type_t stream_type,
+		const char *data, size_t data_len,
+		json_entity_t entity)
+{
+	if (!auto_pause)
+		return 0;
+	pthread_mutex_lock(&syspapi_mutex);
+	if (stream_type != LDMSD_STREAM_STRING)
+		goto out;
+	if (strcmp("pause", data) == 0) {
+		__pause();
+	}
+	if (strcmp("resume", data) == 0) {
+		__resume();
+	}
+ out:
+	pthread_mutex_unlock(&syspapi_mutex);
+	return 0;
 }
 
 static struct ldmsd_sampler syspapi_plugin = {
@@ -606,8 +715,14 @@ static struct ldmsd_sampler syspapi_plugin = {
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
+	ldmsd_stream_client_t c;
 	msglog = pf;
 	PAPI_library_init(PAPI_VERSION);
 	NCPU = sysconf(_SC_NPROCESSORS_CONF);
+	c = ldmsd_stream_subscribe("syspapi_stream", __stream_cb, NULL);
+	if (!c) {
+		ldmsd_lwarning(SAMP": failed to subscribe to 'syspapi_stream' "
+				"stream, errno: %d\n", errno);
+	}
 	return &syspapi_plugin.base;
 }

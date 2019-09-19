@@ -393,6 +393,11 @@ static int sample(struct ldmsd_sampler *self)
 		LIST_REMOVE(job, delete_entry);
 		release_job_data(job);
 	}
+	if (rbt_empty(&job_tree)) {
+		/* resume syspapi when no job is running */
+		ldmsd_stream_deliver("syspapi_stream", LDMSD_STREAM_STRING,
+				"resume", 7, NULL);
+	}
 	pthread_mutex_unlock(&job_lock);
 	return 0;
 }
@@ -620,6 +625,10 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 
 	if (create_metric_set(job))
 		return;
+
+	/* pause syspapi */
+	ldmsd_stream_deliver("syspapi_stream", LDMSD_STREAM_STRING,
+			     "pause", 6, NULL);
 
 	LIST_FOREACH(t, &job->task_list, entry) {
 		rc = PAPI_create_eventset(&t->event_set);
