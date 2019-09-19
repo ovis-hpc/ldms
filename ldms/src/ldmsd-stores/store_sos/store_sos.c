@@ -216,9 +216,6 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 		rc = errno;
 		goto err1;
 	}
-	rc = sos_schema_index_add(inst->sos_schema, "timestamp");
-	if (rc)
-		goto err1;
 
 	/* component_id  */
 	inst->attr_comp_id = __attr_add_get(inst->sos_schema, "component_id",
@@ -227,9 +224,6 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 		rc = errno;
 		goto err1;
 	}
-	rc = sos_schema_index_add(inst->sos_schema, "component_id");
-	if (rc)
-		goto err1;
 
 	/* job_id */
 	inst->attr_job_id = __attr_add_get(inst->sos_schema, "job_id",
@@ -238,9 +232,6 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 		rc = errno;
 		goto err1;
 	}
-	rc = sos_schema_index_add(inst->sos_schema, "job_id");
-	if (rc)
-		goto err1;
 
 	for (m = ldmsd_strgp_metric_first(strgp);
 			m; m = ldmsd_strgp_metric_next(m)) {
@@ -256,24 +247,25 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 	}
 
 	/*
-	 * Component/Time Index
+	 * Time/Job_Id/Component_Id Index
 	 */
-	char *comp_time_attrs[] = { "component_id", "timestamp" };
-	rc = sos_schema_attr_add(inst->sos_schema, "comp_time", SOS_TYPE_JOIN,
-				 2, comp_time_attrs);
+	char *comp_time_attrs[] = {"timestamp", "job_id", "component_id" };
+	rc = sos_schema_attr_add(inst->sos_schema, "time_job_comp",
+				 SOS_TYPE_JOIN, 3, comp_time_attrs);
 	if (rc)
 		goto err1;
-	rc = sos_schema_index_add(inst->sos_schema, "comp_time");
+	rc = sos_schema_index_add(inst->sos_schema, "time_job_comp");
 	if (rc)
 		goto err1;
 	/*
-	 * Time/Job_Id Index
+	 * Time/Component/Job_Id Index
 	 */
-	char *time_job_attrs[] = { "timestamp", "job_id" };
-	rc = sos_schema_attr_add(inst->sos_schema, "time_job", SOS_TYPE_JOIN, 2, time_job_attrs);
+	char *time_job_attrs[] = { "timestamp", "component_id", "job_id" };
+	rc = sos_schema_attr_add(inst->sos_schema, "time_comp_job",
+				 SOS_TYPE_JOIN, 3, time_job_attrs);
 	if (rc)
 		goto err1;
-	rc = sos_schema_index_add(inst->sos_schema, "time_job");
+	rc = sos_schema_index_add(inst->sos_schema, "time_comp_job");
 	if (rc)
 		goto err1;
 	/*
@@ -299,6 +291,29 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 	rc = sos_schema_index_add(inst->sos_schema, "job_time_comp");
 	if (rc)
 		goto err1;
+
+	/*
+	 * Component_Id/Timestamp/Job_Id Index
+	 */
+	char *comp_time_job_attrs[] = { "component_id", "timestamp", "job_id" };
+	rc = sos_schema_attr_add(inst->sos_schema, "comp_time_job", SOS_TYPE_JOIN, 3, comp_time_job_attrs);
+	if (rc)
+		goto err1;
+	rc = sos_schema_index_add(inst->sos_schema, "comp_time_job");
+	if (rc)
+		goto err1;
+
+	/*
+	 * Component_Id/Job_Id/Timestamp Index
+	 */
+	char *comp_job_time_attrs[] = { "component_id", "job_id", "timestamp" };
+	rc = sos_schema_attr_add(inst->sos_schema, "comp_job_time", SOS_TYPE_JOIN, 3, comp_job_time_attrs);
+	if (rc)
+		goto err1;
+	rc = sos_schema_index_add(inst->sos_schema, "comp_job_time");
+	if (rc)
+		goto err1;
+
 
 	rc = sos_schema_add(inst->sos, inst->sos_schema);
 	if (rc)
