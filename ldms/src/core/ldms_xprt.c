@@ -2159,6 +2159,12 @@ static void handle_rendezvous_push(zap_ep_t zep, zap_event_t ev,
 	struct ldms_set *set;
 
 	set = __ldms_set_by_id(push->lookup_set_id);
+	if (!set) {
+		/*
+ 		 * The set has been deleted.
+		 */
+		return;
+	}
 
 	/* See if we already have a push RBD for this set and
 	 * transport.
