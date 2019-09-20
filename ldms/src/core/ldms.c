@@ -642,16 +642,6 @@ void ldms_set_delete(ldms_set_t s)
 	rbt_del(&set_tree, &set->rb_node);
 	rbt_del(&id_tree, &set->id_node);
 	__ldms_set_tree_unlock();
-#if 0
-	pthread_mutex_lock(&set->lock);
-	xprt = s->xprt;
-	if (xprt)
-		pthread_mutex_lock(&xprt->lock);
-	__ldms_free_rbd(s);	/* removes the RBD from the local/remote rbd list */
-	if (xprt)
-		pthread_mutex_unlock(&xprt->lock);
-	__ldms_set_unpublish(set);
-#endif
 	while (!LIST_EMPTY(&set->remote_rbd_list)) {
 		rbd = LIST_FIRST(&set->remote_rbd_list);
 		xprt = rbd->xprt;
@@ -672,7 +662,6 @@ void ldms_set_delete(ldms_set_t s)
 		}
 		__ldms_free_rbd(rbd);
 	}
-	pthread_mutex_unlock(&set->lock);
 
 	mm_free(set->meta);
 	__ldms_set_info_delete(&set->local_info);
