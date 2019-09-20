@@ -106,8 +106,10 @@ static void __prdcr_set_del(ldmsd_prdcr_set_t set)
 	ldmsd_log(LDMSD_LINFO, "Deleting producer set %s\n", set->inst_name);
 	if (set->schema_name)
 		free(set->schema_name);
-	if (set->set)
+	if (set->set) {
+		ldms_set_unpublish(set->set);
 		ldms_set_delete(set->set);
+	}
 	ldmsd_strgp_ref_t strgp_ref = LIST_FIRST(&set->strgp_list);
 	while (strgp_ref) {
 		LIST_REMOVE(strgp_ref, entry);
