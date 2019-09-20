@@ -3472,6 +3472,11 @@ void __ldms_xprt_term(struct ldms_xprt *x)
 	zap_close(x->zap_ep);
 }
 
+int ldms_xprt_term(int sec)
+{
+	return zap_term(sec);
+}
+
 int ldms_xprt_sockaddr(ldms_t _x, struct sockaddr *local_sa,
 		       struct sockaddr *remote_sa,
 		       socklen_t *sa_len)
