@@ -863,7 +863,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 	if (!rc) {
 		r = false;
 		cvt = ldmsd_plugattr_bool(pa, "notify_isfifo", k, &r);
-		if (s_handle->notify_isfifo == -1) {
+		if (cvt == -1) {
 			cps->msglog(LDMSD_LERROR, "%s:%s: notify_isfifo cannot be parsed.\n", cps->pname, k);
 			return EINVAL;
 		}
@@ -940,7 +940,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 			"%s %s: open_store_common rename_uid= out of range\n",
 			cps->pname, k);
 		return rc;
-	} 
+	}
 
 	cvt = ldmsd_plugattr_s32(pa, "rename_gid", k, &gid);
 	if (!cvt) {
@@ -956,7 +956,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 			"%s %s: open_store_common rename_gid= out of range\n",
 			cps->pname, k);
 		return rc;
-	} 
+	}
 
 	const char * rename_pval = ldmsd_plugattr_value(pa, "rename_perm", k);
 	if (rename_pval) {
@@ -987,7 +987,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 			"%s %s: open_store_common create_uid= out of range\n",
 			cps->pname, k);
 		return rc;
-	} 
+	}
 
 	cvt = ldmsd_plugattr_s32(pa, "create_gid", k, &gid);
 	if (!cvt) {
@@ -1003,7 +1003,7 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 			"%s %s: open_store_common create_gid= out of range\n",
 			cps->pname, k);
 		return rc;
-	} 
+	}
 
 	const char * create_pval = ldmsd_plugattr_value(pa, "create_perm", k);
 	if (create_pval) {

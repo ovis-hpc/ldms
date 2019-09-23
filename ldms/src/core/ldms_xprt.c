@@ -222,12 +222,12 @@ static void send_dir_update(struct ldms_xprt *x,
 	cnt += __ldms_format_set_meta_as_json(set, 0,
 					      &reply->dir.json_data[cnt],
 					      buf_len - hdr_len - cnt);
-	if (!cnt >= buf_len - hdr_len)
+	if (cnt >= (buf_len - hdr_len))
 		goto out;
 	cnt += snprintf(&reply->dir.json_data[cnt],
 			buf_len - hdr_len - cnt,
 			"]}");
-	if (!cnt >= buf_len - hdr_len)
+	if (cnt >= (buf_len - hdr_len))
 		goto out;
 
 	reply->hdr.xid = x->remote_dir_xid;
@@ -1336,7 +1336,7 @@ static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type
 	if (lset) {
 		pthread_mutex_unlock(&lset->lock);
 		if ((type == LDMS_DIR_UPD) && dir_upd &&
-				(lset->flags && LDMS_SET_F_PUBLISHED)) {
+				(lset->flags & LDMS_SET_F_PUBLISHED)) {
 			__ldms_dir_upd_set(lset);
 		}
 	}
@@ -1351,7 +1351,7 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	int i, rc = ntohl(reply->hdr.rc);
 	size_t count, json_data_len = ntohl(reply->dir.json_data_len);
 	ldms_dir_t dir = NULL;
-	json_parser_t p;
+	json_parser_t p = NULL;
 	json_entity_t dir_attr, dir_list, set_entity, info_list;
 	json_entity_t dir_entity = NULL;
 	struct ldms_set *lset;

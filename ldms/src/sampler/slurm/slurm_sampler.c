@@ -253,7 +253,7 @@ static int job_tag_idx;
  */
 static int create_metric_set(void)
 {
-	int rc;
+	int rc = -1;
 	int i;
 
 	if (!instance_name) {
@@ -790,7 +790,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			 const char *msg, size_t msg_len,
 			 json_entity_t entity)
 {
-	int rc;
+	int rc = EINVAL;
 	json_entity_t event, data, dict, attr;
 	uint64_t tstamp;
 
@@ -886,6 +886,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		msglog(LDMSD_LDEBUG,
 		       "slurm_sampler: ignoring event '%s'\n", event_name->str);
 	}
+	rc = 0;
  out_1:
 	pthread_mutex_unlock(&job_lock);
  out_0:
@@ -925,7 +926,8 @@ static int cmp_job_id(void *a, const void *b)
 	uint64_t a_ = *(uint64_t *)a;
 	uint64_t b_ = *(uint64_t *)b;
 	if (a_ < b_)
-		return -1;	if (a_ > b_)
+		return -1;
+	if (a_ > b_)
 		return 1;
 	return 0;
 }

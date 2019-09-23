@@ -65,8 +65,6 @@
 #include "ldmsd.h"
 #include "sampler_base.h"
 
-static const int NCORESUFFIX = 3; //used for getting sum names from per core names (#%d)
-
 #define SAMP "procstat"
 
 /*

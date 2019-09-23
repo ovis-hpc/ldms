@@ -893,7 +893,8 @@ static int cmp_job_id(void *a, const void *b)
 	uint64_t a_ = *(uint64_t *)a;
 	uint64_t b_ = *(uint64_t *)b;
 	if (a_ < b_)
-		return -1;	if (a_ > b_)
+		return -1;
+	if (a_ > b_)
 		return 1;
 	return 0;
 }

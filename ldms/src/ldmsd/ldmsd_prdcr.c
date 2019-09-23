@@ -591,8 +591,10 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	case LDMSD_PRDCR_TYPE_PASSIVE:
 		prdcr->xprt = ldms_xprt_by_remote_sin((struct sockaddr_in *)&prdcr->ss);
 		/* Call connect callback to advance state and update timers*/
-		if (prdcr->xprt)
-			prdcr_connect_cb(prdcr->xprt, LDMS_XPRT_EVENT_CONNECTED, prdcr);
+		if (prdcr->xprt) {
+			struct ldms_xprt_event conn_ev = {.type = LDMS_XPRT_EVENT_CONNECTED};
+			prdcr_connect_cb(prdcr->xprt, &conn_ev, prdcr);
+		}
 		break;
 	case LDMSD_PRDCR_TYPE_LOCAL:
 		assert(0);
@@ -859,7 +861,7 @@ int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
  err:
 	if (s)
 		free(s);
-		return ENOMEM;
+	return ENOMEM;
 }
 
 int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,

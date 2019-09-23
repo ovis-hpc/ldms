@@ -253,7 +253,6 @@ __test_sampler_metric_new(const char *name, const char *mtype,
 static struct test_sampler_metric *__schema_metric_new(char *s)
 {
 	char *name, *mtype, *vtype, *init_value, *count_str, *ptr;
-	int count = 0;
 	name = strtok_r(s, ":", &ptr);
 	if (!name)
 		return NULL;
@@ -309,7 +308,6 @@ static int create_metric_set(const char *schema_name, int push)
 	int rc, i, j;
 	ldms_set_t set;
 	union ldms_value v;
-	char *s;
 	char metric_name[128];
 	char instance_name[128];
 
@@ -430,7 +428,6 @@ static int config_add_schema(struct attr_value_list *avl)
 		msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
 		return ENOMEM;
 	}
-	int is_need_int = 0;
 	TAILQ_INIT(&ts_schema->list);
 	LIST_INSERT_HEAD(&schema_list, ts_schema, entry);
 	struct test_sampler_metric *metric;
@@ -449,9 +446,7 @@ static int config_add_schema(struct attr_value_list *avl)
 		}
 	} else {
 		ts_schema->type = TEST_SAMPLER_SCHEMA_TYPE_AUTO;
-		is_need_int = 1;
 		enum ldms_value_type type;
-		int count = 1; /* Number of elements of an array metric */
 		num_metrics = atoi(value);
 
 		value = av_value(avl, "type");
@@ -465,9 +460,6 @@ static int config_add_schema(struct attr_value_list *avl)
 			type = LDMS_V_U64;
 		}
 
-		value = av_value(avl, "count");
-		if (value)
-			count = atoi(value);
 
 		init_value = av_value(avl, "init_value");
 		if (!init_value)
@@ -699,13 +691,9 @@ static int config_add_default(struct attr_value_list *avl)
 
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value;
 	char *action;
-	char *s;
 	char *compid;
 	char *jobid;
-	char *push;
-	void * arg = NULL;
 	int rc;
 
 	action = av_value(avl, "action");
@@ -762,8 +750,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			ldms_metric_set(ts_set->set, mid, &vjobid);
 		}
 	}
-
-	push = av_value(avl, "push");
 
 	return 0;
 }
@@ -829,11 +815,8 @@ static void __metric_increment(struct test_sampler_metric *metric, ldms_set_t se
 
 static int sample(struct ldmsd_sampler *self)
 {
-	int rc;
-	union ldms_value v;
 	ldms_set_t set;
 
-	int j;
 	struct test_sampler_set *ts_set;
 	struct test_sampler_metric *metric;
 	LIST_FOREACH(ts_set, &set_list, entry) {
