@@ -6,7 +6,6 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([m4/Ovis-top.m4])
 AC_CONFIG_AUX_DIR(config)
 AX_PREFIX_CONFIG_H_G(ovis-all-config.h)
-AC_CONFIG_SUBDIRS([lib])
 AC_PROG_CC
 AM_INIT_AUTOMAKE([foreign tar-pax])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
@@ -22,6 +21,14 @@ AC_PROG_CXX
 AC_CHECK_SIZEOF(long)
 
 AC_C_CONST
+
+AC_ARG_WITH([ovis-lib],
+	    [AS_HELP_STRING([--with-ovis-lib],
+			    [Top level configure must not specify this option.])],
+	    [AC_MSG_ERROR([Top level configure must not specify --with-ovis-lib option.])],
+	    [])
+
+AC_CONFIG_SUBDIRS([lib])
 
 # ldms is not optional for now.
 OPTION_DEFAULT_ENABLE([ldms], [ENABLE_LDMS],[  requires lib])
