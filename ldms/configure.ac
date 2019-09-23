@@ -254,6 +254,15 @@ LDFLAGS_READLINE=$LIBS
 AC_SUBST([LDFLAGS_READLINE])
 LIBS=$TMPLIBS
 
+dnl Munge library check
+if test -z "$ENABLE_MUNGE_TRUE"; then
+	AC_CHECK_LIB(munge, munge_encode, [], AC_MSG_ERROR([libmunge not found]))
+	dnl Reset LIBS variable.
+	LIBS=""
+
+	AC_CHECK_HEADER(munge.h, [], AC_MSG_ERROR([munge.h not found]))
+fi
+
 dnl Checks for libraries
 if test -z "$ENABLE_SYSCLASSIB_TRUE"; then
 	AC_CHECK_LIB(ibmad, mad_rpc_open_port, [],
