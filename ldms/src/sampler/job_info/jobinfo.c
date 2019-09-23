@@ -138,7 +138,6 @@ int attr_cmp_fn(const void *a, const void *b)
  */
 static void jobinfo_read_data(void)
 {
-	int i;
 	char buf[80];
 	char *s, *p;
 	FILE* job_file = fopen(jobinfo_datafile, "r");
@@ -171,10 +170,10 @@ static void jobinfo_read_data(void)
 			while (*value == '"')
 				value++;
 			/* Strip newlines */
-			while (s = strstr(value, "\n"))
+			while ((s = strstr(value, "\n")))
 				*s = '\0';
 			/* Strip trailing \" */
-			while (s = strstr(value, "\""))
+			while ((s = strstr(value, "\"")))
 				*s = '\0';
 			switch (av->metric_id) {
 			case JOBINFO_JOB_NAME:
