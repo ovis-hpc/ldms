@@ -44,7 +44,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 /**
- * \file syspapi.c
+ * \file syspapi_sampler.c
  */
 #define _GNU_SOURCE
 #include <inttypes.h>
@@ -70,7 +70,7 @@
 
 #include "json/json_util.h"
 
-#define SAMP "syspapi"
+#define SAMP "syspapi_sampler"
 
 static int NCPU = 0;
 static ldms_set_t set = NULL;

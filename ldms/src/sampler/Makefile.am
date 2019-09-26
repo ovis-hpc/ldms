@@ -289,6 +289,6 @@ libgrptest_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libgrptest.la
 endif
 
-if ENABLE_SYSPAPI
+if ENABLE_SYSPAPI_SAMPLER
 SUBDIRS += syspapi
 endif

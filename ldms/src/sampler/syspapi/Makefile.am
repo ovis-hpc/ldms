@@ -14,7 +14,7 @@ AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
 COMMON_LIBADD = $(CORE)/libldms.la \
 		@LDFLAGS_GETTIME@ -lovis_util -lcoll -lpthread
 
-libsyspapi_la_SOURCES = syspapi.c ../sampler_base.c ../sampler_base.h
-libsyspapi_la_LIBADD = $(COMMON_LIBADD) -lpapi -lpfm
-libsyspapi_la_CFLAGS = $(AM_CFLAGS) -DSYSCONFDIR='"$(sysconfdir)"'
-pkglib_LTLIBRARIES += libsyspapi.la
+libsyspapi_sampler_la_SOURCES = syspapi_sampler.c ../sampler_base.c ../sampler_base.h
+libsyspapi_sampler_la_LIBADD = $(COMMON_LIBADD) -lpapi -lpfm
+libsyspapi_sampler_la_CFLAGS = $(AM_CFLAGS) -DSYSCONFDIR='"$(sysconfdir)"'
+pkglib_LTLIBRARIES += libsyspapi_sampler.la

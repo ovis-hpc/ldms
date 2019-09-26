@@ -4,10 +4,10 @@ CONFIG=ldmsd.cfg
 PAPI_CFG=syspapi.json
 
 cat >$CONFIG <<EOF
-load name=syspapi
-config name=syspapi instance=syspapi producer=localhost \
+load name=syspapi_sampler
+config name=syspapi_sampler instance=syspapi_sampler producer=localhost \
        events=PAPI_TOT_CYC,PAPI_TOT_INS cfg_file=$PAPI_CFG
-start name=syspapi interval=1000000 offset=0
+start name=syspapi_sampler interval=1000000 offset=0
 EOF
 
 cat >$PAPI_CFG <<EOF

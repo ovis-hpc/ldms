@@ -153,36 +153,35 @@ LIBCURL_CHECK_CONFIG([],[],[],AC_MSG_ERROR([store_influx requires libcurl which 
 fi
 
 OPTION_WITH([libpfm], [LIBPFM])
-OPTION_DEFAULT_DISABLE([syspapi], [ENABLE_SYSPAPI])
-if test -z "$ENABLE_SYSPAPI_TRUE" -o -z "$ENABLE_PAPI_TRUE"; then
+OPTION_DEFAULT_DISABLE([syspapi-sampler], [ENABLE_SYSPAPI_SAMPLER])
+if test -z "$ENABLE_SYSPAPI_SAMPLER_TRUE" -o -z "$ENABLE_PAPI_SAMPLER_TRUE"; then
 	TMPLIBS="$LIBS"
 	TMPCFLAGS="$CFLAGS"
 	LIBS=""
 	AC_CHECK_LIB(papi, PAPI_library_init, [],
-		AC_MSG_ERROR([libpapi not found (required by papi/syspapi).]),
+		AC_MSG_ERROR([libpapi not found (required by papi-sampler/syspapi-sampler).]),
 		$LIBPAPI_LIBDIR_FLAG $LIBPAPI_LIB64DIR_FLAG)
 	LIBS=""
 	dnl Check headers
 	CFLAGS=$LIBPAPI_INCDIR_FLAG
 	AC_CHECK_HEADER(papi.h, [],
-		AC_MSG_ERROR([`papi.h` not found (required by papi/syspapi).]))
+		AC_MSG_ERROR([`papi.h` not found (required by papi-sampler/syspapi-sampler).]))
 	LIBS="$TMPLIBS"
 	CFLAGS="$TMPCFLAGS"
 fi
 
-if test -z "$ENABLE_SYSPAPI_TRUE"; then
+if test -z "$ENABLE_SYSPAPI_SAMPLER_TRUE"; then
 	TMPLIBS="$LIBS"
 	TMPCFLAGS="$CFLAGS"
 	LIBS=""
 	AC_CHECK_LIB(pfm, pfm_initialize, [],
-		AC_MSG_ERROR([libpfm not found (required by syspapi).]),
+		AC_MSG_ERROR([libpfm not found (required by syspapi-sampler).]),
 		$LIBPFM_LIBDIR_FLAG $LIBPFM_LIB64DIR_FLAG)
 	LIBS=""
 	dnl Check headers
 	CFLAGS=$LIBPFM_INCDIR_FLAG
 	AC_CHECK_HEADER(perfmon/pfmlib_perf_event.h, [],
-		AC_MSG_ERROR([`perfmon/pfmlib_perf_event.h` not found
-			      (required by syspapi).]))
+		AC_MSG_ERROR([`perfmon/pfmlib_perf_event.h` not found (required by syspapi-sampler).]))
 	LIBS="$TMPLIBS"
 	CFLAGS="$TMPCFLAGS"
 fi
