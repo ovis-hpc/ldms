@@ -67,7 +67,6 @@ OPTION_DEFAULT_ENABLE([flatfile], [ENABLE_FLATFILE])
 OPTION_DEFAULT_ENABLE([csv], [ENABLE_CSV])
 OPTION_DEFAULT_DISABLE([rabbitkw], [ENABLE_RABBITKW])
 OPTION_DEFAULT_DISABLE([rabbitv3], [ENABLE_RABBITV3])
-OPTION_DEFAULT_ENABLE([influx], [ENABLE_INFLUX])
 
 dnl AMQP
 OPTION_DEFAULT_DISABLE([amqp], [ENABLE_AMQP])
@@ -147,24 +146,39 @@ OPTION_DEFAULT_DISABLE([grptest], [ENABLE_GRPTEST])
 dnl grptest will also build with --enable-ldms-test
 AM_CONDITIONAL([ENABLE_GRPTEST_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_GRPTEST_FALSE" = "x#"])
 
+dnl check for libcurl if influx is configured
+OPTION_DEFAULT_ENABLE([influx], [ENABLE_INFLUX])
+if test -z "$ENABLE_INFLUX_TRUE"; then
+LIBCURL_CHECK_CONFIG([],[],[],AC_MSG_ERROR([store_influx requires libcurl which was not found]))
+fi
+
 OPTION_WITH([libpfm], [LIBPFM])
 OPTION_DEFAULT_DISABLE([syspapi], [ENABLE_SYSPAPI])
-if test -z "$ENABLE_SYSPAPI_TRUE"; then
+if test -z "$ENABLE_SYSPAPI_TRUE" -o -z "$ENABLE_PAPI_TRUE"; then
 	TMPLIBS="$LIBS"
 	TMPCFLAGS="$CFLAGS"
 	LIBS=""
 	AC_CHECK_LIB(papi, PAPI_library_init, [],
-		AC_MSG_ERROR([libpapi not found (required by syspapi).]),
+		AC_MSG_ERROR([libpapi not found (required by papi/syspapi).]),
 		$LIBPAPI_LIBDIR_FLAG $LIBPAPI_LIB64DIR_FLAG)
+	LIBS=""
+	dnl Check headers
+	CFLAGS=$LIBPAPI_INCDIR_FLAG
+	AC_CHECK_HEADER(papi.h, [],
+		AC_MSG_ERROR([`papi.h` not found (required by papi/syspapi).]))
+	LIBS="$TMPLIBS"
+	CFLAGS="$TMPCFLAGS"
+fi
+
+if test -z "$ENABLE_SYSPAPI_TRUE"; then
+	TMPLIBS="$LIBS"
+	TMPCFLAGS="$CFLAGS"
 	LIBS=""
 	AC_CHECK_LIB(pfm, pfm_initialize, [],
 		AC_MSG_ERROR([libpfm not found (required by syspapi).]),
 		$LIBPFM_LIBDIR_FLAG $LIBPFM_LIB64DIR_FLAG)
 	LIBS=""
 	dnl Check headers
-	CFLAGS=$LIBPAPI_INCDIR_FLAG
-	AC_CHECK_HEADER(papi.h, [],
-		AC_MSG_ERROR([`papi.h` not found (required by syspapi).]))
 	CFLAGS=$LIBPFM_INCDIR_FLAG
 	AC_CHECK_HEADER(perfmon/pfmlib_perf_event.h, [],
 		AC_MSG_ERROR([`perfmon/pfmlib_perf_event.h` not found

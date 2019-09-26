@@ -806,7 +806,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
 		job = get_job_data(job_id);
 		if (!job) {
-			msglog(LDMSD_LERROR, "papi_sampler: '%s' event "
+			msglog(LDMSD_LINFO, "papi_sampler: '%s' event "
 			       "was received for job %d with no job_data\n",
 			       event_name->str, job_id);
 			goto out_1;
@@ -815,7 +815,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	} else if (0 == strncmp(event_name->str, "task_exit", 9)) {
 		job = get_job_data(job_id);
 		if (!job) {
-			msglog(LDMSD_LERROR, "papi_sampler: '%s' event "
+			msglog(LDMSD_LINFO, "papi_sampler: '%s' event "
 			       "was received for job %d with no job_data\n",
 			       event_name->str, job_id);
 			goto out_1;
@@ -824,7 +824,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	} else if (0 == strncmp(event_name->str, "exit", 4)) {
 		job = get_job_data(job_id);
 		if (!job) {
-			msglog(LDMSD_LERROR, "papi_sampler: '%s' event "
+			msglog(LDMSD_LINFO, "papi_sampler: '%s' event "
 			       "was received for job %d with no job_data\n",
 			       event_name->str, job_id);
 			goto out_1;
@@ -902,6 +902,7 @@ static void __attribute__ ((constructor)) papi_sampler_init(void)
 {
 	pthread_t cleanup_thread;
 	PAPI_library_init(PAPI_VER_CURRENT);
+	PAPI_thread_init(pthread_self);
 	rbt_init(&job_tree, cmp_job_id);
 	LIST_INIT(&job_expiry_list);
 
