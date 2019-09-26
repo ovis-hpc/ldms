@@ -235,9 +235,6 @@ AC_CONFIG_FILES([ovis-lib.spec
 		src/zap/sock/Makefile
 		src/zap/ugni/Makefile
 		src/zap/test/Makefile
-		bin/Makefile
-		bin/src/Makefile
-		python/Makefile
 		swig/Makefile
 		swig/zap/Makefile
 		swig/ovis_auth/Makefile
