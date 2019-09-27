@@ -2100,7 +2100,7 @@ static int __process_lookup_set_info(struct ldms_set *lset, char *set_info)
 			pair = nxt_pair;
 		}
 	}
-	if (dir_upd)
+	if (dir_upd && (lset->flags & LDMS_SET_F_PUBLISHED))
 		___ldms_dir_update(lset, LDMS_DIR_UPD);
 out:
 	return rc;
@@ -2234,8 +2234,10 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	}
 
  out_1:
-	if (rbd)
+	if (rbd) {
 		ldms_set_delete(rbd);
+		rbd = NULL;
+	}
  out:
 #ifdef DEBUG
 	x->log("DEBUG: %s: lookup error while ldms_xprt is processing the rendezvous "
