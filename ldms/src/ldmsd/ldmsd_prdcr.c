@@ -150,6 +150,7 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 
 void ldmsd_prdcr_set_ref_get(ldmsd_prdcr_set_t set)
 {
+	assert(set->ref_count);
 	(void)__sync_fetch_and_add(&set->ref_count, 1);
 }
 
