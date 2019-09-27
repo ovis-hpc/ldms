@@ -624,7 +624,7 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 			/* Lookup the set */
 			prd_set->state = LDMSD_PRDCR_SET_STATE_LOOKUP;
 			rc = ldms_xprt_lookup(prdcr->xprt, prd_set->inst_name,
-					      LDMS_LOOKUP_BY_INSTANCE | LDMS_LOOKUP_SET_INFO,
+					      LDMS_LOOKUP_BY_INSTANCE,
 					      prdset_lookup_cb, prd_set);
 			if (rc) {
 				ldmsd_log(LDMSD_LINFO, "Synchronous error %d from ldms_lookup\n", rc);
