@@ -544,7 +544,7 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 		prd_set->state = LDMSD_PRDCR_SET_STATE_LOOKUP;
 		ldmsd_prdcr_set_ref_get(prd_set, "xprt_lookup");
 		rc = ldms_xprt_lookup(prd_set->prdcr->xprt, prd_set->inst_name,
-				      LDMS_LOOKUP_BY_INSTANCE | LDMS_LOOKUP_SET_INFO,
+				      LDMS_LOOKUP_BY_INSTANCE,
 				      prdcrset_lookup_cb, prd_set);
 		if (rc) {
 			ldmsd_log(LDMSD_LINFO,
