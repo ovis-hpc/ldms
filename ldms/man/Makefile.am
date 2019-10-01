@@ -46,7 +46,15 @@ Plugin_store_sos.man \
 Plugin_lustre2_client.man \
 Plugin_opa2.man \
 Plugin_shm_sampler.man \
-Plugin_vmstat.man
+Plugin_vmstat.man \
+Plugin_papi_sampler.man \
+Plugin_slurm_notifier.man \
+Plugin_slurm_sampler.man \
+Plugin_store_papi.man \
+Plugin_store_slurm.man \
+Plugin_syspapi_sampler.man
+
+
 
 if ENABLE_ARRAY_EXAMPLE
 dist_man7_MANS += Plugin_all_example.man

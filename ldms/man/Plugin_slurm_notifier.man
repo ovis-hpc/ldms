@@ -1,0 +1,65 @@
+.\" Manpage for slurm_notifier
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "30 Sep 2019" "v4" "SPANK Plugin slurm_notifier man page"
+
+.SH NAME
+Plugin_slurm_notifier - man page for the SPANK slurm_notifier plugin
+
+.SH SYNOPSIS
+Within plugstack.conf:
+.SY required
+.IR OVIS_PREFIX / LIBDIR /ovis-ldms/libslurm_notifier.so
+.BI stream= STREAM_NAME
+.BI timeout= TIMEOUT_SEC
+.BI client= XPRT : HOST : PORT : AUTH
+.RB ...
+.YS
+
+.SH DESCRIPTION
+
+\fBslurm_notifier\fR is a SPANK plugin that notifies \fBldmsd\fR about job
+events (e.g. job start, job termination) and related information (e.g. job_id,
+task_id, task process ID). The notification is done over \fBldmsd_stream\fR
+publish mechanism. \fBslurm_sampler\fR (see \fBPlugin_slurm_sampler\fR(7)) and
+\fBpapi_sampler\fR (see \fBPlugin_papi_sampler\fR) are known plugins that
+subscribe to the notification.
+
+.BI stream= STREAM_NAME
+specifies the name of publishing stream. The default value is \fIslurm\fR.
+
+.BI timeout= TIMEOUT_SEC
+is the number of seconds determining the time-out of the LDMS connections
+(default \fI5\fR).
+
+.BI client= XPRT : HOST : PORT : AUTH
+specifies \fBldmsd\fR to which \fBslurm_notifier\fR publishes the data.
+The \fIXPRT\fR specifies the type of the transport, which includes
+.BR sock ", " rdma ", " ugni ", and " fabric .
+The \fIHOST\fR is the hostname or the IP address that \fBldmsd\fR resides. The
+\fIPORT\fR is the listeing port of the \fBldmsd\fR. The \fIAUTH\fR is the
+LDMS authentication method that the \fBldmsd\fR uses, which are
+.BR munge ", or " none .
+The \fBclient\fR option can be reapeted to specify multiple \fBldmsd\fR's.
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+/etc/slurm/plugstack.conf:
+
+.RS
+.EX
+required /opt/ovis/lib64/ovis-ldms/libslurm_notifier.so \
+stream=slurm timeout=5 client=sock:localhost:10000:munge \
+client=sock:node0:10000:munge
+.EE
+.RE
+
+
+.SH SEE ALSO
+.nh
+.BR spank (8),
+.BR Plugin_slurm_sampler (8),
+.BR Plugin_papi_sampler (8),
+.BR ldmsd (8),
+.BR ldms_quickstart (7),
