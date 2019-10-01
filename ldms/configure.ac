@@ -149,7 +149,13 @@ AM_CONDITIONAL([ENABLE_GRPTEST_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x
 dnl check for libcurl if influx is configured
 OPTION_DEFAULT_ENABLE([influx], [ENABLE_INFLUX])
 if test -z "$ENABLE_INFLUX_TRUE"; then
-LIBCURL_CHECK_CONFIG([],[],[],AC_MSG_ERROR([store_influx requires libcurl which was not found]))
+	TMPLIBS="$LIBS"
+	LIBS=""
+	AC_CHECK_LIB(curl, curl_version, [],
+		AC_MSG_ERROR([libcurl not found (required by influx).]))
+	AC_CHECK_HEADER(curl/curl.h, [],
+		AC_MSG_ERROR([`curl.h` not found (required by influx).]))
+	LIBS="$TMPLIBS"
 fi
 
 OPTION_WITH([libpfm], [LIBPFM])
