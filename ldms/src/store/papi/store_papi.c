@@ -499,11 +499,8 @@ _open_store(struct sos_instance *si, ldms_set_t set)
 
 	/* Create the container */
 	si->sos_handle = create_container(si->path);
-	if (!si->sos_handle) {
-		rc = errno;
-		goto err_0;
+	if (!si->sos_handle)
 		return errno;
-	}
 	return 0;
  err_0:
 	put_container(si->sos_handle);
