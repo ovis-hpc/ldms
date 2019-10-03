@@ -1,13 +1,20 @@
 #!/bin/bash
 
+_add() {
+	local NAME=$1
+	local VAL=$2
+	[[ *:${!NAME}:* == *:${VAL}:* ]] || \
+		eval "export ${NAME}='${!NAME}:${VAL}'"
+}
+
+_add PATH @bindir@
+_add PATH @sbindir@
+_add PYTHONPATH @pythondir@
+
 export LDMS_AUTH_FILE=@sysconfdir@/ldms/ldmsauth.conf
 
-OLIB=@libdir@
-export LDMSD_PLUGIN_LIBPATH=$OLIB/ovis-ldms
-export ZAP_LIBPATH=$OLIB/ovis-lib
-
-export PYTHONPATH=$PYTHONPATH:@pythondir@
-export PATH=$PATH:@bindir@:@sbindir@
+export LDMSD_PLUGIN_LIBPATH=@libdir@/ovis-ldms
+export ZAP_LIBPATH=@libdir@/ovis-lib
 
 # for uGNI transport
 # export ZAP_UGNI_PTAG=<your ptag>
