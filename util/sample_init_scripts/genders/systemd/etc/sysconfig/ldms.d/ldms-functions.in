@@ -206,12 +206,15 @@ check_genders_file() {
 		logger -t $LTAG -p syslog.err "Found ldms genders without hostnames: $x $y."
 		((n++))
 	fi
-	if test -z "$z"; then
-		logger -t $LTAG -p syslog.err "Found no genders at all for $LDMS_HOSTNAME."
-		logger -t $LTAG -p syslog.err "Review $af or setting of LDMS_HOSTNAME"
-		logger -t $LTAG -p syslog.err "Input created from $lgi"
-		exit 1
-		((n++))
+	if test "$1" = "0"; then
+		# This test only applies for the local genders config, not upstream ones.
+		if test -z "$z"; then
+			logger -t $LTAG -p syslog.err "self-genders: Found no genders at all found for $LDMS_HOSTNAME (self)."
+			logger -t $LTAG -p syslog.err "self-genders: Review $af or setting of LDMS_HOSTNAME or aliasing in /etc/hosts"
+			logger -t $LTAG -p syslog.err "self-genders: Insufficient input was created from $lgi"
+			exit 1
+			((n++))
+		fi
 	fi
 	if test $n -gt 0; then
 		logger -t $LTAG -p syslog.err "Gender file problems: $n ($v). These genders or options need to be removed, replaced, correctly spelled, or punctuated as noted."
@@ -227,6 +230,7 @@ check_files () {
 	shift
 	for i in $*; do
 		if ! test -f $i -a -r $i; then
+			echo Unable to read genders file $i listed in $context
 			logger -t $LTAG -p syslog.err Unable to read genders file $i listed in $context
 			dietrace 1
 		fi
