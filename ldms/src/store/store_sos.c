@@ -67,6 +67,10 @@
 #include "ldms.h"
 #include "ldmsd.h"
 
+#define LOG_(level, ...) do { \
+	msglog(level, "store_sos: "__VA_ARGS__); \
+} while(0);
+
 /*
  * sos_handle_s structure, to share sos among multiple sos instances that refers
  * to the same container.
@@ -216,13 +220,13 @@ sos_handle_t create_container(const char *path)
 
 	rc = sos_container_new(path, 0660);
 	if (rc) {
-		msglog(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
+		LOG_(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
 		       rc, path);
 		goto err_0;
 	}
 	sos = sos_container_open(path, SOS_PERM_RW);
 	if (!sos) {
-		msglog(LDMSD_LERROR, "Error %d opening the container at '%s'\n",
+		LOG_(LDMSD_LERROR, "Error %d opening the container at '%s'\n",
 		       errno, path);
 		goto err_0;
 	}
@@ -234,18 +238,18 @@ sos_handle_t create_container(const char *path)
 	sprintf(part_name, "%d", (unsigned int)t);
 	rc = sos_part_create(sos, part_name, path);
 	if (rc) {
-		msglog(LDMSD_LERROR, "Error %d creating the partition '%s' in '%s'\n",
+		LOG_(LDMSD_LERROR, "Error %d creating the partition '%s' in '%s'\n",
 		       rc, part_name, path);
 		goto err_1;
 	}
 	part = sos_part_find(sos, part_name);
 	if (!part) {
-		msglog(LDMSD_LERROR, "Newly created partition was not found\n");
+		LOG_(LDMSD_LERROR, "Newly created partition was not found\n");
 		goto err_1;
 	}
 	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
 	if (rc) {
-		msglog(LDMSD_LERROR, "New partition could not be made primary\n");
+		LOG_(LDMSD_LERROR, "New partition could not be made primary\n");
 		goto err_2;
 	}
 	sos_part_put(part);
@@ -427,7 +431,7 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 			continue;
 		if (0 == strcmp("job_id", ldms_metric_name_get(set, metric_arry[i])))
 			continue;
-		msglog(LDMSD_LINFO, "Adding attribute %s to the schema\n",
+		LOG_(LDMSD_LINFO, "Adding attribute %s to the schema\n",
 		       ldms_metric_name_get(set, metric_arry[i]));
 		rc = sos_schema_attr_add(schema,
 			ldms_metric_name_get(set, metric_arry[i]),
@@ -562,7 +566,7 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 			if (schema)
 				goto out;
 		}
-		msglog(LDMSD_LERROR, "Error %d adding the schema to the container\n", rc);
+		LOG_(LDMSD_LERROR, "Error %d adding the schema to the container\n", rc);
 		goto err_1;
 	}
  out:
@@ -631,7 +635,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		rc = _open_store(si, set, metric_arry, metric_count);
 		if (rc) {
 			pthread_mutex_unlock(&si->lock);
-			msglog(LDMSD_LERROR, "store_sos: Failed to create store "
+			LOG_(LDMSD_LERROR, "Failed to create store "
 			       "for %s.\n", si->container);
 			errno = rc;
 			return -1;
@@ -642,17 +646,17 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		si->first_attr = sos_schema_attr_by_name(si->sos_schema,
 				ldms_metric_name_get(set, metric_arry[0]));
 		if (si->comp_id_idx < 0)
-			msglog(LDMSD_LINFO,
+			LOG_(LDMSD_LINFO,
 			       "The component_id is missing from the metric set/schema.\n");
 		if (si->job_id_idx < 0)
-			msglog(LDMSD_LERROR,
+			LOG_(LDMSD_LERROR,
 			       "The job_id is missing from the metric set/schema.\n");
 		assert(si->ts_attr);
 	}
 	obj = sos_obj_new(si->sos_schema);
 	if (!obj) {
 		pthread_mutex_unlock(&si->lock);
-		msglog(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
+		LOG_(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
 		       strerror(errno), __FILE__, __LINE__);
 		errno = ENOMEM;
 		return -1;
@@ -661,7 +665,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 
 	/* timestamp */
 	if (NULL == sos_value_init(value, obj, si->ts_attr)) {
-		msglog(LDMSD_LERROR, "Error initializing timestamp attribute\n");
+		LOG_(LDMSD_LERROR, "Error initializing timestamp attribute\n");
 		errno = ENOMEM;
 		goto err;
 	}
@@ -682,7 +686,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		size_t count;
 		if (!attr) {
 			errno = E2BIG;
-			msglog(LDMSD_LERROR,
+			LOG_(LDMSD_LERROR,
 			       "The set '%s' with schema '%s' has fewer "
 			       "attributes than the SOS schema '%s' to which "
 			       "it is being stored.\n",
@@ -695,7 +699,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		metric_type = ldms_metric_type_get(set, metric_arry[i]);
 		if (metric_type < LDMS_V_CHAR_ARRAY) {
 			if (NULL == sos_value_init(value, obj, attr)) {
-				msglog(LDMSD_LERROR, "Error initializing '%s' attribute\n",
+				LOG_(LDMSD_LERROR, "Error initializing '%s' attribute\n",
 				       sos_attr_name(attr));
 				errno = ENOMEM;
 				goto err;
@@ -716,7 +720,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			array_value = sos_array_new(array_value, attr,
 							obj, array_len);
 			if (!array_value) {
-				msglog(LDMSD_LERROR, "Error allocating '%s' array\n",
+				LOG_(LDMSD_LERROR, "Error allocating '%s' array\n",
 				       sos_attr_name(attr));
 				errno = ENOMEM;
 				goto err;
@@ -735,7 +739,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	if (rc) {
 		last_errno = errno;
 		last_rc = rc;
-		msglog(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
+		LOG_(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
 		       strerror(errno), __FILE__, __LINE__);
 	}
 	if (last_errno)
