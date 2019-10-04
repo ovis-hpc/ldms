@@ -65,6 +65,10 @@
 #include "ldmsd.h"
 #include "slurm_sampler.h"
 
+#define LOG_(level, ...) do { \
+	msglog(level, "store_slurm :"__VA_ARGS__); \
+} while(0);
+
 enum store_slurm_verbosity {
 	/**
 	 * \brief SUMMARY
@@ -313,13 +317,13 @@ sos_handle_t create_container(const char *path)
 
 	rc = sos_container_new(path, 0660);
 	if (rc) {
-		msglog(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
+		LOG_(LDMSD_LERROR, "Error %d creating the container at '%s'\n",
 		       rc, path);
 		goto err_0;
 	}
 	sos = sos_container_open(path, SOS_PERM_RW);
 	if (!sos) {
-		msglog(LDMSD_LERROR, "Error %d opening the container at '%s'\n",
+		LOG_(LDMSD_LERROR, "Error %d opening the container at '%s'\n",
 		       errno, path);
 		goto err_0;
 	}
@@ -331,18 +335,18 @@ sos_handle_t create_container(const char *path)
 	sprintf(part_name, "%d", (unsigned int)t);
 	rc = sos_part_create(sos, part_name, path);
 	if (rc) {
-		msglog(LDMSD_LERROR, "Error %d creating the partition '%s' in '%s'\n",
+		LOG_(LDMSD_LERROR, "Error %d creating the partition '%s' in '%s'\n",
 		       rc, part_name, path);
 		goto err_1;
 	}
 	part = sos_part_find(sos, part_name);
 	if (!part) {
-		msglog(LDMSD_LERROR, "Newly created partition was not found\n");
+		LOG_(LDMSD_LERROR, "Newly created partition was not found\n");
 		goto err_1;
 	}
 	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
 	if (rc) {
-		msglog(LDMSD_LERROR, "New partition could not be made primary\n");
+		LOG_(LDMSD_LERROR, "New partition could not be made primary\n");
 		goto err_2;
 	}
 	sos_part_put(part);
@@ -414,7 +418,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	value = av_value(avl, "path");
 	if (!value) {
-		msglog(LDMSD_LERROR,
+		LOG_(LDMSD_LERROR,
 		       "%s[%d]: The 'path' configuraiton option is required.\n",
 		       __func__, __LINE__);
 		return EINVAL;
@@ -439,7 +443,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			free(si->path);
 		si->path = malloc(pathlen);
 		if (!si->path) {
-			msglog(LDMSD_LERROR, "%s[%d]: Memory allocation error.\n",
+			LOG_(LDMSD_LERROR, "%s[%d]: Memory allocation error.\n",
 			       __func__, __LINE__);
 			goto err_0;
 		}
@@ -561,7 +565,7 @@ _open_store(struct sos_instance *si, ldms_set_t set)
 			if (schema)
 				goto out;
 		}
-		msglog(LDMSD_LERROR, "Error %d adding the schema to the container\n", rc);
+		LOG_(LDMSD_LERROR, "Error %d adding the schema to the container\n", rc);
 		goto err_1;
 	}
  out:
@@ -716,7 +720,7 @@ store_summary(struct sos_instance *si, ldms_set_t set, int slot)
 		obj = sos_obj_new(si->sos_schema);
 		if (!obj) {
 			rc = errno;
-			msglog(LDMSD_LERROR, "%s[%d]: Error %d allocating '%s' object.\n",
+			LOG_(LDMSD_LERROR, "%s[%d]: Error %d allocating '%s' object.\n",
 			       __func__, __LINE__, rc, sos_schema_name(si->sos_schema));
 			return rc;
 		}
@@ -790,7 +794,7 @@ store_ranks(struct sos_instance *si, ldms_set_t set, int slot)
 			obj = sos_obj_new(si->sos_schema);
 			if (!obj) {
 				rc = errno;
-				msglog(LDMSD_LERROR, "%s[%d]: Error %d allocating '%s' object.\n",
+				LOG_(LDMSD_LERROR, "%s[%d]: Error %d allocating '%s' object.\n",
 				       __func__, __LINE__, rc, sos_schema_name(si->sos_schema));
 				return rc;
 			}
@@ -832,7 +836,7 @@ store_times(struct sos_instance *si, ldms_set_t set, int slot)
 		obj = sos_obj_new(si->sos_schema);
 		if (!obj) {
 			rc = errno;
-			msglog(LDMSD_LERROR, "%s[%d]: Error %d allocating '%s' object.\n",
+			LOG_(LDMSD_LERROR, "%s[%d]: Error %d allocating '%s' object.\n",
 			       __func__, __LINE__, rc, sos_schema_name(si->sos_schema));
 			return rc;
 		}
@@ -887,7 +891,7 @@ store(ldmsd_store_handle_t _sh,
 		rc = _open_store(si, set);
 		if (rc) {
 			pthread_mutex_unlock(&si->lock);
-			msglog(LDMSD_LERROR, "store_slurm: Failed to create store "
+			LOG_(LDMSD_LERROR, "Failed to create store "
 			       "for %s.\n", si->container);
 			errno = rc;
 			goto err;
@@ -910,8 +914,8 @@ store(ldmsd_store_handle_t _sh,
 		job_id = ldms_metric_array_get_u64(set, JOB_ID_MID(set), slot);
 		state = ldms_metric_array_get_u8(set, JOB_STATE_MID(set), slot);
 		if (state < JOB_RUNNING) {
-			msglog(LDMSD_LINFO,
-			       "store_slurm: Ignoring job %d in slot %d in state %d\n",
+			LOG_(LDMSD_LINFO,
+			       "Ignoring job %d in slot %d in state %d\n",
 			       job_id, slot, state);
 			goto skip;
 		}
