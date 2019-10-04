@@ -58,6 +58,11 @@
 
 #include "sos/sos.h"
 
+#define INST(x) ((ldmsd_plugin_inst_t)(x))
+#define INST_LOG(inst, lvl, fmt, ...) \
+		ldmsd_log((lvl), "%s: " fmt, INST(inst)->inst_name, \
+								##__VA_ARGS__)
+
 typedef struct store_sos_inst_s *store_sos_inst_t;
 
 struct store_sos_inst_s {
@@ -170,11 +175,18 @@ int __part_create(store_sos_inst_t inst)
 	int rc;
 	sos_part_t part;
 	rc = sos_part_create(inst->sos, "PRIMARY", NULL);
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d creating the partition '%s' in '%s'\n",
+			 rc, "PRIMARY", inst->path);
 		return rc;
+	}
 	part = sos_part_find(inst->sos, "PRIMARY");
-	if (!part)
+	if (!part) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Newly created partition was not found\n");
 		return errno;
+	}
 	rc = sos_part_state_set(part, SOS_PART_STATE_PRIMARY);
 	sos_part_put(part);
 	if (rc)
@@ -206,6 +218,9 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 
 	if (!inst->sos_schema) {
 		rc = errno;
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d creating new SOS schema '%s'\n",
+			 rc, strgp->schema);
 		goto err0;
 	}
 
@@ -214,6 +229,9 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 				   SOS_TYPE_TIMESTAMP);
 	if (!inst->attr_ts) {
 		rc = errno;
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' attribute to SOS schema '%s'\n",
+			 rc, "timestamp", strgp->schema);
 		goto err1;
 	}
 
@@ -222,6 +240,9 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 				   SOS_TYPE_UINT64);
 	if (!inst->attr_comp_id) {
 		rc = errno;
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' attribute to SOS schema '%s'\n",
+			 rc, "component_id", strgp->schema);
 		goto err1;
 	}
 
@@ -230,6 +251,9 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 				   SOS_TYPE_UINT64);
 	if (!inst->attr_job_id) {
 		rc = errno;
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' attribute to SOS schema '%s'\n",
+			 rc, "job_id", strgp->schema);
 		goto err1;
 	}
 
@@ -240,10 +264,17 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 				0 == strcmp(m->name, "job_id")) {
 			continue;
 		}
+		INST_LOG(inst, LDMSD_LINFO,
+			 "Adding attribute %s to the schema\n", m->name);
 		rc = sos_schema_attr_add(inst->sos_schema, m->name,
 					 sos_type_map[m->type]);
-		if (rc)
+		if (rc) {
+			INST_LOG(inst, LDMSD_LERROR,
+				 "Error %d adding '%s' attribute to "
+				 "SOS schema '%s'\n", rc, m->name,
+				 strgp->schema);
 			goto err1;
+		}
 	}
 
 	/*
@@ -252,33 +283,57 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 	char *comp_time_attrs[] = {"timestamp", "job_id", "component_id" };
 	rc = sos_schema_attr_add(inst->sos_schema, "time_job_comp",
 				 SOS_TYPE_JOIN, 3, comp_time_attrs);
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' attribute to SOS schema '%s'\n",
+			 rc, "time_job_comp", strgp->schema);
 		goto err1;
+	}
 	rc = sos_schema_index_add(inst->sos_schema, "time_job_comp");
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' index to SOS schema '%s'\n",
+			 rc, "time_job_comp", strgp->schema);
 		goto err1;
+	}
 	/*
 	 * Time/Component/Job_Id Index
 	 */
 	char *time_job_attrs[] = { "timestamp", "component_id", "job_id" };
 	rc = sos_schema_attr_add(inst->sos_schema, "time_comp_job",
 				 SOS_TYPE_JOIN, 3, time_job_attrs);
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' attribute to SOS schema '%s'\n",
+			 rc, "time_comp_job", strgp->schema);
 		goto err1;
+	}
 	rc = sos_schema_index_add(inst->sos_schema, "time_comp_job");
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' index to SOS schema '%s'\n",
+			 rc, "time_comp_job", strgp->schema);
 		goto err1;
+	}
 	/*
 	 * Job/Component/Time Index
 	 */
 	char *job_comp_time_attrs[] = { "job_id", "component_id", "timestamp" };
 	rc = sos_schema_attr_add(inst->sos_schema, "job_comp_time",
 				 SOS_TYPE_JOIN, 3, job_comp_time_attrs);
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' attribute to SOS schema '%s'\n",
+			 rc, "job_comp_time", strgp->schema);
 		goto err1;
+	}
 	rc = sos_schema_index_add(inst->sos_schema, "job_comp_time");
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' index to SOS schema '%s'\n",
+			 rc, "job_comp_time", strgp->schema);
 		goto err1;
+	}
 
 	/*
 	 * Job/Time/Component Index
@@ -286,33 +341,57 @@ int __schema_create(store_sos_inst_t inst, ldmsd_strgp_t strgp)
 	char *job_time_comp_attrs[] = { "job_id", "timestamp", "component_id" };
 	rc = sos_schema_attr_add(inst->sos_schema, "job_time_comp",
 				 SOS_TYPE_JOIN, 3, job_time_comp_attrs);
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' attribute to SOS schema '%s'\n",
+			 rc, "job_time_comp", strgp->schema);
 		goto err1;
+	}
 	rc = sos_schema_index_add(inst->sos_schema, "job_time_comp");
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' index to SOS schema '%s'\n",
+			 rc, "job_time_comp", strgp->schema);
 		goto err1;
+	}
 
 	/*
 	 * Component_Id/Timestamp/Job_Id Index
 	 */
 	char *comp_time_job_attrs[] = { "component_id", "timestamp", "job_id" };
 	rc = sos_schema_attr_add(inst->sos_schema, "comp_time_job", SOS_TYPE_JOIN, 3, comp_time_job_attrs);
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' attribute to SOS schema '%s'\n",
+			 rc, "comp_time_job", strgp->schema);
 		goto err1;
+	}
 	rc = sos_schema_index_add(inst->sos_schema, "comp_time_job");
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' index to SOS schema '%s'\n",
+			 rc, "comp_time_job", strgp->schema);
 		goto err1;
+	}
 
 	/*
 	 * Component_Id/Job_Id/Timestamp Index
 	 */
 	char *comp_job_time_attrs[] = { "component_id", "job_id", "timestamp" };
 	rc = sos_schema_attr_add(inst->sos_schema, "comp_job_time", SOS_TYPE_JOIN, 3, comp_job_time_attrs);
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' attribute to SOS schema '%s'\n",
+			 rc, "comp_job_time", strgp->schema);
 		goto err1;
+	}
 	rc = sos_schema_index_add(inst->sos_schema, "comp_job_time");
-	if (rc)
+	if (rc) {
+		INST_LOG(inst, LDMSD_LERROR,
+			 "Error %d adding '%s' index to SOS schema '%s'\n",
+			 rc, "comp_job_time", strgp->schema);
 		goto err1;
+	}
 
 
 	rc = sos_schema_add(inst->sos, inst->sos_schema);
@@ -340,7 +419,7 @@ int store_sos_open(ldmsd_plugin_inst_t i, ldmsd_strgp_t strgp)
 	int rc;
 
 	if (inst->sos) {
-		ldmsd_lerror("store_sos(%s): already opened\n", i->inst_name);
+		INST_LOG(inst, LDMSD_LERROR, "already opened\n");
 		rc = EBUSY;
 		goto err0;
 	}
@@ -355,8 +434,8 @@ int store_sos_open(ldmsd_plugin_inst_t i, ldmsd_strgp_t strgp)
 		/* open failed, try creating */
 		rc = sos_container_new(inst->path, store->perm);
 		if (rc) {
-			ldmsd_lerror("store_sos(%s): sos_container_new() "
-				     "failed, rc: %d\n", i->inst_name, rc);
+			INST_LOG(inst, LDMSD_LERROR,
+				 "sos_container_new() failed, rc: %d\n", rc);
 			goto err0;
 		}
 		goto open;
@@ -384,8 +463,8 @@ int store_sos_open(ldmsd_plugin_inst_t i, ldmsd_strgp_t strgp)
 		/* needs to create PRIMARY partition */
 		rc = __part_create(inst);
 		if (rc) {
-			ldmsd_lerror("store_sos(%s): __part_create() "
-				     "failed, rc: %d\n", i->inst_name, rc);
+			INST_LOG(inst, LDMSD_LERROR,
+				 "__part_create() failed, rc: %d\n", rc);
 			goto err1;
 		}
 	}
@@ -395,8 +474,8 @@ int store_sos_open(ldmsd_plugin_inst_t i, ldmsd_strgp_t strgp)
 	if (!inst->sos_schema) {
 		rc = __schema_create(inst, strgp);
 		if (rc) {
-			ldmsd_lerror("store_sos(%s): __schema_create() "
-				     "failed, rc: %d\n", i->inst_name, rc);
+			INST_LOG(inst, LDMSD_LERROR,
+				 "__schema_create() failed, rc: %d\n", rc);
 			goto err1;
 		}
 	}
