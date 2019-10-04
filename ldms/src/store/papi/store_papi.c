@@ -554,7 +554,7 @@ store(ldmsd_store_handle_t _sh,
 		rc = _open_store(si, set);
 		if (rc) {
 			pthread_mutex_unlock(&si->lock);
-			LOG_(LDMSD_LERROR, "store_sos: Failed to create store "
+			LOG_(LDMSD_LERROR, "Failed to create store "
 			       "for %s.\n", si->container);
 			errno = rc;
 			goto err;
@@ -639,9 +639,9 @@ static void close_store(ldmsd_store_handle_t _sh)
 	free(si);
 }
 
-static struct ldmsd_store store_sos = {
+static struct ldmsd_store store_papi = {
 	.base = {
-		.name = "sos",
+		.name = "papi",
 		.term = term,
 		.config = config,
 		.usage = usage,
@@ -657,18 +657,18 @@ static struct ldmsd_store store_sos = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
-	return &store_sos.base;
+	return &store_papi.base;
 }
 
-static void __attribute__ ((constructor)) store_sos_init();
-static void store_sos_init()
+static void __attribute__ ((constructor)) store_papi_init();
+static void store_papi_init()
 {
 	pthread_mutex_init(&cfg_lock, NULL);
 	LIST_INIT(&sos_handle_list);
 }
 
-static void __attribute__ ((destructor)) store_sos_fini(void);
-static void store_sos_fini()
+static void __attribute__ ((destructor)) store_papi_fini(void);
+static void store_papi_fini()
 {
 	pthread_mutex_destroy(&cfg_lock);
 	/* TODO: clean up container and metric trees */
