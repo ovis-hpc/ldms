@@ -227,7 +227,10 @@ OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc third json tada coll ovis_
 dnl substitute values we need from ovis-auth.sh during joint configure
 AC_SUBST(OVIS_AUTH_LIBS)
 
-if test -d ${OVIS_LIB_LIB64DIR}/ovis-lib ; then
+if test $(echo ${OVIS_LIB_LIBDIR} | wc -w) -gt 1 ; then
+	# building with top build
+	ZAP_LIBPATH=${libdir}/ovis-lib
+elif test -d ${OVIS_LIB_LIB64DIR}/ovis-lib ; then
 	ZAP_LIBPATH=${OVIS_LIB_LIB64DIR}/ovis-lib
 else
 	ZAP_LIBPATH=${OVIS_LIB_LIBDIR}/ovis-lib
