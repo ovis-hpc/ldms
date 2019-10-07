@@ -7,6 +7,7 @@ ACLOCAL_AMFLAGS = -I m4
 # Use the top configure if you expect to use the top make.
 #
 EXTRA_DIST= \
+autogen.sh \
 m4/Ovis-top.m4 \
 SHA.txt \
 TAG.txt

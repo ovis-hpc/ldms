@@ -1,4 +1,4 @@
-EXTRA_DIST = pedigree.am SHA.txt TAG.txt
+EXTRA_DIST = autogen.sh pedigree.am SHA.txt TAG.txt
 
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = src
