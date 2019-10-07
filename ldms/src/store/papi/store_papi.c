@@ -577,28 +577,35 @@ store(ldmsd_store_handle_t _sh,
 			sos_value_t v = sos_value_by_id(&v_, obj, TIMESTAMP_ATTR);
 			v->data->prim.timestamp_.tv.tv_usec = timestamp.usec;
 			v->data->prim.timestamp_.tv.tv_sec = timestamp.sec;
+			sos_value_put(v);
 
 			/* Component ID */
 			v = sos_value_by_id(&v_, obj, COMPONENT_ATTR);
 			v->data->prim.uint64_ = component_id;
+			sos_value_put(v);
 
 			/* Job ID */
 			v = sos_value_by_id(&v_, obj, JOB_ATTR);
 			v->data->prim.uint64_ = job_id;
+			sos_value_put(v);
 
 			/* App ID */
 			v = sos_value_by_id(&v_, obj, APP_ATTR);
 			v->data->prim.uint64_ = app_id;
+			sos_value_put(v);
 
 			/* Rank */
 			v = sos_value_by_id(&v_, obj, RANK_ATTR);
 			v->data->prim.uint32_ = ldms_metric_array_get_u32(set, rank_mid, i);
+			sos_value_put(v);
 
 			/* Event count */
 			v = sos_value_by_id(&v_, obj, EVENT_ATTR);
 			v->data->prim.int64_ = ldms_metric_array_get_s64(set, event_mid, i);
+			sos_value_put(v);
 
 			sos_obj_index(obj);
+			sos_obj_put(obj);
 		}
 	}
 	pthread_mutex_unlock(&si->lock);
