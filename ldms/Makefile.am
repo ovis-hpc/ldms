@@ -1,5 +1,6 @@
 EXTRA_DIST = pedigree.am SHA.txt TAG.txt \
-	     README.md
+	     README.md \
+	     autogen.sh
 
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = src
