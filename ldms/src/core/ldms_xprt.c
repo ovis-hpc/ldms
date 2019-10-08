@@ -540,15 +540,12 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 				goto out;
 		}
 
-		if (0 != ldms_access_check(x, LDMS_ACCESS_READ,
-					   uid, gid, perm)) {
+		if (0 == ldms_access_check(x, LDMS_ACCESS_READ, uid, gid, perm)) {
 			/* no access, skip it */
-			continue;
-		}
-
-		cnt += __ldms_format_set_meta_as_json(set, last_cnt,
+			cnt += __ldms_format_set_meta_as_json(set, last_cnt,
 						      &reply->dir.json_data[cnt],
 						      len - hdrlen - cnt - 3 /* ]}\0 */);
+		}
 
 		if (/* Too big to fit in transport message, send what we have */
 		    (cnt >= len - hdrlen - 3)) {
