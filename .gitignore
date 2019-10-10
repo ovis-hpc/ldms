@@ -31,3 +31,4 @@ lt~obsolete.m4
 *doxygen*
 *.pyc
 *.swp
+.ycm_extra_conf.py
