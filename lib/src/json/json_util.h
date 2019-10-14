@@ -212,6 +212,7 @@ extern int64_t json_attr_value_int(json_entity_t a);
 extern int json_attr_value_bool(json_entity_t a);
 extern double json_attr_value_float(json_entity_t a);
 
+extern json_entity_t json_value_find(json_entity_t d, char *name);
 extern int64_t json_value_int(json_entity_t e);
 extern int json_value_bool(json_entity_t e);
 extern double json_value_float(json_entity_t e);

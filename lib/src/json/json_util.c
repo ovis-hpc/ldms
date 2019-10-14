@@ -655,6 +655,14 @@ double json_attr_value_float(json_entity_t attr)
 	return json_value_float(json_attr_value(attr));
 }
 
+json_entity_t json_value_find(json_entity_t d, char *name)
+{
+	json_entity_t e = json_attr_find(d, name);
+	if (e)
+		e = json_attr_value(e);
+	return e;
+}
+
 size_t json_list_len(json_entity_t list)
 {
 	assert(list->type == JSON_LIST_VALUE);
