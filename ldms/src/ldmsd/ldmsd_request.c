@@ -131,10 +131,16 @@ struct rbt msg_tree = RBT_INITIALIZER(msg_comparator);
 static
 void ldmsd_req_ctxt_sec_get(ldmsd_req_ctxt_t rctxt, ldmsd_sec_ctxt_t sctxt)
 {
-	if (rctxt->xprt->xprt) {
-		ldms_xprt_cred_get(rctxt->xprt->xprt, NULL, &sctxt->crd);
-	} else {
+	switch (rctxt->xprt->type) {
+	case LDMSD_CFG_XPRT_SOCK:
+		assert("Unsupported transport" == 0);
+		break;
+	case LDMSD_CFG_XPRT_CONFIG_FILE:
 		ldmsd_sec_ctxt_get(sctxt);
+		break;
+	case LDMSD_CFG_XPRT_LDMS:
+		ldms_xprt_cred_get(rctxt->xprt->xprt, NULL, &sctxt->crd);
+		break;
 	}
 }
 
@@ -2199,11 +2205,7 @@ static int smplr_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	struct ldmsd_sec_ctxt sctxt;
-	if (reqc->xprt->xprt) {
-		ldms_xprt_cred_get(reqc->xprt->xprt, NULL, &sctxt.crd);
-	} else {
-		ldmsd_sec_ctxt_get(&sctxt);
-	}
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	uid = sctxt.crd.uid;
 	gid = sctxt.crd.gid;
 
