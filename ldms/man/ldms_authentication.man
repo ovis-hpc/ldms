@@ -39,6 +39,11 @@ Please consult the manual of the plugin for more details.
 .SH LIST OF LDMS_AUTH PLUGINS
 
 .TP
+.B none
+Authentication will NOT be used.
+.RB "(see " ldms_auth_none (7)).
+
+.TP
 .B ovis
 The shared secret authentication using ovis_lib
 .RB "(see " ldms_auth_ovis (7)).
@@ -50,11 +55,14 @@ The naive authentication for testing.
 
 .TP
 .B munge
-User credential authentication using Munge (will be available soon).
+User credential authentication using Munge.
+.RB "(see " ldms_auth_munge (7)).
 
 .SH SEE ALSO
+.BR ldms_auth_none (7),
 .BR ldms_auth_ovis (7),
 .BR ldms_auth_naive (7),
+.BR ldms_auth_munge (7),
 .BR ldmsctl (8),
 .BR ldmsd (8),
 .BR ldms_ls (8),

@@ -14,7 +14,7 @@ ldms_auth_ovis \- LDMS authentication using ovis_auth library
 
 
 .SH DESCRIPTION
-.BR ovis_auth
+.BR ldms_auth_ovis
 uses shared secret to authenticate the connection. The secret is a text file
 containing the line:
 .PP
@@ -22,7 +22,7 @@ containing the line:
        secretword=X
 .RE
 .PP
-where X is a string at least 5 characters long. Lines starting with # in the
+where X is a string at least 8 characters long. Lines starting with # in the
 file are ignored.
 
 .PP

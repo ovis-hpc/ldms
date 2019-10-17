@@ -193,9 +193,9 @@ char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log)
 		goto err0;
 	}
 
-	if (strlen(s) < MIN_SECRET_WORD_LEN + 1 ||
+	if (strlen(s) < MIN_SECRET_WORD_LEN ||
 			strlen(s) > MAX_SECRET_WORD_LEN + 1) {
-		log("Auth error: the secret word must be longer than"
+		log("Auth error: the secret word must be at least "
 				"%d characters and at most %d characters.\n",
 				MIN_SECRET_WORD_LEN, MAX_SECRET_WORD_LEN);
 		ret = EINVAL;
