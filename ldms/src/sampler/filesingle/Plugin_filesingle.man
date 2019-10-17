@@ -72,10 +72,10 @@ start name=filesingle interval=10000000 offset=0
 For the contents of filesingle.conf (on a specific machine):
 
 .nf
-power1 /sys/class/hwmon/hwmon0/device/power1_average int64 -1
-coretemp.Physical_id_0 /sys/class/hwmon/hwmon1/temp1_input int64 -1
-coretemp.Core_0 /sys/class/hwmon/hwmon1/temp2_input int64 -1
-core0.cur_freq /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_cur_freq int64 -1
+power1 /sys/class/hwmon/hwmon0/device/power1_average S64 -1
+coretemp.Physical_id_0 /sys/class/hwmon/hwmon1/temp1_input S64 -1
+coretemp.Core_0 /sys/class/hwmon/hwmon1/temp2_input S64 -1
+core0.cur_freq /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_cur_freq S64 -1
 .fi
 
 The power reading, two temperatures, and cpu frequency are collected.
@@ -100,4 +100,4 @@ Some metric files may only be readable by the users with administrative privileg
 Some sensors may not update themselves (at the kernel level) faster than a certain frequency, even though it is possible to more frequently read their data files.
 
 .SH SEE ALSO
-sensors(1), lscpu(1), ldms_sampler_base(7), proc(5), ldmsd(8), ldmsd_controller(8)
+ldms-sensors-config(1), sensors(1), lscpu(1), ldms_sampler_base(7), proc(5), ldmsd(8), ldmsd_controller(8)
