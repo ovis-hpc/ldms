@@ -61,7 +61,7 @@
 #include <inttypes.h>
 
 #define MAX_SECRET_WORD_LEN 512 /*! The maximum length of the secret word */
-#define MIN_SECRET_WORD_LEN 3  /*! The minimum length of the secret word */
+#define MIN_SECRET_WORD_LEN 8  /*! The minimum length of the secret word */
 
 struct ovis_auth_challenge {
 	uint32_t lo; 		/*! The last 32 bits */
