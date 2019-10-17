@@ -151,7 +151,7 @@ EOF
 echo Loading store_csv on aggregator4
 echo "load name=store_csv" >> $in4
 echo Config store_csv on aggregator4
-echo "config name=store_csv action=init path=${STOREDIR} altheader=1 notify=$NOTICES.fifo notify_isfifo=1" >> $in4
+echo "config name=store_csv path=${STOREDIR} altheader=1 notify=$NOTICES.fifo notify_isfifo=1" >> $in4
 
 echo Start store_csv on aggregator4
 cat << EOF >> $in4

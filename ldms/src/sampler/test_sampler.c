@@ -476,6 +476,7 @@ static int config_add_schema(struct attr_value_list *avl)
 					"test_sampler: Failed to create metric.\n");
 				goto cleanup;
 			}
+			TAILQ_INSERT_TAIL(&ts_schema->list, metric, entry);
 		}
 	}
 
@@ -609,7 +610,7 @@ static int config_add_set(struct attr_value_list *avl)
 	} else {
 		v.v_u64 = 0;
 	}
-	mid = ldms_metric_by_name(ts_set->set, "jobid");
+	mid = ldms_metric_by_name(ts_set->set, LDMSD_JOBID);
 	if (mid >= 0)
 		ldms_metric_set(ts_set->set, mid, &v);
 
