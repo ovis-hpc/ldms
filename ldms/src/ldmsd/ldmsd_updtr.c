@@ -85,7 +85,7 @@ void ldmsd_updtr___del(ldmsd_cfgobj_t obj)
 }
 
 
-int updtr_sched_offset_skew_get()
+static int updtr_sched_offset_skew_get()
 {
 	int skew = LDMSD_UPDTR_OFFSET_INCR_DEFAULT;
 	char *str = getenv(LDMSD_UPDTR_OFFSET_INCR_VAR);

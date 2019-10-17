@@ -301,21 +301,19 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 	return;
 }
 
-static void _revoke_rbd(ldms_t x, ldms_set_t set)
+static void __revoke_rbd(ldms_t x, struct ldms_set *s)
 {
 	struct ldms_rbuf_desc *rbd;
 	struct ldms_rendezvous_msg msg;
-	struct ldms_set *s;
 
 	msg.hdr.xid = 0;
 	msg.hdr.cmd = htonl(LDMS_XPRT_RENDEZVOUS_REVOKE);
 	msg.hdr.len = htonl(sizeof(msg.hdr) + sizeof(msg.revoke));
 
 	pthread_mutex_lock(&x->lock);
-	s = set->set;
 	pthread_mutex_lock(&s->lock);
 
-	rbd = ldms_lookup_rbd(x, set->set);
+	rbd = ldms_lookup_rbd(x, s);
 	if (rbd) {
 		if (rbd->lmap) {
 			msg.revoke.set_id = (uint64_t)(unsigned long)rbd;
@@ -330,16 +328,26 @@ static void _revoke_rbd(ldms_t x, ldms_set_t set)
 	pthread_mutex_unlock(&x->lock);
 }
 
-void __ldms_dir_update(ldms_set_t set, enum ldms_dir_type t)
+static void _revoke_rbd(ldms_t x, ldms_set_t set)
+{
+	__revoke_rbd(x, set->set);
+}
+
+void ___ldms_dir_update(struct ldms_set *set, enum ldms_dir_type t)
 {
 	struct ldms_xprt *x;
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_FOREACH(x, &xprt_dir_list, remote_dir_link) {
 		if (t == LDMS_DIR_DEL)
-			_revoke_rbd(x, set);
-		send_dir_update(x, t, ldms_set_instance_name_get(set));
+			__revoke_rbd(x, set);
+		send_dir_update(x, t, set);
 	}
 	pthread_mutex_unlock(&xprt_list_lock);
+}
+
+void __ldms_dir_update(ldms_set_t set, enum ldms_dir_type t)
+{
+	___ldms_dir_update(set->set, t);
 }
 
 void ldms_xprt_close(ldms_t x)
@@ -1299,6 +1307,65 @@ void process_dir_cancel_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	zap_put_ep(x->zap_ep);
 }
 
+static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type,
+				ldms_dir_set_t dset, json_entity_t info_list)
+{
+	json_entity_t info_entity, e;
+	int j, rc;
+	int dir_upd = 0;
+	struct ldms_set_info_pair *pair, *nxt_pair;
+
+	if (lset)
+		pthread_mutex_lock(&lset->lock);
+	for (j = 0, info_entity = json_item_first(info_list); info_entity;
+	     info_entity = json_item_next(info_entity), j++) {
+		e = json_value_find(info_entity, "key");
+		dset->info[j].key = strdup(json_value_str(e)->str);
+		if (!dset->info[j].key)
+			return ENOMEM;
+		e = json_value_find(info_entity, "value");
+		dset->info[j].value = strdup(json_value_str(e)->str);
+		if (!dset->info[j].value)
+			return ENOMEM;
+
+		if (lset) {
+			const char *key = dset->info[j].key;
+			const char *val = dset->info[j].value;
+			rc = __ldms_set_info_set(&lset->remote_info, key, val);
+			if (rc > 0)
+				return rc;
+			if (rc == 0)
+				dir_upd = 1;
+		}
+	}
+	if (!lset)
+		return 0;
+
+	pair = LIST_FIRST(&lset->remote_info);
+	while (pair) {
+		nxt_pair = LIST_NEXT(pair, entry);
+		for (j = 0, info_entity = json_item_first(info_list); info_entity;
+				info_entity = json_item_next(info_entity)) {
+			e = json_value_find(info_entity, "key");
+			if (0 == strcmp(pair->key, json_value_str(e)->str))
+				break;
+		}
+		if (!info_entity) {
+			__ldms_set_info_unset(pair);
+			dir_upd = 1;
+		}
+		pair = nxt_pair;
+	}
+	if (lset) {
+		pthread_mutex_unlock(&lset->lock);
+		if ((type == LDMS_DIR_UPD) && dir_upd &&
+				(lset->flags && LDMS_SET_F_PUBLISHED)) {
+			___ldms_dir_update(lset, type);
+		}
+	}
+	return 0;
+}
+
 static
 void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		       struct ldms_context *ctxt, int more)
@@ -1311,6 +1378,7 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	json_entity_t dir_attr, dir_list, set_entity, info_list, info_entity;
 	json_entity_t dir_entity = NULL;
 	struct ldms_set *lset;
+	int dir_upd = 0;
 
 	if (!ctxt->dir.cb)
 		return;
@@ -1417,41 +1485,9 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		}
 
 		/* If this set is in our local set tree, update it's set info */
-		lset = __ldms_find_local_set(dir->set_data[i].inst_name);
-
 		dir->set_data[i].info_count = info_count;
-		for (j = 0, info_entity = json_item_first(info_list); info_entity;
-		     info_entity = json_item_next(info_entity), j++) {
-			e = json_value_find(info_entity, "key");
-			dir->set_data[i].info[j].key = strdup(json_value_str(e)->str);
-			if (!dir->set_data[i].info[j].key) {
-				rc = ENOMEM;
-				break;
-			}
-			e = json_value_find(info_entity, "value");
-			dir->set_data[i].info[j].value = strdup(json_value_str(e)->str);
-			if (!dir->set_data[i].info[j].value) {
-				rc = ENOMEM;
-				break;
-			}
-			if (lset) {
-				const char *key = dir->set_data[i].info[j].key;
-				const char *val = dir->set_data[i].info[j].value;
-				pthread_mutex_lock(&lset->lock);
-				struct ldms_set_info_pair *pair =
-					__ldms_set_info_find(&lset->remote_info, key);
-				if (pair) {
-					if (strcmp(pair->value, val)) {
-						free(pair->value);
-						pair->value = strdup(val);
-					}
-				} else {
-					__ldms_set_info_set(&lset->remote_info,
-							    key, val);
-				}
-				pthread_mutex_unlock(&lset->lock);
-			}
-		}
+		lset = __ldms_find_local_set(dir->set_data[i].inst_name);
+		rc = __process_dir_set_info(lset, type, &dir->set_data[i], info_list);
 		if (rc)
 			break;
 	}
@@ -1461,7 +1497,7 @@ out:
 	ctxt->dir.cb((ldms_t)x, rc, rc ? NULL : dir, ctxt->dir.cb_arg);
 	json_entity_free(dir_entity);
 	json_parser_free(p);
-	if (rc)
+	if (rc && dir)
 		ldms_xprt_dir_free(x, dir);
 }
 
@@ -1986,24 +2022,64 @@ int __is_lookup_name_good(struct ldms_xprt *x,
 }
 #endif /* DEBUG */
 
-static int __handle_set_info(struct ldms_set *lset, char *set_info)
+static const ldms_name_t __lookup_set_info_find(const char *set_info,
+						const char *key_)
 {
-	int rc;
-	ldms_name_t key, value;
+	ldms_name_t key = (ldms_name_t)set_info;
+	ldms_name_t value = (ldms_name_t)(&key->name[key->len]);
+	while (key->len) {
+		if (0 == strcmp(key_, key->name))
+			return key;
+		key = (ldms_name_t)(&value->name[value->len]);
+		value = (ldms_name_t)(&key->name[key->len]);
+	}
+	return NULL;
+}
 
-	__ldms_set_info_delete(&lset->remote_info);
-	/* Add the new key value pair or replace the value of an existing key */
+static int __process_lookup_set_info(struct ldms_set *lset, char *set_info)
+{
+	int rc = 0, i;
+	ldms_name_t key, value;
+	struct ldms_set_info_pair *pair, *nxt_pair;
+	int dir_upd = 0;
+
+	/* Check whether the value of a key is changed or not */
 	key = (ldms_name_t)(set_info);
 	value = (ldms_name_t)(&key->name[key->len]);
 	while (key->len) {
 		rc = __ldms_set_info_set(&lset->remote_info,
 					key->name, value->name);
-		if (rc)
-			return -rc;
+		if (rc > 0) {
+			/* error */
+			goto out;
+		}
+		if (rc == 0) {
+			/* There is a change in the set info data */
+			dir_upd = 1;
+		}
+		if (rc < 0)
+			rc = 0;
 		key = (ldms_name_t)(&value->name[value->len]);
 		value = (ldms_name_t)(&key->name[key->len]);
 	}
-	return 0;
+	if (!dir_upd) {
+		/* Check if a key-value pair is removed from the set info or not */
+		pair = LIST_FIRST(&lset->remote_info);
+		while (pair) {
+			nxt_pair = LIST_NEXT(pair, entry);
+			key = __lookup_set_info_find(set_info, pair->key);
+			if (!key) {
+				/* Remove the key-value pair from the set info list */
+				__ldms_set_info_unset(pair);
+				dir_upd = 1;
+			}
+			pair = nxt_pair;
+		}
+	}
+	if (dir_upd)
+		___ldms_dir_update(lset, LDMS_DIR_UPD);
+out:
+	return rc;
 }
 
 static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
@@ -2044,7 +2120,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 				rc = EEXIST;
 			} else {
 				pthread_mutex_lock(&lset->lock);
-				rc = __handle_set_info(lset,
+				rc = __process_lookup_set_info(lset,
 					&inst_name->name[inst_name->len]);
 				pthread_mutex_unlock(&lset->lock);
 			}
@@ -2064,7 +2140,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	}
 
 	pthread_mutex_lock(&lset->lock);
-	rc = __handle_set_info(lset, &inst_name->name[inst_name->len]);
+	rc = __process_lookup_set_info(lset, &inst_name->name[inst_name->len]);
 	pthread_mutex_unlock(&lset->lock);
 	if (rc)
 		goto unlock_out;

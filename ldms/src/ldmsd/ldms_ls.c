@@ -1054,7 +1054,7 @@ done:
 		printf("-------------- ------------------------ ------ ------ "
 		       "------ ------ ------ ---------- ----------------- "
 		       "----------------- --------\n");
-		printf("Total Sets: %ld, Meta Data (kB): %.2f, Data (kB) %.2f, Memory (kB): %.2f",
+		printf("Total Sets: %ld, Meta Data (kB): %.2f, Data (kB) %.2f, Memory (kB): %.2f\n",
 		       total_sets, (double)total_meta / 1000.0, (double)total_data / 1000.0,
 		       (double)(total_meta + total_data) / 1000.0);
 	}

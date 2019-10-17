@@ -235,10 +235,11 @@ static void __update_set_info(ldmsd_prdcr_set_t set, ldms_dir_set_t dset)
 
 		/* Sanity check the hints */
 		if (offset_us >= intrvl_us) {
-			ldmsd_lerror("Invalid hint '%s', ignoring hint\n", hint);
+			ldmsd_lerror("set %s: Invalid hint '%s', ignoring hint\n",
+					set->inst_name, hint);
 		} else {
 			if (offset_us != LDMSD_UPDT_HINT_OFFSET_NONE)
-				set->updt_hint.offset_us = offset_us + updtr_sched_offset_skew_get();
+				set->updt_hint.offset_us = offset_us;
 			set->updt_hint.intrvl_us = intrvl_us;
 		}
 		free(s);
@@ -319,17 +320,16 @@ static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 	for (i = 0; i < dir->set_count; i++) {
 		set = ldmsd_prdcr_set_find(prdcr, dir->set_data[i].inst_name);
 		if (!set) {
-                        /* Received an update, but the set is gone. */
-                        ldmsd_log(LDMSD_LERROR,
-                                  "Ignoring 'dir update' for the set, '%s', which "
-                                  "is not present in the prdcr_set tree.\n",
-                                  dir->set_data[i].inst_name);
-                        continue;
+			/* Received an update, but the set is gone. */
+			ldmsd_log(LDMSD_LERROR,
+				  "Ignoring 'dir update' for the set, '%s', which "
+				  "is not present in the prdcr_set tree.\n",
+				  dir->set_data[i].inst_name);
+			continue;
 		}
 		pthread_mutex_lock(&set->lock);
 		set->state = LDMSD_PRDCR_SET_STATE_START;
 		__update_set_info(set, &dir->set_data[i]);
-		prdcr_set_updt_hint_update(prdcr, set);
 		pthread_mutex_unlock(&set->lock);
 	}
 }

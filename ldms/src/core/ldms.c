@@ -342,8 +342,8 @@ size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
 		       perm_string(__le32_to_cpu(set->meta->perm)),
 		       __le32_to_cpu(set->meta->card),
 		       __le32_to_cpu(set->meta->array_card),
-		       __le32_to_cpu(set->meta->meta_gn),
-		       __le32_to_cpu(set->data->gn),
+		       __le64_to_cpu(set->meta->meta_gn),
+		       __le64_to_cpu(set->data->gn),
 		       __le32_to_cpu(set->data->trans.ts.sec), __le32_to_cpu(set->data->trans.ts.usec),
 		       __le32_to_cpu(set->data->trans.dur.sec), __le32_to_cpu(set->data->trans.dur.usec)
 		       );
@@ -371,6 +371,8 @@ size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
 			continue;
 		if (comma)
 			cnt += snprintf(&buf[cnt], buf_size - cnt, ",");
+		else
+			comma = 1;
 		if (cnt >= buf_size)
 			goto out;
 		cnt += snprintf(&buf[cnt], buf_size - cnt,
@@ -2325,19 +2327,28 @@ void ldms_local_cred_get(ldms_t x, ldms_cred_t lcl)
 }
 
 /* The caller must hold the set lock */
+/*
+ * return 0 if there are changes. Otherwise, -1 is returned.
+ *        errno is returned on error.
+ */
 int __ldms_set_info_set(struct ldms_set_info_list *info,
 			const char *key, const char *value)
 {
-	char *old_value = NULL;
 	struct ldms_set_info_pair *pair;
 
 	LIST_FOREACH(pair, info, entry) {
 		if (0 == strcmp(key, pair->key)) {
-			old_value = pair->value;
-			goto set_value;
+			if (0 != strcmp(value, pair->value)) {
+				/* reset value */
+				free(pair->value);
+				goto set_value;
+			} else {
+				/* no changes */
+				return -1;
+			}
 		}
 	}
-
+	/* new key-value pair */
 	pair = malloc(sizeof(*pair));
 	if (!pair)
 		return ENOMEM;
@@ -2347,33 +2358,22 @@ int __ldms_set_info_set(struct ldms_set_info_list *info,
 		free(pair);
 		return ENOMEM;
 	}
+	LIST_INSERT_HEAD(info, pair, entry);
 
 set_value:
 	pair->value = strdup(value);
 	if (!pair->value) {
-		if (!old_value) {
-			/* This is a new key value pair. Delete the key */
-			free(pair->key);
-			free(pair);
-		}
+		LIST_REMOVE(pair, entry);
+		free(pair->key);
+		free(pair);
 		return ENOMEM;
-	} else {
-		if (old_value) {
-			/* The key already exists. Free the old value */
-			free(old_value);
-		} else {
-			LIST_INSERT_HEAD(info, pair, entry);
-		}
 	}
 	return 0;
 }
 
 int ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
 {
-	int rc;
-	char *name;
-	int dir_updt = 0;
-
+	int rc = 0;
 	if (!key)
 		return EINVAL;
 
@@ -2382,21 +2382,18 @@ int ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
 
 	pthread_mutex_lock(&s->set->lock);
 	rc = __ldms_set_info_set(&s->set->local_info, key, value);
-	if (rc)
-		goto err;
-	name = strdup(ldms_set_instance_name_get(s));
-	if (!name) {
-		rc = ENOMEM;
-		goto err;
+	if (rc > 0) {
+		/* error */
+		goto out;
+	}
+	if (rc == -1) {
+		/* no changes .. nothing else to do */
+		rc = 0;
+		goto out;
 	}
 	if (s->set->flags & LDMS_SET_F_PUBLISHED)
-		dir_updt = 1;
-	pthread_mutex_unlock(&s->set->lock);
-	if (dir_updt)
 		__ldms_dir_update(s, LDMS_DIR_UPD);
-	free(name);
-	return 0;
-err:
+out:
 	pthread_mutex_unlock(&s->set->lock);
 	return rc;
 }
@@ -2412,6 +2409,14 @@ struct ldms_set_info_pair *__ldms_set_info_find(struct ldms_set_info_list *info,
 	return NULL;
 }
 
+void __ldms_set_info_unset(struct ldms_set_info_pair *pair)
+{
+	LIST_REMOVE(pair, entry);
+	free(pair->key);
+	free(pair->value);
+	free(pair);
+}
+
 void ldms_set_info_unset(ldms_set_t s, const char *key)
 {
 	struct ldms_set_info_pair *pair;
@@ -2421,12 +2426,10 @@ void ldms_set_info_unset(ldms_set_t s, const char *key)
 		pthread_mutex_unlock(&s->set->lock);
 		return;
 	}
-	LIST_REMOVE(pair, entry);
-	free(pair->key);
-	free(pair->value);
-	free(pair);
+	__ldms_set_info_unset(pair);
+	if (s->set->flags & LDMS_SET_F_PUBLISHED)
+		__ldms_dir_update(s, LDMS_DIR_UPD);
 	pthread_mutex_unlock(&s->set->lock);
-	__ldms_dir_update(s, LDMS_DIR_UPD);
 }
 
 char *ldms_set_info_get(ldms_set_t s, const char *key)
