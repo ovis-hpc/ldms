@@ -30,7 +30,7 @@ lib_LTLIBRARIES += libjson_util.la
 
 json_test_SOURCES = json_test.c json_util.h
 json_test_CFLAGS = $(AM_CFLAGS) -g -O0
-json_test_LDADD = -ljson_util
+json_test_LDADD = libjson_util.la
 json_test_LDFLAGS = $(AM_LDFLAGS)
 
 sbin_PROGRAMS = json_test
