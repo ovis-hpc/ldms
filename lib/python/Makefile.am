@@ -20,7 +20,7 @@ Map.c: Map.pyx Map.pxd
 	cython --gdb $< -o $@
 
 install-data-local: Map.la
-	touch $(pythondir)/ovis_lib/__init__.py
+	touch $(DESTDIR)/$(pythondir)/ovis_lib/__init__.py
 
 clean-local:
 	rm -rf Map.c
