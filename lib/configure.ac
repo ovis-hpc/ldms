@@ -131,7 +131,7 @@ if test -z "$ENABLE_SOS_TRUE"; then
 	AX_PYTHON_DEVEL()
 	if test "x$WITH_SOS" != "xbuild"; then
 		OCFLAGS=$CFLAGS
-		CFLAGS=-I$SOS_INCDIR
+		CFLAGS=$SOS_INCDIR_FLAG
 		AC_CHECK_HEADERS(sos/sos.h,
 			[],
 			AC_MSG_FAILURE([sos/sos.h not found])
