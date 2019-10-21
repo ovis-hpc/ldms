@@ -69,6 +69,13 @@
 
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
 
+/*
+ * LDMSD plugin interface version
+ *
+ * A plugin implemented with a plugin interface version that
+ * its major and/or minor numbers different from the version numbers below
+ * may not be loaded or started.
+ */
 #define LDMSD_VERSION_MAJOR	0x03
 #define LDMSD_VERSION_MINOR	0x02
 #define LDMSD_VERSION_PATCH	0x02
