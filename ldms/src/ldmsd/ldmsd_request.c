@@ -1756,9 +1756,11 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 	rc = ldmsd_append_reply(reqc, "[", 1, 0);
 	if (rc)
 		goto out;
-	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
-	if (rc)
-		goto out;
+	if (reqc->line_off) {
+		rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+		if (rc)
+			goto out;
+	}
 	rc = ldmsd_append_reply(reqc, "]", 1, 0);
 	if (rc) {
 		goto out;
@@ -2560,9 +2562,11 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 	rc = ldmsd_append_reply(reqc, "[", 1, 0);
 	if (rc)
 		goto out;
-	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
-	if (rc)
-		goto out;
+	if (reqc->line_off) {
+		rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+		if (rc)
+			goto out;
+	}
 	rc = ldmsd_append_reply(reqc, "]", 1, 0);
 	if (rc)
 		goto out;
@@ -3268,9 +3272,11 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 	rc = ldmsd_append_reply(reqc, "[", 1, 0);
 	if (rc)
 		goto out;
-	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
-	if (rc)
-		goto out;
+	if (reqc->line_off) {
+		rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+		if (rc)
+			goto out;
+	}
 	rc = ldmsd_append_reply(reqc, "]", 1, 0);
 	if (rc)
 		goto out;
