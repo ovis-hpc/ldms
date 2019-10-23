@@ -303,28 +303,6 @@ static void help_config()
 		"     <attr>=     Plugin specific attr=value tuples.\n");
 }
 
-static void help_start()
-{
-	printf(	"Begins calling the sampler's 'sample' method at the\n"
-		"sample interval.\n\n"
-		"Parameters:\n"
-		"     name=       The sampler name.\n"
-		"     interval=   The sample interval in microseconds.\n"
-		"     [offset=]     Optional offset (shift) from the sample mark\n"
-		"                 in microseconds. Offset can be positive or\n"
-		"                 negative with magnitude up to 1/2 the sample interval.\n"
-		"                 If this offset is specified, including 0, \n"
-		"                 collection will be synchronous; if the offset\n"
-		"                 is not specified, collection will be asychronous.\n");
-}
-
-static void help_stop()
-{
-	printf( "\nCancels sampling on the specified plugin.\n\n"
-		"Parameters:\n"
-		"     name=       The sampler name.\n");
-}
-
 static void help_daemon_status()
 {
 	printf( "\nCauses the ldmsd to dump out information about its internal state.\n");
@@ -624,87 +602,6 @@ static void help_prdcr_set_status()
 	printf( "\nGet status of all producer sets\n");
 }
 
-static void __print_prdcr_hint_tree(json_entity_t prdcr)
-{
-	json_entity_t hints, hint, sets, set;
-	const char *name, *intrvl, *offset;
-
-	if (prdcr->type != JSON_DICT_VALUE) {
-		printf("Invalid result format\n");
-		return;
-	}
-
-	name = json_attr_find_str(prdcr, "name");
-	printf("prdcr: %s\n", name);
-
-	hints = json_attr_find(prdcr, "hints");
-	if (hints->type != JSON_LIST_VALUE) {
-		printf("Unrecognized result format\n");
-		return;
-	}
-
-	for (hint = json_item_first(hints); hint; hint = json_item_next(hint)) {
-		intrvl = json_attr_find_str(hint, "interval_us");
-		offset = json_attr_find_str(hint, "offset_us");
-		sets = json_attr_find(hint, "sets");
-		if (sets->type != JSON_LIST_VALUE) {
-			printf("Unrecognized result format\n");
-			return;
-		}
-		printf("   update hint: %s:%s\n", intrvl, offset);
-		for (set = json_item_first(sets); set; set = json_item_next(set)) {
-			printf("     %s\n", json_value_str(set)->str);
-		}
-	}
-}
-
-static void resp_prdcr_hint_tree(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
-{
-	if (0 != rsp_err) {
-		resp_generic(resp, len, rsp_err);
-		return;
-	}
-
-	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
-	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON)) {
-		printf("Unrecognized reply format\n");
-		return;
-	}
-
-	json_parser_t parser;
-	json_entity_t json, prdcr;
-	int rc;
-	parser = json_parser_new(0);
-	if (!parser) {
-		printf("Error creating a JSON parser.\n");
-		return;
-	}
-	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
-	if (rc) {
-		printf("syntax error parsing JSON string\n");
-		json_parser_free(parser);
-		return;
-	}
-	json_parser_free(parser);
-
-	if (json->type != JSON_LIST_VALUE) {
-		printf("Unrecognized result format\n");
-		return;
-	}
-	for (prdcr = json_item_first(json); prdcr;
-			prdcr = json_item_next(prdcr)) {
-		__print_prdcr_hint_tree(prdcr);
-	}
-	json_entity_free(json);
-}
-
-static void help_prdcr_hint_tree()
-{
-	printf("\nPrint producer sets by the update hints\n"
-	       "Parameters:\n"
-	       "      [name=]     The producer name\n");
-}
-
 static void help_updtr_add()
 {
 	printf( "\nAdd an updater process that will periodically sample\n"
@@ -892,76 +789,6 @@ static void help_updtr_status()
 	printf("\nGet the statuses of all Updaters\n"
 	       "Parameters:\n"
 	       "      None\n");
-}
-
-static void __print_updtr_task(json_entity_t updtr)
-{
-	json_entity_t tasks, task;
-	const char *name, *intrvl, *offset, *is_default;
-
-	if (updtr->type != JSON_DICT_VALUE) {
-		printf("Invalid result format\n");
-		return;
-	}
-
-	name = json_attr_find_str(updtr, "name");
-	tasks = json_attr_find(updtr, "tasks");
-	printf("Updater: %s\n", name);
-	printf("   tasks: <interval_us>:<offset_us>\n");
-	for (task = json_item_first(tasks); task; task = json_item_next(task)) {
-		intrvl = json_attr_find_str(task, "interval_us");
-		offset = json_attr_find_str(task, "offset_us");
-		is_default = json_attr_find_str(task, "default_task");
-		if (0 == strcmp(is_default, "true")) {
-			printf("     %s:%s     default\n", intrvl, offset);
-		} else {
-			printf("     %s:%s\n", intrvl, offset);
-		}
-	}
-}
-
-static void resp_updtr_task(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
-{
-	if (0 != rsp_err) {
-		resp_generic(resp, len, rsp_err);
-		return;
-	}
-
-	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
-	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
-		return;
-
-	json_parser_t parser;
-	json_entity_t json, updtr;
-	int rc;
-	parser = json_parser_new(0);
-	if (!parser) {
-		printf("Error creating a JSON parser.\n");
-		return;
-	}
-	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
-	if (rc) {
-		printf("syntax error parsing JSON string\n");
-		json_parser_free(parser);
-		return;
-	}
-	json_parser_free(parser);
-
-	if (json->type != JSON_LIST_VALUE) {
-		printf("Unrecognized updater status format\n");
-		return;
-	}
-	for (updtr = json_item_first(json); updtr; updtr = json_item_next(updtr)) {
-		__print_updtr_task(updtr);
-	}
-	json_entity_free(json);
-}
-
-static void help_updtr_task()
-{
-	printf("\bGet the tasks of an update\n"
-	       "Parameters:\n"
-	       "      [name=]     The updater policy name\n");
 }
 
 static void help_strgp_add()
@@ -1726,8 +1553,6 @@ static struct command command_tbl[] = {
 			NULL,	help_plugn_status,	resp_plugn_status },
 	{ "prdcr_add",	NULL,	help_prdcr_add,		resp_generic },
 	{ "prdcr_del",	NULL,	help_prdcr_del,		resp_generic },
-	{ "prdcr_hint_tree",
-			NULL,	help_prdcr_hint_tree,	resp_prdcr_hint_tree },
 	{ "prdcr_set_status",
 			NULL,	help_prdcr_set_status,	resp_prdcr_set_status },
 	{ "prdcr_start",
@@ -1764,8 +1589,6 @@ static struct command command_tbl[] = {
 	{ "smplr_status",
 			NULL,	help_smplr_status,	resp_smplr_status },
 	{ "smplr_stop",	NULL,	help_smplr_stop,	resp_generic },
-	{ "start",	NULL,	help_start,		resp_generic },
-	{ "stop",	NULL,	help_stop,		resp_generic },
 	{ "strgp_add",	NULL,	help_strgp_add,		resp_generic },
 	{ "strgp_del",	NULL,	help_strgp_del,		resp_generic },
 	{ "strgp_metric_add",
@@ -1800,7 +1623,6 @@ static struct command command_tbl[] = {
 	{ "updtr_status",
 			NULL,	help_updtr_status,	resp_updtr_status },
 	{ "updtr_stop",	NULL,	help_updtr_stop,	resp_generic },
-	{ "updtr_task",	NULL,	help_updtr_task,	resp_updtr_task },
 	{ "usage",	NULL,	help_usage,		resp_usage },
 	{ "version",	NULL,	help_version,		resp_generic },
 };

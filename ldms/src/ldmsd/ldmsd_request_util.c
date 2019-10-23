@@ -85,7 +85,6 @@ const struct req_str_id req_str_id_table[] = {
 	{  "plugn_status",       LDMSD_PLUGN_STATUS_REQ  },
 	{  "prdcr_add",          LDMSD_PRDCR_ADD_REQ  },
 	{  "prdcr_del",          LDMSD_PRDCR_DEL_REQ  },
-	{  "prdcr_hint_tree",    LDMSD_PRDCR_HINT_TREE_REQ  },
 	{  "prdcr_set_status",   LDMSD_PRDCR_SET_REQ  },
 	{  "prdcr_start",        LDMSD_PRDCR_START_REQ  },
 	{  "prdcr_start_regex",  LDMSD_PRDCR_START_REGEX_REQ  },
@@ -125,7 +124,6 @@ const struct req_str_id req_str_id_table[] = {
 	{  "updtr_start",        LDMSD_UPDTR_START_REQ  },
 	{  "updtr_status",       LDMSD_UPDTR_STATUS_REQ  },
 	{  "updtr_stop",         LDMSD_UPDTR_STOP_REQ  },
-	{  "updtr_task",         LDMSD_UPDTR_TASK_REQ  },
 	{  "usage",              LDMSD_PLUGN_USAGE_REQ  },
 	{  "version",            LDMSD_VERSION_REQ  },
 };
@@ -210,7 +208,6 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_PRDCR_START_REGEX_REQ : return "PRDCR_START_REGEX_REQ";
 	case LDMSD_PRDCR_STOP_REGEX_REQ  : return "PRDCR_STOP_REGEX_REQ";
 	case LDMSD_PRDCR_SET_REQ         : return "PRDCR_SET_REQ";
-	case LDMSD_PRDCR_HINT_TREE_REQ   : return "PRDCR_HINT_TREE_REQ";
 	case LDMSD_PRDCR_SUBSCRIBE_REQ   : return "PRDCR_SUBSCRIBE_REQ";
 
 	case LDMSD_STRGP_ADD_REQ        : return "STRGP_ADD_REQ";
@@ -232,7 +229,6 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_UPDTR_PRDCR_DEL_REQ : return "UPDTR_PRDCR_DEL_REQ";
 	case LDMSD_UPDTR_MATCH_ADD_REQ : return "UPDTR_MATCH_ADD_REQ";
 	case LDMSD_UPDTR_MATCH_DEL_REQ : return "UPDTR_MATCH_DEL_REQ";
-	case LDMSD_UPDTR_TASK_REQ      : return "UPDTR_TASK_REQ";
 
 	case LDMSD_SMPLR_ADD_REQ   : return "SMPLR_ADD_REQ";
 	case LDMSD_SMPLR_DEL_REQ   : return "SMPLR_DEL_REQ";
@@ -241,8 +237,6 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 
 	case LDMSD_PLUGN_ADD_REQ    : return "PLUGN_ADD_REQ";
 	case LDMSD_PLUGN_DEL_REQ    : return "PLUGN_DEL_REQ";
-	case LDMSD_PLUGN_START_REQ  : return "PLUGN_START_REQ";
-	case LDMSD_PLUGN_STOP_REQ   : return "PLUGN_STOP_REQ";
 	case LDMSD_PLUGN_STATUS_REQ : return "PLUGN_STATUS_REQ";
 	case LDMSD_PLUGN_LOAD_REQ   : return "PLUGN_LOAD_REQ";
 	case LDMSD_PLUGN_TERM_REQ   : return "PLUGN_TERM_REQ";

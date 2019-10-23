@@ -208,7 +208,6 @@ static int set_route_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
 static int ebusy_handler(ldmsd_req_ctxt_t reqc);
-static int updtr_task_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc);
 static int listen_handler(ldmsd_req_ctxt_t reqc);
 static int export_config_handler(ldmsd_req_ctxt_t reqc);
@@ -336,10 +335,6 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_UPDTR_STATUS_REQ] = {
 		LDMSD_UPDTR_STATUS_REQ, updtr_status_handler,
-		XALL | LDMSD_PERM_FAILOVER_ALLOWED
-	},
-	[LDMSD_UPDTR_TASK_REQ] = {
-		LDMSD_UPDTR_TASK_REQ, updtr_task_status_handler,
 		XALL | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 
@@ -3477,11 +3472,6 @@ out:
 	if (updtr)
 		ldmsd_updtr_put(updtr);
 	return rc;
-}
-
-static int updtr_task_status_handler(ldmsd_req_ctxt_t reqc)
-{
-	return 0;
 }
 
 static int setgroup_add_handler(ldmsd_req_ctxt_t reqc)
