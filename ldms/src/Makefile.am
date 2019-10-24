@@ -32,6 +32,9 @@ if ENABLE_LDMS_TEST
 SUBDIRS += test
 endif
 
+# always include contrib
+SUBDIRS += contrib
+
 install-data-hook: ovis-ldms-configvars.sh
 	$(MKDIR_P) $(DESTDIR)$(libdir)
 	$(INSTALL) -m 755 ovis-ldms-configvars.sh $(DESTDIR)$(libdir)

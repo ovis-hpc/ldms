@@ -81,8 +81,6 @@ libvariable_la_LIBADD = $(COMMON_LIBADD) -lm
 pkglib_LTLIBRARIES += libvariable.la
 endif
 
-# always include contrib
-SUBDIRS += contrib
 
 # always include examples
 SUBDIRS += examples

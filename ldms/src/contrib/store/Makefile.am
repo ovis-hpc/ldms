@@ -10,6 +10,6 @@ do_subst = @LDMS_SUBST_RULE@
 	$(do_subst) < $< > $@
 	chmod 755 $@
 
-if ENABLE_IPMIREADER
-SUBDIRS += ipmireader
+if ENABLE_TUTORIAL_STORE
+SUBDIRS += tutorial
 endif
