@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2012-2018 National Technology & Engineering Solutions
+ * Copyright (c) 2012-2019 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2012-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012-2019 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -73,6 +73,8 @@ static idx_t store_idx;
 static char tmp_path[PATH_MAX];
 static char *root_path; /**< store root path */
 static ldmsd_msg_log_f msglog;
+
+#define STRFF "flatfile"
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -220,21 +222,21 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 			/* Create new metric store if not exist. */
 			ms = calloc(1, sizeof(*ms));
 			if (!ms) {
-				msglog(LDMSD_LERROR, "Out of memory at %s:%d\n",
+				msglog(LDMSD_LERROR, STRFF ": Out of memory at %s:%d\n",
 					__FILE__, __LINE__);
 				goto err4;
 			}
 			sprintf(tmp_path, "%s/%s", si->path, name);
 			ms->path = strdup(tmp_path);
 			if (!ms->path) {
-				msglog(LDMSD_LERROR, "Out of memory at %s:%d\n",
+				msglog(LDMSD_LERROR, STRFF ": Out of memory at %s:%d\n",
 					__FILE__, __LINE__);
 				goto err4;
 			}
 			ms->file = fopen_perm(ms->path, "a+", LDMSD_DEFAULT_FILE_PERM);
 			if (!ms->file) {
 				int eno = errno;
-				msglog(LDMSD_LERROR, "Error opening %s: %d: %s at %s:%d\n",
+				msglog(LDMSD_LERROR, STRFF ": Error opening %s: %d: %s at %s:%d\n",
 					ms->path, eno, strerror(eno),
 					__FILE__, __LINE__);
 				goto err4;
@@ -287,6 +289,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	int rc = 0, rc2 = 0;
 	int last_rc = 0;
 	int last_errno = 0;
+	int compidx;
 
 	if (!_sh)
 		return EINVAL;
@@ -298,9 +301,16 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 
 	const char *prod;
 	prod = ldms_set_producer_name_get(set);
+	compidx = ldms_metric_by_name(set, LDMSD_COMPID);
+	if (compidx < 0){
+		msglog(LDMSD_LERROR, STRFF ": The component_id is missing from the metric set/schema.\n");
+		rc = compidx;
+		goto err;
+	} else {
+		comp_id = ldms_metric_get_u64(set, compidx);
+	}
 	for (i=0; i<metric_count; i++) {
 		pthread_mutex_lock(&si->ms[i]->lock);
-		comp_id = ldms_metric_user_data_get(set, metric_arry[i]);
 		/* time, host, compid, value */
 #define STAMP \
 	rc2 = fprintf(si->ms[i]->file, "%"PRIu32".%06"PRIu32" %s %"PRIu64, \
@@ -371,13 +381,14 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		if (rc < 0 || rc2 < 0) {
 			last_errno = errno;
 			last_rc = (rc != 0 ? rc : rc2);
-			msglog(LDMSD_LERROR, "Error %d: %s at %s:%d\n", last_errno,
+			msglog(LDMSD_LERROR, STRFF ": Error %d: %s at %s:%d\n", last_errno,
 					strerror(last_errno), __FILE__,
 					__LINE__);
 		}
 		pthread_mutex_unlock(&si->ms[i]->lock);
 	}
 
+ err:
 	if (last_errno)
 		errno = last_errno;
 	return last_rc;
@@ -397,7 +408,7 @@ static int flush_store(ldmsd_store_handle_t _sh)
 		if (lrc) {
 			rc = lrc;
 			eno = errno;
-			msglog(LDMSD_LERROR, "Errro %d: %s at %s:%d\n", eno, strerror(eno),
+			msglog(LDMSD_LERROR, STRFF ": Errro %d: %s at %s:%d\n", eno, strerror(eno),
 					__FILE__, __LINE__);
 		}
 		pthread_mutex_unlock(&ms->lock);
@@ -435,7 +446,7 @@ static void close_store(ldmsd_store_handle_t _sh)
 
 static struct ldmsd_store store_flatfile = {
 	.base = {
-		.name = "flatfile",
+		.name = STRFF,
 		.type = LDMSD_PLUGIN_STORE,
 		.term = term,
 		.config = config,

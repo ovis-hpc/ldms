@@ -541,6 +541,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/store/papi/Makefile
 		 src/store/slurm/Makefile
 		 src/store/influx/Makefile
+		 src/store/store_flatfile/Makefile
 		 src/sampler/dstat/Makefile
 		 src/sampler/filesingle/Makefile
 		 src/sampler/lustre/Makefile

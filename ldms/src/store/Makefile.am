@@ -43,10 +43,7 @@ SUBDIRS += influx
 endif
 
 if ENABLE_FLATFILE
-libstore_flatfile_la_SOURCES = store_flatfile.c
-libstore_flatfile_la_CFLAGS = $(AM_CFLAGS)
-libstore_flatfile_la_LIBADD = $(STORE_LIBADD)
-pkglib_LTLIBRARIES += libstore_flatfile.la
+SUBDIRS += store_flatfile
 endif
 
 if ENABLE_RABBITV3
