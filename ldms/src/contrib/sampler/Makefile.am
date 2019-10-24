@@ -1,0 +1,16 @@
+ACLOCAL_AMFLAGS = -I m4
+SUBDIRS = .
+lib_LTLIBRARIES =
+pkglib_LTLIBRARIES =
+
+if ENABLE_IPMIREADER
+    SUBDIRS += ipmireader
+endif
+
+if ENABLE_TUTORIAL_SAMPLER
+    SUBDIRS += tutorial
+endif
+
+
+
+
