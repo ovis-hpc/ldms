@@ -147,9 +147,7 @@ pkglib_LTLIBRARIES += liblnet_stats.la
 endif
 
 if ENABLE_MEMINFO
-libmeminfo_la_SOURCES = meminfo.c
-libmeminfo_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libmeminfo.la
+SUBDIRS += meminfo
 endif
 
 if ENABLE_MSR_INTERLAGOS

@@ -30,7 +30,6 @@ Plugin_array_example.man \
 Plugin_cray_system_sampler_variants.man \
 Plugin_cray_dvs_sampler.man \
 Plugin_lnet_stats.man \
-Plugin_meminfo.man \
 Plugin_fptrans.man \
 Plugin_clock.man \
 Plugin_procstat.man \
