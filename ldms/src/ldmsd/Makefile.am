@@ -1,4 +1,4 @@
-sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
+sbin_PROGRAMS = ldmsd ldms_ls # ldmsctl
 check_PROGRAMS = test_plugattr
 lib_LTLIBRARIES =
 SUBDIRS = . test
@@ -13,7 +13,8 @@ AM_CFLAGS += \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
 
 ldmsdincludedir = $(includedir)/ldms
-ldmsdinclude_HEADERS = ldmsd.h ldmsd_stream.h ldmsd_plugin.h
+#ldmsdinclude_HEADERS = ldmsd.h ldmsd_stream.h ldmsd_plugin.h
+ldmsdinclude_HEADERS = ldmsd.h ldmsd_plugin.h
 
 AM_LDFLAGS = -pthread
 AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
@@ -29,19 +30,19 @@ ldms_ls_LDFLAGS = $(AM_LDFLAGS) \
 		  -lpthread \
 		  @LDFLAGS_GETTIME@
 
-sbin_PROGRAMS += ldmsd_upload
-ldmsd_upload_SOURCES = ldmsd_upload.c
-ldmsd_upload_CFLAGS = $(AM_CFLAGS) -DLDMSD_UPLOAD_CMD
-ldmsd_upload_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
-ldmsd_upload_LDFLAGS = $(AM_LDFLAGS) -pthread \
-		       $(top_builddir)/lib/src/ovis_util/libovis_util.la
-
-lib_LTLIBRARIES += libldmsd_stream.la
-libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h \
-			     ../core/ldms.h ../core/ldms_core.h \
-			     ldmsd_request_util.c
-libldmsd_stream_la_LIBADD = $(CORE)/libldms.la
-
+#sbin_PROGRAMS += ldmsd_upload
+#ldmsd_upload_SOURCES = ldmsd_upload.c
+#ldmsd_upload_CFLAGS = $(AM_CFLAGS) -DLDMSD_UPLOAD_CMD
+#ldmsd_upload_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
+#ldmsd_upload_LDFLAGS = $(AM_LDFLAGS) -pthread \
+#		       $(top_builddir)/lib/src/ovis_util/libovis_util.la
+#
+#lib_LTLIBRARIES += libldmsd_stream.la
+#libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h \
+#			     ../core/ldms.h ../core/ldms_core.h \
+#			     ldmsd_request_util.c
+#libldmsd_stream_la_LIBADD = $(CORE)/libldms.la
+#
 lib_LTLIBRARIES += librequest.la
 librequest_la_SOURCES = ../core/ldms.h ../core/ldms_core.h ldmsd_request_util.c
 librequest_la_LIBADD = $(CORE)/libldms.la
@@ -51,12 +52,14 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_request.h \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
 	ldmsd_smplr.c \
-	ldmsd_plugin.c ldmsd_plugin.h \
-	ldmsd_failover.c ldmsd_group.c \
-	ldmsd_auth.c
+	ldmsd_plugin.c ldmsd_plugin.h ldmsd_group.c ldmsd_auth.c \
+	ldmsd_daemon.c \
+	ldmsd_env.c \
+	ldmsd_listen.c
+#	ldmsd_failover.c ldmsd_group.c
 ldmsd_CFLAGS = $(AM_CFLAGS) -rdynamic
-ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la libsampler.la\
-	      libstore.la
+# ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la libsampler.la libstore.la
+ldmsd_LDADD = $(CORE)/libldms.la librequest.la libsampler.la libstore.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) \
 		$(top_builddir)/lib/src/zap/libzap.la \
 		$(top_builddir)/lib/src/mmalloc/libmmalloc.la \
@@ -77,16 +80,16 @@ ldmsd_LDFLAGS += -lrabbitmq
 ldmsd_CFLAGS += -DENABLE_RABBITMQ
 endif
 
-ldmsctl_SOURCES = ldmsctl.c
-ldmsctl_LDADD = $(CORE)/libldms.la librequest.la
-ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ \
-		  $(top_builddir)/lib/src/ovis_util/libovis_util.la \
-		  $(top_builddir)/lib/src/ovis_ctrl/libovis_ctrl.la \
-		  $(top_builddir)/lib/src/coll/libcoll.la \
-		  $(top_builddir)/lib/src/mmalloc/libmmalloc.la \
-		  $(top_builddir)/lib/src/zap/libzap.la \
-		  $(top_builddir)/lib/src/json/libjson_util.la \
-		  -lm -pthread @LDFLAGS_GETTIME@
+#ldmsctl_SOURCES = ldmsctl.c
+#ldmsctl_LDADD = $(CORE)/libldms.la librequest.la
+#ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ \
+#		  $(top_builddir)/lib/src/ovis_util/libovis_util.la \
+#		  $(top_builddir)/lib/src/ovis_ctrl/libovis_ctrl.la \
+#		  $(top_builddir)/lib/src/coll/libcoll.la \
+#		  $(top_builddir)/lib/src/mmalloc/libmmalloc.la \
+#		  $(top_builddir)/lib/src/zap/libzap.la \
+#		  $(top_builddir)/lib/src/json/libjson_util.la \
+#		  -lm -pthread @LDFLAGS_GETTIME@
 ldmsd_sos_init_SOURCES = ldmsd_sos_init.c
 ldmsd_sos_init_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
 ldmsd_sos_init_LDADD = -lsos -lods -lpthread @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@
@@ -127,7 +130,7 @@ EXTRA_DIST = ldmsd-sampler.md \
 # make sym links for aggd scripting support
 install-exec-hook:
 	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsd ldms-aggd
-	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsctl ldmsaggctl
+#	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsctl ldmsaggctl
 
 check-local:
 	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) ./test_plugattr $(srcdir)/input/test_plugattr.txt

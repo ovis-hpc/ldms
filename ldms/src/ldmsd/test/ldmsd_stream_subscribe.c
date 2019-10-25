@@ -153,10 +153,10 @@ int process_request(ldms_t x, ldmsd_req_hdr_t request)
 
 	int rc = stream_publish_handler(request);
 
-	request->flags = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
+	request->flags = LDMSD_REC_SOM_F | LDMSD_REC_EOM_F;
 	request->rsp_err = rc;
 	request->rec_len = sizeof(*request);
-	ldmsd_hton_req_hdr(request);
+	ldmsd_hton_rec_hdr(request);
 	return ldms_xprt_send(x, (char *)request, sizeof(*request));
 }
 

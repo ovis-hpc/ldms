@@ -480,7 +480,8 @@ void appinfo_del(ldmsd_plugin_inst_t pi)
 static
 json_entity_t appinfo_query(ldmsd_plugin_inst_t pi, const char *q)
 {
-	int i;
+	int i, rc;
+	char *v;
 	json_entity_t attr, envs, str;
 	json_entity_t result = ldmsd_sampler_query(pi, q);
 	if (!result)
@@ -495,28 +496,14 @@ json_entity_t appinfo_query(ldmsd_plugin_inst_t pi, const char *q)
 			"SLURM_JOB_ID",
 			NULL
 	};
-	envs = json_entity_new(JSON_LIST_VALUE);
-	if (!envs)
-		goto enomem;
-	attr = json_entity_new(JSON_ATTR_VALUE, "env", envs);
-	if (!attr) {
-		json_entity_free(envs);
-		goto enomem;
-	}
 
 	for (i = 0; env_names[i]; i++) {
-		str = json_entity_new(JSON_STRING_VALUE, env_names[i]);
-		if (!str) {
-			json_entity_free(attr);
-			goto enomem;
+		result = ldmsd_plugin_inst_query_env_add(result, env_names[i]);
+		if (!result) {
+			errno = ENOMEM;
+			return NULL;
 		}
-		json_item_add(envs, str);
 	}
-	json_attr_add(result, attr);
-	return result;
-
-enomem:
-	ldmsd_plugin_qjson_err_set(result, ENOMEM, "Out of memory");
 	return result;
 }
 

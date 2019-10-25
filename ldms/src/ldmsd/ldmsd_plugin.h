@@ -104,7 +104,6 @@ typedef void *(*ldmsd_plugin_new_fn_t)();
 
 typedef struct ldmsd_plugin_type_s *ldmsd_plugin_type_t;
 typedef struct ldmsd_plugin_inst_s *ldmsd_plugin_inst_t;
-typedef struct ldmsd_plugin_qresult_s *ldmsd_plugin_qresult_t;
 
 /**
  * LDMSD Plugin Type structure.
@@ -184,7 +183,7 @@ struct ldmsd_plugin_type_s {
 	 * \retval 0     If succeeded.
 	 * \retval errno If failed.
 	 */
-	int (*config)(ldmsd_plugin_inst_t i, json_entity_t json,
+	int (*config)(ldmsd_plugin_inst_t i, json_entity_t config,
 					     char *ebuf, int ebufsz);
 
 	/**
@@ -250,6 +249,9 @@ struct ldmsd_plugin_type_s {
 
 /** Base structure of plugin instance. */
 struct ldmsd_plugin_inst_s {
+	/** The cfgobj base */
+
+	struct ldmsd_cfgobj obj;
 	/** The version of the instance implementation. */
 	struct ldmsd_plugin_version_s version;
 
@@ -270,20 +272,12 @@ struct ldmsd_plugin_inst_s {
 	/** Path to the plugin library. */
 	char *libpath;
 
-	/** [private] Reb-black tree node. */
-	struct rbn rbn;
-
-	/** [private] Reference counter. */
-	int ref_count;
-
-	/** [private] JSON object that defines the plugin instance configuration
-	 * {
-	 *   "config": [],
-	 *   "status": {},
-	 *   ...
-	 * }
+	/**
+	 * [private] A JSON list of dictionaries. The first dictionary contains
+	 * the plugin attribute values at creation time. The other dictionaries
+	 * contain the updated attribute values.
 	 */
-	json_entity_t json;
+	json_entity_t cfg;
 
 	/** A pointer to the plugin type object. */
 	ldmsd_plugin_type_t base;
@@ -338,7 +332,7 @@ struct ldmsd_plugin_inst_s {
 	 * \retval 0     If succeed.
 	 * \retval errno If failed.
 	 */
-	int (*config)(ldmsd_plugin_inst_t i, json_entity_t json,
+	int (*config)(ldmsd_plugin_inst_t i, json_entity_t config,
 					     char *ebuf, int ebufsz);
 };
 
@@ -385,7 +379,10 @@ ldmsd_plugin_inst_t ldmsd_plugin_inst_load(const char *inst_name,
  *              If there is other error, the \c errno will be set to describe
  *              the error.
  */
-ldmsd_plugin_inst_t ldmsd_plugin_inst_find(const char *inst_name);
+static inline ldmsd_plugin_inst_t ldmsd_plugin_inst_find(const char *inst_name)
+{
+	return (ldmsd_plugin_inst_t)ldmsd_cfgobj_find(inst_name, LDMSD_CFGOBJ_PLUGIN);
+}
 
 /**
  * Delete the plugin instance.
@@ -423,243 +420,36 @@ const char *ldmsd_plugin_inst_help(ldmsd_plugin_inst_t inst);
  */
 const char *ldmsd_plugin_inst_desc(ldmsd_plugin_inst_t inst);
 
-void ldmsd_plugin_inst_get(ldmsd_plugin_inst_t inst);
-void ldmsd_plugin_inst_put(ldmsd_plugin_inst_t inst);
+static inline ldmsd_plugin_inst_t ldmsd_plugin_inst_get(ldmsd_plugin_inst_t inst)
+{
+	ldmsd_cfgobj_get(&inst->obj);
+	return inst;
+}
+static inline void ldmsd_plugin_inst_put(ldmsd_plugin_inst_t inst)
+{
+	ldmsd_cfgobj_put(&inst->obj);
+}
 
 /**
- * [Private] Get the first plugin instance.
+ * Add a pair of environment variable name and its value to the result \c result.
  *
- * This function is private and shall not be called directly by plugins.
+ * If \c result is NULL, the function will allocate memory for \c result.
  *
- * \retval inst The first plugin instance.
+ * \param result   Existing environment variable query result, e.g.,
+ *                 the return value of \c ldmsd_sampler_query or \c ldmsd_store_query
+ * \param env_name Environment variable name
+ *
+ * \return The updated query result. If NULL is returned, errno is set.
  */
-ldmsd_plugin_inst_t __plugin_inst_first();
-
-/**
- * [Private] Get the next plugin instance.
- *
- * This function is private and shall not be called directly by plugins.
- *
- * \retval inst The next plugin instance.
- */
-ldmsd_plugin_inst_t __plugin_inst_next(ldmsd_plugin_inst_t inst);
-
-/**
- * [Private] Take the plugin instance tree lock.
- *
- * This function is private and shall not be called directly by plugins.
- *
- * \retval 0 This function always return 0.
- */
-int __inst_rbt_lock();
-
-/**
- * [Private] Release the plugin instance tree lock.
- *
- * This function is private and shall not be called directly by plugins.
- *
- * \retval 0 This function always return 0.
- */
-int __inst_rbt_unlock();
-
-/**
- * Plugin instance iteration macro.
- */
-#define LDMSD_PLUGIN_INST_FOREACH(i) \
-	for (__inst_rbt_lock(), (i) = __plugin_inst_first(); \
-			(i) || (__inst_rbt_unlock()); \
-			(i) = __plugin_inst_next((i)))
-
-
-typedef enum {
-	LDMSD_PLUGIN_QRENT_STR,  /* a string */
-	LDMSD_PLUGIN_QRENT_COLL, /* collection of query result entries */
-} ldmsd_plugin_qrent_type_t;
-
-TAILQ_HEAD(ldmsd_plugin_qrent_list_s, ldmsd_plugin_qrent_s);
-
-typedef struct ldmsd_plugin_qrent_coll_s *ldmsd_plugin_qrent_coll_t;
-typedef struct ldmsd_plugin_qrent_s *ldmsd_plugin_qrent_t;
-
-/**
- * Query result entry.
- */
-struct ldmsd_plugin_qrent_s {
-	struct rbn rbn;
-
-	ldmsd_plugin_qrent_type_t type;
-	char *name;
-	union {
-		char *str;
-		ldmsd_plugin_qrent_coll_t coll;
-	};
-	char _priv[]; /* This contain `name` and `str` */
-};
-
-struct ldmsd_plugin_qrent_coll_s {
-	struct rbt rbt;
-};
-typedef struct ldmsd_plugin_qrent_coll_s *ldmsd_plugin_qrent_coll_t;
-
-/**
- * Query result (list of query result entries).
- */
-struct ldmsd_plugin_qresult_s {
-	int rc;
-	struct ldmsd_plugin_qrent_coll_s coll;
-};
-
-/**
- * Free the query result and resources associated with it.
- */
-void ldmsd_plugin_qresult_free(ldmsd_plugin_qresult_t qr);
-
-/**
- * Create and initialize a new collection.
- */
-ldmsd_plugin_qrent_coll_t ldmsd_plugin_qrent_coll_new();
-
-/**
- * Initialize the query result entry collection.
- *
- * This function is useful for initializing the collection that is not created
- * by ::ldmsd_plugin_qrent_coll_new().
- */
-void ldmsd_plugin_qrent_coll_init(ldmsd_plugin_qrent_coll_t coll);
-
-/**
- * Cleanup (delete & free) all entries in the collection.
- */
-void ldmsd_plugin_qrent_coll_cleanup(ldmsd_plugin_qrent_coll_t coll);
-
-/**
- * Add a query result into the collection.
- *
- * If \c type is ::LDMSD_PLUGIN_QRENT_STR, \c val is a `const char *`. \c val
- * will be copied and the caller still own \c val in this case.
- *
- * If \c type is ::LDMSD_PLUGIN_QRENT_COLL, \c val is
- * \c ldmsd_plugin_qrent_coll_t, and is owned by the returned object after the
- * call. The caller should not modify or free \c val after the call in this
- * case.
- *
- * \param type The type of the new query result entry.
- * \param name The entry name.
- * \param val  The value of the entry.
- *
- * \retval 0     If succeed.
- * \retval errno If failed.
- */
-int ldmsd_plugin_qrent_add(ldmsd_plugin_qrent_coll_t coll,
-			   const char *name,
-			   ldmsd_plugin_qrent_type_t type,
-			   void *val);
-
-struct ldmsd_plugin_qrent_bulk_s {
-	const char *key;
-	ldmsd_plugin_qrent_type_t type;
-	void *val;
-};
-
-struct ldmsd_plugin_qjson_attrs {
-	char *name;
-	enum json_value_e type;
-	union {
-		const char *s;
-		int64_t d;
-	};
-};
-
-/**
- * TODO: write doc
- */
-int ldmsd_plugin_qjson_attrs_add(json_entity_t result,
-			struct ldmsd_plugin_qjson_attrs *bulks);
-
-/**
- * TODO: write doc
- */
-void ldmsd_plugin_qjson_err_set(json_entity_t result, int rc, char *errmsg);
-
-/**
- * Bulk add entries into the collection.
- *
- * Iteratively add bulk entries into the collection \c coll. This function is
- * useful for adding bulk of known result entries.
- *
- * The \c val in the bulk is the same as \c val for ::ldmsd_plugin_qrent_add().
- * If the type is \c LDMSD_PLUGIN_QRENT_STR, \c val is copied and the caller
- * still own it. If the type is \c LDMSD_PLUGIN_QRENT_COLL, \c coll will own it.
- *
- * \param coll The query result entry collection.
- * \param bulk The array of `struct ldmsd_plugin_qent_bulk_s`
- *             terminating with {NULL,0,NULL}.
- *
- * \retval 0     If succeed.
- * \retval errno If failed.
- */
-int ldmsd_plugin_qrent_add_bulk(ldmsd_plugin_qrent_coll_t coll,
-				struct ldmsd_plugin_qrent_bulk_s *bulk);
-
-/**
- * Add a config entry into the config collection.
- */
-int ldmsd_plugin_qrent_config_add(ldmsd_plugin_qresult_t r,
-					ldmsd_plugin_qrent_t coll);
+json_entity_t ldmsd_plugin_inst_query_env_add(json_entity_t result, const char *env_name);
 
 /**
  * The default implementation of \c ldmsd_plugin_type_s.query().
  */
-json_entity_t ldmsd_plugin_query(ldmsd_plugin_inst_t i, const char *q);
-
-/**
- * Produces JSON string from query result.
- *
- * The caller is responsible for freeing the returned string.
- *
- * \retval json A string in JSON format.
- */
-char *ldmsd_plugin_qresult_to_json(ldmsd_plugin_qresult_t qresult);
-
-/**
- * Print collection of query result entries to buffer in JSON format.
- *
- * \param         coll The collection of query result entries.
- * \param[in,out] buff String buffer pointer. \c *buff is reallocated if the
- *                     available length is not enough.
- * \param[in,out] off  The offset from the beginning of \c *buff to start
- *                     printing. If the printing succeeded, \c *off is also
- *                     advanced by the printed length (excluding '\0').
- * \param[in,out] alen The available length of the \c *buff after \c *off. If
- *                     the printing succeeded, \c *alen is also reduced by the
- *                     printed length (excluding '\0').
- *
- * \retval 0     If succeed.
- * \retval errno If failed.
- */
-int ldmsd_plugin_qrent_coll_json_print(ldmsd_plugin_qrent_coll_t coll,
-				       char **buff, int *off, int *alen);
+json_entity_t ldmsd_plugin_inst_query(ldmsd_plugin_inst_t i, const char *q);
 
 /** \} */ /* defgroup ldmsd_plugin */
 
-
-/**
- * Formatted string append utility.
- *
- * \param[in,out] buff String buffer pointer. \c *buff is reallocated if the
- *                     available length is not enough.
- * \param[in,out] off  The offset from the beginning of \c *buff to start
- *                     printing. If the printing succeeded, \c *off is also
- *                     advanced by the printed length (excluding '\0').
- * \param[in,out] alen The available length of the \c *buff after \c *off. If
- *                     the printing succeeded, \c *alen is also reduced by the
- *                     printed length (excluding '\0').
- * \param         fmt  The string format (the same as \c printf).
- * \param     _va_arg_ The variable-length arguments according to the format
- *                     \c fmt (same as \c printf).
- */
-__attribute__((format(printf, 4, 5)))
-int sappendf(char **buff, int *off, int *alen, const char *fmt, ...);
 
 /**
  * Data structure to store the deferred plugin config request.
@@ -668,9 +458,9 @@ int sappendf(char **buff, int *off, int *alen, const char *fmt, ...);
  */
 typedef struct ldmsd_deferred_pi_config {
 	char *name;
+	json_entity_t config;
 	uint32_t msg_no; /* To be converted to line number in a config file */
 	char *config_file; /* Path of the config file */
-	json_entity_t d;
 	size_t buflen;
 	char *buf;
 	TAILQ_ENTRY(ldmsd_deferred_pi_config) entry;
@@ -691,6 +481,5 @@ struct ldmsd_deferred_pi_config *ldmsd_deferred_pi_config_first();
 /**
  * Configure the plugin instances according to the deferred plugin config requests
  */
-int ldmsd_handle_deferred_plugin_config();
-
+int ldmsd_handle_plugin_config();
 #endif /* __LDMSD_PLUGIN_H__ */

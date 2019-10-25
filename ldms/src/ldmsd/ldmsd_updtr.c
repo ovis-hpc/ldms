@@ -57,21 +57,40 @@
 #include <ovis_util/util.h>
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_request.h"
 #include "ldms_xprt.h"
 #include "config.h"
 
-void ldmsd_updtr___del(ldmsd_cfgobj_t obj)
+static void __updtr_prdcr_match_list_free(struct ldmsd_regex_list *list)
 {
-	ldmsd_updtr_t updtr = (ldmsd_updtr_t)obj;
-	ldmsd_name_match_t match;
-	while (!LIST_EMPTY(&updtr->match_list) ) {
-		match = LIST_FIRST(&updtr->match_list);
+	ldmsd_regex_ent_t match;
+	while (!LIST_EMPTY(list)) {
+		match = LIST_FIRST(list);
 		if (match->regex_str)
 			free(match->regex_str);
 		regfree(&match->regex);
 		LIST_REMOVE(match, entry);
 		free(match);
 	}
+	free(list);
+}
+
+static void __updtr_match_list_free(struct updtr_match_list *list)
+{
+	ldmsd_name_match_t match;
+	while (!LIST_EMPTY(list) ) {
+		match = LIST_FIRST(list);
+		if (match->regex_str)
+			free(match->regex_str);
+		regfree(&match->regex);
+		LIST_REMOVE(match, entry);
+		free(match);
+	}
+	free(list);
+}
+
+static void __updtr_prdcr_tree_free(ldmsd_updtr_t updtr)
+{
 	struct rbn *rbn;
 	ldmsd_prdcr_ref_t prdcr_ref;
 	while (!rbt_empty(&updtr->prdcr_tree)) {
@@ -81,9 +100,16 @@ void ldmsd_updtr___del(ldmsd_cfgobj_t obj)
 		ldmsd_cfgobj_put(&prdcr_ref->prdcr->obj);
 		free(prdcr_ref);
 	}
-	ldmsd_cfgobj___del(obj);
 }
 
+void ldmsd_updtr___del(ldmsd_cfgobj_t obj)
+{
+	ldmsd_updtr_t updtr = (ldmsd_updtr_t)obj;
+	__updtr_match_list_free(updtr->match_list);
+	__updtr_prdcr_match_list_free(updtr->prdcr_regex_list);
+	__updtr_prdcr_tree_free(updtr);
+	ldmsd_cfgobj___del(obj);
+}
 
 static int updtr_sched_offset_skew_get()
 {
@@ -422,7 +448,7 @@ static void prdcrset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 
 	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
-	ldmsd_strgp_update(prd_set);
+	ldmsd_strgp_prdset_update(prd_set);
 out:
 	pthread_mutex_unlock(&prd_set->lock);
 	ldmsd_prdcr_set_ref_put(prd_set, "xprt_lookup");
@@ -466,8 +492,8 @@ static void cancel_push(ldmsd_updtr_t updtr)
 {
 	ldmsd_name_match_t match;
 
-	if (!LIST_EMPTY(&updtr->match_list)) {
-		LIST_FOREACH(match, &updtr->match_list, entry) {
+	if (!LIST_EMPTY(updtr->match_list)) {
+		LIST_FOREACH(match, updtr->match_list, entry) {
 			ldmsd_prdcr_ref_t ref;
 			for (ref = updtr_prdcr_ref_first(updtr); ref;
 					ref = updtr_prdcr_ref_next(ref))
@@ -607,8 +633,8 @@ int prdcr_set_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, 
 
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
 	for (updtr = ldmsd_updtr_first(); updtr; updtr = ldmsd_updtr_next(updtr)) {
-		if (!LIST_EMPTY(&updtr->match_list)) {
-			LIST_FOREACH(match, &updtr->match_list, entry) {
+		if (!LIST_EMPTY(updtr->match_list)) {
+			LIST_FOREACH(match, updtr->match_list, entry) {
 				schedule_set_updates(updtr, prd_set, match);
 			}
 		} else {
@@ -643,94 +669,6 @@ int prdcr_set_update_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status,
 int prdcr_ref_cmp(void *a, const void *b)
 {
 	return strcmp(a, b);
-}
-
-ldmsd_updtr_t
-ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str,
-					int push_flags, int is_auto_task,
-					uid_t uid, gid_t gid, int perm)
-{
-	struct ldmsd_updtr *updtr;
-	long interval_us = 2000000, offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
-	ev_worker_t worker;
-	ev_t start_ev, stop_ev;
-	char worker_name[PATH_MAX];
-
-	snprintf(worker_name, PATH_MAX, "updtr:%s", name);
-	worker = ev_worker_new(worker_name, prdcr_set_update_actor);
-	if (!worker) {
-		ldmsd_log(LDMSD_LERROR,
-			  "%s: error %d creating new worker %s\n",
-			  __func__, errno, worker_name);
-		return NULL;
-	}
-
-	start_ev = ev_new(updtr_start_type);
-	if (!start_ev) {
-		ldmsd_log(LDMSD_LERROR,
-			  "%s: error %d creating %s event\n",
-			  __func__, errno, ev_type_name(updtr_start_type));
-		return NULL;
-	}
-
-	stop_ev = ev_new(updtr_stop_type);
-	if (!stop_ev) {
-		ldmsd_log(LDMSD_LERROR,
-			  "%s: error %d creating %s event\n",
-			  __func__, errno, ev_type_name(updtr_stop_type));
-		return NULL;
-	}
-
-	updtr = (struct ldmsd_updtr *)
-		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_UPDTR,
-				 sizeof *updtr, ldmsd_updtr___del,
-				 uid, gid, perm);
-	if (!updtr)
-		return NULL;
-
-	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
-	updtr->is_auto_task = is_auto_task;
-	if (interval_str) {
-		interval_us = strtol(interval_str, NULL, 0);
-		if (offset_str) {
-			/* Make it a hint offset */
-			offset_us = strtol(offset_str, NULL, 0);
-		} else {
-			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
-		}
-	}
-	updtr->sched.intrvl_us = interval_us;
-	updtr->sched.offset_us = offset_us;
-	updtr->sched.offset_skew = updtr_sched_offset_skew_get();
-
-	updtr->worker = worker;
-	updtr->start_ev = start_ev;
-	updtr->stop_ev = stop_ev;
-	EV_DATA(updtr->start_ev, struct start_data)->entity = updtr;
-	EV_DATA(updtr->stop_ev, struct start_data)->entity = updtr;
-
-	rbt_init(&updtr->prdcr_tree, prdcr_ref_cmp);
-	LIST_INIT(&updtr->added_prdcr_regex_list);
-	LIST_INIT(&updtr->del_prdcr_regex_list);
-	LIST_INIT(&updtr->match_list);
-	updtr->push_flags = push_flags;
-
-
-	ldmsd_cfgobj_unlock(&updtr->obj);
-	return updtr;
-}
-
-ldmsd_updtr_t
-ldmsd_updtr_new(const char *name, char *interval_str,
-		char *offset_str, int push_flags,
-		int is_auto_interval)
-{
-	struct ldmsd_sec_ctxt sctxt;
-	ldmsd_sec_ctxt_get(&sctxt);
-	return ldmsd_updtr_new_with_auth(name,
-				interval_str, offset_str,
-				push_flags, is_auto_interval,
-				sctxt.crd.uid, sctxt.crd.gid, 0777);
 }
 
 extern struct rbt *cfgobj_trees[];
@@ -791,112 +729,10 @@ int __ldmsd_updtr_start(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt)
 	return rc;
 }
 
-int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
-		      const char *offset_str, const char *auto_interval,
-		      ldmsd_sec_ctxt_t ctxt, int flags)
-{
-	int rc = 0;
-	long interval_us, offset_us;
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr)
-		return ENOENT;
-
-	ldmsd_updtr_lock(updtr);
-
-	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
-	if (rc)
-		goto out;
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out;
-	}
-
-	if (auto_interval) {
-		if(0 == strcasecmp(auto_interval, "false"))
-			updtr->is_auto_task = 0;
-		else
-			updtr->is_auto_task = 1;
-	}
-	interval_us = updtr->sched.intrvl_us;
-	offset_us = updtr->sched.offset_us;
-	if (interval_str) {
-		/* A new interval is given. */
-		interval_us = strtol(interval_str, NULL, 0);
-		if (!offset_str) {
-			/* An offset isn't given. We assume that
-			 * users want the updater to schedule asynchronously.
-			 */
-			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
-		}
-	}
-	if (offset_str)
-		offset_us = strtol(offset_str, NULL, 0);
-
-	updtr->sched.intrvl_us = interval_us;
-	updtr->sched.offset_us = offset_us;
-	updtr->sched.offset_skew = updtr_sched_offset_skew_get();
-
-	if (flags & LDMSD_PERM_DSTART)
-		updtr->obj.perm |= LDMSD_PERM_DSTART;
-	else
-		rc = __ldmsd_updtr_start(updtr, ctxt);
-out:
-	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
-	return rc;
-}
-
 /* Caller must hold the updater lock. */
 static void __updtr_tasks_stop(ldmsd_updtr_t updtr)
 {
 	ev_flush(updtr->worker);
-}
-
-int __ldmsd_updtr_stop(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	ldmsd_updtr_lock(updtr);
-	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
-	if (rc)
-		goto out_1;
-	if (updtr->state == LDMSD_UPDTR_STATE_STOPPED) {
-		/* already stopped, return 0 */
-		goto out_1;
-	}
-	if (updtr->state != LDMSD_UPDTR_STATE_RUNNING) {
-		rc = EBUSY;
-		goto out_1;
-
-	}
-	updtr->state = LDMSD_UPDTR_STATE_STOPPING;
-	updtr->obj.perm &= ~LDMSD_PERM_DSTART;
-	if (updtr->push_flags)
-		cancel_push(updtr);
-	ldmsd_updtr_unlock(updtr);
-
-	/* joining tasks, need to unlock as task cb also took updtr lock */
-	__updtr_tasks_stop(updtr);
-
-	ldmsd_updtr_lock(updtr);
-	/* tasks stopped */
-	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
-	/* let-through */
-
-	ev_post(updater, producer, updtr->stop_ev, NULL);
-out_1:
-	ldmsd_updtr_unlock(updtr);
-	return rc;
-}
-
-int ldmsd_updtr_stop(const char *updtr_name, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr)
-		return ENOENT;
-	rc = __ldmsd_updtr_stop(updtr, ctxt);
-	ldmsd_updtr_put(updtr);
-	return rc;
 }
 
 ldmsd_updtr_t ldmsd_updtr_first()
@@ -911,7 +747,7 @@ ldmsd_updtr_t ldmsd_updtr_next(struct ldmsd_updtr *updtr)
 
 ldmsd_name_match_t ldmsd_updtr_match_first(ldmsd_updtr_t updtr)
 {
-	return LIST_FIRST(&updtr->match_list);
+	return LIST_FIRST(updtr->match_list);
 }
 
 ldmsd_name_match_t ldmsd_updtr_match_next(ldmsd_name_match_t cmp)
@@ -973,109 +809,13 @@ ldmsd_name_match_t updtr_find_match_ex(ldmsd_updtr_t updtr,
 				       const char *ex)
 {
 	ldmsd_name_match_t match;
-	LIST_FOREACH(match, &updtr->match_list, entry) {
+	LIST_FOREACH(match, updtr->match_list, entry) {
 		if (match->selector != sel)
 			continue;
 		if (0 == strcmp(match->regex_str, ex))
 			return match;
 	}
 	return NULL;
-}
-
-int ldmsd_updtr_match_add(const char *updtr_name, const char *regex_str,
-		const char *selector_str, char *rep_buf, size_t rep_len,
-		ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr)
-		return ENOENT;
-
-	ldmsd_updtr_lock(updtr);
-	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
-	if (rc)
-		goto out_1;
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out_1;
-	}
-	ldmsd_name_match_t match = calloc(1, sizeof *match);
-	if (!match) {
-		rc = ENOMEM;
-		goto out_1;
-	}
-	match->regex_str = strdup(regex_str);
-	if (!match->regex_str) {
-		rc = ENOMEM;
-		goto out_2;
-	}
-
-	if (!selector_str) {
-		match->selector = LDMSD_NAME_MATCH_INST_NAME;
-	} else {
-		match->selector = ldmsd_updtr_match_str2enum(selector_str);
-		if ((int)match->selector < 0) {
-			rc = EINVAL;
-			goto out_3;
-		}
-	}
-
-	if (ldmsd_compile_regex(&match->regex, regex_str, rep_buf, rep_len))
-		goto out_3;
-
-	LIST_INSERT_HEAD(&updtr->match_list, match, entry);
-	goto out_1;
-
-out_3:
-	free(match->regex_str);
-out_2:
-	free(match);
-out_1:
-	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
-	return rc;
-}
-
-int ldmsd_updtr_match_del(const char *updtr_name, const char *regex_str,
-			  const char *selector_str, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	enum ldmsd_name_match_sel sel;
-	if (!selector_str)
-		sel = LDMSD_NAME_MATCH_INST_NAME;
-	else if (0 == strcasecmp(selector_str, "inst"))
-		sel = LDMSD_NAME_MATCH_INST_NAME;
-	else if (0 == strcasecmp(selector_str, "schema"))
-		sel = LDMSD_NAME_MATCH_SCHEMA_NAME;
-	else {
-		return EINVAL;
-	}
-
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr)
-		return ENOENT;
-
-	ldmsd_updtr_lock(updtr);
-	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
-	if (rc)
-		goto out_1;
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out_1;
-	}
-	ldmsd_name_match_t match = updtr_find_match_ex(updtr, sel, regex_str);
-	if (!match) {
-		rc = -ENOENT;
-		goto out_1;
-	}
-	LIST_REMOVE(match, entry);
-	regfree(&match->regex);
-	free(match->regex_str);
-	free(match);
-out_1:
-	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
-	return rc;
 }
 
 ldmsd_prdcr_ref_t prdcr_ref_new(ldmsd_prdcr_t prdcr)
@@ -1096,8 +836,6 @@ ldmsd_prdcr_ref_t prdcr_ref_find(ldmsd_updtr_t updtr, const char *name)
 	return container_of(rbn, struct ldmsd_prdcr_ref, rbn);
 }
 
-
-
 ldmsd_prdcr_ref_t prdcr_ref_find_regex(ldmsd_updtr_t updtr, regex_t *regex)
 {
 	struct rbn *rbn;
@@ -1114,169 +852,761 @@ ldmsd_prdcr_ref_t prdcr_ref_find_regex(ldmsd_updtr_t updtr, regex_t *regex)
 	return NULL;
 }
 
-int __ldmsd_updtr_prdcr_add(ldmsd_updtr_t updtr, ldmsd_prdcr_t prdcr)
+static int ldmsd_updtr_enable(ldmsd_cfgobj_t obj)
 {
 	int rc = 0;
-	ldmsd_prdcr_ref_t ref;
+	ldmsd_updtr_t updtr = (ldmsd_updtr_t)obj;
+	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED)
+		return EBUSY;
+	updtr->state = LDMSD_UPDTR_STATE_RUNNING;
+	updtr->obj.perm |= LDMSD_PERM_DSTART; /* TODO: remove this? */
 
-	ldmsd_updtr_lock(updtr);
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out;
-	}
-	ref = prdcr_ref_find(updtr, prdcr->obj.name);
-	if (ref) {
-		rc = EEXIST;
-		goto out;
-	}
-	ref = prdcr_ref_new(prdcr);
-	if (!ref) {
-		rc = errno;
-		goto out;
-	}
-	rbt_ins(&updtr->prdcr_tree, &ref->rbn);
-out:
-	ldmsd_updtr_unlock(updtr);
+	/*
+	 * Tell the producer an updater is starting. It will tell the updater
+	 * the sets that can be updated
+	 */
+	ev_post(updater, producer, updtr->start_ev, NULL);
 	return rc;
 }
 
-int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
-			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt)
+static int ldmsd_updtr_disable(ldmsd_cfgobj_t obj)
 {
-	regex_t regex;
-	ldmsd_updtr_t updtr = NULL;
-	ldmsd_prdcr_t prdcr;
-	ldmsd_str_ent_t regex_ent = NULL;
+	int rc = 0;
+	ldmsd_updtr_t updtr = (ldmsd_updtr_t)obj;
+	if (updtr->state == LDMSD_UPDTR_STATE_STOPPED) {
+		/* already stopped, return 0 */
+		goto out_1;
+	}
+	if (updtr->state != LDMSD_UPDTR_STATE_RUNNING) {
+		rc = EBUSY;
+		goto out_1;
+
+	}
+	updtr->state = LDMSD_UPDTR_STATE_STOPPING;
+	updtr->obj.perm &= ~LDMSD_PERM_DSTART; /* TODO: remove this? */
+	if (updtr->push_flags)
+		cancel_push(updtr);
+	ldmsd_updtr_unlock(updtr);
+
+	/* joining tasks, need to unlock as task cb also took updtr lock */
+	__updtr_tasks_stop(updtr);
+
+	ldmsd_updtr_lock(updtr);
+	/* tasks stopped */
+	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
+	/* let-through */
+
+	ev_post(updater, producer, updtr->stop_ev, NULL);
+out_1:
+	return rc;
+}
+
+static int __updtr_push_attr(json_entity_t err, json_entity_t push, int *_push_flags)
+{
 	int rc;
 
-	regex_ent = malloc(sizeof(*regex_ent));
-	if (!regex_ent) {
-		snprintf(rep_buf, rep_len, "Out of memory");
-		return ENOMEM;
-	}
-	regex_ent->str = strdup(prdcr_regex);
-	if (!regex_ent->str) {
-		free(regex_ent);
-		snprintf(rep_buf, rep_len, "Out of memory");
-		return ENOMEM;
+	if (!push) {
+		*_push_flags = LDMSD_ATTR_NA;
+		return 0;
 	}
 
-	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
-	if (rc) {
-		goto err;
+	if (JSON_BOOL_VALUE == json_entity_type(push)) {
+		if (json_value_bool(push)) {
+			*_push_flags = LDMSD_UPDTR_F_PUSH;
+		}
+	} else if (JSON_STRING_VALUE == json_entity_type(push)) {
+		char *push_s = json_value_str(push)->str;
+		if (0 == strcasecmp(push_s, "onchange")) {
+			*_push_flags = LDMSD_UPDTR_F_PUSH | LDMSD_UPDTR_F_PUSH_CHANGE;
+		} else if (0 == strcasecmp(push_s, "true") || 0 == strcasecmp(push_s, "yes")) {
+			*_push_flags = LDMSD_UPDTR_F_PUSH;
+		} else {
+			ldmsd_req_buf_t buf = ldmsd_req_buf_alloc(512);
+			if (!buf)
+				goto oom;
+			rc = ldmsd_req_buf_append(buf,
+				       "Push '%s' is invalid.", push_s);
+			if (rc < 0)
+				goto oom;
+			err = json_dict_build(err, JSON_STRING_VALUE,
+							"push", buf->buf);
+			ldmsd_req_buf_free(buf);
+			if (!err)
+				goto oom;
+		}
+	} else {
+		err = json_dict_build(NULL, JSON_STRING_VALUE, "push",
+				"'push' is neither a boolean or a string.");
+		if (!err)
+			goto oom;
 	}
+	return 0;
+oom:
+	return ENOMEM;
+}
 
-	updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr) {
-		sprintf(rep_buf, "%dThe updater specified does not "
-						"exist\n", ENOENT);
-		rc = ENOENT;
-		goto err;
-	}
+static int __updtr_prdcrs_attr(json_entity_t prdcrs, json_entity_t err,
+				struct ldmsd_regex_list **_prdcr_list)
+{
+	int rc;
+	json_entity_t p;
+	ldmsd_req_buf_t buf = NULL;
+	struct ldmsd_regex_list *filt_list = NULL;
+	struct ldmsd_regex_ent *filt;
 
-	ldmsd_updtr_lock(updtr);
-	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
-	if (rc)
-		goto err;
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-		sprintf(rep_buf, "%dConfiguration changes cannot be made "
-				"while the updater is running\n", EBUSY);
-		rc = EBUSY;
-		goto err;
-	}
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		if (regexec(&regex, prdcr->obj.name, 0, NULL, 0))
-			continue;
-		/* See if this match is already in the list */
-		ldmsd_prdcr_ref_t ref = prdcr_ref_find(updtr, prdcr->obj.name);
-		if (ref)
-			continue;
-		ref = prdcr_ref_new(prdcr);
-		if (!ref) {
-			rc = ENOMEM;
-			sprintf(rep_buf, "%dMemory allocation failure.\n", ENOMEM);
-			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-			ldmsd_prdcr_put(prdcr);
+	if (!prdcrs)
+		goto out;
+
+	filt_list = malloc(sizeof(*filt_list));
+	if (!filt_list)
+		goto oom;
+
+	buf = ldmsd_req_buf_alloc(1024);
+	if (!buf)
+		goto oom;
+
+	for (p = json_item_first(prdcrs); p; p = json_item_next(p)) {
+		if (JSON_STRING_VALUE != json_entity_type(p)) {
+			err = json_dict_build(err, JSON_STRING_VALUE, "producers",
+					"There is an element in 'producers' "
+					"that is not a JSON string.", -1);
+			if (!err)
+				goto oom;
+			rc = EINVAL;
 			goto err;
 		}
-		rbt_ins(&updtr->prdcr_tree, &ref->rbn);
+		filt = malloc(sizeof(*filt));
+		if (!filt)
+			goto oom;
+		filt->regex_str = strdup(json_value_str(p)->str);
+		if (!filt->regex_str) {
+			free(filt);
+			goto oom;
+		}
+
+		rc = ldmsd_compile_regex(&filt->regex, filt->regex_str,
+							buf->buf, buf->len);
+		if (rc) {
+			err = json_dict_build(err, JSON_STRING_VALUE, "producers",
+								buf->buf, -1);
+			if (!err)
+				goto oom;
+			break;
+		}
+		LIST_INSERT_HEAD(filt_list, filt, entry);
 	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	sprintf(rep_buf, "0\n");
-	LIST_INSERT_HEAD(&updtr->added_prdcr_regex_list, regex_ent, entry);
-	goto out;
-err:
-	if (regex_ent) {
-		free(regex_ent->str);
-		free(regex_ent);
-	}
+	ldmsd_req_buf_free(buf);
 out:
-	regfree(&regex);
-	if (updtr) {
-		ldmsd_updtr_unlock(updtr);
-		ldmsd_updtr_put(updtr);
-	}
+	*_prdcr_list = filt_list;
+	return 0;
+oom:
+	rc = ENOMEM;
+err:
+	if (buf)
+		ldmsd_req_buf_free(buf);
+	if (filt_list)
+		__updtr_prdcr_match_list_free(filt_list);
 	return rc;
 }
 
-int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
-			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt)
+static int __updtr_match_list_get(json_entity_t sets, json_entity_t schemas,
+				json_entity_t err, struct updtr_match_list **_match_list)
 {
-	int rc = 0;
-	regex_t regex;
-	ldmsd_prdcr_ref_t ref;
-	ldmsd_str_ent_t regex_ent = NULL;
-	ldmsd_updtr_t updtr = NULL;
+	int rc;
+	struct ldmsd_name_match *match;
+	struct updtr_match_list *match_list = NULL;
+	json_entity_t item, list;
+	char *sel_str;
+	ldmsd_req_buf_t buf;
+	enum ldmsd_name_match_sel sel;
 
-	regex_ent = malloc(sizeof(*regex_ent));
-	if (!regex_ent) {
-		snprintf(rep_buf, rep_len, "Out of memory");
+	buf = ldmsd_req_buf_alloc(512);
+	if (!buf)
 		return ENOMEM;
+
+	if (!sets && !schemas)
+		goto out;
+
+	match_list = malloc(sizeof(*match_list));
+	if (!match_list)
+		goto oom;
+	LIST_INIT(match_list);
+
+	if (sets) {
+		sel = LDMSD_NAME_MATCH_INST_NAME;
+		sel_str = "set_instance_filters";
+		list = sets;
+	} else {
+		sel = LDMSD_NAME_MATCH_SCHEMA_NAME;
+		sel_str = "set_schema_filters";
+		list = schemas;
 	}
-	regex_ent->str = strdup(prdcr_regex);
-	if (!regex_ent->str) {
-		free(regex_ent);
-		snprintf(rep_buf, rep_len, "Out of memory");
-		return ENOMEM;
+add_match:
+	if (!list)
+		goto out;
+
+	for (item = json_item_first(list); item; item = json_item_next(item)) {
+		if (JSON_STRING_VALUE != json_entity_type(item)) {
+			rc = ldmsd_req_buf_append(buf, "This is an element in '%s' "
+						"that is not a JSON string.", sel_str);
+			if (rc < 0)
+				goto oom;
+			err = json_dict_build(err, JSON_STRING_VALUE, sel_str,
+					buf->buf, -1);
+			if (!err)
+				goto oom;
+			break;
+		}
+		match = malloc(sizeof(*match));
+		if (!match)
+			goto oom;
+		match->regex_str = strdup(json_value_str(item)->str);
+		if (!match->regex_str)
+			goto oom;
+		match->selector = sel;
+		rc = ldmsd_compile_regex(&match->regex, match->regex_str,
+							buf->buf, buf->len);
+		if (rc) {
+			err = json_dict_build(err, JSON_STRING_VALUE,
+							sel_str, buf->buf, -1);
+			if (!err)
+				goto oom;
+			rc = EINVAL;
+			goto err;
+		}
+		LIST_INSERT_HEAD(match_list, match, entry);
 	}
 
-	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
-	if (rc)
-		goto err;
-
-	updtr = ldmsd_updtr_find(updtr_name);
-	if (!updtr) {
-		rc = ENOENT;
-		regfree(&regex);
-		goto err;
-	}
-	ldmsd_updtr_lock(updtr);
-	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
-	if (rc)
-		goto err;
-	if (updtr->state != LDMSD_UPDTR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto err;
-	}
-	for (ref = prdcr_ref_find_regex(updtr, &regex);
-	     ref; ref = prdcr_ref_find_regex(updtr, &regex)) {
-		rbt_del(&updtr->prdcr_tree, &ref->rbn);
-		ldmsd_prdcr_put(ref->prdcr);
-		free(ref);
-	}
-	LIST_INSERT_HEAD(&updtr->del_prdcr_regex_list, regex_ent, entry);
-	goto out;
-err:
-	if (regex_ent) {
-		free(regex_ent->str);
-		free(regex_ent);
+	/*
+	 * Next iterate through the schema filter list
+	 */
+	if (sel == LDMSD_NAME_MATCH_INST_NAME) {
+		sel = LDMSD_NAME_MATCH_SCHEMA_NAME;
+		sel_str = "schemas";
+		list = schemas;
+		ldmsd_req_buf_reset(buf);
+		goto add_match;
 	}
 out:
-	regfree(&regex);
+
+	*_match_list = match_list;
+
+	ldmsd_req_buf_free(buf);
+	return 0;
+oom:
+	rc = ENOMEM;
+err:
+	if (match_list)
+		__updtr_match_list_free(match_list);
+	ldmsd_req_buf_free(buf);
+	return rc;
+}
+
+static json_entity_t __updtr_attr_get(json_entity_t dft, json_entity_t spc,
+				long *_interval_us, long *_offset_us,
+				int *_push_flags, int *_auto_task, int *_perm,
+				struct ldmsd_regex_list **_prdcr_list,
+				struct updtr_match_list **_match_list)
+{
+	int rc;
+	ldmsd_req_buf_t buf = NULL;
+	json_entity_t err = NULL;
+	json_entity_t interval, offset, push, auto_task, perm, prdcrs, sets, schemas;
+	interval = offset = push = auto_task = perm = prdcrs = sets = schemas = NULL;
+
+	buf = ldmsd_req_buf_alloc(1024);
+	if (!buf)
+		goto oom;
+
+	err = json_entity_new(JSON_DICT_VALUE);
+	if (!err)
+		goto oom;
+
+	if (spc) {
+		interval = json_value_find(spc, "interval");
+		offset = json_value_find(spc, "offset");
+		auto_task = json_value_find(spc, "auto_task");
+		prdcrs = json_value_find(spc, "producer_filters");
+		sets = json_value_find(spc, "set_instance_filters");
+		schemas = json_value_find(spc, "set_schema_filters");
+		perm = json_value_find(spc, "perm");
+	}
+
+	if (dft) {
+		if (!interval)
+			interval = json_value_find(dft, "interval");
+		if (!offset)
+			offset = json_value_find(dft, "offset");
+		if (!auto_task)
+			auto_task = json_value_find(dft, "auto_task");
+		if (!prdcrs)
+			prdcrs = json_value_find(dft, "producer_filters");
+		if (!sets)
+			sets = json_value_find(dft, "set_instance_filters");
+		if (!schemas)
+			schemas = json_value_find(dft, "set_schema_filters");
+		if (!perm)
+			perm = json_value_find(dft, "perm");
+	}
+
+	/* producers */
+	rc = __updtr_prdcrs_attr(prdcrs, err, _prdcr_list);
+	if (ENOMEM == rc)
+		goto oom;
+
+	/* match list */
+	rc = __updtr_match_list_get(sets, schemas, err, _match_list);
+	if (ENOMEM == rc)
+		goto oom;
+
+	/* update interval */
+	*_interval_us = LDMSD_ATTR_NA;
+	if (interval) {
+		if (JSON_STRING_VALUE == json_entity_type(interval)) {
+			*_interval_us = ldmsd_time_str2us(json_value_str(interval)->str);
+		} else if (JSON_INT_VALUE == json_entity_type(interval)) {
+			*_interval_us = json_value_int(interval);
+		} else {
+			*_interval_us = LDMSD_ATTR_INVALID;
+			err = json_dict_build(err, JSON_STRING_VALUE, "interval",
+					"'interval' is neither a string or an integer.", -1);
+			if (!err)
+				goto oom;
+		}
+	}
+
+	/* update offset */
+	*_offset_us = LDMSD_ATTR_NA;
+	if (offset) {
+		if (JSON_STRING_VALUE == json_entity_type(offset)) {
+			char *offset_s = json_value_str(offset)->str;
+			if (0 == strcasecmp("none", offset_s)) {
+				*_offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+			} else {
+				*_offset_us = ldmsd_time_str2us(offset_s);
+			}
+		} else if (JSON_INT_VALUE == json_entity_type(offset)) {
+			*_offset_us = json_value_int(offset);
+		} else {
+			*_offset_us = LDMSD_ATTR_INVALID;
+			err = json_dict_build(err, JSON_STRING_VALUE, "offset",
+					"'offset' is neither a string or an integer.", -1);
+			if (!err)
+				goto oom;
+		}
+	}
+
+	/* push flag */
+	rc = __updtr_push_attr(err, push, _push_flags);
+	if (rc)
+		goto oom;
+
+	/* auto task */
+	*_auto_task = LDMSD_ATTR_NA;
+	if (auto_task) {
+		if (JSON_BOOL_VALUE != json_entity_type(auto_task)) {
+			err = json_dict_build(err, JSON_STRING_VALUE, "auto_task",
+						"'auto_task' is not a boolean.", -1);
+			if (!err)
+				goto oom;
+			*_auto_task = LDMSD_ATTR_INVALID;
+		} else {
+			*_auto_task = json_value_bool(auto_task);
+		}
+	}
+
+	/* permission */
+	if (perm) {
+		if (JSON_STRING_VALUE != json_entity_type(perm)) {
+			err = json_dict_build(err, JSON_STRING_VALUE,
+						"'perm' is not a string.", -1);
+			if (!err)
+				goto oom;
+		} else {
+			*_perm = strtol(json_value_str(perm)->str, NULL, 0);
+		}
+	} else {
+		*_perm = LDMSD_ATTR_NA;
+	}
+
+	if (0 == json_attr_count(err)) {
+		json_entity_free(err);
+		err = NULL;
+	}
+
+	return err;
+oom:
+	errno = ENOMEM;
+	if (err)
+		json_entity_free(err);
+	return NULL;
+}
+
+/*
+ * Export only the configuration attributes
+ */
+static json_entity_t __updtr_export(ldmsd_updtr_t updtr)
+{
+	json_entity_t query, l, i, sets, schemas;
+	ldmsd_name_match_t match;
+	ldmsd_regex_ent_t prdcr_filter;
+
+	query = ldmsd_cfgobj_query_result_new(&updtr->obj);
+	if (!query)
+		goto oom;
+
+	query = json_dict_build(query,
+			JSON_BOOL_VALUE, "auto_task", updtr->is_auto_task,
+			JSON_INT_VALUE, "push", updtr->push_flags,
+			JSON_INT_VALUE, "interval", updtr->sched.intrvl_us,
+			JSON_INT_VALUE, "offset", updtr->sched.offset_us,
+			-1);
+	if (!query)
+		goto oom;
+
+	/* producers */
+	query = json_dict_build(query, JSON_LIST_VALUE, "producer_filters", -2, -1);
+	if (!query)
+		goto oom;
+	l = json_value_find(query, "producer_filters");
+	LIST_FOREACH(prdcr_filter, updtr->prdcr_regex_list, entry) {
+		i = json_entity_new(JSON_STRING_VALUE, prdcr_filter->regex_str);
+		if (!i)
+			goto oom;
+		json_item_add(l, i);
+	}
+
+	/* sets and schemas */
+	if (!updtr->match_list)
+		goto out;
+
+	query = json_dict_build(query, JSON_LIST_VALUE, "set_instance_filters", -2,
+				JSON_LIST_VALUE, "set_schema_filters", -2, -1);
+	if (!query)
+		goto oom;
+	sets = json_value_find(query, "set_instance_filters");
+	schemas = json_value_find(query, "set_schema_filters");
+	LIST_FOREACH(match, updtr->match_list, entry) {
+		i = json_entity_new(JSON_STRING_VALUE, match->regex_str);
+		if (!i)
+			goto oom;
+		if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
+			json_item_add(sets, i);
+		else
+			json_item_add(schemas, i);
+	}
+	if (0 == json_list_len(sets)) {
+		json_attr_rem(query, "set_filters");
+		json_entity_free(sets);
+	}
+	if (0 == json_list_len(schemas)) {
+		json_attr_rem(query, "set_schema_filters");
+		json_entity_free(schemas);
+	}
+out:
+	return query;
+oom:
+	if (query)
+		json_entity_free(query);
+	return NULL;
+}
+
+json_entity_t ldmsd_updtr_query(ldmsd_cfgobj_t obj)
+{
+	json_entity_t query, l, i;
+	ldmsd_prdcr_ref_t ref;
+	ldmsd_updtr_t updtr = (ldmsd_updtr_t)obj;
+
+	query = __updtr_export(updtr);
+	if (!query)
+		goto oom;
+
+	query = json_dict_build(query,
+			JSON_INT_VALUE, "offset_skew_value", updtr->sched.offset_skew,
+			JSON_STRING_VALUE, "state", ldmsd_updtr_state_str(updtr->state),
+			-1);
+	if (!query)
+		goto oom;
+
+	/* producers */
+	query = json_dict_build(query, JSON_LIST_VALUE, "producers", -2, -1);
+	if (!query)
+		goto oom;
+	l = json_value_find(query, "producers");
+	for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
+	     ref = ldmsd_updtr_prdcr_next(ref)) {
+		i = json_dict_build(NULL,
+				JSON_STRING_VALUE, "name", ref->prdcr->obj.name,
+				JSON_STRING_VALUE, "hostname", ref->prdcr->host_name,
+				JSON_STRING_VALUE, "xprt", ref->prdcr->xprt_name,
+				JSON_INT_VALUE, "port_no", ref->prdcr->port_no,
+				JSON_STRING_VALUE, "state",
+					ldmsd_prdcr_state2str(ref->prdcr->conn_state),
+				-1);
+		if (!i)
+			goto oom;
+		json_item_add(l, i);
+	}
+	return ldmsd_result_new(0, NULL, query);
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	return NULL;
+}
+
+json_entity_t ldmsd_updtr_export(ldmsd_cfgobj_t obj)
+{
+	json_entity_t query;
+	ldmsd_updtr_t updtr = (ldmsd_updtr_t)obj;
+
+	query = __updtr_export(updtr);
+	return ldmsd_result_new(0, NULL, query);
+}
+
+json_entity_t
+ldmsd_updtr_update(ldmsd_cfgobj_t obj, short enabled, json_entity_t dft, json_entity_t spc)
+{
+	json_entity_t err;
+	unsigned long interval_us, offset_us;
+	int perm, auto_task, push_flags;
+	struct updtr_match_list *match_list;
+	struct ldmsd_regex_list *prdcr_list;
+	ldmsd_req_buf_t buf = NULL;
+	ldmsd_updtr_t updtr = (ldmsd_updtr_t)obj;
+
+	if (obj->enabled && enabled)
+		return ldmsd_result_new(EBUSY, NULL, NULL);
+
+	buf = ldmsd_req_buf_alloc(1024);
+	if (!buf)
+		goto oom;
+
+	err = __updtr_attr_get(dft, spc, (long *)&interval_us, (long *)&offset_us,
+				&push_flags, &auto_task,
+				&perm, &prdcr_list, &match_list);
+	if (!err && (ENOMEM == errno))
+		goto oom;
+
+	if (LDMSD_ATTR_NA != interval_us)
+		updtr->sched.intrvl_us = interval_us;
+	if (LDMSD_ATTR_NA != offset_us)
+		updtr->sched.offset_us = offset_us;
+	if (LDMSD_ATTR_NA != perm)
+		updtr->obj.perm = perm;
+	if (LDMSD_ATTR_NA != auto_task)
+		updtr->is_auto_task = auto_task;
+	if (LDMSD_ATTR_NA != push_flags)
+		updtr->push_flags = push_flags;
+	if (prdcr_list) {
+		__updtr_prdcr_match_list_free(updtr->prdcr_regex_list);
+		updtr->prdcr_regex_list = prdcr_list;
+	}
+	if (match_list) {
+		__updtr_match_list_free(updtr->match_list);
+		updtr->match_list = match_list;
+	}
+
+	obj->enabled = ((0 <= enabled)?enabled:obj->enabled);
+	return ldmsd_result_new(0, NULL, NULL);
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	if (buf)
+		ldmsd_req_buf_free(buf);
+	if (err)
+		json_entity_free(err);
+	return NULL;
+}
+
+static ldmsd_updtr_t
+__updtr_new(const char *name, long interval_us, long offset_us,
+				int push_flags, int is_auto_task,
+				struct ldmsd_regex_list *prdcr_list,
+				struct updtr_match_list *match_list,
+				uid_t uid, gid_t gid, int perm, int enabled)
+{
+	struct ldmsd_updtr *updtr;
+	ev_worker_t worker;
+	ev_t start_ev, stop_ev;
+	char worker_name[PATH_MAX];
+	start_ev = stop_ev = NULL;
+
+	snprintf(worker_name, PATH_MAX, "updtr:%s", name);
+	worker = ev_worker_new(worker_name, prdcr_set_update_actor);
+	if (!worker) {
+		ldmsd_log(LDMSD_LERROR,
+			  "%s: error %d creating new worker %s\n",
+			  __func__, errno, worker_name);
+		goto err;
+	}
+
+	start_ev = ev_new(updtr_start_type);
+	if (!start_ev) {
+		ldmsd_log(LDMSD_LERROR,
+			  "%s: error %d creating %s event\n",
+			  __func__, errno, ev_type_name(updtr_start_type));
+		goto err;
+	}
+
+	stop_ev = ev_new(updtr_stop_type);
+	if (!stop_ev) {
+		ldmsd_log(LDMSD_LERROR,
+			  "%s: error %d creating %s event\n",
+			  __func__, errno, ev_type_name(updtr_stop_type));
+		goto err;
+	}
+
+	updtr = (struct ldmsd_updtr *)ldmsd_cfgobj_new(name, LDMSD_CFGOBJ_UPDTR,
+					sizeof *updtr, ldmsd_updtr___del,
+					ldmsd_updtr_update,
+					ldmsd_cfgobj_delete,
+					ldmsd_updtr_query,
+					ldmsd_updtr_export,
+					ldmsd_updtr_enable,
+					ldmsd_updtr_disable,
+					uid, gid, perm, enabled);
+	if (!updtr)
+		goto err;
+
+	updtr->state = LDMSD_UPDTR_STATE_STOPPED;
+	updtr->is_auto_task = is_auto_task;
+	updtr->sched.intrvl_us = interval_us;
+	updtr->sched.offset_us = offset_us;
+	updtr->sched.offset_skew = updtr_sched_offset_skew_get();
+	updtr->push_flags = push_flags;
+	if (!prdcr_list) {
+		updtr->prdcr_regex_list = malloc(sizeof(*prdcr_list));
+		if (!updtr->prdcr_regex_list)
+			goto oom;
+		LIST_INIT(updtr->prdcr_regex_list);
+	} else {
+		updtr->prdcr_regex_list = prdcr_list;
+	}
+
+	if (!match_list) {
+		updtr->match_list = malloc(sizeof(*updtr->match_list));
+		if (!updtr->match_list)
+			goto oom;
+		LIST_INIT(updtr->match_list);
+	} else {
+		updtr->match_list = match_list;
+	}
+
+	updtr->worker = worker;
+	updtr->start_ev = start_ev;
+	updtr->stop_ev = stop_ev;
+	EV_DATA(updtr->start_ev, struct start_data)->entity = updtr;
+	EV_DATA(updtr->stop_ev, struct start_data)->entity = updtr;
+
+	rbt_init(&updtr->prdcr_tree, prdcr_ref_cmp);
+
+	ldmsd_cfgobj_unlock(&updtr->obj);
+	return updtr;
+
+oom:
+	errno = ENOMEM;
+err:
+	if (worker)
+		free(worker);
+	if (start_ev)
+		ev_put(start_ev);
+	if (stop_ev)
+		ev_put(stop_ev);
+	if (updtr)
+		ldmsd_updtr___del(&updtr->obj);
+	return NULL;
+}
+
+json_entity_t ldmsd_updtr_create(const char *name, short enabled, json_entity_t dft,
+					json_entity_t spc, uid_t uid, gid_t gid)
+{
+	int rc;
+	json_entity_t result, err = NULL;
+	unsigned long interval_us, offset_us;
+	int perm, auto_task, push_flags;
+	struct updtr_match_list *match_list;
+	struct ldmsd_regex_list *prdcr_list;
+	ldmsd_updtr_t updtr;
+	ldmsd_req_buf_t buf;
+
+	buf = ldmsd_req_buf_alloc(1024);
+	if (!buf)
+		goto oom;
+
+	err = __updtr_attr_get(dft, spc, (long *)&interval_us, (long *)&offset_us,
+					&push_flags, &auto_task, &perm,
+					&prdcr_list, &match_list);
+	if (!err && (ENOMEM == errno))
+		goto oom;
+
+	if (LDMSD_ATTR_NA == interval_us) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "interval",
+						"'interval' is missing.");
+		if (!err)
+			goto oom;
+		if (LDMSD_ATTR_NA != offset_us) {
+			err = json_dict_build(err, JSON_STRING_VALUE, "offset",
+							"'offset' is ignore because "
+							"'interval' isn't given.");
+			if (!err)
+				goto oom;
+		}
+	} else {
+		if ((offset_us < 0) || (offset_us >= interval_us)) {
+			rc = ldmsd_req_buf_append(buf, "The value '%d' is "
+					"either less than 0 or equal or larger "
+					"than the interval value '%d'.",
+					offset_us, interval_us);
+			err = json_dict_build(err, JSON_STRING_VALUE, "offset",
+					buf->buf, -1);
+		}
+	}
+
+	if (LDMSD_ATTR_NA == push_flags)
+		push_flags = 0;
+	if (LDMSD_ATTR_NA == auto_task)
+		auto_task = 0;
+	if (LDMSD_ATTR_NA == perm)
+		perm = 0770;
+	if (push_flags && auto_task) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "auto_task",
+						"'auto_task' is ignored "
+						"because 'push' is in use.");
+		if (!err)
+			goto oom;
+	}
+
+	if (err) {
+		ldmsd_req_buf_free(buf);
+		return ldmsd_result_new(EINVAL, NULL, err);
+	}
+
+	/*
+	 * All attribute values are valid. Create the Updater.
+	 */
+	updtr = __updtr_new(name, interval_us, offset_us, push_flags, auto_task,
+				prdcr_list, match_list, uid, gid, perm, enabled);
+	if (!updtr) {
+		rc = errno;
+		ldmsd_req_buf_t buf = ldmsd_req_buf_alloc(512);
+		if (!buf)
+			goto oom;
+		if (0 > ldmsd_req_buf_append(buf, "Failed to create an updater '%s'.", name))
+			goto oom;
+		result = ldmsd_result_new(rc, buf->buf, NULL);
+		ldmsd_req_buf_free(buf);
+		return result;
+	}
+	ldmsd_req_buf_free(buf);
+	ldmsd_updtr_unlock(updtr);
+	return ldmsd_result_new(0, NULL, NULL);
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	if (err)
+		json_entity_free(err);
 	if (updtr) {
 		ldmsd_updtr_unlock(updtr);
 		ldmsd_updtr_put(updtr);
 	}
-	return rc;
+	if (buf)
+		ldmsd_req_buf_free(buf);
+	return NULL;
 }

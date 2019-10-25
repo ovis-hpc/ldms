@@ -86,6 +86,20 @@ int prdcr_resolve(const char *hostname, unsigned short port_no,
 	return 0;
 }
 
+static void __prdcr_stream_list_free(struct ldmsd_prdcr_stream_list *list)
+{
+	ldmsd_str_ent_t s;
+
+	s = LIST_FIRST(list);
+	while (s) {
+		LIST_REMOVE(s, entry);
+		free(s->str);
+		free(s);
+		s = LIST_FIRST(list);
+	}
+	free(list);
+}
+
 void ldmsd_prdcr___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_prdcr_t prdcr = (ldmsd_prdcr_t)obj;
@@ -97,6 +111,8 @@ void ldmsd_prdcr___del(ldmsd_cfgobj_t obj)
 		free(prdcr->conn_auth);
 	if (prdcr->conn_auth_args)
 		av_free(prdcr->conn_auth_args);
+	if (prdcr->stream_list)
+		__prdcr_stream_list_free(prdcr->stream_list);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -351,35 +367,15 @@ static void prdcr_dir_cb(ldms_t xprt, int status, ldms_dir_t dir, void *arg)
 	ldms_xprt_dir_free(xprt, dir);
 }
 
-static int __on_subs_resp(ldmsd_req_cmd_t rcmd)
-{
-	return 0;
-}
+//static int __on_subs_resp(ldmsd_req_cmd_t rcmd)
+//{
+//	return 0;
+//}
 
 /* Send subscribe request to peer */
 static int __prdcr_subscribe(ldmsd_prdcr_t prdcr)
 {
-	ldmsd_req_cmd_t rcmd;
-	int rc;
-	ldmsd_prdcr_stream_t s;
-	LIST_FOREACH(s, &prdcr->stream_list, entry) {
-		rcmd = ldmsd_req_cmd_new(prdcr->xprt, LDMSD_STREAM_SUBSCRIBE_REQ,
-					 NULL, __on_subs_resp, prdcr);
-		rc = errno;
-		if (!rcmd)
-			goto err_0;
-		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, s->name);
-		if (rc)
-			goto err_1;
-		rc = ldmsd_req_cmd_attr_term(rcmd);
-		if (rc)
-			goto err_1;
-	}
-	return 0;
- err_1:
-	ldmsd_req_cmd_free(rcmd);
- err_0:
-	return rc;
+	return ENOSYS;
 }
 
 static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
@@ -454,15 +450,20 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 {
 	int ret;
 	struct timespec to;
-
+	ldmsd_auth_t auth_dom;
 	assert(prdcr->xprt == NULL);
 	switch (prdcr->type) {
 	case LDMSD_PRDCR_TYPE_ACTIVE:
+		/* The authentication domain must exist because
+		 * its reference got taken when the producer was created.
+		 */
+		auth_dom = ldmsd_auth_find(prdcr->conn_auth);
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 		prdcr->xprt = ldms_xprt_new_with_auth(prdcr->xprt_name,
 						      ldmsd_linfo,
-						      prdcr->conn_auth,
-						      prdcr->conn_auth_args);
+						      auth_dom->plugin,
+						      auth_dom->attrs);
+		ldmsd_cfgobj_put(&auth_dom->obj); /* Put the 'find' reference back */
 		if (prdcr->xprt) {
 			ret  = ldms_xprt_connect(prdcr->xprt,
 						 (struct sockaddr *)&prdcr->ss,
@@ -529,173 +530,27 @@ const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type)
 		return NULL;
 }
 
+const char *ldmsd_prdcr_state2str(enum ldmsd_prdcr_state state)
+{
+	switch (state) {
+	case LDMSD_PRDCR_STATE_STOPPED:
+		return "STOPPED";
+	case LDMSD_PRDCR_STATE_DISCONNECTED:
+		return "DISCONNECTED";
+	case LDMSD_PRDCR_STATE_CONNECTING:
+		return "CONNECTING";
+	case LDMSD_PRDCR_STATE_CONNECTED:
+		return "CONNECTED";
+	case LDMSD_PRDCR_STATE_STOPPING:
+		return "STOPPING";
+	}
+	return "BAD STATE";
+}
+
 int prdcr_connect_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
 	prdcr_connect(EV_DATA(ev, struct connect_data)->prdcr);
 	return 0;
-}
-
-ldmsd_prdcr_t
-ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
-		const char *host_name, const unsigned short port_no,
-		enum ldmsd_prdcr_type type, int conn_intrvl_us,
-		const char *auth,
-		uid_t uid, gid_t gid, int perm)
-{
-	struct ldmsd_prdcr *prdcr;
-	char *xprt, *host, *au;
-	struct attr_value_list *au_opts = NULL;
-	ldmsd_auth_t auth_dom = NULL;
-
-	errno = EINVAL;
-	if (!port_no)
-		goto err_0;
-
-	xprt = strdup(xprt_name);
-	if (!xprt)
-		goto err_0;
-
-	host = strdup(host_name);
-	if (!host)
-		goto err_1;
-
-	if (!auth)
-		auth = DEFAULT_AUTH;
-	auth_dom = ldmsd_auth_find(auth);
-	if (!auth_dom)
-		goto err_2;
-
-	au = strdup(auth_dom->plugin);
-	if (!au)
-		goto err_3;
-	if (auth_dom->attrs) {
-		au_opts = av_copy(auth_dom->attrs);
-		if (!au_opts)
-			goto err_3;
-	}
-
-	ldmsd_log(LDMSD_LDEBUG,
-		  "ldmsd_prdcr_new(name %s, xprt %s, host %s, "
-		  "port %hu, type %d, intv %d\n",
-		  name, xprt_name, host_name, port_no, type, conn_intrvl_us);
-
-	prdcr = (struct ldmsd_prdcr *)
-		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_PRDCR,
-				sizeof *prdcr, ldmsd_prdcr___del,
-				uid, gid, perm);
-	if (!prdcr)
-		goto err_3;
-
-	prdcr->type = type;
-	prdcr->conn_intrvl_us = conn_intrvl_us;
-	prdcr->port_no = port_no;
-	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
-	rbt_init(&prdcr->set_tree, set_cmp);
-	prdcr->host_name = host;
-	prdcr->xprt_name = xprt;
-	/*
-	 * If auth is NULL, the default authentication method will be used
-	 * when prdcr creates the LDMS transport.
-	 * Always assign the authentication method even if it is the default
-	 * authentication method so that the failover buddy will receive
-	 * the whole information.
-	 */
-	prdcr->conn_auth = au;
-	prdcr->conn_auth_args = au_opts;
-
-	if (prdcr_resolve(host_name, port_no, &prdcr->ss, &prdcr->ss_len)) {
-		errno = EAFNOSUPPORT;
-		ldmsd_log(LDMSD_LERROR, "ldmsd_prdcr_new: %s:%u not resolved.\n",
-			host_name,(unsigned) port_no);
-		goto err_4;
-	}
-
-	prdcr->connect_ev = ev_new(prdcr_connect_type);
-	EV_DATA(prdcr->connect_ev, struct connect_data)->prdcr = prdcr;
-	prdcr->start_ev = ev_new(prdcr_start_type);
-	EV_DATA(prdcr->start_ev, struct start_data)->entity = prdcr;
-	prdcr->stop_ev = ev_new(prdcr_stop_type);
-	EV_DATA(prdcr->stop_ev, struct stop_data)->entity = prdcr;
-
-	ldmsd_prdcr_unlock(prdcr);
-
-	/* put ref from ldmsd_auth_find() */
-	ldmsd_cfgobj_put(&auth_dom->obj);
-
-	return prdcr;
-
- err_4:
-	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_put(prdcr);
- err_3:
-	if (auth_dom)
-		ldmsd_cfgobj_put(&auth_dom->obj);
-	if (au)
-		free(au);
-	if (au_opts)
-		av_free(au_opts);
- err_2:
-	free(host);
- err_1:
-	free(xprt);
- err_0:
-	return NULL;
-}
-
-ldmsd_prdcr_t
-ldmsd_prdcr_new(const char *name, const char *xprt_name,
-		const char *host_name, const unsigned short port_no,
-		enum ldmsd_prdcr_type type, int conn_intrvl_us,
-		char *auth)
-{
-	struct ldmsd_sec_ctxt sctxt;
-	ldmsd_sec_ctxt_get(&sctxt);
-	return ldmsd_prdcr_new_with_auth(name, xprt_name, host_name,
-			port_no, type, conn_intrvl_us, auth,
-			sctxt.crd.uid, sctxt.crd.gid, 0777);
-}
-
-extern struct rbt *cfgobj_trees[];
-extern pthread_mutex_t *cfgobj_locks[];
-ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
-
-int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	ldmsd_prdcr_t prdcr;
-	pthread_mutex_lock(cfgobj_locks[LDMSD_CFGOBJ_PRDCR]);
-	prdcr = (ldmsd_prdcr_t) __cfgobj_find(prdcr_name, LDMSD_CFGOBJ_PRDCR);
-	if (!prdcr) {
-		rc = ENOENT;
-		goto out_0;
-	}
-
-	ldmsd_prdcr_lock(prdcr);
-	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
-	if (rc)
-		goto out_1;
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out_1;
-	}
-	if (ldmsd_cfgobj_refcount(&prdcr->obj) > 2) {
-		rc = EBUSY;
-		goto out_1;
-	}
-
-	/* removing from the tree */
-	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR], &prdcr->obj.rbn);
-	ldmsd_prdcr_put(prdcr); /* putting down reference from the tree */
-
-	rc = 0;
-	/* let-through */
-out_1:
-	ldmsd_prdcr_unlock(prdcr);
-out_0:
-	pthread_mutex_unlock(cfgobj_locks[LDMSD_CFGOBJ_PRDCR]);
-	if (prdcr)
-		ldmsd_prdcr_put(prdcr); /* `find` reference */
-	return rc;
 }
 
 /*
@@ -725,160 +580,22 @@ int updtr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t 
 	return 0;
 }
 
-int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
-{
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED)
-		return EBUSY;
-
-	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
-
-	prdcr->obj.perm |= LDMSD_PERM_DSTART;
-
-	ev_post(producer, updater, prdcr->start_ev, NULL);
-	ev_post(producer, producer, prdcr->connect_ev, NULL);
-	return 0;
-}
-
-int ldmsd_prdcr_start(const char *name, const char *interval_str,
-		      ldmsd_sec_ctxt_t ctxt, int flags)
-{
-	int rc = 0;
-	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(name);
-	if (!prdcr)
-		return ENOENT;
-	ldmsd_prdcr_lock(prdcr);
-	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
-	if (rc)
-		goto out;
-	if (interval_str)
-		prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
-	if (flags & LDMSD_PERM_DSTART)
-		prdcr->obj.perm |= LDMSD_PERM_DSTART;
-	else
-		rc = __ldmsd_prdcr_start(prdcr, ctxt);
-out:
-	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_put(prdcr);
-	return rc;
-}
-
-int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc;
-	ldmsd_prdcr_lock(prdcr);
-	rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
-	if (rc)
-		goto out;
-	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
-		rc = 0; /* already stopped,
-			 * return 0 so that caller knows
-			 * stop succeeds. */
-		goto out;
-	}
-	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPING) {
-		rc = EBUSY;
-		goto out;
-	}
-	if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
-		prdcr_reset_sets(prdcr);
-	prdcr->obj.perm &= ~LDMSD_PERM_DSTART;
-	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPING;
-	if (prdcr->xprt)
-		ldms_xprt_close(prdcr->xprt);
-	ldmsd_prdcr_unlock(prdcr);
-	ldmsd_prdcr_lock(prdcr);
-	if (!prdcr->xprt)
-		prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
-	ev_post(producer, updater, prdcr->stop_ev, NULL);
-out:
-	ldmsd_prdcr_unlock(prdcr);
-	return rc;
-}
-
-int ldmsd_prdcr_stop(const char *name, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	ldmsd_prdcr_t prdcr = ldmsd_prdcr_find(name);
-	if (!prdcr)
-		return ENOENT;
-	rc = __ldmsd_prdcr_stop(prdcr, ctxt);
-	ldmsd_prdcr_put(prdcr);
-	return rc;
-}
-
 int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
 {
-	ldmsd_prdcr_stream_t s = calloc(1, sizeof *s);
+	ldmsd_str_ent_t s = calloc(1, sizeof *s);
 	if (!s)
 		goto err;
-	s->name = strdup(stream);
-	if (!s->name)
+	s->str = strdup(stream);
+	if (!s->str)
 		goto err;
 	ldmsd_prdcr_lock(prdcr);
-	LIST_INSERT_HEAD(&prdcr->stream_list, s, entry);
+	LIST_INSERT_HEAD(prdcr->stream_list, s, entry);
 	ldmsd_prdcr_unlock(prdcr);
 	return 0;
  err:
 	if (s)
 		free(s);
 	return ENOMEM;
-}
-
-int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
-			    char *rep_buf, size_t rep_len,
-			    ldmsd_sec_ctxt_t ctxt, int flags)
-{
-	regex_t regex;
-	ldmsd_prdcr_t prdcr;
-	int rc;
-
-	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
-	if (rc)
-		return rc;
-
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		ldmsd_prdcr_lock(prdcr);
-		rc = ldmsd_cfgobj_access_check(&prdcr->obj, 0222, ctxt);
-		if (rc)
-			goto next;
-		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
-		if (rc)
-			goto next;
-		if (interval_str)
-			prdcr->conn_intrvl_us = strtol(interval_str, NULL, 0);
-		if (flags & LDMSD_PERM_DSTART)
-			prdcr->obj.perm |= LDMSD_PERM_DSTART;
-		else
-			__ldmsd_prdcr_start(prdcr, ctxt);
-	next:
-		ldmsd_prdcr_unlock(prdcr);
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	regfree(&regex);
-	return 0;
-}
-
-int ldmsd_prdcr_stop_regex(const char *prdcr_regex, char *rep_buf,
-			   size_t rep_len, ldmsd_sec_ctxt_t ctxt)
-{
-	regex_t regex;
-	ldmsd_prdcr_t prdcr;
-	int rc;
-
-	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
-	if (rc)
-		return rc;
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
-		if (rc)
-			continue;
-		__ldmsd_prdcr_stop(prdcr, ctxt);
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	regfree(&regex);
-	return 0;
 }
 
 /**
@@ -921,7 +638,7 @@ ldmsd_prdcr_set_t ldmsd_prdcr_set_find(ldmsd_prdcr_t prdcr, const char *setname)
 }
 
 /* Must be called with strgp lock held. */
-void ldmsd_prdcr_update(ldmsd_strgp_t strgp)
+void ldmsd_prdcr_strgp_update(ldmsd_strgp_t strgp)
 {
 	/*
 	 * For each producer with a name that matches the storage
@@ -932,7 +649,7 @@ void ldmsd_prdcr_update(ldmsd_strgp_t strgp)
 	ldmsd_prdcr_t prdcr;
 	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
 		int rc;
-		ldmsd_name_match_t match = ldmsd_strgp_prdcr_first(strgp);
+		ldmsd_regex_ent_t match = ldmsd_strgp_prdcr_first(strgp);
 		for (rc = 0; match; match = ldmsd_strgp_prdcr_next(match)) {
 			rc = regexec(&match->regex, prdcr->obj.name, 0, NULL, 0);
 			if (!rc)
@@ -988,3 +705,668 @@ int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, char *stream_name,
 	return 0;
 }
 
+static int ldmsd_prdcr_enable(ldmsd_cfgobj_t obj)
+{
+	ldmsd_prdcr_t prdcr = (ldmsd_prdcr_t)obj;
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_STOPPED)
+		return EBUSY;
+
+	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+
+	prdcr->obj.perm |= LDMSD_PERM_DSTART; /* TODO: Remove this? */
+
+	ev_post(producer, updater, prdcr->start_ev, NULL);
+	ev_post(producer, producer, prdcr->connect_ev, NULL);
+	return 0;
+}
+
+static int ldmsd_prdcr_disable(ldmsd_cfgobj_t obj)
+{
+	int rc;
+	ldmsd_prdcr_t prdcr = (ldmsd_prdcr_t)obj;
+	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
+		rc = 0; /* already stopped,
+			 * return 0 so that caller knows
+			 * stop succeeds. */
+		goto out;
+	}
+	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPING) {
+		rc = EBUSY;
+		goto out;
+	}
+	if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
+		prdcr_reset_sets(prdcr);
+	prdcr->obj.perm &= ~LDMSD_PERM_DSTART;
+	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPING;
+	if (prdcr->xprt)
+		ldms_xprt_close(prdcr->xprt);
+	ldmsd_prdcr_unlock(prdcr);
+	ldmsd_prdcr_lock(prdcr);
+	if (!prdcr->xprt)
+		prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+	ev_post(producer, updater, prdcr->stop_ev, NULL);
+out:
+	ldmsd_prdcr_unlock(prdcr);
+	return rc;
+}
+
+static int
+__prdcr_auth_attr(json_entity_t value, json_entity_t auth, char **_auth, ldmsd_req_buf_t buf)
+{
+	int rc;
+	ldmsd_auth_t auth_domain;
+	if (!auth) {
+		*_auth = NULL;
+	} else {
+		if (JSON_STRING_VALUE != json_entity_type(auth)) {
+			value = json_dict_build(value, JSON_STRING_VALUE, "auth",
+						"'auth' is not a JSON string.", -1);
+			if (!value)
+				return ENOMEM;
+			return EINVAL;
+		}
+
+		*_auth = strdup(json_value_str(auth)->str);
+		if (!*_auth)
+			return ENOMEM;
+		auth_domain = ldmsd_auth_find(*_auth);
+		if (!auth_domain) {
+			free(*_auth);
+			rc = ldmsd_req_buf_append(buf, "Auth '%s' not found.", *_auth);
+			if (rc)
+				return ENOMEM;
+			value = json_dict_build(value, JSON_STRING_VALUE, "auth", buf->buf, -1);
+			if (!value)
+				return ENOMEM;
+			return EINVAL;
+		} else {
+			/*
+			 * Do not put back the reference because the auth domain
+			 * will be referred by the prdcr anyway.
+			 */
+		}
+	}
+	return 0;
+}
+
+static int
+__prdcr_port_attr(json_entity_t value, json_entity_t port, short *_port,
+							ldmsd_req_buf_t buf)
+{
+	int rc;
+	char *port_s;
+	if (!port) {
+		*_port = LDMSD_ATTR_NA;
+	} else {
+		if (JSON_STRING_VALUE == json_entity_type(port)) {
+			port_s = json_value_str(port)->str;
+			*_port = atoi(port_s);
+		} else if (JSON_INT_VALUE == json_entity_type(port)) {
+			*_port = (int)json_value_int(port);
+		} else {
+			value = json_dict_build(value, JSON_STRING_VALUE,
+				"'port' is neither a string or an integer.", -1);
+			if (!value)
+				return ENOMEM;
+			return EINVAL;
+		}
+
+		if (*_port < 1 || *_port > USHRT_MAX) {
+			rc = ldmsd_req_buf_append(buf,
+					"port '%s' is invalid", port_s);
+			if (rc < 0)
+				return ENOMEM;
+			value = json_dict_build(value, JSON_STRING_VALUE, "port", buf->buf, -1);
+			if (!value)
+				return ENOMEM;
+			*_port = 0;
+			return EINVAL;
+		}
+	}
+	return 0;
+}
+
+static int __prdcr_type_attr(json_entity_t value, json_entity_t type,
+		enum ldmsd_prdcr_type *_type, ldmsd_req_buf_t buf)
+{
+	char *type_s;
+	int rc;
+	if (!type) {
+		*_type = LDMSD_ATTR_NA;
+	} else {
+		if (JSON_STRING_VALUE != json_entity_type(type)) {
+			value = json_dict_build(value, JSON_STRING_VALUE, "type",
+						"'type' is not a JSON string.", -1);
+			if (!value)
+				return ENOMEM;
+			return EINVAL;
+		}
+		type_s = json_value_str(type)->str;
+		*_type = ldmsd_prdcr_str2type(type_s);
+		if ((int)*_type < 0) {
+			rc = ldmsd_req_buf_append(buf, "type '%s' is invalid.", type_s);
+			if (rc < 0)
+				return ENOMEM;
+			value = json_dict_build(value, JSON_STRING_VALUE, "type",
+									buf->buf, -1);
+			if (!value)
+				return ENOMEM;
+			return EINVAL;
+		}
+		if (*_type == LDMSD_PRDCR_TYPE_LOCAL) {
+			value = json_dict_build(value, JSON_STRING_VALUE, "type",
+					"type 'local' is not supported.", -1);
+			if (!value)
+				return ENOMEM;
+			return EINVAL;
+		}
+	}
+	return 0;
+}
+
+static int __prdcr_streams_attr(json_entity_t streams, json_entity_t err,
+				struct ldmsd_prdcr_stream_list **_stream_list)
+{
+	int rc;
+	struct ldmsd_prdcr_stream_list *list = NULL;
+	ldmsd_str_ent_t s;
+	json_entity_t ent;
+
+	if (!streams)
+		goto out;
+
+	list = malloc(sizeof(*list));
+	if (!list)
+		goto oom;
+	LIST_INIT(list);
+
+	for (ent = json_item_first(streams); ent; ent = json_item_next(ent)) {
+		if (JSON_STRING_VALUE != json_entity_type(ent)) {
+			err = json_dict_build(err,
+					JSON_STRING_VALUE, "producers",
+						"An element in 'streams' "
+						"is not a JSON string.",
+					-1);
+			if (!err)
+				goto oom;
+			rc = EINVAL;
+			goto err;
+		}
+
+		s = malloc(sizeof(*s));
+		if (!ent)
+			goto oom;
+		s->str = strdup(json_value_str(ent)->str);
+		if (!s->str) {
+			free(s);
+			goto oom;
+		}
+		LIST_INSERT_HEAD(list, s, entry);
+	}
+
+out:
+	*_stream_list = list;
+	return 0;
+oom:
+	rc = ENOMEM;
+err:
+	if (list)
+		__prdcr_stream_list_free(list);
+	*_stream_list = NULL;
+	return rc;
+}
+
+static json_entity_t __prdcr_attr_get(json_entity_t dft, json_entity_t spc,
+				enum ldmsd_prdcr_type *_type, char **_xprt,
+				char **_host, short *_port,
+				long *_interval_us, char **_auth,
+				struct ldmsd_prdcr_stream_list **_stream_list,
+				int *_perm)
+{
+	int rc;
+	json_entity_t xprt, host, port, interval, auth, perm, streams, type;
+	json_entity_t err = NULL;
+	ldmsd_req_buf_t buf;
+	xprt = host = port = interval = auth = streams = perm = type = NULL;
+
+	buf = ldmsd_req_buf_alloc(1024);
+	if (!buf)
+		goto oom;
+
+	err = json_entity_new(JSON_DICT_VALUE);
+	if (!err)
+		goto oom;
+
+	if (spc) {
+		xprt = json_value_find(spc, "xprt");
+		host = json_value_find(spc, "host");
+		port = json_value_find(spc, "port");
+		interval = json_value_find(spc, "interval");
+		auth = json_value_find(spc, "auth");
+		streams = json_value_find(spc, "streams");
+		perm = json_value_find(spc, "perm");
+		type = json_value_find(spc, "type");
+	}
+
+	if (dft) {
+		if (!xprt)
+			xprt = json_value_find(dft, "xprt");
+		if (!host)
+			host = json_value_find(dft, "host");
+		if (!port)
+			port = json_value_find(dft, "port");
+		if (!interval)
+			interval = json_value_find(dft, "interval");
+		if (!auth)
+			auth = json_value_find(dft, "auth");
+		if (!streams)
+			streams = json_value_find(dft, "stream");
+		if (!perm)
+			perm = json_value_find(dft, "perm");
+		if (!type)
+			type = json_value_find(dft, "type");
+	}
+
+	/* streams */
+	rc = __prdcr_streams_attr(streams, err, _stream_list);
+	if (rc) {
+		if (ENOMEM == rc)
+			goto oom;
+	}
+
+	/* type */
+	rc = __prdcr_type_attr(err, type, _type, buf);
+	if (rc) {
+		if (ENOMEM == rc)
+			goto oom;
+	}
+
+	/* xprt */
+	if (xprt) {
+		*_xprt = strdup(json_value_str(xprt)->str);
+		if (!*_xprt)
+			goto oom;
+	} else {
+		*_xprt = NULL;
+	}
+
+	/* re-connect interval */
+	if (!interval) {
+		*_interval_us = LDMSD_ATTR_NA;
+	} else {
+		if (JSON_STRING_VALUE == json_entity_type(interval)) {
+			*_interval_us = ldmsd_time_str2us(json_value_str(interval)->str);
+		} else if (JSON_INT_VALUE == json_entity_type(interval)) {
+			*_interval_us = json_value_int(interval);
+		} else {
+			err = json_dict_build(err, JSON_STRING_VALUE, "interval",
+					"'interval' is neither a string or an integer.", -1);
+			if (!err)
+				goto oom;
+		}
+	}
+
+	/* authentication */
+	rc = __prdcr_auth_attr(err, auth, _auth, buf);
+	if (rc) {
+		if (ENOMEM == rc)
+			goto oom;
+	}
+
+	/* permission */
+	if (perm) {
+		if (JSON_STRING_VALUE != json_entity_type(perm)) {
+			err = json_dict_build(err, JSON_STRING_VALUE,
+						"'perm' is not a string.", -1);
+			if (!err)
+				goto oom;
+		} else {
+			*_perm = strtol(json_value_str(perm)->str, NULL, 0);
+		}
+	} else {
+		*_perm = LDMSD_ATTR_NA;
+	}
+
+	/* host */
+	if (host) {
+		if (JSON_STRING_VALUE != json_entity_type(host)) {
+			err = json_dict_build(err, JSON_STRING_VALUE,
+						"'host' is not a string.", -1);
+			if (!err)
+				goto oom;
+		} else {
+			*_host = strdup(json_value_str(host)->str);
+			if (!*_host)
+				goto oom;
+		}
+	} else {
+		*_host = NULL;
+	}
+
+	/* port */
+	rc = __prdcr_port_attr(err, port, _port, buf);
+	if (rc) {
+		if (ENOMEM == rc)
+			goto oom;
+	}
+
+	if (buf)
+		ldmsd_req_buf_free(buf);
+
+	if (!json_attr_count(err)) {
+		/* no errors */
+		json_entity_free(err);
+		err = NULL;
+	}
+	return err;
+
+oom:
+	errno = ENOMEM;
+	if (buf)
+		ldmsd_req_buf_free(buf);
+	if (err)
+		json_entity_free(err);
+	return NULL;
+}
+
+json_entity_t __prdcr_export_config(ldmsd_prdcr_t prdcr)
+{
+	json_entity_t query, stream_list, s, a;
+	ldmsd_str_ent_t stream;
+
+	query =ldmsd_cfgobj_query_result_new(&prdcr->obj);
+	if (!query)
+		goto oom;
+
+	query = json_dict_build(query,
+			JSON_INT_VALUE, "port", prdcr->port_no,
+			JSON_STRING_VALUE, "host", prdcr->host_name,
+			JSON_STRING_VALUE, "xprt", prdcr->xprt_name,
+			JSON_STRING_VALUE, "type", ldmsd_prdcr_type2str(prdcr->type),
+			JSON_INT_VALUE, "interval", prdcr->conn_intrvl_us,
+			JSON_STRING_VALUE, "auth", prdcr->conn_auth,
+			-1);
+	if (!query)
+		goto oom;
+
+	stream_list = json_entity_new(JSON_LIST_VALUE);
+	if (!stream_list)
+		goto oom;
+	LIST_FOREACH(stream, prdcr->stream_list, entry) {
+		s = json_entity_new(JSON_STRING_VALUE, stream->str);
+		if (!s)
+			goto oom;
+		json_item_add(stream_list, s);
+	}
+	a = json_entity_new(JSON_ATTR_VALUE, "streams", stream_list);
+	if (!a)
+		goto oom;
+	json_attr_add(query, a);
+	return query;
+oom:
+	if (query)
+		json_entity_free(query);
+	if (!stream_list)
+		json_entity_free(stream_list);
+	return NULL;
+}
+
+json_entity_t ldmsd_prdcr_query(ldmsd_cfgobj_t obj)
+{
+	json_entity_t query;
+	ldmsd_prdcr_t prdcr = (ldmsd_prdcr_t)obj;
+
+	query = __prdcr_export_config(prdcr);
+	if (!query)
+		goto oom;
+	query = json_dict_build(query, JSON_STRING_VALUE, "state",
+			ldmsd_prdcr_state2str(prdcr->conn_state),
+			-1);
+	if (!query)
+		goto oom;
+	return ldmsd_result_new(0, NULL, query);
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	return NULL;
+}
+
+json_entity_t ldmsd_prdcr_export(ldmsd_cfgobj_t obj)
+{
+	json_entity_t query;
+	ldmsd_prdcr_t prdcr = (ldmsd_prdcr_t)obj;
+	query = __prdcr_export_config(prdcr);
+	if (!query)
+		goto oom;
+	return ldmsd_result_new(0, NULL, query);
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	return NULL;
+}
+
+json_entity_t ldmsd_prdcr_update(ldmsd_cfgobj_t obj, short enabled,
+				json_entity_t dft, json_entity_t spc)
+{
+	char *xprt, *host, *auth;
+	short port;
+	int perm;
+	long interval;
+	struct ldmsd_prdcr_stream_list *stream_list;
+	enum ldmsd_prdcr_type type;
+	json_entity_t err;
+	ldmsd_prdcr_t prdcr = (ldmsd_prdcr_t)obj;
+
+	if (obj->enabled && enabled)
+		return ldmsd_result_new(EBUSY, NULL, NULL);
+
+	err = __prdcr_attr_get(dft, spc, &type, &xprt, &host, &port,
+				&interval, &auth, &stream_list, &perm);
+	if (!err) {
+		if (ENOMEM == errno)
+			goto oom;
+	} else {
+		return ldmsd_result_new(EINVAL, NULL, err);
+	}
+	if (LDMSD_ATTR_NA != type) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "type",
+					"'type' cannot be changed.", -1);
+		if (!err)
+			goto oom;
+	}
+	if (xprt) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "xprt",
+					"'xprt' cannot be changed.", -1);
+		if (!err)
+			goto oom;
+	}
+
+	if (host) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "host",
+					"'host' cannot be changed.", -1);
+		if (!err)
+			goto oom;
+	}
+	if (LDMSD_ATTR_NA != port) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "port",
+				"'port' cannot be changed.", -1);
+		if (!err)
+			goto oom;
+	}
+	if (auth) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "auth",
+				"'auth' cannot be changed.", -1);
+		if (!err)
+			goto oom;
+	}
+	if (LDMSD_ATTR_NA != perm) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "permission",
+				"'permission' cannot be changed.", -1);
+		if (!err)
+			goto oom;
+	}
+
+	if (err)
+		return ldmsd_result_new(EINVAL, 0, err);
+
+	/* Only the re-connect interval can be changed */
+	if (LDMSD_ATTR_NA != interval)
+		prdcr->conn_intrvl_us = interval;
+
+	if (stream_list) {
+		__prdcr_stream_list_free(prdcr->stream_list);
+		prdcr->stream_list = stream_list;
+	}
+
+	obj->enabled = ((0 <= enabled)?enabled:obj->enabled);
+	return ldmsd_result_new(0, NULL, NULL);
+oom:
+	errno = ENOMEM;
+	return NULL;
+}
+
+json_entity_t ldmsd_prdcr_create(const char *name, short enabled, json_entity_t dft,
+					json_entity_t spc, uid_t uid, gid_t gid)
+{
+	char *xprt, *host, *auth;
+	short port;
+	int perm;
+	long interval_us;
+	struct ldmsd_prdcr_stream_list *stream_list;
+	enum ldmsd_prdcr_type type;
+	ldmsd_prdcr_t prdcr;
+	json_entity_t err;
+	int rc;
+
+	xprt = host = auth = NULL;
+	err = __prdcr_attr_get(dft, spc, &type, &xprt, &host, &port,
+					&interval_us, &auth, &stream_list, &perm);
+	if (!err) {
+		if (ENOMEM == errno)
+			goto oom;
+	} else {
+		/* There is at least one invalid attribute. */
+		return ldmsd_result_new(EINVAL, NULL, err);
+	}
+	if (!xprt) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "xprt",
+					"'xprt' is missing.", -1);
+		if (!err)
+			goto oom;
+	}
+	if (!host) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "host",
+					"'host' is missing.", -1);
+		if (!err)
+			goto oom;
+	}
+	if (LDMSD_ATTR_NA == port) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "port",
+					"'port' is missing.", -1);
+		if (!err)
+			goto oom;
+	}
+	if (LDMSD_ATTR_NA == interval_us) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "interval",
+					"'interval' is missing.", -1);
+		if (!err)
+			goto oom;
+	}
+	if (!auth) {
+		/*
+		 * Set the authentication method to the default authentication method.
+		 */
+		auth = strdup(ldmsd_global_auth_name_get());
+		if (!auth)
+			goto oom;
+	}
+	if (LDMSD_ATTR_NA == type) {
+		/* The type wasn't given, so set it to 'active'. */
+		type = LDMSD_PRDCR_TYPE_ACTIVE;
+	}
+	if (LDMSD_ATTR_NA == perm) {
+		/* The permission wasn't given, so set it to 0770 */
+		perm = 0770;
+	}
+	if (err)
+		return ldmsd_result_new(EINVAL, 0, err);
+
+	/* All attributes are valid, so create the cfgobj */
+
+	ldmsd_log(LDMSD_LDEBUG,
+		  "ldmsd_prdcr_new(name %s, xprt %s, host %s, "
+		  "port %hu, type %u, intv %lu\n",
+		  name, xprt, host, port, type, interval_us);
+
+	prdcr = (struct ldmsd_prdcr *)
+		ldmsd_cfgobj_new(name, LDMSD_CFGOBJ_PRDCR,
+				sizeof *prdcr, ldmsd_prdcr___del,
+				ldmsd_prdcr_update,
+				ldmsd_cfgobj_delete,
+				ldmsd_prdcr_query,
+				ldmsd_prdcr_export,
+				ldmsd_prdcr_enable,
+				ldmsd_prdcr_disable,
+				uid, gid, perm, enabled);
+	if (!prdcr)
+		goto oom;
+
+	prdcr->type = type;
+	prdcr->conn_intrvl_us = interval_us;
+	prdcr->port_no = port;
+	prdcr->conn_state = LDMSD_PRDCR_STATE_STOPPED;
+	rbt_init(&prdcr->set_tree, set_cmp);
+	prdcr->host_name = host;
+	prdcr->xprt_name = xprt;
+	prdcr->conn_auth = auth;
+	if (!stream_list) {
+		prdcr->stream_list = malloc(sizeof(*prdcr->stream_list));
+		if (!prdcr->stream_list)
+			goto oom;
+		LIST_INIT(prdcr->stream_list);
+	} else {
+		prdcr->stream_list = stream_list;
+	}
+
+	if (prdcr_resolve(prdcr->host_name, prdcr->port_no, &prdcr->ss, &prdcr->ss_len)) {
+		ldmsd_req_buf_t buf = ldmsd_req_buf_alloc(512);
+		if (!buf)
+			goto oom;
+		rc = ldmsd_req_buf_append(buf, "ldmsd_prdcr_new: %s:%u not resolved.\n",
+							prdcr->host_name,
+							(unsigned) prdcr->port_no);
+		err = json_dict_build(err, JSON_STRING_VALUE, "host:port",
+								buf->buf, -1);
+		ldmsd_req_buf_free(buf);
+		if (!err)
+			goto oom;
+		goto err;
+	}
+
+	prdcr->connect_ev = ev_new(prdcr_connect_type);
+	EV_DATA(prdcr->connect_ev, struct connect_data)->prdcr = prdcr;
+	prdcr->start_ev = ev_new(prdcr_start_type);
+	EV_DATA(prdcr->start_ev, struct start_data)->entity = prdcr;
+	prdcr->stop_ev = ev_new(prdcr_stop_type);
+	EV_DATA(prdcr->stop_ev, struct stop_data)->entity = prdcr;
+
+	ldmsd_prdcr_unlock(prdcr);
+
+	return ldmsd_result_new(0, NULL, NULL);
+oom:
+	if (err)
+		json_entity_free(err);
+	err = NULL;
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	rc = ENOMEM;
+err:
+	if (xprt)
+		free(xprt);
+	if (host)
+		free(host);
+	if (auth)
+		free(auth);
+	if (prdcr) {
+		ldmsd_prdcr_unlock(prdcr);
+		ldmsd_prdcr_put(prdcr);
+	}
+	return ldmsd_result_new(rc, NULL, err);
+}

@@ -59,9 +59,37 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plugin.h"
+#include "ldmsd_request.h"
 #include "ldmsd_store.h"
 #include "ldms_xprt.h"
 #include "config.h"
+
+void __strgp_prdcr_list_free(struct ldmsd_strgp_prdcr_list *list)
+{
+	ldmsd_regex_ent_t match;
+	while (!LIST_EMPTY(list)) {
+		match = LIST_FIRST(list);
+		if (match->regex_str)
+			free(match->regex_str);
+		regfree(&match->regex);
+		LIST_REMOVE(match, entry);
+		free(match);
+	}
+	free(list);
+}
+
+void __strgp_metric_list_free(struct ldmsd_strgp_metric_list *list)
+{
+	struct ldmsd_strgp_metric *metric;
+	while (!TAILQ_EMPTY(list) ) {
+		metric = TAILQ_FIRST(list);
+		if (metric->name)
+			free(metric->name);
+		TAILQ_REMOVE(list, metric, entry);
+		free(metric);
+	}
+	free(list);
+}
 
 void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 {
@@ -71,24 +99,8 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 		free(strgp->schema);
 	if (strgp->metric_arry)
 		free(strgp->metric_arry);
-
-	struct ldmsd_strgp_metric *metric;
-	while (!TAILQ_EMPTY(&strgp->metric_list) ) {
-		metric = TAILQ_FIRST(&strgp->metric_list);
-		if (metric->name)
-			free(metric->name);
-		TAILQ_REMOVE(&strgp->metric_list, metric, entry);
-		free(metric);
-	}
-	ldmsd_name_match_t match;
-	while (!LIST_EMPTY(&strgp->prdcr_list)) {
-		match = LIST_FIRST(&strgp->prdcr_list);
-		if (match->regex_str)
-			free(match->regex_str);
-		regfree(&match->regex);
-		LIST_REMOVE(match, entry);
-		free(match);
-	}
+	__strgp_metric_list_free(strgp->metric_list);
+	__strgp_prdcr_list_free(strgp->prdcr_list);
 	if (strgp->inst)
 		ldmsd_plugin_inst_put(strgp->inst);
 	ldmsd_cfgobj___del(obj);
@@ -110,70 +122,6 @@ int store_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 	return 0;
 }
 
-ldmsd_strgp_t
-ldmsd_strgp_new_with_auth(const char *name, uid_t uid, gid_t gid, int perm)
-{
-	struct ldmsd_strgp *strgp;
-
-	ev_worker_t worker;
-	ev_t start_ev, stop_ev;
-	char worker_name[PATH_MAX];
-
-	snprintf(worker_name, PATH_MAX, "strgp:%s", name);
-	worker = ev_worker_new(worker_name, store_actor);
-	if (!worker) {
-		ldmsd_log(LDMSD_LERROR,
-			  "%s: error %d creating new worker %s\n",
-			  __func__, errno, worker_name);
-		return NULL;
-	}
-
-	start_ev = ev_new(strgp_start_type);
-	if (!start_ev) {
-		ldmsd_log(LDMSD_LERROR,
-			  "%s: error %d creating %s event\n",
-			  __func__, errno, ev_type_name(strgp_start_type));
-		return NULL;
-	}
-
-	stop_ev = ev_new(strgp_stop_type);
-	if (!stop_ev) {
-		ldmsd_log(LDMSD_LERROR,
-			  "%s: error %d creating %s event\n",
-			  __func__, errno, ev_type_name(strgp_stop_type));
-		return NULL;
-	}
-
-	strgp = (struct ldmsd_strgp *)
-		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_STRGP,
-				 sizeof *strgp, ldmsd_strgp___del,
-				 uid, gid, perm);
-	if (!strgp)
-		return NULL;
-
-	strgp->state = LDMSD_STRGP_STATE_STOPPED;
-	strgp->update_fn = strgp_update_fn;
-	LIST_INIT(&strgp->prdcr_list);
-	TAILQ_INIT(&strgp->metric_list);
-
-	strgp->worker = worker;
-	strgp->start_ev = start_ev;
-	strgp->stop_ev = stop_ev;
-	EV_DATA(strgp->start_ev, struct start_data)->entity = strgp;
-	EV_DATA(strgp->stop_ev, struct start_data)->entity = strgp;
-
-	ldmsd_cfgobj_unlock(&strgp->obj);
-	return strgp;
-}
-
-ldmsd_strgp_t
-ldmsd_strgp_new(const char *name)
-{
-	struct ldmsd_sec_ctxt sctxt;
-	ldmsd_sec_ctxt_get(&sctxt);
-	return ldmsd_strgp_new_with_auth(name, sctxt.crd.uid, sctxt.crd.gid, 0777);
-}
-
 ldmsd_strgp_t ldmsd_strgp_first()
 {
 	return (ldmsd_strgp_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_STRGP);
@@ -186,7 +134,9 @@ ldmsd_strgp_t ldmsd_strgp_next(struct ldmsd_strgp *strgp)
 
 ldmsd_strgp_metric_t ldmsd_strgp_metric_first(ldmsd_strgp_t strgp)
 {
-	return TAILQ_FIRST(&strgp->metric_list);
+	if (!strgp->metric_list)
+		return NULL;
+	return TAILQ_FIRST(strgp->metric_list);
 }
 
 ldmsd_strgp_metric_t ldmsd_strgp_metric_next(ldmsd_strgp_metric_t metric)
@@ -194,12 +144,14 @@ ldmsd_strgp_metric_t ldmsd_strgp_metric_next(ldmsd_strgp_metric_t metric)
 	return TAILQ_NEXT(metric, entry);
 }
 
-ldmsd_name_match_t ldmsd_strgp_prdcr_first(ldmsd_strgp_t strgp)
+ldmsd_regex_ent_t ldmsd_strgp_prdcr_first(ldmsd_strgp_t strgp)
 {
-	return LIST_FIRST(&strgp->prdcr_list);
+	if (!strgp->prdcr_list)
+		return NULL;
+	return LIST_FIRST(strgp->prdcr_list);
 }
 
-ldmsd_name_match_t ldmsd_strgp_prdcr_next(ldmsd_name_match_t match)
+ldmsd_regex_ent_t ldmsd_strgp_prdcr_next(ldmsd_regex_ent_t match)
 {
 	return LIST_NEXT(match, entry);
 }
@@ -227,94 +179,20 @@ time_t convert_rotate_str(const char *rotate)
 	return 0;
 }
 
-ldmsd_name_match_t strgp_find_prdcr_ex(ldmsd_strgp_t strgp, const char *ex)
+ldmsd_regex_ent_t strgp_find_prdcr_ex(ldmsd_strgp_t strgp, const char *ex)
 {
-	ldmsd_name_match_t match;
-	LIST_FOREACH(match, &strgp->prdcr_list, entry) {
+	ldmsd_regex_ent_t match;
+	LIST_FOREACH(match, strgp->prdcr_list, entry) {
 		if (0 == strcmp(match->regex_str, ex))
 			return match;
 	}
 	return NULL;
 }
 
-int ldmsd_strgp_prdcr_add(const char *strgp_name, const char *regex_str,
-			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
-	if (!strgp)
-		return ENOENT;
-
-	ldmsd_strgp_lock(strgp);
-	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
-	if (rc)
-		goto out_1;
-	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out_1;
-	}
-	ldmsd_name_match_t match = calloc(1, sizeof *match);
-	if (!match) {
-		rc = ENOMEM;
-		goto out_1;
-	}
-	match->regex_str = strdup(regex_str);
-	if (!match->regex_str) {
-		rc = ENOMEM;
-		goto out_2;
-	}
-	rc = ldmsd_compile_regex(&match->regex, regex_str,
-					rep_buf, rep_len);
-	if (rc)
-		goto out_3;
-	match->selector = LDMSD_NAME_MATCH_INST_NAME;
-	LIST_INSERT_HEAD(&strgp->prdcr_list, match, entry);
-	goto out_1;
-out_3:
-	free(match->regex_str);
-out_2:
-	free(match);
-out_1:
-	ldmsd_strgp_unlock(strgp);
-	ldmsd_strgp_put(strgp);
-	return rc;
-}
-
-int ldmsd_strgp_prdcr_del(const char *strgp_name, const char *regex_str,
-			ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
-	if (!strgp)
-		return ENOENT;
-
-	ldmsd_strgp_lock(strgp);
-	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
-	if (rc)
-		goto out_1;
-	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out_1;
-	}
-	ldmsd_name_match_t match = strgp_find_prdcr_ex(strgp, regex_str);
-	if (!match) {
-		rc = EEXIST;
-		goto out_1;
-	}
-	LIST_REMOVE(match, entry);
-	free(match->regex_str);
-	regfree(&match->regex);
-	free(match);
-out_1:
-	ldmsd_strgp_unlock(strgp);
-	ldmsd_strgp_put(strgp);
-	return rc;
-}
-
 ldmsd_strgp_metric_t strgp_metric_find(ldmsd_strgp_t strgp, const char *name)
 {
 	ldmsd_strgp_metric_t metric;
-	TAILQ_FOREACH(metric, &strgp->metric_list, entry)
+	TAILQ_FOREACH(metric, strgp->metric_list, entry)
 		if (0 == strcmp(name, metric->name))
 			return metric;
 	return NULL;
@@ -331,68 +209,6 @@ ldmsd_strgp_metric_t strgp_metric_new(const char *metric_name)
 		}
 	}
 	return metric;
-}
-
-int ldmsd_strgp_metric_add(const char *strgp_name, const char *metric_name,
-			   ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
-	if (!strgp)
-		return ENOENT;
-
-	ldmsd_strgp_lock(strgp);
-	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
-	if (rc)
-		goto out_1;
-	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out_1;
-	}
-	ldmsd_strgp_metric_t metric = strgp_metric_find(strgp, metric_name);
-	if (metric) {
-		rc = EEXIST;
-		goto out_1;
-	}
-	metric = strgp_metric_new(metric_name);
-	if (!metric) {
-		rc = ENOMEM;
-		goto out_1;
-	}
-	TAILQ_INSERT_TAIL(&strgp->metric_list, metric, entry);
-out_1:
-	ldmsd_strgp_unlock(strgp);
-	ldmsd_strgp_put(strgp);
-	return rc;
-}
-
-int ldmsd_strgp_metric_del(const char *strgp_name, const char *metric_name,
-			   ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
-	if (!strgp)
-		return ENOENT;
-	ldmsd_strgp_lock(strgp);
-	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
-	if (rc)
-		goto out_1;
-	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out_1;
-	}
-	ldmsd_strgp_metric_t metric = strgp_metric_find(strgp, metric_name);
-	if (!metric) {
-		rc = EEXIST;
-		goto out_1;
-	}
-	TAILQ_REMOVE(&strgp->metric_list, metric, entry);
-	free(metric->name);
-	free(metric);
-out_1:
-	ldmsd_strgp_unlock(strgp);
-	ldmsd_strgp_put(strgp);
-	return rc;
 }
 
 static ldmsd_strgp_ref_t strgp_ref_new(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
@@ -438,14 +254,14 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		return ENOMEM;
 
 	rc = ENOMEM;
-	if (TAILQ_EMPTY(&strgp->metric_list)) {
+	if (TAILQ_EMPTY(strgp->metric_list)) {
 		/* No metric list was given. Add all metrics in the set */
 		for (i = 0; i < ldms_set_card_get(prd_set->set); i++) {
 			name = ldms_metric_name_get(prd_set->set, i);
 			metric = strgp_metric_new(name);
 			if (!metric)
 				goto err;
-			TAILQ_INSERT_TAIL(&strgp->metric_list, metric, entry);
+			TAILQ_INSERT_TAIL(strgp->metric_list, metric, entry);
 		}
 	}
 	rc = ENOENT;
@@ -519,14 +335,14 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
  * applies. If it does, add the storage policy to the producer set
  * and open the container if necessary.
  */
-void ldmsd_strgp_update(ldmsd_prdcr_set_t prd_set)
+void ldmsd_strgp_prdset_update(ldmsd_prdcr_set_t prd_set)
 {
 	ldmsd_strgp_t strgp;
 	int rc;
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
 	for (strgp = ldmsd_strgp_first(); strgp; strgp = ldmsd_strgp_next(strgp)) {
 		ldmsd_strgp_lock(strgp);
-		ldmsd_name_match_t match = ldmsd_strgp_prdcr_first(strgp);
+		ldmsd_regex_ent_t match = ldmsd_strgp_prdcr_first(strgp);
 		for (rc = 0; match; match = ldmsd_strgp_prdcr_next(match)) {
 			rc = regexec(&match->regex, prd_set->prdcr->obj.name, 0, NULL, 0);
 			if (!rc)
@@ -540,113 +356,6 @@ void ldmsd_strgp_update(ldmsd_prdcr_set_t prd_set)
 		ldmsd_strgp_unlock(strgp);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
-}
-
-/* Caller must hold the strgp lock. */
-int __ldmsd_strgp_start(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc;
-	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
-	if (rc)
-		return rc;
-	if (strgp->state != LDMSD_STRGP_STATE_STOPPED)
-		return EBUSY;
-	strgp->state = LDMSD_STRGP_STATE_RUNNING;
-	strgp->obj.perm |= LDMSD_PERM_DSTART;
-	/* Update all the producers of our changed state */
-	ldmsd_prdcr_update(strgp);
-	return rc;
-}
-
-int ldmsd_strgp_start(const char *name, ldmsd_sec_ctxt_t ctxt, int flags)
-{
-	int rc = 0;
-	ldmsd_strgp_t strgp = ldmsd_strgp_find(name);
-	if (!strgp)
-		return ENOENT;
-	ldmsd_strgp_lock(strgp);
-	if (flags & LDMSD_PERM_DSTART)
-		strgp->obj.perm |= LDMSD_PERM_DSTART;
-	else
-		rc = __ldmsd_strgp_start(strgp, ctxt);
-	ldmsd_strgp_unlock(strgp);
-	ldmsd_strgp_put(strgp);
-	return rc;
-}
-
-int __ldmsd_strgp_stop(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-
-	ldmsd_strgp_lock(strgp);
-	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
-	if (rc)
-		goto out;
-	if (strgp->state < LDMSD_STRGP_STATE_RUNNING) {
-		rc = EBUSY;
-		goto out;
-	}
-	if (strgp->state == LDMSD_STRGP_STATE_OPENED)
-		strgp_close(strgp);
-	strgp->state = LDMSD_STRGP_STATE_STOPPED;
-	strgp->obj.perm &= ~LDMSD_PERM_DSTART;
-	ldmsd_prdcr_update(strgp);
-out:
-	ldmsd_strgp_unlock(strgp);
-	return rc;
-}
-
-int ldmsd_strgp_stop(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	ldmsd_strgp_t strgp = ldmsd_strgp_find(strgp_name);
-	if (!strgp)
-		return ENOENT;
-	rc = __ldmsd_strgp_stop(strgp, ctxt);
-	ldmsd_strgp_put(strgp);
-	return rc;
-}
-
-extern struct rbt *cfgobj_trees[];
-extern pthread_mutex_t *cfgobj_locks[];
-ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
-
-int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	ldmsd_strgp_t strgp;
-
-	pthread_mutex_lock(cfgobj_locks[LDMSD_CFGOBJ_STRGP]);
-	strgp = (ldmsd_strgp_t)__cfgobj_find(strgp_name, LDMSD_CFGOBJ_STRGP);
-	if (!strgp) {
-		rc = ENOENT;
-		goto out_0;
-	}
-
-	ldmsd_strgp_lock(strgp);
-	rc = ldmsd_cfgobj_access_check(&strgp->obj, 0222, ctxt);
-	if (rc)
-		goto out_1;
-	if (strgp->state != LDMSD_STRGP_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out_1;
-	}
-	if (ldmsd_cfgobj_refcount(&strgp->obj) > 2) {
-		rc = EBUSY;
-		goto out_1;
-	}
-
-	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STRGP], &strgp->obj.rbn);
-	ldmsd_strgp_put(strgp); /* tree reference */
-
-	/* let through */
-out_1:
-	ldmsd_strgp_unlock(strgp);
-out_0:
-	pthread_mutex_unlock(cfgobj_locks[LDMSD_CFGOBJ_STRGP]);
-	if (strgp)
-		ldmsd_strgp_put(strgp); /* `find` reference */
-	return rc;
 }
 
 void ldmsd_strgp_close()
@@ -665,4 +374,550 @@ void ldmsd_strgp_close()
 		ldmsd_strgp_put(strgp);
 		strgp = ldmsd_strgp_next(strgp);
 	}
+}
+
+int ldmsd_strgp_enable(ldmsd_cfgobj_t obj)
+{
+	ldmsd_strgp_t strgp = (ldmsd_strgp_t)obj;
+	if (strgp->state != LDMSD_STRGP_STATE_STOPPED)
+		return EBUSY;
+	strgp->state = LDMSD_STRGP_STATE_RUNNING;
+	strgp->obj.perm |= LDMSD_PERM_DSTART; /* TODO: remove this? */
+	/* Update all the producers of our changed state */
+	ldmsd_prdcr_strgp_update(strgp);
+	return 0;
+}
+
+int ldmsd_strgp_disable(ldmsd_cfgobj_t obj)
+{
+	ldmsd_strgp_t strgp = (ldmsd_strgp_t)obj;
+	if (strgp->state < LDMSD_STRGP_STATE_RUNNING)
+		return EBUSY;
+	if (strgp->state == LDMSD_STRGP_STATE_OPENED)
+		strgp_close(strgp);
+	strgp->state = LDMSD_STRGP_STATE_STOPPED;
+	strgp->obj.perm &= ~LDMSD_PERM_DSTART; /* TODO remove this? */
+	ldmsd_prdcr_strgp_update(strgp);
+	return 0;
+}
+
+static int __strgp_producers_attr(json_entity_t prdcrs, json_entity_t err,
+				struct ldmsd_strgp_prdcr_list **_prdcr_list)
+{
+	int rc;
+	json_entity_t p;
+	struct ldmsd_strgp_prdcr_list *list = NULL;
+	ldmsd_regex_ent_t match;
+	ldmsd_req_buf_t buf = NULL;
+
+	if (!prdcrs)
+		goto out;
+
+	list = malloc(sizeof(*list));
+	if (!list)
+		goto oom;
+	LIST_INIT(list);
+
+	buf = ldmsd_req_buf_alloc(1024);
+	if (!buf)
+		goto oom;
+
+	for (p = json_item_first(prdcrs); p; p = json_item_next(p)) {
+		if (JSON_STRING_VALUE != json_entity_type(p)) {
+			err = json_dict_build(err,
+					JSON_STRING_VALUE, "producers",
+						"An element in 'producers' "
+						"is not a JSON string.",
+					-1);
+			if (!err)
+				goto oom;
+			rc = EINVAL;
+			goto err;
+		}
+		match = malloc(sizeof(*match));
+		if (!match)
+			goto oom;
+		match->regex_str = strdup(json_value_str(p)->str);
+		if (!match->regex_str) {
+			free(match);
+			goto oom;
+		}
+
+		rc = ldmsd_compile_regex(&match->regex, match->regex_str,
+							buf->buf, buf->len);
+		if (rc) {
+			err = json_dict_build(err, JSON_STRING_VALUE, "producers",
+								buf->buf, -1);
+			if (!err) {
+				free(match->regex_str);
+				free(match);
+				goto oom;
+			}
+		}
+		LIST_INSERT_HEAD(list, match, entry);
+	}
+
+	ldmsd_req_buf_free(buf);
+out:
+	*_prdcr_list = list;
+	return 0;
+oom:
+	rc = ENOMEM;
+err:
+	if (list)
+		__strgp_prdcr_list_free(list);
+	if (buf)
+		ldmsd_req_buf_free(buf);
+	*_prdcr_list = NULL;
+	return rc;
+}
+
+static int __strgp_metrics_attr(json_entity_t metrics, json_entity_t err,
+				struct ldmsd_strgp_metric_list **_metric_list)
+{
+	json_entity_t m;
+	struct ldmsd_strgp_metric_list *list = NULL;
+	struct ldmsd_strgp_metric *metric;
+
+	if (!metrics)
+		goto out;
+
+	list = malloc(sizeof(*list));
+	if (!list)
+		goto oom;
+	TAILQ_INIT(list);
+
+	for (m = json_item_first(metrics); m; m = json_item_next(m)) {
+		if (JSON_STRING_VALUE != json_entity_type(m)) {
+			err = json_dict_build(err,
+					JSON_STRING_VALUE, "metrics",
+						"An element in 'metrics' "
+						"is not a JSON string.",
+					-1);
+			if (!err)
+				goto oom;
+			break;
+		}
+		metric = strgp_metric_new(json_value_str(m)->str);
+		if (!metric) {
+			free(list);
+			goto oom;
+		}
+		TAILQ_INSERT_TAIL(list, metric, entry);
+	}
+out:
+	*_metric_list = list;
+	return 0;
+oom:
+	if (list)
+		__strgp_metric_list_free(list);
+	return ENOMEM;
+}
+
+static json_entity_t __strgp_attr_get(json_entity_t dft, json_entity_t spc,
+				ldmsd_plugin_inst_t *_inst, char **_schema, int *_perm,
+				struct ldmsd_strgp_prdcr_list **_prdcr_list,
+				struct ldmsd_strgp_metric_list **_metric_list)
+{
+	int rc;
+	char *s;
+	json_entity_t err = NULL;
+	ldmsd_plugin_inst_t inst;
+	ldmsd_req_buf_t buf;
+	json_entity_t container, schema, perm, prdcrs, metrics;
+	container = schema = perm = prdcrs = metrics = NULL;
+
+	buf = ldmsd_req_buf_alloc(1024);
+	if (!buf)
+		goto oom;
+
+	err = json_entity_new(JSON_DICT_VALUE);
+	if (!err)
+		goto oom;
+
+	if (spc) {
+		container = json_value_find(spc, "container");
+		schema = json_value_find(spc, "schema");
+		perm = json_value_find(spc, "perm");
+		prdcrs = json_value_find(spc, "producer_filters");
+		metrics = json_value_find(spc, "metrics");
+	}
+
+	if (dft) {
+		if (!container)
+			container = json_value_find(dft, "container");
+		if (!schema)
+			schema = json_value_find(dft, "schema");
+		if (!perm)
+			perm = json_value_find(dft, "perm");
+		if (!prdcrs)
+			prdcrs = json_value_find(dft, "producer_filters");
+		if (!metrics)
+			metrics = json_value_find(dft, "metrics");
+	}
+
+	/* schema */
+	if (schema) {
+		if (JSON_STRING_VALUE != json_entity_type(schema)) {
+			err = json_dict_build(err, JSON_STRING_VALUE,
+					"'schema' is not a JSON string.", -1);
+			if (!err)
+				goto oom;
+		} else {
+			*_schema = strdup(json_value_str(schema)->str);
+			if (!*_schema)
+				goto oom;
+		}
+	} else {
+		*_schema = NULL;
+	}
+
+	/* perm */
+	if (perm) {
+		if (JSON_STRING_VALUE != json_entity_type(perm)) {
+			err = json_dict_build(err, JSON_STRING_VALUE,
+					"'perm' is not a JSON string.", -1);
+			if (!err)
+				goto oom;
+		} else {
+			*_perm = strtol(json_value_str(perm)->str, NULL, 0);
+		}
+	} else {
+		*_perm  = LDMSD_ATTR_NA;
+	}
+
+	/* container */
+	if (container) {
+		if (JSON_STRING_VALUE != json_entity_type(container)) {
+			err = json_dict_build(err, JSON_STRING_VALUE, "container",
+					"'container' is not a JSON string.", -1);
+			if (!err)
+				goto oom;
+		} else {
+			s = json_value_str(container)->str;
+			inst = ldmsd_plugin_inst_find(s);
+			if (!inst) {
+				rc = ldmsd_req_buf_append(buf, "Store plugin "
+						"instance '%s' not found.", s);
+				if (rc < 0)
+					goto oom;
+				err = json_dict_build(err, JSON_STRING_VALUE,
+						"container", buf->buf, -1);
+				if (!err)
+					goto oom;
+			} else {
+				*_inst = inst;
+			}
+		}
+	} else {
+		*_inst = NULL;
+	}
+
+	/* producers */
+	rc = __strgp_producers_attr(prdcrs, err, _prdcr_list);
+	if (rc)
+		goto oom;
+
+	/* metrics */
+	rc = __strgp_metrics_attr(metrics, err, _metric_list);
+	if (rc)
+		goto oom;
+
+	if (0 == json_attr_count(err)) {
+		json_entity_free(err);
+		err = NULL;
+	}
+
+	ldmsd_req_buf_free(buf);
+	return err;
+oom:
+	if (buf)
+		ldmsd_req_buf_free(buf);
+	if (err)
+		json_entity_free(err);
+	errno = ENOMEM;
+	return NULL;
+}
+
+json_entity_t __strgp_export(ldmsd_cfgobj_t obj)
+{
+	json_entity_t query, l, i;
+	ldmsd_regex_ent_t match;
+	struct ldmsd_strgp_metric *metric;
+	ldmsd_strgp_t strgp = (ldmsd_strgp_t)obj;
+
+	query = ldmsd_cfgobj_query_result_new(obj);
+	if (!query)
+		goto oom;
+	query = json_dict_build(query,
+			JSON_STRING_VALUE, "container", strgp->inst->inst_name,
+			JSON_STRING_VALUE, "schema", strgp->schema,
+			JSON_LIST_VALUE, "producer_filters", -2,
+			JSON_LIST_VALUE, "metrics", -2,
+			-1);
+
+	/* producers */
+	l = json_value_find(query, "producer_filters");
+	for (match = ldmsd_strgp_prdcr_first(strgp); match;
+			match = ldmsd_strgp_prdcr_next(match)) {
+		i = json_entity_new(JSON_STRING_VALUE, match->regex_str);
+		if (!i)
+			goto oom;
+		json_item_add(l, i);
+	}
+
+	/* metrics */
+	l = json_value_find(query, "metrics");
+	for (metric = ldmsd_strgp_metric_first(strgp); metric;
+			metric = ldmsd_strgp_metric_next(metric)) {
+		i = json_entity_new(JSON_STRING_VALUE, metric->name);
+		if (!i) {
+			json_entity_free(query);
+			goto oom;
+		}
+
+		json_item_add(l, i);
+	}
+
+	return query;
+oom:
+	return NULL;
+}
+
+json_entity_t ldmsd_strgp_export(ldmsd_cfgobj_t obj)
+{
+	json_entity_t query = __strgp_export(obj);
+	if (!query)
+		return NULL;
+	return ldmsd_result_new(0, NULL, query);
+}
+
+json_entity_t ldmsd_strgp_query(ldmsd_cfgobj_t obj)
+{
+	ldmsd_strgp_t strgp = (ldmsd_strgp_t)obj;
+	json_entity_t query = __strgp_export(obj);
+	if (!query)
+		return NULL;
+	query = json_dict_build(query,
+			JSON_STRING_VALUE, "state", ldmsd_strgp_state_str(strgp->state),
+			-1);
+	if (!query)
+		return NULL;
+	return ldmsd_result_new(0, NULL, query);
+}
+
+json_entity_t ldmsd_strgp_update(ldmsd_cfgobj_t obj, short enabled,
+					json_entity_t dft, json_entity_t spc)
+{
+	json_entity_t err = NULL;
+	char *schema;
+	int perm;
+	ldmsd_plugin_inst_t inst;
+	struct ldmsd_strgp_prdcr_list *prdcr_list;
+	struct ldmsd_strgp_metric_list *metric_list;
+	ldmsd_strgp_t strgp = (ldmsd_strgp_t)obj;
+	ldmsd_req_buf_t buf;
+
+	if (obj->enabled && enabled)
+		return ldmsd_result_new(EBUSY, NULL, NULL);
+
+	buf = ldmsd_req_buf_alloc(512);
+	if (!buf)
+		goto oom;
+
+	err = __strgp_attr_get(dft, spc, &inst, &schema, &perm, &prdcr_list, &metric_list);
+
+	if (!err && (ENOMEM == errno))
+		goto oom;
+	if (err)
+		ldmsd_result_new(EINVAL, NULL, err);
+
+	/* container cannot be changed */
+	if (inst) {
+		err = json_dict_build(err,
+				JSON_STRING_VALUE, "container",
+					"The container cannot be changed.",
+				-1);
+		if (!err)
+			goto oom;
+	}
+
+	/* schema cannot be changed */
+	if (schema) {
+		err = json_dict_build(err,
+				JSON_STRING_VALUE, "container",
+					"The schema cannot be changed.",
+				-1);
+		if (!err)
+			goto oom;
+	}
+
+	/* permission cannot be changed */
+	if (LDMSD_ATTR_NA != perm) {
+		err = json_dict_build(err,
+				JSON_STRING_VALUE, "container",
+					"The permission cannot be changed.",
+				-1);
+		if (!err)
+			goto oom;
+	}
+
+	/* Attribute errors */
+	if (err)
+		return ldmsd_result_new(EINVAL, 0, err);
+
+	/* producers */
+	if (prdcr_list) {
+		__strgp_prdcr_list_free(strgp->prdcr_list);
+		strgp->prdcr_list = prdcr_list;
+	}
+
+	/* metrics */
+	if (metric_list) {
+		__strgp_metric_list_free(strgp->metric_list);
+		strgp->metric_list = metric_list;
+	}
+
+	obj->enabled = ((0 <= enabled)?enabled:obj->enabled);
+
+	ldmsd_req_buf_free(buf);
+	return ldmsd_result_new(0, NULL, NULL);
+oom:
+	if (buf)
+		ldmsd_req_buf_free(buf);
+	return NULL;
+}
+
+ldmsd_strgp_t
+__strgp_new(const char *name, ldmsd_plugin_inst_t inst, char *schema,
+		struct ldmsd_strgp_prdcr_list *prdcr_list,
+		struct ldmsd_strgp_metric_list *metric_list,
+		uid_t uid, gid_t gid, int perm, short enabled)
+{
+	struct ldmsd_strgp *strgp;
+
+	ev_worker_t worker = NULL;
+	ev_t start_ev, stop_ev;
+	start_ev = stop_ev = NULL;
+	char worker_name[PATH_MAX];
+
+	errno = ENOMEM;
+	strgp = (struct ldmsd_strgp *)
+		ldmsd_cfgobj_new(name, LDMSD_CFGOBJ_STRGP,
+				 sizeof *strgp, ldmsd_strgp___del,
+				 ldmsd_strgp_update,
+				 ldmsd_cfgobj_delete,
+				 ldmsd_strgp_query,
+				 ldmsd_strgp_export,
+				 ldmsd_strgp_enable,
+				 ldmsd_strgp_disable,
+				 uid, gid, perm, enabled);
+	if (!strgp)
+		goto err0;
+
+	strgp->schema = schema;
+	strgp->inst = inst;
+
+	if (!prdcr_list) {
+		strgp->prdcr_list = malloc(sizeof(*strgp->prdcr_list));
+		if (!strgp->prdcr_list)
+			goto err1;
+		LIST_INIT(strgp->prdcr_list);
+	} else {
+		strgp->prdcr_list = prdcr_list;
+	}
+	strgp->prdcr_list = prdcr_list;
+
+	if (!metric_list) {
+		strgp->metric_list = malloc(sizeof(*strgp->metric_list));
+		if (!strgp->metric_list)
+			goto err1;
+		TAILQ_INIT(strgp->metric_list);
+	} else {
+		strgp->metric_list = metric_list;
+	}
+
+	strgp->state = LDMSD_STRGP_STATE_STOPPED;
+	strgp->update_fn = strgp_update_fn;
+
+	start_ev = ev_new(strgp_start_type);
+	if (!start_ev) {
+		ldmsd_log(LDMSD_LERROR,
+			  "%s: error %d creating %s event\n",
+			  __func__, errno, ev_type_name(strgp_start_type));
+		goto err1;
+	}
+
+	stop_ev = ev_new(strgp_stop_type);
+	if (!stop_ev) {
+		ldmsd_log(LDMSD_LERROR,
+			  "%s: error %d creating %s event\n",
+			  __func__, errno, ev_type_name(strgp_stop_type));
+		goto err2;
+	}
+
+	snprintf(worker_name, PATH_MAX, "strgp:%s", name);
+	worker = ev_worker_get(worker_name);
+	if (!worker) {
+		worker = ev_worker_new(worker_name, store_actor);
+		if (!worker) {
+			ldmsd_log(LDMSD_LERROR,
+				  "%s: error %d creating new worker %s\n",
+				  __func__, errno, worker_name);
+			goto err2;
+		}
+	}
+
+	strgp->worker = worker;
+	strgp->start_ev = start_ev;
+	strgp->stop_ev = stop_ev;
+	EV_DATA(strgp->start_ev, struct start_data)->entity = strgp;
+	EV_DATA(strgp->stop_ev, struct start_data)->entity = strgp;
+
+	ldmsd_strgp_unlock(strgp);
+	return strgp;
+err2:
+	if (start_ev)
+		ev_put(start_ev);
+	if (stop_ev)
+		ev_put(stop_ev);
+err1:
+	ldmsd_strgp_unlock(strgp);
+	ldmsd_strgp_put(strgp);
+err0:
+	return NULL;
+}
+
+json_entity_t ldmsd_strgp_create(const char *name, short enabled, json_entity_t dft,
+				json_entity_t spc, uid_t uid, gid_t gid)
+{
+	char *schema;
+	ldmsd_plugin_inst_t inst;
+	struct ldmsd_strgp_prdcr_list *prdcr_list;
+	struct ldmsd_strgp_metric_list *metric_list;
+	int perm;
+	ldmsd_strgp_t strgp;
+	json_entity_t err;
+
+	err = __strgp_attr_get(dft, spc, &inst, &schema, &perm,
+					&prdcr_list, &metric_list);
+	if (!err && (ENOMEM == errno))
+		goto oom;
+	if (err)
+		return ldmsd_result_new(EINVAL, 0, err);
+
+	if (LDMSD_ATTR_NA == perm)
+		perm = 0770;
+
+	strgp = __strgp_new(name, inst, schema, prdcr_list, metric_list,
+						uid, gid, perm, enabled);
+	if (!strgp)
+		goto oom;
+
+	return ldmsd_result_new(0, NULL, NULL);
+oom:
+	if (inst)
+		ldmsd_plugin_inst_put(inst);
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	return NULL;
 }

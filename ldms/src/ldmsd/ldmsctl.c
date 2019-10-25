@@ -2003,7 +2003,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 			rc = -1;
 			goto out;
 		}
-		if (ntohl(resp->flags) & LDMSD_REQ_SOM_F) {
+		if (ntohl(resp->flags) & LDMSD_REC_SOM_F) {
 			reclen = ntohl(resp->rec_len);
 			rec = (char *)resp;
 		} else {
@@ -2021,7 +2021,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 		}
 		memcpy(&lbuf[msglen], rec, reclen);
 		msglen += reclen;
-		if ((ntohl(resp->flags) & LDMSD_REQ_EOM_F) != 0) {
+		if ((ntohl(resp->flags) & LDMSD_REC_EOM_F) != 0) {
 			break;
 		}
 	}

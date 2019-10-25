@@ -57,10 +57,12 @@
 #include <coll/rbt.h>
 #include <ovis_util/util.h>
 #include <ev/ev.h>
+#include <json/json_util.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plugin.h"
 #include "ldmsd_sampler.h"
+#include "ldmsd_request.h"
 #include "ldms_xprt.h"
 #include "config.h"
 #include "ovis_event/ovis_event.h"
@@ -83,101 +85,6 @@ const char *smplr_state_str(enum ldmsd_smplr_state state)
 		return "RUNNING";
 	}
 	return "BAD STATE";
-}
-
-ldmsd_smplr_t
-ldmsd_smplr_new_with_auth(const char *name,
-			  ldmsd_plugin_inst_t pi,
-			  long interval_us, long offset_us,
-			  uid_t uid, gid_t gid, int perm)
-{
-	ldmsd_smplr_t smplr;
-	ev_t sample_ev, start_ev, stop_ev;
-
-	ldmsd_log(LDMSD_LDEBUG, "ldmsd_smplr_new(name %s instance %s "
-		  "uid %d gid %d perm %x\n",
-		  name, pi->inst_name, uid, gid, perm);
-
-	sample_ev = ev_new(smplr_sample_type);
-	if (!sample_ev)
-		goto err_0;
-	start_ev = ev_new(smplr_start_type);
-	if (!start_ev)
-		goto err_1;
-
-	stop_ev = ev_new(smplr_stop_type);
-	if (!stop_ev)
-		goto err_2;
-
-	smplr = (struct ldmsd_smplr *)
-		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_SMPLR,
-				sizeof *smplr, ldmsd_smplr___del,
-				uid, gid, perm);
-	if (!smplr)
-		goto err_3;
-
-	smplr->interval_us = interval_us;
-	smplr->offset_us = offset_us;
-	if (offset_us == LDMSD_UPDT_HINT_OFFSET_NONE)
-		smplr->synchronous = 0;
-	else
-		smplr->synchronous = 1;
-	smplr->state = LDMSD_SMPLR_STATE_STOPPED;
-	ldmsd_plugin_inst_get(pi);
-	smplr->pi = pi;
-
-	EV_DATA(sample_ev, struct sample_data)->smplr = smplr;
-	EV_DATA(sample_ev, struct sample_data)->reschedule = 0;
-	smplr->sample_ev = sample_ev;
-	EV_DATA(start_ev, struct start_data)->entity = smplr;
-	smplr->start_ev = start_ev;
-	EV_DATA(stop_ev, struct stop_data)->entity = smplr;
-	smplr->stop_ev = stop_ev;
-
-	ldmsd_smplr_unlock(smplr);
-	return smplr;
- err_3:
-	ev_put(stop_ev);
- err_2:
-	ev_put(start_ev);
- err_1:
-	ev_put(sample_ev);
- err_0:
-	return NULL;
-}
-
-int ldmsd_smplr_del(const char *smplr_name, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc = 0;
-	ldmsd_smplr_t smplr;
-
-	smplr = (ldmsd_smplr_t)ldmsd_cfgobj_find(smplr_name, LDMSD_CFGOBJ_SMPLR);
-	if (!smplr) {
-		rc = ENOENT;
-		goto out_0;
-	}
-
-	ldmsd_smplr_lock(smplr);
-	rc = ldmsd_cfgobj_access_check(&smplr->obj, 0222, ctxt);
-	if (rc)
-		goto out_1;
-	if (smplr->state != LDMSD_SMPLR_STATE_STOPPED) {
-		rc = EBUSY;
-		goto out_1;
-	}
-	if (smplr->obj.ref_count > 2) {
-		rc = EBUSY;
-		goto out_1;
-	}
-
-	ldmsd_cfgobj_del(smplr_name, LDMSD_CFGOBJ_SMPLR);
-	ldmsd_smplr_put(smplr);
-	rc = 0;
-out_1:
-	ldmsd_smplr_unlock(smplr);
-	ldmsd_smplr_put(smplr); /* `find` reference */
-out_0:
-	return rc;
 }
 
 int ldmsd_set_update_hint_set(ldms_set_t set, long interval_us, long offset_us)
@@ -528,3 +435,354 @@ int ldmsd_smplr_oneshot(char *smplr_name, char *ts, ldmsd_sec_ctxt_t sctxt)
 	return rc;
 }
 
+json_entity_t ldmsd_smplr_query(ldmsd_cfgobj_t obj)
+{
+	json_entity_t query;
+	ldmsd_smplr_t smplr = (ldmsd_smplr_t)obj;
+
+	query = ldmsd_cfgobj_query_result_new(obj);
+	if (!query)
+		goto oom;
+	query = json_dict_build(query,
+			JSON_INT_VALUE, "interval", smplr->interval_us,
+			JSON_INT_VALUE, "offset", smplr->offset_us,
+			JSON_BOOL_VALUE, "synchronous", smplr->synchronous,
+			JSON_STRING_VALUE, "plugin_instance", smplr->pi->inst_name,
+			JSON_STRING_VALUE, "state", ldmsd_smplr_state_str(smplr->state),
+			-1);
+	if (!query)
+		goto oom;
+	return ldmsd_result_new(0, NULL, query);
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	return NULL;
+}
+
+json_entity_t ldmsd_smplr_export(ldmsd_cfgobj_t obj)
+{
+	json_entity_t query;
+	ldmsd_smplr_t smplr = (ldmsd_smplr_t)obj;
+
+	query = ldmsd_cfgobj_query_result_new(obj);
+	if (!query)
+		goto oom;
+	query = json_dict_build(query,
+			JSON_INT_VALUE, "interval", smplr->interval_us,
+			JSON_INT_VALUE, "offset", smplr->offset_us,
+			JSON_STRING_VALUE, "plugin_instance", smplr->pi->inst_name,
+			-1);
+	if (!query)
+		goto oom;
+	return ldmsd_result_new(0, NULL, query);
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	return NULL;
+}
+
+json_entity_t __smplr_attr_get(json_entity_t dft, json_entity_t spc,
+				ldmsd_plugin_inst_t *_inst, long *_interval_us,
+				long *_offset_us, int *_perm)
+{
+	json_entity_t err = NULL;
+	json_entity_t plugin, interval, offset, perm;
+	ldmsd_req_buf_t buf;
+	plugin = interval = offset = perm = NULL;
+
+	buf = ldmsd_req_buf_alloc(1024);
+	if (!buf)
+		goto oom;
+
+	if (spc) {
+		plugin = json_value_find(spc, "plugin_instance");
+		interval = json_value_find(spc, "interval");
+		offset = json_value_find(spc, "offset");
+		perm = json_value_find(spc, "perm");
+	}
+
+	if (!plugin && dft)
+		plugin = json_value_find(dft, "plugin_instance");
+	if (!interval && dft)
+		interval = json_value_find(dft, "interval");
+	if (!offset && dft)
+		offset = json_value_find(dft, "offset");
+	if (!perm && dft)
+		perm = json_value_find(dft, "perm");
+
+	/* plugin instance */
+	if (plugin) {
+		if (JSON_STRING_VALUE != json_entity_type(plugin)) {
+			err = json_dict_build(err, JSON_STRING_VALUE, "container",
+					"'container' is not a string.", -1);
+			if (!err)
+				goto oom;
+		} else {
+			char *s = json_value_str(plugin)->str;
+			ldmsd_plugin_inst_t inst = ldmsd_plugin_inst_find(s);
+			if (!inst) {
+				int rc = ldmsd_req_buf_append(buf, "Sampler plugin "
+						"instance '%s' not found.", s);
+				if (rc < 0)
+					goto oom;
+				err = json_dict_build(err, JSON_STRING_VALUE,
+						"plugin", buf->buf, -1);
+				if (!err)
+					goto oom;
+			} else {
+				*_inst = inst;
+			}
+		}
+	} else {
+		*_inst = NULL;
+	}
+
+	/* sample interval */
+	if (!interval) {
+		*_interval_us = LDMSD_ATTR_NA;
+	} else {
+		if (JSON_STRING_VALUE == json_entity_type(interval)) {
+			*_interval_us = ldmsd_time_str2us(json_value_str(interval)->str);
+		} else if (JSON_INT_VALUE == json_entity_type(interval)) {
+			*_interval_us = json_value_int(interval);
+		} else {
+			err = json_dict_build(err, JSON_STRING_VALUE, "interval",
+					"'interval' is neither a string or an integer.", -1);
+			if (!err)
+				goto oom;
+		}
+	}
+
+	/* update offset */
+	*_offset_us = LDMSD_ATTR_NA;
+	if (offset) {
+		if (JSON_STRING_VALUE == json_entity_type(offset)) {
+			char *offset_s = json_value_str(offset)->str;
+			if (0 == strcasecmp("none", offset_s)) {
+				*_offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+			} else {
+				*_offset_us = ldmsd_time_str2us(offset_s);
+			}
+		} else if (JSON_INT_VALUE == json_entity_type(offset)) {
+			*_offset_us = json_value_int(offset);
+		} else {
+			*_offset_us = LDMSD_ATTR_INVALID;
+			err = json_dict_build(err, JSON_STRING_VALUE, "offset",
+					"'offset' is neither a string or an integer.", -1);
+			if (!err)
+				goto oom;
+		}
+	}
+
+	/* permission */
+	if (perm) {
+		if (JSON_STRING_VALUE != json_entity_type(perm)) {
+			err = json_dict_build(err, JSON_STRING_VALUE,
+						"'perm' is not a string.", -1);
+			if (!err)
+				goto oom;
+		} else {
+			*_perm = strtol(json_value_str(perm)->str, NULL, 0);
+		}
+	} else {
+		*_perm = LDMSD_ATTR_NA;
+	}
+
+	ldmsd_req_buf_free(buf);
+	return err;
+oom:
+	errno = ENOMEM;
+	if (err)
+		json_entity_free(err);
+	if (buf)
+		ldmsd_req_buf_free(buf);
+	return NULL;
+}
+
+int ldmsd_smplr_enable(ldmsd_cfgobj_t obj)
+{
+	ldmsd_smplr_t smplr = (ldmsd_smplr_t)obj;
+	if (smplr->state != LDMSD_SMPLR_STATE_STOPPED)
+		return EBUSY;
+	smplr->state = LDMSD_SMPLR_STATE_RUNNING;
+	struct timespec to;
+	ev_sched_to(&to, smplr->interval_us / 1000000, smplr->offset_us * 1000);
+	if (smplr->synchronous)
+		to.tv_nsec = smplr->offset_us * 1000;
+
+	EV_DATA(smplr->sample_ev, struct sample_data)->reschedule = 1;
+	ev_post(sampler, sampler, smplr->sample_ev, &to);
+	return 0;
+}
+
+int ldmsd_smplr_disable(ldmsd_cfgobj_t obj)
+{
+	ldmsd_smplr_t smplr = (ldmsd_smplr_t)obj;
+	if (smplr->state != LDMSD_SMPLR_STATE_RUNNING)
+		return EBUSY;
+	smplr->state = LDMSD_SMPLR_STATE_STOPPED;
+	EV_DATA(smplr->sample_ev, struct sample_data)->reschedule = 0;
+	return 0;
+}
+
+json_entity_t ldmsd_smplr_update(ldmsd_cfgobj_t obj, short enabled,
+				json_entity_t dft, json_entity_t spc)
+{
+	ldmsd_plugin_inst_t inst = NULL;
+	long interval_us, offset_us;
+	int perm;
+	json_entity_t err;
+	ldmsd_smplr_t smplr = (ldmsd_smplr_t)obj;
+
+	if (obj->enabled && enabled)
+		return ldmsd_result_new(EBUSY, NULL, NULL);
+
+	err = __smplr_attr_get(dft, spc, &inst, &interval_us, &offset_us, &perm);
+	if (!err) {
+		if (ENOMEM == errno)
+			goto oom;
+	} else {
+		return ldmsd_result_new(EINVAL, 0, err);
+	}
+
+	if (inst) {
+		ldmsd_plugin_inst_put(inst);
+		err = json_dict_build(err, JSON_STRING_VALUE, "plugin",
+				"The plugin instance cannot be changed.");
+		if (!err)
+			goto oom;
+	}
+	if (err)
+		return ldmsd_result_new(EINVAL, 0, err);
+
+	if (LDMSD_ATTR_NA != interval_us)
+		smplr->interval_us = interval_us;
+	if (LDMSD_ATTR_NA != offset_us)
+		smplr->offset_us = offset_us;
+
+	obj->enabled = ((0 <= enabled)?enabled:obj->enabled);
+	return ldmsd_result_new(0, NULL, NULL);
+oom:
+	errno = ENOMEM;
+	return NULL;
+}
+
+json_entity_t ldmsd_smplr_create(const char *name, short enabled,
+				json_entity_t dft, json_entity_t spc,
+				uid_t uid, gid_t gid)
+{
+	int rc, perm;
+	ldmsd_plugin_inst_t inst = NULL;
+	long interval_us, offset_us;
+	json_entity_t err;
+	ldmsd_req_buf_t buf;
+	ldmsd_smplr_t smplr;
+	ev_t sample_ev, start_ev, stop_ev;
+	sample_ev = start_ev = stop_ev = NULL;
+
+	buf = ldmsd_req_buf_alloc(1024);
+	if (!buf)
+		goto oom;
+
+	err = __smplr_attr_get(dft, spc, &inst, &interval_us, &offset_us, &perm);
+	if (!err) {
+		if (ENOMEM == errno)
+			goto oom;
+	} else {
+		return ldmsd_result_new(EINVAL, 0, err);
+	}
+
+	if (!inst) {
+		/*
+		 * If 'plugin' is given but the plugin instance doesn't exist.
+		 * the function won't reach this point.
+		 */
+		err = json_dict_build(err, JSON_STRING_VALUE, "instance",
+						"'plugin' is missing.", -1);
+		if (!err)
+			goto oom;
+	}
+
+	if (LDMSD_ATTR_NA == interval_us) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "interval",
+						"'interval' is missing.", -1);
+		if (!err)
+			goto oom;
+		if (LDMSD_ATTR_NA != offset_us) {
+			err = json_dict_build(err, JSON_STRING_VALUE, "offset",
+							"'offset' is ignore because "
+							"'interval' isn't given.",
+							-1);
+			if (!err)
+				goto oom;
+		}
+	} else {
+		if ((offset_us < 0) || (offset_us >= interval_us)) {
+			rc = ldmsd_req_buf_append(buf, "The value '%d' is "
+					"either less than 0 or equal or larger "
+					"than the interval value '%d'.",
+					offset_us, interval_us);
+			if (rc < 0)
+				goto oom;
+			err = json_dict_build(err, JSON_STRING_VALUE, "offset",
+					buf->buf, -1);
+		}
+	}
+
+	if (LDMSD_ATTR_NA == perm)
+		perm = 0770;
+
+	if (err)
+		return ldmsd_result_new(EINVAL, 0, err);
+
+	sample_ev = ev_new(smplr_sample_type);
+	if (!sample_ev)
+		goto oom;
+	start_ev = ev_new(smplr_start_type);
+	if (!start_ev)
+		goto oom;
+	stop_ev = ev_new(smplr_stop_type);
+	if (!stop_ev)
+		goto oom;
+
+	smplr = (ldmsd_smplr_t)ldmsd_cfgobj_new(name, LDMSD_CFGOBJ_SMPLR,
+					sizeof(*smplr), ldmsd_smplr___del,
+					ldmsd_smplr_update,
+					ldmsd_cfgobj_delete,
+					ldmsd_smplr_query,
+					ldmsd_smplr_export,
+					ldmsd_smplr_enable,
+					ldmsd_smplr_disable,
+					uid, gid, perm, enabled);
+	if (!smplr)
+		goto oom;
+	smplr->interval_us = interval_us;
+	smplr->offset_us = offset_us;
+	if (offset_us == LDMSD_UPDT_HINT_OFFSET_NONE)
+		smplr->synchronous = 0;
+	else
+		smplr->synchronous = 1;
+	smplr->state = LDMSD_SMPLR_STATE_STOPPED;
+	smplr->pi = inst;
+
+	EV_DATA(sample_ev, struct sample_data)->smplr = smplr;
+	EV_DATA(sample_ev, struct sample_data)->reschedule = 0;
+	smplr->sample_ev = sample_ev;
+	EV_DATA(start_ev, struct start_data)->entity = smplr;
+	smplr->start_ev = start_ev;
+	EV_DATA(stop_ev, struct stop_data)->entity = smplr;
+	smplr->stop_ev = stop_ev;
+	ldmsd_smplr_unlock(smplr);
+	if (buf)
+		ldmsd_req_buf_free(buf);
+	return ldmsd_result_new(0, NULL, NULL);
+oom:
+	if (buf)
+		ldmsd_req_buf_free(buf);
+	if (sample_ev)
+		ev_put(sample_ev);
+	if (stop_ev)
+		ev_put(stop_ev);
+	if (start_ev)
+		ev_put(start_ev);
+
+	return NULL;
+}

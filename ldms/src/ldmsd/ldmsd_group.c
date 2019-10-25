@@ -55,19 +55,25 @@ ldms_schema_t grp_schema;
 #define GRP_SCHEMA_NAME "ldmsd_grp_schema"
 #define GRP_KEY_PREFIX "    grp_member: "
 
-void ldmsd_setgrp___del(ldmsd_cfgobj_t obj)
+static void __setgrp_member_list_free(struct ldmsd_str_list *list)
 {
-	ldmsd_str_ent_t str;
-	ldmsd_setgrp_t grp = (ldmsd_setgrp_t)obj;
-	if (grp->producer)
-		free(grp->producer);
-	str = LIST_FIRST(&grp->member_list);
+	struct ldmsd_str_ent *str;
+	str = LIST_FIRST(list);
 	while (str) {
 		LIST_REMOVE(str, entry);
 		free(str->str);
 		free(str);
-		str = LIST_FIRST(&grp->member_list);
+		str = LIST_FIRST(list);
 	}
+	free(list);
+}
+
+void ldmsd_setgrp___del(ldmsd_cfgobj_t obj)
+{
+	ldmsd_setgrp_t grp = (ldmsd_setgrp_t)obj;
+	if (grp->producer)
+		free(grp->producer);
+	__setgrp_member_list_free(grp->member_list);
 	if (grp->set)
 		ldms_set_delete(grp->set);
 	ldmsd_cfgobj___del(obj);
@@ -105,15 +111,27 @@ err:
 }
 
 /* Caller must hold the setgroup lock */
-int __ldmsd_setgrp_start(ldmsd_setgrp_t grp)
+int ldmsd_setgrp_start(const char *name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc;
 	ldmsd_str_ent_t str;
+	ldmsd_setgrp_t grp;
+
+	grp = ldmsd_setgrp_find(name);
+	if (!grp)
+		return ENOENT;
+
+	ldmsd_setgrp_lock(grp);
+
+	rc = ldmsd_cfgobj_access_check(&grp->obj, 0222, ctxt);
+	if (rc)
+		goto err;
 
 	if (!grp->producer) {
 		grp->producer = strdup(ldmsd_myname_get());
 		if (!grp->producer) {
-			return ENOMEM;
+			rc = ENOMEM;
+			goto err;
 		}
 	}
 
@@ -122,15 +140,21 @@ int __ldmsd_setgrp_start(ldmsd_setgrp_t grp)
 					grp->interval_us, grp->offset_us);
 	if (!grp->set) {
 		rc = errno;
-		return rc;
+		goto err;
 	}
-	LIST_FOREACH(str, &grp->member_list, entry) {
+	LIST_FOREACH(str, grp->member_list, entry) {
 		rc = ldmsd_group_set_add(grp->set, str->str);
 		if (rc)
-			return rc;
+			goto err;
 	}
 	grp->obj.perm &= ~LDMSD_PERM_DSTART;
+	ldmsd_setgrp_unlock(grp);
+	ldmsd_setgrp_put(grp); /* put back the find ref */
 	return 0;
+err:
+	ldmsd_setgrp_unlock(grp);
+	ldmsd_setgrp_put(grp);
+	return rc;
 }
 
 ldms_set_t
@@ -144,45 +168,6 @@ ldms_set_t ldmsd_group_new(const char *name)
 	struct ldmsd_sec_ctxt sctxt;
 	ldmsd_sec_ctxt_get(&sctxt);
 	return ldmsd_group_new_with_auth(name, sctxt.crd.uid, sctxt.crd.gid, 0777);
-}
-
-ldmsd_setgrp_t
-ldmsd_setgrp_new_with_auth(const char *name, const char *producer,
-				long interval_us, long offset_us,
-				uid_t uid, gid_t gid, mode_t perm, int flags)
-{
-	int rc;
-	ldmsd_setgrp_t grp;
-
-	rc = ENOMEM;
-	grp = (ldmsd_setgrp_t)ldmsd_cfgobj_new_with_auth(name,
-			LDMSD_CFGOBJ_SETGRP, sizeof(*grp),
-			ldmsd_setgrp___del, uid, gid, perm);
-	if (!grp)
-		return NULL;
-
-	if (producer) {
-		grp->producer = strdup(producer);
-		if (!grp->producer)
-			goto err1;
-	}
-	grp->interval_us = interval_us;
-	grp->offset_us = offset_us;
-	LIST_INIT(&grp->member_list);
-	if (flags & LDMSD_PERM_DSTART) {
-		grp->obj.perm |= LDMSD_PERM_DSTART;
-	} else {
-		rc = __ldmsd_setgrp_start(grp);
-		if (rc)
-			goto err1;
-	}
-
-	ldmsd_setgrp_unlock(grp);
-	return grp;
-err1:
-	ldmsd_setgrp_unlock(grp);
-	ldmsd_setgrp_put(grp);
-	return NULL;
 }
 
 extern struct rbt *cfgobj_trees[];
@@ -238,15 +223,10 @@ int ldmsd_setgrp_ins(const char *name, const char *instance)
 		free(str);
 		goto out;
 	}
-	LIST_INSERT_HEAD(&grp->member_list, str, entry);
+	LIST_INSERT_HEAD(grp->member_list, str, entry);
 
 	if (grp->obj.perm & LDMSD_PERM_DSTART)
 		goto out;
-
-	/*
-	 * Since \c grp has been started, \c grp->set must be created already.
-	 */
-	rc = ldmsd_group_set_add(grp->set, instance);
 
 out:
 	ldmsd_setgrp_unlock(grp);
@@ -260,7 +240,7 @@ int __ldmsd_setgrp_rm(ldmsd_setgrp_t grp, const char *instance)
 	int rc;
 	struct ldmsd_str_ent *str;
 
-	LIST_FOREACH(str, &grp->member_list, entry) {
+	LIST_FOREACH(str, grp->member_list, entry) {
 		if (0 == strcmp(str->str, instance)) {
 			LIST_REMOVE(str, entry);
 			free(str->str);
@@ -365,6 +345,337 @@ int ldmsd_group_check(ldms_set_t set)
 		return 0; /* not a group */
 	flags |= LDMSD_GROUP_IS_GROUP;
 	return flags;
+}
+
+json_entity_t __setgrp_attrs_get(json_entity_t dft, json_entity_t spc,
+				char **_producer, struct ldmsd_str_list **_member_list,
+				long *_interval_us, long *_offset_us, int *_perm)
+{
+	json_entity_t producer, members, interval, offset, perm;
+	json_entity_t err = NULL;
+	if (spc) {
+		producer = json_value_find(spc, "producer");
+		interval = json_value_find(spc, "interval");
+		offset = json_value_find(spc, "offset");
+		members = json_value_find(spc, "members");
+		perm = json_value_find(spc, "perm");
+	}
+
+	if (dft) {
+		if (!producer)
+			producer = json_value_find(dft, "producer");
+		if (!interval)
+			interval = json_value_find(dft, "interval");
+		if (!offset)
+			offset = json_value_find(dft, "offset");
+		if (!members)
+			members = json_value_find(dft, "members");
+		if (!perm)
+			perm = json_value_find(dft, "perm");
+	}
+
+	/* producer */
+	if (producer) {
+		if (JSON_STRING_VALUE != json_entity_type(producer)) {
+			err = json_dict_build(err, JSON_STRING_VALUE,
+					"'producer' is not a JSON string.", -1);
+			if (!err)
+				goto oom;
+		} else {
+			*_producer = strdup(json_value_str(producer)->str);
+			if (*_producer)
+				goto oom;
+		}
+	}
+
+	/* interval */
+	*_interval_us = LDMSD_ATTR_NA;
+	if (interval) {
+		if (JSON_STRING_VALUE == json_entity_type(interval)) {
+			*_interval_us = ldmsd_time_str2us(json_value_str(interval)->str);
+		} else if (JSON_INT_VALUE == json_entity_type(interval)) {
+			*_interval_us = json_value_int(interval);
+		} else {
+			*_interval_us = LDMSD_ATTR_INVALID;
+			err = json_dict_build(err, JSON_STRING_VALUE, "interval",
+					"'interval' is neither a string or an integer.", -1);
+			if (!err)
+				goto oom;
+		}
+	}
+
+	/* offset */
+	*_offset_us = LDMSD_ATTR_NA;
+	if (offset) {
+		if (JSON_STRING_VALUE == json_entity_type(offset)) {
+			char *offset_s = json_value_str(offset)->str;
+			if (0 == strcasecmp("none", offset_s)) {
+				*_offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+			} else {
+				*_offset_us = ldmsd_time_str2us(offset_s);
+			}
+		} else if (JSON_INT_VALUE == json_entity_type(offset)) {
+			*_offset_us = json_value_int(offset);
+		} else {
+			*_offset_us = LDMSD_ATTR_INVALID;
+			err = json_dict_build(err, JSON_STRING_VALUE, "offset",
+					"'offset' is neither a string or an integer.", -1);
+			if (!err)
+				goto oom;
+		}
+	}
+
+	/* permission */
+	if (perm) {
+		if (JSON_STRING_VALUE != json_entity_type(perm)) {
+			err = json_dict_build(err, JSON_STRING_VALUE,
+						"'perm' is not a string.", -1);
+			if (!err)
+				goto oom;
+		}
+		*_perm = strtol(json_value_str(perm)->str, NULL, 0);
+	} else {
+		*_perm = 0770;
+	}
+
+	/* members */
+	if (members) {
+		*_member_list = malloc(sizeof(*_member_list));
+		if (!*_member_list)
+			goto oom;
+		LIST_INIT(*_member_list);
+		struct ldmsd_str_ent *ent;
+		json_entity_t member;
+		for (member = json_item_first(members); member;
+				member = json_item_next(member)) {
+			if (JSON_STRING_VALUE != json_entity_type(member)) {
+				err = json_dict_build(err, JSON_STRING_VALUE,
+						"members",
+						"A 'member' is not a string.", -1);
+				if (!err)
+					goto oom;
+			}
+			ent = malloc(sizeof(*ent));
+			if (!ent)
+				goto oom;
+			ent->str = strdup(json_value_str(member)->str);
+			if (!ent) {
+				free(ent);
+				goto oom;
+			}
+			LIST_INSERT_HEAD(*_member_list, ent, entry);
+		}
+	}
+
+	return err;
+oom:
+	if (*_producer)
+		free(*_producer);
+	if (*_member_list)
+		__setgrp_member_list_free(*_member_list);
+	errno = ENOMEM;
+	return NULL;
+}
+
+int ldmsd_setgrp_enable(ldmsd_cfgobj_t obj)
+{
+	int rc;
+	ldmsd_setgrp_t setgrp = (ldmsd_setgrp_t)obj;
+	setgrp->set = ldms_set_new_with_auth(obj->name, grp_schema,
+					     obj->uid, obj->gid, obj->perm);
+	if (!setgrp->set) {
+		return ENOMEM;
+	}
+
+	if (setgrp->interval_us > 0) {
+		rc = ldmsd_set_update_hint_set(setgrp->set, setgrp->interval_us,
+							    setgrp->offset_us);
+		if (rc)
+			goto err;
+	}
+	rc = ldms_set_publish(setgrp->set);
+	if (rc)
+		goto err;
+	return 0;
+err:
+	ldms_set_delete(setgrp->set);
+	return rc;
+}
+
+int ldmsd_setgrp_disable(ldmsd_cfgobj_t obj)
+{
+	return ENOTSUP;
+}
+
+json_entity_t __setgrp_export_config(ldmsd_setgrp_t setgrp)
+{
+	json_entity_t export, l, s;
+	struct ldmsd_str_ent *ent;
+
+	export = ldmsd_cfgobj_query_result_new(&setgrp->obj);
+	if (!export)
+		goto oom;
+	export = json_dict_build(export,
+				JSON_STRING_VALUE, "producer", setgrp->producer,
+				JSON_INT_VALUE, "interval", setgrp->interval_us,
+				JSON_INT_VALUE, "offset", setgrp->offset_us,
+				JSON_LIST_VALUE, "members", -2,
+				-1);
+	if (!export)
+		goto oom;
+	if (!LIST_EMPTY(setgrp->member_list)) {
+		l = json_value_find(export, "members");
+		LIST_FOREACH(ent, setgrp->member_list, entry) {
+			s = json_entity_new(JSON_STRING_VALUE, ent->str);
+			if (!s)
+				goto oom;
+			json_item_add(l, s);
+		}
+	}
+	return export;
+oom:
+	errno = ENOMEM;
+	return NULL;
+}
+
+json_entity_t ldmsd_setgrp_export(ldmsd_cfgobj_t obj)
+{
+	json_entity_t export;
+	ldmsd_setgrp_t setgrp = (ldmsd_setgrp_t)obj;
+
+	export = __setgrp_export_config(setgrp);
+	if (!export)
+		goto oom;
+	return ldmsd_result_new(0, NULL, export);
+oom:
+	errno = ENOMEM;
+	return NULL;
+}
+
+json_entity_t ldmsd_setgrp_update(ldmsd_cfgobj_t obj, short enabled,
+				json_entity_t dft, json_entity_t spc)
+{
+	char *producer;
+	struct ldmsd_str_list *member_list;
+	long interval_us, offset_us;
+	int perm;
+	json_entity_t err;
+	ldmsd_setgrp_t setgrp = (ldmsd_setgrp_t)obj;
+
+	err = __setgrp_attrs_get(dft, spc, &producer, &member_list,
+				&interval_us, &offset_us, &perm);
+
+	if (!err) {
+		if (ENOMEM == errno)
+			goto oom;
+	} else {
+		return ldmsd_result_new(EINVAL, NULL, err);
+	}
+
+	if (producer) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "producer",
+				"'producer' cannot be changed.", -1);
+		if (!err)
+			goto oom;
+	}
+	if (LDMSD_ATTR_NA != interval_us) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "interval",
+				"'interval' cannot be changed", -1);
+		if (!err)
+			goto oom;
+	}
+	if (LDMSD_ATTR_NA != offset_us) {
+		err = json_dict_build(err, JSON_STRING_VALUE, "offset",
+				"'offset' cannot be changed", -1);
+		if (!err)
+			goto oom;
+	}
+
+	if (err)
+		return ldmsd_result_new(EINVAL, 0, err);
+
+	/* Done checking the given attributes */
+	if (member_list) {
+		__setgrp_member_list_free(setgrp->member_list);
+		setgrp->member_list = member_list;
+	}
+
+	obj->enabled = (enabled < 0)?obj->enabled:enabled;
+	return ldmsd_result_new(0, NULL, NULL);
+oom:
+	errno = ENOMEM;
+	return NULL;
+}
+
+json_entity_t ldmsd_setgrp_create(const char *name, short enabled,
+				json_entity_t dft, json_entity_t spc,
+				uid_t uid, gid_t gid)
+{
+	json_entity_t err;
+	char *producer = NULL;
+	struct ldmsd_str_list *member_list = NULL;
+	long interval_us, offset_us;
+	int perm;
+	ldmsd_setgrp_t setgrp;
+
+	err = __setgrp_attrs_get(dft, spc, &producer, &member_list,
+					&interval_us, &offset_us, &perm);
+	if (!err) {
+		if (ENOMEM == errno)
+			goto oom;
+	} else {
+		return ldmsd_result_new(EINVAL, NULL, err);
+	}
+
+	if (!producer) {
+		producer = strdup(ldmsd_myname_get());
+		if (!producer)
+			goto oom;
+	}
+
+	if (LDMSD_ATTR_NA == interval_us) {
+		interval_us = 0;
+		if (LDMSD_ATTR_NA != offset_us) {
+			err = json_dict_build(err, JSON_STRING_VALUE, "offset",
+					"No interval is given, so the offset is ignored.",
+					-1);
+			if (!err)
+				goto oom;
+		}
+	} else {
+		if (LDMSD_ATTR_NA == offset_us)
+			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+	}
+
+	if (err)
+		return ldmsd_result_new(EINVAL, 0, err);
+
+	/* All attributes are valid, create the cfgobj */
+
+	setgrp = (ldmsd_setgrp_t)ldmsd_cfgobj_new(name, LDMSD_CFGOBJ_SETGRP,
+						sizeof(*setgrp),
+						ldmsd_setgrp___del,
+						ldmsd_setgrp_update,
+						ldmsd_cfgobj_delete,
+						ldmsd_setgrp_export,
+						ldmsd_setgrp_export,
+						ldmsd_setgrp_enable,
+						ldmsd_setgrp_disable,
+						uid, gid, perm, enabled);
+	if (!setgrp)
+		goto oom;
+	setgrp->producer = producer;
+	setgrp->member_list = member_list;
+	setgrp->interval_us = interval_us;
+	setgrp->offset_us = offset_us;
+	return ldmsd_result_new(0, NULL, NULL);
+oom:
+	if (producer)
+		free(producer);
+	if (member_list)
+		__setgrp_member_list_free(member_list);
+	errno = ENOMEM;
+	return NULL;
 }
 
 __attribute__((constructor))

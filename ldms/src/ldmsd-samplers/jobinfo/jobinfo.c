@@ -396,29 +396,12 @@ json_entity_t jobinfo_query(ldmsd_plugin_inst_t pi, const char *q)
 	if (0 != strcmp(q, "env"))
 		return result;
 
-	json_entity_t attr, envs, str;
-
-	envs = json_entity_new(JSON_LIST_VALUE);
-	if (!envs)
-		goto enomem;
-	attr = json_entity_new(JSON_ATTR_VALUE, "env", envs);
-	if (!attr) {
-		json_entity_free(envs);
-		goto enomem;
+	result = ldmsd_plugin_inst_query_env_add(result, "LDMS_JOBINFO_DATA_FILE");
+	if (!result) {
+		errno = ENOMEM;
+		return NULL;
 	}
-	str = json_entity_new(JSON_STRING_VALUE, "LDMS_JOBINFO_DATA_FILE");
-	if (!str) {
-		json_entity_free(attr);
-		goto enomem;
-	}
-	json_item_add(envs, str);
-	json_attr_add(result, attr);
 	return result;
-
-enomem:
-	ldmsd_plugin_qjson_err_set(result, ENOMEM, "Out of memory");
-	return result;
-
 }
 
 static

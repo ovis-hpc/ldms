@@ -580,28 +580,13 @@ json_entity_t query_generic(cray_sampler_inst_t inst, const char *query)
 		return result;
 	}
 
-	envs = json_entity_new(JSON_LIST_VALUE);
-	if (!envs)
-		goto enomem;
-	attr = json_entity_new(JSON_ATTR_VALUE, "env", envs);
-	if (!attr) {
-		json_entity_free(envs);
-		goto enomem;
-	}
-
 #ifdef HAVE_CRAY_NVIDIA
-	json_entity_t str;
-	str = json_entity_new(JSON_STRING_VALUE, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH");
-	if (!str)
-		goto err;
-	json_item_add(envs, str);
-
+	result = ldmsd_plugin_inst_query_env_add(result, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH");
+	if (!result)
+		goto enomem;
 #endif /* HAVE_CRAY_NVIDIA */
-	json_attr_add(result, attr);
+
 	return result;
-err:
-	json_entity_free(attr);
 enomem:
-	ldmsd_plugin_qjson_err_set(result, ENOMEM, "Out of memory");
-	return result;
+	return NULL;
 }

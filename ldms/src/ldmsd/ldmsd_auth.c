@@ -61,6 +61,26 @@
 #include "ldmsd_request.h"
 #include "config.h"
 
+static struct attr_value_list *json_dict2avl(json_entity_t d)
+{
+	struct attr_value_list *avl;
+	json_entity_t a;
+	json_str_t n, v;
+
+	avl = av_new(json_attr_count(d));
+	if (!avl)
+		return NULL;
+	for (a = json_attr_first(d); a; a = json_attr_next(a)) {
+		n = json_attr_name(a);
+		v = json_value_str(json_attr_value(a));
+		if (av_add(avl, n->str, v->str)) {
+			av_free(avl);
+			return NULL;
+		}
+	}
+	return avl;
+}
+
 static
 void __ldmsd_auth_del(struct ldmsd_cfgobj *obj)
 {
@@ -72,40 +92,61 @@ void __ldmsd_auth_del(struct ldmsd_cfgobj *obj)
 	ldmsd_cfgobj___del(obj);
 }
 
-ldmsd_auth_t
-ldmsd_auth_new_with_auth(const char *name, const char *plugin,
-			 struct attr_value_list *attrs,
-			 uid_t uid, gid_t gid, int perm)
+static json_entity_t __auth_get_attr(const char *name, json_entity_t dft,
+					json_entity_t spc, char **_plugin,
+					json_entity_t *_attrs)
 {
-	ldmsd_auth_t auth = NULL;
+	int rc;
+	json_entity_t plugin, attrs = NULL;
+	json_entity_t err = NULL;
 
-	if (!plugin) {
-		errno = EINVAL;
-		goto err;
+	if (spc)
+		plugin = json_value_find(spc, "plugin");
+
+	if (!plugin && dft)
+		plugin = json_value_find(dft, "plugin");
+
+	if (dft) {
+		attrs = json_entity_copy(dft);
+		if (!attrs)
+			goto oom;
+		if (spc) {
+			rc = json_dict_merge(attrs, spc);
+			if (rc)
+				goto oom;
+		}
+	} else {
+		if (spc) {
+			attrs = json_entity_copy(spc);
+			if (!attrs)
+				goto oom;
+		}
 	}
 
-	auth = (ldmsd_auth_t) ldmsd_cfgobj_new_with_auth(name,
-					LDMSD_CFGOBJ_AUTH,
-					sizeof(struct ldmsd_auth),
-					__ldmsd_auth_del, uid, gid, perm);
-	if (!auth)
-		goto err;
-	auth->plugin = strdup(plugin);
-	if (!auth->plugin)
-		goto err;
+	/* Attributes */
 	if (attrs) {
-		auth->attrs = av_copy(attrs);
-		if (!auth->attrs)
-			goto err;
+		json_attr_rem(attrs, "plugin");
+		*_attrs = attrs;
 	}
-	ldmsd_cfgobj_unlock(&auth->obj);
-	return auth;
 
- err:
-	if (auth) {
-		ldmsd_cfgobj_unlock(&auth->obj);
-		ldmsd_cfgobj_put(&auth->obj);
+	/* plugin */
+	if (plugin) {
+		if (JSON_STRING_VALUE != json_entity_type(plugin)) {
+			err = json_dict_build(err, JSON_STRING_VALUE, "plugin",
+					"'plugin' is not a JSON string.");
+			if (!err)
+				goto oom;
+		} else {
+			*_plugin = json_value_str(plugin)->str;
+		}
 	}
+
+	return err;
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	errno = ENOMEM;
+	if (err)
+		json_entity_free(err);
 	return NULL;
 }
 
@@ -135,46 +176,127 @@ int ldmsd_auth_del(const char *name, ldmsd_sec_ctxt_t ctxt)
 	return rc;
 }
 
-ldmsd_auth_t ldmsd_auth_default_get()
+static int ldmsd_auth_enable(ldmsd_cfgobj_t obj)
 {
-	return ldmsd_auth_find(DEFAULT_AUTH);
+	/* Nothing to do */
+	return 0;
 }
 
-int ldmsd_auth_default_set(const char *plugin, struct attr_value_list *attrs)
+static int ldmsd_auth_disable(ldmsd_cfgobj_t obj)
 {
-	ldmsd_auth_t d = ldmsd_auth_default_get();
-	int rc;
-	if (!d) {
-		/* default auth domain has not been created yet */
-		d = ldmsd_auth_new_with_auth(DEFAULT_AUTH, plugin, attrs,
-				geteuid(), getegid(), 0600);
-		if (d)
-			return 0;
-		else
-			return errno;
-	}
-	if (d->plugin) {
-		free(d->plugin);
-		d->plugin = NULL;
-	}
-	if (d->attrs) {
-		av_free(d->attrs);
-		d->attrs = NULL;
-	}
-	d->plugin = strdup(plugin);
-	if (!d->plugin) {
-		rc = ENOMEM;
-		goto out;
-	}
-	if (attrs) {
-		d->attrs = av_copy(attrs);
-		if (!d->attrs) {
-			rc = ENOMEM;
-			goto out;
+	/* nothing to do */
+	return 0;
+}
+
+json_entity_t ldmsd_auth_query(ldmsd_cfgobj_t obj)
+{
+	json_entity_t query, a, args = NULL;
+	ldmsd_auth_t auth = (ldmsd_auth_t)obj;
+	int i;
+	char *name, *value;
+
+	query = ldmsd_cfgobj_query_result_new(obj);
+	if (!query)
+		goto oom;
+	query = json_dict_build(query,
+			JSON_STRING_VALUE, "plugin", auth->plugin, -1);
+	if (!query)
+		goto oom;
+	if (auth->attrs) {
+		for (i = 0, name = av_name(auth->attrs, i); name; i++) {
+			value = av_value_at_idx(auth->attrs, i);
+			args = json_dict_build(args, JSON_STRING_VALUE, name, value);
+			if (!args)
+				goto oom;
 		}
+		a = json_entity_new(JSON_ATTR_VALUE, "args", args);
+		if (!a)
+			goto oom;
+		json_attr_add(query, a);
 	}
-	rc = 0;
- out:
-	ldmsd_cfgobj_put(&d->obj);
-	return rc;
+	return ldmsd_result_new(0, NULL, query);
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	return NULL;
+}
+
+json_entity_t ldmsd_auth_update(ldmsd_cfgobj_t obj, short enabled,
+					json_entity_t dft, json_entity_t spc)
+{
+	/* Not allow */
+	return ldmsd_result_new(ENOTSUP, "Authentication object cannot be updated.", NULL);
+}
+
+ldmsd_auth_t
+ldmsd_auth_new(const char *name, const char *plugin, json_entity_t attrs,
+		uid_t uid, gid_t gid, int perm, short enabled)
+{
+	ldmsd_auth_t auth;
+	auth = (ldmsd_auth_t) ldmsd_cfgobj_new(name,
+					LDMSD_CFGOBJ_AUTH,
+					sizeof(struct ldmsd_auth),
+					__ldmsd_auth_del,
+					ldmsd_auth_update,
+					ldmsd_cfgobj_delete,
+					ldmsd_auth_query,
+					ldmsd_auth_query,
+					ldmsd_auth_enable,
+					ldmsd_auth_disable,
+					uid, gid, perm, enabled);
+	if (!auth)
+		goto oom;
+	auth->plugin = strdup(plugin);
+	if (!auth->plugin)
+		goto oom;
+	if (attrs) {
+		auth->attrs = json_dict2avl(attrs);
+		if (!auth->attrs)
+			goto oom;
+	}
+	ldmsd_cfgobj_unlock(&auth->obj);
+	return auth;
+oom:
+	errno = ENOMEM;
+	return NULL;
+}
+
+json_entity_t ldmsd_auth_create(const char *name, short enabled, json_entity_t dft,
+					json_entity_t spc, uid_t uid, gid_t gid)
+{
+	json_entity_t err, attrs = NULL;
+	char *plugin = NULL;
+	ldmsd_auth_t auth = NULL;
+
+	err = __auth_get_attr(name, dft, spc, &plugin, &attrs);
+	if (!err) {
+		if (errno == ENOMEM)
+			goto oom;
+	} else {
+		return ldmsd_result_new(EINVAL, NULL, err);
+	}
+
+	if (!plugin) {
+		err = json_dict_build(NULL, JSON_STRING_VALUE, "plugin",
+							"'plugin' is missing.");
+		if (!err)
+			goto oom;
+		return ldmsd_result_new(EINVAL, NULL, err);
+	}
+
+	auth = ldmsd_auth_new(name, plugin, attrs, uid, gid, 0770, enabled);
+	if (!auth) {
+		goto oom;
+	}
+	return ldmsd_result_new(0, NULL, NULL);
+oom:
+	if (auth) {
+		ldmsd_cfgobj_unlock(&auth->obj);
+		ldmsd_cfgobj_put(&auth->obj);
+	}
+	if (attrs)
+		json_entity_free(attrs);
+	if (err)
+		json_entity_free(err);
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	return NULL;
 }

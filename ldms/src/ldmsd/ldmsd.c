@@ -90,34 +90,32 @@
 #include <mcheck.h>
 #endif /* DEBUG */
 
-#define LDMSD_AUTH_ENV "LDMS_AUTH_FILE"
-
-#define LDMSD_SETFILE "/proc/sys/kldms/set_list"
-#define LDMSD_LOGFILE "/var/log/ldmsd.log"
-#define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
-
-#define FMT "A:a:B:c:FH:kl:m:n:P:r:s:u:Vv:x:C"
-
-#define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
-#define LDMSD_MEM_SIZE_DEFAULT "512kB"
-#define LDMSD_BANNER_DEFAULT 1
-#define LDMSD_VERBOSITY_DEFAULT LDMSD_LERROR
-#define LDMSD_EV_THREAD_CNT_DEFAULT 1
+#define FMT "A:a:B:c:t:FH:kl:m:n:P:r:s:u:Vv:x:C"
 
 #define LDMSD_KEEP_ALIVE_30MIN 30*60*1000000 /* 30 mins */
 
-char ldmstype[20];
-char *bannerfile;
-size_t max_mem_size;
 char *progname;
 uid_t proc_uid;
 gid_t proc_gid;
-uint8_t is_ldmsd_initialized;
+short is_ldmsd_initialized;
+short is_syntax_check;
+short is_foreground;
 
-uint8_t ldmsd_is_initialized()
+short ldmsd_is_initialized()
 {
 	return is_ldmsd_initialized;
 }
+
+short ldmsd_is_foreground()
+{
+	return is_foreground;
+}
+
+const char *ldmsd_progname_get()
+{
+	return progname;
+}
+
 pthread_t event_thread = (pthread_t)-1;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -138,15 +136,10 @@ FILE *log_fp;
 
 int find_least_busy_thread();
 
-int passive = 0;
-int quiet = 0; /* Is verbosity quiet? 0 for no and 1 for yes */
-
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
 	NULL
 };
-
-struct ldmsd_cmd_line_args cmd_line_args;
 
 void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt)
 {
@@ -160,27 +153,6 @@ void ldmsd_version_get(struct ldmsd_version *v)
 	v->minor = LDMSD_VERSION_MINOR;
 	v->patch = LDMSD_VERSION_PATCH;
 	v->flags = LDMSD_VERSION_FLAGS;
-}
-
-int ldmsd_loglevel_set(char *verbose_level)
-{
-	int level = -1;
-	if (0 == strcmp(verbose_level, "QUIET")) {
-		quiet = 1;
-		level = LDMSD_LLASTLEVEL;
-	} else {
-		level = ldmsd_str_to_loglevel(verbose_level);
-		quiet = 0;
-	}
-	if (level < 0)
-		return level;
-	cmd_line_args.verbosity = level;
-	return 0;
-}
-
-enum ldmsd_loglevel ldmsd_loglevel_get()
-{
-	return cmd_line_args.verbosity;
 }
 
 int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level)
@@ -205,7 +177,8 @@ int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level)
 void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 {
 	if ((level != LDMSD_LALL) &&
-			(quiet || ((0 <= level) && (level < ldmsd_loglevel_get()))))
+			(ldmsd_is_quiet() ||
+				((0 <= level) && (level < ldmsd_loglevel_get()))))
 		return;
 	if (log_fp == LDMSD_LOG_SYSLOG) {
 		vsyslog(ldmsd_loglevel_to_syslog(level),fmt,ap);
@@ -299,7 +272,7 @@ unsigned long ldmsd_time_str2us(const char *s)
 	unsigned long x;
 	rc = sscanf(s, "%lu %s", &x, unit);
 
-	if ((rc == EOF) || (0 == strcmp(unit, "us")) || (0 == strncmp(unit, "micro", 5))) {
+	if ((rc == 1) || (0 == strcmp(unit, "us")) || (0 == strncmp(unit, "micro", 5))) {
 		/* microseconds */
 		return x;
 	} else if ((0 == strcmp(unit, "ms")) || (0 == strncmp(unit, "milli", 5))) {
@@ -364,72 +337,6 @@ char *ldmsd_time_us2str(unsigned long us)
 	return s;
 }
 
-const char *ldmsd_myhostname_get()
-{
-	return cmd_line_args.myhostname;
-}
-
-const char *ldmsd_myname_get()
-{
-	return cmd_line_args.daemon_name;
-}
-
-const char *ldmsd_auth_name_get(ldmsd_listen_t listen)
-{
-	if (!listen->auth_name)
-		return ldmsd_default_auth_get();
-	return listen->auth_name;
-}
-
-struct attr_value_list *ldmsd_auth_attr_get(ldmsd_listen_t listen)
-{
-	if (!listen->auth_name)
-		return ldmsd_default_auth_attr_get();
-	return listen->auth_attrs;
-}
-
-const char *ldmsd_default_auth_get()
-{
-	ldmsd_auth_t d = ldmsd_auth_default_get();
-	const char *ret;
-	if (!d)
-		return "none";
-	ret = d->plugin;
-	ldmsd_cfgobj_put(&d->obj);
-	return ret;
-}
-
-struct attr_value_list *ldmsd_default_auth_attr_get()
-{
-	ldmsd_auth_t d = ldmsd_auth_default_get();
-	struct attr_value_list *av;
-	if (!d)
-		return NULL;
-	av = d->attrs;
-	ldmsd_cfgobj_put(&d->obj);
-	return av;
-}
-
-mode_t ldmsd_inband_cfg_mask_get()
-{
-	return inband_cfg_mask;
-}
-
-void ldmsd_inband_cfg_mask_set(mode_t mask)
-{
-	inband_cfg_mask = mask;
-}
-
-void ldmsd_inband_cfg_mask_add(mode_t mask)
-{
-	inband_cfg_mask |= mask;
-}
-
-void ldmsd_inband_cfg_mask_rm(mode_t mask)
-{
-	inband_cfg_mask &= ~mask;
-}
-
 #ifdef LDMSD_UPDATE_TIME
 double ldmsd_timeval_diff(struct timeval *start, struct timeval *end)
 {
@@ -443,6 +350,7 @@ void cleanup(int x, const char *reason)
 {
 	int llevel = LDMSD_LINFO;
 	ldmsd_listen_t listen, nxt_listen;
+	ldmsd_daemon_t pidfile;
 
 	if (x)
 		llevel = LDMSD_LCRITICAL;
@@ -460,64 +368,51 @@ void cleanup(int x, const char *reason)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_LISTEN);
 
-	if (!cmd_line_args.foreground && cmd_line_args.pidfile) {
-		unlink(cmd_line_args.pidfile);
-		free(cmd_line_args.pidfile);
-		cmd_line_args.pidfile = NULL;
-		if (bannerfile) {
-			if (cmd_line_args.banner < 2) {
-				unlink(bannerfile);
-			}
-			free(bannerfile);
-			bannerfile = NULL;
+	/* pidfile & banner */
+	pidfile = (ldmsd_daemon_t)ldmsd_cfgobj_find("pid_file", LDMSD_CFGOBJ_DAEMON);
+	if (pidfile->obj.enabled) {
+		unlink(json_value_str(json_value_find(
+					pidfile->attr, "path"))->str);
+		if (json_value_bool(json_value_find(pidfile->attr, "banner"))) {
+			unlink(json_value_str(json_value_find(
+					pidfile->attr, "banner_path"))->str);
 		}
 	}
-	if (cmd_line_args.pidfile) {
-		free(cmd_line_args.pidfile);
-		cmd_line_args.pidfile = NULL;
-	}
 	ldmsd_log(llevel, "LDMSD_ cleanup end.\n");
-	if (cmd_line_args.log_path) {
-		free(cmd_line_args.log_path);
-		cmd_line_args.log_path = NULL;
-	}
 
 	exit(x);
 }
 
 /** return a file pointer or a special syslog pointer */
-FILE *ldmsd_open_log()
+FILE *ldmsd_open_log(const char *path)
 {
 	FILE *f;
 	int rc;
 	char *errstr;
-	if (strcasecmp(cmd_line_args.log_path, "syslog")==0) {
+	if (strcasecmp(path, "syslog")==0) {
 		ldmsd_log(LDMSD_LDEBUG, "Switching to syslog.\n");
 		f = LDMSD_LOG_SYSLOG;
 		openlog(progname, LOG_NDELAY|LOG_PID, LOG_DAEMON);
 		return f;
 	}
 
-	f = fopen_perm(cmd_line_args.log_path, "a", LDMSD_DEFAULT_FILE_PERM);
+	f = fopen_perm(path, "a", LDMSD_DEFAULT_FILE_PERM);
 	if (!f) {
-		ldmsd_log(LDMSD_LERROR, "Could not open the log file named '%s'\n",
-						cmd_line_args.log_path);
+		ldmsd_log(LDMSD_LERROR, "Could not open the log file named '%s'\n", path);
 		rc = 9;
 		errstr= "log open failed";
 		goto err;
 	}
-	if (!ldmsd_is_check_syntax()) {
+	if (!ldmsd_is_syntax_check()) {
 		int fd = fileno(f);
 		if (dup2(fd, 1) < 0) {
-			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
-						cmd_line_args.log_path);
+			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n", path);
 			rc = 10;
 			errstr = "error redirecting stdout";
 			goto err;
 		}
 		if (dup2(fd, 2) < 0) {
-			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
-						cmd_line_args.log_path);
+			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n", path);
 			rc = 11;
 			errstr = "error redirecting stderr";
 			goto err;
@@ -528,58 +423,9 @@ FILE *ldmsd_open_log()
 	return f;
 
 err:
-	if (!ldmsd_is_check_syntax())
+	if (!ldmsd_is_syntax_check())
 		cleanup(rc, errstr);
 	return f;
-}
-
-int ldmsd_logrotate() {
-	int rc;
-	if (!cmd_line_args.log_path) {
-		ldmsd_log(LDMSD_LERROR, "Received a logrotate command but "
-			"the log messages are printed to the standard out.\n");
-		return EINVAL;
-	}
-	if (log_fp == LDMSD_LOG_SYSLOG) {
-		/* nothing to do */
-		return 0;
-	}
-	struct timeval tv;
-	char ofile_name[PATH_MAX];
-	gettimeofday(&tv, NULL);
-	sprintf(ofile_name, "%s-%ld", cmd_line_args.log_path, tv.tv_sec);
-
-	pthread_mutex_lock(&log_lock);
-	if (!log_fp) {
-		pthread_mutex_unlock(&log_lock);
-		return EINVAL;
-	}
-	fflush(log_fp);
-	fclose(log_fp);
-	rename(cmd_line_args.log_path, ofile_name);
-	log_fp = fopen_perm(cmd_line_args.log_path, "a", LDMSD_DEFAULT_FILE_PERM);
-	if (!log_fp) {
-		printf("%-10s: Failed to rotate the log file. Cannot open a new "
-			"log file\n", "ERROR");
-		fflush(stdout);
-		rc = errno;
-		goto err;
-	}
-	int fd = fileno(log_fp);
-	if (dup2(fd, 1) < 0) {
-		rc = errno;
-		goto err;
-	}
-	if (dup2(fd, 2) < 0) {
-		rc = errno;
-		goto err;
-	}
-	stdout = stderr = log_fp;
-	pthread_mutex_unlock(&log_lock);
-	return 0;
-err:
-	pthread_mutex_unlock(&log_lock);
-	return rc;
 }
 
 void cleanup_sa(int signal, siginfo_t *info, void *arg)
@@ -600,6 +446,7 @@ void usage_hint(char *hint)
 	printf("    -u name	   List named plugin if available, and where possible its usage,\n");
 	printf("		   then exit. Name all, sampler, and store limit output.[CMD LINE ONLY]\n");
 	printf("    -c path	   The path to configuration file (optional, default: <none>).\n");
+	printf("    -t translator  The configuration file translator plugin\n");
 	printf("    -B mode        Daemon mode banner file with pidfile [1].\n"
 	       "		   modes:0-no banner file, 1-banner auto-deleted, 2-banner left.\n");
 	printf("    -m memory size Maximum size of pre-allocated memory for metric sets.\n"
@@ -643,7 +490,6 @@ void usage() {
 }
 
 #define EVTH_MAX 1024
-int ev_thread_count = 1;
 ovis_scheduler_t *ovis_scheduler;
 pthread_t *ev_thread;		/* sampler threads */
 int *ev_count;			/* number of hosts/samplers assigned to each thread */
@@ -653,7 +499,7 @@ int find_least_busy_thread()
 	int i;
 	int idx = 0;
 	int count = ev_count[0];
-	for (i = 1; i < ev_thread_count; i++) {
+	for (i = 1; i < ldmsd_worker_count_get(); i++) {
 		if (ev_count[i] < count) {
 			idx = i;
 			count = ev_count[i];
@@ -702,7 +548,7 @@ void kpublish(int map_fd, int set_no, int set_size, char *set_name)
 		ldmsd_lerror("Error %d mmapping the set '%s'\n", rc, set_name);
 		return;
 	}
-	sprintf(sh->producer_name, "%s", cmd_line_args.myhostname);
+	sprintf(sh->producer_name, "%s", ldmsd_myname_get());
 }
 
 pthread_t k_thread;
@@ -714,11 +560,12 @@ void *k_proc(void *arg)
 	char set_name[128];
 	FILE *fp;
 	union kldms_req k_req;
+	char *kernel_setfile = (char *)arg;
 
-	fp = fopen(cmd_line_args.kernel_setfile, "r");
+	fp = fopen(kernel_setfile, "r");
 	if (!fp) {
 		ldmsd_lerror("The specified kernel metric set file '%s' "
-			     "could not be opened.\n", cmd_line_args.kernel_setfile);
+			     "could not be opened.\n", kernel_setfile);
 		cleanup(1, "Could not open kldms set file");
 	}
 
@@ -947,11 +794,6 @@ void ev_log_cb(int sev, const char *msg)
 	ldmsd_log(LDMSD_LERROR, "%s: %s\n", sev_s[sev], msg);
 }
 
-char *ldmsd_get_max_mem_sz_str()
-{
-	return cmd_line_args.mem_sz_str;
-}
-
 enum ldms_opttype {
 	LO_PATH,
 	LO_UINT,
@@ -1025,11 +867,15 @@ void ldmsd_ev_init(void)
 	prdcr_stop_type = ev_type_new("prdcr:stop", sizeof(struct stop_data));
 	strgp_stop_type = ev_type_new("strgp:stop", sizeof(struct stop_data));
 	smplr_stop_type = ev_type_new("smplr:stop", sizeof(struct stop_data));
+	cfg_msg_ctxt_free_type = ev_type_new("cfg:msg_ctxt_free", sizeof(struct msg_ctxt_free_data));
+	cfgobj_enabled_type = ev_type_new("cfg:enabled", sizeof(struct start_data));
+	cfgobj_disabled_type = ev_type_new("cfg:disabled", sizeof(struct stop_data));
 
 	producer = ev_worker_new("producer", default_actor);
 	updater = ev_worker_new("updater", default_actor);
 	sampler = ev_worker_new("sampler", default_actor);
 	storage = ev_worker_new("storage", default_actor);
+	cfg = ev_worker_new("cfg", default_actor);
 
 	ev_dispatch(sampler, smplr_sample_type, sample_actor);
 	ev_dispatch(updater, prdcr_set_update_type, prdcr_set_update_actor);
@@ -1039,629 +885,597 @@ void ldmsd_ev_init(void)
 	ev_dispatch(producer, prdcr_connect_type, prdcr_connect_actor);
 	ev_dispatch(producer, updtr_start_type, updtr_start_actor);
 	ev_dispatch(producer, updtr_stop_type, updtr_stop_actor);
+	ev_dispatch(cfg, cfg_msg_ctxt_free_type, cfg_msg_ctxt_free_actor);
+	ev_dispatch(cfg, cfgobj_enabled_type, cfgobj_enabled_actor);
+	ev_dispatch(cfg, cfgobj_disabled_type, cfgobj_disabled_actor);
+
 }
 
-void ldmsd_thread_count_set(char *str)
+int handle_cfgobjs()
 {
-	int cnt;
-	cnt = atoi(str);
-	if (cnt < 1 )
-		cnt = 1;
-	if (cnt > EVTH_MAX)
-		cnt = EVTH_MAX;
-	cmd_line_args.ev_thread_count = cnt;
-}
+	int i, rc;
+	ldmsd_cfgobj_t obj;
+	enum ldmsd_cfgobj_type type;
+	enum ldmsd_cfgobj_type orders[] = {
+			LDMSD_CFGOBJ_AUTH,
+			LDMSD_CFGOBJ_LISTEN,
+			LDMSD_CFGOBJ_PLUGIN,
+			LDMSD_CFGOBJ_SMPLR,
+			LDMSD_CFGOBJ_PRDCR,
+			LDMSD_CFGOBJ_UPDTR,
+			LDMSD_CFGOBJ_STRGP,
+			LDMSD_CFGOBJ_SETGRP,
+			0
+	};
 
-int ldmsd_auth_opt_add(struct attr_value_list *auth_attrs, char *name, char *val)
-{
-	struct attr_value *attr;
-	attr = &(auth_attrs->list[auth_attrs->count]);
-	if (auth_attrs->count == auth_attrs->size) {
-		ldmsd_log(LDMSD_LERROR, "Too many auth options\n");
-		return EINVAL;
+	/*
+	 * Handle the daemon cfgobjs separately because the order among them
+	 * matters.
+	 */
+	rc = ldmsd_daemon_cfgobjs();
+	if (rc)
+		cleanup(rc, "Failed to initialize the process.");
+
+	i = 0;
+	type =  orders[i++];
+	while (type) {
+		for (obj = ldmsd_cfgobj_first(type); obj;
+					obj = ldmsd_cfgobj_next(obj)) {
+			if (!obj->enabled || !obj->enable)
+				continue;
+			rc = obj->enable(obj);
+			if (rc) {
+				ldmsd_log(LDMSD_LERROR, "Failed to enable %s '%s'\n",
+						ldmsd_cfgobj_type2str(type), obj->name);
+				cleanup(rc, "Failed to start the process");
+			}
+		}
+		type = orders[i++];
 	}
-	attr->name = strdup(name);
-	if (!attr->name)
-		return ENOMEM;
-	attr->value = strdup(val);
-	if (!attr->value)
-		return ENOMEM;
-	auth_attrs->count++;
+	is_ldmsd_initialized = 1;
 	return 0;
 }
 
-struct attr_value_list *ldmsd_auth_opts_str2avl(const char *auth_opts_s)
+static int submit_cfgobj_request(ldmsd_plugin_inst_t pi, json_entity_t req_obj)
 {
-	struct attr_value_list *avl;
-	char *ptr, *name, *value, *s;
+	int status;
+	ldmsd_req_buf_t buf;
+	json_entity_t reply, results, key, v, msg;
+	struct ldmsd_sec_ctxt sctxt;
+	ldmsd_sec_ctxt_get(&sctxt);
+	int msg_no = json_value_int(json_value_find(req_obj, "id"));
 
-	errno = 0;
-	s = strdup(auth_opts_s);
-	if (!s) {
-		errno = ENOMEM;
-		return NULL;
+	buf = ldmsd_req_buf_alloc(1024);
+	if (!buf)
+		goto oom;
+	reply = ldmsd_process_cfgobj_requests(req_obj, msg_no, &sctxt);
+	if (!reply)
+		goto oom;
+	status = json_value_int(json_value_find(reply, "status"));
+	if (status) {
+		ldmsd_log(LDMSD_LCRITICAL, "%s\n", json_value_str(json_value_find(reply, "msg"))->str);
+		return status;
 	}
-	avl = av_new(LDMSD_AUTH_OPT_MAX);
-	if (!avl) {
-		errno = ENOMEM;
-		goto out;
-	}
-	name = strtok_r(s, " \t", &ptr);
-	while (name) {
-		value = strchr(name, '=');
-		if (value) {
-			value[0] = '\0';
-			value++;
-		} else {
-			errno = EINVAL;
-			goto err;
-		}
-		ldmsd_auth_opt_add(avl, name, value);
-		name = strtok_r(NULL, " \t", &ptr);
-	}
-	goto out;
-err:
-	av_free(avl);
-	avl = NULL;
-out:
-	free(s);
-	return avl;
-}
-
-void ldmsd_listen___del(ldmsd_cfgobj_t obj)
-{
-	ldmsd_listen_t listen = (ldmsd_listen_t)obj;
-	if (listen->x)
-		ldms_xprt_put(listen->x);
-	if (listen->xprt)
-		free(listen->xprt);
-	if (listen->host)
-		free(listen->host);
-	if (listen->auth_name)
-		free(listen->auth_name);
-	if (listen->auth_attrs)
-		av_free(listen->auth_attrs);
-	ldmsd_cfgobj___del(obj);
-}
-
-ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
-{
-	char *name;
-	size_t len;
-	struct ldmsd_listen *listen = NULL;
-	ldmsd_auth_t auth_dom = NULL;
-
-	if (!port)
-		port = TOSTRING(LDMS_DEFAULT_PORT);
-
-	len = strlen(xprt) + strlen(port) + 2; /* +1 for ':' and +1 for \0 */
-	name = malloc(len);
-	if (!name)
-		return NULL;
-	(void) snprintf(name, len, "%s:%s", xprt, port);
-	listen = (struct ldmsd_listen *)
-		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_LISTEN,
-				sizeof *listen, ldmsd_listen___del,
-				getuid(), getgid(), 0550); /* No one can alter it */
-	if (!listen)
-		return NULL;
-
-	listen->xprt = strdup(xprt);
-	if (!listen->xprt)
-		goto err;
-	listen->port_no = atoi(port);
-	if (host) {
-		listen->host = strdup(host);
-		if (!listen->host)
-			goto err;
-	}
-	if (auth) {
-		auth_dom = ldmsd_auth_find(auth);
-		if (!auth_dom) {
-			errno = ENOENT;
-			goto err;
-		}
-		listen->auth_name = strdup(auth_dom->plugin);
-		if (!listen->auth_name)
-			goto err;
-		if (auth_dom->attrs) {
-			listen->auth_attrs = av_copy(auth_dom->attrs);
-			if (!listen->auth_attrs) {
-				errno = ENOMEM;
-				goto err;
+	results = json_value_find(reply, "result");
+	if (!results)
+		return 0;
+	for (key = json_attr_first(results); key; key = json_attr_next(key)) {
+		v = json_attr_value(key);
+		status = json_value_int(json_value_find(v, "status"));
+		if (status) {
+			msg = json_value_find(v, "msg");
+			if (msg) {
+				/* TODO: Think about how to report the error.
+				 * It is possible that only the status is provided,
+				 * no error messages.
+				 */
+				ldmsd_log(LDMSD_LCRITICAL, "[%d]: %s\n",
+					status, json_value_str(msg)->str);
 			}
 		}
-		ldmsd_cfgobj_put(&auth_dom->obj);
 	}
-
-	ldmsd_cfgobj_unlock(&listen->obj);
-	return listen;
-err:
-	if (auth_dom)
-		ldmsd_cfgobj_put(&auth_dom->obj);
-	ldmsd_cfgobj_unlock(&listen->obj);
-	ldmsd_cfgobj_put(&listen->obj);
-	return NULL;
+	return status;
+oom:
+	if (buf)
+		ldmsd_req_buf_free(buf);
+	return ENOMEM;
 }
 
-/*
- * \return EPERM if the value is already given.
- *
- * The function processes only the cmd-line options that
- * can be specified both at the command line and in configuration files.
- */
-int ldmsd_process_cmd_line_arg(char opt, char *value)
+static void
+__handle_cfgobj_reqs(ldmsd_plugin_inst_t pi, json_entity_t req_list,
+					enum ldmsd_cfgobj_type want)
 {
-	char *lval, *rval;
 	int rc;
-	switch (opt) {
+	json_entity_t req, req_next, schema;
+	char *type_s;
+	enum ldmsd_cfgobj_type type;
+
+	req = json_item_first(req_list);
+	while (req) {
+		req_next = json_item_next(req);
+		schema = json_value_find(req, "schema");
+		if (!schema) {
+			ldmsd_log(LDMSD_LCRITICAL, "'schema' is missing "
+						"from a configuration request.");
+			cleanup(EINVAL, "Configuration error");
+		}
+		type_s = json_value_str(schema)->str;
+		type = ldmsd_cfgobj_type_str2enum(type_s);
+		if (type < 0) {
+			ldmsd_log(LDMSD_LCRITICAL, "Unsupported configuration "
+						"object '%s'\n", type_s);
+			cleanup(EINVAL, "Configuration error");
+		}
+		if (want != type)
+			goto next;
+		rc = submit_cfgobj_request(pi, req);
+		if (rc)
+			cleanup(rc, "Configuration error");
+		(void)json_item_rem(req_list, req);
+		json_entity_free(req);
+	next:
+		req = req_next;
+	}
+}
+
+static void handle_cfgobj_reqs(ldmsd_plugin_inst_t pi, json_entity_t req_list)
+{
+	int rc;
+	json_entity_t req;
+
+	/* Process the environment variables requests */
+	__handle_cfgobj_reqs(pi, req_list, LDMSD_CFGOBJ_ENV);
+
+	/* Process the auth cfgobj requests */
+	__handle_cfgobj_reqs(pi, req_list, LDMSD_CFGOBJ_AUTH);
+
+	/* Process the daemon cfgobj requests */
+	__handle_cfgobj_reqs(pi, req_list, LDMSD_CFGOBJ_DAEMON);
+
+	/* Process the listen cfgobj requests */
+	__handle_cfgobj_reqs(pi, req_list, LDMSD_CFGOBJ_LISTEN);
+
+	/* Process the plugin cfgobj requests */
+	__handle_cfgobj_reqs(pi, req_list, LDMSD_CFGOBJ_PLUGIN);
+
+	for (req = json_item_first(req_list); req; req = json_item_next(req)) {
+		rc = submit_cfgobj_request(pi, req);
+		if (rc)
+			cleanup(rc, "Configuration error");
+	}
+}
+
+int process_cli_options(char op, char *value, json_entity_t req_list)
+{
+	json_entity_t obj, spec;
+	char *lval, *rval;
+	static char *global_auth = NULL;
+
+	switch (op) {
 	case 'A':
 		/* (multiple) auth options */
 		lval = strtok(value, "=");
 		if (!lval) {
 			printf("ERROR: Expecting -A name=value\n");
-			return EINVAL;
+			goto einval;
 		}
 		rval = strtok(NULL, "");
 		if (!rval) {
 			printf("ERROR: Expecting -A name=value\n");
-			return EINVAL;
+			goto einval;
 		}
-		if (!cmd_line_args.auth_attrs) {
-			cmd_line_args.auth_attrs = av_new(LDMSD_AUTH_OPT_MAX);
-			if (!cmd_line_args.auth_attrs)
-				return ENOMEM;
-		}
-		rc = ldmsd_auth_opt_add(cmd_line_args.auth_attrs, lval, rval);
-		if (rc)
-			return rc;
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, global_auth,
+					JSON_STRING_VALUE, lval, rval,
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_AUTH),
+				0, NULL, NULL, spec);
 		break;
 	case 'a':
-		/* auth name */
-		if (cmd_line_args.auth_name) {
-			ldmsd_log(LDMSD_LERROR, "Default-auth was already "
-					"specified to %s.\n",
-					cmd_line_args.auth_name);
-			return EPERM;
-		} else {
-			cmd_line_args.auth_name = strdup(value);
-		}
+		global_auth = value;
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, value,
+					JSON_STRING_VALUE, "plugin", value,
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_create_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_AUTH),
+				1, NULL, spec);
+		if (!obj)
+			goto oom;
+		json_item_add(req_list, obj);
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, "default_auth",
+					JSON_STRING_VALUE, "name", value,
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
+				1, NULL, NULL, spec);
 		break;
 	case 'B':
-		if (check_arg("B", value, LO_UINT))
-			return EINVAL;
-		cmd_line_args.banner = atoi(value);
+		if (check_arg("B", value, LO_UINT)) {
+			printf("The -B option is not an integer.\n");
+			goto einval;
+		}
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, "pid_file",
+					JSON_INT_VALUE, "banner", atoi(value),
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
+				1, NULL, NULL, spec);
 		break;
 	case 'C':
-	case 'c':
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, "syntax_check",
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
+				1, NULL, NULL, spec);
+		break;
 	case 'F':
-		/*
-		 * Must be specified at the command line.
-		 * Handle separately in the main() function.
-		 */
-		return ENOTSUP;
-	case 'H':
-		if (check_arg("H", value, LO_NAME))
-			return EINVAL;
-		if (cmd_line_args.myhostname[0] != '\0') {
-			ldmsd_log(LDMSD_LERROR, "LDMSD hostname was already "
-				"specified to %s\n", cmd_line_args.myhostname);
-			return EPERM;
-		} else {
-			snprintf(cmd_line_args.myhostname,
-				sizeof(cmd_line_args.myhostname), "%s", value);
-		}
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, "daemonize",
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
+				0, NULL, NULL, spec);
 		break;
 	case 'k':
-		cmd_line_args.do_kernel = 1;
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, "kernel_set_path",
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
+				1, NULL, NULL, spec);
 		break;
 	case 'l':
-		if (check_arg("l", value, LO_PATH))
-			return EINVAL;
-		if (cmd_line_args.log_path) {
-			ldmsd_log(LDMSD_LERROR, "The log path is already "
-					"specified to %s\n",
-					cmd_line_args.log_path);
-			return EPERM;
-		} else {
-			cmd_line_args.log_path = strdup(value);
-			/*
-			 * Print all messages to stdout
-			 * if the syntax check flag is turned on.
-			 */
-			if (!ldmsd_is_check_syntax())
-				log_fp = ldmsd_open_log();
+		if (check_arg("l", value, LO_PATH)) {
+			printf("The -l option is not a path.\n");
+			goto einval;
 		}
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, "log",
+					JSON_STRING_VALUE, "path", value,
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
+				1, NULL, NULL, spec);
 		break;
 	case 'm':
-		if (cmd_line_args.mem_sz_str) {
-			ldmsd_log(LDMSD_LERROR, "The memory limit was already "
-					"set to '%s'\n",
-					cmd_line_args.mem_sz_str);
-			return EPERM;
-		} else {
-			if (0 == ovis_get_mem_size(value)) {
-				ldmsd_log(LDMSD_LERROR,
-						"Invalid memory size '%s'. "
-						"See the -m option.\n",
-						value);
-				return EINVAL;
-			}
-			cmd_line_args.mem_sz_str = strdup(value);
-			if (!cmd_line_args.mem_sz_str) {
-				ldmsd_log(LDMSD_LERROR, "Out of memory\n");
-				return ENOMEM;
-			}
-		}
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, "set_memory",
+					JSON_STRING_VALUE, "size", value,
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
+				1, NULL, NULL, spec);
 		break;
 	case 'n':
-		if (cmd_line_args.daemon_name[0] != '\0') {
-			ldmsd_log(LDMSD_LERROR, "LDMSD daemon name was "
-					"already set to %s\n",
-					cmd_line_args.daemon_name);
-			return EPERM;
-		} else {
-			snprintf(cmd_line_args.daemon_name,
-				sizeof(cmd_line_args.daemon_name), "%s", value);
-		}
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, "ldmsd-id",
+					JSON_STRING_VALUE, "name", value,
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
+				1, NULL, NULL, spec);
 		break;
 	case 'P':
-		if (check_arg("P", value, LO_UINT))
-			return EINVAL;
-		if (cmd_line_args.ev_thread_count > 0) {
-			ldmsd_log(LDMSD_LERROR, "LDMSD number of worker threads "
-					"was already set to %d\n",
-					cmd_line_args.ev_thread_count);
-			return EPERM;
-		} else {
-			ldmsd_thread_count_set(value);
+		if (check_arg("P", value, LO_UINT)) {
+			ldmsd_log(LDMSD_LCRITICAL, "The -P option is not an integer.\n");
+			goto einval;
 		}
+		if (atoi(value) > EVTH_MAX) {
+			ldmsd_log(LDMSD_LCRITICAL, "The given worker count %s "
+					"exceeds the max supported %d.\n",
+					value, EVTH_MAX);
+			goto einval;
+		}
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, "workers",
+					JSON_INT_VALUE, "count", atoi(value),
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
+				1, NULL, NULL, spec);
 		break;
 	case 'r':
-		if (check_arg("r", value, LO_PATH))
-			return EINVAL;
-		if (cmd_line_args.pidfile) {
-			ldmsd_log(LDMSD_LERROR, "The pidfile is already "
-					"specified to %s\n",
-					cmd_line_args.pidfile);
-			return EPERM;
-		} else {
-			cmd_line_args.pidfile = strdup(value);
+		if (check_arg("r", value, LO_PATH)) {
+			printf("The -r option is not a path.\n");
+			goto einval;
 		}
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, "pid_file",
+					JSON_STRING_VALUE, "path", value,
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
+				1, NULL, NULL, spec);
 		break;
-
 	case 's':
-		if (check_arg("s", value, LO_PATH))
-			return EINVAL;
-		if (cmd_line_args.kernel_setfile) {
-			ldmsd_log(LDMSD_LERROR, "The kernel set file is already "
-					"specified to %s\n",
-					cmd_line_args.kernel_setfile);
-			return EPERM;
-		} else {
-			cmd_line_args.kernel_setfile = strdup(value);
+		if (check_arg("s", value, LO_PATH)) {
+			printf("The -s option is not a path.\n");
+			goto einval;
 		}
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, "kernel_set_path",
+					JSON_STRING_VALUE, "path", value,
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
+				1, NULL, NULL, spec);
+		break;
+	case 'u':
+		/*
+		 * TODO: complete this
+		 */
 		break;
 	case 'v':
-		if (check_arg("v", value, LO_NAME))
-			return EINVAL;
-		rc = ldmsd_loglevel_set(value);
-		if (rc < 0) {
-			printf("Invalid verbosity levels '%s'. "
-				"See -v option.\n", value);
-			return EINVAL;
+		if (check_arg("v", value, LO_NAME)) {
+			printf("The -v option is not a name.\n");
+			goto einval;
 		}
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, "log",
+					JSON_STRING_VALUE, "level", value,
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_update_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
+				1, NULL, NULL, spec);
 		break;
-	case '?':
-		printf("Error: unknown argument: %c\n", opt);
+	case 'x':
+		if (check_arg("x", optarg, LO_NAME)) {
+			printf("The -x option is not a string.\n");
+			goto einval;
+		}
+		lval = strdup(optarg);
+		if (!lval)
+			goto oom;
+		rval = strchr(lval, ':');
+		if (!rval) {
+			printf("Bad -x option format, expecting XPRT:PORT, "
+					"but received %s\n", optarg);
+			goto einval;
+		}
+		rval[0] = '\0';
+		rval += 1;
+		spec = json_dict_build(NULL,
+				JSON_DICT_VALUE, optarg,
+					JSON_STRING_VALUE, "xprt", lval,
+					JSON_STRING_VALUE, "port", rval,
+					-2,
+				-1);
+		free(lval);
+		if (!spec)
+			goto oom;
+		obj = ldmsd_cfgobj_create_req_obj_new(0,
+				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_LISTEN),
+				1, NULL, spec);
+		if (!obj)
+			goto oom;
+		break;
 	default:
-		return ENOENT;
+		printf("Error: Invalid CLI option: %c\n", op);
+		goto einval;
 	}
+	if (!obj)
+		goto oom;
+	json_item_add(req_list, obj);
 	return 0;
+oom:
+	printf("Out of memory\n");
+	cleanup(ENOMEM, "Out of memory.");
+einval:
+	usage();
+	cleanup(EINVAL, "Invalid CLI option");
+	return EINVAL; /* Prevent a compile error */
 }
 
-int ldmsd_ev_thread_count_get()
-{
-	return cmd_line_args.ev_thread_count;
-}
-
-void handle_pidfile_banner()
+int handle_pidfile_banner(ldmsd_daemon_t obj)
 {
 	struct ldms_version ldms_v;
 	struct ldmsd_version ldmsd_v;
+	char *path = json_value_str(json_value_find(obj->attr, "path"))->str;
+	int banner = json_value_bool(json_value_find(obj->attr, "banner"));
 
 	ldms_version_get(&ldms_v);
 	ldmsd_version_get(&ldmsd_v);
 
-	char *pidfile;
-	if (!cmd_line_args.foreground) {
-		/* Create pidfile for daemon that usually goes away on exit. */
-		/* user arg, then env, then default to get pidfile name */
-		if (!cmd_line_args.pidfile) {
-			char *pidpath = getenv("LDMSD_PIDFILE");
-			if (!pidpath) {
-				pidfile = malloc(strlen(LDMSD_PIDFILE_FMT)
-						+ strlen(basename(progname) + 1));
-				if (pidfile)
-					sprintf(pidfile, LDMSD_PIDFILE_FMT, basename(progname));
-			} else {
-				pidfile = strdup(pidpath);
-			}
+	if (!access(path, F_OK)) {
+		ldmsd_log(LDMSD_LERROR, "Existing pid file named '%s': %s\n",
+			path, "overwritten if writable");
+	}
+	FILE *pfile = fopen_perm(path, "w", LDMSD_DEFAULT_FILE_PERM);
+	if (!pfile) {
+		int piderr = errno;
+		ldmsd_log(LDMSD_LERROR, "Could not open the pid file named '%s': %s\n",
+			path, strerror(piderr));
+		free(path);
+		path = NULL;
+	} else {
+		pid_t mypid = getpid();
+		fprintf(pfile,"%ld\n", (long)mypid);
+		fclose(pfile);
+	}
+	if (path && banner) {
+		char *bannerfile;
+		char *suffix = ".version";
+		bannerfile = malloc(strlen(suffix) + strlen(path) + 1);
+		if (!bannerfile)
+			goto oom;
+		sprintf(bannerfile, "%s%s", path, suffix);
+		if (!access(bannerfile, F_OK)) {
+			ldmsd_log(LDMSD_LERROR, "Existing banner file named '%s': %s\n",
+				bannerfile, "overwritten if writable");
+		}
+		FILE *bfile = fopen_perm(bannerfile, "w", LDMSD_DEFAULT_FILE_PERM);
+		if (!bfile) {
+			int banerr = errno;
+			ldmsd_log(LDMSD_LERROR, "Could not open the banner file named '%s': %s\n",
+				bannerfile, strerror(banerr));
 		} else {
-			pidfile = strdup(cmd_line_args.pidfile);
-		}
-		if (!pidfile) {
-			ldmsd_log(LDMSD_LERROR, "Out of memory\n");
-			exit(1);
-		}
-		if (!access(pidfile, F_OK)) {
-			ldmsd_log(LDMSD_LERROR, "Existing pid file named '%s': %s\n",
-				pidfile, "overwritten if writable");
-		}
-		FILE *pfile = fopen_perm(pidfile,"w", LDMSD_DEFAULT_FILE_PERM);
-		if (!pfile) {
-			int piderr = errno;
-			ldmsd_log(LDMSD_LERROR, "Could not open the pid file named '%s': %s\n",
-				pidfile, strerror(piderr));
-			free(pidfile);
-			pidfile = NULL;
-		} else {
-			pid_t mypid = getpid();
-			fprintf(pfile,"%ld\n", (long)mypid);
-			fclose(pfile);
-		}
-		cmd_line_args.pidfile = pidfile;
-		if (pidfile && cmd_line_args.banner) {
-			char *suffix = ".version";
-			bannerfile = malloc(strlen(suffix) + strlen(pidfile) + 1);
-			if (!bannerfile) {
-				ldmsd_log(LDMSD_LCRITICAL, "Memory allocation failure.\n");
-				exit(1);
-			}
-			sprintf(bannerfile, "%s%s", pidfile, suffix);
-			if (!access(bannerfile, F_OK)) {
-				ldmsd_log(LDMSD_LERROR, "Existing banner file named '%s': %s\n",
-					bannerfile, "overwritten if writable");
-			}
-			FILE *bfile = fopen_perm(bannerfile, "w", LDMSD_DEFAULT_FILE_PERM);
-			if (!bfile) {
-				int banerr = errno;
-				ldmsd_log(LDMSD_LERROR, "Could not open the banner file named '%s': %s\n",
-					bannerfile, strerror(banerr));
-			} else {
 
 #define BANNER_PART1_A "Started LDMS Daemon with default authentication "
 #define BANNER_PART1_NOA "Started LDMS Daemon without default authentication "
 #define BANNER_PART2 "version %s. LDMSD Interface Version " \
-	"%hhu.%hhu.%hhu.%hhu. LDMS Protocol Version %hhu.%hhu.%hhu.%hhu. " \
-	"git-SHA %s\n", PACKAGE_VERSION, \
-	ldmsd_v.major, ldmsd_v.minor, \
-	ldmsd_v.patch, ldmsd_v.flags, \
-	ldms_v.major, ldms_v.minor, ldms_v.patch, \
-	ldms_v.flags, OVIS_GIT_LONG
+"%hhu.%hhu.%hhu.%hhu. LDMS Protocol Version %hhu.%hhu.%hhu.%hhu. " \
+"git-SHA %s\n", PACKAGE_VERSION, \
+ldmsd_v.major, ldmsd_v.minor, \
+ldmsd_v.patch, ldmsd_v.flags, \
+ldms_v.major, ldms_v.minor, ldms_v.patch, \
+ldms_v.flags, OVIS_GIT_LONG
 
-				if (0 == strcmp(cmd_line_args.auth_name, "none"))
-					fprintf(bfile, BANNER_PART1_NOA BANNER_PART2);
-				else
-					fprintf(bfile, BANNER_PART1_A BANNER_PART2);
-				fclose(bfile);
-			}
+			if (0 == strcmp(ldmsd_global_auth_name_get(), "none"))
+				fprintf(bfile, BANNER_PART1_NOA BANNER_PART2);
+			else
+				fprintf(bfile, BANNER_PART1_A BANNER_PART2);
+			fclose(bfile);
+
+			obj->attr = json_dict_build(obj->attr,
+					JSON_STRING_VALUE, "banner_path", bannerfile,
+					-1);
+			if (!obj->attr)
+				goto oom;
 		}
 	}
+	return 0;
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	return ENOMEM;
 }
 
-/* process default auth options */
-void try_process_default_auth()
+int worker_threads_create(int worker_count)
 {
-	static int once = 0;
-	if (once)
-		return;
-	once = 1;
-	/*
-	 * No default authentication was specified.
-	 * Set the default authentication method to 'none'.
-	 */
-	if (!cmd_line_args.auth_name)
-		cmd_line_args.auth_name = strdup("none");
-	/* Set default authentication */
-	ldmsd_auth_default_set(cmd_line_args.auth_name, cmd_line_args.auth_attrs);
-}
-
-void ldmsd_init()
-{
-	int rc, i;
-	size_t mem_sz;
-
-	if (!cmd_line_args.mem_sz_str) {
-		cmd_line_args.mem_sz_str = getenv(LDMSD_MEM_SIZE_ENV);
-		if (!cmd_line_args.mem_sz_str) {
-			cmd_line_args.mem_sz_str = strdup(LDMSD_MEM_SIZE_DEFAULT);
-			if (!cmd_line_args.mem_sz_str)
-				cleanup(ENOMEM, "Memory allocation failure.");
-		}
-
-	}
-	mem_sz = ovis_get_mem_size(cmd_line_args.mem_sz_str);
-	if (ldms_init(mem_sz)) {
-		ldmsd_log(LDMSD_LCRITICAL, "LDMS could not pre-allocate "
-				"the memory of size %s.\n",
-				cmd_line_args.mem_sz_str);
-		cleanup(ENOMEM, "Memory allocation failure.");
-	}
-
-	if (cmd_line_args.is_syntax_check) {
-		/*
-		 * We call ldms_init() above because
-		 * sampler plugin instances create sets at config time.
-		 * We still want to check the syntax of the config lines.
-		 */
-		return;
-	}
-
-	try_process_default_auth();
-
-	if (cmd_line_args.myhostname[0] == '\0') {
-		rc = gethostname(cmd_line_args.myhostname,
-				sizeof(cmd_line_args.myhostname));
-		if (rc)
-			cmd_line_args.myhostname[0] = '\0';
-	}
-
-	if (cmd_line_args.daemon_name[0] == '\0') {
-		ldmsd_listen_t listen = (ldmsd_listen_t)
-					ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
-		if (listen) {
-			snprintf(cmd_line_args.daemon_name,
-					sizeof(cmd_line_args.daemon_name),
-					"%s:%hu", cmd_line_args.myhostname,
-					listen->port_no);
-		} else {
-			snprintf(cmd_line_args.daemon_name,
-					sizeof(cmd_line_args.daemon_name),
-					"%s:", cmd_line_args.myhostname);
-		}
-	}
-
-	/* Initialize event threads and event schedulers */
-	if (cmd_line_args.ev_thread_count == 0)
-		cmd_line_args.ev_thread_count = LDMSD_EV_THREAD_CNT_DEFAULT;
-	ev_count = calloc(cmd_line_args.ev_thread_count, sizeof(int));
+	int i, rc;
+	ev_count = calloc(worker_count, sizeof(int));
 	if (!ev_count)
-		cleanup(ENOMEM, "Memory allocation failure.");
-	ovis_scheduler = calloc(cmd_line_args.ev_thread_count, sizeof(*ovis_scheduler));
+		goto oom;
+	ovis_scheduler = calloc(worker_count, sizeof(*ovis_scheduler));
 	if (!ovis_scheduler)
-		cleanup(ENOMEM, "Memory allocation failure.");
-	ev_thread = calloc(cmd_line_args.ev_thread_count, sizeof(pthread_t));
+		goto oom;
+	ev_thread = calloc(worker_count, sizeof(pthread_t));
 	if (!ev_thread)
-		cleanup(ENOMEM, "Memory allocation failure.");
-	for (i = 0; i < cmd_line_args.ev_thread_count; i++) {
+		goto oom;
+	for (i = 0; i < worker_count; i++) {
 		ovis_scheduler[i] = ovis_scheduler_new();
 		if (!ovis_scheduler[i]) {
 			ldmsd_log(LDMSD_LERROR, "Error creating an OVIS scheduler.\n");
-			cleanup(6, "OVIS scheduler create failed");
+			return ENOMEM;
 		}
 		rc = pthread_create(&ev_thread[i], NULL, event_proc, ovis_scheduler[i]);
 		if (rc) {
 			ldmsd_log(LDMSD_LERROR, "Error %d creating the event "
 					"thread.\n", rc);
-			cleanup(7, "event thread create fail");
+			return rc;
 		}
 		pthread_setname_np(ev_thread[i], "ldmsd:scheduler");
 	}
-
-	/* handle kernel sets */
-	if (!cmd_line_args.kernel_setfile) {
-		cmd_line_args.kernel_setfile = strdup(LDMSD_SETFILE);
-		if (!cmd_line_args.kernel_setfile)
-			cleanup(ENOMEM, "Memory allocation failure.");
-	}
-	if (cmd_line_args.do_kernel && publish_kernel(cmd_line_args.kernel_setfile))
-		cleanup(3, "start kernel sampler failed");
-
-	if (cmd_line_args.banner < 0)
-		cmd_line_args.banner = LDMSD_BANNER_DEFAULT;
-
-	is_ldmsd_initialized = 1;
+	return 0;
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory.\n");
+	return ENOMEM;
 }
 
-int create_listening_ldms_xprt(ldmsd_listen_t listen)
+short ldmsd_is_syntax_check()
 {
-	if (!listen->auth_name) {
-		listen->auth_name = strdup(ldmsd_auth_name_get(listen));
-		if (!listen->auth_name) {
-			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
-			return ENOMEM;
-		}
-		if (ldmsd_auth_attr_get(listen)) {
-			listen->auth_attrs = av_copy(ldmsd_auth_attr_get(listen));
-			if (!listen->auth_attrs) {
-				ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
-				return ENOMEM;
-			}
-		}
-	}
-	listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
-				listen->auth_name, listen->auth_attrs);
-	if (!listen->x) {
-		ldmsd_log(LDMSD_LERROR,
-			  "'%s' transport creation with auth '%s' "
-			  "failed, error: %s(%d). Please check transpot "
-			  "configuration, authentication configuration, "
-			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
-			  listen->xprt,
-			  ldmsd_auth_name_get(listen),
-			  ovis_errno_abbvr(errno),
-			  errno);
-		return 6; /* legacy error code */
-	}
+	return is_syntax_check;
+}
+
+/*
+ * TODO: remove the typedef and correct the signature of process_config_file.
+ */
+typedef struct ldmsd_plugin_inst_s *ldmsd_translator_t;
+static int
+process_config_file_NEW(ldmsd_translator_t t, const char *path,
+				json_entity_t req_obj_list)
+{
+	/*
+	 * TODO: implement this.
+	 */
+	json_entity_t req, spc;
+
+	/* auth */
+	spc = json_dict_build(NULL,
+			JSON_DICT_VALUE, "default_auth",
+				JSON_STRING_VALUE, "plugin", "none",
+				-2,
+			-1);
+	req = ldmsd_cfgobj_create_req_obj_new(0, ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_AUTH),
+						1, NULL, spc);
+	json_item_add(req_obj_list, req);
+
+	/* prdcr */
+	spc = json_dict_build(NULL,
+			JSON_DICT_VALUE, "localhost",
+				JSON_STRING_VALUE, "type", "active",
+				JSON_STRING_VALUE, "host", "localhost",
+				JSON_STRING_VALUE, "port", "10001",
+				JSON_STRING_VALUE, "xprt", "sock",
+				JSON_STRING_VALUE, "interval", "1sec",
+				JSON_STRING_VALUE, "auth", "none",
+				-2,
+			-1);
+	req = ldmsd_cfgobj_create_req_obj_new(1,
+					ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_PRDCR),
+					1, NULL, spc);
+	json_item_add(req_obj_list, req);
 	return 0;
 }
 
-void handle_listening_endpoints()
-{
-	struct ldmsd_listen *listen;
-	int rc;
-	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
-		listen; listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
-		rc = create_listening_ldms_xprt(listen);
-		if (rc)
-			cleanup(rc, "error creating transport");
-		rc = listen_on_ldms_xprt(listen);
-		if (rc)
-			cleanup(rc, "error listening on transport");
-	}
-}
-
-void try_creating_listening_ldms_xprts()
-{
-	struct ldmsd_listen *listen;
-	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
-		listen; listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
-		(void)create_listening_ldms_xprt(listen);
-	}
-}
-
-void try_creating_default_auth()
-{
-	ldms_auth_plugin_t default_auth_pi;
-	ldms_auth_t default_auth;
-	if (!cmd_line_args.auth_name)
-		return;
-	default_auth_pi = ldms_auth_plugin_get(cmd_line_args.auth_name);
-	if (!default_auth_pi) {
-		ldmsd_log(LDMSD_LERROR, "Invalid default auth '%s'."
-				"Please check ZAP_LIBPATH (env var), "
-				"and LD_LIBRARY_PATH",
-				cmd_line_args.auth_name);
-	} else {
-		default_auth = ldms_auth_new(default_auth_pi, cmd_line_args.auth_attrs);
-		if (!default_auth) {
-			ldmsd_log(LDMSD_LERROR, "Failed to create "
-				"the default authentication object. "
-				"Please check the given auth arguments (%s)\n",
-				av_to_string(cmd_line_args.auth_attrs, 0));
-		} else {
-			ldms_auth_free(default_auth);
-		}
-	}
-}
-
-uint8_t ldmsd_is_check_syntax()
-{
-	return cmd_line_args.is_syntax_check;
-}
-
-int main(int argc, char *argv[])
-{
+int main(int argc, char **argv) {
 #ifdef DEBUG
 	mtrace();
 #endif /* DEBUG */
 	progname = argv[0];
+	int rc;
+	json_entity_t cfgobj_req_list;
+	char *translator_name;
 	struct ldms_version ldms_version;
 	struct ldmsd_version ldmsd_version;
 	ldms_version_get(&ldms_version);
 	ldmsd_version_get(&ldmsd_version);
-	int ret;
 	int op;
 	log_fp = stdout;
 	struct sigaction action;
@@ -1688,33 +1502,16 @@ int main(int argc, char *argv[])
 
 	umask(0);
 
-	extern struct ldmsd_deferred_pi_config_q deferred_pi_config_q;
-	TAILQ_INIT(&deferred_pi_config_q);
+	cfgobj_req_list = json_entity_new(JSON_LIST_VALUE);
+	if (!cfgobj_req_list)
+		cleanup(ENOMEM, "Out of memory");
 
-	cmd_line_args.verbosity = LDMSD_VERBOSITY_DEFAULT;
-	cmd_line_args.banner = -1;
-
-	/* Process the options given at the command line. */
+	/*
+	 * Get the configuration file translator
+	 */
 	opterr = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
-		case 'C':
-			cmd_line_args.is_syntax_check = 1;
-			break;
-		case 'c':
-			/*
-			 * Handle configuration files later
-			 */
-			break;
-		case 'F':
-			cmd_line_args.foreground = 1;
-			break;
-		case 'u':
-			if (check_arg("u", optarg, LO_NAME))
-				return EINVAL;
-			ldmsd_plugins_usage(optarg);
-			exit(0);
-			break;
 		case 'V':
 			printf("LDMSD Version: %s\n", PACKAGE_VERSION);
 			printf("LDMS Protocol Version: %hhu.%hhu.%hhu.%hhu\n",
@@ -1730,140 +1527,129 @@ int main(int argc, char *argv[])
 			printf("git-SHA: %s\n", OVIS_GIT_LONG);
 			exit(0);
 			break;
+		case 't':
+			/*
+			 * TODO: complete this
+			 */
+			translator = strdup(optarg);
+			break;
+		case 'F':
+			is_foreground = 1;
+			break;
+		case 'C':
+			is_syntax_check = 1;
+			break;
+		case 'A':
+		case 'a':
+		case 'B':
+		case 'c':
+		case 'H':
+		case 'k':
+		case 'l':
+		case 'm':
+		case 'n':
+		case 'P':
+		case 'r':
+		case 's':
+		case 'u':
+		case 'v':
 		case 'x':
-			/* handled later */
+			/* Process later */
 			break;
 		default:
-			ret = ldmsd_process_cmd_line_arg(op, optarg);
-			if (ret) {
-				if (ret == ENOENT)
-					usage();
-				cleanup(ret, "");
-			}
-
-			break;
+			usage();
 		}
+		break;
 	}
 
-	if (ldmsd_is_check_syntax()) {
-		/*
-		 * If ldmsd starts to perform syntax checking,
-		 * it will not run in daemon mode.
-		 */
-		cmd_line_args.foreground = 1;
-		/*
-		 * Always prints errors to stdout if
-		 * syntax check is enabled.
-		 */
-		log_fp = stdout;
+	if (is_syntax_check) {
+		is_foreground = 1;
 	}
-
-	if (!cmd_line_args.foreground) {
+	if (!is_foreground) {
 		if (daemon(1, 1)) {
-			perror("ldmsd: ");
-			cleanup(8, "daemon failed to start");
+			rc = errno;
+			char *s = strerror(rc);
+			ldmsd_log(LDMSD_LCRITICAL, "%s\n", s);
+			cleanup(rc, "Failed to daemonize the process");
 		}
 	}
 
-	/* Listening transport */
-	opterr = 0;
-	optind = 0;
-	while ((op = getopt(argc, argv, FMT)) != -1) {
-		char *rval;
-		switch (op) {
-		case 'x':
-			if (check_arg("x", optarg, LO_NAME))
-				return EINVAL;
-			rval = strchr(optarg, ':');
-			if (!rval) {
-				printf("Bad xprt format, expecting XPRT:PORT, "
-						"but got: %s\n", optarg);
-				return EINVAL;
-			}
-			rval[0] = '\0';
-			rval = rval+1;
-			/* Use the default auth domain */
-			ldmsd_listen_t listen = ldmsd_listen_new(optarg, rval, NULL, NULL);
-			if (!listen) {
-				printf( "Error %d: failed to add listening "
-					"endpoint: %s:%s\n",
-					errno, optarg, rval);
-				cleanup(errno, "listen failed");
-			}
-			break;
-		}
-	}
-
-	/* Initialize LDMSD events */
 	ldmsd_ev_init();
 
-	umask(0);
-	/* Process configuration files */
+	if (!translator_name)
+		cleanup(EINVAL, "-t is missing.");
+
+	/*
+	 * Create the pre-defined configuration objects
+	 */
+	rc = ldmsd_daemon_create_cfgobjs();
+	if (rc)
+		cleanup(rc, "Failed to create pre-defined configuration objects.");
+
+	/*
+	 * - Get configuration file
+	 */
 	opterr = 0;
 	optind = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
-		char *dup_arg;
-		int lln = -1;
 		switch (op) {
 		case 'c':
-			dup_arg = strdup(optarg);
-			ret = process_config_file(dup_arg, &lln, 1);
-			free(dup_arg);
-			if (ret && !ldmsd_is_check_syntax()) {
-				char errstr[128];
-				snprintf(errstr, sizeof(errstr),
-					 "Error %d processing configuration file '%s'",
-					 ret, optarg);
-				cleanup(ret, errstr);
-			}
-			ldmsd_log(LDMSD_LINFO,
-				"Processing the config file '%s' is done.\n", optarg);
+			rc = process_config_file_NEW(NULL, optarg, cfgobj_req_list);
+			if (rc)
+				cleanup(rc, "Out of memory");
 			break;
 		}
 	}
 
-	ldmsd_init();
-	ldmsd_handle_deferred_plugin_config();
-
-	if (cmd_line_args.is_syntax_check) {
-		try_creating_default_auth();
-		/*
-		 * Check whether the given transport, authentication methods
-		 * and their arguments are valid or not.
-		 */
-		try_creating_listening_ldms_xprts();
-		goto out;
+	/*
+	 * At this point we have all requests from the configuration files.
+	 *
+	 * Now process the CLI options so that it will take precedence over
+	 * the values specified in the configuration files.
+	 */
+	opterr = 0;
+	optind = 0;
+	while ((op = getopt(argc, argv, FMT)) != -1) {
+		switch (op) {
+		case 'C':
+		case 'F':
+		case 'c':
+		case 't':
+			/* Handle them already. */
+			continue;
+			break;
+		case 'V':
+			/* It shouldn't reach here. */
+			cleanup(0, "");
+			break;
+		default:
+			rc = process_cli_options(op, optarg, cfgobj_req_list);
+			if (rc) {
+				if (ENOMEM == rc)
+					cleanup(ENOMEM, "Out of memory");
+				else if (EINVAL == rc)
+					cleanup(EINVAL, "An invalid CLI option");
+			}
+			break;
+		}
 	}
 
-	handle_pidfile_banner();
-	handle_listening_endpoints();
+	handle_cfgobj_reqs(NULL, cfgobj_req_list);
 
-	if (ldmsd_use_failover) {
-		/* failover will be the one starting cfgobjs */
-		ret = ldmsd_failover_start();
-		if (ret) {
-			ldmsd_log(LDMSD_LERROR,
-				  "failover_start failed, rc: %d\n", ret);
-			cleanup(100, "failover start failed");
-		}
-	} else {
-		/* we can start cfgobjs right away */
-		ret = ldmsd_ourcfg_start_proc();
-		if (ret) {
-			ldmsd_log(LDMSD_LERROR,
-				  "config start failed, rc: %d\n", ret);
-			cleanup(100, "config start failed");
-		}
-		ldmsd_linfo("Enabling in-band config\n");
-		ldmsd_inband_cfg_mask_add(0777);
-	}
+	/*
+	 * At this point all cfgobjs were created and updated according to the
+	 * configuration files and the CLI options.
+	 *
+	 * Now take the associated actions of the cfgobjs.
+	 */
+	handle_cfgobjs();
 
 	/* Keep the process alive */
 	do {
 		usleep(LDMSD_KEEP_ALIVE_30MIN);
 	} while (1);
 
-out:
-	cleanup(0,NULL);
+	cleanup(0, NULL);
 	return 0;
 }
+

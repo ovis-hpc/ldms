@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2018 National Technology & Engineering Solutions
+ * Copyright (c) 2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2020 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -47,116 +47,89 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "ldmsd_store.h"
+#include "ldmsd.h"
+#include "ldmsd_request.h"
 
-
-
-int ldmsd_store_open(ldmsd_plugin_inst_t i, ldmsd_strgp_t strgp)
+void ldmsd_env___del(ldmsd_cfgobj_t obj)
 {
-	ldmsd_store_type_t store = (void*)i->base;
-	return store->open(i, strgp);
+	ldmsd_env_t env = (ldmsd_env_t)obj;
+	if (env->name)
+		free(env->name);
+	if (env->value)
+		free(env->value);
+	ldmsd_cfgobj___del(obj);
 }
 
-int ldmsd_store_close(ldmsd_plugin_inst_t i)
+static int ldmsd_env_disable(ldmsd_cfgobj_t obj)
 {
-	ldmsd_store_type_t store = (void*)i->base;
-	return store->close(i);
-}
-
-int ldmsd_store_store(ldmsd_plugin_inst_t i, ldms_set_t set,
-		      ldmsd_strgp_t strgp)
-{
-	ldmsd_store_type_t store = (void*)i->base;
-	return store->store(i, set, strgp);
-}
-
-static
-const char *store_desc(ldmsd_plugin_inst_t i)
-{
-	return "Base storage implementation";
-}
-
-static
-const char *store_help(ldmsd_plugin_inst_t i)
-{
-	return "N/A";
-}
-
-static
-int store_init(ldmsd_plugin_inst_t i)
-{
-	/* do nothing */
+	/* Do nothing */
 	return 0;
 }
 
-static
-void store_del(ldmsd_plugin_inst_t i)
+static int ldmsd_env_enable(ldmsd_cfgobj_t obj)
 {
-	/* do nothing */
+	/* Do nothing */
+	return 0;
 }
 
-static
-int store_config(ldmsd_plugin_inst_t i, json_entity_t json,
-					char *ebuf, int ebufsz)
+static json_entity_t __add_value(ldmsd_env_t env, json_entity_t result)
 {
-	ldmsd_store_type_t store = (void*)i->base;
-	json_entity_t val;
+	return json_dict_build(result, JSON_STRING_VALUE, "value", env->value);
+}
 
-	val = json_value_find(json, "perm");
-	if (!val) {
-		store->perm = 0660;
-	} else {
-		if (val->type != JSON_STRING_VALUE) {
-			ldmsd_log(LDMSD_LERROR, "%s: The given 'perm' value is "
-					"not a string.\n", i->inst_name);
-			return EINVAL;
-		}
-		errno = 0;
-		store->perm = strtol(json_value_str(val)->str, NULL, 8);
-		if (errno) {
-			snprintf(ebuf, ebufsz, "%s: bad `perm` value: %s\n",
-				i->inst_name, json_value_str(val)->str);
-			ldmsd_lerror("%s: bad `perm` value: %s\n",
-				i->inst_name, json_value_str(val)->str);
-			return errno;
+json_entity_t ldmsd_env_query(ldmsd_cfgobj_t obj)
+{
+	json_entity_t query;
+	ldmsd_env_t env = (ldmsd_env_t)obj;
+	query = ldmsd_cfgobj_query_result_new(obj);
+	if (!query)
+		return NULL;
+	query = __add_value(env, query);
+	return ldmsd_result_new(0, NULL, query);
+}
+
+json_entity_t ldmsd_env_update(ldmsd_cfgobj_t obj, short enabled,
+				json_entity_t dft, json_entity_t spc)
+{
+	return ldmsd_result_new(EINVAL,
+			"Environment variable cannot be updated.", NULL);
+}
+
+json_entity_t ldmsd_env_create(const char *name, short enable, json_entity_t dft,
+					json_entity_t spc, uid_t uid, gid_t gid)
+{
+	int rc;
+	json_entity_t value;
+	char *value_s;
+	value = json_value_find(spc, "value");
+	value_s = json_value_str(value)->str;
+	ldmsd_env_t env = (ldmsd_env_t)ldmsd_cfgobj_new(name, LDMSD_CFGOBJ_ENV,
+				sizeof(*env), ldmsd_env___del,
+				ldmsd_env_update,
+				ldmsd_cfgobj_delete,
+				ldmsd_env_query,
+				ldmsd_env_query,
+				ldmsd_env_enable,
+				ldmsd_env_disable,
+				uid, gid, 0770, enable);
+	if (env) {
+		env->name = strdup(name);
+		if (!env->name)
+			goto oom;
+		env->value = strdup(value_s);
+		if (!env->value)
+			goto oom;
+		rc = setenv(name, value_s, 1);
+		if (rc) {
+			char msg[1024];
+			snprintf(msg, 1024, "Failed to export "
+				"the environment variable '%s'\n", name);
+			ldmsd_log(LDMSD_LERROR, "%s", msg);
+			return ldmsd_result_new(rc, msg, NULL);
 		}
 	}
-	return 0;
-}
-
-const char *ldmsd_store_help()
-{
-	return "{\"optional parameters\": {"
-"\"perm\":\"The store plugin instance access permission. The default is 0664.\""
-"}}";
-}
-
-json_entity_t ldmsd_store_query(ldmsd_plugin_inst_t inst, const char *q)
-{
-	/*
-	 * Call `super` query.
-	 *
-	 * No additional attributes to add.
-	 */
-	return ldmsd_plugin_inst_query(inst, q);
-}
-struct ldmsd_store_type_s __store = {
-	.base = {
-		.version.version = LDMSD_PLUGIN_VERSION,
-		.type_name = LDMSD_STORE_TYPENAME,
-		.desc = store_desc,
-		.help = store_help,
-		.init = store_init,
-		.del = store_del,
-		.config = store_config,
-		.query = ldmsd_store_query,
-	},
-};
-
-void *new()
-{
-	ldmsd_store_type_t store = malloc(sizeof(*store));
-	if (store)
-		*store = __store;
-	return store;
+	return ldmsd_result_new(0, NULL, NULL);
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	return NULL;
 }

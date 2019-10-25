@@ -57,6 +57,7 @@
 #include <regex.h>
 #include <sys/queue.h>
 #include <pthread.h>
+#include <sys/errno.h>
 
 #ifdef LDMSD_UPDATE_TIME
 #include <sys/time.h>
@@ -66,8 +67,11 @@
 #include <ev/ev.h>
 #include <ovis_event/ovis_event.h>
 #include <ovis_util/util.h>
+#include <json/json_util.h>
 #include "ldms.h"
 #include "ref.h"
+
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
 
@@ -79,6 +83,17 @@
 #define LDMSD_DEFAULT_FILE_PERM 0600
 
 #define LDMSD_FAILOVER_NAME_PREFIX "#"
+
+#define LDMSD_DEFAULT_GLOBAL_AUTH "none"
+
+#define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
+#define LDMSD_MEM_SIZE_DEFAULT "512kB"
+#define LDMSD_BANNER_DEFAULT 1
+#define LDMSD_VERBOSITY_DEFAULT LDMSD_LERROR
+#define LDMSD_EV_THREAD_CNT_DEFAULT 1
+#define LDMSD_SETFILE "/proc/sys/kldms/set_list"
+#define LDMSD_LOGFILE "/var/log/ldmsd.log"
+#define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
 struct ldmsd_version {
 	uint8_t major;
@@ -92,6 +107,13 @@ typedef struct ldmsd_str_ent {
 	LIST_ENTRY(ldmsd_str_ent) entry;
 } *ldmsd_str_ent_t;
 LIST_HEAD(ldmsd_str_list, ldmsd_str_ent);
+
+typedef struct ldmsd_regex_ent {
+	char *regex_str;
+	regex_t regex;
+	LIST_ENTRY(ldmsd_regex_ent) entry;
+} *ldmsd_regex_ent_t;
+LIST_HEAD(ldmsd_regex_list, ldmsd_regex_ent);
 
 #define LDMSD_STR_WRAP(NAME) #NAME
 #define LDMSD_LWRAP(NAME) LDMSD_L ## NAME
@@ -127,38 +149,10 @@ enum ldmsd_loglevel {
 unsigned long ldmsd_time_str2us(const char *s);
 char *ldmsd_time_us2str(unsigned long us);
 
-/*
- * struct ldmsd_cmd_line_args contains cmd-line values given in configuration files
- * and/or at cmd-line.
- */
-struct ldmsd_cmd_line_args {
-	char myhostname[80];
-	uint8_t is_syntax_check;
-	int banner;
-	/*
-	 * name to identify ldmsd
-	 * NOTE: fqdn limit: 255 characters
-	 * DEFAULT: myhostname:port
-	 */
-	char daemon_name[512];
-	char *pidfile;
-	int foreground;
-	int ev_thread_count;
-	char *mem_sz_str;
-	char *log_path;
-	enum ldmsd_loglevel verbosity;
-
-	/* default authentication */
-	char *auth_name;
-	struct attr_value_list *auth_attrs;
-
-	/* kernel-related arguments */
-	int do_kernel;
-	char *kernel_setfile;
-};
-
-uint8_t ldmsd_is_initialized();
-uint8_t ldmsd_is_check_syntax();
+short ldmsd_is_initialized();
+short ldmsd_is_foreground();
+short ldmsd_is_syntax_check();
+const char *ldmsd_progname_get();
 
 /** Get the ldmsd version  */
 void ldmsd_version_get(struct ldmsd_version *v);
@@ -208,17 +202,60 @@ typedef struct ldmsd_sec_ctxt {
 } *ldmsd_sec_ctxt_t;
 
 typedef enum ldmsd_cfgobj_type {
-	LDMSD_CFGOBJ_PRDCR = 1,
+	LDMSD_CFGOBJ_FIRST = 1,
+	LDMSD_CFGOBJ_PRDCR = LDMSD_CFGOBJ_FIRST,
 	LDMSD_CFGOBJ_UPDTR,
 	LDMSD_CFGOBJ_STRGP,
 	LDMSD_CFGOBJ_SMPLR,
 	LDMSD_CFGOBJ_LISTEN,
 	LDMSD_CFGOBJ_SETGRP,
 	LDMSD_CFGOBJ_AUTH,
+	LDMSD_CFGOBJ_ENV,
+	LDMSD_CFGOBJ_DAEMON,
+	LDMSD_CFGOBJ_PLUGIN,
+	LDMSD_CFGOBJ_LAST,
 } ldmsd_cfgobj_type_t;
 
 struct ldmsd_cfgobj;
+typedef struct ldmsd_req_buf (*ldmsd_req_buf_t);
 typedef void (*ldmsd_cfgobj_del_fn_t)(struct ldmsd_cfgobj *);
+typedef json_entity_t (*ldmsd_cfgobj_create_fn_t)(const char *name, /* cfgobj name */
+					short enabled,
+					json_entity_t dft, /* default attribute values */
+					json_entity_t spc, /* attribute values specific for this obj */
+					uid_t uid, gid_t gid);
+typedef json_entity_t (*ldmsd_cfgobj_update_fn_t)(struct ldmsd_cfgobj *obj,
+					short enabled, /* 0 means disabled, 1 means enabled */
+					json_entity_t dft,
+					json_entity_t spc);
+/*
+ * The delete function must remove the obj from the cfgobj tree and
+ * the function must not take the cfgobj tree lock.
+ */
+typedef json_entity_t (*ldmsd_cfgobj_delete_fn_t)(struct ldmsd_cfgobj *obj);
+
+/*
+ * \brief query all attributes of a config object
+ */
+typedef json_entity_t (*ldmsd_cfgobj_query_fn_t)(struct ldmsd_cfgobj *obj);
+/**
+ * \brief Export the configuration attribute.
+ *
+ * The difference between \c ldmsd_cfgobj_query_fn_t and \c ldmsd_cfgobj_export_fn_t
+ * is that \c ldmsd_cfgobj_export_fn_t exports only the attributes that can be
+ * configured such as name, interval, host.
+ */
+typedef json_entity_t (*ldmsd_cfgobj_export_fn_t)(struct ldmsd_cfgobj *obj);
+
+/**
+ * \brief Take the associated actions of the enabled obj.
+ */
+typedef int (*ldmsd_cfgobj_enable_fn_t)(struct ldmsd_cfgobj *obj);
+
+/**
+ * \brief Take the associated actions of the disabled obj
+ */
+typedef int (*ldmsd_cfgobj_disable_fn_t)(struct ldmsd_cfgobj *obj);
 
 #define LDMSD_PERM_UEX 0100
 #define LDMSD_PERM_UWR 0200
@@ -239,17 +276,47 @@ typedef void (*ldmsd_cfgobj_del_fn_t)(struct ldmsd_cfgobj *);
 /* can execute even if the failover is turned on */
 #define LDMSD_PERM_FAILOVER_ALLOWED 04000
 
+#define LDMSD_ATTR_NA -2
+#define LDMSD_ATTR_INVALID -3
+
 typedef struct ldmsd_cfgobj {
 	char *name;		/* Unique object name */
 	uint32_t ref_count;
 	ldmsd_cfgobj_type_t type;
-	ldmsd_cfgobj_del_fn_t __del;
+	ldmsd_cfgobj_del_fn_t __del; /* This is called when the ref_count reaches 0 */
+
+	short enabled;
+	/* These callbacks are called upon receiving a configuration request. */
+	ldmsd_cfgobj_update_fn_t update;
+	ldmsd_cfgobj_delete_fn_t delete; /* This is called when there is a delete request. The object may not be freed right away. */
+	ldmsd_cfgobj_query_fn_t query;
+	ldmsd_cfgobj_export_fn_t export;
+	ldmsd_cfgobj_enable_fn_t enable;
+	ldmsd_cfgobj_disable_fn_t disable;
+
+	ev_t enabled_ev;
+	ev_t disabled_ev;
+
 	struct rbn rbn;
 	pthread_mutex_t lock;
 	uid_t uid;
 	gid_t gid;
 	int perm;
 } *ldmsd_cfgobj_t;
+
+/*
+ * Environment variables shouldn't be used as variables in configuration files anymore.
+ */
+typedef struct ldmsd_env {
+	struct ldmsd_cfgobj obj;
+	char *name;
+	char *value;
+} *ldmsd_env_t;
+
+typedef struct ldmsd_daemon {
+	struct ldmsd_cfgobj obj;
+	json_entity_t attr;
+} *ldmsd_daemon_t;
 
 typedef struct ldmsd_smplr {
 	struct ldmsd_cfgobj obj;
@@ -271,10 +338,6 @@ typedef struct ldmsd_smplr {
 
 } *ldmsd_smplr_t;
 
-typedef struct ldmsd_prdcr_stream_s {
-	const char *name;
-	LIST_ENTRY(ldmsd_prdcr_stream_s) entry;
-} *ldmsd_prdcr_stream_t;
 /*
  * The maximum number of authentication options
  */
@@ -288,8 +351,7 @@ typedef struct ldmsd_listen {
 	char *xprt;
 	unsigned short port_no;
 	char *host;
-	char *auth_name;
-	struct attr_value_list *auth_attrs;
+	char *auth_name; /* Name of an authentication configuration object */
 	ldms_t x;
 } *ldmsd_listen_t;
 
@@ -340,7 +402,7 @@ typedef struct ldmsd_prdcr {
 	/**
 	 * list of subscribed streams from this producer
 	 */
-	LIST_HEAD(,ldmsd_prdcr_stream_s) stream_list;
+	LIST_HEAD(ldmsd_prdcr_stream_list,ldmsd_str_ent) *stream_list;
 
 	/**
 	 * Maintains a tree of all metric sets available from this
@@ -503,31 +565,12 @@ typedef struct ldmsd_updtr {
 	 * For quick search when query for updater that updates a prdcr_set.
 	 */
 	struct rbt prdcr_tree;
-	/*
-	 * The list contains the regex strings given at
-	 * the updtr_prdcr_add line. The list is used
-	 * in exporting producer configuration.
-	 */
-	struct ldmsd_str_list added_prdcr_regex_list;
-	/*
-	 * The list contains the regex strings given at
-	 * the updtr_prdcr_del line. The list is used
-	 * in exporting producer configuration.
-	 *
-	 * When updtr_prdcr_del line is given, the regex string
-	 * may not matched any strings in the added_prdcr_regex_list.
-	 *
-	 * Producers that are matched the regex in the add_prdcr_regex_list
-	 * but not matched the regex in the del_prdcr_regex_list
-	 * are those in prdcr_tree. This fact is used in exporting
-	 * the updater configuration.
-	 */
-	struct ldmsd_str_list del_prdcr_regex_list;
-	LIST_HEAD(updtr_match_list, ldmsd_name_match) match_list;
+	struct ldmsd_regex_list *prdcr_regex_list;
+	LIST_HEAD(updtr_match_list, ldmsd_name_match) *match_list;
 } *ldmsd_updtr_t;
 
 typedef struct ldmsd_name_match {
-	/** Regular expresion matching schema or instance name */
+	/** Regular expression matching schema or instance name */
 	char *regex_str;
 	regex_t regex;
 
@@ -559,10 +602,10 @@ struct ldmsd_strgp {
 	struct ldmsd_cfgobj obj;
 
 	/** A set of match strings to select a subset of all producers */
-	LIST_HEAD(ldmsd_strgp_prdcr_list, ldmsd_name_match) prdcr_list;
+	LIST_HEAD(ldmsd_strgp_prdcr_list, ldmsd_regex_ent) *prdcr_list;
 
 	/** A list of the names of the metrics in the set specified by schema */
-	TAILQ_HEAD(ldmsd_strgp_metric_list, ldmsd_strgp_metric) metric_list;
+	TAILQ_HEAD(ldmsd_strgp_metric_list, ldmsd_strgp_metric) *metric_list;
 	int metric_count;
 	int *metric_arry;	/* Array of metric ids */
 
@@ -623,9 +666,6 @@ void ldmsd_set_info_delete(ldmsd_set_info_t info);
 char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type);
 #pragma weak ldmsd_set_info_origin_enum2str
 
-int process_config_file(const char *path, int *lineno, int trust);
-#pragma weak process_config_file
-
 #define LDMSD_MAX_PLUGIN_NAME_LEN 64
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 struct attr_value_list;
@@ -642,8 +682,9 @@ __attribute__((format(printf, 2, 3)))
 void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...);
 #pragma weak ldmsd_log
 
-int ldmsd_loglevel_set(char *verbose_level);
-#pragma weak ldmsd_loglevel_set
+short ldmsd_is_quiet();
+#pragma weak ldmsd_is_quiet
+
 enum ldmsd_loglevel ldmsd_loglevel_get();
 #pragma weak ldmsd_loglevel_get
 
@@ -677,6 +718,11 @@ void ldmsd_lall(const char *fmt, ...);
 int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level);
 #pragma weak ldmsd_loglevel_to_syslog
 
+/**
+ * \brief Return the global authentication domain name
+ */
+const char *ldmsd_global_auth_name_get();
+#pragma weak ldmsd_global_auth_name_get
 
 /**
  * \brief Get the security context (uid, gid) of the daemon.
@@ -748,51 +794,87 @@ extern ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND + 1];
  */
 #define LEN_ERRSTR 256
 
-int ldmsd_logrotate();
-#pragma weak ldmsd_logrotate
+FILE *ldmsd_open_log(const char *path);
+
 int ldmsd_plugins_usage(const char *plugin_name);
 void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix);
 #pragma weak ldmsd_mm_status
 
-char *ldmsd_get_max_mem_sz_str();
-#pragma weak ldmsd_get_max_mem_sz_str
+const char *ldmsd_get_max_mem_sz_str();
+#pragma weak ldmsd_set_memory_str_get
 
 /** Configuration object management */
+enum ldmsd_cfgobj_type ldmsd_cfgobj_type_str2enum(const char *s);
+const char *ldmsd_cfgobj_type2str(enum ldmsd_cfgobj_type type);
 void ldmsd_cfgobj___del(ldmsd_cfgobj_t obj);
-void ldmsd_cfgobj_init(void);
+int ldmsd_cfgobj_init(ldmsd_cfgobj_t obj, const char *name,
+				ldmsd_cfgobj_type_t type,
+				ldmsd_cfgobj_del_fn_t __del,
+				ldmsd_cfgobj_update_fn_t update,
+				ldmsd_cfgobj_delete_fn_t delete,
+				ldmsd_cfgobj_query_fn_t query,
+				ldmsd_cfgobj_export_fn_t export,
+				ldmsd_cfgobj_enable_fn_t enable,
+				ldmsd_cfgobj_disable_fn_t disable,
+				uid_t uid,
+				gid_t gid,
+				int perm,
+				short enabled);
 void ldmsd_cfg_lock(ldmsd_cfgobj_type_t type);
 void ldmsd_cfg_unlock(ldmsd_cfgobj_type_t type);
 void ldmsd_cfgobj_lock(ldmsd_cfgobj_t obj);
 void ldmsd_cfgobj_unlock(ldmsd_cfgobj_t obj);
-ldmsd_cfgobj_t ldmsd_cfgobj_new(const char *name, ldmsd_cfgobj_type_t type, size_t obj_size,
-				ldmsd_cfgobj_del_fn_t __del);
-ldmsd_cfgobj_t ldmsd_cfgobj_new_with_auth(const char *name,
-					  ldmsd_cfgobj_type_t type,
-					  size_t obj_size,
-					  ldmsd_cfgobj_del_fn_t __del,
-					  uid_t uid,
-					  gid_t gid,
-					  int perm);
+ldmsd_cfgobj_t ldmsd_cfgobj_new(const char *name, ldmsd_cfgobj_type_t type,
+				size_t obj_size, ldmsd_cfgobj_del_fn_t __del,
+				ldmsd_cfgobj_update_fn_t update,
+				ldmsd_cfgobj_delete_fn_t delete,
+				ldmsd_cfgobj_query_fn_t query,
+				ldmsd_cfgobj_export_fn_t export,
+				ldmsd_cfgobj_enable_fn_t enable,
+				ldmsd_cfgobj_disable_fn_t disable,
+				uid_t uid,
+				gid_t gid,
+				int perm,
+				short enabled);
 ldmsd_cfgobj_t ldmsd_cfgobj_get(ldmsd_cfgobj_t obj);
 void ldmsd_cfgobj_put(ldmsd_cfgobj_t obj);
 int ldmsd_cfgobj_refcount(ldmsd_cfgobj_t obj);
 ldmsd_cfgobj_t ldmsd_cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
 void ldmsd_cfgobj_del(const char *name, ldmsd_cfgobj_type_t type);
 ldmsd_cfgobj_t ldmsd_cfgobj_first(ldmsd_cfgobj_type_t type);
+ldmsd_cfgobj_t ldmsd_cfgobj_first_re(ldmsd_cfgobj_type_t type, regex_t regex);
+ldmsd_cfgobj_t ldmsd_cfgobj_next_re(ldmsd_cfgobj_t obj, regex_t regex);
 ldmsd_cfgobj_t ldmsd_cfgobj_next(ldmsd_cfgobj_t obj);
 int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt);
+json_entity_t ldmsd_cfgobj_query_result_new(ldmsd_cfgobj_t obj);
+/*
+ * \brief Generic cfgobj delete callback function.
+ *
+ * The caller must hold the cfgobj tree lock.
+ */
+json_entity_t ldmsd_cfgobj_delete(ldmsd_cfgobj_t obj);
+
+json_entity_t ldmsd_result_new(int errcode, const char *msg, json_entity_t value);
+int __ldmsd_reply_result_add(json_entity_t reply, const char *key, int errcode,
+					const char *msg, json_entity_t value);
+
 
 #define LDMSD_CFGOBJ_FOREACH(obj, type) \
 	for ((obj) = ldmsd_cfgobj_first(type); (obj);  \
 			(obj) = ldmsd_cfgobj_next(obj))
 
 /** Sampler configuration object management */
-ldmsd_smplr_t
-ldmsd_smplr_new_with_auth(const char *name,
-			  ldmsd_plugin_inst_t pi,
-			  long interval_us, long offset_us,
-			  uid_t uid, gid_t gid, int perm);
-int ldmsd_smplr_del(const char *smplr_name, ldmsd_sec_ctxt_t ctxt);
+static inline const char *ldmsd_smplr_state_str(enum ldmsd_smplr_state state)
+{
+	switch (state) {
+	case LDMSD_SMPLR_STATE_RUNNING:
+		return "RUNNING";
+	case LDMSD_SMPLR_STATE_STOPPED:
+		return "STOPPED";
+	}
+	return "UNKNOWN STATE";
+}
+
 static inline void ldmsd_smplr_lock(ldmsd_smplr_t smplr) {
 	ldmsd_cfgobj_lock(&smplr->obj);
 }
@@ -829,18 +911,7 @@ int ldmsd_smplr_stop(const char *name, ldmsd_sec_ctxt_t sctxt);
 /** Producer configuration object management */
 int ldmsd_prdcr_str2type(const char *type);
 const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type);
-ldmsd_prdcr_t
-ldmsd_prdcr_new(const char *name, const char *xprt_name,
-		const char *host_name, const unsigned short port_no,
-		enum ldmsd_prdcr_type type, int conn_intrvl_us,
-		char *auth);
-ldmsd_prdcr_t
-ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
-		const char *host_name, const unsigned short port_no,
-		enum ldmsd_prdcr_type type, int conn_intrvl_us,
-		const char *auth,
-		uid_t uid, gid_t gid, int perm);
-int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt);
+const char *ldmsd_prdcr_state2str(enum ldmsd_prdcr_state state);
 static inline ldmsd_prdcr_t ldmsd_prdcr_first()
 {
 	return (ldmsd_prdcr_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_PRDCR);
@@ -889,14 +960,7 @@ static inline const char *ldmsd_prdcr_set_state_str(enum ldmsd_prdcr_set_state s
 	}
 	return "BAD STATE";
 }
-int ldmsd_prdcr_start(const char *name, const char *interval_str,
-		      ldmsd_sec_ctxt_t ctxt, int flags);
-int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,
-			    char *rep_buf, size_t rep_len,
-			    ldmsd_sec_ctxt_t ctxt, int flags);
-int ldmsd_prdcr_stop(const char *name, ldmsd_sec_ctxt_t ctxt);
-int ldmsd_prdcr_stop_regex(const char *prdcr_regex,
-			char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
+int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream);
 int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, char *stream_name,
 				char *rep_buf, size_t rep_len,
 				ldmsd_sec_ctxt_t ctxt);
@@ -906,13 +970,9 @@ int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt);
 
 /* updtr */
 ldmsd_updtr_t
-ldmsd_updtr_new(const char *name, char *interval_str,
-		char *offset_str, int push_flags,
-				int is_auto_interval);
-ldmsd_updtr_t
-ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str,
-					int push_flags, int is_auto_task,
-					uid_t uid, gid_t gid, int perm);
+ldmsd_updtr_new(const char *name, long interval_us,
+		long offset_us, int push_flags,
+		int is_auto_interval);
 int ldmsd_updtr_del(const char *updtr_name, ldmsd_sec_ctxt_t ctxt);
 ldmsd_updtr_t ldmsd_updtr_first();
 ldmsd_updtr_t ldmsd_updtr_next(struct ldmsd_updtr *updtr);
@@ -950,28 +1010,14 @@ static inline const char *ldmsd_updtr_state_str(enum ldmsd_updtr_state state) {
 	}
 	return "BAD STATE";
 }
-int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
-		      const char *offset_str, const char *auto_interval,
-		      ldmsd_sec_ctxt_t ctxt, int flags);
-int ldmsd_updtr_stop(const char *updtr_name, ldmsd_sec_ctxt_t ctxt);
-int ldmsd_updtr_match_add(const char *updtr_name, const char *regex_str,
-		const char *selector_str, char *rep_buf, size_t rep_len,
-		ldmsd_sec_ctxt_t ctxt);
-int ldmsd_updtr_match_del(const char *updtr_name, const char *regex_str,
-			  const char *selector_str, ldmsd_sec_ctxt_t ctxt);
-
-int __ldmsd_updtr_start(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt);
-int __ldmsd_updtr_stop(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt);
 
 /* strgp */
-ldmsd_strgp_t ldmsd_strgp_new(const char *name);
-ldmsd_strgp_t ldmsd_strgp_new_with_auth(const char *name,
-					uid_t uid, gid_t gid, int perm);
-int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt);
+ldmsd_strgp_t ldmsd_strgp_new(const char *name, const char *container,
+		const char *schema);
 ldmsd_strgp_t ldmsd_strgp_first();
 ldmsd_strgp_t ldmsd_strgp_next(struct ldmsd_strgp *strgp);
-ldmsd_name_match_t ldmsd_strgp_prdcr_first(ldmsd_strgp_t strgp);
-ldmsd_name_match_t ldmsd_strgp_prdcr_next(ldmsd_name_match_t match);
+ldmsd_regex_ent_t ldmsd_strgp_prdcr_first(ldmsd_strgp_t strgp);
+ldmsd_regex_ent_t ldmsd_strgp_prdcr_next(ldmsd_regex_ent_t match);
 ldmsd_strgp_metric_t ldmsd_strgp_metric_first(ldmsd_strgp_t strgp);
 ldmsd_strgp_metric_t ldmsd_strgp_metric_next(ldmsd_strgp_metric_t metric);
 static inline ldmsd_strgp_t ldmsd_strgp_get(ldmsd_strgp_t strgp) {
@@ -1001,25 +1047,11 @@ static inline const char *ldmsd_strgp_state_str(enum ldmsd_strgp_state state) {
 	}
 	return "BAD STATE";
 }
-int ldmsd_strgp_stop(const char *strgp_name, ldmsd_sec_ctxt_t ctxt);
-int ldmsd_strgp_start(const char *name, ldmsd_sec_ctxt_t ctxt, int flags);
-
-int __ldmsd_strgp_start(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt);
-int __ldmsd_strgp_stop(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt);
-
 
 /* Function to update inter-dependent configuration objects */
-void ldmsd_prdcr_update(ldmsd_strgp_t strgp);
-void ldmsd_strgp_update(ldmsd_prdcr_set_t prd_set);
+void ldmsd_prdcr_strgp_update(ldmsd_strgp_t strgp);
+void ldmsd_strgp_prdset_update(ldmsd_prdcr_set_t prd_set);
 int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set);
-int ldmsd_strgp_prdcr_add(const char *strgp_name, const char *regex_str,
-			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
-int ldmsd_strgp_prdcr_del(const char *strgp_name, const char *regex_str,
-			ldmsd_sec_ctxt_t ctxt);
-int ldmsd_strgp_metric_del(const char *strgp_name, const char *metric_name,
-			   ldmsd_sec_ctxt_t ctxt);
-int ldmsd_strgp_metric_add(const char *strgp_name, const char *metric_name,
-			   ldmsd_sec_ctxt_t ctxt);
 int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
 int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
@@ -1111,7 +1143,7 @@ int ldmsd_failover_config(const char *host, const char *port, const char *xprt,
 			  int auto_switch, uint64_t interval_us);
 int ldmsd_failover_start();
 int cfgobj_is_failover(ldmsd_cfgobj_t obj);
-int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t));
+int ldmsd_process_deferred_act_objs(int (*filter)(ldmsd_cfgobj_t));
 
 int ldmsd_ourcfg_start_proc();
 
@@ -1146,10 +1178,6 @@ extern int listen_on_ldms_xprt(ldmsd_listen_t listen);
 /* Receive a message from an ldms endpoint */
 void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len);
 
-/* Get the hostname of this ldmsd */
-extern const char *ldmsd_myhostname_get();
-#pragma weak ldmsd_myhostname_get
-
 /* Get the name of this ldmsd */
 const char *ldmsd_myname_get();
 #pragma weak ldmsd_myname_get
@@ -1175,23 +1203,6 @@ const char *ldmsd_auth_name_get(ldmsd_listen_t listen);
 struct attr_value_list *ldmsd_auth_attr_get(ldmsd_listen_t listen);
 
 /*
- * Get the default authentication method
- */
-const char *ldmsd_default_auth_get();
-
-/*
- * Get the attributes of the default authentication method
- *
- * The caller MUST not modify the content in the returned list.
- */
-struct attr_value_list *ldmsd_default_auth_attr_get();
-
-mode_t ldmsd_inband_cfg_mask_get();
-void ldmsd_inband_cfg_mask_set(mode_t mask);
-void ldmsd_inband_cfg_mask_add(mode_t mask);
-void ldmsd_inband_cfg_mask_rm(mode_t mask);
-
-/*
  * Setgroup
  */
 typedef struct ldmsd_setgrp {
@@ -1199,7 +1210,7 @@ typedef struct ldmsd_setgrp {
 	char *producer;
 	long interval_us;
 	long offset_us;
-	struct ldmsd_str_list member_list;
+	struct ldmsd_str_list *member_list;
 	ldms_set_t set;
 } *ldmsd_setgrp_t;
 
@@ -1244,27 +1255,7 @@ ldmsd_group_new_with_auth(const char *name, uid_t uid, gid_t gid, mode_t perm);
 ldms_set_t ldmsd_group_new(const char *name);
 #pragma weak ldmsd_group_new
 
-/**
- * \brief Create a cfgobj of setgroup
- *
- * \param grp_name     The name of the group.
- * \param producer     The name of the producer
- * \param interval_us  The interval for update hint
- * \param offset_us    The offset for update hint
- * \param uid          UID of the cfgobj
- * \param gid          GID of the cfgobj
- * \param perm         permission of the cfgobj
- *
- * \retval grp  If success, the LDMS set handle that represents the group.
- * \retval NULL If failed.
- */
-ldmsd_setgrp_t
-ldmsd_setgrp_new_with_auth(const char *name, const char *producer,
-				long interval_us, long offset_us,
-				uid_t uid, gid_t gid, mode_t perm, int flags);
-#pragma weak ldmsd_setgrp_new_with_auth
-
-int __ldmsd_setgrp_start(ldmsd_setgrp_t grp);
+int ldmsd_setgrp_start(const char *name, ldmsd_sec_ctxt_t ctxt);
 
 /*
  * \brief Delete a setgroup cfgobject
@@ -1395,6 +1386,11 @@ struct stop_data {
 	void *entity;
 };
 
+typedef struct ldmsd_req_ctxt *ldmsd_req_ctxt_t;
+struct msg_ctxt_free_data {
+	ldmsd_req_ctxt_t reqc;
+};
+
 ev_type_t smplr_sample_type;
 ev_type_t prdcr_connect_type;
 ev_type_t prdcr_set_store_type;
@@ -1409,11 +1405,15 @@ ev_type_t updtr_stop_type;
 ev_type_t prdcr_stop_type;
 ev_type_t strgp_stop_type;
 ev_type_t smplr_stop_type;
+ev_type_t cfg_msg_ctxt_free_type;
+ev_type_t cfgobj_enabled_type;
+ev_type_t cfgobj_disabled_type;
 
 ev_worker_t producer;
 ev_worker_t updater;
 ev_worker_t sampler;
 ev_worker_t storage;
+ev_worker_t cfg;
 
 int default_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 int sample_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
@@ -1430,6 +1430,9 @@ int strgp_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t
 int strgp_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 int smplr_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 int smplr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int cfg_msg_ctxt_free_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int cfgobj_enabled_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+int cfgobj_disabled_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 
 #define ldmsd_prdcr_set_ref_get(_s_, _n_) _ref_get(&((_s_)->ref), (_n_), __func__, __LINE__)
 #define ldmsd_prdcr_set_ref_put(_s_, _n_) _ref_put(&((_s_)->ref), (_n_), __func__, __LINE__)
@@ -1447,7 +1450,7 @@ int ldmsd_process_cmd_line_arg(char opt, char *value);
 /**
  * \brief Return the number of LDMSD worker threads (specified with -P or 'num-threads')
  */
-int ldmsd_ev_thread_count_get();
+int ldmsd_worker_count_get();
 
 /**
  * \brief Add an authentication attribute to the list \c auth_attrs
@@ -1466,19 +1469,6 @@ int ldmsd_auth_opt_add(struct attr_value_list *auth_attrs, char *name, char *val
 struct attr_value_list *ldmsd_auth_opts_str2avl(const char *auth_args_s);
 
 /**
- * \brief Create a listening endpoint
- *
- * \param xprt   transport name
- * \param port   port
- * \param host   hostname
- * \param auth   authentication domain name
- *
- * \return a listen cfgobj
- */
-ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth);
-
-
-/**
  * LDMSD Authentication Domain Configuration Object
  */
 typedef struct ldmsd_auth {
@@ -1493,16 +1483,16 @@ typedef struct ldmsd_auth {
 #define DEFAULT_AUTH " _DEFAULT_AUTH_ "
 
 ldmsd_auth_t
-ldmsd_auth_new_with_auth(const char *name, const char *plugin,
-			 struct attr_value_list *attrs,
-			 uid_t uid, gid_t gid, int perm);
+ldmsd_auth_new(const char *name, const char *plugin, json_entity_t attrs,
+		uid_t uid, gid_t gid, int perm, short enabled);
 int ldmsd_auth_del(const char *name, ldmsd_sec_ctxt_t ctxt);
-ldmsd_auth_t ldmsd_auth_default_get();
-int ldmsd_auth_default_set(const char *plugin, struct attr_value_list *attrs);
 
 static inline
 ldmsd_auth_t ldmsd_auth_find(const char *name)
 {
 	return (ldmsd_auth_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_AUTH);
 }
+
+int ldmsd_daemon_create_cfgobjs();
+int ldmsd_daemon_cfgobjs();
 #endif

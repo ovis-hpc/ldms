@@ -162,7 +162,7 @@ int ldmsd_stream_publish(ldms_t xprt,
 	strcpy((char*)attr->attr_value, stream_name);
 	first_attr = ldmsd_next_attr(attr);
 	ldmsd_hton_req_attr(attr);
-	uint32_t flags = LDMSD_REQ_SOM_F;
+	uint32_t flags = LDMSD_REC_SOM_F;
 	data_ptr = data;
 	while (data_len > 0) {
 		this_rec = meta + data_len;
@@ -194,9 +194,9 @@ int ldmsd_stream_publish(ldms_t xprt,
 		req->rec_len = this_rec;
 		if (!data_len)
 			/* No more data, turn on last message flag */
-			flags |= LDMSD_REQ_EOM_F;
+			flags |= LDMSD_REC_EOM_F;
 		req->flags = flags;
-		ldmsd_hton_req_hdr(req);
+		ldmsd_hton_rec_hdr(req);
 
 		rc = ldms_xprt_send(xprt, (char *)req, this_rec);
 		if (rc)
@@ -318,7 +318,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	first_attr = ldmsd_next_attr(attr);
 	ldmsd_hton_req_attr(attr);
 
-	uint32_t flags = LDMSD_REQ_SOM_F;
+	uint32_t flags = LDMSD_REC_SOM_F;
 	while ((data_len = fread(buffer, 1, sizeof(buffer), file)) > 0) {
 		if (conn_status)
 			return conn_status;
@@ -346,9 +346,9 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 			req->rec_len = this_rec;
 			if (!data_len)
 				/* No more data, turn on last message flag */
-				flags |= LDMSD_REQ_EOM_F;
+				flags |= LDMSD_REC_EOM_F;
 			req->flags = flags;
-			ldmsd_hton_req_hdr(req);
+			ldmsd_hton_rec_hdr(req);
 
 			rc = ldms_xprt_send(x, (char *)req, this_rec);
 			if (rc)

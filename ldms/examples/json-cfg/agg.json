@@ -1,0 +1,50 @@
+[
+	{ "request": "create",
+	  "id": 1,
+	  "schema": "auth",
+	  "enabled": true,
+	  "spec": { "ovis": { "plugin": "ovis" } }
+	},
+	{ "request": "create",
+	  "id": 2,
+	  "schema": "listen",
+	  "enabled": true,
+	  "spec": { "sock:20001": { "xprt": "sock",
+	                            "port": 20001
+				  }
+	          }
+	},
+	{
+	  "request": "update",
+	  "id": 3,
+	  "schema": "daemon",
+	  "spec": { "log": { "path": "/home/nichamon/var/log/ovis/agg.log",
+	                     "level": "INFO"
+			   },
+		    "global_auth": { "name": "ovis" }
+		  }
+	},
+	{ "request": "create",
+	  "id": 4,
+	  "schema": "prdcr",
+	  "enabled": true,
+	  "spec": { "localhost": { "host": "localhost",
+	                          "xprt": "sock",
+				  "port": 10001,
+				  "interval": "20sec",
+				  "type": "active"
+				}
+		  }
+	},
+	{ "request": "create",
+	  "id": 5,
+	  "schema": "updtr",
+	  "enabled": true,
+	  "spec": { "ALL": { "interval": "1sec",
+	                     "offset": "10ms",
+			     "producer_filters": [ ".*" ],
+			     "set_instance_filters": [ ".*meminfo.*" ]
+			   }
+		  }
+	}
+]

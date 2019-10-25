@@ -1,0 +1,51 @@
+[
+	{"request": "create",
+	 "schema": "auth",
+	 "id": 1,
+	 "enabled": true,
+	 "spec": {"ovis": {"plugin": "ovis"}}
+	},
+	{"request": "update",
+	 "schema": "daemon",
+	 "id": 2,
+	 "spec": {"log": {"path": "/home/nichamon/var/log/ovis/samplerd.log",
+	                  "level": "INFO"
+			 },
+	          "global_auth": { "name": "ovis" },
+		  "ldmsd-id": { "name": "samplerd1" }
+		 }
+	},
+	{ "request": "create",
+	  "schema": "listen",
+	  "id": 3,
+	  "enabled": true,
+	  "spec": { "sock:10001": { "xprt": "sock",
+		  		    "port": 10001
+				  }
+		  }
+	},
+	{ "request": "create",
+	  "schema": "plugin",
+	  "id": 4,
+	  "enabled": true,
+	  "default": { "producer": "samplerd" },
+	  "spec": { "meminfo_inst": { "plugin": "meminfo",
+	                              "instance": "samplerd/meminfo"
+				    },
+		    "vmstat_inst": { "plugin": "vmstat",
+			             "instance": "samplerd/vmstat"
+				   }
+	          }
+	},
+	{ "request": "create",
+	  "schema": "smplr",
+	  "id": 5,
+	  "enabled": true,
+	  "default": { "interval": "1sec",
+		       "offset": 0
+	             },
+	  "spec": { "meminfo_smplr": { "plugin_instance": "meminfo_inst" },
+		    "vmstat_smlpr": { "plugin_instance": "vmstat_inst" }
+		  }
+	}
+]
