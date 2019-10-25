@@ -26,7 +26,6 @@ ldmsd_failover.man \
 ldmsd_setgroup.man \
 Plugin_aries_linkstatus.man \
 Plugin_aries_mmr.man \
-Plugin_array_example.man \
 Plugin_cray_system_sampler_variants.man \
 Plugin_cray_dvs_sampler.man \
 Plugin_lnet_stats.man \
@@ -51,9 +50,6 @@ Plugin_syspapi_sampler.man
 
 
 
-if ENABLE_ARRAY_EXAMPLE
-dist_man7_MANS += Plugin_all_example.man
-endif
 
 if ENABLE_SLURMTEST
 dist_man8_MANS += pll-ldms-static-test.man

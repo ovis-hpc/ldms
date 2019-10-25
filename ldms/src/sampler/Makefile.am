@@ -90,6 +90,9 @@ endif
 # always include contrib
 SUBDIRS += contrib
 
+# always include examples
+SUBDIRS += examples
+
 if ENABLE_LLNL
 SUBDIRS += llnl
 endif
@@ -128,16 +131,6 @@ endif
 
 if ENABLE_ARIES_MMR
 SUBDIRS += aries_mmr
-endif
-
-if ENABLE_ARRAY_EXAMPLE
-libarray_example_la_SOURCES = array_example.c
-libarray_example_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libarray_example.la
-
-liball_example_la_SOURCES = all_example.c
-liball_example_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += liball_example.la
 endif
 
 if ENABLE_LNET_STATS
