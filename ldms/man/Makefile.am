@@ -35,7 +35,6 @@ Plugin_clock.man \
 Plugin_sysclassib.man \
 Plugin_jobid.man \
 Plugin_msr_interlagos.man \
-Plugin_procinterrupts.man \
 Plugin_procnetdev.man \
 Plugin_procnfs.man \
 Plugin_store_csv.man \

@@ -560,6 +560,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/appinfo_lib/Makefile
 		 src/sampler/kgnilnd/Makefile
 		 src/sampler/meminfo/Makefile
+		 src/sampler/procinterrupts/Makefile
 		 src/sampler/procstat/Makefile
 		 src/sampler/vmstat/Makefile
 		 src/sampler/contrib/Makefile
