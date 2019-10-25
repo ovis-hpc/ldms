@@ -13,3 +13,7 @@ do_subst = @LDMS_SUBST_RULE@
 if ENABLE_ARRAY_EXAMPLE
 SUBDIRS += array_example
 endif
+
+if ENABLE_TEST_SAMPLER_LDMS_TEST
+SUBDIRS += test_sampler
+endif

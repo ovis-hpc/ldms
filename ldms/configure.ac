@@ -567,6 +567,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/contrib/ipmireader/Makefile
 		 src/sampler/examples/Makefile
 		 src/sampler/examples/array_example/Makefile
+		 src/sampler/examples/test_sampler/Makefile
 		 src/sampler/ibm_occ/Makefile
 		 src/sampler/syspapi/Makefile
 		 src/ldmsd/Makefile
