@@ -75,12 +75,6 @@ libfptrans_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libfptrans.la
 endif
 
-if ENABLE_SYNTHETIC
-libsynthetic_la_SOURCES = synthetic.c
-libsynthetic_la_LIBADD = $(COMMON_LIBADD) -lm
-pkglib_LTLIBRARIES += libsynthetic.la
-endif
-
 if ENABLE_VARSET
 libvariable_la_SOURCES = variable.c
 libvariable_la_LIBADD = $(COMMON_LIBADD) -lm
