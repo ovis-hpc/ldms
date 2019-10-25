@@ -55,9 +55,7 @@ endif
 endif #ENABLE_TSAMPLER
 
 if ENABLE_KGNILND
-libkgnilnd_la_SOURCES = kgnilnd.c  $(BASE_SRC)
-libkgnilnd_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libkgnilnd.la
+SUBDIRS += kgnilnd
 endif
 
 if ENABLE_CLOCK
