@@ -32,7 +32,6 @@ Plugin_cray_dvs_sampler.man \
 Plugin_lnet_stats.man \
 Plugin_fptrans.man \
 Plugin_clock.man \
-Plugin_procstat.man \
 Plugin_sysclassib.man \
 Plugin_jobid.man \
 Plugin_msr_interlagos.man \

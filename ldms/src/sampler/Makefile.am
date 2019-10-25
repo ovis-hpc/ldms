@@ -235,10 +235,7 @@ SUBDIRS += filesingle
 endif
 
 if ENABLE_PROCSTAT
-libprocstat_la_SOURCES = procstat.c
-libprocstat_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
-libprocstat_la_CFLAGS = -I$(builddir) $(AM_CFLAGS)
-pkglib_LTLIBRARIES += libprocstat.la
+SUBDIRS += procstat
 endif
 
 if ENABLE_DSTAT
