@@ -45,7 +45,6 @@ Plugin_store_sos.man \
 Plugin_lustre2_client.man \
 Plugin_opa2.man \
 Plugin_shm_sampler.man \
-Plugin_vmstat.man \
 Plugin_papi_sampler.man \
 Plugin_slurm_notifier.man \
 Plugin_slurm_sampler.man \

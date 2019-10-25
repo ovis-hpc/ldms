@@ -559,6 +559,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/papi/Makefile
 		 src/sampler/appinfo_lib/Makefile
 		 src/sampler/kgnilnd/Makefile
+		 src/sampler/vmstat/Makefile
 		 src/sampler/contrib/Makefile
 		 src/sampler/contrib/ipmireader/Makefile
 		 src/sampler/ibm_occ/Makefile

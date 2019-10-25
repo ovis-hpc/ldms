@@ -58,6 +58,11 @@ if ENABLE_KGNILND
 SUBDIRS += kgnilnd
 endif
 
+if ENABLE_VMSTAT
+SUBDIRS += vmstat
+endif
+
+
 if ENABLE_CLOCK
 libclock_la_SOURCES = clock.c
 libclock_la_LIBADD = $(COMMON_LIBADD)
@@ -255,12 +260,6 @@ OPAINC=/usr/include/infiniband
 libopa2_la_CFLAGS = $(AM_CFLAGS) -I$(OPAINC)
 libopa2_la_LIBADD = $(AM_LDFLAGS) $(COMMON_LIBADD) $(OPA2_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libopa2.la
-endif
-
-if ENABLE_VMSTAT
-libvmstat_la_SOURCES = vmstat.c
-libvmstat_la_LIBADD = $(COMMON_LIBADD)
-pkglib_LTLIBRARIES += libvmstat.la
 endif
 
 if ENABLE_ATASMART
