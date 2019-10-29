@@ -610,6 +610,7 @@ void kpublish(int map_fd, int set_no, int set_size, char *set_name)
 			     "metric set\n", errno, set_size);
 		return;
 	}
+	sh = meta_addr;
 	data_addr = (struct ldms_data_hdr *)((unsigned char*)meta_addr + sh->meta_sz);
 	rc = ldms_mmap_set(meta_addr, data_addr, &map_set);
 	if (rc) {
@@ -617,7 +618,6 @@ void kpublish(int map_fd, int set_no, int set_size, char *set_name)
 		ldmsd_lerror("Error %d mmapping the set '%s'\n", rc, set_name);
 		return;
 	}
-	sh = meta_addr;
 	sprintf(sh->producer_name, "%s", cmd_line_args.myhostname);
 }
 
@@ -625,7 +625,6 @@ pthread_t k_thread;
 void *k_proc(void *arg)
 {
 	int rc, map_fd;
-	int i, j;
 	int set_no;
 	int set_size;
 	char set_name[128];
@@ -675,6 +674,7 @@ void *k_proc(void *arg)
 			break;
 		}
 	}
+	return NULL;
 }
 /*
  * This function opens the device file specified by 'devname' and
@@ -744,7 +744,6 @@ static void task_cb_fn(ovis_event_t ev)
 			task->state = LDMSD_TASK_STATE_STOPPED;
 	} else
 		task->state = next_state;
- out:
 	if (task->state == LDMSD_TASK_STATE_STOPPED) {
 		if (task->os)
 			ovis_scheduler_event_del(task->os, &task->oev);
@@ -1045,9 +1044,7 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host,
 		char *auth, struct attr_value_list *auth_args)
 {
 	char *name;
-	size_t cnt, len;
-	char *lval, *delim;
-	struct ldmsd_sec_ctxt sctxt;
+	size_t len;
 	struct ldmsd_listen *listen = NULL;
 
 	if (!port)
@@ -1102,7 +1099,7 @@ err:
 int ldmsd_process_cmd_line_arg(char opt, char *value)
 {
 	char *lval, *rval;
-	int op, rc;
+	int rc;
 	ldmsd_listen_t listen;
 	switch (opt) {
 	case 'A':
@@ -1631,7 +1628,7 @@ int main(int argc, char *argv[])
 			ret = ldmsd_process_cmd_line_arg(op, optarg);
 			if (ret) {
 				if (ret == ENOENT)
-					usage(argv);
+					usage();
 				cleanup(ret, "");
 			}
 
@@ -1687,7 +1684,7 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	ldmsd_init(argv);
+	ldmsd_init();
 	ldmsd_handle_deferred_plugin_config();
 
 	if (cmd_line_args.is_syntax_check) {

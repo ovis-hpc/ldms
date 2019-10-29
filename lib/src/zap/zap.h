@@ -201,7 +201,7 @@ static char *__zap_err_str[] = {
 static inline
 const char* zap_err_str(enum zap_err_e e)
 {
-	if (e < 0 || e > ZAP_ERR_LAST)
+	if ((int)e < 0 || e > ZAP_ERR_LAST)
 		return "ZAP_ERR_UNKNOWN";
 	return __zap_err_str[e];
 }

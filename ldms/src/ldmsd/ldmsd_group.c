@@ -181,7 +181,6 @@ ldmsd_setgrp_new_with_auth(const char *name, const char *producer,
 	return grp;
 err1:
 	ldmsd_setgrp_unlock(grp);
-err:
 	ldmsd_setgrp_put(grp);
 	return NULL;
 }
@@ -295,7 +294,6 @@ out:
 int ldmsd_group_set_add(ldms_set_t grp, const char *set_name)
 {
 	int rc = 0;
-	uint32_t gn;
 	char buff[512]; /* should be enough for setname */
 	rc = snprintf(buff, sizeof(buff), GRP_KEY_PREFIX "%s", set_name);
 	if (rc >= sizeof(buff))
@@ -307,7 +305,6 @@ int ldmsd_group_set_add(ldms_set_t grp, const char *set_name)
 int ldmsd_group_set_rm(ldms_set_t grp, const char *set_name)
 {
 	int rc;
-	uint32_t gn;
 	char buff[512]; /* should be enough for setname */
 	rc = snprintf(buff, sizeof(buff), GRP_KEY_PREFIX "%s", set_name);
 	if (rc >= sizeof(buff))

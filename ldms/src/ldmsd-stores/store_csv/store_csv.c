@@ -162,6 +162,7 @@ ovis_scheduler_t roll_sched; /* roll-over scheduler */
 pthread_t roll_thread; /* rollover thread */
 
 
+__attribute__((unused))
 static char* allocStoreKey(store_csv_inst_t inst, const char* container,
 			   const char* schema)
 {

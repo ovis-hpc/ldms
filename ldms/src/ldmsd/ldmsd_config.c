@@ -982,7 +982,6 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 
 int listen_on_ldms_xprt(ldmsd_listen_t listen)
 {
-	unsigned short port_no;
 	int ret;
 	struct sockaddr_in sin;
 

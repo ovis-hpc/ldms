@@ -2389,14 +2389,12 @@ int store_function_csv_store(ldmsd_plugin_inst_t pi, ldms_set_t set,
 	for (i = 0; i < inst->numder; i++) {
 		//go thru all the vals....only write the writeout vals
 
-		int rvalid;
-
 		if (inst->der[i]->fct == RAWTERM) {
 			//this will also do its writeout
 			if (!skip)
-				rvalid = doRAWTERMFunc(inst, set, strgp->metric_arry, inst->der[i]);
+				doRAWTERMFunc(inst, set, strgp->metric_arry, inst->der[i]);
 		} else {
-			rvalid = doFunc(inst, set, strgp->metric_arry,
+			doFunc(inst, set, strgp->metric_arry,
 					dp, inst->der[i],
 					diff, setflagtime);
 			//write it out, if its writeout and not skip

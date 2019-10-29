@@ -526,14 +526,6 @@ int samp_sample(ldmsd_plugin_inst_t inst)
 	return rc;
 }
 
-static void plugin_sampler_cb(ldmsd_task_t task, void *arg)
-{
-	ldmsd_sampler_type_t samp = arg;
-	pthread_mutex_lock(&samp->lock);
-	samp->sample(samp->base.inst);
-	pthread_mutex_unlock(&samp->lock);
-}
-
 void *new()
 {
 	ldmsd_sampler_type_t samp;

@@ -231,12 +231,12 @@ static void send_dir_update(struct ldms_xprt *x,
 	cnt += __ldms_format_set_meta_as_json(set, 0,
 					      &reply->dir.json_data[cnt],
 					      buf_len - hdr_len - cnt);
-	if (!cnt >= buf_len - hdr_len)
+	if (cnt >= buf_len - hdr_len)
 		goto out;
 	cnt += snprintf(&reply->dir.json_data[cnt],
 			buf_len - hdr_len - cnt,
 			"]}");
-	if (!cnt >= buf_len - hdr_len)
+	if (cnt >= buf_len - hdr_len)
 		goto out;
 
 	reply->hdr.xid = x->remote_dir_xid;
@@ -327,11 +327,6 @@ static void __revoke_rbd(ldms_t x, struct ldms_set *s)
 
 	pthread_mutex_unlock(&s->lock);
 	pthread_mutex_unlock(&x->lock);
-}
-
-static void _revoke_rbd(ldms_t x, ldms_set_t set)
-{
-	__revoke_rbd(x, set->set);
 }
 
 void ___ldms_dir_update(struct ldms_set *set, enum ldms_dir_type t)
@@ -453,7 +448,6 @@ struct make_dir_arg {
 static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 	size_t len;
-	size_t set_count;
 	size_t hdrlen;
 	int rc;
 	zap_err_t zerr;
@@ -1375,7 +1369,7 @@ static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type
 	if (lset) {
 		pthread_mutex_unlock(&lset->lock);
 		if ((type == LDMS_DIR_UPD) && dir_upd &&
-				(lset->flags && LDMS_SET_F_PUBLISHED)) {
+				(lset->flags & LDMS_SET_F_PUBLISHED)) {
 			___ldms_dir_update(lset, type);
 		}
 	}
@@ -1387,14 +1381,13 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		       struct ldms_context *ctxt, int more)
 {
 	enum ldms_dir_type type = ntohl(reply->dir.type);
-	int i, j, rc = ntohl(reply->hdr.rc);
+	int i, rc = ntohl(reply->hdr.rc);
 	size_t count, json_data_len = ntohl(reply->dir.json_data_len);
 	ldms_dir_t dir = NULL;
-	json_parser_t p;
-	json_entity_t dir_attr, dir_list, set_entity, info_list, info_entity;
+	json_parser_t p = NULL;
+	json_entity_t dir_attr, dir_list, set_entity, info_list;
 	json_entity_t dir_entity = NULL;
 	struct ldms_set *lset;
-	int dir_upd = 0;
 
 	if (!ctxt->dir.cb)
 		return;
@@ -1512,7 +1505,8 @@ out:
 	/* Callback owns dir memory. */
 	ctxt->dir.cb((ldms_t)x, rc, rc ? NULL : dir, ctxt->dir.cb_arg);
 	json_entity_free(dir_entity);
-	json_parser_free(p);
+	if (p)
+		json_parser_free(p);
 	if (rc && dir)
 		ldms_xprt_dir_free(x, dir);
 }
@@ -2059,7 +2053,7 @@ static const ldms_name_t __lookup_set_info_find(const char *set_info,
 
 static int __process_lookup_set_info(struct ldms_set *lset, char *set_info)
 {
-	int rc = 0, i;
+	int rc = 0;
 	ldms_name_t key, value;
 	struct ldms_set_info_pair *pair, *nxt_pair;
 	int dir_upd = 0;

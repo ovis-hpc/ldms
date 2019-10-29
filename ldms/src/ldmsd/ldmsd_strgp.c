@@ -276,7 +276,6 @@ out_2:
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
 	return rc;
 }
 
@@ -308,7 +307,6 @@ int ldmsd_strgp_prdcr_del(const char *strgp_name, const char *regex_str,
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
 	return rc;
 }
 
@@ -364,7 +362,6 @@ int ldmsd_strgp_metric_add(const char *strgp_name, const char *metric_name,
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
 	return rc;
 }
 
@@ -394,7 +391,6 @@ int ldmsd_strgp_metric_del(const char *strgp_name, const char *metric_name,
 out_1:
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-out_0:
 	return rc;
 }
 
@@ -563,7 +559,7 @@ int __ldmsd_strgp_start(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt)
 
 int ldmsd_strgp_start(const char *name, ldmsd_sec_ctxt_t ctxt, int flags)
 {
-	int rc;
+	int rc = 0;
 	ldmsd_strgp_t strgp = ldmsd_strgp_find(name);
 	if (!strgp)
 		return ENOENT;
@@ -574,7 +570,7 @@ int ldmsd_strgp_start(const char *name, ldmsd_sec_ctxt_t ctxt, int flags)
 		rc = __ldmsd_strgp_start(strgp, ctxt);
 	ldmsd_strgp_unlock(strgp);
 	ldmsd_strgp_put(strgp);
-	return 0;
+	return rc;
 }
 
 int __ldmsd_strgp_stop(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt)

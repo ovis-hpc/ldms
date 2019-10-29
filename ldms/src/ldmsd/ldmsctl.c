@@ -1323,13 +1323,6 @@ static void help_failover_config()
 	printf("                      the ldmsd will accept any partner.\n");
 }
 
-static void help_failover_mod()
-{
-	printf("Modify LDMSD failover.\n\n");
-	printf("Parameters:\n");
-	printf("    [auto_switch=0|1] Auto switching (failover/failback).\n");
-}
-
 static void help_failover_status()
 {
 	printf("Get failover status.\n\n");

@@ -165,7 +165,6 @@ int ev_cancel(ev_t ev)
 	ev__t e = EV(ev);
 	int rc = EINVAL;
 	struct timespec now;
-	double diff;
 
 	pthread_mutex_lock(&e->e_dst->w_lock);
 	if (!e->e_posted)

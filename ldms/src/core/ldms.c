@@ -649,7 +649,7 @@ void __ldms_set_info_delete(struct ldms_set_info_list *info)
 	}
 }
 
-static void print_xprt_addrs(ldms_t xprt)
+void print_xprt_addrs(ldms_t xprt)
 {
 	char lbuf[32];
 	char rbuf[32];
@@ -1232,7 +1232,7 @@ int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *ps)
 	struct ldms_set_hdr *sh = meta_addr;
 	struct ldms_data_hdr *dh = data_addr;
 	struct ldms_rbuf_desc *rbd;
-	int flags, rc;
+	int flags;
 
 	flags = LDMS_SET_F_MEMMAP | LDMS_SET_F_LOCAL;
 

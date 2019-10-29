@@ -75,6 +75,14 @@ static const char *json_type_names[] = {
 	"INT", "BOOL", "FLOAT", "STRING", "ATTR", "LIST", "DICT", "NULL"
 };
 
+static inline
+const char *json_type_str(enum json_value_e type) {
+	if ((int)type < JSON_INT_VALUE || type > JSON_NULL_VALUE) {
+		return "INVALID_TYPE";
+	}
+	return json_type_names[type];
+}
+
 struct json_entity_s {
 	enum json_value_e type;
 	union {

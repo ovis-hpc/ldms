@@ -40,7 +40,6 @@ static int timer_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_
 
 int main(int argc, char *argv[])
 {
-	int res;
 	struct timespec to;
 	ev_worker_t timer, a, b;
 	ev_type_t timeout, request, response;

@@ -230,18 +230,6 @@ void __transaction_end_time_get(struct timeval *start, struct timeval *dur,
 	}
 }
 
-static ldmsd_smplr_t find_smplr_by_plugn(const char *plugn_name)
-{
-	ldmsd_smplr_t smplr;
-
-	for (smplr = (ldmsd_smplr_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_SMPLR); smplr;
-	     smplr = (ldmsd_smplr_t)ldmsd_cfgobj_next(&smplr->obj)) {
-		if (0 == strcmp(smplr->obj.name, plugn_name))
-			return smplr;
-	}
-	return NULL;
-}
-
 /*
  * Get the set information
  *
@@ -249,7 +237,6 @@ static ldmsd_smplr_t find_smplr_by_plugn(const char *plugn_name)
  */
 ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 {
-	extern struct plugin_list plugin_list;
 	ldmsd_set_info_t info;
 	struct ldms_timestamp t;
 	struct timeval dur;
@@ -536,7 +523,6 @@ int ldmsd_smplr_oneshot(char *smplr_name, char *ts, ldmsd_sec_ctxt_t sctxt)
 	smplr->synchronous = 1;
 
 	rc = __ldmsd_smplr_start(smplr, 1);
-out:
 	ldmsd_smplr_unlock(smplr);
 	ldmsd_smplr_put(smplr);
 	return rc;

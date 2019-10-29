@@ -127,6 +127,11 @@ static inline void _ref_init(ref_t r, const char *name,
 }
 #define ref_init(_r_, _n_, _f_, _a_) _ref_init((_r_), (_n_), (_f_), (_a_), __func__, __LINE__)
 
+/*
+ * NOTE: This function is for debuggging. `__attribute__((unused))` will
+ * suppress the `-Werror=unused-function` for this function.
+ */
+__attribute__((unused))
 static void ref_dump_no_lock(ref_t r, const char *name)
 {
 #ifdef _REF_TRACK_
@@ -148,6 +153,11 @@ static void ref_dump_no_lock(ref_t r, const char *name)
 #endif
 }
 
+/*
+ * NOTE: This function is for debuggging. `__attribute__((unused))` will
+ * suppress the `-Werror=unused-function` for this function.
+ */
+__attribute__((unused))
 static void ref_dump(ref_t r, const char *name)
 {
 #ifdef _REF_TRACK_

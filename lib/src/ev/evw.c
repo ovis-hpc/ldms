@@ -87,7 +87,7 @@ static ev__t process_to_events(ev_worker_t w)
 	struct rbn *rbn;
 	struct timespec now;
 	ev_actor_t actor;
-	int rc = clock_gettime(CLOCK_REALTIME, &now);
+	clock_gettime(CLOCK_REALTIME, &now);
  next:
 	e = NULL;
 	rbn = rbt_min(&w->w_event_tree);
@@ -121,19 +121,18 @@ static ev__t process_to_events(ev_worker_t w)
 
 void ev_sched_to(struct timespec *to, time_t secs, int nsecs)
 {
-	int rc = clock_gettime(CLOCK_REALTIME, to);
+	clock_gettime(CLOCK_REALTIME, to);
 	to->tv_sec += secs;
 	to->tv_nsec += nsecs;
 }
 
 static void *worker_proc(void *arg)
 {
-	int res;
 	ev__t e;
 	ev_worker_t w = arg;
 	w->w_state = EV_WORKER_RUNNING;
 	ev_sched_to(&w->w_sem_wait, 0, 0);
-	res = sem_timedwait(&w->w_sem, &w->w_sem_wait);
+	sem_timedwait(&w->w_sem, &w->w_sem_wait);
 	while (1) {
 		pthread_mutex_lock(&w->w_lock);
 		process_immediate_events(w);
@@ -144,7 +143,7 @@ static void *worker_proc(void *arg)
 			ev_sched_to(&w->w_sem_wait, 10, 0);
 		}
 		pthread_mutex_unlock(&w->w_lock);
-		res = sem_timedwait(&w->w_sem, &w->w_sem_wait);
+		sem_timedwait(&w->w_sem, &w->w_sem_wait);
 	}
 	return NULL;
 }

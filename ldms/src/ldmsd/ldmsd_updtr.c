@@ -133,23 +133,9 @@ void __updt_time_put(struct ldmsd_updt_time *updt_time)
 }
 #endif /* LDMSD_UDPATE_TIME */
 
-static void
-__grp_info_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
-			    int more, ldms_set_t set, void *arg)
-{
-	ldmsd_prdcr_set_t prd_set = arg;
-	pthread_mutex_lock(&prd_set->lock);
-	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
-	ldmsd_prdcr_set_ref_put(prd_set, "grp_lookup");
-	pthread_mutex_unlock(&prd_set->lock);
-}
-
 static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 {
-	int flags;
-	int rc;
 	uint64_t gn;
-	const char *name;
 	ldmsd_prdcr_set_t prd_set = arg;
 	int errcode;
 
@@ -377,7 +363,6 @@ out:
 static int cancel_set_updates(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 {
 	int rc;
-	struct timeval end;
 	ldmsd_log(LDMSD_LDEBUG, "Cancel push for set %s\n", prd_set->inst_name);
 	assert(prd_set->set);
 	if (prd_set->update_ev)
@@ -438,7 +423,6 @@ out:
 static void cancel_prdcr_updates(ldmsd_updtr_t updtr,
 				 ldmsd_prdcr_t prdcr, ldmsd_name_match_t match)
 {
-	int rc;
 	ldmsd_prdcr_lock(prdcr);
 	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED)
 		goto out;
@@ -627,12 +611,11 @@ int prdcr_set_update_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status,
 {
 	ldmsd_updtr_t updtr = EV_DATA(ev, struct update_data)->updtr;
 	ldmsd_prdcr_set_t prd_set = EV_DATA(ev, struct update_data)->prd_set;
-	struct timespec to;
-	int rc;
 
 	ldmsd_updtr_lock(updtr);
 	switch (updtr->state) {
 	case LDMSD_UPDTR_STATE_STOPPED:
+	case LDMSD_UPDTR_STATE_STOPPING:
 		break;
 	case LDMSD_UPDTR_STATE_RUNNING:
 		__update_prdcr_set(updtr, prd_set);
@@ -640,6 +623,7 @@ int prdcr_set_update_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status,
 	}
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_prdcr_set_ref_put(prd_set, "update_ev");
+	return 0;
 }
 
 int prdcr_ref_cmp(void *a, const void *b)
@@ -776,7 +760,6 @@ out_0:
 int __ldmsd_updtr_start(ldmsd_updtr_t updtr, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
-	ldmsd_name_match_t match;
 
 	rc = ldmsd_cfgobj_access_check(&updtr->obj, 0222, ctxt);
 	if (rc)
@@ -965,7 +948,6 @@ ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_next(ldmsd_prdcr_ref_t ref)
 ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_find(ldmsd_updtr_t updtr,
 					const char *prdcr_name)
 {
-	ldmsd_prdcr_ref_t ref;
 	struct rbn *rbn = rbt_find(&updtr->prdcr_tree, prdcr_name);
 	if (!rbn)
 		return NULL;
@@ -1018,7 +1000,7 @@ int ldmsd_updtr_match_add(const char *updtr_name, const char *regex_str,
 		match->selector = LDMSD_NAME_MATCH_INST_NAME;
 	} else {
 		match->selector = ldmsd_updtr_match_str2enum(selector_str);
-		if (match->selector < 0) {
+		if ((int)match->selector < 0) {
 			rc = EINVAL;
 			goto out_3;
 		}
@@ -1037,7 +1019,6 @@ out_2:
 out_1:
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
-out_0:
 	return rc;
 }
 
@@ -1080,7 +1061,6 @@ int ldmsd_updtr_match_del(const char *updtr_name, const char *regex_str,
 out_1:
 	ldmsd_updtr_unlock(updtr);
 	ldmsd_updtr_put(updtr);
-out_0:
 	return rc;
 }
 
@@ -1150,7 +1130,7 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt)
 {
 	regex_t regex;
-	ldmsd_updtr_t updtr;
+	ldmsd_updtr_t updtr = NULL;
 	ldmsd_prdcr_t prdcr;
 	ldmsd_str_ent_t regex_ent = NULL;
 	int rc;
@@ -1219,8 +1199,10 @@ err:
 	}
 out:
 	regfree(&regex);
-	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
+	if (updtr) {
+		ldmsd_updtr_unlock(updtr);
+		ldmsd_updtr_put(updtr);
+	}
 	return rc;
 }
 
@@ -1231,6 +1213,7 @@ int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 	regex_t regex;
 	ldmsd_prdcr_ref_t ref;
 	ldmsd_str_ent_t regex_ent = NULL;
+	ldmsd_updtr_t updtr = NULL;
 
 	regex_ent = malloc(sizeof(*regex_ent));
 	if (!regex_ent) {
@@ -1248,7 +1231,7 @@ int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 	if (rc)
 		goto err;
 
-	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
+	updtr = ldmsd_updtr_find(updtr_name);
 	if (!updtr) {
 		rc = ENOENT;
 		regfree(&regex);
@@ -1277,7 +1260,9 @@ err:
 	}
 out:
 	regfree(&regex);
-	ldmsd_updtr_unlock(updtr);
-	ldmsd_updtr_put(updtr);
+	if (updtr) {
+		ldmsd_updtr_unlock(updtr);
+		ldmsd_updtr_put(updtr);
+	}
 	return rc;
 }

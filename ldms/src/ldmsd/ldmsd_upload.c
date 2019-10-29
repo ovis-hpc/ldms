@@ -15,11 +15,9 @@
 #include "ldmsd_stream.h"
 
 static ldms_t ldms;
-static char *stream;
 static sem_t conn_sem;
 static int conn_status;
 static sem_t recv_sem;
-static pthread_mutex_t ldms_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static struct option long_opts[] = {
 	{"host",     required_argument, 0,  'h' },
@@ -130,7 +128,6 @@ int main(int argc, char **argv)
 	char *filename = NULL;
 	char *stream = NULL;
 	int opt, opt_idx;
-	int verbose = 0;
 	char *lval, *rval;
 	char *auth = "none";
 	struct attr_value_list *auth_opt = NULL;
@@ -181,7 +178,7 @@ int main(int argc, char **argv)
 			filename = strdup(optarg);
 			break;
 		case 'v':
-			verbose = 1;
+			/* verbose place holder */
 			break;
 		default:
 			usage(argc, argv);
@@ -201,7 +198,7 @@ int main(int argc, char **argv)
 	}
 
 	ldms_t ldms = setup_connection(xprt, host, port, auth);
-	int rc = ldmsd_stream_publish(ldms, stream, LDMSD_ATTR_STRING, "this is a test", sizeof("this is a test"));
+	int rc = ldmsd_stream_publish(ldms, stream, LDMSD_STREAM_STRING, "this is a test", sizeof("this is a test"));
 	if (rc)
 		printf("Error %d uploading data.\n", rc);
 	else

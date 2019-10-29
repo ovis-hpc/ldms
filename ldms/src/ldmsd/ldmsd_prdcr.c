@@ -195,23 +195,6 @@ static ldmsd_prdcr_set_t _find_set(ldmsd_prdcr_t prdcr, const char *inst_name)
 	return NULL;
 }
 
-/* Caller must hold prdcr lock and prdcr_set lock */
-static void prdcr_set_updt_hint_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set)
-{
-	struct rbn *rbn;
-	ldmsd_updt_hint_set_list_t list;
-	char *value;
-
-	if (prd_set->set) {
-		ldms_set_info_unset(prd_set->set, LDMSD_SET_INFO_UPDATE_HINT_KEY);
-		(void) ldmsd_set_update_hint_get(prd_set->set,
-						 &prd_set->updt_hint.intrvl_us,
-						 &prd_set->updt_hint.offset_us);
-	}
-
-	return;
-}
-
 static void __update_set_info(ldmsd_prdcr_set_t set, ldms_dir_set_t dset)
 {
 	long intrvl_us;
@@ -504,13 +487,15 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	case LDMSD_PRDCR_TYPE_PASSIVE:
 		prdcr->xprt = ldms_xprt_by_remote_sin((struct sockaddr_in *)&prdcr->ss);
 		/* Call connect callback to advance state and update timers*/
+		struct ldms_xprt_event e = {.type = LDMS_XPRT_EVENT_CONNECTED};
 		if (prdcr->xprt)
-			prdcr_connect_cb(prdcr->xprt, LDMS_XPRT_EVENT_CONNECTED, prdcr);
+			prdcr_connect_cb(prdcr->xprt, &e, prdcr);
 		break;
 	case LDMSD_PRDCR_TYPE_LOCAL:
 		assert(0);
 	}
 }
+
 static int set_cmp(void *a, const void *b)
 {
 	return strcmp(a, b);
@@ -837,7 +822,7 @@ int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
  err:
 	if (s)
 		free(s);
-		return ENOMEM;
+	return ENOMEM;
 }
 
 int ldmsd_prdcr_start_regex(const char *prdcr_regex, const char *interval_str,

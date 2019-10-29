@@ -145,7 +145,6 @@ void str_rbn_free(struct str_rbn *srbn)
 }
 
 static struct ldmsd_failover __failover;
-static pthread_t sched_thread;
 
 static
 const char *__failover_state_str(ldmsd_failover_t f)

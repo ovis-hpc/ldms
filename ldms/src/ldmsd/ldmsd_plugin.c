@@ -157,7 +157,7 @@ int __status_json_new(ldmsd_plugin_inst_t inst)
 			{ "plugin"  , JSON_STRING_VALUE, { .s = inst->plugin_name }},
 			{ "type"    , JSON_STRING_VALUE, { .s = inst->type_name }  },
 			{ "libpath" , JSON_STRING_VALUE, { .s = inst->libpath }    },
-			{NULL, 0, NULL}
+			{NULL, 0, { .s = NULL } }
 	};
 	d = json_entity_new(JSON_DICT_VALUE);
 	if (!d)
@@ -214,7 +214,6 @@ int  __config_json_new(ldmsd_plugin_inst_t inst)
 	json_attr_add(inst->json, cfg);
 	return 0;
 
-err2:
 	json_entity_free(cfg);
 err1:
 	json_entity_free(l);
@@ -227,7 +226,6 @@ static
 ldmsd_plugin_inst_t ldmsd_plugin_inst_new(const char *plugin_name, char *errstr,
 					  int errlen)
 {
-	int rc;
 	char *libpath = NULL;
 	ldmsd_plugin_inst_t inst = NULL;
 	ldmsd_plugin_type_t base = NULL;
@@ -765,11 +763,11 @@ json_entity_t ldmsd_plugin_qjson_new(ldmsd_plugin_inst_t inst)
 	if (!result)
 		return NULL;
 	struct ldmsd_plugin_qjson_attrs bulks[] = {
-			{ "rc",     JSON_INT_VALUE,    0 },
-			{ "errmsg", JSON_STRING_VALUE, "" },
-			{ "name",   JSON_STRING_VALUE, inst->inst_name },
-			{ "plugin", JSON_STRING_VALUE, inst->plugin_name },
-			{ "type",   JSON_STRING_VALUE, inst->type_name },
+			{ "rc",     JSON_INT_VALUE,    { .d = 0 } },
+			{ "errmsg", JSON_STRING_VALUE, { .s = "" } },
+			{ "name",   JSON_STRING_VALUE, { .s = inst->inst_name } },
+			{ "plugin", JSON_STRING_VALUE, { .s = inst->plugin_name } },
+			{ "type",   JSON_STRING_VALUE, { .s = inst->type_name } },
 			{0},
 	};
 	rc = ldmsd_plugin_qjson_attrs_add(result, bulks);
@@ -880,7 +878,7 @@ json_entity_t qfn_status(ldmsd_plugin_inst_t pi, json_entity_t result)
 	int rc;
 
 	struct ldmsd_plugin_qjson_attrs bulks[] = {
-			{ "libpath", JSON_STRING_VALUE, pi->libpath },
+			{ "libpath", JSON_STRING_VALUE, { .s = pi->libpath } },
 			{0}
 	};
 	/*

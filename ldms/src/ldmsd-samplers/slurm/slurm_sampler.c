@@ -355,7 +355,6 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	slurm_sampler_inst_t inst = ctxt;
 	int rc = 0;
 	json_entity_t event, data, dict, attr;
-	uint64_t tstamp;
 
 	if (stream_type != LDMSD_STREAM_JSON) {
 		INST_LOG(inst, LDMSD_LDEBUG, "Unexpected stream type data...ignoring\n");
@@ -374,7 +373,6 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		INST_LOG(inst, LDMSD_LERROR, "'timestamp' attribute missing\n");
 		goto out_0;
 	}
-	tstamp = json_value_int(json_attr_value(attr));
 
 	json_str_t event_name = json_value_str(json_attr_value(event));
 	data = json_attr_find(entity, "data");
