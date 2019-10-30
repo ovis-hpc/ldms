@@ -288,7 +288,6 @@ static void prdcr_dir_cb_del(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 		if (!rbn)
 			continue;
 		set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
-		assert(set->ref_count);
 		prdcr_reset_set(prdcr, set);
 	}
 }

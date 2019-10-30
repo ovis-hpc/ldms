@@ -416,7 +416,6 @@ typedef struct ldmsd_prdcr_set {
 	double updt_duration;
 #endif /* LDMSD_UPDATE_TIME */
 
-	int ref_count;
 	struct ref_s ref;
 
 	struct ldmsd_set_ctxt_s set_ctxt;
