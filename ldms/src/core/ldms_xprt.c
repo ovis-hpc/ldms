@@ -3368,7 +3368,7 @@ __ldms_alloc_rbd(struct ldms_xprt *x, struct ldms_set *s, enum ldms_rbd_type typ
 	ref_get(&s->ref, __func__);
 	rbd->set = s;
 	if (x) {
-		x->log("%s: rbd %p '%s'\n", __func__, rbd,
+		DLOG(x, "%s: rbd %p '%s'\n", __func__, rbd,
 		       ldms_set_instance_name_get(rbd));
 	}
 	rbn_init(&rbd->xprt_rbn, s);
