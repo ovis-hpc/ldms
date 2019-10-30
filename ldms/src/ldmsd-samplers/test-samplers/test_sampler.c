@@ -507,7 +507,6 @@ static int config_add_schema(test_sampler_inst_t inst, json_entity_t json,
 		INST_LOG(inst, LDMSD_LERROR, "Out of memory\n");
 		return ENOMEM;
 	}
-	int is_need_int = 0;
 	TAILQ_INIT(&ts_schema->list);
 	LIST_INSERT_HEAD(&inst->schema_list, ts_schema, entry);
 	struct test_sampler_metric *metric;
@@ -531,9 +530,7 @@ static int config_add_schema(test_sampler_inst_t inst, json_entity_t json,
 		}
 	} else {
 		ts_schema->type = TEST_SAMPLER_SCHEMA_TYPE_AUTO;
-		is_need_int = 1;
 		enum ldms_value_type type;
-		int count = 1; /* Number of elements of an array metric */
 		num_metrics = atoi(value);
 
 		value = json_attr_find_str(json, "type");
@@ -546,10 +543,6 @@ static int config_add_schema(test_sampler_inst_t inst, json_entity_t json,
 		} else {
 			type = LDMS_V_U64;
 		}
-
-		value = json_attr_find_str(json, "count");
-		if (value)
-			count = atoi(value);
 
 		init_value = json_attr_find_str(json, "init_value");
 		if (!init_value)
@@ -694,7 +687,6 @@ static int config_add_set(test_sampler_inst_t inst, json_entity_t json,
 {
 	int rc = 0;
 	struct test_sampler_schema *ts_schema;
-	ldms_set_t set;
 
 	const char *schema_name = json_attr_find_str(json, "schema");
 	if (!schema_name) {
@@ -734,7 +726,6 @@ static int config_add_set(test_sampler_inst_t inst, json_entity_t json,
 		rc = errno;
 		goto err0;
 	}
-	set = ts_set->set;
 
 	union ldms_value v;
 	int mid = 0;
@@ -1445,7 +1436,6 @@ int test_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	const char *action;
 	const char *compid;
 	const char *jobid;
-	const char *push;
 	const char *set_del_int_str;
 	const char *ts_suffix_str;
 	const char *producer_name;
