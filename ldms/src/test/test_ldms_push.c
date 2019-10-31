@@ -512,11 +512,12 @@ static void do_server(struct sockaddr_in *sin)
 						ldms_xprt_push(set);
 				}
 			}
-			if (is_verbose)
+			if (is_verbose) {
 				if (is_json)
 					__print_json_set(set, SAMPLE);
 				else
 					__print_set(set);
+			}
 		}
 		round++;
 		sleep(interval);
@@ -670,8 +671,6 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 {
 	int rc = 0;
 	int i;
-	struct sockaddr_in lsin = {0};
-	struct sockaddr_in rsin = {0};
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
 		printf("%d: connected\n", port);

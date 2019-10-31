@@ -334,7 +334,7 @@ void do_server(struct sockaddr_in *sin)
 		exit(rc);
 	}
 
-	printf("Listening on port %hu\n", port);
+	printf("Listening on port %d\n", port);
 
 	pthread_t t;
 	rc = pthread_create(&t, NULL, __sample_sets, (void *)ldms);
@@ -386,7 +386,6 @@ static void process_auth_arg(char *arg)
 void process_arg(int argc, char **argv)
 {
 	struct test_schema *tschema;
-	struct test_set *tset;
 	char *dummy, *inst_name, *delim;
 	char op;
 

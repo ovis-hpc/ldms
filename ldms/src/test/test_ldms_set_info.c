@@ -200,6 +200,7 @@ static int print_cb(const char *key, const char *value, void *arg)
 	return 0;
 }
 
+__attribute__((unused))
 static void print_set_info(ldms_set_t set)
 {
 	printf("local\n");
@@ -293,7 +294,6 @@ void check_args()
 struct ldms_set_info_pair *__set_info_get(struct ldms_set_info_list *list,
 								const char *key)
 {
-	int i = 0;
 	struct ldms_set_info_pair *pair;
 
 	LIST_FOREACH(pair, list, entry) {
@@ -352,8 +352,6 @@ int test_ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
 {
 	int rc;
 	struct ldms_set_info_pair *pair;
-	size_t key_len = strlen(key) + 1;
-	size_t value_len = strlen(value) + 1;
 
 	rc = ldms_set_info_set(s, key, value);
 	if (rc) {
@@ -542,7 +540,7 @@ static void __test_lookup_cb(ldms_t ldms, enum ldms_lookup_status status,
 				int more, ldms_set_t set, void *arg)
 {
 	struct clnt *clnt;
-	char *inst_name, *schema_name, *metric_name, *str;
+	char *inst_name, *schema_name, *metric_name;
 
 	if (status) {
 		printf("\n	Lookup complete with an error status '%d'\n", status);
@@ -596,7 +594,6 @@ static void test_lookup(struct clnt *clnt, int flags)
 
 static void client_event_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 {
-	int rc = 0;
 	struct clnt *clnt = (struct clnt *)arg;
 	assert(clnt);
 
@@ -691,7 +688,6 @@ static void server_event_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 
 static void client_dir_cb(ldms_t x, int status, ldms_dir_t dir, void *arg)
 {
-	int rc;
 	struct clnt *clnt = arg;
 	char *set_name;
 	sem_t *sem;
@@ -766,7 +762,6 @@ static void do_client_A(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 	int rc;
 	ldms_t listen_ldms;
 	ldms_t connect_ldms;
-	struct clnt_msg msg;
 
 	sem_init(&exit_sem, 0, 0);
 	clnt = clnt_new();
@@ -1033,9 +1028,7 @@ ldms_set_t test_local_set_info()
 {
 	ldms_schema_t schema;
 	ldms_set_t set;
-	int rc, idx, i, total_cnt;
-	char key[STR_INIT_LEN];
-	char value[STR_INIT_LEN];
+	int rc;
 
 	schema = ldms_schema_new("schema_test");
 	if (!schema) {
@@ -1057,7 +1050,6 @@ ldms_set_t test_local_set_info()
 		printf("Failed to publish the set %s\n", SET_NAME);
 		assert(0);
 	}
-	total_cnt = 0;
 	printf("Adding set info key value pairs");
 	rc = test_ldms_set_info_set(set, SET_INFO_INT_KEY, SET_INFO_INT_VALUE);
 	if (rc)
