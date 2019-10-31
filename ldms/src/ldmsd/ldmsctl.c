@@ -352,6 +352,11 @@ static void help_daemon_status()
 	printf( "\nCauses the ldmsd to dump out information about its internal state.\n");
 }
 
+static void help_daemon_exit()
+{
+	printf(" \nExit the connected LDMS daemon\n\n");
+}
+
 static void help_udata()
 {
 	printf( "\nSet the user data of the specified metric in the given set\n\n"
@@ -469,6 +474,16 @@ static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 		if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
 			printf("%s\n", attr->attr_value);
 	}
+}
+
+static void resp_daemon_exit(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	ldmsd_req_attr_t attr;
+	attr = ldmsd_first_attr(resp);
+	if (attr->discrim && (attr->attr_id == LDMSD_ATTR_STRING))
+		printf("%s\n", attr->attr_value);
+	else
+		printf("Please 'quit' the ldmsd_controller interface\n");
 }
 
 void __print_prdcr_status(json_value *jvalue)
@@ -1405,7 +1420,8 @@ static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
 static struct command command_tbl[] = {
 	{ "?", LDMSCTL_HELP, handle_help, NULL, NULL },
 	{ "config", LDMSD_PLUGN_CONFIG_REQ, NULL, help_config, resp_generic },
-	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status, resp_generic },
+	{ "daemon_exit", LDMSD_EXIT_DAEMON_REQ, NULL, help_daemon_exit, resp_daemon_exit },
+	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status, resp_daemon_exit },
 	{ "failover_config", LDMSD_FAILOVER_CONFIG_REQ, NULL,
 			     help_failover_config, resp_generic },
 	{ "failover_peercfg_start", LDMSD_FAILOVER_PEERCFG_START_REQ, NULL,

@@ -82,8 +82,6 @@
 #include "ldmsd_request.h"
 #include "config.h"
 
-static int cleanup_requested = 0;
-
 extern void cleanup(int x, char *reason);
 
 pthread_mutex_t host_list_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -449,12 +447,6 @@ out:
 	if (set)
 		ldms_set_put(set);
 	return rc;
-}
-
-void ldmsd_exit_daemon()
-{
-	cleanup_requested = 1;
-	ldmsd_log(LDMSD_LINFO, "User requested exit.\n");
 }
 
 static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
