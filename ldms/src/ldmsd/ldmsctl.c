@@ -469,7 +469,6 @@ invalid_result_format:
 static void resp_prdcr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
 	int rc;
-	int i;
 	json_parser_t parser;
 	json_entity_t json, prdcr;
 	if (rsp_err) {
@@ -963,7 +962,6 @@ static void __print_plugn_sets(json_entity_t plugin_sets)
 {
 	json_entity_t sets, set_name;
 	const char *pi_name;
-	int i;
 	pi_name = json_attr_find_str(plugin_sets, "plugin");
 	if (!pi_name) {
 		printf("---Invalid result format---\n");
@@ -1320,7 +1318,6 @@ static void __indent_print(int indent)
 
 static void __json_value_print(json_entity_t v, int indent)
 {
-	int i;
 	json_entity_t item, attr;
 	switch (v->type) {
 	case JSON_DICT_VALUE:
@@ -1353,6 +1350,12 @@ static void __json_value_print(json_entity_t v, int indent)
 		break;
 	case JSON_BOOL_VALUE:
 		printf("%s", v->value.bool_?"True":"False");
+		break;
+	case JSON_ATTR_VALUE:
+			printf("\n");
+			__indent_print(indent);
+			printf("%s: ", json_attr_name(v)->str);
+			__json_value_print(json_attr_value(v), indent + 1);
 		break;
 	}
 }
