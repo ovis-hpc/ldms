@@ -158,6 +158,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 		ldmsd_log(LDMSD_LINFO, "Set %s: %s completing with "
 					"bad status %d\n",
 					prd_set->inst_name, op_s,errcode);
+		prd_set->state = LDMSD_PRDCR_SET_STATE_ERROR;
 		goto out;
 	}
 
@@ -523,6 +524,7 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 	struct timespec to;
 	int rc;
 
+	pthread_mutex_lock(&prd_set->lock);
 	switch (prd_set->state) {
 	case LDMSD_PRDCR_SET_STATE_START:
 		prd_set->state = LDMSD_PRDCR_SET_STATE_LOOKUP;
@@ -536,7 +538,7 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 					"from ldms_lookup\n", rc);
 			ldmsd_prdcr_set_ref_put(prd_set, "xprt_lookup");
 			prd_set->state = LDMSD_PRDCR_SET_STATE_START;
-			return;
+			goto out;
 		}
 		break;
 	case LDMSD_PRDCR_SET_STATE_LOOKUP:
@@ -551,7 +553,7 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 			/* Do not reschedule the update of the group
 			 * as its members are being rescheduled independently.
 			 * The new prd_set member */
-			return;
+			goto out;
 		}
 		prd_set->state = LDMSD_PRDCR_SET_STATE_UPDATING;
 		ldmsd_prdcr_set_ref_get(prd_set, "xprt_update");
@@ -562,7 +564,7 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 				  "%s: ldms_xprt_update returned %d for %s\n",
 				  __func__, rc, prd_set->inst_name);
 			prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
-			return;
+			goto out;
 		}
 		break;
 	case LDMSD_PRDCR_SET_STATE_UPDATING:
@@ -570,6 +572,9 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 			  "%s: there is an outstanding update %s\n",
 			  __func__, prd_set->inst_name);
 		break;
+	case LDMSD_PRDCR_SET_STATE_ERROR:
+		/* do not reschedule */
+		goto out;
 	}
 
 	/* prd_set update reschedule */
@@ -577,7 +582,8 @@ static void __update_prdcr_set(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 	ldmsd_prdcr_set_ref_get(prd_set, "update_ev"); /* Dropped when event is processed */
 	if (ev_post(updtr->worker, updtr->worker, prd_set->update_ev, &to))
 		ldmsd_prdcr_set_ref_put(prd_set, "update_ev");
-	ldmsd_updtr_unlock(updtr);
+ out:
+	pthread_mutex_unlock(&prd_set->lock);
 }
 
 int prdcr_set_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
