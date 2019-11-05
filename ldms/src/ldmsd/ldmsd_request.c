@@ -95,6 +95,9 @@ pthread_mutex_t msg_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
 int ldmsd_req_debug = 0; /* turn on / off using gdb or edit src to
                                  * see request/response debugging messages */
+
+static int cleanup_requested = 0;
+
 void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap);
 
 __attribute__((format(printf, 1, 2)))
@@ -1035,6 +1038,7 @@ void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec
 	xprt->send_fn(xprt, (char *)req_reply, reply_size);
 }
 
+extern void cleanup(int x, char *reason);
 int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 						ldmsd_req_filter_fn filter_fn)
 {
@@ -1123,6 +1127,9 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request,
 	req_ctxt_tree_lock();
 	req_ctxt_ref_put(reqc);
 	req_ctxt_tree_unlock();
+
+	if (cleanup_requested)
+		cleanup(0, "user quit");
  out:
 	return rc;
  oom:
@@ -5006,10 +5013,10 @@ static int logrotate_handler(ldmsd_req_ctxt_t reqc)
 	return 0;
 }
 
-extern void ldmsd_exit_daemon();
 static int exit_daemon_handler(ldmsd_req_ctxt_t reqc)
 {
-	ldmsd_exit_daemon();
+	cleanup_requested = 1;
+	ldmsd_log(LDMSD_LINFO, "User requested exit.\n");
 	Snprintf(&reqc->line_buf, &reqc->line_len,
 				"exit daemon request received");
 	ldmsd_send_req_response(reqc, reqc->line_buf);
