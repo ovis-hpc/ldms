@@ -177,16 +177,6 @@ static void process_args(int argc, char **argv) {
 	}
 }
 
-static void check_args()
-{
-	int is_exit = 0;
-	if (!setname) {
-		printf("-S is required.\n");
-		is_exit = 1;
-	}
-
-}
-
 static void _log(const char *fmt, ...)
 {
 	va_list l;
@@ -360,13 +350,12 @@ static void do_server(struct sockaddr_in *sin)
 		if (is_uevents) {
 			printf("Creating USER EVENT event\n");
 			ldms_metric_user_data_set(set, 0, round);
-			ldms_init_notify_user_data(event, user_data_buf, len);
+			ldms_init_notify_user_data(event, (unsigned char*)user_data_buf, len);
 		}
 
 		__print_set(set);
 
 		ldms_notify(set, event);
-	skip:
 		round++;
 		sleep(interval);
 	}
@@ -474,8 +463,6 @@ static void client_lookup_cb(ldms_t x, enum ldms_lookup_status status,
 static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 {
 	int rc = 0;
-	struct sockaddr_in lsin = {0};
-	struct sockaddr_in rsin = {0};
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
 		printf("%d: connected\n", port);

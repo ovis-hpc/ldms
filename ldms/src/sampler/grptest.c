@@ -75,7 +75,6 @@ static ldms_set_t grp = NULL;
 static ldms_set_t set[N] = {NULL,};
 static FILE *mf = 0;
 static ldmsd_msg_log_f msglog;
-static int metric_offset;
 static base_data_t base;
 int members = 0; /* flags: bit i being 1 means set[i] is in the group */
 

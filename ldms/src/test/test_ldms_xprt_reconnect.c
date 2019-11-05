@@ -224,10 +224,7 @@ void client_dir_cb(ldms_t ldms, int status, ldms_dir_t dir, void *arg)
 void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	int rc = 0;
-	struct sockaddr_in lsin = {0};
-	struct sockaddr_in rsin = {0};
 	struct conn *conn = (struct conn *)cb_arg;
-	socklen_t slen;
 	ldms_t ldms = conn->ldms;
 	pthread_mutex_lock(&conn->state_lock);
 	switch (e->type) {
@@ -302,10 +299,6 @@ int client_connect(struct conn *conn)
 void *client_routine(void *arg)
 {
 	struct conn *conn_list = (struct conn *)arg;
-	struct sockaddr_in lsin = {0};
-	struct sockaddr_in rsin = {0};
-	socklen_t slen;
-	struct timeval tv;
 	int rc = 0;
 	struct conn *conn;
 
@@ -356,7 +349,6 @@ void *server_create_sets(void *arg)
 	char instance_name[32];
 	if (metric_set) {
 		int rc;
-		ldms_t ldms = (ldms_t)arg;
 		ldms_schema_t schema = ldms_schema_new(SCHEMA_NAME);
 		if (!schema) {
 			printf("ldms_schema_new error\n");
@@ -405,7 +397,7 @@ void do_server(struct sockaddr_in *sin)
 		exit(-1);
 	}
 
-	printf("Listening on port %hu\n", port);
+	printf("Listening on port %d\n", port);
 
 	pthread_t t;
 	rc = pthread_create(&t, NULL, server_create_sets, (void *)ldms);

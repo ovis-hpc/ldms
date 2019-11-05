@@ -116,7 +116,6 @@ static void _log(const char *fmt, ...) {
 
 static void __check_msg_correctness(struct user_msg *msg)
 {
-	int rc;
 	char *correct_str;
 	switch (msg->type) {
 	case MSG_REQ:
@@ -188,15 +187,14 @@ send_null:
 static void server_recv_cb(ldms_t x, char *msg_buf, size_t msg_len,
 					struct recv_arg *cb_arg)
 {
-	int rc;
 	struct user_msg *recv_msg = (struct user_msg *)msg_buf;
 	printf("Received '%s'\n", __type2str(recv_msg->type));
 	__check_msg_correctness(recv_msg);
 	switch (recv_msg->type) {
 	case MSG_REQ:
-		rc = msg_send(x, MSG_RESP);
+		msg_send(x, MSG_RESP);
 		sleep(1);
-		rc = msg_send(x, MSG_REQ);
+		msg_send(x, MSG_REQ);
 		break;
 	case MSG_RESP:
 		printf("Closing the connection\n");
@@ -212,7 +210,6 @@ static void server_recv_cb(ldms_t x, char *msg_buf, size_t msg_len,
 
 static void server_listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-	int rc;
 	struct recv_arg *recv_arg = (struct recv_arg *)cb_arg;
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
@@ -256,18 +253,17 @@ static void do_server(struct sockaddr_in *sin)
 		exit(-1);
 	}
 
-	printf("Listening on port %hu\n", port);
+	printf("Listening on port %d\n", port);
 }
 
 static void client_recv_cb(ldms_t x, char *msg_buf, size_t msg_len, void *cb_arg)
 {
-	int rc;
 	struct user_msg *recv_msg = (struct user_msg *)msg_buf;
 	printf("Received '%s'\n", __type2str(recv_msg->type));
 	__check_msg_correctness(recv_msg);
 	switch (recv_msg->type) {
 	case MSG_REQ:
-		rc = msg_send(x, MSG_RESP);
+		msg_send(x, MSG_RESP);
 		break;
 	case MSG_RESP:
 		break;
@@ -280,14 +276,13 @@ static void client_recv_cb(ldms_t x, char *msg_buf, size_t msg_len, void *cb_arg
 
 static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 {
-	int rc = 0;
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
 		printf("Connected\n");
 		if (is_null) {
-			rc = msg_send(x, MSG_NULL);
+			msg_send(x, MSG_NULL);
 		} else {
-			rc = msg_send(x, MSG_REQ);
+			msg_send(x, MSG_REQ);
 		}
 		break;
 	case LDMS_XPRT_EVENT_ERROR:
@@ -310,7 +305,7 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 
 static void do_client(struct sockaddr_in *_sin)
 {
-	int rc, i;
+	int rc;
 	struct addrinfo *ai;
 	struct addrinfo hints = {
 		.ai_family = AF_INET,
