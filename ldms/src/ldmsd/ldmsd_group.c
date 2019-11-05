@@ -254,17 +254,12 @@ out:
 	return rc;
 }
 
-int ldmsd_setgrp_rm(const char *name, const char *instance)
+int __ldmsd_setgrp_rm(ldmsd_setgrp_t grp, const char *instance)
 {
+	/* caller must hold setgrp_lock */
 	int rc;
-	ldmsd_setgrp_t grp;
 	struct ldmsd_str_ent *str;
 
-	grp = ldmsd_setgrp_find(name);
-	if (!grp)
-		return ENOENT;
-
-	ldmsd_setgrp_lock(grp);
 	LIST_FOREACH(str, &grp->member_list, entry) {
 		if (0 == strcmp(str->str, instance)) {
 			LIST_REMOVE(str, entry);
@@ -286,11 +281,22 @@ int ldmsd_setgrp_rm(const char *name, const char *instance)
 	/* The set member not found */
 	rc = ENOENT;
 out:
+	return rc;
+}
+int ldmsd_setgrp_rm(const char *name, const char *instance)
+{
+	int rc;
+	ldmsd_setgrp_t grp;
+
+	grp = ldmsd_setgrp_find(name);
+	if (!grp)
+		return ENOENT;
+	ldmsd_setgrp_lock(grp);
+	rc = __ldmsd_setgrp_rm(grp, instance);
 	ldmsd_setgrp_unlock(grp);
 	ldmsd_setgrp_put(grp); /* `find` reference */
 	return rc;
 }
-
 int ldmsd_group_set_add(ldms_set_t grp, const char *set_name)
 {
 	int rc = 0;

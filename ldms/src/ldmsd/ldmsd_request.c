@@ -3688,6 +3688,8 @@ send_reply:
 	return rc;
 }
 
+int __ldmsd_setgrp_rm(ldmsd_setgrp_t grp, const char *instance);
+
 static int setgroup_rm_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc = 0;
@@ -3721,7 +3723,7 @@ static int setgroup_rm_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_setgrp_lock(grp);
 	sname = strtok_r(instance, delim, &p);
 	while (sname) {
-		rc = ldmsd_setgrp_rm(name, sname);
+		rc = __ldmsd_setgrp_rm(grp, sname);
 		if (rc) {
 			if (rc == ENOENT) {
 				linebuf_printf(reqc,
@@ -3732,6 +3734,7 @@ static int setgroup_rm_handler(ldmsd_req_ctxt_t reqc)
 						"member '%s' from setgroup '%s'",
 						rc, sname, name);
 			}
+			ldmsd_setgrp_unlock(grp);
 			goto send_reply;
 		}
 		sname = strtok_r(NULL, delim, &p);
