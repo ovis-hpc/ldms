@@ -754,7 +754,7 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 	ctxt.request->msg_no = msg_no;
 	ctxt.request->req_id = ldmsd_req_str2id(verb);
 	if (((int)ctxt.request->req_id < 0) || (ctxt.request->req_id == LDMSD_NOTSUPPORT_REQ)) {
-		rc = ENOSYS;
+		rc = ENOTSUP;
 		goto err;
 	}
 	ctxt.request->rec_len = sizeof(*ctxt.request);

@@ -2146,8 +2146,14 @@ int main(int argc, char *argv[])
 #endif /* HAVE_READLINE_HISTORY */
 
 		rc = __handle_cmd(ctrl, linebuf);
-		if (rc)
-			break;
+		if (rc) {
+			if (isatty(0)) {
+				/* Not exit in an interactive session */
+				continue;
+			} else {
+				break;
+			}
+		}
 	} while (linebuf);
 
 	ctrl->close(ctrl);
