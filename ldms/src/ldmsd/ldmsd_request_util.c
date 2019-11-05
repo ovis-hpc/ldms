@@ -66,6 +66,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "config",             LDMSD_PLUGN_CONFIG_REQ  },
 	{  "daemon",             LDMSD_DAEMON_STATUS_REQ  },
 	{  "daemon_exit",        LDMSD_EXIT_DAEMON_REQ  },
+	{  "daemon_status",      LDMSD_DAEMON_STATUS_REQ  },
 	{  "env",                LDMSD_ENV_REQ  },
 	{  "exit",               LDMSD_EXIT_DAEMON_REQ  },
 	{  "failover_config",    LDMSD_FAILOVER_CONFIG_REQ  },

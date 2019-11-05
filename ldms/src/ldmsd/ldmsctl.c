@@ -476,6 +476,44 @@ static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 	}
 }
 
+static void resp_daemon_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+
+	json_value *json, *thread_json;
+	json = json_parse((char*)attr->attr_value, len);
+	if (!json)
+		return;
+
+	if (json->type != json_array) {
+		printf("Unrecognized producer status format\n");
+		goto out;
+	}
+	int i;
+
+	printf("Thread           Task Count\n");
+	printf("---------------- ----------\n");
+
+	for (i = 0; i < json->u.array.length; i++) {
+		thread_json = ldmsctl_json_array_ele_get(json, i);
+		if (thread_json->type != json_object) {
+			printf("Invalid daemon status format\n");
+			goto out;
+		}
+		printf("%15s %10s\n",
+			ldmsctl_json_str_value_get(thread_json, "thread"),
+			ldmsctl_json_str_value_get(thread_json, "task_count"));
+	}
+out:
+	json_value_free(json);
+}
+
 static void resp_daemon_exit(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
 	ldmsd_req_attr_t attr;
@@ -1421,7 +1459,7 @@ static struct command command_tbl[] = {
 	{ "?", LDMSCTL_HELP, handle_help, NULL, NULL },
 	{ "config", LDMSD_PLUGN_CONFIG_REQ, NULL, help_config, resp_generic },
 	{ "daemon_exit", LDMSD_EXIT_DAEMON_REQ, NULL, help_daemon_exit, resp_daemon_exit },
-	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status, resp_daemon_exit },
+	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status, resp_daemon_status },
 	{ "failover_config", LDMSD_FAILOVER_CONFIG_REQ, NULL,
 			     help_failover_config, resp_generic },
 	{ "failover_peercfg_start", LDMSD_FAILOVER_PEERCFG_START_REQ, NULL,
