@@ -559,6 +559,7 @@ static int config_add_schema(test_sampler_inst_t inst, json_entity_t json,
 					 "Failed to create metric.\n");
 				goto cleanup;
 			}
+			TAILQ_INSERT_TAIL(&ts_schema->list, metric, entry);
 		}
 	}
 
