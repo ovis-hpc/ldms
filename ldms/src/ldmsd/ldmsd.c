@@ -1287,6 +1287,11 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 	return 0;
 }
 
+int ldmsd_ev_thread_count_get()
+{
+	return cmd_line_args.ev_thread_count;
+}
+
 void handle_pidfile_banner()
 {
 	struct ldms_version ldms_v;

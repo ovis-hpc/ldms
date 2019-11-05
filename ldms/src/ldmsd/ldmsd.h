@@ -1492,6 +1492,11 @@ int smplr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t 
 int ldmsd_process_cmd_line_arg(char opt, char *value);
 
 /**
+ * \brief Return the number of LDMSD worker threads (specified with -P or 'num-threads')
+ */
+int ldmsd_ev_thread_count_get();
+
+/**
  * \brief Add an authentication attribute to the list \c auth_attrs
  *
  * \param auth_attrs   The authentication attribute list

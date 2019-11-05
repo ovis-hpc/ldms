@@ -4701,7 +4701,6 @@ int __daemon_status_json_obj(ldmsd_req_ctxt_t reqc)
 {
 	int rc = 0;
 
-	extern int ev_thread_count;
 	extern pthread_t *ev_thread;
 	extern int *ev_count;
 	int i;
@@ -4709,7 +4708,7 @@ int __daemon_status_json_obj(ldmsd_req_ctxt_t reqc)
 	rc = linebuf_printf(reqc, "[");
 	if (rc)
 		return rc;
-	for (i = 0; i < ev_thread_count; i++) {
+	for (i = 0; i < ldmsd_ev_thread_count_get(); i++) {
 		if (i) {
 			rc = linebuf_printf(reqc, ",\n");
 			if (rc)

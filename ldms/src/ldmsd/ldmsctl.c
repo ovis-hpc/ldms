@@ -432,6 +432,52 @@ static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 	}
 }
 
+static void resp_daemon_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	int rc;
+	json_parser_t parser;
+	json_entity_t json, thread;
+
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
+		return;
+	}
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+	json_parser_free(parser);
+
+	if (json->type != JSON_LIST_VALUE) {
+		printf("Unrecognized JSON producer status format\n");
+		return;
+	}
+
+	printf("Thread           Task Counts\n");
+	printf("---------------- -----------\n");
+
+	for (thread = json_item_first(json); thread; thread = json_item_next(thread)) {
+		if (thread->type != JSON_DICT_VALUE) {
+			printf("---Invalid daemon status format---\n");
+			return;
+		}
+		printf("%15s %10s\n", json_attr_find_str(thread, "thread"),
+				json_attr_find_str(thread, "task_count"));
+	}
+	json_entity_free(json);
+}
+
 static void resp_daemon_exit(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
 	ldmsd_req_attr_t attr;
@@ -1548,7 +1594,7 @@ static struct command command_tbl[] = {
 	{ "daemon_exit",
 			NULL,	help_daemon_exit,	resp_daemon_exit },
 	{ "daemon_status",
-			NULL,	help_daemon_status,	resp_generic },
+			NULL,	help_daemon_status,	resp_daemon_status },
 	{ "failover_config",
 			NULL,	help_failover_config,	resp_generic },
 	{ "failover_peercfg_start",
