@@ -18,7 +18,7 @@ build_subdir=LDMS_objdir
 # full path of where we want things installed
 prefix=`pwd`/LDMS_install
 
-if test -f ldms/src/sampler/meminfo.c; then
+if test -f ldms/src/sampler/meminfo/meminfo.c; then
 	mkdir -p $prefix
 	# Are we at the top?
 	if test -f ldms/configure; then
@@ -82,11 +82,11 @@ if test -f ldms/src/sampler/meminfo.c; then
 	cd $build_subdir
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=/badsos
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --enable-swig --enable-authentication --enable-sysclassib --with-pkglibdir=ovis-ldms --enable-libgenders --enable-jobid --enable-llnl-edac --enable-opa2 --enable-genderssystemd --enable-atasmart --enable-fptrans --enable-slurmtest --enable-filesingle --enable-dstat"
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --enable-swig --enable-authentication --enable-sysclassib --with-pkglibdir=ovis-ldms --enable-libgenders --enable-jobid --enable-llnl-edac --enable-opa2 --enable-genderssystemd --enable-atasmart --enable-fptrans --enable-slurmtest --enable-filesingle --enable-dstat --enable-third-plugins=my_plugin,dummytest"
 	../configure $allconfig && \
 	make && \
 	make install && \
-	../packaging/nola.sh $prefix
+	../packaging/nola.sh $prefix > nola.pkg.log
 else
 	echo "this must be run from the top of ovis source tree"
 	exit 1

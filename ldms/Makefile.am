@@ -23,15 +23,14 @@ OPV=-$(PACKAGE_VERSION)
 
 PHONY_doc = doxygen doc install-doc
 
-if ENABLE_DEVELOPER
 
 install-exec-hook:
 	@echo "*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#"
 	@echo "INSTALL COMPLETED."
+if ENABLE_DEVELOPER
 	@echo "Errors seen after this matter to plugin or core developers only."
 	@echo "*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#"
 	-$(bindir)/ldms_ban.sh $(srcdir)/../
-
 endif
 
 banned:
