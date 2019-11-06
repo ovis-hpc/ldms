@@ -343,6 +343,12 @@ if test -n "$CHECK_SOS"; then
 		AC_MSG_NOTICE([Using staged ovis-sos $OVIS_SOS_LIB64DIR_FLAG $OVIS_SOS_LIBDIR_FLAG])
 	fi
 fi
+if test -n "$SOS_LIB64DIR"; then
+	soslibdir="$SOS_LIB64DIR"
+else
+	soslibdir="$SOS_LIBDIR"
+fi
+AC_SUBST(soslibdir)
 
 if test -z "$ENABLE_ATASMART_TRUE" ; then
 	AC_CHECK_LIB(atasmart, sk_disk_smart_read_data, [],
@@ -477,7 +483,7 @@ dnl Reset LIBS variable.
 
 LIBS=""
 
-
+OPTION_EXTRA_BUILD_DIRS([third-plugins], [ENABLE_THIRD_PLUGINS], [THIRD_PLUGINS_DIRS])
 
 OPTION_GITINFO
 OPTION_HOSTINFO
@@ -485,6 +491,7 @@ OPTION_HOSTINFO
 # define substitutions for configvars and other sed-generated files.
 # note carefully the escapes.
 OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
+-e 's,[[@]]version[[@]],\$(PACKAGE_VERSION),g' \
 -e 's,[[@]]mandir[[@]],\$(mandir),g' \
 -e 's,[[@]]localedir[[@]],\$(localedir),g' \
 -e 's,[[@]]libdir[[@]],\$(libdir),g' \
@@ -515,6 +522,7 @@ OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
 ])
 
 AC_SUBST(ac_configure_args)
+AC_SUBST(xac_conf_args)
 AC_SUBST(configure_input)
 
 dnl handle test generation and chmod
@@ -575,6 +583,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd/test/Makefile
 		 scripts/Makefile
 		 src/test/Makefile
+		 src/third-plugins/Makefile
 		 etc/Makefile
 		 etc/systemd/Makefile
 		 python/Makefile

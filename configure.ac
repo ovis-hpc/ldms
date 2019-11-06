@@ -38,6 +38,7 @@ SUBST_MAYBE([ldms])
 
 OPTION_DEFAULT_DISABLE([libgenders], [ENABLE_LIBGENDERS],[  requires C++,boost])
 OPTION_DEFAULT_DISABLE([genderssystemd], [ENABLE_TOSS_SYSTEMD],[  toss systemd init scripts])
+OPTION_EXTRA_BUILD_DIRS([third-plugins], [ENABLE_THIRD_PLUGINS], [THIRD_PLUGINS_DIRS])
 
 if test -z "$ENABLE_LIBGENDERS_TRUE"
 then

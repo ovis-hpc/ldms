@@ -48,6 +48,18 @@ banned:
 
 clean-local:
 
+install-data-hook:
+	$(abs_top_srcdir)/packaging/nola.sh $(prefix) > nola.log
+if ENABLE_THIRD_PLUGINS
+	@echo "*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#"
+	@if test -n "@THIRD_PLUGIN_DIRS@"; then \
+		echo "BUILDING third-plugins IN ldms"; \
+		(cd ldms/src/third-plugins && make third-install-hook); \
+		echo "third-plugins BUILD COMPLETED."; \
+	fi
+	$(abs_top_srcdir)/packaging/nola.sh $(prefix) > nola.third-plugins.log
+endif
+
 install-exec-local:
 	if test -d libevent-2.0.21-stable/lib/ovis-ldms/lib; then \
 		$(MKDIR_P) $(DESTDIR)$(libdir)/ovis-libevent ; \
