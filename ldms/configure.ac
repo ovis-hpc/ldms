@@ -494,6 +494,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/auth/Makefile
 		 src/ldmsd/Makefile
+		 src/ldmsd/test/Makefile
 		 src/ldmsd-samplers/Makefile
 		 src/ldmsd-samplers/all_example/Makefile
 		 src/ldmsd-samplers/cray_power_sampler/Makefile

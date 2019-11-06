@@ -1,6 +1,7 @@
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
 lib_LTLIBRARIES =
+SUBDIRS = . test
 if ENABLE_SOS
 sbin_PROGRAMS += ldmsd_sos_init
 endif
