@@ -1,5 +1,5 @@
-nobase_include_HEADERS = ovis-test/test.h ovis-lib-config.h
-EXTRA_DIST=ovis-lib-configvars.sh.in
+include_HEADERS = ovis-lib-config.h
+EXTRA_DIST=ovis-lib-configvars.sh.in ovis-test/test.h
 CLEANFILES = ovis-lib-configvars.sh
 DISTCLEANFILES = $(nobase_include_HEADERS)
 
