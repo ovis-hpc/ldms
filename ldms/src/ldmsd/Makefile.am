@@ -68,9 +68,9 @@ ldmsd_sos_init_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
 ldmsd_sos_init_LDADD = -lsos -lods -lpthread @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@
 ldmsd_sos_init_LDFLAGS = $(AM_LDFLAGS)
 
-lib_LTLIBRARIES += libplugattr.la
-libplugattr_la_SOURCES = ldmsd_plugattr.c ldmsd_plugattr.h
-libplugattr_la_LIBADD = -lovis_util -lcoll
+lib_LTLIBRARIES += libldmsd_plugattr.la
+libldmsd_plugattr_la_SOURCES = ldmsd_plugattr.c ldmsd_plugattr.h
+libldmsd_plugattr_la_LIBADD = -lovis_util -lcoll
 
 test_plugattr_SOURCES = ldmsd_plugattr.c ldmsd_plugattr.h
 test_plugattr_CFLAGS = -DTEST_PLUGATTR $(AM_CFLAGS)
