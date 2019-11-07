@@ -34,9 +34,9 @@ libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h ../core/ldms.h ../cor
 libldmsd_stream_la_LIBADD = \
 	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ $(CORE)/libldms.la
 
-lib_LTLIBRARIES += librequest.la
-librequest_la_SOURCES = ../core/ldms.h ../core/ldms_core.h ldmsd_request_util.c
-librequest_la_LIBADD = \
+lib_LTLIBRARIES += libldmsd_request.la
+libldmsd_request_la_SOURCES = ../core/ldms.h ../core/ldms_core.h ldmsd_request_util.c
+libldmsd_request_la_LIBADD = \
 	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ $(CORE)/libldms.la
 
 ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
@@ -45,7 +45,7 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
 	ldmsd_failover.c ldmsd_group.c
 ldmsd_CFLAGS = $(AM_CFLAGS) -rdynamic
-ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
+ldmsd_LDADD = $(CORE)/libldms.la libldmsd_request.la libldmsd_stream.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) \
 	-lzap -lmmalloc -lovis_util -lcoll -ljson_util \
 	-lovis_event -lpthread -lm
@@ -58,7 +58,7 @@ ldmsd_CFLAGS += -DENABLE_RABBITMQ
 endif
 
 ldmsctl_SOURCES = ldmsctl.c
-ldmsctl_LDADD = $(CORE)/libldms.la librequest.la
+ldmsctl_LDADD = $(CORE)/libldms.la libldmsd_request.la
 ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ \
 		-lovis_ctrl -lovis_util -lmmalloc -lcoll -lzap -ljson_util \
 		 -ljson_parser -lm -pthread @LDFLAGS_GETTIME@
