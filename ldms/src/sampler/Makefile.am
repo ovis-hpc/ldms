@@ -12,10 +12,10 @@ AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 CORE_LIBADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ -lovis_util
 
 BASE_SRC=sampler_base.c sampler_base.h
-libsampler_base_la_SOURCES = $(BASE_SRC)
-libsampler_base_la_LIBADD = $(CORE_LIBADD)
-lib_LTLIBRARIES += libsampler_base.la
-BASE_LIBLA = libsampler_base.la
+libldmsd_sampler_base_la_SOURCES = $(BASE_SRC)
+libldmsd_sampler_base_la_LIBADD = $(CORE_LIBADD)
+lib_LTLIBRARIES += libldmsd_sampler_base.la
+BASE_LIBLA = libldmsd_sampler_base.la
 
 COMMON_LIBADD = $(BASE_LIBLA) $(CORE_LIBADD)
 
