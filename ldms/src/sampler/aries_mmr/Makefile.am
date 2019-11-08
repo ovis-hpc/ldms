@@ -6,7 +6,7 @@ CORE = ../../core
 AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I../.. @OVIS_LIB_INCDIR_FLAG@ -I$(srcdir)/../../ldmsd
 AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
 BASE_INC = $(srcdir)/../
-BASE_LIBADD = ../libsampler_base.la
+BASE_LIBADD = ../libldmsd_sampler_base.la
 
 if ENABLE_ARIES_MMR
 # ARIES_LIBGPCD_INCDIR=@ARIES_LIBGPCD_INCDIR@

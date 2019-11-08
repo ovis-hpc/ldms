@@ -8,7 +8,7 @@ AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 
 COMMON_LIBADD = $(CORE)/libldms.la \
 		@LDFLAGS_GETTIME@ -lpthread -lovis_util -lcoll \
-		../libsampler_base.la
+		../libldmsd_sampler_base.la
 
 libappinfocl_la_SOURCES = ldms_appinfo.c ldms_appinfo.h ldms_appinfo_shm.h
 libappinfocl_la_LIBADD = $(COMMON_LIBADD)
