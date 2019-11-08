@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2011-2018 National Technology & Engineering Solutions
+ * Copyright (c) 2011-2019 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2011-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2011-2019 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -272,8 +272,10 @@ static void help_load()
 		"the plugin should be in the directory specified by the\n"
 		"LDMSD_PLUGIN_LIBPATH environment variable.\n\n"
 		"Parameters:\n"
-		"     name=       The plugin name, this is used to locate a loadable\n"
-		"                 library named \"lib<name>.so\"\n");
+		"     name=       The plugin instance name."
+		"     plugin=     The plugin name, this is used to locate a loadable\n"
+		"                 library named \"lib<plugin>.so\"\n"
+		"                 It is optional if the plugin instance name is the plugin name.");
 }
 
 static void resp_list(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
@@ -292,14 +294,14 @@ static void help_term()
 {
 	printf(	"\nUnload the specified plugin.\n\n"
 		"Parameters:\n"
-		"     name=       The plugin name.\n");
+		"     name=       The plugin instance name.\n");
 }
 
 static void help_config()
 {
 	printf(	"Provides a mechanism to specify configuration options\n\n"
 		"Parameters:\n"
-		"     name=       The plugin name.\n"
+		"     name=       The plugin instance name.\n"
 		"     <attr>=     Plugin specific attr=value tuples.\n");
 }
 
@@ -369,7 +371,10 @@ static void help_prdcr_add()
 		"     host=     The hostname of the host\n"
 		"     port=     The port number on which the LDMS is listening\n"
 		"     type=     The connection type [active, passive]\n"
-		"     interval= The connection retry interval (us)\n");
+		"     interval= The connection retry interval (us)\n"
+		"     [perm=]   The permission to modify the producer in the future.\n"
+		"     [auth=]   The authentication method to with the connection\n"
+		"     [auth_arg=value]    The authentication arguments and values, e.g., conf=/path/to/secretword\n");
 }
 
 static void help_prdcr_del()
@@ -670,10 +675,10 @@ static void help_updtr_add()
 		"     name=       The update policy name\n"
 		"     interval=   The update/collect interval\n"
 		"     [offset=]   Offset for synchronized aggregation\n"
-		"     [push=]     Push mode: 'onchange' and 'onpush'. 'onchange' means the\n"
-		"                 Updater will get an update whenever the set source ends a\n"
-		"                 transaction or pushes the update. 'onpush' means the Updater\n"
-		"                 will receive an update only when the set source pushes the\n"
+		"     [push=]     [onchange|true] 'onchange' means the Updater \n"
+		"                 will get an update whenever the set source ends a\n"
+		"                 transaction or pushes the update. 'true' means the Updater\n"
+		"                 will receive an update only when the set source explicitly pushes the\n"
 		"                 update. If `push` is used, `auto_interval` cannot be `true`.\n"
 		"    [auto_interval=]   [true|false] If true, the updater will schedule\n"
 		"                       set updates according to the update hint. The sets\n"
@@ -681,6 +686,7 @@ static void help_updtr_add()
 		"                       updater will schedule the set updates according to\n"
 		"                       the given interval and offset values. If not\n"
 		"                       specified, the value is `false`.\n"
+		"     [perm=]      The permission to modify the updater in the future.\n"
 		);
 
 }
@@ -857,9 +863,9 @@ static void help_strgp_add()
 		"The store plugin must be configured via the command 'config'\n\n"
 		"Parameters:\n"
 		"     name=        The unique storage policy name.\n"
-		"     plugin=      The name of the storage backend.\n"
-		"     container=   The storage backend container name.\n"
-		"     schema=      The schema name of the metric set to store.\n");
+		"     container=   The nameo of the storage plugin instance backend.\n"
+		"     schema=      The schema name of the metric set to store.\n"
+		"     [perm=]      The permission to modify the storage policy in the future.\n");
 }
 
 static void help_strgp_del()
@@ -1334,6 +1340,7 @@ static void help_setgroup_add()
 	printf("    [producer=]     The producer name of the set group.\n");
 	printf("    [interval=]     The update interval hint (in usec).\n");
 	printf("    [offset=]       The update offset hint (in usec).\n");
+	printf("    [perm=]         The permission to modify the setgroup in the future.\n");
 }
 
 static void help_setgroup_mod()
@@ -1461,7 +1468,8 @@ static void help_smplr_add()
 		"     name=       A unique name for the sampler policy\n"
 		"     instance=   Sampler plugin instance name corresponding to this policy\n"
 		"     interval=   Sampling interval (us)\n"
-		"     [offset=]   Sampling offset (us)\n");
+		"     [offset=]   Sampling offset (us)\n"
+		"     [perm=]     The permission to modify the sampler in the future.\n");
 }
 
 static void help_smplr_del()
@@ -1573,7 +1581,7 @@ static void help_export()
 
 static void help_set()
 {
-	printf( "\nSet command-line options\n\n"
+	printf( "\n(Unsupported) Set command-line options\n\n"
 		"It is only supported in the configuration files given at the command line.\n");
 }
 
@@ -1586,7 +1594,7 @@ static int handle_set(struct ldmsctl_ctrl *ctrl, char *args)
 
 static void help_listen()
 {
-	printf( "\nAdd a listening endpoint\n\n"
+	printf( "\n(Unsupported) Add a listening endpoint\n\n"
 		"It is only supported in the configuration files given at the command line.\n");
 }
 

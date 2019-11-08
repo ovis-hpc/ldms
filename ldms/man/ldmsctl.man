@@ -1,6 +1,6 @@
 .\" Manpage for ldmsctl
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "28 Feb 2018" "v4" "ldmsctl man page"
+.TH man 8 "19 Nov 2019" "v5" "ldmsctl man page"
 
 .SH NAME
 ldmsctl \- Issue control commands to ldmsd.
@@ -78,216 +78,813 @@ The regular expression specified in \fIregex=\fR option of the commands is a
 POSIX Extended (modern) Regular Expression. In short, "*+?{}|^$." are special
 regular expression characters. Please see \fBregex(7)\fR for more information.
 
+.SH PLUGIN INSTANCE COMMAND SYNTAX
 
-.SH LDMSCTL COMMANDS AND ATTRIBUTE SYNTAX
-After the ldmsctl is started commands can be entered at the prompt or (usually) a command script can be created and piped into the ldmsctl.
-
-.TP
-.BR help
-Display the list of commands.
-
-.TP
-.BR usage
-Show loaded plugin usage information.
-
-.TP
-.BR version
-Show version information.
-
-.TP
+.SS Create a plugin instance
 .BR load
-name=<name>
+attr=<value>
 .br
-Loads the specified plugin. The library that implements
-the plugin should be in the directory specified by the
-LDMSD_PLUGIN_LIBPATH environment variable.
 .RS
 .TP
-name=<name>
-The plugin name. This is used to locate a loadable library named lib<name>.so.
+.BI name " name"
+.br
+The instance plugin name
+.TP
+.BI plugin " plugin"
+.br
+The plugin name, this is used to locate a loadable library named
+"lib<plugin>.so. It is optional if the plugin instance name is the same as the
+plugin name.
 .RE
 
+.SS List the usage of the plugin instances
+.BR usage
+
+.SS Terminate a plugin instance
+.BR term
+attr=<value>
+.br
+.RS
 .TP
+.BI name " name"
+.br
+The plugin instance name
+
+.SS Send a configuration command to the specified plugin instance.
 .BR config
-name=<name> [ <attr>=<value> ... ]
-.br
-Provides a mechanism to specify configuration options.
+attr=<value>
 .RS
 .TP
-name=<name>
-The plugin name.
+.BI name " name"
+.br
+The plugin instance name
 .TP
-<attr>=<value>
-An attribute name and value pair. Valid <attr> <value> pairs are specific to the plugin. These are described in the manpages for the plugins.
+.BR attr=value
+.br
+Plugin type and plugin speicifc attr=value tuples
+
+.RS
+.B Attributes specific-for sampler plugin instance type
+.TP
+.BI [producer " producer"]
+.br
+A unique name for the host providing the data
+.TP
+.BI [instance " instance"]
+.br
+The set instance name. The name must be unique among all metric sets in all LDMS
+daemons. The default is '<producer>/<plugin instance name>'.
+.TP
+.BI [component_id " component_id"]
+.br
+A unique number for the comopnent being monitored. The default is zero.
+.TP
+.BI [schema " schema"]
+.br
+The name of the metric set schema. The default is the plugin name.
+.TP
+.BI [job_set " job_set"]
+.br
+The set instance name of the set containing the job data. The default is '<producer>/jobinfo'.
+.TP
+.BI [job_id " job_id"]
+.br
+The name of the metric containing the Job Id. The default is 'job_id'.
+.TP
+.BI [app_id " app_id"]
+.br
+The name of the metric containing the Application Id. The default is 'app_id'.
+.TP
+.BI [job_start " job_start"]
+.br
+The name of the metric containing the Job start time. The default is 'job_start'.
+.TP
+.BI [job_end " job_end"]
+.br
+The name of the metric containing the Job end time. The default is 'job_end'.
+.TP
+.BI [uid " uid"]
+.br
+The user id of the set's owner. The default is the returned value of geteuid().
+.TP
+.BI [gid " gid"]
+.br
+The group id of the set's owner. The default is the returned value of getegid().
+.TP
+.BI [perm " perm"]
+.br
+The sampler plugin instance access permission. The default is 0777.
+.HP
+.B Attributes specific for store plugin instance type
+.TP
+.BI [perm " perm"]
+.br
+The store plugn instance access permission. The default is 0664.
+.RE
 .RE
 
-.TP
-.BR start
-name=<name> interval=<interval> [ offset=<offset>]
-.br
-Begins calling the sampler's 'sample' method at the sample interval.
+.SS List of plugin instances
+.BR list
+
+.SS Query a plugin instance
+.BR plugn_query
+attr=<value>
 .RS
 .TP
-name=<name>
-The sampler name.
+.BI query " query"
+.br
+The query text, e.g., status, config. Some plugin instances may offer other
+queries.
 .TP
-interval=<interval>
+.BI [name " name"]
+.br
+The plugin instance name. If given, only the given plugin instance will be
+queried. Otherwise, all plugin instances will be queried.
+.RE
+
+.SS Query the status of a plugin instance
+This is equivalent to 'plugn_query query=status'
+
+.BR plugn_status
+attr=<value>
+.RS
+.TP
+.BI [name " name"]
+.br
+The plugin instance name. If given, only the status of the given plugin instance
+name is reported.
+.RE
+
+.SS List the sets by the plugin that provides the sets
+.BR plugn_sets
+attr=<value>
+.RS
+.TP
+.BI [name " name"]
+.br
+The plugin instance name. If given, only the sets provided by the given plugin
+instance will be reported.
+.RE
+
+.SH SAMPLER COMMAND SYNTAX
+.SS  Add a sampler to sample data
+.BR smplr_add
+attr=<value>
+.br
+.RS
+.TP
+.BI name " name"
+.br
+The sampler name. It must be unique among all sampler names.
+.TP
+.BI instance " instance"
+.br
+The name of the sampler plugin instance backend.
+.TP
+.BI interval " interval"
+.br
 The sample interval in microseconds.
 .TP
-offset=<offset>
+.BI [offset " offset"]
 .br
-Optional offset (shift) from the sample mark in microseconds. Offset can be positive or negative with magnitude up to 1/2 the sample interval. If this offset is specified, including 0, collection will be synchronous; if the offset is not specified, collection will be asychronous.
+Offset (shift) from the sample mark in microseconds.
+Offset can be zero or possitive with magnitude up to the sample interval - 1. If
+this offset is specified, including 0, collection will be synchronous; if the
+offset is not specified, collection will be asynchronous.  Optional.
+.TP
+.BI [perm " perm"]
+.br
+The permission to modify the sampler in the future.
 .RE
 
-.TP
-.BR stop
-name=<name>
+.SS  Delete a sampler
+.BR smplr_del
+attr=<value>
 .br
-Cancels sampling on the specified plugin.
 .RS
 .TP
-name=<name>
+.BI name " name"
+.br
 The sampler name.
 .RE
 
-.\
-.\.TP
-.\.BR add
-.\host=<host> type=<type> sets=<set names>
-.\[ interval=<interval> ] [ offset=<offset>]
-.\[ xprt=<xprt> ] [ port=<port> ]
-.\[ standby=<agg_no> ]
-.\.br
-.\Adds a host to the list of hosts monitored by this ldmsd.
-.\.RS
-.\.TP
-.\host=<host>
-.\The hostname. This can be an IP address or DNS hostname.
-.\.TP
-.\type=<type>
-.\.RS
-.\.TP
-.\One of the following host types:
-.\.br
-.\.TP
-.\active
-.\.br
-.\A connection is initiated with the peer and it's metric sets will be periodically queried.
-.\.TP
-.\passive
-.\.br
-.\A connect request is expected from the specified host.
-.\After this request is received, the peer's metric sets
-.\will be queried periodically.
-.\.TP
-.\bridging
-.\.br
-.\A connect request is initiated to the remote peer,
-.\but it's metric sets are not queried. This is the active
-.\side of the passive host above.
-.\.RE
-.\.TP
-.\sets=<set names>
-.\The list of metric set names to be queried. The list is comma separated.
-.\.TP
-.\interval=<interval>
-.\An optional sampling interval in microseconds, defaults to 1000000.
-.\.TP
-.\offset=<offset>
-.\.br
-.\An optional offset (shift) from the sample mark
-.\in microseconds. If this offset is specified,
-.\including 0, the collection will be synchronous;
-.\if the offset is not specified, the collection
-.\will be asychronous.
-.\.TP
-.\xprt=<xprt>
-.\The transport type, defaults to 'sock'.
-.\.RS
-.\.TP
-.\sock
-.\.br
-.\The sockets transport.
-.\.TP
-.\rdma
-.\.br
-.\The OFA Verbs Transport for Infiniband or iWARP
-.\.TP
-.\ugni
-.\.br
-.\Cray XE/XK/XC transport.
-.\.RE
-.\.TP
-.\port=<port>
-.\.br
-.\The port number to connect on, defaults to LDMS_DEFAULT_PORT
-.\.TP
-.\standby=<agg_no>
-.\The number of the aggregator that this is standby for. Defaults to 0 which means this is an active aggregator.
-.\.RE
-.\.TP
-.\.BR store
-.\.br
-.\name=<store> container=<container> set=<set> comp_type=<comp_type>
-.\[hosts=<hosts>] [metric=<metric>]
-.\.br
-.\Saves a set from one or more hosts to a persistent object store.
-.\.RS
-.\.TP
-.\name=<store>
-.\The name of the storage plugin.
-.\.TP
-.\container=<container>
-.\The store policy ID, e.g., meminfo-essential
-.\.TP
-.\set=<set>
-.\The set whose data will be saved. Data is saved
-.\when update completes if the generation number has changed.
-.\.TP
-.\comp_type=<comp_type>
-.\The component type.
-.\.TP
-.\metric=<metrics>
-.\.br
-.\A list of metric names in the specified set. If not specified, all metrics will be saved.
-.\.TP
-.\hosts=<hosts>
-.\A list of hosts to whose set data will be saved.
-.\If not specified, all hosts that have this set will
-.\have their data saved.
-.\.RE
-.\.TP
-.\.BR standby
-.\.br
-.\agg_no=<agg_no> state=<stateval>
-.\.br
-.\ldmsd will update its saggs_mask for this aggregator as indicated.
-.\.RS
-.\.TP
-.\agg_no=<agg_no>
-.\Unique integer id for an aggregator
-.\.TP
-.\state=<stateval>
-.\Valid values are 0=standby and 1=active
-.\.RE
-.TP
-.BR loglevel
-level=<levelflag>
+.SS  Start a sampler
+.BR smplr_start
+attr=<value>
 .br
-Update loglevel for this ldmsd as indicated.
 .RS
 .TP
-<levelflag>
-The log level. Options are: DEBUG, INFO, ERROR, CRITICAL or QUIET.
+.BI name " name"
+.br
+The sampler name.
+.TP
+.BI [interval " interval"]
+.br
+The sample interval in microseconds. If unspecified, the previously configured
+value will be used. Optional.
+.TP
+.BI [offset " offset"]
+Offset for synchronized collection. Optional
+.RE
+
+.SS  Stop a sampler
+.BR smplr_stop
+attr=<value>
+.br
+.RS
+.TP
+.BI name " name"
+.br
+The sampler name.
+.RE
+
+.SS Query the sampler status
+.BR smplr_status
+attr=<value>
+.RS
+.TP
+.BI [name " name"]
+.br
+The sampler name. If none is given, the statuses of all samplers are reported.
+.RE
+
+
+.SH PRODUCER COMMAND SYNTAX
+.SS  Add a producer to the aggregator
+.BR prdcr_add
+attr=<value>
+.br
+.RS
+.TP
+.BI name " name"
+.br
+The producer name. The producer name must be unique in an aggregator. It is
+independent of any attributes specified for the metric sets or hosts.
+.TP
+.BI xprt " xprt"
+.br
+The transport name [sock, rdma, ugni]
+.TP
+.BI host " host"
+.br
+The hostname of the host
+.TP
+.BI type " conn_type"
+.br
+The connection type [active, passive]
+.TP
+.BI interval " interval"
+.br
+The connection retry interval
+.TP
+.BI [perm " permission"]
+.br
+The permission to modify the producer in the future
+.TP
+.BI [auth " authentication"]
+.br
+The authentication method to use with the connection
+.TP
+.BI [ " auth_arg=value"]
+.br
+The key-value pairs of authentication arguments, e.g., conf=/path/to/secretword
+.RE
+
+.SS Delete a producer from the aggregator
+The producer cannot be in use or running
+.br
+.BR prdcr_del
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The producer name
+.RE
+
+.SS Start a producer
+.BR prdcr_start
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The producer name
+.TP
+.BI [interval " interval"]
+.br
+The connection retry interval in microsec. If unspecified,
+the previously configured value will be used. Optional.
+.RE
+
+.SS Start all producers matching a regular expression
+.BR prdcr_start_regex
+attr=<value>
+.RS
+.TP
+.BI regex " regex"
+.br
+A regular expression
+.TP
+.BI [interval " interval"]
+.br
+The connection retry interval in microsec. If unspecified,
+the previously configured value will be used. Optional.
+.RE
+
+.SS Stop a producer
+.BR prdcr_stop
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The producer name
+.RE
+
+.SS Stop all producers matching a regular expression
+.BR prdcr_stop_regex
+attr=<value>
+.RS
+.TP
+.BI regex " regex"
+.br
+A regular expression
+.RE
+
+.SS Query producer status
+.BR prdcr_status
+attr=<value>
+.RS
+.TP
+.BI [name " name"]
+.br
+The producer name. If none is given, the statuses of all producers are
+reported.
+.RE
+
+.SS Subscribe for stream data from all matching producers
+.BR prdcr_subsribe
+.RS
+.TP
+.BI regex " regex"
+.br
+The regular expression matching producer name
+.TP
+.BI stream " stream"
+.br
+The stream name
+.RE
+
+.SH UPDATER COMMAND SYNTAX
+.SS Add an updater process that will periodically sample producer metric sets
+.BR updtr_add
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The update policy name. The policy name should be unique. It is independent of
+any attributes specified for the metric sets or hosts.
+.TP
+.BI interval " interval"
+.br
+The update/collect interval
+.TP
+.BI [offset " offset"]
+.br
+Offset for synchronized aggregation. Optional.
+.TP
+.BI [push " onchange|true" ]
+.br
+If 'onchange', the Updater will get an update whenever the set source ends a
+transaction or pushes the update. If 'true', the Updater will receive an update
+only when the set source pushes the update. If `push` is used, `auto_interval`
+cannot be `true`.
+.TP
+.BI [auto_interval " true|false "]
+If true, the updater will schedule set updates according to the update hint. The
+sets with no hints will not be updated. If false, the updater will schedule the
+set updates according to the given interval and offset values. If not specified,
+the value is \fIfalse\fR.
+.TP
+.BI [perm " permission"]
+.br
+The permission to modify the updater in the future
+.RE
+
+.SS Remove an updater from the configuration
+.BR updtr_del
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The update policy name
+.RE
+
+.SS Add a match condition that specifies the sets to update.
+.BR updtr_match_add
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The update policy name
+.TP
+.BI regex " regex"
+.br
+The regular expression
+.TP
+.BI match " match (inst|schema)"
+.br
+The value with which to compare; if match=inst,
+the expression will match the set's instance name, if
+match=schema, the expression will match the set's
+schema name.
+.RE
+
+.SS Remove a match condition from the Updater.
+.BR updtr_match_del
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The update policy name
+.TP
+.BI regex " regex"
+.br
+The regular expression
+.TP
+.BI match " match (inst|schema)"
+.br
+The value with which to compare; if match=inst,
+the expression will match the set's instance name, if
+match=schema, the expression will match the set's
+schema name.
+.RE
+
+.SS Add matching producers to an updater policy
+This is required before starting the updater.
+
+.BR updtr_prdcr_add
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The update policy name
+.TP
+.BI regex " regex"
+.br
+A regular expression matching zero or more producers
+.RE
+
+.SS Remove matching producers to an updater policy
+.BR updtr_prdcr_del
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The update policy name
+.TP
+.BI regex " regex"
+.br
+A regular expression matching zero or more producers
+.RE
+
+.SS Start updaters.
+.BR updtr_start
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The update policy name
+.TP
+.BI [interval " interval"]
+.br
+The update interval in micro-seconds. If this is not
+specified, the previously configured value will be used. Optional.
+.TP
+.BI [offset " offset"]
+.br
+Offset for synchronized aggregation. Optional.
+.RE
+
+.SS Stop an updater.
+The Updater must be stopped in order to change it's configuration.
+
+.BR updtr_stop
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The update policy name
+.RE
+
+.SS Query the updater status
+.BR updtr_status
+attr=<value>
+.RS
+.TP
+.BI [name " name"]
+.br
+The updater name. If none is given, the statuses of all updaters are
+reported.
+.RE
+
+.SH STORE COMMAND SYNTAX
+.SS Create a Storage Policy and open/create the storage instance.
+.BR strgp_add
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The unique storage policy name.
+.TP
+.BI container " container"
+.br
+The name of the storage plugin instance backend.
+.TP
+.BI schema " schema"
+.br
+The schema name of the metric set to store.
+.TP
+.BI [perm " permission"]
+.br
+The permission to modify the storage policy in the future
+.RE
+
+.SS Remove a Storage Policy
+All updaters must be stopped in order for a storage policy to be deleted
+.br
+.BR strgp_del
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The storage policy name
+.RE
+
+.SS Add a regular expression used to identify the producers this storage policy will apply to.
+.br
+.BR strgp_prdcr_add
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The storage policy name
+.TP
+.BI regex " name"
+.br
+A regular expression matching metric set producers.
+.RE
+
+
+.SS Remove a regular expression from the producer match list
+.BR strgp_prdcr_del
+attr=<value>
+.RS
+.BI name " name"
+.br
+The storage policy name
+.TP
+.BI regex " regex"
+.br
+The regex of the producer to remove.
+.RE
+
+
+.SS Add the name of a metric to store
+.BR strgp_metric_add
+attr=<value>
+.RS
+.BI name " name"
+.br
+The storage policy name
+.TP
+.BI metric " metric"
+.br
+The metric name. If the metric list is NULL, all metrics in the metric set will be stored.
+.RE
+
+.SS Remove a metric from the set of stored metrics.
+.BR strgp_metric_del
+attr=<value>
+.RS
+.BI name " name"
+.br
+The storage policy name
+.TP
+.BI metric " metric"
+.br
+The metric to remove
+.RE
+
+.SS Start a storage policy.
+.BR strgp_start
+attr=<value>
+.RS
+.BI name " name"
+.br
+The storage policy name
+.RE
+
+
+.SS Stop a storage policy.
+A storage policy must be stopped in order to change its configuration.
+
+.BR strgp_stop
+attr=<value>
+.RS
+.BI name " name"
+.br
+The storage policy name
+.RE
+
+.SS Query the storage policy status
+.BR strgp_status
+attr=<value>
+.RS
+.TP
+.BI [name " name"]
+.br
+The storage policy name. If none is given, the statuses of all storage policies
+are reported.
+.RE
+
+.SH FAILOVER COMMAND SYNTAX
+
+Please see \fBldmsd_failover\fR(7).
+
+
+.SH SETGROUP COMMAND SYNTAX
+
+Please see \fBldmsd_setgroup\fR(7).
+
+.SH STREAM COMMAND SYNTAX
+.SS Publish data to the named stream
+.BR plublish
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The stream name
+.TP
+.BI data " data"
+.br
+The data to publish
+.RE
+
+.SS Subscribe to a stream
+.BR subscribe
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The stream name
+.RE
+
+.SH LDMS DAEMON COMMAND SYNTAX
+
+.SS Changing the verbosity level of ldmsd
+.BR loglevel
+attr=<value>
+.RS
+.BI level " level"
+.br
+Verbosity levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]
+.RE
+
+.SS Exit the connected LDMS daemon gracefully
+.BR daemon_exit
+
+.SS Query the connected LDMS daemon status
+.BR daemon_status
+
+.SS Export the running configuration
+The running configuration is exported to a local file on the node the daemon is
+running.
+
+.BR export
+attr=<value>
+
+.RS
+.TP
+.BI path " path"
+.br
+The path to the exported file
+.TP
+.BI [env " env"]
+.br
+true/false. If true is given, the environment variables are exported.
+.TP
+.BI [cmdline " cmdline"]
+.br
+true/false. If true is given, the command-line options are exported.
+.TP
+.BI [cfgcmd " cfgcmd"]
+.br
+true/false. If true is given, the configuration object commands are exported,
+e.g., load, config, prdcr_*, smplr_*, updtr_*, strgp_*.
+.RE
+
+.SS Tell the daemon to dump it's internal state to the log file.
+.BR status
+<type> [name=<value>]
+.RS
+.BI [ type]
+.br
+Reports only the specified objects. The choices are smplr, prdcr, updtr and strgp.
+.RS
+prdcr: list the state of all producers.
+.br
+updtr: list the state of all update policies.
+.br
+strgp: list the state of all storage policies.
 .RE
 .TP
-.BR info
-Causes the ldmsd to dump out information about plugins,
-work queue utilization, hosts and object stores.
-.TP
-.BR quit
-Exit
+.RI [name " value"]
+The object name of which the status will be reported.
 .RE
+
+.SH MISC COMMAND SYNTAX
+
+.SS Display the list of available commands
+.br
+.BR help
+<command>
+.RS
+.RI
+.br
+If a command is given, the help of the command will be prineted. Otherwise, only
+the available command names are printed.
+.RE
+
+.SS Set the user data value for a metric in a metric set.
+.br
+.BR udata
+attr=<value>
+.RS
+.TP
+.BI set " set"
+.br
+The sampler plugin name
+.TP
+.BI metric " metric"
+.br
+The metric name
+.TP
+.BI udata " udata"
+.br
+The desired user-data. This is a 64b unsigned integer.
+.RE
+
+.SS Set the user data of multiple metrics using regular expression.
+The user data of the first matched metric is set to the base value.
+The base value is incremented by the given 'incr' value and then
+sets to the user data of the consecutive matched metric and so on.
+.br
+.BR udata_regex
+attr=<value>
+.RS
+.TP
+.BI set " set"
+.br
+The metric set name.
+.TP
+.BI regex " regex"
+.br
+A regular expression to match metric names to be set
+.TP
+.BI base " base"
+.br
+The base value of user data (uint64)
+.TP
+.BI [incr " incr"]
+.br
+Increment value (int). The default is 0. If incr is 0,
+the user data of all matched metrics are set
+to the base value. Optional.
+.RE
+
+.SS Get the LDMS version the running LDMSD is based on.
+.BR version
+
+.SS Launch a subshell to do arbitrary commands
+.BR ! shell-command
+
+.SS Comment (a skipped line)
+.BR # comment-string
 
 .SH NOTES
 .IP \[bu]
@@ -326,27 +923,22 @@ ldmsctl> quit
 
 .nf
 #!/bin/bash
-export LD_LIBRARY_PATH=/tmp/opt/ovis/lib/:$LD_LIBRARY_PATH
-export ZAP_LIBPATH=/tmp/opt/ovis/lib/ovis-ldms
-export LDMSD_PLUGIN_LIBPATH=/tmp/opt/ovis/lib/ovis-ldms
-# Set LDMSD_SOCKPATH for non-root. Change -S arguments accordingly)
-export LDMSD_SOCKPATH=/tmp/run/ldmsd
-LDMSCTL=/tmp/opt/ovis/sbin/ldmsctl
 # Configure "meminfo" collector plugin to collect every second (1000000 usec) on vm1_2
-echo load name=meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
-echo config name=meminfo component_id=2 set=vm1_2/meminfo | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
-echo start name=meminfo interval=1000000 | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo "load name=meminfo"
+echo "config name=meminfo component_id=2 set=vm1_2/meminfo"
+echo "start name=meminfo interval=1000000"
 # Configure "vmstat" collector plugin to collect every second (1000000 usec) on vm1_2
-echo load name=vmstat | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
-echo config name=vmstat component_id=2 set=vm1_2/vmstat | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
-echo start name=vmstat interval=1000000 | $LDMSCTL -S /var/run/ldmsd/metric_socket_vm1_2
+echo "load name=vmstat"
+echo "config name=vmstat component_id=2 set=vm1_2/vmstat"
+echo "start name=vmstat interval=1000000"
 
 Make collect.sh executable
 chmod +x collect.sh
 
 Execute collect.sh (Note: When executing this across many nodes you would use pdsh to execute the script on all nodes
 in parallel)
-./collect.sh
+> ldmsd -x sock:11111 -l ldmsd.log
+> ldmsctl --host localhost --port 11111 --xprt sock --script collect.sh
 .fi
 
 .\
