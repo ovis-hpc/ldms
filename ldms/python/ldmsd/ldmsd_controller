@@ -211,7 +211,7 @@ class LdmsdCmdParser(cmd.Cmd):
                         # auth args
                         attr_s.append(attr_str)
                 elif (verb == "prdcr_add") and (name not in
-                           ["name", "xprt", "port", "host", "type", "interval", "auth"]):
+                           ["name", "xprt", "port", "host", "type", "interval", "auth", "perm"]):
                         # auth args
                         attr_s.append(attr_str)
                 else:
