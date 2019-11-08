@@ -75,14 +75,14 @@ endif
 
 .PHONY: $(PHONY_doc) $(PHONY_dox)
 
-install-data-local: install-dox
+PEDIGREE = $(DESTDIR)$(docdir)$(OPV)/ldms-pedigree.txt
+include $(top_srcdir)/pedigree.am
+
+install-data-local: install-dox install-pedigree
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
 	for f in AUTHORS README COPYING ChangeLog ; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
 	done
-
-PEDIGREE = $(DESTDIR)/$(bindir)/ldms-pedigree
-include $(top_srcdir)/pedigree.am
 
 uninstall-hook:
 	rm $(PEDIGREE)

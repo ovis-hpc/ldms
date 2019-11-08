@@ -13,11 +13,7 @@ OVIS_LIB = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 OVIS_LIB_TARBALL = $(OVIS_LIB).tar.gz
 OPV=-$(PACKAGE_VERSION)
 
-PHONY_doc = doxygen doc install-doc
-
-if ENABLE_DOC
-install-data-local: install-doc
-endif
+PHONY_doc = doxygen doc
 
 if ENABLE_DOC_HTML
 DOCDEPS = $(top_srcdir)/src/*/*.c \
@@ -46,14 +42,14 @@ else
 install-dox:
 endif
 
-install-doc: install-dox
+PEDIGREE = $(DESTDIR)$(docdir)$(OPV)/ovis-lib-pedigree.txt
+include $(srcdir)/pedigree.am
+
+install-data-local: install-dox install-pedigree
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
 	for f in README COPYING ChangeLog COPYING; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
 	done
-
-PEDIGREE = $(DESTDIR)/$(bindir)/lib-pedigree
-include $(srcdir)/pedigree.am
 
 uninstall-hook:
 	rm $(PEDIGREE)
