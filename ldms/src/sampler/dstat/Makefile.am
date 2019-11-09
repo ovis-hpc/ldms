@@ -1,5 +1,6 @@
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
+noinst_LTLIBRARIES =
 check_PROGRAMS =
 dist_man7_MANS =
 
@@ -14,7 +15,7 @@ COMMON_LIBADD = $(CORE)/libldms.la libparse_stat.la \
 	@LDFLAGS_GETTIME@ -lovis_util -lcoll
 
 if ENABLE_DSTAT
-lib_LTLIBRARIES += libparse_stat.la
+noinst_LTLIBRARIES += libparse_stat.la
 libparse_stat_la_SOURCES = parse_stat.c parse_stat.h
 
 libdstat_la_SOURCES = dstat.c
