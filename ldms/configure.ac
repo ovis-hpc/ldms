@@ -223,7 +223,7 @@ OPTION_WITH([munge], [MUNGE])
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
 OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],
-		     [mmalloc third json tada coll ovis_util zap ovis_ctrl \
+		     [mmalloc third tada coll ovis_util zap ovis_ctrl \
 		      ovis_event ovis_auth],
 		      [ovis-auth.sh],[ovis-lib],[ovis_auth])
 dnl substitute values we need from ovis-auth.sh during joint configure
@@ -587,6 +587,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 scripts/envldms.sh
 		 ldms.spec
 		 man/Makefile
+		 src/json/Makefile
 ])
 
 AC_CONFIG_COMMANDS([scripts],[ echo fixing test script perms.

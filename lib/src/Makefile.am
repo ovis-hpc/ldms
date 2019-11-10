@@ -10,7 +10,6 @@ do_subst = @LIB_SUBST_RULE@
 	chmod 755 $@
 
 SUBDIRS = third
-SUBDIRS += json
 
 if ENABLE_OVIS_UTIL
 SUBDIRS += ovis_util

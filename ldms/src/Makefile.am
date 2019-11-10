@@ -1,6 +1,6 @@
 nobase_include_HEADERS = ovis-ldms-config.h
 ACLOCAL_AMFLAGS = -I m4
-SUBDIRS =
+SUBDIRS = json
 EXTRA_DIST=ovis-ldms-configvars.sh.in
 CLEANFILES = ovis-ldms-configvars.sh
 DISTCLEANFILES = $(nobase_include_HEADERS)

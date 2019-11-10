@@ -11,7 +11,7 @@ ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldms_xprt.h ldms_auth.h kldms_req.h
 
 libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h \
 		     ldms_auth.c ldms_xprt_auth.c
-libldms_la_LIBADD = -ldl -lpthread -lcoll -ljson_util \
+libldms_la_LIBADD = -ldl -lpthread -lcoll $(top_srcdir)/src/json/libjson_util.la \
 	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
 	-lmmalloc -lzap
 

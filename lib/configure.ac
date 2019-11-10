@@ -219,7 +219,6 @@ AC_CONFIG_FILES([ovis-lib.spec
 		Doxyfile
 		Makefile
 		src/Makefile
-		src/json/Makefile
 		src/third/Makefile
 		src/coll/Makefile
 		src/mmalloc/Makefile

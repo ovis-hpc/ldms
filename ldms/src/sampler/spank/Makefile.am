@@ -10,7 +10,7 @@ COMMON_LIBADD = $(CORE)/libldms.la
 		@LDFLAGS_GETTIME@ -lovis_util -lcoll
 
 libslurm_notifier_la_SOURCES = slurm_notifier.c
-libslurm_notifier_la_LIBADD = $(COMMON_LIBADD) -ljson_util \
+libslurm_notifier_la_LIBADD = $(COMMON_LIBADD) $(top_srcdir)/src/json/libjson_util.la \
 			      ../../ldmsd/libldmsd_stream.la
 libslurm_notifier_la_CFLAGS = $(AM_CFLAGS) $(SLURM_INCDIR_FLAG) \
 	-DSYSCONFDIR='"$(sysconfdir)"'
