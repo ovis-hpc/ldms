@@ -464,7 +464,7 @@ int mount_dvs(const char *dir)
 {
 	int rc = ENOMEM;
 	char path[PATH_MAX];
-	char lbuf[128];
+	char lbuf[PATH_MAX];
 	dvs_mount_t dvsm;
 	dvsm = calloc(1, sizeof(*dvsm));
 	if (!dvsm)
@@ -540,7 +540,7 @@ static int handle_old_mount(dvs_mount_t dvsm, const char *path)
 	int rc;
 	int metric_no, line_no;
 	char *s;
-	char lbuf[256];
+	char lbuf[PATH_MAX];
 	char metric_name[128];
 	union ldms_value v;
 
