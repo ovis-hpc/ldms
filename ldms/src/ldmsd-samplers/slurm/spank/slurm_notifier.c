@@ -64,8 +64,8 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <slurm/spank.h>
-#include <json/json_util.h>
 #include "ldms.h"
+#include <json/json_util.h>
 #include <assert.h>
 #include "../ldmsd/ldmsd_stream.h"
 
@@ -569,7 +569,7 @@ jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 			"ignored.\n", subscriber_data);
 		strcpy(subscriber_data, "{}");
 	}
-	jb = jbuf_append_attr(jb, "subscriber_data", "\"%s\",", subscriber_data); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "subscriber_data", "%s,", subscriber_data); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 
 	name[0] = '\0';
@@ -701,12 +701,8 @@ int slurm_spank_init(spank_t sh, int argc, char *argv[])
 	return ESPANK_SUCCESS;
 }
 
-/*
 int
 slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
-*/
-int
-slurm_spank_task_post_fork(spank_t sh, int argc, char *argv[])
 {
 	/* Runs as root */
 	spank_context_t context = spank_context();
