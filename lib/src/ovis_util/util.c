@@ -932,7 +932,9 @@ const char* ovis_errno_abbvr(int e)
 		[EOWNERDEAD]       =  "EOWNERDEAD",
 		[ENOTRECOVERABLE]  =  "ENOTRECOVERABLE",
 		[ERFKILL]          =  "ERFKILL",
+#ifdef EHWPOISON
 		[EHWPOISON]        =  "EHWPOISON",
+#endif
 	};
 	if (e < sizeof(estr)/sizeof(*estr) && estr[e]) {
 		return estr[e];
