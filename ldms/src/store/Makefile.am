@@ -25,8 +25,9 @@ pkglib_LTLIBRARIES += libstore_amqp.la
 endif
 
 if ENABLE_KOKKOS
-SUBDIRS += kokkos
+MAYBE_KOKKOS = kokkos
 endif
+SUBDIRS += $(MAYBE_KOKKOS)
 
 if ENABLE_SOS
 libstore_sos_la_SOURCES = store_sos.c
@@ -34,17 +35,21 @@ libstore_sos_la_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
 libstore_sos_la_LIBADD = @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@ $(STORE_LIBADD) -lsos
 pkglib_LTLIBRARIES += libstore_sos.la
 
-SUBDIRS += slurm
-SUBDIRS += papi
+MAYBE_SLURM = slurm
+MAYBE_PAPI = papi
 endif
+SUBDIRS += $(MAYBE_SLURM)
+SUBDIRS += $(MAYBE_PAPI)
 
 if ENABLE_INFLUX
-SUBDIRS += influx
+MAYBE_INFLUX = influx
 endif
+SUBDIRS += $(MAYBE_INFLUX)
 
 if ENABLE_FLATFILE
-SUBDIRS += store_flatfile
+MAYBE_FLATFILE = store_flatfile
 endif
+SUBDIRS += $(MAYBE_FLATFILE)
 
 if ENABLE_RABBITV3
 libstore_rabbitv3_la_SOURCES = store_rabbitv3.c rabbit_utils.c rabbit_utils.h
