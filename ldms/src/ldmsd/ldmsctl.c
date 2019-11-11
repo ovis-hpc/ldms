@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2011-2018 National Technology & Engineering Solutions
+ * Copyright (c) 2011-2019 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2011-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2011-2019 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -66,7 +66,7 @@
 #include <netdb.h>
 #include <time.h>
 #include <ctype.h>
-#include "json_parser/json.h"
+#include "json/json_util.h"
 #include "ldms.h"
 #include "ldmsd_request.h"
 #include "config.h"
@@ -191,39 +191,6 @@ char *ldmsctl_ts_str(uint32_t sec, uint32_t usec)
 	strftime(dtsz, sizeof(dtsz), "%D %H:%M:%S %z", tm);
 	snprintf(str, 200, "%s [%dus]", dtsz, usec);
 	return str;
-}
-
-static json_value *ldmsctl_json_value_get(json_value *json_obj, const char *name)
-{
-	int i;
-	json_object_entry entry;
-	if (json_obj->type != json_object)
-		return NULL;
-	for (i = 0; i < json_obj->u.object.length; i++) {
-		entry = json_obj->u.object.values[i];
-		if (0 == strcmp(entry.name, name))
-			return entry.value;
-	}
-	return NULL;
-}
-
-static json_value *ldmsctl_json_array_ele_get(json_value *json_obj, int idx)
-{
-	if (json_obj->type != json_array)
-		return NULL;
-	if ((idx < 0) || (idx >= json_obj->u.array.length))
-		return NULL;
-	return json_obj->u.array.values[idx];
-}
-
-static char *ldmsctl_json_str_value_get(json_value *json_obj, const char *name)
-{
-	json_value *value = ldmsctl_json_value_get(json_obj, name);
-	if (!value)
-		return NULL;
-	if (value->type != json_string)
-		return NULL;
-	return value->u.string.ptr;
 }
 
 static void help_greeting()
@@ -478,40 +445,58 @@ static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 
 static void resp_daemon_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
+	int rc;
+	ldmsd_req_attr_t attr;
+	json_parser_t parser;
+	json_entity_t json, thread;
 	if (rsp_err) {
 		resp_generic(resp, len, rsp_err);
 		return;
 	}
-	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+
+	attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
 
-	json_value *json, *thread_json;
-	json = json_parse((char*)attr->attr_value, len);
-	if (!json)
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
 		return;
+	}
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+	json_parser_free(parser);
 
-	if (json->type != json_array) {
-		printf("Unrecognized producer status format\n");
+	if (json->type != JSON_LIST_VALUE) {
+		printf("Unrecognized JSON daemon status format\n");
 		goto out;
 	}
-	int i;
 
 	printf("Thread           Task Count\n");
 	printf("---------------- ----------\n");
 
-	for (i = 0; i < json->u.array.length; i++) {
-		thread_json = ldmsctl_json_array_ele_get(json, i);
-		if (thread_json->type != json_object) {
-			printf("Invalid daemon status format\n");
+	json_entity_t thr_id, count;
+
+	for (thread = json_item_first(json); thread; thread = json_item_next(thread)) {
+		if (thread->type != JSON_DICT_VALUE) {
+			printf("Unrecognized JSON daemon status format\n");
 			goto out;
 		}
-		printf("%15s %10s\n",
-			ldmsctl_json_str_value_get(thread_json, "thread"),
-			ldmsctl_json_str_value_get(thread_json, "task_count"));
+		thr_id = json_value_find(thread, "thread");
+		count = json_value_find(thread, "task_count");
+		if (!thr_id || !count) {
+			printf("Unrecognized status format\n");
+			goto out;
+		}
+		printf("%15s %10s\n", json_value_str(thr_id)->str,
+					json_value_str(count)->str);
 	}
 out:
-	json_value_free(json);
+	json_entity_free(json);
 }
 
 static void resp_daemon_exit(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
@@ -524,50 +509,62 @@ static void resp_daemon_exit(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 		printf("Please 'quit' the ldmsd_controller interface\n");
 }
 
-void __print_prdcr_status(json_value *jvalue)
+void __print_prdcr_status(json_entity_t prdcr)
 {
-	if (jvalue->type != json_object) {
-		printf("Invalid producer status format\n");
-		return;
+	json_entity_t name, host, xprt, state, port;
+
+	name = json_value_find(prdcr, "name");
+	host = json_value_find(prdcr, "host");
+	port = json_value_find(prdcr, "port");
+	xprt = json_value_find(prdcr, "transport");
+	state = json_value_find(prdcr, "state");
+	if (!name || !host || !port || !xprt || !state) {
+		goto invalid_result_format;
 	}
 
-	char *name, *host, *xprt, *state;
-	json_int_t port;
+	printf("%-16s %-16s %-12" PRId64 "%-12s %-12s\n",
+			json_value_str(name)->str,
+			json_value_str(host)->str,
+			json_value_int(port),
+			json_value_str(xprt)->str,
+			json_value_str(state)->str);
 
-	name = ldmsctl_json_str_value_get(jvalue, "name");
-	host = ldmsctl_json_str_value_get(jvalue, "host");
-	port = ldmsctl_json_value_get(jvalue, "port")->u.integer;
-	xprt = ldmsctl_json_str_value_get(jvalue, "transport");
-	state = ldmsctl_json_str_value_get(jvalue, "state");
+	json_entity_t prd_sets_attr, prd_sets;
+	prd_sets_attr = json_attr_find(prdcr, "sets");
+	if (!prd_sets_attr)
+		goto invalid_result_format;
+	prd_sets = json_attr_value(prd_sets_attr);
+	if (prd_sets->type != JSON_LIST_VALUE)
+		goto invalid_result_format;
 
-	printf("%-16s %-16s %-12" PRId64 "%-12s %-12s\n", name, host, port, xprt, state);
+	json_entity_t prd_set, inst_name, schema_name, set_state;
+	for (prd_set = json_item_first(prd_sets); prd_set; prd_set = json_item_next(prd_set)) {
+		if (prd_set->type != JSON_DICT_VALUE)
+			goto invalid_result_format;
+		inst_name = json_value_find(prd_set, "inst_name");
+		schema_name = json_value_find(prd_set, "schema_name");
+		set_state = json_value_find(prd_set, "state");
+		if (!inst_name || !schema_name || !set_state)
+			goto invalid_result_format;
 
-	json_value *prd_set_array_jvalue;
-	prd_set_array_jvalue = ldmsctl_json_value_get(jvalue, "sets");
-	if (prd_set_array_jvalue->type != json_array) {
-		printf("---Invalid producer status format---\n");
-		return;
+		printf("    %-16s %-16s %s\n",
+				json_value_str(inst_name)->str,
+				json_value_str(schema_name)->str,
+				json_value_str(set_state)->str);
 	}
+	return;
 
-	char *inst_name, *schema_name, *set_state;
-	json_value *prd_set_jvalue;
-	int i;
-	for (i = 0; i < prd_set_array_jvalue->u.array.length; i++) {
-		prd_set_jvalue = ldmsctl_json_array_ele_get(prd_set_array_jvalue, i);
-		if (prd_set_jvalue->type != json_object) {
-			printf("---Invalid producer status format---\n");
-			return;
-		}
-		inst_name = ldmsctl_json_str_value_get(prd_set_jvalue, "inst_name");
-		schema_name = ldmsctl_json_str_value_get(prd_set_jvalue, "schema_name");
-		set_state = ldmsctl_json_str_value_get(prd_set_jvalue, "state");
-
-		printf("    %-16s %-16s %s\n", inst_name, schema_name, set_state);
-	}
+invalid_result_format:
+	printf("---Invalid result format---\n");
+	return;
 }
 
 static void resp_prdcr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
+	int rc;
+	int i;
+	json_parser_t parser;
+	json_entity_t json, prdcr;
 	if (rsp_err) {
 		resp_generic(resp, len, rsp_err);
 		return;
@@ -576,25 +573,36 @@ static void resp_prdcr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
 
-	json_value *json, *prdcr_json;
-	json = json_parse((char*)attr->attr_value, len);
-	if (!json)
-		return;
-
-	if (json->type != json_array) {
-		printf("Unrecognized producer status format\n");
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
 		return;
 	}
-	int i;
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+	json_parser_free(parser);
+
+	if (json->type != JSON_LIST_VALUE) {
+		printf("Unrecognized JSON producer status format\n");
+		goto out;
+	}
 
 	printf("Name             Host             Port         Transport    State\n");
 	printf("---------------- ---------------- ------------ ------------ ------------\n");
 
-	for (i = 0; i < json->u.array.length; i++) {
-		prdcr_json = ldmsctl_json_array_ele_get(json, i);
-		__print_prdcr_status(prdcr_json);
+	for (prdcr = json_item_first(json); prdcr; prdcr = json_item_next(prdcr)) {
+		if (prdcr->type != JSON_DICT_VALUE) {
+			printf("---Invalid producer status format---\n");
+			goto out;
+		}
+		__print_prdcr_status(prdcr);
 	}
-	json_value_free(json);
+out:
+	json_entity_free(json);
 }
 
 static void help_prdcr_status()
@@ -602,42 +610,55 @@ static void help_prdcr_status()
 	printf( "\nGet status of all producers\n");
 }
 
-void __print_prdcr_set_status(json_value *jvalue)
+void __print_prdcr_set_status(json_entity_t prd_set)
 {
-	if (jvalue->type != json_object) {
+	if (prd_set->type != JSON_DICT_VALUE) {
 		printf("---Invalid producer set status format---\n");
 		return;
 	}
 
-	char *name, *schema, *state, *origin, *prdcr;
-	char *ts_sec, *ts_usec, *dur_sec_str, *dur_usec_str;
+	json_entity_t name, schema, state, origin, prdcr;
+	json_entity_t ts_sec, ts_usec, dur_sec_str, dur_usec_str;
 	uint32_t dur_sec, dur_usec;
 
-	name = ldmsctl_json_str_value_get(jvalue, "inst_name");
-	schema = ldmsctl_json_str_value_get(jvalue, "schema_name");
-	state = ldmsctl_json_str_value_get(jvalue, "state");
-	origin = ldmsctl_json_str_value_get(jvalue, "origin");
-	prdcr = ldmsctl_json_str_value_get(jvalue, "producer");
-	ts_sec = ldmsctl_json_str_value_get(jvalue, "timestamp.sec");
-	ts_usec = ldmsctl_json_str_value_get(jvalue, "timestamp.usec");
-	dur_sec_str = ldmsctl_json_str_value_get(jvalue, "duration.sec");
-	dur_usec_str = ldmsctl_json_str_value_get(jvalue, "duration.usec");
+	name = json_value_find(prd_set, "inst_name");
+	schema = json_value_find(prd_set, "schema_name");
+	state = json_value_find(prd_set, "state");
+	origin = json_value_find(prd_set, "origin");
+	prdcr = json_value_find(prd_set, "producer");
+	ts_sec = json_value_find(prd_set, "timestamp.sec");
+	ts_usec = json_value_find(prd_set, "timestamp.usec");
+	dur_sec_str = json_value_find(prd_set, "duration.sec");
+	dur_usec_str = json_value_find(prd_set, "duration.usec");
+
+	if (!name || !schema || !state || !origin || !prdcr || !ts_sec ||
+			!ts_usec) {
+		printf("Invalid status format\n");
+		return;
+	}
+
 	if (dur_sec_str)
-		dur_sec = strtoul(dur_sec_str, NULL, 0);
+		dur_sec = strtoul(json_value_str(dur_sec_str)->str, NULL, 0);
 	else
 		dur_sec = 0;
 	if (dur_usec_str)
-		dur_usec = strtoul(dur_usec_str, NULL, 0);
+		dur_usec = strtoul(json_value_str(dur_usec_str)->str, NULL, 0);
 	else
 		dur_usec = 0;
 
 	char ts[64];
 	char dur[64];
-	snprintf(ts, 63, "%s [%s]", ts_sec, ts_usec);
+	snprintf(ts, 63, "%s [%s]",
+			json_value_str(ts_sec)->str, json_value_str(ts_usec)->str);
 	snprintf(dur, 63, "%" PRIu32 ".%06" PRIu32, dur_sec, dur_usec);
 
 	printf("%-20s %-16s %-10s %-16s %-16s %-25s %-12s\n",
-			name, schema, state, origin, prdcr, ts, dur);
+			json_value_str(name)->str,
+			json_value_str(schema)->str,
+			json_value_str(state)->str,
+			json_value_str(origin)->str,
+			json_value_str(prdcr)->str,
+			ts, dur);
 }
 
 static void resp_prdcr_set_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
@@ -649,27 +670,39 @@ static void resp_prdcr_set_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
-	json_value *json, *prdcr_json;
-	json = json_parse((char*)attr->attr_value, len);
-	if (!json)
-		return;
 
-	if (json->type != json_array) {
-		printf("Unrecognized producer set status format\n");
+	json_parser_t parser;
+	json_entity_t json, prd_set;
+	int rc;
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
 		return;
 	}
-	int i;
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+	json_parser_free(parser);
 
+	if (json->type != JSON_LIST_VALUE) {
+		printf("Unrecognized producer set status format\n");
+		goto out;
+	}
 	printf("Name                 Schema Name      State      Origin           "
 			"Producer         timestamp                 duration (sec)\n");
 	printf("-------------------- ---------------- ---------- ---------------- "
 			"---------------- ------------------------- ---------------\n");
 
-	for (i = 0; i < json->u.array.length; i++) {
-		prdcr_json = ldmsctl_json_array_ele_get(json, i);
-		__print_prdcr_set_status(prdcr_json);
+	for (prd_set = json_item_first(json); prd_set;
+			prd_set = json_item_next(prd_set)) {
+		__print_prdcr_set_status(prd_set);
 	}
-	json_value_free(json);
+out:
+	json_entity_free(json);
 }
 
 static void help_prdcr_set_status()
@@ -677,39 +710,48 @@ static void help_prdcr_set_status()
 	printf( "\nGet status of all producer sets\n");
 }
 
-static void __print_prdcr_hint_tree(json_value *prdcr_json)
+static void __print_prdcr_hint_tree(json_entity_t prdcr)
 {
-	json_value *hints, *hint, *sets;
-	char *name, *intrvl, *offset;
-	int i, j;
-	name = ldmsctl_json_str_value_get(prdcr_json, "name");
-	printf("prdcr: %s\n", name);
+	json_entity_t hints, hint, sets, set;
+	json_entity_t name, intrvl, offset;
 
-	hints = ldmsctl_json_value_get(prdcr_json, "hints");
-	if (hints->type != json_array) {
-		printf("Unrecognized reply format\n");
-		return;
-	}
-	for (i = 0; i < hints->u.array.length; i++) {
-		hint = ldmsctl_json_array_ele_get(hints, i);
-		intrvl = ldmsctl_json_str_value_get(hint, "interval_us");
-		offset = ldmsctl_json_str_value_get(hint, "offset_us");
-		sets = ldmsctl_json_value_get(hint, "sets");
-		printf("   update hint: %s:%s\n", intrvl, offset);
-		if (sets->type != json_array) {
-			printf("Unrecognized reply format\n");
-			return;
+	if (prdcr->type != JSON_DICT_VALUE)
+		goto invalid_result_format;
+
+	name = json_value_find(prdcr, "name");
+	if (!name)
+		goto invalid_result_format;
+	printf("prdcr: %s\n", json_value_str(name)->str);
+
+	hints = json_value_find(prdcr, "hints");
+	if (hints->type != JSON_LIST_VALUE)
+		goto invalid_result_format;
+
+	for (hint = json_item_first(hints); hint; hint = json_item_next(hint)) {
+		intrvl = json_value_find(hint, "interval_us");
+		offset = json_value_find(hint, "offset_us");
+		if (!intrvl || !offset)
+			goto invalid_result_format;
+
+		sets = json_value_find(hint, "sets");
+		if (sets->type != JSON_LIST_VALUE)
+			goto invalid_result_format;
+		printf("   update hint: %s:%s\n",
+				json_value_str(intrvl)->str,
+				json_value_str(offset)->str);
+		for (set = json_item_first(sets); set; set = json_item_next(set)) {
+			printf("     %s\n", json_value_str(set)->str);
 		}
-		for (j = 0; j < sets->u.array.length; j++) {
-			printf("     %s\n", sets->u.array.values[j]->u.string.ptr);
-		}
 	}
+	return;
+
+invalid_result_format:
+	printf("unrecognized result format\n");
+	return;
 }
 
 static void resp_prdcr_hint_tree(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
-	int i;
-
 	if (0 != rsp_err) {
 		resp_generic(resp, len, rsp_err);
 		return;
@@ -720,19 +762,33 @@ static void resp_prdcr_hint_tree(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_
 		printf("Unrecognized reply format\n");
 		return;
 	}
-	json_value *json, *prdcr_json;
-	json = json_parse((char *)attr->attr_value, len);
-	if (!json)
-		return;
-	if (json->type != json_array) {
-		printf("Unrecognized reply format\n");
+
+	json_parser_t parser;
+	json_entity_t json, prdcr;
+	int rc;
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
 		return;
 	}
-	for (i = 0; i < json->u.array.length; i++) {
-		prdcr_json = json->u.array.values[i];
-		__print_prdcr_hint_tree(prdcr_json);
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
 	}
-	json_value_free(json);
+	json_parser_free(parser);
+
+	if (json->type != JSON_LIST_VALUE) {
+		printf("Unrecognized result format\n");
+		goto out;
+	}
+	for (prdcr = json_item_first(json); prdcr;
+			prdcr = json_item_next(prdcr)) {
+		__print_prdcr_hint_tree(prdcr);
+	}
+out:
+	json_entity_free(json);
 }
 
 static void help_prdcr_hint_tree()
@@ -837,49 +893,58 @@ static void help_updtr_stop()
 		"     name=   The update policy name\n");
 }
 
-void __print_updtr_status(json_value *jvalue)
+void __print_updtr_status(json_entity_t updtr)
 {
-	if (jvalue->type != json_object) {
-		printf("Invalid updater status format\n");
-		return;
-	}
+	json_entity_t name, interval, mode, state, offset;
 
-	char *name, *interval, *mode, *state;
-	json_int_t offset;
+	if (updtr->type != JSON_DICT_VALUE)
+		goto invalid_result_format;
 
-	name = ldmsctl_json_str_value_get(jvalue, "name");;
-	interval = ldmsctl_json_str_value_get(jvalue, "interval");;
-	offset = ldmsctl_json_value_get(jvalue, "offset")->u.integer;
-	mode = ldmsctl_json_str_value_get(jvalue, "mode");
-	state = ldmsctl_json_str_value_get(jvalue, "state");
-	printf("%-16s %-12s %-12" PRId64 "%-15s %s\n",
-			name, interval, offset, mode, state);
+	name = json_value_find(updtr, "name");
+	interval = json_value_find(updtr, "interval");
+	offset = json_value_find(updtr, "offset");
+	mode = json_value_find(updtr, "mode");
+	state = json_value_find(updtr, "state");
+	if (!name || !interval || !mode || !state || !offset)
+		goto invalid_result_format;
+	printf("%-16s %-12s %-12s %-15s %s\n",
+			json_value_str(name)->str,
+			json_value_str(interval)->str,
+			json_value_str(offset)->str,
+			json_value_str(mode)->str,
+			json_value_str(state)->str);
 
-	json_value *prd_array_jvalue;
-	prd_array_jvalue = ldmsctl_json_value_get(jvalue, "producers");
-	if (!prd_array_jvalue || (prd_array_jvalue->type != json_array)) {
-		printf("---Invalid updater status format---\n");
-		return;
-	}
+	json_entity_t prdcrs;
+	prdcrs = json_value_find(updtr, "producers");
+	if (!prdcrs)
+		goto invalid_result_format;
+	if (prdcrs->type != JSON_LIST_VALUE)
+		goto invalid_result_format;
 
-	char *prdcr_name, *host, *xprt, *prdcr_state;
-	json_int_t port;
-	json_value *prd_jvalue;
-	int i;
-	for (i = 0; i < prd_array_jvalue->u.array.length; i++) {
-		prd_jvalue = ldmsctl_json_array_ele_get(prd_array_jvalue, i);
-		if (prd_jvalue->type != json_object) {
-			printf("---Invalid updater status format---\n");
-			return;
-		}
-		prdcr_name = ldmsctl_json_str_value_get(prd_jvalue, "name");
-		host = ldmsctl_json_str_value_get(prd_jvalue, "host");
-		port = ldmsctl_json_value_get(prd_jvalue, "port")->u.integer;
-		xprt = ldmsctl_json_str_value_get(prd_jvalue, "transport");
-		prdcr_state = ldmsctl_json_str_value_get(prd_jvalue, "state");
+	json_entity_t prdcr_name, host, xprt, prdcr_state, port;
+	json_entity_t prdcr;
+	for (prdcr = json_item_first(prdcrs); prdcr; prdcr = json_item_next(prdcr)) {
+		if (prdcr->type != JSON_DICT_VALUE)
+			goto invalid_result_format;
+		prdcr_name = json_value_find(prdcr, "name");
+		host = json_value_find(prdcr, "host");
+		xprt = json_value_find(prdcr, "transport");
+		prdcr_state = json_value_find(prdcr, "state");
+		port = json_value_find(prdcr, "port");
+		if (!prdcr_name || !host || !xprt || !prdcr_state || !port)
+			goto invalid_result_format;
 		printf("    %-16s %-16s %-12" PRId64 "%-12s %s\n",
-				prdcr_name, host, port, xprt, prdcr_state);
+				json_value_str(prdcr_name)->str,
+				json_value_str(host)->str,
+				json_value_int(port),
+				json_value_str(xprt)->str,
+				json_value_str(prdcr_state)->str);
 	}
+	return;
+
+invalid_result_format:
+	printf("---Invalid result format---\n");
+	return;
 }
 
 static void resp_updtr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
@@ -891,25 +956,35 @@ static void resp_updtr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
-	json_value *json, *prdcr_json;
-	json = json_parse((char*)attr->attr_value, len);
-	if (!json)
-		return;
 
-	if (json->type != json_array) {
-		printf("Unrecognized updater status format\n");
+	json_parser_t parser;
+	json_entity_t json, updtr;
+	int rc;
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
 		return;
 	}
-	int i;
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+	json_parser_free(parser);
 
+	if (json->type != JSON_LIST_VALUE) {
+		printf("Unrecognized updater status format\n");
+		goto out;
+	}
 	printf("Name             Interval     Offset       Mode            State\n");
 	printf("---------------- ------------ ------------ --------------- ------------\n");
 
-	for (i = 0; i < json->u.array.length; i++) {
-		prdcr_json = ldmsctl_json_array_ele_get(json, i);
-		__print_updtr_status(prdcr_json);
+	for (updtr = json_item_first(json); updtr; updtr = json_item_next(updtr)) {
+		__print_updtr_status(updtr);
 	}
-	json_value_free(json);
+out:
+	json_entity_free(json);
 }
 
 static void help_updtr_status()
@@ -919,33 +994,46 @@ static void help_updtr_status()
 	       "      None\n");
 }
 
-static void __print_updtr_task(json_value *updtr_json)
+static void __print_updtr_task(json_entity_t updtr)
 {
-	json_value *tasks, *task;
-	char *name, *intrvl, *offset, *is_default;
-	int i;
-	name = ldmsctl_json_str_value_get(updtr_json, "name");
-	tasks = ldmsctl_json_value_get(updtr_json, "tasks");
-	printf("Updater: %s\n", name);
+	json_entity_t tasks, task;
+	json_entity_t name, intrvl, offset, is_default;
+	char *intrvl_s, *offset_s;
+
+	if (updtr->type != JSON_DICT_VALUE) {
+		printf("Invalid result format\n");
+		return;
+	}
+
+	name = json_value_find(updtr, "name");
+	tasks = json_value_find(updtr, "tasks");
+	if (!name || !tasks) {
+		printf("Unrecognized format\n");
+		return;
+	}
+	printf("Updater: %s\n", json_value_str(name)->str);
 	printf("   tasks: <interval_us>:<offset_us>\n");
-	for (i = 0; i < tasks->u.array.length; i++) {
-		task = tasks->u.array.values[i];
-		intrvl = ldmsctl_json_str_value_get(task, "interval_us");
-		offset = ldmsctl_json_str_value_get(task, "offset_us");
-		is_default = ldmsctl_json_str_value_get(task, "default_task");
-		if (0 == strcmp(is_default, "true")) {
-			printf("     %s:%s     default\n", intrvl, offset);
+	for (task = json_item_first(tasks); task; task = json_item_next(task)) {
+		intrvl = json_value_find(task, "interval_us");
+		offset = json_value_find(task, "offset_us");
+		is_default = json_value_find(task, "default_task");
+		if (!intrvl || !offset || !is_default) {
+			printf("Unrecognized format\n");
+			return;
+		}
+		intrvl_s = json_value_str(intrvl)->str;
+		offset_s = json_value_str(offset)->str;
+		if (0 == strcmp(json_value_str(is_default)->str, "true")) {
+			printf("     %s:%s     default\n",
+					intrvl_s, offset_s);
 		} else {
-			printf("     %s:%s\n", intrvl, offset);
+			printf("     %s:%s\n", intrvl_s, offset_s);
 		}
 	}
 }
 
 static void resp_updtr_task(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
-	json_value *json, *updtr;
-	int i;
-
 	if (0 != rsp_err) {
 		resp_generic(resp, len, rsp_err);
 		return;
@@ -954,18 +1042,32 @@ static void resp_updtr_task(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
-	json = json_parse((char*)attr->attr_value, len);
-	if (!json)
+
+	json_parser_t parser;
+	json_entity_t json, updtr;
+	int rc;
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
 		return;
-	if (json->type != json_array) {
+	}
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		goto out;
+	}
+	json_parser_free(parser);
+
+	if (json->type != JSON_LIST_VALUE) {
 		printf("Unrecognized updater status format\n");
 		return;
 	}
-	for (i = 0; i < json->u.array.length; i++) {
-		updtr = json->u.array.values[i];
+	for (updtr = json_item_first(json); updtr; updtr = json_item_next(updtr)) {
 		__print_updtr_task(updtr);
 	}
-	json_value_free(json);
+out:
+	json_entity_free(json);
 }
 
 static void help_updtr_task()
@@ -1043,58 +1145,62 @@ static void help_strgp_stop()
 		"     name=   The storage policy name\n");
 }
 
-void __print_strgp_status(json_value *jvalue)
+void __print_strgp_status(json_entity_t strgp)
 {
-	if (jvalue->type != json_object) {
-		printf("Invalid producer status format\n");
-		return;
-	}
+	if (strgp->type != JSON_DICT_VALUE)
+		goto invalid_result_format;
 
-	char *name, *container, *schema, *plugin, *state;
+	json_entity_t name, container, schema, plugin, state;
 
-	name = ldmsctl_json_str_value_get(jvalue, "name");
-	container = ldmsctl_json_str_value_get(jvalue, "container");
-	schema = ldmsctl_json_str_value_get(jvalue, "schema");
-	plugin = ldmsctl_json_str_value_get(jvalue, "plugin");
-	state = ldmsctl_json_str_value_get(jvalue, "state");
+	name = json_value_find(strgp, "name");
+	container = json_value_find(strgp, "container");
+	schema = json_value_find(strgp, "schema");
+	plugin = json_value_find(strgp, "plugin");
+	state = json_value_find(strgp, "state");
+
+	if (!name || !container || !schema || !plugin || !state)
+		goto invalid_result_format;
+
 	printf("%-16s %-16s %-16s %-16s %s\n",
-			name, container, schema, plugin, state);
+			json_value_str(name)->str,
+			json_value_str(container)->str,
+			json_value_str(schema)->str,
+			json_value_str(plugin)->str,
+			json_value_str(state)->str);
 
-	json_value *prd_array_jvalue, *metric_array_jvalue;
-	prd_array_jvalue = ldmsctl_json_value_get(jvalue, "producers");
-	if (!prd_array_jvalue || (prd_array_jvalue->type != json_array)) {
-		printf("---Invalid storage policy status format---\n");
-		return;
-	}
+	json_entity_t prdcrs, metrics;
+	prdcrs = json_value_find(strgp, "producers");
+	if (!prdcrs || (prdcrs->type != JSON_LIST_VALUE))
+		goto invalid_result_format;
 	printf("    producers:");
 
-	json_value *prd_jvalue, *metric_jvalue;
-	int i;
-	for (i = 0; i < prd_array_jvalue->u.array.length; i++) {
-		prd_jvalue = ldmsctl_json_array_ele_get(prd_array_jvalue, i);
-		if (!prd_jvalue || (prd_jvalue->type != json_string)) {
-			printf("---Invalid storage policy status format---\n");
-			return;
-		}
-		printf(" %s", prd_jvalue->u.string.ptr);
+	json_entity_t prdcr, metric;
+	for (prdcr = json_item_first(prdcrs); prdcr; prdcr = json_item_next(prdcr)) {
+		if (!prdcr || (prdcr->type != JSON_STRING_VALUE))
+			goto invalid_result_format;
+		printf(" %s", json_value_str(prdcr)->str);
 	}
 	printf("\n");
 
-	metric_array_jvalue = ldmsctl_json_value_get(jvalue, "metrics");
-	if (!metric_array_jvalue || (metric_array_jvalue->type != json_array)) {
-		printf("---Invalid storage policy status format---\n");
-		return;
-	}
+	metrics = json_value_find(strgp, "metrics");
+	if (!metrics || (metrics->type != JSON_LIST_VALUE))
+		goto invalid_result_format;
+
 	printf("     metrics:");
-	for (i = 0; i < metric_array_jvalue->u.array.length; i++) {
-		metric_jvalue = ldmsctl_json_array_ele_get(metric_array_jvalue, i);
-		if (!metric_jvalue || (metric_jvalue->type != json_string)) {
-			printf("---Invalid storage policy status format---\n");
+	for (metric = json_item_first(metrics); metric;
+					metric = json_item_next(metric)) {
+		if (!metric || (metric->type != JSON_STRING_VALUE)) {
+			printf("---Invalid result format---\n");
 			return;
 		}
-		printf(" %s", metric_jvalue->u.string.ptr);
+		printf(" %s", json_value_str(metric)->str);
 	}
 	printf("\n");
+	return;
+
+invalid_result_format:
+	printf("---Invalid result format---\n");
+	return;
 }
 
 static void resp_strgp_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
@@ -1106,26 +1212,35 @@ static void resp_strgp_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
-	json_value *json, *prdcr_json;
-	json = json_parse((char*)attr->attr_value, len);
-	if (!json)
-		return;
 
-	if (json->type != json_array) {
-		printf("Unrecognized producer status format\n");
+	json_parser_t parser;
+	json_entity_t json, strgp;
+	int rc;
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
 		return;
 	}
-	int i;
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+	json_parser_free(parser);
 
+	if (json->type != JSON_LIST_VALUE) {
+		printf("Unrecognized producer status format\n");
+		goto out;
+	}
 	printf("Name             Container        Schema           Plugin           State\n");
 	printf("---------------- ---------------- ---------------- ---------------- ------------\n");
 
-	for (i = 0; i < json->u.array.length; i++) {
-		prdcr_json = ldmsctl_json_array_ele_get(json, i);
-		__print_strgp_status(prdcr_json);
+	for (strgp = json_item_first(json); strgp; strgp = json_item_next(strgp)) {
+		__print_strgp_status(strgp);
 	}
-	json_value_free(json);
-
+out:
+	json_entity_free(json);
 }
 
 static void help_strgp_status()
@@ -1135,50 +1250,66 @@ static void help_strgp_status()
 	       "      None\n");
 }
 
-static void __print_plugn_sets(json_value *plugin_sets)
+static void __print_plugn_sets(json_entity_t plugin_sets)
 {
-	json_value *sets, *set_name;
-	char *pi_name;
+	json_entity_t sets, set_name, pi_name;
 	int i;
-	pi_name = ldmsctl_json_str_value_get(plugin_sets, "plugin");
+	pi_name = json_value_find(plugin_sets, "plugin");
 	if (!pi_name) {
-		printf("Unrecognized json object\n");
+		printf("---Invalid result format---\n");
 		return;
 	}
-	printf("%s:\n", pi_name);
-	sets = ldmsctl_json_value_get(plugin_sets, "sets");
+	printf("%s:\n", json_value_str(pi_name)->str);
+	sets = json_value_find(plugin_sets, "sets");
 	if (!sets) {
 		printf("   None\n");
 		return;
 	}
-	for (i = 0; i < sets->u.array.length; i++) {
-		set_name = ldmsctl_json_array_ele_get(sets, i);
-		printf("   %s\n", set_name->u.string.ptr);
+	for (set_name = json_item_first(sets); set_name;
+			set_name = json_item_next(set_name)) {
+		printf("   %s\n", json_value_str(set_name)->str);
 	}
+	return;
 }
 
 static void resp_plugn_sets(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
-	json_value *json, *plugn_sets_json;
-	json = json_parse((char*)attr->attr_value, len);
-	if (!json)
-		return;
 
-	if (json->type != json_array) {
-		printf("Unrecognized plugn_sets json object\n");
+	json_parser_t parser;
+	json_entity_t json, plugin;
+	int rc;
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
 		return;
 	}
-	int i;
-
-	for (i = 0; i < json->u.array.length; i++) {
-		plugn_sets_json = json->u.array.values[i];
-		__print_plugn_sets(plugn_sets_json);
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
 	}
-	json_value_free(json);
+	json_parser_free(parser);
 
+	if (json->type != JSON_LIST_VALUE) {
+		printf("---Invalid result format---\n");
+		goto out;
+	}
+
+	for (plugin = json_item_first(json); plugin;
+				plugin = json_item_next(plugin)) {
+		__print_plugn_sets(plugin);
+	}
+out:
+	json_entity_free(json);
 }
 
 static void help_plugn_sets()
@@ -1202,85 +1333,131 @@ static void help_set_route()
 
 static void resp_set_route(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
-	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
-	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
-		return;
-	json_value *json, *route, *hop, *hinfo;
-	char *inst_name, *schema_name;
-
 	if (rsp_err) {
-		/* There is an error. */
 		resp_generic(resp, len, rsp_err);
 		return;
 	}
 
-	json = json_parse((char*)attr->attr_value, len);
-	if (!json)
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
 
-	if (json->type != json_object) {
-		printf("Unrecognized set info response format\n");
+	json_parser_t parser;
+	json_entity_t json, route, hop, hinfo;;
+	json_entity_t inst_name, schema_name;
+	int rc;
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
 		return;
 	}
-	inst_name = ldmsctl_json_str_value_get(json, "instance");
-	schema_name = ldmsctl_json_str_value_get(json, "schema");
+	json = NULL;
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+	json_parser_free(parser);
+
+	if (json->type != JSON_DICT_VALUE) {
+		printf("---Invalid result format---\n");
+		goto out;
+	}
+
+	inst_name = json_value_find(json, "instance");
+	schema_name = json_value_find(json, "schema");
+
+	if (!inst_name || !schema_name)
+		goto invalid_result_format;
 
 	printf("-----------------------------\n");
-	printf("instance: %s\n", inst_name);
-	printf("schema_name: %s\n", schema_name);
+	printf("instance: %s\n", json_value_str(inst_name)->str);
+	printf("schema_name: %s\n", json_value_str(schema_name)->str);
 	printf("=============================\n");
 	printf("%20s %15s %15s %15s %10s %10s %5s %25s %25s\n",
 			"host", "type", "name", "prdcr_host",
 			"interval", "offset", "sync", "start", "end");
 	printf("-------------------- --------------- --------------- --------------- "
 		"---------- ---------- ----- ------------------------- -------------------------\n");
-	route = ldmsctl_json_value_get(json, "route");
-	if (!route || (route->type != json_array)) {
-		printf("Unrecognized set info response format\n");
-		return;
-	}
-	int i;
-	char *host, *type, *name, *prdcr_host, *intrvl, *offset, *is_sync;
-	char *start_sec, *start_usec, *end_sec, *end_usec, *start, *end;
+	route = json_value_find(json, "route");
+	if (!route || (route->type != JSON_LIST_VALUE))
+		goto invalid_result_format;
+
+	json_entity_t host, type, name, prdcr_host, intrvl, offset, is_sync;
+	json_entity_t start_sec, start_usec, end_sec, end_usec;
+	char *prdcr_host_s, *type_s, *start, *end;
 	uint32_t sec, usec;
-	for (i = 0; i < route->u.array.length; i++) {
-		hop = ldmsctl_json_array_ele_get(route, i);
-		hinfo = ldmsctl_json_value_get(hop, "detail");
-		type = ldmsctl_json_str_value_get(hop, "type");
-		host = ldmsctl_json_str_value_get(hop, "host");
-		name = ldmsctl_json_str_value_get(hinfo, "name");
-		if (0 == strcmp(type, "producer")) {
-			prdcr_host = ldmsctl_json_str_value_get(hinfo, "host");
-			intrvl = ldmsctl_json_str_value_get(hinfo, "update_int");
-			offset = ldmsctl_json_str_value_get(hinfo, "update_off");
-			is_sync = ldmsctl_json_str_value_get(hinfo, "update_sync");
-			start_sec = ldmsctl_json_str_value_get(hinfo, "last_start_sec");
-			start_usec = ldmsctl_json_str_value_get(hinfo, "last_start_usec");
-			end_sec = ldmsctl_json_str_value_get(hinfo, "last_end_sec");
-			end_usec = ldmsctl_json_str_value_get(hinfo, "last_end_usec");
+
+	for (hop = json_item_first(route); hop; hop = json_item_next(hop)) {
+		hinfo = json_value_find(hop, "detail");
+		if (!hinfo || (hinfo->type != JSON_DICT_VALUE))
+			goto invalid_result_format;
+		type = json_value_find(hop, "type");
+		host = json_value_find(hop, "host");
+		name = json_value_find(hinfo, "name");
+
+		if (!type || !host || !name)
+			goto invalid_result_format;
+		type_s = json_value_str(type)->str;
+
+		if (0 == strcmp(type_s, "producer")) {
+			prdcr_host = json_value_find(hinfo, "host");
+			if (!prdcr_host)
+				goto invalid_result_format;
+			else
+				prdcr_host_s = json_value_str(prdcr_host)->str;
+			intrvl = json_value_find(hinfo, "update_int");
+			offset = json_value_find(hinfo, "update_off");
+			is_sync = json_value_find(hinfo, "update_sync");
+			start_sec = json_value_find(hinfo, "last_start_sec");
+			start_usec = json_value_find(hinfo, "last_start_usec");
+			end_sec = json_value_find(hinfo, "last_end_sec");
+			end_usec = json_value_find(hinfo, "last_end_usec");
 		} else {
-			prdcr_host = "---";
-			intrvl = ldmsctl_json_str_value_get(hinfo, "interval_us");
-			offset = ldmsctl_json_str_value_get(hinfo, "offset_us");
-			is_sync = ldmsctl_json_str_value_get(hinfo, "sync");
-			start_sec = ldmsctl_json_str_value_get(hinfo, "trans_start_sec");
-			start_usec = ldmsctl_json_str_value_get(hinfo, "trans_start_usec");
-			end_sec = ldmsctl_json_str_value_get(hinfo, "trans_end_sec");
-			end_usec = ldmsctl_json_str_value_get(hinfo, "trans_end_usec");
+			prdcr_host_s = "---";
+			intrvl = json_value_find(hinfo, "interval_us");
+			offset = json_value_find(hinfo, "offset_us");
+			is_sync = json_value_find(hinfo, "sync");
+			start_sec = json_value_find(hinfo, "trans_start_sec");
+			start_usec = json_value_find(hinfo, "trans_start_usec");
+			end_sec = json_value_find(hinfo, "trans_end_sec");
+			end_usec = json_value_find(hinfo, "trans_end_usec");
 		}
-		sec = strtoul(start_sec, NULL, 0);
-		usec = strtoul(start_usec, NULL, 0);
+		if (!intrvl || !offset || ! is_sync ||
+			!start_sec || !start_usec || !end_sec || !end_usec) {
+			goto invalid_result_format;
+		}
+
+		sec = strtoul(json_value_str(start_sec)->str, NULL, 0);
+		usec = strtoul(json_value_str(start_usec)->str, NULL, 0);
 		start = ldmsctl_ts_str(sec, usec);
-		sec = strtoul(end_sec, NULL, 0);
-		usec = strtoul(end_usec, NULL, 0);
+		sec = strtoul(json_value_str(end_sec)->str, NULL, 0);
+		usec = strtoul(json_value_str(end_usec)->str, NULL, 0);
 		end = ldmsctl_ts_str(sec, usec);
 		printf("%20s %15s %15s %15s %10s %10s %5s %25s %25s\n",
-					host, type, name, prdcr_host, intrvl,
-					offset, is_sync, start, end);
+					json_value_str(host)->str,
+					json_value_str(type)->str,
+					json_value_str(name)->str,
+					prdcr_host_s,
+					json_value_str(intrvl)->str,
+					json_value_str(offset)->str,
+					json_value_str(is_sync)->str,
+					start,
+					end);
 		free(start);
 		free(end);
 	}
-	json_value_free(json);
+	return;
+
+
+invalid_result_format:
+	printf("---Invalid result format---\n");
+out:
+	if (json)
+		json_entity_free(json);
+	return;
 }
 
 /* failover related functions */
@@ -1381,44 +1558,41 @@ static void __indent_print(int indent)
 	}
 }
 
-static void __json_value_print(json_value *v, int indent)
+static void __json_value_print(json_entity_t v, int indent)
 {
 	int i;
+	json_entity_t item, attr;
 	switch (v->type) {
-	case json_object:
-		for (i = 0; i < v->u.object.length; i++) {
+	case JSON_DICT_VALUE:
+		for (attr = json_attr_first(v); attr; attr = json_attr_next(attr)) {
 			printf("\n");
 			__indent_print(indent);
-			printf("%s: ", v->u.object.values[i].name);
-			__json_value_print(v->u.object.values[i].value,
-					   indent + 1);
+			printf("%s: ", json_attr_name(attr)->str);
+			__json_value_print(json_attr_value(attr), indent + 1);
 		}
 		break;
-	case json_array:
-		for (i = 0; i < v->u.array.length; i++) {
+	case JSON_LIST_VALUE:
+		for (item = json_item_first(v); item; item = json_item_next(item)) {
 			printf("\n");
 			__indent_print(indent);
 			printf("* ");
-			__json_value_print(v->u.array.values[i], indent + 1);
+			__json_value_print(item, indent + 1);
 		}
 		break;
-	case json_none:
-		printf("NONE");
-		break;
-	case json_null:
+	case JSON_NULL_VALUE:
 		printf("NULL");
 		break;
-	case json_integer:
-		printf("%ld", v->u.integer);
+	case JSON_INT_VALUE:
+		printf("%ld", v->value.int_);
 		break;
-	case json_double:
-		printf("%lf", v->u.dbl);
+	case JSON_FLOAT_VALUE:
+		printf("%lf", v->value.double_);
 		break;
-	case json_string:
-		printf("%s", v->u.string.ptr);
+	case JSON_STRING_VALUE:
+		printf("%s", json_value_str(v)->str);
 		break;
-	case json_boolean:
-		printf("%s", v->u.boolean?"True":"False");
+	case JSON_BOOL_VALUE:
+		printf("%s", v->value.bool_?"True":"False");
 		break;
 	}
 }
@@ -1434,21 +1608,27 @@ static void resp_failover_status(ldmsd_req_hdr_t resp, size_t len,
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
 		return;
 
-	json_value *json;
-	json = json_parse((char*)attr->attr_value, len);
-	if (!json)
-		return;
-
-	if (json->type != json_object) {
-		printf("Unrecognized failover status format\n");
+	json_parser_t parser;
+	json_entity_t json;
+	int rc;
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
 		return;
 	}
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+	json_parser_free(parser);
 
 	printf("--- Failover Status ---");
 	__json_value_print(json, 0);
 	printf("\n\n");
 
-	json_value_free(json);
+	json_entity_free(json);
 }
 
 static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
