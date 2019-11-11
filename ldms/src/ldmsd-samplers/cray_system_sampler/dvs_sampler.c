@@ -555,7 +555,7 @@ dvs_mount_t mount_dvs(dvs_sampler_inst_t inst, const char *dir)
 {
 	int rc = ENOMEM;
 	char path[PATH_MAX];
-	char lbuf[128];
+	char lbuf[PATH_MAX];
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	dvs_mount_t dvsm;
 	ldms_schema_t schema;
@@ -733,7 +733,7 @@ int remount_dvs(dvs_sampler_inst_t inst, dvs_mount_t dvsm)
  */
 int check_dvs(dvs_sampler_inst_t inst, dvs_mount_t dvsm)
 {
-	char path[256];
+	char path[PATH_MAX];
 	int rc;
 	char *mnt = NULL;
 	snprintf(path, sizeof(path), "%s/mount", dvsm->dir);
@@ -765,7 +765,7 @@ int dvs_sampler_sample(ldmsd_plugin_inst_t pi)
 	dvs_sampler_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	struct dirent *dent;
-	char path[512];
+	char path[PATH_MAX];
 	struct stat st;
 	int i, n, rc;
 	char *s;
