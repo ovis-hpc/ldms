@@ -16,3 +16,9 @@ LIBADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ -lovis_util -lovis_third
 libshm_sampler_la_SOURCES = shm_sampler.c $(BASE_SRC)
 libshm_sampler_la_LIBADD = $(LIBADD) $(JOBID_LIBFLAGS) shm_util/liblshm.la -lm -lrt -lpthread
 pkglib_LTLIBRARIES += libshm_sampler.la
+
+EXTRA_DIST = \
+	outline \
+	README.md \
+	test/example-mpi_profiler-conf.sh \
+	test/samplerd.conf
