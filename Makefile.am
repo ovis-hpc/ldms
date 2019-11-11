@@ -10,7 +10,10 @@ EXTRA_DIST= \
 autogen.sh \
 m4/Ovis-top.m4 \
 SHA.txt \
-TAG.txt
+TAG.txt \
+LICENSE \
+README.libevent2 \
+README.md
 
 DISTCLEANFILES = ovis-all-config.h
 

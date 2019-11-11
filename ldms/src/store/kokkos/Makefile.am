@@ -16,3 +16,4 @@ libkokkos_store_la_LIBADD = -lc $(COMMON_LIBADD) \
 
 pkglib_LTLIBRARIES += libkokkos_store.la
 
+EXTRA_DIST=kokkos.h kokkos_sampler.c

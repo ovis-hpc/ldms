@@ -19,3 +19,5 @@ libedac_la_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/$(SAMPLER)
 pkglib_LTLIBRARIES += libedac.la
 dist_man7_MANS += Plugin_edac.man
 endif
+
+EXTRA_DIST = LLNL_LICENSE_EDAC

@@ -1,3 +1,4 @@
+EXTRA_DIST=
 lib_LTLIBRARIES=
 SUBDIRS = . test
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
@@ -84,3 +85,5 @@ install-exec-hook:
 
 check-local:
 	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) ./test_plugattr $(srcdir)/input/test_plugattr.txt
+EXTRA_DIST += $(srcdir)/input/test_plugattr.txt
+EXTRA_DIST += $(srcdir)/input/bad_test_plugattr.txt

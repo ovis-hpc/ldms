@@ -1,3 +1,4 @@
+EXTRA_DIST =
 lib_LTLIBRARIES = libovis_third.la
 # Here's where small 3rd party stuff with its own licenses and no
 # commonly available packaged libraries is kept.
@@ -9,6 +10,10 @@ AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir)
 CITYSOURCE= city.c city.h citycrc.h
 B64SOURCE= cencode.c cencode.h
 B62SOURCE= b62encode.c b62encode.h
+
+EXTRA_DIST += cencode-LICENSE.txt
+EXTRA_DIST += city-LICENSE
+EXTRA_DIST += city-README.md
 
 libovis_third_la_SOURCES= $(CITYSOURCE) $(B62SOURCE)
 libovis_third_la_CFLAGS= -DCITYSLIM

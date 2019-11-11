@@ -1,3 +1,4 @@
+EXTRA_DIST=
 
 dist_man1_MANS= \
 ldms-csv-anonymize.man \
@@ -54,6 +55,7 @@ Plugin_syspapi_sampler.man
 if ENABLE_SLURMTEST
 dist_man8_MANS += pll-ldms-static-test.man
 endif
+EXTRA_DIST += pll-ldms-static-test.man
 
 dist_man7_MANS += Plugin_store_rabbitv3.man
 dist_man7_MANS += Plugin_store_rabbitkw.man
