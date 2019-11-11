@@ -228,8 +228,10 @@ OPTION_DEFAULT_DISABLE([munge], [ENABLE_MUNGE])
 OPTION_WITH([munge], [MUNGE])
 
 OPTION_DEFAULT_ENABLE([ovis-lib], [ENABLE_OVIS_LIB])
-# OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc third coll ovis_util zap ovis_ctrl ovis_event ovis_auth third/json_parser],[ovis-auth.sh],[ovis-lib],[ovis_auth])
-OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],[mmalloc third json tada coll ovis_util zap ovis_ctrl ovis_event ovis_auth third/json_parser],[ovis-auth.sh],[ovis-lib],[ovis_auth])
+OPTION_WITH_OR_BUILD([ovis-lib],[../lib/src],
+		     [mmalloc third json tada coll ovis_util zap ovis_ctrl \
+		      ovis_event ovis_auth],
+		      [ovis-auth.sh],[ovis-lib],[ovis_auth])
 dnl substitute values we need from ovis-auth.sh during joint configure
 AC_SUBST(OVIS_AUTH_LIBS)
 
