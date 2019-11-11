@@ -214,14 +214,6 @@ static spank_err_t _get_item_u32(spank_t s, int id, uint32_t *pv)
 	return 0;
 }
 
-static spank_err_t _get_item_u64(spank_t s, int id, uint64_t *pv)
-{
-	spank_err_t err = spank_get_item(s, id, pv);
-	if (err)
-		slurm_info("Spank returned %d accessing item %d\n", err, id);
-	return err;
-}
-
 static jbuf_t _append_item_u16(spank_t s, jbuf_t jb, const char *name, spank_item_t id, char term)
 {
 	uint16_t v;
@@ -242,18 +234,6 @@ static jbuf_t _append_item_u32(spank_t s, jbuf_t jb, const char *name, spank_ite
 		return NULL;
 	}
 	return jbuf_append_attr(jb, name, "%d%c", v, term);
-}
-
-__attribute__((unused))
-static jbuf_t _append_item_u64(spank_t s, jbuf_t jb, const char *name, spank_item_t id, char term)
-{
-	uint64_t v;
-	spank_err_t err = _get_item_u64(s, id, &v);
-	if (err) {
-		jbuf_free(jb);
-		return NULL;
-	}
-	return jbuf_append_attr(jb, name, "%ld%c", v, term);
 }
 
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
