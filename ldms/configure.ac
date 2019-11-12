@@ -150,6 +150,23 @@ OPTION_DEFAULT_DISABLE([grptest], [ENABLE_GRPTEST])
 dnl grptest will also build with --enable-ldms-test
 AM_CONDITIONAL([ENABLE_GRPTEST_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_GRPTEST_FALSE" = "x#"])
 
+dnl libpapi check
+if test -z "$ENABLE_PAPI_SAMPLER_TRUE"; then
+	TMPLIBS="$LIBS"
+	TMPCFLAGS="$CFLAGS"
+	LIBS=""
+	AC_CHECK_LIB(papi, PAPI_library_init, [],
+		AC_MSG_ERROR([libpapi not found (required by papi-sampler).]),
+		$LIBPAPI_LIBDIR_FLAG $LIBPAPI_LIB64DIR_FLAG)
+	LIBS=""
+	dnl Check headers
+	CFLAGS=$LIBPAPI_INCDIR_FLAG
+	AC_CHECK_HEADER(papi.h, [],
+		AC_MSG_ERROR([`papi.h` not found (required by papi-sampler).]))
+	LIBS="$TMPLIBS"
+	CFLAGS="$TMPCFLAGS"
+fi
+
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
@@ -534,6 +551,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd-samplers/shm/shm_util/Makefile
 		 src/ldmsd-samplers/shm/mpi_profiler/Makefile
 		 src/ldmsd-samplers/filesingle/Makefile
+		 src/ldmsd-samplers/papi/Makefile
 		 src/ldmsd-stores/Makefile
 		 src/ldmsd-stores/store_sos/Makefile
 		 src/ldmsd-stores/store_csv/Makefile

@@ -133,3 +133,7 @@ endif
 if ENABLE_SLURM_SAMPLER
 SUBDIRS += slurm
 endif
+
+if ENABLE_PAPI_SAMPLER
+SUBDIRS += papi
+endif
