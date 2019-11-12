@@ -323,5 +323,12 @@ json_entity_t ldmsd_sampler_query(ldmsd_plugin_inst_t i,
 #define LDMSD_INST_IS_SAMPLER(pi) (0 == strcmp((pi)->base->type_name, \
 				               LDMSD_SAMPLER_TYPENAME))
 
+/** component_id metric index (added by `SAMP->create_schema()`) */
+#define SAMPLER_COMP_IDX 0
+/** job_id metric index (added by `SAMP->create_schema()`) */
+#define SAMPLER_JOB_IDX  1
+/** app_id metric index (added by `SAMP->create_schema()`) */
+#define SAMPLER_APP_IDX  2
+
 /** \} */ /* defgroup ldmsd_sampler */
 #endif /* __LDMSD_SAMPLER_H__ */

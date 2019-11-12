@@ -327,10 +327,6 @@ out:
 	return result;
 }
 
-#define SAMPLER_COMP_IDX 0
-#define SAMPLER_JOB_IDX  1
-#define SAMPLER_APP_IDX  2
-
 static
 ldms_schema_t samp_create_schema(ldmsd_plugin_inst_t inst)
 {
