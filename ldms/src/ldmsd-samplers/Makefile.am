@@ -137,3 +137,7 @@ endif
 if ENABLE_PAPI_SAMPLER
 SUBDIRS += papi
 endif
+
+if ENABLE_SYSPAPI_SAMPLER
+SUBDIRS += syspapi
+endif

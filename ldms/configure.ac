@@ -105,6 +105,7 @@ if test -z "$ENABLE_MPI_SAMPLER_TRUE" ; then
 	AX_MPI([:],[ AC_MSG_ERROR([MPICC required by mpi_sampler ])])
 fi
 OPTION_WITH([libpapi], [LIBPAPI])
+OPTION_WITH([libpfm], [LIBPFM])
 OPTION_DEFAULT_ENABLE([procinterrupts], [ENABLE_PROCINTERRUPTS])
 OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
@@ -140,6 +141,7 @@ OPTION_DEFAULT_DISABLE([jobinfo-slurm], [ENABLE_SLURM_JOBINFO])
 OPTION_DEFAULT_DISABLE([spank-plugin], [ENABLE_SPANK_PLUGIN])
 OPTION_DEFAULT_ENABLE([slurm-sampler], [ENABLE_SLURM_SAMPLER])
 OPTION_DEFAULT_DISABLE([papi-sampler], [ENABLE_PAPI_SAMPLER])
+OPTION_DEFAULT_DISABLE([syspapi-sampler], [ENABLE_SYSPAPI_SAMPLER])
 OPTION_DEFAULT_DISABLE([ibm_occ], [ENABLE_IBM_OCC_SAMPLER])
 OPTION_DEFAULT_DISABLE([appinfo], [ENABLE_APPINFO])
 OPTION_DEFAULT_DISABLE([test_sampler], [ENABLE_TEST_SAMPLER])
@@ -151,18 +153,34 @@ dnl grptest will also build with --enable-ldms-test
 AM_CONDITIONAL([ENABLE_GRPTEST_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_GRPTEST_FALSE" = "x#"])
 
 dnl libpapi check
-if test -z "$ENABLE_PAPI_SAMPLER_TRUE"; then
+if test -z "$ENABLE_SYSPAPI_SAMPLER_TRUE" -o -z "$ENABLE_PAPI_SAMPLER_TRUE"; then
 	TMPLIBS="$LIBS"
 	TMPCFLAGS="$CFLAGS"
 	LIBS=""
 	AC_CHECK_LIB(papi, PAPI_library_init, [],
-		AC_MSG_ERROR([libpapi not found (required by papi-sampler).]),
+		AC_MSG_ERROR([libpapi not found (required by papi-sampler/syspapi-sampler).]),
 		$LIBPAPI_LIBDIR_FLAG $LIBPAPI_LIB64DIR_FLAG)
 	LIBS=""
 	dnl Check headers
 	CFLAGS=$LIBPAPI_INCDIR_FLAG
 	AC_CHECK_HEADER(papi.h, [],
-		AC_MSG_ERROR([`papi.h` not found (required by papi-sampler).]))
+		AC_MSG_ERROR([`papi.h` not found (required by papi-sampler/syspapi-sampler).]))
+	LIBS="$TMPLIBS"
+	CFLAGS="$TMPCFLAGS"
+fi
+
+if test -z "$ENABLE_SYSPAPI_SAMPLER_TRUE"; then
+	TMPLIBS="$LIBS"
+	TMPCFLAGS="$CFLAGS"
+	LIBS=""
+	AC_CHECK_LIB(pfm, pfm_initialize, [],
+		AC_MSG_ERROR([libpfm not found (required by syspapi-sampler).]),
+		$LIBPFM_LIBDIR_FLAG $LIBPFM_LIB64DIR_FLAG)
+	LIBS=""
+	dnl Check headers
+	CFLAGS=$LIBPFM_INCDIR_FLAG
+	AC_CHECK_HEADER(perfmon/pfmlib_perf_event.h, [],
+		AC_MSG_ERROR([`perfmon/pfmlib_perf_event.h` not found (required by syspapi-sampler).]))
 	LIBS="$TMPLIBS"
 	CFLAGS="$TMPCFLAGS"
 fi
@@ -552,6 +570,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd-samplers/shm/mpi_profiler/Makefile
 		 src/ldmsd-samplers/filesingle/Makefile
 		 src/ldmsd-samplers/papi/Makefile
+		 src/ldmsd-samplers/syspapi/Makefile
 		 src/ldmsd-stores/Makefile
 		 src/ldmsd-stores/store_sos/Makefile
 		 src/ldmsd-stores/store_csv/Makefile
