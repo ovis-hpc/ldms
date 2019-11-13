@@ -86,27 +86,48 @@ LLITES =  ( "llite" , LLITE_STATS ,  [ "lustre-ffff99fc39c11800"             ]  
 PROCFILES = [ "/proc/fs/lustre/%s/%s/stats" % (p, o) \
                    for p, lm, x in (MDCS, OSCS, LLITES) for o in x ]
 
+DEV_NO = dict()
+NEXT_NO = 1
+
+def patch_metric_name(name):
+    global DEV_NO
+    global NEXT_NO
+    name = name.replace("#osc.lustre-", "#")
+    name = name.replace("#llite.lustre-", "#")
+    name = name.replace("#mdt.lustre-", "#")
+    name = name.replace("#mdc.lustre-", "#")
+    m = re.match(r'.*([0-9a-f]{16})$', name)
+    if m:
+        # replace the 16 hex with device number
+        k = m.group(1)
+        v = DEV_NO.setdefault(k, NEXT_NO)
+        if v == NEXT_NO:
+            NEXT_NO += 1
+        v = "{:02d}".format(v)
+        name = name.replace(k, v)
+    return name
+
 def client_metrics(proc_fs_lustre):
     # the `proc_fs_lustre` is the directory contain files from /proc/fs/lustre
     ret = dict()
 
     # -- initialize all metrics to 0 --
     ret.update({
-            ("client.lstats.%s#%s.%s" % (m, p, o)): 0 \
+            patch_metric_name("client.%s#%s.%s" % (m, p, o)): 0 \
                 for p,lm,x in (MDCS, OSCS, LLITES) for o in x for m in lm
         })
 
     PROCENTRIES = \
-        [ ("client.lstats.", "#%s.%s"%(p, o),
+        [ ("client.", "#%s.%s"%(p, o),
             proc_fs_lustre+"/"+p+"/"+o+"/stats", lm) \
                 for p,lm,x in (MDCS, OSCS, LLITES) for o in x]
 
     for prefix, suffix, _path, fltr in PROCENTRIES:
         if not os.path.exists(_path):
             continue
-        ret[prefix + "status" + suffix] = 1
+        ret[patch_metric_name(prefix + "status" + suffix)] = 1
         mx = lstats_parse(_path, fltr)
-        ret.update( { (prefix + k + suffix): v for k,v in mx.iteritems() } )
+        ret.update( { patch_metric_name(prefix + k + suffix): v for k,v in mx.iteritems() } )
     return ret
 
 
@@ -175,7 +196,7 @@ class LustreClientTest(LDMSChrootTest, unittest.TestCase):
         D.d1 = d1
         self.assertEqual(set(d0.keys()), set(d1.keys()))
         for name in d0.keys():
-            self.assertRegexpMatches(name, r'^client\.lstats\.[^.]+\.rate#.*')
+            self.assertRegexpMatches(name, r'^client\.[^.]+\.rate#.*')
 
 
 if __name__ == "__main__":

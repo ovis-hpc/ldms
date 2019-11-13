@@ -94,6 +94,27 @@ PROCFILES = \
         [ "/proc/fs/lustre/mds/MDS/" + x + "/stats" for x in MDS_SERVICES ] + \
         [ "/proc/fs/lustre/mdt/" + x + "/md_stats" for x in MDTS ]
 
+DEV_NO = dict()
+NEXT_NO = 1
+
+def patch_metric_name(name):
+    global DEV_NO
+    global NEXT_NO
+    name = name.replace("#osc.lustre-", "#")
+    name = name.replace("#llite.lustre-", "#")
+    name = name.replace("#mdt.lustre-", "#")
+    name = name.replace("#mdc.lustre-", "#")
+    m = re.match(r'.*([0-9a-f]{16})$', name)
+    if m:
+        # replace the 16 hex with device number
+        k = m.group(1)
+        v = DEV_NO.setdefault(k, NEXT_NO)
+        if v == NEXT_NO:
+            NEXT_NO += 1
+        v = "{:02d}".format(v)
+        name = name.replace(k, v)
+    return name
+
 def mds_metrics(proc_fs_lustre):
     # the `proc_fs_lustre` is the directory contain files from /proc/fs/lustre
     ret = dict()
@@ -101,19 +122,19 @@ def mds_metrics(proc_fs_lustre):
     # -- initialize all metrics to 0 --
     # lstats for services
     ret.update({
-            ("mds.lstats." + mt + "#mds." + svc): 0 \
+            patch_metric_name("mds.lstats." + mt + "#mds." + svc): 0 \
                     for mt in LSTATS \
                     for svc in MDS_SERVICES
         })
     # lstats for MDT
     ret.update({
-            ("mds.lstats." + mt + "#mdt." + mdt): 0 \
+            patch_metric_name("mds.lstats." + mt + "#mdt." + mdt): 0 \
                     for mt in LSTATS \
                     for mdt in MDTS
         })
     # md_stats
     ret.update({
-            ("md_stats." + mt + "#mdt." + mdt): 0 \
+            patch_metric_name("md_stats." + mt + "#mdt." + mdt): 0 \
                     for mt in MD_STATS \
                     for mdt in MDTS
         })
@@ -132,9 +153,9 @@ def mds_metrics(proc_fs_lustre):
     for prefix, suffix, _path, fltr in MDS_PROCENTRIES:
         if not os.path.exists(_path):
             continue
-        ret[prefix + "status" + suffix] = 1
+        ret[patch_metric_name(prefix + "status" + suffix)] = 1
         mx = lstats_parse(_path, fltr)
-        ret.update( { (prefix + k + suffix): v for k,v in mx.iteritems() } )
+        ret.update( { patch_metric_name(prefix + k + suffix): v for k,v in mx.iteritems() } )
     return ret
 
 src_data = [
