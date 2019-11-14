@@ -185,6 +185,23 @@ if test -z "$ENABLE_SYSPAPI_SAMPLER_TRUE"; then
 	CFLAGS="$TMPCFLAGS"
 fi
 
+OPTION_WITH([libcurl], [LIBCURL])
+dnl check for libcurl if influx is configured
+OPTION_DEFAULT_DISABLE([influx], [ENABLE_INFLUX])
+if test -z "$ENABLE_INFLUX_TRUE"; then
+	TMPLIBS="$LIBS"
+	TMPCFLAGS="$CFLAGS"
+	LIBS=""
+	AC_CHECK_LIB(curl, curl_version, [],
+		AC_MSG_ERROR([libcurl not found (required by influx).]),
+		$LIBCURL_LIBDIR_FLAG $LIBCURL_LIB64DIR_FLAG)
+	CFLAGS=$LIBCURL_INCDIR_FLAG
+	AC_CHECK_HEADER(curl/curl.h, [],
+		AC_MSG_ERROR([`curl.h` not found (required by influx).]))
+	LIBS="$TMPLIBS"
+	CFLAGS="$TMPCFLAGS"
+fi
+
 
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
@@ -576,6 +593,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd-stores/store_csv/Makefile
 		 src/ldmsd-stores/store_amqp/Makefile
 		 src/ldmsd-stores/store_test/Makefile
+		 src/ldmsd-stores/store_influx/Makefile
 		 scripts/Makefile
 		 src/test/Makefile
 		 etc/Makefile

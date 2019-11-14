@@ -19,3 +19,7 @@ endif
 if ENABLE_STORE_TEST
 SUBDIRS += store_test
 endif
+
+if ENABLE_INFLUX
+SUBDIRS += store_influx
+endif
