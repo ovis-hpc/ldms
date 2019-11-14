@@ -611,6 +611,7 @@ int procstat_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	procstat_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
+	json_entity_t jvalue;
 	const char *value;
 	char *endp;
 	int rc;
@@ -626,8 +627,14 @@ int procstat_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	if (rc)
 		return rc;
 
-	value = json_attr_find_str(json, "maxcpu");
-	if (value) {
+	jvalue = json_value_find(json, "maxcpu");
+	if (jvalue) {
+		if (jvalue->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The given 'maxcpu' value is "
+					"not a string.\n", pi->inst_name);
+			return EINVAL;
+		}
+		value = json_value_str(jvalue)->str;
 		utmp = strtoull(value, &endp, 0);
 		if (endp == value) {
 			snprintf(ebuf, ebufsz,

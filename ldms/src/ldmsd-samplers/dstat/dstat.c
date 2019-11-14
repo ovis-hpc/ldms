@@ -316,7 +316,7 @@ int dstat_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	dstat_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	ldms_set_t set;
-	const char *doio, *dostat, *dostatm, *dommalloc;
+	json_entity_t doio, dostat, dostatm, dommalloc;
 	struct proc_pid_stat stat;
 	int rc;
 
@@ -324,21 +324,53 @@ int dstat_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	if (rc)
 		return rc;
 
-	doio = json_attr_find_str(json, "io");
-	dostat = json_attr_find_str(json, "stat");
-	dostatm = json_attr_find_str(json, "statm");
-	dommalloc = json_attr_find_str(json, "mmalloc");
+	doio = json_value_find(json, "io");
+	dostat = json_value_find(json, "stat");
+	dostatm = json_value_find(json, "statm");
+	dommalloc = json_value_find(json, "mmalloc");
 	if (!doio && !dostat && !dostatm && !dommalloc) {
 		inst->pidopts = ( PID_IO | PID_STAT | PID_STATM );
 	} else {
-		if (doio && get_bool(inst, doio, "io"))
-			inst->pidopts |= PID_IO;
-		if (dostat && get_bool(inst, dostat, "stat"))
-			inst->pidopts |= PID_STAT;
-		if (dostatm && get_bool(inst, dostatm, "statm"))
-			inst->pidopts |= PID_STATM;
-		if (dommalloc && get_bool(inst, dommalloc, "mmalloc"))
-			inst->pidopts |= PID_MMALLOC;
+		if (doio) {
+			if (doio->type != JSON_STRING_VALUE) {
+				ldmsd_log(LDMSD_LERROR, "%s: "
+						"The given 'io' value is not "
+						"a string.\n", pi->inst_name);
+				return EINVAL;
+			}
+			if (get_bool(inst, json_value_str(doio)->str, "io"))
+				inst->pidopts |= PID_IO;
+		}
+		if (dostat) {
+			if (dostat->type != JSON_STRING_VALUE) {
+				ldmsd_log(LDMSD_LERROR, "%s: "
+						"The given 'stat' value is not "
+						"a string.\n", pi->inst_name);
+				return EINVAL;
+			}
+			if (get_bool(inst, json_value_str(dostat)->str, "stat"))
+				inst->pidopts |= PID_STAT;
+		}
+		if (dostatm) {
+			if (dostatm->type != JSON_STRING_VALUE) {
+				ldmsd_log(LDMSD_LERROR, "%s: "
+						"The given 'statm' value is not "
+						"a string.\n", pi->inst_name);
+				return EINVAL;
+			}
+			if (get_bool(inst, json_value_str(dostatm)->str, "statm"))
+				inst->pidopts |= PID_STATM;
+		}
+		if (dommalloc) {
+			if (dommalloc->type != JSON_STRING_VALUE) {
+				INST_LOG(inst, LDMSD_LERROR,
+						"The given 'mmalloc' value is not "
+						"a string.\n");
+				return EINVAL;
+			}
+			if (get_bool(inst, json_value_str(dommalloc)->str, "mmalloc"))
+				inst->pidopts |= PID_MMALLOC;
+		}
 	}
 	if (!inst->pidopts) {
 		snprintf(ebuf, ebufsz, "configured with nothing to do.\n");

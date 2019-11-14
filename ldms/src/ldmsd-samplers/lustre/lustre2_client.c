@@ -270,7 +270,8 @@ int lustre2_client_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
 	int rc;
-	const char *val;
+	json_entity_t val;
+	char *attr_name;
 
 	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
@@ -292,11 +293,18 @@ int lustre2_client_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 
 	/* processing `llite`, `osc`, and `mdc` attributes */
 	for (ent = ents; ent->name; ent++) {
-		val = json_attr_find_str(json, (char *)ent->name);
-		val = (val)?(val):json_attr_find_str(json, (char *)ent->alt_name);
+		val = json_value_find(json, (char *)ent->name);
+		val = (val)?(val):json_value_find(json, (char *)ent->alt_name);
+		attr_name = (val)?(char*)ent->name:(char*)ent->alt_name;
 		if (!val)
 			continue;
-		rc = construct_client_list(ent->h, val, ent->path);
+		if (val->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The given '%s' value is "
+						"not a string.\n",
+						pi->inst_name, attr_name);
+			return EINVAL;
+		}
+		rc = construct_client_list(ent->h, (char *)json_value_str(val)->str, ent->path);
 		if (rc < 0)
 			return -rc; /* rc == -errno */
 	}

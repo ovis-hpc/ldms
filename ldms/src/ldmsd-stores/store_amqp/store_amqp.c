@@ -138,8 +138,7 @@ static size_t realloc_msg_buf(store_amqp_inst_t inst, size_t buf_len)
 static int setup_certs(store_amqp_inst_t inst, const char *cacert, json_entity_t json)
 {
 	int rc;
-	const char *key;
-	const char *cert;
+	json_entity_t key, cert;
 
 	rc = amqp_ssl_socket_set_cacert(inst->socket, cacert);
 	if (rc) {
@@ -147,23 +146,36 @@ static int setup_certs(store_amqp_inst_t inst, const char *cacert, json_entity_t
 			 "Error %d setting the CA cert file.\n", rc);
 		goto out;
 	}
-	key = json_attr_find_str(json, "key");
-	cert = json_attr_find_str(json, "cert");
-	if (key) {
-		if ((key && !cert) || (cert && !key)) {
-			rc = EINVAL;
-			INST_LOG(inst, LDMSD_LERROR,
-				 "The key .PEM and cert.PEM files must"
-				 "be specified together.\n");
+	key = json_value_find(json, "key");
+	cert = json_value_find(json, "cert");
+	if ((key && !cert) || (cert && !key)) {
+		rc = EINVAL;
+		INST_LOG(inst, LDMSD_LERROR,
+			 "The key .PEM and cert.PEM files must"
+			 "be specified together.\n");
+		goto out;
+	}
+	if (cert && key) {
+		if (cert->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The given 'cert' value is "
+					"not a string.\n", inst->base.inst_name);
 			goto out;
 		}
-		rc = amqp_ssl_socket_set_key(inst->socket, cert, key);
+		if (key->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The given 'key' value is "
+					"not a string.\n", inst->base.inst_name);
+			goto out;
+		}
+		rc = amqp_ssl_socket_set_key(inst->socket,
+						json_value_str(cert)->str,
+						json_value_str(key)->str);
 		if (rc) {
 			INST_LOG(inst, LDMSD_LERROR,
 				 "Error %d setting key and cert files.\n", rc);
 			goto out;
 		}
 	}
+
  out:
 	return rc;
 }
@@ -364,8 +376,9 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	ldmsd_store_type_t store = (void*)inst->base.base;
 	int rc;
 
-	const char *value;
+	json_entity_t value;
 	amqp_rpc_reply_t qrc;
+	char *value_s, *attr_name;
 
 	rc = store->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
@@ -373,36 +386,50 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 
 	inst->formatter = formatters[JSON_FMT];
 	inst->routing_key = "JSON";
-	value = json_attr_find_str(json, "format");
+	value = json_value_find(json, "format");
 	if (value) {
-		if (0 == strcasecmp(value, "csv")) {
+		if (value->type != JSON_STRING_VALUE) {
+			attr_name = "format";
+			goto einval_not_string;
+		}
+		value_s = json_value_str(value);
+		if (0 == strcasecmp(value_s, "csv")) {
 			inst->formatter = formatters[CSV_FMT];
 			inst->routing_key = "CSV";
-		} else if (0 == strcasecmp(value, "binary")) {
+		} else if (0 == strcasecmp(value_s, "binary")) {
 			inst->formatter = formatters[BIN_FMT];
 			inst->routing_key = "BIN";
-		} else if (0 != strcasecmp(value, "json")) {
+		} else if (0 != strcasecmp(value_s, "json")) {
 			INST_LOG(inst, LDMSD_LINFO,
 				 "Invalid formatter '%s' specified, "
 				 "defaulting to JSON.\n", value);
 		}
 	}
-	value = json_attr_find_str(json, "host");
+	value = json_value_find(json, "host");
 	if (!value) {
 		snprintf(ebuf, ebufsz,
 			 "The host parameter must be specified.\n");
 		rc = EINVAL;
 		goto err_1;
 	}
-	inst->host = strdup(value);
+	if (value->type != JSON_STRING_VALUE) {
+		attr_name = "host";
+		goto einval_not_string;
+	}
+	inst->host = strdup(json_value_str(value)->str);
+
 	if (!inst->host) {
 		snprintf(ebuf, ebufsz, "OOM error copying host name.\n");
 		rc = ENOMEM;
 		goto err_1;
 	}
-	value = json_attr_find_str(json, "exchange");
+	value = json_value_find(json, "exchange");
 	if (value) {
-		inst->exchange = strdup(value);
+		if (value->type != JSON_STRING_VALUE) {
+			attr_name = "exchange";
+			goto einval_not_string;
+		}
+		inst->exchange = strdup(json_value_str(value)->str);
 		if (!inst->exchange) {
 			snprintf(ebuf, ebufsz,
 				 "OOM error copying queue name.\n");
@@ -410,45 +437,65 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 			goto err_1;
 		}
 	}
-	value = json_attr_find_str(json, "port");
+	value = json_value_find(json, "port");
 	if (value) {
+		if (value->type != JSON_STRING_VALUE) {
+			attr_name = "port";
+			goto einval_not_string;
+		}
 		long sl;
-		sl = strtol(value, NULL, 0);
+		sl = strtol(json_value_str(value)->str, NULL, 0);
 		if (sl < 1 || sl > USHRT_MAX) {
 			snprintf(ebuf, ebufsz,
-				 "Invalid port number %s.\n", value);
+				 "Invalid port number %s.\n",
+				 json_value_str(value)->str);
 			goto err_1;
 		}
 		inst->port = sl;
 	} else {
 		inst->port = DEF_AMQP_TCP_PORT;
 	}
-	value = json_attr_find_str(json, "vhost");
-	if (value)
-		inst->vhost = strdup(value);
-	else
+	value = json_value_find(json, "vhost");
+	if (value) {
+		if (value->type != JSON_STRING_VALUE) {
+			attr_name = "vhost";
+			goto einval_not_string;
+		}
+		inst->vhost = strdup(json_value_str(value)->str);
+	} else {
 		inst->vhost = strdup("/");
+	}
 	if (!inst->vhost) {
 		snprintf(ebuf, ebufsz,
 			 "OOM error copying vhost.\n");
 		rc = ENOMEM;
 		goto err_1;
 	}
-	value = json_attr_find_str(json, "user");
-	if (value)
-		inst->user = strdup(value);
-	else
+	value = json_value_find(json, "user");
+	if (value) {
+		if (value->type != JSON_STRING_VALUE) {
+			attr_name = "user";
+			goto einval_not_string;
+		}
+		inst->user = strdup(json_value_str(value)->str);
+	} else {
 		inst->user = strdup("guest");
+	}
 	if (!inst->user) {
 		snprintf(ebuf, ebufsz, "OOM error copying user name.\n");
 		rc = ENOMEM;
 		goto err_1;
 	}
-	value = json_attr_find_str(json, "pwd");
-	if (value)
-		inst->pwd = strdup(value);
-	else
+	value = json_value_find(json, "pwd");
+	if (value) {
+		if (value->type != JSON_STRING_VALUE) {
+			attr_name = "pwd";
+			goto einval_not_string;
+		}
+		inst->pwd = strdup(json_value_str(value)->str);
+	} else {
 		inst->pwd = strdup("guest");
+	}
 	if (!inst->pwd) {
 		snprintf(ebuf, ebufsz, "OOM error copying password.\n");
 		rc = ENOMEM;
@@ -477,9 +524,13 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 			 "Error %d creating the AMQP socket.\n", rc);
 		goto err_2;
 	}
-	value = json_attr_find_str(json, "cacert");
+	value = json_value_find(json, "cacert");
 	if (value) {
-		rc = setup_certs(inst, value, json);
+		if (value->type != JSON_STRING_VALUE) {
+			attr_name = "cacert";
+			goto einval_not_string;
+		}
+		rc = setup_certs(inst, json_value_str(value)->str, json);
 		if (rc)
 			goto err_3;
 	}
@@ -511,6 +562,11 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, json_entity_t json,
  err_1:
 	store_amqp_cleanup(inst);
 	return rc;
+
+ einval_not_string:
+	ldmsd_log(LDMSD_LERROR, "%s: The given '%s' value is not a string.\n",
+ 					inst->base.inst_name, attr_name);
+ 	return EINVAL;
 }
 
 #define _FREE(x) do { \

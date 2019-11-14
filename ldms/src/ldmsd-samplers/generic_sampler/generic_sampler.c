@@ -441,28 +441,38 @@ int generic_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
 	int rc;
-	char *value;
+	json_entity_t value;
 
 	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	/* Plugin-specific config here */
-	value = (char *)json_attr_find_str(json, "path");
+	value = json_value_find(json, "path");
 	if (value) {
-		inst->path = strdup(value);
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The given 'path' value "
+					"is not a string.\n", inst->base.inst_name);
+			return EINVAL;
+		}
+		inst->path = strdup(json_value_str(value)->str);
 		if (!inst->path) {
 			return ENOMEM;
 		}
 	}
 
-	value = (char *)json_attr_find_str(json, "mx");
+	value = json_value_find(json, "mx");
 	if (!value) {
 		ldmsd_log(LDMSD_LERROR, "%s: No 'mx' is given.\n",
 			  pi->inst_name);
 		return EINVAL;
 	}
-	rc = __process_metrics(inst, value);
+	if (value->type != JSON_STRING_VALUE) {
+		ldmsd_log(LDMSD_LERROR, "%s: The given 'mx' value "
+				"is not a string.\n", inst->base.inst_name);
+		return EINVAL;
+	}
+	rc = __process_metrics(inst, json_value_str(value)->str);
 	if (rc)
 		return rc;
 

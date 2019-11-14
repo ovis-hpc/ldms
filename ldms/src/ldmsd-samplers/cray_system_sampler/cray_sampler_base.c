@@ -96,7 +96,7 @@ int get_offns_generic(cray_system_sampler_sources_t i)
 
 int config_generic(cray_sampler_inst_t inst, json_entity_t json)
 {
-	const char *value = NULL;
+	json_entity_t value = NULL;
 	int flag;
 	int rc = 0;
 
@@ -119,49 +119,86 @@ int config_generic(cray_sampler_inst_t inst, json_entity_t json)
 	  just go thru the list
 	*/
 
-	value = json_attr_find_str(json, "off_nettopo");
+	value = json_value_find(json, "off_nettopo");
 	if (value) {
-		flag = atoi(value);
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The 'off_nettopo' value is "
+						"not a string.\n",
+						inst->base.inst_name);
+			return EINVAL;
+		}
+		flag = atoi(json_value_str(value)->str);
 		if (flag == 1){
 			inst->offns[NS_NETTOPO] = 1;
 		}
 	}
 
-	value = json_attr_find_str(json, "off_energy");
+	value = json_value_find(json, "off_energy");
 	if (value) {
-		flag = atoi(value);
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The 'off_energy' value is "
+						"not a string.\n",
+						inst->base.inst_name);
+			return EINVAL;
+		}
+		flag = atoi(json_value_str(value)->str);
 		if (flag == 1){
 			inst->offns[NS_ENERGY] = 1;
 		}
 	}
 
-	value = json_attr_find_str(json, "off_vmstat");
+	value = json_value_find(json, "off_vmstat");
 	if (value) {
-		flag = atoi(value);
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The 'off_vmstat' value is "
+						"not a string.\n",
+						inst->base.inst_name);
+			return EINVAL;
+		}
+		flag = atoi(json_value_str(value)->str);
 		if (flag == 1){
 			inst->offns[NS_VMSTAT] = 1;
 		}
 	}
 
-	value = json_attr_find_str(json, "off_loadavg");
+	value = json_value_find(json, "off_loadavg");
 	if (value) {
-		flag = atoi(value);
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The 'off_loadavg' value is "
+						"not a string.\n",
+						inst->base.inst_name);
+			return EINVAL;
+		}
+		flag = atoi(json_value_str(value)->str);
 		if (flag == 1){
 			inst->offns[NS_LOADAVG] = 1;
 		}
 	}
 
-	value = json_attr_find_str(json, "off_current_freemem");
+	value = json_value_find(json, "off_current_freemem");
 	if (value) {
-		flag = atoi(value);
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: "
+					"The 'off_current_freemem' value is "
+					"not a string.\n",
+					inst->base.inst_name);
+			return EINVAL;
+		}
+		flag = atoi(json_value_str(value)->str);
 		if (flag == 1){
 			inst->offns[NS_CURRENT_FREEMEM] = 1;
 		}
 	}
 
-	value = json_attr_find_str(json, "off_kgnilnd");
+	value = json_value_find(json, "off_kgnilnd");
 	if (value) {
-		flag = atoi(value);
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The 'off_kgnilnd' value is "
+						"not a string.\n",
+						inst->base.inst_name);
+			return EINVAL;
+		}
+		flag = atoi(json_value_str(value)->str);
 		if (flag == 1){
 			inst->offns[NS_KGNILND] = 1;
 		}
@@ -170,34 +207,62 @@ int config_generic(cray_sampler_inst_t inst, json_entity_t json)
 	//note: you can also turn off lustre but not specifying
 	//any llites. If you do specify llites, this has precedence
 #ifdef HAVE_LUSTRE
-	value = json_attr_find_str(json, "llite");
+	value = json_value_find(json, "llite");
 	if (!value) {
-		value = json_attr_find_str(json, "llites"); /* also try alt name */
+		value = json_value_find(json, "llites"); /* also try alt name */
 	}
-	if (value)
-		construct_str_list(&inst->llites, value);
-
-	value = json_attr_find_str(json, "off_lustre");
 	if (value) {
-		flag = atoi(value);
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: "
+					"The 'llite' or 'llites' value is "
+					"not a string.\n",
+					inst->base.inst_name);
+			return EINVAL;
+		}
+		construct_str_list(&inst->llites, (char *)json_value_str(value)->str);
+	}
+
+
+	value = json_value_find(json, "off_lustre");
+	if (value) {
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: "
+					"The 'off_lustre' value is "
+					"not a string.\n",
+					inst->base.inst_name);
+			return EINVAL;
+		}
+		flag = atoi(json_value_str(value)->str);
 		if (flag == 1){
 			inst->offns[NS_LUSTRE] = 1;
 		}
 	}
 #endif
 
-	value = json_attr_find_str(json, "off_procnetdev");
+	value = json_value_find(json, "off_procnetdev");
 	if (value) {
-		flag = atoi(value);
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The 'off_procnetdev' value is "
+						"not a string.\n",
+						inst->base.inst_name);
+			return EINVAL;
+		}
+		flag = atoi(json_value_str(value)->str);
 		if (flag == 1){
 			inst->offns[NS_PROCNETDEV] = 1;
 		}
 	}
 
 #ifdef HAVE_CRAY_NVIDIA
-	value = json_attr_find_str(json, "off_nvidia");
+	value = json_value_find(json, "off_nvidia");
 	if (value) {
-		flag = atoi(value);
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The 'off_nvidia' value is "
+						"not a string.\n",
+						inst->base.inst_name);
+			return EINVAL;
+		}
+		flag = atoi(json_value_str(value)->str);
 		if (flag == 1){
 			inst->offns[NS_NVIDIA] = 1;
 		}

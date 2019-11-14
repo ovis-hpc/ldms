@@ -207,6 +207,7 @@ int sysclassblock_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	sysclassblock_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
+	json_entity_t jvalue;
 	const char *dev;
 	int rc;
 	ssize_t sz;
@@ -231,16 +232,22 @@ int sysclassblock_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		goto out;
 
 	/* dev or device for backward comp */
-	dev = json_attr_find_str(json, "dev");
-	if (!dev)
-		dev = json_attr_find_str(json, "device");
-	if (!dev) {
+	jvalue = json_value_find(json, "dev");
+	if (!jvalue)
+		jvalue = json_value_find(json, "device");
+	if (!jvalue) {
 		snprintf(ebuf, ebufsz, "%s: `dev` attribute is needed\n",
 			 pi->inst_name);
 		rc = EINVAL;
 		goto out;
 	}
-
+	if (jvalue->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'device' value is "
+				"not a string.\n", pi->inst_name);
+		rc = EINVAL;
+		goto out;
+	}
+	dev = json_value_str(jvalue)->str;
 	inst->dev = strdup(dev);
 	if (!inst->dev) {
 		snprintf(ebuf, ebufsz, "%s: out of memory\n",

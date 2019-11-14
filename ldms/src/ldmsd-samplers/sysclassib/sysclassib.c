@@ -533,6 +533,7 @@ int sysclassib_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	ldms_set_t set;
 	int rc;
 	const char *val;
+	json_entity_t jval;
 
 	if (inst->port) {
 		snprintf(ebuf, ebufsz, "%s: already configured", pi->inst_name);
@@ -544,18 +545,29 @@ int sysclassib_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		return rc;
 
 	/* rate */
-	val = json_attr_find_str(json, "rate");
-	if (val) {
-		inst->rate = (atoi(val) != 0);
+	jval = json_value_find(json, "rate");
+	if (jval) {
+		if (jval->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The given 'rate' value is "
+					"not a string.\n", pi->inst_name);
+			return EINVAL;
+		}
+		inst->rate = (atoi(json_value_str(jval)->str) != 0);
 	}
 
 	/* port */
-	val = json_attr_find_str(json, "port");
-	if (!val) {
+	jval = json_value_find(json, "port");
+	if (!jval) {
 		snprintf(ebuf, ebufsz, "%s: `port` attributed is needed.\n",
 			 pi->inst_name);
 		return EINVAL;
 	}
+	if (jval->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'port' value is "
+				"not a string.\n", pi->inst_name);
+		return EINVAL;
+	}
+	val = json_value_str(jval)->str;
 	inst->port = new_port(val);
 	if (!inst->port) {
 		if (errno == EINVAL) {

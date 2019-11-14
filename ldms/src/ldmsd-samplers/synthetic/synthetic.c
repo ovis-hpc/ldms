@@ -168,6 +168,22 @@ void synthetic_del(ldmsd_plugin_inst_t pi)
 	/* do nothing */
 }
 
+static const char *__attr_find(synthetic_inst_t inst, json_entity_t json,
+			char *ebuf, size_t ebufsz, char *attr_name)
+{
+	json_entity_t v;
+	v = json_value_find(json, attr_name);
+	if (!v) {
+		return NULL;
+	}
+	if (v->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given '%s' value is "
+				"not a string.\n", inst->base.inst_name, attr_name);
+		return NULL;
+	}
+	return json_value_str(v)->str;
+}
+
 static
 int synthetic_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
@@ -190,7 +206,9 @@ int synthetic_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		return rc;
 
 	/* Plugin-specific config here */
-	value = json_attr_find_str(json, "origin");
+	value = __attr_find(inst, json, ebuf, ebufsz, "origin");
+	if (!value && (errno == EINVAL))
+		return EINVAL;
 	if (value) {
 		double x = strtod(value, &endp);
 		if (x != 0) {
@@ -198,7 +216,9 @@ int synthetic_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		}
 	}
 
-	value = json_attr_find_str(json, "period");
+	value = __attr_find(inst, json, ebuf, ebufsz, "period");
+	if (!value && (errno == EINVAL))
+		return EINVAL;
 	if (value) {
 		double x = strtod(value, &endp);
 		if (x != 0) {
@@ -206,7 +226,9 @@ int synthetic_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		}
 	}
 
-	value = json_attr_find_str(json, "height");
+	value = __attr_find(inst, json, ebuf, ebufsz, "height");
+	if (!value && (errno == EINVAL))
+		return EINVAL;
 	if (value) {
 		double x = strtod(value, &endp);
 		if (x != 0) {

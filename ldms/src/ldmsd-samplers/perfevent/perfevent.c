@@ -145,6 +145,24 @@ static inline int pe_open(struct perf_event_attr *attr, pid_t pid,
 	return fd;
 }
 
+static const char *__attr_find(perfevent_inst_t inst, json_entity_t dict,
+				char *attr_name)
+{
+	json_entity_t value;
+
+	value = json_value_find(dict, attr_name);
+	if (!value) {
+		INST_LOG(inst, LDMSD_LERROR, "The given '%s' is missing.\n", attr_name);
+		return NULL;
+	}
+	if (value->type != JSON_STRING_VALUE) {
+		INST_LOG(inst, LDMSD_LERROR, "The given '%s' value "
+						"is not a string.\n", attr_name);
+		return NULL;
+	}
+	return json_value_str(value)->str;
+}
+
 /**
  * Specify the textual name that will appear for this event in the metric set.
  * Format: metricname=%s
@@ -152,7 +170,10 @@ static inline int pe_open(struct perf_event_attr *attr, pid_t pid,
 static int add_event_name(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->name = strdup(json_attr_find_str(dict, "metricname"));
+	const char *val = __attr_find(inst, dict, "metricname");
+	if (!val)
+		return EINVAL;
+	pe->name = strdup(val);
 	return 0;
 }
 
@@ -162,7 +183,10 @@ static int add_event_name(perfevent_inst_t inst, json_entity_t dict, void *arg)
 static int add_event_type(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->attr.type = strtol(json_attr_find_str(dict, "type"), NULL, 0);
+	const char *val = __attr_find(inst, dict, "type");
+	if (!val)
+		return EINVAL;
+	pe->attr.type = strtol(val, NULL, 0);
 	return 0;
 }
 
@@ -172,7 +196,10 @@ static int add_event_type(perfevent_inst_t inst, json_entity_t dict, void *arg)
 static int add_event_pid(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->pid = strtol(json_attr_find_str(dict, "pid"), NULL, 0);
+	const char *val = __attr_find(inst, dict, "pid");
+	if (!val)
+		return EINVAL;
+	pe->pid = strtol(val, NULL, 0);
 	return 0;
 }
 
@@ -182,7 +209,10 @@ static int add_event_pid(perfevent_inst_t inst, json_entity_t dict, void *arg)
 static int add_event_id(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->attr.config = strtol(json_attr_find_str(dict, "id"), NULL, 0);
+	const char *val = __attr_find(inst, dict, "id");
+	if (!val)
+		return EINVAL;
+	pe->attr.config = strtol(val, NULL, 0);
 	return 0;
 }
 
@@ -192,7 +222,10 @@ static int add_event_id(perfevent_inst_t inst, json_entity_t dict, void *arg)
 static int add_event_cpu(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
 	struct pevent *pe = arg;
-	pe->cpu = strtol(json_attr_find_str(dict, "cpu"), NULL, 0);
+	const char *val = __attr_find(inst, dict, "cpu");
+	if (!val)
+		return EINVAL;
+	pe->cpu = strtol(val, NULL, 0);
 	return 0;
 }
 
@@ -349,7 +382,9 @@ err:
 
 static int del_event(perfevent_inst_t inst, json_entity_t dict, void *arg)
 {
-	const char *name = json_attr_find_str(dict, "metricname");
+	const char *name = __attr_find(inst, dict, "metricname");
+	if (!name)
+		return EINVAL;
 	struct pevent *pe = find_event(inst, name);
 	if (pe) {
 		LIST_REMOVE(pe, entry);
@@ -559,12 +594,9 @@ int perfevent_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 
 	struct kw *kw;
 	struct kw key;
-	const char *action = json_attr_find_str(json, "action");
-
-	if (!action) {
-		snprintf(ebuf, ebufsz, "Missing `action` attribute.\n");
+	const char *action = __attr_find(inst, json, "action");
+	if (!action)
 		return EINVAL;
-	}
 
 	key.token = action;
 	kw = bsearch(&key, kw_tbl, ARRAY_SIZE(kw_tbl),

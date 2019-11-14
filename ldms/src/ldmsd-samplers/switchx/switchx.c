@@ -378,17 +378,23 @@ int switchx_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
 	int rc;
+	json_entity_t jvalue;
 	const char *path;
 	char *portstr, *end;
 	int port;
 
-	path = json_attr_find_str(json, "set");
-	if (!path) {
+	jvalue = json_value_find(json, "set");
+	if (!jvalue) {
 		snprintf(ebuf, ebufsz, "%s: `set` attribute is required.\n",
 			 pi->inst_name);
 		return EINVAL;
 	}
-
+	if (jvalue->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'set' value is "
+				"not a string.\n", pi->inst_name);
+		return EINVAL;
+	}
+	path = json_value_str(jvalue)->str;
 	/*
 	 * extract the port number from the path
 	 */

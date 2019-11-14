@@ -357,7 +357,7 @@ int aries_mmr_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
 	int rc;
-	const char *value;
+	json_entity_t value;
 
 	if (inst->configured) {
 		snprintf(ebuf, ebufsz, "%s: already configured.\n",
@@ -369,17 +369,31 @@ int aries_mmr_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	if (rc)
 		return rc;
 
-	value = json_attr_find_str(json, "aries_rtr_id");
-	inst->rtrid = strdup(value?value:"");
+	value = json_value_find(json, "aries_rtr_id");
+	if (value) {
+		if (value->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The 'aries_rtr_id' value is "
+						"not a string.\n", pi->inst_name);
+			return EINVAL;
+		}
+		inst->rtrid = strdup(json_value_str(value)->str);
+	} else {
+		inst->rtrid = strdup("");
+	}
 	if (!inst->rtrid) {
 		snprintf(ebuf, ebufsz, "%s: out of memory.\n",
 			 pi->inst_name);
 		return ENOMEM;
 	}
 
-	value = json_attr_find_str(json, "file");
+	value = json_value_find(json, "file");
 	if (value) {
-		rc = parseConfig(inst, value);
+		if (value->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The 'file' value is "
+						"not a string.\n", pi->inst_name);
+			return EINVAL;
+		}
+		rc = parseConfig(inst, (char *)json_value_str(value)->str);
 		if (rc){
 			snprintf(ebuf, ebufsz,
 				 "%s: error parsing <%s>\n",

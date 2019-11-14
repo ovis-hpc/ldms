@@ -246,21 +246,28 @@ int lustre2_mds_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
 	int rc;
-	const char *mdts;
+	json_entity_t mdts;
+	char *attr_name;
 
 	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	/* Plugin-specific config here */
-	mdts = json_attr_find_str(json, "mdts");
-	mdts = mdts?mdts:json_attr_find_str(json, "mdt");
+	mdts = json_value_find(json, "mdts");
+	mdts = mdts?mdts:json_value_find(json, "mdt");
+	attr_name = mdts?"mdts":"mdt";
 	if (!mdts) {
 		snprintf(ebuf, ebufsz, "%s: `mdt` not specified.\n",
 			 pi->inst_name);
 		return EINVAL;
 	}
-	rc = construct_mdt_list(&inst->lh_mdt, mdts);
+	if (mdts->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given '%s' value is not "
+				"a string.\n", pi->inst_name, attr_name);
+		return EINVAL;
+	}
+	rc = construct_mdt_list(&inst->lh_mdt, (char *)json_value_str(mdts)->str);
 	if (rc < 0) {
 		snprintf(ebuf, ebufsz, "%s: mdt list construct error: %d\n",
 			 pi->inst_name, -rc);

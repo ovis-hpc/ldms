@@ -851,6 +851,27 @@ const char *shm_sampler_help(ldmsd_plugin_inst_t pi)
 	return _help;
 }
 
+static const char *__attr_find(shm_sampler_inst_t inst, json_entity_t json,
+				char *ebuf, size_t ebufsz,
+				char *attr_name)
+{
+	json_entity_t v;
+
+	errno = 0;
+	v = json_value_find(json, attr_name);
+	if (!v) {
+		errno = ENOENT;
+		return NULL;
+	}
+	if (v->type != JSON_STRING_VALUE) {
+		errno = EINVAL;
+		snprintf(ebuf, ebufsz, "%s: The given '%s' value is "
+				"not a string.\n", inst->base.inst_name, attr_name);
+		return NULL;
+	}
+	return json_value_str(v)->str;
+}
+
 static
 int shm_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				      char *ebuf, int ebufsz)
@@ -869,8 +890,10 @@ int shm_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	if (rc)
 		return rc;
 
-	boxmax = json_attr_find_str(json, "shm_boxmax");
+	boxmax = __attr_find(inst, json, ebuf, ebufsz, "shm_boxmax");
 	int box_len = BOX_LEN_DEFAULT;
+	if (!boxmax && (errno == EINVAL))
+		return EINVAL;
 	if (boxmax) {
 		int blen = atoi(boxmax);
 		if (blen < 1) {
@@ -882,7 +905,9 @@ int shm_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		box_len = blen;
 	}
 
-	shm_set_timeout_str = json_attr_find_str(json, "shm_set_timeout");
+	shm_set_timeout_str = __attr_find(inst, json, ebuf, ebufsz, "shm_set_timeout");
+	if (!shm_set_timeout_str && (errno == EINVAL))
+		return EINVAL;
 	int shm_set_timeout = SHM_TIMEOUT_DEFAULT;
 	if (shm_set_timeout_str) {
 		int amax = atoi(shm_set_timeout_str);
@@ -896,7 +921,9 @@ int shm_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		shm_set_timeout = amax;
 	}
 
-	shm_array_max = json_attr_find_str(json, "shm_array_max");
+	shm_array_max = __attr_find(inst, json, ebuf, ebufsz, "shm_array_max");
+	if (!shm_array_max && (errno == EINVAL))
+		return EINVAL;
 	int array_max = ARRAY_MAX_DEFAULT;
 	if (shm_array_max) {
 		int amax = atoi(shm_array_max);
@@ -910,7 +937,9 @@ int shm_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		array_max = amax;
 	}
 
-	shm_metric_max = json_attr_find_str(json, "shm_metric_max");
+	shm_metric_max = __attr_find(inst, json, ebuf, ebufsz, "shm_metric_max");
+	if (!shm_metric_max && (errno == EINVAL))
+		return EINVAL;
 	int metric_max = METRIC_MAX_DEFAULT;
 	if (shm_metric_max) {
 		int amax = atoi(shm_metric_max);
@@ -924,9 +953,13 @@ int shm_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		metric_max = amax;
 	}
 
-	index_name = json_attr_find_str(json, "shm_index");
-	if (!index_name)
-		index_name = INDEX_NAME_DEFAULT;
+	index_name = __attr_find(inst, json, ebuf, ebufsz, "shm_index");
+	if (!index_name) {
+		if (errno == ENOENT)
+			index_name = INDEX_NAME_DEFAULT;
+		else
+			return EINVAL;
+	}
 
 	if (strlen(index_name) == 0) {
 		INST_LOG(inst, LDMSD_LERROR, "shm_index invalid.\n");

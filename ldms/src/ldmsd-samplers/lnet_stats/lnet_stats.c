@@ -227,7 +227,7 @@ int lnet_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
 	int rc;
-	const char *val;
+	json_entity_t val;
 
         if (inst->path) {
 		snprintf(ebuf, ebufsz, "%s: already configured.\n",
@@ -240,8 +240,17 @@ int lnet_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		return rc;
 
 	/* Plugin-specific config here */
-	val = json_attr_find_str(json, "file");
-	inst->path = strdup(val?val:PROC_FILE_DEFAULT);
+	val = json_value_find(json, "file");
+	if (!val) {
+		inst->path = strdup(PROC_FILE_DEFAULT);
+	} else {
+		if (val->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The given 'max_mc' value "
+					"is not a string.\n", inst->base.inst_name);
+			return EINVAL;
+		}
+		inst->path = strdup(json_value_str(val)->str);
+	}
 	if (!inst->path) {
 		snprintf(ebuf, ebufsz, "%s: out of memory\n",
 			 pi->inst_name);

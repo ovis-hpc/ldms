@@ -251,18 +251,23 @@ store_test_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	ldmsd_store_type_t store = LDMSD_STORE(pi);
 	store_test_inst_t inst = (void*)pi;
 	int rc;
-	const char *val;
+	json_entity_t val;
 
 	rc = store->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	val = json_attr_find_str(json, "path");
+	val = json_value_find(json, "path");
 	if (!val) {
 		snprintf(ebuf, ebufsz, "missing `path` attribute.\n");
 		return EINVAL;
 	}
-	inst->path = strdup(val);
+	if (val->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'path' is "
+				"not a string.\n", pi->inst_name);
+		return EINVAL;
+	}
+	inst->path = strdup(json_value_str(val)->str);
 	if (!inst->path) {
 		snprintf(ebuf, ebufsz, "Out of memory.\n");
 		return errno;

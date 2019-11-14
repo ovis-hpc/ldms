@@ -339,7 +339,17 @@ int filesingle_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	}
 	INST_LOG(inst, LDMSD_LINFO, "timing = %d\n", inst->collect_times);
 
-	const char *conf = json_attr_find_str(json, "conf");
+	attr = json_value_find(json, "conf");
+	if (!attr) {
+		INST_LOG(inst, LDMSD_LERROR, "The 'conf' attribute is missing.\n");
+		return EINVAL;
+	}
+	if (attr->type != JSON_STRING_VALUE) {
+		INST_LOG(inst, LDMSD_LERROR, "The given 'conf' value is not a string.\n");
+		return EINVAL;
+	}
+
+	const char *conf = json_value_str(attr)->str;
 	rc = parse_single_conf(inst, conf);
 	if (rc)
 		return rc;

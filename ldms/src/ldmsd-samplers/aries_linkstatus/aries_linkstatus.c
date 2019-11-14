@@ -215,6 +215,7 @@ int aries_linkstatus_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	aries_linkstatus_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
+	json_entity_t value;
 	int rc;
 	const char *fname;
 	FILE *mf;
@@ -229,8 +230,17 @@ int aries_linkstatus_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	if (rc)
 		return rc;
 
-	fname = json_attr_find_str(json, "file_send");
-	inst->lsfile = strdup(fname?fname:LINKSTATUS_FILE);
+	value = json_value_find(json, "file_send");
+	if (!value) {
+		inst->lsfile = strdup(LINKSTATUS_FILE);
+	} else {
+		if (value->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The 'file_send' value is "
+						"not a string.\n", pi->inst_name);
+			return EINVAL;
+		}
+		inst->lsfile = strdup(json_value_str(value)->str);
+	}
 	if (!inst->lsfile) {
 		snprintf(ebuf, ebufsz, "%s: not enough memory.\n",
 			 pi->inst_name);
@@ -249,8 +259,17 @@ int aries_linkstatus_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	}
 	fclose(mf);
 
-	fname = json_attr_find_str(json, "file_recv");
-	inst->lrfile = strdup(fname?fname:LINKSTATUS_FILE);
+	value = json_value_find(json, "file_recv");
+	if (!value) {
+		inst->lrfile = strdup(LINKSTATUS_FILE);
+	} else {
+		if (value->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The 'file_recv' value is "
+						"not a string.\n", pi->inst_name);
+			return EINVAL;
+		}
+		inst->lrfile = strdup(json_value_str(value)->str);
+	}
 	if (!inst->lrfile) {
 		snprintf(ebuf, ebufsz, "%s: not enough memory.\n",
 			 pi->inst_name);

@@ -121,45 +121,68 @@ int samp_config(ldmsd_plugin_inst_t inst, json_entity_t json,
 	json_entity_t attr;
 	ldmsd_sampler_type_t samp = (void*)inst->base;
 	char *job_set_name;
-	const char *value;
+	json_entity_t value;
 	const char *name = inst->inst_name;
 	char buff[1024];
 
-	value = json_attr_find_str(json, "producer");
+	value = json_value_find(json, "producer");
 	if (!value) {
-		value = ldmsd_myname_get();
 		ldmsd_log(LDMSD_LINFO, "%s: producer not specified, "
-			  "using `%s`\n", name, value);
-	}
-	samp->producer_name = strdup(value);
-
-	attr = json_attr_find(json, "component_id");
-	if (attr) {
-		samp->component_id = strtoull(json_attr_value_str(attr), NULL, 0);
+			  "using `%s`\n", name, ldmsd_myname_get());
 	}
 
-	value = json_attr_find_str(json, "instance");
+	if (value->type != JSON_STRING_VALUE) {
+		ldmsd_log(LDMSD_LERROR, "%s: the 'producer' value is "
+				"not a string.\n", name);
+		goto einval;
+	}
+
+	samp->producer_name = strdup(json_value_str(value)->str);
+
+	value = json_value_find(json, "component_id");
+	if (value) {
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: the 'component_id' value "
+					"is not a string.\n", name);
+			goto einval;
+		}
+		samp->component_id = strtoull(json_value_str(value)->str, NULL, 0);
+	}
+
+	value = json_value_find(json, "instance");
 	if (!value) {
 		snprintf(buff, sizeof(buff), "%s/%s", samp->producer_name,
 			 inst->inst_name);
-		value = buff;
+	} else {
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: the 'instance' value "
+					"is not a string.\n", name);
+			goto einval;
+		}
+		snprintf(buff, sizeof(buff), "%s", json_value_str(value)->str);
 	}
-	samp->set_inst_name = strdup(value);
 
-	value = json_attr_find_str(json, "schema");
+	samp->set_inst_name = strdup(buff);
+
+	value = json_value_find(json, "schema");
 	if (!value) {
 		samp->schema_name = strdup(inst->plugin_name);
 	} else {
-		samp->schema_name = strdup(value);
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: the 'schema' value "
+					"is not a string.\n", name);
+			goto einval;
+		}
+		samp->schema_name = strdup(json_value_str(value)->str);
 	}
 
-	value = json_attr_find_str(json, "job_set");
+	value = json_value_find(json, "job_set");
 	if (!value) {
 		snprintf(buff, sizeof(buff), "%s/jobinfo",
 			 samp->producer_name);
 		job_set_name = buff;
 	} else {
-		job_set_name = (char *)value;
+		job_set_name = (char *)json_value_str(value)->str;
 	}
 	samp->job_set = ldms_set_by_name(job_set_name);
 	if (!samp->job_set) {
@@ -168,10 +191,18 @@ int samp_config(ldmsd_plugin_inst_t inst, json_entity_t json,
 			  "with the metric values.\n", name, job_set_name);
 		samp->job_id_idx = -1;
 	} else {
-		value = json_attr_find_str(json, "job_id");
-		if (!value)
-			value = "job_id";
-		samp->job_id_idx = ldms_metric_by_name(samp->job_set, value);
+		value = json_value_find(json, "job_id");
+		if (!value) {
+			snprintf(buff, sizeof(buff), "job_id");
+		} else {
+			if (value->type != JSON_STRING_VALUE) {
+				ldmsd_log(LDMSD_LERROR, "%s: The 'job_id' value "
+						"is not a string.\n", name);
+				goto einval;
+			}
+			snprintf(buff, sizeof(buff), "%s", json_value_str(value)->str);
+		}
+		samp->job_id_idx = ldms_metric_by_name(samp->job_set, buff);
 		if (samp->job_id_idx < 0) {
 			snprintf(ebuf, ebufsz,
 				 "%s: The specified job_set '%s' "
@@ -179,10 +210,18 @@ int samp_config(ldmsd_plugin_inst_t inst, json_entity_t json,
 				 "cannot be used.\n", name, job_set_name);
 			goto einval;
 		}
-		value = json_attr_find_str(json, "app_id");
-		if (!value)
-			value = "app_id";
-		samp->app_id_idx = ldms_metric_by_name(samp->job_set, value);
+		value = json_value_find(json, "app_id");
+		if (!value) {
+			snprintf(buff, sizeof(buff), "app_id");
+		} else {
+			if (value->type != JSON_STRING_VALUE) {
+				ldmsd_log(LDMSD_LERROR, "%s: The 'app_id' value "
+						"is not a string.\n", name);
+				goto einval;
+			}
+			snprintf(buff, sizeof(buff), "%s", json_value_str(value)->str);
+		}
+		samp->app_id_idx = ldms_metric_by_name(samp->job_set, buff);
 		if (samp->app_id_idx < 0) {
 			snprintf(ebuf, ebufsz,
 				 "%s: The specified job_set '%s' "
@@ -190,10 +229,18 @@ int samp_config(ldmsd_plugin_inst_t inst, json_entity_t json,
 				 "cannot be used.\n", name, job_set_name);
 			goto einval;
 		}
-		value = json_attr_find_str(json, "job_start");
-		if (!value)
-			value = "job_start";
-		samp->job_start_idx = ldms_metric_by_name(samp->job_set, value);
+		value = json_value_find(json, "job_start");
+		if (!value) {
+			snprintf(buff, sizeof(buff), "job_start");
+		} else {
+			if (value->type != JSON_STRING_VALUE) {
+				ldmsd_log(LDMSD_LERROR, "%s: The 'job_start' value "
+						"is not a string.\n", name);
+				goto einval;
+			}
+			snprintf(buff, sizeof(buff), "%s", json_value_str(value)->str);
+		}
+		samp->job_start_idx = ldms_metric_by_name(samp->job_set, buff);
 		if (samp->job_start_idx < 0) {
 			snprintf(ebuf, ebufsz,
 				 "%s: The specified job_set '%s' "
@@ -201,10 +248,18 @@ int samp_config(ldmsd_plugin_inst_t inst, json_entity_t json,
 				 "cannot be used.\n", name, job_set_name);
 			goto einval;
 		}
-		value = json_attr_find_str(json, "job_end");
-		if (!value)
-			value = "job_end";
-		samp->job_end_idx = ldms_metric_by_name(samp->job_set, value);
+		value = json_value_find(json, "job_end");
+		if (!value) {
+			snprintf(buff, sizeof(buff), "job_end");
+		} else {
+			if (value->type != JSON_STRING_VALUE) {
+				ldmsd_log(LDMSD_LERROR, "%s: The 'job_end' value "
+						"is not a string.\n", name);
+				goto einval;
+			}
+			snprintf(buff, sizeof(buff), "%s", json_value_str(value)->str);
+		}
+		samp->job_end_idx = ldms_metric_by_name(samp->job_set, buff);
 		if (samp->job_end_idx < 0) {
 			snprintf(ebuf, ebufsz,
 				 "%s: The specified job_set "
@@ -216,60 +271,113 @@ int samp_config(ldmsd_plugin_inst_t inst, json_entity_t json,
 							     "current_slot");
 	}
 	/* uid, gid, permission */
-	value = json_attr_find_str(json, "uid");
+	value = json_value_find(json, "uid");
 	if (value) {
-		if (isalpha(value[0])) {
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The 'uid' value "
+					"is not a string.\n", name);
+			goto einval;
+		}
+
+		char *uid_s = json_value_str(value)->str;
+
+		if (isalpha(uid_s[0])) {
 			/* Try to lookup the user name */
 			struct passwd _pwd;
 			struct passwd *pwd;
-			getpwnam_r(value, &_pwd, buff, sizeof(buff), &pwd);
+			getpwnam_r(uid_s, &_pwd, buff, sizeof(buff), &pwd);
 			if (!pwd) {
 				snprintf(ebuf, ebufsz, "%s: The specified "
 					 "user '%s' does not exist\n",
-					 name, value);
+					 name, uid_s);
 				goto einval;
 			}
 			samp->uid = pwd->pw_uid;
 		} else {
-			samp->uid = strtol(value, NULL, 0);
+			samp->uid = strtol(uid_s, NULL, 0);
 		}
 	} else {
 		samp->uid = geteuid();
 	}
-	value = json_attr_find_str(json, "gid");
+	value = json_value_find(json, "gid");
 	if (value) {
-		if (isalpha(value[0])) {
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The 'gid' value "
+					"is not a string.\n", name);
+			goto einval;
+		}
+
+		char *gid_s = json_value_str(value)->str;
+		if (isalpha(gid_s[0])) {
 			/* Try to lookup the group name */
 			struct group _grp;
 			struct group *grp;
-			getgrnam_r(value, &_grp, buff, sizeof(buff), &grp);
+			getgrnam_r(gid_s, &_grp, buff, sizeof(buff), &grp);
 			if (!grp) {
 				snprintf(ebuf, ebufsz, "%s: The specified "
 					 "group '%s' does not exist\n",
-					 name, value);
+					 name, gid_s);
 				goto einval;
 			}
 			samp->gid = grp->gr_gid;
 		} else {
-			samp->gid = strtol(value, NULL, 0);
+			samp->gid = strtol(gid_s, NULL, 0);
 		}
 	} else {
 		samp->gid = getegid();
 	}
-	value = json_attr_find_str(json, "perm");
+	value = json_value_find(json, "perm");
 	if (!value) {
-		ldmsd_log(LDMSD_LINFO, "%s: Warning, the permission bits '%s' "
-			  "are not specified as an Octal number.\n",
-			  name, value);
+		samp->perm = 0777;
+	} else {
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The 'perm' value "
+					"is not a string.\n", name);
+			goto einval;
+		}
+		char *os = json_value_str(value)->str;
+		if (os[0] != '0') {
+			ldmsd_log(LDMSD_LINFO, "%s: Warning, the permission bits '%s' "
+				  "are not specified as an Octal number.\n",
+				  name, os);
+			samp->perm = 0777;
+		} else {
+			samp->perm = strtol(json_value_str(value)->str, NULL, 0);
+		}
 	}
-	samp->perm = (value)?(strtol(value, NULL, 0)):(0777);
 
 	/* set_array_card */
-	value = json_attr_find_str(json, "set_array_card");
-	samp->set_array_card = (value)?(strtol(value, NULL, 0)):(1);
+	value = json_value_find(json, "set_array_card");
+	if (!value) {
+		samp->set_array_card = 1;
+	} else {
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The 'set_array_card' value "
+					"is not a string.\n", name);
+			goto einval;
+		}
+		samp->set_array_card = strtol(json_value_str(value)->str, NULL, 0);
+	}
 
 	return 0;
+
  einval:
+	if (samp->producer_name) {
+		free(samp->producer_name);
+		samp->producer_name = NULL;
+	}
+	if (samp->set_inst_name) {
+		free(samp->set_inst_name);
+		samp->set_inst_name = NULL;
+	}
+	if (samp->schema_name) {
+		free(samp->schema_name);
+		samp->schema_name = NULL;
+	}
+	if (samp->job_set) {
+		ldms_set_put(samp->job_set);
+		samp->job_set = NULL;
+	}
 	return EINVAL;
 }
 

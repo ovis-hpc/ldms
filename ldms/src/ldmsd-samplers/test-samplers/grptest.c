@@ -182,7 +182,7 @@ int grptest_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	int rc;
 	int i, m;
 	int add, rm;
-	const char *str;
+	json_entity_t jval;
 	char buff[256];
 
 	if (!inst->grp) {
@@ -194,10 +194,15 @@ int grptest_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	}
 
 	/* process `members` flag */
-	str = json_attr_find_str(json, "members");
-	if (!str)
+	jval = json_value_find(json, "members");
+	if (!jval)
 		return 0;
-	m = strtoul(str, NULL, 0);
+	if (jval->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'member' value is "
+				"not a string.\n", pi->inst_name);
+		return EINVAL;
+	}
+	m = strtoul(json_value_str(jval)->str, NULL, 0);
 	m &= MASK;
 
 	ldms_transaction_begin(inst->grp);

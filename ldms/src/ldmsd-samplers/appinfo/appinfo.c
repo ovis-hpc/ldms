@@ -362,6 +362,7 @@ int appinfo_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	appinfo_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	ldms_set_t set;
+	json_entity_t value;
 	int rc;
 	int actual_shmem_size;
 
@@ -370,7 +371,18 @@ int appinfo_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		return rc;
 
 	/* Plugin-specific config here */
-	inst->metrics_optstr = strdup(json_attr_find_str(json,"metrics"));
+	value = json_value_find(json, "metrics");
+	if (!value) {
+		ldmsd_log(LDMSD_LERROR, "%s: The 'metrics' attribute is "
+						"missing.\n",pi->inst_name);
+		return EINVAL;
+	}
+	if (value->type != JSON_STRING_VALUE) {
+		ldmsd_log(LDMSD_LERROR, "%s: The given 'metrics' value is "
+						"not a string.\n",pi->inst_name);
+		return EINVAL;
+	}
+	inst->metrics_optstr = strdup(json_value_str(value)->str);
 	if (!inst->metrics_optstr) {
 		snprintf(ebuf, ebufsz, "no metrics option given.\n");
 		return EINVAL;

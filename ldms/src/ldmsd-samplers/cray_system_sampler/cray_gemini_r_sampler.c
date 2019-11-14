@@ -264,7 +264,8 @@ int cray_gemini_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	cray_gemini_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
-	const char *value;
+	json_entity_t value;
+	char *value_s;
 	int rc;
 
 	rc = samp->base.config(pi, json, ebuf, ebufsz);
@@ -278,16 +279,39 @@ int cray_gemini_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		return rc;
 	}
 
-	value = json_attr_find_str(json, "off_hsn");
-	if (value)
-		inst->off_hsn = (atoi(value) == 1);
-
+	value = json_value_find(json, "off_hsn");
+	if (value) {
+		if (value->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The 'off_hsn' value is "
+						"not a string.\n", pi->inst_name);
+			return EINVAL;
+		}
+		inst->off_hsn = (atoi(json_value_str(value)->str) == 1);
+	}
 	if (!inst->off_hsn) {
-		value = json_attr_find_str(json, "hsn_metrics_type");
-		if (value)
-			inst->hsn_metrics_type = atoi(value);
-		value = json_attr_find_str(json, "rtrfile");
-		rc = hsn_metrics_config(inst, value);
+		value = json_value_find(json, "hsn_metrics_type");
+		if (value) {
+			if (value->type != JSON_STRING_VALUE) {
+				snprintf(ebuf, ebufsz, "%s: "
+						"The 'hsn_metrics_type' value is "
+						"not a string.\n", pi->inst_name);
+				return EINVAL;
+			}
+			inst->hsn_metrics_type = atoi(json_value_str(value)->str);
+		}
+		value = json_value_find(json, "rtrfile");
+		if (!value) {
+			value_s = NULL;
+		} else {
+			if (value->type != JSON_STRING_VALUE) {
+				snprintf(ebuf, ebufsz, "%s: "
+						"The 'rtrfile' value is "
+						"not a string.\n", pi->inst_name);
+				return EINVAL;
+			}
+			value_s = json_value_str(value)->str;
+		}
+		rc = hsn_metrics_config(inst, value_s);
 		if (rc)
 			return rc;
 	}

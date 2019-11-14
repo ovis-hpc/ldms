@@ -287,6 +287,8 @@ int edac_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	edac_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
+	json_entity_t value;
+	const char *mvalue;
 	int rc;
 	long tmp;
 
@@ -301,10 +303,15 @@ int edac_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		return rc;
 
 	/* Plugin-specific config here */
-	const char *mvalue = json_attr_find_str(json, "max_mc");
-	if (mvalue)
-	{
-		tmp=strtol(mvalue, NULL,10);
+	value = json_value_find(json, "max_mc");
+	if (value) {
+		if (value->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The given 'max_mc' value "
+					"is not a string.\n", inst->base.inst_name);
+			return EINVAL;
+		}
+		mvalue = json_value_str(value)->str;
+		tmp = strtol(mvalue, NULL,10);
 		if (tmp > 0)
 			inst->max_mc = (int)tmp;
 		else
@@ -314,11 +321,17 @@ int edac_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 				 pi->inst_name, mvalue);
 			return EINVAL;
 		}
-
 	}
-	mvalue = json_attr_find_str(json, "max_csrow");
-	if (mvalue)
+
+	value = json_value_find(json, "max_csrow");
+	if (value)
 	{
+		if (value->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The given 'max_mc' value "
+					"is not a string.\n", inst->base.inst_name);
+			return EINVAL;
+		}
+		mvalue = json_value_str(value)->str;
 		tmp=strtol(mvalue, NULL,10);
 		if (tmp > 0)
 			inst->max_csrow = (int)tmp;

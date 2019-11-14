@@ -519,7 +519,7 @@ int dvs_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	dvs_sampler_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	int rc;
-	const char *value;
+	json_entity_t value;
 
 	if (inst->configured) {
 		_SNPRINTF(inst, ebuf, ebufsz, "already configured\n");
@@ -530,9 +530,15 @@ int dvs_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	if (rc)
 		return rc;
 
-	value = json_attr_find_str(json, "conffile");
+	value = json_value_find(json, "conffile");
 	if (value) {
-		rc = __downselect(inst, value, ebuf, ebufsz);
+		if (value->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The 'conffile' value is "
+						"not a string.\n",
+						inst->base.inst_name);
+			return EINVAL;
+		}
+		rc = __downselect(inst, (char *)json_value_str(value)->str, ebuf, ebufsz);
 		return rc;
 	}
 

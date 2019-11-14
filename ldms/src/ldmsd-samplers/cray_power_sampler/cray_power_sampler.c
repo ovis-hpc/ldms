@@ -205,7 +205,7 @@ int cray_power_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
 	int rc;
-	const char *v;
+	json_entity_t v;
 
 	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
@@ -214,7 +214,7 @@ int cray_power_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	/* Plugin-specific config here */
 
 	/* handling set_array_card with default being 600 */
-	v = json_attr_find_str(json, "set_array_card");
+	v = json_value_find(json, "set_array_card");
 	if (!v)
 		samp->set_array_card = 600;
 	/* otherwise, it has been handled by base.config() */

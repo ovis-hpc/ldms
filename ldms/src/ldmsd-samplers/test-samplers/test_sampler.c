@@ -468,16 +468,40 @@ free_schema:
 	return rc;
 }
 
+static const char *__attr_find(test_sampler_inst_t inst, json_entity_t json,
+		char *ebuf, size_t ebufsz, int is_required, char *attr_name)
+{
+	json_entity_t v;
+	errno = 0;
+	v = json_value_find(json, attr_name);
+	if (!v) {
+		if (is_required) {
+			snprintf(ebuf, ebufsz, "%s: The '%s' is missing.\n",
+					inst->base.inst_name, attr_name);
+			errno = ENOENT;
+		}
+		return NULL;
+	}
+	if (v->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given '%s' value is "
+				"not a string.\n", inst->base.inst_name, attr_name);
+		errno = EINVAL;
+		return NULL;
+	}
+	return json_value_str(v)->str;
+}
+
 static int config_add_schema(test_sampler_inst_t inst, json_entity_t json,
 						char *ebuf, size_t ebufsz)
 {
 	int rc = 0;
 	struct test_sampler_schema *ts_schema;
 	ldms_schema_t schema;
-	const char *schema_name = json_attr_find_str(json, "schema");
+	const char *schema_name = __attr_find(inst, json, ebuf, ebufsz,
+							1, "schema");
 	if (!schema_name) {
-		snprintf(ebuf, ebufsz, "Schema name is missing.");
-		return EINVAL;
+		rc = errno;
+		return rc;
 	}
 
 	ts_schema = __schema_find(&inst->schema_list, schema_name);
@@ -489,19 +513,28 @@ static int config_add_schema(test_sampler_inst_t inst, json_entity_t json,
 	const char *metrics, *value, *set_array_card_str;
 	const char *init_value = NULL;
 	int num_metrics, set_array_card;
-	metrics = json_attr_find_str(json, "metrics");
-	value = json_attr_find_str(json, "num_metrics");
+	metrics = __attr_find(inst, json, ebuf, ebufsz, 0, "metrics");
+	if (!metrics && (errno == EINVAL))
+		return EINVAL;
+	value = __attr_find(inst, json, ebuf, ebufsz, 0, "num_metrics");
+	if (!value && (errno == EINVAL))
+		return EINVAL;
 	if (!metrics && !value) {
 		snprintf(ebuf, ebufsz, "Either metrics or num_metrics "
 						"must be given.");
 		return EINVAL;
 	}
 
-	set_array_card_str = json_attr_find_str(json, "set_array_card");
-	if (!set_array_card_str)
-		set_array_card = 1; /* Default */
-	else
+	set_array_card_str = __attr_find(inst, json, ebuf, ebufsz, 0, "set_array_card");
+	if (!set_array_card_str) {
+		if (errno == EINVAL)
+			return EINVAL;
+		else
+			set_array_card = 1; /* Default */
+	} else {
 		set_array_card = strtol(set_array_card_str, NULL, 0);
+	}
+
 	ts_schema = malloc(sizeof(*ts_schema));
 	if (!ts_schema) {
 		INST_LOG(inst, LDMSD_LERROR, "Out of memory\n");
@@ -533,7 +566,7 @@ static int config_add_schema(test_sampler_inst_t inst, json_entity_t json,
 		enum ldms_value_type type;
 		num_metrics = atoi(value);
 
-		value = json_attr_find_str(json, "type");
+		value = __attr_find(inst, json, ebuf, ebufsz, 0, "type");
 		if (value) {
 			type = ldms_metric_str_to_type(value);
 			if (type == LDMS_V_NONE) {
@@ -541,12 +574,21 @@ static int config_add_schema(test_sampler_inst_t inst, json_entity_t json,
 				goto cleanup;
 			}
 		} else {
+			if (errno == EINVAL) {
+				rc = EINVAL;
+				goto cleanup;
+			}
 			type = LDMS_V_U64;
 		}
 
-		init_value = json_attr_find_str(json, "init_value");
-		if (!init_value)
+		init_value = __attr_find(inst, json, ebuf, ebufsz, 0, "init_value");
+		if (!init_value) {
+			if (errno == EINVAL) {
+				rc = EINVAL;
+				goto cleanup;
+			}
 			init_value = "0";
+		}
 
 		int i;
 		char name[128];
@@ -689,16 +731,16 @@ static int config_add_set(test_sampler_inst_t inst, json_entity_t json,
 	int rc = 0;
 	struct test_sampler_schema *ts_schema;
 
-	const char *schema_name = json_attr_find_str(json, "schema");
+	const char *schema_name = __attr_find(inst, json, ebuf, ebufsz, 1, "schema");
 	if (!schema_name) {
-		snprintf(ebuf, ebufsz, "Schema name is missing.");
-		return EINVAL;
+		rc = errno;
+		return rc;
 	}
 
-	const char *set_name = json_attr_find_str(json, "instance");
+	const char *set_name = __attr_find(inst, json, ebuf, ebufsz, 1, "instance");
 	if (!set_name) {
-		snprintf(ebuf, ebufsz, "Set instance name is missing.");
-		return EINVAL;
+		rc = errno;
+		return rc;
 	}
 	ts_schema = __schema_find(&inst->schema_list, schema_name);
 	if (!ts_schema) {
@@ -706,11 +748,19 @@ static int config_add_set(test_sampler_inst_t inst, json_entity_t json,
 		return EINVAL;
 	}
 
-	const char *producer = json_attr_find_str(json, "producer");
-	const char *compid = json_attr_find_str(json, "component_id");
-	const char *jobid = json_attr_find_str(json, "jobid");
-
-	const char *push_s = json_attr_find_str(json, "push");
+	const char *producer = __attr_find(inst, json, ebuf, ebufsz, 0, "producer");
+	if (!producer && (errno = EINVAL)) {
+		return EINVAL;
+	}
+	const char *compid = __attr_find(inst, json, ebuf, ebufsz, 0, "component_id");
+	if (!compid && (errno == EINVAL))
+		return EINVAL;
+	const char *jobid = __attr_find(inst, json, ebuf, ebufsz, 0, "jobid");
+	if (!jobid && (errno == EINVAL))
+		return EINVAL;
+	const char *push_s = __attr_find(inst, json, ebuf, ebufsz, 0, "push");
+	if (!push_s && (errno == EINVAL))
+		return EINVAL;
 	int push = 0;
 	if (push_s)
 		push = atoi(push_s);
@@ -798,7 +848,9 @@ static int config_add_default(test_sampler_inst_t inst, json_entity_t json,
 	const char *push_s;
 	int rc, push;
 	ldmsd_sampler_type_t samp = LDMSD_SAMPLER(inst);
-	sname = json_attr_find_str(json, "schema");
+	sname = __attr_find(inst, json, ebuf, ebufsz, 0, "schema");
+	if (!sname && (errno = EINVAL))
+		return EINVAL;
 	if (!sname)
 		sname = samp->schema_name;
 	if (strlen(sname) == 0){
@@ -806,24 +858,33 @@ static int config_add_default(test_sampler_inst_t inst, json_entity_t json,
 		return EINVAL;
 	}
 
-	s = json_attr_find_str(json, "base");
-	if (s)
+	s = __attr_find(inst, json, ebuf, ebufsz, 0, "base");
+	if (!s && (errno == EINVAL))
+		return EINVAL;
+	if (s) {
 		snprintf(inst->base_set_name, sizeof(inst->base_set_name),
 			 "%s", s);
+	}
 
-	s = json_attr_find_str(json, "num_sets");
+	s = __attr_find(inst, json, ebuf, ebufsz, 0, "num_sets");
+	if (!s && (errno == EINVAL))
+		return EINVAL;
 	if (!s)
 		inst->num_sets = DEFAULT_NUM_SETS;
 	else
 		inst->num_sets = atoi(s);
 
-	s = json_attr_find_str(json, "num_metrics");
+	s = __attr_find(inst, json, ebuf, ebufsz, 0, "num_metrics");
+	if (!s && (errno == EINVAL))
+		return EINVAL;
 	if (!s)
 		inst->num_metrics = DEFAULT_NUM_METRICS;
 	else
 		inst->num_metrics = atoi(s);
 
-	push_s = json_attr_find_str(json, "push");
+	push_s = __attr_find(inst, json, ebuf, ebufsz, 0, "push");
+	if (!push_s && (errno == EINVAL))
+		return EINVAL;
 	if (push_s)
 		push = atoi(push_s);
 	else
@@ -930,14 +991,18 @@ static int config_add_scalar(test_sampler_inst_t inst, json_entity_t json,
 	ldms_schema_t schema;
 	int rc;
 
-	schema_name = json_attr_find_str(json, "schema");
+	schema_name = __attr_find(inst, json, ebuf, ebufsz, 0, "schema");
+	if (!schema_name && (errno == EINVAL))
+		return EINVAL;
 	if (!schema_name)
 		schema_name = "test_sampler_scalar";
 	if (strlen(schema_name) == 0){
 		snprintf(ebuf, ebufsz, "schema name '%s' is invalid.", schema_name);
 		return EINVAL;
 	}
-	set_array_card_str = json_attr_find_str(json, "set_array_card");
+	set_array_card_str = __attr_find(inst, json, ebuf, ebufsz, 0, "set_array_card");
+	if (!set_array_card_str && (errno == EINVAL))
+		return EINVAL;
 	if (!set_array_card_str)
 		set_array_card = 1;
 	else
@@ -981,22 +1046,26 @@ static int config_add_array(test_sampler_inst_t inst, json_entity_t json,
 	ldms_schema_t schema;
 	int rc;
 
-	schema_name = json_attr_find_str(json, "schema");
+	schema_name = __attr_find(inst, json, ebuf, ebufsz, 0, "schema");
+	if (!schema_name && (errno == EINVAL))
+		return EINVAL;
 	if (!schema_name)
 		schema_name = "test_sampler_array";
 	if (strlen(schema_name) == 0){
 		snprintf(ebuf, ebufsz, "schema name '%s' is invalid.", schema_name);
 		return EINVAL;
 	}
-	set_array_card_str = json_attr_find_str(json, "set_array_card");
+	set_array_card_str = __attr_find(inst, json, ebuf, ebufsz, 0, "set_array_card");
+	if (!set_array_card_str && (errno == EINVAL))
+		return EINVAL;
 	if (!set_array_card_str)
 		set_array_card = 1;
 	else
 		set_array_card = strtol(set_array_card_str, NULL, 0);
-	array_sz = json_attr_find_str(json, "metric_array_sz");
+	array_sz = __attr_find(inst, json, ebuf, ebufsz, 1, "metric_array_sz");
 	if (!array_sz) {
-		snprintf(ebuf, ebufsz, "metric_array_sz is required");
-		return EINVAL;
+		rc = errno;
+		return rc;
 	}
 
 	ts_schema = __schema_find(&inst->schema_list, schema_name);
@@ -1035,22 +1104,26 @@ static int config_add_all(test_sampler_inst_t inst, json_entity_t json,
 	ldms_schema_t schema;
 	int rc;
 
-	schema_name = json_attr_find_str(json, "schema");
+	schema_name = __attr_find(inst, json, ebuf, ebufsz, 0, "schema");
+	if (!schema_name && (errno == EINVAL))
+		return EINVAL;
 	if (!schema_name)
 		schema_name = "test_sampler_all";
 	if (strlen(schema_name) == 0){
 		snprintf(ebuf, ebufsz, "schema name '%s' is invalid.", schema_name);
 		return EINVAL;
 	}
-	set_array_card_str = json_attr_find_str(json, "set_array_card");
+	set_array_card_str = __attr_find(inst, json, ebuf, ebufsz, 0, "set_array_card");
+	if (!set_array_card_str && (errno == EINVAL))
+		return EINVAL;
 	if (!set_array_card_str)
 		set_array_card = 1;
 	else
 		set_array_card = strtol(set_array_card_str, NULL, 0);
-	array_sz = json_attr_find_str(json, "metric_array_sz");
+	array_sz = __attr_find(inst, json, ebuf, ebufsz, 1, "metric_array_sz");
 	if (!array_sz) {
-		snprintf(ebuf, ebufsz, "metric_array_sz is required\n");
-		return EINVAL;
+		rc = errno;
+		return rc;
 	}
 
 	ts_schema = __schema_find(&inst->schema_list, schema_name);
@@ -1446,7 +1519,9 @@ int test_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	if (rc)
 		return rc;
 
-	action = json_attr_find_str(json, "action");
+	action = __attr_find(inst, json, ebuf, ebufsz, 0, "action");
+	if (!action && (errno == EINVAL))
+		return EINVAL;
 	if (action) {
 		rc = 0;
 		if (0 == strcmp(action, "add_schema")) {
@@ -1472,11 +1547,21 @@ int test_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		return rc;
 	}
 
-	producer_name = json_attr_find_str(json, "producer");
-	compid = json_attr_find_str(json, "component_id");
-	jobid = json_attr_find_str(json, "jobid");
-	set_del_int_str = json_attr_find_str(json, "set_delete_interval");
-	ts_suffix_str = json_attr_find_str(json, "ts_suffix");
+	producer_name = __attr_find(inst, json, ebuf, ebufsz, 0, "producer");
+	if (!producer_name && (errno == EINVAL))
+		return EINVAL;
+	compid = __attr_find(inst, json, ebuf, ebufsz, 0, "component_id");
+	if (!compid && (errno == EINVAL))
+		return EINVAL;
+	jobid = __attr_find(inst, json, ebuf, ebufsz, 0, "jobid");
+	if (!jobid && (errno = EINVAL))
+		return EINVAL;
+	set_del_int_str = __attr_find(inst, json, ebuf, ebufsz, 0, "set_delete_interval");
+	if (!set_del_int_str && (errno = EINVAL))
+		return EINVAL;
+	ts_suffix_str = __attr_find(inst, json, ebuf, ebufsz, 0, "ts_suffix");
+	if (!ts_suffix_str && (errno == EINVAL))
+		return EINVAL;
 
 	if (!compid)
 		compid = "0";

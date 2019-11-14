@@ -490,7 +490,8 @@ static int halt(msr_interlagos_inst_t inst, json_entity_t json,
 		char *ebuf, int ebufsz)
 {
 	struct active_counter* pe;
-	const char* value;
+	json_entity_t jvalue;
+	const char *value;
 
 	if (inst->cfgstate != CFG_DONE_FINAL){
 		snprintf(ebuf, ebufsz,
@@ -499,12 +500,17 @@ static int halt(msr_interlagos_inst_t inst, json_entity_t json,
 		return -1;
 	}
 
-	value = json_attr_find_str(json, "metricname");
-	if (!value){
+	jvalue = json_value_find(json, "metricname");
+	if (!jvalue){
 		snprintf(ebuf, ebufsz, "no name to halt\n");
 		return -1;
 	}
-
+	if (jvalue->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'metricname' value is not a string.\n",
+						inst->base.inst_name);
+		return -1;
+	}
+	value = json_value_str(jvalue)->str;
 	pthread_mutex_lock(&inst->cfglock);
 	if (strcmp(value, "all") == 0){
 		TAILQ_FOREACH(pe, &inst->counter_list, entry){
@@ -552,6 +558,7 @@ static int cont(msr_interlagos_inst_t inst, json_entity_t json,
 {
 	struct active_counter* pe;
 	const char* value;
+	json_entity_t jvalue;
 
 	if (inst->cfgstate != CFG_DONE_FINAL){
 		snprintf(ebuf, ebufsz,
@@ -560,11 +567,17 @@ static int cont(msr_interlagos_inst_t inst, json_entity_t json,
 		return -1;
 	}
 
-	value = json_attr_find_str(json, "metricname");
-	if (!value){
+	jvalue = json_value_find(json, "metricname");
+	if (!jvalue){
 		snprintf(ebuf, ebufsz, "no name to continue\n");
 		return -1;
 	}
+	if (jvalue->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'metricname' value is not a string.\n",
+						inst->base.inst_name);
+		return -1;
+	}
+	value = json_value_str(jvalue)->str;
 
 	pthread_mutex_lock(&inst->cfglock);
 	if (strcmp(value, "all") == 0){
@@ -607,6 +620,7 @@ static int add_event(msr_interlagos_inst_t inst, json_entity_t json,
 {
 	int idx;
 	const char* nam;
+	json_entity_t jvalue;
 	int i;
 
 	pthread_mutex_lock(&inst->cfglock);
@@ -625,13 +639,14 @@ static int add_event(msr_interlagos_inst_t inst, json_entity_t json,
 		return -1;
 	}
 
-	nam = json_attr_find_str(json, "metricname");
-	if ((!nam) || (strlen(nam) == 0)) {
+	jvalue = json_value_find(json, "metricname");
+	if ((!jvalue) || (jvalue->type != JSON_STRING_VALUE) ||
+			(strlen(json_value_str(jvalue)->str) == 0)) {
 		snprintf(ebuf, ebufsz, "Invalid event name\n");
 		pthread_mutex_unlock(&inst->cfglock);
 		return -1;
 	}
-
+	nam = json_value_str(jvalue)->str;
 	idx = -1;
 	for (i = 0; i < inst->msr_numoptions; i++){
 		if (strcmp(nam, inst->counter_assignments[i].name) == 0) {
@@ -1036,6 +1051,7 @@ static int init(msr_interlagos_inst_t inst, json_entity_t json,
 	struct dirent **dlist;
 	const char* val;
 	const char* cfile;
+	json_entity_t jvalue;
 	int rc;
 	int i;
 
@@ -1048,12 +1064,19 @@ static int init(msr_interlagos_inst_t inst, json_entity_t json,
 	if (rc)
 		return rc;
 
-	cfile = json_attr_find_str(json, "conffile");
-	if (!cfile){
+	jvalue = json_value_find(json, "conffile");
+	if (!jvalue){
 		snprintf(ebuf, ebufsz, "no config file");
 		rc = EINVAL;
 		return rc;
 	} else {
+		if (jvalue->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The given 'conffile' value "
+					"is not a string.\n",
+					inst->base.inst_name);
+			return EINVAL;
+		}
+		cfile = json_value_str(jvalue)->str;
 		rc = parseConfig(inst, cfile);
 		if (rc != 0){
 			snprintf(ebuf, ebufsz,
@@ -1076,8 +1099,15 @@ static int init(msr_interlagos_inst_t inst, json_entity_t json,
 	pthread_mutex_lock(&inst->cfglock);
 
 	inst->maxcore = inst->numcore;
-	val = json_attr_find_str(json, "maxcore");
-	if (val) {
+	jvalue = json_value_find(json, "maxcore");
+	if (jvalue) {
+		if (jvalue->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The given 'maxcore' value "
+						"is not a string.\n",
+						inst->base.inst_name);
+			return EINVAL;
+		}
+		val = json_value_str(jvalue)->str;
 		inst->maxcore = atoi(val);
 		if ((inst->maxcore < inst->numcore) ||
 		    (inst->maxcore > MSR_TOOMANYMAX)) { //some big number. just a safety check.
@@ -1089,8 +1119,15 @@ static int init(msr_interlagos_inst_t inst, json_entity_t json,
 	}
 
 	int corespernuma = 1;
-	val = json_attr_find_str(json, "corespernuma");
-	if (val) {
+	jvalue = json_value_find(json, "corespernuma");
+	if (jvalue) {
+		if (jvalue->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The given 'corespernuma' "
+					"value is not a string.\n",
+					inst->base.inst_name);
+			return EINVAL;
+		}
+		val = json_value_str(jvalue)->str;
 		corespernuma = atoi(val);
 		if ((corespernuma < 1) || (corespernuma > MSR_TOOMANYMAX)){ //some big number. just a safety check.
 			snprintf(ebuf, ebufsz,
@@ -1253,6 +1290,7 @@ static int reassign(msr_interlagos_inst_t inst, json_entity_t json,
 	struct active_counter* pe;
 	const char* ovalue;
 	const char* nvalue;
+	json_entity_t jvalue;
 
 	if (inst->cfgstate != CFG_DONE_FINAL){
 		snprintf(ebuf, ebufsz,
@@ -1261,18 +1299,30 @@ static int reassign(msr_interlagos_inst_t inst, json_entity_t json,
 		return -1;
 	}
 
-	ovalue = json_attr_find_str(json, "oldmetricname");
-	if (!ovalue){
+	jvalue = json_value_find(json, "oldmetricname");
+	if (!jvalue){
 		snprintf(ebuf, ebufsz, "no name to rewrite\n");
 		return -1;
 	}
-
-	nvalue = json_attr_find_str(json, "newmetricname");
-	if (!nvalue){
+	if (jvalue->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'oldmetricname' value "
+					"is not a string.\n",
+					inst->base.inst_name);
+		return -1;
+	}
+	ovalue = json_value_str(jvalue)->str;
+	jvalue = json_value_find(json, "newmetricname");
+	if (!jvalue){
 		snprintf(ebuf, ebufsz, "no name to rewrite to\n");
 		return -1;
 	}
-
+	if (jvalue->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'newmetricname' value "
+						"is not a string.\n",
+						inst->base.inst_name);
+		return -1;
+	}
+	nvalue = json_value_str(jvalue)->str;
 	pthread_mutex_lock(&inst->cfglock);
 	pe = reassigncounter(inst, ovalue, nvalue);
 	if (pe == NULL){
@@ -1292,6 +1342,7 @@ static int rewrite(msr_interlagos_inst_t inst, json_entity_t json,
 	struct active_counter* pe;
 	ctr_state s;
 	const char* value;
+	json_entity_t jvalue;
 
 	if (inst->cfgstate != CFG_DONE_FINAL){
 		snprintf(ebuf, ebufsz,
@@ -1300,11 +1351,17 @@ static int rewrite(msr_interlagos_inst_t inst, json_entity_t json,
 		return -1;
 	}
 
-	value = json_attr_find_str(json, "metricname");
-	if (!value){
+	jvalue = json_value_find(json, "metricname");
+	if (!jvalue){
 		snprintf(ebuf, ebufsz, "no name to rewrite\n");
 		return -1;
 	}
+	if (jvalue->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'metricname' value is not a string.\n",
+						inst->base.inst_name);
+		return -1;
+	}
+	value = json_value_str(jvalue)->str;
 
 	pthread_mutex_lock(&inst->cfglock);
 	if (strcmp(value, "all") == 0){
@@ -1699,12 +1756,20 @@ int msr_interlagos_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	struct kw *kw;
 	struct kw key;
 	const char *action;
+	json_entity_t jvalue;
 
-	action = json_attr_find_str(json, "action");
-	if (!action) {
+	jvalue = json_value_find(json, "action");
+	if (!jvalue) {
 		snprintf(ebuf, ebufsz, "`action` attribute required.\n");
 		return EINVAL;
 	}
+	if (jvalue->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'action' value is "
+						"not a string.\n",
+						pi->inst_name);
+		return EINVAL;
+	}
+	action = json_value_str(jvalue)->str;
 	key.token = action;
 	kw = bsearch(&key, kw_tbl, ARRAY_SIZE(kw_tbl),
 		     sizeof(*kw), kw_comparator);

@@ -124,18 +124,23 @@ int store_sos_config(ldmsd_plugin_inst_t i, json_entity_t json,
 	ldmsd_store_type_t store = (void*)i->base;
 	store_sos_inst_t inst = (void*)i;
 	int rc;
-	const char *val;
+	json_entity_t val;
 
 	rc = store->base.config(i, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	val = json_attr_find_str(json, "path");
+	val = json_value_find(json, "path");
 	if (!val) {
 		snprintf(ebuf, ebufsz, "missing `path` attribute.\n");
 		return EINVAL;
 	}
-	inst->path = strdup(val);
+	if (val->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'path' is "
+				"not a string.\n", i->inst_name);
+		return EINVAL;
+	}
+	inst->path = strdup(json_value_str(val)->str);
 	if (!inst->path) {
 		snprintf(ebuf, ebufsz, "Out of memory.\n");
 		return errno;

@@ -322,21 +322,29 @@ int lustre2_oss_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
 	int rc;
-	const char *val;
+	json_entity_t val;
+	char *attr_name;
 
 	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
 	/* Plugin-specific config here */
-	val = json_attr_find_str(json, "osts");
-	val = val?val:json_attr_find_str(json, "ost");
+	val = json_value_find(json, "osts");
+	val = val?val:json_value_find(json, "ost");
+	attr_name = val?"osts":"ost";
 	if (!val) {
 		snprintf(ebuf, ebufsz, "%s: missing `ost` attribute.\n",
 			 pi->inst_name);
 		return EINVAL;
 	}
-	rc = construct_ost_list(&inst->lh_ost, val);
+	if (val->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The given '%s' value is "
+					"not a string.\n",
+					pi->inst_name, attr_name);
+			return EINVAL;
+		}
+	rc = construct_ost_list(&inst->lh_ost, json_value_str(val)->str);
 	if (rc < 0) {
 		snprintf(ebuf, ebufsz, "%s: error constructing ost list, "
 			 "errno: %d.\n", pi->inst_name, -rc);

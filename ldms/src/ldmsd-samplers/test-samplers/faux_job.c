@@ -172,7 +172,7 @@ int faux_job_config(ldmsd_plugin_inst_t i, json_entity_t json,
 	ldmsd_sampler_type_t samp = (void*)i->base;
 	ldms_set_t set;
 	int rc;
-	const char *val;
+	json_entity_t val;
 
 	rc = samp->base.config(&inst->base, json, ebuf, ebufsz);
 	if (rc)
@@ -192,11 +192,29 @@ int faux_job_config(ldmsd_plugin_inst_t i, json_entity_t json,
 	inst->job_id_idx = ldms_metric_by_name(set, "job_id");
 	inst->app_id_idx = ldms_metric_by_name(set, "app_id");
 
-	val = json_attr_find_str(json, "job_id");
-	inst->job_id = val?atoi(val):1;
+	val = json_value_find(json, "job_id");
+	if (!val) {
+		inst->job_id = 1;
+	} else {
+		if (val->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The given 'job_id' value is "
+					"not a string.\n", i->inst_name);
+			return EINVAL;
+		}
+		inst->job_id = atoi(json_value_str(val)->str);
+	}
 
-	val = json_attr_find_str(json, "app_id");
-	inst->app_id = val?atoi(val):10;
+	val = json_value_find(json, "app_id");
+	if (!val) {
+		inst->app_id = 1;
+	} else {
+		if (val->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The given 'app_id' value is "
+					"not a string.\n", i->inst_name);
+			return EINVAL;
+		}
+		inst->app_id = atoi(json_value_str(val)->str);
+	}
 
 	ldms_transaction_begin(set);
 	faux_job_update_set(i, set, NULL);

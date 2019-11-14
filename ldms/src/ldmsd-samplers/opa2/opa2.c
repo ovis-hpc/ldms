@@ -450,7 +450,8 @@ int opa2_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	opa2_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	int rc;
-
+	char *ports;
+	json_entity_t value;
 
 	if (inst->hfi_quant != 0) {
 		snprintf(ebuf, ebufsz, "config: cannot be done twice.\n");
@@ -468,9 +469,17 @@ int opa2_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	if (rc)
 		return rc;
 
-	char *ports = json_attr_find_str(json, "ports");
-	if (!ports) {
+	value = json_value_find(json, "ports");
+	if (!value) {
 		ports = "*";
+	} else {
+		if (value->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "%s: The given 'ports' value "
+							"is not a string.\n",
+							pi->inst_name);
+			return EINVAL;
+		}
+		ports = (char *)json_value_str(value)->str;
 	}
 
 	INST_LOG(inst, LDMSD_LINFO, "configured for ports %s \n", ports);

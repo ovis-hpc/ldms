@@ -111,14 +111,20 @@ static char* NVIDIA_METRICS[] = {"gpu_power_usage",
 
 int config_nvidia(cray_sampler_inst_t inst, json_entity_t json)
 {
-	const char* value;
+	json_entity_t value;
 
-	value = json_attr_find_str(json, "gpu_devices");
+	value = json_value_find(json, "gpu_devices");
 	if (value){
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: The 'gpu_devices' value is "
+						"not a string.\n",
+						inst->base.inst_name);
+			return EINVAL;
+		}
 		INST_LOG(inst, LDMSD_LDEBUG,
 			 "cray_system_sampler configuring for "
 			 "gpudevices <%s>\n", value);
-		inst->gpudevicestr = strdup(value);
+		inst->gpudevicestr = strdup(json_value_str(value)->str);
 	} else {
 		INST_LOG(inst, LDMSD_LDEBUG,
 			 "cray_system_sampler configuring no gpudevices\n");

@@ -187,20 +187,25 @@ int procnetdev_config(ldmsd_plugin_inst_t i, json_entity_t json,
 	procnetdev_inst_t inst = (void*)i;
 	ldmsd_sampler_type_t samp = (void*)i->base;
 	ldms_set_t set;
-	const char *val;
+	json_entity_t val;
 	int rc;
 
 	rc = samp->base.config(i, json, ebuf, ebufsz);
 	if (rc)
 		goto out;
 
-	val = json_attr_find_str(json, "dev");
+	val = json_value_find(json, "dev");
 	if (!val) {
 		rc = EINVAL;
 		snprintf(ebuf, ebufsz, "`dev=DEVICE` attribute is required.\n");
 		goto out;
 	}
-	inst->dev = strdup(val);
+	if (val->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'dev' value is "
+				"not a string.\n", i->inst_name);
+		return EINVAL;
+	}
+	inst->dev = strdup(json_value_str(val)->str);
 	if (!inst->dev) {
 		rc = ENOMEM;
 		snprintf(ebuf, ebufsz, "Not enough memory.\n");

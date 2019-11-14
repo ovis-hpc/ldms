@@ -295,7 +295,7 @@ int atasmart_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	atasmart_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)pi->base;
 	ldms_set_t set;
-	const char *val;
+	json_entity_t val;
 	int rc;
 
 	if (inst->d) {
@@ -308,13 +308,18 @@ int atasmart_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	if (rc)
 		return rc;
 
-	val = json_attr_find_str(json, "disk");
+	val = json_value_find(json, "disk");
 	if (!val) {
 		snprintf(ebuf, ebufsz, "%s: `disk` attribute required\n",
 			 pi->inst_name);
 		return EINVAL;
 	}
-	inst->diskname = strdup(val);
+	if (val->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given 'disk' value is "
+				"not a string.\n", pi->inst_name);
+		return EINVAL;
+	}
+	inst->diskname = strdup(json_value_str(val)->str);
 	if (!inst->diskname) {
 		snprintf(ebuf, ebufsz, "%s: out of memory.\n", pi->inst_name);
 		return ENOMEM;

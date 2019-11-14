@@ -792,6 +792,26 @@ slurm_sampler_help(ldmsd_plugin_inst_t pi)
 	return _help;
 }
 
+static const char *__attr_find(slurm_sampler_inst_t inst, json_entity_t json,
+				char *ebuf, size_t ebufsz, char *attr_name)
+{
+	json_entity_t v;
+
+	errno = 0;
+	v = json_value_find(json, attr_name);
+	if (!v) {
+		errno = ENOENT;
+		return NULL;
+	}
+	if (v->type != JSON_STRING_VALUE) {
+		errno = EINVAL;
+		snprintf(ebuf, ebufsz, "%s: The given '%s' value is "
+				"not a string.\n", inst->base.inst_name, attr_name);
+		return NULL;
+	}
+	return json_value_str(v)->str;
+}
+
 static int
 slurm_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		     char *ebuf, int ebufsz)
@@ -822,8 +842,15 @@ slurm_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	}
 
 	/* Plugin-specific config here */
-	value = json_attr_find_str(json, "stream");
-	inst->stream = strdup(value?value:"slurm");
+	value = __attr_find(inst, json, ebuf, ebufsz, "stream");
+	if (!value) {
+		if (errno == ENOENT)
+			inst->stream = strdup("slurm");
+		else
+			return EINVAL;
+	} else {
+		inst->stream = strdup(value);
+	}
 	if (!inst->stream) {
 		rc = ENOMEM;
 		snprintf(ebuf, ebufsz, "Out of memory.\n");
@@ -831,7 +858,9 @@ slurm_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	}
 	ldmsd_stream_subscribe(inst->stream, slurm_recv_cb, inst);
 
-	value = json_attr_find_str(json, "job_count");
+	value = __attr_find(inst, json, ebuf, ebufsz, "job_count");
+	if (!value && (errno == EINVAL))
+		return EINVAL;
 	if (value)
 		inst->job_list_len = atoi(value);
 	int i;
@@ -848,7 +877,9 @@ slurm_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		TAILQ_INSERT_TAIL(&inst->free_slot_list, job, slot_ent);
 	}
 
-	value = json_attr_find_str(json, "task_count");
+	value = __attr_find(inst, json, ebuf, ebufsz, "task_count");
+	if (!value && (errno == EINVAL))
+		return EINVAL;
 	if (value)
 		inst->task_list_len = atoi(value);
 	if (inst->task_list_len < 0) {

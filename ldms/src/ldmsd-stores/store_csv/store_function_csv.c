@@ -1122,7 +1122,7 @@ static int config_check(store_function_csv_inst_t inst,
 			json_entity_t json,
 			char *ebuf, int ebufsz)
 {
-	const char *value;
+	json_entity_t value;
 	int i;
 
 	char* deprecated[] = {"comp_type", "id_pos", "idpos"};
@@ -1130,7 +1130,7 @@ static int config_check(store_function_csv_inst_t inst,
 
 
 	for (i = 0; i < numdep; i++) {
-		value = json_attr_find_str(json, deprecated[i]);
+		value = json_value_find(json, deprecated[i]);
 		if (value){
 			snprintf(ebuf, ebufsz, "config argument %s has been "
 				 "deprecated.\n", deprecated[i]);
@@ -1138,7 +1138,7 @@ static int config_check(store_function_csv_inst_t inst,
 		}
 	}
 
-	value = json_attr_find_str(json, "agesec");
+	value = json_value_find(json, "agesec");
 	if (value) {
 		snprintf(ebuf, ebufsz, "config argument agesec has been "
 			 "deprecated in favor of ageusec\n");
@@ -2484,6 +2484,23 @@ const char *store_function_csv_help(ldmsd_plugin_inst_t pi)
 	return _help;
 }
 
+static const char *__attr_find(store_function_csv_inst_t inst, json_entity_t json,
+			char *ebuf, size_t ebufsz, char *attr_name)
+{
+	json_entity_t v;
+	errno = 0;
+	v = json_value_find(json, attr_name);
+	if (!v) {
+		return NULL;
+	}
+	if (v->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "%s: The given '%s' value is "
+				"not a string.\n", inst->base.inst_name, attr_name);
+		return NULL;
+	}
+	return json_value_str(v)->str;
+}
+
 static
 int store_function_csv_config(ldmsd_plugin_inst_t pi,
 			      json_entity_t json,
@@ -2510,8 +2527,16 @@ int store_function_csv_config(ldmsd_plugin_inst_t pi,
 	if (rc)
 		goto out;
 
-	value = json_attr_find_str(json, "buffer");
-	bvalue = json_attr_find_str(json, "buffertype");
+	value = __attr_find(inst, json, ebuf, ebufsz, "buffer");
+	if (!value) {
+		rc = errno;
+		goto out;
+	}
+	bvalue = __attr_find(inst, json, ebuf, ebufsz, "buffertype");
+	if (!bvalue) {
+		rc = errno;
+		goto out;
+	}
 	rc = config_buffer(inst, value, bvalue, &inst->buffer_sz,
 			   &inst->buffer_type);
 	if (rc) {
@@ -2519,10 +2544,9 @@ int store_function_csv_config(ldmsd_plugin_inst_t pi,
 		goto out;
 	}
 
-	value = json_attr_find_str(json, "path");
+	value = __attr_find(inst, json, ebuf, ebufsz, "path");
 	if (!value){
-		snprintf(ebuf, ebufsz, "store_function missing path\n");
-		rc = EINVAL;
+		rc = errno;
 		goto out;
 	}
 	inst->path = strdup(value);
@@ -2532,12 +2556,21 @@ int store_function_csv_config(ldmsd_plugin_inst_t pi,
 		goto out;
 	}
 
-	value = json_attr_find_str(json, "altheader");
+	value = __attr_find(inst, json, ebuf, ebufsz, "altheader");
+	if (!value && (errno == EINVAL)) {
+		rc = EINVAL;
+		goto out;
+	}
+
 	if (value)
 		inst->altheader = atoi(value);
 
 	/* rollover + rolltype */
-	value = json_attr_find_str(json, "rollover");
+	value = __attr_find(inst, json, ebuf, ebufsz, "rollover");
+	if (!value && (errno == EINVAL)) {
+		rc = EINVAL;
+		goto out;
+	}
 	if (value) {
 		roll = atoi(value);
 		if (roll < 0) {
@@ -2547,7 +2580,11 @@ int store_function_csv_config(ldmsd_plugin_inst_t pi,
 			goto out;
 		}
 	}
-	value = json_attr_find_str(json, "rolltype");
+	value = __attr_find(inst, json, ebuf, ebufsz, "rolltype");
+	if (!value && (errno == EINVAL)) {
+		rc = EINVAL;
+		goto out;
+	}
 	if (value) {
 		if (roll < 0) { /* rolltype not valid without rollover also */
 			snprintf(ebuf, ebufsz,
@@ -2566,7 +2603,11 @@ int store_function_csv_config(ldmsd_plugin_inst_t pi,
 	inst->rollover = roll;
 	inst->rolltype = rollmethod;
 
-	value = json_attr_find_str(json, "ageusec");
+	value = __attr_find(inst, json, ebuf, ebufsz, "ageusec");
+	if (!value && (errno == EINVAL)) {
+		rc = EINVAL;
+		goto out;
+	}
 	if (value){
 		tmp = atoi(value);
 		if (tmp < 0) {
@@ -2579,9 +2620,8 @@ int store_function_csv_config(ldmsd_plugin_inst_t pi,
 		inst->ageusec = tmp;
 	}
 
-	value = json_attr_find_str(json, "derivedconf");
+	value = __attr_find(inst, json, ebuf, ebufsz, "derivedconf");
 	if (!value) {
-		snprintf(ebuf, ebufsz, "missing `derivedconf` attribute\n");
 		rc = EINVAL;
 		goto out;
 	}
