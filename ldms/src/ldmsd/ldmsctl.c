@@ -192,6 +192,8 @@ char *ldmsctl_ts_str(uint32_t sec, uint32_t usec)
 	return str;
 }
 
+static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str);
+
 static void help_greeting()
 {
 	printf("\nGreet ldmsd\n\n"
@@ -1682,6 +1684,22 @@ static void help_export()
 	printf( "     [cfgcmd=]     true/false\n");
 }
 
+static void help_subscribe()
+{
+	printf( "\nSubscribe to a stream\n\n");
+	printf( "The aggregator will listen for published data on the specified stream\n");
+	printf( "Parameters\n");
+	printf( "     name=     The stream name\n");
+}
+
+static void help_publish()
+{
+	printf( "\nPublish data to the named stream\n\n");
+	printf( "Parameters\n");
+	printf( "     name=     The stream name\n");
+	printf( "     string=   The data to publish\n");
+}
+
 static void help_set()
 {
 	printf( "\n(Unsupported) Set command-line options\n\n"
@@ -1759,6 +1777,8 @@ static struct command command_tbl[] = {
 			NULL,	help_prdcr_stop_regex,	resp_generic },
 	{ "prdcr_subscribe",
 			NULL,	help_prdcr_subscribe_regex,	resp_generic },
+	{ "publish",
+			NULL,	help_publish,		resp_generic },
 	{ "quit",	handle_quit,	help_quit,	resp_generic },
 	{ "script",	handle_script,	help_script,	resp_generic },
 	{ "set",	handle_set,	help_set,	NULL },
@@ -1773,7 +1793,6 @@ static struct command command_tbl[] = {
 			NULL,	help_setgroup_mod,	resp_generic },
 	{ "setgroup_rm",
 			NULL,	help_setgroup_rm,	resp_generic },
-	{ "source",	handle_source,	help_source,	resp_generic },
 	{ "smplr_add",	NULL,	help_smplr_add,		resp_generic },
 	{ "smplr_del",	NULL,	help_smplr_del,		resp_generic },
 	{ "smplr_start",
@@ -1781,6 +1800,7 @@ static struct command command_tbl[] = {
 	{ "smplr_status",
 			NULL,	help_smplr_status,	resp_smplr_status },
 	{ "smplr_stop",	NULL,	help_smplr_stop,	resp_generic },
+	{ "source",	handle_source,	help_source,	resp_generic },
 	{ "strgp_add",	NULL,	help_strgp_add,		resp_generic },
 	{ "strgp_del",	NULL,	help_strgp_del,		resp_generic },
 	{ "strgp_metric_add",
@@ -1796,6 +1816,7 @@ static struct command command_tbl[] = {
 	{ "strgp_status",
 			NULL,	help_strgp_status,	resp_strgp_status },
 	{ "strgp_stop",	NULL,	help_strgp_stop,	resp_generic },
+	{ "subscribe",	NULL,	help_subscribe,		resp_generic },
 	{ "term",	NULL,	help_term,		resp_generic },
 	{ "udata",	NULL,	help_udata,		resp_generic },
 	{ "udata_regex",

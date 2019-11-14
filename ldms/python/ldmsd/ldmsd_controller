@@ -849,7 +849,6 @@ class LdmsdCmdParser(cmd.Cmd):
         data=   The data to publish
         """
         resp = self.handle('publish', arg)
-        print(resp['errcode'])
 
     def do_subscribe(self, arg):
         """
@@ -861,7 +860,6 @@ class LdmsdCmdParser(cmd.Cmd):
         name=   The stream name
         """
         resp = self.handle('subscribe', arg)
-        print(resp['errcode'])
 
     def do_status(self, arg):
         """
