@@ -31,5 +31,5 @@ libipmisensors_la_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/$(SAMPLER)
 pkglib_LTLIBRARIES += libipmisensors.la
 dist_man7_MANS += Plugin_ipmisensors.man
 endif
-EXTRA_DIST += libipmisensors.la
+EXTRA_DIST += Plugin_ipmireader.man
 EXTRA_DIST += Plugin_ipmisensors.man
