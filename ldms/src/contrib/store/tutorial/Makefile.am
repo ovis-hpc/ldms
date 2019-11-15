@@ -26,3 +26,4 @@ pkglib_LTLIBRARIES += libstore_tutorial.la
 dist_man7_MANS += Plugin_store_tutorial.man
 endif
 
+EXTRA_DIST = Plugin_store_tutorial.man

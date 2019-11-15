@@ -25,5 +25,5 @@ libtutorial_sampler_la_LIBADD = $(COMMON_LIBADD)
 libtutorial_sampler_la_CFLAGS = $(AM_CFLAGS) 
 pkglib_LTLIBRARIES += libtutorial_sampler.la
 dist_man7_MANS += Plugin_tutorial_sampler.man
-
 endif
+EXTRA_DIST = Plugin_tutorial_sampler.man

@@ -11,5 +11,6 @@ do_subst = @LDMS_SUBST_RULE@
 	chmod 755 $@
 
 if ENABLE_TUTORIAL_STORE
-SUBDIRS += tutorial
+    MAYBE_TUTORIAL_STORE = tutorial
 endif
+SUBDIRS += $(MAYBE_TUTORIAL_STORE)
