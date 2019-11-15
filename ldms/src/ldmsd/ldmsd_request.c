@@ -3358,7 +3358,7 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 		"\"interval\":\"%ld\","
 		"\"offset\":\"%ld\","
 	        "\"offset_incr\":\"%ld\","
-		"\"sync\":\"%s\","
+		"\"auto\":\"%s\","
 		"\"mode\":\"%s\","
 		"\"state\":\"%s\","
 		"\"producers\":[",
