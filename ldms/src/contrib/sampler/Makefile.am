@@ -4,12 +4,15 @@ lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 
 if ENABLE_IPMIREADER
-    SUBDIRS += ipmireader
+    MAYBE_IPMIREADER = ipmireader
 endif
+SUBDIRS += $(MAYBE_IPMIREADER)
+
 
 if ENABLE_TUTORIAL_SAMPLER
-    SUBDIRS += tutorial
+    MAYBE_TUTORIAL_SAMPLER = tutorial
 endif
+SUBDIRS += $(MAYBE_TUTORIAL_SAMPLER)
 
 
 

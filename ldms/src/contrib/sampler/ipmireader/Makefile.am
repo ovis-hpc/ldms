@@ -34,3 +34,4 @@ libipmisensors_la_CFLAGS = $(AM_CFLAGS)
 pkglib_LTLIBRARIES += libipmisensors.la
 dist_man7_MANS += Plugin_ipmisensors.man
 endif
+EXTRA_DIST = Plugin_ipmireader.man Plugin_ipmisensors.man
