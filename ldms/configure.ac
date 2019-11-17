@@ -71,6 +71,9 @@ OPTION_DEFAULT_DISABLE([rabbitv3], [ENABLE_RABBITV3])
 dnl AMQP
 OPTION_DEFAULT_DISABLE([amqp], [ENABLE_AMQP])
 
+dnl Options for contributed stores
+OPTION_DEFAULT_DISABLE([tutorial-store],[ENABLE_TUTORIAL_STORE])
+
 OPTION_DEFAULT_DISABLE([gpcdlocal], [ENABLE_GPCDLOCAL],[Required access to gpcd-support repository])
 OPTION_WITH_OR_BUILD([gpcdlocal],[../gpcd-support],[gpcd],[gpcdlocal.sh], ,[gpcd])
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
@@ -88,7 +91,6 @@ OPTION_DEFAULT_DISABLE([jobid], [ENABLE_JOBID])
 OPTION_DEFAULT_ENABLE([clock], [ENABLE_CLOCK])
 OPTION_DEFAULT_ENABLE([synthetic], [ENABLE_SYNTHETIC])
 OPTION_DEFAULT_ENABLE([varset], [ENABLE_VARSET])
-OPTION_DEFAULT_DISABLE([ipmireader], [ENABLE_IPMIREADER])
 OPTION_DEFAULT_ENABLE([lnet_stats], [ENABLE_LNET_STATS])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
 OPTION_DEFAULT_DISABLE([filesingle], [ENABLE_FILESINGLE])
@@ -145,6 +147,10 @@ AM_CONDITIONAL([ENABLE_TEST_SAMPLER_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE"
 OPTION_DEFAULT_DISABLE([grptest], [ENABLE_GRPTEST])
 dnl grptest will also build with --enable-ldms-test
 AM_CONDITIONAL([ENABLE_GRPTEST_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_GRPTEST_FALSE" = "x#"])
+
+dnl options for contributed samplers
+OPTION_DEFAULT_DISABLE([ipmireader], [ENABLE_IPMIREADER])
+OPTION_DEFAULT_DISABLE([tutorial-sampler],[ENABLE_TUTORIAL_SAMPLER])
 
 dnl check for libcurl if influx is configured
 OPTION_DEFAULT_ENABLE([influx], [ENABLE_INFLUX])
@@ -537,11 +543,14 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/auth/Makefile
 		 src/store/Makefile src/sampler/Makefile
+		 src/contrib/Makefile
 		 src/store/kokkos/Makefile
 		 src/store/papi/Makefile
 		 src/store/slurm/Makefile
 		 src/store/influx/Makefile
 		 src/store/store_flatfile/Makefile
+		 src/contrib/store/Makefile
+		 src/contrib/store/tutorial/Makefile
 		 src/sampler/dstat/Makefile
 		 src/sampler/filesingle/Makefile
 		 src/sampler/lustre/Makefile
@@ -563,14 +572,15 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/procinterrupts/Makefile
 		 src/sampler/procstat/Makefile
 		 src/sampler/vmstat/Makefile
-		 src/sampler/contrib/Makefile
-		 src/sampler/contrib/ipmireader/Makefile
 		 src/sampler/examples/Makefile
 		 src/sampler/examples/array_example/Makefile
 		 src/sampler/examples/synthetic/Makefile
 		 src/sampler/examples/test_sampler/Makefile
 		 src/sampler/ibm_occ/Makefile
 		 src/sampler/syspapi/Makefile
+		 src/contrib/sampler/Makefile
+		 src/contrib/sampler/ipmireader/Makefile
+		 src/contrib/sampler/tutorial/Makefile
 		 src/ldmsd/Makefile
 		 src/ldmsd/test/Makefile
 		 scripts/Makefile
