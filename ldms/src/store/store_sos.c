@@ -290,19 +290,18 @@ static void put_container(sos_handle_t h)
 
 static sos_handle_t find_container(const char *path)
 {
-	sos_handle_t h;
+	sos_handle_t h = NULL;
+	pthread_mutex_lock(&cfg_lock);
 	LIST_FOREACH(h, &sos_handle_list, entry){
 		if (0 != strncmp(path, h->path, sizeof(h->path)))
 			continue;
-
 		/* found */
 		/* take reference */
-		pthread_mutex_lock(&cfg_lock);
 		h->ref_count++;
-		pthread_mutex_unlock(&cfg_lock);
-		return h;
+		break;
 	}
-	return NULL;
+	pthread_mutex_unlock(&cfg_lock);
+	return h;
 }
 
 /**
