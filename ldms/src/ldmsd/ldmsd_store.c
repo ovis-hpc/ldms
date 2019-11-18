@@ -109,7 +109,19 @@ int store_config(ldmsd_plugin_inst_t i, json_entity_t json,
 	const char *val;
 
 	val = json_attr_find_str(json, "perm");
-	store->perm = (val)?(atol(val)):(0664);
+	if (val) {
+		errno = 0;
+		store->perm = strtol(val, NULL, 8);
+		if (errno) {
+			snprintf(ebuf, ebufsz, "%s: bad `perm` value: %s\n",
+				i->inst_name, val);
+			ldmsd_lerror("%s: bad `perm` value: %s\n",
+				i->inst_name, val);
+			return errno;
+		}
+	} else {
+		store->perm = 0660;
+	}
 	return 0;
 }
 
