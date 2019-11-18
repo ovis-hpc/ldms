@@ -100,6 +100,7 @@ typedef struct ldms_value_desc {
 	uint64_t vd_user_data;	/*! User defined meta-data */
 	uint32_t vd_data_offset;/*! Value offset in data (metric) or meta-data (attr) */
 	uint32_t vd_array_count;/*! Number of elements in the array */
+	uint32_t vd_reserved[2];
 	uint8_t vd_type;	/*! The type of the value, enum ldms_value_type */
 	uint8_t vd_flags;	/*! Metric or Attribute */
 #ifdef SWIG
