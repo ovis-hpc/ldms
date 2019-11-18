@@ -26,7 +26,7 @@ dist_man1_MANS += ldms-sensors-config.man
 TESTS = test_sensors test_lscpu
 endif
 
-EXTRA_DIST = \
+EXTRA_DIST += \
 	Plugin_filesingle.man \
 	ldms-sensors-config.man \
 	test_sensors \
