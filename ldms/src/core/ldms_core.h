@@ -200,6 +200,7 @@ struct ldms_set_hdr {
 	uint32_t gid;           /* GID */
 	uint32_t perm;          /* permission */
 	uint32_t array_card;    /* number of sets in the set array */
+	uint32_t reserved[8];	/* area reserved for compatible core updates */
 	uint32_t dict[OVIS_FLEX];/* The attr/metric dictionary */
 };
 
