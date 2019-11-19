@@ -34,7 +34,7 @@ is the number of seconds determining the time-out of the LDMS connections
 .BI client= XPRT : HOST : PORT : AUTH
 specifies \fBldmsd\fR to which \fBslurm_notifier\fR publishes the data.
 The \fIXPRT\fR specifies the type of the transport, which includes
-.BR sock ", " rdma ", " ugni ", and " fabric .
+.BR sock ", " rdma ", " ugni .
 The \fIHOST\fR is the hostname or the IP address that \fBldmsd\fR resides. The
 \fIPORT\fR is the listeing port of the \fBldmsd\fR. The \fIAUTH\fR is the
 LDMS authentication method that the \fBldmsd\fR uses, which are
