@@ -1,6 +1,6 @@
 .\" Manpage for ldmsd_controller
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 8 "28 Feb 2018" "v4" "ldmsd_contoller man page"
+.TH man 8 "19 Nov 2019" "v4.3" "ldmsd_contoller man page"
 
 .SH NAME
 ldmsd_controller \- a python program to configure an ldms daemon.
@@ -115,6 +115,44 @@ The plugin name
 .BR attr=value
 .br
 Plugin specific attr=value tuples
+
+.RS
+.B Attributes specific for sampler plugins (Some sampler plugins may have additional
+attributes)
+.TP
+.BI producer " producer"
+.br
+A unique name for the host providing the data
+.TP
+.BI instance " instance"
+.br
+The set instance name. The name must be unique among all metric sets in all LDMS
+daemons.
+.TP
+.BI [component_id " component_id"]
+.br
+A unique number for the comopnent being monitored. The default is zero.
+.TP
+.BI [schema " schema"]
+.br
+The name of the metric set schema.
+.TP
+.BI [job_set " job_set"]
+.br
+The set instance name of the set containing the job data. The default is 'job_info'.
+.TP
+.BI [uid " uid"]
+.br
+The user id of the set's owner. The default is the returned value of geteuid().
+.TP
+.BI [gid " gid"]
+.br
+The group id of the set's owner. The default is the returned value of getegid().
+.TP
+.BI [perm " perm"]
+.br
+The sampler plugin instance access permission. The default is 0777.
+.RE
 .RE
 
 .SS Start a sampler plugin
@@ -159,9 +197,8 @@ attr=<value>
 .TP
 .BI name " name"
 .br
-The ProducerName as specified in the sampler. The producer name is used by the ldmsd to uniquely identify
-the producers that are being added. The prdcr_add command can only be called once to add a ProducerName
-to the aggregator.
+The producer name. The producer name must be unique in an aggregator. It is independent of
+any attributes specified for the metric sets or hosts.
 .TP
 .BI xprt " xprt"
 .br
@@ -178,6 +215,10 @@ The connection type [active, passive]
 .BI interval " interval"
 .br
 The connection retry interval
+.TP
+.BI [perm " permission"]
+.br
+The permission to modify the producer in the future
 .RE
 
 .SS Delete a producer from the aggregator
@@ -242,6 +283,29 @@ attr=<value>
 A regular expression
 .RE
 
+.SS Query producer status
+.BR prdcr_status
+attr=<value>
+.RS
+.TP
+.BI [name " name"]
+.br
+The producer name. If none is given, the statuses of all producers are
+reported.
+.RE
+
+.SS Subscribe for stream data from all matching producers
+.BR prdcr_subsribe
+.RS
+.TP
+.BI regex " regex"
+.br
+The regular expression matching producer name
+.TP
+.BI stream " stream"
+.br
+The stream name
+.RE
 
 .SH UPDATER COMMAND SYNTAX
 .SS Add an updater process that will periodically sample producer metric sets
@@ -262,10 +326,10 @@ The update/collect interval
 .br
 Offset for synchronized aggregation. Optional.
 .TP
-.BI [push " onchange|onpush" ]
+.BI [push " onchange|true" ]
 .br
-Push mode: 'onchange' and 'onpush'. 'onchange' means the Updater will get an
-update whenever the set source ends a transaction or pushes the update. 'onpush'
+Push mode: 'onchange' and 'true'. 'onchange' means the Updater will get an
+update whenever the set source ends a transaction or pushes the update. 'true'
 means the Updater will receive an update only when the set source pushes the
 update. If `push` is used, `auto_interval` cannot be `true`.
 .TP
@@ -274,6 +338,10 @@ If true, the updater will schedule set updates according to the update hint. The
 sets with no hints will not be updated. If false, the updater will schedule the
 set updates according to the given interval and offset values. If not specified,
 the value is \fIfalse\fR.
+.TP
+.BI [perm " permission"]
+.br
+The permission to modify the updater in the future
 .RE
 
 .SS Remove an updater from the configuration
@@ -329,6 +397,8 @@ schema name.
 .RE
 
 .SS Add matching producers to an updater policy
+This is required before starting the updater.
+
 .BR updtr_prdcr_add
 attr=<value>
 .RS
@@ -377,6 +447,7 @@ Offset for synchronized aggregation. Optional.
 
 .SS Stop an updater.
 The Updater must be stopped in order to change it's configuration.
+
 .BR updtr_stop
 attr=<value>
 .RS
@@ -384,6 +455,17 @@ attr=<value>
 .BI name " name"
 .br
 The update policy name
+.RE
+
+.SS Query the updater status
+.BR updtr_status
+attr=<value>
+.RS
+.TP
+.BI [name " name"]
+.br
+The updater name. If none is given, the statuses of all updaters are
+reported.
 .RE
 
 .SH STORE COMMAND SYNTAX
@@ -407,6 +489,11 @@ The storage backend container name.
 .BI schema " schema"
 .br
 The schema name of the metric set to store.
+.TP
+.BI [perm " permission"]
+.br
+The permission to modify the storage in the future
+.RE
 
 .SS Remove a Storage Policy
 All updaters must be stopped in order for a storage policy to be deleted
@@ -421,6 +508,8 @@ The storage policy name
 .RE
 
 .SS Add a regular expression used to identify the producers this storage policy will apply to.
+If no producers are added to the storage policy, the storage policy will apply
+on all producers.
 .br
 .BR strgp_prdcr_add
 attr=<value>
@@ -488,6 +577,7 @@ The storage policy name
 
 .SS Stop a storage policy.
 A storage policy must be stopped in order to change its configuration.
+
 .BR strgp_stop
 attr=<value>
 .RS
@@ -496,31 +586,16 @@ attr=<value>
 The storage policy name
 .RE
 
-.SH
-
-.SS Saves a metrics from one or more hosts to persistent storage.
-.BR store
+.SS Query the storage policy status
+.BR strgp_status
 attr=<value>
 .RS
-.BI policy " name"
-.br
-The storage policy name. This must be unique.
 .TP
-.BI container " container"
+.BI [name " name"]
 .br
-The container name used by the plugin to name data.
-.BI schema " schema"
-.br
-A name used to name the set of metrics stored together.
-.BI [metrics " metrics"]
-.br
-A comma separated list of metric names. If not specified,
-all metrics in the metric set will be saved. Optional
-.BI [hosts " hosts"]
-The set of hosts whose data will be stored. If hosts is not
-specified, the metric set will be saved for all hosts. If
-specified, the value should be a comma separated list of
-host names.
+The storage policy name. If none is given, the statuses of all storage policies
+are reported.
+.RE
 
 .SH FAILOVER COMMAND SYNTAX
 
@@ -531,14 +606,53 @@ Please see \fBldmsd_failover\fR(7).
 
 Please see \fBldmsd_setgroup\fR(7).
 
-
-.SH MISC COMMAND SYNTAX
-
-.SS Tell the daemon to dump it's internal state to the log file.
-.BR info
+.SH STREAM COMMAND SYNTAX
+.SS Publish data to the named stream
+.BR plublish
 attr=<value>
 .RS
-.BI [name " name"]
+.TP
+.BI name " name"
+.br
+The stream name
+.TP
+.BI data " data"
+.br
+The data to publish
+.RE
+
+.SS Subscribe to a stream
+.BR subscribe
+attr=<value>
+.RS
+.TP
+.BI name " name"
+.br
+The stream name
+.RE
+
+.SH LDMS DAEMON COMMAND SYNTAX
+.SS Changing the verbosity level of ldmsd
+.BR loglevel
+attr=<value>
+.RS
+.BI level " level"
+.br
+Verbosity levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]
+.RE
+
+.SS Exit the connected LDMS daemon gracefully
+.BR daemon_exit
+
+.SS Query the connected LDMS daemon status
+.BR daemon_status
+
+
+.SS Tell the daemon to dump it's internal state to the log file.
+.BR status
+<type> [name=<value>]
+.RS
+.BI [ type]
 .br
 Reports only the specified objects. The choices are prdcr, updtr and strgp.
 .RS
@@ -548,68 +662,22 @@ updtr: list the state of all update policies.
 .br
 strgp: list the state of all storage policies.
 .RE
+.TP
+.RI [name " value"]
+The object name of which the status will be reported.
 .RE
 
-.SS Adds a host to the list of hosts monitored by this ldmsd.
-.BR add
-attr=<value>
+.SH MISC COMMAND SYNTAX
+
+.SS Display the list of available commands
+.br
+.BR help
+<command>
 .RS
-.BI host " hostname"
+.RI [ command]
 .br
-The hostname. This can be an IP address or DNS hostname.
-.BI type " type"
-One of the following host types:
-.RS
-active:  An connection is initiated with the peer and
-it's metric sets will be periodically queried.
-.br
-passive:  A connect request is expected from the specified host.
-After this request is received, the peer's metric sets
-will be queried periodically.
-.br
-bridging: A connect request is initiated to the remote peer,
-but it's metric sets are not queried. This is the active
-side of the passive host above.
-.br
-local: The to-be-added host is the local host. The given
-set name(s) must be the name(s) of local set(s).
-This option is used so that ldmsd can store
-the given local set(s) if it is configured to do so.
-.RE
-.BI [xprt " xprt"]
-The transport type, defaults to 'sock'. Optional.
-.RS
-sock: The sockets transport.
-.br
-rdma: The OFA Verbs Transport for Infiniband or iWARP.
-.br
-ugni: The Cray Gemini transport.
-.RE
-.BI [port " port"]
-The port number to connect on, defaults to 50000. Optional
-.RE
-.BI sets " sets"
-.br
-The list of metric set names to be queried.
-The list is comma separated. If the type is bridging,
-no set names should be specified.
-.TP
-.BI [interval " interval"]
-.br
-The sample interval in microseconds.
-.TP
-.BI [offset " offset"]
-.br
-Optional offset (shift) from the sample mark in microseconds.
-Offset can be positive or negative with magnitude up to 1/2
-the sample interval. If this offset is specified, including 0,
-collection will be synchronous; if the offset is not specified,
-collection will be asynchronous.
-.TP
-.BI [agg_no " aggno"]
-.br
-The number of the aggregator that this is standby for.
-Defaults to 0 which means this is an active aggregator. Optional
+If a command is given, the help of the command will be printed. Otherwise, only
+the available command names are printed.
 .RE
 
 .SS Set the user data value for a metric in a metric set.
@@ -617,12 +685,15 @@ Defaults to 0 which means this is an active aggregator. Optional
 .BR udata
 attr=<value>
 .RS
+.TP
 .BI set " set"
 .br
 The sampler plugin name
+.TP
 .BI metric " metric"
 .br
 The metric name
+.TP
 .BI udata " udata"
 .br
 The desired user-data. This is a 64b unsigned integer.
@@ -636,41 +707,24 @@ sets to the user data of the consecutive matched metric and so on.
 .BR udata_regex
 attr=<value>
 .RS
+.TP
 .BI set " set"
 .br
 The metric set name.
+.TP
 .BI regex " regex"
 .br
 A regular expression to match metric names to be set
+.TP
 .BI base " base"
 .br
 The base value of user data (uint64)
+.TP
 .BI [incr " incr"]
 .br
 Increment value (int). The default is 0. If incr is 0,
 the user data of all matched metrics are set
 to the base value. Optional.
-
-.SS ldmsd will update the standby state (standby/active) of the given aggregator number
-.BR standby
-attr=<value>
-.RS
-.BI agg_no " aggno"
-.br
-Unique integer id for an aggregator from 1 to 64
-.BI state "0/1"
-.br
-0/1 - standby/active
-.RE
-
-.SS Changing the verbosity level of ldmsd
-.BR loglevel
-attr=<value>
-.RS
-.BI level " level"
-.br
-Verbosity levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]
-.RE
 
 .SS Get the LDMS version the running LDMSD is based on.
 .BR version
@@ -730,7 +784,6 @@ echo "config name=store_csv path=$STORE_PATH action=init altheader=0 rollover=30
 echo "config name=store_csv action=custom container=csv schema=cray_aries_r altheader=1  userdata=0"
 
 echo "strgp_add name=policy_mem plugin=store_csv container=csv schema=meminfo"
-echo "strgp_prdcr_add name=policy_mem regex=localhost*"
 echo "strgp_start name=policy_mem"
 
 #echo "strgp_add name=csv_memfoo_policy plugin=store_csv container=meminfo schema=meminfo_foo"
@@ -741,8 +794,8 @@ echo "strgp_start name=policy_mem"
 .SS
 Example to start an ldmsd and use ldmsd_controller to call a script
 .nf
-> ldmsd -x sock:11111 -S metric_socket-1 -l log.txt -p 12345
-> ldmsd_controller --host localhost --port 12345 --script ./myscript.sh
+> ldmsd -x sock:11111 -l log.txt
+> ldmsd_controller --host localhost --port 11111 --xprt sock --script myscript.sh
 .fi
 
 .SH SEE ALSO
