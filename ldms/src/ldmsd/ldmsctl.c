@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2011-2018 National Technology & Engineering Solutions
+ * Copyright (c) 2011-2019 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2011-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2011-2019 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -413,7 +413,8 @@ static void help_prdcr_add()
 		"     host=     The hostname of the host\n"
 		"     port=     The port number on which the LDMS is listening\n"
 		"     type=     The connection type [active, passive]\n"
-		"     interval= The connection retry interval (us)\n");
+		"     interval= The connection retry interval (us)\n"
+		"     [perm=]   The permission to modify the producer in the future.\n");
 }
 
 static void help_prdcr_del()
@@ -750,10 +751,10 @@ static void help_updtr_add()
 		"     name=       The update policy name\n"
 		"     interval=   The update/collect interval\n"
 		"     [offset=]   Offset for synchronized aggregation\n"
-		"     [push=]     Push mode: 'onchange' and 'onpush'. 'onchange' means the\n"
+		"     [push=]     Push mode: 'onchange' and 'true'. 'onchange' means the\n"
 		"                 Updater will get an update whenever the set source ends a\n"
-		"                 transaction or pushes the update. 'onpush' means the Updater\n"
-		"                 will receive an update only when the set source pushes the\n"
+		"                 transaction or pushes the update. 'true' means the Updater\n"
+		"                 will receive an update only when the set source explicitly pushes the\n"
 		"                 update. If `push` is used, `auto_interval` cannot be `true`.\n"
 		"    [auto_interval=]   [true|false] If true, the updater will schedule\n"
 		"                       set updates according to the update hint. The sets\n"
@@ -761,6 +762,7 @@ static void help_updtr_add()
 		"                       updater will schedule the set updates according to\n"
 		"                       the given interval and offset values. If not\n"
 		"                       specified, the value is `false`.\n"
+		"     [perm=]      The permission to modify the updater in the future.\n"
 		);
 
 }
@@ -983,7 +985,8 @@ static void help_strgp_add()
 		"     name=        The unique storage policy name.\n"
 		"     plugin=      The name of the storage backend.\n"
 		"     container=   The storage backend container name.\n"
-		"     schema=      The schema name of the metric set to store.\n");
+		"     schema=      The schema name of the metric set to store.\n"
+		"     [perm=]      The permission to modify the storage policy in the future.\n");
 }
 
 static void help_strgp_del()
@@ -1339,6 +1342,7 @@ static void help_setgroup_add()
 	printf("    [producer=]     The producer name of the set group.\n");
 	printf("    [interval=]     The update interval hint (in usec).\n");
 	printf("    [offset=]       The update offset hint (in usec).\n");
+	printf("    [perm=]         The permission to modify the setgroup in the future.\n");
 }
 
 static void help_setgroup_mod()
