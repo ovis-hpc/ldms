@@ -762,55 +762,101 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static void __metric_increment(struct test_sampler_metric *metric, ldms_set_t set)
 {
-	union ldms_value v = metric->latest_value;
+	union ldms_value v;
 	int i = 0;
 
 	if (ldms_type_is_array(metric->vtype)) {
 		for (i = 0; i < metric->count; i++) {
 			switch (metric->vtype) {
 			case LDMS_V_U8_ARRAY:
+				v.v_u8 = ldms_metric_array_get_u8(set, metric->idx, i) + 1;
+				ldms_metric_array_set_val(set, metric->idx, i, &v);
+				break;
 			case LDMS_V_S8_ARRAY:
+				v.v_s8 = ldms_metric_array_get_s8(set, metric->idx, i) + 1;
+				ldms_metric_array_set_val(set, metric->idx, i, &v);
+				break;
 			case LDMS_V_U16_ARRAY:
+				v.v_u16 = ldms_metric_array_get_u16(set, metric->idx, i) + 1;
+				ldms_metric_array_set_val(set, metric->idx, i, &v);
+				break;
 			case LDMS_V_S16_ARRAY:
+				v.v_s16 = ldms_metric_array_get_s16(set, metric->idx, i) + 1;
+				ldms_metric_array_set_val(set, metric->idx, i, &v);
+				break;
 			case LDMS_V_U32_ARRAY:
+				v.v_u32 = ldms_metric_array_get_u32(set, metric->idx, i) + 1;
+				ldms_metric_array_set_val(set, metric->idx, i, &v);
+				break;
 			case LDMS_V_S32_ARRAY:
+				v.v_s32 = ldms_metric_array_get_s32(set, metric->idx, i) + 1;
+				ldms_metric_array_set_val(set, metric->idx, i, &v);
+				break;
 			case LDMS_V_S64_ARRAY:
+				v.v_s64 = ldms_metric_array_get_s64(set, metric->idx, i) + 1;
+				ldms_metric_array_set_val(set, metric->idx, i, &v);
+				break;
 			case LDMS_V_U64_ARRAY:
-				metric->latest_value.v_u64++;
+				v.v_u64 = ldms_metric_array_get_u64(set, metric->idx, i) + 1;
+				ldms_metric_array_set_val(set, metric->idx, i, &v);
 				break;
 			case LDMS_V_F32_ARRAY:
-				metric->latest_value.v_f++;
+				v.v_f = ldms_metric_array_get_float(set, metric->idx, i) + 1;
+				ldms_metric_array_set_val(set, metric->idx, i, &v);
 				break;
 			case LDMS_V_D64_ARRAY:
-				metric->latest_value.v_d++;
+				v.v_d = ldms_metric_array_get_double(set, metric->idx, i) + 1;
+				ldms_metric_array_set_val(set, metric->idx, i, &v);
 				break;
 			default:
 				return;
 			}
-			ldms_metric_array_set_val(set, metric->idx, i, &metric->latest_value);
 		}
 	} else {
 		switch (metric->vtype) {
 		case LDMS_V_U8:
+			v.v_u8 = ldms_metric_get_u8(set, metric->idx) + 1;
+			ldms_metric_set(set, metric->idx, &v);
+			break;
 		case LDMS_V_S8:
+			v.v_s8 = ldms_metric_get_s8(set, metric->idx) + 1;
+			ldms_metric_set(set, metric->idx, &v);
+			break;
 		case LDMS_V_U16:
+			v.v_u16 = ldms_metric_get_u16(set, metric->idx) + 1;
+			ldms_metric_set(set, metric->idx, &v);
+			break;
 		case LDMS_V_S16:
+			v.v_s16 = ldms_metric_get_s16(set, metric->idx) + 1;
+			ldms_metric_set(set, metric->idx, &v);
+			break;
 		case LDMS_V_U32:
+			v.v_u32 = ldms_metric_get_u32(set, metric->idx) + 1;
+			ldms_metric_set(set, metric->idx, &v);
+			break;
 		case LDMS_V_S32:
+			v.v_s32 = ldms_metric_get_s32(set, metric->idx) + 1;
+			ldms_metric_set(set, metric->idx, &v);
+			break;
 		case LDMS_V_S64:
+			v.v_s64 = ldms_metric_get_s64(set, metric->idx) + 1;
+			ldms_metric_set(set, metric->idx, &v);
+			break;
 		case LDMS_V_U64:
-			metric->latest_value.v_u64++;
+			v.v_u64 = ldms_metric_get_u64(set, metric->idx) + 1;
+			ldms_metric_set(set, metric->idx, &v);
 			break;
 		case LDMS_V_F32:
-			metric->latest_value.v_f++;
+			v.v_f = ldms_metric_get_float(set, metric->idx) + 1;
+			ldms_metric_set(set, metric->idx, &v);
 			break;
 		case LDMS_V_D64:
-			metric->latest_value.v_d++;
+			v.v_d = ldms_metric_get_double(set, metric->idx) + 1;
+			ldms_metric_set(set, metric->idx, &v);
 			break;
 		default:
 			return;
 		}
-		ldms_metric_set(set, metric->idx, &v);
 	}
 }
 
