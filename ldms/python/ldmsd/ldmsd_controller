@@ -2,10 +2,10 @@
 
 #######################################################################
 # -*- c-basic-offset: 8 -*-
-# Copyright (c) 2015-2018 National Technology & Engineering Solutions
+# Copyright (c) 2015-2019 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
 # NTESS, the U.S. Government retains certain rights in this software.
-# Copyright (c) 2015-2018 Open Grid Computing, Inc. All rights reserved.
+# Copyright (c) 2015-2019 Open Grid Computing, Inc. All rights reserved.
 #
 # This software is available to you under a choice of one of two
 # licenses.  You may choose to be licensed under the terms of the GNU
@@ -262,6 +262,11 @@ class LdmsdCmdParser(cmd.Cmd):
         script.close()
 
     def do_script(self, arg):
+        """
+        Execute the given executable file and submit the resulting configuration to LDMSD
+        Example:
+            script /path/to/executable
+        """
         exit_code, out, err = ldmsd_util.sh_exec(arg)
         if exit_code != 0:
             print("Script exited with code {0} and error: {1}".format(exit_code, err))
@@ -316,6 +321,7 @@ class LdmsdCmdParser(cmd.Cmd):
         port=     The port number on which the LDMS is listening
         type=     The connection type [active, passive]
         interval= The connection retry interval (us)
+        [perm=]   The permission to modify the producer in the future.
         """
         self.handle('prdcr_add', arg)
 
@@ -404,17 +410,19 @@ class LdmsdCmdParser(cmd.Cmd):
         [interval=] The update/collect interval. This is required only when the
                     push argument is not given.
         [offset=]   Offset for synchronized aggregation
-        [push=]     Push mode: 'onchange' and 'onpush'. 'onchange' means the
+        [push=]     [onchange|true] 'onchange' means the
                     Updater will get an update whenever the set source ends a
-                    transaction or pushes the update. 'onpush' means the Updater
-                    will receive an update only when the set source pushes the
-                    update. If `push` is used, `auto_interval` cannot be `true`.
+                    transaction or pushes the update. 'true' means the Updater
+                    will receive an update only when the set source explicitly
+                    pushes the update.
+                    If `push` is used, `auto_interval` cannot be `true`.
         [auto_interval=]   [true|false] If true, the updater will schedule
                            set updates according to the update hint. The sets
                            with no hints will not be updated. If false, the
                            updater will schedule the set updates according to
                            the given interval and offset values. If not
                            specified, the value is `false`.
+        [perm=]     The permission to modify the updater in the future.
         """
         self.handle('updtr_add', arg)
 
@@ -528,6 +536,7 @@ class LdmsdCmdParser(cmd.Cmd):
         plugin=    The name of the storage backend.
         container= The storage backend container name.
         schema=    The schema name of the metric set to store.
+        [perm=]    The permission to modify the storage policy in the future.
         """
         self.handle('strgp_add', arg)
 
@@ -792,6 +801,17 @@ class LdmsdCmdParser(cmd.Cmd):
         print(resp['errcode'])
 
     def do_status(self, arg):
+        """
+        Report the statuses of producers, updaters and storage policies
+        One or more of prdcr, updtr and strgp can be given to limit
+        the status report only for the given types.
+        Example:
+            > status
+        or
+            > status prdcr updtr
+        or
+            > status prdcr name=sampler1
+        """
         all__ = (len(arg) == 0)
         if "plugn" in arg or all__:
             self.do_plugn_status(arg)
@@ -1070,6 +1090,7 @@ class LdmsdCmdParser(cmd.Cmd):
             [producer=]     The producer name of the set group.
             [interval=]     The update interval hint (in usec).
             [offset=]       The update offset hint (in usec).
+            [perm=]         The permission to modify the setgroup in the future.
         """
         self.handle('setgroup_add', arg)
 
@@ -1183,7 +1204,7 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_updtr_task(self, arg):
         """
-        Report the task tree of an updater
+        Report the updater tasks
         Parameters:
         [name=]   Updater name
         """
@@ -1208,7 +1229,7 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def do_prdcr_hint_tree(self, arg):
         """
-        Report the set tree by update hints of a producer
+        Report the update hints of all producer sets
         Parameters:
         [name=]   Producer name
         """
