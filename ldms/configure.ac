@@ -591,6 +591,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/ldmsd-stores/Makefile
 		 src/ldmsd-stores/store_sos/Makefile
 		 src/ldmsd-stores/store_papi/Makefile
+		 src/ldmsd-stores/store_slurm/Makefile
 		 src/ldmsd-stores/store_csv/Makefile
 		 src/ldmsd-stores/store_amqp/Makefile
 		 src/ldmsd-stores/store_test/Makefile

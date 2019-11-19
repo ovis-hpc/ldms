@@ -7,6 +7,7 @@ SUBDIRS =
 if ENABLE_SOS
 SUBDIRS += store_sos
 SUBDIRS += store_papi
+SUBDIRS += store_slurm
 endif
 
 if ENABLE_CSV
