@@ -1558,6 +1558,20 @@ out:
 	return;
 }
 
+static void help_export()
+{
+	printf( "\nExport running configuration to a local file on the node the daemon is running.\n\n");
+	printf( "By default, the environment variables set with the 'env' commands,\n"
+		"the command-line options (given at the command line or with the 'set' command\n"
+		"and the other configuration will be exported.\n"
+		"If any of 'env', 'cmdline' and 'cfgcmd' is given, only those will be exported.\n");
+	printf( "Parameters\n");
+	printf( "     path=         The path to the exported file\n");
+	printf( "     [env=]        true/false\n");
+	printf( "     [cmdline=]    true/false\n");
+	printf( "     [cfgcmd=]     true/false\n");
+}
+
 static void help_set()
 {
 	printf( "\nSet command-line options\n\n"
@@ -1595,6 +1609,8 @@ static struct command command_tbl[] = {
 			NULL,	help_daemon_exit,	resp_daemon_exit },
 	{ "daemon_status",
 			NULL,	help_daemon_status,	resp_daemon_status },
+	{ "export",
+			NULL,	help_export,		resp_generic },
 	{ "failover_config",
 			NULL,	help_failover_config,	resp_generic },
 	{ "failover_peercfg_start",
