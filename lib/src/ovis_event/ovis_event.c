@@ -621,6 +621,8 @@ int ovis_event_term_check(ovis_scheduler_t m)
 	case OVIS_EVENT_MANAGER_TERM:
 		rc = EINTR;
 		break;
+	default:
+		rc = EINVAL;
 	}
 	pthread_mutex_unlock(&m->mutex);
 	return rc;
@@ -720,6 +722,8 @@ int ovis_scheduler_term(ovis_scheduler_t m)
 	case OVIS_EVENT_MANAGER_TERM:
 		rc = EINVAL;
 		break;
+	default:
+		rc = EINVAL;
 	}
 	pthread_mutex_unlock(&m->mutex);
 	return rc;

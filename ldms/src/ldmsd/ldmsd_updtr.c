@@ -824,7 +824,7 @@ void __prdcr_set_update_sched(ldmsd_prdcr_set_t prd_set,
 int ldmsd_updtr_tasks_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set)
 {
 	ldmsd_updtr_task_t task;
-	int rc;
+	int rc = 0;
 
 	if (!updtr->is_auto_task) {
 		/*
@@ -920,7 +920,7 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 					uid_t uid, gid_t gid, int perm)
 {
 	struct ldmsd_updtr *updtr;
-	long interval_us, offset_us;
+	long interval_us = UPDTR_TREE_MGMT_TASK_INTRVL, offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
 	updtr = (struct ldmsd_updtr *)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_UPDTR,
 				 sizeof *updtr, ldmsd_updtr___del,

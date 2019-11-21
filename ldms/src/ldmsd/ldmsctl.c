@@ -1950,6 +1950,7 @@ int main(int argc, char *argv[])
 	}
 
 	do {
+		cnt = 0;
 #ifdef HAVE_LIBREADLINE
 #ifndef HAVE_READLINE_HISTORY
 		if (linebuf != NULL) {

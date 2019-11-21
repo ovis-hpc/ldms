@@ -290,6 +290,7 @@ static int create_metric_set(base_data_t base, struct attr_value_list *avl){
 
 	schema = base_schema_new(base);
 	if (!schema) {
+		rc = errno;
 		msglog(LDMSD_LERROR,
 			SAMP ": The schema '%s' could not be created, errno=%d.\n",
 		       base->schema_name, errno);

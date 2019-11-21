@@ -280,6 +280,7 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		event = "error";
 		break;
 	default:
+		event = "INVALID_EVENT";
 		DEBUG2("Received invalid event type\n");
 	}
 	pthread_mutex_unlock(&client->wait_lock);

@@ -921,7 +921,7 @@ static int start_task(ldmsd_task_t task)
 static void task_cb_fn(ovis_event_t ev)
 {
 	ldmsd_task_t task = ev->param.ctxt;
-	enum ldmsd_task_state next_state;
+	enum ldmsd_task_state next_state = 0;
 
 	pthread_mutex_lock(&task->lock);
 	if (task->os) {
@@ -1500,7 +1500,7 @@ int main(int argc, char *argv[])
 	char *lval = NULL;
 	char *rval = NULL;
 	char *plug_name = NULL;
-	const char *port;
+	const char *port = NULL;
 	int list_plugins = 0;
 	int ret;
 	int sample_interval = 2000000;
@@ -1955,7 +1955,7 @@ int main(int argc, char *argv[])
 			ldms = listen_on_ldms_xprt(xprt_str, port_str);
 			free(dup_arg);
 			if (!ldms) {
-				cleanup(ret, "Error setting up ldms transport");
+				cleanup(errno, "Error setting up ldms transport");
 			}
 			break;
 		}
