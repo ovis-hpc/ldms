@@ -589,8 +589,10 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 	ctxt.msglog = msglog;
 	ctxt.av = av;
 	ctxt.request = calloc(1, ctxt.request_sz);
-	if (!ctxt.request)
+	if (!ctxt.request) {
+		rc = ENOMEM;
 		goto err;
+	}
 
 	ctxt.request->marker = LDMSD_RECORD_MARKER;
 	ctxt.request->type = LDMSD_REQ_TYPE_CONFIG_CMD;

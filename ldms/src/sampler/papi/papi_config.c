@@ -68,6 +68,7 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg
 	if (!p) {
 		msglog(LDMSD_LERROR,
 		       "papi_sampler: Parser could not be created.\n");
+		rc = ENOMEM;
 		goto out;
 	}
 
@@ -83,6 +84,7 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg
 		msglog(LDMSD_LERROR,
 		       "papi_sampler: The configuration file is missing the "
 		       "'schema' attribute.\n");
+		rc = ENOENT;
 		goto out;
 	}
 	events_attr = json_attr_find(e, "events");
@@ -90,17 +92,20 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg
 		msglog(LDMSD_LERROR,
 		       "papi_sampler: The configuration file is missing the "
 		       "'events' attribute.\n");
+		rc = ENOENT;
 		goto out;
 	}
 	if (JSON_STRING_VALUE != json_entity_type(json_attr_value(schema_attr))) {
 		msglog(LDMSD_LERROR,
 		       "papi_sampler: The 'schema' attribute must be a string.\n");
+		rc = EINVAL;
 		goto out;
 	}
 	events_list = json_attr_value(events_attr);
 	if (JSON_LIST_VALUE != json_entity_type(events_list)) {
 		msglog(LDMSD_LERROR,
 		       "papi_sampler: The 'events' attribute must be a list.\n");
+		rc = EINVAL;
 		goto out;
 	}
 
@@ -109,6 +114,7 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg
 	if (!job->schema_name) {
 		msglog(LDMSD_LERROR,
 		       "papi_sampler: Error duplicating schema name string.\n");
+		rc = ENOMEM;
 		goto out;
 	}
 

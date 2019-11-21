@@ -1763,7 +1763,7 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 	struct ldms_set *set = s->set;
 	int n;
 	struct ldms_data_hdr *data, *prev_data;
-	int flags, upd_curr_idx;
+	int flags = 0, upd_curr_idx;
 
 	assert(ctxt->update.cb);
 	rc = LDMS_UPD_ERROR(ev->status);

@@ -112,6 +112,7 @@ static int create_metric_set(base_data_t base)
 
 	schema = base_schema_new(base);
 	if (!schema){
+		rc = errno;
 		msglog(LDMSD_LERROR,
 		       "%s: The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
@@ -158,17 +159,19 @@ static int create_metric_set(base_data_t base)
 }
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-
+	int rc;
 	if (set) {
 		msglog(LDMSD_LERROR, "all_example: Set already created.\n");
 		return EINVAL;
 	}
 
 	base = base_config(avl, SAMP, SAMP, msglog);
-	if (!base)
+	if (!base) {
+		rc = errno;
 		goto err;
+	}
 
-	int rc = create_metric_set(base);
+	rc = create_metric_set(base);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err;
