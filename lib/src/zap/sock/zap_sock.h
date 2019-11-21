@@ -52,7 +52,7 @@
 #include <semaphore.h>
 #include <sys/queue.h>
 #include "ovis_event/ovis_event.h"
-#include "ovis-lib-config.h"
+#include "ovis-ldms-config.h"
 #include "coll/rbt.h"
 #include "zap.h"
 #include "zap_priv.h"

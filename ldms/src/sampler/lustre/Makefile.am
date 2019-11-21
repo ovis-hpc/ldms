@@ -1,9 +1,8 @@
 pkglib_LTLIBRARIES =
 
-CORE = ../../core
-AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I../.. @OVIS_LIB_INCDIR_FLAG@ \
-	    -I$(srcdir)/../../ldmsd
-AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
+AM_LDFLAGS = @OVIS_LIB_ABS@
+CORE_LIBADD = -lsampler_base -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
 
 # libstr_map
 # libstr_map_la_SOURCES = str_map.c str_map.h fnv_hash.h
@@ -11,14 +10,11 @@ AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
 
 #liblustre_sampler
 liblustre_sampler_la_SOURCES = lustre_sampler.c lustre_sampler.h
-liblustre_sampler_la_LIBADD = $(CORE)/libldms.la -lovis_util \
-				  @LDFLAGS_GETTIME@ -lcoll
+liblustre_sampler_la_LIBADD = $(CORE_LIBADD)
 pkglib_LTLIBRARIES += liblustre_sampler.la
 
 # common libadd for all subclass of lustre_sampler
-COMMON_LIBADD = $(CORE)/libldms.la  liblustre_sampler.la \
-		@LDFLAGS_GETTIME@ -lovis_util -lcoll \
-		../libldmsd_sampler_base.la
+COMMON_LIBADD = liblustre_sampler.la $(CORE_LIBADD)
 
 #liblustre2_mds
 liblustre2_mds_la_SOURCES = lustre2_mds.c

@@ -71,10 +71,10 @@ else
 fi
 echo "logs and data stored under $TESTDIR"
 
-export LD_LIBRARY_PATH=$libdir:$pkglibdir:$ovis_lib_libdir:$ovis_lib_pkglibdir:$LD_LIBRARY_PATH
-export ZAP_LIBPATH=$ovis_lib_pkglibdir
+export LD_LIBRARY_PATH=$libdir:$pkglibdir:$ovis_ldms_libdir:$ovis_ldms_pkglibdir:$LD_LIBRARY_PATH
+export ZAP_LIBPATH=$ovis_ldms_pkglibdir
 export PATH=${prefix}/sbin:$PATH
-export LDMSD_PLUGIN_LIBPATH=$ovis_ldms_pkglibdir:$ovis_lib_pkglibdir
+export LDMSD_PLUGIN_LIBPATH=$ovis_ldms_pkglibdir
 
 echo "Listing ldmsd's still running:"
 pgrep ldmsd

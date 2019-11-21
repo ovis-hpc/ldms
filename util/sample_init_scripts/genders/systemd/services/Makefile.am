@@ -5,7 +5,7 @@ doc_DATA=ldmsd.service ldmsd@.service README.ldmsd
 
 EXTRA_DIST = ldmsd.service.in ldmsd@.service.in
 
-do_subst = @OVIS_SUBST_RULE@
+do_subst = @LDMS_SUBST_RULE@
 
 ldmsd.service: ldmsd.service.in
 	$(do_subst) < $< > $@

@@ -58,7 +58,7 @@
 
 #include <gni_pub.h>
 #include <rca_lib.h>
-#include "ovis-lib-config.h"
+#include "ovis-ldms-config.h"
 #include "coll/rbt.h"
 
 #include "zap.h"

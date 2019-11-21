@@ -20,8 +20,8 @@ if ENABLE_ZAPTEST
 SUBDIRS += test
 endif
 
-AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
-AM_CFLAGS = -I..
+AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
+AM_CFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
 libzap_la_SOURCES = zap.c zap_priv.h
 libzap_la_LIBADD = -ldl -lpthread
 libzapincludedir = $(includedir)/zap

@@ -1816,11 +1816,11 @@ int main(int argc, char *argv[])
 	ldms_version.major, ldms_version.minor, ldms_version.patch, \
 	ldms_version.flags, OVIS_GIT_LONG
 
-#if OVIS_LIB_HAVE_AUTH
+#if OVIS_LDMS_HAVE_AUTH
 				fprintf(bfile, BANNER_PART1_A
-#else /* OVIS_LIB_HAVE_AUTH */
+#else /* OVIS_LDMS_HAVE_AUTH */
 				fprintf(bfile, BANNER_PART1_NOA
-#endif /* OVIS_LIB_HAVE_AUTH */
+#endif /* OVIS_LDMS_HAVE_AUTH */
 					BANNER_PART2);
 				fclose(bfile);
 			}

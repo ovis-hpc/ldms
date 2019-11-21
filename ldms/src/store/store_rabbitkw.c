@@ -60,9 +60,9 @@
 #include <coll/idx.h>
 #include "ldms.h"
 #include "ldmsd.h"
-#if OVIS_LIB_HAVE_AUTH
+#if OVIS_LDMS_HAVE_AUTH
 #include "ovis_auth/auth.h"
-#endif /* OVIS_LIB_HAVE_AUTH */
+#endif /* OVIS_LDMS_HAVE_AUTH */
 #include <amqp_tcp_socket.h>
 #include <amqp.h>
 #include <amqp_framing.h>
