@@ -1,7 +1,10 @@
 lib_LTLIBRARIES =
 
-AM_CFLAGS = $(DBGFLAGS) -I$(top_srcdir) -I.. @OVIS_LIB_INCDIR_FLAG@
-AM_CPPFLAGS = -DSYSCONFDIR='"$(sysconfdir)"' -DPLUGINDIR='"$(pkglibdir)"'
+AM_LDFLAGS = @OVIS_LIB_ABS@
+#COMMON_LIBADD = -lsampler_base -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
+AM_CPPFLAGS = $(DBGFLAGS) @OVIS_INCLUDE_ABS@
+
+AM_CFLAGS = -DSYSCONFDIR='"$(sysconfdir)"' -DPLUGINDIR='"$(pkglibdir)"'
 AM_CFLAGS += \
 "-DLDMS_SRCDIR=\"$(abs_top_srcdir)\"" \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
@@ -12,7 +15,6 @@ ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldms_xprt.h ldms_auth.h kldms_req.h
 libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h \
 		     ldms_auth.c ldms_xprt_auth.c
 libldms_la_LIBADD = -ldl -lpthread -lcoll -ljson_util \
-	@OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
 	-lmmalloc -lzap
 
 lib_LTLIBRARIES += libldms.la

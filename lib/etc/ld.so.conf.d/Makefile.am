@@ -1,6 +1,6 @@
 EXTRA_DIST = ovis-ld-so.conf.in
 
-do_subst = @LIB_SUBST_RULE@
+do_subst = @LDMS_SUBST_RULE@
 
 ovis-ld-so.conf: ovis-ld-so.conf.in
 	$(do_subst) < $< > $@

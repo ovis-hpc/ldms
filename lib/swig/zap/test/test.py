@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import sys
-from ovis_lib import zap
+from ovis_ldms import zap
 from array import array
 
 z = zap.zap_GET("sock")

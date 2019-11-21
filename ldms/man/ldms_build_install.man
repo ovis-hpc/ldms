@@ -63,7 +63,7 @@ The remaining instructions will include paths to where the headers and libraries
 are installed.
 
 .SH CONFIGURATION OPTIONS
-There are configuration options at the top level, in ldms, and in the ovis_lib support directories.
+There are configuration options at the top level, in ldms, and in the ovis_ldms support directories.
 This section is thus split into these three sections, however the configuration arguments are all
 combined as arguments to the top level configure. The list of configuration options give here is not
 comprehensive, rather it refers to the most common arguments.

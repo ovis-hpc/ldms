@@ -15,21 +15,14 @@ LICENSE \
 README.libevent2 \
 README.md
 
-DISTCLEANFILES = ovis-all-config.h
+DISTCLEANFILES = ovis-ldms-config.h
+nobase_include_HEADERS = ovis-ldms-config.h
+
 
 docdir = $(datadir)/doc/@PACKAGE@-@VERSION@
 # dist_doc_DATA = README.txt
 
-SUBDIRS = lib
-
-# we build of the maybe vars to control build order, which
-# AM_CONDITIONAL does not preserve.
-# ldms needs lib; optional sos, ocm
-MAYBE_LDMS = @MAYBE_LDMS@
-
-SUBDIRS += \
-$(MAYBE_LDMS) \
-util
+SUBDIRS = lib ldms util
 
 # this definition of DIST_SUBDIRS is unusual. May decide to improve later.
 # For now, we ship as we expect to configure.
@@ -76,3 +69,4 @@ TAG.txt:
 		TAG="NO_GIT"; \
 	fi ; \
 	echo "$$TAG" > TAG.txt
+

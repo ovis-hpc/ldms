@@ -1,21 +1,14 @@
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 
-CORE = ../../core
-AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I../.. @OVIS_LIB_INCDIR_FLAG@ -I$(srcdir)/../../ldmsd
-AM_LDFLAGS = @OVIS_LIB_LIBDIR_FLAG@
-BASE_INC = $(srcdir)/../
-BASE_LIBADD = ../libsampler_base.la
-
-COMMON_LIBADD = $(BASE_LIBADD) $(CORE)/libldms.la \
-		@LDFLAGS_GETTIME@ -lovis_util -lcoll
+AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
+AM_LDFLAGS = @OVIS_LIB_ABS@
+COMMON_LIBADD = -lsampler_base -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
 
 if ENABLE_CRAY_SYSTEM_SAMPLER
 
 # first build dvs sampler
 libcray_dvs_sampler_la_SOURCES = dvs_sampler.c
-libcray_dvs_sampler_la_CFLAGS = $(AM_CFLAGS) -I$(BASE_INC)
-libcray_dvs_sampler_la_LDFLAGS = $(AM_LDFLAGS)
 libcray_dvs_sampler_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libcray_dvs_sampler.la
 
@@ -37,7 +30,7 @@ CRAY_LIBADD_ = $(COMMON_LIBADD)
 
 if ENABLE_LUSTRE
 CRAY_SOURCES_ += lustre_metrics.h lustre_metrics.c
-CRAY_LIBADD_ += ../lustre/liblustre_sampler.la
+CRAY_LIBADD_ += -llustre_sampler
 endif
 
 if ENABLE_GEMINI_GPCDR
@@ -57,7 +50,7 @@ libcray_gemini_r_sampler_la_SOURCES = $(CRAY_SOURCES_) \
 	nvidia_metrics.c nvidia_metrics.h
 libcray_gemini_r_sampler_la_LDFLAGS = $(CRAY_LDFLAGS_) -ldl
 else
-libcray_gemini_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_) -I$(BASE_INC)
+libcray_gemini_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_)
 libcray_gemini_r_sampler_la_SOURCES = $(CRAY_SOURCES_) \
 	cray_gemini_r_sampler.c \
 	rtr_util.h \
@@ -71,14 +64,14 @@ endif
 
 if ENABLE_ARIES_GPCDR
 if ENABLE_CRAY_NVIDIA
-libcray_aries_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_) @CRAY_NVIDIA_INC_INCDIR_FLAG@ -I$(BASE_INC)
+libcray_aries_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_) @CRAY_NVIDIA_INC_INCDIR_FLAG@
 libcray_aries_r_sampler_la_SOURCES = $(CRAY_SOURCES_) \
 	cray_aries_r_sampler.c \
 	aries_metrics_gpcdr.c aries_metrics_gpcdr.h \
 	nvidia_metrics.c nvidia_metrics.h
 libcray_aries_r_sampler_la_LDFLAGS = $(CRAY_LDFLAGS_) -ldl
 else
-libcray_aries_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_) -I$(BASE_INC)
+libcray_aries_r_sampler_la_CFLAGS = $(CRAY_CFLAGS_)
 libcray_aries_r_sampler_la_SOURCES = $(CRAY_SOURCES_) \
 	cray_aries_r_sampler.c \
 	aries_metrics_gpcdr.c aries_metrics_gpcdr.h

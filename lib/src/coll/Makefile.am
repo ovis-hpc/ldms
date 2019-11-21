@@ -1,6 +1,7 @@
 lib_LTLIBRARIES =
 
-AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir) -I..
+AM_LDFLAGS=@OVIS_LIB_ABS@
+AM_CPPFLAGS=@OVIS_INCLUDE_ABS@
 
 check_PROGRAMS =
 libmapinclude_HEADERS =
@@ -29,22 +30,18 @@ lib_LTLIBRARIES += libcoll.la
 check_PROGRAMS += test_ovis_map test_rbt test_label_set test_idx
 
 test_rbt_SOURCES = rbt.c rbt.h
-test_rbt_CFLAGS = $(AM_CFLAGS) -DRBT_TEST
+test_rbt_CFLAGS = -DRBT_TEST
 
 test_ovis_map_SOURCES = test-ovis-map.c
-test_ovis_map_CFLAGS = $(AM_CFLAGS)
-#test_ovis_map_LDFLAGS =
-#test_ovis_map_LDADD = libcoll.la ../third/libovis_third.la
 test_ovis_map_LDADD = libcoll.la
 
 test_label_set_SOURCES = test-label-set.c
-test_label_set_CFLAGS = $(AM_CFLAGS)
 #test_label_set_LDFLAGS = -static
 #test_label_set_LDADD = libcoll.la ../ovis_util/libovis_util.la ../third/libovis_third.la
 test_label_set_LDADD = libcoll.la
 
 test_idx_SOURCES = idx.c
-test_idx_CFLAGS = $(AM_CFLAGS) -DIDX_TEST
+test_idx_CFLAGS = -DIDX_TEST
 
 endif
 

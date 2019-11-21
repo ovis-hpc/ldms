@@ -18,11 +18,11 @@ build_subdir=LDMS_objdir
 # full path of where we want things installed
 prefix=`pwd`/LDMS_install
 
-if test -f ldms/src/sampler/meminfo.c; then
+if test -f ldms/src/sampler/meminfo/meminfo.c; then
 	mkdir -p $prefix
 	# Are we at the top?
-	if test -f ldms/configure; then
-		echo "Found ldms/configure. Good."
+	if test -f configure; then
+		echo "Found configure. Good."
 	else
 		echo "You forgot to autogen.sh at the top or you need to edit $0 or you need to use a released tarred version."
 		exit 1

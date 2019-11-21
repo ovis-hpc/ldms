@@ -13,14 +13,14 @@ fi
 . $libdir/ovis-lib-configvars.sh
 . $libdir/ovis-ldms-configvars.sh
 if test -z "$ZAP_LIBPATH"; then
-	ZAP_LIBPATH=$ovis_lib_plugins
+	ZAP_LIBPATH=$ovis_ldms_plugins
 fi
 export ZAP_LIBPATH
 if test -z "$LDMSD_PLUGIN_LIBPATH"; then
-	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins:$ovis_lib_plugins
+	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins
 fi
 export LDMSD_PLUGIN_LIBPATH
-export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$ovis_lib_plugins:@libeventpath@$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:@libeventpath@$LD_LIBRARY_PATH
 bname=`basename $0`
 BUILDDIR=@prefix@
 export PATH=${BUILDDIR}/sbin:$PATH

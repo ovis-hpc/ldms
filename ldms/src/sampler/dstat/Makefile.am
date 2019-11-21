@@ -3,23 +3,16 @@ lib_LTLIBRARIES =
 check_PROGRAMS =
 dist_man7_MANS =
 
-CORE = ../../core
-SAMPLER= ../../sampler
-AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I../.. @OVIS_LIB_INCDIR_FLAG@ \
-	    -I$(srcdir)/../../ldmsd
-AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
-
-BASE_LIBADD = ../libsampler_base.la
-COMMON_LIBADD = $(CORE)/libldms.la libparse_stat.la \
-	@LDFLAGS_GETTIME@ -lovis_util -lcoll
+AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
+AM_LDFLAGS = @OVIS_LIB_ABS@
+COMMON_LIBADD = -lsampler_base libparse_stat.la -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
 
 if ENABLE_DSTAT
 lib_LTLIBRARIES += libparse_stat.la
 libparse_stat_la_SOURCES = parse_stat.c parse_stat.h
 
 libdstat_la_SOURCES = dstat.c
-libdstat_la_LIBADD = $(BASE_LIBADD) $(COMMON_LIBADD)
-libdstat_la_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/$(SAMPLER)
+libdstat_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libdstat.la
 dist_man7_MANS += Plugin_dstat.man
 

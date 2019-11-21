@@ -84,7 +84,7 @@ def obj(request, logger, cfg):
         secretword = None
         logger.info("No secret word")
     else:
-        from ovis_lib import ovis_auth
+        from ovis_ldms import ovis_auth
         secretword = ovis_auth.ovis_auth_get_secretword(cfg.SECRETWORD_FILE, None)
         logger.info("Secret word is '{0}'".format(secretword))
 

@@ -56,7 +56,7 @@
 #include <netinet/in.h>
 #include <byteswap.h>
 #include <asm/byteorder.h>
-#include "ovis-lib-config.h"
+#include "ovis-ldms-config.h"
 #include "ovis-ldms-config.h"
 #include "ldms_core.h"
 #include "coll/rbt.h"

@@ -44,7 +44,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-#include "ovis-lib-config.h"
+#include "ovis-ldms-config.h"
 #include "heap.h"
 #include <errno.h>
 #include <stdlib.h>

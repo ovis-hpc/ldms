@@ -144,6 +144,60 @@ AC_DEFINE_UNQUOTED([$1PORT],[$withval],[Default port for $1 to listen on])
 AC_SUBST([$1PORT],[$$1PORT])
 ])
 
+dnl SYNOPSIS: OPTION_INC_FLAGS(prefix, subdirs)
+dnl REASON: produce include flags lists
+dnl EXAMPLE: OPTION_INC_FLAGS([ovis],[dir1 dir2])
+dnl - prefix: variable prefix
+dnl - subdirs: search locations
+dnl Defines $prefix_INCLUDE_REL (relative to top_builddir for in-configure)
+dnl Defines $prefix_INCLUDE_ABS (path to use in make)
+AC_DEFUN([OPTION_INCLUDE_FLAGS], [
+[ 
+	tmprelflags=""
+	tmpabsflags=""
+	dirlist=""
+	for dirtmp in $2; do
+		if test -d $srcdir/$dirtmp; then
+			tmprelflags="$tmprelflags -I$srcdir/$dirtmp"
+			tmpabsflags="$tmpabsflags -I\$(top_srcdir)/$dirtmp -I\$(top_builddir)/$dirtmp"
+		else
+			]AC_MSG_NOTICE([expected dir $srcdir/$dirtmp missing])[
+		fi
+	done
+	]m4_translit([$1], [-+.a-z], [___A-Z])[_INCLUDE_REL="$tmprelflags"
+	]m4_translit([$1], [-+.a-z], [___A-Z])[_INCLUDE_ABS="$tmpabsflags"
+]
+AC_SUBST(m4_translit([$1], [-+.a-z], [___A-Z])[_INCLUDE_REL])
+AC_SUBST(m4_translit([$1], [-+.a-z], [___A-Z])[_INCLUDE_ABS])
+])
+
+dnl SYNOPSIS: OPTION_LIB_FLAGS(prefix, subdirs)
+dnl REASON: produce lib flags list
+dnl EXAMPLE: OPTION_INC_FLAGS([ovis],[dir1 dir2])
+dnl - prefix: variable prefix
+dnl - subdirs: search locations
+dnl Defines $prefix_INCLUDE_REL (relative to top_builddir for in-configure)
+dnl Defines $prefix_INCLUDE_ABS (path to use in make)
+AC_DEFUN([OPTION_LIB_FLAGS], [
+[ 
+	tmprelflags=""
+	tmpabsflags=""
+	dirlist=""
+	for dirtmp in $2; do
+		if test -d $srcdir/$dirtmp; then
+			tmprelflags="$tmprelflags -L$srcdir/$dirtmp"
+			tmpabsflags="$tmpabsflags -L\$(top_builddir)/$dirtmp"
+		else
+			]AC_MSG_NOTICE([expected dir $srcdir/$dirtmp missing])[
+		fi
+	done
+	]m4_translit([$1], [-+.a-z], [___A-Z])[_LIB_REL="$tmprelflags"
+	]m4_translit([$1], [-+.a-z], [___A-Z])[_LIB_ABS="$tmpabsflags"
+]
+AC_SUBST(m4_translit([$1], [-+.a-z], [___A-Z])[_LIB_REL])
+AC_SUBST(m4_translit([$1], [-+.a-z], [___A-Z])[_LIB_ABS])
+])
+
 dnl SYNOPSIS: OPTION_WITH_OR_BUILD(featurename,reldir,libsubdirs,
 dnl		configfile,package_name,buildlocation)
 dnl REASON: configuring against peer subprojects needs a little love.
@@ -458,24 +512,6 @@ AC_DEFINE_UNQUOTED([LDMS_COMPILE_HOST_NAME],["$LDMS_COMPILE_HOST_NAME"],[host wh
 AC_DEFINE_UNQUOTED([LDMS_COMPILE_HOST_CPU],["$LDMS_COMPILE_HOST_CPU"],[cpu where configured])
 AC_DEFINE_UNQUOTED([LDMS_COMPILE_HOST_OS],["$LDMS_COMPILE_HOST_OS"],[os where configured])
 AC_DEFINE_UNQUOTED([LDMS_CONFIG_ARGS],["$ac_configure_args"],[configure input])
-])
-
-AC_DEFUN([OVIS_EXEC_SCRIPTS], [
-	ovis_exec_scripts=""
-	for i in "$*"; do
-		x="$x $i";
-	done
-	for i in $x; do
-		ovis_exec_scripts="$ovis_exec_scripts $i"
-		x=`basename $i`
-		if ! test "x$x" = "x"; then
-			ovis_extra_dist="$ovis_extra_dist ${x}.in"
-		else
-			echo cannot parse $i
-		fi
-		AC_CONFIG_FILES([$i],[chmod a+x $i])
-	done
-	AC_SUBST([OVIS_EXTRA_DIST],[$ovis_extra_dist])
 ])
 
 AC_DEFUN([SUBST_MAYBE],[

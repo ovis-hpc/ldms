@@ -62,3 +62,6 @@ dist_man7_MANS += Plugin_store_rabbitkw.man
 
 ldmsd_exits.man: $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c
 	$(srcdir)/make_exits_man.sh $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c > ldmsd_exits.man
+
+clean-local:
+	$(RM) ldmsd_exits.man

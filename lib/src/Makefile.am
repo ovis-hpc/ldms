@@ -1,16 +1,14 @@
-include_HEADERS = ovis-lib-config.h
 EXTRA_DIST=ovis-lib-configvars.sh.in ovis-test/test.h
 CLEANFILES = ovis-lib-configvars.sh
 DISTCLEANFILES = $(nobase_include_HEADERS)
 
-do_subst = @LIB_SUBST_RULE@
+do_subst = @LDMS_SUBST_RULE@
 
 %.sh: %.sh.in
 	$(do_subst) < $< > $@
 	chmod 755 $@
 
 SUBDIRS = third
-SUBDIRS += json
 
 if ENABLE_OVIS_UTIL
 SUBDIRS += ovis_util
@@ -39,6 +37,8 @@ endif
 if ENABLE_OVIS_CTRL
 SUBDIRS += ovis_ctrl
 endif
+
+SUBDIRS += json
 
 install-data-hook: ovis-lib-configvars.sh
 	$(MKDIR_P) $(DESTDIR)$(libdir)

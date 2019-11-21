@@ -1,14 +1,16 @@
 pkglib_LTLIBRARIES =
 bin_PROGRAMS =
-CORE = ../../core
-AM_CFLAGS = -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
-AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+
+AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
+AM_LDFLAGS = @OVIS_LIB_ABS@
+COMMON_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
+
 CC=$(MPICC)
 CCLD=$(MPICC)
 
 bin_PROGRAMS += MPIAppNoProfile
 MPIAppNoProfile_SOURCES = sample_mpi_application.c
-MPIAppNoProfile_CFLAGS = $(AM_CFLAGS)
+#MPIAppNoProfile_CFLAGS = $(AM_CFLAGS)
 
 bin_PROGRAMS += MPIApp
 nodist_MPIApp_SOURCES = mpi_profiler_wrapped_functions.c
@@ -24,5 +26,5 @@ EXTRA_DIST=$(srcdir)/wrap/input.w $(WRAPINPUT)
 #lib_LTLIBRARIES = libldms_mpi_profiler.la
 nodist_libldms_mpi_profiler_la_SOURCES = mpi_profiler_wrapped_functions.c
 libldms_mpi_profiler_la_SOURCES = mpi_profiler.c mpi_profiler.h mpi_profiler_configuration.c mpi_profiler_configuration.h mpi_profiler_func_list.c mpi_profiler_func_list.h userheader.h
-libldms_mpi_profiler_la_LIBADD = $(LIBADD) $(JOBID_LIBFLAGS) ../shm_util/liblshm.la -lm -lrt -lpthread
+libldms_mpi_profiler_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) ../shm_util/liblshm.la -lm -lrt -lpthread
 pkglib_LTLIBRARIES += libldms_mpi_profiler.la

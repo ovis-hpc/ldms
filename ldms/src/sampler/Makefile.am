@@ -3,27 +3,23 @@ ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = .
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
-CORE = ../core
 
-AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) -I.. @OVIS_LIB_INCDIR_FLAG@ \
-	    -I$(srcdir)/../ldmsd
-AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
+AM_LDFLAGS = @OVIS_LIB_ABS@
 
-CORE_LIBADD = $(CORE)/libldms.la @LDFLAGS_GETTIME@ -lovis_util
+CORE_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util
+COMMON_LIBADD = libsampler_base.la $(CORE_LIBADD) -lcoll
 
-BASE_SRC=sampler_base.c sampler_base.h
-libsampler_base_la_SOURCES = $(BASE_SRC)
+libsampler_base_la_SOURCES = sampler_base.c sampler_base.h
 libsampler_base_la_LIBADD = $(CORE_LIBADD)
 lib_LTLIBRARIES += libsampler_base.la
-BASE_LIBLA = libsampler_base.la
 
-COMMON_LIBADD = $(BASE_LIBLA) $(CORE_LIBADD)
 
 ldmssamplerincludedir = $(includedir)/ldms/sampler
 ldmssamplerinclude_HEADERS = sampler_base.h
 
 if ENABLE_JOBID
-AM_CFLAGS += -DENABLE_JOBID
+AM_CFLAGS = -DENABLE_JOBID
 JOBID_LIBFLAGS = libjobid.la
 libjobid_la_SOURCES = ldms_jobid.c
 libjobid_la_LIBADD = $(COMMON_LIBADD)
@@ -233,7 +229,7 @@ endif
 
 if ENABLE_OPA2
 OPA2_LIBADD = -libmad -libumad -lpthread
-libopa2_la_SOURCES = opa2.c $(BASE_SRC)
+libopa2_la_SOURCES = opa2.c
 OPAINC=/usr/include/infiniband
 libopa2_la_CFLAGS = $(AM_CFLAGS) -I$(OPAINC)
 libopa2_la_LIBADD = $(AM_LDFLAGS) $(COMMON_LIBADD) $(OPA2_LIBADD) $(JOBID_LIBFLAGS)
@@ -253,7 +249,7 @@ pkglib_LTLIBRARIES += libgeneric_sampler.la
 endif
 
 if ENABLE_GRPTEST_LDMS_TEST
-libgrptest_la_SOURCES = grptest.c $(BASE_SRC)
+libgrptest_la_SOURCES = grptest.c
 libgrptest_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libgrptest.la
 endif

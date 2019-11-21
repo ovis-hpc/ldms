@@ -79,10 +79,10 @@ else
 
 fi
 echo "logs and data stored under $TESTDIR"
-export LD_LIBRARY_PATH=$ovis_lib_libdir:$ovis_lib_pkglibdir:$ovis_ldms_libdir:$ovis_ldms_pkglibdir:$LD_LIBRARY_PATH
-export ZAP_LIBPATH=$ovis_lib_pkglibdir
+export LD_LIBRARY_PATH=$ovis_ldms_libdir:$ovis_ldms_pkglibdir:$LD_LIBRARY_PATH
+export ZAP_LIBPATH=$ovis_ldms_pkglibdir
 export PATH=${BUILDDIR}/sbin:$PATH
-export LDMSD_PLUGIN_LIBPATH=$ovis_ldms_pkglibdir:$ovis_lib_pkglibdir
+export LDMSD_PLUGIN_LIBPATH=$ovis_ldms_pkglibdir
 
 # whack the daemons we own; possibly bad if running as root!!
 pkill ldmsd

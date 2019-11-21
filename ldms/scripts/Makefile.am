@@ -1,6 +1,6 @@
 
 # consider adding ldmsd to bin_SCRIPTS if ldmsd script ever stabilizes
-EXTRA_DIST=@OVIS_EXTRA_DIST@ examples lsdate slurm-examples
+EXTRA_DIST=examples lsdate slurm-examples
 EXTRA_DIST += ldms-csv-anonymize ldms-csv-export-sos
 
 

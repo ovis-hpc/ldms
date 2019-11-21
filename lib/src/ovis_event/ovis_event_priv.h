@@ -48,7 +48,7 @@
  */
 #ifndef __OVIS_EVENT_PRIV_H
 #define __OVIS_EVENT_PRIV_H
-#include "ovis-lib-config.h"
+#include "ovis-ldms-config.h"
 #include "ovis_event.h"
 #include "../coll/heap.h"
 #include <pthread.h>

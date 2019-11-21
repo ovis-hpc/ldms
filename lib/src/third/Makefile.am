@@ -5,7 +5,7 @@ lib_LTLIBRARIES = libovis_third.la
 # We have added #ifdef usage to strip bits unused by ovis.
 #
 
-AM_CFLAGS = -I$(srcdir)/../ -I$(top_srcdir)
+AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 
 CITYSOURCE= city.c city.h citycrc.h
 B64SOURCE= cencode.c cencode.h
@@ -23,8 +23,8 @@ libovis_third_la_DEPENDENCIES=
 check_PROGRAMS = city_test cencode_test b62_test
 
 b62_test_SOURCES = b62encode-test.c
-b62_test_LDADD = ../third/libovis_third.la
-b62_test_LDFLAGS = -static
+b62_test_LDADD = -lovis_third
+b62_test_LDFLAGS = -static @OVIS_LIB_ABS@
 
 cencode_test_SOURCES = cencode-test.c $(B64SOURCE)
 cencode_test_LDADD = ../third/libovis_third.la
@@ -32,7 +32,7 @@ cencode_test_LDFLAGS = -static
 
 city_test_SOURCES = city-test.c
 city_test_CFLAGS = -msse4.2 -O3 -DCITYSLIM
-city_test_LDFLAGS = -static
-city_test_LDADD = ../third/libovis_third.la
+city_test_LDFLAGS = -static @OVIS_LIB_ABS@
+city_test_LDADD = -lovis_third
 
 SUBDIRS=json_parser

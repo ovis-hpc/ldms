@@ -1,4 +1,3 @@
-EXTRA_DIST = autogen.sh pedigree.am SHA.txt TAG.txt
 
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = src
@@ -42,10 +41,10 @@ if ENABLE_DOC
 PHONY_dox = install-dox
 
 if ENABLE_DOC_HTML
-DOCDEPS = $(top_srcdir)/src/*/*.c \
-          $(top_srcdir)/src/*/*.h \
-          $(top_srcdir)/src/*/*/*.h \
-          $(top_srcdir)/src/*/*/*.h
+DOCDEPS = $(top_srcdir)/ldms/src/*/*.c \
+          $(top_srcdir)/ldms/src/*/*.h \
+          $(top_srcdir)/ldms/src/*/*/*.h \
+          $(top_srcdir)/ldms/src/*/*/*.h
 all: doxygen-out
 doxygen-out: $(DOCDEPS)
 	doxygen Doxyfile
@@ -82,7 +81,35 @@ install-data-local: install-dox
 	done
 
 PEDIGREE = $(DESTDIR)/$(bindir)/ldms-pedigree
-include $(top_srcdir)/pedigree.am
+
+install-exec-local:
+	mkdir -p `dirname $(PEDIGREE)` ; \
+	if [ -f $(PEDIGREE) ]; then \
+		rm -f $(PEDIGREE); \
+	fi ; \
+	echo '#!/bin/bash' > $(PEDIGREE) ; \
+	echo echo commit-id: "$(OVIS_GIT_LONG)" >> $(PEDIGREE) ; \
+	echo echo package: "$(PACKAGE_STRING)" >> $(PEDIGREE) ; \
+	echo echo questions to: "$(PACKAGE_BUGREPORT)" >> $(PEDIGREE) ; \
+	echo echo source location: "$(abs_top_srcdir)" >> $(PEDIGREE) ; \
+	echo echo build location: "$(abs_top_builddir)" >> $(PEDIGREE) ; \
+	echo echo compile hostname: "$$HOSTNAME" >> $(PEDIGREE) ; \
+	echo echo compile cpu: "`uname -p`" >> $(PEDIGREE) ; \
+	echo echo compile os: "`uname -o`" >> $(PEDIGREE) ; \
+	echo echo configure args: "\"$(ac_configure_args)\"" >> $(PEDIGREE) ; \
+	echo 'if [ "$$1" == "--stat" ] ; then ' >> $(PEDIGREE) ; \
+	echo echo "------ git status ------" >> $(PEDIGREE) ; \
+	echo echo "\"`cd $(abs_top_srcdir) && git status -suno .`\"" >> $(PEDIGREE) ; \
+	echo echo "------------------------" >> $(PEDIGREE) ; \
+	echo fi >> $(PEDIGREE); \
+	chmod 755 $(PEDIGREE) ;
+
+SHA.txt:
+	echo "$(OVIS_GIT_LONG)" > SHA.txt
+
+TAG.txt:
+	echo "$(OVIS_GIT_SHORT)" > TAG.txt
+
 
 uninstall-hook:
 	rm $(PEDIGREE)
