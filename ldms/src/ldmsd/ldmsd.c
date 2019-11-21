@@ -121,6 +121,9 @@ uint8_t ldmsd_is_initialized()
 pthread_t event_thread = (pthread_t)-1;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 
+/* NOTE: For determining version by dumping binary string */
+char *_VERSION_STR_ = "LDMSD_VERSION " OVIS_LDMS_VERSION;
+
 mode_t inband_cfg_mask = LDMSD_PERM_FAILOVER_ALLOWED;
 	/* LDMSD_PERM_FAILOVER_INTERNAL will be added in `failover_start`
 	 * command.
