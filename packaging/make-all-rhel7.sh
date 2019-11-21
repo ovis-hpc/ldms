@@ -21,8 +21,8 @@ prefix=`pwd`/LDMS_install
 if test -f ldms/src/sampler/meminfo/meminfo.c; then
 	mkdir -p $prefix
 	# Are we at the top?
-	if test -f ldms/configure; then
-		echo "Found ldms/configure. Good."
+	if test -f configure; then
+		echo "Found configure. Good."
 	else
 		echo "You forgot to autogen.sh at the top or you need to edit $0 or you need to use a released tarred version."
 		exit 1
@@ -86,7 +86,7 @@ if test -f ldms/src/sampler/meminfo/meminfo.c; then
 	../configure $allconfig && \
 	make && \
 	make install && \
-	../packaging/nola.sh $prefix > nola.pkg.log
+	../util/nola.sh $prefix > nola.pkg.log
 else
 	echo "this must be run from the top of ovis source tree"
 	exit 1

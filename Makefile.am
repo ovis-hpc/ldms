@@ -15,21 +15,14 @@ LICENSE \
 README.libevent2 \
 README.md
 
-DISTCLEANFILES = ovis-all-config.h
+DISTCLEANFILES = ovis-ldms-config.h
+nobase_include_HEADERS = ovis-ldms-config.h
+
 
 docdir = $(datadir)/doc/@PACKAGE@-@VERSION@
 # dist_doc_DATA = README.txt
 
-SUBDIRS = lib
-
-# we build of the maybe vars to control build order, which
-# AM_CONDITIONAL does not preserve.
-# ldms needs lib; optional sos, ocm
-MAYBE_LDMS = @MAYBE_LDMS@
-
-SUBDIRS += \
-$(MAYBE_LDMS) \
-util
+SUBDIRS = lib ldms util
 
 # this definition of DIST_SUBDIRS is unusual. May decide to improve later.
 # For now, we ship as we expect to configure.
@@ -52,7 +45,7 @@ banned:
 clean-local:
 
 install-data-hook:
-	$(abs_top_srcdir)/packaging/nola.sh $(prefix) > nola.log
+	$(abs_top_srcdir)/util/nola.sh $(DESTDIR)$(prefix) > nola.log
 if ENABLE_THIRD_PLUGINS
 	@echo "*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#"
 	@if test -n "@THIRD_PLUGIN_DIRS@"; then \
@@ -60,7 +53,7 @@ if ENABLE_THIRD_PLUGINS
 		(cd ldms/src/third-plugins && make third-install-hook); \
 		echo "third-plugins BUILD COMPLETED."; \
 	fi
-	$(abs_top_srcdir)/packaging/nola.sh $(prefix) > nola.third-plugins.log
+	$(abs_top_srcdir)/util/nola.sh $(DESTDIR)$(prefix) > nola.third-plugins.log
 endif
 
 install-exec-local:
@@ -88,3 +81,4 @@ TAG.txt:
 		TAG="NO_GIT"; \
 	fi ; \
 	echo "$$TAG" > TAG.txt
+

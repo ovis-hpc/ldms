@@ -58,7 +58,7 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include <sys/queue.h>
-#include "ovis-lib-config.h"
+#include "ovis-ldms-config.h"
 
 /*
  * This file aggregates simple utilities for

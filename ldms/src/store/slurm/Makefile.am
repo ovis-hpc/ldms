@@ -1,16 +1,13 @@
 # SUBDIRS = flxs
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
-CORE = ../../core
-LDMSD = ../../ldmsd
-SAMPLER = ../../sampler
-AM_CFLAGS = -I$(srcdir)/$(CORE) \
-	    -I$(srcdir)/$(LDMSD) \
-	    -I$(srcdir)/$(SAMPLER)/slurm \
-	    -I../.. \
-	    @OVIS_LIB_INCDIR_FLAG@
-STORE_LIBADD = $(CORE)/libldms.la -lcoll -lovis_util @OVIS_LIB_LIB64DIR_FLAG@ \
-	       @OVIS_LIB_LIBDIR_FLAG@
+
+AM_LDFLAGS = @OVIS_LIB_ABS@
+#COMMON_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
+AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
+
+AM_CFLAGS =  $(DBGFLAGS) -I$(srcdir)/$(SAMPLER)/slurm
+STORE_LIBADD = -lldms -lcoll -lovis_util
 
 if ENABLE_SOS
 libstore_slurm_la_SOURCES = store_slurm.c

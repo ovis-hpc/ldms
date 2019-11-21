@@ -1,7 +1,7 @@
 EXTRA_DIST = ovis-functions.sh \
 	     set-ovis-variables.sh.in
 
-do_subst = @LIB_SUBST_RULE@
+do_subst = @LDMS_SUBST_RULE@
 
 set-ovis-variables.sh: set-ovis-variables.sh.in
 	$(do_subst) < $< > $@

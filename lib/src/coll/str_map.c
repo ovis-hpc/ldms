@@ -53,7 +53,7 @@
  *
  */
 
-#include "ovis-lib-config.h"
+#include "ovis-ldms-config.h"
 #include <errno.h>
 #include "str_map.h"
 #include "fnv_hash.h"

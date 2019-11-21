@@ -18,30 +18,25 @@ export prefix=@prefix@
 export exec_prefix=@exec_prefix@
 export libdir=@libdir@
 export BUILDDIR=@prefix@
-export pkglibdir=@pkglibdir@
-export PACKAGE_TARNAME=@PACKAGE_TARNAME@
-export docdir=@docdir@
-export exdir=@docdir@-@PACKAGE_VERSION@
-	
-if ! test -f $libdir/ovis-lib-configvars.sh; then
-	echo "$libdir/ovis-lib-configvars.sh not found"
-	exit 1
-fi
 if ! test -f $libdir/ovis-ldms-configvars.sh; then
 	echo "$libdir/ovis-ldms-configvars.sh not found"
 	exit 1
 fi
-. $libdir/ovis-lib-configvars.sh
 . $libdir/ovis-ldms-configvars.sh
+export pkglibdir=${ovis_ldms_pkglibdir}
+export PACKAGE_TARNAME=ovis-ldms
+export docdir=${ovis_ldms_datarootdir}/doc/${PACKAGE_TARNAME}
+export exdir=${ovis_ldms_datarootdir}/doc/${PACKAGE_TARNAME}-4.3.3
+
 if test -z "$ZAP_LIBPATH"; then
-	ZAP_LIBPATH=$ovis_lib_plugins
+	ZAP_LIBPATH=$ovis_ldms_plugins
 fi
 export ZAP_LIBPATH
 if test -z "$LDMSD_PLUGIN_LIBPATH"; then
-	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins:$ovis_lib_plugins
+	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins
 fi
 export LDMSD_PLUGIN_LIBPATH
-export LD_LIBRARY_PATH=${ovis_ldms_soslibdir}:${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$ovis_lib_plugins:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${ovis_ldms_soslibdir}:${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$LD_LIBRARY_PATH
 
 function clusage {
 cat << EOF

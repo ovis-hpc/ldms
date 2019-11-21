@@ -50,7 +50,7 @@
 #define _IDX_PRIV_H_
 #include <string.h>
 #include <sys/queue.h>
-#include "ovis-lib-config.h"
+#include "ovis-ldms-config.h"
 
 struct idx_layer_s;
 

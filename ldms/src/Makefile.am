@@ -1,9 +1,7 @@
-nobase_include_HEADERS = ovis-ldms-config.h
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS =
 EXTRA_DIST=ovis-ldms-configvars.sh.in
 CLEANFILES = ovis-ldms-configvars.sh
-DISTCLEANFILES = $(nobase_include_HEADERS)
 VERSION=@VERSION@
 
 ac_configure_args=@ac_configure_args@
@@ -14,7 +12,7 @@ do_subst = @LDMS_SUBST_RULE@
 	$(do_subst) < $< > $@
 	chmod 755 $@
 
-SUBDIRS += third-plugins
+SUBDIRS += third-plugins contrib
 
 if ENABLE_CORE
 SUBDIRS += core

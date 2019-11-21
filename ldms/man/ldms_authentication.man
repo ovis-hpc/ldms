@@ -45,7 +45,7 @@ Authentication will NOT be used.
 
 .TP
 .B ovis
-The shared secret authentication using ovis_lib
+The shared secret authentication using ovis_ldms
 .RB "(see " ldms_auth_ovis (7)).
 
 .TP
