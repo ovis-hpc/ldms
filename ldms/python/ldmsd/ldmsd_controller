@@ -807,9 +807,8 @@ class LdmsdCmdParser(cmd.Cmd):
         [name=]   The plugin name
         """
         resp = self.handle('plugn_sets', arg)
-        if resp is None:
-            return
         if 0 != resp['errcode']:
+            # self.handle already prints the error message.
             return
         plugns = json.loads(resp['msg'])
         for p in plugns:

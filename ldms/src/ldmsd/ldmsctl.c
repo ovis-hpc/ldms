@@ -1029,7 +1029,7 @@ static void __print_plugn_sets(json_entity_t plugin_sets)
 		return;
 	}
 	printf("%s:\n", pi_name);
-	sets = json_attr_find(plugin_sets, "sets");
+	sets = json_value_find(plugin_sets, "sets");
 	if (!sets) {
 		printf("   None\n");
 		return;

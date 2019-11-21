@@ -4526,6 +4526,14 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_hton_req_attr(&attr);
 	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr),
 				LDMSD_REQ_SOM_F);
+	if (rc)
+		return rc;
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+	if (rc)
+		return rc;
+	attr.discrim = 0;
+	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t),
+				LDMSD_REQ_EOM_F);
 	return rc;
 
 err:
