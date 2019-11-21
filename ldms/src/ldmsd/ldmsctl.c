@@ -1089,23 +1089,23 @@ static void help_plugn_sets()
 
 static void __print_plugn_status(json_entity_t status)
 {
-	const char *name, *plugin, *type, *libpath, *interval, *offset;
+	json_entity_t name, plugin, type, libpath, interval, offset;
 
-	name = json_attr_find_str(status, "name");
-	plugin = json_attr_find_str(status, "plugin");
-	type = json_attr_find_str(status, "type");
-	libpath = json_attr_find_str(status, "libpath");
-	interval = json_attr_find_str(status, "sample_interval_us");
-	offset = json_attr_find_str(status, "sample_offset_us");
+	name = json_value_find(status, "name");
+	plugin = json_value_find(status, "plugin");
+	type = json_value_find(status, "type");
+	libpath = json_value_find(status, "libpath");
 
-	if (!name || !plugin || !type || !libpath || !interval || !offset) {
+	if (!name || !plugin || !type || !libpath) {
 		printf("---Invalid result format---\n");
 		return;
 	}
-		return;
 
-	printf("%12s %12s %12s %12s %12s %12s\n",
-	       name, plugin, type, interval, offset, libpath);
+	printf("%12s %12s %12s %12s\n",
+					json_value_str(name)->str,
+					json_value_str(plugin)->str,
+					json_value_str(type)->str,
+					json_value_str(libpath)->str);
 }
 
 static void resp_plugn_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
@@ -1140,10 +1140,9 @@ static void resp_plugn_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err
 		return;
 	}
 
-	printf("%12s %12s %12s %12s %12s %12s\n",
-	       "Name", "Plugin", "Type", "Interval", "Offset", "Libpath");
-	printf("------------ ------------ ------------ ------------ "
-	       "------------ ------------\n");
+	printf("%12s %12s %12s %12s \n",
+	       "Name", "Plugin", "Type", "Libpath");
+	printf("------------ ------------ ------------ ------------\n");
 
 	for (status = json_item_first(json); status;
 			status = json_item_next(status)) {

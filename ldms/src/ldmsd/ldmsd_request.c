@@ -4012,7 +4012,7 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 		rc = json_attr_value_int(json_attr_find(qr, "rc"));
 		if (rc)
 			goto out;
-		jb = json_entity_dump(NULL, json_attr_find(qr, "status"));
+		jb = json_entity_dump(NULL, json_value_find(qr, "status"));
 		if (!jb) {
 			rc = ENOMEM;
 			goto out;
