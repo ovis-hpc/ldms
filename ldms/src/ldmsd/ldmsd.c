@@ -116,6 +116,9 @@ pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 size_t max_mem_size;
 char *max_mem_sz_str;
 
+/* NOTE: For determining version by dumping binary string */
+char *_VERSION_STR_ = "LDMSD_VERSION " OVIS_LDMS_VERSION;
+
 mode_t inband_cfg_mask = LDMSD_PERM_FAILOVER_ALLOWED;
 	/* LDMSD_PERM_FAILOVER_INTERNAL will be added in `failover_start`
 	 * command.
