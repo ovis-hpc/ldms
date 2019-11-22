@@ -4406,36 +4406,71 @@ static int plugn_usage_handler(ldmsd_req_ctxt_t reqc)
 {
 	int rc = 0;
 	char *name = NULL;
+	char *type = NULL;
 	const char *usage = NULL;
 	ldmsd_plugin_inst_t inst = NULL;
 
 	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
-	if (!name) {
-		rc = reqc->errcode = EINVAL;
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-			 "`name` attribute is needed.");
-		goto err_reply;
+	if (name) {
+		inst = ldmsd_plugin_inst_find(name);
+		if (!inst) {
+			rc = reqc->errcode = ENOENT;
+			snprintf(reqc->line_buf, reqc->line_len,
+				 "Plugin instance `%s` not found.", name);
+			goto send_reply;
+		}
+		usage = ldmsd_plugin_inst_help(inst);
+		if (!usage) {
+			rc = reqc->errcode = ENOSYS;
+			snprintf(reqc->line_buf, reqc->line_len,
+				 "`%s` has no usage", name);
+			goto send_reply;
+		}
+		linebuf_printf(reqc, "%s\n", usage);
 	}
-	inst = ldmsd_plugin_inst_find(name);
-	if (!inst) {
-		rc = reqc->errcode = ENOENT;
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-			 "Plugin instance `%s` not found.", name);
-		goto err_reply;
-	}
-	usage = ldmsd_plugin_inst_help(inst);
-	if (!usage) {
-		rc = reqc->errcode = ENOSYS;
-		Snprintf(&reqc->line_buf, &reqc->line_len,
-			 "`%s` has no usage", name);
-		goto err_reply;
-	}
-	ldmsd_send_req_response(reqc, usage);
-	goto out;
 
- err_reply:
+	type = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_TYPE);
+	if (type) {
+		if (0 == strcmp(type, "true")) {
+			if (!name) {
+				reqc->errcode = EINVAL;
+				snprintf(reqc->line_buf, reqc->line_len,
+						"The 'name' must be given if type=true");
+				goto send_reply;
+			}
+			type = (char *)inst->type_name;
+		}
+		if (0 == strcmp(type, "sampler")) {
+			usage = ldmsd_sampler_help();
+			linebuf_printf(reqc, "\nCommon attributes of sampler plugin instances\n");
+			linebuf_printf(reqc, "%s", usage);
+		} else if (0 == strcmp(type, "store")) {
+			usage = ldmsd_store_help();
+			linebuf_printf(reqc, "\nCommon attributes of store plugin instance\n");
+			linebuf_printf(reqc, "%s", usage);
+		} else if (0 == strcmp(type, "all")) {
+			usage = ldmsd_sampler_help();
+			linebuf_printf(reqc, "\nCommon attributes of sampler plugin instances\n");
+			linebuf_printf(reqc, "%s", usage);
+
+			usage = ldmsd_store_help();
+			linebuf_printf(reqc, "\nCommon attributes of store plugin instance\n");
+			linebuf_printf(reqc, "%s", usage);
+		} else {
+			reqc->errcode = EINVAL;
+			snprintf(reqc->line_buf, reqc->line_len,
+					"Invalid type value '%s'", type);
+			goto send_reply;
+		}
+	}
+
+	if (!name && !type) {
+		reqc->errcode = EINVAL;
+		snprintf(reqc->line_buf, reqc->line_len, "Either 'name' or 'type' must be given.");
+	}
+
+ send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
- out:
 	if (name)
 		free(name);
 	if (inst)

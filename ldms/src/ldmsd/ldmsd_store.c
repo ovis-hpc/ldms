@@ -125,6 +125,14 @@ int store_config(ldmsd_plugin_inst_t i, json_entity_t json,
 	return 0;
 }
 
+const char *ldmsd_store_help()
+{
+	return "\
+Parameters:\
+  [perm=]     The store plugin instance access permission. The default is 0664.\n\
+";
+}
+
 json_entity_t ldmsd_store_query(ldmsd_plugin_inst_t inst, const char *q)
 {
 	ldmsd_store_type_t store = (void*)inst->base;

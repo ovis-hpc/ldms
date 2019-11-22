@@ -263,7 +263,17 @@ static void help_usage()
 	printf( "usage\n"
 		"   - Show plugin usage information.\n"
 		"Parameters:\n"
-		"    name=     The plugin instance.\n");
+		"  At least of one attribute must be provided.\n"
+		"    [name=]     The plugin instance.\n"
+		"    [type=]     [true|sampler|store|all]\n"
+		"                'true' can be given when 'name' is given as well and the\n"
+		"                common attributes of such plugin type will also be provided.\n"
+		"                If 'sampler' is given, the common attributes of the sampler\n"
+		"                plugin instances will be provided.\n"
+		"                If 'store' is given, the common attributes of the store\n"
+		"                plugin instances will be provided.\n"
+		"                If 'all' is given, the common attributes of both 'sampler'\n"
+		"                and 'store' will be provided.\n");
 }
 
 static void help_load()

@@ -273,6 +273,28 @@ int samp_config(ldmsd_plugin_inst_t inst, json_entity_t json,
 	return EINVAL;
 }
 
+const char *ldmsd_sampler_help()
+{
+	return "\
+Parameters:\n\
+  [instance=]         The set instance name. The name must be unique among\n\
+                      all metric sets in all LDMS daemons.\n\
+                      The default '<producer>/<plugin instance name>'.\n\
+  [producer=]         The unique name for the host providing the data.\n\
+  [component_id=]     The unique number for the component being monitored.\n\
+                      The default is zero.\n\
+  [schema=]           The metric set schema name. The default is the plugin name.\n\
+  [job_set=]          The set instance name of the set containing the job data. The default is '<producer>/jobinfo'.\n\
+  [job_id=]           The name of the metric containing the Job Id. The default is 'job_id'.\n\
+  [app_id=]           The name of the metric contaning the Application Id. The default is 'app_id'.\n\
+  [job_start=]        The name of the metric containing the Job start time. The default is 'job_start'.\n\
+  [job_end=]          The name of the metric containing the Job end time. The default is 'job_end'.\n\
+  [uid=]              The user id of the set's owner. The default is the returned value of geteuid().\n\
+  [gid=]              The group id of the set's owner. The default is the returned value of getegid().\n\
+  [perm=]             The sampler plugin instance access permission. The default is 0777.\n\
+";
+}
+
 json_entity_t ldmsd_sampler_query(ldmsd_plugin_inst_t inst, const char *q)
 {
 	ldmsd_sampler_type_t samp = (void*)inst->base;

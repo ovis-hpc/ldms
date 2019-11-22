@@ -313,6 +313,11 @@ json_entity_t ldmsd_sampler_query(ldmsd_plugin_inst_t i,
 					   const char *q);
 
 /**
+ * Return the command attribute of the sampler plugin instances.
+ */
+const char *ldmsd_sampler_help();
+
+/**
  * Accessing `ldmsd_sampler_type_t` given a sampler plugin `inst`.
  */
 #define LDMSD_SAMPLER(inst) ((ldmsd_sampler_type_t)LDMSD_INST(inst)->base)

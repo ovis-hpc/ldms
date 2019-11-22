@@ -69,7 +69,7 @@ import socket
 #:of the load command.
 #:LDMSD_CTRL_CMD_MAP['load']['opt_attr'] is the list of the optional attributes
 #:of the load command.
-LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': ['name'], 'opt_attr': []},
+LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name', 'type']},
                       'list': {'req_attr': []},
                       'load': {'req_attr': ['name']},
                       'term': {'req_attr': ['name']},

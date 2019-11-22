@@ -116,6 +116,12 @@ int ldmsd_store_close(ldmsd_plugin_inst_t i);
 int ldmsd_store_flush(ldmsd_plugin_inst_t i);
 int ldmsd_store_store(ldmsd_plugin_inst_t i, ldms_set_t set,
 		      ldmsd_strgp_t strgp);
+
+/**
+ * Provide the string containing the common attributes of the store plugin type
+ */
+const char *ldmsd_store_help();
+
 /**
  * Default implementation of `query()` interface for store plugin.
  */

@@ -291,8 +291,17 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_usage(self, arg):
         """
         Show the usage of the plugin instance.
-        Parameter:
-        name=   The plugin instance name
+        Parameters:
+        [name=]    The plugin instance name
+        [type=]    [true|sampler|store|all]
+                   'true' can be given when 'name' is given as well and the
+                   common attributes of such plugin type will also be provided.
+                   If 'sampler' is given, the common attributes of the sampler
+                   plugin instances will be provided.
+                   If 'store' is given, the common attributes of the store
+                   plugin instances will be provided.
+                   If 'all' is given, the common attributes of both 'sampler'
+                   and 'store' will be provided.
         """
         resp = self.handle('usage', arg)
         if resp['errcode'] == 0:
