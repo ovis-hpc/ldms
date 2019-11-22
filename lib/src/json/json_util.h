@@ -180,7 +180,6 @@ extern int json_attr_count(json_entity_t d);
 /**
  * \brief Find an attribute with name \c name and return the string value of the attribute
  */
-extern const char *json_attr_find_str(json_entity_t d, char *name);
 extern json_entity_t json_attr_first(json_entity_t d);
 extern json_entity_t json_attr_next(json_entity_t a);
 extern int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_entity_t *e);
@@ -216,10 +215,6 @@ extern json_entity_t json_item_first(json_entity_t a);
 extern json_entity_t json_item_next(json_entity_t i);
 extern json_str_t json_attr_name(json_entity_t a);
 extern json_entity_t json_attr_value(json_entity_t a);
-extern const char *json_attr_value_str(json_entity_t a);
-extern int64_t json_attr_value_int(json_entity_t a);
-extern int json_attr_value_bool(json_entity_t a);
-extern double json_attr_value_float(json_entity_t a);
 
 extern json_entity_t json_value_find(json_entity_t d, char *name);
 extern int64_t json_value_int(json_entity_t e);

@@ -122,15 +122,6 @@ int json_attr_count(json_entity_t d)
 	return dict->attr_table->entry_count;
 }
 
-const char *json_attr_find_str(json_entity_t d, char *name)
-{
-	json_entity_t attr;
-	attr = json_attr_find(d, name);
-	if (!attr)
-		return NULL;
-	return json_attr_value_str(attr);
-}
-
 int attr_cmp(const void *a, const void *b, size_t key_len)
 {
 	return strncmp(a, b, key_len);
@@ -648,26 +639,6 @@ json_entity_t json_attr_value(json_entity_t attr)
 {
 	assert(attr->type == JSON_ATTR_VALUE);
 	return attr->value.attr_->value;
-}
-
-const char *json_attr_value_str(json_entity_t attr)
-{
-	return json_value_str(json_attr_value(attr))->str;
-}
-
-int64_t json_attr_value_int(json_entity_t attr)
-{
-	return json_value_int(json_attr_value(attr));
-}
-
-int json_attr_value_bool(json_entity_t attr)
-{
-	return json_value_bool(json_attr_value(attr));
-}
-
-double json_attr_value_float(json_entity_t attr)
-{
-	return json_value_float(json_attr_value(attr));
 }
 
 json_entity_t json_value_find(json_entity_t d, char *name)
