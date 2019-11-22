@@ -3990,6 +3990,7 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 	int rc, count;
 	ldmsd_plugin_inst_t inst;
 	json_entity_t qr = NULL;
+	json_entity_t val;
 	jbuf_t jb = NULL;
 	reqc->errcode = 0;
 
@@ -4009,7 +4010,15 @@ int __plugn_status_json_obj(ldmsd_req_ctxt_t reqc)
 			rc = ENOMEM;
 			goto out;
 		}
-		rc = json_attr_value_int(json_attr_find(qr, "rc"));
+		val = json_value_find(qr, "rc");
+		if (!val) {
+			ldmsd_log(LDMSD_LERROR, "The status JSON dict of "
+					"plugin instance '%s' does not contain "
+					"the attribute 'rc'.\n", inst->inst_name);
+			rc = EINTR;
+			goto out;
+		}
+		rc = json_value_int(val);
 		if (rc)
 			goto out;
 		jb = json_entity_dump(NULL, json_value_find(qr, "status"));
