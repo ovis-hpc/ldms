@@ -510,19 +510,22 @@ store_papi_config(ldmsd_plugin_inst_t pi, json_entity_t json, char *ebuf, int eb
 	store_papi_inst_t inst = (void*)pi;
 	ldmsd_store_type_t store = (void*)inst->base.base;
 	int rc;
-	const char *val;
+	json_entity_t jval;
 
 	rc = store->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	val = json_attr_find_str(json, "path");
-	if (!val) {
+	jval = json_attr_find(json, "path");
+	if (!jval) {
 		snprintf(ebuf, ebufsz, "missing `path` attribute.\n");
 		return EINVAL;
 	}
-
-	inst->path = strdup(val);
+	if (jval->type != JSON_STRING_VALUE) {
+		snprintf(ebuf, ebufsz, "`path` attribute is not a string.\n");
+		return EINVAL;
+	}
+	inst->path = strdup(jval->value.str_->str);
 	if (!inst->path) {
 		snprintf(ebuf, ebufsz, "Out of memory.\n");
 		return ENOMEM;

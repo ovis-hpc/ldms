@@ -1086,7 +1086,6 @@ static void help_strgp_status()
 static void __print_plugn_sets(json_entity_t plugin_sets)
 {
 	json_entity_t sets, set_name, pi_name;
-	int i;
 	pi_name = json_value_find(plugin_sets, "plugin");
 	if (!pi_name) {
 		printf("---Invalid result format---\n");
@@ -1154,7 +1153,7 @@ static void help_plugn_sets()
 
 static void __print_plugn_status(json_entity_t status)
 {
-	json_entity_t name, plugin, type, libpath, interval, offset;
+	json_entity_t name, plugin, type, libpath;
 
 	name = json_value_find(status, "name");
 	plugin = json_value_find(status, "plugin");

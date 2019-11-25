@@ -118,7 +118,6 @@ static
 int samp_config(ldmsd_plugin_inst_t inst, json_entity_t json,
 					char *ebuf, int ebufsz)
 {
-	json_entity_t attr;
 	ldmsd_sampler_type_t samp = (void*)inst->base;
 	char *job_set_name;
 	json_entity_t value;

@@ -582,9 +582,9 @@ int syspapi_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	ldms_set_t set;
 	int rc;
-	const char *value;
-	const char *events;
-	const char *cfg_file;
+	const char *events = NULL;
+	const char *cfg_file = NULL;
+	json_entity_t jval;
 
 	ebuf[0] = '\0';
 
@@ -596,8 +596,24 @@ int syspapi_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		goto out;
 	}
 
-	cfg_file = json_attr_find_str(json, "cfg_file"); /* JSON config file */
-	events = json_attr_find_str(json, "events");
+	jval = json_attr_find(json, "cfg_file");
+	if (jval) {
+		if (jval->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "`cfg_file` is not a string\n");
+			rc = EINVAL;
+			goto out;
+		}
+		cfg_file = jval->value.str_->str; /* JSON config file */
+	}
+	jval = json_attr_find(json, "events");
+	if (jval) {
+		if (jval->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "`events` is not a string\n");
+			rc = EINVAL;
+			goto out;
+		}
+		events = jval->value.str_->str; /* JSON config file */
+	}
 
 	if (!events && !cfg_file) {
 		snprintf(ebuf, ebufsz, "`events` and `cfg_file` "
@@ -622,14 +638,24 @@ int syspapi_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 			goto err;
 	}
 
-	value = json_attr_find_str(json, "auto_pause");
-	if (value) {
-		inst->auto_pause = atoi(value);
+	jval = json_attr_find(json, "auto_pause");
+	if (jval) {
+		if (jval->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "`events` is not a string\n");
+			rc = EINVAL;
+			goto out;
+		}
+		inst->auto_pause = atoi(jval->value.str_->str);
 	}
 
-	value = json_attr_find_str(json, "cumulative");
-	if (value) {
-		inst->cumulative = atoi(value);
+	jval = json_attr_find(json, "cumulative");
+	if (jval) {
+		if (jval->type != JSON_STRING_VALUE) {
+			snprintf(ebuf, ebufsz, "`cumulative` is not a string\n");
+			rc = EINVAL;
+			goto out;
+		}
+		inst->cumulative = atoi(jval->value.str_->str);
 	}
 
 	if (!FLAG_CHECK(inst->flags, SYSPAPI_PAUSED)) {

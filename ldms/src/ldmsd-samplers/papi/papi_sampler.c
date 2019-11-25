@@ -879,19 +879,34 @@ int papi_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	papi_sampler_inst_t inst = (void*)pi;
 	ldmsd_sampler_type_t samp = (void*)inst->base.base;
 	int rc;
+	json_entity_t jval;
 	const char *value;
 
 	rc = samp->base.config(pi, json, ebuf, ebufsz);
 	if (rc)
 		return rc;
 
-	value = json_attr_find_str(json, "job_expiry");
-	if (value)
+	jval = json_value_find(json, "job_expiry");
+	if (jval) {
+		if (jval->type != JSON_STRING_VALUE) {
+			INST_LOG(inst, LDMSD_LERROR,
+				 "`job_expiry` attribute is not string.");
+			return EINVAL;
+		}
+		value = jval->value.str_->str;
 		inst->job_expiry = strtol(value, NULL, 0);
+	}
 
-	value = json_attr_find_str(json, "stream");
-	if (!value) {
+	jval = json_value_find(json, "stream");
+	if (!jval) {
 		value = "slurm";
+	} else {
+		if (jval->type != JSON_STRING_VALUE) {
+			INST_LOG(inst, LDMSD_LERROR,
+				 "`stream` attribute is not string.");
+			return EINVAL;
+		}
+		value = jval->value.str_->str;
 	}
 
 	inst->stream_name = strdup(value);
