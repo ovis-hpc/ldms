@@ -38,7 +38,7 @@ See more info in the [Obtaining OVIS source code](#obtaining-ovis-source-code).
 
 Baler is an aggregation of log message exploration and analysis tools. _balerd_ is
 the tool that tokenizes log messages using user-specified dictionaries.
-The log messages are then groupped together according to their token sequences.
+The log messages are then grouped together according to their token sequences.
 Each group is represented by a Baler pattern -- a token sequence.
 
 Baler stores the log message patterns, the raw log messages, and other infomation in
