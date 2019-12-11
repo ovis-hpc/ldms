@@ -3,7 +3,7 @@
 # be but they don't kill the compile.
 CFLAGS := $(filter-out -Werror, ${CFLAGS})
 
-EXTRADIST = create_set_test.py pytest.py
+EXTRA_DIST = create_set_test.py pytest.py
 
 BUILT_SOURCES = ldms.c ldms.py
 SWIG_SOURCES = ldms.i $(top_srcdir)/ldms/src/core/ldms.h $(top_srcdir)/ldms/src/core/ldms_core.h

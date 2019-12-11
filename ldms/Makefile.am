@@ -22,7 +22,7 @@ OPV=-$(PACKAGE_VERSION)
 
 PHONY_doc = doxygen doc install-doc
 
-EXTRADIST = \
+EXTRA_DIST = \
 test/failover-delay/agg11.sh \
 test/failover-delay/agg12.sh \
 test/failover-delay/env.sh \
