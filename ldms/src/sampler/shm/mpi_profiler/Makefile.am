@@ -21,7 +21,7 @@ MPIApp_LDADD = ../shm_util/liblshm.la -lovis_third -lpthread -lm
 WRAPINPUT=$(srcdir)/wrap/input.w
 mpi_profiler_wrapped_functions.c: Makefile wrap/wrap.py wrap/input.w userheader.h
 	(python $(srcdir)/wrap/wrap.py -g -o mpi_profiler_wrapped_functions.c $(WRAPINPUT))
-EXTRA_DIST=$(srcdir)/wrap/input.w $(WRAPINPUT)
+EXTRA_DIST=$(srcdir)/wrap/input.w $(WRAPINPUT) $(srcdir)/wrap/wrap.py
 
 #lib_LTLIBRARIES = libldms_mpi_profiler.la
 nodist_libldms_mpi_profiler_la_SOURCES = mpi_profiler_wrapped_functions.c

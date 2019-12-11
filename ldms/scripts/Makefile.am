@@ -2,29 +2,34 @@
 # consider adding ldmsd to bin_SCRIPTS if ldmsd script ever stabilizes
 EXTRA_DIST=examples lsdate slurm-examples
 EXTRA_DIST += ldms-csv-anonymize ldms-csv-export-sos
+EXTRA_DIST += ovis-roll-over.py
 
 
 if ENABLE_SCRIPTS
 sbin_SCRIPTS= ldms-wrapper
-bin_SCRIPTS= envldms.sh
-bin_SCRIPTS += lsdate
+bin_SCRIPTS = lsdate
 bin_SCRIPTS += ldms-static-test.sh
-
-DISTCLEANFILES = $(bin_SCRIPTS) $(sbin_SCRIPTS)
-OPV=-$(PACKAGE_VERSION)
-
-bin_SCRIPTS += ldms_ban.sh
-bin_SCRIPTS += ldms-plugins.sh
-bin_SCRIPTS += ldms-py-subset_test.sh
-bin_SCRIPTS += ldms-py-syslog.sh
-bin_SCRIPTS += ldms-meminfo.sh
-bin_SCRIPTS += ldms-py-varset.sh
-bin_SCRIPTS += ldms-py-rename.sh
-bin_SCRIPTS += ldms_local_opa2test.sh
-bin_SCRIPTS += ldms-l2_test.sh
+bin_SCRIPTS += ovis-roll-over.py
 bin_SCRIPTS += ldms-csv-anonymize
 bin_SCRIPTS += ldms-csv-export-sos
 
+DISTCLEANFILES = $(gen_scripts) $(sgen_scripts)
+OPV=-$(PACKAGE_VERSION)
+
+sgen_scripts = ldms-wrapper
+
+gen_scripts = envldms.sh
+gen_scripts += ldms_ban.sh
+gen_scripts += ldms-plugins.sh
+gen_scripts += ldms-py-subset_test.sh
+gen_scripts += ldms-py-syslog.sh
+gen_scripts += ldms-meminfo.sh
+gen_scripts += ldms-py-varset.sh
+gen_scripts += ldms-py-rename.sh
+gen_scripts += ldms_local_opa2test.sh
+gen_scripts += ldms-l2_test.sh
+
+bin_SCRIPTS += $(gen_scripts)
 
 testsets = install-serial
 untestsets = uninstall-serial
@@ -33,6 +38,9 @@ testsets += install-slurm
 untestsets += uninstall-slurm
 bin_SCRIPTS += pll-ldms-static-test.sh
 endif
+
+ovis-roll-over.py: ${srcdir}/ovis-roll-over.py
+	cp ${srcdir}/ovis-roll-over.py .
 
 lsdate: ${srcdir}/lsdate
 	cp ${srcdir}/lsdate .

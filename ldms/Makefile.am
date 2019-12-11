@@ -22,6 +22,17 @@ OPV=-$(PACKAGE_VERSION)
 
 PHONY_doc = doxygen doc install-doc
 
+EXTRADIST = \
+test/failover-delay/agg11.sh \
+test/failover-delay/agg12.sh \
+test/failover-delay/env.sh \
+test/failover-delay/sampler1.sh \
+test/failover-delay/sampler2.sh \
+test/failover-simple/agg1.sh \
+test/failover-simple/agg2.sh \
+test/failover-simple/sampler.sh
+
+
 if ENABLE_DEVELOPER
 
 install-exec-hook:

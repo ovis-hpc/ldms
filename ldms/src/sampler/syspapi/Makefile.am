@@ -1,6 +1,8 @@
 pkglib_LTLIBRARIES =
 dist_man7_MANS=
 
+EXTRADIST = test/ldmsd.sh
+
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@ @LIBPAPI_INCDIR_FLAG@ @LIBPFM_INCDIR_FLAG@ 
 AM_LDFLAGS = @OVIS_LIB_ABS@
 COMMON_LIBADD = -lsampler_base -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
