@@ -1757,40 +1757,52 @@ z_rdma_listen(zap_ep_t ep, struct sockaddr *sin, socklen_t sa_len)
 	struct epoll_event cm_event;
 
 	zerr = zap_ep_change_state(&rep->ep, ZAP_EP_INIT, ZAP_EP_LISTENING);
-	if (zerr)
+	if (zerr) {
+		LOG__(ep,"%s: %s failed. zerr %d\n", __FUNCTION__, "zap_ep_change_state", (int)zerr);
 		goto out;
+	}
 
 	/* Create the event CM event channel */
 	zerr = ZAP_ERR_RESOURCE;
 	rep->cm_channel = rdma_create_event_channel();
-	if (!rep->cm_channel)
+	if (!rep->cm_channel) {
+		LOG__(ep,"%s: %s failed. zerr %d\n", __FUNCTION__, "rdma_create_event_channel", (int)zerr);
 		goto err_0;
+	}
 
 	/* Create the listening CM ID */
 	rc = rdma_create_id(rep->cm_channel, &rep->cm_id, rep, RDMA_PS_TCP);
-	if (rc)
+	if (rc) {
+		LOG__(ep,"%s: %s failed. zerr %d, rc %d\n", __FUNCTION__, "rdma_create_id", (int)zerr, rc);
 		goto err_1;
+	}
 
 	/* Bind the provided address to the CM Id */
 	zerr = ZAP_ERR_BUSY;
 	rc = rdma_bind_addr(rep->cm_id, sin);
-	if (rc)
+	if (rc) {
+		LOG__(ep,"%s: %s failed. zerr %d rc %d\n", __FUNCTION__, "rdma_bind_addr", (int)zerr, rc);
 		goto err_2;
+	}
 
 	cm_event.events = EPOLLIN | EPOLLOUT;
 	cm_event.data.ptr = rep;
 	zerr = ZAP_ERR_RESOURCE;
 	rc = epoll_ctl(cm_fd, EPOLL_CTL_ADD, rep->cm_channel->fd, &cm_event);
-	if (rc)
+	if (rc) {
+		LOG__(ep,"%s: %s failed. zerr %d rc %d\n", __FUNCTION__, "epoll_ctl", (int)zerr, rc);
 		goto err_3;
+	}
 
 	/*
 	 * Asynchronous listen. Connection requests handled in
 	 * cm_thread_proc
 	 */
 	rc = rdma_listen(rep->cm_id, 3);
-	if (rc)
+	if (rc) {
+		LOG__(ep,"%s: %s failed. zerr %d rc %d\n", __FUNCTION__, "rdma_listen", (int)zerr, rc);
 		goto err_3;
+	}
 
 	return ZAP_ERR_OK;
 
