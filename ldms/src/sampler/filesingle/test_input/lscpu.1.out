@@ -1,4 +1,0 @@
-cpu0.cur_freq /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_cur_freq S64 -1
-cpu1.cur_freq /sys/devices/system/cpu/cpu1/cpufreq/cpuinfo_cur_freq S64 -1
-cpu2.cur_freq /sys/devices/system/cpu/cpu2/cpufreq/cpuinfo_cur_freq S64 -1
-cpu3.cur_freq /sys/devices/system/cpu/cpu3/cpufreq/cpuinfo_cur_freq S64 -1

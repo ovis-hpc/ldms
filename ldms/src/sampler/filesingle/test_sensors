@@ -1,9 +1,0 @@
-#!/bin/bash
-empty=$srcdir/test_input/empty
-input=$srcdir/test_input/sensors.arm64
-out=$(mktemp sensorstest.XXXXXX)
-$srcdir/ldms-sensors-config --test-sensors $input --test-lscpu=$empty > $out
-diff $out $srcdir/test_input/sensors.arm64.out
-x=$?
-rm $out
-exit $x
