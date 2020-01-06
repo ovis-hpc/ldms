@@ -25,8 +25,6 @@ ldms_quickstart.man \
 ldms_sampler_base.man \
 ldmsd_failover.man \
 ldmsd_setgroup.man \
-Plugin_aries_linkstatus.man \
-Plugin_aries_mmr.man \
 Plugin_cray_system_sampler_variants.man \
 Plugin_cray_dvs_sampler.man \
 Plugin_lnet_stats.man \
