@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_aries_mmr
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 7 "04 Feb 2018" "v4" "LDMS Plugin for the aries_mmr sampler."
+.TH man 7 "05 Jan 2020" "v4" "LDMS Plugin for the aries_mmr sampler."
 
 .SH NAME
 Plugin_aries_mmr - man page for the aries_mmr sampler and variants.
@@ -14,6 +14,7 @@ config name=aries_nic_mmr [ <attr> = <value> ]
 .br
 config name=aries_rtr_mmr [ <attr> = <value> ]
 
+
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
 or a configuration file. The aries_XXX_mmr sampler variants. provides aries network counter information. The particular counters to be read are
@@ -21,15 +22,13 @@ specified by configuration files. No functional combinations of the counters are
 or scale values).
 
 .PP
-The aries_XXX_mmr samplers depend on Cray's libgpcd, built with aries options. This library is currently
-unreleased and you cannot build this sampler if you do not have the libraries and headers.
+The aries_XXX_mmr samplers depend on Cray's libgpcd, built with aries options. This library has been released by Cray in CLE6 and later. You cannot build this sampler if you do not have the libraries and headers.
 If you have the code to build the library, be sure to build with
 .B CFLAGS=-fPIC
 
 .PP
 The difference between the variants is that aries_nic_mmr will skip any counters in the inputfile
 that do NOT begin with AR_NIC_; aries_rtr_mmr does the opposite; and aries_mmr does NO name filtering.
-You can run all 3 simultaneously.
 
 .PP
 Different types of metrics are added to separate gpcd_contexts. The order of the metrics in the output
@@ -40,7 +39,7 @@ For the config file, all counter names must be fully spelled out (i.e., does not
 given in the documentation for the counters).
 
 .PP
-To build the aries_mmr sampler, build with the following flags:
+To build any of the aries_mmr samplers, build with the following flags:
 .B  --enable-aries_mmr
 .B   --with-aries-libgpcd=<full_path_to_libgpcd.a>,<full_path_to_lib_gpcd.h>
 

@@ -1,0 +1,315 @@
+.\" Manpage for Plugin_aries_mmr
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "12 Apr 2020" "v4" "LDMS Plugin for the aries_mmr_configurable sampler."
+
+.SH NAME
+Plugin_aries_mmr_configurable - man page for the aries_mmr_configurable sampler.
+
+.SH SYNOPSIS
+Within ldmsd_controller or in a configuration file
+.br
+config name=aries_mmr_configurable [ <attr> = <value> ]
+
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
+or a configuration file. The aries_mmr_configurable sampler provides aries network counter information. It is intended to be used for reading and optionally resetting the configuable counters, however there is nothing that currently restricts this.
+
+The particular counters to be read and set are specified by configuration files. No functional combinations of the counters are supported (i.e., does not sum or scale values). The available counter names can be discovered by:
+  gpcd_print_valid_tile_mmrs();
+  gpcd_print_valid_nic_mmrs();
+  gpcd_print_valid_tile_filtering_mmrs();
+  gpcd_print_valid_tile_static_mmrs();
+
+A utility providing this service is built as check_mmr_configurable into bin. The counters are described in Cray's Aries Hardware Counters Document S-0045. Counters described in that document with ':' extensions cannot be called by the ':' name in this sampler; rather the counter has to be read by the base name as hex and the fields separated out by mask, which is beyond the capability of this sampler.
+
+
+.PP
+The aries_XXX_mmr samplers depend on Cray's libgpcd, built with aries options. This library has been released by Cray in CLE6 and later. You cannot build this sampler if you do not have the libraries and headers.
+If you have the code to build the library, be sure to build the library with
+.B CFLAGS=-fPIC
+
+.PP
+The set and read metrics are added to separate gpcd_contexts. The order of the metrics in the output
+is the contexts in a particular order, with the metrics in each context as they are specified in the file. The counters for read and set can only be specified once and cannot be changed. The counters to be set can be reset to their configured values at any time by issuing the action=reset command to configure.
+
+.PP
+For the config file, all counter names must be fully spelled out (i.e., does not resolve the shorthand
+given in the documentation for the counters).
+
+.PP
+To build the aries_mmr_configurable sampler, build with the following flags:
+.B  --enable-aries_mmr
+.B   --with-aries-libgpcd=<full_path_to_libgpcd.a>,<full_path_to_lib_gpcd.h>
+
+.PP
+
+.B !!!WARNING!!!
+Cray does not recommend use of the configurable counters outside of CrayPAT. Use this Plugin at your own risk.
+.B !!!WARNING!!!
+
+
+.SH CONFIGURATION COMMANDS ORDER
+.PP
+Configuration commands are intended to be issued in the following order:
+.IP \[bu]
+load
+.IP \[bu]
+config action=initialize
+.IP \[bu]
+config action=finalize
+.IP \[bu]
+start
+.PP
+
+
+.PP
+The following config commands can be issued anytime after the start in any order
+.IP \[bu]
+config action=reset
+.IP \[bu]
+config action=ls
+.PP
+
+
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+The aries_mmr_configurable plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
+
+
+.TP
+.BR config
+name=<plugin_name> action=<action> [ <attr>=<value> ...]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be aries_mmr_configurable
+.TP
+action=<action>
+.br
+Options are initialize, finalize, reset, and ls:
+
+.TP
+.BR initialize
+[schema=<sname> setfile=<cfile> rtrid=<rtrid>] readfile=<rfile>
+.br
+initialize the plugin. sampler_base configuration arguments should be specified at this point.
+.RS
+.TP
+setfile=<cfile>
+.br
+Optional configuration file with the counter value assignment options.
+.br
+Format: "name,type,default_value" one entry per line.
+.br
+Type is 'H' for Hex or anything else to default to uint64_t.
+.br
+Value should be written out in standard decimal or hex (leading 0x) format.
+.br
+Blanklines and comments (specfied by leading #) are allowed.
+.br
+The sampler uses gpcd_lookup_mmr_by_name, so only the names that are in the 'valid' sets specified by the gpcd library are allowed. As of this writing those can be obtained by:
+  gpcd_print_valid_tile_mmrs();
+  gpcd_print_valid_nic_mmrs();
+  gpcd_print_valid_tile_filtering_mmrs();
+  gpcd_print_valid_tile_static_mmrs();
+
+These are printed out in the utility check_mmr_configurable.
+.TP
+readfile=<rfile>
+.br
+Configuration file with the names of the counters to read.
+.br
+Format "name,type" one entry per line.
+.br
+Type is 'H' for Hex or anything else to default to uint64_t. Hex values are written out as a char array.
+.br
+Blanklines and comments (specfied by leading #) are allowed.
+.br
+The sampler uses gpcd_lookup_mmr_by_name, so only the names that are in the 'valid' sets specified by the gpcd library are allowed. As of this writing those can be obtained by:
+  gpcd_print_valid_tile_mmrs();
+  gpcd_print_valid_nic_mmrs();
+  gpcd_print_valid_tile_filtering_mmrs();
+  gpcd_print_valid_tile_static_mmrs();
+
+These are printed out in the utility check_mmr_configurable.
+.TP
+rtrid=<rtrid>
+.br
+Optional unique rtr string identifier (e.g., c0-0c0s0a0). Defaults to 0 length string.
+.TP
+schema=<sname>
+.br
+Optional schema name. Defaults to 'aries_mmr_configurable'.
+.RE
+
+.TP
+.BR finalize
+.br
+Creates the mmr_contexts, sets the set counters to the configured values, and creates the set.
+Takes no arguments. If finalize fails, all state is cleared and the plugin can be configured again.
+.RS
+.RE
+
+.TP
+.BR ls
+.br
+Prints out the set counter names and their configured values and also the read counter names.
+Takes no arguments.
+.RS
+.RE
+
+.TP
+.BR reset
+.br
+Resets the set counters to their configured values.
+Takes no arguments.
+.RS
+.RE
+
+
+.SH NOTES
+.PP
+.IP \[bu]
+See WARNINGS above.
+.IP \[bu]
+This is entirely independent of the cray_aries_r_sampler.
+.IP \[bu]
+At the moment, no functions of the data (either in the sampler or in a store) are supported.
+.IP \[bu]
+Counters whose names do not resolve are left out.
+.IP \[bu]
+If you start this sampler on a node for which the counters cannot be obtained (e.g., an external login node), the
+set may still get created, however the sample function will fail and the plugin will be stopped.
+.IP \[bu]
+While the names are checked to be in the valid set (see note above), there is nothing that checks that the value that you choose to write to a counter is valid.
+.IP \[bu]
+If writing the counters is not enabled, this plugin must be run as root in order to call the gpcd command that enables writing the counters.
+.IP \[bu]
+This sampler may change at any time.
+
+.SH BUGS
+.IP \[bu]
+There is an unavoidable race condition if someone out of band disable permissions of writing the counters in between the check in this sampler and the actual write.
+.IP \[bu]
+Because the sampler needs to write this will toggle on the write ability for anyone.
+
+
+.SH EXAMPLES
+.PP
+> more setconf.txt
+.br
+AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_FLITS,U,0
+.br
+AR_NIC_ORB_CFG_NET_RSP_HIST_OVF,H,0xFF
+.br
+AR_NIC_ORB_CFG_NET_RSP_HIST_1,H,0x000A000500010000
+.br
+
+> more readconf.txt
+.br
+AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_FLITS,U
+.br
+AR_NIC_ORB_CFG_NET_RSP_HIST_OVF,H
+.br
+AR_NIC_ORB_CFG_NET_RSP_HIST_1,H
+.br
+AR_NIC_ORB_PRF_NET_RSP_HIST_BIN01,H
+.br
+AR_NIC_ORB_PRF_NET_RSP_HIST_BIN23,H
+.br
+AR_NIC_ORB_PRF_NET_RSP_HIST_BIN45,H
+.br
+AR_NIC_ORB_PRF_NET_RSP_HIST_BIN67,H
+.br
+
+
+.PP Starting within ldmsd_controller or in a configuration file
+load name=aries_mmr_configurable
+.br
+config name=aries_mmr_configurable producer=localhost1 instance=localhost1/aries_mmr schema=aries_mmr_configurable setfile=XXX/setconf.txt readfile=XXX/Build/readconf.txt  component_id=1 action=initialize aries_rtr_id=c0-0c0a0
+.br
+config name=aries_mmr_configurable action=finalize
+.br
+config name=aries_mmr_configurable action=ls
+.br
+start name=aries_mmr_configurable interval=5000000
+.br
+
+.PP Output
+>ldms_ls
+.br
+localhost1/aries_mmr: consistent, last update: Sun Apr 12 19:04:00 2020 -0600 [290661us]
+.br
+M u64        component_id                               1
+.br
+D u64        job_id                                     0
+.br
+D u64        app_id                                     0
+.br
+M char[]     aries_rtr_id                               "c0-0c0a0"
+.br
+D u64        AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_FLITS     30756
+.br
+D char[]     AR_NIC_ORB_CFG_NET_RSP_HIST_OVF            "0x0"
+.br
+D char[]     AR_NIC_ORB_CFG_NET_RSP_HIST_1              "0xa000500010000"
+.br
+D char[]     AR_NIC_ORB_PRF_NET_RSP_HIST_BIN01          "0xcb400000d6b"
+.br
+D char[]     AR_NIC_ORB_PRF_NET_RSP_HIST_BIN23          "0x0"
+.br
+D char[]     AR_NIC_ORB_PRF_NET_RSP_HIST_BIN45          "0x0"
+.br
+D char[]     AR_NIC_ORB_PRF_NET_RSP_HIST_BIN67          "0x0"
+.br
+
+
+Also in the logs from the action=ls:
+.br
+Sun Apr 12 19:03:55 2020: INFO      : Name                                             default                R/S
+.br
+Sun Apr 12 19:03:55 2020: INFO      : ------------------------------------------------ -------------------- -----
+.br
+Sun Apr 12 19:03:55 2020: INFO      : AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_FLITS           N/A                    R
+.br
+Sun Apr 12 19:03:55 2020: INFO      : AR_NIC_ORB_CFG_NET_RSP_HIST_OVF                  N/A                    R
+.br
+Sun Apr 12 19:03:55 2020: INFO      : AR_NIC_ORB_CFG_NET_RSP_HIST_1                    N/A                    R
+.br
+Sun Apr 12 19:03:55 2020: INFO      : AR_NIC_ORB_PRF_NET_RSP_HIST_BIN01                N/A                    R
+.br
+Sun Apr 12 19:03:55 2020: INFO      : AR_NIC_ORB_PRF_NET_RSP_HIST_BIN23                N/A                    R
+.br
+Sun Apr 12 19:03:55 2020: INFO      : AR_NIC_ORB_PRF_NET_RSP_HIST_BIN45                N/A                    R
+.br
+Sun Apr 12 19:03:55 2020: INFO      : AR_NIC_ORB_PRF_NET_RSP_HIST_BIN67                N/A                    R
+.br
+Sun Apr 12 19:03:55 2020: INFO      : AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_FLITS                              0   S
+.br
+Sun Apr 12 19:03:55 2020: INFO      : AR_NIC_ORB_CFG_NET_RSP_HIST_OVF                  0xff   S
+.br
+Sun Apr 12 19:03:55 2020: INFO      : AR_NIC_ORB_CFG_NET_RSP_HIST_1                    0xa000500010000   S
+.br
+
+
+At any time action=ls or action=reset can be called via ldmsd_controller:
+.br
+> more aries_mmr_configurable_controller_reset.sh
+#!/bin/bash
+.br
+echo "config name=aries_mmr_configurable action=reset"
+.br
+exit
+.br
+> ldmsd_controller --host localhost --port=${port1} -a munge --script "XXX/aries_mmr_configurable_controller_reset.sh"
+.br
+
+.fi
+
+
+.SH SEE ALSO
+ldmsd(8), ldms_sampler_base(7), Plugin_cray_sampler_variants(7), Plugin_aries_linkstatus(7), ldms_quickstart(7), Plugin_aries_mmr(7), Plugin_aries_rtr_mmr)7), Plugin_aries_nic_mmr(7), ldmsd_controller(8)

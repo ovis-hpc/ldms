@@ -59,7 +59,7 @@ test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'
 # link and include flags for build to ensure self-consistency
 #
 
-# ideally, this should yield from lib/src ldms/src 
+# ideally, this should yield from lib/src ldms/src
 # "-I$(top_builddir)/lib/src -I$(top_builddir)/ldms/src -I$(top_srcdir)/lib/src -I$(top_srcdir)/ldms/src"
 # when all the includes are fixed.
 dnl contrib should never be in this list
@@ -716,7 +716,7 @@ lib/etc/Makefile
 lib/etc/ovis/Makefile
 lib/etc/ld.so.conf.d/Makefile
 ldms/Makefile
-ldms/src/Makefile 
+ldms/src/Makefile
 ldms/src/core/Makefile
 ldms/swig/Makefile
 ldms/src/auth/Makefile
@@ -810,4 +810,3 @@ echo "TURNING libtool rpath into no-ops"
 sed -i 's|^hardcode_libdir_flag_spec=.*|hardcode_libdir_flag_spec=""|g' libtool
 sed -i 's|^runpath_var=LD_RUN_PATH|runpath_var=DIE_RPATH_DIE|g' libtool
 fi
-
