@@ -113,7 +113,6 @@ struct ldmsd_store_type_s {
 
 int ldmsd_store_open(ldmsd_plugin_inst_t i, ldmsd_strgp_t strgp);
 int ldmsd_store_close(ldmsd_plugin_inst_t i);
-int ldmsd_store_flush(ldmsd_plugin_inst_t i);
 int ldmsd_store_store(ldmsd_plugin_inst_t i, ldms_set_t set,
 		      ldmsd_strgp_t strgp);
 

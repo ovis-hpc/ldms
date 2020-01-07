@@ -83,137 +83,15 @@
 #include "ldmsd_request.h"
 #include "config.h"
 
-extern void cleanup(int x, char *reason);
-
 pthread_mutex_t host_list_lock = PTHREAD_MUTEX_INITIALIZER;
 LIST_HEAD(host_list_s, hostspec) host_list;
-LIST_HEAD(ldmsd_store_policy_list, ldmsd_store_policy) sp_list;
 pthread_mutex_t sp_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define LDMSD_PLUGIN_LIBPATH_MAX	1024
-struct plugin_list plugin_list;
-
-void ldmsd_cfg_unix_cleanup(ldmsd_cfg_xprt_t xprt)
-{
-	unlink(((struct sockaddr_un *)(&xprt->sock.ss))->sun_path);
-}
-
-void ldmsd_cfg_sock_cleanup(ldmsd_cfg_xprt_t xprt)
-{
-	/* nothing to do */
-}
 
 void ldmsd_cfg_ldms_xprt_cleanup(ldmsd_cfg_xprt_t xprt)
 {
 	/* nothing to do */
-}
-
-struct ldmsd_plugin_cfg *ldmsd_get_plugin(const char *name)
-{
-	struct ldmsd_plugin_cfg *p;
-	LIST_FOREACH(p, &plugin_list, entry) {
-		if (0 == strcmp(p->name, name))
-			return p;
-	}
-	return NULL;
-}
-
-struct ldmsd_plugin_cfg *new_plugin(const char *plugin_name,
-				char *errstr, size_t errlen)
-{
-	char library_name[LDMSD_PLUGIN_LIBPATH_MAX];
-	char library_path[LDMSD_PLUGIN_LIBPATH_MAX];
-	struct ldmsd_plugin *lpi;
-	struct ldmsd_plugin_cfg *pi = NULL;
-	char *pathdir = library_path;
-	char *libpath;
-	char *saveptr = NULL;
-	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
-	void *d = NULL;
-
-	if (!path)
-		path = LDMSD_PLUGIN_LIBPATH_DEFAULT;
-
-	strncpy(library_path, path, sizeof(library_path) - 1);
-
-	while ((libpath = strtok_r(pathdir, ":", &saveptr)) != NULL) {
-		ldmsd_log(LDMSD_LDEBUG, "Checking for %s in %s\n",
-			plugin_name, libpath);
-		pathdir = NULL;
-		snprintf(library_name, sizeof(library_name), "%s/lib%s.so",
-			libpath, plugin_name);
-		d = dlopen(library_name, RTLD_NOW);
-		if (d != NULL) {
-			break;
-		}
-		struct stat buf;
-		if (stat(library_name, &buf) == 0) {
-			char *dlerr = dlerror();
-			ldmsd_log(LDMSD_LERROR, "Bad plugin "
-				"'%s': dlerror %s\n", plugin_name, dlerr);
-			snprintf(errstr, errlen, "Bad plugin"
-				" '%s'. dlerror %s", plugin_name, dlerr);
-			goto err;
-		}
-	}
-
-	if (!d) {
-		char *dlerr = dlerror();
-		ldmsd_log(LDMSD_LERROR, "Failed to load the plugin '%s': "
-				"dlerror %s\n", plugin_name, dlerr);
-		snprintf(errstr, errlen, "Failed to load the plugin '%s'. "
-				"dlerror %s", plugin_name, dlerr);
-		goto err;
-	}
-
-	ldmsd_plugin_get_f pget = dlsym(d, "get_plugin");
-	if (!pget) {
-		snprintf(errstr, errlen,
-			"The library, '%s',  is missing the get_plugin() "
-			 "function.", plugin_name);
-		goto err;
-	}
-	lpi = pget(ldmsd_msg_logger);
-	if (!lpi) {
-		snprintf(errstr, errlen, "The plugin '%s' could not be loaded.",
-								plugin_name);
-		goto err;
-	}
-	pi = calloc(1, sizeof *pi);
-	if (!pi)
-		goto enomem;
-	pthread_mutex_init(&pi->lock, NULL);
-	pi->handle = d;
-	pi->name = strdup(plugin_name);
-	if (!pi->name)
-		goto enomem;
-	pi->libpath = strdup(library_name);
-	if (!pi->libpath)
-		goto enomem;
-	pi->plugin = lpi;
-	LIST_INSERT_HEAD(&plugin_list, pi, entry);
-	return pi;
-enomem:
-	snprintf(errstr, errlen, "No memory");
-err:
-	if (pi) {
-		pthread_mutex_destroy(&pi->lock);
-		if (pi->name)
-			free(pi->name);
-		if (pi->libpath)
-			free(pi->libpath);
-		free(pi);
-	}
-	return NULL;
-}
-
-void destroy_plugin(struct ldmsd_plugin_cfg *p)
-{
-	free(p->libpath);
-	free(p->name);
-	LIST_REMOVE(p, entry);
-	dlclose(p->handle);
-	free(p);
 }
 
 const char *prdcr_state_str(enum ldmsd_prdcr_state state)

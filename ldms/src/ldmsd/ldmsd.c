@@ -259,15 +259,6 @@ LDMSD_LOG_AT(LDMSD_LERROR,error);
 LDMSD_LOG_AT(LDMSD_LCRITICAL,critical);
 LDMSD_LOG_AT(LDMSD_LALL,all);
 
-static char msg_buf[4096];
-void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	vsnprintf(msg_buf, sizeof(msg_buf), fmt, ap);
-	ldmsd_log(level, "%s", msg_buf);
-}
-
 enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s)
 {
 	int i;

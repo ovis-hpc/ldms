@@ -63,12 +63,6 @@ int ldmsd_store_close(ldmsd_plugin_inst_t i)
 	return store->close(i);
 }
 
-int ldmsd_store_flush(ldmsd_plugin_inst_t i)
-{
-	ldmsd_store_type_t store = (void*)i->base;
-	return store->flush(i);
-}
-
 int ldmsd_store_store(ldmsd_plugin_inst_t i, ldms_set_t set,
 		      ldmsd_strgp_t strgp)
 {

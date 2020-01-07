@@ -626,54 +626,11 @@ int process_config_file(const char *path, int *lineno, int trust);
 #define LDMSD_CFG_FILE_XPRT_MAX_REC 8192
 struct attr_value_list;
 
-struct ldmsd_plugin_cfg {
-	void *handle;
-	char *name;
-	char *libpath;
-	int ref_count;
-	union {
-		struct ldmsd_plugin *plugin;
-		struct ldmsd_sampler *sampler;
-		struct ldmsd_store *store;
-	};
-	pthread_mutex_t lock;
-	LIST_ENTRY(ldmsd_plugin_cfg) entry;
-};
-LIST_HEAD(plugin_list, ldmsd_plugin_cfg);
-
 #define LDMSD_DEFAULT_SAMPLE_INTERVAL 1000000
 /** Metric name for component ids (u64). */
 #define LDMSD_COMPID "component_id"
 /** Metric name for job id number */
 #define LDMSD_JOBID "job_id"
-
-extern void ldmsd_config_cleanup(void);
-extern int ldmsd_config_init(char *name);
-struct ldmsd_plugin_cfg *ldmsd_get_plugin(const char *name);
-
-struct ldmsd_store_host {
-	char *name;
-	struct rbn rbn;
-};
-
-struct ldmsd_store_policy {
-	char *name;
-	char *container;
-	char *schema;
-	int metric_count;
-	int *metric_arry;
-	struct ldmsd_strgp_metric_list metric_list;
-	struct rbt host_tree;
-	struct ldmsd_store *plugin;
-
-	enum {
-		STORE_POLICY_CONFIGURING=0, /* Need metric index list */
-		STORE_POLICY_READY,
-		STORE_POLICY_ERROR
-	} state;
-	pthread_mutex_t cfg_lock;
-	LIST_ENTRY(ldmsd_store_policy) link;
-};
 
 extern const char *ldmsd_loglevel_names[];
 
@@ -726,7 +683,6 @@ void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt);
 #pragma weak ldmsd_sec_ctxt_get
 
 typedef void (*ldmsd_msg_log_f)(enum ldmsd_loglevel level, const char *fmt, ...);
-typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)(ldmsd_msg_log_f pf);
 
 /* ldmsctl command callback function definition */
 typedef int (*ldmsctl_cmd_fn_t)(char *, struct attr_value_list*, struct attr_value_list *);
@@ -788,8 +744,6 @@ extern ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND + 1];
  */
 #define LEN_ERRSTR 256
 
-void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
-#pragma weak ldmsd_msg_logger
 int ldmsd_logrotate();
 #pragma weak ldmsd_logrotate
 int ldmsd_plugins_usage(const char *plugin_name);
@@ -1234,9 +1188,6 @@ mode_t ldmsd_inband_cfg_mask_get();
 void ldmsd_inband_cfg_mask_set(mode_t mask);
 void ldmsd_inband_cfg_mask_add(mode_t mask);
 void ldmsd_inband_cfg_mask_rm(mode_t mask);
-
-/* Listen for a connection either on Unix domain socket or Socket. A dedicated thread is assigned to a new connection. */
-extern int listen_on_cfg_xprt(char *xprt_str, char *port_str, char *secretword);
 
 /*
  * Setgroup
