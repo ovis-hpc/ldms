@@ -261,3 +261,5 @@ endif
 if ENABLE_SYSPAPI_SAMPLER
 SUBDIRS += syspapi
 endif
+
+SUBDIRS += hello_stream

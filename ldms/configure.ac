@@ -580,6 +580,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/examples/test_sampler/Makefile
 		 src/sampler/ibm_occ/Makefile
 		 src/sampler/syspapi/Makefile
+		 src/sampler/hello_stream/Makefile
 		 src/contrib/sampler/Makefile
 		 src/contrib/sampler/ipmireader/Makefile
 		 src/contrib/sampler/tutorial/Makefile
