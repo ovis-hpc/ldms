@@ -563,7 +563,6 @@ invalid_result_format:
 static void resp_prdcr_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
 	int rc;
-	int i;
 	json_parser_t parser;
 	json_entity_t json, prdcr;
 	if (rsp_err) {
@@ -1256,7 +1255,6 @@ static void help_strgp_status()
 static void __print_plugn_sets(json_entity_t plugin_sets)
 {
 	json_entity_t sets, set_name, pi_name;
-	int i;
 	pi_name = json_value_find(plugin_sets, "plugin");
 	if (!pi_name) {
 		printf("---Invalid result format---\n");
@@ -1564,7 +1562,6 @@ static void __indent_print(int indent)
 
 static void __json_value_print(json_entity_t v, int indent)
 {
-	int i;
 	json_entity_t item, attr;
 	switch (v->type) {
 	case JSON_DICT_VALUE:
@@ -1574,6 +1571,8 @@ static void __json_value_print(json_entity_t v, int indent)
 			printf("%s: ", json_attr_name(attr)->str);
 			__json_value_print(json_attr_value(attr), indent + 1);
 		}
+		break;
+	case JSON_ATTR_VALUE:
 		break;
 	case JSON_LIST_VALUE:
 		for (item = json_item_first(v); item; item = json_item_next(item)) {
