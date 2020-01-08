@@ -3,6 +3,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#include "ldms_xprt.h"
 #include <json/json_util.h>
 
 struct ldmsd_stream_client_s;
@@ -35,6 +36,8 @@ extern int ldmsd_stream_publish_file(const char *stream, const char *type,
 void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_type,
 			  const char *data, size_t data_len,
 			  json_entity_t entity);
+
+int ldmsd_stream_response(ldms_xprt_event_t e);
 
 #ifdef __cplusplus
 }

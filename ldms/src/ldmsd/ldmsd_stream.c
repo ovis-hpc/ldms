@@ -9,6 +9,7 @@
 #include <semaphore.h>
 #include <json/json_util.h>
 #include "ldms.h"
+#include "ldms_xprt.h"
 #include "ldmsd_request.h"
 #include "ldmsd_stream.h"
 
@@ -368,4 +369,10 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
  err:
 	return rc;
 
+}
+
+int ldmsd_stream_response(ldms_xprt_event_t e)
+{
+	struct ldms_reply_hdr *h = (void *)e->data;
+	return ntohl(h->rc);
 }
