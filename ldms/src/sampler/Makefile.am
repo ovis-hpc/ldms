@@ -277,3 +277,6 @@ endif
 if ENABLE_APP_SAMPLER
 SUBDIRS += app_sampler
 endif
+
+
+SUBDIRS += hello_stream

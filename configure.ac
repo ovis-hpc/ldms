@@ -739,6 +739,7 @@ ldms/src/auth/Makefile
 ldms/src/store/Makefile
 ldms/src/sampler/Makefile
 ldms/src/contrib/Makefile
+ldms/src/store/hello_stream/Makefile
 ldms/src/store/kokkos/Makefile
 ldms/src/store/papi/Makefile
 ldms/src/store/slurm/Makefile
@@ -748,6 +749,7 @@ ldms/src/store/store_app/Makefile
 ldms/src/contrib/store/Makefile
 ldms/src/contrib/store/tutorial/Makefile
 ldms/src/sampler/dstat/Makefile
+ldms/src/sampler/hello_stream/Makefile
 ldms/src/sampler/filesingle/Makefile
 ldms/src/sampler/lustre/Makefile
 ldms/src/sampler/job_info/Makefile
