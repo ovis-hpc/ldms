@@ -125,18 +125,18 @@ int samp_config(ldmsd_plugin_inst_t inst, json_entity_t json,
 	char buff[1024];
 
 	value = json_value_find(json, "producer");
-	if (!value) {
+	if (value) {
+		if (value->type != JSON_STRING_VALUE) {
+			ldmsd_log(LDMSD_LERROR, "%s: the 'producer' value is "
+					"not a string.\n", name);
+			goto einval;
+		}
+		samp->producer_name = strdup(json_value_str(value)->str);
+	} else {
 		ldmsd_log(LDMSD_LINFO, "%s: producer not specified, "
 			  "using `%s`\n", name, ldmsd_myname_get());
+		samp->producer_name = strdup(ldmsd_myname_get());
 	}
-
-	if (value->type != JSON_STRING_VALUE) {
-		ldmsd_log(LDMSD_LERROR, "%s: the 'producer' value is "
-				"not a string.\n", name);
-		goto einval;
-	}
-
-	samp->producer_name = strdup(json_value_str(value)->str);
 
 	value = json_value_find(json, "component_id");
 	if (value) {
