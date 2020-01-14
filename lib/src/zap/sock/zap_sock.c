@@ -387,6 +387,10 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 	free(sep->conn_data);
 	sep->conn_data = NULL;
  err1:
+	if (sep->sock >= 0) {
+		close(sep->sock);
+		sep->sock = -1;
+	}
 	return zerr;
 }
 

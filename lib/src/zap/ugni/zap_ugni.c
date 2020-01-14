@@ -552,9 +552,13 @@ static zap_err_t z_ugni_connect(zap_ep_t ep,
 	}
 
 	zerr = __setup_connection(uep);
-	if (zerr)
-		goto out;
+	if (!zerr)
+		return ZAP_ERR_OK;
  out:
+	if (uep->sock >= 0) {
+		close(uep->sock);
+		uep->sock = -1;
+	}
 	return zerr;
 }
 
