@@ -514,7 +514,9 @@ ldms_set_t samp_create_set(ldmsd_plugin_inst_t inst, const char *set_name,
 		ldms_set_producer_name_set(ent->set, samp->producer_name);
 
 	ldms_set_publish(ent->set);
+	pthread_mutex_lock(&samp->lock);
 	LIST_INSERT_HEAD(&samp->set_list, ent, entry);
+	pthread_mutex_unlock(&samp->lock);
 
 	return ent->set;
 
@@ -544,7 +546,9 @@ ldms_set_t samp_create_set_group(ldmsd_plugin_inst_t inst,
 	ldms_ctxt_set(ent->set, &samp->set_ctxt);
 
 	ldms_set_publish(ent->set);
+	pthread_mutex_lock(&samp->lock);
 	LIST_INSERT_HEAD(&samp->set_list, ent, entry);
+	pthread_mutex_unlock(&samp->lock);
 
 	return ent->set;
 
@@ -556,16 +560,21 @@ ldms_set_t samp_create_set_group(ldmsd_plugin_inst_t inst,
 
 int samp_delete_set(ldmsd_plugin_inst_t inst, ldms_set_t set)
 {
-	/* NOTE: This must be called while samp->lock is held */
 	ldmsd_sampler_type_t samp = (void*)inst->base;
 	ldmsd_set_entry_t ent;
+	const char *name = ldms_set_name_get(set);
+	pthread_mutex_lock(&samp->lock);
+	/* make sure that it is from our list */
 	LIST_FOREACH(ent, &samp->set_list, entry) {
-		if (ent->set == set)
+		if (0 == strcmp(name, ldms_set_name_get(ent->set)))
 			break;
 	}
-	if (!ent)
+	if (!ent) {
+		pthread_mutex_unlock(&samp->lock);
 		return ENOENT;
+	}
 	LIST_REMOVE(ent, entry);
+	pthread_mutex_unlock(&samp->lock);
 	ldms_set_delete(ent->set);
 	free(ent);
 	return 0;
@@ -632,6 +641,7 @@ int samp_sample(ldmsd_plugin_inst_t inst)
 	ldmsd_set_entry_t ent;
 	int rc = 0;
 
+	pthread_mutex_lock(&samp->lock);
 	LIST_FOREACH(ent, &samp->set_list, entry) {
 		if (ldmsd_group_check(ent->set)) {
 			/* skip: set group is not periodically updated */
@@ -646,8 +656,10 @@ int samp_sample(ldmsd_plugin_inst_t inst)
 	end:
 		ldms_transaction_end(ent->set);
 		if (rc)
-			return rc;
+			goto out;
 	}
+ out:
+	pthread_mutex_unlock(&samp->lock);
 	return rc;
 }
 
