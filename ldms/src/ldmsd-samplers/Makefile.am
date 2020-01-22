@@ -141,3 +141,7 @@ endif
 if ENABLE_SYSPAPI_SAMPLER
 SUBDIRS += syspapi
 endif
+
+if ENABLE_APP_SAMPLER
+SUBDIRS += app_sampler
+endif
