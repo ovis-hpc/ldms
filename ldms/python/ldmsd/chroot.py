@@ -475,9 +475,10 @@ smplr_start name=smplr_test
         srcs = [ sd.src ] if type(sd.src) == Src else sd.src
         for src in srcs:
             path = cls.CHROOT_DIR + src.path
-            os.remove(path)
+            if os.path.lexists(path):
+                os.remove(path)
             d = os.path.dirname(path)
-            if not os.listdir(d): # dir empty
+            if os.path.isdir(d) and not os.listdir(d): # dir empty
                 os.removedirs(d)
 
     @classmethod
