@@ -1121,6 +1121,18 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 	inline void transaction_end() {
 		ldms_transaction_end(self);
 	}
+        inline PyObject *char_array_get(int i) {
+                union ldms_value *v = ldms_metric_get(self, i);
+                enum ldms_value_type t = ldms_metric_type_get(self, i);
+                int j, n;
+                PyObject *tpl, *obj;
+                if (t != LDMS_V_CHAR_ARRAY) {
+                        PyErr_SetString(PyExc_TypeError, "Not a CHAR_ARRAY type.");
+                        return NULL;
+                }
+                n = ldms_metric_array_get_len(self, i);
+                return PyString_FromStringAndSize(v->a_char, n);
+        }
 }
 
 %extend ldms_timestamp {
