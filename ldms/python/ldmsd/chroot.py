@@ -511,17 +511,21 @@ smplr_start name=smplr_job
                             chroot = cls.CHROOT_DIR, env = cls.env)
             cls.smp.run()
             cls.x = ldms_try_connect("localhost", cls.PORT, cls.XPRT, 4)
-            cls.d = ldms_steady_dir(cls.x)
-            cls.s = list()
-            for name in cls.d:
-                _s = cls.x.lookupSet(name, 0)
-                cls.s.append(_s)
+            cls.ldmsDirLookup()
             if sys.flags.interactive:
                 raw_input("Press ENTER to continue")
         except:
             if not sys.flags.interactive:
                 cls.tearDownClass()
             raise
+
+    @classmethod
+    def ldmsDirLookup(cls):
+        cls.d = ldms_steady_dir(cls.x)
+        cls.s = list()
+        for name in cls.d:
+            _s = cls.x.lookupSet(name, 0)
+            cls.s.append(_s)
 
     @classmethod
     def tearDownClass(cls):
