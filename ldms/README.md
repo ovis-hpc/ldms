@@ -27,11 +27,11 @@ For plugin developers, please see
 - [ldmsd-store-dev] for LDMSD Store Plugin
   development.
 
-See [mdtest](ldms/doc/mdtest.md) for a concise instruction on how to write
+See [mdtest](doc/mdtest.md) for a concise instruction on how to write
 a man-sturctured markdown document and add it in `ldms` project.
 
 [LDMS-API]: LDMS.html
-[ldmsd-sampler]: ldms/src/ldmsd/ldmsd-sampler.md
-[ldmsd-aggregator]: ldms/src/ldmsd/ldmsd-aggregator.md
-[ldmsd-sampler-dev]: ldms/src/ldmsd/ldmsd-sampler-dev.md
-[ldmsd-store-dev]: ldms/src/ldmsd/ldmsd-store-dev.md
+[ldmsd-sampler]: src/ldmsd/ldmsd-sampler.md
+[ldmsd-aggregator]: src/ldmsd/ldmsd-aggregator.md
+[ldmsd-sampler-dev]: src/ldmsd/ldmsd-sampler-dev.md
+[ldmsd-store-dev]: src/ldmsd/ldmsd-store-dev.md

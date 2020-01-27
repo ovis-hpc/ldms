@@ -84,7 +84,7 @@ Note that the doxygen-generated man output file name is `md_` and a path to the
 file that every `/` is replaced by `_`. For example `ldms/doc/mdtest.md` will be
 `md_ldms_doc_mdtest.3`.
 
-See [ldms/doc/Makefile.am](ldms/doc/Makefile.am) in the source tree for more
+See [ldms/doc/Makefile.am](Makefile.am) in the source tree for more
 information.
 
 
@@ -126,7 +126,7 @@ HTML. doxygen man does not work because doxygen turns `<i>...</i>` into
 `\fI...\fP` (requesting italic style ONLY then swich back to previous style),
 and `<b>...</b>` into `\fB...\fP` (requesting bold style ONLY and switch back to
 previous style). The bold-italic above works because of an relatively-easy fix
-by [ldms/doc/mddoxymanfix.sh](ldms/doc/mddoxymanfix.sh).
+by [ldms/doc/mddoxymanfix.sh](mddoxymanfix.sh).
 
 
 Section Link
@@ -136,9 +136,9 @@ See [SEE ALSO](#see-also). This works on gitlab.
 
 Doxygen HTML doesn't automatically generate the header anchors. Hence, the link
 won't work right away. It will display a link, but the link doesn't work. A work
-around is to add a `<div id="#see-also"></div>` right under [SEE
+around is to add a `<span id="#see-also"></span>` right under [SEE
 ALSO](#see-also) section. This doesn't seem to interfere with the automatically
-generated anchors by gitlab.
+generated anchors by gitlab and github.
 
 Doxygen MAN display the link in BOLD after a post-processing by
 `mddoxymanfix.sh`.
@@ -222,7 +222,7 @@ admin@ogc.us
 
 Refers to [H2](#h2)
 
-Refers to another page [ldmsd-sampler](ldms/src/ldmsd/ldmsd-sampler.md)(7)
+Refers to another page [ldmsd-sampler](../src/ldmsd/ldmsd-sampler.md)(7)
 
 
 HEADER TESTING (H1)
@@ -231,7 +231,7 @@ Under H1
 
 H2
 --
-<div id="h2"></div>
+<span id="h2"></span>
 Under H2
 
 H2 is a subsection in doxygen MAN output.
@@ -259,7 +259,7 @@ H6 is also a subsection in doxygen MAN output (same level as H2).
 
 SEE ALSO
 ========
-<div id="see-also"></div>
+<span id="see-also"></span>
 **ldmsd**(1)
-[ldmsd-sampler](ldms/src/ldmsd/ldmsd-sampler.md)(7)
-[ldmsd-aggregator](ldms/src/ldmsd/ldmsd-aggregator.md)(7)
+[ldmsd-sampler](../src/ldmsd/ldmsd-sampler.md)(7)
+[ldmsd-aggregator](../src/ldmsd/ldmsd-aggregator.md)(7)
