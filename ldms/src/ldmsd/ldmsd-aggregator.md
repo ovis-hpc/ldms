@@ -179,4 +179,4 @@ SEE ALSO
 ========
 
 **ldmsd**(1)
-[ldmsd-sampler](ldms/src/ldmsd/ldmsd-sampler.md)(7)
+[ldmsd-sampler](ldmsd-sampler.md)(7)

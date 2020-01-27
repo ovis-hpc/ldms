@@ -135,7 +135,7 @@ implement a storage plugin for LDMS in the following subsections.
 
 Preparation
 ------------
-<div id="preparation"></div>
+<span id="preparation"></span>
 
 This step is for developing a storage plugin in ovis development tree
 (recommended). If you are developing a plugin outside of ovis development tree,
@@ -221,7 +221,7 @@ development.
 
 Conventions
 -----------
-<div id="conventions"></div>
+<span id="conventions"></span>
 
 **Functions** of the plugin are `static`, except for `new()` function. The name
 of the plugin functions are preferably prefixed with plugin name for
@@ -233,7 +233,7 @@ The name of the **extended instance** structure is preferably `struct
 
 Extending Plugin Instance
 -------------------------
-<div id="extending-plugin-instance"></div>
+<span id="extending-plugin-instance"></span>
 
 To extend a sample plugin instance, simply define a new structure with `struct
 ldmsd_plugin_inst_s` as the first member. It is conventional to name the element
@@ -255,7 +255,7 @@ struct plaintext_inst_s {
 
 Creating an Instance
 --------------------
-<div id="creating-an-instance"></div>
+<span id="creating-an-instance"></span>
 
 The storage plugin implementation must implement `ldmsd_plugin_inst_t new()`
 function. This function is called by `ldmsd` when it needs to create an instance
@@ -303,7 +303,7 @@ after `new()` returned.
 
 Help and Description
 --------------------
-<div id="help-and-description"></div>
+<span id="help-and-description"></span>
 
 The `ldmsd_plugin_inst_s.desc()` interface is for a short description of the
 plugin, and `ldmsd_plugin_inst_s.help()` interface is for a long help text
@@ -335,7 +335,7 @@ static const char *plaintext_help(ldmsd_plugin_inst_t pi)
 
 Initialization
 --------------
-<div id="initialization"></div>
+<span id="initialization"></span>
 
 After the plugin instance is created by `new()`, and `ldmsd` successfully link
 it to a copy of `ldmsd_store_type_s`, `ldmsd_plugin_inst_s.init()` is called to
@@ -366,7 +366,7 @@ static int plaintext_init(ldmsd_plugin_inst_t pi)
 
 Config
 ------
-<div id="config"></div>
+<span id="config"></span>
 
 After `new()` and `ldmsd_plugin_inst_s.init()` (corresponding to the user's
 `load` command), `ldmsd_plugin_inst_s.config()` is called when the user gave
@@ -421,7 +421,7 @@ plaintext_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 
 Store APIs
 ----------
-<div id="store-apis"></div>
+<span id="store-apis"></span>
 
 `ldmsd` handle data storage business with a storage plugin instance through the
 storage APIs as the following:
@@ -538,7 +538,7 @@ plaintext_store(ldmsd_plugin_inst_t pi, ldms_set_t set, ldmsd_strgp_t strgp)
 
 Deletion of Sampler Plugin Instance
 -----------------------------------
-<div id="delete"></div>
+<span id="delete"></span>
 
 A plugin instance can be deleted upon user request (`term` command, after the
 associated `strgp` has been stopped and removed). The
@@ -984,7 +984,7 @@ SEE ALSO
 [ldmsd-sampler][samp](7)
 
 
-[agg]: ldms/src/ldmsd/ldmsd-aggregator.md
-[samp]: ldms/src/ldmsd/ldmsd-sampler.md
-[samp-dev]: ldms/src/ldmsd/ldmsd-sampler-dev.md
-[json_util.h]: lib/src/json/json_util.h
+[agg]: ldmsd-aggregator.md
+[samp]: ldmsd-sampler.md
+[samp-dev]: ldmsd-sampler-dev.md
+[json_util.h]: ../../../lib/src/json/json_util.h
