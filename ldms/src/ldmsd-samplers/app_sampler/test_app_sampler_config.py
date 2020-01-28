@@ -85,13 +85,14 @@ if not os.path.exists(DIR):
 METRICS = set([ "cmdline", "cmdline_len", "io_write_b", "oom_score", "stat_state",
             "status_threads", "wchan" ])
 
-pids = [ PIDSrcData(p, JOB_ID) for p in [10, 11] ]
+pids = [ PIDSrcData(pid = 10 + r, job_id = JOB_ID, task_rank = r) \
+                        for r in [0, 1] ]
 
 def getSrcData(gen):
     # down-select the metrics
     ldms_data = [ pid.getLDMSData(gen) for pid in pids ]
     _M = set(METRICS)
-    _M.update(["component_id", "app_id", "job_id"])
+    _M.update(["component_id", "app_id", "job_id", "task_rank"])
     for d in ldms_data:
         d.metrics = frozenset(filter(lambda x: x[0] in _M, d.metrics))
     return SrcData(
