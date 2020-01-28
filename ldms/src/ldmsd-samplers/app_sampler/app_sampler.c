@@ -437,6 +437,7 @@ struct app_sampler_inst_s {
 	handler_fn_t fn[16];
 	int n_fn;
 
+	int task_rank_idx;
 	int metric_idx[_APP_LAST+1]; /* 0 means disabled */
 };
 
@@ -986,6 +987,9 @@ int app_sampler_update_schema(ldmsd_plugin_inst_t pi, ldms_schema_t schema)
 	int i, idx;
 	app_sampler_metric_info_t mi;
 
+	inst->task_rank_idx = ldms_schema_meta_add(schema, "task_rank",
+					LDMS_V_U64, "");
+
 	/* Add app metrics to the schema */
 	for (i = 1; i <= _APP_LAST; i++) {
 		if (!inst->metric_idx[i])
@@ -1184,12 +1188,16 @@ int __handle_task_init(app_sampler_inst_t inst, json_entity_t data)
 	int len;
 	json_entity_t job_id;
 	json_entity_t task_pid;
+	json_entity_t task_rank;
 	char *setname;
 	job_id = json_value_find(data, "job_id");
 	if (!job_id || job_id->type != JSON_INT_VALUE)
 		return EINVAL;
 	task_pid = json_value_find(data, "task_pid");
 	if (!task_pid || task_pid->type != JSON_INT_VALUE)
+		return EINVAL;
+	task_rank = json_value_find(data, "task_global_id");
+	if (!task_rank || task_rank->type != JSON_INT_VALUE)
 		return EINVAL;
 	len = asprintf(&setname, "%s/%ld/%ld",
 			samp->producer_name,
@@ -1205,6 +1213,7 @@ int __handle_task_init(app_sampler_inst_t inst, json_entity_t data)
 	ldms_metric_set_u64(set, SAMPLER_JOB_IDX, job_id->value.int_);
 	if (samp->component_id)
 		ldms_metric_set_u64(set, SAMPLER_COMP_IDX, samp->component_id);
+	ldms_metric_set_u64(set, inst->task_rank_idx, task_rank->value.int_);
 	/* leave other data to be filled in update_set() */
 	return 0;
 }

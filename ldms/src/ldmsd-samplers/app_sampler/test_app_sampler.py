@@ -85,9 +85,10 @@ def array_sum(*args):
 
 class PIDSrcData(object):
     """Generate Src and LDMSData for PID"""
-    def __init__(self, pid, job_id, prdcr = None, root = "/"):
+    def __init__(self, pid, job_id, task_rank, prdcr = None, root = "/"):
         self.pid = pid
         self.job_id = job_id
+        self.task_rank = task_rank
         self.prdcr = prdcr if prdcr else ("{}:{}".format(HOSTNAME, LDMSChrootTest.PORT))
         self.root = root
 
@@ -131,6 +132,7 @@ class PIDSrcData(object):
             "component_id": LDMSChrootTest.COMPONENT_ID,
             "app_id": 0,
             "job_id": self.job_id,
+            "task_rank": self.task_rank,
         }
 
     def cmdline_src(self, gen):
@@ -405,6 +407,7 @@ class PIDSrcData(object):
                 "data": {
                     "job_id": self.job_id,
                     "task_pid": self.pid,
+                    "task_global_id": self.task_rank,
                 },
             }
         return json.dumps(ev)
@@ -415,12 +418,14 @@ class PIDSrcData(object):
                 "data": {
                     "job_id": self.job_id,
                     "task_pid": self.pid,
+                    "task_global_id": self.task_rank,
                 },
             }
         return json.dumps(ev)
 
 
-pids = [ PIDSrcData(p, JOB_ID) for p in [10, 11] ]
+pids = [ PIDSrcData(pid = 10 + r, job_id = JOB_ID, task_rank = r) \
+                    for r in [0, 1] ]
 
 def getSrcData(gen):
     return SrcData(
