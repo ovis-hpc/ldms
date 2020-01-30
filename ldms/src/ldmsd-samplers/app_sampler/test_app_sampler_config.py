@@ -78,10 +78,6 @@ LDMSD_PREFIX = HOSTNAME + ":" + str(LDMSChrootTest.PORT)
 DIR = "test_app_sampler_config" # a work directory for this test, so that
                                 # everything is in one place.
 JOB_ID = 5
-
-if not os.path.exists(DIR):
-    os.mkdir(DIR)
-
 METRICS = set([ "cmdline", "cmdline_len", "io_write_b", "oom_score", "stat_state",
             "status_threads", "wchan" ])
 
@@ -154,6 +150,8 @@ class AppSamplerConfigTest(AppSamplerTest, unittest.TestCase):
 
 
 if __name__ == "__main__":
+    if not os.path.exists(DIR):
+        os.mkdir(DIR)
     try_sudo()
     pystart = os.getenv("PYTHONSTARTUP")
     if pystart:

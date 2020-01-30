@@ -77,9 +77,6 @@ DIR = "test_app_sampler" # a work directory for this test, so that everything is
                      # one place
 JOB_ID = 5
 
-if not os.path.exists(DIR):
-    os.mkdir(DIR)
-
 def array_sum(*args):
     return reduce(lambda a,b: a + b, args)
 
@@ -563,6 +560,8 @@ class AppSamplerTest(LDMSChrootTest, unittest.TestCase):
 
 
 if __name__ == "__main__":
+    if not os.path.exists(DIR):
+        os.mkdir(DIR)
     try_sudo()
     pystart = os.getenv("PYTHONSTARTUP")
     if pystart:
