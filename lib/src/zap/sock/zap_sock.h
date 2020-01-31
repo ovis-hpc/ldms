@@ -57,6 +57,8 @@
 #include "zap.h"
 #include "zap_priv.h"
 
+#define SOCKBUF_SZ 1024 * 1024
+
 /**
  * \brief Value for TCP_KEEPIDLE option for initiator side socket.
  *

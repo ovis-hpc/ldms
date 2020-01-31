@@ -130,6 +130,17 @@ static pthread_mutex_t z_key_tree_mutex;
 static LIST_HEAD(, z_sock_ep) z_sock_list = LIST_HEAD_INITIALIZER(0);
 static pthread_mutex_t z_sock_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
+static int __set_sockbuf_sz(int sockfd)
+{
+	int rc;
+	size_t optval = SOCKBUF_SZ;
+	rc = setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &optval, sizeof(optval));
+	if (rc)
+		return rc;
+	rc = setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, sizeof(optval));
+	return rc;
+}
+
 static int z_rbn_cmp(void *a, const void *b)
 {
 	uint32_t x = (uint32_t)(uint64_t)a;
@@ -339,6 +350,13 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 		zerr = ZAP_ERR_RESOURCE;
 		goto err1;
 	}
+
+	rc = __set_sockbuf_sz(sep->sock);
+	if (rc) {
+		zerr = ZAP_ERR_TRANSPORT;
+		goto err1;
+	}
+
 	rc = __sock_nonblock(sep->sock);
 	if (rc) {
 		zerr = ZAP_ERR_RESOURCE;
@@ -863,7 +881,7 @@ static int __recv_msg(struct z_sock_ep *sep)
 	if (mtype == SOCK_MSG_WRITE_REQ || mtype == SOCK_MSG_READ_RESP) {
 		/* allow big message */
 	} else {
-		if (mlen - sizeof(struct sock_msg_hdr) > sep->ep.z->max_msg) {
+		if (mlen > SOCKBUF_SZ) {
 			DEBUG_LOG(sep, "ep: %p, RECV invalid message length: %ld\n",
 				  sep, mlen);
 			rc = EINVAL;
@@ -1371,10 +1389,10 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 		wr->off = 0;
 		memcpy(wr->msg, m, msg_size);
 	} else {
-		if (mlen - sizeof(struct sock_msg_hdr) > sep->ep.z->max_msg) {
+		if (data_len > sep->ep.z->max_msg) {
 			DEBUG_LOG(sep, "ep: %p, SEND invalid message length: %ld\n",
 				  sep, mlen);
-			return ZAP_ERR_PARAMETER;
+			return ZAP_ERR_NO_SPACE;
 		}
 		wr = malloc(sizeof(*wr) + msg_size + data_len);
 		if (!wr)
@@ -1500,6 +1518,13 @@ static void __z_sock_conn_request(ovis_event_t ev)
 				errno , __func__, __FILE__, __LINE__);
 		return;
 	}
+
+	rc = __set_sockbuf_sz(sockfd);
+	if (rc) {
+		close(sockfd);
+		return;
+	}
+
 	rc = __sock_nonblock(sockfd);
 	if (rc) {
 		close(sockfd);
@@ -1946,7 +1971,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 			    zap_mem_info_fn_t mem_info_fn)
 {
 	zap_t z;
-
+	size_t sendrecv_sz, rendezvous_sz, hdr_sz;
 	if (!init_complete && init_once())
 		goto err;
 
@@ -1956,8 +1981,12 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	if (!z)
 		goto err;
 
-	/* max_msg is unused (since RDMA) ... */
-	z->max_msg = (1024 * 1024) - sizeof(struct sock_msg_hdr);
+	sendrecv_sz = sizeof(struct sock_msg_sendrecv);
+	rendezvous_sz = sizeof(struct sock_msg_rendezvous);
+	hdr_sz = (sendrecv_sz<rendezvous_sz)?rendezvous_sz:sendrecv_sz;
+
+	/* max_msg is used only by the send/receive operations */
+	z->max_msg = SOCKBUF_SZ - hdr_sz;
 	z->new = z_sock_new;
 	z->destroy = z_sock_destroy;
 	z->connect = z_sock_connect;
