@@ -7,6 +7,6 @@ README ldmsauth.conf
 endif
 
 install-data-hook:
-	if test -f $(docdir)/ldmsauth.conf; then \
-		chmod 600 $(docdir)/ldmsauth.conf; \
+	if test -f $(DESTDIR)$(docdir)/ldmsauth.conf; then \
+		chmod 600 $(DESTDIR)$(docdir)/ldmsauth.conf; \
 	fi
