@@ -46,14 +46,17 @@ void jbuf_free(jbuf_t jb)
 	free(jb);
 }
 
-jbuf_t jbuf_append_va(jbuf_t jb, const char *fmt, va_list ap)
+jbuf_t jbuf_append_va(jbuf_t jb, const char *fmt, va_list _ap)
 {
 	int cnt, space;
+	va_list ap;
  retry:
+ 	va_copy(ap, _ap);
 	space = jb->buf_len - jb->cursor;
 	cnt = vsnprintf(&jb->buf[jb->cursor], space, fmt, ap);
+	va_end(ap);
 	if (cnt > space) {
-		space = jb->buf_len + JSON_BUF_START_LEN;
+		space = jb->buf_len + cnt + JSON_BUF_START_LEN;
 		jb = realloc(jb, space);
 		if (jb) {
 			jb->buf_len = space;
