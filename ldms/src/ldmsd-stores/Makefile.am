@@ -8,6 +8,7 @@ if ENABLE_SOS
 SUBDIRS += store_sos
 SUBDIRS += store_papi
 SUBDIRS += store_slurm
+SUBDIRS += store_app
 endif
 
 if ENABLE_CSV
