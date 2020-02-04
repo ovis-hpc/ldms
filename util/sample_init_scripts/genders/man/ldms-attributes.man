@@ -1,6 +1,6 @@
 .\" Manpage for LDMS genders entries
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH man 5 "7 Feb 2017" "v3.5.0" "LDMSD libgenders-based attribute definitions"
+.TH man 5 "3 Feb 2019" "v4.3.3" "LDMSD libgenders-based attribute definitions"
 
 .SH NAME
 ldms-attributes - attributes for the LDMS libgenders-based boot scripts
@@ -64,6 +64,8 @@ ldmsd_log=DEST          Defines where to send log output. This may be
                         one of syslog, journal, NONE, or a directory
                         name. If a name, the directory will be created
                         and ldmsd.log.$LDMSCLUSTER is the file name.
+                        DEST may contain ${} environment variables for
+                        expansion.
 ldmsd_vg=VGBIN          Defines the full path to an executable wrapper
                         such as valgrind to be used for daemon launch.
                         Note this may be any audit tool, not just valgrind.
