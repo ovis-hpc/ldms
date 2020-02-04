@@ -325,9 +325,12 @@ export LDMSD_OFFSET_DEFAULT
 # Note the LDMS_LOG_PATH may become a problem if
 # on a shared file system that goes down and daemon debugging is enabled.
 if test -z "$LDMS_LOG_PATH"; then
-	LDMS_LOG_PATH=`$NODEATTR $NODEATTRFILE -v $host ldmsd_log 2>/dev/null`
+	LDMS_LOG_PATH=$($NODEATTR $NODEATTRFILE -v $host ldmsd_log 2>/dev/null)
 	if test -z "$LDMS_LOG_PATH"; then
 		LDMS_LOG_PATH=journal
+	else
+		# expand env variables in path, if any
+		LDMS_LOG_PATH=$(eval echo $LDMS_LOG_PATH)
 	fi
 fi
 export LDMS_LOG_PATH

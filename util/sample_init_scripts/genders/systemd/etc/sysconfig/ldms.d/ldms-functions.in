@@ -92,22 +92,54 @@ check_log_option () {
 
 # check consistency of auth variables.
 check_auth_option () {
-	# auth file check and warning.
-	if test -z $LDMS_AUTH_FILE; then
-		echoq "LDMS_AUTH_FILE not set."
-		echoq "Will try running without it (but this is a bad idea)"
-		LDMS_AUTH_TYPE="ovis"
-		LDMS_AUTH_OPT=""
-	else
-		LDMS_AUTH_TYPE="ovis"
-		LDMS_AUTH_OPT="-a"
-		if ! test -f $LDMS_AUTH_FILE; then
-			echoq "LDMS_AUTH_FILE $LDMS_AUTH_FILE not found"
+	LDMS_AUTH_ARGS=""
+	case x$LDMS_AUTH_TYPE in
+        xovis)
+		# auth file check and warning.
+		if test -z $LDMS_AUTH_FILE; then
+			echoq "LDMS_AUTH_FILE not set."
+			echoq "Will try running without it (but this is a bad idea)"
+			LDMS_AUTH_OPT=""
+		else
+			LDMS_AUTH_OPT="-a"
+			if ! test -f $LDMS_AUTH_FILE; then
+				echoq "LDMS_AUTH_FILE $LDMS_AUTH_FILE not found"
+			fi
+			LDMS_AUTH_ARGS="conf=$LDMS_AUTH_FILE"
 		fi
-	fi
+		;;
+	xmunge)
+		# auth munge socket check
+		if test -z $LDMS_AUTH_FILE; then
+			echoq "LDMS_AUTH_FILE not set."
+			echoq "assuming default munge socket"
+			LDMS_AUTH_OPT=""
+		else
+			LDMS_AUTH_OPT="-a"
+			if ! test -S $LDMS_AUTH_FILE; then
+				echoq "LDMS_AUTH_FILE $LDMS_AUTH_FILE is not a socket as needed by munge"
+			fi
+			LDMS_AUTH_ARGS="socket=$LDMS_AUTH_FILE"
+
+		fi
+		;;
+	xnaive)
+		logger -t $LTAG -p syslog.error -s "$0: LDMS_AUTH_TYPE naive is not supported for systemd service."
+		dietrace 1
+		;;
+	x*)
+		logger -t $LTAG -p syslog.error -s "$0: LDMS_AUTH_TYPE $LDMS_AUTH_TYPE is unknown"
+		dietrace 1
+		;;
+	x)
+		logger -t $LTAG -p syslog.error -s "$0: LDMS_AUTH_TYPE is undefined."
+		dietrace 1
+		;;
+	esac
 	export LDMS_AUTH_TYPE
 	export LDMS_AUTH_OPT
 	export LDMS_AUTH_FILE
+	export LDMS_AUTH_ARGS
 }
 
 # check for migration errors v2 -> v3, common typos, etc
