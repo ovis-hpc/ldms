@@ -52,7 +52,7 @@ endif
 ldmsctl_SOURCES = ldmsctl.c
 ldmsctl_LDADD = -lldms libldmsd_request.la \
 		-lovis_ctrl -lovis_util -lmmalloc -lcoll -lzap -ljson_util \
-		 -ljson_parser -lm -lpthread @LDFLAGS_GETTIME@ @LDFLAGS_READLINE@
+		-lm -lpthread @LDFLAGS_GETTIME@ @LDFLAGS_READLINE@
 
 ldmsd_sos_init_SOURCES = ldmsd_sos_init.c
 ldmsd_sos_init_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)

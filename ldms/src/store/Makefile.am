@@ -6,7 +6,7 @@ AM_LDFLAGS = @OVIS_LIB_ABS@
 #COMMON_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
 AM_CPPFLAGS = $(DBGFLAGS) @OVIS_INCLUDE_ABS@
 
-STORE_LIBADD = -lldms -lplugattr -lcoll -lovis_util
+STORE_LIBADD = -lldms -lldmsd_plugattr -lcoll -lovis_util
 
 ldmsstoreincludedir = $(includedir)/ldms
 ldmsstoreinclude_HEADERS = store_csv_common.h
