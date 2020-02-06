@@ -215,7 +215,7 @@ json_entity_t json_entity_new(enum json_value_e type, ...)
 	double d;
 	char *s;
 	va_list ap;
-	json_entity_t e, name, value;
+	json_entity_t e = NULL, name, value;
 
 	va_start(ap, type);
 	switch (type) {
