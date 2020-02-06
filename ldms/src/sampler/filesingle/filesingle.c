@@ -151,7 +151,7 @@ int parse_single_conf(const char *conf) {
 			goto out; 
 		}
 		char *u = typestr;
-		while (u != '\0') {
+		while (*u != '\0') {
 			*u = toupper(*u);
 			u++;
 		}
