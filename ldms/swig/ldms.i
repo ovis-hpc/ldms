@@ -388,7 +388,7 @@ PyObject *LDMS_xprt_recv(ldms_t x)
         struct recv_arg *arg = __recv_arg_find(x);
         if (!arg) {
                 pthread_mutex_unlock(&recv_arg_list_lock);
-                if (!xprt_arg->state != CONNECTED)
+                if (xprt_arg->state != CONNECTED)
                         Py_RETURN_NONE;
                 PyErr_SetString(PyExc_RuntimeError, "The receive context is missing");
                 return NULL;
