@@ -6,7 +6,7 @@ AM_LDFLAGS = @OVIS_LIB_ABS@
 #COMMON_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 
-AM_CFLAGS =  $(DBGFLAGS) -I$(srcdir)/$(SAMPLER)/slurm
+AM_CFLAGS =  $(DBGFLAGS) -I$(srcdir)/../../sampler/slurm
 STORE_LIBADD = -lldms -lcoll -lovis_util
 
 if ENABLE_SOS
