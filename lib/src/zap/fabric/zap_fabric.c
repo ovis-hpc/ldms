@@ -574,7 +574,10 @@ post_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt)
 		DLOG("ZAP_WC_RDMA_READ rep %p ctxt %p src %p dst %p len %d\n",
 		     rep, ctxt, ctxt->u.rdma.src_addr, ctxt->u.rdma.dst_addr, ctxt->u.rdma.len);
 		break;
+	    case ZAP_WC_RECV:
+		rc = 0;
 	    default:
+		LOG_(rep, "invalid op type %d in post_wr\n", ctxt->op);
 		break;
 	}
 	if (rc) {
