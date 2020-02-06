@@ -345,8 +345,8 @@ void base_sample_begin(base_data_t base)
 		start = ldms_metric_array_get_u32(base->job_set, base->job_start_idx, slot);
 		end = ldms_metric_array_get_u32(base->job_set, base->job_end_idx, slot);
 		if ((ts.sec >= start) && ((end == 0) || (ts.sec <= end))) {
-			job_id = ldms_metric_array_get_u32(base->job_set, base->job_id_idx, slot);
-			app_id = ldms_metric_array_get_u32(base->job_set, base->app_id_idx, slot);
+			job_id = ldms_metric_array_get_u64(base->job_set, base->job_id_idx, slot);
+			app_id = ldms_metric_array_get_u64(base->job_set, base->app_id_idx, slot);
 		}
 	}
  out:
