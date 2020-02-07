@@ -540,7 +540,7 @@ static zap_err_t z_ugni_connect(zap_ep_t ep,
 		goto out;
 	}
 
-	if (__set_sockbuf_sz(uep, uep->sock)) {
+	if (__set_sockbuf_sz(uep->sock)) {
 		zerr = ZAP_ERR_TRANSPORT;
 		LOG_(uep, "Error %d: fail to set the sockbuf sz in %s.\n",
 				errno, __func__);
