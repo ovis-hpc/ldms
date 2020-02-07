@@ -1968,7 +1968,7 @@ static zap_err_t z_rdma_send(zap_ep_t ep, char *buf, size_t len)
 	if (rc)
 		goto out;
 
-	if (len > RQ_BUF_SZ) {
+	if (len > ep->z->max_msg) {
 		rc = ZAP_ERR_NO_SPACE;
 		goto out;
 	}
@@ -2310,7 +2310,6 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 			    zap_mem_info_fn_t mem_info_fn)
 {
 	zap_t z;
-
 	if (!init_complete) {
 		if (init_once()) {
 			errno = ENOMEM;
@@ -2324,7 +2323,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 		goto err_0;
 	}
 
-	z->max_msg = RQ_BUF_SZ - sizeof(struct z_rdma_message_hdr);
+	z->max_msg = RQ_BUF_SZ - sizeof(struct z_rdma_share_msg);
 	z->new = z_rdma_new;
 	z->destroy = z_rdma_destroy;
 	z->connect = z_rdma_connect;
