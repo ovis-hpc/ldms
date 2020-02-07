@@ -2119,14 +2119,12 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 			    zap_mem_info_fn_t mem_info_fn)
 {
 	zap_t z;
-
 	z = calloc(1, sizeof (*z));
 	if (!z) {
 		errno = ENOMEM;
 		goto err_0;
 	}
-
-	z->max_msg = RQ_BUF_SZ - sizeof(struct z_fi_message_hdr);
+	z->max_msg = RQ_BUF_SZ - sizeof(struct z_fi_share_msg);
 	z->new = z_fi_new;
 	z->destroy = z_fi_destroy;
 	z->connect = z_fi_connect;
