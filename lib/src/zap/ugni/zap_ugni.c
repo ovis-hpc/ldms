@@ -81,6 +81,17 @@
 	(elm)->link.le_prev = 0; \
 } while(0)
 
+static int __set_sockbuf_sz(int sockfd)
+{
+	int rc;
+	size_t optval = UGNI_SOCKBUF_SZ;
+	rc = setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &optval, sizeof(optval));
+	if (rc)
+		return rc;
+	rc = setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, sizeof(optval));
+	return rc;
+}
+
 static char *format_4tuple(struct zap_ep *ep, char *str, size_t len)
 {
 	struct sockaddr la = {0};
@@ -528,6 +539,14 @@ static zap_err_t z_ugni_connect(zap_ep_t ep,
 		zerr = ZAP_ERR_RESOURCE;
 		goto out;
 	}
+
+	if (__set_sockbuf_sz(uep, uep->sock)) {
+		zerr = ZAP_ERR_TRANSPORT;
+		LOG_(uep, "Error %d: fail to set the sockbuf sz in %s.\n",
+				errno, __func__);
+		goto out;
+	}
+
 	rc = __sock_nonblock(uep->sock);
 	if (rc) {
 		zerr = ZAP_ERR_RESOURCE;
@@ -901,7 +920,7 @@ static int __recv_msg(struct z_ugni_ep *uep)
 	hdr = (void*)buff->data;
 	mlen = ntohl(hdr->msg_len);
 
-	if (mlen - sizeof(struct zap_ugni_msg_hdr) > uep->ep.z->max_msg) {
+	if (mlen > UGNI_SOCKBUF_SZ) {
 		rc = EINVAL;
 		from_line = __LINE__;
 		goto err;
@@ -1239,7 +1258,14 @@ static zap_err_t __ugni_send_msg(struct z_ugni_ep *uep,
 				 size_t data_len)
 {
 	int rc;
-	struct zap_ugni_send_wr *wr = malloc(sizeof(*wr) + msg_len + data_len);
+	struct zap_ugni_send_wr *wr;
+
+	if (data_len > uep->ep.z->max_msg) {
+		/* message too big */
+		return ZAP_ERR_NO_SPACE;
+	}
+
+	wr = malloc(sizeof(*wr) + msg_len + data_len);
 	if (!wr)
 		return ZAP_ERR_RESOURCE;
 	wr->alen = msg_len + data_len;
@@ -1535,6 +1561,15 @@ static void __z_ugni_conn_request(ovis_event_t ev)
 	if (sockfd < 0) {
 		LOG_(uep, "accept() error %d: in %s at %s:%d\n",
 				errno , __func__, __FILE__, __LINE__);
+		return;
+	}
+
+	rc = __set_sockbuf_sz(sockfd);
+	if (rc) {
+		close(sockfd);
+		zerr = ZAP_ERR_TRANSPORT;
+		LOG_(uep, "Error %d: fail to set the sockbuf sz in %s.\n",
+				errno, __func__);
 		return;
 	}
 
@@ -2679,7 +2714,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 			    zap_mem_info_fn_t mem_info_fn)
 {
 	zap_t z;
-
+	size_t sendrecv_sz, rendezvous_sz;
 	if (log_fn)
 		zap_ugni_log = log_fn;
 
@@ -2690,8 +2725,12 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	if (!z)
 		goto err;
 
+	sendrecv_sz = sizeof(struct zap_ugni_msg_regular);
+	rendezvous_sz = sizeof(struct zap_ugni_msg_rendezvous);
+
 	/* max_msg is unused (since RDMA) ... */
-	z->max_msg = (1024 * 1024) - sizeof(struct zap_ugni_msg_hdr);
+	z->max_msg = UGNI_SOCKBUF_SZ -
+			(sendrecv_sz<rendezvous_sz?rendezvous_sz:sendrecv_sz);
 	z->new = z_ugni_new;
 	z->destroy = z_ugni_destroy;
 	z->connect = z_ugni_connect;
