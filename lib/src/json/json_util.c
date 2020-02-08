@@ -259,16 +259,19 @@ json_entity_t json_entity_new(enum json_value_e type, ...)
 		e = json_dict_new();
 		break;
 	case JSON_NULL_VALUE:
+		e = malloc(sizeof *e);
+		if (!e)
+			goto out;
+		e->type = type;
+		e->value.int_ = 0;
 		break;
 	default:
+		e = NULL;
 		assert(0 == "Invalid entity type");
 	}
  out:
 	va_end(ap);
 	return e;
- err:
-	free(e);
-	goto out;
 }
 
 void json_attr_add(json_entity_t d, json_entity_t a)
