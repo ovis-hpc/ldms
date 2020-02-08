@@ -733,6 +733,9 @@ int zap_term(int timeout_sec)
 	return rc;
 }
 
+#ifdef NDEBUG
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#endif
 static void __attribute__ ((constructor)) cs_init(void)
 {
 	int i;

@@ -1273,6 +1273,9 @@ static void sock_read(ovis_event_t ev)
 	process_sep_read_error(sep);
 }
 
+#ifdef NDEBUG
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#endif
 static void *io_thread_proc(void *arg)
 {
 	/* Zap thread will not handle any signal */

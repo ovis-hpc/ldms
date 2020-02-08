@@ -611,6 +611,9 @@ static inline size_t __element_byte_len(enum ldms_value_type t)
 	return __element_byte_len_[t];
 }
 
+#ifdef NDEBUG
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#endif
 static int
 store(ldmsd_store_handle_t _sh, ldms_set_t set,
       int *metric_arry, size_t metric_count)
