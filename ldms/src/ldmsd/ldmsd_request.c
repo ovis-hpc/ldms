@@ -241,6 +241,9 @@ static int setgroup_rm_handler(ldmsd_req_ctxt_t req_ctxt);
 static int stream_publish_handler(ldmsd_req_ctxt_t req_ctxt);
 static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc);
 
+static int auth_add_handler(ldmsd_req_ctxt_t reqc);
+static int auth_del_handler(ldmsd_req_ctxt_t reqc);
+
 /* executable for all */
 #define XALL 0111
 /* executable for user, and group */
@@ -519,6 +522,14 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_SMPLR_STATUS_REQ] = {
 		LDMSD_SMPLR_STATUS_REQ, smplr_status_handler, XUG
+	},
+
+	/* AUTH */
+	[LDMSD_AUTH_ADD_REQ] = {
+		LDMSD_AUTH_ADD_REQ, auth_add_handler, XUG
+	},
+	[LDMSD_AUTH_DEL_REQ] = {
+		LDMSD_AUTH_DEL_REQ, auth_del_handler, XUG
 	},
 };
 
@@ -1319,8 +1330,8 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_prdcr_t prdcr;
 	char *name, *host, *xprt, *attr_name, *type_s, *port_s, *interval_s;
-	char *auth, *auth_args;
-	name = host = xprt = type_s = port_s = interval_s = auth = auth_args = NULL;
+	char *auth;
+	name = host = xprt = type_s = port_s = interval_s = auth = NULL;
 	enum ldmsd_prdcr_type type = -1;
 	unsigned short port_no = 0;
 	int interval_us = -1;
@@ -1389,8 +1400,6 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	auth = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTH);
-	if (auth)
-		auth_args = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
 
 	struct ldmsd_sec_ctxt sctxt;
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
@@ -1403,24 +1412,17 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		perm = strtol(perm_s, NULL, 0);
 
 	prdcr = ldmsd_prdcr_new_with_auth(name, xprt, host, port_no, type,
-					  interval_us, auth, auth_args,
+					  interval_us, auth,
 					  uid, gid, perm);
 	if (!prdcr) {
 		if (errno == EEXIST)
 			goto eexist;
 		else if (errno == EAFNOSUPPORT)
 			goto eafnosupport;
-		else if (errno == EINVAL)
-			goto auth_args_inval;
 		else
 			goto enomem;
 	}
 
-	goto send_reply;
-auth_args_inval:
-	reqc->errcode = EINVAL;
-	snprintf(reqc->line_buf, reqc->line_len,
-			"Invalid auth options");
 	goto send_reply;
 enomem:
 	reqc->errcode = ENOMEM;
@@ -5860,7 +5862,7 @@ static int listen_handler(ldmsd_req_ctxt_t reqc)
 		}
 	}
 
-	listen = ldmsd_listen_new(xprt, port, host, auth, auth_opts);
+	listen = ldmsd_listen_new(xprt, port, host, auth);
 	if (!listen) {
 		if (errno == EEXIST)
 			goto eexist;
@@ -6505,5 +6507,125 @@ send_reply:
 	if (path)
 		free(path);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
+static int auth_add_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	const char *attr_name;
+	char *name = NULL, *plugin = NULL, *auth_args = NULL;
+	char *str, *ptr1, *ptr2, *lval, *rval;
+	struct attr_value_list *auth_opts = NULL;
+	ldmsd_auth_t auth_dom;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		attr_name = "name";
+		goto attr_required;
+	}
+
+	plugin = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PLUGIN);
+	if (!plugin) {
+		plugin = strdup(name);
+		if (!plugin)
+			goto enomem;
+	}
+
+	auth_args = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+	if (auth_args) {
+		auth_opts = av_new(LDMSD_AUTH_OPT_MAX);
+		if (!auth_opts)
+			goto enomem;
+		str = strtok_r(auth_args, " ", &ptr1);
+		while (str) {
+			lval = strtok_r(str, "=", &ptr2);
+			rval = strtok_r(NULL, "", &ptr2);
+			rc = ldmsd_auth_opt_add(auth_opts, lval, rval);
+			if (rc) {
+				(void) snprintf(reqc->line_buf, reqc->line_len,
+					"Failed to process the authentication options");
+				goto send_reply;
+			}
+			str = strtok_r(NULL, " ", &ptr1);
+		}
+	}
+
+	auth_dom = ldmsd_auth_new_with_auth(name, plugin, auth_opts,
+					    geteuid(), getegid(), 0600);
+	if (!auth_dom) {
+		reqc->errcode = errno;
+		(void) snprintf(reqc->line_buf, reqc->line_len,
+				"Authentication domain creation failed, "
+				"errno: %d", errno);
+		goto send_reply;
+	}
+
+	goto send_reply;
+
+enomem:
+	reqc->errcode = ENOMEM;
+	(void) snprintf(reqc->line_buf, reqc->line_len, "Out of memory");
+	goto send_reply;
+attr_required:
+	reqc->errcode = EINVAL;
+	(void) snprintf(reqc->line_buf, reqc->line_len,
+			"Attribute '%s' is required", attr_name);
+	goto send_reply;
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	/* cleanup */
+	if (name)
+		free(name);
+	if (plugin)
+		free(plugin);
+	if (auth_args)
+		free(auth_args);
+	if (auth_opts)
+		av_free(auth_opts);
+	return 0;
+}
+
+static int auth_del_handler(ldmsd_req_ctxt_t reqc)
+{
+	const char *attr_name;
+	char *name = NULL;
+	struct ldmsd_sec_ctxt sctxt;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		attr_name = "name";
+		goto attr_required;
+	}
+
+	ldmsd_sec_ctxt_get(&sctxt);
+	reqc->errcode = ldmsd_auth_del(name, &sctxt);
+	switch (reqc->errcode) {
+	case EACCES:
+		snprintf(reqc->line_buf, reqc->line_len, "Permission denied");
+		break;
+	case ENOENT:
+		snprintf(reqc->line_buf, reqc->line_len,
+			 "'%s' authentication domain not found", name);
+		break;
+	default:
+		snprintf(reqc->line_buf, reqc->line_len,
+			 "Failed to delete authentication domain '%s', "
+			 "error: %d", name, reqc->errcode);
+		break;
+	}
+
+	goto send_reply;
+
+attr_required:
+	reqc->errcode = EINVAL;
+	(void) snprintf(reqc->line_buf, reqc->line_len,
+			"Attribute '%s' is required", attr_name);
+	goto send_reply;
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	/* cleanup */
+	if (name)
+		free(name);
 	return 0;
 }

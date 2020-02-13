@@ -153,6 +153,10 @@ enum ldmsd_request {
 	LDMSD_STREAM_PUBLISH_REQ = 0x900, /* Publish data to a stream */
 	LDMSD_STREAM_SUBSCRIBE_REQ,	  /* Subscribe to a stream */
 
+	/* Auth */
+	LDMSD_AUTH_ADD_REQ = 0xa00, /* Add auth domain */
+	LDMSD_AUTH_DEL_REQ,         /* Delete auth domain */
+
 	LDMSD_NOTSUPPORT_REQ,
 };
 

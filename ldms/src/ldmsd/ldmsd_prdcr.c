@@ -450,23 +450,15 @@ reset_prdcr:
 static void prdcr_connect(ldmsd_prdcr_t prdcr)
 {
 	int ret;
-	char *auth;
-	struct attr_value_list *auth_opts;
 
 	assert(prdcr->xprt == NULL);
 	switch (prdcr->type) {
 	case LDMSD_PRDCR_TYPE_ACTIVE:
-		if (!prdcr->conn_auth) {
-			/* Get the default auth and its options */
-			auth = (char *)ldmsd_default_auth_get();
-			auth_opts = ldmsd_default_auth_attr_get();
-		} else {
-			auth = prdcr->conn_auth;
-			auth_opts = prdcr->conn_auth_args;
-		}
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
-		prdcr->xprt = ldms_xprt_new_with_auth(prdcr->xprt_name, ldmsd_linfo,
-					auth, auth_opts);
+		prdcr->xprt = ldms_xprt_new_with_auth(prdcr->xprt_name,
+						      ldmsd_linfo,
+						      prdcr->conn_auth,
+						      prdcr->conn_auth_args);
 		if (prdcr->xprt) {
 			ret  = ldms_xprt_connect(prdcr->xprt,
 						 (struct sockaddr *)&prdcr->ss,
@@ -536,12 +528,13 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type, int conn_intrvl_us,
-		const char *auth, char *auth_args,
+		const char *auth,
 		uid_t uid, gid_t gid, int perm)
 {
 	struct ldmsd_prdcr *prdcr;
 	char *xprt, *host, *au;
 	struct attr_value_list *au_opts = NULL;
+	ldmsd_auth_t auth_dom = NULL;
 
 	errno = EINVAL;
 	if (!port_no)
@@ -555,28 +548,19 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	if (!host)
 		goto err_1;
 
-	if (auth) {
-		au = strdup(auth);
-		if (!au)
-			goto err_2;
-		if (auth_args) {
-			au_opts = ldmsd_auth_opts_str2avl(auth_args);
-			if (!au_opts) {
-				free(au);
-				goto err_2;
-			}
-		}
-	} else {
-		au = strdup(ldmsd_default_auth_get());
-		if (!au)
-			goto err_2;
-		if (ldmsd_default_auth_attr_get()) {
-			au_opts = av_copy(ldmsd_default_auth_attr_get());
-			if (!au_opts) {
-				free(au);
-				goto err_2;
-			}
-		}
+	if (!auth)
+		auth = DEFAULT_AUTH;
+	auth_dom = ldmsd_auth_find(auth);
+	if (!auth_dom)
+		goto err_2;
+
+	au = strdup(auth_dom->plugin);
+	if (!au)
+		goto err_3;
+	if (auth_dom->attrs) {
+		au_opts = av_copy(auth_dom->attrs);
+		if (!au_opts)
+			goto err_3;
 	}
 
 	ldmsd_log(LDMSD_LDEBUG,
@@ -623,15 +607,20 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 	EV_DATA(prdcr->stop_ev, struct stop_data)->entity = prdcr;
 
 	ldmsd_prdcr_unlock(prdcr);
+
+	/* put ref from ldmsd_auth_find() */
+	ldmsd_cfgobj_put(&auth_dom->obj);
+
 	return prdcr;
 
  err_4:
 	ldmsd_prdcr_unlock(prdcr);
 	ldmsd_prdcr_put(prdcr);
  err_3:
-	if (au) {
+	if (auth_dom)
+		ldmsd_cfgobj_put(&auth_dom->obj);
+	if (au)
 		free(au);
-	}
 	if (au_opts)
 		av_free(au_opts);
  err_2:
@@ -646,12 +635,12 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type, int conn_intrvl_us,
-		char *auth, char *auth_args)
+		char *auth)
 {
 	struct ldmsd_sec_ctxt sctxt;
 	ldmsd_sec_ctxt_get(&sctxt);
 	return ldmsd_prdcr_new_with_auth(name, xprt_name, host_name,
-			port_no, type, conn_intrvl_us, auth, auth_args,
+			port_no, type, conn_intrvl_us, auth,
 			sctxt.crd.uid, sctxt.crd.gid, 0777);
 }
 

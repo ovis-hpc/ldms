@@ -532,7 +532,8 @@ parse:
 					goto cleanup_record;
 				}
 			} else if ((req_id == LDMSD_CMD_LINE_SET_REQ) ||
-					(req_id == LDMSD_LISTEN_REQ)) {
+					(req_id == LDMSD_LISTEN_REQ) ||
+					(req_id == LDMSD_AUTH_ADD_REQ)) {
 				have_cmdline = 1;
 				if (have_cfgcmd) {
 					ldmsd_log(LDMSD_LERROR,

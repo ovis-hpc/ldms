@@ -310,14 +310,24 @@ struct attr_value_list *ldmsd_auth_attr_get(ldmsd_listen_t listen)
 
 const char *ldmsd_default_auth_get()
 {
-	if (!cmd_line_args.auth_name)
+	ldmsd_auth_t d = ldmsd_auth_default_get();
+	const char *ret;
+	if (!d)
 		return "none";
-	return cmd_line_args.auth_name;
+	ret = d->plugin;
+	ldmsd_cfgobj_put(&d->obj);
+	return ret;
 }
 
 struct attr_value_list *ldmsd_default_auth_attr_get()
 {
-	return cmd_line_args.auth_attrs;
+	ldmsd_auth_t d = ldmsd_auth_default_get();
+	struct attr_value_list *av;
+	if (!d)
+		return NULL;
+	av = d->attrs;
+	ldmsd_cfgobj_put(&d->obj);
+	return av;
 }
 
 mode_t ldmsd_inband_cfg_mask_get()
@@ -1034,12 +1044,12 @@ void ldmsd_listen___del(ldmsd_cfgobj_t obj)
 	ldmsd_cfgobj___del(obj);
 }
 
-ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host,
-		char *auth, struct attr_value_list *auth_args)
+ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
 {
 	char *name;
 	size_t len;
 	struct ldmsd_listen *listen = NULL;
+	ldmsd_auth_t auth_dom = NULL;
 
 	if (!port)
 		port = TOSTRING(LDMS_DEFAULT_PORT);
@@ -1065,20 +1075,30 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host,
 		if (!listen->host)
 			goto err;
 	}
-	if (auth) {
-		listen->auth_name = strdup(auth);
-		if (!listen->auth_name)
+	if (!auth)
+		auth = DEFAULT_AUTH;
+	auth_dom = ldmsd_auth_find(auth);
+	if (!auth_dom) {
+		errno = ENOENT;
+		goto err;
+	}
+	listen->auth_name = strdup(auth_dom->plugin);
+	if (!listen->auth_name)
+		goto err;
+	if (auth_dom->attrs) {
+		listen->auth_attrs = av_copy(auth_dom->attrs);
+		if (!listen->auth_attrs) {
+			errno = ENOMEM;
 			goto err;
-		if (auth_args) {
-			listen->auth_attrs = av_copy(auth_args);
-			if (!listen->auth_attrs)
-				goto err;
 		}
 	}
+	if (auth_dom)
+		ldmsd_cfgobj_put(&auth_dom->obj);
 	ldmsd_cfgobj_unlock(&listen->obj);
 	return listen;
 err:
-	errno = ENOMEM;
+	if (auth_dom)
+		ldmsd_cfgobj_put(&auth_dom->obj);
 	ldmsd_cfgobj_unlock(&listen->obj);
 	ldmsd_cfgobj_put(&listen->obj);
 	return NULL;
@@ -1094,7 +1114,6 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 {
 	char *lval, *rval;
 	int rc;
-	ldmsd_listen_t listen;
 	switch (opt) {
 	case 'A':
 		/* (multiple) auth options */
@@ -1253,31 +1272,15 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			return EINVAL;
 		}
 		break;
-	case 'x':
-		if (check_arg("x", value, LO_NAME))
-			return EINVAL;
-		rval = strchr(value, ':');
-		if (!rval) {
-			printf("Bad xprt format, expecting XPRT:PORT, "
-					"but got: %s\n", value);
-			return EINVAL;
-		}
-		rval[0] = '\0';
-		rval = rval+1;
-		/* Use the default auth */
-		listen = ldmsd_listen_new(value, rval, NULL, NULL, NULL);
-		if (!listen) {
-			rc = errno;
-			printf("Error %d: failed to add listening endpoint: %s:%s\n",
-					rc, value, rval);
-			return rc;
-		}
-		break;
 	case '?':
 		printf("Error: unknown argument: %c\n", opt);
 	default:
 		return ENOENT;
 	}
+	/* set default auth */
+	if (!cmd_line_args.auth_name)
+		cmd_line_args.auth_name = "none";
+	ldmsd_auth_default_set(cmd_line_args.auth_name, cmd_line_args.auth_attrs);
 	return 0;
 }
 
@@ -1623,6 +1626,9 @@ int main(int argc, char *argv[])
 			printf("git-SHA: %s\n", OVIS_GIT_LONG);
 			exit(0);
 			break;
+		case 'x':
+			/* handled later */
+			break;
 		default:
 			ret = ldmsd_process_cmd_line_arg(op, optarg);
 			if (ret) {
@@ -1652,6 +1658,35 @@ int main(int argc, char *argv[])
 		if (daemon(1, 1)) {
 			perror("ldmsd: ");
 			cleanup(8, "daemon failed to start");
+		}
+	}
+
+	/* Listening transport */
+	opterr = 0;
+	optind = 0;
+	while ((op = getopt(argc, argv, FMT)) != -1) {
+		char *rval;
+		switch (op) {
+		case 'x':
+			if (check_arg("x", optarg, LO_NAME))
+				return EINVAL;
+			rval = strchr(optarg, ':');
+			if (!rval) {
+				printf("Bad xprt format, expecting XPRT:PORT, "
+						"but got: %s\n", optarg);
+				return EINVAL;
+			}
+			rval[0] = '\0';
+			rval = rval+1;
+			/* Use the default auth domain */
+			ldmsd_listen_t listen = ldmsd_listen_new(optarg, rval, NULL, NULL);
+			if (!listen) {
+				printf( "Error %d: failed to add listening "
+					"endpoint: %s:%s\n",
+					errno, optarg, rval);
+				cleanup(errno, "listen failed");
+			}
+			break;
 		}
 	}
 

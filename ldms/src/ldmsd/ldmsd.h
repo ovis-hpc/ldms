@@ -211,6 +211,7 @@ typedef enum ldmsd_cfgobj_type {
 	LDMSD_CFGOBJ_SMPLR,
 	LDMSD_CFGOBJ_LISTEN,
 	LDMSD_CFGOBJ_SETGRP,
+	LDMSD_CFGOBJ_AUTH,
 } ldmsd_cfgobj_type_t;
 
 struct ldmsd_cfgobj;
@@ -829,12 +830,12 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type, int conn_intrvl_us,
-		char *auth, char *auth_args);
+		char *auth);
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type, int conn_intrvl_us,
-		const char *auth, char *auth_args,
+		const char *auth,
 		uid_t uid, gid_t gid, int perm);
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt);
 static inline ldmsd_prdcr_t ldmsd_prdcr_first()
@@ -1469,11 +1470,38 @@ struct attr_value_list *ldmsd_auth_opts_str2avl(const char *auth_args_s);
  * \param xprt   transport name
  * \param port   port
  * \param host   hostname
- * \param auth   authentication plugin name
- * \param auth_args  authentication option list
+ * \param auth   authentication domain name
  *
  * \return a listen cfgobj
  */
-ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host,
-			char *auth, struct attr_value_list *auth_args);
+ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth);
+
+
+/**
+ * LDMSD Authentication Domain Configuration Object
+ */
+typedef struct ldmsd_auth {
+	struct ldmsd_cfgobj obj; /* this contains the `name` */
+	char *plugin; /* auth plugin name */
+	struct attr_value_list *attrs; /* attributes for the plugin */
+} *ldmsd_auth_t;
+
+
+/* Key (name) of the default auth -- intentionally including SPACE as it is not
+ * allowed in user-defined names */
+#define DEFAULT_AUTH " _DEFAULT_AUTH_ "
+
+ldmsd_auth_t
+ldmsd_auth_new_with_auth(const char *name, const char *plugin,
+			 struct attr_value_list *attrs,
+			 uid_t uid, gid_t gid, int perm);
+int ldmsd_auth_del(const char *name, ldmsd_sec_ctxt_t ctxt);
+ldmsd_auth_t ldmsd_auth_default_get();
+int ldmsd_auth_default_set(const char *plugin, struct attr_value_list *attrs);
+
+static inline
+ldmsd_auth_t ldmsd_auth_find(const char *name)
+{
+	return (ldmsd_auth_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_AUTH);
+}
 #endif
