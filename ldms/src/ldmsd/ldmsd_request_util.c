@@ -63,6 +63,7 @@ struct req_str_id {
 
 const struct req_str_id req_str_id_table[] = {
 	/* This table need to be sorted by keyword for bsearch() */
+	{  "auth_add",           LDMSD_AUTH_ADD_REQ  },
 	{  "config",             LDMSD_PLUGN_CONFIG_REQ  },
 	{  "daemon",             LDMSD_DAEMON_STATUS_REQ  },
 	{  "daemon_exit",        LDMSD_EXIT_DAEMON_REQ  },
@@ -712,6 +713,65 @@ out:
 	return rc;
 }
 
+int __ldmsd_parse_auth_add_req(struct ldmsd_parse_ctxt *ctxt)
+{
+	char *av = ctxt->av;
+	size_t len = strlen(av);
+	size_t cnt = 0;
+	char *tmp, *name, *value, *ptr, *dummy;
+	int rc;
+	dummy = NULL;
+	tmp = malloc(len);
+	if (!tmp) {
+		rc = ENOMEM;
+		goto out;
+	}
+	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
+	while (av) {
+		ctxt->av = av;
+		dummy = strdup(av);
+		if (!dummy) {
+			rc = ENOMEM;
+			goto out;
+		}
+		__get_attr_name_value(dummy, &name, &value);
+		if (!name) {
+			/* av is neither attribute value nor keyword */
+			rc = EINVAL;
+			goto out;
+		}
+		if (0 == strcmp(name, "name") || 0 == strcmp(name, "plugin")) {
+			rc = add_attr_from_attr_str(name, value,
+						    &ctxt->request,
+						    &ctxt->request_sz,
+						    ctxt->msglog);
+			if (rc)
+				goto out;
+		} else {
+			cnt += snprintf(&tmp[cnt], len - cnt, "%s=%s ", name, value);
+		}
+		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+		free(dummy);
+		dummy = NULL;
+	}
+
+	if (cnt) {
+		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
+		/* Add an attribute of type 'STRING' */
+		rc = add_attr_from_attr_str(NULL, tmp,
+					    &ctxt->request,
+					    &ctxt->request_sz,
+					    ctxt->msglog);
+	}
+
+out:
+	if (tmp)
+		free(tmp);
+	if (dummy)
+		free(dummy);
+	return rc;
+}
+
 struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 					size_t xprt_max_msg, ldmsd_msg_log_f msglog)
 {
@@ -782,6 +842,9 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 		break;
 	case LDMSD_PRDCR_ADD_REQ:
 		rc = __ldmsd_parse_prdcr_add_req(&ctxt);
+		break;
+	case LDMSD_AUTH_ADD_REQ:
+		rc = __ldmsd_parse_auth_add_req(&ctxt);
 		break;
 	default:
 		rc = __ldmsd_parse_generic(&ctxt);
