@@ -605,7 +605,7 @@ static int
 sample(struct ldmsd_sampler *self)
 {
 	uint64_t v;
-	int i;
+	int i, rc;
 	syspapi_metric_t m;
 
 	if (!set) {
@@ -622,7 +622,9 @@ sample(struct ldmsd_sampler *self)
 		for (i = 0; i < NCPU; i++) {
 			v = 0;
 			if (m->pfd[i] >= 0) {
-				read(m->pfd[i], &v, sizeof(v));
+				rc = read(m->pfd[i], &v, sizeof(v));
+				if (rc <= 0)
+					continue;
 				if (!cumulative) {
 					ioctl(m->pfd[i], PERF_EVENT_IOC_RESET, 0);
 				}

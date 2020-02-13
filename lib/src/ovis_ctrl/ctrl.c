@@ -214,6 +214,7 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname,
 	char *sockpath;
 	char *_sockname = NULL;
 	struct ctrlsock *sock;
+	int len;
 
 	sock = calloc(1, sizeof *sock);
 	if (!sock)
@@ -274,7 +275,13 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname,
 		}
 	}
 
-	sprintf(sock->lcl_sun.sun_path, "%s/%d", my_un.sun_path, pid);
+	len = snprintf(sock->lcl_sun.sun_path, sizeof(sock->lcl_sun.sun_path),
+			"%s/%d", my_un.sun_path, pid);
+	if (len >= sizeof(sock->lcl_sun.sun_path)) {
+		close(sock->sock);
+		errno = ENAMETOOLONG;
+		goto err;
+	}
 
 	/* Bind to our public name */
 	rc = bind(sock->sock, (struct sockaddr *)&sock->lcl_sun,
