@@ -878,14 +878,17 @@ ldmsd_req_attr_t ldmsd_req_attr_get_by_id(char *request, uint32_t attr_id)
 		}
 		attr = ldmsd_next_attr(attr);
 	}
+	errno = ENOENT;
 	return NULL;
 }
 
 ldmsd_req_attr_t ldmsd_req_attr_get_by_name(char *request, const char *name)
 {
 	int32_t attr_id = ldmsd_req_attr_str2id(name);
-	if (attr_id < 0)
+	if (attr_id < 0) {
+		errno = EINVAL; /* invalid name */
 		return NULL;
+	}
 	return ldmsd_req_attr_get_by_id(request, attr_id);
 }
 
