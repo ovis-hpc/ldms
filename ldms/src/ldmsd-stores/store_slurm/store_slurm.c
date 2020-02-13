@@ -849,7 +849,7 @@ store_slurm_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	if (rc)
 		return rc;
 
-	jval = json_attr_find(json, "path");
+	jval = json_value_find(json, "path");
 	if (!jval) {
 		snprintf(ebuf, ebufsz, "missing `path` attribute.\n");
 		return EINVAL;
@@ -864,7 +864,7 @@ store_slurm_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		return ENOMEM;
 	}
 
-	jval = json_attr_find(json, "verbosity");
+	jval = json_value_find(json, "verbosity");
 	if (!jval) {
 		inst->verbosity = SUMMARY;
 	} else {

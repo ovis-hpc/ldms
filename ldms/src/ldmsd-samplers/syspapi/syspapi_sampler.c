@@ -596,7 +596,7 @@ int syspapi_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		goto out;
 	}
 
-	jval = json_attr_find(json, "cfg_file");
+	jval = json_value_find(json, "cfg_file");
 	if (jval) {
 		if (jval->type != JSON_STRING_VALUE) {
 			snprintf(ebuf, ebufsz, "`cfg_file` is not a string\n");
@@ -605,7 +605,7 @@ int syspapi_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		}
 		cfg_file = jval->value.str_->str; /* JSON config file */
 	}
-	jval = json_attr_find(json, "events");
+	jval = json_value_find(json, "events");
 	if (jval) {
 		if (jval->type != JSON_STRING_VALUE) {
 			snprintf(ebuf, ebufsz, "`events` is not a string\n");
@@ -638,7 +638,7 @@ int syspapi_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 			goto err;
 	}
 
-	jval = json_attr_find(json, "auto_pause");
+	jval = json_value_find(json, "auto_pause");
 	if (jval) {
 		if (jval->type != JSON_STRING_VALUE) {
 			snprintf(ebuf, ebufsz, "`events` is not a string\n");
@@ -648,7 +648,7 @@ int syspapi_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		inst->auto_pause = atoi(jval->value.str_->str);
 	}
 
-	jval = json_attr_find(json, "cumulative");
+	jval = json_value_find(json, "cumulative");
 	if (jval) {
 		if (jval->type != JSON_STRING_VALUE) {
 			snprintf(ebuf, ebufsz, "`cumulative` is not a string\n");
@@ -786,7 +786,7 @@ int syspapi_init(ldmsd_plugin_inst_t pi)
 	pthread_mutex_init(&inst->mutex, NULL);
 	inst->NCPU = sysconf(_SC_NPROCESSORS_CONF);
 	inst->stream_client = ldmsd_stream_subscribe("syspapi_stream",
-					__stream_cb, NULL);
+					__stream_cb, inst);
 	if (!inst->stream_client) {
 		INST_LOG(inst, LDMSD_LWARNING,
 			 "failed to subscribe to 'syspapi_stream' "

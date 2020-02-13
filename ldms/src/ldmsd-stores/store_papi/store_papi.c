@@ -516,7 +516,7 @@ store_papi_config(ldmsd_plugin_inst_t pi, json_entity_t json, char *ebuf, int eb
 	if (rc)
 		return rc;
 
-	jval = json_attr_find(json, "path");
+	jval = json_value_find(json, "path");
 	if (!jval) {
 		snprintf(ebuf, ebufsz, "missing `path` attribute.\n");
 		return EINVAL;
