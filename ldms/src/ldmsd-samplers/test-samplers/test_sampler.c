@@ -749,7 +749,7 @@ static int config_add_set(test_sampler_inst_t inst, json_entity_t json,
 	}
 
 	const char *producer = __attr_find(inst, json, ebuf, ebufsz, 0, "producer");
-	if (!producer && (errno = EINVAL)) {
+	if (!producer && (errno == EINVAL)) {
 		return EINVAL;
 	}
 	const char *compid = __attr_find(inst, json, ebuf, ebufsz, 0, "component_id");
