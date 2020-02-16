@@ -1374,7 +1374,6 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 					const char *data, size_t data_len)
 {
 	z_sock_send_wr_t wr;
-	size_t mlen = ntohl(m->msg_len);
 	sock_msg_type_t mtype = ntohs(m->msg_type);
 	DEBUG_LOG_SEND_MSG(sep, m);
 	/* allocate send wr */
@@ -1391,7 +1390,7 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 	} else {
 		if (data_len > sep->ep.z->max_msg) {
 			DEBUG_LOG(sep, "ep: %p, SEND invalid message length: %ld\n",
-				  sep, mlen);
+				  sep, data_len);
 			return ZAP_ERR_NO_SPACE;
 		}
 		wr = malloc(sizeof(*wr) + msg_size + data_len);
