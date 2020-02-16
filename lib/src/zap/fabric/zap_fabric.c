@@ -575,6 +575,9 @@ post_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt)
 		     rep, ctxt, ctxt->u.rdma.src_addr, ctxt->u.rdma.dst_addr, ctxt->u.rdma.len);
 		break;
 	    default:
+		DLOG("Invalid Operation %d rep %p ctxt %p src %p dst %p len %d\n",
+		     ctxt->op, rep, ctxt, ctxt->u.rdma.src_addr, ctxt->u.rdma.dst_addr, ctxt->u.rdma.len);
+		rc = ZAP_ERR_TRANSPORT;
 		break;
 	}
 	if (rc) {
