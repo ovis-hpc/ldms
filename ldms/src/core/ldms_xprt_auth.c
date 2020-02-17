@@ -203,6 +203,9 @@ int ldms_access_check(ldms_t x, uint32_t acc, uid_t obj_uid, gid_t obj_gid,
 		      int obj_perm)
 {
 	int macc = acc & obj_perm;
+	/* root can do anything */
+	if (x->ruid == 0)
+		return 0;
 	/* other */
 	if (07 & macc) {
 		return 0;
