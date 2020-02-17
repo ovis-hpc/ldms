@@ -226,6 +226,11 @@ static int setgroup_rm_handler(ldmsd_req_ctxt_t req_ctxt);
 static int stream_publish_handler(ldmsd_req_ctxt_t req_ctxt);
 static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc);
 
+static int listen_handler(ldmsd_req_ctxt_t reqc);
+
+static int auth_add_handler(ldmsd_req_ctxt_t reqc);
+static int auth_del_handler(ldmsd_req_ctxt_t reqc);
+
 /* executable for all */
 #define XALL 0111
 /* executable for user, and group */
@@ -482,6 +487,19 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_STREAM_SUBSCRIBE_REQ] = {
 		LDMSD_STREAM_SUBSCRIBE_REQ, stream_subscribe_handler, XUG
+	},
+
+	/* LISTEN */
+	[LDMSD_LISTEN_REQ] = {
+		LDMSD_LISTEN_REQ, listen_handler, XUG,
+	},
+
+	/* AUTH */
+	[LDMSD_AUTH_ADD_REQ] = {
+		LDMSD_AUTH_ADD_REQ, auth_add_handler, XUG
+	},
+	[LDMSD_AUTH_DEL_REQ] = {
+		LDMSD_AUTH_DEL_REQ, auth_del_handler, XUG
 	},
 };
 
@@ -1269,7 +1287,8 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_prdcr_t prdcr;
 	char *name, *host, *xprt, *attr_name, *type_s, *port_s, *interval_s;
-	name = host = xprt = type_s = port_s = interval_s = NULL;
+	char *auth;
+	name = host = xprt = type_s = port_s = interval_s = auth = NULL;
 	enum ldmsd_prdcr_type type = -1;
 	unsigned short port_no = 0;
 	int interval_us = -1;
@@ -1337,6 +1356,8 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		 interval_us = strtol(interval_s, NULL, 0);
 	}
 
+	auth = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTH);
+
 	struct ldmsd_sec_ctxt sctxt;
 	if (reqc->xprt->xprt) {
 		/* the requester is the owner of the object */
@@ -1353,7 +1374,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 		perm = strtol(perm_s, NULL, 0);
 
 	prdcr = ldmsd_prdcr_new_with_auth(name, xprt, host, port_no, type,
-					  interval_us, uid, gid, perm);
+					  interval_us, auth, uid, gid, perm);
 	if (!prdcr) {
 		if (errno == EEXIST)
 			goto eexist;
@@ -5445,3 +5466,244 @@ send_reply:
 	return 0;
 }
 
+int ldmsd_auth_opt_add(struct attr_value_list *auth_attrs, char *name, char *val)
+{
+	struct attr_value *attr;
+	attr = &(auth_attrs->list[auth_attrs->count]);
+	if (auth_attrs->count == auth_attrs->size) {
+		ldmsd_log(LDMSD_LERROR, "Too many auth options\n");
+		return EINVAL;
+	}
+	attr->name = strdup(name);
+	if (!attr->name)
+		return ENOMEM;
+	attr->value = strdup(val);
+	if (!attr->value)
+		return ENOMEM;
+	auth_attrs->count++;
+	return 0;
+}
+
+extern char myhostname[80]; /* from ldmsd.c */
+extern char myname[512];    /* from ldmsd.c */
+
+static int listen_handler(ldmsd_req_ctxt_t reqc)
+{
+	ldmsd_listen_t listen;
+	int rc;
+	char *xprt, *port, *host, *auth, *auth_args, *attr_name;
+	char *str, *ptr1, *ptr2, *lval, *rval;
+	unsigned short port_no = -1;
+	struct attr_value_list *auth_opts = NULL;
+	xprt = port = host = auth = auth_args = NULL;
+
+	if (ldmsd_is_initialized()) {
+		/*
+		 * Adding a new listening endpoint is prohibited
+		 * after LDMSD is initialized.
+		 */
+		reqc->errcode = EPERM;
+		linebuf_printf(reqc, "LDMSD is started. "
+				"Adding a listening endpoint is prohibited.");
+		goto send_reply;
+	}
+
+	attr_name = "xprt";
+	xprt = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_XPRT);
+	if (!xprt)
+		goto einval;
+	port = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PORT);
+	if (port) {
+		port_no = atoi(port);
+		if (port_no < 1 || port_no > USHRT_MAX) {
+			reqc->errcode = EINVAL;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"'%s' transport with invalid port '%s'",
+					xprt, port);
+			goto send_reply;
+		}
+	}
+	host =ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
+	auth = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTH);
+	auth_args = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+
+	/* Parse the authentication options */
+	if (auth_args) {
+		auth_opts = av_new(LDMSD_AUTH_OPT_MAX);
+		if (!auth_opts)
+			goto enomem;
+		str = strtok_r(auth_args, " ", &ptr1);
+		while (str) {
+			lval = strtok_r(str, "=", &ptr2);
+			rval = strtok_r(NULL, "", &ptr2);
+			rc = ldmsd_auth_opt_add(auth_opts, lval, rval);
+			if (rc) {
+				(void) snprintf(reqc->line_buf, reqc->line_len,
+					"Failed to process the authentication options");
+				goto send_reply;
+			}
+			str = strtok_r(NULL, " ", &ptr1);
+		}
+	}
+
+	listen = ldmsd_listen_new(xprt, port, host, auth);
+	if (!listen) {
+		if (errno == EEXIST)
+			goto eexist;
+		else
+			goto enomem;
+	}
+	if (myname[0] == '\0')
+		snprintf(myname, sizeof(myname), "%s:%s", myhostname, rval);
+	goto send_reply;
+
+eexist:
+	reqc->errcode = EEXIST;
+	(void) snprintf(reqc->line_buf, reqc->line_len,
+			"The listening endpoint %s:%s is already exists",
+			xprt, port);
+	goto send_reply;
+enomem:
+	reqc->errcode = ENOMEM;
+	(void) snprintf(reqc->line_buf, reqc->line_len, "Out of memory");
+	goto send_reply;
+einval:
+	reqc->errcode = EINVAL;
+	(void) snprintf(reqc->line_buf, reqc->line_len,
+			"The attribute '%s' is required.", attr_name);
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (xprt)
+		free(xprt);
+	if (port)
+		free(port);
+	if (host)
+		free(host);
+	if (auth)
+		free(auth);
+	if (auth_args)
+		free(auth_args);
+	if (auth_opts)
+		av_free(auth_opts);
+	return 0;
+}
+
+static int auth_add_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc = 0;
+	const char *attr_name;
+	char *name = NULL, *plugin = NULL, *auth_args = NULL;
+	char *str, *ptr1, *ptr2, *lval, *rval;
+	struct attr_value_list *auth_opts = NULL;
+	ldmsd_auth_t auth_dom;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		attr_name = "name";
+		goto attr_required;
+	}
+
+	plugin = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PLUGIN);
+	if (!plugin) {
+		plugin = strdup(name);
+		if (!plugin)
+			goto enomem;
+	}
+
+	auth_args = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+	if (auth_args) {
+		auth_opts = av_new(LDMSD_AUTH_OPT_MAX);
+		if (!auth_opts)
+			goto enomem;
+		str = strtok_r(auth_args, " ", &ptr1);
+		while (str) {
+			lval = strtok_r(str, "=", &ptr2);
+			rval = strtok_r(NULL, "", &ptr2);
+			rc = ldmsd_auth_opt_add(auth_opts, lval, rval);
+			if (rc) {
+				(void) snprintf(reqc->line_buf, reqc->line_len,
+					"Failed to process the authentication options");
+				goto send_reply;
+			}
+			str = strtok_r(NULL, " ", &ptr1);
+		}
+	}
+
+	auth_dom = ldmsd_auth_new_with_auth(name, plugin, auth_opts,
+					    geteuid(), getegid(), 0600);
+	if (!auth_dom) {
+		reqc->errcode = errno;
+		(void) snprintf(reqc->line_buf, reqc->line_len,
+				"Authentication domain creation failed, "
+				"errno: %d", errno);
+		goto send_reply;
+	}
+
+	goto send_reply;
+
+enomem:
+	reqc->errcode = ENOMEM;
+	(void) snprintf(reqc->line_buf, reqc->line_len, "Out of memory");
+	goto send_reply;
+attr_required:
+	reqc->errcode = EINVAL;
+	(void) snprintf(reqc->line_buf, reqc->line_len,
+			"Attribute '%s' is required", attr_name);
+	goto send_reply;
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	/* cleanup */
+	if (name)
+		free(name);
+	if (plugin)
+		free(plugin);
+	if (auth_args)
+		free(auth_args);
+	if (auth_opts)
+		av_free(auth_opts);
+	return 0;
+}
+
+static int auth_del_handler(ldmsd_req_ctxt_t reqc)
+{
+	const char *attr_name;
+	char *name = NULL;
+	struct ldmsd_sec_ctxt sctxt;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		attr_name = "name";
+		goto attr_required;
+	}
+
+	ldmsd_sec_ctxt_get(&sctxt);
+	reqc->errcode = ldmsd_auth_del(name, &sctxt);
+	switch (reqc->errcode) {
+	case EACCES:
+		snprintf(reqc->line_buf, reqc->line_len, "Permission denied");
+		break;
+	case ENOENT:
+		snprintf(reqc->line_buf, reqc->line_len,
+			 "'%s' authentication domain not found", name);
+		break;
+	default:
+		snprintf(reqc->line_buf, reqc->line_len,
+			 "Failed to delete authentication domain '%s', "
+			 "error: %d", name, reqc->errcode);
+		break;
+	}
+
+	goto send_reply;
+
+attr_required:
+	reqc->errcode = EINVAL;
+	(void) snprintf(reqc->line_buf, reqc->line_len,
+			"Attribute '%s' is required", attr_name);
+	goto send_reply;
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	/* cleanup */
+	if (name)
+		free(name);
+	return 0;
+}

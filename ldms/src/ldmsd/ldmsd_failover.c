@@ -1979,6 +1979,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	char *uid = __req_attr_gets(req, LDMSD_ATTR_UID);
 	char *gid = __req_attr_gets(req, LDMSD_ATTR_GID);
 	char *perm = __req_attr_gets(req, LDMSD_ATTR_PERM);
+	char *auth = __req_attr_gets(req, LDMSD_ATTR_AUTH);
 
 	uid_t _uid;
 	gid_t _gid;
@@ -2028,7 +2029,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 		goto out;
 	}
 	p = ldmsd_prdcr_new_with_auth(name, xprt, host, atoi(port), ptype,
-			atoi(interval), _uid, _gid, _perm);
+			atoi(interval), auth, _uid, _gid, _perm);
 	if (!p) {
 		rc = errno;
 		str_rbn_free(srbn);

@@ -37,7 +37,7 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_request.c \
 	ldmsd_request.h \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
-	ldmsd_failover.c ldmsd_group.c
+	ldmsd_failover.c ldmsd_group.c ldmsd_auth.c
 ldmsd_LDADD = -lldms libldmsd_request.la libldmsd_stream.la \
 	-lzap -lmmalloc -lovis_util -lcoll -ljson_util \
 	-lovis_event -lpthread -lovis_ctrl -lm -ldl

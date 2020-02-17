@@ -94,6 +94,10 @@ void ldmsd_prdcr___del(ldmsd_cfgobj_t obj)
 		free(prdcr->host_name);
 	if (prdcr->xprt_name)
 		free(prdcr->xprt_name);
+	if (prdcr->conn_auth)
+		free(prdcr->conn_auth);
+	if (prdcr->conn_auth_args)
+		av_free(prdcr->conn_auth_args);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -572,7 +576,8 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	case LDMSD_PRDCR_TYPE_ACTIVE:
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTING;
 		prdcr->xprt = ldms_xprt_new_with_auth(prdcr->xprt_name,
-					ldmsd_linfo, auth_name, auth_opt);
+					ldmsd_linfo, prdcr->conn_auth,
+					prdcr->conn_auth_args);
 		if (prdcr->xprt) {
 			ret  = ldms_xprt_connect(prdcr->xprt,
 						 (struct sockaddr *)&prdcr->ss,
@@ -657,11 +662,12 @@ const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type)
 ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
-		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us, uid_t uid, gid_t gid, int perm)
+		enum ldmsd_prdcr_type type, int conn_intrvl_us,
+		const char *auth, uid_t uid, gid_t gid, int perm)
 {
 	extern struct rbt *cfgobj_trees[];
 	struct ldmsd_prdcr *prdcr;
+	ldmsd_auth_t auth_dom = NULL;
 
 	ldmsd_log(LDMSD_LDEBUG, "ldmsd_prdcr_new(name %s, xprt %s, host %s, port %u, type %u, intv %d\n",
 		name, xprt_name, host_name,(unsigned) port_no, (unsigned)type, conn_intrvl_us);
@@ -691,6 +697,21 @@ ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 			host_name,(unsigned) port_no);
 		goto out;
 	}
+
+	if (!auth)
+		auth = DEFAULT_AUTH;
+	auth_dom = ldmsd_auth_find(auth);
+	if (!auth_dom)
+		goto out;
+	prdcr->conn_auth = strdup(auth_dom->plugin);
+	if (!prdcr->conn_auth)
+		goto out;
+	if (auth_dom->attrs) {
+		prdcr->conn_auth_args = av_copy(auth_dom->attrs);
+		if (!prdcr->conn_auth_args)
+			goto out;
+	}
+
 	ldmsd_task_init(&prdcr->task);
 	ldmsd_cfgobj_unlock(&prdcr->obj);
 	return prdcr;
@@ -708,8 +729,8 @@ ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		int conn_intrvl_us)
 {
 	return ldmsd_prdcr_new_with_auth(name, xprt_name, host_name,
-			port_no, type, conn_intrvl_us, getuid(),
-			getgid(), 0777);
+			port_no, type, conn_intrvl_us,
+			DEFAULT_AUTH, getuid(), getgid(), 0777);
 }
 
 extern struct rbt *cfgobj_trees[];

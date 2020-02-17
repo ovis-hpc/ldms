@@ -116,6 +116,9 @@ enum ldmsd_request {
 	LDMSD_RECORD_LEN_ADVICE_REQ,
 	LDMSD_SET_ROUTE_REQ,
 
+	/* command-line options */
+	LDMSD_LISTEN_REQ,
+
 	/* failover requests by user */
 	LDMSD_FAILOVER_CONFIG_REQ = 0x700, /* "failover_config" user command */
 	LDMSD_FAILOVER_PEERCFG_START_REQ, /* "failover_peercfg_start" user command */
@@ -147,6 +150,9 @@ enum ldmsd_request {
 	LDMSD_STREAM_PUBLISH_REQ = 0x900, /* Publish data to a stream */
 	LDMSD_STREAM_SUBSCRIBE_REQ,	  /* Subscribe to a stream */
 
+	/* Auth */
+	LDMSD_AUTH_ADD_REQ = 0xa00, /* Add auth domain */
+	LDMSD_AUTH_DEL_REQ,         /* Delete auth domain */
 	LDMSD_NOTSUPPORT_REQ,
 };
 
@@ -187,6 +193,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_UID,
 	LDMSD_ATTR_GID,
 	LDMSD_ATTR_STREAM,
+	LDMSD_ATTR_AUTH,
 	LDMSD_ATTR_LAST,
 };
 
