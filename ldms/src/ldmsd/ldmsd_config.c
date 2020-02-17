@@ -942,33 +942,20 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 extern const char *auth_name;
 extern struct attr_value_list *auth_opt;
 
-ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
+int listen_on_ldms_xprt(ldmsd_listen_t listen)
 {
-	unsigned short port_no;
-	int ptmp;
-	ldms_t l = NULL;
-	int ret;
+	int rc = 0;
 	struct sockaddr_in sin;
 
-	if (!port_str || port_str[0] == '\0') {
-		port_no = LDMS_DEFAULT_PORT;
-	} else {
-		ptmp = atoi(port_str);
-		if (ptmp < 1 || ptmp > USHRT_MAX) {
-			ldmsd_log(LDMSD_LERROR, "'%s' transport with invalid port"
-				"'%s'\n",xprt_str,port_str);
-			cleanup(6, "error specifying transport.");
-		}
-		port_no = (unsigned)ptmp;
-	}
-	l = ldms_xprt_new_with_auth(xprt_str, ldmsd_linfo, auth_name, auth_opt);
-	if (!l) {
+	listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
+			listen->auth_name, listen->auth_attrs);
+	if (!listen->x) {
 		ldmsd_log(LDMSD_LERROR,
 			  "'%s' transport creation with auth '%s' "
 			  "failed, error: %s(%d). Please check transpot "
 			  "configuration, authentication configuration, "
 			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
-			  xprt_str,
+			  listen->xprt,
 			  auth_name,
 			  ovis_errno_abbvr(errno),
 			  errno);
@@ -976,17 +963,19 @@ ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str)
 	}
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = 0;
-	sin.sin_port = htons(port_no);
-	ret = ldms_xprt_listen(l, (struct sockaddr *)&sin, sizeof(sin),
+	sin.sin_port = htons(listen->port_no);
+	rc = ldms_xprt_listen(listen->x, (struct sockaddr *)&sin, sizeof(sin),
 			       __listen_connect_cb, NULL);
-	if (ret) {
+	if (rc) {
 		ldmsd_log(LDMSD_LERROR, "Error %d listening on the '%s' "
-				"transport.\n", ret, xprt_str);
+				"transport.\n", rc, listen->xprt);
 		cleanup(7, "error listening on transport");
 	}
-	ldmsd_log(LDMSD_LINFO, "Listening on transport %s:%s\n",
-			xprt_str, port_str);
-	return l;
+	ldmsd_log(LDMSD_LINFO, "Listening on %s:%d using `%s` transport and "
+		  "`%s` authentication\n",
+		  listen->xprt, listen->port_no, listen->xprt,
+		  listen->auth_name);
+	return 0;
 }
 
 void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)

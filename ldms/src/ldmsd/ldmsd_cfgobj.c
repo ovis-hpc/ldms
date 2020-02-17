@@ -77,16 +77,26 @@ pthread_mutex_t updtr_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 struct rbt strgp_tree = RBT_INITIALIZER(cfgobj_cmp);
 pthread_mutex_t strgp_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
+struct rbt listen_tree = RBT_INITIALIZER(cfgobj_cmp);
+pthread_mutex_t listen_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+
+struct rbt auth_tree = RBT_INITIALIZER(cfgobj_cmp);
+pthread_mutex_t auth_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+
 pthread_mutex_t *cfgobj_locks[] = {
 	[LDMSD_CFGOBJ_PRDCR] = &prdcr_tree_lock,
 	[LDMSD_CFGOBJ_UPDTR] = &updtr_tree_lock,
 	[LDMSD_CFGOBJ_STRGP] = &strgp_tree_lock,
+	[LDMSD_CFGOBJ_LISTEN] = &listen_tree_lock,
+	[LDMSD_CFGOBJ_AUTH]   = &auth_tree_lock,
 };
 
 struct rbt *cfgobj_trees[] = {
 	[LDMSD_CFGOBJ_PRDCR] = &prdcr_tree,
 	[LDMSD_CFGOBJ_UPDTR] = &updtr_tree,
 	[LDMSD_CFGOBJ_STRGP] = &strgp_tree,
+	[LDMSD_CFGOBJ_LISTEN] = &listen_tree,
+	[LDMSD_CFGOBJ_AUTH]   = &auth_tree,
 };
 
 void ldmsd_cfgobj_init(void)
@@ -94,6 +104,8 @@ void ldmsd_cfgobj_init(void)
 	rbt_init(&prdcr_tree, cfgobj_cmp);
 	rbt_init(&updtr_tree, cfgobj_cmp);
 	rbt_init(&strgp_tree, cfgobj_cmp);
+	rbt_init(&listen_tree, cfgobj_cmp);
+	rbt_init(&auth_tree,   cfgobj_cmp);
 }
 
 void ldmsd_cfgobj___del(ldmsd_cfgobj_t obj)

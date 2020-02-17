@@ -154,6 +154,12 @@ int quiet = 0; /* Is verbosity quiet? 0 for no and 1 for yes */
 const char *auth_name = "none";
 struct attr_value_list *auth_opt = NULL;
 const int AUTH_OPT_MAX = 128;
+uint8_t is_ldmsd_initialized = 0;
+
+uint8_t ldmsd_is_initialized()
+{
+	return is_ldmsd_initialized;
+}
 
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
@@ -162,9 +168,8 @@ const char* ldmsd_loglevel_names[] = {
 
 void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt)
 {
-	if (!ldms)
-		return;
-	ldms_local_cred_get(ldms, &sctxt->crd);
+	sctxt->crd.gid = getegid();
+	sctxt->crd.uid = geteuid();
 }
 
 void ldmsd_version_get(struct ldmsd_version *v)
@@ -1490,6 +1495,82 @@ int check_arg(char *c, char *optarg, enum ldms_opttype t)
 	return 0;
 }
 
+void ldmsd_listen___del(ldmsd_cfgobj_t obj)
+{
+	ldmsd_listen_t listen = (ldmsd_listen_t)obj;
+	if (listen->x)
+		ldms_xprt_put(listen->x);
+	if (listen->xprt)
+		free(listen->xprt);
+	if (listen->host)
+		free(listen->host);
+	if (listen->auth_name)
+		free(listen->auth_name);
+	if (listen->auth_attrs)
+		av_free(listen->auth_attrs);
+	ldmsd_cfgobj___del(obj);
+}
+
+ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
+{
+	char *name;
+	size_t len;
+	struct ldmsd_listen *listen = NULL;
+	ldmsd_auth_t auth_dom = NULL;
+
+	if (!port)
+		port = LDMSD_STR_WRAP(LDMS_DEFAULT_PORT);
+
+	len = strlen(xprt) + strlen(port) + 2; /* +1 for ':' and +1 for \0 */
+	name = malloc(len);
+	if (!name)
+		return NULL;
+	(void) snprintf(name, len, "%s:%s", xprt, port);
+	listen = (struct ldmsd_listen *)
+		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_LISTEN,
+				sizeof *listen, ldmsd_listen___del,
+				getuid(), getgid(), 0550); /* No one can alter it */
+	if (!listen)
+		return NULL;
+
+	listen->xprt = strdup(xprt);
+	if (!listen->xprt)
+		goto err;
+	listen->port_no = atoi(port);
+	if (host) {
+		listen->host = strdup(host);
+		if (!listen->host)
+			goto err;
+	}
+	if (!auth)
+		auth = DEFAULT_AUTH;
+	auth_dom = ldmsd_auth_find(auth);
+	if (!auth_dom) {
+		errno = ENOENT;
+		goto err;
+	}
+	listen->auth_name = strdup(auth_dom->plugin);
+	if (!listen->auth_name)
+		goto err;
+	if (auth_dom->attrs) {
+		listen->auth_attrs = av_copy(auth_dom->attrs);
+		if (!listen->auth_attrs) {
+			errno = ENOMEM;
+			goto err;
+		}
+	}
+	if (auth_dom)
+		ldmsd_cfgobj_put(&auth_dom->obj);
+	ldmsd_cfgobj_unlock(&listen->obj);
+	return listen;
+err:
+	if (auth_dom)
+		ldmsd_cfgobj_put(&auth_dom->obj);
+	ldmsd_cfgobj_unlock(&listen->obj);
+	ldmsd_cfgobj_put(&listen->obj);
+	return NULL;
+}
+
 int main(int argc, char *argv[])
 {
 #ifdef DEBUG
@@ -1745,10 +1826,6 @@ int main(int argc, char *argv[])
 			myhostname[0] = '\0';
 	}
 
-	if (myname[0] == '\0') {
-		snprintf(myname, sizeof(myname), "%s:%s", myhostname, port);
-	}
-
 	if (!foreground) {
 		/* Create pidfile for daemon that usually goes away on exit. */
 		/* user arg, then env, then default to get pidfile name */
@@ -1943,23 +2020,32 @@ int main(int argc, char *argv[])
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3, "start kernel sampler failed");
 
-	char *xprt_str, *port_str;
 	opterr = 0;
 	optind = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
-		char *dup_arg;
 		switch (op) {
 		case 'x':
 			if (check_arg("x", optarg, LO_NAME))
-				return 1;
-			dup_arg = strdup(optarg);
-			xprt_str = strtok(dup_arg, ":");
-			port_str = strtok(NULL, ":");
-			ldms = listen_on_ldms_xprt(xprt_str, port_str);
-			free(dup_arg);
-			if (!ldms) {
-				cleanup(errno, "Error setting up ldms transport");
+				return EINVAL;
+			rval = strchr(optarg, ':');
+			if (!rval) {
+				printf("Bad xprt format, expecting XPRT:PORT, "
+						"but got: %s\n", optarg);
+				return EINVAL;
 			}
+			rval[0] = '\0';
+			rval = rval+1;
+			/* Use the default auth domain */
+			ldmsd_listen_t listen = ldmsd_listen_new(optarg, rval, NULL, NULL);
+			if (!listen) {
+				printf( "Error %d: failed to add listening "
+					"endpoint: %s:%s\n",
+					errno, optarg, rval);
+				cleanup(errno, "listen failed");
+			}
+			if (myname[0] == '\0')
+				snprintf(myname, sizeof(myname), "%s:%s", myhostname, rval);
+
 			break;
 		}
 	}
@@ -1985,6 +2071,30 @@ int main(int argc, char *argv[])
 			break;
 		}
 	}
+	is_ldmsd_initialized = 1;
+	/* Start listening on ports */
+	ldmsd_listen_t listen;
+	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+		listen; listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
+		listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
+			listen->auth_name, listen->auth_attrs);
+		if (!listen->x) {
+			ldmsd_log(LDMSD_LERROR,
+				  "'%s' transport creation with auth '%s' "
+				  "failed, error: %s(%d). Please check transpot "
+				  "configuration, authentication configuration, "
+				  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
+				  listen->xprt,
+				  listen->auth_name,
+				  ovis_errno_abbvr(errno),
+				  errno);
+			cleanup(6, "error creating transport");
+		}
+		int rc = listen_on_ldms_xprt(listen);
+		if (rc)
+			cleanup(rc, "error listening on transport");
+	}
+
 	if (ldmsd_use_failover) {
 		/* failover will be the one starting cfgobjs */
 		ret = ldmsd_failover_start();

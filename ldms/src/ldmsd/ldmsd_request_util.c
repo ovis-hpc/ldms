@@ -63,6 +63,8 @@ struct req_str_id {
 
 const struct req_str_id req_str_id_table[] = {
 	/* This table need to be sorted by keyword for bsearch() */
+	{  "auth_add",           LDMSD_AUTH_ADD_REQ  },
+	{  "auth_del",           LDMSD_AUTH_DEL_REQ  },
 	{  "config",             LDMSD_PLUGN_CONFIG_REQ  },
 	{  "daemon",             LDMSD_DAEMON_STATUS_REQ  },
 	{  "daemon_exit",        LDMSD_EXIT_DAEMON_REQ  },
@@ -77,6 +79,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "failover_stop",      LDMSD_FAILOVER_STOP_REQ  },
 	{  "greeting",           LDMSD_GREETING_REQ  },
 	{  "include",            LDMSD_INCLUDE_REQ  },
+	{  "listen",             LDMSD_LISTEN_REQ },
 	{  "load",               LDMSD_PLUGN_LOAD_REQ  },
 	{  "loglevel",           LDMSD_VERBOSE_REQ  },
 	{  "logrotate",          LDMSD_LOGROTATE_REQ  },
@@ -128,6 +131,7 @@ const struct req_str_id req_str_id_table[] = {
 
 /* This table need to be sorted by keyword for bsearch() */
 const struct req_str_id attr_str_id_table[] = {
+	{  "auth",              LDMSD_ATTR_AUTH  },
 	{  "auto_interval",     LDMSD_ATTR_AUTO_INTERVAL  },
 	{  "auto_switch",       LDMSD_ATTR_AUTO_SWITCH  },
 	{  "base",              LDMSD_ATTR_BASE  },
@@ -552,6 +556,149 @@ out:
 	return rc;
 }
 
+int __parse_xprt_endpoint(struct ldmsd_parse_ctxt *ctxt,
+		const char *name, const char *value,
+		char *buf, size_t buflen, size_t *bufcnt)
+{
+	int rc = 0;
+	size_t cnt = *bufcnt;
+	if ((0 == strncmp(name, "xprt", 4)) ||
+		(0 == strncmp(name, "port", 4)) ||
+		(0 == strncmp(name, "host", 4)) ||
+		(0 == strncmp(name, "auth", 4))) {
+		/* xprt, port, host, auth */
+		rc = add_attr_from_attr_str(name, value,
+					    &ctxt->request,
+					    &ctxt->request_sz,
+					    ctxt->msglog);
+		if (rc)
+			goto out;
+	} else {
+		/* Construct the auth attributes into a ATTR_STRING */
+		if (value) {
+			cnt += snprintf(&buf[cnt], buflen - cnt,
+					"%s=%s ", name, value);
+		} else {
+			cnt += snprintf(&buf[cnt], buflen - cnt,
+					"%s ", name);
+		}
+	}
+	*bufcnt = cnt;
+out:
+	return rc;
+}
+
+int __ldmsd_parse_listen_req(struct ldmsd_parse_ctxt *ctxt)
+{
+	char *av = ctxt->av;
+	size_t len = strlen(av);
+	size_t cnt = 0;
+	char *tmp, *name, *value, *ptr, *dummy;
+	int rc = 0;
+	dummy = NULL;
+	tmp = malloc(len);
+	if (!tmp) {
+		rc = ENOMEM;
+		goto out;
+	}
+	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
+	while (av) {
+		ctxt->av = av;
+		dummy = strdup(av);
+		if (!dummy) {
+			rc = ENOMEM;
+			goto out;
+		}
+		__get_attr_name_value(dummy, &name, &value);
+		if (!name) {
+			/* av is neither attribute value nor keyword */
+			rc = EINVAL;
+			goto out;
+		}
+		rc = __parse_xprt_endpoint(ctxt, name, value, tmp, len, &cnt);
+		if (rc)
+			goto out;
+		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+		free(dummy);
+		dummy = NULL;
+	}
+
+	if (cnt) {
+		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
+		/* Add an attribute of type 'STRING' */
+		rc = add_attr_from_attr_str(NULL, tmp,
+					    &ctxt->request,
+					    &ctxt->request_sz,
+					    ctxt->msglog);
+	}
+
+out:
+	if (tmp)
+		free(tmp);
+	if (dummy)
+		free(dummy);
+	return rc;
+}
+
+int __ldmsd_parse_auth_add_req(struct ldmsd_parse_ctxt *ctxt)
+{
+	char *av = ctxt->av;
+	size_t len = strlen(av);
+	size_t cnt = 0;
+	char *tmp, *name, *value, *ptr, *dummy;
+	int rc;
+	dummy = NULL;
+	tmp = malloc(len);
+	if (!tmp) {
+		rc = ENOMEM;
+		goto out;
+	}
+	av = strtok_r(av, __ldmsd_cfg_delim, &ptr);
+	while (av) {
+		ctxt->av = av;
+		dummy = strdup(av);
+		if (!dummy) {
+			rc = ENOMEM;
+			goto out;
+		}
+		__get_attr_name_value(dummy, &name, &value);
+		if (!name) {
+			/* av is neither attribute value nor keyword */
+			rc = EINVAL;
+			goto out;
+		}
+		if (0 == strcmp(name, "name") || 0 == strcmp(name, "plugin")) {
+			rc = add_attr_from_attr_str(name, value,
+						    &ctxt->request,
+						    &ctxt->request_sz,
+						    ctxt->msglog);
+			if (rc)
+				goto out;
+		} else {
+			cnt += snprintf(&tmp[cnt], len - cnt, "%s=%s ", name, value);
+		}
+		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+		free(dummy);
+		dummy = NULL;
+	}
+
+	if (cnt) {
+		tmp[cnt-1] = '\0'; /* Replace the last ' ' with '\0' */
+		/* Add an attribute of type 'STRING' */
+		rc = add_attr_from_attr_str(NULL, tmp,
+					    &ctxt->request,
+					    &ctxt->request_sz,
+					    ctxt->msglog);
+	}
+
+out:
+	if (tmp)
+		free(tmp);
+	if (dummy)
+		free(dummy);
+	return rc;
+}
+
 struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 					size_t xprt_max_msg, ldmsd_msg_log_f msglog)
 {
@@ -613,6 +760,12 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 		break;
 	case LDMSD_ENV_REQ:
 		rc = __ldmsd_parse_env(&ctxt);
+		break;
+	case LDMSD_LISTEN_REQ:
+		rc = __ldmsd_parse_listen_req(&ctxt);
+		break;
+	case LDMSD_AUTH_ADD_REQ:
+		rc = __ldmsd_parse_auth_add_req(&ctxt);
 		break;
 	default:
 		rc = __ldmsd_parse_generic(&ctxt);

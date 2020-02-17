@@ -150,6 +150,8 @@ typedef enum ldmsd_cfgobj_type {
 	LDMSD_CFGOBJ_PRDCR = 1,
 	LDMSD_CFGOBJ_UPDTR,
 	LDMSD_CFGOBJ_STRGP,
+	LDMSD_CFGOBJ_LISTEN,
+	LDMSD_CFGOBJ_AUTH,
 } ldmsd_cfgobj_type_t;
 
 struct ldmsd_cfgobj;
@@ -206,6 +208,8 @@ typedef struct ldmsd_prdcr {
 	char *xprt_name;	/* Transport name */
 	ldms_t xprt;
 	long conn_intrvl_us;	/* connect interval */
+	char *conn_auth;			/* auth method for the connection */
+	struct attr_value_list *conn_auth_args;  /* auth options of the connection auth */
 
 	enum ldmsd_prdcr_state {
 		/** Producer task has stopped & no outstanding xprt */
@@ -853,7 +857,8 @@ ldmsd_prdcr_t
 ldmsd_prdcr_new_with_auth(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
 		enum ldmsd_prdcr_type type,
-		int conn_intrvl_us, uid_t uid, gid_t gid, int perm);
+		int conn_intrvl_us,
+		const char *auth, uid_t uid, gid_t gid, int perm);
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt);
 ldmsd_prdcr_t ldmsd_prdcr_first();
 ldmsd_prdcr_t ldmsd_prdcr_next(struct ldmsd_prdcr *prdcr);
@@ -1067,9 +1072,6 @@ int ldmsd_set_update_hint_get(ldms_set_t set, long *interva_us, long *offset_us)
 /** Regular expressions */
 int ldmsd_compile_regex(regex_t *regex, const char *ex, char *errbuf, size_t errsz);
 
-/* Listen for a connection request on an ldms xprt */
-extern ldms_t listen_on_ldms_xprt(char *xprt_str, char *port_str);
-
 /* Receive a message from an ldms endpoint */
 void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len);
 
@@ -1168,4 +1170,66 @@ int ldmsd_group_iter(ldms_set_t grp, ldmsd_group_iter_cb_t cb, void *arg);
  */
 const char *ldmsd_group_member_name(const char *info_key);
 
+/*
+ * The maximum number of authentication options
+ */
+#define LDMSD_AUTH_OPT_MAX 128
+
+/**
+ * LDMSD object of the listener transport/port
+ */
+typedef struct ldmsd_listen {
+	struct ldmsd_cfgobj obj;
+	char *xprt;
+	unsigned short port_no;
+	char *host;
+	char *auth_name;
+	struct attr_value_list *auth_attrs;
+	ldms_t x;
+} *ldmsd_listen_t;
+
+/* Listen for a connection request on an ldms xprt */
+extern int listen_on_ldms_xprt(ldmsd_listen_t listen);
+
+uint8_t ldmsd_is_initialized();
+
+/**
+ * \brief Create a listening endpoint
+ *
+ * \param xprt   transport name
+ * \param port   port
+ * \param host   hostname
+ * \param auth   authentication domain name
+ *
+ * \return a listen cfgobj
+ */
+ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth);
+
+/**
+ * LDMSD Authentication Domain Configuration Object
+ */
+typedef struct ldmsd_auth {
+	struct ldmsd_cfgobj obj; /* this contains the `name` */
+	char *plugin; /* auth plugin name */
+	struct attr_value_list *attrs; /* attributes for the plugin */
+} *ldmsd_auth_t;
+
+
+/* Key (name) of the default auth -- intentionally including SPACE as it is not
+ * allowed in user-defined names */
+#define DEFAULT_AUTH " _DEFAULT_AUTH_ "
+
+ldmsd_auth_t
+ldmsd_auth_new_with_auth(const char *name, const char *plugin,
+			 struct attr_value_list *attrs,
+			 uid_t uid, gid_t gid, int perm);
+int ldmsd_auth_del(const char *name, ldmsd_sec_ctxt_t ctxt);
+ldmsd_auth_t ldmsd_auth_default_get();
+int ldmsd_auth_default_set(const char *plugin, struct attr_value_list *attrs);
+
+static inline
+ldmsd_auth_t ldmsd_auth_find(const char *name)
+{
+	return (ldmsd_auth_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_AUTH);
+}
 #endif
