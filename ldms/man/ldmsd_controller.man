@@ -177,6 +177,7 @@ collection will be synchronous; if the offset is not specified,
 collection will be asynchronous. Optional.
 .RE
 
+
 .SS Stop a sampler plugin
 .BR stop
 attr=<value>
@@ -187,6 +188,60 @@ attr=<value>
 The plugin name.
 .RE
 
+.SH AUTHENTICATION COMMAND SYNTAX
+.SS  Add an authentication domain
+.B auth_add
+\fBname\fR=\fINAME\fR
+\fBplugin\fR=\fIPLUGIN\fR
+[ ... \fIPLUGIN ATTRIBUTES\fR ... ]
+.RS
+.TP
+\fBname\fR=\fINAME\fR
+.br
+The name of the authentication domain. This is the name referred to by
+\fBlisten\fR and \fBprdcr_add\fR commands.
+.TP
+\fBplugin\fR=\fInone\fR|\fIovis\fR|\fImunge\fR
+.br
+The LDMS Authentication Plugin for this domain.
+.TP
+[ ... \fIPLUGIN ATTRIBUTES\fR ... ]
+.br
+Arbitrary plugin attributes. Please consult the manual of the authentication
+plugin for more information.
+.RE
+
+
+.SH LISTEN COMMAND SYNTAX
+.SS  Instruct ldmsd to listen to a port
+.B listen
+\fBport\fR=\fIPORT\fR
+\fBxprt\fR=\fIsock\fR|\fIrdma\fR|\fIugni\fR|\fIfabric\fR
+[\fBhost\fR=\fIHOST\fR]
+[\fBauth\fR=\fIAUTH_REF\fR]
+.RS
+.TP
+\fBport\fR=\fIPORT\fR
+.br
+The port to listen to. Also, please be sure not to use ephemeral port (ports in
+the range of \fB/proc/sys/net/ip4/ip_local_port_range\fR).
+.TP
+\fBxprt\fR=\fIsock\fR|\fIrdma\fR|\fIugni\fR|\fIfabric\fR
+.br
+The type of the transport.
+.TP
+\fBhost\fR=\fIHOST\fR
+.br
+An optional hostname or IP address to bind. If not given, listen to all
+addresses (0.0.0.0 or PORT).
+.TP
+\fBauth\fR=\fIAUTH_REF\fR
+.br
+Instruct \fBldmsd\fR to use \fIAUTH_REF\fR (a name reference to \fBauth\fR
+object created by \fBauth_add\fR command) to authenticate connections on this
+port. If not given, the port uses the default authentication method specified on
+the CLI options (see \fBldmsd\fR(8) option \fB-a\fR).
+.RE
 
 .SH PRODUCER COMMAND SYNTAX
 .SS  Add a producer to the aggregator
@@ -219,6 +274,13 @@ The connection retry interval
 .BI [perm " permission"]
 .br
 The permission to modify the producer in the future
+.TP
+.BI [auth " AUTH_REF"]
+.br
+Instruct \fBldmsd\fR to use \fIAUTH_REF\fR (a name reference to \fBauth\fR
+object created by \fBauth_add\fR command) with the connections to this
+producer. If not given, the default authentication method specified on
+the CLI options (see \fBldmsd\fR(8) option \fB-a\fR) is used.
 .RE
 
 .SS Delete a producer from the aggregator
