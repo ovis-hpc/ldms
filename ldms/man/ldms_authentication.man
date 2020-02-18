@@ -33,6 +33,16 @@ Specifying options to the authentication plugin. This option can be given
 multiple times.
 
 .PP
+\fBauth\fR configuration object has been introduced in \fBldmsd\fR version
+4.3.4. It describes an authentication domain in the configuration file with
+\fBauth_add\fR command. \fBlisten\fR and \fBprdcr_add\fR config commands can
+refer to \fBauth\fR object created by \fBauth_add\fR command to specify the
+authentication domain a listening port or a producer connection belong to. If no
+\fBauth\fR option is specified, \fBlisten\fR and \fBprdcr_add\fR commands fall
+back to use the authentication method specified by \fB-a, -A\fR CLI options
+(which is default to \fBnone\fR).
+
+.PP
 Please consult the manual of the plugin for more details.
 
 
@@ -40,7 +50,7 @@ Please consult the manual of the plugin for more details.
 
 .TP
 .B none
-Authentication will NOT be used.
+Authentication will NOT be used (allow all connections)
 .RB "(see " ldms_auth_none (7)).
 
 .TP
