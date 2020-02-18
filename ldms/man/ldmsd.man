@@ -125,26 +125,30 @@ Display the usage for named plugin. Special names all, sampler, and store match 
 .SS
 Communication Options:
 .TP
-.BI -x " XPRT" [: PORT ]
+.BI -x " XPRT:PORT"
 .br
 Specifies the transport type to listen on. May be specified more than once for
 multiple transports. The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY
-XE/XK/XC).  A transport specific port number is optionally specified following a
-\':', e.g. rdma:10000.
+XE/XK/XC). A transport specific port number must be specified following a \':',
+e.g. rdma:10000.
+
+The listening transports can also be specified in the configuration file using
+\fBlisten\fR command, e.g. `listen xprt=sock port=1234`. Please see
+\fBldmsd_controller\fR(8) section \fBLISTEN COMMAND SYNTAX\fR for more details.
 .TP
 .BI -a " AUTH"
-AUTH is the name of the LDMS Authentication plugin to be used for the
-LDMS connection. Please see
-.BR ldms_authentication (7)
-for more information. If this option is not given, the default is "none" (no
-authentication).
+Specify the default LDMS Authentication method for the LDMS connections in this
+daemon (when the connections do not specify authentication method/domain).
+Please see \fBldms_authentication\fR(7) for more information. If this option is
+not given, the default is "none" (no authentication). Also see
+\fBldmsd_controller\fR(8) section \fBAUTHENTICATION COMMAND SYNTAX\fR for how to
+define an authentication domain.
 .TP
 .BI -A " NAME" = VALUE
 Passing the \fINAME\fR=\fIVALUE\fR option to the LDMS Authentication plugin.
 This command line option can be given multiple times. Please see
-.BR ldms_authentication (7)
-for more information, and consult the plugin manual page for plugin-specific
-options.
+\fBldms_authentication\fR(7) for more information, and consult the plugin manual
+page for plugin-specific options.
 
 
 .SS
