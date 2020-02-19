@@ -61,7 +61,7 @@ pkglib_LTLIBRARIES += libstore_rabbitkw.la
 endif
 
 if ENABLE_CSV
-CSV_COMMON_LIBFLAGS = -lldms_store_csv_common -lpthread
+CSV_COMMON_LIBFLAGS = libldms_store_csv_common.la -lpthread
 
 libldms_store_csv_common_la_SOURCES = store_csv_common.c store_csv_common.h
 libldms_store_csv_common_la_LIBADD = $(STORE_LIBADD) -lpthread
