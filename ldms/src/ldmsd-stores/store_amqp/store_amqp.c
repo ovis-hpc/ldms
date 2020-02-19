@@ -202,7 +202,7 @@ static int check_reply(store_amqp_inst_t inst, amqp_rpc_reply_t r,
 			INST_LOG(inst, LDMSD_LERROR,
 				 "server connection error %d, message: %.*s\n",
 				 m->reply_code, (int)m->reply_text.len,
-				 m->reply_text.bytes);
+				 (char*)m->reply_text.bytes);
 			break;
 		}
 		case AMQP_CHANNEL_CLOSE_METHOD: {
@@ -210,7 +210,7 @@ static int check_reply(store_amqp_inst_t inst, amqp_rpc_reply_t r,
 			INST_LOG(inst, LDMSD_LERROR,
 				 "server channel error %d, message: %.*s\n",
 				 m->reply_code, (int)m->reply_text.len,
-				 m->reply_text.bytes);
+				 (char*)m->reply_text.bytes);
 			break;
 		}
 		default:
@@ -392,7 +392,7 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 			attr_name = "format";
 			goto einval_not_string;
 		}
-		value_s = json_value_str(value);
+		value_s = json_value_str(value)->str;
 		if (0 == strcasecmp(value_s, "csv")) {
 			inst->formatter = formatters[CSV_FMT];
 			inst->routing_key = "CSV";
@@ -402,7 +402,7 @@ int store_amqp_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		} else if (0 != strcasecmp(value_s, "json")) {
 			INST_LOG(inst, LDMSD_LINFO,
 				 "Invalid formatter '%s' specified, "
-				 "defaulting to JSON.\n", value);
+				 "defaulting to JSON.\n", value_s);
 		}
 	}
 	value = json_value_find(json, "host");
