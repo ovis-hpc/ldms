@@ -955,9 +955,7 @@ static void handle_unshare(struct z_rdma_ep *rep,
 static void handle_rendezvous(struct z_rdma_ep *rep,
 			      struct z_rdma_message_hdr *msg, size_t len)
 {
-	struct zap_event zev;
 	struct z_rdma_share_msg *sh = (struct z_rdma_share_msg *)msg;
-	struct z_rdma_map *map;
 
 	if (sh->share)
 		handle_share(rep, msg, len);
