@@ -397,6 +397,15 @@ store_influx_help(ldmsd_plugin_inst_t pi)
 	return _help;
 }
 
+static const char *
+json_attr_find_str(json_entity_t json, char *key)
+{
+	json_entity_t value = json_value_find(json, key);
+	if (!key)
+		return NULL;
+	return value->value.str_->str;
+}
+
 static int
 store_influx_config(ldmsd_plugin_inst_t pi, json_entity_t json, char *ebuf, int ebufsz)
 {
