@@ -256,7 +256,7 @@ struct client {
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	struct client *client = cb_arg;
-	const char *event;
+	const char *event = "UNKNOWN";
 	if (!client->ldms)
 		return;
 	pthread_mutex_lock(&client->wait_lock);

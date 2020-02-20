@@ -719,16 +719,16 @@ static int start_task(ldmsd_task_t task)
 {
 	int rc = ovis_scheduler_event_add(task->os, &task->oev);
 	if (!rc) {
-		errno = rc;
 		return LDMSD_TASK_STATE_STARTED;
 	}
+	errno = rc;
 	return LDMSD_TASK_STATE_STOPPED;
 }
 
 static void task_cb_fn(ovis_event_t ev)
 {
 	ldmsd_task_t task = ev->param.ctxt;
-	enum ldmsd_task_state next_state;
+	enum ldmsd_task_state next_state = LDMSD_TASK_STATE_STOPPED;
 
 	pthread_mutex_lock(&task->lock);
 	if (task->os) {
@@ -1311,10 +1311,12 @@ void handle_pidfile_banner()
 			} else {
 				pidfile = strdup(pidpath);
 			}
-			if (!pidfile) {
-				ldmsd_log(LDMSD_LERROR, "Out of memory\n");
-				exit(1);
-			}
+		} else {
+			pidfile = strdup(cmd_line_args.pidfile);
+		}
+		if (!pidfile) {
+			ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+			exit(1);
 		}
 		if (!access(pidfile, F_OK)) {
 			ldmsd_log(LDMSD_LERROR, "Existing pid file named '%s': %s\n",

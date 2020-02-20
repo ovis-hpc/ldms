@@ -413,8 +413,8 @@ int ldmsd_smplr_start(char *smplr_name, char *interval, char *offset,
 					ldmsd_sec_ctxt_t sctxt)
 {
 	int rc = 0;
-	unsigned long sample_interval;
-	long sample_offset;
+	unsigned long sample_interval = 0;
+	long sample_offset = 0;
 	int synchronous;
 	ldmsd_smplr_t smplr;
 

@@ -613,7 +613,7 @@ out:
 int ldmsd_plugin_qrent_add_bulk(ldmsd_plugin_qrent_coll_t coll,
 				struct ldmsd_plugin_qrent_bulk_s *bulk)
 {
-	int rc;
+	int rc = 0;
 	while (bulk->key) {
 		rc = ldmsd_plugin_qrent_add(coll, bulk->key, bulk->type,
 					    bulk->val);

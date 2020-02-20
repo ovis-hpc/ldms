@@ -607,7 +607,7 @@ void ovis_event_free(ovis_event_t ev)
 static
 int ovis_event_term_check(ovis_scheduler_t m)
 {
-	int rc;
+	int rc = EINVAL;
 	pthread_mutex_lock(&m->mutex);
 	switch (m->state) {
 	case OVIS_EVENT_MANAGER_INIT:
@@ -703,7 +703,7 @@ out:
 
 int ovis_scheduler_term(ovis_scheduler_t m)
 {
-	int rc;
+	int rc = EINVAL;
 	ssize_t wb;
 	ovis_event_t none = NULL;
 	pthread_mutex_lock(&m->mutex);

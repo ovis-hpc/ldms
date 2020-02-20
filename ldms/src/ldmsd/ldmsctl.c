@@ -2275,6 +2275,7 @@ int main(int argc, char *argv[])
 #endif /* HAVE_READLINE_HISTORY */
 		if (isatty(0)) {
 			linebuf = readline("ldmsctl> ");
+			cnt = linebuf?strlen(linebuf):-1;
 		} else {
 			cnt = getline(&linebuf, &linebuf_len, stdin);
 		}
@@ -2286,7 +2287,7 @@ int main(int argc, char *argv[])
 #endif /* HAVE_LIBREADLINE */
 		if (cnt == -1)
 			break;
-		if (linebuf[0] == '\0')
+		if (linebuf && linebuf[0] == '\0')
 			continue;
 #ifdef HAVE_READLINE_HISTORY
 		add_history(linebuf);

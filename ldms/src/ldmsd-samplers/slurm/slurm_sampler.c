@@ -679,6 +679,8 @@ slurm_sampler_create_schema(ldmsd_plugin_inst_t pi)
 	if (inst->task_count_idx < 0)
 		goto err;
 
+	rc = inst->task_count_idx;
+
 	/* task_pid */
 	inst->task_pid_idx = inst->task_count_idx + 1;
 	for (i = 0; i < inst->job_list_len; i++) {

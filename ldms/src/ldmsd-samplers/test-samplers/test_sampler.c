@@ -400,7 +400,7 @@ static int create_metric_set(test_sampler_inst_t inst,
 	union ldms_value v;
 	char metric_name[128];
 	char instance_name[512];
-	ldms_schema_t schema;
+	ldms_schema_t schema = NULL;
 	ldmsd_sampler_type_t samp = LDMSD_SAMPLER(inst);
 
 	struct test_sampler_schema *ts_schema;

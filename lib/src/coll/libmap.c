@@ -204,6 +204,10 @@ int map_entry_new(map_t map_s, char *obj_cols)
 		}
 		i++;
 	}
+	if (i != 2) {
+		errno = EINVAL;
+		goto err0;
+	}
 	obj = sos_obj_new(map_s->schema);
 	if (!obj)
 		goto err0;
