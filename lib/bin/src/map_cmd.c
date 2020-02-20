@@ -96,7 +96,7 @@ int main(int argc, char **argv)
 {
 	int o, rc = 0;
 	int action = 0;
-	char *obj_cols;
+	char *obj_cols = NULL;
 	uint64_t match_val;
 	char *path = NULL;
 	char *name;

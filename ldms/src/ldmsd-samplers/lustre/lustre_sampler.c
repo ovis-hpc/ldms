@@ -235,7 +235,7 @@ int lms_open_file(struct lustre_metric_src *lms)
 		return EEXIST;
 	wordexp_t p = {0};
 	int i, rc, match;
-	const char *path;
+	const char *path = NULL;
 	rc = wordexp(lms->path, &p, 0);
 	if (rc) {
 		if (rc == WRDE_NOSPACE)
