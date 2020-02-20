@@ -210,7 +210,7 @@ void ev_sched_to(struct timespec *to, time_t secs, int nsecs);
  * \param _type_ The type to which the event data is cast
  * \retval The event data cast to _type_
  */
-#define EV_DATA(_ptr_, _type_) ((_type_ *)&(_ptr_)->e_data[0])
+#define EV_DATA(_ptr_, _type_) ((_type_ *)(_ptr_))
 
 /**
  * \brief Return an event type's internal event id.

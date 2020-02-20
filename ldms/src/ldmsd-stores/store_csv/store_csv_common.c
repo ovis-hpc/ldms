@@ -993,26 +993,30 @@ int mval_print_s64_array(FILE *f, ldms_mval_t mval, int i, int ietfcsv)
 
 int mval_print_f32(FILE *f, ldms_mval_t mval, int i, int ietfcsv)
 {
-	uint32_t tmp = __le32_to_cpu(*(uint32_t*)&mval->v_f);
-	return fprintf(f, ",%.9g", *(float*)&tmp);
+	union ldms_value v;
+	v.v_u32 = __le32_to_cpu(mval->v_u32);
+	return fprintf(f, ",%.9g", v.v_f);
 }
 
 int mval_print_f32_array(FILE *f, ldms_mval_t mval, int i, int ietfcsv)
 {
-	uint32_t tmp = __le32_to_cpu(*(uint32_t*)&mval->a_f[i]);
-	return fprintf(f, ",%.9g", *(float*)&tmp);
+	union ldms_value v;
+	v.v_u32 = __le32_to_cpu(mval->a_u32[i]);
+	return fprintf(f, ",%.9g", v.v_f);
 }
 
 int mval_print_d64(FILE *f, ldms_mval_t mval, int i, int ietfcsv)
 {
-	uint64_t tmp = __le64_to_cpu(*(uint64_t*)&mval->v_d);
-	return fprintf(f, ",%.17g", *(double*)&tmp);
+	union ldms_value v;
+	v.v_u64 = __le64_to_cpu(mval->v_u64);
+	return fprintf(f, ",%.17g", v.v_d);
 }
 
 int mval_print_d64_array(FILE *f, ldms_mval_t mval, int i, int ietfcsv)
 {
-	uint64_t tmp = __le64_to_cpu(*(uint64_t*)&mval->a_d[i]);
-	return fprintf(f, ",%.17g", *(double*)&tmp);
+	union ldms_value v;
+	v.v_u64 =  __le64_to_cpu(mval->a_u64[i]);
+	return fprintf(f, ",%.17g", v.v_d);
 }
 
 mval_print_fn mval_print_tbl[] = {
