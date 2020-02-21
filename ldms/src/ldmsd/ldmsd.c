@@ -1075,25 +1075,25 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
 		if (!listen->host)
 			goto err;
 	}
-	if (!auth)
-		auth = DEFAULT_AUTH;
-	auth_dom = ldmsd_auth_find(auth);
-	if (!auth_dom) {
-		errno = ENOENT;
-		goto err;
-	}
-	listen->auth_name = strdup(auth_dom->plugin);
-	if (!listen->auth_name)
-		goto err;
-	if (auth_dom->attrs) {
-		listen->auth_attrs = av_copy(auth_dom->attrs);
-		if (!listen->auth_attrs) {
-			errno = ENOMEM;
+	if (auth) {
+		auth_dom = ldmsd_auth_find(auth);
+		if (!auth_dom) {
+			errno = ENOENT;
 			goto err;
 		}
-	}
-	if (auth_dom)
+		listen->auth_name = strdup(auth_dom->plugin);
+		if (!listen->auth_name)
+			goto err;
+		if (auth_dom->attrs) {
+			listen->auth_attrs = av_copy(auth_dom->attrs);
+			if (!listen->auth_attrs) {
+				errno = ENOMEM;
+				goto err;
+			}
+		}
 		ldmsd_cfgobj_put(&auth_dom->obj);
+	}
+
 	ldmsd_cfgobj_unlock(&listen->obj);
 	return listen;
 err:
@@ -1277,10 +1277,6 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 	default:
 		return ENOENT;
 	}
-	/* set default auth */
-	if (!cmd_line_args.auth_name)
-		cmd_line_args.auth_name = "none";
-	ldmsd_auth_default_set(cmd_line_args.auth_name, cmd_line_args.auth_attrs);
 	return 0;
 }
 
@@ -1411,6 +1407,8 @@ void ldmsd_init()
 	 */
 	if (!cmd_line_args.auth_name)
 		cmd_line_args.auth_name = strdup("none");
+	/* Set default authentication */
+	ldmsd_auth_default_set(cmd_line_args.auth_name, cmd_line_args.auth_attrs);
 
 	if (cmd_line_args.myhostname[0] == '\0') {
 		rc = gethostname(cmd_line_args.myhostname,
@@ -1478,8 +1476,22 @@ void ldmsd_init()
 
 int create_listening_ldms_xprt(ldmsd_listen_t listen)
 {
+	if (!listen->auth_name) {
+		listen->auth_name = strdup(ldmsd_auth_name_get(listen));
+		if (!listen->auth_name) {
+			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+			return ENOMEM;
+		}
+		if (ldmsd_auth_attr_get(listen)) {
+			listen->auth_attrs = av_copy(ldmsd_auth_attr_get(listen));
+			if (!listen->auth_attrs) {
+				ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+				return ENOMEM;
+			}
+		}
+	}
 	listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
-			ldmsd_auth_name_get(listen), ldmsd_auth_attr_get(listen));
+				listen->auth_name, listen->auth_attrs);
 	if (!listen->x) {
 		ldmsd_log(LDMSD_LERROR,
 			  "'%s' transport creation with auth '%s' "
