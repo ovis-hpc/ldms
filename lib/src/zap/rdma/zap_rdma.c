@@ -2029,6 +2029,7 @@ static zap_err_t z_rdma_share(zap_ep_t ep, zap_map_t map,
 
 	sm = (struct z_rdma_share_msg *)rbuf->data;
 	sm->hdr.msg_type = htons(Z_RDMA_MSG_RENDEZVOUS);
+	sm->share = 1;
 	sm->rkey = rmap->mr->rkey;
 	sm->va = (unsigned long)rmap->map.addr;
 	sm->len = htonl(rmap->map.len);
