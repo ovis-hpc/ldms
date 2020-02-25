@@ -914,8 +914,6 @@ slurm_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	for (i = 0; i < inst->job_list_len; i++) {
 		ldms_metric_array_set_u64(inst->job_set, inst->comp_id_idx,
 					  i, samp->component_id);
-		ldms_metric_array_set_s32(inst->job_set, inst->comp_id_idx,
-					  i, -1);
 	}
 
 	rc = 0;
