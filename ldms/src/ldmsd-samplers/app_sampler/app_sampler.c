@@ -1130,17 +1130,19 @@ int __handle_cfg_file(app_sampler_inst_t inst, json_entity_t jval,
 	}
 
 	ent = json_value_find(jdoc, "stream");
-	if (ent->type != JSON_STRING_VALUE) {
-		rc = EINVAL;
-		snprintf(ebuf, ebufsz, "Error: `stream` must be a string.");
-		goto out;
-	}
-	inst->stream_name = strdup(ent->value.str_->str);
-	if (!inst->stream_name) {
-		rc = ENOMEM;
-		snprintf(ebuf, ebufsz, "Out of memory.");
-		goto out;
-	}
+	if (ent) {
+		if (ent->type != JSON_STRING_VALUE) {
+			rc = EINVAL;
+			snprintf(ebuf, ebufsz, "Error: `stream` must be a string.");
+			goto out;
+		}
+		inst->stream_name = strdup(ent->value.str_->str);
+		if (!inst->stream_name) {
+			rc = ENOMEM;
+			snprintf(ebuf, ebufsz, "Out of memory.");
+			goto out;
+		}
+	} /* else, caller will later set default stream_name */
 	list = json_value_find(jdoc, "metrics");
 	if (list) {
 		for (ent = json_item_first(list); ent;
