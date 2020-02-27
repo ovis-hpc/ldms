@@ -1571,6 +1571,20 @@ err:
 	return NULL;
 }
 
+static int __create_default_auth()
+{
+	ldmsd_auth_t auth_dom;
+	int rc = 0;
+	auth_dom = ldmsd_auth_new_with_auth(DEFAULT_AUTH, auth_name, auth_opt,
+					geteuid(), getegid(), 0600);
+	if (!auth_dom) {
+		ldmsd_log(LDMSD_LCRITICAL, "Failed to set the default "
+				"authentication method, errno %d\n", errno);
+		rc = errno;
+	}
+	return rc;
+}
+
 int main(int argc, char *argv[])
 {
 #ifdef DEBUG
@@ -2020,6 +2034,9 @@ int main(int argc, char *argv[])
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3, "start kernel sampler failed");
 
+	if (__create_default_auth())
+		cleanup(20, "Error creating the default authentication.");
+
 	opterr = 0;
 	optind = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
@@ -2036,7 +2053,7 @@ int main(int argc, char *argv[])
 			rval[0] = '\0';
 			rval = rval+1;
 			/* Use the default auth domain */
-			ldmsd_listen_t listen = ldmsd_listen_new(optarg, rval, NULL, NULL);
+			ldmsd_listen_t listen = ldmsd_listen_new(optarg, rval, NULL, DEFAULT_AUTH);
 			if (!listen) {
 				printf( "Error %d: failed to add listening "
 					"endpoint: %s:%s\n",
