@@ -5484,18 +5484,14 @@ int ldmsd_auth_opt_add(struct attr_value_list *auth_attrs, char *name, char *val
 	return 0;
 }
 
-extern char myhostname[80]; /* from ldmsd.c */
-extern char myname[512];    /* from ldmsd.c */
-
 static int listen_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_listen_t listen;
 	int rc;
-	char *xprt, *port, *host, *auth, *auth_args, *attr_name;
+	char *xprt, *port, *host, *auth, *attr_name;
 	char *str, *ptr1, *ptr2, *lval, *rval;
 	unsigned short port_no = -1;
-	struct attr_value_list *auth_opts = NULL;
-	xprt = port = host = auth = auth_args = NULL;
+	xprt = port = host = auth = NULL;
 
 	if (ldmsd_is_initialized()) {
 		/*
@@ -5525,26 +5521,6 @@ static int listen_handler(ldmsd_req_ctxt_t reqc)
 	}
 	host =ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_HOST);
 	auth = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTH);
-	auth_args = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
-
-	/* Parse the authentication options */
-	if (auth_args) {
-		auth_opts = av_new(LDMSD_AUTH_OPT_MAX);
-		if (!auth_opts)
-			goto enomem;
-		str = strtok_r(auth_args, " ", &ptr1);
-		while (str) {
-			lval = strtok_r(str, "=", &ptr2);
-			rval = strtok_r(NULL, "", &ptr2);
-			rc = ldmsd_auth_opt_add(auth_opts, lval, rval);
-			if (rc) {
-				(void) snprintf(reqc->line_buf, reqc->line_len,
-					"Failed to process the authentication options");
-				goto send_reply;
-			}
-			str = strtok_r(NULL, " ", &ptr1);
-		}
-	}
 
 	listen = ldmsd_listen_new(xprt, port, host, auth);
 	if (!listen) {
@@ -5553,8 +5529,6 @@ static int listen_handler(ldmsd_req_ctxt_t reqc)
 		else
 			goto enomem;
 	}
-	if (myname[0] == '\0')
-		snprintf(myname, sizeof(myname), "%s:%s", myhostname, rval);
 	goto send_reply;
 
 eexist:
@@ -5581,10 +5555,6 @@ send_reply:
 		free(host);
 	if (auth)
 		free(auth);
-	if (auth_args)
-		free(auth_args);
-	if (auth_opts)
-		av_free(auth_opts);
 	return 0;
 }
 
