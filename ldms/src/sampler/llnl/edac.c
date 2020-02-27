@@ -372,9 +372,10 @@ static int sample(struct ldmsd_sampler *self)
 	// My variables
 	FILE * myFile = NULL;
 	char * s;
-	char lineBuffer[256];
+#define LBSZ 64
+	char lineBuffer[LBSZ];
 	int i;
-	rc=0;
+	rc = 0;
 
 	if (!set) {
 		msglog(LDMSD_LERROR, SAMP ": plugin not initialized\n");
@@ -384,28 +385,34 @@ static int sample(struct ldmsd_sampler *self)
 
 	metric_no = metric_offset;
 
+	errno = 0;
+#define EBSZ 256
+	char ebuf[EBSZ];
+	char *emsg;
 	// Begin getting numbers
 	for ( i=0; i<totalCommands; i+=1 )
 	{
 		myFile = fopen(command[i], "r");
 		if (myFile == NULL)
 		{
-			msglog(LDMSD_LERROR, SAMP ": failed to open file\n");
-			rc = EINVAL;
-			edac_valid=0;
+			rc = errno;
+			emsg = strerror_r(errno, ebuf, EBSZ);
+			msglog(LDMSD_LERROR, SAMP ": failed to open file %s: %s\n",
+				command[i], emsg);
 			goto out;
 		}
-		s = fgets(lineBuffer, sizeof(lineBuffer), myFile);
+		s = fgets(lineBuffer, LBSZ, myFile);
 		if (!s) {
-			rc = EINVAL;
-			edac_valid=0;
+			rc = EIO;
+			msglog(LDMSD_LERROR, SAMP ": fgets failed on %s\n",
+				command[i]);
 			goto out;
 		}
 		rc = sscanf(lineBuffer, "%" PRIu64, &v.v_u64);
 		if (rc != 1) {
-			rc = EINVAL;
-			msglog(LDMSD_LERROR, SAMP ": read as uint64_t failed.\n");
-			edac_valid=0;
+			rc = errno;
+			emsg = strerror_r(errno, ebuf, EBSZ);
+			msglog(LDMSD_LERROR, SAMP ": read a uint64_t failed from %s: \"%s\": %s\n", command[i], lineBuffer, emsg);
 			goto out;
 		}
 		ldms_metric_set(set, metric_no, &v);
@@ -418,6 +425,8 @@ out:
 	base_sample_end(base);
 	if (myFile)
 		fclose(myFile);
+	if (rc)
+		edac_valid = 0;
 	return rc;
 }
 
