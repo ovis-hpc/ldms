@@ -107,6 +107,9 @@ void samp_del(ldmsd_plugin_inst_t inst)
 		free(ent);
 	}
 
+	if (samp->job_set)
+		ldms_set_put(samp->job_set);
+
 	free(samp->producer_name);
 	free(samp->set_inst_name);
 	free(samp->schema_name);
