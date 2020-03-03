@@ -388,7 +388,7 @@ static int test_sampler_set_del(test_sampler_inst_t inst,
 {
 	if (!ts_set->set)
 		return ENOENT;
-	LDMSD_SAMPLER(inst)->delete_set(&inst->base, ts_set->set);
+	LDMSD_SAMPLER(inst)->delete_set(&inst->base, ldms_set_name_get(ts_set->set));
 	ts_set->set = NULL;
 	return 0;
 }

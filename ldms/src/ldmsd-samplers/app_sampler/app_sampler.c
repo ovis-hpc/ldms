@@ -1223,7 +1223,6 @@ int __handle_task_init(app_sampler_inst_t inst, json_entity_t data)
 int __handle_task_exit(app_sampler_inst_t inst, json_entity_t data)
 {
 	ldmsd_sampler_type_t samp = LDMSD_SAMPLER(inst);
-	ldms_set_t set;
 	int len;
 	json_entity_t job_id;
 	json_entity_t task_pid;
@@ -1240,12 +1239,8 @@ int __handle_task_exit(app_sampler_inst_t inst, json_entity_t data)
 			task_pid->value.int_);
 	if (len < 0)
 		return ENOMEM;
-	set = ldms_set_by_name(setname);
+	samp->delete_set(LDMSD_INST(inst), setname);
 	free(setname);
-	if (!set)
-		return errno;
-	samp->delete_set(LDMSD_INST(inst), set);
-	ldms_set_put(set); /* put ref from `ldms_set_by_name()` */
 	return 0;
 }
 

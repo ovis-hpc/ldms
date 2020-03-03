@@ -203,13 +203,13 @@ struct ldmsd_sampler_type_s {
 	 *       instance is deleted.
 	 *
 	 * \param inst The plugin instance pointer.
-	 * \param set  The set handle.
+	 * \param name The set name.
 	 *
 	 * \retval 0      If succeeded.
 	 * \retval ENOENT If the set is not found in the set_list of this
 	 *                instance.
 	 */
-	int (*delete_set)(ldmsd_plugin_inst_t inst, ldms_set_t set);
+	int (*delete_set)(ldmsd_plugin_inst_t inst, const char *name);
 
 	/**
 	 * Sample function.
