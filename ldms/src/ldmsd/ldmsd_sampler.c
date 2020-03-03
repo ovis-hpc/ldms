@@ -561,11 +561,10 @@ ldms_set_t samp_create_set_group(ldmsd_plugin_inst_t inst,
 	return NULL;
 }
 
-int samp_delete_set(ldmsd_plugin_inst_t inst, ldms_set_t set)
+int samp_delete_set(ldmsd_plugin_inst_t inst, const char *name)
 {
 	ldmsd_sampler_type_t samp = (void*)inst->base;
 	ldmsd_set_entry_t ent;
-	const char *name = ldms_set_name_get(set);
 	pthread_mutex_lock(&samp->lock);
 	/* make sure that it is from our list */
 	LIST_FOREACH(ent, &samp->set_list, entry) {
