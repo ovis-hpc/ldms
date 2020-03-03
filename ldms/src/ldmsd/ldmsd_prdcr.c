@@ -160,6 +160,9 @@ static void prdcr_set_del(ldmsd_prdcr_set_t set)
 
 static void prdcr_reset_set(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set)
 {
+	pthread_mutex_lock(&prd_set->lock);
+	prd_set->state = LDMSD_PRDCR_SET_STATE_ERROR;
+	pthread_mutex_unlock(&prd_set->lock);
 	EV_DATA(prd_set->state_ev, struct state_data)->start_n_stop = 0;
 	ldmsd_prdcr_set_ref_get(prd_set, "state_ev");
 	if (ev_post(producer, updater, prd_set->state_ev, NULL)) {
