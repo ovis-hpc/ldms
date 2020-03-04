@@ -106,6 +106,7 @@ int store_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 	ldmsd_strgp_t strgp = EV_DATA(ev, struct store_data)->strgp;
 	ldmsd_prdcr_set_t prd_set = EV_DATA(ev, struct store_data)->prd_set;
 	strgp->update_fn(strgp, prd_set);
+	ldmsd_prdcr_set_ref_put(prd_set, "store_ev");
 	return 0;
 }
 
