@@ -1370,6 +1370,23 @@ void handle_pidfile_banner()
 	}
 }
 
+/* process default auth options */
+void try_process_default_auth()
+{
+	static int once = 0;
+	if (once)
+		return;
+	once = 1;
+	/*
+	 * No default authentication was specified.
+	 * Set the default authentication method to 'none'.
+	 */
+	if (!cmd_line_args.auth_name)
+		cmd_line_args.auth_name = strdup("none");
+	/* Set default authentication */
+	ldmsd_auth_default_set(cmd_line_args.auth_name, cmd_line_args.auth_attrs);
+}
+
 void ldmsd_init()
 {
 	int rc, i;
@@ -1401,14 +1418,7 @@ void ldmsd_init()
 		return;
 	}
 
-	/*
-	 * No default authentication was specified.
-	 * Set the default authentication method to 'none'.
-	 */
-	if (!cmd_line_args.auth_name)
-		cmd_line_args.auth_name = strdup("none");
-	/* Set default authentication */
-	ldmsd_auth_default_set(cmd_line_args.auth_name, cmd_line_args.auth_attrs);
+	try_process_default_auth();
 
 	if (cmd_line_args.myhostname[0] == '\0') {
 		rc = gethostname(cmd_line_args.myhostname,

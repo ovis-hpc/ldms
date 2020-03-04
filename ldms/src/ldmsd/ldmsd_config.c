@@ -385,6 +385,8 @@ int __req_filter(ldmsd_req_ctxt_t reqc, void *ctxt)
 	return rc;
 }
 
+void try_process_default_auth(); /* see ldmsd.c */
+
 int process_config_file(const char *path, int *lno, int trust)
 {
 	static uint16_t file_no = 0; /* Config file ID */
@@ -555,6 +557,8 @@ parse:
 				have_cfgcmd = 1;
 			}
 		}
+		if (have_cfgcmd) /* no more CLI options */
+			try_process_default_auth();
 		rc = ldmsd_process_config_request(&xprt, request, req_filter_fn);
 cleanup_record:
 		free(request);
