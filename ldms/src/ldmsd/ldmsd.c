@@ -284,6 +284,86 @@ const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level)
 	return "LDMSD_LNONE";
 }
 
+/*
+ * microseconds:	us, microsecond(s)
+ * milliseconnds:	ms, millisecond(s)
+ * seconds:		s, sec, second(s)
+ * minutes:		min, minutes(s)
+ * hours:		h, hr(s), hour(s)
+ * days:		day(s)
+ */
+unsigned long ldmsd_time_str2us(const char *s)
+{
+	int rc;
+	char unit[16];
+	unsigned long x;
+	rc = sscanf(s, "%lu %s", &x, unit);
+
+	if ((rc == EOF) || (0 == strcmp(unit, "us")) || (0 == strncmp(unit, "micro", 5))) {
+		/* microseconds */
+		return x;
+	} else if ((0 == strcmp(unit, "ms")) || (0 == strncmp(unit, "milli", 5))) {
+		/* milliseconds */
+		return x * 1000;
+	} else if ((0 == strcmp(unit, "s")) || (0 == strncmp(unit, "sec", 3))) {
+		/* seconds */
+		return x * 1000000;
+	} else if (0 == strncmp(unit, "min", 3)) {
+		/* minutes */
+		return x * 1000000 * 60;
+	} else if (unit[0] == 'h') {
+		/* hours */
+		return x * 1000000 * 60 * 60;
+	} else if (0 == strncmp(unit, "day", 3)) {
+		/* days */
+		return x * 1000000 * 60 * 60 * 24;
+	} else {
+		return 0;
+	}
+}
+
+char *ldmsd_time_us2str(unsigned long us)
+{
+	char *s = malloc(128);
+	if (!s)
+		return NULL;
+	unsigned long _us = us % 1000;
+	if (_us) {
+		/* The microsecond value is not a multiple of milliseconds
+		 * return the value in microseconds.
+		 */
+		snprintf(s, 128, "%lu us", us);
+		return s;
+	}
+	unsigned long ms = us / 1000;
+	unsigned long _ms = ms % 1000;
+	if (_ms) {
+		snprintf(s, 128, "%lu ms", ms);
+		return s;
+	}
+	unsigned long sec = ms / 1000;
+	unsigned long _sec = sec % 60;
+	if (_sec) {
+		snprintf(s, 128, "%lu s", sec);
+		return s;
+	}
+	unsigned long m = sec / 60;
+	unsigned long _m = m % 60;
+	if (_m) {
+		snprintf(s, 128, "%lu minutes", m);
+		return s;
+	}
+	unsigned long hr = m / 60;
+	unsigned long _hr = hr % 24;
+	if (_hr) {
+		snprintf(s, 128, "%lu hours", hr);
+		return s;
+	}
+	unsigned long day = hr / 24;
+	snprintf(s, 128, "%lu days", day);
+	return s;
+}
+
 const char *ldmsd_myhostname_get()
 {
 	return cmd_line_args.myhostname;
