@@ -22,12 +22,14 @@ AM_CFLAGS += -DPLUGINDIR='"$(pkglibdir)"'
 
 ldms_ls_SOURCES = ldms_ls.c
 ldms_ls_LDADD = -lldms -lzap -lmmalloc -lovis_util -lcoll \
-        -lpthread \
+        -ljson_util -lovis_third -lpthread \
         @LDFLAGS_GETTIME@
 
 lib_LTLIBRARIES += libldmsd_stream.la
 libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h ldmsd_request_util.c
-libldmsd_stream_la_LIBADD = -lldms
+libldmsd_stream_la_LIBADD = -lldms \
+	-lzap -lmmalloc -lovis_util -lcoll -ljson_util \
+	-lovis_event -lovis_ctrl -lovis_third -lm -ldl -lpthread
 
 lib_LTLIBRARIES += libldmsd_request.la
 libldmsd_request_la_SOURCES = ldmsd_request_util.c
@@ -40,7 +42,7 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_failover.c ldmsd_group.c ldmsd_auth.c
 ldmsd_LDADD = -lldms libldmsd_request.la libldmsd_stream.la \
 	-lzap -lmmalloc -lovis_util -lcoll -ljson_util \
-	-lovis_event -lpthread -lovis_ctrl -lm -ldl
+	-lovis_event -lovis_ctrl -lovis_third -lm -ldl -lpthread
 ldmsd_CFLAGS = $(AM_CFLAGS)
 ldmsd_LDFLAGS = $(AM_LDFLAGS) -rdynamic -pthread
 
@@ -51,8 +53,8 @@ endif
 
 ldmsctl_SOURCES = ldmsctl.c
 ldmsctl_LDADD = -lldms libldmsd_request.la \
-		-lovis_ctrl -lovis_util -lmmalloc -lcoll -lzap -ljson_util \
-		-lm -lpthread @LDFLAGS_GETTIME@ @LDFLAGS_READLINE@
+		-lovis_ctrl -lovis_util -lmmalloc -lzap -ljson_util -lcoll \
+		-lovis_third -lm -lpthread @LDFLAGS_GETTIME@ @LDFLAGS_READLINE@
 
 ldmsd_sos_init_SOURCES = ldmsd_sos_init.c
 ldmsd_sos_init_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
