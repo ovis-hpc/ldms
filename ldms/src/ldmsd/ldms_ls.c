@@ -873,7 +873,7 @@ int main(int argc, char *argv[])
 			}
 			if (!(flags & LDMS_LOOKUP_RE)) {
 				/* Take the given string literally */
-				match->str = malloc(strlen(argv[i] + 3));
+				match->str = malloc(strlen(argv[i]) + 3);
 				if (!match->str) {
 					perror("ldms: ");
 					exit(2);
