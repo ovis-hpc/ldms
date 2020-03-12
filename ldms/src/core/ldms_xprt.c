@@ -530,8 +530,11 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 			/* Start new dir message */
 			cnt = snprintf(reply->dir.json_data, len - hdrlen,
 				       "{ \"directory\" : [");
-			if (cnt >= len - hdrlen)
+			if (cnt >= len - hdrlen) {
+				rc = ENOMEM;
+				ref_put(&set->ref, "__ldms_find_local_set");
 				goto out;
+			}
 		}
 
 		if (0 == ldms_access_check(x, LDMS_ACCESS_READ, uid, gid, perm)) {
@@ -566,6 +569,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 				       "]}");
 			if (cnt >= len - hdrlen) {
 				rc = ENOMEM;
+				ref_put(&set->ref, "__ldms_find_local_set");
 				goto out;
 			}
 			reply->hdr.len = htonl(cnt + hdrlen);
@@ -576,6 +580,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 				x->log("%s: x %p: zap_send synchronous error. '%s'\n",
 				       __FUNCTION__, x, zap_err_str(zerr));
 		}
+		ref_put(&set->ref, "__ldms_find_local_set");
 	}
 	free(reply);
 	__ldms_empty_name_list(&name_list);
