@@ -1004,9 +1004,9 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 			goto err_1;
 		}
 		rc = __send_lookup_reply(x, set, req->hdr.xid, 0);
+		ref_put(&set->ref, "__ldms_find_local_set");
 		if (rc)
 			goto err_1;
-		ref_put(&set->ref, "__ldms_find_local_set");
 		return;
 	}
 
