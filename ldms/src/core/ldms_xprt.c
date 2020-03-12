@@ -562,9 +562,9 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 		if (last_set) {
 			/* If this is the last set, send the message */
 			cnt += snprintf(&reply->dir.json_data[cnt],
-				       len - hdrlen - last_cnt - 3,
+				       len - hdrlen - cnt,
 				       "]}");
-			if (cnt >= len - hdrlen - 3) {
+			if (cnt >= len - hdrlen) {
 				rc = ENOMEM;
 				goto out;
 			}
