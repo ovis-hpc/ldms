@@ -1497,6 +1497,8 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		dir->set_data[i].info_count = info_count;
 		lset = __ldms_find_local_set(dir->set_data[i].inst_name);
 		rc = __process_dir_set_info(lset, type, &dir->set_data[i], info_list);
+		if (lset)
+			ref_put(&lset->ref, "__ldms_find_local_set");
 		if (rc)
 			break;
 	}
