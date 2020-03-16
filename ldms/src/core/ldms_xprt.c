@@ -3409,16 +3409,6 @@ out:
 	return rbd;
 }
 
-void ldms_rbd_get(struct ldms_rbuf_desc *rbd, const char *name)
-{
-	ref_get(&rbd->ref, name);
-}
-
-void ldms_rbd_put(struct ldms_rbuf_desc *rbd, const char *name)
-{
-	ref_put(&rbd->ref, name);
-}
-
 void __ldms_free_rbd(struct ldms_rbuf_desc *rbd)
 {
 	ref_dump(&rbd->ref, __func__);
