@@ -3439,6 +3439,7 @@ void __ldms_free_rbd(struct ldms_rbuf_desc *rbd)
 		ref_put(&rbd->ref, "xprt_rbd");
 	}
 	LIST_REMOVE(rbd, set_link);
+	ref_put(&rbd->ref, "set_rbd_list");
 	ref_dump(&rbd->ref, __func__);
 	ref_put(&rbd->set->ref, "__ldms_alloc_rbd");
 }
