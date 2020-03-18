@@ -29,6 +29,12 @@ libaries_rtr_mmr_la_LDFLAGS = $(AM_LDFLAGS) -L@ARIES_LIBGPCD_LIBDIR@
 libaries_rtr_mmr_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libaries_rtr_mmr.la
 
+libaries_lbw_la_CFLAGS = -I$(ARIES_LIBGPCD_INCDIR)
+libaries_lbw_la_SOURCES = aries_lbw.c
+libaries_lbw_la_LDFLAGS = $(AM_LDFLAGS) -L@ARIES_LIBGPCD_LIBDIR@
+libaries_lbw_la_LIBADD = $(COMMON_LIBADD) -lgpcd
+pkglib_LTLIBRARIES += libaries_lbw.la
+
 endif
 
 
