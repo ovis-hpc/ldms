@@ -1,0 +1,5 @@
+# start the text based jobid sampler on node i assuming the JOBDATA macro
+# has been applied.
+load name=jobid
+config name=jobid producer=localhost${i} instance=localhost${i}/job_info component_id=${i} schema=job_info file=${TESTDIR}/job.data.${i}
+start name=jobid interval=1000000 offset=-200000

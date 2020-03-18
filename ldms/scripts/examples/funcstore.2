@@ -1,0 +1,19 @@
+load name=meminfo
+config name=meminfo producer=localhost${i} instance=localhost${i}/meminfo schema=meminfo component_id=${i} udata_default=${i} job_set=localhost${i}/job_info
+start name=meminfo interval=1000000 offset=0
+
+load name=vmstat
+config name=vmstat producer=localhost${i} instance=localhost${i}/vmstat schema=vmstat component_id=${i} udata_default=${i} job_set=localhost${i}/job_info
+start name=vmstat interval=1000000 offset=0
+
+load name=procstat
+config name=procstat producer=localhost${i} instance=localhost${i}/procstat schema=procstat component_id=${i} udata_default=${i} job_set=localhost${i}/job_info
+start name=procstat interval=1000000 offset=0
+
+# load llnl_lustre_client
+# config name=llnl_lustre_client producer=localhost${i} instance=localhost${i}/llnl_lustre_client schema=llnl_lustre_client component_id=${i} job_set=localhost${i}/job_info
+# 
+load name=procnetdev
+config name=procnetdev producer=localhost${i} instance=localhost${i}/procnetdev schema=procnetdev component_id=${i} udata_default=${i} job_set=localhost${i}/job_info ifaces=ens33
+start name=procnetdev interval=1000000 offset=0
+

@@ -1,0 +1,54 @@
+prdcr_add name=localhost2 host=localhost type=active xprt=${XPRT} port=${port2} interval=2000000
+prdcr_start name=localhost2
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+load name=store_csv
+config action=init name=store_csv path=${STOREDIR} altheader=0
+
+strgp_add name=store_csv_meminfo plugin=store_csv schema=meminfo container=csv
+strgp_prdcr_add name=store_csv_meminfo regex=.*
+strgp_start name=store_csv_meminfo
+
+strgp_add name=store_csv_procnetdev plugin=store_csv schema=procnetdev container=csv
+strgp_prdcr_add name=store_csv_procnetdev regex=.*
+strgp_start name=store_csv_procnetdev
+
+strgp_add name=store_csv_procstat plugin=store_csv schema=procstat container=csv
+strgp_prdcr_add name=store_csv_procstat regex=.*
+strgp_start name=store_csv_procstat
+
+strgp_add name=store_csv_vmstat plugin=store_csv schema=vmstat container=csv
+strgp_prdcr_add name=store_csv_vmstat regex=.*
+strgp_start name=store_csv_vmstat
+
+strgp_add name=store_csv_clock plugin=store_csv schema=clock container=csv
+strgp_prdcr_add name=store_csv_clock regex=.*
+strgp_start name=store_csv_clock
+
+strgp_add name=store_csv_jobi plugin=store_csv schema=job_info container=csv
+strgp_prdcr_add name=store_csv_jobi regex=.*
+strgp_start name=store_csv_jobi
+
+# fcnstore
+load name=store_function_csv
+config name=store_function_csv altheader=1 derivedconf=${DCFILE} path=${STOREDIR} ageusec=1200000 rolltype=1 rollover=5
+
+strgp_add name=store_function_meminfo plugin=store_function_csv schema=meminfo container=fcn
+strgp_prdcr_add name=store_function_meminfo regex=.*
+strgp_start name=store_function_meminfo
+
+strgp_add name=store_function_procstat plugin=store_function_csv schema=procstat container=fcn
+strgp_prdcr_add name=store_function_procstat regex=.*
+strgp_start name=store_function_procstat
+
+strgp_add name=store_function_vmstat plugin=store_function_csv schema=vmstat container=fcn
+strgp_prdcr_add name=store_function_vmstat regex=.*
+strgp_start name=store_function_vmstat
+
+strgp_add name=store_function_procnetdev plugin=store_function_csv schema=procnetdev container=fcn
+strgp_prdcr_add name=store_function_procnetdev regex=.*
+strgp_start name=store_function_procnetdev
+

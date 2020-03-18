@@ -1,0 +1,72 @@
+portbase=61076
+MESSAGE starting agg and one collectors
+JOBDATA $TESTDIR/job.data 1 2
+DCFILE=$TESTDIR/run/fcn.conf
+export DCFILE
+cat << EOF > $DCFILE
+# fixme for ncsa schemes
+meminfo MemAvailable RAW 1 MemAvailable 1 1
+meminfo MemFree RAW 1 MemFree 1 1
+meminfo Active RAW 1 Active 1 0
+meminfo MemTotal RAW 1 MemTotal 1 0
+meminfo mem_pct_active DIV_AB 2 Active,MemTotal 100 1
+
+# opa2 PortXmitData RAW 1 PortXmitData 1 1
+# opa2 PortRcvData RAW 1 PortRcvData 1 1
+# opa2 PortXmitPkts RAW 1 PortXmitPkts 1 1
+# opa2 PortRcvPkts RAW 1 PortRcvPkts 1 1
+
+# lustre stats plugin is offline
+# llnl_lustre_client read_bytes RAW 1 read_bytes 1 1
+# llnl_lustre_client write_bytes RAW 1 write_bytes 1 1
+# llnl_lustre_client open RAW 1 open 1 1
+# llnl_lustre_client close RAW 1 close 1 1
+# llnl_lustre_client seek RAW 1 seek 1 1
+# llnl_lustre_client getattr RAW 1 getattr 1 1
+# llnl_lustre_client create RAW 1 create 1 1
+
+procstat cores_up RAW 1 cores_up 1 1
+procstat user RAW 1 user 1 1
+procstat user_rate RATE 1 user 1 1
+procstat user_pct DIV_AB 2 user_rate,cores_up 100 1
+
+procstat nice RAW 1 nice 1 1
+procstat nice_rate RATE 1 nice 1 1
+procstat nice_pct DIV_AB 2 nice_rate,cores_up 100 1
+
+procstat sys RAW 1 sys 1 1
+procstat sys_rate RATE 1 sys 1 1
+procstat sys_pct DIV_AB 2 sys_rate,cores_up 100 1
+
+procstat idle RAW 1 idle 1 1
+procstat idle_rate RATE 1 idle 1 1
+procstat idle_pct DIV_AB 2 idle_rate,cores_up 100 1
+
+procstat iowait RAW 1 iowait 1 1
+procstat iowait_rate RATE 1 iowait 1 1
+procstat iowait_pct DIV_AB 2 iowait_rate,cores_up 100 1
+
+procstat irq RAW 1 irq 1 1
+procstat irq_rate RATE 1 irq 1 1
+procstat context_switches RAW 1 context_switches 1 1
+procstat context_switches_rate RATE 1 context_switches 1 1
+procstat procs_running RAW 1 procs_running 1 1
+procstat procs_blocked RAW 1 procs_blocked 1 1
+
+procnetdev rx_bytes#ens33  RAW 1 rx_bytes#ens33  1 1
+procnetdev rx_bytes_rate#ens33 RATE 1 rx_bytes#ens33 1 1
+procnetdev tx_bytes#ens33  RAW 1 tx_bytes#ens33  1 1
+procnetdev tx_bytes_rate#ens33 RATE 1 tx_bytes#ens33 1 1
+
+# unix load ?
+EOF
+
+#vgon
+VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=all --trace-children=yes"
+LDMSD -p prolog.jobidinfo `seq 2`
+#vgoff
+LDMS_LS 1
+LDMS_LS 2
+SLEEP 15
+KILL_LDMSD `seq 2`
+MESSAGE logs and data under ${TESTDIR}

@@ -49,6 +49,7 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#define PNAME "store_function_csv"
 
 #include <ctype.h>
 #include <sys/queue.h>
@@ -354,7 +355,7 @@ static char* allocStoreKey(const char* container, const char* schema){
       (strlen(container) == 0) ||
       (strlen(schema) == 0)){
     msglog(LDMSD_LERROR, "%s: container or schema null or empty. cannot create key\n",
-	   __FILE__);
+	   PNAME);
     return NULL;
   }
 
@@ -420,7 +421,7 @@ static int handleRollover(){
 					break;
 				default:
 					msglog(LDMSD_LDEBUG, "%s: Error: unexpected rolltype in store(%d)\n",
-					       __FILE__, rolltype);
+					       PNAME, rolltype);
 					break;
 				}
 
@@ -436,7 +437,7 @@ static int handleRollover(){
 				if (!nfp){
 					//we cant open the new file, skip
 					msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
-					       __FILE__, tmp_path);
+					       PNAME, tmp_path);
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
@@ -452,14 +453,14 @@ static int handleRollover(){
 					if (!nhfp){
 						fclose(nfp);
 						msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
-						       __FILE__, tmp_headerpath);
+						       PNAME, tmp_headerpath);
 					}
 				} else {
 					nhfp = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
 					if (!nhfp){
 						fclose(nfp);
 						msglog(LDMSD_LDEBUG, "%s: Error: cannot open file <%s>\n",
-						       __FILE__, tmp_path);
+						       PNAME, tmp_path);
 					}
 				}
 				if (!nhfp) {
@@ -539,28 +540,42 @@ static int __checkValidLine(const char* lbuf, const char* schema_name,
 //	       schema_name, metric_name, function_name, nmet, metric_csv,
 //	       scale, output);
 
+	if (rcl == EOF) {
+		const char *spc = lbuf;
+		while (*spc != '\0' && isspace(*spc)) {
+			spc++;
+		}
+		if (*spc == '\0') {
+			/* msglog(LDMSD_LDEBUG,"%s: (%d): Skipping empty line.\n", PNAME, iter); */
+			return -1;
+		}
+		msglog(LDMSD_LWARNING,"%s: (line %d) Parsing argument failure in file <%s> rc=%d. Skipping\n",
+		       PNAME, iter, lbuf, rcl);
+		return -1;
+	}
+
 	if ((strlen(schema_name) > 0) && (schema_name[0] == '#')){
 		// hashed lines are comments (means metric name cannot start with #)
 		return -1;
 	}
 
-	if (rcl != 7) {
-		msglog(LDMSD_LWARNING,"%s: (%d) Bad format in fct config file <%s> rc=%d. Skipping\n",
-		       __FILE__, iter, lbuf, rcl);
+	if (rcl != 7 ) {
+		msglog(LDMSD_LWARNING,"%s: (line %d) Not enough arguments in file <%s> rc=%d. Skipping\n",
+		       PNAME, iter, lbuf, rcl);
 		return -1;
 	}
 
 	if ((strlen(metric_name) == 0) || (strlen(function_name) == 0) ||
 	    (strlen(metric_csv) == 0)){
 		msglog(LDMSD_LWARNING,"%s: (%d) Bad vals in fct config file <%s>. Skipping\n",
-		       __FILE__, iter, lbuf);
+		       PNAME, iter, lbuf);
 		return -1;
 	}
 
 	func_t tf = enumFct(function_name);
 	if (tf == FCT_END) {
 		msglog(LDMSD_LWARNING,"%s: (%d) Bad func in fct config file <%s> <%s>. Skipping\n",
-		       __FILE__, iter, lbuf, function_name);
+		       PNAME, iter, lbuf, function_name);
 		return -1;
 	}
 
@@ -584,7 +599,7 @@ static int __checkValidLine(const char* lbuf, const char* schema_name,
 	if (badvart){
 		msglog(LDMSD_LWARNING,
 		       "%s: (%d) Wrong number of dependent metrics (%d) for func <%s> in config file <%s>. Skipping\n",
-		       __FILE__, iter, nmet, function_name, lbuf);
+		       PNAME, iter, nmet, function_name, lbuf);
 		return -1;
 	}
 
@@ -715,7 +730,7 @@ static struct derived_data* createDerivedData(const char* metric_name,
 		if (count == tmpder->nvars){
 			msglog(LDMSD_LERROR,
 			       "%s: Too many input vars for input %s. expected %d on var %d\n",
-			       __FILE__, metric_name, tmpder->nvars, count);
+			       PNAME, metric_name, tmpder->nvars, count);
 			goto err;
 		}
 
@@ -759,7 +774,7 @@ static struct derived_data* createDerivedData(const char* metric_name,
 					const char* name = ldms_metric_name_get(set, metric_arry[matchidx]);
 					msglog(LDMSD_LERROR,
 					       "%s: unsupported type %d for base metric %s\n",
-					       __FILE__, (int)metric_type, name);
+					       PNAME, (int)metric_type, name);
 					goto err;
 				}
 			}
@@ -782,7 +797,7 @@ static struct derived_data* createDerivedData(const char* metric_name,
 		if (tmpder->varidx[count].i == -1){
 			msglog(LDMSD_LERROR,
 			       "%s: Cannot find matching index for <%s>\n",
-			       __FILE__, pch);
+			       PNAME, pch);
 			goto err;
 		}
 		count++;
@@ -794,7 +809,7 @@ static struct derived_data* createDerivedData(const char* metric_name,
 	if (count != tmpder->nvars){
 		msglog(LDMSD_LERROR,
 		       "%s: inconsistent specification for nvars for metric %s. expecting %d got %d\n",
-		       __FILE__, metric_name, tmpder->nvars, count);
+		       PNAME, metric_name, tmpder->nvars, count);
 		goto err;
 	}
 
@@ -802,7 +817,7 @@ static struct derived_data* createDerivedData(const char* metric_name,
 	if (calcDimValidate(tmpder) != 0){
 		msglog(LDMSD_LERROR,
 		       "%s: Invalid dimensionality support for metric %s\n",
-		       __FILE__, metric_name);
+		       PNAME, metric_name);
 		goto err;
 	}
 
@@ -855,7 +870,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 	//Dont yet have a way to determine which of the handles a certain metric will be associated with
 
 	msglog(LDMSD_LDEBUG, "%s: Function config file(s) is: <%s>\n",
-	       __FILE__, fname_s);
+	       PNAME, fname_s);
 
 	char* saveptr_o = NULL;
 	char* temp_o = strdup(fname_s);
@@ -867,12 +882,12 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 
 	while(fname != NULL){
 		msglog(LDMSD_LDEBUG, "%s: Parsing Function config file: <%s>\n",
-		       __FILE__, fname);
+		       PNAME, fname);
 
 		fp = fopen(fname, "r");
 		if (!fp) {
 			msglog(LDMSD_LERROR,"%s: Cannot open config file <%s>\n",
-			       __FILE__, fname);
+			       PNAME, fname);
 			return EINVAL;
 		}
 
@@ -883,7 +898,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 			//TODO: TOO many metrics. dynamically alloc
 			if (s_handle->numder == STORE_DERIVED_METRIC_MAX) {
 				msglog(LDMSD_LERROR,"%s: Too many metrics <%s>\n",
-				       __FILE__, fname);
+				       PNAME, fname);
 				rc = EINVAL;
 				break;
 			}
@@ -904,7 +919,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 			//only keep this item if the schema matches
 			if (strcmp(s_handle->schema, schema_name) != 0) {
 //				msglog(LDMSD_LDEBUG, "%s: (%d) <%s> rejecting schema <%s>\n",
-//				       __FILE__, iter, s_handle->store_key, schema_name);
+//				       PNAME, iter, s_handle->store_key, schema_name);
 				continue;
 			}
 
@@ -991,7 +1006,7 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
 	if (!bs && bt){
 		msglog(LDMSD_LERROR,
 		       "%s: Cannot have buffer type without buffer\n",
-		       __FILE__);
+		       PNAME);
 		return EINVAL;
 	}
 
@@ -999,14 +1014,14 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
 	if (tempbs < 0){
 		msglog(LDMSD_LERROR,
 		       "%s: Bad val for buffer %d\n",
-		       __FILE__, tempbs);
+		       PNAME, tempbs);
 		return EINVAL;
 	}
 	if ((tempbs == 0) || (tempbs == 1)){
 		if (bt){
 			msglog(LDMSD_LERROR,
 			       "%s: Cannot have no/autobuffer with buffer type\n",
-			       __FILE__);
+			       PNAME);
 			return EINVAL;
 		} else {
 			*rbs = tempbs;
@@ -1018,7 +1033,7 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
 	if (!bt){
 		msglog(LDMSD_LERROR,
 		       "%s: Cannot have buffer size with no buffer type\n",
-		       __FILE__);
+		       PNAME);
 		return EINVAL;
 	}
 
@@ -1026,7 +1041,7 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
 	if ((tempbt != 3) && (tempbt != 4)){
 		msglog(LDMSD_LERROR,
 		       "%s: Invalid buffer type %d\n",
-		       __FILE__, tempbt);
+		       PNAME, tempbt);
 		return EINVAL;
 	}
 
@@ -1133,7 +1148,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	root_path = strdup(value);
 	if (!root_path) {
-		msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
+		msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", PNAME);
 		pthread_mutex_unlock(&cfg_lock);
 		return ENOMEM;
 	}
@@ -1149,8 +1164,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	else
 		altheader = 0;
 
-	if (derivedconf)
+	if (derivedconf) {
 		free(derivedconf);
+		derivedconf = NULL;
+	}
 
 	if (dervalue)
 		derivedconf = strdup(dervalue);
@@ -1233,7 +1250,7 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 	/* Only called from Store which already has the lock */
 	if (s_handle == NULL){
 		msglog(LDMSD_LERROR, "%s: Null store handle. Cannot print header\n",
-			__FILE__);
+			PNAME);
 		return EINVAL;
 	}
 	s_handle->printheader = DONT_PRINT_HEADER;
@@ -1241,7 +1258,7 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 	FILE* fp = s_handle->headerfile;
 	if (!fp){
 		msglog(LDMSD_LERROR, "%s: Cannot print header for store_function_csv. No headerfile\n",
-			__FILE__);
+			PNAME);
 		return EINVAL;
 	}
 
@@ -1249,8 +1266,10 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 		rc = derivedConfig(derivedconf, s_handle, set, metric_arry, metric_count);
 		if (rc != 0) {
 			msglog(LDMSD_LERROR,"%s: derivedConfig failed for store_function_csv. \n",
-			       __FILE__);
+			       PNAME);
 			return rc;
+		} else {
+			msglog(LDMSD_LDEBUG,"%s: function_csv parsed %s\n", PNAME, derivedconf);
 		}
 	}
 
@@ -1300,7 +1319,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	skey = allocStoreKey(container, schema);
 	if (skey == NULL){
 	  msglog(LDMSD_LERROR, "%s: Cannot open store\n",
-		 __FILE__);
+		 PNAME);
 	  goto out;
 	}
 
@@ -1318,7 +1337,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		rc = mkdir(tmp_path, 0777);
 		if ((rc != 0) && (errno != EEXIST)){
 			msglog(LDMSD_LERROR, "%s: Error: cannot create dir '%s'\n",
-			       __FILE__, tmp_path);
+			       PNAME, tmp_path);
 			goto out;
 		}
 		/* New in v3: this is a name change */
@@ -1396,7 +1415,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	}
 	if (!s_handle->file) {
 		msglog(LDMSD_LERROR, "%s: Error %d opening the file %s.\n",
-		       __FILE__, errno, tmp_path);
+		       PNAME, errno, tmp_path);
 		goto err3;
 	}
 
@@ -1429,7 +1448,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 
 		if (!s_handle->headerfile){
 			msglog(LDMSD_LERROR, "%s: Error: Cannot open headerfile\n",
-			       __FILE__);
+			       PNAME);
 			goto err4;
 		}
 	}
@@ -1451,7 +1470,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		if (!found){
 			if (nstorekeys == (MAX_ROLLOVER_STORE_KEYS-1)){
 				msglog(LDMSD_LERROR, "%s: Error: Exceeded max store keys\n",
-				       __FILE__);
+				       PNAME);
 				goto err4;
 			} else {
 				storekeys[nstorekeys++] = strdup(skey);
@@ -1583,7 +1602,7 @@ static int calcDimValidate(struct derived_data* dd){
 		break;
 	default:
 		msglog(LDMSD_LERROR, "%s: Error - No code to validate function %s\n"
-		       __FILE__, fct);
+		       PNAME, fct);
 		return EINVAL;
 		break;
 	}
@@ -1856,7 +1875,7 @@ static int doRAWTERMFunc(ldms_set_t set, struct function_store_handle *s_handle,
  * in every logic branch.
  */
 static void token_error(func_t fct, const char *expected, int line) {
-	msglog(LDMSD_LERROR, "%s: unexpected func_t value %d, expected one of: at line %d. Did the function syntax expand?\n",__FILE__, fct, expected, line);
+	msglog(LDMSD_LERROR, "%s: unexpected func_t value %d, expected one of: at line %d. Did the function syntax expand?\n",PNAME, fct, expected, line);
 	exit(1);
 }
 
@@ -2620,7 +2639,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 	default:
 		//shouldnt happen
 		msglog(LDMSD_LERROR, "%s: bad function in calculation <%d>\n",
-		       __FILE__, fct);
+		       PNAME, fct);
 
 		*storevalid = 0;
 		*retvalid = 0;
@@ -2643,6 +2662,31 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 
 };
 
+static void destroy_datapoint(struct setdatapoint *dp, void *user)
+{
+	int numder = *((int*)user);
+	if (!dp)
+		return;
+	if (dp->datavals) {
+		int j;
+		for (j = 0; j < numder; j++){
+			if (dp->datavals[j].storevals) {
+				free(dp->datavals[j].storevals);
+				dp->datavals[j].storevals = NULL;
+			}
+			if (dp->datavals[j].returnvals) {
+				free(dp->datavals[j].returnvals);
+				dp->datavals[j].returnvals = NULL;
+			}
+		}
+	}
+	free(dp->datavals);
+	dp->datavals = NULL;
+	free(dp->ts);
+	dp->ts = NULL;
+	free(dp);
+}
+
 static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 			 int numder, struct derived_data** der,
 			 int* numsets, struct setdatapoint** rdp, int* firsttime){
@@ -2652,7 +2696,7 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 
 	if (rdp == NULL){
 		msglog(LDMSD_LERROR, "%s: arg to getDatapoint is NULL!\n",
-		       __FILE__);
+		       PNAME);
 		return EINVAL;
 	}
 
@@ -2666,7 +2710,7 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 		//create a container to hold it
 		dp = (struct setdatapoint*)malloc(sizeof(struct setdatapoint));
 		if (!dp) {
-			msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
+			msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", PNAME);
 			return ENOMEM;
 		}
 		dp->ts = NULL;
@@ -2680,7 +2724,7 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 	if (dp->ts == NULL){ //first time....
 		dp->ts = (struct ldms_timestamp*)malloc(sizeof (struct ldms_timestamp));
 		if (dp->ts == NULL) {
-			msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
+			msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", PNAME);
 			free(dp);
 			dp = NULL;
 			return ENOMEM;
@@ -2690,7 +2734,7 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 
 		dp->datavals = calloc(numder, sizeof(struct dinfo));
 		if (dp->datavals == NULL) {
-			msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
+			msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", PNAME);
 			free(dp->ts);
 			free(dp);
 			dp = NULL;
@@ -2728,7 +2772,7 @@ static int get_datapoint(idx_t* sets_idx, const char* instance_name,
 
 
 err:
-	msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", __FILE__);
+	msglog(LDMSD_LCRITICAL, "%s: ENOMEM\n", PNAME);
 	for (j = 0; j <= i; j++){
 		if (dp->datavals[j].storevals)
 			free(dp->datavals[j].storevals);
@@ -2771,7 +2815,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	pthread_mutex_lock(&s_handle->lock);
 	if (!s_handle->file){
 		msglog(LDMSD_LERROR, "%s: Cannot insert values for <%s>: file is closed\n",
-		       __FILE__, s_handle->path);
+		       PNAME, s_handle->path);
 		pthread_mutex_unlock(&s_handle->lock);
 		return EPERM;
 	}
@@ -2783,7 +2827,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	case FIRST_PRINT_HEADER:
 		rc = print_header_from_store(s_handle, set, metric_arry, metric_count);
 		if (rc != 0){
-			msglog(LDMSD_LERROR, "%s: Error in print_header: %d\n", __FILE__, rc);
+			msglog(LDMSD_LERROR, "%s: Error in print_header: %d\n", PNAME, rc);
 			s_handle->printheader = BAD_HEADER;
 			pthread_mutex_unlock(&s_handle->lock);
 			return rc;
@@ -2829,7 +2873,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	if ((double)prev.tv_sec*1000000+prev.tv_usec >=
 	    (double)curr.tv_sec*1000000+curr.tv_usec){
 		msglog(LDMSD_LDEBUG," %s: Time diff is <= 0 for set %s. Flagging\n",
-		       __FILE__, ldms_set_instance_name_get(set));
+		       PNAME, ldms_set_instance_name_get(set));
 		setflagtime = 1;
 	}
 	//always do this and write it out
@@ -2892,7 +2936,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 					rc = fprintf(s_handle->file, ",%" PRIu64, di->returnvals[j]);
 					if (rc < 0) {
 						msglog(LDMSD_LERROR,"%s: Error %d writing to '%s'\n",
-						       __FILE__, rc, s_handle->path);
+						       PNAME, rc, s_handle->path);
 						//FIXME: should this exit entirely from this store?
 						break;
 					} else {
@@ -2902,7 +2946,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 				rc = fprintf(s_handle->file, ",%d", (!di->returnvalid));
 				if (rc < 0)
 					msglog(LDMSD_LERROR,"%s: Error %d writing to '%s'\n",
-					       __FILE__, rc, s_handle->path);
+					       PNAME, rc, s_handle->path);
 				else
 					s_handle->byte_count += rc;
 			}
@@ -2948,7 +2992,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 {
 	struct function_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
-		msglog(LDMSD_LERROR,"%s: flush error.\n, __FILE__");
+		msglog(LDMSD_LERROR,"%s: flush error.\n, PNAME");
 		return -1;
 	}
 	pthread_mutex_lock(&s_handle->lock);
@@ -2973,7 +3017,7 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 
 	pthread_mutex_lock(&s_handle->lock);
 	msglog(LDMSD_LDEBUG,"%s: Closing store_csv with path <%s>\n",
-	       __FILE__, s_handle->path);
+	       PNAME, s_handle->path);
 	fflush(s_handle->file);
 	s_handle->store = NULL;
 	if (s_handle->path)
@@ -2996,17 +3040,17 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 		s_handle->der[i] = NULL;
 	}
 
-	s_handle->numder = 0;
-
 	if (s_handle->sets_idx) {
-		//FIXME: need someway to iterate thru this to get the ptrs to free them
+		idx_traverse(s_handle->sets_idx, (idx_cb_fn_t)destroy_datapoint, &s_handle->numder);
 		idx_destroy(s_handle->sets_idx);
 	}
+
+	s_handle->numder = 0;
 
 	idx_delete(store_idx, s_handle->store_key, strlen(s_handle->store_key));
 
 	for (i = 0; i < nstorekeys; i++){
-		if (strcmp(storekeys[i], s_handle->store_key) == 0){
+		if (storekeys[i] && strcmp(storekeys[i], s_handle->store_key) == 0){
 			free(storekeys[i]);
 			storekeys[i] = 0;
 			//note the space is still in the array
@@ -3042,6 +3086,7 @@ static struct ldmsd_store store_function_csv = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
+	msglog(LDMSD_LDEBUG, "Loaded store plugin %s\n", store_function_csv.base.name);
 	return &store_function_csv.base;
 }
 
