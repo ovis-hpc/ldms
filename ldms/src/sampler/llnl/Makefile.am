@@ -11,6 +11,7 @@ COMMON_LIBADD = $(CORE)/libldms.la \
 		@LDFLAGS_GETTIME@ -lovis_util -lcoll
 
 if ENABLE_JOBID
+AM_CFLAGS += -DENABLE_JOBID
 JOBID_LIBFLAGS = ../libjobid.la
 endif
 
