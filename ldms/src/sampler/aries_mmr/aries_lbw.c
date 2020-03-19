@@ -123,7 +123,7 @@ static ldmsd_msg_log_f msglog;
 static ldms_schema_t schema;
 static char *default_schema_name = "aries_lbw";
 
-/*/// BASIC USE FUNCTIONS ////// */
+/* BASIC USE FUNCTIONS */
 
 void split64(uint64_t val, uint64_t* top, uint64_t* bottom)
 {
@@ -138,7 +138,7 @@ void split64v2(uint64_t val, uint64_t* top, uint64_t* bottom)
 }
 
 
-/*/// BASIC GPCD FUNCTIONS ///// */
+/* BASIC GPCD FUNCTIONS */
 
 /**
  * Build linked list of tile performance counters we wish to get values for.
@@ -226,7 +226,7 @@ int writeCounter(uint64_t* val, char* met)
 	return 0;
 }
 
-/*/// LATENCY TEST FUNCTIONS ///// */
+/* LATENCY TEST FUNCTIONS */
 
 /**
   * Add all latency / bw events to the context
@@ -331,6 +331,10 @@ int readEvents()
 	return 0;
 }
 
+/**
+ * Calculate the Aries metrics from event values
+ * Send these metrics to the metric_set
+ */
 int calcAriesMetrics()
 {
 	union ldms_value v;
@@ -356,37 +360,20 @@ int calcAriesMetrics()
 			v.v_f = metrics4val;
 			ldms_metric_set(set, metric_no, &v);
 			metric_no++;
+			msglog(LDMSD_LDEBUG, "aries_lbw: \
+				Metric %d is %0.3f\n", i, metrics4val);
 		} else {
 			v.v_u64 = metrics[i].val;
 			ldms_metric_set(set, metric_no, &v);
 			metric_no++;
+			msglog(LDMSD_LDEBUG, "aries_lbw: \
+				Metric %d is %llu\n", i, metrics[i].val);
 		}
 	}
-
-	printf("LATENCY REPORT\n");
-	printf("Max response time: %llu (ms)\n", metrics[0].val);
-	printf("Min response time: %llu (ms)\n", metrics[1].val);
-	printf("Request-response packet-pairs: %llu\n", metrics[2].val);
-	printf("Sum of latencies across packet-pairs: %llu (ms) \n", metrics[3].val);
-	printf("Mean latency: %0.3f (ms)\n", metrics4val);
-	printf("Bin 0-1 ms: \t\t %llu \n", metrics[5].val);
-	printf("Bin 1-5 ms: \t\t %llu \n", metrics[6].val);
-	printf("Bin 5-10 ms: \t\t %llu \n", metrics[7].val);
-	printf("Bin 10-50 ms: \t\t %llu \n", metrics[8].val);
-	printf("Bin 50-100 ms: \t\t %llu \n", metrics[9].val);
-	printf("Bin 100-500 ms: \t %llu \n", metrics[10].val);
-	printf("Bin 500-1000 ms: \t %llu \n", metrics[11].val);
-	printf("Bin >1000 ms: \t\t %llu \n", metrics[12].val);
-	printf("Bin overflows: \t\t %llu \n", metrics[13].val);
-	printf("Req bytes sent: \t %llu \n", metrics[14].val);
-	printf("Req bytes rcvd: \t %llu \n", metrics[15].val);
-	printf("Rsp bytes rcvd: \t %llu \n", metrics[16].val);
 
 	return 0;
 }
 
-
-/*/// LDMS FUNCTIONS ///// */
 
 static int create_metric_set(base_data_t base)
 {
@@ -448,7 +435,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return EINVAL;
 	}
 
-	/* Ben creating context, disabling perms, setting histogram */
+	/* Creating context, disabling perms, setting histogram */
 	/* Check perms using histogram, retry if initial histogram set fails */
 	/* If two histograms fail, throw error to daemon and exit */
 	ctx = gpcd_create_context();
@@ -464,7 +451,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	rc = addEventsToContext();
 	if (rc != 0) {
-		msglog(LDMSD_LDEBUG, "aries_lbw: cannot run disable_perms\n");
+		msglog(LDMSD_LDEBUG, "aries_lbw: cannot add events to context\n");
 		return EINVAL;
 	}
 	/* Trying to set histogram, resetting perms if need be */
@@ -477,6 +464,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		if (rc != 0) {
 			msglog(LDMSD_LERROR, "aries_lbw: cannot set histogram\n");
 			return EINVAL;
+		} else {
+			msglog(LDMSD_LDEBUG, "aries_lbw: disabling perm again worked, \
+						ignore previous errors \n");
 		}
 	}
 
@@ -553,8 +543,7 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=aries_lbw" BASE_CONFIG_USAGE " [file=<file>] \n"
-	        "    <file>         File with bin values in csv format\n";
+	return  "config name=aries_lbw" BASE_CONFIG_USAGE " \n";
 }
 
 static struct ldmsd_sampler aries_lbw_plugin = {

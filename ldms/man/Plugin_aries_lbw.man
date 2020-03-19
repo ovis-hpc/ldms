@@ -1,0 +1,138 @@
+.\" Manpage for Plugin_aries_mmr
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "03 Mar 2020" "v4" "LDMS Plugin for the aries_lbw sampler."
+
+.SH NAME
+Plugin_aries_lbw - man page for the aries latency and bandwidth sampler
+
+.SH SYNOPSIS
+Within ldmsd_controller or in a configuration file:
+.br
+config name=aries_lbw producer=PRODUCER instance=INSTANCE [schema=SCHEMA] [component_id=COMPONENT_ID]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
+or a configuration file. 
+The aries_lbw sampler provides aries latency and bandwidth performance counter information. 
+The primary metrics provided come from the latency test described in the Cray Aries Hardware Counter document S-0045 on pages 16 and 17. 
+The plugin also samples the AR_NIC_ORB_PRF_REQ_BYTES_SENT, AR_NIC_RAT_PRF_REQ_BYTES_RCVD, and AR_NIC_ORB_PRF_RSP_BYTES_RCVD bandwidth counters. 
+
+.PP 
+Max response time, minimum response time, sum of latencies, and mean latency are reported in us and are only representative of network activity during the sampling interval. 
+The total packet pairs, request bytes sent, request bytes received, and response bytes received metrics are not the raw counter values but rather the difference of the raw counter between the beginning and end of a sampling period. 
+
+.PP 
+Bin metrics are pulled from the latency histogram counters. 
+Each bin represents a count of packets within a range of latencies during the sampling interval.  
+The bin metric names designate what their ranges are. 
+E.g. bin0-1 counts the number of packets with a latency between 0 us and 1 us during the sampling interval. 
+bin1000- counts all packets with a latency of 1000 us or greater. 
+The maximum latency that can be read is 2^32-1 microseconds or ~ 65 milliseconds. 
+binovf designates if any of the bins (which are 16 bit counters) overflowed. 
+A set bit 0 of binovf indicates bin0-1 overflowed etc. 
+These counters are not likely to be rolled over unless there is >26 seconds of continuous traffic.
+Test run with GPCNET with 60 second sampling interval did not result in overflows.  
+
+.PP
+The aries_lbw sampler depends on Cray's libgpcd, built with aries options. 
+This library is currently unreleased and you cannot build this sampler if you do not have the libraries and headers.
+If you have the code to build the library, be sure to build with
+.B CFLAGS=-fPIC
+
+.PP
+To build the aries_lbw sampler, build with the following flags:
+.B  --enable-aries_mmr
+.B  --with-aries-libgpcd=<full_path_to_libgpcd.a>,<full_path_to_lib_gpcd.h>
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+The aries_lbw plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
+
+.TP
+.BR config
+name=<plugin_name> 
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be aries_lbw.
+.TP
+schema=<sname>
+.br
+Optional schema name. It is intended that the same sampler on different nodes with different metrics have a different schema. This will default to 'aries_lbw' if not specified.
+.RE
+
+.SH NOTES
+.PP
+.IP \[bu] 
+It is unclear which bin a latency count falls in if it is exactly 1 us, 5 us, 10 us etc. 
+.IP \[bu]
+This is entirely independent of the cray_aries_r_sampler.
+.IP \[bu]
+At the moment, no functions of the data (either in the sampler or in a store) are supported.
+.IP \[bu]
+The sampler may change at any time.
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP Starting within ldmsd_controller or in a configuration file
+load name=aries_lbw
+.br
+config name=aries_lbw producer=localhost instance=localhost/aries_lbw schema=aries_lbw
+.br
+start name=aries_lbw interval=1000000
+.br
+
+.PP Output
+> ldms_ls
+localhost/aries_lbw: consistent, last update: Wed Mar 18 16:22:09 2020 -0600 [1620us]
+.br
+M u64        component_id                               0
+.br
+D u64        job_id                                     0
+.br
+D u64        app_id                                     0
+.br
+D u64        max_rsp_time                               2
+.br
+D u64        min_rsp_time                               0
+.br
+D u64        packet_pairs                               5445
+.br
+D u64        sum_latency                                3304
+.br
+D f32        mean_latency                               0.606795
+.br
+D u64        bin0-1                                     3301
+.br
+D u64        bin1-5                                     2144
+.br
+D u64        bin5-10                                    0
+.br
+D u64        bin10-50                                   0
+.br
+D u64        bin50-100                                  0
+.br
+D u64        bin100-500                                 0
+.br
+D u64        bin500-1000                                0
+.br
+D u64        bin1000-                                   0
+.br
+D u64        binovf                                     0
+.br
+D u64        req_bytes_sent                             305841
+.br
+D u64        req_bytes_rcvd                             232056
+.br
+D u64        rsp_bytes_rcvd                             0
+.br
+
+.fi
+
+
+.SH SEE ALSO
+ldmsd(8), ldms_sampler_base(7), Plugin_cray_sampler_variants(7), Plugin_aries_linkstatus(7), Plugin_aries_mmr(7), ldms_quickstart(7), ldmsd_controller(8)
