@@ -452,6 +452,7 @@ void mm_stats(struct mm_stat *s)
 	memset(s,0,sizeof(*s));
 	if (!mmr)
 		return;
+	pthread_mutex_lock(&mmr->lock);
 	s->size = mmr->size;
 	s->grain = mmr->grain;
 #ifdef MM_DEBUG
@@ -473,6 +474,7 @@ void mm_stats(struct mm_stat *s)
 		oldelt = NOMM_NEXT(oldelt);
 	}
 #endif
+	pthread_mutex_unlock(&mmr->lock);
 }
 
 int mm_format_stats(struct mm_stat *s, char *buf, size_t buflen)
