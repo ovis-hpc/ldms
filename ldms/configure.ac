@@ -106,6 +106,7 @@ OPTION_DEFAULT_ENABLE([procinterrupts], [ENABLE_PROCINTERRUPTS])
 OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([procsensors], [ENABLE_PROCSENSORS])
+OPTION_DEFAULT_ENABLE([loadavg], [ENABLE_LOADAVG])
 OPTION_DEFAULT_ENABLE([dstat], [ENABLE_DSTAT])
 OPTION_DEFAULT_ENABLE([procstat], [ENABLE_PROCSTAT])
 OPTION_DEFAULT_ENABLE([llnl-edac], [ENABLE_LLNL_EDAC])
@@ -485,6 +486,7 @@ OVIS_EXEC_SCRIPTS(
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 swig/Makefile
 		 src/store/Makefile src/sampler/Makefile
+		 src/sampler/loadavg/Makefile
 		 src/sampler/dstat/Makefile
 		 src/sampler/filesingle/Makefile
 		 src/sampler/lustre/Makefile

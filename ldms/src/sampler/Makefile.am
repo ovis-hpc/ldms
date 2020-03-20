@@ -245,6 +245,8 @@ if ENABLE_VMSTAT
 libvmstat_la_SOURCES = vmstat.c
 libvmstat_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS)
 pkglib_LTLIBRARIES += libvmstat.la
+
+SUBDIRS += loadavg
 endif
 
 if ENABLE_ATASMART
