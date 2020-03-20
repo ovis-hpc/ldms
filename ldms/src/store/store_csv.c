@@ -1873,6 +1873,10 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 		}
 	}
 
+	if (s_handle->schema)
+		free(s_handle->schema);
+	if (s_handle->container)
+		free(s_handle->container);
 	if (s_handle->store_key)
 		free(s_handle->store_key);
 	pthread_mutex_unlock(&s_handle->lock);
@@ -1925,4 +1929,5 @@ static void store_csv_fini()
 	pthread_mutex_destroy(&cfg_lock);
 	idx_destroy(store_idx);
 	LIB_DTOR_COMMON(PG);
+	free(root_path);
 }
