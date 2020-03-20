@@ -502,14 +502,12 @@ static int sample(struct ldmsd_sampler *self)
 		   First sample will be all zeros */
 		initLatency(init_vals);
 		firstsample = 0;
-		return 0;
 	} else {
 		readEvents();
 		calcAriesMetrics();
 		initLatency(init_vals);
-		return 0;
 	}
-out:
+	
 	base_sample_end(base);
 	return 0;
 
