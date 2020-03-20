@@ -93,6 +93,8 @@ static char* derivedconf = NULL;  //Mutliple derived files
 static int ageusec = -1;
 static int rollover;
 static int rolltype;
+static int flags_default = 1; // set to 0 to suppress all unrequested flags
+static int show_time_flag = 1; // set to 0 to suppress all unrequested flags
 /** ROLLTYPES documents rolltype and is used in help output. Also used for buffering. */
 #define ROLLTYPES \
 "                     1: wake approximately every rollover seconds and roll.\n" \
@@ -298,6 +300,7 @@ struct derived_data{ //the generic information about the derived metric
 	struct idx_type* varidx; // array of the indicies of the input vars for this func
 	double scale; //number to scale by. what should this type be?
 	int writeout;
+	int show_flag; // show nonzero or hide 0 the .Flag for this field.
 };
 /******/
 
@@ -310,6 +313,7 @@ struct function_store_handle { //these are per-schema
 	struct derived_data* der[STORE_DERIVED_METRIC_MAX]; /* these are about the derived metrics (independent of instance)
 							      TODO: dynamic. */
 	int numder; /* there are numder actual items in the der array */
+	int numshow; /* number of stored items in the der array */
 	idx_t sets_idx; /* to keep track of sets/data involved to do the diff (contains setdatapoint)
 			   key is the instance name of the set. There will be N entries in this index, where N = number
 			   of instances matching this schema (typically 1 per host aggregating from).
@@ -531,14 +535,14 @@ static void* rolloverThreadInit(void* m){
 static int __checkValidLine(const char* lbuf, const char* schema_name,
 			const char* metric_name, const char* function_name,
 			int nmet, char* metric_csv, double scale, int output,
-			int iter, int rcl){
+			int show_flag, int iter, int rcl){
 
 //NOTE: checking the existence of the dependent vars is done later
 
-//	msglog(LDMSD_LDEBUG, "read:%d (%d): <%s> <%s> <%s> <%d> <%s> <%lf> <%d>\n",
-//	       iter++, rcl,
-//	       schema_name, metric_name, function_name, nmet, metric_csv,
-//	       scale, output);
+	/*
+	msglog(LDMSD_LDEBUG, PNAME " CVL: %s\n", lbuf);
+	msglog(LDMSD_LDEBUG, PNAME " CVL: schema=%s metric=%s function=%s nmet=%d metric_csv=%s scale=%g output=%d show_flag=%d iter=%d rcl=%d\n", schema_name, metric_name, function_name, nmet, metric_csv, scale, output, show_flag, iter, rcl);
+	*/
 
 	if (rcl == EOF) {
 		const char *spc = lbuf;
@@ -559,8 +563,14 @@ static int __checkValidLine(const char* lbuf, const char* schema_name,
 		return -1;
 	}
 
-	if (rcl != 7 ) {
+	if (rcl < 7 ) {
 		msglog(LDMSD_LWARNING,"%s: (line %d) Not enough arguments in file <%s> rc=%d. Skipping\n",
+		       PNAME, iter, lbuf, rcl);
+		return -1;
+	}
+
+	if (rcl > 8) {
+		msglog(LDMSD_LWARNING,"%s: (line %d) Too many arguments in file <%s> rc=%d. Skipping\n",
 		       PNAME, iter, lbuf, rcl);
 		return -1;
 	}
@@ -682,7 +692,7 @@ static int calcDimValidate(struct derived_data* dd);
 static struct derived_data* createDerivedData(const char* metric_name,
 					      func_t tf,
 					      int nmet, const char* metric_csv,
-					      double scale, int output,
+					      double scale, int output, int show_flag,
 					      ldms_set_t set,
 					      int* metric_arry, size_t metric_count,
 					      int numder, struct derived_data** existder){
@@ -706,6 +716,7 @@ static struct derived_data* createDerivedData(const char* metric_name,
 	tmpder->dim = 0;
 	tmpder->scale = scale;
 	tmpder->writeout = output;
+	tmpder->show_flag = show_flag;
 
 	//get the variable dependencies
 
@@ -858,6 +869,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 	int nmet;
 	double scale;
 	int output;
+	int show_flag;
 
 	FILE *fp = NULL;
 
@@ -879,6 +891,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 
 	s_handle->parseconfig = 0;
 	s_handle->numder = 0;
+	s_handle->numshow = 0;
 
 	while(fname != NULL){
 		msglog(LDMSD_LDEBUG, "%s: Parsing Function config file: <%s>\n",
@@ -907,12 +920,20 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 			s = fgets(lbuf, sizeof(lbuf), fp);
 			if (!s)
 				break;
-			rcl = sscanf(lbuf, "%s %s %s %d %s %lf %d",
+			/* reset all scanf in/out variables so no pollution from previous call */
+			show_flag = flags_default;
+			scale = 1; /* default is flag on */
+			nmet = 0;
+			metric_name[0] = '\0';
+			schema_name[0] = '\0';
+			function_name[0] = '\0';
+			metric_csv[0] = '\0';
+			rcl = sscanf(lbuf, "%s %s %s %d %s %lf %d %d",
 				     schema_name, metric_name, function_name, &nmet,
-				     metric_csv, &scale, &output);
+				     metric_csv, &scale, &output, &show_flag);
 			iter++;
 			if (__checkValidLine(lbuf, schema_name, metric_name, function_name, nmet,
-					    metric_csv, scale, output, iter, rcl) != 0 ){
+					    metric_csv, scale, output, show_flag, iter, rcl) != 0 ){
 				continue;
 			}
 
@@ -926,7 +947,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 			func_t tf = enumFct(function_name);
 			struct derived_data* tmpder = createDerivedData(metric_name, tf,
 									nmet, metric_csv,
-									scale, output,
+									scale, output, show_flag,
 									set,
 									metric_arry, metric_count,
 									s_handle->numder,
@@ -937,6 +958,9 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 				tmpder->idx = s_handle->numder;
 				s_handle->der[s_handle->numder] = tmpder;
 				s_handle->numder++;
+				if (s_handle->der[s_handle->numder-1]->writeout) {
+					s_handle->numshow++;
+				}
 			} else {
 				msglog(LDMSD_LDEBUG, "store fct <%s> invalid spec for metric <%s> schema <%s> (%d): rejecting \n",
 				       s_handle->store_key, metric_name, schema_name, iter);
@@ -953,6 +977,9 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 	x_o = NULL;
 
 	printStructs(s_handle);
+	if (! s_handle->numshow)
+		msglog(LDMSD_LWARNING, PNAME ": no derived metrics for schema <%s>. "
+			"There will be no store output.\n", s_handle->schema);
 
 	return rc;
 }
@@ -992,7 +1019,6 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
  * configuration check for the buffer args
  */
 static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
-	int rc;
 	int tempbs;
 	int tempbt;
 
@@ -1082,6 +1108,29 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		msglog(LDMSD_LERROR, "store_function failed config_check\n");
 		pthread_mutex_unlock(&cfg_lock);
 		return rc;
+	}
+
+	value = av_value(avl, "flags_default");
+	if (value && value[0] == '0') {
+		msglog(LDMSD_LDEBUG, "all flags set to 0\n");
+		flags_default = 0;
+		show_time_flag = 0;
+	}
+
+	value = av_value(avl, "show_time_flag");
+	if (value) {
+		switch(value[0]) {
+		case '0':
+			show_time_flag = 0;
+			break;
+		case '1':
+			show_time_flag = 1;
+			break;
+		default:
+			msglog(LDMSD_LERROR, PNAME ": config: show_time_flag must be 0 or 1\n");
+			pthread_mutex_unlock(&cfg_lock);
+			return EINVAL;
+		}
 	}
 
 	value = av_value(avl, "buffer");
@@ -1182,11 +1231,12 @@ static void printStructs(struct function_store_handle *s_handle){
 
 	msglog(LDMSD_LDEBUG, "=========================================\n");
 	for (i = 0; i < s_handle->numder; i++){
-		msglog(LDMSD_LDEBUG, "Schema <%s> New metric <%s> idx %d writeout %d\n",
+		msglog(LDMSD_LDEBUG, "Schema <%s> New metric <%s> idx %d writeout %d show_flag %d\n",
 		       s_handle->schema,
 		       s_handle->der[i]->name,
 		       s_handle->der[i]->idx,
-		       s_handle->der[i]->writeout);
+		       s_handle->der[i]->writeout,
+		       s_handle->der[i]->show_flag);
 		msglog(LDMSD_LDEBUG, "\tfun: %s dim %d scale %g\n",
 		       func_def[s_handle->der[i]->fct].name,
 		       s_handle->der[i]->dim,
@@ -1216,6 +1266,7 @@ static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "    config name=store_function_csv [path=<path> altheader=<0|1>]\n"
 		"                rollover=<num> rolltype=<num>\n"
+		"                [flags_default=<0/1>] [show_time_flag=<0/1>]\n"
 		"                [buffer=<0/1/N> buffertype=<3/4>]\n"
                 "                 derivedconf=<fullpath> [ageusec=<sec>]\n"
 		"         - Set the root path for the storage of csvs and some parameters.\n"
@@ -1227,6 +1278,8 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                      Only applies for N > 1. Same as rolltypes.\n"
 		"         - rollover   Greater than zero; enables file rollover and sets interval\n"
 		"         - rolltype   [1-n] Defines the policy used to schedule rollover events.\n"
+		"         - flags_default   Show (1) or hide .Flag and TimeFlag for flags not explicitly given\n"
+		"         - show_time_flag   Show (1) or hide TimeFlag, overriding flags_default\n"
 		ROLLTYPES
 		"         - derivedconf Full path to derived config files. csv for multiple files.\n"
 		"         - ageusec     Set flag field if dt > this val in usec.\n"
@@ -1272,6 +1325,8 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 			msglog(LDMSD_LDEBUG,"%s: function_csv parsed %s\n", PNAME, derivedconf);
 		}
 	}
+	if (s_handle->numshow == 0)
+		goto out;
 
 
 	/* This allows optional loading a float (Time) into an int field and retaining usec as
@@ -1284,20 +1339,27 @@ static int print_header_from_store(struct function_store_handle *s_handle,
 	for (i = 0; i < s_handle->numder; i++){
 		if (s_handle->der[i]->writeout) {
 			if (s_handle->der[i]->dim == 1) {
-				fprintf(fp, ",%s,%s.Flag", s_handle->der[i]->name, s_handle->der[i]->name);
+				if (s_handle->der[i]->show_flag)
+					fprintf(fp, ",%s,%s.Flag", s_handle->der[i]->name, s_handle->der[i]->name);
+				else
+					fprintf(fp, ",%s", s_handle->der[i]->name);
 			} else {
 				for (j = 0; j < s_handle->der[i]->dim; j++)
 					fprintf(fp, ",%s.%d", s_handle->der[i]->name, j);
-				fprintf(fp, ",%s.Flag", s_handle->der[i]->name);
+				if (s_handle->der[i]->show_flag)
+					fprintf(fp, ",%s.Flag", s_handle->der[i]->name);
 			}
 		}
 	}
-	fprintf(fp, ",TimeFlag\n");
+	if (show_time_flag)
+		fprintf(fp, ",TimeFlag");
+	fprintf(fp, "\n");
 
 	/* Flush for the header, whether or not it is the data file as well */
 	fflush(fp);
 	fsync(fileno(fp));
 
+out:
 	fclose(s_handle->headerfile);
 	s_handle->headerfile = 0;
 
@@ -2811,12 +2873,14 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	s_handle = _s_handle;
 	if (!s_handle)
 		return EINVAL;
+	msglog(LDMSD_LDEBUG, PNAME ": store(%s)\n", s_handle->schema);
 
 	pthread_mutex_lock(&s_handle->lock);
 	if (!s_handle->file){
 		msglog(LDMSD_LERROR, "%s: Cannot insert values for <%s>: file is closed\n",
 		       PNAME, s_handle->path);
 		pthread_mutex_unlock(&s_handle->lock);
+		msglog(LDMSD_LDEBUG, PNAME ": store-out-nofile(%s)\n", s_handle->schema);
 		return EPERM;
 	}
 
@@ -2830,16 +2894,23 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 			msglog(LDMSD_LERROR, "%s: Error in print_header: %d\n", PNAME, rc);
 			s_handle->printheader = BAD_HEADER;
 			pthread_mutex_unlock(&s_handle->lock);
+			msglog(LDMSD_LDEBUG, PNAME ": store-out-badph(%s)\n", s_handle->schema);
 			return rc;
 		}
 		break;
 	case BAD_HEADER:
 		pthread_mutex_unlock(&s_handle->lock);
+		msglog(LDMSD_LDEBUG, PNAME ": store-out-bh(%s)\n", s_handle->schema);
 		return EINVAL;
 		break;
 	default:
 		//ok to continue
 		break;
+	}
+	if (!s_handle->numshow) {
+		pthread_mutex_unlock(&s_handle->lock);
+		msglog(LDMSD_LDEBUG, PNAME ": store-out-noshow(%s)\n", s_handle->schema);
+		return 0;
 	}
 
 	rc = get_datapoint(&(s_handle->sets_idx), ldms_set_instance_name_get(set),
@@ -2847,6 +2918,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 			   &(s_handle->numsets), &dp, &skip);
 	if (rc != 0){
 		pthread_mutex_unlock(&s_handle->lock);
+		msglog(LDMSD_LDEBUG, PNAME ": store-out-gdp(%s)\n", s_handle->schema);
 		return rc;
 	}
 
@@ -2928,6 +3000,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 			rvalid = doFunc(set, metric_arry,
 					dp, s_handle->der[i],
 					diff, setflagtime);
+			(void)rvalid;
 			//write it out, if its writeout and not skip
 			//FIXME: Should the writeout be moved in so its like doRAWTERMFunc ?
 			if (!skip && s_handle->der[i]->writeout){
@@ -2943,12 +3016,14 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 						s_handle->byte_count += rc;
 					}
 				}
-				rc = fprintf(s_handle->file, ",%d", (!di->returnvalid));
-				if (rc < 0)
-					msglog(LDMSD_LERROR,"%s: Error %d writing to '%s'\n",
-					       PNAME, rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
+				if (s_handle->der[i]->show_flag) {
+					rc = fprintf(s_handle->file, ",%d", (!di->returnvalid));
+					if (rc < 0)
+						msglog(LDMSD_LERROR,"%s: Error %d writing to '%s'\n",
+						       PNAME, rc, s_handle->path);
+					else
+						s_handle->byte_count += rc;
+				}
 			}
 		}
 	}
@@ -2962,7 +3037,9 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 			setflagtime = 1;
 
 	if (!skip){
-		fprintf(s_handle->file, ",%d\n", setflagtime); //NOTE: currently only setting flag based on time
+		if (show_time_flag)
+			fprintf(s_handle->file, ",%d", setflagtime); //NOTE: currently only setting flag based on time
+		fprintf(s_handle->file, "\n");
 		s_handle->byte_count += 1;
 		s_handle->store_count++;
 
@@ -2984,6 +3061,7 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	}
 
 	pthread_mutex_unlock(&s_handle->lock);
+	msglog(LDMSD_LDEBUG, PNAME ": store-out(%s)\n", s_handle->schema);
 
 	return 0;
 }
@@ -2995,9 +3073,12 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 		msglog(LDMSD_LERROR,"%s: flush error.\n, PNAME");
 		return -1;
 	}
+	msglog(LDMSD_LDEBUG, PNAME ": flush(%s)\n", s_handle->schema);
 	pthread_mutex_lock(&s_handle->lock);
-	fflush(s_handle->file);
+	if (s_handle->file)
+		fflush(s_handle->file);
 	pthread_mutex_unlock(&s_handle->lock);
+	msglog(LDMSD_LDEBUG, PNAME ": flush-out(%s)\n", s_handle->schema);
 
 	return 0;
 }
@@ -3015,18 +3096,20 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 		return;
 	}
 
+	msglog(LDMSD_LDEBUG, PNAME ": close(%s)\n", s_handle->schema);
 	pthread_mutex_lock(&s_handle->lock);
-	msglog(LDMSD_LDEBUG,"%s: Closing store_csv with path <%s>\n",
+	msglog(LDMSD_LDEBUG,"%s: Closing " PNAME " with path <%s>\n",
 	       PNAME, s_handle->path);
-	fflush(s_handle->file);
 	s_handle->store = NULL;
 	if (s_handle->path)
 		free(s_handle->path);
 	s_handle->path = NULL;
 	s_handle->ucontext = NULL;
-	if (s_handle->file)
+	if (s_handle->file) {
+		fflush(s_handle->file);
 		fclose(s_handle->file);
-	s_handle->file = NULL;
+		s_handle->file = NULL;
+	}
 	if (s_handle->headerfile)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
@@ -3057,6 +3140,7 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 			break;
 		}
 	}
+	msglog(LDMSD_LDEBUG, PNAME ": close-out(%s)\n", s_handle->schema);
 	if (s_handle->schema)
 		free(s_handle->schema);
 	if (s_handle->store_key)

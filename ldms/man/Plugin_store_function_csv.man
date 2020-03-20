@@ -22,7 +22,8 @@ the ldmsd_controller. The store_function_csv plugin is a CSV store.
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 .TP
 .BR config
-name=<plugin_name> path=<path> derivedconf=<confname>[ altheader=<0/!0> ageusec=<ageusec> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover>]
+name=<plugin_name> path=<path> derivedconf=<confname>[ altheader=<0/!0> ageusec=<ageusec> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover>] [flags_default=<0/1>] [show_time_flag=<0/1>]
+
 .br
 ldmsd_controller configuration line
 .RS
@@ -46,9 +47,25 @@ Default is the same file.If a separate file is used then, if the data file is ca
 If you choose a rollover option, the header file name will be postpended with the epochtime, similar to the data file, and a new one will be written
 at each rollover. Default is altheader=0.
 .TP
+flags_default=<0/1> 
+.br
+If set to 1 (the default), then any derived metric that does not specify the showflag option in the configuration file will have its corresponding .Flag included in the output. If set to 0, then any derived metric that does not specify the showflag option in the configuration file will have its corresponding .Flag excluded from the output. If set to 0 and show_time_flag is not set to 1, then TimeFlag is excluded from the output. The default value of flags_default is 1.
+.TP
+show_time_flag=<0/1>
+.br
+Include (1) or exclude (0) TimeFlag from the output data. If not specified, TimeFlag will be managed per the setting of flags_default.
+.TP
 ageusec=<ageusec>
 .br
 Set output data field Flag = 1 if the interval between two successive data reports for the same host's same metric set is greater than ageusec. (NOTE: in v3 this is now usec, not sec).
+.TP
+flags_default=<0/1>
+.br
+Hide(0) or show(1) .Flag fields indicating invalid derived data. The default is ignored if flagging is specified in the input line for a derived metric. The value of flags_default is 1 if not configured.
+.TP
+show_time_flag=<0/1>
+.br
+Hide(0) or show(1) TimeFlag. The default is 1 and is overriden by flags_default unless show_time_flag is set.
 .TP
 buffer=<0/1/N>
 .br
@@ -86,7 +103,7 @@ Rollover value controls the frequency of rollover (e.g., number of bytes, number
 
 
 .SH STORE_FUNCTION_CSV CONFIGURATION FILE
-Format: schema new_metricname function num_dependent_metrics csv_list_of_dependent_metrics scale|thresh writeout.
+Format: schema new_metricname function num_dependent_metrics csv_list_of_dependent_metrics scale|thresh writeout [showflag].
 .PP
 Whitespace delimits the fields in the configuration file; commas delimit the metric this new metric is dependent upon. One metric per line.
 No spaces are allowed within a metric name.
@@ -131,7 +148,10 @@ Use 1 if you want no scale. Currently the details of the scale multiplication ar
 writeout
 .br
 Values of either 0 or 1 depending on whether or not this metric should be written out to the store (it may be an intermediate
-in a calculation).
+.TP
+showflag
+.br
+Values of either 0 or 1 depending on whether or not the calculation status flag should be shown as $metric.Flag in the output.
 .RE
 
 .PP

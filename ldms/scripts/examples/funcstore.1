@@ -20,6 +20,10 @@ strgp_add name=store_csv_procstat plugin=store_csv schema=procstat container=csv
 strgp_prdcr_add name=store_csv_procstat regex=.*
 strgp_start name=store_csv_procstat
 
+strgp_add name=store_csv_loadavg plugin=store_csv schema=loadavg container=csv
+strgp_prdcr_add name=store_csv_loadavg regex=.*
+strgp_start name=store_csv_loadavg
+
 strgp_add name=store_csv_vmstat plugin=store_csv schema=vmstat container=csv
 strgp_prdcr_add name=store_csv_vmstat regex=.*
 strgp_start name=store_csv_vmstat
@@ -34,7 +38,7 @@ strgp_start name=store_csv_jobi
 
 # fcnstore
 load name=store_function_csv
-config name=store_function_csv altheader=1 derivedconf=${DCFILE} path=${STOREDIR} ageusec=1200000 rolltype=1 rollover=5
+config name=store_function_csv altheader=1 derivedconf=${DCFILE} path=${STOREDIR} ageusec=1200000 rolltype=1 rollover=5 flags_default=0
 
 strgp_add name=store_function_meminfo plugin=store_function_csv schema=meminfo container=fcn
 strgp_prdcr_add name=store_function_meminfo regex=.*
@@ -47,6 +51,10 @@ strgp_start name=store_function_procstat
 strgp_add name=store_function_vmstat plugin=store_function_csv schema=vmstat container=fcn
 strgp_prdcr_add name=store_function_vmstat regex=.*
 strgp_start name=store_function_vmstat
+
+strgp_add name=store_function_loadavg plugin=store_function_csv schema=loadavg container=fcn
+strgp_prdcr_add name=store_function_loadavg regex=.*
+strgp_start name=store_function_loadavg
 
 strgp_add name=store_function_procnetdev plugin=store_function_csv schema=procnetdev container=fcn
 strgp_prdcr_add name=store_function_procnetdev regex=.*

@@ -2,6 +2,10 @@ load name=meminfo
 config name=meminfo producer=localhost${i} instance=localhost${i}/meminfo schema=meminfo component_id=${i} udata_default=${i} job_set=localhost${i}/job_info
 start name=meminfo interval=1000000 offset=0
 
+load name=loadavg
+config name=loadavg producer=localhost${i} instance=localhost${i}/loadavg schema=loadavg component_id=${i} udata_default=${i} job_set=localhost${i}/job_info
+start name=loadavg interval=1000000 offset=0
+
 load name=vmstat
 config name=vmstat producer=localhost${i} instance=localhost${i}/vmstat schema=vmstat component_id=${i} udata_default=${i} job_set=localhost${i}/job_info
 start name=vmstat interval=1000000 offset=0
