@@ -671,6 +671,8 @@ void free_req_cmd_ctxt(ldmsd_req_cmd_t rcmd)
 		req_ctxt_ref_put(rcmd->org_reqc);
 	if (rcmd->reqc)
 		req_ctxt_ref_put(rcmd->reqc);
+	if (rcmd->reqc->xprt->cleanup_fn)
+		rcmd->reqc->xprt->cleanup_fn(rcmd->reqc->xprt);
 	free(rcmd);
 }
 
@@ -5441,6 +5443,7 @@ static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
 		goto out;
 	rc = ldmsd_req_cmd_attr_term(rcmd);
  out:
+	ldmsd_req_cmd_free(rcmd);
 	return rc;
 }
 
@@ -5487,9 +5490,7 @@ int ldmsd_auth_opt_add(struct attr_value_list *auth_attrs, char *name, char *val
 static int listen_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_listen_t listen;
-	int rc;
 	char *xprt, *port, *host, *auth, *attr_name;
-	char *str, *ptr1, *ptr2, *lval, *rval;
 	unsigned short port_no = -1;
 	xprt = port = host = auth = NULL;
 
