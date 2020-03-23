@@ -206,7 +206,7 @@ static char* allocStoreKey(const char* container, const char* schema){
       (strlen(container) == 0) ||
       (strlen(schema) == 0)){
     msglog(LDMSD_LERROR, "%s: container or schema null or empty. cannot create key\n",
-	   __FILE__);
+	   PNAME);
     return NULL;
   }
 
@@ -273,7 +273,7 @@ static int handleRollover(struct csv_plugin_static *cps){
 					break;
 				default:
 					msglog(LDMSD_LDEBUG, "%s: Error: unexpected rolltype in store(%d)\n",
-					       __FILE__, rolltype);
+					       PNAME, rolltype);
 					break;
 				}
 
@@ -290,7 +290,7 @@ static int handleRollover(struct csv_plugin_static *cps){
 				if (!nfp){
 					//we cant open the new file, skip
 					msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
-					       __FILE__, tmp_path);
+					       PNAME, tmp_path);
 					pthread_mutex_unlock(&s_handle->lock);
 					continue;
 				}
@@ -312,7 +312,7 @@ static int handleRollover(struct csv_plugin_static *cps){
 					if (!nhfp){
 						fclose(nfp);
 						msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
-						       __FILE__, tmp_headerpath);
+						       PNAME, tmp_headerpath);
 					} else {
 						ch_output(nhfp, tmp_headerpath, CSHC(s_handle), cps);
 					}
@@ -326,7 +326,7 @@ static int handleRollover(struct csv_plugin_static *cps){
 					if (!nhfp){
 						fclose(nfp);
 						msglog(LDMSD_LERROR, "%s: Error: cannot open file <%s>\n",
-						       __FILE__, tmp_path);
+						       PNAME, tmp_path);
 					} else {
 						ch_output(nhfp, tmp_path, CSHC(s_handle), cps);
 					}
@@ -496,7 +496,7 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	//have to do this after config_init
 	if (cfgstate != CSV_CFGINIT_DONE){
 		msglog(LDMSD_LERROR, "%s: Error: wrong state for config_container %d\n",
-		       __FILE__, cfgstate);
+		       PNAME, cfgstate);
 		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
 	}
@@ -512,14 +512,14 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 
 	cvalue = av_value(avl, "container");
 	if (!cvalue){
-	  msglog(LDMSD_LERROR, "%s: Error: config missing container name\n", __FILE__);
+	  msglog(LDMSD_LERROR, "%s: Error: config missing container name\n", PNAME);
 	  pthread_mutex_unlock(&cfg_lock);
 	  return EINVAL;
 	}
 
 	svalue = av_value(avl, "schema");
 	if (!svalue){
-	  msglog(LDMSD_LERROR, "%s: Error: config missing schema name\n", __FILE__);
+	  msglog(LDMSD_LERROR, "%s: Error: config missing schema name\n", PNAME);
 	  pthread_mutex_unlock(&cfg_lock);
 	  return EINVAL;
 	}
@@ -527,7 +527,7 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	skey = allocStoreKey(cvalue, svalue);
 	if (skey == NULL){
 	  msglog(LDMSD_LERROR, "%s: Cannot create storekey for custom_config\n",
-		 __FILE__);
+		 PNAME);
 	  pthread_mutex_unlock(&cfg_lock);
 	  return EINVAL;
 	}
@@ -545,7 +545,7 @@ static int config_custom(struct attr_value_list *kwl, struct attr_value_list *av
 	if (idx < 0){
 		if (nspecialkeys > (MAX_ROLLOVER_STORE_KEYS-1)){
 			msglog(LDMSD_LERROR, "%s: Error store_csv: Exceeded max store keys\n",
-				__FILE__);
+				PNAME);
 			if (skey)
 				  free(skey);
 			pthread_mutex_unlock(&cfg_lock);
@@ -597,7 +597,7 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
 	if (!bs && bt){
 		msglog(LDMSD_LERROR,
 		       "%s: Cannot have buffer type without buffer\n",
-		       __FILE__);
+		       PNAME);
 		return EINVAL;
 	}
 
@@ -605,14 +605,14 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
 	if (tempbs < 0){
 		msglog(LDMSD_LERROR,
 		       "%s: Bad val for buffer %d\n",
-		       __FILE__, tempbs);
+		       PNAME, tempbs);
 		return EINVAL;
 	}
 	if ((tempbs == 0) || (tempbs == 1)){
 		if (bt){
 			msglog(LDMSD_LERROR,
 			       "%s: Cannot have no/autobuffer with buffer type\n",
-			       __FILE__);
+			       PNAME);
 			return EINVAL;
 		} else {
 			*rbs = tempbs;
@@ -624,7 +624,7 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
 	if (!bt){
 		msglog(LDMSD_LERROR,
 		       "%s: Cannot have buffer size with no buffer type\n",
-		       __FILE__);
+		       PNAME);
 		return EINVAL;
 	}
 
@@ -632,7 +632,7 @@ static int config_buffer(char *bs, char *bt, int *rbs, int *rbt){
 	if ((tempbt != 3) && (tempbt != 4)){
 		msglog(LDMSD_LERROR,
 		       "%s: Invalid buffer type %d\n",
-		       __FILE__, tempbt);
+		       PNAME, tempbt);
 		return EINVAL;
 	}
 
@@ -670,7 +670,7 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	if (cfgstate != CSV_CFGINIT_PRE){ //Cannot redo since might have already created the roll thread.
 	  msglog(LDMSD_LERROR, "%s: wrong state for config_init %d\n",
-		       __FILE__, cfgstate);
+		       PNAME, cfgstate);
 		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
 	}
@@ -685,7 +685,7 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 
 	if (av_value(avl, "container") || av_value(avl, "schema")) {
 		msglog(LDMSD_LDEBUG, "%s: config action=init: schema= and container= are ignored.\n",
-		       __FILE__);
+		       PNAME);
 	}
 
 	value = av_value(avl, "buffer");
@@ -702,7 +702,7 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	value = av_value(avl, "path");
 	if (!value) {
 		msglog(LDMSD_LERROR, "%s: config init: path option required\n",
-		       __FILE__);
+		       PNAME);
 		cfgstate = CSV_CFGINIT_FAILED;
 		pthread_mutex_unlock(&cfg_lock);
 		return EINVAL;
@@ -719,7 +719,7 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 		if (ragain < 0) {
 			cfgstate = CSV_CFGINIT_FAILED;
 			msglog(LDMSD_LERROR, "%s: Error: bad rollagain value %d from %s\n",
-			       __FILE__, ragain, rvalue);
+			       PNAME, ragain, rvalue);
 			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
 		}
@@ -731,7 +731,7 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 		if (roll < 0) {
 			cfgstate = CSV_CFGINIT_FAILED;
 			msglog(LDMSD_LERROR, "%s: Error: bad rollover value %d\n",
-			       __FILE__, roll);
+			       PNAME, roll);
 			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
 		}
@@ -759,7 +759,7 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 			msglog(LDMSD_LERROR,
 				"%s: rollmethod=5 needs rollagain > max(rollover,10)\n");
 			msglog(LDMSD_LERROR, "%s: rollagain=%d rollover=%d\n",
-			       __FILE__, roll, ragain);
+			       PNAME, roll, ragain);
 			cfgstate = CSV_CFGINIT_FAILED;
 			pthread_mutex_unlock(&cfg_lock);
 			return EINVAL;
@@ -792,7 +792,7 @@ static int config_init(struct attr_value_list *kwl, struct attr_value_list *avl,
 	if (!root_path) {
 		cfgstate = CSV_CFGINIT_FAILED;
 		msglog(LDMSD_LERROR, "%s: Error: missing root_path\n",
-		       __FILE__, roll);
+		       PNAME, roll);
 		pthread_mutex_unlock(&cfg_lock);
 		return ENOMEM;
 	}
@@ -828,7 +828,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char* action = av_value(avl, "action");
 	if (!action){
 		msglog(LDMSD_LERROR, "%s: Error: missing required keyword 'action'\n",
-		       __FILE__);
+		       PNAME);
 		return EINVAL;
 	}
 
@@ -837,13 +837,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		     sizeof(*kw), kw_comparator);
 	if (!kw) {
 		msglog(LDMSD_LERROR, "%s: Invalid configuration keyword action '%s'\n",
-		       __FILE__, action);
+		       PNAME, action);
 		return EINVAL;
 	}
 	rc = kw->action(kwl, avl, NULL);
 	if (rc) {
 	  msglog(LDMSD_LERROR, "%s: error in '%s' %d\n",
-		 __FILE__, action, rc);
+		 PNAME, action, rc);
 	  return rc;
 	}
 
@@ -917,7 +917,7 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 
 	if (s_handle == NULL){
 		msglog(LDMSD_LERROR, "%s: Null store handle. Cannot print header\n",
-			__FILE__);
+			PNAME);
 		return EINVAL;
 	}
 	s_handle->printheader = DONT_PRINT_HEADER;
@@ -925,7 +925,7 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 	fp = s_handle->headerfile;
 	if (!fp){
 		msglog(LDMSD_LERROR, "%s: Cannot print header for store_csv. No headerfile\n",
-			__FILE__);
+			PNAME);
 		return EINVAL;
 	}
 
@@ -1034,7 +1034,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	skey = allocStoreKey(container, schema);
 	if (skey == NULL){
 	  msglog(LDMSD_LERROR, "%s: Cannot open store\n",
-		 __FILE__);
+		 PNAME);
 	  goto out;
 	}
 
@@ -1122,7 +1122,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	char *dpath = strdup(s_handle->path);
 	if (!dpath) {
 		msglog(LDMSD_LERROR,"%s: strdup failed creating directory '%s'\n",
-			 __FILE__, errno, s_handle->path);
+			 PNAME, errno, s_handle->path);
 		goto err2;
 	}
 	sprintf(dpath, "%s/%s", root_path, container);
@@ -1130,7 +1130,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	free(dpath);
 	if ((rc != 0) && (errno != EEXIST)) {
 		msglog(LDMSD_LERROR,"%s: Failure %d creating directory containing '%s'\n",
-			 __FILE__, errno, path);
+			 PNAME, errno, path);
 		goto err2;
 	}
 
@@ -1154,7 +1154,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	}
 	if (!s_handle->file){
 		msglog(LDMSD_LERROR, "%s: Error %d opening the file %s.\n",
-		       __FILE__, errno, s_handle->path);
+		       PNAME, errno, s_handle->path);
 		goto err2;
 	}
 	ch_output(s_handle->file, tmp_path, CSHC(s_handle), &PG);
@@ -1192,7 +1192,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 
 		if (!s_handle->headerfile) {
 			msglog(LDMSD_LERROR, "%s: Error: Cannot open headerfile\n",
-			       __FILE__);
+			       PNAME);
 			goto err3;
 		}
 		ch_output(s_handle->headerfile, tmp_path, CSHC(s_handle), &PG);
@@ -1218,7 +1218,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		if (!found){
 			if (nstorekeys == (MAX_ROLLOVER_STORE_KEYS-1)){
 				msglog(LDMSD_LDEBUG, "%s: Error: Exceeded max store keys\n",
-				       __FILE__);
+				       PNAME);
 				goto err4;
 			} else {
 			  storekeys[nstorekeys++] = strdup(skey);
@@ -1277,7 +1277,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 	pthread_mutex_lock(&s_handle->lock);
 	if (!s_handle->file){
 		msglog(LDMSD_LERROR,"%s: Cannot insert values for <%s>: file is NULL\n",
-		       __FILE__, s_handle->path);
+		       PNAME, s_handle->path);
 		pthread_mutex_unlock(&s_handle->lock);
 		/* FIXME: will returning an error stop the store? */
 		return EPERM;
@@ -1292,7 +1292,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 		rc = print_header_from_store(s_handle, set, metric_array, metric_count);
 		if (rc){
 			msglog(LDMSD_LERROR, "%s: %s cannot print header: %d. Not storing\n",
-			       __FILE__, s_handle->store_key, rc);
+			       PNAME, s_handle->store_key, rc);
 			s_handle->printheader = BAD_HEADER;
 			pthread_mutex_unlock(&s_handle->lock);
 			/* FIXME: will returning an error stop the store? */
@@ -1822,7 +1822,7 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 {
 	struct csv_store_handle *s_handle = _s_handle;
 	if (!s_handle) {
-		msglog(LDMSD_LERROR,"%s: flush error.\n", __FILE__);
+		msglog(LDMSD_LERROR,"%s: flush error.\n", PNAME);
 		return -1;
 	}
 	pthread_mutex_lock(&s_handle->lock);
@@ -1848,7 +1848,7 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 
 	pthread_mutex_lock(&s_handle->lock);
 	msglog(LDMSD_LDEBUG,"%s: Closing store_csv with path <%s>\n",
-	       __FILE__, s_handle->path);
+	       PNAME, s_handle->path);
 	fflush(s_handle->file);
 	s_handle->store = NULL;
 	if (s_handle->path)
