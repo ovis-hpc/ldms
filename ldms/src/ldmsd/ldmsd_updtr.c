@@ -388,16 +388,24 @@ static void prdcrset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	pthread_mutex_lock(&prd_set->lock);
 	if (status != LDMS_LOOKUP_OK) {
 		status = ((int)status < 0 ? -status : status);
-		if ((int)status == ENOMEM) {
+		switch ((int)status) {
+		case ENOMEM:
 			ldmsd_log(LDMSD_LERROR,
-				"Error %d in lookup callback for set '%s' "
+				"Out of memory error (%d) in lookup callback "
+				"for set '%s'. "
 				"Consider changing the -m parameter on the "
 				"command line to a bigger value. "
 				"The current value is %s\n",
 				status, prd_set->inst_name,
 				ldmsd_get_max_mem_sz_str());
-
-		} else {
+			break;
+		case EEXIST:
+			ldmsd_log(LDMSD_LERROR,
+				  "Lookup error, set '%s' existed.\n",
+				  prd_set->inst_name
+				 );
+			break;
+		default:
 			ldmsd_log(LDMSD_LERROR,
 				  "Error %d in lookup callback for set '%s'\n",
 					  status, prd_set->inst_name);

@@ -2104,6 +2104,9 @@ out:
 	return rc;
 }
 
+
+void __ldms_set_delete(struct ldms_set *set);
+
 static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 				     struct ldms_xprt *x,
 				     struct ldms_rendezvous_msg *lm)
@@ -2130,42 +2133,50 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	if (lset) {
 		ldms_name_t lschema = get_schema_name(lset->meta);
 		if (0 != strcmp(schema_name->name, lschema->name)) {
-			ref_put(&lset->ref, "__ldms_find_local_set");
 			/* Two sets have the same name but different schema */
 			rc = EINVAL;
-			goto unlock_out;
+			goto lset_done;
 		}
 
 		rbd = ldms_lookup_rbd(x, lset);
 		if (rbd) {
 			if (!(ctxt->lookup.flags & LDMS_LOOKUP_SET_INFO)) {
+				/* Do not allow re-lookup */
 				rc = EEXIST;
 			} else {
+				/* allow only re-lookup to update SET_INFO */
 				pthread_mutex_lock(&lset->lock);
 				rc = __process_lookup_set_info(lset,
 					&inst_name->name[inst_name->len]);
 				pthread_mutex_unlock(&lset->lock);
 			}
-			ref_put(&lset->ref, "__ldms_find_local_set");
-			goto unlock_out;
+		} else {
+			/* The set existed either by created locally or from
+			 * other transport. */
+			rc = EEXIST;
 		}
-	} else {
-		lset = __ldms_create_set(inst_name->name, schema_name->name,
-				       ntohl(lu->meta_len), ntohl(lu->data_len),
-				       ntohl(lu->card),
-				       ntohl(lu->array_card),
-				       LDMS_SET_F_REMOTE);
-		if (!lset) {
-			rc = errno;
-			goto unlock_out;
-		}
+	lset_done:
+		ref_put(&lset->ref, "__ldms_find_local_set");
+		goto unlock_out;
+	}
+
+	/* else, record new ldms_set */
+
+	lset = __ldms_create_set(inst_name->name, schema_name->name,
+			       ntohl(lu->meta_len), ntohl(lu->data_len),
+			       ntohl(lu->card),
+			       ntohl(lu->array_card),
+			       LDMS_SET_F_REMOTE);
+	if (!lset) {
+		rc = errno;
+		goto unlock_out;
 	}
 
 	pthread_mutex_lock(&lset->lock);
 	rc = __process_lookup_set_info(lset, &inst_name->name[inst_name->len]);
 	pthread_mutex_unlock(&lset->lock);
 	if (rc)
-		goto unlock_out;
+		goto out_1;
 
 	/* Bind this set to a new RBD. We will initiate RDMA_READ */
 	rbd = __ldms_alloc_rbd(x, lset, LDMS_RBD_INITIATOR);
@@ -2218,25 +2229,29 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	}
 	return;
 
+ out_2:
+	if (lu->more) {
+		pthread_mutex_lock(&x->lock);
+		__ldms_free_ctxt(x, rd_ctxt);
+		pthread_mutex_unlock(&x->lock);
+	}
+	/* let through */
+ out_1:
+	if (rbd) {
+		ldms_set_delete(rbd);
+		rbd = NULL;
+	} else if (lset) {
+		/* if rbd has successfully created, lset is destroyed together
+		 * with rbd in ldms_set_delete(rbd) */
+		__ldms_set_delete(lset);
+	}
+	/* let through */
  unlock_out:
 	if (rc || (rbd && rbd->rmap != ev->map)) {
 		/* unmap ev->map if it is not used */
 		zap_unmap(x->zap_ep, ev->map);
 	}
-	goto out;
- out_2:
-	if (lu->more) {
-		pthread_mutex_lock(&x->lock);
-		__ldms_free_ctxt(x, ctxt);
-		pthread_mutex_unlock(&x->lock);
-	}
 
- out_1:
-	if (rbd) {
-		ldms_set_delete(rbd);
-		rbd = NULL;
-	}
- out:
 #ifdef DEBUG
 	x->log("DEBUG: %s: lookup error while ldms_xprt is processing the rendezvous "
 			"with error %d. NOTE: error %d indicates that it is "
