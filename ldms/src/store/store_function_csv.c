@@ -881,8 +881,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 	//TODO: for now will read this in for every option (e.g., different base set for store)
 	//Dont yet have a way to determine which of the handles a certain metric will be associated with
 
-	msglog(LDMSD_LDEBUG, "%s: Function config file(s) is: <%s>\n",
-	       PNAME, fname_s);
+	msglog(LDMSD_LDEBUG, "%s: Function config file(s) is: <%s>\n", PNAME, fname_s);
 
 	char* saveptr_o = NULL;
 	char* temp_o = strdup(fname_s);
@@ -893,6 +892,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 	s_handle->numder = 0;
 	s_handle->numshow = 0;
 
+	int errcnt = 0;
 	while(fname != NULL){
 		msglog(LDMSD_LDEBUG, "%s: Parsing Function config file: <%s>\n",
 		       PNAME, fname);
@@ -962,6 +962,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 					s_handle->numshow++;
 				}
 			} else {
+				errcnt++;
 				msglog(LDMSD_LDEBUG, "store fct <%s> invalid spec for metric <%s> schema <%s> (%d): rejecting \n",
 				       s_handle->store_key, metric_name, schema_name, iter);
 			}
@@ -976,6 +977,10 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 	free(x_o);
 	x_o = NULL;
 
+	if (errcnt > 0) {
+		msglog(LDMSD_LERROR, PNAME ": misconfiguration detected for schema %s\n", s_handle->schema);
+		rc = EINVAL;
+	}
 	printStructs(s_handle);
 	if (! s_handle->numshow)
 		msglog(LDMSD_LWARNING, PNAME ": no derived metrics for schema <%s>. "
@@ -2873,14 +2878,18 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	s_handle = _s_handle;
 	if (!s_handle)
 		return EINVAL;
+#ifdef SFC_LOCK_DEBUG
 	msglog(LDMSD_LDEBUG, PNAME ": store(%s)\n", s_handle->schema);
+#endif
 
 	pthread_mutex_lock(&s_handle->lock);
 	if (!s_handle->file){
 		msglog(LDMSD_LERROR, "%s: Cannot insert values for <%s>: file is closed\n",
 		       PNAME, s_handle->path);
 		pthread_mutex_unlock(&s_handle->lock);
+#ifdef SFC_LOCK_DEBUG
 		msglog(LDMSD_LDEBUG, PNAME ": store-out-nofile(%s)\n", s_handle->schema);
+#endif
 		return EPERM;
 	}
 
@@ -2894,13 +2903,17 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 			msglog(LDMSD_LERROR, "%s: Error in print_header: %d\n", PNAME, rc);
 			s_handle->printheader = BAD_HEADER;
 			pthread_mutex_unlock(&s_handle->lock);
+#ifdef SFC_LOCK_DEBUG
 			msglog(LDMSD_LDEBUG, PNAME ": store-out-badph(%s)\n", s_handle->schema);
+#endif
 			return rc;
 		}
 		break;
 	case BAD_HEADER:
 		pthread_mutex_unlock(&s_handle->lock);
+#ifdef SFC_LOCK_DEBUG
 		msglog(LDMSD_LDEBUG, PNAME ": store-out-bh(%s)\n", s_handle->schema);
+#endif
 		return EINVAL;
 		break;
 	default:
@@ -2909,7 +2922,9 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	}
 	if (!s_handle->numshow) {
 		pthread_mutex_unlock(&s_handle->lock);
+#ifdef SFC_LOCK_DEBUG
 		msglog(LDMSD_LDEBUG, PNAME ": store-out-noshow(%s)\n", s_handle->schema);
+#endif
 		return 0;
 	}
 
@@ -2918,7 +2933,9 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 			   &(s_handle->numsets), &dp, &skip);
 	if (rc != 0){
 		pthread_mutex_unlock(&s_handle->lock);
+#ifdef SFC_LOCK_DEBUG
 		msglog(LDMSD_LDEBUG, PNAME ": store-out-gdp(%s)\n", s_handle->schema);
+#endif
 		return rc;
 	}
 
@@ -3061,7 +3078,9 @@ store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arry, size_t m
 	}
 
 	pthread_mutex_unlock(&s_handle->lock);
+#ifdef SFC_LOCK_DEBUG
 	msglog(LDMSD_LDEBUG, PNAME ": store-out(%s)\n", s_handle->schema);
+#endif
 
 	return 0;
 }
@@ -3073,12 +3092,16 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 		msglog(LDMSD_LERROR,"%s: flush error.\n, PNAME");
 		return -1;
 	}
+#ifdef SFC_LOCK_DEBUG
 	msglog(LDMSD_LDEBUG, PNAME ": flush(%s)\n", s_handle->schema);
+#endif
 	pthread_mutex_lock(&s_handle->lock);
 	if (s_handle->file)
 		fflush(s_handle->file);
 	pthread_mutex_unlock(&s_handle->lock);
+#ifdef SFC_LOCK_DEBUG
 	msglog(LDMSD_LDEBUG, PNAME ": flush-out(%s)\n", s_handle->schema);
+#endif
 
 	return 0;
 }
@@ -3096,7 +3119,9 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 		return;
 	}
 
+#ifdef SFC_LOCK_DEBUG
 	msglog(LDMSD_LDEBUG, PNAME ": close(%s)\n", s_handle->schema);
+#endif
 	pthread_mutex_lock(&s_handle->lock);
 	msglog(LDMSD_LDEBUG,"%s: Closing " PNAME " with path <%s>\n",
 	       PNAME, s_handle->path);
@@ -3140,7 +3165,9 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 			break;
 		}
 	}
+#ifdef SFC_LOCK_DEBUG
 	msglog(LDMSD_LDEBUG, PNAME ": close-out(%s)\n", s_handle->schema);
+#endif
 	if (s_handle->schema)
 		free(s_handle->schema);
 	if (s_handle->store_key)
