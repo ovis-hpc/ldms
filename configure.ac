@@ -98,6 +98,7 @@ OPTION_LIB_FLAGS([OVIS],[ \
 	ldms/src/auth \
 	ldms/src/ldmsd \
 	ldms/src/sampler \
+	ldms/src/sampler/lustre \
 	ldms/src/store \
 ])
 
