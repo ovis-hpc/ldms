@@ -465,8 +465,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			msglog(LDMSD_LERROR, "aries_lbw: cannot set histogram\n");
 			return EINVAL;
 		} else {
-			msglog(LDMSD_LDEBUG, "aries_lbw: disabling perm again worked, \
-						ignore previous errors \n");
+			msglog(LDMSD_LDEBUG, "aries_lbw: retrying after perm switch worked \n");
 		}
 	}
 
@@ -500,12 +499,47 @@ static int sample(struct ldmsd_sampler *self)
 	if ( firstsample ) {
 		/* Need initialization for any sample
 		   First sample will be all zeros */
-		initLatency(init_vals);
+		rc = initLatency(init_vals);
+		if (rc != 0) {
+			msglog(LDMSD_LDEBUG, "aries_lbw: failed to initialize counters, retrying\n");
+			gpcd_disable_perms();
+			if (rc != 0) {
+				msglog(LDMSD_LERROR, "aries_lbw: failed to initialize counters\n");
+				return EINVAL;
+			} else {
+				msglog(LDMSD_LDEBUG, "aries_lbw: retrying after perm switch worked \n");
+			}
+		}		
 		firstsample = 0;
 	} else {
-		readEvents();
-		calcAriesMetrics();
-		initLatency(init_vals);
+		rc = readEvents();
+		if (rc != 0) {
+			msglog(LDMSD_LDEBUG, "aries_lbw: cannot read counters, retrying\n");
+			gpcd_disable_perms();
+			rc = readEvents();
+			if (rc != 0) {
+				msglog(LDMSD_LERROR, "aries_lbw: cannot read counters\n");
+				return EINVAL;
+			} else {
+				msglog(LDMSD_LDEBUG, "aries_lbw: retrying after perm switch worked \n");
+			}
+		}		
+		rc = calcAriesMetrics();
+		if (rc != 0) {
+			msglog(LDMSD_LERROR, "aries_lbw: failed to initialize counters.\n");
+			return EINVAL;
+		}		
+		rc = initLatency(init_vals);
+		if (rc != 0) {
+			msglog(LDMSD_LDEBUG, "aries_lbw: failed to initialize counters, retrying\n");
+			gpcd_disable_perms();
+			if (rc != 0) {
+				msglog(LDMSD_LERROR, "aries_lbw: failed to initialize counters\n");
+				return EINVAL;
+			} else {
+				msglog(LDMSD_LDEBUG, "aries_lbw: retrying after perm switch worked \n");
+			}
+		}		
 	}
 	
 	base_sample_end(base);

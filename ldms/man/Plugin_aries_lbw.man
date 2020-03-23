@@ -11,9 +11,9 @@ Within ldmsd_controller or in a configuration file:
 config name=aries_lbw producer=PRODUCER instance=INSTANCE [schema=SCHEMA] [component_id=COMPONENT_ID]
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
-or a configuration file. 
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or a configuration file. 
 The aries_lbw sampler provides aries latency and bandwidth performance counter information. 
+The plugin MUST be run as root to disable gpcd permissions which allows for counter reads and writes. 
 The primary metrics provided come from the latency test described in the Cray Aries Hardware Counter document S-0045 on pages 16 and 17. 
 The plugin also samples the AR_NIC_ORB_PRF_REQ_BYTES_SENT, AR_NIC_RAT_PRF_REQ_BYTES_RCVD, and AR_NIC_ORB_PRF_RSP_BYTES_RCVD bandwidth counters. 
 
