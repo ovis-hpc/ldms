@@ -107,6 +107,7 @@ struct use_met metname[] = {
 
 #define METLEN 6
 
+#ifdef DUMP_LOADAVG
 static void dump_metrics() {
 	int i;
 	for (i = 0; i < METLEN; i++) {
@@ -114,6 +115,7 @@ static void dump_metrics() {
 			metname[i].name, metname[i].collect, metname[i].vtype);
 	}
 }
+#endif
 
 static int parse_metrics(const char *s)
 {
@@ -210,16 +212,22 @@ static int create_metric_set(const char *path, const char* schema_name)
 	/* Make sure these are added in the order they will appear in the file */
 	for (i = 0; i < METLEN; i++) {
 		if (metname[i].collect) {
+			/*
 			msglog(LDMSD_LDEBUG, SAMP ": adding metric %s %d\n",
 				metname[i].name, (int)metname[i].vtype);
-			rc = ldms_schema_metric_add(schema, metname[i].name, metname[i].vtype);
+			*/
+			/* rc = ldms_schema_metric_add(schema, metname[i].name, metname[i].vtype); */
+			/* all coerced to u64 for now... */
+			rc = ldms_schema_metric_add(schema, metname[i].name, LDMS_V_U64);
 			if (rc < 0) {
 				rc = ENOMEM;
 				goto err;
 			}
 		} else {
+			/*
 			msglog(LDMSD_LDEBUG, SAMP ": skipping metric %s\n",
 				metname[i].name);
+			*/
 		}
 	}
 	set = ldms_set_new(path, schema);
@@ -335,7 +343,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (parse_metrics(metrics)) {
 		return EINVAL;
 	}
+#ifdef DUMP_LOADAVG
 	dump_metrics();
+#endif
 
 	sname = av_value(avl, "schema");
 	if (!sname) {
@@ -352,6 +362,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		return rc;
 	}
 	ldms_set_producer_name_set(set, producer_name);
+	msglog(LDMSD_LDEBUG, SAMP ": plugin configured.\n");
 	return 0;
 
 }
@@ -408,7 +419,9 @@ static int sample(struct ldmsd_sampler *self)
 	}
 	rc = sscanf(lbuf, LINE_FMT, &metname[0].v.d, &metname[1].v.d, &metname[2].v.d,
 		&metname[3].v.u, &metname[4].v.u, &metname[5].v.u);
+	/*
 	msglog(LDMSD_LDEBUG, SAMP ": %g %g %g %" PRIu64 "/%" PRIu64 " %" PRIu64 "\n", metname[0].v.d, metname[1].v.d, metname[2].v.d, metname[3].v.u, metname[4].v.u, metname[5].v.u);
+	*/
 	if (rc < METLEN) {
 		rc = EINVAL;
 		msglog(LDMSD_LERROR, SAMP ": fail " PROC_FILE "\n");
@@ -420,10 +433,12 @@ static int sample(struct ldmsd_sampler *self)
 		if (metname[i].collect) {
 			switch (metname[i].vtype) {
 			case LDMS_V_D64:
-				ldms_metric_set_double(set, (j + metric_offset), metname[i].v.d);
+				ldms_metric_set_u64(set, (j + metric_offset),
+					(uint64_t)(100*metname[i].v.d));
 				break;
 			case LDMS_V_U64:
-				ldms_metric_set_u64(set, (j + metric_offset), metname[i].v.u);
+				ldms_metric_set_u64(set, (j + metric_offset),
+					metname[i].v.u);
 				break;
 			default:
 				msglog(LDMSD_LCRITICAL, SAMP ": sample() memory corruption detected.\n");

@@ -58,6 +58,9 @@ load1min, load5min, load15min, runnable, scheduling_entities, newest_pid.
 This reports metrics from /proc/loadavg, which has the format:
 load1min load5min load15min runnable/scheduling_entities newest_pid.
 
+The load numbers are multiplied by 100 and cast to unsigned integers as they are collected, rather than
+being collected as reals numbers.
+
 .SH EXAMPLES 
 .PP
 Within ldmsd_controller or a configuration file:
