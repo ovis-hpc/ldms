@@ -671,23 +671,10 @@ void print_xprt_addrs(ldms_t xprt)
 	}
 }
 
-/**
- * Destroy the set to which this rbd refers; and all other rbd that
- * refer to this set.
- */
-void ldms_set_delete(ldms_set_t s)
+void __ldms_set_delete(struct ldms_set *set)
 {
 	struct ldms_rbuf_desc *rbd;
 	struct ldms_xprt *xprt;
-	ref_dump(&s->set->ref, __func__);
-
-	if (!s)
-		assert(NULL == "The metric set passed to ldms_set_delete is NULL");
-
-	/* Send dir_upd to all transports */
-	ldms_set_unpublish(s);
-
-	struct ldms_set *set = s->set;
 
 	__ldms_set_tree_lock();
 	rbt_del(&set_tree, &set->rb_node);
@@ -695,11 +682,6 @@ void ldms_set_delete(ldms_set_t s)
 	__ldms_set_tree_unlock();
 
 	pthread_mutex_lock(&set->lock);
-
-	/*
-	 * This rbd (i.e. s) will be on either the remote or local rbd
-	 * list in the loops below and will be destroyed
-	 */
 
 	while (!LIST_EMPTY(&set->remote_rbd_list)) {
 		rbd = LIST_FIRST(&set->remote_rbd_list);
@@ -724,7 +706,23 @@ void ldms_set_delete(ldms_set_t s)
 	pthread_mutex_unlock(&set->lock);
 
 	ref_put(&set->ref, "__record_set");
+}
 
+/**
+ * Destroy the set to which this rbd refers; and all other rbd that
+ * refer to this set.
+ */
+void ldms_set_delete(ldms_set_t s)
+{
+	ref_dump(&s->set->ref, __func__);
+
+	if (!s)
+		assert(NULL == "The metric set passed to ldms_set_delete is NULL");
+
+	/* Send dir_upd to all transports */
+	ldms_set_unpublish(s);
+	/* __ldms_set_delete() also destroys `s` rbd */
+	__ldms_set_delete(s->set);
 }
 
 void ldms_set_put(ldms_set_t s)
