@@ -453,6 +453,7 @@ reset_prdcr:
 static void prdcr_connect(ldmsd_prdcr_t prdcr)
 {
 	int ret;
+	struct timespec to;
 
 	assert(prdcr->xprt == NULL);
 	switch (prdcr->type) {
@@ -470,12 +471,12 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 			if (ret) {
 				ldms_xprt_put(prdcr->xprt);
 				prdcr->xprt = NULL;
-				prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+				goto error;
 			}
 		} else {
 			ldmsd_log(LDMSD_LERROR, "%s Error %d: creating endpoint on transport '%s'.\n",
 				 __func__, errno, prdcr->xprt_name);
-			prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+			goto error;
 		}
 		break;
 	case LDMSD_PRDCR_TYPE_PASSIVE:
@@ -488,6 +489,13 @@ static void prdcr_connect(ldmsd_prdcr_t prdcr)
 	case LDMSD_PRDCR_TYPE_LOCAL:
 		assert(0);
 	}
+	return;
+
+ error:
+	prdcr->conn_state = LDMSD_PRDCR_STATE_DISCONNECTED;
+	ev_sched_to(&to, prdcr->conn_intrvl_us / 1000000, 0);
+	ev_post(producer, producer, prdcr->connect_ev, &to);
+	return;
 }
 
 static int set_cmp(void *a, const void *b)
