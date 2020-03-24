@@ -336,7 +336,10 @@ identified in the derived configuration file.
 .SH NOTES
 .PP
 .IP \[bu]
-A metric must be specified before it can be used as part of another metric.
+This store is speculative at the moment. This store replaces store_derived_csv and may vary in behavior
+between minor releases.
+.IP \[bu]
+A metric must be specified (e.g. as RAW) before it can be used as part of another metric.
 .IP \[bu]
 Spaces in metric names are not supported.
 .IP \[bu]
@@ -359,13 +362,12 @@ Thresh and scale currently use the same variable. Thresh may change to a uint64_
 .IP \[bu]
 Flag will be set if a) the dt is negative or b) dt is greater than ageusec.
 Individual variable flags will be set if a) there is invalid input to the calculation or b) in a rate or subtraction calculation, the second value is greater than the first. It is NOT set if the cast in the computation would result in an overflow.
-.IP \[bu]
-This store is speculative at the moment. This store replaces store_derived_csv.
 
 
 
 .SH BUGS
-None.
+Only uint64_t inputs and outputs are supported; a later release may solve this.
+Creates empty files in some configurations rather than removing them.
 
 .SH EXAMPLES
 Within ldmsd_controller or a configuration file:
@@ -375,6 +377,12 @@ config name=store_function_csv altheader=1 derivedconf=/XXX/der1.conf,/XXX/der2.
 strgp_add name=csv_memRHeL6_policy plugin=store_function_csv container=data_der schema=meminfoRHeL6
 strgp_add name=csv_memRHeL7_policy plugin=store_function_csv container=data_der schema=meminfoRHeL7
 strgp_add name=csv_ps_policy plugin=store_function_csv container=data_der schema=procstat
+.if
+
+.PP
+.nf
+ldms-static-test.sh funcstore
+tree ldmstest/funcstore
 .if
 
 .SH SEE ALSO
