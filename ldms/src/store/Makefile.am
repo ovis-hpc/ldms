@@ -3,10 +3,12 @@ lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
-#COMMON_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
 AM_CPPFLAGS = $(DBGFLAGS) @OVIS_INCLUDE_ABS@
 
-STORE_LIBADD = -lldms -lldmsd_plugattr -lcoll -lovis_util
+STORE_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
+	       $(top_builddir)/ldms/src/ldmsd/libldmsd_plugattr.la \
+	       $(top_builddir)/lib/src/coll/libcoll.la \
+	       $(top_builddir)/lib/src/ovis_util/libovis_util.la
 
 ldmsstoreincludedir = $(includedir)/ldms
 ldmsstoreinclude_HEADERS = store_csv_common.h
@@ -75,10 +77,4 @@ libstore_function_csv_la_SOURCES = store_common.h store_function_csv.c
 libstore_function_csv_la_LIBADD = $(STORE_LIBADD) -lpthread
 pkglib_LTLIBRARIES += libstore_function_csv.la
 
-endif
-
-if ENABLE_ME
-libconsumer_me_la_SOURCES = consumer_me.c
-libconsumer_me_la_LIBADD = $(STORE_LIBADD) -lzap
-lib_LTLIBRARIES += libconsumer_me.la
 endif

@@ -190,8 +190,8 @@ AC_DEFUN([OPTION_INCLUDE_FLAGS], [
 	dirlist=""
 	for dirtmp in $2; do
 		if test -d $srcdir/$dirtmp; then
-			tmprelflags="$tmprelflags -I$srcdir/$dirtmp"
-			tmpabsflags="$tmpabsflags -I\$(top_srcdir)/$dirtmp -I\$(top_builddir)/$dirtmp"
+			tmprelflags="$tmprelflags -I\$(top_srcdir)/$dirtmp -I\$(top_builddir)/$dirtmp"
+			tmpabsflags="$tmpabsflags -I\$(abs_top_srcdir)/$dirtmp -I\$(abs_top_builddir)/$dirtmp"
 		else
 			]AC_MSG_NOTICE([expected dir $srcdir/$dirtmp missing])[
 		fi
@@ -208,17 +208,18 @@ dnl REASON: produce lib flags list
 dnl EXAMPLE: OPTION_INC_FLAGS([ovis],[dir1 dir2])
 dnl - prefix: variable prefix
 dnl - subdirs: search locations
-dnl Defines $prefix_INCLUDE_REL (relative to top_builddir for in-configure)
-dnl Defines $prefix_INCLUDE_ABS (path to use in make)
+dnl Defines $prefix_LIB_REL (relative to top_builddir for in-configure)
+dnl Defines $prefix_LIB_ABS (path to use in make)
 AC_DEFUN([OPTION_LIB_FLAGS], [
 [ 
 	tmprelflags=""
 	tmpabsflags=""
+	tmppathflags=""
 	dirlist=""
 	for dirtmp in $2; do
 		if test -d $srcdir/$dirtmp; then
-			tmprelflags="$tmprelflags -L$srcdir/$dirtmp"
-			tmpabsflags="$tmpabsflags -L\$(top_builddir)/$dirtmp"
+			tmprelflags="$tmprelflags -Wl,-rpath-link=\$(top_builddir)/$dirtmp/.libs"
+			tmpabsflags="$tmpabsflags -Wl,-rpath-link=\$(abs_top_builddir)/$dirtmp/.libs"
 		else
 			]AC_MSG_NOTICE([expected dir $srcdir/$dirtmp missing])[
 		fi

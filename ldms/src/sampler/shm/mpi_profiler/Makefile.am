@@ -3,7 +3,10 @@ bin_PROGRAMS =
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
-COMMON_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
+COMMON_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
+		@LDFLAGS_GETTIME@ \
+		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
+		$(top_builddir)/lib/src/coll/libcoll.la
 
 CC=$(MPICC)
 CCLD=$(MPICC)
@@ -16,7 +19,9 @@ bin_PROGRAMS += MPIApp
 nodist_MPIApp_SOURCES = mpi_profiler_wrapped_functions.c
 MPIApp_SOURCES = mpi_profiler.c mpi_profiler.h mpi_profiler_configuration.c mpi_profiler_configuration.h mpi_profiler_func_list.c mpi_profiler_func_list.h sample_mpi_application.c userheader.h
 MPIApp_CFLAGS = $(AM_CFLAGS) -v
-MPIApp_LDADD = ../shm_util/liblshm.la -lovis_third -lpthread -lm
+MPIApp_LDADD = ../shm_util/liblshm.la \
+	       $(top_builddir)/lib/src/third/libovis_third.la \
+	       -lpthread -lm
 
 WRAPINPUT=$(srcdir)/wrap/input.w
 mpi_profiler_wrapped_functions.c: Makefile wrap/wrap.py wrap/input.w userheader.h

@@ -7,7 +7,9 @@ AM_LDFLAGS = @OVIS_LIB_ABS@
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 
 AM_CFLAGS =  $(DBGFLAGS) -I$(srcdir)/../../sampler/slurm
-STORE_LIBADD = -lldms -lcoll -lovis_util
+STORE_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
+	       $(top_builddir)/lib/src/coll/libcoll.la \
+	       $(top_builddir)/lib/src/ovis_util/libovis_util.la
 
 if ENABLE_SOS
 libstore_slurm_la_SOURCES = store_slurm.c

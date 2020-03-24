@@ -3,10 +3,17 @@ dist_man7_MANS=
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
-COMMON_LIBADD = -lsampler_base -lldms -lldmsd_stream @LDFLAGS_GETTIME@ -lovis_util -lcoll -lpthread
+COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
+		$(top_builddir)/ldms/src/core/libldms.la \
+		$(top_builddir)/ldms/src/ldmsd/libldmsd_stream.la \
+		@LDFLAGS_GETTIME@ \
+		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
+		$(top_builddir)/lib/src/coll/libcoll.la \
+		$(top_builddir)/lib/src/json/libjson_util.la \
+		-lpthread
 
 libslurm_sampler_la_SOURCES = slurm_sampler.c slurm_sampler.h
-libslurm_sampler_la_LIBADD = $(COMMON_LIBADD) -ljson_util
+libslurm_sampler_la_LIBADD = $(COMMON_LIBADD)
 libslurm_sampler_la_CFLAGS = -DSYSCONFDIR='"$(sysconfdir)"'
 pkglib_LTLIBRARIES += libslurm_sampler.la
 

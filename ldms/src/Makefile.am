@@ -12,7 +12,7 @@ do_subst = @LDMS_SUBST_RULE@
 	$(do_subst) < $< > $@
 	chmod 755 $@
 
-SUBDIRS += third-plugins contrib
+SUBDIRS += third-plugins
 
 if ENABLE_CORE
 SUBDIRS += core
@@ -34,6 +34,8 @@ endif
 if ENABLE_LDMS_TEST
 SUBDIRS += test
 endif
+
+SUBDIRS += contrib
 
 ovis-ldms-configure-args: Makefile
 	for i in @ac_configure_args@; do \

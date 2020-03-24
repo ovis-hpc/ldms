@@ -3,7 +3,10 @@ dist_man7_MANS=
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
-COMMON_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
+COMMON_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
+		@LDFLAGS_GETTIME@ \
+		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
+		$(top_builddir)/lib/src/coll/libcoll.la
 
 libjobinfo_slurm_la_SOURCES = jobinfo_slurm.c
 libjobinfo_slurm_la_LIBADD = $(COMMON_LIBADD)

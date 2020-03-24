@@ -27,7 +27,7 @@ ldmscoreinclude_HEADERS = json_util.h
 
 nodist_libjson_util_la_SOURCES = json_lexer.c json_parser.c json_parser.h
 libjson_util_la_SOURCES = json_util.c json_util.h
-libjson_util_la_LIBADD = -lcoll -lc -lcrypto
+libjson_util_la_LIBADD = ../coll/libcoll.la -lc -lcrypto ../third/libovis_third.la
 lib_LTLIBRARIES += libjson_util.la
 
 json_test_SOURCES = json_test.c json_util.h

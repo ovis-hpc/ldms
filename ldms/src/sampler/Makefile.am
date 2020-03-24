@@ -7,8 +7,11 @@ pkglib_LTLIBRARIES =
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
 
-CORE_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util
-COMMON_LIBADD = libsampler_base.la $(CORE_LIBADD) -lcoll
+CORE_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
+	      @LDFLAGS_GETTIME@ \
+	      $(top_builddir)/lib/src/ovis_util/libovis_util.la
+COMMON_LIBADD = libsampler_base.la $(CORE_LIBADD) \
+		$(top_builddir)/lib/src/coll/libcoll.la
 
 libsampler_base_la_SOURCES = sampler_base.c sampler_base.h
 libsampler_base_la_LIBADD = $(CORE_LIBADD)
@@ -29,7 +32,8 @@ endif
 
 if ENABLE_TSAMPLER
 libtsampler_la_SOURCES = tsampler.c tsampler.h
-libtsampler_la_LIBADD = $(COMMON_LIBADD) -lovis_event -lpthread
+libtsampler_la_LIBADD = $(COMMON_LIBADD) \
+			$(top_builddir)/lib/src/ovis_event/libovis_event.la -lpthread
 pkglib_LTLIBRARIES += libtsampler.la
 
 libtimer_base_la_SOURCES = timer_base.c timer_base.h
@@ -244,7 +248,8 @@ endif
 
 if ENABLE_GENERIC_SAMPLER
 libgeneric_sampler_la_SOURCES = generic_sampler.c
-libgeneric_sampler_la_LIBADD = $(COMMON_LIBADD) -lcoll
+libgeneric_sampler_la_LIBADD = $(COMMON_LIBADD) \
+			       $(top_builddir)/lib/src/coll/libcoll.la
 pkglib_LTLIBRARIES += libgeneric_sampler.la
 endif
 
