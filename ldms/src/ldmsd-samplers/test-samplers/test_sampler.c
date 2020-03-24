@@ -1554,10 +1554,10 @@ int test_sampler_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 	if (!compid && (errno == EINVAL))
 		return EINVAL;
 	jobid = __attr_find(inst, json, ebuf, ebufsz, 0, "jobid");
-	if (!jobid && (errno = EINVAL))
+	if (!jobid && (errno == EINVAL))
 		return EINVAL;
 	set_del_int_str = __attr_find(inst, json, ebuf, ebufsz, 0, "set_delete_interval");
-	if (!set_del_int_str && (errno = EINVAL))
+	if (!set_del_int_str && (errno == EINVAL))
 		return EINVAL;
 	ts_suffix_str = __attr_find(inst, json, ebuf, ebufsz, 0, "ts_suffix");
 	if (!ts_suffix_str && (errno == EINVAL))
