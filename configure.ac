@@ -231,10 +231,6 @@ OPTION_WITH_OR_BUILD([gpcdlocal],[../gpcd-support],[gpcd],[gpcdlocal.sh], ,[gpcd
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
 
-dnl Options for consumer
-OPTION_DEFAULT_DISABLE([me], [ENABLE_ME])
-OPTION_WITH([me], [ME], [/usr/local])
-
 dnl Options for sampler
 OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
 OPTION_DEFAULT_DISABLE([kgnilnd], [ENABLE_KGNILND])

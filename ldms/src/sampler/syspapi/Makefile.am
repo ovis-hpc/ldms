@@ -5,7 +5,11 @@ EXTRA_DIST = test/ldmsd.sh
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@ @LIBPAPI_INCDIR_FLAG@ @LIBPFM_INCDIR_FLAG@ 
 AM_LDFLAGS = @OVIS_LIB_ABS@
-COMMON_LIBADD = -lsampler_base -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
+COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
+		$(top_builddir)/ldms/src/core/libldms.la \
+		@LDFLAGS_GETTIME@ \
+		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
+		$(top_builddir)/lib/src/coll/libcoll.la
 
 AM_LDFLAGS += @LIBPAPI_LIB64DIR_FLAG@ @LIBPAPI_LIBDIR_FLAG@ \
 	     @LIBPFM_LIB64DIR_FLAG@ @LIBPFM_LIBDIR_FLAG@

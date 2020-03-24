@@ -2,7 +2,11 @@ pkglib_LTLIBRARIES =
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
-CORE_LIBADD = -lsampler_base -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
+CORE_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
+	      $(top_builddir)/ldms/src/core/libldms.la \
+	      @LDFLAGS_GETTIME@ \
+	      $(top_builddir)/lib/src/ovis_util/libovis_util.la \
+	      $(top_builddir)/lib/src/coll/libcoll.la
 
 # libstr_map
 # libstr_map_la_SOURCES = str_map.c str_map.h fnv_hash.h

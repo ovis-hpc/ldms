@@ -8,9 +8,13 @@ SUBDIRS= shm_util mpi_profiler
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
-COMMON_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
+COMMON_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
+		@LDFLAGS_GETTIME@ \
+		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
+		$(top_builddir)/lib/src/coll/libcoll.la \
+		$(top_builddir)/lib/src/third/libovis_third.la
 
-LIBADD = $(COMMON_LIBADD) -lovis_third
+LIBADD = $(COMMON_LIBADD)
 
 libshm_sampler_la_SOURCES = shm_sampler.c
 libshm_sampler_la_LIBADD = $(LIBADD) $(JOBID_LIBFLAGS) shm_util/liblshm.la -lm -lrt -lpthread

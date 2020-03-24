@@ -6,7 +6,9 @@ dist_man1_MANS =
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
-STORE_LIBADD = -lldms -lcoll -lovis_util
+STORE_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
+	       $(top_builddir)/lib/src/coll/libcoll.la \
+	       $(top_builddir)/lib/src/ovis_util/libovis_util.la
 
 ldmsstoreincludedir = $(includedir)/ldms
 ldmsstoreinclude_HEADERS = 

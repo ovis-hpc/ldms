@@ -3,9 +3,10 @@ lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
-#COMMON_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
-STORE_LIBADD = -lldms -lcoll -lovis_util
+STORE_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
+	       $(top_builddir)/lib/src/coll/libcoll.la \
+	       $(top_builddir)/lib/src/ovis_util/libovis_util.la
 
 if ENABLE_SOS
 libstore_papi_la_SOURCES = store_papi.c

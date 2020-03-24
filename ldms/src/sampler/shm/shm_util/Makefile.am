@@ -4,7 +4,7 @@ AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
 #COMMON_LIBADD = -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
 
-COMMON_LIBADD = @LDFLAGS_GETTIME@ -lovis_third
+COMMON_LIBADD = @LDFLAGS_GETTIME@ $(top_builddir)/lib/src/third/libovis_third.la
 
 lib_LTLIBRARIES = liblshm.la
 

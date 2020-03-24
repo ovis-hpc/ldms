@@ -8,7 +8,11 @@ EXTRA_DIST =
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
-COMMON_LIBADD = -lsampler_base -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
+COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
+		$(top_builddir)/ldms/src/core/libldms.la \
+		@LDFLAGS_GETTIME@ \
+		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
+		$(top_builddir)/lib/src/coll/libcoll.la
 
 if ENABLE_IPMIREADER
 libipmireader_la_SOURCES = ipmireader.c

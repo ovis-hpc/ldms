@@ -3,7 +3,11 @@ pkglib_LTLIBRARIES =
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
-COMMON_LIBADD = -lsampler_base -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
+COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
+		$(top_builddir)/ldms/src/core/libldms.la \
+		@LDFLAGS_GETTIME@ \
+		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
+		$(top_builddir)/lib/src/coll/libcoll.la
 
 if ENABLE_CRAY_SYSTEM_SAMPLER
 
@@ -30,7 +34,7 @@ CRAY_LIBADD_ = $(COMMON_LIBADD)
 
 if ENABLE_LUSTRE
 CRAY_SOURCES_ += lustre_metrics.h lustre_metrics.c
-CRAY_LIBADD_ += -llustre_sampler
+CRAY_LIBADD_ += $(top_builddir)/ldms/src/sampler/lustre/liblustre_sampler.la
 endif
 
 if ENABLE_GEMINI_GPCDR
