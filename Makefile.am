@@ -45,7 +45,7 @@ banned:
 clean-local:
 
 install-data-hook:
-	$(abs_top_srcdir)/util/nola.sh $(DESTDIR)$(prefix) > nola.log
+	$(abs_top_srcdir)/util/nola.sh $(DESTDIR)$(libdir) > nola.log
 if ENABLE_THIRD_PLUGINS
 	@echo "*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#"
 	@if test -n "@THIRD_PLUGIN_DIRS@"; then \
