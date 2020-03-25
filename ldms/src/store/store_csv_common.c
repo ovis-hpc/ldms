@@ -590,8 +590,8 @@ void ch_output(FILE *f, const char *name,
 			cps->msglog(LDMSD_LERROR,"ch_output: unable to fchown(%d, (%s),%lu, %lu): %s.\n",
 				fd, name, newuid, newgid, errbuf);
 		}
-		cps->msglog(LDMSD_LDEBUG,"ch_output: fchown(%d, (%s),%lu, %lu): %s.\n",
-			fd, name, newuid, newgid, errbuf);
+		cps->msglog(LDMSD_LDEBUG,"ch_output: fchown(%d, (%s),%lu, %lu).\n",
+			fd, name, newuid, newgid);
 	}
 }
 
