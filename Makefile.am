@@ -53,7 +53,7 @@ if ENABLE_THIRD_PLUGINS
 		(cd ldms/src/third-plugins && make third-install-hook); \
 		echo "third-plugins BUILD COMPLETED."; \
 	fi
-	$(abs_top_srcdir)/util/nola.sh $(DESTDIR)$(prefix) > nola.third-plugins.log
+	$(abs_top_srcdir)/util/nola.sh $(DESTDIR)$(libdir) > nola.third-plugins.log
 endif
 
 install-exec-local:
