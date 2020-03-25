@@ -35,6 +35,7 @@ Plugin_procinterrupts.man \
 Plugin_procnetdev.man \
 Plugin_procnfs.man \
 Plugin_store_csv.man \
+Plugin_store_function_csv.man \
 Plugin_store_flatfile.man \
 Plugin_store_sos.man \
 Plugin_vmstat.man

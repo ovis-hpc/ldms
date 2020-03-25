@@ -200,12 +200,14 @@ check_genders_file() {
 		logger -t $LTAG -p syslog.err "Found ldms genders without hostnames: $x $y."
 		((n++))
 	fi
-	if test -z "$z"; then
-		logger -t $LTAG -p syslog.err "Found no genders at all for $LDMS_HOSTNAME."
-		logger -t $LTAG -p syslog.err "Review $af or setting of LDMS_HOSTNAME"
-		logger -t $LTAG -p syslog.err "Input created from $lgi"
-		exit 1
-		((n++))
+	if test "x$1" = "x0"; then
+		if test -z "$z"; then
+			logger -t $LTAG -p syslog.err "Found no genders at all for $LDMS_HOSTNAME."
+			logger -t $LTAG -p syslog.err "Review $af or setting of LDMS_HOSTNAME"
+			logger -t $LTAG -p syslog.err "Input created from $lgi"
+			exit 1
+			((n++))
+		fi
 	fi
 	if test $n -gt 0; then
 		logger -t $LTAG -p syslog.err "Gender file problems: $n ($v). These genders or options need to be removed, replaced, correctly spelled, or punctuated as noted."
@@ -887,9 +889,10 @@ start_stores () {
 	echoq $LDMSD_STORE_PLUGINS
 	echoq $out
 
-#if ! test -d $STORE_PATH; then
-#	mkdir -p $STORE_PATH
-#fi
+	if echo "$LDMSD_STORE_PLUGINS" |grep '&'  > /dev/null; then
+		logger -t $LTAG -p syslog.err '& in '"$LDMSD_STORE_PLUGINS should be :. Check .conf or ldmsd_store_plugins gender."
+		dietrace 1
+	fi
 	for pi in $(eval echo $LDMSD_STORE_PLUGINS | tr ":;'\`" "\n"); do
 		# schemas from env or genders
 		schemas=$(get_schema_list $host $pi)
