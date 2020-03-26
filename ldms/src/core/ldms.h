@@ -711,7 +711,7 @@ int ldms_xprt_dir_cancel(ldms_t t);
 extern int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
 
 #define LDMS_XPRT_LIBPATH_DEFAULT PLUGINDIR
-#define LDMS_DEFAULT_PORT	LDMSDPORT
+#define LDMS_DEFAULT_PORT	OVIS_LDMS_LDMSDPORT
 #define LDMS_LOOKUP_PATH_MAX	511
 
 enum ldms_lookup_flags {
