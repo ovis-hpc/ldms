@@ -10,6 +10,7 @@ _add() {
 _add PATH @bindir@
 _add PATH @sbindir@
 _add PYTHONPATH @pythondir@
+_add LD_LIBRARY_PATH @libdir@
 
 export LDMS_AUTH_FILE=@sysconfdir@/ldms/ldmsauth.conf
 
