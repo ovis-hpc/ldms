@@ -41,6 +41,8 @@ AC_PROG_CXX
 AC_CHECK_SIZEOF(long)
 AC_CHECK_SIZEOF(long double)
 
+AX_PYTHON_DEVEL
+
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
 AC_C_FLEXIBLE_ARRAY_MEMBER

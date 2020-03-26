@@ -169,16 +169,19 @@ OPTION_DEFAULT_DISABLE([zaptest], [ENABLE_ZAPTEST])
 OPTION_DEFAULT_DISABLE([ovis_event_test], [ENABLE_OVIS_EVENT_TEST])
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 
+OPTION_DEFAULT_DISABLE([python], [ENABLE_PYTHON])
 
 OVIS_PKGLIBDIR
 
 dnl Swig stuff
 OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
-if test -z "$ENABLE_SWIG_TRUE"
+if test -z "$ENABLE_SWIG_TRUE" -o -z "$ENABLE_PYTHON_TRUE"
 then
 	AM_PATH_PYTHON([2.6], , [:])
-	AC_PROG_SWIG
-	SWIG_PYTHON
+	if test test -z "ENABLE_SWIG_TRUE"; then
+		AC_PROG_SWIG
+		SWIG_PYTHON
+	fi
 	pkgpythondir="${pythondir}/ovis_lib"
 	pkgpyexecdir="${pkgpythondir}"
 fi

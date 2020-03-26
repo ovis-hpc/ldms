@@ -12,6 +12,7 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 AM_CONFIG_HEADER(config.h)
 AM_PROG_LIBTOOL
 AC_LIB_RPATH
+AX_PYTHON_DEVEL
 
 dnl check for python interpreter
 AM_PATH_PYTHON([2.6])
