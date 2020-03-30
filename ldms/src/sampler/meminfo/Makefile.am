@@ -5,11 +5,8 @@ dist_man1_MANS =
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
-COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
-		$(top_builddir)/ldms/src/core/libldms.la \
-		@LDFLAGS_GETTIME@ \
-		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
-		$(top_builddir)/lib/src/coll/libcoll.la
+COMMON_LIBADD = -lsampler_base -lldms -lovis_util -lcoll \
+		@LDFLAGS_GETTIME@
 
 if ENABLE_MEMINFO
 libmeminfo_la_SOURCES = meminfo.c 
