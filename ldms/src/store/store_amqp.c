@@ -448,7 +448,11 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	amqp_exchange_declare(ai->conn, ai->channel,
 			      amqp_cstring_bytes(ai->exchange),
 			      amqp_cstring_bytes("direct"),
-			      0, 0, amqp_empty_table);
+			      0, 0,
+			      #if AMQP_VERSION >= 0x00060001
+			      0, 0,
+			      #endif
+			      amqp_empty_table);
 	qrc = amqp_get_rpc_reply(ai->conn);
 	if (CHECK_REPLY(qrc) < 0)
 		goto err_0;
