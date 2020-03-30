@@ -220,6 +220,8 @@ AC_DEFUN([OPTION_LIB_FLAGS], [
 		if test -d $srcdir/$dirtmp; then
 			tmprelflags="$tmprelflags -Wl,-rpath-link=\$(top_builddir)/$dirtmp/.libs"
 			tmpabsflags="$tmpabsflags -Wl,-rpath-link=\$(abs_top_builddir)/$dirtmp/.libs"
+			tmprelflags="$tmprelflags -L\$(top_builddir)/$dirtmp/.libs"
+			tmpabsflags="$tmpabsflags -L\$(abs_top_builddir)/$dirtmp/.libs"
 		else
 			]AC_MSG_NOTICE([expected dir $srcdir/$dirtmp missing])[
 		fi
