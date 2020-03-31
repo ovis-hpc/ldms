@@ -9,7 +9,6 @@ _add() {
 
 _add PATH @bindir@
 _add PATH @sbindir@
-_add PYTHONPATH @pythondir@
 
 export LDMS_AUTH_FILE=@sysconfdir@/ldms/ldmsauth.conf
 
@@ -19,3 +18,6 @@ export ZAP_LIBPATH=@libdir@/ovis-ldms
 # for uGNI transport
 # export ZAP_UGNI_PTAG=<your ptag>
 # export ZAP_UGNI_COOKIE=<your cookie>
+#
+# for Python
+# _add PYTHONPATH @pythondir@

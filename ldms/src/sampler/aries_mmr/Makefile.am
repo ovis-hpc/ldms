@@ -11,8 +11,6 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 		$(top_builddir)/lib/src/coll/libcoll.la
 
 if ENABLE_ARIES_MMR
-# ARIES_LIBGPCD_INCDIR=@ARIES_LIBGPCD_INCDIR@
-# ARIES_LIBGPCD_LIBDIR=@ARIES_LIBGPCD_LIBDIR@
 
 libaries_mmr_la_CFLAGS = -I$(ARIES_LIBGPCD_INCDIR)
 libaries_mmr_la_SOURCES = aries_mmr.c
@@ -22,7 +20,7 @@ pkglib_LTLIBRARIES += libaries_mmr.la
 
 libaries_nic_mmr_la_CFLAGS = -I$(ARIES_LIBGPCD_INCDIR)
 libaries_nic_mmr_la_SOURCES = aries_nic_mmr.c
-libaries_nic_mmr_la_LDFLAGS = $(AM_LDFLAGS) -L@ARIES_LIBGPCD_LIBDIR@ -lgpcd
+libaries_nic_mmr_la_LDFLAGS = $(AM_LDFLAGS) -L@ARIES_LIBGPCD_LIBDIR@
 libaries_nic_mmr_la_LIBADD = $(COMMON_LIBADD) -lgpcd
 pkglib_LTLIBRARIES += libaries_nic_mmr.la
 
@@ -30,7 +28,7 @@ pkglib_LTLIBRARIES += libaries_nic_mmr.la
 libaries_rtr_mmr_la_CFLAGS = -I$(ARIES_LIBGPCD_INCDIR)
 libaries_rtr_mmr_la_SOURCES = aries_rtr_mmr.c
 libaries_rtr_mmr_la_LDFLAGS = $(AM_LDFLAGS) -L@ARIES_LIBGPCD_LIBDIR@
-libaries_rtr_mmr_la_LIBADD = $(COMMON_LIBADD)
+libaries_rtr_mmr_la_LIBADD = $(COMMON_LIBADD) -lgpcd
 pkglib_LTLIBRARIES += libaries_rtr_mmr.la
 
 endif
