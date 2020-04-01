@@ -10,7 +10,6 @@ EXTRA_DIST= \
 autogen.sh \
 m4/Ovis-top.m4 \
 SHA.txt \
-TAG.txt \
 LICENSE \
 README.libevent2 \
 README.md
@@ -74,11 +73,3 @@ SHA.txt:
 		COMMIT=$${COMMIT}-dirty; \
 	fi ; \
 	echo "$$COMMIT" > SHA.txt
-
-TAG.txt:
-	TAG=`git describe --tags 2>/dev/null`; \
-	if test -z "$$TAG"; then \
-		TAG="NO_GIT"; \
-	fi ; \
-	echo "$$TAG" > TAG.txt
-

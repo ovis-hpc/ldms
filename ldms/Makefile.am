@@ -117,10 +117,6 @@ install-exec-local:
 SHA.txt:
 	echo "$(OVIS_GIT_LONG)" > SHA.txt
 
-TAG.txt:
-	echo "$(OVIS_GIT_SHORT)" > TAG.txt
-
-
 uninstall-hook:
 	rm $(PEDIGREE)
 	for f in AUTHORS README COPYING ChangeLog ; do \

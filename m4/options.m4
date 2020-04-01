@@ -184,7 +184,7 @@ dnl - subdirs: search locations
 dnl Defines $prefix_INCLUDE_REL (relative to top_builddir for in-configure)
 dnl Defines $prefix_INCLUDE_ABS (path to use in make)
 AC_DEFUN([OPTION_INCLUDE_FLAGS], [
-[ 
+[
 	tmprelflags=""
 	tmpabsflags=""
 	dirlist=""
@@ -211,7 +211,7 @@ dnl - subdirs: search locations
 dnl Defines $prefix_LIB_REL (relative to top_builddir for in-configure)
 dnl Defines $prefix_LIB_ABS (path to use in make)
 AC_DEFUN([OPTION_LIB_FLAGS], [
-[ 
+[
 	tmprelflags=""
 	tmpabsflags=""
 	tmppathflags=""
@@ -483,7 +483,6 @@ AC_DEFUN([OPTION_GITINFO], [
 
 	export srcdir
 	TOP_LEVEL="$(cd "$srcdir" && git rev-parse --show-toplevel 2>/dev/null)"
-	GITSHORT="$(cd "$srcdir" && git describe --tags 2>/dev/null)"
 	GITLONG="$(cd "$srcdir" && git rev-parse HEAD 2>/dev/null)"
 	GITDIRTY="$(cd "$srcdir" && git status -uno -s 2>/dev/null)"
 	if test -n "$GITLONG" -a -n "$GITDIRTY"; then
@@ -492,29 +491,24 @@ AC_DEFUN([OPTION_GITINFO], [
 
 	if test -s "$TOP_LEVEL/m4/Ovis-top.m4" -a -n "$GITLONG"; then
 		dnl Git OK from ovis repo.
-		AC_MSG_RESULT([Using git SHA and TAG])
-	elif test -s $srcdir/TAG.txt -a -s $srcdir/SHA.txt ; then
+		AC_MSG_RESULT([Using git SHA])
+	elif test -s $srcdir/SHA.txt ; then
 		dnl Git not OK, try $srcdir/SHA.txt
-		AC_MSG_NOTICE([Using SHA.txt and TAG.txt from $srcdir for version info. ])
-		GITSHORT="$( cat $srcdir/TAG.txt)"
+		AC_MSG_NOTICE([Using SHA.txt from $srcdir for version info. ])
 		GITLONG="$( cat $srcdir/SHA.txt)"
-		AC_MSG_RESULT([Using local SHA.txt and TAG.txt])
-	elif test -s $srcdir/../Ovis-top.m4 -a -s $srcdir/../TAG.txt -a -s $srcdir/../SHA.txt ; then
+		AC_MSG_RESULT([Using local SHA.txt])
+	elif test -s $srcdir/../Ovis-top.m4 -a -s $srcdir/../SHA.txt ; then
 		dnl try top-level SHA.txt
-		AC_MSG_NOTICE([Using SHA.txt and TAG.txt from $srcdir for version info. ])
-		GITSHORT="$( cat $srcdir/../TAG.txt)"
+		AC_MSG_NOTICE([Using SHA.txt from $srcdir for version info. ])
 		GITLONG="$( cat $srcdir/../SHA.txt)"
-		AC_MSG_RESULT([Using tree-top SHA.txt and TAG.txt])
+		AC_MSG_RESULT([Using tree-top SHA.txt])
 	else
-		GITSHORT="NO_GIT_SHA"
-		GITLONG=$GITSHORT
+		GITLONG="NO_GIT_SHA"
 		AC_MSG_RESULT([NO GIT SHA])
 	fi
 
 AC_DEFINE_UNQUOTED([OVIS_GIT_LONG],["$GITLONG"],[Hash of last git commit])
-AC_DEFINE_UNQUOTED([OVIS_GIT_SHORT],["$GITSHORT"],[Branch and hash mangle of last commit])
 AC_SUBST([OVIS_GIT_LONG], ["$GITLONG"])
-AC_SUBST([OVIS_GIT_SHORT], ["$GITSHORT"])
 ])
 
 dnl SYNOPSIS: OVIS_PKGLIBDIR
