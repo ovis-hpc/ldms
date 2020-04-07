@@ -61,6 +61,9 @@ endif
 if ENABLE_VMSTAT
 SUBDIRS += vmstat
 endif
+if ENABLE_LOADAVG
+SUBDIRS += loadavg
+endif
 
 
 if ENABLE_CLOCK

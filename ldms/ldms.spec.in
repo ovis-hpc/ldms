@@ -298,6 +298,18 @@ Sampler vmstat plugin.
 %doc README COPYING ChangeLog
 %endif # VMSTAT
 
+%if "@ENABLE_LOADAVG_TRUE@x" == "x"
+%package sampler-loadavg
+Summary: LDMS Sampler loadvg plugin.
+Group: %{ldms_grp}
+%description sampler-loadvg
+Sampler loadavg plugin.
+
+%files sampler-loadavg
+%{_libdir}/libloadavg.*
+%doc README COPYING ChangeLog
+%endif # LOADAVG
+
 %if "@ENABLE_LUSTRE_TRUE@x" == "x"
 %package sampler-lustre
 Summary: LDMS Sampler lustre plugin.

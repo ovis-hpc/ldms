@@ -269,6 +269,7 @@ dnl cray_power_sampler won't build with --disable-tsampler
 
 OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_DISABLE([opa2], [ENABLE_OPA2])
+OPTION_DEFAULT_ENABLE([loadavg], [ENABLE_LOADAVG])
 OPTION_DEFAULT_ENABLE([vmstat], [ENABLE_VMSTAT])
 OPTION_DEFAULT_ENABLE([procdiskstats], [ENABLE_PROCDISKSTATS])
 OPTION_DEFAULT_DISABLE([cray_system_sampler], [ENABLE_CRAY_SYSTEM_SAMPLER])
@@ -749,6 +750,7 @@ ldms/src/sampler/kgnilnd/Makefile
 ldms/src/sampler/meminfo/Makefile
 ldms/src/sampler/procinterrupts/Makefile
 ldms/src/sampler/procstat/Makefile
+ldms/src/sampler/loadavg/Makefile
 ldms/src/sampler/vmstat/Makefile
 ldms/src/sampler/examples/Makefile
 ldms/src/sampler/examples/array_example/Makefile
