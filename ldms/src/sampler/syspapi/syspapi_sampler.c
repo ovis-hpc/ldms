@@ -718,13 +718,19 @@ static struct ldmsd_sampler syspapi_plugin = {
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	ldmsd_stream_client_t c;
+	int rc;
 	msglog = pf;
-	PAPI_library_init(PAPI_VERSION);
+	rc = PAPI_library_init(PAPI_VER_CURRENT);
+	if (rc) {
+		ldmsd_lerror(SAMP": Error %d attempting to initialize "
+			     "the PAPI library.\n", rc);
+	}
+
 	NCPU = sysconf(_SC_NPROCESSORS_CONF);
 	c = ldmsd_stream_subscribe("syspapi_stream", __stream_cb, NULL);
 	if (!c) {
-		ldmsd_lwarning(SAMP": failed to subscribe to 'syspapi_stream' "
-				"stream, errno: %d\n", errno);
+		ldmsd_lerror(SAMP": failed to subscribe to 'syspapi_stream' "
+			     "stream, errno: %d\n", errno);
 	}
 	return &syspapi_plugin.base;
 }
