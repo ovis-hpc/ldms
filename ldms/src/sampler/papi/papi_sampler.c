@@ -871,8 +871,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			return EINVAL;
 		}
 	}
-	ldmsd_stream_subscribe(papi_stream_name, stream_recv_cb, self);
-	return 0;
+	if (!ldmsd_stream_subscribe(papi_stream_name, stream_recv_cb, self)) {
+		msglog(LDMSD_LERROR, "papi_sampler[%d]: Error %d attempting "
+		       "subscribe to the '%s' stream.\n",
+		       errno, papi_stream_name);
+	}
+	return errno;
 }
 
 static void term(struct ldmsd_plugin *self)
@@ -911,7 +915,11 @@ static int cmp_job_id(void *a, const void *b)
 static void __attribute__ ((constructor)) papi_sampler_init(void)
 {
 	pthread_t cleanup_thread;
-	PAPI_library_init(PAPI_VER_CURRENT);
+	int rc = PAPI_library_init(PAPI_VER_CURRENT);
+	if (rc) {
+		ldmsd_lerror("papi_sampler: Error %d attempting to "
+			     "initialize the PAPI library.\n", rc);
+	}
 	PAPI_thread_init(pthread_self);
 	rbt_init(&job_tree, cmp_job_id);
 	LIST_INIT(&job_expiry_list);
