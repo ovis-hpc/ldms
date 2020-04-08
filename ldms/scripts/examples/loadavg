@@ -1,8 +1,8 @@
 export plugname=loadavg
 portbase=61060
-vgon
+#vgon
 LDMSD 1 2
-vgoff
+#vgoff
 MESSAGE ldms_ls on host 1:
 LDMS_LS 1 -l
 MESSAGE ldms_ls on host 2:
