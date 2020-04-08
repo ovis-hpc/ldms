@@ -68,9 +68,11 @@ ldmsd_stream_client_t
 ldmsd_stream_subscribe(const char *stream_name,
 		       ldmsd_stream_recv_cb_t cb_fn, void *ctxt)
 {
-	ldmsd_stream_t s;
+	ldmsd_stream_t s = NULL;
 	struct rbn *rbn;
-	ldmsd_stream_client_t c = NULL;
+	ldmsd_stream_client_t c = malloc(sizeof *c);
+	if (!c)
+		goto err_0;
 
 	/* Find the stream */
 	pthread_mutex_lock(&s_tree_lock);
@@ -78,10 +80,12 @@ ldmsd_stream_subscribe(const char *stream_name,
 	pthread_mutex_unlock(&s_tree_lock);
 	if (!rbn) {
 		s = malloc(sizeof *s);
+		if (!s)
+			goto err_1;
 		s->s_name = strdup(stream_name);
 		if (!s->s_name) {
 			free(s);
-			goto out;
+			goto err_2;
 		}
 		pthread_mutex_init(&s->s_lock, NULL);
 		LIST_INIT(&s->s_c_list);
@@ -90,17 +94,19 @@ ldmsd_stream_subscribe(const char *stream_name,
 	} else {
 		s = container_of(rbn, struct ldmsd_stream_s, s_ent);
 	}
-	c = malloc(sizeof *c);
-	if (!c)
-		goto out;
 	c->c_s = s;
 	c->c_cb_fn = cb_fn;
 	c->c_ctxt = ctxt;
 	pthread_mutex_lock(&s->s_lock);
 	LIST_INSERT_HEAD(&s->s_c_list, c, c_ent);
 	pthread_mutex_unlock(&s->s_lock);
- out:
-	return c;
+ 	return c;
+ err_2:
+	free(s);
+ err_1:
+	free(c);
+ err_0:
+	return NULL;
 }
 
 const char *ldmsd_stream_name(ldmsd_stream_t s)

@@ -79,6 +79,7 @@ static sos_attr_t kernel_job_id_attr;
 static sos_attr_t kernel_start_time_attr;
 static sos_attr_t kernel_end_time_attr;
 static sos_attr_t kernel_app_id_attr;
+static sos_attr_t kernel_comp_id_attr;
 static sos_attr_t kernel_mpi_rank_attr;
 static sos_attr_t kernel_inst_data_attr;
 static sos_schema_t sha256_schema;
@@ -221,6 +222,11 @@ int add_digest(kokkos_context_t k, json_entity_t e, char *digest)
 	if (rc != ENOMEM)
 		rc = ctxt.rc;
 	return ctxt.rc;
+}
+
+static int ignore(kokkos_context_t k, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+{
+	return 0;
 }
 
 static int process_inst_data(kokkos_context_t k, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
@@ -400,6 +406,9 @@ static int process_sample_entity(kokkos_context_t k, json_entity_t e, sos_obj_t 
 	data = sos_obj_attr_data(k->kernel_obj, kernel_app_id_attr, NULL);
 	data->prim.uint64_ = k->app_id;
 
+	data = sos_obj_attr_data(k->kernel_obj, kernel_comp_id_attr, NULL);
+	data->prim.uint64_ = k->component_id;
+
 	data = sos_obj_attr_data(k->kernel_obj, kernel_mpi_rank_attr, NULL);
 	data->prim.uint64_ = k->mpi_rank;
 
@@ -490,8 +499,13 @@ static struct sos_schema_template kokkos_sha256_template = {
 	}
 };
 
-// static const char *app_join_list[] = { "inst_data", "job_id", "app_id",  "start_time" };
 static const char *app_join_list[] = { "inst_data", "job_id", "app_id" };
+static const char *time_job_comp_attrs[] = { "start_time", "job_id", "component_id" };
+static const char *job_comp_time_attrs[] = { "job_id", "component_id", "start_time" };
+static const char *job_time_comp_attrs[] = { "job_id", "start_time", "component_id" };
+static const char *comp_time_job_attrs[] = { "component_id", "start_time", "job_id" };
+static const char *comp_job_time_attrs[] = { "component_id", "job_id", "start_time" };
+static const char *time_comp_job_attrs[] = { "start_time", "component_id", "job_id" };
 static struct sos_schema_template kokkos_app_template = {
 	.name = "kokkos_app",
 	.attrs = {
@@ -510,6 +524,37 @@ static struct sos_schema_template kokkos_app_template = {
 		{ .name = "total_non_kernel_times", .type = SOS_TYPE_DOUBLE },
 		{ .name = "percent_in_kernels", .type = SOS_TYPE_DOUBLE },
 		{ .name = "unique_kernel_calls", .type = SOS_TYPE_DOUBLE },
+
+		{ .name = "time_job_comp", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(time_job_comp_attrs) / sizeof(time_job_comp_attrs[0]),
+		  .indexed = 1,
+		  .join_list = time_job_comp_attrs
+		},
+		{ .name = "time_comp_job", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(time_comp_job_attrs) / sizeof(time_comp_job_attrs[0]),
+		  .indexed = 1,
+		  .join_list = time_comp_job_attrs
+		},
+		{ .name = "job_comp_time", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(job_comp_time_attrs) / sizeof(job_comp_time_attrs[0]),
+		  .indexed = 1,
+		  .join_list = job_comp_time_attrs
+		},
+		{ .name = "job_time_comp", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(job_time_comp_attrs) / sizeof(job_time_comp_attrs[0]),
+		  .indexed = 1,
+		  .join_list = job_time_comp_attrs
+		},
+		{ .name = "comp_time_job", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(comp_time_job_attrs) / sizeof(comp_time_job_attrs[0]),
+		  .indexed = 1,
+		  .join_list = comp_time_job_attrs
+		},
+		{ .name = "comp_job_time", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(comp_job_time_attrs) / sizeof(comp_job_time_attrs[0]),
+		  .indexed = 1,
+		  .join_list = comp_job_time_attrs
+		},
 		{ .name = "inst_job_app_time", .type = SOS_TYPE_JOIN,
 		  .size = sizeof(app_join_list) / sizeof(app_join_list[0]),
 		  .indexed = 1,
@@ -518,13 +563,13 @@ static struct sos_schema_template kokkos_app_template = {
 	}
 };
 
-// static const char *kernel_join_list[] = { "inst_data", "job_id", "app_id", "kernel_name", "start_time" };
 static const char *kernel_join_list[] = { "inst_data", "job_id", "app_id", "kernel_name" };
 static struct sos_schema_template kokkos_kernel_template = {
 	.name = "kokkos_kernel",
 	.attrs = {
 		{ .name = "job_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "app_id", .type = SOS_TYPE_UINT64 },
+		{ .name = "component_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "inst_data", .type = SOS_TYPE_STRUCT,	.size = 32 },
 		{ .name = "start_time",	.type = SOS_TYPE_TIMESTAMP },
 		{ .name = "end_time",	.type = SOS_TYPE_TIMESTAMP },
@@ -535,6 +580,37 @@ static struct sos_schema_template kokkos_kernel_template = {
 		{ .name = "call_count", .type = SOS_TYPE_DOUBLE },
 		{ .name = "total_time", .type = SOS_TYPE_DOUBLE },
 		{ .name = "time_per_call", .type = SOS_TYPE_DOUBLE },
+
+		{ .name = "time_job_comp", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(time_job_comp_attrs) / sizeof(time_job_comp_attrs[0]),
+		  .indexed = 1,
+		  .join_list = time_job_comp_attrs
+		},
+		{ .name = "time_comp_job", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(time_comp_job_attrs) / sizeof(time_comp_job_attrs[0]),
+		  .indexed = 1,
+		  .join_list = time_comp_job_attrs
+		},
+		{ .name = "job_comp_time", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(job_comp_time_attrs) / sizeof(job_comp_time_attrs[0]),
+		  .indexed = 1,
+		  .join_list = job_comp_time_attrs
+		},
+		{ .name = "job_time_comp", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(job_time_comp_attrs) / sizeof(job_time_comp_attrs[0]),
+		  .indexed = 1,
+		  .join_list = job_time_comp_attrs
+		},
+		{ .name = "comp_time_job", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(comp_time_job_attrs) / sizeof(comp_time_job_attrs[0]),
+		  .indexed = 1,
+		  .join_list = comp_time_job_attrs
+		},
+		{ .name = "comp_job_time", .type = SOS_TYPE_JOIN,
+		  .size = sizeof(comp_job_time_attrs) / sizeof(comp_job_time_attrs[0]),
+		  .indexed = 1,
+		  .join_list = comp_job_time_attrs
+		},
 		{ .name = "inst_job_app_kernel_time", .type = SOS_TYPE_JOIN,
 		  .size = sizeof(kernel_join_list) / sizeof(kernel_join_list[0]),
 		  .indexed = 1,
@@ -693,6 +769,7 @@ static int reopen_container(char *path)
 	kernel_start_time_attr = sos_schema_attr_by_name(kernel_schema, "start_time");
 	kernel_end_time_attr = sos_schema_attr_by_name(kernel_schema, "end_time");
 	kernel_app_id_attr = sos_schema_attr_by_name(kernel_schema, "app_id");
+	kernel_comp_id_attr = sos_schema_attr_by_name(kernel_schema, "component_id");
 	kernel_inst_data_attr = sos_schema_attr_by_name(kernel_schema, "inst_data");
 	kernel_mpi_rank_attr = sos_schema_attr_by_name(kernel_schema, "mpi_rank");
 	sha256_string_attr = sos_schema_attr_by_name(sha256_schema, "string");
@@ -720,7 +797,7 @@ static struct schema_spec kokkos_app_spec = {
 		{ "job_name", "job-name", process_string, 1 },
 		{ "app_id", "app-id", process_app_id, 1 },
 		{ "mpi_rank", "mpi-rank", process_mpi_rank, 1 },
-		{ "component_id", "component-id", process_int, 1 },
+		{ "component_id", "component-id", process_component_id, 1 },
 		{ "hostname", "hostname", process_string, 1 },
 		{ "inst_data", "inst-data", process_inst_data, 1 },
 		{ "start_time", "start-time", process_start_time, 1 },
@@ -738,7 +815,7 @@ static struct schema_spec kokkos_app_spec = {
 static struct schema_spec kokkos_sample_spec = {
 	.name = "kokkos_sample",
 	{
-		{ "", "kernel-perf-info", process_list_entity },
+		{ "", "kernel-perf-info", ignore }, // force this to be processed last process_list_entity },
 		{ "call_count", "call-count", process_double },
 		{ "total_time", "total-time", process_double },
 		{ "time_per_call", "time-per-call", process_double },
@@ -819,7 +896,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	value = av_value(avl, "path");
 	if (!value) {
 		msglog(LDMSD_LERROR,
-		       "%s: the path to the container (path==) must be specified.\n",
+		       "%s: the path to the container (path=) must be specified.\n",
 		       kokkos_store.name);
 		return ENOENT;
 	}
@@ -880,7 +957,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			 const char *msg, size_t msg_len,
 			 json_entity_t entity)
 {
-	json_entity_t e;
+	json_entity_t list;
 	const char *key;
 	int rc;
 	kokkos_context_t k = calloc(1, sizeof *k);
@@ -905,6 +982,19 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			sos_obj_delete(k->kernel_obj);
 			sos_obj_put(k->kernel_obj);
 		}
+	}
+	entity = json_value_find(entity, "kokkos-kernel-data");
+	list = json_value_find(entity, "kernel-perf-info");
+	if (!list) {
+		rc = ENOENT;
+		msglog(LDMSD_LERROR,
+		       "The kernel-perf-info attribute is missing from the stream data\n");
+		goto out;
+	}
+	rc = process_list_entity(k, list, k->kernel_obj, NULL);
+	if (rc) {
+		msglog(LDMSD_LERROR,
+		       "Error %d parsing the kernel-perf-info list attribute\n", rc);
 	}
  out:
 	return rc;
