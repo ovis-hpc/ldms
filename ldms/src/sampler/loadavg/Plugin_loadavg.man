@@ -20,7 +20,7 @@ This plugin uses the sampler_base base class. This man page covers only the conf
 
 .TP
 .BR config
-name=<plugin_name> [schema=<sname>] [metrics=<mlist>]
+name=<plugin_name> [schema=<sname>] [metrics=<mlist>] [force_integer]
 .RS
 .TP
 name=<plugin_name>
@@ -28,11 +28,15 @@ name=<plugin_name>
 This MUST be loadavg.
 
 .TP
+force_integer
+.br
+If present, this flag forces load metrics to be stored as integers of 100*value provided in the proc file.
+.TP
 schema=<schema>
 .br
 Optional schema name. If schema is not specified, it will be computed. The default name is loadavg if the metrics
 option is not supplied. The default name when metrics is specified is loadavgXXXXXX, where each X corresponds
-to whether or not that metric is included.
+to whether or not that metric is included. When force_integer is configured, the loadavg prefix becomes loadavgi.
 
 .TP
 metrics=<mlist>
