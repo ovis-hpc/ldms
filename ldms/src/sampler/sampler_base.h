@@ -71,7 +71,20 @@ typedef struct base_data_s {
 	int job_end_idx;
 	ldmsd_msg_log_f log;
 	int job_log_lvl;
+	unsigned missing_warned; /* 0 bit if warning not issued since set last seen */
 } *base_data_t;
+
+#define BASE_WARN_SET 0x1
+#define BASE_WARN_JOBID 0x2
+#define BASE_WARN_START 0x4
+#define BASE_WARN_END 0x8
+#define base_missing_warned_set(b) (BASE_WARN_SET & b->missing_warned)
+#define base_missing_warned_jobid(b) (BASE_WARN_JOBID & b->missing_warned)
+#define base_missing_warned_start(b) (BASE_WARN_START & b->missing_warned)
+#define base_missing_warned_end(b) (BASE_WARN_END & b->missing_warned)
+#define base_missing_warned_off(b,bit) (b->missing_warned &= (~bit))
+#define base_missing_warned_on(b,bit) (b->missing_warned |= bit)
+
 
 #define BASE_COMPONENT_ID	0
 #define BASE_JOB_ID		1

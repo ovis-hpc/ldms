@@ -88,19 +88,40 @@ static void init_job_data(base_data_t base)
 
 	base->job_set = ldms_set_by_name(base->job_set_name);
 	if (!base->job_set) {
-		base->log(base->job_log_lvl,
-		    "%s: The job data set named, %s, does not exist. Job "
-		    "data will not be associated with the metric values.\n",
-		    base->pi_name, base->job_set_name);
+		if (!base_missing_warned_set(base)) {
+			base_missing_warned_on(base, BASE_WARN_SET);
+			base->log(base->job_log_lvl,
+			    "%s: The job data set named, %s, does not exist. Valid job "
+			    "data will not be associated with the metric values.\n",
+			    base->pi_name, base->job_set_name);
+		}
 		goto err;
 	} else {
+		if (base_missing_warned_set(base)) {
+			base_missing_warned_off(base, BASE_WARN_SET);
+			base->log(base->job_log_lvl,
+			    "%s: The missing job data set named, %s, has appeared. Valid job "
+			    "data is now associated with the metric values.\n",
+			    base->pi_name, base->job_set_name);
+		}
 		base->job_id_idx = ldms_metric_by_name(base->job_set, "job_id");
 		if (base->job_id_idx < 0) {
-			base->log(base->job_log_lvl,
-			    "%s: The specified job_set '%s' is missing "
-			    "the 'job_id' attribute and cannot be used.\n",
-			    base->pi_name, base->job_set_name);
+			if (!base_missing_warned_jobid(base)) {
+				base_missing_warned_on(base, BASE_WARN_JOBID);
+				base->log(base->job_log_lvl,
+				    "%s: The specified job_set '%s' is missing "
+				    "the 'job_id' attribute and cannot be used.\n",
+				    base->pi_name, base->job_set_name);
+			}
 			goto err;
+		} else {
+			if (base_missing_warned_jobid(base)) {
+				base_missing_warned_off(base, BASE_WARN_JOBID);
+				base->log(base->job_log_lvl,
+				    "%s: The specified job_set '%s' now has "
+				    "the 'job_id' attribute and will be used.\n",
+				    base->pi_name, base->job_set_name);
+			}
 		}
 		/* app_id is optional */
 		base->app_id_idx = ldms_metric_by_name(base->job_set, "app_id");
@@ -111,27 +132,47 @@ static void init_job_data(base_data_t base)
 
 		base->job_start_idx = ldms_metric_by_name(base->job_set, "job_start");
 		if (base->job_start_idx < 0) {
-			base->log(base->job_log_lvl,
-			    "%s: The specified job_set '%s' is missing "
-			    "the 'job_start' attribute and cannot be used.\n",
-			    base->pi_name, base->job_set_name);
+			if (!base_missing_warned_start(base)) {
+				base_missing_warned_on(base, BASE_WARN_START);
+				base->log(base->job_log_lvl,
+				    "%s: The specified job_set '%s' is missing "
+				    "the 'job_start' attribute and cannot be used.\n",
+				    base->pi_name, base->job_set_name);
+			}
 			goto err;
+		} else {
+			if (base_missing_warned_start(base)) {
+				base_missing_warned_off(base, BASE_WARN_START);
+				base->log(base->job_log_lvl,
+				    "%s: The specified job_set '%s' now has "
+				    "the 'job_start' attribute and will be used.\n",
+				    base->pi_name, base->job_set_name);
+			}
 		}
 		base->job_end_idx = ldms_metric_by_name(base->job_set, "job_end");
 		if (base->job_end_idx < 0) {
-			base->log(base->job_log_lvl,
-			    "%s: The specified job_set '%s' is missing "
-			    "the 'job_end' attribute and cannot be used.\n",
-			    base->pi_name, base->job_set_name);
+			if (!base_missing_warned_end(base)) {
+				base_missing_warned_on(base, BASE_WARN_END);
+				base->log(base->job_log_lvl,
+				    "%s: The specified job_set '%s' is missing "
+				    "the 'job_end' attribute and cannot be used.\n",
+				    base->pi_name, base->job_set_name);
+			}
 			goto err;
+		} else {
+			if (base_missing_warned_end(base)) {
+				base_missing_warned_off(base, BASE_WARN_END);
+				base->log(base->job_log_lvl,
+				    "%s: The specified job_set '%s' now has "
+				    "the 'job_end' attribute and will be used.\n",
+				    base->pi_name, base->job_set_name);
+			}
 		}
 	}
 	return;
  err:
 	base->job_set = NULL;
 	base->job_id_idx = -1;
-	/* reduce job log level to DEBUG after first error report */
-	base->job_log_lvl = LDMSD_LDEBUG;
 }
 
 base_data_t base_config(struct attr_value_list *avl,
@@ -289,6 +330,7 @@ ldms_schema_t base_schema_new(base_data_t base)
 ldms_set_t base_set_new(base_data_t base)
 {
 	int rc;
+	base->missing_warned = 0;
 	base->set = ldms_set_new(base->instance_name, base->schema);
 	if (!base->set)
 		return NULL;
