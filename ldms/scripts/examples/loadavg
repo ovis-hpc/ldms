@@ -1,12 +1,14 @@
 export plugname=loadavg
 portbase=61060
+export LDMSD_MEM_SZ=60k
+
 #vgon
-LDMSD 1 2
+LDMSD 1 2 3 4
 #vgoff
 MESSAGE ldms_ls on host 1:
-LDMS_LS 1 -l
+LDMS_LS 1 -lv
 MESSAGE ldms_ls on host 2:
-LDMS_LS 2 -l
 SLEEP 5
-KILL_LDMSD 1 2
+LDMS_LS 1 -lv
+KILL_LDMSD 1 2 3 4
 file_created $STOREDIR/node/$testname
