@@ -60,8 +60,6 @@
 #include "ldms.h"
 #include "ldms_auth.h"
 
-#include "config.h"
-
 #pragma pack(4)
 
 /**
