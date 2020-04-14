@@ -70,7 +70,7 @@ ldmsd_stream_subscribe(const char *stream_name,
 {
 	ldmsd_stream_t s = NULL;
 	struct rbn *rbn;
-	ldmsd_stream_client_t c = malloc(sizeof *c);
+	ldmsd_stream_client_t cc, c = malloc(sizeof *c);
 	if (!c)
 		goto err_0;
 
@@ -94,12 +94,21 @@ ldmsd_stream_subscribe(const char *stream_name,
 	} else {
 		s = container_of(rbn, struct ldmsd_stream_s, s_ent);
 	}
+	pthread_mutex_lock(&s->s_lock);
+	LIST_FOREACH(cc, &s->s_c_list, c_ent) {
+		if (cc->c_cb_fn == cb_fn && cc->c_ctxt == ctxt) {
+			msglog("The client %p is already subscribed to "
+			       "stream %s", cc, stream_name);
+			errno = EEXIST;
+			pthread_mutex_unlock(&s->s_lock);
+			goto err_1;
+		}
+	}
 	c->c_s = s;
 	c->c_cb_fn = cb_fn;
 	c->c_ctxt = ctxt;
-	pthread_mutex_lock(&s->s_lock);
 	LIST_INSERT_HEAD(&s->s_c_list, c, c_ent);
-	pthread_mutex_unlock(&s->s_lock);
+ 	pthread_mutex_unlock(&s->s_lock);
  	return c;
  err_2:
 	free(s);
