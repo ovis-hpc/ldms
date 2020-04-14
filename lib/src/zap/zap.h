@@ -170,7 +170,7 @@ typedef enum zap_err_e {
 	ZAP_ERR_LAST
 } zap_err_t;
 
-static char *__zap_err_str[] = {
+static const char *__zap_err_str[] = {
 	"ZAP_ERR_OK",
 	"ZAP_ERR_PARAMETER",
 	"ZAP_ERR_TRANSPORT",
