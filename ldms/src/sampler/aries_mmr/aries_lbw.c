@@ -68,10 +68,14 @@
 
 /**
  * \file aries_lbw.c
- * \brief aries latency and bandwidth metric provider (reads gpcd )
+ * \brief aries latency and bandwidth metric provider (reads gpcd)
  */
 
 /* Aries latency static variables */
+static char *init_names[] = {
+	"AR_NIC_ORB_CFG_NET_RSP_HIST_1",
+	"AR_NIC_ORB_CFG_NET_RSP_HIST_2"
+};
 static char *event_names[] = {
 	"AR_NIC_ORB_PRF_NET_RSP_TRACK_1",
 	"AR_NIC_ORB_PRF_NET_RSP_TRACK_2",
@@ -256,11 +260,11 @@ int setHistogram()
 	uint64_t hist1val = 0x000A000500010000;
 	uint64_t hist2val = 0x03E801F400640032;
 
-	rc = writeCounter(&hist1val, event_names[0]);
+	rc = writeCounter(&hist1val, init_names[0]);
 	if (rc != 0) {
 		return -1;
 	}
-	rc = writeCounter(&hist2val, event_names[1]);
+	rc = writeCounter(&hist2val, init_names[1]);
 	if (rc != 0) {
 		return -1;
 	}
@@ -443,15 +447,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		msglog(LDMSD_LERROR, "aries_lbw: cannot create context\n");
 		return EINVAL;
 	}
-	/* Trying to disable permissions */
-	rc = gpcd_disable_perms();
-	if (rc != 0) {
-		msglog(LDMSD_LDEBUG, "aries_lbw: cannot run disable_perms\n");
-		return EINVAL;
-	}
+	/* Adding counters to context */
 	rc = addEventsToContext();
 	if (rc != 0) {
-		msglog(LDMSD_LDEBUG, "aries_lbw: cannot add events to context\n");
+		msglog(LDMSD_LERROR, "aries_lbw: cannot add events to context\n");
 		return EINVAL;
 	}
 	/* Trying to set histogram, resetting perms if need be */
