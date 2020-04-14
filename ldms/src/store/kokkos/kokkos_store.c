@@ -81,7 +81,7 @@ static sos_attr_t kernel_end_time_attr;
 static sos_attr_t kernel_app_id_attr;
 static sos_attr_t kernel_comp_id_attr;
 static sos_attr_t kernel_mpi_rank_attr;
-static sos_attr_t kernel_inst_data_attr;
+static sos_attr_t kernel_job_tag_attr;
 static sos_schema_t sha256_schema;
 static sos_attr_t sha256_string_attr;
 static sos_attr_t sha256_digest_attr;
@@ -104,7 +104,7 @@ typedef struct kokkos_context_s {
 	uint64_t component_id;
 	double start_time;
 	double end_time;
-	uint8_t inst_data[SHA256_DIGEST_LENGTH];
+	uint8_t job_tag[SHA256_DIGEST_LENGTH];
 
 } *kokkos_context_t;
 
@@ -229,20 +229,20 @@ static int ignore(kokkos_context_t k, json_entity_t e, sos_obj_t obj, sos_attr_t
 	return 0;
 }
 
-static int process_inst_data(kokkos_context_t k, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
+static int process_job_tag(kokkos_context_t k, json_entity_t e, sos_obj_t obj, sos_attr_t attr)
 {
 	int i;
 	sos_value_data_t data;
 
 	/* Compute the hash and save it in the parser */
-	SHA256(e->value.str_->str, e->value.str_->str_len, k->inst_data);
+	SHA256(e->value.str_->str, e->value.str_->str_len, k->job_tag);
 
 	/* Add the digest->string map */
-	add_digest(k, e, k->inst_data);
+	add_digest(k, e, k->job_tag);
 
 	/* Add the object digest attribute */
 	data = sos_obj_attr_data(obj, attr, NULL);
-	memcpy(data->prim.struc_, k->inst_data, sos_attr_size(attr));
+	memcpy(data->prim.struc_, k->job_tag, sos_attr_size(attr));
 
 	return 0;
 }
@@ -412,8 +412,8 @@ static int process_sample_entity(kokkos_context_t k, json_entity_t e, sos_obj_t 
 	data = sos_obj_attr_data(k->kernel_obj, kernel_mpi_rank_attr, NULL);
 	data->prim.uint64_ = k->mpi_rank;
 
-	data = sos_obj_attr_data(k->kernel_obj, kernel_inst_data_attr, NULL);
-	memcpy(data->prim.struc_, k->inst_data, sizeof(k->inst_data));
+	data = sos_obj_attr_data(k->kernel_obj, kernel_job_tag_attr, NULL);
+	memcpy(data->prim.struc_, k->job_tag, sizeof(k->job_tag));
 
 	for (a = json_attr_first(e); a; a = json_attr_next(a)) {
 		json_attr_t attr = a->value.attr_;
@@ -499,7 +499,6 @@ static struct sos_schema_template kokkos_sha256_template = {
 	}
 };
 
-static const char *app_join_list[] = { "inst_data", "job_id", "app_id" };
 static const char *time_job_comp_attrs[] = { "start_time", "job_id", "component_id" };
 static const char *job_comp_time_attrs[] = { "job_id", "component_id", "start_time" };
 static const char *job_time_comp_attrs[] = { "job_id", "start_time", "component_id" };
@@ -509,15 +508,15 @@ static const char *time_comp_job_attrs[] = { "start_time", "component_id", "job_
 static struct sos_schema_template kokkos_app_template = {
 	.name = "kokkos_app",
 	.attrs = {
-		{ .name = "job_id", .type = SOS_TYPE_UINT64, .indexed = 1 },
+		{ .name = "job_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "job_name", .type = SOS_TYPE_CHAR_ARRAY },
 		{ .name = "app_id", .type = SOS_TYPE_UINT64 },
-		{ .name = "inst_data", .type = SOS_TYPE_STRUCT,	.size = 32 },
+		{ .name = "job_tag", .type = SOS_TYPE_STRUCT,	.size = 32 },
 		{ .name = "start_time",	.type = SOS_TYPE_TIMESTAMP },
 		{ .name = "end_time",	.type = SOS_TYPE_TIMESTAMP },
 		{ .name = "mpi_rank", .type = SOS_TYPE_UINT64 },
 		{ .name = "hostname", .type = SOS_TYPE_STRING },
-		{ .name = "user_id", .type = SOS_TYPE_UINT32, .indexed = 1 },
+		{ .name = "user_id", .type = SOS_TYPE_UINT32 },
 		{ .name = "component_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "total_app_time", .type = SOS_TYPE_DOUBLE },
 		{ .name = "total_kernel_times", .type = SOS_TYPE_DOUBLE },
@@ -555,22 +554,17 @@ static struct sos_schema_template kokkos_app_template = {
 		  .indexed = 1,
 		  .join_list = comp_job_time_attrs
 		},
-		{ .name = "inst_job_app_time", .type = SOS_TYPE_JOIN,
-		  .size = sizeof(app_join_list) / sizeof(app_join_list[0]),
-		  .indexed = 1,
-		  .join_list = app_join_list },
 		{}
 	}
 };
 
-static const char *kernel_join_list[] = { "inst_data", "job_id", "app_id", "kernel_name" };
 static struct sos_schema_template kokkos_kernel_template = {
 	.name = "kokkos_kernel",
 	.attrs = {
 		{ .name = "job_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "app_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "component_id", .type = SOS_TYPE_UINT64 },
-		{ .name = "inst_data", .type = SOS_TYPE_STRUCT,	.size = 32 },
+		{ .name = "job_tag", .type = SOS_TYPE_STRUCT,	.size = 32 },
 		{ .name = "start_time",	.type = SOS_TYPE_TIMESTAMP },
 		{ .name = "end_time",	.type = SOS_TYPE_TIMESTAMP },
 		{ .name = "mpi_rank", .type = SOS_TYPE_UINT64 },
@@ -611,14 +605,6 @@ static struct sos_schema_template kokkos_kernel_template = {
 		  .indexed = 1,
 		  .join_list = comp_job_time_attrs
 		},
-		{ .name = "inst_job_app_kernel_time", .type = SOS_TYPE_JOIN,
-		  .size = sizeof(kernel_join_list) / sizeof(kernel_join_list[0]),
-		  .indexed = 1,
-		  .join_list = kernel_join_list },
-		{ .name = "inst_job_app_time", .type = SOS_TYPE_JOIN,
-		  .size = sizeof(app_join_list) / sizeof(app_join_list[0]),
-		  .indexed = 1,
-		  .join_list = app_join_list },
 		{ 0 }
 	}
 };
@@ -770,7 +756,7 @@ static int reopen_container(char *path)
 	kernel_end_time_attr = sos_schema_attr_by_name(kernel_schema, "end_time");
 	kernel_app_id_attr = sos_schema_attr_by_name(kernel_schema, "app_id");
 	kernel_comp_id_attr = sos_schema_attr_by_name(kernel_schema, "component_id");
-	kernel_inst_data_attr = sos_schema_attr_by_name(kernel_schema, "inst_data");
+	kernel_job_tag_attr = sos_schema_attr_by_name(kernel_schema, "job_tag");
 	kernel_mpi_rank_attr = sos_schema_attr_by_name(kernel_schema, "mpi_rank");
 	sha256_string_attr = sos_schema_attr_by_name(sha256_schema, "string");
 	sha256_digest_attr = sos_schema_attr_by_name(sha256_schema, "sha256");
@@ -799,7 +785,7 @@ static struct schema_spec kokkos_app_spec = {
 		{ "mpi_rank", "mpi-rank", process_mpi_rank, 1 },
 		{ "component_id", "component-id", process_component_id, 1 },
 		{ "hostname", "hostname", process_string, 1 },
-		{ "inst_data", "inst-data", process_inst_data, 1 },
+		{ "job_tag", "job-tag", process_job_tag, 1 },
 		{ "start_time", "start-time", process_start_time, 1 },
 		{ "end_time", "end-time", process_end_time, 1 },
 		{ "user_id", "user-id", process_int, 1 },
@@ -971,6 +957,9 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	}
 	rc = process_dict_entity(k, entity, NULL, NULL);
 	if (!rc) {
+		msglog(LDMSD_LINFO,
+		       "Creating Kokkos App record for %d:%d:%d\n",
+		       k->job_id, k->component_id, k->mpi_rank);
 		sos_obj_index(k->app_obj);
 		sos_obj_put(k->app_obj);
 	} else {
