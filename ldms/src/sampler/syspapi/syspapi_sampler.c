@@ -652,6 +652,7 @@ term(struct ldmsd_plugin *self)
 	FLAG_OFF(syspapi_flags, SYSPAPI_CONFIGURED);
 	FLAG_OFF(syspapi_flags, SYSPAPI_OPENED);
 	pthread_mutex_unlock(&syspapi_mutex);
+	PAPI_shutdown();
 }
 
 /* syspapi_mutex is held */
@@ -721,11 +722,10 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	int rc;
 	msglog = pf;
 	rc = PAPI_library_init(PAPI_VER_CURRENT);
-	if (rc) {
+	if (rc < 0) {
 		ldmsd_lerror(SAMP": Error %d attempting to initialize "
 			     "the PAPI library.\n", rc);
 	}
-
 	NCPU = sysconf(_SC_NPROCESSORS_CONF);
 	c = ldmsd_stream_subscribe("syspapi_stream", __stream_cb, NULL);
 	if (!c) {

@@ -916,7 +916,7 @@ static void __attribute__ ((constructor)) papi_sampler_init(void)
 {
 	pthread_t cleanup_thread;
 	int rc = PAPI_library_init(PAPI_VER_CURRENT);
-	if (rc) {
+	if (rc < 0) {
 		ldmsd_lerror("papi_sampler: Error %d attempting to "
 			     "initialize the PAPI library.\n", rc);
 	}
@@ -929,4 +929,5 @@ static void __attribute__ ((constructor)) papi_sampler_init(void)
 
 static void __attribute__ ((destructor)) papi_sampler_term(void)
 {
+	PAPI_shutdown();
 }
