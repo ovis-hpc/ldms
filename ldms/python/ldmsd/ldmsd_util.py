@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 #######################################################################
 # -*- c-basic-offset: 8 -*-
 # Copyright (c) 2015,2018 National Technology & Engineering Solutions
@@ -62,7 +64,7 @@ import os
 import time
 import tempfile
 import fcntl
-from StringIO import StringIO
+from io import StringIO
 import errno
 import tty
 from distutils.spawn import find_executable
@@ -547,7 +549,7 @@ class LDMSD_Controller(object):
                 _s = self.pty.read()
                 _out.write(_s)
                 _c = 0 # reset counter
-            except IOError, e:
+            except IOError as e:
                 if e.errno != errno.EAGAIN:
                     raise
                 _c += 1
