@@ -407,14 +407,7 @@ else
 	AC_MSG_NOTICE([Using staged ovis-lib $OVIS_LIB_LIB64DIR_FLAG $OVIS_LIB_LIBDIR_FLAG for LDMS.])
 fi
 
-dnl LDMS Swig
-OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
-if test -z "$ENABLE_SWIG_TRUE"; then
-	AC_PROG_SWIG
-	SWIG_PYTHON
-fi
-
-if test -z "$ENABLE_SWIG_TRUE" || test -z "$ENABLE_LDMS_PYTHON_TRUE"
+if test -z "$ENABLE_LDMS_PYTHON_TRUE"
 then
 	AM_PATH_PYTHON(2.6)
 	pkgpythondir="${pythondir}/ovis_ldms"
@@ -546,7 +539,6 @@ OVIS_EXEC_SCRIPTS(
 )
 
 AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
-		 swig/Makefile
 		 src/auth/Makefile
 		 src/ldmsd/Makefile
 		 src/ldmsd/test/Makefile

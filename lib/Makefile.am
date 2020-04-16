@@ -3,9 +3,6 @@ SUBDIRS = src
 if ENABLE_ETC
 SUBDIRS += etc
 endif
-if ENABLE_SWIG
-SUBDIRS += swig
-endif
 if ENABLE_SOS
 SUBDIRS += bin python
 endif
