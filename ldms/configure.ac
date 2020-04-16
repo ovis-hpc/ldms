@@ -409,7 +409,7 @@ fi
 
 if test -z "$ENABLE_LDMS_PYTHON_TRUE"
 then
-	AM_PATH_PYTHON(2.6)
+	AM_PATH_PYTHON(3)
 	pkgpythondir="${pythondir}/ovis_ldms"
 	pkgpyexecdir="${pkgpythondir}"
 	AX_PYTHON_MODULE_VERSION(["argparse"], 1.1, "python")

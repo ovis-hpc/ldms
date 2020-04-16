@@ -175,7 +175,7 @@ OVIS_PKGLIBDIR
 
 if test -z "$ENABLE_PYTHON_TRUE"
 then
-	AM_PATH_PYTHON([2.6], , [:])
+	AM_PATH_PYTHON([3], , [:])
 	pkgpythondir="${pythondir}/ovis_lib"
 	pkgpyexecdir="${pkgpythondir}"
 fi
