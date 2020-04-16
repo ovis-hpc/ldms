@@ -173,15 +173,9 @@ OPTION_DEFAULT_DISABLE([python], [ENABLE_PYTHON])
 
 OVIS_PKGLIBDIR
 
-dnl Swig stuff
-OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
-if test -z "$ENABLE_SWIG_TRUE" -o -z "$ENABLE_PYTHON_TRUE"
+if test -z "$ENABLE_PYTHON_TRUE"
 then
 	AM_PATH_PYTHON([2.6], , [:])
-	if test test -z "ENABLE_SWIG_TRUE"; then
-		AC_PROG_SWIG
-		SWIG_PYTHON
-	fi
 	pkgpythondir="${pythondir}/ovis_lib"
 	pkgpyexecdir="${pkgpythondir}"
 fi
@@ -240,9 +234,6 @@ AC_CONFIG_FILES([ovis-lib.spec
 		bin/Makefile
 		bin/src/Makefile
 		python/Makefile
-		swig/Makefile
-		swig/zap/Makefile
-		swig/ovis_auth/Makefile
 		etc/Makefile
 		etc/ovis/Makefile
 		etc/ld.so.conf.d/Makefile
