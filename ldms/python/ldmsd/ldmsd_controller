@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 #######################################################################
 # -*- c-basic-offset: 8 -*-
@@ -1442,8 +1442,6 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as e:
         if is_debug:
-            print(is_debug)
-            traceback.print_exc()
-            sys.exit(2)
+            raise
         else:
             print(e)

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 #######################################################################
 # -*- c-basic-offset: 8 -*-
 # Copyright (c) 2015-2018 National Technology & Engineering Solutions
@@ -53,7 +55,7 @@ from os.path import basename, dirname
 import struct
 import cmd
 from argparse import ArgumentError
-from ldmsd_request import LDMSD_Request, LDMSD_Req_Attr
+from .ldmsd_request import LDMSD_Request, LDMSD_Req_Attr
 
 """
 @module ldmsd_config
@@ -265,25 +267,21 @@ class ldmsdInbandConfig(ldmsdConfig):
         self.port = port
         self.xprt = xprt
         self.state = "INIT"
-        if auth:
-            self.ldms = ldms.LDMS_xprt_new_with_auth(self.xprt, auth, auth_opt)
-        else:
-            self.ldms = ldms.LDMS_xprt_new(self.xprt)
+        self.ldms = None
+        self.ldms = ldms.Xprt(name=self.xprt, auth=auth, auth_opts=auth_opt)
 
         if not self.ldms:
             raise ValueError("Failed to create LDMS transport")
 
         self.state = "NEW"
-        self.max_recv_len = self.ldms.msg_max_get()
-        self.rc = ldms.LDMS_xprt_connect_by_name(self.ldms, self.host, str(self.port))
-        if self.rc != 0:
-            raise RuntimeError("Failed to connect to ldmsd. %s" % (self.ldms.event_errcode2str(self.rc)))
+        self.max_recv_len = self.ldms.msg_max
+        self.ldms.connect(host=self.host, port=self.port)
         self.type = "inband"
         self.state = "CONNECTED"
 
     def __del__(self):
         if self.ldms:
-            self.ldms_module.LDMS_xprt_destroy(self.ldms)
+            self.ldms.close()
             self.ldms = None
 
     def __repr__(self):
@@ -306,14 +304,12 @@ class ldmsdInbandConfig(ldmsdConfig):
     def send_command(self, cmd):
         if self.state != "CONNECTED":
             raise RuntimeError("The connection isn't connected.")
-        rc = self.ldms_module.ldms_xprt_send(self.ldms, cmd, len(cmd))
-        if rc != 0:
-            raise RuntimeError("Failed to send the command. %s" % os.strerror(rc))
+        self.ldms.send(cmd)
 
     def receive_response(self, recv_len = None):
         if self.state != "CONNECTED":
             raise RuntimeError("The connection isn't connected")
-        return self.ldms_module.LDMS_xprt_recv(self.ldms)
+        return self.ldms.recv()
 
     def comm(self, cmd, attrs=None, **kwargs):
         """Communicate
@@ -365,6 +361,6 @@ class ldmsdInbandConfig(ldmsdConfig):
     def close(self):
         if self.state != "CONNECTED":
             return
-        self.ldms_module.ldms_xprt_close(self.ldms)
+        self.ldms.close
         self.state = "CLOSED"
         self.ldms = None

@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 #######################################################################
 # -*- c-basic-offset: 8 -*-
 # Copyright (c) 2016-2018 National Technology & Engineering Solutions
@@ -109,58 +111,105 @@ class LDMSD_Req_Attr(object):
     CFGCMD = 40
     LAST = 41
 
-    NAME_ID_MAP = {'name': NAME,
-                   'component_id':COMP_ID,
-                   'interval': INTERVAL,
-                   'interval_us': INTERVAL,
-                   'offset': OFFSET,
-                   'regex': REGEX,
-                   'type': TYPE,
-                   'producer': PRODUCER,
-                   'instance': INSTANCE,
-                   'xprt': XPRT,
-                   'host': HOST,
-                   'port': PORT,
-                   'match': MATCH,
-                   'plugin': PLUGIN,
-                   'container': CONTAINER,
-                   'schema': SCHEMA,
-                   'string': STRING,
-                   'metric': METRIC,
-                   'udata': UDATA,
-                   'base': BASE,
-                   'incr': INCREMENT,
-                   'level': LEVEL,
-                   'path': PATH,
-                   'time': TIME,
-                   'push': PUSH,
-                   'test': TEST,
-                   "REC_LEN": REC_LEN,
-                   "json": JSON,
-                   'perm': PERM,
-                   'auto_switch': AUTO_SWITCH,
-                   'peer_name': PEER_NAME,
-                   'timeout_factor': TIMEOUT_FACTOR,
-                   'auto_interval': AUTO_INTERVAL,
-                   'uid': UID,
-                   'gid': GID,
-                   'stream': STREAM,
-                   'query': QUERY,
-                   'auth': AUTH,
-                   'cmdline': CMDLINE,
-                   'cfgcmd': CFGCMD,
-                   'env': ENV,
-                   'envvar': ENV,
-                   'TERMINATING': LAST
+    NAME_ID_MAP = {'name'           : NAME,
+                   'component_id'   : COMP_ID,
+                   'interval'       : INTERVAL,
+                   'interval_us'    : INTERVAL,
+                   'offset'         : OFFSET,
+                   'regex'          : REGEX,
+                   'type'           : TYPE,
+                   'producer'       : PRODUCER,
+                   'instance'       : INSTANCE,
+                   'xprt'           : XPRT,
+                   'host'           : HOST,
+                   'port'           : PORT,
+                   'match'          : MATCH,
+                   'plugin'         : PLUGIN,
+                   'container'      : CONTAINER,
+                   'schema'         : SCHEMA,
+                   'string'         : STRING,
+                   'metric'         : METRIC,
+                   'udata'          : UDATA,
+                   'base'           : BASE,
+                   'incr'           : INCREMENT,
+                   'level'          : LEVEL,
+                   'path'           : PATH,
+                   'time'           : TIME,
+                   'push'           : PUSH,
+                   'test'           : TEST,
+                   'REC_LEN'        : REC_LEN,
+                   'json'           : JSON,
+                   'perm'           : PERM,
+                   'auto_switch'    : AUTO_SWITCH,
+                   'peer_name'      : PEER_NAME,
+                   'timeout_factor' : TIMEOUT_FACTOR,
+                   'auto_interval'  : AUTO_INTERVAL,
+                   'uid'            : UID,
+                   'gid'            : GID,
+                   'stream'         : STREAM,
+                   'query'          : QUERY,
+                   'auth'           : AUTH,
+                   'cmdline'        : CMDLINE,
+                   'cfgcmd'         : CFGCMD,
+                   'env'            : ENV,
+                   'envvar'         : ENV,
+                   'TERMINATING'    : LAST
+        }
+
+    ID_NAME_MAP = {NAME           : 'name',
+                   COMP_ID        : 'component_id',
+                   INTERVAL       : 'interval',
+                   INTERVAL       : 'interval_us',
+                   OFFSET         : 'offset',
+                   REGEX          : 'regex',
+                   TYPE           : 'type',
+                   PRODUCER       : 'producer',
+                   INSTANCE       : 'instance',
+                   XPRT           : 'xprt',
+                   HOST           : 'host',
+                   PORT           : 'port',
+                   MATCH          : 'match',
+                   PLUGIN         : 'plugin',
+                   CONTAINER      : 'container',
+                   SCHEMA         : 'schema',
+                   STRING         : 'string',
+                   METRIC         : 'metric',
+                   UDATA          : 'udata',
+                   BASE           : 'base',
+                   INCREMENT      : 'incr',
+                   LEVEL          : 'level',
+                   PATH           : 'path',
+                   TIME           : 'time',
+                   PUSH           : 'push',
+                   TEST           : 'test',
+                   REC_LEN        : 'REC_LEN',
+                   JSON           : 'json',
+                   PERM           : 'perm',
+                   AUTO_SWITCH    : 'auto_switch',
+                   PEER_NAME      : 'peer_name',
+                   TIMEOUT_FACTOR : 'timeout_factor',
+                   AUTO_INTERVAL  : 'auto_interval',
+                   UID            : 'uid',
+                   GID            : 'gid',
+                   STREAM         : 'stream',
+                   QUERY          : 'query',
+                   AUTH           : 'auth',
+                   CMDLINE        : 'cmdline',
+                   CFGCMD         : 'cfgcmd',
+                   ENV            : 'env',
+                   ENV            : 'envvar',
+                   LAST           : 'TERMINATING'
         }
 
     def __init__(self, value = None, attr_name = None, attr_id = None, attr_len = None):
         self.discrim = 1
+        if type(value) == str:
+            value = value.encode()
         if attr_id:
             if attr_id not in self.NAME_ID_MAP.values():
                 raise LDMSDRequestException("The attr_id '%d' is not valid" % attr_id, errno.EINVAL)
             self.attr_id = attr_id
-            self.attr_name = self.NAME_ID_MAP.keys()[self.NAME_ID_MAP.values().index(self.attr_id)]
+            self.attr_name = self.ID_NAME_MAP[self.attr_id]
         else:
             if attr_name:
                 try:
@@ -229,7 +278,7 @@ class LDMSD_Req_Attr(object):
 
         (attr_value,) = struct.unpack(fmt, buf[cls.LDMSD_REQ_ATTR_SZ:attr_len + cls.LDMSD_REQ_ATTR_SZ])
         if attr_id != cls.REC_LEN:
-            attr_value = attr_value.strip('\0')
+            attr_value = attr_value.strip(b'\0')
 
         attr = LDMSD_Req_Attr(value = attr_value, attr_id = attr_id, attr_len = attr_len)
         return attr
@@ -428,7 +477,7 @@ class LDMSD_Request(object):
             self.request_size += len(self.message)
 
         # store all packed attribute value pairs
-        self.packed_attrs = ""  # excluding the terminating attribute
+        self.packed_attrs = b""  # excluding the terminating attribute
         self.packed_attrs_sz = 0 # excluding the terminating attribute
         # Compute the extra size occupied by the attributes and add it
         # to the request size in the request header
