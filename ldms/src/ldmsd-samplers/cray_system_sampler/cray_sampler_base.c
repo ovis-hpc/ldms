@@ -571,7 +571,7 @@ void cray_sampler_base_del(cray_sampler_inst_t inst)
 
 json_entity_t query_generic(cray_sampler_inst_t inst, const char *query)
 {
-	json_entity_t attr, envs, str;
+	json_entity_t attr, envs;
 	json_entity_t result = ldmsd_sampler_query(&inst->base, query);
 	if (!result)
 		return NULL;
@@ -583,20 +583,14 @@ json_entity_t query_generic(cray_sampler_inst_t inst, const char *query)
 	envs = json_entity_new(JSON_LIST_VALUE);
 	if (!envs)
 		goto enomem;
-	str = json_entity_new(JSON_STRING_VALUE, "env");
-	if (!str) {
-		json_entity_free(envs);
-		goto enomem;
-	}
-	attr = json_entity_new(JSON_ATTR_VALUE, str, envs);
+	attr = json_entity_new(JSON_ATTR_VALUE, "env", envs);
 	if (!attr) {
-		json_entity_free(str);
 		json_entity_free(envs);
 		goto enomem;
 	}
 
 #ifdef HAVE_CRAY_NVIDIA
-
+	json_entity_t str;
 	str = json_entity_new(JSON_STRING_VALUE, "LDMSD_CRAY_NVIDIA_PLUGIN_LIBPATH");
 	if (!str)
 		goto err;

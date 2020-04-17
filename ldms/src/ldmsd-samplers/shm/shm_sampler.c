@@ -1026,14 +1026,8 @@ json_entity_t shm_sampler_query(ldmsd_plugin_inst_t pi, const char *q)
 	envs = json_entity_new(JSON_LIST_VALUE);
 	if (!envs)
 		goto enomem;
-	str = json_entity_new(JSON_STRING_VALUE, "envs");
-	if (!str) {
-		json_entity_free(envs);
-		goto enomem;
-	}
-	attr = json_entity_new(JSON_ATTR_VALUE, str, envs);
+	attr = json_entity_new(JSON_ATTR_VALUE, "env", envs);
 	if (!attr) {
-		json_entity_free(str);
 		json_entity_free(envs);
 		goto enomem;
 	}
