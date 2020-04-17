@@ -150,7 +150,7 @@ static void *dl_new(const char *dl_name, char *errstr, int errlen,
 static
 int __status_json_new(ldmsd_plugin_inst_t inst)
 {
-	json_entity_t status, n, d, v, a;
+	json_entity_t status, d, v, a;
 	int i = 0;
 	struct ldmsd_plugin_qjson_attrs pairs[] = {
 			{ "name"    , JSON_STRING_VALUE, { .s = inst->inst_name }  },
@@ -164,32 +164,21 @@ int __status_json_new(ldmsd_plugin_inst_t inst)
 		return ENOMEM;
 
 	while (pairs[i].name) {
-		n = json_entity_new(JSON_STRING_VALUE, pairs[i].name);
-		if (!n)
-			goto err0;
 		v = json_entity_new(JSON_STRING_VALUE, pairs[i].s);
-		if (!v) {
-			json_entity_free(n);
+		if (!v)
 			goto err0;
-		}
-		a = json_entity_new(JSON_ATTR_VALUE, n, v);
+		a = json_entity_new(JSON_ATTR_VALUE, pairs[i].name, v);
 		if (!a) {
 			json_entity_free(v);
-			json_entity_free(n);
 			goto err0;
 		}
 		json_attr_add(d, a);
 		i++;
 	}
 
-	n = json_entity_new(JSON_STRING_VALUE, "status");
-	if (!n)
+	status = json_entity_new(JSON_ATTR_VALUE, "status", d);
+	if (!status)
 		goto err0;
-	status = json_entity_new(JSON_ATTR_VALUE, n, d);
-	if (!status) {
-		json_entity_free(n);
-		goto err0;
-	}
 	json_attr_add(inst->json, status);
 	return 0;
 err0:
@@ -200,25 +189,20 @@ err0:
 static
 int  __config_json_new(ldmsd_plugin_inst_t inst)
 {
-	json_entity_t cfg, n, l;
+	json_entity_t cfg, l;
 
-	n = json_entity_new(JSON_STRING_VALUE, "config");
-	if (!n)
-		return ENOMEM;
 	l = json_entity_new(JSON_LIST_VALUE);
 	if (!l)
-		goto err0;
-	cfg = json_entity_new(JSON_ATTR_VALUE, n, l);
+		return ENOMEM;
+	cfg = json_entity_new(JSON_ATTR_VALUE, "config", l);
 	if (!cfg)
-		goto err1;
+		goto err0;
 	json_attr_add(inst->json, cfg);
 	return 0;
 
 	json_entity_free(cfg);
-err1:
-	json_entity_free(l);
 err0:
-	json_entity_free(n);
+	json_entity_free(l);
 	return ENOMEM;
 }
 
@@ -831,22 +815,15 @@ int ldmsd_plugin_qjson_attrs_add(json_entity_t result,
 			struct ldmsd_plugin_qjson_attrs *bulks)
 {
 	int i;
-	json_entity_t a, n, v;
+	json_entity_t a, v;
 
 	for (i = 0; bulks[i].name; i++) {
-		n = json_entity_new(JSON_STRING_VALUE, bulks[i].name);
-		if (!n) {
-			return ENOMEM;
-		}
 		v = json_entity_new(bulks[i].type, bulks[i].s);
-		if (!v) {
-			json_entity_free(n);
+		if (!v)
 			return ENOMEM;
-		}
-		a = json_entity_new(JSON_ATTR_VALUE, n, v);
+		a = json_entity_new(JSON_ATTR_VALUE, bulks[i].name, v);
 		if (!a) {
 			json_entity_free(v);
-			json_entity_free(n);
 			return ENOMEM;
 		}
 		json_attr_add(result, a);

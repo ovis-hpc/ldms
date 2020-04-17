@@ -4296,8 +4296,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 			} else {
 				value = "";
 			}
-			a = json_entity_new(JSON_ATTR_VALUE,
-					json_entity_new(JSON_STRING_VALUE, token),
+			a = json_entity_new(JSON_ATTR_VALUE, token,
 					json_entity_new(JSON_STRING_VALUE, value));
 			if (!a)
 				goto enomem;
