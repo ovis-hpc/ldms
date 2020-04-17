@@ -84,7 +84,7 @@ static int is_same_entity(json_entity_t l, json_entity_t r)
 
 static void test_json_dict_apis()
 {
-	json_entity_t d, a, av, x, y, avl, avd, exp;
+	json_entity_t d, a, av, avl, avd, exp;
 	int type;
 	char *type_s;
 
@@ -92,9 +92,6 @@ static void test_json_dict_apis()
 
 	d = json_entity_new(JSON_DICT_VALUE);
 	assert(d);
-
-	x = json_entity_new(JSON_STRING_VALUE, "a");
-	y = json_entity_new(JSON_STRING_VALUE, "b");
 
 	printf("----------  json_attr_add()  ------\n");
 	/* json_attr_add */
@@ -110,24 +107,21 @@ static void test_json_dict_apis()
 		case JSON_STRING_VALUE:
 			av = json_entity_new(type, "1st");
 			break;
-		case JSON_ATTR_VALUE:
-			av = json_entity_new(type, x, y);
-			break;
 		case JSON_LIST_VALUE:
 			av = json_entity_new(type);
 			break;
 		case JSON_DICT_VALUE:
 			av = json_entity_new(type);
-			assert(NULL == json_attr_first(av));
 			break;
+		case JSON_ATTR_VALUE:
+			continue;
 		default:
 			assert(0 == "unrecognized type");
 		}
 		exp = av;
 
 		type_s = (char *)json_type_names[type];
-		a = json_entity_new(JSON_ATTR_VALUE,
-			json_entity_new(JSON_STRING_VALUE, type_s), av);
+		a = json_entity_new(JSON_ATTR_VALUE, type_s, av);
 		/* Add the attribute */
 		json_attr_add(d, a);
 
@@ -137,8 +131,6 @@ static void test_json_dict_apis()
 		assert(is_same_entity(av, exp));
 	}
 
-	x = json_entity_new(JSON_STRING_VALUE, "aname_2");
-	y = json_entity_new(JSON_STRING_VALUE, "avalue_2");
 	/* json_attr_mod */
 	printf("----------  json_attr_mod()  ------\n");
 	for (type = JSON_INT_VALUE; type < JSON_NULL_VALUE; type++) {
@@ -160,18 +152,10 @@ static void test_json_dict_apis()
 			a = json_attr_find(d, type_s);
 			assert(is_same_entity(json_attr_value(a), json_entity_new(type, "2nd")));
 			break;
-		case JSON_ATTR_VALUE:
-			av = json_entity_new(JSON_ATTR_VALUE, x, y);
-
-			json_attr_mod(d, type_s, av);
-
-			a = json_attr_find(d, type_s);
-			assert(is_same_entity(json_attr_value(a), av));
-			break;
 		case JSON_LIST_VALUE:
 			av = json_entity_new(JSON_LIST_VALUE);
-			json_item_add(av, x);
-			json_item_add(av, y);
+			json_item_add(av, json_entity_new(JSON_STRING_VALUE, "v1"));
+			json_item_add(av, json_entity_new(JSON_STRING_VALUE, "v2"));
 
 			json_attr_mod(d, type_s, av);
 
@@ -180,16 +164,17 @@ static void test_json_dict_apis()
 			break;
 		case JSON_DICT_VALUE:
 			av = json_entity_new(JSON_DICT_VALUE);
-			json_attr_add(av, json_entity_new(JSON_ATTR_VALUE,
-				json_entity_new(JSON_STRING_VALUE, "attr1"), x));
-			json_attr_add(av, json_entity_new(JSON_ATTR_VALUE,
-				json_entity_new(JSON_STRING_VALUE, "attr2"), y));
-
+			json_attr_add(av, json_entity_new(JSON_ATTR_VALUE, "attr1",
+					json_entity_new(JSON_STRING_VALUE, "v1")));
+			json_attr_add(av, json_entity_new(JSON_ATTR_VALUE, "attr2",
+					json_entity_new(JSON_STRING_VALUE, "v2")));
 			json_attr_mod(d, type_s, av);
 
 			a = json_attr_find(d, type_s);
 			assert(is_same_entity(json_attr_value(a), av));
 			break;
+		case JSON_ATTR_VALUE:
+			continue;
 		default:
 			break;
 		}
@@ -285,9 +270,8 @@ static void test_apis() {
 			assert(0 == strcmp("foo", e->value.str_->str));
 			break;
 		case JSON_ATTR_VALUE:
-			attr_name = json_entity_new(JSON_STRING_VALUE, "name");
 			attr_value = json_entity_new(JSON_STRING_VALUE, "value");
-			e = json_entity_new(type, attr_name, attr_value);
+			e = json_entity_new(type, "name", attr_value);
 			assert(0 == strcmp("name", json_attr_name(e)->str));
 			assert(is_same_entity(attr_value, json_attr_value(e)));
 			break;
