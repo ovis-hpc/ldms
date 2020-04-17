@@ -198,16 +198,21 @@ json_entity_t json_item_next(json_entity_t a)
 	return TAILQ_NEXT(a, item_entry);
 }
 
-static json_entity_t json_attr_new(json_entity_t name, json_entity_t value)
+static json_entity_t json_attr_new(const char *name, json_entity_t value)
 {
+	json_entity_t s = json_str_new(name);
+	if (!s)
+		return NULL;
+
 	json_attr_t a = malloc(sizeof *a);
 	if (a) {
 		a->base.type = JSON_ATTR_VALUE;
 		a->base.value.attr_ = a;
-		a->name = name;
+		a->name = s;
 		a->value = value;
 		return &a->base;
 	}
+	json_entity_free(s);
 	return NULL;
 }
 
@@ -215,9 +220,9 @@ json_entity_t json_entity_new(enum json_value_e type, ...)
 {
 	uint64_t i;
 	double d;
-	char *s;
+	char *s, *name;
 	va_list ap;
-	json_entity_t e, name, value;
+	json_entity_t e, value;
 
 	va_start(ap, type);
 	switch (type) {
@@ -250,8 +255,7 @@ json_entity_t json_entity_new(enum json_value_e type, ...)
 		e = json_str_new(s);
 		break;
 	case JSON_ATTR_VALUE:
-		name = va_arg(ap, json_entity_t);
-		assert(JSON_STRING_VALUE == name->type);
+		name = va_arg(ap, char *);
 		value = va_arg(ap, json_entity_t);
 		e = json_attr_new(name, value);
 		break;
@@ -368,17 +372,11 @@ json_entity_t json_entity_copy(json_entity_t e)
 		new = json_entity_new(type, json_value_str(e)->str);
 		break;
 	case JSON_ATTR_VALUE:
-		n = json_entity_new(JSON_STRING_VALUE, json_attr_name(e)->str);
-		if (!n)
-			return NULL;
 		v = json_entity_copy(json_attr_value(e));
-		if (!v) {
-			json_entity_free(n);
+		if (!v)
 			return NULL;
-		}
-		new = json_entity_new(type, n, v);
+		new = json_entity_new(type, json_attr_name(e)->str, v);
 		if (!new) {
-			json_entity_free(n);
 			json_entity_free(v);
 			return NULL;
 		}
@@ -417,7 +415,7 @@ json_entity_t json_entity_copy(json_entity_t e)
 }
 
 static void json_attr_free(json_attr_t a);
-static inline __attr_rem(json_entity_t d, json_entity_t a)
+static inline void __attr_rem(json_entity_t d, json_entity_t a)
 {
 	htbl_del(d->value.dict_->attr_table, &a->value.attr_->attr_ent);
 	json_attr_free(a->value.attr_);
