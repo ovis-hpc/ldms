@@ -655,3 +655,100 @@ size_t json_list_len(json_entity_t list)
 	assert(list->type == JSON_LIST_VALUE);
 	return list->value.list_->item_count;
 }
+
+json_entity_t __dict_new(json_entity_t d, va_list ap);
+json_entity_t __attr_value_new(int type, va_list ap)
+{
+	json_entity_t v, item;
+	switch (type) {
+	case JSON_BOOL_VALUE:
+		v = json_entity_new(type, va_arg(ap, int));
+		break;
+	case JSON_FLOAT_VALUE:
+		v = json_entity_new(type, va_arg(ap, double));
+		break;
+	case JSON_INT_VALUE:
+		v = json_entity_new(type, va_arg(ap, uint64_t));
+		break;
+	case JSON_STRING_VALUE:
+		v = json_entity_new(type, va_arg(ap, char *));
+		break;
+	case JSON_DICT_VALUE:
+		v = __dict_new(NULL, ap);
+		break;
+	case JSON_LIST_VALUE:
+		v = json_entity_new(type);
+		if (!v)
+			return NULL;
+		type = va_arg(ap, int);
+		while (type >= 0) { /* -1 means the end of the ap list, -2 means the end of the list */
+			item = __attr_value_new(type, ap);
+			json_item_add(v, item);
+			type = va_arg(ap, int);
+		}
+		break;
+	default:
+		assert(0 == "Unexpected json value type.");
+		break;
+	}
+	return v;
+}
+
+json_entity_t __dict_new(json_entity_t d_, va_list ap)
+{
+	json_entity_t d, v, a;
+	int type;
+	const char *n;
+
+	if (d_) {
+		d = d_;
+	} else {
+		d = json_entity_new(JSON_DICT_VALUE);
+		if (!d)
+			return NULL;
+	}
+
+	type = va_arg(ap, int);
+	while (type >= 0) {
+		switch (type) {
+		case JSON_ATTR_VALUE:
+			a = va_arg(ap, json_entity_t);
+			break;
+		case JSON_BOOL_VALUE:
+		case JSON_DICT_VALUE:
+		case JSON_FLOAT_VALUE:
+		case JSON_INT_VALUE:
+		case JSON_LIST_VALUE:
+		case JSON_STRING_VALUE:
+			/* attribute name */
+			n = va_arg(ap, const char *);
+			/* attribute value */
+			v = __attr_value_new(type, ap);
+			if (!v)
+				goto err;
+			/* attribute */
+			a = json_entity_new(JSON_ATTR_VALUE, n, v);
+			if (!a)
+				goto err;
+			break;
+		default:
+			assert(0);
+		}
+		json_attr_add(d, a);
+		type = va_arg(ap, int); /* -1 means the end of variable list */
+	}
+	return d;
+err:
+	json_entity_free(d);
+	return NULL;
+}
+
+json_entity_t json_dict_build(json_entity_t d, ...)
+{
+	va_list ap;
+	json_entity_t obj;
+	va_start(ap, d);
+	obj = __dict_new(d, ap);
+	va_end(ap);
+	return obj;
+}
