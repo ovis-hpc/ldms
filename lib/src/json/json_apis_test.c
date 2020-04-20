@@ -244,6 +244,56 @@ static void test_json_entity_dump(json_entity_t *jsons)
 	}
 }
 
+static void test_json_dict_build()
+{
+	json_entity_t d, e1, e2, a1, a2;
+
+	json_entity_t j[7];
+
+	printf("---- TEST: json_dict_build() ---- \n");
+
+	j[JSON_INT_VALUE] = json_entity_new(JSON_INT_VALUE, 1);
+	j[JSON_BOOL_VALUE] = json_entity_new(JSON_BOOL_VALUE, 1);
+	j[JSON_FLOAT_VALUE] = json_entity_new(JSON_FLOAT_VALUE, 1.1);
+	j[JSON_STRING_VALUE] = json_entity_new(JSON_STRING_VALUE, "str");
+	j[JSON_LIST_VALUE] = json_entity_new(JSON_LIST_VALUE);
+	e1 = json_entity_new(JSON_INT_VALUE, 2);
+	e2 = json_entity_new(JSON_STRING_VALUE, "last");
+	json_item_add(j[JSON_LIST_VALUE], e1);
+	json_item_add(j[JSON_LIST_VALUE], e2);
+	j[JSON_DICT_VALUE] = json_entity_new(JSON_DICT_VALUE);
+	a1 = json_entity_new(JSON_ATTR_VALUE, "attr1", json_entity_new(JSON_INT_VALUE, 3));
+	a2 = json_entity_new(JSON_ATTR_VALUE, "attr2", json_entity_new(JSON_FLOAT_VALUE, 2.2));
+	json_attr_add(j[JSON_DICT_VALUE], a1);
+	json_attr_add(j[JSON_DICT_VALUE], a2);
+	j[JSON_ATTR_VALUE] = json_entity_new(JSON_ATTR_VALUE, "attr", json_entity_new(JSON_STRING_VALUE, "MY ATTR"));
+
+
+	d = json_dict_build(NULL,
+		JSON_LIST_VALUE,   "list",   JSON_INT_VALUE, 2,
+					     JSON_STRING_VALUE, "last",
+					     -2,
+		JSON_DICT_VALUE,   "dict",   JSON_INT_VALUE,   "attr1", 3,
+					     JSON_FLOAT_VALUE, "attr2", 2.2,
+					     -2,
+		JSON_INT_VALUE,    "int",    1,
+		JSON_BOOL_VALUE,   "bool",   1,
+		JSON_FLOAT_VALUE,  "float",  1.1,
+		JSON_STRING_VALUE, "string", "str",
+		JSON_ATTR_VALUE, j[JSON_ATTR_VALUE],
+		-1
+	);
+
+	assert(7 == json_attr_count(d));
+	assert(is_same_entity(j[JSON_INT_VALUE], json_value_find(d, "int")));
+	assert(is_same_entity(j[JSON_BOOL_VALUE], json_value_find(d, "bool")));
+	assert(is_same_entity(j[JSON_DICT_VALUE], json_value_find(d, "dict")));
+	assert(is_same_entity(j[JSON_FLOAT_VALUE], json_value_find(d, "float")));
+	assert(is_same_entity(j[JSON_LIST_VALUE], json_value_find(d, "list")));
+	assert(is_same_entity(j[JSON_STRING_VALUE], json_value_find(d, "string")));
+	assert(is_same_entity(json_attr_value(j[JSON_ATTR_VALUE]), json_value_find(d, "attr")));
+}
+
 #define LEN 3
 static void test_apis() {
 	json_entity_t jsons[JSON_NULL_VALUE];
@@ -296,6 +346,8 @@ static void test_apis() {
 	test_json_entity_copy();
 
 	test_json_entity_dump(jsons);
+
+	test_json_dict_build();
 }
 
 int main(int argc, char **argv) {

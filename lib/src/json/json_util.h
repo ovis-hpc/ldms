@@ -186,6 +186,56 @@ extern int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_en
 
 extern json_entity_t json_entity_new(enum json_value_e type, ...);
 
+/*
+ * \brief Build or append a dictionary with the given list of its attribute value pairs.
+ *
+ * If \c d is NULL, a new dictionary with the given attribute value list.
+ * If \c d is not NULL, the given attribute value list will be added to \c d.
+ *
+ * The format of the attribute value pair in the list is
+ * <JSON value type>, <attribute name>, <attribute value>.
+ *
+ * The last value must be -1 to end the attribute value list.
+ *
+ * If the value type is JSON_LIST_VALUE, it must end with -2.
+ *
+ * \example
+ *
+ * attr = json_entity_new(JSON_ATTR_NAME, "attr", json_entity_new(JSON_STRING_VALUE, "my attribute"))
+ * d = json_dict_build(NULL,
+ * 	JSON_INT_VALUE,    "int",    1,
+ * 	JSON_BOOL_VALUE,   "bool",   1,
+ * 	JSON_FLOAT_VALUE,  "float",  1.1,
+ * 	JSON_STRING_VALUE, "string", "str",
+ * 	JSON_LIST_VALUE,   "list",   JSON_INT_VALUE, 1,
+ * 				     JSON_STRING_VALUE, "last",
+ * 				     -2,
+ * 	JSON_DICT_VALUE,   "dict",   JSON_INT_VALUE, "attr1", 2,
+ * 				     JSON_BOOL_VALUE, "attr2", 0,
+ * 				     JSON_STRING_VALUE, "attr3", "last attribute",
+ * 				     -2,
+ * 	JSON_ATTR_VALUE, attr,
+ * 	-1
+ * 	);
+ *
+ * Note: attr is "attr": "my attribute".
+ *
+ * The result dictionary is
+ * { "int":    1,
+ *   "bool":   true,
+ *   "float":  1.1,
+ *   "string": "str",
+ *   "list":   [1, "last" ],
+ *   "dict":   { "attr1": 2,
+ *               "attr2": 0,
+ *               "attr3": "last attribute"
+ *             },
+ *   "attr":   "my attribute"
+ * }
+ *
+ */
+extern json_entity_t json_dict_build(json_entity_t d, ...);
+
 extern size_t json_list_len(json_entity_t l);
 extern void json_item_add(json_entity_t a, json_entity_t e);
 /**
