@@ -118,7 +118,8 @@ static void free_job_data(job_data_t jd)
 
 	if (jd->set) {
 		ldms_set_unpublish(jd->set);
-		ldms_set_delete(jd->set);
+		LDMSD_SAMPLER(jd->inst)->delete_set(LDMSD_INST(jd->inst),
+					 ldms_set_instance_name_get(jd->set));
 	}
 
 	while (!TAILQ_EMPTY(&jd->event_list)) {
