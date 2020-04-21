@@ -198,6 +198,22 @@ json_entity_t json_item_next(json_entity_t a)
 	return TAILQ_NEXT(a, item_entry);
 }
 
+json_entity_t json_item_pop(json_entity_t a, int idx)
+{
+	int i;
+	json_entity_t item;
+	assert(a->type == JSON_LIST_VALUE);
+	if (idx >= json_list_len(a))
+		return NULL;
+	for (i = 0, item = json_item_first(a); (i < idx) && item;
+				i++, item = json_item_next(item)) {
+		continue;
+	}
+	a->value.list_->item_count--;
+	TAILQ_REMOVE(&a->value.list_->item_list, item, item_entry);
+	return item;
+}
+
 static json_entity_t json_attr_new(const char *name, json_entity_t value)
 {
 	json_entity_t s = json_str_new(name);
