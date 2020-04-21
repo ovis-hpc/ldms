@@ -294,6 +294,50 @@ static void test_json_dict_build()
 	assert(is_same_entity(json_attr_value(j[JSON_ATTR_VALUE]), json_value_find(d, "attr")));
 }
 
+void test_json_list_apis()
+{
+	json_entity_t l, item;
+	json_entity_t i1, i2, i3;
+
+	printf(" ---- test_json_list_apis() ----- \n");
+
+	l = json_entity_new(JSON_LIST_VALUE);
+	i1 = json_entity_new(JSON_INT_VALUE, 1);
+	i2 = json_entity_new(JSON_INT_VALUE, 2);
+	i3 = json_entity_new(JSON_INT_VALUE, 3);
+
+	/* Add an item & get the list length */
+	json_item_add(l, i1);
+	assert(1 == json_list_len(l));
+	assert(i1 == json_item_first(l));
+
+	/* Get first item */
+	item = json_item_first(l);
+	assert(i1 == item);
+
+	/* Add the 2nd item */
+	json_item_add(l, i2);
+	assert(2 == json_list_len(l));
+	assert(i1 == json_item_first(l));
+	assert(i2 == json_item_next(json_item_first(l)));
+
+	/* Pop an item */
+	item = json_item_pop(l, 1);
+	assert(i2 == item);
+	json_entity_free(i2);
+	assert(1 == json_list_len(l));
+	assert(i1 == json_item_first(l));
+
+	/* Add and next after pop */
+	json_item_add(l, i3);
+	assert(2 == json_list_len(l));
+	assert(i1 == json_item_first(l));
+	item = json_item_next(json_item_first(l));
+	assert(i3 == item);
+
+	json_entity_free(l);
+}
+
 #define LEN 3
 static void test_apis() {
 	json_entity_t jsons[JSON_NULL_VALUE];
@@ -348,6 +392,8 @@ static void test_apis() {
 	test_json_entity_dump(jsons);
 
 	test_json_dict_build();
+
+	test_json_list_apis();
 }
 
 int main(int argc, char **argv) {

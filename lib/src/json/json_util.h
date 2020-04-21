@@ -263,6 +263,7 @@ extern int json_attr_mod(json_entity_t d, char *name, ...);
 extern int json_attr_rem(json_entity_t d, char *name);
 extern json_entity_t json_item_first(json_entity_t a);
 extern json_entity_t json_item_next(json_entity_t i);
+extern json_entity_t json_item_pop(json_entity_t a, int idx);
 extern json_str_t json_attr_name(json_entity_t a);
 extern json_entity_t json_attr_value(json_entity_t a);
 
