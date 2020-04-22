@@ -52,6 +52,7 @@ AC_C_CONST
 AC_C_FLEXIBLE_ARRAY_MEMBER
 
 OVIS_PKGLIBDIR
+
 dnl change sharedstatedir default
 test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'
 
@@ -472,8 +473,10 @@ if test -n "$CHECK_SOS"; then
 fi
 if test -n "$SOS_LIB64DIR"; then
 	soslibdir="$SOS_LIB64DIR"
+	plugins_rpath="$plugins_rpath:$soslibdir"
 else
 	soslibdir="$SOS_LIBDIR"
+	plugins_rpath="$plugins_rpath:$soslibdir"
 fi
 AC_SUBST(soslibdir)
 
@@ -661,6 +664,7 @@ OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
 -e 's,[[@]]LDMSD_PLUGIN_LIBPATH[[@]],\$(LDMSD_PLUGIN_LIBPATH),g' \
 -e 's,[[@]]ZAP_LIBPATH[[@]],\$(ZAP_LIBPATH),g' \
 -e 's,[[@]]pkglibdir[[@]],\$(pkglibdir),g' \
+-e 's,[[@]]plugins_rpath[[@]],\$(plugins_rpath),g' \
 -e 's,[[@]]pythondir[[@]],\$(pythondir),g' \
 -e 's,[[@]]SOS_LIB64DIR[[@]],\$(SOS_LIB64DIR),g' \
 -e 's,[[@]]SOS_LIBDIR[[@]],\$(SOS_LIBDIR),g' \

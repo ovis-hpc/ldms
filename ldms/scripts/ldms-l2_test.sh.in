@@ -79,7 +79,7 @@ else
 
 fi
 echo "logs and data stored under $TESTDIR"
-export LD_LIBRARY_PATH=$ovis_ldms_libdir:$ovis_ldms_pkglibdir:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=${ovis_ldms_plugins_rpath}:$ovis_ldms_libdir:$ovis_ldms_pkglibdir:$LD_LIBRARY_PATH
 export ZAP_LIBPATH=$ovis_ldms_pkglibdir
 export PATH=${BUILDDIR}/sbin:$PATH
 export LDMSD_PLUGIN_LIBPATH=$ovis_ldms_pkglibdir
