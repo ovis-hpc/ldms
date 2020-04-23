@@ -473,10 +473,11 @@ if test -n "$CHECK_SOS"; then
 fi
 if test -n "$SOS_LIB64DIR"; then
 	soslibdir="$SOS_LIB64DIR"
-	plugins_rpath="$plugins_rpath:$soslibdir"
-else
+	plugins_rpath="$plugins_rpath:$SOS_LIB64DIR"
+fi
+if test -n "$SOS_LIBDIR"; then
 	soslibdir="$SOS_LIBDIR"
-	plugins_rpath="$plugins_rpath:$soslibdir"
+	plugins_rpath="$plugins_rpath:$SOS_LIBDIR"
 fi
 AC_SUBST(soslibdir)
 
