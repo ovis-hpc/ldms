@@ -93,6 +93,7 @@ dnl SYNOPSIS: OPTION_WITH([name], [VAR_BASE_NAME])
 dnl EXAMPLE: OPTION_WITH([xyz], [XYZ])
 dnl NOTE: With VAR_BASE_NAME being XYZ, this macro will set XYZ_INCIDR and
 dnl 	XYZ_LIBDIR to the include path and library path respectively.
+dnl 	It also appends discovered library paths to plugins_rpath
 AC_DEFUN([OPTION_WITH], [
 dnl reset withval, or prior option_with uses bleed in here.
 withval=""
@@ -120,6 +121,7 @@ xyes | x/usr | x)
 		$2_LIBDIR=$WITH_$2/lib
 		$2_LIBDIR_FLAG="-L$WITH_$2/lib"
 		LDFLAGS="$LDFLAGS -Wl,-rpath-link=$WITH_$2/lib"
+		plugins_rpath="$plugins_rpath:$WITH_$2/lib"
 	fi
 	havelibdir=""
 	havelib64dir=""
@@ -128,12 +130,14 @@ xyes | x/usr | x)
 		$2_LIBDIR=$WITH_$2/lib64
 		$2_LIBDIR_FLAG=-L$WITH_$2/lib64
 		LDFLAGS="$LDFLAGS -Wl,-rpath-link=$WITH_$2/lib64"
+		plugins_rpath="$plugins_rpath:$WITH_$2/lib64"
 	fi
 	if test -d $WITH_$2/lib64; then
 		havelib64dir="yes"
 		$2_LIB64DIR=$WITH_$2/lib64
 		$2_LIB64DIR_FLAG="-L$WITH_$2/lib64"
 		LDFLAGS="$LDFLAGS -Wl,-rpath-link=$WITH_$2/lib64"
+		plugins_rpath="$plugins_rpath:$WITH_$2/lib64"
 	fi
 	if test -d $WITH_$2/include; then
 		$2_INCDIR=$WITH_$2/include
@@ -151,6 +155,7 @@ AC_SUBST([$2_INCDIR], [$$2_INCDIR])
 AC_SUBST([$2_LIBDIR_FLAG], [$$2_LIBDIR_FLAG])
 AC_SUBST([$2_LIB64DIR_FLAG], [$$2_LIB64DIR_FLAG])
 AC_SUBST([$2_INCDIR_FLAG], [$$2_INCDIR_FLAG])
+AC_SUBST(plugins_rpath)
 ])
 
 dnl SYNOPSIS: OPTION_WITH_PORT([name])

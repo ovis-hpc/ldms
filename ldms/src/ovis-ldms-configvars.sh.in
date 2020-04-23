@@ -1,5 +1,6 @@
 #!/bin/sh
 ovis_ldms_plugins=@pkglibdir@
+ovis_ldms_plugins_rpath=@plugins_rpath@
 ovis_ldms_version=@VERSION@
 ovis_ldms_mandir=@mandir@
 ovis_ldms_localedir=@localedir@

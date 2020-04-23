@@ -19,7 +19,7 @@ if test -z "$LDMSD_PLUGIN_LIBPATH"; then
 	LDMSD_PLUGIN_LIBPATH=$ovis_ldms_plugins
 fi
 export LDMSD_PLUGIN_LIBPATH
-LD_LIBRARY_PATH=${ovis_ldms_soslibdir}:${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$LD_LIBRARY_PATH
+LD_LIBRARY_PATH=${ovis_ldms_plugins_rpath}:${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$LD_LIBRARY_PATH
 export LD_LIBRARY_PATH
 bname=`basename $0`
 if test -x $ovis_ldms_sbindir/$bname; then
