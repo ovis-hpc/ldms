@@ -2,7 +2,7 @@ pkglib_LTLIBRARIES =
 dist_man7_MANS=
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@ @LIBPAPI_INCDIR_FLAG@
-AM_LDFLAGS = @OVIS_LIB_ABS@ @LIBPAPI_LIB64DIR_FLAG@
+AM_LDFLAGS = @OVIS_LIB_ABS@ @LIBPAPI_LIB64DIR_FLAG@ @LIBPAPI_LIBDIR_FLAG@
 COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 		$(top_builddir)/ldms/src/core/libldms.la \
 		$(top_builddir)/ldms/src/ldmsd/libldmsd_stream.la \
