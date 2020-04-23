@@ -60,3 +60,5 @@ pkglib_LTLIBRARIES += libaries_linkstatus.la
 dist_man7_MANS += Plugin_aries_linkstatus.man
 
 endif
+EXTRA_DIST = Plugin_aries_linkstatus.man Plugin_aries_mmr_configurable.man Plugin_aries_mmr.man
+
