@@ -83,7 +83,8 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 static int getNProcs(char buf[]){
 	int nproc = 0;
 	char* pch;
-	pch = strtok(buf, " ");
+	char *sp = NULL;
+	pch = strtok_r(buf, " ", &sp);
 	while (pch != NULL){
 		if (pch[0] == '\n'){
 			break;
@@ -91,7 +92,7 @@ static int getNProcs(char buf[]){
 		if (pch[0] != ' '){
 			nproc++;
 		}
-		pch = strtok(NULL," ");
+		pch = strtok_r(NULL, " ", &sp);
 	}
 
 	return nproc;
@@ -145,7 +146,8 @@ static int create_metric_set(base_data_t base)
 		if (!s)
 			break;
 		int currcol = 0;
-		char* pch = strtok (lbuf," ");
+		char *sp = NULL;
+		char* pch = strtok_r(lbuf, " ", &sp);
 		while (pch != NULL && currcol <= nprocs){
 			if (pch[0] == '\n'){
 				break;
@@ -167,7 +169,7 @@ static int create_metric_set(base_data_t base)
 				}
 			}
 			currcol++;
-			pch = strtok(NULL," ");
+			pch = strtok_r(NULL, " ", &sp);
 		}
 	}
 
@@ -244,7 +246,8 @@ static int sample(struct ldmsd_sampler *self)
 			break;
 
 		int currcol = 0;
-		char* pch = strtok(lbuf, " ");
+		char * sp = NULL;
+		char* pch = strtok_r(lbuf, " ", &sp);
 		while (pch != NULL && currcol <= nprocs){
 			if (pch[0] == '\n') {
 				break;
@@ -267,7 +270,7 @@ static int sample(struct ldmsd_sampler *self)
 				}
 				currcol++;
 			}
-			pch = strtok(NULL," ");
+			pch = strtok_r(NULL, " ", &sp);
 		} /* end while(strtok) */
 	} while (s);
 	rc = 0;
