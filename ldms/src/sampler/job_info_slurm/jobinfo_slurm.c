@@ -99,7 +99,6 @@ int update_job_info(job_info_t job)
 	int rc = 0;
 	FILE *f;
 	char *datafile;
-	char path[PATH_MAX];
 	struct passwd *pw;
 
 	datafile = getenv("LDMS_JOBINFO_DATA_FILE");
@@ -118,9 +117,9 @@ int update_job_info(job_info_t job)
 	rc = fprintf(f, "JOB_START=%ld\n", job->j_start);
 	rc = fprintf(f, "JOB_END=%ld\n", job->j_end);
 	rc = fprintf(f, "JOB_EXIT=%d\n", job->j_exit_status);
-	rc = fprintf(f, "JOB_NNODES=%ld\n", job->j_nnodes);
-	rc = fprintf(f, "JOB_LOCAL_TASK_COUNT=%ld\n", job->j_local_task_count);
-	rc = fprintf(f, "JOB_NCPUS=%ld\n", job->j_ncpus);
+	rc = fprintf(f, "JOB_NNODES=%u\n", job->j_nnodes);
+	rc = fprintf(f, "JOB_LOCAL_TASK_COUNT=%u\n", job->j_local_task_count);
+	rc = fprintf(f, "JOB_NCPUS=%u\n", job->j_ncpus);
 	rc = fprintf(f, "JOB_NAME=\"%s\"\n",
 		     job->j_name ? job->j_name : "");
 
@@ -141,7 +140,6 @@ int update_job_info(job_info_t job)
 int
 slurm_spank_init(spank_t sh, int argc, char *argv[])
 {
-	spank_context_t context;
 	spank_err_t err;
 	char buf[512];
 	job_info_t job = &the_job;
