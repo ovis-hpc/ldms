@@ -56,6 +56,7 @@
 
 #include <zap/zap.h>
 #include <coll/rbt.h>
+#include <ev/ev.h>
 
 #include "ldms.h"
 #include "ldms_auth.h"
@@ -72,48 +73,30 @@
 #define LDMS_RBD_F_PUSH_CHANGE	2	/* registered for changes */
 #define LDMS_RBD_F_PUSH_CANCEL	4	/* cancel pending */
 
-struct ldms_rbuf_desc {
-	struct ref_s ref;
-	struct ldms_xprt *xprt;
-	struct ldms_set *set;
-	uint64_t remote_set_id;	    /* Remote set id returned by lookup */
-	uint64_t local_notify_xid;  /* Value sent in reg_notify */
+/* Entry of ldms_set->push_coll */
+struct ldms_push_peer {
+	ldms_t xprt; /* Transport to the peer */
+	uint64_t remote_set_id; /* set_id of the peer */
+	uint32_t push_flags;    /* PUSH flags */
+	uint64_t meta_gn; /* track the meta_gn of the last push */
+	struct rbn rbn;
+	struct ev_s ev;
+};
+
+/* Entry of ldms_set->notify_coll */
+struct ldms_notify_peer {
+	ldms_t xprt; /* Transport to peer */
 	uint64_t remote_notify_xid; /* Value received in req_notify */
 	uint32_t notify_flags;	    /* What events are notified */
-	uint32_t push_flags;	    /* Local flags for pushing changes to peer */
-	ldms_set_t push_s;	    /* The set descriptor for we push was requested */
-	ldms_update_cb_t push_cb;   /* Callback when we receive push notification */
-	void * push_cb_arg;	    /* Argument for push_cb_fn() */
-	uint32_t meta_gn;
+	struct rbn rbn;
+	struct ev_s ev;
+};
 
-	/* RDMA_WRITE (i.e. Push):
-	 *   Data flows from Initiator --> Target
-	 *   Initiator:
-	 * +--- rmap = map of remote set obtained via rendezvous-push request
-	 * |    lmap = zap_map() of local set memory.
-	 * | Target:
-	 * |    rmap = remote map obtained rendezvous-lookup request
-	 * +--- lmap = zap_map() of local set memory sent to Initiator via zap_share()
-	 *
-	 * RDMA_READ (i.e. Update):
-	 *   Data flows from Target --> Initiator
-	 *   Initiator:
-	 *      rmap = map of remote set obtained via rendezvous-lookup request
-	 *      lmap = zap_map() of local set memory
-	 *   Target:
-	 *      rmap = NULL
-	 *      lmap = zap_map of local set sent to Target via zap_share()
-	 */
-	struct zap_map *rmap;	    /* Remote buffer map */
-	struct zap_map *lmap;	    /* Local buffer map */
-	enum ldms_rbd_type {
-		LDMS_RBD_LOCAL = 0,
-		LDMS_RBD_INITIATOR,
-		LDMS_RBD_TARGET,
-	} type;
-
-	LIST_ENTRY(ldms_rbuf_desc) set_link; /* list of RBD for a set */
-	struct rbn xprt_rbn; /* rbn for xprt->rbd_rbt */
+/* Entry of ldms_xprt->set_coll */
+struct xprt_set_coll_entry {
+	ldms_set_t set;
+	struct rbn rbn;
+	struct ev_s ev;
 };
 
 #define RBN_RBD(rbn) container_of(rbn, struct ldms_rbuf_desc, xprt_rbn)
@@ -393,7 +376,8 @@ struct ldms_xprt {
 	/** Transport message logging callback */
 	ldms_log_fn_t log;
 
-	struct rbt rbd_rbt;
+	struct rbt set_coll;
+
 	LIST_ENTRY(ldms_xprt) xprt_link;
 };
 

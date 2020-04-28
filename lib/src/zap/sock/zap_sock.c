@@ -124,7 +124,7 @@ static int z_sock_buff_extend(z_sock_buff_t buff, size_t new_sz);
 static void z_sock_hdr_init(struct sock_msg_hdr *hdr, uint32_t xid,
 			    uint16_t type, uint32_t len, uint64_t ctxt);
 
-static uint32_t z_last_key;
+static uint32_t z_last_key = 1;
 static struct rbt z_key_tree;
 static pthread_mutex_t z_key_tree_mutex;
 
@@ -152,22 +152,38 @@ static int z_rbn_cmp(void *a, const void *b)
 /**
  * Allocate key for a \c map.
  *
+ * This function uses \c map->mr[ZAP_SOCK] to determine if the key has already
+ * been allocated for the \c map. Otherwise, it modifies \c map->mr[ZAP_SOCK] to
+ * store the newly allocated key.
+ *
  * \param map The map.
  *
- * \returns NULL on error.
- * \returns Allocated key structure for \c map.
+ * \returns 0 on error.
+ * \returns the key for \c map.
  */
-static struct z_sock_key *z_key_alloc(struct zap_sock_map *map)
+static uint32_t z_key_alloc(struct zap_map *map)
 {
-	struct z_sock_key *key = calloc(1, sizeof(*key));
-	if (!key)
-		return NULL;
-	key->map = map;
+	struct z_sock_key *key;
 	pthread_mutex_lock(&z_key_tree_mutex);
+	/* multiple threads may compete to allocate key for the map. If the key
+	 * has already been allocated by the other thread, just return it. */
+	if (SOCK_MAP_KEY_GET(map)) {
+		pthread_mutex_unlock(&z_key_tree_mutex);
+		return SOCK_MAP_KEY_GET(map);
+	}
+	key = calloc(1, sizeof(*key));
+	if (!key) {
+		pthread_mutex_unlock(&z_key_tree_mutex);
+		return 0;
+	}
+	key->map = map;
 	key->rb_node.key = (void*)(uint64_t)(++z_last_key);
+	if (!key->rb_node.key) /* overflow, get next key */
+		key->rb_node.key = (void*)(uint64_t)(++z_last_key);
 	rbt_ins(&z_key_tree, &key->rb_node);
+	SOCK_MAP_KEY_SET(map, key->rb_node.key);
 	pthread_mutex_unlock(&z_key_tree_mutex);
-	return key;
+	return SOCK_MAP_KEY_GET(map);
 }
 
 /* Caller must hold the z_key_tree_mutex lock. */
@@ -793,7 +809,7 @@ static void process_sep_msg_write_resp(struct z_sock_ep *sep)
 static void process_sep_msg_share(struct z_sock_ep *sep,
 				  struct sock_msg_rendezvous *msg)
 {
-	struct zap_sock_map *map = calloc(1, sizeof(*map));
+	struct zap_map *map = calloc(1, sizeof(*map));
 	if (!map) {
 		LOG_(sep, "ENOMEM in %s at %s:%d\n",
 				__func__, __FILE__, __LINE__);
@@ -806,17 +822,17 @@ static void process_sep_msg_share(struct z_sock_ep *sep,
 		amsg = msg->msg;
 	}
 
-	map->map.ref_count = 1;
-	map->map.ep = &sep->ep;
-	map->key = msg->rmap_key;
-	map->map.acc = ntohl(msg->acc);
-	map->map.type = ZAP_MAP_REMOTE;
-	map->map.addr = (void *)(uint64_t)be64toh((uint64_t)msg->addr);
-	map->map.len = ntohl(msg->data_len);
+	map->ref_count = 1;
+	map->ep = &sep->ep;
+	SOCK_MAP_KEY_SET(map, msg->rmap_key);
+	map->acc = ntohl(msg->acc);
+	map->type = ZAP_MAP_REMOTE;
+	map->addr = (void *)(uint64_t)be64toh((uint64_t)msg->addr);
+	map->len = ntohl(msg->data_len);
 
 	zap_get_ep(&sep->ep); /* Released in process_msg_msg_rendezvous share=0 */
 	pthread_mutex_lock(&sep->ep.lock);
-	LIST_INSERT_HEAD(&sep->ep.map_list, &map->map, link);
+	LIST_INSERT_HEAD(&sep->ep.map_list, map, link);
 	pthread_mutex_unlock(&sep->ep.lock);
 
 	struct zap_event ev = {
@@ -849,7 +865,7 @@ static void process_sep_msg_unshare(struct z_sock_ep *sep,
 
 	pthread_mutex_lock(&sep->ep.lock);
 	LIST_FOREACH(map, &sep->ep.map_list, link) {
-		if (((struct zap_sock_map *)map)->key == msg->rmap_key)
+		if (SOCK_MAP_KEY_GET(map) == msg->rmap_key)
 			break;
 	}
 	pthread_mutex_unlock(&sep->ep.lock);
@@ -1837,40 +1853,11 @@ err:
 	return zerr;
 }
 
-static zap_err_t
-z_sock_map(zap_ep_t ep, zap_map_t *pm, void *buf, size_t len, zap_access_t acc)
+static zap_err_t z_sock_unmap(zap_map_t map)
 {
-	struct zap_sock_map *map = calloc(1, sizeof(*map));
-	zap_err_t zerr = ZAP_ERR_OK;
-	if (!map) {
-		zerr = ZAP_ERR_RESOURCE;
-		goto err0;
+	if (map->type == ZAP_MAP_LOCAL && SOCK_MAP_KEY_GET(map)) {
+		z_key_delete(SOCK_MAP_KEY_GET(map));
 	}
-	/* Just point *pm to map and do nothing. zap_map in zap.c will fill
-	 * in map->map (base) details */
-	struct z_sock_key *k = z_key_alloc(map);
-	if (!k) {
-		zerr = ZAP_ERR_RESOURCE;
-		goto err1;
-	}
-	map->key = (uint32_t)(uint64_t)k->rb_node.key;
-	*pm = (void*)map;
-	goto out;
-err1:
-	free(map);
-err0:
-out:
-	return zerr;
-}
-
-static zap_err_t z_sock_unmap(zap_ep_t ep, zap_map_t map)
-{
-	/* Just free the map */
-	struct zap_sock_map *m = (void*) map;
-	if (map->type == ZAP_MAP_LOCAL) {
-		z_key_delete(m->key);
-	}
-	free(m);
 	return ZAP_ERR_OK;
 }
 
@@ -1879,7 +1866,6 @@ static zap_err_t z_sock_share(zap_ep_t ep, zap_map_t map,
 {
 	struct z_sock_ep *sep = (void*) ep;
 	zap_err_t zerr;
-	struct zap_sock_map *smap = (void*)map;
 	struct sock_msg_rendezvous msgr;
 
 	/* validate */
@@ -1889,10 +1875,23 @@ static zap_err_t z_sock_share(zap_ep_t ep, zap_map_t map,
 	if (map->type != ZAP_MAP_LOCAL)
 		return ZAP_ERR_INVALID_MAP_TYPE;
 
+	/*
+	 * NOTE: For sock transport, the map key is only used for
+	 *       serving/validating the peers' read/write requests. In
+	 *       `read(peer_map, our_map)`, the key of our_map is not involved.
+	 *       Also, `write(our_map, peer_map)`, the key of our_map is not
+	 *       involved. Hence, allocating/assigning the key in
+	 *       `zap_share(our_map)` is suffice.
+	 */
+	if (!SOCK_MAP_KEY_GET(map)) {
+		if (!z_key_alloc(map))  /* this modifies map->mr[ZAP_SOCK] */
+			return ZAP_ERR_RESOURCE;
+	}
+
 	/* prepare message */
 	z_sock_hdr_init(&msgr.hdr, 0, SOCK_MSG_RENDEZVOUS,
 			sizeof(struct sock_msg_rendezvous) + msg_len, 0);
-	msgr.rmap_key = smap->key;
+	msgr.rmap_key = SOCK_MAP_KEY_GET(map);
 	msgr.share = 1;
 	msgr.acc = htonl(map->acc);
 	msgr.addr = htobe64((uint64_t)map->addr);
@@ -1908,17 +1907,19 @@ static zap_err_t z_sock_unshare(zap_ep_t ep, zap_map_t map,
 {
 	struct z_sock_ep *sep = (void*) ep;
 	zap_err_t zerr;
-	struct zap_sock_map *smap = (void*)map;
 	struct sock_msg_rendezvous msgr;
 
 	/* validate */
 	if (ep->state != ZAP_EP_CONNECTED)
 		return ZAP_ERR_NOT_CONNECTED;
 
+	if (!SOCK_MAP_KEY_GET(map)) /* it has never been shared in zap_sock */
+		return ZAP_ERR_OK;
+
 	/* prepare message */
 	msgr.hdr.msg_type = htons(SOCK_MSG_RENDEZVOUS);
 	msgr.hdr.msg_len = htonl(sizeof(struct sock_msg_rendezvous) + msg_len);
-	msgr.rmap_key = smap->key;
+	msgr.rmap_key = SOCK_MAP_KEY_GET(map);
 	msgr.share = 0;
 	msgr.acc = htonl(map->acc);
 	msgr.addr = htobe64((uint64_t)map->addr);
@@ -1954,8 +1955,7 @@ static zap_err_t z_sock_read(zap_ep_t ep, zap_map_t src_map, char *src,
 	/* prepare message */
 	z_sock_hdr_init(&io->read.hdr, 0, SOCK_MSG_READ_REQ,
 		   sizeof(io->read), (uint64_t)context);
-	struct zap_sock_map *src_smap = (void*) src_map;
-	io->read.src_map_key = src_smap->key;
+	io->read.src_map_key = SOCK_MAP_KEY_GET(src_map);
 	io->read.src_ptr = htobe64((uint64_t) src);
 	io->read.data_len = htonl((uint32_t)sz);
 	io->dst_map = dst_map;
@@ -2011,8 +2011,7 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	zerr = ZAP_ERR_RESOURCE;
 	z_sock_hdr_init(&io->write.hdr, 0, SOCK_MSG_WRITE_REQ,
 		   sizeof(io->write) + sz, (uint64_t)context);
-	struct zap_sock_map *sdst_map = (void*)dst_map;
-	io->write.dst_map_key = sdst_map->key;
+	io->write.dst_map_key = SOCK_MAP_KEY_GET(dst_map);
 	io->write.dst_ptr = htobe64((uint64_t) dst);
 	io->write.data_len = htonl((uint32_t) sz);
 
@@ -2041,6 +2040,11 @@ err0:
 	return zerr;
 }
 
+zap_ep_t z_sock_new_from_str(zap_t z, zap_cb_fn_t cb, const char *args)
+{
+	return z_sock_new(z, cb); /* ignore args */
+}
+
 zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 			    zap_mem_info_fn_t mem_info_fn)
 {
@@ -2062,6 +2066,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	/* max_msg is used only by the send/receive operations */
 	z->max_msg = SOCKBUF_SZ - hdr_sz;
 	z->new = z_sock_new;
+	z->new_from_str = z_sock_new_from_str;
 	z->destroy = z_sock_destroy;
 	z->connect = z_sock_connect;
 	z->accept = z_sock_accept;
@@ -2071,7 +2076,6 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->send = z_sock_send;
 	z->read = z_sock_read;
 	z->write = z_sock_write;
-	z->map = z_sock_map;
 	z->unmap = z_sock_unmap;
 	z->share = z_sock_share;
 	z->unshare = z_sock_unshare;

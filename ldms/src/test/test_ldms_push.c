@@ -255,7 +255,6 @@ static const char *metric_type_enum2str(enum metric_type type)
 static void __print_json_set(ldms_set_t s, enum update_type type)
 {
 	int i;
-	struct ldms_set *set = (struct ldms_set *)s->set;
 	printf("{"
 		"\"type\":\"%s\","
 		"\"set_name\":\"%s\","
@@ -266,9 +265,9 @@ static void __print_json_set(ldms_set_t s, enum update_type type)
 		"\"metrics\":[",
 		update_type_enum2str(type),
 		ldms_set_instance_name_get(s),
-		set->meta->meta_gn,
-		set->data->meta_gn,
-		set->data->gn,
+		s->meta->meta_gn,
+		s->data->meta_gn,
+		s->data->gn,
 		ldms_set_card_get(s));
 	for (i = 0; i < ldms_set_card_get(s); i++) {
 		if (i > 0)
@@ -290,14 +289,13 @@ static void __print_json_set(ldms_set_t s, enum update_type type)
 
 static void __print_set(ldms_set_t s)
 {
-	struct ldms_set *set = (struct ldms_set *)s->set;
 	int card = ldms_set_card_get(s);
 	enum ldms_value_type type;
 	printf("--------------------------------\n");
 	printf("set name: %s\n", ldms_set_instance_name_get(s));
-	printf("       meta->meta_gn: %" PRIu64 "\n", set->meta->meta_gn);
-	printf("       data->meta_gn: %" PRIu64 "\n", set->data->meta_gn);
-	printf("            data->gn: %" PRIu64 "\n", set->data->gn);
+	printf("       meta->meta_gn: %" PRIu64 "\n", s->meta->meta_gn);
+	printf("       data->meta_gn: %" PRIu64 "\n", s->data->meta_gn);
+	printf("            data->gn: %" PRIu64 "\n", s->data->gn);
 	printf("   Number of metrics: %d\n", card);
 	printf("	%-10s %16s\n", "MetricName", "Value");
 	int i, j, n;

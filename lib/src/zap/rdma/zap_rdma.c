@@ -144,6 +144,8 @@
 #define RECV_LOG(rep, mp)
 #endif
 
+static int ZAP_RDMA_MAX_PD = 16;
+
 static int context_cmp(void *a, const void *b)
 {
 	if (a < b)
@@ -157,13 +159,15 @@ struct context_tree_entry {
 	struct ibv_context *context;
 	struct ibv_pd *pd;
 	struct rbn rbn;
+	int ce_id; /* context entry ID */
 };
+static int next_ce_id = 0;
 struct rbt context_tree = { 0, context_cmp };
 pthread_mutex_t context_tree_lock = PTHREAD_MUTEX_INITIALIZER;
-static struct ibv_pd *__rdma_get_pd(struct ibv_context *context)
+static struct context_tree_entry *__rdma_get_ce(struct ibv_context *context)
 {
 	struct ibv_pd *pd = NULL;
-	struct context_tree_entry *ce;
+	struct context_tree_entry *ce = NULL;
 	struct rbn *rbn;
 
 	pthread_mutex_lock(&context_tree_lock);
@@ -184,11 +188,13 @@ static struct ibv_pd *__rdma_get_pd(struct ibv_context *context)
 	}
 	ce->pd = pd;
 	ce->context = context;
+	ce->ce_id = next_ce_id++;
+	assert(ce->ce_id < ZAP_RDMA_MAX_PD);
 	rbn_init(&ce->rbn, context);
 	rbt_ins(&context_tree, &ce->rbn);
  out:
 	pthread_mutex_unlock(&context_tree_lock);
-	return pd;
+	return ce;
 }
 
 LIST_HEAD(ep_list, z_rdma_ep) ep_list;
@@ -201,6 +207,8 @@ static void _rdma_context_free(struct z_rdma_context *ctxt);
 static void __rdma_buffer_free(struct z_rdma_buffer *rbuf);
 static int send_credit_update(struct z_rdma_ep *ep);
 static void _rdma_deliver_disconnected(struct z_rdma_ep *rep);
+static struct z_rdma_map *z_rdma_map_get(zap_map_t map);
+static struct ibv_mr *z_rdma_mr_get(zap_map_t map, zap_ep_t ep);
 
 static struct z_rdma_context *__rdma_get_context(struct ibv_wc *wc)
 {
@@ -317,13 +325,16 @@ static int __rdma_setup_conn(struct z_rdma_ep *rep)
 {
 	struct ibv_qp_init_attr qp_attr;
 	int ret = -ENOMEM;
+	struct context_tree_entry *ce;
 
-	/* Allocate PD */
-	rep->pd = __rdma_get_pd(rep->cm_id->verbs);
-	if (!rep->pd) {
+	/* Get-or-Allocate PD */
+	ce = __rdma_get_ce(rep->cm_id->verbs);
+	if (!ce) {
 		LOG_(rep, "RDMA: ibv_alloc_pd failed\n");
 		goto err_0;
 	}
+	rep->pd = ce->pd;
+	rep->ce_id = ce->ce_id;
 
 	rep->cq_channel = ibv_create_comp_channel(rep->cm_id->verbs);
 	if (!rep->cq_channel) {
@@ -894,30 +905,37 @@ static void handle_share(struct z_rdma_ep *rep,
 {
 	struct zap_event zev;
 	struct z_rdma_share_msg *sh = (struct z_rdma_share_msg *)msg;
-	struct z_rdma_map *map;
+	struct zap_map *map;
+	struct z_rdma_map *zm;
 
 	map = calloc(1, sizeof(*map));
 	if (!map)
 		return;
+	zm = calloc(1, Z_RDMA_MAP_SZ);
+	if (!zm) {
+		free(map);
+		return;
+	}
 
-	map->map.ref_count = 1;
-	map->map.type = ZAP_MAP_REMOTE;
-	map->map.ep = &rep->ep;
-	map->map.addr = (void *)(unsigned long)sh->va;
-	map->map.len = ntohl(sh->len);
-	map->map.acc = ntohl(sh->acc);
-	map->rkey = sh->rkey;
+	map->ref_count = 1;
+	map->type = ZAP_MAP_REMOTE;
+	map->ep = &rep->ep;
+	map->addr = (void *)(unsigned long)sh->va;
+	map->len = ntohl(sh->len);
+	map->acc = ntohl(sh->acc);
+	map->mr[ZAP_RDMA] = zm;
+	zm->rkey = sh->rkey;
 
 	__zap_get_ep(&rep->ep); /* will be put in zap_unmap() */
 	pthread_mutex_lock(&rep->ep.lock);
-	LIST_INSERT_HEAD(&rep->ep.map_list, &map->map, link);
+	LIST_INSERT_HEAD(&rep->ep.map_list, map, link);
 	pthread_mutex_unlock(&rep->ep.lock);
 
 	memset(&zev, 0, sizeof zev);
 	zev.type = ZAP_EVENT_RENDEZVOUS;
 	zev.status = ZAP_ERR_OK;
 	zev.share = 1;
-	zev.map = &map->map;
+	zev.map = map;
 	zev.data_len = len - sizeof(*sh);
 	if (zev.data_len)
 		zev.data = (void*)sh->msg;
@@ -930,11 +948,15 @@ static void handle_unshare(struct z_rdma_ep *rep,
 	struct zap_event zev;
 	struct z_rdma_share_msg *sm = (struct z_rdma_share_msg *)msg;
 	zap_map_t lmap;
+	struct z_rdma_map *zm;
 
 	__zap_get_ep(&rep->ep);
 	pthread_mutex_lock(&rep->ep.lock);
 	LIST_FOREACH(lmap, &rep->ep.map_list, link) {
-		if (sm->rkey == ((struct z_rdma_map *)lmap)->rkey)
+		zm = lmap->mr[ZAP_RDMA];
+		if (!zm)
+			continue;
+		if (sm->rkey == zm->rkey)
 			break;
 	}
 	pthread_mutex_unlock(&rep->ep.lock);
@@ -1998,10 +2020,10 @@ static zap_err_t z_rdma_send(zap_ep_t ep, char *buf, size_t len)
 static zap_err_t z_rdma_share(zap_ep_t ep, zap_map_t map,
 				const char *msg, size_t msg_len)
 {
-	struct z_rdma_map *rmap = (struct z_rdma_map *)map;
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	struct z_rdma_share_msg *sm;
 	struct z_rdma_buffer *rbuf;
+	struct ibv_mr *mr;
 	int rc;
 	size_t sz = sizeof(*sm) + msg_len;
 
@@ -2018,6 +2040,12 @@ static zap_err_t z_rdma_share(zap_ep_t ep, zap_map_t map,
 		return ZAP_ERR_NO_SPACE;
 	}
 
+	mr = z_rdma_mr_get(map, ep);
+	if (!mr) {
+		pthread_mutex_unlock(&rep->ep.lock);
+		return ZAP_ERR_RESOURCE;
+	}
+
 	rbuf = __rdma_buffer_alloc(rep, RQ_BUF_SZ, IBV_ACCESS_LOCAL_WRITE);
 	if (!rbuf) {
 		pthread_mutex_unlock(&rep->ep.lock);
@@ -2025,13 +2053,15 @@ static zap_err_t z_rdma_share(zap_ep_t ep, zap_map_t map,
 	}
 	pthread_mutex_unlock(&rep->ep.lock);
 
+	/* get the map */
+
 	sm = (struct z_rdma_share_msg *)rbuf->data;
 	sm->hdr.msg_type = htons(Z_RDMA_MSG_RENDEZVOUS);
 	sm->share = 1;
-	sm->rkey = rmap->mr->rkey;
-	sm->va = (unsigned long)rmap->map.addr;
-	sm->len = htonl(rmap->map.len);
-	sm->acc = htonl(rmap->map.acc);
+	sm->rkey = mr->rkey;
+	sm->va = (unsigned long)map->addr;
+	sm->len = htonl(map->len);
+	sm->acc = htonl(map->acc);
 	if (msg_len)
 		memcpy(sm->msg, msg, msg_len);
 
@@ -2046,12 +2076,22 @@ static zap_err_t z_rdma_share(zap_ep_t ep, zap_map_t map,
 static zap_err_t z_rdma_unshare(zap_ep_t ep, zap_map_t map,
 				const char *msg, size_t msg_len)
 {
-	struct z_rdma_map *rmap = (struct z_rdma_map *)map;
+	struct z_rdma_map *rmap = map->mr[ZAP_RDMA];
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	struct z_rdma_share_msg *sm;
 	struct z_rdma_buffer *rbuf;
 	int rc;
 	size_t sz = sizeof(*sm) + msg_len;
+
+	if (!rmap) {
+		/* zap_share() has never been called with any RDMA xprt */
+		return 0;
+	}
+
+	if (!rmap->mr[rep->ce_id]) {
+		/* zap_share() has never been called with this ep */
+		return 0;
+	}
 
 	pthread_mutex_lock(&rep->ep.lock);
 	rc = __ep_state_check(rep);
@@ -2076,10 +2116,10 @@ static zap_err_t z_rdma_unshare(zap_ep_t ep, zap_map_t map,
 	sm = (struct z_rdma_share_msg *)rbuf->data;
 	sm->hdr.msg_type = htons(Z_RDMA_MSG_RENDEZVOUS);
 	sm->share = 0;
-	sm->rkey = rmap->mr->rkey;
-	sm->va = (unsigned long)rmap->map.addr;
-	sm->len = htonl(rmap->map.len);
-	sm->acc = htonl(rmap->map.acc);
+	sm->rkey = rmap->mr[rep->ce_id]->rkey;
+	sm->va = (unsigned long)map->addr;
+	sm->len = htonl(map->len);
+	sm->acc = htonl(map->acc);
 	if (msg_len)
 		memcpy(sm->msg, msg, msg_len);
 
@@ -2091,6 +2131,52 @@ static zap_err_t z_rdma_unshare(zap_ep_t ep, zap_map_t map,
 	return rc;
 }
 
+static struct z_rdma_map *z_rdma_map_get(zap_map_t map)
+{
+	struct z_rdma_map *zm = map->mr[ZAP_RDMA];
+	if (zm)
+		return zm;
+	zm = calloc(1, Z_RDMA_MAP_SZ);
+	if (!zm)
+		return NULL;
+	/* race with other thread to assign mr[ZAP_RDMA] */
+	if (!__sync_bool_compare_and_swap(&map->mr[ZAP_RDMA], NULL, zm)) {
+		/* the other thread won the race */
+		free(zm);
+	}
+	return map->mr[ZAP_RDMA];
+}
+
+/* needs to call with ep->lock held */
+static struct ibv_mr *z_rdma_mr_get(zap_map_t map, zap_ep_t ep)
+{
+	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
+	struct z_rdma_map *zm = z_rdma_map_get(map);
+	int acc_flags;
+	struct ibv_mr *mr;
+	if (!zm)
+		return NULL;
+	mr = zm->mr[rep->ce_id];
+	if (mr)
+		return mr;
+	acc_flags = (ZAP_ACCESS_WRITE & map->acc ? IBV_ACCESS_REMOTE_WRITE : 0);
+	acc_flags |= (ZAP_ACCESS_READ & map->acc ? IBV_ACCESS_REMOTE_READ : 0);
+	acc_flags |= IBV_ACCESS_LOCAL_WRITE;
+	if (rep->cm_id->verbs->device->transport_type == IBV_TRANSPORT_IWARP) {
+		/*
+		 * iwarp requires the sink map of the read operation
+		 * to be remotely writable. In the current zap API
+		 * version 1.3.0.0, the zap transport library doesn't
+		 * know the purpose of the map. Thus, we assume that
+		 * all maps can be a sink map for a read operation.
+		 */
+		acc_flags |= IBV_ACCESS_REMOTE_WRITE;
+	}
+	mr = zm->mr[rep->ce_id] = ibv_reg_mr(rep->pd, map->addr, map->len, acc_flags);
+	return mr;
+}
+
+#if 0
 /* Map buffer */
 static zap_err_t
 z_rdma_map(zap_ep_t ep, zap_map_t *pm,
@@ -2133,12 +2219,20 @@ z_rdma_map(zap_ep_t ep, zap_map_t *pm,
  err_0:
 	return ZAP_ERR_RESOURCE;
 }
+#endif
 
-static zap_err_t z_rdma_unmap(zap_ep_t ep, zap_map_t map)
+static zap_err_t z_rdma_unmap(zap_map_t map)
 {
-	struct z_rdma_map *zm = (struct z_rdma_map *)map;
-	if (zm->mr)
-		ibv_dereg_mr(zm->mr);
+	struct z_rdma_map *zm = map->mr[ZAP_RDMA];
+	int i;
+	if (!zm) {
+		/* map has never been used with rdma xprt */
+		return 0;
+	}
+	for (i = 0 ; i < next_ce_id; i++) {
+		if (zm->mr[i])
+			ibv_dereg_mr(zm->mr[i]);
+	}
 	free(zm);
 	return ZAP_ERR_OK;
 }
@@ -2151,15 +2245,21 @@ static zap_err_t z_rdma_write(zap_ep_t ep,
 {
 	int rc;
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
-	struct z_rdma_map *rmap = (struct z_rdma_map *)dst_map;
-	struct z_rdma_map *lmap = (struct z_rdma_map *)src_map;
+	struct z_rdma_map *rmap = dst_map->mr[ZAP_RDMA];
 	struct ibv_send_wr *bad_wr;
 	struct z_rdma_context *ctxt;
+	struct ibv_mr *mr;
 
 	pthread_mutex_lock(&rep->ep.lock);
 	rc = __ep_state_check(rep);
 	if (rc)
 		goto out;
+
+	mr = z_rdma_mr_get(src_map, ep);
+	if (!mr) {
+		rc = ZAP_ERR_RESOURCE;
+		goto out;
+	}
 
 	ctxt = __rdma_context_alloc(rep, context, IBV_WC_RDMA_WRITE, NULL);
 	if (!ctxt) {
@@ -2169,7 +2269,7 @@ static zap_err_t z_rdma_write(zap_ep_t ep,
 
 	ctxt->sge.addr = (unsigned long)src;
 	ctxt->sge.length = sz;
-	ctxt->sge.lkey = lmap->mr->lkey;
+	ctxt->sge.lkey = mr->lkey;
 
 	memset(&ctxt->wr, 0, sizeof(ctxt->wr));
 	ctxt->wr.sg_list = &ctxt->sge;
@@ -2208,16 +2308,22 @@ static zap_err_t z_rdma_read(zap_ep_t ep,
 {
 	zap_err_t rc;
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
-	struct z_rdma_map *lmap = (struct z_rdma_map *)dst_map;
-	struct z_rdma_map *rmap = (struct z_rdma_map *)src_map;
+	struct z_rdma_map *rmap = src_map->mr[ZAP_RDMA];
 	struct ibv_send_wr *bad_wr;
 	struct z_rdma_context *ctxt;
+	struct ibv_mr *mr;
 
 	pthread_mutex_lock(&rep->ep.lock);
 	rc = __ep_state_check(rep);
 	if (rc) {
 		pthread_mutex_unlock(&rep->ep.lock);
 		return rc;
+	}
+
+	mr = z_rdma_mr_get(dst_map, ep);
+	if (!mr) {
+		pthread_mutex_unlock(&rep->ep.lock);
+		return ZAP_ERR_RESOURCE;
 	}
 
 	ctxt = __rdma_context_alloc(rep, context, IBV_WC_RDMA_READ, NULL);
@@ -2228,7 +2334,7 @@ static zap_err_t z_rdma_read(zap_ep_t ep,
 
 	ctxt->sge.addr = (unsigned long)dst;
 	ctxt->sge.length = sz;
-	ctxt->sge.lkey = lmap->mr->lkey;
+	ctxt->sge.lkey = mr->lkey;
 	memset(&ctxt->wr, 0, sizeof(ctxt->wr));
 	ctxt->wr.sg_list = &ctxt->sge;
 	ctxt->wr.num_sge = 1;
@@ -2261,7 +2367,8 @@ static pthread_t cm_thread, cq_thread;
 
 static int init_once()
 {
-	int rc;
+	int rc, num;
+	char *s;
 
 	cq_fd = epoll_create(512);
 	if (!cq_fd)
@@ -2290,6 +2397,12 @@ static int init_once()
 	if (rc)
 		goto err_3;
 	pthread_setname_np(cm_thread, "zap:rdma:cm");
+	s = getenv("ZAP_RDMA_MAX_PD");
+	if (s) {
+		num = atoi(s);
+		if (num)
+			ZAP_RDMA_MAX_PD = num;
+	}
 
 	init_complete = 1;
 	// atexit(z_rdma_cleanup);
@@ -2303,6 +2416,11 @@ static int init_once()
 	close(cq_fd);
  err_0:
 	return 1;
+}
+
+zap_ep_t z_rdma_new_from_str(zap_t z, zap_cb_fn_t cb, const char *args)
+{
+	return z_rdma_new(z, cb);
 }
 
 zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
@@ -2324,6 +2442,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 
 	z->max_msg = RQ_BUF_SZ - sizeof(struct z_rdma_share_msg);
 	z->new = z_rdma_new;
+	z->new_from_str = z_rdma_new_from_str;
 	z->destroy = z_rdma_destroy;
 	z->connect = z_rdma_connect;
 	z->accept = z_rdma_accept;
@@ -2333,7 +2452,6 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->send = z_rdma_send;
 	z->read = z_rdma_read;
 	z->write = z_rdma_write;
-	z->map = z_rdma_map;
 	z->unmap = z_rdma_unmap;
 	z->share = z_rdma_share;
 	z->unshare = z_rdma_unshare;

@@ -359,7 +359,7 @@ int test_ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
 		assert(0);
 	}
 
-	pair = LIST_FIRST(&s->set->local_info);
+	pair = LIST_FIRST(&s->local_info);
 	if (!pair) {
 		printf("\n	Failed to add key '%s' value '%s'\n", key, value);
 		assert(0);
@@ -393,7 +393,7 @@ int test_ldms_set_info_reset_value(ldms_set_t s, const char *key,
 		assert(0);
 	}
 
-	pair = __set_info_get(&s->set->local_info, key);
+	pair = __set_info_get(&s->local_info, key);
 	if (!pair) {
 		printf("\n	Failed!. The key does not exist.\n");
 		assert(0);
@@ -414,7 +414,7 @@ int test_ldms_set_info_unset(ldms_set_t s, const char *key, const char *value)
 	__add_pair(key, NULL);
 	ldms_set_info_unset(s, key);
 
-	pair = __set_info_get(&s->set->local_info, key);
+	pair = __set_info_get(&s->local_info, key);
 	if (pair) {
 		printf("\n	Failed. The pair still exists after it was removed.\n");
 		assert(0);
