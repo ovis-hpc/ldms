@@ -17,6 +17,8 @@ libsampler_base_la_SOURCES = sampler_base.c sampler_base.h
 libsampler_base_la_LIBADD = $(CORE_LIBADD)
 lib_LTLIBRARIES += libsampler_base.la
 
+PAPI_LDFLAGS = @LIBPAPI_LIB64DIR_FLAG@ @LIBPAPI_LIBDIR_FLAG@ \
+             @LIBPFM_LIB64DIR_FLAG@ @LIBPFM_LIBDIR_FLAG@
 
 ldmssamplerincludedir = $(includedir)/ldms/sampler
 ldmssamplerinclude_HEADERS = sampler_base.h
@@ -170,8 +172,9 @@ endif
 
 if ENABLE_HWEVENTPAPI
 libhweventpapi_la_SOURCES = hweventpapi.c
-libhweventpapi_la_CFLAGS = $(AM_CFLAGS) $(LIBPAPI_INCDIR_FLAG) $(LIBPAPI_LIBDIR_FLAG)
-libhweventpapi_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lpapi -lm
+libhweventpapi_la_CFLAGS = $(AM_CFLAGS) $(LIBPAPI_INCDIR_FLAG)
+libhweventpapi_la_LDFLAGS = $(AM_LDFLAGS) $(PAPI_LDFLAGS)
+libhweventpapi_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) -lpapi -lpfm -lm
 pkglib_LTLIBRARIES += libhweventpapi.la
 endif
 
@@ -190,7 +193,8 @@ endif
 if ENABLE_RAPL
 librapl_la_SOURCES = rapl.c
 librapl_la_CFLAGS = $(AM_CFLAGS) $(LIBPAPI_INCDIR_FLAG)
-librapl_la_LIBADD = $(COMMON_LIBADD) -lpapi -lm
+librapl_la_LDFLAGS = $(AM_LDFLAGS) $(PAPI_LDFLAGS)
+librapl_la_LIBADD = $(COMMON_LIBADD) -lpapi -lpfm -lm
 pkglib_LTLIBRARIES += librapl.la
 endif
 
