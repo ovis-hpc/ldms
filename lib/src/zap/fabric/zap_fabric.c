@@ -69,20 +69,23 @@
 #include "zap_fabric.h"
 
 /*
- * This is a libfabric provider for zap. It hard-codes using verbs
- * as the libfabric provider. It is basically a port of the RDMA
- * provider so bugs in one are likely to appear in the other.
+ * This is a libfabric provider for zap.
+ *
+ * zap_fabric has been tested with verbs and sockets providers.
+ *
+ * zap_fabric transport requires FI_WAIT_FD. Since GNI fabric provider does not
+ * support WAIT_FD, zap_fabric.gni is not supported.
  */
 
 /* Globals. */
 static struct {
-	struct fid_fabric	*fabric;
-	struct z_fi_fids	cq_fids;
-	struct z_fi_fids	eq_fids;
+	struct z_fi_fabdom	dom[ZAP_FI_MAX_DOM];
+	int			dom_count;
 	int			cq_fd;
 	int			cm_fd;
 	uint64_t		mr_key;
 	zap_log_fn_t		log_fn;
+	pthread_mutex_t		lock;
 } g;
 
 /*
@@ -188,7 +191,7 @@ static char *op_str[] = {
 
 static int		init_once();
 static int		z_fi_fill_rq(struct z_fi_ep *ep);
-static zap_err_t	z_fi_unmap(zap_ep_t ep, zap_map_t map);
+static zap_err_t	z_fi_unmap(zap_map_t map);
 static void		*cm_thread_proc(void *arg);
 static void		*cq_thread_proc(void *arg);
 static void		_context_free(struct z_fi_context *ctxt);
@@ -196,11 +199,167 @@ static int		_buffer_init_pool(struct z_fi_ep *ep);
 static void		__buffer_free(struct z_fi_buffer *rbuf);
 static int		send_credit_update(struct z_fi_ep *ep);
 static void		_deliver_disconnected(struct z_fi_ep *rep);
-static void		fids_init(struct z_fi_fids *fids, int sz);
-static void		fids_add_cq(struct z_fi_ep *ep);
-static void		fids_del_cq(struct z_fi_ep *ep);
-static void		fids_add_eq(struct z_fi_ep *ep);
-static void		fids_del_eq(struct z_fi_ep *ep);
+static struct fid_mr	*z_fi_mr_get(struct z_fi_ep *ep, struct zap_map *map);
+static void		*__map_addr(struct z_fi_ep *ep, zap_map_t map, void *addr);
+
+static inline int fi_info_dom_cmp(struct fi_info *a, struct fi_info *b)
+{
+	int rc;
+	rc = strcmp(a->fabric_attr->name, b->fabric_attr->name);
+	rc = rc?rc:strcmp(a->domain_attr->name, b->domain_attr->name);
+	return rc;
+}
+
+/* SCALABLE MR mode (default) ==> remote addr is referenced by MR offset
+ * Otherwise ==> remote addr is the memory address.
+ */
+static void *__map_addr(struct z_fi_ep *ep, zap_map_t map, void *addr)
+{
+	enum fi_mr_mode mr_mode = ep->fi->domain_attr->mr_mode;
+	if (!mr_mode || (mr_mode & FI_MR_SCALABLE)) /* SCALABLE MR mode */
+		return (void*)(addr - (void*)map->addr); /* ref by offset */
+	return addr; /* reference by addr */
+}
+
+/*
+ * Returns <fabric, domain> pair from the given <fabric.name, domain.name> in
+ * the info. The fabric-domain pair is created once and is reused for the entire
+ * lifetime of the application process.
+ */
+static struct z_fi_fabdom *z_fi_fabdom_get(struct fi_info *info)
+{
+	struct z_fi_fabdom *dom = NULL;
+	int i, rc;
+
+	for (i = 0; i < g.dom_count; i++) {
+		if (!g.dom[i].info)
+			break;
+		if (0 == fi_info_dom_cmp(g.dom[i].info, info))
+			return &g.dom[i]; /* entry found */
+	}
+	/* no entry found */
+	pthread_mutex_lock(&g.lock);
+	/* the other thread may won the race and created the z_fi_fabdom */
+	for (i = 0; i < g.dom_count; i++) {
+		if (!g.dom[i].info)
+			break;
+		if (0 == fi_info_dom_cmp(g.dom[i].info, info)) {
+			dom = &g.dom[i];
+			goto out;
+		}
+	}
+	if (g.dom_count == ZAP_FI_MAX_DOM) { /* too many domains */
+		errno = ENOMEM;
+		goto err_0;
+	}
+	/* really no entry found, allocate it */
+	dom = &g.dom[g.dom_count];
+	dom->info = fi_dupinfo(info);
+	if (!dom->info)
+		goto err_0;
+	rc = fi_fabric(info->fabric_attr, &dom->fabric, NULL);
+	if (rc)
+		goto err_1;
+	rc = fi_domain(dom->fabric, info, &dom->domain, NULL);
+	if (rc)
+		goto err_2;
+	dom->id = g.dom_count;
+	g.dom_count++;
+ out:
+	pthread_mutex_unlock(&g.lock);
+	return dom;
+
+ err_2:
+	fi_close(&dom->fabric->fid);
+ err_1:
+	fi_freeinfo(dom->info);
+	/* reset g.dom[new] entry */
+	bzero(dom, sizeof(*dom));
+ err_0:
+	pthread_mutex_unlock(&g.lock);
+	return NULL;
+}
+
+static struct z_fi_map *z_fi_map_get(struct zap_map *map)
+{
+	struct z_fi_map *zm;
+	if (map->type != ZAP_MAP_LOCAL) {
+		errno = EINVAL;
+		return NULL;
+	}
+	if (map->mr[ZAP_FABRIC])
+		return map->mr[ZAP_FABRIC];
+	zm = calloc(1, sizeof(*zm));
+	if (!zm)
+		return NULL;
+	pthread_mutex_init(&zm->lock, NULL);
+	/* race with other threads to assign mr[ZAP_FABRIC] */
+	if (!__sync_bool_compare_and_swap(&map->mr[ZAP_FABRIC], NULL, zm)) {
+		/* we lose the race */
+		pthread_mutex_destroy(&zm->lock);
+		free(zm);
+	}
+	return map->mr[ZAP_FABRIC];
+}
+
+static struct fid_mr *z_fi_mr_get(struct z_fi_ep *rep, struct zap_map *map)
+{
+	struct z_fi_map *zm;
+	struct fid_mr *mr;
+	int rc;
+	uint64_t acc_flags;
+	zm = z_fi_map_get(map);
+	if (!zm)
+		return NULL;
+	mr = zm->mr[rep->fabdom_id];
+	if (mr)
+		return mr;
+	/* else, need create */
+	pthread_mutex_lock(&zm->lock);
+	mr = zm->mr[rep->fabdom_id];
+	if (mr) {
+		/* other thread won the mr creation */
+		pthread_mutex_unlock(&zm->lock);
+		return mr;
+	}
+	acc_flags = (ZAP_ACCESS_WRITE & map->acc ? FI_REMOTE_WRITE : 0);
+	acc_flags |= (ZAP_ACCESS_READ & map->acc ? FI_REMOTE_READ : 0);
+	acc_flags |= (map->acc != ZAP_ACCESS_NONE) ? FI_READ | FI_WRITE : 0;
+	if (rep->fi->ep_attr->protocol == FI_PROTO_IWARP) {
+		/*
+		 * iwarp requires the sink map of the read operation
+		 * to be remotely writable. In the current zap API
+		 * version 1.3.0.0, the zap transport library doesn't
+		 * know the purpose of the map. Thus, we assume that
+		 * all maps can be a sink map for a read operation.
+		 */
+		acc_flags |= FI_REMOTE_WRITE;
+	}
+	rc = fi_mr_reg(rep->domain, map->addr, map->len, acc_flags, 0,
+			__sync_add_and_fetch(&g.mr_key, 1), 0, &mr, NULL);
+	if (rc) {
+		pthread_mutex_unlock(&zm->lock);
+		return NULL;
+	}
+	/*
+	rc = fi_mr_enable(mr);
+	if (rc) {
+		fi_close(&mr->fid);
+		pthread_mutex_unlock(&zm->lock);
+		return NULL;
+	}
+	*/
+	zm->mr[rep->fabdom_id] = mr;
+	pthread_mutex_unlock(&zm->lock);
+	return mr;
+}
+
+static uint64_t z_fi_rkey_get(struct zap_map *map)
+{
+	if (map->type != ZAP_MAP_REMOTE)
+		return -1;
+	return (uint64_t)map->mr[ZAP_FABRIC];
+}
 
 static int __enable_cq_events(struct z_fi_ep *rep)
 {
@@ -216,7 +375,6 @@ static int __enable_cq_events(struct z_fi_ep *rep)
 		__zap_put_ep(&rep->ep, "CQFD");
 		return errno;
 	}
-	fids_add_cq(rep);
 
 	return 0;
 }
@@ -232,7 +390,6 @@ static void __teardown_conn(struct z_fi_ep *ep)
 	assert (!rep->cm_fd || (rep->ep.state != ZAP_EP_CONNECTED));
 
 	if (rep->cm_fd) {
-		fids_del_eq(rep);
 		if (epoll_ctl(g.cm_fd, EPOLL_CTL_DEL, rep->cm_fd, &ignore))
 			LOG_(rep, "error %d removing EQ from epoll wait set\n", errno);
 	}
@@ -262,13 +419,12 @@ static void __teardown_conn(struct z_fi_ep *ep)
 		if (ret)
 			LOG_(rep, "error %d closing buffer pool\n", ret);
 	}
-	if (rep->domain) {
-		ret = fi_close(&rep->domain->fid);
-		if (ret)
-			LOG_(rep, "error %d closing domain\n", ret);
-	}
 	if (rep->fi)
 		fi_freeinfo(rep->fi);
+	if (rep->provider_name)
+		free(rep->provider_name);
+	if (rep->domain_name)
+		free(rep->domain_name);
 
 	rep->fi = NULL;
 	rep->fi_ep = NULL;
@@ -301,7 +457,7 @@ static void z_fi_destroy(zap_ep_t zep)
 	while (!LIST_EMPTY(&rep->ep.map_list)) {
 		map = (zap_map_t)LIST_FIRST(&rep->ep.map_list);
 		LIST_REMOVE(map, link);
-		z_fi_unmap(zep, map);
+		z_fi_unmap(map);
 	}
 
 	pthread_mutex_lock(&rep->ep.lock);
@@ -315,11 +471,85 @@ static void z_fi_destroy(zap_ep_t zep)
 	free(rep);
 }
 
+static int __fi_init(struct z_fi_ep *rep, int active, struct sockaddr *sin, size_t sa_len)
+{
+	/* Initialize the following fabric entities in the endpoint.
+	 * -> fi
+	 * -> domain
+	 * -> fabric
+	 * -> fabdom_id
+	 */
+	struct fi_info *hints = NULL;
+	int ret = FI_ENOMEM;
+	struct z_fi_fabdom *fdom;
+	struct sockaddr *_sin;
+
+	if (rep->fi)
+		goto init_dom;
+	hints = fi_allocinfo();
+	if (!hints)
+		return FI_ENOMEM;
+	hints->caps		      = FI_MSG | FI_RMA;
+	hints->mode		      = FI_CONTEXT | FI_CONTEXT2 | FI_MSG_PREFIX;
+	hints->ep_attr->type	      = FI_EP_MSG;
+	hints->domain_attr->mr_mode   = FI_MR_LOCAL |
+					FI_MR_ALLOCATED | FI_MR_PROV_KEY |
+					FI_MR_VIRT_ADDR;
+	hints->domain_attr->threading = FI_THREAD_SAFE;
+	hints->addr_format	      = FI_SOCKADDR;
+	hints->rx_attr->size = RQ_DEPTH + 2;
+	hints->tx_attr->size = SQ_DEPTH + 2;
+	if (sin) {
+		_sin     = malloc(sa_len);
+		if (!_sin)
+			goto err_0;
+		memcpy(_sin, sin, sa_len);
+		if (active) {
+			hints->dest_addr = _sin;
+			hints->dest_addrlen  = sa_len;
+		} else {
+			hints->src_addr = _sin;
+			hints->src_addrlen  = sa_len;
+		}
+	}
+	if (rep->provider_name) {
+		hints->fabric_attr->prov_name = strdup(rep->provider_name);
+		if (!hints->fabric_attr->prov_name)
+			goto err_0;
+	}
+	if (rep->domain_name) {
+		hints->domain_attr->name = strdup(rep->domain_name);
+		if (!hints->domain_attr->name)
+			goto err_0;
+	}
+	ret = fi_getinfo(ZAP_FI_VERSION, NULL, NULL, 0, hints, &rep->fi);
+	if (ret)
+		goto err_0;
+	fi_freeinfo(hints);
+ init_dom:
+	if (rep->fabric)
+		goto out;
+	fdom = z_fi_fabdom_get(rep->fi);
+	if (!fdom) {
+		ret = errno;
+		goto err_0;
+	}
+	rep->fabric = fdom->fabric;
+	rep->domain = fdom->domain;
+	rep->fabdom_id = fdom->id;
+ out:
+	return 0;
+
+ err_0:
+	if (hints)
+		fi_freeinfo(hints);
+	return ret;
+}
+
 static int
 __setup_conn(struct z_fi_ep *rep, struct sockaddr *sin, socklen_t sa_len)
 {
 	int ret;
-	struct fi_info *hints;
 	struct fi_eq_attr eq_attr;
 	struct fi_cq_attr cq_attr;
 
@@ -342,35 +572,16 @@ __setup_conn(struct z_fi_ep *rep, struct sockaddr *sin, socklen_t sa_len)
 		// we get here if fi_accept() called
 		rep->fi->rx_attr->size = RQ_DEPTH + 2;
 		rep->fi->tx_attr->size = SQ_DEPTH + 2;
-		ret = fi_domain(g.fabric, rep->fi, &rep->domain, NULL);
 		ret = ret || fi_endpoint(rep->domain, rep->fi, &rep->fi_ep, NULL);
 	} else {
 		// we get here if fi_connect() called
-		hints = fi_allocinfo();
-		hints->caps		      = FI_MSG;
-		hints->mode		      = FI_CONTEXT | FI_CONTEXT2 | FI_MSG_PREFIX;
-		hints->ep_attr->type	      = FI_EP_MSG;
-		hints->domain_attr->mr_mode   = FI_MR_LOCAL | FI_MR_ALLOCATED | FI_MR_PROV_KEY | FI_MR_VIRT_ADDR;
-		hints->domain_attr->threading = FI_THREAD_SAFE;
-		hints->addr_format	      = FI_SOCKADDR;
-		hints->fabric_attr->prov_name = strdup("verbs");
-		hints->dest_addrlen  = sa_len;
-		hints->dest_addr     = sin;
-		hints->rx_attr->size = RQ_DEPTH + 2;
-		hints->tx_attr->size = SQ_DEPTH + 2;
-		ret = fi_getinfo(ZAP_FI_VERSION, NULL, NULL, 0, hints, &rep->fi);
-		if (!g.fabric) {
-			ret = ret || fi_fabric(rep->fi->fabric_attr, &g.fabric, NULL);
-			ret = ret || init_once();
-		}
-		ret = ret || fi_domain(g.fabric, rep->fi, &rep->domain, NULL);
-		ret = ret || fi_endpoint(rep->domain, rep->fi, &rep->fi_ep, NULL);
+		ret = fi_endpoint(rep->domain, rep->fi, &rep->fi_ep, NULL);
 		DLOG("using fabric '%s' provider '%s' domain '%s'\n",
 		     rep->fi->fabric_attr->name,
 		     rep->fi->fabric_attr->prov_name,
 		     rep->fi->domain_attr->name);
 	}
-	ret = ret || fi_eq_open(g.fabric, &eq_attr, &rep->eq, NULL);
+	ret = ret || fi_eq_open(rep->fabric, &eq_attr, &rep->eq, NULL);
 	ret = ret || fi_cq_open(rep->domain, &cq_attr, &rep->cq, NULL);
 	ret = ret || fi_control(&rep->eq->fid, FI_GETWAIT, &rep->cm_fd);
 	ret = ret || fi_control(&rep->cq->fid, FI_GETWAIT, &rep->cq_fd);
@@ -543,6 +754,7 @@ post_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt)
 	int rc;
 	size_t len;
 	struct z_fi_buffer *rb;
+	struct fid_mr *mr;
 
 	switch (ctxt->op) {
 	    case ZAP_WC_SEND:
@@ -557,24 +769,36 @@ post_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt)
 		     rep, ctxt, rb, len, rep->lcl_rq_credits, rc);
 		break;
 	    case ZAP_WC_RDMA_WRITE:
+		mr = z_fi_mr_get(rep, ctxt->u.rdma.src_map);
+		if (!mr) {
+			rc = errno;
+			break;
+		}
 		rc = fi_write(rep->fi_ep, ctxt->u.rdma.src_addr, ctxt->u.rdma.len,
-			      fi_mr_desc(ctxt->u.rdma.src_map->u.local.mr), 0,
+			      fi_mr_desc(mr), 0,
 			      (uint64_t)ctxt->u.rdma.dst_addr,
-			      ctxt->u.rdma.dst_map->u.remote.rkey, ctxt);
+			      z_fi_rkey_get(ctxt->u.rdma.dst_map), ctxt);
 
 		DLOG("ZAP_WC_RDMA_WRITE rep %p ctxt %p src %p dst %p len %d\n",
 		     rep, ctxt, ctxt->u.rdma.src_addr, ctxt->u.rdma.dst_addr, ctxt->u.rdma.len);
 		break;
 	    case ZAP_WC_RDMA_READ:
+		mr = z_fi_mr_get(rep, ctxt->u.rdma.dst_map);
+		if (!mr) {
+			rc = errno;
+			break;
+		}
 		rc = fi_read(rep->fi_ep, ctxt->u.rdma.dst_addr, ctxt->u.rdma.len,
-			     fi_mr_desc(ctxt->u.rdma.dst_map->u.local.mr), 0,
+			     fi_mr_desc(mr), 0,
 			     (uint64_t)ctxt->u.rdma.src_addr,
-			     ctxt->u.rdma.src_map->u.remote.rkey, ctxt);
+			     z_fi_rkey_get(ctxt->u.rdma.src_map), ctxt);
 
 		DLOG("ZAP_WC_RDMA_READ rep %p ctxt %p src %p dst %p len %d\n",
 		     rep, ctxt, ctxt->u.rdma.src_addr, ctxt->u.rdma.dst_addr, ctxt->u.rdma.len);
 		break;
 	    default:
+		LOG_(rep, "post_wr() bad op: %s\n", op_str[ctxt->op]);
+		return ZAP_ERR_TRANSPORT;
 		break;
 	}
 	if (rc) {
@@ -766,6 +990,10 @@ static zap_err_t z_fi_connect(zap_ep_t ep,
 	if (zerr)
 		goto err_0;
 
+	zerr = ZAP_ERR_RESOURCE;
+	rc = __fi_init(rep, 1, sin, sa_len);
+	if (rc)
+		goto err_1;
 	rc = __setup_conn(rep, sin, sa_len);
 	if (rc)
 		goto err_1;
@@ -776,7 +1004,6 @@ static zap_err_t z_fi_connect(zap_ep_t ep,
 		zerr = ZAP_ERR_RESOURCE;
 		goto err_2;
 	}
-	fids_add_eq(rep);
 
 	rc = fi_connect(rep->fi_ep, rep->fi->dest_addr,
 			&conn_data,
@@ -787,7 +1014,6 @@ static zap_err_t z_fi_connect(zap_ep_t ep,
 		zev.status = ZAP_ERR_ROUTE;
 		rep->ep.state = ZAP_EP_ERROR;
 		rep->ep.cb(&rep->ep, &zev);
-		fids_del_eq(rep);
 		__zap_put_ep(&rep->ep, "CONNECT");
 	}
 
@@ -829,11 +1055,17 @@ out:
 /*
  * Map a verbs provider errno to a zap error type.
  */
-zap_err_t z_map_err(struct fi_cq_err_entry *entry)
+zap_err_t z_map_err(struct z_fi_ep *rep, struct fi_cq_err_entry *entry)
 {
 	if (!entry->err)
 		return ZAP_ERR_OK;
 
+	if (0 == strcmp(rep->fi->fabric_attr->prov_name, "verbs"))
+		goto verbs;
+
+	return zap_errno2zerr(entry->err);
+
+ verbs:
 	switch (entry->prov_errno) {
 	case IBV_WC_SUCCESS:
 		return ZAP_ERR_OK;
@@ -896,7 +1128,7 @@ static void process_read_wc(struct z_fi_ep *rep, struct fi_cq_err_entry *entry)
 	ctxt = (struct z_fi_context *)entry->op_context;
 	zev.type = ZAP_EVENT_READ_COMPLETE;
 	zev.context = ctxt->usr_context;
-	zev.status = z_map_err(entry);
+	zev.status = z_map_err(rep, entry);
 	rep->ep.cb(&rep->ep, &zev);
 }
 
@@ -908,7 +1140,7 @@ static void process_write_wc(struct z_fi_ep *rep, struct fi_cq_err_entry *entry)
 	zev.type = ZAP_EVENT_WRITE_COMPLETE;
 	ctxt = (struct z_fi_context *)entry->op_context;
 	zev.context = ctxt->usr_context;
-	zev.status = z_map_err(entry);
+	zev.status = z_map_err(rep, entry);
 	rep->ep.cb(&rep->ep, &zev);
 }
 
@@ -930,28 +1162,28 @@ static void handle_rendezvous(struct z_fi_ep *rep,
 {
 	struct zap_event zev;
 	struct z_fi_share_msg *sh = (struct z_fi_share_msg *)msg;
-	struct z_fi_map *map;
+	struct zap_map *map;
 
 	map = calloc(1, sizeof(*map));
 	if (!map)
 		return;
 
-	map->map.ref_count = 1;
-	map->map.type = ZAP_MAP_REMOTE;
-	map->map.ep = &rep->ep;
-	map->map.addr = (void *)(unsigned long)sh->va;
-	map->map.len = ntohl(sh->len);
-	map->map.acc = ntohl(sh->acc);
-	map->u.remote.rkey = sh->rkey;
+	map->ref_count = 1;
+	map->type = ZAP_MAP_REMOTE;
+	map->ep = &rep->ep;
+	map->addr = (void *)(unsigned long)sh->va;
+	map->len = ntohl(sh->len);
+	map->acc = ntohl(sh->acc);
+	map->mr[ZAP_FABRIC] = (void*)sh->rkey;
 
 	pthread_mutex_lock(&rep->ep.lock);
-	LIST_INSERT_HEAD(&rep->ep.map_list, &map->map, link);
+	LIST_INSERT_HEAD(&rep->ep.map_list, map, link);
 	pthread_mutex_unlock(&rep->ep.lock);
 
 	memset(&zev, 0, sizeof zev);
 	zev.type = ZAP_EVENT_RENDEZVOUS;
 	zev.status = ZAP_ERR_OK;
-	zev.map = &map->map;
+	zev.map = map;
 	zev.data_len = len - sizeof(*sh);
 	if (zev.data_len)
 		zev.data = (void*)sh->msg;
@@ -1116,7 +1348,6 @@ static zap_err_t z_fi_accept(zap_ep_t ep, zap_cb_fn_t cb,
 	ret = ret || epoll_ctl(g.cm_fd, EPOLL_CTL_ADD, rep->cm_fd, &cm_event);
 	if (ret)
 		goto err_0;
-	fids_add_eq(rep);
 
 	ret = fi_accept(rep->fi_ep, msg, len);
 	if (ret) {
@@ -1152,8 +1383,7 @@ static void scrub_cq(struct z_fi_ep *rep)
 				pthread_mutex_lock(&rep->ep.lock);
 				rep->ep.state = ZAP_EP_ERROR;
 				pthread_mutex_unlock(&rep->ep.lock);
-				z_fi_close(&rep->ep);
-				continue;
+				//z_fi_close(&rep->ep);
 			}
 			assert(entry.err);
 		} else if (ret < 0) {
@@ -1205,7 +1435,7 @@ static void scrub_cq(struct z_fi_ep *rep)
 
 static void *cq_thread_proc(void *arg)
 {
-	int ret, i, n, timeout;
+	int ret, i, n;
 	struct z_fi_ep *rep;
 	struct epoll_event cq_events[16], ignore;
 	sigset_t sigset;
@@ -1215,21 +1445,7 @@ static void *cq_thread_proc(void *arg)
 	assert(ret == 0);
 
 	while (1) {
-		DLOG("fi_trywait, %d fids_used\n", g.cq_fids.used);
-
-		pthread_mutex_lock(&g.cq_fids.lock);
-		ret = fi_trywait(g.fabric, g.cq_fids.fids, g.cq_fids.used);
-		pthread_mutex_unlock(&g.cq_fids.lock);
-
-		if (ret == -FI_EAGAIN) {
-			timeout = 0;
-		} else if (ret == FI_SUCCESS) {
-			timeout = -1;
-		} else {
-			continue;
-		}
-		DLOG("fi_trywait ret %d, timeout %d, %d fids_used\n", ret, timeout, g.cq_fids.used);
-		n = epoll_wait(g.cq_fd, cq_events, 16, timeout);
+		n = epoll_wait(g.cq_fd, cq_events, 16, -1);
 		DLOG("got %d events\n", n);
 		if (n < 0) {
 			if (errno == EINTR)
@@ -1250,7 +1466,6 @@ static void *cq_thread_proc(void *arg)
 			 */
 			if (LIST_EMPTY(&rep->active_ctxt_list)) {
 				DLOG("rep %p ctxts drained\n", rep);
-				fids_del_cq(rep);
 				if (epoll_ctl(g.cq_fd, EPOLL_CTL_DEL, rep->cq_fd, &ignore)) {
 					LOG_(rep, "error %d removing CQ from epoll wait set\n", errno);
 				} else {
@@ -1334,6 +1549,9 @@ static void handle_connect_request(struct z_fi_ep *rep, struct fi_eq_cm_entry *e
 	new_rep = (struct z_fi_ep *)new_ep;
 	new_rep->parent_ep = rep;
 	new_rep->fi = newfi;
+	new_rep->fabric = rep->fabric;
+	new_rep->domain = rep->domain;
+	new_rep->fabdom_id = rep->fabdom_id;
 	__zap_get_ep(&rep->ep, "CONNREQ");
 	zap_ep_change_state(new_ep, ZAP_EP_INIT, ZAP_EP_ACCEPTING);
 	new_rep->ep.cb(new_ep, &zev);
@@ -1482,6 +1700,7 @@ static void _deliver_disconnected(struct z_fi_ep *rep)
 static void handle_disconnected(struct z_fi_ep *rep, struct fi_eq_cm_entry *entry)
 {
 	DLOG("rep %p, state '%s'\n", rep, __zap_ep_state_str(rep->ep.state));
+	struct z_fi_context *ctxt;
 
 	pthread_mutex_lock(&rep->ep.lock);
 	switch (rep->ep.state) {
@@ -1514,13 +1733,16 @@ static void handle_disconnected(struct z_fi_ep *rep, struct fi_eq_cm_entry *entr
 	pthread_mutex_unlock(&rep->credit_lock);
 
 	pthread_mutex_lock(&rep->ep.lock);
-	if (!LIST_EMPTY(&rep->active_ctxt_list)) {
-		rep->deferred_disconnected = 1;
-		pthread_mutex_unlock(&rep->ep.lock);
-	} else {
-		pthread_mutex_unlock(&rep->ep.lock);
-		__deliver_disconnected(rep);
+	/* NOTE: recv completion (w/status) has not been delivered after
+	 * fi_disconnected (on verbs and sockets providers). So we free them
+	 * here. */
+	while ((ctxt = LIST_FIRST(&rep->active_ctxt_list))) {
+		assert(ctxt->op == ZAP_WC_RECV);
+		__buffer_free(ctxt->u.recv.rb);
+		__context_free(ctxt);
 	}
+	pthread_mutex_unlock(&rep->ep.lock);
+	__deliver_disconnected(rep);
 }
 
 static void cm_event_handler(struct z_fi_ep *rep,
@@ -1587,7 +1809,7 @@ static void scrub_eq(struct z_fi_ep *rep)
 
 static void *cm_thread_proc(void *arg)
 {
-	int ret, i, n, timeout;
+	int ret, i, n;
 	struct epoll_event cm_events[16];
 	sigset_t sigset;
 
@@ -1596,22 +1818,7 @@ static void *cm_thread_proc(void *arg)
 	assert(ret == 0);
 
 	while (1) {
-		DLOG("fi_trywait, %d fids_used\n", g.eq_fids.used);
-
-		pthread_mutex_lock(&g.eq_fids.lock);
-		ret = fi_trywait(g.fabric, g.eq_fids.fids, g.eq_fids.used);
-		pthread_mutex_unlock(&g.eq_fids.lock);
-
-		if (ret == -FI_EAGAIN) {
-			timeout = 0;
-		} else if (ret == FI_SUCCESS) {
-			timeout = -1;
-		} else {
-			DLOG("FATAL: fi_trywait ret %d\n", ret);
-			exit(1);
-		}
-		DLOG("fi_trywait ret %d, timeout %d, %d fids_used\n", ret, timeout, g.eq_fids.used);
-		n = epoll_wait(g.cm_fd, cm_events, 16, timeout);
+		n = epoll_wait(g.cm_fd, cm_events, 16, -1);
 		DLOG("got %d events\n", n);
 		if (n < 0) {
 			if (errno == EINTR)
@@ -1630,64 +1837,34 @@ static zap_err_t z_fi_listen(zap_ep_t ep, struct sockaddr *saddr, socklen_t sa_l
 	int rc;
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
 	struct epoll_event cm_event;
-	struct fi_info *hints;
-	struct fi_eq_attr eq_attr;
+	struct fi_eq_attr eq_attr = { .wait_obj = FI_WAIT_FD };
 
 	zerr = zap_ep_change_state(&rep->ep, ZAP_EP_INIT, ZAP_EP_LISTENING);
 	if (zerr)
 		goto out;
 
-	hints = fi_allocinfo();
-	if (!hints) {
-		zerr = ZAP_ERR_RESOURCE;
-		goto err_0;
-	}
-	hints->caps		      = FI_MSG;
-	hints->mode		      = FI_CONTEXT | FI_CONTEXT2 | FI_MSG_PREFIX;
-	hints->ep_attr->type	      = FI_EP_MSG;
-	hints->domain_attr->mr_mode   = FI_MR_LOCAL | FI_MR_ALLOCATED | FI_MR_PROV_KEY | FI_MR_VIRT_ADDR;
-        hints->domain_attr->threading = FI_THREAD_SAFE;
- 	hints->addr_format	      = FI_SOCKADDR;
-	hints->fabric_attr->prov_name = strdup("verbs");
-
-	hints->src_addr = (struct sockaddr *)malloc(sa_len);
-	memcpy(hints->src_addr, saddr, sa_len);
-	hints->src_addrlen = sa_len;
-
-	eq_attr.wait_obj         = FI_WAIT_FD;
-	eq_attr.flags            = 0;
-	eq_attr.size             = 0;  // 0 means provider chooses # entries
-	eq_attr.signaling_vector = 0;
-	eq_attr.wait_set         = NULL;
-
-	rc = fi_getinfo(ZAP_FI_VERSION, NULL, NULL, 0, hints, &rep->fi);
-	rc = rc || fi_fabric(rep->fi->fabric_attr, &rep->fabric, NULL);
-	rc = rc || fi_domain(rep->fabric, rep->fi, &rep->domain, NULL);
-	rc = rc || fi_eq_open(rep->fabric, &eq_attr, &rep->eq, NULL);
-	rc = rc || fi_control(&rep->eq->fid, FI_GETWAIT, &rep->cm_fd);
-	rc = rc || fi_passive_ep(rep->fabric, rep->fi, &rep->fi_pep, NULL);
-	rc = rc || fi_pep_bind(rep->fi_pep, &rep->eq->fid, 0);
+	zerr = ZAP_ERR_RESOURCE;
+	rc = __fi_init(rep, 0, saddr, sa_len);
 	if (rc)
 		goto err_0;
-
-	fi_freeinfo(hints);
-
-	if (!g.fabric) {
-		g.fabric = rep->fabric;
-		init_once();
-		DLOG("using fabric '%s' provider '%s' domain '%s'\n",
-		     rep->fi->fabric_attr->name,
-		     rep->fi->fabric_attr->prov_name,
-		     rep->fi->domain_attr->name);
-	}
+	rc = fi_eq_open(rep->fabric, &eq_attr, &rep->eq, NULL);
+	if (rc)
+		goto err_0;
+	rc = fi_control(&rep->eq->fid, FI_GETWAIT, &rep->cm_fd);
+	if (rc)
+		goto err_0;
+	rc = fi_passive_ep(rep->fabric, rep->fi, &rep->fi_pep, NULL);
+	if (rc)
+		goto err_0;
+	rc = fi_pep_bind(rep->fi_pep, &rep->eq->fid, 0);
+	if (rc)
+		goto err_0;
 
 	cm_event.events = EPOLLIN | EPOLLOUT;
 	cm_event.data.ptr = rep;
-	zerr = ZAP_ERR_RESOURCE;
 	rc = epoll_ctl(g.cm_fd, EPOLL_CTL_ADD, rep->cm_fd, &cm_event);
 	if (rc)
 		goto err_1;
-	fids_add_eq(rep);
 
 	rc = fi_listen(rep->fi_pep);
 	if (rc)
@@ -1697,7 +1874,6 @@ static zap_err_t z_fi_listen(zap_ep_t ep, struct sockaddr *saddr, socklen_t sa_l
 
  err_1:
 	rc = epoll_ctl(g.cm_fd, EPOLL_CTL_DEL, rep->cm_fd, NULL);
-	fids_del_eq(rep);
 	fi_close(&rep->cq->fid);
 	fi_close(&rep->eq->fid);
 	fi_close(&rep->fi_pep->fid);
@@ -1761,6 +1937,9 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 	size_t sz = *sa_len;
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
 
+	if (!rep->fi_ep)
+		return ZAP_ERR_NOT_CONNECTED;
+
 	ret = fi_getname(&rep->fi_ep->fid, local_sa, &sz);
 	ret = ret || fi_getpeer(rep->fi_ep, remote_sa, &sz);
 	*sa_len = sz;
@@ -1810,10 +1989,10 @@ static zap_err_t z_fi_send(zap_ep_t ep, char *buf, size_t len)
 static zap_err_t z_fi_share(zap_ep_t ep, zap_map_t map,
 				const char *msg, size_t msg_len)
 {
-	struct z_fi_map *rmap = (struct z_fi_map *)map;
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
 	struct z_fi_share_msg *sm;
 	struct z_fi_buffer *rbuf;
+	struct fid_mr *mr;
 	int rc;
 	size_t sz = sizeof(*sm) + msg_len;
 
@@ -1829,6 +2008,9 @@ static zap_err_t z_fi_share(zap_ep_t ep, zap_map_t map,
 		return ZAP_ERR_RESOURCE;
 	}
 	pthread_mutex_unlock(&rep->ep.lock);
+	mr = z_fi_mr_get(rep, map);
+	if (!mr)
+		return ZAP_ERR_RESOURCE;
 
 	if (!_buffer_fits(rbuf, sz)) {
 		__buffer_free(rbuf);
@@ -1837,10 +2019,10 @@ static zap_err_t z_fi_share(zap_ep_t ep, zap_map_t map,
 
 	sm = (struct z_fi_share_msg *)rbuf->msg;
 	sm->hdr.msg_type = htons(Z_FI_MSG_RENDEZVOUS);
-	sm->rkey = fi_mr_key(rmap->u.local.mr);
-	sm->va = (uint64_t)rmap->map.addr;
-	sm->len = htonl(rmap->map.len);
-	sm->acc = htonl(rmap->map.acc);
+	sm->rkey = fi_mr_key(mr);
+	sm->va = (uint64_t)map->addr;
+	sm->len = htonl(map->len);
+	sm->acc = htonl(map->acc);
 	if (msg_len)
 		memcpy(sm->msg, msg, msg_len);
 
@@ -1852,53 +2034,17 @@ static zap_err_t z_fi_share(zap_ep_t ep, zap_map_t map,
 	return rc;
 }
 
-static zap_err_t z_fi_map(zap_ep_t ep, zap_map_t *pm,
-			  void *buf, size_t len, zap_access_t acc)
+static zap_err_t z_fi_unmap(zap_map_t map)
 {
-	int ret;
-	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
-	struct z_fi_map *map;
-	uint64_t acc_flags;
+	struct z_fi_map *zm = (struct z_fi_map *)map->mr[ZAP_FABRIC];
+	int i;
 
-	map = calloc(1, sizeof(*map));
-	if (!map)
-		goto err_0;
+	if (map->type != ZAP_MAP_LOCAL)
+		return ZAP_ERR_OK;
 
-	acc_flags = (ZAP_ACCESS_WRITE & acc ? FI_REMOTE_WRITE : 0);
-	acc_flags |= (ZAP_ACCESS_READ & acc ? FI_REMOTE_READ : 0);
-	acc_flags |= (acc != ZAP_ACCESS_NONE) ? FI_READ | FI_WRITE : 0;
-
-	if (rep->fi->ep_attr->protocol == FI_PROTO_IWARP) {
-		/*
-		 * iwarp requires the sink map of the read operation
-		 * to be remotely writable. In the current zap API
-		 * version 1.3.0.0, the zap transport library doesn't
-		 * know the purpose of the map. Thus, we assume that
-		 * all maps can be a sink map for a read operation.
-		 */
-		acc_flags |= FI_REMOTE_WRITE;
-	}
-
-	ret = fi_mr_reg(rep->domain, buf, len, acc_flags, 0, ++g.mr_key, 0, &map->u.local.mr, NULL);
-	if (ret)
-		goto err_1;
-
-	*pm = &map->map;
-	return ZAP_ERR_OK;
- err_1:
-	free(map);
- err_0:
-	return ZAP_ERR_RESOURCE;
-}
-
-static zap_err_t z_fi_unmap(zap_ep_t ep, zap_map_t map)
-{
-	struct z_fi_map *zm = (struct z_fi_map *)map;
-
-	if (map->type == ZAP_MAP_LOCAL) {
-		assert(zm->u.local.mr);
-		fi_close(&zm->u.local.mr->fid);
-		zm->u.local.mr = NULL;
+	for (i = 0; i < ZAP_FI_MAX_DOM; i++) {
+		if (zm->mr[i])
+			fi_close(&zm->mr[i]->fid);
 	}
 	free(zm);
 	return ZAP_ERR_OK;
@@ -1912,9 +2058,10 @@ static zap_err_t z_fi_write(zap_ep_t ep,
 {
 	int rc;
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
-	struct z_fi_map *rmap = (struct z_fi_map *)dst_map;
-	struct z_fi_map *lmap = (struct z_fi_map *)src_map;
 	struct z_fi_context *ctxt;
+
+	if (src_map->type != ZAP_MAP_LOCAL || dst_map->type != ZAP_MAP_REMOTE)
+		return ZAP_ERR_INVALID_MAP_TYPE;
 
 	pthread_mutex_lock(&rep->ep.lock);
 	rc = __ep_state_check(rep);
@@ -1926,12 +2073,11 @@ static zap_err_t z_fi_write(zap_ep_t ep,
 		rc = ZAP_ERR_RESOURCE;
 		goto out;
 	}
-	ctxt->u.rdma.src_map  = lmap;
-	ctxt->u.rdma.dst_map  = rmap;
+	ctxt->u.rdma.src_map  = src_map;
+	ctxt->u.rdma.dst_map  = dst_map;
 	ctxt->u.rdma.src_addr = src;
-	ctxt->u.rdma.dst_addr = dst;
+	ctxt->u.rdma.dst_addr = __map_addr(rep, dst_map, dst);
 	ctxt->u.rdma.len      = sz;
-
 	rc = submit_wr(rep, ctxt, 1);
 	if (rc)
 		__context_free(ctxt);
@@ -1948,9 +2094,10 @@ static zap_err_t z_fi_read(zap_ep_t ep,
 {
 	zap_err_t rc;
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
-	struct z_fi_map *lmap = (struct z_fi_map *)dst_map;
-	struct z_fi_map *rmap = (struct z_fi_map *)src_map;
 	struct z_fi_context *ctxt;
+
+	if (src_map->type != ZAP_MAP_REMOTE || dst_map->type != ZAP_MAP_LOCAL)
+		return ZAP_ERR_INVALID_MAP_TYPE;
 
 	pthread_mutex_lock(&rep->ep.lock);
 	rc = __ep_state_check(rep);
@@ -1962,9 +2109,9 @@ static zap_err_t z_fi_read(zap_ep_t ep,
 		rc = ZAP_ERR_RESOURCE;
 		goto out;
 	}
-	ctxt->u.rdma.src_map  = rmap;
-	ctxt->u.rdma.dst_map  = lmap;
-	ctxt->u.rdma.src_addr = src;
+	ctxt->u.rdma.src_map  = src_map;
+	ctxt->u.rdma.dst_map  = dst_map;
+	ctxt->u.rdma.src_addr = __map_addr(rep, src_map, src);
 	ctxt->u.rdma.dst_addr = dst;
 	ctxt->u.rdma.len      = sz;
 
@@ -1974,6 +2121,59 @@ static zap_err_t z_fi_read(zap_ep_t ep,
 out:
 	pthread_mutex_unlock(&rep->ep.lock);
 	return rc;
+}
+
+static zap_err_t __setopt_domain(struct z_fi_ep *rep, const char *v)
+{
+	zap_err_t ret = ZAP_ERR_OK;
+	pthread_mutex_lock(&rep->ep.lock);
+	if (rep->domain_name)
+		free(rep->domain_name);
+	rep->domain_name = strdup(v);
+	if (!rep->domain_name)
+		ret = ZAP_ERR_RESOURCE;
+	pthread_mutex_unlock(&rep->ep.lock);
+	return ret;
+}
+
+static zap_err_t __setopt_provider(struct z_fi_ep *rep, const char *v)
+{
+	zap_err_t ret = ZAP_ERR_OK;
+	pthread_mutex_lock(&rep->ep.lock);
+	if (rep->provider_name)
+		free(rep->provider_name);
+	rep->provider_name = strdup(v);
+	if (!rep->provider_name)
+		ret = ZAP_ERR_RESOURCE;
+	pthread_mutex_unlock(&rep->ep.lock);
+	return ret;
+}
+
+struct __ep_setopt_tbl_entry {
+	const char *name;
+	zap_err_t (*fn)(struct z_fi_ep *ep, const char *value);
+} __ep_setopt_tbl[] = {
+	{ "domain"   , __setopt_domain   },
+	{ "provider" , __setopt_provider },
+};
+
+int __ep_setopt_bcmp(const void *key, const void *ent)
+{
+	const char *k = key;
+	const struct __ep_setopt_tbl_entry *e = ent;
+	return strcmp(k, e->name);
+}
+
+zap_err_t z_fi_ep_setopt(zap_ep_t ep, const char *name, const char *value)
+{
+	struct z_fi_ep *rep = (void*)ep;
+	struct __ep_setopt_tbl_entry *ent;
+	ent = bsearch(name, __ep_setopt_tbl,
+		      sizeof(__ep_setopt_tbl)/sizeof(__ep_setopt_tbl[0]),
+		      sizeof(__ep_setopt_tbl[0]), __ep_setopt_bcmp);
+	if (!ent)
+		return ZAP_ERR_PARAMETER;
+	return ent->fn(rep, value);
 }
 
 static pthread_t cm_thread, cq_thread;
@@ -1989,87 +2189,6 @@ static void z_fi_cleanup(void)
 	if (cq_thread) {
 		pthread_cancel(cq_thread);
 		pthread_join(cq_thread, &dontcare);
-	}
-}
-
-/*
- * The libfabric API provides for using CQ and EQ fd's in an epoll wait
- * set, but they require that fi_trywait() be called first with an array
- * libfabric fids. The following four functions maintain the contiguous
- * arrays needed, as clients come and go.
- */
-static void fids_init(struct z_fi_fids *fids, int sz)
-{
-	fids->sz   = sz;
-	fids->used = 0;
-	fids->fids = (struct fid **)malloc(fids->sz * sizeof(struct fid *));
-	fids->eps  = (struct z_fi_ep **)malloc(fids->sz * sizeof(struct z_fi_ep *));
-	pthread_mutex_init(&fids->lock, NULL);
-}
-
-static void fids_add_cq(struct z_fi_ep *rep)
-{
-	pthread_mutex_lock(&g.cq_fids.lock);
-	if (g.cq_fids.used >= g.cq_fids.sz) {
-		g.cq_fids.sz  *= 2;
-		g.cq_fids.fids = realloc(g.cq_fids.fids, g.cq_fids.sz * sizeof(struct fid *));
-		g.cq_fids.eps  = realloc(g.cq_fids.eps,  g.cq_fids.sz * sizeof(struct z_fi_ep *));
-		if (!g.cq_fids.fids || !g.cq_fids.eps)
-			return;
-	}
-	g.cq_fids.fids[g.cq_fids.used] = &rep->cq->fid;
-	g.cq_fids.eps[g.cq_fids.used]  = rep;
-	rep->cq_fids_idx = g.cq_fids.used++;
-	pthread_mutex_unlock(&g.cq_fids.lock);
-}
-
-static void fids_del_cq(struct z_fi_ep *rep)
-{
-	int	i;
-
-	if (rep->cq_fids_idx >= 0) {
-		pthread_mutex_lock(&g.cq_fids.lock);
-		for (i = rep->cq_fids_idx; i < g.cq_fids.used-1; ++i) {
-			g.cq_fids.fids[i] = g.cq_fids.fids[i+1];
-			g.cq_fids.eps[i]  = g.cq_fids.eps[i+1];
-			g.cq_fids.eps[i]->cq_fids_idx = i;
-		}
-		rep->cq_fids_idx = -1;
-		--g.cq_fids.used;
-		pthread_mutex_unlock(&g.cq_fids.lock);
-	}
-}
-
-static void fids_add_eq(struct z_fi_ep *rep)
-{
-	pthread_mutex_lock(&g.eq_fids.lock);
-	if (g.eq_fids.used >= g.eq_fids.sz) {
-		g.eq_fids.sz  *= 2;
-		g.eq_fids.fids = realloc(g.eq_fids.fids, g.eq_fids.sz * sizeof(struct fid *));
-		g.eq_fids.eps  = realloc(g.eq_fids.eps,  g.eq_fids.sz * sizeof(struct z_fi_ep *));
-		if (!g.eq_fids.fids || !g.eq_fids.eps)
-			return;
-	}
-	g.eq_fids.fids[g.eq_fids.used] = &rep->eq->fid;
-	g.eq_fids.eps[g.eq_fids.used]  = rep;
-	rep->eq_fids_idx = g.eq_fids.used++;
-	pthread_mutex_unlock(&g.eq_fids.lock);
-}
-
-static void fids_del_eq(struct z_fi_ep *rep)
-{
-	int	i;
-
-	if (rep->eq_fids_idx >= 0) {
-		pthread_mutex_lock(&g.eq_fids.lock);
-		for (i = rep->eq_fids_idx; i < g.eq_fids.used-1; ++i) {
-			g.eq_fids.fids[i] = g.eq_fids.fids[i+1];
-			g.eq_fids.eps[i]  = g.eq_fids.eps[i+1];
-			g.eq_fids.eps[i]->eq_fids_idx = i;
-		}
-		rep->eq_fids_idx = -1;
-		--g.eq_fids.used;
-		pthread_mutex_unlock(&g.eq_fids.lock);
 	}
 }
 
@@ -2089,17 +2208,15 @@ static int init_once()
 	if (!g.cm_fd)
 		goto err_1;
 
-	/* Set up arrays of libfabric fids for its fi_trywait() API. */
-	fids_init(&g.cq_fids, 1024);
-	fids_init(&g.eq_fids, 1024);
-
 	rc = pthread_create(&cq_thread, NULL, cq_thread_proc, NULL);
 	if (rc)
 		goto err_2;
+	pthread_setname_np(cq_thread, "z_fi_cq");
 
 	rc = pthread_create(&cm_thread, NULL, cm_thread_proc, NULL);
 	if (rc)
 		goto err_3;
+	pthread_setname_np(cm_thread, "z_fi_cm");
 
 	init_complete = 1;
 	atexit(z_fi_cleanup);
@@ -2115,10 +2232,38 @@ static int init_once()
 	return 1;
 }
 
+zap_ep_t z_fi_new_from_str(zap_t z, zap_cb_fn_t cb, const char *args)
+{
+	struct z_fi_ep *rep = (void*)z_fi_new(z, cb);
+	int n;
+	if (!rep)
+		goto out;
+	if (!args)
+		goto out;
+	n = sscanf(args, "%m[^@]@%ms", &rep->provider_name, &rep->domain_name);
+	if (n == 0)
+		errno = EINVAL;
+	if (n <= 0)
+		goto err;
+ out:
+	return &rep->ep;
+ err:
+	if (rep->provider_name)
+		free(rep->provider_name);
+	if (rep->domain_name)
+		free(rep->domain_name);
+	free(rep);
+	return NULL;
+}
+
 zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 			    zap_mem_info_fn_t mem_info_fn)
 {
 	zap_t z;
+
+	if (init_once())
+		goto err_0;
+
 	z = calloc(1, sizeof (*z));
 	if (!z) {
 		errno = ENOMEM;
@@ -2126,6 +2271,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	}
 	z->max_msg = RQ_BUF_SZ - sizeof(struct z_fi_share_msg);
 	z->new = z_fi_new;
+	z->new_from_str = z_fi_new_from_str;
 	z->destroy = z_fi_destroy;
 	z->connect = z_fi_connect;
 	z->accept = z_fi_accept;
@@ -2135,10 +2281,10 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->send = z_fi_send;
 	z->read = z_fi_read;
 	z->write = z_fi_write;
-	z->map = z_fi_map;
 	z->unmap = z_fi_unmap;
 	z->share = z_fi_share;
 	z->get_name = z_get_name;
+	z->ep_setopt = z_fi_ep_setopt;
 
 	if (!g.log_fn && log_fn)
 		g.log_fn = log_fn;

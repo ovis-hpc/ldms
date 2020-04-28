@@ -858,20 +858,32 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 int listen_on_ldms_xprt(ldmsd_listen_t listen)
 {
 	int ret;
-	struct sockaddr_in sin;
+	struct addrinfo ai_hints = { .ai_family = AF_INET };
+	struct addrinfo *ai;
+	char *ip;       /* for info print */
+	char port[8];
 
-	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = 0;
-	sin.sin_port = htons(listen->port_no);
-	ret = ldms_xprt_listen(listen->x, (struct sockaddr *)&sin, sizeof(sin),
+	snprintf(port, sizeof(port), "%u", listen->port_no);
+
+	ret = getaddrinfo(listen->host, port, &ai_hints, &ai);
+	if (ret)
+		return ret;
+	ip = (char*)&((struct sockaddr_in *)ai->ai_addr)->sin_addr;
+	ret = ldms_xprt_listen(listen->x, ai->ai_addr, ai->ai_addrlen,
 			       __listen_connect_cb, NULL);
 	if (ret) {
 		ldmsd_log(LDMSD_LERROR, "Error %d listening on the '%s' "
-				"transport.\n", ret, listen->xprt);
+				"transport addr: %hhu.%hhu.%hhu.%hhu:%hu.\n",
+				ret, listen->xprt, ip[0], ip[1], ip[2], ip[3],
+				listen->port_no);
+		freeaddrinfo(ai);
 		return 7; /* legacy error code */
 	}
-	ldmsd_log(LDMSD_LINFO, "Listening on transport %s:%hu\n",
-			listen->xprt, listen->port_no);
+	ldmsd_log(LDMSD_LINFO,  "Listening on transport %s, "
+				"addr: %hhu.%hhu.%hhu.%hhu:%hu\n",
+				listen->xprt, ip[0], ip[1], ip[2], ip[3],
+				listen->port_no);
+	freeaddrinfo(ai);
 	return 0;
 }
 

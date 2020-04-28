@@ -233,12 +233,8 @@ struct zap {
 			  zap_map_t dst_map, char *dst, size_t sz,
 			  void *context);
 
-	/** Allocate a remote buffer */
-	zap_err_t (*map)(zap_ep_t ep, zap_map_t *pm, void *addr, size_t len,
-			 zap_access_t acc);
-
 	/** Free a remote buffer */
-	zap_err_t (*unmap)(zap_ep_t ep, zap_map_t map);
+	zap_err_t (*unmap)(zap_map_t map);
 
 	/** Share a mapping with a remote peer */
 	zap_err_t (*share)(zap_ep_t ep, zap_map_t m,
@@ -265,6 +261,19 @@ struct zap {
 
 	/** Pointer to the transport's private data */
 	void *private;
+
+	/** Endpoint option setter */
+	zap_err_t (*ep_setopt)(zap_ep_t ep, const char *name, const char *value);
+
+	/**
+	 * Create new endpoint from str.
+	 *
+	 * The `args` is the string after the '.' in the transport string
+	 * format. For example, if the xprt string is "fabric.sockets@eth0", the
+	 * `args` is "sockets@eth0". `args` could be NULL. Also see
+	 * `zap_new_from_str()` function.
+	 */
+	zap_ep_t (*new_from_str)(zap_t z, zap_cb_fn_t cb, const char *args);
 };
 
 static inline zap_err_t
@@ -292,6 +301,7 @@ struct zap_map {
 	zap_access_t acc;	  /*! Access rights */
 	char *addr;		  /*! Address of buffer. */
 	size_t len;		  /*! Length of the buffer */
+	void *mr[ZAP_LAST];	  /*! xprt-specific memory registrations */
 };
 
 struct zap_event_entry {

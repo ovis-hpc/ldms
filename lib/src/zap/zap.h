@@ -93,6 +93,14 @@ typedef struct zap_map *zap_map_t;
 
 #define ZAP_EVENT_BAD -1
 
+typedef enum zap_type {
+	ZAP_SOCK,
+	ZAP_RDMA,
+	ZAP_UGNI,
+	ZAP_FABRIC,
+	ZAP_LAST,
+} zap_type_t;
+
 typedef enum zap_event_type {
 	/*! An incoming connect request is ready to be accepted or rejected. */
 	ZAP_EVENT_CONNECT_REQUEST = 1,
@@ -332,6 +340,45 @@ size_t zap_max_msg(zap_t z);
 zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb);
 
 /**
+ * \brief Create an endpoint from \c str xprt description.
+ *
+ * The format of the \c str is as follows: `XPRT[.ARGS]`. The `XPRT` is the
+ * name of the supported transports (sock, rdma, ugni, and fabric). The
+ * optional `ARGS` is transport-specific arguments.
+ *
+ * Examples: `sock`, `rdma`, `ugni`, `fabric`, `fabric.sockets@eth0`,
+ * `fabric.UDP@udp`.
+ *
+ * Please consult the manual of the transport for more information.
+ *
+ * The \c log_fn and \c mem_fn are used to supply to the underlying `zap_get()`
+ * call in this function.
+ *
+ * \param str The input string.
+ * \param cb  The callback function.
+ * \param log_fn The log function to supply to underlying `zap_get()` call.
+ * \param mem_fn The memory function to supply to underlying `zap_get()` call.
+ *
+ * \retval ep   The pointer to the newly created endpoint.
+ * \retval NULL if there was an error.
+ */
+zap_ep_t zap_new_from_str(const char *str, zap_cb_fn_t cb,
+			  zap_log_fn_t log_fn, zap_mem_info_fn_t mem_fn);
+
+/**
+ * \brief Set transport-specific endpoint options.
+ *
+ * Since the endpoint options are transport-specific, please consult the
+ * transport manual for more information.
+ *
+ * \param ep  The endpoint handle.
+ * \param name The name of the option.
+ * \param value The value of the option.
+ *
+ */
+zap_err_t zap_ep_setopt(zap_ep_t ep, const char *name, const char *value);
+
+/**
  * \brief Return an array of environment variables used by the zap transport
  *
  * An array of strings ends with NULL is returned. Each string element
@@ -565,7 +612,7 @@ typedef enum zap_map_type {
  * \param acc	The remote access flags of the buffer
  * \return 0	Success, or a non-zero zap_err_t error code.
  */
-zap_err_t zap_map(zap_ep_t ep, zap_map_t *pm,
+zap_err_t zap_map(zap_map_t *pm,
 		  void *addr, size_t sz, zap_access_t acc);
 
 /**
@@ -613,7 +660,7 @@ char *zap_map_addr(zap_map_t map);
  *		zap_map_buf
  * \return 0	Success, or a non-zero zap_err_t error code.
  */
-zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map);
+zap_err_t zap_unmap(zap_map_t map);
 
 /** \brief Share a mapping with a remote peer
  *

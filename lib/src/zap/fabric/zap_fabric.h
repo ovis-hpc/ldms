@@ -51,6 +51,10 @@
 
 #include <sys/queue.h>
 #include <semaphore.h>
+#include <rdma/fabric.h>
+#include <rdma/fi_domain.h>
+#include <rdma/fi_cm.h>
+#include <rdma/fi_rma.h>
 #include "../zap.h"
 #include "../zap_priv.h"
 
@@ -62,6 +66,16 @@
 #define ZAP_FI_VERSION_MAJOR	1
 #define ZAP_FI_VERSION_MINOR	5
 #define ZAP_FI_VERSION		FI_VERSION(ZAP_FI_VERSION_MAJOR,ZAP_FI_VERSION_MINOR)
+
+#define ZAP_FI_MAX_DOM 128
+
+/* structure to hold <fabric, domain> pair */
+struct z_fi_fabdom {
+	struct fi_info *info;
+	struct fid_fabric *fabric;
+	struct fid_domain *domain;
+	int id;
+};
 
 #pragma pack(4)
 enum z_fi_message_type {
@@ -101,15 +115,8 @@ struct z_fi_reject_msg {
 #pragma pack()
 
 struct z_fi_map {
-	struct zap_map map;
-	union {
-		struct {
-			struct fid_mr	*mr;
-		} local;
-		struct {
-			uint64_t	rkey;
-		} remote;
-	} u;
+	pthread_mutex_t lock;
+	struct fid_mr	*mr[ZAP_FI_MAX_DOM];
 };
 
 struct z_fi_buffer {
@@ -141,8 +148,8 @@ struct z_fi_context {
 			struct z_fi_buffer *rb;
 		} recv;
 		struct {
-			struct z_fi_map *src_map;
-			struct z_fi_map	*dst_map;
+			struct zap_map *src_map;
+			struct zap_map	*dst_map;
 			void		*src_addr;
 			void		*dst_addr;
 			size_t		len;
@@ -166,17 +173,12 @@ struct z_fi_conn_data {
 #define ACCEPT_DATA_MAX (196)
 #define ZAP_ACCEPT_DATA_MAX ACCEPT_DATA_MAX
 
-/* This is used to maintain arrays of libfabric "fids" for the fi_trywait() API. */
-struct z_fi_fids {
-	struct fid	**fids;
-	struct z_fi_ep	**eps;
-	int		sz;
-	int		used;
-	pthread_mutex_t	lock;
-};
-
 struct z_fi_ep {
 	struct zap_ep ep;
+
+	int fabdom_id;
+	char *provider_name;
+	char *domain_name;
 
 	/* libfabric objects */
 	struct fi_info *fi;

@@ -20,3 +20,7 @@ zap_test_disconnect_LDADD = $(builddir)/../libzap.la -lpthread -ldl
 sbin_PROGRAMS += zap_test_reconnect_many
 zap_test_reconnect_many_SOURCES = zap_test_reconnect_many.c
 zap_test_reconnect_many_LDADD = $(builddir)/../libzap.la -lpthread -ldl
+
+sbin_PROGRAMS += zap_test_shared_map
+zap_test_shared_map_SOURCES = zap_test_shared_map.c
+zap_test_shared_map_LDADD = $(builddir)/../libzap.la -lpthread -ldl

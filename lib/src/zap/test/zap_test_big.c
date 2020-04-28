@@ -142,7 +142,7 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 		}
 		break;
 	case ZAP_EVENT_CONNECTED:
-		err = zap_map(ep, &map0, mem0, WSIZE,
+		err = zap_map(&map0, mem0, WSIZE,
 			      ZAP_ACCESS_READ|ZAP_ACCESS_WRITE);
 		if (err) {
 			printf("Error: zap_map() error: %d\n", err);
@@ -152,18 +152,18 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 		err = zap_share(ep, map0, NULL, 0);
 		if (err) {
 			printf("Error: zap_share() error: %d\n", err);
-			zap_unmap(ep, map0);
+			zap_unmap(map0);
 			zap_close(ep);
 			break;
 		}
 		break;
 	case ZAP_EVENT_DISCONNECTED:
 		if (map0) {
-			zap_unmap(ep, map0);
+			zap_unmap(map0);
 			map0 = NULL;
 		}
 		if (map1) {
-			zap_unmap(ep, map1);
+			zap_unmap(map1);
 			map1 = NULL;
 		}
 		zap_free(ep);
@@ -202,15 +202,15 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		break;
 	case ZAP_EVENT_DISCONNECTED:
 		if (map0) {
-			zap_unmap(ep, map0);
+			zap_unmap(map0);
 			map0 = NULL;
 		}
 		if (map1) {
-			zap_unmap(ep, map1);
+			zap_unmap(map1);
 			map1 = NULL;
 		}
 		if (remote_map) {
-			zap_unmap(ep, remote_map);
+			zap_unmap(remote_map);
 			remote_map = NULL;
 		}
 		zap_free(ep);
@@ -245,14 +245,14 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		assert(ev->map);
 		remote_map = ev->map;
 		memset(mem0, fill_ch, WSIZE);
-		err = zap_map(ep, &map0, mem0, WSIZE,
+		err = zap_map(&map0, mem0, WSIZE,
 			      ZAP_ACCESS_READ|ZAP_ACCESS_WRITE);
 		if (err) {
 			printf("zap_map() error: %d\n", err);
 			zap_close(ep);
 			break;
 		}
-		err = zap_map(ep, &map1, mem1, WSIZE,
+		err = zap_map(&map1, mem1, WSIZE,
 			      ZAP_ACCESS_READ|ZAP_ACCESS_WRITE);
 		if (err) {
 			printf("zap_map() error: %d\n", err);

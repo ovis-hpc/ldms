@@ -227,7 +227,7 @@ void handle_recv(zap_ep_t ep, zap_event_t ev)
 	strcpy(mem.write_buf, WRITE_DATA_2);
 
 	/* Map the data to send */
-	err = zap_map(ep, &src_write_map, mem.write_buf, sizeof mem.write_buf,
+	err = zap_map(&src_write_map, mem.write_buf, sizeof mem.write_buf,
 			ZAP_ACCESS_NONE);
 	if (err) {
 		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
@@ -262,7 +262,7 @@ void handle_rendezvous(zap_ep_t ep, zap_event_t ev)
 	strcpy(mem.write_buf, WRITE_DATA);
 
 	/* map the data to send */
-	err = zap_map(ep, &src_write_map, mem.write_buf, sizeof mem.write_buf,
+	err = zap_map(&src_write_map, mem.write_buf, sizeof mem.write_buf,
 			ZAP_ACCESS_NONE);
 	if (err) {
 		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
@@ -282,7 +282,7 @@ void handle_rendezvous(zap_ep_t ep, zap_event_t ev)
 
 	/* Create a map for our peer to read from */
 	strcpy(mem.read_buf, READ_DATA);
-	err = zap_map(ep, &read_map, mem.read_buf, sizeof mem.read_buf, ZAP_ACCESS_READ);
+	err = zap_map(&read_map, mem.read_buf, sizeof mem.read_buf, ZAP_ACCESS_READ);
 	if (err) {
 		printf("Error %d for map of RDMA_READ memory.\n", err);
 		return;
@@ -307,7 +307,7 @@ void do_write_complete(zap_ep_t ep, zap_event_t ev)
 	}
 	zap_map_t write_src_map = (void *)(unsigned long)ev->context;
 	printf("Unmapping write map %p.\n", write_src_map);
-	err = zap_unmap(ep, write_src_map);
+	err = zap_unmap(write_src_map);
 	if (err)
 		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
 	if (ev->status != ZAP_ERR_OK) {
@@ -371,11 +371,11 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 		break;
 	case ZAP_EVENT_DISCONNECTED:
 		if (remote_map) {
-			zap_unmap(ep, remote_map);
+			zap_unmap(remote_map);
 			remote_map = NULL;
 		}
 		if (read_map) {
-			zap_unmap(ep, read_map);
+			zap_unmap(read_map);
 			read_map = NULL;
 		}
 		assert((server_events & SERVER_DISCONNECTED) == 0);
@@ -408,7 +408,7 @@ void do_rendezvous(zap_ep_t ep)
 {
 	zap_err_t err;
 
-	err = zap_map(ep, &write_map, mem.write_buf, sizeof(mem.write_buf),
+	err = zap_map(&write_map, mem.write_buf, sizeof(mem.write_buf),
 		      ZAP_ACCESS_WRITE);
 	if (err) {
 		printf("Error %d mapping the write buffer.\n", err);
@@ -446,7 +446,7 @@ void do_read_and_verify_write(zap_ep_t ep, zap_event_t ev)
 	}
 
 	/* Create some memory to receive the read data */
-	err = zap_map(ep, &dst_read_map, mem.read_buf, zap_map_len(src_read_map),
+	err = zap_map(&dst_read_map, mem.read_buf, zap_map_len(src_read_map),
 		      ZAP_ACCESS_WRITE | ZAP_ACCESS_READ);
 	if (err) {
 		printf("Error %d mapping RDMA_READ data sink memory.\n", err);
@@ -479,7 +479,7 @@ void do_read_complete(zap_ep_t ep, zap_event_t ev)
 	zap_err_t err;
 	zap_map_t read_sink_map = (void *)(unsigned long)ev->context;
 	printf("Unmapping read map %p.\n", read_sink_map);
-	err = zap_unmap(ep, read_sink_map);
+	err = zap_unmap(read_sink_map);
 	if (err)
 		printf("%s:%d returns %d.\n", __func__, __LINE__, err);
 #if 0
@@ -493,7 +493,7 @@ void do_read_complete(zap_ep_t ep, zap_event_t ev)
 	assert (0 == (client_events & CLIENT_READ_SUCCESS));
 	client_events |= CLIENT_READ_SUCCESS;
 
-	zap_unmap(ep, write_map);
+	zap_unmap(write_map);
 
 	do_send(ep, dare);
 }
@@ -562,7 +562,7 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		break;
 	case ZAP_EVENT_DISCONNECTED:
 		if (remote_map) {
-			zap_unmap(ep, remote_map);
+			zap_unmap(remote_map);
 			remote_map = NULL;
 		}
 		assert (0 == (client_events & CLIENT_DISCONNECTED));

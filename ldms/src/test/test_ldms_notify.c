@@ -187,14 +187,13 @@ static void _log(const char *fmt, ...)
 
 static void __print_set(ldms_set_t s)
 {
-	struct ldms_set *set = (struct ldms_set *)s->set;
 	int card = ldms_set_card_get(s);
 	enum ldms_value_type type;
 	printf("--------------------------------\n");
 	printf("set name: %s\n", ldms_set_instance_name_get(s));
-	printf("       meta->meta_gn: %" PRIu64 "\n", set->meta->meta_gn);
-	printf("       data->meta_gn: %" PRIu64 "\n", set->data->meta_gn);
-	printf("            data->gn: %" PRIu64 "\n", set->data->gn);
+	printf("       meta->meta_gn: %" PRIu64 "\n", s->meta->meta_gn);
+	printf("       data->meta_gn: %" PRIu64 "\n", s->data->meta_gn);
+	printf("            data->gn: %" PRIu64 "\n", s->data->gn);
 	printf("   Number of metrics: %d\n", card);
 	printf("	%-10s %16s %10s\n", "MetricName", "Value", "UserData");
 	int i, j, n;
@@ -333,29 +332,31 @@ static void do_server(struct sockaddr_in *sin)
 
 	char user_data_buf[USER_DATA_LEN];
 	sprintf(user_data_buf, USER_EVENT);
-	size_t len = strlen(user_data_buf);
+	size_t len = strlen(user_data_buf)+1;
 	ldms_notify_event_t event;
 	size_t sz = sizeof(*event) + len;
 	event = calloc(1, sz);
 	uint64_t round = 0;
 	while (1) {
-		memset(event, 0, sz);
 		if (is_set_modified) {
+			memset(event, 0, sz);
 			printf("Creating SET_MODIFIED event\n");
 			ldms_transaction_begin(set);
 			ldms_metric_set_u64(set, 0, round);
 			ldms_transaction_end(set);
 			ldms_init_notify_modified(event);
+			ldms_notify(set, event);
 		}
 		if (is_uevents) {
+			memset(event, 0, sz);
 			printf("Creating USER EVENT event\n");
 			ldms_metric_user_data_set(set, 0, round);
 			ldms_init_notify_user_data(event, (unsigned char *)user_data_buf, len);
+			ldms_notify(set, event);
 		}
 
 		__print_set(set);
 
-		ldms_notify(set, event);
 		round++;
 		sleep(interval);
 	}

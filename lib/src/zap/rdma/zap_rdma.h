@@ -100,10 +100,11 @@ struct z_rdma_reject_msg {
 #pragma pack()
 
 struct z_rdma_map {
-	struct zap_map map;
-	struct ibv_mr *mr;
 	uint32_t rkey;
+	struct ibv_mr *mr[OVIS_FLEX];
 };
+
+#define Z_RDMA_MAP_SZ (sizeof(struct z_rdma_map) + ZAP_RDMA_MAX_PD*sizeof(struct ibv_mr *))
 
 struct z_rdma_buffer {
 	char *data;
@@ -153,6 +154,8 @@ struct z_rdma_ep {
 	struct ibv_cq *sq_cq;
 	struct ibv_pd *pd;
 	struct ibv_qp *qp;
+
+	int ce_id;
 
 	union {
 		struct z_rdma_conn_data conn_data; /* flexi */

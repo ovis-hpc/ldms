@@ -200,6 +200,19 @@ zap_mem_info_t default_zap_mem_info(void)
 static
 void zap_interpose_event(zap_ep_t ep, void *ctxt);
 
+struct zap_tbl_entry {
+	zap_type_t type;
+	const char *name;
+	zap_t zap;
+};
+struct zap_tbl_entry __zap_tbl[] = {
+	[ ZAP_SOCK   ]  =  { ZAP_SOCK   , "sock"   , NULL },
+	[ ZAP_RDMA   ]  =  { ZAP_RDMA   , "rdma"   , NULL },
+	[ ZAP_UGNI   ]  =  { ZAP_UGNI   , "ugni"   , NULL },
+	[ ZAP_FABRIC ]  =  { ZAP_FABRIC , "fabric" , NULL },
+	[ ZAP_LAST   ]  =  { 0          , NULL     , NULL },
+};
+
 zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_fn)
 {
 	char _libdir[MAX_ZAP_LIBPATH];
@@ -212,7 +225,24 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	int ret;
 	void *d = NULL;
 	char *saveptr = NULL;
+	struct zap_tbl_entry *zent;
 
+	for (zent = __zap_tbl; zent->name; zent++) {
+		if (0 != strcmp(zent->name, name))
+			continue;
+		/* found the entry */
+		if (zent->zap) /* already loaded */
+			return zent->zap;
+		break;
+	}
+	if (!zent->name) {
+		/* unknown zap name */
+		errno = ENOENT;
+		return NULL;
+	}
+
+	/* otherwise, it is a known zap name but has not been loaded yet */
+	pthread_mutex_lock(&zap_list_lock);
 	if (!log_fn)
 		log_fn = default_log;
 	if (!mem_info_fn)
@@ -261,11 +291,11 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	z->mem_info_fn = mem_info_fn;
 	z->event_interpose = zap_interpose_event;
 
-	pthread_mutex_lock(&zap_list_lock);
+	zent->zap = z;
 	LIST_INSERT_HEAD(&zap_list, z, zap_link);
 	pthread_mutex_unlock(&zap_list_lock);
-
 	return z;
+
 err1:
 	dlerror();
 	ret = dlclose(d);
@@ -274,6 +304,7 @@ err1:
 		log_fn("dlclose: %s\n", errstr);
 	}
 err:
+	pthread_mutex_unlock(&zap_list_lock);
 	return NULL;
 }
 
@@ -388,14 +419,9 @@ void zap_interpose_event(zap_ep_t ep, void *ctxt)
 static
 struct zap_event_queue *__get_least_busy_zap_event_queue();
 
-zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
+static
+zap_ep_t __common_ep_setup(zap_ep_t zep, zap_t z, zap_cb_fn_t cb)
 {
-	zap_ep_t zep = NULL;
-	if (!cb)
-		cb = blocking_zap_cb;
-	zep = z->new(z, cb);
-	if (!zep)
-		return NULL;
 	zep->z = z;
 	zep->app_cb = cb;
 	zep->cb = zap_interpose_cb;
@@ -405,6 +431,17 @@ zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 	sem_init(&zep->block_sem, 0, 0);
 	zep->event_queue = __get_least_busy_zap_event_queue();
 	return zep;
+}
+
+zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
+{
+	zap_ep_t zep = NULL;
+	if (!cb)
+		cb = blocking_zap_cb;
+	zep = z->new(z, cb);
+	if (!zep)
+		return NULL;
+	return __common_ep_setup(zep, z, cb);
 }
 
 char **zap_get_env(zap_t z)
@@ -551,43 +588,40 @@ zap_map_t zap_map_get(zap_map_t map)
 	return map;
 }
 
-zap_err_t zap_map(zap_ep_t ep, zap_map_t *pm,
-		  void *addr, size_t len, zap_access_t acc)
+zap_err_t zap_map(zap_map_t *pm, void *addr, size_t len, zap_access_t acc)
 {
-	zap_map_t map;
-	zap_err_t err = ep->z->map(ep, pm, addr, len, acc);
-	if (err)
-		goto out;
+	zap_map_t map = calloc(1, sizeof(*map));
+	zap_err_t err = ZAP_ERR_OK;
 
-	map = *pm;
+	if (!map) {
+		err = ZAP_ERR_RESOURCE;
+		goto out;
+	}
+	*pm = map;
 	map->ref_count = 1;
 	map->type = ZAP_MAP_LOCAL;
-	zap_get_ep(ep);
-	map->ep = ep;
 	map->addr = addr;
 	map->len = len;
 	map->acc = acc;
-	pthread_mutex_lock(&ep->lock);
-	LIST_INSERT_HEAD(&ep->map_list, map, link);
-	pthread_mutex_unlock(&ep->lock);
  out:
 	return err;
 }
 
-zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map)
+zap_err_t zap_unmap(zap_map_t map)
 {
-	zap_err_t zerr;
+	zap_err_t zerr, tmp;
+	int i;
 
 	assert(map->ref_count);
 	if (__sync_sub_and_fetch(&map->ref_count, 1))
 		return ZAP_ERR_OK;
-
-	pthread_mutex_lock(&ep->lock);
-	LIST_REMOVE(map, link);
-	pthread_mutex_unlock(&ep->lock);
-
-	zerr = ep->z->unmap(ep, map);
-	zap_put_ep(ep);
+	for (i = ZAP_SOCK; i < ZAP_LAST; i++) {
+		if (!map->mr[i])
+			continue;
+		assert(__zap_tbl[i].zap);
+		tmp = __zap_tbl[i].zap->unmap(map);
+		zerr = tmp?tmp:zerr; /* remember last error */
+	}
 	return zerr;
 }
 
@@ -745,6 +779,42 @@ int zap_term(int timeout_sec)
 		}
 	}
 	return rc;
+}
+
+zap_err_t zap_ep_setopt(zap_ep_t ep, const char *name, const char *value)
+{
+	if (ep->z->ep_setopt)
+		return ep->z->ep_setopt(ep, name, value);
+	return ZAP_ERR_PARAMETER;
+}
+
+zap_ep_t zap_new_from_str(const char *str, zap_cb_fn_t cb,
+			  zap_log_fn_t log_fn, zap_mem_info_fn_t mem_fn)
+{
+	zap_t zap = NULL;
+	zap_ep_t ep = NULL;
+	char *xprt = NULL, *args = NULL;
+	int n;
+	n = sscanf(str, "%m[^.].%ms", &xprt, &args);
+	if (n < 0)
+		goto out;
+	if (n == 0) {
+		errno = EINVAL;
+		goto out;
+	}
+	zap = zap_get(xprt, log_fn, mem_fn);
+	if (!zap)
+		goto out;
+	ep = zap->new_from_str(zap, cb, args);
+	if (!ep)
+		goto out;
+	__common_ep_setup(ep, zap, cb);
+ out:
+	if (xprt)
+		free(xprt);
+	if (args)
+		free(args);
+	return ep;
 }
 
 static void __attribute__ ((constructor)) cs_init(void)

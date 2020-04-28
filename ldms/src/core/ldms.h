@@ -68,8 +68,7 @@
 extern "C" {
 #endif
 typedef struct ldms_xprt *ldms_t;
-typedef struct ldms_rbuf_desc *ldms_rbuf_t;
-typedef struct ldms_rbuf_desc *ldms_set_t;
+typedef struct ldms_set *ldms_set_t;
 typedef struct ldms_value_s *ldms_value_t;
 typedef struct ldms_schema_s *ldms_schema_t;
 

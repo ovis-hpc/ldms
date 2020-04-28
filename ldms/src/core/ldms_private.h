@@ -51,6 +51,7 @@
 #include <sys/queue.h>
 #include <ldms_xprt.h>
 #include <pthread.h>
+#include <zap/zap.h>
 #include "ovis_util/os_util.h"
 
 #define LDMS_GN_INCREMENT(_gn) do { \
@@ -95,21 +96,27 @@ struct ldms_set {
 	struct ldms_set_info_list remote_info; /*set info from the lookup operation */
 	struct rbn rb_node;
 	struct rbn id_node;
-	struct rbd_list local_rbd_list;
-	struct rbd_list remote_rbd_list;
 	pthread_mutex_t lock;
 	int curr_idx;
 	struct ldms_data_hdr *data_array;
 	void *ctxt; /* application context (local -- no data propagation) */
+	zap_map_t lmap; /* local memory descriptor */
+	zap_map_t rmap; /* remote memory descriptor from lookup */
+	uint64_t remote_set_id;	/* peer set_id (from lookup) */
+	ldms_t xprt;    /* xprt that this set looked up from */
+	struct rbt push_coll;   /* collection of peers to PUSH (key: xprt) */
+	struct rbt notify_coll; /* collection of peers to NOTIFY (key: xprt) */
+	ldms_update_cb_t push_cb;   /* Callback when we receive PUSH */
+	void *push_cb_arg;	    /* Argument for push_cb() */
+	ldms_notify_cb_t notify_cb; /* Callback when we receive NOTIFY */
+	void *notify_arg;           /* Argument for notify_cb() */
+	struct ldms_context *notify_ctxt; /* Notify req context */
 };
 
 /* Convenience macro to roundup a value to a multiple of the _s parameter */
 #define roundup(_v,_s) ((_v + (_s - 1)) & ~(_s - 1))
 
 extern int __ldms_xprt_push(ldms_set_t s, int push_flags);
-extern struct ldms_rbuf_desc *__ldms_alloc_rbd(struct ldms_xprt *,
-		struct ldms_set *s, enum ldms_rbd_type type);
-extern void __ldms_free_rbd(struct ldms_rbuf_desc *rbd);
 extern void __ldms_rbd_xprt_release(struct ldms_rbuf_desc *rbd);
 extern int __ldms_remote_lookup(ldms_t _x, const char *path,
 				enum ldms_lookup_flags flags,
@@ -172,7 +179,20 @@ struct ldms_data_hdr *__set_array_get(struct ldms_set *set, int idx)
 static inline
 struct ldms_data_hdr *__ldms_set_array_get(ldms_set_t s, int idx)
 {
-	return __set_array_get(s->set, idx);
+	return __set_array_get(s, idx);
 }
+
+static inline
+int rbn_ptr_cmp(void *tk, const void *k)
+{
+	if (tk < k)
+		return -1;
+	if (tk > k)
+		return 1;
+	return 0;
+}
+
+void __ldms_xprt_on_set_del(ldms_t xprt, ldms_set_t set);
+void __ldms_set_on_xprt_term(ldms_set_t set, ldms_t xprt);
 
 #endif
