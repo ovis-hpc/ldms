@@ -2413,13 +2413,11 @@ int __ldms_xprt_zap_new(struct ldms_xprt *x, const char *name,
 	if (!x->zap_ep) {
 		log_fn("ERROR: Cannot create zap endpoint.\n");
 		ret = ENOMEM;
-		goto err1;
+		goto err0;
 	}
 	x->max_msg = zap_max_msg(x->zap);
 	zap_set_ucontext(x->zap_ep, x);
 	return 0;
-err1:
-	free(x->zap);
 err0:
 	return ret;
 }
