@@ -78,3 +78,7 @@ libstore_function_csv_la_LIBADD = $(STORE_LIBADD) -lpthread
 pkglib_LTLIBRARIES += libstore_function_csv.la
 
 endif
+
+if ENABLE_STORE_APP
+SUBDIRS += store_app
+endif
