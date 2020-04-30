@@ -292,6 +292,8 @@ OPTION_DEFAULT_ENABLE([slurm-sampler], [ENABLE_SLURM_SAMPLER])
 OPTION_DEFAULT_DISABLE([papi-sampler], [ENABLE_PAPI_SAMPLER])
 OPTION_DEFAULT_DISABLE([ibm_occ], [ENABLE_IBM_OCC_SAMPLER])
 OPTION_DEFAULT_DISABLE([appinfo], [ENABLE_APPINFO])
+OPTION_DEFAULT_DISABLE([app-sampler], [ENABLE_APP_SAMPLER])
+OPTION_DEFAULT_DISABLE([store-app], [ENABLE_STORE_APP])
 OPTION_DEFAULT_DISABLE([test_sampler], [ENABLE_TEST_SAMPLER])
 dnl test_sampler will also build with --enable-ldms-test
 AM_CONDITIONAL([ENABLE_TEST_SAMPLER_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_TEST_SAMPLER_FALSE" = "x#"])
@@ -352,6 +354,10 @@ fi
 OPTION_DEFAULT_ENABLE([ldmsd], [ENABLE_LDMSD])
 
 if test -z "$ENABLE_KOKKOS_TRUE"; then
+	dnl kokkos needs sos (not the storesos).
+	CHECK_SOS=1
+fi
+if test -z "$ENABLE_STORE_APP_TRUE"; then
 	dnl kokkos needs sos (not the storesos).
 	CHECK_SOS=1
 fi
@@ -733,6 +739,7 @@ ldms/src/store/papi/Makefile
 ldms/src/store/slurm/Makefile
 ldms/src/store/influx/Makefile
 ldms/src/store/store_flatfile/Makefile
+ldms/src/store/store_app/Makefile
 ldms/src/contrib/store/Makefile
 ldms/src/contrib/store/tutorial/Makefile
 ldms/src/sampler/dstat/Makefile
@@ -763,6 +770,7 @@ ldms/src/sampler/examples/synthetic/Makefile
 ldms/src/sampler/examples/test_sampler/Makefile
 ldms/src/sampler/ibm_occ/Makefile
 ldms/src/sampler/syspapi/Makefile
+ldms/src/sampler/app_sampler/Makefile
 ldms/src/contrib/sampler/Makefile
 ldms/src/contrib/sampler/ipmireader/Makefile
 ldms/src/contrib/sampler/tutorial/Makefile
