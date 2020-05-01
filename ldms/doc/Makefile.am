@@ -67,7 +67,8 @@ man7_MANS = man/ldmsd-sampler.7 \
 	    man/ldmsd-sampler-dev.7 \
 	    man/ldmsd-store-dev.7 \
 	    man/mdtest.7 \
-	    man/ldmsd_app_sampler.7
+	    man/ldmsd_app_sampler.7 \
+	    man/ldmsd_store_app.7
 
 man/ldmsd-sampler.7: doxygen/man/man3/md_ldms_src_ldmsd_ldmsd-sampler.3
 man/ldmsd-aggregator.7: doxygen/man/man3/md_ldms_src_ldmsd_ldmsd-aggregator.3
@@ -75,6 +76,7 @@ man/ldmsd-sampler-dev.7: doxygen/man/man3/md_ldms_src_ldmsd_ldmsd-sampler-dev.3
 man/ldmsd-store-dev.7: doxygen/man/man3/md_ldms_src_ldmsd_ldmsd-store-dev.3
 man/mdtest.7: doxygen/man/man3/md_ldms_doc_mdtest.3
 man/ldmsd_app_sampler.7: doxygen/man/man3/md_ldms_src_ldmsd-samplers_app_sampler_ldmsd_app_sampler.3
+man/ldmsd_store_app.7: doxygen/man/man3/md_ldms_src_ldmsd-stores_store_app_ldmsd_store_app.3
 
 # Sys admin commands
 man8_MANS =
