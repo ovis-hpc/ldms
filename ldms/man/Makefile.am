@@ -46,7 +46,8 @@ Plugin_slurm_sampler.man \
 Plugin_store_papi.man \
 Plugin_store_slurm.man \
 Plugin_syspapi_sampler.man \
-Plugin_app_sampler.man
+Plugin_app_sampler.man \
+Plugin_store_app.man
 
 
 

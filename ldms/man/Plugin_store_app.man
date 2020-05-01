@@ -1,0 +1,117 @@
+.TH man 7 "30 Sep 2019" "v4" "LDMSD Plugin store_app man page"
+
+.ad l
+.nh
+
+.SH "NAME "
+.PP
+.PP
+ldmsd_store_app - LDMSD store_app storage plugin
+.PP
+.SH "SYNOPSIS "
+.PP
+.SY load
+\fBname\fR=\fBstore_app\fR
+.PP
+.SY \fBconfig\fR
+\fBname\fR=\fBstore_app\fR \fBpath\fR=\fISTORE_ROOT_PATH\fR
+.OP \fBperm\fR=\fIOCTAL_PERM\fR
+.PP
+.SY \fBstrgp_add\fR
+\fBname\fR=\fISTRGP_NAME\fR \fBplugin\fR=\fBstore_app\fR \fBcontainer\fR=\fICONTAINER_NAME\fR \fBschema\fR=\fILDMS_SCHEMA\fR
+.PP
+.SY \fBstrgp_prdcr_add\fR
+\fBname\fR=\fISTRGP_NAME\fR \fBregex\fR=\fIPRDCR_REGEX\fR
+.YS
+.SH "DESCRIPTION "
+.PP
+.PP
+\f[CB]store_app\fR is an LDMSD storage plugin for storing data from the sets
+from \f[CB]app_sampler\fR LDMSD sampler plugin\&. \f[CB]store_app\fR uses
+\f[CB]SOS\fR as its database back-end\&. The \f[CB]path\fR option points to the
+directory containing \f[CB]SOS\fR containers for this plugin (one container per
+\f[CB]strgp\fR)\&. If the container does not exist, it will be created with
+permission given by \f[CB]perm\fR option (default: 0660)\&. The container
+contains multiple schemas, each of which assoicates with a metric from the sets
+from \f[CB]app_sampler\fR (e\&.g\&.  \f[CB]stat_utime\fR)\&. Schemas in the
+container have the following attributes:
+.PP
+.IP "\(bu" 2
+\f[CB]timestamp\fR : the data sampling timestamp\&.
+.IP "\(bu" 2
+\f[CB]component_id\fR: the component ID producing the data\&.
+.IP "\(bu" 2
+\f[CB]job_id\fR: the Slurm job ID\&.
+.IP "\(bu" 2
+\f[CB]app_id\fR: the application ID\&.
+.IP "\(bu" 2
+\f[CB]rank\fR: the Slurm task rank\&.
+.IP "\(bu" 2
+\f[BI]METRIC_NAME\fR: the metric value (the name of this attribute is the metric name of the metric)\&.
+.IP "\(bu" 2
+\f[CB]comp_time\fR: (indexed) the join of \f[CB]component_id\fR and \f[CB]timestamp\fR\&.
+.IP "\(bu" 2
+\f[CB]time_job\fR: (indexed) the join of \f[CB]timestamp\fR and \f[CB]job_id\fR\&.
+.IP "\(bu" 2
+\f[CB]job_rank_time\fR: (indexed) the join of \f[CB]job_id\fR, \f[CB]rank\fR, and \f[CB]timestamp\fR\&.
+.IP "\(bu" 2
+\f[CB]job_time_rank\fR: (indexed) the join of \f[CB]job_id\fR, \f[CB]timestamp\fR, and \f[CB]rank\fR\&.
+.PP
+.PP
+.SH "CONFIG OPTIONS "
+.PP
+.PP
+.IP "\fBname \fR" 1c
+The name of the plugin instance to configure\&.
+.IP "\fBpath \fR" 1c
+The path to the directory that contains SOS containers (one container per strgp)\&.
+.IP "\fBperm \fR" 1c
+The octal mode (e\&.g\&. 0777) that is used in SOS container creation\&. The default is \fB0660\fR\&.
+.PP
+.PP
+.SH "EXAMPLES "
+.PP
+.PP
+.PP
+.RS 4
+.nf
+# in ldmsd config file
+load name=store_app
+config name=store_app path=/sos perm=0600
+strgp_add name=app_strgp plugin=mstore_app container=app schema=app_sampler
+# NOTE: the schema in strgp is LDMS set schema, not to confuse with the one
+# schema per metric in our SOS container\&.
+strgp_prdcr_add name=app_strgp regex=\&.*
+strgp_start name=app_strgp
+.fi
+.RE
+.PP
+.PP
+The following is an example on how to retrieve the data using Python:
+.PP
+.RS 4
+.nf
+from sosdb import Sos
+cont = Sos\&.Container()
+cont\&.open('/sos/app')
+sch = cont\&.schema_by_name('status_vmsize')
+attr = sch\&.attr_by_name('time_job') # attr to iterate over must be indexed
+itr = attr\&.attr_iter()
+b = itr\&.begin()
+while b == True:
+  obj = itr\&.item()
+  print(obj['status_vmsize']) # object attribute access by name
+  print(obj[5]) # equivalent to above
+  print(obj[:]) # get everything at once
+  b = itr\&.next()
+
+.fi
+.RE
+.PP
+.PP
+.SH SEE ALSO
+.nh
+.BR Plugin_app_sampler (7),
+.BR ldmsd (8),
+.BR ldms_quickstart (7),
+.BR ldmsd_controller (8),
