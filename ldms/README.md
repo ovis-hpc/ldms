@@ -35,3 +35,6 @@ a man-sturctured markdown document and add it in `ldms` project.
 [ldmsd-aggregator]: src/ldmsd/ldmsd-aggregator.md
 [ldmsd-sampler-dev]: src/ldmsd/ldmsd-sampler-dev.md
 [ldmsd-store-dev]: src/ldmsd/ldmsd-store-dev.md
+
+Sampler man pages:
+- [app_sampler](src/ldmsd-samplers/app_sampler/ldmsd_app_sampler.md)
