@@ -36,10 +36,13 @@ struct influx_store {
 	int comp_mid;
 	char **metric_name;
 	CURL *curl;
-	char measurement[4096];
 	LIST_ENTRY(influx_store) entry;
+	size_t measurement_limit;
+	char measurement[0];
 };
 
+#define MEASUREMENT_LIMIT_DEFAULT	4096
+static size_t measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
 static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 LIST_HEAD(influx_store_list, influx_store) store_list;
 static ldmsd_msg_log_f msglog;
@@ -144,6 +147,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	strncpy(host_port, value, sizeof(host_port));
 
+	value = av_value(avl, "measurement_limit");
+	if (value) {
+		measurement_limit = strtol(value, NULL, 0);
+		if (measurement_limit <= 0) {
+			msglog(LDMSD_LERROR,
+			       "'%s' is not a valid 'measurement_limit' value\n",
+			       value);
+			measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
+		}
+		return EINVAL;
+	}
+
 	pthread_mutex_unlock(&cfg_lock);
 	return 0;
 }
@@ -163,9 +178,10 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 {
 	struct influx_store *is = NULL;
 
-	is = calloc(1, sizeof(*is));
+	is = malloc(sizeof(*is) + measurement_limit);
 	if (!is)
 		goto out;
+	is->measurement_limit = measurement_limit;
 	pthread_mutex_init(&is->lock, NULL);
 	is->store = s;
 	is->ucontext = ucontext;
@@ -298,7 +314,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	headers = curl_slist_append(headers, "Content-Type: application/influx");
 
 	measurement = is->measurement;
-	cnt = snprintf(measurement, 4096,
+	cnt = snprintf(measurement, is->measurement_limit,
 		       "%s,job_id=%lui,component_id=%lui ",
 		       is->schema,
 		       ldms_metric_get_u64(set, is->job_mid),
@@ -313,28 +329,34 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 			continue;
 		if (metric_arry[i] == is->comp_mid)
 			continue;
+		metric_type = ldms_metric_type_get(set, metric_arry[i]);
+		if (metric_type > LDMS_V_CHAR_ARRAY) {
+			msglog(LDMSD_LERROR,
+			       "The metric %s:%s of type %s is not supported by "
+			       "InfluxDB and is being ignored.\n",
+			       is->schema,
+			       ldms_metric_type_to_str(metric_type),
+			       ldms_metric_name_get(set, metric_arry[i]));
+			continue;
+		}
 		if (comma) {
-			if (off > 4096 - 16)
+			if (off > is->measurement_limit - 16)
 				goto err;
 			measurement[off++] = ',';
 		} else
 			comma = 1;
-		cnt = snprintf(&measurement[off], 4096 - off, "%s=", is->metric_name[i]);
+		cnt = snprintf(&measurement[off], is->measurement_limit - off,
+			       "%s=", is->metric_name[i]);
 		off += cnt;
-
-		metric_type = ldms_metric_type_get(set, metric_arry[i]);
-		if (metric_type < LDMS_V_CHAR_ARRAY || metric_type == LDMS_V_CHAR_ARRAY) {
-			if (influx_value_set[metric_type](measurement, &off, 4096, set, metric_arry[i]))
-				goto err;
-		} else {
-			msglog(LDMSD_LINFO, "A metric of type %d is not supported by InfluxDB, ignoring '%s'",
-			       metric_type, ldms_metric_name_get(set, metric_arry[i]));
-		}
+		if (influx_value_set[metric_type](measurement, &off,
+						  is->measurement_limit,
+						  set, metric_arry[i]))
+			goto err;
 	}
 	timestamp = ldms_transaction_timestamp_get(set);
 	long long int ts =  ((long long)timestamp.sec * 1000000000L)
 		+ ((long long)timestamp.usec * 1000L);
-	cnt = snprintf(&measurement[off], 4096 - off, " %lld", ts);
+	cnt = snprintf(&measurement[off], is->measurement_limit - off, " %lld", ts);
 	off += cnt;
 
 	curl_easy_setopt(is->curl, CURLOPT_POSTFIELDS, measurement);
@@ -346,6 +368,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	return 0;
 err:
 	pthread_mutex_unlock(&is->lock);
+
 	msglog(LDMSD_LERROR, "Overflow formatting InfluxDB measurement data.\n");
 	return ENOMEM;
 }
