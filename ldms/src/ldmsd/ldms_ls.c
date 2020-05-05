@@ -706,6 +706,10 @@ int main(int argc, char *argv[])
 			break;
 		case 'h':
 			hostname = strdup(optarg);
+			if (!hostname) {
+				printf("ERROR: out of memory\n");
+				exit(1);
+			}
 			break;
 		case 'p':
 			ptmp = atol(optarg);
@@ -726,12 +730,20 @@ int main(int argc, char *argv[])
 			break;
 		case 'x':
 			xprt = strdup(optarg);
+			if (!xprt) {
+				printf("ERROR: out of memory\n"); 
+				exit(1);
+			}
 			break;
 		case 'w':
 			waitsecs = atoi(optarg);
 			break;
 		case 'm':
 			mem_sz = strdup(optarg);
+			if (!mem_sz) {
+				printf("ERROR: out of memory\n");
+				exit(1);
+			}
 			break;
 		case 'V':
 			ldms_version_get(&version);
