@@ -181,14 +181,14 @@ static void usage(char *argv[])
 /* Caller must free the returned string. */
 char *ldmsctl_ts_str(uint32_t sec, uint32_t usec)
 {
-	struct tm *tm;
+	struct tm tm;
 	char dtsz[200];
 	char *str = malloc(200);
 	if (!str)
 		return NULL;
 	time_t t = sec;
-	tm = localtime(&t);
-	strftime(dtsz, sizeof(dtsz), "%D %H:%M:%S %z", tm);
+	localtime_r(&t, &tm);
+	strftime(dtsz, sizeof(dtsz), "%D %H:%M:%S %z", &tm);
 	snprintf(str, 200, "%s [%dus]", dtsz, usec);
 	return str;
 }
@@ -216,8 +216,12 @@ static void resp_greeting(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 		next_attr = ldmsd_next_attr(attr);
 		if ((0 == next_attr->discrim) && (count == 0)) {
 			char *str = strdup((char *)attr->attr_value);
+			if (!str) {
+				printf("Out of memory\n");
+				return;
+			}
 			char *tok = strtok(str, " ");
-			if (!isdigit(tok[0])) {
+			if (tok && !isdigit(tok[0])) {
 				/* The attribute 'level' isn't used. */
 				printf("%s\n", attr->attr_value);
 			} else {
@@ -1809,11 +1813,16 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	}
 
 	key.token = strtok_r(dummy, " \t\n", &ptr);
+	if (!key.token) {
+		free(dummy);
+		return 0;
+	};
 	args = strtok_r(NULL, "\n", &ptr);
 	cmd = bsearch(&key, command_tbl, ARRAY_SIZE(command_tbl),
 			sizeof(struct command), command_comparator);
 	if (!cmd) {
 		printf("Unrecognized command '%s'\n", key.token);
+		free(dummy);
 		return 0;
 	}
 
@@ -1879,11 +1888,12 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 			rec = (char *)(resp + 1);
 		}
 		if (lbufsz < msglen + reclen) {
-			lbuf = realloc(lbuf, msglen + (reclen * 2));
-			if (!lbuf) {
+			char *nlbuf = realloc(lbuf, msglen + (reclen * 2));
+			if (!nlbuf) {
 				printf("Out of memory\n");
 				exit(1);
 			}
+			lbuf = nlbuf;
 			lbufsz = msglen + (reclen * 2);
 			memset(&lbuf[msglen], 0, lbufsz - msglen);
 		}
@@ -2058,15 +2068,31 @@ int main(int argc, char *argv[])
 		switch (op) {
 		case 'h':
 			host = strdup(optarg);
+			if (!host) {
+				printf("ERROR: out of memory\n");
+				exit(1);
+			}
 			break;
 		case 'p':
 			port = strdup(optarg);
+			if (!port) {
+				printf("ERROR: out of memory\n");
+				exit(1);
+			}
 			break;
 		case 'x':
 			xprt = strdup(optarg);
+			if (!xprt) {
+				printf("ERROR: out of memory\n");
+				exit(1);
+			}
 			break;
 		case 'a':
 			auth = strdup(optarg);
+			if (!auth) {
+				printf("ERROR: out of memory\n");
+				exit(1);
+			}
 			break;
 		case 'A':
 			/* (multiple) auth options */
@@ -2090,9 +2116,17 @@ int main(int argc, char *argv[])
 			break;
 		case 's':
 			source = strdup(optarg);
+			if (!source) { 
+				printf("ERROR: out of memory\n");
+				exit(1);
+			}
 			break;
 		case 'X':
 			script = strdup(optarg);
+			if (!script) {
+				printf("ERROR: out of memory\n");
+				exit(1);
+			}
 			break;
 		default:
 			usage(argv);
