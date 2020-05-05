@@ -230,7 +230,7 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 		return;
 	}
 	time_t t;
-	struct tm *tm;
+	struct tm tm;
 	char dtsz[200];
 
 	pthread_mutex_lock(&log_lock);
@@ -239,8 +239,8 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 		return;
 	}
 	t = time(NULL);
-	tm = localtime(&t);
-	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
+	localtime_r(&t, &tm);
+	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", &tm))
 		fprintf(log_fp, "%s: ", dtsz);
 
 	if (level < LDMSD_LALL) {
@@ -634,7 +634,7 @@ void *k_proc(void *arg)
 		cleanup(1, "Could not open the kernel device /dev/kldms0");
 	}
 
-	while (3 == fscanf(fp, "%d %d %128s", &set_no, &set_size, set_name)) {
+	while (3 == fscanf(fp, "%d %d %127s", &set_no, &set_size, set_name)) {
 		kpublish(map_fd, set_no, set_size, set_name);
 	}
 
@@ -1530,8 +1530,10 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_LISTEN,
 				sizeof *listen, ldmsd_listen___del,
 				getuid(), getgid(), 0550); /* No one can alter it */
-	if (!listen)
+	if (!listen) {
+		free(name);
 		return NULL;
+	}
 
 	listen->xprt = strdup(xprt);
 	if (!listen->xprt)
@@ -1656,16 +1658,28 @@ int main(int argc, char *argv[])
 			if (check_arg("r", optarg, LO_PATH))
 				return 1;
 			pidfile = strdup(optarg);
+			if (!pidfile) {
+				printf("Not enough memory!!!\n");
+				exit(1);
+			}
 			break;
 		case 'l':
 			if (check_arg("l", optarg, LO_PATH))
 				return 1;
 			logfile = strdup(optarg);
+			if (!logfile) {
+				printf("Not enough memory!!!\n");
+				exit(1);
+			}
 			break;
 		case 's':
 			if (check_arg("s", optarg, LO_PATH))
 				return 1;
 			setfile = strdup(optarg);
+			if (!setfile) {
+				printf("Not enough memory!!!\n");
+				exit(1);
+			}
 			break;
 		case 'v':
 			if (check_arg("v", optarg, LO_NAME))
@@ -1689,6 +1703,10 @@ int main(int argc, char *argv[])
 			if (check_arg("T", optarg, LO_NAME))
 				return 1;
 			test_set_name = strdup(optarg);
+			if (!test_set_name) {
+				printf("Not enough memory!!!\n");
+				exit(1); 
+			}
 			break;
 		case 't':
 			if (check_arg("t", optarg, LO_UINT))
@@ -1709,6 +1727,10 @@ int main(int argc, char *argv[])
 			break;
 		case 'm':
 			max_mem_sz_str = strdup(optarg);
+			if (!max_mem_sz_str) {
+				printf("Not enough memory!!!\n");
+				exit(1);
+			}
 			break;
 		case 'q':
 			usage_hint(argv,"-q becomes -v in LDMS v3. Update your scripts.\n"
@@ -1741,6 +1763,10 @@ int main(int argc, char *argv[])
 				return 1;
 			list_plugins = 1;
 			plug_name = strdup(optarg);
+			if (!plug_name) {
+				printf("Not enough memory!!!\n");
+				exit(1);
+			}
 			break;
 		case 'x':
 			/* Listening port processing is handled below */
