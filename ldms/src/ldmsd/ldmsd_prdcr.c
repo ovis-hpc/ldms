@@ -201,7 +201,15 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 	} else if (op == UPDT_HINT_TREE_ADD) {
 		if (!rbn) {
 			list = malloc(sizeof(*list));
+			if (!list) { 
+				ldmsd_log(LDMSD_LERROR, "%s: out of memory.\n", __FUNCTION__);
+				return;
+			}
 			hint_key = malloc(sizeof(*hint_key));
+			if (!hint_key) {
+				ldmsd_log(LDMSD_LERROR, "%s: out of memory.\n", __FUNCTION__);
+				return;
+			}
 			*hint_key = *hint;
 			rbn_init(&list->rbn, hint_key);
 			rbt_ins(&prdcr->hint_set_tree, &list->rbn);
