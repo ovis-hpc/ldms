@@ -207,6 +207,8 @@ err:
 			free(pi->libpath);
 		free(pi);
 	}
+	if (d) 
+		dlclose(d);
 	return NULL;
 }
 
@@ -520,7 +522,8 @@ int __process_config_file(const char *path, int *lno, int trust,
 	struct ldmsd_cfg_xprt_s xprt;
 	ldmsd_req_hdr_t request;
 	struct ldmsd_req_array *req_array = NULL;
-
+	if (!path)
+		return EINVAL;
 	line = malloc(LDMSD_CFG_FILE_XPRT_MAX_REC);
 	if (!line) {
 		rc = errno;
@@ -587,12 +590,13 @@ next_line:
 	}
 
 	if (cnt + off > line_sz) {
-		line = realloc(line, ((cnt + off)/line_sz + 1) * line_sz);
-		if (!line) {
+		char *nline = realloc(line, ((cnt + off)/line_sz + 1) * line_sz);
+		if (!nline) {
 			rc = errno;
 			ldmsd_log(LDMSD_LERROR, "Out of memory\n");
 			goto cleanup;
 		}
+		line = nline;
 		line_sz = ((cnt + off)/line_sz + 1) * line_sz;
 	}
 	off += snprintf(&line[off], line_sz, "%s", tmp);
@@ -658,6 +662,7 @@ cleanup:
 	if (lno)
 		*lno = lineno;
 	if (req_array) {
+		i = 0;
 		while (i < req_array->num_reqs) {
 			free(req_array->reqs[i]);
 			i++;
