@@ -167,7 +167,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "xprt",              LDMSD_ATTR_XPRT  },
 };
 
-uint32_t req_str_id_cmp(const struct req_str_id *a, const struct req_str_id *b)
+int32_t req_str_id_cmp(const struct req_str_id *a, const struct req_str_id *b)
 {
 	return strcmp(a->str, b->str);
 }
@@ -321,6 +321,7 @@ static int add_attr_from_attr_str(const char *name, const char *value,
 	if (!name && !value) {
 		/* Terminate the attribute list */
 		value = NULL;
+		val_sz = 0;
 		attr_sz = sizeof(uint32_t);
 		is_terminating = 1;
 	} else {
@@ -646,7 +647,7 @@ int __ldmsd_parse_auth_add_req(struct ldmsd_parse_ctxt *ctxt)
 	size_t len = strlen(av);
 	size_t cnt = 0;
 	char *tmp, *name, *value, *ptr, *dummy;
-	int rc;
+	int rc = 0;
 	dummy = NULL;
 	tmp = malloc(len);
 	if (!tmp) {
