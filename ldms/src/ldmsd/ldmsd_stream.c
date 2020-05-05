@@ -26,19 +26,19 @@ static int s_cmp(void *tree_key, const void *key)
 	return strcmp((char *)tree_key, (const char *)key);
 }
 
-typedef struct ldmsd_stream_client_s {
+struct ldmsd_stream_client_s {
 	ldmsd_stream_recv_cb_t c_cb_fn;
 	void *c_ctxt;
 	ldmsd_stream_t c_s;
 	LIST_ENTRY(ldmsd_stream_client_s) c_ent;
-} *ldmsd_stream_client_t;
+};
 
-typedef struct ldmsd_stream_s {
+struct ldmsd_stream_s {
 	const char *s_name;
 	struct rbn s_ent;
 	pthread_mutex_t s_lock;
 	LIST_HEAD(ldmsd_client_list, ldmsd_stream_client_s) s_c_list;
-} *ldmsd_stream_t;
+};
 
 static pthread_mutex_t s_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 struct rbt s_tree = RBT_INITIALIZER(s_cmp);
@@ -84,7 +84,6 @@ ldmsd_stream_subscribe(const char *stream_name,
 			goto err_1;
 		s->s_name = strdup(stream_name);
 		if (!s->s_name) {
-			free(s);
 			goto err_2;
 		}
 		pthread_mutex_init(&s->s_lock, NULL);
@@ -156,6 +155,8 @@ int ldmsd_stream_publish(ldms_t xprt,
 	ldmsd_req_attr_t first_attr, attr, next_attr;
 	int rc;
 	size_t this_rec;
+	if (!data_len)
+		return 0;
 
 	size_t max_msg = ldms_xprt_msg_max(xprt);
 	ldmsd_req_hdr_t req = malloc(max_msg);
