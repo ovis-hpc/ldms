@@ -728,12 +728,14 @@ int ldms_xprt_dir_cancel(ldms_t x)
 
 char *_create_path(const char *set_name)
 {
+	int tail, rc = 0;
 	char *dirc = strdup(set_name);
 	char *basec = strdup(set_name);
+	if (!dirc || !basec)
+		goto out;
 	char *dname = dirname(dirc);
 	char *bname = basename(basec);
 	char *p;
-	int tail, rc = 0;
 
 	/* Create each node in the dir. __set_dir is presumed to exist */
 	snprintf(__set_path, PATH_MAX, "%s/", __set_dir);
