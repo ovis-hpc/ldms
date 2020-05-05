@@ -793,6 +793,10 @@ size_t Snprintf(char **dst, size_t *len, char *fmt, ...)
 		*dst = malloc(1024);
 		*len = 1024;
 	}
+	if (!*dst) {
+		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+		return 0;
+	}
 
 	va_start(ap, fmt);
 	va_copy(ap_copy, ap);
@@ -1826,8 +1830,8 @@ size_t __prdcr_set_status(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_set_t prd_set)
 		"\"producer\":\"%s\","
 		"\"timestamp.sec\":\"%d\","
 		"\"timestamp.usec\":\"%d\","
-		"\"duration.sec\":\"%d\","
-		"\"duration.usec\":\"%d\""
+		"\"duration.sec\":\"%u\","
+		"\"duration.usec\":\"%u\""
 		"}",
 		prd_set->inst_name, prd_set->schema_name,
 		ldmsd_prdcr_set_state_str(prd_set->state),
@@ -4890,7 +4894,7 @@ static int __greeting_path_resp_handler(ldmsd_req_cmd_t rcmd)
 	my_attr.discrim = 1;
 	my_attr.attr_id = LDMSD_ATTR_STRING;
 	/* +1 for : */
-	my_attr.attr_len = server_attr->attr_len + strlen((char *)rcmd->ctxt) + 1;
+	my_attr.attr_len = server_attr->attr_len + strlen((char *)rcmd->ctxt) + 2;
 	path = malloc(my_attr.attr_len);
 	if (!path) {
 		rcmd->org_reqc->errcode = ENOMEM;
@@ -4920,6 +4924,10 @@ static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
 	prdcr = ldmsd_prdcr_first();
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);;
 	char *myself = strdup(ldmsd_myhostname_get());
+	if (!myself) {
+		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+		return ENOMEM;
+	}
 	if (!prdcr) {
 		attr.discrim = 1;
 		attr.attr_id = LDMSD_ATTR_STRING;
@@ -4927,6 +4935,7 @@ static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_hton_req_attr(&attr);
 		ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
 		ldmsd_append_reply(reqc, myself, strlen(myself), 0);
+		free(myself);
 		attr.discrim = 0;
 		ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(attr.discrim), LDMSD_REQ_EOM_F);
 	} else {
@@ -4938,6 +4947,7 @@ static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
 		if (!rcmd) {
 			reqc->errcode = ENOMEM;
 			ldmsd_send_req_response(reqc, "Out of Memory");
+			free(myself);
 			return 0;
 		}
 		attr.attr_id = LDMSD_ATTR_PATH;
