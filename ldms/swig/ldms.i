@@ -1016,13 +1016,13 @@ typedef struct ldms_update_ctxt *ldms_update_ctxt_t;
 	inline PyObject *timestamp_get() {
 		struct ldms_timestamp const _ts = ldms_transaction_timestamp_get(self);
 		struct ldms_timestamp const *ts = &_ts;
-		struct tm *tm;
+		struct tm tm;
 		char dtsz[200];
 		char usecs[16];
 		time_t ti = ts->sec;
-		tm = localtime(&ti);
-		strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S", tm);
-		sprintf(usecs, ".%06d %d", ts->usec, 1900 + tm->tm_year);
+		localtime_r(&ti, &tm);
+		strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S", &tm);
+		sprintf(usecs, ".%06d %d", ts->usec, 1900 + tm.tm_year);
 		strcat(dtsz, usecs);
 		return PyString_FromString(dtsz);
 	}
