@@ -833,10 +833,7 @@ int main(int argc, char *argv[])
 	pthread_mutex_init(&print_lock, 0);
 	pthread_cond_init(&print_cv, NULL);
 
-	enum ldms_lookup_flags flags = 0;
 	int is_filter_list = 0;
-	if (regex)
-		flags |= LDMS_LOOKUP_RE;
 
 	if (verbose) {
 		printf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s\n",
@@ -871,7 +868,7 @@ int main(int argc, char *argv[])
 				perror("ldms: ");
 				exit(2);
 			}
-			if (!(flags & LDMS_LOOKUP_RE)) {
+			if (!regex) {
 				/* Take the given string literally */
 				match->str = malloc(strlen(argv[i]) + 3);
 				if (!match->str) {
@@ -879,7 +876,6 @@ int main(int argc, char *argv[])
 					exit(2);
 				}
 				sprintf(match->str, "^%s$", argv[i]);
-				flags |= LDMS_LOOKUP_RE;
 			} else {
 				/* Take the given string as regular expression */
 				match->str = strdup(argv[i]);
@@ -986,7 +982,6 @@ int main(int argc, char *argv[])
 	/*
 	 * Handle the long format (-l)
 	 */
-
 	while (!LIST_EMPTY(&set_list)) {
 		lss = LIST_FIRST(&set_list);
 		LIST_REMOVE(lss, entry);
@@ -995,7 +990,8 @@ int main(int argc, char *argv[])
 		print_done = 0;
 		pthread_mutex_unlock(&print_lock);
 
-		ret = ldms_xprt_lookup(ldms, lss->set_data->inst_name, flags,
+		ret = ldms_xprt_lookup(ldms, lss->set_data->inst_name,
+				       LDMS_LOOKUP_BY_INSTANCE,
 				       lu_cb_fn,
 				       (void *)(unsigned long)
 				       LIST_EMPTY(&set_list));
