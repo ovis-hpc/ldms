@@ -344,12 +344,12 @@ static void* rolloverThreadInit(void* m){
 			break;
 		case 2: {
 				time_t rawtime;
-				struct tm *info;
+				struct tm info;
 
 				time( &rawtime );
-				info = localtime( &rawtime );
-				int secSinceMidnight = info->tm_hour*3600 +
-					info->tm_min*60 + info->tm_sec;
+				localtime_r( &rawtime, &info );
+				int secSinceMidnight = info.tm_hour*3600 +
+					info.tm_min*60 + info.tm_sec;
 				tsleep = 86400 - secSinceMidnight + rollover;
 				if (tsleep < MIN_ROLL_1){
 				/* if we just did a roll then skip this one */
@@ -369,12 +369,12 @@ static void* rolloverThreadInit(void* m){
 			break;
 		case 5: {
 				time_t rawtime;
-				struct tm *info;
+				struct tm info;
 
 				time( &rawtime );
-				info = localtime( &rawtime );
-				int secSinceMidnight = info->tm_hour*3600 +
-					info->tm_min*60 + info->tm_sec;
+				localtime_r( &rawtime, &info );
+				int secSinceMidnight = info.tm_hour*3600 +
+					info.tm_min*60 + info.tm_sec;
 
 				if (secSinceMidnight < rollover) {
 					tsleep = rollover - secSinceMidnight;
@@ -513,7 +513,8 @@ static int update_config(struct attr_value_list *kwl, struct attr_value_list *av
 			char *ks = av_to_string(kwl, 0);
 			msglog(LDMSD_LINFO, PNAME ": fix config args %s %s\n",
 				       	as, ks);
-
+			free(as);
+			free(ks);
 			rc = EINVAL;
 			goto out;
 		}
@@ -1141,7 +1142,6 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 		case LDMS_V_U8_ARRAY:
 			len = ldms_metric_array_get_len(set, metric_array[i]);
 			for (j = 0; j < len; j++){
-				rc = 0;
 				if (s_handle->udata) {
 					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
 					if (rcu < 0)
