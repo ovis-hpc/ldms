@@ -75,14 +75,15 @@ static ldmsd_msg_log_f msglog;
 static int metric_offset;
 static base_data_t base;
 
+#define LBUFSZ 256
 static int create_metric_set(base_data_t base)
 {
 	ldms_schema_t schema;
 	int rc, i;
 	uint64_t metric_value;
 	char *s;
-	char lbuf[256];
-	char metric_name[128];
+	char lbuf[LBUFSZ];
+	char metric_name[LBUFSZ];
 
 	mf = fopen(procfile, "r");
 	if (!mf) {
@@ -213,7 +214,7 @@ static int sample(struct ldmsd_sampler *self)
 	int metric_no;
 	char *s;
 	char lbuf[256];
-	char metric_name[128];
+	char metric_name[LBUFSZ];
 	union ldms_value v;
 
 	if (!set) {
