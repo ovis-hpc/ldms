@@ -80,14 +80,14 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 {
 	return set;
 }
-
+#define LBUFSZ 256
 static int create_metric_set(base_data_t base)
 {
 	int rc;
 	uint64_t metric_value;
 	char *s;
-	char lbuf[256];
-	char metric_name[128];
+	char lbuf[LBUFSZ];
+	char metric_name[LBUFSZ];
 	ldms_schema_t schema;
 
 	mf = fopen(procfile, "r");
@@ -197,8 +197,8 @@ static int sample(struct ldmsd_sampler *self)
 	int rc;
 	int metric_no;
 	char *s;
-	char lbuf[256];
-	char metric_name[128];
+	char lbuf[LBUFSZ];
+	char metric_name[LBUFSZ];
 	union ldms_value v;
 
 	if (!set) {

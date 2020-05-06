@@ -255,12 +255,14 @@ PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" PRIu64 " %" \
 	PRIu64 " %" PRIu64 " %" PRIu64 " %s\n"
 
 static int nfs3_warn_once = 1;
+#define LBUFSZ 256
+#define VBUFSZ 23
 static int sample(struct ldmsd_sampler *self)
 {
 	int rc, i;
 	char *s;
-	char lbuf[256];
-	union ldms_value v[23];
+	char lbuf[LBUFSZ];
+	union ldms_value v[VBUFSZ];
 
 	if (!set) {
 		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
@@ -279,7 +281,7 @@ static int sample(struct ldmsd_sampler *self)
 		if (!s)
 			break;
 
-		char junk[5][100];
+		char junk[5][LBUFSZ];
 		if (strncmp(s,"rpc ", 4) == 0) {
 			rc = sscanf(lbuf, "%s %" PRIu64 " %" PRIu64 "%s\n",
 					junk[0], &v[0].v_u64, &v[1].v_u64, junk[1]);
@@ -301,7 +303,7 @@ static int sample(struct ldmsd_sampler *self)
 					&v[15].v_u64, &v[16].v_u64, &v[17].v_u64,
 					&v[18].v_u64, &v[19].v_u64, &v[20].v_u64,
 					&v[21].v_u64, &v[22].v_u64, junk[3]);
-			if (rc < 24) {
+			if (rc < VBUFSZ + 1) {
 				rc = EINVAL;
 				goto out;
 			}
