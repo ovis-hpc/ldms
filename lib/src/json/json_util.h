@@ -117,7 +117,9 @@ struct json_loc_s {
 	char *filename;
 };
 
+#ifndef YY_TYPEDEF_YY_SCANNER_T
 typedef void *yyscan_t;
+#endif
 typedef struct json_parser_s {
 	yyscan_t scanner;
 	struct yy_buffer_state *buffer_state;
