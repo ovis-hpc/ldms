@@ -219,6 +219,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto err;
 	}
 	ifacelist = strdup(ivalue);
+	if (!ifacelist) {
+		msglog(LDMSD_LERROR, SAMP ": out of memory\n");
+		goto err;
+	}
 	pch = strtok_r(ifacelist, ",", &saveptr);
 	while (pch != NULL){
 		if (niface >= (MAXIFACE-1))
