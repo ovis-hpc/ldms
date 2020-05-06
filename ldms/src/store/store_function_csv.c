@@ -493,11 +493,11 @@ static void* rolloverThreadInit(void* m){
 		  break;
 		case 2: {
 		  time_t rawtime;
-		  struct tm *info;
+		  struct tm info;
 
 		  time( &rawtime );
-		  info = localtime( &rawtime );
-		  int secSinceMidnight = info->tm_hour*3600+info->tm_min*60+info->tm_sec;
+		  localtime_r( &rawtime, &info );
+		  int secSinceMidnight = info.tm_hour * 3600 + info.tm_min * 60 + info.tm_sec;
 		  tsleep = 86400 - secSinceMidnight + rollover;
 		  if (tsleep < MIN_ROLL_1){
 		    /* if we just did a roll then skip this one */
@@ -595,7 +595,7 @@ static int __getCompcase(char* pch, char** temp_val){
 	char* temp_ii = strdup(pch);
 	const char* ptr = strchr(temp_ii, type_sep);
 	if (ptr){
-		int index = ptr - temp_ii;
+		size_t index = ptr - temp_ii;
 		if (index != (strlen(temp_ii) - 1)) {
 			//otherwise colon at end, so don't do this
 			ptr++;
@@ -871,6 +871,7 @@ static int derivedConfig(char* fname_s, struct function_store_handle *s_handle, 
 		if (!fp) {
 			msglog(LDMSD_LERROR,"%s: Cannot open config file <%s>\n",
 			       __FILE__, fname);
+			free(temp_o);
 			return EINVAL;
 		}
 
@@ -2098,6 +2099,11 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 		uint64_t* temp = calloc(dim, sizeof(uint64_t));
 		int tempvalid = 1;
 		*retvalid = 1;
+		if (!temp) {
+			*retvalid = 0;
+			tempvalid = 0;
+			goto oom1;
+		}
 
 		if (vals[0].typei == BASE) {
 			if (vals[0].metric_type == LDMS_V_U64){
@@ -2148,6 +2154,7 @@ static int doFunc(ldms_set_t set, int* metric_arry,
 			for (j = 0; j < dim; j++)
 				retvals[j] = 0;
 		}
+oom1:
 		if (tempvalid){
 //			msglog(LDMSD_LDEBUG, "new value valid. setting storevals to new values\n");
 			for (j = 0; j < dim; j++) //dont store the scale, since it will be reapplied next time
