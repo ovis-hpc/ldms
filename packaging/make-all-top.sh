@@ -43,7 +43,7 @@ if test -f ldms/src/sampler/meminfo/meminfo.c; then
 	cd $build_subdir
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=/badsos
-	allconfig="--prefix=$prefix --disable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --enable-zap --disable-zaptest --disable-swig --enable-authentication --disable-sysclassib"
+	allconfig="--prefix=$prefix --disable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --enable-zap --disable-zaptest --disable-swig --enable-authentication --disable-sysclassib --disable-ibnet"
 	../configure $allconfig && \
 	make && \
 	make install && \

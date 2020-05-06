@@ -1,0 +1,135 @@
+.\" Manpage for Plugin_ibnet
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "19 May 2020" "v4.3" "LDMS Plugin ibnet man page"
+
+.SH NAME
+Plugin_ibnet - man page for the LDMS ibnet plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=ibnet [ <attr>=<value> ]
+
+.SH DESCRIPTION
+The ibnet plugin provides port info from InfiniBand equipment supporting extended hardware counters. Each port is handled in a separate data set. Overall timing of the data collection process is handled in another optional data set.
+Plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
+or a configuration file. 
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> port-name=<hca> source-list=<lidfile> [port-number=<num>]
+[metric-conf=<metricfile>] [node-name-map=<nnmap>] [timing=<timeopt>]
+[producer=<name>] [instance=<name>] [component_id=<uint64_t>]
+[schema=<name_base>]
+[uid=<user-id>] [gid=<group-id>] [perm=<mode_t permission bits>]
+[debug]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be ibnet.
+.TP
+producer=<pname>.
+.br
+The producer string value for the timing set. Default is the result of gethostname().
+.TP
+instance=<set_name>
+.br
+The name of the timing metric set. Default is $producer/ibnet_timing.
+.TP
+source-list=<lidfile>
+.br
+Lidfile is the name of a file of LID/port specifications. See PORT FILE for format details.
+.TP
+port-name=<hca> [port-number=<num>]
+.br
+Hca is the name of the local IB interface to access the network.
+Num is the number of the port on the interface used to access the network. The default is 1.
+.TP
+schema=<name_base>
+.br
+Optional schema base name. The default is ibnet. The name base is suffixed
+to create uniquely defined schema names based on the plugin options specified.
+.TP
+component_id=<compid>
+.br
+Optional component identifier for the timing set. Defaults to zero.
+.TP
+metric-conf=<metricfile>
+.br
+The file listing the metric groups to collect. See METRIC GROUPS below.
+.TP
+ca_port=<port>
+.br
+The port number to use, which must be active.
+.TP
+timing=<T>
+.br
+Disable timing (T=0), enable aggregate timing (T=1), or enable individual port timing(T=2) or enable port offset timing(T=3).
+The metric set will contain sampling process timing metrics if T > 0.
+.TP
+node-name-map=<nnmap>
+.br
+The file name nnmap, as used by ibnetdiscover and opensm, of a mapping from IB GUIDs to short names of IB hardware items (switch, node, etc) suitable for use in populating names of sets.
+.RE
+
+.SH PORT FILE
+The lid/port file format is
+.nf
+lid, hexguid, nports, plist
+ * where hexguid is 0x....,
+ * nports is int, 
+ * plist is ints nports long or * if range is 1-nports,
+ * if not using a name map, names will be GUID_hex.
+
+.fi
+The portrange will be an integer expression
+in the style 1,5,7-9,13, without repeats, whitespace, reversed ranges, or overlapping ranges.
+LID is an integer in the range 0-65535.
+The same LID may be on multiple lines so long as the ports listed for it are not repeated.
+
+The lid file can be generated with ldms-gen-lidfile.sh.
+
+.SH METRIC GROUPS
+The metric groups file contains a list of items, one per line, naming groups of metrics to collect. The groups are named corresponding to groups in the infiniband-diags perfquery utility options. The correspondence is not exact.
+To disable a listed metric group, delete its name from the file or comment it out by prepending a # to the group, e.g. '#xmtsl'. '#' followed by whitespace is not allowed. Carriage returns are optional.
+
+.SH INTERNAL METRICS
+.TP
+port_query_time
+.br
+Time in seconds spend in the single port MAD call.
+.TP
+port_query_offset
+.br
+Time in microseconds from start of all MAD calls in the current update to the end of the mad call for the specific port.
+.TP
+ib_query_time
+.br
+Time in seconds making all MAD calls in the update.
+.TP
+ib_data_process_time
+.br
+Time in seconds decoding all MAD data in the update
+
+.SH BUGS
+The perfquery extended_speeds option is not supported.
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=ibnet
+config name=ibnet producer=compute1 instance=compute1/ibnet component_id=1 port-name=mlx5_0 source-list=/path/lidfile
+start name=ibnet interval=1000000
+.fi
+
+.SH NOTES
+The exact schema name that will be generated can be determined using the ldms_ibnet_schema_name utility.
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_ibnet_schema_name(1), ldms-ibnet-sampler-gen(1).
