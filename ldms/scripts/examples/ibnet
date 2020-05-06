@@ -1,0 +1,61 @@
+export plugname=ibnet
+LIDFILE=$TESTDIR/run/lidfile
+rm -f $TESTDIR/logs/vg.*
+export LIDFILE
+export LDMSD_EXTRA="-P 16 -m 1G"
+NODEMAP=/ascldap/users/baallan/stria/ovis-stria/ib-node-name-map
+export NODEMAP
+export CONFMETRICS=$TESTDIR/run/confmetrics
+export MHASH=7fffe_tn
+cat << EOF > $CONFMETRICS
+extended
+xmtsl
+rcvsl
+xmtdisc
+rcverr
+flowctlcounters
+vlxmitcounters
+xmitcc
+smplctl
+EOF
+cat << EOF > $CONFMETRICS
+extended
+xmtsl
+rcvsl
+xmtdisc
+rcverr
+oprcvcounters
+flowctlcounters
+vloppackets
+vlopdata
+vlxmitflowctlerrors	
+vlxmitcounters	
+swportvlcong
+rcvcc	
+slrcvfecn
+slrcvbecn
+xmitcc	
+vlxmittimecc
+smplctl	
+EOF
+#ldms-gen-lidfile.sh |head -n 60 > $LIDFILE
+ldms-gen-lidfile.sh  > $LIDFILE
+len=$(wc -l $LIDFILE |cut -f 1 -d' ')
+if test $len -lt 3; then
+	echo cannot generate lidfile
+	exit 1
+fi
+portbase=61012
+DAEMONS 1 2
+VGARGS="--leak-check=full --track-origins=yes --trace-children=yes"
+vgoff
+LDMSD 1
+vgoff
+LDMSD 2
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -m 1G -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -m 1G
+SLEEP 7
+KILL_LDMSD 1 2
+file_created $STOREDIR/node/$testname_${MHASH}

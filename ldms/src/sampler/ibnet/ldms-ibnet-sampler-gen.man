@@ -1,0 +1,72 @@
+.\" Manpage for ldms_ibnet_schema_name
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 1 "4 June 2020" "v4.4" "LDMS utility ldms-ibnet-sampler-gen man page"
+
+.SH NAME
+ldms-ibnet-sampler-gen - man page for the LDMS ibnet plugin support utility
+
+.SH SYNOPSIS
+ldms-ibnet-sampler-gen --net <netfile> --samplers <hostfile> --out <output prefix> [options]
+
+.SH DESCRIPTION
+The ldms-ibnet-sampler-gen script produces files splitting the ports in the netfile
+among the hosts listed in the samplers file. The input is expected to be the network
+dump of an approximately three-level FAT tree.
+
+.SH OPTIONS
+
+.nf
+  -h, --help            show this help message and exit
+  --out OUTPREFIX       prefix of output files
+  --net IBNDPFILE       file name of output collected from 'ibnetdiscover -p'
+  --samplers HOSTFILE   file listing samplers as named in the node name map, one per line.
+  --lidnames            dump lid,name map to stdout and exit.
+  --annotate            annotate out sampler assignment files with node-name-map strings.
+  --tier0               generate tier0-1 graphs
+  --tier1               generate tier1-2 graphs
+  --tier2               generate tier2-3 graphs
+  --circo-tiers CIRCO_PREFIX
+                        dump circo tier plots to files starting with prefix
+                        given CIRCO_PREFIX.
+  --sfdp-tiers SFDP_PREFIX
+                        dump circo tier plots to files starting with prefix
+                        given SFDP_PREFIX.
+  --info                print key intermediate results
+  --debug               print miscellaneous debug messages
+  --dump_sw             print switches parsed
+  --dump_ca             print HCA list parsed
+  --dump_links          print links parsed
+  --dump_tiers          print tiers discovered
+  --dump_parse          print parser debugging
+.fi
+
+.SH EXAMPLES
+.PP
+.nf
+cat <<EOF >cluster-samplers
+admin1 qib0
+admin2 qib0
+admin3 qib0
+EOF
+
+ibnetdiscover -p > cluster-p-netdiscover
+
+ldms-ibnet-sampler-gen --lidnames --net cluster-p-netdiscover --samplers x --out x |
+    sort -k2 -t, > lid.host.txt
+
+ldms-ibnet-sampler-gen \
+--net cluster-p-netdiscover \
+--samplers clustre-samplers \
+--annotate \
+--out sbx 
+
+.fi
+.SH NOTES
+Port 37, if present, is assumed to be a Mellanox SHARP port. Connections on port 37 are ignored for topology decomposition and sampler load balancing purposes.
+
+This program does not directly invoke infiniband. It does invoke (and require) graphviz utilities if the tier, circo, or sfdp options are applied.
+
+Applying the --node-name-map option to ibnetdiscover when generating the net file makes the results more readable.
+
+.SH SEE ALSO
+Plugin_ibnet(7), circo, dot

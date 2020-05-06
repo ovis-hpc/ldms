@@ -1,0 +1,17 @@
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=1 typeheader=2 ietfcsv=1 userdata=0
+
+prdcr_add name=localhost1 host=localhost type=active xprt=${XPRT} port=${port1} interval=10000000
+prdcr_start name=localhost1
+
+updtr_add name=allhosts interval=5000000 offset=2000000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+strgp_add name=store_${testname} plugin=store_csv schema=ibnet_${MHASH} container=node
+strgp_prdcr_add name=store_${testname} regex=.*
+strgp_start name=store_${testname}
+
+strgp_add name=store_${testname}_timing plugin=store_csv schema=ibnet_${MHASH}_timing container=node
+strgp_prdcr_add name=store_${testname}_timing regex=.*
+strgp_start name=store_${testname}_timing

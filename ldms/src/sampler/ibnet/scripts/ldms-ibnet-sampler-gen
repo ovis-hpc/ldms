@@ -1,0 +1,1957 @@
+#! /usr/bin/env python3
+########### section II below by NTESS ################################
+license_ntess="""
+Copyright (c) 2018-2020 National Technology & Engineering Solutions
+of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
+NTESS, the U.S. Government retains certain rights in this software.
+
+This software is available to you under a choice of one of two
+licenses.  You may choose to be licensed under the terms of the GNU
+General Public License (GPL) Version 2, available from the file
+COPYING in the main directory of this source tree, or the BSD-type
+license below:
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+     Redistributions of source code must retain the above copyright
+     notice, this list of conditions and the following disclaimer.
+
+     Redistributions in binary form must reproduce the above
+     copyright notice, this list of conditions and the following
+     disclaimer in the documentation and/or other materials provided
+     with the distribution.
+
+     Neither the name of Sandia nor the names of any contributors may
+     be used to endorse or promote products derived from this software
+     without specific prior written permission.
+
+     Neither the name of Open Grid Computing nor the names of any
+     contributors may be used to endorse or promote products derived
+     from this software without specific prior written permission.
+
+     Modified source versions must be plainly marked as such, and
+     must not be misrepresented as being the original software.
+
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+"""
+
+# This script handles creating visualization and collector assignments
+# for fat-tree infiniband networks.
+# python3 to digest ibnetdiscover -p output down to graphs and port assignments.
+
+########### section I from published hostlist.py #####################
+#
+# Hostlist library
+#
+# Copyright (C) 2008-2018
+#                    Kent Engström <kent@nsc.liu.se>,
+#                    Thomas Bellman <bellman@nsc.liu.se>,
+#                    Pär Lindfors <paran@nsc.liu.se> and
+#                    Torbjörn Lönnemark <ketl@nsc.liu.se>,
+#                    National Supercomputer Centre
+# 
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 2 of the License, or
+# (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+# 02110-1301, USA.
+
+"""Handle hostlist expressions.
+
+This module provides operations to expand and collect hostlist
+expressions.
+
+The hostlist expression syntax is the same as in several programs
+developed at LLNL (https://computing.llnl.gov/linux/). However in
+corner cases the behaviour of this module have not been compared for
+compatibility with pdsh/dshbak/SLURM et al.
+"""
+
+__version__ = "1.18"
+
+import re
+import itertools
+
+# Replace range with xrange on Python 2, do nothing on Python 3 (where xrange
+# does not exist, and range returns an iterator)
+try:
+    range = xrange
+except:
+    pass
+
+# Exception used for error reporting to the caller
+class BadHostlist(Exception): pass
+
+# Configuration to guard against ridiculously long expanded lists
+MAX_SIZE = 100000
+
+# Hostlist expansion
+
+def expand_hostlist(hostlist, allow_duplicates=False, sort=False):
+    """Expand a hostlist expression string to a Python list.
+
+    Example: expand_hostlist("n[9-11],d[01-02]") ==> 
+             ['n9', 'n10', 'n11', 'd01', 'd02']
+
+    Unless allow_duplicates is true, duplicates will be purged
+    from the results. If sort is true, the output will be sorted.
+    """
+
+    results = []
+    bracket_level = 0
+    part = ""
+    
+    for c in hostlist + ",":
+        if c == "," and bracket_level == 0:
+            # Comma at top level, split!
+            if part: results.extend(expand_part(part))
+            part = ""
+            bad_part = False
+        else:
+            part += c
+
+        if c == "[": bracket_level += 1
+        elif c == "]": bracket_level -= 1
+
+        if bracket_level > 1:
+            raise BadHostlist("nested brackets")
+        elif bracket_level < 0:
+            raise BadHostlist("unbalanced brackets")
+
+    if bracket_level > 0:
+        raise BadHostlist("unbalanced brackets")
+
+    if not allow_duplicates:
+        results = remove_duplicates(results)
+    if sort:
+        results = numerically_sorted(results)
+    return results
+
+def expand_part(s):
+    """Expand a part (e.g. "x[1-2]y[1-3][1-3]") (no outer level commas)."""
+
+    # Base case: the empty part expand to the singleton list of ""
+    if s == "":
+        return [""]
+
+    # Split into:
+    # 1) prefix string (may be empty)
+    # 2) rangelist in brackets (may be missing)
+    # 3) the rest
+
+    m = re.match(r'([^,\[]*)(\[[^\]]*\])?(.*)', s)
+    (prefix, rangelist, rest) = m.group(1,2,3)
+
+    # Expand the rest first (here is where we recurse!)
+    rest_expanded = expand_part(rest)
+
+    # Expand our own part
+    if not rangelist:
+        # If there is no rangelist, our own contribution is the prefix only
+        us_expanded = [prefix]
+    else:
+        # Otherwise expand the rangelist (adding the prefix before)
+        us_expanded = expand_rangelist(prefix, rangelist[1:-1])
+
+    # Combine our list with the list from the expansion of the rest
+    # (but guard against too large results first)
+    if len(us_expanded) * len(rest_expanded) > MAX_SIZE:
+        raise BadHostlist("results too large")
+
+    return [us_part + rest_part
+            for us_part in us_expanded
+            for rest_part in rest_expanded]
+
+def expand_rangelist(prefix, rangelist):
+    """ Expand a rangelist (e.g. "1-10,14"), putting a prefix before."""
+    
+    # Split at commas and expand each range separately
+    results = []
+    for range_ in rangelist.split(","):
+        results.extend(expand_range(prefix, range_))
+    return results
+
+def expand_range(prefix, range_):
+    """ Expand a range (e.g. 1-10 or 14), putting a prefix before."""
+
+    # Check for a single number first
+    m = re.match(r'^[0-9]+$', range_)
+    if m:
+        return ["%s%s" % (prefix, range_)]
+
+    # Otherwise split low-high
+    m = re.match(r'^([0-9]+)-([0-9]+)$', range_)
+    if not m:
+        raise BadHostlist("bad range")
+
+    (s_low, s_high) = m.group(1,2)
+    low = int(s_low)
+    high = int(s_high)
+    width = len(s_low)
+
+    if high < low:
+        raise BadHostlist("start > stop")
+    elif high - low > MAX_SIZE:
+        raise BadHostlist("range too large")
+
+    results = []
+    for i in range(low, high+1):
+        results.append("%s%0*d" % (prefix, width, i))
+    return results
+
+def remove_duplicates(l):
+    """Remove duplicates from a list (but keep the order)."""
+    seen = set()
+    results = []
+    for e in l:
+        if e not in seen:
+            results.append(e)
+            seen.add(e)
+    return results
+
+# Hostlist collection
+
+def collect_hostlist(hosts, silently_discard_bad = False):
+    """Collect a hostlist string from a Python list of hosts.
+
+    We start grouping from the rightmost numerical part.
+    Duplicates are removed.
+
+    A bad hostname raises an exception (unless silently_discard_bad
+    is true causing the bad hostname to be silently discarded instead).
+    """
+
+    # Split hostlist into a list of (host, "") for the iterative part.
+    # (Also check for bad node names now)
+    # The idea is to move already collected numerical parts from the
+    # left side (seen by each loop) to the right side (just copied).
+
+    left_right = []
+    for host in hosts:
+        # We remove leading and trailing whitespace first, and skip empty lines
+        host = host.strip()
+        if host == "": continue
+
+        # We cannot accept a host containing any of the three special
+        # characters in the hostlist syntax (comma and flat brackets)
+        if re.search(r'[][,]', host):
+            if silently_discard_bad:
+                continue
+            else:
+                raise BadHostlist("forbidden character")
+
+        left_right.append((host, ""))
+
+    # Call the iterative function until it says it's done
+    looping = True
+    while looping:
+        left_right, looping = collect_hostlist_1(left_right)
+    print("lr {}".format(left_right))
+    return ",".join([left + right for left, right in left_right])
+
+def collect_hostlist_1(left_right):
+    """Collect a hostlist string from a list of hosts (left+right).
+
+    The input is a list of tuples (left, right). The left part
+    is analyzed, while the right part is just passed along
+    (it can contain already collected range expressions).
+    """
+
+    # Scan the list of hosts (left+right) and build two things:
+    # *) a set of all hosts seen (used later)
+    # *) a list where each host entry is preprocessed for correct sorting
+
+    sortlist = []
+    remaining = set()
+    for left, right in left_right:
+        host = left + right
+        remaining.add(host)
+
+        # Match the left part into parts
+        m = re.match(r'^(.*?)([0-9]+)?([^0-9]*)$', left)
+        (prefix, num_str, suffix) = m.group(1,2,3)
+
+        # Add the right part unprocessed to the suffix.
+        # This ensures than an already computed range expression
+        # in the right part is not analyzed again.
+        suffix = suffix + right 
+
+        if num_str is None:
+            # A left part with no numeric part at all gets special treatment!
+            # The regexp matches with the whole string as the suffix,
+            # with nothing in the prefix or numeric parts.
+            # We do not want that, so we move it to the prefix and put
+            # None as a special marker where the suffix should be.
+            assert prefix == ""
+            sortlist.append(((host, None), None, None, host))
+        else:
+            # A left part with at least an numeric part
+            # (we care about the rightmost numeric part)
+            num_int = int(num_str)
+            num_width = len(num_str) # This width includes leading zeroes
+            sortlist.append(((prefix, suffix), num_int, num_width, host))
+
+    # Sort lexicographically, first on prefix, then on suffix, then on
+    # num_int (numerically), then...
+    # This determines the order of the final result.
+
+    sortlist.sort()
+
+    # We are ready to collect the result parts as a list of new (left,
+    # right) tuples.
+
+    results = []
+    needs_another_loop = False 
+
+    # Now group entries with the same prefix+suffix combination (the
+    # key is the first element in the sortlist) to loop over them and
+    # then to loop over the list of hosts sharing the same
+    # prefix+suffix combination.
+
+    for ((prefix, suffix), group) in itertools.groupby(sortlist,
+                                                       key=lambda x:x[0]):
+
+        if suffix is None:
+            # Special case: a host with no numeric part
+            results.append(("", prefix)) # Move everything to the right part
+            remaining.remove(prefix)
+        else:
+            # The general case. We prepare to collect a list of
+            # ranges expressed as (low, high, width) for later
+            # formatting.
+            range_list = []
+    
+            for ((prefix2, suffix2), num_int, num_width, host) in group:
+                if host not in remaining:
+                    # Below, we will loop internally to enumate a whole range
+                    # at a time. We then remove the covered hosts from the set.
+                    # Therefore, skip the host here if it is gone from the set.
+                    continue
+                assert num_int is not None
+
+                # Scan for a range starting at the current host
+                low = num_int
+                while True:
+                    host = "%s%0*d%s" % (prefix, num_width, num_int, suffix)
+                    if host in remaining:
+                        remaining.remove(host)
+                        num_int += 1
+                    else:
+                        break
+                high = num_int - 1
+                assert high >= low
+                range_list.append((low, high, num_width))
+
+            # We have a list of ranges to format. We make sure
+            # we move our handled numerical part to the right to
+            # stop it from being processed again.
+            needs_another_loop = True
+            if len(range_list) == 1 and range_list[0][0] == range_list[0][1]:
+                # Special case to make sure that n1 is not shown as n[1] etc
+                results.append((prefix,
+                                "%0*d%s" % 
+                               (range_list[0][2], range_list[0][0], suffix)))
+            else:
+                # General case where high > low
+                results.append((prefix, "[" + \
+                                   ",".join([format_range(l, h, w)
+                                             for l, h, w in range_list]) + \
+                                   "]" + suffix))
+
+    # At this point, the set of remaining hosts should be empty and we
+    # are ready to return the result, together with the flag that says
+    # if we need to loop again (we do if we have added something to a
+    # left part).
+    assert not remaining
+    return results, needs_another_loop
+
+def format_range(low, high, width):
+    """Format a range from low to high inclusively, with a certain width."""
+
+    if low == high:
+        return "%0*d" % (width, low)
+    else:
+        return "%0*d-%0*d" % (width, low, width, high)
+
+# Sort a list of hosts numerically
+
+def numerically_sorted(l):
+    """Sort a list of hosts numerically.
+
+    E.g. sorted order should be n1, n2, n10; not n1, n10, n2.
+    """
+
+    return sorted(l, key=numeric_sort_key)
+
+nsk_re = re.compile("([0-9]+)|([^0-9]+)")
+def numeric_sort_key(x):
+    return [handle_int_nonint(i_ni) for i_ni in nsk_re.findall(x)]
+
+def handle_int_nonint(int_nonint_tuple):
+    if int_nonint_tuple[0]:
+        return int(int_nonint_tuple[0])
+    else:
+        return int_nonint_tuple[1]
+
+# Parse SLURM_TASKS_PER_NODE into a list of task numbers
+#
+# Description from the SLURM sbatch man page:
+#              Number of tasks to be initiated on each node. Values
+#              are comma separated and in the same order as
+#              SLURM_NODELIST.  If two or more consecutive nodes are
+#              to have the same task count, that count is followed by
+#              "(x#)" where "#" is the repetition count. For example,
+#              "SLURM_TASKS_PER_NODE=2(x3),1" indicates that the first
+#              three nodes will each execute three tasks and the
+#              fourth node will execute one task.
+
+def parse_slurm_tasks_per_node(s):
+    res = []
+    for part in s.split(","):
+        m = re.match(r'^([0-9]+)(\(x([0-9]+)\))?$', part)
+        if m:
+            tasks = int(m.group(1))
+            repetitions = m.group(3)
+            if repetitions is None:
+                repetitions = 1
+            else:
+                repetitions = int(repetitions)
+            if repetitions > MAX_SIZE:
+                raise BadHostlist("task list repetitions too large")
+            for i in range(repetitions):
+                res.append(tasks)
+        else:
+            raise BadHostlist("bad task list syntax")
+    return res
+
+########### end of section I from hostlist.py #####################
+
+########### section II from NTESS #####################
+def collect_hostlist_subsets(hosts, silently_discard_bad = False):
+    """Collect a hostlist subsets lists
+
+    Same as collect_hostlist_subsets without final flattening or empty strings.
+    """
+
+    # Split hostlist into a list of (host, "") for the iterative part.
+    # (Also check for bad node names now)
+    # The idea is to move already collected numerical parts from the
+    # left side (seen by each loop) to the right side (just copied).
+
+    left_right = []
+    for host in hosts:
+        # We remove leading and trailing whitespace first, and skip empty lines
+        host = host.strip()
+        if host == "": continue
+
+        # We cannot accept a host containing any of the three special
+        # characters in the hostlist syntax (comma and flat brackets)
+        if re.search(r'[][,]', host):
+            if silently_discard_bad:
+                continue
+            else:
+                raise BadHostlist("forbidden character")
+
+        left_right.append((host, ""))
+
+    # Call the iterative function until it says it's done
+    looping = True
+    while looping:
+        left_right, looping = collect_hostlist_1(left_right)
+    # print("lr {}".format(left_right))
+    ss = []
+    for left, right in left_right:
+        if len(left) > 0:
+            ss.append(left)
+        if len(right) > 0:
+            ss.append(right)
+    return ss
+
+
+import sys
+import argparse
+# tier data
+class Tier:
+    def __init__(self):
+        self.colors = dict() ; # colors[i] gives the count of colors in the tier/tier+1 decomposition
+        self.maxtier = 0
+        # samplers[tier] is a dict color keyed and sampler name list valued
+        #samplers[tier][color] = list(names) of nearest neighbors w/color
+        # in the tier/tier+1 group
+        self.samplers = dict()
+
+class Port:
+    def __init__(self,num, mult, speed, empty):
+        self.num = num
+        self.mult = mult
+        self.speed = speed
+        self.empty = empty
+
+# network switch
+class Switch:
+    def __init__(self, lid, guid, name):
+        self.lid = lid
+        self.maxport = -1
+        self.guid = guid
+        self.name = name
+        ns = name.split()
+        #self.host = ns[0]
+        self.host = name
+        if len(ns) > 1:
+            self.iface = ns[1] ;# eg. qib0 on hca or Lxxx, Sxxx on big switch
+        else:
+            self.iface = None
+        self.ports = dict(); # locally defined ports; index port.num
+        self.nlink = 0 ; # number of any link type
+        self.nslink = 0 ; # number of switch links
+        self.nhlink = 0 ; # number of hca links
+        self.tier = 0 ; # distance from leaf hca; hcas are tier 0
+        self.tierdone = False ; # tier is computed
+        self.connections = dict();# conns[tier] is for names connected in tier
+        self.color = dict() ; # color[tier] is for tier/tier+1 decomp
+        self.sampler = None
+        self.altitude = -1
+        self.maxport = -1
+
+    def add_port(self, port, mult, speed, port_empty):
+        if not port in self.ports:
+            self.ports[port] = Port(port, mult, speed, port_empty)
+        if int(port) > self.maxport:
+            self.maxport = int(port)
+        if not port_empty:
+            self.nlink += 1
+
+    def inactive_ports(self):
+        # return numbers of unconnected ports
+        r = []
+        for num,p in self.ports.items():
+            if p.empty:
+                r.append(num)
+        return sorted_to_int(r)
+        
+    def active_ports(self):
+        # return numbers of connected ports
+        r = []
+        for num,p in self.ports.items():
+            if not p.empty:
+                r.append(num)
+        return sorted_to_int(r)
+        
+
+# hca card or sharp fakery
+class Hca:
+    def __init__(self, lid, guid, srcname):
+        self.maxport = 0
+        self.lid = lid
+        self.guid = guid
+        self.name = srcname
+        ns = srcname.split()
+        self.host = ns[0]
+        if len(ns) > 1:
+            self.iface = ns[1]
+        else:
+            self.iface = None
+        self.ports = dict() ; # indexed by port.numm
+        self.nlink = 0
+        self.nslink = 0
+        self.nhlink = 0
+        self.tier = 0
+        self.connections = dict()
+        self.color = dict()
+        self.sampler = None
+        self.altitude = -1
+        self.maxport = -1
+
+    def add_port(self, port, mult, speed, empty):
+        if not port in self.ports:
+            self.ports[port] = Port(port, mult, speed, empty)
+        if int(port) > self.maxport:
+            self.maxport = int(port)
+        if not empty:
+            self.nlink += 1
+
+    def inactive_ports(self):
+        # return numbers of unconnected ports
+        r = []
+        for num,p in self.ports.items():
+            if p.empty:
+                r.append(num)
+        return sorted_to_int(r)
+        
+    def active_ports(self):
+        r = []
+        for num,p in self.ports.items():
+            if not p.empty:
+                r.append(num)
+        return sorted_to_int(r)
+        
+# link endpoint
+class EndPoint:
+    def __init__(self, lidtype, lid, port, guid, guid_name):
+        self.lid = lid
+        self.port = port
+        if lidtype == 'SW':
+            self.ttype = switchtype
+        if lidtype == 'CA':
+            self.ttype = catype
+        self.guid = guid
+        self.name = guid_name[guid] + "[" + port + "]"
+        self.host = guid_name[guid]
+
+    def same(self, ep):
+        if self is ep:
+            return True
+        if self.name == ep.name and self.lid == ep.lid and self.port == ep.port:
+            if self.guid != ep.guid:
+                raise Exception("endpoint: same name/lid/port, but not guid.")
+            return True
+        return False
+
+# network link
+class Link:
+    def __init__(self, lidtype, lid, port, guid, desttype, destlid, destport, destguid, name, rname, guid_name):
+        self.src = EndPoint(lidtype, lid, port, guid, guid_name)
+        self.dst = EndPoint(desttype, destlid, destport, destguid, guid_name)
+        self.name = name
+        self.rname = rname
+        self.tierdone = False
+        self.humname = "{}[{}] - [][[]]".format(guid_name[guid], port,
+                                                guid_name[destguid], destport)
+        self.humrname = "{}[{}] - [][[]]".format(guid_name[destguid], destport,
+                                                 guid_name[guid], port)
+    def same(self, lk):
+        if self is lk:
+            return True
+        if self.name == lk.name:
+            return True ; # assumes links are always named low-lid first
+        return False
+
+def add_hca(cas, lid, guid, srcname):
+    if lid in cas:
+        return cas[lid]
+    x = Hca(lid, guid, srcname)
+    cas[lid] = x
+    return x
+
+def find_swlid_by_host(sws, host):
+    for swlid, sw in sws.items():
+        if sw.host == host:
+            return swlid
+    raise Exception("find_swlid_by_name unknown switch lid for " + host)
+
+def find_calid_by_host(cas, host):
+    for calid, ca in cas.items():
+        if ca.host == host:
+            return calid
+    raise Exception("find_calid_by_name unknown hca lid for " + host)
+
+
+def find_calid_by_name(cas, name):
+    for calid, ca in cas.items():
+        if ca.name == name:
+            return calid
+    raise Exception("find_calid_by_name unknown host ca for " + name)
+
+switchtype = 1
+catype = 2
+import re
+
+# look for common prefixes sets with at least minp char
+# trailing digits excluded.
+# use sortedness to just read them off
+# fixme
+def alpha_prefix_groups(l, minp):
+    s = sorted_numstr(l)
+    buckets = dict()
+    change = True
+    last = len(s)
+    match = s[0]
+    buckets[match] = [minp]
+    k = 0
+    while k < last:
+        q = s[k]
+        if len(q) < minp:
+            k += 1
+            continue
+        for n in sorted(buckets.keys()):
+            mrange = buckets[n]
+            c = mrange[0]
+            good = False
+            while (q.startswith(n, 0, c)):
+                good = True
+                c += 1
+            if not good:
+                buckets[n] = [ 0 ]
+                # new match family
+            else:
+                if len(mrange) == 1:
+                    buckets[n] = [c]
+                    # update match size based on first match
+                buckets[n].append(q)
+        k += 1
+
+def sorted_numstr( l ):
+    convert = lambda text: int(text) if text.isdigit() else text
+    alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
+    return sorted(l, key = alphanum_key)
+
+def sorted_to_int( l ):
+    x = []
+    for i in l:
+        x.append(int(i))
+    y = sorted( x )
+    return y
+
+#
+# load host locations of ibnet samplers that divide load
+def sampler_parse(fname):
+    admins = []
+    with open(fname) as f:
+        for line in f:
+            x = line.strip()
+            if len(x) > 0 and x[0] != '#':
+                admins.append(x)
+    return admins
+
+def add_link(links, lidtype, lid, port, guid, desttype, destlid, destport, destguid, guid_name):
+    # canonical link is low-lid, low-port first
+    name = "{}.{}-{}.{}".format(lid, port, destlid, destport)
+    rname = "{}.{}-{}.{}".format(destlid, destport, lid, port)
+    if name in links or rname in links:
+        return
+    if int(lid) < int(destlid) or (lid == destlid and int(port) < int(destport)):
+        links[name] = Link(lidtype, lid, port, guid, desttype, destlid, destport, destguid, name, rname, guid_name)
+    else:
+        links[rname] = Link(desttype, destlid, destport, destguid, lidtype, lid, port, guid, rname, name, guid_name)
+    
+def add_switch(switches, lid, guid, srcname):
+    if lid in switches:
+        return switches[lid]
+    sw = Switch(lid, guid, srcname)
+    switches[lid] = sw
+    return sw
+
+# ibnetdiscover -p output --node-name-map /etc/infiniband.conf/ib-node-name-map ; or some such
+#CA   510  1 0x506b4b030074d7c8 4x FDR - SW   233 37 0x506b4b030074d7c0 ( 'sharpnode-sbb3-ibcore1' - 'sbb3-ibcore1' )
+#SW   415 37 0x506b4b030074d160 4x FDR - CA   538  1 0x506b4b030074d168 ( 'sbb4-ibedge1' - 'sharpnode-sbb4-ibedge1' )
+#SW   415 36 0x506b4b030074d160 4x ???                                    'sbb4-ibedge1'
+
+def ibnd_p_parse(noise, fname):
+    lidmax = -1
+    switches = dict(); # indexed by lid
+    links = dict(); # indexed by lid.port - lid2.port2 where lid < lid2
+    cas = dict(); # indexed by lid
+    LNO = 0
+    guid_name = dict() ; # guid to name
+    name_guid = dict() ; # name to guid
+    lidtypes = dict() ; # SW or CA only
+    with open(fname) as f:
+        for line in f:
+            LNO += 1
+            if noise:
+                print("{}: {}".format(LNO, line.strip()))
+            x = line.strip().split()
+            (lidtype, lid, port, guid, mult, speed) = x[:6]
+            ilid = int(lid)
+            if ilid > lidmax:
+                lidmax = ilid
+            lidtypes[lid] = lidtype
+            port_empty = False
+            if speed != '???' and len(x) > 10:
+                (desttype, destlid, destport, destguid) = x[7:11]
+                (pfx, srcname, minus, destname, tail) =  line.strip().split("'");
+                #print("parse: src {} dest {} dtype {} dlid {} dport {} dguid {}".format(srcname, destname, desttype, destlid, destport, destguid))
+                guid_name[guid] = srcname
+                name_guid[srcname] = guid
+                guid_name[destguid] = destname
+                name_guid[destname] = destguid
+                ilid = int(destlid)
+                if ilid > lidmax:
+                    lidmax = ilid
+                add_link(links, lidtype, lid, port, guid, desttype, destlid, destport, destguid, guid_name);
+            else:
+                port_empty = True
+                (pfx, srcname, tail) =  line.strip().split("'");
+                guid_name[guid] = srcname
+                name_guid[srcname] = guid
+
+            if lidtype == 'SW':
+                cursw = add_switch(switches, lid, guid, srcname)
+                cursw.add_port(port, mult, speed, port_empty)
+                continue
+            if lidtype == "CA":
+                curca = add_hca(cas, lid, guid, srcname)
+                curca.add_port(port, mult, speed, port_empty)
+                continue
+            print("Unexpected line format at line {}: {}".format(LNO, line))
+            return (None, None, None, None, None)
+    # rectify link data if needed here fixme
+   
+    return (cas, switches, links, guid_name, name_guid, lidmax)
+
+# peel back layers in sw using lk info
+# mark all ca tier 0 by default
+# mark all sw with ca attachments tier 1
+#    but exclude port 37 connections, as these are 
+#    Mellanox Technologies Aggregation Nodes that violate
+#    the hierarchy.
+# mark all sw with tier 1 attachments tier 2
+# mark all sw with tier 2 attachments tier 3
+# return 0 if ok and 1 if problem
+def compute_switch_tiers(ca, sw, lk):
+    change = True
+    maxtier = 0
+    k = 0
+    while change:
+        k += 1
+        # print("WHILE loop {} ".format(k))
+        change = False
+        for name,l in lk.items():
+            #   l = lk[name]
+            a = False
+            b = False
+            # skip sharp links:
+            if int(l.src.port) == 37 or int(l.dst.port) == 37:
+                # print('skipping sharp agg link {}'.format(l.name))
+                l.tierdone = True
+            if l.tierdone:
+                continue
+            sdone = (l.src.ttype == switchtype and sw[l.src.lid].tierdone) or l.src.ttype == catype
+            ddone = (l.dst.ttype == switchtype and sw[l.dst.lid].tierdone) or l.dst.ttype == catype
+            if sdone and ddone:
+                continue
+            if l.src.ttype == catype:
+                if l.dst.ttype == switchtype:
+                    if sw[l.dst.lid].tier == 0:
+                        sw[l.dst.lid].tier = 1
+                        sw[l.dst.lid].tierdone = True
+                        # print("tier {} {} dest 1 {} ".format(1, l.dst.lid, l.name))
+                        if maxtier == 0:
+                            maxtier = 1
+                        change = True
+                        l.tierdone = True
+                    continue
+                else:
+                    print('found a ca-ca link?{}'.format(l.name))
+                    return 0
+            if l.dst.ttype == catype:
+                if l.src.ttype == switchtype:
+                    if sw[l.src.lid].tier == 0:
+                        sw[l.src.lid].tier = 1
+                        sw[l.src.lid].tierdone = True
+                        # print("tier {} {} src 1 {}".format(1, l.src.lid, l.name))
+                        if maxtier == 0:
+                            maxtier = 1
+                        change = True
+                        l.tierdone = True
+                    continue
+                else:
+                    print('found a ca-ca link??{}'.format(l.name))
+                    return 0
+            # first pass, assign only edge switches
+            if k == 1:
+                continue
+            if l.src.ttype == switchtype:
+                if sw[l.src.lid].tier == 0 and sw[l.dst.lid].tier == 0:
+                    #print("pending")
+                    continue
+                if sw[l.src.lid].tier == 0:
+                    newtier = sw[l.dst.lid].tier + 1
+                    if newtier > k:
+                        continue
+                    sw[l.src.lid].tier = newtier
+                    sw[l.src.lid].tierdone = True
+                    # print("tier {} {} {}".format(newtier, l.src.lid, l.name))
+                    if maxtier < newtier:
+                        maxtier = newtier
+                    change = True
+                    l.tierdone = True
+                    continue
+                if l.dst.ttype == switchtype:
+                    if sw[l.dst.lid].tier == 0:
+                        newtier = sw[l.src.lid].tier + 1
+                        if newtier > k:
+                            continue
+                        sw[l.dst.lid].tier = newtier
+                        sw[l.dst.lid].tierdone = True
+                        # print("tier {} {} {}".format(newtier, l.dst.lid, l.name))
+                        if maxtier < newtier:
+                            maxtier = newtier
+                        change = True
+                        l.tierdone = True
+                        continue
+                else:
+                    print("found unexpected dst type {} in {}".format(l.dst.ttype, l.name))
+                    return 0
+            else:
+                print("found unexpected type {} in {}".format(l.src.ttype, l.name))
+                return 0
+    return maxtier
+
+# construct a dict[tier] of dict[name] for connections in each switch
+def compute_connections(args, ca, sw, lk):
+    for name in sorted(lk.keys()):
+        l = lk[name]
+        # print("LK: {}".format(l.name))
+        if l.src.ttype == switchtype:
+            s = sw[l.src.lid]
+        else:
+            s = ca[l.src.lid]
+
+        if l.dst.ttype == catype:
+            d = ca[l.dst.lid]
+        else:
+            d = sw[l.dst.lid]
+        st = s.tier
+        dt = d.tier
+        # print("dt={} name = {}".format(dt, l.dst.lid))
+        # print("st={} name = {}".format(st, l.src.lid))
+        if not dt in s.connections:
+            s.connections[dt] = dict()
+        s.connections[dt][l.dst.lid] = l.dst.ttype
+        if not st in d.connections:
+            d.connections[st] = dict()
+        d.connections[st][l.src.lid] = l.src.ttype
+    if args.info:
+        print("finished compute_connections")
+
+def color_switch_groups(args, ca, sw, lk, tr):
+    tier = tr.maxtier - 1
+    while tier > 0:
+        color = 0
+        snames = sorted_numstr(sw.keys())
+        for name in snames:
+            s = sw[name]
+            if s.tier != tier:
+                # skip any starting point not in tier
+                continue
+            if not tier in s.color:
+                # if s is not colored, use new color, else skip
+                s.color[tier] = color
+                color += 1
+            else:
+                continue
+            if args.debug:
+                print("Coloring from {} parents in {}".format(name,tier+1))
+            parents = s.connections[tier+1]
+            pnames = sorted_numstr(parents.keys())
+            for sn in pnames:
+                st = parents[sn]
+                # print(sn)
+                p = sw[sn]
+                if tier in p.color:
+                    print("found already colored parent switch {} for tier {} with color {}".format(sn, tier, p.color[tier]))
+                    continue
+                p.color[tier] = s.color[tier]
+                cnames = sorted_numstr(p.connections[tier].keys())
+                cpairs = p.connections[tier]
+                for cn in cnames:
+                    ct = cpairs[cn]
+                    if ct == catype:
+                        print("unexpected hca {} in {}".format(cn, sn))
+                    c = sw[cn]
+                    if tier in c.color:
+                        # print("found already colored peeer switch {} for tier {} with color {}".format(cn, tier, c.color[tier]))
+                        continue
+                    c.color[tier] = s.color[tier]
+        if args.info:
+            print("colors for tier {}: {}".format(tier, color))
+        tr.colors[tier] = color
+        tier -= 1
+    # special case for leaves
+    if tier == 0:
+        color = 0
+        snames = sorted_numstr(ca.keys())
+        for name in snames:
+            s = ca[name]
+            if s.tier != tier:
+                # skip any starting point not in tier
+                continue
+            if not tier in s.color:
+                # if s is not colored, use new color, else skip
+                s.color[tier] = color
+                color += 1
+            else:
+                continue
+            if args.debug:
+                print("Coloring from {} parents in {}".format(name,tier+1))
+            up = tier + 1
+            if not up in s.connections:
+                if args.debug:
+                    print("disconnected ca {}".format(name))
+                continue
+            parents = s.connections[tier+1]
+            pnames = sorted_numstr(parents.keys())
+            for sn in pnames:
+                st = parents[sn]
+                # print(sn)
+                p = sw[sn]
+                if tier in p.color:
+                    print("found already colored parent switch {} for tier {} with color {}".format(sn, tier, p.color[tier]))
+                    continue
+                p.color[tier] = s.color[tier]
+                cnames = sorted_numstr(p.connections[tier].keys())
+                cpairs = p.connections[tier]
+                for cn in cnames:
+                    ct = cpairs[cn]
+                    c = ca[cn]
+                    if tier in c.color:
+                        # print("found already colored peeer switch {} for tier {} with color {}".format(cn, tier, c.color[tier]))
+                        continue
+                    c.color[tier] = s.color[tier]
+        if args.info:
+            print("colors for tier {}: {}".format(tier, color))
+        tr.colors[tier] = color
+
+def least_loaded(t12load, direct):
+    least = 1000000
+    leastname = ""
+    for i in direct:
+        if t12load[i] < least:
+            leastname = i
+            least = t12load[i]
+    if least == 1000000:
+        print("least_loaded failed")
+        return "borkbork"
+    print("least_loaded= {} ".format(leastname))
+    return leastname
+
+def rr3_assign_sampler(args, ca, sw, lk, tr, adminlist):
+    # three tier assignment
+    ns = len(adminlist)
+    if ns == 1:
+        if args.info:
+            print("degenerate assignment to {}".format(adminlist[0]))
+        for xn, x in sw.items():
+            x.sampler = adminlist[0]
+        for xn, x in ca.items():
+            x.sampler = adminlist[0]
+        return
+    else:
+        for xn, x in sw.items():
+            x.sampler = None
+        for xn, x in ca.items():
+            x.sampler = None
+
+    scnt = 0
+    ccnt = 0
+    tier = tr.maxtier
+    # round robin tier 3, as anyone can see anything there somehow.
+    # rr the rest to spread the extrahop load as the admins are not
+    # mixed uniformly with the compute.
+    # this does not optimize nearest neighbors at tier 1
+    for name, s in sw.items():
+        if tier == s.tier:
+            s.sampler = adminlist[scnt % ns]
+            if args.debug:
+                print("assigning tier3 {} to {}".format(s.name, s.sampler));
+            s.altitude = 30
+            scnt += 1
+    # sample self rule
+    for a in adminlist:
+        calid = find_calid_by_name(ca, a)
+        c = ca[calid]
+        c.sampler = a
+        c.altitude = 0
+    # now assign tier 1 using color groups and then split t2 and leftovers
+    t12load = dict()
+    adminset = set()
+    for a in adminlist:
+        t12load[a] = 0
+        adminset.add(a)
+    for a in adminlist:
+        # a always samples its direct parent in tier 1
+        calid = find_calid_by_name(ca, a)
+        c = ca[calid]
+        cl = sorted(c.connections[1].keys())[0]
+        s = sw[cl]
+        if not s.sampler:
+            s.sampler = a
+            s.altitude = 1
+            if args.debug:
+                print("assigning tier1 parent {} to {}".format(s.name, s.sampler));
+    for a in adminlist:
+        # round robin nearest neighbor switches among peers in color.
+        # These will always result in hop from parent to tier 2 down to tier 1
+        # maybe
+        calid = find_calid_by_name(ca, a)
+        c = ca[calid]
+        cl = sorted(c.connections[1].keys())[0]
+        s = sw[cl]
+        scolor = s.color[1]
+        adpeers = tr.samplers[1][scolor]
+        igpeers = set(adpeers)
+        igpeers2 = set(adminlist)
+        igpeers3 = igpeers2.intersection(igpeers)
+        adpeers = list(igpeers3)
+        nadpeers = len(adpeers)
+        if nadpeers < 1:
+            if args.debug:
+                print("No overlap in {} {} for {}".format(adpeers, adminlist, a))
+            continue
+        pcnt = 0
+        for spn, sp in sw.items():
+            if sp.sampler:
+                continue
+            if sp.tier == 1 and sp.color[1] == scolor:
+                sp.sampler = adpeers[pcnt % nadpeers]
+                if args.debug:
+                    print("assigning tier1 peer {} to {}".format(sp.name, sp.sampler));
+                pcnt += 1
+    for a in adminlist:
+        # tier 2 assignments upward only
+        for name, s in sw.items():
+            if s.sampler or s.tier != 2:
+                continue
+            visible = match_ca_descendants(sw, s, adminlist, 1)
+            direct = visible.intersection(adminset)
+            if len(direct) == 0:
+                # print("noone below {} {}".format(name, s.host))
+                continue
+            s.sampler = least_loaded(t12load, direct)
+            t12load[s.sampler] = t12load[s.sampler] + 1
+            print("assigning tier2 parent {} to {}".format(s.name, s.sampler));
+            if t12load[s.sampler] == 0 or s.sampler == "borkbork":
+                print("dict inc fail")
+                return
+    if args.debug:
+        print("loaded")
+        print(t12load)
+    scnt = 0
+    # now spread tier2 remotes
+    # leftover hop 1 hop 2 hop 3 hop 2 switches
+    for name, s in sw.items():
+        if s.sampler or s.tier != 2:
+            continue
+        s.sampler = adminlist[scnt % ns]
+        if args.debug:
+            print("assigning remote tier2. {} to {}".format(s.name, s.sampler));
+        scnt += 1
+
+    ualist = []
+    for sn, s in sw.items():
+        if not s.sampler:
+            ualist.append(sn)
+    if args.info:
+        print("downhop tier 1 switches count: {}".format(len(ualist)))
+    ucnt = 0
+    for sn in sorted_numstr(ualist):
+        s = sw[sn]
+        s.sampler = adminlist[ucnt % ns]
+        if args.debug:
+            print("assigning remote tier1. {} to {}".format(s.name, s.sampler));
+        ucnt += 1
+    # assign hcas to the sampler for their parent switch, or round robin
+    # if we can't find it.
+    ucnt = 0
+    for cn,c in ca.items():
+        if c.sampler:
+            continue
+        for t in [1,2]:
+            if not t in c.connections:
+                continue
+            cl = sorted(c.connections[t].keys())[0]
+            s = sw[cl]
+            if not s.sampler:
+                print("unassigned switch! {}".format(s.name))
+            if not c.sampler:
+                c.sampler = s.sampler
+            break
+        if not c.sampler:
+            a = adminlist[ucnt % ns]
+            c.sampler = a
+            if args.info:
+                print("assigning orphan {} to {}".format(c.name, a));
+            ucnt += 1
+
+
+######################################
+# formatting for humans
+def format_lidnames(ca, sw, guid_name):
+    for lid, c in ca.items():
+         print("{},{}".format(lid, c.host))
+    for lid, s in sw.items():
+         print("{},{}".format(lid, s.host))
+
+def format_links(ca, sw, lk, tr):
+    names = lk.keys() 
+    print("Links ========");
+    for i in sorted_numstr(names):
+        print("{}".format(i))
+
+def format_connections(args, ca, sw, lk, tr):
+    k = tr.maxtier
+    while k > 0:
+        nlist = []
+        for name,s in sw.items():
+            if k != s.tier:
+                continue
+            nlist.append(name)
+        snames = []
+        # loop over sorted switch names in tier k
+        for sn in sorted_numstr(nlist):
+            s = sw[sn]
+            print("Switch connections to tier {} {}:".format(s.tier, s.host))
+            tk = sorted(s.connections.keys())
+            for t in tk:
+                print("  Tier {}:".format(t))
+                snames = []
+                cnames = []
+                for lid,ttype in s.connections[t].items():
+                    if ttype == catype:
+                        cnames.append(ca[lid].name + "_" + lid)
+                    else:
+                        snames.append(sw[lid].name + "_" + lid)
+                for n in sorted_numstr(snames):
+                    print("    {} -- SW".format(n))
+                for n in sorted_numstr(cnames):
+                    print("    {} -- CA".format(n))
+        k -= 1
+    if args.info:
+        print("finished format_connections")
+
+def format_tiers(tr, sw):
+    m = tr.maxtier+1
+    k = 0
+    while k < m:
+        print("Tier {} ============================================".format(k))
+        snames = []
+        for name,s in sw.items():
+            if k == s.tier:
+                snames.append(s.name)
+        for name in sorted_numstr(snames):
+            print("{}".format(name))
+        k += 1
+
+
+######################################
+# formatting for dot
+
+
+def startgraph(f):
+    print("graph ibnet {", file=f)
+
+def startdigraph(f):
+    print("digraph ibnet {\nmindist=0.1", file=f)
+
+def endgraph(f):
+    print("}", file=f)
+
+def format_samplers_ibnet(args, ca, sw, tr, adminlist, fbase, skipca):
+    if args.debug:
+        print("======= format_samplers_ibnet: {}".format(adminlist))
+    swcount = len(sw)
+    cacount = len(ca)
+    lidcount = 0
+    lids = dict()
+    for a in adminlist:
+        calid = find_calid_by_name(ca, a)
+        sc = ca[calid]
+        fn = fbase + "." + sc.host + ".conf"
+
+        with open(fn, "w") as f:
+            print("# sampled switches for {}".format(a), file=f)
+            snames = []
+            for sn, s in sw.items():
+                if s.sampler == a:
+                    snames.append(sn)
+            for sn in sorted_numstr(snames):
+                s = sw[sn]
+                if s.lid in lids:
+                    print("not sampling sw twice {} {}".format(sn, s.host))
+                    continue
+                lids[s.lid] = 1
+                format_sw_ib(f, s, args.sampnote)
+                lidcount += 1
+            print("# sampled HCAs for {}".format(a), file=f)
+            cnames = []
+            for cn, c in ca.items():
+                if c.sampler == a and (not skipca or c.name == a):
+                    cnames.append(cn)
+            for cn in sorted_numstr(cnames):
+                c = ca[cn]
+                if c.lid in lids:
+                    print("sampling ca twice {}".format(cn))
+                lids[c.lid] = 1
+                format_ca_ib(f, c)
+                lidcount += 1
+    if args.info:
+        print("assignment: nsw={} nca={} nlid={}".format(swcount, cacount, lidcount))
+    emptyswportcount = 0
+    emptycaportcount = 0
+    for sn, s in sw.items():
+        delta = (s.maxport - s.nlink)
+        emptyswportcount += delta
+        if delta > 0:
+            pass
+            # print("idle ports {} on SW {}".format(delta, s.name))
+    for cn, c in ca.items():
+        delta = (c.maxport - c.nlink)
+        emptycaportcount += delta
+        if delta > 0:
+            pass
+            # print("idle ports {} on CA {}".format(delta, c.name))
+
+    klist = []
+    for i in lids.keys():
+        k = int(i)
+        klist.append(k)
+    llist = sorted(klist)
+    last = 0
+    gc = 0
+    missing = []
+    for k in llist:
+        if k > last+1:
+            j = last +1
+            while j < k:
+                missing.append(j)
+                j += 1
+        last = k
+    #print("missing {} lids: {}".format(len(missing),missing))
+    #print("empty switch ports: {}".format(emptyswportcount))
+    #print("empty hca ports: {}".format(emptycaportcount))
+
+def format_samplers_ibnet_hosts(args, ca, sw, tr, adminlist, fbase, skipca):
+    if args.debug:
+        print("======= format_samplers_ibnet_hosts: {}".format(adminlist))
+    swcount = len(sw)
+    cacount = len(ca)
+    lidcount = 0
+    lids = dict()
+    for a in adminlist:
+        calid = find_calid_by_name(ca, a)
+        sc = ca[calid]
+        fn = fbase + "." + sc.host + ".conf"
+
+        with open(fn, "w") as f:
+            print("# sampled switches for {}".format(a), file=f)
+            snames = []
+            for sn, s in sw.items():
+                if s.sampler == a:
+                    snames.append(s.host)
+            for h in sorted_numstr(snames):
+                sl = find_swlid_by_host(sw, h)
+                if sl in lids:
+                    if args.debug:
+                        print("not sampling sw twice {} {}".format(sl, sw[sl].host))
+                    continue
+                lids[sl] = 1
+                format_sw_ib(f, sw[sl], args.sampnote)
+                lidcount += 1
+            print("# sampled HCAs for {}".format(a), file=f)
+            cnames = []
+            for cn, c in ca.items():
+                if c.sampler == a and (not skipca or c.name == a):
+                    cnames.append(c.host)
+            for h in sorted_numstr(cnames):
+                cl = find_calid_by_host(ca, h)
+                if cl in lids:
+                    if args.debug:
+                        print("sampling ca twice {}".format(cn))
+                lids[cl] = 1
+                format_ca_ib(f, ca[cl], args.sampnote)
+                lidcount += 1
+    if args.info:
+        print("assignment: nsw={} nca={} nlid={}".format(swcount, cacount, lidcount))
+
+def format_samp_ib(f, c):
+    print("# {}".format(c.name), file=f)
+
+def format_ca_ib(f, c, annotate):
+    al = c.active_ports()
+    plen = len(al)
+    pl = str(sorted_to_int(c.ports))
+    pl = pl.strip("[]")
+    if c.maxport == len(c.ports) and len(c.ports) > 1:
+        if annotate:
+            print("# {}\n".format(c.host), file=f)
+        print("{} {} {} {}".format(c.lid, c.guid, plen, '*'), file=f)
+    else:
+        if annotate:
+            print("# {}\n".format(c.host), file=f)
+        print("{} {} {} {}".format(c.lid, c.guid, plen, pl), file=f)
+
+# lid,guid,nports,portlist
+def format_sw_ib(f, c, annotate):
+    il = c.inactive_ports()
+    al = c.active_ports()
+    plen = len(al)
+    pl = str(al)
+    pl = pl.strip("[]")
+    el = str(il).strip("[]")
+    if c.maxport == c.nlink and c.nlink > 1:
+        if annotate:
+            print("# {}".format(c.host), file=f)
+        print("{} {} {} {}".format(c.lid, c.guid, plen, '*'), file=f)
+    else:
+        if annotate:
+            print("# {}".format(c.host), file=f)
+            if len(il) > 0:
+                print("# empty ports: {}".format(el), file=f)
+        print("{} {} {} {}".format(c.lid, c.guid, plen, pl), file=f)
+
+def format_ca(f, c, hnprefs, hnexclude, merged=False):
+    if c.host[:2] in hnexclude:
+        return
+    if c.host[:2] in hnprefs:
+        if merged:
+            lbl = c.host_merged
+        else:
+            lbl = c.host
+    else:
+        if merged:
+            lbl = c.host_merged
+        else:
+            lbl = c.host + "\\n" + c.lid
+    lbl = lbl.replace("skybridge-","sb")
+    lbl = lbl.replace("stria-","st-")
+    lbl = lbl.replace("admin","ad")
+    lbl = lbl.replace("login","ln")
+
+    #if c.iface:
+    #    lbl += "\\n" + c.iface
+    s = "\"{}\" [shape=ellipse label=\"{}\"]".format(c.lid, lbl)
+    print(s, file=f)
+
+def get_switch_color(cnum):
+    colors = ( "red", "green", "lightblue", "yellow", "magenta", "cyan", "orange", "khaki", "burlywood" )
+    x = cnum % len(colors)
+    return colors[x]
+
+def format_sw(f, s, colortier=0):
+    lbl = s.host
+    if s.iface:
+        lbl += "\\n" + s.iface
+    # lbl += "\\n" + s.lid
+    if colortier in s.color:
+        nc = s.color[colortier]
+        print("\"{}\" [shape=box label=\"{}\" style=\"filled\" fillcolor=\"{}\"]".format(s.lid, lbl,
+            get_switch_color(nc)), file=f)
+    else:
+        print("\"{}\" [shape=box label=\"{}\"]".format(s.lid, lbl), file=f)
+
+def format_lk_group(links, l):
+    taillabel = l.src.port
+    headlabel = l.dst.port
+    label = taillabel
+    name = l.src.lid + "__" + l.dst.lid
+    if name in links:
+        links[name][1].append(int(taillabel))
+        return
+    # print("\"{}\" -> \"{}\" [headlabel=\"{}\" taillabel=\"{}\" label=\"{}\"]".format(l.src.lid, l.dst.lid, headlabel, taillabel, taillabel), file=f)
+    fmt = "\"{}\" -> \"{}\" ".format(l.src.lid, l.dst.lid)
+    links[name] =  [fmt, [int(taillabel)]]
+    
+def format_lk(f, l):
+    taillabel = l.src.port
+    headlabel = l.dst.port
+    label = taillabel
+    # print("\"{}\" -> \"{}\" [headlabel=\"{}\" taillabel=\"{}\" label=\"{}\"]".format(l.src.lid, l.dst.lid, headlabel, taillabel, taillabel), file=f)
+    print("\"{}\" -> \"{}\" [label=\"{}\"]".format(l.src.lid, l.dst.lid, taillabel), file=f)
+    
+# compute ca names below s in tier structure matching samp_match list
+def match_ca_descendants(sw, s, samp_match, tn):
+    match = set()
+    if tn in s.connections:
+        for cn,ct in s.connections[tn].items():
+            if ct == catype:
+                if cn in samp_match:
+                    match.add(cn)
+                continue
+            cs = sw[cn]
+            if cs.tier > tn:
+                continue
+            submatch = match_ca_descendants(sw, cs, samp_match, tn-1)
+            match.update(submatch)
+    return match
+
+# make two-level sub lists, amended with subtree visible nodes named samp_match
+def format_subtiers(args, ca, sw, lk, tr, fbase, tn, samp_match):
+    import os
+    fbase += str(tn)
+    color = 0
+    while color < tr.colors[tn]:
+        dbase = fbase + ".c" + str(color)
+        dname = dbase + ".samp"
+        ns = 0
+        for name,s in sw.items():
+            s.use = False
+            if tn in s.color and s.color[tn] == color:
+                s.use = True
+                ns += 1
+        if args.info:
+            print("Color {} has {} switches.".format(color, ns))
+
+        nc = 0
+        for name,c in ca.items():
+            c.samp = False
+            c.use = False
+            if tn in c.color and c.color[tn] == color:
+                c.use = True
+                nc += 1
+        if nc > 0 and args.info:
+            print("Color {} has {} hca.".format(color, nc))
+        # find named nodes below current bottom layer
+        for name,s in sw.items():
+            if s.use and s.tier == tn:
+                nlist = match_ca_descendants(sw, s, samp_match, tn-1)
+                for n in nlist:
+                    ca[n].samp = True
+
+        with open(dname, "w") as f:
+            print("# samplers here can see the next list", file=f)
+            names = []
+            for name,c in ca.items():
+                if c.samp:
+                    names.append(name)
+            if not tn in tr.samplers:
+                tr.samplers[tn] = dict()
+            tr.samplers[tn][color] = sorted_numstr(names)
+            for name in sorted_numstr(names):
+                c = ca[name]
+                format_samp_ib(f, c)
+            print("# CAs they can see directly (should be none)", file=f)
+            names = []
+            for name,c in ca.items():
+                if c.use and not c.samp:
+                    names.append(name)
+            for name in sorted_numstr(names):
+                c = ca[name]
+                format_ca_ib(f, c, args.sampnote)
+            print("# Switches they can see in 0 or 1 hop", file=f)
+            names = []
+            for name,s in sw.items():
+                if s.use:
+                    names.append(name)
+            for name in sorted_numstr(names):
+                s = sw[name]
+                format_sw_ib(f, s, args.sampnote)
+        color += 1
+
+# make a star graph for everything
+def graph_all(ca, sw, lk, fbase):
+    import os
+    dname = fbase + ".gv"
+    aname = fbase + ".pdf"
+    lname = fbase + ".pos.gv"
+    uname = fbase + ".uf.gv"
+    uaname = fbase + ".uf.pdf"
+    pname = fbase + ".png"
+    for name,s in sw.items():
+        s.use = False
+    for name,c in ca.items():
+        c.use = False
+    for name,l in lk.items():
+        if l.src.ttype == catype:
+            ca[l.src.lid].use = True
+        else:
+            sw[l.src.lid].use = True
+        if l.dst.ttype == catype:
+            ca[l.dst.lid].use = True
+        else:
+            sw[l.dst.lid].use = True
+        l.use = True
+
+    with open(dname, "w") as f:
+        startdigraph(f)
+        for name,c in ca.items():
+            if c.use:
+                format_ca(f, c)
+        snames = sw.keys()
+        for name in sorted_numstr(snames):
+            s = sw[name]
+            if s.use:
+                format_sw(f, s)
+        for name,l in lk.items():
+            if l.use:
+                format_lk(f, l)
+        endgraph(f)
+    lo = "circo"
+    os.system(lo +" -Tpng -o " + pname + " " + dname)
+    os.system(lo + " -Tpdf -o " + aname + " " + dname)
+    os.system(lo + " -o " + lname + " " + dname)
+    # os.system("unflatten -o " + uname + " " + lname)
+    # os.system(lo + " -Tpdf -o " + uaname + " " + uname)
+
+# make a star graph for everything
+def graph_switches(ca, sw, lk, fbase, hnprefs):
+    import os
+    dname = fbase + ".gv"
+    aname = fbase + ".pdf"
+    lname = fbase + ".pos.gv"
+    uname = fbase + ".uf.gv"
+    uaname = fbase + ".uf.pdf"
+    pname = fbase + ".png"
+    for name,s in sw.items():
+        s.use = False
+    for name,c in ca.items():
+        c.use = False
+    for name,l in lk.items():
+        l.use = False
+        if l.src.ttype == catype or l.dst.ttype == catype:
+            continue
+        sw[l.dst.lid].use = True
+        sw[l.src.lid].use = True
+        l.use = True
+
+    with open(dname, "w") as f:
+        startdigraph(f)
+        for name,c in ca.items():
+            if c.use:
+                format_ca(f, c, hnprefs)
+        snames = sw.keys()
+        for name in sorted_numstr(snames):
+            s = sw[name]
+            if s.use:
+                format_sw(f, s)
+        for name,l in lk.items():
+            if l.use:
+                format_lk(f, l)
+        endgraph(f)
+    lo = "circo"
+    os.system(lo + " -o " + lname + " " + dname)
+    os.system(lo +" -Tpng -o " + pname + " " + dname)
+    os.system(lo + " -Tpdf -o " + aname + " " + dname)
+    # os.system("unflatten -o " + uname + " " + lname)
+    # os.system(lo + " -Tpdf -o " + uaname + " " + uname)
+
+# make a star graph for each edge switch
+def graph_hca(ca, sw, lk, fbase):
+    import os
+    dname = fbase + ".gv"
+    aname = fbase + ".pdf"
+    lname = fbase + ".pos.gv"
+    uname = fbase + ".uf.gv"
+    uaname = fbase + ".uf.pdf"
+    pname = fbase + ".png"
+    for name,s in sw.items():
+        s.use = False
+    for name,c in ca.items():
+        c.use = False
+    for name,l in lk.items():
+        if l.src.ttype == catype or l.dst.ttype == catype:
+            if l.src.ttype == catype:
+                ca[l.src.lid].use = True
+            else:
+                sw[l.src.lid].use = True
+            if l.dst.ttype == catype:
+                ca[l.dst.lid].use = True
+            else:
+                sw[l.dst.lid].use = True
+            l.use = True
+        else:
+            l.use = False
+
+    with open(dname, "w") as f:
+        startdigraph(f)
+        for name,c in ca.items():
+            if c.use:
+                format_ca(f, c)
+        for name,s in sw.items():
+            if s.use:
+                format_sw(f, s)
+        for name,l in lk.items():
+            if l.use:
+                format_lk(f, l)
+        endgraph(f)
+    lo = "circo"
+    os.system(lo +" -Tpng -o " + pname + " " + dname)
+    os.system(lo + " -Tpdf -o " + aname + " " + dname)
+    os.system(lo + " -o " + lname + " " + dname)
+    os.system("unflatten -o " + uname + " " + lname)
+    os.system(lo + " -Tpdf -o " + uaname + " " + uname)
+
+# make two-level sub graphs.
+def graph_subtiers(ca, sw, lk, tr, fbase, tn):
+    import os
+    fbase += str(tn)
+    color = 0
+    while color < tr.colors[tn]:
+        dbase = fbase + ".c" + str(color)
+        dname = dbase + ".gv"
+        aname = dbase + ".pdf"
+        pname = dbase + ".png"
+        lname = dbase + ".pos.gv"
+        for name,s in sw.items():
+            s.use = False
+            if tn in s.color and s.color[tn] == color:
+                s.use = True
+        for name,c in ca.items():
+            c.use = False
+            if tn in c.color and c.color[tn] == color:
+                c.use = True
+        for name,l in lk.items():
+            l.use = False
+            if l.src.ttype == switchtype:
+                ls = sw[l.src.lid]
+            if l.dst.ttype == switchtype:
+                ds = sw[l.dst.lid]
+            if l.src.ttype == catype:
+                ls = ca[l.src.lid]
+            if l.dst.ttype == catype:
+                ds = ca[l.dst.lid]
+            if tn in ls.color and color == ls.color[tn] and tn in ds.color and ds.color[tn] == color:
+                l.use = True
+        with open(dname, "w") as f:
+            startdigraph(f)
+            for name,c in ca.items():
+                if c.use:
+                    format_ca(f, c)
+            for name,s in sw.items():
+                if s.use:
+                    format_sw(f, s, tn)
+            for name,l in lk.items():
+                if l.use:
+                    format_lk(f, l)
+            endgraph(f)
+        lo = "circo"
+        print("layout {}".format(lname))
+        os.system("date; " + lo + " -o " + lname + " " + dname)
+        print("png {} from {}".format(pname, lname))
+        os.system("date; " + lo +" -Tpng -o " + pname + " " + lname)
+        print("pdf {} from {}".format(aname, lname))
+        os.system("date; " + lo + " -Tpdf -o " + aname + " " + lname)
+        os.system("date ")
+        color += 1
+
+# make two-level sub graphs.
+def graph_tier(ca, sw, lk, fbase, tn, hnprefs, hnexclude, alg, opts, merge_nodes=False):
+    import os
+    fbase += str(tn) + "_" + str(tn+1)
+    dname = fbase + ".gv"
+    aname = fbase + ".pdf"
+    lname = fbase + ".pos.gv"
+    uname = fbase + ".uf.gv"
+    uaname = fbase + ".uf.pdf"
+    pname = fbase + ".png"
+    for name,s in sw.items():
+        s.use = False
+        if s.tier == tn:
+            s.use = True
+        if s.tier == tn +1:
+            s.use = True
+    for name,c in ca.items():
+        c.use_merged = False
+        if tn == 0:
+            c.use = True
+        else:
+            c.use = False
+    for name,l in lk.items():
+        l.use = False
+        if l.src.ttype == catype or l.dst.ttype == catype:
+            if l.src.host[:2] in hnexclude:
+                continue
+            if l.dst.host[:2] in hnexclude:
+                continue
+            if tn == 0:
+                if l.src.ttype == catype:
+                    ca[l.src.lid].use = True
+                else:
+                    sw[l.src.lid].use = True
+                if l.dst.ttype == catype:
+                    ca[l.dst.lid].use = True
+                else:
+                    sw[l.dst.lid].use = True
+                l.use = True
+        else:
+            if (sw[l.src.lid].tier == tn or sw[l.src.lid].tier == tn+1) and (sw[l.dst.lid].tier == tn or sw[l.dst.lid].tier == tn+1):
+                l.use = True
+    if merge_nodes:
+        for name,s in sw.items():
+            marked = -1
+            if s.use:
+                cnames = []
+                for st in s.connections.keys():
+                    for lid,ttype in s.connections[st].items():
+                        if ttype == catype and ca[lid].use:
+                            cnames.append(ca[lid].host)
+                            if marked < 0:
+                                ca[lid].use_merged = True
+                                marked = int(lid)
+                            else:
+                                ca[lid].use = False
+                x = collect_hostlist_subsets(cnames)
+                ca[str(marked)].host_merged = "\n".join(x)
+        with open(dname, "w") as f:
+            startdigraph(f)
+            for name,c in ca.items():
+                if c.use_merged:
+                    format_ca(f, c, hnprefs, hnexclude, True)
+            for name,s in sw.items():
+                if s.use:
+                    format_sw(f, s, tn)
+            links = dict()
+            for name,l in lk.items():
+                    if l.use:
+                        if l.src.ttype == catype and ca[l.src.lid].use:
+                            format_lk_group(links, l)
+                        if l.dst.ttype == catype and ca[l.dst.lid].use:
+                            format_lk_group(links, l)
+            for lg,fp in links.items():
+                (ends, ports) = fp
+                print("{} [taillabel=\"{}\"]".format(ends, str(sorted(ports)).strip("[]")), file=f)
+            endgraph(f)
+    else:
+        with open(dname, "w") as f:
+            startdigraph(f)
+            for name,c in ca.items():
+                if c.use:
+                    format_ca(f, c, hnprefs, hnexclude)
+            for name,s in sw.items():
+                if s.use:
+                    format_sw(f, s, tn)
+            links = dict()
+            for name,l in lk.items():
+                    if l.use:
+                        format_lk_group(links, l)
+            for lg,fp in links.items():
+                (ends, ports) = fp
+                print("{} [taillabel=\"{}\"]".format(ends, str(sorted(ports)).strip("[]")), file=f)
+            endgraph(f)
+    lo = alg
+    os.system(lo + " " + opts + " -o " + lname + " " + dname)
+    os.system(lo +" -Tpng -o " + pname + " " + lname)
+    os.system(lo + " -Tpdf -o " + aname + " " + lname)
+    #os.system("unflatten -o " + uname + " " + lname)
+    #os.system(lo + " -Tpdf -o " + uaname + " " + uname)
+
+
+def get_arg_parser():
+    p = argparse.ArgumentParser(description = 'generate graphs and sampler assignments for ib fabrics')
+    p.add_argument("--lidnames", action="store_true", help="dump lid-names file", default=True)
+    p.add_argument("--out", dest='outprefix', help="prefix of output files", required=True)
+    p.add_argument("--net", dest='ibndpfile', help="file name of output collected from 'ibnetdiscover -p'", required=True)
+    p.add_argument("--samplers", dest='hostfile', help="file listing samplers as named in the host name map, one per line", required=True)
+    p.add_argument("--annotate", dest='sampnote', action='store_true', help="annotate samplers files", default=False)
+    p.add_argument("--tier0", action='store_true', help="generate tier0-1 graphs", default=False)
+    p.add_argument("--tier1", action='store_true', help="generate tier1-2 graphs", default=False)
+    p.add_argument("--tier2", action='store_true', help="generate tier2-3 graphs", default=False)
+    p.add_argument("--circo-tiers", dest='circo_prefix', help="dump circo tier plots to files starting with prefix given.", default=None)
+    p.add_argument("--sfdp-tiers", dest='sfdp_prefix', help="dump circo tier plots to files starting with prefix given.", default=None)
+    p.add_argument("--info", action='store_true', help="print key intermediate results", default=False)
+    p.add_argument("--debug", action='store_true', help="print debug messages", default=False)
+    p.add_argument("--dump_sw", action='store_true', help="print switches parsed", default=False)
+    p.add_argument("--dump_ca", action='store_true', help="print HCA list parsed", default=False)
+    p.add_argument("--dump_links", action='store_true', help="print links parsed", default=False)
+    p.add_argument("--dump_tiers", action='store_true', help="print tiers discovered", default=False)
+    p.add_argument("--dump_parse", action='store_true', help="print parser debugging", default=False)
+    return p
+
+######################################
+def main():
+    aparse = get_arg_parser()
+    args = aparse.parse_args()
+
+    (ca, sw, lk, guid_name, name_guid, lidmax) = ibnd_p_parse(args.dump_parse, args.ibndpfile)
+    if args.lidnames:
+        format_lidnames(ca, sw, guid_name)
+        return
+    adminlist = sampler_parse(args.hostfile)
+    tr = Tier()
+    # print("{}".format( args ))
+    if args.dump_ca:
+        print('CA data')
+        for name in sorted_numstr(ca.keys()):
+            c = ca[name]
+            print("CA '{}' lid={} maxport={} guid={} ns={} nh={}".format(c.name, c.lid, c.maxport, c.guid, c.nslink, c.nhlink))
+    if args.dump_sw:
+        print('Switch data')
+        for name in sorted_numstr(sw.keys()):
+            s = sw[name]
+            print("SW '{}' lid={} maxport={} guid={} ns={} nh={}".format(s.name, s.lid, s.maxport, s.guid, s.nslink, s.nhlink))
+
+    if args.dump_links:
+        print('Link data')
+        print("numlinks {}".format(len(lk)))
+        for name in sorted(lk.keys()):
+            l = lk[name]
+            print("LK {} slid={} sttype={} dlid={} dttype={}".format(l.name, l.src.lid, l.src.ttype, l.dst.lid, l.dst.ttype))
+
+    #print('graphing')
+    # graph_all(ca, sw, lk, "lu-all")
+    # graph_hca(ca, sw, lk, "lu-hca")
+    # graph_switches(ca, sw, lk, "lu-sw")
+
+    if args.debug:
+        print('get tiers')
+    tr.maxtier = compute_switch_tiers(ca, sw, lk)
+
+    if args.info:
+        print("found maxtier={}".format(tr.maxtier))
+    # format_tiers(tr, sw)
+    # format_links(ca, sw, lk, tr)
+
+    compute_connections(args, ca, sw, lk)
+    if args.dump_tiers:
+        format_connections(args, ca, sw, lk, tr)
+
+    if args.debug:
+        print("coloring switch groups")
+    color_switch_groups(args, ca, sw, lk, tr)
+
+    hostname_prefixes = ["as", "ma", "md", "os", "lu", "st"]
+    exclude_prefixes = []
+    if args.circo_prefix:
+        if args.tier0:
+            if args.debug:
+                print("graphing tier0 with circo")
+            graph_tier(ca, sw, lk, args.circo_prefix, 0, hostname_prefixes, exclude_prefixes, "circo", "")
+            graph_tier(ca, sw, lk, args.circo_prefix + ".merged", 0, hostname_prefixes, exclude_prefixes, "circo", "", True)
+        if args.tier1:
+            if args.debug:
+                print("graphing tier1 with circo")
+            graph_tier(ca, sw, lk, args.circo_prefix, 1, hostname_prefixes, exclude_prefixes, "circo", "")
+        if args.tier2:
+            if args.debug:
+                print("graphing tier2 with circo")
+            graph_tier(ca, sw, lk, args.circo_prefix, 2, hostname_prefixes, exclude_prefixes, "circo", "")
+    if args.sfdp_prefix:
+        graph_tier(ca, sw, lk, args.sfdp_prefix, 1, hostname_prefixes, exclude_prefixes, "sfdp", "-Goverlap=false -Gsplines=true")
+        pass
+
+    #print("graphing tier3")
+    #graph_tier(ca, sw, lk, "agg-tier", 3, hostname_prefixes, exclude_prefixes, "circo", "")
+    # graph_subtiers(ca, sw, lk, tr, "c-sb-tier", 2)
+    #format_subtiers(args, ca, sw, lk, tr, "conf-sb-tier", 2, adminlist)
+    if args.debug:
+        print("making sampler assignments")
+        print("subtiers")
+    format_subtiers(args, ca, sw, lk, tr, args.outprefix + ".subtier1", 1, adminlist)
+    if args.debug:
+        print("rr3_assign_sampler")
+    rr3_assign_sampler(args, ca, sw, lk, tr, adminlist)
+    if args.debug:
+        print("format_samplers_ibnet")
+    # format_samplers_ibnet(args, ca, sw, tr, adminlist, args.outprefix + ".lidorder.sampler", False)
+    format_samplers_ibnet_hosts(args, ca, sw, tr, adminlist, args.outprefix + ".hostorder.sampler", False)
+
+    # graph subnets by assigned sampler. (leave out links with either endpoint not in the sampler)
+    # compact common prefix numeric ranges (see prefix search in upper script) of hostname.
+    # are there detached nodes? or maybe graph tiers and omit links entirely, sort by name and color by sampler.
+
+# ######### run from shell
+if __name__ == "__main__":
+        main()
+

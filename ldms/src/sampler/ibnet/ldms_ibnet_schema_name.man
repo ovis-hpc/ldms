@@ -1,0 +1,55 @@
+.\" Manpage for ldms_ibnet_schema_name
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 1 "4 June 2020" "v4.4" "LDMS utility ldms_ibnet_schema_name man page"
+
+.SH NAME
+ldms_ibnet_schema_name - man page for the LDMS ibnet plugin support utility
+
+.SH SYNOPSIS
+ldms_ibnet_schema_name <plugin config options>
+
+.SH DESCRIPTION
+The ibnet plugin generates a schema name including a hash of certain
+configuration data. ldms_ibnet_schema_name provides the user with the
+resulting name before running ldmsd so that store plugins can be configured.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+
+See Plugin_ibnet(7).
+
+.SH EXAMPLES
+.PP
+.nf
+ldms_ibnet_schema_name node-name-map=/path/map timing=2 metric-conf=/path/metricsubsets schema=myibnet
+
+when file /path/metricsubsets contains
+
+extended
+xmtsl
+rcvsl
+xmtdisc
+rcverr
+oprcvcounters
+flowctlcounters
+vloppackets
+vlopdata
+vlxmitflowctlerrors	
+vlxmitcounters	
+swportvlcong
+rcvcc	
+slrcvfecn
+slrcvbecn
+xmitcc	
+vlxmittimecc
+smplctl	
+
+yields
+
+myibnet_7fffe_tn
+.fi
+
+.SH NOTES
+If the timing option is greater than 0, the name of the overall timing set will be as for the result given with "_timing" appended.
+
+.SH SEE ALSO
+Plugin_ibnet(7)
