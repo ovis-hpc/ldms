@@ -1933,7 +1933,7 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	}
 
 	/* prepare message */
-	zerr = ZAP_ERR_RESOURCE;
+
 	z_sock_hdr_init(&io->write.hdr, 0, SOCK_MSG_WRITE_REQ,
 		   sizeof(io->write) + sz, (uint64_t)context);
 	struct zap_sock_map *sdst_map = (void*)dst_map;
