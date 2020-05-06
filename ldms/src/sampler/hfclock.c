@@ -172,7 +172,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 		return NULL;
 
 	timer_base_init(&hf->base);
-
 	/* override */
 	hf->base.base.base.usage = hfclock_usage;
 	hf->base.base.base.term = hfclock_term;
@@ -180,10 +179,5 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	snprintf(hf->base.base.base.name, sizeof(hf->base.base.base.name),
 			"hfclock");
 
-	goto out;
-
-	hfclock_cleanup(hf);
-	hf = NULL;
-out:
 	return (void*)hf;
 }

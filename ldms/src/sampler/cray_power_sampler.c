@@ -250,7 +250,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 		return NULL;
 
 	timer_base_init(&cps->base);
-
 	/* override */
 	cps->base.base.base.usage = cray_power_sampler_usage;
 	cps->base.base.base.term = cray_power_sampler_term;
@@ -258,10 +257,5 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	snprintf(cps->base.base.base.name, sizeof(cps->base.base.base.name),
 			"cray_power_sampler");
 
-	goto out;
-
-	cray_power_sampler_cleanup(cps);
-	cps = NULL;
-out:
 	return (void*)cps;
 }
