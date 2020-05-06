@@ -485,7 +485,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 		if (zerr != ZAP_ERR_OK)
 			x->log("%s: x %p: zap_send synchronous error. '%s'\n",
 			       __FUNCTION__, x, zap_err_str(zerr));
-		return;
+		return; /* leak: free reply here? */
 	}
 	LIST_FOREACH(name, &name_list, entry) {
 		struct ldms_set *set = __ldms_find_local_set(name->name);
@@ -1528,7 +1528,7 @@ static void process_req_notify_reply(struct ldms_xprt *x, struct ldms_reply *rep
 
 	ctxt->req_notify.cb((ldms_t)x,
 			    ctxt->req_notify.s,
-			    event, ctxt->req_notify.arg);
+			    event, ctxt->req_notify.arg); /* leak: does cb free event? */
 }
 
 static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,

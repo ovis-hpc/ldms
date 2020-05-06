@@ -5338,7 +5338,7 @@ static int set_route_handler(ldmsd_req_ctxt_t reqc)
 		(void) __ldmsd_append_buffer(reqc, (char *)&attr.discrim,
 				sizeof(uint32_t),
 				LDMSD_REQ_EOM_F, LDMSD_REQ_TYPE_CONFIG_RESP);
-	}
+	} /* leak; info never gets stored anywhere */
 	return 0;
 err2:
 	free(ctxt->my_info);

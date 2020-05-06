@@ -1818,7 +1818,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	}
 
 	if (cmd->action) {
-		(void)cmd->action(ctrl, args);
+		(void)cmd->action(ctrl, args); /* all cmds should accept null args or check */
 		free(dummy);
 		return 0;
 	}
@@ -1827,7 +1827,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	memset(buffer, 0, buffer_len);
 	req_array = ldmsd_parse_config_str(cmd_str, msg_no,
 					   ldms_xprt_msg_max(ctrl->ldms_xprt.x),
-					   ldmsctl_log);
+					   ldmsctl_log); /* leak: when does req_array get freed? */
 	if (!req_array) {
 		printf("Failed to process the request. ");
 		if (errno == ENOMEM)
@@ -1965,7 +1965,7 @@ struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
 	if (!ctrl->ldms_xprt.x) {
 		printf("Failed to create an ldms transport. %s\n",
 						strerror(errno));
-		return NULL;
+		return NULL; /* leaked: ctrl */
 	}
 
 	rc = ldms_xprt_connect_by_name(ctrl->ldms_xprt.x, host, port,
