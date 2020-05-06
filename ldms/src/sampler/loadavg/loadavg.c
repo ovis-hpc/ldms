@@ -246,7 +246,6 @@ static int create_metric_set(base_data_t base)
 	return 0;
 
 err:
-	schema = NULL;
 	return rc;
 }
 

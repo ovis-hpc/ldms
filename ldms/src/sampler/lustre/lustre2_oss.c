@@ -422,6 +422,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 out:
 	return &lustre_oss_plugin.base;
 
-	errno = ENOMEM;
-	return NULL;
+
+
 }
