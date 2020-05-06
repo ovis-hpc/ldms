@@ -474,6 +474,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		stream = strdup(value);
 	else
 		stream = strdup("slurm");
+	if (!stream) {
+		msglog(LDMSD_LERROR, "slurm_sampler: out of memory\n");
+		return ENOMEM;
+	}
 	ldmsd_stream_subscribe(stream, slurm_recv_cb, self);
 
 	value = av_value(avl, "producer");

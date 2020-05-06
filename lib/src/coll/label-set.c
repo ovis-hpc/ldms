@@ -461,6 +461,8 @@ static struct ovis_label_id *create_pair(struct ovis_name label, struct ovis_nam
 		/* bogus depth bit found*/
 	}
 	struct ovis_label_id * oli = malloc(sizeof(*oli));
+	if (!oli)
+		return NULL;
 	oli->label = label;
 	oli->id = id;
 	char *tmp1 = (char *)label.name, *tmp2 = (char *)id.name;
