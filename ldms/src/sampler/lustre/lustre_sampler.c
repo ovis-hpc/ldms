@@ -273,6 +273,10 @@ static void fixup_context(char *str)
 	rbn = rbt_find(&context_tree, &key);
 	if (!rbn) {
 		context = calloc(1, sizeof(*context));
+		if (!context) {
+			msglog(LDMSD_LERROR, "lustre_sampler: out of memory\n");
+			return;
+		}
 		context->mount_id = __sync_fetch_and_add(&mount_id, 1);
 		context->context_id = key;
 		rbn_init(&context->rbn, &context->context_id);
@@ -297,6 +301,9 @@ int stats_construct_routine(ldms_schema_t schema,
 			    char **keys, int nkeys)
 {
 	char *strip_suffix = strdup(suffix);
+	if (!strip_suffix) {
+		return ENOMEM;
+	}
 	char metric_name[128];
 	struct lustre_metric_ctxt *ctxt;
 	int rc;
@@ -347,9 +354,9 @@ int stats_construct_routine(ldms_schema_t schema,
 	return 0;
 
 err1:
-	free(strip_suffix);
 	lustre_svc_stats_free(lss);
 err0:
+	free(strip_suffix);
 	return rc;
 }
 
@@ -410,8 +417,8 @@ int __lss_sample(ldms_set_t set, struct lustre_svc_stats *lss)
 
 	fseek(lss->lms.f, 0, SEEK_SET);
 	char lbuf[__LBUF_SIZ];
-	char name[64];
-	char unit[16];
+	char name[__LBUF_SIZ];
+	char unit[__LBUF_SIZ];
 	uint64_t n, count, min, max, sum, sum2;
 	union ldms_value value;
 	/* The first line is timestamp, we can ignore that */
@@ -571,8 +578,10 @@ struct str_list_head* construct_str_list(const char *strlist)
 	char *s = strtok(tmp, delim);
 	while (s) {
 		sl = calloc(1, sizeof(*sl));
-		if (!sl)
+		if (!sl) {
+			free(tmp);
 			goto err1;
+		}
 		sl->str = strdup(s);
 		if (!sl->str)
 			goto err1;
