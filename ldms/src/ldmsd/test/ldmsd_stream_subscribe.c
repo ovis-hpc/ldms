@@ -89,6 +89,10 @@ static int stream_publish_handler(ldmsd_req_hdr_t req)
 		exit(5);
 	}
 	stream_name = strdup((char *)attr->attr_value);
+	if (!stream_name) {
+		printf("ERROR: out of memory\n");
+		exit(1);
+	}
 
 	attr = ldmsd_first_attr(req);
 	while (attr->discrim) {
@@ -246,9 +250,17 @@ int main(int argc, char **argv)
 			break;
 		case 'x':
 			xprt = strdup(optarg);
+			if (!xprt) {
+				printf("ERROR: out of memory\n");
+				exit(1);
+			}
 			break;
 		case 'a':
 			auth = strdup(optarg);
+			if (!auth) {
+				printf("ERROR: out of memory\n");
+				exit(1);
+			}
 			break;
 		case 'A':
 			lval = strtok(optarg, "=");
@@ -267,9 +279,17 @@ int main(int argc, char **argv)
 			break;
 		case 's':
 			stream = strdup(optarg);
+			if (!stream) {
+				printf("ERROR: out of memory\n");
+				exit(1);
+			}
 			break;
 		case 'f':
 			filename = strdup(optarg);
+			if (!filename) {
+				printf("ERROR: out of memory\n");
+				exit(1);
+			}
 			break;
 		case 'D':
 			daemonize = 1;
