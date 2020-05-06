@@ -395,7 +395,7 @@ static void __rdma_buffer_free(struct z_rdma_buffer *rbuf)
 static inline
 int __ep_state_check(struct z_rdma_ep *rep)
 {
-	int rc = 0;
+	zap_err_t rc = 0;
 	if (rep->ep.state != ZAP_EP_CONNECTED)
 		rc = ZAP_ERR_NOT_CONNECTED;
 	return rc;
@@ -502,16 +502,16 @@ post_send(struct z_rdma_ep *rep,
 		msg->credits = htons(rep->lcl_rq_credits);
 		rep->lcl_rq_credits = 0;
 	}
-
+	zap_err_t zrc = ZAP_ERR_OK;
 	rc = ibv_post_send(rep->qp, &ctxt->wr, bad_wr);
 	if (rc) {
 		DLOG_(rep, "%s: error %d posting send is_rdma %d sq_credits %d "
 		     "lcl_rq_credits %d rem_rq_credits %d.\n", __func__,
 		     rc, is_rdma, rep->sq_credits, rep->lcl_rq_credits,
 		     rep->rem_rq_credits);
-		rc = ZAP_ERR_TRANSPORT;
+		zrc = ZAP_ERR_TRANSPORT;
 	}
-	return rc;
+	return zrc;
 }
 
 char * op_str[] = {
@@ -647,7 +647,7 @@ static zap_err_t __rdma_post_send(struct z_rdma_ep *rep, struct z_rdma_buffer *r
 	pthread_mutex_lock(&rep->ep.lock);
 	__rdma_context_free(ctxt);
 	pthread_mutex_unlock(&rep->ep.lock);
-	return ENOTCONN;
+	return ZAP_ERR_NOT_CONNECTED;
 }
 
 static zap_err_t z_rdma_close(zap_ep_t ep)
@@ -1900,7 +1900,7 @@ static zap_err_t z_rdma_send(zap_ep_t ep, char *buf, size_t len)
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	struct z_rdma_message_hdr *hdr;
 	struct z_rdma_buffer *rbuf;
-	int rc;
+	zap_err_t rc;
 
 	pthread_mutex_lock(&rep->ep.lock);
 	rc = __ep_state_check(rep);
@@ -1943,7 +1943,7 @@ static zap_err_t z_rdma_share(zap_ep_t ep, zap_map_t map,
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	struct z_rdma_share_msg *sm;
 	struct z_rdma_buffer *rbuf;
-	int rc;
+	zap_err_t rc;
 	size_t sz = sizeof(*sm) + msg_len;
 
 	pthread_mutex_lock(&rep->ep.lock);
@@ -2041,7 +2041,7 @@ static zap_err_t z_rdma_write(zap_ep_t ep,
 			      size_t sz,
 			      void *context)
 {
-	int rc;
+	zap_err_t rc;
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	struct z_rdma_map *rmap = (struct z_rdma_map *)dst_map;
 	struct z_rdma_map *lmap = (struct z_rdma_map *)src_map;
