@@ -101,6 +101,7 @@ static FILE * open_log(int *status) {
 	if (dup2(fd, 1) < 0) {
 		*status = errno;
 		olog(OL_ERROR, "Failed stdout>%s\n", logname);
+		fclose(file);
 		return NULL;
 	}
 	if (dup2(fd, 2) < 0) {
@@ -188,12 +189,12 @@ void olog_internal(ovis_loglevels_t level, const char *fmt, va_list ap)
 	fprintf(log_fp,"%lu:%9lu: ",ts.tv_sec, ts.tv_nsec);
 #else
 	time_t t;
-	struct tm *tm;
+	struct tm tm;
 	char dtsz[200];
 
 	t = time(NULL);
-	tm = localtime(&t);
-	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
+	localtime_r(&t, &tm);
+	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", &tm))
 		fprintf(log_fp, "%s: ", dtsz);
 #endif
 	if ((level >= 0) && (level < OL_ENDLEVEL)) {
