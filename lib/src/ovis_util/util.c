@@ -107,13 +107,15 @@ int _scpy(char **buff, size_t *slen, size_t *alen,
 	strncpy(*buff+*slen, str, len);
 	*alen -= len;
 	*slen += len;
-	(*buff)[*slen] = 0;
+	(*buff)[*slen] = '\0';
 	return 0;
 }
 
 char *str_repl_cmd(const char *_str)
 {
 	char *str = strdup(_str);
+	if (!str)
+		goto err;
 	char *buff = NULL;
 	char *xbuff;
 	const char *eos = str + strlen(str);
@@ -124,7 +126,7 @@ char *str_repl_cmd(const char *_str)
 	char *cmd;
 	int rc;
 	int count;
-	FILE *p;
+	FILE *p = NULL;
 
 	if (!str)
 		goto err;
@@ -213,6 +215,8 @@ char *str_repl_cmd(const char *_str)
 err:
 	free(str);
 	free(buff);
+	if (p)
+		pclose(p);
 	return NULL;
 }
 
@@ -526,9 +530,10 @@ int av_check_expansion(printf_t log, const char *n, const char *s)
 size_t ovis_get_mem_size(const char *s)
 {
     char unit;
-#define TSZ 256
-    char tmp[TSZ];
-    snprintf(tmp, TSZ, "%s%s", s, "B");
+
+    size_t n = strlen(s) + 3;
+    char tmp[n];
+    snprintf(tmp, n, "%s%s", s, "B");
     size_t size;
     sscanf(tmp, "%lu %c", &size, &unit);
     switch (unit) {
@@ -1061,14 +1066,14 @@ ovis_pgrep_array_t ovis_pgrep(const char *text)
 		i++;
 	}
 
-	rc = 0;
 	goto out;
 err1:
 	while ((ent = TAILQ_FIRST(&head))) {
 		TAILQ_REMOVE(&head, ent, entry);
 		free(ent);
 	}
-out:
+out: 	if (dir)
+		closedir(dir);
 	return array;
 }
 

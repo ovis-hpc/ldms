@@ -27,6 +27,10 @@ void test_av()
 	av_list = av_new(4);
 	kw_list = av_new(4);
 	char *s = strdup("a=b c=d e f=ga");
+	if (!s) {
+		printf("strdup fail\n");
+		return;
+	}
 	int rc = tokenize(s, kw_list, av_list);
 	if (rc) {
 		printf("failed tokenize\n");
