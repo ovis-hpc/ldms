@@ -159,8 +159,10 @@ static int get_sector_sz(char *device)
 	char *s;
 	do {
 		s = fgets(filename, sizeof(filename), f);
-		if (!s)
+		if (!s) {
+			rc = ENODATA;
 			break;
+		}
 		rc = sscanf(filename, "%d", &result);
 
 		if (rc != 1) {
@@ -192,6 +194,11 @@ static struct proc_disk_s *add_disk(char *name)
 	if (!disk)
 		goto out;
 	disk->name = strdup(name);
+	if (!disk->name) {
+		free(disk);
+		msglog(LDMSD_LERROR,"out of memory\n");
+		return NULL;
+	}
 	disk->sect_sz = get_sector_sz(disk->name);
 	TAILQ_INSERT_TAIL(&disk_list, disk, entry);
  out:
