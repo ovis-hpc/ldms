@@ -378,7 +378,13 @@ enum ldms_xprt_event_type {
 	LDMS_XPRT_EVENT_DISCONNECTED,
 	/*! Receive data from a remote host */
 	LDMS_XPRT_EVENT_RECV,
+	/*! Lookup set has been deleted at peer */
+	LDMS_XPRT_EVENT_SET_DELETE,
 	LDMS_XPRT_EVENT_LAST
+};
+
+struct ldms_xprt_set_delete_data {
+	ldms_set_t set;		/*! The local set looked up at peer */
 };
 
 typedef struct ldms_xprt_event {
@@ -388,10 +394,13 @@ typedef struct ldms_xprt_event {
 	 * may be freed when the callback returns.
 	 * \c data is NULL if the type is not LDMS_CONN_EVENT_RECV.
 	 */
-	char *data;
-	/*! The length of \c data in bytes.
-	 * \c data_len is 0 if \c type is not LDMS_CONN_EVENT_RECV.
-	 */
+	union {
+		/*! The length of \c data in bytes.
+		 * \c data_len is 0 if \c type is not LDMS_CONN_EVENT_RECV.
+		 */
+		char *data;
+		struct ldms_xprt_set_delete_data set_delete;
+	};
 	size_t data_len;
 } *ldms_xprt_event_t;
 

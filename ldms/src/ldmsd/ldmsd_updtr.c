@@ -558,6 +558,7 @@ static void prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	}
 	if (!prd_set->set) {
 		/* This is the first lookup of the set. */
+		ref_get(&set->ref, "prdcr_set");
 		prd_set->set = set;
 	}
 	flags = ldmsd_group_check(prd_set->set);

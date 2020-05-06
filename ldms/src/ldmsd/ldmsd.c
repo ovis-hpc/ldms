@@ -1169,7 +1169,7 @@ ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
 out:
-
+	ldms_set_put(lset);
 	return info;
 }
 

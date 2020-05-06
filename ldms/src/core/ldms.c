@@ -45,6 +45,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#define _GNU_SOURCE
 #include <inttypes.h>
 #include <sys/errno.h>
 #include <stdio.h>
@@ -75,6 +76,7 @@
 static char *__set_dir = SET_DIR_PATH;
 #define SET_DIR_LEN sizeof(SET_DIR_PATH)
 static char __set_path[PATH_MAX];
+static void __destroy_set(void *v);
 
 /* This function is useful for displaying data structures stored in
  * mmap'd memory that on some platforms is not accessible to the
@@ -123,6 +125,13 @@ static struct rbt id_tree = {
 
 static pthread_mutex_t __set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
+static struct rbt del_tree = {
+	.root = NULL,
+	.comparator = id_comparator
+};
+
+static pthread_mutex_t __del_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+
 void __ldms_gn_inc(struct ldms_set *set, ldms_mdesc_t desc)
 {
 	if (desc->vd_flags & LDMS_MDESC_F_DATA) {
@@ -140,8 +149,10 @@ struct ldms_set *__ldms_find_local_set(const char *set_name)
 	struct ldms_set *s = NULL;
 
 	z = rbt_find(&set_tree, (void *)set_name);
-	if (z)
+	if (z) {
 		s = container_of(z, struct ldms_set, rb_node);
+		ref_get(&s->ref, __func__);
+	}
 	return s;
 }
 
@@ -176,26 +187,17 @@ void __ldms_set_tree_unlock()
 	pthread_mutex_unlock(&__set_tree_lock);
 }
 
-static ldms_set_t __set_by_name(const char *set_name)
-{
-	struct ldms_set *set = __ldms_find_local_set(set_name);
-	struct ldms_rbuf_desc *rbd = NULL;
-	if (!set)
-		goto out;
-
-	rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
-
- out:
-	return rbd;
-}
-
 extern ldms_set_t ldms_set_by_name(const char *set_name)
 {
-	ldms_set_t s;
-	__ldms_set_tree_lock();
-	s = __set_by_name(set_name);
-	__ldms_set_tree_unlock();
-	return s;
+        struct ldms_set *set = __ldms_find_local_set(set_name);
+        struct ldms_rbuf_desc *rbd;
+        if (!set)
+                return NULL;
+        rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL, __func__);
+        if (rbd)
+                ref_get(&set->ref, __func__);
+        ref_put(&set->ref, "__ldms_find_local_set");
+        return rbd;
 }
 
 uint64_t ldms_set_meta_gn_get(ldms_set_t s)
@@ -439,6 +441,7 @@ __record_set(const char *instance_name,
 
 	set = __ldms_find_local_set(instance_name);
 	if (set) {
+		ref_put(&set->ref, "__ldms_find_local_set");
 		errno = EEXIST;
 		return NULL;
 	}
@@ -461,6 +464,7 @@ __record_set(const char *instance_name,
 	set->data = __set_array_get(set, set->curr_idx);
 	set->flags = flags;
 
+	ref_init(&set->ref, __func__, __destroy_set, set);
 	rbn_init(&set->rb_node, get_instance_name(set->meta)->name);
 	rbt_ins(&set_tree, &set->rb_node);
 	rbn_init(&set->id_node, (void *)set->set_id);
@@ -628,63 +632,89 @@ void __ldms_set_info_delete(struct ldms_set_info_list *info)
 	}
 }
 
+static void __destroy_set(void *v)
+{
+        struct ldms_set *set = v;
+        mm_free(set->meta);
+        __ldms_set_info_delete(&set->local_info);
+        __ldms_set_info_delete(&set->remote_info);
+	pthread_mutex_lock(&__del_tree_lock);
+	rbt_del(&del_tree, &set->del_node);
+	pthread_mutex_unlock(&__del_tree_lock);
+        free(set);
+}
+
+static void __set_delete_cb(ldms_t xprt, int status, ldms_set_t set, void *cb_arg)
+{
+	pthread_mutex_lock(&set->set->lock);
+	ref_dump(&set->set->ref, __func__);
+	ref_dump(&set->ref, __func__);
+	__ldms_free_rbd(set, "share_lookup");
+	pthread_mutex_unlock(&set->set->lock);
+}
+
 void ldms_set_delete(ldms_set_t s)
 {
+	extern void __ldms_rbd_xprt_release(struct ldms_rbuf_desc *rbd);
 	struct ldms_rbuf_desc *rbd;
-	struct ldms_set *set;
-	struct ldms_xprt *xprt;
+	struct ldms_set *set = s->set;
+	ldms_t xprt;
 
- 	if (!s)
-		assert(NULL == "The metric set passed in is NULL");
-
+	ref_dump(&set->ref, __func__);
 	__ldms_set_tree_lock();
-	set = s->set;
 	rbt_del(&set_tree, &set->rb_node);
 	rbt_del(&id_tree, &set->id_node);
 	__ldms_set_tree_unlock();
+
+	ldms_xprt_set_delete(s, __set_delete_cb, NULL);
+
+	pthread_mutex_lock(&set->lock);
 	while (!LIST_EMPTY(&set->remote_rbd_list)) {
 		rbd = LIST_FIRST(&set->remote_rbd_list);
+		LIST_REMOVE(rbd, set_link);
 		xprt = rbd->xprt;
 		if (xprt) {
 			pthread_mutex_lock(&xprt->lock);
-			__ldms_rbd_xprt_release(rbd);
+			if (rbd->xprt)
+				/* Make certain we didn't lose a disconnect race */
+				__ldms_rbd_xprt_release(rbd);
 			pthread_mutex_unlock(&xprt->lock);
 		}
-		__ldms_free_rbd(rbd);
-	}
-	while (!LIST_EMPTY(&set->local_rbd_list)) {
-		rbd = LIST_FIRST(&set->local_rbd_list);
-		xprt = rbd->xprt;
-		if (xprt) {
-			pthread_mutex_lock(&xprt->lock);
-			__ldms_rbd_xprt_release(rbd);
-			pthread_mutex_unlock(&xprt->lock);
+		if (rbd->push_flags & LDMS_RBD_F_PUSH) {
+			ref_put(&rbd->ref, "rendezvous_push");
+			ref_put(&rbd->set->ref, "rendezvous_push");
 		}
-		__ldms_free_rbd(rbd);
+		ref_put(&rbd->ref, "set_rbd_list");
+		rbd = LIST_NEXT(rbd, set_link);
 	}
+	pthread_mutex_unlock(&set->lock);
 
-	mm_free(set->meta);
-	__ldms_set_info_delete(&set->local_info);
-	__ldms_set_info_delete(&set->remote_info);
-	free(set);
+	/* Add the set to the delete tree with the current timestamp */
+	set->del_time = time(NULL);
+	rbn_init(&set->del_node, &set->del_time);
+	pthread_mutex_lock(&__del_tree_lock);
+	rbt_ins(&del_tree, &set->del_node);
+	pthread_mutex_unlock(&__del_tree_lock);
+
+	/* Drop the create and reference on the this RBD and the set */
+	ref_dump(&s->ref, __func__);
+	ref_put(&s->ref, "set_new");
+	ref_dump(&set->ref, __func__);
+	ref_put(&set->ref, "set_new");
+	ref_put(&set->ref, "__record_set");
 }
 
 void ldms_set_put(ldms_set_t s)
 {
 	struct ldms_set *set;
-	struct ldms_xprt *xprt;
 	if (!s)
 		return;
 	__ldms_set_tree_lock();
 	set = s->set;
 	pthread_mutex_lock(&set->lock);
-	xprt = s->xprt;
-	if (xprt)
-		pthread_mutex_lock(&xprt->lock);
-	__ldms_free_rbd(s); /* removes the RBD from the local/remote rbd list */
-	if (xprt)
-		pthread_mutex_unlock(&xprt->lock);
+	__ldms_free_rbd(s, "ldms_set_by_name"); /* removes the RBD from the local/remote rbd list */
 	pthread_mutex_unlock(&set->lock);
+	ref_put(&set->ref, "ldms_set_by_name");
 	__ldms_set_tree_unlock();
 }
 
@@ -1072,19 +1102,19 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	}
 	__ldms_set_tree_lock();
 	struct ldms_set *set = __record_set(instance_name, meta, data_base, LDMS_SET_F_LOCAL);
+	__ldms_set_tree_unlock();
 	if (!set)
 		goto err_1;
-	ldms_set_t rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
+	ldms_set_t rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL, "set_new");
 	if (!rbd)
 		goto err_2;
-	__ldms_set_tree_unlock();
+
 	return rbd;
  err_2:
 	rbt_del(&set_tree, &set->rb_node);
 	rbt_del(&id_tree, &set->id_node);
 	free(set);
  err_1:
-	__ldms_set_tree_unlock();
 	mm_free(meta);
 	return NULL;
 }
@@ -1158,7 +1188,7 @@ int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *ps)
 	int rc = __ldms_set_publish(set);
 	if (!rc) {
 		struct ldms_rbuf_desc *rbd;
-		rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL);
+		rbd = __ldms_alloc_rbd(NULL, set, LDMS_RBD_LOCAL, "set_new");
 		if (!rbd)
 			goto err;
 		*ps = rbd;
@@ -2541,3 +2571,47 @@ int ldms_mval_parse_scalar(ldms_mval_t v, enum ldms_value_type vt, const char *s
 		return EINVAL;
 	return 0;
 }
+
+#define DELETE_TIMEOUT	(1000000)	/* forever for now */
+#define DELETE_CHECK	(60)
+#define REPORT_MIN	(10)
+
+static void *delete_proc(void *arg)
+{
+	struct rbn *rbn;
+	struct ldms_set *set;
+	do {
+		pthread_mutex_lock(&__del_tree_lock);
+		for (rbn = rbt_min(&del_tree); rbn; rbn = rbn_succ(rbn)) {
+			time_t dur, now = time(NULL);
+			set = container_of(rbn, struct ldms_set, del_node);
+			dur = now - set->del_time;
+			if (dur < REPORT_MIN)
+				continue;
+			if (dur > DELETE_TIMEOUT) {
+				/* Nothing for now */
+				;
+			}
+			ldms_name_t name = get_instance_name(set->meta);
+			fprintf(stderr, "Deleted set %s has reference count %d, waited %jd seconds\n",
+				name->name, set->ref.ref_count, dur);
+		}
+		pthread_mutex_unlock(&__del_tree_lock);
+		sleep(DELETE_CHECK);
+	} while (1);
+	return NULL;
+}
+
+static pthread_t delete_thread;
+static void __attribute__ ((constructor)) cs_init(void)
+{
+	int rc = pthread_create(&delete_thread, NULL, delete_proc, NULL);
+	if (!rc) {
+		pthread_setname_np(delete_thread, "delete_thread");
+	}
+}
+
+static void __attribute__ ((destructor)) cs_term(void)
+{
+}
+

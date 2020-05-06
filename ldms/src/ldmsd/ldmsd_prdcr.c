@@ -133,6 +133,7 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 		free(set->schema_name);
 
 	if (set->set) {
+		ref_put(&set->set->ref, "prdcr_set");
 		ldms_set_unpublish(set->set);
 		ldms_set_delete(set->set);
 	}
@@ -387,17 +388,7 @@ static void prdcr_dir_cb_list(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
  */
 static void prdcr_dir_cb_del(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 {
-	ldmsd_prdcr_set_t set;
-	int i;
-
-	for (i = 0; i < dir->set_count; i++) {
-		struct rbn *rbn = rbt_find(&prdcr->set_tree, dir->set_data[i].inst_name);
-		if (!rbn)
-			continue;
-		set = container_of(rbn, struct ldmsd_prdcr_set, rbn);
-		assert(set->ref_count);
-		prdcr_reset_set(prdcr, set);
-	}
+	ldmsd_log(LDMSD_LINFO, "prodcer '%s' ignoring dir_del", prdcr->obj.name);
 }
 
 static void prdcr_dir_cb_upd(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
@@ -497,6 +488,15 @@ static int __prdcr_subscribe(ldmsd_prdcr_t prdcr)
 	return rc;
 }
 
+static void __prdcr_remote_set_delete(ldmsd_prdcr_t prdcr, ldms_set_t set)
+{
+	ldmsd_prdcr_set_t prdcr_set;
+	if (set) {
+		prdcr_set = ldmsd_prdcr_set_find(prdcr, ldms_set_instance_name_get(set));
+		prdcr_reset_set(prdcr, prdcr_set);
+	}
+}
+
 static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	ldmsd_prdcr_t prdcr = cb_arg;
@@ -516,6 +516,12 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 			ldms_xprt_close(prdcr->xprt);
 		ldmsd_task_stop(&prdcr->task);
 		break;
+	case LDMS_XPRT_EVENT_RECV:
+		ldmsd_recv_msg(x, e->data, e->data_len);
+		break;
+	case LDMS_XPRT_EVENT_SET_DELETE:
+		__prdcr_remote_set_delete(prdcr, e->set_delete.set);
+		break;
 	case LDMS_XPRT_EVENT_REJECTED:
 		ldmsd_log(LDMSD_LERROR, "Producer %s rejected the "
 				"connection (%s %s:%d)\n", prdcr->obj.name,
@@ -532,9 +538,6 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
 		goto reset_prdcr;
-	case LDMS_XPRT_EVENT_RECV:
-		ldmsd_recv_msg(x, e->data, e->data_len);
-		break;
 	default:
 		assert(0);
 	}
