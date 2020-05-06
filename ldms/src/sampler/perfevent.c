@@ -57,6 +57,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/errno.h>
+#include <sys/ioctl.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -166,6 +167,8 @@ static int add_event_name(struct attr_value_list *kwl, struct attr_value_list *a
 {
 	struct pevent *pe = arg;
 	pe->name = strdup(av_value(avl, "metricname"));
+	if (!pe->name)
+		return ENOMEM;
 	return 0;
 }
 
@@ -249,7 +252,7 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 		{ "type", add_event_type },
 	};
 
-	int rc, i;
+	int rc = -1, i;
 	struct pevent *pe;
 
 	if (set) {
@@ -260,6 +263,7 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 	pe = calloc(1, sizeof *pe);
 	if (!pe) {
 		msglog(LDMSD_LERROR, "perfevent: failed to allocate perfevent structure.\n");
+		rc = ENOMEM;
 		goto err;
 	}
 
@@ -286,11 +290,12 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 
 		if (!kw) {
 			msglog(LDMSD_LERROR, "Unrecognized keyword '%s' in configuration string.\n", token);
+			free(pe);
 			return -1;
 		}
 		rc = kw->action(kwl, avl, pe);
 		if (rc)
-			return rc;
+			goto err;
 	}
 	if (!pe->name) {
 		msglog(LDMSD_LERROR, "An event name must be specifed.\n");
@@ -326,6 +331,10 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 
 	if(current_group == NULL){ /* if this is the group group leader */
 		current_group = calloc(1, sizeof *current_group); /* allocate event group */
+		if (!current_group) {
+			msglog(LDMSD_LERROR,"add_event out of memory\n");
+			goto err;
+		}
 		current_group->pid = pe->pid; /*  set pid for the group */
 		current_group->cpu = pe->cpu; /*  set cpu for the group */
 		current_group->eventCounter = 0; /*  initialize the event counter for the group */
@@ -346,10 +355,10 @@ static int add_event(struct attr_value_list *kwl, struct attr_value_list *avl, v
 	return 0;
 
 err:
-	if (pe->name)
+	if (pe && pe->name)
 		free(pe->name);
 	free(pe);
-	return -1;
+	return rc;
 }
 
 static int del_event(struct attr_value_list *kwl, struct attr_value_list *avl, void *arg)
@@ -390,7 +399,6 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 
 	ldms_schema_t schema;
 	struct pevent *pe;
-	union ldms_value v;
 
 	if (set) {
 		msglog(LDMSD_LERROR, SAMP ": Set already created.\n");
@@ -398,8 +406,10 @@ static int init(struct attr_value_list *kwl, struct attr_value_list *avl, void *
 	}
 
 	base = base_config(avl, SAMP, SAMP, msglog);
-	if (!base)
+	if (!base) {
+		rc = ENOMEM;
 		goto err;
+	}
 
 	schema = base_schema_new(base);
 	if (!schema) {
@@ -481,9 +491,7 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static int sample(struct ldmsd_sampler *self)
 {
-	int rc, i;
-	struct pevent *pe;
-	uint64_t val;
+	int rc;
 
 	if (!set) {
 		msglog(LDMSD_LERROR, SAMP ": plug-in not initialized\n");
@@ -511,13 +519,21 @@ static int sample(struct ldmsd_sampler *self)
 	}
 
 	base_sample_begin(base);
-
+	static int readerrlogged = 0;
 	struct event_group *eg;
 	LIST_FOREACH(eg, &gevent_list, entry) {
 		unsigned int read_size = (eg->eventCounter + 2) * sizeof(long long); /*based on read format. */
 		long long *data = calloc(eg->eventCounter + 2, sizeof(long long)); /*allocate memory based on read format. */
 		int read_result = read(eg->leader, data, read_size); /* do the read */
-		int event_index = (read_result / sizeof(long long)) - 1; /* start from the last event added to the list */
+		if (read_result < 0) {
+			free(data);
+			if (!readerrlogged) {
+				msglog(LDMSD_LERROR, "perfevent: read event failed.\n");
+				readerrlogged = 1;
+			}
+			break;
+		}
+		/* int event_index = (read_result / sizeof(long long)) - 1;  start from the last event added to the list? */
 		int m = 0;
 		for(m = 0; m < eg->eventCounter; m++){
 			ldms_metric_set_u64(set, eg->metric_index[m], data[m+2]);
@@ -543,11 +559,13 @@ static void term(struct ldmsd_plugin *self)
 	}
 
 	LIST_FOREACH(pe, &pevent_list, entry) {
+		LIST_REMOVE(pe, entry);
 		free(pe);
 	}
 
 	LIST_FOREACH(ge, &gevent_list, entry) {
 		free(ge->metric_index);
+		LIST_REMOVE(ge, entry);
 		free(ge);
 	}
 
