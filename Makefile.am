@@ -14,8 +14,16 @@ LICENSE \
 README.libevent2 \
 README.md
 
+EXTRA_DIST += $(top_srcdir)/.version
+BUILT_SOURCES = $(top_srcdir)/.version
+$(top_srcdir)/.version:
+	echo $(VERSION) > $@-t && mv $@-t $@
+dist-hook:
+	echo $(VERSION) > $(distdir)/.tarball-version
+
 DISTCLEANFILES = ovis-ldms-config.h
 nobase_include_HEADERS = ovis-ldms-config.h
+
 
 
 docdir = $(datadir)/doc/@PACKAGE@-@VERSION@
