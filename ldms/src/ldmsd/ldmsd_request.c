@@ -58,7 +58,7 @@
 #include <coll/rbt.h>
 #include <pthread.h>
 #include <ovis_util/util.h>
-#include <json/json_util.h>
+#include <ovis_json/ovis_json_util.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_request.h"

@@ -66,7 +66,7 @@
 #include <netdb.h>
 #include <time.h>
 #include <ctype.h>
-#include "json/json_util.h"
+#include "ovis_json/ovis_json_util.h"
 #include "ldms.h"
 #include "ldmsd_request.h"
 #include "config.h"

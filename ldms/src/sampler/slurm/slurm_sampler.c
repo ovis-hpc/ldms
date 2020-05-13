@@ -69,7 +69,7 @@
 #include <pwd.h>
 #include <grp.h>
 #include <coll/htbl.h>
-#include <json/json_util.h>
+#include <ovis_json/ovis_json_util.h>
 #include <assert.h>
 #include <sched.h>
 #include "ldms.h"
