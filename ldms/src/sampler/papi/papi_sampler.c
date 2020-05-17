@@ -177,7 +177,7 @@ static void *cleanup_proc(void *arg)
 			if (job->instance_name) {
 				msglog(LDMSD_LINFO,
 				       "papi_sampler [%d]: deleting instance '%s', "
-				       "set %p, set_id %ld.\n",
+				       "set_id %ld.\n",
 				       __LINE__, job->instance_name,
 				       (job->set ? ldms_set_id(job->set) : -1));
 			}
@@ -193,7 +193,7 @@ static void *cleanup_proc(void *arg)
 static int create_metric_set(job_data_t job)
 {
 	ldms_schema_t schema;
-	int i, rc = -1;
+	int i;
 	job_task_t t;
 
 	schema = ldms_schema_new(job->schema_name);
@@ -270,13 +270,9 @@ static int create_metric_set(job_data_t job)
 	job->set = ldms_set_new_with_auth(job->instance_name, schema,
 					  job->base->uid, job->base->gid,
 					  job->base->perm);
-	if (!job->set) {
-		rc = errno;
-		msglog(LDMSD_LERROR,
-		       "papi_sampler [%d]: Error %d creating the metric set '%s'.\n",
-		       __LINE__, rc, job->instance_name);
+	if (!job->set)
 		goto err;
-	}
+
 	ldms_set_producer_name_set(job->set, job->base->producer_name);
 	ldms_metric_set_u64(job->set, job->job_id_mid, job->job_id);
 	ldms_metric_set_u64(job->set, job->comp_id_mid, job->base->component_id);
@@ -294,11 +290,12 @@ static int create_metric_set(job_data_t job)
 	ldms_schema_delete(schema);
 	return 0;
  err:
-	job->job_state = JOB_PAPI_ERROR;
-	job->job_state_time = time(NULL);
+	msglog(LDMSD_LERROR,
+	       "papi_sampler [%d]: Error %d creating the metric set '%s'.\n",
+	       __LINE__, errno, job->instance_name);
 	if (schema)
 		ldms_schema_delete(schema);
-	return rc;
+	return errno;
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -609,8 +606,12 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 	int rc, task_pid, task_rank;
 	papi_event_t ev;
 
-	if (job->job_state != JOB_PAPI_INIT)
+	if (job->job_state != JOB_PAPI_INIT) {
+		/* Error during startup */
+		job->job_state = JOB_PAPI_ERROR;
+		release_job_data(job);
 		return;
+	}
 	data = json_attr_find(e, "data");
 	if (!data) {
 		msglog(LDMSD_LERROR, "papi_sampler: Missing 'data' attribute "
@@ -653,8 +654,10 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 	if (job->task_init_count < job->task_count)
 		return;
 
-	if (create_metric_set(job))
+	if (create_metric_set(job)) {
+		release_job_data(job);
 		return;
+	}
 
 	/* pause syspapi */
 	ldmsd_stream_deliver("syspapi_stream", LDMSD_STREAM_STRING,
@@ -740,6 +743,13 @@ static void handle_task_exit(job_data_t job, json_entity_t e)
 	int rc;
 	int task_pid;
 	job_task_t t;
+
+	if (job->job_state != JOB_PAPI_RUNNING && job->job_state != JOB_PAPI_STOPPING) {
+		/* Error during startup */
+		job->job_state = JOB_PAPI_ERROR;
+		release_job_data(job);
+		return;
+	}
 
 	/* Tell sampler to stop sampling */
 	job->job_state = JOB_PAPI_STOPPING;
