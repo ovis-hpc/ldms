@@ -166,4 +166,16 @@ void base_sample_end(base_data_t base);
  * the schema, and the containing structure. The set is not destroyed
  */
 void base_del(base_data_t base);
+
+/**
+ * \brief parse uid, gid, and perm values from attributes.
+ * \param avl attribute source to use.
+ * \param uid output location of uid
+ * \param gid output location of gid
+ * \param perm output location of perm
+ * Default output is uid,gid of current user and 777 permission.
+ * \return 0 on success, 1 on invalid user/group lookup.
+ */
+int base_auth_parse(struct attr_value_list *avl, uid_t *uid, gid_t *gid, int *perm, ldmsd_msg_log_f log);
+
 #endif
