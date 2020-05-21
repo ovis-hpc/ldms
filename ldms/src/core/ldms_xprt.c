@@ -505,9 +505,9 @@ static void process_set_delete_request(struct ldms_xprt *x, struct ldms_request 
 		event.data_len = sizeof(ldms_set_t);
 		x->event_cb(x, &event, x->event_cb_arg);
 	}
-	pthread_mutex_lock(&r->set->lock);
+	pthread_mutex_lock(&set->lock);
 	__ldms_free_rbd(r, "rendezvous_lookup");
-	pthread_mutex_unlock(&r->set->lock);
+	pthread_mutex_unlock(&set->lock);
  reply_1:
 	ref_put(&set->ref, "__ldms_find_local_set");
  reply:
