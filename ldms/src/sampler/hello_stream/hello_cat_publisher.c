@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2019 National Technology & Engineering Solutions
+ * Copyright (c) 2019-2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2019 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2019-2020 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -58,37 +58,40 @@
 #include <getopt.h>
 #include <semaphore.h>
 #include <ovis_util/util.h>
+#include <unistd.h>
 #include "ldms.h"
 #include "ldmsd_stream.h"
 
+#define STRLEN 1024
 static ldms_t ldms;
 static sem_t conn_sem;
 static int conn_status;
 static sem_t recv_sem;
 
 static struct option long_opts[] = {
-	{"host",     required_argument, 0,  'h' },
-	{"port",     required_argument, 0,  'p' },
-	{"stream",   required_argument, 0,  's' },
-	{"xprt",     required_argument, 0,  'x' },
-	{"auth",     required_argument, 0,  'a' },
-	{"auth_arg", required_argument, 0,  'A' },
-	{"message",  required_argument, 0,  'm' },
-	{"type",     required_argument, 0,  't' },
-	{0,          0,                 0,  0 }
+	{"host",       required_argument, 0,  'h' },
+	{"port",       required_argument, 0,  'p' },
+	{"stream",     required_argument, 0,  's' },
+	{"xprt",       required_argument, 0,  'x' },
+	{"auth",       required_argument, 0,  'a' },
+	{"auth_arg",   required_argument, 0,  'A' },
+	{"filename", optional_argument, 0,  'f' },
+	{"type",       required_argument, 0,  't' },
+	{0,            0,                 0,  0 }
 };
 
 void usage(int argc, char **argv)
 {
 	printf("usage: %s -x <xprt> -h <host> -p <port> -s <stream-name>\n"
 	       "	-a <auth> -A <auth-opt>\n"
-	       "	-m <message-text> -t <data-format>\n\n"
-	       "	<data-format>	str | json (default is str)\n",
+	       "	-t <data-format>\n\n"
+	       "	<data-format>	str | json (default is str)\n"
+	       "        [-f <filename> (default is stdin)]\n",
 	       argv[0]);
 	exit(1);
 }
 
-static const char *short_opts = "h:p:s:x:a:A:m:t:";
+static const char *short_opts = "h:p:s:x:a:A:f:t:";
 
 #define AUTH_OPT_MAX 128
 
@@ -170,7 +173,11 @@ int main(int argc, char **argv)
 	char *host = NULL;
 	char *port = NULL;
 	char *xprt = "sock";
-	char *msg = "hello, world!";
+	size_t len = 0;
+	ssize_t read;
+	FILE *fd = stdin;
+	char buf[STRLEN];
+	char *fname = NULL;
 	char *fmt = "str";
 	ldmsd_stream_type_t type;
 	char *stream = "hello_stream/hello";
@@ -179,6 +186,8 @@ int main(int argc, char **argv)
 	char *auth = "none";
 	struct attr_value_list *auth_opt = NULL;
 	const int auth_opt_max = AUTH_OPT_MAX;
+	int i;
+	int rc;
 
 	auth_opt = av_new(auth_opt_max);
 	if (!auth_opt) {
@@ -217,11 +226,11 @@ int main(int argc, char **argv)
 			auth_opt->list[auth_opt->count].value = rval;
 			auth_opt->count++;
 			break;
+		case 'f':
+			fname = strdup(optarg);
+			break;
 		case 's':
 			stream = strdup(optarg);
-			break;
-		case 'm':
-			msg = strdup(optarg);
 			break;
 		case 't':
 			fmt = strdup(optarg);
@@ -241,20 +250,28 @@ int main(int argc, char **argv)
 	if (!host || !port)
 		usage(argc, argv);
 
+	if (fname){
+		//read from a file, otherwise read from stdin
+		fd = fopen(fname, "r");
+		if (!fd){
+			printf("Cannot open file '%s'\n", fname);
+			usage(argc,argv);
+		}
+	}
 	ldms_t ldms = setup_connection(xprt, host, port, auth);
-	int rc = ldmsd_stream_publish(ldms, stream, type, msg, strlen(msg) + 1);
-	if (rc)
-		printf("Error %d publishing data.\n", rc);
-	else
-		printf("The data was successfully published.\n");
-	/*
-	 * NB: This isn't typically required, but is here because we
-	 * are exiting and unless we wait for the reply, the server
-	 * will log an error attempting to respond to us.
-	 */
-	ts.tv_sec = time(NULL) + to;
-	sem_timedwait(&recv_sem, &ts);
+	if (!ldms){
+		printf("Error setting up connection -- exiting\n");
+		exit(1);
+	}
 
-	printf("The server responded with %d\n", server_rc);
+
+	while (fgets(buf, STRLEN, fd) != NULL){
+		rc = ldmsd_stream_publish(ldms, stream, type, buf, strlen(buf) + 1);
+		if (rc)
+			printf("Error %d publishing data.\n", rc);
+	}
+
+
+	printf("Done\n");
 	return server_rc;
 }

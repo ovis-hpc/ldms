@@ -82,3 +82,7 @@ endif
 if ENABLE_STORE_APP
 SUBDIRS += store_app
 endif
+
+if ENABLE_HELLO_STREAM
+SUBDIRS += hello_stream
+endif

@@ -1,0 +1,95 @@
+.\" Manpage for hello_cat_publisher
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "14 Jun 2020" "v4" "LDMS executable utility hello_cat_publisher man page"
+
+.SH NAME
+hello_cat_publisher - man page for the LDMS hello_cat_publisher executable utility.
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=hello_cat_publisher [ <attr>=<value> ]
+
+.SH DESCRIPTION
+The hello_cat_publisher executable is based on the hello_publisher, but reads from stdin or from a file.
+
+The hello_cat_publisher can take as input, the piped output of parser.pl, which is used to jsonify its own input.
+
+.SH COMMAND LINE SYNTAX
+
+.TP
+hello_cat_publisher -x <xprt> -h <host> -p <port> -s <stream-name> -a <auth> -A <auth-opt> -t <data-format> [-f filename (default is stdin)]
+.br
+.RS
+.TP
+-x <xprt>
+.br
+transport of the ldmsd to which to connect.
+.TP
+-p <port>
+.br
+port of the ldmsd to which to connect.
+.TP
+-a <auth>
+.br
+auth to connect to the ldmsd
+.TP
+-A <auth-opt>
+.br
+auth-opts to connect to the ldmsd
+.TP
+-s <stream-name>
+.br
+Name of the stream (this will be used for subscribing)
+.TP
+-t <data-format>
+.br
+Optional data-format. Either 'str' or 'json'. Default is str.
+.TP
+-t <filename>
+.br
+Optional filename. Default is stdin.
+.RE
+
+.SH BUGS
+No known bugs.
+
+.SH NOTES
+.PP
+This executable is in development and may be changed at any time.
+.PP
+Only supports one stream
+.PP
+The ldmsd_streams infrastructure appears to buffer before sending to the aggregator. There may not be a function to force the flush.
+
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=hello_sampler
+config name=hello_sampler producer=host1 instance=host1/hello_sampler stream=foo component_id=1
+start name=hello_sampler interval=1000000 offset=0
+.fi
+
+.PP
+.nf
+Either:
+cat mini-em-timing-example.txt | ./parser.pl --format MINI-EM | hello_cat_publisher -x sock -h localhost -p 16000 -a munge -s foo  -t str
+
+or:
+cat mini-em-timing-example.txt | ./parser.pl --format MINI-EM > mini-em-parser-json.txt
+hello_cat_publisher -x sock -h localhost -p 16000 -a munge -s foo  -t str - f mini-em-parser-json.txt
+
+Prints out in log:
+Sat May 23 15:10:32 2020: CRITICAL  : stream_type: STRING, msg: "{"id":"Mini-EM: Total Time","level":"1","state":"STOPPING","p":"1","timestamp":"2020-05-04 14:25:13"}
+", msg_len: 103, entity: (nil)
+Sat May 23 15:10:32 2020: CRITICAL  : stream_type: STRING, msg: "{"timestamp":"2020-05-04 14:25:13","level":"1","p":"0","state":"STOPPING","id":"Mini-EM: Total Time"}
+", msg_len: 103, entity: (nil)
+
+Note that the hello_sampler does not do a sample, instead it subscribes to the stream with a callback and prints out what it got off the stream.
+.fi
+
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), hello_publisher(7), Plugin_hello_sampler(7), parser.pl (has perlpod), Plugin_hello_stream_store(7)
