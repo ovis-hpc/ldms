@@ -546,6 +546,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/auth/Makefile
 		 src/store/Makefile src/sampler/Makefile
 		 src/contrib/Makefile
+		 src/store/hello_stream/Makefile
 		 src/store/kokkos/Makefile
 		 src/store/papi/Makefile
 		 src/store/slurm/Makefile
@@ -581,6 +582,7 @@ AC_CONFIG_FILES([Makefile src/Makefile src/core/Makefile
 		 src/sampler/ibm_occ/Makefile
 		 src/sampler/syspapi/Makefile
 		 src/sampler/hello_stream/Makefile
+		 src/sampler/hello_stream/stream_configs/Makefile
 		 src/contrib/sampler/Makefile
 		 src/contrib/sampler/ipmireader/Makefile
 		 src/contrib/sampler/tutorial/Makefile

@@ -1,0 +1,107 @@
+.\" Manpage for Plugin_hello_stream_store
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "29 Jun 2020" "v4" "LDMS Plugin hello_stream_store man page"
+
+.SH NAME
+Plugin_hello_stream_store - man page for the LDMS hello_stream_store plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=hello_stream_store [ <attr>=<value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or a configuration file. The hello_stream_store plugin writes out either a single stream's data to csv format if the input type is json or writes out the raw messages if the input type is str. Input type will be determined by the hello_cat_publisher.
+
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+.TP
+.BR config
+name=hello_stream_store path=<path> container=<container> stream=<stream> [buffer=<0/1>]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be hello_stream_store.
+.TP
+path=<path>
+.br
+path to the directory of the csv output file
+.TP
+container=<container>
+.br
+directory of the csv output file
+.TP
+stream=<stream>
+.br
+stream to which to subscribe.
+.TP
+buffer=<0/1>
+.br
+Optional buffering of the output. 0 to disable buffering, 1 to enable it with autosize (default)
+.RE
+
+.SH STORE COLUMN ORDERING
+.PP
+There is only column ordering for 'json' format. There is no column ordering for 'str' format. 'str' format will always be written out, no matter what the 'json' header keys may be.
+.PP
+If a json message is received with a field with key 'STOREHEADER', the value is expected to be a csv of the expected keys in order. Until there is a new message with STOREHEADER, these will be the expected keys and every subsequent json line will be queried for the keys in that order. If the subsequent json line does not have those keys and/or has different keys, it will not matter.
+.PP
+If a json message is received and there is no field with key 'STOREHEADER' and no keys exist, the json will be parsed as is and the order in that message will be the order used for every subsequent json line, until a line with STOREHEADER is received.
+.PP
+The driving logic is that you will send a header the first time you use the parser.pl only (multiple followon calls without the header).
+
+
+
+.SH BUGS
+No known bugs.
+
+.SH NOTES
+.PP
+This store is in development and may be changed at any time.
+.PP
+Only supports one stream
+.PP
+This is not full featured, like the csv store.
+
+
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=hello_stream_store
+config name=hello_stream_store path=/home/gentile/Build/streams/ldmstest/store container=csv stream=foo buffer=1
+# dont call anything else on the store...
+
+# how does it know which producer the subscribe is part of?
+prdcr_add name=localhost1 host=localhost type=active xprt=sock port=52001 interval=20000000
+prdcr_subscribe stream=foo regex=localhost*
+prdcr_start name=localhost1
+.fi
+
+.PP
+If the input type is json and you have not sent a header:
+.nf
+cat XXX/store/csv/foo
+p,level,state,id,timestamp
+0,1,STARTING,Mini-EM: Total Time,2020-05-04 14:22:49
+4,1,STARTING,Mini-EM: Total Time,2020-05-04 14:22:49
+10,1,STARTING,Mini-EM: Total Time,2020-05-04 14:22:49
+12,1,STARTING,Mini-EM: Total Time,2020-05-04 14:22:49
+.fi
+
+.PP
+If the input type is str, for the same input:
+.nf
+cat XXX/store/csv/foo
+p= 0 | STARTING: Mini-EM: Total Time LEVEL: 1 TIMESTAMP: 2020-05-04 14:22:49
+p= 4 | STARTING: Mini-EM: Total Time LEVEL: 1 TIMESTAMP: 2020-05-04 14:22:49
+p=10 | STARTING: Mini-EM: Total Time LEVEL: 1 TIMESTAMP: 2020-05-04 14:22:49
+.fi
+
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), hello_publisher, hello_sampler, parser.pl (has perlpod), Plugin_hello_cat_publisher(7)

@@ -92,3 +92,6 @@ libconsumer_me_la_LDFLAGS = $(AM_LDFLAGS)
 libconsumer_me_la_LIBADD = $(STORE_LIBADD) -lzap
 lib_LTLIBRARIES += libconsumer_me.la
 endif
+
+
+SUBDIRS += hello_stream
