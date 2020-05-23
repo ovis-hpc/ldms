@@ -1,0 +1,3 @@
+Re configuration files:
+1) Sampler with a hello_sampler that writes to the log file
+2) Aggregator that subscribes to the stream and writes to the store

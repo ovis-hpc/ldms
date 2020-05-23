@@ -1,0 +1,97 @@
+.\" Manpage for hello_publisher
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "14 Jun 2020" "v4" "LDMS executable utility hello_publisher man page"
+
+.SH NAME
+hello_publisher - man page for the LDMS hello_publisher executable utility
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=hello_publisher [ <attr>=<value> ]
+
+.SH DESCRIPTION
+The hello_publisher executable publishes to the ldmsd_streams interface of a running ldms daemon.
+The hello_publisher takes a message as input. It is invoked for every individual message.
+
+.SH COMMAND LINE SYNTAX
+
+.TP
+hello_publisher -x <xprt> -h <host> -p <port> -s <stream-name> -a <auth> -A <auth-opt> -t <data-format> -m <msg>
+.br
+.RS
+.TP
+-x <xprt>
+.br
+transport of the ldmsd to which to connect.
+.TP
+-p <port>
+.br
+port of the ldmsd to which to connect.
+.TP
+-a <auth>
+.br
+auth to connect to the ldmsd
+.TP
+-A <auth-opt>
+.br
+auth-opts to connect to the ldmsd
+.TP
+-s <stream-name>
+.br
+Name of the stream (this will be used for subscribing)
+.TP
+-t <data-format>
+.br
+Optional data-format. Either 'str' or 'json'. Default is str.
+.TP
+-m <msg>
+.br
+Message that is being published.
+.RE
+
+.SH BUGS
+No known bugs.
+
+.SH NOTES
+.PP
+This executable is in development and may change at any time.
+.PP
+The ldmsd_streams infrastructure appears to buffer before sending to the aggregator. There may not be a function to force the \
+flush.
+
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=hello_sampler
+config name=hello_sampler producer=host1 instance=host1/hello_sampler stream=foo component_id=1
+start name=hello_sampler interval=1000000 offset=0
+.fi
+
+.PP
+.nf
+> ./hello_publisher -x sock -h localhost -p 16000 -a munge -s foo -m "foo" -t str
+The data was successfully published.
+The server responded with 0
+
+> ./hello_publisher -x sock -h localhost -p 16000 -a munge -s foo -m "bar" -t str
+The data was successfully published.
+The server responded with 0
+.ni
+
+.PP
+In the log file of the ldmsd:
+.nf
+> cat log.txt
+Mon May 04 19:44:05 2020: CRITICAL  : stream_type: STRING, msg: "foo", msg_len: 4, entity: (nil)
+Mon May 04 19:44:24 2020: CRITICAL  : stream_type: STRING, msg: "bar", msg_len: 4, entity: (nil)
+.ni
+
+Note that the hello_streams sampler does not do a sample, instead it subscribes to the stream with a callback and prints out what it got off the stream.
+.fi
+
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), hello_publisher(7) hello_cat_publisher(7), Plugin_hello_sampler(7), parser.pl (has perlpod), Plugin_hello_stream_store(7)

@@ -251,6 +251,7 @@ OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
 OPTION_DEFAULT_DISABLE([filesingle], [ENABLE_FILESINGLE])
 OPTION_DEFAULT_DISABLE([msr_interlagos], [ENABLE_MSR_INTERLAGOS])
 OPTION_DEFAULT_ENABLE([array_example], [ENABLE_ARRAY_EXAMPLE])
+OPTION_DEFAULT_ENABLE([hello_stream], [ENABLE_HELLO_STREAM])
 OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
 OPTION_DEFAULT_DISABLE([rapl], [ENABLE_RAPL])
 OPTION_DEFAULT_DISABLE([hweventpapi], [ENABLE_HWEVENTPAPI])
@@ -750,6 +751,7 @@ ldms/src/contrib/store/Makefile
 ldms/src/contrib/store/tutorial/Makefile
 ldms/src/sampler/dstat/Makefile
 ldms/src/sampler/hello_stream/Makefile
+ldms/src/sampler/hello_stream/stream_configs/Makefile
 ldms/src/sampler/filesingle/Makefile
 ldms/src/sampler/lustre/Makefile
 ldms/src/sampler/job_info/Makefile
