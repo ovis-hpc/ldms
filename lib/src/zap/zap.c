@@ -503,6 +503,18 @@ void zap_free(zap_ep_t ep)
 	zap_put_ep(ep);
 }
 
+int zap_ep_closed(zap_ep_t ep)
+{
+	assert(ep->ref_count);
+	return (ep->state == ZAP_EP_CLOSE);
+}
+
+int zap_ep_connected(zap_ep_t ep)
+{
+	assert(ep->ref_count);
+	return (ep->state == ZAP_EP_CONNECTED);
+}
+
 void zap_put_ep(zap_ep_t ep)
 {
 	assert(ep->ref_count);

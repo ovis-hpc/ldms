@@ -359,6 +359,22 @@ void zap_set_priority(zap_ep_t ep, int prio);
  */
 void zap_free(zap_ep_t ep);
 
+/** \brief Check if a Zap endpoint is closed
+ *
+ * \param ep	The endpoint handle
+ * \return 1	The endpoint is closed
+ * \return 0	The endpoint is not closed
+ */
+int zap_ep_closed(zap_ep_t ep);
+
+/** \brief Check if a Zap endpoint is connected
+ *
+ * \param ep	The endpoint handle
+ * \return 1	The endpoint is connected
+ * \return 0	The endpoint is not connected
+ */
+int zap_ep_connected(zap_ep_t ep);
+
 /** \brief Request a connection with a remote peer.
  *
  * \param ep	The transport handle.
