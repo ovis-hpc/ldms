@@ -345,7 +345,7 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 		break;
 	}
 
-	ictxt = calloc(1, sizeof(*ictxt) + data_len);
+	ictxt = calloc(1, sizeof(*ictxt) + data_len + 2);
 	if (!ictxt) {
 		DLOG(ep, "zap_interpose_cb(): ENOMEM\n");
 		return;

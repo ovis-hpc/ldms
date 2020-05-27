@@ -67,42 +67,9 @@
 #define UGNI_SOCKBUF_SZ 1024 * 1024
 
 /**
- * \brief Value for TCP_KEEPIDLE option for initiator side socket.
- *
- * This will make Linux send 'keep alive' probe when the socket being idle for
- * 10 seconds (only for initiator side zap connections).
- *
- * \note Default value of TCP_KEEPIDLE is 7200 sec = 2 hrs
- */
-#define ZAP_UGNI_SOCK_KEEPIDLE 10
-
-/**
- * \brief Value for TCP_KEEPCNT option for initiator side socket.
- *
- * For this setting, a connection will be dropped after 3 probes.
- *
- * \note Default TCP_KEEPCNT is 9
- */
-#define ZAP_UGNI_SOCK_KEEPCNT 3
-
-/**
- * \brief Value for TCP_KEEPINTVL option for initiator side socket.
- *
- * This is a time between probes after idle (set to 2 seconds).
- *
- * \note Default TCP_KEEPINTVL is 75 seconds
- */
-#define ZAP_UGNI_SOCK_KEEPINTVL 2
-
-/**
  * \brief CQ size.
  */
-#define ZAP_UGNI_CQ_DEPTH 2048
-
-/**
- * This limits the fan-out of the aggregator.
- */
-#define ZAP_UGNI_MAX_BTE 8192
+#define ZAP_UGNI_CQ_DEPTH	2048
 
 /*
  * The length of the string
