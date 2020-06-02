@@ -44,7 +44,9 @@ banned:
 clean-local:
 
 install-data-hook:
+if ENABLE_NOLA
 	$(abs_top_srcdir)/util/nola.sh $(DESTDIR)$(libdir) > nola.log
+endif
 if ENABLE_THIRD_PLUGINS
 	@echo "*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#"
 	@if test -n "@THIRD_PLUGIN_DIRS@"; then \
@@ -52,7 +54,9 @@ if ENABLE_THIRD_PLUGINS
 		(cd ldms/src/third-plugins && make third-install-hook); \
 		echo "third-plugins BUILD COMPLETED."; \
 	fi
+if ENABLE_NOLA
 	$(abs_top_srcdir)/util/nola.sh $(DESTDIR)$(libdir) > nola.third-plugins.log
+endif
 endif
 
 install-exec-local:
