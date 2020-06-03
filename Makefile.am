@@ -41,7 +41,7 @@ OPV=-$(PACKAGE_VERSION)
 banned:
 	(cd ldms; make banned)
 
-clean-local:
+distclean-local:
 
 install-data-hook:
 if ENABLE_NOLA
