@@ -37,6 +37,8 @@ endif
 
 SUBDIRS += contrib
 
+distclean-local:
+
 ovis-ldms-configure-args: Makefile
 	for i in @ac_configure_args@; do \
 		(echo -n $$i |sed -E 's/(=)(.*)$$/="\2"/' | sed -e s/^\'// -e s/\'$$// ) | grep -v '^--' >> ovis-ldms-configure-env; \

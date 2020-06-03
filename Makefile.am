@@ -42,7 +42,6 @@ banned:
 	(cd ldms; make banned)
 
 clean-local:
-	-rm -rf ldms
 
 install-data-hook:
 if ENABLE_NOLA
