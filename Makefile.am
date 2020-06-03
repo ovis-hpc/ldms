@@ -42,6 +42,7 @@ banned:
 	(cd ldms; make banned)
 
 distclean-local:
+	-rm -rf ldms
 
 install-data-hook:
 if ENABLE_NOLA
