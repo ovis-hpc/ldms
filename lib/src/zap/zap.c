@@ -136,6 +136,7 @@ static char *__zap_event_str[] = {
 	"ZAP_EVENT_READ_COMPLETE",
 	"ZAP_EVENT_WRITE_COMPLETE",
 	"ZAP_EVENT_RENDEZVOUS",
+	"ZAP_EVENT_SEND_COMPLETE",
 	"ZAP_EVENT_LAST"
 };
 
@@ -331,6 +332,7 @@ void blocking_zap_cb(zap_ep_t zep, zap_event_t ev)
 		/* Just do nothing */
 		break;
 	case ZAP_EVENT_WRITE_COMPLETE:
+	case ZAP_EVENT_SEND_COMPLETE:
 		/* Do nothing */
 		break;
 	default:
@@ -367,6 +369,7 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_DISCONNECTED:
 	case ZAP_EVENT_READ_COMPLETE:
 	case ZAP_EVENT_WRITE_COMPLETE:
+	case ZAP_EVENT_SEND_COMPLETE:
 		ev->data = NULL;
 		ev->data_len = 0;
 		/* do nothing */
@@ -515,6 +518,14 @@ zap_err_t zap_send(zap_ep_t ep, void *buf, size_t sz)
 	return zerr;
 }
 
+zap_err_t zap_send_mapped(zap_ep_t ep, zap_map_t map, void *buf, size_t len,
+			  void *context)
+{
+	if (!ep->z->send_mapped)
+		return ZAP_ERR_NOT_SUPPORTED;
+	return ep->z->send_mapped(ep, map, buf, len, context);
+}
+
 zap_err_t zap_write(zap_ep_t ep,
 		    zap_map_t src_map, void *src,
 		    zap_map_t dst_map, void *dst,
@@ -643,15 +654,6 @@ zap_err_t zap_unshare(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len)
 zap_err_t zap_reject(zap_ep_t ep, char *data, size_t data_len)
 {
 	return ep->z->reject(ep, data, data_len);
-}
-
-int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc)
-{
-	if (p < map->addr || (map->addr + map->len) < (p + sz))
-		return ERANGE;
-	if ((map->acc & acc) != acc)
-		return EACCES;
-	return 0;
 }
 
 void *zap_event_thread_proc(void *arg)

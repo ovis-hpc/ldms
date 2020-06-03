@@ -133,6 +133,7 @@ enum z_fi_op {
 	ZAP_WC_RECV,
 	ZAP_WC_RDMA_READ,
 	ZAP_WC_RDMA_WRITE,
+	ZAP_WC_SEND_MAPPED,
 };
 
 struct z_fi_context {
@@ -154,6 +155,12 @@ struct z_fi_context {
 			void		*dst_addr;
 			size_t		len;
 		} rdma;
+		struct {
+			struct z_fi_buffer *rb; /* to hold fi_prefix + z_fi hdr */
+			struct iovec iov[2]; /* for SEND_MAPPED, iov[0]:prov_prefix+msghdr,
+					      * iov[1]:payload */
+			void *mr_desc[2];    /* MR desc corresponding to iov */
+		} send_mapped;
 	} u;
 	TAILQ_ENTRY(z_fi_context) pending_link; /* pending i/o */
 	LIST_ENTRY(z_fi_context) active_ctxt_link;

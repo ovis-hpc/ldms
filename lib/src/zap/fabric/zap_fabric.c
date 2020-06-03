@@ -735,6 +735,10 @@ static void flush_io_q(struct z_fi_ep *rep)
 			ev.type = ZAP_EVENT_READ_COMPLETE;
 			ev.context = ctxt->usr_context;
 			break;
+		    case ZAP_WC_SEND_MAPPED:
+			ev.type = ZAP_EVENT_SEND_COMPLETE;
+			ev.context = ctxt->usr_context;
+			break;
 		    case ZAP_WC_RECV:
 		    default:
 			LOG_(rep, "invalid op type %d in queued i/o\n", ctxt->op);
@@ -767,6 +771,23 @@ post_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt)
 
 		DLOG("ZAP_WC_SEND rep %p ctxt %p rb %p len %d with %d credits rc %d\n",
 		     rep, ctxt, rb, len, rep->lcl_rq_credits, rc);
+		break;
+	    case ZAP_WC_SEND_MAPPED:
+		rb = ctxt->u.send_mapped.rb;
+		rb->msg->credits = htons(rep->lcl_rq_credits);
+		rep->lcl_rq_credits = 0;
+		SEND_LOG(rep, ctxt);
+		/* NOTE: iov[0] contains prov_prefix and z_fi msg hdr using
+		 *              rb->buf,
+		 *       iov[1] contains application payload. */
+		rc = fi_sendv(rep->fi_ep, ctxt->u.send_mapped.iov,
+			      ctxt->u.send_mapped.mr_desc, 2, 0, ctxt);
+
+		DLOG("ZAP_WC_SEND_MAPPED rep %p ctxt %p rb %p hdr_len %d "
+				"payload_len %d with %d credits rc %d\n",
+		     rep, ctxt, rb, ctxt->u.send_mapped.iov[0].iov_len,
+		     ctxt->u.send_mapped.iov[1].iov_len, rep->lcl_rq_credits,
+		     rc);
 		break;
 	    case ZAP_WC_RDMA_WRITE:
 		mr = z_fi_mr_get(rep, ctxt->u.rdma.src_map);
@@ -1060,7 +1081,8 @@ zap_err_t z_map_err(struct z_fi_ep *rep, struct fi_cq_err_entry *entry)
 	if (!entry->err)
 		return ZAP_ERR_OK;
 
-	if (0 == strcmp(rep->fi->fabric_attr->prov_name, "verbs"))
+	if (rep->fi->fabric_attr->prov_name &&
+			0 == strcmp(rep->fi->fabric_attr->prov_name, "verbs"))
 		goto verbs;
 
 	return zap_errno2zerr(entry->err);
@@ -1118,6 +1140,20 @@ static void process_send_wc(struct z_fi_ep *rep, struct fi_cq_err_entry *entry)
 	struct z_fi_context *ctxt = entry->op_context;
 	if (!entry->err && ctxt->u.send.rb)
 		__buffer_free(ctxt->u.send.rb);
+}
+
+static void process_send_mapped_wc(struct z_fi_ep *rep,
+				   struct fi_cq_err_entry *entry)
+{
+	struct z_fi_context *ctxt = entry->op_context;
+	struct zap_event zev = {
+			.type = ZAP_EVENT_SEND_COMPLETE,
+			.context = ctxt->usr_context,
+			.status = z_map_err(rep, entry),
+		};
+	rep->ep.cb(&rep->ep, &zev);
+	if (!entry->err && ctxt->u.send_mapped.rb)
+		__buffer_free(ctxt->u.send_mapped.rb);
 }
 
 static void process_read_wc(struct z_fi_ep *rep, struct fi_cq_err_entry *entry)
@@ -1397,6 +1433,14 @@ static void scrub_cq(struct z_fi_ep *rep)
 			DLOG("got ZAP_WC_SEND rep %p ctxt %p rb %p err %d proverr %d\n",
 			     rep, ctxt, ctxt->u.send.rb, entry.err, entry.prov_errno);
 			process_send_wc(rep, &entry);
+			put_sq(rep);
+			if (entry.err && ctxt->u.send.rb)
+				__buffer_free(ctxt->u.send.rb);
+			break;
+		    case ZAP_WC_SEND_MAPPED:
+			DLOG("got ZAP_WC_SEND rep %p ctxt %p rb %p err %d proverr %d\n",
+			     rep, ctxt, ctxt->u.send_mapped.rb, entry.err, entry.prov_errno);
+			process_send_mapped_wc(rep, &entry);
 			put_sq(rep);
 			if (entry.err && ctxt->u.send.rb)
 				__buffer_free(ctxt->u.send.rb);
@@ -1736,13 +1780,24 @@ static void handle_disconnected(struct z_fi_ep *rep, struct fi_eq_cm_entry *entr
 	/* NOTE: recv completion (w/status) has not been delivered after
 	 * fi_disconnected (on verbs and sockets providers). So we free them
 	 * here. */
-	while ((ctxt = LIST_FIRST(&rep->active_ctxt_list))) {
-		assert(ctxt->op == ZAP_WC_RECV);
-		__buffer_free(ctxt->u.recv.rb);
-		__context_free(ctxt);
+	ctxt = LIST_FIRST(&rep->active_ctxt_list);
+	while (ctxt) {
+		if (ctxt->op == ZAP_WC_RECV) {
+			__buffer_free(ctxt->u.recv.rb);
+			__context_free(ctxt);
+			ctxt = LIST_FIRST(&rep->active_ctxt_list);
+		} else {
+			/* expect this to delivered in cq thread */
+			rep->deferred_disconnected = 1;
+			ctxt = LIST_NEXT(ctxt, active_ctxt_link);
+		}
 	}
-	pthread_mutex_unlock(&rep->ep.lock);
-	__deliver_disconnected(rep);
+	if (rep->deferred_disconnected == 1) {
+		pthread_mutex_unlock(&rep->ep.lock);
+	} else {
+		pthread_mutex_unlock(&rep->ep.lock);
+		__deliver_disconnected(rep);
+	}
 }
 
 static void cm_event_handler(struct z_fi_ep *rep,
@@ -1986,6 +2041,65 @@ static zap_err_t z_fi_send(zap_ep_t ep, char *buf, size_t len)
 	return rc;
 }
 
+static zap_err_t z_fi_send_mapped(zap_ep_t ep, zap_map_t map,
+				  void *buf, size_t len, void *context)
+{
+	int rc, hdr_len;
+	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
+	struct z_fi_context *ctxt;
+	struct z_fi_buffer *rbuf;
+	struct fid_mr *mr;
+
+	if (map->type != ZAP_MAP_LOCAL)
+		return ZAP_ERR_INVALID_MAP_TYPE;
+	if (z_map_access_validate(map, buf, len, 0))
+		return ZAP_ERR_LOCAL_LEN;
+
+	pthread_mutex_lock(&rep->ep.lock);
+	rc = __ep_state_check(rep);
+	if (rc)
+		goto out;
+	mr = z_fi_mr_get(rep, map); /* do not free mr */
+	if (!mr)
+		goto out;
+	rbuf = __buffer_alloc(rep);
+	if (!rbuf) {
+		rc = ZAP_ERR_RESOURCE;
+		goto out;
+	}
+	if (!_buffer_fits(rbuf, len+sizeof(struct z_fi_message_hdr))) {
+		rc = ZAP_ERR_LOCAL_LEN;
+		__buffer_free(rbuf);
+		goto out;
+	}
+	ctxt = __context_alloc(rep, context, ZAP_WC_SEND_MAPPED);
+	if (!ctxt) {
+		__buffer_free(rbuf);
+		rc = ZAP_ERR_RESOURCE;
+		goto out;
+	}
+	/* prefix + hdr */
+	hdr_len = rep->fi->ep_attr->msg_prefix_size + sizeof(struct z_fi_message_hdr);
+	rbuf->msg->msg_type = htons(Z_FI_MSG_SEND);
+	ctxt->u.send_mapped.rb = rbuf;
+	ctxt->u.send_mapped.iov[0].iov_base = rbuf->buf;
+	ctxt->u.send_mapped.iov[0].iov_len = hdr_len;
+	ctxt->u.send_mapped.mr_desc[0] = fi_mr_desc(rep->buf_pool_mr);
+	/* payload */
+	ctxt->u.send_mapped.iov[1].iov_base = buf;
+	ctxt->u.send_mapped.iov[1].iov_len = len;
+	ctxt->u.send_mapped.mr_desc[1] = fi_mr_desc(mr);
+
+	rc = submit_wr(rep, ctxt, 0);
+	if (rc) {
+		__context_free(ctxt);
+		__buffer_free(rbuf);
+	}
+out:
+	pthread_mutex_unlock(&rep->ep.lock);
+	return rc;
+}
+
 static zap_err_t z_fi_share(zap_ep_t ep, zap_map_t map,
 				const char *msg, size_t msg_len)
 {
@@ -2178,6 +2292,7 @@ zap_err_t z_fi_ep_setopt(zap_ep_t ep, const char *name, const char *value)
 
 static pthread_t cm_thread, cq_thread;
 
+__attribute__((unused))
 static void z_fi_cleanup(void)
 {
 	void *dontcare;
@@ -2219,7 +2334,7 @@ static int init_once()
 	pthread_setname_np(cm_thread, "z_fi_cm");
 
 	init_complete = 1;
-	atexit(z_fi_cleanup);
+	//atexit(z_fi_cleanup);
 	return 0;
 
  err_3:
@@ -2279,6 +2394,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->listen = z_fi_listen;
 	z->close = z_fi_close;
 	z->send = z_fi_send;
+	z->send_mapped = z_fi_send_mapped;
 	z->read = z_fi_read;
 	z->write = z_fi_write;
 	z->unmap = z_fi_unmap;

@@ -61,8 +61,8 @@
 #include "ovis-lib-config.h"
 #include "coll/rbt.h"
 
-#include "zap.h"
-#include "zap_priv.h"
+#include "../zap.h"
+#include "../zap_priv.h"
 
 #define UGNI_SOCKBUF_SZ 1024 * 1024
 
@@ -259,13 +259,28 @@ struct zap_ugni_msg_connect {
 	char data[OVIS_FLEX];      /**< Size of connection data */
 };
 
+/* union of all messages */
+union zap_ugni_msg {
+	char bytes[0]; /* bytes access */
+	struct zap_ugni_msg_hdr        hdr;        /* the header part */
+	struct zap_ugni_msg_regular    sendrecv;   /* send-recv */
+	struct zap_ugni_msg_rendezvous rendezvous; /* rendezvous */
+	struct zap_ugni_msg_accepted   accept;     /* rendezvous */
+	struct zap_ugni_msg_connect    connect;    /* rendezvous */
+};
+
 #pragma pack()
 
 struct zap_ugni_send_wr {
 	STAILQ_ENTRY(zap_ugni_send_wr) link;
-	off_t off; /* offset of to be written */
-	size_t alen; /* remaining length after data + off */
-	char data[OVIS_FLEX];
+	void  *ctxt; /* for send_mapped completion */
+	int    cb;   /* 1 if completion causes a callback */
+	off_t  moff; /* message offset (bytes written) */
+	size_t msz;  /* size of message in the union msg (excluding data) */
+	off_t  doff; /* data payload offset (bytes written) */
+	size_t dsz;  /* size of the data payload */
+	char  *data; /* pointer to the data payload */
+	union zap_ugni_msg msg; /* the message (excluding data) */
 };
 
 struct zap_ugni_recv_buff {

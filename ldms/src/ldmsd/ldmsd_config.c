@@ -858,7 +858,7 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 int listen_on_ldms_xprt(ldmsd_listen_t listen)
 {
 	int ret;
-	struct addrinfo ai_hints = { .ai_family = AF_INET };
+	struct addrinfo ai_hints = { .ai_family = AF_INET, .ai_flags = AI_PASSIVE };
 	struct addrinfo *ai;
 	char *ip;       /* for info print */
 	char port[8];
