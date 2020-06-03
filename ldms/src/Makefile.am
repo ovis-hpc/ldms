@@ -38,8 +38,8 @@ endif
 SUBDIRS += contrib
 
 distclean-local:
-	rm ovis-ldms-configure-args
-	rm ovis-ldms-configure-env
+	-rm ovis-ldms-configure-args
+	-rm ovis-ldms-configure-env
 
 ovis-ldms-configure-args: Makefile
 	for i in @ac_configure_args@; do \
