@@ -79,6 +79,7 @@
 #include "ldmsd.h"
 #include "ldmsd_plugin.h"
 #include "ldmsd_sampler.h"
+#include "ldmsd_translator.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
 #include "config.h"
@@ -90,7 +91,7 @@
 #include <mcheck.h>
 #endif /* DEBUG */
 
-#define FMT "A:a:B:c:t:FH:kl:m:n:P:r:s:u:Vv:x:C"
+#define FMT "A:a:B:c:t:FH:kl:m:n:P:r:s:u:Vv:x:Ct:"
 
 #define LDMSD_KEEP_ALIVE_30MIN 30*60*1000000 /* 30 mins */
 
@@ -938,9 +939,10 @@ int handle_cfgobjs()
 
 static int submit_cfgobj_request(ldmsd_plugin_inst_t pi, json_entity_t req_obj)
 {
-	int status;
+	int status, rc;
 	ldmsd_req_buf_t buf;
 	json_entity_t reply, results, key, v, msg;
+	ldmsd_translator_type_t t = (void *)pi->base;
 	struct ldmsd_sec_ctxt sctxt;
 	ldmsd_sec_ctxt_get(&sctxt);
 	int msg_no = json_value_int(json_value_find(req_obj, "id"));
@@ -951,30 +953,46 @@ static int submit_cfgobj_request(ldmsd_plugin_inst_t pi, json_entity_t req_obj)
 	reply = ldmsd_process_cfgobj_requests(req_obj, msg_no, &sctxt);
 	if (!reply)
 		goto oom;
-	status = json_value_int(json_value_find(reply, "status"));
-	if (status) {
-		ldmsd_log(LDMSD_LCRITICAL, "%s\n", json_value_str(json_value_find(reply, "msg"))->str);
-		return status;
-	}
-	results = json_value_find(reply, "result");
-	if (!results)
-		return 0;
-	for (key = json_attr_first(results); key; key = json_attr_next(key)) {
-		v = json_attr_value(key);
-		status = json_value_int(json_value_find(v, "status"));
+	if (msg_no == 0) {
+		/* Request from the cmd-line */
+		status = json_value_int(json_value_find(reply, "status"));
 		if (status) {
-			msg = json_value_find(v, "msg");
-			if (msg) {
-				/* TODO: Think about how to report the error.
-				 * It is possible that only the status is provided,
-				 * no error messages.
-				 */
-				ldmsd_log(LDMSD_LCRITICAL, "[%d]: %s\n",
-					status, json_value_str(msg)->str);
+			ldmsd_log(LDMSD_LCRITICAL, "%s\n",
+				json_value_str(json_value_find(reply, "msg"))->str);
+			return 0;
+		}
+		results = json_value_find(reply, "result");
+		if (!results)
+			return 0;
+		for (key = json_attr_first(results); key; key = json_attr_next(key)) {
+			v = json_attr_value(key);
+			status = json_value_int(json_value_find(v, "status"));
+			if (status) {
+				msg = json_value_find(v, "msg");
+				if (msg) {
+					/* TODO: Think about how to report the error.
+					 * It is possible that only the status is provided,
+					 * no error messages.
+					 */
+					ldmsd_log(LDMSD_LCRITICAL, "Error %d: %s\n",
+						status, json_value_str(msg)->str);
+				}
 			}
 		}
+	} else {
+		rc = t->error_report(pi, reply);
+		if (rc) {
+			jbuf_t jb;
+			jb = json_entity_dump(NULL, req_obj);
+			if (!jb)
+				goto oom;
+			ldmsd_log(LDMSD_LCRITICAL, "Error %d: Failed to report "
+						"configuration error. Request: %s\n",
+						rc, jb->buf);
+			jbuf_free(jb);
+		}
 	}
-	return status;
+	return 0;
 oom:
 	if (buf)
 		ldmsd_req_buf_free(buf);
@@ -1423,45 +1441,39 @@ short ldmsd_is_syntax_check()
 	return is_syntax_check;
 }
 
-/*
- * TODO: remove the typedef and correct the signature of process_config_file.
- */
-typedef struct ldmsd_plugin_inst_s *ldmsd_translator_t;
 static int
-process_config_file_NEW(ldmsd_translator_t t, const char *path,
-				json_entity_t req_obj_list)
+process_config_file_NEW(ldmsd_plugin_inst_t pi, const char *path,
+						json_entity_t req_list)
 {
-	/*
-	 * TODO: implement this.
-	 */
-	json_entity_t req, spc;
-
-	/* auth */
-	spc = json_dict_build(NULL,
-			JSON_DICT_VALUE, "default_auth",
-				JSON_STRING_VALUE, "plugin", "none",
-				-2,
-			-1);
-	req = ldmsd_cfgobj_create_req_obj_new(0, ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_AUTH),
-						1, NULL, spc);
-	json_item_add(req_obj_list, req);
-
-	/* prdcr */
-	spc = json_dict_build(NULL,
-			JSON_DICT_VALUE, "localhost",
-				JSON_STRING_VALUE, "type", "active",
-				JSON_STRING_VALUE, "host", "localhost",
-				JSON_STRING_VALUE, "port", "10001",
-				JSON_STRING_VALUE, "xprt", "sock",
-				JSON_STRING_VALUE, "interval", "1sec",
-				JSON_STRING_VALUE, "auth", "none",
-				-2,
-			-1);
-	req = ldmsd_cfgobj_create_req_obj_new(1,
-					ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_PRDCR),
-					1, NULL, spc);
-	json_item_add(req_obj_list, req);
+	ldmsd_translator_type_t t = (void *)pi->base;
+	json_entity_t l = t->translate(pi, path, req_list);
+	if (!l)
+		return ENOMEM;
 	return 0;
+}
+
+ldmsd_plugin_inst_t ldmsd_translator_load(const char *plugin)
+{
+	int rc;
+	ldmsd_req_buf_t buf;
+	ldmsd_plugin_inst_t inst;
+
+	buf = ldmsd_req_buf_alloc(1024);
+	if (!buf)
+		return NULL;
+	inst = ldmsd_plugin_inst_load(plugin, plugin, buf->buf, buf->len);
+	if (!inst) {
+		rc = errno;
+		ldmsd_log(LDMSD_LCRITICAL, "Error %d: Failed to load the translator "
+							"'%s'\n", rc, plugin);
+		goto err;
+	}
+	ldmsd_req_buf_free(buf);
+	return inst;
+err:
+	ldmsd_req_buf_free(buf);
+	cleanup(rc, "Failed to load the translator");
+	return NULL;
 }
 
 int main(int argc, char **argv) {
@@ -1528,10 +1540,7 @@ int main(int argc, char **argv) {
 			exit(0);
 			break;
 		case 't':
-			/*
-			 * TODO: complete this
-			 */
-			translator = strdup(optarg);
+			translator_name = strdup(optarg);
 			break;
 		case 'F':
 			is_foreground = 1;
@@ -1559,7 +1568,6 @@ int main(int argc, char **argv) {
 		default:
 			usage();
 		}
-		break;
 	}
 
 	if (is_syntax_check) {
@@ -1573,6 +1581,10 @@ int main(int argc, char **argv) {
 			cleanup(rc, "Failed to daemonize the process");
 		}
 	}
+	if (!translator_name)
+		cleanup(EINVAL, "No translator plugin is given.");
+
+	ldmsd_plugin_inst_t pi = ldmsd_translator_load(translator_name);
 
 	ldmsd_ev_init();
 
@@ -1594,7 +1606,7 @@ int main(int argc, char **argv) {
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'c':
-			rc = process_config_file_NEW(NULL, optarg, cfgobj_req_list);
+			rc = process_config_file_NEW(pi, optarg, cfgobj_req_list);
 			if (rc)
 				cleanup(rc, "Out of memory");
 			break;
@@ -1617,7 +1629,6 @@ int main(int argc, char **argv) {
 		case 't':
 			/* Handle them already. */
 			continue;
-			break;
 		case 'V':
 			/* It shouldn't reach here. */
 			cleanup(0, "");
@@ -1634,7 +1645,7 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	handle_cfgobj_reqs(NULL, cfgobj_req_list);
+	handle_cfgobj_reqs(pi, cfgobj_req_list);
 
 	/*
 	 * At this point all cfgobjs were created and updated according to the

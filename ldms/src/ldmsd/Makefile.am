@@ -58,7 +58,7 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_listen.c
 #	ldmsd_failover.c ldmsd_group.c
 ldmsd_CFLAGS = $(AM_CFLAGS) -rdynamic
-ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la libsampler.la libstore.la
+ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la libsampler.la libstore.la libtranslator.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) \
 		$(top_builddir)/lib/src/zap/libzap.la \
 		$(top_builddir)/lib/src/mmalloc/libmmalloc.la \
@@ -119,6 +119,14 @@ libstore_la_SOURCES = ldmsd_store.c
 libstore_la_LIBADD = $(CORE)/libldms.la
 libstore_la_CFLAGS = $(AM_CFLAGS)
 pkglib_LTLIBRARIES += libstore.la
+
+# translator plugin
+ldmsdinclude_HEADERS += ldmsd_translator.h
+libtranslator_la_SOURCES = ldmsd_translator.c
+libtranslator_la_LIBADD = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
+			  -ljson_util
+libtranslator_la_CFLAGS = $(AM_CFLAGS)
+pkglib_LTLIBRARIES += libtranslator.la
 
 EXTRA_DIST = ldmsd-sampler.md \
 	     ldmsd-aggregator.md \

@@ -19,6 +19,10 @@ if ENABLE_LDMSD
 SUBDIRS += ldmsd
 endif
 
+if ENABLE_TRANSLATOR
+SUBDIRS += ldmsd-translators
+endif
+
 if ENABLE_SAMPLER
 SUBDIRS += ldmsd-samplers
 endif

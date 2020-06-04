@@ -215,6 +215,11 @@ OPTION_DEFAULT_DISABLE([grptest], [ENABLE_GRPTEST])
 dnl grptest will also build with --enable-ldms-test
 AM_CONDITIONAL([ENABLE_GRPTEST_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_GRPTEST_FALSE" = "x#"])
 
+dnl Options for translator
+OPTION_DEFAULT_ENABLE([translator], [ENABLE_TRANSLATOR])
+OPTION_DEFAULT_ENABLE([scripting_translator], [ENABLE_SCRIPTING_TRANSLATOR])
+dnl End of translator plugins
+
 OPTION_WITH([libcurl], [LIBCURL])
 dnl check for libcurl if influx is configured
 OPTION_DEFAULT_DISABLE([influx], [ENABLE_INFLUX])
@@ -696,6 +701,7 @@ ldms/src/ldmsd-stores/store_influx/Makefile
 ldms/src/ldmsd-stores/store_app/Makefile
 ldms/scripts/Makefile
 ldms/src/test/Makefile
+ldms/src/ldmsd-translators/Makefile
 ldms/etc/Makefile
 ldms/etc/systemd/Makefile
 ldms/python/Makefile
