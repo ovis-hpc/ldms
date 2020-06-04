@@ -80,9 +80,12 @@
 #include "ldmsd.h"
 #include "sampler_base.h"
 #include <assert.h>
-#define PROC_FILE_DEFAULT "/proc/sys/lnet/stats"
 
-static char *procfile = NULL;
+static char *lnet_state_file = NULL;
+static const char * default_lnet_state_files[] = {
+		"/sys/kernel/debug/lnet/stats",
+		"/proc/sys/lnet/stats",
+};
 static ldms_set_t set = NULL;
 static ldmsd_msg_log_f msglog;
 #define SAMP "lnet_stats"
@@ -121,7 +124,7 @@ static int parse_stats()
 		stats_val[i] = 0;
 	}
 	FILE *fp;
-	fp = fopen(procfile, "r");
+	fp = fopen(lnet_state_file, "r");
 	if (!fp) {
 		return ENOENT;
 	}
@@ -177,14 +180,31 @@ static int create_metric_set(base_data_t base)
 	int rc, i;
 	ldms_schema_t schema;
 
-	int parse_err = parse_stats();
-	if (parse_err) {
-		msglog(LDMSD_LERROR, "Could not parse the " SAMP " file "
-				"'%s'\n", procfile);
-		rc = parse_err;
-		goto err;
+	/* If no user input */
+	if (lnet_state_file == NULL) {
+		/* Try possible luster stat locations */
+		for (i=0; i < sizeof default_lnet_state_files; i++) {
+			lnet_state_file = strdup(default_lnet_state_files[i]);
+			int parse_err = parse_stats();
+			if (parse_err) {
+				msglog(LDMSD_LDEBUG, "Could not "
+					"parse the " SAMP " file '%s'\n", lnet_state_file);
+				/* Set to NULL, failed to parse */
+				lnet_state_file = NULL;
+				continue;
+			}
+			break;
+		}
 	}
 
+	if (lnet_state_file == NULL || parse_stats()) {
+		msglog(LDMSD_LERROR, "Could not parse default " SAMP " files"
+					", or the user file provided\n");
+		rc = ENOENT;
+		goto err;
+	} else {
+		msglog(LDMSD_LDEBUG, SAMP ": parsed file '%s'\n", lnet_state_file);
+	} 
 
 	schema = base_schema_new(base);
 	if (!schema) {
@@ -247,8 +267,8 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP " [file=<proc_name>] " BASE_CONFIG_USAGE
-		"    <proc_name>  The lnet proc file name if not "  PROC_FILE_DEFAULT "\n";
+	return  "config name=" SAMP " [file=<stats_path>] " BASE_CONFIG_USAGE
+		"    <stats_path>  The lnet stats file name if not using the default\n";
 }
 
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
@@ -268,13 +288,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	char *pvalue = av_value(avl, "file");
 	if (pvalue) {
-		procfile = strdup(pvalue);
-	} else {
-		procfile = strdup(PROC_FILE_DEFAULT);
-	}
-	if (!procfile) {
-		msglog(LDMSD_LERROR, SAMP ": config out of memory.\n");
-		return ENOMEM;
+		lnet_state_file = strdup(pvalue);
 	}
 
 	base = base_config(avl, SAMP, SAMP, msglog);
@@ -304,6 +318,7 @@ static int sample(struct ldmsd_sampler *self)
 	int rc = 0, i;
 	int metric_no;
 	union ldms_value v;
+//	return 0;
 
 	if (!set) {
 		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
@@ -317,7 +332,7 @@ static int sample(struct ldmsd_sampler *self)
 	if (parse_err) {
 		if (parse_err_cnt < 2) {
 			msglog(LDMSD_LERROR, SAMP "Could not parse the " SAMP
-				 " file '%s'\n", procfile);
+				 " file '%s'\n", lnet_state_file);
 		}
 		parse_err_cnt++;
 		rc = parse_err;
@@ -338,8 +353,8 @@ static void term(struct ldmsd_plugin *self)
 	if (base)
 		base_del(base);
 	base = NULL;
-	if (procfile)
-		free(procfile);
+	if (lnet_state_file)
+		free(lnet_state_file);
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;

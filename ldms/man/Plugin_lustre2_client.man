@@ -20,7 +20,7 @@ plugin; see \fBldms_sampler_base\fR(7) for the attributes of the base class.
 
 .TP
 .BI config " " name "=<plugin_name> " \
-    "<SAMPLER_BASE_OPTIONS> osc" "=<CSV> " mdc "=<CSV> " llite =<CSV>
+    "<SAMPLER_BASE_OPTIONS> osc" "=<CSV> " mdc "=<CSV> " llite =<CSV> " osc_path =<oscpath> " mdc_path=<mdcpath> " llite_path=<llitepath>
 
 .PP
 Descriptions:
@@ -40,16 +40,31 @@ CSV list of MDC's.
 .TP
 .BI llite =<CSV>
 CSV list of LLITE's.
+.TP
+.BI osc_path =<oscpath>
+A user custom path to osc.
+.TP
+.BI mdc_path =<mdcpath>
+A user custom path to osc.
+.TP
+.BI llite_path =<llitepath>
+A user custom path to llite.
 
+.SH NOTES
 .PP
 For oscs,mdcs and llites: if not specified, NONE of the
 oscs/mdcs/llites will be added. If {oscs,mdcs,llites} is set to *, all
 of the available {oscs,mdcs,llites} at the time will be added.
 .PP
-NOTE: The names that make up the list of oscs, mdcs and llites do not have
+The names that make up the list of oscs, mdcs and llites do not have
 to include the uid part. For example, 'lustre-ffff8803245d4000' is the
 actual file in /proc/fs/lustre/llite/, but you can just say llites=lustre to
 include this component into the set.
+.PP
+osc_path, mdc_path, llite_path are optional full path names of stats files 
+if not in default location. The default locations are: 
+/sys/kernel/debug/lustre/{osc, mdc, llite}, and /proc/fs/lustre/{osc, mdc, llite} depends on the Lustre version.
+Be aware that /sys/kernel/debug is only readable by privileged users.
 
 .RE
 

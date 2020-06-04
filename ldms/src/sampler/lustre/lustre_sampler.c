@@ -14,24 +14,24 @@
  * modification, are permitted provided that the following conditions
  * are met:
  *
- *      Redistributions of source code must retain the above copyright
- *      notice, this list of conditions and the following disclaimer.
+ *	Redistributions of source code must retain the above copyright
+ *	notice, this list of conditions and the following disclaimer.
  *
- *      Redistributions in binary form must reproduce the above
- *      copyright notice, this list of conditions and the following
- *      disclaimer in the documentation and/or other materials provided
- *      with the distribution.
+ *	Redistributions in binary form must reproduce the above
+ *	copyright notice, this list of conditions and the following
+ *	disclaimer in the documentation and/or other materials provided
+ *	with the distribution.
  *
- *      Neither the name of Sandia nor the names of any contributors may
- *      be used to endorse or promote products derived from this software
- *      without specific prior written permission.
+ *	Neither the name of Sandia nor the names of any contributors may
+ *	be used to endorse or promote products derived from this software
+ *	without specific prior written permission.
  *
- *      Neither the name of Open Grid Computing nor the names of any
- *      contributors may be used to endorse or promote products derived
- *      from this software without specific prior written permission.
+ *	Neither the name of Open Grid Computing nor the names of any
+ *	contributors may be used to endorse or promote products derived
+ *	from this software without specific prior written permission.
  *
- *      Modified source versions must be plainly marked as such, and
- *      must not be misrepresented as being the original software.
+ *	Modified source versions must be plainly marked as such, and
+ *	must not be misrepresented as being the original software.
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -603,7 +603,7 @@ struct str_list_head* construct_dir_list(const char *path)
 		goto err0;
 	struct str_list *sl;
 	while ((dir = readdir(d))) {
-		if (dir->d_type & DT_DIR) {
+		if (dir->d_type == DT_DIR) {
 			if (strcmp(dir->d_name, ".")==0 ||
 					strcmp(dir->d_name, "..")==0)
 				continue;

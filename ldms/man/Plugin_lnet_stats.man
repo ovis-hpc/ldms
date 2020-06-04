@@ -22,7 +22,7 @@ The lnet_stats plugin uses the sampler_base base class. This man page covers onl
 .BR config
 name=<plugin_name> [schema=<sname> file=<stats_path>]
 .br
-ldmsctl configuration line
+ldmsctl configuration line.
 .RS
 .TP
 name=<plugin_name>
@@ -37,7 +37,15 @@ different schema. If not specified, will default to `lnet_stats`.
 file=<stats_path>
 .br
 Optional full path name of stats file if not in default location.
+
+.SH NOTES
+.PP
+The default location for the lnet stats path is:
+/sys/kernel/debug/lnet/stats, and /proc/sys/lnet/stats depends on the Lustre version. Be aware that /sys/kernel/debug is only readable by privileged users.
+
 .RE
+
+
 
 .SH BUGS
 Assumes file name instead of looking it up from the Lustre runtime libraries,
