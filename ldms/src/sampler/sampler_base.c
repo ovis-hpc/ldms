@@ -290,9 +290,14 @@ ldms_set_t base_set_new(base_data_t base)
 {
 	int rc;
 	base->missing_warned = 0;
+	errno = 0;
 	base->set = ldms_set_new(base->instance_name, base->schema);
-	if (!base->set)
+	if (!base->set) {
+		const char *serr = ovis_strerror(errno);
+		base->log(LDMSD_LERROR,"base_set_new: ldms_set_new failed %d(%s) for %s\n",
+				errno, serr, base->instance_name);
 		return NULL;
+	}
 	ldms_set_producer_name_set(base->set, base->producer_name);
 	ldms_metric_set_u64(base->set, BASE_COMPONENT_ID, base->component_id);
 	ldms_metric_set_u64(base->set, BASE_JOB_ID, 0);
@@ -303,6 +308,8 @@ ldms_set_t base_set_new(base_data_t base)
 		ldms_set_delete(base->set);
 		base->set = NULL;
 		errno = rc;
+		base->log(LDMSD_LERROR,"base_set_new: ldms_set_publish failed for %s\n",
+				base->instance_name);
 		return NULL;
 	}
 	ldmsd_set_register(base->set, base->pi_name);
