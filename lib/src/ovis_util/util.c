@@ -1,9 +1,9 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-2015,2017-2019 National Technology & Engineering
+ * Copyright (c) 2013-2015,2017-2020 National Technology & Engineering
  * Solutions of Sandia, LLC (NTESS). Under the terms of Contract
  * DE-NA0003525 with NTESS, the U.S. Government retains certain rights
  * in this software.
- * Copyright (c) 2013-2015,2017-2019 Open Grid Computing, Inc.
+ * Copyright (c) 2013-2015,2017-2020 Open Grid Computing, Inc.
  * All rights reserved.
  *
  * This software is available to you under a choice of one of two
@@ -940,6 +940,23 @@ const char* ovis_errno_abbvr(int e)
 		return estr[e];
 	}
 	return "UNKNOWN_ERRNO";
+}
+
+/**
+ * \brief thread-safe strerror.
+ *
+ * \retval str The sys_errlist value.
+ * \retval "unknown_errno" if the errno \c e is unknown.
+ */
+const char *ovis_strerror(int e) {
+	if (e >=0 && e < sys_nerr)
+		return sys_errlist[e];
+	return "unknown_errno";
+/* the gnu linker nuisance warning about sys_errlist.
+ * If we truly hate it, we can use the code from nginx ngx_strerror
+ * here. See: http://nginx.org/en/docs/sys_errlist.html
+ * for why this is a good idea.
+ */
 }
 
 /*

@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-2019 National Technology & Engineering Solutions
+ * Copyright (c) 2013-2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2013-2019 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2020 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -321,6 +321,15 @@ int ovis_access_check(uid_t auid, gid_t agid, int acc,
  * \retval "UNKNOWN_ERRNO" if the errno \c e is unknown.
  */
 const char* ovis_errno_abbvr(int e);
+
+/**
+ * \brief thread-safe strerror.
+ *
+ * \retval str The sys_errlist value, or the result of
+ * .ovis_errno_abbvr(e) if sys_errlist is not available.
+ * \retval "unknown_errno" if the errno \c e is unknown.
+ */
+const char *ovis_strerror(int e);
 
 typedef
 struct ovis_pgrep_s {
