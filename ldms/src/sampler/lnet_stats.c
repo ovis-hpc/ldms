@@ -80,6 +80,7 @@
 #include "ldmsd.h"
 #include "sampler_base.h"
 #include <assert.h>
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
 
 static char *lnet_state_file = NULL;
 static const char * default_lnet_state_files[] = {
@@ -183,13 +184,14 @@ static int create_metric_set(base_data_t base)
 	/* If no user input */
 	if (lnet_state_file == NULL) {
 		/* Try possible luster stat locations */
-		for (i=0; i < sizeof default_lnet_state_files; i++) {
+		for (i=0; i < ARRAY_SIZE(default_lnet_state_files); i++) {
 			lnet_state_file = strdup(default_lnet_state_files[i]);
 			int parse_err = parse_stats();
 			if (parse_err) {
 				msglog(LDMSD_LDEBUG, "Could not "
 					"parse the " SAMP " file '%s'\n", lnet_state_file);
 				/* Set to NULL, failed to parse */
+				free(lnet_state_file);
 				lnet_state_file = NULL;
 				continue;
 			}
@@ -289,6 +291,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	char *pvalue = av_value(avl, "file");
 	if (pvalue) {
 		lnet_state_file = strdup(pvalue);
+		msglog(LDMSD_LDEBUG, SAMP ": User-defined lnet_state_file %s.\n", pvalue);
 	}
 
 	base = base_config(avl, SAMP, SAMP, msglog);
