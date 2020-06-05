@@ -1065,7 +1065,7 @@ int ldmsd_plugattr_config_check(const char **anames, const char **knames, struct
 			const char *k = av_name(kvl, count);
 			i = 0;
 			int found = 0;
-			while (anames[i] != NULL) {
+			while (knames[i] != NULL) {
 				if (strcmp(k, knames[i]) == 0) {
 					found = 1;
 					break;
