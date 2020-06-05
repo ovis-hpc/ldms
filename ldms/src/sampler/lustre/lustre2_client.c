@@ -79,6 +79,7 @@
 #include "lustre_sampler.h"
 #include "../sampler_base.h"
 
+#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
 #define STR_MAP_SIZE 4093
 #define SAMP "lustre2_client"
 
@@ -163,7 +164,7 @@ char *llite_key[] = {
 	"write_bytes.rate",
 };
 
-#define LLITE_KEY_LEN sizeof(llite_key)/sizeof(llite_key[0])
+#define LLITE_KEY_LEN ARRAY_SIZE(llite_key)
 
 /**
  * \brief Construct client string list.
@@ -207,7 +208,6 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 {
 	int rc, i;
 
-	msglog(LDMSD_LDEBUG, SAMP ": create metric set\n");
 	/* Calculate size for Clients */
 	struct str_list_head *lh_osc, *lh_mdc, *lh_llite;
 	struct str_list_head *heads[] = {NULL, NULL, NULL};
@@ -218,10 +218,8 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 	/* test if the osc default path exist */
 	if (osc_path == NULL) {
 		/* Try possible luster stat locations */
-		for (i=0; i < sizeof default_osc_path; i++) {
+		for (i=0; i < ARRAY_SIZE(default_osc_path); i++) {
 			osc_path = strdup(default_osc_path[i]);
-			msglog(LDMSD_LDEBUG, SAMP ": try osc path '%s'"
-				      "\n", osc_path);
 			lh_osc = construct_client_list(oscs, osc_path);
 			if (!lh_osc) {
 				msglog(LDMSD_LDEBUG, SAMP ": default osc path '%s'" 
@@ -247,10 +245,8 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 	/* test if the mdc default path exist */
 	if (mdc_path == NULL) {
 		/* Try possible luster stat locations */
-		for (i=0; i < sizeof default_mdc_path; i++) {
+		for (i=0; i < ARRAY_SIZE( default_mdc_path); i++) {
 			mdc_path = strdup(default_mdc_path[i]);
-			msglog(LDMSD_LDEBUG, SAMP ": try mdc path '%s'"
-				      "\n", mdc_path);
 			lh_mdc = construct_client_list(mdcs, mdc_path);
 			if (!lh_mdc) {
 				msglog(LDMSD_LDEBUG, SAMP ": default mdc path '%s'"
@@ -275,10 +271,8 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 	/* test if the llite default path exist */
 	if (llite_path == NULL) {
 		/* Try possible luster stat locations */
-		for (i=0; i < sizeof default_llite_path; i++) {
+		for (i=0; i < ARRAY_SIZE(default_llite_path); i++) {
 			llite_path = strdup(default_llite_path[i]);
-			msglog(LDMSD_LDEBUG, SAMP ": try llite path '%s'"
-				      "\n", llite_path);
 			lh_llite = construct_client_list(llites, llite_path);
 			if (!lh_llite) {
 				msglog(LDMSD_LDEBUG, SAMP ": default llite path '%s'"
@@ -301,15 +295,17 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 	heads[2] = lh_llite;
 
 	ldms_schema_t schema = base_schema_new(base);
-	if (!schema)
+	if (!schema) {
+		msglog(LDMSD_LERROR, SAMP ": base_schema_new failed\n");
 		goto err0;
+	}
 
 	char *namebase[] = {"osc", "mdc", "llite"};
 	char *pathbase[] = {osc_path, mdc_path, llite_path};
 	struct str_list *sl;
 
 	char suffix[128];
-	for (i = 0; i < sizeof(heads) / sizeof(*heads); i++) {
+	for (i = 0; i < ARRAY_SIZE(heads); i++) {
 		LIST_FOREACH(sl, heads[i], link) {
 			/* For general stats */
 			sprintf(tmp_path, "%s/%s*/stats",
@@ -318,8 +314,11 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 			rc = stats_construct_routine(schema, tmp_path,
 					"client.", suffix, &lms_list, keys[i],
 					keylen[i]);
-			if (rc)
+			if (rc) {
+				msglog(LDMSD_LERROR, SAMP
+					 ": stats_construct_routine err for %s\n", tmp_path);
 				goto err1;
+			}
 		}
 	}
 
@@ -327,16 +326,16 @@ static int create_metric_set(const char *oscs, const char *mdcs,
 	set = base_set_new(base);
 	if (!set) {
 		rc = errno;
+		msglog(LDMSD_LERROR, SAMP ": base_set_new failed\n");
 		goto err1;
 	}
 	return 0;
 err1:
 	msglog(LDMSD_LINFO, SAMP ": create_metric_set@err1\n");
 	lustre_metric_src_list_free(&lms_list);
-	msglog(LDMSD_LINFO, SAMP ": WARNING: lustre_oss set DESTROYED\n");
 	set = 0;
 err0:
-	for (i = 0; i < sizeof(heads) / sizeof(*heads); i++) {
+	for (i = 0; i < ARRAY_SIZE(heads); i++) {
 		if (heads[i])
 			free_str_list(heads[i]);
 	}

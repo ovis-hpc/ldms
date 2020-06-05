@@ -374,8 +374,11 @@ int single_construct_routine(ldms_schema_t schema,
 	LIST_INSERT_HEAD(list, &ls->lms, link);
 	return 0;
 err1:
+	msglog(LDMSD_LERROR, "lustre sample: metric add failed for %s\n", metric_name);
 	lustre_single_free(ls);
+	return EINVAL;
 err0:
+	msglog(LDMSD_LERROR, "lustre sample: out of memory using %s\n", metric_path);
 	return ENOMEM;
 }
 
