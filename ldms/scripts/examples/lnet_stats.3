@@ -1,5 +1,5 @@
 load name=${plugname}
-config name=${plugname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i} file=${statfile}
+config name=${plugname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i}
 start name=${plugname} interval=1000000 offset=0
 
 prdcr_add name=localhost1 host=localhost type=active xprt=${XPRT} port=${port1} interval=1000000

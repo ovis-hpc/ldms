@@ -1,6 +1,6 @@
 export plugname=lnet_stats
 portbase=61016
-export statfile=/proc/sys/lnet/stats
+#export statfile=/proc/sys/lnet/stats
 #echo "1 2 3 4 5 6 7 8 9 10 11" >$statfile
 LDMSD `seq 3`
 MESSAGE ldms_ls on host 1:
