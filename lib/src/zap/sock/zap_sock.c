@@ -245,7 +245,6 @@ static void z_sock_buff_reset(z_sock_buff_t buff)
 {
 	buff->alen += buff->len;
 	buff->len = 0;
-	bzero(buff->data, buff->alen);
 }
 
 static int z_sock_buff_extend(z_sock_buff_t buff, size_t new_sz)
