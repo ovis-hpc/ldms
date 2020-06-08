@@ -1581,8 +1581,13 @@ int main(int argc, char **argv) {
 			cleanup(rc, "Failed to daemonize the process");
 		}
 	}
-	if (!translator_name)
-		cleanup(EINVAL, "No translator plugin is given.");
+	if (!translator_name) {
+		ldmsd_log(LDMSD_LINFO, "No translator given. 'scripting translator' is used.\n");
+		translator_name = strdup("scripting");
+		if (!translator_name) {
+			cleanup(ENOMEM, "Out of memory");
+		}
+	}
 
 	ldmsd_plugin_inst_t pi = ldmsd_translator_load(translator_name);
 

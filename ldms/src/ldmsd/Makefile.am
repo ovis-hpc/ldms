@@ -123,8 +123,7 @@ pkglib_LTLIBRARIES += libstore.la
 # translator plugin
 ldmsdinclude_HEADERS += ldmsd_translator.h
 libtranslator_la_SOURCES = ldmsd_translator.c
-libtranslator_la_LIBADD = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@ \
-			  -ljson_util
+libtranslator_la_LIBADD = $(top_builddir)/lib/src/json/libjson_util.la
 libtranslator_la_CFLAGS = $(AM_CFLAGS)
 pkglib_LTLIBRARIES += libtranslator.la
 

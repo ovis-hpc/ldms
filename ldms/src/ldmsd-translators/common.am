@@ -2,16 +2,16 @@
 # Variables exporting to translator subdirectories #
 #################################################
 
-TRANSLATOR_CFLAGS = @OVIS_LIB_INCDIR_FLAG@ \
-		 -I$(top_builddir)/src \
-		 -I$(top_srcdir)/src \
-		 -I$(top_srcdir)/src/core \
-		 -I$(top_srcdir)/src/ldmsd
+TRANSLATOR_CFLAGS = -I$(top_srcdir)/lib/src \
+		    -I$(top_builddir) \
+		    -I$(top_srcdir)/ldms/src \
+		    -I$(top_srcdir)/ldms/src/core \
+		    -I$(top_srcdir)/ldms/src/ldmsd
 export TRANSLATOR_CFLAGS
 
-TRANSLATOR_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+TRANSLATOR_LDFLAGS =
 export TRANSLATOR_LDFLAGS
 
-TRANSLATOR_LIBADD = $(top_builddir)/src/ldmsd/libtranslator.la
+TRANSLATOR_LIBADD = $(top_builddir)/ldms/src/ldmsd/libtranslator.la
 export TRANSLATOR_LIBADD
 #---------------------------------------------#

@@ -702,6 +702,7 @@ ldms/src/ldmsd-stores/store_app/Makefile
 ldms/scripts/Makefile
 ldms/src/test/Makefile
 ldms/src/ldmsd-translators/Makefile
+ldms/src/ldmsd-translators/scripting/Makefile
 ldms/etc/Makefile
 ldms/etc/systemd/Makefile
 ldms/python/Makefile
