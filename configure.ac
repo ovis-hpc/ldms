@@ -34,9 +34,13 @@ AX_PREFIX_CONFIG_H_G(ovis-ldms-config.h,,,[
 AM_PROG_LIBTOOL
 AC_LIB_RPATH
 
-dnl if LEX and/or YACC are not available, the configure still won't fail
+dnl if LEX is not available, the configure still won't fail
 AC_PROG_LEX
-AC_PROG_YACC
+
+AC_ARG_VAR([BISON], [bison command])
+AC_CHECK_PROG([BISON], [bison -y], [bison -y], [no])
+AS_IF([test "x$BISON" = "xno"], [AC_MSG_ERROR([bison not found])])
+
 dnl check for python interpreter
 AM_PATH_PYTHON([2.6])
 

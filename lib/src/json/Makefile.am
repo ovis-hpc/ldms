@@ -17,7 +17,7 @@ clean-local:
 json_parser.c: json_parser.h json_util.h
 
 json_parser.h: json_parser.y
-	$(YACC) --defines=json_parser.h -o json_parser.c $<
+	$(BISON) --defines=json_parser.h -o json_parser.c $<
 
 json_lexer.c: json_lexer.l json_util.h json_parser.h
 	$(LEX) -o $@ $<
