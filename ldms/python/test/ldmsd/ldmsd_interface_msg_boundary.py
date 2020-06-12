@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2
 
 # Copyright (c) 2017-2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
