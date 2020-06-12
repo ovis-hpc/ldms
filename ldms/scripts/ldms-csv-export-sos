@@ -1,4 +1,4 @@
-#! /usr/bin/env python
+#! /usr/bin/env python2
 # currently dump sos import map and optionally schema
 import argparse
 import sys
