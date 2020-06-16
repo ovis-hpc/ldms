@@ -63,6 +63,7 @@ extern int ldmsd_req_debug;
 
 #define LDMSD_MSG_TYPE_REQ  1
 #define LDMSD_MSG_TYPE_RESP 2
+#define LDMSD_MSG_TYPE_STREAM 3
 
 /**
  * LDMSD messages are either requests or response. Each message may consist
@@ -255,6 +256,7 @@ json_entity_t ldmsd_process_cfgobj_requests(json_entity_t req, uint32_t msg_no,
 ldmsd_req_ctxt_t ldmsd_handle_record(ldmsd_rec_hdr_t rec, ldmsd_cfg_xprt_t xprt);
 int ldmsd_process_msg_request(ldmsd_req_ctxt_t reqc);
 int ldmsd_process_msg_response(ldmsd_req_ctxt_t reqc);
+int ldmsd_process_msg_stream(ldmsd_req_ctxt_t reqc);
 
 int __ldmsd_send_error(ldmsd_cfg_xprt_t xprt, uint32_t msg_no,
 				ldmsd_req_buf_t _buf, uint32_t errcode,

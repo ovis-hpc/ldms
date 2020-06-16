@@ -280,6 +280,7 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 	reqc = ldmsd_handle_record(rec, xprt);
 	if (!reqc)
 		goto out;
+
 	ldmsd_req_ctxt_ref_get(reqc, "handle");
 	switch (rec->type) {
 	case LDMSD_MSG_TYPE_REQ:
@@ -287,6 +288,9 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 		break;
 	case LDMSD_MSG_TYPE_RESP:
 		rc = ldmsd_process_msg_response(reqc);
+		break;
+	case LDMSD_MSG_TYPE_STREAM:
+		rc = ldmsd_process_msg_stream(reqc);
 		break;
 	default:
 		errstr = "ldmsd received an unrecognized request type";

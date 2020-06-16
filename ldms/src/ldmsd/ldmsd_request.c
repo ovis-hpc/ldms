@@ -1414,6 +1414,46 @@ int ldmsd_process_msg_response(ldmsd_req_ctxt_t reqc)
 	return rc;
 }
 
+int ldmsd_process_msg_stream(ldmsd_req_ctxt_t reqc)
+{
+	size_t offset = 0;
+	int rc = 0;
+	char *stream_name, *data;
+	enum ldmsd_stream_type_e stream_type;
+	json_entity_t entity = NULL;
+	json_parser_t p = NULL;
+
+
+	__ldmsd_stream_extract_hdr(reqc->recv_buf->buf, &stream_name,
+					&stream_type, &data, &offset);
+
+	if (LDMSD_STREAM_JSON == stream_type) {
+		p = json_parser_new(0);
+		if (!p) {
+			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+			return ENOMEM;
+		}
+		rc = json_parse_buffer(p, data,
+				reqc->recv_buf->off - offset, &entity);
+		if (rc) {
+			ldmsd_log(LDMSD_LERROR, "Failed to parse a JSON stream '%s'.\n",
+					stream_name);
+			goto out;
+		}
+	}
+
+	ldmsd_stream_deliver(stream_name, stream_type, data,
+					reqc->recv_buf->off - offset, entity);
+out:
+	if (p)
+		json_parser_free(p);
+	if (entity)
+		json_entity_free(entity);
+	ldmsd_req_ctxt_free(reqc);
+	/* Not sending any response back to the publisher */
+	return rc;
+}
+
 json_entity_t ldmsd_process_cfgobj_requests(json_entity_t req, uint32_t msg_no,
 						struct ldmsd_sec_ctxt *sctxt)
 {

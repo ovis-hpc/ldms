@@ -71,98 +71,52 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	return 0;
 }
 
-static int stream_publish_handler(ldmsd_req_hdr_t req)
+static int stream_publish_handler(ldmsd_rec_hdr_t req)
 {
+	int rc = 0;
+	char *buf = (char *)(req + 1);
 	char *stream_name;
-	ldmsd_req_attr_t attr;
-	json_parser_t parser;
+	enum ldmsd_stream_type_e type;
+	char *data;
+	size_t offset;
+	size_t data_len;
+	json_parser_t parser = NULL;
 	json_entity_t entity = NULL;
 
-	attr = ldmsd_first_attr(req);
-	while (attr->discrim) {
-		if (attr->attr_id == LDMSD_ATTR_NAME)
-			break;
-		attr = ldmsd_next_attr(attr);
+	__ldmsd_stream_extract_hdr(buf, &stream_name, &type, &data, &offset);
+	data_len = req->rec_len - sizeof(*req) - offset;
+	if (LDMSD_STREAM_JSON == type) {
+		parser = json_parser_new(0);
+		if (!parser) {
+			msglog("Out of memory\n");
+			rc = ENOMEM;
+			goto out;
+		}
+		rc = json_parse_buffer(parser, data, data_len, &entity);
+		if (rc) {
+			msglog("Error %d: Failed to parse the JSON stream buffer. '%s'\n",
+							rc, data);
+			goto out;
+		}
 	}
-	if (!attr->attr_value) {
-		msglog("The stream name is missing, malformed stream request.\n");
-		exit(5);
-	}
-	stream_name = strdup((char *)attr->attr_value);
-
-	attr = ldmsd_first_attr(req);
-	while (attr->discrim) {
-		if (attr->attr_id == LDMSD_ATTR_STRING)
-			break;
-		attr = ldmsd_next_attr(attr);
-	}
-	if (attr->discrim) {
-		ldmsd_stream_deliver(stream_name, LDMSD_STREAM_STRING,
-				     (char *)attr->attr_value, attr->attr_len, NULL);
-		free(stream_name);
-		return 0;
-	}
-
-	attr = ldmsd_first_attr(req);
-	while (attr->discrim) {
-		if (attr->attr_id == LDMSD_ATTR_JSON)
-			break;
-		attr = ldmsd_next_attr(attr);
-	}
-	if (!attr->discrim) {
-		msglog("The stream payload is missing, malformed stream request.\n");
-		exit(6);
-	}
-
-	parser = json_parser_new(0);
-	if (!parser) {
-		msglog("Error creating JSon parser.\n");
-		exit(7);
-	}
-	int rc = json_parse_buffer(parser,
-				   (char *)attr->attr_value, attr->attr_len,
-				   &entity);
-	json_parser_free(parser);
-	if (rc) {
-		msglog("Syntax error parsing JSon payload.\n");
-		msglog("%s\n", attr->attr_value);
-		exit(8);
-	}
-	ldmsd_stream_deliver(stream_name, LDMSD_STREAM_JSON,
-			     (char *)attr->attr_value, attr->attr_len, entity);
-	free(stream_name);
-	json_entity_free(entity);
-	return 0;
+	ldmsd_stream_deliver(stream_name, type, data, data_len, entity);
+out:
+	if (parser)
+		json_parser_free(parser);
+	if (entity)
+		json_entity_free(entity);
+	return rc;
 }
 
-int process_request(ldms_t x, ldmsd_req_hdr_t request)
+int process_request(ldms_t x, ldmsd_rec_hdr_t request)
 {
-	uint32_t req_id;
-
-	ldmsd_ntoh_req_msg(request);
-
-	if (request->marker != LDMSD_RECORD_MARKER) {
-		msglog("Config request is missing record marker");
-		exit(3);
-	}
-	req_id = request->req_id;
-	if (req_id != LDMSD_STREAM_PUBLISH_REQ) {
-		msglog("Unexpected request id %d\n", req_id);
-		exit(4);
-	}
-
-	int rc = stream_publish_handler(request);
-
-	request->flags = LDMSD_REC_SOM_F | LDMSD_REC_EOM_F;
-	request->rsp_err = rc;
-	request->rec_len = sizeof(*request);
-	ldmsd_hton_rec_hdr(request);
-	return ldms_xprt_send(x, (char *)request, sizeof(*request));
+	ldmsd_ntoh_rec_hdr(request);
+	return stream_publish_handler(request);
 }
 
 static void recv_msg(ldms_t x, char *data, size_t data_len)
 {
-	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)data;
+	ldmsd_rec_hdr_t request = (ldmsd_rec_hdr_t)data;
 
 	if (ntohl(request->rec_len) > ldms_xprt_msg_max(x)) {
 		msglog("Test command does not support multi-record stream data");
@@ -170,10 +124,11 @@ static void recv_msg(ldms_t x, char *data, size_t data_len)
 	}
 
 	switch (ntohl(request->type)) {
-	case LDMSD_REQ_TYPE_CONFIG_CMD:
+	case LDMSD_MSG_TYPE_STREAM:
 		(void)process_request(x, request);
 		break;
-	case LDMSD_REQ_TYPE_CONFIG_RESP:
+	case LDMSD_MSG_TYPE_REQ:
+	case LDMSD_MSG_TYPE_RESP:
 	default:
 		msglog("Unexpected request type %d in stream data", ntohl(request->type));
 		exit(2);

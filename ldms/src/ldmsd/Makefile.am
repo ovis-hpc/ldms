@@ -30,19 +30,19 @@ ldms_ls_LDFLAGS = $(AM_LDFLAGS) \
 		  -lpthread \
 		  @LDFLAGS_GETTIME@
 
-#sbin_PROGRAMS += ldmsd_upload
-#ldmsd_upload_SOURCES = ldmsd_upload.c
-#ldmsd_upload_CFLAGS = $(AM_CFLAGS) -DLDMSD_UPLOAD_CMD
-#ldmsd_upload_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
-#ldmsd_upload_LDFLAGS = $(AM_LDFLAGS) -pthread \
-#		       $(top_builddir)/lib/src/ovis_util/libovis_util.la
-#
-#lib_LTLIBRARIES += libldmsd_stream.la
-#libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h \
-#			     ../core/ldms.h ../core/ldms_core.h \
-#			     ldmsd_request_util.c
-#libldmsd_stream_la_LIBADD = $(CORE)/libldms.la
-#
+sbin_PROGRAMS += ldmsd_upload
+ldmsd_upload_SOURCES = ldmsd_upload.c
+ldmsd_upload_CFLAGS = $(AM_CFLAGS) -DLDMSD_UPLOAD_CMD
+ldmsd_upload_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la
+ldmsd_upload_LDFLAGS = $(AM_LDFLAGS) -pthread \
+		       $(top_builddir)/lib/src/ovis_util/libovis_util.la
+
+lib_LTLIBRARIES += libldmsd_stream.la
+libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h \
+			     ../core/ldms.h ../core/ldms_core.h \
+			     ldmsd_request_util.c
+libldmsd_stream_la_LIBADD = $(CORE)/libldms.la
+
 lib_LTLIBRARIES += librequest.la
 librequest_la_SOURCES = ../core/ldms.h ../core/ldms_core.h ldmsd_request_util.c
 librequest_la_LIBADD = $(CORE)/libldms.la
@@ -58,8 +58,7 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_listen.c
 #	ldmsd_failover.c ldmsd_group.c
 ldmsd_CFLAGS = $(AM_CFLAGS) -rdynamic
-# ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la libsampler.la libstore.la
-ldmsd_LDADD = $(CORE)/libldms.la librequest.la libsampler.la libstore.la
+ldmsd_LDADD = $(CORE)/libldms.la librequest.la libldmsd_stream.la libsampler.la libstore.la
 ldmsd_LDFLAGS = $(AM_LDFLAGS) \
 		$(top_builddir)/lib/src/zap/libzap.la \
 		$(top_builddir)/lib/src/mmalloc/libmmalloc.la \
