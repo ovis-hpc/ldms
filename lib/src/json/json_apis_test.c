@@ -294,6 +294,79 @@ static void test_json_dict_build()
 	assert(is_same_entity(json_attr_value(j[JSON_ATTR_VALUE]), json_value_find(d, "attr")));
 }
 
+static void test_json_dict_append()
+{
+	json_entity_t d1, d2, attr;
+	int values[4] = {1, 2, 3, 4};
+	int found[4] = {0};
+	int rc, i, v;
+
+	d1 = json_dict_build(NULL,
+			JSON_INT_VALUE, "1", 1,
+			JSON_INT_VALUE, "2", 2,
+			-1);
+	d2 = json_dict_build(NULL,
+			JSON_INT_VALUE, "3", 3,
+			JSON_INT_VALUE, "4", 4,
+			-1);
+
+	rc = json_dict_merge(d1, d2);
+	assert(0 == rc);
+
+	for (attr = json_attr_first(d1); attr; attr = json_attr_next(attr)) {
+		v = json_value_int(json_attr_value(attr));
+		for (i = 0; i < 4; i++) {
+			if (values[i] == v) {
+				found[i] = 1;
+				break;
+			}
+		}
+		assert(i < 4); /* Unknown value */
+	}
+
+	/* Check if all values are in the dict */
+	for (i = 0; i < 4; i++) {
+		assert(found[i]); /* The attribute hasn't been found */
+	}
+
+	json_entity_free(d1);
+	json_entity_free(d2);
+
+	int values2[5] = {1, 2, 3, 4, 5};
+	int found2[5] = {0};
+
+	d1 = json_dict_build(NULL,
+			JSON_INT_VALUE, "1", 1,
+			JSON_INT_VALUE, "int", 0,
+			JSON_INT_VALUE, "2", 2,
+			-1);
+	d2 = json_dict_build(NULL,
+			JSON_INT_VALUE, "3", 3,
+			JSON_INT_VALUE, "4", 4,
+			JSON_INT_VALUE, "int", 5,
+			-1);
+	rc = json_dict_merge(d1, d2);
+	assert(rc);
+
+	for (attr = json_attr_first(d1); attr; attr = json_attr_next(attr)) {
+		v = json_value_int(json_attr_value(attr));
+		for (i = 0; i < 5; i++) {
+			if (values2[i] == v) {
+				found2[i] = 1;
+				break;
+			}
+		}
+		assert(i < 5);
+	}
+
+	for (i = 0; i < 5; i ++) {
+		assert(found2[i]);
+	}
+
+	json_entity_free(d1);
+	json_entity_free(d2);
+}
+
 void test_json_list_apis()
 {
 	json_entity_t l, item;
