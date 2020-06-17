@@ -451,6 +451,20 @@ void json_attr_add(json_entity_t d, json_entity_t a)
 	htbl_ins(d->value.dict_->attr_table, &a->value.attr_->attr_ent);
 }
 
+int json_dict_merge(json_entity_t dst, json_entity_t src)
+{
+	json_entity_t a, b;
+	assert(dst->type == JSON_DICT_VALUE);
+	assert(src->type == JSON_DICT_VALUE);
+	for (a = json_attr_first(src); a; a = json_attr_next(a)) {
+		b = json_entity_copy(a);
+		if (!b)
+			return ENOMEM;
+		json_attr_add(dst, b);
+	}
+	return 0;
+}
+
 static void json_dict_free(json_dict_t d);
 static void json_list_free(json_list_t l);
 int json_attr_mod(json_entity_t d, char *name, ...)
