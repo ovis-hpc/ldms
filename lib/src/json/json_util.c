@@ -214,6 +214,24 @@ json_entity_t json_item_pop(json_entity_t a, int idx)
 	return item;
 }
 
+int json_item_rem(json_entity_t l, json_entity_t item)
+{
+	json_entity_t i;
+	assert(l->type == JSON_LIST_VALUE);
+	for (i = json_item_first(l); i; i = json_item_next(i)) {
+		if (i == item) {
+			break;
+		}
+	}
+	if (i) {
+		TAILQ_REMOVE(&l->value.list_->item_list, i, item_entry);
+		l->value.list_->item_count--;
+	} else {
+		return ENOENT;
+	}
+	return 0;
+}
+
 static json_entity_t json_attr_new(const char *name, json_entity_t value)
 {
 	json_entity_t s = json_str_new(name);
