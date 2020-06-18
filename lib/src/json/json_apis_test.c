@@ -370,7 +370,7 @@ static void test_json_dict_append()
 void test_json_list_apis()
 {
 	json_entity_t l, item;
-	json_entity_t i1, i2, i3;
+	json_entity_t i1, i2, i3, i4;
 
 	printf(" ---- test_json_list_apis() ----- \n");
 
@@ -378,6 +378,7 @@ void test_json_list_apis()
 	i1 = json_entity_new(JSON_INT_VALUE, 1);
 	i2 = json_entity_new(JSON_INT_VALUE, 2);
 	i3 = json_entity_new(JSON_INT_VALUE, 3);
+	i4 = json_entity_new(JSON_INT_VALUE, 4);
 
 	/* Add an item & get the list length */
 	json_item_add(l, i1);
@@ -407,6 +408,14 @@ void test_json_list_apis()
 	assert(i1 == json_item_first(l));
 	item = json_item_next(json_item_first(l));
 	assert(i3 == item);
+
+	/* Remove an item */
+	json_item_add(l, i4);
+	assert(3 == json_list_len(l));
+	json_item_rem(l, i3);
+	assert(2 == json_list_len(l));
+	assert(i1 == json_item_first(l));
+	assert(i4 == json_item_next(i1));
 
 	json_entity_free(l);
 }
