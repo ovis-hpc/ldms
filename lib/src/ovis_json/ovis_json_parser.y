@@ -127,6 +127,7 @@ item_list: /* empty */ { $$ = new_list_val(); }
     ;
 
 %%
+#include <assert.h>
 json_parser_t json_parser_new(size_t user_data) {
 	json_parser_t p = calloc(1, sizeof *p + user_data);
 	if (p)
@@ -142,12 +143,15 @@ void json_parser_free(json_parser_t parser)
 
 int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_entity_t *pentity)
 {
-	 *pentity = NULL;
-	 if (p->buffer_state) {
-		 /* The previous call did not reset the lexer state */
-		 yy_delete_buffer(p->buffer_state);
-		 p->buffer_state = NULL;
-	 }
-	 return yyparse(p, buf, buf_len, pentity);
+	int rc;
+	*pentity = NULL;
+	/* NB: Force two 0x00 on the end of the buffer for the scanner. If
+	 * the user didn't allocate enough memory, this could corrupt
+	 * memory */
+	buf[buf_len] = 0x00;
+	buf[buf_len+1] = 0x00;
+	assert(NULL != yy_scan_buffer(buf, buf_len+2, p->scanner));
+	rc = yyparse(p, buf, buf_len, pentity);
+	return rc;
 }
 

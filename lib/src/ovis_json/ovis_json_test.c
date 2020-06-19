@@ -71,11 +71,13 @@ static jbuf_t print_entity(jbuf_t jb, json_entity_t e)
 char buffer[1024*1024];
 int main(int argc, char *argv[])
 {
+	FILE *fp = fopen(argv[1], "r");
 	jbuf_t jb = jbuf_new();
 	json_entity_t entity;
 	json_parser_t parser = json_parser_new(0);
-	int rc = fread(buffer, 1, sizeof(buffer), stdin);
+	int rc = fread(buffer, 1, sizeof(buffer), fp);
 	rc = json_parse_buffer(parser, buffer, rc, &entity);
+#if 0
 	if (rc == 0)
 		jb = print_entity(jb, entity);
 	printf("%s\n", jb->buf);
@@ -88,8 +90,9 @@ int main(int argc, char *argv[])
 		if (mpi_rank)
 			print_entity(jb, mpi_rank);
 	}
-	json_entity_free(entity);
 	jbuf_free(jb);
+#endif
+	json_entity_free(entity);
 	json_parser_free(parser);
 	return 0;
 }

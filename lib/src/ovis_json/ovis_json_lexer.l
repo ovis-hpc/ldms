@@ -66,14 +66,11 @@ JSONStringCharacter                     [^"\\]|\\{JSONEscapeSequence}
 JSONString                              \"{JSONStringCharacter}*\"
 
 %%
-	if (!parser->buffer_state) {
-		parser->buffer_state = yy_scan_string(input, parser->scanner);
-		init_yylloc(yylloc_param, yyg);
+	{
+	init_yylloc(yylloc_param, yyg);
 	}
 
 <<EOF>>	{
-	yy_delete_buffer(parser->buffer_state, parser->scanner);
-	parser->buffer_state = NULL;
 	return 0;
 	}
 
