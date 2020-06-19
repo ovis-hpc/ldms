@@ -331,72 +331,72 @@ cdef str ERRNO_SYM(int e):
 
 cdef py_ldms_metric_get_char(Set s, int m_idx):
     cdef char buf[2]
-    buf[0] = ldms_metric_get_char(s.rbd, m_idx)
+    buf[0] = ldms_metric_get_char(s.c_set, m_idx)
     buf[1] = 0 # terminate the string
     return STR(buf)
 
 cdef py_ldms_metric_array_get_str(Set s, int m_idx):
-    return STR(ldms_metric_array_get_str(s.rbd, m_idx))
+    return STR(ldms_metric_array_get_str(s.c_set, m_idx))
 
 cdef py_ldms_metric_get_u8(Set s, int m_idx):
-    return ldms_metric_get_u8(s.rbd, m_idx)
+    return ldms_metric_get_u8(s.c_set, m_idx)
 
 cdef py_ldms_metric_array_get_u8(Set s, int m_idx, int e_idx):
-    return ldms_metric_array_get_u8(s.rbd, m_idx, e_idx)
+    return ldms_metric_array_get_u8(s.c_set, m_idx, e_idx)
 
 cdef py_ldms_metric_get_s8(Set s, int m_idx):
-    return ldms_metric_get_s8(s.rbd, m_idx)
+    return ldms_metric_get_s8(s.c_set, m_idx)
 
 cdef py_ldms_metric_array_get_s8(Set s, int m_idx, int e_idx):
-    return ldms_metric_array_get_s8(s.rbd, m_idx, e_idx)
+    return ldms_metric_array_get_s8(s.c_set, m_idx, e_idx)
 
 cdef py_ldms_metric_get_u16(Set s, int m_idx):
-    return ldms_metric_get_u16(s.rbd, m_idx)
+    return ldms_metric_get_u16(s.c_set, m_idx)
 
 cdef py_ldms_metric_array_get_u16(Set s, int m_idx, int e_idx):
-    return ldms_metric_array_get_u16(s.rbd, m_idx, e_idx)
+    return ldms_metric_array_get_u16(s.c_set, m_idx, e_idx)
 
 cdef py_ldms_metric_get_s16(Set s, int m_idx):
-    return ldms_metric_get_s16(s.rbd, m_idx)
+    return ldms_metric_get_s16(s.c_set, m_idx)
 
 cdef py_ldms_metric_array_get_s16(Set s, int m_idx, int e_idx):
-    return ldms_metric_array_get_s16(s.rbd, m_idx, e_idx)
+    return ldms_metric_array_get_s16(s.c_set, m_idx, e_idx)
 
 cdef py_ldms_metric_get_u32(Set s, int m_idx):
-    return ldms_metric_get_u32(s.rbd, m_idx)
+    return ldms_metric_get_u32(s.c_set, m_idx)
 
 cdef py_ldms_metric_array_get_u32(Set s, int m_idx, int e_idx):
-    return ldms_metric_array_get_u32(s.rbd, m_idx, e_idx)
+    return ldms_metric_array_get_u32(s.c_set, m_idx, e_idx)
 
 cdef py_ldms_metric_get_s32(Set s, int m_idx):
-    return ldms_metric_get_s32(s.rbd, m_idx)
+    return ldms_metric_get_s32(s.c_set, m_idx)
 
 cdef py_ldms_metric_array_get_s32(Set s, int m_idx, int e_idx):
-    return ldms_metric_array_get_s32(s.rbd, m_idx, e_idx)
+    return ldms_metric_array_get_s32(s.c_set, m_idx, e_idx)
 
 cdef py_ldms_metric_get_u64(Set s, int m_idx):
-    return ldms_metric_get_u64(s.rbd, m_idx)
+    return ldms_metric_get_u64(s.c_set, m_idx)
 
 cdef py_ldms_metric_array_get_u64(Set s, int m_idx, int e_idx):
-    return ldms_metric_array_get_u64(s.rbd, m_idx, e_idx)
+    return ldms_metric_array_get_u64(s.c_set, m_idx, e_idx)
 
 cdef py_ldms_metric_get_s64(Set s, int m_idx):
-    return ldms_metric_get_s64(s.rbd, m_idx)
+    return ldms_metric_get_s64(s.c_set, m_idx)
 
 cdef py_ldms_metric_array_get_s64(Set s, int m_idx, int e_idx):
-    return ldms_metric_array_get_s64(s.rbd, m_idx, e_idx)
+    return ldms_metric_array_get_s64(s.c_set, m_idx, e_idx)
 
 cdef py_ldms_metric_get_float(Set s, int m_idx):
-    return ldms_metric_get_float(s.rbd, m_idx)
+    return ldms_metric_get_float(s.c_set, m_idx)
 
 cdef py_ldms_metric_array_get_float(Set s, int m_idx, int e_idx):
-    return ldms_metric_array_get_float(s.rbd, m_idx, e_idx)
+    return ldms_metric_array_get_float(s.c_set, m_idx, e_idx)
 
 cdef py_ldms_metric_get_double(Set s, int m_idx):
-    return ldms_metric_get_double(s.rbd, m_idx)
+    return ldms_metric_get_double(s.c_set, m_idx)
 
 cdef py_ldms_metric_array_get_double(Set s, int m_idx, int e_idx):
-    return ldms_metric_array_get_double(s.rbd, m_idx, e_idx)
+    return ldms_metric_array_get_double(s.c_set, m_idx, e_idx)
 
 METRIC_GETTER_TBL = {
         LDMS_V_CHAR : py_ldms_metric_get_char,
@@ -436,70 +436,70 @@ METRIC_GETTER_TBL = {
 cdef py_ldms_metric_set_char(Set s, int m_idx, val):
     if type(val) not in (str, bytes) or len(val) != 1:
         raise TypeError("A char must be a `str` or `bytes` of length 1")
-    return ldms_metric_set_char(s.rbd, m_idx, BYTES(val)[0])
+    return ldms_metric_set_char(s.c_set, m_idx, BYTES(val)[0])
 
 cdef py_ldms_metric_array_set_str(Set s, int m_idx, val):
-    return ldms_metric_array_set_str(s.rbd, m_idx, BYTES(val))
+    return ldms_metric_array_set_str(s.c_set, m_idx, BYTES(val))
 
 cdef py_ldms_metric_set_u8(Set s, int m_idx, val):
-    return ldms_metric_set_u8(s.rbd, m_idx, val)
+    return ldms_metric_set_u8(s.c_set, m_idx, val)
 
 cdef py_ldms_metric_array_set_u8(Set s, int m_idx, int e_idx, val):
-    return ldms_metric_array_set_u8(s.rbd, m_idx, e_idx, val)
+    return ldms_metric_array_set_u8(s.c_set, m_idx, e_idx, val)
 
 cdef py_ldms_metric_set_s8(Set s, int m_idx, val):
-    return ldms_metric_set_s8(s.rbd, m_idx, val)
+    return ldms_metric_set_s8(s.c_set, m_idx, val)
 
 cdef py_ldms_metric_array_set_s8(Set s, int m_idx, int e_idx, val):
-    return ldms_metric_array_set_s8(s.rbd, m_idx, e_idx, val)
+    return ldms_metric_array_set_s8(s.c_set, m_idx, e_idx, val)
 
 cdef py_ldms_metric_set_u16(Set s, int m_idx, val):
-    return ldms_metric_set_u16(s.rbd, m_idx, val)
+    return ldms_metric_set_u16(s.c_set, m_idx, val)
 
 cdef py_ldms_metric_array_set_u16(Set s, int m_idx, int e_idx, val):
-    return ldms_metric_array_set_u16(s.rbd, m_idx, e_idx, val)
+    return ldms_metric_array_set_u16(s.c_set, m_idx, e_idx, val)
 
 cdef py_ldms_metric_set_s16(Set s, int m_idx, val):
-    return ldms_metric_set_s16(s.rbd, m_idx, val)
+    return ldms_metric_set_s16(s.c_set, m_idx, val)
 
 cdef py_ldms_metric_array_set_s16(Set s, int m_idx, int e_idx, val):
-    return ldms_metric_array_set_s16(s.rbd, m_idx, e_idx, val)
+    return ldms_metric_array_set_s16(s.c_set, m_idx, e_idx, val)
 
 cdef py_ldms_metric_set_u32(Set s, int m_idx, val):
-    return ldms_metric_set_u32(s.rbd, m_idx, val)
+    return ldms_metric_set_u32(s.c_set, m_idx, val)
 
 cdef py_ldms_metric_array_set_u32(Set s, int m_idx, int e_idx, val):
-    return ldms_metric_array_set_u32(s.rbd, m_idx, e_idx, val)
+    return ldms_metric_array_set_u32(s.c_set, m_idx, e_idx, val)
 
 cdef py_ldms_metric_set_s32(Set s, int m_idx, val):
-    return ldms_metric_set_s32(s.rbd, m_idx, val)
+    return ldms_metric_set_s32(s.c_set, m_idx, val)
 
 cdef py_ldms_metric_array_set_s32(Set s, int m_idx, int e_idx, val):
-    return ldms_metric_array_set_s32(s.rbd, m_idx, e_idx, val)
+    return ldms_metric_array_set_s32(s.c_set, m_idx, e_idx, val)
 
 cdef py_ldms_metric_set_u64(Set s, int m_idx, val):
-    return ldms_metric_set_u64(s.rbd, m_idx, val)
+    return ldms_metric_set_u64(s.c_set, m_idx, val)
 
 cdef py_ldms_metric_array_set_u64(Set s, int m_idx, int e_idx, val):
-    return ldms_metric_array_set_u64(s.rbd, m_idx, e_idx, val)
+    return ldms_metric_array_set_u64(s.c_set, m_idx, e_idx, val)
 
 cdef py_ldms_metric_set_s64(Set s, int m_idx, val):
-    return ldms_metric_set_s64(s.rbd, m_idx, val)
+    return ldms_metric_set_s64(s.c_set, m_idx, val)
 
 cdef py_ldms_metric_array_set_s64(Set s, int m_idx, int e_idx, val):
-    return ldms_metric_array_set_s64(s.rbd, m_idx, e_idx, val)
+    return ldms_metric_array_set_s64(s.c_set, m_idx, e_idx, val)
 
 cdef py_ldms_metric_set_float(Set s, int m_idx, val):
-    return ldms_metric_set_float(s.rbd, m_idx, val)
+    return ldms_metric_set_float(s.c_set, m_idx, val)
 
 cdef py_ldms_metric_array_set_float(Set s, int m_idx, int e_idx, val):
-    return ldms_metric_array_set_float(s.rbd, m_idx, e_idx, val)
+    return ldms_metric_array_set_float(s.c_set, m_idx, e_idx, val)
 
 cdef py_ldms_metric_set_double(Set s, int m_idx, val):
-    return ldms_metric_set_double(s.rbd, m_idx, val)
+    return ldms_metric_set_double(s.c_set, m_idx, val)
 
 cdef py_ldms_metric_array_set_double(Set s, int m_idx, int e_idx, val):
-    return ldms_metric_array_set_double(s.rbd, m_idx, e_idx, val)
+    return ldms_metric_array_set_double(s.c_set, m_idx, e_idx, val)
 
 METRIC_SETTER_TBL = {
         LDMS_V_CHAR : py_ldms_metric_set_char,
@@ -1112,7 +1112,7 @@ cdef class MetricArray(list):
     >>> a == [7,8,9,10,11] # comparing to the list works too
     """
     cdef Set _set
-    cdef ldms_set_t _rbd
+    cdef ldms_set_t _c_set
     cdef ldms_value_type _type
     cdef int _mid
     cdef int _len
@@ -1121,15 +1121,15 @@ cdef class MetricArray(list):
 
     def __init__(self, Set lset, int metric_id):
         self._set = lset
-        self._rbd = lset.rbd
+        self._c_set = lset.c_set
         self._mid = metric_id
-        self._type = ldms_metric_type_get(self._rbd, self._mid)
+        self._type = ldms_metric_type_get(self._c_set, self._mid)
         if not ldms_type_is_array(self._type):
             raise TypeError("set {}[{}] is not an array"\
                             .format(lset.name, metric_id))
         if self._type == LDMS_V_CHAR_ARRAY:
             raise TypeError("CHAR_ARRAY should be access as `str`")
-        self._len = ldms_metric_array_get_len(self._rbd, self._mid)
+        self._len = ldms_metric_array_get_len(self._c_set, self._mid)
         self._getter = METRIC_GETTER_TBL[self._type]
         self._setter = METRIC_SETTER_TBL[self._type]
 
@@ -1292,7 +1292,7 @@ cdef class Set(object):
     >>> s.as_dict() # generate a dictionary { metric_key: metric_value }
     >>> s.as_list() # generate a list [ metric_value ]
     """
-    cdef ldms_set_t rbd
+    cdef ldms_set_t c_set
     cdef sem_t _sem
     cdef int _update_rc
     # getter/setter for each metric
@@ -1300,7 +1300,7 @@ cdef class Set(object):
     cdef list _setter
 
     def __cinit__(self, *args, **kwargs):
-        self.rbd = NULL
+        self.c_set = NULL
         sem_init(&self._sem, 0, 0)
 
     def __init__(self, str name, Schema schema,
@@ -1309,22 +1309,22 @@ cdef class Set(object):
         self._getter = list()
         self._setter = list()
         if set_ptr:
-            self.rbd = <ldms_set_t>set_ptr.c_ptr
+            self.c_set = <ldms_set_t>set_ptr.c_ptr
         elif schema:
             if not name:
                 raise AttributeError("Missing `name` parameter")
             uid = uid if uid else os.geteuid()
             gid = gid if gid else os.getegid()
-            self.rbd = ldms_set_new_with_auth(BYTES(name), schema._schema,
+            self.c_set = ldms_set_new_with_auth(BYTES(name), schema._schema,
                                               uid, gid, perm)
-            if not self.rbd:
+            if not self.c_set:
                 raise RuntimeError("Set creation error: {}"\
                                    .format(ERRNO_SYM(errno)))
         else:
             raise AttributeError("Requires `name` and `schema`")
         cdef ldms_value_type t
         for i in range(0, len(self)):
-            t = ldms_metric_type_get(self.rbd, i)
+            t = ldms_metric_type_get(self.c_set, i)
             if ldms_type_is_array(t) and t != LDMS_V_CHAR_ARRAY:
                 ma = MetricArray(self, i)
                 self._getter.append(ma)
@@ -1334,8 +1334,8 @@ cdef class Set(object):
                 self._setter.append(METRIC_SETTER_TBL[t])
 
     def __del__(self):
-        if self.rbd:
-            ldms_set_put(self.rbd)
+        if self.c_set:
+            ldms_set_put(self.c_set)
 
     def __iter__(self):
         """iter(self) - iterates over keys (metric names) of the set"""
@@ -1343,28 +1343,28 @@ cdef class Set(object):
 
     def publish(self):
         """S.publish() - make the set available to LDMS peers"""
-        cdef rc = ldms_set_publish(self.rbd)
+        cdef rc = ldms_set_publish(self.c_set)
         if rc:
             raise RuntimeError("ldms_set_publish() failed: {}". \
                                format(ERRNO_SYM(rc)))
 
     def unpublish(self):
         """S.unpublish() - make the set unavailable to LDMS peers"""
-        cdef rc = ldms_set_unpublish(self.rbd)
+        cdef rc = ldms_set_unpublish(self.c_set)
         if rc:
             raise RuntimeError("ldms_set_unpublish() failed: {}". \
                                format(ERRNO_SYM(rc)))
 
     def delete(self):
         """S.delete() - delete the set"""
-        ldms_set_delete(self.rbd)
+        ldms_set_delete(self.c_set)
 
     def transaction_begin(self):
         """S.transaction_begin() - begin data transaction
 
         The application should call this function before modifying metrics.
         """
-        cdef rc = ldms_transaction_begin(self.rbd)
+        cdef rc = ldms_transaction_begin(self.c_set)
         if rc:
             raise RuntimeError("ldms_transaction_begin() error: {}". \
                                format(ERRNO_SYM(rc)))
@@ -1375,7 +1375,7 @@ cdef class Set(object):
         The application shall call this function after it has done modifying
         metrics.
         """
-        cdef rc = ldms_transaction_end(self.rbd)
+        cdef rc = ldms_transaction_end(self.c_set)
         if rc:
             raise RuntimeError("ldms_transaction_end() error: {}". \
                                format(ERRNO_SYM(rc)))
@@ -1383,21 +1383,21 @@ cdef class Set(object):
     def keys(self):
         """S.keys() - iterates over keys (metric names) of the set"""
         cdef int i
-        for i in range(0, ldms_set_card_get(self.rbd)):
-            yield STR(ldms_metric_name_get(self.rbd, i))
+        for i in range(0, ldms_set_card_get(self.c_set)):
+            yield STR(ldms_metric_name_get(self.c_set, i))
 
     def values(self):
         """S.values() - iterate over metric values of the set"""
         cdef int i
-        for i in range(0, ldms_set_card_get(self.rbd)):
+        for i in range(0, ldms_set_card_get(self.c_set)):
             v = self.get_metric(i)
             yield v
 
     def items(self):
         """S.items() - iterate over metrics, yielding (key, value)"""
         cdef int i
-        for i in range(0, ldms_set_card_get(self.rbd)):
-            k = STR(ldms_metric_name_get(self.rbd, i))
+        for i in range(0, ldms_set_card_get(self.c_set)):
+            k = STR(ldms_metric_name_get(self.c_set, i))
             v = self.get_metric(i)
             yield (k, v)
 
@@ -1432,7 +1432,7 @@ cdef class Set(object):
         cdef int rc
         tpl = (self, cb, cb_arg)
         Py_INCREF(tpl)
-        rc = ldms_xprt_update(self.rbd, update_cb, <void*>tpl)
+        rc = ldms_xprt_update(self.c_set, update_cb, <void*>tpl)
         if rc: # synchronous error
             Py_DECREF(tpl)
             raise RuntimeError("ldms_xprt_update() error: {}"\
@@ -1448,22 +1448,22 @@ cdef class Set(object):
     @property
     def instance_name(self):
         """Set instance name"""
-        return STR(ldms_set_instance_name_get(self.rbd))
+        return STR(ldms_set_instance_name_get(self.c_set))
 
     @property
     def schema_name(self):
         """Schema name"""
-        return STR(ldms_set_schema_name_get(self.rbd))
+        return STR(ldms_set_schema_name_get(self.c_set))
 
     @property
     def producer_name(self):
         """The name of the ldmsd producing the original set"""
-        return STR(ldms_set_producer_name_get(self.rbd))
+        return STR(ldms_set_producer_name_get(self.c_set))
 
     @producer_name.setter
     def producer_name(self, val):
         """`producer_name` setter"""
-        cdef int rc = ldms_set_producer_name_set(self.rbd, BYTES(val))
+        cdef int rc = ldms_set_producer_name_set(self.c_set, BYTES(val))
         if rc:
             raise RuntimeError("ldms_set_producer_name_set() error: {}" \
                                .format(ERRNO_SYM(rc)))
@@ -1471,7 +1471,7 @@ cdef class Set(object):
     @property
     def card(self):
         """The number of metrics in the set"""
-        return ldms_set_card_get(self.rbd)
+        return ldms_set_card_get(self.c_set)
 
     def __len__(self):
         """len(S) - the number of metrics in the set"""
@@ -1480,61 +1480,61 @@ cdef class Set(object):
     @property
     def uid(self):
         """Set owner UID"""
-        return ldms_set_uid_get(self.rbd)
+        return ldms_set_uid_get(self.c_set)
 
     @property
     def gid(self):
         """Set owner GID"""
-        return ldms_set_gid_get(self.rbd)
+        return ldms_set_gid_get(self.c_set)
 
     @property
     def perm(self):
         """Set permission (Unix-style int)"""
-        return ldms_set_perm_get(self.rbd)
+        return ldms_set_perm_get(self.c_set)
 
     @property
     def meta_sz(self):
         """The size of the meta-data part of the set"""
-        return ldms_set_meta_sz_get(self.rbd)
+        return ldms_set_meta_sz_get(self.c_set)
 
     @property
     def data_sz(self):
         """The size of the data part of the set"""
-        return ldms_set_data_sz_get(self.rbd)
+        return ldms_set_data_sz_get(self.c_set)
 
     @property
     def name(self):
         """The set instance name"""
-        return STR(ldms_set_name_get(self.rbd))
+        return STR(ldms_set_name_get(self.c_set))
 
     @property
     def meta_gn(self):
         """meta-data generation number"""
-        return ldms_set_meta_gn_get(self.rbd)
+        return ldms_set_meta_gn_get(self.c_set)
 
     @property
     def data_gn(self):
         """data generation number"""
-        return ldms_set_data_gn_get(self.rbd)
+        return ldms_set_data_gn_get(self.c_set)
 
     @property
     def is_consistent(self):
         """True if the set is consistent (not in the middle of modification)"""
-        return bool(ldms_set_is_consistent(self.rbd))
+        return bool(ldms_set_is_consistent(self.c_set))
 
     @property
     def transaction_timestamp(self):
         """The timestamp of the latest data modification transaction"""
-        return ldms_transaction_timestamp_get(self.rbd)
+        return ldms_transaction_timestamp_get(self.c_set)
 
     @property
     def transaction_duration(self):
         """The amount of time used in the latest data modification transaction"""
-        return ldms_transaction_duration_get(self.rbd)
+        return ldms_transaction_duration_get(self.c_set)
 
     def info_get(self, key):
         """S.info_get(key) - get setinfo[key]"""
-        return STR(ldms_set_info_get(self.rbd, BYTES(key)))
+        return STR(ldms_set_info_get(self.c_set, BYTES(key)))
 
     def __getitem__(self, key):
         if type(key) == int:
@@ -1547,14 +1547,14 @@ cdef class Set(object):
 
     def get_metric_by_name(self, key):
         """S.get_metric_by_name(key) - equivalent to S[key]"""
-        cdef int idx = ldms_metric_by_name(self.rbd, BYTES(key))
+        cdef int idx = ldms_metric_by_name(self.c_set, BYTES(key))
         if idx < 0:
             raise KeyError("metric '{}' not found".format(key))
         return self.get_metric(idx)
 
     def get_metric(self, int idx):
         """S.get_metric(idx) - equivalent to S[idx]"""
-        cdef ldms_value_type t = ldms_metric_type_get(self.rbd, idx)
+        cdef ldms_value_type t = ldms_metric_type_get(self.c_set, idx)
         g = self._getter[idx]
         return g(self, idx)
 
@@ -1564,10 +1564,10 @@ cdef class Set(object):
         if type(metric) == int:
             idx = metric
         else:
-            idx = ldms_metric_by_name(self.rbd, BYTES(metric))
+            idx = ldms_metric_by_name(self.c_set, BYTES(metric))
             if idx < 0:
                 raise KeyError("Metric '{}' not found".format(metric))
-        return STR(ldms_metric_units_get(self.rbd, idx))
+        return STR(ldms_metric_units_get(self.c_set, idx))
 
     def __setitem__(self, key, val):
         # key can be int, str or slice
@@ -1585,14 +1585,14 @@ cdef class Set(object):
 
     def set_metric_by_name(self, str key, val):
         """S.set_metric_by_name(k, v) - equivalent to S[k]=v"""
-        cdef int idx = ldms_metric_by_name(self.rbd, BYTES(key))
+        cdef int idx = ldms_metric_by_name(self.c_set, BYTES(key))
         if idx < 0:
             raise KeyError("metric '{}' not found".format(key))
         return self.set_metric(idx, val)
 
     def set_metric(self, int metric_id, val, sub_idx=None):
         """S.set_metric(i, v, j=None) - equivalent to S[i]=v or S[i][j]=v"""
-        cdef ldms_value_type t = ldms_metric_type_get(self.rbd, metric_id)
+        cdef ldms_value_type t = ldms_metric_type_get(self.c_set, metric_id)
         cdef int alen
         _setter = self._setter[metric_id]
         if not ldms_type_is_array(t) or t == LDMS_V_CHAR_ARRAY:

@@ -287,9 +287,9 @@ cdef extern from "ldms.h" nogil:
         LDMS_LOOKUP_OK
         LDMS_LOOKUP_ERROR
         LDMS_LOOKUP_REVOKE
-    struct ldms_rbuf_desc:
+    struct ldms_set:
         pass
-    ctypedef ldms_rbuf_desc *ldms_set_t
+    ctypedef ldms_set *ldms_set_t
     ctypedef void (*ldms_lookup_cb_t)(ldms_t x, ldms_lookup_status status,
                                       int more, ldms_set_t s, void *arg)
     int ldms_xprt_lookup(ldms_t x, const char *name, ldms_lookup_flags flags,
