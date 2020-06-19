@@ -391,7 +391,8 @@ static void prdcr_dir_cb_list(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 }
 
 /*
- * Process the directory list and release the deleted sets
+ * Process the deleted set. This will only be received from downstream
+ * peers that are older than 4.3.4
  */
 static void prdcr_dir_cb_del(ldms_t xprt, ldms_dir_t dir, ldmsd_prdcr_t prdcr)
 {

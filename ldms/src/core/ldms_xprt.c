@@ -314,7 +314,18 @@ void __ldms_dir_add_set(struct ldms_set *set)
 
 void __ldms_dir_del_set(struct ldms_set *set)
 {
-	dir_update(set, LDMS_DIR_DEL);
+	/*
+	 * LDMS versions >= 4.3.4 do not send LDMS_DIR_DEL, instead
+	 * they use the two way handshake provided by
+	 * ldms_xprt_set_delete() to inform the peer and receive
+	 * acknowledgment of the set's disuse.
+	 *
+	 * We still handle LDMS_DIR_DEL and pass it to the application
+	 * so that it can interoperate with compute nodes that are
+	 * older than 4.3.4.
+	 *
+	 * dir_update(set, LDMS_DIR_DEL);
+	 */
 }
 
 void __ldms_dir_upd_set(struct ldms_set *set)
