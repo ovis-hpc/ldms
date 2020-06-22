@@ -914,6 +914,7 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	msg->lookup.meta_len = htonl(__le32_to_cpu(set->meta->meta_sz));
 	msg->lookup.card = htonl(__le32_to_cpu(set->meta->card));
 	msg->lookup.array_card = htonl(__le32_to_cpu(set->meta->array_card));
+	msg->lookup.flags = htonl(set->flags); /* flags not in shared memory */
 
 #ifdef DEBUG
 	x->log("%s(): x %p: sharing ... remote lookup ctxt %p\n",
@@ -970,6 +971,28 @@ int __xprt_set_access_check(struct ldms_xprt *x, struct ldms_set *set,
 	return ldms_access_check(x, acc, uid, gid, perm);
 }
 
+static int __process_lookup_req_grp(struct ldms_xprt *x,
+				    struct ldms_request *req,
+				    ldms_grp_t grp, int more)
+{
+	int rc = 0;
+	ldms_set_t set;
+	ldms_grp_rec_t rec;
+	for (rec = ldms_grp_first(grp); rec; rec = ldms_grp_next(grp, rec)) {
+		set = __ldms_find_local_set(rec->name);
+		if (!set) /* it is OK if a member is not found */
+			continue;
+		rc = __send_lookup_reply(x, set, req->hdr.xid, 1);
+		ref_put(&set->ref, "__ldms_find_local_set");
+		if (rc)
+			goto out;
+	}
+	/* lastly, share the group itself */
+	rc = __send_lookup_reply(x, &grp->set, req->hdr.xid, more);
+ out:
+	return rc;
+}
+
 static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *req, uint32_t flags)
 {
 	regex_t regex;
@@ -993,7 +1016,10 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 			rc = ENOENT;
 			goto err_1;
 		}
-		rc = __send_lookup_reply(x, set, req->hdr.xid, 0);
+		if (ldms_is_grp(set))
+			rc = __process_lookup_req_grp(x, req, (ldms_grp_t)set, 0);
+		else
+			rc = __send_lookup_reply(x, set, req->hdr.xid, 0);
 		ldms_set_put(set);
 		if (rc)
 			goto err_1;
@@ -1019,7 +1045,10 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 			more = 1;
 		else
 			more = 0;
-		rc = __send_lookup_reply(x, set, req->hdr.xid, more);
+		if (ldms_is_grp(set))
+			rc = __process_lookup_req_grp(x, req, (ldms_grp_t)set, more);
+		else
+			rc = __send_lookup_reply(x, set, req->hdr.xid, more);
 		if (rc)
 			goto err_1;
 		matched = 1;
@@ -2098,6 +2127,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	struct ldms_rendezvous_lookup_param *lu = &lm->lookup;
 	struct ldms_context *ctxt = (void*)lm->hdr.xid;
 	int rc;
+	uint32_t flags;
 	ldms_name_t schema_name, inst_name;
 
 #ifdef DEBUG
@@ -2141,11 +2171,13 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 
 	/* else, record new ldms_set */
  create:
+	flags = LDMS_SET_F_REMOTE;
+	flags |= (ntohl(lm->lookup.flags) & LDMS_SET_F_GROUP);
 	lset = __ldms_create_set(inst_name->name, schema_name->name,
 			       ntohl(lu->meta_len), ntohl(lu->data_len),
 			       ntohl(lu->card),
 			       ntohl(lu->array_card),
-			       LDMS_SET_F_REMOTE);
+			       flags);
 	if (!lset) {
 		rc = errno;
 		/* unmap ev->map, it is not used */

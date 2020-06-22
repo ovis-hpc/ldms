@@ -74,100 +74,9 @@ void ldmsd_setgrp___del(ldmsd_cfgobj_t obj)
 	if (grp->producer)
 		free(grp->producer);
 	__setgrp_member_list_free(grp->member_list);
-	if (grp->set)
-		ldms_set_delete(grp->set);
+	if (grp->grp)
+		ldms_grp_delete(grp->grp);
 	ldmsd_cfgobj___del(obj);
-}
-
-ldms_set_t __setgrp_start(const char *name, uid_t uid, gid_t gid, mode_t perm,
-			const char *producer, long interval_us, long offset_us)
-{
-	int rc;
-	ldms_set_t set;
-	set = ldms_set_new_with_auth(name, grp_schema, uid, gid, perm);
-	if (!set) {
-		errno = ENOMEM;
-		return NULL;
-	}
-
-	if (producer) {
-		rc = ldms_set_producer_name_set(set, producer);
-		if (rc)
-			goto err;
-	}
-	if (interval_us > 0) {
-		rc = ldmsd_set_update_hint_set(set, interval_us, offset_us);
-		if (rc)
-			goto err;
-	}
-	rc = ldms_set_publish(set);
-	if (rc)
-		goto err;
-	return set;
-err:
-	errno = rc;
-	ldms_set_delete(set);
-	return NULL;
-}
-
-/* Caller must hold the setgroup lock */
-int ldmsd_setgrp_start(const char *name, ldmsd_sec_ctxt_t ctxt)
-{
-	int rc;
-	ldmsd_str_ent_t str;
-	ldmsd_setgrp_t grp;
-
-	grp = ldmsd_setgrp_find(name);
-	if (!grp)
-		return ENOENT;
-
-	ldmsd_setgrp_lock(grp);
-
-	rc = ldmsd_cfgobj_access_check(&grp->obj, 0222, ctxt);
-	if (rc)
-		goto err;
-
-	if (!grp->producer) {
-		grp->producer = strdup(ldmsd_myname_get());
-		if (!grp->producer) {
-			rc = ENOMEM;
-			goto err;
-		}
-	}
-
-	grp->set = __setgrp_start(grp->obj.name, grp->obj.uid, grp->obj.gid,
-					grp->obj.perm, grp->producer,
-					grp->interval_us, grp->offset_us);
-	if (!grp->set) {
-		rc = errno;
-		goto err;
-	}
-	LIST_FOREACH(str, grp->member_list, entry) {
-		rc = ldmsd_group_set_add(grp->set, str->str);
-		if (rc)
-			goto err;
-	}
-	grp->obj.perm &= ~LDMSD_PERM_DSTART;
-	ldmsd_setgrp_unlock(grp);
-	ldmsd_setgrp_put(grp); /* put back the find ref */
-	return 0;
-err:
-	ldmsd_setgrp_unlock(grp);
-	ldmsd_setgrp_put(grp);
-	return rc;
-}
-
-ldms_set_t
-ldmsd_group_new_with_auth(const char *name, uid_t uid, gid_t gid, mode_t perm)
-{
-	return __setgrp_start(name, uid, gid, perm, NULL, 0, 0);
-}
-
-ldms_set_t ldmsd_group_new(const char *name)
-{
-	struct ldmsd_sec_ctxt sctxt;
-	ldmsd_sec_ctxt_get(&sctxt);
-	return ldmsd_group_new_with_auth(name, sctxt.crd.uid, sctxt.crd.gid, 0777);
 }
 
 extern struct rbt *cfgobj_trees[];
@@ -253,7 +162,7 @@ int __ldmsd_setgrp_rm(ldmsd_setgrp_t grp, const char *instance)
 				 */
 				rc = 0;
 			} else {
-				rc = ldmsd_group_set_rm(grp->set, instance);
+				rc = ldms_grp_rm(grp->grp, instance);
 			}
 			goto out;
 		}
@@ -299,59 +208,12 @@ int ldmsd_group_set_rm(ldms_set_t grp, const char *set_name)
 	return 0;
 }
 
-const char *ldmsd_group_member_name(const char *info_key)
-{
-	if (0 != strncmp(GRP_KEY_PREFIX, info_key, sizeof(GRP_KEY_PREFIX)-1))
-		return NULL;
-	return info_key + sizeof(GRP_KEY_PREFIX) - 1;
-}
-
-struct __grp_traverse_ctxt {
-	ldms_set_t grp;
-	ldmsd_group_iter_cb_t cb;
-	void *arg;
-};
-
-static int
-__grp_traverse(const char *key, const char *value, void *arg)
-{
-	const char *name;
-	struct __grp_traverse_ctxt *ctxt = arg;
-	name = ldmsd_group_member_name(key);
-	if (!name)
-		return 0; /* continue */
-	return ctxt->cb(ctxt->grp, name, ctxt->arg);
-}
-
-int ldmsd_group_iter(ldms_set_t grp, ldmsd_group_iter_cb_t cb, void *arg)
-{
-	int rc;
-	struct __grp_traverse_ctxt ctxt = {grp, cb, arg};
-	rc = ldms_set_info_traverse(grp, __grp_traverse, LDMS_SET_INFO_F_LOCAL,
-				    &ctxt);
-	if (rc)
-		return rc;
-	rc = ldms_set_info_traverse(grp, __grp_traverse, LDMS_SET_INFO_F_REMOTE,
-				    &ctxt);
-	return rc;
-}
-
-int ldmsd_group_check(ldms_set_t set)
-{
-	const char *sname;
-	int flags = 0;
-	sname = ldms_set_schema_name_get(set);
-	if (0 != strcmp(sname, GRP_SCHEMA_NAME))
-		return 0; /* not a group */
-	flags |= LDMSD_GROUP_IS_GROUP;
-	return flags;
-}
-
 json_entity_t __setgrp_attrs_get(json_entity_t dft, json_entity_t spc,
 				char **_producer, struct ldmsd_str_list **_member_list,
-				long *_interval_us, long *_offset_us, int *_perm)
+				long *_interval_us, long *_offset_us, int *_perm,
+				int *_max_members)
 {
-	json_entity_t producer, members, interval, offset, perm;
+	json_entity_t producer, members, interval, offset, perm, max_members;
 	json_entity_t err = NULL;
 	if (spc) {
 		producer = json_value_find(spc, "producer");
@@ -359,6 +221,7 @@ json_entity_t __setgrp_attrs_get(json_entity_t dft, json_entity_t spc,
 		offset = json_value_find(spc, "offset");
 		members = json_value_find(spc, "members");
 		perm = json_value_find(spc, "perm");
+		max_members = json_value_find(spc, "max_members");
 	}
 
 	if (dft) {
@@ -372,6 +235,8 @@ json_entity_t __setgrp_attrs_get(json_entity_t dft, json_entity_t spc,
 			members = json_value_find(dft, "members");
 		if (!perm)
 			perm = json_value_find(dft, "perm");
+		if (!max_members)
+			max_members = json_value_find(spc, "max_members");
 	}
 
 	/* producer */
@@ -467,6 +332,22 @@ json_entity_t __setgrp_attrs_get(json_entity_t dft, json_entity_t spc,
 		}
 	}
 
+	/* max_members */
+	if (max_members) {
+		switch (json_entity_type(max_members)) {
+		case JSON_STRING_VALUE:
+			*_max_members = atoi(json_value_str(max_members)->str);
+			break;
+		case JSON_INT_VALUE:
+			*_max_members = json_value_int(max_members);
+			break;
+		default:
+			break;
+		}
+	} else {
+		*_max_members = 64;
+	}
+
 	return err;
 oom:
 	if (*_producer)
@@ -480,31 +361,50 @@ oom:
 int ldmsd_setgrp_enable(ldmsd_cfgobj_t obj)
 {
 	int rc;
+	ldmsd_str_ent_t str;
 	ldmsd_setgrp_t setgrp = (ldmsd_setgrp_t)obj;
-	setgrp->set = ldms_set_new_with_auth(obj->name, grp_schema,
-					     obj->uid, obj->gid, obj->perm);
-	if (!setgrp->set) {
-		return ENOMEM;
+	if (!setgrp->grp) {
+		setgrp->grp = ldms_grp_new_with_auth(obj->name,
+				setgrp->max_members,
+				obj->uid, obj->gid, obj->perm);
+		if (!setgrp->grp)
+			return ENOMEM;
+		if (!setgrp->member_list)
+			goto skip;
+		ldms_transaction_begin((void*)setgrp->grp);
+		LIST_FOREACH(str, setgrp->member_list, entry) {
+			rc = ldms_grp_ins(setgrp->grp, str->str);
+			if (rc)
+				goto err;
+		}
+		ldms_transaction_end((void*)setgrp->grp);
+	skip:
+		/* no-op */;
 	}
 
 	if (setgrp->interval_us > 0) {
-		rc = ldmsd_set_update_hint_set(setgrp->set, setgrp->interval_us,
-							    setgrp->offset_us);
+		rc = ldmsd_set_update_hint_set(
+				(ldms_set_t)setgrp->grp, setgrp->interval_us,
+				setgrp->offset_us);
 		if (rc)
 			goto err;
 	}
-	rc = ldms_set_publish(setgrp->set);
+	rc = ldms_set_publish((ldms_set_t)setgrp->grp);
 	if (rc)
 		goto err;
 	return 0;
 err:
-	ldms_set_delete(setgrp->set);
+	ldms_grp_delete(setgrp->grp);
+	setgrp->grp = NULL;
 	return rc;
 }
 
 int ldmsd_setgrp_disable(ldmsd_cfgobj_t obj)
 {
-	return ENOTSUP;
+	ldmsd_setgrp_t setgrp = (ldmsd_setgrp_t)obj;
+	if (setgrp->grp)
+		ldms_set_unpublish((ldms_set_t)setgrp->grp);
+	return 0;
 }
 
 json_entity_t __setgrp_export_config(ldmsd_setgrp_t setgrp)
@@ -558,12 +458,13 @@ json_entity_t ldmsd_setgrp_update(ldmsd_cfgobj_t obj, short enabled,
 	char *producer;
 	struct ldmsd_str_list *member_list;
 	long interval_us, offset_us;
+	int max_members;
 	int perm;
 	json_entity_t err;
 	ldmsd_setgrp_t setgrp = (ldmsd_setgrp_t)obj;
 
 	err = __setgrp_attrs_get(dft, spc, &producer, &member_list,
-				&interval_us, &offset_us, &perm);
+				&interval_us, &offset_us, &perm, &max_members);
 
 	if (!err) {
 		if (ENOMEM == errno)
@@ -591,14 +492,37 @@ json_entity_t ldmsd_setgrp_update(ldmsd_cfgobj_t obj, short enabled,
 			goto oom;
 	}
 
-	if (err)
-		return ldmsd_result_new(EINVAL, 0, err);
-
 	/* Done checking the given attributes */
 	if (member_list) {
 		__setgrp_member_list_free(setgrp->member_list);
 		setgrp->member_list = member_list;
+		if (setgrp->grp) {
+			ldms_transaction_begin((void*)setgrp->grp);
+			ldmsd_str_ent_t str;
+			int rc = 0;
+			ldms_grp_rm_all(setgrp->grp);
+			LIST_FOREACH(str, setgrp->member_list, entry) {
+				rc = ldms_grp_ins(setgrp->grp, str->str);
+				if (rc)
+					break;
+			}
+			if (rc) {
+				char estr[128];
+				snprintf(estr, sizeof(estr),
+					 "ldms_grp_ins() error rc: %d", rc);
+				err = json_dict_build(err, JSON_STRING_VALUE,
+						"members", estr, -1);
+				if (!err) {
+					ldms_transaction_end((void*)setgrp->grp);
+					goto oom;
+				}
+			}
+			ldms_transaction_end((void*)setgrp->grp);
+		}
 	}
+
+	if (err)
+		return ldmsd_result_new(EINVAL, 0, err);
 
 	obj->enabled = (enabled < 0)?obj->enabled:enabled;
 	return ldmsd_result_new(0, NULL, NULL);
@@ -616,10 +540,12 @@ json_entity_t ldmsd_setgrp_create(const char *name, short enabled,
 	struct ldmsd_str_list *member_list = NULL;
 	long interval_us, offset_us;
 	int perm;
+	int max_members;
 	ldmsd_setgrp_t setgrp;
 
 	err = __setgrp_attrs_get(dft, spc, &producer, &member_list,
-					&interval_us, &offset_us, &perm);
+					&interval_us, &offset_us, &perm,
+					&max_members);
 	if (!err) {
 		if (ENOMEM == errno)
 			goto oom;
@@ -671,6 +597,7 @@ json_entity_t ldmsd_setgrp_create(const char *name, short enabled,
 	setgrp->member_list = member_list;
 	setgrp->interval_us = interval_us;
 	setgrp->offset_us = offset_us;
+	setgrp->max_members = max_members;
 	return ldmsd_result_new(0, NULL, NULL);
 oom:
 	if (producer)

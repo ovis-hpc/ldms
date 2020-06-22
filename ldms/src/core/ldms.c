@@ -309,8 +309,19 @@ char *set_state(struct ldms_set *set)
 		str[2] = 'P';
 	else
 		str[2] = ' ';
-	str[3] = '\0';
+	str[3] = (set->flags & LDMS_SET_F_GROUP)?'G':' ';
+	str[4] = '\0';
 	return str;
+}
+
+long ldms_dir_set_flags(ldms_dir_set_t dset)
+{
+	long flags = 0;
+	flags |= (dset->flags[1] == 'L')*LDMS_SET_F_LOCAL;
+	flags |= (dset->flags[1] == 'R')*LDMS_SET_F_REMOTE;
+	flags |= (dset->flags[2] == 'P')*LDMS_SET_F_PUSH_CHANGE;
+	flags |= (dset->flags[3] == 'G')*LDMS_SET_F_GROUP;
+	return flags;
 }
 
 size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
@@ -452,7 +463,7 @@ static void __destroy_set(void *v)
 uint64_t __next_set_id = 1;
 
  /* The caller must hold the set tree lock. */
-static struct ldms_set *
+struct ldms_set *
 __record_set(const char *instance_name,
 	     struct ldms_set_hdr *sh, struct ldms_data_hdr *dh, int flags)
 {
@@ -467,7 +478,8 @@ __record_set(const char *instance_name,
 		return NULL;
 	}
 
-	set = calloc(1, sizeof *set);
+	sz = (flags & LDMS_SET_F_GROUP)?sizeof(struct ldms_grp):sizeof(struct ldms_set);
+	set = calloc(1, sz);
 	if (!set) {
 		errno = ENOMEM;
 		goto err1;
@@ -617,8 +629,47 @@ static void sync_update_cb(ldms_t x, ldms_set_t s, int status, void *arg)
 	sem_post(&x->sem);
 }
 
+struct __grp_upd_ctxt {
+	ldms_update_cb_t cb;
+	void *arg;
+};
+
+static void __grp_update_cb(ldms_grp_t grp, ldms_grp_ev_t ev)
+{
+	struct __grp_upd_ctxt *ctxt = ev->ctxt;
+	switch (ev->type) {
+	case LDMS_GRP_EV_FINALIZE:
+		ctxt->cb(grp->set.xprt, &grp->set, 0, ctxt->arg);
+		free(ctxt);
+		break;
+	case LDMS_GRP_EV_UPDATED:
+		ctxt->cb(ev->entupd.xprt, ev->entupd.set,
+			 ev->entupd.flags | LDMS_UPD_F_MORE, ctxt->arg);
+		break;
+	case LDMS_GRP_EV_NOENT:
+	case LDMS_GRP_EV_UPDATE_BEGIN:
+		/* no-op */
+		break;
+	default:
+		assert(0 == "UNHANDLED EVENT");
+		break;
+	}
+}
+
 int ldms_xprt_update(ldms_set_t set, ldms_update_cb_t cb, void *arg)
 {
+	if (set->flags & LDMS_SET_F_GROUP) {
+		int rc;
+		struct __grp_upd_ctxt *ctxt = malloc(sizeof(*ctxt));
+		if (!ctxt)
+			return ENOMEM;
+		ctxt->cb = cb;
+		ctxt->arg = arg;
+		rc = ldms_grp_update((ldms_grp_t)set, __grp_update_cb, ctxt);
+		if (rc)
+			free(ctxt);
+		return rc;
+	}
 	if (set->flags & LDMS_SET_F_REMOTE) {
 		ldms_t x = set->xprt;
 		if (!cb) {
@@ -767,6 +818,8 @@ static  void sync_lookup_cb(ldms_t x, enum ldms_lookup_status status, int more,
 {
 	ldms_set_t *ps = arg;
 	x->sem_rc = status;
+	if (more)
+		return;
 	if (ps)
 		*ps = s;
 	sem_post(&x->sem);
@@ -776,8 +829,9 @@ int ldms_xprt_lookup(ldms_t x, const char *path, enum ldms_lookup_flags flags,
 		     ldms_lookup_cb_t cb, void *cb_arg)
 {
 	int rc;
-	if ((flags & !cb)
-	    || strlen(path) > LDMS_LOOKUP_PATH_MAX)
+	if (strlen(path) > LDMS_LOOKUP_PATH_MAX)
+		return ENAMETOOLONG;
+	if (flags && !cb)
 		return EINVAL;
 	if (!cb) {
 		rc = __ldms_remote_lookup(x, path, flags, sync_lookup_cb, cb_arg);
@@ -1065,12 +1119,12 @@ size_t ldms_schema_set_size(const char *instance_name, const ldms_schema_t schem
 	return result;
 }
 
-ldms_set_t ldms_set_new_with_auth(const char *instance_name,
-				  ldms_schema_t schema,
-				  uid_t uid, gid_t gid, mode_t perm)
+struct ldms_set_hdr *__set_alloc(const char *instance_name,
+				 ldms_schema_t schema,
+				 uid_t uid, gid_t gid, mode_t perm)
 {
+	struct ldms_set_hdr *meta = NULL;
 	struct ldms_data_hdr *data, *data_base;
-	struct ldms_set_hdr *meta;
 	struct ldms_value_desc *vd;
 	size_t meta_sz = 0, array_data_sz = 0;
 	uint64_t value_off;
@@ -1078,12 +1132,10 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	int metric_idx;
 	int i;
 	int set_array_card = 0;
-
 	if (!instance_name || !schema) {
 		errno = EINVAL;
 		return NULL;
 	}
-
 	int ssz = compute_set_sizes(instance_name, schema,
 		&set_array_card, &meta_sz, &array_data_sz);
 	if (!ssz) {
@@ -1176,6 +1228,20 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 		value_off += __ldms_value_size_get(vd->vd_type,
 						   __le32_to_cpu(vd->vd_array_count));
 	}
+	return meta;
+}
+
+ldms_set_t ldms_set_new_with_auth(const char *instance_name,
+				  ldms_schema_t schema,
+				  uid_t uid, gid_t gid, mode_t perm)
+{
+	struct ldms_data_hdr *data_base;
+	struct ldms_set_hdr *meta;
+
+	meta = __set_alloc(instance_name, schema, uid, gid, perm);
+	if (!meta)
+		return NULL;
+	data_base = (void*)meta + le32toh(meta->meta_sz);
 	__ldms_set_tree_lock();
 	struct ldms_set *set = __record_set(instance_name, meta, data_base, LDMS_SET_F_LOCAL);
 	__ldms_set_tree_unlock();
@@ -2654,4 +2720,14 @@ const char *ldms_metric_units_get(ldms_set_t s, int i)
 	if (desc)
 		return desc->vd_units;
 	return "";
+}
+
+void ldms_ref_get(ldms_set_t s, const char *ref_name)
+{
+	ref_get(&s->ref, ref_name);
+}
+
+void ldms_ref_put(ldms_set_t s, const char *ref_name)
+{
+	ref_put(&s->ref, ref_name);
 }

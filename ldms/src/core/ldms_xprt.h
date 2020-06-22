@@ -193,6 +193,7 @@ struct ldms_rendezvous_lookup_param {
 #ifdef SWIG
 %immutable;
 #endif
+	uint32_t flags;
 	/* schema name, then instance name, and then set_info key value pairs */
 	char set_info[OVIS_FLEX];
 };

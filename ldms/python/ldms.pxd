@@ -313,6 +313,8 @@ cdef extern from "ldms.h" nogil:
     const char *ldms_set_name_get(ldms_set_t s)
     uint64_t ldms_set_meta_gn_get(ldms_set_t s)
     uint64_t ldms_set_data_gn_get(ldms_set_t s)
+    void ldms_ctxt_set(ldms_set_t _set, void *ctxt)
+    void *ldms_ctxt_get(ldms_set_t _set)
 
     int ldms_set_is_consistent(ldms_set_t s)
 
@@ -474,6 +476,8 @@ cdef extern from "ldms.h" nogil:
     int ldms_set_unpublish(ldms_set_t set)
     void ldms_set_delete(ldms_set_t s)
     void ldms_set_put(ldms_set_t s)
+    void ldms_ref_get(ldms_set_t s, const char *ref_name)
+    void ldms_ref_put(ldms_set_t s, const char *ref_name)
     void ldms_metric_set_char(ldms_set_t s, int i, char v)
     void ldms_metric_set_u8(ldms_set_t s, int i, uint8_t v)
     void ldms_metric_set_u16(ldms_set_t s, int i, uint16_t v)
@@ -497,3 +501,24 @@ cdef extern from "ldms.h" nogil:
     void ldms_metric_array_set_s64(ldms_set_t s, int mid, int idx, int64_t v)
     void ldms_metric_array_set_float(ldms_set_t s, int mid, int idx, float v)
     void ldms_metric_array_set_double(ldms_set_t s, int mid, int idx, double v)
+    # --- ldms_grp (group) --- #
+    ctypedef ldms_set *ldms_grp_t
+    ctypedef enum:
+        LDMS_GRP_NAME_MAX
+    struct ldms_grp_rec_s:
+        char name[LDMS_GRP_NAME_MAX + 1]
+        uint16_t prev
+        uint16_t next
+        uint16_t id
+        char pad[2]
+    ctypedef ldms_grp_rec_s *ldms_grp_rec_t
+    ldms_grp_t ldms_grp_new_with_auth(const char *name, int m_max,
+				      uid_t uid, gid_t gid, mode_t perm)
+    ldms_grp_t ldms_grp_new(const char *name, int m_max)
+    int ldms_grp_ins(ldms_grp_t grp, const char *member)
+    int ldms_grp_rm(ldms_grp_t grp, const char *member)
+    void ldms_grp_delete(ldms_grp_t grp)
+    ldms_grp_rec_t ldms_grp_first(ldms_grp_t grp)
+    ldms_grp_rec_t ldms_grp_next(ldms_grp_t grp, ldms_grp_rec_t rec)
+    int ldms_is_grp(ldms_set_t _set)
+    int ldms_grp_verify(ldms_grp_t grp)

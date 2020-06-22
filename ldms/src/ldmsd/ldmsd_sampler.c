@@ -509,7 +509,7 @@ ldms_set_t samp_create_set(ldmsd_plugin_inst_t inst, const char *set_name,
 }
 
 ldms_set_t samp_create_set_group(ldmsd_plugin_inst_t inst,
-				 const char *grp_name, void *ctxt)
+				 const char *grp_name, int max, void *ctxt)
 {
 	ldmsd_sampler_type_t samp = (void*)inst->base;
 	ldmsd_set_entry_t ent = NULL;
@@ -520,8 +520,8 @@ ldms_set_t samp_create_set_group(ldmsd_plugin_inst_t inst,
 		goto err;
 	ent->ctxt = ctxt;
 	ldmsd_sec_ctxt_get(&sctxt);
-	ent->set = ldmsd_group_new_with_auth(grp_name, sctxt.crd.uid,
-						sctxt.crd.gid, 0777);
+	ent->set = (ldms_set_t)ldms_grp_new_with_auth(grp_name, max,
+			sctxt.crd.uid, sctxt.crd.gid, 0777);
 	if (!ent->set)
 		goto err;
 
@@ -624,7 +624,7 @@ int samp_sample(ldmsd_plugin_inst_t inst)
 
 	pthread_mutex_lock(&samp->lock);
 	LIST_FOREACH(ent, &samp->set_list, entry) {
-		if (ldmsd_group_check(ent->set)) {
+		if (ldms_is_grp(ent->set)) {
 			/* skip: set group is not periodically updated */
 			continue;
 		}

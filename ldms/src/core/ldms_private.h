@@ -113,6 +113,15 @@ struct ldms_set {
 	struct ldms_context *notify_ctxt; /* Notify req context */
 };
 
+struct ldms_grp {
+	struct ldms_set set;
+	int busy; /* busy indicator */
+	struct ref_s upd_ref; /* Outstanding update ref. When the last ref
+			       * dropped, the group update has completed. */
+	ldms_grp_cb_t grp_cb;
+	void *cb_arg;
+};
+
 /* Convenience macro to roundup a value to a multiple of the _s parameter */
 #define roundup(_v,_s) ((_v + (_s - 1)) & ~(_s - 1))
 

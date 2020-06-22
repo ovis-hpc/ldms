@@ -913,7 +913,11 @@ cdef void lookup_cb(ldms_t _x, ldms_lookup_status status, int more,
                     ldms_set_t s, void *arg) with gil:
     (px, cb, cb_arg, slist) = <tuple>arg
     x = <Xprt>px
-    lset = Set(None, None, set_ptr=PTR(s)) if s else None
+    if s:
+        lset = Grp(None, set_ptr=PTR(s)) if ldms_is_grp(s) else \
+               Set(None, None, set_ptr=PTR(s))
+    else:
+        lset = None
     if cb:
         # Call the callback
         cb(x, status, more, lset, cb_arg)
@@ -934,14 +938,18 @@ cdef void lookup_cb(ldms_t _x, ldms_lookup_status status, int more,
 cdef void update_cb(ldms_t _t, ldms_set_t _s, int flags, void *arg) with gil:
     cdef int rc = LDMS_UPD_ERROR(flags)
     (ps, cb, cb_arg) = <tuple>arg
+    py_set = <Set>ldms_ctxt_get(_s)
     s = <Set>ps
+    assert(py_set is s or type(s) is Grp)
+    if not py_set: # Python does not recognize this set yet
+        return
     if cb:
-        cb(s, flags, cb_arg)
-        if 0 == (flags & LDMS_UPD_F_MORE):
+        cb(py_set, flags, cb_arg)
+        if py_set is s and 0 == (flags & LDMS_UPD_F_MORE):
             Py_DECREF(<tuple>arg)
         return
     s._update_rc = rc
-    if 0 == (flags & LDMS_UPD_F_MORE):
+    if py_set is s and 0 == (flags & LDMS_UPD_F_MORE):
         sem_post(&s._sem)
 
 
@@ -1306,11 +1314,11 @@ cdef class Set(object):
     def __init__(self, str name, Schema schema,
                        int uid=0, int gid=0,
                        int perm=0o777, Ptr set_ptr=None):
-        self._getter = list()
-        self._setter = list()
         if set_ptr:
+            # Created by lookup
             self.c_set = <ldms_set_t>set_ptr.c_ptr
         elif schema:
+            # Created locally
             if not name:
                 raise AttributeError("Missing `name` parameter")
             uid = uid if uid else os.geteuid()
@@ -1322,6 +1330,30 @@ cdef class Set(object):
                                    .format(ERRNO_SYM(errno)))
         else:
             raise AttributeError("Requires `name` and `schema`")
+        self.__common_init__()
+        self._init_getter_setter()
+
+    def __common_init__(self):
+        assert(not ldms_ctxt_get(self.c_set))
+        ldms_ref_get(self.c_set, "ldms.Set")
+        ldms_ctxt_set(self.c_set, <void*>self)
+
+    @classmethod
+    def find(cls, name):
+        cdef ldms_set_t c_set = ldms_set_by_name(BYTES(name))
+        cdef Set py_set
+        if not c_set:
+            raise KeyError("Set `{}` not found".format(name))
+        py_set = <Set>ldms_ctxt_get(c_set)
+        ldms_set_put(c_set)
+        if not py_set:
+            # Not yet initialized with Python Set
+            raise KeyError("Set `{}` not found".format(name))
+        return py_set
+
+    def _init_getter_setter(self):
+        self._getter = list()
+        self._setter = list()
         cdef ldms_value_type t
         for i in range(0, len(self)):
             t = ldms_metric_type_get(self.c_set, i)
@@ -1335,7 +1367,7 @@ cdef class Set(object):
 
     def __del__(self):
         if self.c_set:
-            ldms_set_put(self.c_set)
+            ldms_ref_put(self.c_set, "ldms.Set")
 
     def __iter__(self):
         """iter(self) - iterates over keys (metric names) of the set"""
@@ -1604,6 +1636,94 @@ cdef class Set(object):
             return
         # else, set value for entire array
         _setter[:] = val
+
+cdef class Grp(Set):
+    """A special LDMS Set that is a collection of other LDMS sets
+
+    `xprt.lookup()` on a group yields the group and all of its members.
+    The callback function will be called `1+n` times: 1 for the group itself and
+    n times for the n members. The behavior is similar to LOOKUP_RE.
+
+    `grp.update()` results in updating each member of the group (if the set
+    exists locally). The update callback function will be called `1+n` times.
+    """
+
+    def __init__(self, str name, int m_max=128, int uid=0, int gid=0,
+                       int perm=0o777, Ptr set_ptr=None):
+        if set_ptr:
+            # from lookup
+            self.c_set = <ldms_set_t>set_ptr.c_ptr
+        elif name:
+            # created locally
+            uid = uid if uid else os.geteuid()
+            gid = gid if gid else os.getegid()
+            self.c_set = <ldms_set_t>ldms_grp_new_with_auth(
+                                        BYTES(name), m_max, uid, gid, perm)
+            if not self.c_set:
+                raise RuntimeError("Group creation error: {}" \
+                                    .format(ERRNO_SYM(errno)))
+        else:
+            raise AttributeError("`name` is required")
+        self.__common_init__()
+        self._init_getter_setter()
+
+    def add(self, str member_name):
+        """Add a member into the group"""
+        cdef int rc
+        rc = ldms_grp_ins(<ldms_grp_t>self.c_set, BYTES(member_name))
+        if rc == EEXIST:
+            raise KeyError("member '{}' existed".format(member_name))
+        if rc:
+            raise RuntimeError("Error: {}".format(ERRNO_SYM(errno)))
+
+    def remove(self, str member_name):
+        """Remove a member from the group"""
+        cdef int rc
+        rc = ldms_grp_rm(<ldms_grp_t>self.c_set, BYTES(member_name))
+        if rc == ENOENT:
+            raise KeyError("member '{}' does not exist".format(member_name))
+        if rc:
+            raise RuntimeError("Error: {}".format(ERRNO_SYM(errno)))
+
+    def set_metric(self, int metric_id, val, sub_idx=None):
+        """Metric modification is not allowed."""
+        raise TypeError("Metric modification is not allowed in Grp")
+
+    def __iter__(self):
+        """Yields names of the members"""
+        cdef int rc
+        cdef ldms_grp_rec_t rec
+        rec = ldms_grp_first(<ldms_grp_t>self.c_set)
+        while rec:
+            yield STR(rec.name)
+            rec = ldms_grp_next(<ldms_grp_t>self.c_set, rec)
+
+    def verify(self):
+        """[DEBUG] Verify the group index and records"""
+        cdef int rc
+        rc = ldms_grp_verify(<ldms_grp_t>self.c_set)
+        if rc:
+            raise RuntimeError("grp verify failed: {}".format(rc))
+
+    def __str__(self):
+        sio = io.StringIO()
+        sio.write("{} {{".format(self.instance_name))
+        first = 1
+        for m in self:
+            if first:
+                first = 0
+            else:
+                sio.write(", ")
+            sio.write(m)
+        sio.write("}")
+        return sio.getvalue()
+
+    def __repr__(self):
+        return str(self)
+
+    @property
+    def members(self):
+        return tuple(self)
 
 
 cdef class Xprt(object):
@@ -1921,7 +2041,8 @@ cdef class Xprt(object):
         if self._lookup_rc:
             raise RuntimeError("lookup callback status: {}"\
                                .format(ERRNO_SYM(self._lookup_rc)))
-        if flags & (LDMS_LOOKUP_BY_SCHEMA|LDMS_LOOKUP_RE):
+        if flags & (LDMS_LOOKUP_BY_SCHEMA|LDMS_LOOKUP_RE) or \
+                len(slist) > 1:
             return slist
         if slist:
             return slist[0]

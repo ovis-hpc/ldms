@@ -144,7 +144,7 @@ int __init_config(grptest_inst_t inst, json_entity_t json, char *ebuf, int ebufs
 	if (rc)
 		goto out;
 	snprintf(buff, sizeof(buff), "%s/grp", samp->set_inst_name);
-	inst->grp = samp->create_set_group(&inst->base, buff, NULL);
+	inst->grp = samp->create_set_group(&inst->base, buff, 64, NULL);
 	if (!inst->grp) {
 		snprintf(ebuf, ebufsz, "%s: group creation failed "
 			 "(errno: %d)\n", inst->base.inst_name, errno);
@@ -212,7 +212,7 @@ int grptest_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		if (add & 1) {
 			snprintf(buff, sizeof(buff), "%s/set%d",
 				 samp->set_inst_name, i);
-			rc = ldmsd_group_set_add(inst->grp, buff);
+			rc = ldms_grp_ins((ldms_grp_t)inst->grp, buff);
 			if (rc) {
 				snprintf(ebuf, ebufsz, "%s: group set add "
 					 "failed (rc: %d)\n",
@@ -224,7 +224,7 @@ int grptest_config(ldmsd_plugin_inst_t pi, json_entity_t json,
 		if (rm & 1) {
 			snprintf(buff, sizeof(buff), "%s/set%d",
 				 samp->set_inst_name, i);
-			rc = ldmsd_group_set_rm(inst->grp, buff);
+			rc = ldms_grp_rm((ldms_grp_t)inst->grp, buff);
 			if (rc) {
 				snprintf(ebuf, ebufsz, "%s: group set remove "
 					 "failed (rc: %d)\n",

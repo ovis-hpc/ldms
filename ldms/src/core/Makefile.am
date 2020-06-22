@@ -8,11 +8,11 @@ AM_CFLAGS += \
 
 ldmscoreincludedir = $(includedir)/ldms
 ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldms_xprt.h ldms_auth.h \
-			  kldms_req.h ref.h
+			  kldms_req.h ref.h ldms_grp.h
 
 libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h \
 		     ldms_auth.c ldms_xprt_auth.c \
-		     ref.h
+		     ref.h ldms_grp.c
 libldms_la_LIBADD = -ldl -lpthread \
 		    $(top_builddir)/lib/src/coll/libcoll.la \
 		    $(top_builddir)/lib/src/json/libjson_util.la \

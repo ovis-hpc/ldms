@@ -58,6 +58,7 @@
 #include <asm/byteorder.h>
 #include "ovis-ldms-config.h"
 #include "ldms_core.h"
+#include "ldms_grp.h"
 #include "ref.h"
 #include "coll/rbt.h"
 #include "ovis_util/os_util.h"
@@ -68,6 +69,7 @@ extern "C" {
 #endif
 typedef struct ldms_xprt *ldms_t;
 typedef struct ldms_set *ldms_set_t;
+typedef struct ldms_grp *ldms_grp_t;
 typedef struct ldms_value_s *ldms_value_t;
 typedef struct ldms_schema_s *ldms_schema_t;
 
@@ -309,6 +311,7 @@ typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
 #define LDMS_SET_F_LOCAL	0x0004
 #define LDMS_SET_F_REMOTE	0x0008
 #define LDMS_SET_F_PUSH_CHANGE	0x0010
+#define LDMS_SET_F_GROUP	0x0020   /* Set is a group */
 #define LDMS_SET_F_PUBLISHED	0x100000 /* Set is in the set tree. */
 #define LDMS_SET_ID_DATA	0x1000000
 
@@ -665,6 +668,11 @@ void ldms_xprt_dir_free(ldms_t t, ldms_dir_t dir);
  char *ldms_dir_set_info_get(ldms_dir_set_t dset, const char *key);
 
 /**
+ * Get a `long` version (OR of LDMS_SET_F_*) of dset->flags.
+ */
+long ldms_dir_set_flags(ldms_dir_set_t dset);
+
+/**
  * \brief Cancel LDMS directory updates
  *
  * This function cancels updates to the LDMS directory initiated by a
@@ -798,6 +806,11 @@ typedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int flags, void *arg);
  * \brief Update the metric set contents.
  *
  * Updates the local copy of the metric set.
+ *
+ * If the supplied set \c s is a group, all of its members will be updated with
+ * the same \c update_cb and \c arg. The group itself is updated the last.
+ * Hence, the \c update_cb is called with the group (\c s) the last (i.e. no
+ * more callbacks corresponding to this update).
  *
  * \param s	The metric set handle to update.
  * \param update_cb The function to call when the update has completed
@@ -955,6 +968,157 @@ extern size_t ldms_schema_set_size(const char *instance_name, const ldms_schema_
 ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 				  ldms_schema_t schema,
 				  uid_t uid, gid_t gid, mode_t perm);
+
+/**
+ * \brief Create a set group - a special set representing a group of sets.
+ *
+ * \param name  The name of the group.
+ * \param m_max The maximum number of members.
+ * \param uid   The UID of the owner.
+ * \param gid   The GID of the owner.
+ * \param perm  The UNIX mode_t bits for permission (see chmod(1)).
+ *
+ * \retval NULL If there is an error. The \c errno is also set to describe the
+ *              error.
+ * \retval ptr  The group handler (the group is also a set).
+ */
+ldms_grp_t ldms_grp_new_with_auth(const char *name, int m_max,
+				  uid_t uid, gid_t gid, mode_t perm);
+
+/* NOTE: see the event explanation in `ldms_grp_update()` */
+typedef struct ldms_grp_ev_s {
+	enum {
+		LDMS_GRP_EV_NOENT=1,      /* member not present in set tree */
+		LDMS_GRP_EV_UPDATE_BEGIN, /* begin member update */
+		LDMS_GRP_EV_UPDATED,      /* member updated event */
+		LDMS_GRP_EV_FINALIZE,     /* all updates completed */
+	} type;
+	void *ctxt; /* context supplied in ldms_grp_update() */
+	union {
+		struct {
+			const char *name;
+		} noent;
+		struct {
+			ldms_t xprt;
+			ldms_set_t set;
+			int flags;
+		} entupd;
+	};
+} *ldms_grp_ev_t;
+
+typedef void(*ldms_grp_cb_t)(ldms_grp_t grp, ldms_grp_ev_t ev);
+
+/**
+ * \brief Update a set group and all of its members.
+ *
+ * `ldms_grp_update(grp)` iterates the member list and does the following for
+ * each member:
+ * - callback with NOENT if the set does NOT exist locally
+ * - callback with UPDATE_BEGIN if the set exists locally. After the callback
+ *   function returned, ldms issues an update on the member.
+ *
+ * Then, upon each member update completion, a callback with UPDATED is called.
+ * If the set uses set array, multiple UPDATED callbacks for the set is expected
+ * (identified by the more flag). If the `more` flag is not set, the UPDATED
+ * callback is the last one for the set (may still have more callbacks for other
+ * sets in the group). Finally, a final callback will be called with FINALIZE
+ * event to let the application know that the outstanding update is done.
+ *
+ * \param grp  The LDMS Group handle.
+ * \param cb   The callback function.
+ * \param ctxt The application context for the \c cb function.
+ *
+ * \retval 0     If there is NO synchronous error.
+ * \retval errno If there is a synchronous error.
+ */
+int ldms_grp_update(ldms_grp_t grp, ldms_grp_cb_t cb, void *ctxt);
+
+/**
+ * \brief Create a set group with process UID/GID and 0644 permission.
+ *
+ * \param name  The name of the group.
+ * \param m_max The maximum number of members.
+ *
+ * \retval NULL If there is an error. The \c errno is also set to describe the
+ *              error.
+ * \retval ptr  The group handler (the group is also a set).
+ */
+ldms_grp_t ldms_grp_new(const char *name, int m_max);
+
+/**
+ * Insert a member into the group.
+ *
+ * \note This function should be called after ldms_transaction_begin() as we are
+ *       modifying the group members. ldms_transaction_end() should be called
+ *       after the modifications (ins/rm) are done.
+ *
+ * \retval 0            Success.
+ * \retval EEXIST       The member is already in the group.
+ * \retval ENOMEM       The group is full.
+ * \retval ENAMETOOLONG The given member name is too long.
+ */
+int ldms_grp_ins(ldms_grp_t grp, const char *member);
+
+/**
+ * Remove a member from the group.
+ *
+ * \note This function should be called after ldms_transaction_begin() as we are
+ *       modifying the group members. ldms_transaction_end() should be called
+ *       after the modifications (ins/rm) are done.
+ *
+ * \retval 0      Success.
+ * \retval ENOENT The specified member is not found.
+ */
+int ldms_grp_rm(ldms_grp_t grp, const char *member);
+
+/**
+ * Remove all members.
+ */
+void ldms_grp_rm_all(ldms_grp_t grp);
+
+/**
+ * Delete (destroy) the set group.
+ */
+void ldms_grp_delete(ldms_grp_t grp);
+
+/**
+ * Returns the first member of the group.
+ *
+ * \retval NULL If the group is empty.
+ * \retval rec  The first member.
+ */
+ldms_grp_rec_t ldms_grp_first(ldms_grp_t grp);
+
+/**
+ * Returns the next member of the group.
+ *
+ * \retval NULL If there is no more member.
+ * \retval rec  The next member.
+ */
+ldms_grp_rec_t ldms_grp_next(ldms_grp_t grp, ldms_grp_rec_t rec);
+
+/**
+ * (DEBUG) Verify the integrity of the group.
+ *
+ * Verify the index (b-tree), and the list of records (members).
+ *
+ * \note This function prints index structures (b-tree) to stdout.
+ *
+ * \retval 0      OK
+ * \retval EINVAL Bad index or records.
+ */
+int ldms_grp_verify(ldms_grp_t grp);
+
+#define LDMS_GRP_FOREACH(rec_ptr, grp) \
+	for ((rec_ptr) = ldms_grp_first(grp); (rec_ptr); (rec_ptr) = ldms_grp_next(grp, (rec_ptr)))
+
+/**
+ * Check whether a set is actually a group.
+ *
+ * \retval 0 The given set is not a group.
+ * \retval 1 The given set is a group.
+ */
+int ldms_is_grp(ldms_set_t set);
 
 /**
  * \addtogroup ldms_set_config LDMS Set Configuration

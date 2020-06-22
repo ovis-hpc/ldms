@@ -423,12 +423,6 @@ void print_cb(ldms_t t, ldms_set_t s, int rc, void *arg)
 
 void lookup_cb(ldms_t t, enum ldms_lookup_status status, int more,
 	       ldms_set_t s, void *arg);
-static const char *ldmsd_group_member_name(const char *info_key)
-{
-	if (0 != strncmp(GRP_KEY_PREFIX, info_key, sizeof(GRP_KEY_PREFIX)-1))
-		return NULL;
-	return info_key + sizeof(GRP_KEY_PREFIX) - 1;
-}
 
 void lookup_cb(ldms_t t, enum ldms_lookup_status status,
 	       int more,
@@ -924,39 +918,6 @@ int main(int argc, char *argv[])
 			printf("ldms_ls: No metric sets matched the given criteria\n");
 		done = 1;
 		goto done;
-	}
-
-	/* Take care of set groups */
-	char *name;
-	ldms_key_value_t info;
-	struct ldms_dir_set_s *set_data;
-	LIST_FOREACH(lss, &set_list, entry) {
-		if (0 == strcmp(GRP_SCHEMA_NAME, lss->set_data->schema_name)) {
-			info = lss->set_data->info;
-			for (i = 0; i < lss->set_data->info_count; i++) {
-				name = (char *)ldmsd_group_member_name(info[i].key);
-				if (!name)
-					continue;
-
-				set_data = find_set_data_in_dirs(name);
-				if (set_data && !is_in_set_list(set_data->inst_name)) {
-					rc = add_set(set_data);
-					if (!rc) {
-						if (verbose || (!verbose && !long_format))
-							print_set(set_data);
-					}
-				} else {
-					/*
-					 * do nothing.
-					 *
-					 * It is possible that the LDMS set
-					 * does not exist although it is a
-					 * member of a set group which
-					 * is manually created by users.
-					 */
-				}
-			}
-		}
 	}
 
 	if (verbose) {

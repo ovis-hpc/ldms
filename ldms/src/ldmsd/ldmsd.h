@@ -485,6 +485,8 @@ typedef struct ldmsd_prdcr_set {
 
 	struct ref_s ref;
 
+	long dir_set_flags; /* flags from dir result */
+
 	struct ldmsd_set_ctxt_s set_ctxt;
 } *ldmsd_prdcr_set_t;
 
@@ -1211,7 +1213,8 @@ typedef struct ldmsd_setgrp {
 	long interval_us;
 	long offset_us;
 	struct ldmsd_str_list *member_list;
-	ldms_set_t set;
+	ldms_grp_t grp;
+	int max_members;
 } *ldmsd_setgrp_t;
 
 static inline void ldmsd_setgrp_lock(ldmsd_setgrp_t grp) {
@@ -1248,13 +1251,6 @@ static inline ldmsd_setgrp_t ldmsd_setgrp_next(struct ldmsd_setgrp *setgrp)
  *
  */
 
-ldms_set_t
-ldmsd_group_new_with_auth(const char *name, uid_t uid, gid_t gid, mode_t perm);
-#pragma weak ldmsd_group_new_with_auth
-
-ldms_set_t ldmsd_group_new(const char *name);
-#pragma weak ldmsd_group_new
-
 int ldmsd_setgrp_start(const char *name, ldmsd_sec_ctxt_t ctxt);
 
 /*
@@ -1277,80 +1273,6 @@ int ldmsd_setgrp_ins(const char *name, const char *instance);
  * \param instance  set instance name to be inserted or removed
  */
 int ldmsd_setgrp_rm(const char *name, const char *instance);
-
-/**
- * \brief Add a set into the group.
- *
- * \param grp      The group handle (from \c ldmsd_group_new()).
- * \param set_name The name of the set to be added.
- */
-int ldmsd_group_set_add(ldms_set_t grp, const char *set_name);
-#pragma weak ldmsd_group_set_add
-
-/**
- * \brief Remove a set from the group.
- *
- * \param grp      The group handle (from \c ldmsd_group_new()).
- * \param set_name The name of the set to be removed.
- */
-int ldmsd_group_set_rm(ldms_set_t grp, const char *set_name);
-#pragma weak ldmsd_group_set_rm
-
-enum ldmsd_group_check_flag {
-	LDMSD_GROUP_IS_GROUP = 0x00000001,
-	LDMSD_GROUP_MODIFIED = 0x00000002,
-	LDMSD_GROUP_ERROR    = 0xF0000000,
-};
-
-/**
- * \brief Check ldmsd group status.
- *
- * \retval flags LDMSD_GROUP check flags. The caller should check the returned
- *               flags against ::ldmsd_group_check_flag enumeration.
- */
-int ldmsd_group_check(ldms_set_t set);
-#pragma weak ldmsd_group_check
-
-/**
- * \brief Group member iteration callback signature.
- *
- * The callback function will be called for each member of the group.
- *
- *
- * \param grp  The group handle.
- * \param name The member name.
- * \param arg  The application-supplied generic argument.
- *
- * \retval 0     If there is no error.
- * \retval errno If an error occurred. In this case, the iteration will be
- *               stopped.
- */
-typedef int (*ldmsd_group_iter_cb_t)(ldms_set_t grp, const char *name, void *arg);
-
-/**
- * \brief Iterate over the members of the group.
- *
- * Iterate over the members of the group, calling the \c cb function for each
- * of them.
- *
- * \param grp The group handle.
- * \param cb  The callback function.
- * \param arg The argument to be supplied to the callback function.
- *
- * \retval 0     If there is no error.
- * \retval errno If failed.
- */
-int ldmsd_group_iter(ldms_set_t grp, ldmsd_group_iter_cb_t cb, void *arg);
-#pragma weak ldmsd_group_iter
-
-/**
- * \brief Get the member name from a set info key.
- *
- * \retval NULL If \c info_key is NOT for set member entry.
- * \retval name If \c info_key is for set member entry.
- */
-const char *ldmsd_group_member_name(const char *info_key);
-#pragma weak ldmsd_group_member_name
 
 struct update_data {
 	ldmsd_updtr_t updtr;

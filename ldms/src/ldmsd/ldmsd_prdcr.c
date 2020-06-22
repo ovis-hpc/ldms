@@ -126,6 +126,8 @@ static void __prdcr_set_del(ldmsd_prdcr_set_t set)
 
 static ldmsd_prdcr_set_t prdcr_set_new(const char *inst_name, const char *schema_name)
 {
+	int rc;
+	pthread_mutexattr_t lock_attr;
 	ldmsd_prdcr_set_t set = calloc(1, sizeof *set);
 	if (!set)
 		goto err_0;
@@ -136,16 +138,37 @@ static ldmsd_prdcr_set_t prdcr_set_new(const char *inst_name, const char *schema
 	set->schema_name = strdup(schema_name);
 	if (!set->schema_name)
 		goto err_2;
-	pthread_mutex_init(&set->lock, NULL);
+	/* NOTE: we need recursive mutex due to the callback that could be
+	 * called from the same thread before the function call has returned.
+	 * Such functions include `ldms_xprt_update()`, `ldms_grp_update()`.*/
+	rc = pthread_mutexattr_init(&lock_attr);
+	if (rc)
+		goto err_2;
+	rc = pthread_mutexattr_settype(&lock_attr, PTHREAD_MUTEX_RECURSIVE);
+	if (rc)
+		goto err_3;
+	rc = pthread_mutex_init(&set->lock, &lock_attr);
+	if (rc)
+		goto err_3;
 	rbn_init(&set->rbn, set->inst_name);
-
 	set->state_ev = ev_new(prdcr_set_state_type);
+	if (!set->state_ev)
+		goto err_4;
 	EV_DATA(set->state_ev, struct state_data)->prd_set = set;
 	set->update_ev = ev_new(prdcr_set_update_type);
+	if (!set->update_ev)
+		goto err_5;
 	EV_DATA(set->update_ev, struct update_data)->prd_set = set;
 
 	ref_init(&set->ref, "create", (ref_free_fn_t)__prdcr_set_del, set);
+	pthread_mutexattr_destroy(&lock_attr); /* cleanup */
 	return set;
+ err_5:
+	ev_put(set->state_ev);
+ err_4:
+	pthread_mutex_destroy(&set->lock);
+ err_3:
+	pthread_mutexattr_destroy(&lock_attr);
  err_2:
 	free(set->inst_name);
  err_1:
@@ -258,6 +281,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 		return;
 	}
 
+	set->dir_set_flags = ldms_dir_set_flags(dset);
 	__update_set_info(set, dset);
 	EV_DATA(set->state_ev, struct state_data)->start_n_stop = 1;
 	ldmsd_prdcr_set_ref_get(set, "state_ev");

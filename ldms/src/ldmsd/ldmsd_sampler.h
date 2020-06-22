@@ -183,6 +183,7 @@ struct ldmsd_sampler_type_s {
 	 *
 	 * \param inst The plugin instance pointer.
 	 * \param grp_name The name of the set group.
+	 * \param max_members The maximum number of members.
 	 * \param ctxt The application context for each LDMS set.
 	 *
 	 * \retval grp  The set group handle (a special LDMS set), if succeed.
@@ -190,7 +191,8 @@ struct ldmsd_sampler_type_s {
 	 *              error.
 	 */
 	ldms_set_t (*create_set_group)(ldmsd_plugin_inst_t inst,
-				       const char *grp_name, void *ctxt);
+				       const char *grp_name, int max_members,
+				       void *ctxt);
 
 	/**
 	 * Delete the set (the undo of create_set()).
