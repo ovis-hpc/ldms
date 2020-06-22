@@ -218,6 +218,7 @@ AM_CONDITIONAL([ENABLE_GRPTEST_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x
 dnl Options for translator
 OPTION_DEFAULT_ENABLE([translator], [ENABLE_TRANSLATOR])
 OPTION_DEFAULT_ENABLE([scripting_translator], [ENABLE_SCRIPTING_TRANSLATOR])
+OPTION_DEFAULT_ENABLE([json_translator], [ENABLE_JSON_TRANSLATOR])
 dnl End of translator plugins
 
 OPTION_WITH([libcurl], [LIBCURL])
@@ -703,6 +704,7 @@ ldms/scripts/Makefile
 ldms/src/test/Makefile
 ldms/src/ldmsd-translators/Makefile
 ldms/src/ldmsd-translators/scripting/Makefile
+ldms/src/ldmsd-translators/json-translator/Makefile
 ldms/etc/Makefile
 ldms/etc/systemd/Makefile
 ldms/python/Makefile
