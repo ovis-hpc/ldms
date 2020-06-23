@@ -219,6 +219,7 @@ OPTION_DEFAULT_ENABLE([core], [ENABLE_CORE])
 OPTION_DEFAULT_ENABLE([mmap], [ENABLE_MMAP])
 OPTION_DEFAULT_ENABLE([perf], [ENABLE_PERF])
 OPTION_DEFAULT_DISABLE([yaml], [ENABLE_YAML])
+OPTION_DEFAULT_DISABLE([lib-pymap], [ENABLE_LIB_PYMAP])
 
 dnl Options for store
 OPTION_DEFAULT_ENABLE([store], [ENABLE_STORE])
@@ -523,7 +524,9 @@ fi
 
 dnl swig stuff
 if test -z "$ENABLE_SOS_TRUE"; then
-	which cython >/dev/null 2>&1 || AC_MSG_ERROR("cython not found")
+	if test -z "$ENABLE_LIB_PYMAP_TRUE"; then
+		which cython >/dev/null 2>&1 || AC_MSG_ERROR("cython not found")
+	fi 
 	AX_PYTHON_DEVEL()
 	if test "x$WITH_SOS" != "xbuild"; then
 		OCFLAGS=$CFLAGS
