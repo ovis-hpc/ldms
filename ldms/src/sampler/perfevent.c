@@ -533,7 +533,7 @@ static int sample(struct ldmsd_sampler *self)
 			}
 			break;
 		}
-		/* int event_index = (read_result / sizeof(long long)) - 1;  start from the last event added to the list? */
+
 		int m = 0;
 		for(m = 0; m < eg->eventCounter; m++){
 			ldms_metric_set_u64(set, eg->metric_index[m], data[m+2]);
