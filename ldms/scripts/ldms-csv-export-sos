@@ -465,15 +465,15 @@ def get_filenames(fn, args):
         if ts is None:
             args.dataname = os.path.basename(fn)
             if gzipped:
-	        header = ".".join(sp[:-1]) + ".HEADER.gz"
-	        kind = ".".join(sp[:-1]) + ".KIND.gz"
-	        schemafile = ".".join(sp[:-1]) + ".SCHEMASOS"
-	        mapfile = ".".join(sp[:-1]) + ".MAPSOS"
+                header = ".".join(sp[:-1]) + ".HEADER.gz"
+                kind = ".".join(sp[:-1]) + ".KIND.gz"
+                schemafile = ".".join(sp[:-1]) + ".SCHEMASOS"
+                mapfile = ".".join(sp[:-1]) + ".MAPSOS"
             else:
-	        header = fn + ".HEADER"
-	        kind = fn + ".KIND"
-	        schemafile = fn + ".SCHEMASOS"
-	        mapfile = fn + ".MAPSOS"
+                header = fn + ".HEADER"
+                kind = fn + ".KIND"
+                schemafile = fn + ".SCHEMASOS"
+                mapfile = fn + ".MAPSOS"
         else:
             args.dataname = os.path.basename(fn).replace("." + x, "")
             header = fn.replace("." + x, ".HEADER." + x)
@@ -698,7 +698,7 @@ def parse_schema(fn):
         a = []
         for i in sch["attrs"]:
             if i["type"] in metric_types:
-            	a.append(["name"])
+                a.append(i["name"])
         return a
 
 def parse_metric_list(s):
