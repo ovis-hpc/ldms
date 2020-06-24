@@ -482,6 +482,11 @@ def get_filenames(fn, args):
             schemafile = strip_gz(schemafile)
             mapfile = fn.replace("." + x, ".MAPSOS." + x)
             mapfile = strip_gz(mapfile)
+    if args.kind_file:
+        if os.path.isfile(kind) and args.kind_file != kind:
+            if args.verbose:
+                print "WARNING: creating", args.kind_file, "but", kind, " is also present."
+        kind = args.kind_file
     if args.map_file:
         if os.path.isfile(mapfile) and args.map_file != mapfile:
             if args.verbose:
@@ -519,12 +524,12 @@ def format_join(f, j, col_heads):
     print >>f, s,
 
 default_joins = [
-    ("comp_time", "component_id", "Time"),
-    ("prod_time", "ProducerName", "Time"),
-    ("job_comp_time", "job_id", "component_id", "Time"),
-    ("job_prod_time", "job_id", "ProducerName", "Time"),
+    ("comp_job_time", "component_id", "job_id", "Time"),
+    ("comp_time_job", "component_id", "Time", "job_id"),
     ("job_time_comp", "job_id", "Time", "component_id"),
-    ("job_time_prod", "job_id", "Time", "ProducerName")
+    ("job_comp_time", "job_id", "component_id", "Time"),
+    ("time_comp_job", "Time", "component_id", "job_id"),
+    ("time_job_comp", "Time", "job_id", "component_id")
     ]
 
 def format_schema_epilog(f, args, col_heads):
@@ -693,7 +698,7 @@ def parse_schema(fn):
         a = []
         for i in sch["attrs"]:
             if i["type"] in metric_types:
-            a.append(i["name"])
+            	a.append(["name"])
         return a
 
 def parse_metric_list(s):
@@ -914,6 +919,8 @@ if __name__ == "__main__":
             help="Override the output schema name derived from the data file name.")
     parser.add_argument("--schema-file", default=None,
             help="Use existing schema file named instead of generating one.")
+    parser.add_argument("--kind-file", default=None,
+            help="Use existing kind file for type mappings.")
     parser.add_argument("--map-file", default=None,
             help="Override the output map file name derived from the data file name.")
     parser.add_argument("--alias-file", default=None,
