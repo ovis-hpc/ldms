@@ -127,12 +127,12 @@ check_auth_option () {
 		logger -t $LTAG -p syslog.error -s "$0: LDMS_AUTH_TYPE naive is not supported for systemd service."
 		dietrace 1
 		;;
-	x*)
-		logger -t $LTAG -p syslog.error -s "$0: LDMS_AUTH_TYPE $LDMS_AUTH_TYPE is unknown"
-		dietrace 1
-		;;
 	x)
 		logger -t $LTAG -p syslog.error -s "$0: LDMS_AUTH_TYPE is undefined."
+		dietrace 1
+		;;
+	x*)
+		logger -t $LTAG -p syslog.error -s "$0: LDMS_AUTH_TYPE $LDMS_AUTH_TYPE is unknown"
 		dietrace 1
 		;;
 	esac
