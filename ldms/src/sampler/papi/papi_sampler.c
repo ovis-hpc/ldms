@@ -151,8 +151,10 @@ static void free_job_data(job_data_t jd)
 		free(t);
 	}
 
-	free(jd->schema_name);
-	free(jd->instance_name);
+	if (jd->schema_name)
+		free(jd->schema_name);
+	if (jd->instance_name)
+		free(jd->instance_name);
 	free(jd);
 }
 
@@ -172,11 +174,13 @@ static void *cleanup_proc(void *arg)
 		}
 		while (!LIST_EMPTY(&delete_list)) {
 			job = LIST_FIRST(&delete_list);
-			msglog(LDMSD_LINFO,
-			       "papi_sampler [%d]: deleting instance '%s', "
-			       "set %p, set_id %ld.\n",
-			       __LINE__, job->instance_name, job->set,
-			       ldms_set_id(job->set));
+			if (job->instance_name) {
+				msglog(LDMSD_LINFO,
+				       "papi_sampler [%d]: deleting instance '%s', "
+				       "set %p, set_id %ld.\n",
+				       __LINE__, job->instance_name,
+				       (job->set ? ldms_set_id(job->set) : -1));
+			}
 			LIST_REMOVE(job, expiry_entry);
 			LIST_REMOVE(job, delete_entry);
 			free_job_data(job);
@@ -515,18 +519,44 @@ static int handle_job_init(uint64_t job_id, json_entity_t e)
 		json_entity_t file_name = json_attr_value(file_attr);
 		if (json_entity_type(file_name) != JSON_STRING_VALUE) {
 			msglog(LDMSD_LERROR,
-			       "papi_sampler[%d]: papi_config 'file' attribute must be a string, job %d ignored.",
+			       "papi_sampler[%d]: papi_config 'file' attribute "
+			       "must be a string, job %d ignored.",
 			       job_id, __LINE__);
 			rc = EINVAL;
 			goto out;
 		}
 		rc = papi_process_config_file(job, json_value_str(file_name)->str, msglog);
+		if (rc) {
+			switch (rc) {
+			case ENOENT:
+				msglog(LDMSD_LERROR,
+				       "papi_sampler: The configuration "
+				       "file, %s, does not exist.\n",
+				       json_value_str(file_name)->str);
+				break;
+			case EPERM:
+				msglog(LDMSD_LERROR,
+				       "papi_sampler: Permission denied "
+				       "processing the %s configuration file\n",
+				       json_value_str(file_name)->str);
+				break;
+			default:
+				msglog(LDMSD_LERROR,
+				       "papi_sampler: Error %d processing "
+				       "the %s configuration file\n",
+				       rc, json_value_str(file_name)->str);
+
+				break;
+			}
+			goto out;
+		}
 	} else {
 		json_entity_t config_string = json_attr_value(config_attr);
 		if (json_entity_type(config_string) != JSON_STRING_VALUE) {
 			msglog(LDMSD_LERROR,
-			       "papi_sampler[%d]: papi_config 'config' attribute must be a string, job %d ignored.",
-			       job_id, __LINE__);
+			       "papi_sampler: papi_config 'config' "
+			       "attribute must be a string, job %d ignored.",
+			       job_id);
 			rc = EINVAL;
 			goto out;
 		}
