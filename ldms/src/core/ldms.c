@@ -757,7 +757,7 @@ void ldms_set_put(ldms_set_t set)
 {
 	if (!set)
 		return;
-	ref_put(&set->ref, "ldms_set_by_name");
+	ref_put(&set->ref, "__ldms_find_local_set");
 }
 
 static  void sync_lookup_cb(ldms_t x, enum ldms_lookup_status status, int more,
