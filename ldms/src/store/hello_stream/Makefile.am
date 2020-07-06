@@ -14,7 +14,7 @@ STORE_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
 
 if ENABLE_HELLO_STREAM
 libhello_stream_store_la_SOURCES = hello_stream_store.c
-libhello_stream_store_la_LIBADD = $(STORE_LIBADD) -ljson_util
+libhello_stream_store_la_LIBADD = $(STORE_LIBADD) -lovis_json
 pkglib_LTLIBRARIES += libhello_stream_store.la
 dist_man7_MANS += Plugin_hello_stream_store.man
 

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <errno.h>
-#include "json_util.h"
+#include "ovis_json.h"
 
 #define JSON_BUF_START_LEN 8192
 

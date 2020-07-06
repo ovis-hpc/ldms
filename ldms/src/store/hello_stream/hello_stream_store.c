@@ -62,7 +62,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <unistd.h>
-#include <json/json_util.h>
+#include <ovis_json/ovis_json.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_stream.h"
@@ -151,7 +151,7 @@ static int _get_header_from_headerline(json_entity_t e){
 
 	int i, j;
 	char *saveptr = NULL;
-	char *s, *pch, *tempstr;
+	char *pch, *tempstr;
 
 
 	json_attr_t attr = e->value.attr_;
@@ -214,7 +214,6 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		     const char *msg, size_t msg_len,
 		     json_entity_t e) {
 
-	json_entity_t a;
 	int i = 0;
 	int rc = 0;
 

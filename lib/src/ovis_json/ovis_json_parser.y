@@ -4,7 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
-#include "json_util.h"
+#include "ovis_json.h"
 #define YYLTYPE struct json_loc_s
 
 void yyerror(YYLTYPE *yylloc, json_parser_t parser, char *input, size_t input_len,

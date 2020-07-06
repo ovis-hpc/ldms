@@ -51,7 +51,7 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <papi.h>
-#include <json/json_util.h>
+#include <ovis_json/ovis_json.h>
 #include  "../sampler_base.h"
 #include "papi_sampler.h"
 

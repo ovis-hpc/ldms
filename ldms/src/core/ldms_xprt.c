@@ -65,7 +65,7 @@
 #include <pwd.h>
 #include <unistd.h>
 #include <mmalloc/mmalloc.h>
-#include <json/json_util.h>
+#include <ovis_json/ovis_json.h>
 #include "ovis_util/os_util.h"
 #include "ldms.h"
 #include "ldms_xprt.h"

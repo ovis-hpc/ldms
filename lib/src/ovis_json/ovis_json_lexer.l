@@ -2,8 +2,8 @@
 
 #include <stdlib.h>
 #include <inttypes.h>
-#include <json_util.h>
-#include "json_parser.h"
+#include <ovis_json.h>
+#include "ovis_json_parser.h"
 
 struct yyguts_t;
 void update_yylloc(YYLTYPE *, struct yyguts_t *);

@@ -10,7 +10,7 @@ CFLAGS := $(filter-out -Werror, ${CFLAGS})
 
 COMMON_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
 		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
-		$(top_builddir)/lib/src/json/libjson_util.la
+		$(top_builddir)/lib/src/ovis_json/libovis_json.la
 
 libkokkos_store_la_SOURCES = kokkos_store.c
 libkokkos_store_la_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS) -g -O0

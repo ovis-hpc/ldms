@@ -11,18 +11,18 @@ COMMON_LIBADD =  -lldms -lovis_util -lcoll \
 if ENABLE_HELLO_STREAM
 
 libhello_sampler_la_SOURCES = hello_sampler.c hello_sampler.h ../sampler_base.c
-libhello_sampler_la_LIBADD = $(COMMON_LIBADD) -ljson_util
+libhello_sampler_la_LIBADD = $(COMMON_LIBADD) -lovis_json
 pkglib_LTLIBRARIES += libhello_sampler.la
 dist_man7_MANS += Plugin_hello_sampler.man
 
 sbin_PROGRAMS = hello_publisher hello_cat_publisher
 hello_publisher_SOURCES = hello_publisher.c
-hello_publisher_LDADD = $(COMMON_LIBADD) -ljson_util \
+hello_publisher_LDADD = $(COMMON_LIBADD) -lovis_json \
 			      ../../ldmsd/libldmsd_stream.la
 dist_man7_MANS += hello_publisher.man
 
 hello_cat_publisher_SOURCES = hello_cat_publisher.c
-hello_cat_publisher_LDADD = $(COMMON_LIBADD) -ljson_util \
+hello_cat_publisher_LDADD = $(COMMON_LIBADD) -lovis_json \
 			      ../../ldmsd/libldmsd_stream.la
 dist_man7_MANS += hello_cat_publisher.man
 

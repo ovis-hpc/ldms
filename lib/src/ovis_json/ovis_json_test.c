@@ -1,5 +1,5 @@
 #include <coll/rbt.h>
-#include "json_util.h"
+#include "ovis_json.h"
 #include "stdio.h"
 
 static jbuf_t print_entity(jbuf_t jb, json_entity_t e);

@@ -4,7 +4,7 @@
 extern "C" {
 #endif
 #include "ldms_xprt.h"
-#include <json/json_util.h>
+#include <ovis_json/ovis_json.h>
 
 struct ldmsd_stream_client_s;
 typedef struct ldmsd_stream_client_s *ldmsd_stream_client_t;

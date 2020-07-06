@@ -15,7 +15,7 @@ ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldms_xprt.h ldms_auth.h kldms_req.h
 libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h \
 		     ldms_auth.c ldms_xprt_auth.c
 libldms_la_LIBADD = -ldl -lpthread $(top_builddir)/lib/src/coll/libcoll.la \
-		    $(top_builddir)/lib/src/json/libjson_util.la \
+		    $(top_builddir)/lib/src/ovis_json/libovis_json.la \
 		    $(top_builddir)/lib/src/mmalloc/libmmalloc.la \
 		    $(top_builddir)/lib/src/zap/libzap.la
 

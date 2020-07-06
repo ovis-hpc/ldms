@@ -7,7 +7,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <semaphore.h>
-#include <json/json_util.h>
+#include <ovis_json/ovis_json.h>
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"

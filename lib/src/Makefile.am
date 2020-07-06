@@ -38,7 +38,7 @@ if ENABLE_OVIS_CTRL
 SUBDIRS += ovis_ctrl
 endif
 
-SUBDIRS += json
+SUBDIRS += ovis_json
 
 install-data-hook: ovis-lib-configvars.sh
 	$(MKDIR_P) $(DESTDIR)$(libdir)

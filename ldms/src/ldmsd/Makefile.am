@@ -22,7 +22,7 @@ LZAP = $(top_builddir)/lib/src/zap/libzap.la
 LMMALLOC = $(top_builddir)/lib/src/mmalloc/libmmalloc.la
 LOVIS_UTIL = $(top_builddir)/lib/src/ovis_util/libovis_util.la
 LCOLL = $(top_builddir)/lib/src/coll/libcoll.la
-LJSON_UTIL = $(top_builddir)/lib/src/json/libjson_util.la
+LJSON_UTIL = $(top_builddir)/lib/src/ovis_json/libovis_json.la
 LOVIS_EVENT = $(top_builddir)/lib/src/ovis_event/libovis_event.la
 LOVIS_CTRL = $(top_builddir)/lib/src/ovis_ctrl/libovis_ctrl.la
 

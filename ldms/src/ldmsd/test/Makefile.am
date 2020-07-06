@@ -7,7 +7,7 @@ AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 COMMON_LD_ADD = ../../core/libldms.la \
 		../libldmsd_request.la \
 		../libldmsd_stream.la \
-		$(top_builddir)/lib/src/json/libjson_util.la \
+		$(top_builddir)/lib/src/ovis_json/libovis_json.la \
 		$(top_builddir)/lib/src/ovis_util/libovis_util.la
 
 sbin_PROGRAMS += ldmsd_stream_publish

@@ -64,7 +64,7 @@
 #include <ctype.h>
 #include <pwd.h>
 #include <grp.h>
-#include <json/json_util.h>
+#include <ovis_json/ovis_json.h>
 #include <assert.h>
 #include <sched.h>
 #include "ldms.h"

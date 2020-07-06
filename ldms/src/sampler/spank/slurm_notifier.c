@@ -65,7 +65,7 @@
 #include <pthread.h>
 #include <slurm/spank.h>
 #include "ldms.h"
-#include <json/json_util.h>
+#include <ovis_json/ovis_json.h>
 #include <assert.h>
 #include "../ldmsd/ldmsd_stream.h"
 
@@ -186,7 +186,7 @@ static void msglog(const char *format, ...)
  *   }
  */
 
-#include <json/json_util.h>
+#include <ovis_json/ovis_json.h>
 
 SPANK_PLUGIN(slurm_notifier, 1)
 

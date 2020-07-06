@@ -9,7 +9,7 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 		@LDFLAGS_GETTIME@ \
 		$(top_builddir)/lib/src/ovis_util/libovis_util.la \
 		$(top_builddir)/lib/src/coll/libcoll.la \
-		$(top_builddir)/lib/src/json/libjson_util.la \
+		$(top_builddir)/lib/src/ovis_json/libovis_json.la \
 		-lpapi -lm -lpthread
 
 libpapi_sampler_la_SOURCES = papi_sampler.h papi_sampler.c papi_config.c

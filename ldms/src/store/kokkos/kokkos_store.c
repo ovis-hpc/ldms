@@ -64,7 +64,7 @@
 #include <sos/sos.h>
 #include <openssl/sha.h>
 #include <math.h>
-#include <json/json_util.h>
+#include <ovis_json/ovis_json.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_stream.h"

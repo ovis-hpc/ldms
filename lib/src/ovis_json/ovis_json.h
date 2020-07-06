@@ -46,8 +46,8 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#ifndef _JSON_UTIL_H_
-#define _JSON_UTIL_H_
+#ifndef _OVIS_JSON_H_
+#define _OVIS_JSON_H_
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>

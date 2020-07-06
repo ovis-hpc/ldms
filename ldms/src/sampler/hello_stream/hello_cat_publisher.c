@@ -173,8 +173,6 @@ int main(int argc, char **argv)
 	char *host = NULL;
 	char *port = NULL;
 	char *xprt = "sock";
-	size_t len = 0;
-	ssize_t read;
 	FILE *fd = stdin;
 	char buf[STRLEN];
 	char *fname = NULL;
@@ -186,7 +184,6 @@ int main(int argc, char **argv)
 	char *auth = "none";
 	struct attr_value_list *auth_opt = NULL;
 	const int auth_opt_max = AUTH_OPT_MAX;
-	int i;
 	int rc;
 
 	auth_opt = av_new(auth_opt_max);

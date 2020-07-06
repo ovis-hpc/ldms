@@ -68,7 +68,7 @@
 #include "ldmsd_stream.h"
 #include "../sampler_base.h"
 
-#include "json/json_util.h"
+#include "ovis_json/ovis_json.h"
 
 #define SAMP "syspapi_sampler"
 
