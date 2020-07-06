@@ -499,7 +499,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 		return;
 	}
 	LIST_FOREACH(name, &name_list, entry) {
-		struct ldms_set *set = __ldms_find_local_set(name->name);
+		struct ldms_set *set = ldms_set_by_name(name->name);
 		if (!set)
 			continue;
 		uid = __le32_to_cpu(set->meta->uid);
@@ -514,7 +514,7 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 				       "{ \"directory\" : [");
 			if (cnt >= len - hdrlen) {
 				rc = ENOMEM;
-				ref_put(&set->ref, "__ldms_find_local_set");
+				ldms_set_put(set);
 				goto out;
 			}
 		}
@@ -988,13 +988,13 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 			goto err_0;
 		}
 	} else if (0 == (flags & LDMS_LOOKUP_BY_SCHEMA)) {
-		set = __ldms_find_local_set(req->lookup.path);
+		set = ldms_set_by_name(req->lookup.path);
 		if (!set) {
 			rc = ENOENT;
 			goto err_1;
 		}
 		rc = __send_lookup_reply(x, set, req->hdr.xid, 0);
-		ref_put(&set->ref, "__ldms_find_local_set");
+		ldms_set_put(set);
 		if (rc)
 			goto err_1;
 		return;
@@ -1489,10 +1489,10 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 
 		/* If this set is in our local set tree, update it's set info */
 		dir->set_data[i].info_count = info_count;
-		lset = __ldms_find_local_set(dir->set_data[i].inst_name);
+		lset = ldms_set_by_name(dir->set_data[i].inst_name);
 		rc = __process_dir_set_info(lset, type, &dir->set_data[i], info_list);
 		if (lset)
-			ref_put(&lset->ref, "__ldms_find_local_set");
+			ldms_set_put(lset);
 		if (rc)
 			break;
 	}
@@ -2112,7 +2112,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	schema_name = (ldms_name_t)lu->set_info;
 	inst_name = (ldms_name_t)&(schema_name->name[schema_name->len]);
 
-	struct ldms_set *lset = __ldms_find_local_set(inst_name->name);
+	struct ldms_set *lset = ldms_set_by_name(inst_name->name);
 	if (!lset)
 		goto create;
 	/* set existed, allow only re-lookup for SET_INFO */
@@ -2134,7 +2134,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 			&inst_name->name[inst_name->len]);
 		pthread_mutex_unlock(&lset->lock);
 	}
-	ref_put(&lset->ref, "__ldms_find_local_set");
+	ldms_set_put(lset);
 	/* unmap ev->map, it is not used */
 	zap_unmap(ev->map);
 	goto unlock_out;
@@ -2926,9 +2926,9 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	if (LDMS_XPRT_AUTH_GUARD(x))
 		return EPERM;
 
-	struct ldms_set *set = __ldms_find_local_set(path);
+	struct ldms_set *set = ldms_set_by_name(path);
 	if (set) {
-		ref_put(&set->ref, "__ldms_find_local_set");
+		ldms_set_put(set);
 		if (!(flags & LDMS_LOOKUP_SET_INFO)) {
 			/*
 			 * The set has been already looked up

@@ -135,19 +135,17 @@ void __ldms_gn_inc(struct ldms_set *set, ldms_mdesc_t desc)
 	}
 }
 
-/* Caller must NOT hold the set tree lock. */
+/* Caller must hold the set tree lock. */
 struct ldms_set *__ldms_find_local_set(const char *set_name)
 {
 	struct rbn *z;
 	struct ldms_set *s = NULL;
 
-	__ldms_set_tree_lock();
 	z = rbt_find(&set_tree, (void *)set_name);
 	if (z) {
 		s = container_of(z, struct ldms_set, rb_node);
 		ref_get(&s->ref, __func__);
 	}
-	__ldms_set_tree_unlock();
 	return s;
 }
 
@@ -202,7 +200,11 @@ void dump_set_tree()
  */
 ldms_set_t ldms_set_by_name(const char *set_name)
 {
-	return __ldms_find_local_set(set_name);
+	ldms_set_t set;
+	__ldms_set_tree_lock();
+	set = __ldms_find_local_set(set_name);
+	__ldms_set_tree_unlock();
+	return set;
 }
 
 uint64_t ldms_set_meta_gn_get(ldms_set_t s)
@@ -908,7 +910,9 @@ struct ldms_set *__ldms_create_set(const char *instance_name,
 		data->gn = data->meta_gn = meta->meta_gn;
 	}
 
+	__ldms_set_tree_lock();
 	set = __record_set(instance_name, meta, data_base, flags);
+	__ldms_set_tree_unlock();
 	if (set)
 		return set;
 
@@ -1172,14 +1176,12 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 		value_off += __ldms_value_size_get(vd->vd_type,
 						   __le32_to_cpu(vd->vd_array_count));
 	}
+	__ldms_set_tree_lock();
 	struct ldms_set *set = __record_set(instance_name, meta, data_base, LDMS_SET_F_LOCAL);
-	if (!set)
-		goto err_1;
-	return set;
- err_1:
 	__ldms_set_tree_unlock();
-	mm_free(meta);
-	return NULL;
+	if (!set)
+		mm_free(meta);
+	return set;
 }
 
 ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
