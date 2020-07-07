@@ -543,6 +543,14 @@ class Switch:
         if not port_empty:
             self.nlink += 1
 
+    def fix_empty_ports(self):
+        """will miss trailing ports since we don't know switch port count."""
+        p = 1 
+        while p < self.maxport:
+            if not str(p) in self.ports.keys():
+                self.add_port(p, "0", "0", True)
+            p += 1
+
     def inactive_ports(self):
         # return numbers of unconnected ports
         r = []
@@ -563,7 +571,6 @@ class Switch:
 # hca card or sharp fakery
 class Hca:
     def __init__(self, lid, guid, srcname):
-        self.maxport = 0
         self.lid = lid
         self.guid = guid
         self.name = srcname
@@ -741,7 +748,7 @@ def add_link(links, lidtype, lid, port, guid, desttype, destlid, destport, destg
     rname = "{}.{}-{}.{}".format(destlid, destport, lid, port)
     if name in links or rname in links:
         return
-    if int(lid) < int(destlid) or (lid == destlid and int(port) < int(destport)):
+    if int(lid,0) < int(destlid,0) or (lid == destlid and int(port) < int(destport)):
         links[name] = Link(lidtype, lid, port, guid, desttype, destlid, destport, destguid, name, rname, guid_name)
     else:
         links[rname] = Link(desttype, destlid, destport, destguid, lidtype, lid, port, guid, rname, name, guid_name)
@@ -811,6 +818,108 @@ def ibnd_p_parse(noise, fname):
    
     return (cas, switches, links, guid_name, name_guid, lidmax)
 
+# get-opa-network.sh output
+# LIDS
+# 0x002345;1;FI;admin1 hfi1_0;0x0001
+# 0x00123a1;0;SW;opaedge1;0x0002
+# LINKS
+# Rate;LinkDetails;CableLength;CableLabel;CableDetails;DeviceTechShort;CableInfo.Length;CableInfo.VendorName;CableInfo.VendorPN;CableInfo.VendorRev;Port.NodeDesc;Port.PortNum;Port.NodeDesc;Port.PortNum
+# 100g;;;;;QSFP Copper;1m;FCI Electronics;1234-34LF;C;c701 hfi1_0;1;opaedge1;16
+
+
+def opa_parse(noise, fname):
+    lidmax = -1
+    switches = dict(); # indexed by lid
+    links = dict(); # indexed by lid.port - lid2.port2 where lid < lid2
+    cas = dict(); # indexed by lid
+    LNO = 0
+    guid_name = dict() ; # guid to name
+    name_guid = dict() ; # name to guid
+    name_lid = dict() ; # name to lid
+    lidtypes = dict() ; # SW or CA only
+    mode = None
+    lkhead_index = dict()
+    with open(fname) as f:
+        for line in f:
+            LNO += 1
+            if noise:
+                print("{}".format(LNO, mode))
+                print("{}: {}".format(LNO, line.strip()))
+            y = line.strip()
+            if len(y) < 1:
+                continue
+            x = y.split(";")
+            if len(x) < 1:
+                continue
+            if not mode:
+                if x[0] != "LIDS":
+                    sys.exit("input file " + file + " is not get-opa-network.sh file")
+                else:
+                    mode = "LIDS"
+                    continue
+            if mode == "LINKSHDR":
+                lheads = x           
+                hk = 0
+                for h in x:
+                    if h in lkhead_index.keys():
+                        continue
+                    lkhead_index[h] = hk
+                    hk += 1
+                mode = "LINKS"
+                continue
+            if x[0] == "LINKS":
+                mode = "LINKSHDR"
+                continue
+            if mode == "LIDS":
+                (guid, dummy, lidtype, name, lid) = x[:5]
+                if lidtype == "FI":
+                    lidtype = "CA"
+                ilid = int(lid, 0)
+                if ilid > lidmax:
+                    lidmax = ilid
+                lidtypes[lid] = lidtype
+                guid_name[guid] = name
+                name_guid[name] = guid
+                name_lid[name] = lid
+                if lidtype == "CA":
+                    curca = add_hca(cas, lid, guid, name)
+                if lidtype == 'SW':
+                    cursw = add_switch(switches, lid, guid, name)
+                continue
+            if mode == "LINKS":
+                speed = x[lkhead_index["Rate"]]
+                srcname = x[lkhead_index["Port.NodeDesc"]]
+                port = x[lkhead_index["Port.NodeDesc"] +1]
+                destname = x[lkhead_index["Port.NodeDesc"] +2]
+                destport = x[lkhead_index["Port.NodeDesc"] +3]
+                lid = name_lid[srcname]
+                lidtype = lidtypes[lid]
+                destlid = name_lid[destname]
+                desttype = lidtypes[destlid]
+                guid = name_guid[srcname]
+                destguid = name_guid[destname]
+                add_link(links, lidtype, lid, port, guid, desttype, destlid, destport, destguid, guid_name);
+                port_empty = False
+                mult = "0"
+                if lidtype == 'SW':
+                    cursw = switches[lid]
+                    cursw.add_port(port, mult, speed, port_empty)
+                if lidtype == "CA":
+                    curca = cas[lid]
+                    curca.add_port(port, mult, speed, port_empty)
+                if desttype == 'SW':
+                    cursw = switches[destlid]
+                    cursw.add_port(destport, mult, speed, port_empty)
+                if desttype == "CA":
+                    curca = cas[destlid]
+                    curca.add_port(destport, mult, speed, port_empty)
+                continue
+            print("Unexpected line format at line {}: {}".format(LNO, line))
+            return (None, None, None, None, None, None)
+    for name,s in switches.items():
+        s.fix_empty_ports()
+    return (cas, switches, links, guid_name, name_guid, lidmax)
+
 # peel back layers in sw using lk info
 # mark all ca tier 0 by default
 # mark all sw with ca attachments tier 1
@@ -820,7 +929,7 @@ def ibnd_p_parse(noise, fname):
 # mark all sw with tier 1 attachments tier 2
 # mark all sw with tier 2 attachments tier 3
 # return 0 if ok and 1 if problem
-def compute_switch_tiers(ca, sw, lk):
+def compute_switch_tiers(ca, sw, lk, sharp):
     change = True
     maxtier = 0
     k = 0
@@ -833,7 +942,7 @@ def compute_switch_tiers(ca, sw, lk):
             a = False
             b = False
             # skip sharp links:
-            if int(l.src.port) == 37 or int(l.dst.port) == 37:
+            if sharp > -1 and (int(l.src.port) == sharp or int(l.dst.port) == sharp):
                 # print('skipping sharp agg link {}'.format(l.name))
                 l.tierdone = True
             if l.tierdone:
@@ -1384,14 +1493,15 @@ def format_ca_ib(f, c, annotate):
     plen = len(al)
     pl = str(sorted_to_int(c.ports))
     pl = pl.strip("[]")
+    ilid = int(c.lid, 0)
     if c.maxport == len(c.ports) and len(c.ports) > 1:
         if annotate:
-            print("# {}\n".format(c.host), file=f)
-        print("{} {} {} {}".format(c.lid, c.guid, plen, '*'), file=f)
+            print("# {}".format(c.host), file=f)
+        print("{} {} {} {}".format(ilid, c.guid, plen, '*'), file=f)
     else:
         if annotate:
-            print("# {}\n".format(c.host), file=f)
-        print("{} {} {} {}".format(c.lid, c.guid, plen, pl), file=f)
+            print("# {}".format(c.host), file=f)
+        print("{} {} {} {}".format(ilid, c.guid, plen, pl), file=f)
 
 # lid,guid,nports,portlist
 def format_sw_ib(f, c, annotate):
@@ -1401,16 +1511,17 @@ def format_sw_ib(f, c, annotate):
     pl = str(al)
     pl = pl.strip("[]")
     el = str(il).strip("[]")
+    ilid = int(c.lid, 0)
     if c.maxport == c.nlink and c.nlink > 1:
         if annotate:
             print("# {}".format(c.host), file=f)
-        print("{} {} {} {}".format(c.lid, c.guid, plen, '*'), file=f)
+        print("{} {} {} {}".format(ilid, c.guid, plen, '*'), file=f)
     else:
         if annotate:
             print("# {}".format(c.host), file=f)
             if len(il) > 0:
                 print("# empty ports: {}".format(el), file=f)
-        print("{} {} {} {}".format(c.lid, c.guid, plen, pl), file=f)
+        print("{} {} {} {}".format(ilid, c.guid, plen, pl), file=f)
 
 def format_ca(f, c, hnprefs, hnexclude, merged=False):
     if c.host[:2] in hnexclude:
@@ -1839,12 +1950,14 @@ def graph_tier(ca, sw, lk, fbase, tn, hnprefs, hnexclude, alg, opts, merge_nodes
 
 
 def get_arg_parser():
-    p = argparse.ArgumentParser(description = 'generate graphs and sampler assignments for ib fabrics')
-    p.add_argument("--lidnames", action="store_true", help="dump lid-names file", default=True)
+    p = argparse.ArgumentParser(description = 'generate graphs and sampler assignments for MAD-capable fabrics.\n Either --net or --opa is required.')
+    p.add_argument("--lidnames", action="store_true", help="dump lid-names file", default=False)
     p.add_argument("--out", dest='outprefix', help="prefix of output files", required=True)
-    p.add_argument("--net", dest='ibndpfile', help="file name of output collected from 'ibnetdiscover -p'", required=True)
+    p.add_argument("--net", dest='ibndpfile', help="file name of output collected from 'ibnetdiscover -p'", required=False, default=None)
+    p.add_argument("--opa", dest='opafile', help="file name of output collected from 'get-opa-network.sh'", required=False, default=None)
     p.add_argument("--samplers", dest='hostfile', help="file listing samplers as named in the host name map, one per line", required=True)
     p.add_argument("--annotate", dest='sampnote', action='store_true', help="annotate samplers files", default=False)
+    p.add_argument("--sharp", dest='sharpport', type=int, help="port to exclude in topology calculations (for sharp)", default=-1)
     p.add_argument("--tier0", action='store_true', help="generate tier0-1 graphs", default=False)
     p.add_argument("--tier1", action='store_true', help="generate tier1-2 graphs", default=False)
     p.add_argument("--tier2", action='store_true', help="generate tier2-3 graphs", default=False)
@@ -1864,7 +1977,15 @@ def main():
     aparse = get_arg_parser()
     args = aparse.parse_args()
 
-    (ca, sw, lk, guid_name, name_guid, lidmax) = ibnd_p_parse(args.dump_parse, args.ibndpfile)
+    ca = None
+    sharp = args.sharpport
+    if args.ibndpfile:
+        (ca, sw, lk, guid_name, name_guid, lidmax) = ibnd_p_parse(args.dump_parse, args.ibndpfile)
+    if args.opafile:
+        (ca, sw, lk, guid_name, name_guid, lidmax) = opa_parse(args.dump_parse, args.opafile)
+    if not ca:
+        sys.exit("either --opa or --net argument must be given")
+        
     if args.lidnames:
         format_lidnames(ca, sw, guid_name)
         return
@@ -1896,7 +2017,7 @@ def main():
 
     if args.debug:
         print('get tiers')
-    tr.maxtier = compute_switch_tiers(ca, sw, lk)
+    tr.maxtier = compute_switch_tiers(ca, sw, lk, sharp)
 
     if args.info:
         print("found maxtier={}".format(tr.maxtier))
