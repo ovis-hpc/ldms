@@ -23,6 +23,7 @@ libibnet_la_LIBADD = $(COMMON_LIBADD)
 libibnet_la_LDFLAGS = $(AM_LDFLAGS) -libmad -libumad -losmcomp -pthread
 libibnet_la_CFLAGS = $(AM_CFLAGS) -I/usr/include/infiniband
 bin_SCRIPTS += scripts/ldms-ibnet-sampler-gen
+bin_SCRIPTS += scripts/ldms-get-opa-network.sh
 pkglib_LTLIBRARIES += libibnet.la
 
 bin_PROGRAMS += ldms_ibnet_schema_name

@@ -5,8 +5,10 @@
 .SH NAME
 ldms-ibnet-sampler-gen - man page for the LDMS ibnet plugin support utility
 
+ldms-get-opa-network.sh - man page for the LDMS ibnet plugin support utility
+
 .SH SYNOPSIS
-ldms-ibnet-sampler-gen --net <netfile> --samplers <hostfile> --out <output prefix> [options]
+ldms-ibnet-sampler-gen --samplers <hostfile> --out <output prefix> [options]
 
 .SH DESCRIPTION
 The ldms-ibnet-sampler-gen script produces files splitting the ports in the netfile
@@ -16,12 +18,15 @@ dump of an approximately three-level FAT tree.
 .SH OPTIONS
 
 .nf
-  -h, --help            show this help message and exit
+  -h, --help            show the help message and exit
   --out OUTPREFIX       prefix of output files
   --net IBNDPFILE       file name of output collected from 'ibnetdiscover -p'
+  --opa OPAFILE         file name of output collected from 'ldms-get-opa-network.sh'
   --samplers HOSTFILE   file listing samplers as named in the node name map, one per line.
   --lidnames            dump lid,name map to stdout and exit.
   --annotate            annotate out sampler assignment files with node-name-map strings.
+                        and lists of unassigned switch ports.
+  --sharp               port to exclude in topology calculations (for sharp)
   --tier0               generate tier0-1 graphs
   --tier1               generate tier1-2 graphs
   --tier2               generate tier2-3 graphs
@@ -51,22 +56,41 @@ EOF
 
 ibnetdiscover -p > cluster-p-netdiscover
 
+# check lids for being parsed right
 ldms-ibnet-sampler-gen --lidnames --net cluster-p-netdiscover --samplers x --out x |
     sort -k2 -t, > lid.host.txt
 
 ldms-ibnet-sampler-gen \
 --net cluster-p-netdiscover \
 --samplers clustre-samplers \
+--sharp 37 \
 --annotate \
 --out sbx 
 
 .fi
-.SH NOTES
-Port 37, if present, is assumed to be a Mellanox SHARP port. Connections on port 37 are ignored for topology decomposition and sampler load balancing purposes.
 
-This program does not directly invoke infiniband. It does invoke (and require) graphviz utilities if the tier, circo, or sfdp options are applied.
+.PP
+.nf
+cat <<EOF >cluster-samplers
+admin1 hfi1_0
+admin2 hfi1_0
+admin3 hfi1_0
+EOF
+
+ldms-get-opa-network.sh > cluster-opa-map
+
+# check lids for being parsed right
+ldms-ibnet-sampler-gen --lidnames --opa cluster-opa-map --samplers cluster-samplers  --out x |sort -k2 -t, > lid.host.txt
+
+ldms-ibnet-sampler-gen --opa cluster-opa-map --samplers cluster-samplers --out swx
+
+.fi
+.SH NOTES
+A Mellanox SHARP port appears as an HCA in a switch. Connections on the sharp port should be ignored for topology decomposition and sampler load balancing purposes, as they usually make the topology flat if included.
+
+This program does not directly invoke infiniband or omnipath utilities. It does invoke (and require) graphviz utilities if the tier, circo, or sfdp options are applied.
 
 Applying the --node-name-map option to ibnetdiscover when generating the net file makes the results more readable.
 
 .SH SEE ALSO
-Plugin_ibnet(7), circo, dot
+Plugin_ibnet(7), circo, dot, ldms-get-opa-network, ibnetdiscover
