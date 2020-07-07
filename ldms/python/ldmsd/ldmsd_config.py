@@ -55,7 +55,6 @@ from os.path import basename, dirname
 import struct
 import cmd
 from argparse import ArgumentError
-from .ldmsd_request import LDMSD_Request, LDMSD_Req_Attr
 
 """
 @module ldmsd_config
@@ -64,135 +63,6 @@ from .ldmsd_request import LDMSD_Request, LDMSD_Req_Attr
 
 import os
 import socket
-
-#:Dictionary contains the cmd_id, required attribute list
-#:and optional attribute list of each ldmsd commands. For example,
-#:LDMSD_CTRL_CMD_MAP['load']['req_attr'] is the list of the required attributes
-#:of the load command.
-#:LDMSD_CTRL_CMD_MAP['load']['opt_attr'] is the list of the optional attributes
-#:of the load command.
-LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name', 'type']},
-                      'list': {'req_attr': []},
-                      'load': {'req_attr': ['name']},
-                      'term': {'req_attr': ['name']},
-                      'config': {'req_attr': ['name', 'producer', 'instance']},
-                      'start': {'req_attr': ['name', 'interval'],
-                                'opt_attr': ['offset']},
-                      'stop': {'req_attr': ['name']},
-                      'udata': {'req_attr': ['instance', 'metric', 'udata']},
-                      'daemon_exit': {'req_attr': []},
-                      'oneshot': {'req_attr': ['name', 'time']},
-                      'udata_regex': {'req_attr': ['instance', 'regex', 'base'],
-                                      'opt_attr': ['incr']},
-                      'version': {'req_attr': [], 'opt_attr': []},
-                      'loglevel': {'req_attr': ['level'],},
-                      'include': {'req_attr': ['path'] },
-                      'env': {'req_attr': []},
-                      'logrotate': {'req_attr': [], 'opt_attr': []},
-                      ##### Sampler Policy #####
-                      'smplr_add': {'req_attr': ['name', 'instance']},
-                      'smplr_del': {'req_attr': ['name']},
-                      'smplr_start': {'req_attr': ['name', 'interval'],
-                                      'opt_attr': ['offset'] },
-                      'smplr_stop': {'req_attr': ['name']},
-                      'smplr_status': {'opt_attr': ['name']},
-                      ##### Producer Policy #####
-                      'prdcr_add': {'req_attr': ['name', 'type', 'xprt', 'host',
-                                             'port', 'interval']},
-                      'prdcr_del': {'req_attr': ['name']},
-                      'prdcr_start': {'req_attr': ['name'],
-                                      'opt_attr': ['interval']},
-                      'prdcr_stop': {'req_attr': ['name']},
-                      'prdcr_start_regex': {'req_attr': ['regex'],
-                                            'opt_attr': ['interval']},
-                      'prdcr_stop_regex': {'req_attr': ['regex']},
-                      'prdcr_status': {'opt_attr': [], 'req_attr': ['name']},
-                      'prdcr_set_status': {'opt_attr': ['producer', 'instance', 'schema']},
-                      'prdcr_hint_tree': {'req_attr':['name'], 'opt_attr': []},
-                      'prdcr_subscribe': {'req_attr':['regex', 'stream'], 'opt_attr': []},
-                      ##### Updater Policy #####
-                      'updtr_add': {'req_attr': ['name'],
-                                    'opt_attr': ['offset', 'push', 'interval', 'auto_interval']},
-                      'updtr_del': {'req_attr': ['name']},
-                      'updtr_match_add': {'req_attr': ['name', 'regex', 'match']},
-                      'updtr_match_del': {'req_attr': ['name', 'regex', 'match']},
-                      'updtr_prdcr_add': {'req_attr': ['name', 'regex']},
-                      'updtr_prdcr_del': {'req_attr': ['name', 'regex']},
-                      'updtr_start': {'req_attr': ['name'],
-                                      'opt_attr': ['interval', 'offset', 'auto_interval']},
-                      'updtr_stop': {'req_attr': ['name']},
-                      'udptr_status': {'req_attr': [], 'opt_attr': ['name']},
-                      'updtr_task': {'req_attr': ['name'], 'opt_attr': []},
-                      ##### Storage Policy #####
-                      'strgp_add': {'req_attr': ['name', 'plugin', 'container',
-                                              'schema']},
-                      'strgp_del': {'req_attr': ['name']},
-                      'strgp_prdcr_add': {'req_attr': ['name', 'regex']},
-                      'strgp_prdcr_del': {'req_attr': ['name', 'regex']},
-                      'strgp_metric_add': {'req_attr': ['name', 'metric']},
-                      'strgp_metric_del': {'req_attr': ['name', 'metric']},
-                      'strgp_start': {'req_attr': ['name']},
-                      'strgp_stop': {'req_attr': ['name']},
-                      'strgp_status': {'req_attr': [], 'opt_attr': ['name']},
-                      ##### Plugin #####
-                      'plugn_sets': {'req_attr': [], 'opt_attr': ['name']},
-                      'plugn_status': {'req_attr': [], 'opt_attr': ['name']},
-                      'plugn_query': {'req_attr': ['query'], 'opt_attr': ['name']},
-                      ##### Streams ###
-                      'publish': {'req_attr': ['name'], 'opt_attr': []},
-                      'subscribe': {'req_attr': ['name'], 'opt_attr': []},
-                      ##### Daemon #####
-                      'daemon_status': {'req_attr': [], 'opt_attr': []},
-                      ##### Misc. #####
-                      'greeting': {'req_attr': [], 'opt_attr': ['name', 'offset', 'level']},
-                      'example': {'req_attr': [], 'opt_attr': []},
-                      'set_info': {'req_attr': ['instance'], 'opt_attr': []},
-                      'export': {'req_attr': ['path'], 'opt_attr': ['env', 'cmdline', 'cfgcmd']},
-                      ##### Failover. #####
-                      'failover_config': {
-                                'req_attr': [
-                                    'host',
-                                    'port',
-                                    'xprt',
-                                ],
-                                'opt_attr': [
-                                    'interval',
-                                    'peer_name',
-                                    'auto_switch',
-                                    'timeout_factor',
-                                ]
-                            },
-                      'failover_mod': {'req_attr': [], 'opt_attr': ['auto_switch']},
-                      'failover_start': {'req_attr': [], 'opt_attr': []},
-                      'failover_stop': {'req_attr': [], 'opt_attr': []},
-                      'failover_peercfg_start': {'req_attr': [], 'opt_attr': []},
-                      'failover_peercfg_stop': {'req_attr': [], 'opt_attr': []},
-                      'setgroup_add': {
-                                    'req_attr': ['name'],
-                                    'opt_attr': [
-                                        'producer',
-                                        'interval',
-                                        'offset',
-                                        'perm',
-                                    ],
-                            },
-                      'setgroup_mod': {
-                                    'req_attr': ['name'],
-                                    'opt_attr': [
-                                        'interval',
-                                        'offset'
-                                    ],
-                            },
-                      'setgroup_del': {'req_attr': ['name'], 'opt_attr': [] },
-                      'setgroup_ins': {
-                                    'req_attr': ['name'],
-                                    'opt_attr': ['instance']
-                            },
-                      'setgroup_rm':  {
-                                    'req_attr': ['name'],
-                                    'opt_attr': ['instance']
-                            },
-                      }
 
 """@var MAX_RECV_LEN
   The maximum length of the message received back from ldmsd. The default is 4096.
@@ -226,24 +96,6 @@ class ldmsdConfig(object):
         """Close the socket
         """
         self.socket.close()
-
-    def get_cmd_attr_list(self, cmd_verb):
-        """Return the dictionary of command attributes
-
-        If there are no required/optional attributes, the value of the
-        'req'/'opt' key is None. Otherweise, the value is a list of attribute
-        names.
-
-        @return: {'req': [], 'opt': []}
-        """
-        attr_dict = {'req': None, 'opt': None}
-        if 'req_attr' in LDMSD_CTRL_CMD_MAP[cmd_verb]:
-            if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['req_attr']) > 0:
-                attr_dict['req'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['req_attr']
-        if 'opt_attr' in LDMSD_CTRL_CMD_MAP[cmd_verb]:
-            if len(LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']) > 0:
-                attr_dict['opt'] = LDMSD_CTRL_CMD_MAP[cmd_verb]['opt_attr']
-        return attr_dict
 
 class ldmsdInbandConfig(ldmsdConfig):
 
