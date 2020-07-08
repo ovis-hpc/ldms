@@ -48,6 +48,9 @@
 /**
  * \file variable.c
  * \brief 'variable set' test data provider
+ *
+ * Recreates the data set at a different size/name/schema every 
+ * sameticks samples (default 4).
  */
 #define _GNU_SOURCE
 #include <inttypes.h>
@@ -78,7 +81,7 @@ static char *instance_name;
 
 static int sameticks = 4;
 static int curtick = 0;
-static int maxmets = 9;
+static int maxmets = 9; /* must be single digit */
 static int minmets = 1;
 static int curmets = 1;
 static const char *namebase = "metnum";
@@ -101,6 +104,10 @@ static int create_metric_set(const char *in, char* sn)
 			goto err;
 		}
 		snprintf(schema_name, len, "%s%d", sn, curmets);
+	} else {
+		size_t d = strlen(schema_name) - 1;
+		schema_name[d] = (char)(48+ curmets);
+		msglog(LDMSD_LDEBUG, SAMP ": redefined schema name %s %d\n", schema_name, curmets);
 	}
 	schema = ldms_schema_new(schema_name);
 	if (!schema) {
@@ -117,6 +124,10 @@ static int create_metric_set(const char *in, char* sn)
 			goto err;
 		}
 		snprintf(instance_name, len, "%s%d", in, curmets);
+	} else {
+		size_t d = strlen(instance_name) - 1;
+		instance_name[d] = (char)(curmets + 48); /*ascii */
+		msglog(LDMSD_LDEBUG, SAMP ": redefine instance name %s %d\n", instance_name, curmets);
 	}
 
 	rc = ldms_schema_meta_add(schema, "component_id", LDMS_V_U64);
@@ -159,6 +170,13 @@ static int create_metric_set(const char *in, char* sn)
 		i++;
 	}
 	msglog(LDMSD_LDEBUG, SAMP ": created set at %" PRIu64 "\n", mval);
+	rc = ldms_set_publish(set);
+	if (rc) {
+		ldms_set_delete(set);
+		set = NULL;
+		goto err;
+	}
+	ldmsd_set_register(set, SAMP);
 	return 0;
 
  err:
@@ -290,15 +308,17 @@ static int sample(struct ldmsd_sampler *self)
 	}
 	curtick++;
 	if (sameticks == curtick) {
-		msglog(LDMSD_LDEBUG, SAMP ": set needs update\n");
+		msglog(LDMSD_LDEBUG, SAMP ": set needs redefinition\n");
 		curtick = 0;
 		curmets++;
 		if (curmets > maxmets) {
 			curmets = minmets;
 		}
-		if (set)
+		if (set) {
+			ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
 			ldms_set_delete(set);
-		set = NULL;
+			set = NULL;
+		}
 		if (schema)
 			ldms_schema_delete(schema);
 		schema = NULL;
@@ -317,8 +337,9 @@ static int sample(struct ldmsd_sampler *self)
 	for (i = 0; i < curmets; i++) {
 		v.v_u64 = mval;
 		mval++;
-		msglog(LDMSD_LDEBUG, SAMP ": setting %d of %d\n",
+		/* msglog(LDMSD_LDEBUG, SAMP ": setting %d of %d\n",
 			i + metric_offset, curmets);
+		*/
 		ldms_metric_set(set, i + metric_offset, &v);
 	}
 
@@ -328,9 +349,11 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
-	if (set)
+	if (set) {
+		ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
 		ldms_set_delete(set);
-	set = NULL;
+		set = NULL;
+	}
 	if (schema)
 		ldms_schema_delete(schema);
 	schema = NULL;

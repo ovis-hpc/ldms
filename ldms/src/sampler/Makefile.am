@@ -84,13 +84,6 @@ libfptrans_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libfptrans.la
 endif
 
-if ENABLE_VARSET
-libvariable_la_SOURCES = variable.c
-libvariable_la_LIBADD = $(COMMON_LIBADD) -lm
-pkglib_LTLIBRARIES += libvariable.la
-endif
-
-
 # always include examples
 SUBDIRS += examples
 
