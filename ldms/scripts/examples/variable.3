@@ -1,0 +1,46 @@
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0
+
+prdcr_add name=localhost1 host=localhost type=active xprt=${XPRT} port=${port1} interval=10000000
+prdcr_start name=localhost1
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+strgp_add name=store_${testname}1 plugin=store_csv schema=${testname}1 container=node
+strgp_prdcr_add name=store_${testname}1 regex=.*
+strgp_start name=store_${testname}1
+
+strgp_add name=store_${testname}2 plugin=store_csv schema=${testname}2 container=node
+strgp_prdcr_add name=store_${testname}2 regex=.*
+strgp_start name=store_${testname}2
+
+strgp_add name=store_${testname}3 plugin=store_csv schema=${testname}3 container=node
+strgp_prdcr_add name=store_${testname}3 regex=.*
+strgp_start name=store_${testname}3
+
+strgp_add name=store_${testname}4 plugin=store_csv schema=${testname}4 container=node
+strgp_prdcr_add name=store_${testname}4 regex=.*
+strgp_start name=store_${testname}4
+
+strgp_add name=store_${testname}5 plugin=store_csv schema=${testname}5 container=node
+strgp_prdcr_add name=store_${testname}5 regex=.*
+strgp_start name=store_${testname}5
+
+strgp_add name=store_${testname}6 plugin=store_csv schema=${testname}6 container=node
+strgp_prdcr_add name=store_${testname}6 regex=.*
+strgp_start name=store_${testname}6
+
+strgp_add name=store_${testname}7 plugin=store_csv schema=${testname}7 container=node
+strgp_prdcr_add name=store_${testname}7 regex=.*
+strgp_start name=store_${testname}7
+
+strgp_add name=store_${testname}8 plugin=store_csv schema=${testname}8 container=node
+strgp_prdcr_add name=store_${testname}8 regex=.*
+strgp_start name=store_${testname}8
+
+strgp_add name=store_${testname}9 plugin=store_csv schema=${testname}9 container=node
+strgp_prdcr_add name=store_${testname}9 regex=.*
+strgp_start name=store_${testname}9
+

@@ -1,13 +1,37 @@
 export plugname=variable
 portbase=61072
-LDMSD -p prolog.sampler 1 2
-LDMSD -p prolog.sampler -p prolog.store3 3
+DAEMONS 1 3
+LDMSD -p prolog.sampler 1
+LDMSD 3
+sleep 3
 MESSAGE ldms_ls on host 1:
-LDMS_LS 1 -l
-MESSAGE ldms_ls on host 2:
-LDMS_LS 2 -l
+# redefine interval is 4
+LDMS_LS 1 -lv
+SLEEP 3
+LDMS_LS 1 -v -v
+SLEEP 3
+LDMS_LS 1 -v -v
+SLEEP 3
+LDMS_LS 1 -v -v
+SLEEP 3
+LDMS_LS 1 -v -v
+SLEEP 20
 MESSAGE ldms_ls on host 3:
-LDMS_LS 3
-SLEEP 5
+LDMS_LS 3 -v -v
+SLEEP 40
+LDMS_LS 3 -v -v
+SLEEP 40
+LDMS_LS 3 -v -v
+SLEEP 40
+LDMS_LS 3 -v -v
+LDMS_LS 1 -lv
 KILL_LDMSD `seq 3`
-file_created $STOREDIR/node/$testname
+file_created $STOREDIR/node/${testname}1
+file_created $STOREDIR/node/${testname}2
+file_created $STOREDIR/node/${testname}3
+file_created $STOREDIR/node/${testname}4
+file_created $STOREDIR/node/${testname}5
+file_created $STOREDIR/node/${testname}6
+file_created $STOREDIR/node/${testname}7
+file_created $STOREDIR/node/${testname}8
+file_created $STOREDIR/node/${testname}9
