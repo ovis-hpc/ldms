@@ -1,0 +1,30 @@
+name: make dist
+
+on:
+  push:
+    branches: [ OVIS-4.3.3-toss ]
+  pull_request:
+    branches: [ OVIS-4.3.3-toss ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-18.04
+
+    steps:
+    - run: sudo apt install gettext
+    - run: sudo apt list --installed
+    - uses: actions/checkout@v2
+    - name: autogen
+      run: sh autogen.sh
+    - run: cat aclocal.m4
+      if: failure()
+    - name: configure
+      run: ./configure
+    - name: make dist
+      run: make dist
+    - uses: actions/upload-artifact@v2
+      if: success()
+      with:
+        name: tarball
+        path: '*.tar.gz'
