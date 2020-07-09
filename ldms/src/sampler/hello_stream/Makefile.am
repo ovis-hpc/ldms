@@ -10,7 +10,7 @@ COMMON_LIBADD =  -lldms -lovis_util -lcoll \
 
 if ENABLE_HELLO_STREAM
 
-libhello_sampler_la_SOURCES = hello_sampler.c hello_sampler.h ../sampler_base.c
+libhello_sampler_la_SOURCES = hello_sampler.c ../sampler_base.c
 libhello_sampler_la_LIBADD = $(COMMON_LIBADD) -lovis_json
 pkglib_LTLIBRARIES += libhello_sampler.la
 dist_man7_MANS += Plugin_hello_sampler.man
