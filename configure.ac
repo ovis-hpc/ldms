@@ -771,6 +771,7 @@ ldms/src/sampler/appinfo_lib/Makefile
 ldms/src/sampler/kgnilnd/Makefile
 ldms/src/sampler/meminfo/Makefile
 ldms/src/sampler/procinterrupts/Makefile
+ldms/src/sampler/variable/Makefile
 ldms/src/sampler/procstat/Makefile
 ldms/src/sampler/loadavg/Makefile
 ldms/src/sampler/vmstat/Makefile
