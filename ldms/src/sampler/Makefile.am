@@ -87,6 +87,10 @@ endif
 # always include examples
 SUBDIRS += examples
 
+if ENABLE_VARSET
+SUBDIRS += variable
+endif
+
 if ENABLE_LLNL
 SUBDIRS += llnl
 endif
