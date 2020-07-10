@@ -1579,6 +1579,7 @@ int scripting_error_report(ldmsd_plugin_inst_t pi, json_entity_t reply)
 	ldmsd_req_buf_free(lineno_buf);
 	return 0;
 oom:
+	rc = ENOMEM;
 	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
 err:
 	if (err_msg_buf)

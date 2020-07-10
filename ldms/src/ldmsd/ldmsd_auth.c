@@ -97,7 +97,7 @@ static json_entity_t __auth_get_attr(const char *name, json_entity_t dft,
 					json_entity_t *_attrs)
 {
 	int rc;
-	json_entity_t plugin, attrs = NULL;
+	json_entity_t plugin = NULL, attrs = NULL;
 	json_entity_t err = NULL;
 
 	if (spc)

@@ -242,20 +242,22 @@ static json_entity_t __listen_get_attr(const char *name, json_entity_t dft,
 			if (!value)
 				goto oom;
 		} else {
+			int port_i;
 			if (JSON_STRING_VALUE == json_entity_type(port)) {
-				*_port = atoi(json_value_str(port)->str);
+				port_i = atoi(json_value_str(port)->str);
 			} else {
-				*_port = json_value_int(port);
+				port_i = json_value_int(port);
 			}
-			if (*_port < 1 || *_port > USHRT_MAX) {
+			if (port_i < 1 || port_i > USHRT_MAX) {
 				rc = ldmsd_req_buf_append(buf,
-						"port '%us' is invalid", *_port);
+						"port '%d' is invalid", port_i);
 				if (rc < 0)
 					goto oom;
 				value = json_dict_build(value, JSON_STRING_VALUE, buf->buf, -1);
 				if (!value)
 					goto oom;
-				*_port = 0;
+			} else {
+				*_port = port_i;
 			}
 		}
 	}

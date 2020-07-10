@@ -716,9 +716,9 @@ json_entity_t ldmsd_smplr_create(const char *name, short enabled,
 		}
 	} else {
 		if ((offset_us < 0) || (offset_us >= interval_us)) {
-			rc = ldmsd_req_buf_append(buf, "The value '%d' is "
+			rc = ldmsd_req_buf_append(buf, "The value '%ld' is "
 					"either less than 0 or equal or larger "
-					"than the interval value '%d'.",
+					"than the interval value '%ld'.",
 					offset_us, interval_us);
 			if (rc < 0)
 				goto oom;

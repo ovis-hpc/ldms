@@ -3,6 +3,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#include "ldms.h"
 #include <json/json_util.h>
 
 struct ldmsd_stream_client_s;

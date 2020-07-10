@@ -497,7 +497,7 @@ json_entity_t __plugin_attr_get(json_entity_t dft, json_entity_t spc,
 {
 	int rc;
 	json_entity_t err = NULL;
-	json_entity_t plugin, perm, cfg = NULL;
+	json_entity_t plugin = NULL, perm = NULL, cfg = NULL;
 
 	if (spc) {
 		plugin = json_value_find(spc, "plugin");
@@ -735,9 +735,9 @@ json_entity_t ldmsd_plugin_create(const char *name, short enabled,
 	json_entity_t err = NULL;
 	char *pi_name;
 	int perm;
-	json_entity_t cfg_list;
+	json_entity_t cfg_list = NULL;
 	ldmsd_req_buf_t buf;
-	ldmsd_plugin_inst_t inst;
+	ldmsd_plugin_inst_t inst = NULL;
 
 	buf = ldmsd_req_buf_alloc(1024);
 	if (!buf)

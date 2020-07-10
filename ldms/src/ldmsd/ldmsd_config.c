@@ -295,6 +295,7 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 	default:
 		errstr = "ldmsd received an unrecognized request type";
 		ldmsd_log(LDMSD_LERROR, "%s\n", errstr);
+		rc = EINVAL;
 		goto err;
 	}
 	ldmsd_req_ctxt_ref_put(reqc, "handle");

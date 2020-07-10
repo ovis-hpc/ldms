@@ -1266,6 +1266,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 		/*
 		 * TODO: complete this
 		 */
+		obj = NULL;
 		break;
 	case 'v':
 		if (check_arg("v", value, LO_NAME)) {

@@ -722,7 +722,7 @@ static int ldmsd_prdcr_enable(ldmsd_cfgobj_t obj)
 
 static int ldmsd_prdcr_disable(ldmsd_cfgobj_t obj)
 {
-	int rc;
+	int rc = 0;
 	ldmsd_prdcr_t prdcr = (ldmsd_prdcr_t)obj;
 	if (prdcr->conn_state == LDMSD_PRDCR_STATE_STOPPED) {
 		rc = 0; /* already stopped,
@@ -795,14 +795,15 @@ __prdcr_port_attr(json_entity_t value, json_entity_t port, short *_port,
 {
 	int rc;
 	char *port_s;
+	int port_i;
 	if (!port) {
 		*_port = LDMSD_ATTR_NA;
 	} else {
 		if (JSON_STRING_VALUE == json_entity_type(port)) {
 			port_s = json_value_str(port)->str;
-			*_port = atoi(port_s);
+			port_i = atoi(port_s);
 		} else if (JSON_INT_VALUE == json_entity_type(port)) {
-			*_port = (int)json_value_int(port);
+			port_i = (int)json_value_int(port);
 		} else {
 			value = json_dict_build(value, JSON_STRING_VALUE,
 				"'port' is neither a string or an integer.", -1);
@@ -811,7 +812,7 @@ __prdcr_port_attr(json_entity_t value, json_entity_t port, short *_port,
 			return EINVAL;
 		}
 
-		if (*_port < 1 || *_port > USHRT_MAX) {
+		if (port_i < 1 || port_i > USHRT_MAX) {
 			rc = ldmsd_req_buf_append(buf,
 					"port '%s' is invalid", port_s);
 			if (rc < 0)
@@ -819,9 +820,9 @@ __prdcr_port_attr(json_entity_t value, json_entity_t port, short *_port,
 			value = json_dict_build(value, JSON_STRING_VALUE, "port", buf->buf, -1);
 			if (!value)
 				return ENOMEM;
-			*_port = 0;
 			return EINVAL;
 		}
+		*_port = port_i;
 	}
 	return 0;
 }
@@ -1071,7 +1072,7 @@ oom:
 
 json_entity_t __prdcr_export_config(ldmsd_prdcr_t prdcr)
 {
-	json_entity_t query, stream_list, s, a;
+	json_entity_t query, stream_list = NULL, s, a;
 	ldmsd_str_ent_t stream;
 
 	query =ldmsd_cfgobj_query_result_new(&prdcr->obj);
@@ -1232,7 +1233,7 @@ json_entity_t ldmsd_prdcr_create(const char *name, short enabled, json_entity_t 
 	long interval_us;
 	struct ldmsd_prdcr_stream_list *stream_list;
 	enum ldmsd_prdcr_type type;
-	ldmsd_prdcr_t prdcr;
+	ldmsd_prdcr_t prdcr = NULL;
 	json_entity_t err;
 	int rc;
 

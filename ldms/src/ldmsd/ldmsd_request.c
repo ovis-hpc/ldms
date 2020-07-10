@@ -433,7 +433,7 @@ ldmsd_cfgobj_update_handler(json_entity_t req, int msg_no, struct ldmsd_sec_ctxt
 	int rc;
 	short is_enabled = -1;
 	ldmsd_cfgobj_t obj;
-	json_entity_t schema, enabled, spec, sp, dft, v, re, reply, result;
+	json_entity_t schema, enabled, spec, sp, dft, v, re, reply = NULL, result;
 	char *schema_s, *name_s, *regex_s;
 	enum ldmsd_cfgobj_type cfgobj_type;
 	regex_t regex;
@@ -575,7 +575,7 @@ ldmsd_cfgobj_delete_handler(json_entity_t req, int msg_no, struct ldmsd_sec_ctxt
 {
 	int rc;
 	ldmsd_cfgobj_t obj;
-	json_entity_t schema, key, item, re, reply, result;
+	json_entity_t schema, key, item, re, reply = NULL, result;
 	char *schema_s, *name_s, *regex_s;
 	enum ldmsd_cfgobj_type cfgobj_type;
 	ldmsd_req_buf_t buf;
@@ -746,7 +746,7 @@ static json_entity_t
 ldmsd_cfgobj_export_handler(json_entity_t req, int msg_no, struct ldmsd_sec_ctxt *sctxt)
 {
 	int rc;
-	json_entity_t schema, key, item, reply, result;
+	json_entity_t schema, key, item, reply = NULL, result;
 	char *schema_s, *name_s;
 	ldmsd_cfgobj_t obj;
 	int cfgobj_type;

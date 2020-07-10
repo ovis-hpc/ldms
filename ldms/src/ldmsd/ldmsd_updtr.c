@@ -1365,7 +1365,7 @@ json_entity_t ldmsd_updtr_export(ldmsd_cfgobj_t obj)
 json_entity_t
 ldmsd_updtr_update(ldmsd_cfgobj_t obj, short enabled, json_entity_t dft, json_entity_t spc)
 {
-	json_entity_t err;
+	json_entity_t err = 0;
 	unsigned long interval_us, offset_us;
 	int perm, auto_task, push_flags;
 	struct updtr_match_list *match_list;
@@ -1423,7 +1423,7 @@ __updtr_new(const char *name, long interval_us, long offset_us,
 				struct updtr_match_list *match_list,
 				uid_t uid, gid_t gid, int perm, int enabled)
 {
-	struct ldmsd_updtr *updtr;
+	struct ldmsd_updtr *updtr = NULL;
 	ev_worker_t worker;
 	ev_t start_ev, stop_ev;
 	char worker_name[PATH_MAX];
@@ -1524,7 +1524,7 @@ json_entity_t ldmsd_updtr_create(const char *name, short enabled, json_entity_t 
 	int perm, auto_task, push_flags;
 	struct updtr_match_list *match_list;
 	struct ldmsd_regex_list *prdcr_list;
-	ldmsd_updtr_t updtr;
+	ldmsd_updtr_t updtr = NULL;
 	ldmsd_req_buf_t buf;
 
 	buf = ldmsd_req_buf_alloc(1024);
@@ -1551,9 +1551,9 @@ json_entity_t ldmsd_updtr_create(const char *name, short enabled, json_entity_t 
 		}
 	} else {
 		if ((offset_us < 0) || (offset_us >= interval_us)) {
-			rc = ldmsd_req_buf_append(buf, "The value '%d' is "
+			rc = ldmsd_req_buf_append(buf, "The value '%ld' is "
 					"either less than 0 or equal or larger "
-					"than the interval value '%d'.",
+					"than the interval value '%ld'.",
 					offset_us, interval_us);
 			err = json_dict_build(err, JSON_STRING_VALUE, "offset",
 					buf->buf, -1);

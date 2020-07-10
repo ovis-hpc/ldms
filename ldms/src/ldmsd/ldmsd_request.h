@@ -238,6 +238,7 @@ void ldmsd_req_buf_reset(ldmsd_req_buf_t buf);
  */
 void ldmsd_req_buf_free(ldmsd_req_buf_t buf);
 
+__attribute__((format(printf, 2, 3)))
 size_t ldmsd_req_buf_append(ldmsd_req_buf_t buf, const char *fmt, ...);
 
 /**
