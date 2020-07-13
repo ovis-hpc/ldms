@@ -199,7 +199,7 @@ scripting_obj_next(scripting_inst_t inst, scripting_obj_t _obj,
 				char *cfgobj_type, char *regex_str)
 {
 	int rc;
-	scripting_obj_t obj;
+	scripting_obj_t obj = NULL;
 	struct rbn *rbn;
 	char *name;
 	regex_t regex;
@@ -207,17 +207,29 @@ scripting_obj_next(scripting_inst_t inst, scripting_obj_t _obj,
 	size_t len = strlen(cfgobj_type);
 
 	buf = ldmsd_req_buf_alloc(512);
-	if (!buf)
+	if (!buf) {
+		errno = ENOMEM;
 		return NULL;
+	}
+
+	if (regex_str) {
+		rc = ldmsd_compile_regex(&regex, regex_str, buf->buf, buf->len);
+		if (rc) {
+			scripting_syntax_log(inst, obj, LDMSD_LERROR, "%s", buf->buf);
+			ldmsd_req_buf_free(buf);
+			errno = rc;
+			return NULL;
+		}
+	}
 
 	if (_obj)
-		rbn = &_obj->key_rbn;
+		rbn = rbn_succ(&_obj->key_rbn);
 	else
 		rbn = rbt_min(&inst->obj_tree_by_key);
 	while (rbn) {
 		obj = container_of(rbn, struct scripting_obj, key_rbn);
 		if (!cfgobj_type && !regex_str)
-			return obj;
+			goto out;
 		if (cfgobj_type) {
 			if (0 != strncmp(obj->key, cfgobj_type, len)) {
 				/* Different cfgobj type */
@@ -225,13 +237,7 @@ scripting_obj_next(scripting_inst_t inst, scripting_obj_t _obj,
 			}
 		}
 		if (!regex_str)
-			return obj;
-
-		rc = ldmsd_compile_regex(&regex, regex_str, buf->buf, buf->len);
-		if (rc) {
-			scripting_syntax_log(inst, obj, LDMSD_LERROR, "%s", buf->buf);
-			goto err;
-		}
+			goto out;
 
 		name = &obj->key[len + 1];
 		rc = regexec(&regex, name, 0, NULL, 0);
@@ -239,16 +245,18 @@ scripting_obj_next(scripting_inst_t inst, scripting_obj_t _obj,
 			/* The name isn't matched the regex_str */
 			goto next;
 		}
-		return obj;
+		goto out;
 	next:
 		rbn = rbn_succ(rbn);
 	}
-	return NULL;
-err:
-	if (buf)
-		ldmsd_req_buf_free(buf);
-	errno = rc;
-	return NULL;
+	/* The object doesn't exist. */
+	obj = NULL;
+
+out:
+	if (regex_str)
+		regfree(&regex);
+	ldmsd_req_buf_free(buf);
+	return obj;
 }
 
 static const char *scripting_obj_cfgobj_name_get(scripting_obj_t obj)
@@ -527,7 +535,7 @@ struct cli_opts opts[] = {
 		{ "P",			'P',	"workers",
 		  "count",		JSON_INT_VALUE
 		},
-		{ "a",			'a',	"default_auth",
+		{ "a",			'a',	"global_auth",
 		  "name",		JSON_STRING_VALUE
 		},
 		{ "banner",		'B',	"pid_file",
@@ -536,7 +544,7 @@ struct cli_opts opts[] = {
 		{ "daemon-name",	'n',	"ldmsd-id",
 		  "name",		JSON_STRING_VALUE
 		},
-		{ "default-auth",	'a',	"default_auth",
+		{ "default-auth",	'a',	"global_auth",
 		  "name",		JSON_STRING_VALUE
 		},
 		{ "hostname",		'H', 	NULL,
