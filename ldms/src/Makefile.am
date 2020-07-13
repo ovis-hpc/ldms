@@ -13,14 +13,11 @@ do_subst = @LDMS_SUBST_RULE@
 	chmod 755 $@
 
 SUBDIRS += third-plugins
-
-if ENABLE_CORE
 SUBDIRS += core
-SUBDIRS += auth
-endif
-
-if ENABLE_LDMSD
 SUBDIRS += ldmsd
+
+if ENABLE_OVIS_AUTH
+SUBDIRS += auth
 endif
 
 if ENABLE_STORE
