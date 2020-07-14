@@ -435,7 +435,7 @@ json_entity_t __setgrp_attrs_get(json_entity_t dft, json_entity_t spc,
 		}
 		*_perm = strtol(json_value_str(perm)->str, NULL, 0);
 	} else {
-		*_perm = 0770;
+		*_perm = LDMSD_ATTR_NA;
 	}
 
 	/* members */
@@ -646,6 +646,9 @@ json_entity_t ldmsd_setgrp_create(const char *name, short enabled,
 		if (LDMSD_ATTR_NA == offset_us)
 			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
 	}
+
+	if (LDMSD_ATTR_NA == perm)
+		perm = 0777;
 
 	if (err)
 		return ldmsd_result_new(EINVAL, 0, err);
