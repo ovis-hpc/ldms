@@ -1269,6 +1269,77 @@ err:
 	return rc;
 }
 
+static int setgroup_add_handler(scripting_inst_t inst, json_entity_t attr_dict)
+{
+	int rc;
+	char *name, *key;
+	scripting_obj_t obj;
+
+	name = json_value_str(json_value_find(attr_dict, "name"))->str;
+	key = scripting_get_key(SETGRP_STR, name);
+	obj = scripting_obj_find(inst, key);
+	if (obj) {
+		rc = __eexist(key);
+		goto err;
+	}
+
+	obj = scripting_obj_new(inst, key, LDMSD_CFGOBJ_SETGRP);
+	if (!obj)
+		goto oom;
+	rc = req_obj_spec_update(obj, name, attr_dict);
+	if (rc)
+		goto oom;
+	req_obj_enabled_flag_update(obj, 1);
+	free(key);
+	return 0;
+oom:
+	rc = __enomem();
+err:
+	free(key);
+	return rc;
+}
+
+static int setgroup_ins_handler(scripting_inst_t inst, json_entity_t attr_dict)
+{
+	int rc;
+	char *name, *key, *inst_name;
+	scripting_obj_t obj;
+	json_entity_t spec, members, member;
+
+	name = json_value_str(json_value_find(attr_dict, "name"))->str;
+	inst_name = json_value_str(json_value_find(attr_dict, "instance"))->str;
+	key = scripting_get_key(SETGRP_STR, name);
+	obj = scripting_obj_find(inst, key);
+	if (!obj) {
+		rc = __enoent(key);
+		goto err;
+	}
+
+	spec = json_value_find(json_value_find(obj->req, "spec"), name);
+	members = json_value_find(spec, "members");
+	if (!members) {
+		spec = json_dict_build(spec,
+				JSON_LIST_VALUE, "members",
+					JSON_STRING_VALUE, inst_name,
+					-2,
+				-1);
+		if (!spec)
+			goto oom;
+	} else {
+		member = json_entity_new(JSON_STRING_VALUE, inst_name);
+		if (!member)
+			goto oom;
+		json_item_add(members, member);
+	}
+	free(key);
+	return 0;
+oom:
+	rc = __enomem();
+err:
+	free(key);
+	return rc;
+}
+
 struct handler_entry handler_entry_tbl[] = {
 		{ "auth_add",		auth_add_handler },
 		{ "config",		config_handler },
@@ -1280,6 +1351,8 @@ struct handler_entry handler_entry_tbl[] = {
 		{ "prdcr_start_regex",	prdcr_start_regex_handler },
 		{ "prdcr_subscribe",	prdcr_subscribe_handler },
 		{ "set",		cli_handler },
+		{ "setgroup_add",	setgroup_add_handler },
+		{ "setgroup_ins",	setgroup_ins_handler },
 		{ "smplr_add",		smplr_add_handler },
 		{ "smplr_start",	smplr_start_handler },
 		{ "strgp_add",		strgp_add_handler },
