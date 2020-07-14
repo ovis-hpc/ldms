@@ -9,10 +9,6 @@ if ENABLE_SWIG
 SUBDIRS += swig
 endif
 
-if ENABLE_LIB_PYMAP
-SUBDIRS += python
-endif
-
 EXTRA_DIST = 
 
 OPV=-$(PACKAGE_VERSION)
