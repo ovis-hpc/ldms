@@ -1,8 +1,10 @@
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = src
+
 if ENABLE_ETC
 SUBDIRS += etc
 endif
+
 if ENABLE_SWIG
 SUBDIRS += swig
 endif
