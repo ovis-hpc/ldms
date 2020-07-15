@@ -96,10 +96,10 @@ static ev__t process_to_events(ev_worker_t w)
 
 	e = container_of(rbn, struct ev__s, e_to_rbn);
 	if (w->w_state == EV_WORKER_FLUSHING) {
-	e->e_status = EV_FLUSH;
+		e->e_status = EV_FLUSH;
 	} else {
 		if (ev_time_cmp(&e->e_to, &now) > 0)
-		goto out;
+			goto out;
 	}
 
 	rbt_del(&w->w_event_tree, &e->e_to_rbn);
@@ -142,6 +142,8 @@ static void *worker_proc(void *arg)
 		} else {
 			ev_sched_to(&w->w_sem_wait, 10, 0);
 		}
+		if (w->w_state == EV_WORKER_FLUSHING)
+			w->w_state = EV_WORKER_RUNNING;
 		pthread_mutex_unlock(&w->w_lock);
 		sem_timedwait(&w->w_sem, &w->w_sem_wait);
 	}
