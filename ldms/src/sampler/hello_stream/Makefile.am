@@ -26,13 +26,14 @@ hello_cat_publisher_LDADD = $(COMMON_LIBADD) -lovis_json \
 			      ../../ldmsd/libldmsd_stream.la
 dist_man7_MANS += hello_cat_publisher.man
 
-SUBDIRS = stream_configs
 
+SUBDIRS = stream_configs
 
 HELLO_EXTRA_FILES = \
 	${srcdir}/parser.pl
 
-HELLO_DIR = $(DESTDIR)$(sysconfdir)/ldms/hello_sampler_util
+OPV=-$(PACKAGE_VERSION)
+HELLO_DIR = $(docdir)$(OPV)/examples/hello_sampler_util
 install-data-local: $(HELLO_EXTRA_FILES)
 	$(MKDIR_P) $(HELLO_DIR)
 	$(INSTALL_DATA) $(HELLO_EXTRA_FILES) $(HELLO_DIR)/
