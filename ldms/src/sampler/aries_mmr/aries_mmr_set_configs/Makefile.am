@@ -57,7 +57,9 @@ MMR_FILES = \
 	$(srcdir)/metric_set_rtr_3_4_c \
 	$(srcdir)/metric_set_rtr_3_4_s
 
-MMR_DIR = $(DESTDIR)$(sysconfdir)/ldms/aries_mmr_set_configs
+
+OPV=-$(PACKAGE_VERSION)
+MMR_DIR = $(docdir)$(OPV)/examples/aries_mmr_set_configs
 install-data-local: $(MMR_FILES)
 	$(MKDIR_P) $(MMR_DIR)
 	$(INSTALL_DATA) $(MMR_FILES) $(MMR_DIR)/

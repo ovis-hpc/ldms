@@ -7,8 +7,8 @@ STREAM_FILES = \
 	$(srcdir)/hello_stream_store.conf \
 	${srcdir}/README
 
-
-HELLO_CONF_DIR = $(DESTDIR)$(sysconfdir)/ldms/hello_sampler_util/stream_configs
+OPV=-$(PACKAGE_VERSION)
+HELLO_CONF_DIR = $(docdir)$(OPV)/examples/hello_sampler_util/stream_configs
 install-data-local: $(STREAM_FILES)
 	$(MKDIR_P) $(HELLO_CONF_DIR)
 	$(INSTALL_DATA) $(STREAM_FILES) $(HELLO_CONF_DIR)/
