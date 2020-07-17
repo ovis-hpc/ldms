@@ -1,0 +1,48 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'OVIS-4*'
+
+jobs:
+  build:
+    name: Create Release
+    runs-on: ubuntu-18.04
+
+    steps:
+    - run: sudo apt install gettext
+    - uses: actions/checkout@v2
+    # actions/checkout@v2 breaks annotated tags by converting them into
+    # lightweight tags, so we need to force fetch the tag again
+    # See: https://github.com/actions/checkout/issues/290
+    - name: repair tag
+      run: git fetch -f origin ${{ github.ref }}:${{ github.ref }}
+    - name: autogen
+      run: sh autogen.sh
+    - name: configure
+      run: ./configure
+    - name: make dist
+      run: |
+        make dist
+        echo "::set-env name=TARBALL_NAME::$(ls *.tar.gz | head -1)"
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+    - name: Upload Release Asset
+      id: upload-release-asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }} # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a pload_url See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps 
+        asset_path: ./${{ env.TARBALL_NAME }}
+        asset_name: ${{ env.TARBALL_NAME }}
+        asset_content_type: application/gzip
