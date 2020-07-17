@@ -213,6 +213,13 @@ const char* zap_err_str(enum zap_err_e e)
  */
 enum zap_err_e zap_errno2zerr(int e);
 
+/**
+ * \brief Convert a given ::zap_err_e to a Unix errno
+ * \param zerr The Zap error
+ * \returns The equivalent Unix errno
+ */
+int zap_zerr2errno(zap_err_t zerr);
+
 typedef struct zap_event {
 	/*! Event type */
 	zap_event_type_t type;
@@ -374,6 +381,31 @@ int zap_ep_closed(zap_ep_t ep);
  * \return 0	The endpoint is not connected
  */
 int zap_ep_connected(zap_ep_t ep);
+
+typedef enum zap_ep_state {
+	ZAP_EP_INIT = 0,
+	ZAP_EP_LISTENING,
+	ZAP_EP_ACCEPTING,
+	ZAP_EP_CONNECTING,
+	ZAP_EP_CONNECTED,
+	ZAP_EP_PEER_CLOSE,
+	ZAP_EP_CLOSE,
+	ZAP_EP_ERROR
+} zap_ep_state_t;
+
+/**
+ * \brief Return the Zap endpoint state
+ * \param ep The Zap endpoint handle
+ */
+zap_ep_state_t zap_ep_state(zap_ep_t ep);
+
+/** \brief Check if a Zap endpoint is listening
+ *
+ * \param ep	The endpoint handle
+ * \return 1	The endpoint is connected
+ * \return 0	The endpoint is not connected
+ */
+int zap_ep_listening(zap_ep_t ep);
 
 /** \brief Request a connection with a remote peer.
  *

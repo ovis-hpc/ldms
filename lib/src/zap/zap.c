@@ -139,6 +139,62 @@ static char *__zap_event_str[] = {
 	"ZAP_EVENT_LAST"
 };
 
+int zap_zerr2errno(enum zap_err_e e)
+{
+	switch (e)  {
+	case ZAP_ERR_OK:
+		return 0;
+	case ZAP_ERR_PARAMETER:
+		return EINVAL;
+	case ZAP_ERR_TRANSPORT:
+		return EIO;
+	case ZAP_ERR_ENDPOINT:
+		return ENOTCONN;
+	case ZAP_ERR_ADDRESS:
+		return EADDRNOTAVAIL;
+	case ZAP_ERR_ROUTE:
+		return ENETUNREACH;
+	case ZAP_ERR_MAPPING:
+		return EFAULT;
+	case ZAP_ERR_RESOURCE:
+		return ENOBUFS;
+	case ZAP_ERR_BUSY:
+		return EBUSY;
+	case ZAP_ERR_NO_SPACE:
+		return ENOSPC;
+	case ZAP_ERR_INVALID_MAP_TYPE:
+		return EPROTOTYPE;
+	case ZAP_ERR_CONNECT:
+		return ECONNREFUSED;
+	case ZAP_ERR_NOT_CONNECTED:
+		return ENOTCONN;
+	case ZAP_ERR_HOST_UNREACHABLE:
+		return EHOSTUNREACH;
+	case ZAP_ERR_LOCAL_LEN:
+		return E2BIG;
+	case ZAP_ERR_LOCAL_OPERATION:
+		return EOPNOTSUPP;
+	case ZAP_ERR_LOCAL_PERMISSION:
+		return EPERM;
+	case ZAP_ERR_REMOTE_MAP:
+		return EFAULT;
+	case ZAP_ERR_REMOTE_LEN:
+		return EFAULT;
+	case ZAP_ERR_REMOTE_PERMISSION:
+		return EPERM;
+	case ZAP_ERR_REMOTE_OPERATION:
+		return EOPNOTSUPP;
+	case ZAP_ERR_RETRY_EXCEEDED:
+		return ETIMEDOUT;
+	case ZAP_ERR_TIMEOUT:
+		return ETIMEDOUT;
+	case ZAP_ERR_FLUSH:
+		return EPIPE;
+	default:
+		assert(NULL == "Invalid Zapp error value");
+	}
+}
+
 enum zap_err_e zap_errno2zerr(int e)
 {
 	switch (e) {
@@ -513,6 +569,11 @@ int zap_ep_connected(zap_ep_t ep)
 {
 	assert(ep->ref_count);
 	return (ep->state == ZAP_EP_CONNECTED);
+}
+
+zap_ep_state_t zap_ep_state(zap_ep_t ep)
+{
+	return ep->state;
 }
 
 void zap_put_ep(zap_ep_t ep)

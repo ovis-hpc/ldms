@@ -142,17 +142,6 @@ int zap_version_check(struct zap_version *v)
 	return ZAP_VERSION_EQUAL(*v);
 }
 
-typedef enum zap_ep_state {
-	ZAP_EP_INIT = 0,
-	ZAP_EP_LISTENING,
-	ZAP_EP_ACCEPTING,
-	ZAP_EP_CONNECTING,
-	ZAP_EP_CONNECTED,
-	ZAP_EP_PEER_CLOSE,
-	ZAP_EP_CLOSE,
-	ZAP_EP_ERROR
-} zap_ep_state_t;
-
 const char *zap_ep_state_str[] = {
 	[ZAP_EP_INIT]        =  "ZAP_EP_INIT",
 	[ZAP_EP_LISTENING]   =  "ZAP_EP_LISTENING",
