@@ -330,8 +330,8 @@ __grp_iter_cb(ldms_set_t grp, const char *name, void *arg)
 	return 0;
 }
 
-static void prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
-			     int more, ldms_set_t set, void *arg);
+void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
+			      int more, ldms_set_t set, void *arg);
 static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t task)
 {
 	int rc = 0;
@@ -380,9 +380,9 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 					 * Thus, do the lookup here.
 					 */
 					rc = ldms_xprt_lookup(pset->prdcr->xprt,
-							pset->inst_name,
-							LDMS_LOOKUP_BY_INSTANCE,
-							prdset_lookup_cb, pset);
+							      pset->inst_name,
+							      LDMS_LOOKUP_BY_INSTANCE,
+							      __ldmsd_prdset_lookup_cb, pset);
 					if (rc)
 						goto out;
 				}
@@ -402,11 +402,6 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 		}
 	} else if (0 == (prd_set->push_flags & LDMSD_PRDCR_SET_F_PUSH_REG)) {
 		op_s = "Registering push for";
-		// this doesn't work because it's taken after lookup
-		// which may fail or the updater is never started at
-		// all. since the flags don't tell yuou one way or the
-		// other this is just broken
-		// ldmsd_prdcr_set_ref_get(prd_set);
 		if (updtr->push_flags & LDMSD_UPDTR_F_PUSH_CHANGE)
 			push_flags = LDMS_XPRT_PUSH_F_CHANGE;
 		rc = ldms_xprt_register_push(prd_set->set, push_flags,
@@ -509,8 +504,9 @@ static int __setgrp_members_lookup(ldmsd_prdcr_set_t setgrp)
 				rc = ldms_xprt_lookup(setgrp->prdcr->xprt,
 						pset->inst_name,
 						LDMS_LOOKUP_BY_INSTANCE,
-						prdset_lookup_cb, pset);
+						      __ldmsd_prdset_lookup_cb, pset);
 				if (rc) {
+					pset->state = LDMSD_PRDCR_SET_STATE_START;
 					ldmsd_log(LDMSD_LINFO,
 						"Synchronous error %d "
 						"from ldms_lookup\n", rc);
@@ -530,14 +526,15 @@ out:
 	return rc;
 }
 
-static void prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
-			     int more, ldms_set_t set, void *arg)
+void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
+			int more, ldms_set_t set, void *arg)
 {
 	ldmsd_prdcr_set_t prd_set = arg;
 	int ready = 0;
 	int flags;
 	pthread_mutex_lock(&prd_set->lock);
 	if (status != LDMS_LOOKUP_OK) {
+		assert(NULL == set);
 		status = (status < 0 ? -status : status);
 		if (status == ENOMEM) {
 			ldmsd_log(LDMSD_LERROR,
@@ -558,7 +555,10 @@ static void prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	}
 	if (!prd_set->set) {
 		/* This is the first lookup of the set. */
+		ref_get(&set->ref, "prdcr_set");
 		prd_set->set = set;
+	} else {
+		assert(0 == "multiple lookup on the same prdcr_set");
 	}
 	flags = ldmsd_group_check(prd_set->set);
 	if (flags & LDMSD_GROUP_IS_GROUP) {
@@ -623,10 +623,14 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 			ldmsd_prdcr_set_ref_get(prd_set); /* It will be put back in lookup_cb */
 			/* Lookup the set */
 			prd_set->state = LDMSD_PRDCR_SET_STATE_LOOKUP;
+			assert(prd_set->set == NULL);
 			rc = ldms_xprt_lookup(prdcr->xprt, prd_set->inst_name,
 					      LDMS_LOOKUP_BY_INSTANCE,
-					      prdset_lookup_cb, prd_set);
+					      __ldmsd_prdset_lookup_cb, prd_set);
 			if (rc) {
+				/* If the error is EEXIST, the set is already in the set tree. */
+				assert(rc != EEXIST);
+				prd_set->state = LDMSD_PRDCR_SET_STATE_START;
 				ldmsd_log(LDMSD_LINFO, "Synchronous error %d from ldms_lookup\n", rc);
 				ldmsd_prdcr_set_ref_put(prd_set);
 			}
@@ -679,7 +683,7 @@ static void cancel_prdcr_updates(ldmsd_updtr_t updtr,
 			cancel_set_updates(prd_set, updtr);
 			continue;
 		}
-
+		rc = 1;
 		if (match->selector == LDMSD_NAME_MATCH_INST_NAME)
 			str = prd_set->inst_name;
 		else

@@ -50,6 +50,7 @@
 #ifndef __LDMS_XPRT_H__
 #define __LDMS_XPRT_H__
 
+#include <time.h>
 #include <semaphore.h>
 #include <sys/queue.h>
 #include <sys/types.h>
@@ -59,8 +60,35 @@
 
 #include "ldms.h"
 #include "ldms_auth.h"
+#include "ref.h"
 
 #pragma pack(4)
+
+/*
+ * Callback function invoked when peer acknowledges a deleted set
+ *
+ * xprt   The transport handle
+ * status 0 on success, errno if there was a problem sending the request
+ * set    The set handle
+ * cb_arg The cb_arg parameter to the ldsm_xprt_set_delete
+ *        function
+ */
+typedef void (*ldms_set_delete_cb_t)(ldms_t xprt, int status, ldms_set_t set, void *cb_arg);
+
+/*
+ * Notify a remote peers that this set is being deleted
+ *
+ * A remote peer is a client that has received a copy of this set via ldms_xprt_lookup.
+ *
+ * set   The set handle
+ * cb_fn Pointer to the ldms_del_rem_set_cb function that will
+ *       be called when the peer acknolwedges that receiept of
+ *       this set delete request.
+ * cb_arg void * argument to pass to the callback function
+ */
+extern void ldms_xprt_set_delete(ldms_set_t set,
+				 ldms_set_delete_cb_t cb_fn,
+				 void *cb_arg);
 
 /**
  * If set in the push_flags, the set changes will be automatically
@@ -71,6 +99,7 @@
 #define LDMS_RBD_F_PUSH_CANCEL	4	/* cancel pending */
 
 struct ldms_rbuf_desc {
+	struct ref_s ref;
 	struct ldms_xprt *xprt;
 	struct ldms_set *set;
 	uint64_t remote_set_id;	    /* Remote set id returned by lookup */
@@ -125,6 +154,7 @@ enum ldms_request_cmd {
 	LDMS_CMD_AUTH_MSG,
 	LDMS_CMD_CANCEL_PUSH,
 	LDMS_CMD_AUTH,
+	LDMS_CMD_SET_DELETE,
 	LDMS_CMD_REPLY = 0x100,
 	LDMS_CMD_DIR_REPLY,
 	LDMS_CMD_DIR_CANCEL_REPLY,
@@ -135,6 +165,7 @@ enum ldms_request_cmd {
 	LDMS_CMD_AUTH_APPROVAL_REPLY,
 	LDMS_CMD_PUSH_REPLY,
 	LDMS_CMD_AUTH_REPLY,
+	LDMS_CMD_SET_DELETE_REPLY,
 	/* Transport private requests set bit 32 */
 	LDMS_CMD_XPRT_PRIVATE = 0x80000000,
 };
@@ -165,6 +196,14 @@ struct ldms_dir_cmd_param {
 	uint32_t flags;		/*! Directory update flags */
 };
 
+struct ldms_set_delete_cmd_param {
+#ifdef SWIG
+%immutable;
+#endif
+	uint32_t inst_name_len;
+	char inst_name[OVIS_FLEX];
+};
+
 struct ldms_req_notify_cmd_param {
 	uint64_t set_id;	/*! The set we want notifications for  */
 	uint32_t flags;		/*! Events we want  */
@@ -189,6 +228,7 @@ struct ldms_request {
 	union {
 		struct ldms_send_cmd_param send;
 		struct ldms_dir_cmd_param dir;
+		struct ldms_set_delete_cmd_param set_delete;
 		struct ldms_lookup_cmd_param lookup;
 		struct ldms_req_notify_cmd_param req_notify;
 		struct ldms_cancel_notify_cmd_param cancel_notify;
@@ -283,18 +323,21 @@ struct ldms_reply {
 typedef enum ldms_context_type {
 	LDMS_CONTEXT_DIR,
 	LDMS_CONTEXT_DIR_CANCEL,
-	LDMS_CONTEXT_LOOKUP,
+	LDMS_CONTEXT_LOOKUP_REQ,
+	LDMS_CONTEXT_LOOKUP_READ,
 	LDMS_CONTEXT_UPDATE,
 	LDMS_CONTEXT_REQ_NOTIFY,
 	LDMS_CONTEXT_SEND,
 	LDMS_CONTEXT_PUSH,
 	LDMS_CONTEXT_UPDATE_META,
+	LDMS_CONTEXT_SET_DELETE,
 } ldms_context_type_t;
 
 struct ldms_context {
 	sem_t sem;
 	sem_t *sem_p;
 	int rc;
+	struct ldms_xprt *x;
 	ldms_context_type_t type;
 	union {
 		struct {
@@ -302,27 +345,37 @@ struct ldms_context {
 			void *cb_arg;
 		} dir;
 		struct {
+			ldms_lookup_cb_t cb;
+			void *cb_arg;
 			char *path;
+			enum ldms_lookup_flags flags;
+		} lu_req;
+		struct {
+			ldms_set_t s;
 			ldms_lookup_cb_t cb;
 			void *cb_arg;
 			int more;
 			enum ldms_lookup_flags flags;
-			ldms_set_t s;
-			zap_map_t remote_map;
-		} lookup;
+		} lu_read;
 		struct {
 			ldms_set_t s;
 			ldms_update_cb_t cb;
-			void *arg;
+			void *cb_arg;
 			int idx_from;
 			int idx_to;
 		} update;
 		struct {
 			ldms_set_t s;
 			ldms_notify_cb_t cb;
-			void *arg;
+			void *cb_arg;
 		} req_notify;
+		struct {
+			ldms_set_t s;
+			ldms_set_delete_cb_t cb;
+			void *cb_arg;
+		} set_delete;
 	};
+	struct timespec start;
 	TAILQ_ENTRY(ldms_context) link;
 };
 
@@ -332,6 +385,9 @@ struct ldms_xprt {
 	char name[LDMS_MAX_TRANSPORT_NAME_LEN];
 	uint32_t ref_count;
 	pthread_mutex_t lock;
+	int disconnected;
+	zap_err_t zerrno;
+	struct ldms_xprt_stats stats;
 
 	/* Semaphore and return code for synchronous xprt calls */
 	sem_t sem;

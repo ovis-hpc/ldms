@@ -250,7 +250,7 @@ ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin);
  * The ldms_xprt_first() and ldms_xprt_next() functions are used to iterate
  * among all transport endpoints in the system. The ldms_xprt_first() function
  * returns the first endpoint and takes a reference on the handle. This reference
- * should be released by calling ldms_release_xprt() when the caller has finished
+ * should be released by calling ldms_xprt_put() when the caller has finished
  * with the endpoint.
  *
  * \returns The first transport endpoint or NULL if there are no open transports.
@@ -263,7 +263,7 @@ ldms_t ldms_xprt_first();
  * The ldms_xprt_first() and ldms_xprt_next() functions are used to iterate
  * among all transport endpoints in the system. The ldms_xprt_first() function
  * returns the first endpoint and takes a reference on the handle. This reference
- * should be released by calling ldms_release_xprt() when the caller has finished
+ * should be released by calling ldms_xprt_put() when the caller has finished
  * with the endpoint.
  *
  * \returns The first transport endpoint or NULL if there are no open transports.
@@ -341,7 +341,7 @@ extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn);
  * This is like ::ldms_xprt_new(), but with authentication plugin attached to
  * the transport.
  *
- * \param xprt_name The name of the transport type.
+ * \param xprt_name The transport type name string.
  * \param log_fn An optional function to call when logging transport messages.
  * \param auth_name The name of the authentication plugin.
  * \param auth_av_list The attribute-value list containing options for the
@@ -351,6 +351,13 @@ extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn);
 ldms_t ldms_xprt_new_with_auth(const char *xprt_name, ldms_log_fn_t log_fn,
 			       const char *auth_name,
 			       struct attr_value_list *auth_av_list);
+
+/**
+ * \brief Return the transport type name string
+ * \param x The transport handle
+ * \returns The transport type name string
+ */
+const char *ldms_xprt_type_name(ldms_t x);
 
 /**
  * \brief Set the ldms transport priority
@@ -378,7 +385,13 @@ enum ldms_xprt_event_type {
 	LDMS_XPRT_EVENT_DISCONNECTED,
 	/*! Receive data from a remote host */
 	LDMS_XPRT_EVENT_RECV,
+	/*! Lookup set has been deleted at peer */
+	LDMS_XPRT_EVENT_SET_DELETE,
 	LDMS_XPRT_EVENT_LAST
+};
+
+struct ldms_xprt_set_delete_data {
+	ldms_set_t set;		/*! The local set looked up at peer */
 };
 
 typedef struct ldms_xprt_event {
@@ -388,10 +401,13 @@ typedef struct ldms_xprt_event {
 	 * may be freed when the callback returns.
 	 * \c data is NULL if the type is not LDMS_CONN_EVENT_RECV.
 	 */
-	char *data;
-	/*! The length of \c data in bytes.
-	 * \c data_len is 0 if \c type is not LDMS_CONN_EVENT_RECV.
-	 */
+	union {
+		/*! The length of \c data in bytes.
+		 * \c data_len is 0 if \c type is not LDMS_CONN_EVENT_RECV.
+		 */
+		char *data;
+		struct ldms_xprt_set_delete_data set_delete;
+	};
 	size_t data_len;
 } *ldms_xprt_event_t;
 
@@ -865,6 +881,51 @@ extern int ldms_xprt_cancel_push(ldms_set_t s);
  */
 extern int ldms_xprt_push(ldms_set_t s);
 
+typedef struct ldms_stats_entry {
+	uint64_t count;
+	uint64_t total_us;
+	uint64_t min_us;
+	uint64_t max_us;
+	uint64_t mean_us;
+} *ldms_stats_entry_t;
+
+typedef enum ldms_xprt_ops_e {
+	LDMS_XPRT_OP_LOOKUP,
+	LDMS_XPRT_OP_UPDATE,
+	LDMS_XPRT_OP_PUBLISH,
+	LDMS_XPRT_OP_SET_DELETE,
+	LDMS_XPRT_OP_DIR,
+	LDMS_XPRT_OP_SEND,
+	LDMS_XPRT_OP_COUNT
+} ldms_xprt_ops_t;
+
+extern const char *ldms_xprt_op_names[];
+
+struct ldms_xprt_rate_data {
+	double connect_rate_s;
+	double connect_request_rate_s;
+	double disconnect_rate_s;
+	double reject_rate_s;
+	double auth_fail_rate_s;
+};
+
+/**
+ * Retrieve transport rate data
+ */
+void ldms_xprt_rate_data(struct ldms_xprt_rate_data *data);
+
+typedef struct ldms_xprt_stats {
+	struct ldms_stats_entry ops[LDMS_XPRT_OP_COUNT];
+} *ldms_xprt_stats_t;
+
+/**
+ * \brief Retrieve transport request statistics
+ *
+ * \param x The transport handle
+ * \param s Pointer to an ldms_xprt_stats structure
+ */
+extern void ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats);
+
 /**
  * \brief Create a metric set schema
  *
@@ -1115,6 +1176,15 @@ extern uint32_t ldms_set_data_sz_get(ldms_set_t s);
  * \returns		The ldms_set_t handle or 0 if not found.
  */
 extern ldms_set_t ldms_set_by_name(const char *set_name);
+
+/**
+ * \brief Get a set by name on a particular transport
+ *
+ * \param s		The transport set handle
+ * \param set_name	The set name
+ * \returns		The ldms_set_t handle or 0 if not found
+ */
+extern ldms_set_t ldms_xprt_set_by_name(ldms_t x, const char *set_name);
 
 /**
  * \brief Get the metric schema generation number.
@@ -1806,6 +1876,30 @@ int ldms_access_check(ldms_t x, uint32_t acc, uid_t obj_uid, gid_t obj_gid,
 /**
  * \}
  */
+
+/**
+ * \brief Return the time difference in microseconds
+ *
+ * Computes the number of microseconds in the interval end - start.
+ * Note that the result may be negative.
+ *
+ * \param start Pointer to struct timespec
+ * \param end Pointer to struct timespec
+ * \returns The number of microseconds in the interval end - start
+ */
+static inline int64_t ldms_timespec_diff_us(struct timespec *start, struct timespec *end)
+{
+	int64_t secs_ns;
+	int64_t nsecs;
+	secs_ns = (end->tv_sec - start->tv_sec) * 1000000000;
+	nsecs = end->tv_nsec - start->tv_nsec;
+	return (secs_ns + nsecs) / 1000;
+}
+
+static inline double ldms_timespec_diff_s(struct timespec *start, struct timespec *end)
+{
+	return (double)ldms_timespec_diff_us(start, end) / (double)1000000.0;
+}
 
 #ifdef __cplusplus
 }

@@ -50,6 +50,7 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
+#include <assert.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -198,8 +199,12 @@ ldmsd_cfgobj_t ldmsd_cfgobj_new(const char *name, ldmsd_cfgobj_type_t type,
 
 ldmsd_cfgobj_t ldmsd_cfgobj_get(ldmsd_cfgobj_t obj)
 {
-	if (obj)
-		__sync_fetch_and_add(&obj->ref_count, 1);
+	uint32_t ref_count;
+	if (obj) {
+		ref_count = __sync_fetch_and_add(&obj->ref_count, 1);
+		assert(ref_count >= 1);
+	}
+
 	return obj;
 }
 

@@ -132,24 +132,24 @@ static inline void _ref_init(ref_t r, const char *name,
  * suppress the `-Werror=unused-function` for this function.
  */
 __attribute__((unused))
-static void ref_dump_no_lock(ref_t r, const char *name)
+static void ref_dump_no_lock(ref_t r, const char *name, FILE *f)
 {
 #ifdef _REF_TRACK_
 	ref_inst_t inst;
-	fprintf(stderr, "... %s: ref %p free_fn %p free_arg %p ...\n",
+	fprintf(f, "... %s: ref %p free_fn %p free_arg %p ...\n",
 		name, r, r->free_fn, r->free_arg);
-	fprintf(stderr,
+	fprintf(f,
 		"%-16s %-8s %-32s %-32s\n", "Name", "Count", "Get Loc", "Put Loc");
 	fprintf(stderr,
 		"---------------- -------- -------------------------------- "
 		"--------------------------------\n");
 	LIST_FOREACH(inst, &r->head, entry) {
-		fprintf(stderr,
+		fprintf(f,
 			"%-16s %8d %-23s/%8d %-23s/%8d\n",
 			inst->name, inst->ref_count, inst->get_func, inst->get_line,
 			inst->put_func, inst->put_line);
 	}
-	fprintf(stderr, "%16s %8d\n", "Total", r->ref_count);
+	fprintf(f, "%16s %8d\n", "Total", r->ref_count);
 #endif
 }
 
@@ -158,11 +158,11 @@ static void ref_dump_no_lock(ref_t r, const char *name)
  * suppress the `-Werror=unused-function` for this function.
  */
 __attribute__((unused))
-static void ref_dump(ref_t r, const char *name)
+static void ref_dump(ref_t r, const char *name, FILE *f)
 {
 #ifdef _REF_TRACK_
 	pthread_mutex_lock(&r->lock);
-	ref_dump_no_lock(r, name);
+	ref_dump_no_lock(r, name, f);
 	pthread_mutex_unlock(&r->lock);
 #endif
 }

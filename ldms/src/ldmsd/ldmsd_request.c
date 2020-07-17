@@ -59,6 +59,7 @@
 #include <pthread.h>
 #include <ovis_util/util.h>
 #include <ovis_json/ovis_json.h>
+#include <arpa/inet.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_request.h"
@@ -194,6 +195,7 @@ static int logrotate_handler(ldmsd_req_ctxt_t req_ctxt);
 static int exit_daemon_handler(ldmsd_req_ctxt_t req_ctxt);
 static int greeting_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_route_handler(ldmsd_req_ctxt_t req_ctxt);
+static int xprt_stats_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
 static int ebusy_handler(ldmsd_req_ctxt_t reqc);
@@ -408,6 +410,11 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_SET_ROUTE_REQ, set_route_handler, XUG
 	},
 
+	/* Transport Stats Request */
+	[LDMSD_XPRT_STATS_REQ] = {
+		LDMSD_XPRT_STATS_REQ, xprt_stats_handler, XUG
+	},
+
 	/* FAILOVER user commands */
 	[LDMSD_FAILOVER_CONFIG_REQ] = {
 		LDMSD_FAILOVER_CONFIG_REQ, failover_config_handler, XUG,
@@ -600,7 +607,6 @@ void req_ctxt_tree_unlock()
 static void free_cfg_xprt_ldms(ldmsd_cfg_xprt_t xprt)
 {
 	ldms_xprt_put(xprt->ldms.ldms);
-	xprt->ldms.ldms = NULL;
 	free(xprt);
 }
 
@@ -669,10 +675,10 @@ void free_req_cmd_ctxt(ldmsd_req_cmd_t rcmd)
 {
 	if (rcmd->org_reqc)
 		req_ctxt_ref_put(rcmd->org_reqc);
+	if (rcmd->reqc && rcmd->reqc->xprt->cleanup_fn)
+		rcmd->reqc->xprt->cleanup_fn(rcmd->reqc->xprt);
 	if (rcmd->reqc)
 		req_ctxt_ref_put(rcmd->reqc);
-	if (rcmd->reqc->xprt->cleanup_fn)
-		rcmd->reqc->xprt->cleanup_fn(rcmd->reqc->xprt);
 	free(rcmd);
 }
 
@@ -5357,6 +5363,268 @@ err1:
 err0:
 	ldmsd_set_info_delete(info);
 out:
+	return rc;
+}
+/*
+ * {
+ *     "compute_time_us"        : <int>,
+ *     "connect_rate_s"         : <float>,
+ *     "connect_request_rate_s" : <float>,
+ *     "disconnect_rate_s"      : <float>,
+ *     "reject_rate_s"          : <float>,
+ *     "auth_fail_rate_s"       : <float>,
+ *     "xprt_count"  : <int>,
+ *     "open_count"  : <int>,
+ *     "close_count" : <int>,
+ *     "lookup_req"  : {
+ *        "count"    : <int>
+ *        "total_us" : <int>
+ *        "min_us"   : <int>
+ *        "max_us"   : <int>
+ *        "mean_us"  : <int>
+ *        "max_xprt" : { "host" : <string>, "xprt" : <string>, "port" : <int> },
+ *        "min_xprt" : { "host" : <string>, "xprt" : <string>, "port" : <int> }
+ *     },
+ *     "lookup_resp" : {
+ *        "count"    : <int>
+ *        "total_us" : <int>
+ *        "min_us"   : <int>
+ *        "max_us"   : <int>
+ *        "mean_us"  : <int>
+ *        "max_xprt" : { "host" : <string>, "xprt" : <string>, "port" : <int> },
+ *        "min_xprt" : { "host" : <string>, "xprt" : <string>, "port" : <int> }
+ *     },
+ *     "update_req"  : {
+ *        "count"    : <int>
+ *        "total_us" : <int>
+ *        "min_us"   : <int>
+ *        "max_us"   : <int>
+ *        "mean_us"  : <int>
+ *        "max_xprt" : { "host" : <string>, "xprt" : <string>, "port" : <int> },
+ *        "min_xprt" : { "host" : <string>, "xprt" : <string>, "port" : <int> }
+ *     }
+ *     "update_resp" : {
+ *        "count"    : <int>
+ *        "total_us" : <int>
+ *        "min_us"   : <int>
+ *        "max_us"   : <int>
+ *        "mean_us"  : <int>
+ *        "max_xprt" : { "host" : <string>, "xprt" : <string>, "port" : <int> },
+ *        "min_xprt" : { "host" : <string>, "xprt" : <string>, "port" : <int> }
+ *     }
+ * }
+ */
+struct op_summary {
+	uint64_t op_count;
+	uint64_t op_total_us;
+	uint64_t op_min_us;
+	struct ldms_xprt *op_min_xprt;
+	uint64_t op_max_us;
+	struct ldms_xprt *op_max_xprt;
+	uint64_t op_mean_us;
+};
+
+static int xprt_stats_handler(ldmsd_req_ctxt_t req)
+{
+	#define XPRT_BUFLEN 4096
+	char *buff, *s;
+	size_t sz = XPRT_BUFLEN;
+	int rc, len;
+	uint32_t term;
+	const char *errmsg = NULL;
+	ldmsd_req_attr_t attr;
+	struct ldms_xprt *x;
+	struct ldms_xprt_stats xs;
+	struct op_summary op_sum[LDMS_XPRT_OP_COUNT];
+	enum ldms_xprt_ops_e op_e;
+	int xprt_count = 0;
+	int xprt_connect_count = 0;
+	int xprt_connecting_count = 0;
+	int xprt_listen_count = 0;
+	int xprt_close_count = 0;
+	struct timespec start, end;
+	struct sockaddr_storage ss_local, ss_remote;
+	struct sockaddr_in *sin;
+	socklen_t socklen;
+	zap_err_t zerr;
+	char ip_str[32];
+	char xprt_type[16];
+	struct ldms_xprt_rate_data rate_data;
+
+	ldms_xprt_rate_data(&rate_data);
+
+	buff = malloc(sz);
+	if (!buff) {
+		rc = ENOMEM;
+		errmsg = LDMSD_ENOMEM_MSG;
+		goto err;
+	}
+	attr = (ldmsd_req_attr_t)buff;
+	attr->discrim = 1;
+	attr->attr_id = LDMSD_ATTR_JSON;
+	/* len will be assigned after the str is populated */
+	s = buff + sizeof(*attr);
+	sz -= sizeof(*attr);
+
+	#define __APPEND(...) do {					\
+		len = snprintf(s, sz, __VA_ARGS__);			\
+		if (len >= sz) {					\
+			uint64_t off = (uint64_t)s - (uint64_t)buff;	\
+			sz += XPRT_BUFLEN;				\
+			s = realloc(buff, sz);				\
+			if (!s) {					\
+				rc = ENOMEM;				\
+				errmsg = LDMSD_ENOMEM_MSG;		\
+				goto err;				\
+			}						\
+			buff = s;					\
+			s = &buff[off];					\
+			continue;					\
+		}							\
+		s += len;						\
+		sz -= len;						\
+		break;							\
+	} while(1)
+
+	memset(op_sum, 0, sizeof(op_sum));
+	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++)
+		op_sum[op_e].op_min_us = LLONG_MAX;
+
+	/* Compute summary statistics across all of the transports */
+	(void)clock_gettime(CLOCK_REALTIME, &start);
+	for (x = ldms_xprt_first(); x; x = ldms_xprt_next(x)) {
+		ldms_stats_entry_t op;
+
+		ldms_xprt_stats(x, &xs);
+		xprt_count += 1;
+		zap_ep_state_t ep_state = zap_ep_state(x->zap_ep);
+		switch (ep_state) {
+		case ZAP_EP_LISTENING:
+			xprt_listen_count += 1;
+			break;
+		case ZAP_EP_ACCEPTING:
+		case ZAP_EP_CONNECTING:
+			xprt_connecting_count += 1;
+			break;
+		case ZAP_EP_CONNECTED:
+			xprt_connect_count += 1;
+			break;
+		case ZAP_EP_INIT:
+		case ZAP_EP_PEER_CLOSE:
+		case ZAP_EP_CLOSE:
+		case ZAP_EP_ERROR:
+			xprt_close_count += 1;
+		}
+		for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
+			op = &xs.ops[op_e];
+			if (!op->count)
+				continue;
+			op_sum[op_e].op_total_us += op->total_us;
+			op_sum[op_e].op_count += op->count;
+			if (op->min_us < op_sum[op_e].op_min_us) {
+				op_sum[op_e].op_min_us = op->min_us;
+				op_sum[op_e].op_min_xprt = ldms_xprt_get(x);
+			}
+			if (op->max_us > op_sum[op_e].op_max_us) {
+				op_sum[op_e].op_max_us = op->max_us;
+				op_sum[op_e].op_max_xprt = ldms_xprt_get(x);
+			}
+		}
+		assert(x->ref_count > 1);
+		ldms_xprt_put(x);
+	}
+	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
+		if (op_sum[op_e].op_count) {
+			op_sum[op_e].op_mean_us =
+				op_sum[op_e].op_total_us / op_sum[op_e].op_count;
+		}
+	}
+
+	(void)clock_gettime(CLOCK_REALTIME, &end);
+	uint64_t compute_time = ldms_timespec_diff_us(&start, &end);
+
+	__APPEND("{");
+	__APPEND(" \"compute_time_us\": %ld,\n", compute_time);
+	__APPEND(" \"connect_rate_s\": %f,\n", rate_data.connect_rate_s);
+	__APPEND(" \"connect_request_rate_s\": %f,\n", rate_data.connect_request_rate_s);
+	__APPEND(" \"disconnect_rate_s\": %f,\n", rate_data.disconnect_rate_s);
+	__APPEND(" \"reject_rate_s\": %f,\n", rate_data.reject_rate_s);
+	__APPEND(" \"auth_fail_rate_s\": %f,\n", rate_data.auth_fail_rate_s);
+	__APPEND(" \"xprt_count\": %d,\n", xprt_count);
+	__APPEND(" \"connect_count\": %d,\n", xprt_connect_count);
+	__APPEND(" \"connecting_count\": %d,\n", xprt_connecting_count);
+	__APPEND(" \"listen_count\": %d,\n", xprt_listen_count);
+	__APPEND(" \"close_count\": %d,\n", xprt_close_count);
+	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
+		struct op_summary *op;
+		op = &op_sum[op_e];
+		__APPEND(" \"%s\" : {\n", ldms_xprt_op_names[op_e]);
+		__APPEND("    \"count\": %ld,\n", op->op_count);
+		__APPEND("    \"total_us\": %ld,\n", op->op_total_us);
+		__APPEND("    \"min_us\": %ld,\n", (op->op_count ? op->op_min_us: 0));
+		sin = (struct sockaddr_in *)&ss_remote;
+		memset(&ss_remote, 0, sizeof(ss_remote));
+		strncpy(ip_str, "0.0.0.0:0", sizeof(ip_str));
+		strncpy(xprt_type, "????", sizeof(xprt_type));
+		if (op->op_min_xprt && op->op_min_xprt->zap_ep) {
+			zerr = zap_get_name(op->op_min_xprt->zap_ep,
+					    (struct sockaddr *)&ss_local,
+					    (struct sockaddr *)&ss_remote,
+					    &socklen);
+			strncpy(xprt_type, ldms_xprt_type_name(op->op_min_xprt),
+				sizeof(xprt_type));
+			inet_ntop(sin->sin_family, &sin->sin_addr, ip_str, sizeof(ip_str));
+		}
+		if (op->op_min_xprt)
+			ldms_xprt_put(op->op_min_xprt);
+		__APPEND("    \"min_peer\": \"%s:%hu\"\n,", ip_str, ntohs(sin->sin_port));
+		__APPEND("    \"min_peer_type\": \"%s\"\n,", xprt_type);
+
+		__APPEND("    \"max_us\": %ld,\n", (op->op_count ? op->op_max_us : 0));
+		memset(&ss_remote, 0, sizeof(ss_remote));
+
+		if (op->op_max_xprt && op->op_max_xprt->zap_ep) {
+			zerr = zap_get_name(op->op_max_xprt->zap_ep,
+					    (struct sockaddr *)&ss_local,
+					    (struct sockaddr *)&ss_remote,
+					    &socklen);
+			strncpy(xprt_type, ldms_xprt_type_name(op->op_max_xprt),
+				sizeof(xprt_type));
+			inet_ntop(sin->sin_family, &sin->sin_addr, ip_str, sizeof(ip_str));
+		}
+		if (op->op_max_xprt)
+			ldms_xprt_put(op->op_max_xprt);
+		__APPEND("    \"max_peer\": \"%s:%hu\"\n,", ip_str, ntohs(sin->sin_port));
+		__APPEND("    \"max_peer_type\": \"%s\"\n,", xprt_type);
+		__APPEND("    \"mean_us\": %ld\n", op->op_mean_us);
+		if (op_e < LDMS_XPRT_OP_COUNT - 1)
+			__APPEND(" },\n");
+		else
+			__APPEND(" }\n");
+	}
+	__APPEND("}");
+	sz = s - buff + 1;
+	attr->attr_len = sz - sizeof(*attr);
+	ldmsd_hton_req_attr(attr);
+	rc = ldmsd_append_reply(req, buff, sz, LDMSD_REQ_SOM_F);
+	if (rc) {
+		errmsg = "append reply error";
+		goto err;
+	}
+	term = 0;
+	rc = ldmsd_append_reply(req, (void*)&term, sizeof(term),
+				LDMSD_REQ_EOM_F);
+	if (rc) {
+		errmsg = "append reply error";
+		goto err;
+	}
+	free(buff);
+	return 0;
+err:
+	if (buff)
+		free(buff);
+	req->errcode = rc;
+	ldmsd_send_req_response(req, errmsg);
 	return rc;
 }
 

@@ -115,6 +115,7 @@ enum ldmsd_request {
 	LDMSD_EXIT_DAEMON_REQ,
 	LDMSD_RECORD_LEN_ADVICE_REQ,
 	LDMSD_SET_ROUTE_REQ,
+	LDMSD_XPRT_STATS_REQ,
 
 	/* command-line options */
 	LDMSD_LISTEN_REQ,

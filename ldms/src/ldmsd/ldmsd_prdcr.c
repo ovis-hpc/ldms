@@ -133,6 +133,7 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 		free(set->schema_name);
 
 	if (set->set) {
+		ref_put(&set->set->ref, "prdcr_set");
 		ldms_set_unpublish(set->set);
 		ldms_set_delete(set->set);
 	}
@@ -201,15 +202,7 @@ void prdcr_hint_tree_update(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set,
 	} else if (op == UPDT_HINT_TREE_ADD) {
 		if (!rbn) {
 			list = malloc(sizeof(*list));
-			if (!list) { 
-				ldmsd_log(LDMSD_LERROR, "%s: out of memory.\n", __FUNCTION__);
-				return;
-			}
 			hint_key = malloc(sizeof(*hint_key));
-			if (!hint_key) {
-				ldmsd_log(LDMSD_LERROR, "%s: out of memory.\n", __FUNCTION__);
-				return;
-			}
 			*hint_key = *hint;
 			rbn_init(&list->rbn, hint_key);
 			rbt_ins(&prdcr->hint_set_tree, &list->rbn);
@@ -338,6 +331,8 @@ static void __update_set_info(ldmsd_prdcr_set_t set, ldms_dir_set_t dset)
 	}
 }
 
+extern void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
+				     int more, ldms_set_t set, void *arg);
 static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 {
 	ldmsd_prdcr_set_t set;
@@ -356,9 +351,19 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 		}
 		set->prdcr = prdcr;
 		rbt_ins(&prdcr->set_tree, &set->rbn);
+		rbt_verify(&prdcr->set_tree);
+		/* See if the ldms set is already there */
+		ldms_set_t xs = ldms_xprt_set_by_name(xprt, dset->inst_name);
+		if (xs) {
+			assert(0 == "this should not happen");
+			ldmsd_prdcr_set_ref_get(set); /* dropped in prdset_lookup_cb() */
+			__ldmsd_prdset_lookup_cb(xprt, 0, 0, xs, set);
+			ref_put(&xs->ref, "ldms_xprt_set_by_name");
+		}
 	} else {
-		ldmsd_log(LDMSD_LCRITICAL, "Receive a duplicated dir_add update of "
-				"the set '%s'.\n", dset->inst_name);
+		ldmsd_log(LDMSD_LCRITICAL, "Received a dir_add update for "
+			  "'%s', prdcr_set still present with refcount %d, and set "
+			  "%p.\n", dset->inst_name, set->ref_count, set->set);
 		return;
 	}
 
@@ -506,10 +511,52 @@ static int __prdcr_subscribe(ldmsd_prdcr_t prdcr)
 	return rc;
 }
 
+static void __prdcr_remote_set_delete(ldmsd_prdcr_t prdcr, ldms_set_t set)
+{
+	ldmsd_prdcr_set_t prdcr_set;
+	if (!set)
+		return;
+	prdcr_set = ldmsd_prdcr_set_find(prdcr, ldms_set_instance_name_get(set));
+	pthread_mutex_lock(&prdcr_set->lock);
+	assert(prdcr_set->ref_count);
+	switch (prdcr_set->state) {
+	case LDMSD_PRDCR_SET_STATE_START:
+		ldmsd_log(LDMSD_LERROR,
+			  "Deleting %s in the START state\n",
+			  prdcr_set->inst_name);
+		break;
+	case LDMSD_PRDCR_SET_STATE_LOOKUP:
+		ldmsd_log(LDMSD_LERROR,
+			  "Deleting %s in the LOOKUP state\n",
+			  prdcr_set->inst_name);
+		break;
+	case LDMSD_PRDCR_SET_STATE_READY:
+		ldmsd_log(LDMSD_LERROR,
+			  "Deleting %s in the READY state\n",
+			  prdcr_set->inst_name);
+		break;
+	case LDMSD_PRDCR_SET_STATE_UPDATING:
+		ldmsd_log(LDMSD_LERROR,
+			  "Deleting %s in the UPDATING state\n",
+			  prdcr_set->inst_name);
+		break;
+	}
+	pthread_mutex_unlock(&prdcr_set->lock);
+	prdcr_reset_set(prdcr, prdcr_set);
+}
+
 static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	ldmsd_prdcr_t prdcr = cb_arg;
 	ldmsd_prdcr_lock(prdcr);
+	switch(e->type) {
+	case LDMS_XPRT_EVENT_DISCONNECTED:
+		x->disconnected = 1;
+		break;
+	default:
+		assert(x->disconnected == 0);
+		break;
+	}
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
 		ldmsd_log(LDMSD_LINFO, "Producer %s is connected (%s %s:%d)\n",
@@ -517,13 +564,20 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 				prdcr->host_name, (int)prdcr->port_no);
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
 		if (__prdcr_subscribe(prdcr)) {
-			ldmsd_log(LDMSD_LERROR, "Could not subscribe to stream data on producer %s\n",
+			ldmsd_log(LDMSD_LERROR,
+				  "Could not subscribe to stream data on producer %s\n",
 				  prdcr->obj.name);
 		}
 		if (ldms_xprt_dir(prdcr->xprt, prdcr_dir_cb, prdcr,
 				  LDMS_DIR_F_NOTIFY))
 			ldms_xprt_close(prdcr->xprt);
 		ldmsd_task_stop(&prdcr->task);
+		break;
+	case LDMS_XPRT_EVENT_RECV:
+		ldmsd_recv_msg(x, e->data, e->data_len);
+		break;
+	case LDMS_XPRT_EVENT_SET_DELETE:
+		__prdcr_remote_set_delete(prdcr, e->set_delete.set);
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
 		ldmsd_log(LDMSD_LERROR, "Producer %s rejected the "
@@ -541,9 +595,6 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
 		goto reset_prdcr;
-	case LDMS_XPRT_EVENT_RECV:
-		ldmsd_recv_msg(x, e->data, e->data_len);
-		break;
 	default:
 		assert(0);
 	}

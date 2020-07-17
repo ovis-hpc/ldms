@@ -808,6 +808,7 @@ extern ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND + 1];
  * Max length of error strings while ldmsd is being configured.
  */
 #define LEN_ERRSTR 256
+#define LDMSD_ENOMEM_MSG "Memory allocation failure\n"
 
 void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
 int ldmsd_logrotate();

@@ -50,6 +50,7 @@
 #define _LDMS_PRIVATE_H
 #include <sys/queue.h>
 #include <ldms_xprt.h>
+#include <ref.h>
 #include <pthread.h>
 #include "ovis_util/os_util.h"
 
@@ -85,14 +86,17 @@ struct ldms_set_info_pair {
 LIST_HEAD(ldms_set_info_list, ldms_set_info_pair);
 LIST_HEAD(rbd_list, ldms_rbuf_desc);
 struct ldms_set {
+	struct ref_s ref;
 	unsigned long flags;
 	uint64_t set_id;	/* unique identifier for a set in this daemon */
+	uint64_t del_time;	/* Unix timestamp when set was deleted */
 	struct ldms_set_hdr *meta;
 	struct ldms_data_hdr *data; /* points to current entry of data array */
 	struct ldms_set_info_list local_info;
 	struct ldms_set_info_list remote_info; /*set info from the lookup operation */
-	struct rbn rb_node;
-	struct rbn id_node;
+	struct rbn rb_node;	/* Indexed by instance name */
+	struct rbn id_node;	/* Indexed by set_id */
+	struct rbn del_node;	/* Indexed by timestamp */
 	struct rbd_list local_rbd_list;
 	struct rbd_list remote_rbd_list;
 	pthread_mutex_t lock;
@@ -104,9 +108,13 @@ struct ldms_set {
 #define roundup(_v,_s) ((_v + (_s - 1)) & ~(_s - 1))
 
 extern int __ldms_xprt_push(ldms_set_t s, int push_flags);
-extern struct ldms_rbuf_desc *__ldms_alloc_rbd(struct ldms_xprt *,
-		struct ldms_set *s, enum ldms_rbd_type type);
-extern void __ldms_free_rbd(struct ldms_rbuf_desc *rbd);
+extern struct ldms_rbuf_desc *___ldms_alloc_rbd(struct ldms_xprt *,
+				struct ldms_set *s, enum ldms_rbd_type type,
+				const char *name, const char *func, int line);
+#define __ldms_alloc_rbd(_x_, _s_, _t_, _n_) ___ldms_alloc_rbd(_x_, _s_, _t_, _n_, __func__, __LINE__)
+extern void ___ldms_free_rbd(struct ldms_rbuf_desc *rbd, const char *name, const char *func, int line);
+#define __ldms_free_rbd(_r_, _n_) ___ldms_free_rbd(_r_, _n_, __func__, __LINE__)
+extern void __ldms_free_rbd_no_lock(struct ldms_rbuf_desc *rbd, const char *name, const char *func, int line);
 extern void __ldms_rbd_xprt_release(struct ldms_rbuf_desc *rbd);
 extern int __ldms_remote_lookup(ldms_t _x, const char *path,
 				enum ldms_lookup_flags flags,
@@ -121,6 +129,7 @@ __ldms_create_set(const char *instance_name, const char *schema_name,
 extern void __ldms_dir_add_set(struct ldms_set *set);
 extern void __ldms_dir_del_set(struct ldms_set *set);
 extern void __ldms_dir_upd_set(struct ldms_set *set);
+extern int __ldms_delete_remote_set(ldms_t _x, ldms_set_t s);
 
 struct ldms_name_entry {
 	LIST_ENTRY(ldms_name_entry) entry;
