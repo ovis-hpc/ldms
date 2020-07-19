@@ -41,8 +41,7 @@ jobs:
         release_name: Release ${{ github.ref }}
         draft: false
         prerelease: false
-    - name: Upload Release Asset
-      id: upload-release-asset
+    - name: Upload Tarball
       uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -51,3 +50,21 @@ jobs:
         asset_path: ./${{ env.TARBALL_NAME }}
         asset_name: ${{ env.TARBALL_NAME }}
         asset_content_type: application/gzip
+    - name: Upload TOSS Spec File
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./rpm/ovis-ldms-toss3.spec
+        asset_name: ovis-ldms-toss3.spec
+        asset_content_type: text/plain
+    - name: Upload TOSS Spec File
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./rpm/ovis-ldms-toss4.spec
+        asset_name: ovis-ldms-toss4.spec
+        asset_content_type: text/plain

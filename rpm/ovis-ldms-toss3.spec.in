@@ -1,0 +1,212 @@
+# Declare rpmbuild --with/--without parameters
+%bcond_without slurm
+%bcond_without python
+%bcond_without papi
+
+%ifarch ppc64le
+  %undefine with_slurm
+  %undefine with_python
+  %undefine with_papi
+%endif
+%ifarch aarch64
+  %undefine with_python
+%endif
+
+%global tarball_version @VERSION@
+
+%undefine _missing_build_ids_terminate_build
+
+# Main package
+Summary: OVIS Commands and Libraries
+Name: ovis-ldms
+Version: %(echo %{tarball_version} | tr '-' '_')
+Release: 1%{?dist}
+License: GPLv2 or BSD
+Group: System Environment/Libraries
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+Source: %{name}-%{tarball_version}.tar.gz
+Requires: rpm >= 4.8.0
+%if %{with python}
+%ifarch aarch64
+Requires: python36
+%else
+Requires: python3
+%endif
+%endif
+Requires: openssl
+Requires: boost-regex boost-program-options
+Requires: genders
+Requires: libibmad libibumad
+Requires: librdmacm libibverbs
+Requires: munge
+%if %{with papi}
+Requires: papi600
+%endif
+
+BuildRequires: gcc
+BuildRequires: glib2-devel
+BuildRequires: openssl-devel
+BuildRequires: librdmacm-devel libibverbs-devel
+BuildRequires: libibmad libibmad-devel
+BuildRequires: libibumad libibumad-devel
+%if %{with python}
+%ifarch aarch64
+BuildRequires: python36-devel
+%else
+BuildRequires: python3-devel
+%endif
+BuildRequires: python36-Cython
+%endif
+BuildRequires: boost-devel
+BuildRequires: genders
+BuildRequires: systemd
+BuildRequires: bison
+BuildRequires: flex
+BuildRequires: munge-devel
+%if %{with slurm}
+BuildRequires: slurm-devel
+%endif
+%if %{with papi}
+BuildRequires: papi600-devel
+%endif
+
+#Obsoletes: ovis
+#Obsoletes: ovis-initscripts-base
+#Obsoletes: ovis-initscripts-systemd
+#Obsoletes: ovis-initscripts-sysv
+
+Url: https://github.com/ovis-hpc/ovis
+
+%description
+This package provides the OVIS commands and libraries.
+
+%prep
+%setup -q -n %{name}-%{tarball_version}
+
+%build
+export CFLAGS="-g -O2 -fdiagnostics-color=auto %{optflags}"
+%configure \
+    CC=gcc CXX=g++ \
+    --disable-static \
+    --enable-munge \
+    --enable-ssl \
+    --enable-rdma \
+    --disable-mmap \
+    --disable-readline \
+    --disable-cray_power_sampler \
+    --disable-cray_system_sampler \
+    --disable-procdiskstats \
+    --disable-generic_sampler \
+    --enable-sysclassib \
+    --enable-jobid \
+    --enable-libgenders \
+    --enable-genderssystemd \
+    %{?with_python:--enable-python}%{!?with_python:--disable-python} \
+    %{?with_slurm:--with-slurm}%{!?with_slurm:--without-slurm} \
+%if %{with papi}
+    --enable-papi \
+    --with-libpapi-prefix=/usr/papi600 \
+    --with-libpfm-prefix=/usr/papi600 \
+%endif
+    --disable-hello_stream
+make V=1 -j 16
+
+%install
+rm -rf $RPM_BUILD_ROOT
+make DESTDIR=${RPM_BUILD_ROOT} V=1 install
+# rearrange ldms systemd init scripts and associated files into needed locations
+mkdir -p ${RPM_BUILD_ROOT}%{_unitdir}
+cp ${RPM_BUILD_ROOT}%{_docdir}/%{name}-%{tarball_version}/sample_init_scripts/genders/systemd/services/ldms*.service ${RPM_BUILD_ROOT}%{_unitdir}
+mkdir -p ${RPM_BUILD_ROOT}%{_sysconfdir}
+cp -r ${RPM_BUILD_ROOT}%{_docdir}/%{name}-%{tarball_version}/sample_init_scripts/genders/systemd/etc/* ${RPM_BUILD_ROOT}%{_sysconfdir}
+# only used by sysv init scripts
+rm ${RPM_BUILD_ROOT}%{_bindir}/ldmsd-pre-sysvinit || /bin/true
+
+%clean
+rm -rf $RPM_BUILD_ROOT
+
+%files
+%defattr(-,root,root)
+%{_libdir}/*
+%{_bindir}/*
+%{_sbindir}/*
+%{_sbindir}/.ldms-wrapper
+%{_unitdir}/ldmsd.service
+%{_unitdir}/ldmsd@.service
+%doc %{_sysconfdir}/sysconfig/ldms.d/ClusterGenders/README
+%{_sysconfdir}/sysconfig/ldms.d/ClusterGenders/genders.agg
+%{_sysconfdir}/sysconfig/ldms.d/ClusterGenders/genders.local
+%doc %{_sysconfdir}/sysconfig/ldms.d/ClusterSecrets/README
+%config(noreplace)%{_sysconfdir}/sysconfig/ldms.d/ClusterSecrets/ldmsauth.conf
+%doc %{_sysconfdir}/sysconfig/ldms.d/README
+%config(noreplace)%{_sysconfdir}/sysconfig/ldms.d/debug/ldmsd.extra.local.conf
+%config %{_sysconfdir}/sysconfig/ldms.d/ldms-functions
+%config %{_sysconfdir}/sysconfig/ldms.d/ldmsd
+%config(noreplace) %{_sysconfdir}/sysconfig/ldms.d/ldmsd.agg.conf
+%doc %{_sysconfdir}/sysconfig/ldms.d/ldmsd.all_instances.conf.example
+%config(noreplace) %{_sysconfdir}/sysconfig/ldms.d/ldmsd.local.conf
+%config(noreplace) %{_sysconfdir}/sysconfig/ldms.d/plugins-conf/*
+
+%package devel
+Summary: LDMS devel package
+Group: System Environment/Libraries
+Requires: %{name} = %{version}
+#Obsoletes: ovis-devel
+%description devel
+This is a development package of Lightweight Distributed Metric System (LDMS).
+Users who want to implement their own sampler or store must install this
+package.
+
+%files devel
+%defattr(-,root,root)
+%{_includedir}/*/*.h
+%{_includedir}/*/*/*.h
+%{_includedir}/ovis-ldms-config.h
+
+%package test
+Summary: LDMS test package
+Group: System Environment/Libraries
+Requires: %{name} = %{version}
+#Obsoletes: ovis-test
+%description test
+This is a collection of test scripts for (LDMS).
+They also serve as examples, but are not usually of interest
+on compute nodes in large clusters.
+
+%files test
+%defattr(-,root,root)
+%{_bindir}/ldms-py*sh
+
+%package doc
+Summary: Documentation files for %{name}
+Group: System Environment/Libraries
+#Obsoletes: ovis-doc
+%description doc
+Doxygen files for ovis package.
+%files doc
+%defattr(-,root,root)
+%{_mandir}/*/*
+%{_docdir}/%{name}-%{tarball_version}
+%docdir %{_docdir}
+
+%if %{with python}
+%package python3
+Summary: Python files for LDMS
+Requires: %{name} >= %{version}
+%ifarch aarch64
+Requires: python36
+%else
+Requires: python3
+%endif
+#Obsoletes: ovis-python2
+%description python3
+Python files for ovis
+%files python3
+%defattr(-,root,root)
+%{_prefix}/lib/python*/site-packages/ovis_ldms
+%{_prefix}/lib/python*/site-packages/ldmsd
+%endif
+
+%changelog
+* Mon May 11 2020 Christopher J. Morrone <morrone2@llnl.gov> 4.3.3-1
+New rpm packaging for TOSS.
