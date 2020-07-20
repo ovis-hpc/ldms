@@ -94,7 +94,7 @@ check_log_option () {
 check_auth_option () {
 	LDMS_AUTH_ARGS=""
 	case x$LDMS_AUTH_TYPE in
-        xovis)
+	xovis)
 		# auth file check and warning.
 		if test -z $LDMS_AUTH_FILE; then
 			echoq "LDMS_AUTH_FILE not set."
@@ -244,6 +244,7 @@ check_genders_file() {
 			logger -t $LTAG -p syslog.err "self-genders: Found no genders at all found for $LDMS_HOSTNAME (self)."
 			logger -t $LTAG -p syslog.err "self-genders: Review $af or setting of LDMS_HOSTNAME or aliasing in /etc/hosts"
 			logger -t $LTAG -p syslog.err "self-genders: Insufficient input was created from $lgi"
+			logger -t $LTAG -p syslog.err "self-genders: $NODEATTR $naf -n -A |grep ^${LDMS_HOSTNAME}$)"
 			exit 1
 			((n++))
 		fi
@@ -376,6 +377,12 @@ build_genders_file () {
 		echoq LDMS_GENDERS_1=$LDMS_GENDERS_1
 		export NODEATTRFILE1="-f $LDMS_GENDERS_1"
 		export ATTRFILE1="$LDMS_GENDERS_1"
+		if ! $NODEATTR $NODEATTRFILE1 -k > /dev/null 2>&1; then
+			echoq "problem with $NODEATTRFILE1"
+			logger -t $LTAG -p syslog.crit -s "BAD GENDERS $NODEATTRFILE1"
+			$NODEATTR $NODEATTRFILE1 -k
+			dietrace 1
+		fi
 	fi
 	if test -n "$LDMS_GENDERS_2"; then
 		check_files LDMS_GENDERS_2 $LDMS_GENDERS_2
@@ -385,7 +392,20 @@ build_genders_file () {
 		echoq LDMS_GENDERS_2=$LDMS_GENDERS_2
 		export NODEATTRFILE2="-f $LDMS_GENDERS_2"
 		export ATTRFILE2="$LDMS_GENDERS_2"
+		if ! $NODEATTR $NODEATTRFILE2 -k > /dev/null 2>&1; then
+			echoq "problem with $NODEATTRFILE2"
+			logger -t $LTAG -p syslog.crit -s "BAD GENDERS $NODEATTRFILE2"
+			$NODEATTR $NODEATTRFILE2 -k
+			dietrace 1
+		fi
 	fi
+	if ! $NODEATTR $NODEATTRFILE -k > /dev/null 2>&1; then
+		echoq "problem with $NODEATTRFILE"
+		logger -t $LTAG -p syslog.crit -s "BAD GENDERS $NODEATTRFILE"
+		$NODEATTR $NODEATTRFILE -k
+		dietrace 1
+	fi
+
 }
 
 failure() {
@@ -463,7 +483,7 @@ config_from_gender() {
 		unset IFS
 		# unset and the empty string for ifs are not the same
 	fi
-        # logger -t $LTAG -p syslog.info "$avitems";
+	# logger -t $LTAG -p syslog.info "$avitems";
 	echo $avitems
 }
 
