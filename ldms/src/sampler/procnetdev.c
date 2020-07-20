@@ -78,7 +78,7 @@ static char varname[][30] =
 
 int niface = 0;
 //max number of interfaces we can include. TODO: alloc as added
-#define MAXIFACE 5
+#define MAXIFACE 21
 static char iface[MAXIFACE][20];
 static char mindex[MAXIFACE];
 
@@ -225,8 +225,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	pch = strtok_r(ifacelist, ",", &saveptr);
 	while (pch != NULL){
-		if (niface >= (MAXIFACE-1))
+		if (niface >= (MAXIFACE-1)) {
+			msglog(LDMSD_LERROR, SAMP ": too many ifaces: <%s>\n",
+				pch);
 			goto err;
+		}
 		snprintf(iface[niface], 20, "%s", pch);
 		msglog(LDMSD_LDEBUG, SAMP ": added iface <%s>\n", iface[niface]);
 		niface++;
