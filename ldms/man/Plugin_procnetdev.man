@@ -30,16 +30,16 @@ This MUST be procnetdev.
 .TP
 ifaces=<ifs>
 .br
-CSV list of ifaces. Order matters. Non-existent ifaces will NOT be included.
+CSV list of ifaces. Order matters. Non-existent ifaces will be included and default to 0-value data.
 .TP
 schema=<schema>
 .br
-Optional schema name. It is intended that the same sampler on different nodes with different metrics have a
+Optional schema name. It is intended that the same sampler on different nodes with different metrics or ifaces have a
 different schema. If not specified, will default to `procnetdev`.
 .RE
 
 .SH BUGS
-Interfaces list is limited to 5.
+Interfaces list is limited to 20.
 
 .SH EXAMPLES
 .PP
