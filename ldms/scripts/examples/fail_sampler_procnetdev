@@ -1,0 +1,22 @@
+# This test produces stop sampler 
+export plugname=procnetdev
+IFACES=`ifconfig -a |grep UP |sed -e 's/:.*//g' | tr -s '[:space:]' , | sed -e 's/,$//g'`
+# extend list to fail at 21
+IFACES="${IFACES},a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u,v,w,x,y,z"
+export IFACES
+
+portbase=61024
+DAEMONS 1 2
+vgoff
+LDMSD 1
+vgoff
+vgoff
+LDMSD 2
+vgoff
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -l
+SLEEP 5
+KILL_LDMSD 1 2
+file_created $STOREDIR/node/$testname
