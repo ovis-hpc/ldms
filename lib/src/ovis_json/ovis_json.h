@@ -164,5 +164,4 @@ extern jbuf_t jbuf_append_str(jbuf_t jb, const char *fmt, ...);
 extern jbuf_t jbuf_append_va(jbuf_t jb, const char *fmt, va_list ap);
 extern void jbuf_free(jbuf_t jb);
 
-#define YYSTYPE json_entity_t
 #endif

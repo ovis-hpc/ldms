@@ -5,7 +5,9 @@
 #include <string.h>
 #include <errno.h>
 #include "ovis_json.h"
+
 #define YYLTYPE struct json_loc_s
+#define YYSTYPE json_entity_t
 
 void yyerror(YYLTYPE *yylloc, json_parser_t parser, char *input, size_t input_len,
 	     json_entity_t *pentity, const char *str)
@@ -127,7 +129,7 @@ item_list: /* empty */ { $$ = new_list_val(); }
     ;
 
 %%
-#include <assert.h>
+
 json_parser_t json_parser_new(size_t user_data) {
 	json_parser_t p = calloc(1, sizeof *p + user_data);
 	if (p)
@@ -139,19 +141,5 @@ void json_parser_free(json_parser_t parser)
 {
 	yylex_destroy(parser->scanner);
 	free(parser);
-}
-
-int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_entity_t *pentity)
-{
-	int rc;
-	*pentity = NULL;
-	/* NB: Force two 0x00 on the end of the buffer for the scanner. If
-	 * the user didn't allocate enough memory, this could corrupt
-	 * memory */
-	buf[buf_len] = 0x00;
-	buf[buf_len+1] = 0x00;
-	assert(NULL != yy_scan_buffer(buf, buf_len+2, p->scanner));
-	rc = yyparse(p, buf, buf_len, pentity);
-	return rc;
 }
 

@@ -5,6 +5,8 @@
 #include <ovis_json.h>
 #include "ovis_json_parser.h"
 
+#define YYSTYPE json_entity_t
+
 struct yyguts_t;
 void update_yylloc(YYLTYPE *, struct yyguts_t *);
 void init_yylloc(YYLTYPE *, struct yyguts_t *);
@@ -124,4 +126,24 @@ void init_yylloc(YYLTYPE *yyl, struct yyguts_t *yyg)
 	yyl->first_line = yyl->last_line = 0;
 	yyl->first_column = yyl->last_column = 0;
 	yylineno = 0;
+}
+
+int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_entity_t *pentity)
+{
+	int rc;
+	*pentity = NULL;
+	char *nbuf = malloc(buf_len + 2);
+	if (!nbuf)
+		return ENOMEM;
+	memcpy(nbuf, buf, buf_len);
+	nbuf[buf_len] = YY_END_OF_BUFFER_CHAR;
+	nbuf[buf_len+1] = YY_END_OF_BUFFER_CHAR;
+	if (NULL == yy_scan_buffer(buf, buf_len + 2, p->scanner)) {
+		rc = EINVAL;
+		goto out;
+	}
+	rc = yyparse(p, nbuf, buf_len + 2, pentity);
+out:
+	free(nbuf);
+	return rc;
 }
