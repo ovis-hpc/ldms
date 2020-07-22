@@ -138,7 +138,7 @@ int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_entity_t 
 	memcpy(nbuf, buf, buf_len);
 	nbuf[buf_len] = YY_END_OF_BUFFER_CHAR;
 	nbuf[buf_len+1] = YY_END_OF_BUFFER_CHAR;
-	if (NULL == yy_scan_buffer(buf, buf_len + 2, p->scanner)) {
+	if (NULL == yy_scan_buffer(nbuf, buf_len + 2, p->scanner)) {
 		rc = EINVAL;
 		goto out;
 	}
