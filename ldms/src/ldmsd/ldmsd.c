@@ -372,11 +372,14 @@ void cleanup(int x, const char *reason)
 	/* pidfile & banner */
 	pidfile = (ldmsd_daemon_t)ldmsd_cfgobj_find("pid_file", LDMSD_CFGOBJ_DAEMON);
 	if (pidfile->obj.enabled) {
-		unlink(json_value_str(json_value_find(
-					pidfile->attr, "path"))->str);
+		json_entity_t jent;
+		jent = json_value_find(pidfile->attr, "path");
+		if (jent)
+			unlink(json_value_str(jent)->str);
 		if (json_value_bool(json_value_find(pidfile->attr, "banner"))) {
-			unlink(json_value_str(json_value_find(
-					pidfile->attr, "path"))->str);
+			jent = json_value_find(pidfile->attr, "banner_path");
+			if (jent)
+				unlink(json_value_str(jent)->str);
 		}
 	}
 	ldmsd_log(llevel, "LDMSD_ cleanup end.\n");
