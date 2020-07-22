@@ -679,10 +679,10 @@ int publish_kernel(const char *setfile)
 static void stop_sampler(struct ldmsd_plugin_cfg *pi)
 {
 	ovis_scheduler_event_del(pi->os, &pi->oev);
-	pi->thread_id = -1;
+	release_ovis_scheduler(pi->thread_id);
 	pi->ref_count--;
 	pi->os = NULL;
-	release_ovis_scheduler(pi->thread_id);
+	pi->thread_id = -1;
 }
 
 void plugin_sampler_cb(ovis_event_t oev)
