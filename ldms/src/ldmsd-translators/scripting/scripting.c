@@ -1003,7 +1003,7 @@ updtr_match_add_handler(scripting_inst_t inst, json_entity_t attr_dict)
 		if (!sets) {
 			spc = json_dict_build(spc,
 					JSON_LIST_VALUE, "set_instance_filters",
-						JSON_STRING_VALUE, regex_str
+						JSON_STRING_VALUE, regex_str,
 						-2,
 					-1);
 			if (!spc)
