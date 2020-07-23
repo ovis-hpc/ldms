@@ -102,6 +102,7 @@ struct counter_range cr_default[] = {
 	{ 1, "extended", IB_PC_EXT_XMT_BYTES_F, IB_PC_EXT_RCV_PKTS_F, IB_GSI_PORT_COUNTERS_EXT, NOMASK, NOMASK2, 0 },
 	{ 2, "extended2", IB_PC_EXT_XMT_UPKTS_F, IB_PC_EXT_RCV_MPKTS_F, GSI_CONT, IB_PM_EXT_WIDTH_SUPPORTED, NOMASK2, 0 },
 	{ 2, "extended3", IB_PC_EXT_ERR_SYM_F, IB_PC_EXT_QP1_DROP_F, GSI_CONT, NOMASK, NOMASK2, 0 },
+#define LAST_EXTENDED_IDX 4
 
 	{ 1, "xmtsl", IB_PC_XMT_DATA_SL0_F, IB_PC_XMT_DATA_SL15_F, IB_GSI_PORT_XMIT_DATA_SL, NOMASK, NOMASK2, 0 },
 	{ 1, "rcvsl", IB_PC_RCV_DATA_SL0_F, IB_PC_RCV_DATA_SL15_F, IB_GSI_PORT_RCV_DATA_SL, NOMASK, NOMASK2, 0 },
@@ -252,7 +253,7 @@ static int ibnet_data_schemas_init(struct ibnet_data *d,
 
 static int ibnet_data_sets_init(struct ibnet_data *d,
 	const char *port_schema_name, const char *timing_producer,
-	const char *timing_instance_name);
+	const char *timing_instance_name, const char *fname);
 
 static int parse_lid_file(struct ibnet_data *d, const char *lidfile);
 
@@ -556,7 +557,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 
 	// create instances
 	rc = ibnet_data_sets_init(d, port_schema_name, timing_producer,
-		timing_instance_name);
+		timing_instance_name, srclist);
 	if (rc) {
 		d->log(LDMSD_LERROR, SAMP " failed ibnet_data_sets_init %s, %s, %s\n",
 			port_schema_name, timing_producer, timing_instance_name);
@@ -868,7 +869,7 @@ err2:
 	return -1;
 }
 
-int ibnet_data_sets_init(struct ibnet_data *d, const char *port_schema_name, const char *timing_producer, const char *timing_instance_name)
+int ibnet_data_sets_init(struct ibnet_data *d, const char *port_schema_name, const char *timing_producer, const char *timing_instance_name, const char *fname)
 {
 	int rc;
 	if (d->timing_schema) {
@@ -897,7 +898,12 @@ int ibnet_data_sets_init(struct ibnet_data *d, const char *port_schema_name, con
 			rc = errno;
 			d->log(LDMSD_LERROR, SAMP ": ldms_set_new %s failed, "
 				"errno: %d, %s\n", port_instance_name, rc,
-				 ovis_errno_abbvr(errno));
+				 ovis_errno_abbvr(rc));
+			if (rc == EEXIST) {
+				d->log(LDMSD_LERROR, SAMP ": duplicate entries for %s %d in "
+					"input file %s\n", port->lidname, port->num,
+					fname);
+			}
 			return rc;
 		}
 		if (d->debug)
@@ -1162,6 +1168,7 @@ static void port_query(struct ibnet_data *d, struct ib_port *port, struct timeva
 	}
 	size_t g;
 	uint8_t *res = NULL;
+	int skip_rest = 0;
 	for (g = 0 ; g < cr_count; g++) {
 		struct counter_range *cr = &(d->cr_opt[g]);
 		if (cr->mask_check && !(cr->mask_check & port->cap_mask)) {
@@ -1173,14 +1180,25 @@ static void port_query(struct ibnet_data *d, struct ib_port *port, struct timeva
 			continue;
 		case 1:
 			memset(port->rcv_buf[g], 0, PQMAD_SIZE);
+			if (skip_rest) {
+				res = NULL;
+			} else {
 			res = pma_query_via(port->rcv_buf[g], &port->port_id,
 				port->num, 0, cr->id, d->port);
+			}
 			if (!res) {
+				if (g <= LAST_EXTENDED_IDX) {
+					/* if base or extended query fails, 
+ * 						skip other subsets on port.*/
+					skip_rest += 1;
+				}
 				port->qerr[g] = errno;
 				if (!port->err_logged[g]) {
+					if (skip_rest < 2) {
 					d->log(LDMSD_LINFO, SAMP ": Error querying subset %s on %s %d, "
 						"errno: %d\n", cr->subset, port->remote,
 						port->num, port->qerr[g]);
+					}
 					port->err_logged[g] = 1;
 				}
 			} else {
