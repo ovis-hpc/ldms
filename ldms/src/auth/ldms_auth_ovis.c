@@ -292,6 +292,7 @@ int __auth_ovis_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 		memcpy(rpl->hash, hash, len + 1);
 		free(hash);
 		rc = ldms_xprt_auth_send(xprt, (void*)rpl, sizeof(*rpl) + len + 1);
+		free( rpl );
 		break;
 	case AUTH_OVIS_REPLY:
 		/* the other side send back a hash from our challenge */
