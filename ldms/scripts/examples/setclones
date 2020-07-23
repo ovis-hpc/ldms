@@ -1,0 +1,10 @@
+export plugname=synthetic
+portbase=61060
+LDMSD 1 2
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -l
+SLEEP 5
+KILL_LDMSD 1
+SLEEP 5
+KILL_LDMSD 2
+file_created $STOREDIR/node/$plugname.500

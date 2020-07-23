@@ -76,6 +76,8 @@ static double period = 20; // seconds
 static double amplitude = 10; // integer height of waves
 static double origin = 1440449892; // 8-24-2015-ish
 static int metric_offset;
+static uint64_t extra_sets = 0;
+static ldms_set_t *extras;
 base_data_t base;
 
 #define SAMP "synthetic"
@@ -89,6 +91,45 @@ static const char *metric_name[4] =
 	NULL
 };
 
+static ldms_set_t clone_metric_set(base_data_t base, uint64_t k)
+{
+	int rc;
+	errno = 0;
+	ldms_set_t c;
+	size_t nl = strlen(base->instance_name) + 22;
+	char buf[nl];
+	snprintf(buf,nl,"%s.%" PRIu64, base->instance_name, k);
+	c = ldms_set_new(buf, base->schema);
+	if (!c) {
+		const char *serr = ovis_strerror(errno);
+		base->log(LDMSD_LERROR,"clone_metric_set: ldms_set_new failed %d(%s) for %s\n",
+				errno, serr, buf);
+		return NULL;
+	}
+	ldms_set_producer_name_set(c, base->producer_name);
+	ldms_metric_set_u64(c, BASE_COMPONENT_ID, base->component_id);
+	ldms_metric_set_u64(c, BASE_JOB_ID, 0);
+	ldms_metric_set_u64(c, BASE_APP_ID, 0);
+	ldms_set_config_auth(c, base->uid, base->gid, base->perm);
+	rc = ldms_set_publish(c);
+	if (rc) {
+		ldms_set_delete(c);
+		errno = rc;
+		base->log(LDMSD_LERROR,"clone_metric_set: ldms_set_publish failed for %s\n", buf);
+		return NULL;
+	}
+	ldmsd_set_register(c, base->pi_name);
+
+	union ldms_value v;
+	ldms_transaction_begin(c);
+	v.v_u64 = 0;
+	for (k = 0; metric_name[k] != NULL; k++) {
+		ldms_metric_set(c, k + metric_offset, &v);
+	}
+	ldms_transaction_end(c);
+	return c;
+}
+
 static int create_metric_set(base_data_t base)
 {
 	int rc;
@@ -97,7 +138,7 @@ static int create_metric_set(base_data_t base)
 
 	schema = base_schema_new(base);
 	if (!schema) {
-		msglog(LDMSD_LERROR, "The scheam '%s' could not be created, errno=%d.\n",
+		msglog(LDMSD_LERROR, "The schema '%s' could not be created, errno=%d.\n",
 		       __FILE__, base->schema_name, errno);
 		rc = errno;
 		goto err;
@@ -122,10 +163,12 @@ static int create_metric_set(base_data_t base)
 	}
 
 
+	ldms_transaction_begin(set);
 	v.v_u64 = 0;
 	for (k = 0; metric_name[k] != NULL; k++) {
 		ldms_metric_set(set, k + metric_offset, &v);
 	}
+	ldms_transaction_begin(set);
 	return 0;
 
  err:
@@ -138,6 +181,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"    origin  The zero time for periodic functions (float).\n"
 		"    height  The amplitude for periodic functions (float).\n"
 		"    period  The function period (float).\n"
+		"    extra   Clone sets to produce (not sampled multiple times).\n"
 	;
 }
 
@@ -190,6 +234,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (value)
 		compid = strtoull(value, NULL, 0);
 
+	value = av_value(avl, "extra");
+	if (value)
+		extra_sets = strtoull(value, NULL, 0);
+
 	base = base_config(avl, SAMP, SAMP, msglog);
 	if (!base) {
 		rc = errno;
@@ -200,6 +248,17 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err;
+	}
+	
+	uint64_t k;
+	if ( extra_sets > 0) {
+		extras = malloc(sizeof(ldms_set_t)*extra_sets);
+	}
+	if (extras) {
+		msglog(LDMSD_LINFO, SAMP ": creating extra sets %" PRIu64 "\n", extra_sets);
+		for (k = 0; k < extra_sets; k++) {
+			extras[k] = clone_metric_set(base, k);
+		}
 	}
 	return 0;
 
@@ -258,6 +317,14 @@ static int sample(struct ldmsd_sampler *self)
 
 static void term(struct ldmsd_plugin *self)
 {
+	uint64_t k;
+	if (extras) {
+		for (k = 0; k < extra_sets; k++) {
+			if (extras[k])
+				ldms_set_delete(extras[k]);
+		}
+		free(extras);
+	}
 	if (base)
 		base_del(base);
 	base = NULL;
