@@ -53,6 +53,7 @@
 #include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 #include <assert.h>
 
 #define __TIMER_VALID(tv) ((tv)->tv_sec >= 0)
@@ -239,7 +240,7 @@ ovis_scheduler_t ovis_scheduler_new()
 {
 	int rc;
 	uint32_t heap_sz;
-	ovis_scheduler_t m = malloc(sizeof(*m));
+	ovis_scheduler_t m = calloc(1,sizeof(*m));
 	if (!m)
 		goto out;
 
@@ -513,6 +514,7 @@ int ovis_scheduler_event_add(ovis_scheduler_t m, ovis_event_t ev)
 
 	if (ev->param.type & OVIS_EVENT_EPOLL) {
 		struct epoll_event e;
+		memset(&e, 0, sizeof(e));
 		e.events = ev->param.epoll_events;
 		e.data.ptr = ev;
 		rc = epoll_ctl(m->efd, EPOLL_CTL_ADD, ev->param.fd, &e);
@@ -732,7 +734,10 @@ int ovis_scheduler_term(ovis_scheduler_t m)
 int ovis_scheduler_epoll_event_mod(ovis_scheduler_t s, ovis_event_t ev,
 				   int epoll_events)
 {
-	struct epoll_event epev = {.events = epoll_events, .data = {.ptr = ev}};
+	struct epoll_event epev;
+	memset(&epev, 0, sizeof(epev));
+	epev.events = epoll_events;
+	epev.data.ptr = ev;
 	int rc;
 	rc = epoll_ctl(s->efd, EPOLL_CTL_MOD, ev->param.fd, &epev);
 	if (rc) {
