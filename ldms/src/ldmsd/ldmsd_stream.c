@@ -228,7 +228,6 @@ int ldmsd_stream_publish(ldms_t xprt,
 static char recv_buf[128];
 sem_t conn_sem;
 int conn_status;
-sem_t recv_sem;
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	switch (e->type) {
@@ -246,11 +245,6 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		break;
 	case LDMS_XPRT_EVENT_ERROR:
 		conn_status = ECONNREFUSED;
-		break;
-	case LDMS_XPRT_EVENT_RECV:
-		memcpy(recv_buf, e->data,
-		       e->data_len < sizeof(recv_buf) ? e->data_len : sizeof(recv_buf));
-		sem_post(&recv_sem);
 		break;
 	default:
 		msglog("Received invalid event type %d\n", e->type);
@@ -298,7 +292,6 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		return errno;
 	}
 
-	sem_init(&recv_sem, 0, 0);
 	sem_init(&conn_sem, 0, 0);
 
 	rc = ldms_xprt_connect_by_name(x, host, port, event_cb, NULL);
@@ -375,12 +368,6 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		}
 	}
 
-	/* Wait for the reply */
-	ts.tv_sec = time(NULL) + 10;
-	ts.tv_nsec = 0;
-	sem_timedwait(&recv_sem, &ts);
-	ldmsd_req_hdr_t reply = (ldmsd_req_hdr_t)recv_buf;
-	rc = ntohl(reply->rsp_err);
 	ldms_xprt_close(x);
  err:
 	return rc;
