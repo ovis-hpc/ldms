@@ -362,10 +362,10 @@ public:
 		if (! has_property(host, retry, t.retry, true) ) {
 			t.retry = "2000000"; // 2 sec
 		}
-		if (! has_property(host, intervals, t.interval, true) ) {
+		if (! has_property(host, intervals, t.interval, false) ) {
 			t.interval = "10000000"; // 10 sec
 		}
-		if (! has_property(host, offsets, t.offset, true) ) {
+		if (! has_property(host, offsets, t.offset, false) ) {
 			t.offset = "100000"; // 0.1 sec
 		}
 	}
