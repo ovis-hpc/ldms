@@ -455,8 +455,8 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 		char *endp;
 		endp = NULL;
 		errno = 0;
-		unsigned int j = strtoul(ctiming, &endp, 3);
-		if (endp == ctiming || errno || j > 2 ) {
+		unsigned int j = strtoul(ctiming, &endp, 4);
+		if (endp == ctiming || errno || j > 3 ) {
 			d->log(LDMSD_LERROR, SAMP "Got bad timing '%s'\n",
 				ctiming);
 			rc = EINVAL;
