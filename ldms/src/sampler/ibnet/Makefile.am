@@ -5,7 +5,7 @@ bin_SCRIPTS=
 bin_PROGRAMS=
 dist_man7_MANS =
 dist_man1_MANS =
-EXTRA_DIST =  scripts/ldms-gen-lidfile.sh  scripts/ldms-ibnet-sampler-gen
+EXTRA_DIST =  scripts/ldms-gen-lidfile.sh  scripts/ldms-ibnet-sampler-gen scripts/ldms-get-opa-network.sh
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
