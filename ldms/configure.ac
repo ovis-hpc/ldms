@@ -41,7 +41,10 @@ AC_PROG_CXX
 AC_CHECK_SIZEOF(long)
 AC_CHECK_SIZEOF(long double)
 
-AX_PYTHON_DEVEL
+dnl check for python interpreter
+test -n "$PYTHON" || export PYTHON=/usr/bin/python3
+AM_PATH_PYTHON([3.6])
+AX_PYTHON_DEVEL([>='3.6'])
 
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
