@@ -20,7 +20,8 @@ python. This capability will be replaced and it is not recommended that you use 
 
 .SH ENVIRONMENT
 .SS
-The following environment variables must usually be set:
+The ldmsd-check-env program will dump currently set environment variables that may influence ldmsd and plugin behavior.
+The following environment variables must often be set:
 .TP
 LD_LIBRARY_PATH
 Path to ovis/lib and libevent2/lib, if not in a system default path. Depending on the system these may be lib64 instead of lib.

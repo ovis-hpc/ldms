@@ -2,7 +2,7 @@
 # consider adding ldmsd to bin_SCRIPTS if ldmsd script ever stabilizes
 EXTRA_DIST=examples lsdate slurm-examples
 EXTRA_DIST += ldms-csv-anonymize ldms-csv-export-sos
-EXTRA_DIST += ovis-roll-over.py
+EXTRA_DIST += ovis-roll-over.py ldmsd-check-env
 
 
 if ENABLE_SCRIPTS
@@ -12,6 +12,7 @@ bin_SCRIPTS += ldms-static-test.sh
 bin_SCRIPTS += ovis-roll-over.py
 bin_SCRIPTS += ldms-csv-anonymize
 bin_SCRIPTS += ldms-csv-export-sos
+bin_SCRIPTS += ldmsd-check-env
 
 DISTCLEANFILES = $(gen_scripts) $(sgen_scripts)
 OPV=-$(PACKAGE_VERSION)
