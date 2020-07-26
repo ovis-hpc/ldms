@@ -681,8 +681,21 @@ def find_calid_by_name(cas, name):
             return calid
     raise Exception("find_calid_by_name unknown host ca for " + name)
 
+nonetype = 0 ; # unconnected
 switchtype = 1
 catype = 2
+unknowntype = 3 ; # just couldn't figure it out
+def t2s(t):
+    """convert int typing to string"""
+    if t == nonetype:
+        return 'empty'
+    if t == catype:
+        return 'CA'
+    if t == switchtype:
+        return 'SW'
+    if t == unknowntype:
+        return 'unknown'
+
 import re
 
 # look for common prefixes sets with at least minp char
@@ -1147,6 +1160,56 @@ def least_loaded(t12load, direct):
     print("least_loaded= {} ".format(leastname))
     return leastname
 
+def rr1_assign_sampler(args, ca, sw, lk, tr, adminlist):
+    # no tier assignment
+    ns = len(adminlist)
+    if ns == 1:
+        if args.info:
+            print("degenerate assignment to {}".format(adminlist[0]))
+        for xn, x in sw.items():
+            x.sampler = adminlist[0]
+        for xn, x in ca.items():
+            x.sampler = adminlist[0]
+        return
+    else:
+        for xn, x in sw.items():
+            x.sampler = None
+        for xn, x in ca.items():
+            x.sampler = None
+
+    scnt = 0
+    ccnt = 0
+    for name, s in sw.items():
+        if s.sampler:
+            continue
+        s.sampler = adminlist[scnt % ns]
+        if args.debug:
+            print("assigning {} to {}".format(s.name, s.sampler));
+        scnt += 1
+
+    # assign hcas to the sampler for their parent switch, or round robin
+    # if we can't find it.
+    ucnt = 0
+    for cn,c in ca.items():
+        if c.sampler:
+            continue
+        for t in [1,2]:
+            if not t in c.connections:
+                continue
+            cl = sorted(c.connections[t].keys())[0]
+            s = sw[cl]
+            if not s.sampler:
+                print("unassigned switch! {}".format(s.name))
+            if not c.sampler:
+                c.sampler = s.sampler
+            break
+        if not c.sampler:
+            a = adminlist[ucnt % ns]
+            c.sampler = a
+            if args.info:
+                print("assigning orphan {} to {}".format(c.name, a));
+            ucnt += 1
+
 def rr3_assign_sampler(args, ca, sw, lk, tr, adminlist):
     # three tier assignment
     ns = len(adminlist)
@@ -1442,6 +1505,81 @@ def format_samplers_ibnet(args, ca, sw, tr, adminlist, fbase, skipca):
     #print("empty switch ports: {}".format(emptyswportcount))
     #print("empty hca ports: {}".format(emptycaportcount))
 
+def format_topology_csv(args, ca, sw, lk, tr, fbase, skipca):
+    """lids: lid,name,type,tier
+        links: src-lid,src-port,src-type,dest-lid,dest-port,dest-type
+        ports: lid,port,hosttype(ca,sw),remotetype(ca,sw) a table for ports. (an optimization on links query and compute
+    """
+    if args.debug:
+        print("======= format_topology_csv")
+    swcount = len(sw)
+    cacount = len(ca)
+    lidcount = 0
+    flink = fbase + ".links.csv"
+    flid = fbase + ".lids.csv"
+    fport = fbase + ".ports.csv"
+
+    with open(flid, "w") as f:
+        print("#lid,name,host,type,tier", file=f)
+        for sn, s in sw.items():
+             ilid = int(s.lid, 0)
+             print("{},'{}','{}',{},{}".format( ilid, s.name, s.host, 
+                    t2s(switchtype), s.tier), file=f)
+        for cn, c in ca.items():
+             ilid = int(c.lid, 0)
+             print("{},'{}','{}',{},{}".format( ilid, c.name, c.host, 
+                    t2s(catype), c.tier), file=f)
+
+    with open(flink, "w") as f:
+        print("#src-lid,src-port,src-type,dest-lid,dest-port,dest-type", file=f)
+        for ln, l in lk.items():
+             print("{},{},{},{},{},{}".format( int(l.src.lid,0), l.src.port, 
+                   t2s(l.src.ttype), int(l.dst.lid,0), l.dst.port, t2s(l.dst.ttype)),
+                   file=f)
+
+    with open(fport, "w") as f:
+        lps = dict()
+        print("#lid,port,type,remotetype", file=f)
+        for ln, l in lk.items():
+             nm = l.src.lid + "." + l.src.port
+             if not nm in lps:
+                 lps[nm] = 1
+                 print("{},{},{},{}".format(int(l.src.lid,0), l.src.port,
+                       t2s(l.src.ttype), t2s(l.dst.ttype)), file=f)
+             nm = l.dst.lid + "." + l.dst.port
+             if not nm in lps:
+                 lps[nm] = 1
+                 print("{},{},{},{}".format(int(l.dst.lid,0), l.dst.port,
+                       t2s(l.dst.ttype), t2s(l.src.ttype)), file=f)
+        for sn, s in sw.items():
+            slid = s.lid
+            for num,p in s.ports.items():
+                nm = slid + "." + str(num)
+                if nm in lps:
+                    continue
+                lps[nm] = 1
+                if p.empty:
+                    rt = nonetype
+                else:
+                    rt = unknowntype
+                    print("unexpected nonempty port {} in {}".format(p, sn))
+                print("{},{},{},{}".format(int(slid,0), num, t2s(switchtype),
+                      t2s(rt)), file=f)
+        for cn, c in ca.items():
+            slid = c.lid
+            for num,p in c.ports.items():
+                nm = slid + "." + str(num)
+                if nm in lps:
+                    continue
+                lps[nm] = 1
+                if p.empty:
+                    rt = "none"
+                else:
+                    rt = "unknown"
+                    print("unexpected nonempty port {} in {}".format(p, sn))
+                print("{},{},{},{}".format(int(slid,0), num, t2s(catype), t2s(rt) ), file=f)
+
+
 def format_samplers_ibnet_hosts(args, ca, sw, tr, adminlist, fbase, skipca):
     if args.debug:
         print("======= format_samplers_ibnet_hosts: {}".format(adminlist))
@@ -1478,7 +1616,8 @@ def format_samplers_ibnet_hosts(args, ca, sw, tr, adminlist, fbase, skipca):
                 cl = find_calid_by_host(ca, h)
                 if cl in lids:
                     if args.debug:
-                        print("sampling ca twice {}".format(cn))
+                        print("skip sampling ca twice {}".format(cn))
+                    continue
                 lids[cl] = 1
                 format_ca_ib(f, ca[cl], args.sampnote)
                 lidcount += 1
@@ -1958,6 +2097,7 @@ def get_arg_parser():
     p.add_argument("--samplers", dest='hostfile', help="file listing samplers as named in the host name map, one per line", required=True)
     p.add_argument("--annotate", dest='sampnote', action='store_true', help="annotate samplers files", default=False)
     p.add_argument("--sharp", dest='sharpport', type=int, help="port to exclude in topology calculations (for sharp)", default=-1)
+    p.add_argument("--csv", action='store_true', help="write topology csv files", default=False)
     p.add_argument("--tier0", action='store_true', help="generate tier0-1 graphs", default=False)
     p.add_argument("--tier1", action='store_true', help="generate tier1-2 graphs", default=False)
     p.add_argument("--tier2", action='store_true', help="generate tier2-3 graphs", default=False)
@@ -2059,15 +2199,22 @@ def main():
     if args.debug:
         print("making sampler assignments")
         print("subtiers")
-    format_subtiers(args, ca, sw, lk, tr, args.outprefix + ".subtier1", 1, adminlist)
-    if args.debug:
-        print("rr3_assign_sampler")
-    rr3_assign_sampler(args, ca, sw, lk, tr, adminlist)
+    try:
+        format_subtiers(args, ca, sw, lk, tr, args.outprefix + ".subtier1", 1, adminlist)
+        if args.debug:
+            print("rr3_assign_sampler")
+        rr3_assign_sampler(args, ca, sw, lk, tr, adminlist)
+    except:
+        print("cannot detect switch hierarcy. using round robin.")
+        rr1_assign_sampler(args, ca, sw, lk, tr, adminlist)
+        
     if args.debug:
         print("format_samplers_ibnet")
     # format_samplers_ibnet(args, ca, sw, tr, adminlist, args.outprefix + ".lidorder.sampler", False)
     format_samplers_ibnet_hosts(args, ca, sw, tr, adminlist, args.outprefix + ".hostorder.sampler", False)
 
+    if args.csv:
+        format_topology_csv(args, ca, sw, lk, tr, args.outprefix + ".db", False)
     # graph subnets by assigned sampler. (leave out links with either endpoint not in the sampler)
     # compact common prefix numeric ranges (see prefix search in upper script) of hostname.
     # are there detached nodes? or maybe graph tiers and omit links entirely, sort by name and color by sampler.
