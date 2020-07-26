@@ -12,10 +12,11 @@ m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 AM_CONFIG_HEADER(config.h)
 AM_PROG_LIBTOOL
 AC_LIB_RPATH
-AX_PYTHON_DEVEL
 
 dnl check for python interpreter
-AM_PATH_PYTHON([2.6])
+test -n "$PYTHON" || export PYTHON=/usr/bin/python3
+AM_PATH_PYTHON([3.6])
+AX_PYTHON_DEVEL([>='3.6'])
 
 dnl Checks for programs
 AC_PROG_CXX

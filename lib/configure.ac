@@ -124,29 +124,6 @@ AM_CONDITIONAL([ENABLE_librdmacm], [test "$HAVE_librdmacm" = "yes"])
 
 AC_DEFINE_UNQUOTED([HAVE_ZAP],["$have_zap"],[configured with zap transport (1) or not (0)])
 
-if test -z "$ENABLE_SOS_TRUE"; then
-	AM_PATH_PYTHON(,,[:])
-	which cython >/dev/null 2>&1 || AC_MSG_ERROR("cython not found")
-	AX_PYTHON_DEVEL()
-	if test "x$WITH_SOS" != "xbuild"; then
-		OCFLAGS=$CFLAGS
-		CFLAGS=$SOS_INCDIR_FLAG
-		AC_CHECK_HEADERS(sos/sos.h,
-			[],
-			AC_MSG_FAILURE([sos/sos.h not found])
-		)
-		AC_CHECK_LIB(sos, sos_container_open,
-			[],
-			AC_MSG_FAILURE(libsos not found: required by --enable-sos),
-			[ $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ]
-		)
-		CFLAGS=$OCFLAGS
-		LIBS=""
-	else
-		AC_MSG_NOTICE([Using staged ovis-sos $OPVIS_SOS_LIB64DIR_FLAG $OVIS_SOS_LIBDIR_FLAG])
-	fi
-fi
-
 with_ssl=0
 have_auth=0
 if test "$enable_ovis_auth" = "yes"; then
@@ -173,13 +150,37 @@ OPTION_DEFAULT_DISABLE([python], [ENABLE_PYTHON])
 
 OVIS_PKGLIBDIR
 
-if test -z "$ENABLE_PYTHON_TRUE"
+dnl check for python interpreter
+if test -z "$ENABLE_PYTHON_TRUE" || test -z "$ENABLE_SOS_TRUE"
 then
-	AM_PATH_PYTHON([3], , [:])
+	test -n "$PYTHON" || export PYTHON=/usr/bin/python3
+	AM_PATH_PYTHON([3.6])
+	AX_PYTHON_DEVEL([>='3.6'])
 	pkgpythondir="${pythondir}/ovis_lib"
 	pkgpyexecdir="${pkgpythondir}"
 fi
 AM_CONDITIONAL([HAVE_PYTHON], [test "$PYTHON" != :])
+
+if test -z "$ENABLE_SOS_TRUE"; then
+	which cython >/dev/null 2>&1 || AC_MSG_ERROR("cython not found")
+	if test "x$WITH_SOS" != "xbuild"; then
+		OCFLAGS=$CFLAGS
+		CFLAGS=$SOS_INCDIR_FLAG
+		AC_CHECK_HEADERS(sos/sos.h,
+			[],
+			AC_MSG_FAILURE([sos/sos.h not found])
+		)
+		AC_CHECK_LIB(sos, sos_container_open,
+			[],
+			AC_MSG_FAILURE(libsos not found: required by --enable-sos),
+			[ $SOS_LIB64DIR_FLAG $SOS_LIBDIR_FLAG ]
+		)
+		CFLAGS=$OCFLAGS
+		LIBS=""
+	else
+		AC_MSG_NOTICE([Using staged ovis-sos $OPVIS_SOS_LIB64DIR_FLAG $OVIS_SOS_LIBDIR_FLAG])
+	fi
+fi
 
 # define substitutions for configvars and other sed-generated files.
 # note carefully the escapes.
