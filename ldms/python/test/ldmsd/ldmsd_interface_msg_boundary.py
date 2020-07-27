@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2017-2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -50,6 +50,8 @@
 # This file contains the test cases for ldmsd message boundary protocol logic in
 # ldmsd_controller and ldmsctl
 
+from builtins import str
+from builtins import range
 import sys
 import unittest
 from time import sleep
@@ -57,6 +59,7 @@ import logging
 from ldmsd.ldmsd_util import LDMSD, LDMSD_Controller
 
 log = logging.getLogger(__name__)
+
 
 class TestLdmsdInterfaceMsgBoundary(unittest.TestCase):
     HOST = "localhost"

@@ -1,5 +1,6 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 from __future__ import print_function
+from builtins import str, hex, range, object
 import sys
 import argparse
 import json
@@ -54,7 +55,7 @@ class KokkosData(object):
             for b in inst:
                 sha256 = sha256 + "{0:2}".format(hex(b))[-2:]
             print("{0} {1}".format(sha256, s['string']))
-            s = f.next()
+            s = next(f)
 
     def get_app_filter(self, args):
         if args.job_id:
@@ -163,7 +164,7 @@ class KokkosData(object):
             self._print_job_data(o, args)
             if args.detail:
                 self._print_job_detail(o, args)
-            o = f.next()
+            o = next(f)
         print('')
 
     def show_rank_stats(self, args):
@@ -355,7 +356,7 @@ class KokkosData(object):
             print("{0:4} {1:5} {2:12} {3:12.4f} {4:12.4f}"
                   .format("", int(kernel['mpi_rank']), int(kernel['call_count']),
                           kernel['total_time'], kernel['time_per_call']))
-            kernel = f.next()
+            kernel = next(f)
         return
 
         shape=[ 'mpi_rank',

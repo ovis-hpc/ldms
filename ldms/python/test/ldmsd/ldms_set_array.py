@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -72,6 +72,8 @@ DEBUG = Debug()
 
 uS = 1e-6 # usec to sec
 
+ldms.init(512*1024*1024) # 512MB should suffice
+
 class TestLDMSSetArray(unittest.TestCase):
     XPRT = "sock"
     SMP_PORT = "10001"
@@ -86,7 +88,6 @@ class TestLDMSSetArray(unittest.TestCase):
         cls.smp = None
         log.info("--- Setting up TestLDMSSetArray ---")
         try:
-            ldms.ldms_init(512*1024*1024) # 512MB should suffice
 
             # ldmsd sampler conf
             cfg = """\
@@ -119,29 +120,30 @@ class TestLDMSSetArray(unittest.TestCase):
         del cls.smp
 
     def _update_cb(self, ldms_set, flags, ctxt):
-        ctxt.append(ldms_set.ts_get())
+        self.ts_list.append(ldms_set.transaction_timestamp['sec']+
+                            ldms_set.transaction_timestamp['usec']*1e-6)
         if (flags & ldms.LDMS_UPD_F_MORE) == 0:
             self.updating = 0
 
     def __update(self, s):
         self.updating = 1
-        ts_list = []
-        s.update(cb = self._update_cb, ctxt = ts_list)
+        self.ts_list = []
+        s.update(cb = self._update_cb)
         time.sleep(0.5) # should be enough to complete
         self.assertEqual(self.updating, 0)
-        for a, b in zip(ts_list, ts_list[1:]):
+        for a, b in zip(self.ts_list, self.ts_list[1:]):
             DEBUG.a = a
             DEBUG.b = b
             self.assertLess(a, b)
             d = b - a
             self.assertLess(abs(d - self.SMP_INT*uS), 0.001)
-        return ts_list
+        return self.ts_list
 
     def test_update(self):
-        x = ldms.LDMS_xprt_new(self.XPRT)
-        rc = ldms.LDMS_xprt_connect_by_name(x, "localhost", self.SMP_PORT)
+        x = ldms.Xprt(name=self.XPRT)
+        rc = x.connect(host="localhost", port=self.SMP_PORT)
         self.assertEqual(rc, 0)
-        s = ldms.LDMS_xprt_lookup(x, self.SET_NAME, 0)
+        s = x.lookup(self.SET_NAME)
         time.sleep(self.UPD_INT*uS)
         log.info("First update ...")
         ts_list0 = self.__update(s)

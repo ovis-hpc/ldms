@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -49,13 +49,16 @@
 
 # This file contains test cases for various ldmsd object permissions
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
 import logging
 import unittest
 import threading
 import time
 import re
 import json
-from StringIO import StringIO
+from io import StringIO
 
 from ovis_ldms import ldms
 from ldmsd.ldmsd_util import LDMSD

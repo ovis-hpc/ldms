@@ -44,7 +44,7 @@ AC_CHECK_PROG([BISON], [bison -y], [bison -y], [no])
 AS_IF([test "x$BISON" = "xno"], [AC_MSG_ERROR([bison not found])])
 
 dnl check for python interpreter
-AM_PATH_PYTHON([2.6])
+AM_PATH_PYTHON([3.6])
 
 dnl Checks for programs
 AC_PROG_CXX
@@ -528,7 +528,8 @@ fi
 
 dnl swig stuff
 if test -z "$ENABLE_SOS_TRUE"; then
-	AX_PYTHON_DEVEL()
+	which cython >/dev/null 2>&1 || AC_MSG_ERROR("cython not found")
+	AX_PYTHON_DEVEL(">='3.6'")
 	if test "x$WITH_SOS" != "xbuild"; then
 		OCFLAGS=$CFLAGS
 		CFLAGS=$SOS_INCDIR_FLAG
@@ -549,9 +550,16 @@ if test -z "$ENABLE_SOS_TRUE"; then
 fi
 
 OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
-if test -z "$ENABLE_SWIG_TRUE" || test -z "$ENABLE_LDMS_PYTHON_TRUE"; then
+if test -z "$ENABLE_SWIG_TRUE"; then
 	AC_PROG_SWIG
 	SWIG_PYTHON
+	AX_PYTHON_DEVEL(">='3.6'")
+	AX_PYTHON_MODULE_VERSION(["argparse"], 1.1, "python")
+fi
+
+dnl ldms-python API's
+if test -z "$ENABLE_LDMS_PYTHON_TRUE"; then
+	AX_PYTHON_DEVEL(">='3.6'")
 	pkgpythondir="${pythondir}/ovis_ldms"
 	pkgpyexecdir="${pkgpythondir}"
 	AX_PYTHON_MODULE_VERSION(["argparse"], 1.1, "python")
@@ -739,7 +747,6 @@ lib/etc/ld.so.conf.d/Makefile
 ldms/Makefile
 ldms/src/Makefile
 ldms/src/core/Makefile
-ldms/swig/Makefile
 ldms/src/auth/Makefile
 ldms/src/store/Makefile
 ldms/src/sampler/Makefile

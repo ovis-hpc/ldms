@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -61,7 +61,7 @@ import fcntl
 import errno
 import pty
 import socket
-from StringIO import StringIO
+from io import StringIO
 
 from ovis_ldms import ldms
 from ldmsd.ldmsd_util import LDMSD, LDMSD_Controller
@@ -73,7 +73,7 @@ log = logging.getLogger(__name__)
 class TestLDMSDCmdExp(unittest.TestCase):
     """Test cases for command expansion in ldmsd config file and request"""
     XPRT = "sock"
-    SMP_PORT = "10001"
+    SMP_PORT = "10200"
     SMP_LOG = "smp.log"
 
     # LDMSD instances
@@ -107,7 +107,8 @@ class TestLDMSDCmdExp(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        del cls.smp
+        pass
+        #del cls.smp
 
     def setUp(self):
         log.debug("---- %s ----" % self._testMethodName)
@@ -118,11 +119,14 @@ class TestLDMSDCmdExp(unittest.TestCase):
     def test_00_verify_cfg(self):
         """Verify sampler config, cmd-expand only env command"""
         host = socket.gethostname()
-        xprt = ldms.LDMS_xprt_new(self.XPRT)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", "10001")
+        xprt = ldms.Xprt(self.XPRT)
+        rc = xprt.connect("localhost", "10200")
         self.assertEqual(rc, 0)
-        dir_resp = ldms.LDMS_xprt_dir(xprt)
-        self.assertEqual(dir_resp, [host + "/$(whoami)/meminfo"])
+        dir_ = []
+        dir_resp = xprt.dir()
+        for d in dir_resp:
+            dir_.append(d.name)
+        self.assertEqual(dir_, [host + "/$(whoami)/meminfo"])
 
     def test_01_req_noexp(self):
         """Request over xprt shall not be command-expanded"""
@@ -135,17 +139,20 @@ class TestLDMSDCmdExp(unittest.TestCase):
                                instance=${X}/vmstat\
                                schema=vmstat\n")
         ctrl.write_pty("start name=vmstat interval=1000000 offset=0\n")
-        time.sleep(0.2)
+        time.sleep(10)
 
         host = socket.gethostname()
-        xprt = ldms.LDMS_xprt_new(self.XPRT)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", "10001")
+        xprt = ldms.Xprt(self.XPRT)
+        rc = xprt.connect("localhost", "10200")
         self.assertEqual(rc, 0)
-        dir_resp = ldms.LDMS_xprt_dir(xprt)
-        dir_resp.sort()
+        dir_resp = xprt.dir()
+        dir_ = []
+        for d in dir_resp:
+            dir_.append(d.name)
+        dir_.sort()
         expected = [ host + "/$(whoami)/meminfo", "$(hostname)/vmstat" ]
         expected.sort()
-        self.assertEqual(dir_resp, expected)
+        self.assertEqual(dir_, expected)
 
 
 if __name__ == "__main__":

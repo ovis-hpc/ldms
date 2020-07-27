@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -49,6 +49,11 @@
 
 # This file contains test cases for ldmsd set group functionality
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import input
+from builtins import str
+from builtins import object
 import logging
 import unittest
 import threading
@@ -61,7 +66,7 @@ import fcntl
 import errno
 import pty
 import pdb
-from StringIO import StringIO
+from io import StringIO
 
 from ovis_ldms import ldms
 from ldmsd.ldmsd_util import LDMSD, LDMSD_Controller
@@ -74,7 +79,7 @@ class Debug(object): pass
 
 DEBUG = Debug()
 
-ldms.ldms_init(128*1024*1024)
+ldms.init(128*1024*1024)
 
 def all_ts_diff(a, b):
     ka = a.keys()
@@ -87,33 +92,36 @@ def all_ts_diff(a, b):
 class LdmsWrap(object):
     """Conveneint LDMS xprt wrapper"""
     def __init__(self, port, xprt="sock", hostname = "localhost"):
-        self.xprt = ldms.LDMS_xprt_new(xprt)
-        rc = ldms.LDMS_xprt_connect_by_name(self.xprt, hostname, port)
+        self.xprt = ldms.Xprt(name=xprt)
+        rc = self.xprt.connect(host=hostname, port=port)
         assert(rc == 0)
         self.sets = []
         self._dict = {}
-        _dirs = ldms.LDMS_xprt_dir(self.xprt)
+        _dirs = self.xprt.dir()
+        print(_dirs)
         for d in _dirs:
-            s = ldms.LDMS_xprt_lookup(self.xprt, d,
-                                      ldms.LDMS_LOOKUP_BY_INSTANCE)
+            s = self.xprt.lookup(d.name)
             self.sets.append(s)
-            self._dict[d] = s
+            self._dict[d.name] = s
 
     def update(self):
         for _set in self.sets:
+            print(_set.instance_name)
+            for ent in _set:
+                print(ent)
             _set.update()
 
     def get(self, set_name):
         return self._dict.get(set_name)
 
     def all_ts(self):
-        return { s.instance_name_get():(s.ts_get().sec+s.ts_get().usec*1e-6) \
-                                                          for s in self.sets }
+        return { s.instance_name:s.transaction_timestamp['sec']+s.transaction_timestamp['usec']*1e-6 \
+                                                      for s in self.sets }
 
 
 class TestLDMSDPush(unittest.TestCase):
     XPRT = "sock"
-    SMP_PORT = "10001"
+    SMP_PORT = "10200"
     SMP_LOG = None
     AGG_PORT = "10000"
     AGG_LOG = None
@@ -134,12 +142,10 @@ class TestLDMSDPush(unittest.TestCase):
         log.info("Setting up " + cls.__name__)
         try:
             # samplers (producers)
-            smp_cfg = """
-                load name=test_sampler
-                config name=test_sampler producer=smp \
-                       base=set action=default num_sets=%(num_sets)d \
-                       push=%(push)d
-                start name=test_sampler interval=%(interval_us)d offset=0
+            smp_cfg = """\
+load name=test_sampler
+config name=test_sampler producer=smp base=set action=default num_sets=%(num_sets)d push=%(push)d
+start name=test_sampler interval=%(interval_us)d offset=0
             """ % {
                 "interval_us": cls.INTERVAL_US,
                 "num_sets": cls.NUM_SETS,
@@ -155,14 +161,14 @@ class TestLDMSDPush(unittest.TestCase):
 
             # aggregator
             agg_cfg = """
-                prdcr_add name=prdcr xprt=%(xprt)s \
-                          host=localhost port=%(port)s \
-                          interval=%(interval_us)d type=active
-                prdcr_start name=prdcr
-                updtr_add name=updtr push=onpush \
-                          interval=%(interval_us)d
-                updtr_prdcr_add name=updtr regex=prdcr.*
-                updtr_start name=updtr
+prdcr_add name=prdcr xprt=%(xprt)s \
+host=localhost port=%(port)s \
+interval=%(interval_us)d type=active
+prdcr_start name=prdcr
+updtr_add name=updtr push=onchange \
+interval=%(interval_us)d
+updtr_prdcr_add name=updtr regex=prdcr.*
+updtr_start name=updtr
             """ % {
                 "xprt": cls.XPRT,
                 "port": cls.SMP_PORT,
@@ -177,7 +183,7 @@ class TestLDMSDPush(unittest.TestCase):
             if cls.AGG_GDB_PORT or cls.SMP_GDB_PORT:
                 log.info("AGG_GDB_PORT: %s" % str(cls.AGG_GDB_PORT))
                 log.info("SMP_GDB_PORT: %s" % str(cls.SMP_GDB_PORT))
-                raw_input("Press ENTER to continue after the gdb is attached")
+                input("Press ENTER to continue after the gdb is attached")
             time.sleep(2 * cls.INTERVAL_SEC)
         except:
             del cls.agg
@@ -210,8 +216,13 @@ class TestLDMSDPush(unittest.TestCase):
         a1 = xagg.all_ts()
         ds = all_ts_diff(s1, s0)
         da = all_ts_diff(a1, a0)
+        print(ds)
+        print(da)
         cs = len([ k for k in ds if ds[k] > 0 ])
         ca = len([ k for k in ds if da[k] > 0 ])
+        print(cs)
+        print(ca)
+        print(self.NUM_SETS)
         self.assertEqual(cs, self.NUM_SETS)
         self.assertEqual(ca, 0)
         time.sleep((self.SMP_PUSH_EVERY+2) * self.INTERVAL_SEC)

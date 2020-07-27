@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -54,6 +54,8 @@
 
 # This file contains test cases for ldmsd configuration files
 
+from future import standard_library
+standard_library.install_aliases()
 import logging
 import unittest
 import threading
@@ -65,7 +67,7 @@ import os
 import fcntl
 import errno
 import pty
-from StringIO import StringIO
+from io import StringIO
 
 from ovis_ldms import ldms
 from ldmsd.ldmsd_util import LDMSD
@@ -101,9 +103,9 @@ class TestLDMSDConfig(unittest.TestCase):
             """
             log.debug("smp_cfg: %s" % smp_cfg)
             cls.smp = LDMSD(port = cls.SMP_PORT, xprt = cls.XPRT,
-                          auth = cls.AUTH, auth_opt = cls.LDMSD_AUTH_OPT,
-                          cfg = smp_cfg,
-                          logfile = cls.SMP_LOG)
+                            auth = cls.AUTH, auth_opt = cls.LDMSD_AUTH_OPT,
+                            cfg = smp_cfg,
+                            logfile = cls.SMP_LOG)
             log.info("starting sampler")
             cls.smp.run()
             time.sleep(1)
@@ -143,14 +145,17 @@ class TestLDMSDConfig(unittest.TestCase):
                        auth_opt = self.LDMSD_AUTH_OPT,
                        cfg = cfg)
         daemon.run()
-        time.sleep(0.5)
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, self.AUTH,
-                                            self.LDMSD_AUTH_OPT)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", "10000")
+        time.sleep(1)
+        xprt = ldms.Xprt(self.XPRT, self.AUTH,
+                         self.LDMSD_AUTH_OPT)
+        rc = xprt.connect("localhost", "10000")
         assert(rc == 0)
-        dir_resp = ldms.LDMS_xprt_dir(xprt)
+        dir_ = []
+        dir_resp = xprt.dir()
+        for d in dir_resp:
+            dir_.append(d.name)
+        self.assertEqual(dir_, ["smp/meminfo"])
         daemon.term()
-        self.assertEqual(dir_resp, ["smp/meminfo"])
 
     def test_cfg_bad(self):
         cfg = """\
@@ -161,8 +166,8 @@ class TestLDMSDConfig(unittest.TestCase):
                        cfg = cfg)
         daemon.run()
         time.sleep(1)
-        # bad config should not terminate the daemon
-        self.assertTrue(daemon.is_running())
+        # bad config should terminate the daemon
+        self.assertFalse(daemon.is_running())
         daemon.term()
 
     def test_cfg_semi_bad(self):
@@ -174,8 +179,8 @@ class TestLDMSDConfig(unittest.TestCase):
                        cfg = cfg)
         daemon.run()
         time.sleep(1)
-        # bad config should not terminate the daemon
-        self.assertTrue(daemon.is_running())
+        # bad config should terminate the daemon
+        self.assertFalse(daemon.is_running())
         daemon.term()
 
 

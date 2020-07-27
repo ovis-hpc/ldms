@@ -47,6 +47,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #######################################################################
+from builtins import str
 import struct
 import cmd
 import json
@@ -141,13 +142,50 @@ class LDMSD_Req_Attr(object):
                    'TERMINATING': LAST
         }
 
+    ID_NAME_MAP = {NAME : 'name',
+                   INTERVAL : 'interval',
+                   OFFSET : 'offset',
+                   REGEX : 'regex',
+                   TYPE : 'type',
+                   PRODUCER : 'producer',                   
+                   INSTANCE : 'instance',
+                   XPRT : 'xprt',
+                   HOST : 'host',
+                   PORT : 'port',
+                   MATCH : 'match',
+                   PLUGIN : 'plugin',
+                   CONTAINER : 'container',
+                   SCHEMA : 'schema',
+                   STRING : 'string',
+                   METRIC : 'metric',
+                   UDATA : 'udata',
+                   BASE : 'base',
+                   INCREMENT : 'incr',
+                   LEVEL : 'level',
+                   PATH : 'path',
+                   TIME : 'time',
+                   PUSH : 'push',
+                   TEST : 'test',
+                   REC_LEN : 'REC_LEN',
+                   JSON : 'json',
+                   PERM : 'perm',
+                   AUTO_SWITCH : 'auto_switch',
+                   PEER_NAME : 'peer_name',
+                   TIMEOUT_FACTOR : 'timeout_factor',
+                   AUTO_INTERVAL : 'auto_interval',
+                   UID : 'uid',
+                   GID : 'gid',
+                   STREAM : 'stream',
+                   LAST : 'TERMINATING'
+        }
+
     def __init__(self, value = None, attr_name = None, attr_id = None, attr_len = None):
         self.discrim = 1
         if attr_id:
             if attr_id not in self.NAME_ID_MAP.values():
                 raise LDMSDRequestException("The attr_id '%d' is not valid" % attr_id, errno.EINVAL)
             self.attr_id = attr_id
-            self.attr_name = self.NAME_ID_MAP.keys()[self.NAME_ID_MAP.values().index(self.attr_id)]
+            self.attr_name = self.ID_NAME_MAP[attr_id]
         else:
             if attr_name:
                 try:
@@ -183,6 +221,7 @@ class LDMSD_Req_Attr(object):
                     self.fmt += 'L'
                 else:
                     self.fmt += str(self.attr_len) + 's'
+                    self.attr_value = self.attr_value.encode()
                 self.packed = struct.pack(self.fmt, 1, self.attr_id,
                                           self.attr_len, self.attr_value)
 
@@ -216,7 +255,7 @@ class LDMSD_Req_Attr(object):
 
         (attr_value,) = struct.unpack(fmt, buf[cls.LDMSD_REQ_ATTR_SZ:attr_len + cls.LDMSD_REQ_ATTR_SZ])
         if attr_id != cls.REC_LEN:
-            attr_value = attr_value.strip('\0')
+            attr_value = attr_value.strip(b'\0').decode()
 
         attr = LDMSD_Req_Attr(value = attr_value, attr_id = attr_id, attr_len = attr_len)
         return attr
@@ -396,7 +435,7 @@ class LDMSD_Request(object):
         if command_id is None and command is None:
             raise Exception("Need either command or command_id")
         if command_id is None:
-            if command not in self.LDMSD_REQ_ID_MAP.keys():
+            if command not in self.LDMSD_REQ_ID_MAP:
                 raise KeyError("Command '{0}' is not supported.".format(command))
             command_id = self.LDMSD_REQ_ID_MAP[command]['id']
         self.command_id = command_id
@@ -409,33 +448,37 @@ class LDMSD_Request(object):
             self.request_size += len(self.message)
 
         # store all packed attribute value pairs
-        self.packed_attrs = ""  # excluding the terminating attribute
+        self.packed_attrs = b""  # excluding the terminating attribute
         self.packed_attrs_sz = 0 # excluding the terminating attribute
         # Compute the extra size occupied by the attributes and add it
         # to the request size in the request header
+        try:
+            # Aggregate the attributes
+            if attrs:
+                for attr in attrs:
+                    self.packed_attrs += attr.pack()
 
-        # Aggregate the attributes
-        if attrs:
-            for attr in attrs:
-                self.packed_attrs += attr.pack()
+            self.request_size += len(self.packed_attrs)
+            # Account for size of terminating 0
+            self.request_size += LDMSD_Req_Attr.getDiscrimSize()
 
-        self.request_size += len(self.packed_attrs)
-        # Account for size of terminating 0
-        self.request_size += LDMSD_Req_Attr.getDiscrimSize()
+            self.request = struct.pack('!LLLLLL', self.MARKER, self.TYPE_CONFIG_CMD,
+                                       LDMSD_Request.SOM_FLAG | LDMSD_Request.EOM_FLAG,
+                                       self.message_number, command_id, self.request_size)
 
-        self.request = struct.pack('!LLLLLL', self.MARKER, self.TYPE_CONFIG_CMD,
-                                   LDMSD_Request.SOM_FLAG | LDMSD_Request.EOM_FLAG,
-                                   self.message_number, command_id, self.request_size)
+            # Add any message payload
+            if message:
+                self.request += message
 
-        # Add any message payload
-        if message:
-            self.request += message
+            self.request += self.packed_attrs
+            self.request += struct.pack('!L', 0) # terminate list
 
-        self.request += self.packed_attrs
-        self.request += struct.pack('!L', 0) # terminate list
-
-        self.response = {'errcode': None, 'msg': None}
-        LDMSD_Request.message_number += 1
+            self.response = {'errcode': None, 'msg': None}
+            LDMSD_Request.message_number += 1
+        except Exception as e:
+            a,b,c = sys.exc_info()
+            print(str(e) + ' '+str(c.tb_lineno))
+            raise LDMSDRequestException()
 
     def _newRecord(self, flags, offset, sz):
         """Create a record
@@ -527,11 +570,10 @@ class LDMSD_Request(object):
                                                   errcode=errcode)
                 attr_list.append(attr)
                 offset += attr.LDMSD_REQ_ATTR_SZ + attr.attr_len
-
         msg = None
         if len(attr_list) == 1:
             if (attr_list[0].attr_id == LDMSD_Req_Attr.STRING) or (attr_list[0].attr_id == LDMSD_Req_Attr.JSON):
-                msg = attr_list[0].attr_value
+                msg = attr_list[0].attr_value.decode()
         elif len(attr_list) == 0:
             attr_list = None
         return {'errcode': errcode, 'msg': msg, 'attr_list': attr_list}

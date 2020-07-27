@@ -5,9 +5,6 @@ SUBDIRS = src
 if ENABLE_SCRIPTS
 SUBDIRS += scripts
 endif
-if ENABLE_SWIG
-SUBDIRS += swig
-endif
 if ENABLE_ETC
 SUBDIRS += etc
 endif

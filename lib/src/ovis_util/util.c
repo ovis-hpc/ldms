@@ -444,6 +444,42 @@ static char *copy_string(struct attr_value_list *av_list, const char *s)
 	return str;
 }
 
+int av_add(struct attr_value_list *avl, const char *name, const char *value)
+{
+        string_ref_t nref, vref;
+        struct attr_value *av;
+
+        if (avl->count == avl->size)
+                return ENOSPC;
+
+        av = &(avl->list[avl->count]);
+        nref = malloc(sizeof(*nref));
+        if (!nref)
+                return ENOMEM;
+        nref->str = strdup(name);
+        if (!nref->str)
+                goto err0;
+        av->name = nref->str;
+        if (value) {
+                vref = malloc(sizeof(*vref));
+                if (!vref)
+                        goto err1;
+                vref->str = strdup(value);
+                if (!vref->str)
+                        goto err2;
+                av->value = vref->str;
+        }
+        avl->count++;
+        return 0;
+err2:
+        free(vref);
+err1:
+        free(nref->str);
+err0:
+        free(nref);
+        return ENOMEM;
+}
+
 struct attr_value_list *av_copy(struct attr_value_list *src)
 {
 	struct attr_value *av;

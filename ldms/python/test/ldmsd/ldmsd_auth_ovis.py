@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -49,6 +49,7 @@
 
 # Test LDMSD with ldms_auth_ovis library for legacy ovis_auth support
 
+from builtins import object
 import logging
 import unittest
 import threading
@@ -69,9 +70,11 @@ class Debug(object): pass
 
 DEBUG = Debug()
 
+ldms.init(512*1024*1024) # 512MB should suffice
+
 class TestLDMSAuthOvis(unittest.TestCase):
     XPRT = "sock"
-    PORT = "10001"
+    PORT = "10002"
     CONF = "ldmsauth.conf"
     OTHER_CONF = "ldmsauth.other.conf"
     AUTH = "ovis"
@@ -81,21 +84,20 @@ class TestLDMSAuthOvis(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         log.info("--- Setting up TestLDMSAuthOvis ---")
-        ldms.ldms_init(512*1024*1024) # 512MB should suffice
 
         # auth conf
         conf_text = "secretword=this_is_a_secret"
         f = open(cls.CONF, "w")
         f.write(conf_text)
         f.close()
-        os.chmod(cls.CONF, 0600)
+        os.chmod(cls.CONF, 0o600)
 
         # other conf
         conf_text = "secretword=this_is_another_secret"
         f = open(cls.OTHER_CONF, "w")
         f.write(conf_text)
         f.close()
-        os.chmod(cls.OTHER_CONF, 0600)
+        os.chmod(cls.OTHER_CONF, 0o600)
 
         # ldmsd sampler conf
         cfg = """\
@@ -119,48 +121,51 @@ class TestLDMSAuthOvis(unittest.TestCase):
         del cls.ldmsd
 
     def test_wrong_auth(self):
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, "none", None)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(name=self.XPRT)
+        rc = xprt.connect(host="localhost", port=self.PORT)
         self.assertNotEqual(rc, 0)
 
     def test_wrong_secret(self):
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, self.AUTH, self.OTHER_AUTH_OPT)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(name=self.XPRT, auth=self.AUTH, auth_opts=self.OTHER_AUTH_OPT)
+        rc = xprt.connect(host="localhost", port=self.PORT)
         self.assertNotEqual(rc, 0)
 
     def test_dir_owner(self):
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, self.AUTH, self.AUTH_OPT)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(name=self.XPRT, auth=self.AUTH, auth_opts=self.AUTH_OPT)
+        rc = xprt.connect(host="localhost", port=self.PORT)
         self.assertEqual(rc, 0)
-        _dir = ldms.LDMS_xprt_dir(xprt)
-        self.assertEqual(_dir, ["smp/meminfo"])
+        _dir = xprt.dir()
+        dir_ = []
+        for d in _dir:
+            dir_.append(d.name)
+        self.assertEqual(dir_, ["smp/meminfo"])
 
     def test_ls_owner(self):
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, self.AUTH, self.AUTH_OPT)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(name=self.XPRT, auth=self.AUTH, auth_opts=self.AUTH_OPT)
+        rc = xprt.connect(host="localhost", port=self.PORT)
         self.assertEqual(rc, 0)
-        _set = ldms.LDMS_xprt_lookup(xprt, "smp/meminfo", 0)
+        _set = xprt.lookup("smp/meminfo", 0)
         self.assertIsNotNone(_set)
 
     def test_env(self):
         os.putenv("LDMS_AUTH_FILE", self.AUTH_OPT["conf"])
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, self.AUTH, None)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(name=self.XPRT, auth=self.AUTH)
+        rc = xprt.connect(host="localhost", port=self.PORT)
         self.assertEqual(rc, 0)
-        _dir = ldms.LDMS_xprt_dir(xprt)
-        self.assertEqual(_dir, ["smp/meminfo"])
+        _dir = xprt.dir()
+        dir_ = []
+        for d in _dir:
+            dir_.append(d.name)
+        self.assertEqual(dir_, ["smp/meminfo"])
 
     def test_env_wrong_secret(self):
         os.putenv("LDMS_AUTH_FILE", self.OTHER_AUTH_OPT["conf"])
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, self.AUTH, None)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(name=self.XPRT, auth=self.AUTH)
+        rc = xprt.connect(host="localhost", port=self.PORT)
         self.assertNotEqual(rc, 0)
 
 
 if __name__ == "__main__":
-    start = os.getenv("PYTHONSTARTUP")
-    if start:
-        execfile(start)
     fmt = "%(asctime)s.%(msecs)d %(levelname)s: %(message)s"
     datefmt = "%F %T"
     logging.basicConfig(

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -49,6 +49,10 @@
 
 # This file contains test cases for various ldmsd controller commands
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import object
 import logging
 import unittest
 import threading
@@ -60,7 +64,7 @@ import os
 import fcntl
 import errno
 import pty
-from StringIO import StringIO
+from io import StringIO
 
 from ovis_ldms import ldms
 from ldmsd.ldmsd_util import LDMSD, LDMSD_Controller
@@ -79,7 +83,7 @@ class TestLDMSDController(unittest.TestCase):
     AUTH = "naive"
     LDMSD_AUTH_OPT = {"uid": LDMSD_UID, "gid": LDMSD_GID}
     XPRT = "sock"
-    SMP_PORT = "10001"
+    SMP_PORT = "10002"
     SMP_LOG = None
     AGG_PORT = "10000"
     AGG_LOG = None
@@ -152,6 +156,7 @@ class TestLDMSDController(unittest.TestCase):
         log.debug("_ctrl resp:" + str(lines))
         n = len(lines)
         # prompt
+        print(lines)
         assert(lines[-1] == ("sock:localhost:%s> " % self.AGG_PORT))
         return lines[0:n-1]
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -49,6 +49,10 @@
 
 # Test LDMSD Failover capability.
 
+from builtins import input
+from builtins import str
+from builtins import range
+from builtins import object
 import logging
 import unittest
 import threading
@@ -59,7 +63,7 @@ import sys
 import shutil
 import json
 
-from StringIO import StringIO
+from io import StringIO
 
 from ovis_ldms import ldms
 from ldmsd.ldmsd_util import LDMSD
@@ -79,7 +83,7 @@ INTERACTIVE = False
 LOGDIR = "log" # daemon logs go in here
 try:
     shutil.rmtree(LOGDIR, ignore_errors=True)
-    os.makedirs(LOGDIR, 0755)
+    os.makedirs(LOGDIR, 0o755)
 except:
     pass
 
@@ -91,7 +95,7 @@ def iblock(prompt):
         return
     if not sys.stdout.isatty():
         return
-    raw_input(prompt)
+    input(prompt)
 
 def xfmt(tmp, **kwargs):
     return tmp % kwargs
@@ -100,7 +104,7 @@ def xcmd(cmd, **kwargs):
     """Directly form a `str` command from str(cmd) and kwargs"""
     sio = StringIO()
     sio.write(str(cmd))
-    for k, v in kwargs.iteritems():
+    for k, v in kwargs.items():
         if v != None:
             sio.write(" %s=%s" % (k, str(v)))
     return sio.getvalue()
@@ -189,6 +193,7 @@ def LVX_cfg(lvl, _id, failover=True):
     for xid in (_id*2, _id*2+1):
         prdcr = LVX_prdcr(lvl - 1, xid)
         port = LVX_port(lvl - 1, xid)
+        print(port)
         cfg = prdcr_cfg(prdcr, XPRT, "localhost", port, INTERVAL)
         sio.write(cfg)
     # updtr
@@ -243,14 +248,15 @@ class TestLDMSDFailover(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         iblock("\nPress ENTER to end ...")
-        del cls.ldmsds
+        if cls.ldmsds:
+            del cls.ldmsds
 
     def __verify(self, lvl, _id, failover=False, empty=False):
         prdcr = LVX_prdcr(lvl, _id)
         log.info("Verifying %s" % prdcr)
         port = LVX_port(lvl, _id)
-        x = ldms.LDMS_xprt_new(XPRT)
-        rc = ldms.LDMS_xprt_connect_by_name(x, "localhost", str(port))
+        x = ldms.Xprt(name=XPRT)
+        rc = x.connect(host="localhost", port=port)
         DEBUG.x = x
         DEBUG.rc = rc
         assert(rc == 0)
@@ -270,8 +276,11 @@ class TestLDMSDFailover(unittest.TestCase):
                                 for i in range(off, off + N) \
                                 for s in ["meminfo", "vmstat"]
                         ])
-        dirs = ldms.LDMS_xprt_dir(x)
-        s1 = set(dirs)
+        dirs = x.dir()
+        dirs_ = []
+        for d in dirs:
+            dirs_.append(d.name)
+        s1 = set(dirs_)
         DEBUG.s0 = s0
         DEBUG.s1 = s1
         msg = "ldmsd (%d, %d) verification failed, expecting %s, but got %s" % (
@@ -285,12 +294,18 @@ class TestLDMSDFailover(unittest.TestCase):
 
     def test_01_lv1_failover(self):
         dead = (1, 1)
+        print('ldmsd =')
         ldmsd = self.ldmsds[dead]
+        print(repr(ldmsd))
+        print('LVX_prdcr')
         prdcr = LVX_prdcr(dead[0], dead[1])
+        print('iblock\n')
         iblock("\nPress ENTER to terminate %s" % prdcr)
+        print('kill ldmsd')
         ldmsd.term()
         time.sleep(4 * (INTERVAL/1000000.0))
         iblock("\nPress ENTER to veirfy")
+        print('loop')
         for lv, _id in self.ldmsd_iter():
             if (lv, _id) == dead:
                 continue
@@ -330,52 +345,6 @@ class TestLDMSDFailover(unittest.TestCase):
         obj = json.loads(resp["msg"])
         self.assertEqual(obj["failover_state"], "STOP")
 
-    def test_03_01_manual_failover(self):
-        iblock("\nPress ENTER to manually start peer config (lv1.01) ...")
-        idx = (1, 1)
-        ctrl = ldmsdInbandConfig(host = "localhost",
-                                 port = LVX_port(*idx),
-                                 xprt = XPRT)
-        ctrl.comm("failover_peercfg_start")
-        ctrl.close()
-        time.sleep(1)
-        iblock("\nPress ENTER to veirfy")
-        self.__verify(*(1, 1), failover=True)
-        self.__verify(*(1, 0), failover=False)
-
-    def test_04_00_restart_ag10(self):
-        idx = (1, 0)
-        ldmsd = self.ldmsds[idx]
-        prdcr = LVX_prdcr(*idx)
-        iblock("\nPress ENTER to terminate %s" % prdcr)
-        ldmsd.term()
-        time.sleep(4 * (INTERVAL/1000000.0))
-        iblock("\nPress ENTER to start %s" % prdcr)
-        ldmsd = LVX_ldmsd_new(*idx)
-        self.ldmsds[idx] = ldmsd
-        log.info("Resurrecting %s" % LVX_prdcr(*idx))
-        ldmsd.run()
-        time.sleep(4 * (INTERVAL/1000000.0))
-        iblock("\nPress ENTER to verify")
-        # agg10 must have no sets (still waiting for agg11 to stop peercfg),
-        # while agg11 has all the sets
-        self.__verify(*(1, 0), empty=True)
-        self.__verify(*(1, 1), failover=True)
-
-    def test_04_01_manual_failback(self):
-        iblock("\nPress ENTER to manually stop peer config (lv1.01) ...")
-        idx = (1, 1)
-        ctrl = ldmsdInbandConfig(host = "localhost",
-                                 port = LVX_port(*idx),
-                                 xprt = XPRT)
-        ctrl.comm("failover_peercfg_stop")
-        ctrl.close()
-        time.sleep(4 * (INTERVAL/1000000.0))
-        iblock("\nPress ENTER to verify ...")
-        # agg10 and agg11 must only now work on their own config workload
-        self.__verify(*(1, 0))
-        self.__verify(*(1, 1))
-
     def test_05_bad_pair(self):
         port = LVX_port(1, 0)
         pname = LVX_prdcr(1, 0)
@@ -406,9 +375,6 @@ class TestLDMSDFailover(unittest.TestCase):
         self.assertEqual(int(obj['flags']['PEERCFG_RECEIVED']), 0)
 
 if __name__ == "__main__":
-    start = os.getenv("PYTHONSTARTUP")
-    if start:
-        execfile(start)
     fmt = "%(asctime)s.%(msecs)d %(levelname)s: %(message)s"
     datefmt = "%F %T"
     logging.basicConfig(

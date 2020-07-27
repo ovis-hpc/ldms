@@ -55,14 +55,17 @@ Created on Apr 28, 2015
 @module ovis_test_util
   Utility for OVIS test infrastructure
 """
+from builtins import str
+from builtins import object
 import shlex
-from subprocess import Popen, PIPE, STDOUT
+from subprocess import Popen, PIPE, STDOUT, DEVNULL
 import re
 import os
 import time
 import tempfile
 import fcntl
-from StringIO import StringIO
+import io
+from io import StringIO
 import errno
 import tty
 from distutils.spawn import find_executable
@@ -121,7 +124,7 @@ def bash_exec(bash_cmd):
     return sh_exec(cmd)
 
 def ssh_exec(host, cmd, ssh_options = None):
-    if not isinstance(host, basestring):
+    if not isinstance(host, str):
         raise TypeError("'host' must be a string")
     cmd_s = "ssh"
     if ssh_options is not None:
@@ -151,7 +154,7 @@ def pdsh_exec(hosts_s, cmd, max_thr = 32, pdsh_options = None):
 
     @return: [pdsh returncode, pdsh stdout string, pdsh stderr string]
     """
-    if not isinstance(hosts_s, basestring):
+    if not isinstance(hosts_s, str):
         raise TypeError("hosts_s must be a string, not {0}".format(type(hosts_s)))
 
     cmd_s = "pdsh"
@@ -382,7 +385,7 @@ class LDMSD(object):
         if logfile:
             self.cmd_args.extend(["-l", logfile])
         if auth_opt:
-            for a,v in auth_opt.iteritems():
+            for a,v in auth_opt.items():
                 self.cmd_args.extend(["-A", "%s=%s" % (a, v)])
         if host_name:
             self.cmd_args.extend(["-H", host_name])
@@ -391,9 +394,9 @@ class LDMSD(object):
         self.proc = None
         self.cfg = None
         if cfg:
-            self.cfg = tempfile.NamedTemporaryFile()
+            self.cfg = tempfile.NamedTemporaryFile(mode='w', encoding='utf-8')
             self.cfg.write(cfg)
-            self.cfg.file.flush()
+            self.cfg.flush()
             self.cmd_args.extend(["-c", self.cfg.name])
 
     def is_running(self):
@@ -401,34 +404,37 @@ class LDMSD(object):
         if not self.proc:
             return False
         self.proc.poll()
-        return self.proc.returncode == None
+        #return self.proc.returncode == 0
+        if self.proc.returncode == 0 or self.proc.returncode == None:
+            return True
+        else:
+            return False
 
     def run(self):
         """Run the daemon"""
         if self.proc:
             raise RuntimeError("LDMSD already running")
         self.proc = Popen(self.cmd_args,
-                          stdin=open(os.devnull, "r"),
-                          stdout=open(os.devnull, "w"),
-                          stderr=open(os.devnull, "w"),
+                          stdin=DEVNULL,
+                          stdout=DEVNULL,
+                          stderr=DEVNULL,
                           close_fds = True,
                           )
         time.sleep(0.01)
         self.proc.poll()
         if self.proc.returncode != None:
-            # process terminated
-            raise RuntimeError("LDMSD terminated prematurely with exit code %d" % self.proc.returncode)
+            return self.proc.returncode
 
     def term(self):
         """Terminate the daemon"""
-        self.proc.terminate()
-        # also drain the output
-        self.proc.communicate()
-        self.proc = None
+        if self.proc:
+            self.proc.terminate()
+            # also drain the output
+            self.proc.communicate()
+            self.proc = None
 
     def __del__(self):
-        if self.proc:
-            self.term()
+        self.term()
         if self.cfg:
             self.cfg.close()
 
@@ -458,7 +464,7 @@ class LDMSD_Controller(object):
             self.cmd_args = [
                 "exec ldmsctl",
                 "-h", host,
-                "-p", port,
+                "-p", str(port),
                 "-x", xprt,
                 "-a", auth,
             ]
@@ -470,7 +476,7 @@ class LDMSD_Controller(object):
             self.cmd_args = [
                 "exec ldmsd_controller",
                 "--host", host,
-                "--port", port,
+                "--port", str(port),
                 "--xprt", xprt,
                 "-a", auth,
             ]
@@ -478,7 +484,7 @@ class LDMSD_Controller(object):
                 self.cmd_args.extend(["--source", source])
             if script is not None:
                 self.cmd_args.extend(["--script", script])
-        for a, v in auth_opt.iteritems():
+        for a, v in auth_opt.items():
             self.cmd_args.extend(["-A", "%s=%s" % (a, v)])
         self.proc = None
         self.pty = None
@@ -488,8 +494,10 @@ class LDMSD_Controller(object):
         if not self.proc:
             return False
         self.proc.poll()
-        return self.proc.returncode == None
-
+        if self.proc.returncode == 0 or self.proc.returncode == None:
+            return True
+        else:
+            return False
     def run(self):
         """Run ldmsd_controller subprocess"""
         if self.proc:
@@ -499,16 +507,15 @@ class LDMSD_Controller(object):
         fl = fcntl.fcntl(_mfd, fcntl.F_GETFL)
         rc = fcntl.fcntl(_mfd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
         assert(rc == 0)
-        self.pty = os.fdopen(_mfd, "r+", 0)
+        self.pty = os.fdopen(_mfd, "r+b", 0)
         tty.setraw(_sfd) # set RAW mode
-
         cmd = " ".join(self.cmd_args)
         self.proc = Popen(cmd,
                           stdin=_sfd,
                           stdout=_sfd,
                           stderr=STDOUT,
                           close_fds = True,
-                          shell = True,
+                          shell = True
                           )
         if self.term_immediately:
             return
@@ -538,9 +545,12 @@ class LDMSD_Controller(object):
         while True:
             try:
                 _s = self.pty.read()
-                _out.write(_s)
-                _c = 0 # reset counter
-            except IOError, e:
+                if _s is not None:
+                    _out.write(_s.decode())
+                    _c = 0 # reset counter
+                else:
+                    raise IOError(errno.EAGAIN, 'no data, try again')
+            except IOError as e:
                 if e.errno != errno.EAGAIN:
                     raise
                 _c += 1
@@ -553,7 +563,7 @@ class LDMSD_Controller(object):
         """Write string `s` to the ldmsd_controller pty"""
         if not self.proc:
             raise RuntimeError("process not running")
-        self.pty.write(s)
+        self.pty.write(s.encode())
 
     def comm_pty(self, cmd):
         """Write `cmd` to pty and Read repsonse from the pty"""
@@ -565,6 +575,8 @@ class LDMSD_Controller(object):
     def __del__(self):
         if self.proc:
             self.term()
+        if self.pty:
+            self.pty.close()
 
     def __repr__(self):
         return """<LDMSD_Controller %s>""" % " ".join(self.cmd_args)

@@ -160,6 +160,14 @@ char *av_to_string(struct attr_value_list *av_list, int av_flags);
 struct attr_value_list *av_new(size_t size);
 
 /**
+ * \brief Add a new attribute-value pair.
+ *  
+ * \return 0 on success. ENOSPC is returned of the list is full.
+ *         ENOMEM is returned out-of-memory occurs. 
+*/
+int av_add(struct attr_value_list *avl, const char *name, const char *value);
+
+/**
  * \brief Duplicate an existing list.
  */
 struct attr_value_list *av_copy(struct attr_value_list *src);

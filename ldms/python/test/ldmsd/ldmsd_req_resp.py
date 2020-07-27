@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -61,7 +61,7 @@ class TestLdmsdReqResp(unittest.TestCase):
     LOG = None
     AUTH_OPT = {'uid': "1111", 'gid': "1111"}
     SMP_XPRT = "sock"
-    SMP_PORT = "10001"
+    SMP_PORT = "10200"
     SMP_NAME = "sampler"
     SMP_HOST = "localhost"
     AGG1_XPRT = "sock"
@@ -82,8 +82,8 @@ class TestLdmsdReqResp(unittest.TestCase):
         log.info("Setting up " + cls.__name__)
         try:
             cls.smp = LDMSD(port = cls.SMP_PORT, xprt = cls.SMP_XPRT,
-                              logfile = cls.LOG, auth = cls.AUTH,
-                              auth_opt = cls.AUTH_OPT, host_name = cls.SMP_NAME)
+                            logfile = cls.LOG, auth = cls.AUTH,
+                            auth_opt = cls.AUTH_OPT, host_name = cls.SMP_NAME)
             log.info("starting sampler")
             cls.smp.run()
 

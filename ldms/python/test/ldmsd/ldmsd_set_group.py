@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -49,6 +49,11 @@
 
 # This file contains test cases for ldmsd set group functionality
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import input
+from builtins import str
+from builtins import object
 import logging
 import unittest
 import threading
@@ -60,12 +65,13 @@ import os
 import fcntl
 import errno
 import pty
-from StringIO import StringIO
+from io import StringIO
 
 from ovis_ldms import ldms
 from ldmsd.ldmsd_util import LDMSD, LDMSD_Controller
 from ldmsd.ldmsd_config import ldmsdInbandConfig
 from ldmsd.ldmsd_request import LDMSD_Request
+from IPython.core.debugger import set_trace
 
 log = logging.getLogger(__name__)
 
@@ -73,22 +79,23 @@ class Debug(object): pass
 
 DEBUG = Debug()
 
-ldms.ldms_init(128*1024*1024)
+ldms.init(128*1024*1024)
 
 class LdmsWrap(object):
     """Conveneint LDMS xprt wrapper"""
     def __init__(self, port, xprt="sock", hostname = "localhost"):
-        self.xprt = ldms.LDMS_xprt_new(xprt)
-        rc = ldms.LDMS_xprt_connect_by_name(self.xprt, hostname, port)
+        self.xprt = ldms.Xprt(name=xprt)
+        rc = self.xprt.connect(hostname, port)
         assert(rc == 0)
         self.sets = []
         self._dict = {}
-        _dirs = ldms.LDMS_xprt_dir(self.xprt)
+        _dirs = self.xprt.dir()
         for d in _dirs:
-            s = ldms.LDMS_xprt_lookup(self.xprt, d,
-                                      ldms.LDMS_LOOKUP_BY_INSTANCE)
+            set_trace()
+            print(d.name)
+            s = self.xprt.lookup(d.name)
             self.sets.append(s)
-            self._dict[d] = s
+            self._dict[d] = d.name
 
     def update(self):
         for _set in self.sets:
@@ -97,17 +104,16 @@ class LdmsWrap(object):
     def get(self, set_name):
         return self._dict.get(set_name)
 
-
 class TestLDMSDSetGroup(unittest.TestCase):
     XPRT = "sock"
     SMP_PORT = "10001"
-    SMP_LOG = None
+    SMP_LOG = "smp.log"
     AGG_PORT = "10000"
-    AGG_LOG = None
+    AGG_LOG = "agg.log"
     AGG_GDB_PORT = None
     SMP_GDB_PORT = None
     INTERVAL_US = 1000000
-    INTERVAL_SEC = INTERVAL_US / 1e6
+    INTERVAL_SEC = INTERVAL_US // 1e6
 
     # LDMSD instances
     smp = None
@@ -167,7 +173,7 @@ class TestLDMSDSetGroup(unittest.TestCase):
             if cls.AGG_GDB_PORT or cls.SMP_GDB_PORT:
                 log.info("AGG_GDB_PORT: %s" % str(cls.AGG_GDB_PORT))
                 log.info("SMP_GDB_PORT: %s" % str(cls.SMP_GDB_PORT))
-                raw_input("Press ENTER to continue after the gdb is attached")
+                input("Press ENTER to continue after the gdb is attached")
             time.sleep(2 * cls.INTERVAL_SEC)
 
         except:
@@ -188,9 +194,9 @@ class TestLDMSDSetGroup(unittest.TestCase):
         log.debug("----------------------------")
 
     def _get_sets(self, port):
-        x = ldms.LDMS_xprt_new(self.XPRT)
-        rc = ldms.LDMS_xprt_connect_by_name(x, "localhost", port)
-        _dirs = ldms.LDMS_xprt_dir(x)
+        x = ldms.Xprt(self.XPRT)
+        rc = x.connect("localhost", port)
+        _dirs = x.dir()
         for d in _dirs:
             pass
 
@@ -198,10 +204,10 @@ class TestLDMSDSetGroup(unittest.TestCase):
         log.info("verifying sampler ...")
         l = LdmsWrap(port = self.SMP_PORT)
         l.update()
-        _s0 = { s.instance_name_get(): s.ts_get().sec for s in l.sets }
+        _s0 = { s.instance_name: s.transaction_timestamp['sec'] for s in l.sets }
         time.sleep(2 * self.INTERVAL_SEC)
         l.update()
-        _s1 = { s.instance_name_get(): s.ts_get().sec for s in l.sets }
+        _s1 = { s.instance_name: s.transaction_timestamp['sec'] for s in l.sets }
         _d = { k: _s1[k] - _s0[k] for k in _s0 }
         _set_negative = set([k for k in _d if _d[k] < 0])
         _set_zero = set([k for k in _d if _d[k] == 0])
@@ -214,10 +220,10 @@ class TestLDMSDSetGroup(unittest.TestCase):
         log.info("verifying aggregator ...")
         l = LdmsWrap(port = self.AGG_PORT)
         l.update()
-        _s0 = { s.instance_name_get(): s.ts_get().sec for s in l.sets }
+        _s0 = { s.instance_name: s.transaction_timestamp['sec'] for s in l.sets }
         time.sleep(3 * self.INTERVAL_SEC)
         l.update()
-        _s1 = { s.instance_name_get(): s.ts_get().sec for s in l.sets }
+        _s1 = { s.instance_name: s.transaction_timestamp['sec'] for s in l.sets }
         _d = { k: _s1[k] - _s0[k] for k in _s0 }
         _set = set([k for k in _d if _d[k] > 0])
         self.assertEqual(set(uset), _set)

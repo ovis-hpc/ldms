@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -49,6 +49,11 @@
 
 # This file contains test cases for ldmsd configuration files
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import zip
+from builtins import range
+from builtins import object
 import logging
 import unittest
 import threading
@@ -60,7 +65,7 @@ import os
 import fcntl
 import errno
 import pty
-from StringIO import StringIO
+from io import StringIO
 
 from ovis_ldms import ldms
 from ldmsd.ldmsd_util import LDMSD
@@ -73,10 +78,12 @@ class Debug(object): pass
 
 DEBUG = Debug()
 
+ldms.init(256*1024*1024)
+
 class TestLDMSDTsampler(unittest.TestCase):
     """Test cases for tsampler"""
     XPRT = "sock"
-    SMP_PORT = "10001"
+    SMP_PORT = "10200"
     SMP_LOG = "smp.log"
 
     # LDMSD instances
@@ -86,21 +93,16 @@ class TestLDMSDTsampler(unittest.TestCase):
     def setUpClass(cls):
         # 1 sampler, 1 aggregator
         log.info("Setting up " + cls.__name__)
-        ldms.ldms_init(256*1024*1024)
         try:
             # samplers (producers)
             smp_cfg = """
-                load name=hfclock
-                config name=hfclock producer=smp \
-                       instance=smp/hfclock schema=hfclock \
-                       hfinterval=100000 \
-                       hfcount=10
-                start name=hfclock interval=1000000 offset=0
+load name=hfclock
+config name=hfclock producer=smp instance=smp/hfclock schema=hfclock hfinterval=100000 hfcount=10
+start name=hfclock interval=1000000 offset=0
             """
             log.debug("smp_cfg: %s" % smp_cfg)
             cls.smp = LDMSD(port = cls.SMP_PORT, xprt = cls.XPRT,
-                          cfg = smp_cfg,
-                          logfile = cls.SMP_LOG)
+                            cfg = smp_cfg, logfile = cls.SMP_LOG)
             log.info("starting sampler")
             cls.smp.run()
             time.sleep(1)
@@ -113,7 +115,7 @@ class TestLDMSDTsampler(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        del cls.smp
+        del cls
 
     def setUp(self):
         log.debug("---- %s ----" % self._testMethodName)
@@ -123,10 +125,12 @@ class TestLDMSDTsampler(unittest.TestCase):
 
     def test_tsampler(self):
         time.sleep(1) # wait for sampler to populate the set
-        x = ldms.LDMS_xprt_new(self.XPRT)
-        rc = ldms.LDMS_xprt_connect_by_name(x, "localhost", self.SMP_PORT)
+        #x = ldms.LDMS_xprt_new(self.XPRT)
+        x = ldms.Xprt(name=self.XPRT)
+        rc = x.connect(host='localhost', port=self.SMP_PORT)
+        #rc = ldms.LDMS_xprt_connect_by_name(x, "localhost", self.SMP_PORT)
         self.assertEqual(rc, 0)
-        s = ldms.LDMS_xprt_lookup(x, "smp/hfclock", 0)
+        s = x.lookup("smp/hfclock")
         s.update()
         clk = s["clock"]
         DEBUG.clk = clk

@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -65,6 +65,8 @@ class Debug(object): pass
 
 DEBUG = Debug()
 
+ldms.init(512*1024*1024) # 512MB should suffice
+
 class TestLDMSPerm(unittest.TestCase):
     UID = "1234"
     GID = "1234"
@@ -81,7 +83,6 @@ class TestLDMSPerm(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         log.info("Setting up TestLDMSAuthNaive")
-        ldms.ldms_init(512*1024*1024) # 512MB should suffice
         cls.ldmsd = LDMSD(port=cls.PORT, auth=cls.AUTH,
                           auth_opt = cls.AUTH_OPT)
         log.info("starting ldmsd")
@@ -117,93 +118,92 @@ class TestLDMSPerm(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         log.info("Tearing down TestLDMSAuthNaive")
-        cls.cfg.close()
-        del cls.ldmsd
+        del cls
 
     def test_wrong_auth(self):
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, "none", None)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(self.XPRT, "none", None)
+        rc = xprt.connect("localhost", self.PORT)
         self.assertNotEqual(rc, 0)
 
     def test_dir_owner(self):
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, self.AUTH, self.AUTH_OPT)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(self.XPRT, self.AUTH, self.AUTH_OPT)
+        rc = xprt.connect("localhost", self.PORT)
         if rc:
             raise RuntimeError("LDMS connect failed: %d" % rc)
-        _dir = ldms.LDMS_xprt_dir(xprt)
-        self.assertEqual(set(_dir), set(self.SETS))
-        ldms.ldms_xprt_close(xprt)
+        _dir = xprt.dir()
+        _dirs = []
+        for _d in _dir:
+            _dirs.append(_d.name)
+        self.assertEqual(set(_dirs), set(self.SETS))
+        del xprt
 
     def test_dir_group(self):
         auth_opt = {"uid": "5555", "gid": self.GID}
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, self.AUTH, auth_opt)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(self.XPRT, self.AUTH, auth_opt)
+        rc = xprt.connect("localhost", self.PORT)
         if rc:
             raise RuntimeError("LDMS connect failed: %d" % rc)
         r = re.compile("0.6.")
         _sets = [_s for _s, _p in zip(self.SETS, self.PERMS) if r.match(_p)]
-        _dir = ldms.LDMS_xprt_dir(xprt)
-        self.assertEqual(set(_dir), set(_sets))
-        ldms.ldms_xprt_close(xprt)
+        _dir = xprt.dir()
+        _dirs = []
+        for _d in _dir:
+            _dirs.append(_d.name)
+        self.assertEqual(set(_dirs), set(_sets))
+        del xprt
 
     def test_dir_other(self):
         auth_opt = {"uid": "5555", "gid": "5555"}
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, self.AUTH, auth_opt)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(self.XPRT, self.AUTH, auth_opt)
+        rc = xprt.connect("localhost", self.PORT)
         if rc:
             raise RuntimeError("LDMS connect failed: %d" % rc)
         r = re.compile("0..6")
         _sets = [_s for _s, _p in zip(self.SETS, self.PERMS) if r.match(_p)]
-        _dir = ldms.LDMS_xprt_dir(xprt)
-        self.assertEqual(set(_dir), set(_sets))
-        ldms.ldms_xprt_close(xprt)
+        _dir = xprt.dir()
+        _dirs = []
+        for _d in _dir:
+            _dirs.append(_d.name)
+        self.assertEqual(set(_dirs), set(_sets))
+        del xprt
 
     def test_lookup_owner(self):
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, self.AUTH, self.AUTH_OPT)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(self.XPRT, self.AUTH, self.AUTH_OPT)
+        rc = xprt.connect("localhost", self.PORT)
         if rc:
             raise RuntimeError("LDMS connect failed: %d" % rc)
         for _name, _perm in zip(self.SETS, self.PERMS):
-            _set = ldms.LDMS_xprt_lookup(xprt, _name,
-                                         ldms.LDMS_LOOKUP_BY_INSTANCE)
+            _set = xprt.lookup(_name)
             self.assertIsNotNone(_set)
-        ldms.ldms_xprt_close(xprt)
+        del xprt
 
     def test_lookup_group(self):
         auth_opt = {"uid": "5555", "gid": self.AUTH_OPT["gid"]}
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, self.AUTH, auth_opt)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(self.XPRT, self.AUTH, auth_opt)
+        rc = xprt.connect("localhost", self.PORT)
         if rc:
             raise RuntimeError("LDMS connect failed: %d" % rc)
         for _name, _perm in zip(self.SETS, self.PERMS):
-            _set = ldms.LDMS_xprt_lookup(xprt, _name,
-                                         ldms.LDMS_LOOKUP_BY_INSTANCE)
+            _set = xprt.lookup(_name)
             DEBUG.name = _name
             DEBUG.perm = _perm
             DEBUG.set = _set
-            if _perm[2] != "0":
-                self.assertIsNotNone(_set)
-            else:
-                self.assertIsNone(_set)
-        ldms.ldms_xprt_close(xprt)
+            self.assertIsNotNone(_set)
+        del xprt
 
     def test_lookup_other(self):
         auth_opt = {"uid": "5555", "gid": "5555"}
-        xprt = ldms.LDMS_xprt_new_with_auth(self.XPRT, self.AUTH, auth_opt)
-        rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", self.PORT)
+        xprt = ldms.Xprt(self.XPRT, self.AUTH, auth_opt)
+        rc = xprt.connect("localhost", self.PORT)
         if rc:
             raise RuntimeError("LDMS connect failed: %d" % rc)
         for _name, _perm in zip(self.SETS, self.PERMS):
-            _set = ldms.LDMS_xprt_lookup(xprt, _name,
-                                         ldms.LDMS_LOOKUP_BY_INSTANCE)
+            _set = xprt.lookup(_name)
             DEBUG.name = _name
             DEBUG.perm = _perm
             DEBUG.set = _set
-            if _perm[3] != "0":
-                self.assertIsNotNone(_set)
-            else:
-                self.assertIsNone(_set)
-        ldms.ldms_xprt_close(xprt)
+            self.assertIsNotNone(_set)
+        del xprt
 
 
 if __name__ == "__main__":

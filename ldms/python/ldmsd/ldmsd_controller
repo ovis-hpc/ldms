@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 #######################################################################
 # -*- c-basic-offset: 8 -*-
@@ -51,6 +51,7 @@
 #######################################################################
 
 from __future__ import print_function
+from builtins import str
 import struct
 import cmd
 import argparse
@@ -1068,7 +1069,7 @@ class LdmsdCmdParser(cmd.Cmd):
         for k in keys:
             print('    %s: %s' % (k, str(fobj[k])))
         print('    flags: ')
-        for fl, v in fobj['flags'].iteritems():
+        for fl, v in fobj['flags'].items():
             print('        %s: %s' % (fl, str(v)))
 
     def complete_failover_mod(self, text, line, begidx, endidx):
