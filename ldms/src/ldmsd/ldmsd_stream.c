@@ -225,7 +225,6 @@ int ldmsd_stream_publish(ldms_t xprt,
 	return 0;
 }
 
-static char recv_buf[128];
 sem_t conn_sem;
 int conn_status;
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
