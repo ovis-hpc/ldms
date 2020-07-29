@@ -676,7 +676,6 @@ static void __destroy_set_no_lock(void *v)
 {
         struct ldms_set *set = v;
 	rbt_del(&del_tree, &set->del_node);
-	rbt_verify(&del_tree);
         mm_free(set->meta);
         __ldms_set_info_delete(&set->local_info);
         __ldms_set_info_delete(&set->remote_info);

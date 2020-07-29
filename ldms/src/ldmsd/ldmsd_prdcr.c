@@ -351,7 +351,6 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 		}
 		set->prdcr = prdcr;
 		rbt_ins(&prdcr->set_tree, &set->rbn);
-		rbt_verify(&prdcr->set_tree);
 		/* See if the ldms set is already there */
 		ldms_set_t xs = ldms_xprt_set_by_name(xprt, dset->inst_name);
 		if (xs) {
