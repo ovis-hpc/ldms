@@ -1375,37 +1375,76 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 	z_sock_send_wr_t wr;
 	sock_msg_type_t mtype = ntohs(m->msg_type);
 	DEBUG_LOG_SEND_MSG(sep, m);
+	int msg_off = 0, data_off = 0;
+	ssize_t wsz;
 	/* allocate send wr */
+	if (!TAILQ_EMPTY(&sep->sq))
+		goto wr_alloc; /* outstanding send, need to queue */
+	while (msg_off < msg_size) {
+		wsz = write(sep->sock, ((void*)m)+msg_off, msg_size - msg_off);
+		if (wsz < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				goto wr_alloc;
+			/* bad error */
+			goto err;
+		}
+		msg_off += wsz;
+	}
+	while (data_off < data_len) {
+		wsz = write(sep->sock, data + data_off, data_len - data_off);
+		if (wsz < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				goto wr_alloc;
+			/* bad error */
+			goto err;
+		}
+		data_off += wsz;
+	}
+	/* all data written out no need to post to sq */
+	goto out;
+ wr_alloc:
 	if (mtype == SOCK_MSG_READ_RESP || mtype == SOCK_MSG_WRITE_REQ) {
 		/* allow big message, and do not copy `data`  */
-		wr = malloc(sizeof(*wr) + msg_size);
+		int msg_remain = msg_size - msg_off;
+		wr = malloc(sizeof(*wr) + msg_remain);
 		if (!wr)
 			return ZAP_ERR_RESOURCE;
-		wr->msg_len = msg_size;
+		wr->msg_len = msg_remain;
 		wr->data_len = data_len;
 		wr->data = data;
-		wr->off = 0;
-		memcpy(wr->msg, m, msg_size);
+		if (msg_remain) {
+			memcpy(wr->msg, ((void*)m)+msg_off, msg_remain);
+			wr->off = 0;
+		} else {
+			/* done with the msg part */
+			wr->off = data_off;
+		}
 	} else {
 		if (data_len > sep->ep.z->max_msg) {
 			DEBUG_LOG(sep, "ep: %p, SEND invalid message length: %ld\n",
 				  sep, data_len);
 			return ZAP_ERR_NO_SPACE;
 		}
-		wr = malloc(sizeof(*wr) + msg_size + data_len);
+		int msg_remain = msg_size - msg_off;
+		int data_remain = data_len - data_off;
+		wr = malloc(sizeof(*wr) + msg_remain + data_remain);
 		if (!wr)
 			return ZAP_ERR_RESOURCE;
-		wr->msg_len = msg_size + data_len;
+		wr->msg_len = msg_remain + data_remain;
 		wr->data_len = 0;
 		wr->data = NULL;
 		wr->off = 0;
-		memcpy(wr->msg, m, msg_size);
-		memcpy(wr->msg + msg_size, data, data_len);
+		if (msg_remain)
+			memcpy(wr->msg, ((void*)m)+msg_off, msg_remain);
+		memcpy(wr->msg + msg_remain, data + data_off, data_remain);
 	}
 	TAILQ_INSERT_TAIL(&sep->sq, wr, link);
 	if (__enable_epoll_out(sep))
 		return ZAP_ERR_RESOURCE;
+ out:
 	return ZAP_ERR_OK;
+ err:
+	return ZAP_ERR_RESOURCE;
 }
 
 static zap_err_t __sock_send_msg(struct z_sock_ep *sep, struct sock_msg_hdr *m,
