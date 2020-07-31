@@ -128,7 +128,8 @@ static ldmsd_prdcr_set_t prdcr_set_new(const char *inst_name, const char *schema
 
 void __prdcr_set_del(ldmsd_prdcr_set_t set)
 {
-	ldmsd_log(LDMSD_LINFO, "Deleting producer set %s\n", set->inst_name);
+	ldmsd_log(LDMSD_LINFO, "Deleting producer set %s from producer %s\n",
+				set->inst_name, set->prdcr->obj.name);
 	if (set->schema_name)
 		free(set->schema_name);
 
