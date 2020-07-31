@@ -701,9 +701,15 @@ void ldms_set_delete(ldms_set_t s)
 	extern void __ldms_rbd_xprt_release(struct ldms_rbuf_desc *rbd);
 	struct ldms_rbuf_desc *rbd;
 	struct ldms_set *set = s->set;
+	struct ldms_set *__set;
 	ldms_t xprt;
 
 	__ldms_set_tree_lock();
+	__set = __ldms_set_by_id(set->set_id);
+	if (!__set) {
+		__ldms_set_tree_unlock();
+		goto set_new_put;
+	}
 	rbt_del(&__set_tree, &set->rb_node);
 	rbt_del(&__id_tree, &set->id_node);
 	__ldms_set_tree_unlock();
@@ -746,9 +752,10 @@ void ldms_set_delete(ldms_set_t s)
 	pthread_mutex_unlock(&__del_tree_lock);
 
 	/* Drop the create references on the RBD and the set */
-	ref_put(&s->ref, "set_new");
-	ref_put(&set->ref, "set_new");
 	ref_put(&set->ref, "__record_set");
+set_new_put:
+	ref_put(&set->ref, "set_new");
+	ref_put(&s->ref, "set_new");
 }
 
 void ldms_set_put(ldms_set_t s)
