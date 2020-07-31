@@ -544,7 +544,13 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 				"The current value is %s\n",
 				status, prd_set->inst_name,
 				ldmsd_get_max_mem_sz_str());
-
+		} else if (status == EEXIST) {
+			ldmsd_log(LDMSD_LERROR, "Prdcr '%s': lookup failed asynchronously. "
+					"The set '%s' already exists. "
+					"It is likely that there are more "
+					"than one producers pointing to "
+					"the set.\n",
+					prd_set->prdcr->obj.name, prd_set->inst_name);
 		} else {
 			ldmsd_log(LDMSD_LERROR,
 				  "Error %d in lookup callback for set '%s'\n",
@@ -629,9 +635,20 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 					      __ldmsd_prdset_lookup_cb, prd_set);
 			if (rc) {
 				/* If the error is EEXIST, the set is already in the set tree. */
-				assert(rc != EEXIST);
+				if (rc == EEXIST) {
+					ldmsd_log(LDMSD_LERROR, "Prdcr '%s': "
+						"lookup failed synchronously. "
+						"The set '%s' already exists. "
+						"It is likely that there are more "
+						"than one producers pointing to "
+						"the set.\n",
+						prd_set->prdcr->obj.name,
+						prd_set->inst_name);
+				} else {
+					ldmsd_log(LDMSD_LINFO, "Synchronous error "
+							"%d from ldms_lookup\n", rc);
+				}
 				prd_set->state = LDMSD_PRDCR_SET_STATE_START;
-				ldmsd_log(LDMSD_LINFO, "Synchronous error %d from ldms_lookup\n", rc);
 				ldmsd_prdcr_set_ref_put(prd_set);
 			}
 			goto next_prd_set;

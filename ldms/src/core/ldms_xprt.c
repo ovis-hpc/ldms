@@ -2274,14 +2274,6 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 		(void)__process_lookup_set_info(lset, &inst_name->name[inst_name->len]);
 		pthread_mutex_unlock(&lset->lock);
 	} else {
-		ldms_name_t lschema = get_schema_name(lset->meta);
-		if (0 != strcmp(schema_name->name, lschema->name)) {
-			/* Two sets have the same name but different schema */
-			rc = EINVAL;
-			ref_put(&lset->ref, "__ldms_find_local_set");
-			goto callback;
-		}
-
 		rbd = ldms_lookup_rbd(x, lset);
 		if (rbd) {
 			if (!(ctxt->lu_req.flags & LDMS_LOOKUP_SET_INFO)) {
@@ -2292,10 +2284,14 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 					&inst_name->name[inst_name->len]);
 				pthread_mutex_unlock(&lset->lock);
 			}
-			ref_put(&lset->ref, "__ldms_find_local_set");
-			goto callback;
+		} else {
+			/*
+			 * Another transport has looked up the set.
+			 */
+			rc = EEXIST;
 		}
 		ref_put(&lset->ref, "__ldms_find_local_set");
+		goto callback;
 	}
 
 	/* Bind this set to a new RBD. We will initiate RDMA_READ */
@@ -3014,11 +3010,12 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	__ldms_set_tree_unlock();
 	if (set) {
 		rbd = ldms_lookup_rbd(x, set);
-		if (rbd && !(flags & LDMS_LOOKUP_SET_INFO)) {
+		if (!rbd || (rbd && !(flags & LDMS_LOOKUP_SET_INFO))) {
 			/*
-			 * The set has been already looked up
-			 * from the host corresponding to
-			 * the transport.
+			 * Another transport has looked up the set
+			 * or
+			 * the set has been looked up by this transport and
+			 * this is not a set_info lookup request.
 			 */
 			ref_put(&set->ref, "__ldms_find_local_set");
 			return EEXIST;
