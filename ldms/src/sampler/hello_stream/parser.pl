@@ -217,6 +217,7 @@ GetOptions("format=s" => \$format,
 	   "sendheader=i" => \$sendheader,
 );
 
+$| = 1; #flush STDOUT
 checkargs($format, $tag, $sendheader) || die "Error in arguments\n";
 
 if (($format eq MINIEM) && $sendheader){
