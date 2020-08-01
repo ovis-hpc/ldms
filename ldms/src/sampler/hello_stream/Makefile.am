@@ -35,12 +35,14 @@ HELLO_EXTRA_FILES = \
 OPV=-$(PACKAGE_VERSION)
 HELLO_DIR = $(docdir)$(OPV)/examples/hello_sampler_util
 install-data-local: $(HELLO_EXTRA_FILES)
-	$(MKDIR_P) $(HELLO_DIR)
-	$(INSTALL_DATA) $(HELLO_EXTRA_FILES) $(HELLO_DIR)/
-	chmod 755 $(HELLO_DIR)/*
+	$(MKDIR_P) $(DESTDIR)$(HELLO_DIR)
+	$(INSTALL_DATA) $(HELLO_EXTRA_FILES) $(DESTDIR)$(HELLO_DIR)/
+	chmod 755 $(DESTDIR)$(HELLO_DIR)/*
 
 uninstall-local:
-	rm -rf $(HELLO_DIR)
+	for i in $(HELLO_EXTRA_FILES); do \
+		rm -rf $(DESTDIR)$(HELLO_DIR)/$$i; \
+	done
 
 endif
 
