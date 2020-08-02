@@ -88,7 +88,6 @@ static int create_metric_set(struct tutorial_set* tset)
 	int rc, i, j;
 	ldms_schema_t schema;
 	ldms_set_t set;
-	uint64_t metric_value;
 	char metric_name[128];
 	const char *s;
 
@@ -204,18 +203,14 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static int sample(struct ldmsd_sampler *self)
 {
-	int rc;
 	int metric_no;
-	char *s;
-	char lbuf[256];
-	char metric_name[128];
 	int i,j;
 	union ldms_value v;
 
 
 	for (i = 0; i < num_sets; i++){
 		msglog(LDMSD_LINFO, SAMP ": sampling for set %d\n", i);
-		
+
 		if (!tsets[i].set) {
 			msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 			return EINVAL;
@@ -234,7 +229,6 @@ static int sample(struct ldmsd_sampler *self)
 		//TUT: comment out/in base_sample
 		base_sample_end(tsets[i].base);
 	}
- out:
 
 	return 0;
 }
@@ -243,7 +237,7 @@ static void term(struct ldmsd_plugin *self)
 {
 
 	int i;
-	
+
 	for (i = 0; i < num_sets; i++){
 		if (tsets[i].schema)
 			ldms_schema_delete(tsets[i].schema);
