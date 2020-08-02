@@ -83,7 +83,7 @@ static ldmsd_msg_log_f msglog;
 
 struct tutorial_store_handle {
 	struct ldmsd_store *store;
-        char *path; //full path will be path/container/schema
+	char *path; //full path will be path/container/schema
 	FILE *file;
 	pthread_mutex_t lock;
 	void *ucontext;
@@ -102,13 +102,13 @@ static pthread_mutex_t cfg_lock;
  */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-  char* s;
-	int rc;
+	char* s;
+	int rc = 0;
 
 	pthread_mutex_lock(&cfg_lock);
 	s = av_value(avl, "path");
 	if (!s){
-           msglog(LDMSD_LDEBUG, PNAME ": missing path in config\n");
+	   msglog(LDMSD_LDEBUG, PNAME ": missing path in config\n");
 	   rc = EINVAL;
 	} else {
 	  root_path = strdup(s);
@@ -123,8 +123,8 @@ out:
 
 static void term(struct ldmsd_plugin *self)
 {
-        //not implemented
-        return;
+	//not implemented
+	return;
 }
 
 static const char *usage(struct ldmsd_plugin *self)
@@ -166,10 +166,10 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	size_t pathlen = strlen(root_path) + strlen(schema) + strlen(container) + 8;
 	path = malloc(pathlen);
 	if (!path)
-           goto out;
+	   goto out;
 	dpath = malloc(pathlen);
 	if (!dpath)
-           goto out;
+	   goto out;
 	sprintf(path, "%s/%s/%s", root_path, container, schema);
 	sprintf(dpath, "%s/%s", root_path, container);
 
@@ -196,14 +196,14 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 
 	s_handle->file = fopen_perm(s_handle->path, "a+", LDMSD_DEFAULT_FILE_PERM);
 	if (!s_handle->file){
-                msglog(LDMSD_LERROR, PNAME ": Error %d opening the file %s.\n",
+		msglog(LDMSD_LERROR, PNAME ": Error %d opening the file %s.\n",
 		       errno, s_handle->path);
 		goto err1;
 	}
 	pthread_mutex_unlock(&s_handle->lock);
 
 	tstorehandle[numschema++] = s_handle;
-	
+
 	goto out;
 
 err1:
@@ -289,7 +289,7 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 {
 
   //not implemented
-        return;
+	return;
 }
 
 static struct ldmsd_store store_tutorial = {
