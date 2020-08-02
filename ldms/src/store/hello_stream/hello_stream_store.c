@@ -92,7 +92,7 @@ static char* container;
 static char* schema;
 FILE* streamfile;
 static char* streamfile_name;
-static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t cfg_lock;
 static pthread_mutex_t store_lock;
 static char** keyarray = NULL;
 static int numkeys = 0;
@@ -511,9 +511,11 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 static void __attribute__ ((constructor)) hello_stream_store_init();
 static void hello_stream_store_init()
 {
+	pthread_mutex_init(&cfg_lock, NULL);
 }
 
 static void __attribute__ ((destructor)) hello_stream_store_fini(void);
 static void hello_stream_store_fini()
 {
+	pthread_mutex_destroy(&cfg_lock);
 }
