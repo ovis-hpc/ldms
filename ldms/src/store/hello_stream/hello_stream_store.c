@@ -457,7 +457,8 @@ static void term(struct ldmsd_plugin *self)
 {
 	int i;
 
-	fclose(streamfile);
+	if (streamfile)
+		fclose(streamfile);
 	streamfile = NULL;
 	free(root_path);
 	root_path = NULL;
