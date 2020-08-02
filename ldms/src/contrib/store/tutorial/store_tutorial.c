@@ -115,7 +115,6 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	  msglog(LDMSD_LDEBUG, PNAME ": setting root_path to '%s'\n", root_path);
 	}
 
-out:
 	pthread_mutex_unlock(&cfg_lock);
 
 	return rc;
@@ -231,8 +230,8 @@ static int store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_array, si
 	const struct ldms_timestamp *ts = &_ts;
 	const char* pname;
 	struct tutorial_store_handle *s_handle;
-	int i, j;
-	int rc, rcu;
+	int i;
+	int rc;
 
 	s_handle = _sh;
 	if (!s_handle)
@@ -256,7 +255,6 @@ static int store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_array, si
 		fprintf(s_handle->file, "%s", pname);
 
 
-	const char * str;
 	for (i = 0; i != metric_count; i++) {
 		enum ldms_value_type metric_type = ldms_metric_type_get(set, metric_array[i]);
 		//TUT: only supporting U64
