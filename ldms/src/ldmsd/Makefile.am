@@ -1,4 +1,4 @@
-sbin_PROGRAMS = ldmsd ldms_ls # ldmsctl
+sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
 lib_LTLIBRARIES =
 SUBDIRS = . test
@@ -79,16 +79,17 @@ ldmsd_LDFLAGS += -lrabbitmq
 ldmsd_CFLAGS += -DENABLE_RABBITMQ
 endif
 
-#ldmsctl_SOURCES = ldmsctl.c
-#ldmsctl_LDADD = $(CORE)/libldms.la librequest.la
-#ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ \
-#		  $(top_builddir)/lib/src/ovis_util/libovis_util.la \
-#		  $(top_builddir)/lib/src/ovis_ctrl/libovis_ctrl.la \
-#		  $(top_builddir)/lib/src/coll/libcoll.la \
-#		  $(top_builddir)/lib/src/mmalloc/libmmalloc.la \
-#		  $(top_builddir)/lib/src/zap/libzap.la \
-#		  $(top_builddir)/lib/src/json/libjson_util.la \
-#		  -lm -pthread @LDFLAGS_GETTIME@
+ldmsctl_SOURCES = ldmsctl.c
+ldmsctl_LDADD = $(CORE)/libldms.la librequest.la
+ldmsctl_LDFLAGS = $(AM_LDFLAGS) @LDFLAGS_READLINE@ \
+		  $(top_builddir)/lib/src/ovis_util/libovis_util.la \
+		  $(top_builddir)/lib/src/ovis_ctrl/libovis_ctrl.la \
+		  $(top_builddir)/lib/src/coll/libcoll.la \
+		  $(top_builddir)/lib/src/mmalloc/libmmalloc.la \
+		  $(top_builddir)/lib/src/zap/libzap.la \
+		  $(top_builddir)/lib/src/json/libjson_util.la \
+		  -lm -pthread @LDFLAGS_GETTIME@
+
 ldmsd_sos_init_SOURCES = ldmsd_sos_init.c
 ldmsd_sos_init_CFLAGS = @SOS_INCDIR_FLAG@ $(AM_CFLAGS)
 ldmsd_sos_init_LDADD = -lsos -lods -lpthread @SOS_LIBDIR_FLAG@ @SOS_LIB64DIR_FLAG@
