@@ -376,7 +376,7 @@ void cleanup(int x, const char *reason)
 					pidfile->attr, "path"))->str);
 		if (json_value_bool(json_value_find(pidfile->attr, "banner"))) {
 			unlink(json_value_str(json_value_find(
-					pidfile->attr, "banner_path"))->str);
+					pidfile->attr, "path"))->str);
 		}
 	}
 	ldmsd_log(llevel, "LDMSD_ cleanup end.\n");
@@ -937,66 +937,59 @@ int handle_cfgobjs()
 	return 0;
 }
 
+extern void __msg_key_get(ldmsd_cfg_xprt_t xprt, uint32_t msg_no,
+					struct ldmsd_msg_key *key);
+extern ldmsd_req_ctxt_t __req_ctxt_alloc(struct ldmsd_msg_key *key,
+					ldmsd_cfg_xprt_t xprt,
+					int type);
+static ldmsd_req_ctxt_t __create_reqc(json_entity_t req_obj,
+					ldmsd_plugin_inst_t t)
+{
+	ldmsd_req_ctxt_t reqc = NULL;
+	ldmsd_cfg_xprt_t xprt = NULL;
+	struct ldmsd_msg_key key;
+	int msg_type = LDMSD_REQ_CTXT_REQ;
+	int req_id = json_value_int(json_value_find(req_obj, "id"));
+
+	xprt = ldmsd_cfg_xprt_new();
+	if (!xprt)
+		goto oom;
+
+	if (req_id < 0)
+		ldmsd_cfg_xprt_cli_init(xprt);
+	else
+		ldmsd_cfg_xprt_cfgfile_init(xprt, t);
+
+	__msg_key_get(xprt, req_id, &key);
+
+	ldmsd_req_ctxt_tree_lock(msg_type);
+	reqc = __req_ctxt_alloc(&key, xprt, msg_type);
+	if (!reqc)
+		goto oom;
+	ldmsd_req_ctxt_tree_unlock(msg_type);
+	reqc->json = req_obj;
+	return reqc;
+
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "out of memory\n");
+	if (xprt)
+		ref_put(&xprt->ref, "create");
+	return NULL;
+}
+
 static int submit_cfgobj_request(ldmsd_plugin_inst_t pi, json_entity_t req_obj)
 {
-	int status, rc;
-	ldmsd_req_buf_t buf;
-	json_entity_t reply, results, key, v, msg;
-	ldmsd_translator_type_t t = (void *)pi->base;
+	int rc;
+	ldmsd_req_ctxt_t reqc;
 	struct ldmsd_sec_ctxt sctxt;
-	ldmsd_sec_ctxt_get(&sctxt);
-	int msg_no = json_value_int(json_value_find(req_obj, "id"));
 
-	buf = ldmsd_req_buf_alloc(1024);
-	if (!buf)
-		goto oom;
-	reply = ldmsd_process_cfgobj_requests(req_obj, msg_no, &sctxt);
-	if (!reply)
-		goto oom;
-	if (msg_no == 0) {
-		/* Request from the cmd-line */
-		status = json_value_int(json_value_find(reply, "status"));
-		if (status) {
-			ldmsd_log(LDMSD_LCRITICAL, "%s\n",
-				json_value_str(json_value_find(reply, "msg"))->str);
-			return 0;
-		}
-		results = json_value_find(reply, "result");
-		if (!results)
-			return 0;
-		for (key = json_attr_first(results); key; key = json_attr_next(key)) {
-			v = json_attr_value(key);
-			status = json_value_int(json_value_find(v, "status"));
-			if (status) {
-				msg = json_value_find(v, "msg");
-				if (msg) {
-					/* TODO: Think about how to report the error.
-					 * It is possible that only the status is provided,
-					 * no error messages.
-					 */
-					ldmsd_log(LDMSD_LCRITICAL, "Error %d: %s\n",
-						status, json_value_str(msg)->str);
-				}
-			}
-		}
-	} else {
-		rc = t->error_report(pi, reply);
-		if (rc) {
-			jbuf_t jb;
-			jb = json_entity_dump(NULL, req_obj);
-			if (!jb)
-				goto oom;
-			ldmsd_log(LDMSD_LCRITICAL, "Error %d: Failed to report "
-						"configuration error. Request: %s\n",
-						rc, jb->buf);
-			jbuf_free(jb);
-		}
-	}
-	return 0;
-oom:
-	if (buf)
-		ldmsd_req_buf_free(buf);
-	return ENOMEM;
+	reqc = __create_reqc(req_obj, pi);
+	if (!reqc)
+		return ENOMEM;
+
+	ldmsd_sec_ctxt_get(&sctxt);
+	rc = ldmsd_process_msg_request(reqc);
+	return rc;
 }
 
 static void
@@ -1089,7 +1082,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_AUTH),
 				0, NULL, NULL, spec);
 		break;
@@ -1102,7 +1095,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_create_req_obj_new(0,
+		obj = ldmsd_cfgobj_create_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_AUTH),
 				1, NULL, spec);
 		if (!obj)
@@ -1115,7 +1108,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
 				1, NULL, NULL, spec);
 		break;
@@ -1131,7 +1124,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
 				1, NULL, NULL, spec);
 		break;
@@ -1142,7 +1135,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
 				1, NULL, NULL, spec);
 		break;
@@ -1153,7 +1146,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
 				0, NULL, NULL, spec);
 		break;
@@ -1164,7 +1157,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
 				1, NULL, NULL, spec);
 		break;
@@ -1180,7 +1173,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
 				1, NULL, NULL, spec);
 		break;
@@ -1192,7 +1185,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
 				1, NULL, NULL, spec);
 		break;
@@ -1204,7 +1197,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
 				1, NULL, NULL, spec);
 		break;
@@ -1226,7 +1219,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
 				1, NULL, NULL, spec);
 		break;
@@ -1242,7 +1235,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
 				1, NULL, NULL, spec);
 		break;
@@ -1258,7 +1251,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
 				1, NULL, NULL, spec);
 		break;
@@ -1280,7 +1273,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 				-1);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_update_req_obj_new(0,
+		obj = ldmsd_cfgobj_update_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_DAEMON),
 				1, NULL, NULL, spec);
 		break;
@@ -1309,7 +1302,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 		free(lval);
 		if (!spec)
 			goto oom;
-		obj = ldmsd_cfgobj_create_req_obj_new(0,
+		obj = ldmsd_cfgobj_create_req_obj_new(-1,
 				ldmsd_cfgobj_type2str(LDMSD_CFGOBJ_LISTEN),
 				1, NULL, spec);
 		if (!obj)
@@ -1442,14 +1435,17 @@ short ldmsd_is_syntax_check()
 	return is_syntax_check;
 }
 
-static int
-process_config_file_NEW(ldmsd_plugin_inst_t pi, const char *path,
-						json_entity_t req_list)
+static int process_config_file(ldmsd_plugin_inst_t pi,
+				const char *path,
+				json_entity_t req_list)
 {
+	int rc;
 	ldmsd_translator_type_t t = (void *)pi->base;
 	json_entity_t l = t->translate(pi, path, req_list);
-	if (!l)
-		return ENOMEM;
+	if (!l) {
+		rc = errno;
+		return rc;
+	}
 	return 0;
 }
 
@@ -1612,9 +1608,9 @@ int main(int argc, char **argv) {
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'c':
-			rc = process_config_file_NEW(pi, optarg, cfgobj_req_list);
+			rc = process_config_file(pi, optarg, cfgobj_req_list);
 			if (rc)
-				cleanup(rc, "Out of memory");
+				cleanup(rc, "Failed to process a configuration file");
 			break;
 		}
 	}

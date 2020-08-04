@@ -119,8 +119,7 @@ typedef struct ldmsd_cfg_ldms_s {
 } *ldmsd_cfg_ldms_t;
 
 typedef struct ldmsd_cfg_file_s {
-	const char *filename; /* Config file name */
-	uint64_t errcode; /* Set if there is a configuration error */
+	ldmsd_plugin_inst_t t;
 } *ldmsd_cfg_file_t;
 
 typedef struct ldmsd_cfg_cli_s {
@@ -137,7 +136,7 @@ typedef struct ldmsd_cfg_xprt_s {
 		struct ldmsd_cfg_ldms_s ldms;
 		struct ldmsd_cfg_cli_s cli;
 	};
-	enum {
+	enum ldmsd_cfg_xprt_type {
 		LDMSD_CFG_XPRT_CONFIG_FILE = 1,
 		LDMSD_CFG_XPRT_LDMS,
 		LDMSD_CFG_XPRT_CLI,
@@ -252,8 +251,6 @@ size_t ldmsd_req_buf_append(ldmsd_req_buf_t buf, const char *fmt, ...);
  */
 int ldmsd_send_err_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec_len);
 typedef int (*ldmsd_req_filter_fn)(ldmsd_req_ctxt_t reqc, void *ctxt);
-json_entity_t ldmsd_process_cfgobj_requests(json_entity_t req, uint32_t msg_no,
-						struct ldmsd_sec_ctxt *sctxt);
 ldmsd_req_ctxt_t ldmsd_handle_record(ldmsd_rec_hdr_t rec, ldmsd_cfg_xprt_t xprt);
 int ldmsd_process_msg_request(ldmsd_req_ctxt_t reqc);
 int ldmsd_process_msg_response(ldmsd_req_ctxt_t reqc);
@@ -281,6 +278,7 @@ ldmsd_cfg_xprt_t ldmsd_cfg_xprt_ldms_new(ldms_t x);
  */
 void ldmsd_cfg_xprt_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms);
 void ldmsd_cfg_xprt_cli_init(ldmsd_cfg_xprt_t xprt);
+void ldmsd_cfg_xprt_cfgfile_init(ldmsd_cfg_xprt_t xprt, ldmsd_plugin_inst_t t);
 
 #define ldmsd_req_ctxt_ref_get(_s_, _n_) _ref_get(&((_s_)->ref), (_n_), __func__, __LINE__)
 #define ldmsd_req_ctxt_ref_put(_s_, _n_) _ref_put(&((_s_)->ref), (_n_), __func__, __LINE__)

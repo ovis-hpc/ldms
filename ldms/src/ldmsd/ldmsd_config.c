@@ -81,6 +81,7 @@
 #include "ldmsd_plugin.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
+#include "ldmsd_translator.h"
 #include "config.h"
 
 pthread_mutex_t host_list_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -92,6 +93,12 @@ pthread_mutex_t sp_list_lock = PTHREAD_MUTEX_INITIALIZER;
 void ldmsd_cfg_xprt_cleanup(ldmsd_cfg_xprt_t xprt)
 {
 	free(xprt);
+}
+
+void ldmsd_cfg_xprt_cfgfile_cleanup(ldmsd_cfg_xprt_t xprt)
+{
+	ldmsd_plugin_inst_put(xprt->file.t);
+	ldmsd_cfg_xprt_cleanup(xprt);
 }
 
 void ldmsd_cfg_xprt_ldms_cleanup(ldmsd_cfg_xprt_t xprt)
@@ -331,13 +338,76 @@ ldmsd_cfg_xprt_t ldmsd_cfg_xprt_new()
 	return xprt;
 }
 
+static int cli_error_report(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
+{
+	json_entity_t results, key, v, msg;
+	json_entity_t reply = (json_entity_t)data;
+	int status;
+
+	status = json_value_int(json_value_find(reply, "status"));
+	if (status) {
+		ldmsd_log(LDMSD_LCRITICAL, "%s\n",
+			json_value_str(json_value_find(reply, "msg"))->str);
+		return 0;
+	}
+	results = json_value_find(reply, "result");
+	if (!results)
+		return 0;
+	for (key = json_attr_first(results); key; key = json_attr_next(key)) {
+		v = json_attr_value(key);
+		status = json_value_int(json_value_find(v, "status"));
+		if (status) {
+			msg = json_value_find(v, "msg");
+			if (msg) {
+				/* TODO: Think about how to report the error.
+				 * It is possible that only the status is provided,
+				 * no error messages.
+				 */
+				ldmsd_log(LDMSD_LCRITICAL, "Error %d: %s\n",
+					status, json_value_str(msg)->str);
+			}
+		}
+	}
+	return 0;
+}
+
+static int cfgfile_error_report(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
+{
+	int rc;
+	json_entity_t reply = (json_entity_t)data;
+	ldmsd_translator_type_t t = (ldmsd_translator_type_t)xprt->file.t->base;
+
+	rc = t->error_report(xprt->file.t, reply);
+	if (rc) {
+		ldmsd_log(LDMSD_LCRITICAL, "Error %d: Failed to report "
+					"configuration error of the request ID %ld "
+					"from translator '%s'\n",
+					rc,
+					json_value_int(json_value_find(reply, "id")),
+					t->base.inst->inst_name);
+	}
+	return 0;
+}
+
 void ldmsd_cfg_xprt_cli_init(ldmsd_cfg_xprt_t xprt)
 {
 	xprt->type = LDMSD_CFG_XPRT_CLI;
-	xprt->send_fn = NULL;
+	xprt->send_fn = cli_error_report;
 	xprt->max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
 	xprt->trust = 1;
 	ref_init(&xprt->ref, "create", (ref_free_fn_t)ldmsd_cfg_xprt_cleanup, xprt);
+}
+
+void ldmsd_cfg_xprt_cfgfile_init(ldmsd_cfg_xprt_t xprt, ldmsd_plugin_inst_t t)
+{
+	xprt->type = LDMSD_CFG_XPRT_CLI;
+	xprt->send_fn = cfgfile_error_report;
+	xprt->max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
+	xprt->trust = 1;
+	ldmsd_plugin_inst_get(t);
+	xprt->file.t = t;
+	ref_init(&xprt->ref, "create",
+			(ref_free_fn_t)ldmsd_cfg_xprt_cfgfile_cleanup, xprt);
 }
 
 void ldmsd_cfg_xprt_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
