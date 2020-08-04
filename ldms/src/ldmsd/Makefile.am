@@ -13,8 +13,7 @@ AM_CFLAGS += \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
 
 ldmsdincludedir = $(includedir)/ldms
-#ldmsdinclude_HEADERS = ldmsd.h ldmsd_stream.h ldmsd_plugin.h
-ldmsdinclude_HEADERS = ldmsd.h ldmsd_plugin.h
+ldmsdinclude_HEADERS = ldmsd.h ldmsd_stream.h ldmsd_plugin.h
 
 AM_LDFLAGS = -pthread
 AM_CPPFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
