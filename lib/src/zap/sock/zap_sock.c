@@ -1090,8 +1090,8 @@ static void sock_ev_cb(ovis_event_t ev)
 	if (ev->cb.epoll_events & EPOLLOUT) {
 		pthread_mutex_lock(&sep->ep.lock);
 		if (sep->sock_connected) {
-			pthread_mutex_unlock(&sep->ep.lock);
 			sock_write(ev);
+			pthread_mutex_unlock(&sep->ep.lock);
 		} else if (sep->ep.state == ZAP_EP_CONNECTING) {
 			sep->sock_connected = 1;
 			pthread_mutex_unlock(&sep->ep.lock);
@@ -1151,7 +1151,6 @@ static void sock_write(ovis_event_t ev)
 	ssize_t wsz;
 	z_sock_send_wr_t wr;
 
-	pthread_mutex_lock(&sep->ep.lock);
  next:
 	wr = TAILQ_FIRST(&sep->sq);
 	if (!wr) {
@@ -1161,40 +1160,41 @@ static void sock_write(ovis_event_t ev)
 	}
 
 	/* msg */
-	if (wr->msg_len) {
+	while (wr->msg_len) {
 		wsz = write(sep->sock, wr->msg + wr->off, wr->msg_len);
 		if (wsz < 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				__enable_epoll_out(sep);
 				goto out;
-			/* bad error */
+			}
+			/* otherwise, bad error */
 			goto err;
 		}
 		DEBUG_LOG(sep, "ep: %p, wrote %ld bytes\n", sep, wsz);
-		if (wsz < wr->msg_len) {
-			wr->msg_len -= wsz;
+		wr->msg_len -= wsz;
+		if (!wr->msg_len)
+			wr->off = 0; /* reset off for data */
+		else
 			wr->off += wsz;
-			goto out;
-		}
-		wr->msg_len = 0;
-		wr->off = 0;
 	}
 
-	if (wr->data_len) {
+	/* data, wr->msg_len is already 0 */
+	while (wr->data_len) {
 		wsz = write(sep->sock, wr->data + wr->off, wr->data_len);
 		if (wsz < 0) {
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				__enable_epoll_out(sep);
 				goto out;
-			/* bad error */
+			}
+			/* otherwise bad error */
 			goto err;
 		}
 		DEBUG_LOG(sep, "ep: %p, wrote %ld bytes\n", sep, wsz);
-		if (wsz < wr->data_len) {
-			wr->data_len -= wsz;
+		wr->data_len -= wsz;
+		if (!wr->msg_len)
+			wr->off = 0; /* reset off */
+		else
 			wr->off += wsz;
-			goto out;
-		}
-		wr->data_len = 0;
-		wr->off = 0;
 	}
 
 	/* reaching here means wr->data_len and wr->msg_len are 0 */
@@ -1203,12 +1203,10 @@ static void sock_write(ovis_event_t ev)
 	goto next;
 
  out:
-	pthread_mutex_unlock(&sep->ep.lock);
 	return;
 
  err:
 	shutdown(sep->sock, SHUT_RDWR);
-	pthread_mutex_unlock(&sep->ep.lock);
 }
 
 #define min_t(t, x, y) (t)((t)x < (t)y?(t)x:(t)y)
@@ -1408,8 +1406,8 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 		memcpy(wr->msg + msg_size, data, data_len);
 	}
 	TAILQ_INSERT_TAIL(&sep->sq, wr, link);
-	if (__enable_epoll_out(sep))
-		return ZAP_ERR_RESOURCE;
+	struct ovis_event_s ev = { .param = { .ctxt = sep } };
+	sock_write(&ev);
 	return ZAP_ERR_OK;
 }
 
@@ -1899,17 +1897,18 @@ static zap_err_t z_sock_read(zap_ep_t ep, zap_map_t src_map, char *src,
 		goto err;
 	}
 
+	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
 	/* write message */
 	zerr = __sock_send_msg_nolock(sep, &io->read.hdr, sizeof(io->read),
 				      NULL, 0);
 	if (zerr)
 		goto err1;
 
-	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
 	pthread_mutex_unlock(&sep->ep.lock);
 	zerr = ZAP_ERR_OK;
 	return zerr;
 err1:
+	TAILQ_REMOVE(&sep->io_q, io, q_link);
 	pthread_mutex_unlock(&sep->ep.lock);
 err:
 	__sock_io_free(sep, io);
@@ -1954,17 +1953,18 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 		goto err1;
 	}
 
+	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
 	/* write message */
 	zerr = __sock_send_msg_nolock(sep, &io->write.hdr, sizeof(io->write),
 				      src, sz);
-	if (zerr) {
-		goto err1;
-	}
+	if (zerr)
+		goto err2;
 
-	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
 	pthread_mutex_unlock(&sep->ep.lock);
 	return ZAP_ERR_OK;
 
+err2:
+	TAILQ_REMOVE(&sep->io_q, io, q_link);
 err1:
 	pthread_mutex_unlock(&sep->ep.lock);
 err0:
