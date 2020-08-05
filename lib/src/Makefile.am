@@ -1,9 +1,8 @@
-include_HEADERS = ovis-lib-config.h
 EXTRA_DIST=ovis-lib-configvars.sh.in ovis-test/test.h
 CLEANFILES = ovis-lib-configvars.sh
 DISTCLEANFILES = $(nobase_include_HEADERS)
 
-do_subst = @LIB_SUBST_RULE@
+do_subst = @OVIS_SUBST_RULE@
 
 %.sh: %.sh.in
 	$(do_subst) < $< > $@

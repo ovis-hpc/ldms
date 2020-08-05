@@ -1,6 +1,4 @@
-EXTRA_DIST = pedigree.am SHA.txt TAG.txt \
-	     README.md \
-	     autogen.sh
+EXTRA_DIST = README.md
 
 ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = src
@@ -48,9 +46,6 @@ install-data-local:
 	for f in AUTHORS README.md COPYING ChangeLog ; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
 	done
-
-PEDIGREE = $(DESTDIR)/$(bindir)/ldms-pedigree
-include $(top_srcdir)/pedigree.am
 
 uninstall-hook:
 	rm $(PEDIGREE)

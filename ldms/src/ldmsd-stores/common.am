@@ -2,16 +2,15 @@
 # Variables exporting to storage subdirectories #
 #################################################
 
-STORE_CFLAGS = @OVIS_LIB_INCDIR_FLAG@ \
-		 -I$(top_builddir)/src \
-		 -I$(top_srcdir)/src \
-		 -I$(top_srcdir)/src/core \
-		 -I$(top_srcdir)/src/ldmsd
+STORE_CFLAGS = -I$(top_srcdir)/lib/src \
+	       -I$(top_builddir) \
+	       -I$(top_srcdir)/ldms/src/core \
+	       -I$(top_srcdir)/ldms/src/ldmsd
 export STORE_CFLAGS
 
-STORE_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+STORE_LDFLAGS =
 export STORE_LDFLAGS
 
-STORE_LIBADD = $(top_builddir)/src/ldmsd/libstore.la
+STORE_LIBADD = $(top_builddir)/ldms/src/ldmsd/libstore.la
 export STORE_LIBADD
 #---------------------------------------------#

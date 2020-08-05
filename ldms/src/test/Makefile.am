@@ -3,8 +3,8 @@ CORE = ../core
 
 sbin_PROGRAMS = test_ldms_xprt_reconnect
 
-AM_CFLAGS = -I$(srcdir)/$(CORE) -I.. @OVIS_LIB_INCDIR_FLAG@
-AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+AM_CFLAGS = -I$(srcdir)/$(CORE) -I.. -I$(top_srcdir)/lib/src
+AM_LDFLAGS =
 
 sbin_PROGRAMS += test_ldms_xprt_reconnect
 test_ldms_xprt_reconnect_SOURCES = test_ldms_xprt_reconnect.c
@@ -33,7 +33,8 @@ test_ldms_push_CFLAGS = $(AM_CFLAGS)
 sbin_PROGRAMS += test_ldms
 test_ldms_SOURCES = test_ldms.c
 test_ldms_LDADD = $(CORE)/libldms.la
-test_ldms_LDFLAGS = $(AM_LDFLAGS) -pthread -lovis_util
+test_ldms_LDFLAGS = $(AM_LDFLAGS) -pthread \
+		    $(top_builddir)/lib/src/ovis_util/libovis_util.la
 test_ldms_CFLAGS = $(AM_CFLAGS)
 
 sbin_PROGRAMS += test_ldms_set_info

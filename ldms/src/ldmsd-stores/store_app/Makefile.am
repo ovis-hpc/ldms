@@ -1,5 +1,7 @@
 include ../common.am
 
+EXTRA_DIST = ldmsd_store_app.md
+
 pkglib_LTLIBRARIES = libstore_app.la
 
 libstore_app_la_SOURCES = store_app.c

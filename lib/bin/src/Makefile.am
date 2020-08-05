@@ -1,5 +1,5 @@
-AM_CFLAGS = -I$(top_srcdir)/src
-AM_LDFLAGS = -L$(top_srcdir)/src
+AM_CFLAGS = -I$(top_srcdir)/lib/src
+AM_LDFLAGS = -L$(top_builddir)/lib/src
 
 if ENABLE_SOS
 sbin_PROGRAMS = map_cmd

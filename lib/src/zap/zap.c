@@ -62,7 +62,7 @@
 #include <limits.h>
 #include <fcntl.h>
 #include <netdb.h>
-#include "ovis-lib-config.h"
+#include "ovis-ldms-config.h"
 #include "zap.h"
 #include "zap_priv.h"
 
