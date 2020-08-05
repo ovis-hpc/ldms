@@ -8,7 +8,7 @@ Map_la_SOURCES = Map.pyx Map.pxd
 nodist_Map_la_SOURCES = Map.c
 Map_la_CFLAGS = -g -O0 $(PY_INCLUDES) $(PYTHON_CPPFLAGS)
 Map_la_LDFLAGS = $(PTHON_LDFLAGS) -module -shared
-Map_la_LIBADD = $(top_builddir)/src/coll/libmap.la
+Map_la_LIBADD = $(top_builddir)/lib/src/coll/libmap.la
 
 pkgpyexecdir = $(pythondir)/ovis_lib
 

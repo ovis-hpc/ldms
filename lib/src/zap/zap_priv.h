@@ -54,7 +54,7 @@
 #include <sys/queue.h>
 #include <pthread.h>
 #include <errno.h>
-#include "ovis-lib-config.h"
+#include "ovis-ldms-config.h"
 #include "zap.h"
 
 #include "config.h"

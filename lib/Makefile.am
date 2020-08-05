@@ -7,7 +7,7 @@ if ENABLE_SOS
 SUBDIRS += bin python
 endif
 
-EXTRA_DIST = autogen.sh COPYING SHA.txt TAG.txt pedigree.am
+EXTRA_DIST = COPYING
 
 OVIS_LIB = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 OVIS_LIB_TARBALL = $(OVIS_LIB).tar.gz
@@ -20,10 +20,10 @@ install-data-local: install-doc
 endif
 
 if ENABLE_DOC_HTML
-DOCDEPS = $(top_srcdir)/src/*/*.c \
-          $(top_srcdir)/src/*/*.h \
-          $(top_srcdir)/src/*/*/*.h \
-          $(top_srcdir)/src/*/*/*.h
+DOCDEPS = $(top_srcdir)/lib/src/*/*.c \
+          $(top_srcdir)/lib/src/*/*.h \
+          $(top_srcdir)/lib/src/*/*/*.h \
+          $(top_srcdir)/lib/src/*/*/*.h
 all: doxygen-out
 doxygen-out: $(DOCDEPS)
 	doxygen ./Doxyfile
@@ -51,9 +51,6 @@ install-doc: install-dox
 	for f in README COPYING ChangeLog COPYING; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
 	done
-
-PEDIGREE = $(DESTDIR)/$(bindir)/lib-pedigree
-include $(srcdir)/pedigree.am
 
 uninstall-hook:
 	rm $(PEDIGREE)

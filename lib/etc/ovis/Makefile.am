@@ -1,12 +1,14 @@
 EXTRA_DIST = ovis-functions.sh \
 	     set-ovis-variables.sh.in
 
-do_subst = @LIB_SUBST_RULE@
+all: set-ovis-variables.sh
+
+do_subst = @OVIS_SUBST_RULE@
 
 set-ovis-variables.sh: set-ovis-variables.sh.in
 	$(do_subst) < $< > $@
 
-install-data-local: set-ovis-variables.sh
+install-data-local:
 	$(MKDIR_P) $(DESTDIR)/$(sysconfdir)/ovis
 	$(MKDIR_P) $(DESTDIR)/$(sysconfdir)/profile.d
 	$(INSTALL_SCRIPT) set-ovis-variables.sh $(DESTDIR)/$(sysconfdir)/profile.d

@@ -12,7 +12,7 @@ SUBDIRS =
 # systemd config files
 SUBDIRS += systemd
 
-do_subst = @LDMS_SUBST_RULE@
+do_subst = @OVIS_SUBST_RULE@
 
 EXTRA_DIST = ldmsauth.conf \
 	     sampler.conf \
@@ -41,13 +41,15 @@ EXAMPLE_FILES = $(srcdir)/aggregator.conf.cray_xc.example \
 		$(srcdir)/ldmsd.aggregator.env.cray_xc.example \
 		$(srcdir)/ldmsd.sampler.env.cray_xc.example
 
+all: $(ENV_FILES)
+
 $(builddir)/%.env: $(srcdir)/%.env.in
 	$(do_subst) < $< > $@
 
 CONF_DIR = $(DESTDIR)$(sysconfdir)/ldms
 
 # These are ldms-specific config
-install-data-local: $(ENV_FILES)
+install-data-local:
 	$(MKDIR_P) $(CONF_DIR)
 	$(INSTALL_DATA) $(ENV_FILES) $(CONF_DIR)/
 	$(INSTALL) -m 600 $(srcdir)/ldmsauth.conf $(CONF_DIR)

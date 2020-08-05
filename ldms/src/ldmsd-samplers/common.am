@@ -2,16 +2,17 @@
 # Variables exporting to sampler subdirectories #
 #################################################
 
-SAMPLER_CFLAGS = @OVIS_LIB_INCDIR_FLAG@ \
-		 -I$(top_builddir)/src \
-		 -I$(top_srcdir)/src \
-		 -I$(top_srcdir)/src/core \
-		 -I$(top_srcdir)/src/ldmsd
+SAMPLER_CFLAGS = -I$(top_srcdir) \
+		 -I$(top_builddir) \
+		 -I$(top_srcdir)/lib/src \
+		 -I$(top_srcdir)/ldms/src \
+		 -I$(top_srcdir)/ldms/src/core \
+		 -I$(top_srcdir)/ldms/src/ldmsd
 export SAMPLER_CFLAGS
 
-SAMPLER_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
+SAMPLER_LDFLAGS =
 export SAMPLER_LDFLAGS
 
-SAMPLER_LIBADD = $(top_builddir)/src/ldmsd/libsampler.la
+SAMPLER_LIBADD = $(top_builddir)/ldms/src/ldmsd/libsampler.la
 export SAMPLER_LIBADD
 #---------------------------------------------#

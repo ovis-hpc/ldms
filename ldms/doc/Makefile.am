@@ -1,11 +1,11 @@
-DOCDEPS = $(top_srcdir)/src/*/*.c \
-          $(top_srcdir)/src/*/*.h \
-          $(top_srcdir)/src/*/*/*.h \
-          $(top_srcdir)/src/*/*/*.h \
-          $(top_srcdir)/src/*/*.md \
-          $(top_srcdir)/src/*/*/*.md \
-	  $(top_srcdir)/README.md \
-	  $(top_srcdir)/doc/mdtest.md
+DOCDEPS = $(top_srcdir)/ldms/src/*/*.c \
+          $(top_srcdir)/ldms/src/*/*.h \
+          $(top_srcdir)/ldms/src/*/*/*.h \
+          $(top_srcdir)/ldms/src/*/*/*.h \
+          $(top_srcdir)/ldms/src/*/*.md \
+          $(top_srcdir)/ldms/src/*/*/*.md \
+	  $(top_srcdir)/ldms/README.md \
+	  $(top_srcdir)/ldms/doc/mdtest.md
 
 EXTRA_DIST = Doxyfile.in mdtest.md mddoxymanfix.sh
 
@@ -20,7 +20,7 @@ all: doxygen-out
 
 doxygen-out: $(DOCDEPS) Makefile.am Doxyfile
 	rm -f ldms
-	ln -s $(top_srcdir) ldms
+	ln -s $(top_srcdir)/ldms ldms
 	doxygen $(abs_builddir)/Doxyfile
 	touch doxygen-out
 	@(\

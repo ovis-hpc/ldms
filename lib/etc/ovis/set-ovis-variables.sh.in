@@ -14,8 +14,8 @@ _add LD_LIBRARY_PATH @libdir@
 
 export LDMS_AUTH_FILE=@sysconfdir@/ldms/ldmsauth.conf
 
-export LDMSD_PLUGIN_LIBPATH=@libdir@/ovis-ldms
-export ZAP_LIBPATH=@libdir@/ovis-lib
+export LDMSD_PLUGIN_LIBPATH=@LDMSD_PLUGIN_LIBPATH@
+export ZAP_LIBPATH=@ZAP_LIBPATH@
 
 # for uGNI transport
 # export ZAP_UGNI_PTAG=<your ptag>

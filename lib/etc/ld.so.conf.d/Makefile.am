@@ -1,11 +1,13 @@
 EXTRA_DIST = ovis-ld-so.conf.in
 
-do_subst = @LIB_SUBST_RULE@
+do_subst = @OVIS_SUBST_RULE@
 
 ovis-ld-so.conf: ovis-ld-so.conf.in
 	$(do_subst) < $< > $@
 
-install-data-local: ovis-ld-so.conf
+all: ovis-ld-so.conf
+
+install-data-local:
 	$(MKDIR_P) $(DESTDIR)/$(sysconfdir)/ld.so.conf.d/
 	$(INSTALL_DATA) $(builddir)/ovis-ld-so.conf $(DESTDIR)/$(sysconfdir)/ld.so.conf.d/
 

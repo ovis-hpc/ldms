@@ -4,6 +4,8 @@
 
 include ../common.am
 
+EXTRA_DIST = README.md
+
 SUBDIRS = shm_util mpi_profiler
 
 pkglib_LTLIBRARIES = libshm_sampler.la

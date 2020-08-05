@@ -12,7 +12,7 @@ m4/Ovis-top.m4 \
 SHA.txt \
 TAG.txt
 
-DISTCLEANFILES = ovis-all-config.h
+nobase_include_HEADERS = ovis-ldms-config.h
 
 docdir = $(datadir)/doc/@PACKAGE@-@VERSION@
 # dist_doc_DATA = README.txt
