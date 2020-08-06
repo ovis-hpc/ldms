@@ -67,7 +67,7 @@ import errno
 class LdmsdCmdParser(cmd.Cmd):
     def __init__(self, host = None, port = None, xprt = None, infile=None,
                  auth=None, auth_opt=None):
-        self.msg_no = 1
+        self.msg_no = 0
 
         if host and port:
             self.ctrl = ldmsd_config.ldmsdInbandConfig(host = host,
@@ -85,6 +85,10 @@ class LdmsdCmdParser(cmd.Cmd):
         else:
             cmd.Cmd.__init__(self)
 
+    def msg_no_get(self):
+        self.msg_no += 1
+        return self.msg_no
+
     def emptyline(self):
         pass
 
@@ -94,6 +98,18 @@ class LdmsdCmdParser(cmd.Cmd):
             if tk.endswith("="):
                 return False
         return True
+
+    def communicate(self, json_obj, json_str):
+        req = LDMSD_Message(self.ctrl)
+        req.send(LDMSD_Message.LDMSD_MSG_TYPE_REQ, json_obj, json_str)
+        rsp = LDMSD_Message(self.ctrl)
+        rsp.receive()
+        return rsp.json_ent
+
+    def generic_resp(self, rsp):
+        if rsp["status"] != 0:
+            if "msg" in rsp.keys():
+                print(rsp["msg"])
 
     def do_shell(self, args):
         """
@@ -169,14 +185,33 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         json JSON_REQUEST_OBJECT
 
-        Send the given JSON request object to the ldmsd, and print the response.
+        Send the given JSON request object to the ldmsd and print the response.
 
         """
-        req = LDMSD_Message(self.ctrl)
-        req.send(LDMSD_Message.LDMSD_MSG_TYPE_REQ, None, arg)
-        rsp = LDMSD_Message(self.ctrl)
-        rsp.receive()
-        print(json.dumps(rsp.json_ent, indent=2))
+        rsp = self.communicate(None, arg)
+        print(json.dumps(rsp, indent=2))
+
+    def do_daemon_exit(self, arg):
+        req = { "request"   : "update",
+                "id"        : self.msg_no_get(),
+                "schema"    : "daemon",
+                "enabled"   : False,
+                "spec"      : { "startup" : {}}
+                }
+        rsp = self.communicate(req, None)
+        self.generic_resp(rsp)
+
+    def do_version(self, arg):
+        req = { "request"   : "version",
+                "id"        : self.msg_no_get()
+              }
+        rsp = self.communicate(req, None)
+        if rsp["status"] == 0:
+            print("LDMS Version: {}".format(rsp["result"]["LDMS Version"]))
+            print("LDMSD Version: {}".format(rsp["result"]["LDMSD Version"]))
+        else:
+            if "msg" in rsp.keys():
+                print(rsp["msg"])
 
     def do_notify(self, arg):
         """
