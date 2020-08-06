@@ -93,7 +93,7 @@ class LDMSD_Message(object):
         self.type = type
         if json_str:
             self.json_str += json_str
-        if self.json_ent is not None:
+        if json_ent is not None:
             self.json_str = json.dumps(json_ent)
         self.json_str_len = len(self.json_str)
 
