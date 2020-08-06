@@ -161,13 +161,16 @@ static json_entity_t
 ldmsd_cfgobj_query_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt);
 static json_entity_t
 ldmsd_cfgobj_export_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt);
+static json_entity_t
+stream_subscribe_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt);
 
 static struct request_handler_entry request_handler_tbl[] = {
-		{ "create",	ldmsd_cfgobj_create_handler,	XUG },
-		{ "delete",	ldmsd_cfgobj_delete_handler,	XUG },
-		{ "export",	ldmsd_cfgobj_export_handler,	XUG },
-		{ "query",	ldmsd_cfgobj_query_handler,	XALL },
-		{ "update",	ldmsd_cfgobj_update_handler,	XUG },
+		{ "create",		ldmsd_cfgobj_create_handler,	XUG },
+		{ "delete",		ldmsd_cfgobj_delete_handler,	XUG },
+		{ "export",		ldmsd_cfgobj_export_handler,	XUG },
+		{ "query",		ldmsd_cfgobj_query_handler,	XALL },
+		{ "stream_subscribe",	stream_subscribe_handler,	XUG },
+		{ "update",		ldmsd_cfgobj_update_handler,	XUG },
 };
 
 int request_handler_entry_cmp(const void *a, const void *b)
@@ -827,6 +830,85 @@ ldmsd_cfgobj_export_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt)
 oom:
 	if (buf)
 		ldmsd_req_buf_free(buf);
+	if (reply)
+		json_entity_free(reply);
+	errno = ENOMEM;
+	return NULL;
+}
+
+static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
+			       ldmsd_stream_type_t stream_type,
+			       const char *data, size_t data_len,
+			       json_entity_t entity)
+{
+	int rc;
+	char *s;
+	size_t s_len;
+	jbuf_t jb = NULL;
+	const char *stream = ldmsd_stream_client_name(c);
+
+	if (data) {
+		s = (char *)data;
+		s_len = data_len;
+	} else {
+		jb = json_entity_dump(NULL, entity);
+		if (!jb) {
+			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+			return ENOMEM;
+		}
+		s = jb->buf;
+		s_len = jb->buf_len;
+	}
+	rc = ldmsd_stream_publish((ldms_t)ctxt, stream, stream_type, s, s_len);
+	if (jb)
+		jbuf_free(jb);
+	return rc;
+}
+
+static json_entity_t
+stream_subscribe_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt)
+{
+	int msg_no = reqc->key.msg_no;
+	json_entity_t reply, streams, item;
+	char *stream_name;
+	ldmsd_stream_client_t c;
+
+	streams = json_value_find(reqc->json, "stream_names");
+	if (!streams) {
+		reply = ldmsd_reply_new("stream_subscribe", msg_no, EINVAL,
+				"'stream_subscribe' is missing.", NULL);
+		if (!reply)
+			goto oom;
+		return reply;
+	}
+
+	if (JSON_LIST_VALUE != json_entity_type(streams)) {
+		reply = ldmsd_reply_new("stream_subscribe", msg_no, EINVAL,
+				"stream_subscribe: 'stream_names' must be a list.",
+				NULL);
+		if (!reply)
+			goto oom;
+		return reply;
+	}
+
+	for (item = json_item_first(streams); item; item = json_item_next(item)) {
+		if (JSON_STRING_VALUE != json_entity_type(item)) {
+			reply = ldmsd_reply_new("stream_subscribe", msg_no, EINVAL,
+					"stream_subscribe: The elements of "
+					"'stream_names' must be a string.", NULL);
+			if (!reply)
+				goto oom;
+			return reply;
+		}
+		stream_name = json_value_str(item)->str;
+		c = ldmsd_stream_subscribe(stream_name, stream_republish_cb,
+					   reqc->xprt->ldms.ldms);
+		if (!c)
+			goto oom;
+	}
+
+	return ldmsd_reply_new("stream_subscribe", msg_no, 0, NULL, NULL);
+oom:
 	if (reply)
 		json_entity_free(reply);
 	errno = ENOMEM;
