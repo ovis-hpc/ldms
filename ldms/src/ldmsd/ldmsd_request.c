@@ -163,6 +163,8 @@ static json_entity_t
 ldmsd_cfgobj_export_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt);
 static json_entity_t
 stream_subscribe_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt);
+static json_entity_t
+version_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt);
 
 static struct request_handler_entry request_handler_tbl[] = {
 		{ "create",		ldmsd_cfgobj_create_handler,	XUG },
@@ -171,6 +173,7 @@ static struct request_handler_entry request_handler_tbl[] = {
 		{ "query",		ldmsd_cfgobj_query_handler,	XALL },
 		{ "stream_subscribe",	stream_subscribe_handler,	XUG },
 		{ "update",		ldmsd_cfgobj_update_handler,	XUG },
+		{ "version",		version_handler,		XALL },
 };
 
 int request_handler_entry_cmp(const void *a, const void *b)
@@ -912,6 +915,45 @@ oom:
 	if (reply)
 		json_entity_free(reply);
 	errno = ENOMEM;
+	return NULL;
+}
+
+static json_entity_t
+version_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt)
+{
+	int msg_no = reqc->key.msg_no;
+	json_entity_t reply, result = NULL;
+	struct ldms_version ldms_version;
+	struct ldmsd_version ldmsd_version;
+	char ldms_v[1024], ldmsd_v[1024];
+
+	ldms_version_get(&ldms_version);
+	ldmsd_version_get(&ldmsd_version);
+
+	snprintf(ldms_v, 1024, "%hhu.%hhu.%hhu.%hhu",
+			ldms_version.major, ldms_version.minor,
+			ldms_version.patch, ldms_version.flags);
+	snprintf(ldmsd_v, 1024, "%hhu.%hhu.%hhu.%hhu",
+			ldmsd_version.major, ldmsd_version.minor,
+			ldmsd_version.patch, ldmsd_version.flags);
+
+	result = json_dict_build(NULL,
+				JSON_STRING_VALUE, "LDMS Version", ldms_v,
+				JSON_STRING_VALUE, "LDMSD Version", ldmsd_v,
+				-1);
+	if (!result)
+		goto oom;
+
+	reply = ldmsd_reply_new("version", msg_no, 0, NULL, result);
+	if (!reply)
+		goto oom;
+	return reply;
+
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	errno = ENOMEM;
+	if (result)
+		json_entity_free(result);
 	return NULL;
 }
 
