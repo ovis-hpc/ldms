@@ -86,20 +86,6 @@ int prdcr_resolve(const char *hostname, unsigned short port_no,
 	return 0;
 }
 
-static void __prdcr_stream_list_free(struct ldmsd_prdcr_stream_list *list)
-{
-	ldmsd_str_ent_t s;
-
-	s = LIST_FIRST(list);
-	while (s) {
-		LIST_REMOVE(s, entry);
-		free(s->str);
-		free(s);
-		s = LIST_FIRST(list);
-	}
-	free(list);
-}
-
 void ldmsd_prdcr___del(ldmsd_cfgobj_t obj)
 {
 	ldmsd_prdcr_t prdcr = (ldmsd_prdcr_t)obj;
@@ -112,7 +98,7 @@ void ldmsd_prdcr___del(ldmsd_cfgobj_t obj)
 	if (prdcr->conn_auth_args)
 		av_free(prdcr->conn_auth_args);
 	if (prdcr->stream_list)
-		__prdcr_stream_list_free(prdcr->stream_list);
+		json_entity_free(prdcr->stream_list);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -580,24 +566,6 @@ int updtr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t 
 	return 0;
 }
 
-int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
-{
-	ldmsd_str_ent_t s = calloc(1, sizeof *s);
-	if (!s)
-		goto err;
-	s->str = strdup(stream);
-	if (!s->str)
-		goto err;
-	ldmsd_prdcr_lock(prdcr);
-	LIST_INSERT_HEAD(prdcr->stream_list, s, entry);
-	ldmsd_prdcr_unlock(prdcr);
-	return 0;
- err:
-	if (s)
-		free(s);
-	return ENOMEM;
-}
-
 /**
  * Get the first producer set
  *
@@ -680,29 +648,6 @@ void ldmsd_prdcr_strgp_update(ldmsd_strgp_t strgp)
 		ldmsd_prdcr_unlock(prdcr);
 	}
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-}
-
-int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, char *stream_name,
-				char *rep_buf, size_t rep_len,
-				ldmsd_sec_ctxt_t ctxt)
-{
-	regex_t regex;
-	ldmsd_prdcr_t prdcr;
-	int rc;
-
-	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
-	if (rc)
-		return rc;
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
-		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
-		if (rc)
-			continue;
-		ldmsd_prdcr_subscribe(prdcr, stream_name);
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-	regfree(&regex);
-	return 0;
 }
 
 static int ldmsd_prdcr_enable(ldmsd_cfgobj_t obj)
@@ -865,63 +810,11 @@ static int __prdcr_type_attr(json_entity_t value, json_entity_t type,
 	return 0;
 }
 
-static int __prdcr_streams_attr(json_entity_t streams, json_entity_t err,
-				struct ldmsd_prdcr_stream_list **_stream_list)
-{
-	int rc;
-	struct ldmsd_prdcr_stream_list *list = NULL;
-	ldmsd_str_ent_t s;
-	json_entity_t ent;
-
-	if (!streams)
-		goto out;
-
-	list = malloc(sizeof(*list));
-	if (!list)
-		goto oom;
-	LIST_INIT(list);
-
-	for (ent = json_item_first(streams); ent; ent = json_item_next(ent)) {
-		if (JSON_STRING_VALUE != json_entity_type(ent)) {
-			err = json_dict_build(err,
-					JSON_STRING_VALUE, "producers",
-						"An element in 'streams' "
-						"is not a JSON string.",
-					-1);
-			if (!err)
-				goto oom;
-			rc = EINVAL;
-			goto err;
-		}
-
-		s = malloc(sizeof(*s));
-		if (!ent)
-			goto oom;
-		s->str = strdup(json_value_str(ent)->str);
-		if (!s->str) {
-			free(s);
-			goto oom;
-		}
-		LIST_INSERT_HEAD(list, s, entry);
-	}
-
-out:
-	*_stream_list = list;
-	return 0;
-oom:
-	rc = ENOMEM;
-err:
-	if (list)
-		__prdcr_stream_list_free(list);
-	*_stream_list = NULL;
-	return rc;
-}
-
 static json_entity_t __prdcr_attr_get(json_entity_t dft, json_entity_t spc,
 				enum ldmsd_prdcr_type *_type, char **_xprt,
 				char **_host, short *_port,
 				long *_interval_us, char **_auth,
-				struct ldmsd_prdcr_stream_list **_stream_list,
+				json_entity_t *_stream_list,
 				int *_perm)
 {
 	int rc;
@@ -961,7 +854,7 @@ static json_entity_t __prdcr_attr_get(json_entity_t dft, json_entity_t spc,
 		if (!auth)
 			auth = json_value_find(dft, "auth");
 		if (!streams)
-			streams = json_value_find(dft, "stream");
+			streams = json_value_find(dft, "streams");
 		if (!perm)
 			perm = json_value_find(dft, "perm");
 		if (!type)
@@ -969,10 +862,12 @@ static json_entity_t __prdcr_attr_get(json_entity_t dft, json_entity_t spc,
 	}
 
 	/* streams */
-	rc = __prdcr_streams_attr(streams, err, _stream_list);
-	if (rc) {
-		if (ENOMEM == rc)
+	if (streams) {
+		*_stream_list = json_entity_copy(streams);
+		if (!_stream_list)
 			goto oom;
+	} else {
+		*_stream_list = NULL;
 	}
 
 	/* type */
@@ -1072,8 +967,7 @@ oom:
 
 json_entity_t __prdcr_export_config(ldmsd_prdcr_t prdcr)
 {
-	json_entity_t query, stream_list = NULL, s, a;
-	ldmsd_str_ent_t stream;
+	json_entity_t query, stream_list = NULL, a;
 
 	query =ldmsd_cfgobj_query_result_new(&prdcr->obj);
 	if (!query)
@@ -1090,19 +984,16 @@ json_entity_t __prdcr_export_config(ldmsd_prdcr_t prdcr)
 	if (!query)
 		goto oom;
 
-	stream_list = json_entity_new(JSON_LIST_VALUE);
-	if (!stream_list)
-		goto oom;
-	LIST_FOREACH(stream, prdcr->stream_list, entry) {
-		s = json_entity_new(JSON_STRING_VALUE, stream->str);
-		if (!s)
+	if (prdcr->stream_list) {
+		stream_list = json_entity_copy(prdcr->stream_list);
+		if (!stream_list)
 			goto oom;
-		json_item_add(stream_list, s);
+		a = json_entity_new(JSON_ATTR_VALUE, "streams", stream_list);
+		if (!a)
+			goto oom;
+		json_attr_add(query, a);
 	}
-	a = json_entity_new(JSON_ATTR_VALUE, "streams", stream_list);
-	if (!a)
-		goto oom;
-	json_attr_add(query, a);
+
 	return query;
 oom:
 	if (query)
@@ -1151,7 +1042,7 @@ json_entity_t ldmsd_prdcr_update(ldmsd_cfgobj_t obj, short enabled,
 	short port;
 	int perm;
 	long interval;
-	struct ldmsd_prdcr_stream_list *stream_list;
+	json_entity_t stream_list;
 	enum ldmsd_prdcr_type type;
 	json_entity_t err;
 	ldmsd_prdcr_t prdcr = (ldmsd_prdcr_t)obj;
@@ -1213,7 +1104,8 @@ json_entity_t ldmsd_prdcr_update(ldmsd_cfgobj_t obj, short enabled,
 		prdcr->conn_intrvl_us = interval;
 
 	if (stream_list) {
-		__prdcr_stream_list_free(prdcr->stream_list);
+		if (prdcr->stream_list)
+			json_entity_free(prdcr->stream_list);
 		prdcr->stream_list = stream_list;
 	}
 
@@ -1231,7 +1123,7 @@ json_entity_t ldmsd_prdcr_create(const char *name, short enabled, json_entity_t 
 	short port;
 	int perm;
 	long interval_us;
-	struct ldmsd_prdcr_stream_list *stream_list;
+	json_entity_t stream_list;
 	enum ldmsd_prdcr_type type;
 	ldmsd_prdcr_t prdcr = NULL;
 	json_entity_t err;
@@ -1318,14 +1210,10 @@ json_entity_t ldmsd_prdcr_create(const char *name, short enabled, json_entity_t 
 	prdcr->host_name = host;
 	prdcr->xprt_name = xprt;
 	prdcr->conn_auth = auth;
-	if (!stream_list) {
-		prdcr->stream_list = malloc(sizeof(*prdcr->stream_list));
-		if (!prdcr->stream_list)
-			goto oom;
-		LIST_INIT(prdcr->stream_list);
-	} else {
+	if (!stream_list)
+		prdcr->stream_list = NULL;
+	else
 		prdcr->stream_list = stream_list;
-	}
 
 	if (prdcr_resolve(prdcr->host_name, prdcr->port_no, &prdcr->ss, &prdcr->ss_len)) {
 		ldmsd_req_buf_t buf = ldmsd_req_buf_alloc(512);

@@ -402,7 +402,7 @@ typedef struct ldmsd_prdcr {
 	/**
 	 * list of subscribed streams from this producer
 	 */
-	LIST_HEAD(ldmsd_prdcr_stream_list,ldmsd_str_ent) *stream_list;
+	json_entity_t stream_list;
 
 	/**
 	 * Maintains a tree of all metric sets available from this
