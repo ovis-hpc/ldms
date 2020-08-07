@@ -353,15 +353,57 @@ static void prdcr_dir_cb(ldms_t xprt, int status, ldms_dir_t dir, void *arg)
 	ldms_xprt_dir_free(xprt, dir);
 }
 
-//static int __on_subs_resp(ldmsd_req_cmd_t rcmd)
-//{
-//	return 0;
-//}
+static int __on_subs_resp(ldmsd_req_ctxt_t reqc, void *resp_args)
+{
+	ldmsd_prdcr_t prdcr = (ldmsd_prdcr_t)resp_args;
+	ldmsd_log(LDMSD_LDEBUG, "prdcr '%s' receives the response of "
+				"the stream_subscribe request.\n",
+				prdcr->obj.name);
+	ldmsd_prdcr_put(prdcr); /* Taken when the request was sent */
+	ldmsd_req_ctxt_ref_put(reqc, "create");
+	return 0;
+}
 
 /* Send subscribe request to peer */
 static int __prdcr_subscribe(ldmsd_prdcr_t prdcr)
 {
-	return ENOSYS;
+	int rc;
+	json_entity_t req_obj, streams, stream_list;
+
+	if (!prdcr->stream_list)
+		return 0;
+
+	req_obj = ldmsd_req_obj_new("stream_subscribe");
+	if (!req_obj)
+		goto oom;
+
+	stream_list = json_entity_copy(prdcr->stream_list);
+	if (!stream_list)
+		goto oom;
+	streams = json_entity_new(JSON_ATTR_VALUE, "stream_names", stream_list);
+	if (!streams) {
+		json_entity_free(stream_list);
+		goto oom;
+	}
+	json_attr_add(req_obj, streams);
+
+	ldmsd_prdcr_get(prdcr); /* Put back in __on_subs_resp */
+	rc = ldmsd_request_send(prdcr->xprt, req_obj, __on_subs_resp, (void *)prdcr);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Error %d: prdcr '%s' failed to send "
+					"a stream_subscribe request.\n",
+					rc, prdcr->obj.name);
+		goto err;
+	}
+	return rc;
+
+oom:
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	rc = ENOMEM;
+err:
+	if (req_obj)
+		json_entity_free(req_obj);
+	return rc;
 }
 
 static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
