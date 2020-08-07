@@ -96,6 +96,8 @@ extern int ldmsd_req_debug;
  * | stream payload                                          |
  * S                                                         S
  * +---------------------------------------------------------+
+ *
+ * All request handlers must respond back to the requester.
  */
 
 #pragma pack(push, 1)
@@ -164,7 +166,7 @@ typedef struct ldmsd_req_buf {
 #define LDMSD_REQ_CTXT_RSP 2  /* Created by this LDMSD when sending a request to a peer and waiting for a response */
 
 typedef struct ldmsd_req_ctxt *ldmsd_req_ctxt_t;
-typedef int (* ldmsd_req_resp_fn)(ldmsd_req_ctxt_t reqc);
+typedef int (* ldmsd_req_resp_fn)(ldmsd_req_ctxt_t reqc, void *resp_args);
 typedef struct ldmsd_req_ctxt {
 	int type;
 	/*
@@ -193,8 +195,6 @@ typedef struct ldmsd_req_ctxt {
 
 	ev_t free_ev; /* Event to be posted when the context shouldn't or won't be used any further */
 
-	void *ctxt;
-
 	json_entity_t json;
 
 	/* Buffer to aggregate a JSON string received from single or multiple record(s) */
@@ -206,8 +206,18 @@ typedef struct ldmsd_req_ctxt {
 	/*
 	 * In case the request needs a specific response,
 	 * this is the handle of the response handler.
+	 *
+	 * The resp_handler is responsible for putting back the 'create' reference
+	 * by calling
+	 *
+	 * ldmsd_req_ctxt_ref_put(reqc, "create");
+	 *
 	 */
 	ldmsd_req_resp_fn resp_handler;
+	/*
+	 * The caller context to be passed to resp_handler
+	 */
+	void *resp_args;
 } *ldmsd_req_ctxt_t;
 
 /**
@@ -329,6 +339,12 @@ ldmsd_req_ctxt_t ldmsd_req_ctxt_next(ldmsd_req_ctxt_t reqc);
  */
 void ldmsd_msg_key_get(void *xprt, struct ldmsd_msg_key *key_);
 
+/*
+ * \brief Send a request containing the JSON object \c req_obj
+ */
+int ldmsd_request_send(ldms_t ldms, json_entity_t req_obj,
+			ldmsd_req_resp_fn resp_fn, void *resp_args);
+
 typedef int (*ldmsd_msg_send_fn_t)(void *xprt, char *data, size_t data_len);
 int ldmsd_append_msg_buffer(void *xprt, size_t max_msg, struct ldmsd_msg_key *key,
 			ldmsd_msg_send_fn_t send_fn,
@@ -398,6 +414,14 @@ enum ldmsd_cfgobj_request_type {
 };
 
 const char *ldmsd_cfgobj_req_type2str(enum ldmsd_cfgobj_request_type type);
+
+/**
+ * \brief Create a request JSON object with the mandatory attributes.
+ *
+ * \return A JSON dictionary { "request": \c request, "id": 0 }. NULL if ENOMEM.
+ */
+json_entity_t ldmsd_req_obj_new(const char *request);
+
 /**
  * \brief Create the JSON object of a cfgobj update request.
  *

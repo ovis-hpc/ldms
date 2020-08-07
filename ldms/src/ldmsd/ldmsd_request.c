@@ -1592,7 +1592,7 @@ int ldmsd_process_msg_response(ldmsd_req_ctxt_t reqc)
 	}
 
 	if (reqc->resp_handler) {
-		rc = reqc->resp_handler(reqc);
+		rc = reqc->resp_handler(reqc, reqc->resp_args);
 	} else {
 		reply = __process_msg_requests(reqc, &sctxt);
 		if (!reply) {
@@ -1650,5 +1650,58 @@ out:
 		json_entity_free(entity);
 	ldmsd_req_ctxt_free(reqc);
 	/* Not sending any response back to the publisher */
+	return rc;
+}
+
+int ldmsd_request_send(ldms_t ldms, json_entity_t req_obj,
+			ldmsd_req_resp_fn resp_fn, void *resp_args)
+{
+	int rc;
+	jbuf_t jb;
+	ldmsd_cfg_xprt_t xprt;
+	ldmsd_req_ctxt_t reqc;
+	struct ldmsd_msg_key key;
+
+	xprt = ldmsd_cfg_xprt_ldms_new(ldms);
+	if (!xprt) {
+		rc = errno;
+		goto err;
+	}
+
+	ldmsd_msg_key_get(xprt->ldms.ldms, &key);
+
+	reqc = ldmsd_req_ctxt_alloc(&key, xprt);
+	if (!reqc) {
+		rc = errno;
+		goto err;
+	}
+	reqc->resp_handler = resp_fn;
+	reqc->resp_args = resp_args;
+
+	json_attr_mod(req_obj, "id", key.msg_no);
+
+	jb = json_entity_dump(NULL, req_obj);
+	if (!jb) {
+		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = ldmsd_append_request(reqc, LDMSD_REC_SOM_F | LDMSD_REC_EOM_F,
+				  jb->buf, jb->cursor);
+	jbuf_free(jb);
+	if (rc) {
+		/*
+		 * Failed to send the request so there is no need to
+		 * keep the context around.
+		 */
+		ldmsd_req_ctxt_ref_put(reqc, "create");
+	}
+	return rc;
+
+err:
+	if (xprt)
+		ldmsd_cfg_xprt_ref_put(xprt, "create");
+	if (jb)
+		jbuf_free(jb);
 	return rc;
 }

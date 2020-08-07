@@ -61,7 +61,7 @@
  */
 void ldmsd_msg_key_get(void *xprt, struct ldmsd_msg_key *key_)
 {
-	static uint32_t msg_no = 0;
+	static uint32_t msg_no = 1;
 	key_->msg_no = __sync_fetch_and_add(&msg_no, 1);
 	key_->conn_id = (uint64_t)(unsigned long)xprt;
 }
@@ -256,6 +256,17 @@ const char *ldmsd_cfgobj_req_type2str(enum ldmsd_cfgobj_request_type type)
 	}
 }
 
+json_entity_t ldmsd_req_obj_new(const char *request)
+{
+	json_entity_t obj;
+
+	obj = json_dict_build(NULL,
+			JSON_STRING_VALUE, "request", request,
+			JSON_INT_VALUE, "id", 0,
+			-1);
+	return obj;
+}
+
 json_entity_t
 ldmsd_cfgobj_update_req_obj_new(int id, const char *cfgobj_type,
 				short enabled, json_entity_t dft,
@@ -272,9 +283,11 @@ ldmsd_cfgobj_update_req_obj_new(int id, const char *cfgobj_type,
 	int rc;
 	rc = ENOMEM;
 	json_entity_t obj, a;
-	obj = json_dict_build(NULL,
-			JSON_STRING_VALUE, "request", "update",
-			JSON_INT_VALUE, "id", id,
+	obj = ldmsd_req_obj_new("update");
+	if (!obj)
+		goto err;
+	json_attr_mod(obj, "id", id);
+	obj = json_dict_build(obj,
 			JSON_STRING_VALUE, "schema", cfgobj_type,
 			-1);
 	if (!obj)
@@ -321,9 +334,11 @@ ldmsd_cfgobj_create_req_obj_new(int id, const char *cfgobj_type,
 	json_entity_t obj, a;
 
 	rc = ENOMEM;
-	obj = json_dict_build(NULL,
-			JSON_STRING_VALUE, "request", "create",
-			JSON_INT_VALUE, "id", id,
+	obj = ldmsd_req_obj_new("create");
+	if (!obj)
+		goto err;
+	json_attr_mod(obj, "id", id);
+	obj = json_dict_build(obj,
 			JSON_STRING_VALUE, "schema", cfgobj_type,
 			JSON_BOOL_VALUE, "enabled", enabled,
 			JSON_DICT_VALUE, "spec", -2,
