@@ -665,6 +665,8 @@ json_entity_t ldmsd_plugin_query(ldmsd_cfgobj_t obj)
 {
 	json_entity_t query, status;
 	ldmsd_plugin_inst_t inst = (ldmsd_plugin_inst_t)obj;
+	const char *usage_str;
+
 	query = __plugin_export_config(inst);
 	if (!query)
 		goto err;
@@ -676,11 +678,26 @@ json_entity_t ldmsd_plugin_query(ldmsd_cfgobj_t obj)
 		errno = ENOMEM;
 		goto err;
 	}
+
+	/* status */
 	status = ldmsd_plugin_inst_query(inst, "status");
 	if (!status && errno)
 		goto err;
 	if (status)
 		json_attr_mod(query, "status", status);
+
+	/* usage */
+	usage_str = ldmsd_plugin_inst_help(inst);
+	if (usage_str) {
+		query = json_dict_build(query,
+				JSON_STRING_VALUE, "usage", usage_str,
+				-1);
+		if (!query) {
+			errno = ENOMEM;
+			goto err;
+		}
+	}
+
 	return ldmsd_result_new(0, NULL, query);
 err:
 	if (query)
