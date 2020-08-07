@@ -61,6 +61,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <errno.h>
 #include <ctype.h>
 #include "ibnet_data.h"
 #include "ldmsd_plugattr.h"
@@ -149,6 +150,7 @@ struct ib_port {
 	/**
 	 * Metric handle for the meta lidport;
 	 */
+	struct timeval last_fail; /* last port-pausing fail */
 	double qtime; /* mad call time in seconds */
 	int32_t stime; /* mad call end - group query start, microseconds .*/
 	__be16 cap_mask;
@@ -178,6 +180,8 @@ struct ibnet_data {
 	/* name of file node-name-map; sometimes
  * 		/etc/opensm/ib-node-name-map or some such */
 	char *lidnames;
+	int timeout;
+	int delta_retry;
 	nn_map_t *nnmap;
 	/* name of file with lid/port locations to sample. */
 	char *srclist;
@@ -224,6 +228,7 @@ struct ibnet_data {
 static const char *ibnet_opts[] = {
 	"metric-conf",
 	"timing",
+	"millis",
 	"port-name",
 	"port-number",
 	"source-list",
@@ -282,7 +287,7 @@ char *ibnet_data_usage() {
 	char *r;
 
 	const char *base = "config name=" SAMP " port-name=<hca> source-list=<lidfile> [port-number=<num>]\n"
-	"       [metric-conf=<metricfile>] [node-name-map=<nnmap>] [timing=<timeopt>]\n"
+	"       [metric-conf=<metricfile>] [node-name-map=<nnmap>] [timing=<timeopt>] [millis=<timeout>]\n"
 	"       [producer=<name>] [instance=<name>] [component_id=<uint64_t>] [schema=<name_base>]\n"
 	"       [debug]\n"
 	"       [uid=<user-id>] [gid=<group-id>] [perm=<mode_t permission bits>]\n"
@@ -290,6 +295,7 @@ char *ibnet_data_usage() {
 	"    metricfile   full path of list of metric groups or metrics (optional).\n"
 	"    hca	  local interface name (required).\n"
 	"    num	  port number on local hca. (default 1)\n"
+	"    millis	milliseconds timeout for port queries (default 0: use ib library default 1000)\n"
 	"    nnmap	full path of file with guid:description pairs as used (optional)\n"
 	"		with --node-name-map in ibnetdiscover.\n"
 	"    timeopt      0:no timing data, 1:bulk only, 2:port and bulk, 3: offset timing in ports also.\n"
@@ -346,6 +352,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 		return NULL;
 	d->log = log;
 	d->ca_port = 1;
+	d->delta_retry = 600; /* seconds after a query failure before retry */
 	memcpy(d->cr_opt, (void*)cr_default, sizeof(cr_default));
 
 	/* optional debug */
@@ -367,6 +374,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 	/* optional */
 	LENCHECK(conf, "metric-conf");
 	LENCHECK(lidnames, "node-name-map");
+	LENCHECK(millis, "millis");
 	LENCHECK(cid, LDMSD_COMPID);
 	LENCHECK(cnum, "port-number");
 	LENCHECK(sbase, "schema");
@@ -406,6 +414,26 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 			d->log(LDMSD_LERROR, SAMP " config out of memory.\n");
 			goto err;
 		}
+	}
+
+	if (millis) {
+		char *endp;
+		endp = NULL;
+		errno = 0;
+		long j = strtol(millis, &endp, 0);
+		if (endp == millis || errno) {
+			d->log(LDMSD_LERROR, SAMP "Got bad query timeout '%s'\n",
+				millis);
+			rc = EINVAL;
+			goto err;
+		}
+		if (j > INT_MAX) {
+			d->log(LDMSD_LERROR, SAMP "millis too big %s\n",
+				millis);
+			rc = EINVAL;
+			goto err;
+		}
+		d->timeout = (int)j;
 	}
 
 	if (cnum) {
@@ -616,13 +644,14 @@ void ibnet_data_sample(struct ibnet_data *d)
 	struct timeval tv[3];
 	struct timeval tv_diff;
 
-	if (d->port_timing) {
-		gettimeofday(&tv[0], 0);
-		ldms_transaction_begin(d->timing_set);
-	}
+	gettimeofday(&tv[0], 0);
 	struct ib_port *port;
 	LIST_FOREACH(port, &(d->ports), entry) {
-		port_query(d, port, &tv[0]);
+		if (port-> last_fail.tv_sec == 0 ||
+			tv[0].tv_sec > port->last_fail.tv_sec + d->delta_retry) {
+			port->last_fail.tv_sec = 0;
+			port_query(d, port, &tv[0]);
+		}
 	}
 	if (d->port_timing) {
 		gettimeofday(&tv[1], 0);
@@ -639,6 +668,7 @@ void ibnet_data_sample(struct ibnet_data *d)
 		timersub(&tv[2], &tv[1], &tv_diff);
 		dtprocess = tv_diff.tv_sec + tv_diff.tv_usec *1e-6;
 
+		ldms_transaction_begin(d->timing_set);
 		v.v_d = dtquery;
 		ldms_metric_set(d->timing_set, d->index_ib_query_time, &v);
 
@@ -807,7 +837,7 @@ const char * timing_schema)
 	}
 	if (d->port_timing == 3) {
 		MADD("port_query_offset");
-		rc = ldms_schema_metric_add(d->port_schema, "port_query_offset", LDMS_V_D64);
+		rc = ldms_schema_metric_add(d->port_schema, "port_query_offset", LDMS_V_S32);
 		if (rc < 0)
 			goto err2;
 		d->index_port_query_offset = rc;
@@ -1144,9 +1174,11 @@ static void port_query(struct ibnet_data *d, struct ib_port *port, struct timeva
 		return;
 	if (!port)
 		return;
+	if (port->last_fail.tv_sec != 0)
+		return;
 
 	struct timeval qtv_diff, qtv_now, qtv_prev;
-	if (d->port_timing == 2) {
+	if (d->port_timing >= 2) {
 		port->qtime = 0;
 		port->stime = 0;
 		gettimeofday(&qtv_prev, 0);
@@ -1154,7 +1186,7 @@ static void port_query(struct ibnet_data *d, struct ib_port *port, struct timeva
 	if (!port->cap_mask) {
 		uint8_t qr[PQMAD_SIZE];
 		memset(qr, 0, sizeof(qr));
-		if (!pma_query_via(qr, &port->port_id, port->num, 0/*timeout*/,
+		if (!pma_query_via(qr, &port->port_id, port->num, d->timeout/* millis*/,
 			CLASS_PORT_INFO, d->port)) {
 			d->log(LDMSD_LDEBUG, SAMP ": failed get class port info for lid %d port %d\n",
 				port->lid, port->num);
@@ -1183,14 +1215,17 @@ static void port_query(struct ibnet_data *d, struct ib_port *port, struct timeva
 			if (skip_rest) {
 				res = NULL;
 			} else {
-			res = pma_query_via(port->rcv_buf[g], &port->port_id,
-				port->num, 0, cr->id, d->port);
+				res = pma_query_via(port->rcv_buf[g], &port->port_id,
+					port->num, d->timeout/* millis*/, cr->id, d->port);
+				if (!res && !errno)
+					errno = ETIMEDOUT;
 			}
 			if (!res) {
 				if (g <= LAST_EXTENDED_IDX) {
 					/* if base or extended query fails, 
  * 						skip other subsets on port.*/
 					skip_rest += 1;
+					gettimeofday(&(port->last_fail), 0);
 				}
 				port->qerr[g] = errno;
 				if (!port->err_logged[g]) {
