@@ -20,7 +20,7 @@ or a configuration file.
 .TP
 .BR config
 name=<plugin_name> port-name=<hca> source-list=<lidfile> [port-number=<num>]
-[metric-conf=<metricfile>] [node-name-map=<nnmap>] [timing=<timeopt>]
+[metric-conf=<metricfile>] [node-name-map=<nnmap>] [timing=<timeopt>] [millis=<ms>]
 [producer=<name>] [instance=<name>] [component_id=<uint64_t>]
 [schema=<name_base>]
 [uid=<user-id>] [gid=<group-id>] [perm=<mode_t permission bits>]
@@ -66,6 +66,11 @@ The file listing the metric groups to collect. See METRIC GROUPS below.
 ca_port=<port>
 .br
 The port number to use, which must be active.
+.TP
+millis=<millisecond timeout>
+.br
+The number of milliseconds of the timeout on the MAD calls. Default 0, which will use the mad library
+timeout of 1 second.
 .TP
 timing=<T>
 .br
@@ -129,7 +134,7 @@ start name=ibnet interval=1000000
 .fi
 
 .SH NOTES
-The exact schema name that will be generated can be determined using the ldms_ibnet_schema_name utility.
+The exact schema name that will be generated can be determined using the ldms_ibnet_schema_name utility. The subsets available from the fabric depend on the hardware, firmware, and in some cases the subnet manager versions.
 
 .SH SEE ALSO
 ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_ibnet_schema_name(1), ldms-ibnet-sampler-gen(1).
