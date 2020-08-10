@@ -1157,7 +1157,7 @@ def least_loaded(t12load, direct):
     if least == 1000000:
         print("least_loaded failed")
         return "borkbork"
-    print("least_loaded= {} ".format(leastname))
+    # print("least_loaded= {} ".format(leastname))
     return leastname
 
 def rr1_assign_sampler(args, ca, sw, lk, tr, adminlist):
@@ -1230,6 +1230,12 @@ def rr3_assign_sampler(args, ca, sw, lk, tr, adminlist):
     scnt = 0
     ccnt = 0
     tier = tr.maxtier
+    # set up port count load balance data
+    t12load = dict()
+    adminset = set()
+    for a in adminlist:
+        t12load[a] = 0
+        adminset.add(a)
     # round robin tier 3, as anyone can see anything there somehow.
     # rr the rest to spread the extrahop load as the admins are not
     # mixed uniformly with the compute.
@@ -1237,6 +1243,7 @@ def rr3_assign_sampler(args, ca, sw, lk, tr, adminlist):
     for name, s in sw.items():
         if tier == s.tier:
             s.sampler = adminlist[scnt % ns]
+            t12load[s.sampler] += 1
             if args.debug:
                 print("assigning tier3 {} to {}".format(s.name, s.sampler));
             s.altitude = 30
@@ -1248,19 +1255,15 @@ def rr3_assign_sampler(args, ca, sw, lk, tr, adminlist):
         c.sampler = a
         c.altitude = 0
     # now assign tier 1 using color groups and then split t2 and leftovers
-    t12load = dict()
-    adminset = set()
     for a in adminlist:
-        t12load[a] = 0
-        adminset.add(a)
-    for a in adminlist:
-        # a always samples its direct parent in tier 1
+        # a always samples its direct parent in tier 1, unless it shares a parent
         calid = find_calid_by_name(ca, a)
         c = ca[calid]
         cl = sorted(c.connections[1].keys())[0]
         s = sw[cl]
         if not s.sampler:
-            s.sampler = a
+            s.sampler = a ; # not least_loaded yet
+            t12load[s.sampler] += 1
             s.altitude = 1
             if args.debug:
                 print("assigning tier1 parent {} to {}".format(s.name, s.sampler));
@@ -1331,7 +1334,8 @@ def rr3_assign_sampler(args, ca, sw, lk, tr, adminlist):
     ucnt = 0
     for sn in sorted_numstr(ualist):
         s = sw[sn]
-        s.sampler = adminlist[ucnt % ns]
+        s.sampler = least_loaded(t12load, adminlist)
+        t12load[s.sampler] += 1
         if args.debug:
             print("assigning remote tier1. {} to {}".format(s.name, s.sampler));
         ucnt += 1
@@ -1357,6 +1361,8 @@ def rr3_assign_sampler(args, ca, sw, lk, tr, adminlist):
             if args.info:
                 print("assigning orphan {} to {}".format(c.name, a));
             ucnt += 1
+    if args.debug:
+        print("sampler switch loads: {}".format(t12load))
 
 
 ######################################
@@ -1457,7 +1463,7 @@ def format_samplers_ibnet(args, ca, sw, tr, adminlist, fbase, skipca):
                 lids[s.lid] = 1
                 format_sw_ib(f, s, args.sampnote)
                 lidcount += 1
-            print("# sampled HCAs for {}".format(a), file=f)
+            print("#\n# sampled HCAs for {}".format(a), file=f)
             cnames = []
             for cn, c in ca.items():
                 if c.sampler == a and (not skipca or c.name == a):
@@ -1611,9 +1617,9 @@ def format_samplers_ibnet_hosts(args, ca, sw, tr, adminlist, fbase, skipca):
             cnames = []
             for cn, c in ca.items():
                 if c.sampler == a and (not skipca or c.name == a):
-                    cnames.append(c.host)
+                    cnames.append(c.name)
             for h in sorted_numstr(cnames):
-                cl = find_calid_by_host(ca, h)
+                cl = find_calid_by_name(ca, h)
                 if cl in lids:
                     if args.debug:
                         print("skip sampling ca twice {}".format(cn))
@@ -1635,11 +1641,11 @@ def format_ca_ib(f, c, annotate):
     ilid = int(c.lid, 0)
     if c.maxport == len(c.ports) and len(c.ports) > 1:
         if annotate:
-            print("# {}".format(c.host), file=f)
+            print("# {}".format(c.name), file=f)
         print("{} {} {} {}".format(ilid, c.guid, plen, '*'), file=f)
     else:
         if annotate:
-            print("# {}".format(c.host), file=f)
+            print("# {}".format(c.name), file=f)
         print("{} {} {} {}".format(ilid, c.guid, plen, pl), file=f)
 
 # lid,guid,nports,portlist
