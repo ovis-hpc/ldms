@@ -1,3 +1,9 @@
+# Notice
+
+`master` is a development branch. Please download release tar balls
+in https://github.com/ovis-hpc/ovis/releases, or check out `OVIS-4` branch 
+for the pre-release instead.
+
 # Introduction
 
 __OVIS__ is a modular system for HPC data collection, transport, storage,
