@@ -14,7 +14,9 @@ bin_PROGRAMS += MPIApp
 nodist_MPIApp_SOURCES = mpi_profiler_wrapped_functions.c
 MPIApp_SOURCES = mpi_profiler.c mpi_profiler_configuration.c mpi_profiler_func_list.c sample_mpi_application.c userheader.h
 MPIApp_CFLAGS = $(AM_CFLAGS) -v
-MPIApp_LDADD = ../shm_util/liblshm.la -lovis_third -lpthread -lm
+MPIApp_LDADD = ../shm_util/liblshm.la \
+	       $(top_builddir)/lib/src/ovis_third/libovis_third.la \
+	       -lpthread -lm
 
 WRAPINPUT=$(srcdir)/wrap/input.w
 mpi_profiler_wrapped_functions.c: Makefile wrap/wrap.py wrap/input.w userheader.h

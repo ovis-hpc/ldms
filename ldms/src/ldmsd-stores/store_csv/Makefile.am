@@ -3,8 +3,10 @@ include ../common.am
 pkglib_LTLIBRARIES =
 lib_LTLIBRARIES =
 
-LDMSD = ../../ldmsd
-STORE_LIBADD += $(LDMSD)/libplugattr.la -lcoll -lovis_util -lpthread
+STORE_LIBADD = $(top_builddir)/lib/src/coll/libcoll.la \
+	       $(top_builddir)/lib/src/ovis_util/libovis_util.la \
+	       $(top_builddir)/ldms/src/ldmsd/libplugattr.la \
+	       -lpthread
 
 ldmsstoreincludedir = $(includedir)/ldms
 ldmsstoreinclude_HEADERS = store_csv_common.h

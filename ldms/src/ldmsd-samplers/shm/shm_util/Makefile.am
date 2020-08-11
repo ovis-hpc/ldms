@@ -4,7 +4,8 @@ pkglib_LTLIBRARIES =
 #AM_CFLAGS = -I$(srcdir)/$(CORE) -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
 AM_CFLAGS = -I$(top_srcdir) @OVIS_LIB_INCDIR_FLAG@
 AM_LDFLAGS = @OVIS_LIB_LIB64DIR_FLAG@ @OVIS_LIB_LIBDIR_FLAG@
-COMMON_LIBADD = @LDFLAGS_GETTIME@ -lovis_third
+COMMON_LIBADD = @LDFLAGS_GETTIME@ \
+		$(top_builddir)/lib/src/ovis_third/libovis_third.la
 
 lib_LTLIBRARIES = liblshm.la
 

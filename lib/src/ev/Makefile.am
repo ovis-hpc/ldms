@@ -14,6 +14,6 @@ lib_LTLIBRARIES += libev.la
 
 ev_test_SOURCES = ev_test.c
 ev_test_CFLAGS = $(AM_CFLAGS) -g -O0
-ev_test_LDADD = -lev
+ev_test_LDADD = libev.la
 ev_test_LDFLAGS = $(AM_LDFLAGS)
 sbin_PROGRAMS = ev_test
