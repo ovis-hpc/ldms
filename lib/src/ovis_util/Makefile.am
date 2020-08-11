@@ -11,7 +11,7 @@ libovis_utilinclude_HEADERS = util.h dstring.h big_dstring.h os_util.h olog.h \
 libovis_utilincludedir = $(includedir)/ovis_util
 libovis_util_conf = /etc/ld.so.conf.d/libovis_util.conf
 lib_LTLIBRARIES += libovis_util.la
-LDFLAGS_OVIS_UTIL = -lovis_util -lpthread @LDFLAGS_GETTIME@
+LDFLAGS_OVIS_UTIL = libovis_util.la -lpthread @LDFLAGS_GETTIME@
 
 bin_PROGRAMS = test_big_dstring test_dstring test_olog
 
