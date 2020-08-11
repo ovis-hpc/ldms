@@ -3295,7 +3295,7 @@ static int send_req_cancel_push(struct ldms_rbuf_desc *r)
 	struct ldms_xprt *x = r->xprt;
 	struct ldms_request req;
 	size_t len;
-	int rc;
+	int rc = 0;
 
 	ldms_xprt_get(x);
 	len = sizeof(struct ldms_request_hdr)
