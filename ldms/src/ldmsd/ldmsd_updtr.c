@@ -1144,6 +1144,7 @@ static json_entity_t __updtr_attr_get(json_entity_t dft, json_entity_t spc,
 				struct updtr_match_list **_match_list)
 {
 	int rc;
+	const char *tmp;
 	ldmsd_req_buf_t buf = NULL;
 	json_entity_t err = NULL;
 	json_entity_t interval, offset, push, auto_task, perm, prdcrs, sets, schemas;
@@ -1239,14 +1240,23 @@ static json_entity_t __updtr_attr_get(json_entity_t dft, json_entity_t spc,
 	/* auto task */
 	*_auto_task = LDMSD_ATTR_NA;
 	if (auto_task) {
-		if (JSON_BOOL_VALUE != json_entity_type(auto_task)) {
-			err = json_dict_build(err, JSON_STRING_VALUE, "auto_task",
-						"'auto_task' is not a boolean.", -1);
+		switch (json_entity_type(auto_task)) {
+		case JSON_BOOL_VALUE:
+			*_auto_task = json_value_bool(auto_task);
+			break;
+		case JSON_INT_VALUE:
+			*_auto_task = !!json_value_int(auto_task);
+			break;
+		case JSON_STRING_VALUE:
+			tmp = json_value_str(auto_task)->str;
+			*_auto_task = (0 == strcasecmp(tmp, "true"));
+			break;
+		default:
+			err = json_dict_build(err, JSON_STRING_VALUE,
+				"auto_task", "Bad 'auto_task' type.", -1);
 			if (!err)
 				goto oom;
 			*_auto_task = LDMSD_ATTR_INVALID;
-		} else {
-			*_auto_task = json_value_bool(auto_task);
 		}
 	}
 
