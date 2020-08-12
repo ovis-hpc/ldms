@@ -1574,13 +1574,13 @@ json_entity_t ldmsd_updtr_create(const char *name, short enabled, json_entity_t 
 
 	if (LDMSD_ATTR_NA == interval_us) {
 		err = json_dict_build(err, JSON_STRING_VALUE, "interval",
-						"'interval' is missing.");
+						"'interval' is missing.", -1);
 		if (!err)
 			goto oom;
 		if (LDMSD_ATTR_NA != offset_us) {
 			err = json_dict_build(err, JSON_STRING_VALUE, "offset",
 							"'offset' is ignore because "
-							"'interval' isn't given.");
+							"'interval' isn't given.", -1);
 			if (!err)
 				goto oom;
 		}
@@ -1604,7 +1604,7 @@ json_entity_t ldmsd_updtr_create(const char *name, short enabled, json_entity_t 
 	if (push_flags && auto_task) {
 		err = json_dict_build(err, JSON_STRING_VALUE, "auto_task",
 						"'auto_task' is ignored "
-						"because 'push' is in use.");
+						"because 'push' is in use.", -1);
 		if (!err)
 			goto oom;
 	}
