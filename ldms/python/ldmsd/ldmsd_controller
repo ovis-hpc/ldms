@@ -213,6 +213,48 @@ class LdmsdCmdParser(cmd.Cmd):
             if "msg" in rsp.keys():
                 print(rsp["msg"])
 
+    def do_set_route(self, args):
+        """
+        set_route SET_INSTANCE_NAME
+        
+        Display the route of the given set. The reporeted order is from
+        the LDMSD received the request from ldmsd_controller.
+        """
+        req = { "request"   : "set_route",
+                "id"        : self.msg_no_get(),
+                "spec"      : {"instance": args}
+              }
+        rsp = self.communicate(req, None)
+        if 0 != rsp["status"]:
+            if "msg" in rsp.keys():
+                print(rsp["msg"])
+        if "result" not in rsp.keys():
+            return
+
+        print("-------------------")
+        print("instance : {}".format(rsp["result"]["instance"]))
+        if "schema" in rsp["result"].keys():
+            print("schema   : {}".format(rsp["result"]["schema"]))
+        print("===================")
+        print("{0:20} {1:15} {2:25} {3:20}".format(
+              "LDMSD name", "Type", "Plugin Instance Name", "Producer Name"))
+        
+        rsp["result"].pop('instance', None)
+        rsp["result"].pop('schema', None)
+
+        from collections import OrderedDict
+        result = OrderedDict(rsp["result"])
+        
+        for pos, hop in result.items():
+            if "msg" in hop.keys():
+                print("{0:20} -- {1} --".format(hop['name'], hop['msg']))
+            else:
+                print("{0:20} {1:15} {2:25} {3:20}".format(
+                    hop['name'], hop['type'], 
+                    hop['plugin'] if "plugin" in hop.keys() else "",
+                    hop['producer'] if "producer" in hop.keys() else ""))
+        
+
     def do_notify(self, arg):
         """
         notify JSON_NOTIFICATION_OBJECT

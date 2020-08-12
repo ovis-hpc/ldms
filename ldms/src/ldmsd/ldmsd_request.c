@@ -166,12 +166,15 @@ static json_entity_t
 stream_subscribe_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt);
 static json_entity_t
 version_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt);
+static json_entity_t
+set_route_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt);
 
 static struct request_handler_entry request_handler_tbl[] = {
 		{ "create",		ldmsd_cfgobj_create_handler,	XUG },
 		{ "delete",		ldmsd_cfgobj_delete_handler,	XUG },
 		{ "export",		ldmsd_cfgobj_export_handler,	XUG },
 		{ "query",		ldmsd_cfgobj_query_handler,	XALL },
+		{ "set_route",		set_route_handler,		XALL },
 		{ "stream_subscribe",	stream_subscribe_handler,	XUG },
 		{ "update",		ldmsd_cfgobj_update_handler,	XUG },
 		{ "version",		version_handler,		XALL },
@@ -958,6 +961,218 @@ oom:
 	return NULL;
 }
 
+struct set_route_ctxt {
+	ldmsd_req_ctxt_t original_reqc;
+	json_entity_t info;
+};
+
+static int
+set_route_resp_handler(ldmsd_req_ctxt_t reqc, void *resp_args)
+{
+	struct set_route_ctxt *ctxt = (struct set_route_ctxt *)resp_args;
+	json_entity_t result, info, hop, a, reply;
+	int status, rc;
+
+	info = ctxt->info;
+
+	status = json_value_int(json_value_find(reqc->json, "status"));
+	result = json_value_find(reqc->json, "result");
+
+	for(hop = json_attr_first(result); hop; hop = json_attr_next(hop)) {
+		a = json_entity_copy(hop);
+		if (!a) {
+			json_entity_free(info);
+			rc = ENOMEM;
+			goto out;
+		}
+		json_attr_add(info, a);
+	}
+
+	reply = ldmsd_reply_new("set_route", ctxt->original_reqc->key.msg_no,
+				status, NULL, info);
+	rc = ldmsd_reply_send(ctxt->original_reqc, reply);
+
+out:
+	ldmsd_req_ctxt_ref_put(ctxt->original_reqc, "set_route_request");
+	ldmsd_req_ctxt_ref_put(reqc, "create");
+	json_entity_free(reply);
+	return rc;
+}
+
+static int
+set_route_request(ldmsd_prdcr_t prdcr, ldmsd_req_ctxt_t original_reqc,
+			char *inst_name, json_entity_t route, int nxt_hop_pos)
+{
+	int rc;
+	struct set_route_ctxt *ctxt;
+	json_entity_t req_obj = NULL;
+
+	ctxt = malloc(sizeof(*ctxt));
+	if (!ctxt)
+		return ENOMEM;
+
+	ldmsd_req_ctxt_ref_get(original_reqc, "set_route_request");
+	ctxt->original_reqc = original_reqc;
+	ctxt->info = route;
+
+	req_obj = ldmsd_req_obj_new("set_route");
+	if (!req_obj)
+		goto oom;
+
+	req_obj = json_dict_build(req_obj,
+			JSON_DICT_VALUE, "spec",
+				JSON_STRING_VALUE, "instance", inst_name,
+				JSON_INT_VALUE, "hop_postition", nxt_hop_pos,
+				-2,
+			-1);
+	if (!req_obj)
+		goto oom;
+
+	rc = ldmsd_request_send(prdcr->xprt, req_obj,
+				set_route_resp_handler, (void *)ctxt);
+	if (rc)
+		goto err;
+	return 0;
+
+oom:
+	rc = ENOMEM;
+err:
+	if (req_obj)
+		json_entity_free(req_obj);
+	return rc;
+
+}
+
+static json_entity_t
+set_route_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt)
+{
+	int rc;
+	const char *REQ_NAME = "set_route";
+	json_entity_t reply, spec, name, hop_pos, hop = NULL;
+	char *inst_name, pos_str[1024];
+	int pos;
+	ldmsd_set_info_t info = NULL;
+	uint32_t msg_no = reqc->key.msg_no;
+
+	spec = json_value_find(reqc->json, "spec");
+	if (!spec) {
+		reply = ldmsd_reply_new(REQ_NAME, msg_no, EINVAL,
+					"'spec' is missing.", NULL);
+		goto out;
+	}
+	name = json_value_find(spec, "instance");
+	if (!name) {
+		reply = ldmsd_reply_new(REQ_NAME, msg_no, EINVAL,
+					"'instance' is missing from 'spec'.",
+					NULL);
+		goto out;
+	}
+	if (JSON_STRING_VALUE != json_entity_type(name)) {
+		reply = ldmsd_reply_new(REQ_NAME, msg_no, EINVAL,
+				"'instance' must be the JSON string of "
+				"a set instance name", NULL);
+		goto out;
+	}
+	inst_name = json_value_str(name)->str;
+
+	hop_pos = json_value_find(spec, "hop");
+	if (hop_pos) {
+		if (JSON_INT_VALUE != json_entity_type(hop_pos)) {
+			reply = ldmsd_reply_new(REQ_NAME, msg_no, EINVAL,
+				"'hop' must be an integer.", NULL);
+			goto out;
+		}
+
+		pos = json_value_int(hop_pos);
+	} else {
+		pos = 0;
+	}
+	snprintf(pos_str, 1024, "%d", pos);
+
+	if (0 == pos) {
+		/* Add instance name */
+		hop = json_dict_build(NULL,
+				JSON_STRING_VALUE, "instance", inst_name,
+				-1);
+		if (!hop)
+			goto oom;
+	}
+
+	info = ldmsd_set_info_get(inst_name);
+	if (!info) {
+		/* Add the ENOENT error message and send the reply back */
+		hop = json_dict_build(hop,
+				JSON_DICT_VALUE, pos_str,
+					JSON_STRING_VALUE, "name", ldmsd_myname_get(),
+					JSON_STRING_VALUE, "msg", "The set does not exist.",
+					-2,
+				-1);
+		if (!hop)
+			goto oom;
+		reply = ldmsd_reply_new(REQ_NAME, msg_no, ENOENT, NULL, hop);
+		goto out;
+	}
+
+	if (0 == pos) {
+		/* Add schema name */
+		hop = json_dict_build(hop,
+			JSON_STRING_VALUE, "schema", ldms_set_schema_name_get(info->set),
+			-1);
+		if (!hop)
+			goto oom;
+	}
+
+	/* Fill the info */
+	if (info->origin_type == LDMSD_SET_ORIGIN_PRDCR) {
+		hop = json_dict_build(hop,
+				JSON_DICT_VALUE, pos_str,
+					JSON_STRING_VALUE, "name", ldmsd_myname_get(),
+					JSON_STRING_VALUE, "type", "aggregated set",
+					JSON_STRING_VALUE, "producer", info->origin_name,
+					-2,
+				-1);
+		if (!hop)
+			goto oom;
+
+		/* Forward the request to the producer */
+		rc = set_route_request(info->prd_set->prdcr, reqc,
+					inst_name, hop, pos + 1);
+		if (rc) {
+			reply = ldmsd_reply_new(REQ_NAME, msg_no, rc,
+				"Error %d: failed to forward the request to the producer.",
+				NULL);
+			goto out;
+		}
+		reply = NULL;
+		/*
+		 * The reply will be ready when this LDMSD receives
+		 * the response from the producer.
+		 */
+		errno = EINPROGRESS;
+	} else {
+		hop = json_dict_build(hop,
+				JSON_DICT_VALUE, pos_str,
+					JSON_STRING_VALUE, "name", ldmsd_myname_get(),
+					JSON_STRING_VALUE, "type", "sampled set",
+					JSON_STRING_VALUE, "plugin", info->origin_name,
+					-2,
+				-1);
+		if (!hop)
+			goto oom;
+		reply = ldmsd_reply_new(REQ_NAME, msg_no, 0, NULL, hop);
+		if (!reply)
+			goto oom;
+	}
+
+out:
+	return reply;
+oom:
+	if (info)
+		ldmsd_set_info_delete(info);
+	errno = ENOMEM;
+	return NULL;
+}
+
 /*
  * The process request function takes records and collects
  * them into messages. These messages are then delivered to the req_id
@@ -1727,6 +1942,7 @@ int ldmsd_request_send(ldms_t ldms, json_entity_t req_obj,
 		rc = errno;
 		goto err;
 	}
+
 	reqc->resp_handler = resp_fn;
 	reqc->resp_args = resp_args;
 
