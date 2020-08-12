@@ -166,11 +166,26 @@ class LdmsdCmdParser(cmd.Cmd):
             self.onecmd(cmd)
 
     def do_json(self, arg):
+        """
+        json JSON_REQUEST_OBJECT
+
+        Send the given JSON request object to the ldmsd, and print the response.
+
+        """
         req = LDMSD_Message(self.ctrl)
         req.send(LDMSD_Message.LDMSD_MSG_TYPE_REQ, None, arg)
         rsp = LDMSD_Message(self.ctrl)
         rsp.receive()
         print(json.dumps(rsp.json_ent, indent=2))
+
+    def do_notify(self, arg):
+        """
+        notify JSON_NOTIFICATION_OBJECT
+
+        Send the given notification message to the ldmsd.
+        """
+        req = LDMSD_Message(self.ctrl)
+        req.send(LDMSD_Message.LDMSD_MSG_TYPE_NOTIFY, None, arg)
 
     def do_source(self, arg):
         """

@@ -67,6 +67,7 @@
 #include "ldmsd_request.h"
 #include "ldmsd_stream.h"
 #include "ldms_xprt.h"
+#include "ldmsd_notify.h"
 
 /*
  * This file implements an LDMSD control protocol. The protocol is
@@ -1650,6 +1651,57 @@ out:
 		json_entity_free(entity);
 	ldmsd_req_ctxt_free(reqc);
 	/* Not sending any response back to the publisher */
+	return rc;
+}
+
+int ldmsd_process_msg_notify(ldmsd_req_ctxt_t reqc)
+{
+	json_parser_t parser;
+	int rc;
+	struct ldmsd_sec_ctxt sctxt;
+	json_entity_t jent;
+	struct notify_handle_entry_s *tbl_ent;
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+		return ENOMEM;
+	}
+
+	rc = json_parse_buffer( parser, reqc->recv_buf->buf,
+				reqc->recv_buf->off, &reqc->json );
+	json_parser_free(parser);
+	if (rc) {
+		ldmsd_log(LDMSD_LCRITICAL, "Failed to parse the JSON object "
+						"string in a notification.\n");
+		return rc;
+	}
+
+	jent = json_value_find(reqc->json, "type");
+	if (!jent) {
+		ldmsd_log(LDMSD_LWARNING, "`type` not found in the notify message.\n");
+		return ENOENT;
+	}
+	if (jent->type != JSON_STRING_VALUE) {
+		ldmsd_log(LDMSD_LWARNING, "notify message `type` is not a string.\n");
+		return EINVAL;
+	}
+	tbl_ent = ldmsd_notify_handler_find(jent->value.str_->str);
+	if (!tbl_ent) {
+		ldmsd_log(LDMSD_LWARNING, "unknown type: %s\n", jent->value.str_->str);
+		return ENOENT;
+	}
+	rc = ovis_access_check( sctxt.crd.uid, sctxt.crd.gid, 0111,
+				geteuid(), getegid(), tbl_ent->flags );
+	if (rc) {
+		ldmsd_log(LDMSD_LWARNING, "`%s` notification handling "
+				"rejected, permission denied\n",
+				jent->value.str_->str);
+		return rc;
+	}
+	rc = tbl_ent->handler(reqc);
 	return rc;
 }
 

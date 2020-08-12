@@ -55,6 +55,8 @@ import struct
 class LDMSD_Message(object):
     LDMSD_MSG_TYPE_REQ = 1
     LDMSD_MSG_TYPE_RSP = 2
+    LDMSD_MSG_TYPE_STREAM = 3
+    LDMSD_MSG_TYPE_NOTIFY = 4
 
     LDMSD_REC_F_SOM = 1
     LDMSD_REC_F_EOM = 2
@@ -62,7 +64,7 @@ class LDMSD_Message(object):
     MESSAGE_NO = 1
     LDMSD_REC_HDR_FMT = '!LLLL'
     LDMSD_REC_HDR_SZ = struct.calcsize(LDMSD_REC_HDR_FMT)
-    
+
     def __init__(self, ctrl):
         self.ctrl = ctrl
         self.type = None
@@ -78,7 +80,7 @@ class LDMSD_Message(object):
         sz is the size of the data to be sent
         """
         rec_len = self.LDMSD_REC_HDR_SZ + remaining
-        hdr =  struct.pack(self.LDMSD_REC_HDR_FMT, self.type, flags, 
+        hdr =  struct.pack(self.LDMSD_REC_HDR_FMT, self.type, flags,
                            self.msg_no, rec_len)
         data = struct.pack(str(remaining) + 's', \
                            self.json_str[json_str_offset:json_str_offset+remaining].encode())
@@ -87,7 +89,7 @@ class LDMSD_Message(object):
     def send(self, type, json_ent, json_str):
         self.msg_no = self.MESSAGE_NO
         self.MESSAGE_NO += 1
-        
+
         self.type = type
         if json_str:
             self.json_str += json_str
@@ -124,16 +126,16 @@ class LDMSD_Message(object):
         while True:
             record = self.ctrl.receive_response()
             if record is None:
-                raise LDMSDRequestException(message="No data received", 
+                raise LDMSDRequestException(message="No data received",
                                             errcode=errno.ECONRESET)
             (self.type, flags, self.msg_no, rec_len) = struct.unpack(self.LDMSD_REC_HDR_FMT, \
                                                               record[:self.LDMSD_REC_HDR_SZ])
-            json_str += struct.unpack(str(rec_len - self.LDMSD_REC_HDR_SZ) + 's', 
+            json_str += struct.unpack(str(rec_len - self.LDMSD_REC_HDR_SZ) + 's',
                                       record[self.LDMSD_REC_HDR_SZ:])[0].decode()
             self.num_rec += 1
             if (flags & self.LDMSD_REC_F_EOM):
                 break
         self.json_ent = json.loads(json_str)
         return self
-        
-    
+
+

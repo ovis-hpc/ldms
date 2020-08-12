@@ -299,6 +299,9 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 	case LDMSD_MSG_TYPE_STREAM:
 		rc = ldmsd_process_msg_stream(reqc);
 		break;
+	case LDMSD_MSG_TYPE_NOTIFY:
+		rc = ldmsd_process_msg_notify(reqc);
+		break;
 	default:
 		errstr = "ldmsd received an unrecognized request type";
 		ldmsd_log(LDMSD_LERROR, "%s\n", errstr);
