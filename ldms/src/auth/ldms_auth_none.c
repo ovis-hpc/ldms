@@ -111,10 +111,10 @@ static
 int __auth_xprt_begin(ldms_auth_t auth, ldms_t xprt)
 {
 	/* accepts everything */
-	xprt->luid = 0;
-	xprt->lgid = 0;
-	xprt->ruid = 0;
-	xprt->rgid = 0;
+	xprt->luid = geteuid();
+	xprt->lgid = getegid();
+	xprt->ruid = geteuid();
+	xprt->rgid = getegid();
 	ldms_xprt_auth_end(xprt, 0);
 	return 0;
 }
@@ -130,8 +130,8 @@ int __auth_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 static
 int __auth_cred_get(ldms_auth_t auth, ldms_cred_t cred)
 {
-	cred->uid = 0;
-	cred->gid = 0;
+	cred->uid = geteuid();
+	cred->gid = getegid();
 	return 0;
 }
 
