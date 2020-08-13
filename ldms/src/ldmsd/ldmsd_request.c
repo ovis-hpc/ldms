@@ -873,7 +873,7 @@ static json_entity_t
 stream_subscribe_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt)
 {
 	int msg_no = reqc->key.msg_no;
-	json_entity_t reply, streams, item;
+	json_entity_t reply = NULL, streams, item;
 	char *stream_name;
 	ldmsd_stream_client_t c;
 
@@ -1709,7 +1709,7 @@ int ldmsd_request_send(ldms_t ldms, json_entity_t req_obj,
 			ldmsd_req_resp_fn resp_fn, void *resp_args)
 {
 	int rc;
-	jbuf_t jb;
+	jbuf_t jb = NULL;
 	ldmsd_cfg_xprt_t xprt;
 	ldmsd_req_ctxt_t reqc;
 	struct ldmsd_msg_key key;
