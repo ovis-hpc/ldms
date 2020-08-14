@@ -603,6 +603,7 @@ int ldmsd_smplr_enable(ldmsd_cfgobj_t obj)
 	if (smplr->state != LDMSD_SMPLR_STATE_STOPPED)
 		return EBUSY;
 	smplr->state = LDMSD_SMPLR_STATE_RUNNING;
+	__sampler_set_info_add(smplr);
 	struct timespec to;
 	ev_sched_to(&to, smplr->interval_us / 1000000, smplr->offset_us * 1000);
 	if (smplr->synchronous)
