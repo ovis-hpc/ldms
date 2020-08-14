@@ -403,10 +403,13 @@ out:
 ldmsd_cfgobj_t ldmsd_cfgobj_next_re(ldmsd_cfgobj_t obj, regex_t regex)
 {
 	int rc;
-	for ( ; obj; obj = ldmsd_cfgobj_next(obj)) {
+
+	obj = ldmsd_cfgobj_next(obj);
+	while (obj) {
 		rc = regexec(&regex, obj->name, 0, NULL, 0);
 		if (!rc)
 			break;
+		obj = ldmsd_cfgobj_next(obj);
 	}
 	return obj;
 }

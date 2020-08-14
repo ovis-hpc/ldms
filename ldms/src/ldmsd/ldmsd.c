@@ -871,7 +871,6 @@ void ldmsd_ev_init(void)
 	prdcr_stop_type = ev_type_new("prdcr:stop", sizeof(struct stop_data));
 	strgp_stop_type = ev_type_new("strgp:stop", sizeof(struct stop_data));
 	smplr_stop_type = ev_type_new("smplr:stop", sizeof(struct stop_data));
-	cfg_msg_ctxt_free_type = ev_type_new("cfg:msg_ctxt_free", sizeof(struct msg_ctxt_free_data));
 	cfgobj_enabled_type = ev_type_new("cfg:enabled", sizeof(struct start_data));
 	cfgobj_disabled_type = ev_type_new("cfg:disabled", sizeof(struct stop_data));
 
@@ -889,7 +888,6 @@ void ldmsd_ev_init(void)
 	ev_dispatch(producer, prdcr_connect_type, prdcr_connect_actor);
 	ev_dispatch(producer, updtr_start_type, updtr_start_actor);
 	ev_dispatch(producer, updtr_stop_type, updtr_stop_actor);
-	ev_dispatch(cfg, cfg_msg_ctxt_free_type, cfg_msg_ctxt_free_actor);
 	ev_dispatch(cfg, cfgobj_enabled_type, cfgobj_enabled_actor);
 	ev_dispatch(cfg, cfgobj_disabled_type, cfgobj_disabled_actor);
 
@@ -992,6 +990,7 @@ static int submit_cfgobj_request(ldmsd_plugin_inst_t pi, json_entity_t req_obj)
 
 	ldmsd_sec_ctxt_get(&sctxt);
 	rc = ldmsd_process_msg_request(reqc);
+	ldmsd_req_ctxt_ref_put(reqc, "create");
 	return rc;
 }
 

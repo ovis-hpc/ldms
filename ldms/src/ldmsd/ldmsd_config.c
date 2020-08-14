@@ -288,7 +288,6 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 	if (!reqc)
 		goto out;
 
-	ldmsd_req_ctxt_ref_get(reqc, "handle");
 	switch (rec->type) {
 	case LDMSD_MSG_TYPE_REQ:
 		rc = ldmsd_process_msg_request(reqc);
@@ -308,7 +307,6 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 		rc = EINVAL;
 		goto err;
 	}
-	ldmsd_req_ctxt_ref_put(reqc, "handle");
 	if (rc) {
 		/*
 		 * Do nothing.
@@ -320,13 +318,21 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 
 out:
 	ldmsd_cfg_xprt_ref_put(xprt, "create");
+	if (reqc) {
+		/*
+		 * Put back the create reference.
+		 * Handlers are responsible for taking another reference
+		 * if the request context is still needed.
+		 */
+		ldmsd_req_ctxt_ref_put(reqc, "create");
+	}
 	return;
 
 oom:
 	errstr = "ldmsd out of memory";
 	ldmsd_log(LDMSD_LCRITICAL, "%s\n", errstr);
 err:
-	__ldmsd_send_error(xprt, rec->msg_no, NULL, rc, errstr);
+	ldmsd_error_send(xprt, rec->msg_no, NULL, rc, errstr);
 	ldmsd_cfg_xprt_ref_put(xprt, "create");
 	return;
 }

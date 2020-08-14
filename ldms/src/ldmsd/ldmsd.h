@@ -1327,7 +1327,6 @@ ev_type_t updtr_stop_type;
 ev_type_t prdcr_stop_type;
 ev_type_t strgp_stop_type;
 ev_type_t smplr_stop_type;
-ev_type_t cfg_msg_ctxt_free_type;
 ev_type_t cfgobj_enabled_type;
 ev_type_t cfgobj_disabled_type;
 
@@ -1352,7 +1351,6 @@ int strgp_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t
 int strgp_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 int smplr_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 int smplr_stop_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
-int cfg_msg_ctxt_free_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 int cfgobj_enabled_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 int cfgobj_disabled_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 

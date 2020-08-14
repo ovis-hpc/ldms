@@ -992,10 +992,9 @@ static int __updtr_prdcrs_attr(json_entity_t prdcrs, json_entity_t err,
 	if (!prdcrs)
 		goto out;
 
-	filt_list = malloc(sizeof(*filt_list));
+	filt_list = calloc(1, sizeof(*filt_list));
 	if (!filt_list)
 		goto oom;
-
 	buf = ldmsd_req_buf_alloc(1024);
 	if (!buf)
 		goto oom;
