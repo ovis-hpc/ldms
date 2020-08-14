@@ -194,8 +194,8 @@ struct ldms_rendezvous_lookup_param {
 %immutable;
 #endif
 	uint32_t flags;
-	/* schema name, then instance name, and then set_info key value pairs */
-	char set_info[OVIS_FLEX];
+	/* `schema_name` '\0' `instance_name` '\0' */
+	char schema_inst_name[OVIS_FLEX];
 };
 
 struct ldms_rendezvous_revoke_param {
