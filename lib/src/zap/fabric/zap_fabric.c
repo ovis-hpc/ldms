@@ -1760,10 +1760,13 @@ out:
 static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 			    struct sockaddr *remote_sa, socklen_t *sa_len)
 {
-	int ret;
+	int ret = 0;
 	size_t sz = *sa_len;
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
 
+	if (!rep->fi_ep) {
+		return ZAP_ERR_NOT_CONNECTED;
+	}
 	ret = fi_getname(&rep->fi_ep->fid, local_sa, &sz);
 	ret = ret || fi_getpeer(rep->fi_ep, remote_sa, &sz);
 	*sa_len = sz;
