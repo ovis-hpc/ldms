@@ -207,7 +207,7 @@ err:
 			free(pi->libpath);
 		free(pi);
 	}
-	if (d) 
+	if (d)
 		dlclose(d);
 	return NULL;
 }
@@ -1004,6 +1004,10 @@ int listen_on_ldms_xprt(ldmsd_listen_t listen)
 {
 	int rc = 0;
 	struct sockaddr_in sin;
+	struct addrinfo *ai = NULL;
+	struct addrinfo ai_hint = { .ai_family = AF_INET,
+				    .ai_flags = AI_PASSIVE };
+	char port_buff[8];
 
 	listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
 			listen->auth_name, listen->auth_attrs);
@@ -1022,8 +1026,19 @@ int listen_on_ldms_xprt(ldmsd_listen_t listen)
 		cleanup(6, "error creating transport");
 	}
 	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = 0;
-	sin.sin_port = htons(listen->port_no);
+	if (listen->host) {
+		snprintf(port_buff, sizeof(port_buff), "%hu", listen->port_no);
+		rc = getaddrinfo(listen->host, port_buff, &ai_hint, &ai);
+		if (rc) {
+			ldmsd_lerror("xprt listen error, getaddrinfo(%s, %s) error: %d\n", listen->host, port_buff, rc);
+			cleanup(7, "error listening on transport");
+		}
+		memcpy(&sin, ai->ai_addr, ai->ai_addrlen);
+		freeaddrinfo(ai);
+	} else {
+		sin.sin_addr.s_addr = 0;
+		sin.sin_port = htons(listen->port_no);
+	}
 	rc = ldms_xprt_listen(listen->x, (struct sockaddr *)&sin, sizeof(sin),
 			       __listen_connect_cb, NULL);
 	if (rc) {
