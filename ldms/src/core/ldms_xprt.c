@@ -128,11 +128,12 @@ static void default_log(const char *fmt, ...)
 
 pthread_mutex_t xprt_list_lock;
 
-#define LDMS_ZAP_XPRT_SOCK 0;
-#define LDMS_ZAP_XPRT_RDMA 1;
-#define LDMS_ZAP_XPRT_UGNI 2;
 pthread_mutex_t ldms_zap_list_lock;
-static zap_t ldms_zap_list[3] = {0};
+static struct {
+	char *name;
+	zap_t zap;
+} ldms_zap_tbl[16] = {{0}};
+static int ldms_zap_tbl_n = 0;
 
 ldms_t ldms_xprt_get(ldms_t x)
 {
@@ -2605,31 +2606,33 @@ static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 
 zap_t __ldms_zap_get(const char *xprt, ldms_log_fn_t log_fn)
 {
-	int zap_type = -1;
-	if (0 == strcmp(xprt, "sock")) {
-		zap_type = LDMS_ZAP_XPRT_SOCK;
-	} else if (0 == strcmp(xprt, "ugni")) {
-		zap_type = LDMS_ZAP_XPRT_UGNI;
-	} else if (0 == strcmp(xprt, "rdma")) {
-		zap_type = LDMS_ZAP_XPRT_RDMA;
-	} else {
-		log_fn("ldms: Unrecognized xprt '%s'\n", xprt);
-		errno = EINVAL;
-		return NULL;
-	}
+	int i;
+	zap_t zap = NULL;
+	char *name;
 
 	pthread_mutex_lock(&ldms_zap_list_lock);
-	zap_t zap = ldms_zap_list[zap_type];
-	if (zap)
+	for (i = 0; i < ldms_zap_tbl_n; i++) {
+		if (0 == strcmp(xprt, ldms_zap_tbl[i].name)) {
+			zap = ldms_zap_tbl[i].zap;
+			goto out;
+		}
+	}
+	if (ldms_zap_tbl_n == sizeof(ldms_zap_tbl)/sizeof(*ldms_zap_tbl)) {
+		errno = ENOMEM;
 		goto out;
-
+	}
 	zap = zap_get(xprt, log_fn, ldms_zap_mem_info);
 	if (!zap) {
 		log_fn("ldms: Cannot get zap plugin: %s\n", xprt);
 		errno = ENOENT;
 		goto out;
 	}
-	ldms_zap_list[zap_type] = zap;
+	name = strdup(xprt);
+	if (!name)
+		goto out;
+	ldms_zap_tbl[ldms_zap_tbl_n].name = name;
+	ldms_zap_tbl[ldms_zap_tbl_n].zap = zap;
+	ldms_zap_tbl_n++;
 out:
 	pthread_mutex_unlock(&ldms_zap_list_lock);
 	return zap;
