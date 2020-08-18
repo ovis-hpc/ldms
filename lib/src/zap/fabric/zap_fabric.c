@@ -68,6 +68,8 @@
 #include <infiniband/verbs.h>
 #include "zap_fabric.h"
 
+#define Z_FI_CAPS (FI_MSG|FI_RMA)
+
 /*
  * This is a libfabric provider for zap. It hard-codes using verbs
  * as the libfabric provider. It is basically a port of the RDMA
@@ -347,13 +349,12 @@ __setup_conn(struct z_fi_ep *rep, struct sockaddr *sin, socklen_t sa_len)
 	} else {
 		// we get here if fi_connect() called
 		hints = fi_allocinfo();
-		hints->caps		      = FI_MSG;
+		hints->caps		      = Z_FI_CAPS;
 		hints->mode		      = FI_CONTEXT | FI_CONTEXT2 | FI_MSG_PREFIX;
 		hints->ep_attr->type	      = FI_EP_MSG;
 		hints->domain_attr->mr_mode   = FI_MR_LOCAL | FI_MR_ALLOCATED | FI_MR_PROV_KEY | FI_MR_VIRT_ADDR;
 		hints->domain_attr->threading = FI_THREAD_SAFE;
 		hints->addr_format	      = FI_SOCKADDR;
-		hints->fabric_attr->prov_name = strdup("verbs");
 		hints->dest_addrlen  = sa_len;
 		hints->dest_addr     = sin;
 		hints->rx_attr->size = RQ_DEPTH + 2;
@@ -1645,13 +1646,12 @@ static zap_err_t z_fi_listen(zap_ep_t ep, struct sockaddr *saddr, socklen_t sa_l
 		zerr = ZAP_ERR_RESOURCE;
 		goto err_0;
 	}
-	hints->caps		      = FI_MSG;
+	hints->caps		      = Z_FI_CAPS;
 	hints->mode		      = FI_CONTEXT | FI_CONTEXT2 | FI_MSG_PREFIX;
 	hints->ep_attr->type	      = FI_EP_MSG;
 	hints->domain_attr->mr_mode   = FI_MR_LOCAL | FI_MR_ALLOCATED | FI_MR_PROV_KEY | FI_MR_VIRT_ADDR;
         hints->domain_attr->threading = FI_THREAD_SAFE;
  	hints->addr_format	      = FI_SOCKADDR;
-	hints->fabric_attr->prov_name = strdup("verbs");
 
 	hints->src_addr = (struct sockaddr *)malloc(sa_len);
 	memcpy(hints->src_addr, saddr, sa_len);
