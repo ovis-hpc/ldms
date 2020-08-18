@@ -1,0 +1,13 @@
+export plugname=meminfo
+portbase=61014
+LDMSD_EXTRA="-a munge"
+LDMSD -p prolog.sampler 1
+LDMSD -p prolog.sampler -p prolog.store2 2
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -l -a munge
+MESSAGE ldms_ls on host 2:
+# this one should fail (no munge option)
+LDMS_LS 2 -l
+SLEEP 2
+KILL_LDMSD 1 2
+file_created $STOREDIR/node/$testname
