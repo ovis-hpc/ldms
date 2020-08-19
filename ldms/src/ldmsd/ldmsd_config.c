@@ -1021,6 +1021,27 @@ const char * blacklist[] = {
 
 static int ldmsd_plugins_usage_dir(const char *dir, const char *plugname);
 
+/* check path for existence, and if verbose != 0, whine if missing. */
+static int ldmd_plugins_check_dir(const char *path, int verbose) {
+	struct stat buf;
+	memset(&buf, 0, sizeof(buf));
+	int serr = stat(path, &buf);
+	int err = 0;
+	if (serr < 0) { 
+		err = errno;
+		fprintf(stderr, "%s: unable to stat plugin library path %s (%d).\n",
+			APP, path, err);
+		return err;
+	}
+	if ( !S_ISDIR(buf.st_mode)) {
+		err = ENOTDIR;
+		fprintf(stderr, "%s: plugin library path %s is not a directory.\n",
+			APP, path);
+		return err;
+	}
+	return 0;
+}
+
 /* Dump plugin names and usages (where available) before ldmsd redirects
  * io. Loads and terms all plugins, which provides a modest check on some
  * coding and deployment issues.
@@ -1045,27 +1066,37 @@ int ldmsd_plugins_usage(const char *plugname)
 	strncpy(library_path, path, sizeof(library_path) - 1);
 
 	int trc=0, rc = 0;
+	int plugfound = 0;
 	while ((libpath = strtok_r(pathdir, ":", &saveptr)) != NULL) {
 		pathdir = NULL;
 		trc = ldmsd_plugins_usage_dir(libpath, plugname);
 		if (trc)
 			rc = trc;
+		else
+			if (plugname)
+				plugfound = 1;
+	}
+	if (plugname && !plugfound) {
+		fprintf(stderr, "%s: no library in %s for %s\n", APP, path, plugname);
+		strncpy(library_path, path, sizeof(library_path) - 1);
+		while ((libpath = strtok_r(pathdir, ":", &saveptr)) != NULL) {
+			pathdir = NULL;
+			(void)ldmd_plugins_check_dir(libpath, 1);
+			fprintf(stderr, "%s: no library in %s for %s\n", APP, path, plugname);
+		}
 	}
 	return rc;
 }
 
+
 static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 {
 	assert( path || "null dir name in ldmsd_plugins_usage" == NULL);
-	struct stat buf;
 	glob_t pglob;
 
-	if (stat(path, &buf) < 0) {
-		int err = errno;
-		fprintf(stderr, "%s: unable to stat library path %s (%d).\n",
-			APP, path, err);
-		return err;
-	}
+	int ckdir = ldmd_plugins_check_dir(path, 0);
+	if (ckdir)
+		return ckdir;
 
 	int rc = 0;
 	enum ldmsd_plugin_type tmatch = LDMSD_PLUGIN_OTHER;
@@ -1111,7 +1142,6 @@ static int ldmsd_plugins_usage_dir(const char *path, const char *plugname)
 		rc = 1;
 		break;
 	case GLOB_NOMATCH:
-		fprintf(stderr, "%s: no libraries in %s for %s\n", APP, path, pat);
 		rc = 1;
 		break;
 	default:
