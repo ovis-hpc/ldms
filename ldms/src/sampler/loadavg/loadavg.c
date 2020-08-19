@@ -273,7 +273,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP BASE_CONFIG_USAGE " [metrics=<mlist>] [force_integer]\n"
+	return  "config name=" SAMP " " BASE_CONFIG_USAGE " [metrics=<mlist>] [force_integer]\n"
 		"                 If force_integer is present, coerces load averages into (uint64_t)100*value\n"
 		"                 and changes the default schema name base from loadavg to loadavgi\n"
 		"    <sname>      The schema name, if generated default is not good enough.\n"

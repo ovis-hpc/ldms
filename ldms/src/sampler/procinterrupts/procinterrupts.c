@@ -190,7 +190,7 @@ err:
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return "config name=" SAMP BASE_CONFIG_USAGE;
+	return "config name=" SAMP " " BASE_CONFIG_USAGE;
 }
 
 /**

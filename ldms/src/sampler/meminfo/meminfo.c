@@ -169,7 +169,7 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP BASE_CONFIG_USAGE;
+	return  "config name=" SAMP " " BASE_CONFIG_USAGE;
 }
 
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
