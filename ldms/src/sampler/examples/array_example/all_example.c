@@ -282,7 +282,7 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return "config_name=" SAMP BASE_CONFIG_USAGE;
+	return "config_name=" SAMP " " BASE_CONFIG_USAGE;
 }
 
 static struct ldmsd_sampler all_example_plugin = {

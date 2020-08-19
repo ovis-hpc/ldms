@@ -311,7 +311,7 @@ static bool get_bool(const char *val, char *name)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP BASE_CONFIG_USAGE
+	return  "config name=" SAMP " " BASE_CONFIG_USAGE
 		" [io=<bool>] [stat=<bool>] [statm=<bool>] [mmalloc=<bool>]\n"
 		"    If none of io, stat, statm, mmalloc is given, all but mmalloc default true.\n"
 		"    If any of io, stat, statm is given, unmentioned ones default false.\n"
