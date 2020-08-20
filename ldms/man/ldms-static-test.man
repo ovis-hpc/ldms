@@ -59,9 +59,9 @@ LDMS_LS <k> [ldms_ls_args]
 .br
 This invokes ldms_ls on the k-th ldmsd.
 .TP
-KILL_LDMSD <daemon-numbers>
+KILL_LDMSD [strict] <daemon-numbers>
 .br
-Kills the listed daemons.
+Kills the listed daemons. If optional keyword strict is supplied, then missing daemons will cause the bypass variable to be set and the script to include an error code when it exits.
 .TP
 SLEEP <n>
 .br
@@ -96,6 +96,10 @@ bypass=<0,1>
 This variable assignment disables (1) or enables (0) all the macros described
 above. Typical use is to skip one or more operations while debugging a
 test script.
+.TP
+KILL_LDMSD_STRICT=<0,1>
+.br
+This variable allows the script author to control whether KILL_LDMSD is strict by default or not. If enabled (1), the script will exit with error code 1 following a failed KILL_LDMSD. If disabled (0) the script will suppress error codes from killing missing daemons. Typically used for debugging missing pid files and unexpectedly dead daemons. Supplying the keyword ‘strict’ before the numeric arguments to KILL_LDMSD also sets KILL_LDMSD_STRICT=1.
 .TP
 portbase=<K>
 .br
@@ -194,6 +198,10 @@ the default 'sock', and it is exported to the executed daemon environment.
 .SH NOTES
 Any other variable may be defined and exported for use in the attribute/value
 expansion of values in plugin configuration.
+
+.SH EXIT CODES
+Expected exit codes are 0 and 1. If the exit codes is 0, then the program will proceed. If the exit code
+is 1 then the script will stop and notify the user. 
 
 .SH FILES
 .TP
