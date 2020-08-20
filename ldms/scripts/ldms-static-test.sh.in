@@ -324,9 +324,18 @@ function LDMS_LS {
 # KILL_LDMSD num list
 function KILL_LDMSD {
 	for i in $*; do
+		if test "strict" = "$i"; then
+			KILL_LDMSD_STRICT=1
+			continue
+		fi
+
 		if test -f $LDMSD_PIDFILE.$i; then
 			kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
-		else
+
+		else 
+			if test "$KILL_LDMSD_STRICT" = "1"; then
+				bypass=1;
+			fi
 			echo cannot find pidfile for $i
 		fi
 	done
@@ -457,4 +466,10 @@ rm -rf ${STOREDIR}/*
 
 SLEEP 1
 echo "logs and data stored under $TESTDIR"
-echo done;
+echo done
+
+if test "$KILL_LDMSD_STRICT" = "1"; then
+	exit 1
+fi;
+
+
