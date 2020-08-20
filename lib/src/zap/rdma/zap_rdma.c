@@ -241,24 +241,21 @@ static void __rdma_teardown_conn(struct z_rdma_ep *ep)
 		if (ibv_destroy_cq(rep->rq_cq))
 			LOG_(rep, "RDMA: Error %d : ibv_destroy_cq failed\n",
 			     errno);
-		else
-			rep->rq_cq = NULL;
+		rep->rq_cq = NULL;
 	}
 	/* Destroy the SQ CQ */
 	if (rep->sq_cq) {
 		if (ibv_destroy_cq(rep->sq_cq))
 			LOG_(rep, "RDMA: Error %d : ibv_destroy_cq failed\n",
 			     errno);
-		else
-			rep->sq_cq = NULL;
+		rep->sq_cq = NULL;
 	}
 	/* Destroy the CM id */
 	if (rep->cm_id) {
 		if (rdma_destroy_id(rep->cm_id))
 			LOG_(rep, "RDMA: Error %d : rdma_destroy_id failed\n",
 			     errno);
-		else
-			rep->cm_id = NULL;
+		rep->cm_id = NULL;
 	}
 	if (rep->cm_channel) {
 		rdma_destroy_event_channel(rep->cm_channel);
@@ -266,11 +263,13 @@ static void __rdma_teardown_conn(struct z_rdma_ep *ep)
 	}
 
 	if (rep->cq_channel) {
+		if (epoll_ctl(cq_fd, EPOLL_CTL_DEL, rep->cq_channel->fd, &ignore))
+			LOG_(rep, "RDMA: epoll_ctl delete cq_channel "
+					"error %d\n", errno);
 		if (ibv_destroy_comp_channel(rep->cq_channel))
 			LOG_(rep, "RDMA: Error %d : "
 			     "ibv_destroy_comp_channel failed\n", errno);
-		else
-			rep->cq_channel = NULL;
+		rep->cq_channel = NULL;
 	}
 
 	rep->rem_rq_credits = RQ_DEPTH;
@@ -2233,4 +2232,17 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 
  err_0:
 	return ZAP_ERR_RESOURCE;
+}	
+
+static void __attribute__ ((destructor)) zap_rdma_fini(void)
+{
+	if (cq_thread) {
+		pthread_cancel(cq_thread);
+		pthread_join(cq_thread, NULL);
+	}
+	if (cm_thread) {
+		pthread_cancel(cm_thread);
+		pthread_join(cm_thread, NULL);
+	}
 }
+

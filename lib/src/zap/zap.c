@@ -549,6 +549,7 @@ zap_err_t zap_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 
 void zap_get_ep(zap_ep_t ep)
 {
+	assert(ep->ref_count);
 	(void)__sync_fetch_and_add(&ep->ref_count, 1);
 }
 
