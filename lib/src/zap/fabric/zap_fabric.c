@@ -747,14 +747,13 @@ static zap_err_t z_fi_connect(zap_ep_t ep,
 	zap_err_t zerr;
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
 	struct zap_event zev;
-	struct z_fi_conn_data conn_data;
 	struct epoll_event cm_event = {
 		.events = EPOLLIN,
 		.data.ptr = rep,
 	};
 
-	memset(&conn_data, 0, sizeof(conn_data));
-	ZAP_VERSION_SET(conn_data.v);
+	memset(&rep->conn_data, 0, sizeof(rep->conn_data));
+	ZAP_VERSION_SET(rep->conn_data.v);
 
 	if (data_len > ZAP_CONN_DATA_MAX) {
 		zerr = ZAP_ERR_PARAMETER;
@@ -762,8 +761,8 @@ static zap_err_t z_fi_connect(zap_ep_t ep,
 	}
 
 	if (data_len) {
-		conn_data.data_len = data_len;
-		memcpy(conn_data.data, data, data_len);
+		rep->conn_data.data_len = data_len;
+		memcpy(rep->conn_data.data, data, data_len);
 	}
 
 	zerr = zap_ep_change_state(&rep->ep, ZAP_EP_INIT, ZAP_EP_CONNECTING);
@@ -783,8 +782,8 @@ static zap_err_t z_fi_connect(zap_ep_t ep,
 	fids_add_eq(rep);
 
 	rc = fi_connect(rep->fi_ep, rep->fi->dest_addr,
-			&conn_data,
-			conn_data.data_len + sizeof(rep->conn_data));
+			&rep->conn_data,
+			rep->conn_data.data_len + sizeof(rep->conn_data));
 	if (rc) {
 		(void)epoll_ctl(g.cm_fd, EPOLL_CTL_DEL, rep->cm_fd, NULL);
 		zev.type = ZAP_EVENT_CONNECT_ERROR;
