@@ -3165,7 +3165,10 @@ void ldms_xprt_set_delete(ldms_set_t s, ldms_set_delete_cb_t cb_fn, void *cb_arg
 	/* Release the set->lock, and walk the local list */
 	rbd = LIST_FIRST(&rbd_list);
 	while (rbd) {
-		xprt = rbd->xprt;
+		xprt = ldms_xprt_get(rbd->xprt);
+		if (!xprt)
+			goto next_1;
+
 		next_rbd = LIST_NEXT(rbd, set_link);
 		LIST_REMOVE(rbd, set_link);
 
@@ -3194,6 +3197,7 @@ void ldms_xprt_set_delete(ldms_set_t s, ldms_set_delete_cb_t cb_fn, void *cb_arg
 			xprt->zerrno = zerr;
 			__ldms_free_ctxt(xprt, ctxt);
 		}
+		ldms_xprt_put(xprt);
 	next_1:
 		ref_put(&rbd->ref, "xprt_set_delete");
 		rbd = next_rbd;
