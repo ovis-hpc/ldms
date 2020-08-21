@@ -555,6 +555,9 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 			pthread_mutex_unlock(&set->lock);
 			pthread_mutex_lock(&x->lock);
 		}
+		/* Make sure that we didn't lose a set delete race */
+		if (!rbd->xprt)
+			continue;
 		__ldms_rbd_xprt_release(rbd);
 	}
 	if (x->auth) {
