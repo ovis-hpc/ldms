@@ -36,15 +36,14 @@ dist_man7_MANS += hello_cat_publisher.man
 
 SUBDIRS = stream_configs
 
-HELLO_EXTRA_FILES = \
-	${srcdir}/parser.pl
+HELLO_EXTRA_FILES = parser.pl
+SRC_HELLO_EXTRA_FILES = $(addprefix $(srcdir)/,$(HELLO_EXTRA_FILES))
 
 OPV=-$(PACKAGE_VERSION)
 HELLO_DIR = $(docdir)$(OPV)/examples/hello_sampler_util
-install-data-local: $(HELLO_EXTRA_FILES)
+install-data-local: $(SRC_HELLO_EXTRA_FILES)
 	$(MKDIR_P) $(DESTDIR)$(HELLO_DIR)
-	$(INSTALL_DATA) $(HELLO_EXTRA_FILES) $(DESTDIR)$(HELLO_DIR)/
-	chmod 755 $(DESTDIR)$(HELLO_DIR)/*
+	$(INSTALL) $(SRC_HELLO_EXTRA_FILES) $(DESTDIR)$(HELLO_DIR)/
 
 uninstall-local:
 	for i in $(HELLO_EXTRA_FILES); do \
