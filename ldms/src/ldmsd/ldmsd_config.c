@@ -497,6 +497,46 @@ char *find_comment(const char *line)
 	return NULL;
 }
 
+static ldmsd_req_hdr_t __aggregate_records(struct ldmsd_req_array *rec_array)
+{
+	ldmsd_req_hdr_t req, rec;
+	char *buf;
+	size_t buf_len, buf_off, hdr_sz, data_len;
+	int i;
+
+	hdr_sz = sizeof(*req);
+	buf = malloc(LDMSD_CFG_FILE_XPRT_MAX_REC);
+	if (!buf)
+		goto oom;
+	buf_len = LDMSD_CFG_FILE_XPRT_MAX_REC;
+	buf_off = 0;
+
+	for (i = 0; i < rec_array->num_reqs; i++) {
+		rec = rec_array->reqs[i];
+		if (0 == i) {
+			memcpy(buf, rec, hdr_sz);
+			buf_off = hdr_sz;
+		}
+		data_len = ntohl(rec->rec_len) - hdr_sz;
+		while (buf_len - buf_off < data_len) {
+			buf = realloc(buf, buf_len * 2 + data_len);
+			if (!buf)
+				goto oom;
+			buf_len = buf_len * 2 + data_len;
+		}
+		memcpy(&buf[buf_off], (void *)(rec + 1), data_len);
+		buf_off += data_len;
+	}
+	req = (ldmsd_req_hdr_t)buf;
+	req->flags =htonl(LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F);
+	req->rec_len = htonl(buf_off);
+	return req;
+oom:
+	errno = ENOMEM;
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+	return NULL;
+}
+
 /*
  * \param req_filter is a function that returns zero if we want to process the
  *                   request, and returns non-zero otherwise.
@@ -618,33 +658,43 @@ parse:
 				"(%s). %s\n", lineno, path, strerror(rc));
 		goto cleanup;
 	}
-	for (i = 0; i < req_array->num_reqs; i++) {
-		request = req_array->reqs[i];
-		if (req_filter) {
-			rc = req_filter(&xprt, request, ctxt);
-			/* rc = 0, filter OK */
-			if (rc == 0)
-				goto next_req;
-			/* rc == errno */
-			if (rc > 0) {
-				ldmsd_log(LDMSD_LERROR,
-					  "Configuration error at "
-					  "line %d (%s)\n", lineno, path);
-				goto cleanup;
-			}
-			/* rc < 0, filter not applied */
-		}
-		rc = ldmsd_process_config_request(&xprt, request);
-		if (rc || xprt.rsp_err) {
-			if (!rc)
-				rc = xprt.rsp_err;
-			ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
-					lineno, path);
+
+	request = __aggregate_records(req_array);
+	if (!request) {
+		rc = errno;
+		goto cleanup;
+	}
+
+	/*
+	 * Make sure that LDMSD will create large enough buffer to receive
+	 * the config data.
+	 */
+	if (xprt.max_msg < ntohl(request->rec_len))
+		xprt.max_msg = ntohl(request->rec_len);
+
+	if (req_filter) {
+		rc = req_filter(&xprt, request, ctxt);
+		/* rc = 0, filter OK */
+		if (rc == 0)
+			goto next_line;
+		/* rc == errno */
+		if (rc > 0) {
+			ldmsd_log(LDMSD_LERROR,
+				  "Configuration error at "
+				  "line %d (%s)\n", lineno, path);
 			goto cleanup;
 		}
-	next_req:
-		free(request);
+		/* rc < 0, filter not applied */
 	}
+	rc = ldmsd_process_config_request(&xprt, request);
+	if (rc || xprt.rsp_err) {
+		if (!rc)
+			rc = xprt.rsp_err;
+		ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
+				lineno, path);
+		goto cleanup;
+	}
+	free(request);
 	msg_no += 1;
 
 	off = 0;
