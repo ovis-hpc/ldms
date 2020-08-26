@@ -1186,18 +1186,16 @@ strgp_start_handler(scripting_inst_t inst, json_entity_t attr_dict)
 	name = json_value_str(json_value_find(attr_dict, "name"))->str;
 	key = scripting_get_key(STRGP_STR, name);
 	obj = scripting_obj_find(inst, key);
-	if (obj) {
-		rc = __eexist(key);
+	if (!obj) {
+		rc = __enoent(key);
 		goto err;
 	}
-	obj = scripting_obj_new(inst, key, LDMSD_CFGOBJ_STRGP);
-	if (!obj)
-		goto oom;
+	rc = req_obj_spec_update(obj, name, attr_dict);
+	if (rc)
+		goto err;
 	req_obj_enabled_flag_update(obj, 1);
 	free(key);
 	return 0;
-oom:
-	rc = __enomem();
 err:
 	free(key);
 	return rc;
