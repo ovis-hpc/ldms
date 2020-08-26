@@ -1165,6 +1165,7 @@ static json_entity_t __updtr_attr_get(json_entity_t dft, json_entity_t spc,
 		sets = json_value_find(spc, "set_instance_filters");
 		schemas = json_value_find(spc, "set_schema_filters");
 		perm = json_value_find(spc, "perm");
+		push = json_value_find(spc, "push");
 	}
 
 	if (dft) {
@@ -1182,6 +1183,8 @@ static json_entity_t __updtr_attr_get(json_entity_t dft, json_entity_t spc,
 			schemas = json_value_find(dft, "set_schema_filters");
 		if (!perm)
 			perm = json_value_find(dft, "perm");
+		if (!push)
+			push = json_value_find(dft, "push");
 	}
 
 	/* producers */
