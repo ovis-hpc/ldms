@@ -251,13 +251,13 @@ class ldmsdInbandConfig(ldmsdConfig):
         if xprt is None:
             raise ArgumentError("xprt is required to create an LDMS transport")
 
+        self.ldms = None
         self.socket = None
         self.host = host
         self.port = port
         self.xprt = xprt
         self.state = "INIT"
         self.ldms = ldms.Xprt(name=self.xprt, auth=auth, auth_opts=auth_opt)
-
         if not self.ldms:
             raise ValueError("Failed to create LDMS transport")
 
@@ -265,7 +265,7 @@ class ldmsdInbandConfig(ldmsdConfig):
         self.max_recv_len = self.ldms.msg_max
         self.rc = self.ldms.connect(self.host, self.port)
         if self.rc != 0:
-            raise RuntimeError("Failed to connect to ldmsd. %s" % (self.ldms.event_errcode2str(self.rc)))
+            raise RuntimeError("Error {0} connecting to {1}:{2}".format(self.rc, self.host, self.port))
         self.type = "inband"
         self.state = "CONNECTED"
 
