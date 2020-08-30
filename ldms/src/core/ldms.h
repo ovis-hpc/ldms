@@ -1124,6 +1124,14 @@ extern int ldms_set_producer_name_set(ldms_set_t s, const char *name);
 extern int ldms_mmap_set(void *meta_addr, void *data_addr, ldms_set_t *s);
 
 /**
+ * \brief Get the set name
+ *
+ * \param s The ldms_set_t handle.
+ * \returns Pointer to the set name
+ */
+extern const char *ldms_set_name_get(ldms_set_t s);
+
+/**
  * \brief Get the number of metrics in the set.
  *
  * \param s	The ldms_set_t handle.
