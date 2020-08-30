@@ -46,7 +46,9 @@
 from __future__ import print_function
 from cpython cimport PyObject, Py_INCREF, Py_DECREF, PyGILState_Ensure, \
                      PyGILState_Release, PyGILState_STATE, \
-                     PyBytes_FromStringAndSize
+                     PyBytes_FromStringAndSize, \
+                     Py_LT, Py_LE, Py_EQ, Py_NE, Py_GT,Py_GE
+
 from libc.stdint cimport *
 from libc.stdlib cimport calloc, malloc, free, realloc
 import datetime as dt
@@ -1158,23 +1160,19 @@ cdef class MetricArray(list):
             return 1
         return 0
 
-    def __eq__(self, other):
-        return self._cmp(other) == 0
-
-    def __ne__(self, other):
-        return self._cmp(other) != 0
-
-    def __le__(self, other):
-        return self._cmp(other) <= 0
-
-    def __lt__(self, other):
-        return self._cmp(other) < 0
-
-    def __ge__(self, other):
-        return self._cmp(other) >= 0
-
-    def __gt__(self, other):
-        return self._cmp(other) > 0
+    def __richcmp__(self, other, int op):
+        if op == Py_EQ:
+            return self._cmp(other) == 0
+        elif op == Py_NE:
+            return self._cmp(other) != 0
+        elif op == Py_LE:
+            return self._cmp(other) <= 0
+        elif op == Py_LT:
+            return self._cmp(other) < 0
+        elif op == Py_GE:
+            return self._cmp(other) >= 0
+        elif op == Py_GT:
+            return self._cmp(other) > 0
 
     def __getitem__(self, idx):
         if type(idx) == slice:
