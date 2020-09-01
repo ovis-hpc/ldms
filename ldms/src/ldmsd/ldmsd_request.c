@@ -1177,7 +1177,7 @@ re:
 		obj = ldmsd_cfgobj_first_re(cfgobj_type, regex);
 		while (obj) {
 			ldmsd_cfgobj_lock(obj);
-			result = obj->update(obj, is_enabled, dft, v);
+			result = obj->update(obj, is_enabled, dft, NULL);
 			if (!result) {
 				ldmsd_cfgobj_unlock(obj);
 				goto oom;
