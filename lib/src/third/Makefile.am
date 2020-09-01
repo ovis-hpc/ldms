@@ -31,7 +31,7 @@ cencode_test_LDADD = ../third/libovis_third.la
 cencode_test_LDFLAGS = -static
 
 city_test_SOURCES = city-test.c
-city_test_CFLAGS = -msse4.2 -O3 -DCITYSLIM
+city_test_CFLAGS = -O3 -DCITYSLIM
 city_test_LDFLAGS = -static @OVIS_LIB_ABS@
 city_test_LDADD = -lovis_third
 
