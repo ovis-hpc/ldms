@@ -1104,7 +1104,7 @@ int process_cli_options(char op, char *value, json_entity_t req_list)
 			goto oom;
 		json_item_add(req_list, obj);
 		spec = json_dict_build(NULL,
-				JSON_DICT_VALUE, "default_auth",
+				JSON_DICT_VALUE, "global_auth",
 					JSON_STRING_VALUE, "name", value,
 					-2,
 				-1);
