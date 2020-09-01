@@ -419,9 +419,13 @@ ldmsd_cfgobj_t ldmsd_cfgobj_next_re(ldmsd_cfgobj_t obj, regex_t regex)
  */
 ldmsd_cfgobj_t ldmsd_cfgobj_first_re(ldmsd_cfgobj_type_t type, regex_t regex)
 {
+	int rc;
 	ldmsd_cfgobj_t obj = ldmsd_cfgobj_first(type);
 	if (!obj)
 		return NULL;
+	rc = regexec(&regex, obj->name, 0, NULL, 0);
+	if (!rc)
+		return obj;
 	return ldmsd_cfgobj_next_re(obj, regex);
 }
 
