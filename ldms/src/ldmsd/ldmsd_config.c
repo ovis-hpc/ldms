@@ -560,7 +560,7 @@ int __process_config_file(const char *path, int *lno, int trust,
 	ssize_t cnt;
 	size_t buf_len = 0;
 	struct ldmsd_cfg_xprt_s xprt;
-	ldmsd_req_hdr_t request;
+	ldmsd_req_hdr_t request = NULL;
 	struct ldmsd_req_array *req_array = NULL;
 	if (!path)
 		return EINVAL;
@@ -664,6 +664,8 @@ parse:
 		rc = errno;
 		goto cleanup;
 	}
+	free(req_array);
+	req_array = NULL;
 
 	/*
 	 * Make sure that LDMSD will create large enough buffer to receive
@@ -676,7 +678,7 @@ parse:
 		rc = req_filter(&xprt, request, ctxt);
 		/* rc = 0, filter OK */
 		if (rc == 0)
-			goto next_line;
+			goto next_req;
 		/* rc == errno */
 		if (rc > 0) {
 			ldmsd_log(LDMSD_LERROR,
@@ -694,12 +696,11 @@ parse:
 				lineno, path);
 		goto cleanup;
 	}
+next_req:
 	free(request);
+	request = NULL;
 	msg_no += 1;
-
 	off = 0;
-	free(req_array);
-	req_array = NULL;
 	goto next_line;
 
 cleanup:
@@ -719,6 +720,8 @@ cleanup:
 		}
 		free(req_array);
 	}
+	if (request)
+		free(request);
 	return rc;
 }
 
