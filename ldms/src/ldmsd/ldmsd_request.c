@@ -943,7 +943,6 @@ out:
 		json_parser_free(p);
 	if (entity)
 		json_entity_free(entity);
-	ldmsd_req_ctxt_ref_put(reqc, "create");
 	/* Not sending any response back to the publisher */
 	return rc;
 }

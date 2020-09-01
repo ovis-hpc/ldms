@@ -384,7 +384,6 @@ static int __on_subs_resp(ldmsd_req_ctxt_t reqc, void *resp_args)
 				"the stream_subscribe request.\n",
 				prdcr->obj.name);
 	ldmsd_prdcr_put(prdcr); /* Taken when the request was sent */
-	ldmsd_req_ctxt_ref_put(reqc, "create");
 	return 0;
 }
 
