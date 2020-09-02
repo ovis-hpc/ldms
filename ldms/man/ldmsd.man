@@ -126,15 +126,16 @@ Display the usage for named plugin. Special names all, sampler, and store match 
 .SS
 Communication Options:
 .TP
-.BI -x " XPRT:PORT"
+.BI -x " XPRT:PORT:HOST"
 .br
 Specifies the transport type to listen on. May be specified more than once for
 multiple transports. The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY
 XE/XK/XC). A transport specific port number must be specified following a \':',
-e.g. rdma:10000.
+e.g. rdma:10000. An optional host or address may be specified after the port,
+e.g. rdma:10000:node1-ib, to listen to a specific address.
 
 The listening transports can also be specified in the configuration file using
-\fBlisten\fR command, e.g. `listen xprt=sock port=1234`. Please see
+\fBlisten\fR command, e.g. `listen xprt=sock port=1234 host=node1-ib`. Please see
 \fBldmsd_controller\fR(8) section \fBLISTEN COMMAND SYNTAX\fR for more details.
 .TP
 .BI -a " AUTH"

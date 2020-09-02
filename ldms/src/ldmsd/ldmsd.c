@@ -510,10 +510,14 @@ void usage_hint(char *argv[],char *hint)
 	       "		   are DEBUG, INFO, ERROR, CRITICAL and QUIET.\n"
 	       "		   The default level is ERROR.\n");
 	printf("  Communication Options\n");
-	printf("    -x xprt:port   Specifies the transport type to listen on. May be specified\n"
+	printf("    -x xprt:port:host\n"
+	       "		   Specifies the transport type to listen on. May be specified\n"
 	       "		   more than once for multiple transports. The transport string\n"
-	       "		   is one of 'rdma', 'sock' or 'ugni'. A transport specific port number\n"
-	       "		   is optionally specified following a ':', e.g. rdma:50000.\n");
+	       "		   is one of 'rdma', 'sock', 'ugni', or 'fabric'.\n"
+	       "		   A transport specific port number is optionally specified\n"
+	       "		   following a ':', e.g. rdma:50000. Optional host name\n"
+	       "		   or address may be given after the port, e.g. rdma:10000:node1-ib,\n"
+	       "		   to listen to a specific address.\n");
 	printf("    -a AUTH        Transport authentication plugin (default: 'none')\n");
 	printf("    -A KEY=VALUE   Authentication plugin options (repeatable)\n");
 	printf("  Kernel Metric Options\n");
@@ -2070,16 +2074,24 @@ int main(int argc, char *argv[])
 		case 'x':
 			if (check_arg("x", optarg, LO_NAME))
 				return EINVAL;
-			rval = strchr(optarg, ':');
-			if (!rval) {
+			char *_xprt, *_port, *_host;
+			_xprt = optarg;
+			_port = strchr(optarg, ':');
+			if (!_port) {
 				printf("Bad xprt format, expecting XPRT:PORT, "
 						"but got: %s\n", optarg);
 				return EINVAL;
 			}
-			rval[0] = '\0';
-			rval = rval+1;
+			*_port = '\0';
+			_port++;
+			/* optional `host` */
+			_host = strchr(_port, ':');
+			if (_host) {
+				*_host = '\0';
+				_host++;
+			}
 			/* Use the default auth domain */
-			ldmsd_listen_t listen = ldmsd_listen_new(optarg, rval, NULL, DEFAULT_AUTH);
+			ldmsd_listen_t listen = ldmsd_listen_new(_xprt, _port, _host, DEFAULT_AUTH);
 			if (!listen) {
 				printf( "Error %d: failed to add listening "
 					"endpoint: %s:%s\n",
