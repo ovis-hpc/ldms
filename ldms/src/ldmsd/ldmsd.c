@@ -1705,7 +1705,7 @@ int main(int argc, char *argv[])
 			test_set_name = strdup(optarg);
 			if (!test_set_name) {
 				printf("Not enough memory!!!\n");
-				exit(1); 
+				exit(1);
 			}
 			break;
 		case 't':
