@@ -39,6 +39,24 @@ typedef struct scripting_obj {
 
 } *scripting_obj_t;
 
+/* For debugging */
+__attribute__((unused))
+static void scripting_req_tree_dump(scripting_inst_t inst)
+{
+	scripting_obj_t obj;
+	jbuf_t jb;
+	struct rbn *rbn;
+
+	rbn = rbt_min(&inst->obj_tree_by_key);
+	while (rbn) {
+		obj = container_of(rbn, struct scripting_obj, key_rbn);
+		jb = json_entity_dump(NULL, obj->req);
+		printf("%s\n", jb->buf);
+		jbuf_free(jb);
+		rbn = rbn_succ(rbn);
+	}
+}
+
 static uint32_t req_id_get(scripting_inst_t inst)
 {
 	uint32_t id;
@@ -276,7 +294,19 @@ req_obj_enabled_flag_update(scripting_obj_t obj, int is_enabled)
 static
 const char *scripting_desc(ldmsd_plugin_inst_t pi)
 {
-	return "scripting - Translate the configuration scripting syntax into a list of cfgobj request JSON requests";
+	return
+"scripting - Translate the configuration scripting syntax into a list of cfgobj request JSON requests\n"
+"            The attribute name JSON can be used to embed a JSON dictionary string\n"
+"            in the configuration file.\n"
+"      For example,\n"
+"         load name=test_sampler\n"
+"         config name=test_sampler \\"
+"                JSON={\"schema\":\"my_schema\", \\"
+"                      \"metrics\": {\"metric_1\": { \"metric_type\": \"data\", \\"
+"                                                    \"value_type\": \"u64\"} \\"
+"                                 },\\"
+"                      \"instances\" : { \"my_set\": {} },\\"
+"                      \"producer\": \"samplerd\"}\\";
 }
 
 static
@@ -327,23 +357,69 @@ static void __get_attr_name_value(char *av, char **name, char **value)
 static json_entity_t
 add_attr_from_attr_str(const char *name, const char *value, json_entity_t attr_dict)
 {
+	int rc;
+	json_entity_t d;
+	json_parser_t p;
+	if (0 == strncmp(name, "JSON", 6)) {
+		/*
+		 * The value is a JSON dictionary string
+		 *
+		 * For example,
+		 *
+		 * config name=test_sampler \
+		 *        JSON={"schema":"my_schema", \
+		 *              "metrics": {"metric_1": { "metric_type": "data", \
+		 *                                        "value_type": "u64" \
+		 *                                      }
+		 *                         },
+		 *              "instances" : { "my_set": {} }, \
+		 *              "producer": "samplerd"}
+		 *
+		 * This will become
+		 *
+		 * { "name": "test_sampler",
+		 *   "schema": "my_schema",
+		 *   "metrics": {"metric_1" : { "metric_type":"data",
+		 *                              "value_type": "u64"}
+		 *              },
+		 *   "instances": {"my_set": {}},
+		 *   "producer": "samplerd"
+		 * }
+		 */
+		p = json_parser_new(0);
+		if (!p) {
+			return NULL;
+		}
+		rc = json_parse_buffer(p, (char *)value, strlen(value), &d);
+		json_parser_free(p);
+		if (rc)
+			return NULL;
+		rc = json_dict_merge(attr_dict, d);
+		if (rc) {
+			json_entity_free(d);
+			return NULL;
+		}
+	} else {
+		attr_dict = json_dict_build(attr_dict, JSON_STRING_VALUE,
+							name, value, -1);
+		if (!attr_dict)
+			return NULL;
+	}
 
-	attr_dict = json_dict_build(attr_dict, JSON_STRING_VALUE, name, value, -1);
-	if (!attr_dict)
-		return NULL;
 	return attr_dict;
 }
 
 static const char *__ldmsd_cfg_delim = " \t";
 static json_entity_t parse_attr_str(char *attr_str)
 {
-	char *ptr, *name, *value, *dummy;
+	char *ptr, *name, *value, *dummy, *attr;
 	json_entity_t attr_dict = NULL;
 
 	dummy = NULL;
-	attr_str = strtok_r(attr_str, __ldmsd_cfg_delim, &ptr);
-	while (attr_str) {
-		dummy = strdup(attr_str); /* preserve the original string if we need to create multiple records */
+
+	attr = strtok_r(attr_str, __ldmsd_cfg_delim, &ptr);
+	while (attr) {
+		dummy = strdup(attr); /* preserve the original string if we need to create multiple records */
 		if (!dummy)
 			goto err;
 		__get_attr_name_value(dummy, &name, &value);
@@ -352,7 +428,7 @@ static json_entity_t parse_attr_str(char *attr_str)
 		attr_dict = add_attr_from_attr_str(name, value, attr_dict);
 		if (!attr_dict)
 			goto err;
-		attr_str = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
+		attr = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
 		free(dummy);
 		dummy = NULL;
 	}
@@ -419,7 +495,7 @@ req_obj_spec_update(scripting_obj_t obj, char *cfgobj_name, json_entity_t attr_d
 		a = json_entity_copy(attr_dict);
 		if (!a)
 			return ENOMEM;
-		attr = json_entity_new(JSON_ATTR_VALUE, cfgobj_name, attr_dict);
+		attr = json_entity_new(JSON_ATTR_VALUE, cfgobj_name, a);
 		if (!attr) {
 			json_entity_free(a);
 			return ENOMEM;
@@ -910,6 +986,37 @@ err:
 }
 
 static int
+start_handler(scripting_inst_t inst, json_entity_t attr_dict)
+{
+	int rc;
+	json_entity_t d;
+	char *name = strdup(json_value_str(json_value_find(attr_dict, "name"))->str);
+	if (!name)
+		return ENOMEM;
+
+	/* Create smplr_add request */
+	attr_dict = json_dict_build(attr_dict,
+			JSON_STRING_VALUE, "instance", name,
+			-1);
+	rc = smplr_add_handler(inst, attr_dict);
+	if (rc)
+		goto out;
+
+	/* Create smplr_start request */
+	d = json_dict_build(NULL,
+			JSON_STRING_VALUE, "name", name,
+			-1);
+	if (!d)
+		goto out;
+	rc = smplr_start_handler(inst, d);
+	json_entity_free(d);
+
+out:
+	free(name);
+	return rc;
+}
+
+static int
 updtr_add_handler(scripting_inst_t inst, json_entity_t attr_dict)
 {
 	int rc;
@@ -1353,6 +1460,7 @@ struct handler_entry handler_entry_tbl[] = {
 		{ "setgroup_ins",	setgroup_ins_handler },
 		{ "smplr_add",		smplr_add_handler },
 		{ "smplr_start",	smplr_start_handler },
+		{ "start",		start_handler },
 		{ "strgp_add",		strgp_add_handler },
 		{ "strgp_metric_add",	strgp_metric_add_handler },
 		{ "strgp_prdcr_add",	strgp_prdcr_add_handler },
@@ -1398,8 +1506,20 @@ static int parse_line(scripting_inst_t inst, char *l)
 	if (!dummy)
 		return ENOMEM;
 	v = strtok_r(dummy, __ldmsd_cfg_delim, &ptr);
+
+	if (!isalpha(v[0])) {
+		rc = EBFONT;
+		goto out;
+	}
+
 	attr_str = strtok_r(NULL, "\n", &ptr);
 	attr_dict = parse_attr_str(attr_str);
+	if (!attr_dict) {
+		ldmsd_log(LDMSD_LERROR, "Line %d: Failed to parse the config line.\n",
+				inst->lineno);
+		rc = ENOMEM;
+		goto out;
+	}
 
 	handler = bsearch(&v, &handler_entry_tbl, ARRAY_SIZE(handler_entry_tbl),
 				sizeof(*handler), handler_entry_cmp);
@@ -1412,6 +1532,7 @@ static int parse_line(scripting_inst_t inst, char *l)
 		ldmsd_log(LDMSD_LERROR, "Error %d: %s\n", rc, l);
 		goto out;
 	}
+	json_entity_free(attr_dict);
 
 out:
 	free(dummy);
@@ -1504,7 +1625,12 @@ next_line:
 
 	/* attempt to merge multiple lines together */
 	if (off > 0 && line[off-1] == '\\') {
-		line[off-1] = ' ';
+		if (line[off-2] == '\\') {
+			line[off-2] = '\0';
+			off -= 2;
+		} else {
+			line[off-1] = ' ';
+		}
 		goto next_line;
 	}
 
@@ -1514,8 +1640,14 @@ parse:
 
 	inst->lineno = lineno;
 	rc = parse_line(inst, line);
-	if (rc)
+	if (rc) {
+		if (EBFONT == rc) {
+			ldmsd_log(LDMSD_LCRITICAL, "%s might not be "
+					"written in LDMSD scripting syntax.\n",
+					path);
+		}
 		goto cleanup;
+	}
 	off = 0;
 	goto next_line;
 
