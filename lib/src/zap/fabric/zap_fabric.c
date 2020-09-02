@@ -210,6 +210,7 @@ static int		_buffer_init_pool(struct z_fi_ep *ep);
 static void		__buffer_free(struct z_fi_buffer *rbuf);
 static int		send_credit_update(struct z_fi_ep *ep);
 static void		_deliver_disconnected(struct z_fi_ep *rep);
+static void		*__map_addr(struct z_fi_ep *ep, zap_map_t map, void *addr);
 
 static inline int fi_info_dom_cmp(struct fi_info *a, struct fi_info *b)
 {
@@ -217,6 +218,17 @@ static inline int fi_info_dom_cmp(struct fi_info *a, struct fi_info *b)
 	rc = strcmp(a->fabric_attr->name, b->fabric_attr->name);
 	rc = rc?rc:strcmp(a->domain_attr->name, b->domain_attr->name);
 	return rc;
+}
+
+/* SCALABLE MR mode (default) ==> remote addr is referenced by MR offset
+ * Otherwise ==> remote addr is the memory address.
+ */
+static void *__map_addr(struct z_fi_ep *ep, zap_map_t map, void *addr)
+{
+	enum fi_mr_mode mr_mode = ep->fi->domain_attr->mr_mode;
+	if (!mr_mode || (mr_mode & FI_MR_SCALABLE)) /* SCALABLE MR mode */
+		return (void*)(addr - (void*)map->addr); /* ref by offset */
+	return addr; /* reference by addr */
 }
 
 /*
@@ -2017,7 +2029,7 @@ static zap_err_t z_fi_write(zap_ep_t ep,
 	ctxt->u.rdma.src_map  = lmap;
 	ctxt->u.rdma.dst_map  = rmap;
 	ctxt->u.rdma.src_addr = src;
-	ctxt->u.rdma.dst_addr = dst;
+	ctxt->u.rdma.dst_addr = __map_addr(rep, dst_map, dst);
 	ctxt->u.rdma.len      = sz;
 
 	rc = submit_wr(rep, ctxt, 1);
@@ -2052,7 +2064,7 @@ static zap_err_t z_fi_read(zap_ep_t ep,
 	}
 	ctxt->u.rdma.src_map  = rmap;
 	ctxt->u.rdma.dst_map  = lmap;
-	ctxt->u.rdma.src_addr = src;
+	ctxt->u.rdma.src_addr = __map_addr(rep, src_map, src);
 	ctxt->u.rdma.dst_addr = dst;
 	ctxt->u.rdma.len      = sz;
 
