@@ -29,6 +29,7 @@ gen_scripts += ldms-py-varset.sh
 gen_scripts += ldms-py-rename.sh
 gen_scripts += ldms_local_opa2test.sh
 gen_scripts += ldms-l2_test.sh
+gen_scripts += run-static-tests.sh
 
 bin_SCRIPTS += $(gen_scripts)
 
@@ -46,7 +47,11 @@ ovis-roll-over.py: ${srcdir}/ovis-roll-over.py
 lsdate: ${srcdir}/lsdate
 	cp ${srcdir}/lsdate .
 
+installcheck-local: run-static-tests.sh
+
 install-data-local: $(testsets)
+
+TESTS = run-static-tests.sh
 
 install-serial:
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/examples/static-test && \
