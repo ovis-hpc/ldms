@@ -716,7 +716,9 @@ json_entity_t ldmsd_smplr_create(const char *name, short enabled,
 				goto oom;
 		}
 	} else {
-		if ((offset_us < 0) || (offset_us >= interval_us)) {
+		if (LDMSD_ATTR_NA == offset_us) {
+			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
+		} else if ((offset_us < 0) || (offset_us >= interval_us)) {
 			rc = ldmsd_req_buf_append(buf, "The value '%ld' is "
 					"either less than 0 or equal or larger "
 					"than the interval value '%ld'.",
