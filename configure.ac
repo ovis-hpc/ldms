@@ -813,6 +813,8 @@ AC_CONFIG_FILES([
 	ldms/scripts/ldms-wrapper
 	ldms/scripts/ldms-static-test.sh
 	ldms/scripts/pll-ldms-static-test.sh
+	ldms/scripts/run-static-tests.sh
+	ldms/scripts/static-test-list
 	ldms/scripts/ldms_ban.sh
 	ldms/scripts/ldms-plugins.sh
 	ldms/scripts/ldms-py-subset_test.sh
