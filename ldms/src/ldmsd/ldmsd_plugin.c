@@ -551,9 +551,6 @@ json_entity_t __plugin_attr_get(json_entity_t dft, json_entity_t spc,
 		}
 	}
 
-	(void)json_attr_rem(cfg, "plugin");
-	(void)json_attr_rem(cfg, "perm");
-
 	/* plugin instance configuration attributes */
 	if (cfg) {
 		if (JSON_LIST_VALUE == json_entity_type(cfg)) {
