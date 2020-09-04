@@ -665,14 +665,22 @@ int process_instances(test_sampler_inst_t inst, json_entity_t instances,
 		set_name = json_attr_name(ent)->str;
 		d = json_attr_value(ent);
 
+		push_at = TEST_SAMPLER_DEFAULT_PUSH_AT;
+		delete_at = TEST_SAMPLER_DEFAULT_DELETE_AT;
+		create_at = TEST_SAMPLER_DEFAULT_CREATE_AT;
+		is_suffix = TEST_SAMPLER_DEFAULT_SUFFIX_W_TIME;
+
+		if (d->type != JSON_DICT_VALUE) {
+			/* No special options are given */
+			goto create_ts_set;
+		}
+
 		/* push */
 		v = attr_find(inst, d, JSON_INT_VALUE,
 					"push_at", 0, ebuf, ebufsz);
 		if (!v && (errno == EINVAL))
 			return EINVAL;
-		if (!v)
-			push_at = TEST_SAMPLER_DEFAULT_PUSH_AT;
-		else
+		if (v)
 			push_at = json_value_int(v);
 
 		/* delete */
@@ -680,9 +688,7 @@ int process_instances(test_sampler_inst_t inst, json_entity_t instances,
 					"delete_at", 0, ebuf, ebufsz);
 		if (!v && (errno == EINVAL))
 			return EINVAL;
-		if (!v)
-			delete_at = TEST_SAMPLER_DEFAULT_DELETE_AT;
-		else
+		if (v)
 			delete_at = json_value_int(v);
 
 		/* create */
@@ -690,9 +696,7 @@ int process_instances(test_sampler_inst_t inst, json_entity_t instances,
 					"create_from_delete_at", 0, ebuf, ebufsz);
 		if (!v && (errno == EINVAL))
 			return EINVAL;
-		if (!v)
-			create_at = TEST_SAMPLER_DEFAULT_CREATE_AT;
-		else
+		if (v)
 			create_at = json_value_int(v);
 
 		/* suffix */
@@ -700,11 +704,10 @@ int process_instances(test_sampler_inst_t inst, json_entity_t instances,
 					"suffix_with_time", 0, ebuf, ebufsz);
 		if (!v && (errno == EINVAL))
 			return EINVAL;
-		if (!v)
-			is_suffix = TEST_SAMPLER_DEFAULT_SUFFIX_W_TIME;
-		else
+		if (v)
 			is_suffix = json_value_bool(v);
 
+	create_ts_set:
 		/* Create test_sampler_set */
 		ts_set = ts_set_new(inst, set_name, push_at, delete_at, create_at, is_suffix);
 		if (!ts_set)
