@@ -184,6 +184,8 @@ static json_entity_t
 version_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt);
 static json_entity_t
 set_route_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt);
+static json_entity_t
+test_protocol_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt);
 
 static struct request_handler_entry request_handler_tbl[] = {
 		{ "create",		ldmsd_cfgobj_create_handler,	XUG },
@@ -192,6 +194,7 @@ static struct request_handler_entry request_handler_tbl[] = {
 		{ "query",		ldmsd_cfgobj_query_handler,	XALL },
 		{ "set_route",		set_route_handler,		XALL },
 		{ "stream_subscribe",	stream_subscribe_handler,	XUG },
+		{ "test_protocol",	test_protocol_handler,		XUG },
 		{ "update",		ldmsd_cfgobj_update_handler,	XUG },
 		{ "version",		version_handler,		XALL },
 };
@@ -1806,5 +1809,406 @@ oom:
 	if (info)
 		ldmsd_set_info_delete(info);
 	errno = ENOMEM;
+	return NULL;
+}
+
+static json_entity_t
+__test_protocol_forward_reply(json_entity_t reply, int hop_id)
+{
+	json_entity_t hops;
+	char hop_id_s[8];
+
+	hops = json_value_find(reply, "hops");
+	if (!hops) {
+		reply = json_dict_build(reply, JSON_DICT_VALUE, "hops", -2, -1);
+		if (!reply)
+			return NULL;
+		hops = json_value_find(reply, "hops");
+	}
+
+	snprintf(hop_id_s, 8, "%d", hop_id);
+	hops = json_dict_build(hops,
+			JSON_STRING_VALUE, hop_id_s, ldmsd_myname_get(), -1);
+	if (!hops) {
+		json_entity_free(reply);
+		return NULL;
+	}
+	return reply;
+}
+
+struct test_protocol_ctxt {
+	json_entity_t reply;
+	ldmsd_req_ctxt_t client_reqc;
+};
+
+static int
+test_protocol_forward_resp_handler(ldmsd_req_ctxt_t reqc, void *args)
+{
+	int rc;
+	json_entity_t reply, hops, rsp_hops;
+	struct test_protocol_ctxt *ctxt = (struct test_protocol_ctxt *)args;
+
+	reply = ctxt->reply;
+	hops = json_value_find(reply, "hops");
+
+	rc = json_value_int(json_value_find(reqc->json, "status"));
+	if (rc) {
+		rc = ldmsd_reply_error_set(reply, rc, NULL);
+		if (rc)
+			return ENOMEM;
+	}
+
+	rsp_hops = json_value_find(reqc->json, "hops");
+	if (rsp_hops) {
+		rc = json_dict_merge(hops, rsp_hops);
+		if (rc)
+			return ENOMEM;
+	}
+	rc = ldmsd_reply_send(ctxt->client_reqc, reply);
+	ldmsd_req_ctxt_ref_put(ctxt->client_reqc, "ctxt_alloc");
+	free(ctxt);
+	return rc;
+}
+
+static int
+__test_protocol_forward(ldmsd_req_ctxt_t reqc, json_entity_t reply,
+			int num_hops, int hop_id)
+{
+	int rc;
+	struct test_protocol_ctxt *ctxt;
+	ldmsd_prdcr_t prdcr;
+	json_entity_t req;
+
+	prdcr = ldmsd_prdcr_first();
+	if (!prdcr)
+		return ENOENT;
+	ldmsd_prdcr_get(prdcr);
+	ctxt = malloc(sizeof(*ctxt));
+	if (!ctxt)
+		return ENOMEM;
+	ctxt->reply = reply;
+	ldmsd_req_ctxt_ref_get(reqc, "ctxt_alloc");
+	ctxt->client_reqc = reqc;
+
+	req = ldmsd_req_obj_new("test_protocol");
+	if (!req)
+		goto oom;
+
+	req = json_dict_build(req,
+				JSON_STRING_VALUE, "mode", "forward",
+				JSON_INT_VALUE, "num_hops", num_hops,
+				JSON_INT_VALUE, "hop_id", hop_id,
+				-1);
+	if (!req)
+		goto oom;
+
+	rc = ldmsd_request_send(prdcr->xprt, req,
+				test_protocol_forward_resp_handler, (void *)ctxt);
+	if (rc)
+		goto err;
+	return 0;
+oom:
+	rc = ENOMEM;
+err:
+	free(ctxt);
+	ldmsd_req_ctxt_ref_put(reqc, "ctxt_alloc");
+	return rc;
+}
+
+static int
+__test_protocol_forward_handler(ldmsd_req_ctxt_t reqc, json_entity_t reply)
+{
+	int rc;
+	json_entity_t num_hops, hop_id;
+	int num = INT8_MAX, id = 0;
+
+	num_hops = json_value_find(reqc->json, "num_hops");
+	if (num_hops) {
+		if (JSON_INT_VALUE != json_entity_type(num_hops)) {
+			return ldmsd_reply_error_set(reply, EINVAL,
+					"'num_hops' must be an integer.");
+		}
+		num = json_value_int(num_hops);
+	}
+
+	hop_id = json_value_find(reqc->json, "hop_id");
+	if (hop_id) {
+		if (JSON_INT_VALUE != json_entity_type(hop_id)) {
+			return ldmsd_reply_error_set(reply, EINVAL,
+					"'hop_id' must be an integer.");
+		}
+		id = json_value_int(hop_id);
+	}
+
+	reply = __test_protocol_forward_reply(reply, id);
+	if (!reply)
+		goto oom;
+
+	if (0 == num) {
+		/*
+		 * Don't forward the request.
+		 */
+		goto out;
+	} else {
+		/*
+		 * Forward the request to the first producer.
+		 */
+		rc = __test_protocol_forward(reqc, reply, num - 1, id + 1);
+		if (rc) {
+			if (ENOMEM == rc) {
+				goto oom;
+			} else if (ENOENT == rc) {
+				/*
+				 * No more producers to forward the request to
+				 */
+				goto out;
+			} else {
+				reply = json_dict_build(reply,
+						JSON_INT_VALUE, "status", rc,
+						JSON_STRING_VALUE, "msg",
+							"Failed to forward the request.",
+						-1);
+				if (!reply)
+					goto oom;
+			}
+			rc = ldmsd_reply_error_set(reply, rc, NULL);
+			if (rc)
+				goto oom;
+			goto out;
+		} else {
+			/*
+			 * The reply is not ready yet.
+			 */
+			return EINPROGRESS;
+		}
+	}
+out:
+	return 0;
+
+oom:
+	if (reply)
+		json_entity_free(reply);
+	return ENOMEM;
+}
+
+static int
+__test_protocol_multi_rec_rsp_handler(ldmsd_req_ctxt_t reqc, json_entity_t reply)
+{
+	int rc, i;
+	json_entity_t num_rec, item, records;
+	int num;
+	size_t max_sz = reqc->xprt->max_msg;
+	size_t hdr_sz = sizeof(struct ldmsd_rec_hdr_s);
+	size_t remaining;
+	jbuf_t jb;
+	ldmsd_req_buf_t buf = NULL;
+
+	num_rec = json_value_find(reqc->json, "num_records");
+	if (!num_rec) {
+		return ldmsd_reply_error_set(reply, EINVAL,
+				"'num_records' is required.");
+	}
+	if (JSON_INT_VALUE != json_entity_type(num_rec)) {
+		return ldmsd_reply_error_set(reply, EINVAL,
+				"'num_records' must be an integer.");
+	}
+
+	num = json_value_int(num_rec);
+	reply = json_dict_build(reply, JSON_LIST_VALUE, "records", -2, -1);
+	if (!reply)
+		goto oom;
+
+	records = json_value_find(reply, "records");
+	jb = json_entity_dump(NULL, reply);
+	if (!jb)
+		goto oom;
+
+	buf = ldmsd_req_buf_alloc(max_sz);
+	if (!buf) {
+		jbuf_free(jb);
+		goto oom;
+	}
+
+	for (i = 1; i <= num; i++) {
+		if (1 == i) {
+			/* +2 for ]} counted in jb->buf_len */
+			remaining = max_sz - hdr_sz - jb->buf_len + 2;
+			jbuf_free(jb);
+		} else {
+			/* -1 for , */
+			remaining = max_sz -hdr_sz - 1;
+		}
+		if (num == i) {
+			remaining -= 2; /* -2 for ]} */
+		}
+		rc = ldmsd_req_buf_append(buf, "rec_%d%*s", i, (int)remaining, "");
+		if (rc < 0)
+			goto oom;
+		item = json_entity_new(JSON_STRING_VALUE, buf->buf);
+		if (!item)
+			goto oom;
+		json_item_add(records, item);
+		ldmsd_req_buf_reset(buf);
+	}
+
+	ldmsd_req_buf_free(buf);
+	return 0;
+oom:
+	rc = ENOMEM;
+	if (reply)
+		json_entity_free(reply);
+	if (buf)
+		ldmsd_req_buf_free(buf);
+	return rc;
+}
+
+static int
+__test_protocol_long_rsp_handler(ldmsd_req_ctxt_t reqc, json_entity_t reply)
+{
+	int rc;
+	json_entity_t len;
+	long msg_sz, l, hdr_sz;
+	jbuf_t jb;
+	ldmsd_req_buf_t buf;
+
+	hdr_sz = sizeof(struct ldmsd_rec_hdr_s);
+
+	len = json_value_find(reqc->json, "length");
+	if (!len)
+		return ldmsd_reply_error_set(reply, EINVAL, "'length' is missing.");
+
+	if (JSON_INT_VALUE != json_entity_type(len)) {
+		return ldmsd_reply_error_set(reply, EINVAL,
+						"'length' must be an integer.");
+	}
+
+	l = json_value_int(len);
+
+	reply = json_dict_build(reply,
+				JSON_INT_VALUE, "length", l,
+				JSON_STRING_VALUE, "str", "",
+				-1);
+	if (!reply)
+		goto oom;
+
+	jb = json_entity_dump(NULL, reply);
+	if (!jb)
+		goto oom;
+
+	buf = ldmsd_req_buf_alloc(l);
+	if (!buf) {
+		jbuf_free(jb);
+		goto oom;
+	}
+
+	msg_sz = l - (hdr_sz + jb->cursor);
+	if (msg_sz <= 0) {
+		rc = ldmsd_req_buf_append(buf, "%ld", msg_sz);
+	} else {
+		rc = ldmsd_req_buf_append(buf, "(%ld+%d+%ld)", hdr_sz, jb->cursor, msg_sz);
+		if (rc < 0)
+			goto oom;
+		rc = ldmsd_req_buf_append(buf, "%0*d", (int)(msg_sz - buf->off), 0);
+	}
+	if (rc < 0)
+		goto oom;
+
+	reply = json_dict_build(reply, JSON_STRING_VALUE, "str", buf->buf, -1);
+	if (!reply)
+		goto oom;
+
+	jbuf_free(jb);
+	ldmsd_req_buf_free(buf);
+	return 0;
+
+oom:
+	rc = ENOMEM;
+	if (reply)
+		json_entity_free(reply);
+	return rc;
+}
+
+static int
+__test_protocol_echo_handler(ldmsd_req_ctxt_t reqc, json_entity_t reply)
+{
+	int rc;
+	json_entity_t l, echo, a;
+
+	l = json_value_find(reqc->json, "list");
+	if (!l) {
+		return ldmsd_reply_error_set(reply, EINVAL,
+			"'list' is required for mode 'echo'.");
+	}
+
+	if (JSON_LIST_VALUE != json_entity_type(l)) {
+		return ldmsd_reply_error_set(reply, EINVAL,
+				"'list' must be a list.");
+	}
+
+	echo = json_entity_copy(l);
+	if (!echo)
+		goto oom;
+
+	a = json_entity_new(JSON_ATTR_VALUE, "echo", echo);
+	if (!a)
+		goto oom;
+
+	json_attr_add(reply, a);
+
+	return 0;
+oom:
+	rc = ENOMEM;
+	if (reply)
+		json_entity_free(reply);
+	return rc;
+}
+
+static json_entity_t
+test_protocol_handler(ldmsd_req_ctxt_t reqc, struct ldmsd_sec_ctxt *sctxt)
+{
+	int rc;
+	int msg_no = reqc->key.msg_no;
+	json_entity_t reply, mode;
+	json_str_t mode_s;
+
+	reply = ldmsd_reply_new("test_protocol", msg_no, 0, NULL, NULL);
+	if (!reply)
+		goto oom;
+
+	mode = json_value_find(reqc->json, "mode");
+	if (!mode) {
+		rc = ldmsd_reply_error_set(reply, EINVAL, "'mode' is missing.");
+		if (rc)
+			goto oom;
+		return reply;
+	}
+
+	if (JSON_STRING_VALUE != json_entity_type(mode)) {
+		rc = ldmsd_reply_error_set(reply, EINVAL, "'mode' must be a string.");
+		if (rc)
+			goto oom;
+		return reply;
+	}
+
+	mode_s = json_value_str(mode);
+	if (0 == strncmp(mode_s->str, "echo", mode_s->str_len)) {
+		rc = __test_protocol_echo_handler(reqc, reply);
+	} else if (0 == strncmp(mode_s->str, "long_rsp", mode_s->str_len)) {
+		rc = __test_protocol_long_rsp_handler(reqc, reply);
+	} else if (0 == strncmp(mode_s->str, "multi_rec_rsp", mode_s->str_len)) {
+		rc = __test_protocol_multi_rec_rsp_handler(reqc, reply);
+	} else if (0 == strncmp(mode_s->str, "forward", mode_s->str_len)) {
+		rc = __test_protocol_forward_handler(reqc, reply);
+	} else {
+		rc = ldmsd_reply_error_set(reply, ENOTSUP, "Not supported mode");
+	}
+	if (rc)
+		goto err;
+	return reply;
+oom:
+	rc = ENOMEM;
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+err:
+	errno = rc;
 	return NULL;
 }
