@@ -40,6 +40,7 @@ jbuf_t jbuf_append_va(jbuf_t jb, const char *fmt, va_list _ap)
 {
 	int cnt, space;
 	va_list ap;
+	jbuf_t _jb;
  retry:
  	va_copy(ap, _ap);
 	space = jb->buf_len - jb->cursor;
@@ -47,11 +48,13 @@ jbuf_t jbuf_append_va(jbuf_t jb, const char *fmt, va_list _ap)
 	va_end(ap);
 	if (cnt > space) {
 		space = jb->buf_len + cnt + JSON_BUF_START_LEN;
-		jb = realloc(jb, space);
-		if (jb) {
+		_jb = realloc(jb, space);
+		if (_jb) {
+			jb = _jb;
 			jb->buf_len = space;
 			goto retry;
 		} else {
+			free(jb);
 			return NULL;
 		}
 	}
@@ -321,7 +324,7 @@ static jbuf_t __list_dump(jbuf_t jb, json_entity_t e)
 	for (i = json_item_first(e); i; i = json_item_next(i)) {
 		if (count)
 			jb = jbuf_append_str(jb, ",");
-		__entity_dump(jb, i);
+		jb = __entity_dump(jb, i);
 		count++;
 	}
 	jb = jbuf_append_str(jb, "]");
@@ -338,7 +341,7 @@ static jbuf_t __dict_dump(jbuf_t jb, json_entity_t e)
 		if (count)
 			jb = jbuf_append_str(jb, ",");
 		jb = jbuf_append_str(jb, "\"%s\":", a->value.attr_->name->value.str_->str);
-		__entity_dump(jb, a->value.attr_->value);
+		jb = __entity_dump(jb, a->value.attr_->value);
 		count++;
 	}
 	jb = jbuf_append_str(jb, "}");
@@ -364,10 +367,10 @@ static jbuf_t __entity_dump(jbuf_t jb, json_entity_t e)
 		jb = jbuf_append_str(jb, "\"%s\"", e->value.str_->str);
 		break;
 	case JSON_LIST_VALUE:
-		__list_dump(jb, e);
+		jb = __list_dump(jb, e);
 		break;
 	case JSON_DICT_VALUE:
-		__dict_dump(jb, e);
+		jb = __dict_dump(jb, e);
 		break;
 	case JSON_NULL_VALUE:
 		jb = jbuf_append_str(jb, "null");
