@@ -113,6 +113,7 @@ int _scpy(char **buff, size_t *slen, size_t *alen,
 
 char *str_repl_cmd(const char *_str)
 {
+	FILE *p = NULL;
 	char *str = strdup(_str);
 	if (!str)
 		goto err;
@@ -126,7 +127,6 @@ char *str_repl_cmd(const char *_str)
 	char *cmd;
 	int rc;
 	int count;
-	FILE *p = NULL;
 
 	if (!str)
 		goto err;
@@ -202,6 +202,7 @@ char *str_repl_cmd(const char *_str)
 			}
 		}
 		pclose(p);
+		p = NULL;
 		/* remove the trailing spaces at the end */
 		while (isspace(buff[slen-1])) {
 			buff[slen-1] = 0;
