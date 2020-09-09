@@ -400,6 +400,37 @@ static void z_fi_destroy(zap_ep_t zep)
 	free(rep);
 }
 
+int sockaddr_in_print(struct sockaddr *sa, char **node, char **port)
+{
+	char *_node = NULL;
+	char *_port = NULL;
+	int len;
+	uint8_t *ip_addr;
+	struct sockaddr_in *sin = (void*)sa;
+	if (sa->sa_family != AF_INET)
+		return EINVAL;
+	len = asprintf(&_port, "%hu", ntohs(sin->sin_port));
+	if (len < 0)
+		return errno;
+	if (sin->sin_addr.s_addr) {
+		ip_addr = (void*)&sin->sin_addr.s_addr;
+		len = asprintf(&_node, "%hhu.%hhu.%hhu.%hhu", ip_addr[0], ip_addr[1], ip_addr[2], ip_addr[3]);
+		if (len < 0) {
+			free(_port);
+			return errno;
+		}
+	} else {
+		len = asprintf(&_node, "*");
+		if (len < 0) {
+			free(_port);
+			return errno;
+		}
+	}
+	*node = _node;
+	*port = _port;
+	return 0;
+}
+
 static int __fi_init(struct z_fi_ep *rep, int active, struct sockaddr *sin, size_t sa_len)
 {
 	/* Initialize the following fabric entities in the endpoint.
@@ -412,6 +443,10 @@ static int __fi_init(struct z_fi_ep *rep, int active, struct sockaddr *sin, size
 	int ret = FI_ENOMEM;
 	struct z_fi_fabdom *fdom;
 	struct sockaddr *_sin;
+	char *node = NULL;
+	char *port = NULL;
+	int rc;
+	uint64_t flags = 0;
 
 	if (rep->fi)
 		goto init_dom;
@@ -437,8 +472,15 @@ static int __fi_init(struct z_fi_ep *rep, int active, struct sockaddr *sin, size
 			hints->dest_addr = _sin;
 			hints->dest_addrlen  = sa_len;
 		} else {
-			hints->src_addr = _sin;
-			hints->src_addrlen  = sa_len;
+			rc = sockaddr_in_print(_sin, &node, &port);
+			if (rc == 0) {
+				flags |= FI_SOURCE;
+				free(_sin); /* _sin is not used */
+			} else {
+				/* fall back to src_addr if str not working */
+				hints->src_addr = _sin;
+				hints->src_addrlen  = sa_len;
+			}
 		}
 	}
 	if (rep->provider_name) {
@@ -451,10 +493,11 @@ static int __fi_init(struct z_fi_ep *rep, int active, struct sockaddr *sin, size
 		if (!hints->domain_attr->name)
 			goto err_0;
 	}
-	ret = fi_getinfo(ZAP_FI_VERSION, NULL, NULL, 0, hints, &rep->fi);
+	ret = fi_getinfo(ZAP_FI_VERSION, node, port, flags, hints, &rep->fi);
 	if (ret)
 		goto err_0;
 	fi_freeinfo(hints);
+	hints = NULL;
  init_dom:
 	if (rep->fabric)
 		goto out;
@@ -467,11 +510,19 @@ static int __fi_init(struct z_fi_ep *rep, int active, struct sockaddr *sin, size
 	rep->domain = fdom->domain;
 	rep->fabdom_id = fdom->id;
  out:
+	if (node)
+		free(node);
+	if (port)
+		free(port);
 	return 0;
 
  err_0:
 	if (hints)
 		fi_freeinfo(hints);
+	if (node)
+		free(node);
+	if (port)
+		free(port);
 	return ret;
 }
 
