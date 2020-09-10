@@ -1917,7 +1917,8 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 {
 	static char rej_msg[64] = "Insufficient resources";
 	struct sockaddr lcl, rmt;
-	socklen_t xlen;
+	memset(&rmt, 0, sizeof(rmt));
+	socklen_t xlen = sizeof(lcl);
 	struct ldms_conn_msg msg;
 #define RMT_NM_SZ 256
 	char rmt_name[RMT_NM_SZ];
@@ -2469,10 +2470,9 @@ static int __ldms_conn_msg_verify(struct ldms_xprt *x, const void *data,
  */
 static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 {
-	struct ldms_xprt_event event = {
-			.type = LDMS_XPRT_EVENT_LAST,
-			.data = NULL,
-			.data_len = 0};
+	struct ldms_xprt_event event;
+	memset(&event, 0, sizeof(event));
+	event.type = LDMS_XPRT_EVENT_LAST;
 	char rej_msg[128];
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 #ifdef DEBUG
