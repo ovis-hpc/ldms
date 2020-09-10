@@ -78,6 +78,7 @@ OPTION_INCLUDE_FLAGS([OVIS],[ \
 	lib/src/ovis_util \
 	lib/src/ovis_auth \
 	lib/src/ovis_ctrl \
+	lib/src/ovis_ev \
 	lib/src/ovis_event \
 	lib/src/ovis_json \
 	lib/src/zap \
@@ -97,6 +98,7 @@ OPTION_LIB_FLAGS([OVIS],[ \
 	lib/src/ovis_util \
 	lib/src/ovis_auth \
 	lib/src/ovis_ctrl \
+	lib/src/ovis_ev \
 	lib/src/ovis_event \
 	lib/src/ovis_json \
 	lib/src/zap \
@@ -116,6 +118,7 @@ AC_SUBST([LDFLAGS_GETTIME])
 LIBS=""
 
 OPTION_DEFAULT_ENABLE([coll], [ENABLE_COLL])
+OPTION_DEFAULT_ENABLE([ovis_ev], [ENABLE_OVIS_EV])
 OPTION_DEFAULT_ENABLE([ovis_event], [ENABLE_OVIS_EVENT])
 OPTION_DEFAULT_ENABLE([mmalloc], [ENABLE_MMALLOC])
 OPTION_DEFAULT_ENABLE([ovis_ctrl], [ENABLE_OVIS_CTRL])
@@ -205,6 +208,7 @@ OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 OPTION_DEFAULT_DISABLE([ssl], [ENABLE_SSL])
 OPTION_DEFAULT_DISABLE([zaptest], [ENABLE_ZAPTEST])
 OPTION_DEFAULT_DISABLE([ovis_event_test], [ENABLE_OVIS_EVENT_TEST])
+OPTION_DEFAULT_DISABLE([ovis_ev_test], [ENABLE_OVIS_EV_TEST])
 OPTION_DEFAULT_DISABLE([etc], [ENABLE_ETC])
 
 
@@ -714,6 +718,7 @@ lib/src/ovis_json/Makefile
 lib/src/third/Makefile
 lib/src/coll/Makefile
 lib/src/mmalloc/Makefile
+lib/src/ovis_ev/Makefile
 lib/src/ovis_event/Makefile
 lib/src/ovis_ctrl/Makefile
 lib/src/ovis_util/Makefile
