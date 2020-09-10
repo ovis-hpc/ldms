@@ -587,8 +587,8 @@ _buffer_init_pool(struct z_fi_ep *rep)
 
 	rep->num_bufs = RQ_DEPTH + SQ_DEPTH + 4;  // +4 for credit updates
 	rep->buf_sz   = RQ_BUF_SZ;
-	rep->buf_pool = malloc(rep->num_bufs * rep->buf_sz);
-	rep->buf_objs = malloc(rep->num_bufs * sizeof(struct z_fi_buffer));
+	rep->buf_pool = calloc(1, rep->num_bufs * rep->buf_sz);
+	rep->buf_objs = calloc(1, rep->num_bufs * sizeof(struct z_fi_buffer));
 	if (!rep->buf_pool || !rep->buf_objs)
 		return -ENOMEM;
 	ret = fi_mr_reg(rep->domain, rep->buf_pool, rep->num_bufs*rep->buf_sz, FI_SEND|FI_RECV, 0,
