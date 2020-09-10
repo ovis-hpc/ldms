@@ -30,6 +30,10 @@ if ENABLE_OVIS_EVENT
 SUBDIRS += ovis_event
 endif
 
+if ENABLE_OVIS_EV
+SUBDIRS += ovis_ev
+endif
+
 if ENABLE_ZAP
 SUBDIRS += zap
 endif
