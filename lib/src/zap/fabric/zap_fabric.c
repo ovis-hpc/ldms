@@ -185,7 +185,7 @@ static void dlog_(const char *func, int line, char *fmt, ...)
 #endif
 
 #define ZAP_FABRIC_INFO_LOG "ZAP_FABRIC_INFO_LOG"
-static int z_fi_info_log_on = 0;
+static int z_fi_info_log_on = 1;
 
 #define Z_FI_INFO_LOG(rep, fmt, ...) do { \
 	if (z_fi_info_log_on && rep && rep->ep.z && rep->ep.z->log_fn) \
@@ -1798,6 +1798,147 @@ static void *cm_thread_proc(void *arg)
 	return NULL;
 }
 
+#define MIN(a,b) ((a)<(b)?(a):(b))
+
+/* NOTE: From libfabric src/fi_tostr.c, ofi_straddr() is the internal function
+ *       (not exported) that yields the string address. fi_tostr() with
+ *       FI_TYPE_INFO seems to be the only one calling that function and giving
+ *       us src_addr string along with a lot longer description of fi_info. In
+ *       addition, fi_tostr() is NOT thread-safe. So, we borrow `ofi_straddr()`
+ *       from libfabric and put it in this file in order to get the printable
+ *       `fi_info.src_addr`.
+ */
+static
+const char *ofi_straddr(char *buf, size_t *len,
+			uint32_t addr_format, const void *addr)
+{
+/* from libfabric src/common.c */
+/*
+ * Copyright (c) 2004, 2005 Topspin Communications.  All rights reserved.
+ * Copyright (c) 2006-2017 Cisco Systems, Inc.  All rights reserved.
+ * Copyright (c) 2013-2018 Intel Corp., Inc.  All rights reserved.
+ * Copyright (c) 2015 Los Alamos Nat. Security, LLC. All rights reserved.
+ *
+ * This software is available to you under a choice of one of two
+ * licenses.  You may choose to be licensed under the terms of the GNU
+ * General Public License (GPL) Version 2, available from the file
+ * COPYING in the main directory of this source tree, or the
+ * BSD license below:
+ *
+ *     Redistribution and use in source and binary forms, with or
+ *     without modification, are permitted provided that the following
+ *     conditions are met:
+ *
+ *      - Redistributions of source code must retain the above
+ *        copyright notice, this list of conditions and the following
+ *        disclaimer.
+ *
+ *      - Redistributions in binary form must reproduce the above
+ *        copyright notice, this list of conditions and the following
+ *        disclaimer in the documentation and/or other materials
+ *        provided with the distribution.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+	const struct sockaddr *sock_addr;
+	const struct sockaddr_in6 *sin6;
+	const struct sockaddr_in *sin;
+	char str[INET6_ADDRSTRLEN + 8];
+	size_t size;
+
+	if (!addr || !len)
+		return NULL;
+
+	switch (addr_format) {
+	case FI_SOCKADDR:
+		sock_addr = addr;
+		switch (sock_addr->sa_family) {
+		case AF_INET:
+			goto sa_sin;
+		case AF_INET6:
+			goto sa_sin6;
+		default:
+			return NULL;
+		}
+		break;
+	case FI_SOCKADDR_IN:
+sa_sin:
+		sin = addr;
+		if (!inet_ntop(sin->sin_family, &sin->sin_addr, str,
+			       sizeof(str)))
+			return NULL;
+
+		size = snprintf(buf, MIN(*len, sizeof(str)),
+				"fi_sockaddr_in://%s:%" PRIu16, str,
+				ntohs(sin->sin_port));
+		break;
+	case FI_SOCKADDR_IN6:
+sa_sin6:
+		sin6 = addr;
+		if (!inet_ntop(sin6->sin6_family, &sin6->sin6_addr, str,
+			       sizeof(str)))
+			return NULL;
+
+		size = snprintf(buf, MIN(*len, sizeof(str)),
+				"fi_sockaddr_in6://[%s]:%" PRIu16, str,
+				ntohs(sin6->sin6_port));
+		break;
+	case FI_SOCKADDR_IB:
+		size = snprintf(buf, *len, "fi_sockaddr_ib://%p", addr);
+		break;
+	case FI_ADDR_PSMX:
+		size = snprintf(buf, *len, "fi_addr_psmx://%" PRIx64,
+				*(uint64_t *)addr);
+		break;
+	case FI_ADDR_PSMX2:
+		size =
+		    snprintf(buf, *len, "fi_addr_psmx2://%" PRIx64 ":%" PRIx64,
+			     *(uint64_t *)addr, *((uint64_t *)addr + 1));
+		break;
+	case FI_ADDR_GNI:
+		size = snprintf(buf, *len, "fi_addr_gni://%" PRIx64,
+				*(uint64_t *)addr);
+		break;
+	case FI_ADDR_BGQ:
+		size = snprintf(buf, *len, "fi_addr_bgq://%p", addr);
+		break;
+	case FI_ADDR_MLX:
+		size = snprintf(buf, *len, "fi_addr_mlx://%p", addr);
+		break;
+	case FI_ADDR_IB_UD:
+		memset(str, 0, sizeof(str));
+		if (!inet_ntop(AF_INET6, addr, str, INET6_ADDRSTRLEN))
+			return NULL;
+		size = snprintf(buf, *len, "fi_addr_ib_ud://"
+				"%s" /* GID */ ":%" PRIx32 /* QPN */
+				"/%" PRIx16 /* LID */ "/%" PRIx16 /* P_Key */
+				"/%" PRIx8 /* SL */,
+				str, *((uint32_t *)addr + 4),
+				*((uint16_t *)addr + 10),
+				*((uint16_t *)addr + 11),
+				*((uint8_t *)addr + 26));
+		break;
+	case FI_ADDR_STR:
+		size = snprintf(buf, *len, "%s", (const char *) addr);
+		break;
+	default:
+		return NULL;
+	}
+
+	/* Make sure that possibly truncated messages have a null terminator. */
+	if (buf && *len)
+		buf[*len - 1] = '\0';
+	*len = size + 1;
+	return buf;
+}
+
 static zap_err_t z_fi_listen(zap_ep_t ep, struct sockaddr *saddr, socklen_t sa_len)
 {
 	zap_err_t zerr;
@@ -1805,6 +1946,8 @@ static zap_err_t z_fi_listen(zap_ep_t ep, struct sockaddr *saddr, socklen_t sa_l
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
 	struct epoll_event cm_event;
 	struct fi_eq_attr eq_attr = { .wait_obj = FI_WAIT_FD };
+	char buf[512] = "";
+	size_t len = sizeof(buf);
 
 	zerr = zap_ep_change_state(&rep->ep, ZAP_EP_INIT, ZAP_EP_LISTENING);
 	if (zerr)
@@ -1827,7 +1970,10 @@ static zap_err_t z_fi_listen(zap_ep_t ep, struct sockaddr *saddr, socklen_t sa_l
 	if (rc)
 		goto err_0;
 
-	Z_FI_INFO_LOG(rep, "using fabric '%s' provider '%s' domain '%s'\n",
+	Z_FI_INFO_LOG(rep, "zap_fabric listening on %s "
+			   "using fabric '%s' provider '%s' domain '%s'\n",
+			   ofi_straddr(buf, &len, rep->fi->addr_format,
+				       rep->fi->src_addr),
 			   rep->fi->fabric_attr->name,
 			   rep->fi->fabric_attr->prov_name,
 			   rep->fi->domain_attr->name);
