@@ -96,6 +96,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "prdcr_stop",         LDMSD_PRDCR_STOP_REQ  },
 	{  "prdcr_stop_regex",   LDMSD_PRDCR_STOP_REGEX_REQ  },
 	{  "prdcr_subscribe",    LDMSD_PRDCR_SUBSCRIBE_REQ },
+	{  "prdcr_unsubscribe",  LDMSD_PRDCR_UNSUBSCRIBE_REQ },
 	{  "set_route",          LDMSD_SET_ROUTE_REQ  },
 	{  "setgroup_add",       LDMSD_SETGROUP_ADD_REQ  },
 	{  "setgroup_del",       LDMSD_SETGROUP_DEL_REQ  },
@@ -103,6 +104,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "setgroup_rm",        LDMSD_SETGROUP_RM_REQ  },
 	{  "start",              LDMSD_PLUGN_START_REQ  },
 	{  "stop",               LDMSD_PLUGN_STOP_REQ  },
+	{  "stream_client_dump", LDMSD_STREAM_CLIENT_DUMP_REQ  },
 	{  "strgp_add",          LDMSD_STRGP_ADD_REQ  },
 	{  "strgp_del",          LDMSD_STRGP_DEL_REQ  },
 	{  "strgp_metric_add",   LDMSD_STRGP_METRIC_ADD_REQ  },
@@ -210,6 +212,7 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_PRDCR_SET_REQ         : return "PRDCR_SET_REQ";
 	case LDMSD_PRDCR_HINT_TREE_REQ   : return "PRDCR_HINT_TREE_REQ";
 	case LDMSD_PRDCR_SUBSCRIBE_REQ   : return "PRDCR_SUBSCRIBE_REQ";
+	case LDMSD_PRDCR_UNSUBSCRIBE_REQ : return "PRDCR_UNSUBSCRIBE_REQ";
 
 	case LDMSD_STRGP_ADD_REQ        : return "STRGP_ADD_REQ";
 	case LDMSD_STRGP_DEL_REQ        : return "STRGP_DEL_REQ";

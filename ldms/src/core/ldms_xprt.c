@@ -3688,10 +3688,20 @@ int ldms_xprt_sockaddr(ldms_t _x, struct sockaddr *local_sa,
 {
 	struct ldms_xprt *x = _x;
 	zap_err_t zerr;
-	zerr = zap_get_name(x->zap_ep, local_sa, remote_sa, sa_len);
-	if (zerr)
+ again:
+	if (x->sa_len) {
+		/* use cached addresses */
+		*sa_len = x->sa_len;
+		memcpy(local_sa, &x->local_sa, x->sa_len);
+		memcpy(remote_sa, &x->remote_sa, x->sa_len);
+		return 0;
+	}
+	zerr = zap_get_name(x->zap_ep, &x->local_sa, &x->remote_sa, &x->sa_len);
+	if (zerr) {
+		x->sa_len = 0;
 		return -1;
-	return 0;
+	}
+	goto again;
 }
 
 static void __attribute__ ((constructor)) cs_init(void)

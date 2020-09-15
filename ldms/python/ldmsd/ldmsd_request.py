@@ -277,6 +277,7 @@ class LDMSD_Request(object):
     PRDCR_SET_STATUS = 0x100 + 7
     PRDCR_HINT_TREE = 0x100 + 8
     PRDCR_SUBSCRIBE = 0x100 + 9
+    PRDCR_UNSUBSCRIBE = 0x100 + 10
 
     STRGP_ADD = 0x200
     STRGP_DEL = 0x200 + 1
@@ -344,6 +345,8 @@ class LDMSD_Request(object):
 
     STREAM_PUBLISH = 0x900
     STREAM_SUBSCRIBE = STREAM_PUBLISH + 1
+    STREAM_UNSUBSCRIBE = STREAM_PUBLISH + 2
+    STREAM_CLIENT_DUMP = STREAM_PUBLISH + 3
 
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
@@ -361,6 +364,7 @@ class LDMSD_Request(object):
             'prdcr_set_status': {'id': PRDCR_SET_STATUS},
             'prdcr_hint_tree': {'id': PRDCR_HINT_TREE},
             'prdcr_subscribe': {'id': PRDCR_SUBSCRIBE},
+            'prdcr_unsubscribe': {'id': PRDCR_UNSUBSCRIBE},
 
             'strgp_add': {'id': STRGP_ADD},
             'strgp_del': {'id': STRGP_DEL},
@@ -419,6 +423,9 @@ class LDMSD_Request(object):
 
             'publish'       :  {'id': STREAM_PUBLISH },
             'subscribe'     :  {'id' : STREAM_SUBSCRIBE },
+            'unsubscribe'   :  {'id' : STREAM_UNSUBSCRIBE },
+
+            'stream_client_dump'   :  {'id' : STREAM_CLIENT_DUMP },
         }
 
     TYPE_CONFIG_CMD = 1

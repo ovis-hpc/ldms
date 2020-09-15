@@ -401,6 +401,18 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_prdcr_subscribe(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_subscribe', text)
 
+    def do_prdcr_unsubscribe(self, arg):
+        """
+        Subscribe for stream data from all matching producers
+        Parameters:
+        regex=     A regular expression matching producer names
+        stream=    The stream name
+        """
+        self.handle('prdcr_unsubscribe', arg);
+
+    def complete_prdcr_unsubscribe(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_unsubscribe', text)
+
     def do_updtr_add(self, arg):
         """
         Add an Updater that will periodically update Producer metric sets either
@@ -1252,6 +1264,21 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_prdcr_hint_tree(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_hint_tree', text)
+
+    def do_stream_client_dump(self, arg):
+        """
+        Dump stream client information (for debugging)
+
+        No parameters
+        """
+        resp = self.handle('stream_client_dump', None)
+        if not resp:
+            raise RuntimeError("no response")
+        obj = json.loads(resp['msg'])
+        print(json.dumps(obj, indent=2))
+
+    def complete_stream_client_dump(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('stream_client_dump', text)
 
     def parseline(self, line):
         """Parse the line into a command name and a string containing

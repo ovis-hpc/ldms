@@ -913,6 +913,9 @@ int ldmsd_prdcr_stop_regex(const char *prdcr_regex,
 int ldmsd_prdcr_subscribe_regex(const char *prdcr_regex, char *stream_name,
 				char *rep_buf, size_t rep_len,
 				ldmsd_sec_ctxt_t ctxt);
+int ldmsd_prdcr_unsubscribe_regex(const char *prdcr_regex, char *stream_name,
+				char *rep_buf, size_t rep_len,
+				ldmsd_sec_ctxt_t ctxt);
 
 int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt);
 int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt);

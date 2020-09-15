@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <semaphore.h>
 #include <ovis_json/ovis_json.h>
+#include <execinfo.h> /* for backtrace_symbols() */
 #include "ldms.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
@@ -377,4 +378,103 @@ int ldmsd_stream_response(ldms_xprt_event_t e)
 {
 	struct ldms_reply_hdr *h = (void *)e->data;
 	return ntohl(h->rc);
+}
+
+struct buf_s {
+	size_t sz; /* size of buf */
+	size_t pos; /* write position in buf */
+	char *buf;
+};
+
+/* printf into buf->buf and expand buf->buf as necessary, returns errno on error */
+__attribute__((format(printf, 2, 3)))
+int buf_printf(struct buf_s *buf, const char *fmt, ...)
+{
+	size_t len, spc;
+	size_t new_sz;
+	char *new_buf;
+	va_list ap;
+ again:
+	spc = buf->sz - buf->pos;
+	va_start(ap, fmt);
+	len = vsnprintf(buf->buf + buf->pos, spc, fmt, ap);
+	va_end(ap);
+	if (len >= spc) { /* need more space */
+		new_sz = ((buf->sz + len)|0xFFF)+1;
+		new_buf = realloc(buf->buf, new_sz);
+		if (!new_buf)
+			return errno;
+		buf->sz = new_sz;
+		buf->buf = new_buf;
+		goto again;
+	}
+	buf->pos += len;
+	return 0;
+}
+
+char * ldmsd_stream_client_dump()
+{
+	struct rbn *rbn;
+	ldmsd_stream_t s;
+	ldmsd_stream_client_t c;
+	int rc;
+	int first_stream = 1;
+	int first_client;
+	struct buf_s buf = {.sz = 4096};
+
+	buf.buf = malloc(buf.sz);
+	if (!buf.buf)
+		goto err_0;
+	rc = buf_printf(&buf, "{\"streams\":[" );
+	if (rc)
+		goto err_1;
+	pthread_mutex_lock(&s_tree_lock);
+	RBT_FOREACH(rbn, &s_tree) {
+		/* for each stream */
+		s = container_of(rbn, struct ldmsd_stream_s, s_ent);
+		rc = buf_printf(&buf, "%s{\"name\":\"%s\",\"clients\":[",
+				first_stream?"":",", s->s_name);
+		if (rc)
+			goto err_2;
+		first_stream = 0;
+		first_client = 1;
+		pthread_mutex_lock(&s->s_lock);
+		LIST_FOREACH(c, &s->s_c_list, c_ent) {
+			/* for each client of the stream */
+			void *p = c->c_cb_fn;
+			char **sym = backtrace_symbols(&p, 1);
+			char _pbuf[32];
+			if (!sym) {
+				sprintf(_pbuf, "%p", p);
+			}
+			rc = buf_printf(&buf, "%s{"
+					"\"cb_fn\":\"%s\","
+					"\"ctxt\":\"%p\""
+					"}",
+					first_client?"":",",
+					sym?sym[0]:_pbuf,
+					c->c_ctxt);
+			if (rc)
+				goto err_3;
+			first_client = 0;
+
+		}
+		pthread_mutex_unlock(&s->s_lock);
+		rc = buf_printf(&buf, "]}");
+		if (rc)
+			goto err_2;
+	}
+	pthread_mutex_unlock(&s_tree_lock);
+	rc = buf_printf(&buf, "]}" );
+	if (rc)
+		goto err_1;
+	return buf.buf;
+ err_3:
+	pthread_mutex_unlock(&s->s_lock);
+ err_2:
+	pthread_mutex_unlock(&s_tree_lock);
+ err_1:
+	free(buf.buf);
+ err_0:
+	return NULL;
 }

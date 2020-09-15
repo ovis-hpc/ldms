@@ -977,12 +977,16 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 	}
 }
 
+/* implemented in ldmsd_request.c */
+void stream_xprt_term(ldms_t x);
+
 static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
+		stream_xprt_term(x);
 	case LDMS_XPRT_EVENT_REJECTED:
 	case LDMS_XPRT_EVENT_ERROR:
 		ldms_xprt_put(x);
@@ -1095,7 +1099,7 @@ static int ldmd_plugins_check_dir(const char *path, int verbose) {
 	memset(&buf, 0, sizeof(buf));
 	int serr = stat(path, &buf);
 	int err = 0;
-	if (serr < 0) { 
+	if (serr < 0) {
 		err = errno;
 		fprintf(stderr, "%s: unable to stat plugin library path %s (%d).\n",
 			APP, path, err);

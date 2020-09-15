@@ -438,6 +438,14 @@ static void help_prdcr_subscribe_regex()
 		"     stream=       The stream name\n");
 }
 
+static void help_prdcr_unsubscribe_regex()
+{
+	printf( "\nUnsubscribe the stream from the producer.\n\n"
+		"Parameters:\n"
+		"     regex=        A regular expression to match producers\n"
+		"     stream=       The stream name\n");
+}
+
 static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
 	ldmsd_req_attr_t attr;
@@ -1638,6 +1646,43 @@ static void resp_failover_status(ldmsd_req_hdr_t resp, size_t len,
 	json_entity_free(json);
 }
 
+static void help_stream_client_dump()
+{
+	printf("(debug) dump all stream clients\n");
+}
+
+static void resp_stream_client_dump(ldmsd_req_hdr_t resp, size_t len,
+				    uint32_t rsp_err)
+{
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+
+	json_parser_t parser;
+	json_entity_t json;
+	int rc;
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
+		return;
+	}
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+	json_parser_free(parser);
+	__json_value_print(json, 0);
+	printf("\n\n");
+
+	json_entity_free(json);
+}
+
 static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
 static int handle_source(struct ldmsctl_ctrl *ctrl, char *path);
 static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
@@ -1675,6 +1720,7 @@ static struct command command_tbl[] = {
 	{ "prdcr_stop", LDMSD_PRDCR_STOP_REQ, NULL, help_prdcr_stop, resp_generic },
 	{ "prdcr_stop_regex", LDMSD_PRDCR_STOP_REGEX_REQ, NULL, help_prdcr_stop_regex, resp_generic },
 	{ "prdcr_subscribe", LDMSD_PRDCR_SUBSCRIBE_REQ, NULL, help_prdcr_subscribe_regex, resp_generic },
+	{ "prdcr_unsubscribe", LDMSD_PRDCR_UNSUBSCRIBE_REQ, NULL, help_prdcr_unsubscribe_regex, resp_generic },
 	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit, resp_generic },
 	{ "script", LDMSCTL_SCRIPT, handle_script, help_script, resp_generic },
 	{ "set_route", LDMSD_SET_ROUTE_REQ, NULL, help_set_route, resp_set_route },
@@ -1686,6 +1732,7 @@ static struct command command_tbl[] = {
 	{ "source", LDMSCTL_SOURCE, handle_source, help_source, resp_generic },
 	{ "start", LDMSD_PLUGN_START_REQ, NULL, help_start, resp_generic },
 	{ "stop", LDMSD_PLUGN_STOP_REQ, NULL, help_stop, resp_generic },
+	{ "stream_client_dump", LDMSD_STREAM_CLIENT_DUMP_REQ, NULL, help_stream_client_dump, resp_stream_client_dump },
 	{ "strgp_add", LDMSD_STRGP_ADD_REQ, NULL, help_strgp_add, resp_generic },
 	{ "strgp_del", LDMSD_STRGP_DEL_REQ, NULL, help_strgp_del, resp_generic },
 	{ "strgp_metric_add", LDMSD_STRGP_METRIC_ADD_REQ, NULL, help_strgp_metric_add, resp_generic },
@@ -2116,7 +2163,7 @@ int main(int argc, char *argv[])
 			break;
 		case 's':
 			source = strdup(optarg);
-			if (!source) { 
+			if (!source) {
 				printf("ERROR: out of memory\n");
 				exit(1);
 			}

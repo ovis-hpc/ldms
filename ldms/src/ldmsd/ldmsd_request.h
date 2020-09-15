@@ -70,6 +70,7 @@ enum ldmsd_request {
 	LDMSD_PRDCR_SET_REQ,
 	LDMSD_PRDCR_HINT_TREE_REQ,
 	LDMSD_PRDCR_SUBSCRIBE_REQ,
+	LDMSD_PRDCR_UNSUBSCRIBE_REQ,
 	LDMSD_STRGP_ADD_REQ = 0x200,
 	LDMSD_STRGP_DEL_REQ,
 	LDMSD_STRGP_START_REQ,
@@ -150,6 +151,8 @@ enum ldmsd_request {
 	/* Publish/Subscribe Requests */
 	LDMSD_STREAM_PUBLISH_REQ = 0x900, /* Publish data to a stream */
 	LDMSD_STREAM_SUBSCRIBE_REQ,	  /* Subscribe to a stream */
+	LDMSD_STREAM_UNSUBSCRIBE_REQ,	  /* Unsubscribe to a stream */
+	LDMSD_STREAM_CLIENT_DUMP_REQ,	  /* Dump stream client info */
 
 	/* Auth */
 	LDMSD_AUTH_ADD_REQ = 0xa00, /* Add auth domain */
