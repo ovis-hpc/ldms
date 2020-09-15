@@ -39,6 +39,16 @@ void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_ty
 
 int ldmsd_stream_response(ldms_xprt_event_t e);
 
+/**
+ * Dump stream clients in JSON.
+ *
+ * The caller is responsible for freeing the returned string.
+ *
+ * \retval s    The stream clients in JSON format.
+ * \retval NULL If there is an error. \c errno is also set in this case.
+ */
+char * ldmsd_stream_client_dump();
+
 #ifdef __cplusplus
 }
 #endif

@@ -157,6 +157,7 @@ static int prdcr_stop_regex_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_set_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t req_ctxt);
+static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_add_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_start_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -227,6 +228,8 @@ static int setgroup_rm_handler(ldmsd_req_ctxt_t req_ctxt);
 
 static int stream_publish_handler(ldmsd_req_ctxt_t req_ctxt);
 static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc);
+static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc);
+static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc);
 
 static int listen_handler(ldmsd_req_ctxt_t reqc);
 
@@ -274,6 +277,10 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_PRDCR_SUBSCRIBE_REQ] = {
 		LDMSD_PRDCR_SUBSCRIBE_REQ, prdcr_subscribe_regex_handler,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED
+	},
+	[LDMSD_PRDCR_UNSUBSCRIBE_REQ] = {
+		LDMSD_PRDCR_UNSUBSCRIBE_REQ, prdcr_unsubscribe_regex_handler,
 		XUG | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 
@@ -494,6 +501,12 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_STREAM_SUBSCRIBE_REQ] = {
 		LDMSD_STREAM_SUBSCRIBE_REQ, stream_subscribe_handler, XUG
+	},
+	[LDMSD_STREAM_UNSUBSCRIBE_REQ] = {
+		LDMSD_STREAM_UNSUBSCRIBE_REQ, stream_unsubscribe_handler, XUG
+	},
+	[LDMSD_STREAM_CLIENT_DUMP_REQ] = {
+		LDMSD_STREAM_CLIENT_DUMP_REQ, stream_client_dump_handler, XUG
 	},
 
 	/* LISTEN */
@@ -823,6 +836,7 @@ size_t Snprintf(char **dst, size_t *len, char *fmt, ...)
 	return cnt;
 }
 
+__attribute__((format(printf, 2, 3)))
 int linebuf_printf(struct ldmsd_req_ctxt *reqc, char *fmt, ...)
 {
 	va_list ap;
@@ -1674,6 +1688,45 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 						    stream_name,
 						    reqc->line_buf,
 						    reqc->line_len, &sctxt);
+	/* on error, reqc->line_buf will be filled */
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	if (prdcr_regex)
+		free(prdcr_regex);
+	return 0;
+}
+
+static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *prdcr_regex;
+	char *stream_name;
+	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+
+	reqc->errcode = 0;
+
+	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
+	if (!prdcr_regex) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The attribute 'regex' is required by prdcr_stop_regex.");
+		goto send_reply;
+	}
+
+	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STREAM);
+	if (!stream_name) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The attribute 'stream' is required by prdcr_subscribe_regex.");
+		goto send_reply;
+	}
+
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+	reqc->errcode = ldmsd_prdcr_unsubscribe_regex(prdcr_regex,
+						      stream_name,
+						      reqc->line_buf,
+						      reqc->line_len, &sctxt);
 	/* on error, reqc->line_buf will be filled */
 
 send_reply:
@@ -5780,11 +5833,118 @@ static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
 	return rc;
 }
 
+/* RSE: remote stream entry */
+struct __RSE_key_s {
+	/* remote addr */
+	struct sockaddr addr;
+	/* remote addr len */
+	uint32_t addr_len;
+	/* stream name */
+	char name[];
+};
+
+typedef struct __RSE_s {
+	struct rbn rbn;
+	ldmsd_stream_client_t client;
+	struct __RSE_key_s key;
+} *__RSE_t;
+
+int __RSE_cmp(void *tree_key, const void *key)
+{
+	const struct __RSE_key_s *k0, *k1;
+	size_t len;
+	int rc, ln_rc;
+	k0 = tree_key;
+	k1 = key;
+	if (k0->addr_len < k1->addr_len) {
+		len = k0->addr_len;
+		ln_rc = -1;
+	} else if (k0->addr_len > k1->addr_len) {
+		len = k1->addr_len;
+		ln_rc = 1;
+	} else {
+		len = k0->addr_len;
+		ln_rc = 0;
+	}
+	rc = memcmp(&k0->addr, &k1->addr, len);
+	if (rc)
+		return rc;
+	if (ln_rc)
+		return ln_rc;
+	/* reaching here means same address */
+	return strcmp(k0->name, k1->name);
+}
+
+pthread_mutex_t __RSE_rbt_mutex = PTHREAD_MUTEX_INITIALIZER;
+struct rbt __RSE_rbt = RBT_INITIALIZER(__RSE_cmp);
+
+static inline
+void __RSE_rbt_lock()
+{
+	pthread_mutex_lock(&__RSE_rbt_mutex);
+}
+
+static inline
+void __RSE_rbt_unlock()
+{
+	pthread_mutex_unlock(&__RSE_rbt_mutex);
+}
+
+static inline
+__RSE_t __RSE_alloc(const char *name, struct sockaddr *sa, socklen_t sa_len)
+{
+	__RSE_t ent;
+	ent = calloc(1, sizeof(*ent) + strlen(name) + 1);
+	if (!ent)
+		return NULL;
+	sprintf(ent->key.name, "%s", name);
+	memcpy(&ent->key.addr, sa, sa_len);
+	ent->key.addr_len = sa_len;
+	rbn_init(&ent->rbn, &ent->key);
+	return ent;
+}
+
+static inline
+void __RSE_free(__RSE_t ent)
+{
+	free(ent);
+}
+
+static inline
+__RSE_t __RSE_find(const struct __RSE_key_s *key)
+{
+	/* caller must hold __RSE_rbt_mutex */
+	struct rbn *rbn;
+	rbn = rbt_find(&__RSE_rbt, key);
+	if (!rbn)
+		return NULL;
+	return container_of(rbn, struct __RSE_s, rbn);
+}
+
+static inline
+void __RSE_ins(__RSE_t ent)
+{
+	/* caller must hold __RSE_rbt_mutex */
+	rbt_ins(&__RSE_rbt, &ent->rbn);
+}
+
+static inline
+void __RSE_del(__RSE_t ent)
+{
+	/* caller must hold __RSE_rbt_mutex */
+	rbt_del(&__RSE_rbt, &ent->rbn);
+}
+
 static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
 
 {
 	char *stream_name;
 	int cnt;
+	int rc, len;
+	struct sockaddr local_sa;
+	__RSE_t ent;
+	char _buff[sizeof(struct __RSE_key_s) + 256]; /* should be enough for stream name */
+	struct __RSE_key_s *key = (void*)_buff;
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!stream_name) {
@@ -5793,13 +5953,180 @@ static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
 			       "The stream name is missing.");
 		goto send_reply;
 	}
-
-	ldmsd_stream_subscribe(stream_name, stream_republish_cb, reqc->xprt->ldms.ldms);
+	len = snprintf(key->name, 256, "%s", stream_name);
+	if (len >= 256) {
+		reqc->errcode = ENAMETOOLONG;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "The stream name is too long (%d >= %d).",
+			       len, 256);
+		goto send_reply;
+	}
+	rc = ldms_xprt_sockaddr(reqc->xprt->ldms.ldms, &local_sa, &key->addr,
+				&key->addr_len);
+	if (rc) {
+		ldmsd_log(LDMSD_LWARNING,
+			  "%s:%d:%s ldms_xprt_sockaddr() error: %d\n",
+			  __FILE__, __LINE__, __func__, errno);
+		reqc->errcode = EREMOTEIO;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "ldms_xprt_sockaddr() error: %d", errno);
+		goto send_reply;
+	}
+	__RSE_rbt_lock();
+	ent = __RSE_find(key);
+	if (ent) {
+		__RSE_rbt_unlock();
+		reqc->errcode = EEXIST;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Already subscribed to `%s` stream",
+			       stream_name);
+		goto send_reply;
+	}
+	ent = __RSE_alloc(stream_name, &key->addr, key->addr_len);
+	if (!ent) {
+		__RSE_rbt_unlock();
+		reqc->errcode = ENOMEM;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "Memory allocation failed");
+		goto send_reply;
+	}
+	ent->client = ldmsd_stream_subscribe(stream_name, stream_republish_cb,
+						reqc->xprt->ldms.ldms);
+	if (!ent->client) {
+		__RSE_rbt_unlock();
+		free(ent);
+		reqc->errcode = errno;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "ldmsd_stream_subscribe() error: %d", errno);
+		goto send_reply;
+	}
+	__RSE_ins(ent);
 	reqc->errcode = 0;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
+	__RSE_rbt_unlock();
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
+}
+
+static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc)
+
+{
+	char *stream_name;
+	int cnt;
+	int rc, len;
+	struct sockaddr local_sa;
+	__RSE_t ent;
+	char _buff[sizeof(struct __RSE_key_s) + 256]; /* should be enough for stream name */
+	struct __RSE_key_s *key = (void*)_buff;
+
+	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!stream_name) {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "The stream name is missing.");
+		goto send_reply;
+	}
+	len = snprintf(key->name, 256, "%s", stream_name);
+	if (len >= 256) {
+		reqc->errcode = ENAMETOOLONG;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "The stream name is too long (%d >= %d).",
+			       len, 256);
+		goto send_reply;
+	}
+	rc = ldms_xprt_sockaddr(reqc->xprt->ldms.ldms, &local_sa, &key->addr,
+				&key->addr_len);
+	if (rc) {
+		ldmsd_log(LDMSD_LWARNING,
+			  "%s:%d:%s ldms_xprt_sockaddr() error: %d\n",
+			  __FILE__, __LINE__, __func__, errno);
+		reqc->errcode = EREMOTEIO;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "ldms_xprt_sockaddr() error: %d", errno);
+		goto send_reply;
+	}
+	__RSE_rbt_lock();
+	ent = __RSE_find(key);
+	if (!ent) {
+		__RSE_rbt_unlock();
+		reqc->errcode = ENOENT;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "`%s` stream not found", stream_name);
+		goto send_reply;
+	}
+	ldmsd_stream_close(ent->client);
+	__RSE_del(ent);
+	free(ent);
+	reqc->errcode = 0;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
+	__RSE_rbt_unlock();
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return 0;
+}
+
+static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	struct ldmsd_req_attr_s attr;
+	char *json;
+
+	/* constructin JSON reply */
+	json = ldmsd_stream_client_dump();
+	if (!json)
+		return errno;
+	rc = linebuf_printf(reqc, "%s", json);
+	free(json);
+	if (rc)
+		return rc;
+
+	/* sending messages */
+	attr.discrim = 1;
+	attr.attr_len = reqc->line_off;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		return rc;
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+	if (rc)
+		return rc;
+	attr.discrim = 0;
+	ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t), LDMSD_REQ_EOM_F);
+	return rc;
+}
+
+void stream_xprt_term(ldms_t x)
+{
+	struct sockaddr local_sa;
+	__RSE_t ent;
+	struct rbn *rbn;
+	char _buff[sizeof(struct __RSE_key_s) + 256] = {};
+	struct __RSE_key_s *key = (void*)_buff;
+	int rc;
+
+	rc = ldms_xprt_sockaddr(x, &local_sa, &key->addr,
+				&key->addr_len);
+	if (rc)
+		return;
+	__RSE_rbt_lock();
+	rbn = rbt_find_lub(&__RSE_rbt, &key);
+	while (rbn) {
+		ent = container_of(rbn, struct __RSE_s, rbn);
+		if (key->addr_len != ent->key.addr_len)
+			break;
+		if (memcmp(&key->addr, &ent->key.addr, key->addr_len))
+			break;
+		/* points rbn to the successor before removing ent */
+		rbn = rbn_succ(rbn);
+		/* delete from the tree */
+		__RSE_del(ent);
+		ldmsd_stream_close(ent->client);
+		__RSE_free(ent);
+	}
+	__RSE_rbt_unlock();
 }
 
 int ldmsd_auth_opt_add(struct attr_value_list *auth_attrs, char *name, char *val)
