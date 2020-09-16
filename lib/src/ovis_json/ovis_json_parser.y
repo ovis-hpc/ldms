@@ -38,12 +38,9 @@ static inline json_entity_t new_dict_val(void) {
 
 static inline json_entity_t add_dict_attr(json_entity_t e, json_entity_t name, json_entity_t value)
 {
-	json_entity_t a = json_entity_new(JSON_ATTR_VALUE, name, value);
-	if (a) {
-		json_attr_add(e, a);
-		return e;
-	}
-	return NULL;
+	if (json_attr_add(e, name->value.str_->str, value))
+		return NULL;
+	return e;
 }
 
 static inline json_entity_t new_list_val(void) {

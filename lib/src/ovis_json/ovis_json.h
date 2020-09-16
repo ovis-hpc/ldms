@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2018 National Technology & Engineering Solutions
+ * Copyright (c) 2018,2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2018,2020 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -123,40 +123,207 @@ typedef struct json_parser_s {
 	struct yy_buffer_state *buffer_state;
 } *json_parser_t;
 
+typedef struct jbuf_s {
+	size_t buf_len;
+	int cursor;
+	char buf[0];
+} *jbuf_t;
+
 extern json_parser_t json_parser_new(size_t user_data);
 extern void json_parser_free(json_parser_t p);
 extern int json_verify_string(char *s);
 extern void json_entity_free(json_entity_t e);
-extern const char *json_type_name(enum json_value_e typ);
+extern const char *json_type_name(enum json_value_e type);
 extern enum json_value_e json_entity_type(json_entity_t e);
-extern json_entity_t json_attr_find(json_entity_t d, char *name);
-extern json_entity_t json_attr_first(json_entity_t d);
-extern json_entity_t json_attr_next(json_entity_t a);
+
 extern int json_parse_buffer(json_parser_t p, char *buf, size_t buf_len, json_entity_t *e);
 
 extern json_entity_t json_entity_new(enum json_value_e type, ...);
 
-extern size_t json_list_len(json_entity_t l);
-extern void json_item_add(json_entity_t a, json_entity_t e);
-extern void json_attr_add(json_entity_t d, json_entity_t a);
-extern json_entity_t json_item_first(json_entity_t a);
-extern json_entity_t json_item_next(json_entity_t i);
+/**
+ * \brief Dump the json entity into a json buffer (\c jbuf_t)
+ *
+ * This function can be used to appended json string to an existing
+ * json buffer.
+ *
+ * \param jb	\c jbuf_t to hold the string.
+ *		If NULL is given, a new \c jbuf_t is allocated.
+ *		If it is not empty, the json string of \c e will
+ *		will appended to the buffer.
+ * \param e	a json entity
+ *
+ * \return a json buffer -- \c jbuf_t -- is returned.
+ * \see jbuf_free
+ */
+extern jbuf_t json_entity_dump(jbuf_t jb, json_entity_t e);
+
+/**
+ * \brief Create a new JSON entity identical to the given entity \c e.
+ *
+ * \param e     The original JSON entity
+ *
+ * \return a new JSON entity. NULL is returned if an out-of-memory error occurs.
+ */
+extern json_entity_t json_entity_copy(json_entity_t e);
+
+/*
+ * \brief Build or append a dictionary with the given list of its attribute value pairs.
+ *
+ * If \c d is NULL, a new dictionary with the given attribute value list.
+ * If \c d is not NULL, the given attribute value list will be added to \c d.
+ *
+ * The format of the attribute value pair in the list is
+ * <JSON value type>, <attribute name>, <attribute value>.
+ *
+ * The last value must be -1 to end the attribute value list.
+ *
+ * If the value type is JSON_LIST_VALUE, it must end with -2.
+ *
+ * \example
+ *
+ * attr = json_entity_new(JSON_ATTR_NAME, "attr", json_entity_new(JSON_STRING_VALUE, "my attribute"))
+ * d = json_dict_build(NULL,
+ * 	JSON_INT_VALUE,    "int",    1,
+ * 	JSON_BOOL_VALUE,   "bool",   1,
+ * 	JSON_FLOAT_VALUE,  "float",  1.1,
+ * 	JSON_STRING_VALUE, "string", "str",
+ * 	JSON_LIST_VALUE,   "list",   JSON_INT_VALUE, 1,
+ * 				     JSON_STRING_VALUE, "last",
+ * 				     -2,
+ * 	JSON_DICT_VALUE,   "dict",   JSON_INT_VALUE, "attr1", 2,
+ * 				     JSON_BOOL_VALUE, "attr2", 0,
+ * 				     JSON_STRING_VALUE, "attr3", "last attribute",
+ * 				     -2,
+ * 	JSON_ATTR_VALUE, attr,
+ * 	-1
+ * 	);
+ *
+ * Note: attr is "attr": "my attribute".
+ *
+ * The result dictionary is
+ * { "int":    1,
+ *   "bool":   true,
+ *   "float":  1.1,
+ *   "string": "str",
+ *   "list":   [1, "last" ],
+ *   "dict":   { "attr1": 2,
+ *               "attr2": 0,
+ *               "attr3": "last attribute"
+ *             },
+ *   "attr":   "my attribute"
+ * }
+ *
+ */
+extern json_entity_t json_dict_build(json_entity_t d, ...);
+
+/**
+ * \brief Add the attributes of dictionary \c src into dictionary \c dst
+ *
+ * The attribute value in \c src will replace the value in \c dst,
+ * if the attribute key presents in both dictionaries. \c dst will be modified
+ * and \c src is left unchanged.
+ *
+ * \return 0 on success. ENOMEM if the function fails to add a new attribute to \c src
+ */
+extern int json_dict_merge(json_entity_t dst, json_entity_t src);
+
+/**
+ * \brief Return the ATTR entity of the given name \c name
+ *
+ * \param name    The attribute name
+ *
+ * \return a JSON entity. NULL is returned if no attributes of the given name exist.
+ */
+extern json_entity_t json_attr_find(json_entity_t d, const char *name);
+
+/*
+ * \brief Return the JSON entity of the attribute value
+ *
+ * \param name   The attribute name
+ *
+ * \return A json entity. NULL is returned if no attributes of the given name exist.
+ */
+extern json_entity_t json_value_find(json_entity_t d, const char *name);
+extern json_entity_t json_attr_first(json_entity_t d);
+extern json_entity_t json_attr_next(json_entity_t a);
+
+/**
+ * \brief Return the number of attributes in the dictionary \c d
+ */
+extern int json_attr_count(json_entity_t d);
+
+/**
+ * \brief Add an attribute of key \c name and value \c v to the JSON dict \c d
+ *
+ * If the attribute name already exists, its value is replaced with the given
+ * attribute value.
+ *
+ * \param d      JSON dictionary entity
+ * \param name   attribute name
+ * \param v      attribute value entity
+ *
+ * \return 0 on success. Otherwise, an errno is returned.
+ *
+ * \see json_entity_new, json_attr_rem
+ */
+extern int json_attr_add(json_entity_t d, const char *name, json_entity_t v);
 extern json_str_t json_attr_name(json_entity_t a);
 extern json_entity_t json_attr_value(json_entity_t a);
 
-extern json_entity_t json_value_find(json_entity_t d, char *name);
+/**
+ * \brief Remove the attribute of \c name from the dictionary \c d and free it
+ *
+ * \param d      JSON dictionary entity
+ * \param name   attribute name
+ *
+ * \return 0 on success. ENOENT is returned if no attributes of \c name exist.
+ */
+extern int json_attr_rem(json_entity_t d, char *name);
+
+/**
+ * \brief Return the number of elements in the list \c l
+ */
+extern size_t json_list_len(json_entity_t l);
+extern void json_item_add(json_entity_t a, json_entity_t e);
+extern json_entity_t json_item_first(json_entity_t a);
+extern json_entity_t json_item_next(json_entity_t i);
+
+/**
+ * \brief Remove and return the element at index \c idx from the list \c a
+ *
+ * \param a      JSON list entity
+ * \param idx    List index
+ *
+ * \param a JSON entity. NULL if \c idx is out of range.
+ */
+extern json_entity_t json_item_pop(json_entity_t a, int idx);
+
+/**
+ * \brief Remove \c item from list \c l
+ *
+ * The address of \c item, rather than the content of \c item, is used to
+ * compare with the elements in the list.
+ *
+ * If there are no elements in the list \c l that have the same address as \c item,
+ * ENOENT is returned.
+ *
+ * The caller is responsible for freeing \c item.
+ *
+ * The memory of \c item is not freed.
+ *
+ * \param l       JSON list entity
+ * \param item    A list element
+ *
+ * \return 0 on success. ENOENT if \c item is not found.
+ */
+extern int json_item_rem(json_entity_t l, json_entity_t item);
+
 extern int64_t json_value_int(json_entity_t e);
 extern int json_value_bool(json_entity_t e);
 extern double json_value_float(json_entity_t e);
 extern json_str_t json_value_str(json_entity_t e);
 extern json_dict_t json_value_dict(json_entity_t e);
 extern json_list_t json_value_list(json_entity_t e);
-
-typedef struct jbuf_s {
-	size_t buf_len;
-	int cursor;
-	char buf[0];
-} *jbuf_t;
 
 extern jbuf_t jbuf_new(void);
 extern jbuf_t jbuf_append_attr(jbuf_t jb, const char *name, const char *fmt, ...);
