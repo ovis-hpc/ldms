@@ -151,7 +151,7 @@ The group id of the set's owner. The default is the returned value of getegid().
 .TP
 .BI [perm " perm"]
 .br
-The sampler plugin instance access permission. The default is 0777.
+The sampler plugin instance access permission. The default is 0440.
 .RE
 .RE
 
