@@ -1,4 +1,4 @@
-.\" Manpage for ldmsctl
+\" Manpage for ldmsctl
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
 .TH man 8 "19 Nov 2019" "v4.3" "ldmsctl man page"
 
@@ -151,7 +151,7 @@ The group id of the set's owner. The default is the returned value of getegid().
 .TP
 .BI [perm " perm"]
 .br
-The sampler plugin instance access permission. The default is 0777.
+The sampler plugin instance access permission. The default is 0440.
 .RE
 .RE
 

@@ -1172,7 +1172,7 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 
 ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 {
-	return ldms_set_new_with_auth(instance_name, schema, geteuid(), getegid(), 0777);
+	return ldms_set_new_with_auth(instance_name, schema, geteuid(), getegid(), 0440);
 }
 
 int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, mode_t perm)
