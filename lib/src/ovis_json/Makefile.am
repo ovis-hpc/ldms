@@ -1,8 +1,6 @@
 SUBDIRS =
 lib_LTLIBRARIES =
 
-CFLAGS := $(filter-out -Werror, ${CFLAGS})
-
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
 
