@@ -16,12 +16,12 @@ static jbuf_t print_list(jbuf_t jb, json_entity_t e)
 		count++;
 	}
 	jb = jbuf_append_str(jb, "]");
+	return jb;
 }
 
 static jbuf_t print_dict(jbuf_t jb, json_entity_t e)
 {
 	json_entity_t a;
-	hent_t ent;
 	int count = 0;
 	jb = jbuf_append_str(jb, "{");
 	for (a = json_attr_first(e); a; a = json_attr_next(a)) {
@@ -72,7 +72,6 @@ char buffer[1024*1024];
 int main(int argc, char *argv[])
 {
 	FILE *fp = fopen(argv[1], "r");
-	jbuf_t jb = jbuf_new();
 	json_entity_t entity;
 	json_parser_t parser = json_parser_new(0);
 	int rc = fread(buffer, 1, sizeof(buffer), fp);

@@ -71,7 +71,6 @@ jbuf_t jbuf_append_va(jbuf_t jb, const char *fmt, va_list _ap)
 
 jbuf_t jbuf_append_str(jbuf_t jb, const char *fmt, ...)
 {
-	int cnt, space;
 	va_list ap;
 	va_start(ap, fmt);
 	jb = jbuf_append_va(jb, fmt, ap);
@@ -81,7 +80,6 @@ jbuf_t jbuf_append_str(jbuf_t jb, const char *fmt, ...)
 
 jbuf_t jbuf_append_attr(jbuf_t jb, const char *name, const char *fmt, ...)
 {
-	int cnt, space;
 	va_list ap;
 	va_start(ap, fmt);
 	jb = jbuf_append_str(jb, "\"%s\":", name);
