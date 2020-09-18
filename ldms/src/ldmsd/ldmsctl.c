@@ -2187,6 +2187,8 @@ int main(int argc, char *argv[])
 		}
 		cnt = getline(&linebuf, &linebuf_len, stdin);
 #endif /* HAVE_LIBREADLINE */
+		if (!linebuf)
+			break;
 		if (cnt == -1)
 			break;
 		if (linebuf[0] == '\0')
