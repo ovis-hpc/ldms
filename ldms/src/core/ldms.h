@@ -1144,6 +1144,15 @@ extern uint32_t ldms_set_card_get(ldms_set_t s);
 uint32_t ldms_set_uid_get(ldms_set_t s);
 
 /**
+ * \brief Set the UID of the LDMS set.
+ * \param s The set handle.
+ * \param uid The UID to set
+ * \retval errno If failed.
+ * \retval 0     If succeeded.
+ */
+int ldms_set_uid_set(ldms_set_t s, uid_t uid);
+
+/**
  * \brief Retreive the GID of the LDMS set.
  * \param s The set handle.
  * \retval gid The GID of the set.
@@ -1151,11 +1160,29 @@ uint32_t ldms_set_uid_get(ldms_set_t s);
 uint32_t ldms_set_gid_get(ldms_set_t s);
 
 /**
+ * \brief Set the GID of the LDMS set.
+ * \param s The set handle.
+ * \param uid The GID to set
+ * \retval errno If failed.
+ * \retval 0     If succeeded.
+ */
+int ldms_set_gid_set(ldms_set_t s, gid_t gid);
+
+/**
  * \brief Retreive the permission of the LDMS set.
  * \param s The set handle.
  * \retval perm The permission of the set.
  */
 uint32_t ldms_set_perm_get(ldms_set_t s);
+
+/**
+ * \brief Set the permissions of the LDMS set.
+ * \param s The set handle.
+ * \param perm The UNIX mode_t bits (see chmod)
+ * \retval errno If failed.
+ * \retval 0     If succeeded.
+ */
+int ldms_set_perm_set(ldms_set_t s, mode_t perm);
 
 /**
  * \brief Get the size in bytes of the set's meta data

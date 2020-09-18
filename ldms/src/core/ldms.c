@@ -1205,14 +1205,32 @@ uint32_t ldms_set_uid_get(ldms_set_t s)
 	return __le32_to_cpu(s->set->meta->uid);
 }
 
+int ldms_set_uid_set(ldms_set_t s, uid_t uid)
+{
+	s->set->meta->uid = __cpu_to_le32(uid);
+        return 0;
+}
+
 uint32_t ldms_set_gid_get(ldms_set_t s)
 {
 	return __le32_to_cpu(s->set->meta->gid);
 }
 
+int ldms_set_gid_set(ldms_set_t s, gid_t gid)
+{
+	s->set->meta->gid = __cpu_to_le32(gid);
+        return 0;
+}
+
 uint32_t ldms_set_perm_get(ldms_set_t s)
 {
 	return __le32_to_cpu(s->set->meta->perm);
+}
+
+int ldms_set_perm_set(ldms_set_t s, mode_t perm)
+{
+	s->set->meta->perm = __cpu_to_le32(perm);
+        return 0;
 }
 
 extern uint32_t ldms_set_meta_sz_get(ldms_set_t s)
