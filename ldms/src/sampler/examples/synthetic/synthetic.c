@@ -110,7 +110,7 @@ static ldms_set_t clone_metric_set(base_data_t base, uint64_t k)
 	ldms_metric_set_u64(c, BASE_COMPONENT_ID, base->component_id);
 	ldms_metric_set_u64(c, BASE_JOB_ID, 0);
 	ldms_metric_set_u64(c, BASE_APP_ID, 0);
-	ldms_set_config_auth(c, base->uid, base->gid, base->perm);
+	base_auth_set(&base->auth, c);
 	rc = ldms_set_publish(c);
 	if (rc) {
 		ldms_set_delete(c);

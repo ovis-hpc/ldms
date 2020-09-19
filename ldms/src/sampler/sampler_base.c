@@ -233,7 +233,7 @@ base_data_t base_config(struct attr_value_list *avl,
 	else
 		base->job_set_name = strdup(job_set_name);
 
-	int rc = base_auth_parse(avl, &(base->uid), &(base->gid), &(base->perm), log);
+	int rc = base_auth_parse(avl, &base->auth, log);
 	if (rc)
 		goto einval;
 
@@ -302,7 +302,8 @@ ldms_set_t base_set_new(base_data_t base)
 	ldms_metric_set_u64(base->set, BASE_COMPONENT_ID, base->component_id);
 	ldms_metric_set_u64(base->set, BASE_JOB_ID, 0);
 	ldms_metric_set_u64(base->set, BASE_APP_ID, 0);
-	ldms_set_config_auth(base->set, base->uid, base->gid, base->perm);
+	base_auth_set(&base->auth, base->set);
+
 	rc = ldms_set_publish(base->set);
 	if (rc) {
 		ldms_set_delete(base->set);
@@ -369,61 +370,70 @@ void base_sample_end(base_data_t base)
 	ldms_transaction_end(base->set);
 }
 
-int base_auth_parse(struct attr_value_list *avl, uid_t *uid, gid_t *gid, int *perm, ldmsd_msg_log_f log)
+int base_auth_parse(struct attr_value_list *avl, struct base_auth *auth,
+		    ldmsd_msg_log_f log)
 {
 	char *value;
 	/* uid, gid, permission */
-	if (uid) {
-		value = av_value(avl, "uid");
-		if (value) {
-			if (isalpha(value[0])) {
-				/* Try to lookup the user name */
-				struct passwd *pwd = getpwnam(value);
-				if (!pwd) {
-					log(LDMSD_LERROR,
-					    "%s: The specified user '%s' does not exist\n",
-					    value);
-					goto einval;
-				}
-				*uid = pwd->pw_uid;
-			} else {
-				*uid = strtol(value, NULL, 0);
+        auth->uid_is_set = false;
+        auth->gid_is_set = false;
+        auth->perm_is_set = false;
+	value = av_value(avl, "uid");
+	if (value) {
+		if (isalpha(value[0])) {
+			/* Try to lookup the user name */
+			struct passwd *pwd = getpwnam(value);
+			if (!pwd) {
+				log(LDMSD_LERROR,
+				    "%s: The specified user '%s' does not exist\n",
+				    value);
+				goto einval;
 			}
+			auth->uid = pwd->pw_uid;
 		} else {
-			*uid = geteuid();
+			auth->uid = strtol(value, NULL, 0);
 		}
+		auth->uid_is_set = true;
 	}
-	if (gid) {
-		value = av_value(avl, "gid");
-		if (value) {
-			if (isalpha(value[0])) {
-				/* Try to lookup the group name */
-				struct group *grp = getgrnam(value);
-				if (!grp) {
-					log(LDMSD_LERROR,
-					    "%s: The specified group '%s' does not exist\n",
-					    value);
-					goto einval;
-				}
-				*gid = grp->gr_gid;
-			} else {
-				*gid = strtol(value, NULL, 0);
+	value = av_value(avl, "gid");
+	if (value) {
+		if (isalpha(value[0])) {
+			/* Try to lookup the group name */
+			struct group *grp = getgrnam(value);
+			if (!grp) {
+				log(LDMSD_LERROR,
+				    "%s: The specified group '%s' does not exist\n",
+				    value);
+				goto einval;
 			}
+			auth->gid = grp->gr_gid;
 		} else {
-			*gid = getegid();
+			auth->gid = strtol(value, NULL, 0);
 		}
+		auth->gid_is_set = true;
 	}
-	if (perm) {
-		value = av_value(avl, "perm");
-		if (value && value[0] != '0') {
+	value = av_value(avl, "perm");
+	if (value) {
+		if (value[0] != '0') {
 			log(LDMSD_LINFO,
 			    "%s: Warning, the permission bits '%s' are not specified "
 			    "as an Octal number.\n",
 			    value);
 		}
-		*perm = (value)?(strtol(value, NULL, 0)):(0777);
+		auth->perm = strtol(value, NULL, 0);
+		auth->perm_is_set = true;
 	}
 	return 0;
 einval:
 	return 1;
+}
+
+void base_auth_set(const struct base_auth *auth, ldms_set_t set)
+{
+        if (auth->uid_is_set)
+                ldms_set_uid_set(set, auth->uid);
+        if (auth->gid_is_set)
+                ldms_set_gid_set(set, auth->gid);
+        if (auth->perm_is_set)
+                ldms_set_perm_set(set, auth->perm);
 }

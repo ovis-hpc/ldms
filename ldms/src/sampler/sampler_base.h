@@ -48,7 +48,19 @@
  */
 #ifndef SAMPLER_BASE_H
 #define SAMPLER_BASE_H
+
+#include <stdbool.h>
 #include "ldmsd.h"
+
+struct base_auth {
+	uid_t uid;
+	bool uid_is_set;
+	gid_t gid;
+	bool gid_is_set;
+	int perm;
+	bool perm_is_set;
+};
+
 typedef struct base_data_s {
 	char *pi_name;
 	char *instance_name;
@@ -58,9 +70,7 @@ typedef struct base_data_s {
 	ldms_schema_t schema;
 	ldms_set_t job_set;
 	ldms_set_t set;
-	uid_t uid;
-	gid_t gid;
-	int perm;
+	struct base_auth auth;
 	int set_array_card;
 	uint64_t component_id;
 	int job_id_idx;
@@ -168,14 +178,28 @@ void base_sample_end(base_data_t base);
 void base_del(base_data_t base);
 
 /**
- * \brief parse uid, gid, and perm values from attributes.
+ * \brief parse uid, gid, and perm values from attributes, if they exist
  * \param avl attribute source to use.
- * \param uid output location of uid
- * \param gid output location of gid
- * \param perm output location of perm
- * Default output is uid,gid of current user and 777 permission.
+ * \param auth output sturct base_auth into which the uid/gid/perm values are set
  * \return 0 on success, 1 on invalid user/group lookup.
  */
-int base_auth_parse(struct attr_value_list *avl, uid_t *uid, gid_t *gid, int *perm, ldmsd_msg_log_f log);
+int base_auth_parse(struct attr_value_list *avl, struct base_auth *auth,
+		    ldmsd_msg_log_f log);
+
+/**
+ * \brief Set the authentication values in the ldms_set_t from base_data_t
+ *
+ * Take any configured authentication options from the base_data_t base
+ * structure and apply them to the ldms_set_t metric set. The autentication
+ * options in the base_data_t structure are set by base_auth_config(). If the
+ * base_data_t structure was created by base_config(), base_config() will have
+ * already called base_auth_config() on the structure. It is not necessary
+ * to employ this function directly if your plugin calls base_set_new() to
+ * create its metric sets. base_set_new() will call base_auth_set().
+ *
+ * \param [in] base The base_data_t struct that holds the authentication options
+ * \param [out] set The metric set that shall have its authentication values set
+ */
+void base_auth_set(const struct base_auth *auth, ldms_set_t set);
 
 #endif

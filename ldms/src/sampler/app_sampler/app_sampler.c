@@ -1240,14 +1240,12 @@ int __handle_task_init(app_sampler_inst_t inst, json_entity_t data)
 	if (!app_set)
 		return ENOMEM;
 	app_set->task_pid = task_pid->value.int_;
-	set = ldms_set_new_with_auth(setname, inst->base_data->schema,
-				     inst->base_data->uid,
-				     inst->base_data->gid,
-				     inst->base_data->perm);
+        set = ldms_set_new(setname, inst->base_data->schema);
 	if (!set) {
 		free(app_set);
 		return errno;
 	}
+        base_auth_set(&inst->base_data->auth, set);
 	ldms_metric_set_u64(set, BASE_JOB_ID, job_id->value.int_);
 	ldms_metric_set_u64(set, BASE_COMPONENT_ID, inst->base_data->component_id);
 	ldms_metric_set_u64(set, inst->task_rank_idx, task_rank->value.int_);

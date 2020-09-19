@@ -186,9 +186,7 @@ struct ibnet_data {
 	/* name of file with lid/port locations to sample. */
 	char *srclist;
 	uint64_t comp_id;
-	uid_t uid;
-	gid_t gid;
-	int perm;
+	struct base_auth auth;
 	/* port schema indices */
 	int index_remote;
 	int index_lid;
@@ -303,9 +301,9 @@ char *ibnet_data_usage() {
 	"    instance     A unique name for the timing metric set (default $HOSTNAME/" SAMP ")\n"
 	"    component_id A unique number for the component being monitoring, Defaults to zero.\n"
 	"    schema       The base name of the port metrics schema, Defaults to " SAMP ".\n"
-	"    uid	  The user-id of the set's owner (defaults to geteuid())\n"
-	"    gid	  The group id of the set's owner (defaults to getegid())\n"
-	"    perm	 The set's access permissions (defaults to 0777)\n"
+	"    uid	  The user-id of the set's owner\n"
+	"    gid	  The group id of the set's owner\n"
+	"    perm	 The set's access permissions\n"
 	"    Currently supported values in metric file are:\n"
 	;
 
@@ -386,8 +384,7 @@ struct ibnet_data *ibnet_data_new(ldmsd_msg_log_f log, struct attr_value_list *a
 
 #ifndef MAIN
 
-	d->perm = 0777;
-	(void)base_auth_parse(avl, &(d->uid), &(d->gid), &(d->perm), d->log);
+	(void)base_auth_parse(avl, &d->auth, d->log);
 	if (!srclist || strlen(srclist) == 0) {
 		errno = EINVAL;
 		d->log(LDMSD_LERROR, SAMP " needs source_list=<file> of lid/port to read.\n");
@@ -912,7 +909,7 @@ int ibnet_data_sets_init(struct ibnet_data *d, const char *port_schema_name, con
 			return errno;
 		}
 		ldms_set_producer_name_set(d->timing_set, timing_producer);
-		ldms_set_config_auth(d->timing_set, d->uid, d->gid, d->perm);
+		base_auth_set(&d->auth, d->timing_set);
 		ldms_metric_set_u64(d->timing_set, d->index_compid,
 					d->comp_id);
 		ldms_set_publish(d->timing_set);
@@ -940,7 +937,7 @@ int ibnet_data_sets_init(struct ibnet_data *d, const char *port_schema_name, con
 			d->log(LDMSD_LDEBUG, SAMP ": ldms_set_new %s\n",
 				port_instance_name);
 		ldms_set_producer_name_set(port->set, port->lidname);
-		ldms_set_config_auth(port->set, d->uid, d->gid, d->perm);
+		base_auth_set(&d->auth, port->set);
 		ldms_set_publish(port->set);
 	}
 	return 0;
