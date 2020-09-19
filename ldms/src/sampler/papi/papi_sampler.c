@@ -267,12 +267,11 @@ static int create_metric_set(job_data_t job)
 	snprintf(job->instance_name, 256, "%s/%s/%lu",
 		 job->base->producer_name, job->schema_name,
 		 job->job_id);
-	job->set = ldms_set_new_with_auth(job->instance_name, schema,
-					  job->base->uid, job->base->gid,
-					  job->base->perm);
+	job->set = ldms_set_new(job->instance_name, schema);
 	if (!job->set)
 		goto err;
 
+	base_auth_set(&job->base->auth, job->set);
 	ldms_set_producer_name_set(job->set, job->base->producer_name);
 	ldms_metric_set_u64(job->set, job->job_id_mid, job->job_id);
 	ldms_metric_set_u64(job->set, job->comp_id_mid, job->base->component_id);
