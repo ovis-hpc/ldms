@@ -59,6 +59,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/inotify.h>
@@ -83,6 +84,9 @@ char * jobinfo_datafile = LDMS_JOBINFO_DATA_FILE;
 uid_t uid;
 gid_t gid;
 uint32_t perm;
+bool uid_is_set;
+bool gid_is_set;
+bool perm_is_set;
 
 char *job_metrics[] = {
 	"component_id",
@@ -278,11 +282,17 @@ create_metric_set(const char *instance_name, char* schema_name)
 		goto err;
 	}
 
-	set = ldms_set_new_with_auth(instance_name, job_schema, uid, gid, perm);
+	set = ldms_set_new(instance_name, job_schema);
 	if (!set) {
 		rc = errno;
 		goto err;
 	}
+        if (uid_is_set)
+                ldms_set_uid_set(set, uid);
+        if (gid_is_set)
+                ldms_set_gid_set(set, gid);
+        if (perm_is_set)
+                ldms_set_perm_set(set, perm);
 
 	/* seed the metrics */
 	jobinfo_read_data();
@@ -350,6 +360,9 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 	}
 
 	/* uid, gid, permission */
+	uid_is_set = false;
+	gid_is_set = false;
+	perm_is_set = false;
 	value = av_value(avl, "uid");
 	if (value) {
 		if (isalpha(value[0])) {
@@ -365,8 +378,7 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 		} else {
 			uid = strtol(value, NULL, 0);
 		}
-	} else {
-		uid = geteuid();
+		uid_is_set = true;
 	}
 	value = av_value(avl, "gid");
 	if (value) {
@@ -383,17 +395,19 @@ config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value
 		} else {
 			gid = strtol(value, NULL, 0);
 		}
-	} else {
-		gid = getegid();
+		gid_is_set = true;
 	}
 	value = av_value(avl, "perm");
-	if (value && value[0] != '0') {
-		msglog(LDMSD_LINFO,
-		    SAMP ": Warning, the permission bits '%s' are not specified "
-		    "as an Octal number.\n",
-		    value);
+	if (value) {
+		if (value[0] != '0') {
+			msglog(LDMSD_LINFO,
+			       SAMP ": Warning, the permission bits '%s' are not specified "
+			       "as an Octal number.\n",
+			       value);
+		}
+		perm = strtol(value, NULL, 0);
+		perm_is_set = true;
 	}
-	perm = (value)?(strtol(value, NULL, 0)):(0777);
 
 	value = av_value(avl, "instance");
 	if (!value) {
