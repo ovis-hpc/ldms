@@ -59,6 +59,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <fcntl.h>
+#include <stdbool.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/inotify.h>
@@ -88,6 +89,9 @@ static char *stream;
 static gid_t gid;
 static uid_t uid;
 static uint32_t perm;
+static bool gid_is_set;
+static bool uid_is_set;
+static bool perm_is_set;
 static uint64_t comp_id;
 
 #define PID_LIST_LEN 64
@@ -411,12 +415,17 @@ static int create_metric_set(void)
 			goto err;
 	}
 
-	job_set = ldms_set_new_with_auth(instance_name, job_schema,
-					 uid, gid, perm);
+	job_set = ldms_set_new(instance_name, job_schema);
 	if (!job_set) {
 		rc = errno;
 		goto err;
 	}
+        if (uid_is_set)
+                ldms_set_uid_set(job_set, uid);
+        if (gid_is_set)
+                ldms_set_gid_set(job_set, gid);
+        if (perm_is_set)
+                ldms_set_perm_set(job_set, perm);
 	ldms_set_producer_name_set(job_set, producer_name);
 	for (i = 0; i < job_list_len; i++) {
 		ldms_metric_array_set_u64(job_set, comp_id_idx, i, comp_id);
@@ -498,6 +507,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		comp_id = 0;
 
 	/* uid, gid, permission */
+	uid_is_set = false;
+	gid_is_set = false;
+	perm_is_set = false;
 	value = av_value(avl, "uid");
 	if (value) {
 		if (isalpha(value[0])) {
@@ -513,8 +525,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		} else {
 			uid = strtol(value, NULL, 0);
 		}
-	} else {
-		uid = geteuid();
+		uid_is_set = true;
 	}
 	value = av_value(avl, "gid");
 	if (value) {
@@ -531,17 +542,19 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		} else {
 			gid = strtol(value, NULL, 0);
 		}
-	} else {
-		gid = getegid();
+		gid_is_set = true;
 	}
 	value = av_value(avl, "perm");
-	if (value && value[0] != '0') {
-		msglog(LDMSD_LINFO,
-		    "slurm_sampler: Warning, the permission bits '%s' are not specified "
-		    "as an Octal number.\n",
-		    value);
+	if (value) {
+		if (value[0] != '0') {
+			msglog(LDMSD_LINFO,
+			       "slurm_sampler: Warning, the permission bits '%s' are not specified "
+			       "as an Octal number.\n",
+			       value);
+		}
+		perm = strtol(value, NULL, 0);
+		perm_is_set = true;
 	}
-	perm = (value)?(strtol(value, NULL, 0)):(0777);
 
 	value = av_value(avl, "instance");
 	if (!value) {
