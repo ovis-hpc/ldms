@@ -59,6 +59,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <stdbool.h>
 #include <time.h>
 #include <pthread.h>
 #include <sys/types.h>
@@ -324,7 +325,8 @@ out:
 }
 
 static int create_metric_set(const char *instance_name, char* schema_name,
-	uid_t uid, gid_t gid, int perm, int set_array_card)
+			     uid_t uid, bool uid_is_set, gid_t gid, bool gid_is_set,
+			     int perm, bool perm_is_set, int set_array_card)
 {
 	int rc = 0;
 
@@ -404,7 +406,12 @@ static int create_metric_set(const char *instance_name, char* schema_name,
 	}
 	set_meta_new = 1;
 
-	ldms_set_config_auth(set, uid, gid, perm);
+        if (uid_is_set)
+                ldms_set_uid_set(set, uid);
+        if (gid_is_set)
+                ldms_set_gid_set(set, gid);
+        if (perm_is_set)
+                ldms_set_perm_set(set, perm);
 	rc = ldms_set_publish(set);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": ldms_set_publish fail.\n");
@@ -538,17 +545,29 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	uid_t uid;
 	gid_t gid;
 	int perm;
+	bool uid_is_set = false;
+	bool gid_is_set = false;
+	bool perm_is_set = false;
 	value = av_value(avl, "uid");
-	uid = (value)?(strtol(value, NULL, 0)):(geteuid());
+	if (value) {
+		uid = strtol(value, NULL, 0);
+		uid_is_set = true;
+	}
 	value = av_value(avl, "gid");
-	gid = (value)?(strtol(value, NULL, 0)):(getegid());
+	if (value) {
+		gid = strtol(value, NULL, 0);
+		gid_is_set = true;
+	}
 	value = av_value(avl, "perm");
-	perm = (value)?(strtol(value, NULL, 0)):(0777);
+	if (value) {
+		perm = strtol(value, NULL, 0);
+		perm_is_set = true;
+	}
 	value = av_value(avl, "set_array_card");
 	int set_array_card = (value)?(strtol(value, NULL, 0)):(1);
 
-
-	rc = create_metric_set(iname, sname, uid, gid, perm, set_array_card);
+	rc = create_metric_set(iname, sname, uid, uid_is_set, gid, gid_is_set,
+			       perm, perm_is_set, set_array_card);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		return rc;
