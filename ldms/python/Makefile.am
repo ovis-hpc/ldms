@@ -26,6 +26,6 @@ ldms_la_LIBADD = $(top_builddir)/ldms/src/core/libldms.la
 
 $(LDMS_PYX_C): ldms.pyx ldms.pxd
 	echo PYTHON_LDFLAGS are "$(PYTHON_LDFLAGS)"
-	cython -3 --directive language_level=3 --fast-fail --gdb -I $(srcdir) $< -o $@
+	$(CYTHON) -3 --directive language_level=3 --fast-fail --gdb -I $(srcdir) $< -o $@
 
 SUBDIRS = ldmsd cmds

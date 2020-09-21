@@ -532,8 +532,6 @@ if test -z "$ENABLE_YAML_TRUE"; then
 fi
 
 if test -z "$ENABLE_SOS_TRUE"; then
-	which cython >/dev/null 2>&1 || AC_MSG_ERROR("cython not found")
-	AX_PYTHON_DEVEL([>='3.6'])
 	if test "x$WITH_SOS" != "xbuild"; then
 		OCFLAGS=$CFLAGS
 		CFLAGS=$SOS_INCDIR_FLAG
@@ -554,11 +552,41 @@ if test -z "$ENABLE_SOS_TRUE"; then
 fi
 
 dnl ldms-python API's and programs
+AC_ARG_VAR([CYTHON], [The Cython program])
+CYTHON_MIN_VER="0.28.5"
+CYTHON_MSG="
+
+    Please install Cython ver >= ${CYTHON_MIN_VER}. You may install Cython from
+    your distribution package manager, but we recommend installing it via pip3
+    (\`pip3 install Cython\`) to get the latest version of Cython. Some
+    distribution package (e.g. python36-Cython from epel 7) may install cython
+    program in cython<VER> form (e.g. /bin/cython3.6). In such case,
+    you may need to set 'CYTHON=/path/to/cython'.
+
+"
 if test -z "$ENABLE_PYTHON_TRUE"; then
 	AX_PYTHON_DEVEL([>='3.6'])
 	pkgpythondir="${pythondir}/ovis_ldms"
 	pkgpyexecdir="${pkgpythondir}"
 	AX_PYTHON_MODULE_VERSION(["argparse"], 1.1, "python")
+
+	if test -z "${CYTHON}"; then
+		dnl CYTHON= not specified
+		AC_PATH_PROGS([CYTHON], [cython cython3 cython3.6 cython-3.8], [no])
+		if test "${CYTHON}" = "no"; then
+			AC_MSG_ERROR([cython program not found. ${CYTHON_MSG}])
+		fi
+	elif test '!' -x "${CYTHON}"; then
+		dnl CYTHON= specified, but not executable or not found
+		AC_MSG_ERROR([The specified cython program "${CYTHON}" is not found or not executable.])
+	fi
+	AC_MSG_NOTICE(Using cython: ${CYTHON})
+	dnl cython version check
+	CYTHON_VER=$(${CYTHON} --version 2>&1 | sed -e 's/.*\s//')
+	AC_MSG_NOTICE(Cython version: ${CYTHON_VER})
+	LE_VER=$(echo -e "${CYTHON_VER}\n${CYTHON_MIN_VER}"| sort -V|head -n1)
+	test "$LE_VER" == "$CYTHON_MIN_VER" || \
+		AC_MSG_ERROR(Cython ${CYTHON_VER} is too old. $CYTHON_MSG)
 fi
 AM_CONDITIONAL([HAVE_PYTHON], [test "$PYTHON" != :])
 
