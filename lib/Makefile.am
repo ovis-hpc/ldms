@@ -5,11 +5,7 @@ if ENABLE_ETC
 SUBDIRS += etc
 endif
 
-if ENABLE_SWIG
-SUBDIRS += swig
-endif
-
-EXTRA_DIST = 
+EXTRA_DIST =
 
 OPV=-$(PACKAGE_VERSION)
 

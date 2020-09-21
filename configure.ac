@@ -526,7 +526,6 @@ if test -z "$ENABLE_YAML_TRUE"; then
 	LIBS=""
 fi
 
-dnl swig stuff
 if test -z "$ENABLE_SOS_TRUE"; then
 	which cython >/dev/null 2>&1 || AC_MSG_ERROR("cython not found")
 	AX_PYTHON_DEVEL([>='3.6'])
@@ -547,14 +546,6 @@ if test -z "$ENABLE_SOS_TRUE"; then
 	else
 		AC_MSG_NOTICE([Using staged ovis-sos $OPVIS_SOS_LIB64DIR_FLAG $OVIS_SOS_LIBDIR_FLAG])
 	fi
-fi
-
-OPTION_DEFAULT_DISABLE([swig], [ENABLE_SWIG])
-if test -z "$ENABLE_SWIG_TRUE"; then
-	AC_PROG_SWIG
-	SWIG_PYTHON
-	AX_PYTHON_DEVEL([>='3.6'])
-	AX_PYTHON_MODULE_VERSION(["argparse"], 1.1, "python")
 fi
 
 dnl ldms-python API's
@@ -738,9 +729,6 @@ lib/src/zap/fabric/Makefile
 lib/src/zap/sock/Makefile
 lib/src/zap/ugni/Makefile
 lib/src/zap/test/Makefile
-lib/swig/Makefile
-lib/swig/zap/Makefile
-lib/swig/ovis_auth/Makefile
 lib/etc/Makefile
 lib/etc/ovis/Makefile
 lib/etc/ld.so.conf.d/Makefile
