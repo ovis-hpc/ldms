@@ -401,7 +401,12 @@ AC_SUBST(OVIS_AUTH_LIBS)
 LDMSD_PLUGIN_LIBPATH=${pkglibdir}
 AC_SUBST(LDMSD_PLUGIN_LIBPATH)
 
+dnl making --disable-python an alias of --disable-ldms-python
+dnl ENABLE_LDMS_PYTHON_TRUE only if neither --disable-python nor
+dnl --disable-ldms-python are given.
 OPTION_DEFAULT_ENABLE([ldms-python], [ENABLE_LDMS_PYTHON])
+OPTION_DEFAULT_ENABLE([python], [ENABLE_PYTHON_OPT])
+AM_CONDITIONAL([ENABLE_PYTHON], [test -z "${ENABLE_LDMS_PYTHON_TRUE}" -a -z "${ENABLE_PYTHON_OPT_TRUE}"])
 
 dnl Check for pthread support
 AC_CHECK_LIB(pthread, pthread_mutex_init, [],
@@ -548,8 +553,8 @@ if test -z "$ENABLE_SOS_TRUE"; then
 	fi
 fi
 
-dnl ldms-python API's
-if test -z "$ENABLE_LDMS_PYTHON_TRUE"; then
+dnl ldms-python API's and programs
+if test -z "$ENABLE_PYTHON_TRUE"; then
 	AX_PYTHON_DEVEL([>='3.6'])
 	pkgpythondir="${pythondir}/ovis_ldms"
 	pkgpyexecdir="${pkgpythondir}"
