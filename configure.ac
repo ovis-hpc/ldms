@@ -833,8 +833,7 @@ AC_CONFIG_FILES([
 	ldms/scripts/ldms-wrapper
 	ldms/scripts/ldms-static-test.sh
 	ldms/scripts/pll-ldms-static-test.sh
-	ldms/scripts/run-static-tests.sh
-	ldms/scripts/static-test-list
+	ldms/scripts/ldms-run-static-tests.sh
 	ldms/scripts/ldms_ban.sh
 	ldms/scripts/ldms-plugins.sh
 	ldms/scripts/ldms-py-subset_test.sh
@@ -844,6 +843,8 @@ AC_CONFIG_FILES([
 	ldms/scripts/ldms-meminfo.sh
 	ldms/scripts/ldms_local_opa2test.sh
 	ldms/scripts/ldms-l2_test.sh
+	ldms/src/ldms-static-test-list.sh
+	ldms/src/ldms-static-test-bypass
 	], [chmod a+x $ac_file]
 )
 
