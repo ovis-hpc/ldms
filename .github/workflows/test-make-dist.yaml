@@ -13,8 +13,6 @@ jobs:
 
     steps:
     - run: sudo apt install gettext
-    - name: cython
-      run: sudo pip3 install Cython
     - uses: actions/checkout@v2
     - name: autogen
       run: sh autogen.sh
