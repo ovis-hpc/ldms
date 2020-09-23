@@ -551,43 +551,30 @@ if test -z "$ENABLE_SOS_TRUE"; then
 	fi
 fi
 
+AC_ARG_VAR([CYTHON], [Cython compiler command])
+dnl CYTHON_CHECK(CYTHON_MIN_VERSION, PYTHON_VERSION)
+AC_DEFUN([CYTHON_CHECK],
+[cython_min_version=$1
+ python_version=$2
+ AC_CACHE_CHECK([for a version of Cython >= ${cython_min_version}],
+		[ac_cv_path_CYTHON],
+		[AC_PATH_PROGS_FEATURE_CHECK([CYTHON],
+			[cython-${python_version} cython${python_version} cython],
+			[cython_version=$(${ac_path_CYTHON} --version 2>&1 | sed -e 's/.*\s//')
+			 AX_COMPARE_VERSION([${cython_version}],[ge],[$cython_min_version],
+			[ac_cv_path_CYTHON=$ac_path_CYTHON ac_path_CYTHON_found=:])],
+			[AC_MSG_ERROR([not found])])])
+ AC_SUBST([CYTHON], [$ac_cv_path_CYTHON])
+])
+
 dnl ldms-python API's and programs
-AC_ARG_VAR([CYTHON], [The Cython program])
-CYTHON_MIN_VER="0.25"
-CYTHON_MSG="
-
-    Please install Cython ver >= ${CYTHON_MIN_VER}. You may install Cython from
-    your distribution package manager, but we recommend installing it via pip3
-    (\`pip3 install Cython\`) to get the latest version of Cython. Some
-    distribution package (e.g. python36-Cython from epel 7) may install cython
-    program in cython<VER> form (e.g. /bin/cython3.6). In such case,
-    you may need to set 'CYTHON=/path/to/cython'.
-
-"
-if test -z "$ENABLE_PYTHON_TRUE"; then
+AS_IF([test "x$enable_python" != xno], [
 	AX_PYTHON_DEVEL([>='3.6'])
 	pkgpythondir="${pythondir}/ovis_ldms"
 	pkgpyexecdir="${pkgpythondir}"
 	AX_PYTHON_MODULE_VERSION(["argparse"], 1.1, "python")
-
-	if test -z "${CYTHON}"; then
-		dnl CYTHON= not specified
-		AC_PATH_PROGS([CYTHON], [cython cython3 cython3.6 cython-3.8], [no])
-		if test "${CYTHON}" = "no"; then
-			AC_MSG_ERROR([cython program not found. ${CYTHON_MSG}])
-		fi
-	elif test '!' -x "${CYTHON}"; then
-		dnl CYTHON= specified, but not executable or not found
-		AC_MSG_ERROR([The specified cython program "${CYTHON}" is not found or not executable.])
-	fi
-	AC_MSG_NOTICE(Using cython: ${CYTHON})
-	dnl cython version check
-	CYTHON_VER=$(${CYTHON} --version 2>&1 | sed -e 's/.*\s//')
-	AC_MSG_NOTICE(Cython version: ${CYTHON_VER})
-	LE_VER=$(echo -e "${CYTHON_VER}\n${CYTHON_MIN_VER}"| sort -V|head -n1)
-	test "$LE_VER" == "$CYTHON_MIN_VER" || \
-		AC_MSG_ERROR(Cython ${CYTHON_VER} is too old. $CYTHON_MSG)
-fi
+	CYTHON_CHECK([0.25], $PYTHON_VERSION)
+])
 AM_CONDITIONAL([HAVE_PYTHON], [test "$PYTHON" != :])
 
 OPTION_WITH_PORT([LDMSD],[411])
