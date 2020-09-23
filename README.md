@@ -1,8 +1,7 @@
 # Introduction
 
 __OVIS__ is a modular system for HPC data collection, transport, storage,
-log message exploration, and visualization as well as analysis. OVIS 3.3.0 comes with
-_LDMS_, _Baler_, and _SOS_ as a git submodule.
+log message exploration, and visualization as well as analysis.
 
 ## Lightweight Distributed Metric Service (LDMS)
 
@@ -28,11 +27,7 @@ over 100,000 metric values per second with less than 0.2% overhead.
 
 SOS is a high-performance, indexed, object-oriented database designed to efficiently
 manage structured data on persistent media. More information can be found at
-the SOS GitHub website <https://github.com/opengridcomputing/SOS>.
-
-There is no need to clone the SOS project separatedly. It is advised to install SOS
-from the git submodule under OVIS to ensure the compatility with OVIS v3.3.0.
-See more info in the [Obtaining OVIS source code](#obtaining-ovis-source-code).
+the SOS project on GitHub website <https://github.com/ovis-hpc/SOS>.
 
 ## Baler
 
@@ -48,18 +43,17 @@ raw log messages, and message statistics by hosts and/or time.
 Baler also comes with an association mining tool -- _bassoc_ -- that can be used
 to discover sequence of occurrence patterns of log messages and to perform causal analysis.
 
+Baler has been moved out of the OVIS tree. Please check it out at <https://github.com/opengridcomputing/baler>
+
 # Obtaining OVIS source code
 
 You may clone OVIS source (and its submodules) from the official [Git](http://git-scm.com/) repository:
 
 ```sh
-git clone https://github.com/ovis-hpc/ovis.git
-cd ovis
+git clone https://github.com/ovis-hpc/ovis.git -b OVIS-4
 # If you are interested in storing LDMS data in the SOS storage
-# or you are interested in using Baler,
-# please perform the last two steps.
-git submodule init sos
-git submodule update sos
+# please perform the following step.
+git clone https://github.com/ovis-hpc/sos.git -b SOS-4
 ```
 
 # Dependencies
@@ -67,15 +61,11 @@ git submodule update sos
 * autoconf (>=2.63), automake, libtool
 * glib2
 * libreadline
-* libevent2 (>=2.0.21)
-	* For recent Ubuntu and CentOS 7, libevent2 can be installed from the central repo.
-	* If you want to install from source, please find it here. <http://libevent.org/>
 * openssl Development library for OVIS, LDMS Authentication
-* For LDMS and Baler Python Interface:
-	* Python-2.7.
-	* swig
-* For Baler bclient Python Interface:
-	* PyYAML (The Python YAML module <http://www.pyyaml.org/wiki/PyYAML>)
+* libmunge for Munge LDMS Authentication plugin
+* For LDMS Python Interface:
+	* Python-3.6.
+	* Cython 0.25.
 * doxygen if you want to build OVIS documentation.
 * Some LDMS plug-ins have dependency on additional libraries.
 For cray-related LDMS sampler plug-in dependencies, please see the man page of the
@@ -84,20 +74,28 @@ plug-in in `ldms/man/`.
 
 # Building OVIS
 
-At the OVIS top directory,
-
 ```sh
+	# If you're interested in SOS-dependent storage plugin, please install SOS first as follows
+	# otherwise, please skip to `Install ovis-ldms` below
+	cd sos
 	./autogen.sh
 	mkdir <build directory>
 	cd <build directory>
-	../configure --prefix=<installed path> --enable-swig [options]
+	../configure --prefix<installed path> [options]
+	make
+	make install
+	cd ../../
+	
+	# Install ovis-ldms
+	cd ovis
+	./autogen.sh
+	mkdir <build directory>
+	cd <build directory>
+	../configure --prefix=<installed path> [options]
+	#   also add --with-sos=<installed path> if SOS is required
 	make
 	make install
 ```
-
-Note that the option "--enable-swig" is required to be able to attach to a ldmsd using ldmsd_controller.
-To build _sos_ and _baler_, `--enable-sos` and `--enable-baler`, respectively,
-must be given at the configure line. Note that _baler_ has dependency on _sos_.
 
 # Supported hardware
 
