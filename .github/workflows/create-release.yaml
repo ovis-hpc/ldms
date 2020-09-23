@@ -12,8 +12,6 @@ jobs:
 
     steps:
     - run: sudo apt install gettext
-    - name: cython
-      run: sudo pip3 install Cython
     - uses: actions/checkout@v2
     # actions/checkout@v2 breaks annotated tags by converting them into
     # lightweight tags, so we need to force fetch the tag again
