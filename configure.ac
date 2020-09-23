@@ -553,7 +553,7 @@ fi
 
 dnl ldms-python API's and programs
 AC_ARG_VAR([CYTHON], [The Cython program])
-CYTHON_MIN_VER="0.28.5"
+CYTHON_MIN_VER="0.25"
 CYTHON_MSG="
 
     Please install Cython ver >= ${CYTHON_MIN_VER}. You may install Cython from
