@@ -32,6 +32,7 @@ gen_scripts += ldms-l2_test.sh
 
 if ENABLE_LDMS_TEST
 gen_scripts += ldms-run-static-tests.sh
+TESTS =ldms-run-static-tests.sh
 endif
 
 bin_SCRIPTS += $(gen_scripts)
@@ -53,8 +54,6 @@ lsdate: ${srcdir}/lsdate
 installcheck-local: ldms-run-static-tests.sh
 
 install-data-local: $(testsets)
-
-TESTS = ldms-run-static-tests.sh
 
 install-serial:
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/examples/static-test && \
