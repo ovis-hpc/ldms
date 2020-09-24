@@ -39,4 +39,27 @@ test_metric_SOURCES = test_metric.c
 test_metric_LDADD = -lldms
 test_metric_LDFLAGS = $(AM_LDFLAGS) -pthread -lm
 
-TESTS = $(check_PROGRAMS)
+EXTRA_DIST=ldms-run-static-tests.sh.in
+EXTRA_DIST+=ldms-static-test-list.sh.in
+EXTRA_DIST+=ldms-static-test-bypass.in
+
+CLEANFILES=ldms-run-static-tests.sh
+CLEANFILES+=ldms-static-test-list.sh
+CLEANFILES+=ldms-static-test-bypass 
+
+%.sh: %.sh.in
+	$(do_subst) < $< > $@
+	chmod 755 $@
+
+install-data-hook: $(CLEANFILES)
+	$(MKDIR_P) $(DESTDIR)$(pkglibdir)
+	$(INSTALL) -m 755 ldms-static-test-list.sh $(DESTDIR)$(pkglibdir)
+	$(INSTALL) -m 755 ldms-run-static-tests.sh $(DESTDIR)$(pkglibdir)
+	$(INSTALL) -m 644 ldms-static-test-bypass $(DESTDIR)$(pkglibdir)
+
+uninstall-hook:
+	rm $(DESTDIR)$(pkglibdir)/ldms-static-test-list.sh
+	rm $(DESTDIR)$(pkglibdir)/ldms-run-static-tests.sh
+	rm $(DESTDIR)$(pkglibdir)/ldms-static-test-bypass
+
+TESTS = $(check_PROGRAMS) ldms-run-static-tests.sh

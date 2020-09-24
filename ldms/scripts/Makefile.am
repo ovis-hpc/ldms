@@ -30,11 +30,6 @@ gen_scripts += ldms-py-rename.sh
 gen_scripts += ldms_local_opa2test.sh
 gen_scripts += ldms-l2_test.sh
 
-if ENABLE_LDMS_TEST
-gen_scripts += ldms-run-static-tests.sh
-TESTS =ldms-run-static-tests.sh
-endif
-
 bin_SCRIPTS += $(gen_scripts)
 
 testsets = install-serial

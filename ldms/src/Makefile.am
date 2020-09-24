@@ -30,10 +30,6 @@ endif
 
 if ENABLE_LDMS_TEST
 SUBDIRS += test
-EXTRA_DIST+= ldms-static-test-list.sh.in
-
-FILES= ldms-static-test-list.sh
-FILES+= ldms-static-test-bypass
 endif
 
 SUBDIRS += contrib
@@ -48,17 +44,14 @@ ovis-ldms-configure-args: Makefile
 		(echo -n \'$$i |sed -E 's/(=)(.*)$$/="\2"/' && echo \') | grep -v srcdir | grep '^.--' >> ovis-ldms-configure-args; \
 	done
 
-install-data-hook: ovis-ldms-configvars.sh ovis-ldms-configure-args $(FILES)
+install-data-hook: ovis-ldms-configvars.sh ovis-ldms-configure-args 
 	$(MKDIR_P) $(DESTDIR)$(libdir)
 	$(MKDIR_P) $(DESTDIR)$(pkglibdir)
 	$(INSTALL) -m 755 ovis-ldms-configvars.sh $(DESTDIR)$(libdir)
 	$(INSTALL) -m 644 ovis-ldms-configure-args $(DESTDIR)$(pkglibdir)
 	$(INSTALL) -m 644 ovis-ldms-configure-env $(DESTDIR)$(pkglibdir)
-	$(INSTALL) -m 755 ldms-static-test-list.sh $(DESTDIR)$(pkglibdir)
-	$(INSTALL) -m 644 ldms-static-test-bypass $(DESTDIR)$(pkglibdir)
 
 uninstall-hook:
 	rm $(DESTDIR)$(libdir)/ovis-ldms-configvars.sh
 	rm $(DESTDIR)$(pkglibdir)/ovis-ldms-configure-env
 	rm $(DESTDIR)$(pkglibdir)/ovis-ldms-configure-args
-	rm $(DESTDIR)$(pkglibdir)/$(FILES)
