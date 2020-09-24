@@ -1,0 +1,96 @@
+#! /bin/sh
+# This driver script runs all static tests
+# Checks if a plugin passes or fails. Also checks if a test case
+# is an expected failure (XFAIL) by the list of plugins grep'ed in 'static-test-list'.
+
+export prefix=@prefix@
+export exec_prefix=@exec_prefix@
+export libdir=@libdir@
+export BUILDDIR=@prefix@ 
+export bindir=@bindir@
+export pkglibdir=@pkglibdir@
+file=$pkglibdir/ldms-static-test-bypass
+
+testlist=""
+. $pkglibdir/ldms-static-test-list.sh
+
+#Help usage
+function clusage {
+cat << EOF
+$0: usage:
+$0 -h
+$0 -l
+	-h produces help message
+	-l produces list of enabled plugins
+See man ldms-static-test and run-static-tests.sh for details.
+EOF
+}
+
+#Output and notify user of test case failure
+function failure_output {
+
+	$bindir/ldms-static-test.sh $testname &> ldmstest/test.$testname.log
+	tar czf ldmstest/$testname.tgz ldmstest/$testname ldmstest/test.$testname.log &>>ldmstest/test.$testname.log
+	x=$?
+	
+	#Store and zip output 
+	if [ $x -eq 2 ]; then
+	echo "If a line above reads 'FAIL: cannot read test input $testname':
+		1) The LDMSD config file for $testname does not exist.
+					OR
+		2) The $testname cannot be loaded, queried for usage and unloaded for ldmsd -u." >> ldmstest/test.$testname.log
+		tar czf ldmstest/$testname.tgz ldmstest/test.$testname.log
+	fi
+return 0
+}
+
+input=$1
+export input
+
+if test "$1" = "-h"; then
+	clusage
+	exit 0
+fi
+
+if test "$1" = "-l"; then
+	echo "Enabled plugins are:"
+	for plugins in ${testlist[@]};do
+		echo "$plugins"
+	done
+        exit 0
+fi
+
+#loop through array and invoke ldms-static-test.sh for each element
+for testname in ${testlist[@]}; do
+	$bindir/ldms-static-test.sh $testname
+	exit_code=$?
+
+#grep list of plugins in static-test-list. If it is there, it will be registered as an expected failure.
+if grep "^$testname$" $file; then
+	bypass=1
+else
+	bypass=0
+fi
+
+#check if exit code passes
+if [ $exit_code -eq 0 ]; then
+	echo "PASS $testname"
+fi
+
+#check if exit code passes with unexpected failure. Save and zip failure and exit the script.
+if [ $bypass -eq 0 ] && [ $exit_code -eq 1 ]; then
+	echo "Unexpected FAILURE. Please refer to ldmstest/test.$testname.log"
+	failure_output
+	exit 1
+fi
+
+#check if exit code is an expected failure. Save and zip output and continue.
+if [ $bypass -eq 1 ] && [ $exit_code -eq 1 ]; then
+	echo "XFAIL: $testname #expected failure defined in $file. Please remove $testname from list if sampler is not expected to fail."
+	failure_output
+fi
+
+done;
+
+echo DONE.
+

@@ -1,8 +1,0 @@
-#!/bin/bash
-hfclock
-lustre2_client
-tsampler
-generic_sampler
-lustre
-hello_stream
-llnl
