@@ -176,18 +176,12 @@ struct ldms_conn_msg {
 };
 
 struct ldms_send_cmd_param {
-#ifdef SWIG
-%immutable;
-#endif
 	uint32_t msg_len;
 	char msg[OVIS_FLEX];
 };
 
 struct ldms_lookup_cmd_param {
 	uint32_t flags;
-#ifdef SWIG
-%immutable;
-#endif
 	uint32_t path_len;
 	char path[LDMS_LOOKUP_PATH_MAX+1];
 };
@@ -197,9 +191,6 @@ struct ldms_dir_cmd_param {
 };
 
 struct ldms_set_delete_cmd_param {
-#ifdef SWIG
-%immutable;
-#endif
 	uint32_t inst_name_len;
 	char inst_name[OVIS_FLEX];
 };
@@ -244,9 +235,6 @@ struct ldms_rendezvous_lookup_param {
 	uint32_t card; /* card of dict */
 	uint32_t schema_len;
 	uint32_t array_card; /* card of array */
-#ifdef SWIG
-%immutable;
-#endif
 	/* schema name, then instance name, and then set_info key value pairs */
 	char set_info[OVIS_FLEX];
 };
@@ -277,9 +265,6 @@ struct ldms_rendezvous_msg {
 struct ldms_dir_reply {
 	uint32_t type;
 	uint32_t more;
-#ifdef SWIG
-%immutable;
-#endif
 	uint32_t json_data_len;
 	char json_data[OVIS_FLEX];
 };

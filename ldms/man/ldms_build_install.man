@@ -122,14 +122,9 @@ work by default.
 .br
 If --enable, then disable/enable authentication. Default enabled.
 .TP
-.BR --enable|disable-ldms-python
+.BR --enable|disable-python
 .br
-Enable this. This builds the ldms python configuration tools. Default enabled.
-.TP
-.BR --enable|disable-swig
-.br
-Enable the swig module if you are going to use ldmsd_controller on remote hosts AND if you have built with authentication. Default disable.
-.TP
+Enable the ldms python api and the configuration tools that depend on the API. Default: enabled if python and cython detected.
 .BR --enable|disable-readline
 .br
 Enable or disable the readline module. It is necessary to enable if you want to use the configuration tools interactively; if you are going to use a script interface to the configuration tools (usual method), then this can be disabled.

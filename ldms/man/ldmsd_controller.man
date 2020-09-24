@@ -797,10 +797,6 @@ to the base value. Optional.
 .SS Comment (a skipped line)
 .BR # comment-string
 
-.SH NOTES
-If you are using ldmsd_controller to configure a remote host and you are
-using authentication, then you must build with --enable-swig.
-
 .SH BUGS
 No known bugs.
 
