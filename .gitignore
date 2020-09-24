@@ -13,15 +13,16 @@ Makefile
 Makefile.in
 configure
 build*
-config.h.in
-config.guess
-config.sub
-depcomp
+/config.h.in
+/config.status
+/ovis-ldms-config.h
 install-sh
+/libtool
 ltmain.sh
 missing
 compile
 py-compile
+/stamp-h1
 
 aclocal.m4
 libtool.m4

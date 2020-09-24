@@ -17,4 +17,15 @@ ldms_local_syslog.sh
 ldms_local_usertest.sh
 ldms_local_valgrind.sh
 ldms_usertest.sh
-
+/ldms-l2_test.sh
+/ldms-meminfo.sh
+/ldms-plugins.sh
+/ldms-py-rename.sh
+/ldms-py-subset_test.sh
+/ldms-py-syslog.sh
+/ldms-py-varset.sh
+/ldms-static-test.sh
+/ldms-wrapper
+/ldms_local_opa2test.sh
+/ldmsd
+/pll-ldms-static-test.sh
