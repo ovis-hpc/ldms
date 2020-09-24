@@ -15,7 +15,7 @@ if test -f ldms/src/sampler/meminfo.c; then
 	prefix=$HOME/opt/ovis
 	expected_event2_prefix=/usr
 
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-ovis-lib=$expected_ovislib_prefix --enable-rdma --enable-sos --with-sos=$expected_sos_prefix --with-ovis-prefix=$expected_ovislib_prefix --disable-dependency-tracking "
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --with-ovis-lib=$expected_ovislib_prefix --enable-rdma --enable-sos --with-sos=$expected_sos_prefix --with-ovis-prefix=$expected_ovislib_prefix --disable-dependency-tracking "
 
 
 	if test -f $expected_event2_prefix/include/event2/event.h; then
@@ -41,11 +41,11 @@ if test -f ldms/src/sampler/meminfo.c; then
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=/badsos
 # auth + -a none
-#	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --enable-zap --disable-swig --enable-ovis_auth --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 --enable-a-none --with-pkglibdir=ovis-ldms LDFLAGS=-fsanitize=address"
+#	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --enable-zap --enable-ovis_auth --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 --enable-a-none --with-pkglibdir=ovis-ldms LDFLAGS=-fsanitize=address"
 # no auth
-#	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --enable-zap --disable-swig --disable-ovis_auth --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 --with-pkglibdir=ovis-ldms"
+#	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --enable-zap --disable-ovis_auth --enable-libgenders --with-libgenders=$HOME/ovis/init-2015 --with-pkglibdir=ovis-ldms"
 # auth
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --enable-zap --disable-swig --enable-ovis_auth --with-pkglibdir=ovis-ldms --enable-rabbitv3 --disable-rpath"
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --enable-zap --enable-ovis_auth --with-pkglibdir=ovis-ldms --enable-rabbitv3 --disable-rpath"
 	../configure $allconfig && \
 	make && \
 	make install && \

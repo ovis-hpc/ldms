@@ -15,7 +15,7 @@ if test -f ldms/src/sampler/meminfo/meminfo.c; then
 	prefix=$HOME/opt/ovis
 	expected_event2_prefix=/usr
 
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --enable-swig --with-ovis-lib=$expected_ovislib_prefix --enable-rdma --enable-sos --with-sos=$expected_sos_prefix --with-ovis-prefix=$expected_ovislib_prefix --disable-dependency-tracking "
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-zaptest --with-ovis-lib=$expected_ovislib_prefix --enable-rdma --enable-sos --with-sos=$expected_sos_prefix --with-ovis-prefix=$expected_ovislib_prefix --disable-dependency-tracking "
 
 
 	if test -f $expected_event2_prefix/include/event2/event.h; then
@@ -40,7 +40,7 @@ if test -f ldms/src/sampler/meminfo/meminfo.c; then
 	cd $build_subdir
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=/badsos
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --enable-swig --enable-authentication --enable-sysclassib --with-pkglibdir=ovis-ldms --disable-libgenders --enable-jobid --enable-llnl-edac --enable-opa2 --enable-genderssystemd --enable-fptrans --enable-slurmtest --enable-filesingle --enable-dstat"
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --with-libevent=$expected_event2_prefix --disable-sos --disable-perfevent --disable-rpath --enable-authentication --enable-sysclassib --with-pkglibdir=ovis-ldms --disable-libgenders --enable-jobid --enable-llnl-edac --enable-opa2 --enable-genderssystemd --enable-fptrans --enable-slurmtest --enable-filesingle --enable-dstat"
 	../configure $allconfig && \
 	make && \
 	make install && \

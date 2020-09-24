@@ -38,7 +38,7 @@ if test -f ldms/src/sampler/meminfo.c; then
 	expected_ovislib_prefix=$prefix
 	expected_sos_prefix=/badsos
 
-	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-sos --disable-perfevent --enable-zap --disable-swig --enable-ovis_auth --with-pkglibdir=ovis-ldms --enable-rabbitv3 --disable-rpath"
+	allconfig="--prefix=$prefix --enable-rdma --enable-ssl --enable-sos --disable-perfevent --enable-zap --enable-ovis_auth --with-pkglibdir=ovis-ldms --enable-rabbitv3 --disable-rpath"
 	../configure $allconfig && \
 	make && \
 	make install && \

@@ -1,7 +1,7 @@
 #!/bin/sh
 # use the la files found under the current dir to delete those under $prefix/lib
 prefix=$1
-files=`find . -name '*.la' |grep -v swig`
+files=`find . -name '*.la'`
 if ! test -d $1; then
 	echo "target dir not found"
 	exit 1

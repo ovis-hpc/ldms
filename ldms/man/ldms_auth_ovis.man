@@ -53,10 +53,6 @@ if the file is in one of the other checked locations.
 
 .SH NOTES
 .PP
-If you want to use the ldmsd_controller to configure a remote host AND you are
-using authentication, then you must build ldms with --enable-swig.
-
-.PP
 Authentication can be disabled at ldms build time by configuring your ldms build
 with --disable-ovis_auth. Then no secretword file is required or checked.
 

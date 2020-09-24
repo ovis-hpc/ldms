@@ -243,8 +243,7 @@ class ldmsdInbandConfig(ldmsdConfig):
         try:
             from ovis_ldms import ldms
         except:
-            raise ImportError("Failed to import ovis_ldms.ldms. "
-                              "Please make sure that ldms is built with --enable-swig")
+            raise ImportError("Failed to import ovis_ldms.ldms.")
         else:
             self.ldms_module = ldms
 
