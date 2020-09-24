@@ -1,0 +1,45 @@
+#List of plugins for expected failures (XFAIL) of 'ldms-static-test.sh'
+#Add or remove as developer wishes to test programs
+#All plugins are currently listed for max installation
+#       -Test cases will return a PASS or XFAIL
+meminfo
+app_sampler
+papi_sampler
+syspapi_sampler
+grptest
+test_sampler
+ibm_occ
+generic_sampler
+aries_mmr
+cray_system_sampler
+rapl
+sampler_atasmart
+shm
+switchx
+tsampler
+hfclock
+dstat
+filesingle
+loadavg
+procinterrupts
+procstat
+procnetdev
+vmstat
+clock
+fptrans
+variable
+array_example
+synthetic
+procnfs
+lustre
+lustre2_client
+lnet_stats
+many
+meminfo.job
+sysclassib
+opa2
+procdiskstats
+kgnilnd
+hello_stream
+llnl
+
