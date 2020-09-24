@@ -1,0 +1,32 @@
+export plugname=meminfo
+portbase=408
+# export XPRT=sock
+# export HOST=localhost
+export XPRT=fabric
+# find the ib0 interface hostname
+export HOST=$(for ia in $(ifconfig -a |grep 'inet ' | awk '{ print $2}'); do grep $ia /etc/hosts |grep ib0 |grep '^[0-9]' ; done | awk '{ print $2}')
+DAEMONS 1 2 3
+LDMSD -p prolog.sampler 1
+#GDB=1
+#VGARGS="--trace-children=yes --track-origins=yes --leak-check=full --show-leak-kinds=all"
+vgon
+LDMSD -p prolog.store2 2
+vgoff
+LDMSD 3
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -v
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -v
+netstat -alt
+netstat -tonp
+SLEEP 5
+export PORT=413
+LDMS_LS 1 -v
+export PORT=409
+vgoff
+LDMS_LS 1 -v
+vgoff
+SLEEP 5
+KILL_LDMSD 1 2 3
+file_created $STOREDIR/node/$testname
+chown -R baallan.baallan ldmstest
