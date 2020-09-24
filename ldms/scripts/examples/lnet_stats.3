@@ -2,10 +2,10 @@ load name=${plugname}
 config name=${plugname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i}
 start name=${plugname} interval=1000000 offset=0
 
-prdcr_add name=localhost1 host=localhost type=active xprt=${XPRT} port=${port1} interval=1000000
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=1000000
 prdcr_start name=localhost1
 
-prdcr_add name=localhost2 host=localhost type=active xprt=${XPRT} port=${port2} interval=1000000
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=1000000
 prdcr_start name=localhost2
 
 updtr_add name=allhosts interval=1000000 offset=100000

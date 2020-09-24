@@ -194,6 +194,11 @@ XPRT
 .br
 The transport used. It may be specified in the environment to override
 the default 'sock', and it is exported to the executed daemon environment.
+.TP
+HOST
+.br
+The host name used for a specific interface. It may be specified in the environment to override
+the default 'localhost', and it is exported to the executed daemon environment.
 
 .SH NOTES
 Any other variable may be defined and exported for use in the attribute/value

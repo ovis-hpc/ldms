@@ -1,11 +1,10 @@
 load name=${plugname}
-config name=${plugname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i} disks=/dev/sda1
+config name=${plugname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i}
 start name=${plugname} interval=1000000 offset=0
-
 load name=store_csv
-config name=store_csv path=${STOREDIR} altheader=0
+config name=store_csv path=/tmp/stest altheader=1 typeheader=2 ietfcsv=1 userdata=1
 
-prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=1000000
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=413 interval=10000000
 prdcr_start name=localhost1
 
 updtr_add name=allhosts interval=1000000 offset=100000

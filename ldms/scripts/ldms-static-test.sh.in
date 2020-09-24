@@ -108,7 +108,12 @@ if test -z "$2"; then
 fi
 export TESTDIR
 
+if test -z "$HOST"; then
+	# used for ldms_ls
+	export HOST=localhost
+fi
 if test -z "$XPRT"; then
+	# used for ldms_ls and ldmsd
 	export XPRT=sock
 fi
 declare -a ports
@@ -219,15 +224,19 @@ function LDMSD {
 				XVG=$VG
 			fi
 			if test -z "$VGARGS"; then
-				XVGARGS="-v --trace-children=yes --log-file=${LOGDIR}/vg.$i.%p"
+				XVGARGS="-v --log-file=${LOGDIR}/vg.$i.%p"
 			else
-				XVGARGS="-v --trace-children=yes --log-file=${LOGDIR}/vg.$i.%p $VGARGS"
+				XVGARGS="-v --log-file=${LOGDIR}/vg.$i.%p $VGARGS"
 			fi
 			wrap="$XVG $XVGARGS"
 		else
 			wrap=""
 		fi
 		echo starting daemon $i
+		# set -x
+		if test -n "$HOST"; then
+			XPRTHOST=":$HOST"
+		fi
 		if test -f $input.$i -a -r $input.$i; then
 			echo "# generated from $input" > $LDMSD_RUN/conf.$i
 			for lf in $loopprologs; do
@@ -251,27 +260,35 @@ function LDMSD {
 			echo "# generated from $input.$i" >> $LDMSD_RUN/conf.$i
 			cat $input.$i >> $LDMSD_RUN/conf.$i
 			clonefile=$LDMSD_RUN/conf.$i
-			$wrap ldmsd.${ports[$i]} \
-				-x ${XPRT}:${ports[$i]} \
-				-c $LDMSD_RUN/conf.$i \
-				-l ${LOGDIR}/$i.txt \
-				-v DEBUG $LDMSD_EXTRA \
-				-r $LDMSD_PIDFILE.$i
+			env > $LDMSD_RUN/env.$i
+			if test -n "$GDB"; then
+				echo "run -x ${XPRT}:${ports[$i]}:${XPRTHOST} -c $LDMSD_RUN/conf.$i -l ${LOGDIR}/$i.txt -v DEBUG $LDMSD_EXTRA -r $LDMSD_PIDFILE.$i"
+				gdb ldmsd.${ports[$i]}
+			else
+				$wrap ldmsd.${ports[$i]} \
+					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
+					-c $LDMSD_RUN/conf.$i \
+					-l ${LOGDIR}/$i.txt \
+					-v DEBUG $LDMSD_EXTRA \
+					-r $LDMSD_PIDFILE.$i
+			fi
 		else
 			if test -z "$clonefile"; then
 				echo MISSING input file for DAEMON $i
 			fi
 			if test -f $clonefile -a $cloneinput = "1"; then
 				cp $clonefile $LDMSD_RUN/conf.$i
+				env > $LDMSD_RUN/env.$i
 				$wrap ldmsd.${ports[$i]} \
-					-x ${XPRT}:${ports[$i]} \
+					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 					-c $LDMSD_RUN/conf.$i \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG $LDMSD_EXTRA \
 					-r $LDMSD_PIDFILE.$i
 			else
 				echo IDLE DAEMON $i
-				ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]} \
+				env > $LDMSD_RUN/env.$i
+				ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG \
 					-r $LDMSD_PIDFILE.$i
@@ -304,12 +321,16 @@ function LDMS_LS {
 	for i in $nodes; do
 		if test "$usevg" = "1"; then
 			if test -z "$VG"; then
-				VG=valgrind
+				XVG=valgrind
+			else
+				XVG=$VG
 			fi
 			if test -z "$VGARGS"; then
-				VGARGS="-v --log-file=${LOGDIR}/vgls.$i.%p"
+				XVGARGS="-v --log-file=${LOGDIR}/vgls.$i.%p"
+			else
+				XVGARGS="-v --log-file=${LOGDIR}/vgls.$i.%p $VGARGS"
 			fi
-			wrap="$VG $VGARGS"
+			wrap="$XVG $XVGARGS"
 		else
 			wrap=""
 		fi
@@ -318,7 +339,13 @@ function LDMS_LS {
 			bypass=1
 			break;
 		fi
-		$wrap ldms_ls  -h localhost -x sock -p ${ports[$i]} $*
+		if test -n "$PORT"; then
+			iport=$PORT
+		else
+			iport=${ports[$i]}
+		fi
+		echo "ldms_ls  -h $HOST -x $XPRT -p $iport $*"
+		$wrap ldms_ls  -h $HOST -x $XPRT -p $iport $*
 	done
 }
 # KILL_LDMSD num list
