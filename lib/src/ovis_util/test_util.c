@@ -19,6 +19,7 @@ void test_str_repl_cmd()
 	__test_str_repl_cmd("verb opt=$(hostname) opt2=$(hostname)");
 	__test_str_repl_cmd("verb opt=$(echo $PPID) opt2=$(hostname)");
 	__test_str_repl_cmd("verb opt=$(hostname)/bal haha");
+	__test_str_repl_cmd("verb opt=$(sleep 3) opt2=$(hostname)");
 }
 
 void test_av()
@@ -104,7 +105,7 @@ int main(int argc, char **argv)
 		errcnt++;
 	}
 
-	rc = ovis_join_buf(NULL,0,NULL); // empty list
+	rc = ovis_join_buf(NULL,0,NULL,NULL); // empty list
 	if (!rc)  {
 		printf("error 5: ovis_join_buf(NULL,0,NULL) returned something.\n");
 		errcnt++;
@@ -117,21 +118,8 @@ int main(int argc, char **argv)
 			rc, strerror(rc));
 		errcnt++;
 	}
-
-	printf("expect crash soon\n");
-	r = ovis_join(NULL,s1,s2,s3); // unterminated list
-	if (r) {
-		printf("error 7: ovis_join(NULL,s1,s2,s3) returned something\n");
-		printf("error 7: %s\n", r);
-		errcnt++;
-	}
-	free(r);
-
-	rc = ovis_join_buf(NULL,0,s1,s2,s3); // unterminated list
-	if (!rc)  {
-		printf("error 8: ovis_join_buf(NULL,0,s1,s2,s3) returned something.\n");
-		errcnt++;
-	}
+	/* do not test for unterminated list. compiler warning from attribute sentinel
+ 	* warns the user about those. */
 
 	if (errcnt)
 		return 1;
