@@ -942,6 +942,7 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 					uid_t uid, gid_t gid, int perm)
 {
 	struct ldmsd_updtr *updtr;
+	char *endptr;
 	long interval_us = UPDTR_TREE_MGMT_TASK_INTRVL, offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
 	updtr = (struct ldmsd_updtr *)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_UPDTR,
@@ -954,11 +955,19 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 	updtr->default_task.is_default = 1;
 	updtr->is_auto_task = is_auto_task;
 	if (interval_str) {
-		interval_us = strtol(interval_str, NULL, 0);
+		interval_us = strtol(interval_str, &endptr, 0);
+		if (('\0' == interval_str[0]) || ('\0' != endptr[0]))
+			goto einval;
+		if (0 >= interval_us)
+			goto einval;
 		if (offset_str) {
+			offset_us = strtol(offset_str, &endptr, 0);
+			if (('\0' == offset_str[0]) || ('\0' != endptr[0]))
+				goto einval;
+			if (interval_us < labs(offset_us) * 2)
+				goto einval;
 			/* Make it a hint offset */
-			offset_us = strtol(offset_str, NULL, 0)
-					- updtr_sched_offset_skew_get();
+			offset_us -= updtr_sched_offset_skew_get();
 		} else {
 			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
 		}
@@ -976,6 +985,11 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 	updtr->push_flags = push_flags;
 	ldmsd_cfgobj_unlock(&updtr->obj);
 	return updtr;
+einval:
+	ldmsd_cfgobj_unlock(&updtr->obj);
+	ldmsd_updtr_put(updtr);
+	errno = EINVAL;
+	return NULL;
 }
 
 ldmsd_updtr_t
