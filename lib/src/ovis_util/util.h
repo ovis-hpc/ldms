@@ -215,7 +215,7 @@ pid_t ovis_execute(const char *command);
  * Example: ovis_join("\\","c:\\root", "file.txt", NULL);
  * \return The resulting string caller must free, or NULL if fail(see errno).
  */
-char *ovis_join(char *joiner, ...);
+__attribute__ ((sentinel)) char *ovis_join(char *joiner, ...);
 
 /**
  * \brief Fill array by joining parts.
@@ -227,7 +227,7 @@ char *ovis_join(char *joiner, ...);
  * Example: ovis_join_buf(buf, 256, "\\","c:\\root", "file.txt", NULL);
  * \return 0 if successful, or errno if input problem detected.
  */
-int ovis_join_buf(char *buf, size_t buflen, char *joiner, ...);
+__attribute__ ((sentinel)) int ovis_join_buf(char *buf, size_t buflen, char *joiner, ...);
 
 /**
  * \brief A convenient function checking if the given \a path exists.

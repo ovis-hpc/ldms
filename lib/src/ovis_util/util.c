@@ -611,7 +611,7 @@ pid_t ovis_execute(const char *command)
 
 #define DSTRING_USE_SHORT
 #include "dstring.h"
-char *ovis_join(char *pathsep, ...)
+__attribute__ ((sentinel)) char *ovis_join(char *pathsep, ...)
 {
 	va_list ap;
 	char *result = NULL;
@@ -644,7 +644,7 @@ char *ovis_join(char *pathsep, ...)
 	return result;
 }
 
-int ovis_join_buf(char *buf, size_t buflen, char *pathsep, ...)
+__attribute__ ((sentinel)) int ovis_join_buf(char *buf, size_t buflen, char *pathsep, ...)
 {
 	int rc = 0;
 	va_list ap;
