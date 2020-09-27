@@ -1,0 +1,19 @@
+name: Build Test - CentOS7
+
+on:
+  push:
+    branches: [ OVIS-4 ]
+  pull_request:
+    branches: [ OVIS-4 ]
+
+jobs:
+  build:
+    runs-on: ubuntu-20.04
+    container:
+        image: morrone/centos7-ldms-build:latest
+    steps:
+    - uses: actions/checkout@v2
+    - run: sh autogen.sh
+    - run: ./configure
+    - run: make
+
