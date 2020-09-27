@@ -2340,7 +2340,8 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 		pthread_mutex_lock(&x->lock);
 		goto callback_with_lock;
 	}
-	__ldms_free_ctxt(x, ctxt);
+	if (!lm->lookup.more)
+		__ldms_free_ctxt(x, ctxt);
 	return;
 
  callback:
