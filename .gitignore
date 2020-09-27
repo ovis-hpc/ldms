@@ -11,8 +11,8 @@ config.h
 config.log
 Makefile
 Makefile.in
-configure
-build*
+/configure
+/build*
 /config.h.in
 /config.status
 /ovis-ldms-config.h
