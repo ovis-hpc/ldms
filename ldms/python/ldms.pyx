@@ -203,8 +203,8 @@ def init(int max_sz):
     """init(max_sz) - initialize LDMS with memory pool `max_sz` bytes"""
     cdef int rc = ldms_init(max_sz)
     if rc:
-        raise RuntimeError("ldms_init({}) error: {}"\
-                           .format(max_sz, ERRNO_SYM(rc)))
+        raise OSError(rc, "ldms_init({}) error: {}" \
+                          .format(max_sz, ERRNO_SYM(rc)))
 
 
 # This is a logging function for LDMS library
@@ -754,7 +754,7 @@ cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
         # do NOT sem_post()
         return
     else:
-        raise RuntimeError("Bad event")
+        raise OSError(EINVAL, "Unknown LDMS event type {}".format(e.type))
     sem_post(&x._conn_sem)
     if e.type == EVENT_DISCONNECTED:
         Py_DECREF(x) # taken when CONNECTED
@@ -1038,8 +1038,8 @@ cdef class Schema(object):
         """S.__init__(name, array_card=1, metric_list=list())"""
         self._schema = ldms_schema_new(BYTES(name))
         if not self._schema:
-            raise RuntimeError("ldms_schema_new() error: {}"\
-                               .format(ERRNO_SYM(errno)))
+            raise OSError(errno, "ldms_schema_new() error: {}" \
+                                 .format(ERRNO_SYM(errno)))
         if metric_list:
             self.add_metrics(metric_list)
 
@@ -1047,8 +1047,8 @@ cdef class Schema(object):
         """S.set_array_card(num) - change the set array cardinality"""
         cdef rc = ldms_schema_array_card_set(self._schema, array_card)
         if rc:
-            raise RuntimeError("ldms_schema_array_card_set() error: {}" \
-                               .format(ERRNO_SYM(rc)))
+            raise OSError(rc, "ldms_schema_array_card_set() error: {}" \
+                              .format(ERRNO_SYM(rc)))
 
     def add_metric(self, name, metric_type, count=1, meta=False):
         """S.add_metric(name, type, count=1, meta=False)
@@ -1072,8 +1072,8 @@ cdef class Schema(object):
                 idx = ldms_schema_metric_add(self._schema, BYTES(name), t)
         if idx < 0:
             # error = -idx
-            raise RuntimeError("Adding metric to schema failed: {}"\
-                               .format(ERRNO_SYM(-idx)))
+            raise OSError(-idx, "Adding metric to schema failed: {}" \
+                                .format(ERRNO_SYM(-idx)))
 
     @cython.binding(True)
     def add_metrics(self, list mlist):
@@ -1342,15 +1342,15 @@ cdef class Set(object):
         """S.publish() - make the set available to LDMS peers"""
         cdef rc = ldms_set_publish(self.rbd)
         if rc:
-            raise RuntimeError("ldms_set_publish() failed: {}". \
-                               format(ERRNO_SYM(rc)))
+            raise OSError(rc, "ldms_set_publish() failed: {}" \
+                              .format(ERRNO_SYM(rc)))
 
     def unpublish(self):
         """S.unpublish() - make the set unavailable to LDMS peers"""
         cdef rc = ldms_set_unpublish(self.rbd)
         if rc:
-            raise RuntimeError("ldms_set_unpublish() failed: {}". \
-                               format(ERRNO_SYM(rc)))
+            raise OSError(rc, "ldms_set_unpublish() failed: {}" \
+                              .format(ERRNO_SYM(rc)))
 
     def delete(self):
         """S.delete() - delete the set"""
@@ -1363,8 +1363,8 @@ cdef class Set(object):
         """
         cdef rc = ldms_transaction_begin(self.rbd)
         if rc:
-            raise RuntimeError("ldms_transaction_begin() error: {}". \
-                               format(ERRNO_SYM(rc)))
+            raise OSError(rc, "ldms_transaction_begin() error: {}" \
+                              .format(ERRNO_SYM(rc)))
 
     def transaction_end(self):
         """S.transaction_end() - end data transaction
@@ -1374,8 +1374,8 @@ cdef class Set(object):
         """
         cdef rc = ldms_transaction_end(self.rbd)
         if rc:
-            raise RuntimeError("ldms_transaction_end() error: {}". \
-                               format(ERRNO_SYM(rc)))
+            raise OSError(rc, "ldms_transaction_end() error: {}" \
+                              .format(ERRNO_SYM(rc)))
 
     def keys(self):
         """S.keys() - iterates over keys (metric names) of the set"""
@@ -1411,12 +1411,12 @@ cdef class Set(object):
 
         If `cb` is not provided, the function call is blocking, i.e. it will not
         return until the update has completed (could be failure or success). If
-        the udpate completed in failure, RuntimeError is raised. Otherwise, the
-        function simply returns.
+        the udpate completed in failure, ConnectionError is raised. Otherwise,
+        the function simply returns.
 
         If `cb` is provided, the function became non-blocking. The result of the
         update will be delivered to the `cb` function. Note that the
-        non-blocking call can still raise synchronous RuntimeError.
+        non-blocking call can still raise synchronous ConnectionError.
 
         The signature of the `cb` is as follows:
             def update_cb(lset, flags, arg)
@@ -1432,15 +1432,15 @@ cdef class Set(object):
         rc = ldms_xprt_update(self.rbd, update_cb, <void*>tpl)
         if rc: # synchronous error
             Py_DECREF(tpl)
-            raise RuntimeError("ldms_xprt_update() error: {}"\
-                               .format(ERRNO_SYM(rc)))
+            raise ConnectionError(rc, "ldms_xprt_update() error: {}" \
+                                      .format(ERRNO_SYM(rc)))
         if cb:
             return
         with nogil:
             sem_wait(&self._sem)
         if self._update_rc:
-            raise RuntimeError("update error: {}"\
-                               .format(ERRNO_SYM(self._update_rc)))
+            rc = self._update_rc
+            raise ConnectionError(rc, "update error: {}".format(ERRNO_SYM(rc)))
 
     @property
     def instance_name(self):
@@ -1462,8 +1462,8 @@ cdef class Set(object):
         """`producer_name` setter"""
         cdef int rc = ldms_set_producer_name_set(self.rbd, BYTES(val))
         if rc:
-            raise RuntimeError("ldms_set_producer_name_set() error: {}" \
-                               .format(ERRNO_SYM(rc)))
+            raise OSError(rc, "ldms_set_producer_name_set() error: {}" \
+                              .format(ERRNO_SYM(rc)))
 
     @property
     def card(self):
@@ -1696,16 +1696,16 @@ cdef class Xprt(object):
                 raise TypeError("auth_opts must be a dictionary")
             avl = av_new(len(auth_opts))
             for k, v in auth_opts.items():
-               rc = av_add(avl, BYTES(k), BYTES(v))
-            if rc:
-                av_free(avl)
-                raise RuntimeError("tokenize() error: {}"\
-                                   .format(ERRNO_SYM(rc)))
+                rc = av_add(avl, BYTES(k), BYTES(v))
+                if rc:
+                    av_free(avl)
+                    raise OSError(rc, "av_add() error: {}"\
+                                  .format(ERRNO_SYM(rc)))
         self.xprt = ldms_xprt_new_with_auth(BYTES(name), xprt_log, BYTES(auth), avl)
         av_free(avl)
         if not self.xprt:
-            raise RuntimeError("Error creating transport, errno: {}"\
-                               .format(ERRNO_SYM(errno)))
+            raise ConnectionError(errno, "Error creating transport, errno: {}"\
+                                         .format(ERRNO_SYM(errno)))
 
     def __del__(self):
         if self.xprt:
@@ -1725,12 +1725,13 @@ cdef class Xprt(object):
 
         If `cb` is `None`, `connect()` is a blocking function, i.e. it will not
         return until the conenction resolved in either success or failure. In
-        the case of success, it simply returns. Otherwise, a RuntimeError is
+        the case of success, it simply returns. Otherwise, a ConnectionError is
         raised.
 
         If `cb` is provided, the `connect()` function becomes non-blocking and
-        just returns. (Note that it can still synchronously raise RuntimeError).
-        The callback is called to deliver transport events with the following
+        just returns. Note that it can still synchronously raise
+        ConnectionError. The callback is called to deliver transport events
+        with the following
         args:
         - xprt (Xprt): The transport object.
         - event (XprtEvent): An object describing an event from the transport.
@@ -1742,18 +1743,16 @@ cdef class Xprt(object):
         rc = ldms_xprt_connect_by_name(self.xprt, BYTES(host), BYTES(port),
                                        xprt_cb, <void*>self)
         if rc:
-            raise RuntimeError("ldms_xprt_connect_by_name() error: {}" \
-                               .format(ERRNO_SYM(rc)))
+            raise ConnectionError(rc, "ldms_xprt_connect_by_name() error: {}" \
+                                      .format(ERRNO_SYM(rc)))
         if cb:
             return
         # Else, release the GIL and wait
         with nogil:
             sem_wait(&self._conn_sem)
         if self._conn_rc:
-            #raise RuntimeError("Connect error: {}"\
-            #                   .format(ERRNO_SYM(self._conn_rc)))
-            return self._conn_rc
-        return 0
+            rc = self._conn_rc
+            raise ConnectionError(rc, "Connect error: {}".format(ERRNO_SYM(rc)))
 
     def listen(self, host="*", port=411, cb=None, cb_arg=None):
         """X.listen(host="*", port=411, cb=None, cb_arg=None)
@@ -1786,8 +1785,8 @@ cdef class Xprt(object):
         rc = ldms_xprt_listen_by_name(self.xprt, BYTES(host), BYTES(port),
                                       passive_xprt_cb, <void*>self)
         if rc:
-            raise RuntimeError("ldms_xprt_listen_by_name() error: {}" \
-                               .format(ERRNO_SYM(rc)))
+            raise ConnectionError(rc, "ldms_xprt_listen_by_name() error: {}" \
+                                      .format(ERRNO_SYM(rc)))
 
     def accept(self, timeout=None):
         """X.accept(timeout=None) -> Xprt
@@ -1821,7 +1820,7 @@ cdef class Xprt(object):
         not return until LDMS dir operation completed (successfully or failed).
         If dir completed successfully, the function returns a list of DirSet
         which contains set directory information. If dir completed with a
-        failure, RuntimeError is raised.
+        failure, ConnectionError is raised.
 
         If `cb` is specified, the `cb` function is called to deliver dir
         operation results with the following args:
@@ -1844,15 +1843,16 @@ cdef class Xprt(object):
             flags = 0
         rc = ldms_xprt_dir(self.xprt, dir_cb, <void*>self, flags)
         if rc:
-            raise RuntimeError("ldms_xprt_dir() error: {}"\
-                               .format(ERRNO_SYM(rc)))
+            raise ConnectionError(rc, "ldms_xprt_dir() error: {}" \
+                                      .format(ERRNO_SYM(rc)))
         if cb:
             return
         with nogil:
             sem_wait(&self._dir_sem)
         if self._dir_rc:
-            raise RuntimeError("dir callback status: {}"\
-                               .format(ERRNO_SYM(self._dir_rc)))
+            rc = self._dir_rc
+            raise ConnectionError(rc, "dir callback status: {}" \
+                                      .format(ERRNO_SYM(rc)))
         return self._dir_list
 
     def lookup(self, name, flags=0, cb=None, cb_arg=None):
@@ -1875,15 +1875,15 @@ cdef class Xprt(object):
 
         If `cb` is not given (or None), `lookup()` becomes blocking. It waits
         until lookup operation completed (either successfully or failed). If the
-        lookup completed with a failure, RuntimeError is raised. Otherwise, it
-        returns a single Set object if `flags` is LOOKUP_BY_INSTANCE
+        lookup completed with a failure, ConnectionError is raised. Otherwise,
+        it returns a single Set object if `flags` is LOOKUP_BY_INSTANCE
         (default) or a list of Set matching the given condition (schema or
         regular expression).
 
         If `cb` is given, `lookup()` becomes non-blocking. It returns right away
         after successfully requesting a lookup. The function could still raise
-        RuntimeError if it experienced a synchronous error. The results of the
-        lookup operation will be delivered to the application by calling the
+        ConnectionError if it experienced a synchronous error. The results of
+        the lookup operation will be delivered to the application by calling the
         given callback function with the following arguments:
         - xprt (Xprt): the transport performing the lookup.
         - status (int): 0 for no error, non-zero for error.
@@ -1902,19 +1902,19 @@ cdef class Xprt(object):
         rc = ldms_xprt_lookup(self.xprt, BYTES(name), flags,
                               lookup_cb, <void*>tpl)
         if rc:
-            # synchronously failed
-            Py_DECREF(tpl)
-            raise RuntimeError("ldms_xprt_lookup() failed, rc: {}" \
-                               .format(ERRNO_SYM(rc)))
+            # synchronous error
+            raise ConnectionError(rc, "ldms_xprt_lookup() error: {}" \
+                                      .format(ERRNO_SYM(rc)))
         if cb:
             return
         # else, release the GIL and wait
         with nogil:
             sem_wait(&self._lookup_sem)
         if self._lookup_rc:
-            raise RuntimeError("lookup callback status: {}"\
-                               .format(ERRNO_SYM(self._lookup_rc)))
-        if flags & (LDMS_LOOKUP_BY_SCHEMA|LDMS_LOOKUP_RE):
+            rc = self._lookup_rc
+            raise ConnectionError(rc, "lookup callback status: {}" \
+                                      .format(ERRNO_SYM(rc)))
+        if (flags & (LDMS_LOOKUP_BY_SCHEMA|LDMS_LOOKUP_RE)) or len(slist) > 1:
             return slist
         if slist:
             return slist[0]
@@ -1928,8 +1928,8 @@ cdef class Xprt(object):
         with nogil:
             rc = ldms_xprt_send(self.xprt, c_data, data_len)
         if rc:
-            raise RuntimeError("ldms_xprt_send() error: {}"\
-                               .format(ERRNO_SYM(rc)))
+            raise ConnectionError(rc, "ldms_xprt_send() error: {}" \
+                                      .format(ERRNO_SYM(rc)))
 
     def recv(self, timeout = None):
         """X.recv(timeout=None) -> bytes
@@ -1947,7 +1947,8 @@ cdef class Xprt(object):
                 this function will just be blocked indefinitely.
         """
         if self._conn_cb:
-            raise RuntimeError("The callback has been supplied to `connect()`. "
+            raise TypeError("Bad `Xprt.recv()` call. "
+                    "The callback has been supplied to `connect()`. "
                     "The message will be delivered asynchronously via the "
                     "callback function.")
         return self._recv_queue.get(timeout=timeout)
