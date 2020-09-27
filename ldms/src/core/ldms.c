@@ -939,8 +939,9 @@ uint32_t __ldms_set_size_get(struct ldms_set *s)
 int ldms_init(size_t max_size)
 {
 	size_t grain = LDMS_GRAIN_MMALLOC;
-	if (mm_init(max_size, grain))
-		return -1;
+	int rc = mm_init(max_size, grain); /* mm_init() returns errno */
+	if (rc)
+		return rc;
 	return 0;
 }
 

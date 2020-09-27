@@ -194,7 +194,8 @@ typedef struct ldms_schema_s *ldms_schema_t;
  *
  *  Pre-allocate a memory region for metric sets
  *  \param max_size The maximum size of the pre-allocated memory
- *  \return 0 on success
+ *  \retval 0     If success
+ *  \retval errno If error
  */
 int ldms_init(size_t max_size);
 
