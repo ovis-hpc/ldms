@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2010-2015,2017 National Technology & Engineering Solutions
+ * Copyright (c) 2010-2015,2017,2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2010-2015,2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2015,2017,2020 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -96,6 +96,15 @@ struct z_rdma_reject_msg {
 	char msg[OVIS_FLEX];
 };
 
+/* union of all messages */
+union z_rdma_msg {
+	struct z_rdma_message_hdr hdr;   /* header access */
+	struct z_rdma_share_msg   share;
+	struct z_rdma_accept_msg  accept;
+	struct z_rdma_reject_msg  reject;
+	char bytes[0]; /* bytes access */
+};
+
 #pragma pack()
 
 struct z_rdma_map {
@@ -105,9 +114,11 @@ struct z_rdma_map {
 };
 
 struct z_rdma_buffer {
-	char *data;
-	size_t data_len;
-	struct ibv_mr *mr;
+	union z_rdma_msg *msg; /* message buffer */
+	size_t buf_len;  /* buffer length */
+	size_t data_len; /* data written to the buffer */
+	struct z_rdma_ep *rep; /* the endpoint who owns the buffer */
+	LIST_ENTRY(z_rdma_buffer) free_link;
 };
 
 /**
@@ -119,7 +130,7 @@ struct z_rdma_context {
 
 	zap_ep_t ep;
 	struct ibv_send_wr wr;
-	struct ibv_sge sge;
+	struct ibv_sge sge[2];
 
 	enum ibv_wc_opcode op;  /* work-request op (can't be trusted
 				in wc on error */
@@ -156,7 +167,7 @@ struct z_rdma_ep {
 	struct ibv_qp *qp;
 
 	union {
-		struct z_rdma_conn_data conn_data; /* flexi */
+		struct z_rdma_conn_data conn_data;
 		char ___[RDMA_CONN_DATA_MAX];
 	};
 
@@ -196,6 +207,15 @@ struct z_rdma_ep {
 	pthread_mutex_t credit_lock;
 	TAILQ_HEAD(xprt_credit_list, z_rdma_context) io_q;
 	LIST_HEAD(active_ctxt_list, z_rdma_context) active_ctxt_list;
+
+	/* send/recv buffers */
+	int num_bufs;  /* total buffers: 4 + SQ_DEPTH + RQ_DEPTH */
+	size_t buf_sz; /* size of each buffer */
+	char *buf_pool;
+	struct z_rdma_buffer *buf_objs;
+	struct ibv_mr *buf_pool_mr;
+	LIST_HEAD(buf_free_list, z_rdma_buffer) buf_free_list;
+	pthread_mutex_t	buf_free_list_lock;
 
 #ifdef ZAP_DEBUG
 	int rejected_count;

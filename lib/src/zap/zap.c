@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-2017,2019 National Technology & Engineering Solutions
+ * Copyright (c) 2013-2017,2019,2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2013-2017,2019 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2017,2019,2020 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -139,6 +139,7 @@ static char *__zap_event_str[] = {
 	"ZAP_EVENT_READ_COMPLETE",
 	"ZAP_EVENT_WRITE_COMPLETE",
 	"ZAP_EVENT_RENDEZVOUS",
+	"ZAP_EVENT_SEND_MAPPED_COMPLETE",
 	"ZAP_EVENT_LAST"
 };
 
@@ -369,6 +370,7 @@ void blocking_zap_cb(zap_ep_t zep, zap_event_t ev)
 		/* Just do nothing */
 		break;
 	case ZAP_EVENT_WRITE_COMPLETE:
+	case ZAP_EVENT_SEND_MAPPED_COMPLETE:
 		/* Do nothing */
 		break;
 	default:
@@ -404,6 +406,7 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_DISCONNECTED:
 	case ZAP_EVENT_READ_COMPLETE:
 	case ZAP_EVENT_WRITE_COMPLETE:
+	case ZAP_EVENT_SEND_MAPPED_COMPLETE:
 		ev->data = NULL;
 		ev->data_len = 0;
 		/* do nothing */
@@ -539,6 +542,14 @@ zap_err_t zap_send(zap_ep_t ep, void *buf, size_t sz)
 	zerr = ep->z->send(ep, buf, sz);
 	zap_put_ep(ep);
 	return zerr;
+}
+
+zap_err_t zap_send_mapped(zap_ep_t ep, zap_map_t map, void *buf, size_t len,
+			  void *context)
+{
+	if (!ep->z->send_mapped)
+		return ZAP_ERR_NOT_SUPPORTED;
+	return ep->z->send_mapped(ep, map, buf, len, context);
 }
 
 zap_err_t zap_write(zap_ep_t ep,
@@ -684,15 +695,6 @@ zap_err_t zap_share(zap_ep_t ep, zap_map_t m, const char *msg, size_t msg_len)
 zap_err_t zap_reject(zap_ep_t ep, char *data, size_t data_len)
 {
 	return ep->z->reject(ep, data, data_len);
-}
-
-int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc)
-{
-	if (p < map->addr || (map->addr + map->len) < (p + sz))
-		return ERANGE;
-	if ((map->acc & acc) != acc)
-		return EACCES;
-	return 0;
 }
 
 void *zap_event_thread_proc(void *arg)

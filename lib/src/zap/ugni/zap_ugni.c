@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2014-2017,2019 National Technology & Engineering Solutions
+ * Copyright (c) 2014-2017,2019-2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2014-2017,2019 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2014-2017,2019-2020 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -199,6 +199,7 @@ static void ugni_sock_connect(ovis_event_t ev);
 
 static void stalled_timeout_cb(ovis_event_t ev);
 static zap_err_t __setup_connection(struct z_ugni_ep *uep);
+static zap_err_t z_ugni_close(zap_ep_t ep);
 
 static int __get_nodeid(struct sockaddr *sa, socklen_t sa_len);
 static int __check_node_state(int node_id);
@@ -309,6 +310,33 @@ static int __set_sockbuf_sz(int sockfd)
 	rc = setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, sizeof(optval));
 	return rc;
 }
+
+static zap_err_t __node_state_check(struct z_ugni_ep *uep)
+{
+	/* node state validation */
+	if (!_node_state.check_state)
+		return ZAP_ERR_OK;
+	if (uep->node_id == -1) {
+		struct sockaddr lsa, sa;
+		socklen_t sa_len;
+		zap_err_t zerr;
+		zerr = zap_get_name(&uep->ep, &lsa, &sa, &sa_len);
+		if (zerr) {
+			DLOG("zap_get_name() error: %d\n", zerr);
+			return ZAP_ERR_ENDPOINT;
+		}
+		uep->node_id = __get_nodeid(&sa, sa_len);
+	}
+	if (uep->node_id != -1) {
+		if (__check_node_state(uep->node_id)) {
+			DLOG("Node %d is in a bad state\n", uep->node_id);
+			z_ugni_close(&uep->ep);
+			return ZAP_ERR_ENDPOINT;
+		}
+	}
+	return ZAP_ERR_OK;
+}
+
 static int __sock_nonblock(int fd)
 {
 	int rc;
@@ -650,22 +678,40 @@ static void ugni_sock_write(ovis_event_t ev)
 		goto out;
 	}
 
-	wsz = write(uep->sock, wr->data + wr->off, wr->alen);
-	if (wsz < 0) {
-		if (errno == EAGAIN || errno == EWOULDBLOCK)
-			goto out;
-		/* bad error */
-		goto err;
+	/* msg part */
+	while (wr->moff < wr->msz) {
+		wsz = write(uep->sock, wr->msg.bytes + wr->moff, wr->msz - wr->moff);
+		if (wsz < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				goto out;
+			/* bad error */
+			goto err;
+		}
+		wr->moff += wsz;
+	}
+	/* data part */
+	while (wr->doff < wr->dsz) {
+		wsz = write(uep->sock, wr->data + wr->doff, wr->dsz - wr->doff);
+		if (wsz < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				goto out;
+			/* bad error */
+			goto err;
+		}
+		wr->doff += wsz;
 	}
 
-	if (wsz < wr->alen) {
-		wr->alen -= wsz;
-		wr->off += wsz;
-		goto out;
-	}
-
-	/* reaching here means wr->alen == 0 */
+	/* wr completed */
 	STAILQ_REMOVE_HEAD(&uep->sq, link);
+	if (wr->cb) {
+		pthread_mutex_unlock(&uep->ep.lock);
+		struct zap_event ev = {
+				.type = ZAP_EVENT_SEND_MAPPED_COMPLETE,
+				.context = wr->ctxt
+			};
+		uep->ep.cb(&uep->ep, &ev);
+		pthread_mutex_lock(&uep->ep.lock);
+	}
 	free(wr);
 	goto next;
 
@@ -1420,35 +1466,72 @@ static void *error_thread_proc(void *args)
 	return NULL;
 }
 
-/* msg hdr fields are in network-byte-order */
-/* caller must held uep->ep.lock */
-static zap_err_t __ugni_send_msg(struct z_ugni_ep *uep,
-				 struct zap_ugni_msg_hdr *msg,
-				 size_t msg_len,
-				 const void *data,
-				 size_t data_len)
+static struct zap_ugni_send_wr *__wr_alloc(enum zap_ugni_msg_type mtype,
+					   size_t data_len,
+					   int buf_alloc)
 {
-	int rc;
+	/* buf_alloc:  0 - do not allocate data buffer,
+	 * buf_alloc: !0 - allocate data buffer */
+	size_t msz;
 	struct zap_ugni_send_wr *wr;
 
-	if (data_len > uep->ep.z->max_msg) {
-		/* message too big */
-		return ZAP_ERR_NO_SPACE;
+	switch (mtype) {
+	case ZAP_UGNI_MSG_CONNECT:
+		msz = sizeof(struct zap_ugni_msg_connect);
+		break;
+	case ZAP_UGNI_MSG_REGULAR:
+	case ZAP_UGNI_MSG_REJECTED:     /* use regular msg */
+	case ZAP_UGNI_MSG_ACK_ACCEPTED: /* use regular msg */
+		msz = sizeof(struct zap_ugni_msg_regular);
+		break;
+	case ZAP_UGNI_MSG_RENDEZVOUS:
+		msz = sizeof(struct zap_ugni_msg_rendezvous);
+		break;
+	case ZAP_UGNI_MSG_ACCEPTED:
+		msz = sizeof(struct zap_ugni_msg_accepted);
+		break;
+	default:
+		errno = EINVAL;
+		return NULL;
 	}
 
-	wr = malloc(sizeof(*wr) + msg_len + data_len);
+	wr = malloc(sizeof(*wr) + (!!buf_alloc)*data_len);
 	if (!wr)
-		return ZAP_ERR_RESOURCE;
-	wr->alen = msg_len + data_len;
-	wr->off = 0;
-	memcpy(wr->data, msg, msg_len);
-	if (data && data_len)
-		memcpy(wr->data + msg_len, data, data_len);
+		return NULL;
+
+	wr->cb = 0;
+	wr->moff = 0;
+	wr->msz = msz;
+	wr->doff = 0;
+	wr->dsz = data_len;
+	wr->data = (char*)&wr[1];
+	wr->msg.hdr.msg_type = htons(mtype);
+	wr->msg.hdr.msg_len  = htonl((uint32_t)(msz + data_len));
+	return wr;
+}
+
+/* caller must held uep->ep.lock */
+static zap_err_t __wr_post(struct z_ugni_ep *uep, struct zap_ugni_send_wr *wr)
+{
+	int rc;
+	switch (uep->ep.state) {
+	case ZAP_EP_LISTENING:
+	case ZAP_EP_ACCEPTING:
+	case ZAP_EP_CONNECTING:
+	case ZAP_EP_CONNECTED:
+		/* OK */
+		break;
+	case ZAP_EP_PEER_CLOSE:
+	case ZAP_EP_CLOSE:
+	case ZAP_EP_ERROR:
+	default:
+		return ZAP_ERR_NOT_CONNECTED;
+	}
+
 	STAILQ_INSERT_TAIL(&uep->sq, wr, link);
 	rc = __enable_epoll_out(uep);
-	if (rc) {
+	if (rc)
 		return ZAP_ERR_RESOURCE;
-	}
 	return ZAP_ERR_OK;
 }
 
@@ -1456,23 +1539,22 @@ static zap_err_t __ugni_send_msg(struct z_ugni_ep *uep,
 static zap_err_t __ugni_send_connect(struct z_ugni_ep *uep, char *buf, size_t len)
 {
 	zap_err_t zerr;
-	struct zap_ugni_msg_connect msg = {
-		.hdr = {
-			.msg_type = htons(ZAP_UGNI_MSG_CONNECT),
-			.msg_len = htonl((uint32_t)(sizeof(msg) + len)),
-		},
-		.data_len = htonl(len),
-		.inst_id = htonl(_dom.inst_id),
-		.pe_addr = htonl(_dom.pe_addr),
-	};
-
-	ZAP_VERSION_SET(msg.ver);
-	memcpy(&msg.sig, ZAP_UGNI_SIG, sizeof(msg.sig));
-
-	zerr = __ugni_send_msg(uep, &msg.hdr, sizeof(msg), buf, len);
+	struct zap_ugni_msg_connect *msg;
+	struct zap_ugni_send_wr *wr = __wr_alloc(ZAP_UGNI_MSG_CONNECT, len, 1);
+	if (!wr)
+		return ZAP_ERR_RESOURCE;
+	msg = &wr->msg.connect;
+	msg->data_len     = htonl(len);
+	msg->inst_id      = htonl(_dom.inst_id);
+	msg->pe_addr      = htonl(_dom.pe_addr);
+	ZAP_VERSION_SET(msg->ver);
+	memcpy(&msg->sig, ZAP_UGNI_SIG, sizeof(msg->sig));
+	if (buf && len)
+		memcpy(wr->data, buf, len);
+	zerr = __wr_post(uep, wr);
 	if (zerr)
-		return zerr;
-	return ZAP_ERR_OK;
+		free(wr);
+	return zerr;
 }
 
 /* caller must held uep->ep.lock */
@@ -1481,17 +1563,19 @@ __ugni_send(struct z_ugni_ep *uep, enum zap_ugni_msg_type type,
 						char *buf, size_t len)
 {
 	zap_err_t zerr;
-	struct zap_ugni_msg_regular msg = {
-		.hdr = {
-			.msg_type = htons(type),
-			.msg_len = htonl((uint32_t)(sizeof(msg) + len)),
-		},
-		.data_len = htonl(len),
-	};
-
-	zerr = __ugni_send_msg(uep, &msg.hdr, sizeof(msg), buf, len);
-	if (zerr)
+	struct zap_ugni_msg_regular *msg;
+	struct zap_ugni_send_wr *wr = __wr_alloc(type, len, 1);
+	if (!wr)
+		return ZAP_ERR_RESOURCE;
+	msg = &wr->msg.sendrecv;
+	msg->data_len     = htonl(len);
+	if (buf && len)
+		memcpy(wr->data, buf, len);
+	zerr = __wr_post(uep, wr);
+	if (zerr) {
+		free(wr);
 		return zerr;
+	}
 	return ZAP_ERR_OK;
 }
 
@@ -1631,6 +1715,7 @@ static void ugni_sock_event(ovis_event_t ev)
 	int rc;
 	struct z_ugni_ep *uep = ev->param.ctxt;
 	struct zap_event *zev = &uep->conn_ev;
+	struct zap_ugni_send_wr *wr;
 
 	/* Reaching here means bev is one of the EOF, ERROR or TIMEOUT */
 	pthread_mutex_lock(&uep->ep.lock);
@@ -1672,6 +1757,23 @@ static void ugni_sock_event(ovis_event_t ev)
 	}
 	DLOG_(uep, "%s: ep %p: state %s\n", __func__, uep,
 				__zap_ep_state_str[uep->ep.state]);
+
+	/* flush wr */
+	while ((wr = STAILQ_FIRST(&uep->sq))) {
+		STAILQ_REMOVE_HEAD(&uep->sq, link);
+		if (wr->cb) {
+			struct zap_event ev = {
+				.type    = ZAP_EVENT_SEND_MAPPED_COMPLETE,
+				.status  = ZAP_ERR_FLUSH,
+				.context = wr->ctxt,
+			};
+			pthread_mutex_unlock(&uep->ep.lock);
+			uep->ep.cb(&uep->ep, &ev);
+			pthread_mutex_lock(&uep->ep.lock);
+		}
+		free(wr);
+	}
+
 	pthread_mutex_unlock(&uep->ep.lock);
 	if (defer) {
 		/*
@@ -1873,26 +1975,9 @@ static zap_err_t z_ugni_send(zap_ep_t ep, char *buf, size_t len)
 	zap_err_t zerr;
 
 	/* node state validation */
-	if (_node_state.check_state) {
-		if (uep->node_id == -1) {
-			struct sockaddr lsa, sa;
-			socklen_t sa_len;
-			zap_err_t zerr;
-			zerr = zap_get_name(ep, &lsa, &sa, &sa_len);
-			if (zerr) {
-				DLOG("zap_get_name() error: %d\n", zerr);
-				return ZAP_ERR_ENDPOINT;
-			}
-			uep->node_id = __get_nodeid(&sa, sa_len);
-		}
-		if (uep->node_id != -1) {
-			if (__check_node_state(uep->node_id)) {
-				DLOG("Node %d is in a bad state\n", uep->node_id);
-				z_ugni_close(ep);
-				return ZAP_ERR_ENDPOINT;
-			}
-		}
-	}
+	zerr = __node_state_check(uep);
+	if (zerr)
+		return zerr;
 
 	pthread_mutex_lock(&uep->ep.lock);
 	if (!uep->gni_ep || ep->state != ZAP_EP_CONNECTED) {
@@ -1902,6 +1987,43 @@ static zap_err_t z_ugni_send(zap_ep_t ep, char *buf, size_t len)
 
 	zerr = __ugni_send(uep, ZAP_UGNI_MSG_REGULAR, buf, len);
 	pthread_mutex_unlock(&uep->ep.lock);
+	return zerr;
+}
+
+static zap_err_t
+z_ugni_send_mapped(zap_ep_t ep, zap_map_t map, void *buf, size_t len,
+		   void *context)
+{
+	struct z_ugni_ep *uep = (void*)ep;
+	zap_err_t zerr;
+	struct zap_ugni_msg_regular *msg;
+	struct zap_ugni_send_wr *wr;
+
+	/* map validation */
+	if (map->type != ZAP_MAP_LOCAL)
+		return ZAP_ERR_INVALID_MAP_TYPE;
+	if (z_map_access_validate(map, buf, len, 0))
+		return ZAP_ERR_LOCAL_LEN;
+
+	/* node state validation */
+	zerr = __node_state_check(uep);
+	if (zerr)
+		return zerr;
+
+	wr = __wr_alloc(ZAP_UGNI_MSG_REGULAR, len, 0);
+	if(!wr)
+		return ZAP_ERR_TRANSPORT;
+	wr->ctxt = context;
+	wr->cb = 1;
+	wr->data = buf;
+	msg = &wr->msg.sendrecv;
+	msg->data_len = htonl(len);
+	pthread_mutex_lock(&uep->ep.lock);
+	zerr = __wr_post(uep, wr);
+	if (zerr)
+		free(wr);
+	pthread_mutex_unlock(&uep->ep.lock);
+
 	return zerr;
 }
 
@@ -2546,21 +2668,22 @@ static void z_ugni_destroy(zap_ep_t ep)
 static zap_err_t __ugni_send_accept(struct z_ugni_ep *uep, char *buf, size_t len)
 {
 	zap_err_t zerr;
-	struct zap_ugni_msg_accepted msg = {
-		.hdr = {
-			.msg_type = htons(ZAP_UGNI_MSG_ACCEPTED),
-			.msg_len = htonl((uint32_t)(sizeof(msg) + len)),
-		},
-		.data_len = htonl(len),
-		.inst_id = htonl(_dom.inst_id),
-		.pe_addr = htonl(_dom.pe_addr),
-	};
-
+	struct zap_ugni_msg_accepted *msg;
+	struct zap_ugni_send_wr *wr = __wr_alloc(ZAP_UGNI_MSG_ACCEPTED, len, 1);
+	if (!wr)
+		return ZAP_ERR_RESOURCE;
+	msg = &wr->msg.accept;
+	msg->data_len = htonl(len);
+	msg->inst_id = htonl(_dom.inst_id);
+	msg->pe_addr = htonl(_dom.pe_addr);
+	if (buf && len)
+		memcpy(wr->data, buf, len);
 	DLOG_(uep, "Sending ZAP_UGNI_MSG_ACCEPTED\n");
-
-	zerr = __ugni_send_msg(uep, &msg.hdr, sizeof(msg), buf, len);
-	if (zerr)
+	zerr = __wr_post(uep, wr);
+	if (zerr) {
+		free(wr);
 		return zerr;
+	}
 	return ZAP_ERR_OK;
 }
 
@@ -2603,10 +2726,10 @@ static zap_err_t z_ugni_reject(zap_ep_t ep, char *data, size_t data_len)
 	zap_err_t zerr;
 
 	pthread_mutex_lock(&uep->ep.lock);
-	uep->ep.state = ZAP_EP_ERROR;
 	zerr = __ugni_send(uep, ZAP_UGNI_MSG_REJECTED, data, data_len);
 	if (zerr)
 		goto err;
+	uep->ep.state = ZAP_EP_ERROR;
 	pthread_mutex_unlock(&uep->ep.lock);
 	return ZAP_ERR_OK;
 err:
@@ -2652,6 +2775,7 @@ static zap_err_t z_ugni_share(zap_ep_t ep, zap_map_t map,
 				const char *msg, size_t msg_len)
 {
 	zap_err_t rc;
+	struct z_ugni_ep *uep = (void*) ep;
 
 	/* validate */
 	if (ep->state != ZAP_EP_CONNECTED)
@@ -2660,51 +2784,33 @@ static zap_err_t z_ugni_share(zap_ep_t ep, zap_map_t map,
 	if (map->type != ZAP_MAP_LOCAL)
 		return ZAP_ERR_INVALID_MAP_TYPE;
 
-	struct z_ugni_ep *uep = (void*) ep;
-
 	/* node state validation */
-	if (_node_state.check_state) {
-		if (uep->node_id == -1) {
-			struct sockaddr lsa, sa;
-			socklen_t sa_len;
-			zap_err_t zerr;
-			zerr = zap_get_name(ep, &lsa, &sa, &sa_len);
-			if (zerr) {
-				DLOG("zap_get_name() error: %d\n", zerr);
-				return ZAP_ERR_ENDPOINT;
-			}
-			uep->node_id = __get_nodeid(&sa, sa_len);
-		}
-		if (uep->node_id != -1) {
-			if (__check_node_state(uep->node_id)) {
-				DLOG("Node %d is in a bad state\n", uep->node_id);
-				z_ugni_close(ep);
-				return ZAP_ERR_ENDPOINT;
-			}
-		}
-	}
+	rc = __node_state_check(uep);
+	if (rc)
+		return rc;
 
 	/* prepare message */
 	struct zap_ugni_map *smap = (struct zap_ugni_map *)map;
-	struct zap_ugni_msg_rendezvous msgr = {
-		.hdr = {
-			.msg_type = htons(ZAP_UGNI_MSG_RENDEZVOUS),
-			.msg_len = htonl(sizeof(msgr) + msg_len),
-		},
-		.gni_mh = {
-			.qword1 = htobe64(smap->gni_mh.qword1),
-			.qword2 = htobe64(smap->gni_mh.qword2),
-		},
-		.addr = htobe64((uint64_t)map->addr),
-		.data_len = htonl(map->len),
-		.acc = htonl(map->acc),
-
-	};
+	struct zap_ugni_msg_rendezvous *msgr;
+	struct zap_ugni_send_wr *wr = __wr_alloc(ZAP_UGNI_MSG_RENDEZVOUS, msg_len, 1);
+	if (!wr)
+		return ZAP_ERR_RESOURCE;
+	wr->dsz = msg_len;
+	wr->msz = sizeof(*msgr);
+	msgr = &wr->msg.rendezvous;
+	msgr->gni_mh.qword1  =  htobe64(smap->gni_mh.qword1);
+	msgr->gni_mh.qword2  =  htobe64(smap->gni_mh.qword2);
+	msgr->addr           =  htobe64((uint64_t)map->addr);
+	msgr->data_len       =  htonl(map->len);
+	msgr->acc            =  htonl(map->acc);
+	if (msg && msg_len)
+		memcpy(wr->data, msg, msg_len);
 
 	pthread_mutex_lock(&uep->ep.lock);
-	rc = __ugni_send_msg(uep, &msgr.hdr, sizeof(msgr), msg, msg_len);
+	rc = __wr_post(uep, wr);
 	pthread_mutex_unlock(&uep->ep.lock);
-
+	if (rc)
+		free(wr);
 	return rc;
 }
 
@@ -2731,26 +2837,9 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 	struct zap_ugni_map *dmap = (struct zap_ugni_map *)dst_map;
 
 	/* node state validation */
-	if (_node_state.check_state) {
-		if (uep->node_id == -1) {
-			struct sockaddr lsa, sa;
-			socklen_t sa_len;
-			zap_err_t zerr;
-			zerr = zap_get_name(ep, &lsa, &sa, &sa_len);
-			if (zerr) {
-				DLOG("zap_get_name() error: %d\n", zerr);
-				return ZAP_ERR_ENDPOINT;
-			}
-			uep->node_id = __get_nodeid(&sa, sa_len);
-		}
-		if (uep->node_id != -1) {
-			if (__check_node_state(uep->node_id)) {
-				DLOG("Node %d is in a bad state\n", uep->node_id);
-				z_ugni_close(ep);
-				return ZAP_ERR_ENDPOINT;
-			}
-		}
-	}
+	zerr = __node_state_check(uep);
+	if (zerr)
+		return zerr;
 
 	pthread_mutex_lock(&cq_full_lock);
 	while (ugni_post_count > _dom.cq_depth / 2) {
@@ -2848,26 +2937,10 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	struct zap_ugni_map *dmap = (void*)dst_map;
 
 	/* node state validation */
-	if (_node_state.check_state) {
-		if (uep->node_id == -1) {
-			struct sockaddr lsa, sa;
-			socklen_t sa_len;
-			zap_err_t zerr;
-			zerr = zap_get_name(ep, &lsa, &sa, &sa_len);
-			if (zerr) {
-				DLOG("zap_get_name() error: %d\n", zerr);
-				return ZAP_ERR_ENDPOINT;
-			}
-			uep->node_id = __get_nodeid(&sa, sa_len);
-		}
-		if (uep->node_id != -1) {
-			if (__check_node_state(uep->node_id)) {
-				DLOG("Node %d is in a bad state\n", uep->node_id);
-				z_ugni_close(ep);
-				return ZAP_ERR_ENDPOINT;
-			}
-		}
-	}
+	zap_err_t zerr;
+	zerr = __node_state_check(uep);
+	if (zerr)
+		return zerr;
 
 	pthread_mutex_lock(&cq_full_lock);
 	while (ugni_post_count > _dom.cq_depth / 2) {
@@ -2967,6 +3040,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->listen = z_ugni_listen;
 	z->close = z_ugni_close;
 	z->send = z_ugni_send;
+	z->send_mapped = z_ugni_send_mapped;
 	z->read = z_ugni_read;
 	z->write = z_ugni_write;
 	z->map = z_ugni_map;

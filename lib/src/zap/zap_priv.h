@@ -53,6 +53,7 @@
 #include <semaphore.h>
 #include <sys/queue.h>
 #include <pthread.h>
+#include <errno.h>
 #include "ovis-ldms-config.h"
 #include "zap.h"
 
@@ -246,6 +247,18 @@ struct zap {
 
 	/** Pointer to the transport's private data */
 	void *private;
+
+	/**
+	 * \brief Send mapped data to peer.
+	 *
+	 * No data is copied out from the described memory region. When the
+	 * operation is completed, \c ZAP_EVENT_SEND_COMPLETE shall be
+	 * delivered. If the operation synchronously failed, \c
+	 * ZAP_EVENT_SEND_NAPPED_COMPLETE will not be delivered. The \c context is the
+	 * application context coupling with the completion event.
+	 */
+	zap_err_t (*send_mapped)(zap_ep_t ep, zap_map_t map, void *buf,
+				 size_t len, void *context);
 };
 
 static inline zap_err_t
@@ -309,7 +322,15 @@ typedef zap_err_t (*zap_get_fn_t)(zap_t *pz, zap_log_fn_t log_fn,
  * \returns ERANGE For invalid range access.
  * \returns EACCES For invalid access permission.
  */
-int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc);
+static inline
+int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc)
+{
+	if (p < map->addr || (map->addr + map->len) < (p + sz))
+		return ERANGE;
+	if ((map->acc & acc) != acc)
+		return EACCES;
+	return 0;
+}
 
 /* this is the default value for the number of zap_io_threads */
 #define ZAP_EVENT_WORKERS 4
