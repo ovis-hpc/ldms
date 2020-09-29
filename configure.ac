@@ -129,7 +129,6 @@ OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 dnl dnl OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 dnl dnl OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
 
-dnl we need libevent to support zap
 have_zap=0
 
 if test "$disable_zap" != "yes"; then
