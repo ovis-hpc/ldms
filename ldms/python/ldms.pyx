@@ -1947,7 +1947,7 @@ cdef class Xprt(object):
                 this function will just be blocked indefinitely.
         """
         if self._conn_cb:
-            raise TypeError("Bad `Xprt.recv()` call. "
+            raise ValueError("Bad `Xprt.recv()` call. "
                     "The callback has been supplied to `connect()`. "
                     "The message will be delivered asynchronously via the "
                     "callback function.")
