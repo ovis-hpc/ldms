@@ -23,6 +23,7 @@ missing
 compile
 py-compile
 /stamp-h1
+/SHA.txt
 
 aclocal.m4
 libtool.m4
