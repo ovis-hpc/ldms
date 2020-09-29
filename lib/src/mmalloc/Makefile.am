@@ -10,11 +10,3 @@ libmmallocincludedir = $(includedir)/mmalloc
 libmmalloc_conf = /etc/ld.so.conf.d/libmmalloc.conf
 lib_LTLIBRARIES += libmmalloc.la
 endif
-
-#install-exec-hook:
-#	echo $(libdir) > $(libmmalloc_conf)
-#	ldconfig
-#
-#uninstall-local:
-#	rm -f $(libmmalloc_conf)
-#	ldconfig

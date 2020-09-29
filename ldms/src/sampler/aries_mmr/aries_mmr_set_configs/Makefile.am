@@ -1,4 +1,4 @@
-EXTRA_DIST = \
+MMR_FILES = \
 	metric_set_nic \
 	metric_set_rtr_0 \
 	metric_set_rtr_0_1_c \
@@ -27,42 +27,5 @@ EXTRA_DIST = \
 	metric_set_rtr_3_4_c \
 	metric_set_rtr_3_4_s
 
-
-MMR_FILES = \
-	$(srcdir)/metric_set_nic \
-	$(srcdir)/metric_set_rtr_0 \
-	$(srcdir)/metric_set_rtr_0_1_c \
-	$(srcdir)/metric_set_rtr_0_1_s \
-	$(srcdir)/metric_set_rtr_0_2_c \
-	$(srcdir)/metric_set_rtr_0_2_s \
-	$(srcdir)/metric_set_rtr_1 \
-	$(srcdir)/metric_set_rtr_1_1_c \
-	$(srcdir)/metric_set_rtr_1_1_s \
-	$(srcdir)/metric_set_rtr_1_2_c \
-	$(srcdir)/metric_set_rtr_1_2_s \
-	$(srcdir)/metric_set_rtr_2 \
-	$(srcdir)/metric_set_rtr_2_1_c \
-	$(srcdir)/metric_set_rtr_2_2_c \
-	$(srcdir)/metric_set_rtr_2_2_s \
-	$(srcdir)/metric_set_rtr_3 \
-	$(srcdir)/metric_set_rtr_3_1_c \
-	$(srcdir)/metric_set_rtr_3_2_c \
-	$(srcdir)/metric_set_rtr_3_2_s \
-	$(srcdir)/metric_set_rtr_0_4_c \
-	$(srcdir)/metric_set_rtr_0_4_s \
-	$(srcdir)/metric_set_rtr_1_4_c \
-	$(srcdir)/metric_set_rtr_1_4_s \
-	$(srcdir)/metric_set_rtr_2_4_c \
-	$(srcdir)/metric_set_rtr_2_4_s \
-	$(srcdir)/metric_set_rtr_3_4_c \
-	$(srcdir)/metric_set_rtr_3_4_s
-
-
-OPV=-$(PACKAGE_VERSION)
-MMR_DIR = $(docdir)$(OPV)/examples/aries_mmr_set_configs
-install-data-local: $(MMR_FILES)
-	$(MKDIR_P) $(MMR_DIR)
-	$(INSTALL_DATA) $(MMR_FILES) $(MMR_DIR)/
-
-uninstall-local:
-	rm -rf $(MMR_DIR)
+docversionexamplesdir=$(docdir)-$(PACKAGE_VERSION)/examples/aries_mmr_set_configs
+dist_docversionexamples_DATA = $(MMR_FILES)

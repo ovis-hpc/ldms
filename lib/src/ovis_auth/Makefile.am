@@ -1,4 +1,3 @@
-EXTRA_DIST=ovis-auth.sh.in
 lib_LTLIBRARIES =
 
 AM_CFLAGS = -I$(srcdir)/../ -I..
@@ -10,9 +9,6 @@ libovis_auth_conf = /etc/ld.so.conf.d/libovis_auth.conf
 libovis_auth_la_LIBADD = @LDFLAGS_GETTIME@ @OPENSSL_LIBS@
 lib_LTLIBRARIES += libovis_auth.la
 
-install-data-hook:
-	$(MKDIR_P) $(DESTDIR)$(pkglibdir)
-	$(INSTALL) -m 755 ovis-auth.sh $(DESTDIR)$(pkglibdir)
-
-uninstall-hook:
-	rm $(DESTDIR)$(pkglibdir)/ovis-auth.sh
+# override pkglib sanity checks
+mypkglibdir = $(pkglibdir)
+mypkglib_SCRIPTS = ovis-auth.sh

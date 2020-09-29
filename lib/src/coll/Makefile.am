@@ -44,11 +44,3 @@ test_idx_SOURCES = idx.c
 test_idx_CFLAGS = -DIDX_TEST
 
 endif
-
-#install-exec-hook:
-#	echo $(libdir) > $(libcoll_conf)
-#	ldconfig
-#
-#uninstall-local:
-#	rm -f $(libcoll_conf)
-#	ldconfig

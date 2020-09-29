@@ -44,9 +44,6 @@ endif
 
 SUBDIRS += ovis_json
 
-install-data-hook: ovis-lib-configvars.sh
-	$(MKDIR_P) $(DESTDIR)$(libdir)
-	$(INSTALL) -m 755 ovis-lib-configvars.sh $(DESTDIR)$(libdir)
-
-uninstall-hook:
-	rm $(DESTDIR)$(libdir)/ovis-lib-configvars.sh
+# override libdir sanity checks
+mylibdir = $(libdir)
+mylib_SCRIPTS = ovis-lib-configvars.sh

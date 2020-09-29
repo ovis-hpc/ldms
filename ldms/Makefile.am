@@ -29,6 +29,8 @@ test/failover-simple/agg1.sh \
 test/failover-simple/agg2.sh \
 test/failover-simple/sampler.sh
 
+docversiondir=$(docdir)$(OPV)
+docversion_DATA=AUTHORS COPYING
 
 install-exec-hook:
 	@echo "*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#"
@@ -82,10 +84,6 @@ endif
 .PHONY: $(PHONY_doc) $(PHONY_dox)
 
 install-data-local: install-dox
-	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
-	for f in AUTHORS COPYING ; do \
-		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
-	done
 
 PEDIGREE = $(DESTDIR)/$(bindir)/ldms-pedigree
 
@@ -116,8 +114,5 @@ SHA.txt:
 
 uninstall-hook:
 	rm $(PEDIGREE)
-	for f in AUTHORS COPYING ; do \
-		rm $(DESTDIR)$(docdir)$(OPV)/$$f; \
-	done
 
 clean-local:
