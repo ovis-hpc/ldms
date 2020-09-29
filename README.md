@@ -1,18 +1,17 @@
-# Introduction
+# OVIS / LDMS
 
-__OVIS__ is a modular system for HPC data collection, transport, storage,
-log message exploration, and visualization as well as analysis.
-
-## Lightweight Distributed Metric Service (LDMS)
+OVIS is a modular system for HPC data collection, transport, storage,
+-log message exploration, and visualization as well as analysis.
 
 LDMS is a low-overhead, low-latency framework for collecting, transfering, and storing
 metric data on a large distributed computer system.
-The framework includes
 
-* a public API with a reference implementation,
-* tools for collecting, aggregating, transporting, and storing metric values,
-* collectors for several common types of metrics.
-* Data transport over socket, RDMA (IB/iWarp/RoCE), and Cray Gemini as well as Aries.
+The framework includes:
+
+* a public API with a reference implementation
+* tools for collecting, aggregating, transporting, and storing metric values
+* collectors for several common types of metrics
+* Data transport over socket, RDMA (IB/iWarp/RoCE), and Cray Gemini as well as Aries
 
 The API provides a way for vendors to expose system information in a uniform manner without
 being required to provide source code for accessing the information (although we advise it be included)
@@ -23,88 +22,99 @@ applications yield the processor and transported using RDMA-like operations, res
 minimal jitter during collection. LDMS has been run on 10,000 cores collecting
 over 100,000 metric values per second with less than 0.2% overhead.
 
-## Scalable Storage System (SOS)
+# Building the OVIS / LDMS source code
 
-SOS is a high-performance, indexed, object-oriented database designed to efficiently
-manage structured data on persistent media. More information can be found at
-the SOS project on GitHub website <https://github.com/ovis-hpc/SOS>.
+## Obtaining the source code
 
-## Baler
+You may obtain the source code by obtaining an official release tarball, or by
+cloning the ovis-hpc/ovis [Git](http://git-scm.com/) repository at github.
 
-Baler is an aggregation of log message exploration and analysis tools. _balerd_ is
-the tool that tokenizes log messages using user-specified dictionaries.
-The log messages are then grouped together according to their token sequences.
-Each group is represented by a Baler pattern -- a token sequence.
+### Release tarballs
 
-Baler stores the log message patterns, the raw log messages, and other infomation in
-its database. _bquery_ is a tool to query Baler database for the Baler patterns,
-raw log messages, and message statistics by hosts and/or time.
+Official Release tarballs are available from the GitHub releases page:
 
-Baler also comes with an association mining tool -- _bassoc_ -- that can be used
-to discover sequence of occurrence patterns of log messages and to perform causal analysis.
+  https://github.com/ovis-hpc/ovis/releases
 
-Baler has been moved out of the OVIS tree. Please check it out at <https://github.com/opengridcomputing/baler>
+The tarball is avialble in the "Assets" section of each release. Be sure to
+download the tarball that has a name of the form "ovis-ldms-X.X.X.tar.gz".
 
-# Obtaining OVIS source code
+The links that are named "Source code (zip)" and "Source code (tar.gz)" are
+automatic GitHub links that we are unable to remove. They will be missing the
+configure script, because they are raw source from git repository and
+not the official release tarball distribution.
 
-You may clone OVIS source (and its submodules) from the official [Git](http://git-scm.com/) repository:
+### Cloning the git repository
 
-```sh
-git clone https://github.com/ovis-hpc/ovis.git -b OVIS-4
-# If you are interested in storing LDMS data in the SOS storage
-# please perform the following step.
-git clone https://github.com/ovis-hpc/sos.git -b SOS-4
-```
+To clone the source code, go to https://github/com/ovis-hpc/ovis, and click
+one the "Code" button. Or use the following command:
 
-# Dependencies
+```git clone https://github.com/ovis-hpc/ovis.git -b OVIS-4```
 
-* autoconf (>=2.63), automake, libtool
-* glib2
+## Build Dependencies
+
+* autoconf (>=2.63)
+* automake
+* libtool
+* make
+* bison
+* flex
+* gettext development package
 * libreadline
-* openssl Development library for OVIS, LDMS Authentication
-* libmunge for Munge LDMS Authentication plugin
-* For LDMS Python Interface:
-	* Python-3.6.
-	* Cython 0.25.
-* doxygen if you want to build OVIS documentation.
-* Some LDMS plug-ins have dependency on additional libraries.
+* openssl development library (for OVIS, LDMS Authentication)
+* libmunge (for Munge LDMS Authentication plugin)
+* Python >= 3.6 and Cython >= 0.25 (for the LDMS Python API and ldmsd_controller)
+* doxygen (for the OVIS documentation)
+
+Some LDMS plug-ins have dependencies on additional libraries.
+
 For cray-related LDMS sampler plug-in dependencies, please see the man page of the
 plug-in in `ldms/man/`.
 
+### RHEL7/CentOS7 dependencies
 
-# Building OVIS
+RHEL7/CentOS7 systems will require a the following packages at a minimum:
+
+* autoconf
+* automake
+* libtool
+* make
+* bison
+* flex
+* gettext-devel
+* openssl-devel
+
+Additionally, the Python API and the ldmsd_controller command require Python and Cython.
+One way to obtain those packages is from EPEL (install the epel-release package, and
+then "yum update"). The packages from EPEL are:
+
+* python3-devel
+* python36-Cython
+
+## Compling the code
+
+If you are interested in storing LDMS data in SOS, then first
+follow the instructions at https://github.com/ovis-hpc/sos to obtain,
+build, and install SOS before proceding.
 
 ```sh
-	# If you're interested in SOS-dependent storage plugin, please install SOS first as follows
-	# otherwise, please skip to `Install ovis-ldms` below
-	cd sos
-	./autogen.sh
-	mkdir <build directory>
-	cd <build directory>
-	../configure --prefix<installed path> [options]
-	make
-	make install
-	cd ../../
-	
-	# Install ovis-ldms
-	cd ovis
-	./autogen.sh
-	mkdir <build directory>
-	cd <build directory>
-	../configure --prefix=<installed path> [options]
-	#   also add --with-sos=<installed path> if SOS is required
+	cd <ovis source directory>
+	sh autogen.sh
+	./configure [--prefix=<installation prefix>] [other options]
 	make
 	make install
 ```
 
-# Supported hardware
+Run ```configure --help``` for a full list of configure options.
+
+# Supported systems
 
 * Ubuntu and friends
 * CentOS and friends
 * Cray XE6, Cray XK, Cray XC
 
 # Unsupported features
-LDMS sampler plugins
+
+The following LDMS sampler plugins are considered unsupported. Use are your own risk:
 * perfevent sampler
-* papi sampler
+* hweventpapi sampler
 * switchx

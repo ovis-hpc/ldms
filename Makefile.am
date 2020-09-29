@@ -11,7 +11,6 @@ autogen.sh \
 m4/Ovis-top.m4 \
 SHA.txt \
 LICENSE \
-README.libevent2 \
 README.md
 
 EXTRA_DIST += $(top_srcdir)/.version
