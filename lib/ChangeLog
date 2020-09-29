@@ -1,4 +1,0 @@
-2013-10-8 Benjamin Allan <baallan@sandia.gov>
-	* Added configure checks for libevent 2, rdma and infiniband if required by configure options.
-	* Upgraded to autoconf 2.63.
-	* Updated rpm packaging.
