@@ -83,7 +83,7 @@ endif
 
 install-data-local: install-dox
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
-	for f in AUTHORS COPYING ChangeLog ; do \
+	for f in AUTHORS COPYING ; do \
 		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
 	done
 
@@ -116,7 +116,7 @@ SHA.txt:
 
 uninstall-hook:
 	rm $(PEDIGREE)
-	for f in AUTHORS COPYING ChangeLog ; do \
+	for f in AUTHORS COPYING ; do \
 		rm $(DESTDIR)$(docdir)$(OPV)/$$f; \
 	done
 
