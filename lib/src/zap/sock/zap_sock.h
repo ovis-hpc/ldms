@@ -1,8 +1,8 @@
 /**
- * Copyright (c) 2010-2019 National Technology & Engineering Solutions
+ * Copyright (c) 2010-2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2010-2019 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2010-2020 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -225,6 +225,7 @@ struct sock_msg_rendezvous {
 
 /* convenient union of message structures */
 typedef union sock_msg_u {
+	struct sock_msg_hdr hdr;
 	struct sock_msg_sendrecv sendrecv;
 	struct sock_msg_connect connect;
 	struct sock_msg_rendezvous rendezvous;
@@ -232,7 +233,23 @@ typedef union sock_msg_u {
 	struct sock_msg_read_resp read_resp;
 	struct sock_msg_write_req write_req;
 	struct sock_msg_write_resp write_resp;
+	char bytes[0]; /* access as bytes */
 } *sock_msg_t;
+
+#define Z_SOCK_WR_ALLOCATED  0x1 /* WR is allocated and should be freed */
+#define Z_SOCK_WR_COMPLETION 0x2 /* A completion should be delivered when WR is
+				    done. This also implies that WR is a member
+				    of io structure. */
+
+typedef struct z_sock_send_wr_s {
+	TAILQ_ENTRY(z_sock_send_wr_s) link;
+	size_t msg_len; /* remaining msg len */
+	size_t data_len; /* remaining data len */
+	size_t off; /* offset of msg or data */
+	const char *data;
+	int flags; /* various wr flags */
+	union sock_msg_u msg; /* The message */
+} *z_sock_send_wr_t;
 
 /**
  * Keeps track of outstanding I/O so that it can be cleaned up when
@@ -243,11 +260,7 @@ struct z_sock_io {
 	TAILQ_ENTRY(z_sock_io) q_link;
 	zap_map_t dst_map; /**< Destination map for RDMA_READ */
 	char *dst_ptr; /**< Destination address for RDMA_READ */
-	union {
-		struct sock_msg_hdr hdr;
-		struct sock_msg_read_req read;
-		struct sock_msg_write_req write; /* flexi */
-	};
+	struct z_sock_send_wr_s wr;
 };
 
 #pragma pack()
@@ -258,15 +271,6 @@ typedef struct z_sock_buff_s {
 	size_t len; /* current data length */
 	void *data;
 } *z_sock_buff_t;
-
-typedef struct z_sock_send_wr_s {
-	TAILQ_ENTRY(z_sock_send_wr_s) link;
-	size_t msg_len; /* remaining msg len */
-	size_t data_len; /* remaining data len */
-	size_t off; /* offset of msg or data */
-	const char *data;
-	char msg[OVIS_FLEX];
-} *z_sock_send_wr_t;
 
 struct z_sock_ep {
 	struct zap_ep ep;

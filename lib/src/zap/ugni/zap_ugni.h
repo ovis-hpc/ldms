@@ -1,8 +1,8 @@
 /**
- * Copyright (c) 2014-2017,2019 National Technology & Engineering Solutions
+ * Copyright (c) 2014-2017,2019-2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2014-2017,2019 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2014-2017,2019-2020 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -225,13 +225,28 @@ struct zap_ugni_msg_connect {
 	char data[OVIS_FLEX];      /**< Size of connection data */
 };
 
+/* union of all messages */
+union zap_ugni_msg {
+	char bytes[0]; /* bytes access */
+	struct zap_ugni_msg_hdr        hdr;        /* the header part */
+	struct zap_ugni_msg_regular    sendrecv;   /* send-recv */
+	struct zap_ugni_msg_rendezvous rendezvous; /* rendezvous */
+	struct zap_ugni_msg_accepted   accept;     /* rendezvous */
+	struct zap_ugni_msg_connect    connect;    /* rendezvous */
+};
+
 #pragma pack()
 
 struct zap_ugni_send_wr {
 	STAILQ_ENTRY(zap_ugni_send_wr) link;
-	off_t off; /* offset of to be written */
-	size_t alen; /* remaining length after data + off */
-	char data[OVIS_FLEX];
+	void  *ctxt; /* for send_mapped completion */
+	int    cb;   /* 1 if completion causes a callback */
+	off_t  moff; /* message offset (bytes written) */
+	size_t msz;  /* size of message in the union msg (excluding data) */
+	off_t  doff; /* data payload offset (bytes written) */
+	size_t dsz;  /* size of the data payload */
+	char  *data; /* pointer to the data payload */
+	union zap_ugni_msg msg; /* the message (excluding data) */
 };
 
 struct zap_ugni_recv_buff {
