@@ -20,9 +20,3 @@ libldms_la_LIBADD = -ldl -lpthread $(top_builddir)/lib/src/coll/libcoll.la \
 		    $(top_builddir)/lib/src/zap/libzap.la
 
 lib_LTLIBRARIES += libldms.la
-
-install-data-hook:
-#	cp $(top_builddir)/scripts/ldmsd /etc/init.d/ldmsd
-#	cp $(top_builddir)/scripts/schedstatd /etc/init.d/schedstatd
-#	cp $(top_builddir)/scripts/meminfod /etc/init.d/meminfod
-#	cp $(top_builddir)/scripts/sysclassibd /etc/init.d/sysclassibd

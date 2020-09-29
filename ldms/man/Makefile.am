@@ -49,9 +49,6 @@ Plugin_syspapi_sampler.man \
 Plugin_app_sampler.man \
 Plugin_store_app.man
 
-
-
-
 if ENABLE_SLURMTEST
 dist_man8_MANS += pll-ldms-static-test.man
 endif
@@ -63,5 +60,4 @@ dist_man7_MANS += Plugin_store_rabbitkw.man
 ldmsd_exits.man: $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c
 	$(srcdir)/make_exits_man.sh $(srcdir)/../src/ldmsd/ldmsd.c $(srcdir)/../src/ldmsd/ldmsd_config.c > ldmsd_exits.man
 
-clean-local:
-	$(RM) ldmsd_exits.man
+CLEANFILES=ldmsd_exits.man

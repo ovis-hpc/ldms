@@ -33,25 +33,12 @@ hello_cat_publisher_LDADD = $(COMMON_LIBADD) \
 hello_cat_publisher_LDFLAGS = $(AM_LDFLAGS) -pthread
 dist_man7_MANS += hello_cat_publisher.man
 
-
 SUBDIRS = stream_configs
 
-HELLO_EXTRA_FILES = parser.pl
-SRC_HELLO_EXTRA_FILES = $(addprefix $(srcdir)/,$(HELLO_EXTRA_FILES))
-
-OPV=-$(PACKAGE_VERSION)
-HELLO_DIR = $(docdir)$(OPV)/examples/hello_sampler_util
-install-data-local: $(SRC_HELLO_EXTRA_FILES)
-	$(MKDIR_P) $(DESTDIR)$(HELLO_DIR)
-	$(INSTALL) $(SRC_HELLO_EXTRA_FILES) $(DESTDIR)$(HELLO_DIR)/
-
-uninstall-local:
-	for i in $(HELLO_EXTRA_FILES); do \
-		rm -rf $(DESTDIR)$(HELLO_DIR)/$$i; \
-	done
+docversionexamplesdir = $(docdir)-$(PACKAGE_VERSION)/examples/hello_sampler_util
+dist_docversionexamples_DATA = parser.pl
 
 endif
 
-
 EXTRA_DIST = \
-	parser.pl hello_publisher.man hello_cat_publisher.man Plugin_hello_sampler.man
+	hello_publisher.man hello_cat_publisher.man Plugin_hello_sampler.man

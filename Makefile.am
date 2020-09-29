@@ -48,8 +48,6 @@ OPV=-$(PACKAGE_VERSION)
 banned:
 	(cd ldms; make banned)
 
-clean-local:
-
 install-data-hook:
 if ENABLE_NOLA
 	$(abs_top_srcdir)/util/nola.sh $(DESTDIR)$(libdir) > nola.log
@@ -65,15 +63,6 @@ if ENABLE_NOLA
 	$(abs_top_srcdir)/util/nola.sh $(DESTDIR)$(libdir) > nola.third-plugins.log
 endif
 endif
-
-install-exec-local:
-	if test -d libevent-2.0.21-stable/lib/ovis-ldms/lib; then \
-		$(MKDIR_P) $(DESTDIR)$(libdir)/ovis-libevent ; \
-		cp -a libevent-2.0.21-stable/lib/ovis-ldms/lib/* $(DESTDIR)$(libdir)/ovis-libevent/ ;\
-		sed -i -e 's%LD_LIBRARY_PATH=.*%LD_LIBRARY_PATH=${libdir}/ovis-libevent:$$LD_LIBRARY_PATH%' \
-			$(DESTDIR)$(bindir)/*.sh ; \
-		/bin/rm -rf $(DESTDIR)$(libdir)/ovis-libevent/pkgconfig ; \
-	fi
 
 SHA.txt:
 	COMMIT=`git rev-parse HEAD 2>/dev/null`; \
