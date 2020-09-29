@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-2017 National Technology & Engineering Solutions
+ * Copyright (c) 2013-2017,2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2013-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2017,2020 Open Grid Computing, Inc. All rights reserved.
  *
  * Under the terms of Contract DE-AC04-94AL85000, there is a non-exclusive
  * license for use of this work by or on behalf of the U.S. Government.
@@ -112,6 +112,8 @@ typedef enum zap_event_type {
 	ZAP_EVENT_WRITE_COMPLETE,
 	/*! The peer has shared a buffer with \c zap_share(). */
 	ZAP_EVENT_RENDEZVOUS,
+	/*! A \c zap_send_mapped() request has completed. */
+	ZAP_EVENT_SEND_MAPPED_COMPLETE,
 	/*! Last event (dummy) */
 	ZAP_EVENT_LAST
 } zap_event_type_t;
@@ -166,6 +168,8 @@ typedef enum zap_err_e {
 	ZAP_ERR_TIMEOUT,
 	/*! Transport flush error. */
 	ZAP_ERR_FLUSH,
+	/*! Operation not supported. */
+	ZAP_ERR_NOT_SUPPORTED,
 	/*! Last error (dummy). */
 	ZAP_ERR_LAST
 } zap_err_t;
@@ -195,6 +199,7 @@ static const char *__zap_err_str[] = {
 	"ZAP_ERR_RETRY_EXCEEDED",
 	"ZAP_ERR_TIMEOUT",
 	"ZAP_ERR_FLUSH",
+	"ZAP_ERR_NOT_SUPPORTED",
 	"ZAP_ERR_LAST"
 };
 
@@ -553,6 +558,39 @@ zap_err_t zap_close(zap_ep_t ep);
  *		reason for failure.
  */
 zap_err_t zap_send(zap_ep_t ep, void *buf, size_t sz);
+
+/**
+ * \brief Send data to peer using map.
+ *
+ * This is a more efficient send interface compared to \c zap_send(). The data
+ * to be sent is described by \c map, \c buf and \c len. The data will not be
+ * copied out to the internal zap buffer (unlike \c zap_send()) and the
+ * application should not modify the data in the specified range (buf[0..len-1])
+ * before the send operation is completed. The \c buf buffer is owned by
+ * the transport until the ZAP_EVENT_SEND_MAPPED_COMPLETE event is received.
+ * The completion of the send operation results in \c ZAP_EVENT_SEND_MAPPED_COMPLETE
+ * event with the specified \c context delivered via the callback function
+ * specified in \c zap_new() or \c zap_accept(). The completion status
+ * could be success or failed.
+ *
+ * If the function call returns \c ZAP_ERR_OK, it is guaranteed that \c
+ * ZAP_EVENT_SEND_MAPPED_COMPLETE corresponding to the call will be delivered.
+ * On the other hand, if this function returns an error (synchronously failed),
+ * it is also guaranteed that \c ZAP_EVENT_SEND_MAPPED_COMPLETE (that would
+ * associate with the call) won't be delivered.
+ *
+ * \param ep      The endpoint handle.
+ * \param map     The map handler describing the memory region used in the send
+ *                operation.
+ * \param buf     The pointer of the send buffer.
+ * \param len     The length of the data to be sent.
+ * \param context The application context.
+ *
+ * \retval ZAP_ERR_OK The send operation is posted successfully.
+ * \retval ZAP_ERR    The zap error code describing the synchronous error.
+ */
+zap_err_t zap_send_mapped(zap_ep_t ep, zap_map_t map, void *buf, size_t len,
+			  void *context);
 
 /** \brief RDMA write data to a remote buffer */
 zap_err_t zap_write(zap_ep_t t,
