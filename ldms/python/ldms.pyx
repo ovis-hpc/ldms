@@ -1753,6 +1753,7 @@ cdef class Xprt(object):
         if self._conn_rc:
             rc = self._conn_rc
             raise ConnectionError(rc, "Connect error: {}".format(ERRNO_SYM(rc)))
+        return 0
 
     def listen(self, host="*", port=411, cb=None, cb_arg=None):
         """X.listen(host="*", port=411, cb=None, cb_arg=None)
