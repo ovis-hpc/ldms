@@ -182,7 +182,7 @@ static void usage(char *argv[])
 char *ldmsctl_ts_str(uint32_t sec, uint32_t usec)
 {
 	struct tm tm;
-	char dtsz[200];
+	char dtsz[100];
 	char *str = malloc(200);
 	if (!str)
 		return NULL;
