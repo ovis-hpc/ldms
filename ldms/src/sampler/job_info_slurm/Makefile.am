@@ -10,7 +10,7 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
 
 libjobinfo_slurm_la_SOURCES = jobinfo_slurm.c
 libjobinfo_slurm_la_LIBADD = $(COMMON_LIBADD)
-libjobinfo_slurm_la_CFLAGS = $(SLURM_INCDIR_FLAG) \
+libjobinfo_slurm_la_CFLAGS = $(SLURM_CFLAGS) \
 	-I$(top_srcdir)/ldms/src/sampler/job_info -DSYSCONFDIR='"$(sysconfdir)"'
 libjobinfo_slurm_la_LDFLAGS = $(AM_LDFLAGS) -module
 pkglib_LTLIBRARIES += libjobinfo_slurm.la
