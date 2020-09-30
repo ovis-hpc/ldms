@@ -294,9 +294,6 @@ OPTION_DEFAULT_DISABLE([switchx], [ENABLE_SWITCHX])
 OPTION_WITH([switchx], [SWITCHX],[/usr/local])
 OPTION_DEFAULT_DISABLE([kokkos], [ENABLE_KOKKOS])
 OPTION_DEFAULT_ENABLE([jobinfo-sampler], [ENABLE_JOBINFO])
-OPTION_DEFAULT_DISABLE([jobinfo-slurm], [ENABLE_SLURM_JOBINFO])
-OPTION_DEFAULT_DISABLE([spank-plugin], [ENABLE_SPANK_PLUGIN])
-OPTION_DEFAULT_ENABLE([slurm-sampler], [ENABLE_SLURM_SAMPLER])
 OPTION_DEFAULT_DISABLE([papi-sampler], [ENABLE_PAPI_SAMPLER])
 OPTION_DEFAULT_DISABLE([ibm_occ], [ENABLE_IBM_OCC_SAMPLER])
 OPTION_DEFAULT_DISABLE([appinfo], [ENABLE_APPINFO])
@@ -448,16 +445,25 @@ if test -z "$ENABLE_SYSCLASSIB_TRUE"; then
 			libibumad-devel installed?]))
 fi
 
-dnl Checks for slurm includes
-OPTION_WITH([slurm], [SLURM], [/usr])
-if test -z "$ENABLE_SLURM_JOBINFO_TRUE"; then
-	OCFLAGS=$CFLAGS
-	CFLAGS=$SLURM_INCDIR_FLAG
-	AC_CHECK_HEADER(slurm/spank.h, [],
-		AC_MSG_ERROR([<slurm/spank.h> not found.
-			slurm installed?]))
-	CFLAGS=$OCFLAGS
-fi
+AC_ARG_WITH([slurm],
+	[AS_HELP_STRING([--with-slurm],
+			[support SLURM jobid information and more $<:$default=check@:>@])],
+			[AS_IF([test "x$withval" != xyes -a "x$withval" != xno],
+				[SLURM_CFLAGS="-I $withval"])],
+	[with_slurm=check])
+have_slurm=no
+AS_IF([test "x$with_slurm" != no],[
+	save_CFLAGS=$CFLAGS
+	CFLAGS="$CFLAGS $SLURM_CFLAGS"
+	AC_CHECK_HEADER([slurm/spank.h], [have_slurm=yes], [have_slurm=no])
+	CFLAGS=$save_CFLAGS
+
+	AS_IF([test "x$have_slurm=" = xno],[
+		AS_IF([test "x$with_slurm" != xcheck],
+			[AC_MSG_ERROR([<slurm/spank.h> not found. slurm installed?])],
+			[AC_MSG_WARN([Disabling SLURM support.])])])
+])
+AM_CONDITIONAL([HAVE_SLURM], [test "x$have_slurm" = xyes])
 
 if test -z "$ENABLE_SOS_TRUE"; then
 	CHECK_SOS=1

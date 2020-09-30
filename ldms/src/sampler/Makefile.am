@@ -99,9 +99,13 @@ if ENABLE_JOBINFO
 SUBDIRS += job_info
 endif
 
-if ENABLE_SLURM_JOBINFO
+if HAVE_SLURM
 SUBDIRS += job_info_slurm
+SUBDIRS += spank
 endif
+
+# This slurm sampler does not have a slurm build dependency
+SUBDIRS += slurm
 
 if ENABLE_LUSTRE
 SUBDIRS += lustre
@@ -109,14 +113,6 @@ endif
 
 if ENABLE_PAPI_SAMPLER
 SUBDIRS += papi
-endif
-
-if ENABLE_SLURM_SAMPLER
-SUBDIRS += slurm
-endif
-
-if ENABLE_SPANK_PLUGIN
-SUBDIRS += spank
 endif
 
 if ENABLE_IBM_OCC_SAMPLER
