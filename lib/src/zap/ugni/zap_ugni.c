@@ -1283,7 +1283,7 @@ static void *error_thread_proc(void *args)
 		GNI_ERRMASK_TRANSIENT |
 		GNI_ERRMASK_INFORMATIONAL;
 
-	status = GNI_SubscribeErrors(NULL, 0, err, 64, &err_hndl);
+	status = GNI_SubscribeErrors(_dom.nic, 0, err, 64, &err_hndl);
 	/* Test for subscription to error events */
 	if (status != GNI_RC_SUCCESS) {
 		zap_ugni_log("FAIL:GNI_SubscribeErrors returned error %s\n", gni_err_str[status]);
