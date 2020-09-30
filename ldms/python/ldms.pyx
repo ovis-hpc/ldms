@@ -1746,13 +1746,17 @@ cdef class Xprt(object):
             raise ConnectionError(rc, "ldms_xprt_connect_by_name() error: {}" \
                                       .format(ERRNO_SYM(rc)))
         if cb:
+            print("Returning None")
             return
         # Else, release the GIL and wait
+        print(f"Before wait _conn_rc = {self._conn_rc}")
         with nogil:
             sem_wait(&self._conn_sem)
+        print(f"After wait _conn_rc = {self._conn_rc}")
         if self._conn_rc:
             rc = self._conn_rc
             raise ConnectionError(rc, "Connect error: {}".format(ERRNO_SYM(rc)))
+        return 0
 
     def listen(self, host="*", port=411, cb=None, cb_arg=None):
         """X.listen(host="*", port=411, cb=None, cb_arg=None)
