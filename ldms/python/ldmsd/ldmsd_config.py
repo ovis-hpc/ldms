@@ -264,9 +264,7 @@ class ldmsdInbandConfig(ldmsdConfig):
 
         self.state = "NEW"
         self.max_recv_len = self.ldms.msg_max
-        self.rc = self.ldms.connect(self.host, self.port)
-        if self.rc != 0:
-            raise RuntimeError("Error {0} connecting to {1}:{2}".format(self.rc, self.host, self.port))
+        self.ldms.connect(self.host, self.port)
         self.type = "inband"
         self.state = "CONNECTED"
 
