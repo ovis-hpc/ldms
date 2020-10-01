@@ -5010,7 +5010,7 @@ static int __greeting_path_resp_handler(ldmsd_req_cmd_t rcmd)
 	my_attr.discrim = 1;
 	my_attr.attr_id = LDMSD_ATTR_STRING;
 	/* +1 for : */
-	my_attr.attr_len = server_attr->attr_len + strlen((char *)rcmd->ctxt) + 2;
+	my_attr.attr_len = server_attr->attr_len + strlen((char *)rcmd->ctxt) + 1;
 	path = malloc(my_attr.attr_len);
 	if (!path) {
 		rcmd->org_reqc->errcode = ENOMEM;
@@ -5050,7 +5050,7 @@ static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
 		attr.attr_len = strlen(myself);
 		ldmsd_hton_req_attr(&attr);
 		ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
-		ldmsd_append_reply(reqc, myself, strlen(myself), 0);
+		ldmsd_append_reply(reqc, myself, strlen(myself)+1, 0);
 		free(myself);
 		attr.discrim = 0;
 		ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(attr.discrim), LDMSD_REQ_EOM_F);
