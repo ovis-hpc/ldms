@@ -108,8 +108,15 @@ extern int read_history ();
 
 static char *linebuf;
 static size_t linebuf_len;
-static char *buffer;
-static size_t buffer_len;
+static pthread_mutex_t recv_buf_q_lock = PTHREAD_MUTEX_INITIALIZER;;
+
+typedef struct ldmsctl_buffer {
+	size_t len;
+	size_t off;
+	char *buf;
+	TAILQ_ENTRY(ldmsctl_buffer) entry;
+} *ldmsctl_buffer_t;
+TAILQ_HEAD(ldmsctl_buffer_q, ldmsctl_buffer) recv_buf_q;
 
 struct ldmsctl_ctrl;
 typedef int (*ctrl_send_fn_t)(struct ldmsctl_ctrl *ctrl, ldmsd_req_hdr_t req, size_t len);
@@ -127,7 +134,6 @@ struct ldmsctl_ctrl {
 		} ldms_xprt;
 	};
 	ctrl_send_fn_t send_req;
-	ctrl_recv_fn_t recv_resp;
 	ctrl_close_fn_t close;
 };
 
@@ -144,6 +150,51 @@ static int command_comparator(const void *a, const void *b)
 	struct command *_a = (struct command *)a;
 	struct command *_b = (struct command *)b;
 	return strcmp(_a->token, _b->token);
+}
+
+static ldmsctl_buffer_t ldmsctl_buffer_new(size_t len)
+{
+	ldmsctl_buffer_t buf = malloc(sizeof(*buf));
+	if (!buf) {
+		fprintf(stderr, "Out of memory\n");
+		exit(ENOMEM);
+	}
+	buf->buf = malloc(len);
+	if (!buf->buf) {
+		fprintf(stderr, "Out of memory\n");
+		exit(ENOMEM);
+	}
+	buf->len = len;
+	buf->off = 0;
+	return buf;
+}
+
+static void ldmsctl_buffer_free(ldmsctl_buffer_t buf)
+{
+	free(buf->buf);
+	free(buf);
+}
+
+static void ldmsctl_buffer_mem_append(ldmsctl_buffer_t buf, void *src, size_t n)
+{
+	if (buf->len - buf->off < n) {
+		buf->buf = realloc(buf->buf, buf->len + n);
+		if (!buf->buf) {
+			fprintf(stderr, "Out of memory\n");
+			exit(ENOMEM);
+		}
+		buf->len += n;
+	}
+	memcpy(&(buf->buf[buf->off]), src, n);
+}
+
+static void ldmsctl_recv_buf_new(void *data, size_t data_len)
+{
+	ldmsctl_buffer_t buf = ldmsctl_buffer_new(data_len + 1);
+	ldmsctl_buffer_mem_append(buf, data, data_len);
+	pthread_mutex_lock(&recv_buf_q_lock);
+	TAILQ_INSERT_TAIL(&recv_buf_q, buf, entry);
+	pthread_mutex_unlock(&recv_buf_q_lock);
 }
 
 #define LDMSCTL_HELP LDMSD_NOTSUPPORT_REQ + 1
@@ -1828,15 +1879,6 @@ static void __ldms_xprt_close(struct ldmsctl_ctrl *ctrl)
 	ldms_xprt_close(ctrl->ldms_xprt.x);
 }
 
-static char *__ldms_xprt_recv(struct ldmsctl_ctrl *ctrl)
-{
-	sem_wait(&ctrl->ldms_xprt.recv_sem);
-	if (!buffer) {
-		return NULL;
-	}
-	return buffer;
-}
-
 static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 {
 	static int msg_no = 0;
@@ -1880,7 +1922,6 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	}
 	free(dummy);
 
-	memset(buffer, 0, buffer_len);
 	req_array = ldmsd_parse_config_str(cmd_str, msg_no,
 					   ldms_xprt_msg_max(ctrl->ldms_xprt.x),
 					   ldmsctl_log);
@@ -1920,40 +1961,50 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	size_t reclen = 0;
 	size_t msglen = 0;
 	rc = 0;
+	ldmsctl_buffer_t recv_buf;
+	int flags;
+
 	while (1) {
-		resp = (ldmsd_req_hdr_t)ctrl->recv_resp(ctrl);
-		if (!resp) {
-			printf("Failed to receive the response\n");
-			rc = -1;
-			goto out;
-		}
-		if (ntohl(resp->flags) & LDMSD_REQ_SOM_F) {
-			reclen = ntohl(resp->rec_len);
-			rec = (char *)resp;
-		} else {
-			reclen = ntohl(resp->rec_len) - req_hdr_sz;
-			rec = (char *)(resp + 1);
-		}
-		if (lbufsz < msglen + reclen) {
-			char *nlbuf = realloc(lbuf, msglen + (reclen * 2));
-			if (!nlbuf) {
-				printf("Out of memory\n");
-				exit(1);
+		sem_wait(&ctrl->ldms_xprt.recv_sem);
+		pthread_mutex_lock(&recv_buf_q_lock);
+		recv_buf = TAILQ_FIRST(&recv_buf_q);
+		while (recv_buf) {
+			TAILQ_REMOVE(&recv_buf_q, recv_buf, entry);
+			pthread_mutex_unlock(&recv_buf_q_lock);
+			resp = (ldmsd_req_hdr_t)recv_buf->buf;
+			flags = ntohl(resp->flags);
+			if (flags & LDMSD_REQ_SOM_F) {
+				reclen = ntohl(resp->rec_len);
+				rec = (char *)resp;
+			} else {
+				reclen = ntohl(resp->rec_len) - req_hdr_sz;
+				rec = (char *)(resp + 1);
 			}
-			lbuf = nlbuf;
-			lbufsz = msglen + (reclen * 2);
-			memset(&lbuf[msglen], 0, lbufsz - msglen);
+			if (lbufsz < msglen + reclen) {
+				char *nlbuf = realloc(lbuf, msglen + (reclen * 2));
+				if (!nlbuf) {
+					printf("Out of memory\n");
+					exit(ENOMEM);
+				}
+				lbuf = nlbuf;
+				lbufsz = msglen + (reclen * 2);
+				memset(&lbuf[msglen], 0, lbufsz - msglen);
+			}
+			memcpy(&lbuf[msglen], rec, reclen);
+			msglen += reclen;
+			ldmsctl_buffer_free(recv_buf);
+			pthread_mutex_lock(&recv_buf_q_lock);
+			recv_buf = TAILQ_FIRST(&recv_buf_q);
 		}
-		memcpy(&lbuf[msglen], rec, reclen);
-		msglen += reclen;
-		if ((ntohl(resp->flags) & LDMSD_REQ_EOM_F) != 0) {
+		pthread_mutex_unlock(&recv_buf_q_lock);
+
+		if ((flags & LDMSD_REQ_EOM_F) != 0)
 			break;
-		}
 	}
+	/* We have received the whole message */
 	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)lbuf);
 
 	cmd->resp((ldmsd_req_hdr_t)lbuf, msglen, resp->rsp_err);
-out:
 	free(lbuf);
 	return rc;
 }
@@ -1978,21 +2029,7 @@ void __ldms_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		exit(0);
 		break;
 	case LDMS_XPRT_EVENT_RECV:
-		if (buffer_len < e->data_len) {
-			free(buffer);
-			buffer = malloc(e->data_len);
-			if (!buffer) {
-				printf("Out of memory\n");
-				buffer = NULL;
-				buffer_len = 0;
-				ldms_xprt_close(ctrl->ldms_xprt.x);
-				sem_post(&ctrl->ldms_xprt.recv_sem);
-				break;
-			}
-			buffer_len = e->data_len;
-		}
-		memset(buffer, 0, buffer_len);
-		memcpy(buffer, e->data, e->data_len);
+		ldmsctl_recv_buf_new(e->data, e->data_len);
 		sem_post(&ctrl->ldms_xprt.recv_sem);
 		break;
 	default:
@@ -2015,7 +2052,6 @@ struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
 	sem_init(&ctrl->ldms_xprt.recv_sem, 0, 0);
 
 	ctrl->send_req = __ldms_xprt_send;
-	ctrl->recv_resp = __ldms_xprt_recv;
 	ctrl->close = __ldms_xprt_close;
 
 	ctrl->ldms_xprt.x = ldms_xprt_new_with_auth(xprt, NULL, auth, auth_opt);
@@ -2181,14 +2217,10 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	buffer_len = LDMSD_CFG_FILE_XPRT_MAX_REC;
-	buffer = malloc(buffer_len);
+	TAILQ_INIT(&recv_buf_q);
+
 	linebuf = NULL;
 	linebuf_len = 0;
-	if (!buffer) {
-		printf("Out of memory\n");
-		exit(ENOMEM);
-	}
 
 	if (!host || !port || !xprt)
 		goto arg_err;
