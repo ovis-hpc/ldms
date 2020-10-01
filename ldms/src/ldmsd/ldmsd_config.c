@@ -89,7 +89,7 @@ LIST_HEAD(host_list_s, hostspec) host_list;
 LIST_HEAD(ldmsd_store_policy_list, ldmsd_store_policy) sp_list;
 pthread_mutex_t sp_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
-#define LDMSD_PLUGIN_LIBPATH_MAX	1024
+#define LDMSD_PLUGIN_LIBPATH_MAX	LDMS_PLUGIN_LIBPATH_MAX
 struct plugin_list plugin_list;
 
 void ldmsd_cfg_unix_cleanup(ldmsd_cfg_xprt_t xprt)

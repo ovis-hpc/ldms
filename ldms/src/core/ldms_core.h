@@ -84,6 +84,7 @@
 
 #define LDMS_SET_NAME_MAX 256
 #define LDMS_PRODUCER_NAME_MAX 64 /* including the terminating null byte */
+#define LDMS_PLUGIN_LIBPATH_MAX	1024
 
 #pragma pack(4)
 #define LDMS_MDESC_F_DATA	1

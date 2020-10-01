@@ -54,34 +54,65 @@
 #include "zap/zap.h"
 #include "ldms_auth.h"
 
-ldms_auth_plugin_t ldms_auth_plugin_get(const char *name)
+ldms_auth_plugin_t ldms_auth_plugin_get(const char *plugin_name)
 {
-	char libname[LDMS_AUTH_NAME_MAX + 17];
-	int len;
+	char library_name[LDMS_PLUGIN_LIBPATH_MAX];
+	char library_path[LDMS_PLUGIN_LIBPATH_MAX];
+	ldms_auth_plugin_t lpi;
+	ldms_auth_plugin_get_fn pget;
+	char *pathdir = library_path;
+	char *libpath;
+	char *saveptr = NULL;
+	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
 	void *d = NULL;
-	ldms_auth_plugin_t p;
-	ldms_auth_plugin_get_fn f;
 
-	len = snprintf(libname, sizeof(libname), "libldms_auth_%s.so", name);
-	if (len >= sizeof(libname)) {
-		errno = ENAMETOOLONG;
-		goto err;
+	if (!path)
+		path = LDMS_XPRT_LIBPATH_DEFAULT;
+
+	strncpy(library_path, path, sizeof(library_path) - 1);
+	int len;
+	while ((libpath = strtok_r(pathdir, ":", &saveptr)) != NULL) {
+		pathdir = NULL;
+		len = snprintf(library_name, sizeof(library_name), "%s/libldms_auth_%s.so",
+			libpath, plugin_name);
+		if (len >= sizeof(library_name)) {
+			errno = ENAMETOOLONG;
+			goto err;
+		}
+		d = dlopen(library_name, RTLD_NOW);
+		if (d != NULL) {
+			break;
+		}
+		struct stat buf;
+		if (stat(library_name, &buf) == 0) {
+			errno = ENOENT;
+			char *dlerr = dlerror();
+			ldms_log(LDMSD_LERROR,"Bad plugin '%s': dlerror %s\n", plugin_name, dlerr);
+			goto err;
+		}
 	}
-	d = dlopen(libname, RTLD_NOW);
+
 	if (!d) {
+		char *dlerr = dlerror();
 		errno = ENOENT;
+		ldms_log(LDMSD_LERROR,"Failed to load the authentication plugin '%s': "
+				"dlerror %s\n", plugin_name, dlerr);
 		goto err;
 	}
-	f = dlsym(d, "__ldms_auth_plugin_get");
-	if (!f) {
-		errno = ENOENT;
-		goto err;
-	}
-	p = f();
-	if (!p)
-		goto err;
-	return p;
 
+	pget = dlsym(d, "__ldms_auth_plugin_get");
+	if (!pget) {
+		ldms_log(LDMSD_LERROR,"The library, '%s',  is missing the __ldms_auth_plugin_get() "
+			 "function.", plugin_name);
+		goto err;
+	}
+	lpi = pget();
+	if (!lpi) {
+		ldms_log(LDMSD_LERROR, "The library '%s' __ldms_auth_plugin_get() "
+			 "function returned NULL.", plugin_name);
+		goto err;
+	}
+	return lpi;
  err:
 	if (d)
 		dlclose(d);
