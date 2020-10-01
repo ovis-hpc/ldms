@@ -141,8 +141,7 @@ class TestLDMSSetArray(unittest.TestCase):
 
     def test_update(self):
         x = ldms.Xprt(name=self.XPRT)
-        rc = x.connect(host="localhost", port=self.SMP_PORT)
-        self.assertEqual(rc, 0)
+        x.connect(host="localhost", port=self.SMP_PORT)
         s = x.lookup(self.SET_NAME)
         time.sleep(self.UPD_INT*uS)
         log.info("First update ...")

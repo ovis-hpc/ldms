@@ -1007,8 +1007,9 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         resp = self.handle('greeting', arg)
         if "level" in arg:
+            tbl = bytes(range(0, 256)) # identity mapping tbl
             for attr in resp['attr_list']:
-                print(attr.attr_value.translate(None, ' \x00'))
+                print(attr.attr_value.translate(tbl, delete=b' \x00').decode())
         elif resp['msg'] and resp['msg'] != "":
             print(resp['msg'])
 
@@ -1376,8 +1377,6 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as e:
         if is_debug:
-            print(is_debug)
-            traceback.print_exc()
-            sys.exit(2)
+            raise
         else:
             print(e)

@@ -49,8 +49,6 @@
 
 # This file contains test cases for various ldmsd object permissions
 
-from future import standard_library
-standard_library.install_aliases()
 from builtins import str
 import logging
 import unittest
@@ -58,6 +56,7 @@ import threading
 import time
 import re
 import json
+import os
 from io import StringIO
 
 from ovis_ldms import ldms
@@ -68,8 +67,8 @@ from ldmsd.ldmsd_request import LDMSD_Request
 log = logging.getLogger(__name__)
 
 class TestLDMSDPerm(unittest.TestCase):
-    LDMSD_UID = "1111"
-    LDMSD_GID = "1111"
+    LDMSD_UID = os.geteuid()
+    LDMSD_GID = os.getegid()
     AUTH = "naive"
     LDMSD_AUTH_OPT = {"uid": LDMSD_UID, "gid": LDMSD_GID}
     BOB_AUTH_OPT = {"uid": "2222", "gid": LDMSD_GID}
@@ -134,7 +133,7 @@ class TestLDMSDPerm(unittest.TestCase):
                             logfile = cls.AGG_LOG)
             log.info("starting aggregator")
             cls.agg.run()
-            time.sleep(1)
+            time.sleep(2)
 
             # need to config separately so that prdcr,updtr pairs are owned by
             # different users.
@@ -169,19 +168,19 @@ class TestLDMSDPerm(unittest.TestCase):
                     if errcode:
                         raise RuntimeError("LDMSD Ctrl errcode: %d" % errcode)
                 ctrl.close()
-            time.sleep(1)
+            time.sleep(2)
             # Verify that the agg is working as configured
             log.info("verifying aggregator")
-            xprt = ldms.LDMS_xprt_new_with_auth(cls.XPRT, cls.AUTH,
-                                                cls.LDMSD_AUTH_OPT)
-            rc = ldms.LDMS_xprt_connect_by_name(xprt, "localhost", cls.AGG_PORT)
-            if rc:
-                raise RuntimeError("LDMS connect failed: %d" % rc)
-            _dir = ldms.LDMS_xprt_dir(xprt)
+            xprt = ldms.Xprt(cls.XPRT, cls.AUTH, cls.LDMSD_AUTH_OPT)
+            xprt.connect("localhost", cls.AGG_PORT)
+            _dir = xprt.dir()
+            _dir = [ d.name for d in _dir ]
             log.debug("dirs: %s" % str(_dir))
-            ldms.ldms_xprt_close(xprt)
+            xprt.close()
             _edirs = [ p["prdcr"]+"/meminfo" for p in cls.PRDCRS ]
             if set(_dir) != set(_edirs):
+                import pdb
+                pdb.set_trace()
                 raise RuntimeError("Bad set ...")
         except:
             del cls.agg

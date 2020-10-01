@@ -49,8 +49,6 @@
 
 # This file contains test cases for ldmsd configuration files
 
-from future import standard_library
-standard_library.install_aliases()
 from builtins import zip
 from builtins import range
 from builtins import object
@@ -127,15 +125,13 @@ start name=hfclock interval=1000000 offset=0
         time.sleep(1) # wait for sampler to populate the set
         #x = ldms.LDMS_xprt_new(self.XPRT)
         x = ldms.Xprt(name=self.XPRT)
-        rc = x.connect(host='localhost', port=self.SMP_PORT)
-        #rc = ldms.LDMS_xprt_connect_by_name(x, "localhost", self.SMP_PORT)
-        self.assertEqual(rc, 0)
+        x.connect(host='localhost', port=self.SMP_PORT)
         s = x.lookup("smp/hfclock")
         s.update()
         clk = s["clock"]
         DEBUG.clk = clk
         tmp = s["clock_timeval"]
-        clk_tv = [ tmp[2*i] + tmp[2*i+1]*1e-6 for i in range(0, len(tmp)/2) ]
+        clk_tv = [ tmp[2*i] + tmp[2*i+1]*1e-6 for i in range(0, len(tmp)//2) ]
         DEBUG.clk_tv = clk_tv
         for (a, b) in zip(clk, clk_tv):
             self.assertGreater(a, 0)

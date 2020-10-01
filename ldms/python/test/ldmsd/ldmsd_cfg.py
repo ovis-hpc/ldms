@@ -54,8 +54,6 @@
 
 # This file contains test cases for ldmsd configuration files
 
-from future import standard_library
-standard_library.install_aliases()
 import logging
 import unittest
 import threading
@@ -78,8 +76,8 @@ log = logging.getLogger(__name__)
 
 class TestLDMSDConfig(unittest.TestCase):
     """Test cases focusing on ldms daemon configuration file"""
-    LDMSD_UID = "1111"
-    LDMSD_GID = "1111"
+    LDMSD_UID = os.getuid()
+    LDMSD_GID = os.getgid()
     AUTH = "naive"
     LDMSD_AUTH_OPT = {"uid": LDMSD_UID, "gid": LDMSD_GID}
     XPRT = "sock"
@@ -108,7 +106,7 @@ class TestLDMSDConfig(unittest.TestCase):
                             logfile = cls.SMP_LOG)
             log.info("starting sampler")
             cls.smp.run()
-            time.sleep(1)
+            time.sleep(2)
             # aggregator will be configured later in the test cases
 
         except:
@@ -145,11 +143,10 @@ class TestLDMSDConfig(unittest.TestCase):
                        auth_opt = self.LDMSD_AUTH_OPT,
                        cfg = cfg)
         daemon.run()
-        time.sleep(1)
+        time.sleep(2)
         xprt = ldms.Xprt(self.XPRT, self.AUTH,
                          self.LDMSD_AUTH_OPT)
-        rc = xprt.connect("localhost", "10000")
-        assert(rc == 0)
+        xprt.connect("localhost", "10000")
         dir_ = []
         dir_resp = xprt.dir()
         for d in dir_resp:
@@ -165,7 +162,7 @@ class TestLDMSDConfig(unittest.TestCase):
                        auth_opt = self.LDMSD_AUTH_OPT,
                        cfg = cfg)
         daemon.run()
-        time.sleep(1)
+        time.sleep(2)
         # bad config should terminate the daemon
         self.assertFalse(daemon.is_running())
         daemon.term()
@@ -178,7 +175,7 @@ class TestLDMSDConfig(unittest.TestCase):
                        auth_opt = self.LDMSD_AUTH_OPT,
                        cfg = cfg)
         daemon.run()
-        time.sleep(1)
+        time.sleep(2)
         # bad config should terminate the daemon
         self.assertFalse(daemon.is_running())
         daemon.term()

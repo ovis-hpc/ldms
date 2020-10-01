@@ -49,8 +49,6 @@
 
 # This file contains test cases for various ldmsd controller commands
 
-from future import standard_library
-standard_library.install_aliases()
 from builtins import str
 from builtins import object
 import logging
@@ -78,8 +76,8 @@ class Debug(object): pass
 DEBUG = Debug()
 
 class TestLDMSDController(unittest.TestCase):
-    LDMSD_UID = "1111"
-    LDMSD_GID = "1111"
+    LDMSD_UID = os.geteuid()
+    LDMSD_GID = os.getegid()
     AUTH = "naive"
     LDMSD_AUTH_OPT = {"uid": LDMSD_UID, "gid": LDMSD_GID}
     XPRT = "sock"

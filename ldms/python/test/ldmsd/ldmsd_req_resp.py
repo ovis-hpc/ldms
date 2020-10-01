@@ -147,7 +147,7 @@ class TestLdmsdReqResp(unittest.TestCase):
         resp = req.receive(ctrl)
         ctrl.close()
         self.assertEqual(len(resp['attr_list']), 1)
-        self.assertEqual(resp['attr_list'][0].attr_value,
+        self.assertEqual(resp['attr_list'][0].attr_value.decode(),
                         "{0}:{1}".format(self.SMP_NAME, self.AGG1_NAME))
         self.assertTrue(self.smp.is_running())
         self.assertTrue(self.agg1.is_running())
@@ -163,7 +163,7 @@ class TestLdmsdReqResp(unittest.TestCase):
         resp = req.receive(ctrl)
         ctrl.close()
         self.assertEqual(len(resp['attr_list']), 1)
-        self.assertEqual(resp['attr_list'][0].attr_value,
+        self.assertEqual(resp['attr_list'][0].attr_value.decode(),
                         "{0}:{1}:{2}".format(self.SMP_NAME, self.AGG1_NAME, self.AGG2_NAME))
         self.assertTrue(self.smp.is_running())
         self.assertTrue(self.agg1.is_running())
