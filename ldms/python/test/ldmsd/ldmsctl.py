@@ -76,8 +76,8 @@ class Debug(object): pass
 DEBUG = Debug()
 
 class TestLDMSCTL(unittest.TestCase):
-    LDMSD_UID = "1111"
-    LDMSD_GID = "1111"
+    LDMSD_UID = os.geteuid()
+    LDMSD_GID = os.getegid()
     AUTH = "naive"
     LDMSD_AUTH_OPT = {"uid": LDMSD_UID, "gid": LDMSD_GID}
     XPRT = "sock"

@@ -256,10 +256,8 @@ class TestLDMSDFailover(unittest.TestCase):
         log.info("Verifying %s" % prdcr)
         port = LVX_port(lvl, _id)
         x = ldms.Xprt(name=XPRT)
-        rc = x.connect(host="localhost", port=port)
+        x.connect(host="localhost", port=port)
         DEBUG.x = x
-        DEBUG.rc = rc
-        assert(rc == 0)
         s0 = set()
         N = 2**lvl
         off = N * _id

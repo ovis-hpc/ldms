@@ -122,14 +122,12 @@ class TestLDMSPerm(unittest.TestCase):
 
     def test_wrong_auth(self):
         xprt = ldms.Xprt(self.XPRT, "none", None)
-        rc = xprt.connect("localhost", self.PORT)
-        self.assertNotEqual(rc, 0)
+        with self.assertRaises(ConnectionError):
+            xprt.connect("localhost", self.PORT)
 
     def test_dir_owner(self):
         xprt = ldms.Xprt(self.XPRT, self.AUTH, self.AUTH_OPT)
-        rc = xprt.connect("localhost", self.PORT)
-        if rc:
-            raise RuntimeError("LDMS connect failed: %d" % rc)
+        xprt.connect("localhost", self.PORT)
         _dir = xprt.dir()
         _dirs = []
         for _d in _dir:
@@ -140,9 +138,7 @@ class TestLDMSPerm(unittest.TestCase):
     def test_dir_group(self):
         auth_opt = {"uid": "5555", "gid": self.GID}
         xprt = ldms.Xprt(self.XPRT, self.AUTH, auth_opt)
-        rc = xprt.connect("localhost", self.PORT)
-        if rc:
-            raise RuntimeError("LDMS connect failed: %d" % rc)
+        xprt.connect("localhost", self.PORT)
         r = re.compile("0.6.")
         _sets = [_s for _s, _p in zip(self.SETS, self.PERMS) if r.match(_p)]
         _dir = xprt.dir()
@@ -155,9 +151,7 @@ class TestLDMSPerm(unittest.TestCase):
     def test_dir_other(self):
         auth_opt = {"uid": "5555", "gid": "5555"}
         xprt = ldms.Xprt(self.XPRT, self.AUTH, auth_opt)
-        rc = xprt.connect("localhost", self.PORT)
-        if rc:
-            raise RuntimeError("LDMS connect failed: %d" % rc)
+        xprt.connect("localhost", self.PORT)
         r = re.compile("0..6")
         _sets = [_s for _s, _p in zip(self.SETS, self.PERMS) if r.match(_p)]
         _dir = xprt.dir()
@@ -169,40 +163,37 @@ class TestLDMSPerm(unittest.TestCase):
 
     def test_lookup_owner(self):
         xprt = ldms.Xprt(self.XPRT, self.AUTH, self.AUTH_OPT)
-        rc = xprt.connect("localhost", self.PORT)
-        if rc:
-            raise RuntimeError("LDMS connect failed: %d" % rc)
+        xprt.connect("localhost", self.PORT)
         for _name, _perm in zip(self.SETS, self.PERMS):
             _set = xprt.lookup(_name)
             self.assertIsNotNone(_set)
+            _set.delete()
         del xprt
 
     def test_lookup_group(self):
         auth_opt = {"uid": "5555", "gid": self.AUTH_OPT["gid"]}
         xprt = ldms.Xprt(self.XPRT, self.AUTH, auth_opt)
-        rc = xprt.connect("localhost", self.PORT)
-        if rc:
-            raise RuntimeError("LDMS connect failed: %d" % rc)
+        xprt.connect("localhost", self.PORT)
         for _name, _perm in zip(self.SETS, self.PERMS):
             _set = xprt.lookup(_name)
             DEBUG.name = _name
             DEBUG.perm = _perm
             DEBUG.set = _set
             self.assertIsNotNone(_set)
+            _set.delete()
         del xprt
 
     def test_lookup_other(self):
         auth_opt = {"uid": "5555", "gid": "5555"}
         xprt = ldms.Xprt(self.XPRT, self.AUTH, auth_opt)
-        rc = xprt.connect("localhost", self.PORT)
-        if rc:
-            raise RuntimeError("LDMS connect failed: %d" % rc)
+        xprt.connect("localhost", self.PORT)
         for _name, _perm in zip(self.SETS, self.PERMS):
             _set = xprt.lookup(_name)
             DEBUG.name = _name
             DEBUG.perm = _perm
             DEBUG.set = _set
             self.assertIsNotNone(_set)
+            _set.delete()
         del xprt
 
 

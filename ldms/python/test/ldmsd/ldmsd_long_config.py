@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 
 # Copyright (c) 2018 National Technology & Engineering Solutions
 # of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
@@ -160,7 +160,7 @@ class TestLDMSDLongConfig(unittest.TestCase):
         name_len = self.getMaxMsgSz("ldmsd_controller")
         line = self.getGreetingCfgCmd(name_len)
         cfg = tempfile.NamedTemporaryFile()
-        cfg.write(line)
+        cfg.write(line.encode())
         cfg.file.flush()
         # ldmsd_controller subprocess
         ctrl = LDMSD_Controller(port = self.SMP_PORT, xprt = self.XPRT, source = cfg.name)
@@ -178,7 +178,7 @@ class TestLDMSDLongConfig(unittest.TestCase):
         name_len = self.getMaxMsgSz("ldmsctl")
         line = self.getGreetingCfgCmd(name_len)
         cfg = tempfile.NamedTemporaryFile()
-        cfg.write(line)
+        cfg.write(line.encode())
         cfg.file.flush()
         # ldmsd_controller subprocess
         ctrl = LDMSD_Controller(port = self.SMP_PORT, xprt = self.XPRT,
@@ -202,4 +202,4 @@ if __name__ == "__main__":
     ch.setLevel(logging.INFO)
     ch.setFormatter(logging.Formatter(fmt, datefmt))
     log.addHandler(ch)
-    unittest.main(failfast = False, verbosity = 2)
+    unittest.main(failfast = True, verbosity = 2)

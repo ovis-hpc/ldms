@@ -120,8 +120,7 @@ class TestLDMSDCmdExp(unittest.TestCase):
         """Verify sampler config, cmd-expand only env command"""
         host = socket.gethostname()
         xprt = ldms.Xprt(self.XPRT)
-        rc = xprt.connect("localhost", "10200")
-        self.assertEqual(rc, 0)
+        xprt.connect("localhost", "10200")
         dir_ = []
         dir_resp = xprt.dir()
         for d in dir_resp:
@@ -143,8 +142,7 @@ class TestLDMSDCmdExp(unittest.TestCase):
 
         host = socket.gethostname()
         xprt = ldms.Xprt(self.XPRT)
-        rc = xprt.connect("localhost", "10200")
-        self.assertEqual(rc, 0)
+        xprt.connect("localhost", "10200")
         dir_resp = xprt.dir()
         dir_ = []
         for d in dir_resp:

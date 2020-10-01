@@ -49,8 +49,6 @@
 
 # This file contains test cases for ldmsd set group functionality
 
-from future import standard_library
-standard_library.install_aliases()
 from builtins import input
 from builtins import str
 from builtins import object
@@ -81,42 +79,50 @@ DEBUG = Debug()
 
 ldms.init(128*1024*1024)
 
+class LdmsSet(object):
+    def __init__(self, _s):
+        # meta-data
+        self.card = _s.card
+        self.data_gn = _s.data_gn
+        self.data_sz = _s.data_sz
+        self.gid = _s.gid
+        self.uid = _s.uid
+        self.instance_name = _s.instance_name
+        self.is_consistent = _s.is_consistent
+        self.meta_gn = _s.meta_gn
+        self.meta_sz = _s.meta_sz
+        self.name = _s.name
+        self.perm = _s.perm
+        self.producer_name = _s.producer_name
+        self.schema_name = _s.schema_name
+        self.transaction_duration = _s.transaction_duration
+        t = _s.transaction_timestamp
+        self.transaction_timestamp = t
+        self.transaction_ts = t['sec'] + t['usec']*1e-6
+        # metric data
+        self.metrics = _s.as_dict()
+
+def get_sets(port, xprt="sock", hostname="localhost"):
+    x = ldms.Xprt(name=xprt)
+    x.connect(host=hostname, port=port)
+    _sets = list()
+    _dirs = x.dir()
+    for d in _dirs:
+        _s = x.lookup(d.name)
+        _s.update()
+        _sets.append(LdmsSet(_s))
+        _s.delete()
+    return _sets
+
+def all_ts(_sets):
+    return { _s.instance_name: _s.transaction_ts for _s in _sets }
+
 def all_ts_diff(a, b):
     ka = a.keys()
     kb = b.keys()
     if ka != kb:
         raise ValueError("a.keys() != b.keys()")
     return { k: a[k] - b[k] for k in ka }
-
-
-class LdmsWrap(object):
-    """Conveneint LDMS xprt wrapper"""
-    def __init__(self, port, xprt="sock", hostname = "localhost"):
-        self.xprt = ldms.Xprt(name=xprt)
-        rc = self.xprt.connect(host=hostname, port=port)
-        assert(rc == 0)
-        self.sets = []
-        self._dict = {}
-        _dirs = self.xprt.dir()
-        print(_dirs)
-        for d in _dirs:
-            s = self.xprt.lookup(d.name)
-            self.sets.append(s)
-            self._dict[d.name] = s
-
-    def update(self):
-        for _set in self.sets:
-            print(_set.instance_name)
-            for ent in _set:
-                print(ent)
-            _set.update()
-
-    def get(self, set_name):
-        return self._dict.get(set_name)
-
-    def all_ts(self):
-        return { s.instance_name:s.transaction_timestamp['sec']+s.transaction_timestamp['usec']*1e-6 \
-                                                      for s in self.sets }
 
 
 class TestLDMSDPush(unittest.TestCase):
@@ -161,12 +167,9 @@ start name=test_sampler interval=%(interval_us)d offset=0
 
             # aggregator
             agg_cfg = """
-prdcr_add name=prdcr xprt=%(xprt)s \
-host=localhost port=%(port)s \
-interval=%(interval_us)d type=active
+prdcr_add name=prdcr xprt=%(xprt)s host=localhost port=%(port)s interval=%(interval_us)d type=active
 prdcr_start name=prdcr
-updtr_add name=updtr push=onchange \
-interval=%(interval_us)d
+updtr_add name=updtr push=true interval=%(interval_us)d
 updtr_prdcr_add name=updtr regex=prdcr.*
 updtr_start name=updtr
             """ % {
@@ -203,34 +206,31 @@ updtr_start name=updtr
         log.debug("----------------------------")
 
     def test_00_verify(self):
-        xsmp = LdmsWrap(port = self.SMP_PORT)
-        xagg = LdmsWrap(port = self.AGG_PORT)
-        xsmp.update()
-        s0 = xsmp.all_ts()
-        xagg.update()
-        a0 = xagg.all_ts()
+        time.sleep((self.SMP_PUSH_EVERY+2) * self.INTERVAL_SEC)
+        _s0 = get_sets(port = self.SMP_PORT)
+        s0 = all_ts(_s0)
+        _a0 = get_sets(port = self.AGG_PORT)
+        a0 = all_ts(_a0)
         time.sleep(2 * self.INTERVAL_SEC)
-        xsmp.update()
-        s1 = xsmp.all_ts()
-        xagg.update()
-        a1 = xagg.all_ts()
+        _s1 = get_sets(port = self.SMP_PORT)
+        s1 = all_ts(_s1)
+        _a1 = get_sets(port = self.AGG_PORT)
+        a1 = all_ts(_a1)
         ds = all_ts_diff(s1, s0)
         da = all_ts_diff(a1, a0)
-        print(ds)
-        print(da)
         cs = len([ k for k in ds if ds[k] > 0 ])
         ca = len([ k for k in ds if da[k] > 0 ])
-        print(cs)
-        print(ca)
-        print(self.NUM_SETS)
         self.assertEqual(cs, self.NUM_SETS)
         self.assertEqual(ca, 0)
         time.sleep((self.SMP_PUSH_EVERY+2) * self.INTERVAL_SEC)
-        xagg.update()
-        a2 = xagg.all_ts()
+        _a2 = get_sets(port = self.AGG_PORT)
+        a2 = all_ts(_a2)
         da = all_ts_diff(a2, a1)
         ca = len([ k for k in ds if da[k] > 0 ])
         self.assertEqual(ca, self.NUM_SETS)
+
+def reraise(self, test, err):
+    raise err[1] # re-raise
 
 if __name__ == "__main__":
     fmt = "%(asctime)s.%(msecs)d %(levelname)s: %(message)s"
@@ -248,4 +248,6 @@ if __name__ == "__main__":
     ch.setFormatter(logging.Formatter(fmt, datefmt))
     log.addHandler(ch)
     # unittest.TestLoader.testMethodPrefix = "test_"
+    unittest.TextTestResult.addError = reraise
+    unittest.TextTestResult.addFailure = reraise
     unittest.main(failfast = True, verbosity = 2)

@@ -122,18 +122,17 @@ class TestLDMSAuthOvis(unittest.TestCase):
 
     def test_wrong_auth(self):
         xprt = ldms.Xprt(name=self.XPRT)
-        rc = xprt.connect(host="localhost", port=self.PORT)
-        self.assertNotEqual(rc, 0)
+        with self.assertRaises(ConnectionError):
+            xprt.connect(host="localhost", port=self.PORT)
 
     def test_wrong_secret(self):
         xprt = ldms.Xprt(name=self.XPRT, auth=self.AUTH, auth_opts=self.OTHER_AUTH_OPT)
-        rc = xprt.connect(host="localhost", port=self.PORT)
-        self.assertNotEqual(rc, 0)
+        with self.assertRaises(ConnectionError):
+            xprt.connect(host="localhost", port=self.PORT)
 
     def test_dir_owner(self):
         xprt = ldms.Xprt(name=self.XPRT, auth=self.AUTH, auth_opts=self.AUTH_OPT)
-        rc = xprt.connect(host="localhost", port=self.PORT)
-        self.assertEqual(rc, 0)
+        xprt.connect(host="localhost", port=self.PORT)
         _dir = xprt.dir()
         dir_ = []
         for d in _dir:
@@ -142,16 +141,14 @@ class TestLDMSAuthOvis(unittest.TestCase):
 
     def test_ls_owner(self):
         xprt = ldms.Xprt(name=self.XPRT, auth=self.AUTH, auth_opts=self.AUTH_OPT)
-        rc = xprt.connect(host="localhost", port=self.PORT)
-        self.assertEqual(rc, 0)
+        xprt.connect(host="localhost", port=self.PORT)
         _set = xprt.lookup("smp/meminfo", 0)
         self.assertIsNotNone(_set)
 
     def test_env(self):
         os.putenv("LDMS_AUTH_FILE", self.AUTH_OPT["conf"])
         xprt = ldms.Xprt(name=self.XPRT, auth=self.AUTH)
-        rc = xprt.connect(host="localhost", port=self.PORT)
-        self.assertEqual(rc, 0)
+        xprt.connect(host="localhost", port=self.PORT)
         _dir = xprt.dir()
         dir_ = []
         for d in _dir:
@@ -161,8 +158,8 @@ class TestLDMSAuthOvis(unittest.TestCase):
     def test_env_wrong_secret(self):
         os.putenv("LDMS_AUTH_FILE", self.OTHER_AUTH_OPT["conf"])
         xprt = ldms.Xprt(name=self.XPRT, auth=self.AUTH)
-        rc = xprt.connect(host="localhost", port=self.PORT)
-        self.assertNotEqual(rc, 0)
+        with self.assertRaises(ConnectionError):
+            xprt.connect(host="localhost", port=self.PORT)
 
 
 if __name__ == "__main__":
