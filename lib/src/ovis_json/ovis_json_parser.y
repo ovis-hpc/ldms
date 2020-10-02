@@ -109,9 +109,11 @@ attr_list: /* empty */ { $$ = new_dict_val(); }
 	 | string ':' value {
 	     json_entity_t e = new_dict_val();
 	     $$ = add_dict_attr(e, $1, $3);
+	     json_entity_free($1);
 	 }
 	 | attr_list ',' string ':' value {
 	     $$ = add_dict_attr($1, $3, $5);
+	     json_entity_free($3);
 	 }
      ;
 
