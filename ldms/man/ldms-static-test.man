@@ -149,7 +149,11 @@ tool wrapped around the launch of ldmsd. The default is 'valgrind'.
 VGARGS
 .br
 If valgrind is used (see vgon, vgoff), then $VGARGS is appended to the defaults
-valgrind arguments.
+.TP
+VGTAG
+.br
+If valgrind is used (see vgon, vgoff), then $VGTAG is inserted in the valgrind
+output file name when defined. A good practice is for VGTAG to start with ".".
 .TP
 The following variables are visible to the input file and the configuration file.
 .TP
@@ -228,9 +232,10 @@ The default output location is `pwd`/ldmstest/$testname.
 If input_file is not found in the current directory, it is checked for in $docdir/examples/static-test/$input_file.
 .SH GENERATED FILES
 .TP
-.I $test_dir/logs/vg.$k.%p
+.I $test_dir/logs/vg.$k$VGTAG.%p
+.I $test_dir/logs/vgls.$k$VGTAG.%p
 .br
-The valgrind log for the kth daemon with PID %p, if valgrind is active.
+The valgrind log for the kth daemon with PID %p or the valgrind log for ldms_ls of the kth daemon with PID %p, if valgrind is active.
 .TP
 .I $test_dir/logs/$k.txt
 .br
@@ -239,6 +244,14 @@ The log for the kth daemon.
 .I $test_dir/run/conf.$k
 .br
 The input for the kth daemon.
+.TP
+.I $test_dir/run/env.$k
+.br
+The environment present for the kth daemon.
+.TP
+.I $test_dir/run/start.$k
+.br
+The start command of the kth daemon.
 .TP
 .I $test_dir/store/
 .br

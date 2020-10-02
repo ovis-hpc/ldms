@@ -224,9 +224,9 @@ function LDMSD {
 				XVG=$VG
 			fi
 			if test -z "$VGARGS"; then
-				XVGARGS="-v --log-file=${LOGDIR}/vg.$i.%p"
+				XVGARGS="-v --log-file=${LOGDIR}/vg.$i$VGTAG.%p"
 			else
-				XVGARGS="-v --log-file=${LOGDIR}/vg.$i.%p $VGARGS"
+				XVGARGS="-v --log-file=${LOGDIR}/vg.$i$VGTAG.%p $VGARGS"
 			fi
 			wrap="$XVG $XVGARGS"
 		else
@@ -265,6 +265,12 @@ function LDMSD {
 				echo "run -x ${XPRT}:${ports[$i]}:${XPRTHOST} -c $LDMSD_RUN/conf.$i -l ${LOGDIR}/$i.txt -v DEBUG $LDMSD_EXTRA -r $LDMSD_PIDFILE.$i"
 				gdb ldmsd.${ports[$i]}
 			else
+				echo $wrap ldmsd.${ports[$i]} \
+					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
+					-c $LDMSD_RUN/conf.$i \
+					-l ${LOGDIR}/$i.txt \
+					-v DEBUG $LDMSD_EXTRA \
+					-r $LDMSD_PIDFILE.$i > $LDMSD_RUN/start.$i
 				$wrap ldmsd.${ports[$i]} \
 					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 					-c $LDMSD_RUN/conf.$i \
@@ -279,6 +285,12 @@ function LDMSD {
 			if test -f $clonefile -a $cloneinput = "1"; then
 				cp $clonefile $LDMSD_RUN/conf.$i
 				env > $LDMSD_RUN/env.$i
+				echo $wrap ldmsd.${ports[$i]} \
+					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
+					-c $LDMSD_RUN/conf.$i \
+					-l ${LOGDIR}/$i.txt \
+					-v DEBUG $LDMSD_EXTRA \
+					-r $LDMSD_PIDFILE.$i > $LDMSD_RUN/start.$i
 				$wrap ldmsd.${ports[$i]} \
 					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 					-c $LDMSD_RUN/conf.$i \
@@ -326,9 +338,9 @@ function LDMS_LS {
 				XVG=$VG
 			fi
 			if test -z "$VGARGS"; then
-				XVGARGS="-v --log-file=${LOGDIR}/vgls.$i.%p"
+				XVGARGS="-v --log-file=${LOGDIR}/vgls.$i$VGTAG.%p"
 			else
-				XVGARGS="-v --log-file=${LOGDIR}/vgls.$i.%p $VGARGS"
+				XVGARGS="-v --log-file=${LOGDIR}/vgls.$i$VGTAG.%p $VGARGS"
 			fi
 			wrap="$XVG $XVGARGS"
 		else
