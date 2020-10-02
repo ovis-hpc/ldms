@@ -549,7 +549,6 @@ int __process_config_file(const char *path, int *lno, int trust,
 	static uint32_t msg_no = 0;
 	int rc = 0;
 	int lineno = 0;
-	int i;
 	FILE *fin = NULL;
 	char *buff = NULL;
 	char *line = NULL;
@@ -664,7 +663,7 @@ parse:
 		rc = errno;
 		goto cleanup;
 	}
-	free(req_array);
+	ldmsd_req_array_free(req_array);
 	req_array = NULL;
 
 	/*
@@ -712,14 +711,7 @@ cleanup:
 		free(line);
 	if (lno)
 		*lno = lineno;
-	if (req_array) {
-		i = 0;
-		while (i < req_array->num_reqs) {
-			free(req_array->reqs[i]);
-			i++;
-		}
-		free(req_array);
-	}
+	ldmsd_req_array_free(req_array);
 	if (request)
 		free(request);
 	return rc;
