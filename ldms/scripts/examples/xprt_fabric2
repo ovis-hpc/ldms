@@ -1,36 +1,53 @@
 export plugname=meminfo
 portbase=408
+# default
 # export XPRT=sock
 # export HOST=localhost
-export XPRT=fabric
-export HOST=$(for ia in $(ifconfig -a |grep 'inet ' | awk '{ print $2}'); do grep $ia /etc/hosts |grep ib0 |grep '^[0-9]' ; done | awk '{ print $2}')
-DAEMONS 1 2 3
-#eth omni mlx
-export LDMSD_EXTRA="-x fabric:420:$(HOSTNAME) -x fabric:421:$HOST"
+# export XPRT=fabric
+export OMHOST=$(for ia in $(ifconfig -a |grep 'inet ' | awk '{ print $2}'); do grep $ia /etc/hosts |grep ib0 |grep '^[0-9]' ; done | awk '{ print $2}')
+export IBHOST=$(for ia in $(ifconfig -a |grep 'inet ' | awk '{ print $2}'); do grep $ia /etc/hosts |grep ib1 |grep '^[0-9]' ; done | awk '{ print $2}')
+DAEMONS 1 2 3 4 5 6
+export VGARGS="--trace-children=yes --track-origins=yes --leak-check=full --show-leak-kinds=all"
+#eth 420 fab:sock, 421 fab:omni, 422 fab:mlx, 423 rdma:mlx, 409 sock
+export LDMSD_EXTRA="-x fabric:420:$HOSTNAME -x fabric:421:$OMHOST -x fabric:422:$IBHOST -x rdma:423:$IBHOST"
+export VGTAG=.samp
+vgon
 LDMSD -p prolog.sampler 1
 #GDB=1
-#VGARGS="--leak-check=full --show-leak-kinds=all"
-#VGARGS="--trace-children=yes --track-origins=yes --leak-check=full --show-leak-kinds=all"
-vgoff
-LDMSD -p prolog.store2 2
-vgoff
-LDMSD 3
+unset LDMSD_EXTRA
+export HOST=$HOSTNAME; export  XPRT=fabric; VGTAG=.agg.fab.sock; export PORT=420
+LDMSD -p prolog.store2.xprt 2
+export HOST=$OMHOST; export  XPRT=fabric; VGTAG=.agg.fab.omni; export PORT=421
+LDMSD -p prolog.store2.xprt 3
+export HOST=$IBHOST; export  XPRT=fabric; VGTAG=.agg.fab.mlx; export PORT=422
+LDMSD -p prolog.store2.xprt 4
+export HOST=$IBHOST; export  XPRT=rdma; VGTAG=.agg.rdma.mlx; export PORT=423
+LDMSD -p prolog.store2.xprt 5
+export HOST=localhost; export  XPRT=sock; VGTAG=.agg.sock; export PORT=409
+LDMSD -p prolog.store2.xprt 6
+#
 MESSAGE ldms_ls on host 1:
 LDMS_LS 1 -v
-MESSAGE ldms_ls on host 2:
-LDMS_LS 2 -v
 netstat -alt
 netstat -tonp
 SLEEP 5
-export PORT=420
-export HOST=c1xln1
-MESSAGE sock on fab
+MESSAGE ldms_ls on host 1 fab sock
+HOST=$HOSTNAME; XPRT=fabric; VGTAG=.ls.fab.sock; export PORT=420
 LDMS_LS 1 -v
 MESSAGE omni on fab
-export PORT=421
-export HOST=c1xln1-ib0
+HOST=$OMHOST; XPRT=fabric; VGTAG=.ls.fab.omni; export PORT=421
+LDMS_LS 1 -v
+MESSAGE mlx on fab
+HOST=$IBHOST; XPRT=fabric; VGTAG=.ls.fab.mlx; export PORT=422
+LDMS_LS 1 -v
+MESSAGE mlx on rdma
+HOST=$IBHOST; XPRT=rdma; VGTAG=.ls.rdma.mlx; export PORT=423
+LDMS_LS 1 -v
+MESSAGE sock
+HOST=localhost; XPRT=sock; VGTAG=.ls.sock; export PORT=409
 LDMS_LS 1 -v
 vgoff
-KILL_LDMSD 1 2 3
+SLEEP 2
+KILL_LDMSD 1 2 3 4 5 6
 file_created $STOREDIR/node/$testname
 chown -R baallan.baallan ldmstest
