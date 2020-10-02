@@ -372,6 +372,11 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 					size_t xprt_max_msg, ldmsd_msg_log_f msglog);
 
 /**
+ * \brief Destroy the result of ldmsd_parse_config_str.
+ */
+void ldmsd_req_array_free(struct ldmsd_req_array *a);
+
+/**
  * \brief Convert a command string to the request ID.
  *
  * \param verb   Configuration command string

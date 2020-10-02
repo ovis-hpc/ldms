@@ -709,7 +709,7 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 	char *av, *verb, *dummy;
 	struct ldmsd_parse_ctxt ctxt = {0};
 	struct ldmsd_req_array *req_array;
-	int rc, i, array_sz;
+	int rc, array_sz;
 	ldmsd_req_hdr_t req;
 	size_t req_off, remaining;
 	size_t req_hdr_sz = sizeof(struct ldmsd_req_hdr_s);
@@ -724,7 +724,7 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 
 	dummy = strdup(cfg);
 	if (!dummy) {
-		free(req_array);
+		ldmsd_req_array_free(req_array);
 		return NULL;
 	}
 
@@ -848,12 +848,20 @@ out:
 err:
 	errno = rc;
 	free(dummy);
-	for (i = 0; i < req_array->num_reqs; i++)
-		free(req_array->reqs[i]);
-	free(req_array);
+	ldmsd_req_array_free(req_array);
 	if (ctxt.request)
 		free(ctxt.request);
 	return NULL;
+}
+
+void ldmsd_req_array_free(struct ldmsd_req_array *req_array)
+{
+	if (!req_array)
+		return;
+	int i;
+	for (i = 0; i < req_array->num_reqs; i++)
+		free(req_array->reqs[i]);
+	free(req_array);
 }
 
 ldmsd_req_attr_t ldmsd_req_attr_get_by_id(char *request, uint32_t attr_id)
