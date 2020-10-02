@@ -1534,8 +1534,8 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_LISTEN,
 				sizeof *listen, ldmsd_listen___del,
 				getuid(), getgid(), 0550); /* No one can alter it */
+	free(name);
 	if (!listen) {
-		free(name);
 		return NULL;
 	}
 
