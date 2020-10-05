@@ -97,8 +97,6 @@ int ldmsd_req_debug = 0; /* turn on / off using gdb or edit src to
 
 static int cleanup_requested = 0;
 
-void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap);
-
 __attribute__((format(printf, 1, 2)))
 static inline
 void __dlog(const char *fmt, ...)

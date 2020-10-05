@@ -61,6 +61,7 @@
 #include "coll/rbt.h"
 #include "ovis_util/os_util.h"
 #include "ovis_util/util.h"
+#include "ldms_log.h"
 
 #ifdef __cplusplus
 extern "C" {

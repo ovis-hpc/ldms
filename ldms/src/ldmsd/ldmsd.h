@@ -81,7 +81,7 @@
 #define LDMSD_VERSION_PATCH	0x02
 #define LDMSD_VERSION_FLAGS	0x00
 
-#define LDMSD_DEFAULT_FILE_PERM 0600
+#define LDMSD_DEFAULT_FILE_PERM LDMS_DEFAULT_FILE_PERM
 
 #define LDMSD_FAILOVER_NAME_PREFIX "#"
 
@@ -645,6 +645,8 @@ struct ldmsd_store_policy {
 	LIST_ENTRY(ldmsd_store_policy) link;
 };
 
+#ifndef LDMS_LOG
+
 #define LDMSD_STR_WRAP(NAME) #NAME
 #define LDMSD_LWRAP(NAME) LDMSD_L ## NAME
 /**
@@ -704,6 +706,7 @@ void ldmsd_lall(const char *fmt, ...);
  */
 int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level);
 
+#endif // log
 
 /**
  * \brief Get the security context (uid, gid) of the daemon.
@@ -746,7 +749,10 @@ ldmsd_store_close(struct ldmsd_store *store, ldmsd_store_handle_t sh)
 	store->close(sh);
 }
 
+#ifndef LDMS_LOG
 typedef void (*ldmsd_msg_log_f)(enum ldmsd_loglevel level, const char *fmt, ...);
+#endif
+
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)(ldmsd_msg_log_f pf);
 
 /* ldmsctl command callback function definition */
@@ -810,8 +816,10 @@ extern ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND + 1];
 #define LEN_ERRSTR 256
 #define LDMSD_ENOMEM_MSG "Memory allocation failure\n"
 
+#ifndef LDMS_LOG
 void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
 int ldmsd_logrotate();
+#endif
 int ldmsd_plugins_usage(const char *plugin_name);
 void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix);
 

@@ -74,6 +74,7 @@
 #include <coll/rbt.h>
 #include <coll/str_map.h>
 #include "ldms.h"
+#include "ldms_log.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
@@ -89,7 +90,9 @@
 #define LDMSD_AUTH_ENV "LDMS_AUTH_FILE"
 
 #define LDMSD_SETFILE "/proc/sys/kldms/set_list"
+#ifndef LDMS_LOG
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
+#endif
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
 #define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:v:Vz:Z:q:c:u:a:A:n:"
@@ -112,7 +115,9 @@ char *logfile;
 char *pidfile;
 char *bannerfile;
 int banner = 1;
+#ifndef LDMS_LOG
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif
 size_t max_mem_size;
 char *max_mem_sz_str;
 
@@ -129,7 +134,9 @@ mode_t inband_cfg_mask = LDMSD_PERM_FAILOVER_ALLOWED;
 int ldmsd_use_failover = 0;
 
 ldms_t ldms;
+#ifndef LDMS_LOG
 FILE *log_fp;
+#endif
 
 int do_kernel = 0;
 char *setfile = NULL;
@@ -148,8 +155,10 @@ static pthread_mutex_t set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 int find_least_busy_thread();
 
 int passive = 0;
+#ifndef LDMS_LOG
 int log_level_thr = LDMSD_LERROR;  /* log level threshold */
 int quiet = 0; /* Is verbosity quiet? 0 for no and 1 for yes */
+#endif
 
 const char *auth_name = "none";
 struct attr_value_list *auth_opt = NULL;
@@ -161,10 +170,12 @@ uint8_t ldmsd_is_initialized()
 	return is_ldmsd_initialized;
 }
 
+#ifndef LDMS_LOG
 const char* ldmsd_loglevel_names[] = {
 	LOGLEVELS(LDMSD_STR_WRAP)
 	NULL
 };
+#endif
 
 void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt)
 {
@@ -180,6 +191,7 @@ void ldmsd_version_get(struct ldmsd_version *v)
 	v->flags = LDMSD_VERSION_FLAGS;
 }
 
+#ifndef LDMS_LOG
 int ldmsd_loglevel_set(char *verbose_level)
 {
 	int level = -1;
@@ -310,6 +322,7 @@ const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level)
 		return ldmsd_loglevel_names[level];
 	return "LDMSD_LNONE";
 }
+#endif
 
 const char *ldmsd_myhostname_get()
 {
@@ -382,15 +395,20 @@ void cleanup(int x, const char *reason)
 		pidfile = NULL;
 	}
 	ldmsd_log(llevel, "LDMSD_ cleanup end.\n");
+#ifdef LDMS_LOG
+	ldms_log_close();
+#else
 	if (logfile) {
 		free(logfile);
 		logfile = NULL;
 	}
+#endif
 
 	av_free(auth_opt);
 	exit(x);
 }
 
+#ifndef LDMS_LOG
 /** return a file pointer or a special syslog pointer */
 FILE *ldmsd_open_log(const char *progname)
 {
@@ -473,6 +491,7 @@ err:
 	pthread_mutex_unlock(&log_lock);
 	return rc;
 }
+#endif
 
 void cleanup_sa(int signal, siginfo_t *info, void *arg)
 {
@@ -1610,7 +1629,9 @@ int main(int argc, char *argv[])
 	int sample_interval = 2000000;
 	int op;
 	ldms_set_t test_set;
+#ifndef LDMS_LOG
 	log_fp = stdout;
+#endif
 	struct sigaction action;
 	sigset_t sigset;
 	sigemptyset(&sigset);
@@ -1688,6 +1709,14 @@ int main(int argc, char *argv[])
 		case 'v':
 			if (check_arg("v", optarg, LO_NAME))
 				return 1;
+#ifdef LDMS_LOG
+			int verr = ldms_log_parse_verbosity(optarg);
+			if (verr) {
+				usage(argv);
+				printf("Invalid verbosity level '%s'. "
+					"See -v option.\n", optarg);
+			}
+#else
 			if (0 == strcmp(optarg, "QUIET")) {
 				quiet = 1;
 				log_level_thr = LDMSD_LLASTLEVEL;
@@ -1699,6 +1728,7 @@ int main(int argc, char *argv[])
 				printf("Invalid verbosity levels '%s'. "
 					"See -v option.\n", optarg);
 			}
+#endif
 			break;
 		case 'F':
 			foreground = 1;
@@ -1835,8 +1865,20 @@ int main(int argc, char *argv[])
 		exit(0);
 	}
 
+#ifndef LDMS_LOG
 	if (logfile)
 		log_fp = ldmsd_open_log(argv[0]);
+#else
+	const char *lerrstr = NULL;
+	int lerr = ldms_log_open(argv[0], logfile, &lerrstr);
+	if (lerr) {
+		printf("%s: Unable to open log %s: %s\n",
+			argv[0], logfile,  lerrstr);
+	}
+	free(logfile);
+	logfile = NULL;
+#endif
+	
 
 	if (!foreground) {
 		if (daemon(1, 1)) {
