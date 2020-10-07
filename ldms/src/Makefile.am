@@ -51,3 +51,5 @@ EXTRA_DIST = ovis-ldms-configvars.sh.in
 # override pkglibdir sanity checks
 mypkglibdir = $(pkglibdir)
 mypkglib_DATA = ovis-ldms-configure-args ovis-ldms-configure-env
+
+CLEANFILES =  ovis-ldms-configvars.sh ovis-ldms-configure-args ovis-ldms-configure-env
