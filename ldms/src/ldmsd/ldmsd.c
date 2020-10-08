@@ -2134,15 +2134,17 @@ int main(int argc, char *argv[])
 		listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
 			listen->auth_name, listen->auth_attrs);
 		if (!listen->x) {
+			char *args = av_to_string(listen->auth_attrs, AV_EXPAND);
 			ldmsd_log(LDMSD_LERROR,
 				  "'%s' transport creation with auth '%s' "
-				  "failed, error: %s(%d). Please check transpot "
+				  "failed, error: %s(%d). args='%s'. Please check transport "
 				  "configuration, authentication configuration, "
 				  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
 				  listen->xprt,
 				  listen->auth_name,
 				  ovis_errno_abbvr(errno),
-				  errno);
+				  errno, args ? args : "(empty conf=)");
+			free(args);
 			cleanup(6, "error creating transport");
 		}
 		int rc = listen_on_ldms_xprt(listen);
