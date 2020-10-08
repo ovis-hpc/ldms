@@ -2147,9 +2147,9 @@ int main(int argc, char *argv[])
 			free(args);
 			cleanup(6, "error creating transport");
 		}
-		int rc = listen_on_ldms_xprt(listen);
-		if (rc)
-			cleanup(rc, "error listening on transport");
+		ret = listen_on_ldms_xprt(listen);
+		if (ret)
+			cleanup(7, "error listening on transport");
 	}
 
 	if (ldmsd_use_failover) {
