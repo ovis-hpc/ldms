@@ -1009,7 +1009,7 @@ int listen_on_ldms_xprt(ldmsd_listen_t listen)
 		rc = getaddrinfo(listen->host, port_buff, &ai_hint, &ai);
 		if (rc) {
 			ldmsd_lerror("xprt listen error, getaddrinfo(%s, %s) error: %d\n", listen->host, port_buff, rc);
-			cleanup(7, "error listening on transport");
+			return rc;
 		}
 		memcpy(&sin, ai->ai_addr, ai->ai_addrlen);
 		freeaddrinfo(ai);
@@ -1022,7 +1022,7 @@ int listen_on_ldms_xprt(ldmsd_listen_t listen)
 	if (rc) {
 		ldmsd_log(LDMSD_LERROR, "Error %d listening on the '%s' "
 				"transport.\n", rc, listen->xprt);
-		cleanup(7, "error listening on transport");
+		return rc;
 	}
 	ldmsd_log(LDMSD_LINFO, "Listening on %s:%d using `%s` transport and "
 		  "`%s` authentication\n",
