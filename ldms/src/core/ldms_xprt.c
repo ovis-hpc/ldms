@@ -340,7 +340,7 @@ static void send_dir_update(struct ldms_xprt *x,
 	hdr_len = sizeof(struct ldms_reply_hdr)
 		+ sizeof(struct ldms_dir_reply);
 	buf_len = ldms_xprt_msg_max(x);
-	reply = malloc(buf_len);
+	reply = calloc(1, buf_len);
 
 	cnt = snprintf(reply->dir.json_data, buf_len - hdr_len,
 		       "{ \"directory\" : [ %s ]}", json);
