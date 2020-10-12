@@ -198,6 +198,7 @@ static int __enable_cq_events(struct z_rdma_ep *rep)
 	struct epoll_event cq_event;
 	cq_event.data.ptr = rep;
 	cq_event.events = EPOLLIN | EPOLLOUT;
+	/* safe to suppress "Syscall param epoll_ctl(event)" valgrind msg here. */
 
 	/* Release when deleting the cq_channel fd from the epoll */
 	__zap_get_ep(&rep->ep);
@@ -714,6 +715,7 @@ static zap_err_t z_rdma_connect(zap_ep_t ep,
 
 	cm_event.events = EPOLLIN | EPOLLOUT;
 	cm_event.data.ptr = rep;
+	/* safe to suppress "Syscall param epoll_ctl(event)" valgrind msg here. */
 	__zap_get_ep(&rep->ep); /* Release when disconnected */
 	rc = epoll_ctl(cm_fd, EPOLL_CTL_ADD, rep->cm_channel->fd, &cm_event);
 	if (rc)
@@ -1786,6 +1788,7 @@ z_rdma_listen(zap_ep_t ep, struct sockaddr *sin, socklen_t sa_len)
 
 	cm_event.events = EPOLLIN | EPOLLOUT;
 	cm_event.data.ptr = rep;
+	/* safe to suppress "Syscall param epoll_ctl(event)" valgrind msg here. */
 	zerr = ZAP_ERR_RESOURCE;
 	rc = epoll_ctl(cm_fd, EPOLL_CTL_ADD, rep->cm_channel->fd, &cm_event);
 	if (rc) {
