@@ -679,43 +679,42 @@ zap_map_t zap_map_get(zap_map_t map)
 	return map;
 }
 
-zap_err_t zap_map(zap_ep_t ep, zap_map_t *pm,
-		  void *addr, size_t len, zap_access_t acc)
+zap_err_t zap_map(zap_map_t *pm, void *addr, size_t len, zap_access_t acc)
 {
-	zap_map_t map;
-	zap_err_t err = ep->z->map(ep, pm, addr, len, acc);
-	if (err)
-		goto out;
+	zap_map_t map = calloc(1, sizeof(*map));
+	zap_err_t err = ZAP_ERR_OK;
 
-	map = *pm;
+	if (!map) {
+		err = ZAP_ERR_RESOURCE;
+		goto out;
+	}
+	*pm = map;
 	map->ref_count = 1;
 	map->type = ZAP_MAP_LOCAL;
-	zap_get_ep(ep);
-	map->ep = ep;
 	map->addr = addr;
 	map->len = len;
 	map->acc = acc;
-	pthread_mutex_lock(&ep->lock);
-	LIST_INSERT_HEAD(&ep->map_list, map, link);
-	pthread_mutex_unlock(&ep->lock);
  out:
 	return err;
 }
 
-zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map)
+zap_err_t zap_unmap(zap_map_t map)
 {
-	zap_err_t zerr;
+	zap_err_t zerr, tmp;
+	int i;
 
+	zerr = ZAP_ERR_OK;
 	assert(map->ref_count);
 	if (__sync_sub_and_fetch(&map->ref_count, 1))
 		return ZAP_ERR_OK;
-
-	pthread_mutex_lock(&ep->lock);
-	LIST_REMOVE(map, link);
-	pthread_mutex_unlock(&ep->lock);
-
-	zerr = ep->z->unmap(ep, map);
-	zap_put_ep(ep);
+	for (i = ZAP_SOCK; i < ZAP_LAST; i++) {
+		if (!map->mr[i])
+			continue;
+		assert(__zap_tbl[i].zap);
+		tmp = __zap_tbl[i].zap->unmap(map);
+		zerr = tmp?tmp:zerr; /* remember last error */
+	}
+	free(map);
 	return zerr;
 }
 

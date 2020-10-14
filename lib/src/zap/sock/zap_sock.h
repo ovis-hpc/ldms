@@ -87,15 +87,13 @@
  */
 #define ZAP_SOCK_KEEPINTVL 2
 
-struct zap_sock_map {
-	struct zap_map map;
-	uint32_t key; /**< Key of the map. */
-};
-
 struct z_sock_key {
 	struct rbn rb_node;
-	struct zap_sock_map *map; /**< reference to zap_map */
+	struct zap_map *map; /**< reference to zap_map */
 };
+
+#define SOCK_MAP_KEY_GET(map) ((uint32_t)(uint64_t)((map)->mr[ZAP_SOCK]))
+#define SOCK_MAP_KEY_SET(map, key) (map)->mr[ZAP_SOCK] = (void*)(uint64_t)(key)
 
 typedef enum sock_msg_type {
 	SOCK_MSG_CONNECT = 1,     /*  Connect     data          */

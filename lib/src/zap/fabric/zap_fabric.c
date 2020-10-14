@@ -213,7 +213,7 @@ static char *op_str[] = {
 
 static int		init_once();
 static int		z_fi_fill_rq(struct z_fi_ep *ep);
-static zap_err_t	z_fi_unmap(zap_ep_t ep, zap_map_t map);
+static zap_err_t	z_fi_unmap(zap_map_t map);
 static void		*cm_thread_proc(void *arg);
 static void		*cq_thread_proc(void *arg);
 static void		_context_free(struct z_fi_context *ctxt);
@@ -221,6 +221,8 @@ static int		_buffer_init_pool(struct z_fi_ep *ep);
 static void		__buffer_free(struct z_fi_buffer *rbuf);
 static int		send_credit_update(struct z_fi_ep *ep);
 static void		_deliver_disconnected(struct z_fi_ep *rep);
+static void		*__map_addr(struct z_fi_ep *ep, zap_map_t map, void *addr);
+static struct fid_mr	*z_fi_mr_get(struct z_fi_ep *ep, struct zap_map *map);
 static void		*__map_addr(struct z_fi_ep *ep, zap_map_t map, void *addr);
 
 static inline int fi_info_dom_cmp(struct fi_info *a, struct fi_info *b)
@@ -299,6 +301,87 @@ static struct z_fi_fabdom *z_fi_fabdom_get(struct fi_info *info)
  err_0:
 	pthread_mutex_unlock(&g.lock);
 	return NULL;
+}
+
+static struct z_fi_map *z_fi_map_get(struct zap_map *map)
+{
+	struct z_fi_map *zm;
+	if (map->type != ZAP_MAP_LOCAL) {
+		errno = EINVAL;
+		return NULL;
+	}
+	if (map->mr[ZAP_FABRIC])
+		return map->mr[ZAP_FABRIC];
+	zm = calloc(1, sizeof(*zm));
+	if (!zm)
+		return NULL;
+	pthread_mutex_init(&zm->lock, NULL);
+	/* race with other threads to assign mr[ZAP_FABRIC] */
+	if (!__sync_bool_compare_and_swap(&map->mr[ZAP_FABRIC], NULL, zm)) {
+		/* we lose the race */
+		pthread_mutex_destroy(&zm->lock);
+		free(zm);
+	}
+	return map->mr[ZAP_FABRIC];
+}
+
+static struct fid_mr *z_fi_mr_get(struct z_fi_ep *rep, struct zap_map *map)
+{
+	struct z_fi_map *zm;
+	struct fid_mr *mr;
+	int rc;
+	uint64_t acc_flags;
+	zm = z_fi_map_get(map);
+	if (!zm)
+		return NULL;
+	mr = zm->mr[rep->fabdom_id];
+	if (mr)
+		return mr;
+	/* else, need create */
+	pthread_mutex_lock(&zm->lock);
+	mr = zm->mr[rep->fabdom_id];
+	if (mr) {
+		/* other thread won the mr creation */
+		pthread_mutex_unlock(&zm->lock);
+		return mr;
+	}
+	acc_flags = (ZAP_ACCESS_WRITE & map->acc ? FI_REMOTE_WRITE : 0);
+	acc_flags |= (ZAP_ACCESS_READ & map->acc ? FI_REMOTE_READ : 0);
+	acc_flags |= (map->acc != ZAP_ACCESS_NONE) ? FI_READ | FI_WRITE : 0;
+	if (rep->fi->ep_attr->protocol == FI_PROTO_IWARP) {
+		/*
+		 * iwarp requires the sink map of the read operation
+		 * to be remotely writable. In the current zap API
+		 * version 1.3.0.0, the zap transport library doesn't
+		 * know the purpose of the map. Thus, we assume that
+		 * all maps can be a sink map for a read operation.
+		 */
+		acc_flags |= FI_REMOTE_WRITE;
+	}
+	rc = fi_mr_reg(rep->domain, map->addr, map->len, acc_flags, 0,
+			__sync_add_and_fetch(&g.mr_key, 1), 0, &mr, NULL);
+	if (rc) {
+		pthread_mutex_unlock(&zm->lock);
+		return NULL;
+	}
+	/*
+	rc = fi_mr_enable(mr);
+	if (rc) {
+		fi_close(&mr->fid);
+		pthread_mutex_unlock(&zm->lock);
+		return NULL;
+	}
+	*/
+	zm->mr[rep->fabdom_id] = mr;
+	pthread_mutex_unlock(&zm->lock);
+	return mr;
+}
+
+static uint64_t z_fi_rkey_get(struct zap_map *map)
+{
+	if (map->type != ZAP_MAP_REMOTE)
+		return -1;
+	return (uint64_t)map->mr[ZAP_FABRIC];
 }
 
 static int __enable_cq_events(struct z_fi_ep *rep)
@@ -397,7 +480,7 @@ static void z_fi_destroy(zap_ep_t zep)
 	while (!LIST_EMPTY(&rep->ep.map_list)) {
 		map = (zap_map_t)LIST_FIRST(&rep->ep.map_list);
 		LIST_REMOVE(map, link);
-		z_fi_unmap(zep, map);
+		z_fi_unmap(map);
 	}
 
 	pthread_mutex_lock(&rep->ep.lock);
@@ -751,6 +834,7 @@ post_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt)
 	int rc;
 	size_t len;
 	struct z_fi_buffer *rb;
+	struct fid_mr *mr;
 
 	switch (ctxt->op) {
 	    case ZAP_WC_SEND:
@@ -782,19 +866,29 @@ post_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt)
 		     rc);
 		break;
 	    case ZAP_WC_RDMA_WRITE:
+		mr = z_fi_mr_get(rep, ctxt->u.rdma.src_map);
+		if (!mr) {
+			rc = errno;
+			break;
+		}
 		rc = fi_write(rep->fi_ep, ctxt->u.rdma.src_addr, ctxt->u.rdma.len,
-			      fi_mr_desc(ctxt->u.rdma.src_map->u.local.mr), 0,
+			      fi_mr_desc(mr), 0,
 			      (uint64_t)ctxt->u.rdma.dst_addr,
-			      ctxt->u.rdma.dst_map->u.remote.rkey, ctxt);
+			      z_fi_rkey_get(ctxt->u.rdma.dst_map), ctxt);
 
 		DLOG("ZAP_WC_RDMA_WRITE rep %p ctxt %p src %p dst %p len %d\n",
 		     rep, ctxt, ctxt->u.rdma.src_addr, ctxt->u.rdma.dst_addr, ctxt->u.rdma.len);
 		break;
 	    case ZAP_WC_RDMA_READ:
+		mr = z_fi_mr_get(rep, ctxt->u.rdma.dst_map);
+		if (!mr) {
+			rc = errno;
+			break;
+		}
 		rc = fi_read(rep->fi_ep, ctxt->u.rdma.dst_addr, ctxt->u.rdma.len,
-			     fi_mr_desc(ctxt->u.rdma.dst_map->u.local.mr), 0,
+			     fi_mr_desc(mr), 0,
 			     (uint64_t)ctxt->u.rdma.src_addr,
-			     ctxt->u.rdma.src_map->u.remote.rkey, ctxt);
+			     z_fi_rkey_get(ctxt->u.rdma.src_map), ctxt);
 
 		DLOG("ZAP_WC_RDMA_READ rep %p ctxt %p src %p dst %p len %d\n",
 		     rep, ctxt, ctxt->u.rdma.src_addr, ctxt->u.rdma.dst_addr, ctxt->u.rdma.len);
@@ -1192,28 +1286,25 @@ static void handle_rendezvous(struct z_fi_ep *rep,
 {
 	struct zap_event zev;
 	struct z_fi_share_msg *sh = (struct z_fi_share_msg *)msg;
-	struct z_fi_map *map;
+	struct zap_map *map;
+	zap_err_t zerr;
 
-	map = calloc(1, sizeof(*map));
-	if (!map)
+	zerr = zap_map(&map, (void *)(unsigned long)sh->va,
+				ntohl(sh->len), ntohl(sh->acc));
+	if (zerr) {
+		LOG_(rep, "%s:%d: Failed to create a map in %s (%s)\n",
+			__FILE__, __LINE__, __func__, __zap_err_str[zerr]);
 		return;
-
-	map->map.ref_count = 1;
-	map->map.type = ZAP_MAP_REMOTE;
-	map->map.ep = &rep->ep;
-	map->map.addr = (void *)(unsigned long)sh->va;
-	map->map.len = ntohl(sh->len);
-	map->map.acc = ntohl(sh->acc);
-	map->u.remote.rkey = sh->rkey;
-
-	pthread_mutex_lock(&rep->ep.lock);
-	LIST_INSERT_HEAD(&rep->ep.map_list, &map->map, link);
-	pthread_mutex_unlock(&rep->ep.lock);
+	}
+	map->type = ZAP_MAP_REMOTE;
+	zap_get_ep(&rep->ep);
+	map->ep = &rep->ep;
+	map->mr[ZAP_FABRIC] = (void*)sh->rkey;
 
 	memset(&zev, 0, sizeof zev);
 	zev.type = ZAP_EVENT_RENDEZVOUS;
 	zev.status = ZAP_ERR_OK;
-	zev.map = &map->map;
+	zev.map = map;
 	zev.data_len = len - sizeof(*sh);
 	if (zev.data_len)
 		zev.data = (void*)sh->msg;
@@ -2193,7 +2284,7 @@ static zap_err_t z_fi_send_mapped(zap_ep_t ep, zap_map_t map,
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
 	struct z_fi_context *ctxt;
 	struct z_fi_buffer *rbuf;
-	struct z_fi_map *rmap = (struct z_fi_map *)map;
+	struct fid_mr *mr;
 
 	if (map->type != ZAP_MAP_LOCAL)
 		return ZAP_ERR_INVALID_MAP_TYPE;
@@ -2203,6 +2294,9 @@ static zap_err_t z_fi_send_mapped(zap_ep_t ep, zap_map_t map,
 	pthread_mutex_lock(&rep->ep.lock);
 	rc = __ep_state_check(rep);
 	if (rc)
+		goto out;
+	mr = z_fi_mr_get(rep, map); /* do not free mr */
+	if (!mr)
 		goto out;
 	rbuf = __buffer_alloc(rep);
 	if (!rbuf) {
@@ -2230,7 +2324,7 @@ static zap_err_t z_fi_send_mapped(zap_ep_t ep, zap_map_t map,
 	/* payload */
 	ctxt->u.send_mapped.iov[1].iov_base = buf;
 	ctxt->u.send_mapped.iov[1].iov_len = len;
-	ctxt->u.send_mapped.mr_desc[1] = fi_mr_desc(rmap->u.local.mr);
+	ctxt->u.send_mapped.mr_desc[1] = fi_mr_desc(mr);
 
 	rc = submit_wr(rep, ctxt, 0);
 	if (rc) {
@@ -2245,10 +2339,10 @@ out:
 static zap_err_t z_fi_share(zap_ep_t ep, zap_map_t map,
 				const char *msg, size_t msg_len)
 {
-	struct z_fi_map *rmap = (struct z_fi_map *)map;
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
 	struct z_fi_share_msg *sm;
 	struct z_fi_buffer *rbuf;
+	struct fid_mr *mr;
 	int rc;
 	size_t sz = sizeof(*sm) + msg_len;
 
@@ -2264,6 +2358,9 @@ static zap_err_t z_fi_share(zap_ep_t ep, zap_map_t map,
 		return ZAP_ERR_RESOURCE;
 	}
 	pthread_mutex_unlock(&rep->ep.lock);
+	mr = z_fi_mr_get(rep, map);
+	if (!mr)
+		return ZAP_ERR_RESOURCE;
 
 	if (!_buffer_fits(rbuf, sz)) {
 		__buffer_free(rbuf);
@@ -2272,10 +2369,10 @@ static zap_err_t z_fi_share(zap_ep_t ep, zap_map_t map,
 
 	sm = (struct z_fi_share_msg *)rbuf->msg;
 	sm->hdr.msg_type = htons(Z_FI_MSG_RENDEZVOUS);
-	sm->rkey = fi_mr_key(rmap->u.local.mr);
-	sm->va = (uint64_t)rmap->map.addr;
-	sm->len = htonl(rmap->map.len);
-	sm->acc = htonl(rmap->map.acc);
+	sm->rkey = fi_mr_key(mr);
+	sm->va = (uint64_t)map->addr;
+	sm->len = htonl(map->len);
+	sm->acc = htonl(map->acc);
 	if (msg_len)
 		memcpy(sm->msg, msg, msg_len);
 
@@ -2287,54 +2384,20 @@ static zap_err_t z_fi_share(zap_ep_t ep, zap_map_t map,
 	return rc;
 }
 
-static zap_err_t z_fi_map(zap_ep_t ep, zap_map_t *pm,
-			  void *buf, size_t len, zap_access_t acc)
+static zap_err_t z_fi_unmap(zap_map_t map)
 {
-	int ret;
-	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
-	struct z_fi_map *map;
-	uint64_t acc_flags;
+	struct z_fi_map *zm = (struct z_fi_map *)map->mr[ZAP_FABRIC];
+	int i;
 
-	map = calloc(1, sizeof(*map));
-	if (!map)
-		goto err_0;
+	if (map->type != ZAP_MAP_LOCAL)
+		return ZAP_ERR_OK;
 
-	acc_flags = (ZAP_ACCESS_WRITE & acc ? FI_REMOTE_WRITE : 0);
-	acc_flags |= (ZAP_ACCESS_READ & acc ? FI_REMOTE_READ : 0);
-	acc_flags |= (acc != ZAP_ACCESS_NONE) ? FI_READ | FI_WRITE : 0;
-
-	if (rep->fi->ep_attr->protocol == FI_PROTO_IWARP) {
-		/*
-		 * iwarp requires the sink map of the read operation
-		 * to be remotely writable. In the current zap API
-		 * version 1.3.0.0, the zap transport library doesn't
-		 * know the purpose of the map. Thus, we assume that
-		 * all maps can be a sink map for a read operation.
-		 */
-		acc_flags |= FI_REMOTE_WRITE;
+	for (i = 0; i < ZAP_FI_MAX_DOM; i++) {
+		if (zm->mr[i])
+			fi_close(&zm->mr[i]->fid);
 	}
-
-	ret = fi_mr_reg(rep->domain, buf, len, acc_flags, 0, ++g.mr_key, 0, &map->u.local.mr, NULL);
-	if (ret)
-		goto err_1;
-
-	*pm = &map->map;
-	return ZAP_ERR_OK;
- err_1:
-	free(map);
- err_0:
-	return ZAP_ERR_RESOURCE;
-}
-
-static zap_err_t z_fi_unmap(zap_ep_t ep, zap_map_t map)
-{
-	struct z_fi_map *zm = (struct z_fi_map *)map;
-
-	if (map->type == ZAP_MAP_LOCAL) {
-		assert(zm->u.local.mr);
-		fi_close(&zm->u.local.mr->fid);
-		zm->u.local.mr = NULL;
-	}
+	if ((map->type == ZAP_MAP_REMOTE) && map->ep)
+		zap_put_ep(map->ep);
 	free(zm);
 	return ZAP_ERR_OK;
 }
@@ -2347,9 +2410,10 @@ static zap_err_t z_fi_write(zap_ep_t ep,
 {
 	int rc;
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
-	struct z_fi_map *rmap = (struct z_fi_map *)dst_map;
-	struct z_fi_map *lmap = (struct z_fi_map *)src_map;
 	struct z_fi_context *ctxt;
+
+	if (src_map->type != ZAP_MAP_LOCAL || dst_map->type != ZAP_MAP_REMOTE)
+		return ZAP_ERR_INVALID_MAP_TYPE;
 
 	pthread_mutex_lock(&rep->ep.lock);
 	rc = __ep_state_check(rep);
@@ -2361,8 +2425,8 @@ static zap_err_t z_fi_write(zap_ep_t ep,
 		rc = ZAP_ERR_RESOURCE;
 		goto out;
 	}
-	ctxt->u.rdma.src_map  = lmap;
-	ctxt->u.rdma.dst_map  = rmap;
+	ctxt->u.rdma.src_map  = src_map;
+	ctxt->u.rdma.dst_map  = dst_map;
 	ctxt->u.rdma.src_addr = src;
 	ctxt->u.rdma.dst_addr = __map_addr(rep, dst_map, dst);
 	ctxt->u.rdma.len      = sz;
@@ -2383,9 +2447,10 @@ static zap_err_t z_fi_read(zap_ep_t ep,
 {
 	zap_err_t rc;
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
-	struct z_fi_map *lmap = (struct z_fi_map *)dst_map;
-	struct z_fi_map *rmap = (struct z_fi_map *)src_map;
 	struct z_fi_context *ctxt;
+
+	if (src_map->type != ZAP_MAP_REMOTE || dst_map->type != ZAP_MAP_LOCAL)
+		return ZAP_ERR_INVALID_MAP_TYPE;
 
 	pthread_mutex_lock(&rep->ep.lock);
 	rc = __ep_state_check(rep);
@@ -2397,8 +2462,8 @@ static zap_err_t z_fi_read(zap_ep_t ep,
 		rc = ZAP_ERR_RESOURCE;
 		goto out;
 	}
-	ctxt->u.rdma.src_map  = rmap;
-	ctxt->u.rdma.dst_map  = lmap;
+	ctxt->u.rdma.src_map  = src_map;
+	ctxt->u.rdma.dst_map  = dst_map;
 	ctxt->u.rdma.src_addr = __map_addr(rep, src_map, src);
 	ctxt->u.rdma.dst_addr = dst;
 	ctxt->u.rdma.len      = sz;
@@ -2501,7 +2566,6 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->send_mapped = z_fi_send_mapped;
 	z->read = z_fi_read;
 	z->write = z_fi_write;
-	z->map = z_fi_map;
 	z->unmap = z_fi_unmap;
 	z->share = z_fi_share;
 	z->get_name = z_get_name;

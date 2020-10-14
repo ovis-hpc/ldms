@@ -139,6 +139,7 @@ int init_complete = 0;
 
 static void zap_ugni_default_log(const char *fmt, ...);
 static zap_log_fn_t zap_ugni_log = zap_ugni_default_log;
+zap_mem_info_fn_t __mem_info_fn = NULL;
 
 /* 100000 because the Cray node names have only 5 digits, e.g, nid00000  */
 #define ZAP_UGNI_MAX_NUM_NODE 100000
@@ -179,7 +180,6 @@ static int zap_ugni_disconnect_timeout;
 static int zap_ugni_max_num_ep;
 static uint32_t *zap_ugni_ep_id;
 
-static int reg_count;
 static LIST_HEAD(mh_list, ugni_mh) mh_list;
 static pthread_mutex_t ugni_mh_lock;
 
@@ -435,47 +435,45 @@ static void __free_post_desc(struct zap_ugni_post_desc *d)
 	free(d);
 }
 
-gni_return_t ugni_get_mh(struct z_ugni_ep *uep, void *addr,
-				size_t size, gni_mem_handle_t *mh)
+gni_mem_handle_t *__mh = NULL; /* the global memory handle ptr */
+gni_mem_handle_t __mh_obj;
+
+gni_mem_handle_t *ugni_get_mh()
 {
 	gni_return_t grc = GNI_RC_SUCCESS;
-	struct ugni_mh *umh;
-	int need_mh = 0;
-	unsigned long start;
-	unsigned long end;
+	zap_mem_info_t mmi;
+
+	if (__mh)
+		return __mh;
 
 	pthread_mutex_lock(&ugni_mh_lock);
-	umh = LIST_FIRST(&mh_list);
-	if (!umh) {
-		zap_mem_info_t mmi;
-		mmi = uep->ep.z->mem_info_fn();
-		start = (unsigned long)mmi->start;
-		end = start + mmi->len;
-		need_mh = 1;
+	/* multiple threads race to create the memory handle */
+	if (__mh) {
+		/* mh has already been created by the other thread */
+		pthread_mutex_unlock(&ugni_mh_lock);
+		return __mh;
 	}
-	if (!need_mh)
-		goto out;
+	mmi = __mem_info_fn();
 
-	umh = malloc(sizeof *umh);
-	umh->start = start;
-	umh->end = end;
-	umh->ref_count = 0;
-
-	grc = GNI_MemRegister(_dom.nic, umh->start, end - start,
-			      NULL,
+	grc = GNI_MemRegister(_dom.nic, (uint64_t)mmi->start, mmi->len, NULL,
 			      GNI_MEM_READWRITE | GNI_MEM_RELAXED_PI_ORDERING,
-			      -1, &umh->mh);
+			      -1, &__mh_obj);
 	if (grc != GNI_RC_SUCCESS) {
-		free(umh);
-		goto out;
+		LOG("GNI_MemRegister() error, rc: %d\n", grc);
+	} else {
+		__mh = &__mh_obj;
 	}
-	LIST_INSERT_HEAD(&mh_list, umh, link);
-	reg_count++;
-out:
-	*mh = umh->mh;
-	umh->ref_count++;
 	pthread_mutex_unlock(&ugni_mh_lock);
-	return grc;
+	return __mh;
+}
+
+gni_mem_handle_t *map_mh(zap_map_t map)
+{
+	if (map->mr[ZAP_UGNI])
+		return map->mr[ZAP_UGNI];
+	if (map->type == ZAP_MAP_LOCAL)
+		return map->mr[ZAP_UGNI] = ugni_get_mh();
+	return NULL;
 }
 
 /* The caller must hold the endpoint lock */
@@ -758,6 +756,8 @@ static void process_uep_msg_regular(struct z_ugni_ep *uep)
 static void process_uep_msg_rendezvous(struct z_ugni_ep *uep)
 {
 	struct zap_ugni_msg_rendezvous *msg;
+	struct zap_map *map;
+	zap_err_t zerr;
 
 	msg = (void*)uep->rbuff->data;
 
@@ -770,12 +770,16 @@ static void process_uep_msg_rendezvous(struct z_ugni_ep *uep)
 	msg->gni_mh.qword1 = be64toh(msg->gni_mh.qword1);
 	msg->gni_mh.qword2 = be64toh(msg->gni_mh.qword2);
 
-	struct zap_ugni_map *map = calloc(1, sizeof(*map));
-	if (!map) {
-		LOG_(uep, "ENOMEM in %s at %s:%d\n",
-				__func__, __FILE__, __LINE__);
+	zerr = zap_map(&map, (void*)msg->addr, msg->data_len, msg->acc);
+	if (zerr) {
+		LOG_(uep, "%s:%d: Failed to create a map in %s (%s)\n",
+			__FILE__, __LINE__, __func__, __zap_err_str[zerr]);
 		goto err0;
 	}
+	map->type = ZAP_MAP_REMOTE;
+	zap_get_ep(&uep->ep);
+	map->ep = (void*)uep;
+	map->mr[ZAP_UGNI] = &msg->gni_mh;
 
 	char *amsg = NULL;
 	size_t amsg_len = msg->hdr.msg_len - sizeof(msg);
@@ -783,22 +787,9 @@ static void process_uep_msg_rendezvous(struct z_ugni_ep *uep)
 		amsg = msg->msg; /* attached message from rendezvous */
 	}
 
-	map->map.ref_count = 1;
-	map->map.ep = (void*)uep;
-	map->map.acc = msg->acc;
-	map->map.type = ZAP_MAP_REMOTE;
-	map->map.addr = (void*)msg->addr;
-	map->map.len = msg->data_len;
-	map->gni_mh = msg->gni_mh;
-
-	zap_get_ep(&uep->ep);
-	pthread_mutex_lock(&uep->ep.lock);
-	LIST_INSERT_HEAD(&uep->ep.map_list, &map->map, link);
-	pthread_mutex_unlock(&uep->ep.lock);
-
 	struct zap_event ev = {
 		.type = ZAP_EVENT_RENDEZVOUS,
-		.map = (void*)map,
+		.map = map,
 		.data_len = amsg_len,
 		.data = (void*)amsg
 	};
@@ -2738,36 +2729,10 @@ err:
 	return zerr;
 }
 
-static zap_err_t
-z_ugni_map(zap_ep_t ep, zap_map_t *pm, void *buf, size_t len, zap_access_t acc)
+static zap_err_t z_ugni_unmap(zap_map_t map)
 {
-	struct zap_ugni_map *map = calloc(1, sizeof(*map));
-	gni_return_t grc;
-	zap_err_t zerr = ZAP_ERR_OK;
-	if (!map) {
-		zerr = ZAP_ERR_RESOURCE;
-		goto err0;
-	}
-
-	grc = ugni_get_mh((void*)ep, buf, len, &map->gni_mh);
-	if (grc) {
-		zerr = ZAP_ERR_RESOURCE;
-		goto err1;
-	}
-
-	*pm = (void*)map;
-	goto out;
-err1:
-	free(map);
-err0:
-out:
-	return zerr;
-}
-
-static zap_err_t z_ugni_unmap(zap_ep_t ep, zap_map_t map)
-{
-	struct zap_ugni_map *m = (void*) map;
-	free(m);
+	if ((map->type == ZAP_MAP_REMOTE) && map->ep)
+		zap_put_ep(map->ep);
 	return ZAP_ERR_OK;
 }
 
@@ -2775,6 +2740,7 @@ static zap_err_t z_ugni_share(zap_ep_t ep, zap_map_t map,
 				const char *msg, size_t msg_len)
 {
 	zap_err_t rc;
+	gni_mem_handle_t *mh;
 	struct z_ugni_ep *uep = (void*) ep;
 
 	/* validate */
@@ -2784,13 +2750,16 @@ static zap_err_t z_ugni_share(zap_ep_t ep, zap_map_t map,
 	if (map->type != ZAP_MAP_LOCAL)
 		return ZAP_ERR_INVALID_MAP_TYPE;
 
+	mh = map_mh(map);
+	if (!mh)
+		return ZAP_ERR_RESOURCE;
+
 	/* node state validation */
 	rc = __node_state_check(uep);
 	if (rc)
 		return rc;
 
 	/* prepare message */
-	struct zap_ugni_map *smap = (struct zap_ugni_map *)map;
 	struct zap_ugni_msg_rendezvous *msgr;
 	struct zap_ugni_send_wr *wr = __wr_alloc(ZAP_UGNI_MSG_RENDEZVOUS, msg_len, 1);
 	if (!wr)
@@ -2798,8 +2767,8 @@ static zap_err_t z_ugni_share(zap_ep_t ep, zap_map_t map,
 	wr->dsz = msg_len;
 	wr->msz = sizeof(*msgr);
 	msgr = &wr->msg.rendezvous;
-	msgr->gni_mh.qword1  =  htobe64(smap->gni_mh.qword1);
-	msgr->gni_mh.qword2  =  htobe64(smap->gni_mh.qword2);
+	msgr->gni_mh.qword1  =  htobe64(mh->qword1);
+	msgr->gni_mh.qword2  =  htobe64(mh->qword2);
 	msgr->addr           =  htobe64((uint64_t)map->addr);
 	msgr->data_len       =  htonl(map->len);
 	msgr->acc            =  htonl(map->acc);
@@ -2832,9 +2801,12 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 	if (z_map_access_validate(dst_map, dst, sz, ZAP_ACCESS_READ) != 0)
 		return ZAP_ERR_LOCAL_LEN;
 
+	gni_mem_handle_t *src_mh = map_mh(src_map);
+	gni_mem_handle_t *dst_mh = map_mh(dst_map);
+	if (!src_mh || !dst_mh)
+		return ZAP_ERR_RESOURCE;
+
 	struct z_ugni_ep *uep = (struct z_ugni_ep *)ep;
-	struct zap_ugni_map *smap = (struct zap_ugni_map *)src_map;
-	struct zap_ugni_map *dmap = (struct zap_ugni_map *)dst_map;
 
 	/* node state validation */
 	zerr = __node_state_check(uep);
@@ -2870,9 +2842,9 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 	desc->post.cq_mode = GNI_CQMODE_GLOBAL_EVENT;
 	desc->post.dlvr_mode = GNI_DLVMODE_IN_ORDER;
 	desc->post.local_addr = (uint64_t)dst;
-	desc->post.local_mem_hndl = dmap->gni_mh;
+	desc->post.local_mem_hndl = *dst_mh;
 	desc->post.remote_addr = (uint64_t)src;
-	desc->post.remote_mem_hndl = smap->gni_mh;
+	desc->post.remote_mem_hndl = *src_mh;
 	desc->post.length = sz;
 	desc->post.post_id = __sync_fetch_and_add(&ugni_post_id, 1);
 
@@ -2932,9 +2904,13 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	if (z_map_access_validate(dst_map, dst, sz, ZAP_ACCESS_WRITE) != 0)
 		return ZAP_ERR_REMOTE_PERMISSION;
 
+
+	gni_mem_handle_t *src_mh = map_mh(src_map);
+	gni_mem_handle_t *dst_mh = map_mh(dst_map);
+	if (!src_mh || !dst_mh)
+		return ZAP_ERR_RESOURCE;
+
 	struct z_ugni_ep *uep = (void*)ep;
-	struct zap_ugni_map *smap = (void*)src_map;
-	struct zap_ugni_map *dmap = (void*)dst_map;
 
 	/* node state validation */
 	zap_err_t zerr;
@@ -2970,9 +2946,9 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	desc->post.cq_mode = GNI_CQMODE_GLOBAL_EVENT;
 	desc->post.dlvr_mode = GNI_DLVMODE_PERFORMANCE;
 	desc->post.local_addr = (uint64_t)src;
-	desc->post.local_mem_hndl = smap->gni_mh;
+	desc->post.local_mem_hndl = *src_mh;
 	desc->post.remote_addr = (uint64_t)dst;
-	desc->post.remote_mem_hndl = dmap->gni_mh;
+	desc->post.remote_mem_hndl = *dst_mh;
 	desc->post.length = sz;
 	desc->post.post_id = __sync_fetch_and_add(&ugni_post_id, 1);
 	desc->context = context;
@@ -3026,6 +3002,8 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	if (!z)
 		goto err;
 
+	__mem_info_fn = mem_info_fn;
+
 	sendrecv_sz = sizeof(struct zap_ugni_msg_regular);
 	rendezvous_sz = sizeof(struct zap_ugni_msg_rendezvous);
 
@@ -3043,7 +3021,6 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->send_mapped = z_ugni_send_mapped;
 	z->read = z_ugni_read;
 	z->write = z_ugni_write;
-	z->map = z_ugni_map;
 	z->unmap = z_ugni_unmap;
 	z->share = z_ugni_share;
 	z->get_name = z_get_name;
