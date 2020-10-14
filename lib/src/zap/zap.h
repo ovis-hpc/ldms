@@ -94,7 +94,7 @@ typedef struct zap_map *zap_map_t;
 #define ZAP_EVENT_BAD -1
 
 enum zap_type {
-	ZAP_SOCK = 1,
+	ZAP_SOCK,
 	ZAP_RDMA,
 	ZAP_UGNI,
 	ZAP_FABRIC,
@@ -637,15 +637,13 @@ typedef enum zap_map_type {
  * is only used locally, i.e. it is not the target of an RDMA WRITE or
  * the source of an RDMA READ.
  *
- * \param ep	The endpoint handle
  * \param pm	Pointer to the map handle
  * \param addr	The memory address of the buffer
  * \param sz	The size in bytes of the buffer
  * \param acc	The remote access flags of the buffer
  * \return 0	Success, or a non-zero zap_err_t error code.
  */
-zap_err_t zap_map(zap_ep_t ep, zap_map_t *pm,
-		  void *addr, size_t sz, zap_access_t acc);
+zap_err_t zap_map(zap_map_t *pm, void *addr, size_t sz, zap_access_t acc);
 
 /**
  * Add a reference to a zap mapping
@@ -687,12 +685,11 @@ char *zap_map_addr(zap_map_t map);
  * will no longer be accessible to the remote peer. Note that the peer is
  * not notified that the mapping has been removed.
  *
- * \param ep	The endpoint handle
  * \param map	The buffer mapping returned by a previous call to \c
  *		zap_map_buf
  * \return 0	Success, or a non-zero zap_err_t error code.
  */
-zap_err_t zap_unmap(zap_ep_t ep, zap_map_t map);
+zap_err_t zap_unmap(zap_map_t map);
 
 /** \brief Share a mapping with a remote peer
  *

@@ -112,15 +112,8 @@ struct z_fi_reject_msg {
 #pragma pack()
 
 struct z_fi_map {
-	struct zap_map map;
-	union {
-		struct {
-			struct fid_mr	*mr;
-		} local;
-		struct {
-			uint64_t	rkey;
-		} remote;
-	} u;
+	pthread_mutex_t lock;
+	struct fid_mr	*mr[ZAP_FI_MAX_DOM];
 };
 
 struct z_fi_buffer {
@@ -153,8 +146,8 @@ struct z_fi_context {
 			struct z_fi_buffer *rb;
 		} recv;
 		struct {
-			struct z_fi_map *src_map;
-			struct z_fi_map	*dst_map;
+			struct zap_map *src_map;
+			struct zap_map	*dst_map;
 			void		*src_addr;
 			void		*dst_addr;
 			size_t		len;
