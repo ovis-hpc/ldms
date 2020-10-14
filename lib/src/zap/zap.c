@@ -260,6 +260,19 @@ zap_mem_info_t default_zap_mem_info(void)
 static
 void zap_interpose_event(zap_ep_t ep, void *ctxt);
 
+struct zap_tbl_entry {
+	enum zap_type type;
+	const char *name;
+	zap_t zap;
+};
+struct zap_tbl_entry __zap_tbl[] = {
+	[ ZAP_SOCK   ]  =  { ZAP_SOCK   , "sock"   , NULL },
+	[ ZAP_RDMA   ]  =  { ZAP_RDMA   , "rdma"   , NULL },
+	[ ZAP_UGNI   ]  =  { ZAP_UGNI   , "ugni"   , NULL },
+	[ ZAP_FABRIC ]  =  { ZAP_FABRIC , "fabric" , NULL },
+	[ ZAP_LAST   ]  =  { 0          , NULL     , NULL },
+};
+
 zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_fn)
 {
 	char _libdir[MAX_ZAP_LIBPATH];
@@ -272,7 +285,27 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	int ret, len;
 	void *d = NULL;
 	char *saveptr = NULL;
+	struct zap_tbl_entry *zent;
 
+	pthread_mutex_lock(&zap_list_lock);
+	for (zent = __zap_tbl; zent->name; zent++) {
+		if (0 != strcmp(zent->name, name))
+			continue;
+		/* found the entry */
+		if (zent->zap) { /* already loaded */
+			pthread_mutex_unlock(&zap_list_lock);
+			return zent->zap;
+		}
+		break;
+	}
+	pthread_mutex_unlock(&zap_list_lock);
+	if (!zent->name) {
+		/* unknown zap name */
+		errno = ENOENT;
+		return NULL;
+	}
+
+	/* otherwise, it is a known zap name but has not been loaded yet */
 	if (!log_fn)
 		log_fn = default_log;
 	if (!mem_info_fn)
@@ -332,6 +365,7 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	z->event_interpose = zap_interpose_event;
 
 	pthread_mutex_lock(&zap_list_lock);
+	zent->zap = z;
 	LIST_INSERT_HEAD(&zap_list, z, zap_link);
 	pthread_mutex_unlock(&zap_list_lock);
 
