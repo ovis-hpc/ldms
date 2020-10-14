@@ -3781,7 +3781,7 @@ ___ldms_alloc_rbd(struct ldms_xprt *x, struct ldms_set *s, enum ldms_rbd_type ty
 	rbn_init(&rbd->xprt_rbn, s);
 	size_t set_sz = __ldms_set_size_get(s);
 	if (x) {
-		zerr = zap_map(x->zap_ep, &rbd->lmap, s->meta, set_sz,
+		zerr = zap_map(&rbd->lmap, s->meta, set_sz,
 					 ZAP_ACCESS_READ | ZAP_ACCESS_WRITE);
 		if (zerr)
 			goto err1;
@@ -3818,14 +3818,14 @@ void __ldms_rbd_xprt_release(struct ldms_rbuf_desc *rbd)
 #ifdef DEBUG
 		xprt->log("DEBUG: zap %p: unmap local\n", rbd->xprt->zap_ep);
 #endif
-		zap_unmap(xprt->zap_ep, rbd->lmap);
+		zap_unmap(rbd->lmap);
 		rbd->lmap = NULL;
 	}
 	if (rbd->rmap) {
 #ifdef DEBUG
 		xprt->log("DEBUG: zap %p: unmap remote\n", rbd->xprt->zap_ep);
 #endif
-		zap_unmap(rbd->xprt->zap_ep, rbd->rmap);
+		zap_unmap(rbd->rmap);
 		rbd->rmap = NULL;
 	}
 	rbt_del(&xprt->rbd_rbt, &rbd->xprt_rbn);
