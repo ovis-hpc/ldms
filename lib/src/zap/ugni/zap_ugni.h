@@ -79,9 +79,10 @@
 
 #define ZAP_UGNI_INIT_RECV_BUFF_SZ 4096
 
+/* This is used by handle rendezvous */
 struct zap_ugni_map {
 	struct zap_map map;
-	gni_mem_handle_t gni_mh; /**< GNI memory handle */
+	gni_mem_handle_t gni_mh;
 };
 
 struct z_ugni_key {

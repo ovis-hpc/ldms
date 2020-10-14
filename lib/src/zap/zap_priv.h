@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-2017,2019 National Technology & Engineering Solutions
+ * Copyright (c) 2013-2017,2019,2020 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2013-2017,2019 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2017,2019,2020 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -220,12 +220,8 @@ struct zap {
 			  zap_map_t dst_map, char *dst, size_t sz,
 			  void *context);
 
-	/** Allocate a remote buffer */
-	zap_err_t (*map)(zap_ep_t ep, zap_map_t *pm, void *addr, size_t len,
-			 zap_access_t acc);
-
 	/** Free a remote buffer */
-	zap_err_t (*unmap)(zap_ep_t ep, zap_map_t map);
+	zap_err_t (*unmap)(zap_map_t map);
 
 	/** Share a mapping with a remote peer */
 	zap_err_t (*share)(zap_ep_t ep, zap_map_t m,
@@ -286,6 +282,7 @@ struct zap_map {
 	zap_access_t acc;	  /*! Access rights */
 	char *addr;		  /*! Address of buffer. */
 	size_t len;		  /*! Length of the buffer */
+	void *mr[ZAP_LAST];	  /*! xprt-specific memory registrations */
 };
 
 struct zap_event_entry {
