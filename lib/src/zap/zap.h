@@ -93,6 +93,14 @@ typedef struct zap_map *zap_map_t;
 
 #define ZAP_EVENT_BAD -1
 
+enum zap_type {
+	ZAP_SOCK = 1,
+	ZAP_RDMA,
+	ZAP_UGNI,
+	ZAP_FABRIC,
+	ZAP_LAST,
+};
+
 typedef enum zap_event_type {
 	/*! An incoming connect request is ready to be accepted or rejected. */
 	ZAP_EVENT_CONNECT_REQUEST = 1,
