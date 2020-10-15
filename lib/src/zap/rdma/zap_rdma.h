@@ -61,6 +61,9 @@
 #define SQ_SGE 1
 #define RQ_SGE 1
 
+/* number of buffers in a pool */
+#define Z_RDMA_POOL_SZ 256
+
 #pragma pack(4)
 enum z_rdma_message_type {
 	Z_RDMA_MSG_CREDIT_UPDATE = 1,
@@ -116,11 +119,23 @@ struct z_rdma_map {
 #define Z_RDMA_MAP_SZ (sizeof(struct z_rdma_map) + ZAP_RDMA_MAX_PD*sizeof(struct ibv_mr *))
 
 struct z_rdma_buffer {
-	union z_rdma_msg *msg; /* message buffer */
-	size_t buf_len;  /* buffer length */
 	size_t data_len; /* data written to the buffer */
 	struct z_rdma_ep *rep; /* the endpoint who owns the buffer */
-	LIST_ENTRY(z_rdma_buffer) free_link;
+	struct z_rdma_buffer_pool *pool; /* pool that this buffer resides */
+	LIST_ENTRY(z_rdma_buffer) free_link; /* link to next free entry in the pool */
+	union {
+		union z_rdma_msg msg[0]; /* message buffer */
+		char bytes[RQ_BUF_SZ];
+	};
+};
+
+struct z_rdma_buffer_pool {
+	struct ibv_mr *mr; /* MR for the memory pool */
+	int num_alloc; /* number of buffers allocated */
+	int _pad; /* padding */
+	LIST_HEAD(, z_rdma_buffer) free_buffer_list; /* free buffer list */
+	LIST_ENTRY(z_rdma_buffer_pool) pool_link; /* link to other pools */
+	struct z_rdma_buffer buffer[Z_RDMA_POOL_SZ];
 };
 
 /**
@@ -158,7 +173,16 @@ struct z_rdma_conn_data {
 #define RDMA_ACCEPT_DATA_MAX (196)
 #define ZAP_RDMA_ACCEPT_DATA_MAX RDMA_ACCEPT_DATA_MAX
 
-LIST_HEAD(z_rdma_buffer_list, z_rdma_buffer);
+struct z_rdma_epoll_ctxt {
+	enum {
+		Z_RDMA_EPOLL_CM = 1,
+		Z_RDMA_EPOLL_CQ,
+	} type;
+	union {
+		struct rdma_event_channel *cm_channel;
+		struct z_rdma_ep *cq_rep;
+	};
+};
 
 struct z_rdma_ep {
 	struct zap_ep ep;
@@ -213,13 +237,16 @@ struct z_rdma_ep {
 	LIST_HEAD(active_ctxt_list, z_rdma_context) active_ctxt_list;
 
 	/* send/recv buffers */
+#if 0
 	int num_bufs;  /* total buffers: 4 + SQ_DEPTH + RQ_DEPTH */
 	size_t buf_sz; /* size of each buffer */
 	char *buf_pool;
 	struct z_rdma_buffer *buf_objs;
 	struct ibv_mr *buf_pool_mr;
 	LIST_HEAD(buf_free_list, z_rdma_buffer) buf_free_list;
-	pthread_mutex_t	buf_free_list_lock;
+#endif
+	LIST_HEAD(, z_rdma_buffer_pool) vacant_pool;
+	LIST_HEAD(, z_rdma_buffer_pool) full_pool;
 
 #ifdef ZAP_DEBUG
 	int rejected_count;
@@ -235,6 +262,18 @@ struct z_rdma_ep {
 	int cm_channel_enabled;
 	int cq_channel_enabled;
 	pthread_cond_t io_q_cond;
+
+	struct z_rdma_epoll_ctxt cq_ctxt;
 };
+
+typedef struct z_rdma_io_thread {
+	struct zap_io_thread zap_io_thread;
+	int efd; /* epoll fd */
+	struct z_rdma_epoll_ctxt cm_ctxt;
+	int devices_len; /* number of devices */
+} *z_rdma_io_thread_t;
+
+/* Get z_rdma_io_thread from struct z_rdma_ep */
+#define Z_RDMA_EP_THR(ep) ((z_rdma_io_thread_t)((struct zap_ep *)(ep))->thread)
 
 #endif

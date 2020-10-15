@@ -66,6 +66,7 @@
 #include <netdb.h>
 #include <time.h>
 #include <pthread.h>
+#include <fcntl.h>
 #include "zap_rdma.h"
 
 #define LOG(FMT, ...)							\
@@ -77,6 +78,9 @@
 				_ts.tv_sec, _ts.tv_nsec,		\
 				_tid, ##__VA_ARGS__);			\
 	} while (0)
+
+/* log with line fn/number */
+#define LOGL(FMT, ...) LOG( "%s:%d " FMT, __func__, __LINE__, ##__VA_ARGS__ )
 
 #ifdef DEBUG
 #define DLOG(FMT, ...) LOG(FMT, ##__VA_ARGS__)
@@ -129,8 +133,9 @@
 #define __rdma_context_free( _CTXT ) _rdma_context_free(_CTXT)
 #endif /* CTXT_DEBUG */
 
-static int cq_fd;
-static int cm_fd;
+static struct ibv_context **devices = NULL;
+static int devices_len = 0;
+
 #define CQ_EVENT_LEN 16
 
 void __default_log_fn(const char *fmt, ...)
@@ -243,8 +248,6 @@ static struct context_tree_entry *__rdma_get_ce(struct z_rdma_ep *rep)
 LIST_HEAD(ep_list, z_rdma_ep) ep_list;
 
 static int z_rdma_fill_rq(struct z_rdma_ep *ep);
-static void *cm_thread_proc(void *arg);
-static void *cq_thread_proc(void *arg);
 static int cq_event_handler(struct ibv_cq *cq, int count);
 static void _rdma_context_free(struct z_rdma_context *ctxt);
 static void __rdma_buffer_free(struct z_rdma_buffer *rbuf);
@@ -252,124 +255,83 @@ static int send_credit_update(struct z_rdma_ep *ep);
 static void _rdma_deliver_disconnected(struct z_rdma_ep *rep);
 static void process_write_wc(struct z_rdma_ep *rep, struct ibv_wc *wc, void *usr_context);
 static void process_read_wc(struct z_rdma_ep *rep, struct ibv_wc *wc, void *usr_context);
-static int __disable_cm_events(struct z_rdma_ep *rep);
-static int __disable_cq_events(struct z_rdma_ep *rep);
 static zap_err_t submit_wr(struct z_rdma_ep *rep, struct z_rdma_context *ctxt,
 			   int is_rdma);
 static int get_credits(struct z_rdma_ep *rep, int is_rdma);
 static struct z_rdma_map *z_rdma_map_get(zap_map_t map);
 static struct ibv_mr *z_rdma_mr_get(zap_map_t map, zap_ep_t ep);
 
-/* channel for cleaning up endpoint */
-struct cleanup_channel {
-	union {
-		int fd[2]; /* socket pair */
-		struct {
-			int rfd; /* fd for reading the notification */
-			int wfd; /* fd for writing the notification */
-		};
-	};
-	pthread_mutex_t mutex;
-	TAILQ_HEAD(, z_rdma_ep) list;
-};
+static void flush_io_q(struct z_rdma_ep *rep);
+static void z_rdma_handle_cq_event(struct z_rdma_epoll_ctxt *ctxt);
 
-static struct cleanup_channel cleanup_channel;
+static struct z_rdma_buffer_pool * __rdma_buffer_pool_alloc(struct z_rdma_ep *rep);
+static inline void __rdma_buffer_pool_free(struct z_rdma_buffer_pool *p);
+static struct z_rdma_buffer * __rdma_buffer_alloc(struct z_rdma_ep *rep);
+static inline void __rdma_buffer_free(struct z_rdma_buffer *rb);
 
-static int cleanup_channel_init()
+/* Turn the given file status flags on */
+__attribute__((unused))
+static int fd_flags_on(int fd, int flags)
 {
-	struct cleanup_channel *cc = &cleanup_channel; /* global */
-	int rc = socketpair(AF_UNIX, SOCK_STREAM, 0, cc->fd);
-	struct epoll_event cc_event;
-	cc_event.data.ptr = cc;
-	cc_event.events = EPOLLIN;
-	if (rc < 0)
+	int fl, rc;
+	fl = fcntl(fd, F_GETFL);
+	if (fl == -1) {
+		LOG("fcntl(F_GETFL) failed, errno: %d\n", errno);
 		return errno;
-	pthread_mutex_init(&cc->mutex, NULL);
-	TAILQ_INIT(&cc->list);
-	DLOG("epoll_add cleanup_channel %p fd %d\n", cc, cc->rfd);
-	if (epoll_ctl(cq_fd, EPOLL_CTL_ADD, cc->rfd, &cc_event)) {
-		LOG("epoll_add cleanup_channel %p fd %d failed, errno: %d\n",
-			cc, cc->rfd, errno);
-		close(cc->rfd);
-		cc->rfd = -1;
-		close(cc->wfd);
-		cc->wfd = -1;
+	}
+	rc = fcntl(fd, F_SETFL, fl | flags);
+	if (rc == -1) {
+		LOG("fcntl(F_SETFL) failed, errno: %d\n", errno);
 		return errno;
 	}
 	return 0;
 }
 
-static int cleanup_channel_ack()
+/* Turn the given file status flags off */
+__attribute__((unused))
+static int fd_flags_off(int fd, int flags)
 {
-	struct cleanup_channel *cc = &cleanup_channel; /* global */
-	char _c;
-	int c;
-	c = read(cc->rfd, &_c, 1);
-	if (c != 1)
+	int fl, rc;
+	fl = fcntl(fd, F_GETFL);
+	if (fl == -1) {
+		LOG("fcntl(F_GETFL) failed, errno: %d\n", errno);
 		return errno;
+	}
+	rc = fcntl(fd, F_SETFL, fl & ~flags);
+	if (rc == -1) {
+		LOG("fcntl(F_SETFL) failed, errno: %d\n", errno);
+		return errno;
+	}
 	return 0;
 }
 
-static int cleanup_channel_notify()
-{
-	struct cleanup_channel *cc = &cleanup_channel; /* global */
-	char _c = 1;
-	int c;
-	c = write(cc->wfd, &_c, 1);
-	if (c != 1)
-		return errno;
-	return 0;
-}
-
-static int cleanup_channel_add(struct z_rdma_ep *rep)
-{
-	struct cleanup_channel *cc = &cleanup_channel; /* global */
-	int rc = 0;
-	int notify = 0;
-
-	/* Only manually cleanup (not through cq) on omnipath */
-	if (rep->dev_type != Z_RDMA_DEV_HFI1)
-		return 0;
-
-	pthread_mutex_lock(&cc->mutex);
-	DLOG("cleanup_channel: adding rep %p\n", rep);
-
-	/* disable cm epoll */
-	__disable_cm_events(rep);
-	/* disable cq epoll */
-	__disable_cq_events(rep);
-
-	/* add to cleanup list */
-	ref_get(&rep->ep.ref, "add to cleanup_channel"); /* remove in cleanup_channel_process() */
-	notify = TAILQ_EMPTY(&cc->list);
-	TAILQ_INSERT_TAIL(&cc->list, rep, ep_link);
-	if (notify)
-		rc = cleanup_channel_notify();
-	pthread_mutex_unlock(&cc->mutex);
-	return rc;
-}
-
+/* manually flush outstanding active requests. This is rerequired on hfi1
+ * hardware. */
+__attribute__((unused))
 static void __flush_active_context(struct z_rdma_ep *rep)
 {
-	struct z_rdma_context *ctxt;
+	/* NOTE: No need to lock the ep as we are in the clean up path and no
+	 * other threads can access the context list. The application cannot
+	 * post new requests as the operations are guarded by the endpoint
+	 * state. */
+	struct z_rdma_context *ctxt, *next_ctxt;
 	struct ibv_wc wc = { .status = IBV_WC_WR_FLUSH_ERR };
-	pthread_mutex_lock(&rep->ep.lock);
 	if (LIST_EMPTY(&rep->active_ctxt_list)) {
 		DLOG("rep %p active context list empty\n", rep);
 	} else {
 		DLOG("rep %p flushing outstanding requests\n", rep);
 	}
-	while ((ctxt = LIST_FIRST(&rep->active_ctxt_list))) {
+	ctxt = LIST_FIRST(&rep->active_ctxt_list);
+	while (ctxt) {
+		next_ctxt = LIST_NEXT(ctxt, active_ctxt_link);
+		if (ctxt->is_pending)
+			goto next; /* skip the pending ones */
 		switch (ctxt->op) {
 		case IBV_WC_RDMA_READ:
-			pthread_mutex_unlock(&rep->ep.lock);
 			process_read_wc(rep, &wc, ctxt->usr_context);
-			pthread_mutex_lock(&rep->ep.lock);
 			break;
 		case IBV_WC_RDMA_WRITE:
-			pthread_mutex_unlock(&rep->ep.lock);
 			process_write_wc(rep, &wc, ctxt->usr_context);
-			pthread_mutex_lock(&rep->ep.lock);
 			break;
 		case IBV_WC_SEND:
 		case IBV_WC_RECV:
@@ -377,36 +339,13 @@ static void __flush_active_context(struct z_rdma_ep *rep)
 				__rdma_buffer_free(ctxt->rb);
 			break;
 		default:
+			assert(0 == "Invalid type");
 			break;
 		}
 		__rdma_context_free(ctxt);
+	next:
+		ctxt = next_ctxt;
 	}
-	if (rep->deferred_disconnected == 1) {
-		/* deferred disconnected not delivered yet */
-		rep->deferred_disconnected = -1;
-		pthread_mutex_unlock(&rep->ep.lock);
-		__rdma_deliver_disconnected(rep);
-		return;
-	}
-	pthread_mutex_unlock(&rep->ep.lock);
-}
-
-static int cleanup_channel_process()
-{
-	struct cleanup_channel *cc = &cleanup_channel; /* global */
-	int rc = 0;
-	struct z_rdma_ep *rep;
-	cleanup_channel_ack();
-	pthread_mutex_lock(&cc->mutex);
-	while ((rep = TAILQ_FIRST(&cc->list))) {
-		/* flush outstanding ops */
-		DLOG("cleanup_channel: cleaning up rep %p\n", rep);
-		__flush_active_context(rep);
-		TAILQ_REMOVE(&cc->list, rep, ep_link);
-		ref_put(&rep->ep.ref, "add to cleanup_channel");
-	}
-	pthread_mutex_unlock(&cc->mutex);
-	return rc;
 }
 
 static struct z_rdma_context *__rdma_get_context(struct ibv_wc *wc)
@@ -420,14 +359,15 @@ static struct z_rdma_context *__rdma_get_context(struct ibv_wc *wc)
 static int __enable_cq_events(struct z_rdma_ep *rep)
 {
 	/* handle CQ events */
+	z_rdma_io_thread_t thr = Z_RDMA_EP_THR(rep);
 	struct epoll_event cq_event;
-	cq_event.data.ptr = rep;
+	cq_event.data.ptr = &rep->cq_ctxt;
 	cq_event.events = EPOLLIN;
 
 	/* Release when deleting the cq_channel fd from the epoll */
 	ref_get(&rep->ep.ref, "enable cq events");
 	DLOG("adding cq_channel %p fd %d (rep %p)\n", rep->cq_channel, rep->cq_channel->fd, rep);
-	if (epoll_ctl(cq_fd, EPOLL_CTL_ADD, rep->cq_channel->fd, &cq_event)) {
+	if (epoll_ctl(thr->efd, EPOLL_CTL_ADD, rep->cq_channel->fd, &cq_event)) {
 		LOG("RMDA: epoll_ctl CTL_ADD failed, "
 				"cq_channel %p fd %d rep %p\n",
 				rep->cq_channel, rep->cq_channel->fd, rep);
@@ -441,12 +381,13 @@ static int __enable_cq_events(struct z_rdma_ep *rep)
 
 static int __disable_cq_events(struct z_rdma_ep *rep)
 {
+	z_rdma_io_thread_t thr = Z_RDMA_EP_THR(rep);
 	struct epoll_event ignore;
 	if (!rep->cq_channel_enabled)
 		return ENOENT;
 	DLOG("removing cq_channel %p fd %d (rep %p)\n",
 			rep->cq_channel, rep->cq_channel->fd, rep);
-	if (epoll_ctl(cq_fd, EPOLL_CTL_DEL, rep->cq_channel->fd, &ignore)) {
+	if (epoll_ctl(thr->efd, EPOLL_CTL_DEL, rep->cq_channel->fd, &ignore)) {
 		LOG("RMDA: epoll_ctl CTL_ADD failed, "
 				"cq_channel %p fd %d rep %p\n",
 				rep->cq_channel, rep->cq_channel->fd, rep);
@@ -457,46 +398,42 @@ static int __disable_cq_events(struct z_rdma_ep *rep)
 	return 0;
 }
 
-static int __enable_cm_events(struct z_rdma_ep *rep)
+static int __ep_flush(struct z_rdma_ep *rep)
 {
-	struct epoll_event cm_event;
-	cm_event.events = EPOLLIN;
-	cm_event.data.ptr = rep;
-	ref_get(&rep->ep.ref, "enable cm events");
-	DLOG("adding cm_channel %p fd %d (rep %p)\n", rep->cm_channel, rep->cm_channel->fd, rep);
-	if (epoll_ctl(cm_fd, EPOLL_CTL_ADD, rep->cm_channel->fd, &cm_event)) {
-		LOG("RMDA: epoll_ctl CTL_ADD failed, "
-				"cm_channel %p fd %d rep %p\n",
-				rep->cm_channel, rep->cm_channel->fd, rep);
-		ref_put(&rep->ep.ref, "enable cm events");
-		return errno;
-	}
-	rep->cm_channel_enabled = 1;
-	return 0;
-}
+	/* Flushes the outstanding operations. This function is called when the
+	 * endpoint is in a bad state (rejected, connection errors, or
+	 * disconnected). */
+	int ret;
 
-static int __disable_cm_events(struct z_rdma_ep *rep)
-{
-	struct epoll_event ignore;
-	if (!rep->cm_channel_enabled)
-		return ENOENT;
-	DLOG("removing cm_channel %p fd %d (rep %p)\n",
-			rep->cm_channel, rep->cm_channel->fd, rep);
-	if (epoll_ctl(cm_fd, EPOLL_CTL_DEL, rep->cm_channel->fd, &ignore)) {
-		LOG("RMDA: epoll_ctl CTL_ADD failed, "
-				"cm_channel %p fd %d rep %p\n",
-				rep->cm_channel, rep->cm_channel->fd, rep);
-		return errno;
-	}
-	rep->cm_channel_enabled = 0;
-	ref_put(&rep->ep.ref, "enable cm events"); /* taken in __enable_cm_events() */
+	/* disable cq events */
+	__disable_cq_events(rep);
+
+	/* process remaining cq events */
+	z_rdma_handle_cq_event(&rep->cq_ctxt);
+	do {
+		ret = 0;
+		if (rep->sq_cq) {
+			ret += cq_event_handler(rep->sq_cq, SQ_DEPTH+2);
+		}
+		if (rep->rq_cq) {
+			ret += cq_event_handler(rep->rq_cq, SQ_DEPTH+2);
+		}
+	} while (ret);
+
+	/* flush remaining outstanding requests that HW failed to deliver
+	 * completions (this happened to hfi1). */
+	__flush_active_context(rep);
+
+	/* flush pending requests */
+	pthread_mutex_lock(&rep->credit_lock);
+	__flush_io_q(rep);
+	pthread_mutex_unlock(&rep->credit_lock);
 	return 0;
 }
 
 static void __rdma_teardown_conn(struct z_rdma_ep *ep)
 {
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
-	int rc;
 
 	DLOG("rep %p tearing down\n", rep);
 
@@ -504,18 +441,6 @@ static void __rdma_teardown_conn(struct z_rdma_ep *ep)
 		assert(0);
 
 	errno = 0;
-
-	/*
-	 * The last argument that is ignored needs to be non-NULL to
-	 * support Linux version < 2.6.9
-	 */
-	struct epoll_event ignore;
-	if (rep->cm_channel_enabled) {
-		DLOG("removing cm_channel %p fd %d (rep %p)\n", rep->cm_channel, rep->cm_channel->fd, rep);
-		if (epoll_ctl(cm_fd, EPOLL_CTL_DEL, rep->cm_channel->fd, &ignore))
-			LOG("RDMA: epoll_ctl delete cm_channel "
-					"error %d\n", errno);
-	}
 
 	/* Destroy the QP */
 	if (rep->qp) {
@@ -548,42 +473,26 @@ static void __rdma_teardown_conn(struct z_rdma_ep *ep)
 			     errno);
 		rep->cm_id = NULL;
 	}
-	if (rep->cm_channel) {
-		DLOG("destroying cm_channel %p (rep %p)\n", rep->cm_channel, rep);
-		rdma_destroy_event_channel(rep->cm_channel);
-		rep->cm_channel = NULL;
-	}
 
-	if (rep->cq_channel_enabled) {
-		DLOG("removing cq_channel %p fd %d (rep %p)\n",
-				rep->cq_channel, rep->cq_channel->fd, rep);
-		if (epoll_ctl(cq_fd, EPOLL_CTL_DEL, rep->cq_channel->fd, &ignore))
-			LOG("RDMA: epoll_ctl delete cq_channel "
-					"error %d\n", errno);
-	}
+	assert(0 == rep->cq_channel_enabled);
 
 	if (rep->cq_channel) {
 		DLOG("destroying cq_channel %p (rep %p)\n", rep->cq_channel, rep);
 		if (ibv_destroy_comp_channel(rep->cq_channel))
 			LOG("RDMA: Error %d : "
-			     "ibv_destroy_comp_channel failed\n", errno);
+			    "ibv_destroy_comp_channel failed\n", errno);
 		rep->cq_channel = NULL;
 	}
 
-	if (rep->buf_pool_mr) {
-		if ((rc = ibv_dereg_mr(rep->buf_pool_mr)))
-			LOG("RDMA: Error rc: %d, errno: %d : "
-				  "ibv_dereg_mr() failed\n", rc, errno);
-		else
-			rep->buf_pool_mr = NULL;
-
+	struct z_rdma_buffer_pool *p;
+	while ((p = LIST_FIRST(&rep->vacant_pool))) {
+		LIST_REMOVE(p, pool_link);
+		__rdma_buffer_pool_free(p);
 	}
-
-	if (rep->buf_pool)
-		free(rep->buf_pool);
-
-	if (rep->buf_objs)
-		free(rep->buf_objs);
+	while ((p = LIST_FIRST(&rep->full_pool))) {
+		LIST_REMOVE(p, pool_link);
+		__rdma_buffer_pool_free(p);
+	}
 
 	rep->rem_rq_credits = RQ_DEPTH;
 	rep->sq_credits = SQ_DEPTH;
@@ -594,6 +503,8 @@ static void __rdma_teardown_conn(struct z_rdma_ep *ep)
 static void z_rdma_destroy(zap_ep_t zep)
 {
 	struct z_rdma_ep *rep = (void*)zep;
+	if (zep->thread)
+		zap_io_thread_ep_release(zep);
 	pthread_mutex_lock(&rep->ep.lock);
 	__rdma_teardown_conn(rep);
 	pthread_mutex_unlock(&rep->ep.lock);
@@ -603,44 +514,21 @@ static void z_rdma_destroy(zap_ep_t zep)
 	free(rep);
 }
 
+/* caller must HOLD rep->ep.lock */
 static int __buf_pool_init(struct z_rdma_ep *rep)
 {
-	int			i;
-	char			*p;
-	struct z_rdma_buffer	*rb;
-	size_t			pool_sz;
+	struct z_rdma_buffer_pool *p;
 
-	rep->num_bufs = RQ_DEPTH + SQ_DEPTH + 4;  /* +4 for credit updates */
-	rep->buf_sz   = RQ_BUF_SZ;
-	pool_sz       = rep->num_bufs * rep->buf_sz;
-	rep->buf_pool = malloc(pool_sz);
-	rep->buf_objs = malloc(rep->num_bufs * sizeof(struct z_rdma_buffer));
-	if (!rep->buf_pool || !rep->buf_objs)
+	LIST_INIT(&rep->vacant_pool);
+	LIST_INIT(&rep->full_pool);
+	p = __rdma_buffer_pool_alloc(rep);
+	if (!p)
 		return ENOMEM;
-	/* need IBV_ACCESS_LOCAL_WRITE for RECV */
-	rep->buf_pool_mr = ibv_reg_mr(rep->pd, rep->buf_pool, pool_sz, IBV_ACCESS_LOCAL_WRITE);
-	if (!rep->buf_pool_mr) {
-		/* rep->buf_pool and rep->buf_objs are freed in
-		 * __rdma_teardown_conn() */
-		return ENOMEM;
-	}
-
-	LIST_INIT(&rep->buf_free_list);
-	pthread_mutex_init(&rep->buf_free_list_lock, NULL);
-	p  = rep->buf_pool;
-	rb = rep->buf_objs;
-	for (i = 0; i < rep->num_bufs; ++i) {
-		rb->rep      = rep;
-		rb->msg      = (void*)p;
-		rb->buf_len  = rep->buf_sz;  /* total size of buffer */
-		rb->data_len = 0;            /* # bytes of buffer used */
-		LIST_INSERT_HEAD(&rep->buf_free_list, rb, free_link);
-		++rb;
-		p += rep->buf_sz;
-	}
+	LIST_INSERT_HEAD(&rep->vacant_pool, p, pool_link);
 	return 0;
 }
 
+/* caller must hold rep->ep.lock */
 static int __rdma_setup_conn(struct z_rdma_ep *rep)
 {
 	struct ibv_qp_init_attr qp_attr;
@@ -654,12 +542,20 @@ static int __rdma_setup_conn(struct z_rdma_ep *rep)
 	rep->pd = ce->pd;
 	rep->ce_id = ce->ce_id;
 
+	/* Create completion channel */
 	rep->cq_channel = ibv_create_comp_channel(rep->cm_id->verbs);
 	if (!rep->cq_channel) {
-		LOG("RDMA: ibv_create_comp_channel failed\n");
+		LOG("RDMA: __get_comp_channel() failed\n");
 		goto err_0;
 	}
-	DLOG("created cq_channel %p (rep %p)\n", rep->cq_channel, rep);
+	DLOG("using cq_channel %p (rep %p)\n", rep->cq_channel, rep);
+
+	ret = fd_flags_on(rep->cq_channel->fd, O_NONBLOCK);
+	if (ret) {
+		LOG("RDMA: fd_flags_on(cq_channel, O_NONBLOCK) failed, "
+		    "rc: %d\n", ret);
+		goto err_0;
+	}
 
 	/* Create a new Send Queue CQ. */
 	rep->sq_cq = ibv_create_cq(rep->cm_id->verbs,
@@ -725,26 +621,89 @@ err_0:
 	return ret;
 }
 
+static struct z_rdma_buffer_pool * __rdma_buffer_pool_alloc(struct z_rdma_ep *rep)
+{
+	/* only allocate + initialize pool. Do not put into any list */
+	int i;
+	struct z_rdma_buffer *rb;
+	struct z_rdma_buffer_pool *p = malloc(sizeof(*p));
+	if (!p)
+		return NULL;
+
+	p->num_alloc = 0;
+
+	/* need IBV_ACCESS_LOCAL_WRITE for RECV */
+	p->mr = ibv_reg_mr(rep->pd, p->buffer, sizeof(p->buffer), IBV_ACCESS_LOCAL_WRITE);
+	if (!p->mr) {
+		LOGL("ibv_reg_mr() failed, errno: %d\n", errno);
+		free(p);
+		return NULL;
+	}
+	LIST_INIT(&p->free_buffer_list);
+	for (i = 0; i < Z_RDMA_POOL_SZ; i++) {
+		rb = &p->buffer[i];
+		rb->pool = p;
+		rb->rep = NULL;
+		rb->data_len = 0;
+		LIST_INSERT_HEAD(&p->free_buffer_list, rb, free_link);
+	}
+	return p;
+}
+
+static inline void __rdma_buffer_pool_free(struct z_rdma_buffer_pool *p)
+{
+	/* caller already removed the pool from the list */
+	int rc;
+	if (p->mr) {
+		rc = ibv_dereg_mr(p->mr);
+		if (rc)
+			LOGL("ibv_dereg_mr() failed, rc: %d, errno: %d\n", rc, errno);
+	}
+	free(p);
+}
+
+/* caller must HOLD rep->ep.lock */
 static struct z_rdma_buffer * __rdma_buffer_alloc(struct z_rdma_ep *rep)
 {
 	struct z_rdma_buffer *rb;
-	pthread_mutex_lock(&rep->buf_free_list_lock);
-	rb = LIST_FIRST(&rep->buf_free_list);
-	if (rb) {
-		LIST_REMOVE(rb, free_link);
-		rb->data_len = 0;
-	} else {
-		errno = ENOMEM;
+	struct z_rdma_buffer_pool *p;
+	p = LIST_FIRST(&rep->vacant_pool);
+	if (!p) {
+		p = __rdma_buffer_pool_alloc(rep);
+		if (!p)
+			return NULL;
+		LIST_INSERT_HEAD(&rep->vacant_pool, p, pool_link);
 	}
-	pthread_mutex_unlock(&rep->buf_free_list_lock);
+	rb = LIST_FIRST(&p->free_buffer_list);
+	LIST_REMOVE(rb, free_link);
+	rb->data_len = 0;
+	rb->rep = rep;
+	p->num_alloc++;
+	if (LIST_EMPTY(&p->free_buffer_list)) {
+		/* move to list of full pools */
+		LIST_REMOVE(p, pool_link);
+		LIST_INSERT_HEAD(&rep->full_pool, p, pool_link);
+	}
 	return rb;
 }
 
+/* caller must HOLD rep->ep.lock */
 static inline void __rdma_buffer_free(struct z_rdma_buffer *rb)
 {
-	pthread_mutex_lock(&rb->rep->buf_free_list_lock);
-	LIST_INSERT_HEAD(&rb->rep->buf_free_list, rb, free_link);
-	pthread_mutex_unlock(&rb->rep->buf_free_list_lock);
+	struct z_rdma_ep *rep = rb->rep;
+	struct z_rdma_buffer_pool *p = rb->pool;
+	LIST_INSERT_HEAD(&rb->pool->free_buffer_list, rb, free_link);
+	p->num_alloc--;
+	switch (p->num_alloc) {
+	case 0: /* total vacancy ... free the pool */
+		LIST_REMOVE(p, pool_link);
+		__rdma_buffer_pool_free(p);
+		break;
+	case Z_RDMA_POOL_SZ - 1: /* the pool was full, now it has a vacancy */
+		LIST_REMOVE(p, pool_link);
+		LIST_INSERT_HEAD(&rep->vacant_pool, p, pool_link);
+		break;
+	}
 }
 
 static inline
@@ -840,9 +799,9 @@ static void flush_io_q(struct z_rdma_ep *rep)
 		}
 		rep->ep.cb(&rep->ep, &ev);
 	free:
+		pthread_mutex_lock(&rep->ep.lock);
 		if (ctxt->rb)
 			__rdma_buffer_free(ctxt->rb);
-		pthread_mutex_lock(&rep->ep.lock);
 		__rdma_context_free(ctxt);
 		pthread_mutex_unlock(&rep->ep.lock);
 	}
@@ -1022,9 +981,9 @@ static void submit_pending(struct z_rdma_ep *rep)
 		}
 		rep->ep.cb(&rep->ep, &ev);
 	free:
+		pthread_mutex_lock(&rep->ep.lock);
 		if (ctxt->rb)
 			__rdma_buffer_free(ctxt->rb);
-		pthread_mutex_lock(&rep->ep.lock);
 		__rdma_context_free(ctxt);
 		pthread_mutex_unlock(&rep->ep.lock);
 		pthread_mutex_lock(&rep->credit_lock);
@@ -1034,10 +993,10 @@ static void submit_pending(struct z_rdma_ep *rep)
 	pthread_mutex_unlock(&rep->credit_lock);
 }
 
+/* caller must NOT hold rep->ep.lock */
 static zap_err_t __rdma_post_send(struct z_rdma_ep *rep, struct z_rdma_buffer *rbuf)
 {
 	int rc;
-
 
 	pthread_mutex_lock(&rep->ep.lock);
 	struct z_rdma_context *ctxt =
@@ -1052,7 +1011,7 @@ static zap_err_t __rdma_post_send(struct z_rdma_ep *rep, struct z_rdma_buffer *r
 	ctxt->sge[0].addr = (uint64_t)rbuf->msg->bytes;
 	ctxt->sge[0].length = rbuf->data_len;
 	assert(rep == rbuf->rep);
-	ctxt->sge[0].lkey = rep->buf_pool_mr->lkey;
+	ctxt->sge[0].lkey = rbuf->pool->mr->lkey;
 
 	ctxt->wr.opcode = IBV_WR_SEND;
 	ctxt->wr.next = NULL;
@@ -1079,7 +1038,7 @@ static zap_err_t z_rdma_close(zap_ep_t ep)
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	pthread_t self = pthread_self();
 
-	if (self != ep->event_queue->thread) {
+	if (self != ep->thread->thread) {
 		pthread_mutex_lock(&rep->credit_lock);
 		while (!TAILQ_EMPTY(&rep->io_q)) {
 			pthread_cond_wait(&rep->io_q_cond, &rep->credit_lock);
@@ -1135,44 +1094,35 @@ static zap_err_t z_rdma_connect(zap_ep_t ep,
 	if (zerr)
 		goto err_0;
 
-	/* Create the event CM event channel */
-	zerr = ZAP_ERR_RESOURCE;
-	rep->cm_channel = rdma_create_event_channel();
-	if (!rep->cm_channel)
-		goto err_1;
+	zerr = zap_io_thread_ep_assign(ep); /* also assign rep->cm_channel */
+	if (zerr)
+		goto err_0;
 
+	zerr = ZAP_ERR_RESOURCE;
 	/* Create the connecting CM ID */
 	rc = rdma_create_id(rep->cm_channel, &rep->cm_id, rep, RDMA_PS_TCP);
 	if (rc)
 		goto err_1;
 	ref_get(&rep->ep.ref, "accept/connect"); /* Release when disconnected or conn error */
-	rc = __enable_cm_events(rep);
-	if (rc)
-		goto err_2;
 
 	/* Bind the provided address to the CM Id */
 	rc = rdma_resolve_addr(rep->cm_id, NULL, sin, 2000);
 	if (rc) {
 		zerr = ZAP_ERR_ADDRESS;
-		goto err_3;
+		goto err_2;
 	}
 	return ZAP_ERR_OK;
 
- err_3:
-	/*
-	 * These are all synchronous clean-ups. IB does not support
-	 * re-connecting on the same cm_id, so blow everything away
-	 * and start over next time.
-	 */
-	__disable_cm_events(rep);
  err_2:
 	ref_put(&rep->ep.ref, "accept/connect");
  err_1:
 	zap_ep_change_state(&rep->ep, ZAP_EP_CONNECTING, ZAP_EP_INIT);
+	rep->cm_channel = NULL;
  err_0:
 	return zerr;
 }
 
+/* caller must hold rep->ep.lock */
 static int __rdma_post_recv(struct z_rdma_ep *rep, struct z_rdma_buffer *rb)
 {
 	struct ibv_recv_wr wr;
@@ -1181,7 +1131,16 @@ static int __rdma_post_recv(struct z_rdma_ep *rep, struct z_rdma_buffer *rb)
 	struct z_rdma_context *ctxt;
 	int rc;
 
-	pthread_mutex_lock(&rep->ep.lock);
+	switch (rep->ep.state) {
+	case ZAP_EP_ERROR:
+	case ZAP_EP_PEER_CLOSE:
+	case ZAP_EP_CLOSE:
+		rc = ZAP_ERR_ENDPOINT;
+		goto out;
+	default:
+		/* no-op */;
+	}
+
 	ctxt = __rdma_context_alloc(rep, NULL, IBV_WC_RECV, rb);
 	if (!ctxt) {
 		rc = ZAP_ERR_RESOURCE;
@@ -1189,9 +1148,9 @@ static int __rdma_post_recv(struct z_rdma_ep *rep, struct z_rdma_buffer *rb)
 	}
 
 	sge.addr = (uint64_t) rb->msg->bytes;
-	sge.length = rb->buf_len;
+	sge.length = RQ_BUF_SZ;
 	assert(rep == rb->rep);
-	sge.lkey = rep->buf_pool_mr->lkey;
+	sge.lkey = rb->pool->mr->lkey;
 	wr.sg_list = &sge;
 	wr.next = NULL;
 	wr.num_sge = 1;
@@ -1199,14 +1158,13 @@ static int __rdma_post_recv(struct z_rdma_ep *rep, struct z_rdma_buffer *rb)
 	RDMA_SET_CONTEXT(&wr, ctxt);
 	rc = ibv_post_recv(rep->qp, &wr, &bad_wr);
 	if (rc) {
-		DLOG("ibv_post_recv() failed, rc %d, rep %p\n", rc, rep);
+		LOG("ibv_post_recv() failed, rc %d, rep %p\n", rc, rep);
 		__rdma_context_free(ctxt);
 		rc = zap_errno2zerr(rc);
 	} else {
 		DLOG("ibv_post_recv() succeeded, rep %p\n", rep);
 	}
 out:
-	pthread_mutex_unlock(&rep->ep.lock);
 	return rc;
 }
 
@@ -1285,8 +1243,11 @@ static void process_send_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
 	/* send_mapped needs an application callback */
 	rep->ep.cb(&rep->ep, &zev);
 free:
-	if (!wc->status && ctxt->rb)
+	if (!wc->status && ctxt->rb) {
+		pthread_mutex_lock(&rep->ep.lock);
 		__rdma_buffer_free(ctxt->rb);
+		pthread_mutex_unlock(&rep->ep.lock);
+	}
 }
 
 static void process_read_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
@@ -1404,13 +1365,14 @@ static void process_recv_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
 		assert(0);
 	}
 
+	pthread_mutex_lock(&rep->ep.lock);
 	ret = __rdma_post_recv(rep, rb);
 	if (ret) {
-		LOG("ep %p: Post recv buffer fail. %s\n",
-				rep, zap_err_str(ret));
 		__rdma_buffer_free(rb);
+		pthread_mutex_unlock(&rep->ep.lock);
 		goto out;
 	}
+	pthread_mutex_unlock(&rep->ep.lock);
 
 	/* Credit updates are not counted */
 	if (msg_type == Z_RDMA_MSG_CREDIT_UPDATE)
@@ -1434,6 +1396,7 @@ static void process_recv_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
 	return;
 }
 
+/* caller must hold rep->ep.lock */
 static int z_rdma_fill_rq(struct z_rdma_ep *rep)
 {
 	int i;
@@ -1475,7 +1438,7 @@ static zap_err_t z_rdma_reject(zap_ep_t ep, char *data, size_t data_len)
 		return zap_errno2zerr(errno);
 	}
 	free(msg);
-	zap_free(ep);
+	zap_free(&rep->ep); /* b/c zap_new() in handle_connect_request() */
 	return ZAP_ERR_OK;
 }
 
@@ -1505,10 +1468,16 @@ static zap_err_t z_rdma_accept(zap_ep_t ep, zap_cb_fn_t cb,
 	rep->ep.cb = cb;
 
 	ref_get(&rep->ep.ref, "accept/connect"); /* Release when disconnected */
-	ret = __rdma_setup_conn(rep);
-	if (ret) {
+
+	ret = zap_io_thread_ep_assign(ep);
+	if (ret)
 		goto err_0;
-	}
+
+	pthread_mutex_lock(&rep->ep.lock);
+	ret = __rdma_setup_conn(rep);
+	pthread_mutex_unlock(&rep->ep.lock);
+	if (ret)
+		goto err_0;
 
 	/* Accept the connection */
 	memset(&conn_param, 0, sizeof conn_param);
@@ -1622,133 +1591,13 @@ static int cq_event_handler(struct ibv_cq *cq, int count)
 			LOG("RDMA: Invalid completion\n");
 		}
 
+		pthread_mutex_lock(&rep->ep.lock);
 		if (wc.status && ctxt->rb)
 			__rdma_buffer_free(ctxt->rb);
-
-		pthread_mutex_lock(&rep->ep.lock);
 		__rdma_context_free(ctxt);
 		pthread_mutex_unlock(&rep->ep.lock);
 	}
 	return poll_count;
-}
-
-static void *cq_thread_proc(void *arg)
-{
-	int cq_fd = (int)(unsigned long)arg;
-	struct epoll_event cq_events[16];
-	struct z_rdma_ep *rep;
-	int i;
-	struct ibv_cq *ev_cq;
-	void *ev_ctx;
-	int ret;
-	int rc;
-	int cleanup;
-	sigset_t sigset;
-
-	sigfillset(&sigset);
-	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
-	if (rc) {
-		fprintf(stderr, "zap_rdma: ERROR: pthread_sigmask errno: %d\n",
-				errno);
-		assert(rc == 0);
-	}
-
-	while (1) {
-		int fd_count = epoll_wait(cq_fd, cq_events, 16, -1);
-		if (fd_count < 0) {
-			if (errno == EINTR)
-				continue;
-			break;
-		}
-		cleanup = 0;
-		for (i = 0; i < fd_count; i++) {
-			if (cq_events[i].data.ptr == &cleanup_channel) {
-				cleanup = 1;
-				continue;
-			}
-			rep = cq_events[i].data.ptr;
-			ref_get(&rep->ep.ref, __func__); /* Release after process the cq_ev */
-			/* Get the next event ... this will block */
-			ret = ibv_get_cq_event(rep->cq_channel, &ev_cq, &ev_ctx);
-			if (ret) {
-				LOG("cq_channel is %d at %d.\n",
-				     rep->cq_channel->fd, __LINE__);
-				LOG("RDMA: Error %d at %s:%d\n",
-					     errno, __func__, __LINE__);
-				goto skip;
-			}
-
-			/* Ack the event */
-			ibv_ack_cq_events(ev_cq, 1);
-
-			/*
-			 * Process the CQs. Speculatively reap SQ WQE
-			 * in case they are required to respond to a
-			 * request sitting in the RQ. Reap RQ WQE one
-			 * at a time before revisiting the SQ again to
-			 * reclaim space used by a previous response.
-			 */
-			do {
-				if (rep->sq_cq) {
-					ret = cq_event_handler(rep->sq_cq, SQ_DEPTH+2);
-				}
-				if (ev_cq != rep->sq_cq)
-					ret += cq_event_handler(ev_cq, 1);
-			} while (ret);
-
-			/* Re-arm the CQ */
-			ret = ibv_req_notify_cq(ev_cq, 0);
-			if (ret) {
-				LOG("RDMA: Error %d at %s:%d\n",
-				     errno, __func__, __LINE__);
-			}
-
-		skip:
-			pthread_mutex_lock(&rep->ep.lock);
-			if (LIST_EMPTY(&rep->active_ctxt_list)) {
-				/*
-				 * All outstanding work requests
-				 * have been completed or flushed.
-				 */
-
-				/*
-				 * The last argument that is ignored needs to be
-				 * non-NULL to support Linux version < 2.6.9
-				 */
-				__disable_cq_events(rep);
-
-#ifdef DEBUG
-				if (rep->deferred_disconnected == -1) {
-					DLOG("rdma: %s(): %p, "
-						"deferred_disconnected "
-						"already called\n");
-				}
-
-#endif
-				if (rep->deferred_disconnected == 1) {
-					/*
-					 * Zap has delivered all the work
-					 * completion events.
-					 *
-					 * Now deliver the Zap disconnected event.
-					 */
-					pthread_mutex_unlock(&rep->ep.lock);
-					__rdma_deliver_disconnected(rep);
-					rep->deferred_disconnected = -1;
-				} else {
-					pthread_mutex_unlock(&rep->ep.lock);
-				}
-			} else {
-				pthread_mutex_unlock(&rep->ep.lock);
-				submit_pending(rep);
-			}
-			ref_put(&rep->ep.ref, __func__); /* Taken when getting the ev_cq */
-		}
-		if (cleanup) {
-			cleanup_channel_process();
-		}
-	}
-	return NULL;
 }
 
 static zap_ep_t z_rdma_new(zap_t z, zap_cb_fn_t cb)
@@ -1764,6 +1613,8 @@ static zap_ep_t z_rdma_new(zap_t z, zap_cb_fn_t cb)
 	rep->rem_rq_credits = RQ_DEPTH;
 	rep->lcl_rq_credits = 0;
 	rep->sq_credits = SQ_DEPTH;
+	rep->cq_ctxt.type = Z_RDMA_EPOLL_CQ;
+	rep->cq_ctxt.cq_rep = rep;
 
 	TAILQ_INIT(&rep->io_q);
 	pthread_cond_init(&rep->io_q_cond, NULL);
@@ -1804,7 +1655,6 @@ handle_addr_resolved(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 	}
 	ret = rdma_resolve_route(cma_id, 2000);
 	if (ret) {
-		__disable_cm_events(rep);
 		zev.type = ZAP_EVENT_CONNECT_ERROR;
 		zev.status = ZAP_ERR_ADDRESS;
 		zap_ep_change_state(&rep->ep, ZAP_EP_CONNECTING, ZAP_EP_ERROR);
@@ -1839,7 +1689,7 @@ handle_connect_request(struct z_rdma_ep *rep, struct rdma_cm_event *event)
 		zev.data = (void*)conn_data->data;
 	}
 
-	new_ep = zap_new(rep->ep.z, rep->ep.app_cb);
+	new_ep = zap_new(rep->ep.z, rep->ep.cb);
 	if (!new_ep) {
 		LOG("RDMA: could not create a new"
 		     "endpoint for a connection request.\n");
@@ -1850,6 +1700,11 @@ handle_connect_request(struct z_rdma_ep *rep, struct rdma_cm_event *event)
 	zap_set_ucontext(new_ep, ctxt);
 	new_rep = (struct z_rdma_ep *)new_ep;
 	new_rep->cm_id = cma_id;
+	new_rep->cm_channel = rep->cm_channel;
+	/* NOTE: The connect-request endpoint uses the same cm_channel as the
+	 *       listening endpoint. The connect-request endpoint will migrate
+	 *       to the other cm_channel when it is accepted by the application
+	 *       and get a thread assigned to it. */
 	new_rep->parent_ep = rep;
 	if (0 == strncasecmp("hfi1", new_rep->cm_id->verbs->device->name, 4)) {
 		new_rep->dev_type = Z_RDMA_DEV_HFI1;
@@ -1875,8 +1730,10 @@ handle_route_resolved(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 	struct rdma_conn_param conn_param;
 	struct zap_event zev;
 	int ret;
+	pthread_mutex_lock(&rep->ep.lock);
 	assert(rep->ep.state == ZAP_EP_CONNECTING);
 	ret = __rdma_setup_conn(rep);
+	pthread_mutex_unlock(&rep->ep.lock);
 	if (ret)
 		goto err;
 
@@ -1895,7 +1752,6 @@ handle_route_resolved(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 		goto err;
 	return;
 err:
-	__disable_cm_events(rep);
 	zev.type = ZAP_EVENT_CONNECT_ERROR;
 	zev.status = ZAP_ERR_ROUTE;
 	rep->ep.state = ZAP_EP_ERROR;
@@ -1907,12 +1763,11 @@ static void
 handle_conn_error(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id, int reason)
 {
 	struct zap_event zev = {0};
+	zap_ep_state_t prev_state = rep->ep.state;
 	zev.status = reason;
-	if (rep->cq_channel)
-		__enable_cq_events(rep);
-	__disable_cm_events(rep);
 	rep->ep.state = ZAP_EP_ERROR;
-	switch (rep->ep.state) {
+	__ep_flush(rep);
+	switch (prev_state) {
 	case ZAP_EP_ACCEPTING:
 		/* Passive side. */
 		switch (rep->conn_req_decision) {
@@ -1921,7 +1776,7 @@ handle_conn_error(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id, int reason)
 			 * App accepted the conn req already.
 			 * Deliver the error.
 			 */
-			zev.type = ZAP_EVENT_DISCONNECTED;
+			zev.type = ZAP_EVENT_CONNECT_ERROR;
 			rep->ep.cb(&rep->ep, &zev);
 			ref_put(&rep->ep.ref, "accept/connect");
 			break;
@@ -1954,7 +1809,6 @@ handle_conn_error(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id, int reason)
 		assert(0 == "wrong rep->ep.state");
 		break;
 	}
-	cleanup_channel_add(rep);
 }
 
 static void
@@ -1975,6 +1829,11 @@ handle_rejected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id,
 
 	if (rep->ep.state == ZAP_EP_ACCEPTING) {
 		/* passive side. No need to look into the rejected message */
+		/* NOTE: REJECTED event occurred on the passive side when the
+		 *       pasive side had accepted the connection, but then an
+		 *       error occurred before the ESTABLISHED event. In
+		 *       other words, the REJECTED on the passive side is a
+		 *       CONN_ERROR event. */
 		handle_conn_error(rep, cma_id, ZAP_ERR_CONNECT);
 		return;
 	}
@@ -2000,11 +1859,10 @@ handle_rejected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id,
 	zev.data = (unsigned char *)rej_msg->msg;
 	zev.type = ZAP_EVENT_REJECTED;
 
-	__enable_cq_events(rep);
 	rep->ep.state = ZAP_EP_ERROR;
-	__disable_cm_events(rep);
+	__ep_flush(rep);
+
 	rep->ep.cb(&rep->ep, &zev);
-	cleanup_channel_add(rep);
 	ref_put(&rep->ep.ref, "accept/connect");
 }
 
@@ -2089,23 +1947,8 @@ handle_disconnected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 		break;
 	}
 	pthread_mutex_unlock(&rep->ep.lock);
-
-	__disable_cm_events(rep);
-
-	pthread_mutex_lock(&rep->credit_lock);
-	__flush_io_q(rep);
-	pthread_mutex_unlock(&rep->credit_lock);
-
-	cleanup_channel_add(rep);
-
-	pthread_mutex_lock(&rep->ep.lock);
-	if (!LIST_EMPTY(&rep->active_ctxt_list)) {
-		rep->deferred_disconnected = 1;
-		pthread_mutex_unlock(&rep->ep.lock);
-	} else {
-		pthread_mutex_unlock(&rep->ep.lock);
-		__rdma_deliver_disconnected(rep);
-	}
+	__ep_flush(rep);
+	__rdma_deliver_disconnected(rep);
 }
 
 static void cma_event_handler(struct z_rdma_ep *rep,
@@ -2190,92 +2033,6 @@ static const char * rdma_cm_event_type_str(enum rdma_cm_event_type type)
 	return "UNKNOWN_RDMA_CM_EVENT";
 }
 
-static void handle_cm_event(struct z_rdma_ep *rep)
-{
-	int rc;
-	struct rdma_cm_event *event;
-
-	rc = rdma_get_cm_event(rep->cm_channel, &event);
-	if (rc)
-		return;
-
-	struct rdma_cm_id *cm_id = event->id;
-	/*
-	 * Many connection oriented events are delivered on the
-	 * cm_channel of the listener cm_id. Use the endpoint from the
-	 * cm_id context, not the one from the cm_channel.
-	 */
-	rep = (struct z_rdma_ep *)cm_id->context;
-	DLOG("cm_event cm_id %p rep %p listen_id %p event %d %s "
-	     "status %d \n", cm_id, rep, event->listen_id, event->event,
-	     rdma_cm_event_type_str(event->event), event->status);
-	if (event->event != RDMA_CM_EVENT_TIMEWAIT_EXIT) {
-		/*
-		 * rep could be destroyed after ERROR or DISCONNECTED event.
-		 * Hence, the TIMEWAIT_EXIT event tha comes after shall be
-		 * ignored.
-		 *
-		 * On active endpoints, TIMEWAIT_EXIT does not have a chance to
-		 * reach here because cm events are disabled right after ERROR
-		 * or DISCONNECTED events.
-		 *
-		 * The passive endpoints (created from CONN_REQ) use the same
-		 * cm_channel as the listening endpoint and we have no way to
-		 * remove the passive endpoints from the channel. So,
-		 * the TIMEWAIT_EXIT events can reach here.
-		 */
-		ref_get(&rep->ep.ref, __func__);
-		cma_event_handler(rep, cm_id, event);
-		rdma_ack_cm_event(event);
-		ref_put(&rep->ep.ref, __func__);
-		/* need to put after rdma_ack_cm_event(), otherwise
-		 * rdma_destroy_id() could be call in the reference put and
-		 * causes a dead lock. */
-	} else {
-		rdma_ack_cm_event(event);
-	}
-}
-
-/*
- * Connection Manager Thread - event thread that processes CM events.
- */
-static void *cm_thread_proc(void *arg)
-{
-	int cm_fd = (int)(unsigned long)arg;
-	struct epoll_event cm_events[16];
-	struct z_rdma_ep *rep;
-	int ret, i;
-	int rc;
-	sigset_t sigset;
-
-	sigfillset(&sigset);
-	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
-	if (rc) {
-		fprintf(stderr, "zap_rdma: ERROR: pthread_sigmask errno: %d\n",
-				errno);
-		assert(rc == 0);
-	}
-
-	while (1) {
-		ret = epoll_wait(cm_fd, cm_events, 16, -1);
-		if (ret < 0) {
-			if (errno == EINTR)
-				continue;
-			break;
-		}
-
-		for (i = 0; i < ret; i++) {
-			rep = cm_events[i].data.ptr;
-			if (!rep || !rep->cm_channel) {
-				/* This shouldn't happen */
-				assert(0);
-			}
-			handle_cm_event(rep);
-		}
-	}
-	return NULL;
-}
-
 static zap_err_t
 z_rdma_listen(zap_ep_t ep, struct sockaddr *sin, socklen_t sa_len)
 {
@@ -2291,13 +2048,15 @@ z_rdma_listen(zap_ep_t ep, struct sockaddr *sin, socklen_t sa_len)
 		goto out;
 	}
 
-	/* Create the event CM event channel */
-	zerr = ZAP_ERR_RESOURCE;
-	rep->cm_channel = rdma_create_event_channel();
-	if (!rep->cm_channel) {
-		LOG("%s: %s failed. zerr %d\n", __FUNCTION__, "rdma_create_event_channel", (int)zerr);
+	zerr = zap_io_thread_ep_assign(ep);
+	if (zerr) {
+		LOG("%s: thread assignment failed. zerr %d\n", __func__, zerr);
 		goto err_0;
 	}
+
+	/* Create the event CM event channel */
+	zerr = ZAP_ERR_RESOURCE;
+	rep->cm_channel = Z_RDMA_EP_THR(ep)->cm_ctxt.cm_channel;
 
 	/* Create the listening CM ID */
 	rc = rdma_create_id(rep->cm_channel, &rep->cm_id, rep, RDMA_PS_TCP);
@@ -2315,18 +2074,10 @@ z_rdma_listen(zap_ep_t ep, struct sockaddr *sin, socklen_t sa_len)
 	}
 
 	zerr = ZAP_ERR_RESOURCE;
-	rc = __enable_cm_events(rep);
-	if (rc)
-		goto err_2;
-
-	/*
-	 * Asynchronous listen. Connection requests handled in
-	 * cm_thread_proc
-	 */
 	rc = rdma_listen(rep->cm_id, 3);
 	if (rc) {
 		LOG("%s: %s failed. zerr %d rc %d\n", __FUNCTION__, "rdma_listen", (int)zerr, rc);
-		goto err_3;
+		goto err_2;
 	}
 	getnameinfo(sin, sa_len, host, sizeof(host), svc, sizeof(svc),
 			NI_NUMERICHOST|NI_NUMERICSERV);
@@ -2336,15 +2087,11 @@ z_rdma_listen(zap_ep_t ep, struct sockaddr *sin, socklen_t sa_len)
 
 	return ZAP_ERR_OK;
 
- err_3:
-	__disable_cm_events(rep);
  err_2:
 	DLOG("destroying cm_id %p (rep %p)\n", rep->cm_id, rep);
 	rdma_destroy_id(rep->cm_id);
 	rep->cm_id = NULL;
  err_1:
-	DLOG("destroying cm_channel %p (rep %p)\n", rep->cm_channel, rep);
-	rdma_destroy_event_channel(rep->cm_channel);
 	rep->cm_channel = NULL;
  err_0:
 	zap_ep_change_state(&rep->ep, ZAP_EP_LISTENING, ZAP_EP_ERROR);
@@ -2362,19 +2109,27 @@ static int send_credit_update(struct z_rdma_ep *rep)
 	struct z_rdma_buffer *rbuf;
 	struct z_rdma_context *ctxt;
 	struct ibv_send_wr *bad_wr;
+	uint16_t credits;
 	int rc;
 
+	/* take the credits to send to peer */
+	credits = rep->lcl_rq_credits;
+	rep->lcl_rq_credits = 0;
+	pthread_mutex_unlock(&rep->credit_lock);
+
+	pthread_mutex_lock(&rep->ep.lock);
+
 	rbuf = __rdma_buffer_alloc(rep);
-	if (!rbuf)
-		return ENOMEM;
+	if (!rbuf) {
+		rc = ENOMEM;
+		pthread_mutex_unlock(&rep->ep.lock);
+		goto out;
+	}
 
 	req = &rbuf->msg->hdr;
-	req->credits = htons(rep->lcl_rq_credits);
+	req->credits = htons(credits);
 	req->msg_type = htons(Z_RDMA_MSG_CREDIT_UPDATE);
-	rep->lcl_rq_credits = 0;
 	rbuf->data_len = sizeof(req);
-	pthread_mutex_unlock(&rep->credit_lock);
-	pthread_mutex_lock(&rep->ep.lock);
 	ctxt = __rdma_context_alloc(rep, NULL, IBV_WC_SEND, rbuf);
 	pthread_mutex_unlock(&rep->ep.lock);
 	pthread_mutex_lock(&rep->credit_lock);
@@ -2386,7 +2141,7 @@ static int send_credit_update(struct z_rdma_ep *rep)
 
 	ctxt->sge[0].addr = (uint64_t)rbuf->msg->bytes;
 	ctxt->sge[0].length = sizeof(*req);
-	ctxt->sge[0].lkey = rep->buf_pool_mr->lkey;
+	ctxt->sge[0].lkey = rbuf->pool->mr->lkey;
 
 	memset(&ctxt->wr, 0, sizeof(ctxt->wr));
 	ctxt->wr.sg_list = ctxt->sge;
@@ -2411,10 +2166,15 @@ static int send_credit_update(struct z_rdma_ep *rep)
 		rc = ENOSPC;
 		goto out;
 	} else {
+		credits = 0;
 		DLOG("ibv_post_send() succeeded, rep %p\n", rep);
 	}
 	rc = 0;
 out:
+	if (credits) {
+		/* credits has not been sent. put it back */
+		rep->lcl_rq_credits += credits;
+	}
 	return rc;
 }
 
@@ -2461,8 +2221,11 @@ static zap_err_t z_rdma_send(zap_ep_t ep, char *buf, size_t len)
 	rbuf->data_len = len + sizeof(struct z_rdma_message_hdr);
 
 	rc = __rdma_post_send(rep, rbuf);
-	if (rc)
+	if (rc) {
+		pthread_mutex_lock(&rep->ep.lock);
 		__rdma_buffer_free(rbuf);
+		pthread_mutex_unlock(&rep->ep.lock);
+	}
 
 	return rc;
  out:
@@ -2524,7 +2287,7 @@ static zap_err_t z_rdma_send_mapped(zap_ep_t ep, zap_map_t map, void *buf,
 
 	ctxt->sge[0].addr = (uint64_t)rbuf->msg->bytes;
 	ctxt->sge[0].length = sizeof(*hdr);
-	ctxt->sge[0].lkey = rep->buf_pool_mr->lkey;
+	ctxt->sge[0].lkey = rbuf->pool->mr->lkey;
 
 	ctxt->sge[1].addr = (uint64_t)buf;
 	ctxt->sge[1].length = len;
@@ -2603,8 +2366,11 @@ static zap_err_t z_rdma_share(zap_ep_t ep, zap_map_t map,
 	rbuf->data_len = sz;
 
 	rc = __rdma_post_send(rep, rbuf);
-	if (rc)
+	if (rc) {
+		pthread_mutex_lock(&rep->ep.lock);
 		__rdma_buffer_free(rbuf);
+		pthread_mutex_unlock(&rep->ep.lock);
+	}
 	return rc;
 }
 
@@ -2773,47 +2539,263 @@ static zap_err_t z_rdma_read(zap_ep_t ep,
 	return rc;
 }
 
+static void z_rdma_handle_cm_event(z_rdma_io_thread_t thr,
+					struct z_rdma_epoll_ctxt *ctxt)
+{
+	int rc;
+	struct rdma_cm_event *event;
+	struct z_rdma_ep *rep;
+ again:
+	rc = rdma_get_cm_event(ctxt->cm_channel, &event);
+	if (rc)
+		return;
+	rep = event->id->context;
+	DLOG("cm_event cm_id %p rep %p listen_id %p event %d %s "
+	     "status %d \n", event->id, rep, event->listen_id, event->event,
+	     rdma_cm_event_type_str(event->event), event->status);
+	if (event->event != RDMA_CM_EVENT_TIMEWAIT_EXIT) {
+		/*
+		 * rep could be destroyed after ERROR or DISCONNECTED event.
+		 * Hence, the TIMEWAIT_EXIT event tha comes after shall be
+		 * ignored.
+		 *
+		 * On active endpoints, TIMEWAIT_EXIT does not have a chance to
+		 * reach here because cm events are disabled right after ERROR
+		 * or DISCONNECTED events.
+		 *
+		 * The passive endpoints (created from CONN_REQ) use the same
+		 * cm_channel as the listening endpoint and we have no way to
+		 * remove the passive endpoints from the channel. So,
+		 * the TIMEWAIT_EXIT events can reach here.
+		 */
+		ref_get(&rep->ep.ref, __func__);
+		cma_event_handler(rep, event->id, event);
+		rdma_ack_cm_event(event);
+		ref_put(&rep->ep.ref, __func__);
+		/* need to put after rdma_ack_cm_event(), otherwise
+		 * rdma_destroy_id() could be call in the reference put and
+		 * causes a dead lock. */
+	} else {
+		rdma_ack_cm_event(event);
+	}
+	goto again;
+}
+
+static void z_rdma_handle_cq_event(struct z_rdma_epoll_ctxt *ctxt)
+{
+	int ret;
+	struct ibv_cq *ev_cq;
+	struct z_rdma_ep *rep = ctxt->cq_rep;
+	void *ev_ctx;
+
+	ret = ibv_get_cq_event(rep->cq_channel, &ev_cq, &ev_ctx);
+	if (ret)
+		return;
+	assert( rep == ev_ctx );
+	ref_get(&rep->ep.ref, __func__); /* Release after process the ev_cq */
+	/* Ack the event */
+	ibv_ack_cq_events(ev_cq, 1);
+	/*
+	 * Process the CQs. Speculatively reap SQ WQE
+	 * in case they are required to respond to a
+	 * request sitting in the RQ. Reap RQ WQE one
+	 * at a time before revisiting the SQ again to
+	 * reclaim space used by a previous response.
+	 */
+	do {
+		if (rep->sq_cq) {
+			ret = cq_event_handler(rep->sq_cq, SQ_DEPTH+2);
+		}
+		if (ev_cq != rep->sq_cq)
+			ret += cq_event_handler(ev_cq, 1);
+	} while (ret);
+
+	/* Re-arm the CQ */
+	ret = ibv_req_notify_cq(ev_cq, 0);
+	if (ret) {
+		LOG("RDMA: Error %d at %s:%d\n", errno, __func__, __LINE__);
+	}
+	pthread_mutex_lock(&rep->ep.lock);
+	if (LIST_EMPTY(&rep->active_ctxt_list)) {
+		pthread_mutex_unlock(&rep->ep.lock);
+	} else {
+		pthread_mutex_unlock(&rep->ep.lock);
+		submit_pending(rep);
+	}
+	ref_put(&rep->ep.ref, __func__); /* Taken when getting the ev_cq */
+}
+
+static void z_rdma_io_thread_cleanup(void *arg)
+{
+	z_rdma_io_thread_t thr = arg;
+	if (thr->efd > -1)
+		close(thr->efd);
+	zap_io_thread_release(&thr->zap_io_thread);
+	free(thr);
+}
+
+static void *z_rdma_io_thread_proc(void *arg)
+{
+	z_rdma_io_thread_t thr = arg;
+	struct epoll_event events[16];
+	int rc, n, i, n_cm;
+	sigset_t sigset;
+	struct z_rdma_epoll_ctxt *ctxt;
+	struct z_rdma_epoll_ctxt *cm_ctxt[16];
+
+	sigfillset(&sigset);
+	rc = pthread_sigmask(SIG_BLOCK, &sigset, NULL);
+	if (rc) {
+		fprintf(stderr, "zap_rdma: ERROR: pthread_sigmask errno: %d\n",
+				errno);
+		assert(0);
+		return NULL;
+	}
+	pthread_cleanup_push(z_rdma_io_thread_cleanup, arg);
+ loop:
+	zap_thrstat_wait_start(thr->zap_io_thread.stat);
+	n = epoll_wait(thr->efd, events, 16, -1);
+	zap_thrstat_wait_end(thr->zap_io_thread.stat);
+	n_cm = 0;
+	for (i = 0; i < n; i++) {
+		ctxt = events[i].data.ptr;
+		switch (ctxt->type) {
+		case Z_RDMA_EPOLL_CM:
+			cm_ctxt[n_cm++] = ctxt;
+			/* cm events will be processed later */
+			break;
+		case Z_RDMA_EPOLL_CQ:
+			switch (ctxt->cq_rep->ep.state) {
+			case ZAP_EP_ACCEPTING:
+			case ZAP_EP_CONNECTING:
+				/* do not process cq if ep has never been
+				 * established */
+				break;
+			default:
+				z_rdma_handle_cq_event(ctxt);
+			}
+			break;
+		default:
+			LOG("Bad Zap RDMA EPOLL ctxt type: %d\n", ctxt->type);
+			assert(0 == "bad type");
+			break;
+		}
+	}
+	/* process the cm events */
+	for (i = 0; i < n_cm; i++) {
+		z_rdma_handle_cm_event(thr, cm_ctxt[i]);
+	}
+	goto loop;
+
+	pthread_cleanup_pop(1);
+	return NULL;
+}
+
+zap_io_thread_t z_rdma_io_thread_create(zap_t z)
+{
+	int rc;
+	struct epoll_event cm_event;
+	z_rdma_io_thread_t thr;
+
+	thr = calloc(1, sizeof(*thr));
+	if (!thr)
+		goto err_0;
+
+	rc = zap_io_thread_init(&thr->zap_io_thread, z, "zap_rdma_io",
+				ZAP_ENV_INT(ZAP_THRSTAT_WINDOW));
+	if (rc)
+		goto err_1;
+
+	thr->efd = epoll_create1(O_CLOEXEC);
+	if (thr->efd < 0)
+		goto err_2;
+
+	thr->cm_ctxt.type = Z_RDMA_EPOLL_CM;
+	thr->cm_ctxt.cm_channel = rdma_create_event_channel();
+	if (!thr->cm_ctxt.cm_channel)
+		goto err_3;
+
+	rc = fd_flags_on(thr->cm_ctxt.cm_channel->fd, O_NONBLOCK);
+	if (rc)
+		goto err_4;
+
+	cm_event.events = EPOLLIN;
+	cm_event.data.ptr = &thr->cm_ctxt;
+	if (epoll_ctl(thr->efd, EPOLL_CTL_ADD, thr->cm_ctxt.cm_channel->fd, &cm_event))
+		goto err_4;
+
+	thr->devices_len = devices_len;
+
+	rc = pthread_create(&thr->zap_io_thread.thread, NULL,
+			    z_rdma_io_thread_proc, thr);
+	if (rc)
+		goto err_4;
+	pthread_setname_np(thr->zap_io_thread.thread, "zap_rdma_io");
+	return &thr->zap_io_thread;
+ err_4:
+	rdma_destroy_event_channel(thr->cm_ctxt.cm_channel);
+ err_3:
+	close(thr->efd);
+ err_2:
+	zap_thrstat_free(thr->zap_io_thread.stat);
+ err_1:
+	free(thr);
+ err_0:
+	errno = ZAP_ERR_RESOURCE;
+	return NULL;
+}
+
+zap_err_t z_rdma_io_thread_cancel(zap_io_thread_t t)
+{
+	int rc;
+	rc = pthread_cancel(t->thread);
+	switch (rc) {
+	case ESRCH: /* cleaning up structure w/o running thread b/c of fork */
+		((z_rdma_io_thread_t)t)->efd = -1; /* b/c of CLOEXEC */
+		z_rdma_io_thread_cleanup(t);
+	case 0:
+		return ZAP_ERR_OK;
+	default:
+		return ZAP_ERR_LOCAL_OPERATION;
+	}
+}
+
+zap_err_t z_rdma_io_thread_ep_assign(zap_io_thread_t t, zap_ep_t ep)
+{
+	struct z_rdma_ep *rep = (void*)ep;
+	struct z_rdma_io_thread *thr = (void*)t;
+	int rc;
+	if (rep->cm_id && rep->cm_channel != thr->cm_ctxt.cm_channel) {
+		/* cm_id was created with different cm_channel.
+		 * So, we need to migrate it to thr->cm_channel. */
+		rc = rdma_migrate_id(rep->cm_id, thr->cm_ctxt.cm_channel);
+		if (rc == -1)
+			return zap_errno2zerr(errno);
+	}
+	/* NOTE: For active connections, cm_id is not created yet. */
+	rep->cm_channel = thr->cm_ctxt.cm_channel;
+	return ZAP_ERR_OK;
+}
+
+zap_err_t z_rdma_io_thread_ep_release(zap_io_thread_t t, zap_ep_t ep)
+{
+	/* Nothing to do. */
+	return 0;
+}
+
 static int init_complete = 0;
-static pthread_t cm_thread, cq_thread;
 
 static int init_once(zap_log_fn_t log_fn)
 {
-	int rc, num;
-	char *s;
-
+	const char *s;
+	int num;
 	z_rdma_log_fn = log_fn;
 
-	cq_fd = epoll_create(512);
-	if (!cq_fd)
+	/* obtain all devices */
+	devices = rdma_get_devices(&devices_len);
+	if (!devices)
 		goto err_0;
 
-	cm_fd = epoll_create(512);
-	if (!cm_fd)
-		goto err_1;
-
-	/*
-	 * Create the CQ event thread that will wait for events on the
-	 * CQ channel
-	 */
-	rc = pthread_create(&cq_thread, NULL, cq_thread_proc,
-			    (void *)(unsigned long)cq_fd);
-	if (rc)
-		goto err_2;
-	pthread_setname_np(cq_thread, "zap_rdma:cq");
-
-	/*
-	 * Create the CM event thread that will wait for events on
-	 * the CM channel
-	 */
-	rc = pthread_create(&cm_thread, NULL, cm_thread_proc,
-			    (void *)(unsigned long)cm_fd);
-	if (rc)
-		goto err_3;
-	pthread_setname_np(cm_thread, "zap_rdma:cm");
-
-	rc = cleanup_channel_init();
-	if (rc)
-		goto err_4;
 	s = getenv("ZAP_RDMA_MAX_PD");
 	if (s) {
 		num = atoi(s);
@@ -2822,17 +2804,8 @@ static int init_once(zap_log_fn_t log_fn)
 	}
 
 	init_complete = 1;
-	// atexit(z_rdma_cleanup);
 	return 0;
 
- err_4:
-	pthread_cancel(cm_thread);
- err_3:
-	pthread_cancel(cq_thread);
- err_2:
-	close(cm_fd);
- err_1:
-	close(cq_fd);
  err_0:
 	return 1;
 }
@@ -2869,6 +2842,10 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->unmap = z_rdma_unmap;
 	z->share = z_rdma_share;
 	z->get_name = z_get_name;
+	z->io_thread_create = z_rdma_io_thread_create;
+	z->io_thread_cancel = z_rdma_io_thread_cancel;
+	z->io_thread_ep_assign = z_rdma_io_thread_ep_assign;
+	z->io_thread_ep_release = z_rdma_io_thread_ep_release;
 
 	*pz = z;
 	return ZAP_ERR_OK;
@@ -2880,29 +2857,5 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 #define ZAP_RDMA_JOIN_TIMEOUT_DEFAULT 5 /* 5 sec */
 static void __attribute__ ((destructor)) zap_rdma_fini(void)
 {
-	struct timespec t;
-	struct timespec to;
-	char *s = getenv("ZAP_RDMA_JOIN_TIMEOUT_NSEC");
-	if (s) {
-		long v = strtol(s, NULL, 0);
-		to.tv_sec = v / 1000000;
-		to.tv_nsec = v % 1000000;
-	} else {
-		to.tv_sec = ZAP_RDMA_JOIN_TIMEOUT_DEFAULT;
-		to.tv_nsec = 0;
-	}
-	if (cq_thread) {
-		pthread_cancel(cq_thread);
-		clock_gettime(CLOCK_REALTIME, &t);
-		t.tv_sec += to.tv_sec;
-		t.tv_nsec += to.tv_nsec;
-		pthread_timedjoin_np(cq_thread, NULL, &t);
-	}
-	if (cm_thread) {
-		pthread_cancel(cm_thread);
-		clock_gettime(CLOCK_REALTIME, &t);
-		t.tv_sec += to.tv_sec;
-		t.tv_nsec += to.tv_nsec;
-		pthread_timedjoin_np(cm_thread, NULL, &t);
-	}
+	/* no-op */
 }

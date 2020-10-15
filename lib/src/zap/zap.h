@@ -251,6 +251,12 @@ typedef struct zap_event {
 	size_t data_len;
 	/*! Application provided context */
 	void *context;
+
+	/** Event timestamp */
+	struct timespec ts;
+
+	/** Endpoint associated with the event */
+	zap_ep_t ep;
 } *zap_event_t;
 
 /**
@@ -727,7 +733,7 @@ const char* zap_event_str(enum zap_event_type e);
  * \retval 0         The threads terminated successfully.
  * \retval ETIMEDOUT A timeout occurred before the threads terminated.
  */
-int zap_term(int timeout_sec);
+int zap_term(zap_t z, int timeout_sec);
 
 /**
  * \brief The zap_thrstat_t handle maintains thread utilization data
