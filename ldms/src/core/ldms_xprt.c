@@ -3900,7 +3900,16 @@ void __ldms_xprt_term(struct ldms_xprt *x)
 
 int ldms_xprt_term(int sec)
 {
-	return zap_term(sec);
+	int i, rc, tmp;
+	zap_t z;
+	rc = 0;
+	for (i = 0; i < ldms_zap_tbl_n; i++) {
+		z = ldms_zap_tbl[i].zap;
+		tmp = zap_term(z, sec);
+		if (tmp)
+			rc = tmp;
+	}
+	return rc;
 }
 
 int ldms_xprt_sockaddr(ldms_t _x, struct sockaddr *local_sa,

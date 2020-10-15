@@ -147,6 +147,17 @@ struct z_rdma_conn_data {
 
 LIST_HEAD(z_rdma_buffer_list, z_rdma_buffer);
 
+struct z_rdma_epoll_ctxt {
+	enum {
+		Z_RDMA_EPOLL_CM = 1,
+		Z_RDMA_EPOLL_CQ,
+	} type;
+	union {
+		struct rdma_event_channel *cm_channel;
+		struct z_rdma_ep *cq_rep;
+	};
+};
+
 struct z_rdma_ep {
 	struct zap_ep ep;
 	struct ibv_comp_channel *cq_channel;
@@ -210,6 +221,18 @@ struct z_rdma_ep {
 	} dev_type;
 	int cm_channel_enabled;
 	int cq_channel_enabled;
+
+	struct z_rdma_epoll_ctxt cq_ctxt;
 };
+
+typedef struct z_rdma_io_thread {
+	struct zap_io_thread zap_io_thread;
+	int efd; /* epoll fd */
+	struct z_rdma_epoll_ctxt cm_ctxt;
+	int devices_len; /* number of devices */
+} *z_rdma_io_thread_t;
+
+/* Get z_rdma_io_thread from struct z_rdma_ep */
+#define Z_RDMA_EP_THR(ep) ((z_rdma_io_thread_t)((struct zap_ep *)(ep))->thread)
 
 #endif
