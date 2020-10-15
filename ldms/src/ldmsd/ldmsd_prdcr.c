@@ -545,10 +545,31 @@ static void __prdcr_remote_set_delete(ldmsd_prdcr_t prdcr, ldms_set_t set)
 	prdcr_reset_set(prdcr, prdcr_set);
 }
 
+const char *_conn_state_str[] = {
+	[LDMSD_PRDCR_STATE_STOPPED]       =  "LDMSD_PRDCR_STATE_STOPPED",
+	[LDMSD_PRDCR_STATE_DISCONNECTED]  =  "LDMSD_PRDCR_STATE_DISCONNECTED",
+	[LDMSD_PRDCR_STATE_CONNECTING]    =  "LDMSD_PRDCR_STATE_CONNECTING",
+	[LDMSD_PRDCR_STATE_CONNECTED]     =  "LDMSD_PRDCR_STATE_CONNECTED",
+	[LDMSD_PRDCR_STATE_STOPPING]      =  "LDMSD_PRDCR_STATE_STOPPING",
+};
+
+static const char *conn_state_str(int state)
+{
+	if (LDMSD_PRDCR_STATE_STOPPED<=state && state<=LDMSD_PRDCR_STATE_STOPPING)
+		return _conn_state_str[state];
+	return "UNKNOWN_STATE";
+}
+
 static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	ldmsd_prdcr_t prdcr = cb_arg;
 	ldmsd_prdcr_lock(prdcr);
+	ldmsd_log(LDMSD_LINFO, "%s:%d Producer %s (%s %s:%d) conn_state: %d %s\n",
+				__func__, __LINE__,
+				prdcr->obj.name, prdcr->xprt_name,
+				prdcr->host_name, (int)prdcr->port_no,
+				prdcr->conn_state,
+				conn_state_str(prdcr->conn_state));
 	switch(e->type) {
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		x->disconnected = 1;
@@ -623,12 +644,21 @@ reset_prdcr:
 	case LDMSD_PRDCR_STATE_STOPPED:
 		assert(0 == "STOPPED shouldn't have xprt event");
 		break;
+	default:
+		assert(0 == "BAD STATE");
 	}
 	if (prdcr->xprt) {
 		ldmsd_xprt_term(prdcr->xprt);
 		ldms_xprt_put(prdcr->xprt);
 		prdcr->xprt = NULL;
 	}
+	ldmsd_log(LDMSD_LINFO, "%s:%d Producer (after reset) %s (%s %s:%d)"
+				" conn_state: %d %s\n",
+				__func__, __LINE__,
+				prdcr->obj.name, prdcr->xprt_name,
+				prdcr->host_name, (int)prdcr->port_no,
+				prdcr->conn_state,
+				conn_state_str(prdcr->conn_state));
 	ldmsd_prdcr_unlock(prdcr);
 }
 

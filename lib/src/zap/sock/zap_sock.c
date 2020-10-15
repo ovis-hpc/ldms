@@ -64,7 +64,6 @@
 #include <signal.h>
 #include "coll/rbt.h"
 #include "ovis_util/os_util.h"
-#include "ovis_event/ovis_event.h"
 
 #include "zap_sock.h"
 
@@ -78,33 +77,37 @@
 		(sep)->ep.z->log_fn(__VA_ARGS__); \
 } while(0);
 
+#define ZLOG_(z, ...) do { \
+	if (z->log_fn)\
+		z->log_fn(__VA_ARGS__);\
+} while (0)
+
 #ifdef DEBUG_ZAP_SOCK
 #define DEBUG_LOG(ep, ...) LOG__((zap_ep_t)(ep), __VA_ARGS__)
 #define DEBUG_LOG_SEND_MSG(sep, msg) __log_sep_msg(sep, 0, (void*)(msg))
 #define DEBUG_LOG_RECV_MSG(sep, msg) __log_sep_msg(sep, 1, (void*)(msg))
+#define DEBUG_ZLOG(z, ...) ZLOG_(z, __VA_ARGS__)
 #else
 #define DEBUG_LOG(ep, ...)
 #define DEBUG_LOG_SEND_MSG(sep, msg)
 #define DEBUG_LOG_RECV_MSG(sep, msg)
+#define DEBUG_ZLOG(z, ...)
 #endif
 
 static int init_complete = 0;
 
-static pthread_t io_thread;
-
-static ovis_scheduler_t sched;
-
 static void *io_thread_proc(void *arg);
 
-static void sock_event(ovis_event_t ev);
-static void sock_read(ovis_event_t ev);
-static void sock_write(ovis_event_t ev);
-static void sock_connect(ovis_event_t ev);
+static void sock_event(struct epoll_event *ev);
+static void sock_read(struct epoll_event *ev);
+static void sock_write(struct epoll_event *ev);
+static void sock_send_complete(struct epoll_event *ev);
+static void sock_connect(struct epoll_event *ev);
 
 static int __disable_epoll_out(struct z_sock_ep *sep);
 static int __enable_epoll_out(struct z_sock_ep *sep);
 
-static void sock_ev_cb(ovis_event_t ev);
+static void sock_ev_cb(struct epoll_event *ev);
 
 static zap_err_t __sock_send_msg(struct z_sock_ep *sep, struct sock_msg_hdr *m,
 				 size_t msg_size,
@@ -113,8 +116,7 @@ static zap_err_t __sock_send_msg(struct z_sock_ep *sep, struct sock_msg_hdr *m,
 static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 					struct sock_msg_hdr *m,
 					size_t msg_size,
-					const char *data, size_t data_len,
-					struct z_sock_io *io);
+					const char *data, size_t data_len);
 
 static int z_sock_buff_init(z_sock_buff_t buff, size_t bytes);
 static void z_sock_buff_cleanup(z_sock_buff_t buff);
@@ -271,7 +273,7 @@ static zap_err_t z_sock_close(zap_ep_t ep)
 	pthread_t self = pthread_self();
 
 	pthread_mutex_lock(&sep->ep.lock);
-	if (self != ep->event_queue->thread) {
+	if (self != ep->thread->thread) {
 		/* If we are NOT in app callback path, we can block-wait sq */
 		while (!TAILQ_EMPTY(&sep->sq)) {
 			pthread_cond_wait(&sep->sq_cond, &sep->ep.lock);
@@ -413,17 +415,13 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 
 	ref_get(&sep->ep.ref, "accept/connect");
 
-	OVIS_EVENT_INIT(&sep->ev);
-	sep->ev.param.type = OVIS_EVENT_EPOLL;
-	sep->ev.param.cb_fn = sock_ev_cb;
-	sep->ev.param.ctxt = sep;
-	sep->ev.param.fd = sep->sock;
-	sep->ev.param.epoll_events = EPOLLIN|EPOLLOUT;
-	rc = ovis_scheduler_event_add(sched, &sep->ev);
-	if (rc) {
-		zerr = ZAP_ERR_RESOURCE;
+	sep->ev_fn = sock_ev_cb;
+	sep->ev.data.ptr = sep;
+	sep->ev.events = EPOLLIN|EPOLLOUT;
+
+	zerr = zap_io_thread_ep_assign(&sep->ep);
+	if (zerr)
 		goto err3;
-	}
 	return ZAP_ERR_OK;
 
  err3:
@@ -663,27 +661,25 @@ void __sock_wr_free(struct z_sock_send_wr_s *wr)
 	free(wr);
 }
 
+/* caller must hold sep->ep.lock */
 struct z_sock_io *__sock_io_alloc(struct z_sock_ep *sep)
 {
 	struct z_sock_io *io;
-	pthread_mutex_lock(&sep->ep.lock);
 	if (!TAILQ_EMPTY(&sep->free_q)) {
 		io = TAILQ_FIRST(&sep->free_q);
 		TAILQ_REMOVE(&sep->free_q, io, q_link);
 	} else
 		io = calloc(1, sizeof(*io));
-	pthread_mutex_unlock(&sep->ep.lock);
 	return io;
 }
 
+/* caller must hold sep->ep.lock */
 void __sock_io_free(struct z_sock_ep *sep, struct z_sock_io *io)
 {
 	if (!sep)
 		return;
 	io->wr = NULL;
-	pthread_mutex_lock(&sep->ep.lock);
 	TAILQ_INSERT_TAIL(&sep->free_q, io, q_link);
-	pthread_mutex_unlock(&sep->ep.lock);
 }
 
 /**
@@ -707,7 +703,6 @@ static void process_sep_msg_read_resp(struct z_sock_ep *sep)
 			"IO entry %d and message %d.\n", __func__,
 			io->wr->msg.hdr.xid, msg->hdr.xid);
 	TAILQ_REMOVE(&sep->io_q, io, q_link);
-	pthread_mutex_unlock(&sep->ep.lock);
 
 	data_len = ntohl(msg->data_len);
 
@@ -732,7 +727,9 @@ static void process_sep_msg_read_resp(struct z_sock_ep *sep)
 	} else {
 		rc = ntohs(msg->status);
 	}
+	assert( io->ctxt == (void*)msg->hdr.ctxt );
 	__sock_io_free(sep, io);
+	pthread_mutex_unlock(&sep->ep.lock);
 
 	struct zap_event ev = {
 		.type = ZAP_EVENT_READ_COMPLETE,
@@ -826,9 +823,10 @@ static void process_sep_msg_write_resp(struct z_sock_ep *sep)
 			"%s: The transaction IDs mismatched "
 			"between the IO entry %d and message %d.\n",
 			__func__, io->wr->msg.hdr.xid, msg->hdr.xid);
+	assert( io->ctxt == (void*)msg->hdr.ctxt );
 	/* Put it back on the free_q */
-	pthread_mutex_unlock(&sep->ep.lock);
 	__sock_io_free(sep, io);
+	pthread_mutex_unlock(&sep->ep.lock);
 
 	struct zap_event ev = {
 		.type = ZAP_EVENT_WRITE_COMPLETE,
@@ -1114,8 +1112,6 @@ static process_sep_msg_fn_t process_sep_msg_fns[SOCK_MSG_TYPE_LAST] = {
 
 static zap_err_t __sock_send_connect(struct z_sock_ep *sep, char *buf, size_t len);
 
-static zap_thrstat_t sock_stats;
-
 /*
  * This is the callback function for connecting/connected endpoints.
  *
@@ -1124,19 +1120,19 @@ static zap_thrstat_t sock_stats;
  * important to avoid queuing a disconnect prior to the last
  * send/recv.
  */
-static void sock_ev_cb(ovis_event_t ev)
+static void sock_ev_cb(struct epoll_event *ev)
 {
-	struct z_sock_ep *sep = ev->param.ctxt;
+	struct z_sock_ep *sep = ev->data.ptr;
 
-	zap_thrstat_wait_end(sock_stats);
-//	zap_get_ep(&sep->ep);
 	ref_get(&sep->ep.ref, "zap_sock:sock_ev_cb");
-	DEBUG_LOG(sep, "ep: %p, sock_ev_cb() -- BEGIN --\n", sep);
+	DEBUG_LOG(sep, "ep: %p, sock_ev_cb(), ev:%04x -- BEGIN --\n", sep, ev->events);
+	DEBUG_LOG(sep, "ep: %p, state: %s\n", sep, __zap_ep_state_str(sep->ep.state));
 
 	/* Handle write */
-	if (ev->cb.epoll_events & EPOLLOUT) {
+	if (ev->events & EPOLLOUT) {
 		pthread_mutex_lock(&sep->ep.lock);
 		if (sep->sock_connected) {
+			sock_send_complete(ev);
 			sock_write(ev);
 			pthread_mutex_unlock(&sep->ep.lock);
 		} else if (sep->ep.state == ZAP_EP_CONNECTING) {
@@ -1150,7 +1146,7 @@ static void sock_ev_cb(ovis_event_t ev)
 	}
 
 	/* Handle read */
-	if (ev->cb.epoll_events & EPOLLIN) {
+	if (ev->events & EPOLLIN) {
 		sock_read(ev);
 	}
 
@@ -1159,26 +1155,25 @@ static void sock_ev_cb(ovis_event_t ev)
 	 * This must be last to avoid disconnecting before
 	 * sending/receiving all data
 	 */
-	if (ev->cb.epoll_events & (EPOLLERR|EPOLLHUP)) {
+	if (ev->events & (EPOLLERR|EPOLLHUP)) {
 		int err;
 		socklen_t err_len = sizeof(err);
-		getsockopt(ev->param.fd, SOL_SOCKET, SO_ERROR, &err, &err_len);
+		getsockopt(sep->sock, SOL_SOCKET, SO_ERROR, &err, &err_len);
 		DEBUG_LOG(sep, "ep: %p, sock_ev_cb() events %04x err %d\n",
-			  sep, ev->cb.epoll_events, err);
+			  sep, ev->events, err);
 		sock_event(ev);
 		goto out;
 	}
  out:
+	DEBUG_LOG(sep, "ep: %p, state: %s\n", sep, __zap_ep_state_str(sep->ep.state));
 	DEBUG_LOG(sep, "ep: %p, sock_ev_cb() -- END --\n", sep);
-//	zap_put_ep(&sep->ep);
 	ref_put(&sep->ep.ref, "zap_sock:sock_ev_cb");
-	zap_thrstat_wait_start(sock_stats);
 }
 
-static void sock_connect(ovis_event_t ev)
+static void sock_connect(struct epoll_event *ev)
 {
 	/* sock connect routine on the initiator side */
-	struct z_sock_ep *sep = ev->param.ctxt;
+	struct z_sock_ep *sep = ev->data.ptr;
 	zap_err_t zerr;
 
 	zerr = __sock_send_connect(sep, sep->conn_data, sep->conn_data_len);
@@ -1193,17 +1188,39 @@ static void sock_connect(ovis_event_t ev)
 	return;
 }
 
-static void sock_write(ovis_event_t ev)
+/* process sock send completion, must hold sep->ep.lock */
+static void sock_send_complete(struct epoll_event *ev)
 {
-	struct z_sock_ep *sep = ev->param.ctxt;
+	struct z_sock_ep *sep = ev->data.ptr;
+	struct zap_event zev = {
+		.status = ZAP_ERR_OK,
+	};
+	struct z_sock_io *io;
+	while (( io = TAILQ_FIRST(&sep->io_cq) )) {
+		TAILQ_REMOVE(&sep->io_cq, io, q_link);
+		zev.context = io->ctxt;
+		zev.type = io->comp_type;
+		__sock_io_free(sep, io);
+		pthread_mutex_unlock(&sep->ep.lock);
+		sep->ep.cb(&sep->ep, &zev);
+		pthread_mutex_lock(&sep->ep.lock);
+	}
+}
+
+/* sep->ep.lock is held */
+static void sock_write(struct epoll_event *ev)
+{
+	struct z_sock_ep *sep = ev->data.ptr;
 	ssize_t wsz;
 	z_sock_send_wr_t wr;
 
  next:
 	wr = TAILQ_FIRST(&sep->sq);
 	if (!wr) {
-		/* sq empty, disable epoll out */
-		__disable_epoll_out(sep);
+		if (TAILQ_EMPTY(&sep->io_cq)) /* also no completion, disable epoll out */
+			__disable_epoll_out(sep);
+		else /* has completion to process by the io thread */
+			__enable_epoll_out(sep);
 		pthread_cond_signal(&sep->sq_cond);
 		goto out;
 	}
@@ -1252,23 +1269,8 @@ static void sock_write(ovis_event_t ev)
 		/* right now we have only SEND_COMPLETE delivering by WR */
 		assert(ntohs(wr->msg.hdr.msg_type) == SOCK_MSG_SENDRECV);
 		TAILQ_REMOVE(&sep->io_q, wr->io, q_link);
-		struct zap_event zev = {
-			.status = ZAP_ERR_OK,
-			.context = (void *)wr->msg.hdr.ctxt
-		};
-		pthread_mutex_unlock(&sep->ep.lock);
-		if (wr->flags & Z_SOCK_WR_SEND) {
-			zev.type = ZAP_EVENT_SEND_COMPLETE;
-		} else if (wr->flags & Z_SOCK_WR_SEND_MAPPED) {
-			zev.type = ZAP_EVENT_SEND_MAPPED_COMPLETE;
-		} else {
-			/* nothing to do */
-		}
-		sep->ep.cb(&sep->ep, &zev); /* this post to zap interpose queue */
-		__sock_io_free(sep, wr->io);
-		wr->io = NULL;
-		pthread_mutex_lock(&sep->ep.lock);
-		goto next;
+		TAILQ_INSERT_TAIL(&sep->io_cq, wr->io, q_link);
+		wr->io->wr = NULL; /* wr is not needed anymore */
 	}
 	__sock_wr_free(wr);
 	goto next;
@@ -1281,9 +1283,9 @@ static void sock_write(ovis_event_t ev)
 }
 
 #define min_t(t, x, y) (t)((t)x < (t)y?(t)x:(t)y)
-static void sock_read(ovis_event_t ev)
+static void sock_read(struct epoll_event *ev)
 {
-	struct z_sock_ep *sep = (struct z_sock_ep *)ev->param.ctxt;
+	struct z_sock_ep *sep = ev->data.ptr;
 	struct sock_msg_hdr *hdr;
 	enum sock_msg_type msg_type;
 	struct zap_version ver;
@@ -1363,19 +1365,45 @@ static void sock_read(ovis_event_t ev)
 	process_sep_read_error(sep);
 }
 
-#ifdef NDEBUG
-#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
-#endif
+void io_thread_cleanup(void *arg)
+{
+	z_sock_io_thread_t thr = arg;
+	if (thr->efd > -1)
+		close(thr->efd);
+	zap_io_thread_release(&thr->zap_io_thread);
+	free(thr);
+}
+
 static void *io_thread_proc(void *arg)
 {
 	/* Zap thread will not handle any signal */
-	int rc;
+	z_sock_io_thread_t thr = arg;
+	int rc, n, i;
 	sigset_t sigset;
+	struct z_sock_ep *sep;
+
+	pthread_cleanup_push(io_thread_cleanup, arg);
+
 	sigfillset(&sigset);
 	rc = sigprocmask(SIG_SETMASK, &sigset, NULL);
 	assert(rc == 0 && "pthread_sigmask error");
-	zap_thrstat_wait_start(sock_stats);
-	rc = ovis_scheduler_loop(sched, 0);
+
+	while (1) {
+		zap_thrstat_wait_start(thr->zap_io_thread.stat);
+		n = epoll_wait(thr->efd, thr->ev, ZAP_SOCK_EV_SIZE, -1);
+		zap_thrstat_wait_end(thr->zap_io_thread.stat);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue; /* EINTR is OK */
+			break;
+		}
+		for (i = 0; i < n; i++) {
+			sep = thr->ev[i].data.ptr;
+			sep->ev_fn(&thr->ev[i]);
+		}
+	}
+
+	pthread_cleanup_pop(1);
 	return NULL;
 }
 
@@ -1413,17 +1441,19 @@ static zap_err_t __sock_send(struct z_sock_ep *sep, uint16_t msg_type,
 	z_sock_hdr_init(&msg.hdr, 0, msg_type, (uint32_t)(sizeof(msg) + len), 0);
 	msg.data_len = htonl(len);
 
-	return __sock_send_msg_nolock(sep, &msg.hdr, sizeof(msg), buf, len, NULL);
+	return __sock_send_msg_nolock(sep, &msg.hdr, sizeof(msg), buf, len);
 }
 
 /* caller must have sep->ep.lock held */
 static int __enable_epoll_out(struct z_sock_ep *sep)
 {
 	int rc;
-	if (sep->ev.param.epoll_events & EPOLLOUT)
+	z_sock_io_thread_t thr = (z_sock_io_thread_t)sep->ep.thread;
+	if (sep->ev.events & EPOLLOUT)
 		return 0; /* already enabled */
 	DEBUG_LOG(sep, "ep: %p, Enabling EPOLLOUT\n", sep);
-	rc = ovis_scheduler_epoll_event_mod(sched, &sep->ev, EPOLLIN|EPOLLOUT);
+	sep->ev.events = EPOLLIN|EPOLLOUT;
+	rc = epoll_ctl(thr->efd, EPOLL_CTL_MOD, sep->sock, &sep->ev);
 	return rc;
 }
 
@@ -1431,22 +1461,23 @@ static int __enable_epoll_out(struct z_sock_ep *sep)
 static int __disable_epoll_out(struct z_sock_ep *sep)
 {
 	int rc;
-	if ((sep->ev.param.epoll_events & EPOLLOUT) == 0)
+	z_sock_io_thread_t thr = (z_sock_io_thread_t)sep->ep.thread;
+	if ((sep->ev.events & EPOLLOUT) == 0)
 		return 0; /* already disabled */
 	DEBUG_LOG(sep, "ep: %p, Disabling EPOLLOUT\n", sep);
-	rc = ovis_scheduler_epoll_event_mod(sched, &sep->ev, EPOLLIN);
+	sep->ev.events = EPOLLIN;
+	rc = epoll_ctl(thr->efd, EPOLL_CTL_MOD, sep->sock, &sep->ev);
 	return rc;
 }
 
 /*
  * Caller must acquire `sep->ep.lock` before calling this function.
  */
-static zap_err_t __wr_post(struct z_sock_ep *sep, z_sock_send_wr_t wr)
+static void __wr_post(struct z_sock_ep *sep, z_sock_send_wr_t wr)
 {
-	struct ovis_event_s ev = { .param = { .ctxt = sep } };
+	struct epoll_event ev = { .events = EPOLLOUT, .data.ptr = sep };
 	TAILQ_INSERT_TAIL(&sep->sq, wr, link);
 	sock_write(&ev);
-	return ZAP_ERR_OK;
 }
 
 /*
@@ -1455,15 +1486,14 @@ static zap_err_t __wr_post(struct z_sock_ep *sep, z_sock_send_wr_t wr)
 static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 					struct sock_msg_hdr *m,
 					size_t msg_size,
-					const char *data, size_t data_len,
-					struct z_sock_io *io)
+					const char *data, size_t data_len)
 {
-	zap_err_t zerr;
 	z_sock_send_wr_t wr;
 	sock_msg_type_t mtype = ntohs(m->msg_type);
 	DEBUG_LOG_SEND_MSG(sep, m);
+	assert(mtype != SOCK_MSG_WRITE_REQ); /* WRITE_REQ uses __wr_post() */
 	/* allocate send wr */
-	if (mtype == SOCK_MSG_READ_RESP || mtype == SOCK_MSG_WRITE_REQ) {
+	if (mtype == SOCK_MSG_READ_RESP) {
 		/* allow big message, and do not copy `data`  */
 		wr = __sock_wr_alloc(0, NULL);
 		if (!wr)
@@ -1489,10 +1519,8 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 		memcpy(wr->msg.bytes, m, msg_size);
 		memcpy(wr->msg.bytes + msg_size, data, data_len);
 	}
-	zerr = __wr_post(sep, wr);
-	if (zerr)
-		free(wr);
-	return zerr;
+	__wr_post(sep, wr);
+	return ZAP_ERR_OK;
 }
 
 static zap_err_t __sock_send_msg(struct z_sock_ep *sep, struct sock_msg_hdr *m,
@@ -1500,43 +1528,35 @@ static zap_err_t __sock_send_msg(struct z_sock_ep *sep, struct sock_msg_hdr *m,
 {
 	zap_err_t zerr;
 	pthread_mutex_lock(&sep->ep.lock);
-	zerr = __sock_send_msg_nolock(sep, m, msg_size, data, data_len, NULL);
+	zerr = __sock_send_msg_nolock(sep, m, msg_size, data, data_len);
 	pthread_mutex_unlock(&sep->ep.lock);
 	return zerr;
 }
 
 /* Handling error or disconnection events */
-static void sock_event(ovis_event_t ev)
+static void sock_event(struct epoll_event *ev)
 {
-	struct z_sock_ep *sep = ev->param.ctxt;
+	struct z_sock_ep *sep = ev->data.ptr;
 	struct zap_event zev = { 0 };
 
 	int do_cb = 0;
 	int drop_conn_ref = 0;
 
 	pthread_mutex_lock(&sep->ep.lock);
+	zap_io_thread_ep_release(&sep->ep);
 
-	assert(&sep->ev == ev);
-	ovis_scheduler_event_del(sched, &sep->ev);
+	sock_send_complete(ev);
 
 	/* Complete all outstanding I/O with ZEP_ERR_FLUSH */
 	while (!TAILQ_EMPTY(&sep->io_q)) {
-		zap_event_type_t ev_type;
-		sock_msg_type_t msg_type;
 		struct z_sock_io *io = TAILQ_FIRST(&sep->io_q);
 		TAILQ_REMOVE(&sep->io_q, io, q_link);
 
-		msg_type = ntohs(io->wr->msg.hdr.msg_type);
-		if (msg_type >= SOCK_MSG_FIRST && msg_type < SOCK_MSG_TYPE_LAST)
-			ev_type = ev_type_cvt[msg_type];
-		else
-			ev_type = ZAP_EVENT_BAD;
-
 		/* Call the completion routine */
 		struct zap_event zev = {
-			.type = ev_type,
+			.type = io->comp_type,
 			.status = ZAP_ERR_FLUSH,
-			.context = (void *)io->wr->msg.hdr.ctxt
+			.context = io->ctxt,
 		};
 		free(io);	/* Don't put back on free_q, we're closing */
 		pthread_mutex_unlock(&sep->ep.lock);
@@ -1575,8 +1595,9 @@ static void sock_event(ovis_event_t ev)
 	}
 
 	pthread_mutex_unlock(&sep->ep.lock);
-	if (do_cb)
+	if (do_cb) {
 		sep->ep.cb((void*)sep, &zev);
+	}
 
 	if (drop_conn_ref) {
 		/* Taken in z_sock_connect and process_sep_msg_accepted */
@@ -1585,9 +1606,9 @@ static void sock_event(ovis_event_t ev)
 	return;
 }
 
-static void __z_sock_conn_request(ovis_event_t ev)
+static void __z_sock_conn_request(struct epoll_event *ev)
 {
-	struct z_sock_ep *sep = ev->param.ctxt;
+	struct z_sock_ep *sep = ev->data.ptr;
 	zap_ep_t new_ep;
 	struct z_sock_ep *new_sep;
 	zap_err_t zerr;
@@ -1596,7 +1617,7 @@ static void __z_sock_conn_request(ovis_event_t ev)
 	struct sockaddr sa;
 	socklen_t sa_len = sizeof(sa);
 
-	assert(ev->cb.epoll_events == EPOLLIN);
+	assert(ev->events == EPOLLIN);
 	sockfd = accept(sep->sock, &sa, &sa_len);
 
 	if (sockfd == -1) {
@@ -1605,7 +1626,7 @@ static void __z_sock_conn_request(ovis_event_t ev)
 		return;
 	}
 
-	new_ep = zap_new(sep->ep.z, sep->ep.app_cb);
+	new_ep = zap_new(sep->ep.z, sep->ep.cb);
 	if (!new_ep) {
 		zerr = errno;
 		LOG_(sep, "Zap Error %d (%s): in %s at %s:%d\n",
@@ -1621,22 +1642,19 @@ static void __z_sock_conn_request(ovis_event_t ev)
 	new_sep->ep.state = ZAP_EP_ACCEPTING;
 	new_sep->sock_connected = 1;
 
-	OVIS_EVENT_INIT(&new_sep->ev);
-	new_sep->ev.param.type = OVIS_EVENT_EPOLL;
-	new_sep->ev.param.cb_fn = sock_ev_cb;
-	new_sep->ev.param.ctxt = new_sep;
-	new_sep->ev.param.epoll_events = EPOLLIN;
-	new_sep->ev.param.fd = sockfd;
+	new_sep->ev_fn = sock_ev_cb;
+	new_sep->ev.data.ptr = new_sep;
+	new_sep->ev.events = EPOLLIN;
 
 	rc = __set_sock_opts(new_sep);
 	if (rc)
 		goto err_1;
 
-	rc = ovis_scheduler_event_add(sched, &new_sep->ev);
-	if (rc) {
+	zerr = zap_io_thread_ep_assign(&new_sep->ep);
+	if (zerr) {
 		/* synchronous error & app doesn't know about this new
 		 * endpoint yet ... so just log and cleanup. */
-		LOG_(sep, "ovis_scheduler_event_add() error %d on fd %d", rc,
+		LOG_(sep, "zap_io_thread_ep_assign() error %d on fd %d", rc,
 					new_sep->sock);
 		goto err_1;
 	}
@@ -1696,18 +1714,15 @@ static zap_err_t z_sock_listen(zap_ep_t ep, struct sockaddr *sa,
 		goto err_1;
 	}
 
-	/* setup ovis event */
-	OVIS_EVENT_INIT(&sep->ev);
-	sep->ev.param.type = OVIS_EVENT_EPOLL;
-	sep->ev.param.fd = sep->sock;
-	sep->ev.param.epoll_events = EPOLLIN;
-	sep->ev.param.cb_fn = __z_sock_conn_request;
-	sep->ev.param.ctxt = sep;
-	rc = ovis_scheduler_event_add(sched, &sep->ev);
-	if (rc) {
-		zerr = ZAP_ERR_RESOURCE;
+	/* setup event */
+	sep->ev_fn = __z_sock_conn_request;
+	sep->ev.data.ptr = sep;
+	sep->ev.events = EPOLLIN;
+
+	/* assign the endpoint to a thread */
+	zerr = zap_io_thread_ep_assign(&sep->ep);
+	if (zerr)
 		goto err_1;
-	}
 
 	return ZAP_ERR_OK;
 
@@ -1720,16 +1735,29 @@ static zap_err_t z_sock_listen(zap_ep_t ep, struct sockaddr *sa,
 static zap_err_t z_sock_send(zap_ep_t ep, char *buf, size_t len)
 {
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
-	struct z_sock_io *io = __sock_io_alloc(sep);
+	struct z_sock_io *io;
 	zap_err_t zerr;
 
-	if (!io)
-		return ZAP_ERR_RESOURCE;
+	pthread_mutex_lock(&sep->ep.lock);
+
+	if (ep->state != ZAP_EP_CONNECTED) {
+		zerr = ZAP_ERR_NOT_CONNECTED;
+		goto err0;
+	}
+
+	io = __sock_io_alloc(sep);
+	if (!io) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto err0;
+	}
+
+	io->comp_type = ZAP_EVENT_SEND_COMPLETE;
+	io->ctxt = NULL;
 
 	io->wr = __sock_wr_alloc(len, io);
 	if (!io->wr) {
 		zerr = ZAP_ERR_RESOURCE;
-		goto err0;
+		goto err1;
 	}
 
 	io->wr->flags = Z_SOCK_WR_COMPLETION | Z_SOCK_WR_SEND;
@@ -1741,24 +1769,15 @@ static zap_err_t z_sock_send(zap_ep_t ep, char *buf, size_t len)
 	io->wr->msg.sendrecv.data_len = htonl((uint32_t)len);
 	memcpy(io->wr->msg.bytes + sizeof(io->wr->msg.sendrecv), buf, len);
 
-	pthread_mutex_lock(&sep->ep.lock);
-	if (ep->state != ZAP_EP_CONNECTED) {
-		zerr = ZAP_ERR_NOT_CONNECTED;
-		goto err1;
-	}
 	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
 	/* Post the work request */
-	zerr = __wr_post(sep, io->wr);
-	if (zerr)
-		goto err2;
+	__wr_post(sep, io->wr);
 	pthread_mutex_unlock(&sep->ep.lock);
 	return ZAP_ERR_OK;
-err2:
-	TAILQ_REMOVE(&sep->io_q, io, q_link);
 err1:
-	pthread_mutex_unlock(&sep->ep.lock);
-err0:
 	__sock_io_free(sep, io);
+err0:
+	pthread_mutex_unlock(&sep->ep.lock);
 	return zerr;
 }
 
@@ -1772,15 +1791,13 @@ zap_err_t z_sock_send_mapped(zap_ep_t ep, zap_map_t map, void *buf,
 			     size_t len, void *context)
 {
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
-	struct z_sock_io *io = __sock_io_alloc(sep);
+	struct z_sock_io *io;
 	zap_err_t zerr;
 
-	if (!io)
-		return ZAP_ERR_RESOURCE;
+	pthread_mutex_lock(&sep->ep.lock);
 
-	io->wr = __sock_wr_alloc(0, io);
-	if (!io->wr) {
-		zerr = ZAP_ERR_RESOURCE;
+	if (sep->ep.state != ZAP_EP_CONNECTED) {
+		zerr = ZAP_ERR_NOT_CONNECTED;
 		goto err0;
 	}
 
@@ -1788,6 +1805,21 @@ zap_err_t z_sock_send_mapped(zap_ep_t ep, zap_map_t map, void *buf,
 	if (z_map_access_validate(map, buf, len, ZAP_ACCESS_NONE) != 0) {
 		zerr = ZAP_ERR_LOCAL_LEN;
 		goto err0;
+	}
+
+	io = __sock_io_alloc(sep);
+	if (!io) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto err0;
+	}
+
+	io->comp_type = ZAP_EVENT_SEND_MAPPED_COMPLETE;
+	io->ctxt = context;
+
+	io->wr = __sock_wr_alloc(0, io);
+	if (!io->wr) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto err1;
 	}
 
 	/* prepare wr and message */
@@ -1800,32 +1832,21 @@ zap_err_t z_sock_send_mapped(zap_ep_t ep, zap_map_t map, void *buf,
 			io->wr->msg_len + len, (uint64_t)context);
 	io->wr->msg.sendrecv.data_len = htonl((uint32_t) len);
 
-	pthread_mutex_lock(&sep->ep.lock);
-	if (sep->ep.state != ZAP_EP_CONNECTED) {
-		zerr = ZAP_ERR_NOT_CONNECTED;
-		goto err1;
-	}
-
 	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
 	/* write message */
-	zerr = __wr_post(sep, io->wr);
-	if (zerr)
-		goto err2;
+	__wr_post(sep, io->wr);
 
 	pthread_mutex_unlock(&sep->ep.lock);
 	return ZAP_ERR_OK;
-err2:
-	TAILQ_REMOVE(&sep->io_q, io, q_link);
 err1:
-	pthread_mutex_unlock(&sep->ep.lock);
-err0:
 	__sock_io_free(sep, io);
+err0:
+	pthread_mutex_unlock(&sep->ep.lock);
 	return zerr;
 }
 
 static int init_once()
 {
-	int rc = ENOMEM;
 	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
 	pthread_mutex_lock(&mutex);
@@ -1835,31 +1856,15 @@ static int init_once()
 		return 0;
 	}
 
-	sock_stats = zap_thrstat_new("sock:io_proc", ZAP_ENV_INT(ZAP_THRSTAT_WINDOW));
-	assert(sock_stats);
-	sched = ovis_scheduler_new();
-	if (!sched)
-		return errno;
-
-	rc = pthread_create(&io_thread, NULL, io_thread_proc, 0);
-	if (rc)
-		goto err_1;
-	pthread_setname_np(io_thread, "sock:io_proc");
 	pthread_atfork(NULL, NULL, (void*)z_sock_atfork);
 
 	z_key_tree.root = NULL;
 	z_key_tree.comparator = z_rbn_cmp;
 	pthread_mutex_init(&z_key_tree_mutex, NULL);
-
 	__atomic_store_n(&init_complete, 1, __ATOMIC_SEQ_CST);
 	pthread_mutex_unlock(&mutex);
-	return 0;
 
- err_1:
-	ovis_scheduler_free(sched);
-	sched = NULL;
-	pthread_mutex_unlock(&mutex);
-	return rc;
+	return 0;
 }
 
 static zap_ep_t z_sock_new(zap_t z, zap_cb_fn_t cb)
@@ -1876,6 +1881,7 @@ static zap_ep_t z_sock_new(zap_t z, zap_cb_fn_t cb)
 	}
 	TAILQ_INIT(&sep->free_q);
 	TAILQ_INIT(&sep->io_q);
+	TAILQ_INIT(&sep->io_cq);
 	TAILQ_INIT(&sep->sq);
 	sep->sock = -1;
 	pthread_cond_init(&sep->sq_cond, NULL);
@@ -1891,6 +1897,8 @@ static zap_ep_t z_sock_new(zap_t z, zap_cb_fn_t cb)
 	LIST_INSERT_HEAD(&z_sock_list, sep, link);
 	pthread_mutex_unlock(&z_sock_list_mutex);
 
+	DEBUG_ZLOG(z, "z_sock_new(%p)\n", sep);
+
 	return (zap_ep_t)sep;
 }
 
@@ -1900,9 +1908,7 @@ static void z_sock_destroy(zap_ep_t ep)
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
 	z_sock_send_wr_t wr;
 
-#ifdef DEBUG
-	ep->z->log_fn("SOCK: destroying endpoint %p\n", ep);
-#endif
+	DEBUG_LOG(sep, "z_sock_destroy(%p)\n", sep);
 
 	while (!TAILQ_EMPTY(&sep->sq)) {
 		wr = TAILQ_FIRST(&sep->sq);
@@ -2038,27 +2044,40 @@ static zap_err_t z_sock_read(zap_ep_t ep, zap_map_t src_map, char *src,
 			     void *context)
 {
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
-	struct z_sock_io *io = __sock_io_alloc(sep);
+	struct z_sock_io *io;
 	zap_err_t zerr = ZAP_ERR_OK;
 
-	if (!io)
-		return ZAP_ERR_RESOURCE;
-
-	io->wr = __sock_wr_alloc(0, io);
-	if (!io->wr) {
-		zerr = ZAP_ERR_RESOURCE;
-		goto err;
+	pthread_mutex_lock(&sep->ep.lock);
+	if (sep->ep.state != ZAP_EP_CONNECTED) {
+		zerr = ZAP_ERR_NOT_CONNECTED;
+		pthread_mutex_unlock(&sep->ep.lock);
+		goto err0;
 	}
 
 	/* validate */
 	if (z_map_access_validate(src_map, src, sz, ZAP_ACCESS_READ) != 0) {
 		zerr = ZAP_ERR_REMOTE_PERMISSION;
-		goto err;
+		goto err0;
 	}
 
 	if (z_map_access_validate(dst_map, dst, sz, ZAP_ACCESS_NONE) != 0) {
 		zerr = ZAP_ERR_LOCAL_LEN;
-		goto err;
+		goto err0;
+	}
+
+	io = __sock_io_alloc(sep);
+	if (!io) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto err0;
+	}
+
+	io->comp_type = ZAP_EVENT_READ_COMPLETE;
+	io->ctxt = context;
+
+	io->wr = __sock_wr_alloc(0, io);
+	if (!io->wr) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto err1;
 	}
 
 	/* prepare wr and message */
@@ -2071,26 +2090,17 @@ static zap_err_t z_sock_read(zap_ep_t ep, zap_map_t src_map, char *src,
 	io->dst_map = dst_map;
 	io->dst_ptr = dst;
 
-	pthread_mutex_lock(&sep->ep.lock);
-	if (sep->ep.state != ZAP_EP_CONNECTED) {
-		zerr = ZAP_ERR_NOT_CONNECTED;
-		pthread_mutex_unlock(&sep->ep.lock);
-		goto err;
-	}
-
 	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
 	/* write message */
-	zerr = __wr_post(sep, io->wr);
-	if (zerr)
-		goto err1;
+	__wr_post(sep, io->wr);
 
 	pthread_mutex_unlock(&sep->ep.lock);
 	return ZAP_ERR_OK;
+
 err1:
-	TAILQ_REMOVE(&sep->io_q, io, q_link);
-	pthread_mutex_unlock(&sep->ep.lock);
-err:
 	__sock_io_free(sep, io);
+err0:
+	pthread_mutex_unlock(&sep->ep.lock);
 	return zerr;
 }
 
@@ -2099,15 +2109,12 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 			      void *context)
 {
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
-	struct z_sock_io *io = __sock_io_alloc(sep);
+	struct z_sock_io *io;
 	zap_err_t zerr;
 
-	if (!io)
-		return ZAP_ERR_RESOURCE;
-
-	io->wr = __sock_wr_alloc(0, io);
-	if (!io->wr) {
-		zerr = ZAP_ERR_RESOURCE;
+	pthread_mutex_lock(&sep->ep.lock);
+	if (sep->ep.state != ZAP_EP_CONNECTED) {
+		zerr = ZAP_ERR_NOT_CONNECTED;
 		goto err0;
 	}
 
@@ -2122,6 +2129,21 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 		goto err0;
 	}
 
+	io = __sock_io_alloc(sep);
+	if (!io) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto err0;
+	}
+
+	io->comp_type = ZAP_EVENT_WRITE_COMPLETE;
+	io->ctxt = context;
+
+	io->wr = __sock_wr_alloc(0, io);
+	if (!io->wr) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto err1;
+	}
+
 	/* prepare wr and message */
 	zerr = ZAP_ERR_RESOURCE;
 	io->wr->data = src;
@@ -2133,28 +2155,80 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	io->wr->msg.write_req.dst_ptr = htobe64((uint64_t) dst);
 	io->wr->msg.write_req.data_len = htonl((uint32_t) sz);
 
-	pthread_mutex_lock(&sep->ep.lock);
-	if (sep->ep.state != ZAP_EP_CONNECTED) {
-		zerr = ZAP_ERR_NOT_CONNECTED;
-		goto err1;
-	}
-
 	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
 	/* write message */
-	zerr = __wr_post(sep, io->wr);
-	if (zerr)
-		goto err2;
+	__wr_post(sep, io->wr);
 
 	pthread_mutex_unlock(&sep->ep.lock);
 	return ZAP_ERR_OK;
 
-err2:
-	TAILQ_REMOVE(&sep->io_q, io, q_link);
 err1:
-	pthread_mutex_unlock(&sep->ep.lock);
-err0:
 	__sock_io_free(sep, io);
+err0:
+	pthread_mutex_unlock(&sep->ep.lock);
 	return zerr;
+}
+
+zap_io_thread_t z_sock_io_thread_create(zap_t z)
+{
+	int rc;
+	z_sock_io_thread_t thr = calloc(1, sizeof(*thr));
+	if (!thr)
+		goto err0;
+	rc = zap_io_thread_init(&thr->zap_io_thread, z, "zap_sock_io",
+				ZAP_ENV_INT(ZAP_THRSTAT_WINDOW));
+	if (rc)
+		goto err1;
+	thr->efd = epoll_create1(O_CLOEXEC);
+	if (thr->efd < 1)
+		goto err2;
+	rc = pthread_create(&thr->zap_io_thread.thread, NULL, io_thread_proc, thr);
+	if (rc)
+		goto err3;
+	pthread_setname_np(thr->zap_io_thread.thread, "zap_sock_io");
+	return &thr->zap_io_thread;
+ err3:
+	close(thr->efd);
+ err2:
+	zap_io_thread_release(&thr->zap_io_thread);
+ err1:
+	free(thr);
+ err0:
+	errno = ZAP_ERR_RESOURCE;
+	return NULL;
+}
+
+zap_err_t z_sock_io_thread_cancel(zap_io_thread_t t)
+{
+	int rc;
+	rc = pthread_cancel(t->thread);
+	switch (rc) {
+	case ESRCH: /* cleaning up structure w/o running thread b/c of fork */
+		((z_sock_io_thread_t)t)->efd = -1; /* b/c of CLOEXEC */
+		io_thread_cleanup(t);
+	case 0:
+		return ZAP_ERR_OK;
+	default:
+		return ZAP_ERR_LOCAL_OPERATION;
+	}
+}
+
+zap_err_t z_sock_io_thread_ep_assign(zap_io_thread_t t, zap_ep_t ep)
+{
+	z_sock_io_thread_t thr = (void*)t;
+	struct z_sock_ep *sep = (void*)ep;
+	int rc;
+	rc = epoll_ctl(thr->efd, EPOLL_CTL_ADD, sep->sock, &sep->ev);
+	return rc ? ZAP_ERR_RESOURCE : ZAP_ERR_OK;
+}
+
+zap_err_t z_sock_io_thread_ep_release(zap_io_thread_t t, zap_ep_t ep)
+{
+	z_sock_io_thread_t thr = (void*)t;
+	struct z_sock_ep *sep = (void*)ep;
+	int rc;
+	rc = epoll_ctl(thr->efd, EPOLL_CTL_DEL, sep->sock, &sep->ev);
+	return rc ? ZAP_ERR_RESOURCE : ZAP_ERR_OK;
 }
 
 zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
@@ -2189,6 +2263,10 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->share = z_sock_share;
 	z->get_name = z_get_name;
 	z->send_mapped = z_sock_send_mapped;
+	z->io_thread_create = z_sock_io_thread_create;
+	z->io_thread_cancel = z_sock_io_thread_cancel;
+	z->io_thread_ep_assign = z_sock_io_thread_ep_assign;
+	z->io_thread_ep_release = z_sock_io_thread_ep_release;
 
 	/* is it needed? */
 	z->mem_info_fn = mem_info_fn;

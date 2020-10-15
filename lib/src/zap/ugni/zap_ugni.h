@@ -1,8 +1,8 @@
 /**
- * Copyright (c) 2014-2017,2019-2020 National Technology & Engineering Solutions
+ * Copyright (c) 2014-2017,2019-2021 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2014-2017,2019-2020 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2014-2017,2019-2021 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -64,20 +64,25 @@
 #include "zap.h"
 #include "zap_priv.h"
 
-#define UGNI_SOCKBUF_SZ 1024 * 1024
-
-/**
- * \brief CQ size.
- */
-#define ZAP_UGNI_CQ_DEPTH	2048
-
 /*
  * The length of the string
  * lcl=<local ip address:port> <--> rmt=<remote ip address:port>
  */
 #define ZAP_UGNI_EP_NAME_SZ 64
 
-#define ZAP_UGNI_INIT_RECV_BUFF_SZ 4096
+/* NOTE: This is the entire message buffer length submitted to GNI_PostRdma().
+ * The `max_msg` length reported to the application is ZAP_UGNI_MSG_MAX -
+ * `max_hdr_len` - 8.  */
+#define ZAP_UGNI_BUFSZ 1024
+
+#define ZAP_UGNI_THREAD_EP_MAX 2048 /* max endpoints per thread */
+#define ZAP_UGNI_EP_MSG_CREDIT 8
+#define ZAP_UGNI_RDMA_CQ_DEPTH (4*1024*1024)
+#define ZAP_UGNI_SMSG_CQ_DEPTH (4*1024*1024)
+#define ZAP_UGNI_RCQ_DEPTH (4*1024*1024)
+#define ZAP_UGNI_RDMA_POST_CREDIT (64)
+#define ZAP_UGNI_MSG_POST_CREDIT (32)
+#define ZAP_UGNI_ACK_POST_CREDIT (32)
 
 /* This is used by handle rendezvous */
 struct zap_ugni_map {
@@ -85,9 +90,13 @@ struct zap_ugni_map {
 	gni_mem_handle_t gni_mh;
 };
 
-struct z_ugni_key {
-	struct rbn rb_node;
-	struct zap_ugni_map *map; /**< reference to zap_map */
+/* The epoll data */
+struct z_ugni_epoll_ctxt {
+	enum {
+		Z_UGNI_SOCK_EVENT, /* event from socket */
+		Z_UGNI_CQ_EVENT, /* event from cq channel */
+		Z_UGNI_ZQ_EVENT, /* event from zq (zap queue) channel */
+	} type;
 };
 
 /**
@@ -96,11 +105,15 @@ struct z_ugni_key {
 typedef enum zap_ugni_msg_type {
 	ZAP_UGNI_MSG_NONE,        /**< Dummy first type */
 	ZAP_UGNI_MSG_CONNECT,     /**< Connect data */
-	ZAP_UGNI_MSG_REGULAR,     /**< Regular send-receive */
+	ZAP_UGNI_MSG_REGULAR,     /**< Application send-receive */
 	ZAP_UGNI_MSG_RENDEZVOUS,  /**< Share zap_map */
 	ZAP_UGNI_MSG_ACCEPTED,    /**< Connection accepted */
 	ZAP_UGNI_MSG_REJECTED,    /**< Connection rejected */
 	ZAP_UGNI_MSG_ACK_ACCEPTED,/**< Acknowledge accepted msg */
+	ZAP_UGNI_MSG_TERM,        /**< Connection termination request */
+	ZAP_UGNI_MSG_ACK_TERM,    /**< Acknowledge connection termination */
+	ZAP_UGNI_MSG_SEND_MAPPED, /**< Application send-receive (w/mapped) */
+	ZAP_UGNI_MSG_RECV_ACK,    /**< Recv acknowledgement */
 	ZAP_UGNI_MSG_TYPE_LAST    /**< Dummy last type (for type count) */
 } zap_ugni_msg_type_t;
 
@@ -113,6 +126,9 @@ static const char *__zap_ugni_msg_type_str[] = {
 	[ZAP_UGNI_MSG_CONNECT]     =  "ZAP_UGNI_MSG_CONNECT",
 	[ZAP_UGNI_MSG_REJECTED]    =  "ZAP_UGNI_MSG_REJECTED",
 	[ZAP_UGNI_MSG_ACK_ACCEPTED]=  "ZAP_UGNI_MSG_ACK_ACCEPTED",
+	[ZAP_UGNI_MSG_TERM]        =  "ZAP_UGNI_MSG_TERM",
+	[ZAP_UGNI_MSG_ACK_TERM]    =  "ZAP_UGNI_MSG_ACK_TERM",
+	[ZAP_UGNI_MSG_SEND_MAPPED] =  "ZAP_UGNI_MSG_SEND_MAPPED",
 	[ZAP_UGNI_MSG_TYPE_LAST]   =  "ZAP_UGNI_MSG_TYPE_LAST"
 };
 
@@ -166,11 +182,9 @@ struct ugni_mh {
 	LIST_ENTRY(ugni_mh) link;
 };
 
-#pragma pack(4)
+#pragma pack(push, 4)
 /**
- * \brief Zap message header for socket transport.
- *
- * Each of the sock_msg's is an extension to ::zap_ugni_msg_hdr.
+ * \brief Zap message header for ugni transport.
  */
 struct zap_ugni_msg_hdr {
 	uint16_t msg_type;
@@ -194,129 +208,377 @@ struct zap_ugni_msg_rendezvous {
 	struct zap_ugni_msg_hdr hdr;
 	gni_mem_handle_t gni_mh;
 	zap_access_t acc;
-	uint64_t addr; /**< Address in the map */
-	uint32_t data_len; /**< Length */
+	uint64_t map_addr; /**< Address in the map */
+	uint32_t map_len; /**< Length */
 	char msg[OVIS_FLEX]; /**< Context */
 };
 
 /**
- * Message for zap connection accepted.
+ * Instance ID.
  */
-struct zap_ugni_msg_accepted {
-	struct zap_ugni_msg_hdr hdr;
-	uint32_t inst_id; /**< inst_id of the accepter (passive side). */
-	uint32_t pe_addr; /**< peer address of the accepter (passive side). */
-	uint32_t data_len;
-	char data[OVIS_FLEX];
+typedef union z_ugni_inst_id_u {
+	struct {
+		uint32_t node_id : 18;
+		uint32_t pid     : 14;
+	};
+	uint32_t u32; /* access as uint32_t */
+} z_ugni_inst_id_t;
+
+/**
+ * Remote endpoint descriptor
+ */
+struct z_ugni_ep_desc {
+	uint32_t inst_id; /**< peer inst_id */
+	uint32_t pe_addr; /**< peer address */
+	uint32_t remote_event; /**< `remote_event` for `GNI_EpSetEventData()` */
+	uint32_t mbuf_sz; /**< size of mbuf structure (for verification) */
+	uint64_t mbuf_addr; /**< pointer to message buffer structure */
+	gni_mem_handle_t mbuf_mh; /**< memory handle for message buffer */
 };
 
-static char ZAP_UGNI_SIG[8] = "UGNI";
+static char ZAP_UGNI_SIG[8] = "UGNI_2";
 
 /**
  * Message for zap connection.
+ *
+ * NOTE: Even though the `ver`, `sig`, and `ep_desc` are redundant to
+ *       those of `z_ugni_sock_msg_conn_req` that was sent at the beginning of
+ *       the connect operation, we keep these field around so that when we
+ *       discard the socket in the near future, we can use the connect message
+ *       right away.
  */
 struct zap_ugni_msg_connect {
 	struct zap_ugni_msg_hdr hdr;
 	char pad[12];  /**< padding so that ugni ver,xprt are aligned with sock ver,xprt */
-	struct zap_version ver;
+	struct zap_version ver; /* zap version */
 	char sig[8];     /**< transport type signature. */
-	uint32_t inst_id; /**< inst_id of the requester (active side). */
-	uint32_t pe_addr; /**< peer address of the requester (active side). */
-	uint32_t data_len; /**< Connection data*/
-	char data[OVIS_FLEX];      /**< Size of connection data */
+	struct z_ugni_ep_desc ep_desc; /**< Endpoint descriptor. */
+	uint32_t data_len; /**< Size of connection data */
+	char data[OVIS_FLEX];      /**< Connection data */
 };
 
-/* union of all messages */
-union zap_ugni_msg {
-	char bytes[0]; /* bytes access */
-	struct zap_ugni_msg_hdr        hdr;        /* the header part */
-	struct zap_ugni_msg_regular    sendrecv;   /* send-recv */
-	struct zap_ugni_msg_rendezvous rendezvous; /* rendezvous */
-	struct zap_ugni_msg_accepted   accept;     /* rendezvous */
-	struct zap_ugni_msg_connect    connect;    /* rendezvous */
-};
-
-#pragma pack()
-
-#define UGNI_WR_F_COMPLETE 0x1
-#define UGNI_WR_F_SEND     0x2
-#define UGNI_WR_F_SEND_MAPPED 0x4
-
-struct zap_ugni_send_wr {
-	STAILQ_ENTRY(zap_ugni_send_wr) link;
-	void  *ctxt; /* for send_mapped completion */
-	int    flags; /* various wr flags */
-	off_t  moff; /* message offset (bytes written) */
-	size_t msz;  /* size of message in the union msg (excluding data) */
-	off_t  doff; /* data payload offset (bytes written) */
-	size_t dsz;  /* size of the data payload */
-	char  *data; /* pointer to the data payload */
-	union zap_ugni_msg msg; /* the message (excluding data) */
-};
-
-struct zap_ugni_recv_buff {
-	size_t len; /* length of the bufferred data */
-	size_t alen; /* available allocated length after data + len */
+/**
+ * Message for zap connection accepted.
+ *
+ * NOTE: `ep_desc` is to be used in the future when we discard sockets.
+ */
+struct zap_ugni_msg_accepted {
+	struct zap_ugni_msg_hdr hdr;
+	struct z_ugni_ep_desc ep_desc; /**< Endpoint descriptor. */
+	uint32_t data_len;
 	char data[OVIS_FLEX];
 };
 
-struct zap_ugni_post_desc;
-LIST_HEAD(zap_ugni_post_desc_list, zap_ugni_post_desc);
-struct z_ugni_ep {
-	struct zap_ep ep;
+typedef struct zap_ugni_msg {
+	union {
+		struct zap_ugni_msg_hdr hdr;
+		struct zap_ugni_msg_regular regular;
+		struct zap_ugni_msg_connect connect;
+		struct zap_ugni_msg_accepted accepted;
+		struct zap_ugni_msg_rendezvous rendezvous;
+	};
+} *zap_ugni_msg_t;
 
-	int sock;
-	int node_id;
-	int ep_id; /* The index in the endpoint array */
-	struct ovis_event_s io_ev;
-	struct ovis_event_s deferred_ev;
-	char *conn_data;
-	size_t conn_data_len;
-	uint8_t rejecting;
-	uint8_t sock_connected;
-	uint8_t app_accepted;
-	uint8_t ugni_ep_bound;
-	gni_ep_handle_t gni_ep;
-	gni_cq_handle_t gni_cq;
-
-	struct zap_ugni_post_desc_list post_desc_list;
-	struct zap_event conn_ev;
-
-	/*
-	 * The counter of retries to unbind the GNI endpoint
-	 */
-	int unbind_count;
-
-	STAILQ_HEAD(, zap_ugni_send_wr) sq; /* send queue */
-	struct zap_ugni_recv_buff *rbuff; /* recv buffer */
-
-	LIST_ENTRY(z_ugni_ep) link;
-	LIST_ENTRY(z_ugni_ep) deferred_link;
-
-#if defined(ZAP_DEBUG) || defined(DEBUG)
-
-#define UEP_EPOLL_RECORD_SZ 12
-	uint32_t epoll_record[UEP_EPOLL_RECORD_SZ];
-	uint32_t epoll_record_curr;
-#endif /* ZAP_DEBUG || DEBUG */
-	pthread_cond_t sq_cond;
+/**
+ * Connection request socket message for setting up uGNI endpoints.
+ *
+ * We still need to be zap_sock aware to refuse the incorrect connection request
+ * from zap_sock.
+ */
+struct z_ugni_sock_msg_conn_req {
+	struct zap_ugni_msg_hdr hdr;
+	char pad[12];  /**< padding so that ugni ver,xprt are aligned with sock ver,xprt */
+	struct zap_version ver;
+	char sig[8];     /**< transport type signature. */
+	struct z_ugni_ep_desc ep_desc;
 };
 
-struct zap_ugni_post_desc {
-	gni_post_descriptor_t post;
+/**
+ * Conection accept socket message for setting up uGNI endpoints.
+ */
+struct z_ugni_sock_msg_conn_accept {
+	struct zap_ugni_msg_hdr hdr;
+	struct z_ugni_ep_desc ep_desc;
+};
+
+#pragma pack(pop)
+
+/* Endpoint index structure */
+struct z_ugni_ep_idx {
+	uint16_t idx; /* index to self */
+	uint16_t next_free_idx; /* next idx in the free list */
 	struct z_ugni_ep *uep;
+};
+
+/* RDMA work request */
+struct zap_ugni_rdma_wr {
+	gni_post_descriptor_t post;
 	uint32_t ep_gn;
 	char ep_name[ZAP_UGNI_EP_NAME_SZ];
 	uint8_t is_stalled; /* It is in the stalled list. */
 	struct timeval stalled_time;
 	void *context;
-	LIST_ENTRY(zap_ugni_post_desc) ep_link;
-	LIST_ENTRY(zap_ugni_post_desc) stalled_link;
+	LIST_ENTRY(zap_ugni_rdma_wr) ep_link;
+	LIST_ENTRY(zap_ugni_rdma_wr) stalled_link;
 };
 
-static inline struct z_ugni_ep *z_sock_from_ep(zap_ep_t *ep)
-{
-	return (struct z_ugni_ep *)ep;
-}
+/* Message send work request */
+struct zap_ugni_send_wr {
+	gni_post_descriptor_t post;
+	TAILQ_ENTRY(zap_ugni_send_wr) link;
+	struct z_ugni_msg_buf_ent *sbuf;
+	int buf_idx;
+	void  *ctxt; /* for send_mapped completion */
+	int    flags; /* various wr flags */
+	uint32_t msg_id; /* ep_idx(16-bit)|smsg_seq(16-bit) */
+	size_t msg_len; /* entire message length */
+	size_t hdr_len;  /* header length */
+	size_t data_len; /* data length */
+	void *data; /* pointer to the data part of the message */
+	struct zap_ugni_msg msg[OVIS_FLEX];
+};
+
+/* Work request */
+struct z_ugni_wr {
+	TAILQ_ENTRY(z_ugni_wr) entry;
+	uint64_t seq; /* wr sequence number */
+	struct z_ugni_ep *uep;
+	enum {
+		Z_UGNI_WR_RDMA,
+		Z_UGNI_WR_SEND,
+		Z_UGNI_WR_SEND_MAPPED,
+		Z_UGNI_WR_RECV_ACK,
+	} type;
+	enum {
+		Z_UGNI_WR_INIT,
+		Z_UGNI_WR_PENDING,
+		Z_UGNI_WR_SUBMITTED,
+		Z_UGNI_WR_STALLED, /* submitted, but not completed before ep destroy */
+	} state;
+	union {
+		gni_post_descriptor_t post[0];
+		struct zap_ugni_rdma_wr rdma_wr[0];
+		struct zap_ugni_send_wr send_wr[0];
+	};
+};
+
+TAILQ_HEAD(z_ugni_wrq, z_ugni_wr);
+
+/* zap event entry primarily for deferred event */
+struct z_ugni_ev {
+	struct rbn rbn;
+	int in_zq; /* for debugging */
+	char acq; /* acquire flag */
+	uint64_t ts_msec; /* msec since the Epoch for timed event */
+	struct zap_event zev;
+};
+
+struct zap_ugni_rdma_wr;
+LIST_HEAD(zap_ugni_post_desc_list, zap_ugni_rdma_wr);
+
+/* Message buffer entry, for sending/receiving a single message. */
+struct z_ugni_msg_buf_ent {
+	union {
+		struct zap_ugni_msg msg;
+		char bytes[ZAP_UGNI_BUFSZ - 8];
+	};
+	struct {
+		uint8_t  processed:1;
+		uint64_t reserved:63;
+	} status;
+};
+
+/* represents recv buffer status */
+struct z_ugni_rbuf_status {
+	uint8_t  avail:1;
+	uint64_t reserved:63;
+};
+
+/* Tracking ACK status, so that we won't double ACK on the same entry. */
+struct z_ugni_ack_status {
+	uint8_t outstanding:1;
+	uint8_t pending:1;
+	uint64_t reserved:62;
+};
+
+/** send/recv buffer for an endpoint */
+struct z_ugni_msg_buf {
+	int curr_rbuf_idx; /* current recv buffer index */
+	int curr_sbuf_idx; /* current send buffer index */
+
+	/* Peer will write messages to rbuf using RDMA PUT */
+	struct z_ugni_msg_buf_ent rbuf[ZAP_UGNI_EP_MSG_CREDIT];
+
+	/* Our sbuf will be copied to peer's rbuf using RDMA PUT. sbuf[i] will
+	 * be copied to the peer's rbuf[i]. */
+	struct z_ugni_msg_buf_ent sbuf[ZAP_UGNI_EP_MSG_CREDIT];
+
+	/* Peer will write (peer's ACK) to peer_rbuf_status[i] to let us know if
+	 * peer's rbuf[i] is available. */
+	struct z_ugni_rbuf_status peer_rbuf_status[ZAP_UGNI_EP_MSG_CREDIT];
+
+	/* our_rbuf_status[i] is used as a source buffer to RDMA PUT to peer's
+	 * peer_rbuf_status[i] (our ACK to peer). */
+	struct z_ugni_rbuf_status our_rbuf_status[ZAP_UGNI_EP_MSG_CREDIT];
+
+	/* track the ACK we send to peer. When `outstanding` is 1, the previous
+	 * ACK has not been completed yet. Hence, we should not post a new ACK
+	 * of the same cell. This can happen by peer receiving the ACK (that has
+	 * not been completed yet on our end), and send the new message (this is
+	 * totally legit since the recv cell on our end has become available).
+	 * The new message then arrived but the old ACK has not completed yet.
+	 * In this case, the `pending` will be switch to 1. So that when the
+	 * previous ACK completed, we will submit another ACK and reset
+	 * everything in the corresponding cell to 0.
+	 */
+	struct z_ugni_ack_status ack_status[ZAP_UGNI_EP_MSG_CREDIT];
+};
+
+struct z_ugni_ep {
+	struct zap_ep ep;
+
+	struct z_ugni_ep_desc peer_ep_desc; /* keep for a reference */
+
+	int sock;
+	int node_id;
+	int ep_id; /* The index in the endpoint array */
+	char *conn_data;
+	size_t conn_data_len;
+	uint8_t sock_connected:1;
+	uint8_t zap_connected:1; /* has become zap connected */
+	uint8_t app_accepted:1;
+	uint8_t ugni_ep_bound:1; /* can use SMSG */
+	uint8_t ugni_term_sent:1; /* TERM msg has been sent */
+	uint8_t ugni_term_recv:1; /* TERM msg has been received */
+	uint8_t ugni_ack_term_sent:1; /* ACK_TERM msg has been sent */
+	uint8_t ugni_ack_term_recv:1; /* ACK_TERM msg has been received */
+	gni_ep_handle_t gni_ep;
+
+	struct z_ugni_ev uev; /* event in thr->zq */
+
+	LIST_ENTRY(z_ugni_ep) link; /* for z_ugni_list */
+
+	pthread_cond_t sq_cond;
+
+	uint16_t next_msg_seq; /* message sequence number, for debugging */
+
+	/* epoll data for socket file descriptor */
+	struct z_ugni_epoll_ctxt sock_epoll_ctxt;
+
+	/* recv buffer for socket message */
+	union {
+		char buff[0];
+		struct zap_ugni_msg_hdr hdr;
+		struct z_ugni_sock_msg_conn_req conn_req;
+		struct z_ugni_sock_msg_conn_accept conn_accept;
+	} sock_buff;
+	int sock_off; /* recv offset into sock_buff */
+
+	/* assigned endpoint index (in the thread) */
+	struct z_ugni_ep_idx *ep_idx;
+	struct zap_ugni_msg *rmsg; /* current recv msg */
+
+#ifdef EP_LOG_ENABLED
+	/* endpoint log for debugging */
+	FILE *log;
+#endif
+
+	/* Pending message WR in the endpoint, waiting for the available send
+	 * buffer */
+	struct z_ugni_wrq pending_msg_wrq;
+
+	/* flushed entries from thr */
+	struct z_ugni_wrq flushed_wrq;
+
+	/* track the number of WR submitted to thr, but not completed */
+	int active_wr;
+
+	/* Send/recv message buffer assigned to the endpoint (part of thr->mbuf) */
+	struct z_ugni_msg_buf *mbuf;
+};
+
+struct z_ugni_io_thread {
+	struct zap_io_thread zap_io_thread;
+	int efd; /* epoll file descriptor */
+	gni_cq_handle_t scq; /* Submission completion queue (currently only for GNI_PostRdma) */
+	gni_cq_handle_t rcq; /* Recv completion queue (for mbuf RDMA PUT notification) */
+	/* Remark on 2 CQs:
+	 *
+	 *   The FMA Short Messaging Overview page on Cray website stated the
+	 *   following:
+	 *
+	 *   > An application should use a dedicated CQ for remote events and
+	 *   > cannot rely on GNI_CQ_GET_TYPE to determine the type of the
+	 *   > incoming remote event. A receiving peer should use
+	 *   > GNI_CQ_GET_REM_INST_ID(event) to obtain the sender's instance ID.
+	 *   > See gni_cq_entry.
+	 *
+	 *   Ref:
+	 *   https://pubs.cray.com/bundle/XC_Series_GNI_and_DMAPP_API_User_Guide_CLE70UP02_S-2446/page/FMA_Short_Messaging_Overview.html
+	 *
+	 *   The smsg example (`smsg_send_pmi_example.c` in
+	 *   /opt/cray/ugni/default/examples/) also shows that the send
+	 *   completions are delivered on the endpoint's cq, and the recv
+	 *   completions are delivered on the mbox memory registration's cq. It
+	 *   looks like there is no way to differentiate the send completion
+	 *   from the recv completion if they were to register to the same cq.
+	 *
+	 */
+	gni_comp_chan_handle_t cch; /* Completion Channel */
+	int cch_fd; /* completion channel file descriptor */
+
+	struct z_ugni_epoll_ctxt cq_epoll_ctxt;
+
+	/* Each endpoint is assigned an index. The peers use this index set
+	 * REMOTE_DATA so that we (the local process) know who (which endpoint)
+	 * RDMA PUT into the recv buffer memory. */
+	struct z_ugni_ep_idx ep_idx[ZAP_UGNI_THREAD_EP_MAX];
+	/* The ep_idx free list (head and tail) */
+	struct z_ugni_ep_idx *free_ep_idx_head, *free_ep_idx_tail;
+
+	struct rbt zq; /* zap event queue, protected by zap_io_thread.mutex */
+	int zq_fd[2]; /* zap event queue fd (to wake up epoll_wait) */
+	struct z_ugni_epoll_ctxt zq_epoll_ctxt; /* epoll event data for zq */
+
+	/* These tail queues are protected by zap_io_thread.mutex. */
+
+	/* Message WR is queued here before GNI_PostRdma() by the io_thread */
+	struct z_ugni_wrq pending_msg_wrq;
+
+	/* RDMA WR is queued here before GNI_PostRdma() by the io_thread */
+	struct z_ugni_wrq pending_rdma_wrq;
+
+	/* ACK WR (another kind of Message) is queued here before GNI_PostRdma()
+	 * by the io_thread. */
+	struct z_ugni_wrq pending_ack_wrq;
+
+	/* This queue contains WR submitted to GNI */
+	struct z_ugni_wrq submitted_wrq;
+
+	/* This queue contains WR that was submitted (GNI_PostRdma), but has not
+	 * completed before the enpoint was destroyed. We keep the WR around
+	 * because the completion may be delivered afterward. If the WR was
+	 * freed, the completion handler will access the freed WR -- a
+	 * use-after-free. */
+	struct z_ugni_wrq stalled_wrq;
+
+	/* rdma_post_credit controls the number of outstanding GNI_PostRdma()
+	 * for RDMA WR */
+	int rdma_post_credit;
+	/* msg_post_credit controls the number of outstanding GNI_PostRdma()
+	 * for Message WR */
+	int msg_post_credit;
+	/* ack_post_credit controls the number of outstanding GNI_PostRdma()
+	 * for ACK WR */
+	int ack_post_credit;
+
+	uint64_t wr_seq; /* wr sequence number */
+	/* ---------------------------------------- */
+
+	/* Send/recv message buffer for all endpoints assigned to the thread */
+	struct z_ugni_msg_buf *mbuf;
+	/* Memory registration handle for the mbuf */
+	gni_mem_handle_t mbuf_mh;
+};
 
 #endif

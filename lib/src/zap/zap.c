@@ -82,6 +82,10 @@ int __zap_assert = 1;
 int __zap_assert = 0;
 #endif
 
+/* the busy threshold by thread utilization (0.0 - 1.0) */
+#define ZAP_IO_BUSY 0.8 /* default value */
+static double zap_io_busy = ZAP_IO_BUSY;
+
 static void default_log(const char *fmt, ...)
 {
 	va_list ap;
@@ -99,14 +103,7 @@ static void default_log(const char *fmt, ...)
 
 LIST_HEAD(zap_list, zap) zap_list;
 
-pthread_mutex_t zap_list_lock;
-
-static int zap_event_workers = ZAP_EVENT_WORKERS;
-static int zap_event_qdepth = ZAP_EVENT_QDEPTH;
-
-struct zap_event_queue *zev_queue;
-
-struct ovis_heap *zev_queue_heap;
+pthread_mutex_t zap_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #ifndef PLUGINDIR
 #define PLUGINDIR "/usr/local/lib/ovis-lib"
@@ -257,9 +254,6 @@ zap_mem_info_t default_zap_mem_info(void)
 	return NULL;
 }
 
-static
-void zap_interpose_event(zap_ep_t ep, void *ctxt);
-
 struct zap_tbl_entry {
 	enum zap_type type;
 	const char *name;
@@ -362,7 +356,8 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	memcpy(z->name, name, strlen(name)+1);
 	z->log_fn = log_fn;
 	z->mem_info_fn = mem_info_fn;
-	z->event_interpose = zap_interpose_event;
+	pthread_mutex_init(&z->_io_mutex, NULL);
+	LIST_INIT(&z->_io_threads);
 
 	pthread_mutex_lock(&zap_list_lock);
 	zent->zap = z;
@@ -412,88 +407,6 @@ void blocking_zap_cb(zap_ep_t zep, zap_event_t ev)
 	}
 }
 
-struct zap_interpose_ctxt {
-	struct zap_event ev;
-	unsigned char data[OVIS_FLEX];
-};
-
-/*
- * Queue a zap event to one of the I/O threads
- */
-static
-void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
-{
-	struct zap_interpose_ctxt *ictxt;
-	uint32_t data_len = 0;
-
-	switch (ev->type) {
-	/* these events need data copy */
-	case ZAP_EVENT_RENDEZVOUS:
-	case ZAP_EVENT_REJECTED:
-	case ZAP_EVENT_CONNECTED:
-	case ZAP_EVENT_RECV_COMPLETE:
-	case ZAP_EVENT_CONNECT_REQUEST:
-		data_len = ev->data_len;
-		break;
-	/* these do not need data copy */
-	case ZAP_EVENT_CONNECT_ERROR:
-	case ZAP_EVENT_DISCONNECTED:
-	case ZAP_EVENT_READ_COMPLETE:
-	case ZAP_EVENT_WRITE_COMPLETE:
-	case ZAP_EVENT_SEND_COMPLETE:
-	case ZAP_EVENT_SEND_MAPPED_COMPLETE:
-		ev->data = NULL;
-		ev->data_len = 0;
-		/* do nothing */
-		break;
-	default:
-		assert(0);
-		break;
-	}
-
-	ictxt = calloc(1, sizeof(*ictxt) + data_len + 2);
-	if (!ictxt) {
-		DLOG(ep, "zap_interpose_cb(): ENOMEM\n");
-		return;
-	}
-	DLOG(ep, "%s: Vep %p: ictxt %p: ev type %s\n", __func__, ep,
-				ictxt, zap_event_str(ev->type));
-#ifdef TMP_DEBUG
-	ep->z->log_fn("%s: Vep %p: ictxt %p: ev type %s. q->depth = %d\n",
-				__func__, ep,
-				ictxt, zap_event_str(ev->type),
-				ep->event_queue->depth);
-#endif /* TMP_DEBUG */
-	ictxt->ev = *ev;
-	ictxt->ev.data = ictxt->data;
-	if (data_len)
-		memcpy(ictxt->data, ev->data, data_len);
-	ref_get(&ep->ref, "zap_interpose");
-	if (zap_event_add(ep->event_queue, ep, ictxt)) {
-		ep->z->log_fn("%s[%d]: event could not be added.",
-			      __func__, __LINE__);
-		ref_put(&ep->ref, "zap_interpose");
-	}
-}
-
-static
-void zap_interpose_event(zap_ep_t ep, void *ctxt)
-{
-	/* delivering real io event callback */
-	struct zap_interpose_ctxt *ictxt = ctxt;
-	DLOG(ep, "%s: ep %p: ictxt %p\n", __func__, ep, ictxt);
-#if defined(ZAP_DEBUG) || defined(DEBUG)
-	if (ep->state == ZAP_EP_CLOSE)
-		default_log("Delivering event after close.\n");
-#endif /* ZAP_DEBUG || DEBUG */
-	ep->app_cb(ep, &ictxt->ev);
-	free(ictxt);
-	ref_put(&ep->ref, "zap_interpose");
-}
-
-static
-struct zap_event_queue *__get_least_busy_zap_event_queue();
-
 #ifdef _ZAP_EP_TRACK_
 TAILQ_HEAD(zap_ep_list, zap_ep) zap_ep_list;
 pthread_mutex_t zap_ep_list_lock;
@@ -502,7 +415,6 @@ pthread_mutex_t zap_ep_list_lock;
 static void __destroy_ep(void *zep)
 {
 	zap_ep_t ep = (zap_ep_t)zep;
-	zap_event_queue_ep_put(ep->event_queue);
 #ifdef _ZAP_EP_TRACK_
 	pthread_mutex_lock(&zap_ep_list_lock);
 	TAILQ_REMOVE(&zap_ep_list, ep, ep_link);
@@ -521,14 +433,12 @@ zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 	if (!zep)
 		return NULL;
 	zep->z = z;
-	zep->app_cb = cb;
-	zep->cb = zap_interpose_cb;
+	zep->cb = cb;
 	zep->ref_count = 1;
 	ref_init(&zep->ref, __func__, __destroy_ep, zep);
 	zep->state = ZAP_EP_INIT;
 	pthread_mutex_init(&zep->lock, NULL);
 	sem_init(&zep->block_sem, 0, 0);
-	zep->event_queue = __get_least_busy_zap_event_queue();
 #ifdef _ZAP_EP_TRACK_
 	pthread_mutex_lock(&zap_ep_list_lock);
 	TAILQ_INSERT_TAIL(&zap_ep_list, zep, ep_link);
@@ -545,9 +455,8 @@ void zap_set_priority(zap_ep_t ep, int prio)
 zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len)
 {
 	zap_err_t zerr;
-	ep->app_cb = cb;
-	ep->cb = zap_interpose_cb;
-	zerr = ep->z->accept(ep, zap_interpose_cb, data, data_len);
+	ep->cb = cb;
+	zerr = ep->z->accept(ep, cb, data, data_len);
 	return zerr;
 }
 
@@ -753,86 +662,6 @@ zap_err_t zap_reject(zap_ep_t ep, char *data, size_t data_len)
 	return ep->z->reject(ep, data, data_len);
 }
 
-void *zap_event_thread_proc(void *arg)
-{
-	struct zap_event_queue *q = arg;
-	struct zap_event_entry *ent, *pent;
-loop:
-	pthread_mutex_lock(&q->mutex);
-	while (NULL == (pent = TAILQ_FIRST(&q->prio_q))
-	       &&
-	       NULL == (ent = TAILQ_FIRST(&q->queue))) {
-		zap_thrstat_wait_start(q->stats);
-		pthread_cond_wait(&q->cond_nonempty, &q->mutex);
-		zap_thrstat_wait_end(q->stats);
-	}
-	if (pent) {
-		TAILQ_REMOVE(&q->prio_q, pent, entry);
-		ent = pent;
-	} else {
-		TAILQ_REMOVE(&q->queue, ent, entry);
-	}
-	q->depth++;
-	pthread_cond_broadcast(&q->cond_vacant);
-	pthread_mutex_unlock(&q->mutex);
-	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL);
-	ent->ep->z->event_interpose(ent->ep, ent->ctxt);
-	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
-	pthread_mutex_lock(&q->mutex);
-	TAILQ_INSERT_HEAD(&q->free_q, ent, entry);
-	pthread_mutex_unlock(&q->mutex);
-
-	goto loop;
-	return NULL;
-}
-
-int zap_event_add(struct zap_event_queue *q, zap_ep_t ep, void *ctxt)
-{
-	struct zap_event_entry *ent;
-	pthread_mutex_lock(&q->mutex);
-	while (NULL == (ent = TAILQ_FIRST(&q->free_q))) {
-		pthread_cond_wait(&q->cond_vacant, &q->mutex);
-	};
-	TAILQ_REMOVE(&q->free_q, ent, entry);
-	ent->ep = ep;
-	ent->ctxt = ctxt;
-	q->depth--;
-	if (ep->prio)
-		TAILQ_INSERT_TAIL(&q->prio_q, ent, entry);
-	else
-		TAILQ_INSERT_TAIL(&q->queue, ent, entry);
-
-	pthread_cond_broadcast(&q->cond_nonempty);
-	pthread_mutex_unlock(&q->mutex);
-	return 0;
-}
-
-void zap_event_queue_init(struct zap_event_queue *q, int qdepth,
-		const char *name, int stat_window)
-{
-	q->depth = qdepth;
-	q->ep_count = 0;
-	q->stats = zap_thrstat_new(name, stat_window);
-	assert(q->stats);
-	pthread_mutex_init(&q->mutex, NULL);
-	pthread_cond_init(&q->cond_nonempty, NULL);
-	pthread_cond_init(&q->cond_vacant, NULL);
-	TAILQ_INIT(&q->free_q);
-	int i;
-	for (i = 0; i < qdepth; i++) {
-		struct zap_event_entry *ent = malloc(sizeof(*ent));
-		assert(ent);
-		TAILQ_INSERT_HEAD(&q->free_q, ent, entry);
-	}
-	TAILQ_INIT(&q->queue);
-	TAILQ_INIT(&q->prio_q);
-}
-
-void zap_event_queue_free(struct zap_event_queue *q)
-{
-	free(q);
-}
-
 int zap_env_int(char *name, int default_value)
 {
 	char *x = getenv(name);
@@ -846,43 +675,180 @@ int zap_env_int(char *name, int default_value)
 
 }
 
-static
-struct zap_event_queue *__get_least_busy_zap_event_queue()
+double zap_env_dbl(char *name, double default_value)
 {
-	int i;
-	struct zap_event_queue *q;
-	q = &zev_queue[0];
-	for (i = 1; i < zap_event_workers; i++) {
-		if (zev_queue[i].ep_count < q->ep_count) {
-			q = &zev_queue[i];
-		}
-	}
-	zap_event_queue_ep_get(q);
-	return q;
+	char *x = getenv(name);
+	if (!x)
+		return default_value;
+	return strtod(x, NULL);
+
 }
 
-int zap_term(int timeout_sec)
+static zap_err_t __io_thread_cancel(zap_io_thread_t t);
+int zap_term(zap_t z, int timeout_sec)
 {
-	int i, tmp;
+	int tmp, i, n;
 	int rc = 0;
 	struct timespec ts;
-	for (i = 0; i < zap_event_workers; i++) {
-		pthread_cancel(zev_queue[i].thread);
+	zap_io_thread_t t;
+	pthread_t *thr;
+
+	pthread_mutex_lock(&z->_io_mutex);
+	n = 0;
+	LIST_FOREACH(t, &z->_io_threads, _entry) {
+		n++;
 	}
-	if (timeout_sec > 0) {
-		ts.tv_sec = time(NULL) + timeout_sec;
-		ts.tv_nsec = 0;
+	thr = malloc(sizeof(*thr) * n);
+	if (!thr) {
+		rc = errno;
+		goto out;
 	}
-	for (i = 0; i < zap_event_workers; i++) {
+	i = 0;
+	while ((t = LIST_FIRST(&z->_io_threads))) {
+		thr[i++] = t->thread;
+		__io_thread_cancel(t); /* t is removed and invalidated */
+	}
+	/* join */
+	for (i = 0; i < n; i++) {
 		if (timeout_sec > 0) {
-			tmp = pthread_timedjoin_np(zev_queue[i].thread, NULL, &ts);
+			tmp = pthread_timedjoin_np(thr[i], NULL, &ts);
 			if (tmp)
 				rc = tmp;
 		} else {
-			pthread_join(zev_queue[i].thread, NULL);
+			pthread_join(thr[i], NULL);
 		}
 	}
+	free(thr);
+ out:
+	pthread_mutex_unlock(&z->_io_mutex);
 	return rc;
+}
+
+int zap_io_thread_init(zap_io_thread_t t, zap_t z, const char *name, int stat_window)
+{
+	pthread_mutexattr_t mattr;
+	t->stat = zap_thrstat_new(name, stat_window);
+	if (!t->stat)
+		return errno;
+	t->zap = z;
+	pthread_mutexattr_init(&mattr);
+	pthread_mutexattr_settype(&mattr, PTHREAD_MUTEX_RECURSIVE);
+	pthread_mutex_init(&t->mutex, &mattr);
+	LIST_INIT(&t->_ep_list);
+	t->_n_ep = 0;
+	return 0;
+}
+
+int zap_io_thread_release(zap_io_thread_t t)
+{
+	if (t->stat)
+		zap_thrstat_free(t->stat);
+	pthread_mutex_destroy(&t->mutex);
+	return 0;
+}
+
+zap_err_t zap_event_deliver(zap_event_t ev)
+{
+	ev->ep->cb(ev->ep, ev);
+	return ZAP_ERR_OK;
+}
+
+static inline uint64_t timespec2usec(struct timespec *ts)
+{
+	return ts->tv_sec*1000000 + ts->tv_nsec/1000;
+}
+
+static zap_io_thread_t __io_thread_create(zap_t z)
+{
+	/* z->_io_mutex is held by the caller */
+
+	zap_io_thread_t t;
+	t = z->io_thread_create(z);
+	if (!t)
+		return NULL;
+	LIST_INSERT_HEAD(&z->_io_threads, t, _entry);
+	return t;
+}
+
+static zap_err_t __io_thread_cancel(zap_io_thread_t t)
+{
+	/* z->_io_mutex is held by the caller */
+	LIST_REMOVE(t, _entry);
+	return t->zap->io_thread_cancel(t);
+}
+
+static double zap_utilization(zap_thrstat_t in, struct timespec *now);
+
+static zap_io_thread_t __zap_least_busy_thread(zap_t z)
+{
+	zap_io_thread_t t = NULL, _t;
+	struct timespec now;
+	double u, min_u = 1.0; /* utilization <= 1.0 */
+
+	clock_gettime(CLOCK_REALTIME, &now);
+	pthread_mutex_lock(&z->_io_mutex);
+	LIST_FOREACH(_t, &z->_io_threads, _entry)
+	{
+		u = zap_utilization(_t->stat, &now);
+		if (u < min_u) {
+			t = _t;
+			min_u = u;
+		}
+	}
+	if (!t) {
+		t = __io_thread_create(z);
+	} else if (min_u > zap_io_busy) {
+		/* the least busy thread is too busy, create a new thread */
+		_t = __io_thread_create(z);
+		if (_t)
+			t = _t;
+		/* else, use the least busy one */
+	}
+	pthread_mutex_unlock(&z->_io_mutex);
+	return t;
+}
+
+zap_err_t zap_io_thread_ep_assign(zap_ep_t ep)
+{
+	zap_err_t zerr = ZAP_ERR_OK;
+	zap_t z = ep->z;
+	zap_io_thread_t t;
+
+	t = __zap_least_busy_thread(z);
+	if (!t) {
+		zerr = errno; /* expect zap_err_t in errno */
+		goto out;
+	}
+	pthread_mutex_lock(&t->mutex);
+	LIST_INSERT_HEAD(&t->_ep_list, ep, _entry);
+	t->_n_ep++;
+	pthread_mutex_unlock(&t->mutex);
+	ep->thread = t;
+	zerr = z->io_thread_ep_assign(t, ep);
+	if (zerr) {
+		ep->thread = NULL;
+		pthread_mutex_lock(&t->mutex);
+		LIST_REMOVE(ep, _entry);
+		t->_n_ep--;
+		pthread_mutex_unlock(&t->mutex);
+		goto out;
+	}
+ out:
+	return zerr;
+}
+
+zap_err_t zap_io_thread_ep_release(zap_ep_t ep)
+{
+	zap_err_t zerr;
+	zap_io_thread_t t = ep->thread;
+
+	pthread_mutex_lock(&t->mutex);
+	LIST_REMOVE(ep, _entry);
+	t->_n_ep--;
+	pthread_mutex_unlock(&t->mutex);
+	zerr = ep->z->io_thread_ep_release(ep->thread, ep);
+	ep->thread = NULL;
+	return zerr;
 }
 
 void zap_thrstat_reset(zap_thrstat_t stats)
@@ -898,6 +864,20 @@ void zap_thrstat_reset(zap_thrstat_t stats)
 static pthread_mutex_t thrstat_list_lock = PTHREAD_MUTEX_INITIALIZER;
 static LIST_HEAD(thrstat_list, zap_thrstat) thrstat_list;
 int thrstat_count = 0;
+
+void zap_thrstat_dump()
+{
+	zap_thrstat_t t;
+	struct timespec now;
+	double u;
+	clock_gettime(CLOCK_REALTIME, &now);
+	pthread_mutex_lock(&thrstat_list_lock);
+	LIST_FOREACH(t, &thrstat_list, entry) {
+		u = zap_utilization(t, &now);
+		printf("thrstat '%s', u: %lf\n", t->name, u);
+	}
+	pthread_mutex_unlock(&thrstat_list_lock);
+}
 
 void zap_thrstat_reset_all()
 {
@@ -1094,15 +1074,23 @@ static int zap_initialized = 0;
 static void zap_atfork()
 {
 	__atomic_store_n(&zap_initialized, 0, __ATOMIC_SEQ_CST);
+	zap_t z;
+	zap_io_thread_t t;
+	/* notify zap plugins to cleanup the lingering thread resources */
+	pthread_mutex_lock(&zap_list_lock);
+	LIST_FOREACH(z, &zap_list, zap_link) {
+		pthread_mutex_lock(&z->_io_mutex);
+		while ((t = LIST_FIRST(&z->_io_threads))) {
+			__io_thread_cancel(t);
+		}
+		pthread_mutex_unlock(&z->_io_mutex);
+	}
+	pthread_mutex_unlock(&zap_list_lock);
 }
 
 static void zap_init(void)
 {
-	int i;
-	int rc;
-	int stats_w;
 	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-
 	if (__atomic_load_n(&zap_initialized, __ATOMIC_SEQ_CST))
 		return;
 
@@ -1113,30 +1101,17 @@ static void zap_init(void)
 		return;
 	}
 
-	pthread_mutex_init(&zap_list_lock, 0);
-
 #ifdef _ZAP_EP_TRACK_
 	TAILQ_INIT(&zap_ep_list);
 	pthread_mutex_init(&zap_ep_list_lock, 0);
 #endif /* _ZAP_EP_TRACK_ */
-
-	stats_w = ZAP_ENV_INT(ZAP_THRSTAT_WINDOW);
-	zap_event_workers = ZAP_ENV_INT(ZAP_EVENT_WORKERS);
-	zap_event_qdepth = ZAP_ENV_INT(ZAP_EVENT_QDEPTH);
-
-	zev_queue = malloc(zap_event_workers * sizeof(*zev_queue));
-	assert(zev_queue);
-
-	for (i = 0; i < zap_event_workers; i++) {
-		char thread_name[16];
-		(void)snprintf(thread_name, 16, "zap:wkr:%hd", (short)i);
-		zap_event_queue_init(&zev_queue[i], zap_event_qdepth,
-					thread_name, stats_w);
-		rc = pthread_create(&zev_queue[i].thread, NULL,
-					zap_event_thread_proc, &zev_queue[i]);
-		assert(rc == 0);
-		pthread_setname_np(zev_queue[i].thread, thread_name);
-
+	zap_io_busy = ZAP_ENV_DBL(ZAP_IO_BUSY);
+	if (zap_io_busy < 0.0 || zap_io_busy > 1.0) {
+		/* bad value, set to default */
+		fprintf(stderr, "*** ERROR *** bad ZAP_IO_BUSY value: %lf, "
+				"the value must be in (0.0-1.0) range\n",
+				zap_io_busy);
+		zap_io_busy = ZAP_IO_BUSY;
 	}
 	__atomic_store_n(&zap_initialized, 1, __ATOMIC_SEQ_CST);
 	pthread_mutex_unlock(&mutex);

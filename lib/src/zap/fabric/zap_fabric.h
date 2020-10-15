@@ -52,6 +52,7 @@
 #include <sys/queue.h>
 #include <semaphore.h>
 #include <rdma/fabric.h>
+#include <sys/epoll.h>
 #include "../zap.h"
 #include "../zap_priv.h"
 
@@ -122,7 +123,28 @@ struct z_fi_buffer {
 	size_t buf_len;
 	size_t data_len;
 	struct z_fi_ep *rep;
+	struct z_fi_buffer_pool *pool;
 	LIST_ENTRY(z_fi_buffer) free_link;  /* for per-ep free list */
+};
+
+/*
+ * buffer_pool memory allocation format:
+ *     z_fi_buffer_pool|[buf_obj ...]|<pad (if needed)>|[buf ...]
+ *
+ * When the buffer poll is fully allocated, the pool is moved into the
+ * `full_pool` list. When it has at least one available slot, it is moved back
+ * to the `vacant_pool` list.
+ *
+ */
+struct z_fi_buffer_pool {
+	char *buf_pool;
+	int num_bufs;   /* total number of buf */
+	int num_alloc; /* number of allocated buf */
+	size_t buf_sz; /* size of each buf */
+	struct fid_mr *buf_pool_mr;
+	LIST_ENTRY(z_fi_buffer_pool) entry; /* for `full_pool` or `vacant_pool` */
+	LIST_HEAD(, z_fi_buffer) buf_free_list; /* to maintain free buf in the pool */
+	struct z_fi_buffer buf_obj[];
 };
 
 enum z_fi_op {
@@ -162,6 +184,7 @@ struct z_fi_context {
 	} u;
 	TAILQ_ENTRY(z_fi_context) pending_link; /* pending i/o */
 	LIST_ENTRY(z_fi_context) active_ctxt_link;
+	int pending; /* pending in rep->io_q */
 };
 
 #pragma pack(push, 1)
@@ -177,6 +200,16 @@ struct z_fi_conn_data {
 
 #define ACCEPT_DATA_MAX (196)
 #define ZAP_ACCEPT_DATA_MAX ACCEPT_DATA_MAX
+
+typedef struct z_fi_io_thread *z_fi_io_thread_t;
+
+struct z_fi_epoll_ctxt {
+	enum {
+		Z_FI_EPOLL_CM,
+		Z_FI_EPOLL_CQ,
+	} type;
+	struct z_fi_ep *rep;
+};
 
 struct z_fi_ep {
 	struct zap_ep ep;
@@ -196,13 +229,21 @@ struct z_fi_ep {
 	int cq_fids_idx;
 	int eq_fids_idx;
 	int num_ctxts;
+
+	/*
 	int num_bufs;
 	size_t buf_sz;
 	char *buf_pool;
 	struct z_fi_buffer *buf_objs;
 	struct fid_mr *buf_pool_mr;
 	LIST_HEAD(buf_free_list, z_fi_buffer) buf_free_list;
+	*/
+
 	pthread_mutex_t	buf_free_list_lock;
+
+	LIST_HEAD(, z_fi_buffer_pool) vacant_pool;
+	LIST_HEAD(, z_fi_buffer_pool) full_pool;
+	int num_empty_pool; /* number of pools with full vacancy */
 
 	union {
 		struct z_fi_conn_data conn_data; /* flexi */
@@ -252,6 +293,16 @@ struct z_fi_ep {
 
 	LIST_ENTRY(z_fi_ep) ep_link;
 	pthread_cond_t io_q_cond;
+
+	struct z_fi_epoll_ctxt cm_epoll_ctxt;
+	struct z_fi_epoll_ctxt cq_epoll_ctxt;
 };
+
+struct z_fi_io_thread {
+	struct zap_io_thread zap_io_thread;
+	int efd; /* epoll fd */
+};
+
+#define Z_FI_THR(p) ((struct z_fi_io_thread *)(p))
 
 #endif

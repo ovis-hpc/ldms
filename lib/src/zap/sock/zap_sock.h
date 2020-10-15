@@ -51,7 +51,7 @@
 #define __LDMS_XPRT_SOCK_H__
 #include <semaphore.h>
 #include <sys/queue.h>
-#include "ovis_event/ovis_event.h"
+#include <sys/epoll.h>
 #include "ovis-ldms-config.h"
 #include "coll/rbt.h"
 #include "zap.h"
@@ -261,6 +261,8 @@ struct z_sock_io {
 	zap_map_t dst_map; /**< Destination map for RDMA_READ */
 	char *dst_ptr; /**< Destination address for RDMA_READ */
 	struct z_sock_send_wr_s *wr;
+	enum zap_event_type comp_type; /**< completion type */
+	void *ctxt; /**< Application context */
 };
 
 #pragma pack()
@@ -283,16 +285,26 @@ struct z_sock_ep {
 	int sock_connected;
 	int app_accepted;
 
-	struct ovis_event_s ev;
+	struct epoll_event ev;
+	void (*ev_fn)(struct epoll_event *);
 	struct z_sock_buff_s buff;
 
 	pthread_mutex_t q_lock;
-	TAILQ_HEAD(z_sock_free_q, z_sock_io) free_q;
-	TAILQ_HEAD(z_sock_io_q, z_sock_io) io_q;
+	TAILQ_HEAD(, z_sock_io) free_q;
+	TAILQ_HEAD(, z_sock_io) io_q; /* manages ops from app (read/write/send) */
+	TAILQ_HEAD(, z_sock_io) io_cq; /* completion queue, currently serves only send completion */
 	TAILQ_HEAD(, z_sock_send_wr_s) sq; /* send queue */
 	LIST_ENTRY(z_sock_ep) link;
 	pthread_cond_t sq_cond;
 };
+
+#define ZAP_SOCK_EV_SIZE 4096
+
+typedef struct z_sock_io_thread {
+	struct zap_io_thread zap_io_thread;
+	int efd; /* epoll fd */
+	struct epoll_event ev[ZAP_SOCK_EV_SIZE];
+} *z_sock_io_thread_t;
 
 static inline struct z_sock_ep *z_sock_from_ep(zap_ep_t *ep)
 {

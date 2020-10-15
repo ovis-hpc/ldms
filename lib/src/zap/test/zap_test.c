@@ -270,7 +270,9 @@ void handle_recv(zap_ep_t ep, zap_event_t ev)
 	ASSERT((server_events & SERVER_RECV_DARE) == 0);
 	server_events |= SERVER_RECV_DARE;
 
-	if (strcmp(transport, "ugni") == 0 || strcmp(transport, "rdma") == 0) {
+	if (strcmp(transport, "ugni") == 0
+			|| strcmp(transport, "rdma") == 0
+			|| strcmp(transport, "fabric") == 0) {
 		/* On UGNI transport, the write will succeed as the real memory
 		 * mapping is just one big memory pool. */
 
@@ -717,7 +719,9 @@ void do_server(zap_t zap, struct sockaddr_in *sin)
 	while (!done)
 		pthread_cond_wait(&done_cv, &done_lock);
 	pthread_mutex_unlock(&done_lock);
-	if (strcmp(transport, "ugni") == 0 || strcmp(transport, "rdma") == 0) {
+	if (strcmp(transport, "ugni") == 0
+			|| strcmp(transport, "rdma") == 0
+			|| strcmp(transport, "fabric") == 0) {
 		ASSERT(server_events == (SERVER_EVENTS & (~SERVER_WRITE_ERROR)));
 	} else {
 		ASSERT(server_events == SERVER_EVENTS);

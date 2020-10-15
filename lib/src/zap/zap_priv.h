@@ -157,6 +157,8 @@ const char *zap_ep_state_str[] = {
 
 const char *__zap_ep_state_str(zap_ep_state_t state);
 
+typedef struct zap_io_thread *zap_io_thread_t;
+
 struct zap_ep {
 	zap_t z;
 	struct ref_s ref;
@@ -173,13 +175,14 @@ struct zap_ep {
 	/** Event callback routine. */
 	zap_cb_fn_t cb;
 
-	zap_cb_fn_t app_cb;
+	/** The thread that the endpoint is assigned to. */
+	zap_io_thread_t thread;
 
-	/** Event queue */
-	struct zap_event_queue *event_queue;
 #ifdef _ZAP_EP_TRACK_
 	TAILQ_ENTRY(zap_ep) ep_link;
 #endif
+	/** (private to libzap) for thread->ep_list */
+	LIST_ENTRY(zap_ep) _entry;
 };
 
 struct zap {
@@ -237,9 +240,6 @@ struct zap {
 	zap_err_t (*get_name)(zap_ep_t ep, struct sockaddr *local_sa,
 			      struct sockaddr *remote_sa, socklen_t *sa_len);
 
-	/** Event interposer */
-	void (*event_interpose)(zap_ep_t ep, void *ctxt);
-
 	/** Transport message logging callback */
 	zap_log_fn_t log_fn;
 
@@ -260,6 +260,83 @@ struct zap {
 	 */
 	zap_err_t (*send_mapped)(zap_ep_t ep, zap_map_t map, void *buf,
 				 size_t len, void *context);
+
+	/**
+	 * Create and start an IO thread.
+	 *
+	 * This API is called when libzap determines that a new IO thread for
+	 * the transport is required. The transport shall:
+	 *   1) allocate a zap_io_thread structure (or an extension of it),
+	 *   2) call `zap_io_thread_init()` to initialize the structure,
+	 *   3) perform additional transport-specific IO thread initialization,
+	 *   4) create and start a POSIX thread, and
+	 *   5) returns the `zap_io_thread` handle.
+	 *
+	 * The purpose of an IO thread is to process the low-level events from
+	 * associated endpoints, create zap events and deliver them to the
+	 * application. In addition, to collect thread statistics, libzap
+	 * requires the transport IO thread to call `zap_thrstat_wait_start()`
+	 * before it sleeps, and to call `zap_thrstat_wait_end()` when it wakes
+	 * up. The IO thread shall follow the following procedure:
+	 *   1) call `zap_thrstat_wait_start()`
+	 *   2) wait for an event or events from the associated endpoints,
+	 *   3) wake up on events then call `zap_thrstat_wait_end()`,
+	 *   4) process the events, converting them to zap events with
+	 *      timestamps from \c clock_gettime(),
+	 *   5) deliver zap events via \c zap_event_deliver(), and
+	 *   6) repeat from 1.
+	 *
+	 *
+	 * \retval thr  On success, the thread handle.
+	 * \retval NULL On failure. \c errno is also set to describe the error.
+	 */
+	zap_io_thread_t (*io_thread_create)(zap_t z);
+
+	/**
+	 * Terminate the IO thread.
+	 *
+	 * This API is called when libzap determines that the thread is no
+	 * longer needed. The transport shall terminate the thread and release
+	 * its resources, including the thread handle memory allocated in the
+	 * thread creation.
+	 *
+	 * \retval ZAP_ERR_OK On success.
+	 * \retval zerr A zap error code on failure.
+	 */
+	zap_err_t (*io_thread_cancel)(zap_io_thread_t t);
+
+	/**
+	 * Assign an endpoint to an IO thread.
+	 *
+	 * libzap calls this function to assign the endpoint \c ep to the thread
+	 * \c t. A thread may have multiple endpoints assigned to it.
+	 *
+	 * \retval ZAP_ERR_OK On success.
+	 * \retval zerr A zap error code on failure.
+	 */
+	zap_err_t (*io_thread_ep_assign)(zap_io_thread_t t, zap_ep_t ep);
+
+	/**
+	 * Release an endpoint from an IO thread.
+	 *
+	 * libzap calls this function to release the endpoint \c ep from the
+	 * thread \c t.
+	 *
+	 * \retval ZAP_ERR_OK On success.
+	 * \retval zerr A zap error code on failure.
+	 */
+	zap_err_t (*io_thread_ep_release)(zap_io_thread_t t, zap_ep_t ep);
+
+	/**
+	 * A collection of io threads of the tranport managed by libzap.
+	 *
+	 * The transport shall not access nor modify this data.
+	 */
+	LIST_HEAD(, zap_io_thread) _io_threads;
+
+	/** Mutex for _io_threads. */
+	pthread_mutex_t _io_mutex;
+
 };
 
 static inline zap_err_t
@@ -334,18 +411,63 @@ int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc)
 	return 0;
 }
 
-/* this is the default value for the number of zap_io_threads */
-#define ZAP_EVENT_WORKERS 4
+#define ZAP_ENV_INT(X) zap_env_int(#X, X)
 
-#define ZAP_EVENT_QDEPTH 4096
+/**
+ * Deliver an event to the application.
+ *
+ * The transport shall call this function in order to deliver an event to the
+ * application.
+ */
+zap_err_t zap_event_deliver(zap_event_t ev);
+
+/**
+ * Initialize the zap_io_thread structure.
+ *
+ * \param t The pointer to the \c zap_io_thread structure.
+ * \param z The associated zap handle.
+ * \param name The name of the thread.
+ * \param stat_window The window size of the thread statistics.
+ *
+ * \retval 0 If OK.
+ * \retval errno If error.
+ */
+int zap_io_thread_init(zap_io_thread_t t, zap_t z,
+		       const char *name, int stat_window);
+
+/**
+ * Release resources allocated in \c zap_io_thread_init().
+ */
+int zap_io_thread_release(zap_io_thread_t t);
 
 int zap_env_int(char *name, int default_value);
 #define ZAP_ENV_INT(X) zap_env_int(#X, X)
 
+double zap_env_dbl(char *name, double default_value);
+#define ZAP_ENV_DBL(X) zap_env_dbl(#X, X)
+
 /**
- * Add IO completion to the completion queue.
+ * Assign \c ep to a zap io thread.
+ *
+ * The transport shall call this function to assign the endpoint to an io
+ * thread. libzap will select the least busy thread, or create a
+ * new thread, and assign the endpoint \c ep to the thread.
+ * \c zap.io_thread_ep_assign() will be called subsequently.
+ *
+ * \retval ZAP_ERR_OK
+ * \retval ZAP_ERR_RESOURCE
+ * \retval ZAP_ERR_BUSY
  */
-int zap_event_add(struct zap_event_queue *q, zap_ep_t ep, void *ctxt);
+zap_err_t zap_io_thread_ep_assign(zap_ep_t ep);
+
+/**
+ * Release \c ep from the zap io thread.
+ *
+ * The transport shall call this function to release an endpoint from the
+ * associated io thread. \c zap.io_thread_ep_release() will also be called as a
+ * subsequence.
+ */
+zap_err_t zap_io_thread_ep_release(zap_ep_t ep);
 
 /*
  * The zap_thrstat structure maintains state for
@@ -367,5 +489,39 @@ struct zap_thrstat {
 	LIST_ENTRY(zap_thrstat) entry;
 };
 #define ZAP_THRSTAT_WINDOW 4096	/*< default window size */
+
+/**
+ * A structure describing a zap IO thread.
+ *
+ * The transport implementation may extend this structure to store
+ * transport-specific data for its IO threads.
+ *
+ * The fields beginning with "_" are considered private to libzap. The transport
+ * shall not modify such fields.
+ */
+struct zap_io_thread {
+	/** The thread handle.
+	 *
+	 *  When the transport creats a zap IO thread, it shall use this field
+	 *  to create the thread.
+	 */
+	pthread_t thread;
+
+	/** The transport handle. */
+	zap_t zap;
+
+	/** Primarily used to protect the _ep_list */
+	pthread_mutex_t mutex;
+
+	/** Thread statistics */
+	struct zap_thrstat *stat;
+
+	/** (private to libzap) for zap->_io_threads */
+	LIST_ENTRY(zap_io_thread) _entry;
+	/** (private to libzap) endpoint list */
+	LIST_HEAD(, zap_ep) _ep_list;
+	/** (private to libzap) number of associated endpoints */
+	int _n_ep;
+};
 
 #endif
