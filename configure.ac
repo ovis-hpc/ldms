@@ -8,6 +8,7 @@ AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_SRCDIR([m4/Ovis-top.m4])
 AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
+AC_REQUIRE_AUX_FILE([tap-driver.sh])
 AC_PROG_CC
 AM_INIT_AUTOMAKE([foreign tar-pax])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
@@ -844,7 +845,7 @@ AC_CONFIG_FILES([
 	ldms/scripts/ldms-meminfo.sh
 	ldms/scripts/ldms_local_opa2test.sh
 	ldms/scripts/ldms-l2_test.sh
-	ldms/src/test/ldms-run-static-tests.sh
+	ldms/src/test/ldms-run-static-tests.test
 	ldms/src/test/ldms-static-test-list.sh
 	ldms/src/test/ldms-static-test-bypass
 	], [chmod a+x $ac_file]
