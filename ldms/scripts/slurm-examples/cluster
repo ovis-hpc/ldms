@@ -1,30 +1,71 @@
 # run many daemons under slurm. assumes exclusive use of nodes.
 portbase=59000
+ulimit -n 100000
 MESSAGE starting l1, l2 aggs and collectors
-VGARGS="--tool=drd "
-VGARGS="--track-origins=yes "
+VGARGS="--tool=drd --time-stamp=yes --gen-suppressions=all --track-origins=yes"
+VGARGS="--track-origins=yes --leak-check=full --gen-suppressions=all --time-stamp=yes --suppressions=/ascldap/users/baallan/stria/ovis-dst2.2"
+VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=definite --time-stamp=yes --suppressions=/ascldap/users/baallan/stria/ovis-dst2.2/ldms.supp --gen-suppressions=all  --main-stacksize=256000000"
 # start collector(s)
 if test "x$maxdaemon" = "x"; then
 	maxdaemon=3
 fi
 DAEMONS `seq 1 $maxdaemon`
 LDMSD_EXTRA="-m 20k"
-LDMSD -s 100000 -c `seq 3 $maxdaemon`
+VGTAG=.samp
+# start n-2 sampler daemons
+LDMSD -s 1000000 -c `seq 3 $maxdaemon`
 # scale m to handle maxdaemon
-LDMSD_EXTRA="-P 8 -m 1G"
-# start L2
+# -m > 450 or so seems to be incompatible with arm/valgrind 3.13
+LDMSD_EXTRA="-P 14 -m 4M"
 #vgon
+VGTAG=.L2
+# start L1
 LDMSD 1 
 #vgoff
-# start L1
-#vgon
+vgon
+VGTAG=.L1
+# start L2
 LDMSD -s 3000000 -P pll.producer,`seq -s, 3 $maxdaemon` 2
-#vgoff
+vgoff
 SLEEP 1
+vgon
 LDMS_LS 1
-SLEEP $(( $(SEC_LEFT) - 10))
+vgoff
+KILL_LDMSD `seq 3 $maxdaemon`
+SLEEP 2
+LDMSD -s 100000 -c `seq 3 $maxdaemon`
+SLEEP 2
+KILL_LDMSD `seq 3 $maxdaemon`
+SLEEP 2
+LDMSD -s 100000 -c `seq 3 $maxdaemon`
+SLEEP 2
+KILL_LDMSD `seq 3 $maxdaemon`
+SLEEP 2
+LDMSD -s 100000 -c `seq 3 $maxdaemon`
+SLEEP 2
+KILL_LDMSD `seq 3 $maxdaemon`
+SLEEP 2
+LDMSD -s 100000 -c `seq 3 $maxdaemon`
+SLEEP 2
+KILL_LDMSD `seq 3 $maxdaemon`
+SLEEP 2
+LDMSD -s 100000 -c `seq 3 $maxdaemon`
+SLEEP 2
+KILL_LDMSD `seq 3 $maxdaemon`
+SLEEP 2
+LDMSD -s 100000 -c `seq 3 $maxdaemon`
+SLEEP 2
+KILL_LDMSD `seq 3 $maxdaemon`
+SLEEP 2
+LDMSD -s 100000 -c `seq 3 $maxdaemon`
+SLEEP 2
+LDMS_LS 2
+SLEEP $(( $(SEC_LEFT) - 20))
+# kill l2
 KILL_LDMSD 1
 SLEEP 1
+# kill l1, samps
 KILL_LDMSD `seq 3 $maxdaemon` 2
 SLEEP 1
 MESSAGE logs and data under ${TESTDIR}
+chown -R baallan.baallan $TESTDIR
