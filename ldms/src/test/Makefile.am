@@ -41,10 +41,14 @@ test_metric_LDFLAGS = $(AM_LDFLAGS) -pthread -lm
 
 # override pkglib sanity checks
 mypkglibdir = $(pkglibdir)
-mypkglib_SCRIPTS = ldms-run-static-tests.sh
+mypkglib_SCRIPTS = ldms-run-static-tests.test
 mypkglib_DATA = ldms-static-test-list.sh ldms-static-test-bypass
 
-installcheck-local: 
-	ldms-run-static-tests.sh
+# invoke tap-driver
+TEST_LOG_DRIVER = env AM_TAP_AWK='$(AWK)' $(SHELL) \
+                  $(top_srcdir)/config/tap-driver.sh
 
-TESTS = $(check_PROGRAMS)
+installcheck-local: 
+	./ldms-run-static-tests.test
+
+TESTS = $(check_PROGRAMS) ldms-run-static-tests.test
