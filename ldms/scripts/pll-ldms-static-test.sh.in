@@ -122,15 +122,22 @@ function get_prolog_name () {
 TESTDIR=$2
 
 if test -z "$2"; then
-	TESTDIR=`pwd`/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_JOB_NUM_NODES
+	if test -n "LDMSNET"; then
+		TESTSUFF="-$LDMSNET"
+	fi
+	TESTDIR=`pwd`/ldmstest/$testname/$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_JOB_NUM_NODES$TESTSUFF
 fi
 export TESTDIR
 
+if test -z "$HOST"; then
+	# used for ldms_ls
+	export HOST=$(hostname)
+fi
 if test -z "$XPRT"; then
+	# used for ldms_ls and ldmsd
 	export XPRT=sock
 fi
 declare -a ports
-declare -a hosts
 
 # get the slurm job time remaining in seconds,
 # of if not set or unlimited, returns 600 (10 min)
@@ -287,14 +294,22 @@ function LDMSD {
 			else
 				XVG=$VG
 			fi
+			if test -n "LDMSNET"; then
+				XVGSUFF=".$LDMSNET"
+			fi
 			if test -z "$VGARGS"; then
-				XVGARGS="-v --trace-children=yes --log-file=${LOGDIR}/vg.$i.%p"
+				XVGARGS="-v --trace-children=yes --log-file=${LOGDIR}/vg.$i$VGTAG.%p$XVGSUFF"
 			else
-				XVGARGS="-v --trace-children=yes --log-file=${LOGDIR}/vg.$i.%p $VGARGS"
+				XVGARGS="-v --trace-children=yes --log-file=${LOGDIR}/vg.$i$VGTAG.%p$XVGSUFF $VGARGS"
 			fi
 			wrap="$XVG $XVGARGS"
 		else
 			wrap=""
+		fi
+		echo starting daemon $i
+		# set -x
+		if test -n "$HOST"; then
+			XPRTHOST=":${hosts[$i]}"
 		fi
 		if test -n "$first"; then
 			insuff=$first
@@ -325,8 +340,15 @@ function LDMSD {
 			cat $input.$insuff >> $LDMSD_RUN/conf.$i
 			clonefile=$LDMSD_RUN/conf.$i
 			echo $myproc: starting daemon $i
+			env > $LDMSD_RUN/env.$i
+			echo $wrap ldmsd.${ports[$i]} \
+				-x ${XPRT}:${ports[$i]}${XPRTHOST} \
+				-c $LDMSD_RUN/conf.$i \
+				-l ${LOGDIR}/$i.txt \
+				-v DEBUG $LDMSD_EXTRA \
+				-r $LDMSD_PIDFILE.$i > $LDMSD_RUN/start.$i
 			$wrap ldmsd.${ports[$i]} \
-				-x ${XPRT}:${ports[$i]} \
+				-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 				-c $LDMSD_RUN/conf.$i \
 				-l ${LOGDIR}/$i.txt \
 				-v DEBUG $LDMSD_EXTRA \
@@ -335,14 +357,26 @@ function LDMSD {
 			if test -f $clonefile -a $cloneinput = "1"; then
 				cp $clonefile $LDMSD_RUN/conf.$i
 				echo $myproc: starting daemon $i
+				env > $LDMSD_RUN/env.$i
+				echo $wrap ldmsd.${ports[$i]} \
+					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
+					-c $LDMSD_RUN/conf.$i \
+					-l ${LOGDIR}/$i.txt \
+					-v DEBUG $LDMSD_EXTRA \
+					-r $LDMSD_PIDFILE.$i > $LDMSD_RUN/start.$i
 				$wrap ldmsd.${ports[$i]} \
-					-x ${XPRT}:${ports[$i]} \
+					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
 					-c $LDMSD_RUN/conf.$i \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG $LDMSD_EXTRA \
 					-r $LDMSD_PIDFILE.$i
 			else
 				echo $myproc: IDLE DAEMON $i
+				env > $LDMSD_RUN/env.$i
+				echo ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]} \
+					-l ${LOGDIR}/$i.txt \
+					-v DEBUG \
+					-r $LDMSD_PIDFILE.$i > $LDMSD_RUN/start.$i
 				ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]} \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG \
@@ -351,8 +385,8 @@ function LDMSD {
 		fi
 		usleep $startwait
 		if ! test -f $LDMSD_PIDFILE.$i; then
-			echo FAIL: $myproc: failed to start $i. check ${LOGDIR}/$i.txt
-			bypass=1
+			echo FAIL: $myproc: failed to start $i $XPRTHOST. check ${LOGDIR}/$i.txt
+			#bypass=1
 			break;
 		fi
 	done
@@ -379,12 +413,19 @@ function LDMS_LS {
 		fi
 		if test "$usevg" = "1"; then
 			if test -z "$VG"; then
-				VG=valgrind
+				XVG=valgrind
+			else
+				XVG=$VG
+			fi
+			if test -n "LDMSNET"; then
+				XVGSUFF=".$LDMSNET"
 			fi
 			if test -z "$VGARGS"; then
-				VGARGS="-v --log-file=${LOGDIR}/vgls.$i.%p"
+				VGARGS="-v --log-file=${LOGDIR}/vgls.$i$VGTAG.%p"
+			else
+				XVGARGS="-v --log-file=${LOGDIR}/vgls.$i$VGTAG.%p$XVGSUFF $VGARGS"
 			fi
-			wrap="$VG $VGARGS"
+			wrap="$XVG $XVGARGS"
 		else
 			wrap=""
 		fi
@@ -393,8 +434,14 @@ function LDMS_LS {
 			bypass=1
 			break;
 		fi
-		# could use ${hosts[$i]} here but don't need to.
-		$wrap ldms_ls  -h localhost -x sock -p ${ports[$i]} $*
+		if test -n "$PORT"; then
+			iport=$PORT
+		else
+			iport=${ports[$i]}
+		fi
+		ihost=${hosts[$i]}
+		echo "$myproc: $wrap ldms_ls  -h $ihost -x $XPRT -p $iport $*"
+		$wrap ldms_ls  -h $ihost -x $XPRT -p $iport $*
 	done
 }
 # KILL_LDMSD num list
@@ -403,9 +450,16 @@ function KILL_LDMSD {
 		if test $i -ne $myproc; then
 			continue
 		fi
+		if test "strict" = "$i"; then
+			KILL_LDMSD_STRICT=1
+			continue
+		fi
 		if test -f $LDMSD_PIDFILE.$i; then
 			kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
 		else
+			if test "$KILL_LDMSD_STRICT" = "1"; then
+				bypass=1;
+			fi
 			echo $myproc: cannot find pidfile for $i
 		fi
 	done
@@ -550,6 +604,14 @@ export LDMS_AUTH_FILE=$SECRET
 chmod go-rwx $SECRET
 export PATH=$LDMSD_RUN:${BUILDDIR}/sbin:${BUILDDIR}/bin:$PATH
 
+if test -n "$LDMS_DAEMON_ARRAY_FILE"; then
+	if ! test -f $LDMS_DAEMON_ARRAY_FILE; then
+		echo "$myproc: cannot find $LDMS_DAEMON_ARRAY_FILE"
+	else
+		echo "$myproc: loading host array from $LDMS_DAEMON_ARRAY_FILE"
+		. $LDMS_DAEMON_ARRAY_FILE
+	fi
+fi
 echo "$myproc: Listing ldmsd's still running:"
 pgrep ldmsd
 echo "$myproc: Done."
@@ -560,3 +622,9 @@ echo "$myproc: logs and data stored under $TESTDIR"
 SLEEP 1
 echo "$myproc: logs and data stored under $TESTDIR"
 echo done;
+
+if test "$KILL_LDMSD_STRICT" = "1"; then
+	exit 1
+fi;
+
+
