@@ -55,11 +55,7 @@
 
 #include "ldms_xprt.h"
 #include "ldms_auth.h"
-
-/* functions from ldms_xprt.c */
-struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
-		ldms_context_type_t type);
-void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt);
+#include "ldms_private.h"
 
 /* ========================
  * ==== LDMS_XPRT_AUTH ====
