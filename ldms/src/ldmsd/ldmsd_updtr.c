@@ -595,7 +595,7 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 	gettimeofday(&start, NULL);
 #endif /* LDMSD_UPDATE_TIME */
 	ldmsd_prdcr_lock(prdcr);
-	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED)
+	if (prdcr->conn_state != LDMSD_PRDCR_STATE_CONNECTED || prdcr->xprt->disconnected)
 		goto out;
 
 	ldmsd_prdcr_set_t prd_set;
