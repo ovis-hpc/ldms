@@ -177,4 +177,7 @@ struct ldms_data_hdr *__ldms_set_array_get(ldms_set_t s, int idx)
 	return __set_array_get(s->set, idx);
 }
 
+struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz, ldms_context_type_t type, ...);
+void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt);
+
 #endif
