@@ -201,7 +201,7 @@ next:
 	return 0;
 }
 
-/* Caller must call with the ldms xprt lock held */
+/* Must be called with the xprt lock held */
 struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 		ldms_context_type_t type, ...)
 {
@@ -229,7 +229,7 @@ struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 		break;
 	case LDMS_CONTEXT_LOOKUP_READ:
 		ctxt->lu_read.s = va_arg(ap, ldms_set_t);
-		ref_get(&ctxt->lu_read.s->ref, __func__);
+		ref_get(&ctxt->lu_read.s->ref, "__ldms_alloc_ctxt");
 		ctxt->lu_read.cb = va_arg(ap, ldms_lookup_cb_t);
 		ctxt->lu_read.cb_arg = va_arg(ap, void *);
 		ctxt->lu_read.more = va_arg(ap, int);
@@ -238,7 +238,7 @@ struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 	case LDMS_CONTEXT_UPDATE:
 	case LDMS_CONTEXT_UPDATE_META:
 		ctxt->update.s = va_arg(ap, ldms_set_t);
-		ref_get(&ctxt->update.s->ref, __func__);
+		ref_get(&ctxt->update.s->ref, "__ldms_alloc_ctxt");
 		ctxt->update.cb = va_arg(ap, ldms_update_cb_t);
 		ctxt->update.cb_arg = va_arg(ap, void *);
 		ctxt->update.idx_from = va_arg(ap, int);
@@ -246,7 +246,7 @@ struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 		break;
 	case LDMS_CONTEXT_REQ_NOTIFY:
 		ctxt->req_notify.s = va_arg(ap, ldms_set_t);
-		ref_get(&ctxt->req_notify.s->ref, __func__);
+		ref_get(&ctxt->req_notify.s->ref, "__ldms_alloc_ctxt");
 		ctxt->req_notify.cb = va_arg(ap, ldms_notify_cb_t);
 		ctxt->req_notify.cb_arg = va_arg(ap, void *);
 		break;
@@ -256,7 +256,7 @@ struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 		break;
 	case LDMS_CONTEXT_SET_DELETE:
 		ctxt->set_delete.s = va_arg(ap, ldms_set_t);
-		ref_get(&ctxt->set_delete.s->ref, __func__);
+		ref_get(&ctxt->set_delete.s->ref, "__ldms_alloc_ctxt");
 		ctxt->set_delete.cb = va_arg(ap, ldms_set_delete_cb_t);
 		ctxt->set_delete.cb_arg = va_arg(ap, void *);
 		break;
@@ -269,7 +269,7 @@ struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 	return ctxt;
 }
 
-/* Caller must call with the ldms xprt lock held */
+/* Must be called with the ldms xprt lock held */
 void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 {
 	int64_t dur_us;
@@ -301,7 +301,6 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 		ref_put(&ctxt->set_delete.s->ref, "__ldms_alloc_ctxt");
 		break;
 	case LDMS_CONTEXT_DIR:
-		e = &x->stats.ops[LDMS_XPRT_OP_DIR];
 		break;
 	case LDMS_CONTEXT_SEND:
 		e = &x->stats.ops[LDMS_XPRT_OP_SEND];
@@ -323,7 +322,6 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 	}
 	ldms_xprt_put(ctxt->x);
 	free(ctxt);
-
 }
 
 static void send_dir_update(struct ldms_xprt *x,
@@ -419,6 +417,8 @@ char *__ldms_format_set_for_dir(struct ldms_set *set, size_t *buf_sz)
 	size_t cnt;
 
 	json_buf = malloc(json_buf_sz);
+	if (!json_buf)
+		return NULL;
 	cnt = __ldms_format_set_meta_as_json(set, 0, json_buf, json_buf_sz);
 	while (cnt >= json_buf_sz) {
 		free(json_buf);
@@ -438,15 +438,18 @@ static void dir_update(struct ldms_set *set, enum ldms_dir_type t)
 	size_t json_cnt;
 	struct ldms_xprt *x;
 	json_buf = __ldms_format_set_for_dir(set, &json_cnt);
-	if (!json_buf)
-		return;
 	pthread_mutex_lock(&xprt_list_lock);
 	LIST_FOREACH(x, &xprt_list, xprt_link) {
+		if (!json_buf) {
+			x->log("%s: memory allocation error\n", __func__);
+			break;
+		}
 		if (x->remote_dir_xid)
 			send_dir_update(x, t, json_buf, json_cnt);
 	}
 	pthread_mutex_unlock(&xprt_list_lock);
-	free(json_buf);
+	if (json_buf)
+		free(json_buf);
 }
 
 void __ldms_dir_add_set(struct ldms_set *set)
@@ -546,6 +549,7 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 	struct rbn *rbn;
 	struct ldms_rbuf_desc *rbd;
 	struct ldms_set *set;
+	int drop_ep_ref = 0;
 	while ((rbn = rbt_min(&x->rbd_rbt))) {
 		rbd = RBN_RBD(rbn);
 		set = rbd->set;
@@ -565,7 +569,14 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 		ldms_auth_free(x->auth);
 		x->auth = NULL;
 	}
+	if (x->zap_ep) {
+		zap_set_ucontext(x->zap_ep, NULL);
+		x->zap_ep = NULL;
+		drop_ep_ref = 1;
+	}
 	pthread_mutex_unlock(&x->lock);
+	if (drop_ep_ref)
+		ldms_xprt_put(x);
 }
 
 void ldms_xprt_put(ldms_t x)
@@ -641,7 +652,9 @@ void process_set_delete_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 			      struct ldms_context *ctxt)
 {
 	ctxt->set_delete.cb(x, reply->hdr.rc, ctxt->set_delete.s, ctxt->set_delete.cb_arg);
+	pthread_mutex_lock(&x->lock);
 	__ldms_free_ctxt(x, ctxt);
+	pthread_mutex_unlock(&x->lock);
 }
 
 struct make_dir_arg {
@@ -662,6 +675,11 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	struct ldms_reply reply_;
 	struct ldms_reply *reply = NULL;
 	struct ldms_name_list name_list;
+	ldms_stats_entry_t e = &x->stats.ops[LDMS_XPRT_OP_DIR_REP];
+	int64_t dur_us;
+	struct timespec end, start;
+
+	(void)clock_gettime(CLOCK_REALTIME, &start);
 
 	if (req->dir.flags)
 		/* Register for directory updates */
@@ -797,6 +815,16 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 	}
 	free(reply);
 	__ldms_empty_name_list(&name_list);
+	(void)clock_gettime(CLOCK_REALTIME, &end);
+	dur_us = ldms_timespec_diff_us(&start, &end);
+	if (e->min_us > dur_us)
+		e->min_us = dur_us;
+	if (e->max_us < dur_us)
+		e->max_us = dur_us;
+	e->total_us += dur_us;
+	e->mean_us = (e->count * e->mean_us) + dur_us;
+	e->count += 1;
+	e->mean_us /= e->count;
 	return;
 out:
 	if (reply)
@@ -1301,6 +1329,7 @@ static int do_read_all(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 		rc = ENOMEM;
 		goto out;
 	}
+	assert(x == ctxt->x);
 	rc = zap_read(x->zap_ep, s->rmap, zap_map_addr(s->rmap),
 		      s->lmap, zap_map_addr(s->lmap), len, ctxt);
 	if (rc) {
@@ -1326,6 +1355,7 @@ static int do_read_meta(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 		rc = ENOMEM;
 		goto out;
 	}
+	assert(x == ctxt->x);
 	rc = zap_read(x->zap_ep, s->rmap, zap_map_addr(s->rmap),
 			s->lmap, zap_map_addr(s->lmap), meta_sz, ctxt);
 	if (rc) {
@@ -1359,6 +1389,7 @@ static int do_read_data(ldms_t x, ldms_set_t s, int idx_from, int idx_to,
 							+ idx_from * data_sz;
 	dlen = (idx_to - idx_from + 1) * data_sz;
 
+	assert(x == ctxt->x);
 	rc = zap_read(x->zap_ep, s->rmap, zap_map_addr(s->rmap) + doff,
 		      s->lmap, zap_map_addr(s->lmap) + doff, dlen, ctxt);
 	if (rc) {
@@ -1383,6 +1414,12 @@ out:
 int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
 	assert(x == s->xprt);
+	if (x->disconnected || !zap_ep_connected(x->zap_ep)) {
+		fprintf(stderr, "%p:%d called disconnected transport: %p, zap_ep: %p, zap_ep_state: %d\n",
+			__func__, __LINE__, x, x->zap_ep, zap_ep_state(x->zap_ep));
+		return ENOTCONN;
+	}
+
 	if (!s->lmap || !s->rmap)
 		return EINVAL;
 
@@ -1393,6 +1430,10 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	uint32_t meta_meta_gn = __le32_to_cpu(set->meta->meta_gn);
 	uint32_t data_meta_gn = __le32_to_cpu(set->data->meta_gn);
 	uint32_t n = __le32_to_cpu(set->meta->array_card);
+	if (n == 0) {
+		fprintf(stderr, "Set %s had 0 cardinality\n", ldms_set_instance_name_get(s));
+		return EINVAL;
+	}
 	int idx_from, idx_to, idx_next, idx_curr;
 	zap_get_ep(x->zap_ep);		/* Released in handle_zap_read_complete() */
 	if (meta_meta_gn == 0 || meta_meta_gn != data_meta_gn) {
@@ -1583,12 +1624,18 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	json_entity_t dir_attr, dir_list, set_entity, info_list;
 	json_entity_t dir_entity = NULL;
 	struct ldms_set *lset;
+	ldms_stats_entry_t e = &x->stats.ops[LDMS_XPRT_OP_DIR_REQ];
+	int64_t dur_us;
+	struct timespec end, start;
+
 
 	if (!ctxt->dir.cb)
 		return;
 
 	if (rc)
 		goto out;
+
+	(void)clock_gettime(CLOCK_REALTIME, &start);
 
 	p = json_parser_new(0);
 	if (!p) {
@@ -1707,6 +1754,16 @@ out:
 	json_parser_free(p);
 	if (rc && dir)
 		ldms_xprt_dir_free(x, dir);
+	(void)clock_gettime(CLOCK_REALTIME, &end);
+	dur_us = ldms_timespec_diff_us(&start, &end);
+	if (e->min_us > dur_us)
+		e->min_us = dur_us;
+	if (e->max_us < dur_us)
+		e->max_us = dur_us;
+	e->total_us += dur_us;
+	e->mean_us = (e->count * e->mean_us) + dur_us;
+	e->count += 1;
+	e->mean_us /= e->count;
 }
 
 static
@@ -1949,6 +2006,7 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	_x->event_cb_arg = x->event_cb_arg;
 	if (!_x->event_cb)
 		_x->event_cb = __ldms_passive_connect_cb;
+	ldms_xprt_get(_x);
 	zap_set_ucontext(zep, _x);
 
 	auth = ldms_auth_clone(x->auth);
@@ -1976,6 +2034,8 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 err1:
 	ldms_auth_free(auth);
 err0:
+	zap_set_ucontext(_x->zap_ep, NULL);
+	ldms_xprt_put(_x);	/* context reference */
 	zap_reject(zep, rej_msg, strlen(rej_msg)+1);
 }
 
@@ -2003,6 +2063,7 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 	struct ldms_data_hdr *data, *prev_data;
 	int flags = 0, upd_curr_idx;
 
+	assert(x == ctxt->x);
 	assert(ctxt->update.cb);
 	rc = LDMS_UPD_ERROR(ev->status);
 	if (rc || (set == NULL)) {
@@ -2328,7 +2389,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	rd_ctxt->sem_p = ctxt->sem_p;
 	rd_ctxt->rc = ctxt->rc;
 	pthread_mutex_unlock(&x->lock);
-
+	assert((zep == x->zap_ep) && (x == rd_ctxt->x));
 	rc = zap_read(zep,
 		      rbd->rmap, zap_map_addr(rbd->rmap),
 		      rbd->lmap, zap_map_addr(rbd->lmap),
@@ -2340,8 +2401,11 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 		pthread_mutex_lock(&x->lock);
 		goto callback_with_lock;
 	}
-	if (!lm->lookup.more)
+	if (!lm->lookup.more) {
+		pthread_mutex_lock(&x->lock);
 		__ldms_free_ctxt(x, ctxt);
+		pthread_mutex_unlock(&x->lock);
+	}
 	return;
 
  callback:
@@ -2476,6 +2540,8 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	event.type = LDMS_XPRT_EVENT_LAST;
 	char rej_msg[128];
 	struct ldms_xprt *x = zap_get_ucontext(zep);
+	if (x == NULL)
+		return;
 #ifdef DEBUG
 	x->log("DEBUG: ldms_zap_cb: receive %s. %p: ref_count %d\n",
 			zap_event_str(ev->type), x, x->ref_count);
@@ -2507,6 +2573,9 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		event.type = LDMS_XPRT_EVENT_REJECTED;
 		if (x->event_cb)
 			x->event_cb(x, &event, x->event_cb_arg);
+		x->zap_ep = NULL;
+		zap_set_ucontext(zep, NULL);
+		ldms_xprt_put(x);
 		/* Put the reference taken in ldms_xprt_connect() */
 		ldms_xprt_put(x);
 		break;
@@ -2525,6 +2594,9 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		event.type = LDMS_XPRT_EVENT_ERROR;
 		if (x->event_cb)
 			x->event_cb(x, &event, x->event_cb_arg);
+		x->zap_ep = NULL;
+		zap_set_ucontext(zep, NULL);
+		ldms_xprt_put(x);
 		/* Put the reference taken in ldms_xprt_connect() */
 		ldms_xprt_put(x);
 		break;
@@ -2555,9 +2627,9 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 				x->local_dir_xid;
 			x->local_dir_xid = 0;
 		}
-		pthread_mutex_unlock(&x->lock);
 		if (dir_ctxt)
 			__ldms_free_ctxt(x, dir_ctxt);
+		pthread_mutex_unlock(&x->lock);
 		if (x->event_cb)
 			x->event_cb(x, &event, x->event_cb_arg);
 		#ifdef DEBUG
@@ -2584,6 +2656,9 @@ static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 		assert(0 == "Illegal connect request.");
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
+		x->zap_ep = NULL;
+		ldms_xprt_put(x);
+		zap_set_ucontext(zep, NULL);
 		ldms_xprt_put(x);
 		break;
 	case ZAP_EVENT_CONNECTED:
@@ -2657,6 +2732,7 @@ int __ldms_xprt_zap_new(struct ldms_xprt *x, const char *name,
 		goto err0;
 	}
 	x->max_msg = zap_max_msg(x->zap);
+	ldms_xprt_get(x);
 	zap_set_ucontext(x->zap_ep, x);
 	return 0;
 err0:
@@ -3199,11 +3275,11 @@ void ldms_xprt_set_delete(ldms_set_t s, ldms_set_delete_cb_t cb_fn, void *cb_arg
 		len = format_set_delete_req(req, (uint64_t)(unsigned long)ctxt,
 					    ldms_set_instance_name_get(s));
 		zap_err_t zerr = zap_send(xprt->zap_ep, req, len);
-		pthread_mutex_unlock(&xprt->lock);
 		if (zerr) {
 			xprt->zerrno = zerr;
 			__ldms_free_ctxt(xprt, ctxt);
 		}
+		pthread_mutex_unlock(&xprt->lock);
 		ldms_xprt_put(xprt);
 	next_1:
 		ref_put(&rbd->ref, "xprt_set_delete");
