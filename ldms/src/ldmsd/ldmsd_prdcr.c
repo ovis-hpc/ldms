@@ -343,6 +343,16 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 	/* Check to see if it's already there */
 	set = _find_set(prdcr, dset->inst_name);
 	if (!set) {
+		/* See if the ldms set is already there */
+		ldms_set_t xs = ldms_xprt_set_by_name(xprt, dset->inst_name);
+		if (xs) {
+			ldmsd_log(LDMSD_LCRITICAL, "Received dir_add, prdset is missing, but set %s is present...ignoring",
+					dset->inst_name);
+			return;
+			ldmsd_prdcr_set_ref_get(set); /* dropped in prdset_lookup_cb() */
+			__ldmsd_prdset_lookup_cb(xprt, 0, 0, xs, set);
+			ref_put(&xs->ref, "ldms_xprt_set_by_name");
+		}
 		set = prdcr_set_new(dset->inst_name, dset->schema_name);
 		if (!set) {
 			ldmsd_log(LDMSD_LERROR, "Memory allocation failure in %s "
@@ -352,14 +362,6 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 		}
 		set->prdcr = prdcr;
 		rbt_ins(&prdcr->set_tree, &set->rbn);
-		/* See if the ldms set is already there */
-		ldms_set_t xs = ldms_xprt_set_by_name(xprt, dset->inst_name);
-		if (xs) {
-			assert(0 == "this should not happen");
-			ldmsd_prdcr_set_ref_get(set); /* dropped in prdset_lookup_cb() */
-			__ldmsd_prdset_lookup_cb(xprt, 0, 0, xs, set);
-			ref_put(&xs->ref, "ldms_xprt_set_by_name");
-		}
 	} else {
 		ldmsd_log(LDMSD_LCRITICAL, "Received a dir_add update for "
 			  "'%s', prdcr_set still present with refcount %d, and set "
