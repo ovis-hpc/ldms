@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     name: Create Release
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
 
     steps:
     - run: sudo apt install gettext
@@ -16,16 +16,18 @@ jobs:
     # actions/checkout@v2 breaks annotated tags by converting them into
     # lightweight tags, so we need to force fetch the tag again
     # See: https://github.com/actions/checkout/issues/290
-    - name: repair tag
+    - name: Repair tag
       run: git fetch -f origin ${{ github.ref }}:${{ github.ref }}
-    - name: autogen
+    - name: Verify tag is annotated
+      run: if test x$(git for-each-ref ${{ github.ref }} | awk '{print $2}') = xtag; then /bin/true; else echo "\"${{ github.ref }}\" does not look like an annotated tag!"; /bin/false; fi
+    - name: autogen.sh
       run: sh autogen.sh
     - name: configure
       run: ./configure
     - name: make dist
       run: |
         make dist
-        echo "::set-env name=TARBALL_NAME::$(ls *.tar.gz | head -1)"
+        echo TARBALL_NAME=$(ls *.tar.gz | head -1) >> $GITHUB_ENV
     - name: Create Release
       id: create_release
       uses: actions/create-release@v1
