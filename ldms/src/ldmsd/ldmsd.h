@@ -205,6 +205,7 @@ typedef struct ldmsd_prdcr {
 	socklen_t ss_len;
 	char *host_name;	/* Host name */
 	unsigned short port_no;		/* Port number */
+	uint8_t warned; 
 	char *xprt_name;	/* Transport name */
 	ldms_t xprt;
 	long conn_intrvl_us;	/* connect interval */
@@ -257,6 +258,7 @@ typedef struct ldmsd_prdcr {
 	double sched_update_time;
 #endif /* LDMSD_UPDATE_TIME */
 } *ldmsd_prdcr_t;
+#define LDMSD_PRDCR_WARNED_CONNERR 0x1
 
 struct ldmsd_strgp;
 typedef struct ldmsd_strgp *ldmsd_strgp_t;
@@ -306,6 +308,7 @@ typedef struct ldmsd_prdcr_set {
 	int updt_interval;
 	int updt_offset;
 	uint8_t updt_sync;
+	uint8_t warned; 
 
 #ifdef LDMSD_UPDATE_TIME
 	struct ldmsd_updt_time *updt_time;
@@ -314,6 +317,9 @@ typedef struct ldmsd_prdcr_set {
 
 	int ref_count;
 } *ldmsd_prdcr_set_t;
+#define LDMSD_PRDCR_SET_WARNED_NOMEM 0x1
+#define LDMSD_PRDCR_SET_WARNED_EXIST 0x2
+#define LDMSD_PRDCR_SET_WARNED_LOOKUP 0x4
 
 #ifdef LDMSD_UPDATE_TIME
 double ldmsd_timeval_diff(struct timeval *start, struct timeval *end);

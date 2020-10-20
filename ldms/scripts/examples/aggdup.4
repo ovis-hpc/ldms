@@ -1,0 +1,18 @@
+# L2 agg
+load name=${storename}
+config name=${storename} path=${STOREDIR} altheader=0
+
+prdcr_add name=localhost3 host=${HOST} type=active xprt=${XPRT} port=${port3} interval=1000000
+prdcr_start name=localhost3
+
+updtr_add name=allhosts interval=1000000 offset=200000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+strgp_add name=${testname} plugin=${storename} schema=${plugname} container=${storename}
+strgp_prdcr_add name=${testname} regex=.*
+strgp_start name=${testname}
+
+strgp_add name=${testname}2 plugin=${storename} schema=vmstat container=${storename}
+strgp_prdcr_add name=${testname}2 regex=.*
+strgp_start name=${testname}2

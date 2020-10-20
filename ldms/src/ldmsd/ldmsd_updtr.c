@@ -245,8 +245,8 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	__updt_time_put(prd_set->updt_time);
 #endif /* LDMSD_UPDATE_TIME */
 	errcode = LDMS_UPD_ERROR(status);
-	ldmsd_log(LDMSD_LDEBUG, "Update complete for Set %s with status %#x\n",
-					prd_set->inst_name, status);
+	ldmsd_log(LDMSD_LDEBUG, "Update complete for producer %s Set %s with status %#x\n",
+					prd_set->prdcr->obj.name, prd_set->inst_name, status);
 	if (errcode) {
 		char *op_s;
 		if (0 == (status & LDMS_UPD_F_PUSH))
@@ -341,8 +341,8 @@ static int schedule_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_task_t ta
 	ldmsd_updtr_t updtr = task->updtr;
 	struct ldmsd_group_traverse_ctxt ctxt;
 	/* The reference will be put back in update_cb */
-	ldmsd_log(LDMSD_LDEBUG, "Schedule an update for set %s\n",
-					prd_set->inst_name);
+	ldmsd_log(LDMSD_LDEBUG, "Schedule an update for set %s from %s\n",
+				prd_set->inst_name, prd_set->prdcr->obj.name);
 	int push_flags = 0;
 	struct str_list_ent_s *ent;
 	LIST_INIT(&ctxt.str_list);
@@ -526,6 +526,17 @@ out:
 	return rc;
 }
 
+static void warn_once_prdcr_set_exists(ldmsd_prdcr_set_t prd_set)
+{
+	if (prd_set->warned & LDMSD_PRDCR_SET_WARNED_EXIST)
+		return;
+	prd_set->warned |= LDMSD_PRDCR_SET_WARNED_EXIST;
+	ldmsd_log(LDMSD_LERROR, "Prdcr '%s': lookup failed synchronously. "
+		"The set instance '%s' already exists from another sampler instance "
+		" or aggregation path.\n", 
+		prd_set->prdcr->obj.name, prd_set->inst_name);
+}
+
 void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 			int more, ldms_set_t set, void *arg)
 {
@@ -537,27 +548,34 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 		assert(NULL == set);
 		status = (status < 0 ? -status : status);
 		if (status == ENOMEM) {
-			ldmsd_log(LDMSD_LERROR,
-				"Error %d in lookup callback for set '%s' "
-				"Consider changing the -m parameter on the "
-				"command line to a larger value. "
-				"The current value is %s\n",
-				status, prd_set->inst_name,
-				ldmsd_get_max_mem_sz_str());
+			if (! (prd_set->warned & LDMSD_PRDCR_SET_WARNED_NOMEM)) {
+				prd_set->warned |= LDMSD_PRDCR_SET_WARNED_NOMEM;
+				ldmsd_log(LDMSD_LERROR,
+					"Error %d in lookup callback for set '%s' "
+					"Consider changing the -m parameter on the "
+					"command line to a larger value. "
+					"The current value is %s\n",
+					status, prd_set->inst_name,
+					ldmsd_get_max_mem_sz_str());
+			}
 		} else if (status == EEXIST) {
-			ldmsd_log(LDMSD_LERROR, "Prdcr '%s': lookup failed asynchronously. "
-					"The set '%s' already exists. "
-					"It is likely that there are more "
-					"than one producers pointing to "
-					"the set.\n",
-					prd_set->prdcr->obj.name, prd_set->inst_name);
+			warn_once_prdcr_set_exists(prd_set);
 		} else {
-			ldmsd_log(LDMSD_LERROR,
-				  "Error %d in lookup callback for set '%s'\n",
-					  status, prd_set->inst_name);
+			if (! (prd_set->warned & LDMSD_PRDCR_SET_WARNED_LOOKUP)) {
+				prd_set->warned |= LDMSD_PRDCR_SET_WARNED_LOOKUP;
+				ldmsd_log(LDMSD_LERROR,
+					  "Error %d in lookup callback for set '%s'\n",
+						  status, prd_set->inst_name);
+			}
 		}
 		prd_set->state = LDMSD_PRDCR_SET_STATE_START;
 		goto out;
+	}
+	if (prd_set->warned != 0) {
+		ldmsd_log(LDMSD_LINFO,
+			  "Previous error in lookup callback for set instance '%s' from producer %s cleared.\n",
+			prd_set->inst_name, prd_set->prdcr->obj.name);
+		prd_set->warned = 0;
 	}
 	if (!prd_set->set) {
 		/* This is the first lookup of the set. */
@@ -575,7 +593,8 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 			goto out;
 	}
 	prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
-	ldmsd_log(LDMSD_LINFO, "Set %s is ready\n", prd_set->inst_name);
+	ldmsd_log(LDMSD_LINFO, "Set %s is ready from %s\n", prd_set->inst_name,
+		prd_set->prdcr->obj.name);
 	ldmsd_strgp_update(prd_set);
 	ready = 1;
 out:
@@ -636,20 +655,24 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 			if (rc) {
 				/* If the error is EEXIST, the set is already in the set tree. */
 				if (rc == EEXIST) {
-					ldmsd_log(LDMSD_LERROR, "Prdcr '%s': "
-						"lookup failed synchronously. "
-						"The set '%s' already exists. "
-						"It is likely that there are more "
-						"than one producers pointing to "
-						"the set.\n",
-						prd_set->prdcr->obj.name,
-						prd_set->inst_name);
+					warn_once_prdcr_set_exists(prd_set);
 				} else {
-					ldmsd_log(LDMSD_LINFO, "Synchronous error "
-							"%d from ldms_lookup\n", rc);
+					if (! (prd_set->warned & LDMSD_PRDCR_SET_WARNED_LOOKUP)) {
+						prd_set->warned |= LDMSD_PRDCR_SET_WARNED_LOOKUP;
+						ldmsd_log(LDMSD_LINFO, "Synchronous error "
+								"%d from ldms_lookup\n", rc);
+					}
 				}
 				prd_set->state = LDMSD_PRDCR_SET_STATE_START;
 				ldmsd_prdcr_set_ref_put(prd_set);
+			} else {
+				if (prd_set->warned != 0) {
+					ldmsd_log(LDMSD_LINFO,
+						"Previous error in lookup callback for set '%s'"
+						" from producer %s cleared.\n",
+						prd_set->inst_name, prd_set->prdcr->obj.name );
+					prd_set->warned = 0;
+				}
 			}
 			goto next_prd_set;
 		case LDMSD_PRDCR_SET_STATE_LOOKUP:

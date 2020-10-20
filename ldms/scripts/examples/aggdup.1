@@ -1,0 +1,8 @@
+# L0 meminfo
+load name=${plugname}
+config name=${plugname} producer=localhost${i} schema=${plugname} instance=localhost${i}/${plugname} component_id=${i}
+start name=${plugname} interval=1000000 offset=0
+
+load name=vmstat
+config name=vmstat producer=localhost${i} schema=vmstat instance=localhost${i}/vmstat component_id=${i}
+start name=vmstat interval=1000000 offset=0

@@ -1,6 +1,7 @@
 # working
 aggl2 # ldms_ls inconsistent, set duplicates at L2
 aggl2simple
+aggdup
 all_example
 all_example.sos
 array_example

@@ -338,7 +338,8 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 {
 	ldmsd_prdcr_set_t set;
 
-	ldmsd_log(LDMSD_LINFO, "Adding the metric set '%s'\n", dset->inst_name);
+	ldmsd_log(LDMSD_LINFO, "Adding the metric set '%s' from producer %s\n",
+		dset->inst_name, prdcr->obj.name);
 
 	/* Check to see if it's already there */
 	set = _find_set(prdcr, dset->inst_name);
@@ -523,22 +524,22 @@ static void __prdcr_remote_set_delete(ldmsd_prdcr_t prdcr, ldms_set_t set)
 	assert(prdcr_set->ref_count);
 	switch (prdcr_set->state) {
 	case LDMSD_PRDCR_SET_STATE_START:
-		ldmsd_log(LDMSD_LERROR,
+		ldmsd_log(LDMSD_LINFO,
 			  "Deleting %s in the START state\n",
 			  prdcr_set->inst_name);
 		break;
 	case LDMSD_PRDCR_SET_STATE_LOOKUP:
-		ldmsd_log(LDMSD_LERROR,
+		ldmsd_log(LDMSD_LINFO,
 			  "Deleting %s in the LOOKUP state\n",
 			  prdcr_set->inst_name);
 		break;
 	case LDMSD_PRDCR_SET_STATE_READY:
-		ldmsd_log(LDMSD_LERROR,
+		ldmsd_log(LDMSD_LINFO,
 			  "Deleting %s in the READY state\n",
 			  prdcr_set->inst_name);
 		break;
 	case LDMSD_PRDCR_SET_STATE_UPDATING:
-		ldmsd_log(LDMSD_LERROR,
+		ldmsd_log(LDMSD_LINFO,
 			  "Deleting %s in the UPDATING state\n",
 			  prdcr_set->inst_name);
 		break;
@@ -561,6 +562,12 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	}
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
+		if (prdcr->warned ) {
+			prdcr->warned = 0;
+			ldmsd_log(LDMSD_LINFO, "Producer %s: connection error cleared for %s %s:%d\n",
+					prdcr->obj.name, prdcr->xprt_name,
+					prdcr->host_name, (int)prdcr->port_no);
+		}
 		ldmsd_log(LDMSD_LINFO, "Producer %s is connected (%s %s:%d)\n",
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
@@ -593,9 +600,12 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 				prdcr->host_name, (int)prdcr->port_no);
 		goto reset_prdcr;
 	case LDMS_XPRT_EVENT_ERROR:
-		ldmsd_log(LDMSD_LINFO, "Producer %s: connection error to %s %s:%d\n",
-				prdcr->obj.name, prdcr->xprt_name,
-				prdcr->host_name, (int)prdcr->port_no);
+		if (! (LDMSD_PRDCR_WARNED_CONNERR & prdcr->warned)) {
+			prdcr->warned |= LDMSD_PRDCR_WARNED_CONNERR;
+			ldmsd_log(LDMSD_LINFO, "Producer %s: connection error to %s %s:%d\n",
+					prdcr->obj.name, prdcr->xprt_name,
+					prdcr->host_name, (int)prdcr->port_no);
+		}
 		goto reset_prdcr;
 	default:
 		assert(0);
