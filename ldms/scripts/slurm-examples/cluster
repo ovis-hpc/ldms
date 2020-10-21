@@ -3,8 +3,10 @@ portbase=59000
 ulimit -n 100000
 MESSAGE starting l1, l2 aggs and collectors
 VGARGS="--tool=drd --time-stamp=yes --gen-suppressions=all --track-origins=yes"
-VGARGS="--track-origins=yes --leak-check=full --gen-suppressions=all --time-stamp=yes --suppressions=/ascldap/users/baallan/stria/ovis-dst2.2"
-VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=definite --time-stamp=yes --suppressions=/ascldap/users/baallan/stria/ovis-dst2.2/ldms.supp --gen-suppressions=all  --main-stacksize=256000000"
+VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=definite --time-stamp=yes  --gen-suppressions=all  --main-stacksize=256000000"
+if test -f $pkglibdir/ldms.supp; then
+	VGARGS="$VGARGS --suppressions=$pkglibdir/ldms.supp"
+fi
 # start collector(s)
 if test "x$maxdaemon" = "x"; then
 	maxdaemon=3
