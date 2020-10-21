@@ -41,4 +41,4 @@
 @ENABLE_KGNILND_TRUE@ testlist[${#testlist[@]}]="kgnilnd"
 @ENABLE_HELLO_STREAM_TRUE@ testlist[${#testlist[@]}]="hello_stream"
 @ENABLE_LLNL_EDAC_TRUE@ testlist[${#testlist[@]}]="llnl"
-
+@ENABLE_MUNGE_TRUE@ testlist[${#testlist[@]}]="munge"
