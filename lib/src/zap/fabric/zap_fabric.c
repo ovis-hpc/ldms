@@ -2052,14 +2052,29 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 			    struct sockaddr *remote_sa, socklen_t *sa_len)
 {
 	int ret = 0;
-	size_t sz = *sa_len;
+	size_t sz;
 	struct z_fi_ep *rep = (struct z_fi_ep *)ep;
 
 	if (!rep->fi_ep) {
 		return ZAP_ERR_NOT_CONNECTED;
 	}
+	if (0 == *sa_len) {
+		/*
+		 * fi_getname() returns -FI_ETOOSHORT if *sa_len is 0.
+		 * Set it now.
+		 */
+		*sa_len = sizeof(struct sockaddr);
+	}
+	sz = *sa_len;
 	ret = fi_getname(&rep->fi_ep->fid, local_sa, &sz);
-	ret = ret || fi_getpeer(rep->fi_ep, remote_sa, &sz);
+	if (ret)
+		return ZAP_ERR_NO_SPACE;
+
+	sz = *sa_len;
+	ret = fi_getpeer(rep->fi_ep, remote_sa, &sz);
+	if (ret)
+		return ZAP_ERR_NO_SPACE;
+
 	*sa_len = sz;
 	return ret;
 }
