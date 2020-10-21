@@ -2275,20 +2275,6 @@ out:
 
 static pthread_t cm_thread, cq_thread;
 
-static void z_fi_cleanup(void)
-{
-	void *dontcare;
-
-	if (cm_thread) {
-		pthread_cancel(cm_thread);
-		pthread_join(cm_thread, &dontcare);
-	}
-	if (cq_thread) {
-		pthread_cancel(cq_thread);
-		pthread_join(cq_thread, &dontcare);
-	}
-}
-
 static int init_once()
 {
 	int rc;
@@ -2321,7 +2307,6 @@ static int init_once()
 		z_fi_info_log_on = atoi(env);
 
 	init_complete = 1;
-	atexit(z_fi_cleanup);
 	return 0;
 
  err_3:
@@ -2371,4 +2356,16 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 
  err_0:
 	return ZAP_ERR_RESOURCE;
+}
+
+static void __attribute__ ((destructor)) zap_fi_fini(void)
+{
+	if (cm_thread) {
+		pthread_cancel(cm_thread);
+		pthread_join(cm_thread, NULL);
+	}
+	if (cq_thread) {
+		pthread_cancel(cq_thread);
+		pthread_join(cq_thread, NULL);
+	}
 }
