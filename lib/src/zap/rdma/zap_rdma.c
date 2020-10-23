@@ -1551,7 +1551,7 @@ handle_established(struct z_rdma_ep *rep, struct rdma_cm_event *event)
 	default:
 		DLOG_(rep, "Error: handle_established: ep %p, "
 				"unexpected state '%s'\n",
-				rep, zap_ep_state_str(rep->ep.state));
+				rep, __zap_ep_state_str(rep->ep.state));
 		assert(0 == "wrong rep->ep.state");
 	}
 
@@ -1585,7 +1585,7 @@ static void
 handle_disconnected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 {
 	DLOG_(rep, "RDMA: handle_disconnected %p, state '%s'\n",
-			rep, zap_ep_state_str(rep->ep.state));
+			rep, __zap_ep_state_str(rep->ep.state));
 	pthread_mutex_lock(&rep->ep.lock);
 	switch (rep->ep.state) {
 	case ZAP_EP_CONNECTED:
@@ -2232,7 +2232,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 
  err_0:
 	return ZAP_ERR_RESOURCE;
-}	
+}
 
 static void __attribute__ ((destructor)) zap_rdma_fini(void)
 {
