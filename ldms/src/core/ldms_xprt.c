@@ -571,6 +571,7 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 	}
 	if (x->zap_ep) {
 		zap_set_ucontext(x->zap_ep, NULL);
+		zap_free(x->zap_ep);
 		x->zap_ep = NULL;
 		drop_ep_ref = 1;
 	}
@@ -604,8 +605,6 @@ void ldms_xprt_put(ldms_t x)
 		return;
 
 	__ldms_xprt_resource_free(x);
-	if (x->zap_ep)
-		zap_free(x->zap_ep);
 	sem_destroy(&x->sem);
 	free(x);
 }
