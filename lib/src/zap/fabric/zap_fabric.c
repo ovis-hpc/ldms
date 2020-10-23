@@ -2339,6 +2339,9 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 {
 	zap_t z;
 
+	if (!g.log_fn && log_fn)
+		g.log_fn = log_fn;
+
 	if (init_once())
 		goto err_0;
 
@@ -2362,9 +2365,6 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->unmap = z_fi_unmap;
 	z->share = z_fi_share;
 	z->get_name = z_get_name;
-
-	if (!g.log_fn && log_fn)
-		g.log_fn = log_fn;
 
 	*pz = z;
 	return ZAP_ERR_OK;
