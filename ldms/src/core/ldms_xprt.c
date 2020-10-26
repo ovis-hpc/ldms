@@ -3764,20 +3764,28 @@ int ldms_xprt_sockaddr(ldms_t _x, struct sockaddr *local_sa,
 {
 	struct ldms_xprt *x = _x;
 	zap_err_t zerr;
- again:
-	if (x->sa_len) {
-		/* use cached addresses */
+
+	if (!x->sa_len) {
+		/*
+		 * The addresses have never been gotten.
+		 * Get the addresses first.
+		 */
+		x->sa_len = sizeof(x->local_sa);
+		zerr = zap_get_name(x->zap_ep, (struct sockaddr *)&x->local_sa,
+				    (struct sockaddr *)&x->remote_sa, &x->sa_len);
+		if (zerr)
+			return zap_zerr2errno(zerr);
+	}
+
+	if (x->sa_len > *sa_len) {
 		*sa_len = x->sa_len;
-		memcpy(local_sa, &x->local_sa, x->sa_len);
-		memcpy(remote_sa, &x->remote_sa, x->sa_len);
-		return 0;
+		return E2BIG;
 	}
-	zerr = zap_get_name(x->zap_ep, &x->local_sa, &x->remote_sa, &x->sa_len);
-	if (zerr) {
-		x->sa_len = 0;
-		return -1;
-	}
-	goto again;
+
+	memcpy(local_sa, &x->local_sa, x->sa_len);
+	memcpy(remote_sa, &x->remote_sa, x->sa_len);
+	*sa_len = x->sa_len;
+	return 0;
 }
 
 static void __attribute__ ((constructor)) cs_init(void)

@@ -429,8 +429,8 @@ struct ldms_xprt {
 
 	/* for addr caching */
 	socklen_t sa_len;
-	struct sockaddr local_sa;
-	struct sockaddr remote_sa;
+	struct sockaddr_storage local_sa;
+	struct sockaddr_storage remote_sa;
 };
 
 void __ldms_xprt_term(struct ldms_xprt *x);
