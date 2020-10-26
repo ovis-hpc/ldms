@@ -1978,7 +1978,7 @@ static zap_err_t z_fi_listen(zap_ep_t ep, struct sockaddr *saddr, socklen_t sa_l
 			   rep->fi->fabric_attr->prov_name,
 			   rep->fi->domain_attr->name);
 
-	cm_event.events = EPOLLIN | EPOLLOUT;
+	cm_event.events = EPOLLIN;
 	cm_event.data.ptr = rep;
 	rc = epoll_ctl(g.cm_fd, EPOLL_CTL_ADD, rep->cm_fd, &cm_event);
 	if (rc)
