@@ -1323,8 +1323,8 @@ if __name__ == "__main__":
         parser.add_argument('--port',
                             help = "Inet ctrl listener port of ldmsd")
         parser.add_argument('--xprt',
-                            help = "LDMS Transport type: sock, ugni, rdma.",
-                            choices = ['sock', 'ugni', 'rdma'],
+                            help = "LDMS Transport type",
+                            choices = ['sock', 'ugni', 'rdma', 'fabric'],
                             default = 'sock')
         parser.add_argument('--source',
                             help = "Path to the config file")
