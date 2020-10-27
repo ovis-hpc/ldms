@@ -1156,6 +1156,7 @@ static void handle_rendezvous(struct z_fi_ep *rep,
 	zev.data_len = len - sizeof(*sh);
 	if (zev.data_len)
 		zev.data = (void*)sh->msg;
+	__zap_get_ep(&rep->ep, "RENDEZVOUS_MAP"); /* put by zap.c:zap_unmap() */
 	rep->ep.cb(&rep->ep, &zev);
 }
 
