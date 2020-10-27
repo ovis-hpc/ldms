@@ -3529,8 +3529,10 @@ int ldms_xprt_connect(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
 	ldms_xprt_get(x);
 	rc = zap_connect(_x->zap_ep, sa, sa_len,
 			 (void*)&msg, sizeof(msg.ver) + strlen(msg.auth_name) + 1);
-	if (rc)
+	if (rc) {
+		__ldms_xprt_resource_free(x);
 		ldms_xprt_put(x);
+	}
 	return rc;
 }
 
