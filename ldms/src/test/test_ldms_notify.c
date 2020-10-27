@@ -185,13 +185,12 @@ static void _log(const char *fmt, ...)
 	va_end(l);
 }
 
-static void __print_set(ldms_set_t s)
+static void __print_set(ldms_set_t set)
 {
-	struct ldms_set *set = (struct ldms_set *)s->set;
-	int card = ldms_set_card_get(s);
+	int card = ldms_set_card_get(set);
 	enum ldms_value_type type;
 	printf("--------------------------------\n");
-	printf("set name: %s\n", ldms_set_instance_name_get(s));
+	printf("set name: %s\n", ldms_set_instance_name_get(set));
 	printf("       meta->meta_gn: %" PRIu64 "\n", set->meta->meta_gn);
 	printf("       data->meta_gn: %" PRIu64 "\n", set->data->meta_gn);
 	printf("            data->gn: %" PRIu64 "\n", set->data->gn);
@@ -199,9 +198,9 @@ static void __print_set(ldms_set_t s)
 	printf("	%-10s %16s %10s\n", "MetricName", "Value", "UserData");
 	int i, j, n;
 	for (i = 0; i < card; i++) {
-		printf("	%-10s", ldms_metric_name_get(s, i));
-		type = ldms_metric_type_get(s, i);
-		n = ldms_metric_array_get_len(s, i);
+		printf("	%-10s", ldms_metric_name_get(set, i));
+		type = ldms_metric_type_get(set, i);
+		n = ldms_metric_array_get_len(set, i);
 		if (n > 10)
 			n = 10;
 		j = 0;
@@ -212,64 +211,64 @@ static void __print_set(ldms_set_t s)
 			printf(",");
 		switch (type) {
 		case LDMS_V_U8:
-			printf("%16hhu", ldms_metric_get_u8(s, i));
+			printf("%16hhu", ldms_metric_get_u8(set, i));
 			break;
 		case LDMS_V_S8:
-			printf("%16hhd", ldms_metric_get_s8(s, i));
+			printf("%16hhd", ldms_metric_get_s8(set, i));
 			break;
 		case LDMS_V_U16:
-			printf("%16hu", ldms_metric_get_u16(s, i));
+			printf("%16hu", ldms_metric_get_u16(set, i));
 			break;
 		case LDMS_V_S16:
-			printf("%16hd", ldms_metric_get_s16(s, i));
+			printf("%16hd", ldms_metric_get_s16(set, i));
 			break;
 		case LDMS_V_U32:
-			printf("%16u", ldms_metric_get_u32(s, i));
+			printf("%16u", ldms_metric_get_u32(set, i));
 			break;
 		case LDMS_V_S32:
-			printf("%16d", ldms_metric_get_s32(s, i));
+			printf("%16d", ldms_metric_get_s32(set, i));
 			break;
 		case LDMS_V_U64:
-			printf("%16"PRIu64, ldms_metric_get_u64(s, i));
+			printf("%16"PRIu64, ldms_metric_get_u64(set, i));
 			break;
 		case LDMS_V_S64:
-			printf("%16"PRId64, ldms_metric_get_s64(s, i));
+			printf("%16"PRId64, ldms_metric_get_s64(set, i));
 			break;
 		case LDMS_V_F32:
-			printf("%16f", ldms_metric_get_float(s, i));
+			printf("%16f", ldms_metric_get_float(set, i));
 			break;
 		case LDMS_V_D64:
-			printf("%16f", ldms_metric_get_double(s, i));
+			printf("%16f", ldms_metric_get_double(set, i));
 			break;
 		case LDMS_V_U8_ARRAY:
-			printf("%hhu", ldms_metric_array_get_u8(s, i, j));
+			printf("%hhu", ldms_metric_array_get_u8(set, i, j));
 			break;
 		case LDMS_V_S8_ARRAY:
-			printf("%hhd", ldms_metric_array_get_s8(s, i, j));
+			printf("%hhd", ldms_metric_array_get_s8(set, i, j));
 			break;
 		case LDMS_V_U16_ARRAY:
-			printf("%hu", ldms_metric_array_get_u16(s, i, j));
+			printf("%hu", ldms_metric_array_get_u16(set, i, j));
 			break;
 		case LDMS_V_S16_ARRAY:
-			printf("%hd", ldms_metric_array_get_s16(s, i, j));
+			printf("%hd", ldms_metric_array_get_s16(set, i, j));
 			break;
 		case LDMS_V_U32_ARRAY:
-			printf("%u", ldms_metric_array_get_u32(s, i, j));
+			printf("%u", ldms_metric_array_get_u32(set, i, j));
 			break;
 		case LDMS_V_S32_ARRAY:
-			printf("%d", ldms_metric_array_get_s32(s, i, j));
+			printf("%d", ldms_metric_array_get_s32(set, i, j));
 			break;
 		case LDMS_V_U64_ARRAY:
-			printf("%"PRIu64, ldms_metric_array_get_u64(s, i, j));
+			printf("%"PRIu64, ldms_metric_array_get_u64(set, i, j));
 			break;
 		case LDMS_V_S64_ARRAY:
-			printf("%"PRId64, ldms_metric_array_get_s64(s, i, j));
+			printf("%"PRId64, ldms_metric_array_get_s64(set, i, j));
 			break;
 		case LDMS_V_F32_ARRAY:
-			printf("%f", ldms_metric_array_get_float(s, i, j));
+			printf("%f", ldms_metric_array_get_float(set, i, j));
 			break;
 		case LDMS_V_D64_ARRAY:
-			printf("%f", ldms_metric_array_get_double(s, i, j));
+			printf("%f", ldms_metric_array_get_double(set, i, j));
 			break;
 		default:
 			printf("Unknown metric type\n");
@@ -278,7 +277,7 @@ static void __print_set(ldms_set_t s)
 		j++;
 		goto loop;
 	out:
-		printf("%10" PRIu64 "\n", ldms_metric_user_data_get(s, i));
+		printf("%10" PRIu64 "\n", ldms_metric_user_data_get(set, i));
 		;
 	}
 	printf("--------------------------------\n");

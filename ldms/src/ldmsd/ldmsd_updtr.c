@@ -527,7 +527,7 @@ out:
 }
 
 void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
-			int more, ldms_set_t set, void *arg)
+					int more, ldms_set_t set, void *arg)
 {
 	ldmsd_prdcr_set_t prd_set = arg;
 	int ready = 0;
@@ -561,7 +561,7 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 	}
 	if (!prd_set->set) {
 		/* This is the first lookup of the set. */
-		ref_get(&set->ref, "prdcr_set");
+		ldms_set_ref_get(set, "prdcr_set");
 		prd_set->set = set;
 	} else {
 		assert(0 == "multiple lookup on the same prdcr_set");
