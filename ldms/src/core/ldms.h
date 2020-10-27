@@ -61,13 +61,13 @@
 #include "coll/rbt.h"
 #include "ovis_util/os_util.h"
 #include "ovis_util/util.h"
+#include "ovis_ev/ev.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 typedef struct ldms_xprt *ldms_t;
-typedef struct ldms_rbuf_desc *ldms_rbuf_t;
-typedef struct ldms_rbuf_desc *ldms_set_t;
+typedef struct ldms_set *ldms_set_t;
 typedef struct ldms_value_s *ldms_value_t;
 typedef struct ldms_schema_s *ldms_schema_t;
 
@@ -985,6 +985,25 @@ extern int ldms_schema_metric_count_get(ldms_schema_t schema);
  * \retval EINVAL If \c card is invalid.
  */
 extern int ldms_schema_array_card_set(ldms_schema_t schema, int card);
+
+void _ldms_set_ref_get(ldms_set_t s, const char *reason, const char *func, int line);
+int _ldms_set_ref_put(ldms_set_t s, const char *reason, const char *func, int line);
+
+/**
+ * \brief Get the set reference
+ *
+ * \param _s   LDMS set handle
+ * \param _r   Reason string
+ */
+#define ldms_set_ref_get(_s_, _r_) _ldms_set_ref_get((_s_), (_r_), __func__, __LINE__)
+
+/**
+ * \brief Put the set reference
+ *
+ * \param _s   LDMS set handle
+ * \param _r   Reason string
+ */
+#define ldms_set_ref_put(_s_, _r_) _ldms_set_ref_put((_s_), (_r_), __func__, __LINE__)
 
 /**
  * \brief Create a Metric set

@@ -134,7 +134,7 @@ void __prdcr_set_del(ldmsd_prdcr_set_t set)
 		free(set->schema_name);
 
 	if (set->set) {
-		ref_put(&set->set->ref, "prdcr_set");
+		ldms_set_ref_put(set->set, "prdcr_set");
 		ldms_set_unpublish(set->set);
 		ldms_set_delete(set->set);
 	}
