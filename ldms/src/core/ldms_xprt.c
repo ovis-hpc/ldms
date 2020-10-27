@@ -2598,6 +2598,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_xprt_put(x);
 		/* Put the reference taken in ldms_xprt_connect() */
 		ldms_xprt_put(x);
+		zap_free(zep);
 		break;
 	case ZAP_EVENT_DISCONNECTED:
 		__sync_fetch_and_add(&xprt_disconnect_count, 1);
