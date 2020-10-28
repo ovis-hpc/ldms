@@ -92,7 +92,7 @@ fi
 if test -z "$LDMS_SECRETS_DIR"; then
 	LDMS_SECRETS_DIR=$sysconfdir/sysconfig/ldms.d/ClusterSecrets
 fi
-if test -z "$LDMS_AUTH_FILE"; then
+if test -z "$LDMS_AUTH_FILE" -a "x$LDMS_AUTH_TYPE" = "xovis" ; then; then
 	LDMS_AUTH_FILE=$LDMS_SECRETS_DIR/$LDMSCLUSTER.ldmsauth.conf
 fi
 
