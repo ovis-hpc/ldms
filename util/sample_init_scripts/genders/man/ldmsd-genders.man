@@ -79,9 +79,15 @@ Valid level names are as given in ldmsd(8).
 
 If VERBOSE is defined as "-v", additional messages will be logged from the init scripts.
 
+.B LDMS_AUTH_TYPE=type
+
+This variable defines the type of authentication to use. The supported types are 'ovis' (the v3 secretword file) and 'munge'. See ldms_authentication(7) for details.
+
 .B LDMS_AUTH_FILE=filename
 
-This variable defines the file of the secret network key needed if any aggregation is to take place, assuming authentication is compiled in the ldmsd installation. For production use, authentication should always be used. see ldms_authentication(7). Alternatively, a correct LDMS_SECRETS_DIR defined (as below), will be used to construct the file name automatically.
+If using authentication type 'munge', this variable defines the path passed to munge with the -S argument. It must be a socket name.
+
+If using authentication type 'ovis', this variable defines the file of the secret network key needed if any aggregation is to take place, assuming authentication is compiled in the ldmsd installation. For production use, authentication should always be used. see ldms_authentication(7). Alternatively, a correct LDMS_SECRETS_DIR defined (as below), will be used to construct the file name automatically.
 
 .B LDMS_SECRETS_DIR=dirname
 
