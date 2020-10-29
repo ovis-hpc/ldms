@@ -549,7 +549,7 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 		case LDMS_CONTEXT_DIR_CANCEL:
 			x->active_dir_cancel--;
 			break;
-		case LDMS_CONTEXT_LOOKUP:
+		case LDMS_CONTEXT_LOOKUP_REQ:
 			x->active_lookup--;
 			break;
 		case LDMS_CONTEXT_PUSH:
