@@ -414,13 +414,17 @@ int base_auth_parse(struct attr_value_list *avl, struct base_auth *auth,
 	}
 	value = av_value(avl, "perm");
 	if (value) {
-		if (value[0] != '0') {
-			log(LDMSD_LINFO,
-			    "%s: Warning, the permission bits '%s' are not specified "
-			    "as an Octal number.\n",
-			    value);
+		long lval, pval;
+		errno = 0;
+		lval = strtol(value, NULL, 8);
+		pval = lval & 0777;
+		if (errno || pval != lval || pval == 0) {
+			log(LDMSD_LERROR,
+			    "The permission bits must specified "
+			    "as a non-zero octal number < 1000; got %s.\n", value);
+			goto einval;
 		}
-		auth->perm = strtol(value, NULL, 0);
+		auth->perm = pval;
 		auth->perm_is_set = true;
 	}
 	return 0;
