@@ -689,7 +689,9 @@ loop:
 	while (NULL == (pent = TAILQ_FIRST(&q->prio_q))
 	       &&
 	       NULL == (ent = TAILQ_FIRST(&q->queue))) {
+		zap_thrstat_wait_start(q->stats);
 		pthread_cond_wait(&q->cond_nonempty, &q->mutex);
+		zap_thrstat_wait_end(q->stats);
 	}
 	if (pent) {
 		TAILQ_REMOVE(&q->prio_q, pent, entry);
@@ -730,24 +732,18 @@ int zap_event_add(struct zap_event_queue *q, zap_ep_t ep, void *ctxt)
 	return 0;
 }
 
-void zap_event_queue_init(struct zap_event_queue *q, int qdepth)
+void zap_event_queue_init(struct zap_event_queue *q, int qdepth,
+		const char *name, int stat_window)
 {
 	q->depth = qdepth;
 	q->ep_count = 0;
+	q->stats = zap_thrstat_new(name, stat_window);
+	assert(q->stats);
 	pthread_mutex_init(&q->mutex, NULL);
 	pthread_cond_init(&q->cond_nonempty, NULL);
 	pthread_cond_init(&q->cond_vacant, NULL);
 	TAILQ_INIT(&q->queue);
 	TAILQ_INIT(&q->prio_q);
-}
-
-struct zap_event_queue *zap_event_queue_new(int qdepth)
-{
-	struct zap_event_queue *q = calloc(1, sizeof(*q));
-	if (!q)
-		return NULL;
-	zap_event_queue_init(q, qdepth);
-	return q;
 }
 
 void zap_event_queue_free(struct zap_event_queue *q)
@@ -807,6 +803,197 @@ int zap_term(int timeout_sec)
 	return rc;
 }
 
+void zap_thrstat_reset(zap_thrstat_t stats)
+{
+	struct timespec now;
+	clock_gettime(CLOCK_REALTIME, &now);
+	stats->wait_start = stats->wait_end = now;
+	stats->proc_count = stats->wait_count = 0;
+	memset(stats->wait_window, 0, sizeof(uint64_t) * stats->window_size);
+	memset(stats->proc_window, 0, sizeof(uint64_t) * stats->window_size);
+}
+
+static pthread_mutex_t thrstat_list_lock = PTHREAD_MUTEX_INITIALIZER;
+static LIST_HEAD(thrstat_list, zap_thrstat) thrstat_list;
+int thrstat_count = 0;
+
+void zap_thrstat_reset_all()
+{
+	zap_thrstat_t t;
+	struct timespec now;
+	int i;
+	clock_gettime(CLOCK_REALTIME, &now);
+	pthread_mutex_lock(&thrstat_list_lock);
+	i = 0;
+	LIST_FOREACH(t, &thrstat_list, entry) {
+		t->wait_start = t->wait_end = now;
+		t->proc_count = t->wait_count = 0;
+		memset(t->wait_window, 0, sizeof(uint64_t) * t->window_size);
+		memset(t->proc_window, 0, sizeof(uint64_t) * t->window_size);
+		i += 1;
+	}
+	pthread_mutex_unlock(&thrstat_list_lock);
+}
+
+zap_thrstat_t zap_thrstat_new(const char *name, int window_size)
+{
+	zap_thrstat_t stats = calloc(1, sizeof(*stats));
+	if (stats) {
+		stats->window_size = window_size;
+		stats->name = strdup(name);
+		if (!stats->name)
+			goto err_1;
+		stats->wait_window = malloc(window_size * sizeof(uint64_t));
+		if (!stats->wait_window)
+			goto err_2;
+		stats->proc_window = malloc(window_size * sizeof(uint64_t));
+		if (!stats->proc_window)
+			goto err_3;
+		zap_thrstat_reset(stats);
+	}
+	pthread_mutex_lock(&thrstat_list_lock);
+	LIST_INSERT_HEAD(&thrstat_list, stats, entry);
+	thrstat_count++;
+	pthread_mutex_unlock(&thrstat_list_lock);
+	return stats;
+err_3:
+	free(stats->wait_window);
+err_2:
+	free(stats->name);
+err_1:
+	free(stats);
+	return NULL;
+}
+
+void zap_thrstat_free(zap_thrstat_t stats)
+{
+	pthread_mutex_lock(&thrstat_list_lock);
+	LIST_REMOVE(stats, entry);
+	thrstat_count --;
+	pthread_mutex_unlock(&thrstat_list_lock);
+	free(stats->name);
+	free(stats->proc_window);
+	free(stats->wait_window);
+	free(stats);
+}
+
+static double
+zap_utilization(zap_thrstat_t in, struct timespec *now)
+{
+	uint64_t wait_us;
+	uint64_t proc_us;
+
+	if (in->waiting) {
+		wait_us = in->wait_sum + zap_timespec_diff_us(&in->wait_start, now);
+		proc_us = in->proc_sum;
+	} else {
+		proc_us = in->proc_sum + zap_timespec_diff_us(&in->wait_end, now);
+		wait_us = in->wait_sum;
+	}
+   	return (double)proc_us / (double)(proc_us + wait_us);
+}
+
+static uint64_t zap_accumulate(int sample_no,
+							uint64_t sample,
+							int window_size,
+							uint64_t current_sum,
+							uint64_t *window)
+{
+	int win_sample;
+	uint64_t sum;
+    win_sample = sample_no % window_size;
+    sum = current_sum - window[win_sample] + sample;
+    window[win_sample] = sample;
+	return sum;
+}
+
+void zap_thrstat_wait_start(zap_thrstat_t stats)
+{
+	struct timespec now;
+	uint64_t proc_us;
+	assert(stats->waiting == 0);
+	stats->waiting = 1;
+	clock_gettime(CLOCK_REALTIME, &now);
+	stats->wait_start = now;
+	proc_us = zap_timespec_diff_us(&stats->wait_end, &now);
+	stats->proc_sum = zap_accumulate(stats->proc_count,
+								proc_us,
+								stats->window_size,
+								stats->proc_sum,
+								stats->proc_window);
+	stats->proc_count += 1;
+}
+
+void zap_thrstat_wait_end(zap_thrstat_t stats)
+{
+	uint64_t wait_us;
+	assert(stats->waiting);
+	stats->waiting = 0;
+	clock_gettime(CLOCK_REALTIME, &stats->wait_end);
+	wait_us = zap_timespec_diff_us(&stats->wait_start, &stats->wait_end);
+	stats->wait_sum = zap_accumulate(stats->wait_count,
+								wait_us,
+								stats->window_size,
+								stats->wait_sum,
+								stats->wait_window);
+	stats->wait_count += 1;
+}
+
+const char *zap_thrstat_get_name(zap_thrstat_t stats)
+{
+	return stats->name;
+}
+
+uint64_t zap_thrstat_get_sample_count(zap_thrstat_t stats)
+{
+	return (stats->proc_count + stats->wait_count) / 2;
+}
+
+double zap_thrstat_get_utilization(zap_thrstat_t in)
+{
+	struct timespec now;
+
+	if (in->wait_count == 0 || in->proc_count == 0)
+		return 0.0;
+
+	clock_gettime(CLOCK_REALTIME, &now);
+   	return zap_utilization(in, &now);
+}
+
+struct zap_thrstat_result *zap_thrstat_get_result()
+{
+	struct zap_thrstat_result *res = NULL;
+	zap_thrstat_t t;
+	int i;
+
+	pthread_mutex_lock(&thrstat_list_lock);
+	res = malloc(sizeof(*res) +
+			(thrstat_count * sizeof(struct zap_thrstat_result_entry)));
+	if (!res)
+		goto out;
+	res->count = thrstat_count;
+	i = 0;
+	LIST_FOREACH(t, &thrstat_list, entry) {
+		res->entries[i].name = strdup(zap_thrstat_get_name(t));
+		res->entries[i].sample_count = zap_thrstat_get_sample_count(t);
+		res->entries[i].utilization = zap_thrstat_get_utilization(t);
+		i += 1;
+	}
+out:
+	pthread_mutex_unlock(&thrstat_list_lock);
+	return res;
+}
+
+void zap_thrstat_free_result(struct zap_thrstat_result *res)
+{
+	int i;
+	for (i = 0; i < res->count; i++) {
+		if (res->entries[i].name)
+			free(res->entries[i].name);
+	}
+	free(res);
+}
+
 #ifdef NDEBUG
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #endif
@@ -814,9 +1001,12 @@ static void __attribute__ ((constructor)) cs_init(void)
 {
 	int i;
 	int rc;
+	int stats_w;
+
 	pthread_atfork(NULL, NULL, cs_init);
 	pthread_mutex_init(&zap_list_lock, 0);
-
+	
+	stats_w = ZAP_ENV_INT(ZAP_THRSTAT_WINDOW);
 	zap_event_workers = ZAP_ENV_INT(ZAP_EVENT_WORKERS);
 	zap_event_qdepth = ZAP_ENV_INT(ZAP_EVENT_QDEPTH);
 
@@ -824,10 +1014,15 @@ static void __attribute__ ((constructor)) cs_init(void)
 	assert(zev_queue);
 
 	for (i = 0; i < zap_event_workers; i++) {
-		zap_event_queue_init(&zev_queue[i], zap_event_qdepth);
+		char thread_name[16];
+		(void)snprintf(thread_name, 16, "zap:worker:%d", i);
+		zap_event_queue_init(&zev_queue[i], zap_event_qdepth,
+					thread_name, stats_w);
 		rc = pthread_create(&zev_queue[i].thread, NULL,
 					zap_event_thread_proc, &zev_queue[i]);
 		assert(rc == 0);
+		pthread_setname_np(zev_queue[i].thread, thread_name);
+
 	}
 }
 

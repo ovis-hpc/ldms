@@ -288,6 +288,7 @@ struct zap_event_queue {
 	pthread_mutex_t mutex; /* queue mutex */
 	pthread_cond_t cond_nonempty; /* nonempty */
 	pthread_cond_t cond_vacant; /* vacant */
+	zap_thrstat_t stats;
 	TAILQ_HEAD(, zap_event_entry) queue;
 	TAILQ_HEAD(, zap_event_entry) prio_q;
 };
@@ -314,12 +315,32 @@ int z_map_access_validate(zap_map_t map, char *p, size_t sz, zap_access_t acc);
 
 #define ZAP_EVENT_QDEPTH 4096
 
+int zap_env_int(char *name, int default_value);
 #define ZAP_ENV_INT(X) zap_env_int(#X, X)
-
 
 /**
  * Add IO completion to the completion queue.
  */
 int zap_event_add(struct zap_event_queue *q, zap_ep_t ep, void *ctxt);
+
+/*
+ * The zap_thrstat structure maintains state for
+ * the Zap thread utilization tracking functions.
+ */
+struct zap_thrstat {
+	char *name;
+	int window_size;
+	struct timespec wait_start;
+	struct timespec wait_end;
+	int waiting;
+	uint64_t proc_count;
+	uint64_t wait_count;
+	uint64_t proc_sum;
+	uint64_t wait_sum;
+	uint64_t *wait_window;
+	uint64_t *proc_window;
+	LIST_ENTRY(zap_thrstat) entry;
+};
+#define ZAP_THRSTAT_WINDOW 4096	/*< default window size */
 
 #endif

@@ -678,4 +678,149 @@ const char* zap_event_str(enum zap_event_type e);
  */
 int zap_term(int timeout_sec);
 
+/**
+ * \brief The zap_thrstat_t handle maintains thread utilization data
+ * 
+ * This handle is created with the zap_thrstat_new() function and
+ * freed with the zap_thrstat_free() function. The measurement
+ * state can be reset with the zap_thrstat_reset() function.
+ * 
+ * Internally, zap_thrstat_t maintains a measurement window defined
+ * by the window_size parameter to the zap_thrstat_new() function.
+ * The window is an array of wait and processing time
+ * measurements used to compute I/O thread utilization. I/O thread
+ * utilization is computed as follows:
+ *
+ *   utilization = processing_time / (wait_time + processing_time)
+ *
+ * The zap_thrstat_wait_start() and zap_thrstat_wait_end() functions are
+ * placed in Zap I/O threads to annotate when the I/O threads to
+ * annotate places in the logic where the thread is waiting for I/O
+ * vs. processing I/O.
+ */
+typedef struct zap_thrstat *zap_thrstat_t;
+
+/**
+ * \brief Create a zap_thrstat_t instance
+ * \param name The name of the entity being measured
+ * \param window_size The size of the measurement window
+ * \returns A zap_thrstat_t instance
+ */
+zap_thrstat_t zap_thrstat_new(const char *name, int window_size);
+
+/**
+ * \brief Release the resources held by the Zap stats instance
+ */
+void zap_thrstat_free(zap_thrstat_t stats);
+/**
+ * \brief Reset the thread utlization state data
+ * 
+ * Reset the measurement data held in the zap_thrstat_t instance.
+ * Immediately after calling this function the internal sample_count
+ * and window data are zero. It is not necessary to call this function
+ * after calling zap_thrstat_new() unless there is significant setup
+ * logic between the call to zap_thrstat_new() and the first call to
+ * zap_thrstat_wait_start()
+ *
+ * \param stats The zap_thrstat_t handle
+ */
+void zap_thrstat_reset(zap_thrstat_t stats);
+void zap_thrstat_reset_all();
+
+/**
+ * \brief Begin an I/O wait measurement interval
+ * 
+ * The zap_thrstat_wait_start() and zap_thrstat_wait_end() annotate the
+ * logic in the code that is waiting for I/O events. The time between
+ * calls to zap_thrstat_wait_start() and zap_thrstat_wait_end() is the I/O
+ * thread wait interval. The time between the call to zap_thrstat_wait_end()
+ * and zap_thrstat_wait_start() is the processing interval.
+ * 
+ * Example usage:
+ * 
+ * void *io_thread_proc(void *)
+ * {
+ *    ...
+ *    zap_thrstat_t stats = zap_thrstat_new("my_thread", 128);
+ *    while (1) {
+ *        zap_thrstat_wait_start(stats);
+ *        ... wait for I/O event ...
+ *        zap_thrstat_wait_end(stats);
+ *        ... process I/O event ...
+ *    }
+ * }
+ * \param stats The Zap stats handle
+ */
+void zap_thrstat_wait_start(zap_thrstat_t stats);
+
+/**
+ * \brief End an I/O wait measurement interval
+ * \param stats The Zap stats handle
+ */
+void zap_thrstat_wait_end(zap_thrstat_t stats);
+
+/**
+ * \brief Return the thread utilization
+ *
+ * Returns thread utilization computed as follows:
+ *   util = processing_time / (processing_time + wait_time)
+ *
+ * \param in The thread stat handle
+ * \returns The thread's utilization ratio
+ */
+double zap_thrstat_get_utilization(zap_thrstat_t in);
+
+struct zap_thrstat_result_entry {
+	char *name;				/*< The thread name */
+	double sample_count;	/*< The number of sample periods */
+	double utilization;		/*< The thread utilization */
+};
+
+struct zap_thrstat_result {
+	int count;	
+	struct zap_thrstat_result_entry entries[0];
+};
+
+/**
+ * \brief Return thread utilization information
+ * 
+ * Returns a zap_thrstat_result structure or NULL on memory
+ * allocation failure. This result must be freed with the
+ * zap_thrstat_free_result() function.
+ *
+ * \returns A pointer to a zap_thrstat_result structure
+ */
+struct zap_thrstat_result *zap_thrstat_get_result();
+
+/**
+ * \brief Free a zap_thrstat_result returned by zap_thrstat_get_results
+ */
+void zap_thrstat_free_result(struct zap_thrstat_result *result);
+
+/**
+ * \brief Return the name of the Zap stats handle
+ * 
+ * \returns The name provided to the zap_thrstat_new() function
+ */
+const char *zap_thrstat_get_name(zap_thrstat_t stats);
+
+/**
+ * \brief Return the time difference in microseconds
+ *
+ * Computes the number of microseconds in the interval end - start.
+ * Note that the result may be negative.
+ *
+ * \param start Pointer to struct timespec
+ * \param end Pointer to struct timespec
+ * \returns The number of microseconds in the interval end - start
+ */
+static inline int64_t zap_timespec_diff_us(struct timespec *start, struct timespec *end)
+{
+	int64_t secs_ns;
+	int64_t nsecs;
+	secs_ns = (end->tv_sec - start->tv_sec) * 1000000000;
+	nsecs = end->tv_nsec - start->tv_nsec;
+	return (secs_ns + nsecs) / 1000;
+}
+
 #endif
