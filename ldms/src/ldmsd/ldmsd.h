@@ -289,7 +289,8 @@ typedef struct ldmsd_prdcr_set {
 		LDMSD_PRDCR_SET_STATE_START,
 		LDMSD_PRDCR_SET_STATE_LOOKUP,
 		LDMSD_PRDCR_SET_STATE_READY,
-		LDMSD_PRDCR_SET_STATE_UPDATING
+		LDMSD_PRDCR_SET_STATE_UPDATING,
+		LDMSD_PRDCR_SET_STATE_DELETED
 	} state;
 	uint64_t last_gn;
 	pthread_mutex_t lock;
@@ -896,6 +897,8 @@ static inline const char *ldmsd_prdcr_set_state_str(enum ldmsd_prdcr_set_state s
 		return "READY";
 	case LDMSD_PRDCR_SET_STATE_UPDATING:
 		return "UPDATING";
+	case LDMSD_PRDCR_SET_STATE_DELETED:
+		return "DELETED";
 	}
 	return "BAD STATE";
 }

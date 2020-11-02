@@ -514,6 +514,7 @@ static int __setgrp_members_lookup(ldmsd_prdcr_set_t setgrp)
 					goto out;
 				}
 				break;
+			case LDMSD_PRDCR_SET_STATE_DELETED:
 			default:
 				continue;
 		}
@@ -538,23 +539,23 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 		status = (status < 0 ? -status : status);
 		if (status == ENOMEM) {
 			ldmsd_log(LDMSD_LERROR,
-				"Error %d in lookup callback for set '%s' "
-				"Consider changing the -m parameter on the "
-				"command line to a larger value. "
-				"The current value is %s\n",
-				status, prd_set->inst_name,
+				"prdcr %s: Set memory allocation failure in lookup of "
+				"set '%s'. Consider changing the -m parameter on the "
+				"command line to a larger value. The current value is %s\n",
+				prd_set->prdcr->obj.name,
+				prd_set->inst_name,
 				ldmsd_get_max_mem_sz_str());
 		} else if (status == EEXIST) {
-			ldmsd_log(LDMSD_LERROR, "Prdcr '%s': lookup failed asynchronously. "
-					"The set '%s' already exists. "
-					"It is likely that there are more "
-					"than one producers pointing to "
-					"the set.\n",
+			ldmsd_log(LDMSD_LERROR,
+					"prdcr %s: The set '%s' already exists. "
+					"It is likely that there are multiple "
+					"producers providing a set with the same instance name.\n",
 					prd_set->prdcr->obj.name, prd_set->inst_name);
 		} else {
 			ldmsd_log(LDMSD_LERROR,
-				  "Error %d in lookup callback for set '%s'\n",
-					  status, prd_set->inst_name);
+				  	"prdcr %s: Error %d in lookup callback of set '%s'\n",
+					prd_set->prdcr->obj.name,
+					status, prd_set->inst_name);
 		}
 		prd_set->state = LDMSD_PRDCR_SET_STATE_START;
 		goto out;
@@ -661,6 +662,7 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 			ldmsd_log(LDMSD_LINFO, "%s: Set %s: "
 				"there is an outstanding update.\n",
 				__func__, prd_set->inst_name);
+		case LDMSD_PRDCR_SET_STATE_DELETED:
 		default:
 			goto next_prd_set;
 		}
