@@ -1014,86 +1014,6 @@ out:
 	return;
 }
 
-/* Caller should hold the set lock */
-static void __copy_set_info_to_lookup_msg(char *buffer, ldms_name_t schema,
-						ldms_name_t inst_name,
-						struct ldms_set *set)
-{
-	struct ldms_set_info_pair *pair;
-	ldms_name_t str = (ldms_name_t)buffer;
-
-	/* schema name */
-	str->len = schema->len;
-	strcpy(str->name, schema->name);
-	str = (ldms_name_t)&(str->name[str->len]);
-
-	/* instance name */
-	str->len = inst_name->len;
-	strcpy(str->name, inst_name->name);
-	str = (ldms_name_t)&(str->name[str->len]);
-
-	/* Local set information */
-	LIST_FOREACH(pair, &set->local_info, entry) {
-		/* Copy the key string */
-		str->len = strlen(pair->key) + 1;
-		strcpy(str->name, pair->key);
-		str = (ldms_name_t)&(str->name[str->len]);
-
-		/* Copy the value string */
-		str->len = strlen(pair->value) + 1;
-		strcpy(str->name, pair->value);
-		str = (ldms_name_t)&(str->name[str->len]);
-	}
-
-	/* Remote set information */
-	LIST_FOREACH(pair, &set->remote_info, entry) {
-		if (__ldms_set_info_find(&set->local_info, pair->key)) {
-			/*
-			 * The local set info supersedes the remote set info.
-			 * Skip if the key exists in the local set info list.
-			 */
-			continue;
-		}
-
-		/* Copy the key string */
-		str->len = strlen(pair->key) + 1;
-		strcpy(str->name, pair->key);
-		str = (ldms_name_t)&(str->name[str->len]);
-
-		/* Copy the value string */
-		str->len = strlen(pair->value) + 1;
-		strcpy(str->name, pair->value);
-		str = (ldms_name_t)&(str->name[str->len]);
-	}
-	str->len = 0;
-}
-
-struct lu_set_info {
-	struct ldms_set *set;
-	int flag; /* local/remote set info */
-	int count;
-	size_t len;
-};
-static int __get_set_info_sz(struct ldms_set *set, int *count, size_t *len)
-{
-	struct ldms_set_info_pair *pair;
-	int cnt = 0;
-	size_t l = 0;
-	LIST_FOREACH(pair, &set->local_info, entry) {
-		cnt++;
-		l += strlen(pair->key) + strlen(pair->value) + 2;
-	}
-	LIST_FOREACH(pair, &set->remote_info, entry) {
-		if (__ldms_set_info_find(&set->local_info, pair->key))
-			continue;
-		cnt++;
-		l += strlen(pair->key) + strlen(pair->value) + 2;
-	}
-	*count = cnt;
-	*len = l;
-	return 0;
-}
-
 static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 			       uint64_t xid, int more)
 {
@@ -1115,65 +1035,42 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	ldms_name_t name = get_instance_name(set->meta);
 	ldms_name_t schema = get_schema_name(set->meta);
 	/*
-	 * The lookup.set_info encodes schema name, instance name
-	 * and the set info key value pairs as follows.
+	 * The lookup.schema_inst_name encodes schema name and instance name
+	 * as follows.
 	 *
 	 * +---------------------------+
 	 * | schema name length        |
+	 * | ('\0' included)           |
 	 * +---------------------------+
 	 * | schema name string        |
-	 * S                           S
+	 * S ('\0' terminated)         S
 	 * +---------------------------+
 	 * | instance name length      |
+	 * | ('\0' included)           |
 	 * +---------------------------+
 	 * | instance name string      |
-	 * S                           S
-	 * +---------------------------+
-	 * | first key string length   |
-	 * +---------------------------+
-	 * | first key string          |
-	 * S                           S
-	 * +---------------------------+
-	 * | first value string length |
-	 * +---------------------------+
-	 * | first value string        |
-	 * S                           S
-	 * +---------------------------+
-	 * S                           S
-	 * +---------------------------+
-	 * | last key string length    |
-	 * +---------------------------+
-	 * | last key string           |
-	 * S                           S
-	 * +---------------------------+
-	 * | last value string length  |
-	 * +---------------------------+
-	 * | last value string         |
-	 * S                           S
+	 * S ('\0' terminated)         S
 	 * +---------------------------+
 	 */
-	int set_info_cnt;
-	size_t set_info_len;
 	size_t msg_len;
 	struct ldms_rendezvous_msg *msg;
+	ldms_name_t lname;
 
 	pthread_mutex_lock(&set->lock);
-	__get_set_info_sz(set, &set_info_cnt, &set_info_len);
 	msg_len = sizeof(struct ldms_rendezvous_hdr)
 			+ sizeof(struct ldms_rendezvous_lookup_param)
-			/*
-			 * +2 for schema name and instance name
-			 * +1 for the terminating string of length 0
-			 */
-			+ sizeof(struct ldms_name) * (2 + (set_info_cnt) * 2 + 1)
-			+ name->len + schema->len + set_info_len;
+			+ 2 * sizeof(struct ldms_name)
+			+ name->len + schema->len;
 	msg = calloc(1, msg_len);
 	if (!msg) {
 		rc = ENOMEM;
 		goto err_0;
 	}
+	lname = (void*)&msg->lookup.schema_inst_name[0];
+	memcpy(lname, schema, schema->len + sizeof(*schema));
+	lname = (void*)&lname->name[lname->len];
+	memcpy(lname, name, name->len + sizeof(*name));
 
-	__copy_set_info_to_lookup_msg(msg->lookup.set_info, schema, name, set);
 	pthread_mutex_unlock(&set->lock);
 	msg->hdr.xid = xid;
 	msg->hdr.cmd = htonl(LDMS_XPRT_RENDEZVOUS_LOOKUP);
@@ -2240,7 +2137,7 @@ int __is_lookup_name_good(struct ldms_xprt *x,
 	ldms_name_t name;
 	int rc = 0;
 
-	name = (ldms_name_t)lu->set_info;
+	name = (ldms_name_t)lu->schema_inst_name;
 	if (!(ctxt->lu_req.flags & LDMS_LOOKUP_BY_SCHEMA)) {
 		name = (ldms_name_t)(&name->name[name->len]);
 	}
@@ -2261,66 +2158,6 @@ int __is_lookup_name_good(struct ldms_xprt *x,
 	return (rc == 0);
 }
 #endif /* DEBUG */
-
-static const ldms_name_t __lookup_set_info_find(const char *set_info,
-						const char *key_)
-{
-	ldms_name_t key = (ldms_name_t)set_info;
-	ldms_name_t value = (ldms_name_t)(&key->name[key->len]);
-	while (key->len) {
-		if (0 == strcmp(key_, key->name))
-			return key;
-		key = (ldms_name_t)(&value->name[value->len]);
-		value = (ldms_name_t)(&key->name[key->len]);
-	}
-	return NULL;
-}
-
-static int __process_lookup_set_info(struct ldms_set *lset, char *set_info)
-{
-	int rc = 0;
-	ldms_name_t key, value;
-	struct ldms_set_info_pair *pair, *nxt_pair;
-	int dir_upd = 0;
-
-	/* Check whether the value of a key is changed or not */
-	key = (ldms_name_t)(set_info);
-	value = (ldms_name_t)(&key->name[key->len]);
-	while (key->len) {
-		rc = __ldms_set_info_set(&lset->remote_info,
-					key->name, value->name);
-		if (rc > 0) {
-			/* error */
-			goto out;
-		}
-		if (rc == 0) {
-			/* There is a change in the set info data */
-			dir_upd = 1;
-		}
-		if (rc < 0)
-			rc = 0;
-		key = (ldms_name_t)(&value->name[value->len]);
-		value = (ldms_name_t)(&key->name[key->len]);
-	}
-	if (!dir_upd) {
-		/* Check if a key-value pair is removed from the set info or not */
-		pair = LIST_FIRST(&lset->remote_info);
-		while (pair) {
-			nxt_pair = LIST_NEXT(pair, entry);
-			key = __lookup_set_info_find(set_info, pair->key);
-			if (!key) {
-				/* Remove the key-value pair from the set info list */
-				__ldms_set_info_unset(pair);
-				dir_upd = 1;
-			}
-			pair = nxt_pair;
-		}
-	}
-	if (dir_upd && (lset->flags & LDMS_SET_F_PUBLISHED))
-		__ldms_dir_upd_set(lset);
-out:
-	return rc;
-}
 
 static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 				     struct ldms_xprt *x,
@@ -2343,7 +2180,7 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 	}
 #endif /* DEBUG */
 
-	schema_name = (ldms_name_t)lu->set_info;
+	schema_name = (ldms_name_t)lu->schema_inst_name;
 	inst_name = (ldms_name_t)&(schema_name->name[schema_name->len]);
 
 	__ldms_set_tree_lock();
@@ -2359,26 +2196,9 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 			rc = errno;
 			goto callback;
 		}
-		pthread_mutex_lock(&lset->lock);
-		(void)__process_lookup_set_info(lset, &inst_name->name[inst_name->len]);
-		pthread_mutex_unlock(&lset->lock);
 	} else {
-		rbd = ldms_lookup_rbd(x, lset);
-		if (rbd) {
-			if (!(ctxt->lu_req.flags & LDMS_LOOKUP_SET_INFO)) {
-				rc = EEXIST;
-			} else {
-				pthread_mutex_lock(&lset->lock);
-				rc = __process_lookup_set_info(lset,
-					&inst_name->name[inst_name->len]);
-				pthread_mutex_unlock(&lset->lock);
-			}
-		} else {
-			/*
-			 * Another transport has looked up the set.
-			 */
-			rc = EEXIST;
-		}
+		/* set already existed .. bad! */
+		rc = EEXIST;
 		ref_put(&lset->ref, "__ldms_find_local_set");
 		goto callback;
 	}
@@ -3097,7 +2917,6 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	struct ldms_xprt *x = _x;
 	struct ldms_request *req;
 	struct ldms_context *ctxt;
-	struct ldms_rbuf_desc *rbd;
 	size_t len;
 
 	if (!zap_ep_connected(x->zap_ep))
@@ -3110,18 +2929,8 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	struct ldms_set *set = __ldms_find_local_set(path);
 	__ldms_set_tree_unlock();
 	if (set) {
-		rbd = ldms_lookup_rbd(x, set);
-		if (!rbd || (rbd && !(flags & LDMS_LOOKUP_SET_INFO))) {
-			/*
-			 * Another transport has looked up the set
-			 * or
-			 * the set has been looked up by this transport and
-			 * this is not a set_info lookup request.
-			 */
-			ref_put(&set->ref, "__ldms_find_local_set");
-			return EEXIST;
-		}
 		ref_put(&set->ref, "__ldms_find_local_set");
+		return EEXIST;
 	}
 
 	char *lu_path = strdup(path);
