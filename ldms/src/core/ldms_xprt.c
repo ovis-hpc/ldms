@@ -73,27 +73,6 @@
 #include "ldms_xprt.h"
 #include "ldms_private.h"
 
-/* Global Transport Statistics */
-static uint64_t xprt_connect_count;
-static uint64_t xprt_connect_request_count;
-static uint64_t xprt_disconnect_count;
-static uint64_t xprt_reject_count;
-static uint64_t xprt_auth_fail_count;
-static struct timespec xprt_start;
-
-void ldms_xprt_rate_data(struct ldms_xprt_rate_data *data)
-{
-	struct timespec now;
-	double dur_s;
-	(void)clock_gettime(CLOCK_REALTIME, &now);
-	dur_s = ldms_timespec_diff_s(&xprt_start, &now);
-	data->connect_rate_s = (double)xprt_connect_count / dur_s;
-	data->connect_request_rate_s = (double)xprt_connect_request_count / dur_s;
-	data->disconnect_rate_s = (double)xprt_disconnect_count / dur_s;
-	data->reject_rate_s = (double)xprt_reject_count / dur_s;
-	data->auth_fail_rate_s = (double)xprt_auth_fail_count / dur_s;
-}
-
 #define LDMS_XPRT_AUTH_GUARD(x) (((x)->auth_flag != LDMS_XPRT_AUTH_DISABLE) && \
 				 ((x)->auth_flag != LDMS_XPRT_AUTH_APPROVED))
 
@@ -172,6 +151,44 @@ ldms_t ldms_xprt_next(ldms_t x)
 	pthread_mutex_unlock(&xprt_list_lock);
 	ldms_xprt_put(prev_x);	/* next reference */
 	return x;
+}
+
+/* Global Transport Statistics */
+static uint64_t xprt_connect_count;
+static uint64_t xprt_connect_request_count;
+static uint64_t xprt_disconnect_count;
+static uint64_t xprt_reject_count;
+static uint64_t xprt_auth_fail_count;
+static struct timespec xprt_start;
+
+void ldms_xprt_rate_data(struct ldms_xprt_rate_data *data, int reset)
+{
+	struct timespec now;
+	double dur_s;
+	(void)clock_gettime(CLOCK_REALTIME, &now);
+	dur_s = ldms_timespec_diff_s(&xprt_start, &now);
+	data->connect_rate_s = (double)xprt_connect_count / dur_s;
+	data->connect_request_rate_s = (double)xprt_connect_request_count / dur_s;
+	data->disconnect_rate_s = (double)xprt_disconnect_count / dur_s;
+	data->reject_rate_s = (double)xprt_reject_count / dur_s;
+	data->auth_fail_rate_s = (double)xprt_auth_fail_count / dur_s;
+	data->duration = dur_s;
+	if (reset) {
+		struct ldms_xprt *x;
+		pthread_mutex_lock(&xprt_list_lock);
+		LIST_FOREACH(x, &xprt_list, xprt_link) {
+			/* don't reset the connect/disconnect time */
+			memset(&x->stats.last_op, 0, sizeof(x->stats.last_op));
+			memset(&x->stats.ops, 0, sizeof(x->stats.ops));
+		}
+		xprt_connect_count = 0;
+		xprt_connect_request_count = 0;
+		xprt_disconnect_count = 0;
+		xprt_reject_count = 0;
+		xprt_auth_fail_count = 0;
+		(void)clock_gettime(CLOCK_REALTIME, &xprt_start);
+		pthread_mutex_unlock(&xprt_list_lock);
+	}
 }
 
 ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin)
@@ -309,7 +326,7 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 	case LDMS_CONTEXT_DIR_CANCEL:
 		break;
 	}
-
+	(void)clock_gettime(CLOCK_REALTIME, &x->stats.last_op);
 	if (e) {
 		if (e->min_us > dur_us)
 			e->min_us = dur_us;
@@ -1941,8 +1958,10 @@ void __ldms_passive_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
+		(void)clock_gettime(CLOCK_REALTIME, &x->stats.connected);
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
+		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
  		__ldms_xprt_resource_free(x);
 		ldms_xprt_put(x);
 		break;
@@ -2568,17 +2587,17 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_zap_handle_conn_req(zep);
 		break;
 	case ZAP_EVENT_REJECTED:
+		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
 		__sync_fetch_and_add(&xprt_reject_count, 1);
 		event.type = LDMS_XPRT_EVENT_REJECTED;
 		if (x->event_cb)
 			x->event_cb(x, &event, x->event_cb_arg);
-		x->zap_ep = NULL;
-		zap_set_ucontext(zep, NULL);
-		ldms_xprt_put(x);
+		__ldms_xprt_resource_free(x);
 		/* Put the reference taken in ldms_xprt_connect() */
 		ldms_xprt_put(x);
 		break;
 	case ZAP_EVENT_CONNECTED:
+		(void)clock_gettime(CLOCK_REALTIME, &x->stats.connected);
 		__sync_fetch_and_add(&xprt_connect_count, 1);
 		/* actively connected -- expecting conn_msg */
 		if (0 != __ldms_conn_msg_verify(x, ev->data, ev->data_len,
@@ -2590,17 +2609,16 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_xprt_auth_begin(x);
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
+		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
 		event.type = LDMS_XPRT_EVENT_ERROR;
 		if (x->event_cb)
 			x->event_cb(x, &event, x->event_cb_arg);
-		x->zap_ep = NULL;
-		zap_set_ucontext(zep, NULL);
-		ldms_xprt_put(x);
+		__ldms_xprt_resource_free(x);
 		/* Put the reference taken in ldms_xprt_connect() */
 		ldms_xprt_put(x);
-		zap_free(zep);
 		break;
 	case ZAP_EVENT_DISCONNECTED:
+		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
 		__sync_fetch_and_add(&xprt_disconnect_count, 1);
 		/* deliver only if CONNECTED has been delivered. */
 		/* i.e. auth_flag == APPROVED */
@@ -2660,6 +2678,7 @@ static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_xprt_put(x);
 		zap_set_ucontext(zep, NULL);
 		ldms_xprt_put(x);
+		free(zep);
 		break;
 	case ZAP_EVENT_CONNECTED:
 		/* passively connected, proceed to authentication */
@@ -3521,11 +3540,13 @@ static void sync_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
+		(void)clock_gettime(CLOCK_REALTIME, &x->stats.connected);
 		x->sem_rc = 0;
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
 	case LDMS_XPRT_EVENT_ERROR:
 	case LDMS_XPRT_EVENT_DISCONNECTED:
+		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
 		x->sem_rc = ECONNREFUSED;
 		break;
 	case LDMS_XPRT_EVENT_RECV:
@@ -3748,7 +3769,8 @@ void __ldms_xprt_term(struct ldms_xprt *x)
 	/* this is so that we call zap_close() exactly once */
 	if (0 != __sync_fetch_and_or(&x->term, 1))
 		return;
-	zap_close(x->zap_ep);
+	if (x->zap_ep)
+		zap_close(x->zap_ep);
 }
 
 int ldms_xprt_term(int sec)
