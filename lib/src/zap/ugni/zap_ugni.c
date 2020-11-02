@@ -46,7 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
+#define _GNU_SOURCE
 #include <sys/errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -223,6 +223,8 @@ static uint32_t ugni_post_id;
 
 static pthread_mutex_t ugni_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t inst_id_cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t cq_full_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cq_full_cond = PTHREAD_COND_INITIALIZER;
 
 static int zap_ugni_dom_initialized = 0;
 static struct zap_ugni_dom {
@@ -1156,7 +1158,12 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe_)
 			DLOG("process_cq: post is NULL\n");
 			goto skip;
 		}
-		__sync_sub_and_fetch(&ugni_post_count, 1);
+		pthread_mutex_lock(&cq_full_lock);
+		uint32_t count = __sync_sub_and_fetch(&ugni_post_count, 1);
+		if (count < (_dom.cq_depth * 4 / 5) - 16) {
+			pthread_cond_broadcast(&cq_full_cond);
+		}
+		pthread_mutex_unlock(&cq_full_lock);
 #ifdef DEBUG
 		assert(ugni_post_count >= 0);
 #endif /* DEBUG */
@@ -1292,6 +1299,7 @@ void __flush_post_desc_list(struct z_ugni_ep *uep)
 	}
 }
 
+static zap_thrstat_t ugni_stats;
 #define WAIT_5SECS 5000
 static void *cq_thread_proc(void *arg)
 {
@@ -1300,9 +1308,12 @@ static void *cq_thread_proc(void *arg)
 	int oldtype;
 
 	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, &oldtype);
+	zap_thrstat_reset(ugni_stats);
 	while (1) {
-		uint64_t timeout = -1; /* WAIT_5SECS; */
+		uint64_t timeout = WAIT_5SECS;
+		zap_thrstat_wait_start(ugni_stats);
 		grc = GNI_CqWaitEvent(_dom.cq, timeout, &cqe);
+		zap_thrstat_wait_end(ugni_stats);
 		switch (grc) {
 		case GNI_RC_SUCCESS:
 			grc = process_cq(_dom.cq, cqe);
@@ -2124,6 +2135,7 @@ static int ugni_node_state_thread_init()
 	rc = pthread_create(&node_state_thread, NULL, node_state_proc, NULL);
 	if (rc)
 		return rc;
+	pthread_setname_np(node_state_thread, "ugni:node_state");
 	return 0;
 }
 
@@ -2268,11 +2280,13 @@ static int z_ugni_init()
 		LOG("ERROR: pthread_create() failed: %d\n", rc);
 		goto out;
 	}
+	pthread_setname_np(cq_thread, "ugni:cq_proc");
 	zap_ugni_dom_initialized = 1;
 	rc = pthread_create(&error_thread, NULL, error_thread_proc, NULL);
 	if (rc) {
 		LOG("ERROR: pthread_create() failed: %d\n", rc);
 	}
+	pthread_setname_np(error_thread, "ugni:error");
 out:
 	pthread_mutex_unlock(&ugni_lock);
 	return rc;
@@ -2282,6 +2296,7 @@ int init_once()
 {
 	int rc = ENOMEM;
 
+	ugni_stats = zap_thrstat_new("ugni:cq_proc", ZAP_ENV_INT(ZAP_THRSTAT_WINDOW));
 	rc = ugni_node_state_thread_init();
 	if (rc)
 		return rc;
@@ -2694,13 +2709,16 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 #ifdef DEBUG
 	__sync_fetch_and_add(&ugni_io_count, 1);
 #endif /* DEBUG */
+
+	pthread_mutex_lock(&cq_full_lock);
 	uint32_t count = __sync_fetch_and_add(&ugni_post_count, 1);
 	if (count > ugni_post_max)
 		ugni_post_max = count;
-	if (count >= _dom.cq_depth)
-		LOG_(uep,
-			"%s: posted desc count %d is greater than CQ depth %d\n",
-			__func__, count, _dom.cq_depth);
+	while (count > (_dom.cq_depth * 4 / 5)) {
+		pthread_cond_wait(&cq_full_cond, &cq_full_lock);
+	}
+	pthread_mutex_unlock(&cq_full_lock);
+
 	pthread_mutex_lock(&ugni_lock);
 	grc = GNI_PostRdma(uep->gni_ep, &desc->post);
 	pthread_mutex_unlock(&ugni_lock);
@@ -2714,6 +2732,18 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 		__sync_sub_and_fetch(&ugni_post_count, 1);
 		__free_post_desc(desc);
 		zerr = ZAP_ERR_RESOURCE;
+		if (grc == GNI_RC_ERROR_RESOURCE) {
+			gni_cq_handle_t cq;
+			grc = GNI_CqCreate(_dom.nic, _dom.cq_depth, 0, GNI_CQ_BLOCKING,
+					NULL, NULL, &cq);
+			if (grc) {
+				zap_ugni_log("%s: error %s creating replacement CQ after resource error\n",
+					__func__, gni_ret_str(grc));
+			} else {
+				_dom.cq = cq;
+				zap_ugni_log("%s: created replacement CQ after resource error\n", __func__);
+			}
+		}
 		goto out;
 	}
 	zerr = ZAP_ERR_OK;
