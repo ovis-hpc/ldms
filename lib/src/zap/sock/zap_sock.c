@@ -46,7 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
+#define _GNU_SOURCE
 #include <sys/errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -1068,6 +1068,8 @@ static process_sep_msg_fn_t process_sep_msg_fns[SOCK_MSG_TYPE_LAST] = {
 
 static zap_err_t __sock_send_connect(struct z_sock_ep *sep, char *buf, size_t len);
 
+static zap_thrstat_t sock_stats;
+
 /*
  * This is the callback function for connecting/connected endpoints.
  *
@@ -1080,6 +1082,7 @@ static void sock_ev_cb(ovis_event_t ev)
 {
 	struct z_sock_ep *sep = ev->param.ctxt;
 
+	zap_thrstat_wait_end(sock_stats);
 	zap_get_ep(&sep->ep);
 	DEBUG_LOG(sep, "ep: %p, sock_ev_cb() -- BEGIN --\n", sep);
 
@@ -1121,6 +1124,7 @@ static void sock_ev_cb(ovis_event_t ev)
  out:
 	DEBUG_LOG(sep, "ep: %p, sock_ev_cb() -- END --\n", sep);
 	zap_put_ep(&sep->ep);
+	zap_thrstat_wait_start(sock_stats);
 }
 
 static void sock_connect(ovis_event_t ev)
@@ -1301,6 +1305,7 @@ static void *io_thread_proc(void *arg)
 	sigfillset(&sigset);
 	rc = sigprocmask(SIG_SETMASK, &sigset, NULL);
 	assert(rc == 0 && "pthread_sigmask error");
+	zap_thrstat_wait_start(sock_stats);
 	rc = ovis_scheduler_loop(sched, 0);
 	return NULL;
 }
@@ -1652,6 +1657,8 @@ static int init_once()
 {
 	int rc = ENOMEM;
 
+	sock_stats = zap_thrstat_new("sock:io_proc", ZAP_ENV_INT(ZAP_THRSTAT_WINDOW));
+	assert(sock_stats);
 	sched = ovis_scheduler_new();
 	if (!sched)
 		return errno;
@@ -1659,7 +1666,7 @@ static int init_once()
 	rc = pthread_create(&io_thread, NULL, io_thread_proc, 0);
 	if (rc)
 		goto err_1;
-
+	pthread_setname_np(io_thread, "sock:io_proc");
 	init_complete = 1;
 
 	z_key_tree.root = NULL;
