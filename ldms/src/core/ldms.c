@@ -83,7 +83,8 @@ const char *ldms_xprt_op_names[] = {
 	"UPDATE",
 	"PUBLISH",
 	"SET_DELETE",
-	"DIR",
+	"DIR_REQ",
+	"DIR_REP",
 	"SEND"
 };
 
