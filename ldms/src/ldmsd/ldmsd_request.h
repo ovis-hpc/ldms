@@ -117,6 +117,7 @@ enum ldmsd_request {
 	LDMSD_RECORD_LEN_ADVICE_REQ,
 	LDMSD_SET_ROUTE_REQ,
 	LDMSD_XPRT_STATS_REQ,
+	LDMSD_THREAD_STATS_REQ,
 
 	/* command-line options */
 	LDMSD_LISTEN_REQ,
@@ -198,6 +199,7 @@ enum ldmsd_request_attr {
 	LDMSD_ATTR_GID,
 	LDMSD_ATTR_STREAM,
 	LDMSD_ATTR_AUTH,
+	LDMSD_ATTR_RESET,
 	LDMSD_ATTR_LAST,
 };
 

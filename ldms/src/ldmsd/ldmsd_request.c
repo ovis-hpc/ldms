@@ -197,6 +197,7 @@ static int exit_daemon_handler(ldmsd_req_ctxt_t req_ctxt);
 static int greeting_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_route_handler(ldmsd_req_ctxt_t req_ctxt);
 static int xprt_stats_handler(ldmsd_req_ctxt_t req_ctxt);
+static int thread_stats_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
 static int ebusy_handler(ldmsd_req_ctxt_t reqc);
@@ -420,6 +421,9 @@ static struct request_handler_entry request_handler[] = {
 	/* Transport Stats Request */
 	[LDMSD_XPRT_STATS_REQ] = {
 		LDMSD_XPRT_STATS_REQ, xprt_stats_handler, XUG
+	},
+	[LDMSD_THREAD_STATS_REQ] = {
+		LDMSD_THREAD_STATS_REQ, thread_stats_handler, XUG
 	},
 
 	/* FAILOVER user commands */
@@ -5534,6 +5538,26 @@ struct op_summary {
 	uint64_t op_mean_us;
 };
 
+#define __APPEND(...) do {					\
+	len = snprintf(s, sz, __VA_ARGS__);			\
+	if (len >= sz) {					\
+		uint64_t off = (uint64_t)s - (uint64_t)buff;	\
+		sz += XPRT_BUFLEN;				\
+		s = realloc(buff, sz);				\
+		if (!s) {					\
+			rc = ENOMEM;				\
+			errmsg = LDMSD_ENOMEM_MSG;		\
+			goto err;				\
+		}						\
+		buff = s;					\
+		s = &buff[off];					\
+		continue;					\
+	}							\
+	s += len;						\
+	sz -= len;						\
+	break;							\
+} while(1)
+
 static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 {
 	#define XPRT_BUFLEN 4096
@@ -5560,8 +5584,17 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 	char ip_str[32];
 	char xprt_type[16];
 	struct ldms_xprt_rate_data rate_data;
+	int reset = 0;
 
-	ldms_xprt_rate_data(&rate_data);
+	(void)clock_gettime(CLOCK_REALTIME, &start);
+
+	s = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
+	if (s) {
+		if (0 != strcasecmp(s, "false"))
+			reset = 1;
+	}
+
+	ldms_xprt_rate_data(&rate_data, reset);
 
 	buff = malloc(sz);
 	if (!buff) {
@@ -5576,38 +5609,18 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 	s = buff + sizeof(*attr);
 	sz -= sizeof(*attr);
 
-	#define __APPEND(...) do {					\
-		len = snprintf(s, sz, __VA_ARGS__);			\
-		if (len >= sz) {					\
-			uint64_t off = (uint64_t)s - (uint64_t)buff;	\
-			sz += XPRT_BUFLEN;				\
-			s = realloc(buff, sz);				\
-			if (!s) {					\
-				rc = ENOMEM;				\
-				errmsg = LDMSD_ENOMEM_MSG;		\
-				goto err;				\
-			}						\
-			buff = s;					\
-			s = &buff[off];					\
-			continue;					\
-		}							\
-		s += len;						\
-		sz -= len;						\
-		break;							\
-	} while(1)
-
 	memset(op_sum, 0, sizeof(op_sum));
 	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++)
 		op_sum[op_e].op_min_us = LLONG_MAX;
 
 	/* Compute summary statistics across all of the transports */
-	(void)clock_gettime(CLOCK_REALTIME, &start);
 	for (x = ldms_xprt_first(); x; x = ldms_xprt_next(x)) {
 		ldms_stats_entry_t op;
 
 		ldms_xprt_stats(x, &xs);
 		xprt_count += 1;
-		zap_ep_state_t ep_state = zap_ep_state(x->zap_ep);
+		zap_ep_state_t ep_state =
+			(x->zap_ep ? zap_ep_state(x->zap_ep) : ZAP_EP_CLOSE);
 		switch (ep_state) {
 		case ZAP_EP_LISTENING:
 			xprt_listen_count += 1;
@@ -5665,6 +5678,8 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 	__APPEND(" \"connecting_count\": %d,\n", xprt_connecting_count);
 	__APPEND(" \"listen_count\": %d,\n", xprt_listen_count);
 	__APPEND(" \"close_count\": %d,\n", xprt_close_count);
+	__APPEND(" \"duration\": %g,\n", rate_data.duration);
+	__APPEND(" \"op_stats\": {\n");
 	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++) {
 		struct op_summary *op;
 		op = &op_sum[op_e];
@@ -5712,6 +5727,7 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 		else
 			__APPEND(" }\n");
 	}
+	__APPEND(" }\n"); /* op_stats */
 	__APPEND("}");
 	sz = s - buff + 1;
 	attr->attr_len = sz - sizeof(*attr);
@@ -5731,6 +5747,109 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 	free(buff);
 	return 0;
 err:
+	if (buff)
+		free(buff);
+	req->errcode = rc;
+	ldmsd_send_req_response(req, errmsg);
+	return rc;
+}
+
+/*
+ * Sends a JSON formatted summary of Zap thread statistics as follows:
+ *
+ * { "count" : <int>,
+ *   "entries" : [
+ * 		{ "name" : <string>,
+ *  	  "sample_count" : <float>,
+ *        "utilization" : <float>
+ *      },
+ *      . . .
+ *   ]
+ * }
+ */
+static int thread_stats_handler(ldmsd_req_ctxt_t req)
+{
+	#define XPRT_BUFLEN 4096
+	char *buff, *s;
+	size_t sz = XPRT_BUFLEN;
+	int i, rc, len, reset = 0;
+	uint32_t term;
+	const char *errmsg = NULL;
+	ldmsd_req_attr_t attr;
+	struct timespec start, end;
+	struct zap_thrstat_result *res;
+
+	(void)clock_gettime(CLOCK_REALTIME, &start);
+
+	s = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
+	if (s) {
+		if (0 != strcasecmp(s, "false"))
+			reset = 1;
+	}
+
+	res = zap_thrstat_get_result();
+	if (!res) {
+		rc = ENOMEM;
+		errmsg = LDMSD_ENOMEM_MSG;
+		goto err;
+	}
+
+	buff = malloc(sz);
+	if (!buff) {
+		rc = ENOMEM;
+		errmsg = LDMSD_ENOMEM_MSG;
+		goto err;
+	}
+
+	attr = (ldmsd_req_attr_t)buff;
+	attr->discrim = 1;
+	attr->attr_id = LDMSD_ATTR_JSON;
+	/* len will be assigned after the str is populated */
+	s = buff + sizeof(*attr);
+	sz -= sizeof(*attr);
+
+	__APPEND("{");
+	__APPEND(" \"count\": %d,\n", res->count);
+	__APPEND(" \"entries\": [\n");
+	for (i = 0; i < res->count; i++) {
+		__APPEND("  {\n");
+		__APPEND("   \"name\": \"%s\",\n", res->entries[i].name);
+		__APPEND("   \"sample_count\": %g,\n", res->entries[i].sample_count);
+		__APPEND("   \"utilization\": %g\n", res->entries[i].utilization);
+		if (i < res->count - 1)
+			__APPEND("  },\n");
+		else
+			__APPEND("  }\n");
+	}
+	(void)clock_gettime(CLOCK_REALTIME, &end);
+	uint64_t compute_time = ldms_timespec_diff_us(&start, &end);
+	__APPEND(" ],\n"); /* end of entries array */
+	__APPEND(" \"compute_time\": %ld\n", compute_time);
+	__APPEND("}"); /* end */
+
+	sz = s - buff + 1;
+	attr->attr_len = sz - sizeof(*attr);
+	ldmsd_hton_req_attr(attr);
+	rc = ldmsd_append_reply(req, buff, sz, LDMSD_REQ_SOM_F);
+	if (rc) {
+		errmsg = "append reply error";
+		goto err;
+	}
+	term = 0;
+	rc = ldmsd_append_reply(req, (void*)&term, sizeof(term),
+				LDMSD_REQ_EOM_F);
+	if (rc) {
+		errmsg = "append reply error";
+		goto err;
+	}
+	free(buff);
+	zap_thrstat_free_result(res);
+	if (reset)
+		zap_thrstat_reset_all();
+	return 0;
+err:
+	if (res)
+		zap_thrstat_free_result(res);
 	if (buff)
 		free(buff);
 	req->errcode = rc;

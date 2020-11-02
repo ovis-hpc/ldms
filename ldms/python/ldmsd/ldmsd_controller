@@ -1216,6 +1216,87 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_set_route(self, text, line, begidx, endidx):
         return self.__complete_attr_list('set_info', text)
 
+    def do_thread_stats(self, arg):
+        """
+        Query the daemon's thread utilization statistics
+        """
+        resp = self.handle('thread_stats', arg)
+        if resp['msg'] == "":
+            return
+        if resp['errcode'] != 0:
+            return
+        stats = json.loads(resp['msg'])
+        print(f"{'Name':16} {'Samples':12} {'Utilization':12}")
+        print("---------------- ------------ ------------")
+        for e in stats['entries']:
+            print(f"{e['name']:16} {e['sample_count']:12.0f} {e['utilization'] * 100:12.2f}")
+
+    def complete_thread_stats(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('set_info', text)
+
+    def do_xprt_stats(self, arg):
+        """
+        Query the daemon's transport telemetry data
+
+        Parameters:
+        [reset=]  If true, reset the statistics after returning them
+        """
+        resp = self.handle('xprt_stats', arg)
+        if resp['msg'] == "":
+            return
+        if resp['errcode'] != 0:
+            return
+        stats = json.loads(resp['msg'])
+        """
+        { 'compute_time_us': 33,
+          'connect_rate_s': 8e-06, 'connect_request_rate_s': 0.003638,
+          'disconnect_rate_s': 0.003632, 'reject_rate_s': 0.0,
+          'auth_fail_rate_s': 0.0, 'xprt_count': 32,
+          'connect_count': 7, 'connecting_count': 0, 'listen_count': 1,
+          'close_count': 24,
+          'duration': 12353.23,
+          'op_stats': {
+            'LOOKUP': {'count': 3187, 'total_us': 162961103,
+                        'min_us': 308, 'min_peer': '10.10.0.92:10001',
+                        'min_peer_type': 'sock',
+                        'max_us': 3290463, 'max_peer': '10.10.0.91:10001',
+                        'max_peer_type': 'sock', 'mean_us': 51133},
+            'UPDATE': {...},
+            'PUBLISH': {...},
+            'SET_DELETE': {...},
+            'DIR_REQ': {...},
+            'DIR_REP': {...},
+            'SEND': {...}
+          }
+        }
+        """
+        heading = f"Summary over {stats['duration']:.2f} seconds"
+        print(f"{heading:^64s}")
+        print(f"{'Connected':12s} {'Connecting':12s} {'Listening':12s} {'Close':12s}")
+        print("------------ ------------ ------------ ------------")
+        print(f"{stats['connect_count']:12} {stats['connecting_count']:12} "
+            f"{stats['listen_count']:12} {stats['close_count']:12}")
+        print("")
+        print(f"{'Rate/s':^64s}")
+        print(f"{'Connect':12} {'Conn Req':12} {'Disconnect':12} {'Reject':12} {'Auth Fail':12}")
+        print("------------ ------------ ------------ ------------ ------------")
+        print(f"{stats['connect_rate_s']:12.2f} "
+            f"{stats['connect_request_rate_s']:12.2f} "
+            f"{stats['disconnect_rate_s']:12.2f} "
+            f"{stats['reject_rate_s']:12.2f} "
+            f"{stats['auth_fail_rate_s']:12.2f} "
+            )
+        print("")
+        print(f"{'Operation':16} {'Min(us)':12} {'Mean(us)':12} {'Max(us)':12} ")
+        print("---------------- ------------ ------------ ------------")
+        op_stats = stats['op_stats']
+        for op_name in op_stats:
+            s = op_stats[op_name]
+            print(f"{op_name:16} {s['min_us']:12} {s['mean_us']:12} {s['max_us']:12}")                            
+
+    def complete_xprt_stats(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('xprt_stats', text)
+
     def do_updtr_task(self, arg):
         """
         Report the updater tasks
