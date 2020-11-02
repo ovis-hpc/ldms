@@ -102,7 +102,9 @@ class LDMSD_Req_Attr(object):
     UID = 32
     GID = 33
     STREAM = 34
-    LAST = 35
+    AUTH = 35
+    RESET = 36
+    LAST = 37
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -139,6 +141,8 @@ class LDMSD_Req_Attr(object):
                    'uid': UID,
                    'gid': GID,
                    'stream': STREAM,
+                   'period': INTERVAL,
+                   'reset': RESET,
                    'TERMINATING': LAST
         }
 
@@ -176,6 +180,7 @@ class LDMSD_Req_Attr(object):
                    UID : 'uid',
                    GID : 'gid',
                    STREAM : 'stream',
+                   RESET : 'reset',
                    LAST : 'TERMINATING'
         }
 
@@ -326,7 +331,9 @@ class LDMSD_Request(object):
     ONESHOT = 0x600 + 7
     LOGROTATE = 0x600 + 8
     EXIT_DAEMON = 0x600 + 9
-    SET_ROUTE = 0X600 + 11
+    SET_ROUTE = 0x600 + 11
+    XPRT_STATS = 0x600 + 12
+    THREAD_STATS = 0x600 + 13
 
     FAILOVER_CONFIG        = 0x700
     FAILOVER_PEERCFG_START = 0x700  +  1
@@ -413,8 +420,9 @@ class LDMSD_Request(object):
             'failover_status'        : {'id' : FAILOVER_STATUS},
             'failover_start'         : {'id' : FAILOVER_START},
             'failover_stop'          : {'id' : FAILOVER_STOP},
-            'set_route': {'id': SET_ROUTE},
-
+            'set_route'     :  {'id': SET_ROUTE},
+            'xprt_stats'    :  {'id' : XPRT_STATS},
+            'thread_stats'  :  {'id' : THREAD_STATS},
             'setgroup_add'  :  {'id':  SETGROUP_ADD},
             'setgroup_mod'  :  {'id':  SETGROUP_MOD},
             'setgroup_del'  :  {'id':  SETGROUP_DEL},
