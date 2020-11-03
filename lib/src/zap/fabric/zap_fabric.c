@@ -1351,13 +1351,19 @@ static void scrub_cq(struct z_fi_ep *rep)
 	int			ret;
 	struct z_fi_context	*ctxt;
 	struct fi_cq_err_entry	entry;
+	struct fid		*fid[1];
 
 	DLOG("rep %p\n", rep);
 	while (1) {
 		memset(&entry, 0, sizeof(entry));
 		ret = fi_cq_read(rep->cq, &entry, 1);
-		if ((ret == 0) || (ret == -FI_EAGAIN))
+		if ((ret == 0) || (ret == -FI_EAGAIN)) {
+			fid[0] = &rep->cq->fid;
+			ret = fi_trywait(rep->fabric, fid, 1);
+			if (ret == -FI_EAGAIN)
+				continue;
 			break;
+		}
 		if (ret == -FI_EAVAIL) {
 			fi_cq_readerr(rep->cq, &entry, 0);
 			if (entry.err != FI_ECANCELED) {
@@ -1766,14 +1772,20 @@ static void scrub_eq(struct z_fi_ep *rep)
 	ssize_t			ret;
 	uint32_t		event;
 	struct fi_eq_err_entry	entry;
+	struct fid		*fid[1];
 
 	DLOG("rep %p\n", rep);
 	__zap_get_ep(&rep->ep, "EQE");
 	while (1) {
 		memset(&entry, 0, sizeof(entry));
 		ret = fi_eq_read(rep->eq, &event, &entry, sizeof(entry), 0);
-		if ((ret == 0) || (ret == -FI_EAGAIN))
+		if ((ret == 0) || (ret == -FI_EAGAIN)) {
+			fid[0] = &rep->eq->fid;
+			ret = fi_trywait(rep->fabric, fid, 1);
+			if (ret == -FI_EAGAIN)
+				continue;
 			break;
+		}
 		if (ret == -FI_EAVAIL) {
 			fi_eq_readerr(rep->eq, &entry, 0);
 			event = -FI_EAVAIL;
