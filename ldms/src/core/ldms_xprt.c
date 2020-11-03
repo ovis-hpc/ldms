@@ -3429,10 +3429,8 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 		ldms_t x = rbd->xprt;
 		pthread_mutex_lock(&x->lock);
 
-		if (LDMS_XPRT_AUTH_GUARD(x)) {
-			pthread_mutex_unlock(&x->lock);
+		if (LDMS_XPRT_AUTH_GUARD(x))
 			goto skip;
-		}
 
 		size_t doff;
 		size_t len;
@@ -3451,7 +3449,6 @@ int __ldms_xprt_push(ldms_set_t s, int push_flags)
 		reply = malloc(max_len);
 		if (!reply) {
 			rc = ENOMEM;
-			pthread_mutex_unlock(&x->lock);
 			goto skip;
 		}
 #ifdef PUSH_DEBUG
