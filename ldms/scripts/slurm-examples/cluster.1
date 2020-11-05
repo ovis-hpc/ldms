@@ -3,7 +3,7 @@
 prdcr_add name=${host2} host=${host2} type=active xprt=${XPRT} port=${port2} interval=1000000
 prdcr_start name=${host2}
 
-updtr_add name=allhosts interval=3000000 offset=500000
+updtr_add name=allhosts interval=1000000 offset=-400000
 updtr_prdcr_add name=allhosts regex=.*
 updtr_start name=allhosts
 

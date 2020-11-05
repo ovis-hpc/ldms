@@ -215,6 +215,7 @@ function DAEMONS {
 			ln -s ${BUILDDIR}/sbin/ldmsd $LDMSD_RUN/$binname
 		fi
 	done
+	did_daemons=1
 }
 
 # LDMSD number-list launch a daemon for each number
@@ -444,6 +445,25 @@ function LDMS_LS {
 		$wrap ldms_ls  -h $ihost -x $XPRT -p $iport $*
 	done
 }
+# FILECNT_LDMSD num list
+function FILECNT_LDMSD {
+	for i in $*; do
+		if test $i -ne $myproc; then
+			continue
+		fi
+		if test -f $LDMSD_PIDFILE.$i; then
+			dpid=$(cat $LDMSD_PIDFILE.$i)
+			dts=$(date +%s)
+			/bin/ls /proc/$dpid/fd -l > $LDMSD_PIDFILE.$i.cnt.$dts
+			filecnt=$(wc -l $LDMSD_PIDFILE.$i.cnt.$dts | sed -e 's/ .*//')
+			echo "$myproc: filecnt=$filecnt"
+			mv $LDMSD_PIDFILE.$i.cnt.$dts $LDMSD_PIDFILE.$i.cnt.$dts.$filecnt
+		else
+			echo $myproc: filecnt cannot find pidfile for $i
+		fi
+	done
+}
+
 # KILL_LDMSD num list
 function KILL_LDMSD {
 	for i in $*; do
