@@ -14,6 +14,11 @@ xfabric)
 	HOST_SUFFIX=-ib0
 	XPRT=fabric
 	;;
+xsockfabric)
+	HOST_SUFFIX=""
+	XPRT=fabric
+	export FI_PROVIDER=sockets
+	;;
 xrdma)
 	HOST_SUFFIX=-ib0
 	XPRT=rdma
@@ -36,8 +41,8 @@ export HOST_SUFFIX
 TEST_NAME=cluster
 slurmdir=$(pwd)/ldmstest/$TEST_NAME/$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_JOB_NUM_NODES-$LDMSNET/slurm
 mkdir -p $slurmdir
-export SLURM_HOSTFILE=$slurmdir/Slurm-nodefile.$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_NTASKS
-export TEST_HOSTFILE=$slurmdir/Slurm-ldmsfile.$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_NTASKS
+export SLURM_HOSTFILE=$slurmdir/Slurm-nodefile.$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_NTASKS.$SLURM_JOB_NUM_NODES
+export TEST_HOSTFILE=$slurmdir/Slurm-ldmsfile.$SLURM_JOBID.$SLURM_CLUSTER_NAME.$SLURM_NTASKS.$SLURM_JOB_NUM_NODES
 export maxdaemon=$SLURM_NTASKS
 jl=$(scontrol show hostnames $SLURM_JOB_NODELIST)
 echo nodelist is $jl
