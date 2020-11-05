@@ -2,19 +2,23 @@
 export plugname=dstat
 portbase=62086
 JOBDATA $TESTDIR/job.data 1 2 3
+export dsname=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 auto-schema=1)
+echo DSNAME=$dsname
 LDMSD -p prolog.jobid  1 2
 LDMSD -p prolog.jobid -p prolog.jobid.store3 3
 MESSAGE ldms_ls on host 1:
 JOBDATA $TESTDIR/job.data 1 2 3
-LDMS_LS 1 -l
+SLEEP 2
+LDMS_LS 1 -lv
 MESSAGE ldms_ls on host 2:
-LDMS_LS 2 -l
+LDMS_LS 2 -lv
 MESSAGE ldms_ls on host 3:
-LDMS_LS 3
+LDMS_LS 3 -lv
 JOBDATA $TESTDIR/job.data 1 2
 SLEEP 3
 JOBDATA $TESTDIR/job.data 1 3
 SLEEP 2
 KILL_LDMSD `seq 3`
-file_created $STOREDIR/node/$testname
+file_created $STOREDIR/node/dstat_19
+file_created $STOREDIR/node/dstat_39
 file_created $STOREDIR/node/jobid

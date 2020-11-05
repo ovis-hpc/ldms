@@ -1,0 +1,31 @@
+.\" Manpage for ldms_dstat_schema_name
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 1 "17 Nov 2020" "v4.3" "LDMS utility ldms_dstat_schema_name man page"
+
+.SH NAME
+ldms_dstat_schema_name - man page for the LDMS dstat plugin support utility
+
+.SH SYNOPSIS
+ldms_dstat_schema_name <plugin config options>
+
+.SH DESCRIPTION
+The dstat plugin optionally generates a schema name including a short hash of certain
+configuration data. ldms_dstat_schema_name provides the user with the
+schema name the dstat plugin will generate for the given options.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+
+See Plugin_dstat(7).
+
+.SH EXAMPLES
+.PP
+.nf
+ldms_dstat_schema_name auto-schema=1 fd=1
+
+yields
+
+dstat_10
+.fi
+
+.SH SEE ALSO
+Plugin_dstat(7)

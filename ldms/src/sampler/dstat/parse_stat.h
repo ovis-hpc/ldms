@@ -2,6 +2,8 @@
 #define parse_stat_h_seen
 
 #include <limits.h>
+#include <stdbool.h>
+#include <stdint.h>
 
 
 struct proc_pid_io {
@@ -70,23 +72,40 @@ struct proc_pid_stat {
 	unsigned long long delayacct_blkio_ticks;
 };
 
+struct proc_pid_fd {
+	uint32_t fd_count; /*< number of open file descriptors */
+	uint32_t fd_max; /*< highest file number */
+	uint32_t fd_socket; /* targets starting with socket: */
+	uint32_t fd_dev; /* targets starting with /dev: */
+	uint32_t fd_anon_inode; /* targets starting with anon_inode: */
+	uint32_t fd_pipe; /* targets starting with pipe: */
+	uint32_t fd_path; /* targets starting with . or / but not /dev. */
+};
 
-/* \brief parse /proc/$pid/io and fill provides struct.
+/* \brief parse /proc/$pid/io and fill provided struct.
  * \return 0 on success, errno from fopen, ENODATA from
  * failed fgets, ENOKEY or ENAMETOOLONG from failed parse.
  */
 int parse_proc_pid_io(struct proc_pid_io *s, const char *pid);
 
-/* \brief parse /proc/$pid/stat and fill provides struct.
+/* \brief parse /proc/$pid/stat and fill provided struct.
  * \return 0 on success, errno from fopen, ENODATA from
  * failed fgets, ENOKEY or ENAMETOOLONG from failed parse.
  */
 int parse_proc_pid_stat(struct proc_pid_stat *s, const char *pid);
 
-/* \brief parse /proc/$pid/stat and fill provides struct.
+/* \brief parse /proc/$pid/stat and fill provided struct.
  * \return 0 on success, errno from fopen, ENODATA from
  * failed fgets, ENOKEY or ENAMETOOLONG from failed parse.
  */
 int parse_proc_pid_statm(struct proc_pid_statm *s, const char *pid);
+
+/* \brief parse /proc/$pid/fd and fill provided struct.
+ * \param details: if false, update only fd_count, otherwise classify the 
+ * file descriptors by link target name heuristics.
+ * \return 0 on success, errno from readdir/opendir.
+ * On a nonzero return, the content of s is undefined.
+ */
+int parse_proc_pid_fd(struct proc_pid_fd *s, const char *pid, bool details);
 
 #endif /* parse_stat_h_seen */

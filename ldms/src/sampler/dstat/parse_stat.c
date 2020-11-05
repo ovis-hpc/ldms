@@ -5,6 +5,9 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include <sys/time.h>
+#include <dirent.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #define PIDFMAX 32
 #define BUFMAX 512
@@ -184,6 +187,80 @@ int parse_proc_pid_stat(struct proc_pid_stat *s, const char *pid) {
 	return 0;
 }
 
+#undef BUFMAX
+#define BUFMAX 32
+int parse_proc_pid_fd(struct proc_pid_fd *s, const char *pid, bool details)
+{
+	if (!s)
+		return EINVAL;
+	int rc = 0;
+	int blen;
+	char buf[BUFMAX];
+	errno = 0;
+	char dname[2*PIDFMAX];
+	if (strlen(pid) >= PIDFMAX)
+		return EINVAL;
+	sprintf(dname,"/proc/%s/fd", pid);
+	DIR * dirp;
+
+	dirp = opendir(dname);
+	if (!dirp)
+		return errno;
+	s->fd_count = 0;
+	s->fd_max = 0;
+	s->fd_socket = 0;
+	s->fd_dev = 0;
+	s->fd_anon_inode = 0;
+	s->fd_pipe = 0;
+	s->fd_path = 0;
+	struct dirent entry;
+	struct dirent *result;
+	rc = readdir_r(dirp, &entry, &result);
+	while (!rc && result != NULL) {
+		s->fd_count++;
+		if (details) {
+			long n = strtol(entry.d_name, NULL, 10);
+			if (n > s->fd_max) {
+				s->fd_max = n;
+			}
+			buf[0] = '\0';
+			snprintf(dname, 2*PIDFMAX, "/proc/%s/fd/%s", pid, entry.d_name);
+			blen = readlink(dname, buf, BUFMAX);
+			switch (buf[0]) {
+			case '.':
+				s->fd_path++;
+				break;
+			case '/':
+				if (strncmp(buf, "/dev/", 5) == 0) {
+					s->fd_dev++;
+				} else {
+					s->fd_path++;
+				}
+				break;
+			case 'a':
+				if (blen > 11 && strncmp(buf, "anon_inode:", 11) == 0) {
+					s->fd_anon_inode++;
+				}
+				break;
+			case 'p':
+				if (blen > 5 && strncmp(buf, "pipe:", 5) == 0) {
+					s->fd_pipe++;
+				}
+				break;
+			case 's':
+				if (blen > 7 && strncmp(buf, "socket:", 7) == 0) {
+					s->fd_socket++;
+				}
+				break;
+			}
+		}
+		rc = readdir_r(dirp, &entry, &result);
+	}
+	closedir(dirp);
+	return rc;
+
+}
+
 #ifdef MAIN
 
 void dump_proc_pid_io(struct proc_pid_io *s)
@@ -268,9 +345,25 @@ void dump_proc_pid_stat(struct proc_pid_stat *s)
 
 }
 
+void dump_proc_pid_fd(struct proc_pid_fd *s)
+{
+	if (!s)
+		return;
+	printf( "count=%u max=%u socket=%u dev=%u anon=%u pipe=%u path=%u\n",
+		s->fd_count,
+		s->fd_max,
+		s->fd_socket,
+		s->fd_dev,
+		s->fd_anon_inode,
+		s->fd_pipe,
+		s->fd_path);
+}
+
 struct proc_pid_stat s;
 struct proc_pid_io si;
 struct proc_pid_statm sm;
+struct proc_pid_fd sf;
+struct proc_pid_fd sfd, rfd;
 
 int main() {
 	struct timeval t0, t1;
@@ -278,12 +371,15 @@ int main() {
 	int rc = parse_proc_pid_io(&si, "self");
 	int rc2 = parse_proc_pid_stat(&s, "self");
 	int rc3 = parse_proc_pid_statm(&sm, "self");
+	int rc4 = parse_proc_pid_fd(&sf, "self", false);
+	int rc5 = parse_proc_pid_fd(&sfd, "self", true);
+	int rc6 = parse_proc_pid_fd(&rfd, "1", true);
 	gettimeofday(&t1,NULL);
 	uint64_t us1, us0, du;
 	us1 = 1000000* t1.tv_sec + t1.tv_usec;
 	us0 = 1000000* t0.tv_sec + t0.tv_usec;
 	du = us1 - us0;
-	printf("%u.06%u\n%u.%06u\nsample usec %" PRIu64 "\n",
+	printf("%lu.06%lu\n%lu.%06lu\nsample usec %" PRIu64 "\n",
 		t1.tv_sec, t1.tv_usec,
 		t0.tv_sec, t0.tv_usec, du);
 
@@ -296,17 +392,37 @@ int main() {
 
 	printf("stat test\n");
 	if (rc2 != 0) {
-		printf("fail: %d %s\n", rc2, strerror(rc));
+		printf("fail: %d %s\n", rc2, strerror(rc2));
 		return rc2;
 	}
 	dump_proc_pid_stat(&s);
 
 	printf("statm test\n");
 	if (rc3 != 0) {
-		printf("fail: %d %s\n", rc3, strerror(rc));
+		printf("fail: %d %s\n", rc3, strerror(rc3));
 		return rc3;
 	}
 	dump_proc_pid_statm(&sm);
+
+	printf("fd test\n");
+	if (rc4 != 0) {
+		printf("fail: %d %s\n", rc4, strerror(rc4));
+		return rc4;
+	}
+	dump_proc_pid_fd(&sf);
+
+	printf("fd test details\n");
+	if (rc5 != 0) {
+		printf("fail: %d %s\n", rc5, strerror(rc5));
+		return rc5;
+	}
+	dump_proc_pid_fd(&sfd);
+
+	printf("fd root test details\n");
+	if (rc6 != 0) {
+		printf("xfail: %d %s\n", rc6, strerror(rc6));
+	} else
+		dump_proc_pid_fd(&rfd);
 
 	return 0;
 }
