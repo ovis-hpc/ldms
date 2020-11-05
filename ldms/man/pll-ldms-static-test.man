@@ -51,6 +51,10 @@ DAEMONS <daemon-numbers>
 Give all the numbers that will be used in the  LDMSD invocations anywhere in the test.
 This causes port variables to be defined so that any daemon can connect to any other by referencing $portN as explained in ENVIRONMENT below. If omitted, the ordering and aggregation relationships of LDMSD calls may be infeasible. In parallel execution, the Nth daemon will run as the (N-1)th slurm task, since Slurm numbers tasks from 0 and this tool numbers tasks from 1.
 .TP
+FILECNT_LDMSD <daemon-numbers>
+.br
+Collect the list of open files from /proc/self/fd/ and print the total to stdout. See FILES below.
+.TP
 LDMSD [conf-options] <daemon-numbers>
 .br
 This starts a number of daemons described by daemon-numbers. The numbers can
@@ -309,6 +313,14 @@ The input for the kth daemon.
 .I $test_dir/run/env.$k
 .br
 The environment present for the kth daemon.
+.TP
+.I $test_dir/run/ldmsd.pid.$k
+.br
+The transient pid file of the kth daemon. Contains the pid number.
+.TP
+.I $test_dir/run/ldmsd.pid.$k.cnt.$timestamp.$filecnt
+.br
+The open file list of the kth daemon at time $timestamp. The total is $filecnt.
 .TP
 .I $test_dir/run/start.$k
 .br
