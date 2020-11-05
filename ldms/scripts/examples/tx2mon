@@ -1,0 +1,28 @@
+export plugname=tx2mon
+portbase=61086
+VGARGS="--leak-check=full --track-origins=yes"
+DAEMONS $(seq 1 6)
+vgoff
+LDMSD -p prolog.sampler 1
+LDMSD 2 3 4 5
+LDMSD -p prolog.sampler 6
+vgoff
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -v
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -v
+MESSAGE ldms_ls on host 3:
+LDMS_LS 3 -v
+MESSAGE ldms_ls on host 4:
+LDMS_LS 4 -v
+MESSAGE ldms_ls on host 5:
+LDMS_LS 5 -v
+MESSAGE ldms_ls on host 6:
+LDMS_LS 6 -l
+LDMS_LS 6 -v
+SLEEP 5
+KILL_LDMSD `seq 6`
+file_created $STOREDIR/node/$testname
+file_created $STOREDIR/node/${testname}_01
+file_created $STOREDIR/node/${testname}_10_*
+file_created $STOREDIR/node/${testname}_11_*
