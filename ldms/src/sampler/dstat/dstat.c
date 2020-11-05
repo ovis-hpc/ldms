@@ -73,20 +73,19 @@
 #include "stdbool.h"
 #include "parse_stat.h"
 #include "mmalloc/mmalloc.h"
+#include "ldmsd_plugattr.h"
 
-static ldms_set_t set = NULL;
-static ldmsd_msg_log_f msglog;;
-static ldms_schema_t schema;
 #define SAMP "dstat"
-
-static base_data_t base;
 
 #define PID_IO 0x1
 #define PID_STAT 0x2
 #define PID_STATM 0x4
 #define PID_MMALLOC 0x8
+#define PID_FD 0x10
+#define PID_FDTYPES 0x20
 
 #define PID_DATA \
+	struct proc_pid_fd fd; \
 	struct proc_pid_io io; \
 	struct proc_pid_stat stat; \
 	struct proc_pid_statm statm; \
@@ -99,6 +98,89 @@ struct mm_metrics {
 
 
 static int pidopts = 0; /* pid-opts: bitwise-or of the PID_ flags */
+static ldmsd_msg_log_f msglog;
+
+static bool get_bool(const char *val, char *name)
+{
+	if (!val)
+		return false;
+
+	switch (val[0]) {
+	case '1':
+	case 't':
+	case 'T':
+	case 'y':
+	case 'Y':
+		return true;
+	case '0':
+	case 'f':
+	case 'F':
+	case 'n':
+	case 'N':
+		return false;
+	default:
+		msglog(LDMSD_LERROR, "%s: bad bool value %s for %s\n",
+			val, name);
+		return false;
+	}
+}
+
+/* set pidopts and compute schema name from them in buf.
+ * If pidopts is 0 on return, sampler has nothing to do.
+ * Caller must free result.
+ */
+static char * compute_pidopts_schema(struct attr_value_list *kwl, struct attr_value_list *avl)
+{
+	char *buf;
+	size_t bsz;
+	char *doio, *dostat, *dostatm, *dommalloc, *dofd, *dofdtypes;
+	char *schema_name = av_value(avl, "schema");
+	doio = av_value(avl, "io");
+	dofd = av_value(avl, "fd");
+	dofdtypes = av_value(avl, "fdtypes");
+	dostat = av_value(avl, "stat");
+	dostatm = av_value(avl, "statm");
+	dommalloc = av_value(avl, "mmalloc");
+	char *as = av_value(avl, "auto-schema");
+	bool dosuffix = (as && get_bool(as, "auto-schema") );
+	if (!doio && !dostat && !dostatm && !dommalloc && !dofd && !dofdtypes) {
+		pidopts = ( PID_IO | PID_STAT | PID_STATM );
+	} else {
+		if (doio && get_bool(doio, "io"))
+			pidopts |= PID_IO;
+		if (dostat && get_bool(dostat, "stat"))
+			pidopts |= PID_STAT;
+		if (dostatm && get_bool(dostatm, "statm"))
+			pidopts |= PID_STATM;
+		if (dommalloc && get_bool(dommalloc, "mmalloc"))
+			pidopts |= PID_MMALLOC;
+		if (dofd && get_bool(dofd, "fd"))
+			pidopts |= PID_FD;
+		if (dofdtypes && get_bool(dofdtypes, "fdtypes"))
+			pidopts |= PID_FDTYPES;
+		if (pidopts & PID_FDTYPES)
+			pidopts |= PID_FD;
+	}
+
+	if (schema_name) {
+		return strdup(schema_name);
+	}
+	schema_name = "dstat";
+	bsz = strlen(schema_name) + 16;
+	buf = malloc(bsz);
+	char hbuf[bsz];
+	memset(hbuf, 0, bsz);
+	if (dosuffix) {
+		snprintf(hbuf, bsz, "_%x", pidopts);
+	}
+	snprintf(buf, bsz, "%s%s", schema_name, hbuf);
+	return buf;
+}
+
+#ifndef MAIN
+static ldms_set_t set = NULL;
+static ldms_schema_t schema;
+static base_data_t base;
 static char *pids = "self";
 
 #define IOLIST(WRAP) \
@@ -143,6 +225,17 @@ static char *pids = "self";
 #define MMALLOCLIST(WRAP) \
 	WRAP("mmalloc_bytes_used_p_holes", used_holes, LDMS_V_U64, pos_used_holes)
 
+#define FDLIST(WRAP) \
+	WRAP("fd_count", fd_count, LDMS_V_U64, pos_fd_count)
+
+#define FDTYPESLIST(WRAP) \
+	WRAP("fd_max", fd_max, LDMS_V_U64, pos_fd_max) \
+	WRAP("fd_socket", fd_socket, LDMS_V_U64, pos_fd_socket) \
+	WRAP("fd_dev", fd_dev, LDMS_V_U64, pos_fd_dev) \
+	WRAP("fd_anon_inode", fd_anon_inode, LDMS_V_U64, pos_fd_anon_inode) \
+	WRAP("fd_pipe", fd_pipe, LDMS_V_U64, pos_fd_pipe) \
+	WRAP("fd_path", fd_path, LDMS_V_U64, pos_fd_path)
+
 #define DECLPOS(n, m, t, p) static int p = -1;
 
 IOLIST(DECLPOS);
@@ -151,6 +244,8 @@ static int pos_ppid = -1;
 STATLIST(DECLPOS);
 STATMLIST(DECLPOS);
 MMALLOCLIST(DECLPOS);
+FDLIST(DECLPOS);
+FDTYPESLIST(DECLPOS);
 
 #define META(n, m, t, p) \
 	rc = ldms_schema_meta_add(schema, n, t); \
@@ -168,14 +263,15 @@ MMALLOCLIST(DECLPOS);
 	} \
 	p = rc;
 
+
 static int create_metric_set(base_data_t base)
 {
 	int rc;
-//	union ldms_value v;
 
 	int iorc = -1;
 	int statrc = -1;
 	int statmrc = -1;
+	int fdrc = -1;
 	PID_DATA;
 	if (pidopts & PID_IO) {
 		iorc = parse_proc_pid_io(&io, pids);
@@ -201,6 +297,15 @@ static int create_metric_set(base_data_t base)
 			return statmrc;
 		}
 	}
+	if (pidopts & (PID_FD|PID_FDTYPES)) {
+		bool details = ((pidopts & PID_FDTYPES) != 0);
+		fdrc = parse_proc_pid_fd(&fd, pids, details);
+		if (fdrc != 0) {
+			msglog(LDMSD_LERROR, SAMP ": unable to read /proc/%s/fd (%s)\n",
+				pids, strerror(fdrc));
+			return fdrc;
+		}
+	}
 
 	schema = base_schema_new(base);
 	if (!schema) {
@@ -222,6 +327,12 @@ static int create_metric_set(base_data_t base)
 	if (pidopts & PID_MMALLOC) {
 		MMALLOCLIST(METRIC);
 	}
+	if (pidopts & PID_FD) {
+		FDLIST(METRIC);
+	}
+	if (pidopts & PID_FDTYPES) {
+		FDTYPESLIST(METRIC);
+	}
 
 	set = base_set_new(base);
 	if (!set) {
@@ -239,6 +350,9 @@ static int create_metric_set(base_data_t base)
 
 #define MMALLOCSAMPLE(n, m, t, p) \
 	ldms_metric_set_u64(set, p, (uint64_t)mmm.m);
+
+#define FDSAMPLE(n, m, t, p) \
+	ldms_metric_set_u32(set, p, (uint32_t)fd.m);
 
 #define STATSAMPLE(n, m, t, p) \
 	switch (t) { \
@@ -273,6 +387,12 @@ static int create_metric_set(base_data_t base)
 		mmm.used_holes = mms.size - mms.grain * mms.largest;
 		MMALLOCLIST(MMALLOCSAMPLE);
 	}
+	if (pidopts & PID_FD) {
+		FDLIST(FDSAMPLE);
+	}
+	if (pidopts & PID_FDTYPES) {
+		FDTYPESLIST(FDSAMPLE);
+	}
 
 	base_sample_end(base);
 	return 0;
@@ -284,41 +404,44 @@ static int create_metric_set(base_data_t base)
 	return rc;
 }
 
-static bool get_bool(const char *val, char *name)
-{
-	if (!val)
-		return false;
 
-	switch (val[0]) {
-	case '1':
-	case 't':
-	case 'T':
-	case 'y':
-	case 'Y':
-		return true;
-	case '0':
-	case 'f':
-	case 'F':
-	case 'n':
-	case 'N':
-		return false;
-	default:
-		msglog(LDMSD_LERROR, "%s: bad bool value %s for %s\n",
-			val, name);
-		return false;
-	}
-}
+
 
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE
-		" [io=<bool>] [stat=<bool>] [statm=<bool>] [mmalloc=<bool>]\n"
-		"    If none of io, stat, statm, mmalloc is given, all but mmalloc default true.\n"
-		"    If any of io, stat, statm is given, unmentioned ones default false.\n"
-		"    Enabling mmalloc is potentially expensive at high frequencies on aggregators.\n"
+		" [io=<bool>] [stat=<bool>] [statm=<bool>] [mmalloc=<bool>] [fd=<bool>] [fdtypes=<bool>]\n"
+		"    If none of io, stat, statm, mmalloc is given, all but mmalloc, fd & fdtypes default true.\n"
+		"    If any of io, stat, statm is given, any unmentioned ones default false.\n"
+		"    Enabling mmalloc, fd, or fdtypes is potentially expensive at high frequencies on aggregators.\n"
 		"    <bool>       Enable data subset if true.\n";
 }
 
+static const char *dstat_opts[] = {
+	"debug",
+	"schema",
+	"instance",
+	"producer",
+	"component_id",
+	"uid",
+	"gid",
+	"perm",
+	"job_set",
+	"set_array_card",
+	"io",
+	"stat",
+	"statm",
+	"mmalloc",
+	"fd",
+	"fdtypes",
+	"auto-schema",
+	NULL
+};
+
+static const char *dstat_words[] = {
+	"debug",
+	NULL
+};
 /**
  * \brief Configuration
  *
@@ -334,32 +457,32 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	msglog(LDMSD_LDEBUG, SAMP ": config started.\n");
 
-	base = base_config(avl, SAMP, SAMP, msglog);
-	if (!base) {
-		rc = errno;
-		goto err;
+	rc = ldmsd_plugattr_config_check(dstat_opts, dstat_words, avl, kwl,
+		NULL, SAMP);
+	if (rc) {
+		msglog(LDMSD_LERROR, SAMP ": bad config options.\n");
+		return EINVAL;
 	}
 
-	char *doio, *dostat, *dostatm, *dommalloc;
-	doio = av_value(avl, "io");
-	dostat = av_value(avl, "stat");
-	dostatm = av_value(avl, "statm");
-	dommalloc = av_value(avl, "mmalloc");
-	if (!doio && !dostat && !dostatm && !dommalloc) {
-		pidopts = ( PID_IO | PID_STAT | PID_STATM );
+	char *sbuf = compute_pidopts_schema(kwl, avl);
+	if (!sbuf) {
+		msglog(LDMSD_LERROR, SAMP ": configure out of memory.\n");
+		rc = EINVAL;
+		goto err;
 	} else {
-		if (doio && get_bool(doio, "io"))
-			pidopts |= PID_IO;
-		if (dostat && get_bool(dostat, "stat"))
-			pidopts |= PID_STAT;
-		if (dostatm && get_bool(dostatm, "statm"))
-			pidopts |= PID_STATM;
-		if (dommalloc && get_bool(dommalloc, "mmalloc"))
-			pidopts |= PID_MMALLOC;
+		msglog(LDMSD_LDEBUG, SAMP ": configure dstat with schema %s.\n",
+		sbuf);
 	}
+
 	if (!pidopts) {
 		msglog(LDMSD_LERROR, SAMP ": configured with nothing to do.\n");
 		rc = EINVAL;
+		goto err;
+	}
+
+	base = base_config(avl, SAMP, sbuf, msglog);
+	if (!base) {
+		rc = errno;
 		goto err;
 	}
 
@@ -369,9 +492,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto err;
 	}
 	msglog(LDMSD_LDEBUG, SAMP ": config done.\n");
+	free(sbuf);
 	return 0;
  err:
 	base_del(base);
+	if (sbuf)
+		free(sbuf);
 	msglog(LDMSD_LDEBUG, SAMP ": config fail.\n");
 	return rc;
 }
@@ -414,6 +540,16 @@ static int sample(struct ldmsd_sampler *self)
 		mmm.used_holes = mms.size - mms.grain * mms.largest;
 		MMALLOCLIST(MMALLOCSAMPLE);
 	}
+	if (pidopts & (PID_FD | PID_FDTYPES)) {
+		bool details = ((pidopts & PID_FDTYPES) != 0);
+		int fdrc = parse_proc_pid_fd(&fd, pids, details);
+		if (!fdrc) {
+			FDLIST(FDSAMPLE);
+			if (details) {
+				FDTYPESLIST(FDSAMPLE);
+			}
+		}
+	}
 	base_sample_end(base);
 	return rc;
 }
@@ -427,7 +563,7 @@ static void term(struct ldmsd_plugin *self)
 	set = NULL;
 }
 
-static struct ldmsd_sampler meminfo_plugin = {
+static struct ldmsd_sampler dstat_plugin = {
 	.base = {
 		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
@@ -443,5 +579,52 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
 	set = NULL;
-	return &meminfo_plugin.base;
+	return &dstat_plugin.base;
 }
+
+#else /* MAIN */
+#include "dstring.h"
+#include "ctype.h"
+int main(int argc, char **argv)
+{
+	int rc;
+        dstring_t ds;
+        dstr_init2(&ds, 1024);
+	char *sbuf = 0;
+        int i;
+        for (i = 1; i < argc; i++) {
+                dstrcat(&ds, argv[i], DSTRING_ALL);
+                dstrcat(&ds, " ", 1);
+        }
+        char *buf = dstr_extract(&ds);
+        int size = 1;
+        char *t = buf;
+        while (t[0] != '\0') {
+                if (isspace(t[0])) size++;
+                t++;
+        }
+        struct attr_value_list *avl = av_new(size);
+        struct attr_value_list *kwl = av_new(size);
+        rc = tokenize(buf, kwl, avl);
+        if (rc) {
+                fprintf(stderr, SAMP " failed to parse arguments. %s\n", buf);
+                rc = EINVAL;
+                goto out;
+        }
+	rc = 0;
+	sbuf = compute_pidopts_schema(kwl, avl);
+        if (!sbuf || !strlen(sbuf)) {
+                fprintf(stderr, "could not create schema from options\n");
+                rc = EINVAL;
+                goto out;
+        }
+        printf("%s\n", sbuf);
+out:
+	free(sbuf);
+	free(buf);
+        av_free(kwl);
+        av_free(avl);
+	return rc;
+}
+
+#endif

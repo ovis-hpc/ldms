@@ -1,3 +1,11 @@
 load name=${plugname}
-config name=${plugname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i} mmalloc=1 io=1
+config name=${plugname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i} mmalloc=1 io=1 auto-schema=1
 start name=${plugname} interval=1000000 offset=0
+
+strgp_add name=store_${testname}.auto plugin=store_csv schema=${dsname} container=node
+strgp_prdcr_add name=store_${testname}.auto regex=.*
+strgp_start name=store_${testname}.auto
+
+strgp_add name=store_${testname}.auto2 plugin=store_csv schema=dstat_39 container=node
+strgp_prdcr_add name=store_${testname}.auto2 regex=.*
+strgp_start name=store_${testname}.auto2
