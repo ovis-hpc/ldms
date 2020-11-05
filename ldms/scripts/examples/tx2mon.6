@@ -1,0 +1,47 @@
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0
+
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=10000000
+prdcr_start name=localhost1
+
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=10000000
+prdcr_start name=localhost2
+
+prdcr_add name=localhost3 host=${HOST} type=active xprt=${XPRT} port=${port3} interval=10000000
+prdcr_start name=localhost3
+
+prdcr_add name=localhost4 host=${HOST} type=active xprt=${XPRT} port=${port4} interval=10000000
+prdcr_start name=localhost4
+
+prdcr_add name=localhost5 host=${HOST} type=active xprt=${XPRT} port=${port5} interval=10000000
+prdcr_start name=localhost5
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+# schemas are testname, tx2mon_10_$ncore, tx2mon_01, tx2mon_11_$ncore
+strgp_add name=store_${testname} plugin=store_csv schema=${testname} container=node
+strgp_prdcr_add name=store_${testname} regex=.*
+strgp_start name=store_${testname}
+
+strgp_add name=store_${testname}_11_32 plugin=store_csv schema=${testname}_11_32 container=node
+strgp_prdcr_add name=store_${testname}_11_32 regex=.*
+strgp_start name=store_${testname}_11_32
+
+strgp_add name=store_${testname}_10_32 plugin=store_csv schema=${testname}_10_32 container=node
+strgp_prdcr_add name=store_${testname}_10_32 regex=.*
+strgp_start name=store_${testname}_10_32
+
+strgp_add name=store_${testname}_11_28 plugin=store_csv schema=${testname}_11_28 container=node
+strgp_prdcr_add name=store_${testname}_11_28 regex=.*
+strgp_start name=store_${testname}_11_28
+
+strgp_add name=store_${testname}_10_28 plugin=store_csv schema=${testname}_10_28 container=node
+strgp_prdcr_add name=store_${testname}_10_28 regex=.*
+strgp_start name=store_${testname}_10_28
+
+strgp_add name=store_${testname}_01 plugin=store_csv schema=${testname}_01 container=node
+strgp_prdcr_add name=store_${testname}_01 regex=.*
+strgp_start name=store_${testname}_01
+

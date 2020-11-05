@@ -126,6 +126,10 @@ liblnet_stats_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += liblnet_stats.la
 endif
 
+if ENABLE_TX2MON
+SUBDIRS += tx2mon
+endif
+
 if ENABLE_MEMINFO
 SUBDIRS += meminfo
 endif
