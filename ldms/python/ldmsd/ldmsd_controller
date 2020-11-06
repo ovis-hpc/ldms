@@ -1287,12 +1287,12 @@ class LdmsdCmdParser(cmd.Cmd):
             f"{stats['auth_fail_rate_s']:12.2f} "
             )
         print("")
-        print(f"{'Operation':16} {'Min(us)':12} {'Mean(us)':12} {'Max(us)':12} ")
-        print("---------------- ------------ ------------ ------------")
+        print(f"{'Operation':12} {'Count':12} {'Min(us)':12} {'Mean(us)':12} {'Max(us)':12} ")
+        print("------------ ------------ ------------ ------------ ------------")
         op_stats = stats['op_stats']
         for op_name in op_stats:
             s = op_stats[op_name]
-            print(f"{op_name:16} {s['min_us']:12} {s['mean_us']:12} {s['max_us']:12}")                            
+            print(f"{op_name:12} {s['count']:12} {s['min_us']:12} {s['mean_us']:12} {s['max_us']:12}")                            
 
     def complete_xprt_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('xprt_stats', text)
