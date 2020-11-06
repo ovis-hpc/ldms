@@ -2721,7 +2721,6 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 
 	pthread_mutex_lock(&ugni_lock);
 	grc = GNI_PostRdma(uep->gni_ep, &desc->post);
-	pthread_mutex_unlock(&ugni_lock);
 	if (grc != GNI_RC_SUCCESS) {
 		LOG_(uep, "%s: GNI_PostRdma() failed, grc: %s\n",
 				__func__, gni_ret_str(grc));
@@ -2740,12 +2739,15 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 				zap_ugni_log("%s: error %s creating replacement CQ after resource error\n",
 					__func__, gni_ret_str(grc));
 			} else {
+				ugni_post_count = 0;
 				_dom.cq = cq;
 				zap_ugni_log("%s: created replacement CQ after resource error\n", __func__);
 			}
 		}
+		pthread_mutex_unlock(&ugni_lock);
 		goto out;
 	}
+	pthread_mutex_unlock(&ugni_lock);
 	zerr = ZAP_ERR_OK;
  out:
 	pthread_mutex_unlock(&ep->lock);
