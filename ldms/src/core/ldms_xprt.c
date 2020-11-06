@@ -1431,8 +1431,6 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
 	assert(x == s->xprt);
 	if (x->disconnected || !zap_ep_connected(x->zap_ep)) {
-		fprintf(stderr, "%p:%d called disconnected transport: %p, zap_ep: %p, zap_ep_state: %d\n",
-			__func__, __LINE__, x, x->zap_ep, zap_ep_state(x->zap_ep));
 		return ENOTCONN;
 	}
 
@@ -1447,7 +1445,7 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 	uint32_t data_meta_gn = __le32_to_cpu(set->data->meta_gn);
 	uint32_t n = __le32_to_cpu(set->meta->array_card);
 	if (n == 0) {
-		fprintf(stderr, "Set %s had 0 cardinality\n", ldms_set_instance_name_get(s));
+		x->log("%s: Set %s has 0 cardinality\n", __func__, ldms_set_instance_name_get(s));
 		return EINVAL;
 	}
 	int idx_from, idx_to, idx_next, idx_curr;
