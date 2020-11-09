@@ -421,7 +421,7 @@ int base_auth_parse(struct attr_value_list *avl, struct base_auth *auth,
 		if (errno || pval != lval || pval == 0) {
 			log(LDMSD_LERROR,
 			    "The permission bits must specified "
-			    "as a non-zero octal number < 1000; got %s.\n", value);
+			    "as a non-zero octal number <= 777; got %s.\n", value);
 			goto einval;
 		}
 		auth->perm = pval;
