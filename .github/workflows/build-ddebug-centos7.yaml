@@ -1,0 +1,18 @@
+name: Build Test with `-DDEBUG` - CentOS7
+
+on:
+  push:
+    branches: [ OVIS-4 ]
+  pull_request:
+    branches: [ OVIS-4 ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+        image: ovishpc/ovis-centos-build:latest
+    steps:
+    - uses: actions/checkout@v2
+    - run: sh autogen.sh
+    - run: ./configure CFLAGS='-DDEBUG'
+    - run: make
