@@ -105,7 +105,7 @@
 #ifdef CTXT_DEBUG
 #define __flush_io_q( _REP ) do { \
 	(_REP)->ep.z->log_fn("TMP_DEBUG: %s() flush_io_q %p, state %s\n", \
-			__func__, _REP, zap_ep_state_str(_REP->ep.state)); \
+			__func__, _REP, __zap_ep_state_str(_REP->ep.state)); \
 	flush_io_q(_REP); \
 } while (0)
 #define __rdma_context_alloc( _REP, _CTXT, _OP, _RBUF ) ({ \
