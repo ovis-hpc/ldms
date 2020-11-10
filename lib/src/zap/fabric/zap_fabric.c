@@ -706,7 +706,7 @@ static void flush_io_q(struct z_fi_ep *rep)
 			if (ctxt->u.send.rb)
 				__buffer_free(ctxt->u.send.rb);
 			__context_free(ctxt);
-			return;
+			continue;
 		    case ZAP_WC_RDMA_WRITE:
 			ev.type = ZAP_EVENT_WRITE_COMPLETE;
 			ev.context = ctxt->usr_context;
