@@ -174,20 +174,21 @@ endif
 
 if HAVE_LIBPAPI
 SUBDIRS += papi
-if HAVE_LIBPFM
-SUBDIRS += syspapi
 
 libhweventpapi_la_SOURCES = hweventpapi.c
 libhweventpapi_la_CFLAGS = $(AM_CFLAGS)
 libhweventpapi_la_LDFLAGS = $(AM_LDFLAGS)
-libhweventpapi_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) $(LTLIBPAPI) $(LTLIBPFM) -lm
+libhweventpapi_la_LIBADD = $(COMMON_LIBADD) $(JOBID_LIBFLAGS) $(LTLIBPAPI) -lm
 pkglib_LTLIBRARIES += libhweventpapi.la
 
 librapl_la_SOURCES = rapl.c
 librapl_la_CFLAGS = $(AM_CFLAGS)
 librapl_la_LDFLAGS = $(AM_LDFLAGS) $(PAPI_LDFLAGS)
-librapl_la_LIBADD = $(COMMON_LIBADD) $(LTLIBPAPI) $(LTLIBPFM) -lm
+librapl_la_LIBADD = $(COMMON_LIBADD) $(LTLIBPAPI) -lm
 pkglib_LTLIBRARIES += librapl.la
+
+if HAVE_LIBPFM
+SUBDIRS += syspapi
 endif
 endif
 

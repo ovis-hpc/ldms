@@ -319,7 +319,7 @@ if test -z "$ENABLE_INFLUX_TRUE"; then
 fi
 
 AC_ARG_ENABLE([papi],
-	[AS_HELP_STRING([--enable-papi], [require components that depend upon libpapi (and libpfm) @<:@default=check@:>@])],
+	[AS_HELP_STRING([--enable-papi], [require components that depend upon libpapi @<:@default=check@:>@])],
 	[],
 	[enable_papi="check"])
 AS_IF([test "x$enable_papi" != xno],[
@@ -328,14 +328,22 @@ AS_IF([test "x$enable_papi" != xno],[
 		AS_IF([test "x$HAVE_LIBPAPI" = xno],
 			[AC_MSG_ERROR([libpapi or headers not found])])
 	])
+])
+AM_CONDITIONAL([HAVE_LIBPAPI], [test "x$HAVE_LIBPAPI" = xyes])
+
+AC_ARG_ENABLE([pfm],
+	[AS_HELP_STRING([--enable-pfm], [require components that depend upon libpfm @<:@default=check@:>@])],
+	[],
+	[enable_pfm="check"])
+AS_IF([test "x$enable_pfm" != xno],[
 	AC_LIB_HAVE_LINKFLAGS([pfm], [], [#include <perfmon/pfmlib_perf_event.h>])
-	AS_IF([test "x$enable_papi" != xcheck],[
+	AS_IF([test "x$enable_pfm" != xcheck],[
 		AS_IF([test "x$HAVE_LIBPFM" = xno],
 			[AC_MSG_ERROR([libpfm or headers not found])])
 	])
 ])
-AM_CONDITIONAL([HAVE_LIBPAPI], [test "x$HAVE_LIBPAPI" = xyes])
 AM_CONDITIONAL([HAVE_LIBPFM], [test "x$HAVE_LIBPFM" = xyes])
+
 
 if test -z "$ENABLE_KOKKOS_TRUE"; then
 	dnl kokkos needs sos (not the storesos).
