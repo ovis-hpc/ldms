@@ -92,7 +92,6 @@ static uint8_t num_threads;
 static int metric_offset = 0;
 static int exist_before = 0;
 int papi_event_set = PAPI_NULL;
-static int inotif;
 static char *oldline = "";
 static int inot_length;
 static int inot_fd;
@@ -132,7 +131,7 @@ struct sampler_meta {
 static int create_metric_set(const char* instance_name, const char* schema_name,
 	char* events)
 {
-	int rc, i, event_count, j;
+	int rc, event_count;
 	int metric_id, pec = 0;
 	int event_code = PAPI_NULL;
 	char* event_name;
@@ -588,10 +587,9 @@ static int config_hw(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		     struct attr_value_list *avl)
 {
 	int rc = 0;
-	int papi_rc;
 	char default_events[256] = DEFAULT_HWEVENTS;
 	char *ev, *ptr;
-	int i, n;
+	int i;
 	void *tmp;
 	/* params */
 	char *multiplx = NULL;
@@ -692,7 +690,7 @@ static int config_hw(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	}
 
 	hwc->num = PAPI_num_events(hwc->evset);
-	hwc->counters = calloc(n, sizeof(*hwc->counters));
+	hwc->counters = calloc(hwc->num, sizeof(*hwc->counters));
 	if (!hwc->counters) {
 		rc = ENOMEM;
 		goto err;
@@ -1047,13 +1045,12 @@ static int create_event_sets()
 
 static int save_events_data()
 {
-	int c, i, j, event_count;
+	int c, j, event_count;
 	union ldms_value val;
 	/* PAPI attached to a process start sampling
 	 * Read user data from the first metric
 	 */
 	c = 0;
-	i = metric_offset;
 	/* Attach to all PIDs */
 	event_count = PAPI_num_events(ldms_metric_user_data_get(set, 0));
 	while (c < pids_count && c < max_pids) {
