@@ -98,14 +98,12 @@ static int find_rapl_component()
 static int create_metric_set(base_data_t base)
 {
 	ldms_schema_t schema;
-	int rc, i, rapl_event_count, rapl_cid;
+	int rc, rapl_event_count, rapl_cid;
 	int event_code = PAPI_NULL;
 	int papi_event_set = PAPI_NULL;
 	char event_names[MAX_RAPL_EVENTS][PAPI_MAX_STR_LEN];
 	char units[MAX_RAPL_EVENTS][PAPI_MIN_STR_LEN];
-	int data_type[MAX_RAPL_EVENTS];
 	PAPI_event_info_t event_info;
-	const PAPI_component_info_t *cmpinfo;
 
 	rc = PAPI_library_init(PAPI_VER_CURRENT);
 	if(rc != PAPI_VER_CURRENT) {
@@ -159,7 +157,6 @@ static int create_metric_set(base_data_t base)
 		strncpy(units[rapl_event_count], event_info.units, sizeof(units[0])-1);
 		/* buffer must be null terminated to safely use strstr operation on it below */
 		units[rapl_event_count][sizeof(units[0])-1] = '\0';
-		data_type[rapl_event_count] = event_info.data_type;
 
 		if (ldms_schema_metric_add(schema, event_names[rapl_event_count], LDMS_V_U64) < 0) {
 			msglog(LDMSD_LERROR, SAMP ": failed to add event %s to metric set.\n", event_names[rapl_event_count]);
@@ -206,9 +203,6 @@ next_event:
 	return 0;
 
 err:
-	if (base)
-		base_del(base);
-	base = NULL;
 	return rc;
 }
 
@@ -225,8 +219,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (!base)
 		goto err;
 
-	base = create_metric_set(base);
-	if (!base) {
+	rc = create_metric_set(base);
+	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		rc = EINVAL;
 		goto err;
