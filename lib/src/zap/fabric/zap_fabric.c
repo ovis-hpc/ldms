@@ -90,6 +90,13 @@ static struct {
 	pthread_mutex_t		lock;
 } g;
 
+static const char *z_fi_op_str[] = {
+	[ZAP_WC_SEND]        =  "ZAP_WC_SEND",
+	[ZAP_WC_RECV]        =  "ZAP_WC_RECV",
+	[ZAP_WC_RDMA_READ]   =  "ZAP_WC_RDMA_READ",
+	[ZAP_WC_RDMA_WRITE]  =  "ZAP_WC_RDMA_WRITE",
+};
+
 /*
  * DLOG(fmt, ...)
  *    For provider debug. Calls the transport's logging function given in
@@ -150,16 +157,18 @@ static void dlog_(const char *func, int line, char *fmt, ...)
 
 #ifdef CTXT_DEBUG
 #define __flush_io_q( _REP ) do { \
-	(_REP)->ep.z->log_fn("TMP_DEBUG: %s() flush_io_q %p, state %s\n", \
+	LOG_(_REP, "TMP_DEBUG: %s() flush_io_q %p, state %s\n", \
 			__func__, _REP, __zap_ep_state_str(_REP->ep.state)); \
 	flush_io_q(_REP); \
 } while (0)
 #define __context_alloc( _REP, _CTXT, _OP ) ({ \
-	(_REP)->ep.z->log_fn("TMP_DEBUG: %s(), context_alloc\n", __func__); \
-	_context_alloc(_REP, _CTXT, _OP); \
+	void *_ctxt; \
+	_ctxt = _context_alloc(_REP, _CTXT, _OP); \
+	LOG_(_REP, "TMP_DEBUG: %s(), context_alloc %p rep %p\n", __func__, _ctxt, _REP); \
+	_ctxt; \
 })
 #define __context_free( _CTXT ) ({ \
-	(_CTXT)->ep->z->log_fn("TMP_DEBUG: %s(), context_free\n", __func__); \
+	LOG_((_CTXT)->ep, "TMP_DEBUG: %s(), context_free %p %p\n", __func__, _CTXT, (_CTXT)->ep); \
 	_context_free(_CTXT); \
 })
 #else
@@ -171,14 +180,14 @@ static void dlog_(const char *func, int line, char *fmt, ...)
 #ifdef SEND_RECV_DEBUG
 #define SEND_LOG(rep, ctxt) \
 	LOG_(rep, "SEND MSG: {credits: %hd, msg_type: %hd, data_len: %d}\n", \
-		   ntohs(ctxt->rb->msg->credits), \
-		   ntohs(ctxt->rb->msg->msg_type), \
-		   ctxt->rb->data_len)
+		   ntohs(ctxt->u.send.rb->msg->credits), \
+		   ntohs(ctxt->u.send.rb->msg->msg_type), \
+		   ctxt->u.send.rb->data_len)
 #define RECV_LOG(rep, ctxt) \
 	LOG_(rep, "RECV MSG: {credits: %d, msg_type: %d, data_len: %d}\n", \
-		   ntohs(ctxt->rb->msg->credits), \
-		   ntohs(ctxt->rb->msg->msg_type), \
-		   ctxt->rb->data_len)
+		   ntohs(ctxt->u.recv.rb->msg->credits), \
+		   ntohs(ctxt->u.recv.rb->msg->msg_type), \
+		   ctxt->u.recv.rb->data_len)
 #else
 #define SEND_LOG(rep, ctxt)
 #define RECV_LOG(rep, ctxt)
@@ -698,6 +707,7 @@ static void flush_io_q(struct z_fi_ep *rep)
 	while (!TAILQ_EMPTY(&rep->io_q)) {
 		ctxt = TAILQ_FIRST(&rep->io_q);
 		TAILQ_REMOVE(&rep->io_q, ctxt, pending_link);
+		DLOG("op %s rep %p ctxt %p\n", z_fi_op_str[ctxt->op], rep, ctxt);
 		switch (ctxt->op) {
 		    case ZAP_WC_SEND:
 			/*
@@ -871,10 +881,12 @@ static zap_err_t submit_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt, int i
 	int rc = 0;
 
 	pthread_mutex_lock(&rep->credit_lock);
-	if (!get_credits(rep, is_rdma))
+	if (!get_credits(rep, is_rdma)) {
 		rc = post_wr(rep, ctxt);
-	else
+	} else {
 		TAILQ_INSERT_TAIL(&rep->io_q, ctxt, pending_link);
+		DLOG("pending op %s rep %p ctxt %p\n", z_fi_op_str[ctxt->op], rep, ctxt);
+	}
 	pthread_mutex_unlock(&rep->credit_lock);
 	return rc;
 }
