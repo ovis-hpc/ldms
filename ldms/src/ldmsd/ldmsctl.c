@@ -1948,7 +1948,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	/*
 	 * Send all the records and handle the response now.
 	 */
-	ldmsd_req_hdr_t resp;
+	ldmsd_req_hdr_t resp = NULL;
 	size_t req_hdr_sz = sizeof(*resp);
 	size_t lbufsz = 1024;
 	char *lbuf = malloc(lbufsz);
@@ -1962,7 +1962,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	size_t msglen = 0;
 	rc = 0;
 	ldmsctl_buffer_t recv_buf;
-	int flags;
+	int flags = 0;
 
 	while (1) {
 		sem_wait(&ctrl->ldms_xprt.recv_sem);
@@ -2004,7 +2004,11 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	/* We have received the whole message */
 	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)lbuf);
 
-	cmd->resp((ldmsd_req_hdr_t)lbuf, msglen, resp->rsp_err);
+	if (resp) {
+		cmd->resp((ldmsd_req_hdr_t)lbuf, msglen, resp->rsp_err);
+	} else {
+		printf("ldmsctl: __handle_cmd has unexpected NULL resp.\n");
+	}
 	free(lbuf);
 	return rc;
 }
