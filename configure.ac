@@ -567,8 +567,6 @@ AM_CONDITIONAL([ENABLE_PYTHON], [test "$python_found" = true -a "$cython_found" 
 
 OPTION_WITH_PORT([LDMSD],[411])
 
-OPTION_WITH_MAGIC([LDMS_MSG_MAX],[32768],[Maximum control message length allowed to ldmsd (min 4095)])
-
 dnl if cray_sampler set some other variables
 if test "x$enable_cray_system_sampler" = "xyes"
 then
