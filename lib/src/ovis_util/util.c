@@ -821,6 +821,11 @@ int ovis_access_check(uid_t auid, gid_t agid, int acc,
 		      uid_t ouid, gid_t ogid, int perm)
 {
 	int macc = acc & perm;
+
+	/* root can do anything */
+	if (auid == 0)
+		return 0;
+
 	/* other */
 	if (07 & macc) {
 		return 0;
