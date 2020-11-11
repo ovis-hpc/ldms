@@ -5770,7 +5770,7 @@ err:
 static int thread_stats_handler(ldmsd_req_ctxt_t req)
 {
 	#define XPRT_BUFLEN 4096
-	char *buff, *s;
+	char *buff = NULL, *s;
 	size_t sz = XPRT_BUFLEN;
 	int i, rc, len, reset = 0;
 	uint32_t term;
