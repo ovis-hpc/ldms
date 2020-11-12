@@ -843,7 +843,7 @@ free_set:
 
 void ldmsd_set_deregister(const char *inst_name, const char *plugin_name)
 {
-	ldmsd_plugin_set_t set;
+	ldmsd_plugin_set_t set = NULL;
 	ldmsd_plugin_set_list_t list;
 	struct rbn *rbn;
 	ldmsd_set_tree_lock();
@@ -852,13 +852,15 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name)
 		goto out;
 	list = container_of(rbn, struct ldmsd_plugin_set_list, rbn);
 	LIST_FOREACH(set, &list->list, entry) {
-		if (0 == strcmp(set->inst_name, inst_name)) {
-			LIST_REMOVE(set, entry);
-			free(set->inst_name);
-			free(set->plugin_name);
-			ldms_set_put(set->set);
-			free(set);
-		}
+		if (0 == strcmp(set->inst_name, inst_name))
+			break;
+	}
+	if (set) {
+		LIST_REMOVE(set, entry);
+		free(set->inst_name);
+		free(set->plugin_name);
+		ldms_set_put(set->set);
+		free(set);
 	}
 	if (LIST_EMPTY(&list->list)) {
 		rbt_del(&set_tree, &list->rbn);
