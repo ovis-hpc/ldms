@@ -265,7 +265,7 @@ struct ldms_rendezvous_msg {
 struct ldms_dir_reply {
 	uint32_t type;
 	uint32_t more;
-	uint32_t json_data_len;
+	uint32_t json_data_len; /* This is not used but left for compatibility with V4.3.3 */
 	char json_data[OVIS_FLEX];
 };
 

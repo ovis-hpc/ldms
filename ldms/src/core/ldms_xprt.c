@@ -347,26 +347,39 @@ static void send_dir_update(struct ldms_xprt *x,
 {
 	size_t hdr_len;
 	size_t buf_len;
-	size_t cnt;
-	struct ldms_reply *reply;
+	size_t json_data_len;
+	struct ldms_reply *reply = NULL;
 
 	assert(t != LDMS_DIR_LIST);
 
 	hdr_len = sizeof(struct ldms_reply_hdr)
 		+ sizeof(struct ldms_dir_reply);
-	buf_len = ldms_xprt_msg_max(x);
-	reply = malloc(buf_len);
+	json_data_len = strlen("{ \"directory\" : [  ]}") + strlen(json) + 1;
+	buf_len = hdr_len + json_data_len;
 
-	cnt = snprintf(reply->dir.json_data, buf_len - hdr_len,
-		       "{ \"directory\" : [ %s ]}", json);
-	if (cnt >= buf_len)
-		goto out;
+	if (buf_len >= ldms_xprt_msg_max(x)) {
+		if (x->log) {
+			x->log("Directory message is too large for "
+					"the max transport message.\n");
+		}
+		return;
+	}
+
+	reply = malloc(buf_len);
+	if (!reply) {
+		if (x->log)
+			x->log("%s: Out of memory\n", __FUNCTION__);
+		return;
+	}
+
 	reply->hdr.xid = x->remote_dir_xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_UPDATE_REPLY);
 	reply->hdr.rc = 0;
 	reply->dir.type = htonl(t);
-	reply->dir.json_data_len = htonl(cnt);
-	reply->hdr.len = htonl(hdr_len + cnt);
+	reply->dir.json_data_len = htonl(json_data_len);
+	reply->hdr.len = htonl(buf_len);
+	(void)snprintf(reply->dir.json_data, json_data_len,
+				"{ \"directory\" : [ %s ]}", json);
 
 #ifdef DEBUG
 	x->log("%s(): x %p: remote dir ctxt %p\n",
@@ -374,7 +387,7 @@ static void send_dir_update(struct ldms_xprt *x,
 #endif /* DEBUG */
 
 	zap_err_t zerr;
-	zerr = zap_send(x->zap_ep, reply, hdr_len + cnt);
+	zerr = zap_send(x->zap_ep, reply, buf_len);
 	if (zerr != ZAP_ERR_OK) {
 		x->zerrno = zerr;
 		if (x->log)
@@ -383,10 +396,6 @@ static void send_dir_update(struct ldms_xprt *x,
 		ldms_xprt_close(x);
 	}
 	free(reply);
-	return;
- out:
-	free(reply);
-	x->log("Directory message is too large for the max transport message.\n");
 	return;
 }
 
@@ -1632,7 +1641,7 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 {
 	enum ldms_dir_type type = ntohl(reply->dir.type);
 	int i, rc = ntohl(reply->hdr.rc);
-	size_t count, json_data_len = ntohl(reply->dir.json_data_len);
+	size_t count, json_data_len;
 	ldms_dir_t dir = NULL;
 	json_parser_t p = NULL;
 	json_entity_t dir_attr, dir_list, set_entity, info_list;
@@ -1642,6 +1651,8 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	int64_t dur_us;
 	struct timespec end, start;
 
+	json_data_len = ntohl(reply->hdr.len) - sizeof(struct ldms_reply_hdr)
+				- sizeof(struct ldms_dir_reply);
 
 	if (!ctxt->dir.cb)
 		return;
