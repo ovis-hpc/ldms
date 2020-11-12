@@ -6080,6 +6080,7 @@ static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
 			       len, 256);
 		goto send_reply;
 	}
+	key->addr_len = sizeof(key->addr);
 	rc = ldms_xprt_sockaddr(reqc->xprt->ldms.ldms, &local_sa, &key->addr,
 				&key->addr_len);
 	if (rc) {
@@ -6154,6 +6155,7 @@ static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc)
 			       len, 256);
 		goto send_reply;
 	}
+	key->addr_len = sizeof(key->addr);
 	rc = ldms_xprt_sockaddr(reqc->xprt->ldms.ldms, &local_sa, &key->addr,
 				&key->addr_len);
 	if (rc) {
@@ -6226,6 +6228,7 @@ void stream_xprt_term(ldms_t x)
 	struct __RSE_key_s *key = (void*)_buff;
 	int rc;
 
+	key->addr_len = sizeof(key->addr);
 	rc = ldms_xprt_sockaddr(x, &local_sa, &key->addr,
 				&key->addr_len);
 	if (rc)
