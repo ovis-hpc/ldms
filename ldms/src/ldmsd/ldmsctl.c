@@ -1948,7 +1948,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	/*
 	 * Send all the records and handle the response now.
 	 */
-	ldmsd_req_hdr_t resp;
+	ldmsd_req_hdr_t resp, rsp = NULL;
 	size_t req_hdr_sz = sizeof(*resp);
 	size_t lbufsz = 1024;
 	char *lbuf = malloc(lbufsz);
@@ -1957,7 +1957,6 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 		exit(1);
 	}
 
-	char *rec;
 	size_t reclen = 0;
 	size_t msglen = 0;
 	rc = 0;
@@ -1973,13 +1972,10 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 			pthread_mutex_unlock(&recv_buf_q_lock);
 			resp = (ldmsd_req_hdr_t)recv_buf->buf;
 			flags = ntohl(resp->flags);
-			if (flags & LDMSD_REQ_SOM_F) {
+			if (flags & LDMSD_REQ_SOM_F)
 				reclen = ntohl(resp->rec_len);
-				rec = (char *)resp;
-			} else {
+			else
 				reclen = ntohl(resp->rec_len) - req_hdr_sz;
-				rec = (char *)(resp + 1);
-			}
 			if (lbufsz < msglen + reclen) {
 				char *nlbuf = realloc(lbuf, msglen + (reclen * 2));
 				if (!nlbuf) {
@@ -1990,7 +1986,10 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 				lbufsz = msglen + (reclen * 2);
 				memset(&lbuf[msglen], 0, lbufsz - msglen);
 			}
-			memcpy(&lbuf[msglen], rec, reclen);
+			if (flags & LDMSD_REQ_SOM_F)
+				memcpy(&lbuf[msglen], resp, reclen);
+			else
+				memcpy(&lbuf[msglen], resp + 1, reclen);
 			msglen += reclen;
 			ldmsctl_buffer_free(recv_buf);
 			pthread_mutex_lock(&recv_buf_q_lock);
@@ -1998,13 +1997,18 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 		}
 		pthread_mutex_unlock(&recv_buf_q_lock);
 
-		if ((flags & LDMSD_REQ_EOM_F) != 0)
+		if ((flags & LDMSD_REQ_EOM_F) != 0) {
+			rsp = (ldmsd_req_hdr_t)lbuf;
 			break;
+		}
 	}
 	/* We have received the whole message */
-	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)lbuf);
-
-	cmd->resp((ldmsd_req_hdr_t)lbuf, msglen, resp->rsp_err);
+	if (rsp) {
+		ldmsd_ntoh_req_msg(rsp);
+		cmd->resp(rsp, msglen, rsp->rsp_err);
+	} else {
+		assert(rsp);
+	}
 	free(lbuf);
 	return rc;
 }
