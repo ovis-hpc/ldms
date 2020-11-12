@@ -429,7 +429,7 @@ AC_ARG_WITH([slurm],
 	[AS_HELP_STRING([--with-slurm],
 			[support SLURM jobid information and more @<:@default=check@:>@])],
 			[AS_IF([test "x$withval" != xyes -a "x$withval" != xno],
-				[SLURM_CFLAGS="-I $withval"])],
+				[SLURM_CFLAGS="-I $withval/include"])],
 	[with_slurm=check])
 have_slurm=no
 AS_IF([test "x$with_slurm" != no],[
@@ -438,7 +438,8 @@ AS_IF([test "x$with_slurm" != no],[
 	AC_CHECK_HEADER([slurm/spank.h], [have_slurm=yes], [have_slurm=no])
 	CFLAGS=$save_CFLAGS
 
-	AS_IF([test "x$have_slurm=" = xno],[
+	AS_IF([test "x$have_slurm=" = xyes],[
+		AC_SUBST([SLURM_CFLAGS])],[
 		AS_IF([test "x$with_slurm" != xcheck],
 			[AC_MSG_ERROR([<slurm/spank.h> not found. slurm installed?])],
 			[AC_MSG_WARN([Disabling SLURM support.])])])
