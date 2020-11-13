@@ -10,17 +10,17 @@ jobs:
   build:
     runs-on: ubuntu-20.04
     container:
-        image: morrone/centos7-ldms-build:latest
+        image: ovishpc/ovis-centos-build
     steps:
     - uses: actions/checkout@v2
     - run: sh autogen.sh
-    - run: ./configure
+    - run: ./configure CFLAGS="-Wall -Werror"
     - run: make
 
   distcheck:
     runs-on: ubuntu-20.04
     container:
-        image: morrone/centos7-ldms-build:latest
+        image: ovishpc/ovis-centos-build
     steps:
     - uses: actions/checkout@v2
     - run: sh autogen.sh
