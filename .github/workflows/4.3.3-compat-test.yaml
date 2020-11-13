@@ -1,0 +1,168 @@
+# Test overview:
+#    1 sampler (v4.3.3, named samp-4.3.3)
+#       |
+#       V
+#    L1 agg (v4.3.3, named agg-4.3.3)
+#       |
+#       V
+#    L2 agg (OVIS-4, named agg-4)
+#
+# Scenario
+# - samp-4.3.3 started (1 set: meminfo)
+# - agg-4.3.3 started, collecting sets from samp-4.3.3
+# - agg-4 started, collecting sets from agg-4.3.3
+# - ldms_ls to agg-4.3.3 & verify that it is not empty
+# - ldms_ls to agg-4 & verify that it is the same as agg-4.3.3
+# - kill samp-4.3.3
+# - ldms_ls to agg-4.3.3 & verify that dir result is empty
+# - ldms_ls to agg-4 & verify that dir result is empty
+
+name: Compatibility test with OVIS-4.3.3
+
+on:
+  push:
+    branches: [ OVIS-4 ]
+  pull_request:
+    branches: [ OVIS-4 ]
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+        image: ovishpc/ovis-4.3.3-centos7
+    steps:
+    - uses: actions/checkout@v2
+    - run: sh autogen.sh
+    - name: build and install
+      run: |
+        set -e
+        ./configure --prefix=/opt/ovis-4 --enable-etc
+        make
+        make install
+    - name: test preparation
+      run: |
+        set -e
+        mkdir -p /test/logs
+        pushd /test/
+        ln -s /opt/ovis-4.3.3/sbin/ldmsd ldmsd-4.3.3
+        ln -s /opt/ovis-4/sbin/ldmsd ldmsd-4
+        cat > ldmsd-4.3.3.sh << EOF
+        . /opt/ovis-4.3.3/etc/profile.d/set-ovis-variables.sh
+        ./ldmsd-4.3.3 \$@
+        EOF
+        chmod 755 ldmsd-4.3.3.sh
+        cat > ldmsd-4.sh << EOF
+        . /opt/ovis-4/etc/profile.d/set-ovis-variables.sh
+        ./ldmsd-4 \$@
+        EOF
+        chmod 755 ldmsd-4.sh
+        cat > ldms_ls.sh << EOF
+        . /opt/ovis-4/etc/profile.d/set-ovis-variables.sh
+        ldms_ls \$@
+        EOF
+        chmod 755 ldms_ls.sh
+        cat > samp-4.3.3.conf << EOF
+        load name=meminfo
+        config name=meminfo producer=ovis-4.3.3 instance=ovis-4.3.3/meminfo
+        start name=meminfo interval=1000000 offset=0
+        EOF
+        cat > agg-4.3.3.conf << EOF
+        prdcr_add name=samp type=active host=localhost port=10000 xprt=sock interval=1000000
+        prdcr_start name=samp
+        updtr_add name=updtr interval=1000000 offset=200000
+        updtr_prdcr_add name=updtr regex=.*
+        updtr_start name=updtr
+        EOF
+        cat > agg-4.conf << EOF
+        prdcr_add name=samp type=active host=localhost port=10001 xprt=sock interval=1000000
+        prdcr_start name=samp
+        updtr_add name=updtr interval=1000000 offset=200000
+        updtr_prdcr_add name=updtr regex=.*
+        updtr_start name=updtr
+        EOF
+    - name: compatibility test
+      if: ${{ success() }} # all previous steps are good
+      run: |
+        error() {
+          echo "ERROR:" $@
+          exit -1
+        }
+        ps_state() {
+          _PID=$1
+          if [[ -d /proc/${_PID} ]]; then
+            _STATE=$(cat /proc/${_PID}/stat | cut -f 3 -d ' ')
+            [[ ${_STATE} = "Z" ]] && echo "zombie" || echo "alive"
+          else
+            echo "dead"
+          fi
+        }
+        ps_check() {
+          local _NAME=$1
+          local _PID=$2
+          echo -n "Checking $_NAME ($_PID) ..."
+          local _S=$(ps_state $_PID)
+          echo "$_S"
+          [[ "$_S" = "alive" ]] || error "process $_NAME ($_PID) is not alive"
+        }
+        cd /test
+        # samp
+        echo "starting samp-4.3.3"
+        ./ldmsd-4.3.3.sh -c samp-4.3.3.conf -l logs/samp-4.3.3.log -v INFO -x sock:10000
+        # agg1
+        echo "starting agg-4.3.3"
+        ./ldmsd-4.3.3.sh -c agg-4.3.3.conf -l logs/agg-4.3.3.log -v INFO -x sock:10001
+        sleep 2
+        # agg2
+        echo "starting agg-4"
+        ./ldmsd-4.sh -c agg-4.conf -l logs/agg-4.log -v INFO -x sock:10002
+        sleep 2
+        # check that they're running
+        SAMP_433_PID=$(pgrep -f samp-4.3.3.conf)
+        AGG_433_PID=$(pgrep -f agg-4.3.3.conf)
+        AGG_4_PID=$(pgrep -f agg-4.conf)
+        echo "--- ldmsd's ---"
+        pgrep -a ldmsd
+        echo "---------------"
+        [[ -n "${SAMP_433_PID}" ]] || error "samp-4.3.3 is not running"
+        [[ -n "${AGG_433_PID}" ]] || error "agg-4.3.3 is not running"
+        [[ -n "${AGG_4_PID}" ]] || error "agg-4 is not running"
+        # ldms_ls-4 to agg-4.3.3
+        echo -n "ldms_ls agg-4.3.3 ... "
+        D0=$( ./ldms_ls.sh -x sock -p 10001 )
+        echo "result: ${D0}"
+        # ldms_ls-4 to agg-4
+        echo -n "ldms_ls agg-4 ... "
+        D1=$( ./ldms_ls.sh -x sock -p 10002 )
+        echo "result: ${D1}"
+        [[ -n "${D0}" ]] || error "ldms_ls FAILED agg-4.3.3 is empty"
+        [[ "${D0}" = "${D1}" ]] && echo "ldms_ls verified" || error "ERROR: dir(agg-4.3.3) != dir(agg-4)"
+        # kill samp-4.3.3 so that the set disappeared from agg-4.3.3
+        echo "Killing samp-4.3.3"
+        kill ${SAMP_433_PID}
+        sleep 4
+        echo "--- ldmsd's ---"
+        pgrep -a ldmsd
+        echo "---------------"
+        echo "--- ldmsd's ---"
+        ps ax | grep ldmsd
+        echo "---------------"
+        # ldms_ls to agg-4.3.3
+        echo -n "ldms_ls ... "
+        D0=$(./ldms_ls.sh -x sock -p 10001)
+        [[ -z "${D0}" ]] && echo "dir(agg-4.3.3) is empty (good)" || error "ERROR: dir(agg-4.3.3) is not empty"
+        # check aggregators
+        ps_check agg-4.3.3 ${AGG_433_PID}
+        ps_check agg-4 ${AGG_4_PID}
+        # ldms_ls to agg-4
+        echo -n "ldms_ls ... "
+        D1=$(./ldms_ls.sh -x sock -p 10002)
+        [[ -z "${D1}" ]] && echo "dir(agg-4) is empty (good)" || error "ERROR: dir(agg-4) is not empty"
+        echo "DONE!"
+    - uses: actions/upload-artifact@v2
+      if: ${{ always() }}
+      with:
+        path: /test/
