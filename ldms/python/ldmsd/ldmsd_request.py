@@ -361,12 +361,10 @@ class LDMSD_Request(object):
 
             'prdcr_add': {'id': PRDCR_ADD},
             'prdcr_del': {'id': PRDCR_DEL},
-            'prdcr_start': {'id': PRDCR_START},
             'prdcr_stop': {'id': PRDCR_STOP},
             'prdcr_status': {'id': PRDCR_STATUS},
             'prdcr_start': {'id': PRDCR_START},
             'prdcr_start_regex': {'id': PRDCR_START_REGEX},
-            'prdcr_stop': {'id': PRDCR_STOP},
             'prdcr_stop_regex': {'id': PRDCR_STOP_REGEX},
             'prdcr_set_status': {'id': PRDCR_SET_STATUS},
             'prdcr_hint_tree': {'id': PRDCR_HINT_TREE},
@@ -491,9 +489,9 @@ class LDMSD_Request(object):
             self.response = {'errcode': None, 'msg': None}
             LDMSD_Request.message_number += 1
         except Exception as e:
-            a,b,c = sys.exc_info()
-            print(str(e) + ' '+str(c.tb_lineno))
-            raise LDMSDRequestException()
+            _ , _, c = sys.exc_info()
+            msg = str(e) + ' '+str(c.tb_lineno)
+            raise LDMSDRequestException(msg, errno.EINVAL)
 
     def _newRecord(self, flags, offset, sz):
         """Create a record
@@ -558,9 +556,9 @@ class LDMSD_Request(object):
             record = ctrl.receive_response()
             if record is None:
                 raise LDMSDRequestException(message="No data received", errcode=errno.ECONNRESET)
-            (marker, msg_type, msg_flags, msg_no,
-             errcode, rec_len) = struct.unpack('!LLLLLL',
-                                               record[:self.header_size])
+            (marker, _, msg_flags, _,
+             errcode, _) = struct.unpack('!LLLLLL',
+                                        record[:self.header_size])
 
             if marker != self.MARKER:
                 raise ValueError("Record is missing the marker")
@@ -647,92 +645,7 @@ class LDMSD_Request(object):
 
         cmd_str - a string in the `verb arg1=val1 arg2=val2 ...` format.
         """
-        tkns = re.split("\s+", cmd_str)
+        tkns = re.split(r"\s+", cmd_str)
         verb = tkns[0]
         av_list = (cls.ATTR_RE.match(x).groups() for x in tkns[1:])
         return cls.from_verb_attrs(verb, av_list)
-
-
-class LdmsdReqCmd(cmd.Cmd):
-    def __init__(self, host = None, port = None, infile=None):
-        try:
-            self.ctrl = ldmsd_config.ldmsdInetConfig(host = host,
-                                                     port = int(port))
-            self.prompt = "{0}:{1}> ".format(host, port)
-
-            if infile:
-                cmd.Cmd.__init__(self, stdin=infile)
-            else:
-                cmd.Cmd.__init__(self)
-        except:
-            raise
-
-    def do_quit(self, arg):
-        """
-        Quit the ldmsd_request interface
-        """
-        self.ctrl.close()
-        return True
-
-    def complete_prdcr_set(self, text, line, begidx, endidx):
-        attr_list = ['prdcr']
-        return ["{0}=".format(attr) for attr in attr_list if attr.startswith(text)]
-
-
-    def do_prdcr_set(self, arg):
-        """
-        Print the list of producer sets of a producer and their status
-        """
-        try:
-            prdcr_name = LDMSD_Req_Attr(LDMSD_Req_Attr.PRODUCER, arg.split("=")[1])
-            req = LDMSD_Request(LDMSD_Request.PRDCR_METRIC_SET, attrs = [prdcr_name,])
-            req.send(self.ctrl.socket)
-            metric_sets = req.receive(self.ctrl.socket)
-            metric_sets = json.loads(metric_sets)
-            if req.is_error_resp(metric_sets):
-                print("Error: {0}".format(metric_sets[0]['error']))
-            else:
-                print("Name             Schema Name      State")
-                print("---------------- ---------------- ------------ ")
-                for pset in metric_sets:
-                    print("    {0:16} {1:16} {2}".format(pset['inst_name'],
-                                                         pset['schema_name'],
-                                                         pset['state']))
-        except:
-            raise
-
-    def do_prdcr_add(self, arg):
-        """
-        Add a producer.
-        """
-        pass
-
-if __name__ == "__main__":
-    is_debug = True
-    try:
-        parser = argparse.ArgumentParser(description="Configure an LDMS Daemon.")
-        parser.add_argument("--host", help = "Hostname of ldmsd to connect to")
-        parser.add_argument('--port',
-                            help = "Inet ctrl listener port of ldmsd")
-        parser.add_argument('--debug', action = "store_true",
-                            help = argparse.SUPPRESS)
-        args = parser.parse_args()
-        is_debug = args.debug
-
-        if args.host is None or args.port is None:
-            print("Please give --host and --port")
-            sys.exit(1)
-
-        reqParser = LdmsdReqCmd(host = args.host, port = args.port)
-
-        reqParser.cmdloop("Welcome to the LDMSD control processor")
-
-    except KeyboardInterrupt:
-        sys.exit(0)
-    except Exception as e:
-        if is_debug:
-            print(is_debug)
-            traceback.print_exc()
-            sys.exit(2)
-        else:
-            print(e)
