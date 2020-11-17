@@ -65,6 +65,11 @@ jobs:
         ldms_ls \$@
         EOF
         chmod 755 ldms_ls.sh
+        cat > ldms_ls-4.3.3.sh << EOF
+        . /opt/ovis-4.3.3/etc/profile.d/set-ovis-variables.sh
+        ldms_ls \$@
+        EOF
+        chmod 755 ldms_ls-4.3.3.sh
         cat > samp-4.3.3.conf << EOF
         load name=meminfo
         config name=meminfo producer=ovis-4.3.3 instance=ovis-4.3.3/meminfo
@@ -138,8 +143,31 @@ jobs:
         echo -n "ldms_ls agg-4 ... "
         D1=$( ./ldms_ls.sh -x sock -p 10002 )
         echo "result: ${D1}"
-        [[ -n "${D0}" ]] || error "ldms_ls FAILED agg-4.3.3 is empty"
-        [[ "${D0}" = "${D1}" ]] && echo "ldms_ls verified" || error "ERROR: dir(agg-4.3.3) != dir(agg-4)"
+        [[ "${D0}" = "ovis-4.3.3/meminfo" ]] || error "unexpected `ldms_ls agg-4.3.3` result"
+        [[ "${D1}" = "ovis-4.3.3/meminfo" ]] || error "unexpected `ldms_ls agg-4` result"
+        # ldms_ls-4.3.3 to agg-4
+        echo -n "ldms_ls(4.3.3) agg-4 ... "
+        D2=$( ./ldms_ls.sh -x sock -p 10002 )
+        echo "result: ${D2}"
+        [[ "${D2}" = "ovis-4.3.3/meminfo" ]] || error "unexpected `ldms_ls(4.3.3) agg-4` result"
+        # ldms_ls-4 to agg-4.3.3 -l
+        echo -n "ldms_ls -l agg-4.3.3 ... "
+        D0=$( ./ldms_ls.sh -l -x sock -p 10001 | grep MemTotal )
+        echo "${D0}"
+        [[ -n "${D0}" ]] || error "cannot get MemTotal from ldms_ls -l"
+        # ldms_ls-4 to agg-4 -l
+        echo -n "ldms_ls -l agg-4 ... "
+        D1=$( ./ldms_ls.sh -l -x sock -p 10002 | grep MemTotal )
+        echo "${D1}"
+        [[ -n "${D1}" ]] || error "cannot get MemTotal from ldms_ls -l"
+        # ldms_ls-4.3.3 to agg-4 -l
+        echo -n "ldms_ls-4.3.3 -l agg-4 ... "
+        D2=$( ./ldms_ls-4.3.3.sh -l -x sock -p 10002 | grep MemTotal )
+        echo "${D2}"
+        [[ -n "${D2}" ]] || error "cannot get MemTotal from ldms_ls -l"
+        # check if they're the same
+        [[ "${D0}" == "${D1}" ]] || error "agg-4.3.3 MemTotal != agg-4 MemTotal"
+        [[ "${D1}" == "${D2}" ]] || error "ldms_ls-4 MemTotal != ldms_ls-4.3.3 MemTotal"
         # kill samp-4.3.3 so that the set disappeared from agg-4.3.3
         echo "Killing samp-4.3.3"
         kill ${SAMP_433_PID}
