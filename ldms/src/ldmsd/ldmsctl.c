@@ -1734,6 +1734,153 @@ static void resp_stream_client_dump(ldmsd_req_hdr_t resp, size_t len,
 	json_entity_free(json);
 }
 
+static void help_subscribe()
+{
+	printf( "\nSubscribe to a stream\n"
+		"The aggregator will listen for published data on the specified stream.\n\n"
+		"Parameters:\n"
+		"     name=   The stream name\n");
+}
+
+static void help_xprt_stats()
+{
+	printf( "\nQuery the daemon's transport telemetry data\n\n"
+		"Parameters:\n"
+		"     [reset=]   If true, reset the statistics after returning them\n");
+}
+
+static void resp_xprt_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
+	int rc;
+	json_parser_t parser;
+	json_entity_t stats, op_stats, a, v;
+
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
+		return;
+	}
+	rc = json_parse_buffer(parser, (char *)attr->attr_value, len, &stats);
+	if (rc) {
+		printf("Syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+
+	json_parser_free(parser);
+
+	if (stats->type != JSON_DICT_VALUE) {
+		printf("Unrecognized xprt stats format\n");
+		json_entity_free(stats);
+		return;
+	}
+
+	printf("          Summary over %.2lf seconds\n",
+			json_value_float(json_value_find(stats, "duration")));
+	printf("%-12s %-12s %-12s %-12s\n",
+			"Connected", "Connecting", "Listening", "Close");
+	printf("------------ ------------- ------------ ------------\n");
+	printf("%12ld %12ld %12ld %12ld\n\n",
+			json_value_int(json_value_find(stats, "connect_count")),
+			json_value_int(json_value_find(stats, "connecting_count")),
+			json_value_int(json_value_find(stats, "listen_count")),
+			json_value_int(json_value_find(stats, "close_count")));
+	printf("          Rate/s\n");
+	printf("%-12s %-12s %-12s %-12s %-12s\n",
+			"Connect", "Conn Req", "Disconnect", "Reject", "Auth Fail");
+	printf("------------ ------------ ------------- ------------ ------------\n");
+	printf("%12.2lf %12.2lf %12.2lf %12.2lf %12.2lf\n\n",
+			json_value_float(json_value_find(stats, "connect_rate_s")),
+			json_value_float(json_value_find(stats, "connect_request_rate_s")),
+			json_value_float(json_value_find(stats, "disconnect_rate_s")),
+			json_value_float(json_value_find(stats, "reject_rate_s")),
+			json_value_float(json_value_find(stats, "auth_fail_rate_s")));
+	printf("%-12s %-12s %-12s %-12s %-12s\n",
+			"Operation", "Count", "Min(us)", "Mean(us)", "Max(us)");
+	printf("------------ ------------ ------------- ------------ ------------\n");
+	op_stats = json_value_find(stats, "op_stats");
+	for (a = json_attr_first(op_stats); a; a = json_attr_next(a)) {
+		v = json_attr_value(a);
+		printf("%-12s %12ld %12ld %12ld %12ld\n",
+			json_attr_name(a)->str,
+			json_value_int(json_value_find(v, "count")),
+			json_value_int(json_value_find(v, "min_us")),
+			json_value_int(json_value_find(v, "mean_us")),
+			json_value_int(json_value_find(v, "max_us")));
+	}
+	return;
+}
+
+static void help_thread_stats()
+{
+	printf("\nQuery the daemon's thread utilization statistics\n\n");
+}
+
+static void resp_thread_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
+	int rc;
+	json_parser_t parser;
+	json_entity_t stats, entries, e, u;
+
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
+		return;
+	}
+	rc = json_parse_buffer(parser, (char *)attr->attr_value, len, &stats);
+	json_parser_free(parser);
+	if (rc) {
+		printf("Syntax error parsing JSON string\n");
+		return;
+	}
+
+	if (stats->type != JSON_DICT_VALUE) {
+		printf("Unrecognized thread stats format\n");
+		goto free_entity;
+	}
+
+	printf("%-16s %-12s %-12s\n", "Name", "Samples", "Utilization");
+	printf("---------------- ------------ ------------\n");
+	entries = json_value_find(stats, "entries");
+	if (entries->type != JSON_LIST_VALUE) {
+		printf("Unrecognized thread stats format\n");
+		goto free_entity;
+	}
+
+	for (e = json_item_first(entries); e; e = json_item_next(e)) {
+		printf("%16s %12ld ",
+				json_value_str(json_value_find(e, "name"))->str,
+				json_value_int(json_value_find(e, "sample_count")));
+		u = json_value_find(e, "utilization");
+		if (u->type == JSON_INT_VALUE)
+			printf("%12ld\n", json_value_int(u));
+		else
+			printf("%12g\n", json_value_float(u));
+	}
+
+ free_entity:
+ 	json_entity_free(stats);
+ 	return;
+}
+
 static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
 static int handle_source(struct ldmsctl_ctrl *ctrl, char *path);
 static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
@@ -1793,7 +1940,9 @@ static struct command command_tbl[] = {
 	{ "strgp_start", LDMSD_STRGP_START_REQ, NULL, help_strgp_start, resp_generic },
 	{ "strgp_status", LDMSD_STRGP_STATUS_REQ, NULL, help_strgp_status, resp_strgp_status },
 	{ "strgp_stop", LDMSD_STRGP_STOP_REQ, NULL, help_strgp_stop, resp_generic },
+	{ "subscribe", LDMSD_STREAM_SUBSCRIBE_REQ, NULL, help_subscribe, resp_generic },
 	{ "term", LDMSD_PLUGN_TERM_REQ, NULL, help_term, resp_generic },
+	{ "thread_stats", LDMSD_THREAD_STATS_REQ, NULL, help_thread_stats, resp_thread_stats },
 	{ "udata", LDMSD_SET_UDATA_REQ, NULL, help_udata, resp_generic },
 	{ "udata_regex", LDMSD_SET_UDATA_REGEX_REQ, NULL, help_udata_regex, resp_generic },
 	{ "updtr_add", LDMSD_UPDTR_ADD_REQ, NULL, help_updtr_add, resp_generic },
@@ -1808,6 +1957,7 @@ static struct command command_tbl[] = {
 	{ "updtr_task", LDMSD_UPDTR_TASK_REQ, NULL, help_updtr_task, resp_updtr_task },
 	{ "usage", LDMSD_PLUGN_LIST_REQ, NULL, help_usage, resp_usage },
 	{ "version", LDMSD_VERSION_REQ, NULL, help_version , resp_generic },
+	{ "xprt_stats", LDMSD_XPRT_STATS_REQ, NULL, help_xprt_stats, resp_xprt_stats },
 };
 
 void __print_all_command()
