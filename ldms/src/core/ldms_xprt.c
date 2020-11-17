@@ -123,6 +123,11 @@ ldms_t ldms_xprt_get(ldms_t x)
 	return x;
 }
 
+static int ldms_xprt_connected(struct ldms_xprt *x)
+{
+	assert(x && x->ref_count);
+	return (x->disconnected == 0 && x->zap_ep && zap_ep_connected(x->zap_ep));
+}
 LIST_HEAD(xprt_list, ldms_xprt) xprt_list;
 ldms_t ldms_xprt_first()
 {
@@ -350,6 +355,8 @@ static void send_dir_update(struct ldms_xprt *x,
 	size_t json_data_len;
 	struct ldms_reply *reply = NULL;
 
+	if (!ldms_xprt_connected(x))
+		return;
 	assert(t != LDMS_DIR_LIST);
 
 	hdr_len = sizeof(struct ldms_reply_hdr)
@@ -408,6 +415,9 @@ static void send_req_notify_reply(struct ldms_xprt *x,
 	size_t len;
 	int rc = 0;
 	struct ldms_reply *reply;
+
+	if (!ldms_xprt_connected(x))
+		return;
 
 	len = sizeof(struct ldms_reply_hdr) + e->len;
 	reply = malloc(len);
@@ -1440,9 +1450,8 @@ out:
 int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 {
 	assert(x == s->xprt);
-	if (x->disconnected || !zap_ep_connected(x->zap_ep)) {
+	if (!ldms_xprt_connected(x))
 		return ENOTCONN;
-	}
 
 	if (!s->lmap || !s->rmap)
 		return EINVAL;
@@ -1489,6 +1498,9 @@ int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 {
 	int cmd = ntohl(req->hdr.cmd);
 	int rc;
+
+	if (!ldms_xprt_connected(x))
+		return ENOTCONN;
 
 	switch (cmd) {
 	case LDMS_CMD_LOOKUP:
@@ -2948,6 +2960,9 @@ int ldms_xprt_send(ldms_t _x, char *msg_buf, size_t msg_len)
 	struct ldms_context *ctxt;
 	int rc;
 
+	if (!ldms_xprt_connected(x))
+		return ENOTCONN;
+
 	assert(msg_len > 4);
 	if (!msg_buf)
 		return EINVAL;
@@ -2998,7 +3013,7 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 	struct ldms_context *ctxt;
 	size_t len;
 
-	if (!zap_ep_connected(x->zap_ep))
+	if (!ldms_xprt_connected(x))
 		return ENOTCONN;
 
 	if (LDMS_XPRT_AUTH_GUARD(x))
@@ -3055,6 +3070,9 @@ int __ldms_remote_dir_cancel(ldms_t _x)
 	struct ldms_context *ctxt;
 	size_t len;
 
+	if (!ldms_xprt_connected(x))
+		return ENOTCONN;
+
 	if (LDMS_XPRT_AUTH_GUARD(x))
 		return EPERM;
 
@@ -3101,7 +3119,7 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	struct ldms_rbuf_desc *rbd;
 	size_t len;
 
-	if (!zap_ep_connected(x->zap_ep))
+	if (!ldms_xprt_connected(x))
 		return ENOTCONN;
 
 	if (LDMS_XPRT_AUTH_GUARD(x))
@@ -3180,6 +3198,9 @@ static int send_req_notify(ldms_t _x, ldms_set_t s, uint32_t flags,
 	struct ldms_request *req;
 	struct ldms_context *ctxt;
 	size_t len;
+
+	if (!ldms_xprt_connected(x))
+		return ENOTCONN;
 
 	ldms_xprt_get(x);
 	pthread_mutex_lock(&x->lock);
@@ -3310,6 +3331,9 @@ static int send_cancel_notify(ldms_t _x, ldms_set_t s)
 	struct ldms_request req;
 	size_t len;
 
+	if (!ldms_xprt_connected(x))
+		return ENOTCONN;
+
 	len = format_cancel_notify_req
 		(&req, (uint64_t)(unsigned long)s->local_notify_xid,
 		 s->remote_set_id);
@@ -3358,6 +3382,9 @@ static int send_req_register_push(struct ldms_rbuf_desc *r, uint32_t push_change
 	size_t len;
 	int rc;
 
+	if (!ldms_xprt_connected(x))
+		return ENOTCONN;
+
 	ldms_xprt_get(x);
 	rc = __xprt_set_access_check(x, r->set, LDMS_ACCESS_WRITE);
 	/* check if the remote can write to us */
@@ -3400,6 +3427,9 @@ static int send_req_cancel_push(struct ldms_rbuf_desc *r)
 	struct ldms_request req;
 	size_t len;
 	int rc = 0;
+
+	if (!ldms_xprt_connected(x))
+		return ENOTCONN;
 
 	ldms_xprt_get(x);
 	len = sizeof(struct ldms_request_hdr)
