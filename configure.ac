@@ -430,9 +430,10 @@ AC_ARG_WITH([slurm],
 	[AS_HELP_STRING([--with-slurm],
 			[support SLURM jobid information and more @<:@default=check@:>@])],
 			[AS_IF([test "x$withval" != xyes -a "x$withval" != xno],
-				[SLURM_CFLAGS="-I $withval"])],
+				[SLURM_CFLAGS="-I $withval/include"])],
 	[with_slurm=check])
 have_slurm=no
+AC_SUBST([SLURM_CFLAGS])
 AS_IF([test "x$with_slurm" != no],[
 	save_CFLAGS=$CFLAGS
 	CFLAGS="$CFLAGS $SLURM_CFLAGS"
