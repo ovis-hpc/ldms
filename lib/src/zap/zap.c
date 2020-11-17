@@ -568,8 +568,8 @@ int zap_ep_closed(zap_ep_t ep)
 
 int zap_ep_connected(zap_ep_t ep)
 {
-	assert(ep->ref_count);
-	return (ep->state == ZAP_EP_CONNECTED);
+	assert(ep && ep->ref_count);
+	return (ep != NULL && ep->state == ZAP_EP_CONNECTED);
 }
 
 zap_ep_state_t zap_ep_state(zap_ep_t ep)
