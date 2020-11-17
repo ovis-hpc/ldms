@@ -164,6 +164,8 @@ static void *cleanup_proc(void *arg)
 	job_data_t job;
 	LIST_HEAD(,job_data) delete_list;
 	LIST_INIT(&delete_list);
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
+
 	while (1) {
 		sleep(papi_job_expiry);
 		now = time(NULL);
