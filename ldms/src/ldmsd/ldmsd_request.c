@@ -6110,8 +6110,9 @@ static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
 			       "Memory allocation failed");
 		goto send_reply;
 	}
+
 	ent->client = ldmsd_stream_subscribe(stream_name, stream_republish_cb,
-						reqc->xprt->ldms.ldms);
+					ldms_xprt_get(reqc->xprt->ldms.ldms));
 	if (!ent->client) {
 		__RSE_rbt_unlock();
 		free(ent);
@@ -6247,6 +6248,7 @@ void stream_xprt_term(ldms_t x)
 		__RSE_del(ent);
 		ldmsd_stream_close(ent->client);
 		__RSE_free(ent);
+		ldms_xprt_put(x);
 	}
 	__RSE_rbt_unlock();
 }
