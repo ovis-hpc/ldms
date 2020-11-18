@@ -46,9 +46,6 @@ a unique hex value derived from the data selection options. If both schema and a
 component_id=<comp_id>
 .br
 The component id numerical value.
-with_jobid=<bool>
-.r
-Option to collect job id with set or 0 if not.
 .TP
 io=<bool>
 .br
