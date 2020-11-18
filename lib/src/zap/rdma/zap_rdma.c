@@ -1414,6 +1414,9 @@ handle_addr_resolved(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 	assert(rep->ep.state == ZAP_EP_CONNECTING);
 	DLOG("addr_resolved cm_id %p (rep %p), device %s\n",
 			rep->cm_id, rep, rep->cm_id->verbs->device->name);
+	if (0 == strncasecmp("hfi1", rep->cm_id->verbs->device->name, 4)) {
+		rep->dev_type = Z_RDMA_DEV_HFI1;
+	}
 	ret = rdma_resolve_route(cma_id, 2000);
 	if (ret) {
 		DLOG("removing cm_channel %p fd %d (rep %p)\n", rep->cm_channel, rep->cm_channel->fd, rep);
@@ -1897,6 +1900,9 @@ z_rdma_listen(zap_ep_t ep, struct sockaddr *sin, socklen_t sa_len)
 	}
 	DLOG("listening cm_id %p created (rep %p), device %s\n",
 			rep->cm_id, rep, rep->cm_id->verbs->device->name);
+	if (0 == strncasecmp("hfi1", rep->cm_id->verbs->device->name, 4)) {
+		rep->dev_type = Z_RDMA_DEV_HFI1;
+	}
 
 	cm_event.events = EPOLLIN | EPOLLOUT;
 	cm_event.data.ptr = rep;

@@ -201,6 +201,10 @@ struct z_rdma_ep {
 #endif /* ZAP_DEBUG */
 
 	LIST_ENTRY(z_rdma_ep) ep_link;
+	enum {
+		Z_RDMA_DEV_OTHER,
+		Z_RDMA_DEV_HFI1,  /* omnipath */
+	} dev_type;
 };
 
 #endif
