@@ -6235,7 +6235,7 @@ void stream_xprt_term(ldms_t x)
 	if (rc)
 		return;
 	__RSE_rbt_lock();
-	rbn = rbt_find_lub(&__RSE_rbt, &key);
+	rbn = rbt_find_lub(&__RSE_rbt, key);
 	while (rbn) {
 		ent = container_of(rbn, struct __RSE_s, rbn);
 		if (key->addr_len != ent->key.addr_len)
