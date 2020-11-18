@@ -205,6 +205,8 @@ struct z_rdma_ep {
 		Z_RDMA_DEV_OTHER,
 		Z_RDMA_DEV_HFI1,  /* omnipath */
 	} dev_type;
+	int cm_channel_enabled;
+	int cq_channel_enabled;
 };
 
 #endif

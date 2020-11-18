@@ -253,17 +253,74 @@ static int __enable_cq_events(struct z_rdma_ep *rep)
 	/* handle CQ events */
 	struct epoll_event cq_event;
 	cq_event.data.ptr = rep;
-	cq_event.events = EPOLLIN | EPOLLOUT;
+	cq_event.events = EPOLLIN;
 
 	/* Release when deleting the cq_channel fd from the epoll */
 	__zap_get_ep(&rep->ep);
 	DLOG("adding cq_channel %p fd %d (rep %p)\n", rep->cq_channel, rep->cq_channel->fd, rep);
 	if (epoll_ctl(cq_fd, EPOLL_CTL_ADD, rep->cq_channel->fd, &cq_event)) {
-		LOG("RMDA: epoll_ctl CTL_ADD failed\n");
+		LOG("RMDA: epoll_ctl CTL_ADD failed, "
+				"cq_channel %p fd %d rep %p\n",
+				rep->cq_channel, rep->cq_channel->fd, rep);
 		__zap_put_ep(&rep->ep); /* Taken before adding cq_channel fd to epoll*/
 		return errno;
 	}
+	rep->cq_channel_enabled = 1;
 
+	return 0;
+}
+
+static int __disable_cq_events(struct z_rdma_ep *rep)
+{
+	struct epoll_event ignore;
+	if (!rep->cq_channel_enabled)
+		return ENOENT;
+	DLOG("removing cq_channel %p fd %d (rep %p)\n",
+			rep->cq_channel, rep->cq_channel->fd, rep);
+	if (epoll_ctl(cq_fd, EPOLL_CTL_DEL, rep->cq_channel->fd, &ignore)) {
+		LOG("RMDA: epoll_ctl CTL_ADD failed, "
+				"cq_channel %p fd %d rep %p\n",
+				rep->cq_channel, rep->cq_channel->fd, rep);
+		return errno;
+	}
+	rep->cq_channel_enabled = 0;
+	__zap_put_ep(&rep->ep); /* taken in __enable_cq_events() */
+	return 0;
+}
+
+static int __enable_cm_events(struct z_rdma_ep *rep)
+{
+	struct epoll_event cm_event;
+	cm_event.events = EPOLLIN;
+	cm_event.data.ptr = rep;
+	__zap_get_ep(&rep->ep); /* release in __disable_cm_events */
+	DLOG("adding cm_channel %p fd %d (rep %p)\n", rep->cm_channel, rep->cm_channel->fd, rep);
+	if (epoll_ctl(cm_fd, EPOLL_CTL_ADD, rep->cm_channel->fd, &cm_event)) {
+		LOG("RMDA: epoll_ctl CTL_ADD failed, "
+				"cm_channel %p fd %d rep %p\n",
+				rep->cm_channel, rep->cm_channel->fd, rep);
+		__zap_put_ep(&rep->ep);
+		return errno;
+	}
+	rep->cm_channel_enabled = 1;
+	return 0;
+}
+
+static int __disable_cm_events(struct z_rdma_ep *rep)
+{
+	struct epoll_event ignore;
+	if (!rep->cm_channel_enabled)
+		return ENOENT;
+	DLOG("removing cm_channel %p fd %d (rep %p)\n",
+			rep->cm_channel, rep->cm_channel->fd, rep);
+	if (epoll_ctl(cm_fd, EPOLL_CTL_DEL, rep->cm_channel->fd, &ignore)) {
+		LOG("RMDA: epoll_ctl CTL_ADD failed, "
+				"cm_channel %p fd %d rep %p\n",
+				rep->cm_channel, rep->cm_channel->fd, rep);
+		return errno;
+	}
+	rep->cm_channel_enabled = 0;
+	__zap_put_ep(&rep->ep); /* taken in __enable_cm_events() */
 	return 0;
 }
 
@@ -283,7 +340,7 @@ static void __rdma_teardown_conn(struct z_rdma_ep *ep)
 	 * support Linux version < 2.6.9
 	 */
 	struct epoll_event ignore;
-	if (rep->cm_channel) {
+	if (rep->cm_channel_enabled) {
 		DLOG("removing cm_channel %p fd %d (rep %p)\n", rep->cm_channel, rep->cm_channel->fd, rep);
 		if (epoll_ctl(cm_fd, EPOLL_CTL_DEL, rep->cm_channel->fd, &ignore))
 			LOG("RDMA: epoll_ctl delete cm_channel "
@@ -327,11 +384,15 @@ static void __rdma_teardown_conn(struct z_rdma_ep *ep)
 		rep->cm_channel = NULL;
 	}
 
-	if (rep->cq_channel) {
-		DLOG("removing cq_channel %p fd %d (rep %p)\n", rep->cq_channel, rep->cq_channel->fd, rep);
+	if (rep->cq_channel_enabled) {
+		DLOG("removing cq_channel %p fd %d (rep %p)\n",
+				rep->cq_channel, rep->cq_channel->fd, rep);
 		if (epoll_ctl(cq_fd, EPOLL_CTL_DEL, rep->cq_channel->fd, &ignore))
 			LOG("RDMA: epoll_ctl delete cq_channel "
 					"error %d\n", errno);
+	}
+
+	if (rep->cq_channel) {
 		DLOG("destroying cq_channel %p (rep %p)\n", rep->cq_channel, rep);
 		if (ibv_destroy_comp_channel(rep->cq_channel))
 			LOG("RDMA: Error %d : "
@@ -747,7 +808,6 @@ static zap_err_t z_rdma_connect(zap_ep_t ep,
 				char *data, size_t data_len)
 {
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
-	struct epoll_event cm_event;
 	zap_err_t zerr;
 	int rc;
 
@@ -777,11 +837,8 @@ static zap_err_t z_rdma_connect(zap_ep_t ep,
 	rc = rdma_create_id(rep->cm_channel, &rep->cm_id, rep, RDMA_PS_TCP);
 	if (rc)
 		goto err_1;
-	cm_event.events = EPOLLIN | EPOLLOUT;
-	cm_event.data.ptr = rep;
-	__zap_get_ep(&rep->ep); /* Release when disconnected */
-	DLOG("adding cm_channel %p fd %d (rep %p)\n", rep->cm_channel, rep->cm_channel->fd, rep);
-	rc = epoll_ctl(cm_fd, EPOLL_CTL_ADD, rep->cm_channel->fd, &cm_event);
+	__zap_get_ep(&rep->ep); /* Release when disconnected or conn error */
+	rc = __enable_cm_events(rep);
 	if (rc)
 		goto err_2;
 
@@ -799,8 +856,7 @@ static zap_err_t z_rdma_connect(zap_ep_t ep,
 	 * re-connecting on the same cm_id, so blow everything away
 	 * and start over next time.
 	 */
-	DLOG("removing cm_channel %p fd %d (rep %p)\n", rep->cm_channel, rep->cm_channel->fd, rep);
-	(void)epoll_ctl(cm_fd, EPOLL_CTL_DEL, rep->cm_channel->fd, NULL);
+	__disable_cm_events(rep);
  err_2:
 	__zap_put_ep(&rep->ep);
  err_1:
@@ -1316,25 +1372,7 @@ static void *cq_thread_proc(void *arg)
 				 * The last argument that is ignored needs to be
 				 * non-NULL to support Linux version < 2.6.9
 				 */
-				struct epoll_event ignore;
-				DLOG("removing cq_channel %p fd %d (rep %p)\n",
-						rep->cq_channel,
-						rep->cq_channel->fd, rep);
-				if (epoll_ctl(cq_fd, EPOLL_CTL_DEL,
-						rep->cq_channel->fd, &ignore)) {
-					LOG("RDMA: epoll_ctl: "
-						"delete cq_channel error %d\n",
-						errno);
-				} else {
-					/*
-					 * Taken when adding the cq_channel
-					 * fd to the epoll
-					 */
-					DLOG("RDMA: %p, put reference back "
-						"after removing the cq_channel "
-						"fd\n", rep);
-					__zap_put_ep(&rep->ep);
-				}
+				__disable_cq_events(rep);
 
 #ifdef DEBUG
 				if (rep->deferred_disconnected == -1) {
@@ -1419,9 +1457,7 @@ handle_addr_resolved(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 	}
 	ret = rdma_resolve_route(cma_id, 2000);
 	if (ret) {
-		DLOG("removing cm_channel %p fd %d (rep %p)\n", rep->cm_channel, rep->cm_channel->fd, rep);
-		(void)epoll_ctl(cm_fd, EPOLL_CTL_DEL,
-				rep->cm_channel->fd, NULL);
+		__disable_cm_events(rep);
 		zev.type = ZAP_EVENT_CONNECT_ERROR;
 		zev.status = ZAP_ERR_ADDRESS;
 		zap_ep_change_state(&rep->ep, ZAP_EP_CONNECTING, ZAP_EP_ERROR);
@@ -1507,9 +1543,7 @@ handle_route_resolved(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 		goto err;
 	return;
 err:
-	DLOG("removing cm_channel %p fd %d (rep %p)\n", rep->cm_channel, rep->cm_channel->fd, rep);
-	(void)epoll_ctl(cm_fd, EPOLL_CTL_DEL,
-			rep->cm_channel->fd, NULL);
+	__disable_cm_events(rep);
 	zev.type = ZAP_EVENT_CONNECT_ERROR;
 	zev.status = ZAP_ERR_ROUTE;
 	rep->ep.state = ZAP_EP_ERROR;
@@ -1524,6 +1558,7 @@ handle_conn_error(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id, int reason)
 	zev.status = reason;
 	if (rep->cq_channel)
 		__enable_cq_events(rep);
+	__disable_cm_events(rep);
 	rep->ep.state = ZAP_EP_ERROR;
 	switch (rep->ep.state) {
 	case ZAP_EP_ACCEPTING:
@@ -1614,8 +1649,9 @@ handle_rejected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id,
 
 	__enable_cq_events(rep);
 	rep->ep.state = ZAP_EP_ERROR;
+	__disable_cm_events(rep);
 	rep->ep.cb(&rep->ep, &zev);
-	__zap_put_ep(&rep->ep); /* Release the reference taken when the endpoint got created. */
+	__zap_put_ep(&rep->ep); /* taken in z_rdma_connect() */
 }
 
 static void
@@ -1699,6 +1735,8 @@ handle_disconnected(struct z_rdma_ep *rep, struct rdma_cm_id *cma_id)
 		break;
 	}
 	pthread_mutex_unlock(&rep->ep.lock);
+
+	__disable_cm_events(rep);
 
 	pthread_mutex_lock(&rep->credit_lock);
 	__flush_io_q(rep);
@@ -1866,7 +1904,6 @@ z_rdma_listen(zap_ep_t ep, struct sockaddr *sin, socklen_t sa_len)
 	zap_err_t zerr;
 	int rc;
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
-	struct epoll_event cm_event;
 	char host[1024] = "";
 	char svc[256] = "";
 
@@ -1898,21 +1935,18 @@ z_rdma_listen(zap_ep_t ep, struct sockaddr *sin, socklen_t sa_len)
 		LOG("%s: %s failed. zerr %d rc %d\n", __FUNCTION__, "rdma_bind_addr", (int)zerr, rc);
 		goto err_2;
 	}
+
 	DLOG("listening cm_id %p created (rep %p), device %s\n",
 			rep->cm_id, rep, rep->cm_id->verbs->device->name);
+
 	if (0 == strncasecmp("hfi1", rep->cm_id->verbs->device->name, 4)) {
 		rep->dev_type = Z_RDMA_DEV_HFI1;
 	}
 
-	cm_event.events = EPOLLIN | EPOLLOUT;
-	cm_event.data.ptr = rep;
 	zerr = ZAP_ERR_RESOURCE;
-	DLOG("adding cm_channel %p fd %d (rep %p)\n", rep->cm_channel, rep->cm_channel->fd, rep);
-	rc = epoll_ctl(cm_fd, EPOLL_CTL_ADD, rep->cm_channel->fd, &cm_event);
-	if (rc) {
-		LOG("%s: %s failed. zerr %d rc %d\n", __FUNCTION__, "epoll_ctl", (int)zerr, rc);
-		goto err_3;
-	}
+	rc = __enable_cm_events(rep);
+	if (rc)
+		goto err_2;
 
 	/*
 	 * Asynchronous listen. Connection requests handled in
@@ -1931,9 +1965,7 @@ z_rdma_listen(zap_ep_t ep, struct sockaddr *sin, socklen_t sa_len)
 	return ZAP_ERR_OK;
 
  err_3:
-	DLOG("removing cm_channel %p fd %d (rep %p)\n", rep->cm_channel, rep->cm_channel->fd, rep);
-	rc = epoll_ctl(cm_fd, EPOLL_CTL_DEL,
-			rep->cm_channel->fd, NULL);
+	__disable_cm_events(rep);
  err_2:
 	DLOG("destroying cm_id %p (rep %p)\n", rep->cm_id, rep);
 	rdma_destroy_id(rep->cm_id);
