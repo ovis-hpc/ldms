@@ -68,6 +68,7 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_jobid.h"
+#include "sampler_base.h"
 
 #ifdef ENABLE_JOBID
 
@@ -115,6 +116,7 @@ static ldmsd_msg_log_f msglog;
 static char *producer_name;
 static ldms_schema_t schema;
 static uint64_t compid = 0;
+static struct base_auth auth;
 
 static struct ldms_job_info ji;
 
@@ -325,8 +327,7 @@ out:
 }
 
 static int create_metric_set(const char *instance_name, char* schema_name,
-			     uid_t uid, bool uid_is_set, gid_t gid, bool gid_is_set,
-			     int perm, bool perm_is_set, int set_array_card)
+			     int set_array_card)
 {
 	int rc = 0;
 
@@ -404,14 +405,9 @@ static int create_metric_set(const char *instance_name, char* schema_name,
 		msglog(LDMSD_LERROR, SAMP ": ldms_set_new fail.\n");
 		goto err;
 	}
+	base_auth_set(&auth, set);
 	set_meta_new = 1;
 
-        if (uid_is_set)
-                ldms_set_uid_set(set, uid);
-        if (gid_is_set)
-                ldms_set_gid_set(set, gid);
-        if (perm_is_set)
-                ldms_set_perm_set(set, perm);
 	rc = ldms_set_publish(set);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": ldms_set_publish fail.\n");
@@ -493,6 +489,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	if (rc != 0){
 		return rc;
 	}
+ 
+	rc = base_auth_parse(avl, &auth, msglog);
+	if (rc != 0){
+		return rc;
+	}
 
 	producer_name = av_value(avl, "producer");
 	if (!producer_name) {
@@ -540,34 +541,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	metric_name = (char *)JOBID_COLNAME;
 	msglog(LDMSD_LDEBUG,"Jobid file is '%s'\n", procfile);
 
-
-
-	uid_t uid = 0;
-	gid_t gid = 0;
-	int perm = 0777;
-	bool uid_is_set = false;
-	bool gid_is_set = false;
-	bool perm_is_set = false;
-	value = av_value(avl, "uid");
-	if (value) {
-		uid = strtol(value, NULL, 0);
-		uid_is_set = true;
-	}
-	value = av_value(avl, "gid");
-	if (value) {
-		gid = strtol(value, NULL, 0);
-		gid_is_set = true;
-	}
-	value = av_value(avl, "perm");
-	if (value) {
-		perm = strtol(value, NULL, 0);
-		perm_is_set = true;
-	}
 	value = av_value(avl, "set_array_card");
 	int set_array_card = (value)?(strtol(value, NULL, 0)):(1);
 
-	rc = create_metric_set(iname, sname, uid, uid_is_set, gid, gid_is_set,
-			       perm, perm_is_set, set_array_card);
+	rc = create_metric_set(iname, sname, set_array_card);
 	if (rc) {
 		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		return rc;
