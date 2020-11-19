@@ -99,6 +99,9 @@ static int cleanup_requested = 0;
 
 void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap);
 
+static char * __thread_stats_as_json(size_t *json_sz);
+static char * __xprt_stats_as_json(size_t *json_sz);
+
 __attribute__((format(printf, 1, 2)))
 static inline
 void __dlog(const char *fmt, ...)
@@ -420,10 +423,10 @@ static struct request_handler_entry request_handler[] = {
 
 	/* Transport Stats Request */
 	[LDMSD_XPRT_STATS_REQ] = {
-		LDMSD_XPRT_STATS_REQ, xprt_stats_handler, XUG
+		LDMSD_XPRT_STATS_REQ, xprt_stats_handler, XALL
 	},
 	[LDMSD_THREAD_STATS_REQ] = {
-		LDMSD_THREAD_STATS_REQ, thread_stats_handler, XUG
+		LDMSD_THREAD_STATS_REQ, thread_stats_handler, XALL
 	},
 
 	/* FAILOVER user commands */
@@ -4758,31 +4761,21 @@ out:
 
 int __daemon_status_json_obj(ldmsd_req_ctxt_t reqc)
 {
-	int rc = 0;
+	int rc;
+	char *json_s;
+	size_t json_sz;
 
-	extern int ev_thread_count;
-	extern pthread_t *ev_thread;
-	extern int *ev_count;
-	int i;
-
-	rc = linebuf_printf(reqc, "[");
+	rc = linebuf_printf(reqc, "{\"state\":\"ready\",\n");
 	if (rc)
 		return rc;
-	for (i = 0; i < ev_thread_count; i++) {
-		if (i) {
-			rc = linebuf_printf(reqc, ",\n");
-			if (rc)
-				return rc;
-		}
-
-		rc = linebuf_printf(reqc,
-				"{ \"thread\":\"%p\","
-				"\"task_count\":\"%d\"}",
-				(void *)ev_thread[i], ev_count[i]);
-		if (rc)
-			return rc;
-	}
-	rc = linebuf_printf(reqc, "]");
+	json_s = __thread_stats_as_json(&json_sz);
+	if (!json_s)
+		return ENOMEM;
+	rc = linebuf_printf(reqc, "\"thread_stats\":%s\n", json_s);
+	free(json_s);
+	if (rc)
+		return rc;
+	rc = linebuf_printf(reqc, "}");
 	return rc;
 }
 
@@ -5538,16 +5531,15 @@ struct op_summary {
 	uint64_t op_mean_us;
 };
 
+#define __APPEND_SZ 4096
 #define __APPEND(...) do {					\
-	len = snprintf(s, sz, __VA_ARGS__);			\
+	int len = snprintf(s, sz, __VA_ARGS__);			\
 	if (len >= sz) {					\
 		uint64_t off = (uint64_t)s - (uint64_t)buff;	\
-		sz += XPRT_BUFLEN;				\
+		sz += __APPEND_SZ;				\
 		s = realloc(buff, sz);				\
 		if (!s) {					\
-			rc = ENOMEM;				\
-			errmsg = LDMSD_ENOMEM_MSG;		\
-			goto err;				\
+			goto __APPEND_ERR;				\
 		}						\
 		buff = s;					\
 		s = &buff[off];					\
@@ -5558,18 +5550,14 @@ struct op_summary {
 	break;							\
 } while(1)
 
-static int xprt_stats_handler(ldmsd_req_ctxt_t req)
+static char *__xprt_stats_as_json(size_t *json_sz)
 {
-	#define XPRT_BUFLEN 4096
-	char *buff, *s;
-	size_t sz = XPRT_BUFLEN;
-	int rc, len;
-	uint32_t term;
-	const char *errmsg = NULL;
-	ldmsd_req_attr_t attr;
-	struct ldms_xprt *x;
+	char *buff;
+	char *s;
+	size_t sz = __APPEND_SZ;
 	struct ldms_xprt_stats xs;
 	struct op_summary op_sum[LDMS_XPRT_OP_COUNT];
+	struct ldms_xprt *x;
 	enum ldms_xprt_ops_e op_e;
 	int xprt_count = 0;
 	int xprt_connect_count = 0;
@@ -5586,28 +5574,12 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 	struct ldms_xprt_rate_data rate_data;
 	int reset = 0;
 
-	(void)clock_gettime(CLOCK_REALTIME, &start);
-
-	s = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
-	if (s) {
-		if (0 != strcasecmp(s, "false"))
-			reset = 1;
-	}
-
 	ldms_xprt_rate_data(&rate_data, reset);
 
 	buff = malloc(sz);
-	if (!buff) {
-		rc = ENOMEM;
-		errmsg = LDMSD_ENOMEM_MSG;
-		goto err;
-	}
-	attr = (ldmsd_req_attr_t)buff;
-	attr->discrim = 1;
-	attr->attr_id = LDMSD_ATTR_JSON;
-	/* len will be assigned after the str is populated */
-	s = buff + sizeof(*attr);
-	sz -= sizeof(*attr);
+	if (!buff)
+		return NULL;
+	s = buff;
 
 	memset(op_sum, 0, sizeof(op_sum));
 	for (op_e = 0; op_e < LDMS_XPRT_OP_COUNT; op_e++)
@@ -5729,29 +5701,52 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req)
 	}
 	__APPEND(" }\n"); /* op_stats */
 	__APPEND("}");
-	sz = s - buff + 1;
-	attr->attr_len = sz - sizeof(*attr);
-	ldmsd_hton_req_attr(attr);
-	rc = ldmsd_append_reply(req, buff, sz, LDMSD_REQ_SOM_F);
-	if (rc) {
-		errmsg = "append reply error";
-		goto err;
+	*json_sz = s - buff + 1;
+	return buff;
+__APPEND_ERR:
+	return NULL;
+}
+
+static int xprt_stats_handler(ldmsd_req_ctxt_t req)
+{
+	char *s, *json_s;
+	size_t json_sz;
+	int reset = 0;
+	struct ldmsd_req_attr_s attr;
+
+	s = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
+	if (s) {
+		if (0 != strcasecmp(s, "false"))
+			reset = 1;
 	}
-	term = 0;
-	rc = ldmsd_append_reply(req, (void*)&term, sizeof(term),
-				LDMSD_REQ_EOM_F);
-	if (rc) {
-		errmsg = "append reply error";
+
+	json_s = __xprt_stats_as_json(&json_sz);
+	if (!json_s)
 		goto err;
-	}
-	free(buff);
+
+	attr.discrim = 1;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	attr.attr_len = json_sz;
+	ldmsd_hton_req_attr(&attr);
+
+	if (ldmsd_append_reply(req, (const char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F))
+		goto err;
+
+	if (ldmsd_append_reply(req, json_s, json_sz, 0))
+		goto err;
+
+	attr.discrim = 0;
+	if (ldmsd_append_reply(req, (const char *)&attr.discrim, sizeof(attr.discrim), LDMSD_REQ_EOM_F))
+		goto err;
+
+	free(json_s);
 	return 0;
+
 err:
-	if (buff)
-		free(buff);
-	req->errcode = rc;
-	ldmsd_send_req_response(req, errmsg);
-	return rc;
+	free(json_s);
+	req->errcode = ENOMEM;
+	ldmsd_send_req_response(req, "Memory allocation error.");
+	return ENOMEM;
 }
 
 /*
@@ -5767,46 +5762,24 @@ err:
  *   ]
  * }
  */
-static int thread_stats_handler(ldmsd_req_ctxt_t req)
+static char * __thread_stats_as_json(size_t *json_sz)
 {
-	#define XPRT_BUFLEN 4096
-	char *buff = NULL, *s;
-	size_t sz = XPRT_BUFLEN;
-	int i, rc, len, reset = 0;
-	uint32_t term;
-	const char *errmsg = NULL;
-	ldmsd_req_attr_t attr;
+	char *buff, *s;
+	size_t sz = __APPEND_SZ;
+	int i;
 	struct timespec start, end;
 	struct zap_thrstat_result *res;
 
 	(void)clock_gettime(CLOCK_REALTIME, &start);
 
-	s = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
-	if (s) {
-		if (0 != strcasecmp(s, "false"))
-			reset = 1;
-	}
-
 	res = zap_thrstat_get_result();
-	if (!res) {
-		rc = ENOMEM;
-		errmsg = LDMSD_ENOMEM_MSG;
-		goto err;
-	}
-
+	if (!res)
+		return NULL;
+		
 	buff = malloc(sz);
-	if (!buff) {
-		rc = ENOMEM;
-		errmsg = LDMSD_ENOMEM_MSG;
-		goto err;
-	}
-
-	attr = (ldmsd_req_attr_t)buff;
-	attr->discrim = 1;
-	attr->attr_id = LDMSD_ATTR_JSON;
-	/* len will be assigned after the str is populated */
-	s = buff + sizeof(*attr);
-	sz -= sizeof(*attr);
+	if (!buff)
+		goto __APPEND_ERR;
+	s = buff;
 
 	__APPEND("{");
 	__APPEND(" \"count\": %d,\n", res->count);
@@ -5827,34 +5800,54 @@ static int thread_stats_handler(ldmsd_req_ctxt_t req)
 	__APPEND(" \"compute_time\": %ld\n", compute_time);
 	__APPEND("}"); /* end */
 
-	sz = s - buff + 1;
-	attr->attr_len = sz - sizeof(*attr);
-	ldmsd_hton_req_attr(attr);
-	rc = ldmsd_append_reply(req, buff, sz, LDMSD_REQ_SOM_F);
-	if (rc) {
-		errmsg = "append reply error";
-		goto err;
-	}
-	term = 0;
-	rc = ldmsd_append_reply(req, (void*)&term, sizeof(term),
-				LDMSD_REQ_EOM_F);
-	if (rc) {
-		errmsg = "append reply error";
-		goto err;
-	}
-	free(buff);
+	*json_sz = s - buff + 1;
 	zap_thrstat_free_result(res);
+	return buff;
+__APPEND_ERR:
+	zap_thrstat_free_result(res);
+	if (buff)
+		free(buff);
+	return NULL;
+}
+
+static int thread_stats_handler(ldmsd_req_ctxt_t req)
+{
+	char *json_s, *s;
+	size_t json_sz;
+	int reset = 0;
+	struct ldmsd_req_attr_s attr;
+
+	s = ldmsd_req_attr_str_value_get_by_id(req, LDMSD_ATTR_RESET);
+	if (s) {
+		if (0 != strcasecmp(s, "false"))
+			reset = 1;
+	}
+
+	json_s = __thread_stats_as_json(&json_sz);
+	if (!json_s)
+		goto err;
+
+	attr.discrim = 1;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	attr.attr_len = json_sz;
+	ldmsd_hton_req_attr(&attr);
+	if (ldmsd_append_reply(req, (const char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F))
+		goto err;
+	if (ldmsd_append_reply(req, json_s, json_sz, 0))
+		goto err;
+	attr.discrim = 0;
+	if (ldmsd_append_reply(req, (const char *)&attr, sizeof(attr.discrim), LDMSD_REQ_EOM_F))
+		goto err;
+
+	free(json_s);
 	if (reset)
 		zap_thrstat_reset_all();
 	return 0;
 err:
-	if (res)
-		zap_thrstat_free_result(res);
-	if (buff)
-		free(buff);
-	req->errcode = rc;
-	ldmsd_send_req_response(req, errmsg);
-	return rc;
+	free(json_s);
+	req->errcode = ENOMEM;
+	ldmsd_send_req_response(req, "Memory allocation failure.");
+	return ENOMEM;
 }
 
 static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
