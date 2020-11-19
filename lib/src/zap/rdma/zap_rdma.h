@@ -127,6 +127,8 @@ struct z_rdma_context {
 
 	TAILQ_ENTRY(z_rdma_context) pending_link; /* pending i/o */
 	LIST_ENTRY(z_rdma_context) active_ctxt_link;
+
+	int is_pending; /* for debugging */
 };
 
 #pragma pack(push, 1)
@@ -200,7 +202,8 @@ struct z_rdma_ep {
 	int rejected_conn_error_count;
 #endif /* ZAP_DEBUG */
 
-	LIST_ENTRY(z_rdma_ep) ep_link;
+	TAILQ_ENTRY(z_rdma_ep) ep_link;
+
 	enum {
 		Z_RDMA_DEV_OTHER,
 		Z_RDMA_DEV_HFI1,  /* omnipath */
