@@ -80,7 +80,7 @@ int niface = 0;
 //max number of interfaces we can include. TODO: alloc as added
 #define MAXIFACE 21
 static char iface[MAXIFACE][20];
-static char mindex[MAXIFACE];
+static int mindex[MAXIFACE];
 
 static ldms_set_t set;
 #define SAMP "procnetdev"
