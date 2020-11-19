@@ -647,11 +647,9 @@ class LdmsdCmdParser(cmd.Cmd):
         """
         resp = self.handle('daemon_status', arg)
         if resp['errcode'] == 0:
-            threads = json.loads(resp['msg'])
-            print("Thread          Task Count")
-            print("--------------- ----------")
-            for thr in threads:
-                print("{0:15} {1:>10}".format(thr['thread'], thr['task_count']))
+            o = json.loads(resp['msg'])
+            print(f"Deamon State: {o['state']}\n")
+            self.display_thread_stats(o['thread_stats'])
 
     def complete_daemon_status(self, text, line, begidx, endidx):
         return self.__complete_attr_list('daemon_status', text)
@@ -1216,6 +1214,12 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_set_route(self, text, line, begidx, endidx):
         return self.__complete_attr_list('set_info', text)
 
+    def display_thread_stats(self, stats):
+        print(f"{'Name':16} {'Samples':12} {'Utilization':12}")
+        print("---------------- ------------ ------------")
+        for e in stats['entries']:
+            print(f"{e['name']:16} {e['sample_count']:12.0f} {e['utilization'] * 100:12.2f}")
+
     def do_thread_stats(self, arg):
         """
         Query the daemon's thread utilization statistics
@@ -1226,27 +1230,12 @@ class LdmsdCmdParser(cmd.Cmd):
         if resp['errcode'] != 0:
             return
         stats = json.loads(resp['msg'])
-        print(f"{'Name':16} {'Samples':12} {'Utilization':12}")
-        print("---------------- ------------ ------------")
-        for e in stats['entries']:
-            print(f"{e['name']:16} {e['sample_count']:12.0f} {e['utilization'] * 100:12.2f}")
+        self.display_thread_stats(stats)
 
     def complete_thread_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('set_info', text)
 
-    def do_xprt_stats(self, arg):
-        """
-        Query the daemon's transport telemetry data
-
-        Parameters:
-        [reset=]  If true, reset the statistics after returning them
-        """
-        resp = self.handle('xprt_stats', arg)
-        if resp['msg'] == "":
-            return
-        if resp['errcode'] != 0:
-            return
-        stats = json.loads(resp['msg'])
+    def display_xprt_stats(self, stats):
         """
         { 'compute_time_us': 33,
           'connect_rate_s': 8e-06, 'connect_request_rate_s': 0.003638,
@@ -1293,6 +1282,21 @@ class LdmsdCmdParser(cmd.Cmd):
         for op_name in op_stats:
             s = op_stats[op_name]
             print(f"{op_name:12} {s['count']:12} {s['min_us']:12} {s['mean_us']:12} {s['max_us']:12}")                            
+
+    def do_xprt_stats(self, arg):
+        """
+        Query the daemon's transport telemetry data
+
+        Parameters:
+        [reset=]  If true, reset the statistics after returning them
+        """
+        resp = self.handle('xprt_stats', arg)
+        if resp['msg'] == "":
+            return
+        if resp['errcode'] != 0:
+            return
+        stats = json.loads(resp['msg'])
+        self.display_xprt_stats(stats)
 
     def complete_xprt_stats(self, text, line, begidx, endidx):
         return self.__complete_attr_list('xprt_stats', text)
