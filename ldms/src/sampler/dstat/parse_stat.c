@@ -213,13 +213,12 @@ int parse_proc_pid_fd(struct proc_pid_fd *s, const char *pid, bool details)
 	s->fd_anon_inode = 0;
 	s->fd_pipe = 0;
 	s->fd_path = 0;
-	struct dirent entry;
 	struct dirent *result;
 	long n;
 	char *endptr;
-	rc = readdir_r(dirp, &entry, &result);
-	while (!rc && result != NULL) {
-		n = strtol(entry.d_name, &endptr, 10);
+	result = readdir(dirp);
+	while (result != NULL) {
+		n = strtol(result->d_name, &endptr, 10);
 		if (endptr && (endptr[0] != '\0')) {
 			/* This is not a file descriptor, e.g., '.' and '..' */
 			goto next;
@@ -230,7 +229,7 @@ int parse_proc_pid_fd(struct proc_pid_fd *s, const char *pid, bool details)
 				s->fd_max = n;
 			}
 			buf[0] = '\0';
-			snprintf(dname, 2*PIDFMAX, "/proc/%s/fd/%s", pid, entry.d_name);
+			snprintf(dname, 2*PIDFMAX, "/proc/%s/fd/%ld", pid, n);
 			blen = readlink(dname, buf, BUFMAX);
 			switch (buf[0]) {
 			case '.':
@@ -261,7 +260,7 @@ int parse_proc_pid_fd(struct proc_pid_fd *s, const char *pid, bool details)
 			}
 		}
 	next:
-		rc = readdir_r(dirp, &entry, &result);
+		result = readdir(dirp);
 	}
 	closedir(dirp);
 	return rc;
