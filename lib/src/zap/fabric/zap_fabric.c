@@ -90,6 +90,7 @@ static struct {
 	pthread_mutex_t		lock;
 } g;
 
+__attribute__((unused))
 static const char *z_fi_op_str[] = {
 	[ZAP_WC_SEND]        =  "ZAP_WC_SEND",
 	[ZAP_WC_RECV]        =  "ZAP_WC_RECV",
