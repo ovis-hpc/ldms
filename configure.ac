@@ -439,7 +439,7 @@ AS_IF([test "x$with_slurm" != no],[
 	AC_CHECK_HEADER([slurm/spank.h], [have_slurm=yes], [have_slurm=no])
 	CFLAGS=$save_CFLAGS
 
-	AS_IF([test "x$have_slurm=" = xno],[
+	AS_IF([test "x$have_slurm" = xno],[
 		AS_IF([test "x$with_slurm" != xcheck],
 			[AC_MSG_ERROR([<slurm/spank.h> not found. slurm installed?])],
 			[AC_MSG_WARN([Disabling SLURM support.])])])
