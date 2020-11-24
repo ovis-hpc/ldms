@@ -78,7 +78,7 @@ jobs:
         cat > agg-4.3.3.conf << EOF
         prdcr_add name=samp type=active host=localhost port=10000 xprt=sock interval=1000000
         prdcr_start name=samp
-        updtr_add name=updtr interval=1000000 offset=200000
+        updtr_add name=updtr interval=1000000 offset=100000
         updtr_prdcr_add name=updtr regex=.*
         updtr_start name=updtr
         EOF
@@ -117,14 +117,15 @@ jobs:
         # samp
         echo "starting samp-4.3.3"
         ./ldmsd-4.3.3.sh -c samp-4.3.3.conf -l logs/samp-4.3.3.log -v INFO -x sock:10000
+        sleep 3
         # agg1
         echo "starting agg-4.3.3"
         ./ldmsd-4.3.3.sh -c agg-4.3.3.conf -l logs/agg-4.3.3.log -v INFO -x sock:10001
-        sleep 2
+        sleep 3
         # agg2
         echo "starting agg-4"
         ./ldmsd-4.sh -c agg-4.conf -l logs/agg-4.log -v INFO -x sock:10002
-        sleep 2
+        sleep 3
         # check that they're running
         SAMP_433_PID=$(pgrep -f samp-4.3.3.conf)
         AGG_433_PID=$(pgrep -f agg-4.3.3.conf)
@@ -147,7 +148,7 @@ jobs:
         [[ "${D1}" = "ovis-4.3.3/meminfo" ]] || error "unexpected `ldms_ls agg-4` result"
         # ldms_ls-4.3.3 to agg-4
         echo -n "ldms_ls(4.3.3) agg-4 ... "
-        D2=$( ./ldms_ls.sh -x sock -p 10002 )
+        D2=$( ./ldms_ls-4.3.3.sh -x sock -p 10002 )
         echo "result: ${D2}"
         [[ "${D2}" = "ovis-4.3.3/meminfo" ]] || error "unexpected `ldms_ls(4.3.3) agg-4` result"
         # ldms_ls-4 to agg-4.3.3 -l
