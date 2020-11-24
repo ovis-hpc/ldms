@@ -1545,7 +1545,6 @@ void process_lookup_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		ctxt->lu_req.cb(x, rc, 0, NULL, ctxt->lu_req.cb_arg);
 
 out:
-	zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
 	pthread_mutex_lock(&x->lock);
 #ifdef DEBUG
 	assert(x->active_lookup);
@@ -1573,7 +1572,6 @@ void process_dir_cancel_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	x->active_dir_cancel--;
 #endif /* DEBUG */
 	pthread_mutex_unlock(&x->lock);
-	zap_put_ep(x->zap_ep);
 }
 
 static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type,
@@ -1803,7 +1801,6 @@ void process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 	}
 
 	if (!more) {
-		zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_dir() */
 #ifdef DEBUG
 		assert(x->active_dir);
 		x->active_dir--;
@@ -2195,7 +2192,6 @@ static void __handle_lookup(ldms_t x, struct ldms_context *ctxt,
 			 ev->status ? NULL : ctxt->lu_read.s,
 			 ctxt->lu_read.cb_arg);
 	if (!ctxt->lu_read.more) {
-		zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
 #ifdef DEBUG
 		assert(x->active_lookup > 0);
 		x->active_lookup--;
@@ -2447,7 +2443,6 @@ static void handle_rendezvous_lookup(zap_ep_t zep, zap_event_t ev,
 		ref_get(&rbd->ref, "rendezvous_error");
 	if (ctxt->lu_req.cb)
 		ctxt->lu_req.cb(x, rc, 0, rc ? NULL : rbd, ctxt->lu_req.cb_arg);
-	zap_put_ep(x->zap_ep);	/* Taken in __ldms_remote_lookup() */
 	__ldms_free_ctxt(x, ctxt);
 #ifdef DEBUG
 	assert(x->active_lookup);
@@ -3029,8 +3024,6 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 		x->local_dir_xid = (uint64_t)ctxt;
 	pthread_mutex_unlock(&x->lock);
 
-	zap_get_ep(x->zap_ep);	/* Released in process_dir_reply() */
-
 #ifdef DEBUG
 	x->active_dir++;
 	x->log("DEBUG: remote_dir. get ref %p. active_dir = %d. xid %p\n",
@@ -3038,7 +3031,6 @@ int __ldms_remote_dir(ldms_t _x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
 #endif /* DEBUG */
 	zap_err_t zerr = zap_send(x->zap_ep, req, len);
 	if (zerr) {
-		zap_put_ep(x->zap_ep);
 		pthread_mutex_lock(&x->lock);
 		__ldms_free_ctxt(x, ctxt);
 		x->local_dir_xid = 0;
@@ -3076,7 +3068,6 @@ int __ldms_remote_dir_cancel(ldms_t _x)
 	}
 	req = (struct ldms_request *)(ctxt + 1);
 	len = format_dir_cancel_req(req);
-	zap_get_ep(x->zap_ep);
 
 #ifdef DEBUG
 	x->active_dir_cancel++;
@@ -3090,7 +3081,6 @@ int __ldms_remote_dir_cancel(ldms_t _x)
 		x->active_dir_cancel--;
 		pthread_mutex_unlock(&x->lock);
 #endif /* DEBUG */
-		zap_put_ep(x->zap_ep);
 	}
 
 	pthread_mutex_lock(&x->lock);
@@ -3159,7 +3149,6 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	x->active_lookup++;
 #endif /* DEBUG */
 	pthread_mutex_unlock(&x->lock);
-	zap_get_ep(x->zap_ep);	/* Released in either ...lookup_reply() or ..rendezvous() */
 
 
 #ifdef DEBUG
@@ -3168,7 +3157,6 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 #endif /* DEBUG */
 	zap_err_t zerr = zap_send(x->zap_ep, req, len);
 	if (zerr) {
-		zap_put_ep(x->zap_ep);
 		pthread_mutex_lock(&x->lock);
 		__ldms_free_ctxt(x, ctxt);
 		pthread_mutex_unlock(&x->lock);
