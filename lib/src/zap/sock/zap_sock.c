@@ -1179,6 +1179,7 @@ static void sock_write(ovis_event_t ev)
 	}
 
 	/* data, wr->msg_len is already 0 */
+	assert(wr->msg_len == 0);
 	while (wr->data_len) {
 		wsz = write(sep->sock, wr->data + wr->off, wr->data_len);
 		if (wsz < 0) {
@@ -1191,13 +1192,12 @@ static void sock_write(ovis_event_t ev)
 		}
 		DEBUG_LOG(sep, "ep: %p, wrote %ld bytes\n", sep, wsz);
 		wr->data_len -= wsz;
-		if (!wr->msg_len)
-			wr->off = 0; /* reset off */
-		else
-			wr->off += wsz;
+		wr->off += wsz;
 	}
 
 	/* reaching here means wr->data_len and wr->msg_len are 0 */
+	assert(0 == wr->data_len);
+	assert(0 == wr->msg_len);
 	TAILQ_REMOVE(&sep->sq, wr, link);
 	free(wr);
 	goto next;
