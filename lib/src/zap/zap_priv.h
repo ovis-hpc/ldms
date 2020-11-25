@@ -175,6 +175,9 @@ struct zap_ep {
 
 	/** Event queue */
 	struct zap_event_queue *event_queue;
+#ifdef _ZAP_EP_TRACK_
+	TAILQ_ENTRY(zap_ep) ep_link;
+#endif
 };
 
 struct zap {
