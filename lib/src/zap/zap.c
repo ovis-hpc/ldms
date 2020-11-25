@@ -994,18 +994,14 @@ void zap_thrstat_free_result(struct zap_thrstat_result *res)
 	free(res);
 }
 
-#ifdef NDEBUG
-#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
-#endif
-static void __attribute__ ((constructor)) cs_init(void)
+static void init_atfork(void)
 {
 	int i;
 	int rc;
 	int stats_w;
 
-	pthread_atfork(NULL, NULL, cs_init);
 	pthread_mutex_init(&zap_list_lock, 0);
-	
+
 	stats_w = ZAP_ENV_INT(ZAP_THRSTAT_WINDOW);
 	zap_event_workers = ZAP_ENV_INT(ZAP_EVENT_WORKERS);
 	zap_event_qdepth = ZAP_ENV_INT(ZAP_EVENT_QDEPTH);
@@ -1024,6 +1020,15 @@ static void __attribute__ ((constructor)) cs_init(void)
 		pthread_setname_np(zev_queue[i].thread, thread_name);
 
 	}
+}
+
+#ifdef NDEBUG
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#endif
+static void __attribute__ ((constructor)) cs_init(void)
+{
+	pthread_atfork(NULL, NULL, init_atfork);
+	init_atfork();
 }
 
 static void __attribute__ ((destructor)) cs_term(void)
