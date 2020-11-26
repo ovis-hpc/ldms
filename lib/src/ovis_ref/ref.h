@@ -1,6 +1,7 @@
 #ifndef _REF_H_
 #define _REF_H_
 #include <sys/queue.h>
+#include <string.h>
 #include <assert.h>
 #include <pthread.h>
 

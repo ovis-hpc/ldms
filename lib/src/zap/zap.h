@@ -494,9 +494,12 @@ zap_err_t zap_get_name(zap_ep_t ep, struct sockaddr *local_sa,
  * Increment the endpoint's internal reference count. The transport
  * cannot be destroyed while the reference count is non-zero.
  *
- * \param ep	The endpoint handle
+ * \param ep	    The endpoint handle
+ * \param name      Name of the reference
+ * \param fn_name   Function that calls \c zap_get_ep()
+ * \param line_no   Line number that calls \c zap_get_ep()
  */
-void zap_get_ep(zap_ep_t ep);
+void zap_get_ep(zap_ep_t ep, const char *name, const char *fn_name, int line_no);
 
 /**
  * \brief Drop a reference on the endpoint
@@ -506,8 +509,11 @@ void zap_get_ep(zap_ep_t ep);
  * will be destroyed.
  *
  * \param ep	The endpoint handle
+ * \param name      Name of the reference
+ * \param fn_name   Function that calls \c zap_get_ep()
+ * \param line_no   Line number that calls \c zap_get_ep()
  */
-void zap_put_ep(zap_ep_t ep);
+void zap_put_ep(zap_ep_t ep, const char *name, const char *fn_name, int line_no);
 
 /** \brief Reject a connection request from a remote peer.
  *
