@@ -3,11 +3,12 @@
 #include <sys/queue.h>
 #include <assert.h>
 #include <pthread.h>
+#include <stdio.h>
 
 #ifdef _REF_TRACK_
 #include <pthread.h>
 #include <stdlib.h>
-#include <stdio.h>
+#include <string.h>
 typedef struct ref_inst_s {
 	const char *get_func;
 	const char *put_func;
