@@ -800,6 +800,7 @@ lib/src/ovis_ctrl/Makefile
 lib/src/ovis_util/Makefile
 lib/src/ovis_auth/Makefile
 lib/src/ovis_auth/ovis-auth.sh
+lib/src/ovis_ref/Makefile
 lib/src/zap/Makefile
 lib/src/zap/rdma/Makefile
 lib/src/zap/fabric/Makefile

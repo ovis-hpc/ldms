@@ -50,7 +50,6 @@
 #define _LDMS_PRIVATE_H
 #include <sys/queue.h>
 #include <ldms_xprt.h>
-#include <ref.h>
 #include <pthread.h>
 #include "ovis_util/os_util.h"
 

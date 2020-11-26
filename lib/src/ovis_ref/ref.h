@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 typedef struct ref_inst_s {
 	const char *get_func;
 	const char *put_func;
