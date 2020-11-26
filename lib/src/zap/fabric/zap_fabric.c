@@ -136,24 +136,12 @@ static void dlog_(const char *func, int line, char *fmt, ...)
 #endif
 
 #ifdef EP_DEBUG
-#define __zap_get_ep( _EP, _REASON ) do {			      \
-	DLOG("EP_DEBUG: %s() GET %p %s, ref_count: %d\n", __func__, _EP, _REASON,  \
-						( _EP )->ref_count+1); \
-	zap_get_ep(_EP); \
-} while (0)
-#define __zap_put_ep( _EP, _REASON ) do {				      \
-	DLOG("EP_DEBUG: %s() PUT %p %s, ref_count: %d\n", __func__, _EP, _REASON,  \
-						( _EP )->ref_count-1); \
-	zap_put_ep(_EP); \
-} while (0)
 #define __deliver_disconnected( _REP ) do { \
 	DLOG("EP_DEBUG: %s() deliver_disconnected %p, ref_count: %d\n", \
 			__func__, _REP, (_REP)->ep.ref_count); \
 	_deliver_disconnected(_REP); \
 } while (0)
 #else
-#define __zap_get_ep(_EP,_REASON) zap_get_ep(_EP)
-#define __zap_put_ep(_EP,_REASON) zap_put_ep(_EP)
 #define __deliver_disconnected(_REP) _deliver_disconnected(_REP)
 #endif
 
@@ -392,10 +380,10 @@ static int __enable_cq_events(struct z_fi_ep *rep)
 		.data.ptr = rep,
 	};
 
-	__zap_get_ep(&rep->ep, "CQFD");
+	ref_get(&rep->ep.ref, "enable cq_fd");
 	if (epoll_ctl(g.cq_fd, EPOLL_CTL_ADD, rep->cq_fd, &cq_event)) {
 		LOG_(rep, "error %d adding CQ to epoll wait set\n", errno);
-		__zap_put_ep(&rep->ep, "CQFD");
+		ref_put(&rep->ep.ref, "enable cq_fd");
 		return errno;
 	}
 
@@ -472,8 +460,6 @@ static void z_fi_destroy(zap_ep_t zep)
 	zap_map_t map;
 	struct z_fi_ep *rep = (void*)zep;
 
-	assert(zep->ref_count == 0);
-
 	DLOG("rep %p has %d ctxts\n", rep, rep->num_ctxts);
 
 	/* Do this first. */
@@ -488,7 +474,7 @@ static void z_fi_destroy(zap_ep_t zep)
 	pthread_mutex_unlock(&rep->ep.lock);
 
 	if (rep->parent_ep)
-		__zap_put_ep(&rep->parent_ep->ep, "CONNREQ");
+		ref_put(&rep->parent_ep->ep.ref, "conn req");
 
 	DLOG("rep %p freed\n", rep);
 	free(rep);
@@ -766,7 +752,7 @@ _context_alloc(struct z_fi_ep *rep, void *usr_context, enum z_fi_op op)
 	ctxt->usr_context = usr_context;
 	ctxt->op = op;
 	ctxt->ep = rep;
-	__zap_get_ep(&rep->ep, "CONTEXT");
+	ref_get(&rep->ep.ref, "alloc context");
 	LIST_INSERT_HEAD(&rep->active_ctxt_list, ctxt, active_ctxt_link);
 	++rep->num_ctxts;
 	return ctxt;
@@ -777,7 +763,7 @@ static void _context_free(struct z_fi_context *ctxt)
 {
 	--ctxt->ep->num_ctxts;
 	LIST_REMOVE(ctxt, active_ctxt_link);
-	__zap_put_ep(&ctxt->ep->ep, "CONTEXT");
+	ref_put(&ctxt->ep->ep.ref, "alloc context");
 	free(ctxt);
 }
 
@@ -1107,7 +1093,7 @@ static zap_err_t z_fi_connect(zap_ep_t ep,
 	if (rc)
 		goto err_1;
 
-	__zap_get_ep(&rep->ep, "CONNECT");
+	ref_get(&rep->ep.ref, "connect");
 	rc = epoll_ctl(g.cm_fd, EPOLL_CTL_ADD, rep->cm_fd, &cm_event);
 	if (rc) {
 		zerr = ZAP_ERR_RESOURCE;
@@ -1123,14 +1109,14 @@ static zap_err_t z_fi_connect(zap_ep_t ep,
 		zev.status = ZAP_ERR_ROUTE;
 		rep->ep.state = ZAP_EP_ERROR;
 		rep->ep.cb(&rep->ep, &zev);
-		__zap_put_ep(&rep->ep, "CONNECT");
+		ref_put(&rep->ep.ref, "connect");
 	}
 
 	return ZAP_ERR_OK;
 
 	/* These are all synchronous errors. */
  err_2:
-	__zap_put_ep(&rep->ep, "CONNECT");
+	ref_put(&rep->ep.ref, "connect");
  err_1:
 	zap_ep_change_state(&rep->ep, ZAP_EP_CONNECTING, ZAP_EP_INIT);
  err_0:
@@ -1297,7 +1283,7 @@ static void handle_rendezvous(struct z_fi_ep *rep,
 		return;
 	}
 	map->type = ZAP_MAP_REMOTE;
-	zap_get_ep(&rep->ep);
+	ref_get(&rep->ep.ref, "rendezvous_map"); /* put by zap.c:zap_unmap() */
 	map->ep = &rep->ep;
 	map->mr[ZAP_FABRIC] = (void*)sh->rkey;
 
@@ -1308,7 +1294,6 @@ static void handle_rendezvous(struct z_fi_ep *rep,
 	zev.data_len = len - sizeof(*sh);
 	if (zev.data_len)
 		zev.data = (void*)sh->msg;
-	__zap_get_ep(&rep->ep, "RENDEZVOUS_MAP"); /* put by zap.c:zap_unmap() */
 	rep->ep.cb(&rep->ep, &zev);
 }
 
@@ -1465,7 +1450,7 @@ static zap_err_t z_fi_accept(zap_ep_t ep, zap_cb_fn_t cb,
 	/* Replace the callback with the one provided by the caller */
 	rep->ep.cb = cb;
 
-	__zap_get_ep(&rep->ep, "ACCEPT");
+	ref_get(&rep->ep.ref, "accept");
 	ret = __setup_conn(rep, NULL, 0);
 	ret = ret || epoll_ctl(g.cm_fd, EPOLL_CTL_ADD, rep->cm_fd, &cm_event);
 	if (ret)
@@ -1481,7 +1466,7 @@ static zap_err_t z_fi_accept(zap_ep_t ep, zap_cb_fn_t cb,
 	free(msg);
 	return ZAP_ERR_OK;
 err_0:
-	__zap_put_ep(&rep->ep, "ACCEPT");
+	ref_put(&rep->ep.ref, "accept");
 	free(msg);
 	return ret;
 }
@@ -1591,7 +1576,7 @@ static void *cq_thread_proc(void *arg)
 		}
 		for (i = 0; i < n; i++) {
 			rep = cq_events[i].data.ptr;
-			__zap_get_ep(&rep->ep, "CQE");
+			ref_get(&rep->ep.ref, "handle cq event");
 			scrub_cq(rep);
 			pthread_mutex_lock(&rep->ep.lock);
 			/*
@@ -1606,7 +1591,7 @@ static void *cq_thread_proc(void *arg)
 				if (epoll_ctl(g.cq_fd, EPOLL_CTL_DEL, rep->cq_fd, &ignore)) {
 					LOG_(rep, "error %d removing CQ from epoll wait set\n", errno);
 				} else {
-					__zap_put_ep(&rep->ep, "CQFD");
+					ref_put(&rep->ep.ref, "enable cq_fd");
 				}
 				if (rep->deferred_disconnected == 1) {
 					pthread_mutex_unlock(&rep->ep.lock);
@@ -1619,7 +1604,7 @@ static void *cq_thread_proc(void *arg)
 				pthread_mutex_unlock(&rep->ep.lock);
 				submit_pending(rep);
 			}
-			__zap_put_ep(&rep->ep, "CQE");
+			ref_put(&rep->ep.ref, "handle cq event");
 		}
 	}
 	return NULL;
@@ -1690,7 +1675,7 @@ static void handle_connect_request(struct z_fi_ep *rep, struct fi_eq_cm_entry *e
 	new_rep->fabric = rep->fabric;
 	new_rep->domain = rep->domain;
 	new_rep->fabdom_id = rep->fabdom_id;
-	__zap_get_ep(&rep->ep, "CONNREQ");
+	ref_get(&rep->ep.ref, "conn req");
 	zap_ep_change_state(new_ep, ZAP_EP_INIT, ZAP_EP_ACCEPTING);
 	new_rep->ep.cb(new_ep, &zev);
 
@@ -1723,14 +1708,14 @@ static void handle_conn_error(struct z_fi_ep *rep, zap_err_t err)
 			 */
 			zev.type = ZAP_EVENT_DISCONNECTED;
 			rep->ep.cb(&rep->ep, &zev);
-			__zap_put_ep(&rep->ep, "ACCEPT");
+			ref_put(&rep->ep.ref, "accept");
 		}
 		break;
 	    case ZAP_EP_CONNECTING:
 	    case ZAP_EP_ERROR:
 		zev.type = ZAP_EVENT_CONNECT_ERROR;
 		rep->ep.cb(&rep->ep, &zev);
-		__zap_put_ep(&rep->ep, "CONNERR");
+		ref_put(&rep->ep.ref, "CONNERR");
 		break;
 	    default:
 		LOG_(rep, "handling zap err %d unexpected ep state %d\n", err, oldstate);
@@ -1779,7 +1764,7 @@ static void handle_rejected(struct z_fi_ep *rep, struct fi_eq_err_entry *entry)
 	__enable_cq_events(rep);
 	rep->ep.state = ZAP_EP_ERROR;
 	rep->ep.cb(&rep->ep, &zev);
-	__zap_put_ep(&rep->ep, "CONNECT");
+	ref_put(&rep->ep.ref, "connect");
 }
 
 static void handle_established(struct z_fi_ep *rep, struct fi_eq_cm_entry *entry, int len)
@@ -1827,11 +1812,11 @@ static void _deliver_disconnected(struct z_fi_ep *rep)
 
 #ifdef EP_DEBUG
 	if (rep->conn_req_decision != Z_FI_PASSIVE_NONE)
-		__zap_put_ep(&rep->ep, "ACCEPT");
+		ref_put(&rep->ep.ref, "accept");
 	else
-		__zap_put_ep(&rep->ep, "CONNECT");
+		ref_put(&rep->ep.ref, "connect");
 #else
-	__zap_put_ep(&rep->ep, "CONNECT");
+	ref_put(&rep->ep.ref, "connect");
 #endif
 }
 
@@ -1923,7 +1908,7 @@ static void scrub_eq(struct z_fi_ep *rep)
 	struct fid		*fid[1];
 
 	DLOG("rep %p\n", rep);
-	__zap_get_ep(&rep->ep, "EQE");
+	ref_get(&rep->ep.ref, "handle eq event");
 	while (1) {
 		memset(&entry, 0, sizeof(entry));
 		ret = fi_eq_read(rep->eq, &event, &entry, sizeof(entry), 0);
@@ -1943,7 +1928,7 @@ static void scrub_eq(struct z_fi_ep *rep)
 		}
 		cm_event_handler(rep, event, &entry, ret);
 	}
-	__zap_put_ep(&rep->ep, "EQE");
+	ref_put(&rep->ep.ref, "handle eq event");
 	DLOG("done with rep %p\n", rep);
 }
 
@@ -2397,7 +2382,7 @@ static zap_err_t z_fi_unmap(zap_map_t map)
 			fi_close(&zm->mr[i]->fid);
 	}
 	if ((map->type == ZAP_MAP_REMOTE) && map->ep)
-		zap_put_ep(map->ep);
+		ref_put(&map->ep->ref, "zap_map/rendezvous");
 	free(zm);
 	return ZAP_ERR_OK;
 }

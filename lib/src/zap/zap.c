@@ -467,11 +467,11 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 	ictxt->ev.data = ictxt->data;
 	if (data_len)
 		memcpy(ictxt->data, ev->data, data_len);
-	zap_get_ep(ep);
+	ref_get(&ep->ref, "zap_interpose");
 	if (zap_event_add(ep->event_queue, ep, ictxt)) {
 		ep->z->log_fn("%s[%d]: event could not be added.",
 			      __func__, __LINE__);
-		zap_put_ep(ep);
+		ref_put(&ep->ref, "zap_interpose");
 	}
 }
 
@@ -487,7 +487,7 @@ void zap_interpose_event(zap_ep_t ep, void *ctxt)
 #endif /* ZAP_DEBUG || DEBUG */
 	ep->app_cb(ep, &ictxt->ev);
 	free(ictxt);
-	zap_put_ep(ep);
+	ref_put(&ep->ref, "zap_interpose");
 }
 
 static
@@ -497,6 +497,18 @@ struct zap_event_queue *__get_least_busy_zap_event_queue();
 TAILQ_HEAD(zap_ep_list, zap_ep) zap_ep_list;
 pthread_mutex_t zap_ep_list_lock;
 #endif /* _ZAP_EP_TRACK_ */
+
+static void __destroy_ep(void *zep)
+{
+	zap_ep_t ep = (zap_ep_t)zep;
+	zap_event_queue_ep_put(ep->event_queue);
+#ifdef _ZAP_EP_TRACK_
+	pthread_mutex_lock(&zap_ep_list_lock);
+	TAILQ_REMOVE(&zap_ep_list, ep, ep_link);
+	pthread_mutex_unlock(&zap_ep_list_lock);
+#endif /* _ZAP_EP_TRACK_ */
+	ep->z->destroy(ep);
+}
 
 zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 {
@@ -511,6 +523,7 @@ zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 	zep->app_cb = cb;
 	zep->cb = zap_interpose_cb;
 	zep->ref_count = 1;
+	ref_init(&zep->ref, __func__, __destroy_ep, zep);
 	zep->state = ZAP_EP_INIT;
 	pthread_mutex_init(&zep->lock, NULL);
 	sem_init(&zep->block_sem, 0, 0);
@@ -582,9 +595,11 @@ zap_err_t zap_close(zap_ep_t ep)
 zap_err_t zap_send(zap_ep_t ep, void *buf, size_t sz)
 {
 	zap_err_t zerr;
-	zap_get_ep(ep);
+//	zap_get_ep(ep);
+	ref_get(&ep->ref, "zap_send");
 	zerr = ep->z->send(ep, buf, sz);
-	zap_put_ep(ep);
+//	zap_put_ep(ep);
+	ref_put(&ep->ref, "zap_send");
 	return zerr;
 }
 
@@ -603,9 +618,11 @@ zap_err_t zap_write(zap_ep_t ep,
 		    void *context)
 {
 	zap_err_t zerr;
-	zap_get_ep(ep);
+//	zap_get_ep(ep);
+	ref_get(&ep->ref, "zap_write");
 	zerr = ep->z->write(ep, src_map, src, dst_map, dst, sz, context);
-	zap_put_ep(ep);
+//	zap_put_ep(ep);
+	ref_put(&ep->ref, "zap_write");
 	return zerr;
 }
 
@@ -615,17 +632,16 @@ zap_err_t zap_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 	return ep->z->get_name(ep, local_sa, remote_sa, sa_len);
 }
 
-void zap_get_ep(zap_ep_t ep)
+void zap_get_ep(zap_ep_t ep, const char *name, const char *fn_name, int line_no)
 {
-	assert(ep->ref_count);
-	(void)__sync_fetch_and_add(&ep->ref_count, 1);
+	_ref_get(&ep->ref, name, fn_name, line_no);
 }
 
 void zap_free(zap_ep_t ep)
 {
 	/* Drop the zap_new() reference */
 	assert(ep->ref_count);
-	zap_put_ep(ep);
+	ref_put(&ep->ref, "zap_new");
 }
 
 int zap_ep_closed(zap_ep_t ep)
@@ -645,20 +661,11 @@ zap_ep_state_t zap_ep_state(zap_ep_t ep)
 	return ep->state;
 }
 
-void zap_put_ep(zap_ep_t ep)
+void zap_put_ep(zap_ep_t ep, const char *name, const char *fn_name, int line_no)
 {
 	if (!ep)
 		return;
-	assert(ep->ref_count);
-	if (0 == __sync_sub_and_fetch(&ep->ref_count, 1)) {
-		zap_event_queue_ep_put(ep->event_queue);
-#ifdef _ZAP_EP_TRACK_
-		pthread_mutex_lock(&zap_ep_list_lock);
-		TAILQ_REMOVE(&zap_ep_list, ep, ep_link);
-		pthread_mutex_unlock(&zap_ep_list_lock);
-#endif /* _ZAP_EP_TRACK_ */
-		ep->z->destroy(ep);
-	}
+	_ref_put(&ep->ref, name, fn_name, line_no);
 }
 
 zap_err_t zap_read(zap_ep_t ep,
