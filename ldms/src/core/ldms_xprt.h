@@ -57,10 +57,11 @@
 
 #include <zap/zap.h>
 #include <coll/rbt.h>
+#include <ovis_ev/ev.h>
+#include <ovis_ref/ref.h>
 
 #include "ldms.h"
 #include "ldms_auth.h"
-#include "ref.h"
 
 #pragma pack(4)
 

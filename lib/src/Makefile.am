@@ -34,6 +34,8 @@ if ENABLE_OVIS_EV
 SUBDIRS += ovis_ev
 endif
 
+SUBDIRS += ovis_ref
+
 if ENABLE_ZAP
 SUBDIRS += zap
 endif
@@ -43,6 +45,7 @@ SUBDIRS += ovis_ctrl
 endif
 
 SUBDIRS += ovis_json
+
 
 # override libdir sanity checks
 mylibdir = $(libdir)
