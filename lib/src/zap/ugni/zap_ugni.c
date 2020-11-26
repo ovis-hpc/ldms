@@ -417,7 +417,7 @@ static struct zap_ugni_post_desc *__alloc_post_desc(struct z_ugni_ep *uep)
 	if (!d)
 		return NULL;
 	d->uep = uep;
-	zap_get_ep(&uep->ep);
+	ref_get(&uep->ep.ref, "alloc post desc");
 #ifdef DEBUG
 	d->ep_gn = zap_ugni_get_ep_gn(uep->ep_id);
 #endif /* DEBUG */
@@ -431,7 +431,7 @@ static void __free_post_desc(struct zap_ugni_post_desc *d)
 {
 	struct z_ugni_ep *uep = d->uep;
 	ZUGNI_LIST_REMOVE(d, ep_link);
-	zap_put_ep(&uep->ep);
+	ref_put(&uep->ep.ref, "alloc post desc");
 	free(d);
 }
 
@@ -640,7 +640,7 @@ static zap_err_t z_ugni_connect(zap_ep_t ep,
 		}
 		uep->conn_data_len = data_len;
 	}
-	zap_get_ep(&uep->ep); /* Release when disconnect/conn_error/rejected */
+	ref_get(&uep->ep.ref, "accept/connect");
 	rc = connect(uep->sock, sa, sa_len);
 	if (rc && errno != EINPROGRESS) {
 		zerr = ZAP_ERR_CONNECT;
@@ -777,7 +777,7 @@ static void process_uep_msg_rendezvous(struct z_ugni_ep *uep)
 		goto err0;
 	}
 	map->type = ZAP_MAP_REMOTE;
-	zap_get_ep(&uep->ep);
+	ref_get(&uep->ep.ref, "zap_map/rendezvous");
 	map->ep = (void*)uep;
 	map->mr[ZAP_UGNI] = &msg->gni_mh;
 
@@ -786,7 +786,6 @@ static void process_uep_msg_rendezvous(struct z_ugni_ep *uep)
 	if (amsg_len) {
 		amsg = msg->msg; /* attached message from rendezvous */
 	}
-
 	struct zap_event ev = {
 		.type = ZAP_EVENT_RENDEZVOUS,
 		.map = map,
@@ -960,7 +959,7 @@ static void process_uep_msg_ack_accepted(struct z_ugni_ep *uep)
 	struct zap_event ev = {
 		.type = ZAP_EVENT_CONNECTED
 	};
-	zap_get_ep(&uep->ep); /* Release when receive disconnect/error event */
+	ref_get(&uep->ep.ref, "accept/connect");
 	uep->ep.cb(&uep->ep, &ev);
 	return;
 }
@@ -1310,7 +1309,7 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe_)
 /* Caller must hold the endpoint list lock */
 void __stall_post_desc(struct zap_ugni_post_desc *d, struct timeval time)
 {
-	zap_put_ep(&d->uep->ep);
+	ref_put(&d->uep->ep.ref, "alloc post desc");
 	d->is_stalled = 1;
 	d->uep = NULL;
 	d->stalled_time = time;
@@ -1611,7 +1610,7 @@ static void __deliver_disconnect_ev(struct z_ugni_ep *uep)
 	close(uep->sock);
 	uep->sock = -1;
 	uep->ep.cb((void*)uep, &uep->conn_ev);
-	zap_put_ep(&uep->ep);
+	ref_put(&uep->ep.ref, "accept/connect");
 }
 
 void __deferred_disconnect_cb(ovis_event_t ev)
@@ -1778,7 +1777,7 @@ static void ugni_sock_event(ovis_event_t ev)
 	return;
 no_cb:
 	pthread_mutex_unlock(&uep->ep.lock);
-	zap_put_ep(&uep->ep);
+	ref_put(&uep->ep.ref, "zap_new");
 	return;
 }
 
@@ -2732,7 +2731,7 @@ err:
 static zap_err_t z_ugni_unmap(zap_map_t map)
 {
 	if ((map->type == ZAP_MAP_REMOTE) && map->ep)
-		zap_put_ep(map->ep);
+		ref_put(&map->ep->ref, "zap_map/rendezvous");
 	return ZAP_ERR_OK;
 }
 

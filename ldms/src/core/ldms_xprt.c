@@ -1560,7 +1560,7 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 		return EINVAL;
 	}
 	int idx_from, idx_to, idx_next, idx_curr;
-	zap_get_ep(x->zap_ep);		/* Released in handle_zap_read_complete() */
+	zap_get_ep(x->zap_ep, "ldms_xprt:set_update", __func__, __LINE__);		/* Released in handle_zap_read_complete() */
 	if (meta_meta_gn == 0 || meta_meta_gn != data_meta_gn) {
 		if (set->curr_idx == (n-1)) {
 			/* We can update the metadata along with the data */
@@ -1580,8 +1580,9 @@ int __ldms_remote_update(ldms_t x, ldms_set_t s, ldms_update_cb_t cb, void *arg)
 			idx_to = (idx_curr < idx_from)?(n - 1):(idx_curr);
 		rc = do_read_data(x, s, idx_from, idx_to, cb, arg);
 	}
-	if (rc)
-		zap_put_ep(x->zap_ep);
+	if (rc) {
+		zap_put_ep(x->zap_ep, "ldms_xprt:set_update", __func__, __LINE__);
+	}
 	return rc;
 }
 
@@ -2266,7 +2267,7 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 		ctxt->update.cb(x, s, LDMS_UPD_ERROR(rc), ctxt->update.cb_arg);
 
 cleanup:
-	zap_put_ep(x->zap_ep); /* from __ldms_remote_update() */
+	zap_put_ep(x->zap_ep, "ldms_xprt:set_update", __func__, __LINE__); /* from __ldms_remote_update() */
 	pthread_mutex_lock(&x->lock);
 	__ldms_free_ctxt(x, ctxt);
 	pthread_mutex_unlock(&x->lock);
@@ -2283,7 +2284,7 @@ static void __handle_update_meta(ldms_t x, struct ldms_context *ctxt,
 	rc = do_read_data(x, s, idx, idx, ctxt->update.cb, ctxt->update.cb_arg);
 	if (rc) {
 		ctxt->update.cb(x, s, LDMS_UPD_ERROR(rc), ctxt->update.cb_arg);
-		zap_put_ep(x->zap_ep);
+		zap_put_ep(x->zap_ep, "ldms_xprt:set_update", __func__, __LINE__);
 	}
 	/* do_read_data has its own context */
 	pthread_mutex_lock(&x->lock);
@@ -3291,7 +3292,6 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	x->active_lookup++;
 #endif /* DEBUG */
 	pthread_mutex_unlock(&x->lock);
-
 
 #ifdef DEBUG
 	x->log("DEBUG: remote_lookup: get ref %p: active_lookup = %d\n",
