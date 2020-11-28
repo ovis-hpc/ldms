@@ -222,6 +222,7 @@ static void prdcr_reset_set(ldmsd_prdcr_t prdcr, ldmsd_prdcr_set_t prd_set)
 	prdcr_hint_tree_update(prdcr, prd_set,
 			       &prd_set->updt_hint, UPDT_HINT_TREE_REMOVE);
 	rbt_del(&prdcr->set_tree, &prd_set->rbn);
+	ldmsd_prdcr_set_ref_put(prd_set);	/* set_tree reference */
 	prdcr_set_del(prd_set);
 }
 
@@ -361,6 +362,7 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 			return;
 		}
 		set->prdcr = prdcr;
+		ldmsd_prdcr_set_ref_get(set); 	/* set_tree reference */
 		rbt_ins(&prdcr->set_tree, &set->rbn);
 	} else {
 		ldmsd_log(LDMSD_LCRITICAL, "Received a dir_add update for "
