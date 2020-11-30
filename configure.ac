@@ -240,6 +240,19 @@ OPTION_DEFAULT_DISABLE([amqp], [ENABLE_AMQP])
 dnl Options for contributed stores
 OPTION_DEFAULT_DISABLE([tutorial-store],[ENABLE_TUTORIAL_STORE])
 
+AC_ARG_ENABLE([timescale-store],
+        [AS_HELP_STRING([--enable-timescale-store], [enable timescaledb store plugin])],
+        [],
+        [enable_timescale_store="check"])
+AS_IF([test "x$enable_timescale_store" != xno ],[
+        AC_LIB_HAVE_LINKFLAGS([pq], [], [#include <libpq-fe.h>])
+        AS_IF([test "x$enable_timescale_store" != xcheck],[
+                AS_IF([test "x$HAVE_LIBPQ" = xno],
+                        [AC_MSG_ERROR([libpq or headers not found])])
+        ])
+])
+AM_CONDITIONAL([ENABLE_TIMESCALE_STORE], [test "x$HAVE_LIBPQ" = xyes])
+
 OPTION_DEFAULT_DISABLE([gpcdlocal], [ENABLE_GPCDLOCAL],[Required access to gpcd-support repository])
 OPTION_WITH_OR_BUILD([gpcdlocal],[../gpcd-support],[gpcd],[gpcdlocal.sh], ,[gpcd])
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
@@ -761,6 +774,7 @@ ldms/src/store/store_flatfile/Makefile
 ldms/src/store/store_app/Makefile
 ldms/src/contrib/store/Makefile
 ldms/src/contrib/store/tutorial/Makefile
+ldms/src/contrib/store/timescale/Makefile
 ldms/src/sampler/dstat/Makefile
 ldms/src/sampler/hello_stream/Makefile
 ldms/src/sampler/hello_stream/stream_configs/Makefile

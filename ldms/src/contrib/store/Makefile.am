@@ -10,6 +10,11 @@ do_subst = @LDMS_SUBST_RULE@
 	$(do_subst) < $< > $@
 	chmod 755 $@
 
+if ENABLE_TIMESCALE_STORE
+    MAYBE_TIMESCALE_STORE = timescale
+endif
+SUBDIRS += $(MAYBE_TIMESCALE_STORE)
+
 if ENABLE_TUTORIAL_STORE
     MAYBE_TUTORIAL_STORE = tutorial
 endif
