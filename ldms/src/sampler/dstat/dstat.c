@@ -418,16 +418,8 @@ static const char *usage(struct ldmsd_plugin *self)
 }
 
 static const char *dstat_opts[] = {
+	BASE_ATTRIBUTES,
 	"debug",
-	"schema",
-	"instance",
-	"producer",
-	"component_id",
-	"uid",
-	"gid",
-	"perm",
-	"job_set",
-	"set_array_card",
 	"io",
 	"stat",
 	"statm",

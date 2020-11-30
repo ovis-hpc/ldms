@@ -119,6 +119,25 @@ typedef struct base_data_s {
 
 #define BASE_CONFIG_USAGE BASE_CONFIG_SYNOPSIS BASE_CONFIG_DESC
 
+/** Define the list of reserved attributes plugins derived from 
+ * base should not use for other than the standard purposes.
+ * Format is suitable for inclusion in an array of strings initializer.
+ */
+#define BASE_ATTRIBUTES \
+	"producer", \
+	"instance", \
+	"component_id", \
+	"schema", \
+	"job_set", \
+	"job_id", \
+	"app_id", \
+	"job_start", \
+	"job_end", \
+	"uid", \
+	"gid", \
+	"perm", \
+	"set_array_card"
+
 /**
  * \brief Create a sample schema with the standard metrics
  *
