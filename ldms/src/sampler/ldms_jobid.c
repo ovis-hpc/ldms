@@ -542,9 +542,9 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 
 
-	uid_t uid;
-	gid_t gid;
-	int perm;
+	uid_t uid = 0;
+	gid_t gid = 0;
+	int perm = 0777;
 	bool uid_is_set = false;
 	bool gid_is_set = false;
 	bool perm_is_set = false;
