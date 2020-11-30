@@ -239,6 +239,7 @@ OPTION_DEFAULT_DISABLE([amqp], [ENABLE_AMQP])
 
 dnl Options for contributed stores
 OPTION_DEFAULT_DISABLE([tutorial-store],[ENABLE_TUTORIAL_STORE])
+OPTION_DEFAULT_ENABLE([timescale-store],[ENABLE_TIMESCALE_STORE])
 
 OPTION_DEFAULT_DISABLE([gpcdlocal], [ENABLE_GPCDLOCAL],[Required access to gpcd-support repository])
 OPTION_WITH_OR_BUILD([gpcdlocal],[../gpcd-support],[gpcd],[gpcdlocal.sh], ,[gpcd])
@@ -761,6 +762,7 @@ ldms/src/store/store_flatfile/Makefile
 ldms/src/store/store_app/Makefile
 ldms/src/contrib/store/Makefile
 ldms/src/contrib/store/tutorial/Makefile
+ldms/src/contrib/store/timescale/Makefile
 ldms/src/sampler/dstat/Makefile
 ldms/src/sampler/hello_stream/Makefile
 ldms/src/sampler/hello_stream/stream_configs/Makefile
