@@ -946,12 +946,16 @@ static int __recv_msg(struct z_ugni_ep *uep)
 		rqsz = sizeof(struct zap_ugni_msg_hdr) - buff->len;
 		rsz = read(uep->sock, buff->data + buff->len, rqsz);
 		if (rsz == 0) {
+			if (errno == EAGAIN)
+				return errno;
 			/* peer close */
 			rc = ENOTCONN;
 			from_line = __LINE__;
 			goto err;
 		}
 		if (rsz < 0) {
+			if (errno == EAGAIN)
+				return errno;
 			/* error */
 			rc = errno;
 			from_line = __LINE__;
@@ -993,12 +997,16 @@ static int __recv_msg(struct z_ugni_ep *uep)
 		rqsz = mlen - buff->len;
 		rsz = read(uep->sock, buff->data + buff->len, rqsz);
 		if (rsz == 0) {
+			if (errno == EAGAIN)
+				return errno;
 			/* peer close */
 			rc = ENOTCONN;
 			from_line = __LINE__;
 			goto err;
 		}
 		if (rsz < 0) {
+			if (errno == EAGAIN)
+				return errno;
 			rc = errno;
 			from_line = __LINE__;
 			goto err;
