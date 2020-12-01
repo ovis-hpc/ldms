@@ -226,6 +226,7 @@ __attribute__ ((sentinel)) char *ovis_join(char *joiner, ...);
  * \param ... A null terminated list of const char *.
  * Example: ovis_join_buf(buf, 256, "\\","c:\\root", "file.txt", NULL);
  * \return 0 if successful, or errno if input problem detected.
+ * Any preexisting buf content is overwritten.
  */
 __attribute__ ((sentinel)) int ovis_join_buf(char *buf, size_t buflen, char *joiner, ...);
 
