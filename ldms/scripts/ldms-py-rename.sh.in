@@ -121,13 +121,13 @@ mysleep 1
 echo Starting plugins on daemon1
 echo load name=meminfo | $LC --port $port1
 die $?
-echo config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=1 udata_default=10 | $LC --port $port1
+echo config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=1 | $LC --port $port1
 die $?
 echo start name=meminfo interval=1000000 | $LC --port $port1
 die $?
 echo load name=sysclassib | $LC --port $port1
 die $?
-echo config name=sysclassib producer=localhost1 instance=localhost1/sysclassib schema=sysclassib ports=mlx4_0.1,qib_0.1 component_id=1 udata_default=10 | $LC --port $port1
+echo config name=sysclassib producer=localhost1 instance=localhost1/sysclassib schema=sysclassib ports=mlx4_0.1,qib_0.1 component_id=1 | $LC --port $port1
 die $?
 echo start name=sysclassib interval=1000000 | $LC --port $port1
 die $?

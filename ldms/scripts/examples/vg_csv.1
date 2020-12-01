@@ -1,5 +1,5 @@
 load name=dstat
-config name=dstat producer=localhost${i} instance=localhost${i}/dstat schema=dstat component_id=${i} udata_default=${i}
+config name=dstat producer=localhost${i} instance=localhost${i}/dstat schema=dstat component_id=${i} 
 start name=dstat interval=1000000 offset=0
 
 prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=2000000

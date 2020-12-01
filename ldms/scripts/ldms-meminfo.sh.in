@@ -133,7 +133,7 @@ config name=jobid producer=localhost1 instance=localhost1/jobid component_id=3 f
 start name=jobid interval=1000000 offset=0
 
 load name=meminfo
-config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=1 udata_default=10 job_set=localhost1/jobid
+config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=1 job_set=localhost1/jobid
 start name=meminfo interval=1000000
 EOF
 

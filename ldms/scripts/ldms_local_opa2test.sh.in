@@ -96,8 +96,8 @@ config name=jobid producer=localhost1 instance=localhost1/jobid component_id=3 f
 start name=jobid interval=1000000 offset=0
 
 load name=opa2
-#config name=opa2 producer=localhost1 instance=localhost1/opa2 schema=opa2 component_id=1 udata_default=10 job_set=localhost1/jobid ports=hfi1_0.1
-config name=opa2 producer=localhost1 instance=localhost1/opa2 schema=opa2 component_id=1 udata_default=10 job_set=localhost1/jobid
+#config name=opa2 producer=localhost1 instance=localhost1/opa2 schema=opa2 component_id=1 job_set=localhost1/jobid ports=hfi1_0.1
+config name=opa2 producer=localhost1 instance=localhost1/opa2 schema=opa2 component_id=1 job_set=localhost1/jobid
 start name=opa2 interval=1000000
 EOF
 
