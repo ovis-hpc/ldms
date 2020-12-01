@@ -267,12 +267,12 @@ static zap_err_t z_sock_close(zap_ep_t ep)
 	case ZAP_EP_CONNECTED:
 	case ZAP_EP_LISTENING:
 		sep->ep.state = ZAP_EP_CLOSE;
-		shutdown(sep->sock, SHUT_RDWR);
+		// shutdown(sep->sock, SHUT_RDWR);
 		break;
 	case ZAP_EP_ERROR:
 	case ZAP_EP_ACCEPTING:
 	case ZAP_EP_CONNECTING:
-		shutdown(sep->sock, SHUT_RDWR);
+		// shutdown(sep->sock, SHUT_RDWR);
 		break;
 	case ZAP_EP_CLOSE:
 		break;
@@ -853,12 +853,16 @@ static int __recv_msg(struct z_sock_ep *sep)
 		rqsz = sizeof(struct sock_msg_hdr) - buff->len;
 		rsz = read(sep->sock, buff->data + buff->len, rqsz);
 		if (rsz == 0) {
+			if (errno == EAGAIN)
+				return errno;
 			/* peer close */
 			rc = ENOTCONN;
 			from_line = __LINE__;
 			goto err;
 		}
 		if (rsz < 0) {
+			if (errno == EAGAIN)
+				return errno;
 			/* error */
 			rc = errno;
 			from_line = __LINE__;
@@ -903,12 +907,16 @@ static int __recv_msg(struct z_sock_ep *sep)
 		rqsz = mlen - buff->len;
 		rsz = read(sep->sock, buff->data + buff->len, rqsz);
 		if (rsz == 0) {
+			if (errno == EAGAIN)
+				return errno;
 			/* peer close */
 			rc = ENOTCONN;
 			from_line = __LINE__;
 			goto err;
 		}
 		if (rsz < 0) {
+			if (errno == EAGAIN)
+				return errno;
 			rc = errno;
 			from_line = __LINE__;
 			goto err;
