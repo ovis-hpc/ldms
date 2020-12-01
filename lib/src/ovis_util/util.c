@@ -658,6 +658,8 @@ __attribute__ ((sentinel)) int ovis_join_buf(char *buf, size_t buflen, char *pat
 
 	if (!buf)
 		return EINVAL;
+	buf[0] = '\0';
+	
 
 	va_start(ap, pathsep);
 	n = va_arg(ap, const char *);
@@ -668,7 +670,6 @@ __attribute__ ((sentinel)) int ovis_join_buf(char *buf, size_t buflen, char *pat
 
 	chunk = strlen(n);
 	if ( (len + chunk) < buflen) {
-		printf("chunk %zu %s\n", chunk, n);
 		strncat(buf + len, n, chunk);
 		len += chunk;
 	} else {

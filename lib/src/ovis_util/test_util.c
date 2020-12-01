@@ -49,6 +49,7 @@ void test_av()
 	} else {
 		printf("copy succeeded\n");
 	}
+	free(s);
 	free(p1);
 	free(p2);
 	av_free(cp);
@@ -115,6 +116,13 @@ int main(int argc, char **argv)
 	rc = ovis_join_buf(shortbuf, sizeof(shortbuf), NULL,s1,s2,s3,NULL);
 	if (rc == 0 || strcmp(t,shortbuf) == 0) {
 		printf("error 6: ovis_join_buf(sb,ss,NULL,s1,s2,s3,NULL) %d %s\n",
+			rc, strerror(rc));
+		errcnt++;
+	}
+	snprintf(shortbuf,12,"0123456789"); // insufficient buf
+	rc = ovis_join_buf(shortbuf, sizeof(shortbuf), NULL,s1,s2,s3,NULL);
+	if (rc == 0 || strcmp(t,shortbuf) == 0) {
+		printf("error 7: ovis_join_buf(sb,ss,NULL,s1,s2,s3,NULL) %d %s\n",
 			rc, strerror(rc));
 		errcnt++;
 	}
