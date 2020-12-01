@@ -227,12 +227,11 @@ int ldmsd_stream_publish(ldms_t xprt,
 }
 
 sem_t conn_sem;
-int conn_status;
+int conn_status = ENOTCONN;
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
-		sem_post(&conn_sem);
 		conn_status = 0;
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
@@ -247,8 +246,11 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		conn_status = ECONNREFUSED;
 		break;
 	default:
+		ldms_xprt_put(x);
+		conn_status = ECONNABORTED;
 		msglog("Received invalid event type %d\n", e->type);
 	}
+	sem_post(&conn_sem);
 }
 
 /**
@@ -265,6 +267,7 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
  *
  * \returns 0 on success, or an errno
  */
+#define LDMSD_STREAM_CONNECT_TIMEOUT 5 /* 5 seconds */
 int ldmsd_stream_publish_file(const char *stream, const char *type,
 			      const char *xprt, const char *host, const char *port,
 			      const char *auth, struct attr_value_list *auth_opt,
@@ -276,7 +279,10 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	size_t this_rec, data_len;
 	static char buffer[1024*64];
 	ldms_t x;
-
+	char *timeout_s = getenv("LDMSD_STREAM_CONN_TIMEOUT");
+	int timeout = LDMSD_STREAM_CONNECT_TIMEOUT;
+	if (timeout_s)
+		timeout = atoi(timeout_s);
 	if (0 == strcasecmp("raw", type))
 		attr_id = LDMSD_ATTR_STRING;
 	else if (0 == strcasecmp("string", type))
@@ -301,11 +307,16 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		return rc;
 	}
 	struct timespec ts;
-	ts.tv_sec = time(NULL) + 2;
+	ts.tv_sec = time(NULL) + timeout;
 	ts.tv_nsec = 0;
-	sem_timedwait(&conn_sem, &ts);
-	if (conn_status)
+	if (sem_timedwait(&conn_sem, &ts)) {
+		msglog("Timeout connecting to remote peer\n");
+		return errno;
+	}
+	if (conn_status) {
+		msglog("Error %d connecting to remote peer\n", conn_status);
 		return conn_status;
+	}
 	size_t max_msg = ldms_xprt_msg_max(x);
 	ldmsd_req_hdr_t req = malloc(max_msg);
 	if (!req) {
