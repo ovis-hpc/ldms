@@ -143,5 +143,9 @@ int main(int argc, char **argv)
 		file = fopen(filename, "r");
 	else
 		file = stdin;
-	return ldmsd_stream_publish_file(stream, stream_type, xprt, host, port, auth, auth_opt, file);
+	int rc = ldmsd_stream_publish_file(stream, stream_type, xprt, host, port, auth, auth_opt, file);
+	if (rc) {
+		printf("Error %d publishing file.\n", rc);
+	}
+	return rc;
 }
