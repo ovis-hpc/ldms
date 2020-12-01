@@ -123,7 +123,7 @@ mysleep 1
 echo Starting plugins on daemon1
 cat << EOF | $LC --port $port1
 load name=meminfo
-config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=1 udata_default=10 max_mc=2 max_csrow=4
+config name=meminfo producer=localhost1 instance=localhost1/meminfo schema=meminfo component_id=1 max_mc=2 max_csrow=4
 start name=meminfo interval=1000000
 EOF
 die $?

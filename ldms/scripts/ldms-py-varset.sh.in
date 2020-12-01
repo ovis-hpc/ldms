@@ -119,7 +119,7 @@ mysleep 1
 echo Starting plugins on daemon1
 cat << EOF | $LC --port $port1
 load name=variable
-config name=variable producer=localhost1 instance=localhost1/variable schema=variable component_id=1 udata_default=10 max_mc=2 max_csrow=4
+config name=variable producer=localhost1 instance=localhost1/variable schema=variable component_id=1 max_mc=2 max_csrow=4
 start name=variable interval=1000000
 EOF
 die $?
