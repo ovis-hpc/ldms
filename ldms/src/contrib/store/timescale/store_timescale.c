@@ -337,7 +337,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
                 off_create += cnt_create;
 
                if (metric_type < LDMS_V_F32){
-                        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, "BIGINT");
+                        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, "DECIMAL");
                } else if (metric_type < LDMS_V_CHAR_ARRAY) {
                         cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, "DOUBLE PRECISION");
                } else
@@ -346,7 +346,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
                off_create += cnt_create;
 
         }
-        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, ",timestamp BIGINT)\0");
+        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, ",timestamp DECIMAL)\0");
         off_create += cnt_create;        
  
         PGresult *res = PQexec(is->conn, measurement_create);
