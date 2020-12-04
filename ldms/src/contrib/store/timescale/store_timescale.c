@@ -346,7 +346,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
                off_create += cnt_create;
 
         }
-        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, ",timestamp DECIMAL)\0");
+        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, ",timestamp TIMESTAMPTZ)\0");
         off_create += cnt_create;        
  
         PGresult *res = PQexec(is->conn, measurement_create);
@@ -396,7 +396,21 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	timestamp = ldms_transaction_timestamp_get(set);
 	long long int ts =  ((long long)timestamp.sec * 1000000000L)
 		+ ((long long)timestamp.usec * 1000L);
-	cnt_insert = snprintf(&measurement_insert[off_insert], is->measurement_limit - off_insert, ",%lld)\0", ts);
+
+        char str[100] = {0};
+        //itoa(timestamp.sec, str, 10);
+        sprintf(str, "%d", timestamp.sec);
+        char command[150];
+        strcpy(command, "date '+%Y-%m-%d %H:%M:%S+08' -d @");
+        strcat(command, str);
+        FILE *fp;
+        char buffer[20];
+        fp=popen(command, "r");
+        fgets(buffer, sizeof(buffer), fp);
+        buffer[20] = '\0';
+        pclose(fp);       
+
+	cnt_insert = snprintf(&measurement_insert[off_insert], is->measurement_limit - off_insert, ",'%s')\0", buffer);
 	off_insert += cnt_insert;
 
         res = PQexec(is->conn, measurement_insert);
