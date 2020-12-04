@@ -276,9 +276,9 @@ const char *zap_ugni_type_str(zap_ugni_type_t type)
  * Use KEEP-ALIVE packets to shut down a connection if the remote peer fails
  * to respond for 10 minutes
  */
-#define ZAP_SOCK_KEEPCNT	10  /* Give up after 10 failed probes */
-#define ZAP_SOCK_KEEPIDLE	30	/* Start probing after 30s of inactivity */
-#define ZAP_SOCK_KEEPINTVL	60	/* Probe once a minute */
+#define ZAP_SOCK_KEEPCNT	3	/* Give up after 3 failed probes */
+#define ZAP_SOCK_KEEPIDLE	10	/* Start probing after 10s of inactivity */
+#define ZAP_SOCK_KEEPINTVL	2	/* Probe couple seconds after idle */
 
 static int __set_keep_alive(int sock)
 {
@@ -1398,6 +1398,7 @@ static void *error_thread_proc(void *args)
 		zap_ugni_log("FAIL:GNI_SubscribeErrors returned error %s\n", gni_err_str[status]);
 	}
 	while (1) {
+		memset(&ev, 0, sizeof(ev));
 		status = GNI_WaitErrorEvents(err_hndl,&ev,1,0,&num);
 		if (status != GNI_RC_SUCCESS || (num != 1)) {
 			zap_ugni_log("FAIL:GNI_WaitErrorEvents returned error %d %s\n",
