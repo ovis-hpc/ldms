@@ -329,7 +329,7 @@ int zap_event_add(struct zap_event_queue *q, zap_ep_t ep, void *ctxt);
  */
 struct zap_thrstat {
 	char *name;
-	int window_size;
+	uint64_t window_size;
 	struct timespec wait_start;
 	struct timespec wait_end;
 	int waiting;
