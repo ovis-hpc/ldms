@@ -130,17 +130,6 @@ static pthread_mutex_t z_key_tree_mutex;
 static LIST_HEAD(, z_sock_ep) z_sock_list = LIST_HEAD_INITIALIZER(0);
 static pthread_mutex_t z_sock_list_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-static int __set_sockbuf_sz(int sockfd)
-{
-	int rc;
-	size_t optval = SOCKBUF_SZ;
-	rc = setsockopt(sockfd, SOL_SOCKET, SO_SNDBUF, &optval, sizeof(optval));
-	if (rc)
-		return rc;
-	rc = setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &optval, sizeof(optval));
-	return rc;
-}
-
 static int z_rbn_cmp(void *a, const void *b)
 {
 	uint32_t x = (uint32_t)(uint64_t)a;
@@ -302,32 +291,55 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 	return zap_errno2zerr(errno);
 }
 
-static int __set_keep_alive(struct z_sock_ep *sep)
+static int __set_sock_opts(struct z_sock_ep *sep)
 {
 	int rc;
-	int optval = 1;
-	rc = setsockopt(sep->sock, SOL_SOCKET, SO_KEEPALIVE, &optval,
+	int i;
+	size_t sz;
+
+	/* nonblock */
+	rc = __sock_nonblock(sep->sock);
+	if (rc)
+		return rc;
+
+	/* keepalive */
+	i = 1;
+	rc = setsockopt(sep->sock, SOL_SOCKET, SO_KEEPALIVE, &i,
 			sizeof(int));
 	if (rc) {
 		LOG_(sep, "zap_sock: WARNING: set SO_KEEPALIVE error: %d\n", errno);
 		return errno;
 	}
-	optval = ZAP_SOCK_KEEPCNT;
-	rc = setsockopt(sep->sock, SOL_TCP, TCP_KEEPCNT, &optval, sizeof(int));
+	i = ZAP_SOCK_KEEPCNT;
+	rc = setsockopt(sep->sock, SOL_TCP, TCP_KEEPCNT, &i, sizeof(int));
 	if (rc) {
 		LOG_(sep, "zap_sock: WARNING: set TCP_KEEPCNT error: %d\n", errno);
 		return errno;
 	}
-	optval = ZAP_SOCK_KEEPIDLE;
-	rc = setsockopt(sep->sock, SOL_TCP, TCP_KEEPIDLE, &optval, sizeof(int));
+	i = ZAP_SOCK_KEEPIDLE;
+	rc = setsockopt(sep->sock, SOL_TCP, TCP_KEEPIDLE, &i, sizeof(int));
 	if (rc) {
 		LOG_(sep, "zap_sock: WARNING: set TCP_KEEPIDLE error: %d\n", errno);
 		return errno;
 	}
-	optval = ZAP_SOCK_KEEPINTVL;
-	rc = setsockopt(sep->sock, SOL_TCP, TCP_KEEPINTVL, &optval, sizeof(int));
+	i = ZAP_SOCK_KEEPINTVL;
+	rc = setsockopt(sep->sock, SOL_TCP, TCP_KEEPINTVL, &i, sizeof(int));
 	if (rc) {
 		LOG_(sep, "zap_sock: WARNING: set TCP_KEEPINTVL error: %d\n", errno);
+		return errno;
+	}
+
+	/* send/recv bufsiz */
+	sz = SOCKBUF_SZ;
+	rc = setsockopt(sep->sock, SOL_SOCKET, SO_SNDBUF, &sz, sizeof(sz));
+	if (rc) {
+		LOG_(sep, "zap_sock: WARNING: set SO_SNDBUF error: %d\n", errno);
+		return errno;
+	}
+	sz = SOCKBUF_SZ;
+	rc = setsockopt(sep->sock, SOL_SOCKET, SO_RCVBUF, &sz, sizeof(sz));
+	if (rc) {
+		LOG_(sep, "zap_sock: WARNING: set SO_RCVBUF error: %d\n", errno);
 		return errno;
 	}
 	return 0;
@@ -350,20 +362,10 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 		goto err1;
 	}
 
-	rc = __set_sockbuf_sz(sep->sock);
-	if (rc) {
+	rc = __set_sock_opts(sep);
+	if (rc)  {
 		zerr = ZAP_ERR_TRANSPORT;
 		goto err1;
-	}
-
-	rc = __sock_nonblock(sep->sock);
-	if (rc) {
-		zerr = ZAP_ERR_RESOURCE;
-		goto err1;
-	}
-	rc = __set_keep_alive(sep);
-	if (rc) {
-		LOG_(sep, "zap_sock: WARNING: __set_keep_alive() rc: %d\n", rc);
 	}
 
 	if (data_len) {
@@ -1161,7 +1163,7 @@ static void sock_write(ovis_event_t ev)
 
 	/* msg */
 	while (wr->msg_len) {
-		wsz = write(sep->sock, wr->msg + wr->off, wr->msg_len);
+		wsz = send(sep->sock, wr->msg + wr->off, wr->msg_len, MSG_NOSIGNAL);
 		if (wsz < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				__enable_epoll_out(sep);
@@ -1180,7 +1182,7 @@ static void sock_write(ovis_event_t ev)
 
 	/* data, wr->msg_len is already 0 */
 	while (wr->data_len) {
-		wsz = write(sep->sock, wr->data + wr->off, wr->data_len);
+		wsz = send(sep->sock, wr->data + wr->off, wr->data_len, MSG_NOSIGNAL);
 		if (wsz < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				__enable_epoll_out(sep);
@@ -1520,26 +1522,13 @@ static void __z_sock_conn_request(ovis_event_t ev)
 		return;
 	}
 
-	rc = __set_sockbuf_sz(sockfd);
-	if (rc) {
-		close(sockfd);
-		return;
-	}
-
-	rc = __sock_nonblock(sockfd);
-	if (rc) {
-		close(sockfd);
-		return;
-	}
-
 	new_ep = zap_new(sep->ep.z, sep->ep.app_cb);
 	if (!new_ep) {
 		zerr = errno;
 		LOG_(sep, "Zap Error %d (%s): in %s at %s:%d\n",
 				zerr, zap_err_str(zerr) , __func__, __FILE__,
 				__LINE__);
-		close(sockfd);
-		return;
+		goto err_0;
 	}
 
 	void *uctxt = zap_get_ucontext(&sep->ep);
@@ -1556,15 +1545,25 @@ static void __z_sock_conn_request(ovis_event_t ev)
 	new_sep->ev.param.epoll_events = EPOLLIN;
 	new_sep->ev.param.fd = sockfd;
 
+	rc = __set_sock_opts(new_sep);
+	if (rc)
+		goto err_1;
+
 	rc = ovis_scheduler_event_add(sched, &new_sep->ev);
 	if (rc) {
 		/* synchronous error & app doesn't know about this new
 		 * endpoint yet ... so just log and cleanup. */
 		LOG_(sep, "ovis_scheduler_event_add() error %d on fd %d", rc,
 					new_sep->sock);
-		free(new_ep);
-		close(sockfd);
+		goto err_1;
 	}
+
+	return;
+
+ err_1:
+	free(new_ep);
+ err_0:
+	close(sockfd);
 }
 
 static zap_err_t z_sock_listen(zap_ep_t ep, struct sockaddr *sa,
