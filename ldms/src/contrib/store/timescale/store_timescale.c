@@ -24,6 +24,11 @@
 #include "ldmsd.h"
 #include </usr/include/libpq-fe.h>
 
+static char user[100];
+static char password[100];
+static char hostaddr[100];
+static char port[100];
+static char dbname[100];
 struct timescale_store {
 	struct ldmsd_store *store;
 	void *ucontext;
@@ -135,6 +140,57 @@ timescale_value_set_fn timescale_value_set[] = {
  *   */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
+	char *value;
+	pthread_mutex_lock(&cfg_lock);
+
+	value = av_value(avl, "user");
+	if (!value) {
+		msglog(LDMSD_LERROR, "The 'user' keyword is required.\n");
+		return EINVAL;
+	}
+	strncpy(user, value, sizeof(user));
+
+        value = av_value(avl, "password");
+        if (!value) {
+                msglog(LDMSD_LERROR, "The 'password' keyword is required.\n");
+                return EINVAL;
+        }
+        strncpy(password, value, sizeof(password));
+
+        value = av_value(avl, "hostaddr");
+        if (!value) {
+                msglog(LDMSD_LERROR, "The 'hostaddr' keyword is required.\n");
+                return EINVAL;
+        }
+        strncpy(hostaddr, value, sizeof(hostaddr));
+
+        value = av_value(avl, "port");
+        if (!value) {
+                msglog(LDMSD_LERROR, "The 'port' keyword is required.\n");
+                return EINVAL;
+        }
+        strncpy(port, value, sizeof(port));
+
+        value = av_value(avl, "dbname");
+        if (!value) {
+                msglog(LDMSD_LERROR, "The 'dbname' keyword is required.\n");
+                return EINVAL;
+        }
+        strncpy(dbname, value, sizeof(dbname));
+
+	value = av_value(avl, "measurement_limit");
+	if (value) {
+		measurement_limit = strtol(value, NULL, 0);
+		if (measurement_limit <= 0) {
+			msglog(LDMSD_LERROR,
+			       "'%s' is not a valid 'measurement_limit' value\n",
+			       value);
+			measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
+		}
+		return EINVAL;
+	}
+
+	pthread_mutex_unlock(&cfg_lock);
 	return 0;
 }
 
@@ -144,7 +200,7 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return 0;
+	return "config name=store_timescale user=<username> password=<password> hostaddr=<host ip addr> port=<port no> dbname=<database name> measurement_limit=<sql statement length>";
 }
 
 static ldmsd_store_handle_t
@@ -169,15 +225,14 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	is->job_mid = -1;
 	is->comp_mid = -1;
 
-        msglog(LDMSD_LERROR, "CONNECTION!\n");
+        char str[128];
+        snprintf(str, sizeof(str), "user=%s password=%s hostaddr=%s port=%s dbname=%s", strdup(user), strdup(password), strdup(hostaddr), strdup(port), strdup(dbname));
 
-        is->conn = PQconnectdb("user=postgres password=postgres hostaddr=172.16.0.190 port=5432 dbname=ldms");
-        msglog(LDMSD_LERROR, "CONNECTION!\n");
+        is->conn = PQconnectdb(str);
         if (PQstatus(is->conn) == CONNECTION_BAD) {
 		msglog(LDMSD_LERROR, "TimescaleDB connection failed!\n");
                 goto err3;
         }
-
 
 	pthread_mutex_lock(&cfg_lock);
 	LIST_INSERT_HEAD(&store_list, is, entry);
@@ -282,7 +337,6 @@ static inline size_t __element_byte_len(enum ldms_value_type t)
 static int
 store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_count)
 {
-        //msglog(LDMSD_LERROR, "ENTER STORE!\n");
 	struct timescale_store *is = _sh;
 	struct ldms_timestamp timestamp;
 	int i;
@@ -302,21 +356,14 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 
 	measurement_create = is->measurement;
        
-        //msglog(LDMSD_LERROR, "1111111111111111\n");        
- 
         cnt_create = snprintf(measurement_create, is->measurement_limit,
                    "CREATE TABLE IF NOT EXISTS %s(",
                    is->schema);
         off_create = cnt_create; 
 
-        //msglog(LDMSD_LERROR, "%d \n", metric_count);
-        //msglog(LDMSD_LERROR, "%s \n", measurement_create);
         int comma = 0;
         for (i = 0; i < metric_count; i++) {
-                //msglog(LDMSD_LERROR, "ENTER LOOP!\n");
-                //msglog(LDMSD_LERROR, "metric_count %d \n", i);
                 metric_type = ldms_metric_type_get(set, metric_arry[i]);
-                //msglog(LDMSD_LERROR, "AFTER GETTING METRIC TYPE!\n");
                 if (metric_type > LDMS_V_CHAR_ARRAY) {
                         msglog(LDMSD_LERROR,
                                "The metric %s:%s of type %s is not supported by "
@@ -356,8 +403,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
                 PQfinish(is->conn);
         }
 
-        //msglog(LDMSD_LERROR, "2222222222222222\n");
-
         measurement_insert = is->measurement;
         cnt_insert = snprintf(measurement_insert, is->measurement_limit,
                    "INSERT INTO %s VALUES(",
@@ -365,11 +410,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 
         off_insert = cnt_insert;
 
-        //msglog(LDMSD_LERROR, "%d \n", metric_count);
-        //msglog(LDMSD_LERROR, "%s \n", measurement_insert);
         comma = 0;
 	for (i = 0; i < metric_count; i++) {
-                //msglog(LDMSD_LERROR, "metric_count %d \n", i);
 		metric_type = ldms_metric_type_get(set, metric_arry[i]);
 		if (metric_type > LDMS_V_CHAR_ARRAY) {
 			msglog(LDMSD_LERROR,
@@ -398,7 +440,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		+ ((long long)timestamp.usec * 1000L);
 
         char str[100] = {0};
-        //itoa(timestamp.sec, str, 10);
         sprintf(str, "%d", timestamp.sec);
         char command[150];
         strcpy(command, "date '+%Y-%m-%d %H:%M:%S+08' -d @");
@@ -407,7 +448,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
         char buffer[50];
         fp=popen(command, "r");
         fgets(buffer, sizeof(buffer), fp);
-        //buffer[23] = '\0';
         pclose(fp);       
 
 	cnt_insert = snprintf(&measurement_insert[off_insert], is->measurement_limit - off_insert, ",'%s')\0", buffer);
