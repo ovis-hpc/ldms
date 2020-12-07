@@ -459,7 +459,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		PQclear(res);
                 PQfinish(is->conn);
         } 
-        msglog(LDMSD_LERROR, "Insert succeed!\n");
 	pthread_mutex_unlock(&is->lock);
 	return 0;
 err:
