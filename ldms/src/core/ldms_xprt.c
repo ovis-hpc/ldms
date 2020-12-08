@@ -375,6 +375,7 @@ static void send_dir_update(struct ldms_xprt *x,
 	reply->hdr.xid = x->remote_dir_xid;
 	reply->hdr.cmd = htonl(LDMS_CMD_DIR_UPDATE_REPLY);
 	reply->hdr.rc = 0;
+	reply->dir.more = 0;
 	reply->dir.type = htonl(t);
 	reply->dir.json_data_len = htonl(json_data_len);
 	reply->hdr.len = htonl(buf_len);
