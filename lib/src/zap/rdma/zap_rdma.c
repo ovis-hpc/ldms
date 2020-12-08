@@ -1421,6 +1421,7 @@ static int cq_event_handler(struct ibv_cq *cq, int count)
 {
 	struct ibv_wc wc;
 	int rc, poll_count = 0;
+	memset(&wc, 0, sizeof(wc));
 
 	while (count-- && ((rc = ibv_poll_cq(cq, 1, &wc)) == 1)) {
 		struct z_rdma_context *ctxt = __rdma_get_context(&wc);
