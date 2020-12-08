@@ -664,11 +664,11 @@ int main(int argc, char *argv[])
 	ldms_t ldms;
 	int ret;
 	struct hostent *h;
-	char *hostname = "localhost";
+	char *hostname = strdup("localhost");
 	unsigned short port_no = LDMS_DEFAULT_PORT;
 	int op;
 	int i;
-	char *xprt = "sock";
+	char *xprt = strdup("sock");
 	int waitsecs = 10;
 	int regex = 0;
 	ldms_lookup_cb_t lu_cb_fn = lookup_cb;
@@ -705,6 +705,7 @@ int main(int argc, char *argv[])
 			schema = 0;
 			break;
 		case 'h':
+			free(hostname);
 			hostname = strdup(optarg);
 			if (!hostname) {
 				printf("ERROR: out of memory\n");
@@ -729,6 +730,7 @@ int main(int argc, char *argv[])
 			verbose++;
 			break;
 		case 'x':
+			free(xprt);
 			xprt = strdup(optarg);
 			if (!xprt) {
 				printf("ERROR: out of memory\n"); 
@@ -826,6 +828,10 @@ int main(int argc, char *argv[])
 		printf("Port        : %hu\n", port_no);
 		printf("Transport   : %s\n", xprt);
 	}
+	free(xprt);
+	free(hostname);
+	xprt = NULL;
+	hostname = NULL;
 	ret  = ldms_xprt_connect(ldms, (struct sockaddr *)&sin, sizeof(sin),
 				 ldms_connect_cb, NULL);
 	if (ret) {
