@@ -436,8 +436,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	struct ldms_timestamp timestamp;
 	int i;
 	int rc = 0;
-	size_t cnt_insert, cnt_create, off_insert, off_create;
-	//char *measurement_create; 
+	size_t cnt_insert, off_insert;
         char *measurement_insert;
         enum ldms_value_type metric_type;
 	if (!is)
@@ -483,8 +482,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	}
 
 	timestamp = ldms_transaction_timestamp_get(set);
-	long long int ts =  ((long long)timestamp.sec * 1000000000L)
-		+ ((long long)timestamp.usec * 1000L);
 
         char str[100] = {0};
         sprintf(str, "%d", timestamp.sec);
