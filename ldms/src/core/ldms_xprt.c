@@ -537,6 +537,7 @@ static void __ldms_drop_rbd_set_refs(struct ldms_rbuf_desc *rbd)
 
 void __ldms_xprt_resource_free(struct ldms_xprt *x)
 {
+	extern void __put_share_lookup_ref(ldms_set_t rbd);
 	pthread_mutex_lock(&x->lock);
 	x->remote_dir_xid = x->local_dir_xid = 0;
 
@@ -550,6 +551,16 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 	struct ldms_context *ctxt;
 	while (!TAILQ_EMPTY(&x->ctxt_list)) {
 		ctxt = TAILQ_FIRST(&x->ctxt_list);
+		if (ctxt->type == LDMS_CONTEXT_SET_DELETE) {
+			/*
+			 * An outstanding SET_DELETE message to the client.
+			 * The connection to the client has been disconnected
+			 * before the acknowledgment is received.
+			 *
+			 * Put the RBD & set references back.
+			 */
+			__put_share_lookup_ref(ctxt->set_delete.s);
+		}
 
 #ifdef DEBUG
 		switch (ctxt->type) {
@@ -586,6 +597,18 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 			__ldms_drop_rbd_set_refs(rbd);
 			pthread_mutex_unlock(&set->lock);
 			pthread_mutex_lock(&x->lock);
+		}
+		if (rbd->type == LDMS_RBD_LOCAL) {
+			/*
+			 * The only LOCAL RBDs that are associated with a transport
+			 * is the one created to be shared at lookup.
+			 *
+			 * At this point it is impossible that
+			 * this LDMS has received or will receive
+			 * a SET_DELETE reply of the rbd->set,
+			 * so put the RBD & set 'share_lookup' references back here.
+			 */
+			__put_share_lookup_ref(rbd);
 		}
 		/* Make sure that we didn't lose a set delete race */
 		if (!rbd->xprt)
@@ -2660,7 +2683,6 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 				"after callback\n",
 			 x, x->ref_count);
 		#endif /* DEBUG */
-		/* Put the reference taken in ldms_xprt_connect() or accept() */
 		__ldms_xprt_resource_free(x);
 		ldms_xprt_put(x);
 		break;
