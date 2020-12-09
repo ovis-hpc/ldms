@@ -25,10 +25,10 @@
 #include </usr/include/libpq-fe.h>
 
 static char user[100];
-static char password[100];
 static char hostaddr[100];
 static char port[100];
 static char dbname[100];
+static char pwfile[1024];
 struct timescale_store {
 	struct ldmsd_store *store;
 	void *ucontext;
@@ -135,6 +135,36 @@ timescale_value_set_fn timescale_value_set[] = {
 	[LDMS_V_CHAR_ARRAY] = set_str_fn
 };
 
+static char *fixup(char *name)
+{
+        char *s = name;
+        while (*s != '\0') {
+                switch (*s) {
+                case '(':
+                case ')':
+                case '#':
+                case ':':
+                        *s = '_';
+                        break;
+                case '.':
+                        *s = '_';
+                        break;
+                default:
+                        break;
+                }
+                s++;
+        }
+        int ret = strcmp(name, "create");
+        if (ret == 0)
+            name[5] = '_';
+
+        ret = strcmp(name, "user");
+        if (ret == 0)
+            name[3] = '_';
+
+        return name;
+}
+
 /**
  *  * \brief Configuration
  *   */
@@ -150,12 +180,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	strncpy(user, value, sizeof(user));
 
-        value = av_value(avl, "password");
+        value = av_value(avl, "pwfile");
         if (!value) {
-                msglog(LDMSD_LERROR, "The 'password' keyword is required.\n");
+                msglog(LDMSD_LERROR, "The 'pwfile' keyword is required.\n");
                 return EINVAL;
         }
-        strncpy(password, value, sizeof(password));
+        strncpy(pwfile, value, sizeof(pwfile));
 
         value = av_value(avl, "hostaddr");
         if (!value) {
@@ -200,7 +230,7 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return "config name=store_timescale user=<username> password=<password> hostaddr=<host ip addr> port=<port no> dbname=<database name> measurement_limit=<sql statement length>";
+	return "config name=store_timescale user=<username> pwfile=<path to password file> hostaddr=<host ip addr> port=<port no> dbname=<database name> measurement_limit=<sql statement length>";
 }
 
 static ldmsd_store_handle_t
@@ -208,6 +238,9 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct timescale_store *is = NULL;
+        char *password;
+        char *measurement_create;
+        size_t cnt_create, off_create;
 
 	is = malloc(sizeof(*is) + measurement_limit);
 	if (!is)
@@ -225,22 +258,114 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	is->job_mid = -1;
 	is->comp_mid = -1;
 
+        if (pwfile) {
+                if (!pwfile || pwfile[0] != '/') {
+                        msglog(LDMSD_LERROR, "Invalid password file path!\n"); 
+                        goto err3;
+                }
+  
+                FILE *file = fopen(pwfile, "r");
+                if (!file) {
+                        msglog(LDMSD_LERROR, "Unable to open password file!\n");
+                        goto err3;
+                }
+                char line[600];
+                char *s, *ptr;
+                s = NULL;
+                while (fgets(line, 600, file)) {
+                        if ((line[0] == '#') || (line[0] == '\n'))
+                                continue;
+                        if (0 == strncmp(line, "secretword=", 11)) {
+                                s = strtok_r(&line[11], " \t\n", &ptr);
+                                if (!s) {
+                                        msglog(LDMSD_LERROR, "Auth error: the secret word is an empty srting.\n");
+                                        goto err3;
+                                }
+                                break;
+                        }
+                }
+                if (!s) {
+                        msglog(LDMSD_LERROR, "No secret word in the file!\n");
+                        goto err3;
+                }
+                password = strdup(s);
+                if (!password) {
+                        msglog(LDMSD_LERROR, "Auth error: Out of memory when trying to read the secret word.\n");
+                        goto err3;
+                }
+                fclose(file);       
+        }
+
         char str[128];
-        snprintf(str, sizeof(str), "user=%s password=%s hostaddr=%s port=%s dbname=%s", strdup(user), strdup(password), strdup(hostaddr), strdup(port), strdup(dbname));
+        snprintf(str, sizeof(str), "user=%s password=%s hostaddr=%s port=%s dbname=%s", strdup(user), password, strdup(hostaddr), strdup(port), strdup(dbname));
 
         is->conn = PQconnectdb(str);
         if (PQstatus(is->conn) == CONNECTION_BAD) {
 		msglog(LDMSD_LERROR, "TimescaleDB connection failed!\n");
-                goto err3;
+                goto err4;
         }
 
+        measurement_create = is->measurement;
+        cnt_create = snprintf(measurement_create, is->measurement_limit,
+                   "CREATE TABLE IF NOT EXISTS %s(",
+                   is->schema);
+        off_create = cnt_create;        
+
+        ldmsd_strgp_metric_t x;
+        char *name;
+        int comma = 0;
+        TAILQ_FOREACH(x, metric_list, entry) {
+                name = x->name;
+                enum ldms_value_type metric_type = x->type;
+                if (metric_type > LDMS_V_CHAR_ARRAY) {
+                        msglog(LDMSD_LERROR,
+                               "The metric %s:%s of type %s is not supported by "
+                               "TimescaleDB and is being ignored.\n",
+                               is->schema,
+                               name,
+                               ldms_metric_type_to_str(metric_type));
+                        continue;
+                }
+                if (comma) {
+                        if (off_create > is->measurement_limit - 16)
+                                goto err5;
+                        measurement_create[off_create++] = ',';
+                } else
+                        comma = 1;
+                cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create,
+                               "%s ", fixup(name));
+                off_create += cnt_create;
+
+               if (metric_type < LDMS_V_F32){
+                        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, "DECIMAL");
+               } else if (metric_type < LDMS_V_CHAR_ARRAY) {
+                        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, "DOUBLE PRECISION");
+               } else
+                        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, "VARCHAR(255)");
+
+               off_create += cnt_create;
+
+        }
+        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, ",timestamp TIMESTAMPTZ)\0");
+        off_create += cnt_create;
+
+        PGresult *res = PQexec(is->conn, measurement_create);
+        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+                msglog(LDMSD_LERROR, "Create table error! with sql %s \n", measurement_create);
+                PQclear(res);
+                goto err4;
+        }
+ 
 	pthread_mutex_lock(&cfg_lock);
 	LIST_INSERT_HEAD(&store_list, is, entry);
 	pthread_mutex_unlock(&cfg_lock);
 	return is;
-        
+
+ err5:
+        msglog(LDMSD_LERROR, "Overflow formatting TimescaleDB measurement data.\n");
+ err4:  
+        PQfinish(is->conn);      
  err3:
-        PQfinish(is->conn);
 	free(is->schema);
  err2:
 	free(is->container);
@@ -248,36 +373,6 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	free(is);
  out:
 	return NULL;
-}
-
-static char *fixup(char *name)
-{
-	char *s = name;
-	while (*s != '\0') {
-		switch (*s) {
-		case '(':
-		case ')':
-		case '#':
-		case ':':
-			*s = '_';
-			break;
-                case '.':
-                        *s = '_';
-                        break;
-		default:
-			break;
-		}
-		s++;
-	}
-        int ret = strcmp(name, "create");
-        if (ret == 0)
-            name[5] = '_';
-
-        ret = strcmp(name, "user");
-        if (ret == 0) 
-            name[3] = '_';
-
-	return name;
 }
 
 static int init_store(struct timescale_store *is, ldms_set_t set, int *mids, int count)
@@ -342,7 +437,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	int i;
 	int rc = 0;
 	size_t cnt_insert, cnt_create, off_insert, off_create;
-	char *measurement_create, *measurement_insert;
+	//char *measurement_create; 
+        char *measurement_insert;
         enum ldms_value_type metric_type;
 	if (!is)
 		return EINVAL;
@@ -354,55 +450,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 			goto err;
 	}
 
-	measurement_create = is->measurement;
-       
-        cnt_create = snprintf(measurement_create, is->measurement_limit,
-                   "CREATE TABLE IF NOT EXISTS %s(",
-                   is->schema);
-        off_create = cnt_create; 
-
-        int comma = 0;
-        for (i = 0; i < metric_count; i++) {
-                metric_type = ldms_metric_type_get(set, metric_arry[i]);
-                if (metric_type > LDMS_V_CHAR_ARRAY) {
-                        msglog(LDMSD_LERROR,
-                               "The metric %s:%s of type %s is not supported by "
-                               "TimescaleDB and is being ignored.\n",
-                               is->schema,
-                               ldms_metric_name_get(set, metric_arry[i]),
-                               ldms_metric_type_to_str(metric_type));
-                        continue;
-                }
-                if (comma) {
-                        if (off_create > is->measurement_limit - 16)
-                                goto err;
-                        measurement_create[off_create++] = ',';
-                } else
-                        comma = 1;
-                cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create,
-                               "%s ", is->metric_name[i]);
-                off_create += cnt_create;
-
-               if (metric_type < LDMS_V_F32){
-                        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, "DECIMAL");
-               } else if (metric_type < LDMS_V_CHAR_ARRAY) {
-                        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, "DOUBLE PRECISION");
-               } else
-                        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, "VARCHAR(255)");
-
-               off_create += cnt_create;
-
-        }
-        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, ",timestamp TIMESTAMPTZ)\0");
-        off_create += cnt_create;        
- 
-        PGresult *res = PQexec(is->conn, measurement_create);
-        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-                msglog(LDMSD_LERROR, "Create table error! with sql %s \n", measurement_create);
-                PQclear(res);
-                PQfinish(is->conn);
-        }
-
         measurement_insert = is->measurement;
         cnt_insert = snprintf(measurement_insert, is->measurement_limit,
                    "INSERT INTO %s VALUES(",
@@ -410,7 +457,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 
         off_insert = cnt_insert;
 
-        comma = 0;
+        int comma = 0;
 	for (i = 0; i < metric_count; i++) {
 		metric_type = ldms_metric_type_get(set, metric_arry[i]);
 		if (metric_type > LDMS_V_CHAR_ARRAY) {
@@ -453,7 +500,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 	cnt_insert = snprintf(&measurement_insert[off_insert], is->measurement_limit - off_insert, ",'%s')\0", buffer);
 	off_insert += cnt_insert;
 
-        res = PQexec(is->conn, measurement_insert);
+        PGresult *res = PQexec(is->conn, measurement_insert);
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
 		msglog(LDMSD_LERROR, "Insert table error! with sql %s \n", measurement_insert);
 		PQclear(res);
