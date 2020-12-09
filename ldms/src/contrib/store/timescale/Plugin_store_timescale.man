@@ -42,7 +42,7 @@ user=<username>
 .br
 This option is required; It will be used as the user name to connect to timescaledb.
 .TP
-pwfile=<path to password file>
+pwfile=<full path to password file>
 .br
 This option is required; The file must have content secretword=<password>, the password will be used as the password to connect to timescaledb.
 .TP
