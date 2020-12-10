@@ -1246,8 +1246,10 @@ static gni_return_t process_cq(gni_cq_handle_t cq, gni_cq_entry_t cqe_)
 
 		/* Wake up threads blocked trying to post descriptors */
 		pthread_mutex_lock(&cq_full_lock);
-		__sync_sub_and_fetch(&ugni_post_count, 1);
-		assert((int)ugni_post_count >= 0);
+		if (uep->gni_cq == _dom.cq) {
+			__sync_sub_and_fetch(&ugni_post_count, 1);
+			assert((int)ugni_post_count >= 0);
+		}
 		pthread_cond_broadcast(&cq_full_cond);
 		pthread_mutex_unlock(&cq_full_lock);
 
@@ -1303,8 +1305,10 @@ void __flush_post_desc_list(struct z_ugni_ep *uep)
 		zev.context = d->context;
 		pthread_mutex_unlock(&uep->ep.lock);
 		uep->ep.cb(&uep->ep, &zev);
-		__sync_sub_and_fetch(&ugni_post_count, 1);
-		assert((int)ugni_post_count >= 0);
+		if (uep->gni_cq == _dom.cq) {
+			__sync_sub_and_fetch(&ugni_post_count, 1);
+			assert((int)ugni_post_count >= 0);
+		}
 		pthread_mutex_lock(&uep->ep.lock);
 		__stall_post_desc(d, time);
 		d = LIST_FIRST(&uep->post_desc_list);
@@ -2456,6 +2460,7 @@ zap_ep_t z_ugni_new(zap_t z, zap_cb_fn_t cb)
 	}
 	uep->sock = -1;
 	uep->ep_id = -1;
+	uep->gni_cq = _dom.cq;
 
 	uep->rbuff = malloc(ZAP_UGNI_INIT_RECV_BUFF_SZ);
 	if (!uep->rbuff)
@@ -2785,7 +2790,10 @@ static zap_err_t z_ugni_read(zap_ep_t ep, zap_map_t src_map, char *src,
 #endif /* DEBUG */
 
 	pthread_mutex_lock(&ugni_lock);
-	grc = GNI_PostRdma(uep->gni_ep, &desc->post);
+	if (uep->gni_cq == _dom.cq)
+		grc = GNI_PostRdma(uep->gni_ep, &desc->post);
+	else
+		grc = GNI_RC_ERROR_RESOURCE;
 	if (grc != GNI_RC_SUCCESS) {
 		LOG_(uep, "%s: GNI_PostRdma() failed, grc: %s\n",
 				__func__, gni_ret_str(grc));
@@ -2897,7 +2905,10 @@ static zap_err_t z_ugni_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	__sync_fetch_and_add(&ugni_io_count, 1);
 #endif /* DEBUG */
 	pthread_mutex_lock(&ugni_lock);
-	grc = GNI_PostRdma(uep->gni_ep, &desc->post);
+	if (uep->gni_cq == _dom.cq)
+		grc = GNI_PostRdma(uep->gni_ep, &desc->post);
+	else
+		grc = GNI_RC_ERROR_RESOURCE;
 	if (grc != GNI_RC_SUCCESS) {
 		LOG_(uep, "%s: GNI_PostRdma() failed, grc: %s\n",
 				__func__, gni_ret_str(grc));
