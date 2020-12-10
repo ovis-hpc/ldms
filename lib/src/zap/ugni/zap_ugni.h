@@ -257,6 +257,7 @@ struct z_ugni_ep {
 	uint8_t app_accepted;
 	uint8_t ugni_ep_bound;
 	gni_ep_handle_t gni_ep;
+	gni_cq_handle_t gni_cq;
 
 	struct zap_ugni_post_desc_list post_desc_list;
 	struct zap_event conn_ev;
