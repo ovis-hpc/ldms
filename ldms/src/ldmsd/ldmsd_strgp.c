@@ -633,11 +633,6 @@ void ldmsd_strgp_close()
 		strgp_close(strgp);
 		strgp->state = LDMSD_STRGP_STATE_STOPPED;
 		ldmsd_strgp_unlock(strgp);
-		/*
-		 * ref_count shouldn't reach zero
-		 * because the strgp isn't deleted yet.
-		 */
-		ldmsd_strgp_put(strgp);
 next:
 		strgp = ldmsd_strgp_next(strgp);
 	}
