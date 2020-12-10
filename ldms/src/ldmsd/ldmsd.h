@@ -811,7 +811,7 @@ extern ldmsctl_cmd_fn_t cmd_table[LDMSCTL_LAST_COMMAND + 1];
 #define LEN_ERRSTR 256
 #define LDMSD_ENOMEM_MSG "Memory allocation failure\n"
 
-void ldmsd_msg_logger(enum ldmsd_loglevel level, const char *fmt, ...);
+#define ldmsd_msg_logger ldmsd_log /* ldmsd_msg_logger is deprecated */
 int ldmsd_logrotate();
 int ldmsd_plugins_usage(const char *plugin_name);
 void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix);
