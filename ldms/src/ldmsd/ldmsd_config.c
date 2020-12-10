@@ -172,7 +172,7 @@ struct ldmsd_plugin_cfg *new_plugin(char *plugin_name,
 			 "function.", plugin_name);
 		goto err;
 	}
-	lpi = pget(ldmsd_msg_logger);
+	lpi = pget(ldmsd_log);
 	if (!lpi) {
 		snprintf(errstr, errlen, "The plugin '%s' could not be loaded.",
 								plugin_name);
