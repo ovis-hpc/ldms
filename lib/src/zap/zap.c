@@ -893,7 +893,7 @@ zap_utilization(zap_thrstat_t in, struct timespec *now)
    	return (double)proc_us / (double)(proc_us + wait_us);
 }
 
-static uint64_t zap_accumulate(int sample_no,
+static uint64_t zap_accumulate(uint64_t sample_no,
 							uint64_t sample,
 							int window_size,
 							uint64_t current_sum,
