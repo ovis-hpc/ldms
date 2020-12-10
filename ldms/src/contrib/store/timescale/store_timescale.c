@@ -28,7 +28,7 @@ static char user[100];
 static char hostaddr[100];
 static char port[100];
 static char dbname[100];
-static char pwfile[1024];
+static char password[100];
 struct timescale_store {
 	struct ldmsd_store *store;
 	void *ucontext;
@@ -170,7 +170,7 @@ static char *fixup(char *name)
  *   */
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char *value;
+	char *value, *pwfile = NULL;
 	pthread_mutex_lock(&cfg_lock);
 
 	value = av_value(avl, "user");
@@ -180,12 +180,48 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	}
 	strncpy(user, value, sizeof(user));
 
-        value = av_value(avl, "pwfile");
-        if (!value) {
+        pwfile = av_value(avl, "pwfile");
+        if (!pwfile) {
                 msglog(LDMSD_LERROR, "The 'pwfile' keyword is required.\n");
                 return EINVAL;
         }
-        strncpy(pwfile, value, sizeof(pwfile));
+        if (pwfile) {
+                if (!pwfile || pwfile[0] != '/') {
+                        msglog(LDMSD_LERROR, "Invalid password file path! Must start with '/'.\n");
+                        return EINVAL;
+                }
+
+                FILE *file = fopen(pwfile, "r");
+                if (!file) {
+                        msglog(LDMSD_LERROR, "Unable to open password file!\n");
+                        return EINVAL;
+                }
+                char line[600];
+                char *s, *ptr;
+                s = NULL;
+                while (fgets(line, 600, file)) {
+                        if ((line[0] == '#') || (line[0] == '\n'))
+                                continue;
+                        if (0 == strncmp(line, "secretword=", 11)) {
+                                s = strtok_r(&line[11], " \t\n", &ptr);
+                                if (!s) {
+                                        msglog(LDMSD_LERROR, "Auth error: the secret word is an empty srting.\n");
+                                        return EINVAL;
+                                }
+                                break;
+                        }
+                }
+                if (!s) {
+                        msglog(LDMSD_LERROR, "No secret word in the file!\n");
+                        return EINVAL;
+                }
+                strncpy(password, strdup(s), sizeof(password));
+                if (!password) {
+                        msglog(LDMSD_LERROR, "Auth error: Out of memory when trying to read the secret word.\n");
+                        return EINVAL;
+                }
+                fclose(file);
+        }
 
         value = av_value(avl, "hostaddr");
         if (!value) {
@@ -238,7 +274,6 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
 	struct timescale_store *is = NULL;
-        char *password;
         char *measurement_create;
         size_t cnt_create, off_create;
 
@@ -257,44 +292,6 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 		goto err2;
 	is->job_mid = -1;
 	is->comp_mid = -1;
-
-        if (pwfile) {
-                if (!pwfile || pwfile[0] != '/') {
-                        msglog(LDMSD_LERROR, "Invalid password file path! Must start with '/'.\n"); 
-                        goto err3;
-                }
-  
-                FILE *file = fopen(pwfile, "r");
-                if (!file) {
-                        msglog(LDMSD_LERROR, "Unable to open password file!\n");
-                        goto err3;
-                }
-                char line[600];
-                char *s, *ptr;
-                s = NULL;
-                while (fgets(line, 600, file)) {
-                        if ((line[0] == '#') || (line[0] == '\n'))
-                                continue;
-                        if (0 == strncmp(line, "secretword=", 11)) {
-                                s = strtok_r(&line[11], " \t\n", &ptr);
-                                if (!s) {
-                                        msglog(LDMSD_LERROR, "Auth error: the secret word is an empty srting.\n");
-                                        goto err3;
-                                }
-                                break;
-                        }
-                }
-                if (!s) {
-                        msglog(LDMSD_LERROR, "No secret word in the file!\n");
-                        goto err3;
-                }
-                password = strdup(s);
-                if (!password) {
-                        msglog(LDMSD_LERROR, "Auth error: Out of memory when trying to read the secret word.\n");
-                        goto err3;
-                }
-                fclose(file);       
-        }
 
         char str[128];
         snprintf(str, sizeof(str), "user=%s password=%s hostaddr=%s port=%s dbname=%s", strdup(user), password, strdup(hostaddr), strdup(port), strdup(dbname));
