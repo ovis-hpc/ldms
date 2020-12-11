@@ -1010,8 +1010,8 @@ static void init_atfork(void)
 	assert(zev_queue);
 
 	for (i = 0; i < zap_event_workers; i++) {
-		char thread_name[16];
-		(void)snprintf(thread_name, 16, "zap:worker:%d", i);
+		char thread_name[24];
+		(void)snprintf(thread_name, 24, "zap:worker:%d", i);
 		zap_event_queue_init(&zev_queue[i], zap_event_qdepth,
 					thread_name, stats_w);
 		rc = pthread_create(&zev_queue[i].thread, NULL,
