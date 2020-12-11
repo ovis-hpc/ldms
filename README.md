@@ -58,7 +58,6 @@ one the "Code" button. Or use the following command:
 * make
 * bison
 * flex
-* gettext development package
 * libreadline
 * openssl development library (for OVIS, LDMS Authentication)
 * libmunge (for Munge LDMS Authentication plugin)
@@ -80,7 +79,6 @@ RHEL7/CentOS7 systems will require a the following packages at a minimum:
 * make
 * bison
 * flex
-* gettext-devel
 * openssl-devel
 
 Additionally, the Python API and the ldmsd_controller command require Python and Cython.
