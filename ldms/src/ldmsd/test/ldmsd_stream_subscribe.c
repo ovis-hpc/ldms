@@ -67,7 +67,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	else
 		msglog("EVENT:{\"type\":\"json\",\"size\":%d,\"event\":", msg_len);
 	msglog(msg);
-	msglog("}");
+	msglog("}\n");
 	return 0;
 }
 
