@@ -888,13 +888,14 @@ static void process_uep_msg_rejected(struct z_ugni_ep *uep)
 {
 	struct zap_ugni_msg_regular *msg;
 	int rc;
+	size_t data_len;
 
 	msg = (void*)uep->rbuff->data;
-
+	data_len = ntohl(msg->data_len);
 	struct zap_event ev = {
 		.type = ZAP_EVENT_REJECTED,
-		.data_len = ntohl(msg->data_len),
-		.data = (ev.data_len ? (void*)msg->data : NULL)
+		.data_len = data_len,
+		.data = (data_len ? (void *)msg->data : NULL)
 	};
 	rc = zap_ep_change_state(&uep->ep, ZAP_EP_CONNECTING, ZAP_EP_ERROR);
 	if (rc != ZAP_ERR_OK) {
