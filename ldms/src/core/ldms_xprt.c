@@ -1522,9 +1522,6 @@ int ldms_xprt_recv_request(struct ldms_xprt *x, struct ldms_request *req)
 	int cmd = ntohl(req->hdr.cmd);
 	int rc;
 
-	if (!ldms_xprt_connected(x))
-		return ENOTCONN;
-
 	switch (cmd) {
 	case LDMS_CMD_LOOKUP:
 		process_lookup_request(x, req);
