@@ -600,6 +600,7 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 	int drop_ep_ref = 0;
 	while ((rbn = rbt_min(&x->rbd_rbt))) {
 		rbd = RBN_RBD(rbn);
+		ref_get(&rbd->ref, __func__);
 		set = rbd->set;
 		if (set) {
 			pthread_mutex_unlock(&x->lock);
@@ -621,9 +622,12 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 			__put_share_lookup_ref(rbd);
 		}
 		/* Make sure that we didn't lose a set delete race */
-		if (!rbd->xprt)
+		if (!rbd->xprt) {
+			ref_put(&rbd->ref, __func__);
 			continue;
+		}
 		__ldms_rbd_xprt_release(rbd);
+		ref_put(&rbd->ref, __func__);
 	}
 	if (x->auth) {
 		ldms_auth_free(x->auth);
