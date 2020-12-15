@@ -889,6 +889,7 @@ static void submit_pending(struct z_rdma_ep *rep)
 		if (!rc)
 			continue;
 		/* otherwise, deliver completion with error status */
+		pthread_mutex_unlock(&rep->credit_lock);
 		LOG("Error posting queued I/O. post_send() error %d "
 		    "rep %p ctxt %p\n", rc, rep, ctxt);
 		struct zap_event ev = { .status = ZAP_ERR_FLUSH, };
@@ -899,7 +900,6 @@ static void submit_pending(struct z_rdma_ep *rep)
 			 * the SEND_COMPLETE event
 			 */
 			goto free;
-			break;
 		case IBV_WC_RDMA_WRITE:
 			ev.type = ZAP_EVENT_WRITE_COMPLETE;
 			ev.context = ctxt->usr_context;
@@ -913,9 +913,7 @@ static void submit_pending(struct z_rdma_ep *rep)
 			assert(0 == "Invalid type");
 			break;
 		}
-		pthread_mutex_unlock(&rep->credit_lock);
 		rep->ep.cb(&rep->ep, &ev);
-		pthread_mutex_lock(&rep->credit_lock);
 
 	    free:
 		if (ctxt->rb)
@@ -923,7 +921,7 @@ static void submit_pending(struct z_rdma_ep *rep)
 		pthread_mutex_lock(&rep->ep.lock);
 		__rdma_context_free(ctxt);
 		pthread_mutex_unlock(&rep->ep.lock);
-
+		pthread_mutex_lock(&rep->credit_lock);
 	}
  out:
 	pthread_mutex_unlock(&rep->credit_lock);
