@@ -2066,7 +2066,6 @@ static void handle_cm_event(struct z_rdma_ep *rep)
 	 * cm_id context, not the one from the cm_channel.
 	 */
 	rep = (struct z_rdma_ep *)cm_id->context;
-	__zap_get_ep(&rep->ep);
 	DLOG("cm_event cm_id %p rep %p listen_id %p event %d %s "
 	     "status %d \n", cm_id, rep, event->listen_id, event->event,
 	     rdma_cm_event_type_str(event->event), event->status);
@@ -2085,10 +2084,16 @@ static void handle_cm_event(struct z_rdma_ep *rep)
 		 * remove the passive endpoints from the channel. So,
 		 * the TIMEWAIT_EXIT events can reach here.
 		 */
+		__zap_get_ep(&rep->ep);
 		cma_event_handler(rep, cm_id, event);
+		rdma_ack_cm_event(event);
+		__zap_put_ep(&rep->ep);
+		/* need to put after rdma_ack_cm_event(), otherwise
+		 * rdma_destroy_id() could be call in the reference put and
+		 * causes a dead lock. */
+	} else {
+		rdma_ack_cm_event(event);
 	}
-	rdma_ack_cm_event(event);
-	__zap_put_ep(&rep->ep);
 }
 
 /*
