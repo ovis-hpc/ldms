@@ -137,8 +137,13 @@ if test "$disable_zap" != "yes"; then
 dnl we need libibverbs-devel and librdmacm-devel to support rdma
   if test "$enable_rdma" = "yes"; then
     AC_CHECK_HEADER([infiniband/verbs.h],
-    [AC_DEFINE([HAVE_VERBS_H], [1],
-      [Define to 1 if you have infiniband/verbs.h.])],
+    [ AC_DEFINE([HAVE_VERBS_H] , [1], [Define to 1 if you have infiniband/verbs.h.])
+	IBVERBS_ENUM_CHECK([ibvwct_enums])
+        if test "$ibvwct_enums" = "1"; then
+		AC_DEFINE([HAVE_VERBS_IBVWCT_ENUMS], [1],
+		[Defined to 1 if you have IBV_WC_T* enum values in verbs.h.])
+	fi
+	],
     [AC_MSG_ERROR([Missing header. libibverbs-devel not installed?])])
 
     AC_CHECK_HEADER([rdma/rdma_cma.h],
