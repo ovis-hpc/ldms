@@ -168,14 +168,16 @@ static const char *ibv_op_str(int op)
 	case IBV_WC_FETCH_ADD: return "IBV_WC_FETCH_ADD";
 	case IBV_WC_BIND_MW: return "IBV_WC_BIND_MW";
 	case IBV_WC_LOCAL_INV: return "IBV_WC_LOCAL_INV";
-	case IBV_WC_TSO: return "IBV_WC_TSO";
 	case IBV_WC_RECV: return "IBV_WC_RECV";
 	case IBV_WC_RECV_RDMA_WITH_IMM: return "IBV_WC_RECV_RDMA_WITH_IMM";
+#ifdef HAVE_VERBS_IBVWCT_ENUMS
+	case IBV_WC_TSO: return "IBV_WC_TSO";
 	case IBV_WC_TM_ADD: return "IBV_WC_TM_ADD";
 	case IBV_WC_TM_DEL: return "IBV_WC_TM_DEL";
 	case IBV_WC_TM_SYNC: return "IBV_WC_TM_SYNC";
 	case IBV_WC_TM_RECV: return "IBV_WC_TM_RECV";
 	case IBV_WC_TM_NO_TAG: return "IBV_WC_TM_NO_TAG";
+#endif
 	}
 	return "UNKNOWN_OP";
 }
