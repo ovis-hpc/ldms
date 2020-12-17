@@ -26,3 +26,13 @@ jobs:
     - run: sh autogen.sh
     - run: ./configure
     - run: make distcheck
+
+  build-with-rdma:
+    runs-on: ubuntu-20.04
+    container:
+        image: ovishpc/ovis-centos-build
+    steps:
+    - uses: actions/checkout@v2
+    - run: sh autogen.sh
+    - run: ./configure --enable-rdma CFLAGS="-Wall -Werror"
+    - run: make
