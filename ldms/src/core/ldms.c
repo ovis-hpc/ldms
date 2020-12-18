@@ -690,12 +690,6 @@ static void __destroy_set(void *v)
 	pthread_mutex_unlock(&__del_tree_lock);
 }
 
-void __put_share_lookup_ref(ldms_set_t rbd)
-{
-	ref_put(&rbd->set->ref, "share_lookup");
-	ref_put(&rbd->ref, "share_lookup");
-}
-
 static void __set_delete_cb(ldms_t xprt, int status, ldms_set_t rbd, void *cb_arg)
 {
 	__put_share_lookup_ref(rbd);
