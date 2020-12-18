@@ -364,7 +364,6 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
         msglog(LDMSD_LERROR, "Overflow formatting TimescaleDB measurement data.\n");
  err4:  
         PQfinish(is->conn);      
- err3:
 	free(is->schema);
  err2:
 	free(is->container);
