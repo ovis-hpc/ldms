@@ -218,10 +218,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
                         return EINVAL;
                 }
                 strncpy(password, strdup(s), sizeof(password));
-#                if (!password) {
-#                        msglog(LDMSD_LERROR, "Auth error: Out of memory when trying to read the secret word.\n");
-#                        return EINVAL;
-#                }
+//                if (!password) {
+//                        msglog(LDMSD_LERROR, "Auth error: Out of memory when trying to read the secret word.\n");
+//                        return EINVAL;
+//                }
                 fclose(file);
         }
 
