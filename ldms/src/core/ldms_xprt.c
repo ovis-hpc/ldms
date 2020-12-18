@@ -547,7 +547,6 @@ static void __ldms_drop_rbd_set_refs(struct ldms_rbuf_desc *rbd)
 
 void __ldms_xprt_resource_free(struct ldms_xprt *x)
 {
-	extern void __put_share_lookup_ref(ldms_set_t rbd);
 	pthread_mutex_lock(&x->lock);
 	x->remote_dir_xid = x->local_dir_xid = 0;
 
@@ -609,6 +608,11 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 			pthread_mutex_unlock(&set->lock);
 			pthread_mutex_lock(&x->lock);
 		}
+		/* Make sure that we didn't lose a set delete race */
+		if (!rbd->xprt) {
+			ref_put(&rbd->ref, __func__);
+			continue;
+		}
 		if (rbd->type == LDMS_RBD_LOCAL) {
 			/*
 			 * The only LOCAL RBDs that are associated with a transport
@@ -620,11 +624,6 @@ void __ldms_xprt_resource_free(struct ldms_xprt *x)
 			 * so put the RBD & set 'share_lookup' references back here.
 			 */
 			__put_share_lookup_ref(rbd);
-		}
-		/* Make sure that we didn't lose a set delete race */
-		if (!rbd->xprt) {
-			ref_put(&rbd->ref, __func__);
-			continue;
 		}
 		__ldms_rbd_xprt_release(rbd);
 		ref_put(&rbd->ref, __func__);
@@ -3339,6 +3338,12 @@ void ldms_xprt_set_delete(ldms_set_t s, ldms_set_delete_cb_t cb_fn, void *cb_arg
 		if (zerr) {
 			xprt->zerrno = zerr;
 			__ldms_free_ctxt(xprt, ctxt);
+			/*
+			 * The RBD was removed from the transport's RBD tree already.
+			 * The disconnected path cannot reach the RBD, so
+			 * put back the share_lookup references here.
+			 */
+			__put_share_lookup_ref(rbd);
 		}
 		pthread_mutex_unlock(&xprt->lock);
 		ldms_xprt_put(xprt);

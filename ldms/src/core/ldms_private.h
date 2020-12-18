@@ -180,4 +180,9 @@ struct ldms_data_hdr *__ldms_set_array_get(ldms_set_t s, int idx)
 struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz, ldms_context_type_t type, ...);
 void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt);
 
+#define __put_share_lookup_ref(rbd) do { \
+		ref_put(&((rbd)->set->ref), "share_lookup"); \
+		ref_put(&((rbd)->ref), "share_lookup"); \
+	} while (0)
+
 #endif
