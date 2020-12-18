@@ -218,10 +218,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
                         return EINVAL;
                 }
                 strncpy(password, strdup(s), sizeof(password));
-                if (!password) {
-                        msglog(LDMSD_LERROR, "Auth error: Out of memory when trying to read the secret word.\n");
-                        return EINVAL;
-                }
+#                if (!password) {
+#                        msglog(LDMSD_LERROR, "Auth error: Out of memory when trying to read the secret word.\n");
+#                        return EINVAL;
+#                }
                 fclose(file);
         }
 
@@ -345,7 +345,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
                off_create += cnt_create;
 
         }
-        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, ",timestamp TIMESTAMPTZ)\0");
+        cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, ",timestamp TIMESTAMPTZ)");
         off_create += cnt_create;
 
         PGresult *res = PQexec(is->conn, measurement_create);
@@ -493,7 +493,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
         fgets(buffer, sizeof(buffer), fp);
         pclose(fp);       
 
-	cnt_insert = snprintf(&measurement_insert[off_insert], is->measurement_limit - off_insert, ",'%s')\0", buffer);
+	cnt_insert = snprintf(&measurement_insert[off_insert], is->measurement_limit - off_insert, ",'%s')", buffer);
 	off_insert += cnt_insert;
 
         PGresult *res = PQexec(is->conn, measurement_insert);
