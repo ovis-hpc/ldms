@@ -13,7 +13,6 @@ jobs:
 
     steps:
     - run: sudo apt install gettext
-    - run: sudo apt-get install -y postgresql
     - uses: actions/checkout@v2
     - name: autogen
       run: sh autogen.sh
