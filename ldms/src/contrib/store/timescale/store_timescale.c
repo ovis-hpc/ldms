@@ -282,20 +282,20 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
         }
         strncpy(dbname, value, sizeof(dbname));
 
-	value = av_value(avl, "measurement_limit");
-	if (value) {
-		measurement_limit = strtol(value, NULL, 0);
-		if (measurement_limit <= 0) {
-			msglog(LDMSD_LERROR,
-			       "'%s' is not a valid 'measurement_limit' value\n",
-			       value);
-			measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
-		}
-		return EINVAL;
-	}
+        value = av_value(avl, "measurement_limit");
+        if (value) {
+                measurement_limit = strtol(value, NULL, 0);
+                if (measurement_limit <= 0) {
+                        msglog(LDMSD_LERROR,
+                                "'%s' is not a valid 'measurement_limit' value\n",
+                                value);
+                        measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
+                }
+                return EINVAL;
+        }
 
-	pthread_mutex_unlock(&cfg_lock);
-	return 0;
+        pthread_mutex_unlock(&cfg_lock);
+        return 0;
 }
 
 static void term(struct ldmsd_plugin *self)
@@ -304,7 +304,7 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return "config name=store_timescale user=<username> pwfile=<full path to password file> "
+        return "config name=store_timescale user=<username> pwfile=<full path to password file> "
                "hostaddr=<host ip addr> port=<port no> dbname=<database name> "
                "measurement_limit=<sql statement length>";
 }
@@ -313,25 +313,25 @@ static ldmsd_store_handle_t
 open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	   struct ldmsd_strgp_metric_list *metric_list, void *ucontext)
 {
-	struct timescale_store *is = NULL;
+        struct timescale_store *is = NULL;
         char *measurement_create;
         size_t cnt_create, off_create;
 
-	is = malloc(sizeof(*is) + measurement_limit);
-	if (!is)
-		goto out;
-	is->measurement_limit = measurement_limit;
-	pthread_mutex_init(&is->lock, NULL);
-	is->store = s;
-	is->ucontext = ucontext;
-	is->container = strdup(container);
-	if (!is->container)
-		goto err1;
-	is->schema = strdup(schema);
-	if (!is->schema)
-		goto err2;
-	is->job_mid = -1;
-	is->comp_mid = -1;
+        is = malloc(sizeof(*is) + measurement_limit);
+        if (!is)
+                goto out;
+        is->measurement_limit = measurement_limit;
+        pthread_mutex_init(&is->lock, NULL);
+        is->store = s;
+        is->ucontext = ucontext;
+        is->container = strdup(container);
+        if (!is->container)
+                goto err1;
+        is->schema = strdup(schema);
+        if (!is->schema)
+                goto err2;
+        is->job_mid = -1;
+        is->comp_mid = -1;
 
         char str[128];
         snprintf(str, sizeof(str), "user=%s password=%s hostaddr=%s port=%s dbname=%s", strdup(user), password, strdup(hostaddr), strdup(port), strdup(dbname));
@@ -373,14 +373,14 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
                                "%s ", fixup(name));
                 off_create += cnt_create;
 
-               if (metric_type < LDMS_V_F32){
+                if (metric_type < LDMS_V_F32){
                         cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, "DECIMAL");
-               } else if (metric_type < LDMS_V_CHAR_ARRAY) {
+                } else if (metric_type < LDMS_V_CHAR_ARRAY) {
                         cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, "DOUBLE PRECISION");
-               } else
+                } else
                         cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, "VARCHAR(255)");
 
-               off_create += cnt_create;
+                off_create += cnt_create;
 
         }
         cnt_create = snprintf(&measurement_create[off_create], is->measurement_limit - off_create, ",timestamp TIMESTAMPTZ)");
@@ -393,22 +393,22 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
                 goto err4;
         }
  
-	pthread_mutex_lock(&cfg_lock);
-	LIST_INSERT_HEAD(&store_list, is, entry);
-	pthread_mutex_unlock(&cfg_lock);
-	return is;
+        pthread_mutex_lock(&cfg_lock);
+        LIST_INSERT_HEAD(&store_list, is, entry);
+        pthread_mutex_unlock(&cfg_lock);
+        return is;
 
  err5:
         msglog(LDMSD_LERROR, "Overflow formatting TimescaleDB measurement data.\n");
  err4:  
         PQfinish(is->conn);      
-	free(is->schema);
+        free(is->schema);
  err2:
-	free(is->container);
+        free(is->container);
  err1:
-	free(is);
+        free(is);
  out:
-	return NULL;
+        return NULL;
 }
 
 static int init_store(struct timescale_store *is, ldms_set_t set, int *mids, int count)
@@ -468,22 +468,22 @@ static inline size_t __element_byte_len(enum ldms_value_type t)
 static int
 store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_count)
 {
-	struct timescale_store *is = _sh;
-	struct ldms_timestamp timestamp;
-	int i;
-	int rc = 0;
-	size_t cnt_insert, off_insert;
+        struct timescale_store *is = _sh;
+        struct ldms_timestamp timestamp;
+        int i;
+        int rc = 0;
+        size_t cnt_insert, off_insert;
         char *measurement_insert;
         enum ldms_value_type metric_type;
 	if (!is)
 		return EINVAL;
 
 	pthread_mutex_lock(&is->lock);
-	if (is->job_mid < 0) {
-		rc = init_store(is, set, metric_arry, metric_count);
-		if (rc)
-			goto err;
-	}
+        if (is->job_mid < 0) {
+                rc = init_store(is, set, metric_arry, metric_count);
+                if (rc)
+                        goto err;
+        }
 
         measurement_insert = is->measurement;
         cnt_insert = snprintf(measurement_insert, is->measurement_limit,
@@ -493,31 +493,31 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
         off_insert = cnt_insert;
 
         int comma = 0;
-	for (i = 0; i < metric_count; i++) {
-		metric_type = ldms_metric_type_get(set, metric_arry[i]);
-		if (metric_type > LDMS_V_CHAR_ARRAY) {
-			msglog(LDMSD_LERROR,
+        for (i = 0; i < metric_count; i++) {
+                metric_type = ldms_metric_type_get(set, metric_arry[i]);
+                if (metric_type > LDMS_V_CHAR_ARRAY) {
+                        msglog(LDMSD_LERROR,
 			       "The metric %s:%s of type %s is not supported by "
 			       "TimescaleDB and is being ignored.\n",
 			       is->schema,
                                ldms_metric_name_get(set, metric_arry[i]),
 			       ldms_metric_type_to_str(metric_type));
-			continue;
-		}
-		if (comma) {
-			if (off_insert > is->measurement_limit - 16)
-				goto err;
+                        continue;
+                }
+                if (comma) {
+                        if (off_insert > is->measurement_limit - 16)
+                                goto err;
                         measurement_insert[off_insert++] = ',';
-		} else
-			comma = 1;
+                } else
+                        comma = 1;
 
-               if (timescale_value_set[metric_type](measurement_insert, &off_insert,
+                if (timescale_value_set[metric_type](measurement_insert, &off_insert,
 						  is->measurement_limit - off_insert,
 						  set, metric_arry[i]))
-			goto err;
+                        goto err;
 	}
 
-	timestamp = ldms_transaction_timestamp_get(set);
+        timestamp = ldms_transaction_timestamp_get(set);
 
         char str[100] = {0};
         sprintf(str, "%d", timestamp.sec);
@@ -530,8 +530,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
         fgets(buffer, sizeof(buffer), fp);
         pclose(fp);       
 
-	cnt_insert = snprintf(&measurement_insert[off_insert], is->measurement_limit - off_insert, ",'%s')", buffer);
-	off_insert += cnt_insert;
+        cnt_insert = snprintf(&measurement_insert[off_insert], is->measurement_limit - off_insert, ",'%s')", buffer);
+        off_insert += cnt_insert;
 
         PGresult *res = PQexec(is->conn, measurement_insert);
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
@@ -539,19 +539,19 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 		PQclear(res);
                 PQfinish(is->conn);
         } 
-	pthread_mutex_unlock(&is->lock);
-	return 0;
+        pthread_mutex_unlock(&is->lock);
+        return 0;
 err:
-	pthread_mutex_unlock(&is->lock);
+        pthread_mutex_unlock(&is->lock);
 
-	msglog(LDMSD_LERROR, "Overflow formatting TimescaleDB measurement data.\n");
+        msglog(LDMSD_LERROR, "Overflow formatting TimescaleDB measurement data.\n");
         msglog(LDMSD_LERROR, "SCHEMA: %s \n", is->schema);
-	return ENOMEM;
+        return ENOMEM;
 }
 
 static int flush_store(ldmsd_store_handle_t _sh)
 {
-	return 0;
+        return 0;
 }
 
 static void close_store(ldmsd_store_handle_t _sh)
