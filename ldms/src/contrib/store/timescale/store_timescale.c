@@ -475,10 +475,10 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
         size_t cnt_insert, off_insert;
         char *measurement_insert;
         enum ldms_value_type metric_type;
-	if (!is)
-		return EINVAL;
+        if (!is)
+                return EINVAL;
 
-	pthread_mutex_lock(&is->lock);
+        pthread_mutex_lock(&is->lock);
         if (is->job_mid < 0) {
                 rc = init_store(is, set, metric_arry, metric_count);
                 if (rc)
@@ -515,7 +515,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 						  is->measurement_limit - off_insert,
 						  set, metric_arry[i]))
                         goto err;
-	}
+        }
 
         timestamp = ldms_transaction_timestamp_get(set);
 
