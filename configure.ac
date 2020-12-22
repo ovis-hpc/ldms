@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 
-AC_PREREQ(2.63)
+AC_PREREQ([2.64])
 AC_INIT([ovis-ldms],
         m4_esyscmd([config/git-version-gen --prefix 'OVIS-' .tarball-version]),
         [ovis-help@sandia.gov])
@@ -10,6 +10,7 @@ AC_CONFIG_AUX_DIR(config)
 AM_CONFIG_HEADER(config.h)
 AC_REQUIRE_AUX_FILE([tap-driver.sh])
 AC_PROG_CC
+gl_EARLY
 AM_INIT_AUTOMAKE([foreign tar-pax])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 AX_PREFIX_CONFIG_H_G(ovis-ldms-config.h,,,[
@@ -35,6 +36,7 @@ AX_PREFIX_CONFIG_H_G(ovis-ldms-config.h,,,[
 #endif
 ])
 AM_PROG_LIBTOOL
+gl_INIT
 AC_LIB_RPATH
 
 dnl if LEX is not available, the configure still won't fail
@@ -821,6 +823,7 @@ lib/src/zap/test/Makefile
 lib/etc/Makefile
 lib/etc/ovis/Makefile
 lib/etc/ld.so.conf.d/Makefile
+gnulib/Makefile
 ldms/Makefile
 ldms/src/Makefile
 ldms/src/core/Makefile
