@@ -149,20 +149,42 @@ static void msglog(const char *format, ...)
  * Init Event ("init") - Start of Job
  *
  *   "data" : {
- *        "id"     : <integer>		// S_JOB_ID
- *        "name"   : <string>		// getenv("SLURM_JOB_NAME")
+ * 		  "subscriber_data" : <string> // getenv("SUBSCRIBER_DATA")
+ *        "job_id" : <integer>		// S_JOB_ID
+ *        "job_name" : <string>		// getenv("SLURM_JOB_NAME")
+ *        "job_user" : <string>		// getenv("SLURM_JOB_USER")
+ *        "nodeid" : <integer>		// S_JOB_NODEID
  *        "uid"    : <integer>		// S_JOB_UID
  *        "gid"    : <integer>		// S_JOB_GID
  *        "ncpus"  : <integer>		// S_JOB_NCPUS
  *        "nnodes" : <integer>		// S_JOB_NNODES
+ * 		  "alloc_mb"    : <integer>	// S_JOB_ALLOC_MEM
  *        "local_tasks" : <integer>	// S_JOB_LOCAL_TASK_COUNT
  *        "total_tasks" : <integer>	// S_JOB_TOTAL_TASK_COUNT
+ *   }
+ *
+ * Step Init Event ("step_init") - Start of Job Step
+ *
+ *   "data" : {
+ *        "job_id" : <integer>		// S_JOB_ID
+ *        "nodeid" : <integer>		// S_JOB_NODEID
+ *        "step_id" : <integer>		// S_JOB_STEPID
+ * 		  "alloc_mb"    : <integer>	// S_STEP_ALLOC_MEM
+ *   }
+ * 
+ * Step Exit Event ("step_exit") - End of Job Step
+ *
+ *   "data" : {
+ *        "job_id" : <integer>		// S_JOB_ID
+ *        "nodeid" : <integer>		// S_JOB_NODEID
+ *        "step_id" : <integer>		// S_JOB_STEPID
  *   }
  *
  * Task Init ("task_init") - Start of each process (task) for the job on the node
  *
  *   "data" : {
- *        "id"          : <integer>	// S_JOB_ID
+ *        "job_id"      : <integer>	// S_JOB_ID
+ *        "step_id"     : <integer>	// S_JOB_STEPID
  *        "task_id"     : <integer>	// S_TASK_ID
  *        "global_id"   : <integer>	// S_TASK_GLOBAL_ID
  *        "task_pid"    : <integer>	// S_TASK_PID
@@ -171,18 +193,19 @@ static void msglog(const char *format, ...)
  * Task Exit ("task_exit") - End of each process (task) for the job
  *
  *   "data" : {
- *        "id"          : <integer>	// S_JOB_ID
+ *        "job_id"      : <integer>	// S_JOB_ID
+ *        "step_id"     : <integer>	// S_JOB_STEPID
  *        "task_id"     : <integer>	// S_TASK_ID
  *        "global_id"   : <integer>	// S_TASK_GLOBAL_ID
  *        "task_pid"    : <integer>	// S_TASK_PID
  *        "task_exit_status" : <integer>// S_TASK_EXIT_STATUS
  *   }
  *
- * Exit Event("exit") - called after all tasks have exited
+ * Exit Event("exit") - called after job allocation ends
  *
  *   "data" : {
- *        "id"              : <integer>	// S_JOB_ID
- * 	  "job_exit_status" : <integer>	// S_TASK_EXIT_STATUS
+ *        "job_id"      : <integer>	// S_JOB_ID
+ *        "nodeid"      : <integer>	// S_JOB_NODEID
  *   }
  */
 
@@ -545,7 +568,7 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	return 0;
 }
 
-jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
+jbuf_t make_job_init_data(spank_t sh, const char *event, const char *context)
 {
 	char subscriber_data[PATH_MAX];
 	char name[80];
@@ -587,6 +610,7 @@ jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 	jb = _append_item_u32(sh, jb, "uid", S_JOB_UID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "gid", S_JOB_GID, ','); if (!jb) goto out_1;
 	jb = _append_item_u16(sh, jb, "ncpus", S_JOB_NCPUS, ','); if (!jb) goto out_1;
+	jb = _append_item_u64(sh, jb, "alloc_mb", S_JOB_ALLOC_MEM, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nnodes", S_JOB_NNODES, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "local_tasks", S_JOB_LOCAL_TASK_COUNT, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "total_tasks", S_JOB_TOTAL_TASK_COUNT, ' '); if (!jb) goto out_1;
@@ -595,7 +619,7 @@ jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 	return jb;
 }
 
-jbuf_t make_exit_data(spank_t sh, const char *event, const char *context)
+jbuf_t make_job_exit_data(spank_t sh, const char *event, const char *context)
 {
 	jbuf_t jb;
 	jb = jbuf_new(); if (!jb) goto out_1;
@@ -607,6 +631,46 @@ jbuf_t make_exit_data(spank_t sh, const char *event, const char *context)
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ' '); if (!jb) goto out_1;
+	jb = jbuf_append_str(jb, "}}");
+ out_1:
+	return jb;
+}
+
+jbuf_t make_step_init_data(spank_t sh, const char *event, const char *context)
+{
+	char subscriber_data[PATH_MAX];
+	char name[80];
+	jbuf_t jb;
+	spank_err_t err;
+	jb = jbuf_new(); if (!jb) goto out_1;
+	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "schema", "\"slurm_job_step_data\","); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "event", "\"%s\",", event); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "context", "\"%s\",", context); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "step_id", S_JOB_STEPID, ','); if (!jb) goto out_1;
+	jb = _append_item_u64(sh, jb, "alloc_mb", S_STEP_ALLOC_MEM, ','); if (!jb) goto out_1;
+	jb = jbuf_append_str(jb, "}}");
+ out_1:
+	return jb;
+}
+
+jbuf_t make_step_exit_data(spank_t sh, const char *event, const char *context)
+{
+	jbuf_t jb;
+	jb = jbuf_new(); if (!jb) goto out_1;
+	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "schema", "\"slurm_job_step_data\","); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "event", "\"%s\",", event); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "context", "\"%s\",", context); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ' '); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "step_id", S_JOB_STEPID, ','); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "}}");
  out_1:
 	return jb;
@@ -625,6 +689,7 @@ jbuf_t make_task_init_data(spank_t sh, const char *event, const char *context)
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_id", S_TASK_ID, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "step_id", S_JOB_STEPID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_global_id", S_TASK_GLOBAL_ID, ','); if (!jb) goto out_1;
 	_get_item_u32(sh, S_TASK_PID, (uint32_t*)&pid);
 	if (pid == 0 || pid == -1) {
@@ -654,6 +719,7 @@ jbuf_t make_task_exit_data(spank_t sh, const char *event, const char *context)
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_id", S_TASK_ID, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "step_id", S_JOB_STEPID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_global_id", S_TASK_GLOBAL_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_pid", S_TASK_PID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
@@ -675,23 +741,18 @@ static int nnodes(spank_t sh)
 int slurm_spank_init(spank_t sh, int argc, char *argv[])
 {
 	spank_context_t context = spank_context();
-	const char *context_str;
-	jbuf_t jb;
-
-	if (0 == nnodes(sh))
-		/* Ignore events before node assignment */
-		return ESPANK_SUCCESS;
+	jbuf_t jb = NULL;
 
 	switch (context) {
-	case S_CTX_REMOTE:
-		context_str = "remote";
+	case S_CTX_ALLOCATOR:
+		jb = make_job_init_data(sh, "init", "allocator");
 		break;
-	case S_CTX_LOCAL:
+	case S_CTX_REMOTE:
+		jb = make_step_init_data(sh, "step_init", "remote");
+		break;
 	default:
 		return ESPANK_SUCCESS;
 	}
-
-	jb = make_init_data(sh, "init", context_str);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
@@ -810,20 +871,25 @@ int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 		return ESPANK_SUCCESS;
 
 	switch (context) {
-	case S_CTX_REMOTE:
-		context_str = "remote";
+	case S_CTX_ALLOCATOR:
+		jb = make_job_exit_data(sh, "exit", "allocator");
+		if (jb) {
+			DEBUG2("%s", jb->buf);
+			send_event(argc, argv, jb);
+			jbuf_free(jb);
+		}
 		break;
-	case S_CTX_LOCAL:
+	case S_CTX_REMOTE:
+		jb = make_step_exit_data(sh, "job_exit", "remote");
+		if (jb) {
+			DEBUG2("%s", jb->buf);
+			send_event(argc, argv, jb);
+			jbuf_free(jb);
+		}
 	default:
 		return ESPANK_SUCCESS;
 	}
 
-	jb = make_exit_data(sh, "exit", context_str);
-	if (jb) {
-		DEBUG2("%s", jb->buf);
-		send_event(argc, argv, jb);
-		jbuf_free(jb);
-	}
 	return ESPANK_SUCCESS;
 }
 
