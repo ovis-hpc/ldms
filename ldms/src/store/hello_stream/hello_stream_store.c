@@ -359,6 +359,7 @@ static int reopen_container(){
 		rc = ENOENT;
 		goto err1;
 	}
+	rc = 0;
 
 	streamfile = fopen_perm(path, "a+", LDMSD_DEFAULT_FILE_PERM);
 	if (!streamfile){
