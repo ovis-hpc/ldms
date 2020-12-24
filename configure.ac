@@ -239,7 +239,7 @@ OPTION_DEFAULT_DISABLE([amqp], [ENABLE_AMQP])
 
 dnl Options for contributed stores
 OPTION_DEFAULT_DISABLE([tutorial-store],[ENABLE_TUTORIAL_STORE])
-OPTION_DEFAULT_DISABLE([timescale-store],[ENABLE_TIMESCALE_STORE])
+OPTION_DEFAULT_ENABLE([timescale-store],[ENABLE_TIMESCALE_STORE])
 
 OPTION_DEFAULT_DISABLE([gpcdlocal], [ENABLE_GPCDLOCAL],[Required access to gpcd-support repository])
 OPTION_WITH_OR_BUILD([gpcdlocal],[../gpcd-support],[gpcd],[gpcdlocal.sh], ,[gpcd])
