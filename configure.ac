@@ -243,7 +243,7 @@ OPTION_DEFAULT_DISABLE([tutorial-store],[ENABLE_TUTORIAL_STORE])
 AC_ARG_ENABLE([timescale-store],
         [AS_HELP_STRING([--enable-timescale-store], [enable timescaledb store plugin])],
         [],
-	[enable_timescale_store="yes"])
+        [enable_timescale_store="yes"])
 AS_IF([test "x$enable_timescale_store" != xno ],[
         AC_LIB_HAVE_LINKFLAGS([pq], [], [#include <libpq-fe.h>])
         AS_IF([test "x$HAVE_LIBPQ" = xno],
