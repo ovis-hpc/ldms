@@ -86,7 +86,7 @@ struct timescale_store {
 };
 
 #define MEASUREMENT_LIMIT_DEFAULT	8192
-static size_t measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
+static long measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
 static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 LIST_HEAD(timescale_store_list, timescale_store) store_list;
 static ldmsd_msg_log_f msglog;
@@ -285,13 +285,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
         value = av_value(avl, "measurement_limit");
         if (value) {
                 measurement_limit = strtol(value, NULL, 0);
-                if (measurement_limit <= 0) {
+		if (measurement_limit <= 0) {
                         msglog(LDMSD_LERROR,
                                 "'%s' is not a valid 'measurement_limit' value\n",
                                 value);
                         measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
-                }
-                return EINVAL;
+		}
         }
 
         pthread_mutex_unlock(&cfg_lock);
