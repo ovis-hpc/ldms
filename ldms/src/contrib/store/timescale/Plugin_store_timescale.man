@@ -26,43 +26,6 @@ or a configuration file. The timescale_store plugin is a store developed by Shan
 This store is a simplified version of store_influx.
 .PP
 
-.SH STORE_TIMESCALE CONFIGURATION ATTRIBUTE SYNTAX
-.TP
-.BR config
-name=<plugin_name> user=<username> password=<password> hostaddr=<host ip addr> port=<port no> dbname=<database name> measurement_limit=<sql statement length>
-.br
-ldmsd_controller configuration line
-.RS
-.TP
-name=<plugin_name>
-.br
-This MUST be store_timescale.
-.TP
-user=<username>
-.br
-This option is required; It will be used as the user name to connect to timescaledb.
-.TP
-password=<password>
-.br
-This option is required; It will be used as the password to connect to timescaledb.
-.TP
-hostaddr=<host ip addr>
-.br
-This option is required; It will be used as the ip addr of timescaledb to connect to.
-.TP
-port=<port no>
-.br
-This option is required; It will be used as the port number of timescaledb to connect to.
-.TP
-dbname=<database name>
-.br
-This option is required; It will be used as the timescaledb database name to connect to.
-.TP
-measurement_limit=<sql statement length>
-.br
-This is optional; It specifies the maximum length of the sql statement to create table or insert data into timescaledb; default 8192.
-.RE
-
 .SH STRGP_ADD ATTRIBUTE SYNTAX
 The strgp_add sets the policies being added. This line determines the output files via
 identification of the container and schema.
