@@ -26,7 +26,6 @@ jobs:
       run: ./configure
     - name: make dist
       run: |
-        sudo apt-get install -y postgresql-devel
         make dist
         echo TARBALL_NAME=$(ls *.tar.gz | head -1) >> $GITHUB_ENV
     - name: Create Release
