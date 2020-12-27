@@ -39,7 +39,7 @@ jobs:
     - run: sh autogen.sh
     - name: build and install
       run: |
-        yum install -y postgresql-devel
+        yum install postgresql-devel
         set -e
         ./configure --prefix=/opt/ovis-4 --enable-etc
         make
