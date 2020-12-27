@@ -230,7 +230,7 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return "config name=store_timescale user=<username> pwfile=<full path to password file> hostaddr=<host ip addr> port=<port no> dbname=<database name> measurement_limit=<sql statement length>";
+	return "config name=store_timescale user=<username> pwfile=<path to password file> hostaddr=<host ip addr> port=<port no> dbname=<database name> measurement_limit=<sql statement length>";
 }
 
 static ldmsd_store_handle_t
@@ -260,7 +260,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 
         if (pwfile) {
                 if (!pwfile || pwfile[0] != '/') {
-                        msglog(LDMSD_LERROR, "Invalid password file path! Must start with '/'.\n"); 
+                        msglog(LDMSD_LERROR, "Invalid password file path!\n"); 
                         goto err3;
                 }
   
