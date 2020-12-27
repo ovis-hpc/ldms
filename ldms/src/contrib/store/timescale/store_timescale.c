@@ -407,7 +407,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
         char buffer[50];
         fp=popen(command, "r");
         fgets(buffer, sizeof(buffer), fp);
-        //buffer[23] = '\0';
+        buffer[23] = '\0';
         pclose(fp);       
 
 	cnt_insert = snprintf(&measurement_insert[off_insert], is->measurement_limit - off_insert, ",'%s')\0", buffer);
