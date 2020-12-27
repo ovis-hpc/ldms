@@ -156,6 +156,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			       value);
 			measurement_limit = MEASUREMENT_LIMIT_DEFAULT;
 		}
+		return EINVAL;
 	}
 
 	pthread_mutex_unlock(&cfg_lock);
