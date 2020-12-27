@@ -246,7 +246,7 @@ AC_ARG_ENABLE([timescale-store],
         [enable_timescale_store="check"])
 AS_IF([test "x$enable_timescale_store" != xno ],[
         AC_LIB_HAVE_LINKFLAGS([pq], [], [#include <libpq-fe.h>])
-        AS_IF([test "x$enable_timescale_store" != xcheck],[
+	AS_IF([test "x$enable_timescale_store" != xcheck],[
                 AS_IF([test "x$HAVE_LIBPQ" = xno],
                         [AC_MSG_ERROR([libpq or headers not found])])
         ])
