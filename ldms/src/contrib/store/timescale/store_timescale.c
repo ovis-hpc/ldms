@@ -71,18 +71,18 @@ static char port[100];
 static char dbname[100];
 static char password[100];
 struct timescale_store {
-        struct ldmsd_store *store;
-        void *ucontext;
-        char *schema;
-        char *container;
-        pthread_mutex_t lock;
-        int job_mid;
-        int comp_mid;
-        char **metric_name;
-        LIST_ENTRY(timescale_store) entry;
+	struct ldmsd_store *store;
+	void *ucontext;
+	char *schema;
+	char *container;
+	pthread_mutex_t lock;
+	int job_mid;
+	int comp_mid;
+	char **metric_name;
+	LIST_ENTRY(timescale_store) entry;
         PGconn *conn;
-        size_t measurement_limit;
-        char measurement[0];
+	size_t measurement_limit;
+	char measurement[0];
 };
 
 #define MEASUREMENT_LIMIT_DEFAULT	8192
@@ -338,7 +338,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 
         is->conn = PQconnectdb(str);
         if (PQstatus(is->conn) == CONNECTION_BAD) {
-                msglog(LDMSD_LERROR, "TimescaleDB connection failed!\n");
+		msglog(LDMSD_LERROR, "TimescaleDB connection failed!\n");
                 goto err4;
         }
 
@@ -497,11 +497,11 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
                 metric_type = ldms_metric_type_get(set, metric_arry[i]);
                 if (metric_type > LDMS_V_CHAR_ARRAY) {
                         msglog(LDMSD_LERROR,
-                               "The metric %s:%s of type %s is not supported by "
-                               "TimescaleDB and is being ignored.\n",
-                               is->schema,
+			       "The metric %s:%s of type %s is not supported by "
+			       "TimescaleDB and is being ignored.\n",
+			       is->schema,
                                ldms_metric_name_get(set, metric_arry[i]),
-                               ldms_metric_type_to_str(metric_type));
+			       ldms_metric_type_to_str(metric_type));
                         continue;
                 }
                 if (comma) {
@@ -535,8 +535,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 
         PGresult *res = PQexec(is->conn, measurement_insert);
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-                msglog(LDMSD_LERROR, "Insert table error! with sql %s \n", measurement_insert);
-                PQclear(res);
+		msglog(LDMSD_LERROR, "Insert table error! with sql %s \n", measurement_insert);
+		PQclear(res);
                 PQfinish(is->conn);
         } 
         pthread_mutex_unlock(&is->lock);
