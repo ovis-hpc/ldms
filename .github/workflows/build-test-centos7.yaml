@@ -26,7 +26,7 @@ jobs:
     - run: sh autogen.sh
     - run: ./configure
     - run: make distcheck
-
+    
   build-with-rdma:
     runs-on: ubuntu-20.04
     container:
