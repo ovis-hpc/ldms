@@ -404,10 +404,10 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
         strcpy(command, "date '+%Y-%m-%d %H:%M:%S+08' -d @");
         strcat(command, str);
         FILE *fp;
-        char buffer[50];
+        char buffer[20];
         fp=popen(command, "r");
         fgets(buffer, sizeof(buffer), fp);
-        buffer[23] = '\0';
+        buffer[20] = '\0';
         pclose(fp);       
 
 	cnt_insert = snprintf(&measurement_insert[off_insert], is->measurement_limit - off_insert, ",'%s')\0", buffer);
