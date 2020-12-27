@@ -29,7 +29,7 @@ This store is a simplified version of store_influx.
 .SH STORE_TIMESCALE CONFIGURATION ATTRIBUTE SYNTAX
 .TP
 .BR config
-name=<plugin_name> user=<username> pwfile=<path to password file> hostaddr=<host ip addr> port=<port no> dbname=<database name> measurement_limit=<sql statement length>
+name=<plugin_name> user=<username> password=<password> hostaddr=<host ip addr> port=<port no> dbname=<database name> measurement_limit=<sql statement length>
 .br
 ldmsd_controller configuration line
 .RS
@@ -42,9 +42,9 @@ user=<username>
 .br
 This option is required; It will be used as the user name to connect to timescaledb.
 .TP
-pwfile=<path to password file>
+password=<password>
 .br
-This option is required; The file must have content secretword=<password>, the password will be used as the password to connect to timescaledb.
+This option is required; It will be used as the password to connect to timescaledb.
 .TP
 hostaddr=<host ip addr>
 .br
