@@ -720,6 +720,56 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 	ldms_transaction_end(job_set);
 }
 
+static void handle_step_init(job_data_t job, json_entity_t e)
+{
+	int int_v;
+	json_entity_t attr, data, dict;
+
+	data = json_attr_find(e, "data");
+	if (!data) {
+		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'data' attribute "
+		       "in 'init' event.\n");
+		return;
+	}
+	dict = json_attr_value(data);
+
+	ldms_transaction_begin(job_set);
+	attr = json_attr_find(dict, "nnodes");
+	if (attr) {
+		int_v = json_value_int(json_attr_value(attr));
+		ldms_metric_array_set_u32(job_set, node_count_idx, job->job_slot, int_v);
+	}
+
+	attr = json_attr_find(dict, "local_tasks");
+	if (attr) {
+		int_v = json_value_int(json_attr_value(attr));
+		ldms_metric_array_set_u32(job_set, task_count_idx, job->job_slot, int_v);
+	}
+
+	attr = json_attr_find(dict, "uid");
+	if (attr) {
+		int_v = json_value_int(json_attr_value(attr));
+		ldms_metric_array_set_u32(job_set, job_uid_idx, job->job_slot, int_v);
+	}
+
+	attr = json_attr_find(dict, "gid");
+	if (attr) {
+		int_v = json_value_int(json_attr_value(attr));
+		ldms_metric_array_set_u32(job_set, job_gid_idx, job->job_slot, int_v);
+	}
+
+	attr = json_attr_find(dict, "total_tasks");
+	if (!attr) {
+		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'total_tasks' attribute "
+		       "in 'init' event.\n");
+		goto out;
+	}
+	int_v = json_value_int(json_attr_value(attr));
+	ldms_metric_array_set_u32(job_set, job_size_idx, job->job_slot, int_v);
+ out:
+	ldms_transaction_end(job_set);
+}
+
 static void handle_task_init(job_data_t job, json_entity_t e)
 {
 	json_entity_t attr;
@@ -763,8 +813,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 	ldms_metric_array_set_u32(job_set, task_rank_idx + job->job_slot, task_id, int_v);
 
 	job->task_init_count += 1;
-	if (job->task_init_count == job->local_task_count)
-		ldms_metric_array_set_u8(job_set, job_state_idx, job->job_slot, JOB_RUNNING);
+	ldms_metric_array_set_u8(job_set, job_state_idx, job->job_slot, JOB_RUNNING);
  out:
 	ldms_transaction_end(job_set);
 }
@@ -851,7 +900,7 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	pthread_mutex_lock(&job_lock);
 	rc = ENOENT;
 	if (0 == strncmp(event_name->str, "init", 4)) {
-		job = get_job_data(tstamp, job_id); /* protect against duplicate entries */
+		job = get_job_data(tstamp, job_id);
 		if (!job) {
 			uint64_t local_task_count;
 			attr = json_attr_find(dict, "local_tasks");
@@ -871,6 +920,15 @@ static int slurm_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			}
 			handle_job_init(job, entity);
 		}
+	} else if (0 == strncmp(event_name->str, "step_init", 9)) {
+		job = get_job_data(tstamp, job_id);
+		if (!job) {
+			msglog(LDMSD_LERROR, "slurm_sampler: '%s' event "
+			       "was received for job %d with no job_data\n",
+			       event_name->str, job_id);
+			goto out_1;
+		}
+		handle_step_init(job, entity);
 	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
 		job = get_job_data(tstamp, job_id);
 		if (!job) {

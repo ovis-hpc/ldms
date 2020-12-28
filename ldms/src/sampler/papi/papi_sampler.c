@@ -844,42 +844,27 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 
 	pthread_mutex_lock(&job_lock);
 	if (0 == strncmp(event_name->str, "init", 4)) {
-		job = get_job_data(job_id); /* protect against duplicate entries */
+		job = get_job_data(job_id);
 		if (job) {
 			msglog(LDMSD_LINFO,
 			       "papi_sampler[%d]: ignoring duplicate init event "
 			       "received for job %d.\n",
 			       __LINE__, job_id);
-			goto out_0;
+			goto out_1;
 		}
 		rc = handle_job_init(job_id, entity);
 	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
 		job = get_job_data(job_id);
-		if (!job) {
-			msglog(LDMSD_LINFO, "papi_sampler: '%s' event "
-			       "was received for job %d with no job_data\n",
-			       event_name->str, job_id);
-			goto out_1;
-		}
-		handle_task_init(job, entity);
+		if (job)
+			handle_task_init(job, entity);
 	} else if (0 == strncmp(event_name->str, "task_exit", 9)) {
 		job = get_job_data(job_id);
-		if (!job) {
-			msglog(LDMSD_LINFO, "papi_sampler: '%s' event "
-			       "was received for job %d with no job_data\n",
-			       event_name->str, job_id);
-			goto out_1;
-		}
-		handle_task_exit(job, entity);
+		if (job)
+			handle_task_exit(job, entity);
 	} else if (0 == strncmp(event_name->str, "exit", 4)) {
 		job = get_job_data(job_id);
-		if (!job) {
-			msglog(LDMSD_LINFO, "papi_sampler: '%s' event "
-			       "was received for job %d with no job_data\n",
-			       event_name->str, job_id);
-			goto out_1;
-		}
-		handle_job_exit(job, entity);
+		if (job)
+			handle_job_exit(job, entity);
 	} else {
 		msglog(LDMSD_LDEBUG,
 		       "papi_sampler: ignoring event '%s'\n", event_name->str);
