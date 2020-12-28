@@ -140,6 +140,7 @@ static void msglog(const char *format, ...)
  * Events have the following syntax:
  *
  *   {
+ * 		"schema"    : <schema-name>,
  *      "event"     : <event-type>,
  *      "timestamp" : <timestamp>
  *      "context"   : <spank-context-name>
@@ -149,14 +150,35 @@ static void msglog(const char *format, ...)
  * Init Event ("init") - Start of Job
  *
  *   "data" : {
- *        "id"     : <integer>		// S_JOB_ID
- *        "name"   : <string>		// getenv("SLURM_JOB_NAME")
+ *        "subscriber_data" : <string> // getenv("SUBSCRIBER_DATA")
+ *        "job_id" : <integer>		// S_JOB_ID
+ *        "job_name" : <string>		// getenv("SLURM_JOB_NAME")
+ *        "job_user" : <string>		// getenv("SLURM_JOB_USER")
+ *        "nodeid" : <integer>		// S_JOB_NODEID
  *        "uid"    : <integer>		// S_JOB_UID
  *        "gid"    : <integer>		// S_JOB_GID
  *        "ncpus"  : <integer>		// S_JOB_NCPUS
  *        "nnodes" : <integer>		// S_JOB_NNODES
+ *        "alloc_mb"    : <integer>	// S_JOB_ALLOC_MEM
  *        "local_tasks" : <integer>	// S_JOB_LOCAL_TASK_COUNT
  *        "total_tasks" : <integer>	// S_JOB_TOTAL_TASK_COUNT
+ *   }
+ *
+ * Step Init Event ("step_init") - Start of Job Step
+ *
+ *   "data" : {
+ *        "job_id" : <integer>		// S_JOB_ID
+ *        "nodeid" : <integer>		// S_JOB_NODEID
+ *        "step_id" : <integer>		// S_JOB_STEPID
+ *        "alloc_mb"    : <integer>	// S_STEP_ALLOC_MEM
+ *   }
+ *
+ * Step Exit Event ("step_exit") - End of Job Step
+ *
+ *   "data" : {
+ *        "job_id" : <integer>		// S_JOB_ID
+ *        "nodeid" : <integer>		// S_JOB_NODEID
+ *        "step_id" : <integer>		// S_JOB_STEPID
  *   }
  *
  * Task Init ("task_init") - Start of each process (task) for the job on the node
@@ -210,6 +232,16 @@ static spank_err_t _get_item_u32(spank_t s, int id, uint32_t *pv)
 	return 0;
 }
 
+static spank_err_t _get_item_u64(spank_t s, int id, uint64_t *pv)
+{
+	spank_err_t err = spank_get_item(s, id, pv);
+	if (err) {
+		*pv = 0;
+		DEBUG2("Spank returned %d accessing item %d", err, id);
+	}
+	return 0;
+}
+
 static jbuf_t _append_item_u16(spank_t s, jbuf_t jb, const char *name, spank_item_t id, char term)
 {
 	uint16_t v;
@@ -225,6 +257,17 @@ static jbuf_t _append_item_u32(spank_t s, jbuf_t jb, const char *name, spank_ite
 {
 	uint32_t v;
 	spank_err_t err = _get_item_u32(s, id, &v);
+	if (err) {
+		jbuf_free(jb);
+		return NULL;
+	}
+	return jbuf_append_attr(jb, name, "%d%c", v, term);
+}
+
+static jbuf_t _append_item_u64(spank_t s, jbuf_t jb, const char *name, spank_item_t id, char term)
+{
+	uint64_t v;
+	spank_err_t err = _get_item_u64(s, id, &v);
 	if (err) {
 		jbuf_free(jb);
 		return NULL;
@@ -545,18 +588,82 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	return 0;
 }
 
-jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
+/**
+ * local
+ *
+ *     In local context, the plugin is loaded by srun. (i.e. the
+ *     "local" part of a parallel job).
+ *
+ * remote
+ *
+ *     In remote context, the plugin is loaded by
+ *     slurmstepd. (i.e. the "remote" part of a parallel job).
+ *
+ * allocator
+ *
+ *     In allocator context, the plugin is loaded in one of the job
+ *     allocation utilities sbatch or salloc.
+ *
+ * slurmd
+ *
+ *     In slurmd context, the plugin is loaded in the slurmd daemon
+ *     itself. Note: Plugins loaded in slurmd context persist for the
+ *     entire time slurmd is running, so if configuration is changed or
+ *     plugins are updated, slurmd must be restarted for the changes to
+ *     take effect.
+ *
+ * job_script
+ *
+ *     In the job_script context, plugins are loaded in the
+ *     context of the job prolog or epilog. Note: Plugins are loaded
+ *     in job_script context on each run on the job prolog or epilog,
+ *     in a separate address space from plugins in slurmd
+ *     context. This means there is no state shared between this
+ *     context and other contexts, or even between one call to
+ *     slurm_spank_job_prolog or slurm_spank_job_epilog and subsequent
+ *     calls.
+ */
+static char context_buf[256];
+static char hostname_buf[128];
+static char *ctx_str[] = {
+	[S_CTX_ERROR] = "error",
+	[S_CTX_LOCAL] = "srun",
+	[S_CTX_REMOTE] = "slurmstepd",
+	[S_CTX_ALLOCATOR] = "sbatch/salloc",
+	[S_CTX_SLURMD] = "slurmd",
+	[S_CTX_JOB_SCRIPT] = "prolog/epilog"
+};
+
+char *__context_str(spank_t sh, const char *func)
+{
+	uint32_t job_id, step_id;
+	spank_err_t err = _get_item_u32(sh, S_JOB_ID, &job_id);
+	if (err)
+		DEBUG2("Error %d getting S_JOB_ID", err);
+	err = _get_item_u32(sh, S_JOB_STEPID, &step_id);
+	if (err)
+		DEBUG2("Error %d getting S_JOB_STEPID", err);
+	spank_context_t context = spank_context();
+	(void)gethostname(hostname_buf, sizeof(hostname_buf));
+	snprintf(context_buf, sizeof(context_buf), "%s(%s),%d,%d", hostname_buf, ctx_str[context], job_id, step_id);
+	DEBUG2("%s: %s", func, context_buf);
+	return context_buf;
+}
+#define context_str(_sh_) __context_str(_sh_, __func__)
+
+jbuf_t make_job_init_data(spank_t sh)
 {
 	char subscriber_data[PATH_MAX];
 	char name[80];
 	jbuf_t jb;
 	spank_err_t err;
+
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "schema", "\"slurm_job_data\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "event", "\"%s\",", event); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "event", "\"init\","); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "context", "\"%s\",", context); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	subscriber_data[0] = '\0';
 	err = spank_getenv(sh, "SUBSCRIBER_DATA", subscriber_data, sizeof(subscriber_data));
@@ -595,15 +702,15 @@ jbuf_t make_init_data(spank_t sh, const char *event, const char *context)
 	return jb;
 }
 
-jbuf_t make_exit_data(spank_t sh, const char *event, const char *context)
+jbuf_t make_job_exit_data(spank_t sh)
 {
 	jbuf_t jb;
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "schema", "\"slurm_job_data\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "event", "\"%s\",", event); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "event", "\"exit\","); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "context", "\"%s\",", context); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ' '); if (!jb) goto out_1;
@@ -612,18 +719,61 @@ jbuf_t make_exit_data(spank_t sh, const char *event, const char *context)
 	return jb;
 }
 
-jbuf_t make_task_init_data(spank_t sh, const char *event, const char *context)
+jbuf_t make_step_init_data(spank_t sh)
+{
+	jbuf_t jb;
+
+	jb = jbuf_new(); if (!jb) goto out_1;
+	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "schema", "\"slurm_step_data\","); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "event", "\"step_init\","); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "step_id", S_JOB_STEPID, ','); if (!jb) goto out_1;
+	jb = _append_item_u64(sh, jb, "alloc_mb", S_STEP_ALLOC_MEM, ','); if (!jb) goto out_1;
+	jb = _append_item_u16(sh, jb, "ncpus", S_JOB_NCPUS, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "nnodes", S_JOB_NNODES, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "local_tasks", S_JOB_LOCAL_TASK_COUNT, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "total_tasks", S_JOB_TOTAL_TASK_COUNT, ' '); if (!jb) goto out_1;
+	jb = jbuf_append_str(jb, "}}");
+ out_1:
+	return jb;
+}
+
+jbuf_t make_step_exit_data(spank_t sh)
+{
+	jbuf_t jb;
+	jb = jbuf_new(); if (!jb) goto out_1;
+	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "schema", "\"slurm_step_data\","); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "event", "\"step_exit\","); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "step_id", S_JOB_STEPID, ' '); if (!jb) goto out_1;
+	jb = jbuf_append_str(jb, "}}");
+ out_1:
+	return jb;
+}
+
+jbuf_t make_task_init_data(spank_t sh)
 {
 	jbuf_t jb;
 	pid_t pid = -1;
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "schema", "\"slurm_job_data\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "event", "\"%s\",", event); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "schema", "\"slurm_task_data\","); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "event", "\"task_init_priv\","); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "context", "\"%s\",", context); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "step_id", S_JOB_STEPID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_id", S_TASK_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_global_id", S_TASK_GLOBAL_ID, ','); if (!jb) goto out_1;
 	_get_item_u32(sh, S_TASK_PID, (uint32_t*)&pid);
@@ -643,16 +793,18 @@ jbuf_t make_task_init_data(spank_t sh, const char *event, const char *context)
 	return jb;
 }
 
-jbuf_t make_task_exit_data(spank_t sh, const char *event, const char *context)
+jbuf_t make_task_exit_data(spank_t sh)
 {
 	jbuf_t jb;
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "event", "\"%s\",", event); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "schema", "\"slurm_task_data\","); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "event", "\"task_exit\","); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "context", "\"%s\",", context); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
+	jb = _append_item_u32(sh, jb, "step_id", S_JOB_STEPID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_id", S_TASK_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_global_id", S_TASK_GLOBAL_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "task_pid", S_TASK_PID, ','); if (!jb) goto out_1;
@@ -663,35 +815,15 @@ jbuf_t make_task_exit_data(spank_t sh, const char *event, const char *context)
 	return jb;
 }
 
-static int nnodes(spank_t sh)
-{
-	uint32_t nnodes;
-	spank_err_t err = spank_get_item(sh, S_JOB_NNODES, &nnodes);
-	if (err)
-		return 0;
-	return nnodes;
-}
-
 int slurm_spank_init(spank_t sh, int argc, char *argv[])
 {
-	spank_context_t context = spank_context();
-	const char *context_str;
 	jbuf_t jb;
 
-	if (0 == nnodes(sh))
-		/* Ignore events before node assignment */
+	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
 
-	switch (context) {
-	case S_CTX_REMOTE:
-		context_str = "remote";
-		break;
-	case S_CTX_LOCAL:
-	default:
-		return ESPANK_SUCCESS;
-	}
-
-	jb = make_init_data(sh, "init", context_str);
+	/* Called from slurmstepd running on the node executing the job step */
+	jb = make_step_init_data(sh);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
@@ -700,28 +832,9 @@ int slurm_spank_init(spank_t sh, int argc, char *argv[])
 	return ESPANK_SUCCESS;
 }
 
-int
-slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
+int slurm_spank_job_prolog(spank_t sh, int argc, char *argv[])
 {
-	/* Runs as root */
-	spank_context_t context = spank_context();
-	const char *context_str;
-	jbuf_t jb;
-
-	if (0 == nnodes(sh))
-		/* Ignore events before node assignment */
-		return ESPANK_SUCCESS;
-
-	switch (context) {
-	case S_CTX_REMOTE:
-		context_str = "remote";
-		break;
-	case S_CTX_LOCAL:
-	default:
-		return ESPANK_SUCCESS;
-	}
-
-	jb = make_task_init_data(sh, "task_init_priv", context_str);
+	jbuf_t jb = make_job_init_data(sh);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
@@ -730,66 +843,30 @@ slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 	return ESPANK_SUCCESS;
 }
 
-/**
- * local
- *
- *     In local context, the plugin is loaded by srun. (i.e. the
- *     "local" part of a parallel job).
- *
- * remote
- *
- *     In remote context, the plugin is loaded by
- *     slurmstepd. (i.e. the "remote" part of a parallel job).
- *
- * allocator
- *
- *     In allocator context, the plugin is loaded in one of the job
- *     allocation utilities sbatch or salloc.
- *
- * slurmd
- *
- *     In slurmd context, the plugin is loaded in the slurmd daemon
- *     itself. Note: Plugins loaded in slurmd context persist for the
- *     entire time slurmd is running, so if configuration is changed or
- *     plugins are updated, slurmd must be restarted for the changes to
- *     take effect.
- *
- * job_script
- *
- *     In the job_script context, plugins are loaded in the
- *     context of the job prolog or epilog. Note: Plugins are loaded
- *     in job_script context on each run on the job prolog or epilog,
- *     in a separate address space from plugins in slurmd
- *     context. This means there is no state shared between this
- *     context and other contexts, or even between one call to
- *     slurm_spank_job_prolog or slurm_spank_job_epilog and subsequent
- *     calls.
- */
-/*
- * Called by SLURM just after job exit.
- */
-int
-slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
+int slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 {
-	/* Runs as root */
-	spank_context_t context = spank_context();
-	const char *context_str;
 	jbuf_t jb;
 
-	if (0 == nnodes(sh))
-		/* Ignore events before node assignment */
+	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
 
-	switch (context) {
-	case S_CTX_REMOTE:
-		context_str = "remote";
-		break;
-	case S_CTX_LOCAL:
-	default:
-		return ESPANK_SUCCESS;
+	jb = make_task_init_data(sh);
+	if (jb) {
+		DEBUG2("%s", jb->buf);
+		send_event(argc, argv, jb);
+		jbuf_free(jb);
 	}
+	return ESPANK_SUCCESS;
+}
 
-	jb = make_task_exit_data(sh, "task_exit", context_str);
+int slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
+{
+	jbuf_t jb;
+
+	if (spank_context() != S_CTX_REMOTE)
+		return ESPANK_SUCCESS;
+
+	jb = make_task_exit_data(sh);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
@@ -800,25 +877,24 @@ slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 
 int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 {
-	/* Runs as root */
-	spank_context_t context = spank_context();
-	const char *context_str;
-	jbuf_t jb;
+	jbuf_t jb = NULL;
 
-	if (0 == nnodes(sh))
-		/* Ignore events before node assignment */
+	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
 
-	switch (context) {
-	case S_CTX_REMOTE:
-		context_str = "remote";
-		break;
-	case S_CTX_LOCAL:
-	default:
-		return ESPANK_SUCCESS;
+	jb = make_step_exit_data(sh);
+	if (jb) {
+		DEBUG2("%s", jb->buf);
+		send_event(argc, argv, jb);
+		jbuf_free(jb);
 	}
+	return ESPANK_SUCCESS;
+}
 
-	jb = make_exit_data(sh, "exit", context_str);
+int slurm_spank_job_epilog(spank_t sh, int argc, char *argv[])
+{
+	jbuf_t jb = make_job_exit_data(sh);
+
 	if (jb) {
 		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
