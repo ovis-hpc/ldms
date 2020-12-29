@@ -189,13 +189,10 @@ AM_CONDITIONAL([ENABLE_librdmacm], [test "$HAVE_librdmacm" = "yes"])
 
 AC_DEFINE_UNQUOTED([HAVE_ZAP],["$have_zap"],[configured with zap transport (1) or not (0)])
 
-
-with_ssl=0
 have_auth=0
 if test "$enable_ovis_auth" = "yes"; then
 	have_auth=1
-	dnl Check for OpenSSL
-	AX_CHECK_OPENSSL([with_ssl=1],[with_ssl=0])
+	AX_CHECK_OPENSSL([],[AC_MSG_ERROR([openssl not found, and required by ovis_auth])])
 	AUTH_LIB="-lovis_auth"
 else
 	AUTH_LIB=""
@@ -203,7 +200,6 @@ fi
 AC_SUBST([AUTH_LIB])
 AC_SUBST([HAVE_AUTH],[$have_auth])
 AC_DEFINE_UNQUOTED([HAVE_AUTH],[$have_auth],[configured with authentication (1) or not (0)])
-AC_DEFINE_UNQUOTED([HAVE_SSL],[$with_ssl],[configured with ssl authentication support (1) or not (0)])
 
 OPTION_DEFAULT_ENABLE([sock], [ENABLE_SOCK])
 OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
