@@ -27,7 +27,7 @@ jobs:
     - run: ./configure
     - run: make distcheck
 
-  build:
+  build-with-rdma:
     runs-on: ubuntu-20.04
     container:
         image: ovishpc/ovis-ubuntu-build
