@@ -1473,7 +1473,7 @@ static void sock_event(ovis_event_t ev)
 		sep->ep.state = ZAP_EP_ERROR;
 		if (sep->app_accepted) {
 			zev.type = ZAP_EVENT_CONNECT_ERROR;
-			do_cb = drop_conn_ref = 1;
+			do_cb = 1;
 		}
 		break;
 	case ZAP_EP_CONNECTING:
