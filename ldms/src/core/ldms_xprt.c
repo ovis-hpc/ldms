@@ -46,6 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#define _GNU_SOURCE
 #include <sys/errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -2081,16 +2082,18 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 
 	__ldms_xprt_conn_msg_init(x, &msg);
 
-	zerr = zap_accept(zep, ldms_zap_auto_cb, (void*)&msg, sizeof(msg));
-	if (zerr) {
-		x->log("ERROR: %d accepting connection from %s.\n", zerr, rmt_name);
-		goto err1;
-	}
-
 	/* Take a 'connect' reference. Dropped in ldms_xprt_close() */
 	ldms_xprt_get(_x);
 
+	zerr = zap_accept(zep, ldms_zap_auto_cb, (void*)&msg, sizeof(msg));
+	if (zerr) {
+		x->log("ERROR: %d accepting connection from %s.\n", zerr, rmt_name);
+		goto err2;
+	}
+
 	return;
+err2:
+	ldms_xprt_put(_x);	/* drop 'connect' reference */
 err1:
 	ldms_auth_free(auth);
 err0:
@@ -2708,16 +2711,18 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 {
 	struct ldms_xprt *x = zap_get_ucontext(zep);
+	struct ldms_xprt_event event = {0};
+
 	switch(ev->type) {
 	case ZAP_EVENT_CONNECT_REQUEST:
 		assert(0 == "Illegal connect request.");
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
-		x->zap_ep = NULL;
-		ldms_xprt_put(x);
-		zap_set_ucontext(zep, NULL);
-		ldms_xprt_put(x);
-		free(zep);
+		(void)clock_gettime(CLOCK_REALTIME, &x->stats.disconnected);
+		event.type = LDMS_XPRT_EVENT_ERROR;
+		if (x->event_cb)
+			x->event_cb(x, &event, x->event_cb_arg);
+		__ldms_xprt_resource_free(x);
 		break;
 	case ZAP_EVENT_CONNECTED:
 		/* passively connected, proceed to authentication */
