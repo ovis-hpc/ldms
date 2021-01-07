@@ -12,7 +12,6 @@ ibm_occ
 generic_sampler
 aries_mmr
 cray_system_sampler
-rapl
 sampler_atasmart
 shm
 switchx
