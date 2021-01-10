@@ -62,7 +62,7 @@
 #include "ldms.h"
 #include "ldmsd_stream.h"
 
-#define STRLEN 1024
+#define STRLEN 8096
 static ldms_t ldms;
 static sem_t conn_sem;
 static int conn_status;
