@@ -588,6 +588,28 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	return 0;
 }
 
+/* Returns ESPANK_SUCCESS if the job step ID >= 0. The negative job step is the
+ * initial job step running only on one node.
+ *
+ * Also set `*pv = JOB_STEPID` if `pv` is not NULL. */
+static int check_job_step(spank_t sh, int *pv)
+{
+	spank_err_t err;
+	int v;
+	if (!pv)
+		pv = &v;
+	err = spank_get_item(sh, S_JOB_STEPID, pv);
+	if (err) {
+		slurm_error("Cannot get S_JOB_STEPID, error: %d\n", err);
+		return err;
+	}
+	if (*pv < 0) {
+		/* ignore the initial step that get executed only on one node */
+		return ESPANK_ERROR;
+	}
+	return ESPANK_SUCCESS;
+}
+
 /**
  * local
  *
@@ -818,9 +840,21 @@ jbuf_t make_task_exit_data(spank_t sh)
 int slurm_spank_init(spank_t sh, int argc, char *argv[])
 {
 	jbuf_t jb;
+	int v;
 
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
+	if (ESPANK_SUCCESS != check_job_step(sh, &v))
+		return ESPANK_SUCCESS;
+	if (v == 0) {
+		/* send job init data on the first step */
+		jb = make_job_init_data(sh);
+		if (jb) {
+			DEBUG2("%s", jb->buf);
+			send_event(argc, argv, jb);
+			jbuf_free(jb);
+		}
+	}
 
 	/* Called from slurmstepd running on the node executing the job step */
 	jb = make_step_init_data(sh);
@@ -834,12 +868,6 @@ int slurm_spank_init(spank_t sh, int argc, char *argv[])
 
 int slurm_spank_job_prolog(spank_t sh, int argc, char *argv[])
 {
-	jbuf_t jb = make_job_init_data(sh);
-	if (jb) {
-		DEBUG2("%s", jb->buf);
-		send_event(argc, argv, jb);
-		jbuf_free(jb);
-	}
 	return ESPANK_SUCCESS;
 }
 
@@ -849,7 +877,8 @@ int slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
-
+	if (ESPANK_SUCCESS != check_job_step(sh, NULL))
+		return ESPANK_SUCCESS;
 	jb = make_task_init_data(sh);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
@@ -865,7 +894,8 @@ int slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
-
+	if (ESPANK_SUCCESS != check_job_step(sh, NULL))
+		return ESPANK_SUCCESS;
 	jb = make_task_exit_data(sh);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
@@ -881,7 +911,8 @@ int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
-
+	if (ESPANK_SUCCESS != check_job_step(sh, NULL))
+		return ESPANK_SUCCESS;
 	jb = make_step_exit_data(sh);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
