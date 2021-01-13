@@ -68,7 +68,7 @@
 
 static char *host;
 static char *xprt;
-static int port;
+static char *port;
 static int is_server;
 static int is_onchange;
 static int is_cancel;
@@ -160,7 +160,7 @@ static void process_args(int argc, char **argv) {
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'p':
-			port = atoi(optarg);
+			port = strdup(optarg);
 			break;
 		case 'x':
 			xprt = strdup(optarg);
@@ -450,7 +450,7 @@ static struct push_set *__server_create_set(const char *name)
 #define DO_META(round) (((round) % 2) == 1)
 #define DO_PUSH(round) ((((round) % 4) == 1) || (((round) % 4) == 2))
 
-static void do_server(struct sockaddr_in *sin)
+static void do_server(char *host, char *port)
 {
 	int i;
 	for (i = 0; i < num_sets; i++) {
@@ -461,7 +461,7 @@ static void do_server(struct sockaddr_in *sin)
 	}
 
 	int rc;
-	rc = ldms_xprt_listen(ldms, (void *)sin, sizeof(*sin), NULL, NULL);
+	rc = ldms_xprt_listen_by_name(ldms, host, port, NULL, NULL);
 	if (rc) {
 		_log("Failed to listen '%d'\n", rc);
 		assert(0);
@@ -527,7 +527,7 @@ static void do_server(struct sockaddr_in *sin)
 static void client_update_cb(ldms_t x, ldms_set_t set, int status, void *arg)
 {
 	char *setname;
-	if (status && status != 23) { /* 23 is ZAP_ERR_FLUSH */
+	if (status && status != EPIPE) { /* 23 is ZAP_ERR_FLUSH */
 		_log("Update_cb error: status '%d'\n", status);
 		assert(0);
 	}
@@ -556,12 +556,12 @@ static void client_push_update_cb(ldms_t x, ldms_set_t set,
 	char *setname;
 	setname = (char *)ldms_set_instance_name_get(set);
 	struct push_set *push_set = set_array[set_idx];
-	if (0 == (status & LDMS_UPD_F_PUSH)) {
+	if (0 == (status & (LDMS_UPD_F_PUSH | LDMS_UPD_F_PUSH_LAST))) {
 		_log("%s: Received pull update in push path.\n", setname);
 		assert(0);
 	}
 
-	if (1 == (status | ~LDMS_UPD_F_PUSH)) {
+	if (LDMS_UPD_ERROR(status)) {
 		_log("%s: Received push update error\n", setname);
 		assert(0);
 	}
@@ -673,7 +673,7 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 	int i;
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
-		printf("%d: connected\n", port);
+		printf("%s: connected\n", port);
 		for (i = 0; i < num_sets; i++) {
 			rc = ldms_xprt_lookup(x, set_names[i], LDMS_LOOKUP_BY_INSTANCE,
 					client_lookup_cb, (void *)(uint64_t)i);
@@ -685,27 +685,26 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 		}
 		break;
 	case LDMS_XPRT_EVENT_ERROR:
-		printf("%d: conn_error\n", port);
+		printf("%s: conn_error\n", port);
 		ldms_xprt_put(x);
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 		is_closed = 1;
-		printf("%d: disconnected\n", port);
+		printf("%s: disconnected\n", port);
 		ldms_xprt_put(x);
 		sem_post(&exit_sem);
 		break;
 	default:
-		printf("%d: Unhandled ldms event '%d'\n", port, e->type);
+		printf("%s: Unhandled ldms event '%d'\n", port, e->type);
 		exit(-1);
 	}
 }
 
-static void do_client(struct sockaddr_in *sin)
+static void do_client(char *host, char *port)
 {
 	int rc;
 	sem_init(&exit_sem, 0, 0);
-	rc = ldms_xprt_connect(ldms, (void *)sin, sizeof(*sin),
-			client_connect_cb, NULL);
+	rc = ldms_xprt_connect_by_name(ldms, host, port, client_connect_cb, NULL);
 	if (rc) {
 		_log("ldms_xprt_connect failed '%d'\n", rc);
 		assert(0);
@@ -723,10 +722,6 @@ int main(int argc, char **argv) {
 
 	setlinebuf(stdout);
 
-	struct sockaddr_in sin = {0};
-	sin.sin_port = htons(port);
-	sin.sin_family = AF_INET;
-
 	ldms = ldms_xprt_new(xprt, _log);
 	if (!ldms) {
 		_log("Failed to create ldms xprt\n");
@@ -734,9 +729,9 @@ int main(int argc, char **argv) {
 	}
 
 	if (is_server)
-		do_server(&sin);
+		do_server(NULL, port);
 	else
-		do_client(&sin);
+		do_client(host, port);
 	sleep(1);
 	printf("DONE\n");
 	return 0;
