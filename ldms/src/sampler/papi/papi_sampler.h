@@ -89,8 +89,10 @@ typedef struct job_data {
 	int task_pids_mid;
 	int task_ranks_mid;
 
-	uint64_t job_id;
-	uint64_t app_id;
+	struct job_key {
+		uint64_t job_id;
+		uint64_t step_id;
+	} key;
 	enum job_state job_state;
 	uint64_t job_state_time; /* Last time the state was changed */
 	uint64_t job_start;

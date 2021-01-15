@@ -67,20 +67,21 @@ static char *papi_stream_name;
 base_data_t papi_base;
 
 pthread_mutex_t job_lock = PTHREAD_MUTEX_INITIALIZER;
-struct rbt job_tree;		/* indexed by job_id */
+struct rbt job_tree;		/* indexed by job_key */
 
 #define DEFAULT_JOB_EXPIRY	60
 static int papi_job_expiry = DEFAULT_JOB_EXPIRY;
 LIST_HEAD(,job_data) job_expiry_list; /* list of jobs awaiting cleanup */
 
 /*
- * Find the job_data record with the specified job_id
+ * Find the job_data record with the specified job_id and step_id
  */
-static job_data_t get_job_data(uint64_t job_id)
+static job_data_t get_job_data(uint64_t job_id, uint64_t step_id)
 {
 	job_data_t jd = NULL;
+	struct job_key key = { job_id, step_id };
 	struct rbn *rbn;
-	rbn = rbt_find(&job_tree, &job_id);
+	rbn = rbt_find(&job_tree, &key);
 	if (rbn)
 		jd = container_of(rbn, struct job_data, job_ent);
 	return jd;
@@ -91,14 +92,15 @@ static job_data_t get_job_data(uint64_t job_id)
  *
  * The slot table is consulted for the next available slot.
  */
-static job_data_t alloc_job_data(uint64_t job_id)
+static job_data_t alloc_job_data(uint64_t job_id, uint64_t step_id)
 {
 	job_data_t jd;
 
 	jd = calloc(1, sizeof *jd);
 	if (jd) {
 		jd->base = papi_base;
-		jd->job_id = job_id;
+		jd->key.job_id = job_id;
+		jd->key.step_id = step_id;
 		jd->job_state = JOB_PAPI_IDLE;
 		jd->job_state_time = time(NULL);
 		jd->task_init_count = 0;
@@ -106,7 +108,7 @@ static job_data_t alloc_job_data(uint64_t job_id)
 		TAILQ_INIT(&jd->event_list);
 		LIST_INIT(&jd->task_list);
 
-		rbn_init(&jd->job_ent, &jd->job_id);
+		rbn_init(&jd->job_ent, &jd->key);
 		rbt_ins(&job_tree, &jd->job_ent);
 	}
 	return jd;
@@ -266,18 +268,18 @@ static int create_metric_set(job_data_t job)
 	}
 
 	job->instance_name = malloc(256);
-	snprintf(job->instance_name, 256, "%s/%s/%lu",
+	snprintf(job->instance_name, 256, "%s/%s/%lu.%lu",
 		 job->base->producer_name, job->schema_name,
-		 job->job_id);
+		 job->key.job_id, job->key.step_id);
 	job->set = ldms_set_new(job->instance_name, schema);
 	if (!job->set)
 		goto err;
 
 	base_auth_set(&job->base->auth, job->set);
 	ldms_set_producer_name_set(job->set, job->base->producer_name);
-	ldms_metric_set_u64(job->set, job->job_id_mid, job->job_id);
+	ldms_metric_set_u64(job->set, job->job_id_mid, job->key.job_id);
 	ldms_metric_set_u64(job->set, job->comp_id_mid, job->base->component_id);
-	ldms_metric_set_u64(job->set, job->app_id_mid, job->app_id);
+	ldms_metric_set_u64(job->set, job->app_id_mid, job->key.step_id);
 	ldms_metric_set_u32(job->set, job->task_count_mid, job->task_count);
 	ldms_metric_set_u32(job->set, job->job_start_mid, job->job_start);
 	ldms_metric_set_u32(job->set, job->job_end_mid, job->job_end);
@@ -409,18 +411,17 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			  const char *msg, size_t msg_len,
 			  json_entity_t entity);
 
-static int handle_job_init(uint64_t job_id, json_entity_t e)
+static int handle_step_init(job_data_t job, uint64_t job_id, uint64_t app_id, json_entity_t e)
 {
 	int rc;
 	int local_tasks;
 	uint64_t job_start;
 	json_entity_t attr, data, dict;
-	job_data_t job = NULL;
 
 	attr = json_attr_find(e, "timestamp");
 	if (!attr) {
 		msglog(LDMSD_LERROR, "papi_sampler: Missing 'timestamp' attribute "
-		       "in 'init' event.\n");
+				"in 'step_init' event.\n");
 		return EINVAL;
 	}
 	job_start = json_value_int(json_attr_value(attr));
@@ -505,11 +506,18 @@ static int handle_job_init(uint64_t job_id, json_entity_t e)
 		rc = EINVAL;
 		goto out;
 	}
-	job = alloc_job_data(job_id);
+	if (job) {
+		msglog(LDMSD_LERROR,
+				"papi_sampler[%d]: Duplicate step initialization for %lu.%lu",
+				__LINE__, job_id, app_id);
+		rc = EINVAL;
+		goto out;
+	}
+	job = alloc_job_data(job_id, app_id);
 	if (!job) {
 		msglog(LDMSD_LERROR,
-		       "papi_sampler[%d]: Memory allocation failure, job ignored.\n",
-		       __LINE__);
+				"papi_sampler[%d]: Memory allocation failure, job ignored.\n",
+				__LINE__);
 		rc = ENOMEM;
 		goto out;
 	}
@@ -840,37 +848,32 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	}
 
 	uint64_t job_id = json_value_int(json_attr_value(attr));
+	uint64_t step_id = 0;
+
+	attr = json_attr_find(dict, "step_id");
+	if (attr)
+		step_id = json_value_int(json_attr_value(attr));
+
 	job_data_t job;
 
 	pthread_mutex_lock(&job_lock);
-	if (0 == strncmp(event_name->str, "init", 4)) {
-		job = get_job_data(job_id);
-		if (job) {
-			msglog(LDMSD_LINFO,
-			       "papi_sampler[%d]: ignoring duplicate init event "
-			       "received for job %d.\n",
-			       __LINE__, job_id);
-			goto out_1;
-		}
-		rc = handle_job_init(job_id, entity);
+	job = get_job_data(job_id, step_id);
+	if (0 == strncmp(event_name->str, "step_init",9)) {
+		rc = handle_step_init(job, job_id, step_id, entity);
 	} else if (0 == strncmp(event_name->str, "task_init_priv", 14)) {
-		job = get_job_data(job_id);
 		if (job)
 			handle_task_init(job, entity);
 	} else if (0 == strncmp(event_name->str, "task_exit", 9)) {
-		job = get_job_data(job_id);
 		if (job)
 			handle_task_exit(job, entity);
 	} else if (0 == strncmp(event_name->str, "exit", 4)) {
-		job = get_job_data(job_id);
 		if (job)
 			handle_job_exit(job, entity);
 	} else {
 		msglog(LDMSD_LDEBUG,
 		       "papi_sampler: ignoring event '%s'\n", event_name->str);
 	}
- out_1:
-	pthread_mutex_unlock(&job_lock);
+ 	pthread_mutex_unlock(&job_lock);
  out_0:
 	return rc;
 }
@@ -927,13 +930,17 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	return &papi_sampler.base;
 }
 
-static int cmp_job_id(void *a, const void *b)
+static int cmp_job_key(void *a, const void *b)
 {
-	uint64_t a_ = *(uint64_t *)a;
-	uint64_t b_ = *(uint64_t *)b;
-	if (a_ < b_)
+	struct job_key *a_ = (struct job_key *)a;
+	struct job_key *b_ = (struct job_key *)b;
+	if (a_->job_id < b_->job_id)
 		return -1;
-	if (a_ > b_)
+	if (a_->job_id > b_->job_id)
+		return 1;
+	if (a_->step_id < b_->step_id)
+		return -1;
+	if (a_->step_id > b_->step_id)
 		return 1;
 	return 0;
 }
@@ -947,7 +954,7 @@ static void __attribute__ ((constructor)) papi_sampler_init(void)
 			     "initialize the PAPI library.\n", rc);
 	}
 	PAPI_thread_init(pthread_self);
-	rbt_init(&job_tree, cmp_job_id);
+	rbt_init(&job_tree, cmp_job_key);
 	LIST_INIT(&job_expiry_list);
 
 	(void)pthread_create(&cleanup_thread, NULL, cleanup_proc, NULL);
