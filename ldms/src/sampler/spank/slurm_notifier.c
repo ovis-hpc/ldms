@@ -46,6 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -150,7 +151,6 @@ static void msglog(const char *format, ...)
  * Init Event ("init") - Start of Job
  *
  *   "data" : {
- *        "subscriber_data" : <string> // getenv("SUBSCRIBER_DATA")
  *        "job_id" : <integer>		// S_JOB_ID
  *        "job_name" : <string>		// getenv("SLURM_JOB_NAME")
  *        "job_user" : <string>		// getenv("SLURM_JOB_USER")
@@ -171,6 +171,7 @@ static void msglog(const char *format, ...)
  *        "nodeid" : <integer>		// S_JOB_NODEID
  *        "step_id" : <integer>		// S_JOB_STEPID
  *        "alloc_mb"    : <integer>	// S_STEP_ALLOC_MEM
+ *        "subscriber_data" : <string> // getenv("SUBSCRIBER_DATA")
  *   }
  *
  * Step Exit Event ("step_exit") - End of Job Step
@@ -527,6 +528,7 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	LIST_INIT(&delete_list);
 	LIST_FOREACH(client, &client_list, entry) {
 		DEBUG2("publishing to %s:%s\n", client->host, client->port);
+		slurm_error("slurm %s:%d %s", __func__, __LINE__, jb->buf);
 		rc = ldmsd_stream_publish(client->ldms, stream,
 					  LDMSD_STREAM_JSON, jb->buf, jb->cursor);
 		if (rc) {
@@ -653,7 +655,6 @@ char *__context_str(spank_t sh, const char *func)
 
 jbuf_t make_job_init_data(spank_t sh)
 {
-	char subscriber_data[PATH_MAX];
 	char name[80];
 	jbuf_t jb;
 	spank_err_t err;
@@ -665,17 +666,6 @@ jbuf_t make_job_init_data(spank_t sh)
 	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
-	subscriber_data[0] = '\0';
-	err = spank_getenv(sh, "SUBSCRIBER_DATA", subscriber_data, sizeof(subscriber_data));
-	if (err)
-		strcpy(subscriber_data, "{}");
-	DEBUG2("SUBSCRIBER_DATA '%s'.\n", subscriber_data);
-	if (json_verify_string(subscriber_data)) {
-		DEBUG2("subscriber_data '%s' is not valid JSON and is being "
-			"ignored.\n", subscriber_data);
-		strcpy(subscriber_data, "{}");
-	}
-	jb = jbuf_append_attr(jb, "subscriber_data", "%s,", subscriber_data); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 
 	name[0] = '\0';
@@ -722,6 +712,8 @@ jbuf_t make_job_exit_data(spank_t sh)
 jbuf_t make_step_init_data(spank_t sh)
 {
 	jbuf_t jb;
+	char subscriber_data[PATH_MAX];
+	spank_err_t err;
 
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
@@ -730,6 +722,17 @@ jbuf_t make_step_init_data(spank_t sh)
 	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
+	subscriber_data[0] = '\0';
+	err = spank_getenv(sh, "SUBSCRIBER_DATA", subscriber_data, sizeof(subscriber_data));
+	if (err)
+		strcpy(subscriber_data, "{}");
+	DEBUG2("SUBSCRIBER_DATA '%s'.\n", subscriber_data);
+	if (json_verify_string(subscriber_data)) {
+		DEBUG2("subscriber_data '%s' is not valid JSON and is being "
+			"ignored.\n", subscriber_data);
+		strcpy(subscriber_data, "{}");
+	}
+	jb = jbuf_append_attr(jb, "subscriber_data", "%s,", subscriber_data); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "step_id", S_JOB_STEPID, ','); if (!jb) goto out_1;
@@ -815,13 +818,30 @@ jbuf_t make_task_exit_data(spank_t sh)
 	return jb;
 }
 
+static int _step_is_valid(spank_t sh, const char *func, int line)
+{
+	uint32_t step_id;
+	spank_err_t err;
+	err = _get_item_u32(sh, S_JOB_STEPID, &step_id);
+	if (err) {
+		slurm_error("%s:%d Error %d getting S_JOB_STEPID", func, line, err);
+		return 0;
+	}
+	if ((int)step_id < 0) {
+		DEBUG2("%s:%d Ignoring event with negative S_JOB_STEPID", func, line);
+		return 0;
+	}
+	return 1;
+}
+#define step_is_valid(_sh_) _step_is_valid(_sh_, __func__, __LINE__)
+
 int slurm_spank_init(spank_t sh, int argc, char *argv[])
 {
 	jbuf_t jb;
-
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
-
+	if (!step_is_valid(sh))
+		return ESPANK_SUCCESS;
 	/* Called from slurmstepd running on the node executing the job step */
 	jb = make_step_init_data(sh);
 	if (jb) {
@@ -846,10 +866,10 @@ int slurm_spank_job_prolog(spank_t sh, int argc, char *argv[])
 int slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 {
 	jbuf_t jb;
-
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
-
+	if (!step_is_valid(sh))
+		return ESPANK_SUCCESS;
 	jb = make_task_init_data(sh);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
@@ -862,10 +882,10 @@ int slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 int slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 {
 	jbuf_t jb;
-
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
-
+	if (!step_is_valid(sh))
+		return ESPANK_SUCCESS;
 	jb = make_task_exit_data(sh);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
@@ -877,11 +897,11 @@ int slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 
 int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 {
-	jbuf_t jb = NULL;
-
+	jbuf_t jb;
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
-
+	if (!step_is_valid(sh))
+		return ESPANK_SUCCESS;
 	jb = make_step_exit_data(sh);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
@@ -894,7 +914,6 @@ int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 int slurm_spank_job_epilog(spank_t sh, int argc, char *argv[])
 {
 	jbuf_t jb = make_job_exit_data(sh);
-
 	if (jb) {
 		DEBUG2("%s", jb->buf);
 		send_event(argc, argv, jb);
