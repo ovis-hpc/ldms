@@ -1233,7 +1233,76 @@ class LdmsdCmdParser(cmd.Cmd):
         self.display_thread_stats(stats)
 
     def complete_thread_stats(self, text, line, begidx, endidx):
-        return self.__complete_attr_list('set_info', text)
+        return self.__complete_attr_list('thread_stats', text)
+
+    def display_prdcr_stats(self, stats):
+        """
+        {
+            "prdcr_count" : <int>,
+            "stopped" : <int>,
+            "disconnected" : <int>, 
+            "connecting" : <int>,
+            "connected" : <int>,
+            "stopping"	: <int>,
+            "compute_time" : <int>
+        }
+        """
+        print(f"Producer Stats - {stats['compute_time']}us")
+        print(f"{'Name':20} {'Count':16}")
+        print("-------------------- ----------------")
+        for n in stats:
+            if n == 'compute_time':
+                continue
+            print(f"{n:20} {stats[n]:16}")
+
+    def do_prdcr_stats(self, arg):
+        """
+        Query the daemon's producer statistics
+        """
+        resp = self.handle('prdcr_stats', arg)
+        if resp['msg'] == "":
+            return
+        if resp['errcode'] != 0:
+            return
+        stats = json.loads(resp['msg'])
+        self.display_prdcr_stats(stats)
+
+    def complete_prdcr_stats(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_stats', text)
+
+    def display_set_stats(self, stats):
+        """
+        {
+            "set_count" : <int>,
+            "deleting_count" : <int>,
+            "mem_total" : <int>, 
+            "mem_used" : <int>,
+            "mem_free" : <int>,
+            "compute_time" : <int>
+        }
+        """
+        print(f"Set Stats - {stats['compute_time']}us")
+        print(f"{'Name':20} {'Count':16}")
+        print("-------------------- ----------------")
+        for n in stats:
+            if n == 'compute_time':
+                continue
+            print(f"{n:20} {stats[n]:16}")
+
+    def do_set_stats(self, arg):
+        """
+        Query the daemon's set statistics
+        """
+        resp = self.handle('set_stats', arg)
+        if resp['msg'] == "":
+            return
+        if resp['errcode'] != 0:
+            return
+        stats = json.loads(resp['msg'])
+        self.display_set_stats(stats)
+
+    def complete_set_stats(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('set_stats', text)
 
     def display_xprt_stats(self, stats):
         """
