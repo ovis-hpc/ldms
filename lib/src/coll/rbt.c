@@ -141,6 +141,15 @@ int rbt_empty(struct rbt *t)
 }
 
 /**
+ * \brief Return the number of entries in the tree
+ * \returns The cardinality of the tree
+ */
+long rbt_card(struct rbt *t)
+{
+	return t->card;
+}
+
+/**
  * \brief Initialize an RBN node.
  *
  * Initialize an RBN node. This is a convenience function to avoid

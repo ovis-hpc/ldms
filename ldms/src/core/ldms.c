@@ -140,6 +140,16 @@ static struct rbt del_tree = {
 	.comparator = id_comparator
 };
 
+int ldms_set_count()
+{
+	return __set_tree.card;
+}
+
+int ldms_set_deleting_count()
+{
+	return del_tree.card;
+}
+
 static pthread_mutex_t __del_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void __ldms_gn_inc(struct ldms_set *set, ldms_mdesc_t desc)

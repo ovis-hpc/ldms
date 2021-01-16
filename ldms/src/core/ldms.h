@@ -1012,6 +1012,17 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 				  uid_t uid, gid_t gid, mode_t perm);
 
 /**
+ * \brief Return the number of metric sets
+ * \returns The number of metric sets
+ */
+extern int ldms_set_count();
+/**
+ * \brief Return the number of sets pending deletion
+ * \returns The number of sets pending deletion
+ */
+extern int ldms_set_deleting_count();
+
+/**
  * \addtogroup ldms_set_config LDMS Set Configuration
  *
  * This is a collection of set configuration API.

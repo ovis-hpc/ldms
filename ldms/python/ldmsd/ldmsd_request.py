@@ -334,6 +334,8 @@ class LDMSD_Request(object):
     SET_ROUTE = 0x600 + 11
     XPRT_STATS = 0x600 + 12
     THREAD_STATS = 0x600 + 13
+    PRDCR_STATS = 0x600 + 14
+    SET_STATS = 0x600 + 15
 
     FAILOVER_CONFIG        = 0x700
     FAILOVER_PEERCFG_START = 0x700  +  1
@@ -421,6 +423,8 @@ class LDMSD_Request(object):
             'set_route'     :  {'id': SET_ROUTE},
             'xprt_stats'    :  {'id' : XPRT_STATS},
             'thread_stats'  :  {'id' : THREAD_STATS},
+            'prdcr_stats'   :  {'id' : PRDCR_STATS},
+            'set_stats'     :  {'id' : SET_STATS},
             'setgroup_add'  :  {'id':  SETGROUP_ADD},
             'setgroup_mod'  :  {'id':  SETGROUP_MOD},
             'setgroup_del'  :  {'id':  SETGROUP_DEL},

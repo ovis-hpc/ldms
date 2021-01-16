@@ -142,6 +142,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'set_info': {'req_attr': ['instance'], 'opt_attr': []},
                       'xprt_stats': {'req_attr':[], 'opt_attr': ['reset']},
                       'thread_stats': {'req_attr':[], 'opt_attr': ['reset']},
+                      'prdcr_stats': {'req_attr':[], 'opt_attr': []},
+                      'set_stats': {'req_attr':[], 'opt_attr': []},
                       ##### Failover. #####
                       'failover_config': {
                                 'req_attr': [
