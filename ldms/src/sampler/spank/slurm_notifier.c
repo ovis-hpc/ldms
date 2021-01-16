@@ -528,7 +528,7 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	LIST_INIT(&delete_list);
 	LIST_FOREACH(client, &client_list, entry) {
 		DEBUG2("publishing to %s:%s\n", client->host, client->port);
-		slurm_error("slurm %s:%d %s", __func__, __LINE__, jb->buf);
+		DEBUG2("slurm %s:%d %s", __func__, __LINE__, jb->buf);
 		rc = ldmsd_stream_publish(client->ldms, stream,
 					  LDMSD_STREAM_JSON, jb->buf, jb->cursor);
 		if (rc) {
@@ -824,7 +824,7 @@ static int _step_is_valid(spank_t sh, const char *func, int line)
 	spank_err_t err;
 	err = _get_item_u32(sh, S_JOB_STEPID, &step_id);
 	if (err) {
-		slurm_error("%s:%d Error %d getting S_JOB_STEPID", func, line, err);
+		DEBUG2("%s:%d Error %d getting S_JOB_STEPID", func, line, err);
 		return 0;
 	}
 	if ((int)step_id < 0) {
