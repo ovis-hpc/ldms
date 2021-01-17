@@ -1881,6 +1881,145 @@ static void resp_thread_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err
  	return;
 }
 
+static void help_prdcr_stats()
+{
+	printf("\nQuery the daemon's producer statistics\n\n");
+}
+
+static void resp_prdcr_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
+	int rc;
+	json_parser_t parser;
+	json_entity_t stats, a;
+
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
+		return;
+	}
+	rc = json_parse_buffer(parser, (char *)attr->attr_value, len, &stats);
+	json_parser_free(parser);
+	if (rc) {
+		printf("Syntax error parsing JSON string\n");
+		return;
+	}
+
+	if (stats->type != JSON_DICT_VALUE) {
+		printf("Unrecognized prdcr stats format\n");
+		goto free_entity;
+	}
+
+	a = json_value_find(stats, "compute_time");
+	if (a)
+		printf("Producer Stats - %ld us\n", json_value_int(a));
+	else
+		printf("Producer Stats - N/A\n");
+
+	printf("%-20s %-16s\n", "Name", "Count");
+	printf("-------------------- ----------------\n");
+
+	a = json_value_find(stats, "prdcr_count");
+	if (a)
+		printf("%-20s %-16ld\n", "prdcr_count", json_value_int(a));
+	else
+		printf("%-20s N/A\n", "prdcr_count");
+
+	for (a = json_attr_first(stats); a; a = json_attr_next(a)) {
+		if (0 == strcmp(json_attr_name(a)->str, "compute_time"))
+			continue;
+		if (0 == strcmp(json_attr_name(a)->str, "prdcr_count"))
+			continue;
+		if (0 == strcmp(json_attr_name(a)->str, "set_count"))
+			continue;
+		printf("%20s %16ld\n", json_attr_name(a)->str,
+					json_value_int(json_attr_value(a)));
+	}
+	a = json_value_find(stats, "set_count");
+	if (a)
+		printf("%-20s %-16ld\n", "set_count", json_value_int(a));
+	else
+		printf("%-20s\n", "set_count");
+
+ free_entity:
+ 	json_entity_free(stats);
+ 	return;
+}
+
+static void help_set_stats()
+{
+	printf("\nQuery the daemon's set statistics\n\n");
+}
+
+static void resp_set_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
+	int rc;
+	json_parser_t parser;
+	json_entity_t stats, a;
+
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
+		return;
+	}
+	rc = json_parse_buffer(parser, (char *)attr->attr_value, len, &stats);
+	json_parser_free(parser);
+	if (rc) {
+		printf("Syntax error parsing JSON string\n");
+		return;
+	}
+
+	if (stats->type != JSON_DICT_VALUE) {
+		printf("Unrecognized set stats format\n");
+		goto free_entity;
+	}
+
+	a = json_value_find(stats, "compute_time");
+	if (a)
+		printf("Set Stats - %ld us\n", json_value_int(a));
+	else
+		printf("Set Stats - N/A\n");
+
+	printf("%-20s %-16s\n", "Name", "Count");
+	printf("-------------------- ----------------\n");
+
+	char *names[5] = { "active_count", "deleting_count",
+			   "mem_total_kb", "mem_used_kb",
+			   "mem_free_kb"
+	};
+	int i;
+
+	for (i = 0; i < 5; i ++) {
+		a = json_attr_find(stats, names[i]);
+		if (a)
+			printf("%-20s %-16ld\n", names[i],
+					json_value_int(json_attr_value(a)));
+		else
+			printf("%-20s N/A\n", names[i]);
+	}
+
+ free_entity:
+ 	json_entity_free(stats);
+ 	return;
+}
+
 static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
 static int handle_source(struct ldmsctl_ctrl *ctrl, char *path);
 static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
@@ -1914,6 +2053,7 @@ static struct command command_tbl[] = {
 	{ "prdcr_set_status", LDMSD_PRDCR_SET_REQ, NULL, help_prdcr_set_status, resp_prdcr_set_status },
 	{ "prdcr_start", LDMSD_PRDCR_START_REQ, NULL, help_prdcr_start, resp_generic },
 	{ "prdcr_start_regex", LDMSD_PRDCR_START_REGEX_REQ, NULL, help_prdcr_start_regex, resp_generic },
+	{ "prdcr_stats", LDMSD_PRDCR_STATS_REQ, NULL, help_prdcr_stats, resp_prdcr_stats },
 	{ "prdcr_status", LDMSD_PRDCR_STATUS_REQ, NULL, help_prdcr_status, resp_prdcr_status },
 	{ "prdcr_stop", LDMSD_PRDCR_STOP_REQ, NULL, help_prdcr_stop, resp_generic },
 	{ "prdcr_stop_regex", LDMSD_PRDCR_STOP_REGEX_REQ, NULL, help_prdcr_stop_regex, resp_generic },
@@ -1922,6 +2062,7 @@ static struct command command_tbl[] = {
 	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit, resp_generic },
 	{ "script", LDMSCTL_SCRIPT, handle_script, help_script, resp_generic },
 	{ "set_route", LDMSD_SET_ROUTE_REQ, NULL, help_set_route, resp_set_route },
+	{ "set_stats", LDMSD_SET_STATS_REQ, NULL, help_set_stats, resp_set_stats },
 	{ "setgroup_add", LDMSD_SETGROUP_ADD_REQ, NULL, help_setgroup_add, resp_generic },
 	{ "setgroup_del", LDMSD_SETGROUP_DEL_REQ, NULL, help_setgroup_del, resp_generic },
 	{ "setgroup_ins", LDMSD_SETGROUP_INS_REQ, NULL, help_setgroup_ins, resp_generic },
