@@ -681,6 +681,24 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 		ldms_metric_array_set_u32(job_set, task_exit_status_idx + job->job_slot, i, 0);
 	}
 
+ out:
+	ldms_transaction_end(job_set);
+}
+
+static void handle_step_init(job_data_t job, json_entity_t e)
+{
+	int int_v;
+	json_entity_t attr, data, dict;
+
+	data = json_attr_find(e, "data");
+	if (!data) {
+		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'data' attribute "
+		       "in 'init' event.\n");
+		return;
+	}
+	dict = json_attr_value(data);
+
+	ldms_transaction_begin(job_set);
 	attr = json_attr_find(dict, "job_user");
 	if (attr) {
 		json_entity_t user_name = json_attr_value(attr);
@@ -716,24 +734,6 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 					  json_value_str(job_tag)->str);
 		break;
 	}
- out:
-	ldms_transaction_end(job_set);
-}
-
-static void handle_step_init(job_data_t job, json_entity_t e)
-{
-	int int_v;
-	json_entity_t attr, data, dict;
-
-	data = json_attr_find(e, "data");
-	if (!data) {
-		msglog(LDMSD_LERROR, "slurm_sampler: Missing 'data' attribute "
-		       "in 'init' event.\n");
-		return;
-	}
-	dict = json_attr_value(data);
-
-	ldms_transaction_begin(job_set);
 	attr = json_attr_find(dict, "nnodes");
 	if (attr) {
 		int_v = json_value_int(json_attr_value(attr));
@@ -744,6 +744,12 @@ static void handle_step_init(job_data_t job, json_entity_t e)
 	if (attr) {
 		int_v = json_value_int(json_attr_value(attr));
 		ldms_metric_array_set_u32(job_set, task_count_idx, job->job_slot, int_v);
+	}
+
+	attr = json_attr_find(dict, "step_id");
+	if (attr) {
+		int_v = json_value_int(json_attr_value(attr));
+		ldms_metric_array_set_u64(job_set, app_id_idx, job->job_slot, int_v);
 	}
 
 	attr = json_attr_find(dict, "uid");

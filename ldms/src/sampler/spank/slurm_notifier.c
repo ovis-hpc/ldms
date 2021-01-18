@@ -152,8 +152,6 @@ static void msglog(const char *format, ...)
  *
  *   "data" : {
  *        "job_id" : <integer>		// S_JOB_ID
- *        "job_name" : <string>		// getenv("SLURM_JOB_NAME")
- *        "job_user" : <string>		// getenv("SLURM_JOB_USER")
  *        "nodeid" : <integer>		// S_JOB_NODEID
  *        "uid"    : <integer>		// S_JOB_UID
  *        "gid"    : <integer>		// S_JOB_GID
@@ -171,7 +169,14 @@ static void msglog(const char *format, ...)
  *        "nodeid" : <integer>		// S_JOB_NODEID
  *        "step_id" : <integer>		// S_JOB_STEPID
  *        "alloc_mb"    : <integer>	// S_STEP_ALLOC_MEM
- *        "subscriber_data" : <string> // getenv("SUBSCRIBER_DATA")
+ *        "subscriber_data" : <string>  // getenv("SUBSCRIBER_DATA")
+ *        "job_name" : <string>		// getenv("SLURM_JOB_NAME")
+ *        "job_user" : <string>		// getenv("SLURM_JOB_USER")
+ *        "ncpus"  : <integer>		// S_JOB_NCPUS
+ *        "nnodes" : <integer>		// S_JOB_NNODES
+ *        "alloc_mb"    : <integer>	// S_JOB_ALLOC_MEM
+ *        "local_tasks" : <integer>	// S_JOB_LOCAL_TASK_COUNT
+ *        "total_tasks" : <integer>	// S_JOB_TOTAL_TASK_COUNT
  *   }
  *
  * Step Exit Event ("step_exit") - End of Job Step
@@ -655,9 +660,7 @@ char *__context_str(spank_t sh, const char *func)
 
 jbuf_t make_job_init_data(spank_t sh)
 {
-	char name[80];
 	jbuf_t jb;
-	spank_err_t err;
 
 	jb = jbuf_new(); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
@@ -667,19 +670,6 @@ jbuf_t make_job_init_data(spank_t sh)
 	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
-
-	name[0] = '\0';
-	err = spank_getenv(sh, "SLURM_JOB_NAME", name, sizeof(name));
-	if (err)
-		name[0] = '\0';
-	jb = jbuf_append_attr(jb, "job_name", "\"%s\",", name); if (!jb) goto out_1;
-
-	name[0] = '\0';
-	err = spank_getenv(sh, "SLURM_JOB_USER", name, sizeof(name));
-	if (err)
-		name[0] = '\0';
-	jb = jbuf_append_attr(jb, "job_user", "\"%s\",", name); if (!jb) goto out_1;
-
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "uid", S_JOB_UID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "gid", S_JOB_GID, ','); if (!jb) goto out_1;
@@ -712,7 +702,7 @@ jbuf_t make_job_exit_data(spank_t sh)
 jbuf_t make_step_init_data(spank_t sh)
 {
 	jbuf_t jb;
-	char subscriber_data[PATH_MAX];
+	char env[PATH_MAX];
 	spank_err_t err;
 
 	jb = jbuf_new(); if (!jb) goto out_1;
@@ -722,17 +712,29 @@ jbuf_t make_step_init_data(spank_t sh)
 	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "context", "\"%s\",", context_str(sh)); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
-	subscriber_data[0] = '\0';
-	err = spank_getenv(sh, "SUBSCRIBER_DATA", subscriber_data, sizeof(subscriber_data));
+	env[0] = '\0';
+	err = spank_getenv(sh, "SUBSCRIBER_DATA", env, sizeof(env));
 	if (err)
-		strcpy(subscriber_data, "{}");
-	DEBUG2("SUBSCRIBER_DATA '%s'.\n", subscriber_data);
-	if (json_verify_string(subscriber_data)) {
+		strcpy(env, "{}");
+	DEBUG2("SUBSCRIBER_DATA '%s'.\n", env);
+	if (json_verify_string(env)) {
 		DEBUG2("subscriber_data '%s' is not valid JSON and is being "
-			"ignored.\n", subscriber_data);
-		strcpy(subscriber_data, "{}");
+			"ignored.\n", env);
+		strcpy(env, "{}");
 	}
-	jb = jbuf_append_attr(jb, "subscriber_data", "%s,", subscriber_data); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "subscriber_data", "%s,", env); if (!jb) goto out_1;
+	env[0] = '\0';
+	err = spank_getenv(sh, "SLURM_JOB_NAME", env, sizeof(env));
+	if (err)
+		env[0] = '\0';
+	jb = jbuf_append_attr(jb, "job_name", "\"%s\",", env); if (!jb) goto out_1;
+
+	env[0] = '\0';
+	err = spank_getenv(sh, "SLURM_JOB_USER", env, sizeof(env));
+	if (err)
+		env[0] = '\0';
+	jb = jbuf_append_attr(jb, "job_user", "\"%s\",", env); if (!jb) goto out_1;
+
 	jb = _append_item_u32(sh, jb, "job_id", S_JOB_ID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "nodeid", S_JOB_NODEID, ','); if (!jb) goto out_1;
 	jb = _append_item_u32(sh, jb, "step_id", S_JOB_STEPID, ','); if (!jb) goto out_1;
