@@ -446,7 +446,6 @@ static int cancel_set_updates(ldmsd_prdcr_set_t prd_set, ldmsd_updtr_t updtr)
 	}
 	/* Put the push reference */
 	prd_set->push_flags &= ~LDMSD_PRDCR_SET_F_PUSH_REG;
-	ldmsd_prdcr_set_ref_put(prd_set);
 	return rc;
 }
 
