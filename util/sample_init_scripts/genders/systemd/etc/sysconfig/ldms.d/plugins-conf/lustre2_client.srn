@@ -1,0 +1,2 @@
+job_set=${host}/jobid perm=0644 llite=nscratch,pscratch schema=lustre2_client_np
+# schema set for just scratch2,3,4. never sure which is up

@@ -1,0 +1,2 @@
+file=/var/run/ldms.slurm.jobinfo perm=0644
+

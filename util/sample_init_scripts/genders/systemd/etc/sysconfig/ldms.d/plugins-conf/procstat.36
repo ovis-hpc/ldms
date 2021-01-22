@@ -1,0 +1,2 @@
+job_set=${host}/jobid schema=procstat_36 perm=0644 maxcpu=36
+

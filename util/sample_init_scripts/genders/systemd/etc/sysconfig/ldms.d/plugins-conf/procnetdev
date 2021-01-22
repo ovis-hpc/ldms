@@ -1,1 +1,1 @@
-with_jobid=0 ifaces=em1,ib0
+job_set=${host}/jobid ifaces=eth0,eth2,ib0,ib1 perm=0644
