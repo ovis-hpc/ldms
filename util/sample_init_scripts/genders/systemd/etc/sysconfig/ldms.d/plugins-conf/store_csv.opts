@@ -1,0 +1,21 @@
+# this file is for use with the store_csv plugin opt_file= option.
+
+# defaults for all schemas unless overridden for a specific container and schema
+store_csv path=/localdisk/ldms \
+	altheader=1 \
+	rollover=0 \
+	rolltype=2 \
+	rename_template=%D/spool/%B \
+	typeheader=2
+
+# tailored setting for loadavg instance, just for example
+container=loadavg_store \
+	schema=loadavg \
+	path=/localdisk/ldms \
+	altheader=0 \
+	create_gid=1000000039 \
+	create_perm=640 \
+	rename_template=%D/archive-spool/%{HOSTNAME}/%B \
+	rename_perm=444
+
+

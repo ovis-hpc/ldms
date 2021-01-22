@@ -1,0 +1,2 @@
+job_set=${host}/jobid ports=hfi_0.1,mlx5_0.1 schema=gw_sysclassib perm=0644
+

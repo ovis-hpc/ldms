@@ -1,0 +1,2 @@
+path=/localdisk/ldms altheader=1 rollover=0 rolltype=2 rename_template=%D/spool/%B typeheader=2
+
