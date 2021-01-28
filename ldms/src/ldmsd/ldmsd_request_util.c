@@ -873,7 +873,7 @@ ldmsd_req_attr_t ldmsd_req_attr_get_by_id(char *request, uint32_t attr_id)
 {
 	ldmsd_req_hdr_t req = (ldmsd_req_hdr_t)request;
 	ldmsd_req_attr_t attr = ldmsd_first_attr(req);
-	while (attr->discrim) {
+	while (attr && attr->discrim == 1) {
 		if (attr->attr_id == attr_id) {
 			return attr;
 		}
@@ -951,7 +951,7 @@ void ldmsd_ntoh_req_msg(ldmsd_req_hdr_t req)
 		return;
 
 	attr = ldmsd_first_attr(req);
-	while (attr && attr->discrim) {
+	while (attr && attr->discrim == ntohl(1)) {
 		ldmsd_ntoh_req_attr(attr);
 		attr = ldmsd_next_attr(attr);
 	}
@@ -983,7 +983,7 @@ void ldmsd_hton_req_msg(ldmsd_req_hdr_t resp)
 		return;
 
 	attr = ldmsd_first_attr(resp);
-	while (attr && attr->discrim) {
+	while (attr && attr->discrim == 1) {
 		next_attr = ldmsd_next_attr(attr);
 		ldmsd_hton_req_attr(attr);
 		attr = next_attr;

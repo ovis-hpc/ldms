@@ -135,6 +135,84 @@ void ldmsd_stream_close(ldmsd_stream_client_t c)
 	pthread_mutex_unlock(&c->c_s->s_lock);
 }
 
+struct req_buf {
+	ldms_t x;
+	int sz;
+	int off;
+
+	union {
+		struct ldmsd_req_hdr_s req[0];
+		char buff[0];
+	};
+};
+
+static void req_buf_init(struct req_buf *b, ldms_t x, int sz)
+{
+	b->x = x;
+	b->sz = sz;
+	b->off = sizeof(*b->req);
+	b->req->flags = LDMSD_REQ_SOM_F;
+	b->req->marker = LDMSD_RECORD_MARKER;
+}
+
+static struct req_buf *req_buf_new(ldms_t x, int sz)
+{
+	struct req_buf *b = calloc(1, sizeof(*b) + sz);
+	if (b)
+		req_buf_init(b, x, sz);
+	return b;
+}
+
+int req_buf_send(struct req_buf *b)
+{
+	int rc;
+	b->req->rec_len = b->off;
+	ldmsd_hton_req_hdr(b->req);
+	rc = ldms_xprt_send(b->x, b->buff, b->off);
+	ldmsd_ntoh_req_hdr(b->req);
+	if (rc)
+		return rc;
+	b->off = sizeof(*b->req);
+	b->req->flags &= ~LDMSD_REQ_SOM_F;
+	return 0;
+}
+
+/* Fill the available space of the req with data. Send when the space
+ * ran out, and repeat the filling/send. `off` is use to track the offset of the
+ * available space. */
+static int req_buf_append(struct req_buf *b, const void *data, int data_len, int flags)
+{
+	const char *d = data;
+	int dlen = data_len;
+	int cpsz, rc;
+	while (dlen) {
+		cpsz = b->sz - b->off;
+		cpsz = dlen < cpsz ? dlen : cpsz;
+		memcpy(&b->buff[b->off], d, cpsz);
+		dlen -= cpsz;
+		d += cpsz;
+		b->off += cpsz;
+		if (b->off == b->sz) {
+			/* space full, send */
+			if ((flags & LDMSD_REQ_EOM_F) && dlen == 0) {
+				b->req->flags |= LDMSD_REQ_EOM_F;
+				flags &= ~LDMSD_REQ_EOM_F;
+				return req_buf_send(b);
+			}
+			rc = req_buf_send(b);
+			if (rc)
+				return rc;
+		}
+	}
+	if (b->off > sizeof(*b->req) && (flags & LDMSD_REQ_EOM_F)) {
+		/* Got some space left, but this is the last message */
+		b->req->flags |= LDMSD_REQ_EOM_F;
+		flags &= ~LDMSD_REQ_EOM_F;
+		return req_buf_send(b);
+	}
+	return 0;
+}
+
 /**
  * \brief Publish data to stream
  *
@@ -152,77 +230,67 @@ int ldmsd_stream_publish(ldms_t xprt,
 			 const char *data, size_t data_len)
 {
 	static uint64_t msg_no = 1;
-	const char * data_ptr;
-	ldmsd_req_attr_t first_attr, attr, next_attr;
+	struct ldmsd_req_attr_s a;
 	int rc;
-	size_t this_rec;
+	int a_len;
 	if (!data_len)
 		return 0;
 
 	size_t max_msg = ldms_xprt_msg_max(xprt);
-	ldmsd_req_hdr_t req = malloc(max_msg);
-	if (!req) {
+	struct req_buf *b = req_buf_new(xprt, max_msg);
+	if (!b) {
 		msglog("Error allocating %d bytes of memory for buffer\n",
 			max_msg);
 		return ENOMEM;
 	}
 
-	/* Put the instance name at the front of the request */
-	attr = (ldmsd_req_attr_t)(req + 1);
-	attr->discrim = 1;
-	attr->attr_id = LDMSD_ATTR_NAME;
-	attr->attr_len = strlen(stream_name) + 1;
-	size_t meta =
-		sizeof(*req) +
-		sizeof(*attr) + attr->attr_len + /* plugin name */
-		sizeof(*attr) +			 /* plugin data */
-		sizeof(attr->discrim);		 /* terminator */
-	strcpy((char *)attr->attr_value, stream_name);
-	first_attr = ldmsd_next_attr(attr);
-	ldmsd_hton_req_attr(attr);
-	uint32_t flags = LDMSD_REQ_SOM_F;
-	data_ptr = data;
-	while (data_len > 0) {
-		this_rec = meta + data_len;
-		this_rec = this_rec < max_msg ? this_rec : max_msg;
+	/* stream_req ::= (NAME, STRING_DATA) or (NAME, JSON) */
+	/* the msg plainly split into multiple records if it is too long to fit
+	 * in a single ldms message. These records must have the same message
+	 * number for the receiver (ldmsd) to identify the buffer for
+	 * aggregating these records back into the request. */
+	b->req->msg_no = __sync_fetch_and_add(&msg_no, 1);
+	b->req->type = LDMSD_REQ_TYPE_CONFIG_CMD;
+	b->req->req_id = LDMSD_STREAM_PUBLISH_REQ;
 
-		attr = first_attr;
-		attr->discrim = 1;
-		switch (stream_type) {
-		case LDMSD_STREAM_STRING:
-			attr->attr_id = LDMSD_ATTR_STRING;
-			break;
-		case LDMSD_STREAM_JSON:
-			attr->attr_id = LDMSD_ATTR_JSON;
-			break;
-		}
-		attr->attr_len = this_rec - meta;
-		memcpy(attr->attr_value, data_ptr, attr->attr_len);
-		data_ptr += attr->attr_len;
-		data_len -= attr->attr_len;
+	/* NAME */
+	a.discrim = htonl(1);
+	a.attr_id = htonl(LDMSD_ATTR_NAME);
+	a_len = strlen(stream_name) + 1;
+	a.attr_len = htonl(a_len);
+	rc = req_buf_append(b, &a, sizeof(a), 0);
+	if (rc)
+		return rc;
+	rc = req_buf_append(b, stream_name, a_len, 0);
+	if (rc)
+		return rc;
 
-		next_attr = ldmsd_next_attr(attr);
-		ldmsd_hton_req_attr(attr);
-		next_attr->discrim = 0;
-
-		req->msg_no = __sync_fetch_and_add(&msg_no, 1);
-		req->marker = LDMSD_RECORD_MARKER;
-		req->type = LDMSD_REQ_TYPE_CONFIG_CMD;
-		req->req_id = LDMSD_STREAM_PUBLISH_REQ;
-		req->rec_len = this_rec;
-		if (!data_len)
-			/* No more data, turn on last message flag */
-			flags |= LDMSD_REQ_EOM_F;
-		req->flags = flags;
-		ldmsd_hton_req_hdr(req);
-
-		rc = ldms_xprt_send(xprt, (char *)req, this_rec);
-		if (rc)
-			goto err;
-		/* Turn off start of message flag, for subsequent sends */
-		flags = 0;
+	/* STRING or JSON */
+	a.discrim = htonl(1);
+	switch (stream_type) {
+	case LDMSD_STREAM_STRING:
+		a.attr_id = htonl(LDMSD_ATTR_STRING);
+		break;
+	case LDMSD_STREAM_JSON:
+		a.attr_id = htonl(LDMSD_ATTR_JSON);
+		break;
+	default:
+		return EINVAL;
 	}
- err:
+	a.attr_len = htonl(data_len);
+	rc = req_buf_append(b, &a, sizeof(a), 0);
+	if (rc)
+		return rc;
+	rc = req_buf_append(b, data, data_len, 0);
+	if (rc)
+		return rc;
+	a.discrim = 0;
+	a.attr_id = htonl(LDMSD_ATTR_TERM);
+	a.attr_len = 0;
+	rc = req_buf_append(b, &a, sizeof(a), LDMSD_REQ_EOM_F);
+	if (rc)
+		return rc;
+
 	return 0;
 }
 
@@ -245,12 +313,60 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	case LDMS_XPRT_EVENT_ERROR:
 		conn_status = ECONNREFUSED;
 		break;
+	case LDMS_XPRT_EVENT_RECV:
+		/* no-op */
+		return;
 	default:
 		ldms_xprt_put(x);
 		conn_status = ECONNABORTED;
 		msglog("Received invalid event type %d\n", e->type);
 	}
 	sem_post(&conn_sem);
+}
+
+#define ROUND(len) ((((len)-1)|0xFFF)+1)
+
+char *fread_all(FILE *f, size_t *len_out)
+{
+	size_t off = 0;
+	size_t len = 0x1000; /* 4K */
+	char *buff = malloc(len);
+	size_t rsz;
+
+	if (!buff)
+		return NULL;
+
+	while ((rsz = fread(buff+off, 1, len - off, f))) {
+		off += rsz;
+		if (off == len) {
+			/* expand */
+			int new_len = ROUND(len + 0x1000);
+			char *new_buff = realloc(buff, ROUND(len + 0x1000));
+			if (!new_buff)
+				goto err;
+			buff = new_buff;
+			len = new_len;
+		}
+	}
+
+	if (!feof(f))
+		goto err;
+	/* add '\0' */
+	if (off == len) {
+		int new_len = ROUND(len + 0x1000);
+		char *new_buff = realloc(buff, ROUND(len + 0x1000));
+		if (!new_buff)
+			goto err;
+		buff = new_buff;
+		len = new_len;
+	}
+	buff[off] = '\0';
+	*len_out = off + 1;
+	return buff;
+
+ err:
+	free(buff);
+	return NULL;
 }
 
 /**
@@ -273,10 +389,8 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 			      const char *auth, struct attr_value_list *auth_opt,
 			      FILE *file)
 {
-	char *data_ptr;
-	ldmsd_req_attr_t first_attr, attr, next_attr;
-	int rc, attr_id;
-	size_t this_rec, data_len;
+	int rc, stream_type;
+	size_t data_len;
 	static char buffer[1024*64];
 	ldms_t x;
 	char *timeout_s = getenv("LDMSD_STREAM_CONN_TIMEOUT");
@@ -284,11 +398,11 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	if (timeout_s)
 		timeout = atoi(timeout_s);
 	if (0 == strcasecmp("raw", type))
-		attr_id = LDMSD_ATTR_STRING;
+		stream_type = LDMSD_STREAM_STRING;
 	else if (0 == strcasecmp("string", type))
-		attr_id = LDMSD_ATTR_STRING;
+		stream_type = LDMSD_STREAM_STRING;
 	else if (0 == strcasecmp("json", type))
-		attr_id = LDMSD_ATTR_JSON;
+		stream_type = LDMSD_STREAM_JSON;
 	else
 		return EINVAL;
 	x = ldms_xprt_new_with_auth(xprt, msglog, auth, auth_opt);
@@ -317,65 +431,19 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		msglog("Error %d connecting to remote peer\n", conn_status);
 		return conn_status;
 	}
-	size_t max_msg = ldms_xprt_msg_max(x);
-	ldmsd_req_hdr_t req = malloc(max_msg);
-	if (!req) {
-		msglog("Error allocating %d bytes of memory for buffer\n",
-			max_msg);
-		return ENOMEM;
-	}
 
-	/* Put the instance name at the front of the request */
-	attr = (ldmsd_req_attr_t)(req + 1);
-	attr->discrim = 1;
-	attr->attr_id = LDMSD_ATTR_NAME;
-	attr->attr_len = strlen(stream) + 1;
-	size_t meta =
-		sizeof(*req) +
-		sizeof(*attr) + attr->attr_len + /* plugin name */
-		sizeof(*attr) +			 /* plugin data */
-		sizeof(attr->discrim);		 /* terminator */
-	strcpy((char *)attr->attr_value, stream);
-	first_attr = ldmsd_next_attr(attr);
-	ldmsd_hton_req_attr(attr);
-
-	uint32_t flags = LDMSD_REQ_SOM_F;
-	while ((data_len = fread(buffer, 1, sizeof(buffer), file)) > 0) {
-		if (conn_status)
-			return conn_status;
-
-		data_ptr = buffer;
-		while (data_len) {
-			this_rec = meta + data_len;
-			this_rec = this_rec < max_msg ? this_rec : max_msg;
-
-			attr = first_attr;
-			attr->discrim = 1;
-			attr->attr_id = attr_id;
-			attr->attr_len = this_rec - meta;
-			memcpy(attr->attr_value, data_ptr, attr->attr_len);
-			data_ptr += attr->attr_len;
-			data_len -= attr->attr_len;
-
-			next_attr = ldmsd_next_attr(attr);
-			ldmsd_hton_req_attr(attr);
-			next_attr->discrim = 0;
-
-			req->marker = LDMSD_RECORD_MARKER;
-			req->type = LDMSD_REQ_TYPE_CONFIG_CMD;
-			req->req_id = LDMSD_STREAM_PUBLISH_REQ;
-			req->rec_len = this_rec;
-			if (!data_len)
-				/* No more data, turn on last message flag */
-				flags |= LDMSD_REQ_EOM_F;
-			req->flags = flags;
-			ldmsd_hton_req_hdr(req);
-
-			rc = ldms_xprt_send(x, (char *)req, this_rec);
+	if (stream_type == LDMSD_STREAM_JSON) {
+		/* must send entire file at once */
+		char *_buf = fread_all(file, &data_len);
+		rc = ldmsd_stream_publish(x, stream, LDMSD_STREAM_JSON, _buf, data_len);
+		free(_buf);
+	} else {
+		/* can send stream in chunks */
+		while ((data_len = fread(buffer, 1, sizeof(buffer), file)) > 0) {
+			rc = ldmsd_stream_publish(x, stream, LDMSD_STREAM_STRING,
+					buffer, data_len);
 			if (rc)
 				goto err;
-			/* Turn off start of message flag, for subsequent sends */
-			flags = 0;
 		}
 	}
 

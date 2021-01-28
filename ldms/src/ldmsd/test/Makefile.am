@@ -8,6 +8,7 @@ COMMON_LD_ADD = ../../core/libldms.la \
 		../libldmsd_request.la \
 		../libldmsd_stream.la \
 		$(top_builddir)/lib/src/ovis_json/libovis_json.la \
+		$(top_builddir)/lib/src/coll/libcoll.la \
 		$(top_builddir)/lib/src/ovis_util/libovis_util.la
 
 sbin_PROGRAMS += ldmsd_stream_publish
@@ -17,4 +18,4 @@ ldmsd_stream_publish_LDADD = $(COMMON_LD_ADD)
 sbin_PROGRAMS += ldmsd_stream_subscribe
 ldmsd_stream_subscribe_SOURCES = ldmsd_stream_subscribe.c
 ldmsd_stream_subscribe_LDADD = $(COMMON_LD_ADD)
-ldmsd_stream_subscribe_LDFLAGS = $(AM_LDFLAGS) -pthread 
+ldmsd_stream_subscribe_LDFLAGS = $(AM_LDFLAGS) -pthread
