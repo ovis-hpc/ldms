@@ -447,6 +447,10 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		}
 	}
 
+	while (ldms_xprt_sq_status(x) == EBUSY) {
+		sleep(1);
+	}
+
 	ldms_xprt_close(x);
  err:
 	return rc;

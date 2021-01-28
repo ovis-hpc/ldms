@@ -3871,6 +3871,19 @@ int ldms_xprt_sockaddr(ldms_t _x, struct sockaddr *local_sa,
 	return 0;
 }
 
+int ldms_xprt_sq_status(ldms_t x)
+{
+	zap_err_t zerr;
+	if (!x->zap_ep)
+		return 0;
+	zerr = zap_sq_status(x->zap_ep);
+	if (zerr == ZAP_ERR_OK)
+		return 0;
+	if (zerr == ZAP_ERR_BUSY)
+		return EBUSY;
+	return ENOSYS;
+}
+
 static void __attribute__ ((constructor)) cs_init(void)
 {
 	pthread_mutex_init(&xprt_list_lock, 0);

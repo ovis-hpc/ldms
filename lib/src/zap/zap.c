@@ -994,6 +994,13 @@ void zap_thrstat_free_result(struct zap_thrstat_result *res)
 	free(res);
 }
 
+zap_err_t zap_sq_status(zap_ep_t ep)
+{
+	if (ep->z->sq_status)
+		return ep->z->sq_status(ep);
+	return ZAP_ERR_OK;
+}
+
 static void init_atfork(void)
 {
 	int i;

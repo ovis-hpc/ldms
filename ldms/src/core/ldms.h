@@ -560,6 +560,15 @@ extern int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len);
  */
 size_t ldms_xprt_msg_max(ldms_t x);
 
+/**
+ * \brief Determine whether the send queue is empty.
+ * \param x The transport handle.
+ * \retval 0 If the sq is empty.
+ * \retval EBUSY If the sq is not empty.
+ * \retval ENOSYS If this feature is not yet supported.
+ */
+int ldms_xprt_sq_status(ldms_t x);
+
 /** \} */
 
 /**
@@ -911,7 +920,7 @@ struct ldms_xprt_rate_data {
 
 /**
  * Query daemon telemetry data across transports
- * 
+ *
  * \param data A pointer to the ldms_xprt_rate_data structure in which
  *             the results will be returned
  * \param reset Set to a non-zero value to reset the stats after

@@ -680,11 +680,11 @@ int zap_term(int timeout_sec);
 
 /**
  * \brief The zap_thrstat_t handle maintains thread utilization data
- * 
+ *
  * This handle is created with the zap_thrstat_new() function and
  * freed with the zap_thrstat_free() function. The measurement
  * state can be reset with the zap_thrstat_reset() function.
- * 
+ *
  * Internally, zap_thrstat_t maintains a measurement window defined
  * by the window_size parameter to the zap_thrstat_new() function.
  * The window is an array of wait and processing time
@@ -714,7 +714,7 @@ zap_thrstat_t zap_thrstat_new(const char *name, int window_size);
 void zap_thrstat_free(zap_thrstat_t stats);
 /**
  * \brief Reset the thread utlization state data
- * 
+ *
  * Reset the measurement data held in the zap_thrstat_t instance.
  * Immediately after calling this function the internal sample_count
  * and window data are zero. It is not necessary to call this function
@@ -729,15 +729,15 @@ void zap_thrstat_reset_all();
 
 /**
  * \brief Begin an I/O wait measurement interval
- * 
+ *
  * The zap_thrstat_wait_start() and zap_thrstat_wait_end() annotate the
  * logic in the code that is waiting for I/O events. The time between
  * calls to zap_thrstat_wait_start() and zap_thrstat_wait_end() is the I/O
  * thread wait interval. The time between the call to zap_thrstat_wait_end()
  * and zap_thrstat_wait_start() is the processing interval.
- * 
+ *
  * Example usage:
- * 
+ *
  * void *io_thread_proc(void *)
  * {
  *    ...
@@ -777,13 +777,13 @@ struct zap_thrstat_result_entry {
 };
 
 struct zap_thrstat_result {
-	int count;	
+	int count;
 	struct zap_thrstat_result_entry entries[0];
 };
 
 /**
  * \brief Return thread utilization information
- * 
+ *
  * Returns a zap_thrstat_result structure or NULL on memory
  * allocation failure. This result must be freed with the
  * zap_thrstat_free_result() function.
@@ -799,7 +799,7 @@ void zap_thrstat_free_result(struct zap_thrstat_result *result);
 
 /**
  * \brief Return the name of the Zap stats handle
- * 
+ *
  * \returns The name provided to the zap_thrstat_new() function
  */
 const char *zap_thrstat_get_name(zap_thrstat_t stats);
@@ -822,5 +822,13 @@ static inline int64_t zap_timespec_diff_us(struct timespec *start, struct timesp
 	nsecs = end->tv_nsec - start->tv_nsec;
 	return (secs_ns + nsecs) / 1000;
 }
+
+/**
+ * Check if sq is empty or busy.
+ *
+ * \retval ZAP_ERR_OK If sq is empty.
+ * \retval ZAP_ERR_BUSY If sq is busy (some work left in sq).
+ */
+zap_err_t zap_sq_status(zap_ep_t ep);
 
 #endif

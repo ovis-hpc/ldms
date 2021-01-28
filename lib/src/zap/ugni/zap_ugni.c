@@ -2933,6 +2933,21 @@ out:
 	return zerr;
 }
 
+static zap_err_t z_ugni_sq_status(zap_ep_t ep)
+{
+	struct z_ugni_ep *uep = (struct z_ugni_ep *)ep;
+	zap_err_t s = ZAP_ERR_OK;
+	pthread_mutex_lock(&ep->lock);
+	if (ep->state != ZAP_EP_CONNECTED)
+		goto out;
+	if (STAILQ_EMPTY(&uep->sq))
+		goto out;
+	s = ZAP_ERR_BUSY;
+ out:
+	pthread_mutex_unlock(&ep->lock);
+	return s;
+}
+
 zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 			    zap_mem_info_fn_t mem_info_fn)
 {
@@ -2967,6 +2982,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->unmap = z_ugni_unmap;
 	z->share = z_ugni_share;
 	z->get_name = z_get_name;
+	z->sq_status = z_ugni_sq_status;
 
 	/* is it needed? */
 	z->mem_info_fn = mem_info_fn;

@@ -246,6 +246,14 @@ struct zap {
 
 	/** Pointer to the transport's private data */
 	void *private;
+
+	/**
+	 * Check if sq is empty or busy.
+	 *
+	 * \retval ZAP_ERR_OK If sq is empty.
+	 * \retval ZAP_ERR_BUSY If sq is busy (some work left in sq).
+	 */
+	zap_err_t (*sq_status)(zap_ep_t ep);
 };
 
 static inline zap_err_t

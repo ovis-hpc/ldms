@@ -2541,6 +2541,24 @@ static zap_err_t z_rdma_read(zap_ep_t ep,
 	return rc;
 }
 
+static zap_err_t z_rdma_sq_status(zap_ep_t ep)
+{
+	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
+	zap_err_t s = ZAP_ERR_OK;
+	pthread_mutex_lock(&ep->lock);
+	if (ep->state != ZAP_EP_CONNECTED)
+		goto out_0;
+	pthread_mutex_lock(&rep->credit_lock);
+	if (TAILQ_EMPTY(&rep->io_q) && rep->sq_credits == SQ_DEPTH)
+		goto out_1;
+	s = ZAP_ERR_BUSY;
+ out_1:
+	pthread_mutex_unlock(&rep->credit_lock);
+ out_0:
+	pthread_mutex_unlock(&ep->lock);
+	return s;
+}
+
 static int init_complete = 0;
 static pthread_t cm_thread, cq_thread;
 
@@ -2628,6 +2646,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->unmap = z_rdma_unmap;
 	z->share = z_rdma_share;
 	z->get_name = z_get_name;
+	z->sq_status = z_rdma_sq_status;
 
 	*pz = z;
 	return ZAP_ERR_OK;

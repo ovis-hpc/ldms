@@ -1977,6 +1977,21 @@ err0:
 	return zerr;
 }
 
+static zap_err_t z_sock_sq_status(zap_ep_t ep)
+{
+	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
+	zap_err_t s = ZAP_ERR_OK;
+	pthread_mutex_lock(&ep->lock);
+	if (ep->state != ZAP_EP_CONNECTED)
+		goto out;
+	if (TAILQ_EMPTY(&sep->sq))
+		goto out;
+	s = ZAP_ERR_BUSY;
+ out:
+	pthread_mutex_unlock(&ep->lock);
+	return s;
+}
+
 zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 			    zap_mem_info_fn_t mem_info_fn)
 {
@@ -2011,6 +2026,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	z->unmap = z_sock_unmap;
 	z->share = z_sock_share;
 	z->get_name = z_get_name;
+	z->sq_status = z_sock_sq_status;
 
 	/* is it needed? */
 	z->mem_info_fn = mem_info_fn;
