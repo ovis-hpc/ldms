@@ -940,16 +940,16 @@ int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
 	LIST_FOREACH(s, &prdcr->stream_list, entry) {
 		if (0 == strcmp(s->name, stream)) {
 			rc = EEXIST;
-			goto err;
+			goto err_0;
 		}
 	}
 	rc = ENOMEM;
 	s = calloc(1, sizeof *s);
 	if (!s)
-		goto err;
+		goto err_0;
 	s->name = strdup(stream);
 	if (!s->name)
-		goto err;
+		goto err_1;
 	LIST_INSERT_HEAD(&prdcr->stream_list, s, entry);
 	if (prdcr->conn_state == LDMSD_PRDCR_STATE_CONNECTED) {
 		/* issue stream subscribe request right away if connected */
@@ -967,10 +967,11 @@ int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream)
 	}
 	ldmsd_prdcr_unlock(prdcr);
 	return 0;
- err:
-	ldmsd_prdcr_unlock(prdcr);
+ err_1:
 	if (s)
 		free(s);
+ err_0:
+	ldmsd_prdcr_unlock(prdcr);
 	return rc;
 
  rcmd_err:
