@@ -6460,23 +6460,13 @@ int ldmsd_auth_opt_add(struct attr_value_list *auth_attrs, char *name, char *val
 	return 0;
 }
 
+extern int ldmsd_listen_start(ldmsd_listen_t listen);
 static int listen_handler(ldmsd_req_ctxt_t reqc)
 {
 	ldmsd_listen_t listen;
 	char *xprt, *port, *host, *auth, *attr_name;
 	unsigned short port_no = -1;
 	xprt = port = host = auth = NULL;
-
-	if (ldmsd_is_initialized()) {
-		/*
-		 * Adding a new listening endpoint is prohibited
-		 * after LDMSD is initialized.
-		 */
-		reqc->errcode = EPERM;
-		linebuf_printf(reqc, "LDMSD is started. "
-				"Adding a listening endpoint is prohibited.");
-		goto send_reply;
-	}
 
 	attr_name = "xprt";
 	xprt = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_XPRT);
@@ -6513,6 +6503,16 @@ static int listen_handler(ldmsd_req_ctxt_t reqc)
 		else
 			goto enomem;
 	}
+
+	if (ldmsd_is_initialized()) {
+		reqc->errcode = ldmsd_listen_start(listen);
+		if (reqc->errcode) {
+			(void)snprintf(reqc->line_buf, reqc->line_len,
+				"Failed to listen on the endpoint %s:%s.",
+				xprt, port);
+		}
+	}
+
 	goto send_reply;
 
 eexist:
@@ -6529,6 +6529,7 @@ einval:
 	reqc->errcode = EINVAL;
 	(void) snprintf(reqc->line_buf, reqc->line_len,
 			"The attribute '%s' is required.", attr_name);
+	goto send_reply;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	if (xprt)
