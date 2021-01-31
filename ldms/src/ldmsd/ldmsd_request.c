@@ -6498,6 +6498,16 @@ static int listen_handler(ldmsd_req_ctxt_t reqc)
 	if (!listen) {
 		if (errno == EEXIST)
 			goto eexist;
+		else if (errno == ENOENT) {
+			reqc->errcode = ENOENT;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"Listen error: authentication domain "
+					"'%s' not found. Please make sure "
+					"that it is created with `auth_add` "
+					"config command.",
+					auth);
+			goto send_reply;
+		}
 		else
 			goto enomem;
 	}
