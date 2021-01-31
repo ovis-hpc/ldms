@@ -6053,8 +6053,6 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 	char *stream_name;
 	ldmsd_stream_type_t stream_type = LDMSD_STREAM_STRING;
 	ldmsd_req_attr_t attr;
-	json_parser_t parser;
-	json_entity_t entity = NULL;
 	int cnt;
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -6066,34 +6064,18 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 			       "The stream name is missing.");
 		goto err_reply;
 	}
+	if (!ldmsd_stream_subscriber_count(stream_name))
+		/* There are no subscribers, ignore the data */
+		goto out_0;
 
 	/* Check for string */
 	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_STRING);
 	if (attr)
-		goto out;
+		goto out_1;
 
 	/* Check for JSon */
 	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_JSON);
 	if (attr) {
-		parser = json_parser_new(0);
-		if (!parser) {
-			ldmsd_log(LDMSD_LERROR,
-				  "%s: error creating JSon parser.\n", __func__);
-			reqc->errcode = ENOMEM;
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				       "Could not create the JSon parser.");
-			goto err_reply;
-		}
-		int rc = json_parse_buffer(parser,
-					   (char *)attr->attr_value, attr->attr_len,
-					   &entity);
-		json_parser_free(parser);
-		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
-				  "%s: syntax error parsing JSon payload.\n", __func__);
-			reqc->errcode = EINVAL;
-			goto err_reply;
-		}
 		stream_type = LDMSD_STREAM_JSON;
 	} else {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -6101,11 +6083,11 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 		reqc->errcode = EINVAL;
 		goto err_reply;
 	}
-out:
+out_1:
 	ldmsd_stream_deliver(stream_name, stream_type,
-			     (char *)attr->attr_value, attr->attr_len, entity);
+			     (char *)attr->attr_value, attr->attr_len, NULL);
+out_0:
 	free(stream_name);
-	json_entity_free(entity);
 	return 0;
 err_reply:
 	if (stream_name)
@@ -6312,6 +6294,7 @@ static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
 			       "ldmsd_stream_subscribe() error: %d", errno);
 		goto send_reply;
 	}
+	ldmsd_stream_flags_set(ent->client, LDMSD_STREAM_F_RAW);
 	__RSE_ins(ent);
 	reqc->errcode = 0;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
