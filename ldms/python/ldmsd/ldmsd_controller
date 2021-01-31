@@ -76,6 +76,11 @@ LDMSD_STRGP_STATUS_REQ=0x204
 LDMSD_UPDTR_STATUS_REQ=0x304
 LDMSD_PLUGN_STATUS_REQ=0x504
 
+def cvt_intrvl_off_to_str(interval_us, offset_us):
+    interval_s = float(interval_us) / 1000000.0
+    offset_ms = float(offset_us) / 1000.0
+    return str(interval_s) + "s:" + str(offset_ms) + "ms"
+
 class LdmsdCmdParser(cmd.Cmd):
     def __init__(self, host = None, port = None, xprt = None, infile=None,
                  auth=None, auth_opt=None):
@@ -719,12 +724,18 @@ class LdmsdCmdParser(cmd.Cmd):
         resp = self.handle('updtr_status', arg)
         if resp['errcode'] == 0:
             updaters = json.loads(resp['msg'])
-            print("Name             Interval     Offset       Mode            State")
-            print("---------------- ------------ ------------ --------------- ------------")
+            print("Name             Interval:Offset  Auto   Mode            State")
+            print("---------------- ---------------- ------ --------------- ------------")
             for updtr in updaters:
-                print("{0:16} {1:12} {2:12} {3:15} {4}".format(
-                    updtr['name'], updtr['interval'], updtr['offset'],
-                    updtr['mode'], updtr['state']))
+                if 'auto' in updtr:
+                    auto = updtr['auto']
+                else:
+                    # for backward compatabiliity
+                    auto = updtr['????']
+                interval_s = cvt_intrvl_off_to_str(updtr['interval'], updtr['offset'])
+                print("{0:16} {1:16} {2:6} {3:15} {4}".format(
+                    updtr['name'], interval_s,
+                    auto, updtr['mode'], updtr['state']))
                 for prdcr in updtr['producers']:
                     print("    {0:16} {1:16} {2:12} {3:12} {4:12}".format(
                         prdcr['name'], prdcr['host'], prdcr['port'],

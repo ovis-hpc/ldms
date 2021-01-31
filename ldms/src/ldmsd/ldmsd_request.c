@@ -3339,6 +3339,7 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 		"\"offset\":\"%ld\","
 		"\"sync\":\"%s\","
 		"\"mode\":\"%s\","
+		"\"auto\":\"%s\","
 		"\"state\":\"%s\","
 		"\"producers\":[",
 		updtr->obj.name,
@@ -3346,6 +3347,7 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 		default_offset,
 		((updtr->default_task.task_flags==LDMSD_TASK_F_SYNCHRONOUS)?"true":"false"),
 		update_mode(updtr->push_flags),
+		(updtr->is_auto_task ? "true" : "false"),
 		ldmsd_updtr_state_str(updtr->state));
 	if (rc)
 		goto out;
