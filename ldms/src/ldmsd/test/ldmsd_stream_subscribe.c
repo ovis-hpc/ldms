@@ -19,10 +19,13 @@
 
 static ldms_t ldms;
 static sem_t recv_sem;
-FILE *file;
+static FILE *file;
+static int quiet;
 
 void msglog(const char *fmt, ...)
 {
+	if (quiet)
+		return;
 	va_list ap;
 	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 
@@ -41,6 +44,7 @@ static struct option long_opts[] = {
 	{"auth",     required_argument, 0,  'a' },
 	{"auth_arg", required_argument, 0,  'A' },
 	{"daemonize",no_argument,       0,  'D' },
+	{"quiet",	no_argument,		0,	'q' },
 	{0,          0,                 0,  0 }
 };
 
@@ -54,7 +58,7 @@ void usage(int argc, char **argv)
 	exit(1);
 }
 
-static const char *short_opts = "p:f:s:x:a:A:D";
+static const char *short_opts = "p:f:s:x:a:A:Dq";
 
 #define AUTH_OPT_MAX 128
 
@@ -329,6 +333,9 @@ int main(int argc, char **argv)
 
 	while ((opt = getopt_long(argc, argv, short_opts, long_opts, &opt_idx)) > 0) {
 		switch (opt) {
+		case 'q':
+			quiet = 1;
+			break;
 		case 'p':
 			port_no = atoi(optarg);
 			break;
