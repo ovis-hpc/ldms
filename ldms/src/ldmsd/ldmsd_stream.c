@@ -27,10 +27,12 @@ static int s_cmp(void *tree_key, const void *key)
 	return strcmp((char *)tree_key, (const char *)key);
 }
 
+typedef struct ldmsd_stream_s *ldmsd_stream_t;
 struct ldmsd_stream_client_s {
 	ldmsd_stream_recv_cb_t c_cb_fn;
 	void *c_ctxt;
 	ldmsd_stream_t c_s;
+	int c_flags;
 	LIST_ENTRY(ldmsd_stream_client_s) c_ent;
 };
 
@@ -44,24 +46,61 @@ struct ldmsd_stream_s {
 static pthread_mutex_t s_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 struct rbt s_tree = RBT_INITIALIZER(s_cmp);
 
+static ldmsd_stream_t __find_stream(const char *stream_name)
+{
+	struct rbn *rbn;
+	ldmsd_stream_t s = NULL;
+	pthread_mutex_lock(&s_tree_lock);
+	rbn = rbt_find(&s_tree, stream_name);
+	if (rbn) {
+		s = container_of(rbn, struct ldmsd_stream_s, s_ent);
+		pthread_mutex_lock(&s->s_lock);
+	}
+	pthread_mutex_unlock(&s_tree_lock);
+	return s;
+}
+
+int ldmsd_stream_subscriber_count(const char *stream_name)
+{
+	int subscriber_count = 0;
+	ldmsd_stream_client_t c;
+	ldmsd_stream_t s = __find_stream(stream_name);
+	if (s) {
+		LIST_FOREACH(c, &s->s_c_list, c_ent) {
+			subscriber_count += 1;
+		}
+		pthread_mutex_unlock(&s->s_lock);
+	}
+	return subscriber_count;
+}
+
 void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_type,
 			  const char *data, size_t data_len,
 			  json_entity_t entity)
 {
-	struct rbn *rbn;
-	ldmsd_stream_t s;
+	json_parser_t parser = NULL;
 	ldmsd_stream_client_t c;
-
-	pthread_mutex_lock(&s_tree_lock);
-	rbn = rbt_find(&s_tree, stream_name);
-	pthread_mutex_unlock(&s_tree_lock);
-	if (!rbn)
+	ldmsd_stream_t s = __find_stream(stream_name);
+	if (!s)
 		return;
-	s = container_of(rbn, struct ldmsd_stream_s, s_ent);
-	pthread_mutex_lock(&s->s_lock);
+
 	LIST_FOREACH(c, &s->s_c_list, c_ent) {
+		if (stream_type == LDMSD_STREAM_JSON
+			&& c->c_flags == 0	/* client wants parsed data */
+			&& entity == NULL	/* data hasn't been parsed yet */
+			&& parser == NULL)	/* we haven't tried and failed already */
+		{
+			parser = json_parser_new(0);
+			if (!parser)
+				continue;
+			int rc = json_parse_buffer(parser, (char *)data, data_len,	&entity);
+			if (rc)
+				continue;
+		}
 		c->c_cb_fn(c, c->c_ctxt, stream_type, data, data_len, entity);
 	}
+	if (parser)
+		json_parser_free(parser);
 	pthread_mutex_unlock(&s->s_lock);
 }
 
@@ -69,32 +108,29 @@ ldmsd_stream_client_t
 ldmsd_stream_subscribe(const char *stream_name,
 		       ldmsd_stream_recv_cb_t cb_fn, void *ctxt)
 {
-	ldmsd_stream_t s = NULL;
-	struct rbn *rbn;
-	ldmsd_stream_client_t cc, c = malloc(sizeof *c);
+	ldmsd_stream_t s;
+	ldmsd_stream_client_t cc, c;
+	c = malloc(sizeof *c);
 	if (!c)
 		goto err_0;
 
 	/* Find the stream */
-	pthread_mutex_lock(&s_tree_lock);
-	rbn = rbt_find(&s_tree, stream_name);
-	pthread_mutex_unlock(&s_tree_lock);
-	if (!rbn) {
+	s = __find_stream(stream_name);
+	if (!s) {
 		s = malloc(sizeof *s);
 		if (!s)
 			goto err_1;
 		s->s_name = strdup(stream_name);
-		if (!s->s_name) {
+		if (!s->s_name)
 			goto err_2;
-		}
 		pthread_mutex_init(&s->s_lock, NULL);
 		LIST_INIT(&s->s_c_list);
 		rbn_init(&s->s_ent, (char *)s->s_name);
+		pthread_mutex_lock(&s_tree_lock);
 		rbt_ins(&s_tree, &s->s_ent);
-	} else {
-		s = container_of(rbn, struct ldmsd_stream_s, s_ent);
+		pthread_mutex_unlock(&s_tree_lock);
+		pthread_mutex_lock(&s->s_lock);
 	}
-	pthread_mutex_lock(&s->s_lock);
 	LIST_FOREACH(cc, &s->s_c_list, c_ent) {
 		if (cc->c_cb_fn == cb_fn && cc->c_ctxt == ctxt) {
 			msglog("The client %p is already subscribed to "
@@ -105,17 +141,28 @@ ldmsd_stream_subscribe(const char *stream_name,
 		}
 	}
 	c->c_s = s;
+	c->c_flags = 0;
 	c->c_cb_fn = cb_fn;
 	c->c_ctxt = ctxt;
 	LIST_INSERT_HEAD(&s->s_c_list, c, c_ent);
- 	pthread_mutex_unlock(&s->s_lock);
- 	return c;
+	pthread_mutex_unlock(&s->s_lock);
+	return c;
  err_2:
 	free(s);
  err_1:
 	free(c);
  err_0:
 	return NULL;
+}
+
+void ldmsd_stream_flags_set(ldmsd_stream_client_t c, uint32_t f)
+{
+	c->c_flags = f;
+}
+
+uint32_t ldmsd_stream_flags_get(ldmsd_stream_client_t c)
+{
+	return c->c_flags;
 }
 
 const char *ldmsd_stream_name(ldmsd_stream_t s)

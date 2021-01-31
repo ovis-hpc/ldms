@@ -102,6 +102,7 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap);
 
 static char * __thread_stats_as_json(size_t *json_sz);
 static char * __xprt_stats_as_json(size_t *json_sz);
+extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 
 __attribute__((format(printf, 1, 2)))
 static inline
@@ -1697,7 +1698,6 @@ send_reply:
 
 int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdcr_cnt)
 {
-	extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 	ldmsd_prdcr_set_t prv_set;
 	int set_count = 0;
 	int rc = 0;
@@ -3265,7 +3265,6 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 	ldmsd_prdcr_t prdcr;
 	int prdcr_count;
 	long default_offset = 0;
-	extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 
 	if (updtr_cnt) {
 		rc = linebuf_printf(reqc, ",\n");
@@ -5998,8 +5997,6 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 	char *stream_name;
 	ldmsd_stream_type_t stream_type = LDMSD_STREAM_STRING;
 	ldmsd_req_attr_t attr;
-	json_parser_t parser;
-	json_entity_t entity = NULL;
 	int cnt;
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
@@ -6012,50 +6009,35 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 		goto err_reply;
 	}
 
+	reqc->errcode = 0;
+	ldmsd_send_req_response(reqc, "ACK");
+
+	if (!ldmsd_stream_subscriber_count(stream_name))
+		/* There are no subscribers, ignore the data */
+		goto out_0;
+
 	/* Check for string */
 	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_STRING);
 	if (attr)
-		goto out;
+		goto out_1;
 
 	/* Check for JSon */
 	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_JSON);
 	if (attr) {
-		parser = json_parser_new(0);
-		if (!parser) {
-			ldmsd_log(LDMSD_LERROR,
-				  "%s: error creating JSon parser.\n", __func__);
-			reqc->errcode = ENOMEM;
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				       "Could not create the JSon parser.");
-			goto err_reply;
-		}
-		int rc = json_parse_buffer(parser,
-					   (char *)attr->attr_value, attr->attr_len,
-					   &entity);
-		json_parser_free(parser);
-		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
-				  "%s: syntax error parsing JSon payload.\n", __func__);
-			reqc->errcode = EINVAL;
-			goto err_reply;
-		}
 		stream_type = LDMSD_STREAM_JSON;
 	} else {
-		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"No data provided.");
-		reqc->errcode = EINVAL;
-		goto err_reply;
+		goto out_0;
 	}
-out:
+out_1:
 	ldmsd_stream_deliver(stream_name, stream_type,
-			     (char *)attr->attr_value, attr->attr_len, entity);
+			     (char *)attr->attr_value, attr->attr_len, NULL);
+out_0:
 	free(stream_name);
-	json_entity_free(entity);
 	return 0;
 err_reply:
 	if (stream_name)
 		free(stream_name);
-	// ldmsd_send_req_response(reqc, reqc->line_buf);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }
 
@@ -6191,7 +6173,6 @@ void __RSE_del(__RSE_t ent)
 }
 
 static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
-
 {
 	char *stream_name;
 	int cnt;
@@ -6257,6 +6238,7 @@ static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
 			       "ldmsd_stream_subscribe() error: %d", errno);
 		goto send_reply;
 	}
+	ldmsd_stream_flags_set(ent->client, LDMSD_STREAM_F_RAW);
 	__RSE_ins(ent);
 	reqc->errcode = 0;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len, "OK");
