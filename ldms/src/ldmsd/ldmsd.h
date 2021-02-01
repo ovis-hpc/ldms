@@ -1224,7 +1224,7 @@ typedef struct ldmsd_auth {
 
 /* Key (name) of the default auth -- intentionally including SPACE as it is not
  * allowed in user-defined names */
-#define DEFAULT_AUTH " _DEFAULT_AUTH_ "
+#define DEFAULT_AUTH "auth_default"
 
 ldmsd_auth_t
 ldmsd_auth_new_with_auth(const char *name, const char *plugin,
