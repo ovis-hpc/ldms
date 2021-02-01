@@ -47,6 +47,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#define _GNU_SOURCE
+
 #include <unistd.h>
 #include <inttypes.h>
 #include <stdarg.h>
@@ -1511,18 +1513,16 @@ void ldmsd_listen___del(ldmsd_cfgobj_t obj)
 ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
 {
 	char *name;
-	size_t len;
+	int len;
 	struct ldmsd_listen *listen = NULL;
 	ldmsd_auth_t auth_dom = NULL;
 
 	if (!port)
 		port = LDMSD_STR_WRAP(LDMS_DEFAULT_PORT);
 
-	len = strlen(xprt) + strlen(port) + 2; /* +1 for ':' and +1 for \0 */
-	name = malloc(len);
-	if (!name)
+	len = asprintf(&name, "%s:%s:%s", xprt, port, host?host:"");
+	if (len < 0)
 		return NULL;
-	(void) snprintf(name, len, "%s:%s", xprt, port);
 	listen = (struct ldmsd_listen *)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_LISTEN,
 				sizeof *listen, ldmsd_listen___del,
