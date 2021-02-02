@@ -143,9 +143,10 @@ typedef struct ldms_schema_s *ldms_schema_t;
  * principle functions for creating and destroying local metric sets are the
  * following:
  *
- * \li \b ldms_set_new() Create a new metric set from a Schema
+ * \li \b ldms_set_new() Create a new metric set from a Schema with global default
+ * authentication values.
  * \li \b ldms_set_new_with_auth() Create a new metric set from a Schema with
- * owner's UID/GID and permission.
+ * specified authentication values.
  * \li \b ldms_set_delete() Destroy a metric set.
  *
  * \section query Querying Metric Sets
@@ -977,6 +978,17 @@ extern int ldms_schema_array_card_set(ldms_schema_t schema, int card);
  * Multiple metric sets of the same type (schema) may be created
  * provided that they have different instance names.
  *
+ * Upon creation, the metric set will have the authentication values
+ * (uid, gid, perm) currently set as the global defaults. After creation
+ * but before publishing the metric set, the authentication values may be
+ * adjusted from the defaults be using the ldms_set_{uid|gid|perm}_set()
+ * functions.
+ *
+ * The remote peer will not be able to get the set in the directory listing,
+ * nor be able to perform \c ldms_xprt_lookup() without a proper
+ * owner/group/permission. The permission is 9-bit UNIX style
+ * (owner-group-other read-write-execute).
+ *
  * \param instance_name	The metric set instance name.
  * \param schema	The metric set schema being created.
  * \param s		Pointer to ldms_set_t handle that will be set to the new handle.
@@ -1205,6 +1217,30 @@ uint32_t ldms_set_perm_get(ldms_set_t s);
  * \retval 0     If succeeded.
  */
 int ldms_set_perm_set(ldms_set_t s, mode_t perm);
+
+#define DEFAULT_AUTHZ_SET_UID 0x4
+#define DEFAULT_AUTHZ_SET_GID 0x2
+#define DEFAULT_AUTHZ_SET_PERM 0x1
+#define DEFAULT_AUTHZ_SET_ALL (SET_DEFAULT_AUTHZ_UID|SET_DEFAULT_AUTHZ_GID|SET_DEFAULT_AUTHZ_PERM)
+#define DEFAULT_AUTHZ_READONLY 0
+/**
+ * \brief Atomically set or get one or more default authorization values for LDMS sets.
+ *
+ * The uid, gid, and perm options can each individually be inputs or outputs. To make
+ * uid, gid, or perm as inputs set the bits DEFAULT_AUTHZ_SET_UID,
+ * DEFAULT_AUTHZ_SET_GID, or SET_DEFAULT_SET_AUTHZ_PERM bits respectively in the
+ * set_flags option.  DEFAULT_AUTHZ_SET_ALL is provided as a convenience to set all three
+ * bits.
+ *
+ * Any option for which the associated set_flags is not set will be an _output_,
+ * atomically reporting the current value.
+ *
+ * \param uid UID default to set if SET_DEFAULT_AUTHZ_UID bit is set in set_flags
+ * \param gid GID default to set if SET_DEFAULT_AUTHZ_GID bit is set in set_flags
+ * \param perm Permissions default to set if SET_DEFAULT_AUTHZ_PERM bit is set in set_flags
+ * \param set_flags
+ */
+void ldms_set_default_authz(uid_t *uid, gid_t *gid, mode_t *perm, int set_flags);
 
 /**
  * \brief Get the size in bytes of the set's meta data
