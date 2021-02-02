@@ -565,8 +565,7 @@ void __free_req_ctxt(ldmsd_req_ctxt_t reqc)
 		free(reqc->line_buf);
 	if (reqc->req_buf)
 		free(reqc->req_buf);
-	if (reqc->rep_buf)
-		free(reqc->rep_buf);
+	ldmsd_msg_buf_free(reqc->rep_buf);
 	free(reqc);
 }
 
@@ -608,12 +607,11 @@ ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key, size_t max_msg_len)
 	if (!reqc->req_buf)
 		goto err;
 	*(uint32_t *)&reqc->req_buf[reqc->req_off] = 0; /* terminating discrim */
-	reqc->rep_len = max_msg_len - 1;
-	reqc->rep_off = sizeof(struct ldmsd_req_hdr_s);
-	reqc->rep_buf = malloc(max_msg_len);
+
+	reqc->rep_buf = ldmsd_msg_buf_new(max_msg_len);
 	if (!reqc->rep_buf)
 		goto err;
-	*(uint32_t *)&reqc->rep_buf[reqc->rep_off] = 0; /* terminating discrim */
+
 	reqc->key = *key;
 	rbn_init(&reqc->rbn, &reqc->key);
 	rbt_ins(&msg_tree, &reqc->rbn);
@@ -647,8 +645,6 @@ ldmsd_req_cmd_t alloc_req_cmd_ctxt(ldms_t ldms,
 					ldmsd_req_resp_fn resp_handler,
 					void *ctxt)
 {
-	static uint32_t msg_no = 0;
-
 	ldmsd_req_cmd_t rcmd;
 	struct req_ctxt_key key;
 	ldmsd_cfg_xprt_t xprt = calloc(1, sizeof(*xprt));
@@ -661,7 +657,7 @@ ldmsd_req_cmd_t alloc_req_cmd_ctxt(ldms_t ldms,
 	if (!rcmd)
 		goto err0;
 
-	key.msg_no = __sync_fetch_and_add(&msg_no, 1);
+	key.msg_no = ldmsd_msg_no_get();
 	key.conn_id = (uint64_t)(long unsigned)ldms;
 	rcmd->reqc = alloc_req_ctxt(&key, max_msg_sz);
 	if (!rcmd->reqc)
@@ -887,63 +883,18 @@ int __ldmsd_append_buffer(struct ldmsd_req_ctxt *reqc,
 		       const char *data, size_t data_len,
 		       int msg_flags, int msg_type)
 {
+	int rc;
+	uint32_t code;
+	if (msg_type == LDMSD_REQ_TYPE_CONFIG_CMD)
+		code = reqc->req_id;
+	else
+		code = reqc->errcode;
 	req_ctxt_ref_get(reqc);
-	ldmsd_req_hdr_t req_buff = (ldmsd_req_hdr_t)reqc->rep_buf;
-	ldmsd_req_attr_t attr;
-	size_t remaining;
-	int flags, rc;
-
-	do {
-		remaining = reqc->rep_len - reqc->rep_off - sizeof(*req_buff);
-		if (data_len < remaining)
-			remaining = data_len;
-
-		if (remaining && data) {
-			memcpy(&reqc->rep_buf[reqc->rep_off], data, remaining);
-			reqc->rep_off += remaining;
-			data_len -= remaining;
-			data += remaining;
-		}
-
-		if ((remaining == 0) ||
-		    ((data_len == 0) && (msg_flags & LDMSD_REQ_EOM_F))) {
-			/* If this is the first record in the response, set the
-			 * SOM_F bit. If the caller set the EOM_F bit and we've
-			 * exhausted data_len, set the EOM_F bit.
-			 * If we've exhausted the reply buffer, unset the EOM_F bit.
-			 */
-			flags = msg_flags & ((!remaining && data_len)?(~LDMSD_REQ_EOM_F):LDMSD_REQ_EOM_F);
-			flags |= (reqc->rec_no == 0?LDMSD_REQ_SOM_F:0);
-			/* Record is full, send it on it's way */
-			req_buff->marker = LDMSD_RECORD_MARKER;
-			req_buff->type = msg_type;
-			if (msg_type == LDMSD_REQ_TYPE_CONFIG_CMD)
-				req_buff->req_id = reqc->req_id;
-			else
-				req_buff->rsp_err = reqc->errcode;
-			req_buff->flags = flags;
-			req_buff->msg_no = reqc->key.msg_no;
-			req_buff->rec_len = reqc->rep_off;
-			ldmsd_hton_req_hdr(req_buff);
-			rc = reqc->xprt->send_fn(reqc->xprt, (char *)req_buff,
-							ntohl(req_buff->rec_len));
-			if (rc) {
-				/* The content in reqc->rep_buf hasn't been sent. */
-				ldmsd_log(LDMSD_LERROR, "failed to send the reply of "
-						"the config request %d from "
-						"config xprt id %" PRIu64 "\n",
-						reqc->key.msg_no, reqc->key.conn_id);
-				req_ctxt_ref_put(reqc);
-				return rc;
-			}
-			reqc->rec_no++;
-			/* Reset the reply buffer for the next record for this message */
-			reqc->rep_off = sizeof(*req_buff);
-			attr = ldmsd_first_attr(req_buff);
-			attr->discrim = 0;
-		}
-	} while (data_len);
-
+	rc = ldmsd_msg_buf_send(reqc->rep_buf,
+				reqc->xprt, reqc->key.msg_no,
+				reqc->xprt->send_fn,
+				msg_flags, msg_type, code,
+				data, data_len);
 	req_ctxt_ref_put(reqc);
 	return 0;
 }
@@ -5140,14 +5091,14 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 		size_t remaining;
 		attr.attr_id = LDMSD_ATTR_STRING;
 		attr.discrim = 1;
-		attr.attr_len = reqc->rep_len - 2*sizeof(struct ldmsd_req_hdr_s)
+		attr.attr_len = reqc->rep_buf->len - 2*sizeof(struct ldmsd_req_hdr_s)
 						- sizeof(struct ldmsd_req_attr_s);
 		ldmsd_hton_req_attr(&attr);
 		int msg_flag = LDMSD_REQ_SOM_F;
 
 		/* Construct the message */
 		for (i = 0; i < num_rec; i++) {
-			remaining = reqc->rep_len - 2* sizeof(struct ldmsd_req_hdr_s);
+			remaining = reqc->rep_buf->len - 2* sizeof(struct ldmsd_req_hdr_s);
 			ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), msg_flag);
 			remaining -= sizeof(struct ldmsd_req_attr_s);
 			cnt = snprintf(reqc->line_buf, reqc->line_len, "%d", i);

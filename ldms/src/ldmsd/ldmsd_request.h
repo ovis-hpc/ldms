@@ -274,7 +274,7 @@ typedef struct ldmsd_cfg_file_s {
 } *ldmsd_cfg_file_t;
 
 struct ldmsd_cfg_xprt_s;
-typedef int (*ldmsd_cfg_send_fn_t)(struct ldmsd_cfg_xprt_s *xprt, char *data, size_t data_len);
+typedef int (*ldmsd_msg_send_fn_t)(void *xprt, char *data, size_t data_len);
 typedef void (*ldmsd_cfg_cleanup_fn_t)(struct ldmsd_cfg_xprt_s *xprt);
 typedef struct ldmsd_cfg_xprt_s {
 	union {
@@ -284,7 +284,7 @@ typedef struct ldmsd_cfg_xprt_s {
 		struct ldmsd_cfg_ldms_s ldms;
 	};
 	size_t max_msg;
-	ldmsd_cfg_send_fn_t send_fn;
+	ldmsd_msg_send_fn_t send_fn;
 	ldmsd_cfg_cleanup_fn_t cleanup_fn;
 	int trust; /* trust (to perform command expansion) */
 	int rsp_err; /* error from the response */
@@ -292,6 +292,13 @@ typedef struct ldmsd_cfg_xprt_s {
 
 #define LINE_BUF_LEN 1024
 #define REQ_BUF_LEN 4096
+
+struct ldmsd_msg_buf {
+	char *buf;
+	size_t off;
+	size_t len;
+	uint32_t flags;
+};
 
 typedef struct ldmsd_req_ctxt {
 	struct req_ctxt_key key;
@@ -315,9 +322,7 @@ typedef struct ldmsd_req_ctxt {
 	size_t req_off;
 	char *req_buf;
 
-	size_t rep_len;
-	size_t rep_off;
-	char *rep_buf;
+	struct ldmsd_msg_buf *rep_buf;
 } *ldmsd_req_ctxt_t;
 
 typedef struct ldmsd_req_cmd *ldmsd_req_cmd_t;
@@ -607,5 +612,45 @@ int ldmsd_req_cmd_attr_term(ldmsd_req_cmd_t rcmd)
 {
 	return ldmsd_req_cmd_attr_append(rcmd, LDMSD_ATTR_TERM, NULL, 0);
 }
+
+/**
+ * \brief Return a unique ID
+ */
+uint32_t ldmsd_msg_no_get();
+
+/**
+ * \brief Create a new LDMSD buffer
+ *
+ * \param len   Size of the buffer
+ */
+struct ldmsd_msg_buf *ldmsd_msg_buf_new(size_t len);
+
+/**
+ * \brief Free an LDMSD message buffer
+ */
+void ldmsd_msg_buf_free(struct ldmsd_msg_buf *buf);
+
+/**
+ * \brief Append and send data to an LDMSD message buffer
+ *
+ * \c data is appended to \c buf. \c data is sent when the buffer is full or
+ * \c flags includes LDMSD_REQ_EOM_F. If \c data_len is larger than the space left
+ * in \c buf, \c data is chunked to the \c buf size and sent to the peer.
+ *
+ * \param buf        Buffer to append
+ * \param xprt       Transport
+ * \param msg_no     Unique message number
+ * \param send_fn    Send function
+ * \param msg_flags  bit-wise OR of a combination of LDMSD_REQ_SOM_F, LDMSD_REQ_EOM_F, and 0
+ * \param data       data to be appended and sent
+ * \param data_len   data length
+ *
+ */
+int ldmsd_msg_buf_send(struct ldmsd_msg_buf *buf,
+			void *xprt, uint32_t msg_no,
+			ldmsd_msg_send_fn_t send_fn,
+			int msg_flags, int msg_type,
+			uint32_t req_id_n_rsp_err,
+			const char *data, size_t data_len);
 
 #endif /* LDMS_SRC_LDMSD_LDMSD_REQUEST_H_ */

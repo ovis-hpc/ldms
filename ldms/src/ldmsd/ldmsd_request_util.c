@@ -989,3 +989,95 @@ void ldmsd_hton_req_msg(ldmsd_req_hdr_t resp)
 		attr = next_attr;
 	}
 }
+
+uint32_t ldmsd_msg_no_get()
+{
+	static uint32_t msg_no = 1;
+	return __sync_fetch_and_add(&msg_no, 1);
+}
+
+void ldmsd_msg_buf_init(struct ldmsd_msg_buf *buf)
+{
+	buf->off = 0;
+	buf->flags = 0;
+}
+
+struct ldmsd_msg_buf *ldmsd_msg_buf_new(size_t len)
+{
+	struct ldmsd_msg_buf *buf;
+	buf = malloc(sizeof(*buf));
+	if (!buf)
+		return NULL;
+	buf->buf = calloc(1, len);
+	if (!buf->buf) {
+		free(buf);
+		return NULL;
+	}
+	buf->len = len;
+	ldmsd_msg_buf_init(buf);
+	return buf;
+}
+
+void ldmsd_msg_buf_free(struct ldmsd_msg_buf *buf)
+{
+	free(buf->buf);
+	free(buf);
+}
+
+int ldmsd_msg_buf_send(struct ldmsd_msg_buf *buf,
+			void *xprt, uint32_t msg_no,
+			ldmsd_msg_send_fn_t send_fn,
+			int msg_flags, int msg_type,
+			uint32_t req_id_n_rsp_err,
+			const char *data, size_t data_len)
+{
+	ldmsd_req_hdr_t msg_buff;
+	size_t remaining;
+	int rc;
+
+	if (msg_flags & LDMSD_REQ_SOM_F)
+		buf->off = sizeof(struct ldmsd_req_hdr_s);
+
+	msg_buff = (ldmsd_req_hdr_t)buf->buf;
+	buf->flags |= msg_flags;
+	do {
+		remaining = buf->len - buf->off;
+		remaining = (data_len < remaining)?data_len:remaining;
+		if (remaining && data)
+			memcpy(&buf->buf[buf->off], data, remaining);
+
+		data_len -= remaining;
+		buf->off += remaining;
+		data += remaining;
+
+		if ((0 == remaining) ||
+			((0 == data_len) && (msg_flags & LDMSD_REQ_EOM_F))) {
+			/* The buffer is full. */
+			if (data_len != 0)
+				buf->flags &= ~LDMSD_REQ_EOM_F;
+			else if (msg_flags & LDMSD_REQ_EOM_F)
+				buf->flags |= LDMSD_REQ_EOM_F;
+
+			if (msg_type == LDMSD_REQ_TYPE_CONFIG_CMD)
+				msg_buff->req_id = req_id_n_rsp_err;
+			else
+				msg_buff->rsp_err = req_id_n_rsp_err;
+
+			msg_buff->type = msg_type;
+			msg_buff->msg_no = msg_no;
+			msg_buff->marker = LDMSD_RECORD_MARKER;
+			msg_buff->rec_len = buf->off;
+			msg_buff->flags = buf->flags;
+
+			ldmsd_hton_req_hdr(msg_buff);
+			rc = send_fn(xprt, (char *)msg_buff, ntohl(msg_buff->rec_len));
+			if (rc)
+				return rc;
+
+			ldmsd_msg_buf_init(buf);
+			buf->off = sizeof(struct ldmsd_req_hdr_s);
+		}
+	} while (data_len);
+
+	return 0;
+}
