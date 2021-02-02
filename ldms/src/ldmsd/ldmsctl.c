@@ -2020,12 +2020,37 @@ static void resp_set_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
  	return;
 }
 
+static void help_listen()
+{
+	printf( "\nAdd a listen endpoint\n\n"
+		"Parameters:\n"
+		"     xprt=   Transport name [sock, rdma, ugni]\n"
+		"     port=   Port number\n"
+		"     [host=] Hostname\n"
+		"     [auth=] Authentication domain\n"
+		"             If this is omitted or auth=auth_default is given,\n"
+		"             the default authentication given at the command line (-a and -A)\n"
+		"             will be used.\n");
+}
+
+static void help_auth()
+{
+	printf( "\nAdd an authentication domain\n\n"
+		"Parameters:\n"
+		"     name=       Authentication domain name\n"
+		"     [plugin=]   Authentication plugin\n"
+		"                 If this is omitted, the <name> value will be\n"
+		"                 used as a plugin name\n"
+		"     <authentication-specific attributes\n");
+}
+
 static int handle_help(struct ldmsctl_ctrl *ctrl, char *args);
 static int handle_source(struct ldmsctl_ctrl *ctrl, char *path);
 static int handle_script(struct ldmsctl_ctrl *ctrl, char *cmd);
 
 static struct command command_tbl[] = {
 	{ "?", LDMSCTL_HELP, handle_help, NULL, NULL },
+	{ "auth_add", LDMSD_AUTH_ADD_REQ, NULL, help_auth, resp_generic },
 	{ "config", LDMSD_PLUGN_CONFIG_REQ, NULL, help_config, resp_generic },
 	{ "daemon_exit", LDMSD_EXIT_DAEMON_REQ, NULL, help_daemon_exit, resp_daemon_exit },
 	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status, resp_daemon_status },
@@ -2043,6 +2068,7 @@ static struct command command_tbl[] = {
 			     help_failover_stop, resp_generic },
 	{ "greeting", LDMSD_GREETING_REQ, NULL, help_greeting, resp_greeting },
 	{ "help", LDMSCTL_HELP, handle_help, NULL, NULL },
+	{ "listen", LDMSD_LISTEN_REQ, NULL, help_listen, resp_generic },
 	{ "load", LDMSD_PLUGN_LOAD_REQ, NULL, help_load, resp_generic },
 	{ "loglevel", LDMSD_VERBOSE_REQ, NULL, help_loglevel, resp_generic },
 	{ "oneshot", LDMSD_ONESHOT_REQ, NULL, help_oneshot, resp_generic },

@@ -143,6 +143,7 @@ class LDMSD_Req_Attr(object):
                    'stream': STREAM,
                    'period': INTERVAL,
                    'reset': RESET,
+                   'auth': AUTH,
                    'TERMINATING': LAST
         }
 
@@ -336,6 +337,7 @@ class LDMSD_Request(object):
     THREAD_STATS = 0x600 + 13
     PRDCR_STATS = 0x600 + 14
     SET_STATS = 0x600 + 15
+    LISTEN = 0x600 + 16
 
     FAILOVER_CONFIG        = 0x700
     FAILOVER_PEERCFG_START = 0x700  +  1
@@ -356,6 +358,8 @@ class LDMSD_Request(object):
     STREAM_SUBSCRIBE = STREAM_PUBLISH + 1
     STREAM_UNSUBSCRIBE = STREAM_PUBLISH + 2
     STREAM_CLIENT_DUMP = STREAM_PUBLISH + 3
+
+    AUTH_ADD = 0xa00
 
     LDMSD_REQ_ID_MAP = {
             'example': {'id': EXAMPLE},
@@ -436,6 +440,9 @@ class LDMSD_Request(object):
             'unsubscribe'   :  {'id' : STREAM_UNSUBSCRIBE },
 
             'stream_client_dump'   :  {'id' : STREAM_CLIENT_DUMP },
+
+            'listen'        :  {'id' : LISTEN },
+            'auth_add'      :  {'id' : AUTH_ADD },
         }
 
     TYPE_CONFIG_CMD = 1

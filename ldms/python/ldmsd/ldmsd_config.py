@@ -144,6 +144,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'thread_stats': {'req_attr':[], 'opt_attr': ['reset']},
                       'prdcr_stats': {'req_attr':[], 'opt_attr': []},
                       'set_stats': {'req_attr':[], 'opt_attr': []},
+                      'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth']},
                       ##### Failover. #####
                       'failover_config': {
                                 'req_attr': [
@@ -187,6 +188,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                                     'req_attr': ['name'],
                                     'opt_attr': ['instance']
                             },
+                      ##### Authetication. #####
+                      'auth_add': {'req_attr': ['name', 'plugin'], 'opt_attr': []},
                       }
 
 """@var MAX_RECV_LEN
