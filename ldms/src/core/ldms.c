@@ -78,6 +78,13 @@ static char *__set_dir = SET_DIR_PATH;
 static char __set_path[PATH_MAX];
 static void __destroy_set(void *v);
 
+static struct {
+	pthread_rwlock_t default_authz_lock;
+	uid_t default_authz_uid;
+	gid_t default_authz_gid;
+	mode_t default_authz_perm;
+} __ldms_config;
+
 const char *ldms_xprt_op_names[] = {
 	"LOOKUP",
 	"UPDATE",
@@ -951,6 +958,12 @@ int ldms_init(size_t max_size)
 	int rc = mm_init(max_size, grain); /* mm_init() returns errno */
 	if (rc)
 		return rc;
+
+	__ldms_config.default_authz_uid = geteuid();
+	__ldms_config.default_authz_gid = getegid();
+	__ldms_config.default_authz_perm = 0440;
+	pthread_rwlock_init(&__ldms_config.default_authz_lock, NULL);
+
 	return 0;
 }
 
@@ -1182,7 +1195,12 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 
 ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 {
-	return ldms_set_new_with_auth(instance_name, schema, geteuid(), getegid(), 0440);
+	uid_t uid;
+	gid_t gid;
+	mode_t perm;
+
+	ldms_set_default_authz(&uid, &gid, &perm, DEFAULT_AUTHZ_READONLY);
+	return ldms_set_new_with_auth(instance_name, schema, uid, gid, perm);
 }
 
 int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, mode_t perm)
@@ -1241,6 +1259,37 @@ int ldms_set_perm_set(ldms_set_t s, mode_t perm)
 {
 	s->set->meta->perm = __cpu_to_le32(perm);
         return 0;
+}
+
+void ldms_set_default_authz(uid_t *uid, gid_t *gid, mode_t *perm, int set_flags)
+{
+	if (set_flags == DEFAULT_AUTHZ_READONLY) {
+		pthread_rwlock_rdlock(&__ldms_config.default_authz_lock);
+	} else {
+		pthread_rwlock_wrlock(&__ldms_config.default_authz_lock);
+	}
+	if (uid != NULL) {
+		if (set_flags & DEFAULT_AUTHZ_SET_UID) {
+			__ldms_config.default_authz_uid = *uid;
+		} else {
+			*uid =__ldms_config.default_authz_uid;
+		}
+	}
+	if (gid != NULL) {
+		if (set_flags & DEFAULT_AUTHZ_SET_GID) {
+			__ldms_config.default_authz_gid = *gid;
+		} else {
+			*gid =__ldms_config.default_authz_gid;
+		}
+	}
+	if (perm != NULL) {
+		if (set_flags & DEFAULT_AUTHZ_SET_PERM) {
+			__ldms_config.default_authz_perm = perm;
+		} else {
+			*perm = __ldms_config.default_authz_perm;
+		}
+	}
+	pthread_rwlock_unlock(&__ldms_config.default_authz_lock);
 }
 
 extern uint32_t ldms_set_meta_sz_get(ldms_set_t s)
