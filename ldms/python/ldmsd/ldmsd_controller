@@ -212,6 +212,8 @@ class LdmsdCmdParser(cmd.Cmd):
                     raise
                 if (verb == "config" and name != "name") or (verb == "env"):
                     attr_s.append(attr_str)
+                elif (verb == "auth_add" and name not in ["name", "plugin"]):
+                    attr_s.append(attr_str)
                 else:
                     try:
                         attr = LDMSD_Req_Attr(value = value, attr_name = name)
@@ -1445,6 +1447,40 @@ class LdmsdCmdParser(cmd.Cmd):
 
     def complete_stream_client_dump(self, text, line, begidx, endidx):
         return self.__complete_attr_list('stream_client_dump', text)
+
+    def do_listen(self, arg):
+        """
+        Add a listen endpoint
+        
+        Parameters:
+            xprt=   Transport name [sock, rdma, ugni]
+            port=   Port number
+            [host=] Hostname
+            [auth=] Authenticantion domain.
+                    If this is omitted or auth=auth_default is give,
+                    the default authentication given the command line (-a and -A)
+                    will be used.. 
+        """
+        self.handle('listen', arg)
+
+    def complete_listen(self, text, lien, begidx, endidx):
+        return self.__complete_attr_list('listen', text)
+
+    def do_auth_add(self, arg):
+        """
+        Add an authentication domain
+        
+        Parameters:
+            name=      The authentication domain name
+            [plugin=]  The authentication plugin [none, ovis, munge]
+                       If this is omitted, the <name> value will be used as
+                       a plugin name.
+            <plugin-specific auth plugin attributes, path=.ldmsauth.conf>
+        """
+        self.handle('auth_add', arg)
+
+    def complete_auth_add(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('auth_add', text)
 
     def parseline(self, line):
         """Parse the line into a command name and a string containing
