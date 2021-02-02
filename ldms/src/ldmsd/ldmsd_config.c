@@ -451,9 +451,10 @@ out:
 	return rc;
 }
 
-static int log_response_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
+static int log_response_fn(void *_xprt, char *data, size_t data_len)
 {
 	ldmsd_req_attr_t attr;
+	ldmsd_cfg_xprt_t xprt = (ldmsd_cfg_xprt_t)_xprt;
 	ldmsd_req_hdr_t req_reply = (ldmsd_req_hdr_t)data;
 	ldmsd_ntoh_req_msg(req_reply);
 
@@ -936,8 +937,9 @@ static inline void __log_sent_req(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t req)
 	}
 }
 
-static int send_ldms_fn(ldmsd_cfg_xprt_t xprt, char *data, size_t data_len)
+static int send_ldms_fn(void *_xprt, char *data, size_t data_len)
 {
+	ldmsd_cfg_xprt_t xprt = (ldmsd_cfg_xprt_t)_xprt;
 	__log_sent_req(xprt, (void*)data);
 	return ldms_xprt_send(xprt->ldms.ldms, data, data_len);
 }
