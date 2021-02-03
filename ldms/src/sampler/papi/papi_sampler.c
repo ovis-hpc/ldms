@@ -804,9 +804,13 @@ static void handle_job_exit(job_data_t job, json_entity_t e)
 	job->job_state = JOB_PAPI_COMPLETE;
 	/* job_lock is held, call chain: stream_recv_cb
 	 *                               -> handle_job_exit */
-	ldms_transaction_begin(job->set);
-	ldms_metric_set_u8(job->set, job->job_state_mid, job->job_state);
-	ldms_transaction_end(job->set);
+	if (job->set) {
+		/* set is not guaranteed to exist, e.g. init may failed or job
+		 * exited (canceled) even before the task_init_priv event */
+		ldms_transaction_begin(job->set);
+		ldms_metric_set_u8(job->set, job->job_state_mid, job->job_state);
+		ldms_transaction_end(job->set);
+	}
 	job->job_state_time = time(NULL);
 	job->job_end = timestamp;
 	release_job_data(job);
