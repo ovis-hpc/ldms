@@ -564,7 +564,7 @@ void __free_req_ctxt(ldmsd_req_ctxt_t reqc)
 	if (reqc->line_buf)
 		free(reqc->line_buf);
 	if (reqc->req_buf)
-		free(reqc->req_buf);
+		ldmsd_msg_buf_free(reqc->_req_buf);
 	ldmsd_msg_buf_free(reqc->rep_buf);
 	free(reqc);
 }
@@ -601,12 +601,11 @@ ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key, size_t max_msg_len)
 	if (!reqc->line_buf)
 		goto err;
 	reqc->line_buf[0] = '\0';
-	reqc->req_len = max_msg_len * 2 - 1;
-	reqc->req_off = sizeof(struct ldmsd_req_hdr_s);
-	reqc->req_buf = malloc(max_msg_len * 2);
-	if (!reqc->req_buf)
+	reqc->_req_buf = ldmsd_msg_buf_new(max_msg_len * 2);
+	if (!reqc->_req_buf)
 		goto err;
-	*(uint32_t *)&reqc->req_buf[reqc->req_off] = 0; /* terminating discrim */
+	reqc->req_buf = reqc->_req_buf->buf;
+	*(uint32_t *)&reqc->req_buf[reqc->_req_buf->off] = 0; /* terminating discrim */
 
 	reqc->rep_buf = ldmsd_msg_buf_new(max_msg_len);
 	if (!reqc->rep_buf)
@@ -1021,7 +1020,6 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 	size_t cnt;
 	int rc = 0;
 	char *oom_errstr = "ldmsd out of memory";
-	size_t rec_len = ntohl(request->rec_len);
 
 	key.msg_no = ntohl(request->msg_no);
 	key.conn_id = (uint64_t)(long unsigned)xprt;
@@ -1054,8 +1052,6 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 		if (!reqc)
 			goto oom;
 		reqc->xprt = xprt;
-		memcpy(reqc->req_buf, request, rec_len);
-		reqc->req_off = rec_len;
 	} else {
 		reqc = find_req_ctxt(&key);
 		if (!reqc) {
@@ -1069,17 +1065,19 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 						errstr, strlen(errstr));
 			goto err_out;
 		}
-		/* Copy the data from this record to the tail of the request context */
-		cnt = rec_len - sizeof(*request);
-		if (reqc->req_len - reqc->req_off < cnt) {
-			reqc->req_buf = realloc(reqc->req_buf, 2 * (reqc->req_len + 1));
-			if (!reqc->req_buf)
-				goto oom;
-			reqc->req_len = reqc->req_len * 2 + 1; /* req_len = req_buf sz - 1 */
-		}
-		memcpy(&reqc->req_buf[reqc->req_off], request + 1, cnt);
-		reqc->req_off += cnt;
 	}
+
+	rc = ldmsd_msg_gather(reqc->_req_buf, request);
+	if (rc && (EBUSY != rc))
+		goto err_out;
+	else
+		rc = 0;
+
+	/*
+	 * Point req_buf to _req_buf->buf,
+	 * in case _req_buf->buf was re-alloc'ed.
+	 */
+	reqc->req_buf = reqc->_req_buf->buf;
 	req_ctxt_tree_unlock();
 
 	if (0 == (ntohl(request->flags) & LDMSD_REQ_EOM_F))
@@ -1119,7 +1117,6 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 	ldmsd_req_ctxt_t reqc = NULL;
 	size_t cnt;
 	int rc = 0;
-	size_t rec_len = ntohl(response->rec_len);
 
 	key.msg_no = ntohl(response->msg_no);
 	key.conn_id = (uint64_t)(long unsigned)xprt->ldms.ldms;
@@ -1144,24 +1141,19 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 		rc = ENOENT;
 		goto err_out;
 	}
-	/* Copy the data from this record to the tail of the request context */
-	if (ntohl(response->flags) & LDMSD_REQ_SOM_F) {
-		memcpy(reqc->req_buf, response, rec_len);
-		reqc->req_off = rec_len;
-	} else {
-		cnt = rec_len - sizeof(*response);
-		if (reqc->req_len - reqc->req_off < cnt) {
-			reqc->req_buf = realloc(reqc->req_buf, 2 * (reqc->req_len + 1));
-			if (!reqc->req_buf) {
-				ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
-				rc = ENOMEM;
-				goto err_out;
-			}
-			reqc->req_len = reqc->req_len * 2 + 1; /* req_len = req_buf sz - 1 */
-		}
-		memcpy(&reqc->req_buf[reqc->req_off], response + 1, cnt);
-		reqc->req_off += cnt;
-	}
+
+	rc = ldmsd_msg_gather(reqc->_req_buf, response);
+	if (rc && (EBUSY != rc))
+		goto err_out;
+	else
+		rc = 0;
+
+	/*
+	 * Point req_buf to _req_buf->buf,
+	 * in case _req_buf->buf was re-alloc'ed.
+	 */
+	reqc->req_buf = reqc->_req_buf->buf;
+
 	req_ctxt_tree_unlock();
 
 	if (0 == (ntohl(response->flags) & LDMSD_REQ_EOM_F))

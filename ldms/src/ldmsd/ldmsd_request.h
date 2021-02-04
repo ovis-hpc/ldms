@@ -318,8 +318,7 @@ typedef struct ldmsd_req_ctxt {
 	size_t line_off;
 	char *line_buf;
 
-	size_t req_len;
-	size_t req_off;
+	struct ldmsd_msg_buf *_req_buf;
 	char *req_buf;
 
 	struct ldmsd_msg_buf *rep_buf;
@@ -626,6 +625,13 @@ uint32_t ldmsd_msg_no_get();
 struct ldmsd_msg_buf *ldmsd_msg_buf_new(size_t len);
 
 /**
+ * \brief Reset the message buffer \c buf
+ *
+ * \param buf   Buffer to be reset
+ */
+void ldmsd_msg_buf_init(struct ldmsd_msg_buf *buf);
+
+/**
  * \brief Free an LDMSD message buffer
  */
 void ldmsd_msg_buf_free(struct ldmsd_msg_buf *buf);
@@ -652,5 +658,17 @@ int ldmsd_msg_buf_send(struct ldmsd_msg_buf *buf,
 			int msg_flags, int msg_type,
 			uint32_t req_id_n_rsp_err,
 			const char *data, size_t data_len);
+
+/**
+ * \brief Gather records into a message
+ *
+ * \param buf   Buffer to store multiple records
+ * \param req   Record header
+ *
+ * \return 0 if the message is complete. EBUSY if more records are expected.
+ *         Otherwise, there is an error.
+ */
+int ldmsd_msg_gather(struct ldmsd_msg_buf *buf, ldmsd_req_hdr_t req);
+
 
 #endif /* LDMS_SRC_LDMSD_LDMSD_REQUEST_H_ */

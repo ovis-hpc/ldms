@@ -1081,3 +1081,29 @@ int ldmsd_msg_buf_send(struct ldmsd_msg_buf *buf,
 
 	return 0;
 }
+
+int ldmsd_msg_gather(struct ldmsd_msg_buf *buf, ldmsd_req_hdr_t req)
+{
+	void *ptr;
+	size_t len = ntohl(req->rec_len);
+	uint32_t flags = ntohl(req->flags);
+
+	if (flags & LDMSD_REQ_SOM_F) {
+		ptr = req;
+	} else {
+		ptr = req + 1;
+		len -= sizeof(*req);
+	}
+	if (buf->len - buf->off < len) {
+		char *new_buf = realloc(buf->buf, 2 * buf->len + len);
+		if (!new_buf)
+			return ENOMEM;
+		buf->buf = new_buf;
+		buf->len = 2 * buf->len + len;
+	}
+	memcpy(&buf->buf[buf->off], ptr, len);
+	buf->off += len;
+	if (flags & LDMSD_REQ_EOM_F)
+		return 0;
+	return EBUSY;
+}
