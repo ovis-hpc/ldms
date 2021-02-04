@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <ovis_json/ovis_json.h>
 #include <assert.h>
+#include <coll/rbt.h>
 #include "ldms.h"
 #include "../ldmsd_request.h"
 #include "../ldmsd_stream.h"
@@ -56,6 +57,66 @@ void usage(int argc, char **argv)
 static const char *short_opts = "p:f:s:x:a:A:D";
 
 #define AUTH_OPT_MAX 128
+
+struct xprt_ctxt {
+	struct rbn rbn;
+	struct ldmsd_msg_buf *buf;
+};
+#define XPRT_CTXT_LEN_GRAIN 0xFFF
+#define XPRT_CTXT_LEN_ROUND(L) ((((L)-1)|XPRT_CTXT_LEN_GRAIN) + 1)
+#define XPRT_CTXT_INIT_LEN (1024*1024)
+
+int xprt_ctxt_cmp(void *tree_key, const void *key)
+{
+	/* simply compare pointers to ldms xprts */
+	return (int64_t)tree_key - (int64_t)key;
+}
+
+pthread_mutex_t xprt_ctxt_mutex = PTHREAD_MUTEX_INITIALIZER;
+struct rbt xprt_ctxt_rbt = RBT_INITIALIZER(xprt_ctxt_cmp);
+
+struct xprt_ctxt *xprt_ctxt_new(ldms_t ldms)
+{
+	struct xprt_ctxt *ctxt;
+	pthread_mutex_lock(&xprt_ctxt_mutex);
+	ctxt = (struct xprt_ctxt *)rbt_find(&xprt_ctxt_rbt, ldms);
+	if (ctxt) {
+		ctxt = NULL;
+		errno = EEXIST;
+		goto out;
+	}
+	ctxt = calloc(1, sizeof(*ctxt));
+	if (!ctxt)
+		goto out;
+	ctxt->buf = ldmsd_msg_buf_new(XPRT_CTXT_INIT_LEN);
+	if (!ctxt->buf) {
+		free(ctxt);
+		goto out;
+	}
+	rbn_init(&ctxt->rbn, ldms);
+	rbt_ins(&xprt_ctxt_rbt, &ctxt->rbn);
+ out:
+	pthread_mutex_unlock(&xprt_ctxt_mutex);
+	return ctxt;
+}
+
+struct xprt_ctxt *xprt_ctxt_find(ldms_t ldms)
+{
+	struct xprt_ctxt *ctxt;
+	pthread_mutex_lock(&xprt_ctxt_mutex);
+	ctxt = (struct xprt_ctxt *)rbt_find(&xprt_ctxt_rbt, ldms);
+	pthread_mutex_unlock(&xprt_ctxt_mutex);
+	return ctxt;
+}
+
+void xprt_ctxt_free(struct xprt_ctxt *ctxt)
+{
+	pthread_mutex_lock(&xprt_ctxt_mutex);
+	rbt_del(&xprt_ctxt_rbt, &ctxt->rbn);
+	pthread_mutex_unlock(&xprt_ctxt_mutex);
+	ldmsd_msg_buf_free(ctxt->buf);
+	free(ctxt);
+}
 
 static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			 ldmsd_stream_type_t stream_type,
@@ -143,25 +204,38 @@ int process_request(ldms_t x, ldmsd_req_hdr_t request)
 {
 	uint32_t req_id;
 
-	ldmsd_ntoh_req_msg(request);
-
-	if (request->marker != LDMSD_RECORD_MARKER) {
+	if (ntohl(request->marker) != LDMSD_RECORD_MARKER) {
 		msglog("Config request is missing record marker");
 		exit(3);
 	}
-	req_id = request->req_id;
+	req_id = ntohl(request->req_id);
 	if (req_id != LDMSD_STREAM_PUBLISH_REQ) {
 		msglog("Unexpected request id %d\n", req_id);
 		exit(4);
 	}
 
-	int rc = stream_publish_handler(request);
+	struct xprt_ctxt *ctxt = xprt_ctxt_find(x);
+	if (!ctxt) {
+		msglog("Cannot find ctxt\n");
+		exit(5);
+	}
 
-	request->flags = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
-	request->rsp_err = rc;
-	request->rec_len = sizeof(*request);
-	ldmsd_hton_req_hdr(request);
-	return ldms_xprt_send(x, (char *)request, sizeof(*request));
+	int rc = ldmsd_msg_gather(ctxt->buf, request);
+	if (EBUSY == rc)
+		return 0;
+	if (rc) {
+		msglog("ERROR: Failed to receive messages: %d\n", rc);
+		return rc;
+	}
+
+	/* we got all request data */
+	ldmsd_req_hdr_t req = (ldmsd_req_hdr_t)ctxt->buf->buf;
+	ldmsd_ntoh_req_msg(req);
+	rc = stream_publish_handler(req);
+
+	/* request processed, reset data buffer */
+	ldmsd_msg_buf_init(ctxt->buf);
+	return 0;
 }
 
 static void recv_msg(ldms_t x, char *data, size_t data_len)
@@ -186,12 +260,22 @@ static void recv_msg(ldms_t x, char *data, size_t data_len)
 
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
+	struct xprt_ctxt *ctxt;
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
+		ctxt = xprt_ctxt_new(x);
+		if (!ctxt) {
+			msglog("xprt_ctxt_new() failed, errno: %d\n", errno);
+			ldms_xprt_close(ldms);
+		}
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
 	case LDMS_XPRT_EVENT_REJECTED:
 	case LDMS_XPRT_EVENT_ERROR:
+		ctxt = xprt_ctxt_find(x);
+		if (ctxt) {
+			xprt_ctxt_free(ctxt);
+		}
 		ldms_xprt_put(x);
 		break;
 	case LDMS_XPRT_EVENT_RECV:
