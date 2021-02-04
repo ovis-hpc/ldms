@@ -2271,19 +2271,18 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	 * Send all the records and handle the response now.
 	 */
 	ldmsd_req_hdr_t resp, rsp = NULL;
-	size_t req_hdr_sz = sizeof(*resp);
 	size_t lbufsz = 1024;
-	char *lbuf = malloc(lbufsz);
-	if (!lbuf) {
+	struct ldmsd_msg_buf *b;
+
+	b = ldmsd_msg_buf_new(lbufsz);
+	if (!b) {
 		printf("Out of memory\n");
 		exit(1);
 	}
 
-	size_t reclen = 0;
 	size_t msglen = 0;
 	rc = 0;
 	ldmsctl_buffer_t recv_buf;
-	int flags = 0;
 
 	while (1) {
 		sem_wait(&ctrl->ldms_xprt.recv_sem);
@@ -2293,37 +2292,22 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 			TAILQ_REMOVE(&recv_buf_q, recv_buf, entry);
 			pthread_mutex_unlock(&recv_buf_q_lock);
 			resp = (ldmsd_req_hdr_t)recv_buf->buf;
-			flags = ntohl(resp->flags);
-			if (flags & LDMSD_REQ_SOM_F)
-				reclen = ntohl(resp->rec_len);
-			else
-				reclen = ntohl(resp->rec_len) - req_hdr_sz;
-			if (lbufsz < msglen + reclen) {
-				char *nlbuf = realloc(lbuf, msglen + (reclen * 2));
-				if (!nlbuf) {
-					printf("Out of memory\n");
-					exit(ENOMEM);
-				}
-				lbuf = nlbuf;
-				lbufsz = msglen + (reclen * 2);
-				memset(&lbuf[msglen], 0, lbufsz - msglen);
+			rc = ldmsd_msg_gather(b, resp);
+			if (0 == rc) {
+				rsp = (ldmsd_req_hdr_t)b->buf;
+				goto done_recv;
+			} else if (EBUSY != rc) {
+				printf("Failed to process messages from LDMSD. %s\n",
+						strerror(rc));
+				exit(rc);
 			}
-			if (flags & LDMSD_REQ_SOM_F)
-				memcpy(&lbuf[msglen], resp, reclen);
-			else
-				memcpy(&lbuf[msglen], resp + 1, reclen);
-			msglen += reclen;
 			ldmsctl_buffer_free(recv_buf);
 			pthread_mutex_lock(&recv_buf_q_lock);
 			recv_buf = TAILQ_FIRST(&recv_buf_q);
 		}
 		pthread_mutex_unlock(&recv_buf_q_lock);
-
-		if ((flags & LDMSD_REQ_EOM_F) != 0) {
-			rsp = (ldmsd_req_hdr_t)lbuf;
-			break;
-		}
 	}
+done_recv:
 	/* We have received the whole message */
 	if (rsp) {
 		ldmsd_ntoh_req_msg(rsp);
@@ -2331,7 +2315,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	} else {
 		assert(rsp);
 	}
-	free(lbuf);
+	ldmsd_msg_buf_free(b);
 	return rc;
 }
 
