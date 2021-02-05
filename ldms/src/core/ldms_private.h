@@ -60,6 +60,7 @@
 
 typedef struct ldms_mdef_s {
 	char *name;
+	char *unit;
 	enum ldms_value_type type;
 	uint32_t flags;	/* DATA/MDATA flag */
 	uint32_t count; /* Number of elements in the array if this is of an array type */
@@ -148,8 +149,9 @@ extern size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
 extern int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg);
 
 extern uint32_t __ldms_set_size_get(struct ldms_set *s);
-extern void __ldms_metric_size_get(const char *name, enum ldms_value_type t,
-			uint32_t count, size_t *meta_sz, size_t *data_sz);
+extern void __ldms_metric_size_get(const char *name, const char *unit,
+				   enum ldms_value_type t,
+				   uint32_t count, size_t *meta_sz, size_t *data_sz);
 
 extern struct ldms_set *__ldms_find_local_set(const char *path);
 extern struct ldms_set *__ldms_local_set_first(void);
