@@ -1513,6 +1513,59 @@ extern int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
 		enum ldms_value_type t, uint32_t count);
 
 /**
+ * \brief Add a metric/meta and its unit to schema
+ *
+ * Adds a metric to a metric set schema. The \c name of the metric must be
+ * unique within the metric set.
+ *
+ * The APIs complements \c ldms_schema_metric_add
+ * and \c ldms_schema_meta_add in the sense that
+ * the caller could provide the metric unit in this API.
+ *
+ * \param s	The ldms_set_t handle.
+ * \param name	The name of the metric.
+ * \param unit  The metric unit.
+ * \param t	The type of the metric.
+ * \retval >=0  The metric index.
+ * \retval <0	Insufficient resources or duplicate name
+ *
+ * \see ldms_schema_metric_add
+ */
+extern int ldms_schema_metric_add_with_unit(ldms_schema_t s, const char *name,
+					    const char *unit, enum ldms_value_type type);
+extern int ldms_schema_meta_add_with_unit(ldms_schema_t s, const char *name,
+					  const char *unit, enum ldms_value_type t);
+
+/**
+ * \brief Add an array metric/meta with the unit to schema
+ *
+ * Adds a metric of an array type to a metric set schema.
+ * The \c name of the metric must be
+ * unique within the metric set.
+ *
+ * The APIs complements \c ldms_schema_metric_array_add
+ * and \c ldms_schema_meta_array_add in the sense that
+ * the caller could provide the metric unit in this API.
+ *
+ * \param s	The ldms_set_t handle.
+ * \param name	The name of the metric.
+ * \param unit  The metric unit.
+ * \param t	The type of the metric.
+ * \param count The number of elements in the array
+ * \retval >=0  The metric index.
+ * \retval <0	Insufficient resources or duplicate name
+ */
+extern int ldms_schema_metric_array_add_with_unit(ldms_schema_t s, const char *name,
+						  const char *unit,
+						  enum ldms_value_type t,
+						  uint32_t count);
+extern int ldms_schema_meta_array_add_with_unit(ldms_schema_t s, const char *name,
+						const char *unit,
+						enum ldms_value_type t,
+						uint32_t count);
+
+
+/**
  * \brief Get the metric index given a name
  *
  * Returns the metric index  for the metric with the specified
@@ -1535,6 +1588,19 @@ extern int ldms_metric_by_name(ldms_set_t s, const char *name);
  * \returns	A character string containing the name of the metric.
  */
 extern const char *ldms_metric_name_get(ldms_set_t s, int i);
+
+/**
+ * \brief Returns the unit of a metric
+ *
+ * Returns the unit of the metric specified by the handle. NULL is returned if
+ * the metric unit does not exist.
+ *
+ * \param s	The set handle
+ * \param i	The metric index
+ * \returns	A character string containing the unit of the metric.
+ *              NULL if the unit does not specified.
+ */
+extern const char *ldms_metric_unit_get(ldms_set_t s, int i);
 
 /**
  * \brief Returns !0 (true) if the type is an array

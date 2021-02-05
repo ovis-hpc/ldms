@@ -101,8 +101,10 @@ typedef struct ldms_value_desc {
 	uint32_t vd_reserved[2];
 	uint8_t vd_type;	/*! The type of the value, enum ldms_value_type */
 	uint8_t vd_flags;	/*! Metric or Attribute */
-	uint8_t vd_name_len;	/*! The length of the metric name in bytes*/
-	char vd_name[OVIS_FLEX];		/*! The metric name */
+	uint8_t vd_name_unit_len; 	/*! The length of the vd_name_unit string */
+	char vd_name_unit[OVIS_FLEX];	/*! The format is \<name\>\\0 or
+					 *  \<name\>\\0\<unit\>\\0 if unit was specified.
+					 */
 } *ldms_mdesc_t;
 #pragma pack()
 
