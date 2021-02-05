@@ -228,28 +228,24 @@ typedef struct ldmsd_req_hdr_s {
 #pragma pack(pop)
 
 /**
- * The format of requests and replies is as follows:
+ * The format of requests and replies is as follows.
+ *
+ * Note that "attr_id" is usually one of the values in
+ * enum ldmsd_request_attr. However, the values in ldmsd_request_attr
+ * do not have a prescribed meaning or data type. The meaning and data
+ * type are left to the implementation of each individual message.
  *
  *                 Standard Record Format
  * +---------------------------------------------------------+
  * | ldmsd_req_hdr_s                                         |
  * +---------------------------------------------------------+
- * | attr_0, attr_discrim == 1                               |
+ * | ldmsd_req_attr_s: discrim=1, attr_id=?                  |
  * +---------------------------------------------------------+
- * S                                                         |
- * +---------------------------------------------------------+
- * | attr_N, attr_discrim == 1                               |
- * +---------------------------------------------------------+
- * | attr_discrim == 0, remaining fields are not present     |
- * +---------------------------------------------------------+
- *
- *                 String Record Format
- * +---------------------------------------------------------+
- * | ldmsd_req_hdr_s                                         |
- * +---------------------------------------------------------+
- * | String bytes, i.e. attr_discrim > 1                     |
- * | length is rec_len - sizeof(ldmsd_req_hdr_s)             |
  * S                                                         S
+ * +---------------------------------------------------------+
+ * | ldmsd_req_attr_s: discrim=1, attr_id=?                  |
+ * +---------------------------------------------------------+
+ * | ldmsd_req_attr_s: discrim=0, (end of attributes)        |
  * +---------------------------------------------------------+
  */
 typedef struct req_ctxt_key {
@@ -335,8 +331,9 @@ struct ldmsd_req_cmd {
 
 #pragma pack(push, 1)
 typedef struct ldmsd_req_attr_s {
-	uint32_t discrim;	/* If 0, the remaining fields are not present */
-	uint32_t attr_id;	/* Attribute identifier, unique per ldmsd_req_hdr_s.cmd_id */
+	uint32_t discrim;	/* If 0, marks end of of attributes fields */
+	uint32_t attr_id;	/* Generally one of enum ldmsd_request_attr, but interpretation
+				   is left to the request that envelopes this attribute */
 	uint32_t attr_len;	/* Size of value in bytes */
 	union {
 		uint8_t attr_value[OVIS_FLEX_UNION];
