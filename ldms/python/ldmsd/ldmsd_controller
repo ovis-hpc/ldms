@@ -1466,6 +1466,20 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_listen(self, text, lien, begidx, endidx):
         return self.__complete_attr_list('listen', text)
 
+    def do_metric_sets_default_authz(self, arg):
+        """
+        Set the default authorization values for subsequently created metric sets
+
+        Parameters:
+            [uid=]  User ID number or user name string
+            [gid=]  Group ID number or group name string
+            [perm=] Octal number representing the permissions bits
+        """
+        self.handle('metric_sets_default_authz', arg)
+
+    def complete_metric_sets_default_authz(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('metric_sets_default_authz', text)
+
     def do_auth_add(self, arg):
         """
         Add an authentication domain

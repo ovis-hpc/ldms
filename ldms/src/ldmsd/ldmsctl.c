@@ -425,6 +425,15 @@ static void help_loglevel()
 		"	level=	levels [DEBUG, INFO, ERROR, CRITICAL, QUIET]\n");
 }
 
+static void help_metric_sets_default_authz()
+{
+	printf( "\nSet the default authorization values for subsequently created metric sets\n\n"
+		"Parameters:\n"
+		"     [uid=]         User ID number or user name string\n"
+		"     [gid=]         Group ID number or group name string\n"
+		"     [perm=]        Octal number representing the permissions bits\n");
+}
+
 static void help_quit()
 {
 	printf( "\nquit\n"
@@ -2076,6 +2085,8 @@ static struct command command_tbl[] = {
 	{ "listen", LDMSD_LISTEN_REQ, NULL, help_listen, resp_generic },
 	{ "load", LDMSD_PLUGN_LOAD_REQ, NULL, help_load, resp_generic },
 	{ "loglevel", LDMSD_VERBOSE_REQ, NULL, help_loglevel, resp_generic },
+	{ "metric_sets_default_authz", LDMSD_SET_DEFAULT_AUTHZ_REQ, NULL,
+			help_metric_sets_default_authz, resp_generic },
 	{ "oneshot", LDMSD_ONESHOT_REQ, NULL, help_oneshot, resp_generic },
 	{ "plugn_sets", LDMSD_PLUGN_SETS_REQ, NULL, help_plugn_sets, resp_plugn_sets },
 	{ "prdcr_add", LDMSD_PRDCR_ADD_REQ, NULL, help_prdcr_add, resp_generic },

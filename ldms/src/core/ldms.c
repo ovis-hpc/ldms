@@ -1284,7 +1284,7 @@ void ldms_set_default_authz(uid_t *uid, gid_t *gid, mode_t *perm, int set_flags)
 	}
 	if (perm != NULL) {
 		if (set_flags & DEFAULT_AUTHZ_SET_PERM) {
-			__ldms_config.default_authz_perm = perm;
+			__ldms_config.default_authz_perm = *perm;
 		} else {
 			*perm = __ldms_config.default_authz_perm;
 		}
