@@ -102,6 +102,7 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap);
 
 static char * __thread_stats_as_json(size_t *json_sz);
 static char * __xprt_stats_as_json(size_t *json_sz);
+extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 
 __attribute__((format(printf, 1, 2)))
 static inline
@@ -1754,7 +1755,6 @@ send_reply:
 
 int __prdcr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_prdcr_t prdcr, int prdcr_cnt)
 {
-	extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 	ldmsd_prdcr_set_t prv_set;
 	int set_count = 0;
 	int rc = 0;
@@ -3322,7 +3322,6 @@ int __updtr_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_updtr_t updtr,
 	ldmsd_prdcr_t prdcr;
 	int prdcr_count;
 	long default_offset = 0;
-	extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
 
 	if (updtr_cnt) {
 		rc = linebuf_printf(reqc, ",\n");
@@ -5788,7 +5787,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	res = zap_thrstat_get_result();
 	if (!res)
 		return NULL;
-		
+
 	buff = malloc(sz);
 	if (!buff)
 		goto __APPEND_ERR;
@@ -5869,7 +5868,7 @@ err:
  * {
  *   "prdcr_count" : <int>,
  *   "stopped" : <int>,
- *   "disconnected" : <int>, 
+ *   "disconnected" : <int>,
  *   "connecting" : <int>,
  * 	 "connected" : <int>,
  *   "stopping"	: <int>,
@@ -6006,7 +6005,7 @@ static char * __set_stats_as_json(size_t *json_sz)
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	uint64_t compute_time = ldms_timespec_diff_us(&start, &end);
 	__APPEND(" \"compute_time\": %ld\n", compute_time);
-	__APPEND("}"); 
+	__APPEND("}");
 
 	*json_sz = s - buff + 1;
 	return buff;
@@ -6088,11 +6087,13 @@ out_1:
 			     (char *)attr->attr_value, attr->attr_len, NULL);
 out_0:
 	free(stream_name);
+	reqc->errcode = 0;
+	ldmsd_send_req_response(reqc, "ACK");
 	return 0;
 err_reply:
 	if (stream_name)
 		free(stream_name);
-	// ldmsd_send_req_response(reqc, reqc->line_buf);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }
 
