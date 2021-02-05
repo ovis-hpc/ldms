@@ -1079,11 +1079,18 @@ size_t __ldms_value_size_get(enum ldms_value_type t, uint32_t count)
 	return roundup(value_sz, 8);
 }
 
-void __ldms_metric_size_get(const char *name, enum ldms_value_type t,
-		uint32_t count, size_t *meta_sz, size_t *data_sz)
+void __ldms_metric_size_get(const char *name, const char *unit,
+			    enum ldms_value_type t,
+			    uint32_t count, size_t *meta_sz, size_t *data_sz)
 {
 	/* Descriptors are aligned on eight byte boundaries */
-	*meta_sz = roundup(sizeof(struct ldms_value_desc) + strlen(name) + 1, 8);
+	if (unit) {
+		*meta_sz = roundup(sizeof(struct ldms_value_desc) +
+				   strlen(name) + 1 + strlen(unit) + 1, 8);
+	} else {
+		*meta_sz = roundup(sizeof(struct ldms_value_desc) +
+				   strlen(name) + 1, 8);
+	}
 
 	*data_sz = __ldms_value_size_get(t, count);
 }
@@ -1176,6 +1183,7 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	value_off = roundup(sizeof(*data_base), 8);
 	metric_idx = 0;
 	size_t vd_size = 0;
+	size_t name_len, unit_len = 0;
 	STAILQ_FOREACH(md, &schema->metric_list, entry) {
 		/* Add descriptor to dictionary */
 		meta->dict[metric_idx] = __cpu_to_le32(ldms_off_(meta, vd));
@@ -1184,8 +1192,15 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 		vd->vd_type = md->type;
 		vd->vd_flags = md->flags;
 		vd->vd_array_count = __cpu_to_le32(md->count);
-		vd->vd_name_len = strlen(md->name) + 1;
-		strncpy(vd->vd_name, md->name, vd->vd_name_len);
+		name_len = strlen(md->name) + 1;
+		strncpy(vd->vd_name_unit, md->name, name_len);
+		if (md->unit) {
+			unit_len = strlen(md->unit) + 1;
+			strncpy(&vd->vd_name_unit[name_len], md->unit, unit_len);
+		} else {
+			unit_len = 0;
+		}
+		vd->vd_name_unit_len = name_len + unit_len;
 		if (md->flags & LDMS_MDESC_F_DATA) {
 			vd->vd_data_offset = __cpu_to_le32(value_off);
 			value_off += __ldms_value_size_get(md->type, md->count);
@@ -1429,8 +1444,21 @@ const char *ldms_metric_name_get(ldms_set_t set, int i)
 {
 	ldms_mdesc_t desc = __desc_get(set, i);
 	if (desc)
-		return desc->vd_name;
+		return desc->vd_name_unit;
 	return NULL;
+}
+
+const char *ldms_metric_unit_get(ldms_set_t set, int i)
+{
+	char *unit;
+	ldms_mdesc_t desc = __desc_get(set, i);
+	if (!desc)
+		return NULL;
+	unit = strrchr(desc->vd_name_unit, '\0');
+	if (desc->vd_name_unit + desc->vd_name_unit_len - 1 == unit)
+		return NULL;
+	else
+		return unit + 1;
 }
 
 enum ldms_value_type ldms_metric_type_get(ldms_set_t set, int i)
@@ -1455,14 +1483,14 @@ int ldms_metric_by_name(ldms_set_t set, const char *name)
 	int i;
 	for (i = 0; i < ldms_set_card_get(set); i++) {
 		ldms_mdesc_t desc = __desc_get(set, i);
-		if (0 == strcmp(desc->vd_name, name))
+		if (0 == strcmp(desc->vd_name_unit, name))
 			return i;
 	}
 	return -1;
 }
 
-int __schema_metric_add(ldms_schema_t s, const char *name, int flags,
-			enum ldms_value_type type, uint32_t array_count)
+int __schema_metric_add(ldms_schema_t s, const char *name, const char *unit,
+			int flags, enum ldms_value_type type, uint32_t array_count)
 {
 	ldms_mdef_t m;
 
@@ -1479,10 +1507,19 @@ int __schema_metric_add(ldms_schema_t s, const char *name, int flags,
 		return -ENOMEM;
 
 	m->name = strdup(name);
+	if (!m->name)
+		goto enomem;
+	if (unit) {
+		m->unit = strdup(unit);
+		if (!m->unit)
+			goto enomem;
+	} else {
+		m->unit = NULL;
+	}
 	m->type = type;
 	m->flags = flags;
 	m->count = array_count;
-	__ldms_metric_size_get(name, type, m->count, &m->meta_sz, &m->data_sz);
+	__ldms_metric_size_get(name, unit, type, m->count, &m->meta_sz, &m->data_sz);
 	STAILQ_INSERT_TAIL(&s->metric_list, m, entry);
 	s->card++;
 	s->meta_sz += m->meta_sz + sizeof(uint32_t) /* + dict entry */;
@@ -1491,34 +1528,67 @@ int __schema_metric_add(ldms_schema_t s, const char *name, int flags,
 	else
 		s->meta_sz += m->data_sz;
 	return s->card - 1;
+enomem:
+	free(m->name);
+	free(m);
+	return -ENOMEM;
 }
 
-int ldms_schema_metric_add(ldms_schema_t s, const char *name, enum ldms_value_type type)
+int ldms_schema_metric_add_with_unit(ldms_schema_t s, const char *name,
+				     const char *unit, enum ldms_value_type type)
 {
 	if (type > LDMS_V_D64)
 		return EINVAL;
-	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, 1);
+	return __schema_metric_add(s, name, unit, LDMS_MDESC_F_DATA, type, 1);
+}
+
+
+int ldms_schema_metric_add(ldms_schema_t s, const char *name, enum ldms_value_type type)
+{
+	return ldms_schema_metric_add_with_unit(s, name, "", type);
+}
+
+int ldms_schema_meta_add_with_unit(ldms_schema_t s, const char *name,
+				   const char *unit, enum ldms_value_type type)
+{
+	if (type > LDMS_V_D64)
+		return EINVAL;
+	return __schema_metric_add(s, name, unit, LDMS_MDESC_F_META, type, 1);
 }
 
 int ldms_schema_meta_add(ldms_schema_t s, const char *name, enum ldms_value_type type)
 {
-	if (type > LDMS_V_D64)
+	return ldms_schema_meta_add_with_unit(s, name, "", type);
+}
+
+int ldms_schema_metric_array_add_with_unit(ldms_schema_t s, const char *name,
+					   const char *unit,
+					   enum ldms_value_type type,
+					   uint32_t count)
+{
+	if (!ldms_type_is_array(type))
 		return EINVAL;
-	return __schema_metric_add(s, name, LDMS_MDESC_F_META, type, 1);
+	return __schema_metric_add(s, name, unit, LDMS_MDESC_F_DATA, type, count);
 }
 
 int ldms_schema_metric_array_add(ldms_schema_t s, const char *name,
 				 enum ldms_value_type type, uint32_t count)
 {
-	if (!ldms_type_is_array(type))
-		return EINVAL;
-	return __schema_metric_add(s, name, LDMS_MDESC_F_DATA, type, count);
+	return ldms_schema_metric_array_add_with_unit(s, name, "", type, count);
+}
+
+int ldms_schema_meta_array_add_with_unit(ldms_schema_t s, const char *name,
+					 const char *unit,
+					 enum ldms_value_type type,
+					 uint32_t count)
+{
+	return __schema_metric_add(s, name, unit, LDMS_MDESC_F_META, type, count);
 }
 
 int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
 			       enum ldms_value_type type, uint32_t count)
 {
-	return __schema_metric_add(s, name, LDMS_MDESC_F_META, type, count);
+	return ldms_schema_meta_array_add_with_unit(s, name, "", type, count);
 }
 
 static struct _ldms_type_name_map {
