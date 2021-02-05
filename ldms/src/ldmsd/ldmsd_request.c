@@ -50,13 +50,17 @@
 #include <errno.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <ctype.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <coll/rbt.h>
 #include <pthread.h>
+#include <pwd.h>
+#include <grp.h>
 #include <ovis_util/util.h>
 #include <ovis_json/ovis_json.h>
 #include <arpa/inet.h>
@@ -243,6 +247,8 @@ static int listen_handler(ldmsd_req_ctxt_t reqc);
 
 static int auth_add_handler(ldmsd_req_ctxt_t reqc);
 static int auth_del_handler(ldmsd_req_ctxt_t reqc);
+
+static int set_default_authz_handler(ldmsd_req_ctxt_t reqc);
 
 /* executable for all */
 #define XALL 0111
@@ -437,6 +443,10 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_SET_STATS_REQ] = {
 		LDMSD_SET_STATS_REQ, set_stats_handler, XALL
+	},
+
+	[LDMSD_SET_DEFAULT_AUTHZ_REQ] = {
+		LDMSD_SET_DEFAULT_AUTHZ_REQ, set_default_authz_handler, XUG
 	},
 
 	/* FAILOVER user commands */
@@ -6598,5 +6608,110 @@ send_reply:
 	/* cleanup */
 	if (name)
 		free(name);
+	return 0;
+}
+
+static int set_default_authz_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *value = NULL;
+	uid_t uid;
+	bool uid_is_supplied = false;
+	gid_t gid;
+	bool gid_is_supplied = false;
+	mode_t perm;
+	bool perm_is_supplied = false;
+
+	reqc->errcode = 0;
+
+	/* Each of LDMSD_ATTR_UID, LDMSD_ATTR_GID, and LDMSD_ATTR_PERM
+	   are optional */
+
+	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_UID);
+	if (value) {
+		/* Check if the value is a valid user name */
+		struct passwd *pwd = getpwnam(value);
+		if (pwd) {
+			uid = pwd->pw_uid;
+			uid_is_supplied = true;
+		} else {
+			/* Check if the value is a valid UID */
+			char *endptr;
+			errno = 0;
+			uid = strtol(value, &endptr, 0);
+			if (errno == 0 && endptr != value && *endptr == '\0') {
+				uid_is_supplied = true;
+			}
+		}
+		if (!uid_is_supplied) {
+			reqc->errcode = EINVAL;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"uid value \"%s\" is not a valid UID or user name",
+					value);
+		}
+		free(value);
+	}
+
+	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_GID);
+	if (value) {
+		/* Check if the value is a valid user name */
+		struct group *grp = getgrnam(value);
+		if (grp) {
+			gid = grp->gr_gid;
+			gid_is_supplied = true;
+		} else {
+			/* Check if the value is a valid GID */
+			char *endptr;
+			errno = 0;
+			gid = strtol(value, &endptr, 0);
+			if (errno == 0 && endptr != value && *endptr == '\0') {
+				gid_is_supplied = true;
+			}
+		}
+		if (!gid_is_supplied) {
+			reqc->errcode = EINVAL;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"gid value \"%s\" is not a valid GID or user name",
+					value);
+		}
+		free(value);
+	}
+
+	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_PERM);
+	if (value) {
+		char *endptr;
+		errno = 0;
+		perm = strtol(value, &endptr, 8);
+		if (errno || endptr == value || *endptr != '\0') {
+			reqc->errcode = EINVAL;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"String to permission bits conversion failed");
+		} else if (perm < 0 || perm > 0777) {
+			reqc->errcode = EINVAL;
+			(void) snprintf(reqc->line_buf, reqc->line_len,
+					"Permissions value is out of range");
+		} else {
+			perm_is_supplied = true;
+		}
+		free(value);
+	}
+
+	/* only set/get the values if no errors occurred in parsing the rpc */
+	if (reqc->errcode == 0) {
+		int set_flags = 0;
+		if (uid_is_supplied)
+			set_flags |= DEFAULT_AUTHZ_SET_UID;
+		if (gid_is_supplied)
+			set_flags |= DEFAULT_AUTHZ_SET_GID;
+		if (perm_is_supplied)
+			set_flags |= DEFAULT_AUTHZ_SET_PERM;
+		ldms_set_default_authz(&uid, &gid, &perm, set_flags);
+
+		(void) snprintf(reqc->line_buf, reqc->line_len,
+				"defaults: uid=%d, gid=%d, perm=%o",
+				(int)uid, (int)gid, (int)perm);
+	}
+
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+
 	return 0;
 }

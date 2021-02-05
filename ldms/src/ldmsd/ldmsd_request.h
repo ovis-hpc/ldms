@@ -120,9 +120,8 @@ enum ldmsd_request {
 	LDMSD_THREAD_STATS_REQ,
 	LDMSD_PRDCR_STATS_REQ,
 	LDMSD_SET_STATS_REQ,
-
-	/* command-line options */
 	LDMSD_LISTEN_REQ,
+	LDMSD_SET_DEFAULT_AUTHZ_REQ,
 
 	/* failover requests by user */
 	LDMSD_FAILOVER_CONFIG_REQ = 0x700, /* "failover_config" user command */

@@ -145,6 +145,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_stats': {'req_attr':[], 'opt_attr': []},
                       'set_stats': {'req_attr':[], 'opt_attr': []},
                       'listen': {'req_attr':['xprt', 'port'], 'opt_attr': ['host', 'auth']},
+                      'metric_sets_default_authz': {'req_attr':[], 'opt_attr': ['uid', 'gid', 'perm']},
                       ##### Failover. #####
                       'failover_config': {
                                 'req_attr': [
