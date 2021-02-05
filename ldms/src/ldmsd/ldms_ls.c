@@ -319,26 +319,25 @@ static int user_data = 0;
 void metric_printer(ldms_set_t s, int i)
 {
 	enum ldms_value_type type = ldms_metric_type_get(s, i);
-	char name_str[256];
 
-	const char *metname;
+	const char *metname, *metunit;
 	if (type != LDMS_V_NONE) {
 		metname = ldms_metric_name_get(s, i);
+		metunit = ldms_metric_unit_get(s, i);
 	} else {
 		metname = "SET_ERROR";
+		metunit = NULL;
 	}
-	if (user_data)
-		sprintf(name_str, "%-42s 0x%" PRIx64,
-			metname,
-			ldms_metric_user_data_get(s, i));
-	else
-		strcpy(name_str, metname);
 
 	printf("%c %-10s %-42s ",
 	       (ldms_metric_flags_get(s, i) & LDMS_MDESC_F_DATA ? 'D' : 'M'),
-	       ldms_metric_type_to_str(type), name_str);
+	       ldms_metric_type_to_str(type), metname);
+	if (user_data)
+		printf("%#" PRIx64, ldms_metric_user_data_get(s,i));
 
 	value_printer(s, i);
+	if (metunit)
+		printf(" %s", metunit);
 	printf("\n");
 }
 
