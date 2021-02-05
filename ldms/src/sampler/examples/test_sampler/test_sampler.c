@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2018 National Technology & Engineering Solutions
+ * Copyright (c) 2015-2018,2021 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2015-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2018,2021 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -68,6 +68,7 @@
 
 struct test_sampler_metric {
 	char *name;
+	char *unit;
 	int mtype; /* 2 is meta and 1 is data */
 	enum ldms_value_type vtype;
 	int count; /* Number of elements in an array metric */
@@ -196,9 +197,9 @@ static int __metric_init_value_set(struct test_sampler_metric *metric,
 }
 
 static struct test_sampler_metric *
-__test_sampler_metric_new(const char *name, const char *mtype,
-		enum ldms_value_type vtype, const char *init_value,
-		const char *count_str)
+__test_sampler_metric_new(const char *name, const char *unit,
+			  const char *mtype, enum ldms_value_type vtype,
+			  const char *init_value, const char *count_str)
 {
 	int count = 0;
 	struct test_sampler_metric *metric;
@@ -219,6 +220,16 @@ __test_sampler_metric_new(const char *name, const char *mtype,
 	if (!metric->name) {
 		free(metric);
 		return NULL;
+	}
+	if (unit) {
+		metric->unit = strdup(unit);
+		if (!metric->unit) {
+			free(metric->name);
+			free(metric);
+			return NULL;
+		}
+	} else {
+		metric->unit = NULL;
 	}
 
 	if ((0 == strcasecmp(mtype, "data")) || (0 == strcasecmp(mtype, "d"))) {
@@ -250,27 +261,48 @@ __test_sampler_metric_new(const char *name, const char *mtype,
 	return metric;
 }
 
+static char *__strtok(char *s, char delim, char **ptr)
+{
+	char *d, *_p;
+
+	if (s)
+		_p = s;
+	else
+		_p = *ptr;
+	d = strchr(_p, delim);
+	if (!d)
+		return NULL;
+	*d = '\0';
+	*ptr = d+1;
+	return _p;
+}
+
 static struct test_sampler_metric *__schema_metric_new(char *s)
 {
-	char *name, *mtype, *vtype, *init_value, *count_str, *ptr;
-	name = strtok_r(s, ":", &ptr);
-	if (!name)
+	char *name, *mtype, *vtype, *init_value, *count_str, *unit, *ptr;
+	char delim = ':';
+
+	name = __strtok(s, delim, &ptr);
+	if (!name || ('\0' == name[0]))
 		return NULL;
-	mtype = strtok_r(NULL, ":", &ptr);
-	if (!mtype)
+	unit = __strtok(NULL, delim, &ptr);
+	if (!unit || ('\0' == unit[0]))
+		unit = NULL;
+	mtype = __strtok(NULL, delim, &ptr);
+	if (!mtype || ('\0' == mtype[0]))
 		return NULL;
-	vtype = strtok_r(NULL, ":", &ptr);
-	if (!vtype)
+	vtype = __strtok(NULL, delim, &ptr);
+	if (!vtype || ('\0' == vtype[0]))
 		return NULL;
-	init_value = strtok_r(NULL, ":", &ptr);
-	if (!init_value)
+	init_value = __strtok(NULL, delim, &ptr);
+	if (!init_value || ('\0' == init_value[0]))
 		return NULL;
-	count_str = strtok_r(NULL, ":", &ptr);
-	if (!count_str)
+	count_str = __strtok(NULL, delim, &ptr);
+	if (!count_str || ('\0' == count_str[0]))
 		count_str = "0";
 
 	struct test_sampler_metric *metric;
-	metric = __test_sampler_metric_new(name, mtype,
+	metric = __test_sampler_metric_new(name, unit, mtype,
 				ldms_metric_str_to_type(vtype),
 				init_value, count_str);
 
@@ -280,6 +312,7 @@ static struct test_sampler_metric *__schema_metric_new(char *s)
 void __schema_metric_destroy(struct test_sampler_metric *metric)
 {
 	free(metric->name);
+	free(metric->unit);
 	free(metric);
 }
 
@@ -328,7 +361,8 @@ static int create_metric_set(const char *schema_name, int push)
 			metric = malloc(sizeof(*metric));
 			metric->name = strdup(metric_name);
 			metric->vtype = LDMS_V_U64;
-			metric->idx = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
+			metric->idx = ldms_schema_metric_add_with_unit(schema,
+						metric_name, "UNIT", LDMS_V_U64);
 			if (metric->idx < 0) {
 				rc = ENOMEM;
 				goto free_schema;
@@ -470,7 +504,7 @@ static int config_add_schema(struct attr_value_list *avl)
 		char name[128];
 		for (i = 0; i < num_metrics; i++) {
 			snprintf(name, 128, "%s%d", DEFAULT_METRIC_NAME_NAME, i);
-			metric = __test_sampler_metric_new(name, "data",
+			metric = __test_sampler_metric_new(name, "UNIT", "data",
 					type, init_value, "0");
 			if (!metric) {
 				msglog(LDMSD_LERROR,
@@ -495,21 +529,21 @@ static int config_add_schema(struct attr_value_list *avl)
 	TAILQ_FOREACH(metric, &ts_schema->list, entry) {
 		if (metric->mtype == LDMS_MDESC_F_DATA) {
 			if (ldms_type_is_array(metric->vtype)) {
-				metric->idx = ldms_schema_metric_array_add(schema,
-						metric->name, metric->vtype,
-						metric->count);
+				metric->idx = ldms_schema_metric_array_add_with_unit(schema,
+						metric->name, metric->unit,
+						metric->vtype, metric->count);
 			} else {
-				metric->idx = ldms_schema_metric_add(schema,
-						metric->name, metric->vtype);
+				metric->idx = ldms_schema_metric_add_with_unit(schema,
+						metric->name, metric->unit, metric->vtype);
 			}
 		} else {
 			if (ldms_type_is_array(metric->vtype)) {
-				metric->idx = ldms_schema_meta_array_add(schema,
-						metric->name, metric->vtype,
-						metric->count);
+				metric->idx = ldms_schema_meta_array_add_with_unit(schema,
+						metric->name, metric->unit,
+						metric->vtype, metric->count);
 			} else {
-				metric->idx = ldms_schema_meta_add(schema,
-						metric->name, metric->vtype);
+				metric->idx = ldms_schema_meta_add_with_unit(schema,
+						metric->name, metric->unit, metric->vtype);
 			}
 		}
 	}
