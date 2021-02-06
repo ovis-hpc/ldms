@@ -281,6 +281,7 @@ function LDMSD {
 		else
 			if test -z "$clonefile"; then
 				echo MISSING input file for DAEMON $i
+				clonefile="/tmp"
 			fi
 			if test -f $clonefile -a $cloneinput = "1"; then
 				cp $clonefile $LDMSD_RUN/conf.$i
