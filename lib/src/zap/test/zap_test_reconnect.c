@@ -307,7 +307,7 @@ void *send_msg(void *arg)
 	char data[512];
 
 	while (1) {
-		zap_ep_t ep;
+		zap_ep_t ep = NULL;
 		pthread_mutex_lock(&flag_lock);
 		if (flag != CONNECTED) {
 			if (flag == CONNECTING) {

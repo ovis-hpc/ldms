@@ -604,7 +604,7 @@ void kpublish(int map_fd, int set_no, int set_size, char *set_name)
 		return;
 	}
 	sh = meta_addr;
-	sprintf(sh->producer_name, "%s", myhostname);
+	snprintf(sh->producer_name, sizeof(sh->producer_name), "%.63s", myhostname);
 }
 
 pthread_t k_thread;

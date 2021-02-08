@@ -98,7 +98,7 @@ static int find_rapl_component()
 static int create_metric_set(base_data_t base)
 {
 	ldms_schema_t schema;
-	int rc, rapl_event_count, rapl_cid;
+	int rc, rapl_event_count = 0, rapl_cid;
 	int event_code = PAPI_NULL;
 	int papi_event_set = PAPI_NULL;
 	char event_names[MAX_RAPL_EVENTS][PAPI_MAX_STR_LEN];

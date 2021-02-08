@@ -166,14 +166,15 @@ static char * compute_pidopts_schema(struct attr_value_list *kwl, struct attr_va
 		return strdup(schema_name);
 	}
 	schema_name = "dstat";
-	bsz = strlen(schema_name) + 16;
+	bsz = strlen(schema_name) + 18; /* len(schema_name) + len("_<HEX>") + 1 */
 	buf = malloc(bsz);
-	char hbuf[bsz];
-	memset(hbuf, 0, bsz);
+	if (!buf)
+		return NULL;
 	if (dosuffix) {
-		snprintf(hbuf, bsz, "_%x", pidopts);
+		snprintf(buf, bsz, "%s_%x", schema_name, pidopts);
+	} else {
+		snprintf(buf, bsz, "%s", schema_name);
 	}
-	snprintf(buf, bsz, "%s%s", schema_name, hbuf);
 	return buf;
 }
 
