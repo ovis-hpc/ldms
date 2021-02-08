@@ -468,8 +468,8 @@ static int string2attr_list_local(char *str, struct attr_value_list **__av_list,
 	struct attr_value_list **__kw_list)
 {
 	char *cmd_s;
-	struct attr_value_list *av_list;
-	struct attr_value_list *kw_list;
+	struct attr_value_list *av_list = NULL;
+	struct attr_value_list *kw_list = NULL;
 	int tokens, rc;
 
 	/*

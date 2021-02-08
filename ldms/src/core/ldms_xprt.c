@@ -3278,7 +3278,7 @@ int ldms_register_notify_cb(ldms_t x, ldms_set_t s, int flags,
 void ldms_xprt_set_delete(ldms_set_t s, ldms_set_delete_cb_t cb_fn, void *cb_arg)
 {
 	struct ldms_request *req;
-	struct ldms_rbuf_desc *rbd, *next_rbd;
+	struct ldms_rbuf_desc *rbd, *next_rbd = NULL;
 	ldms_t xprt;
 	struct ldms_context *ctxt;
 	struct ldms_set *set = s->set;

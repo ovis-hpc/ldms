@@ -175,18 +175,23 @@ static void ldmsctl_buffer_free(ldmsctl_buffer_t buf)
 	free(buf);
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpragmas"
+#pragma GCC diagnostic ignored "-Walloc-size-larger-than="
 static void ldmsctl_buffer_mem_append(ldmsctl_buffer_t buf, void *src, size_t n)
 {
 	if (buf->len - buf->off < n) {
-		buf->buf = realloc(buf->buf, buf->len + n);
-		if (!buf->buf) {
+		char *tmp = realloc(buf->buf, buf->len + n);
+		if (!tmp) {
 			fprintf(stderr, "Out of memory\n");
 			exit(ENOMEM);
 		}
+		buf->buf = tmp;
 		buf->len += n;
 	}
 	memcpy(&(buf->buf[buf->off]), src, n);
 }
+#pragma GCC diagnostic pop
 
 static void ldmsctl_recv_buf_new(void *data, size_t data_len)
 {
@@ -2278,7 +2283,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	size_t msglen = 0;
 	rc = 0;
 	ldmsctl_buffer_t recv_buf;
-	int flags;
+	int flags = 0;
 
 	while (1) {
 		sem_wait(&ctrl->ldms_xprt.recv_sem);

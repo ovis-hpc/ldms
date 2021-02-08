@@ -102,7 +102,7 @@ static int hello_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			 json_entity_t entity)
 {
 	int rc = 0;
-	const char *type;
+	const char *type = "UNKNOWN";
 	switch (stream_type) {
 	case LDMSD_STREAM_JSON:
 		type = "JSON";

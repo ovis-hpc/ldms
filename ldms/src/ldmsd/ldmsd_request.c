@@ -5585,6 +5585,8 @@ static char *__xprt_stats_as_json(size_t *json_sz)
 	struct ldms_xprt_rate_data rate_data;
 	int reset = 0;
 
+	(void)clock_gettime(CLOCK_REALTIME, &start);
+
 	ldms_xprt_rate_data(&rate_data, reset);
 
 	buff = malloc(sz);

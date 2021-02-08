@@ -115,9 +115,9 @@ char *str_repl_cmd(const char *_str)
 {
 	FILE *p = NULL;
 	char *str = strdup(_str);
+	char *buff = NULL;
 	if (!str)
 		goto err;
-	char *buff = NULL;
 	char *xbuff;
 	const char *eos = str + strlen(str);
 	size_t slen = 0; /* strlen of buff */

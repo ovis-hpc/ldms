@@ -132,6 +132,9 @@ static int create_metric_set(base_data_t base)
 	   populated with 0 values for non existent ifaces. The metrics will appear
 	   in the order of the ifaces as specified */
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpragmas"
+#pragma GCC diagnostic ignored "-Wformat-truncation"
 	for (i = 0; i < niface; i++){
 		for (j = 0; j < NVARS; j++){
 			snprintf(metric_name, 128, "%s#%s", varname[j], iface[i]);
@@ -144,6 +147,7 @@ static int create_metric_set(base_data_t base)
 				mindex[i] = rc;
 		}
 	}
+#pragma GCC diagnostic pop
 
 	set = base_set_new(base);
 	if (!set) {
