@@ -1,0 +1,29 @@
+name: Space Check
+
+on:
+  push:
+    branches: [ OVIS-4 ]
+  pull_request:
+    branches: [ OVIS-4 ]
+
+jobs:
+  space_check:
+    runs-on: ubuntu-20.04
+    steps:
+    - uses: actions/checkout@v2
+    - run: |
+        set -e
+        test -n "${GITHUB_BASE_REF}"
+        git fetch origin "${GITHUB_BASE_REF}:refs/remotes/origin/${GITHUB_BASE_REF}"
+        echo "=== Creating /tmp/diff ==="
+        git diff "origin/${GITHUB_BASE_REF}" > /tmp/diff
+        echo "=== Checking trailing spaces in /tmp/diff ==="
+        if grep '^+.*[[:space:]]$' /tmp/diff ; then
+          echo "---------------------------------------"
+          echo "Pull request contains trailing spaces"
+          exit -1
+        else
+          echo "---------------------------------------"
+          echo "OK."
+          exit 0
+        fi
