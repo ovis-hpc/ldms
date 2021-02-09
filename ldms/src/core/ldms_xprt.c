@@ -3314,11 +3314,9 @@ void ldms_xprt_set_delete(ldms_set_t s, ldms_set_delete_cb_t cb_fn, void *cb_arg
 	rbd = LIST_FIRST(&rbd_list);
 	while (rbd) {
 		xprt = ldms_xprt_get(rbd->xprt);
+		next_rbd = LIST_NEXT(rbd, set_link);
 		if (!xprt)
 			goto next_1;
-
-		next_rbd = LIST_NEXT(rbd, set_link);
-		LIST_REMOVE(rbd, set_link);
 
 		pthread_mutex_lock(&xprt->lock);
 
@@ -3353,6 +3351,7 @@ void ldms_xprt_set_delete(ldms_set_t s, ldms_set_delete_cb_t cb_fn, void *cb_arg
 		pthread_mutex_unlock(&xprt->lock);
 		ldms_xprt_put(xprt);
 	next_1:
+		LIST_REMOVE(rbd, set_link);
 		ref_put(&rbd->ref, "xprt_set_delete");
 		rbd = next_rbd;
 	}
