@@ -126,11 +126,12 @@ struct z_fi_buffer {
 };
 
 enum z_fi_op {
-	ZAP_WC_SEND,
-	ZAP_WC_RECV,
-	ZAP_WC_RDMA_READ,
-	ZAP_WC_RDMA_WRITE,
-	ZAP_WC_SEND_MAPPED,
+	Z_FI_WC_SEND,
+	Z_FI_WC_SHARE,
+	Z_FI_WC_RECV,
+	Z_FI_WC_RDMA_READ,
+	Z_FI_WC_RDMA_WRITE,
+	Z_FI_WC_SEND_MAPPED,
 };
 
 struct z_fi_context {

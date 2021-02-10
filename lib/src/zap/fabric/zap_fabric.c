@@ -92,10 +92,10 @@ static struct {
 
 __attribute__((unused))
 static const char *z_fi_op_str[] = {
-	[ZAP_WC_SEND]        =  "ZAP_WC_SEND",
-	[ZAP_WC_RECV]        =  "ZAP_WC_RECV",
-	[ZAP_WC_RDMA_READ]   =  "ZAP_WC_RDMA_READ",
-	[ZAP_WC_RDMA_WRITE]  =  "ZAP_WC_RDMA_WRITE",
+	[Z_FI_WC_SEND]        =  "ZAP_WC_SEND",
+	[Z_FI_WC_RECV]        =  "ZAP_WC_RECV",
+	[Z_FI_WC_RDMA_READ]   =  "ZAP_WC_RDMA_READ",
+	[Z_FI_WC_RDMA_WRITE]  =  "ZAP_WC_RDMA_WRITE",
 };
 
 /*
@@ -193,10 +193,10 @@ static int z_fi_info_log_on = 1;
 
 
 static char *op_str[] = {
-	[ZAP_WC_SEND]        = "ZAP_WC_SEND",
-	[ZAP_WC_RECV]        = "ZAP_WC_RECV",
-	[ZAP_WC_RDMA_WRITE]  = "ZAP_WC_RDMA_WRITE",
-	[ZAP_WC_RDMA_READ]   = "ZAP_WC_RDMA_READ",
+	[Z_FI_WC_SEND]        = "ZAP_WC_SEND",
+	[Z_FI_WC_RECV]        = "ZAP_WC_RECV",
+	[Z_FI_WC_RDMA_WRITE]  = "ZAP_WC_RDMA_WRITE",
+	[Z_FI_WC_RDMA_READ]   = "ZAP_WC_RDMA_READ",
 };
 
 static int		init_once();
@@ -780,30 +780,35 @@ static void flush_io_q(struct z_fi_ep *rep)
 		TAILQ_REMOVE(&rep->io_q, ctxt, pending_link);
 		DLOG("op %s rep %p ctxt %p\n", z_fi_op_str[ctxt->op], rep, ctxt);
 		switch (ctxt->op) {
-		    case ZAP_WC_SEND:
-			/*
-			 * Zap version 1.3.0.0 doesn't have the SEND_COMPLETE event
-			 */
+		case Z_FI_WC_SHARE:
 			if (ctxt->u.send.rb)
 				__buffer_free(ctxt->u.send.rb);
 			__context_free(ctxt);
 			continue;
-		    case ZAP_WC_RDMA_WRITE:
+		case Z_FI_WC_SEND:
+			ev.type = ZAP_EVENT_SEND_COMPLETE;
+			ev.context = ctxt->usr_context;
+			rep->ep.cb(&rep->ep, &ev);
+			if (ctxt->u.send.rb)
+				__buffer_free(ctxt->u.send.rb);
+			__context_free(ctxt);
+			continue;
+		case Z_FI_WC_RDMA_WRITE:
 			ev.type = ZAP_EVENT_WRITE_COMPLETE;
 			ev.context = ctxt->usr_context;
 			break;
-		    case ZAP_WC_RDMA_READ:
+		case Z_FI_WC_RDMA_READ:
 			ev.type = ZAP_EVENT_READ_COMPLETE;
 			ev.context = ctxt->usr_context;
 			break;
-		    case ZAP_WC_SEND_MAPPED:
+		case Z_FI_WC_SEND_MAPPED:
 			ev.type = ZAP_EVENT_SEND_MAPPED_COMPLETE;
 			ev.context = ctxt->usr_context;
 			break;
-		    case ZAP_WC_RECV:
-		    default:
+		case Z_FI_WC_RECV:
+		default:
 			LOG_(rep, "invalid op type %d in queued i/o\n", ctxt->op);
-			break;
+break;
 		}
 		rep->ep.cb(&rep->ep, &ev);
 		__context_free(ctxt);
@@ -822,7 +827,7 @@ post_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt)
 	struct fid_mr *mr;
 
 	switch (ctxt->op) {
-	    case ZAP_WC_SEND:
+	    case Z_FI_WC_SEND:
 		rb = ctxt->u.send.rb;
 		rb->msg->credits = htons(rep->lcl_rq_credits);
 		rep->lcl_rq_credits = 0;
@@ -833,7 +838,7 @@ post_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt)
 		DLOG("ZAP_WC_SEND rep %p ctxt %p rb %p len %d with %d credits rc %d\n",
 		     rep, ctxt, rb, len, rep->lcl_rq_credits, rc);
 		break;
-	    case ZAP_WC_SEND_MAPPED:
+	    case Z_FI_WC_SEND_MAPPED:
 		rb = ctxt->u.send_mapped.rb;
 		rb->msg->credits = htons(rep->lcl_rq_credits);
 		rep->lcl_rq_credits = 0;
@@ -850,7 +855,7 @@ post_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt)
 		     ctxt->u.send_mapped.iov[1].iov_len, rep->lcl_rq_credits,
 		     rc);
 		break;
-	    case ZAP_WC_RDMA_WRITE:
+	    case Z_FI_WC_RDMA_WRITE:
 		mr = z_fi_mr_get(rep, ctxt->u.rdma.src_map);
 		if (!mr) {
 			rc = errno;
@@ -864,7 +869,7 @@ post_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt)
 		DLOG("ZAP_WC_RDMA_WRITE rep %p ctxt %p src %p dst %p len %d\n",
 		     rep, ctxt, ctxt->u.rdma.src_addr, ctxt->u.rdma.dst_addr, ctxt->u.rdma.len);
 		break;
-	    case ZAP_WC_RDMA_READ:
+	    case Z_FI_WC_RDMA_READ:
 		mr = z_fi_mr_get(rep, ctxt->u.rdma.dst_map);
 		if (!mr) {
 			rc = errno;
@@ -961,7 +966,7 @@ static void submit_pending(struct z_fi_ep *rep)
 	pthread_mutex_lock(&rep->credit_lock);
 	while (!TAILQ_EMPTY(&rep->io_q)) {
 		ctxt = TAILQ_FIRST(&rep->io_q);
-		is_rdma = (ctxt->op != ZAP_WC_SEND);
+		is_rdma = (ctxt->op != Z_FI_WC_SEND);
 		if (_get_credits(rep, is_rdma))
 			goto out;
 
@@ -994,7 +999,8 @@ static zap_err_t submit_wr(struct z_fi_ep *rep, struct z_fi_context *ctxt, int i
 	return rc;
 }
 
-static zap_err_t __post_send(struct z_fi_ep *rep, struct z_fi_buffer *rbuf)
+static zap_err_t
+__post_send(struct z_fi_ep *rep, struct z_fi_buffer *rbuf, enum z_fi_op op)
 {
 	int rc;
 	struct z_fi_context *ctxt;
@@ -1002,7 +1008,7 @@ static zap_err_t __post_send(struct z_fi_ep *rep, struct z_fi_buffer *rbuf)
 	DLOG("rep %p rbuf %p\n", rep, rbuf);
 
 	pthread_mutex_lock(&rep->ep.lock);
-	ctxt = __context_alloc(rep, NULL, ZAP_WC_SEND);
+	ctxt = __context_alloc(rep, NULL, op);
 	if (!ctxt) {
 		errno = ENOMEM;
 		pthread_mutex_unlock(&rep->ep.lock);
@@ -1118,7 +1124,7 @@ static int __post_recv(struct z_fi_ep *rep, struct z_fi_buffer *rb)
 	int rc;
 
 	pthread_mutex_lock(&rep->ep.lock);
-	ctxt = __context_alloc(rep, NULL, ZAP_WC_RECV);
+	ctxt = __context_alloc(rep, NULL, Z_FI_WC_RECV);
 	if (!ctxt) {
 		rc = ZAP_ERR_RESOURCE;
 		goto out;
@@ -1198,9 +1204,22 @@ zap_err_t z_map_err(struct z_fi_ep *rep, struct fi_cq_err_entry *entry)
 	};
 }
 
+static void process_share_wc(struct z_fi_ep *rep, struct fi_cq_err_entry *entry)
+{
+	struct z_fi_context *ctxt = entry->op_context;
+	if (!entry->err && ctxt->u.send.rb)
+		__buffer_free(ctxt->u.send.rb);
+}
+
 static void process_send_wc(struct z_fi_ep *rep, struct fi_cq_err_entry *entry)
 {
 	struct z_fi_context *ctxt = entry->op_context;
+	struct zap_event zev = {
+			.type = ZAP_EVENT_SEND_COMPLETE,
+			.context = ctxt->usr_context,
+			.status = z_map_err(rep, entry),
+	};
+	rep->ep.cb(&rep->ep, &zev);
 	if (!entry->err && ctxt->u.send.rb)
 		__buffer_free(ctxt->u.send.rb);
 }
@@ -1496,7 +1515,15 @@ static void scrub_cq(struct z_fi_ep *rep)
 		ctxt = entry.op_context;
 		DLOG("fi_cq_read %d, entry.err %d ctxt %p\n", ret, entry.err, ctxt);
 		switch (ctxt->op) {
-		    case ZAP_WC_SEND:
+		case Z_FI_WC_SHARE:
+			DLOG("got ZAP_WC_SEND rep %p ctxt %p rb %p err %d proverr %d\n",
+			     rep, ctxt, ctxt->u.send.rb, entry.err, entry.prov_errno);
+			process_share_wc(rep, &entry);
+			put_sq(rep);
+			if (entry.err && ctxt->u.send.rb)
+				__buffer_free(ctxt->u.send.rb);
+			break;
+		case Z_FI_WC_SEND:
 			DLOG("got ZAP_WC_SEND rep %p ctxt %p rb %p err %d proverr %d\n",
 			     rep, ctxt, ctxt->u.send.rb, entry.err, entry.prov_errno);
 			process_send_wc(rep, &entry);
@@ -1504,7 +1531,7 @@ static void scrub_cq(struct z_fi_ep *rep)
 			if (entry.err && ctxt->u.send.rb)
 				__buffer_free(ctxt->u.send.rb);
 			break;
-		    case ZAP_WC_SEND_MAPPED:
+		case Z_FI_WC_SEND_MAPPED:
 			DLOG("got ZAP_WC_SEND rep %p ctxt %p rb %p err %d proverr %d\n",
 			     rep, ctxt, ctxt->u.send_mapped.rb, entry.err, entry.prov_errno);
 			process_send_mapped_wc(rep, &entry);
@@ -1512,27 +1539,27 @@ static void scrub_cq(struct z_fi_ep *rep)
 			if (entry.err && ctxt->u.send.rb)
 				__buffer_free(ctxt->u.send.rb);
 			break;
-		    case ZAP_WC_RDMA_WRITE:
+		case Z_FI_WC_RDMA_WRITE:
 			DLOG("got ZAP_WC_RDMA_WRITE rep %p ctxt %p src %p dst %p err %d proverr %d\n",
 			     rep, ctxt, ctxt->u.rdma.src_addr, ctxt->u.rdma.dst_addr,
 			     entry.err, entry.prov_errno);
 			process_write_wc(rep, &entry);
 			put_sq(rep);
 			break;
-		    case ZAP_WC_RDMA_READ:
+		case Z_FI_WC_RDMA_READ:
 			DLOG("got ZAP_WC_RDMA_READ rep %p ctxt %p src %p dst %p err %d proverr %d\n",
 			     rep, ctxt, ctxt->u.rdma.src_addr, ctxt->u.rdma.dst_addr,
 			     entry.err, entry.prov_errno);
 			process_read_wc(rep, &entry);
 			put_sq(rep);
 			break;
-		    case ZAP_WC_RECV:
+		case Z_FI_WC_RECV:
 			DLOG("got ZAP_WC_RECV rep %p ctxt %p rb %p len %d err %d proverr %d\n",
 			     rep, ctxt, ctxt->u.recv.rb, entry.len, entry.err, entry.prov_errno);
 			if (!entry.err)
 				process_recv_wc(rep, &entry);
 			break;
-		    default:
+		default:
 			LOG_(rep,"invalid completion op %d\n", ctxt->op);
 			break;
 		}
@@ -2173,7 +2200,7 @@ static int send_credit_update(struct z_fi_ep *rep)
 	pthread_mutex_unlock(&rep->credit_lock);
 
 	pthread_mutex_lock(&rep->ep.lock);
-	ctxt = __context_alloc(rep, NULL, ZAP_WC_SEND);
+	ctxt = __context_alloc(rep, NULL, Z_FI_WC_SEND);
 	if (!ctxt) {
 		__buffer_free(rbuf);
 		pthread_mutex_unlock(&rep->ep.lock);
@@ -2239,7 +2266,7 @@ static zap_err_t z_fi_send(zap_ep_t ep, char *buf, size_t len)
 	memcpy((char *)rbuf->msg + sizeof(struct z_fi_message_hdr), buf, len);
 	rbuf->data_len = len + sizeof(struct z_fi_message_hdr);
 
-	rc = __post_send(rep, rbuf);
+	rc = __post_send(rep, rbuf, Z_FI_WC_SEND);
 	if (rc)
 		__buffer_free(rbuf);
 
@@ -2281,7 +2308,7 @@ static zap_err_t z_fi_send_mapped(zap_ep_t ep, zap_map_t map,
 		__buffer_free(rbuf);
 		goto out;
 	}
-	ctxt = __context_alloc(rep, context, ZAP_WC_SEND_MAPPED);
+	ctxt = __context_alloc(rep, context, Z_FI_WC_SEND_MAPPED);
 	if (!ctxt) {
 		__buffer_free(rbuf);
 		rc = ZAP_ERR_RESOURCE;
@@ -2351,7 +2378,7 @@ static zap_err_t z_fi_share(zap_ep_t ep, zap_map_t map,
 
 	rbuf->data_len = sz;
 
-	rc = __post_send(rep, rbuf);
+	rc = __post_send(rep, rbuf, Z_FI_WC_SHARE);
 	if (rc)
 		__buffer_free(rbuf);
 	return rc;
@@ -2393,7 +2420,7 @@ static zap_err_t z_fi_write(zap_ep_t ep,
 	if (rc)
 		goto out;
 
-	ctxt = __context_alloc(rep, context, ZAP_WC_RDMA_WRITE);
+	ctxt = __context_alloc(rep, context, Z_FI_WC_RDMA_WRITE);
 	if (!ctxt) {
 		rc = ZAP_ERR_RESOURCE;
 		goto out;
@@ -2430,7 +2457,7 @@ static zap_err_t z_fi_read(zap_ep_t ep,
 	if (rc)
 		goto out;
 
-	ctxt = __context_alloc(rep, context, ZAP_WC_RDMA_READ);
+	ctxt = __context_alloc(rep, context, Z_FI_WC_RDMA_READ);
 	if (!ctxt) {
 		rc = ZAP_ERR_RESOURCE;
 		goto out;

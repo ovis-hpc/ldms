@@ -122,6 +122,8 @@ typedef enum zap_event_type {
 	ZAP_EVENT_RENDEZVOUS,
 	/*! A \c zap_send_mapped() request has completed. */
 	ZAP_EVENT_SEND_MAPPED_COMPLETE,
+	/*! A \c zap_send() request has completed. */
+	ZAP_EVENT_SEND_COMPLETE,
 	/*! Last event (dummy) */
 	ZAP_EVENT_LAST
 } zap_event_type_t;
