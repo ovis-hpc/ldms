@@ -440,6 +440,7 @@ void zap_interpose_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_DISCONNECTED:
 	case ZAP_EVENT_READ_COMPLETE:
 	case ZAP_EVENT_WRITE_COMPLETE:
+	case ZAP_EVENT_SEND_COMPLETE:
 	case ZAP_EVENT_SEND_MAPPED_COMPLETE:
 		ev->data = NULL;
 		ev->data_len = 0;

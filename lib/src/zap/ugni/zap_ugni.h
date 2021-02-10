@@ -238,10 +238,14 @@ union zap_ugni_msg {
 
 #pragma pack()
 
+#define UGNI_WR_F_COMPLETE 0x1
+#define UGNI_WR_F_SEND     0x2
+#define UGNI_WR_F_SEND_MAPPED 0x4
+
 struct zap_ugni_send_wr {
 	STAILQ_ENTRY(zap_ugni_send_wr) link;
 	void  *ctxt; /* for send_mapped completion */
-	int    cb;   /* 1 if completion causes a callback */
+	int    flags; /* various wr flags */
 	off_t  moff; /* message offset (bytes written) */
 	size_t msz;  /* size of message in the union msg (excluding data) */
 	off_t  doff; /* data payload offset (bytes written) */

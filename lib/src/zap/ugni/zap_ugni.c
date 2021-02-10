@@ -659,6 +659,26 @@ static zap_err_t z_ugni_connect(zap_ep_t ep,
 	return zerr;
 }
 
+static void __ugni_wr_complete(struct z_ugni_ep *uep, struct zap_ugni_send_wr *wr,
+				enum zap_err_e zerr)
+{
+	struct zap_event ev = {0};
+	if (wr->flags & UGNI_WR_F_COMPLETE) {
+		if (wr->flags & UGNI_WR_F_SEND) {
+			ev.type = ZAP_EVENT_SEND_COMPLETE;
+		} else if (wr->flags & UGNI_WR_F_SEND_MAPPED) {
+			ev.type = ZAP_EVENT_SEND_MAPPED_COMPLETE;
+			ev.context = wr->ctxt;
+		} else {
+			/* do nothing */
+		}
+		ev.status = zerr;
+		pthread_mutex_unlock(&uep->ep.lock);
+		uep->ep.cb(&uep->ep, &ev);
+		pthread_mutex_lock(&uep->ep.lock);
+	}
+}
+
 static void ugni_sock_write(ovis_event_t ev)
 {
 	struct z_ugni_ep *uep = ev->param.ctxt;
@@ -701,15 +721,7 @@ static void ugni_sock_write(ovis_event_t ev)
 
 	/* wr completed */
 	STAILQ_REMOVE_HEAD(&uep->sq, link);
-	if (wr->cb) {
-		pthread_mutex_unlock(&uep->ep.lock);
-		struct zap_event ev = {
-				.type = ZAP_EVENT_SEND_MAPPED_COMPLETE,
-				.context = wr->ctxt
-			};
-		uep->ep.cb(&uep->ep, &ev);
-		pthread_mutex_lock(&uep->ep.lock);
-	}
+	__ugni_wr_complete(uep, wr, ZAP_ERR_OK);
 	free(wr);
 	goto next;
 
@@ -1489,7 +1501,7 @@ static struct zap_ugni_send_wr *__wr_alloc(enum zap_ugni_msg_type mtype,
 	if (!wr)
 		return NULL;
 
-	wr->cb = 0;
+	wr->flags = 0;
 	wr->moff = 0;
 	wr->msz = msz;
 	wr->doff = 0;
@@ -1558,7 +1570,7 @@ __ugni_send(struct z_ugni_ep *uep, enum zap_ugni_msg_type type,
 	if (!wr)
 		return ZAP_ERR_RESOURCE;
 	msg = &wr->msg.sendrecv;
-	msg->data_len     = htonl(len);
+	msg->data_len = htonl(len);
 	if (buf && len)
 		memcpy(wr->data, buf, len);
 	zerr = __wr_post(uep, wr);
@@ -1751,16 +1763,7 @@ static void ugni_sock_event(ovis_event_t ev)
 	/* flush wr */
 	while ((wr = STAILQ_FIRST(&uep->sq))) {
 		STAILQ_REMOVE_HEAD(&uep->sq, link);
-		if (wr->cb) {
-			struct zap_event ev = {
-				.type    = ZAP_EVENT_SEND_MAPPED_COMPLETE,
-				.status  = ZAP_ERR_FLUSH,
-				.context = wr->ctxt,
-			};
-			pthread_mutex_unlock(&uep->ep.lock);
-			uep->ep.cb(&uep->ep, &ev);
-			pthread_mutex_lock(&uep->ep.lock);
-		}
+		__ugni_wr_complete(uep, wr, ZAP_ERR_FLUSH);
 		free(wr);
 	}
 
@@ -1962,6 +1965,8 @@ static zap_err_t z_ugni_listen(zap_ep_t ep, struct sockaddr *sa,
 static zap_err_t z_ugni_send(zap_ep_t ep, char *buf, size_t len)
 {
 	struct z_ugni_ep *uep = (void*)ep;
+	struct zap_ugni_send_wr *wr;
+	struct zap_ugni_msg_regular *msg;
 	zap_err_t zerr;
 
 	/* node state validation */
@@ -1969,13 +1974,25 @@ static zap_err_t z_ugni_send(zap_ep_t ep, char *buf, size_t len)
 	if (zerr)
 		return zerr;
 
+	wr = __wr_alloc(ZAP_UGNI_MSG_REGULAR, len, 1);
+	if (!wr)
+		return ZAP_ERR_RESOURCE;
+	wr->ctxt = 0;
+	wr->flags = UGNI_WR_F_COMPLETE | UGNI_WR_F_SEND;
+	msg = &wr->msg.sendrecv;
+	msg->data_len = htonl(len);
+	if (buf && len)
+		memcpy(wr->data, buf, len);
+
 	pthread_mutex_lock(&uep->ep.lock);
 	if (!uep->gni_ep || ep->state != ZAP_EP_CONNECTED) {
 		pthread_mutex_unlock(&uep->ep.lock);
 		return ZAP_ERR_NOT_CONNECTED;
 	}
 
-	zerr = __ugni_send(uep, ZAP_UGNI_MSG_REGULAR, buf, len);
+	zerr = __wr_post(uep, wr);
+	if (zerr)
+		free(wr);
 	pthread_mutex_unlock(&uep->ep.lock);
 	return zerr;
 }
@@ -2004,7 +2021,7 @@ z_ugni_send_mapped(zap_ep_t ep, zap_map_t map, void *buf, size_t len,
 	if(!wr)
 		return ZAP_ERR_TRANSPORT;
 	wr->ctxt = context;
-	wr->cb = 1;
+	wr->flags = UGNI_WR_F_COMPLETE | UGNI_WR_F_SEND_MAPPED;
 	wr->data = buf;
 	msg = &wr->msg.sendrecv;
 	msg->data_len = htonl(len);

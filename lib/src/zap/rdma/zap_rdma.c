@@ -804,18 +804,26 @@ static void flush_io_q(struct z_rdma_ep *rep)
 	struct zap_event ev = {
 		.status = ZAP_ERR_FLUSH,
 	};
-
+	enum z_rdma_message_type msg_type;
 	while (!TAILQ_EMPTY(&rep->io_q)) {
 		ctxt = TAILQ_FIRST(&rep->io_q);
 		TAILQ_REMOVE(&rep->io_q, ctxt, pending_link);
 		ctxt->is_pending = 0;
 		switch (ctxt->op) {
 		case IBV_WC_SEND:
-			/*
-			 * Zap version 1.3.0.0 doesn't have
-			 * the SEND_COMPLETE event
-			 */
-			goto free;
+			msg_type = ntohs(ctxt->rb->msg->hdr.msg_type);
+			if (Z_RDMA_MSG_SEND == msg_type) {
+				ev.type = ZAP_EVENT_SEND_COMPLETE;
+			} else if (Z_RDMA_MSG_SEND_MAPPED == msg_type){
+				ev.type = ZAP_EVENT_SEND_MAPPED_COMPLETE;
+			} else {
+				/*
+				 * In this case, Zap delivers a complete event
+				 * only for send or send_mapped.
+				 */
+				goto free;
+			}
+			ev.context = ctxt->usr_context;
 			break;
 		case IBV_WC_RDMA_WRITE:
 			ev.type = ZAP_EVENT_WRITE_COMPLETE;
@@ -831,7 +839,6 @@ static void flush_io_q(struct z_rdma_ep *rep)
 			break;
 		}
 		rep->ep.cb(&rep->ep, &ev);
-
 	free:
 		if (ctxt->rb)
 			__rdma_buffer_free(ctxt->rb);
@@ -964,6 +971,7 @@ static void submit_pending(struct z_rdma_ep *rep)
 	struct z_rdma_context *ctxt;
 	int is_rdma;
 	int rc;
+	enum z_rdma_message_type msg_type;
 
 	pthread_mutex_lock(&rep->credit_lock);
 	while (!TAILQ_EMPTY(&rep->io_q)) {
@@ -985,11 +993,20 @@ static void submit_pending(struct z_rdma_ep *rep)
 		struct zap_event ev = { .status = ZAP_ERR_FLUSH, };
 		switch (ctxt->op) {
 		case IBV_WC_SEND:
-			/*
-			 * Zap version 1.3.0.0 doesn't have
-			 * the SEND_COMPLETE event
-			 */
-			goto free;
+			msg_type = ntohs(ctxt->rb->msg->hdr.msg_type);
+			if (Z_RDMA_MSG_SEND == msg_type) {
+				ev.type = ZAP_EVENT_SEND_COMPLETE;
+			} else if (Z_RDMA_MSG_SEND_MAPPED == msg_type) {
+				ev.type = ZAP_EVENT_SEND_MAPPED_COMPLETE;
+			} else {
+				/*
+				 * In this case, Zap delivers a complete event
+				 * only for send or send_mapped.
+				 */
+				goto free;
+			}
+			ev.context = ctxt->usr_context;
+			break;
 		case IBV_WC_RDMA_WRITE:
 			ev.type = ZAP_EVENT_WRITE_COMPLETE;
 			ev.context = ctxt->usr_context;
@@ -1004,8 +1021,7 @@ static void submit_pending(struct z_rdma_ep *rep)
 			break;
 		}
 		rep->ep.cb(&rep->ep, &ev);
-
-	    free:
+	free:
 		if (ctxt->rb)
 			__rdma_buffer_free(ctxt->rb);
 		pthread_mutex_lock(&rep->ep.lock);
@@ -1246,17 +1262,29 @@ zap_err_t z_map_err(int wc_status)
 static void process_send_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
 					struct z_rdma_context *ctxt)
 {
-	/* NOTE: send_mapped uses 2 SGEs, normal send uses 1 SGE */
-	if (ctxt->wr.num_sge < 2)
-		goto out;
 	struct zap_event zev = {
-			.type = ZAP_EVENT_SEND_MAPPED_COMPLETE,
 			.context = ctxt->usr_context,
 			.status = z_map_err(wc->status),
 		};
+	enum z_rdma_message_type msg_type;
+	msg_type = ntohs(ctxt->rb->msg->hdr.msg_type);
+	switch (msg_type) {
+	case Z_RDMA_MSG_SEND:
+		zev.type = ZAP_EVENT_SEND_COMPLETE;
+		break;
+	case Z_RDMA_MSG_SEND_MAPPED:
+		zev.type = ZAP_EVENT_SEND_MAPPED_COMPLETE;
+		break;
+	default:
+		/*
+		 * Only send & send_mapped that Zap will need
+		 * to deliver the complete event here.
+		 */
+		goto free;
+	}
 	/* send_mapped needs an application callback */
 	rep->ep.cb(&rep->ep, &zev);
-out:
+free:
 	if (!wc->status && ctxt->rb)
 		__rdma_buffer_free(ctxt->rb);
 }
@@ -1351,6 +1379,7 @@ static void process_recv_wc(struct z_rdma_ep *rep, struct ibv_wc *wc,
 	msg_type = ntohs(msg->msg_type);
 	switch (msg_type) {
 	case Z_RDMA_MSG_SEND:
+	case Z_RDMA_MSG_SEND_MAPPED:
 		assert(wc->byte_len >= sizeof(*msg) + 1);
 		if (wc->byte_len < sizeof(*msg) + 1)
 			goto err_wrong_dsz;
@@ -2491,7 +2520,7 @@ static zap_err_t z_rdma_send_mapped(zap_ep_t ep, zap_map_t map, void *buf,
 	 */
 
 	hdr = &rbuf->msg->hdr;
-	hdr->msg_type = htons(Z_RDMA_MSG_SEND);
+	hdr->msg_type = htons(Z_RDMA_MSG_SEND_MAPPED);
 
 	ctxt->sge[0].addr = (uint64_t)rbuf->msg->bytes;
 	ctxt->sge[0].length = sizeof(*hdr);

@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2013-2015,2017-2020 National Technology & Engineering Solutions
+ * Copyright (c) 2013-2015,2017-2021 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2013-2015,2017-2020 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2015,2017-2021 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -148,7 +148,8 @@ int server_events = 0;
 #define  CLIENT_READ_SUCCESS  0x00000010
 #define  CLIENT_DISCONNECTED  0x00000020
 #define  CLIENT_SEND_COMPLETE 0x00000040
-#define  CLIENT_EVENTS        0x0000007F
+#define  CLIENT_SEND_MAPPED   0x00000080
+#define  CLIENT_EVENTS        0x000000FF
 
 int client_events = 0;
 
@@ -181,7 +182,8 @@ char *ev_str[] = {
 	[ZAP_EVENT_READ_COMPLETE] = "READ_COMPLETE",
 	[ZAP_EVENT_WRITE_COMPLETE] = "WRITE_COMPLETE",
 	[ZAP_EVENT_RENDEZVOUS] = "RENDEZVOUS",
-	[ZAP_EVENT_SEND_MAPPED_COMPLETE] = "SEND_COMPLETE",
+	[ZAP_EVENT_SEND_MAPPED_COMPLETE] = "SEND_MAPPED_COMPLETE",
+	[ZAP_EVENT_SEND_COMPLETE] = "SEND_COMPLETE",
 };
 
 struct zap_test_mem {
@@ -448,6 +450,13 @@ void server_cb(zap_ep_t ep, zap_event_t ev)
 	case ZAP_EVENT_RENDEZVOUS:
 		handle_rendezvous(ep, ev);
 		break;
+	case ZAP_EVENT_SEND_COMPLETE:
+		/* Do nothing */
+		break;
+	case ZAP_EVENT_SEND_MAPPED_COMPLETE:
+		printf("Server didn't use send_mapped at all.\n");
+		ASSERT(0);
+		break;
 	default:
 		printf("Unhandled Zap event %s\n", zap_event_str(ev->type));
 		ASSERT(0);
@@ -580,11 +589,11 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		do_send_mapped(ep, HELLO_MSG);
 		break;
 	case ZAP_EVENT_SEND_MAPPED_COMPLETE:
-		if (client_events & CLIENT_SEND_COMPLETE) {
+		if (client_events & CLIENT_SEND_MAPPED) {
 			printf("Error: unexpected ZAP_EVENT_SEND_COMPLETE\n");
 			ASSERT(0);
 		}
-		client_events |= CLIENT_SEND_COMPLETE;
+		client_events |= CLIENT_SEND_MAPPED;
 		if (ev->context == msg_ctxt) {
 			printf("send_mapped completion context verified\n");
 		} else {
@@ -595,6 +604,10 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		}
 		zap_unmap(msg_map);
 		msg_map = NULL;
+		break;
+	case ZAP_EVENT_SEND_COMPLETE:
+		/* Do nothing */
+		client_events |= CLIENT_SEND_COMPLETE;
 		break;
 	case ZAP_EVENT_REJECTED:
 		ASSERT (0 == (client_events & CLIENT_REJECTED));
@@ -645,10 +658,6 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 		ASSERT(ev->data_len == strlen(HELLO_MSG)+1);
 		ASSERT(0 == strcmp((void*)ev->data, HELLO_MSG));
 		ASSERT (0 == (client_events & CLIENT_RECV_ECHO));
-		if (0 == (client_events & CLIENT_SEND_COMPLETE)) {
-			printf("Error: RECV before SEND_COMPLETE\n");
-			ASSERT(0);
-		}
 		client_events |= CLIENT_RECV_ECHO;
 		do_rendezvous(ep);
 		break;
