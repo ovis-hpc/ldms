@@ -234,13 +234,15 @@ typedef union sock_msg_u {
 	char bytes[0]; /* access as bytes */
 } *sock_msg_t;
 
-#define Z_SOCK_WR_ALLOCATED  0x1 /* WR is allocated and should be freed */
-#define Z_SOCK_WR_COMPLETION 0x2 /* A completion should be delivered when WR is
+#define Z_SOCK_WR_COMPLETION 0x1 /* A completion should be delivered when WR is
 				    done. This also implies that WR is a member
 				    of io structure. */
+#define Z_SOCK_WR_SEND        0x2
+#define Z_SOCK_WR_SEND_MAPPED 0x4
 
 typedef struct z_sock_send_wr_s {
 	TAILQ_ENTRY(z_sock_send_wr_s) link;
+	struct z_sock_io *io;
 	size_t msg_len; /* remaining msg len */
 	size_t data_len; /* remaining data len */
 	size_t off; /* offset of msg or data */
@@ -258,7 +260,7 @@ struct z_sock_io {
 	TAILQ_ENTRY(z_sock_io) q_link;
 	zap_map_t dst_map; /**< Destination map for RDMA_READ */
 	char *dst_ptr; /**< Destination address for RDMA_READ */
-	struct z_sock_send_wr_s wr;
+	struct z_sock_send_wr_s *wr;
 };
 
 #pragma pack()

@@ -68,6 +68,7 @@ enum z_rdma_message_type {
 	Z_RDMA_MSG_RENDEZVOUS,
 	Z_RDMA_MSG_ACCEPT,
 	Z_RDMA_MSG_REJECT,
+	Z_RDMA_MSG_SEND_MAPPED,
 };
 
 struct z_rdma_message_hdr {

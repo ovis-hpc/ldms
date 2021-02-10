@@ -648,6 +648,21 @@ static void process_sep_msg_read_req(struct z_sock_ep *sep)
 		shutdown(sep->sock, SHUT_RDWR);
 }
 
+struct z_sock_send_wr_s *__sock_wr_alloc(size_t data_len, struct z_sock_io *io)
+{
+	struct z_sock_send_wr_s *wr;
+	wr = calloc(1, sizeof(*wr) + data_len);
+	if (!wr)
+		return NULL;
+	wr->io = io;
+	return wr;
+}
+
+void __sock_wr_free(struct z_sock_send_wr_s *wr)
+{
+	free(wr);
+}
+
 struct z_sock_io *__sock_io_alloc(struct z_sock_ep *sep)
 {
 	struct z_sock_io *io;
@@ -655,10 +670,6 @@ struct z_sock_io *__sock_io_alloc(struct z_sock_ep *sep)
 	if (!TAILQ_EMPTY(&sep->free_q)) {
 		io = TAILQ_FIRST(&sep->free_q);
 		TAILQ_REMOVE(&sep->free_q, io, q_link);
-		io->wr.flags = 0;
-		io->wr.msg_len = 0;
-		io->wr.data_len = 0;
-		io->wr.off = 0;
 	} else
 		io = calloc(1, sizeof(*io));
 	pthread_mutex_unlock(&sep->ep.lock);
@@ -669,6 +680,7 @@ void __sock_io_free(struct z_sock_ep *sep, struct z_sock_io *io)
 {
 	if (!sep)
 		return;
+	io->wr = NULL;
 	pthread_mutex_lock(&sep->ep.lock);
 	TAILQ_INSERT_TAIL(&sep->free_q, io, q_link);
 	pthread_mutex_unlock(&sep->ep.lock);
@@ -690,10 +702,10 @@ static void process_sep_msg_read_resp(struct z_sock_ep *sep)
 	pthread_mutex_lock(&sep->ep.lock);
 	io = TAILQ_FIRST(&sep->io_q);
 	ZAP_ASSERT(io, (&sep->ep), "%s: The io_q is empty.\n", __func__);
-	ZAP_ASSERT(msg->hdr.xid == io->wr.msg.hdr.xid, (&sep->ep),
+	ZAP_ASSERT(msg->hdr.xid == io->wr->msg.hdr.xid, (&sep->ep),
 			"%s: The transaction IDs mismatched between the "
 			"IO entry %d and message %d.\n", __func__,
-			io->wr.msg.hdr.xid, msg->hdr.xid);
+			io->wr->msg.hdr.xid, msg->hdr.xid);
 	TAILQ_REMOVE(&sep->io_q, io, q_link);
 	pthread_mutex_unlock(&sep->ep.lock);
 
@@ -810,10 +822,10 @@ static void process_sep_msg_write_resp(struct z_sock_ep *sep)
 	io = TAILQ_FIRST(&sep->io_q);
 	ZAP_ASSERT(io, &sep->ep, "%s: The io_q is empty\n", __func__);
 	TAILQ_REMOVE(&sep->io_q, io, q_link);
-	ZAP_ASSERT(io->wr.msg.hdr.xid == msg->hdr.xid, &sep->ep,
+	ZAP_ASSERT(io->wr->msg.hdr.xid == msg->hdr.xid, &sep->ep,
 			"%s: The transaction IDs mismatched "
 			"between the IO entry %d and message %d.\n",
-			__func__, io->wr.msg.hdr.xid, msg->hdr.xid);
+			__func__, io->wr->msg.hdr.xid, msg->hdr.xid);
 	/* Put it back on the free_q */
 	pthread_mutex_unlock(&sep->ep.lock);
 	__sock_io_free(sep, io);
@@ -1239,21 +1251,26 @@ static void sock_write(ovis_event_t ev)
 	if (wr->flags & Z_SOCK_WR_COMPLETION) {
 		/* right now we have only SEND_COMPLETE delivering by WR */
 		assert(ntohs(wr->msg.hdr.msg_type) == SOCK_MSG_SENDRECV);
-		struct z_sock_io *io = container_of(wr, struct z_sock_io, wr);
-		TAILQ_REMOVE(&sep->io_q, io, q_link);
+		TAILQ_REMOVE(&sep->io_q, wr->io, q_link);
 		struct zap_event zev = {
-			.type = ZAP_EVENT_SEND_MAPPED_COMPLETE,
 			.status = ZAP_ERR_OK,
-			.context = (void *)io->wr.msg.hdr.ctxt
+			.context = (void *)wr->msg.hdr.ctxt
 		};
 		pthread_mutex_unlock(&sep->ep.lock);
+		if (wr->flags & Z_SOCK_WR_SEND) {
+			zev.type = ZAP_EVENT_SEND_COMPLETE;
+		} else if (wr->flags & Z_SOCK_WR_SEND_MAPPED) {
+			zev.type = ZAP_EVENT_SEND_MAPPED_COMPLETE;
+		} else {
+			/* nothing to do */
+		}
 		sep->ep.cb(&sep->ep, &zev); /* this post to zap interpose queue */
-		__sock_io_free(sep, io);
+		__sock_io_free(sep, wr->io);
+		wr->io = NULL;
 		pthread_mutex_lock(&sep->ep.lock);
 		goto next;
 	}
-	if (wr->flags & Z_SOCK_WR_ALLOCATED)
-		free(wr);
+	__sock_wr_free(wr);
 	goto next;
 
  out:
@@ -1448,7 +1465,7 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 	/* allocate send wr */
 	if (mtype == SOCK_MSG_READ_RESP || mtype == SOCK_MSG_WRITE_REQ) {
 		/* allow big message, and do not copy `data`  */
-		wr = malloc(sizeof(*wr) + msg_size);
+		wr = __sock_wr_alloc(0, NULL);
 		if (!wr)
 			return ZAP_ERR_RESOURCE;
 		wr->msg_len = msg_size;
@@ -1462,7 +1479,7 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 				  sep, data_len);
 			return ZAP_ERR_NO_SPACE;
 		}
-		wr = malloc(sizeof(*wr) + msg_size + data_len);
+		wr = __sock_wr_alloc(data_len, NULL);
 		if (!wr)
 			return ZAP_ERR_RESOURCE;
 		wr->msg_len = msg_size + data_len;
@@ -1472,7 +1489,6 @@ static zap_err_t __sock_send_msg_nolock(struct z_sock_ep *sep,
 		memcpy(wr->msg.bytes, m, msg_size);
 		memcpy(wr->msg.bytes + msg_size, data, data_len);
 	}
-	wr->flags = Z_SOCK_WR_ALLOCATED;
 	zerr = __wr_post(sep, wr);
 	if (zerr)
 		free(wr);
@@ -1510,7 +1526,7 @@ static void sock_event(ovis_event_t ev)
 		struct z_sock_io *io = TAILQ_FIRST(&sep->io_q);
 		TAILQ_REMOVE(&sep->io_q, io, q_link);
 
-		msg_type = ntohs(io->wr.msg.hdr.msg_type);
+		msg_type = ntohs(io->wr->msg.hdr.msg_type);
 		if (msg_type >= SOCK_MSG_FIRST && msg_type < SOCK_MSG_TYPE_LAST)
 			ev_type = ev_type_cvt[msg_type];
 		else
@@ -1520,7 +1536,7 @@ static void sock_event(ovis_event_t ev)
 		struct zap_event zev = {
 			.type = ev_type,
 			.status = ZAP_ERR_FLUSH,
-			.context = (void *)io->wr.msg.hdr.ctxt
+			.context = (void *)io->wr->msg.hdr.ctxt
 		};
 		free(io);	/* Don't put back on free_q, we're closing */
 		pthread_mutex_unlock(&sep->ep.lock);
@@ -1704,16 +1720,45 @@ static zap_err_t z_sock_listen(zap_ep_t ep, struct sockaddr *sa,
 static zap_err_t z_sock_send(zap_ep_t ep, char *buf, size_t len)
 {
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
-	zap_err_t zerr = ZAP_ERR_OK;
+	struct z_sock_io *io = __sock_io_alloc(sep);
+	zap_err_t zerr;
+
+	if (!io)
+		return ZAP_ERR_RESOURCE;
+
+	io->wr = __sock_wr_alloc(len, io);
+	if (!io->wr) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto err0;
+	}
+
+	io->wr->flags = Z_SOCK_WR_COMPLETION | Z_SOCK_WR_SEND;
+	io->wr->data = 0;
+	io->wr->data_len = 0;
+	io->wr->msg_len = sizeof(io->wr->msg.sendrecv) + len;
+	z_sock_hdr_init(&io->wr->msg.sendrecv.hdr, 0, SOCK_MSG_SENDRECV,
+			sizeof(io->wr->msg.sendrecv) + len, 0);
+	io->wr->msg.sendrecv.data_len = htonl((uint32_t)len);
+	memcpy(io->wr->msg.bytes + sizeof(io->wr->msg.sendrecv), buf, len);
+
 	pthread_mutex_lock(&sep->ep.lock);
 	if (ep->state != ZAP_EP_CONNECTED) {
 		zerr = ZAP_ERR_NOT_CONNECTED;
-		goto out;
+		goto err1;
 	}
-
-	zerr = __sock_send(sep, SOCK_MSG_SENDRECV, buf, len);
-out:
+	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
+	/* Post the work request */
+	zerr = __wr_post(sep, io->wr);
+	if (zerr)
+		goto err2;
 	pthread_mutex_unlock(&sep->ep.lock);
+	return ZAP_ERR_OK;
+err2:
+	TAILQ_REMOVE(&sep->io_q, io, q_link);
+err1:
+	pthread_mutex_unlock(&sep->ep.lock);
+err0:
+	__sock_io_free(sep, io);
 	return zerr;
 }
 
@@ -1733,6 +1778,12 @@ zap_err_t z_sock_send_mapped(zap_ep_t ep, zap_map_t map, void *buf,
 	if (!io)
 		return ZAP_ERR_RESOURCE;
 
+	io->wr = __sock_wr_alloc(0, io);
+	if (!io->wr) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto err0;
+	}
+
 	/* validate */
 	if (z_map_access_validate(map, buf, len, ZAP_ACCESS_NONE) != 0) {
 		zerr = ZAP_ERR_LOCAL_LEN;
@@ -1741,13 +1792,13 @@ zap_err_t z_sock_send_mapped(zap_ep_t ep, zap_map_t map, void *buf,
 
 	/* prepare wr and message */
 	zerr = ZAP_ERR_RESOURCE;
-	io->wr.flags = Z_SOCK_WR_COMPLETION;
-	io->wr.data = buf;
-	io->wr.data_len = len;
-	io->wr.msg_len = sizeof(io->wr.msg.sendrecv);
-	z_sock_hdr_init(&io->wr.msg.sendrecv.hdr, 0, SOCK_MSG_SENDRECV,
-			io->wr.msg_len + len, (uint64_t)context);
-	io->wr.msg.sendrecv.data_len = htonl((uint32_t) len);
+	io->wr->flags = Z_SOCK_WR_COMPLETION | Z_SOCK_WR_SEND_MAPPED;
+	io->wr->data = buf;
+	io->wr->data_len = len;
+	io->wr->msg_len = sizeof(io->wr->msg.sendrecv);
+	z_sock_hdr_init(&io->wr->msg.sendrecv.hdr, 0, SOCK_MSG_SENDRECV,
+			io->wr->msg_len + len, (uint64_t)context);
+	io->wr->msg.sendrecv.data_len = htonl((uint32_t) len);
 
 	pthread_mutex_lock(&sep->ep.lock);
 	if (sep->ep.state != ZAP_EP_CONNECTED) {
@@ -1757,7 +1808,7 @@ zap_err_t z_sock_send_mapped(zap_ep_t ep, zap_map_t map, void *buf,
 
 	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
 	/* write message */
-	zerr = __wr_post(sep, &io->wr);
+	zerr = __wr_post(sep, io->wr);
 	if (zerr)
 		goto err2;
 
@@ -1993,6 +2044,12 @@ static zap_err_t z_sock_read(zap_ep_t ep, zap_map_t src_map, char *src,
 	if (!io)
 		return ZAP_ERR_RESOURCE;
 
+	io->wr = __sock_wr_alloc(0, io);
+	if (!io->wr) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto err;
+	}
+
 	/* validate */
 	if (z_map_access_validate(src_map, src, sz, ZAP_ACCESS_READ) != 0) {
 		zerr = ZAP_ERR_REMOTE_PERMISSION;
@@ -2005,12 +2062,12 @@ static zap_err_t z_sock_read(zap_ep_t ep, zap_map_t src_map, char *src,
 	}
 
 	/* prepare wr and message */
-	io->wr.msg_len = sizeof(io->wr.msg.read_req);
-	z_sock_hdr_init(&io->wr.msg.hdr, 0, SOCK_MSG_READ_REQ,
-		   sizeof(io->wr.msg.read_req), (uint64_t)context);
-	io->wr.msg.read_req.src_map_key = SOCK_MAP_KEY_GET(src_map);
-	io->wr.msg.read_req.src_ptr = htobe64((uint64_t) src);
-	io->wr.msg.read_req.data_len = htonl((uint32_t)sz);
+	io->wr->msg_len = sizeof(io->wr->msg.read_req);
+	z_sock_hdr_init(&io->wr->msg.hdr, 0, SOCK_MSG_READ_REQ,
+		   sizeof(io->wr->msg.read_req), (uint64_t)context);
+	io->wr->msg.read_req.src_map_key = SOCK_MAP_KEY_GET(src_map);
+	io->wr->msg.read_req.src_ptr = htobe64((uint64_t) src);
+	io->wr->msg.read_req.data_len = htonl((uint32_t)sz);
 	io->dst_map = dst_map;
 	io->dst_ptr = dst;
 
@@ -2023,7 +2080,7 @@ static zap_err_t z_sock_read(zap_ep_t ep, zap_map_t src_map, char *src,
 
 	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
 	/* write message */
-	zerr = __wr_post(sep, &io->wr);
+	zerr = __wr_post(sep, io->wr);
 	if (zerr)
 		goto err1;
 
@@ -2048,6 +2105,12 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 	if (!io)
 		return ZAP_ERR_RESOURCE;
 
+	io->wr = __sock_wr_alloc(0, io);
+	if (!io->wr) {
+		zerr = ZAP_ERR_RESOURCE;
+		goto err0;
+	}
+
 	/* validate */
 	if (z_map_access_validate(src_map, src, sz, ZAP_ACCESS_NONE) != 0) {
 		zerr = ZAP_ERR_LOCAL_LEN;
@@ -2061,14 +2124,14 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 
 	/* prepare wr and message */
 	zerr = ZAP_ERR_RESOURCE;
-	io->wr.data = src;
-	io->wr.data_len = sz;
-	io->wr.msg_len = sizeof(io->wr.msg.write_req);
-	z_sock_hdr_init(&io->wr.msg.write_req.hdr, 0, SOCK_MSG_WRITE_REQ,
-			io->wr.msg_len + sz, (uint64_t)context);
-	io->wr.msg.write_req.dst_map_key = SOCK_MAP_KEY_GET(dst_map);
-	io->wr.msg.write_req.dst_ptr = htobe64((uint64_t) dst);
-	io->wr.msg.write_req.data_len = htonl((uint32_t) sz);
+	io->wr->data = src;
+	io->wr->data_len = sz;
+	io->wr->msg_len = sizeof(io->wr->msg.write_req);
+	z_sock_hdr_init(&io->wr->msg.write_req.hdr, 0, SOCK_MSG_WRITE_REQ,
+			io->wr->msg_len + sz, (uint64_t)context);
+	io->wr->msg.write_req.dst_map_key = SOCK_MAP_KEY_GET(dst_map);
+	io->wr->msg.write_req.dst_ptr = htobe64((uint64_t) dst);
+	io->wr->msg.write_req.data_len = htonl((uint32_t) sz);
 
 	pthread_mutex_lock(&sep->ep.lock);
 	if (sep->ep.state != ZAP_EP_CONNECTED) {
@@ -2078,7 +2141,7 @@ static zap_err_t z_sock_write(zap_ep_t ep, zap_map_t src_map, char *src,
 
 	TAILQ_INSERT_TAIL(&sep->io_q, io, q_link);
 	/* write message */
-	zerr = __wr_post(sep, &io->wr);
+	zerr = __wr_post(sep, io->wr);
 	if (zerr)
 		goto err2;
 
