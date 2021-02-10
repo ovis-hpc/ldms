@@ -6063,6 +6063,10 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 			       "The stream name is missing.");
 		goto err_reply;
 	}
+
+	reqc->errcode = 0;
+	ldmsd_send_req_response(reqc, "ACK");
+
 	if (!ldmsd_stream_subscriber_count(stream_name))
 		/* There are no subscribers, ignore the data */
 		goto out_0;
@@ -6087,8 +6091,6 @@ out_1:
 			     (char *)attr->attr_value, attr->attr_len, NULL);
 out_0:
 	free(stream_name);
-	reqc->errcode = 0;
-	ldmsd_send_req_response(reqc, "ACK");
 	return 0;
 err_reply:
 	if (stream_name)
@@ -6229,7 +6231,6 @@ void __RSE_del(__RSE_t ent)
 }
 
 static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc)
-
 {
 	char *stream_name;
 	int cnt;
