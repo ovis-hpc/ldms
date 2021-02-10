@@ -452,7 +452,7 @@ int ovis_notification_add(struct ovis_notification *onp, const char *msg)
 	}
 	e->buf_sz = len;
 	e->buf_done = 0;
-	strncpy(e->buf, msg, len-2);
+	memcpy(e->buf, msg, len-2);
 	e->buf[len-2] = '\n';
 	e->buf[len-1] = '\0';
 	e->time_in = get_sec();
