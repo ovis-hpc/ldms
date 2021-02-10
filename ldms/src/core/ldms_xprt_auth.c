@@ -148,53 +148,6 @@ void ldms_xprt_auth_end(ldms_t xprt, int result)
 	}
 }
 
-/*
- * \retval 0 OK
- * \retval errno for error
- */
-int __uid_gid_check(uid_t uid, gid_t gid)
-{
-	struct passwd pw;
-	struct passwd *p;
-	int rc;
-	char *buf;
-	int i;
-	int n = 128;
-	gid_t gid_list[n];
-
-	buf = malloc(BUFSIZ);
-	if (!buf) {
-		rc = ENOMEM;
-		goto out;
-	}
-
-	rc = getpwuid_r(uid, &pw, buf, BUFSIZ, &p);
-	if (!p) {
-		rc = rc?rc:ENOENT;
-		goto out;
-	}
-
-	rc = getgrouplist(p->pw_name, p->pw_gid, gid_list, &n);
-	if (rc == -1) {
-		rc = ENOBUFS;
-		goto out;
-	}
-
-	for (i = 0; i < n; i++) {
-		if (gid == gid_list[i]) {
-			rc = 0;
-			goto out;
-		}
-	}
-
-	rc = ENOENT;
-
-out:
-	if (buf)
-		free(buf);
-	return rc;
-}
-
 int ldms_access_check(ldms_t x, uint32_t acc, uid_t obj_uid, gid_t obj_gid,
 		      int obj_perm)
 {
