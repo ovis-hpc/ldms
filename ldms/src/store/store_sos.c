@@ -201,7 +201,13 @@ sos_handle_t create_handle(const char *path, sos_t sos)
 	sos_handle_t h = calloc(1, sizeof(*h));
 	if (!h)
 		return NULL;
-	strncpy(h->path, path, sizeof(h->path));
+	int len = strlen(path);
+	if (len >= sizeof(h->path)) {
+		errno = ENAMETOOLONG;
+		free(h);
+		return NULL;
+	}
+	memcpy(h->path, path, len+1);
 	h->ref_count = 1;
 	h->sos = sos;
 	pthread_mutex_lock(&cfg_lock);
@@ -310,14 +316,24 @@ static sos_handle_t find_container(const char *path)
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	struct sos_instance *si;
-	int rc;
+	int rc, len;
 	char *value;
 	value = av_value(avl, "path");
-	if (!value)
+	if (!value) {
+		LOG_(LDMSD_LERROR,
+		       "%s[%d]: The 'path' configuraiton option is required.\n",
+		       __func__, __LINE__);
 		return EINVAL;
-
+	}
+	len = strlen(value);
+	if (len >= PATH_MAX) {
+		LOG_(LDMSD_LERROR,
+		       "%s[%d]: The 'path' is too long.\n",
+		       __func__, __LINE__);
+		return ENAMETOOLONG;
+	}
 	pthread_mutex_lock(&cfg_lock);
-	strncpy(root_path, value, PATH_MAX);
+	memcpy(root_path, value, len+1);
 
 	/* Run through all open containers and close them. They will
 	 * get re-opened when store() is next called

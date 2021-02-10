@@ -2816,7 +2816,8 @@ static int __rbd_rbt_key_comp(void *tree_key, const void *key)
 void __ldms_xprt_init(struct ldms_xprt *x, const char *name,
 					ldms_log_fn_t log_fn)
 {
-	strncpy(x->name, name, LDMS_MAX_TRANSPORT_NAME_LEN);
+	x->name[LDMS_MAX_TRANSPORT_NAME_LEN - 1] = 0;
+	memccpy(x->name, name, 0, LDMS_MAX_TRANSPORT_NAME_LEN - 1);
 	x->ref_count = 1;
 	x->remote_dir_xid = x->local_dir_xid = 0;
 

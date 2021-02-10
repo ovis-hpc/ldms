@@ -265,7 +265,7 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	char *lib = _libpath;
 	zap_t z = NULL;
 	char *errstr;
-	int ret;
+	int ret, len;
 	void *d = NULL;
 	char *saveptr = NULL;
 
@@ -274,12 +274,20 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	if (!mem_info_fn)
 		mem_info_fn = default_zap_mem_info;
 
+	if (strlen(name) >= ZAP_MAX_TRANSPORT_NAME_LEN) {
+		errno = ENAMETOOLONG;
+		goto err;
+	}
+
 	libdir = getenv("ZAP_LIBPATH");
 	if (!libdir || libdir[0] == '\0')
-		strncpy(_libdir, ZAP_LIBPATH_DEFAULT, sizeof(_libdir));
-	else
-		strncpy(_libdir, libdir, sizeof(_libdir));
-
+		libdir = ZAP_LIBPATH_DEFAULT;
+	len = strlen(libdir);
+	if (len >= MAX_ZAP_LIBPATH) {
+		errno = ENAMETOOLONG;
+		goto err;
+	}
+	memcpy(_libdir, libdir, len + 1);
 	libdir = _libdir;
 
 	while ((libpath = strtok_r(libdir, ":", &saveptr)) != NULL) {
@@ -312,7 +320,7 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	if (ret)
 		goto err1;
 
-	strncpy(z->name, name, sizeof(z->name));
+	memcpy(z->name, name, strlen(name)+1);
 	z->log_fn = log_fn;
 	z->mem_info_fn = mem_info_fn;
 	z->event_interpose = zap_interpose_event;

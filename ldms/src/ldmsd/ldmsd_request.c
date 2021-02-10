@@ -5585,6 +5585,8 @@ static char *__xprt_stats_as_json(size_t *json_sz)
 	struct ldms_xprt_rate_data rate_data;
 	int reset = 0;
 
+	xprt_type[sizeof(xprt_type)-1] = 0; /* NULL-terminate at the end */
+
 	(void)clock_gettime(CLOCK_REALTIME, &start);
 
 	ldms_xprt_rate_data(&rate_data, reset);
@@ -5681,8 +5683,8 @@ static char *__xprt_stats_as_json(size_t *json_sz)
 					    (struct sockaddr *)&ss_local,
 					    (struct sockaddr *)&ss_remote,
 					    &socklen);
-			strncpy(xprt_type, ldms_xprt_type_name(op->op_min_xprt),
-				sizeof(xprt_type));
+			memccpy(xprt_type, ldms_xprt_type_name(op->op_min_xprt),
+				0, sizeof(xprt_type)-1);
 			inet_ntop(sin->sin_family, &sin->sin_addr, ip_str, sizeof(ip_str));
 		}
 		if (op->op_min_xprt)
@@ -5698,8 +5700,8 @@ static char *__xprt_stats_as_json(size_t *json_sz)
 					    (struct sockaddr *)&ss_local,
 					    (struct sockaddr *)&ss_remote,
 					    &socklen);
-			strncpy(xprt_type, ldms_xprt_type_name(op->op_max_xprt),
-				sizeof(xprt_type));
+			memccpy(xprt_type, ldms_xprt_type_name(op->op_max_xprt),
+				0, sizeof(xprt_type)-1);
 			inet_ntop(sin->sin_family, &sin->sin_addr, ip_str, sizeof(ip_str));
 		}
 		if (op->op_max_xprt)
@@ -5788,7 +5790,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	res = zap_thrstat_get_result();
 	if (!res)
 		return NULL;
-		
+
 	buff = malloc(sz);
 	if (!buff)
 		goto __APPEND_ERR;
@@ -5869,7 +5871,7 @@ err:
  * {
  *   "prdcr_count" : <int>,
  *   "stopped" : <int>,
- *   "disconnected" : <int>, 
+ *   "disconnected" : <int>,
  *   "connecting" : <int>,
  * 	 "connected" : <int>,
  *   "stopping"	: <int>,
@@ -6006,7 +6008,7 @@ static char * __set_stats_as_json(size_t *json_sz)
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	uint64_t compute_time = ldms_timespec_diff_us(&start, &end);
 	__APPEND(" \"compute_time\": %ld\n", compute_time);
-	__APPEND("}"); 
+	__APPEND("}");
 
 	*json_sz = s - buff + 1;
 	return buff;

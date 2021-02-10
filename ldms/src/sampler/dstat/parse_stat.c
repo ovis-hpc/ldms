@@ -127,7 +127,8 @@ int parse_proc_pid_stat(struct proc_pid_stat *s, const char *pid) {
 	commstart++;
 	if ((commend - commstart) >= COMM_SZ)
 		return ENAMETOOLONG;
-	strncpy(s->comm, commstart , COMM_SZ);
+	memccpy(s->comm, commstart , 0, COMM_SZ - 1);
+	s->comm[COMM_SZ-1] = 0;
 	rc = sscanf(dat, "%d", &s->pid);
 	if (rc != 1) {
 		return ENOKEY;
@@ -141,7 +142,7 @@ int parse_proc_pid_stat(struct proc_pid_stat *s, const char *pid) {
 		&s->state,
 		&s->ppid,
 		&s->pgrp,
-		&s->session, 
+		&s->session,
 		&s->tty_nr,
 		&s->tpgid,
 		&s->flags,
@@ -311,7 +312,7 @@ void dump_proc_pid_stat(struct proc_pid_stat *s)
 		s->state,
 		s->ppid,
 		s->pgrp,
-		s->session, 
+		s->session,
 		s->tty_nr,
 		s->tpgid,
 		s->flags,

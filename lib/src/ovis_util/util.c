@@ -659,7 +659,7 @@ __attribute__ ((sentinel)) int ovis_join_buf(char *buf, size_t buflen, char *pat
 	if (!buf)
 		return EINVAL;
 	buf[0] = '\0';
-	
+
 
 	va_start(ap, pathsep);
 	n = va_arg(ap, const char *);
@@ -670,7 +670,7 @@ __attribute__ ((sentinel)) int ovis_join_buf(char *buf, size_t buflen, char *pat
 
 	chunk = strlen(n);
 	if ( (len + chunk) < buflen) {
-		strncat(buf + len, n, chunk);
+		memcpy(buf + len, n, chunk);
 		len += chunk;
 	} else {
 		rc = E2BIG;
@@ -678,7 +678,7 @@ __attribute__ ((sentinel)) int ovis_join_buf(char *buf, size_t buflen, char *pat
 
 	while ( 0 == rc && (n = va_arg(ap, const char *)) != NULL) {
 		if ((len + sepsize) < buflen) {
-			strncat(buf + len, sep, sepsize);
+			memcpy(buf + len, sep, sepsize);
 			len += sepsize;
 		} else {
 			rc = E2BIG;
@@ -686,7 +686,7 @@ __attribute__ ((sentinel)) int ovis_join_buf(char *buf, size_t buflen, char *pat
 		}
 		chunk = strlen(n);
 		if ((len + chunk) < buflen) {
-			strncat(buf + len, n, chunk);
+			memcpy(buf + len, n, chunk);
 			len += chunk;
 		} else {
 			rc = E2BIG;
