@@ -250,6 +250,7 @@ struct z_fi_ep {
 #endif /* ZAP_DEBUG */
 
 	LIST_ENTRY(z_fi_ep) ep_link;
+	pthread_cond_t io_q_cond;
 };
 
 #endif
