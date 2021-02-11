@@ -771,6 +771,7 @@ static void flush_io_q(struct z_rdma_ep *rep)
 		__rdma_context_free(ctxt);
 		pthread_mutex_unlock(&rep->ep.lock);
 	}
+	pthread_cond_signal(&rep->io_q_cond);
 
 }
 
@@ -925,6 +926,7 @@ static void submit_pending(struct z_rdma_ep *rep)
 		pthread_mutex_unlock(&rep->ep.lock);
 		pthread_mutex_lock(&rep->credit_lock);
 	}
+	pthread_cond_signal(&rep->io_q_cond);
  out:
 	pthread_mutex_unlock(&rep->credit_lock);
 }
@@ -976,6 +978,16 @@ static zap_err_t __rdma_post_send(struct z_rdma_ep *rep, struct z_rdma_buffer *r
 static zap_err_t z_rdma_close(zap_ep_t ep)
 {
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
+	pthread_t self = pthread_self();
+
+	if (self != ep->event_queue->thread) {
+		pthread_mutex_lock(&rep->credit_lock);
+		while (!TAILQ_EMPTY(&rep->io_q)) {
+			pthread_cond_wait(&rep->io_q_cond, &rep->credit_lock);
+		}
+		pthread_mutex_unlock(&rep->credit_lock);
+	}
+
 	pthread_mutex_lock(&rep->ep.lock);
 	if (!rep->cm_id)
 		goto out;
@@ -1627,6 +1639,7 @@ static zap_ep_t z_rdma_new(zap_t z, zap_cb_fn_t cb)
 	rep->sq_credits = SQ_DEPTH;
 
 	TAILQ_INIT(&rep->io_q);
+	pthread_cond_init(&rep->io_q_cond, NULL);
 	LIST_INIT(&rep->active_ctxt_list);
 	pthread_mutex_init(&rep->credit_lock, NULL);
 	return (zap_ep_t)&rep->ep;

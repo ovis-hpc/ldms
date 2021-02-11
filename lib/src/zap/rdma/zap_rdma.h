@@ -210,6 +210,7 @@ struct z_rdma_ep {
 	} dev_type;
 	int cm_channel_enabled;
 	int cq_channel_enabled;
+	pthread_cond_t io_q_cond;
 };
 
 #endif

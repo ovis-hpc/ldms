@@ -249,8 +249,15 @@ static int z_sock_buff_extend(z_sock_buff_t buff, size_t new_sz)
 static zap_err_t z_sock_close(zap_ep_t ep)
 {
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
+	pthread_t self = pthread_self();
 
 	pthread_mutex_lock(&sep->ep.lock);
+	if (self != ep->event_queue->thread) {
+		/* If we are NOT in app callback path, we can block-wait sq */
+		while (!TAILQ_EMPTY(&sep->sq)) {
+			pthread_cond_wait(&sep->sq_cond, &sep->ep.lock);
+		}
+	}
 	switch (sep->ep.state) {
 	case ZAP_EP_PEER_CLOSE:
 	case ZAP_EP_CONNECTED:
@@ -1164,6 +1171,7 @@ static void sock_write(ovis_event_t ev)
 	if (!wr) {
 		/* sq empty, disable epoll out */
 		__disable_epoll_out(sep);
+		pthread_cond_signal(&sep->sq_cond);
 		goto out;
 	}
 
@@ -1696,6 +1704,7 @@ static zap_ep_t z_sock_new(zap_t z, zap_cb_fn_t cb)
 	TAILQ_INIT(&sep->io_q);
 	TAILQ_INIT(&sep->sq);
 	sep->sock = -1;
+	pthread_cond_init(&sep->sq_cond, NULL);
 
 	rc = z_sock_buff_init(&sep->buff, 65536); /* 64 KB initial size buff */
 	if (rc) {

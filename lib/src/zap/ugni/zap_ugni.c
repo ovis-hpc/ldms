@@ -508,11 +508,17 @@ static void __ep_release(struct z_ugni_ep *uep)
 
 static zap_err_t z_ugni_close(zap_ep_t ep)
 {
+	pthread_t self = pthread_self();
 	struct z_ugni_ep *uep = (struct z_ugni_ep *)ep;
 
 	DLOG_(uep, "Closing xprt: %p, state: %s\n", uep,
 			__zap_ep_state_str(uep->ep.state));
 	pthread_mutex_lock(&uep->ep.lock);
+	if (self != ep->event_queue->thread) {
+		while (!STAILQ_EMPTY(&uep->sq)) {
+			pthread_cond_wait(&uep->sq_cond, &uep->ep.lock);
+		}
+	}
 	switch (uep->ep.state) {
 	case ZAP_EP_LISTENING:
 	case ZAP_EP_CONNECTED:
@@ -640,6 +646,7 @@ static void ugni_sock_write(ovis_event_t ev)
 	if (!wr) {
 		/* sq empty, disable epoll out */
 		__disable_epoll_out(uep);
+		pthread_cond_signal(&uep->sq_cond);
 		goto out;
 	}
 
@@ -2464,6 +2471,7 @@ zap_ep_t z_ugni_new(zap_t z, zap_cb_fn_t cb)
 	uep->rbuff->alen = ZAP_UGNI_INIT_RECV_BUFF_SZ - sizeof(*uep->rbuff);
 
 	STAILQ_INIT(&uep->sq);
+	pthread_cond_init(&uep->sq_cond, NULL);
 	LIST_INIT(&uep->post_desc_list);
 	grc = GNI_EpCreate(_dom.nic, _dom.cq, &uep->gni_ep);
 	if (grc) {

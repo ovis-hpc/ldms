@@ -287,6 +287,7 @@ struct z_sock_ep {
 	TAILQ_HEAD(z_sock_io_q, z_sock_io) io_q;
 	TAILQ_HEAD(, z_sock_send_wr_s) sq; /* send queue */
 	LIST_ENTRY(z_sock_ep) link;
+	pthread_cond_t sq_cond;
 };
 
 static inline struct z_sock_ep *z_sock_from_ep(zap_ep_t *ep)

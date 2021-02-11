@@ -279,6 +279,7 @@ struct z_ugni_ep {
 	uint32_t epoll_record[UEP_EPOLL_RECORD_SZ];
 	uint32_t epoll_record_curr;
 #endif /* ZAP_DEBUG || DEBUG */
+	pthread_cond_t sq_cond;
 };
 
 struct zap_ugni_post_desc {
