@@ -1,8 +1,6 @@
 name: Space Check
 
 on:
-  push:
-    branches: [ OVIS-4 ]
   pull_request:
     branches: [ OVIS-4 ]
 
