@@ -840,8 +840,8 @@ int ovis_access_check(uid_t auid, gid_t agid, int acc,
 	if (070 & macc) {
 		if (agid == ogid)
 			return 0;
-		/* else need to check x->ruid group list */
-		if (0 == __uid_gid_check(auid, ouid))
+		/* else need to check auid group list */
+		if (0 == __uid_gid_check(auid, ogid))
 			return 0;
 	}
 	return EACCES;
