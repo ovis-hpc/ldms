@@ -513,13 +513,10 @@ static zap_err_t z_ugni_close(zap_ep_t ep)
 	DLOG_(uep, "Closing xprt: %p, state: %s\n", uep,
 			__zap_ep_state_str(uep->ep.state));
 	pthread_mutex_lock(&uep->ep.lock);
-	uep->ep.state = ZAP_EP_CLOSE;
 	switch (uep->ep.state) {
 	case ZAP_EP_LISTENING:
 	case ZAP_EP_CONNECTED:
 	case ZAP_EP_PEER_CLOSE:
-		shutdown(uep->sock, SHUT_RDWR);
-		break;
 	case ZAP_EP_ERROR:
 	case ZAP_EP_CONNECTING:
 	case ZAP_EP_ACCEPTING:
@@ -531,6 +528,7 @@ static zap_err_t z_ugni_close(zap_ep_t ep)
 		ZAP_ASSERT(0, ep, "%s: Unexpected state '%s'\n",
 				__func__, __zap_ep_state_str(ep->state));
 	}
+	uep->ep.state = ZAP_EP_CLOSE;
 	pthread_mutex_unlock(&uep->ep.lock);
 	return ZAP_ERR_OK;
 }
