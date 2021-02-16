@@ -1971,21 +1971,12 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 
 static int recv_cb(struct ldms_xprt *x, void *r)
 {
-	int rc, euid_set = 0;
 	struct ldms_request_hdr *h = r;
 	int cmd = ntohl(h->cmd);
-	uid_t euid = geteuid();
-	if ((int)x->ruid > 0 && euid == 0) {
-		euid_set = 1;
-		seteuid(x->ruid);
-	}
 	if (cmd > LDMS_CMD_REPLY)
 		return ldms_xprt_recv_reply(x, r);
 
-	rc = ldms_xprt_recv_request(x, r);
-	if (euid_set)
-		seteuid(euid);
-	return rc;
+	return ldms_xprt_recv_request(x, r);
 }
 
 zap_mem_info_t ldms_zap_mem_info()
