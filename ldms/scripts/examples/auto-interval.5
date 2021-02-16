@@ -1,0 +1,30 @@
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0
+
+# Second aggregator at 15 sec intervals
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=10000000
+prdcr_start name=localhost1
+
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=10000000
+prdcr_start name=localhost2
+
+prdcr_add name=localhost3 host=${HOST} type=active xprt=${XPRT} port=${port3} interval=10000000
+prdcr_start name=localhost3
+
+updtr_add name=allhosts interval=15000000 offset=1000000 auto_interval=true
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+# schemas are auto-interval_slow, auto-interval_medium and auto-interval_fast
+strgp_add name=store_${testname}_fast plugin=store_csv schema=${testname}_fast container=node_agg_backoff
+strgp_prdcr_add name=store_${testname}_fast regex=.*
+strgp_start name=store_${testname}_fast
+
+strgp_add name=store_${testname}_medium plugin=store_csv schema=${testname}_medium container=node_agg_backoff
+strgp_prdcr_add name=store_${testname}_medium regex=.*
+strgp_start name=store_${testname}_medium
+
+strgp_add name=store_${testname}_slow plugin=store_csv schema=${testname}_slow container=node_agg_backoff
+strgp_prdcr_add name=store_${testname}_slow regex=.*
+strgp_start name=store_${testname}_slow
+

@@ -1,0 +1,28 @@
+export plugname=meminfo
+portbase=61200
+VGARGS="--leak-check=full --track-origins=yes"
+DAEMONS $(seq 1 5)
+vgoff
+LDMSD 1 2 3 4 5
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -v
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -v
+MESSAGE ldms_ls on host 3:
+LDMS_LS 3 -v
+MESSAGE ldms_ls on host 4:
+LDMS_LS 4 -l
+LDMS_LS 4 -v
+MESSAGE ldms_ls on host 5:
+LDMS_LS 5 -l
+LDMS_LS 5 -v
+SLEEP 35
+KILL_LDMSD `seq 5`
+export agg=agg
+file_created $STOREDIR/node_${agg}/${testname}_fast
+file_created $STOREDIR/node_${agg}/${testname}_medium
+file_created $STOREDIR/node_${agg}/${testname}_slow
+export agg=agg_backoff
+file_created $STOREDIR/node_${agg}/${testname}_fast
+file_created $STOREDIR/node_${agg}/${testname}_medium
+file_created $STOREDIR/node_${agg}/${testname}_slow
