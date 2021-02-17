@@ -162,7 +162,7 @@ void __ldms_gn_inc(struct ldms_set *set, ldms_mdesc_t desc)
 	}
 }
 
-/* Caller must hold the set tree lock. */
+/* Caller must hold the ldms set tree lock. */
 struct ldms_set *__ldms_find_local_set(const char *set_name)
 {
 	struct rbn *z;
@@ -176,7 +176,7 @@ struct ldms_set *__ldms_find_local_set(const char *set_name)
 	return s;
 }
 
-/* Caller must hold the set tree lock */
+/* Caller must hold the ldms set tree lock */
 struct ldms_set *__ldms_local_set_first()
 {
 	struct rbn *z;
@@ -248,7 +248,7 @@ static int rbn_cb(struct rbn *rbn, void *arg, int level)
 	return 0;
 }
 
-/* Caller must hold the set tree lock */
+/* Caller must hold the ldms set tree lock */
 int __ldms_for_all_sets(int (*cb)(struct ldms_set *, void *), void *arg)
 {
 	struct cb_arg user_arg = { arg, cb };
@@ -456,7 +456,7 @@ int __ldms_get_local_set_list(struct ldms_name_list *head)
 
 uint64_t __next_set_id = 1;
 
- /* The caller must hold the set tree lock. */
+/* The caller must NOT hold the ldms set tree lock. */
 static struct ldms_set *
 __record_set(const char *instance_name,
 	     struct ldms_set_hdr *sh, struct ldms_data_hdr *dh, int flags)
@@ -543,7 +543,7 @@ int ldms_set_publish(ldms_set_t sd)
 	return rc;
 }
 
-/* Caller must hold the set tree lock */
+/* Caller must hold the ldms set tree lock */
 static
 int __ldms_set_unpublish(struct ldms_set *set)
 {
@@ -880,7 +880,7 @@ int ldms_set_producer_name_set(ldms_set_t s, const char *name)
 	return 0;
 }
 
-/* Caller must hold the set tree lock. */
+/* Caller must NOT hold the ldms set tree lock. */
 struct ldms_set *__ldms_create_set(const char *instance_name,
 				   const char *schema_name,
 				   size_t meta_len, size_t data_len,
