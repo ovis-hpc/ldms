@@ -89,7 +89,7 @@ int main(int argc, char **argv)
 		case 'a':
 			auth = strdup(optarg);
 			if (!auth) {
-				printf("ERROR: out of memory\n"); 
+				printf("ERROR: out of memory\n");
 				exit(1);
 			}
 			break;
@@ -139,10 +139,15 @@ int main(int argc, char **argv)
 	if (!host || !port || !stream)
 		usage(argc, argv);
 
-	if (filename)
+	if (filename) {
 		file = fopen(filename, "r");
-	else
+		if (!file) {
+			perror(filename);
+			exit(1);
+		}
+	} else {
 		file = stdin;
+	}
 	int rc = ldmsd_stream_publish_file(stream, stream_type, xprt, host, port, auth, auth_opt, file);
 	if (rc) {
 		printf("Error %d publishing file.\n", rc);
