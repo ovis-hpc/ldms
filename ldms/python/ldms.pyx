@@ -703,6 +703,7 @@ cdef class XprtEvent(object):
               - EVENT_ERROR
               - EVENT_DISCONNECTED
               - EVENT_RECV
+              - EVENT_SEND_COMPLETE
     - `data`: a byte array containing event data
     """
 
@@ -751,6 +752,9 @@ cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
     elif e.type == EVENT_RECV:
         b = PyBytes_FromStringAndSize(e.data, e.data_len)
         x._recv_queue.put(b)
+        # do NOT sem_post()
+        return
+    elif e.type == EVENT_SEND_COMPLETE:
         # do NOT sem_post()
         return
     else:
