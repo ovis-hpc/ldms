@@ -208,12 +208,14 @@ cdef extern from "ldms.h" nogil:
         EVENT_ERROR         "LDMS_XPRT_EVENT_ERROR"
         EVENT_DISCONNECTED  "LDMS_XPRT_EVENT_DISCONNECTED"
         EVENT_RECV          "LDMS_XPRT_EVENT_RECV"
+        EVENT_SEND_COMPLETE "LDMS_XPRT_EVENT_SEND_COMPLETE"
         EVENT_LAST          "LDMS_XPRT_EVENT_LAST"
         LDMS_XPRT_EVENT_CONNECTED
         LDMS_XPRT_EVENT_REJECTED
         LDMS_XPRT_EVENT_ERROR
         LDMS_XPRT_EVENT_DISCONNECTED
         LDMS_XPRT_EVENT_RECV
+        LDMS_XPRT_EVENT_SEND_COMPLETE
         LDMS_XPRT_EVENT_LAST
     cdef struct ldms_xprt_event:
         ldms_xprt_event_type type
