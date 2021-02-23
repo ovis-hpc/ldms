@@ -43,3 +43,5 @@ kgnilnd
 hello_stream
 llnl
 munge
+tx2mon
+auto-interval

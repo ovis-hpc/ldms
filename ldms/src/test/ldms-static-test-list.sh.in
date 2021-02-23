@@ -42,3 +42,5 @@
 @ENABLE_HELLO_STREAM_TRUE@ testlist[${#testlist[@]}]="hello_stream"
 @ENABLE_LLNL_EDAC_TRUE@ testlist[${#testlist[@]}]="llnl"
 @ENABLE_MUNGE_TRUE@ testlist[${#testlist[@]}]="munge"
+@ENABLE_TX2MON_TRUE@ testlist[${#testlist[@]}]="tx2mon"
+testlist[${#testlist[@]}]="auto-interval"
