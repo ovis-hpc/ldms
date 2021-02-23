@@ -2790,6 +2790,11 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		__ldms_xprt_resource_free(x);
 		ldms_xprt_put(x);
 		break;
+	case ZAP_EVENT_SEND_COMPLETE:
+		event.type = LDMS_XPRT_EVENT_SEND_COMPLETE;
+		if (x->event_cb)
+			x->event_cb(x, &event, x->event_cb_arg);
+		break;
 	default:
 		x->log("ldms_zap_cb: unexpected zap event value %d from network\n",
 			(int) ev->type);
@@ -2823,6 +2828,7 @@ static void ldms_zap_auto_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_READ_COMPLETE:
 	case ZAP_EVENT_WRITE_COMPLETE:
 	case ZAP_EVENT_RENDEZVOUS:
+	case ZAP_EVENT_SEND_COMPLETE:
 		ldms_zap_cb(zep, ev);
 		break;
 	default:

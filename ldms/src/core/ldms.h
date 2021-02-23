@@ -405,6 +405,8 @@ enum ldms_xprt_event_type {
 	LDMS_XPRT_EVENT_RECV,
 	/*! Lookup set has been deleted at peer */
 	LDMS_XPRT_EVENT_SET_DELETE,
+	/*! A send request is completed */
+	LDMS_XPRT_EVENT_SEND_COMPLETE,
 	LDMS_XPRT_EVENT_LAST
 };
 
