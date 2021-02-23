@@ -187,23 +187,29 @@ void ldmsd_stream_close(ldmsd_stream_client_t c)
 	free(c);
 }
 
+struct stream_ctxt {
+	ldms_t x;
+	int is_done;
+};
+
 static int __stream_send(void *xprt, char *data, size_t data_len)
 {
-	ldms_t x = (ldms_t)xprt;
-	return ldms_xprt_send(x, data, data_len);
+	struct stream_ctxt *ctxt = (struct stream_ctxt *)xprt;
+	return ldms_xprt_send(ctxt->x, data, data_len);
 }
 
-static int stream_send(ldms_t xprt, struct ldmsd_msg_buf *buf, uint32_t msg_no,
-			uint32_t flags, char *data, size_t data_len)
+static int stream_send(struct stream_ctxt *ctxt, struct ldmsd_msg_buf *buf,
+					uint32_t msg_no, uint32_t flags,
+					char *data, size_t data_len)
 {
-	return ldmsd_msg_buf_send(buf, xprt, msg_no,
+	return ldmsd_msg_buf_send(buf, ctxt, msg_no,
 				__stream_send, flags,
 				LDMSD_REQ_TYPE_CONFIG_CMD,
 				LDMSD_STREAM_PUBLISH_REQ,
 				data, data_len);
 }
 
-static int stream_hdr_send(ldms_t x, uint32_t msg_no,
+static int stream_hdr_send(struct stream_ctxt *ctxt, uint32_t msg_no,
 			   const char *stream_name,
 			   ldmsd_stream_type_t stream_type,
 			   struct ldmsd_msg_buf *buf,
@@ -219,10 +225,10 @@ static int stream_hdr_send(ldms_t x, uint32_t msg_no,
 	nlen = strlen(stream_name) + 1;
 	a.attr_len = nlen;
 	ldmsd_hton_req_attr(&a);
-	rc = stream_send(x, buf, msg_no, LDMSD_REQ_SOM_F, (char *)&a, sizeof(a));
+	rc = stream_send(ctxt, buf, msg_no, LDMSD_REQ_SOM_F, (char *)&a, sizeof(a));
 	if (rc)
 		return rc;
-	rc = stream_send(x, buf, msg_no, 0, (char *)stream_name, nlen);
+	rc = stream_send(ctxt, buf, msg_no, 0, (char *)stream_name, nlen);
 	if (rc)
 		return rc;
 
@@ -240,7 +246,7 @@ static int stream_hdr_send(ldms_t x, uint32_t msg_no,
 		return EINVAL;
 	}
 	ldmsd_hton_req_attr(&a);
-	rc = stream_send(x, buf, msg_no, 0, (char *)&a, sizeof(a));
+	rc = stream_send(ctxt, buf, msg_no, 0, (char *)&a, sizeof(a));
 	return rc;
 }
 
@@ -264,6 +270,9 @@ int ldmsd_stream_publish(ldms_t xprt,
 	struct ldmsd_msg_buf *buf;
 	uint32_t msg_no = ldmsd_msg_no_get();
 	int rc = 0;
+	struct stream_ctxt ctxt = {
+			.x = xprt,
+	};
 
 	if (!data_len)
 		return 0;
@@ -276,17 +285,17 @@ int ldmsd_stream_publish(ldms_t xprt,
 		return ENOMEM;
 	}
 
-	rc = stream_hdr_send(xprt, msg_no, stream_name, stream_type, buf, data_len);
+	rc = stream_hdr_send(&ctxt, msg_no, stream_name, stream_type, buf, data_len);
 	if (rc)
 		goto err;
 
-	rc = stream_send(xprt, buf, msg_no, 0, (char *)data, data_len);
+	rc = stream_send(&ctxt, buf, msg_no, 0, (char *)data, data_len);
 	if (rc)
 		goto err;
 
 	/* TERMINATING */
 	a.discrim = 0;
-	rc = stream_send(xprt, buf, msg_no, LDMSD_REQ_EOM_F,
+	rc = stream_send(&ctxt, buf, msg_no, LDMSD_REQ_EOM_F,
 			(char *)&a.discrim, sizeof(a.discrim));
 
  err:
@@ -301,6 +310,7 @@ int conn_status = ENOTCONN;
 
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
+	struct stream_ctxt *ctxt = (struct stream_ctxt *)cb_arg;
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
 		conn_status = 0;
@@ -320,6 +330,10 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		/* No need to process the response message. */
 		sem_post(&recv_sem);
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		if (!ctxt->is_done)
+			return;
+		break;
 	default:
 		ldms_xprt_put(x);
 		conn_status = ECONNABORTED;
@@ -327,6 +341,10 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	}
 	sem_post(&conn_sem);
 }
+
+struct publish_file_ctxt {
+	int done; /* 0 means done */
+};
 
 /**
  * \brief Publish file data to a stream.
@@ -358,6 +376,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	struct ldmsd_msg_buf *buf = NULL;
 	uint32_t msg_no;
 	struct ldmsd_req_attr_s a;
+	struct stream_ctxt ctxt = {0};
 
 	char *timeout_s;
 	int timeout = LDMSD_STREAM_CONNECT_TIMEOUT;
@@ -387,6 +406,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 			errno, xprt);
 		return errno;
 	}
+	ctxt.x = x;
 	max_msg_len = ldms_xprt_msg_max(x);
 
 	buf = ldmsd_msg_buf_new(max_msg_len);
@@ -407,7 +427,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	sem_init(&conn_sem, 0, 0);
 	sem_init(&recv_sem, 0, 0);
 
-	rc = ldms_xprt_connect_by_name(x, host, port, event_cb, NULL);
+	rc = ldms_xprt_connect_by_name(x, host, port, event_cb, &ctxt);
 	if (rc) {
 		msglog("Error %d connecting to %s:%s\n",
 			rc, host, port);
@@ -433,7 +453,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		data_len = ftell(file);
 		rewind(file);
 
-		rc = stream_hdr_send(x, msg_no, stream, stream_type,
+		rc = stream_hdr_send(&ctxt, msg_no, stream, stream_type,
 				     buf, data_len + 1 /* terminating '\0' */);
 		if (rc)
 			goto close_xprt;
@@ -444,7 +464,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 				buffer[cnt] = '\0';
 				cnt += 1;
 			}
-			rc = stream_send(x, buf, msg_no, 0, buffer, cnt);
+			rc = stream_send(&ctxt, buf, msg_no, 0, buffer, cnt);
 			if (rc)
 				goto close_xprt;
 		}
@@ -487,18 +507,19 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		buffer[data_len] = '\0';
 		free(b);
 
-		rc = stream_hdr_send(x, msg_no, stream, stream_type,
+		rc = stream_hdr_send(&ctxt, msg_no, stream, stream_type,
 				     buf, data_len + 1 /* terminating '\0' */);
 		if (rc)
 			goto close_xprt;
-		rc = stream_send(x, buf, msg_no, 0, buffer, data_len + 1);
+		rc = stream_send(&ctxt, buf, msg_no, 0, buffer, data_len + 1);
 		if (rc)
 			goto close_xprt;
 	}
 
 	/* Terminating */
 	a.discrim = 0;
-	rc = stream_send(x, buf, msg_no, LDMSD_REQ_EOM_F,
+	ctxt.is_done = 1;
+	rc = stream_send(&ctxt, buf, msg_no, LDMSD_REQ_EOM_F,
 			(char *)&a.discrim, sizeof(a.discrim));
 	if (rc)
 		goto close_xprt;
@@ -510,6 +531,13 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	ts.tv_nsec = 0;
 	sem_timedwait(&recv_sem, &ts);
 
+	ts.tv_sec = time(NULL) + timeout;
+	ts.tv_nsec = 0;
+	if (sem_timedwait(&conn_sem, &ts)) {
+		msglog("Timeout connecting to remote peer\n");
+		rc = errno;
+		goto err;
+	}
 close_xprt:
 	ldms_xprt_close(x);
 err:

@@ -595,6 +595,12 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
 		goto reset_prdcr;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		/*
+		 * TODO: see what LDMSD should do with this.
+		 * Can it just ignore the event for now?
+		 */
+		break;
 	default:
 		assert(0);
 	}

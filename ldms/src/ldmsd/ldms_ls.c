@@ -604,13 +604,26 @@ void dir_cb(ldms_t t, int status, ldms_dir_t _dir, void *cb_arg)
 
 void ldms_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
-	if ((e->type == LDMS_XPRT_EVENT_ERROR) ||
-			(e->type == LDMS_XPRT_EVENT_REJECTED)) {
+	switch (e->type) {
+	case LDMS_XPRT_EVENT_ERROR:
+	case LDMS_XPRT_EVENT_REJECTED:
 		printf("Connection failed/rejected.\n");
 		done = 1;
+		/* let-through */
+	case LDMS_XPRT_EVENT_CONNECTED:
+	case LDMS_XPRT_EVENT_DISCONNECTED:
+		sem_post(&conn_sem);
+		break;
+	case LDMS_XPRT_EVENT_RECV:
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+	case LDMS_XPRT_EVENT_SET_DELETE:
+		/* ignore */
+		break;
+	default:
+		assert(0 == "Unknown event.");
+		break;
 	}
 
-	sem_post(&conn_sem);
 }
 
 const char *repeat(char c, size_t count)
