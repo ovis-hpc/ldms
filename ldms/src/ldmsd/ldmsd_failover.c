@@ -1051,6 +1051,10 @@ void __failover_xprt_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	case LDMS_XPRT_EVENT_RECV:
 		ldmsd_recv_msg(x, e->data, e->data_len);
 		break;
+	case LDMS_XPRT_EVENT_SET_DELETE:
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		/* no-op */
+		break;
 	default:
 		__ASSERT(0 == "Unknown Event");
 	}

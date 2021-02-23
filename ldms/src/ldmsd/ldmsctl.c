@@ -2350,6 +2350,9 @@ void __ldms_event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		ldmsctl_recv_buf_new(e->data, e->data_len);
 		sem_post(&ctrl->ldms_xprt.recv_sem);
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		/* do nothing */
+		break;
 	default:
 		assert(0);
 	}

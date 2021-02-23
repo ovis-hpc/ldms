@@ -982,6 +982,8 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	case LDMS_XPRT_EVENT_RECV:
 		ldmsd_recv_msg(x, e->data, e->data_len);
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		break;
 	default:
 		assert(0);
 		break;
