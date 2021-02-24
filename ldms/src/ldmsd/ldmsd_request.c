@@ -672,6 +672,7 @@ ldmsd_req_cmd_t alloc_req_cmd_ctxt(ldms_t ldms,
 	rcmd->ctxt = ctxt;
 	rcmd->reqc->req_id = req_id;
 	rcmd->resp_handler = resp_handler;
+	rcmd->msg_flags = LDMSD_REQ_SOM_F;
 	return rcmd;
 err1:
 	free(rcmd);
@@ -924,15 +925,18 @@ int ldmsd_req_cmd_attr_append(ldmsd_req_cmd_t rcmd,
 	}
 	if (attr_id >= LDMSD_ATTR_LAST)
 		return EINVAL;
+
 	attr.discrim = 1;
 	ldmsd_hton_req_attr(&attr);
 	rc = __ldmsd_append_buffer(rcmd->reqc, (void*)&attr, sizeof(attr),
-				   0, LDMSD_REQ_TYPE_CONFIG_CMD);
+				   rcmd->msg_flags, LDMSD_REQ_TYPE_CONFIG_CMD);
+	if (LDMSD_REQ_SOM_F == rcmd->msg_flags)
+		rcmd->msg_flags = 0;
 	if (rc)
 		return rc;
 	if (value_len) {
 		rc = __ldmsd_append_buffer(rcmd->reqc, value, value_len,
-					   0, LDMSD_REQ_TYPE_CONFIG_CMD);
+				   rcmd->msg_flags, LDMSD_REQ_TYPE_CONFIG_CMD);
 	}
 	return rc;
 }

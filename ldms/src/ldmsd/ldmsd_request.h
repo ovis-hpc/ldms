@@ -325,6 +325,7 @@ struct ldmsd_req_cmd {
 	ldmsd_req_ctxt_t org_reqc; /* The original request context */
 	ldmsd_req_resp_fn resp_handler; /* Pointer to the function to handle the response */
 	void *ctxt;
+	int msg_flags;
 };
 
 #pragma pack(push, 1)
