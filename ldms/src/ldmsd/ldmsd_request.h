@@ -305,8 +305,6 @@ typedef struct ldmsd_req_ctxt {
 
 	void *ctxt;
 
-	int rec_no;
-
 	uint32_t errcode;
 	uint32_t req_id;
 
