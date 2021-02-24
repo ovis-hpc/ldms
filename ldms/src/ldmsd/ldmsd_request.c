@@ -6047,6 +6047,10 @@ err_reply:
 
 static int __on_republish_resp(ldmsd_req_cmd_t rcmd)
 {
+	ldmsd_req_attr_t attr;
+	ldmsd_req_hdr_t resp = (ldmsd_req_hdr_t)(rcmd->reqc->req_buf);
+	attr = ldmsd_first_attr(resp);
+	ldmsd_log(LDMSD_LDEBUG, "%s: %s\n", __func__, (char *)attr->attr_value);
 	return 0;
 }
 
@@ -6062,14 +6066,15 @@ static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
 						 NULL, __on_republish_resp, NULL);
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, stream);
 	if (rc)
-		goto out;
+		goto err;
 	if (stream_type == LDMSD_STREAM_JSON)
 		attr_id = LDMSD_ATTR_JSON;
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, attr_id, data);
 	if (rc)
-		goto out;
+		goto err;
 	rc = ldmsd_req_cmd_attr_term(rcmd);
- out:
+	return rc;
+ err:
 	ldmsd_req_cmd_free(rcmd);
 	return rc;
 }
