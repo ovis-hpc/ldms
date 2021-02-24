@@ -24,7 +24,25 @@ procnfs \
 procstat \
 sysclassib \
 vmstat \
-init_jobinfo.sh
+init_jobinfo.sh \
+dstat \
+gw_sysclassib.cts1 \
+gw_sysclassib.tlcc2 \
+jobid \
+llnl_lustre_client \
+lustre2_client.cts1x \
+lustre2_client.srn \
+opa2 \
+procstat.36 \
+procstat.48 \
+procstat.72 \
+procstat.96 \
+procstat.nocores \
+store_csv \
+store_csv.opts \
+syspapi-events.json.E5-2695 \
+syspapi_sampler
+
 
 endif
 
