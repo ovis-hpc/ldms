@@ -2,7 +2,7 @@
  * Copyright (c) 2019-2021 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2019-2020 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2019-2021 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -63,6 +63,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <ovis_json/ovis_json.h>
+#include <coll/idx.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_stream.h"
@@ -70,158 +71,257 @@
 
 /**
  * CURRENT GROUND RULES:
- * 1) the json will be something like: {foo:1, bar:2, zed-data:[{count:1, name:xyz},{count:2, name:abc}]}
+ * 1) the json will be something like:
+ *            {foo:1, bar:2, zed-data:[{count:1, name:xyz},{count:2, name:abc}]}
  * 2) can get this at the beginning and assume it will be true for all time
  * 3) there will be at most 1 list
  * 4) can have a list with no entries
  * 5) In the writeout, each dict will be in its own csv line with the singletons
- * 6) one stream only
  */
 
-//TODO - will want rollover
+
+//user changes these in the code before build, for now
+#undef NDATA_TIMING
+#define NDATA 10000
+#define TIMESTAMP_STORE
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
 #endif
 
-
-#define PNAME "l2_stream_csv_store"
-
-static ldmsd_msg_log_f msglog;
-
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
 
 
-static char* root_path;
-static char* container;
-static char* schema;
-static unsigned long tsconfig;
-FILE* streamfile;
-static char* streamfile_name;
-static pthread_mutex_t cfg_lock;
-static pthread_mutex_t store_lock;
-//Well known that the written order will be singletonkeys followed by listentry keys
+#define PNAME "l2_stream_csv_store"
+
+static ldmsd_msg_log_f msglog;
+static int rollover;
+#define DEFAULT_ROLLTYPE -1
+#define ROLL_LIMIT_INTERVAL 60
+#define ROLL_DEFAULT_SLEEP 60
+#define ROLL_BY_RECORDS 3
+//NOTE: only type ROLL_BY_RECORDS is supported for now
+static int rolltype = DEFAULT_ROLLTYPE;
+/** minimum rollover for type 3;
+    rolltype==3 and rollover < MIN_ROLL_RECORDS -> rollover = MIN_ROLL_RECORDS */
+#define MIN_ROLL_RECORDS 3
+/** Interval to check for passing the record or byte count limits. */
+
+
+static pthread_t rothread;
+static int rothread_used = 0;
+
+static char* root_path = NULL;
+static char* container = NULL;
+static int buffer = 0;
+static pthread_mutex_t cfg_lock; //about config args, not about the header
+
+static idx_t stream_idx;
+// Well known:: written order will be singletonkeys followed by listentry keys
 struct linedata {
 	int nsingleton;
 	char** singletonkey;
 	int nlist;
 	char* listkey; //will have at most one list;
-	int ndict; // there are a variable number of dicts in the list. all dicts in a list must have same keys
+	int ndict; /** variable number of dicts in list. all
+                       dicts in list must have same keys */
 	char** dictkey;
 	int nkey;
 	int nheaderkey;  //number of keys in the header
+        char* header;
 };
-static struct linedata dataline;
-static int validheader = 0;
-static int buffer = 0;
-static int temp_count = 0;
 
 
-static void _clear_key_info(){
-	int i, j;
 
-	validheader = 0;
-	for (i = 0; i < dataline.nsingleton; i++){
-		if (dataline.singletonkey[i]) free(dataline.singletonkey[i]);
+struct csv_stream_handle{
+        /** key will be stream. NOT container/schema like store/csv since you
+            can only subscribe once to a stream. it is like a schema in a
+            canonical store that it will have to be unique and immutable. */
+        char* stream; //this is the key for this handle
+        char* basename; /** file base name. add the timestamp on:
+                            (root_path + container + stream) */
+        FILE* file;
+        int store_count; //for the roll
+        struct linedata dataline; //used to keep track of keys for the header
+        pthread_mutex_t lock;
+};
+
+#ifdef NDATA_TIMING
+static int temp_count = 0; /** tracks written lines for timing. this is
+                               incremented over all stream, not per stream */
+#endif
+
+static void _clear_key_info(struct linedata* dataline){
+	int i;
+
+        //have stream lock
+        if (dataline->header) free(dataline->header);
+        dataline->header = NULL;
+	for (i = 0; i < dataline->nsingleton; i++){
+		if (dataline->singletonkey[i]) free(dataline->singletonkey[i]);
 	}
-	if (dataline.singletonkey) free(dataline.singletonkey);
-	dataline.singletonkey = NULL;
-	dataline.nsingleton = 0;
+	if (dataline->singletonkey) free(dataline->singletonkey);
+	dataline->singletonkey = NULL;
+	dataline->nsingleton = 0;
 
-	if (dataline.listkey) free (dataline.listkey);
-	dataline.listkey = NULL;
-	dataline.nlist = 0;
+	if (dataline->listkey) free (dataline->listkey);
+	dataline->listkey = NULL;
+	dataline->nlist = 0;
 
-	for (i = 0; i< dataline.ndict; i++){
-		if (dataline.dictkey[i]) free (dataline.dictkey[i]);
-		dataline.dictkey[i] = NULL;
+	for (i = 0; i < dataline->ndict; i++){
+		if (dataline->dictkey[i]) free (dataline->dictkey[i]);
+		dataline->dictkey[i] = NULL;
 	}
-	dataline.ndict = 0;
-	dataline.nheaderkey = 0;
+	dataline->ndict = 0;
+	dataline->nheaderkey = 0;
+        if (dataline->header) free(dataline->header);
+        dataline->header = NULL;
+}
+
+static void close_streamstore(void *obj, void *cb_arg){
+
+        if (!obj) return;
+
+        pthread_mutex_lock(&cfg_lock);
+        struct csv_stream_handle *stream_handle =
+                (struct csv_stream_handle *)obj;
+
+        pthread_mutex_lock(&stream_handle->lock);
+
+        //FIXME: need a stream unsubscribe?
+
+        msglog(LDMSD_LDEBUG, PNAME ": Closing stream store <%s>\n",
+               stream_handle->stream);
+
+        if (stream_handle->file) {
+                fflush(stream_handle->file);
+                fsync(fileno(stream_handle->file));
+                fclose(stream_handle->file);
+        }
+        stream_handle->file = NULL;
+
+        _clear_key_info(&stream_handle->dataline);
+        stream_handle->store_count = 0;
+        free(stream_handle->basename);
+        stream_handle->basename = NULL;
+
+        idx_delete(stream_idx,
+                   stream_handle->stream, strlen(stream_handle->stream));
+        free(stream_handle->stream);
+        stream_handle->stream = NULL;
+
+        pthread_mutex_unlock(&stream_handle->lock);
+        pthread_mutex_destroy(&stream_handle->lock);
+
+
+        pthread_mutex_unlock(&cfg_lock);
+
+        return;
 }
 
 
-static int _parse_list_for_header(json_entity_t e){
-	//get specialized data for building the header
-	//this should only be list of dicts
+static int _parse_list_for_header(struct linedata *dataline, json_entity_t e){
+	/** get specialized data for building header.
+            this should only be list of dicts */
 	json_entity_t li, di;
 	int idict;
 	int i;
 
-	//TODO: if needed for performance reasons, can we eliminate some of the checking and jsut rely on
-	//getting NULL returns when we ask for the actual item that we would want?
+        /** NOTE: if needed for performance reasons, can we eliminate some of
+            the checking and jsut rely on getting NULL returns when we ask
+            for the actual item that we would want? */
 
-	//for getting the header, we only care about the first li
+        if (!dataline){
+                return -1;
+        }
+
+	// for getting the header, we only care about the first li
 	li = json_item_first(e);
+
 	if (li == NULL){
-		msglog(LDMSD_LERROR, PNAME ": list cannot be empty for header.\n");
+		msglog(LDMSD_LERROR,
+                       PNAME ": list cannot be empty for header.\n");
 		return -1;
 	}
 	if (li->type != JSON_DICT_VALUE){
-		msglog(LDMSD_LERROR, PNAME ": list can only have dict entries\n");
+		msglog(LDMSD_LERROR,
+                       PNAME ": list can only have dict entries\n");
 		return -1;
 	}
-	//parse the dict. process once to fill and 2nd time to fill
+	// parse the dict. process once to fill and 2nd time to fill
 	for (i = 0; i < 2; i++){
 		idict = 0;
 		for (di = json_attr_first(li); di; di = json_attr_next(di)){
 			//only allowed singleton entries
-			//                        msglog(LDMSD_LDEBUG, PNAME ": list %s dict item %d = %s\n",
-			//                               dataline.listkey, idict, di->value.attr_->name->value.str_->str);
-			if (i == 1){
-			       dataline.dictkey[idict] = strdup(di->value.attr_->name->value.str_->str);
+			/**  msglog(LDMSD_LDEBUG,
+                             PNAME ": list %s dict item %d = %s\n",
+                             dataline.listkey, idict,
+                             di->value.attr_->name->value.str_->str); */
+			if (i == 1) {
+                                dataline->dictkey[idict] =
+                                        strdup(di->value.attr_->name->value.str_->str);
 			}
 			idict++;
 		}
 		if (idict == 0){
-			msglog(LDMSD_LDEBUG, PNAME ": empty dict for header parse\n");
+			msglog(LDMSD_LDEBUG,
+                               PNAME ": empty dict for header parse\n");
 			return -1;
 		}
 		if (i == 0){
-			dataline.dictkey = (char**) calloc(idict, sizeof(char*));
-			if (!(dataline.dictkey)){
-				return ENOMEM;
-			}
-			dataline.ndict = idict;
+			dataline->dictkey =
+                                (char**) calloc(idict, sizeof(char*));
+			if (!(dataline->dictkey)) return ENOMEM;
+			dataline->ndict = idict;
 		}
 	}
 	return 0;
 
 };
 
-static int _get_header_from_data(json_entity_t e, jbuf_t jb){
-	//from the data, builds the header and supporting structs. all lists and dict options must be in this line.
+static int _get_header_from_data(struct linedata *dataline, json_entity_t e){
+	// from the data, builds the header and supporting structs.
+        // all lists and dict options must be in this line
 
 	json_entity_t a;
-	int isingleton, ilist, iheaderkey;
-	int i, j, rc;
+	int isingleton, ilist;
+	int i, rc;
 
-	//TODO: check for thread safety. check the locks
 
-	_clear_key_info();
+        if (!dataline){
+                return EINVAL;
+        }
+        _clear_key_info(dataline);
+
+        jbuf_t jb = jbuf_new();  /** use jbuf as a variable length string to
+                                     add things to. Only need to do once. */
 
 	// process to build the header.
-	msglog(LDMSD_LDEBUG, PNAME ":starting first pass\n");
 	i = 0;
 	isingleton = 0;
 	ilist = 0;
 	for (a = json_attr_first(e); a; a = json_attr_next(a)){
 		json_attr_t attr = a->value.attr_;
-		msglog(LDMSD_LDEBUG, PNAME ": get_header_from_data: parsing attr %d '%s' with value type %s\n",
-		       i, attr->name->value.str_->str, json_type_name(attr->value->type));
+                /** msglog(LDMSD_LDEBUG,
+                    PNAME ": get_header_from_data: parsing attr %d '%s' with value type %s\n",
+                    i, attr->name->value.str_->str,
+                    json_type_name(attr->value->type)); */
 		switch (attr->value->type){
 		case JSON_LIST_VALUE:
-			//assumes that all the dicts in a list will have the same keys for all time
+			/** assumes that all the dicts in a list will have
+                            the same keys for all time */
 			if (ilist != 0){
-				msglog(LDMSD_LDEBUG, PNAME ": can only support 1 list in the header\n");
+				msglog(LDMSD_LDEBUG,
+                                       PNAME ": can only support 1 list in the header\n");
 				rc = EINVAL;
 				goto err;
 			}
 			ilist++;
 			break;
 		case JSON_DICT_VALUE:
-			msglog(LDMSD_LERROR, PNAME ": not handling type JSON_DICT_VALUE in header\n");
+			msglog(LDMSD_LERROR,
+                               PNAME ": not handling type JSON_DICT_VALUE in header\n");
 			rc = EINVAL;
 			goto err;
 			break;
@@ -230,7 +330,8 @@ static int _get_header_from_data(json_entity_t e, jbuf_t jb){
 			isingleton++;
 			break;
 		case JSON_ATTR_VALUE:
-			msglog(LDMSD_LERROR, PNAME ": should not have ATTR type now\n");
+			msglog(LDMSD_LERROR,
+                               PNAME ": should not have ATTR type now\n");
 			rc = EINVAL;
 			goto err;
 			break;
@@ -241,91 +342,98 @@ static int _get_header_from_data(json_entity_t e, jbuf_t jb){
 		}
 		i++;
 	}
-	msglog(LDMSD_LDEBUG, PNAME ": completed first pass\n");
 
 	if ((isingleton == 0) && (ilist == 0)){
-		msglog(LDMSD_LERROR, PNAME ": no keys for header. Waiting for next one\n");
+		msglog(LDMSD_LERROR,
+                       PNAME ": no keys for header. Waiting for next one\n");
 		rc = EINVAL;
 		goto err;
 	}
 
-	dataline.nsingleton = isingleton;
-	dataline.nlist = ilist;
-	dataline.singletonkey = (char**) calloc(dataline.nsingleton, sizeof(char*));
-	if (dataline.nsingleton && !dataline.singletonkey){
+        dataline->nsingleton = isingleton;
+        dataline->nlist = ilist;
+        dataline->singletonkey =
+                (char**) calloc(dataline->nsingleton, sizeof(char*));
+	if (dataline->nsingleton &&
+            !dataline->singletonkey){
 		rc = ENOMEM;
 		goto err;
 	}
 
 	// process again to fill. will parse dicts here
-	msglog(LDMSD_LDEBUG, PNAME ": starting second pass\n");
 	i = 0;
 	isingleton = 0;
 	for (a = json_attr_first(e); a; a = json_attr_next(a)){
 		json_attr_t attr = a->value.attr_;
-		msglog(LDMSD_LDEBUG, PNAME ": get_header_from_data: parsing attr %d '%s' with value type %s\n",
-		       i, attr->name->value.str_->str, json_type_name(attr->value->type));
 		switch (attr->value->type){
 		case JSON_LIST_VALUE:
-			dataline.listkey = strdup(attr->name->value.str_->str);
-			rc = _parse_list_for_header(attr->value);
+			dataline->listkey = strdup(attr->name->value.str_->str);
+			rc = _parse_list_for_header(dataline,attr->value);
 			if (rc) goto err;
 			break;
 		case JSON_DICT_VALUE:
-			msglog(LDMSD_LERROR, PNAME ": not handling type JSON_DICT_VALUE in header\n");
+			msglog(LDMSD_LERROR,
+                               PNAME ": not handling type JSON_DICT_VALUE in header\n");
 			rc = EINVAL;
 			goto err;
 			break;
 		case JSON_ATTR_VALUE:
-			msglog(LDMSD_LERROR, PNAME ": should not have ATTR type now\n");
+			msglog(LDMSD_LERROR,
+                               PNAME ": should not have ATTR type now\n");
 			rc = EINVAL;
 			goto err;
 			break;
 		case JSON_NULL_VALUE:
 		default:
 			//it's a singleton
-			dataline.singletonkey[isingleton++] = strdup(attr->name->value.str_->str);
+			dataline->singletonkey[isingleton++] =
+                                strdup(attr->name->value.str_->str);
 			break;
 		}
 		i++;
 	}
 
-	msglog(LDMSD_LDEBUG, PNAME ": assembling header\n");
-	dataline.nheaderkey = dataline.nsingleton  + dataline.ndict;
+	dataline->nheaderkey = dataline->nsingleton + dataline->ndict;
 
-	//order will be order of singletons and order of dict. repeat dicts will be separate entries in the csv
-	for (i = 0; i < dataline.nsingleton; i++){
-		msglog(LDMSD_LDEBUG, "<%s>\n", dataline.singletonkey[i]);
-		if (i < dataline.nheaderkey-1){
-			jb = jbuf_append_str(jb, "%s,", dataline.singletonkey[i]);
+	/** order will be order of singletons and order of dict.
+            repeat dicts will be separate entries in the csv */
+	for (i = 0; i < dataline->nsingleton; i++){
+		if (i < dataline->nheaderkey-1){
+			jb = jbuf_append_str(jb, "%s,",
+                                             dataline->singletonkey[i]);
 		} else {
-			jb = jbuf_append_str(jb, "%s", dataline.singletonkey[i]);
+			jb = jbuf_append_str(jb, "%s",
+                                             dataline->singletonkey[i]);
 		}
 	}
 
-	for (i = 0; i < dataline.ndict; i++){
-		msglog(LDMSD_LDEBUG, "<%s:%s>\n", dataline.listkey, dataline.dictkey[i]);
-		if (i < dataline.ndict-1){
-			jb = jbuf_append_str(jb, "%s:%s,", dataline.listkey, dataline.dictkey[i]);
+	for (i = 0; i < dataline->ndict; i++){
+		if (i < dataline->ndict-1){
+			jb = jbuf_append_str(jb, "%s:%s,", dataline->listkey,
+                                             dataline->dictkey[i]);
 		} else {
-			jb = jbuf_append_str(jb, "%s:%s", dataline.listkey, dataline.dictkey[i]);
+			jb = jbuf_append_str(jb, "%s:%s", dataline->listkey,
+                                             dataline->dictkey[i]);
 		}
 	}
-//	jb = jbuf_append_str(jb, ",store_recv_time");
-	validheader = 1;
+#ifdef TIMESTAMP_STORE
+	jb = jbuf_append_str(jb, ",store_recv_time");
+#endif
+        dataline->header = strdup(jb->buf);
+        jbuf_free(jb);
 
 	return 0;
 
 err:
+        jbuf_free(jb);
 	msglog(LDMSD_LDEBUG, PNAME ": header build failed\n");
-	_clear_key_info();
-	validheader = 0;
+	_clear_key_info(dataline);
 
 	return rc;
 }
 
 
-static int _print_singleton(json_entity_t en, jbuf_t jb){
+static int _append_singleton(json_entity_t en, jbuf_t jb){
 
 	switch (en->type) {
 	case JSON_INT_VALUE:
@@ -348,7 +456,8 @@ static int _print_singleton(json_entity_t en, jbuf_t jb){
 		break;
 	default:
 		//this should not happen
-		msglog(LDMSD_LDEBUG, PNAME, ": cannot process JSON type '%s' as singleton\n",
+		msglog(LDMSD_LDEBUG,
+                       PNAME, ": cannot process JSON type '%s' as singleton\n",
 		       json_type_name(en->type));
 		return -1;
 		break;
@@ -358,99 +467,133 @@ static int _print_singleton(json_entity_t en, jbuf_t jb){
 }
 
 
-static int _print_data_lines(json_entity_t e, FILE* file){
+static int _print_header(struct csv_stream_handle *stream_handle){
+
+        if (stream_handle &&
+            stream_handle->file &&
+            stream_handle->dataline.header){
+                fprintf(stream_handle->file, "#%s\n",
+                        stream_handle->dataline.header);
+                fflush(stream_handle->file);
+                fsync(fileno(stream_handle->file));
+                stream_handle->store_count = 0; //first line in a file
+
+                return 0;
+        }
+
+        return -1;
+}
+
+
+
+static int _print_data_lines(struct csv_stream_handle *stream_handle,
+                             json_entity_t e){
 	//well known order
 
 	json_entity_t en, li;
 	jbuf_t jbs, jb;
-	int iheaderkey, ilines;
+	int iheaderkey;
 	int i;
 	int rc;
 
-	//TODO: if needed for performance reasons, can we eliminate some of the checking and jsut rely on
-	//getting NULL returns when we ask for the actual item that we would want?
+	/** NOTE: if needed for performance reasons, can we eliminate some
+            of the checking and jsut rely on getting NULL returns when we
+            ask for the actual item that we would want? */
 
-#if 0
+        if (!stream_handle || !stream_handle->file){
+                return -1;
+        }
+
+        struct linedata *dataline = &stream_handle->dataline;
+
+#if defined(TIMESTAMP_STORE)
 	struct timeval tv_prev;
-	struct timeval tv_now;
-	struct timeval tv_diff;
 	gettimeofday(&tv_prev, 0);
 #endif
 
-	//        msglog(LDMSD_LDEBUG, PNAME ": _print_data_lines begin\n");
-
-	ilines = 0;
 	iheaderkey = 0;
 
 	jbs = NULL;
 	jbs = jbuf_new();
-	if (dataline.nsingleton > 0){
-		for (i = 0; i < dataline.nsingleton; i++){
-			en = json_value_find(e, dataline.singletonkey[i]);
+	if (dataline->nsingleton > 0){
+		for (i = 0; i < dataline->nsingleton; i++){
+			en = json_value_find(e, dataline->singletonkey[i]);
 			if (en == NULL){
-				//                                msglog(LDMSD_LDEBUG, PNAME ": NULL return from find for key <%s>\n",
-				//                                       dataline.singletonkey[i]);
-				//this might be ok..
+                                //this may or may not be ok....
 			} else {
-				//                                msglog(LDMSD_LDEBUG, PNAME ": processing key '%d' type '%s'\n",
-				//                                       i, json_type_name(en->type));
-				rc = _print_singleton(en, jbs);
+				rc = _append_singleton(en, jbs);
 				if (rc){
-					msglog(LDMSD_LDEBUG, PNAME ": Cannot print data because of a variable print problem\n");
+					msglog(LDMSD_LDEBUG,
+                                               PNAME ": Cannot print data because of a variable print problem\n");
 					jbuf_free(jbs);
 					return rc;
 				}
 			}
-			if (iheaderkey < (dataline.nheaderkey-1)){
+			if (iheaderkey < (dataline->nheaderkey-1)){
 				jbs = jbuf_append_str(jbs, ",");
 			}
 			iheaderkey++;
 		}
 	} else {
-		jbs = jbuf_append_str(jbs,""); //Need this for adding the list items
+		jbs = jbuf_append_str(jbs,""); //Need this for adding list items
 	}
 
 	//for each dict, write a separate line in the file
 	//if header has no list or an empty list, just write the singletons
-	if (dataline.nlist == 0){
-		//                msglog(LDMSD_LDEBUG, PNAME ": no list\n");
-//		fprintf(streamfile, "%s,%f\n", jbs->buf, (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
-		fprintf(streamfile, "%s\n", jbs->buf);
+	if (dataline->nlist == 0){
+#ifdef TIMESTAMP_STORE
+		fprintf(stream_handle->file, "%s,%f\n", jbs->buf,
+                        (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
+#else
+		fprintf(stream_handle->file, "%s\n", jbs->buf);
+#endif
 		jbuf_free(jbs);
 		return 0;
 	}
 
 	//if header has a list.....
-	en = json_value_find(e, dataline.listkey);
+	en = json_value_find(e, dataline->listkey);
 	//if data has no list
 	if (en == NULL){
-		msglog(LDMSD_LDEBUG, PNAME ": no match for %s\n", dataline.listkey);
-		//write out just the singleton line and  empty vals for the dict items
-		for (i = 0; i < dataline.ndict-1; i++){
+		msglog(LDMSD_LDEBUG,
+                       PNAME ": no match for %s\n", dataline->listkey);
+		/** write out just the singleton line and empty vals
+                    for the dict items */
+		for (i = 0; i < dataline->ndict-1; i++){
 			jbs = jbuf_append_str(jbs, ",");
 		}
-//		fprintf(streamfile, "%s,%f\n", jbs->buf, (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
-		fprintf(streamfile, "%s\n", jbs->buf);
+#ifdef TIMESTAMP_STORE
+		fprintf(stream_handle->file, "%s,%f\n", jbs->buf,
+                        (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
+#else
+		fprintf(stream_handle->file, "%s\n", jbs->buf);
+#endif
 		jbuf_free(jbs);
 		return 0;
 	}
 
 	//if we got the val, but its not a list
 	if (en->type != JSON_LIST_VALUE){
-		msglog(LDMSD_LERROR, PNAME ": %s is not a LIST type %s. skipping this data.\n",
-		       dataline.listkey, json_type_name(en->type));
-		//TODO: this is bad. currently writing out nothing
+		msglog(LDMSD_LERROR,
+                       PNAME ": %s is not a LIST type %s. skipping this data.\n",
+		       dataline->listkey, json_type_name(en->type));
+		/** NOTE: this is bad. currently writing out nothing,
+                    but could change this later. */
 		jbuf_free(jbs);
 		return -1;
 	}
 
 	//if there are no dicts
 	if (json_item_first(en) == NULL){
-		for (i = 0; i < dataline.ndict-1; i++){
+		for (i = 0; i < dataline->ndict-1; i++){
 			jbs = jbuf_append_str(jbs, ",");
 		}
-//		fprintf(streamfile, "%s,%f\n", jbs->buf, (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
-		fprintf(streamfile, "%s\n", jbs->buf);
+#ifdef TIMESTAMP_STORE
+		fprintf(stream_handle->file, "%s,%f\n", jbs->buf,
+                        (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
+#else
+		fprintf(stream_handle->file, "%s\n", jbs->buf);
+#endif
 		jbuf_free(jbs);
 		return 0;
 	}
@@ -460,63 +603,64 @@ static int _print_data_lines(json_entity_t e, FILE* file){
 		if (li->type != JSON_DICT_VALUE){
 			msglog(LDMSD_LERROR,
 			       PNAME ": LIST %s has innards that are not a DICT type %s. skipping this data.\n",
-			       dataline.listkey, json_type_name(li->type));
+			       dataline->listkey, json_type_name(li->type));
 			//no output
 			jbuf_free(jbs);
 			return -1;
 		}
 
 		//each dict will be its own line
-		//                msglog(LDMSD_LDEBUG, PNAME ": beginning of dict\n");
 		jb = jbuf_new();
 		jb = jbuf_append_str(jb, "%s", jbs->buf);
-		for (i = 0; i < dataline.ndict; i++){
-			json_entity_t edict = json_value_find(li, dataline.dictkey[i]);
+		for (i = 0; i < dataline->ndict; i++){
+			json_entity_t edict =
+                                json_value_find(li, dataline->dictkey[i]);
 			if (edict == NULL){
 				msglog(LDMSD_LDEBUG,
 				       PNAME ": NULL return from find for key <%s>\n",
-				       dataline.dictkey[i]);
+				       dataline->dictkey[i]);
 				//print nothing
 			} else {
-				rc = _print_singleton(edict, jb);
+				rc = _append_singleton(edict, jb);
 				if (rc){
-					msglog(LDMSD_LDEBUG, PNAME ": Cannot print data because of a variable print problem\n");
+					msglog(LDMSD_LDEBUG,
+                                               PNAME ": Cannot print data because of a variable print problem\n");
 					jbuf_free(jbs);
 					jbuf_free(jb);
 					return rc;
 				}
 			}
-			if (i < (dataline.ndict-1)) {
+			if (i < (dataline->ndict-1)) {
 				jb = jbuf_append_str(jb, ",");
 			}
 		}
-		//                msglog(LDMSD_LDEBUG, PNAME ": end of dict\n");
-//		fprintf(streamfile, "%s,%f\n", jb->buf, (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
-		fprintf(streamfile, "%s\n", jb->buf);
-		ilines++; //note only this case is being counted
+#ifdef TIMESTAMP_STORE
+		fprintf(stream_handle->file, "%s,%f\n", jb->buf,
+                        (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
+#else
+		fprintf(stream_handle->file, "%s\n", jb->buf);
+#endif
+                stream_handle->store_count++; /** stream_cb has the lock, so
+                                                  roll cannot be called while
+                                                  this is going on. */
 		jbuf_free(jb);
 
 	}
 	jbuf_free(jbs);
 
-	//note only if you get here is time counted
-#if 0
-	gettimeofday(&tv_now, 0);
-	timersub(&tv_now, &tv_prev, &tv_diff);
-	//        msglog(LDMSD_LINFO, PNAME ": print_lines %d duration %f\n", ilines, (tv_diff.tv_sec + tv_diff.tv_usec/1000000.0));
-	//        fprintf(streamfile, "#print_lines %f duration %f\n", ilines, (tv_diff.tv_sec + tv_diff.tv_usec/1000000.0));
-#endif
 
+
+
+#ifdef NDATA_TIMING
+        //note this is INFO not DEBUG
 	temp_count++;
-	if ((temp_count % 10000) == 0){
+	if ((temp_count % NDATA) == 0){
 		struct timespec tv_now;
 		clock_gettime(CLOCK_REALTIME, &tv_now);
-//		msglog(LDMSD_LINFO, PNAME " %d lines timestamp %f\n",
-//		       temp_count, (tv_now.tv_sec + tv_now.tv_nsec/1000000000.0));
-		msglog(LDMSD_LINFO, PNAME " %d lines timestamp %ld\n",
+		msglog(LDMSD_LINFO, PNAME " %d lines processed timestamp %ld\n",
 		       temp_count, tv_now.tv_sec);
 	}
-
+#endif
 
 	return 1;
 }
@@ -527,27 +671,54 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		     const char *msg, size_t msg_len,
 		     json_entity_t e) {
 
-	int iheaderkey = 0;
+        struct csv_stream_handle* stream_handle;
 	int rc = 0;
-	int i = 0;
 
 
-	msglog(LDMSD_LDEBUG, PNAME ": Calling stream_cb. msg '%s'\n", msg);
-	pthread_mutex_lock(&store_lock);
+        /**	msglog(LDMSD_LDEBUG,
+                PNAME ": Calling stream_cb. msg '%s' on stream '%s'\n",
+                msg, ldmsd_stream_client_name(c)); */
 
-	if (!streamfile){
-		msglog(LDMSD_LERROR, PNAME ": Cannot insert values for '%s': file is NULL\n",
-		       streamfile);
+        const char *skey = ldmsd_stream_client_name(c);
+        if (!skey){
+                msglog(LDMSD_LERROR,
+                       PNAME ": Cannot get stream_name from client\n");
+                return -1;
+        }
+
+        pthread_mutex_lock(&cfg_lock); /** really don't need this, since cannot
+                                           dynamically add streams and cannot
+                                           destroy them */
+        stream_handle = idx_find(stream_idx, (void *)skey, strlen(skey));
+        if (!stream_handle){
+                msglog(LDMSD_LERROR,
+                       PNAME ": No stream_store for '%s'\n", skey);
+                pthread_mutex_unlock(&cfg_lock);
+                return -1;
+
+        }
+
+	pthread_mutex_lock(&stream_handle->lock);
+        pthread_mutex_unlock(&cfg_lock);
+        /** currently releasing this, since the only way to destroy is in the
+            overall shutdown, plus want to be able to do the callback on
+            independent streams at the same time */
+
+	if (!stream_handle->file){
+		msglog(LDMSD_LERROR,
+                       PNAME ": Cannot insert values for '%s': file is NULL\n",
+		       stream_handle->stream);
 		rc = EPERM;
 		goto out;
 	}
 
-	// msg will be populated. if the type was json, entity will also be populated.
+	/** msg will be populated. if the type was json,
+            entity will also be populated. */
 	if (stream_type == LDMSD_STREAM_STRING){
-		fprintf(streamfile, "%s\n", msg);
+		fprintf(stream_handle->file, "%s\n", msg);
 		if (!buffer){
-			fflush(streamfile);
-			fsync(fileno(streamfile));
+			fflush(stream_handle->file);
+			fsync(fileno(stream_handle->file));
 		}
 	} else if (stream_type == LDMSD_STREAM_JSON){
 		if (!e){
@@ -557,33 +728,27 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		}
 
 		if (e->type != JSON_DICT_VALUE) {
-			msglog(LDMSD_LERROR, PNAME ": Expected a dictionary object, not a %s.\n",
+			msglog(LDMSD_LERROR,
+                               PNAME ": Expected a dict object, not a %s.\n",
 			       json_type_name(e->type));
 			rc = EINVAL;
 			goto out;
 		}
 
-		//testing
-		msglog(LDMSD_LDEBUG, PNAME ": type is %s\n", json_type_name(e->type));
-
-		if (!validheader){
-			jbuf_t jb = jbuf_new();
-			rc = _get_header_from_data(e, jb);
+                if (!stream_handle->dataline.header){
+                        rc = _get_header_from_data(&stream_handle->dataline,e);
 			if (rc != 0) {
-				msglog(LDMSD_LDEBUG, PNAME ": error processing header from data <%d>\n", rc);
-				jbuf_free(jb);
+				msglog(LDMSD_LDEBUG,
+                                       PNAME ": error processing header from data <%d>\n", rc);
 				goto out;
 			}
-			fprintf(streamfile, "%s\n", jb->buf);
-			fflush(streamfile);
-			fsync(fileno(streamfile));
-			jbuf_free(jb);
+                        _print_header(stream_handle);
 		}
 
-		_print_data_lines(e, streamfile);
+		_print_data_lines(stream_handle, e);
 		if (!buffer){
-			fflush(streamfile);
-			fsync(fileno(streamfile));
+			fflush(stream_handle->file);
+			fsync(fileno(stream_handle->file));
 		}
 	} else {
 		msglog(LDMSD_LERROR, PNAME ": unknown stream type\n");
@@ -593,104 +758,240 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 
 out:
 
-	pthread_mutex_unlock(&store_lock);
+	pthread_mutex_unlock(&stream_handle->lock);
 	return rc;
 }
 
 
+static int open_streamstore(char* stream){
+        struct csv_stream_handle *stream_handle;
+        char *tmp_filename;
+        char *tmp_basename;
+	char *dpath;
+        FILE *tmp_file;
+        unsigned long tspath;
+        int rc = 0;
 
-static int reopen_container(){
 
-	int rc = 0;
-	char* path = NULL;
-	char* dpath = NULL;
-
-
-	//already have the cfg_lock
-	if (!root_path || !container || !schema) {
+	// already have the cfg_lock
+	if (!root_path || !container || !stream) {
 	     msglog(LDMSD_LERROR, PNAME ": config not called. cannot open.\n");
 	     return ENOENT;
 	}
 
-	if (streamfile){ //dont reopen
-		return 0;
+        //NOTE: unlike store, this doesn't have the possibility of closing yet.
+        stream_handle = idx_find(stream_idx, (void *)stream, strlen(stream));
+        if (stream_handle){
+                msglog(LDMSD_LERROR,
+                       PNAME ": cannot open stream item. already have it\n");
+		return EINVAL;
 	}
 
 	// add additional 12 for the timestamp
-	size_t pathlen = strlen(root_path) + strlen(schema) + strlen(container) + 8 + 12;
-	path = malloc(pathlen);
-	if (!path){
+	size_t pathlen =
+                strlen(root_path) + strlen(stream) + strlen(container) + 8 + 12;
+        dpath = malloc(pathlen);
+	tmp_basename = malloc(pathlen);
+        tmp_filename = malloc(pathlen);
+	if (!dpath || !tmp_filename || !tmp_basename){
 		rc = ENOMEM;
 		goto out;
 	}
-	if (streamfile_name)
-		free(streamfile_name);
-	dpath = malloc(pathlen);
-	if (!dpath) {
-		rc = ENOMEM;
-		goto out;
-	}
-	sprintf(path, "%s/%s/%s-%lu", root_path, container, schema, tsconfig);
-	sprintf(dpath, "%s/%s", root_path, container);
-	streamfile_name = strdup(path);
 
-	msglog(LDMSD_LDEBUG, PNAME ": schema '%s' will have file path '%s'\n", schema, path);
+        tspath = (unsigned long)(time(NULL));
+        sprintf(dpath, "%s/%s", root_path, container);
+	sprintf(tmp_basename, "%s/%s/%s", root_path, container, stream);
+        sprintf(tmp_filename, "%s/%s/%s.%lu",
+                root_path, container, stream, tspath);
 
-	pthread_mutex_init(&store_lock, NULL);
-	pthread_mutex_lock(&store_lock);
+	msglog(LDMSD_LDEBUG, PNAME ": stream '%s' will have file '%s'\n",
+               stream, tmp_filename);
 
 	/* create path if not already there. */
 	rc = mkdir(dpath, 0777);
 	if ((rc != 0) && (errno != EEXIST)) {
-		msglog(LDMSD_LERROR, PNAME ": Failure %d creating directory '%s'\n",
-			 errno, dpath);
+		msglog(LDMSD_LERROR,
+                       PNAME ": Failure %d creating directory '%s'\n",
+                       errno, dpath);
 		rc = ENOENT;
 		goto err1;
 	}
 	rc = 0;
 
-	streamfile = fopen_perm(path, "a+", LDMSD_DEFAULT_FILE_PERM);
-	if (!streamfile){
+	tmp_file = fopen_perm(tmp_filename, "a+", LDMSD_DEFAULT_FILE_PERM);
+	if (!tmp_file){
 		msglog(LDMSD_LERROR, PNAME ": Error %d opening the file %s.\n",
-		       errno,path);
+		       errno,tmp_filename);
 		rc = ENOENT;
 		goto err1;
 	}
-	pthread_mutex_unlock(&store_lock);
+
+        stream_handle = calloc(1, sizeof *stream_handle);
+        if (!stream_handle){
+                rc = ENOMEM;
+                goto err1;
+        }
+
+       	pthread_mutex_init(&stream_handle->lock, NULL);
+	pthread_mutex_lock(&stream_handle->lock);
+
+        //swap
+        stream_handle->file = tmp_file;
+        stream_handle->basename = tmp_basename;
+        stream_handle->stream = strdup(stream);
+
+        idx_add(stream_idx, (void *)stream, strlen(stream), stream_handle);
+
+	pthread_mutex_unlock(&stream_handle->lock);
 
 	goto out;
 
 err1:
-	fclose(streamfile);
-	streamfile = NULL;
-	free(streamfile_name);
-	streamfile_name = NULL;
-	pthread_mutex_unlock(&store_lock);
-	pthread_mutex_destroy(&store_lock);
+
+        free(tmp_basename);
+	pthread_mutex_unlock(&stream_handle->lock);
+	pthread_mutex_destroy(&stream_handle->lock);
 
 out:
 
-	free(path);
+        free(tmp_filename);
 	free(dpath);
 	return rc;
 
+}
+
+static void roll_cb(void *obj, void *cb_arg){
+        FILE *nfp = NULL;
+        char *tmp_filename = NULL;
+        size_t pathlen;
+        unsigned long tmp_tspath;
+
+        //if we've got here then we've called a stream_store
+        if (!obj){
+                return;
+        }
+        struct csv_stream_handle *stream_handle =
+                (struct csv_stream_handle *)obj;
+
+        pthread_mutex_lock(&stream_handle->lock);
+
+        switch (rolltype){
+        case ROLL_BY_RECORDS:
+                if (stream_handle->store_count < rollover){
+                        goto out;
+                }
+                break;
+        default:
+                msglog(LDMSD_LDEBUG,
+                       PNAME ": Error: unexpected rolltype in store(%d)\n",
+                       rolltype);
+                break;
+        }
+
+        if (stream_handle->file){ //this should always be true
+                fflush(stream_handle->file);
+                fsync(fileno(stream_handle->file));
+        }
+
+        //re name: if got here, then rollover requested.
+
+        pathlen = strlen(stream_handle->basename) + 12;
+        tmp_filename = malloc(pathlen);
+        if (!tmp_filename){
+                goto out;
+        }
+        tmp_tspath = (unsigned long)(time(NULL));
+	sprintf(tmp_filename, "%s.%lu", stream_handle->basename, tmp_tspath);
+
+	msglog(LDMSD_LDEBUG,
+               PNAME ": stream '%s' will have file '%s'\n",
+               stream_handle->stream, tmp_filename);
+
+        nfp = fopen_perm(tmp_filename, "a+", LDMSD_DEFAULT_FILE_PERM);
+	if (!nfp){
+		msglog(LDMSD_LERROR, PNAME ": Error %d opening the file %s.\n",
+		       errno,tmp_filename);
+		goto out;
+	}
+
+        //close and swap
+        if (stream_handle->file){ //this should always be true
+                fclose(stream_handle->file);
+        }
+        stream_handle->file = nfp;
+        _print_header(stream_handle);
+
+out:
+
+	if (tmp_filename) free(tmp_filename);
+        pthread_mutex_unlock(&stream_handle->lock);
+
+        //NOTE: nothing is done with the rc
+}
+
+
+static int handleRollover(){
+        pthread_mutex_lock(&cfg_lock); /** don't add any stores during this,
+                                           which currently cannot do anyway. */
+        idx_traverse(stream_idx, roll_cb, NULL);
+        pthread_mutex_unlock(&cfg_lock);
+
+        return 0;
+}
+
+static void* rolloverThreadInit(void* m){
+        //if got here, then rollover requested
+
+        while(1){
+                int tsleep;
+                switch (rolltype){
+                case ROLL_BY_RECORDS: //only currently valid type
+                        if (rollover < MIN_ROLL_RECORDS)
+                                rollover = MIN_ROLL_RECORDS;
+                        tsleep = ROLL_LIMIT_INTERVAL;
+                        break;
+                default:
+                        tsleep = ROLL_DEFAULT_SLEEP;
+                        break;
+                }
+
+                sleep(tsleep);
+                int oldstate = 0;
+                pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldstate);
+                handleRollover();
+                pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldstate);
+        }
+
+        return NULL;
 }
 
 
 /**
  * \brief Configuration
  */
-static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
+static int config(struct ldmsd_plugin *self,
+                  struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char* s;
+        char* streamlist;
+        char* templist = NULL;
+        char* saveptr = NULL;
+        char* pch = NULL;
 	int rc;
 
 	pthread_mutex_lock(&cfg_lock);
+        //only call once
+        if (root_path != NULL){
+                msglog(LDMSD_LDEBUG, PNAME ": cannot call config again\n");
+                pthread_mutex_unlock(&cfg_lock);
+                return -1;
+        }
 
 	s = av_value(avl, "buffer");
 	if (!s){
 		buffer = atoi(s);
-		msglog(LDMSD_LDEBUG, PNAME ": setting buffer to '%d'\n", buffer);
+		msglog(LDMSD_LDEBUG,
+                       PNAME ": setting buffer to '%d'\n", buffer);
 	}
 
 	s = av_value(avl, "stream");
@@ -699,10 +1000,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		rc = EINVAL;
 		goto out;
 	} else {
-		schema = strdup(s);
-		msglog(LDMSD_LDEBUG, PNAME ": setting stream to '%s'\n", schema);
+		streamlist = strdup(s);
 	}
-
 
 	s = av_value(avl, "path");
 	if (!s){
@@ -711,7 +1010,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto out;
 	} else {
 		root_path = strdup(s);
-		msglog(LDMSD_LDEBUG, PNAME ": setting root_path to '%s'\n", root_path);
+		msglog(LDMSD_LDEBUG,
+                       PNAME ": setting root_path to '%s'\n", root_path);
 	}
 
 
@@ -722,22 +1022,71 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		goto out;
 	} else {
 		container = strdup(s);
-		msglog(LDMSD_LDEBUG, PNAME ": setting container to '%s'\n", container);
+		msglog(LDMSD_LDEBUG,
+                       PNAME ": setting container to '%s'\n", container);
 	}
 
-	tsconfig = (unsigned long)(time(NULL));
-	rc = reopen_container();
-	if (rc) {
-		msglog(LDMSD_LERROR, PNAME ": Error opening %s/%s/%s\n",
-		       root_path, container, schema);
-		rc = EINVAL;
-		goto out;
-	}
 
-	msglog(LDMSD_LDEBUG, PNAME ": subscribing to stream '%s'\n", schema);
-	ldmsd_stream_subscribe(schema, stream_cb, self);
+        templist = strdup(streamlist);
+        if (!templist){
+                rc = ENOMEM;
+                goto out;
+        }
+        pch = strtok_r(templist, ",", &saveptr);
+        while (pch != NULL){
+                msglog(LDMSD_LDEBUG,
+                       PNAME ": opening streamstore for '%s'\n", pch);
+                rc = open_streamstore(pch);
+                if (rc){
+                        msglog(LDMSD_LERROR,
+                               PNAME ": Error opening store for strean '%s'\n",
+                               pch);
+                        goto err;
+                }
+                pch = strtok_r(NULL, ",", &saveptr);
+	}
+        free(templist);
+        templist = NULL;
+
+        //only set rollover once we have created the files
+        s = av_value(avl, "rollover");
+        if (s) {
+                rollover = atoi(s);
+                rolltype = ROLL_BY_RECORDS;
+                pthread_create(&rothread, NULL, rolloverThreadInit, NULL);
+                rothread_used = 1;
+                msglog(LDMSD_LDEBUG,
+                       PNAME ": setting rollrecords to %d\n", rollover);
+        }
+
+
+        //subscribe to each one
+        templist = strdup(streamlist);
+        if (!templist){
+                rc = ENOMEM;
+                goto out;
+        }
+        pch = strtok_r(templist, ",", &saveptr);
+        while (pch != NULL){
+                msglog(LDMSD_LDEBUG,
+                       PNAME ": subscribing to stream '%s'\n", pch);
+                ldmsd_stream_subscribe(pch, stream_cb, self);
+                pch = strtok_r(NULL, ",", &saveptr);
+	}
+        free(templist);
+        templist = NULL;
+
+        goto out;
+
+err:
+        //delete any created streamstores
+        idx_traverse(stream_idx, close_streamstore, NULL);
+        idx_destroy(stream_idx);
+        stream_idx = idx_create();
 
 out:
+        if (templist) free(templist);
+        if (streamlist) free(streamlist);
 	pthread_mutex_unlock(&cfg_lock);
 
 	return rc;
@@ -745,33 +1094,34 @@ out:
 
 static void term(struct ldmsd_plugin *self)
 {
-	int i;
 
-	if (streamfile)
-		fclose(streamfile);
-	streamfile = NULL;
-	free(root_path);
+        pthread_mutex_lock(&cfg_lock);
+        free(root_path);
 	root_path = NULL;
 	free(container);
 	container = NULL;
-	free(schema);
-	schema = NULL;
-	free(streamfile_name);
-	streamfile_name = NULL;
-	_clear_key_info();
-	buffer = 0;
+        buffer = 0;
+        rolltype = DEFAULT_ROLLTYPE;
+
+        idx_traverse(stream_idx, close_streamstore, NULL);
+        idx_destroy(stream_idx);
+        stream_idx = NULL;
+
+        pthread_mutex_unlock(&cfg_lock);
+        pthread_mutex_destroy(&cfg_lock);
 
 	return;
 }
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "    config name=l2_stream_csv_store path=<path> container=<container> stream=<stream> [buffer=<0/1>] \n"
+	return  "    config name=l2_stream_csv_store path=<path> container=<container> stream=<stream> [buffer=<0/1>] [rollover=<N>]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
-		"         - path       The path to the root of the csv directory\n"
-		"         - container  The directory under the path\n"
-		"         - schema     The stream name which will also be the file name\n"
-		" 	  - buffer     0 to disable buffering, 1 to enable it with autosize (default)\n"
+		"         - path          The path to the root of the csv directory\n"
+		"         - container     The directory under the path\n"
+		"         - stream        a comma separated list of streams, each of which will also be its file name\n"
+		" 	  - buffer        0 to disable buffering, 1 to enable it with autosize (default)\n"
+                "         - rollover      N to enable rollover after approximately N lines in csv. Default no roll\n"
 		;
 }
 
@@ -796,6 +1146,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 static void __attribute__ ((constructor)) l2_stream_csv_store_init();
 static void l2_stream_csv_store_init()
 {
+        stream_idx = idx_create();
 	pthread_mutex_init(&cfg_lock, NULL);
 }
 
@@ -803,4 +1154,12 @@ static void __attribute__ ((destructor)) l2_stream_csv_store_fini(void);
 static void l2_stream_csv_store_fini()
 {
 	pthread_mutex_destroy(&cfg_lock);
+        idx_destroy(stream_idx);
+        if (rothread_used){
+                void * dontcare = NULL;
+                pthread_cancel(rothread);
+                pthread_join(rothread, &dontcare);
+        }
+        stream_idx = NULL;
+
 }

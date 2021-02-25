@@ -1,0 +1,151 @@
+.\" Manpage for Plugin_l2_stream_csv_store
+.\" Contact ovis-help@sandia.gov to correct errors or typos.
+.TH man 7 "6 Mar 2021" "v4" "LDMS Plugin l2_stream_csv_store man page"
+
+.SH NAME
+Plugin_l2_stream_csv_store - man page for the LDMS l2_stream_csv_store plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=l2_stream_csv_store [ <attr>=<value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or a configuration file. The l2_stream_csv_store plugin is a DEVELOPMENTAL store that writes out either a single stream's data to csv format if the input type is a well-known json format or writes out the raw messages if the input type is str. Input type will be determined by the hello_cat_publisher or similar.
+
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+.TP
+.BR config
+name=l2_stream_csv_store path=<path> container=<container> stream=<stream> [buffer=<0/1>] [rollover=<N>]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be l2_stream_csv_store.
+.TP
+path=<path>
+.br
+path to the directory of the csv output file
+.TP
+container=<container>
+.br
+directory of the csv output file
+.TP
+stream=<stream_a,stream_b>
+.br
+csv list of streams to which to subscribe.
+.TP
+buffer=<0/1>
+.br
+Optional buffering of the output. 0 to disable buffering, 1 to enable it with autosize (default)
+.TP
+rollover=<N>
+.br
+Optional rollover of the output. Only rollover type available is by number of records in the CSV (one per dict).
+.RE
+
+.SH JSON FORMAT AND OUTPUT HEADER AND FORMAT
+.PP
+The json is expected to be something like:
+.nf
+{"foo":1, "bar":2, "zed-data":[{"count":1, "name":"xyz"},{"count":2, "name":"abc"}]}
+.fi
+Note the brackets. There will be at most one list. It is expected that each dictionary in the list will have the same item names. Everything else must be singleton data items.
+.PP
+The header is only generated once, off the first received json. If the first json is missing the list, or if the list has no entries, then list data will not appear in the header and will not be parsed in subsequent data lines. The header values will be the singleton names (e.g., foo, bar) and a list will be broken up into and item per dictionary item with names listname:dictname (e.g., zed_data:count, zed_data:name).
+.PP
+There can be any number of dictionaries in a list. Data lines with multiple dictionaries will be written out in the csv as separate lines, with the singleton items repeated in each line like:
+.nf
+#foo,bar,zed-data:count,zed-data:name
+1,2,1,xyz
+1,2,2,abc
+.fi
+.PP
+There will be a header in every output file (can be more than 1 because of rollover).
+
+.SH STORE OUTPUT FILENAME
+.PP
+The filename will be '<streamname>.<timestamp>' (e.g., foo-123456789). The timestamp is determined when the store is started or rolledover and the file is created. That may be considerably earlier than when data is streamed to the store.
+
+
+.SH STORE COLUMN ORDERING
+.PP
+There is only column ordering for 'json' format. There is no column ordering for 'str' format. 'str' format will always be written out, no matter what the 'json' header keys may be. The json order is arbitrary.
+
+.SH TIMING INFORMATION
+There are a few options for timing information. These are driven by #defines in the code source right now.
+.TP
+NDATA_TIMING
+.br
+Set by #define or #undef NDATA_TIMING and NDATA. This will write out an absolute timestamp in the log at level LINFO  every NDATA streaminput (not dictionary) lines. The format looks like "10000 lines timestamp 123456789". The timestamp is only gotten once, if the timing information is to be written out.
+.TP
+TIMESTAMP_STORE
+.br
+Set by #define or #undef TIMESTAMP_STORE. THis will write out an absolute timestamp in the file as the last item in the csv and is called 'store_recv_time' in the header. The timestamp is only gotten once, when the function is entered (e.g., if a data line has multiple dicts, this will result in multiple output lines each of which will have the same additional timestamp value.
+.PP
+
+
+.SH BUGS
+No known bugs.
+
+.SH NOTES
+.PP
+This store is in development and may be changed at any time.
+.PP
+Supports more than 1 stream. There is currently no performance guidence about number of streams and amount of data.
+.PP
+There is no way to know if a stream will actually be used or if a final value is received. Therefore, this store will need to be restarted if you want to use it with a new stream or if you want use the same stream name, but with different fields in the json.
+.PP
+It is possible that with buffering, if a stream's sends are ended, there still may be unflushed data to a file.
+.PP
+There is no way to remove a stream from the index nor to unsubscribe. That is, there is nothing that is akin to open_store and close_store pair as in an actual store plugin.
+.PP
+Note the restrictions on the data input above. Also how that affects the header.
+.PP
+This is not full featured, like the csv store. There is only one rollover, yet, for example.
+
+
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=l2_stream_csv_store
+config name=l2_stream_csv_store path=XYZ/store container=csv stream=foo buffer=1
+# dont call anything else on the store. the store action is called by a callback triggered by the stream.
+
+prdcr_add name=localhost1 host=localhost type=active xprt=sock port=52001 interval=20000000
+prdcr_subscribe stream=foo regex=localhost*
+prdcr_start name=localhost1
+.fi
+
+.PP
+Testdata:
+.nf
+cat XXX/testdata.txt
+{"job-id" : 10364, "rank" : 1, "kokkos-perf-data" : [ {"name" : "SPARTAFOO0", "count": 0, "time": 0.0000},{"name" : "SPARTAFOO1", "count": 1, "time": 0.0001},{"name" : "SPARTAFOO2", "count": 2, "time": 0.0002},{"name" : "SPARTAFOO3", "count": 3, "time": 0.0003},{"name" : "SPARTAFOO4", "count": 4, "time": 0.0004},{"name" : "SPARTAFOO5", "count": 5, "time": 0.0005},{"name" : "SPARTAFOO6", "count": 6, "time": 0.0006},{"name" : "SPARTAFOO7", "count": 7, "time": 0.0007},{"name" : "SPARTAFOO8", "count": 8, "time": 0.0008},{"name" : "SPARTAFOO9", "count": 9, "time": 0.0009}] }
+.fi
+
+.PP
+Output:
+.nf
+cat XYZ/store/csv/foo.1614306320
+rank,job-id,kokkos-perf-data:time,kokkos-perf-data:name,kokkos-perf-data:count,store_recv_time
+1,10364,0.000000,"SPARTAFOO0",0,1614306329.167736
+1,10364,0.000100,"SPARTAFOO1",1,1614306329.167736
+1,10364,0.000200,"SPARTAFOO2",2,1614306329.167736
+1,10364,0.000300,"SPARTAFOO3",3,1614306329.167736
+1,10364,0.000400,"SPARTAFOO4",4,1614306329.167736
+1,10364,0.000500,"SPARTAFOO5",5,1614306329.167736
+1,10364,0.000600,"SPARTAFOO6",6,1614306329.167736
+1,10364,0.000700,"SPARTAFOO7",7,1614306329.167736
+1,10364,0.000800,"SPARTAFOO8",8,1614306329.167736
+1,10364,0.000900,"SPARTAFOO9",9,1614306329.167736
+.fi
+
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), hello_publisher, hello_sampler, parser.pl (has perlpod), Plugin_hello_cat_publisher(7), Plugin_hello_stream_store(7)
