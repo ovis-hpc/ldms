@@ -42,7 +42,7 @@ take on the value configured in the default config line or opt_file.
 .SH STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
 .TP
 .BR config
-name=<plugin_name> path=<path> [ altheader=<0/!0> typeheader=<typeformat> ietfcsv=<0/1> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [notify=<path> [notify_isfifo=<bool>]] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>] [opt_file=filename] [ietfcsv=<0/1>] [typeheader=<0/1/2>]
+name=<plugin_name> path=<path> [ altheader=<0/!0> typeheader=<typeformat> ietfcsv=<0/1> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>] [opt_file=filename] [ietfcsv=<0/1>] [typeheader=<0/1/2>]
 .br
 ldmsd_controller configuration line
 .RS
@@ -117,14 +117,6 @@ rollover=<rollover>
 .br
 Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
 .TP
-notify=<notice_path>
-.br
-The path for the file event notices. If unspecified, no notices are sent. See NOTICES below for details of event notices.
-.TP
-notify_isfifo=<bool>
-.br
-Default false. If set true, notice_path will be handled in a nonblocking manner as a FIFO.
-.TP
 create_perm=<modebits>
 .br
 Only octal (e.g.0744) specifications are allowed. If unspecified or 0 is given, then no change is made. The default permission is 0600 for data files. The mode specified can include execute bits which will apply to intermediate directories created but not data files. For example 0755 will yield 0755 for new directories and 0644 for data files.
@@ -141,7 +133,7 @@ Specify a new group id for data files. If unspecified, no change in group owners
 rename_template=<metapath>
 .br
 This option relocates closed CSV files, typically to a subdirectory, for processing by other tools that watch directories. The metapath template is applied to define a new name after file closure. The rename is limited to locations on the same mount point, per the C rename(2) call. Substitutions (%) in the provided template are performed as described in METAPATH SUBSTITUTIONS below.
-Errors in template specification will cause the rename to be skipped. As part of the renaming process, the mode and ownership of the file may also be adjusted by specifying rename_perm, rename_uid, and rename_gid. Missing intermediate directories will be created if possible. To enable greater flexibility than the renaming just described (e.g. crossing file systems), the notify option must be used to call another program.
+Errors in template specification will cause the rename to be skipped. As part of the renaming process, the mode and ownership of the file may also be adjusted by specifying rename_perm, rename_uid, and rename_gid. Missing intermediate directories will be created if possible. To enable greater flexibility than the renaming just described (e.g. crossing file systems), an external program must monitor the output directory and handle completed files.
 
 .TP
 rename_perm=<modebits>
@@ -226,49 +218,6 @@ The column sequence of <sampled metrics> is the order in which the metrics are a
 Note that the sampler's number and order of metric additions may vary with the kind and number of hardware features enabled on a host at runtime or with the version of kernel. Because of this potential for variation, down-stream tools consuming the CSV files should always determine column names or column number of a specific metric by parsing the header line or .HEADER file.
 .PP
 
-.SH NOTICES OF STORE FILE EVENTS
-.PP
-When the notify option is specified one-line notices of file events (open, close) are written to the named output. Post-processing tools can watch the notification file.  When combined with a roll-over configuration, this provides notices of files rolled over. The notify option should not be combined with the rename_template option, as the rename happens after notification.
-.PP
-If the named output is a plain file, it will be written to indefinitely. Typical use is to tail the file into a file-handling script and to periodically rotate  or truncate it as a log file. The file is buffered, so notices may be received some time after the event recorded.
-.PP
-If the named output is a FIFO, it is handled in a non-blocking fashion. When no FIFO reader is processing, event messages are queued (up to 1000 messages for up to 6000 seconds). Messages older than the time limit are removed. When the queue size is exceeded, the oldest messages are removed. Typical use of the FIFO is to cat it into a file-handling script.
-.PP
-The event line format is:
-.RS
-EVENT SOURCE CONTAINER SCHEMA TYPE FILENAME
-.RE
-where the fields are
-.RS
-.TP
-EVENT
-.br
-One of OPENED, CLOSED.
-.TP
-SOURCE
-.br
-The name of the plugin.
-.TP
-CONTAINER
-.br
-The name of the container.
-.TP
-SCHEMA
-.br
-The name of the schema.
-.TP
-TYPE
-.br
-The type of information in the file. Current values are "data" and "header".
-Anticipated values from other plugins in development include: "summary" (for
-statistical data about files closed), and
-"kind", "cname", "pyname", and "units" (for auxiliary columnar data about metrics).
-.TP
-FILENAME
-.br
-The name of the file.
-
-.RE
 
 .SH METAPATH SUBSTITUTION
 
@@ -289,7 +238,7 @@ schema name
 .TP
 %T 
 .br
-file event notification type
+file type (DATA, HEADER, KIND, UNITS, CNAMES, PYNAMES)
 .TP
 %B
 .br
@@ -312,7 +261,7 @@ timestamp suffix, if it exists.
 .SH NOTES
 .PP
 .IP \[bu]
-Please note the argument changes from v2 and v3.
+Please note the argument changes from v2 and v3. The notification of file events has be removed, being redundant with renaming closed files into a spool directory.
 .IP \[bu]
 The 'sequence' option has been removed. The 'action' option has been replaced; see "OPTIONS FILE" above.
 .PP

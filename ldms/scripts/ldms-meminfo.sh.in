@@ -1,5 +1,5 @@
 #!/bin/bash
-# test event notice delivery to file and fifo
+# test event notice delivery to file
 # NOTE: replace the two vars below with your paths
 # NOTE: change ports, intervals if you like
 DESTDIR=
@@ -151,7 +151,7 @@ EOF
 echo Loading store_csv on aggregator4
 echo "load name=store_csv" >> $in4
 echo Config store_csv on aggregator4
-echo "config name=store_csv path=${STOREDIR} altheader=1 notify=$NOTICES.fifo notify_isfifo=1" >> $in4
+echo "config name=store_csv path=${STOREDIR} altheader=1" >> $in4
 
 echo Start store_csv on aggregator4
 cat << EOF >> $in4
@@ -163,8 +163,6 @@ strgp_add name=jobid.csv plugin=store_csv schema=jobid container=jobid
 strgp_prdcr_add name=jobid.csv regex=.*
 strgp_start name=jobid.csv
 EOF
-mkfifo $NOTICES.fifo
-cat $NOTICES.fifo &
 
 echo Starting daemons
 # valgrind -v --log-file=vg.log.1 --track-origins=yes --trace-children=yes
