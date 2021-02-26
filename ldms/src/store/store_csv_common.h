@@ -32,6 +32,7 @@
  *
  *      Modified source versions must be plainly marked as such, and
  *      must not be misrepresented as being the original software.
+ *      
  *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
@@ -57,7 +58,6 @@
 #include <libgen.h>
 #include <stdbool.h>
 #include <ovis_util/util.h>
-#include <ovis_util/notification.h>
 #include "ldmsd.h"
 #include "ldmsd_plugattr.h"
 
@@ -67,9 +67,6 @@
 
 /** Common override parameters for "config action=custom" settings. */
 #define STOREK_COMMON \
-	/** The full path of an ovis notification output.  NULL indicates no notices wanted.  */ \
-        char *notify; \
-	bool notify_isfifo; \
 	/** The full path template for renaming closed outputs. NULL indicates no renames wanted. */ \
         char *rename_template; \
 	uid_t rename_uid; \
@@ -94,20 +91,11 @@ struct storek_common {
  * storek handle was declared containing a STOREK_COMMON block.
  */
 #define CSKC(x) \
-	((struct storek_common *)&((x)->notify))
+	((struct storek_common *)&((x)->rename_template))
 
-// STOREK_COMMON; 
-#define NOTIFY_COMMON \
-	struct ovis_notification *onp; \
-	int hooks_closed
-
-/* containment for globals. Ideally would hold most and not just the new ones
- * for notification. */
+/* containment for globals. */
 struct csv_plugin_static {
-	/* notification channel for file events, unless overridden. */
-	NOTIFY_COMMON;
-	/* plugin full name */
-	const char *pname;
+	const char *pname; /**< plugin full name */
 	ldmsd_msg_log_f msglog;
 } plugin_globals;
 #define PG plugin_globals
@@ -117,14 +105,13 @@ struct csv_plugin_static {
 	char *headerfilename; \
 	char *typefilename
 
-/* Instance data we need for notification. */
+/* Instance data we need commonly */
 #define CSV_STORE_HANDLE_COMMON \
 	char *container; \
 	char *schema; \
 	/* handle roll_common strings with replace_string in store handle */ \
 	ROLL_COMMON; \
-	STOREK_COMMON; \
-	NOTIFY_COMMON
+	STOREK_COMMON
 
 struct roll_common {
 	ROLL_COMMON;
@@ -171,21 +158,14 @@ int parse_bool2(ldmsd_msg_log_f log, struct attr_value_list *avl, const char *pa
  */
 int replace_string(char **strp, const char *val);
 
-/* notification message strings  (events and types) */
-#define NOTE_OPEN "OPENED"
-#define NOTE_CLOSE "CLOSED"
-#define NOTE_DAT "data"
-#define NOTE_HDR "header"
-#define NOTE_SUMM "summary"
-#define NOTE_KIND "kind"
-#define NOTE_CNAM "cname"
-#define NOTE_PNAM "pyname"
-#define NOTE_UNIT "units"
-/**
- * Send hooks messages about a file close. Used in rollover and store stop.
- */
-extern
-void notify_output(const char *event, const char *name, const char *type, struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps);
+/* file type names */
+#define FTYPE_DATA "DATA"
+#define FTYPE_HDR "HEADER"
+#define FTYPE_KIND "KIND"
+#define FTYPE_UNIT "UNITS"
+#define FTYPE_CNAM "CNAMES"
+#define FTYPE_PNAM "PYNAMES"
+#define FTYPE_SUMM "SUMMARY"
 
 /**
  * Make a directory and apply permissions to any new intermediate directories
@@ -207,26 +187,23 @@ int create_outdir(const char *path,
  *	%P expands to plugin name,
  *	%C expands to container,
  *	%S expands to schema,
- *	%T expands to type.
+ *	%T expands to ftype.
  *	%B expands to basename(name),
  *	%D expands to dirname(name),
  *	%s timestamp suffix, if it exists.
  *	%{var} expands to env(var)
- * Specifying both output event notification and output 
- * renaming produces a race condition between this function
- * and the event-processor and should be avoided.
  *
  * The expanded name must be on the same file system (mount point)
  * as the original file, or the underlying C rename() call will fail.
  * This is not an interface that will implicitly copy and remove files.
  * \param name a file just closed.
- * \param type the type of file, e.g. NOTE_DAT.
+ * \param filetype the type of file, e.g. FTYPE_DATA
  * \param s_handle the store instance
  * \param cps the store plugin instance
  *
  * Rename failures will be logged; there is no way to detect them here.
  */
-void rename_output(const char *name, const char *type,
+void rename_output(const char *name, const char *filetype,
 	struct csv_store_handle_common *s_handle,
 	struct csv_plugin_static *cps);
 
@@ -278,7 +255,7 @@ extern int csv_format_types_common(int typeformat, FILE* f, const char *fpath, c
 int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps);
 
 #define CLOSE_STORE_COMMON(h) close_store_common(CSHC(h), &PG)
-/** \brief clean up handle fields configured by CONFIG_INIT_COMMON */
+/** \brief clean up handle fields configured by open_store_common */
 extern void close_store_common(struct csv_store_handle_common *s_handle, struct csv_plugin_static *cps);
 
 /** \brief Dump the common csv handle to log */
@@ -287,8 +264,6 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 /** include the common config items in the anames array for store_config_check, if wanted. */
 #define CSV_STORE_ATTR_COMMON \
 	"opt_file", \
-	"notify", \
-	"notify_isfifo", \
 	"ietfcsv", \
 	"altheader", \
 	"typeheader", \
@@ -309,23 +284,17 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 /** Maximum valid typeheader value */
 #define TH_MAX TH_ARRAY
 
-#define NOTIFY_USAGE \
-		"         - notify  The path for the file event notices.\n" \
-		"         - notify_isfifo  0 if not (the default) or 1 if fifo.\n" \
+#define FILE_PROPS_USAGE \
 		"         - rename_template  The template string for closed output renaming.\n" \
 		"         - rename_uid  The numeric user id for output renaming.\n" \
 		"         - rename_gid  The numeric group id for output renaming.\n" \
 		"         - rename_perm  The octal permission bits for output renaming.\n" \
 		"         - create_uid  The numeric user id for output creation.\n" \
 		"         - create_gid  The numeric group id for output creation.\n" \
-		"         - create_perm  The octal permission bits for output creation.\n" \
+		"         - create_perm  The octal permission bits for output creation.\n"
 
+#define LIB_CTOR_COMMON(cps)
 
-#define LIB_CTOR_COMMON(cps) \
-	cps.hooks_closed = 0
-
-
-#define LIB_DTOR_COMMON(cps) \
-	ovis_notification_close(cps.onp)
+#define LIB_DTOR_COMMON(cps)
 
 #endif /* store_csv_common_h_seen */
