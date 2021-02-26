@@ -291,7 +291,9 @@ int ldmsd_stream_publish(ldms_t xprt,
 }
 
 sem_t conn_sem;
+sem_t recv_sem;
 int conn_status = ENOTCONN;
+
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	switch (e->type) {
@@ -308,6 +310,10 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		break;
 	case LDMS_XPRT_EVENT_ERROR:
 		conn_status = ECONNREFUSED;
+		break;
+	case LDMS_XPRT_EVENT_RECV:
+		/* No need to process the response message. */
+		sem_post(&recv_sem);
 		break;
 	default:
 		ldms_xprt_put(x);
@@ -332,6 +338,7 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
  * \returns 0 on success, or an errno
  */
 #define LDMSD_STREAM_CONNECT_TIMEOUT 5 /* 5 seconds */
+#define LDMSD_STREAM_ACK_TIMEOUT 2 /* 2 seconds */
 int ldmsd_stream_publish_file(const char *stream, const char *type,
 			      const char *xprt, const char *host, const char *port,
 			      const char *auth, struct attr_value_list *auth_opt,
@@ -347,10 +354,19 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	uint32_t msg_no;
 	struct ldmsd_req_attr_s a;
 
-	char *timeout_s = getenv("LDMSD_STREAM_CONN_TIMEOUT");
+	char *timeout_s;
 	int timeout = LDMSD_STREAM_CONNECT_TIMEOUT;
+	int recv_timeout = LDMSD_STREAM_ACK_TIMEOUT;
+
+	/* conn timeout */
+	timeout_s = getenv("LDMSD_STREAM_CONN_TIMEOUT");
 	if (timeout_s)
 		timeout = atoi(timeout_s);
+	/* recv timeout */
+	timeout_s = getenv("LDMSD_STREAM_ACK_TIMEOUT");
+	if (timeout_s)
+		recv_timeout = atoi(timeout_s);
+
 	if (0 == strcasecmp("raw", type))
 		stream_type = LDMSD_STREAM_STRING;
 	else if (0 == strcasecmp("string", type))
@@ -384,6 +400,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	}
 
 	sem_init(&conn_sem, 0, 0);
+	sem_init(&recv_sem, 0, 0);
 
 	rc = ldms_xprt_connect_by_name(x, host, port, event_cb, NULL);
 	if (rc) {
@@ -424,6 +441,15 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	a.discrim = 0;
 	rc = stream_send(x, buf, msg_no, LDMSD_REQ_EOM_F,
 			(char *)&a.discrim, sizeof(a.discrim));
+	if (rc)
+		goto close_xprt;
+
+	/*
+	 * Wait for the response before closing the transport
+	 */
+	ts.tv_sec =time(NULL) + recv_timeout;
+	ts.tv_nsec = 0;
+	sem_timedwait(&recv_sem, &ts);
 
 close_xprt:
 	ldms_xprt_close(x);
