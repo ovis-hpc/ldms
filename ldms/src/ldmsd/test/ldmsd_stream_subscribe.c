@@ -153,6 +153,7 @@ static int stream_publish_handler(ldmsd_req_hdr_t req)
 		msglog("The stream name is missing, malformed stream request.\n");
 		exit(5);
 	}
+
 	stream_name = strdup((char *)attr->attr_value);
 	if (!stream_name) {
 		printf("ERROR: out of memory\n");
@@ -204,6 +205,46 @@ static int stream_publish_handler(ldmsd_req_hdr_t req)
 	return 0;
 }
 
+static int __send(void *xprt, char *data, size_t len)
+{
+	ldms_t x = (ldms_t)xprt;
+	return ldms_xprt_send(x, data, len);
+}
+
+static int send_ack(ldms_t x, ldmsd_req_hdr_t req)
+{
+	struct ldmsd_msg_buf *buf;
+	struct ldmsd_req_attr_s a;
+	char *ack_s = "ACK";
+	int rc;
+
+	buf = ldmsd_msg_buf_new(ldms_xprt_msg_max(x));
+	if (!buf) {
+		msglog("Out of memory\n");
+		return ENOMEM;
+	}
+
+	a.discrim = 1;
+	a.attr_id = LDMSD_ATTR_STRING;
+	a.attr_len = strlen(ack_s) + 1;
+	ldmsd_hton_req_attr(&a);
+	rc = ldmsd_msg_buf_send(buf, x, req->msg_no, __send, LDMSD_REQ_SOM_F,
+			LDMSD_REQ_TYPE_CONFIG_RESP, 0, (char *)&a, sizeof(a));
+	if (rc)
+		return rc;
+	rc = ldmsd_msg_buf_send(buf, x, req->msg_no, __send, 0,
+			LDMSD_REQ_TYPE_CONFIG_RESP, 0, ack_s, strlen(ack_s) + 1);
+	if (rc)
+		return rc;
+
+	/* Terminating */
+	a.discrim = 0;
+	rc = ldmsd_msg_buf_send(buf, x, req->msg_no, __send, LDMSD_REQ_EOM_F,
+				LDMSD_REQ_TYPE_CONFIG_RESP, 0,
+				(char *)&a.discrim, sizeof(a.discrim));
+	return rc;
+}
+
 int process_request(ldms_t x, ldmsd_req_hdr_t request)
 {
 	uint32_t req_id;
@@ -235,6 +276,13 @@ int process_request(ldms_t x, ldmsd_req_hdr_t request)
 	/* we got all request data */
 	ldmsd_req_hdr_t req = (ldmsd_req_hdr_t)ctxt->buf->buf;
 	ldmsd_ntoh_req_msg(req);
+
+	rc = send_ack(x, req);
+	if (rc) {
+		msglog("ERROR: Failed to send the acknowledgment: %d\n", rc);
+		/* Continue to process the stream */
+	}
+
 	rc = stream_publish_handler(req);
 
 	/* request processed, reset data buffer */
