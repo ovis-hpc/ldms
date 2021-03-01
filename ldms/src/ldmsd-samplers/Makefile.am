@@ -32,6 +32,10 @@ if ENABLE_MEMINFO
 SUBDIRS += meminfo
 endif
 
+if ENABLE_RDC
+SUBDIRS += rdc_sampler
+endif
+
 if ENABLE_SYSCLASSBLOCK
 SUBDIRS += sysclassblock
 endif

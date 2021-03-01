@@ -239,6 +239,12 @@ dnl Will need to have the NVIDIA library in the LD_LIBRARY_PATH
 OPTION_DEFAULT_DISABLE([cray-hss-devel], [ENABLE_CRAY_HSS_DEVEL])
 OPTION_WITH([cray-hss-devel], [CRAY_HSS_DEVEL],[/usr])
 
+OPTION_DEFAULT_DISABLE([rdc_sampler], [ENABLE_RDC])
+OPTION_DEFAULT_DISABLE([rocm_rdc_inc], [ENABLE_ROCM_RDC_INC])
+OPTION_WITH([rocm_rdc_inc], [ROCM_RDC_INC], [/opt/rocm/rdc]) dnl for the path to rdc include and lib
+OPTION_DEFAULT_DISABLE([rocm_smi_inc], [ENABLE_ROCM_SMI_INC])
+OPTION_WITH([rocm_smi_inc], [ROCM_SMI_INC], [/opt/rocm/rocm_smi]) dnl for the path to rocm_smi include and lib
+
 # for aries_mmr
 OPTION_ARIES_MMR
 
@@ -654,6 +660,7 @@ ldms/src/ldmsd-samplers/all_example/Makefile
 ldms/src/ldmsd-samplers/cray_power_sampler/Makefile
 ldms/src/ldmsd-samplers/fptrans/Makefile
 ldms/src/ldmsd-samplers/generic_sampler/Makefile
+ldms/src/ldmsd-samplers/rdc_sampler/Makefile
 ldms/src/ldmsd-samplers/kgnilnd/Makefile
 ldms/src/ldmsd-samplers/meminfo/Makefile
 ldms/src/ldmsd-samplers/test-samplers/Makefile
