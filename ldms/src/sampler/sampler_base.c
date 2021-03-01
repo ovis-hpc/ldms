@@ -59,6 +59,8 @@
 #include "ldms.h"
 #include "ldmsd.h"
 #include "sampler_base.h"
+#include "ovis_util/dstring.h"
+#include "third/city.h"
 
 void base_del(base_data_t base)
 {
@@ -303,6 +305,7 @@ ldms_set_t base_set_new(base_data_t base)
 	ldms_metric_set_u64(base->set, BASE_JOB_ID, 0);
 	ldms_metric_set_u64(base->set, BASE_APP_ID, 0);
 	base_auth_set(&base->auth, base->set);
+	base_set_hashes_set(base, NULL);
 
 	rc = ldms_set_publish(base->set);
 	if (rc) {
@@ -441,3 +444,123 @@ void base_auth_set(const struct base_auth *auth, ldms_set_t set)
         if (auth->perm_is_set)
                 ldms_set_perm_set(set, auth->perm);
 }
+
+/* apply over all N dynamic strings. */
+#define DO_N(x) \
+	x(nalch64, SH_NAME_ARRAY_LEN_CH64); \
+	x(napch64, SH_NAME_ARRAY_POLY_CH64); \
+	x(alch64, SH_ARRAY_LEN_CH64); \
+	x(apch64, SH_ARRAY_POLY_CH64)
+
+int base_set_hashes_set(base_data_t base, ldms_set_t set)
+{
+
+#define DECL_DS(y, e) dstring_t y##_ds; dstr_init2(&y##_ds, 4096)
+#define ADD_CARD(y, e) dstrcat_uint(&y##_ds, (uint64_t)sc)
+#define ADD_COMMA(y, e) dstrcat(&y##_ds, ",", 1)
+#define ADD_METRIC(y, e) dstrcat(&y##_ds, mn, DSTRING_ALL)
+#define ADD_UBAR3(y, e) dstrcat(&y##_ds, "___", 3)
+#define ADD_TYPE(y, e) dstrcat(&y##_ds, mts, DSTRING_ALL)
+/* all errors on dstrcat fall safely through to the last use of it. */
+#define ADD_COMMA_CHECK_NULL(y, e) if ( NULL == dstrcat(&y##_ds, ",", 1)) \
+		{ \
+			rc = ENOMEM; \
+			goto err; \
+		}
+#define DECL_BUF(y, e) const char *y##_buf = dstrval(&y##_ds)
+#define DECL_LEN(y, e) int y##_len = dstrlen(&y##_ds)
+#define DECL_HASH_U64(y, e) uint64_t y##_hash_u = CityHash64(y##_buf, y##_len)
+#define DECL_HASH(y, e) char y##_hash[17]
+#define FORMAT_HASH(y, e) sprintf(y##_hash, "%" PRIX64, y##_hash_u)
+#define SET_HASH(y, e) ldms_set_info_set(set, #e, y##_hash)
+#define LOG_HASH(y, e) base->log(LDMSD_LDEBUG, "sampler_base: %s %s %s\n", sn, #e, y##_hash)
+#define LOG_DESCRIPTION(y, e) base->log(LDMSD_LDEBUG, "sampler_base: %s %s set description %s\n", sn, #e, y##_buf);
+#define FREE_DS(y, e) dstr_free(&y##_ds)
+
+	if (!set && base)
+		set = base->set;
+	if (!set)
+		return EINVAL;
+	int rc = 0;
+	DO_N(DECL_DS);
+	const char *sn = ldms_set_schema_name_get(set);
+	uint32_t sc = ldms_set_card_get(set);
+
+	/* append [name,] in name-included cases */
+	dstrcat(&nalch64_ds, sn, DSTRING_ALL);
+	dstrcat(&napch64_ds, sn, DSTRING_ALL);
+	dstrcat(&nalch64_ds, ",", 1);
+	dstrcat(&napch64_ds, ",", 1);
+
+	DO_N(ADD_CARD);
+	DO_N(ADD_COMMA);
+	int i;
+	for (i = 0; i < sc; i++) {
+		/* append name___type[len], */
+		const char *mn = ldms_metric_name_get(set, i);
+		enum ldms_value_type mt = ldms_metric_type_get(set, i);
+		const char * mts = ldms_metric_type_to_str(mt);
+		DO_N(ADD_METRIC);
+		DO_N(ADD_UBAR3);
+		DO_N(ADD_TYPE);
+		/* append array size in len-included cases */
+		if (ldms_type_is_array(mt)) {
+			uint32_t ml;
+			ml = ldms_metric_array_get_len(set, i);
+			dstrcat_int(&nalch64_ds, ml);
+			dstrcat_int(&alch64_ds, ml);
+		}
+		DO_N(ADD_COMMA_CHECK_NULL);
+	}
+	DO_N(DECL_BUF);
+	DO_N(DECL_LEN);
+	DO_N(DECL_HASH_U64);
+	DO_N(DECL_HASH);
+	DO_N(FORMAT_HASH);
+	DO_N(SET_HASH);
+	if (base && base->log) {
+		DO_N(LOG_HASH);
+#ifdef DEBUG
+		DO_N(LOG_DESCRIPTION);
+#endif
+	}
+
+err:
+	DO_N(FREE_DS);
+	return rc;
+#undef DECL_DS
+#undef FREE_DS
+#undef ADD_CARD
+#undef ADD_COMMA
+#undef ADD_METRIC
+#undef ADD_UBAR3
+#undef ADD_TYPE
+#undef ADD_COMMA_CHECK_NULL
+#undef DECL_BUF
+#undef DECL_LEN
+#undef DECL_HASH_U64
+#undef DECL_HASH
+#undef FORMAT_HASH
+#undef SET_HASH
+#undef LOG_HASH
+#undef LOG_DESCRIPTION
+}
+
+const char * base_set_hash_get(base_data_t base, ldms_set_t set, ldms_schema_hash_t lsh)
+{
+	const char * r = NULL;
+	if (!set && base)
+		set = base->set;
+	if (!set)
+		return r;
+
+#define CASE_LSH(y, d) case d: r = ldms_set_info_get(set, #d); break
+	switch (lsh) {
+	DO_N(CASE_LSH);
+	default:
+		break;
+	}
+	return r;
+#undef CASE_LSH
+}
+#undef DO_N

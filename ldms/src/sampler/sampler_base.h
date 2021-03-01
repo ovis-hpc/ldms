@@ -202,4 +202,47 @@ int base_auth_parse(struct attr_value_list *avl, struct base_auth *auth,
  */
 void base_auth_set(const struct base_auth *auth, ldms_set_t set);
 
+/** Define set_info key/value pairs on the set instance for keys
+ * matching the name in enum ldms_schema_hash.
+ * The values are the hex string form of 64 bit CityHash of
+ * strings composed of:
+ * schema_name (SH_NAME_ARRAY_LEN_CH64,SH_NAME_ARRAY_POLY_CH64)
+ * schema metric count
+ * metric types
+ * metric names
+ * array metric sizes (SH_NAME_ARRAY_POLY_CH64, SH_ARRAY_POLY_CH64)
+ * as documented by the enum ldms_schema_hash.
+ *
+ * When present, these hashes allow a set consumer to quickly know
+ * if two set instances have the same schema content.
+ * If corresponding *_ARRAY_LEN_* values are the same, everything
+ * including array sizes is the same.
+ * If corresponding *_ARRAY_POLY_* values are the same, array sizes
+ * may vary so long as the other included properties are the same.
+ *
+ * @param base used for the log function. If base == NULL, no logging occurs.
+ * @param set values are added to the set given. If NULL, values
+ * are added to the base->set. This allows partial use (mix-in) of the
+ * sampler_base logic.
+ * @return 0, or errno value if there is a problem in computations.
+ */
+int base_set_hashes_set(base_data_t base, ldms_set_t set);
+
+/** The hash types include set features as listed after each value.
+ * For a given store semantics, schema equivalence will be determined
+ * by one of these. */
+typedef enum ldms_schema_hash {
+	SH_ARRAY_LEN_CH64,      /**< count, metric_list_&_array_sizes */
+	SH_ARRAY_POLY_CH64,     /**< count, metric_list */
+	SH_NAME_ARRAY_LEN_CH64, /**< schema, count, metric_list_&_array_sizes */
+	SH_NAME_ARRAY_POLY_CH64,/**< schema, count, metric_list */
+} ldms_schema_hash_t;
+
+/** fetch the hash value indicated, or NULL if it is not defined.
+ * @param base source of set to query if and only if parameter 'set' is NULL.
+ * @param set source of the info values.
+ * @param lsh kind of hash code to be returned.
+ */
+const char * base_set_hash_get(base_data_t base, ldms_set_t set, ldms_schema_hash_t lsh);
+
 #endif

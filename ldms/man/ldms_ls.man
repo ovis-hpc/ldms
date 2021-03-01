@@ -90,7 +90,7 @@ pre-allocated memory specified when starting the remote ldmsd being queried.
 Display the user data for the metrics. (Usually compid)
 .TP
 .BR -v
-Display metadata information. Specifying this option multiple times increases the verbosity.
+Display metadata information. Specifying this option multiple times increases the verbosity. LDMS set_info strings are included in this output.
 .TP
 .BR -V
 Display LDMS version information and then exit.
