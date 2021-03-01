@@ -32,8 +32,6 @@
  *
  *      Modified source versions must be plainly marked as such, and
  *      must not be misrepresented as being the original software.
- *      
- *
  *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
