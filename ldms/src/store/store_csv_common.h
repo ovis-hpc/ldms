@@ -295,4 +295,42 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 
 #define LIB_DTOR_COMMON(cps)
 
+/** Define set_info key/value pairs on the set instance for keys
+ * matching the name in enum ldms_schema_hash.
+ * The values are the hex string form of 64 bit CityHash of
+ * strings composed of:
+ * schema_name (only for CSH_NAME_ARRAY_LEN_CH64)
+ * schema metric count
+ * metric types
+ * metric names
+ * array metric sizes
+ * as documented by the enum csv_schema_hash.
+ *
+ * When present, these hashes allow a set consumer to quickly know
+ * if two set instances have the same schema content.
+ * If corresponding *_ARRAY_LEN_* values are the same, everything
+ * including array sizes is the same.
+ *
+ * @param mlg the log function. If mlg == NULL, no logging occurs.
+ * @param set values are added to the set given. 
+ * @return 0, or errno value if there is a problem in computations.
+ */
+int csv_set_hashes_set(ldmsd_msg_log_f mlg, ldms_set_t set);
+
+/** The hash types include set features as listed after each value.
+ * For a given store semantics, schema equivalence will be determined
+ * by one of these.
+ */
+typedef enum csv_schema_hash {
+	CSH_ARRAY_LEN_CH64,      /**< count, metric_list_&_array_sizes */
+	CSH_NAME_ARRAY_LEN_CH64, /**< schema, count, metric_list_&_array_sizes */
+} ldms_schema_hash_t;
+
+/** fetch the hash value indicated, or NULL if it is not defined.
+ * @param base source of set to query if and only if parameter 'set' is NULL.
+ * @param set source of the info values.
+ * @param lsh kind of hash code to be returned.
+ */
+const char * csv_set_hash_get(ldms_set_t set, ldms_schema_hash_t lsh);
+
 #endif /* store_csv_common_h_seen */
