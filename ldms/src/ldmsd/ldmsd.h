@@ -713,15 +713,6 @@ int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level);
  */
 void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt);
 
-
-#ifdef STORE_API_DEPRECATED
-int ldmsd_store_data_add(struct ldmsd_store_policy *lsp, ldms_set_t set);
-
-struct store_instance *
-ldmsd_store_instance_get(struct ldmsd_store *store,
-			 struct ldmsd_store_policy *sp);
-#endif
-
 static inline ldmsd_store_handle_t
 ldmsd_store_open(struct ldmsd_store *store,
 		const char *container, const char *schema,
