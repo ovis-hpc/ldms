@@ -96,6 +96,7 @@ ext_evt_cnt       Total number of exteral events.
 temp_throttle_ms  Time duration of all temperature events in ms.
 pwr_throttle_ms   Time duration of all power events in ms.
 ext_throttle_ms   Time duration of all external events in ms.
+cpu_num        Which processor the data comes from.
 .fi
 
 .PP
