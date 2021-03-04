@@ -182,14 +182,17 @@ static char *pids = "self";
 
 MCP_LIST(DECLPOS);
 META_MCP_LIST(DECLPOS);
+static int pos_cpu_num = -1;
 
 #define META(n, m, t, p) \
 	rc = meta_filter(n, t);\
-	p = rc;\
+	p = rc; \
+	if (p < 0) { rc = -rc; goto err; }
 
 #define METRIC(n, m, t, p) \
 	rc = metric_filter(n, t);\
-	p = rc;\
+	p = rc; \
+	if (p < 0) { rc = -rc; goto err; }
 /*
  * meta_filter() checks the stored value in "pidextra" variable and add/removes the following metrics respectively.
  * If "extra" is set to true in the configuration file, the extra metrics will be included.
@@ -208,7 +211,7 @@ static int meta_filter(char *n, uint32_t t)
 	if (rc > -1)
 		pos = rc;
 	else {
-		rc = ENOMEM;
+		rc = -ENOMEM;
 		return rc;
 	}
 	return pos;
@@ -281,7 +284,7 @@ static int metric_filter(char *n, uint32_t t)
 	return pos;
 
 err:
-	rc = ENOMEM;
+	rc = -ENOMEM;
 	return rc;
 
 }
@@ -366,10 +369,15 @@ static int create_metric_set(base_data_t base)
 		goto err;
 	}
 	MCP_LIST(METRIC);
+	pos_cpu_num = ldms_schema_meta_add(schema, "cpu_num", LDMS_V_U32);
+	if (pos_cpu_num < 0) {
+		rc = ENOMEM;
+		goto err;
+	}
 	META_MCP_LIST(META);
 	for (i = 0; i < 2; i++) {
 		s = &tx2mon->cpu[i].mcp;
-		snprintf(cpu_instance_index, instance_len, ".%d", i);
+		snprintf(cpu_instance_index, sizeof(cpu_instance_index), ".%d", i);
 
 		strncpy(buf, base->instance_name, instance_len);
 		strncat(buf, cpu_instance_index, 12);
@@ -391,6 +399,7 @@ static int create_metric_set(base_data_t base)
 		return rc;}\
 
 		META_MCP_LIST(META_MCSAMPLE);
+		ldms_metric_set_u32(set[i], pos_cpu_num, (uint32_t)i);
 
 		ldms_set_producer_name_set(set[i], base->producer_name);
 		ldms_metric_set_u64(set[i], BASE_COMPONENT_ID, base->component_id);
@@ -888,7 +897,7 @@ static int parse_mc_oper_region()
 		ret = tx2mon_read_node(&tx2mon->cpu[i]);
 
 		if (ret < 0) {
-			printf("Unexpected read error!\n");
+			msglog(LDMSD_LERROR, SAMP ": Unexpected read error!\n");
 			return EINVAL;
 		}
 
