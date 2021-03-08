@@ -745,7 +745,7 @@ int main(int argc, char *argv[])
 			free(xprt);
 			xprt = strdup(optarg);
 			if (!xprt) {
-				printf("ERROR: out of memory\n"); 
+				printf("ERROR: out of memory\n");
 				exit(1);
 			}
 			break;
@@ -1048,6 +1048,12 @@ done:
 		free(dir);
 	}
 
+	/* gracefully close, and wait at most 2 seconds before exit */
 	ldms_xprt_close(ldms);
+	struct timespec _t;
+	clock_gettime(CLOCK_REALTIME, &_t);
+	_t.tv_sec += 2;
+	sem_timedwait(&conn_sem, &_t);
+
 	exit(0);
 }
