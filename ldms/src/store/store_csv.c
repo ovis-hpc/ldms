@@ -277,11 +277,11 @@ static void roll_cb(void *obj, void *cb_arg)
 	if (s_handle->headerfile) {
 		fclose(s_handle->headerfile);
 	}
-	if (s_handle->headerfilename) {
+	if (s_handle->altheader != 0 && s_handle->headerfilename) {
 		rename_output(s_handle->headerfilename, FTYPE_HDR,
-			CSHC(s_handle), cps);
+			      CSHC(s_handle), cps);
 	}
-	if (s_handle->typefilename) {
+	if (s_handle->typeheader != 0 && s_handle->typefilename) {
 		rename_output(s_handle->typefilename, FTYPE_KIND,
 			CSHC(s_handle), cps);
 		snprintf(tmp_typepath, PATH_MAX, "%s.KIND.%d",
