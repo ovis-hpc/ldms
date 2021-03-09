@@ -739,7 +739,8 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 
 /*
  * note: this should be residual from v2 where we may not have had the header info until a store was called
- * which then meant we had the mvec. ideally the print_header will always happen from the store_open.
+ * which then meant we had the mvec. ideally the print_header will always happen from the open_store,
+ * but in point of fact is currently _never_ called in open_store.
  * Currently we still have to keep this to invert the metric order
  */
 static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t set,
@@ -768,13 +769,13 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 		else
 			ec = snprintf(tmp_path, PATH_MAX, "%s.HEADER",
 				s_handle->path);
-			} else {
+	} else {
 		if (rolltype >= MINROLLTYPE)
 			ec = snprintf(tmp_path, PATH_MAX, "%s.%d",
 				s_handle->path, (int)s_handle->otime);
 		else
 			ec = snprintf(tmp_path, PATH_MAX, "%s", s_handle->path);
-				}
+	}
 	(void)ec;
 	csv_format_header_common(fp, tmp_path, CCSHC(s_handle), s_handle->udata,
 		&PG, set, metric_array, metric_count);
