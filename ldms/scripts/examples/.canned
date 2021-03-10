@@ -29,6 +29,7 @@ csvcheckattrs # one ok and one failed config_check
 vg_csv
 vg_sos
 shm # store fails because of schema ambiguity
+uidgidcsv
 
 # working with job metrics
 clock.job
