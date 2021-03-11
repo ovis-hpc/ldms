@@ -2291,7 +2291,6 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 		exit(1);
 	}
 
-	size_t msglen = 0;
 	rc = 0;
 	ldmsctl_buffer_t recv_buf;
 
@@ -2322,7 +2321,7 @@ done_recv:
 	/* We have received the whole message */
 	if (rsp) {
 		ldmsd_ntoh_req_msg(rsp);
-		cmd->resp(rsp, msglen, rsp->rsp_err);
+		cmd->resp(rsp, b->len, rsp->rsp_err);
 	} else {
 		assert(rsp);
 	}
