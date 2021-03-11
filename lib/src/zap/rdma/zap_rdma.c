@@ -46,6 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#define _GNU_SOURCE
 #include <sys/errno.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -63,6 +64,8 @@
 #include "coll/rbt.h"
 #include <sys/syscall.h>
 #include <netdb.h>
+#include <time.h>
+#include <pthread.h>
 #include "zap_rdma.h"
 
 #define LOG(FMT, ...)							\
@@ -2649,14 +2652,32 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	return ZAP_ERR_RESOURCE;
 }
 
+#define ZAP_RDMA_JOIN_TIMEOUT_DEFAULT 5 /* 5 sec */
 static void __attribute__ ((destructor)) zap_rdma_fini(void)
 {
+	struct timespec t;
+	struct timespec to;
+	char *s = getenv("ZAP_RDMA_JOIN_TIMEOUT_NSEC");
+	if (s) {
+		long v = strtol(s, NULL, 0);
+		to.tv_sec = v / 1000000;
+		to.tv_nsec = v % 1000000;
+	} else {
+		to.tv_sec = ZAP_RDMA_JOIN_TIMEOUT_DEFAULT;
+		to.tv_nsec = 0;
+	}
 	if (cq_thread) {
 		pthread_cancel(cq_thread);
-		pthread_join(cq_thread, NULL);
+		clock_gettime(CLOCK_REALTIME, &t);
+		t.tv_sec += to.tv_sec;
+		t.tv_nsec += to.tv_nsec;
+		pthread_timedjoin_np(cq_thread, NULL, &t);
 	}
 	if (cm_thread) {
 		pthread_cancel(cm_thread);
-		pthread_join(cm_thread, NULL);
+		clock_gettime(CLOCK_REALTIME, &t);
+		t.tv_sec += to.tv_sec;
+		t.tv_nsec += to.tv_nsec;
+		pthread_timedjoin_np(cm_thread, NULL, &t);
 	}
 }
