@@ -2711,6 +2711,7 @@ static void *delete_proc(void *arg)
 	int timeout = (to ? atoi(to) : DELETE_TIMEOUT);
 	if (timeout <= DELETE_CHECK)
 		timeout = DELETE_CHECK;
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	do {
 		/*
 		 * Iterate through the tree from oldest to
@@ -2755,5 +2756,8 @@ static void __attribute__ ((constructor)) cs_init(void)
 
 static void __attribute__ ((destructor)) cs_term(void)
 {
+	void *dontcare;
+	(void)pthread_cancel(delete_thread);
+	(void)pthread_join(delete_thread, &dontcare);
 }
 
