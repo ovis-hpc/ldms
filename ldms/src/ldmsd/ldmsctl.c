@@ -521,12 +521,41 @@ static void resp_generic(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 	}
 }
 
+static int __thread_stats_print(json_entity_t stats)
+{
+	json_entity_t entries, e, u;
+	if (stats->type != JSON_DICT_VALUE) {
+		printf("Unrecognized thread stats format\n");
+		return EINVAL;
+	}
+
+	printf("%-16s %-12s %-12s\n", "Name", "Samples", "Utilization");
+	printf("---------------- ------------ ------------\n");
+	entries = json_value_find(stats, "entries");
+	if (entries->type != JSON_LIST_VALUE) {
+		printf("Unrecognized thread stats format\n");
+		return EINVAL;
+	}
+
+	for (e = json_item_first(entries); e; e = json_item_next(e)) {
+		printf("%16s %12ld ",
+				json_value_str(json_value_find(e, "name"))->str,
+				json_value_int(json_value_find(e, "sample_count")));
+		u = json_value_find(e, "utilization");
+		if (u->type == JSON_INT_VALUE)
+			printf("%12ld\n", json_value_int(u));
+		else
+			printf("%12g\n", json_value_float(u));
+	}
+	return 0;
+}
+
 static void resp_daemon_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
 {
 	int rc;
 	ldmsd_req_attr_t attr;
 	json_parser_t parser;
-	json_entity_t json, thread;
+	json_entity_t json, state, stats;
 	if (rsp_err) {
 		resp_generic(resp, len, rsp_err);
 		return;
@@ -542,37 +571,24 @@ static void resp_daemon_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_er
 		return;
 	}
 	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	json_parser_free(parser);
 	if (rc) {
 		printf("syntax error parsing JSON string\n");
-		json_parser_free(parser);
 		return;
 	}
-	json_parser_free(parser);
 
-	if (json->type != JSON_LIST_VALUE) {
-		printf("Unrecognized JSON daemon status format\n");
+	if (json->type != JSON_DICT_VALUE) {
+		printf("Unrecognized daemon_status format\n");
 		goto out;
 	}
 
-	printf("Thread           Task Count\n");
-	printf("---------------- ----------\n");
+	state = json_value_find(json, "state");
+	if (state)
+		printf("Daemon State: %s\n", json_value_str(state)->str);
 
-	json_entity_t thr_id, count;
-
-	for (thread = json_item_first(json); thread; thread = json_item_next(thread)) {
-		if (thread->type != JSON_DICT_VALUE) {
-			printf("Unrecognized JSON daemon status format\n");
-			goto out;
-		}
-		thr_id = json_value_find(thread, "thread");
-		count = json_value_find(thread, "task_count");
-		if (!thr_id || !count) {
-			printf("Unrecognized status format\n");
-			goto out;
-		}
-		printf("%15s %10s\n", json_value_str(thr_id)->str,
-					json_value_str(count)->str);
-	}
+	stats = json_value_find(json, "thread_stats");
+	if (stats)
+		(void) __thread_stats_print(stats);
 out:
 	json_entity_free(json);
 }
@@ -1848,7 +1864,7 @@ static void resp_thread_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err
 
 	int rc;
 	json_parser_t parser;
-	json_entity_t stats, entries, e, u;
+	json_entity_t stats;
 
 	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
 	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
@@ -1866,31 +1882,8 @@ static void resp_thread_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err
 		return;
 	}
 
-	if (stats->type != JSON_DICT_VALUE) {
-		printf("Unrecognized thread stats format\n");
-		goto free_entity;
-	}
+	(void) __thread_stats_print(stats);
 
-	printf("%-16s %-12s %-12s\n", "Name", "Samples", "Utilization");
-	printf("---------------- ------------ ------------\n");
-	entries = json_value_find(stats, "entries");
-	if (entries->type != JSON_LIST_VALUE) {
-		printf("Unrecognized thread stats format\n");
-		goto free_entity;
-	}
-
-	for (e = json_item_first(entries); e; e = json_item_next(e)) {
-		printf("%16s %12ld ",
-				json_value_str(json_value_find(e, "name"))->str,
-				json_value_int(json_value_find(e, "sample_count")));
-		u = json_value_find(e, "utilization");
-		if (u->type == JSON_INT_VALUE)
-			printf("%12ld\n", json_value_int(u));
-		else
-			printf("%12g\n", json_value_float(u));
-	}
-
- free_entity:
  	json_entity_free(stats);
  	return;
 }
