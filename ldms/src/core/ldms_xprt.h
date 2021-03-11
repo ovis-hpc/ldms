@@ -235,8 +235,8 @@ struct ldms_rendezvous_lookup_param {
 	uint32_t card; /* card of dict */
 	uint32_t schema_len;
 	uint32_t array_card; /* card of array */
-	/* `schema_name` '\0' `instance_name` '\0' */
-	char schema_inst_name[OVIS_FLEX];
+	/* schema name, then instance name, and then set_info key value pairs */
+	char set_info[OVIS_FLEX];
 };
 
 struct ldms_rendezvous_push_param {
