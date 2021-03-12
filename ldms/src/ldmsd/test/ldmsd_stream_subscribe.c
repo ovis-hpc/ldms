@@ -10,6 +10,7 @@
 #include <getopt.h>
 #include <semaphore.h>
 #include <pthread.h>
+#include <netdb.h>
 #include <ovis_json/ovis_json.h>
 #include <assert.h>
 #include <coll/rbt.h>
@@ -44,13 +45,14 @@ static struct option long_opts[] = {
 	{"auth",     required_argument, 0,  'a' },
 	{"auth_arg", required_argument, 0,  'A' },
 	{"daemonize",no_argument,       0,  'D' },
+	{"host",     required_argument, 0,  'h' },
 	{"quiet",	no_argument,		0,	'q' },
 	{0,          0,                 0,  0 }
 };
 
 void usage(int argc, char **argv)
 {
-	printf("usage: %s -x <xprt> -p <port> "
+	printf("usage: %s -x <xprt> -p <port> -h <host>"
 	       "-s <stream-name> "
 	       "-f <file> -a <auth> -A <auth-opt> "
 	       "-D\n",
@@ -58,7 +60,7 @@ void usage(int argc, char **argv)
 	exit(1);
 }
 
-static const char *short_opts = "p:f:s:x:a:A:Dq";
+static const char *short_opts = "p:f:s:x:a:A:Dqh:";
 
 #define AUTH_OPT_MAX 128
 
@@ -338,25 +340,29 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	}
 }
 
-static int setup_connection(char *xprt, short port_no, char *auth)
+static int setup_connection(char *xprt, char *host, char *port, char *auth)
 {
-	struct sockaddr_in sin;
 	int rc;
+	struct addrinfo *ai, hint = { .ai_flags = AI_PASSIVE, .ai_family = AF_INET };
+
+	rc = getaddrinfo(host, port, &hint, &ai);
+	if (rc)
+		return errno;
 
 	ldms = ldms_xprt_new_with_auth(xprt, msglog, auth, NULL);
 	if (!ldms) {
 		msglog("Error %d creating the '%s' transport\n", errno, xprt);
-		return errno;
+		rc = errno;
+		goto out;
 	}
 
 	sem_init(&recv_sem, 1, 0);
 
-	sin.sin_family = AF_INET;
-	sin.sin_addr.s_addr = 0;
-	sin.sin_port = htons(port_no);
-	rc = ldms_xprt_listen(ldms, (struct sockaddr *)&sin, sizeof(sin), event_cb, NULL);
+	rc = ldms_xprt_listen(ldms, ai->ai_addr, ai->ai_addrlen, event_cb, NULL);
 	if (rc)
 		msglog("Error %d listening on the '%s' transport.\n", rc, xprt);
+ out:
+	freeaddrinfo(ai);
 	return rc;
 }
 
@@ -365,12 +371,13 @@ int main(int argc, char **argv)
 	char *xprt = "sock";
 	char *filename = NULL;
 	char *stream = NULL;
+	char *host = NULL;
+	char *port = NULL;
 	int opt, opt_idx;
 	char *lval, *rval;
 	char *auth = "none";
 	struct attr_value_list *auth_opt = NULL;
 	const int auth_opt_max = AUTH_OPT_MAX;
-	short port_no = 0;
 	int daemonize = 0;
 
 	auth_opt = av_new(auth_opt_max);
@@ -385,7 +392,7 @@ int main(int argc, char **argv)
 			quiet = 1;
 			break;
 		case 'p':
-			port_no = atoi(optarg);
+			port = optarg;
 			break;
 		case 'x':
 			xprt = strdup(optarg);
@@ -433,11 +440,14 @@ int main(int argc, char **argv)
 		case 'D':
 			daemonize = 1;
 			break;
+		case 'h':
+			host = optarg;
+			break;
 		default:
 			usage(argc, argv);
 		}
 	}
-	if (!port_no || !stream)
+	if (!port || !stream)
 		usage(argc, argv);
 
 	if (daemonize) {
@@ -457,7 +467,7 @@ int main(int argc, char **argv)
 		file = stdout;
 	}
 
-	int rc = setup_connection(xprt, port_no, auth);
+	int rc = setup_connection(xprt, host, port, auth);
 	if (rc) {
 		errno = rc;
 		perror("Could not listen");
