@@ -591,6 +591,7 @@ static int sample(struct ldmsd_sampler *self)
 	mcprc = parse_mc_oper_region();
 
 	for (i = 0; i < tx2mon->n_cpu; i ++) {
+		base->set = set[i];
 		base_sample_begin(base);
 		if (!mcprc) {
 			rc = tx2mon_set_metrics(i);
@@ -603,6 +604,7 @@ static int sample(struct ldmsd_sampler *self)
 		}
 
 		base_sample_end(base);
+		base->set = NULL;
 	}
 	return rc;
 }
