@@ -24,6 +24,8 @@ lib_LTLIBRARIES += libsampler_base.la
 ldmssamplerincludedir = $(includedir)/ldms/sampler
 ldmssamplerinclude_HEADERS = sampler_base.h
 
+SUBDIRS += lustre_client
+
 if ENABLE_IBNET
 SUBDIRS += ibnet
 endif
