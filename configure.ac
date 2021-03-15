@@ -813,6 +813,7 @@ ldms/src/sampler/job_info/Makefile
 ldms/src/sampler/job_info_slurm/Makefile
 ldms/src/sampler/llnl/Makefile
 ldms/src/sampler/lustre_client/Makefile
+ldms/src/sampler/lustre_ost/Makefile
 ldms/src/sampler/shm/Makefile
 ldms/src/sampler/shm/shm_util/Makefile
 ldms/src/sampler/shm/mpi_profiler/Makefile
