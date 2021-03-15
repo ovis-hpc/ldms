@@ -13,6 +13,10 @@ CORE_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
 COMMON_LIBADD = libsampler_base.la $(CORE_LIBADD) \
 		$(top_builddir)/lib/src/coll/libcoll.la
 
+noinst_LTLIBRARIES = libjobid_helper.la
+libjobid_helper_la_SOURCES = jobid_helper.c jobid_helper.h
+libjobid_helper_la_LIBADD = $(CORE_LIBADD) $(top_builddir)/lib/src/coll/libcoll.la
+
 libsampler_base_la_SOURCES = sampler_base.c sampler_base.h
 libsampler_base_la_LIBADD = $(CORE_LIBADD)
 lib_LTLIBRARIES += libsampler_base.la
