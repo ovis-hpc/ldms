@@ -916,8 +916,10 @@ void close_store_common(struct csv_store_handle_common *s_handle, struct csv_plu
 	}
 
 	rename_output(s_handle->filename, FTYPE_DATA, s_handle, cps);
-	rename_output(s_handle->headerfilename, FTYPE_HDR, s_handle, cps);
-	rename_output(s_handle->typefilename, FTYPE_KIND, s_handle, cps);
+	if (s_handle->altheader)
+		rename_output(s_handle->headerfilename, FTYPE_HDR, s_handle, cps);
+	if (s_handle->typeheader)
+		rename_output(s_handle->typefilename, FTYPE_KIND, s_handle, cps);
 	replace_string(&(s_handle->filename), NULL);
 	replace_string(&(s_handle->headerfilename),  NULL);
 	replace_string(&(s_handle->typefilename),  NULL);

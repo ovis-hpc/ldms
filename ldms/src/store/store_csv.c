@@ -789,14 +789,14 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 
 	/* dump data types header, or whine and continue to other headers. */
 	if (s_handle->typeheader > 0 && s_handle->typeheader <= TH_MAX) {
-		fp = fopen(s_handle->typefilename, "w");
+		fp = fopen_perm(s_handle->typefilename, "w", LDMSD_DEFAULT_FILE_PERM);
 		if (!fp) {
 			int rc = errno;
 			PG.msglog(LDMSD_LERROR, PNAME ": print_header: %s "
 				"failed to open types file (%d).\n",
 				s_handle->typefilename, rc);
 		} else {
-			ch_output(fp, tmp_path, CSHC(s_handle), &PG);
+			ch_output(fp, s_handle->typefilename, CSHC(s_handle), &PG);
 			csv_format_types_common(s_handle->typeheader, fp, 
 				s_handle->typefilename, CCSHC(s_handle),
 				s_handle->udata, &PG, set,
