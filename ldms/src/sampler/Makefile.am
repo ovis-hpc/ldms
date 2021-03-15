@@ -25,6 +25,7 @@ ldmssamplerincludedir = $(includedir)/ldms/sampler
 ldmssamplerinclude_HEADERS = sampler_base.h
 
 SUBDIRS += lustre_client
+SUBDIRS += lustre_ost
 
 if ENABLE_IBNET
 SUBDIRS += ibnet
