@@ -689,6 +689,23 @@ fi
 OPTION_GITINFO
 OPTION_HOSTINFO
 
+AC_ARG_WITH([dcgm],
+  [AS_HELP_STRING([--with-dcgm],
+    [Include code that depends on Nvidia DCGM @<:@default=check@:>@])],
+  [],
+  [with_dcgm=check])
+LIBDCGM=
+AS_IF([test "x$with_dcgm" != xno],
+      [AC_CHECK_LIB([dcgm], [dcgmInit],
+         [have_dcgm=true],
+         [have_dcgm=false
+          if test "x$with_dcgm" != xcheck; then
+            AC_MSG_FAILURE([--with-dcgm was given, but test for dcgm failed])
+          fi
+         ])],
+      [have_dcgm=false])
+AM_CONDITIONAL([HAVE_DCGM], [test x$have_dcgm = xtrue])
+
 # define substitutions for configvars and other sed-generated files.
 # note carefully the escapes.
 OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
@@ -785,6 +802,7 @@ ldms/src/store/store_app/Makefile
 ldms/src/contrib/store/Makefile
 ldms/src/contrib/store/tutorial/Makefile
 ldms/src/contrib/store/timescale/Makefile
+ldms/src/sampler/dcgm/Makefile
 ldms/src/sampler/dstat/Makefile
 ldms/src/sampler/hello_stream/Makefile
 ldms/src/sampler/hello_stream/stream_configs/Makefile
