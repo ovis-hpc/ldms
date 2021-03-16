@@ -1,0 +1,63 @@
+.TH man 7 "1 May 2019" "LDMS Plugin" "Plugin for LDMS"
+
+.SH NAME
+Plugin_dcgm - man page for the LDMS dcgm plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=dcgm [ <attr>=<value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
+or a configuration file. The dcgm plugin provide a metric set for each DCGM-compatible Nvidia GPU on the system.
+The schema is named "dcgm" by default.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> interval=<interval(us)> [fields=<fields>] [schema=<schema_name>] [job_set=<metric set name>]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be dcgm.
+.TP
+interval=<interval(us)>
+.br
+The sampling interval.  This MUST be set to the same value that is
+set on the "start" line, otherwise behavior is undetermined.
+.TP
+fields=<fields>
+.br
+<fields> is a comma-separated list of integers representing DCGM field
+numebers that the plugin should watch.  By default the plugin will
+watch fields 150,155.
+.TP
+schema=<schema_name>
+.br
+The schema name defaults to "dcgm", but it can be renamed at the
+user's choice.
+.TP
+job_set=<metric set name>
+.br
+The name of the metric set that contains the job id information (default=job_id)
+.RE
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=dcgm
+config name=dcgm interval=1000000 fields=150,155,1001,1002,1003 schema=dcgmfav5
+start name=dcgm interval=1000000
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7)

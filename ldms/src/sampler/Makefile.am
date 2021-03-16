@@ -28,6 +28,10 @@ SUBDIRS += lustre_client
 SUBDIRS += lustre_mdt
 SUBDIRS += lustre_ost
 
+if HAVE_DCGM
+SUBDIRS += dcgm
+endif
+
 if ENABLE_IBNET
 SUBDIRS += ibnet
 endif
