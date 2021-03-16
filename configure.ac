@@ -63,51 +63,45 @@ test "$sharedstatedir" = '${prefix}/com' && sharedstatedir='${prefix}/var/lib'
 #
 # link and include flags for build to ensure self-consistency
 #
-
-# ideally, this should yield from lib/src ldms/src
-# "-I$(top_builddir)/lib/src -I$(top_builddir)/ldms/src -I$(top_srcdir)/lib/src -I$(top_srcdir)/ldms/src"
-# when all the includes are fixed.
 dnl contrib should never be in this list
-OPTION_INCLUDE_FLAGS([OVIS],[ \
-	. \
-	lib/src \
-	lib/src/coll \
-	lib/src/third \
-	lib/src/ovis_util \
-	lib/src/ovis_auth \
-	lib/src/ovis_ctrl \
-	lib/src/ovis_ev \
-	lib/src/ovis_event \
-	lib/src/ovis_json \
-	lib/src/zap \
-	lib/src/mmalloc \
-	ldms/src \
-	ldms/src/core \
-	ldms/src/auth \
-	ldms/src/ldmsd \
-	ldms/src/sampler \
-	ldms/src/store \
-])
+OVIS_INCLUDE_ABS="\
+	-I\${abs_top_srcdir}/lib/src \
+	-I\${abs_top_srcdir}/lib/src/coll \
+	-I\${abs_top_srcdir}/lib/src/third \
+	-I\${abs_top_srcdir}/lib/src/ovis_util \
+	-I\${abs_top_srcdir}/lib/src/ovis_auth \
+	-I\${abs_top_srcdir}/lib/src/ovis_ctrl \
+	-I\${abs_top_srcdir}/lib/src/ovis_ev \
+	-I\${abs_top_srcdir}/lib/src/ovis_event \
+	-I\${abs_top_srcdir}/lib/src/ovis_json \
+	-I\${abs_top_srcdir}/lib/src/zap \
+	-I\${abs_top_srcdir}/lib/src/mmalloc \
+	-I\${abs_top_srcdir}/ldms/src \
+	-I\${abs_top_srcdir}/ldms/src/core \
+	-I\${abs_top_srcdir}/ldms/src/auth \
+	-I\${abs_top_srcdir}/ldms/src/ldmsd \
+	-I\${abs_top_srcdir}/ldms/src/sampler \
+	-I\${abs_top_srcdir}/ldms/src/store"
+AC_SUBST([OVIS_INCLUDE_ABS])
 
-dnl contrib subdirs should never be in this list
-OPTION_LIB_FLAGS([OVIS],[ \
-	lib/src/coll \
-	lib/src/third \
-	lib/src/ovis_util \
-	lib/src/ovis_auth \
-	lib/src/ovis_ctrl \
-	lib/src/ovis_ev \
-	lib/src/ovis_event \
-	lib/src/ovis_json \
-	lib/src/zap \
-	lib/src/mmalloc \
-	ldms/src/core \
-	ldms/src/auth \
-	ldms/src/ldmsd \
-	ldms/src/sampler \
-	ldms/src/sampler/lustre \
-	ldms/src/store \
-])
+OVIS_LIB_ABS="\
+	-Wl,-rpath-link=\$(abs_top_builddir)/lib/src/coll/.libs -L\$(abs_top_builddir)/lib/src/coll/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/lib/src/third/.libs -L\$(abs_top_builddir)/lib/src/third/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/lib/src/ovis_util/.libs -L\$(abs_top_builddir)/lib/src/ovis_util/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/lib/src/ovis_auth/.libs -L\$(abs_top_builddir)/lib/src/ovis_auth/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/lib/src/ovis_ctrl/.libs -L\$(abs_top_builddir)/lib/src/ovis_ctrl/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/lib/src/ovis_ev/.libs -L\$(abs_top_builddir)/lib/src/ovis_ev/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/lib/src/ovis_event/.libs -L\$(abs_top_builddir)/lib/src/ovis_event/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/lib/src/ovis_json/.libs -L\$(abs_top_builddir)/lib/src/ovis_json/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/lib/src/zap/.libs -L\$(abs_top_builddir)/lib/src/zap/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/lib/src/mmalloc/.libs -L\$(abs_top_builddir)/lib/src/mmalloc/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/ldms/src/core/.libs -L\$(abs_top_builddir)/ldms/src/core/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/ldms/src/auth/.libs -L\$(abs_top_builddir)/ldms/src/auth/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/ldms/src/ldmsd/.libs -L\$(abs_top_builddir)/ldms/src/ldmsd/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/ldms/src/sampler/.libs -L\$(abs_top_builddir)/ldms/src/sampler/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/ldms/src/sampler/lustre/.libs -L\$(abs_top_builddir)/ldms/src/sampler/lustre/.libs \
+	-Wl,-rpath-link=\$(abs_top_builddir)/ldms/src/store/.libs -L\$(abs_top_builddir)/ldms/src/store/.libs"
+AC_SUBST([OVIS_LIB_ABS])
 
 ## stuff from lib
 

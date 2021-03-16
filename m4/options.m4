@@ -181,63 +181,6 @@ AC_DEFINE_UNQUOTED([$1PORT],[$withval],[Default port for $1 to listen on])
 AC_SUBST([$1PORT],[$$1PORT])
 ])
 
-dnl SYNOPSIS: OPTION_INC_FLAGS(prefix, subdirs)
-dnl REASON: produce include flags lists
-dnl EXAMPLE: OPTION_INC_FLAGS([ovis],[dir1 dir2])
-dnl - prefix: variable prefix
-dnl - subdirs: search locations
-dnl Defines $prefix_INCLUDE_REL (relative to top_builddir for in-configure)
-dnl Defines $prefix_INCLUDE_ABS (path to use in make)
-AC_DEFUN([OPTION_INCLUDE_FLAGS], [
-[
-	tmprelflags=""
-	tmpabsflags=""
-	dirlist=""
-	for dirtmp in $2; do
-		if test -d $srcdir/$dirtmp; then
-			tmprelflags="$tmprelflags -I\$(top_srcdir)/$dirtmp -I\$(top_builddir)/$dirtmp"
-			tmpabsflags="$tmpabsflags -I\$(abs_top_srcdir)/$dirtmp -I\$(abs_top_builddir)/$dirtmp"
-		else
-			]AC_MSG_NOTICE([expected dir $srcdir/$dirtmp missing])[
-		fi
-	done
-	]m4_translit([$1], [-+.a-z], [___A-Z])[_INCLUDE_REL="$tmprelflags"
-	]m4_translit([$1], [-+.a-z], [___A-Z])[_INCLUDE_ABS="$tmpabsflags"
-]
-AC_SUBST(m4_translit([$1], [-+.a-z], [___A-Z])[_INCLUDE_REL])
-AC_SUBST(m4_translit([$1], [-+.a-z], [___A-Z])[_INCLUDE_ABS])
-])
-
-dnl SYNOPSIS: OPTION_LIB_FLAGS(prefix, subdirs)
-dnl REASON: produce lib flags list
-dnl EXAMPLE: OPTION_INC_FLAGS([ovis],[dir1 dir2])
-dnl - prefix: variable prefix
-dnl - subdirs: search locations
-dnl Defines $prefix_LIB_REL (relative to top_builddir for in-configure)
-dnl Defines $prefix_LIB_ABS (path to use in make)
-AC_DEFUN([OPTION_LIB_FLAGS], [
-[
-	tmprelflags=""
-	tmpabsflags=""
-	tmppathflags=""
-	dirlist=""
-	for dirtmp in $2; do
-		if test -d $srcdir/$dirtmp; then
-			tmprelflags="$tmprelflags -Wl,-rpath-link=\$(top_builddir)/$dirtmp/.libs"
-			tmpabsflags="$tmpabsflags -Wl,-rpath-link=\$(abs_top_builddir)/$dirtmp/.libs"
-			tmprelflags="$tmprelflags -L\$(top_builddir)/$dirtmp/.libs"
-			tmpabsflags="$tmpabsflags -L\$(abs_top_builddir)/$dirtmp/.libs"
-		else
-			]AC_MSG_NOTICE([expected dir $srcdir/$dirtmp missing])[
-		fi
-	done
-	]m4_translit([$1], [-+.a-z], [___A-Z])[_LIB_REL="$tmprelflags"
-	]m4_translit([$1], [-+.a-z], [___A-Z])[_LIB_ABS="$tmpabsflags"
-]
-AC_SUBST(m4_translit([$1], [-+.a-z], [___A-Z])[_LIB_REL])
-AC_SUBST(m4_translit([$1], [-+.a-z], [___A-Z])[_LIB_ABS])
-])
-
 dnl SYNOPSIS: OPTION_WITH_OR_BUILD(featurename,reldir,libsubdirs,
 dnl		configfile,package_name,buildlocation)
 dnl REASON: configuring against peer subprojects needs a little love.
