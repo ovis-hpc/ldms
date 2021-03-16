@@ -1024,6 +1024,8 @@ struct ldmsd_msg_buf *ldmsd_msg_buf_new(size_t len)
 
 void ldmsd_msg_buf_free(struct ldmsd_msg_buf *buf)
 {
+	if (!buf)
+		return;
 	free(buf->buf);
 	free(buf);
 }

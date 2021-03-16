@@ -637,6 +637,8 @@ struct z_sock_io *__sock_io_alloc(struct z_sock_ep *sep)
 
 void __sock_io_free(struct z_sock_ep *sep, struct z_sock_io *io)
 {
+	if (!sep)
+		return;
 	pthread_mutex_lock(&sep->ep.lock);
 	TAILQ_INSERT_TAIL(&sep->free_q, io, q_link);
 	pthread_mutex_unlock(&sep->ep.lock);

@@ -574,8 +574,7 @@ void __free_req_ctxt(ldmsd_req_ctxt_t reqc)
 	rbt_del(&msg_tree, &reqc->rbn);
 	if (reqc->line_buf)
 		free(reqc->line_buf);
-	if (reqc->req_buf)
-		ldmsd_msg_buf_free(reqc->_req_buf);
+	ldmsd_msg_buf_free(reqc->_req_buf);
 	ldmsd_msg_buf_free(reqc->rep_buf);
 	free(reqc);
 }
@@ -709,6 +708,8 @@ ldmsd_req_cmd_t ldmsd_req_cmd_new(ldms_t ldms,
 /* Caller must hold the msg_tree locks. */
 void free_req_cmd_ctxt(ldmsd_req_cmd_t rcmd)
 {
+	if (!rcmd)
+		return;
 	if (rcmd->org_reqc)
 		req_ctxt_ref_put(rcmd->org_reqc);
 	if (rcmd->reqc && rcmd->reqc->xprt->cleanup_fn)
@@ -759,10 +760,8 @@ static int string2attr_list(char *str, struct attr_value_list **__av_list,
 	*__kw_list = kw_list;
 	return 0;
 err:
-	if (av_list)
-		av_free(av_list);
-	if (kw_list)
-		av_free(kw_list);
+	av_free(av_list);
+	av_free(kw_list);
 	*__av_list = NULL;
 	*__kw_list = NULL;
 	return rc;
@@ -4372,22 +4371,16 @@ einval:
 		       	attr_name);
 	goto send_reply;
 err:
-	if (kw_list)
-		av_free(kw_list);
-	if (av_list)
-		av_free(av_list);
+	av_free(kw_list);
+	av_free(av_list);
 	kw_list = NULL;
 	av_list = NULL;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (plugin_name)
-		free(plugin_name);
-	if (config_attr)
-		free(config_attr);
-	if (kw_list)
-		av_free(kw_list);
-	if (av_list)
-		av_free(av_list);
+	free(plugin_name);
+	free(config_attr);
+	av_free(kw_list);
+	av_free(av_list);
 	return 0;
 }
 
@@ -4850,12 +4843,9 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 	}
 out:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (kw_list)
-		av_free(kw_list);
-	if (av_list)
-		av_free(av_list);
-	if (exp_val)
-		free(exp_val);
+	av_free(kw_list);
+	av_free(av_list);
+	free(exp_val);
 	return rc;
 }
 
@@ -5776,8 +5766,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	return buff;
 __APPEND_ERR:
 	zap_thrstat_free_result(res);
-	if (buff)
-		free(buff);
+	free(buff);
 	return NULL;
 }
 
@@ -6556,14 +6545,10 @@ attr_required:
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	/* cleanup */
-	if (name)
-		free(name);
-	if (plugin)
-		free(plugin);
-	if (auth_args)
-		free(auth_args);
-	if (auth_opts)
-		av_free(auth_opts);
+	free(name);
+	free(plugin);
+	free(auth_args);
+	av_free(auth_opts);
 	return 0;
 }
 

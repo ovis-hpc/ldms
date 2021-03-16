@@ -173,7 +173,7 @@ ldms_auth_t ldms_auth_clone(ldms_auth_t auth);
 /**
  * \brief Free the authentication object
  *
- * \param auth The authentication object handle
+ * \param auth The authentication object handle. Ignores NULL input.
  */
 void ldms_auth_free(ldms_auth_t auth);
 

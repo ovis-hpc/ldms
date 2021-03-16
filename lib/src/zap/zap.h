@@ -356,7 +356,7 @@ void zap_set_priority(zap_ep_t ep, int prio);
 /** \brief Release an endpoint
  *
  * Drop the implicit zap_new() reference. This is functionally
- * equivalent to zap_put_ep().
+ * equivalent to zap_put_ep(). Ignores NULL arguments.
  *
  * Note that outstanding I/O may hold references on the endpoint and
  * this does not initiate a disconnect. See the zap_close() function
@@ -710,6 +710,7 @@ zap_thrstat_t zap_thrstat_new(const char *name, int window_size);
 
 /**
  * \brief Release the resources held by the Zap stats instance
+ * Ignores NULL instances.
  */
 void zap_thrstat_free(zap_thrstat_t stats);
 /**

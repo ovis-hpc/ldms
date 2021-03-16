@@ -79,6 +79,8 @@ void ovis_scheduler_ref_get(ovis_scheduler_t m)
 static inline
 void ovis_scheduler_ref_put(ovis_scheduler_t m)
 {
+	if (!m)
+		return;
 	pthread_mutex_lock(&m->mutex);
 	assert(m->refcount > 0);
 	m->refcount--;

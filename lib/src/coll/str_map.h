@@ -84,7 +84,7 @@ typedef struct str_map* str_map_t;
 struct str_map* str_map_create(size_t sz);
 
 /**
- * Free the map.
+ * Free the map. Ignores NULL input.
  */
 void str_map_free(str_map_t m);
 

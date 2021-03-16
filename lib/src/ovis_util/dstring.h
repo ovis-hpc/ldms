@@ -161,7 +161,7 @@ extern char *dstrcat_uint(dstring_t * dsPtr, uint64_t);
  *  reinitializes the string to an empty state.  The previous
  *  contents of the dynamic string are lost, and the new value
  *  is an empty string.  Note that dsPtr may not be NULL
- *  (checked by assertion).
+ *  (checked by assertion). Ignore NULL input if assert is inactive.
  *
  *  \param dsPtr Structure describing dynamic string (non-NULL).
 */

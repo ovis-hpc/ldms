@@ -103,7 +103,8 @@ static inline const char *bdstrval(const big_dstring_t *dsPtr); \
  \
 static void bdstr_free(big_dstring_t *dsPtr) \
 { \
-	assert(NULL != dsPtr); \
+	if (!dsPtr) \
+		return; \
 	if (dsPtr->string != dsPtr->staticSpace) { \
 		free(dsPtr->string); \
 	} \

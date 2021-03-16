@@ -74,7 +74,7 @@ typedef struct ovis_heap *ovis_heap_t;
 ovis_heap_t ovis_heap_create(int heapsize, ovis_heap_comp comp);
 
 /**
- * Deallocate \c heap.
+ * Deallocate \c heap. Ignores NULL input.
  */
 void ovis_heap_free(ovis_heap_t heap);
 

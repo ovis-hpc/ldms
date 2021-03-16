@@ -587,6 +587,8 @@ zap_ep_state_t zap_ep_state(zap_ep_t ep)
 
 void zap_put_ep(zap_ep_t ep)
 {
+	if (!ep)
+		return;
 	assert(ep->ref_count);
 	if (0 == __sync_sub_and_fetch(&ep->ref_count, 1)) {
 		zap_event_queue_ep_put(ep->event_queue);
@@ -875,6 +877,8 @@ err_1:
 
 void zap_thrstat_free(zap_thrstat_t stats)
 {
+	if (!stats)
+		return;
 	pthread_mutex_lock(&thrstat_list_lock);
 	LIST_REMOVE(stats, entry);
 	thrstat_count --;
@@ -994,6 +998,8 @@ out:
 
 void zap_thrstat_free_result(struct zap_thrstat_result *res)
 {
+	if (!res)
+		return;
 	int i;
 	for (i = 0; i < res->count; i++) {
 		if (res->entries[i].name)
