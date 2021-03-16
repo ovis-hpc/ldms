@@ -3,7 +3,7 @@ portbase=61098
 #export VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=all"
 LDMSD -p prolog.sampler 1
 #vgon
-LDMSD 2 3 4
+LDMSD $(seq 2 4)
 #vgoff
 MESSAGE ldms_ls on host 1:
 LDMS_LS 1 -l
