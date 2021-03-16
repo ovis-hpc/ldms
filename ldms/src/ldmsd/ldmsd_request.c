@@ -572,8 +572,7 @@ static ldmsd_req_ctxt_t find_req_ctxt(struct req_ctxt_key *key)
 void __free_req_ctxt(ldmsd_req_ctxt_t reqc)
 {
 	rbt_del(&msg_tree, &reqc->rbn);
-	if (reqc->line_buf)
-		free(reqc->line_buf);
+	free(reqc->line_buf);
 	if (reqc->req_buf)
 		ldmsd_msg_buf_free(reqc->_req_buf);
 	ldmsd_msg_buf_free(reqc->rep_buf);
@@ -1406,20 +1405,13 @@ einval:
 			"The attribute '%s' is required.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (type_s)
-		free(type_s);
-	if (port_s)
-		free(port_s);
-	if (interval_s)
-		free(interval_s);
-	if (host)
-		free(host);
-	if (xprt)
-		free(xprt);
-	if (perm_s)
-		free(perm_s);
+	free(name);
+	free(type_s);
+	free(port_s);
+	free(interval_s);
+	free(host);
+	free(xprt);
+	free(perm_s);
 	return 0;
 }
 
@@ -1467,8 +1459,7 @@ static int prdcr_del_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
+	free(name);
 	return 0;
 }
 
@@ -1516,10 +1507,8 @@ static int prdcr_start_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (interval_str)
-		free(interval_str);
+	free(name);
+	free(interval_str);
 	return 0;
 }
 
@@ -1565,8 +1554,7 @@ static int prdcr_stop_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
+	free(name);
 	return 0;
 }
 
@@ -1597,10 +1585,8 @@ static int prdcr_start_regex_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (prdcr_regex)
-		free(prdcr_regex);
-	if (interval_str)
-		free(interval_str);
+	free(prdcr_regex);
+	free(interval_str);
 	return 0;
 }
 
@@ -1627,15 +1613,14 @@ static int prdcr_stop_regex_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (prdcr_regex)
-		free(prdcr_regex);
+	free(prdcr_regex);
 	return 0;
 }
 
 static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *prdcr_regex;
-	char *stream_name;
+	char *stream_name = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
 
@@ -1666,15 +1651,15 @@ static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (prdcr_regex)
-		free(prdcr_regex);
+	free(prdcr_regex);
+	free(stream_name);
 	return 0;
 }
 
 static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *prdcr_regex;
-	char *stream_name;
+	char *prdcr_regex = NULL;
+	char *stream_name = NULL;
 	size_t cnt = 0;
 	struct ldmsd_sec_ctxt sctxt;
 
@@ -1705,8 +1690,8 @@ static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (prdcr_regex)
-		free(prdcr_regex);
+	free(prdcr_regex);
+	free(stream_name);
 	return 0;
 }
 
@@ -1837,8 +1822,7 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t reqc)
 	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
 			sizeof(uint32_t), LDMSD_REQ_EOM_F);
 out:
-	if (name)
-		free(name);
+	free(name);
 	if (prdcr)
 		ldmsd_prdcr_put(prdcr);
 	return rc;
@@ -1929,7 +1913,7 @@ int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc)
 
 	rc = linebuf_printf(reqc, "[");
 	if (rc)
-		return rc;
+		goto out2;
 	if (prdcr_name) {
 		prdcr = ldmsd_prdcr_find(prdcr_name);
 		if (!prdcr)
@@ -1959,12 +1943,10 @@ int __prdcr_set_status_json_obj(ldmsd_req_ctxt_t reqc)
 
 out:
 	rc = linebuf_printf(reqc, "]");
-	if (prdcr_name)
-		free(prdcr_name);
-	if (setname)
-		free(setname);
-	if (schema)
-		free(schema);
+out2:
+	free(prdcr_name);
+	free(setname);
+	free(schema);
 	return rc;
 }
 
@@ -2094,16 +2076,11 @@ einval:
 		       	attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (plugin)
-		free(plugin);
-	if (container)
-		free(container);
-	if (schema)
-		free(schema);
-	if (perm_s)
-		free(perm_s);
+	free(name);
+	free(plugin);
+	free(container);
+	free(schema);
+	free(perm_s);
 	return 0;
 }
 
@@ -2150,8 +2127,7 @@ static int strgp_del_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
+	free(name);
 	return 0;
 }
 
@@ -2211,10 +2187,8 @@ einval:
 			"strgp_prdcr_add");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (regex_str)
-		free(regex_str);
+	free(name);
+	free(regex_str);
 	return 0;
 }
 
@@ -2275,10 +2249,8 @@ einval:
 			"strgp_prdcr_del");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (regex_str)
-		free(regex_str);
+	free(name);
+	free(regex_str);
 	return 0;
 }
 
@@ -2341,10 +2313,8 @@ einval:
 			"strgp_metric_add");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (metric_name)
-		free(metric_name);
+	free(name);
+	free(metric_name);
 	return 0;
 }
 
@@ -2404,10 +2374,8 @@ einval:
 			"strgp_metric_del");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (metric_name)
-		free(metric_name);
+	free(name);
+	free(metric_name);
 	return 0;
 }
 
@@ -2454,8 +2422,7 @@ static int strgp_start_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
+	free(name);
 	return 0;
 }
 
@@ -2502,8 +2469,7 @@ static int strgp_stop_handler(ldmsd_req_ctxt_t reqc)
 	}
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
+	free(name);
 	return 0;
 }
 
@@ -2642,8 +2608,7 @@ static int strgp_status_handler(ldmsd_req_ctxt_t reqc)
 	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t),
 								LDMSD_REQ_EOM_F);
 out:
-	if (name)
-		free(name);
+	free(name);
 	if (strgp)
 		ldmsd_strgp_put(strgp);
 	return rc;
@@ -2823,18 +2788,12 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (interval_str)
-		free(interval_str);
-	if (auto_interval)
-		free(auto_interval);
-	if (offset_str)
-		free(offset_str);
-	if (push)
-		free(push);
-	if (perm_s)
-		free(perm_s);
+	free(name);
+	free(interval_str);
+	free(auto_interval);
+	free(offset_str);
+	free(push);
+	free(perm_s);
 	return 0;
 }
 
@@ -2881,8 +2840,7 @@ einval:
 	goto send_reply;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
+	free(name);
 	return 0;
 }
 
@@ -2951,10 +2909,8 @@ einval:
 			"updtr_prdcr_add");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (updtr_name)
-		free(updtr_name);
-	if (prdcr_regex)
-		free(prdcr_regex);
+	free(updtr_name);
+	free(prdcr_regex);
 	return 0;
 }
 
@@ -3013,10 +2969,8 @@ einval:
 			"updtr_prdcr_del");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (updtr_name)
-		free(updtr_name);
-	if (prdcr_regex)
-		free(prdcr_regex);
+	free(updtr_name);
+	free(prdcr_regex);
 	return 0;
 }
 
@@ -3082,12 +3036,9 @@ einval:
 			"updtr_match_add");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (updtr_name)
-		free(updtr_name);
-	if (regex_str)
-		free(regex_str);
-	if (match_str)
-		free(match_str);
+	free(updtr_name);
+	free(regex_str);
+	free(match_str);
 	return 0;
 }
 
@@ -3152,12 +3103,9 @@ einval:
 			"updtr_match_del");
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (updtr_name)
-		free(updtr_name);
-	if (regex_str)
-		free(regex_str);
-	if (match_str)
-		free(match_str);
+	free(updtr_name);
+	free(regex_str);
+	free(match_str);
 	return 0;
 }
 
@@ -3207,12 +3155,9 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (updtr_name)
-		free(updtr_name);
-	if (interval_str)
-		free(interval_str);
-	if (offset_str)
-		free(offset_str);
+	free(updtr_name);
+	free(interval_str);
+	free(offset_str);
 	return 0;
 }
 
@@ -3257,8 +3202,7 @@ static int updtr_stop_handler(ldmsd_req_ctxt_t reqc)
 
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (updtr_name)
-		free(updtr_name);
+	free(updtr_name);
 	return 0;
 }
 
@@ -3410,8 +3354,7 @@ static int updtr_status_handler(ldmsd_req_ctxt_t reqc)
 	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t),
 								LDMSD_REQ_EOM_F);
 out:
-	if (name)
-		free(name);
+	free(name);
 	if (updtr)
 		ldmsd_updtr_put(updtr);
 	return rc;
@@ -3543,8 +3486,7 @@ err:
 	ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, rc,
 						"internal error", 15);
 out:
-	if (name)
-		free(name);
+	free(name);
 	if (updtr)
 		ldmsd_updtr_put(updtr);
 	return rc;
@@ -3702,8 +3644,7 @@ intr_err:
 	ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, EINTR,
 				"interval error", 14);
 out:
-	if (name)
-		free(name);
+	free(name);
 	if (prdcr)
 		ldmsd_prdcr_put(prdcr);
 	return rc;
@@ -3786,14 +3727,10 @@ err:
 out:
 	reqc->errcode = rc;
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (producer)
-		free(producer);
-	if (interval)
-		free(interval);
-	if (offset)
-		free(offset);
+	free(name);
+	free(producer);
+	free(interval);
+	free(offset);
 	if (grp)
 		ldms_set_put(grp);
 	return rc;
@@ -3861,12 +3798,9 @@ err:
 out:
 	reqc->errcode = rc;
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (interval)
-		free(interval);
-	if (offset)
-		free(offset);
+	free(name);
+	free(interval);
+	free(offset);
 	if (grp)
 		ldms_set_put(grp);
 	return rc;
@@ -3913,8 +3847,7 @@ static int setgroup_del_handler(ldmsd_req_ctxt_t reqc)
 out:
 	reqc->errcode = rc;
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
+	free(name);
 	return rc;
 }
 
@@ -3973,10 +3906,8 @@ static int setgroup_ins_handler(ldmsd_req_ctxt_t reqc)
 out:
 	reqc->errcode = rc;
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (instance)
-		free(instance);
+	free(name);
+	free(instance);
 	if (grp)
 		ldms_set_put(grp);
 	return rc;
@@ -4037,10 +3968,8 @@ static int setgroup_rm_handler(ldmsd_req_ctxt_t reqc)
 out:
 	reqc->errcode = rc;
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (instance)
-		free(instance);
+	free(name);
+	free(instance);
 	if (grp)
 		ldms_set_put(grp);
 	return rc;
@@ -4118,12 +4047,9 @@ einval:
 			"The attribute '%s' is required by start.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (plugin_name)
-		free(plugin_name);
-	if (interval_us)
-		free(interval_us);
-	if (offset)
-		free(offset);
+	free(plugin_name);
+	free(interval_us);
+	free(offset);
 	return 0;
 }
 
@@ -4165,8 +4091,7 @@ einval:
 	reqc->errcode = EINVAL;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (plugin_name)
-		free(plugin_name);
+	free(plugin_name);
 	return 0;
 }
 
@@ -4256,8 +4181,7 @@ einval:
 			"The attribute '%s' is required by load.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (plugin_name)
-		free(plugin_name);
+	free(plugin_name);
 	return 0;
 }
 
@@ -4296,8 +4220,7 @@ einval:
 			"The attribute '%s' is required by term.", attr_name);
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (plugin_name)
-		free(plugin_name);
+	free(plugin_name);
 	return 0;
 }
 
@@ -4372,22 +4295,16 @@ einval:
 		       	attr_name);
 	goto send_reply;
 err:
-	if (kw_list)
-		av_free(kw_list);
-	if (av_list)
-		av_free(av_list);
+	av_free(kw_list);
+	av_free(av_list);
 	kw_list = NULL;
 	av_list = NULL;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (plugin_name)
-		free(plugin_name);
-	if (config_attr)
-		free(config_attr);
-	if (kw_list)
-		av_free(kw_list);
-	if (av_list)
-		av_free(av_list);
+	free(plugin_name);
+	free(config_attr);
+	av_free(kw_list);
+	av_free(av_list);
 	return 0;
 }
 
@@ -4421,8 +4338,7 @@ int __plugn_list_string(ldmsd_req_ctxt_t reqc)
 		reqc->errcode = ENOENT;
 	}
 out:
-	if (name)
-		free(name);
+	free(name);
 	return rc;
 }
 
@@ -4554,8 +4470,7 @@ static int plugn_sets_handler(ldmsd_req_ctxt_t reqc)
 	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
 				sizeof(uint32_t), LDMSD_REQ_EOM_F);
 out:
-	if (plugin)
-		free(plugin);
+	free(plugin);
 	return rc;
 
 err:
@@ -4627,12 +4542,9 @@ einval:
 			"The attribute '%s' is required.", attr_name);
 out:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (set_name)
-		free(set_name);
-	if (metric_name)
-		free(metric_name);
-	if (udata)
-		free(udata);
+	free(set_name);
+	free(metric_name);
+	free(udata);
 	return 0;
 }
 
@@ -4673,14 +4585,10 @@ einval:
 			"The attribute '%s' is required.", attr_name);
 out:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (set_name)
-		free(set_name);
-	if (base_s)
-		free(base_s);
-	if (regex)
-		free(regex);
-	if (inc_s)
-		free(inc_s);
+	free(set_name);
+	free(base_s);
+	free(regex);
+	free(inc_s);
 	return 0;
 }
 
@@ -4721,8 +4629,7 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
 
 out:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (level_s)
-		free(level_s);
+	free(level_s);
 	return 0;
 }
 
@@ -4850,12 +4757,9 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 	}
 out:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (kw_list)
-		av_free(kw_list);
-	if (av_list)
-		av_free(av_list);
-	if (exp_val)
-		free(exp_val);
+	av_free(kw_list);
+	av_free(av_list);
+	free(exp_val);
 	return rc;
 }
 
@@ -4887,8 +4791,7 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 out:
-	if (path)
-		free(path);
+	free(path);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return rc;
 }
@@ -4920,10 +4823,8 @@ static int oneshot_handler(ldmsd_req_ctxt_t reqc)
 		goto out;
 	}
 	ldmsd_send_req_response(reqc, NULL);
-	if (name)
-		free(name);
-	if (time_s)
-		free(time_s);
+	free(name);
+	free(time_s);
 	return rc;
 
 einval:
@@ -4934,10 +4835,8 @@ einval:
 
 out:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (name)
-		free(name);
-	if (time_s)
-		free(time_s);
+	free(name);
+	free(time_s);
 	return rc;
 }
 
@@ -5131,10 +5030,8 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_send_req_response(reqc, NULL);
 	}
 out:
-	if (rep_len_str)
-		free(rep_len_str);
-	if (num_rec_str)
-		free(num_rec_str);
+	free(rep_len_str);
+	free(num_rec_str);
 	return 0;
 }
 
@@ -5776,8 +5673,7 @@ static char * __thread_stats_as_json(size_t *json_sz)
 	return buff;
 __APPEND_ERR:
 	zap_thrstat_free_result(res);
-	if (buff)
-		free(buff);
+	free(buff);
 	return NULL;
 }
 
@@ -5892,8 +5788,7 @@ static char * __prdcr_stats_as_json(size_t *json_sz)
 	return buff;
 
 __APPEND_ERR:
-	if (buff)
-		free(buff);
+	free(buff);
 	return NULL;
 }
 
@@ -5970,8 +5865,7 @@ static char * __set_stats_as_json(size_t *json_sz)
 	return buff;
 
 __APPEND_ERR:
-	if (buff)
-		free(buff);
+	free(buff);
 	return NULL;
 }
 
@@ -6049,8 +5943,7 @@ out_0:
 	free(stream_name);
 	return 0;
 err_reply:
-	if (stream_name)
-		free(stream_name);
+	free(stream_name);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }
@@ -6480,14 +6373,10 @@ einval:
 	goto send_reply;
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
-	if (xprt)
-		free(xprt);
-	if (port)
-		free(port);
-	if (host)
-		free(host);
-	if (auth)
-		free(auth);
+	free(xprt);
+	free(port);
+	free(host);
+	free(auth);
 	return 0;
 }
 
@@ -6556,14 +6445,10 @@ attr_required:
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	/* cleanup */
-	if (name)
-		free(name);
-	if (plugin)
-		free(plugin);
-	if (auth_args)
-		free(auth_args);
-	if (auth_opts)
-		av_free(auth_opts);
+	free(name);
+	free(plugin);
+	free(auth_args);
+	av_free(auth_opts);
 	return 0;
 }
 
@@ -6606,8 +6491,7 @@ attr_required:
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	/* cleanup */
-	if (name)
-		free(name);
+	free(name);
 	return 0;
 }
 
