@@ -10,7 +10,6 @@ EXTRA_DIST= \
 autogen.sh \
 m4/Ovis-top.m4 \
 SHA.txt \
-LICENSE \
 README.md
 
 EXTRA_DIST += $(top_srcdir)/.version
@@ -26,7 +25,7 @@ nobase_include_HEADERS = ovis-ldms-config.h
 
 
 docdir = $(datadir)/doc/@PACKAGE@-@VERSION@
-# dist_doc_DATA = README.txt
+dist_doc_DATA = COPYING gpl-2.0.txt
 
 SUBDIRS = lib ldms util
 
