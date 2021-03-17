@@ -4,8 +4,6 @@ AM_LDFLAGS=@OVIS_LIB_ABS@
 AM_CPPFLAGS=@OVIS_INCLUDE_ABS@
 
 check_PROGRAMS =
-libmapinclude_HEADERS =
-libmapincludedir = $(includedir)/coll
 
 if ENABLE_COLL
 libcoll_la_SOURCES = rbt.c rbt.h \
