@@ -44,8 +44,5 @@ endif
 
 install-doc: install-dox
 	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
-	for f in COPYING COPYING; do \
-		$(INSTALL_DATA) ${srcdir}/$$f $(DESTDIR)$(docdir)$(OPV); \
-	done
 
 clean-local:

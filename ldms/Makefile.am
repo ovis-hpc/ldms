@@ -30,7 +30,7 @@ test/failover-simple/agg2.sh \
 test/failover-simple/sampler.sh
 
 docversiondir=$(docdir)$(OPV)
-docversion_DATA=AUTHORS COPYING
+docversion_DATA=AUTHORS
 
 install-exec-hook:
 	@echo "*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#*#"
