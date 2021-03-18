@@ -990,6 +990,41 @@ const char* ovis_errno_abbvr(int e)
 	return "UNKNOWN_ERRNO";
 }
 
+/** should be bigger than any expected strerror string.
+ * In 2020 ~50 was the upper limit.
+ */
+#define OVIS_SYS_ERRLEN 80
+
+/** should be bigger than any expected errno value.
+ * In 2020 ~140 was the upper limit.
+ */
+#define OVIS_SYS_NERR 256
+
+static char ovis_sys_errlist[OVIS_SYS_NERR][OVIS_SYS_ERRLEN];
+static int ovis_sys_errlist_initialized;
+static int ovis_sys_nerr;
+/* glibc has dropped support for sys_errlist.
+ * we copy it via strerror on first call.
+ * Make an unused call to ovis_strerror from main to avoid races.
+ */
+static void ovis_sys_errlist_init() {
+	int i = 0;
+	char unknown[OVIS_SYS_ERRLEN];
+	strerror_r(OVIS_SYS_NERR, unknown, sizeof(unknown));
+	while (!isdigit(unknown[i]) && unknown[i] != '\0')
+		i++;
+	unknown[i] = '\0';
+	size_t ulen = strlen(unknown);
+
+	for (i = 0 ; i < OVIS_SYS_NERR ; i++) {
+		strerror_r(i, ovis_sys_errlist[i], OVIS_SYS_ERRLEN);
+	}
+	i = OVIS_SYS_NERR - 1;
+	while ( i > 0 && strncmp(unknown, ovis_sys_errlist[i], ulen) == 0)
+		i--;
+	ovis_sys_nerr = i;
+	ovis_sys_errlist_initialized = 1;
+}
 /**
  * \brief thread-safe strerror.
  *
@@ -997,14 +1032,11 @@ const char* ovis_errno_abbvr(int e)
  * \retval "unknown_errno" if the errno \c e is unknown.
  */
 const char *ovis_strerror(int e) {
-	if (e >=0 && e < sys_nerr)
-		return sys_errlist[e];
-	return "unknown_errno";
-/* the gnu linker nuisance warning about sys_errlist.
- * If we truly hate it, we can use the code from nginx ngx_strerror
- * here. See: http://nginx.org/en/docs/sys_errlist.html
- * for why this is a good idea.
- */
+	if (!ovis_sys_errlist_initialized)
+		ovis_sys_errlist_init();
+	if (e >=0 && e < ovis_sys_nerr)
+		return ovis_sys_errlist[e];
+	return ovis_errno_abbvr(e);
 }
 
 /*

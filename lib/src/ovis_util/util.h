@@ -334,9 +334,9 @@ const char* ovis_errno_abbvr(int e);
 /**
  * \brief thread-safe strerror.
  *
- * \retval str The sys_errlist value, or the result of
- * .ovis_errno_abbvr(e) if sys_errlist is not available.
- * \retval "unknown_errno" if the errno \c e is unknown.
+ * \retval str The corresponding strerror value, or the result of
+ * ovis_errno_abbvr(e) if e is out of the range of strerror.
+ * \retval a pointer to an unchanging string.
  */
 const char *ovis_strerror(int e);
 
