@@ -359,7 +359,7 @@ static int create_metric_set(base_data_t base)
 	mcprc = parse_mc_oper_region();
 	if (mcprc != 0) {
 		msglog(LDMSD_LERROR, SAMP ": unable to read the node file for the sample (%s)\n",
-		       pids, strerror(mcprc));
+		       pids, STRERROR(mcprc));
 		return mcprc;
 	}
 
@@ -827,7 +827,7 @@ static int parse_socinfo(void)
 	socinfo = fopen(path, "r");
 	if (!socinfo) {
 		msglog(LDMSD_LERROR, SAMP ": cannot open '%s', %s.\n",
-		       path, strerror(errno));
+		       path, STRERROR(errno));
 		free(path);
 		return errno;
 	}

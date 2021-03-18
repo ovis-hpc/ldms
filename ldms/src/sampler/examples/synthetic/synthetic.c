@@ -101,7 +101,7 @@ static ldms_set_t clone_metric_set(base_data_t base, uint64_t k)
 	snprintf(buf,nl,"%s.%" PRIu64, base->instance_name, k);
 	c = ldms_set_new(buf, base->schema);
 	if (!c) {
-		const char *serr = ovis_strerror(errno);
+		const char *serr = STRERROR(errno);
 		base->log(LDMSD_LERROR,"clone_metric_set: ldms_set_new failed %d(%s) for %s\n",
 				errno, serr, buf);
 		return NULL;

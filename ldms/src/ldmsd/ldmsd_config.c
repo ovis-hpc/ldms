@@ -575,9 +575,8 @@ int __process_config_file(const char *path, int *lno, int trust,
 	fin = fopen(path, "rt");
 	if (!fin) {
 		rc = errno;
-		strerror_r(rc, line, line_sz - 1);
 		ldmsd_log(LDMSD_LERROR, "Failed to open the config file '%s'. %s\n",
-				path, buff);
+				path, STRERROR(rc));
 		goto cleanup;
 	}
 
@@ -655,7 +654,7 @@ parse:
 	if (!req_array) {
 		rc = errno;
 		ldmsd_log(LDMSD_LERROR, "Process config file error at line %d "
-				"(%s). %s\n", lineno, path, strerror(rc));
+				"(%s). %s\n", lineno, path, STRERROR(rc));
 		goto cleanup;
 	}
 

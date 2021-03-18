@@ -57,6 +57,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include "ovis_util/util.h"
 
 #define OVIS_LOG_SYSLOG ((FILE*)0x7)
 #define OVIS_LOG_CLOSED ((FILE*)0xF7)
@@ -125,7 +126,7 @@ void ovis_logrotate() {
 			log_fp = new_log;
 		} else {
 			fprintf(log_fp,"logrotate failed. %d %s\n",
-				rc, strerror(rc));
+				rc, STRERROR(rc));
 		}
 		pthread_mutex_unlock(&log_lock);
 	}
@@ -149,7 +150,7 @@ int ovis_log_init(const char * progname, const char *logfile, const char *s)
 	log_fp = open_log(&rc);
 	if (!log_fp) {
 		log_fp = stdout;
-		olerr("rc = %d %s\n",rc, strerror(rc));
+		olerr("rc = %d %s\n",rc, STRERROR(rc));
 	}
 
 	return rc;

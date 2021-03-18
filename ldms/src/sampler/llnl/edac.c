@@ -386,9 +386,6 @@ static int sample(struct ldmsd_sampler *self)
 	metric_no = metric_offset;
 
 	errno = 0;
-#define EBSZ 256
-	char ebuf[EBSZ];
-	char *emsg;
 	// Begin getting numbers
 	for ( i=0; i<totalCommands; i+=1 )
 	{
@@ -396,9 +393,8 @@ static int sample(struct ldmsd_sampler *self)
 		if (myFile == NULL)
 		{
 			rc = errno;
-			emsg = strerror_r(errno, ebuf, EBSZ);
 			msglog(LDMSD_LERROR, SAMP ": failed to open file %s: %s\n",
-				command[i], emsg);
+				command[i], STRERROR(rc));
 			goto out;
 		}
 		s = fgets(lineBuffer, LBSZ, myFile);
@@ -411,8 +407,8 @@ static int sample(struct ldmsd_sampler *self)
 		rc = sscanf(lineBuffer, "%" PRIu64, &v.v_u64);
 		if (rc != 1) {
 			rc = errno;
-			emsg = strerror_r(errno, ebuf, EBSZ);
-			msglog(LDMSD_LERROR, SAMP ": read a uint64_t failed from %s: \"%s\": %s\n", command[i], lineBuffer, emsg);
+			msglog(LDMSD_LERROR, SAMP ": read a uint64_t failed from %s: \"%s\": %s\n",
+				command[i], lineBuffer, STRERROR(rc));
 			goto out;
 		}
 		ldms_metric_set(set, metric_no, &v);

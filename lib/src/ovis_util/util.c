@@ -990,21 +990,8 @@ const char* ovis_errno_abbvr(int e)
 	return "UNKNOWN_ERRNO";
 }
 
-/**
- * \brief thread-safe strerror.
- *
- * \retval str The sys_errlist value.
- * \retval "unknown_errno" if the errno \c e is unknown.
- */
 const char *ovis_strerror(int e) {
-	if (e >=0 && e < sys_nerr)
-		return sys_errlist[e];
-	return "unknown_errno";
-/* the gnu linker nuisance warning about sys_errlist.
- * If we truly hate it, we can use the code from nginx ngx_strerror
- * here. See: http://nginx.org/en/docs/sys_errlist.html
- * for why this is a good idea.
- */
+	return strerror(e);
 }
 
 /*

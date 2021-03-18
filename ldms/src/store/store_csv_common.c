@@ -49,6 +49,7 @@
 
 
 #define PLUGNAME 0
+#define _GNU_SOURCE
 #define store_csv_common_lib
 #include <stdlib.h>
 #include <stdio.h>
@@ -161,8 +162,6 @@ static int validate_env(const char *var, const char *val, struct csv_plugin_stat
 
 int create_outdir(const char *path, struct csv_store_handle_common *s_handle,
 	struct csv_plugin_static *cps) {
-#define EBSIZE 512
-	char errbuf[EBSIZE];
 	if (!cps) {
 		return EINVAL;
 	}
@@ -194,23 +193,19 @@ int create_outdir(const char *path, struct csv_store_handle_common *s_handle,
 		case EEXIST:
 			break;
 		default:
-			strerror_r(err, errbuf, EBSIZE);
 			cps->msglog(LDMSD_LERROR,"create_outdir: failed to create directory for %s: %s\n",
-				path, errbuf);
+				path, STRERROR(err));
 			return err;
 		}
 	}
 
 	/* cps->msglog(LDMSD_LDEBUG,"create_outdir: f_mkdir+p(%s, %o)\n", path, mode); */
 	return 0;
-#undef EBSIZE
 }
 
 void rename_output(const char *name,
 	const char *ftype, struct csv_store_handle_common *s_handle,
 	struct csv_plugin_static *cps) {
-#define EBSIZE 512
-	char errbuf[EBSIZE];
 	if (!cps) {
 		return;
 	}
@@ -240,9 +235,9 @@ void rename_output(const char *name,
 		int merr = chmod(name, mode);
 		int rc = errno;
 		if (merr) {
-			strerror_r(rc, errbuf, EBSIZE);
 			cps->msglog(LDMSD_LERROR,"%s: rename_output: unable to chmod(%s,%o): %s.\n",
-				cps->pname, name, s_handle->rename_perm, errbuf);
+				cps->pname, name, s_handle->rename_perm,
+				STRERROR(rc));
 		}
 	}
 
@@ -254,9 +249,8 @@ void rename_output(const char *name,
 		int merr = chown(name, newuid, newgid);
 		int rc = errno;
 		if (merr) {
-			strerror_r(rc, errbuf, EBSIZE);
 			cps->msglog(LDMSD_LERROR,"%s: rename_output: unable to chown(%s, %u, %u): %s.\n",
-				cps->pname, name, newuid, newgid, errbuf);
+				cps->pname, name, newuid, newgid, STRERROR(rc));
 		}
 	}
 
@@ -407,9 +401,8 @@ void rename_output(const char *name,
 		case EEXIST:
 			break;
 		default:
-			strerror_r(err, errbuf, EBSIZE);
 			cps->msglog(LDMSD_LERROR, "%s: rename_output: failed to create directory for %s: %s\n",
-				cps->pname, newname, errbuf);
+				cps->pname, newname, STRERROR(err));
 			free(newname);
 			return;
 		}
@@ -421,19 +414,15 @@ void rename_output(const char *name,
 	err = rename(name, newname);
 	if (err) {
 		int ec = errno;
-		strerror_r(ec, errbuf, EBSIZE);
 		cps->msglog(LDMSD_LERROR,"%s: rename_output: failed rename(%s, %s): %s\n",
-			    cps->pname, name, newname, errbuf);
+			    cps->pname, name, newname, STRERROR(ec));
 	}
 	free(newname);
-#undef EBSIZE
 }
 
 void ch_output(FILE *f, const char *name,
 	struct csv_store_handle_common *s_handle,
 	struct csv_plugin_static *cps) {
-#define EBSIZE 512
-	char errbuf[EBSIZE];
 	if (!cps) {
 		return;
 	}
@@ -455,9 +444,8 @@ void ch_output(FILE *f, const char *name,
 		int merr = fchmod(fd, mode);
 		int rc = errno;
 		if (merr) {
-			strerror_r(rc, errbuf, EBSIZE);
 			cps->msglog(LDMSD_LERROR,"ch_output: unable to chmod(%s,%o): %s.\n",
-				name, s_handle->create_perm, errbuf);
+				name, s_handle->create_perm, STRERROR(rc));
 		}
 	}
 
@@ -469,12 +457,11 @@ void ch_output(FILE *f, const char *name,
 		int merr = fchown(fd, newuid, newgid);
 		int rc = errno;
 		if (merr) {
-			strerror_r(rc, errbuf, EBSIZE);
 			cps->msglog(LDMSD_LERROR,"ch_output: unable to fchown(%d, (%s),%lu, %lu): %s.\n",
-				fd, name, newuid, newgid, errbuf);
+				fd, name, newuid, newgid, STRERROR(rc));
 		}
 		cps->msglog(LDMSD_LDEBUG,"ch_output: fchown(%d, (%s),%lu, %lu): %s.\n",
-			fd, name, newuid, newgid, errbuf);
+			fd, name, newuid, newgid, STRERROR(rc));
 	}
 }
 

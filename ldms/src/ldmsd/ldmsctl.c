@@ -2267,7 +2267,8 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 
 		rc = ctrl->send_req(ctrl, request, len);
 		if (rc) {
-			printf("Failed to send data to ldmsd. %s\n", strerror(errno));
+			printf("Failed to send data to ldmsd. %s\n",
+				STRERROR(errno));
 			return rc;
 		}
 	}
@@ -2301,7 +2302,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 				goto done_recv;
 			} else if (EBUSY != rc) {
 				printf("Failed to process messages from LDMSD. %s\n",
-						strerror(rc));
+						STRERROR(rc));
 				exit(rc);
 			}
 			ldmsctl_buffer_free(recv_buf);
@@ -2370,7 +2371,7 @@ struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
 	ctrl->ldms_xprt.x = ldms_xprt_new_with_auth(xprt, NULL, auth, auth_opt);
 	if (!ctrl->ldms_xprt.x) {
 		printf("Failed to create an ldms transport. %s\n",
-						strerror(errno));
+						STRERROR(errno));
 		return NULL;
 	}
 

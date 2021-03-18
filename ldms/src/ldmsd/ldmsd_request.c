@@ -4844,7 +4844,7 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 			rc = errno;
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 					"Failed to set '%s=%s': %s",
-					v->name, v->value, strerror(rc));
+					v->name, v->value, STRERROR(rc));
 			goto out;
 		}
 	}
@@ -4878,7 +4878,7 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 		if (lineno == 0) {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Failed to process cfg '%s' at line %d: %s",
-				path, lineno, strerror(reqc->errcode));
+				path, lineno, STRERROR(reqc->errcode));
 		} else {
 			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Failed to process cfg '%s' at line '%d'",
@@ -4949,7 +4949,7 @@ static int logrotate_handler(ldmsd_req_ctxt_t reqc)
 	if (reqc->errcode) {
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Failed to rotate the log file. %s",
-				strerror(reqc->errcode));
+				STRERROR(reqc->errcode));
 	}
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;

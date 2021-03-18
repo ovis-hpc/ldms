@@ -1934,7 +1934,7 @@ int main(int argc, char *argv[])
 		if (!pfile) {
 			int piderr = errno;
 			ldmsd_log(LDMSD_LERROR, "Could not open the pid file named '%s': %s\n",
-				pidfile, strerror(piderr));
+				pidfile, STRERROR(piderr));
 			free(pidfile);
 			pidfile = NULL;
 		} else {
@@ -1959,7 +1959,7 @@ int main(int argc, char *argv[])
 			if (!bfile) {
 				int banerr = errno;
 				ldmsd_log(LDMSD_LERROR, "Could not open the banner file named '%s': %s\n",
-					bannerfile, strerror(banerr));
+					bannerfile, STRERROR(banerr));
 				free(bannerfile);
 				bannerfile = NULL;
 			} else {

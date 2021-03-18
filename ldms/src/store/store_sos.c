@@ -675,7 +675,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	if (!obj) {
 		pthread_mutex_unlock(&si->lock);
 		LOG_(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
-		       strerror(errno), __FILE__, __LINE__);
+		       STRERROR(errno), __FILE__, __LINE__);
 		errno = ENOMEM;
 		return -1;
 	}
@@ -758,7 +758,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 		last_errno = errno;
 		last_rc = rc;
 		LOG_(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
-		       strerror(errno), __FILE__, __LINE__);
+		       STRERROR(errno), __FILE__, __LINE__);
 	}
 	if (last_errno)
 		errno = last_errno;
