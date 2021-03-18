@@ -58,6 +58,7 @@
 #include <string.h>
 #include <errno.h>
 #include "ldms_shm_obj.h"
+#include "ovis_util/util.h" /* for strerror macro only */
 
 /**
  * opens the shared memory and creates the mapping
@@ -91,7 +92,7 @@ ldms_shm_obj_t ldms_shm_init(const char *name, int size)
 			if(shm_obj->fd == -1) {
 				free(shm_obj);
 				printf("ERROR: shm_open error: %d: %s\n\r",
-						errno, strerror(errno));
+						errno, STRERROR(errno));
 				return NULL;
 			} else {
 				struct stat sb;
@@ -101,7 +102,7 @@ ldms_shm_obj_t ldms_shm_init(const char *name, int size)
 		} else {
 			free(shm_obj);
 			printf("ERROR: shm_open error: %d: %s\n\r", errno,
-					strerror(errno));
+					STRERROR(errno));
 			return NULL;
 		}
 	}
@@ -110,7 +111,7 @@ ldms_shm_obj_t ldms_shm_init(const char *name, int size)
 		if(ftruncate(shm_obj->fd, shm_obj->size) == -1) {
 			free(shm_obj);
 			printf("ERROR: ftruncate error: %d: %s\n\r", errno,
-					strerror(errno));
+					STRERROR(errno));
 			return NULL;
 		}
 	}
@@ -120,7 +121,7 @@ ldms_shm_obj_t ldms_shm_init(const char *name, int size)
 		free(shm_obj);
 		printf(
 				"ERROR: mmap error! (%d): %s, shm_obj->size=%ld, name=%s, requested size=%d\n\r",
-				errno, strerror(errno), shm_obj->size, name,
+				errno, STRERROR(errno), shm_obj->size, name,
 				size);
 		return NULL;
 	}
@@ -137,28 +138,28 @@ int ldms_shm_clean(const char *name)
 		rc = ENOMEM;
 		printf(
 				"ERROR: failed to free the shared memory(%s)  %d: %s\n\r",
-				name, errno, strerror(errno));
+				name, errno, STRERROR(errno));
 		return rc;
 	}
 	rc = munmap(shm_obj->addr, shm_obj->size);
 	if(rc) {
 		printf(
 				"ERROR: failed to free the shared memory(%s)  %d: %s\n\r",
-				name, errno, strerror(errno));
+				name, errno, STRERROR(errno));
 		return rc;
 	}
 	rc = shm_unlink(name);
 	if(rc) {
 		printf(
 				"ERROR: failed to free the shared memory(%s)  %d: %s\n\r",
-				name, errno, strerror(errno));
+				name, errno, STRERROR(errno));
 		return rc;
 	}
 	rc = close(shm_obj->fd);
 	if(rc) {
 		printf(
 				"ERROR: failed to free the shared memory(%s)  %d: %s\n\r",
-				name, errno, strerror(errno));
+				name, errno, STRERROR(errno));
 		return rc;
 	}
 	free(shm_obj->name);

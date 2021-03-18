@@ -314,7 +314,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	ldmsapp_mutex = sem_open(sem_name, O_CREAT, 0666, 1);
 	if (ldmsapp_mutex == SEM_FAILED) {
 		msglog(LDMSD_LERROR, SAMP ": Semaphore open error: %s\n",
-			strerror(errno));
+			STRERROR(errno));
 		goto err;
 	}
 
@@ -327,7 +327,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	shmem_fd = shm_open(shmem_name, O_CREAT|O_RDWR, 0666);
 	if (shmem_fd == -1) {
 		msglog(LDMSD_LERROR, SAMP ": Shmem open/create error: %s\n",
-			strerror(errno));
+			STRERROR(errno));
 		goto err;
 	}
 	/* Set size of shared memory segment */
@@ -337,7 +337,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 	/* Get stats (size) of shared memory segment and check */
 	if (fstat(shmem_fd, &shmem_stat) == -1) {
 		msglog(LDMSD_LERROR, SAMP ": Shmem stat error: %s\n",
-			strerror(errno));
+			STRERROR(errno));
 		goto err;
 	}
 	if (shmem_stat.st_size < 256 /* TODO CHECK ACTUAL SIZE */) {
@@ -351,7 +351,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 				PROT_READ|PROT_WRITE, MAP_SHARED, shmem_fd, 0);
 	if (shmem_header == MAP_FAILED) {
 		msglog(LDMSD_LERROR, SAMP ": Shmem mmap error: %s\n",
-			strerror(errno));
+			STRERROR(errno));
 		goto err;
 	}
 

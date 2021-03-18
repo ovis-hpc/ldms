@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2015-2016,2018 National Technology & Engineering Solutions
+ * Copyright (c) 2015-2021 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2015-2016,2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2015-2021 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -65,6 +65,7 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 #include "auth.h"
+#include "ovis_util/util.h"
 
 #define _str(x) #x
 #define str(x) _str(x)
@@ -142,7 +143,7 @@ char *ovis_auth_get_secretword(const char *path, ovis_auth_log_fn_t log)
 	if (stat(path, &pstat)) {
 		ret = errno;
 		log("Auth error: %s while trying to stat %s\n",
-			strerror(errno), path);
+			STRERROR(ret), path);
 		goto err;
 	}
 

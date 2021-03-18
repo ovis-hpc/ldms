@@ -690,9 +690,8 @@ static int ibnet_data_cr_opt_parse(struct ibnet_data *d, const char *conf)
 	size_t sz = 128;
 	char s[sz];
 	if (!f) {
-		char *serr;
-		serr = strerror_r(errno, s, sz);
-		d->log(LDMSD_LERROR, SAMP " failed to open %s. %s\n", conf, serr);
+		d->log(LDMSD_LERROR, SAMP " failed to open %s. %s\n", conf,
+			STRERROR(errno));
 		return errno;
 	}
 	int rc = fseek(f, 0, SEEK_END);

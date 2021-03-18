@@ -269,7 +269,7 @@ struct ctrlsock *ctrl_connect(char *my_name, char *sockname,
 		/* Ignore the error if the path already exists */
 		if (errno != EEXIST) {
 			printf("Error creating '%s: %s\n", my_un.sun_path,
-							strerror(errno));
+							STRERROR(errno));
 			close(sock->sock);
 			goto err;
 		}

@@ -61,6 +61,7 @@
 #include "../../../../../lib/src/third/city.h"
 #include "ldms_shm_obj.h"
 #include "ldms_shm_index.h"
+#include "ovis_util/util.h" /* for strerror macro only */
 
 #define LDMS_SHM_GLOBAL_SEM_MUTEX_NAME_PREFIX "/ldms_shm_global_mutex"
 static char* ldms_shm_global_sem_mutex_name;
@@ -328,7 +329,7 @@ static ldms_shm_index_entry_t create_index_entry(const char *fslocation,
 	if(SEM_FAILED == new_entry->mutex_sem) {
 		printf(
 				"ERROR: failed to open a semaphore with the name %s  %d: %s\n\r",
-				fslocation, errno, strerror(errno));
+				fslocation, errno, STRERROR(errno));
 		if(NULL != new_entry)
 			free(new_entry);
 		return NULL;
@@ -371,7 +372,7 @@ int ldms_shm_index_entry_clean_shared_resources(ldms_shm_index_entry_t entry)
 			printf(
 					"ERROR: failed to unlink the semaphore %s  %d: %s\n\r",
 					entry->p->fslocation, errno,
-					strerror(errno));
+					STRERROR(errno));
 		}
 	}
 	return rc;
@@ -387,7 +388,7 @@ int ldms_shm_index_clean_shared_resources(ldms_shm_index_t shm_index)
 			printf(
 					"ERROR: failed to unlink the semaphore %s  %d: %s\n\r",
 					ldms_shm_index_mutex_name, errno,
-					strerror(errno));
+					STRERROR(errno));
 		} else {
 			free(ldms_shm_index_mutex_name);
 			ldms_shm_index_mutex_name = NULL;
@@ -396,7 +397,7 @@ int ldms_shm_index_clean_shared_resources(ldms_shm_index_t shm_index)
 				printf(
 						"ERROR: failed to unlink the semaphore %s  %d: %s\n\r",
 						ldms_shm_global_sem_mutex_name,
-						errno, strerror(errno));
+						errno, STRERROR(errno));
 			} else {
 				free(ldms_shm_index_mutex_name);
 				ldms_shm_index_mutex_name = NULL;

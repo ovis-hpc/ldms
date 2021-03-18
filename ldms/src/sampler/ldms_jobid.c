@@ -437,7 +437,7 @@ static int create_metric_set(const char *instance_name, char* schema_name,
 		ldms_schema_delete(schema);
 		schema = NULL;
 	}
-	msglog(LDMSD_LDEBUG, SAMP ": rc=%d: %s.\n", rc, strerror(-rc));
+	msglog(LDMSD_LDEBUG, SAMP ": rc=%d: %s.\n", rc, STRERROR(-rc));
 	return -rc;
 }
 

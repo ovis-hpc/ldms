@@ -172,7 +172,8 @@ int ldmsapp_initialize(int ldmsapp_enable, int appid, int jobid,
 	ldmsapp_mutex = sem_open(sem_name, 0);
 	if (ldmsapp_mutex == SEM_FAILED) {
 		if (!silent) fprintf(stderr,"LDMSAPP_LERROR: "
-				"Semaphore open error: %s\n", strerror(errno));
+				"Semaphore open error: %s\n",
+				STRERROR(errno));
 		goto err;
 	}
 
@@ -182,13 +183,15 @@ int ldmsapp_initialize(int ldmsapp_enable, int appid, int jobid,
 	shmem_fd = shm_open(shmem_name, O_RDWR, 0);
 	if (shmem_fd == -1) {
 		if (!silent) fprintf(stderr,"LDMSAPP_LERROR: "
-				"Shmem open error: %s\n", strerror(errno));
+				"Shmem open error: %s\n",
+				STRERROR(errno));
 		goto err;
 	}
 	/* Get stats (size) of shared memory segment */
 	if (fstat(shmem_fd, &shmem_stat) == -1) {
 		if (!silent) fprintf(stderr,"LDMSAPP_LERROR: "
-				"Shmem stat error: %s\n", strerror(errno));
+				"Shmem stat error: %s\n",
+				STRERROR(errno));
 		goto err;
 	}
 	if (shmem_stat.st_size < sizeof(shmem_header_t)) {
@@ -201,7 +204,8 @@ int ldmsapp_initialize(int ldmsapp_enable, int appid, int jobid,
 				PROT_READ|PROT_WRITE, MAP_SHARED, shmem_fd, 0);
 	if (shmem_header == MAP_FAILED) {
 		if (!silent) fprintf(stderr,"LDMSAPP_LERROR: "
-				"Shmem mmap error: %s\n", strerror(errno));
+				"Shmem mmap error: %s\n",
+				STRERROR(errno));
 		goto err;
 	}
 

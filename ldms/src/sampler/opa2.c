@@ -239,7 +239,7 @@ static int build_port_list(char *port_list)
 				if (rc) {
 					msglog(LDMSD_LERROR, SAMP
 						": create_hfi_port error %s\n",
-						strerror(rc));
+						STRERROR(rc));
 
 				}
 			}
@@ -273,7 +273,7 @@ static int build_port_list(char *port_list)
 				if (rc) {
 					msglog(LDMSD_LERROR, SAMP
 						": create_hfi_port error %s\n",
-						strerror(rc));
+						STRERROR(rc));
 
 				}
 				break;

@@ -294,7 +294,7 @@ ldms_set_t base_set_new(base_data_t base)
 	errno = 0;
 	base->set = ldms_set_new(base->instance_name, base->schema);
 	if (!base->set) {
-		const char *serr = ovis_strerror(errno);
+		const char *serr = STRERROR(errno);
 		base->log(LDMSD_LERROR,"base_set_new: ldms_set_new failed %d(%s) for %s\n",
 				errno, serr, base->instance_name);
 		return NULL;

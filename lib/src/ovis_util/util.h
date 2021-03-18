@@ -53,6 +53,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdarg.h>
+#include <string.h>
 #include <errno.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -161,9 +162,9 @@ struct attr_value_list *av_new(size_t size);
 
 /**
  * \brief Add a new attribute-value pair.
- *  
+ *
  * \return 0 on success. ENOSPC is returned of the list is full.
- *         ENOMEM is returned out-of-memory occurs. 
+ *         ENOMEM is returned out-of-memory occurs.
 */
 int av_add(struct attr_value_list *avl, const char *name, const char *value);
 
@@ -332,13 +333,26 @@ int ovis_access_check(uid_t auid, gid_t agid, int acc,
 const char* ovis_errno_abbvr(int e);
 
 /**
- * \brief thread-safe strerror.
+ * \brief no longer our thread-safe strerror. DEPRECATED.
  *
- * \retval str The sys_errlist value, or the result of
- * .ovis_errno_abbvr(e) if sys_errlist is not available.
- * \retval "unknown_errno" if the errno \c e is unknown.
+ * This function is not supported in gnu libc versions
+ * where sys_errlist has been removed. Use macro STRERROR below instead.
+ * This is now just a wrapper on strerror.
  */
-const char *ovis_strerror(int e);
+const char *ovis_strerror(int e) __attribute__((deprecated("use thread-safe macro STRERROR instead")));
+
+/**
+ * \brief convert error value to a string in a thread safe manner.
+ *
+ * Both flavors (xpg, gnu) of strerror_r are in use in ldms, due to _GNU_SOURCE.
+ * n.b. _GNU_SOURCE, if used, must be defined before any #include to avoid
+ * type conflicts from using the wrong macro expansion.
+ */
+#ifdef _GNU_SOURCE
+#define STRERROR(_rc_) ({ char *msg=alloca(80); char * _e_ = strerror_r(_rc_, msg, 80); _e_; })
+#else
+#define STRERROR(_rc_) ({ char *msg=alloca(80); long long __attribute__((__unused__)) _e_ = (long long)strerror_r(_rc_, msg, 80); msg; })
+#endif
 
 typedef
 struct ovis_pgrep_s {

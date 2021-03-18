@@ -1037,7 +1037,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 				continue;
 			default:
 				msglog(LDMSD_LDEBUG,"Error %d: %s at %s:%d: loop index %d, metric_id %d\n",
-				       rc, strerror(rc),
+				       rc, STRERROR(rc),
 					__FILE__, __LINE__, i, metric_id);
 				goto estr;
 			}

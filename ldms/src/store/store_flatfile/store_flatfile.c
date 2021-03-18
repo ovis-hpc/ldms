@@ -237,7 +237,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 			if (!ms->file) {
 				int eno = errno;
 				msglog(LDMSD_LERROR, STRFF ": Error opening %s: %d: %s at %s:%d\n",
-					ms->path, eno, strerror(eno),
+					ms->path, eno, STRERROR(eno),
 					__FILE__, __LINE__);
 				goto err4;
 			}
@@ -382,7 +382,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 			last_errno = errno;
 			last_rc = (rc != 0 ? rc : rc2);
 			msglog(LDMSD_LERROR, STRFF ": Error %d: %s at %s:%d\n", last_errno,
-					strerror(last_errno), __FILE__,
+					STRERROR(last_errno), __FILE__,
 					__LINE__);
 		}
 		pthread_mutex_unlock(&si->ms[i]->lock);
@@ -408,7 +408,8 @@ static int flush_store(ldmsd_store_handle_t _sh)
 		if (lrc) {
 			rc = lrc;
 			eno = errno;
-			msglog(LDMSD_LERROR, STRFF ": Errro %d: %s at %s:%d\n", eno, strerror(eno),
+			msglog(LDMSD_LERROR, STRFF ": Error %d: %s at %s:%d\n",
+				eno, STRERROR(eno),
 					__FILE__, __LINE__);
 		}
 		pthread_mutex_unlock(&ms->lock);

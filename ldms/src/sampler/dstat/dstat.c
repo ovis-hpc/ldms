@@ -278,7 +278,7 @@ static int create_metric_set(base_data_t base)
 		iorc = parse_proc_pid_io(&io, pids);
 		if (iorc != 0) {
 			msglog(LDMSD_LERROR, SAMP ": unable to read /proc/%s/io (%s)\n",
-				pids, strerror(iorc));
+				pids, STRERROR(iorc));
 			return iorc;
 		}
 	}
@@ -286,7 +286,7 @@ static int create_metric_set(base_data_t base)
 		statrc = parse_proc_pid_stat(&stat, pids);
 		if (statrc != 0) {
 			msglog(LDMSD_LERROR, SAMP ": unable to read /proc/%s/stat (%s)\n",
-				pids, strerror(statrc));
+				pids, STRERROR(statrc));
 			return statrc;
 		}
 	}
@@ -294,7 +294,7 @@ static int create_metric_set(base_data_t base)
 		statmrc = parse_proc_pid_statm(&statm, pids);
 		if (statmrc != 0) {
 			msglog(LDMSD_LERROR, SAMP ": unable to read /proc/%s/statm (%s)\n",
-				pids, strerror(statmrc));
+				pids, STRERROR(statmrc));
 			return statmrc;
 		}
 	}
@@ -303,7 +303,7 @@ static int create_metric_set(base_data_t base)
 		fdrc = parse_proc_pid_fd(&fd, pids, details);
 		if (fdrc != 0) {
 			msglog(LDMSD_LERROR, SAMP ": unable to read /proc/%s/fd (%s)\n",
-				pids, strerror(fdrc));
+				pids, STRERROR(fdrc));
 			return fdrc;
 		}
 	}

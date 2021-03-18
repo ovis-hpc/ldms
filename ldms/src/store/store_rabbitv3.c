@@ -1232,7 +1232,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set, int *metric_arry, size_t metric_
 				last_errno = errno;
 				last_rc = rc;
 				msglog(LDMSD_LDEBUG,"Error %d: %s at %s:%d\n",
-				       last_errno, strerror(last_errno),
+				       last_errno, STRERROR(last_errno),
 					__FILE__, __LINE__);
 				// fixme: probably need to handle close/reopen here if server dies.
 			}
