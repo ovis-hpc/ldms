@@ -307,6 +307,13 @@ typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
 #define LDMS_SET_ID_DATA	0x1000000
 
 /**
+ * Round up \c _sz_ to the \c _align_.
+ *
+ * \c _align_ must be a power of 2.
+ */
+#define LDMS_ROUNDUP(_sz_, _align_) (((_sz_) + (_align_) - 1) & ~((_align_)-1))
+
+/**
  * \addtogroup ldms_conn_mgmt LDMS Connection Management
  *
  * These functions initiate, terminate and manage connections with
@@ -912,7 +919,7 @@ struct ldms_xprt_rate_data {
 
 /**
  * Query daemon telemetry data across transports
- * 
+ *
  * \param data A pointer to the ldms_xprt_rate_data structure in which
  *             the results will be returned
  * \param reset Set to a non-zero value to reset the stats after
