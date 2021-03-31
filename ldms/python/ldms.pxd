@@ -179,6 +179,11 @@ cdef extern from "semaphore.h" nogil:
     int sem_timedwait(sem_t *sem, const timespec *abs_timeout)
     int sem_post(sem_t *sem)
 
+cdef extern from "time.h" nogil:
+    int clock_gettime(int clk_id, timespec *tp)
+    enum:
+        CLOCK_REALTIME
+
 cdef extern from "ovis_util/util.h" nogil:
     struct attr_value_list:
         pass

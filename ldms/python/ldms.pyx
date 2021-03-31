@@ -1804,9 +1804,17 @@ cdef class Xprt(object):
 
     def close(self):
         """X.close() - terminate the connection"""
+        cdef timespec ts
         if self.xprt:
             ldms_xprt_close(self.xprt)
             self.xprt = NULL
+            if self._conn_cb: # has `cb` ==> asynchronous/non-blocking mode
+                return
+            # timed-wait for a DISCONNECTED event in blocking mode
+            with nogil:
+                clock_gettime(CLOCK_REALTIME, &ts)
+                ts.tv_sec += 1
+                sem_timedwait(&self._conn_sem, &ts)
 
     def dir(self, cb=None, cb_arg=None, flags=0):
         """X.dir(cb=None, cb_arg=None, flags=0) - perform an LDMS dir operation
