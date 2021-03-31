@@ -580,6 +580,8 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	/*
 	 * Wait for close complete
 	 */
+	wait_ts.tv_sec = time(NULL) + io_timeout;
+	wait_ts.tv_nsec = 0;
 	LIST_FOREACH(client, &client_list, entry) {
 		pthread_mutex_lock(&client->wait_lock);
 		if (client->state != DISCONNECTED) {
