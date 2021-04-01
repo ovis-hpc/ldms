@@ -84,6 +84,7 @@
 #undef NDATA_TIMING
 #define NDATA 10000
 #define TIMESTAMP_STORE
+#define RESETKEY "LDMS_STREAM_HEADER_RESET"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -108,7 +109,6 @@ static int rolltype = DEFAULT_ROLLTYPE;
 #define MIN_ROLL_RECORDS 3
 /** Interval to check for passing the record or byte count limits. */
 
-
 static pthread_t rothread;
 static int rothread_used = 0;
 
@@ -118,7 +118,12 @@ static int buffer = 0;
 static pthread_mutex_t cfg_lock; //about config args, not about the header
 
 static idx_t stream_idx;
-// Well known:: written order will be singletonkeys followed by listentry keys
+
+typedef enum{CFG_PRE, CFG_BASIC, CFG_DONE, CFG_FAILED} cfg_state;
+static cfg_state cfgstate = CFG_PRE;
+
+
+// Well known: written order will be singletonkeys followed by listentry keys
 struct linedata {
 	int nsingleton;
 	char** singletonkey;
@@ -156,26 +161,28 @@ static void _clear_key_info(struct linedata* dataline){
 	int i;
 
         //have stream lock
-        if (dataline->header) free(dataline->header);
+        if (!dataline) return;
+
+        free(dataline->header);
         dataline->header = NULL;
 	for (i = 0; i < dataline->nsingleton; i++){
-		if (dataline->singletonkey[i]) free(dataline->singletonkey[i]);
+                free(dataline->singletonkey[i]);
 	}
-	if (dataline->singletonkey) free(dataline->singletonkey);
+	free(dataline->singletonkey);
 	dataline->singletonkey = NULL;
 	dataline->nsingleton = 0;
 
-	if (dataline->listkey) free (dataline->listkey);
+	free(dataline->listkey);
 	dataline->listkey = NULL;
 	dataline->nlist = 0;
 
 	for (i = 0; i < dataline->ndict; i++){
-		if (dataline->dictkey[i]) free (dataline->dictkey[i]);
+		free(dataline->dictkey[i]);
 		dataline->dictkey[i] = NULL;
 	}
 	dataline->ndict = 0;
 	dataline->nheaderkey = 0;
-        if (dataline->header) free(dataline->header);
+        free(dataline->header);
         dataline->header = NULL;
 }
 
@@ -186,6 +193,8 @@ static void close_streamstore(void *obj, void *cb_arg){
         pthread_mutex_lock(&cfg_lock);
         struct csv_stream_handle *stream_handle =
                 (struct csv_stream_handle *)obj;
+
+        if (!stream_handle) return;
 
         pthread_mutex_lock(&stream_handle->lock);
 
@@ -261,6 +270,8 @@ static int _parse_list_for_header(struct linedata *dataline, json_entity_t e){
 			if (i == 1) {
                                 dataline->dictkey[idict] =
                                         strdup(di->value.attr_->name->value.str_->str);
+                                if (!dataline->dictkey[idict]) return ENOMEM;
+
 			}
 			idict++;
 		}
@@ -278,7 +289,20 @@ static int _parse_list_for_header(struct linedata *dataline, json_entity_t e){
 	}
 	return 0;
 
-};
+}
+
+static int _reset_check(const char *msg){
+        int rc = strcmp(msg, RESETKEY);
+        if (rc){
+                msglog(LDMSD_LDEBUG,
+                       PNAME ": got a reset\n");
+                return rc;
+        }
+
+        return 0;
+}
+
+
 
 static int _get_header_from_data(struct linedata *dataline, json_entity_t e){
 	// from the data, builds the header and supporting structs.
@@ -368,6 +392,7 @@ static int _get_header_from_data(struct linedata *dataline, json_entity_t e){
 		switch (attr->value->type){
 		case JSON_LIST_VALUE:
 			dataline->listkey = strdup(attr->name->value.str_->str);
+                        if (!dataline->listkey) return ENOMEM;
 			rc = _parse_list_for_header(dataline,attr->value);
 			if (rc) goto err;
 			break;
@@ -386,8 +411,10 @@ static int _get_header_from_data(struct linedata *dataline, json_entity_t e){
 		case JSON_NULL_VALUE:
 		default:
 			//it's a singleton
-			dataline->singletonkey[isingleton++] =
+			dataline->singletonkey[isingleton] =
                                 strdup(attr->name->value.str_->str);
+                        if (!dataline->singletonkey[isingleton]) return ENOMEM;
+                        isingleton++;
 			break;
 		}
 		i++;
@@ -420,6 +447,7 @@ static int _get_header_from_data(struct linedata *dataline, json_entity_t e){
 	jb = jbuf_append_str(jb, ",store_recv_time");
 #endif
         dataline->header = strdup(jb->buf);
+        if (!dataline->header) return ENOMEM;
         jbuf_free(jb);
 
 	return 0;
@@ -472,6 +500,7 @@ static int _print_header(struct csv_stream_handle *stream_handle){
         if (stream_handle &&
             stream_handle->file &&
             stream_handle->dataline.header){
+
                 fprintf(stream_handle->file, "#%s\n",
                         stream_handle->dataline.header);
                 fflush(stream_handle->file);
@@ -665,6 +694,7 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 	return 1;
 }
 
+static void _roll_innards(struct csv_stream_handle *stream_handle);
 
 static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		     ldmsd_stream_type_t stream_type,
@@ -679,6 +709,7 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
                 PNAME ": Calling stream_cb. msg '%s' on stream '%s'\n",
                 msg, ldmsd_stream_client_name(c)); */
 
+        // don't need to check the cfgstate. if you've subscribed, it's ok
         const char *skey = ldmsd_stream_client_name(c);
         if (!skey){
                 msglog(LDMSD_LERROR,
@@ -715,6 +746,11 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 	/** msg will be populated. if the type was json,
             entity will also be populated. */
 	if (stream_type == LDMSD_STREAM_STRING){
+                if (_reset_check(msg)){
+                        _clear_key_info(&stream_handle->dataline);
+                        _roll_innards(stream_handle); //we already have the lock
+                        goto out;
+                }
 		fprintf(stream_handle->file, "%s\n", msg);
 		if (!buffer){
 			fflush(stream_handle->file);
@@ -774,7 +810,8 @@ static int open_streamstore(char* stream){
 
 
 	// already have the cfg_lock
-	if (!root_path || !container || !stream) {
+        // perhaps we can later add these after the config is done....
+        if ((cfgstate != CFG_BASIC) && (cfgstate != CFG_DONE)){
 	     msglog(LDMSD_LERROR, PNAME ": config not called. cannot open.\n");
 	     return ENOENT;
 	}
@@ -839,6 +876,10 @@ static int open_streamstore(char* stream){
         stream_handle->file = tmp_file;
         stream_handle->basename = tmp_basename;
         stream_handle->stream = strdup(stream);
+        if (!stream_handle->stream) {
+                rc = ENOMEM;
+                goto err1;
+        }
 
         idx_add(stream_idx, (void *)stream, strlen(stream), stream_handle);
 
@@ -849,8 +890,14 @@ static int open_streamstore(char* stream){
 err1:
 
         free(tmp_basename);
-	pthread_mutex_unlock(&stream_handle->lock);
-	pthread_mutex_destroy(&stream_handle->lock);
+        if (stream_handle){
+                free(stream_handle->file);
+                free(stream_handle->basename);
+                free(stream_handle->stream);
+                pthread_mutex_unlock(&stream_handle->lock);
+                pthread_mutex_destroy(&stream_handle->lock);
+        }
+        free(stream_handle);
 
 out:
 
@@ -860,40 +907,22 @@ out:
 
 }
 
-static void roll_cb(void *obj, void *cb_arg){
+static void _roll_innards(struct csv_stream_handle *stream_handle){
         FILE *nfp = NULL;
         char *tmp_filename = NULL;
         size_t pathlen;
         unsigned long tmp_tspath;
 
-        //if we've got here then we've called a stream_store
-        if (!obj){
-                return;
-        }
-        struct csv_stream_handle *stream_handle =
-                (struct csv_stream_handle *)obj;
+        //this fct enables roll on demand (e.g., reset the headers)
 
-        pthread_mutex_lock(&stream_handle->lock);
+        //stream_handle->lock should be held coming into this
 
-        switch (rolltype){
-        case ROLL_BY_RECORDS:
-                if (stream_handle->store_count < rollover){
-                        goto out;
-                }
-                break;
-        default:
-                msglog(LDMSD_LDEBUG,
-                       PNAME ": Error: unexpected rolltype in store(%d)\n",
-                       rolltype);
-                break;
-        }
+        if (!stream_handle) return;
 
         if (stream_handle->file){ //this should always be true
                 fflush(stream_handle->file);
                 fsync(fileno(stream_handle->file));
         }
-
-        //re name: if got here, then rollover requested.
 
         pathlen = strlen(stream_handle->basename) + 12;
         tmp_filename = malloc(pathlen);
@@ -919,18 +948,50 @@ static void roll_cb(void *obj, void *cb_arg){
                 fclose(stream_handle->file);
         }
         stream_handle->file = nfp;
+
+out:
+        free(tmp_filename);
+
+}
+
+
+static void roll_cb(void *obj, void *cb_arg){
+
+        //if we've got here then we've called a stream_store
+        if (!obj){
+                return;
+        }
+        struct csv_stream_handle *stream_handle =
+                (struct csv_stream_handle *)obj;
+
+        pthread_mutex_lock(&stream_handle->lock);
+
+        switch (rolltype){
+        case ROLL_BY_RECORDS:
+                if (stream_handle->store_count < rollover){
+                        goto out;
+                }
+                break;
+        default:
+                msglog(LDMSD_LDEBUG,
+                       PNAME ": Error: unexpected rolltype in store(%d)\n",
+                       rolltype);
+                break;
+        }
+
+        _roll_innards(stream_handle);
+        //only print the header if its on a roll
         _print_header(stream_handle);
 
 out:
-
-	if (tmp_filename) free(tmp_filename);
         pthread_mutex_unlock(&stream_handle->lock);
 
-        //NOTE: nothing is done with the rc
 }
 
 
 static int handleRollover(){
+        //don't need to check cfgstate
+
         pthread_mutex_lock(&cfg_lock); /** don't add any stores during this,
                                            which currently cannot do anyway. */
         idx_traverse(stream_idx, roll_cb, NULL);
@@ -972,16 +1033,16 @@ static void* rolloverThreadInit(void* m){
 static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-	char* s;
-        char* streamlist;
+	char* s = NULL;
+        char* streamlist = NULL;
         char* templist = NULL;
         char* saveptr = NULL;
         char* pch = NULL;
 	int rc;
 
 	pthread_mutex_lock(&cfg_lock);
-        //only call once
-        if (root_path != NULL){
+        //only call once. cannot reset state from subscribe.
+        if (cfgstate != CFG_PRE){
                 msglog(LDMSD_LDEBUG, PNAME ": cannot call config again\n");
                 pthread_mutex_unlock(&cfg_lock);
                 return -1;
@@ -1001,6 +1062,10 @@ static int config(struct ldmsd_plugin *self,
 		goto out;
 	} else {
 		streamlist = strdup(s);
+                if (!streamlist){
+                        rc = ENOMEM;
+                        goto out;
+                }
 	}
 
 	s = av_value(avl, "path");
@@ -1010,6 +1075,10 @@ static int config(struct ldmsd_plugin *self,
 		goto out;
 	} else {
 		root_path = strdup(s);
+                if (!root_path){
+                        rc = ENOMEM;
+                        goto out;
+                }
 		msglog(LDMSD_LDEBUG,
                        PNAME ": setting root_path to '%s'\n", root_path);
 	}
@@ -1022,10 +1091,15 @@ static int config(struct ldmsd_plugin *self,
 		goto out;
 	} else {
 		container = strdup(s);
+                if (!container){
+                        rc = ENOMEM;
+                        goto out;
+                }
 		msglog(LDMSD_LDEBUG,
                        PNAME ": setting container to '%s'\n", container);
 	}
 
+        cfgstate = CFG_BASIC;
 
         templist = strdup(streamlist);
         if (!templist){
@@ -1073,9 +1147,6 @@ static int config(struct ldmsd_plugin *self,
                 ldmsd_stream_subscribe(pch, stream_cb, self);
                 pch = strtok_r(NULL, ",", &saveptr);
 	}
-        free(templist);
-        templist = NULL;
-
         goto out;
 
 err:
@@ -1085,8 +1156,15 @@ err:
         stream_idx = idx_create();
 
 out:
-        if (templist) free(templist);
-        if (streamlist) free(streamlist);
+        free(templist);
+        templist = NULL;
+        free(streamlist);
+        streamlist = NULL;
+        if (rc == 0)
+                cfgstate = CFG_DONE;
+        else
+                cfgstate = CFG_FAILED;
+
 	pthread_mutex_unlock(&cfg_lock);
 
 	return rc;
@@ -1107,6 +1185,7 @@ static void term(struct ldmsd_plugin *self)
         idx_destroy(stream_idx);
         stream_idx = NULL;
 
+        cfgstate = CFG_PRE; //is this correct?
         pthread_mutex_unlock(&cfg_lock);
         pthread_mutex_destroy(&cfg_lock);
 
@@ -1153,7 +1232,7 @@ static void l2_stream_csv_store_init()
 static void __attribute__ ((destructor)) l2_stream_csv_store_fini(void);
 static void l2_stream_csv_store_fini()
 {
-	pthread_mutex_destroy(&cfg_lock);
+        pthread_mutex_destroy(&cfg_lock);
         idx_destroy(stream_idx);
         if (rothread_used){
                 void * dontcare = NULL;
