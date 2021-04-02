@@ -24,6 +24,10 @@ if ENABLE_IBNET
 SUBDIRS += ibnet
 endif
 
+if ENABLE_RDC
+SUBDIRS += rdc_sampler
+endif
+
 if ENABLE_JOBID
 AM_CFLAGS = -DENABLE_JOBID
 JOBID_LIBFLAGS = libjobid.la

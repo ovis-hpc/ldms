@@ -130,6 +130,25 @@ OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 dnl dnl OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 dnl dnl OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
 
+dnl RDC defaults to no instead of search because amd currently recommends
+dnl multiple non-default path installations (/opt).
+AC_ARG_ENABLE([rdc],
+	[AS_HELP_STRING([--enable-rdc], [attempt components that depend upon AMD rdc tooling @<:@default=no@:>@ for GPUs. Set RDC_CFLAGS=-I$rdcinclude and RDC_LIBS=-L$rdclibdir])],
+	[],
+	[enable_rdc="no"])
+if test "$enable_rdc" != "no"; then
+    m4_ifndef([PKG_CHECK_MODULES],
+              [m4_fatal([pkg.m4 not found. Please install pkg-config (Ubuntu) or pkgconfig (RHEL) package])])
+    PKG_CHECK_MODULES([RDC], [rdc],
+		      [AC_DEFINE([HAVE_RDC],[1],[if AMD rdc module present.])],
+		      AC_MSG_ERROR([pkg-config rdc failed])
+		      )
+    AC_MSG_RESULT([rdc include: $RDC_CFLAGS])
+    AC_MSG_RESULT([rdc lib: $RDC_LIBS])
+    HAVE_RDC=yes
+fi
+AM_CONDITIONAL([ENABLE_RDC], [test "x$HAVE_RDC" = xyes])
+
 have_zap=0
 
 if test "$disable_zap" != "yes"; then
@@ -800,6 +819,7 @@ ldms/src/sampler/cray_system_sampler/Makefile
 ldms/src/sampler/aries_mmr/Makefile
 ldms/src/sampler/aries_mmr/aries_mmr_set_configs/Makefile
 ldms/src/sampler/ibnet/Makefile
+ldms/src/sampler/rdc_sampler/Makefile
 ldms/src/sampler/slurm/Makefile
 ldms/src/sampler/spank/Makefile
 ldms/src/sampler/papi/Makefile

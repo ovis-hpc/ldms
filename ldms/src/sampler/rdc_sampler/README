@@ -1,0 +1,15 @@
+
+rdc.sh generate rdc.conf
+
+rdc.conf config script example
+
+old/
+	rdc_sampler.c : wrapping v5ism with v4
+	fake_rdc.h : ldmsd-sampler key types backport.
+
+	rdc_sb.c: derived from sampler_base instead of ldmsd-sampler.
+
+rdcinfo.c : largely independent log that can go to multiinstance with light modification
+rdcinfo.h :
+rdc_plugin.c: singleton plugin wrapper functions.
+
