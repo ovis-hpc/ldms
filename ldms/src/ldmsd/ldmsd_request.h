@@ -511,6 +511,8 @@ void ldmsd_send_req_response(ldmsd_req_ctxt_t reqc, const char *msg);
 int ldmsd_handle_request(ldmsd_req_ctxt_t reqc);
 static inline ldmsd_req_attr_t ldmsd_first_attr(ldmsd_req_hdr_t rh)
 {
+	if (rh->rec_len <= sizeof(*rh))
+		return NULL;
 	return (ldmsd_req_attr_t)(rh + 1);
 }
 
