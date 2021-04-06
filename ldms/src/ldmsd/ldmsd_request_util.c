@@ -1088,6 +1088,7 @@ int ldmsd_msg_gather(struct ldmsd_msg_buf *buf, ldmsd_req_hdr_t req)
 	void *ptr;
 	size_t len = ntohl(req->rec_len);
 	uint32_t flags = ntohl(req->flags);
+	ldmsd_req_hdr_t hdr = (ldmsd_req_hdr_t)buf->buf;
 
 	if (flags & LDMSD_REQ_SOM_F) {
 		ptr = req;
@@ -1101,9 +1102,11 @@ int ldmsd_msg_gather(struct ldmsd_msg_buf *buf, ldmsd_req_hdr_t req)
 			return ENOMEM;
 		buf->buf = new_buf;
 		buf->len = 2 * buf->len + len;
+		hdr = (ldmsd_req_hdr_t)buf->buf;
 	}
 	memcpy(&buf->buf[buf->off], ptr, len);
 	buf->off += len;
+	hdr->rec_len = htonl(buf->off);
 	if (flags & LDMSD_REQ_EOM_F)
 		return 0;
 	return EBUSY;
