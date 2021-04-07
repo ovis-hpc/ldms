@@ -797,7 +797,15 @@ int ldmsd_set_register(ldms_set_t set, const char *pluing_name)
 			rc = ENOMEM;
 			goto free_inst_name;
 		}
-		rbn_init(&list->rbn, s->plugin_name);
+		char *pname = strdup(s->plugin_name);
+		if (!pname) {
+			free(list);
+			ldmsd_set_tree_unlock();
+			ldms_set_put(s->set);
+			rc = ENOMEM;
+			goto free_inst_name;
+		}
+		rbn_init(&list->rbn, pname);
 		LIST_INIT(&list->list);
 		rbt_ins(&set_tree, &list->rbn);
 	} else {
@@ -856,7 +864,9 @@ void ldmsd_set_deregister(const char *inst_name, const char *plugin_name)
 		free(set);
 	}
 	if (LIST_EMPTY(&list->list)) {
+		char *pname = list->rbn.key;
 		rbt_del(&set_tree, &list->rbn);
+		free(pname);
 		free(list);
 	}
 out:
