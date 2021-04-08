@@ -1,8 +1,6 @@
 export plugname=rdc_sampler
 portbase=61060
-dschema=$(ldms_rdc_schema_name shape=1|grep -v ERR)
-wschema=$(ldms_rdc_schema_name metrics=base|grep -v ERR)
-export wschema
+dschema=$(ldms_rdc_schema_name |grep -v ERR)
 export dschema
 DAEMONS $(seq 3)
 LDMSD 3
@@ -28,5 +26,4 @@ KILL_LDMSD 1
 
 KILL_LDMSD 3
 
-file_created $STOREDIR/node/$wschema
 file_created $STOREDIR/node/$dschema

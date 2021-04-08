@@ -167,7 +167,9 @@ int rdcinfo_update_schema(rdcinfo_inst_t inst, ldms_schema_t schema)
 	/* For each metric */
 	uint32_t findex;
 	inst->num_sets = inst->group_info.count;
-	rc = ldms_schema_meta_array_add(schema, "device", LDMS_V_CHAR_ARRAY,
+	/* this should be a meta_array_add, but then the current sample
+	 * gets delivered to storage with no value. */
+	rc = ldms_schema_metric_array_add(schema, "device", LDMS_V_CHAR_ARRAY,
 					MAX_DEVICE_NAME);
 	if (rc < 0)
 		return -rc;
@@ -203,6 +205,8 @@ int rdcinfo_sample(rdcinfo_inst_t inst)
 	clock_gettime(CLOCK_MONOTONIC_RAW, &now);
 	uint64_t tdiff = difftimespec_us(&inst->rdc_start, &now);
 	if ( tdiff < inst->warmup * inst->update_freq) {
+		INST_LOG(inst, LDMSD_LDEBUG," still warming up. %"PRIu64 "\n",
+			tdiff);
 		return 0;
 	}
 

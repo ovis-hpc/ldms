@@ -80,12 +80,15 @@ start name=rdc_sampler interval=1000000
 .SH NOTES
 The exact schema name that will be generated can be determined using the ldms_rdc_schema_name utility. The data available may depend on the specific GPUs and their configuration.
 
-.SH NOTES
 The rdc libraries loaded by the plugin may emit inconsequential error messages to stdout.
 Two such begin with
  "<timestamp> ERROR RdcLibraryLoader.cc"
  "<timestamp> ERROR RdcMetricFetcherImpl.cc"
-
 The latter suggests you may have requested metrics unsupported by your hardware.
+
+.SH BUGS
+At ldmsd exit, there is a race between sampler termination and the rdc library thread cleanup. 
+This may lead to an exception being thrown in the library code that terminates ldmsd with a C++ exception message.
+
 .SH SEE ALSO
 ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_rdc_schema_name(1)
