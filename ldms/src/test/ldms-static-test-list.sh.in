@@ -34,7 +34,7 @@
 @ENABLE_LNET_STATS_TRUE@ testlist[${#testlist[@]}]="lnet_stats"
 @ENABLE_JOBID_TRUE@ testlist[${#testlist[@]}]="many"
 @ENABLE_JOBID_TRUE@ testlist[${#testlist[@]}]="meminfo.job"
-@ENABLE_SYSCLASSIB_TRUE@ testlist[${#testlist[@]}]="sysclassib"
+@HAVE_LIBIBMAD@@HAVE_LIBIBUMAD@ testlist[${#testlist[@]}]="sysclassib"
 @ENABLE_OPA2_TRUE@ testlist [${#testlist[@]}]="opa2"
 @ENABLE_PROCDISKSTATS_TRUE@ testlist[${#testlist[@]}]="procdiskstats"
 @ENABLE_KGNILND_TRUE@ testlist[${#testlist[@]}]="kgnilnd"
