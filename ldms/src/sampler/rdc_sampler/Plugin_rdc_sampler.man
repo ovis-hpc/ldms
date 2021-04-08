@@ -87,7 +87,7 @@ Two such begin with
 The latter suggests you may have requested metrics unsupported by your hardware.
 
 .SH BUGS
-At ldmsd exit, there is a race between sampler termination and the rdc library thread cleanup. 
+At ldmsd exit, there is a race between sampler termination and the rdc library thread cleanup.
 This may lead to an exception being thrown in the library code that terminates ldmsd with a C++ exception message.
 
 .SH SEE ALSO
