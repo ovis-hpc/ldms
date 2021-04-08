@@ -754,6 +754,8 @@ out:
 	exit(rc);
 }
 
+static int debug = 0;
+
 int main(int argc, char **argv)
 {
 	if (argc == 2 && strcmp(argv[1],"-h")==0) {
@@ -761,9 +763,20 @@ int main(int argc, char **argv)
 		printf("%s\n",u);
 		return 0;
 	}
+	if (argc >= 2 && strcmp(argv[1],"-d")==0) {
+		debug = 1;
+	}
 	rdc_get_schema_name(argc, argv);
 	return 0;
 }
 
-void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...) { }
+void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...) {
+	if (!debug)
+		return;
+        va_list ap;
+        va_start(ap, fmt);
+        vfprintf(stderr, fmt, ap);
+        va_end(ap);
+}
+
 #endif
