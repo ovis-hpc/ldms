@@ -21,7 +21,7 @@ or a configuration file.
 .BR config
 name=<plugin_name> [producer=<name>] [instance=<name>] [component_id=<uint64_t>]
 [schema=<name_base>] [uid=<user-id>] [gid=<group-id>] [perm=<mode_t permission bits>]
-[metrics=LIST] [update_freq=MICROSEC] [shape=SHAPE] [max_keep_age=SEC] [max_keep_samples=N]
+[metrics=LIST] [update_freq=MICROSEC] [max_keep_age=SEC] [max_keep_samples=N]
 .br
 configuration line
 .RS
@@ -36,7 +36,7 @@ The producer string value for the timing set. Default is the result of gethostna
 .TP
 instance=<set_prefix>
 .br
-The name of the wide set if shape is 0. The set names will be suffixed by device number (gpu%d) if shape is 1.
+The set instance names will be suffixed by device number (gpu%d).
 .TP
 schema=<name_base>
 .br
@@ -50,10 +50,6 @@ Optional component identifier for the timing set. Defaults to zero.
 metrics=LIST
 .br
 The list of values to be collected as named in rdc_field_t from rdc/rdc.h.
-.TP
-shape=<0/1>
-.br
-The set layout to use. Default is 0 (single wide set) and 1 yields a set per device.
 .TP
 update_freq=MICROSEC
 .br
@@ -77,7 +73,7 @@ Delay K cycles update_freq long before attempting to read data from the gpu.
 Within ldmsd_controller or a configuration file:
 .nf
 load name=rdc_sampler
-config name=rdc_sampler component_id=1 shape=1
+config name=rdc_sampler component_id=1
 start name=rdc_sampler interval=1000000
 .fi
 
