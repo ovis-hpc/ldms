@@ -7,7 +7,7 @@ ldms_rdc_schema_name - man page for the LDMS rdc_sampler plugin support utility
 
 .SH SYNOPSIS
 ldms_rdc_schema_name -h
-ldms_rdc_schema_name <plugin config options>
+ldms_rdc_schema_name [-d] <plugin config options>
 
 .SH DESCRIPTION
 The rdc_sampler plugin generates a schema name including a hash of certain
@@ -24,11 +24,14 @@ See Plugin_rdc_sampler(7).
 #ldms_rdc_schema_name -h
 <dump of the usage details from the plugin.>
 
-# ldms_rdc_schema_name metrics=base schema=myrdc_sampler shape=0 | grep -v ERROR
-myrdc_sampler_2_51dcba58
+# ldms_rdc_schema_name metrics=base schema=myrdc_sampler | grep -v ERROR
+myrdc_sampler_51dcba58
 
-# ldms_rdc_schema_name metrics=xgmi shape=1
+# ldms_rdc_schema_name metrics=xgmi
 rdc_sampler_device_e3e41d59
+
+# ldms_rdc_schema_name -d metrics=xgni
+<error messages about unknown xgni option>
 .fi
 
 .SH NOTES

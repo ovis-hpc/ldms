@@ -64,7 +64,7 @@
 #include "ldmsd_plugattr.h"
 #include "coll/fnv_hash.h"
 
-/* the default array applies to vega20+ hardware. */
+/* the default array applies to vega10+ hardware. */
 static rdc_field_t default_field_ids[] = {
 	RDC_FI_GPU_CLOCK,
 	RDC_FI_MEM_CLOCK,
@@ -82,47 +82,12 @@ static rdc_field_t default_field_ids[] = {
 
 static const uint32_t num_fields_default = sizeof(default_field_ids)/sizeof(default_field_ids[0]);
 
-#if 0
-/* expansion for metrics=base option */
-static
-char const *default_metrics_base =
-	"RDC_FI_GPU_CLOCK,"
-	"RDC_FI_MEM_CLOCK,"
-	"RDC_FI_MEMORY_TEMP,"
-	"RDC_FI_GPU_TEMP,"
-	"RDC_FI_POWER_USAGE,"
-	"RDC_FI_PCIE_TX,"
-	"RDC_FI_PCIE_RX,"
-	"RDC_FI_GPU_UTIL,"
-	"RDC_FI_GPU_MEMORY_USAGE,"
-	"RDC_FI_GPU_MEMORY_TOTAL,"
-	"RDC_FI_ECC_CORRECT_TOTAL,"
-	"RDC_FI_ECC_UNCORRECT_TOTAL";
-
-/* expansion for metrics=xgmi option */
-static
-char *default_metrics_xgmi =
-	"RDC_FI_GPU_CLOCK,"
-	"RDC_FI_MEM_CLOCK,"
-	"RDC_FI_MEMORY_TEMP,"
-	"RDC_FI_GPU_TEMP,"
-	"RDC_FI_POWER_USAGE,"
-	"RDC_FI_PCIE_TX,"
-	"RDC_FI_PCIE_RX,"
-	"RDC_FI_GPU_UTIL,"
-	"RDC_FI_GPU_MEMORY_USAGE,"
-	"RDC_FI_GPU_MEMORY_TOTAL,"
-	"RDC_FI_ECC_CORRECT_TOTAL,"
-	"RDC_FI_ECC_UNCORRECT_TOTAL,"
-	"RDC_EVNT_XGMI_0_THRPUT,"
-	"RDC_EVNT_XGMI_1_THRPUT";
-#endif
-
 struct defset {
 	const char *name; /*< abbreviation for use as metrics=abbr */
 	const char *metrics; /*< expansion of the abbreviation */
 };
 
+/* define aliases for common metric configurations */
 struct defset defs[] = {
 	{ "base", "RDC_FI_GPU_CLOCK,"
 		"RDC_FI_MEM_CLOCK,"
@@ -196,55 +161,29 @@ static char* field_id_unit(rdc_field_t field_id)
 static
 int rdcinfo_update_schema(rdcinfo_inst_t inst, ldms_schema_t schema)
 {
-	char name[RDC_MAX_STR_LENGTH + 20]; /* room for name + gpu: + %PRIu32 + nul */
 	int rc; /* rc == -errno from schema_metric_add */
 	const char *fname;
 
-	/* For each GPU and each metric */
-	uint32_t gindex, findex;
-	switch (inst->shape) {
-	case SS_WIDE:
-		inst->num_sets = 1;
-		for (gindex = 0; gindex < inst->group_info.count; gindex++) {
-			for (findex = 0; findex < inst->field_info.count; findex++) {
-				snprintf(name, sizeof(name), "gpu%d:%s",
-					inst->group_info.entity_ids[gindex],
-					field_id_string(inst->field_info.field_ids[findex]));
-				rc = ldms_schema_metric_add(schema, name, LDMS_V_S64
-			#if SCHEMA_HAVE_UNITS
-					, field_id_unit(inst->field_info.field_ids[findex])
-			#endif
-					);
-				if (rc < 0)
-					return -rc; /* rc == -errno */
-			}
-		}
-		inst->metric_offset = inst->first_index;
-		break;
-	case SS_DEVICE:
-		inst->num_sets = inst->group_info.count;
-		rc = ldms_schema_meta_array_add(schema, "device", LDMS_V_CHAR_ARRAY,
-						MAX_DEVICE_NAME);
+	/* For each metric */
+	uint32_t findex;
+	inst->num_sets = inst->group_info.count;
+	/* this should be a meta_array_add, but then the current sample
+	 * gets delivered to storage with no value. */
+	rc = ldms_schema_metric_array_add(schema, "device", LDMS_V_CHAR_ARRAY,
+					MAX_DEVICE_NAME);
+	if (rc < 0)
+		return -rc;
+	for (findex = 0; findex < inst->field_info.count; findex++) {
+		fname = field_id_string(inst->field_info.field_ids[findex]);
+		rc = ldms_schema_metric_add(schema, fname, LDMS_V_S64
+	#if SCHEMA_HAVE_UNITS
+			, field_id_unit(inst->field_info.field_ids[findex])
+	#endif
+			);
 		if (rc < 0)
 			return -rc;
-		for (findex = 0; findex < inst->field_info.count; findex++) {
-			fname = field_id_string(inst->field_info.field_ids[findex]);
-			rc = ldms_schema_metric_add(schema, fname, LDMS_V_S64
-		#if SCHEMA_HAVE_UNITS
-				, field_id_unit(inst->field_info.field_ids[findex])
-		#endif
-				);
-			if (rc < 0)
-				return -rc;
-		}
-		inst->metric_offset = inst->first_index + 1; /* only update device name once */
-		break;
-	/* case SS_VECTOR:  need to know if group_info.entity_ids are always
- 	* 0 - group_info.count-1 before supporting vector set. */
-	default:
-		INST_LOG(inst, LDMSD_LERROR, "not yet supported shape %d in rdcinfo_update_schema\n");
-		return -ENOTSUP;
 	}
+	inst->metric_offset = inst->first_index + 1; /* only update device name once */
 	return 0;
 }
 
@@ -261,102 +200,61 @@ int rdcinfo_sample(rdcinfo_inst_t inst)
 	int i = 0;
 	rdc_status_t result;
 
-	/* do nothing until the rdc library has run about 2 cycles */
+	/* do nothing until the rdc library has run warmup cycles */
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC_RAW, &now);
 	uint64_t tdiff = difftimespec_us(&inst->rdc_start, &now);
 	if ( tdiff < inst->warmup * inst->update_freq) {
+		INST_LOG(inst, LDMSD_LDEBUG," still warming up. %"PRIu64 "\n",
+			tdiff);
 		return 0;
 	}
 
 	int rc = 0;
 	uint32_t gindex, findex;
-	switch (inst->shape) {
-	case SS_WIDE:
-		inst->base->set = inst->devset[0];
+	for (gindex = 0; gindex < inst->group_info.count; gindex++) {
+		i = 0;
+		inst->base->set = inst->devset[gindex];
 		base_sample_begin(inst->base);
-		for (gindex = 0; gindex < inst->group_info.count; gindex++) {
-			for (findex = 0; findex < inst->field_info.count; findex++, i++) {
-				rdc_field_value value;
-				value.value.l_int = 0;
-				result = rdc_field_get_latest_value(inst->rdc_handle,
-						inst->group_info.entity_ids[gindex],
-						inst->field_info.field_ids[findex],
-						&value);
-				if (result != RDC_ST_OK) {
-					INST_LOG(inst, LDMSD_LWARNING,
-						"Stopping sampler. Fix the configuration to match hardware"
-						" capability or extend warmup. Failed to get (gpu %d: field: %s): %s\n",
-						inst->group_info.entity_ids[gindex],
-						field_id_string(inst->field_info.field_ids[findex]),
-						rdc_status_string(result));
-					rc = EINVAL;
-				}
-				if (value.type != INTEGER) {
-					INST_LOG(inst, LDMSD_LWARNING,
-						"Stopping sampler. Fix configuration: only integer metrics are allowed."
-						"Not field: %s)\n",
-						field_id_string(inst->field_info.field_ids[findex]));
-					rc = EINVAL;
-					continue;
-				}
-				ldms_metric_set_u64(inst->devset[0],
-					inst->metric_offset + i, value.value.l_int);
+		if (!inst->meta_done) {
+			char tmp[MAX_DEVICE_NAME];
+			snprintf(tmp, sizeof(tmp), "gpu%d",
+				inst->group_info.entity_ids[gindex]);
+			ldms_metric_array_set_str(inst->devset[gindex],
+				inst->first_index, tmp);
+		}
+		for (findex = 0; findex < inst->field_info.count; findex++, i++) {
+			rdc_field_value value;
+			value.value.l_int = 0;
+			result = rdc_field_get_latest_value(inst->rdc_handle,
+					inst->group_info.entity_ids[gindex],
+					inst->field_info.field_ids[findex],
+					&value);
+			if (result != RDC_ST_OK) {
+				INST_LOG(inst, LDMSD_LWARNING,
+					"Stopping sampler. Fix the configuration to match hardware"
+					" capability or extend warmup. Failed to get (gpu %d: field: %s): %s\n",
+					inst->group_info.entity_ids[gindex],
+					field_id_string(inst->field_info.field_ids[findex]),
+					rdc_status_string(result));
+				rc = EINVAL;
+				continue;
 			}
+			if (value.type != INTEGER) {
+				INST_LOG(inst, LDMSD_LWARNING,
+					"Stopping sampler. Fix configuration: only integer metrics are allowed."
+					"Not field: %s)\n",
+					field_id_string(inst->field_info.field_ids[findex]));
+				rc = EINVAL;
+				continue;
+			}
+			ldms_metric_set_u64(inst->devset[gindex],
+				inst->metric_offset + i, value.value.l_int);
 		}
 		base_sample_end(inst->base);
 		inst->base->set = NULL;
-		break;
-	case SS_DEVICE:
-		for (gindex = 0; gindex < inst->group_info.count; gindex++) {
-			i = 0;
-			inst->base->set = inst->devset[gindex];
-			base_sample_begin(inst->base);
-			if (!inst->meta_done) {
-				char tmp[MAX_DEVICE_NAME];
-				snprintf(tmp, sizeof(tmp), "gpu%d",
-					inst->group_info.entity_ids[gindex]);
-				ldms_metric_array_set_str(inst->devset[gindex],
-					inst->first_index, tmp);
-			}
-			for (findex = 0; findex < inst->field_info.count; findex++, i++) {
-				rdc_field_value value;
-				value.value.l_int = 0;
-				result = rdc_field_get_latest_value(inst->rdc_handle,
-						inst->group_info.entity_ids[gindex],
-						inst->field_info.field_ids[findex],
-						&value);
-				if (result != RDC_ST_OK) {
-					INST_LOG(inst, LDMSD_LWARNING,
-						"Stopping sampler. Fix the configuration to match hardware"
-						" capability or extend warmup. Failed to get (gpu %d: field: %s): %s\n",
-						inst->group_info.entity_ids[gindex],
-						field_id_string(inst->field_info.field_ids[findex]),
-						rdc_status_string(result));
-					rc = EINVAL;
-					continue;
-				}
-				if (value.type != INTEGER) {
-					INST_LOG(inst, LDMSD_LWARNING,
-						"Stopping sampler. Fix configuration: only integer metrics are allowed."
-						"Not field: %s)\n",
-						field_id_string(inst->field_info.field_ids[findex]));
-					rc = EINVAL;
-					continue;
-				}
-				ldms_metric_set_u64(inst->devset[gindex],
-					inst->metric_offset + i, value.value.l_int);
-			}
-			base_sample_end(inst->base);
-			inst->base->set = NULL;
-		}
-		inst->meta_done = 1;
-		break;
-	default:
-		INST_LOG(inst, LDMSD_LERROR, "Unsupported shape=%" PRIu32 ".\n",
-			inst->shape);
-		rc = EINVAL;
 	}
+	inst->meta_done = 1;
 
 	return rc;
 }
@@ -365,7 +263,7 @@ int rdcinfo_sample(rdcinfo_inst_t inst)
 static
 char *_help =
 SAMP " config synopsis:\n"
-"    config name=INST [COMMON_OPTIONS] [metrics=METRICS] [shape=SHAPE]\n"
+"    config name=INST [COMMON_OPTIONS] [metrics=METRICS]\n"
 "\n"
 "Option descriptions:\n"
 "    metrics   The comma-separated list of metrics to monitor.\n"
@@ -377,16 +275,13 @@ SAMP " config synopsis:\n"
 "    update_freq=US   microsecond interval passed to rdc_field_watch.\n"
 "    max_keep_age=S   second duration passed to rdc_field_watch.\n"
 "    max_keep_samples=N length of history passed to rdc_field_watch.\n"
-"    shape=SHAPE  Number indicating set layout to use (default: 0):\n"
-"                 0: one wide set, with metrics prefixed by \"gpu%d:\"\n"
-"                 1: one set per gpu.\n"
-"                 2: one set of vectors indexed by gpu (reserved; not yet supported).\n"
 "\n"
 "The rdc_sampler collects AMD GPU data according to the given 'metrics' option.\n"
 "For example metrics=RDC_FI_GPU_CLOCK,RDC_FI_GPU_TEMP,RDC_FI_POWER_USAGE,RDC_FI_GPU_MEMORY_USAGE\n"
 "The default metrics list is:\n"
 ;
 
+/* append default and aliased metrics lists to the help message */
 char *rdcinfo_usage()
 {
 	dstring_t ds;
@@ -409,6 +304,7 @@ char *rdcinfo_usage()
 	return r;
 }
 
+/* build the fields into a string and take the hash of it */
 static uint32_t rdcinfo_hash(rdcinfo_inst_t inst)
 {
 	if (!inst)
@@ -449,37 +345,28 @@ void rdcinfo_delete(rdcinfo_inst_t inst)
 	free(inst);
 }
 
+/* clear out everything in inst and stop gpu library */
 void rdcinfo_reset(rdcinfo_inst_t inst)
 {
 	if (!inst)
 		return;
+	uint32_t i;
 #ifndef MAIN
-	if (inst->shape == SS_DEVICE) {
-		uint32_t i;
-		for (i = 0; i < inst->num_sets; i++) {
-			ldms_set_t set = inst->devset[i];
-			if (set) {
-				const char *tmp = ldms_set_instance_name_get(set);
-				ldmsd_set_deregister(tmp, inst->base->pi_name);
-				ldms_set_unpublish(set);
-				ldms_set_delete(set);
-				inst->devset[i] = NULL;
-			}
-		}
-		if (inst->base) {
-			/* suppress unregister of wrong inst name and delete.*/
-			free(inst->base->instance_name);
-			inst->base->instance_name = NULL;
-			base_del(inst->base);
-		}
-	} else {
-		ldms_set_t set = inst->devset[0];
-		base_del(inst->base);
+	for (i = 0; i < inst->num_sets; i++) {
+		ldms_set_t set = inst->devset[i];
 		if (set) {
+			const char *tmp = ldms_set_instance_name_get(set);
+			ldmsd_set_deregister(tmp, inst->base->pi_name);
 			ldms_set_unpublish(set);
 			ldms_set_delete(set);
-			inst->devset[0] = NULL;
+			inst->devset[i] = NULL;
 		}
+	}
+	if (inst->base) {
+		/* suppress unregister of wrong inst name and delete.*/
+		free(inst->base->instance_name);
+		inst->base->instance_name = NULL;
+		base_del(inst->base);
 	}
 	inst->base = NULL;
 #endif
@@ -515,14 +402,14 @@ void rdcinfo_reset(rdcinfo_inst_t inst)
 		inst->update_freq =
 		inst->max_keep_age =
 		inst->max_keep_samples = 0;
-	int i;
+
 	for (i = 0; i < inst->num_fields; i++) {
 		inst->field_ids[i] = 0;
 	}
 	inst->num_fields = 0;
-	inst->shape = SS_WIDE;
 }
 
+/* configure and run the rdc library thread. */
 static int rdcinfo_hardware_init(rdcinfo_inst_t inst)
 {
 	int result;
@@ -587,20 +474,7 @@ static const char *compute_schema_suffix(rdcinfo_inst_t inst)
 {
 
 	uint32_t hash = rdcinfo_hash(inst);
-
-	char base[20];
-	switch (inst->shape) {
-	case SS_WIDE:
-		snprintf(base, sizeof(base), "_%d", inst->group_info.count);
-		break;
-	case SS_DEVICE:
-		strcpy(base, "_device");
-		break;
-	case SS_VECTOR:
-		strcpy(base, "_vector");
-		break;
-	}
-	snprintf(suffix, sizeof(suffix), "%s_%"PRIx32, base, hash);
+	snprintf(suffix, sizeof(suffix), "_%"PRIx32, hash);
 	return suffix;
 }
 
@@ -651,7 +525,6 @@ static const char *rdc_opts[] = {
         "job_set",
         "metrics",
 	"warmup",
-	"shape",
 	"update_freq",
 	"max_keep_age",
 	"max_keep_samples",
@@ -744,25 +617,6 @@ int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
 		mt = NULL;
 	}
 
-	uint32_t shape;
-	rc = rdcinfo_config_find_int_value(inst, avl, "shape", SS_WIDE, &shape);
-	if (rc)
-		return rc;
-	else
-		switch (shape) {
-		case SS_DEVICE:
-		case SS_WIDE:
-			inst->shape = shape;
-			break;
-		case SS_VECTOR:
-			INST_LOG(inst, LDMSD_LERROR, "Not yet supported vector shape. Use 0 or 1.\n");
-			return EINVAL;
-		default:
-			INST_LOG(inst, LDMSD_LERROR, "Unsupported shape=%" PRIu32 ".\n",
-				shape);
-			return EINVAL;
-		}
-
 	rc = rdcinfo_config_find_int_value(inst, avl, "warmup", 4, &inst->warmup);
 	if (rc)
 		return rc;
@@ -813,18 +667,17 @@ int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
 
 	tmp = NULL;
 	for (i = 0; i < inst->num_sets; i++) {
-		if (inst->shape == SS_DEVICE) {
-			/* temporarily override default instance name behavior */
-			tmp = inst->base->instance_name;
-			size_t len = strlen(tmp);
-			inst->base->instance_name = malloc( len + 20);
-			if (!inst->base->instance_name) {
-				rc = ENOMEM;
-				goto loop_err;
-			}
-			snprintf(inst->base->instance_name, len+20, "%s/gpu%d", tmp,
-					inst->group_info.entity_ids[i]);
+		/* temporarily override default instance name behavior */
+		tmp = inst->base->instance_name;
+		size_t len = strlen(tmp);
+		inst->base->instance_name = malloc( len + 20);
+		if (!inst->base->instance_name) {
+			rc = ENOMEM;
+			goto loop_err;
 		}
+		/* override single set assumed in sampler_base api */
+		snprintf(inst->base->instance_name, len+20, "%s/gpu%d", tmp,
+				inst->group_info.entity_ids[i]);
 		ldms_set_t set = base_set_new(inst->base);
 		if (!set) {
 			INST_LOG(inst, LDMSD_LERROR, "failed to make %d-th set for %s\n",
@@ -834,10 +687,8 @@ int rdcinfo_config(rdcinfo_inst_t inst, struct attr_value_list *avl)
 		}
 		inst->devset[i] = set;
 		inst->base->set = NULL;
-		if (inst->shape == SS_DEVICE) {
-			free(inst->base->instance_name);
-			inst->base->instance_name = tmp;
-		}
+		free(inst->base->instance_name);
+		inst->base->instance_name = tmp;
 		continue;
 	loop_err:
 		if (tmp) {
@@ -858,7 +709,7 @@ out_metrics:
 }
 
 #ifdef MAIN
-/* if MAIN is defined, most only the functions and segments needed to compute
+/* if MAIN is defined, only the functions and segments needed to compute
  * the schema name are included in compile.
  */
 
@@ -897,7 +748,7 @@ static void rdc_get_schema_name(int argc, char **argv)
 	if (!rc)
 		printf("%s\n", d->schema_name);
 	else
-		fprintf(stderr, "counld not init rdcinfo.\n");
+		fprintf(stderr, "could not init rdcinfo.\n");
 	rdcinfo_reset(d);
 	rdcinfo_delete(d);
 out:
@@ -907,6 +758,8 @@ out:
 	exit(rc);
 }
 
+static int debug = 0;
+
 int main(int argc, char **argv)
 {
 	if (argc == 2 && strcmp(argv[1],"-h")==0) {
@@ -914,9 +767,20 @@ int main(int argc, char **argv)
 		printf("%s\n",u);
 		return 0;
 	}
+	if (argc >= 2 && strcmp(argv[1],"-d")==0) {
+		debug = 1;
+	}
 	rdc_get_schema_name(argc, argv);
 	return 0;
 }
 
-void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...) { }
+void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...) {
+	if (!debug)
+		return;
+        va_list ap;
+        va_start(ap, fmt);
+        vfprintf(stderr, fmt, ap);
+        va_end(ap);
+}
+
 #endif

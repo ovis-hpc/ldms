@@ -14,7 +14,3 @@ updtr_start name=allhosts
 strgp_add name=store_${testname}_device plugin=store_csv schema=${dschema} container=node
 strgp_prdcr_add name=store_${testname}_device regex=.*
 strgp_start name=store_${testname}_device
-
-strgp_add name=store_${testname}_wide plugin=store_csv schema=${wschema} container=node
-strgp_prdcr_add name=store_${testname}_wide regex=.*
-strgp_start name=store_${testname}_wide

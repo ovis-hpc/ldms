@@ -67,12 +67,6 @@
 /* TYPES and constants */
 typedef struct rdcinfo_inst_s *rdcinfo_inst_t;
 
-enum set_shape {
-	SS_WIDE = 0, /* all gpus in a single set, with metric names prefixed by "gpu%d:" */
-	SS_DEVICE = 1, /* each gpu has a different set instance including a device name gpu%d */
-	SS_VECTOR = 2, /* gpu # is array index. not yet supported */
-};
-
 struct rdcinfo_inst_s {
 	ldmsd_msg_log_f msglog;
 	pthread_mutex_t lock;
@@ -94,7 +88,6 @@ struct rdcinfo_inst_s {
 	uint32_t update_freq;
 	uint32_t max_keep_age;
 	uint32_t max_keep_samples;
-	enum set_shape shape;
 	rdc_handle_t rdc_handle;
 	rdc_gpu_group_t group_id;
 	rdc_field_grp_t field_group_id;
