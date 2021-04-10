@@ -1,0 +1,21 @@
+load name=${testname}
+config name=${testname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i} ifaces=lo
+start name=${testname} interval=1000000 offset=0
+
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0
+
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=1000000
+prdcr_start name=localhost1
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+strgp_add name=store_${testname} plugin=store_csv schema=${testname} container=node
+strgp_prdcr_add name=store_${testname} regex=.*
+strgp_start name=store_${testname}
+
+strgp_add name=store_${testname}dev plugin=store_csv schema=${testname}dev container=node
+strgp_prdcr_add name=store_${testname}dev regex=.*
+strgp_start name=store_${testname}dev

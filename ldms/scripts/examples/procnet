@@ -1,0 +1,16 @@
+export plugname=procnet
+IFACES=`ifconfig -a |grep UP |sed -e 's/:.*//g' | tr -s '[:space:]' , | sed -e 's/,$//g'`
+export IFACES
+
+portbase=61024
+VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite"
+#vgon
+LDMSD 1 2
+vgoff
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -l
+SLEEP 5
+KILL_LDMSD 1 2
+file_created $STOREDIR/node/$testname

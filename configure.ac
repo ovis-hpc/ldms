@@ -294,6 +294,7 @@ if test -z "$ENABLE_MPI_SAMPLER_TRUE" ; then
 	AX_MPI([:],[ AC_MSG_ERROR([MPICC required by mpi_sampler ])])
 fi
 OPTION_DEFAULT_ENABLE([procinterrupts], [ENABLE_PROCINTERRUPTS])
+OPTION_DEFAULT_ENABLE([procnet], [ENABLE_PROCNET])
 OPTION_DEFAULT_ENABLE([procnetdev], [ENABLE_PROCNETDEV])
 OPTION_DEFAULT_ENABLE([procnfs], [ENABLE_PROCNFS])
 OPTION_DEFAULT_ENABLE([dstat], [ENABLE_DSTAT])
@@ -840,6 +841,7 @@ ldms/src/sampler/cray_system_sampler/Makefile
 ldms/src/sampler/aries_mmr/Makefile
 ldms/src/sampler/aries_mmr/aries_mmr_set_configs/Makefile
 ldms/src/sampler/ibnet/Makefile
+ldms/src/sampler/procnet/Makefile
 ldms/src/sampler/rdc_sampler/Makefile
 ldms/src/sampler/slurm/Makefile
 ldms/src/sampler/spank/Makefile

@@ -237,6 +237,10 @@ if ENABLE_FILESINGLE
 SUBDIRS += filesingle
 endif
 
+if ENABLE_PROCNET
+SUBDIRS += procnet
+endif
+
 if ENABLE_PROCSTAT
 SUBDIRS += procstat
 endif
