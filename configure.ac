@@ -130,6 +130,11 @@ OPTION_DEFAULT_DISABLE([ugni], [ENABLE_UGNI])
 dnl dnl OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 dnl dnl OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
 
+# PKG_PROG_PKG_CONFIG before all PKG_CHECK_MODULES may or not be called, per pkg.m4.
+m4_ifndef([PKG_CHECK_MODULES],
+      [m4_fatal([pkg.m4 not found. Please install pkg-config (Ubuntu) or pkgconfig (RHEL) package])])
+PKG_PROG_PKG_CONFIG
+
 dnl RDC defaults to no instead of search because amd currently recommends
 dnl multiple non-default path installations (/opt).
 AC_ARG_ENABLE([rdc],
@@ -137,8 +142,6 @@ AC_ARG_ENABLE([rdc],
 	[],
 	[enable_rdc="no"])
 if test "$enable_rdc" != "no"; then
-    m4_ifndef([PKG_CHECK_MODULES],
-              [m4_fatal([pkg.m4 not found. Please install pkg-config (Ubuntu) or pkgconfig (RHEL) package])])
     PKG_CHECK_MODULES([RDC], [rdc],
 		      [AC_DEFINE([HAVE_RDC],[1],[if AMD rdc module present.])],
 		      AC_MSG_ERROR([pkg-config rdc failed])
@@ -171,8 +174,6 @@ dnl we need libibverbs-devel and librdmacm-devel to support rdma
     [AC_MSG_ERROR([Missing header. librdmacm-devel not installed?])])
   fi
   if test "$enable_ugni" = "yes"; then
-    m4_ifndef([PKG_CHECK_MODULES],
-              [m4_fatal([pkg.m4 not found. Please install pkg-config (Ubuntu) or pkgconfig (RHEL) package])])
     PKG_CHECK_MODULES([UGNI], [cray-ugni],
 		      [AC_DEFINE([HAVE_CRAY_UGNI],[1],[if cray-ugni module present.])],
 		      AC_MSG_ERROR([pkg-config cray-ugni failed])
