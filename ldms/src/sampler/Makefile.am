@@ -245,10 +245,14 @@ if ENABLE_DSTAT
 SUBDIRS += dstat
 endif
 
-if ENABLE_SYSCLASSIB
+if HAVE_LIBIBMAD
+if HAVE_LIBIBUMAD
+SUBDIRS += ibmad
+
 libsysclassib_la_SOURCES = sysclassib.c
-libsysclassib_la_LIBADD = $(COMMON_LIBADD) -libmad -libumad
+libsysclassib_la_LIBADD = $(COMMON_LIBADD) $(LTLIBIBMAD) $(LTLIBIBUMAD)
 pkglib_LTLIBRARIES += libsysclassib.la
+endif
 endif
 
 if ENABLE_OPA2

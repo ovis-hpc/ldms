@@ -306,7 +306,6 @@ OPTION_DEFAULT_ENABLE([tsampler], [ENABLE_TSAMPLER])
 OPTION_DEFAULT_ENABLE([cray_power_sampler], [ENABLE_CRAY_POWER_SAMPLER])
 dnl cray_power_sampler won't build with --disable-tsampler
 
-OPTION_DEFAULT_DISABLE([sysclassib], [ENABLE_SYSCLASSIB])
 OPTION_DEFAULT_DISABLE([opa2], [ENABLE_OPA2])
 OPTION_DEFAULT_DISABLE([ibnet], [ENABLE_IBNET])
 OPTION_DEFAULT_ENABLE([loadavg], [ENABLE_LOADAVG])
@@ -370,6 +369,25 @@ AS_IF([test "x$enable_papi" != xno],[
 ])
 AM_CONDITIONAL([HAVE_LIBPAPI], [test "x$HAVE_LIBPAPI" = xyes])
 AM_CONDITIONAL([HAVE_LIBPFM], [test "x$HAVE_LIBPFM" = xyes])
+
+AC_ARG_ENABLE([infiniband],
+	[AS_HELP_STRING([--enable-infiniband], [require components that depend upon libibmad and libibumad @<:@default=check@:>@])],
+	[],
+	[enable_infiniband="check"])
+AS_IF([test "x$enable_infiniband" != xno],[
+	AC_LIB_HAVE_LINKFLAGS([ibmad], [], [#include <infiniband/mad.h>])
+	AS_IF([test "x$enable_infiniband" != xcheck],[
+		AS_IF([test "x$HAVE_LIBIBMAD" = xno],
+			[AC_MSG_ERROR([libibmad or <infiniband/mad.h> not found])])
+	])
+	AC_LIB_HAVE_LINKFLAGS([ibumad], [], [#include <infiniband/umad.h>])
+	AS_IF([test "x$enable_infiniband" != xcheck],[
+		AS_IF([test "x$HAVE_LIBIBUMAD" = xno],
+			[AC_MSG_ERROR([libibumad or <infiniband/umad.h> not found])])
+	])
+])
+AM_CONDITIONAL([HAVE_LIBIBMAD], [test "x$HAVE_LIBIBMAD" = xyes])
+AM_CONDITIONAL([HAVE_LIBIBUMAD], [test "x$HAVE_LIBIBUMAD" = xyes])
 
 # enable tx2mon by default only when sensible.
 AC_ARG_ENABLE([tx2mon],
@@ -448,29 +466,6 @@ if test -z "$ENABLE_MUNGE_TRUE"; then
 	LIBS=""
 
 	AC_CHECK_HEADER(munge.h, [], AC_MSG_ERROR([munge.h not found]))
-fi
-
-dnl Checks for libraries
-if test -z "$ENABLE_SYSCLASSIB_TRUE"; then
-	AC_CHECK_LIB(ibmad, mad_rpc_open_port, [],
-		AC_MSG_ERROR([mad_rpc_open_port() function not found. sysclassib sampler
-		  requires libibmad 1.3.]))
-	dnl Reset LIBS variable.
-	LIBS=""
-
-	AC_CHECK_HEADER(infiniband/mad.h, [],
-		AC_MSG_ERROR([<infiniband/mad.h> not found.  Is libibmad-dev or
-			libibmad-devel installed?]))
-
-	AC_CHECK_LIB(ibumad, umad_get_port, [],
-		AC_MSG_ERROR([umad_get_port() function not found. sysclassib sampler
-			requires libibumad.]))
-	dnl Reset LIBS variable.
-	LIBS=""
-
-	AC_CHECK_HEADER(infiniband/umad.h, [],
-		AC_MSG_ERROR([<infiniband/umad.h> not found.  Is libibumad-dev or
-			libibumad-devel installed?]))
 fi
 
 AC_ARG_WITH([slurm],
@@ -839,6 +834,7 @@ ldms/src/sampler/shm/mpi_profiler/Makefile
 ldms/src/sampler/cray_system_sampler/Makefile
 ldms/src/sampler/aries_mmr/Makefile
 ldms/src/sampler/aries_mmr/aries_mmr_set_configs/Makefile
+ldms/src/sampler/ibmad/Makefile
 ldms/src/sampler/ibnet/Makefile
 ldms/src/sampler/rdc_sampler/Makefile
 ldms/src/sampler/slurm/Makefile

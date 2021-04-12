@@ -1,0 +1,55 @@
+.TH man 7 "1 May 2019" "LDMS Plugin" "Plugin for LDMS"
+
+.SH NAME
+Plugin_ibmad - man page for the LDMS ibmad plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=ibmad [ <attr>=<value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
+or a configuration file. The ibmad plugin provide a metric set for each infiniband port discovered on the node.
+
+The schema is named "ibmad" by default.
+
+NOTE: This plugin will not currently work with virtual IB devices.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> [schema=<schema_name>] [job_set=<metric set name>]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be ibmad.
+.TP
+schema=<schema_name>
+.br
+The schema name defaults to "ibmad", but it can be renamed at the
+user's choice.
+.TP
+job_set=<metric set name>
+.br
+The name of the metric set that contains the job id information (default=job_id)
+.RE
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=ibmad
+config name=ibmad
+start name=ibmad interval=1000000
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7)
