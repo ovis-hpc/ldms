@@ -1,0 +1,7 @@
+load name=${testname}
+config name=${testname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i} exclude_ports=lo
+start name=${testname} interval=1000000 offset=0
+
+load name=${testname}dev
+config name=${testname}dev producer=localhost${i} schema=${testname}dev instance=localhost${i}/${testname}dev component_id=${i} ifaces=lo,virbr0,ens33,ens34
+start name=${testname}dev interval=1000000 offset=0
