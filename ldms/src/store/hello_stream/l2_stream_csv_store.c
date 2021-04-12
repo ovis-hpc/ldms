@@ -84,7 +84,7 @@
 #undef NDATA_TIMING
 #define NDATA 10000
 #define TIMESTAMP_STORE
-#define RESETKEY "LDMS_STREAM_HEADER_RESET"
+#define RESETKEY "LDMS_STREAM_HEADER_RESET\n"
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -293,10 +293,10 @@ static int _parse_list_for_header(struct linedata *dataline, json_entity_t e){
 
 static int _reset_check(const char *msg){
         int rc = strcmp(msg, RESETKEY);
-        if (rc){
+        if (!rc){
                 msglog(LDMSD_LDEBUG,
                        PNAME ": got a reset\n");
-                return rc;
+                return 1;
         }
 
         return 0;
@@ -705,9 +705,9 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 	int rc = 0;
 
 
-        /**	msglog(LDMSD_LDEBUG,
-                PNAME ": Calling stream_cb. msg '%s' on stream '%s'\n",
-                msg, ldmsd_stream_client_name(c)); */
+        /**    msglog(LDMSD_LDEBUG,
+               PNAME ": Calling stream_cb. msg '%s' on stream '%s'\n",
+               msg, ldmsd_stream_client_name(c)); */
 
         // don't need to check the cfgstate. if you've subscribed, it's ok
         const char *skey = ldmsd_stream_client_name(c);
@@ -751,6 +751,7 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
                         _roll_innards(stream_handle); //we already have the lock
                         goto out;
                 }
+
 		fprintf(stream_handle->file, "%s\n", msg);
 		if (!buffer){
 			fflush(stream_handle->file);
