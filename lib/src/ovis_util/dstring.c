@@ -291,7 +291,6 @@ void dstr_trunc(dstring_t * dsPtr, int length)
 
 void dstr_free(dstring_t * dsPtr)
 {
-	assert(NULL != dsPtr);
 	if (!dsPtr)
 		return;
 	if (dsPtr->string != dsPtr->staticSpace) {

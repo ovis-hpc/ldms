@@ -81,8 +81,8 @@ void ovis_scheduler_ref_put(ovis_scheduler_t m)
 {
 	if (!m)
 		return;
-	pthread_mutex_lock(&m->mutex);
 	assert(m->refcount > 0);
+	pthread_mutex_lock(&m->mutex);
 	m->refcount--;
 	if (m->refcount == 0) {
 		pthread_mutex_unlock(&m->mutex);
@@ -225,7 +225,7 @@ loop:
 	if (rc < 0) {
 		if (errno == EAGAIN || errno == EWOULDBLOCK)
 			return;
-		assert(0 && errno);
+		assert(0 == "__ovis_event_pipe_cb: unexpected logic" && errno);
 	}
 	goto loop;
 }
@@ -615,7 +615,7 @@ int ovis_event_term_check(ovis_scheduler_t m)
 	pthread_mutex_lock(&m->mutex);
 	switch (m->state) {
 	case OVIS_EVENT_MANAGER_INIT:
-		assert(0);
+		assert(0 == "unexepected OVIS_EVENT_MANAGER_INIT in ovis_event_term_check");
 		break;
 	case OVIS_EVENT_MANAGER_RUNNING:
 	case OVIS_EVENT_MANAGER_WAITING:
