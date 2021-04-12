@@ -4326,7 +4326,7 @@ static int plugn_config_handler(ldmsd_req_ctxt_t reqc)
 	int tokens;
 
 	/*
-	 * Count the numebr of spaces. That's the maximum number of
+	 * Count the number of spaces. That's the maximum number of
 	 * tokens that could be present.
 	 */
 	for (tokens = 0, cmd_s = config_attr; cmd_s[0] != '\0';) {
