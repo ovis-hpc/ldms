@@ -81,6 +81,7 @@ void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_ty
 	json_parser_t parser = NULL;
 	ldmsd_stream_client_t c;
 	ldmsd_stream_t s = __find_stream(stream_name);
+	int need_free = 0;
 	if (!s)
 		return;
 
@@ -93,12 +94,15 @@ void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_ty
 			parser = json_parser_new(0);
 			if (!parser)
 				continue;
-			int rc = json_parse_buffer(parser, (char *)data, data_len,	&entity);
+			int rc = json_parse_buffer(parser, (char *)data, data_len, &entity);
 			if (rc)
 				continue;
+			need_free = 1;
 		}
 		c->c_cb_fn(c, c->c_ctxt, stream_type, data, data_len, entity);
 	}
+	if (entity && need_free)
+		json_entity_free(entity);
 	if (parser)
 		json_parser_free(parser);
 	pthread_mutex_unlock(&s->s_lock);
