@@ -86,6 +86,8 @@ struct str_map* str_map_create(size_t sz)
 
 void str_map_free(str_map_t m)
 {
+	if (!m)
+		return;
 	int i;
 	for (i=0; i<m->hash_size; i++) {
 		struct obj_list_head *lh = &m->lh_table[i];

@@ -375,7 +375,7 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 					size_t xprt_max_msg, ldmsd_msg_log_f msglog);
 
 /**
- * \brief Destroy the result of ldmsd_parse_config_str.
+ * \brief Destroy the result of ldmsd_parse_config_str. Ignores NULL input.
  */
 void ldmsd_req_array_free(struct ldmsd_req_array *a);
 
@@ -557,7 +557,7 @@ ldmsd_req_cmd_t ldmsd_req_cmd_new(ldms_t ldms,
 				    void *ctxt);
 
 /**
- * \brief Free the request command.
+ * \brief Free the request command. Ignores NULL input.
  */
 void ldmsd_req_cmd_free(ldmsd_req_cmd_t rcmd);
 
@@ -629,7 +629,7 @@ struct ldmsd_msg_buf *ldmsd_msg_buf_new(size_t len);
 void ldmsd_msg_buf_init(struct ldmsd_msg_buf *buf);
 
 /**
- * \brief Free an LDMSD message buffer
+ * \brief Free an LDMSD message buffer. Ignores NULL input.
  */
 void ldmsd_msg_buf_free(struct ldmsd_msg_buf *buf);
 

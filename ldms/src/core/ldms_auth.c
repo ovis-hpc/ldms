@@ -105,6 +105,8 @@ ldms_auth_t ldms_auth_clone(ldms_auth_t auth)
 
 void ldms_auth_free(ldms_auth_t auth)
 {
+	if (!auth)
+		return;
 	auth->plugin->auth_free(auth);
 }
 

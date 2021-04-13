@@ -212,6 +212,8 @@ void mm_free(void *d)
 {
 	if (mm_is_disable_mm_free)
 		return;
+	if (!d)
+		return;
 
 	struct mm_prefix *p = d;
 	struct mm_prefix *q, *r;

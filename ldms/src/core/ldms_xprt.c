@@ -1975,6 +1975,9 @@ static void process_push_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 
 void ldms_xprt_dir_free(ldms_t t, ldms_dir_t dir)
 {
+	(void)t;
+	if (!dir)
+		return;
 	int i, j;
 	for (i = 0; i < dir->set_count; i++) {
 		free(dir->set_data[i].inst_name);

@@ -59,6 +59,8 @@ err0:
 
 void map_list_free(char *map_list[])
 {
+	if (!map_list)
+		return;
 	int i;
 	for (i=0;map_list[i]; i++) {
 		free(map_list[i]);

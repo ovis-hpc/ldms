@@ -98,7 +98,7 @@ void *mm_alloc(size_t size);
 /**
  * \brief Return memory to the heap.
  *
- * \param ptr	Pointer to the buffer to free.
+ * \param ptr	Pointer to the buffer to free. Ignores NULL input.
  */
 void mm_free(void *ptr);
 

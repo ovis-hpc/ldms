@@ -278,7 +278,7 @@ ovis_scheduler_t ovis_scheduler_new();
 /**
  * Destroy the unused event manager.
  *
- * \param m the ovis event manager handle.
+ * \param m the ovis event manager handle. Ignores NULL input.
  */
 void ovis_scheduler_free(ovis_scheduler_t m);
 
@@ -345,7 +345,7 @@ int ovis_scheduler_epoll_event_mod(ovis_scheduler_t s, ovis_event_t ev,
 /**
  * Free memory allocated from ::ovis_event_create().
  *
- * \param ev the event handle to be freed.
+ * \param ev the event handle to be freed. Ignores NULL input.
  */
 void ovis_event_free(ovis_event_t ev);
 

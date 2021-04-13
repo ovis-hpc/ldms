@@ -174,7 +174,7 @@ int av_add(struct attr_value_list *avl, const char *name, const char *value);
 struct attr_value_list *av_copy(struct attr_value_list *src);
 
 /**
- * \brief Free the memory consumed by the avl
+ * \brief Free the memory consumed by the avl. Ignores NULL input.
  */
 void av_free(struct attr_value_list *avl);
 
