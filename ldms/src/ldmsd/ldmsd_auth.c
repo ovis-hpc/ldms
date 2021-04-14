@@ -110,7 +110,7 @@ ldmsd_auth_new_with_auth(const char *name, const char *plugin,
 }
 
 ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
-struct rbt **cfgobj_trees;
+extern struct rbt *cfgobj_trees[];
 
 int ldmsd_auth_del(const char *name, ldmsd_sec_ctxt_t ctxt)
 {
