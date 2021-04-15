@@ -387,9 +387,17 @@ AS_IF([test "x$enable_infiniband" != xno],[
 		AS_IF([test "x$HAVE_LIBIBUMAD" = xno],
 			[AC_MSG_ERROR([libibumad or <infiniband/umad.h> not found])])
 	])
+        CPPFLAGS_BACKUP=$CPPFLAGS
+        CPPFLAGS="$CPPFLAGS -I/usr/include/infiniband"
+        AC_CHECK_HEADERS([iba/ib_types.h], [], [
+		AS_IF([test "x$enable_infiniband" != xcheck],
+			[AC_MSG_ERROR([Header <infiniband/iba/ib_types.h> not found ])])
+        ])
+        CPPFLAGS=$CPPFLAGS_BACKUP
 ])
 AM_CONDITIONAL([HAVE_LIBIBMAD], [test "x$HAVE_LIBIBMAD" = xyes])
 AM_CONDITIONAL([HAVE_LIBIBUMAD], [test "x$HAVE_LIBIBUMAD" = xyes])
+AM_CONDITIONAL([HAVE_IBA_IB_TYPES_H], [test "x$ac_cv_header_iba_ib_types_h" = xyes])
 
 # enable tx2mon by default only when sensible.
 AC_ARG_ENABLE([tx2mon],
