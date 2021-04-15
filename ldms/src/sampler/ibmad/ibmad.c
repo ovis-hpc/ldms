@@ -226,10 +226,8 @@ static int string_comparator(void *a, const void *b)
 static int _port_open(struct metric_data *data, const char *ca_name, unsigned base_lid)
 {
 	int mgmt_classes[3] = {IB_SMI_CLASS, IB_SA_CLASS, IB_PERFORMANCE_CLASS};
-	int rc;
 	void *p;
 	uint16_t cap;
-	umad_port_t uport;
 	uint8_t rcvbuf[BUFSIZ];
 
 	/* open source port for sending MAD messages */
@@ -283,7 +281,6 @@ static struct metric_data *ibmad_metric_create(const char *instance,
 					      const char *ca_name, int port, unsigned base_lid)
 {
         struct metric_data *data;
-        char *state;
 	int rc;
 
         log_fn(LDMSD_LDEBUG, SAMP" ibmad_metric_create() %s, base_lid=%u\n",
@@ -353,7 +350,6 @@ static void metrics_tree_refresh()
         struct rbt new_metrics_tree;
         char ca_names[MAX_CA_NAMES][UMAD_CA_NAME_LEN];
         int num_ca_names;
-	int rc;
 	int i;
 
 	rbt_init(&new_metrics_tree, string_comparator);
