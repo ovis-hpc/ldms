@@ -221,6 +221,9 @@ err:
 	return NULL;
 }
 
+/*
+ * This function returns a value that must be freed
+ */
 char *str_repl_env_vars(const char *str)
 {
 	if (!str)

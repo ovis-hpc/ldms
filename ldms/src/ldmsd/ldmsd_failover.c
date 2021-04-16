@@ -2299,7 +2299,7 @@ int failover_ping_handler(ldmsd_req_ctxt_t req)
 	ldmsd_failover_t f;
 	struct ldmsd_req_attr_s attr;
 	struct failover_ping_data data;
-	const char *name;
+	char *name;
 	const char *errstr = NULL;
 
 	ldms_xprt_priority_set(req->xprt->ldms.ldms, 1);
@@ -2336,8 +2336,10 @@ int failover_ping_handler(ldmsd_req_ctxt_t req)
 	attr.discrim = 0;
 	ldmsd_append_reply(req, (char *)&attr.discrim, sizeof(uint32_t),
 			   LDMSD_REQ_EOM_F);
+	free(name);
 	return rc;
 err:
+	free(name);
 	__failover_unlock(f);
 	req->errcode = rc;
 	ldmsd_send_req_response(req, errstr);
