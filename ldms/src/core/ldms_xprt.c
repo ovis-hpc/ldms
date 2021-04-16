@@ -3701,6 +3701,18 @@ int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
 	} else {
 		rc = ldms_xprt_connect(x, ai->ai_addr, ai->ai_addrlen, cb, cb_arg);
 	}
+
+	/* Wait, up to 2 seconds, for the xprt connection to establish
+	 * * TODO: should the wait variable become a function input? Show we throw error?
+	 * * I think 2 seconds is long enough to decide if the connection will ever happen
+	 */
+	int wait_time_micro = 10000;
+	while (ldms_xprt_connected(x) == 0 && wait_time_micro < 2000000) {
+		usleep(wait_time_micro);
+		wait_time_micro += 10000;
+	}
+	printf("ldms_xprt_connect_by_name, waited for %d microseconds to establish the connection\n", wait_time_micro);
+
 out:
 	freeaddrinfo(ai);
 	return rc;
