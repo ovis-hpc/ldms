@@ -2976,21 +2976,3 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 	return ZAP_ERR_RESOURCE;
 }
 
-static void __attribute__ ((destructor)) ugni_fini(void);
-static void ugni_fini()
-{
-	gni_return_t grc;
-	struct ugni_mh *mh;
-
-	while (!LIST_EMPTY(&mh_list)) {
-		mh = LIST_FIRST(&mh_list);
-		ZUGNI_LIST_REMOVE(mh, link);
-		(void)GNI_MemDeregister(_dom.nic, &mh->mh);
-		free(mh);
-	}
-
-	grc = GNI_CdmDestroy(_dom.cdm);
-	if (grc != GNI_RC_SUCCESS)
-		LOG("GNI_CdmDestroy failed with error %d\n", grc);
-}
-
