@@ -1227,7 +1227,10 @@ generate_store_config() {
 generate_debug_config() {
 	out=$LDMSD_PLUGIN_CONFIG_FILE
 	if test -n "$LDMSD_DEBUG_CONFIG_FILE" -a -f "$LDMSD_DEBUG_CONFIG_FILE"; then
+		echo "# lines appended from $LDMSD_DEBUG_CONFIG_FILE" >> $out
 		cat $LDMSD_DEBUG_CONFIG_FILE >> $out
+	else
+		echo "# no LDMSD_DEBUG_CONFIG_FILE defined." >> $out
 	fi
 }
 
