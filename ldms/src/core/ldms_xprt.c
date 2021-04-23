@@ -3050,7 +3050,7 @@ int ldms_xprt_send(ldms_t _x, char *msg_buf, size_t msg_len)
 	if (!ldms_xprt_connected(x))
 		return ENOTCONN;
 
-	assert(msg_len > 4);
+	assert(msg_len >= 4);
 	if (!msg_buf)
 		return EINVAL;
 
