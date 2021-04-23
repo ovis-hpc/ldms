@@ -905,7 +905,7 @@ int __ldmsd_append_buffer(struct ldmsd_req_ctxt *reqc,
 				msg_flags, msg_type, code,
 				data, data_len);
 	req_ctxt_ref_put(reqc);
-	return 0;
+	return rc;
 }
 
 int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc,
@@ -5971,16 +5971,17 @@ static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
 						 NULL, __on_republish_resp, NULL);
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, stream);
 	if (rc)
-		goto err;
+		goto out;
 	if (stream_type == LDMSD_STREAM_JSON)
 		attr_id = LDMSD_ATTR_JSON;
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, attr_id, data);
 	if (rc)
-		goto err;
+		goto out;
 	rc = ldmsd_req_cmd_attr_term(rcmd);
 	return rc;
- err:
-	ldmsd_req_cmd_free(rcmd);
+ out:
+	if (rc)
+		ldmsd_req_cmd_free(rcmd);
 	return rc;
 }
 
