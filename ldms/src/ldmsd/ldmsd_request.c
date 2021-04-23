@@ -928,7 +928,7 @@ int ldmsd_req_cmd_attr_append(ldmsd_req_cmd_t rcmd,
 		attr.discrim = 0;
 		return __ldmsd_append_buffer(rcmd->reqc, (void*)&attr.discrim,
 					     sizeof(attr.discrim),
-					     LDMSD_REQ_EOM_F,
+					     rcmd->msg_flags|LDMSD_REQ_EOM_F,
 					     LDMSD_REQ_TYPE_CONFIG_CMD);
 	}
 	if (attr_id >= LDMSD_ATTR_LAST)
