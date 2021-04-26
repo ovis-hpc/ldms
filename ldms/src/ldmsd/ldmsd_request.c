@@ -216,6 +216,7 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_stats_handler(ldmsd_req_ctxt_t req_ctxt);
 static int thread_stats_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_stats_handler(ldmsd_req_ctxt_t req_ctxt);
+static int bad_req_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
 static int ebusy_handler(ldmsd_req_ctxt_t reqc);
@@ -773,6 +774,42 @@ err:
 	return rc;
 }
 
+int validate_ldmsd_req(ldmsd_req_ctxt_t reqc, ldmsd_req_hdr_t rh)
+{
+	ldmsd_req_attr_t attr;
+	unsigned int off;
+	/* Request consists of only the header and terminating discriminator */
+	if (rh->rec_len == sizeof(*rh) + sizeof(attr->discrim)) {
+		attr = (ldmsd_req_attr_t)(rh + 1);
+		if (attr->discrim != 0)
+			return 0;
+		else
+			return 1;
+	}
+	/* Request contains, at least, one attribute*/
+	else if (rh->rec_len < sizeof(*rh) + sizeof(*attr))
+		return 0;
+
+	off = sizeof(*rh);
+	attr = (ldmsd_req_attr_t)(rh+1);
+
+	while (attr->discrim) {
+		off += sizeof(*attr) + attr->attr_len;
+		/* Check attr doesn't reference beyond end of request buffer */
+		if (off + sizeof(attr->discrim) > rh->rec_len)
+			return 0;
+		/* Check null termination of each attr_value */
+		else if (attr->attr_value[attr->attr_len-1] != '\0')
+			return 0;
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+		if (attr->discrim) {
+			if (off + sizeof(*attr) + sizeof(attr->discrim) > rh->rec_len)
+				return 0;
+		}
+	}
+	return 1;
+}
+
 int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 {
 	struct request_handler_entry *ent;
@@ -781,6 +818,7 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 	uid_t luid;
 	gid_t lgid;
 	mode_t mask;
+	int rc;
 
 	if (LDMSD_CFG_TYPE_LDMS == reqc->xprt->type)
 		ldms = reqc->xprt->ldms.ldms;
@@ -794,6 +832,9 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 
 	ent = &request_handler[request->req_id];
 
+	rc = validate_ldmsd_req(reqc, request);
+	if (!rc)
+		return bad_req_handler(reqc);
 	/* Check for unimplemented request */
 	if (!ent->handler)
 		return unimplemented_handler(reqc);
@@ -5049,6 +5090,16 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 out:
 	free(rep_len_str);
 	free(num_rec_str);
+	return 0;
+}
+
+static int bad_req_handler(ldmsd_req_ctxt_t reqc)
+{
+	size_t cnt;
+	reqc->errcode = EBADRQC;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"LDMSD received bad request.");
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }
 
