@@ -872,13 +872,9 @@ void ldmsd_req_array_free(struct ldmsd_req_array *req_array)
 
 ldmsd_req_attr_t ldmsd_req_attr_get_by_id(char *request, uint32_t attr_id)
 {
-	unsigned int off;
 	ldmsd_req_hdr_t req = (ldmsd_req_hdr_t)request;
 	ldmsd_req_attr_t attr = ldmsd_first_attr(req);
 	while (attr->discrim) {
-		off = sizeof(*request);
-		if (off + attr->attr_len > req->rec_len)
-			return NULL;
 		if (attr->attr_id == attr_id)
 			return attr;
 		attr = ldmsd_next_attr(attr);

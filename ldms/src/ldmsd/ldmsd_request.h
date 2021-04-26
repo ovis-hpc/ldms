@@ -508,11 +508,10 @@ int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc, const char *data, size_t dat
 void ldmsd_send_error_reply(ldmsd_cfg_xprt_t xprt, uint32_t msg_no,
 			    uint32_t error, char *data, size_t data_len);
 void ldmsd_send_req_response(ldmsd_req_ctxt_t reqc, const char *msg);
+int validate_ldmsd_req(ldmsd_req_ctxt_t reqc, ldmsd_req_hdr_t rh);
 int ldmsd_handle_request(ldmsd_req_ctxt_t reqc);
 static inline ldmsd_req_attr_t ldmsd_first_attr(ldmsd_req_hdr_t rh)
 {
-	if (rh->rec_len <= sizeof(*rh))
-		return NULL;
 	return (ldmsd_req_attr_t)(rh + 1);
 }
 
