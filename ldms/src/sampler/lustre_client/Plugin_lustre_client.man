@@ -14,9 +14,10 @@ or a configuration file. The lustre_client plugin provide a metric set for each 
 mounts found on a node.  The schema is named "lustre_client".  The data for the metric sets is
 generally found in /proc/fs/lustre/llite/*/stats.
 
-This plugin currently employs zero configuration.  The producer name is set to the hostname, and the metric set instance names are
-derived from the llite instance name.  Any user-supplied configuration values will be ignored.  Future versions may add
-configuration options.
+This plugin currently employs zero configuration.  The producer name is set to the hostname
+by default, and the metric set instance names are
+derived from the llite instance name. Any user-supplied configuration values not
+documented here will be ignored.
 
 This plugin should work with at least Lustre versions 2.8, 2.10, and 2.12.
 
@@ -33,13 +34,18 @@ name=<plugin_name>
 .br
 This MUST be lustre_client.
 .TP
-job_set=<metric set name>
+job_set=<job metric set name>
 .br
 The name of the metric set that contains the job id information (default=job_id)
+.TP
+producer=<alternate host name>
+.br
+The default used for producer (if not provided) is the result of gethostname().
+The set instance names will be $producer/$llite_name.
 .RE
 
-.SH BUGS
-No known bugs.
+.SH NOTES
+Improperly spelled option names are not trapped as configuration errors.
 
 .SH EXAMPLES
 .PP
@@ -51,4 +57,4 @@ start name=lustre_client interval=1000000
 .fi
 
 .SH SEE ALSO
-ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7)
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), gethostname(2)

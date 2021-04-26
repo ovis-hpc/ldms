@@ -124,7 +124,7 @@ ldms_set_t llite_general_create(const char *producer_name,
 {
         ldms_set_t set;
         int index;
-        char instance_name[256];
+        char instance_name[LDMS_PRODUCER_NAME_MAX+64];
 
         log_fn(LDMSD_LDEBUG, SAMP" llite_general_create()\n");
         snprintf(instance_name, sizeof(instance_name), "%s/%s",
