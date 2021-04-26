@@ -227,6 +227,15 @@ static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
+	char *ival = av_value(avl, "producer");
+	if (ival) {
+		if (strlen(ival) < sizeof(producer_name)) {
+			strncpy(producer_name, ival, sizeof(producer_name));
+		} else {
+                        log_fn(LDMSD_LERROR, SAMP": config: producer name too long.\n");
+                        return EINVAL;
+		}
+	}
 	jobid_helper_config(avl);
         return 0;
 }
