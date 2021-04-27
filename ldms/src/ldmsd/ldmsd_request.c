@@ -1379,10 +1379,17 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 			goto eexist;
 		else if (errno == EAFNOSUPPORT)
 			goto eafnosupport;
+		else if (errno == ENOENT)
+			goto ebadauth;
 		else
 			goto enomem;
 	}
 
+	goto send_reply;
+ebadauth:
+	reqc->errcode = ENOENT;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			"Authentication name not found, check the auth_add configuration.");
 	goto send_reply;
 enomem:
 	reqc->errcode = ENOMEM;
@@ -5978,6 +5985,8 @@ static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
 	if (rc)
 		goto out;
 	rc = ldmsd_req_cmd_attr_term(rcmd);
+	if (rc)
+		goto out;
 	return rc;
  out:
 	if (rc)
