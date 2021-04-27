@@ -544,6 +544,7 @@ char * ldmsd_stream_client_dump()
 					first_client?"":",",
 					sym?sym[0]:_pbuf,
 					c->c_ctxt);
+			free(sym);
 			if (rc)
 				goto err_3;
 			first_client = 0;
