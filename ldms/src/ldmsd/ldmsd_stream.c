@@ -342,7 +342,7 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
  * \returns 0 on success, or an errno
  */
 #define LDMSD_STREAM_CONNECT_TIMEOUT 5 /* 5 seconds */
-#define LDMSD_STREAM_ACK_TIMEOUT 2 /* 2 seconds */
+#define LDMSD_STREAM_ACK_TIMEOUT 20 /* 20 seconds */
 int ldmsd_stream_publish_file(const char *stream, const char *type,
 			      const char *xprt, const char *host, const char *port,
 			      const char *auth, struct attr_value_list *auth_opt,

@@ -361,6 +361,15 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name, ldms_log_fn_t log_fn,
 			       const char *auth_name,
 			       struct attr_value_list *auth_av_list);
 
+
+/**
+ * \brief Return the unique connection id for a transport instance
+ *
+ * \param x The transport handle
+ * \returns The unique connection id for the transport
+ */
+uint64_t ldms_xprt_conn_id(ldms_t x);
+
 /**
  * \brief Return the transport type name string
  * \param x The transport handle

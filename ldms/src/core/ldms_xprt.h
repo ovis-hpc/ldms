@@ -412,6 +412,9 @@ struct ldms_xprt {
 
 	ldms_auth_t auth; /* authentication object */
 
+	/* Unique connection id */
+	uint64_t conn_id;
+
 	/* Remote Credential */
 	uid_t ruid;
 	gid_t rgid;
