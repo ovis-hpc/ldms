@@ -5991,9 +5991,6 @@ static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
 	if (rc)
 		goto out;
 	rc = ldmsd_req_cmd_attr_term(rcmd);
-	if (rc)
-		goto out;
-	return rc;
  out:
 	if (rc)
 		ldmsd_req_cmd_free(rcmd);
