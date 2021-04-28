@@ -3,6 +3,7 @@ ACLOCAL_AMFLAGS = -I m4
 SUBDIRS = .
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
+noinst_LTLIBRARIES =
 
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_LDFLAGS = @OVIS_LIB_ABS@
@@ -13,7 +14,11 @@ CORE_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
 COMMON_LIBADD = libsampler_base.la $(CORE_LIBADD) \
 		$(top_builddir)/lib/src/coll/libcoll.la
 
-noinst_LTLIBRARIES = libjobid_helper.la
+noinst_LTLIBRARIES += libldms_compid_helper.la
+libldms_compid_helper_la_SOURCES = comp_id_helper.c comp_id_helper.h
+libldms_compid_helper_la_LIBADD = $(CORE_LIBADD)
+
+noinst_LTLIBRARIES += libjobid_helper.la
 libjobid_helper_la_SOURCES = jobid_helper.c jobid_helper.h
 libjobid_helper_la_LIBADD = $(CORE_LIBADD) $(top_builddir)/lib/src/coll/libcoll.la
 
