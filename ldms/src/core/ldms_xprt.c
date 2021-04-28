@@ -2872,9 +2872,16 @@ static int __rbd_rbt_key_comp(void *tree_key, const void *key)
 	return 0;
 }
 
+static uint64_t __ldms_conn_id;
+uint64_t ldms_xprt_conn_id(ldms_t ldms)
+{
+	return ldms->conn_id;
+}
+
 void __ldms_xprt_init(struct ldms_xprt *x, const char *name,
 					ldms_log_fn_t log_fn)
 {
+	x->conn_id = __sync_add_and_fetch(&__ldms_conn_id, 1);
 	x->name[LDMS_MAX_TRANSPORT_NAME_LEN - 1] = 0;
 	memccpy(x->name, name, 0, LDMS_MAX_TRANSPORT_NAME_LEN - 1);
 	x->ref_count = 1;

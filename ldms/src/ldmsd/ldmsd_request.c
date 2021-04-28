@@ -666,7 +666,7 @@ ldmsd_req_cmd_t alloc_req_cmd_ctxt(ldms_t ldms,
 		goto err0;
 
 	key.msg_no = ldmsd_msg_no_get();
-	key.conn_id = (uint64_t)(long unsigned)ldms;
+	key.conn_id = ldms_xprt_conn_id(ldms);
 	rcmd->reqc = alloc_req_ctxt(&key, max_msg_sz);
 	if (!rcmd->reqc)
 		goto err1;
@@ -1035,7 +1035,10 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 	char *oom_errstr = "ldmsd out of memory";
 
 	key.msg_no = ntohl(request->msg_no);
-	key.conn_id = (uint64_t)(long unsigned)xprt;
+	if (xprt->ldms.ldms)
+		key.conn_id = ldms_xprt_conn_id(xprt->ldms.ldms);
+	else
+		key.conn_id = (uint64_t)xprt;
 
 	if (ntohl(request->marker) != LDMSD_RECORD_MARKER) {
 		char *msg = "Config request is missing record marker";
@@ -1132,7 +1135,10 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 	int rc = 0;
 
 	key.msg_no = ntohl(response->msg_no);
-	key.conn_id = (uint64_t)(long unsigned)xprt->ldms.ldms;
+	if (xprt->ldms.ldms)
+		key.conn_id = ldms_xprt_conn_id(xprt->ldms.ldms);
+	else
+		key.conn_id = (uint64_t)xprt;
 
 	if (ntohl(response->marker) != LDMSD_RECORD_MARKER) {
 		ldmsd_log(LDMSD_LERROR,
