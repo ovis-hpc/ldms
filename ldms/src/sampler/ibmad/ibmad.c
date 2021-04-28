@@ -510,7 +510,9 @@ static void metrics_tree_sample()
                 struct metric_data *data;
 
                 data = container_of(rbn, struct metric_data, metrics_node);
+		ldms_transaction_begin(data->metric_set);
 		metric_sample(data, dt);
+		ldms_transaction_end(data->metric_set);
         }
 
 	memcpy(&tv_prev, &tv_now, sizeof(tv_prev));
