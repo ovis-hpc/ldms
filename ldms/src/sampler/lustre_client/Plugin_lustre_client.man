@@ -25,7 +25,7 @@ This plugin should work with at least Lustre versions 2.8, 2.10, and 2.12.
 
 .TP
 .BR config
-name=<plugin_name> [job_set=<metric set name>]
+name=<plugin_name> [job_set=<metric set name>] [producer=<name>] [component_id=<u64>]
 .br
 configuration line
 .RS
@@ -42,6 +42,10 @@ producer=<alternate host name>
 .br
 The default used for producer (if not provided) is the result of gethostname().
 The set instance names will be $producer/$llite_name.
+.TP
+component_id=<uint64_t>
+.br
+Optional (defaults to 0) number of the host where the sampler is running. All sets on a host will have the same value.
 .RE
 
 .SH NOTES

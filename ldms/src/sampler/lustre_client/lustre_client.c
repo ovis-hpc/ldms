@@ -28,6 +28,8 @@ static const char * const llite_paths[] = {
 };
 static const int llite_paths_len = sizeof(llite_paths) / sizeof(llite_paths[0]);
 
+static struct comp_id_data cid;
+
 ldmsd_msg_log_f log_fn;
 char producer_name[LDMS_PRODUCER_NAME_MAX];
 
@@ -80,7 +82,8 @@ static struct llite_data *llite_create(const char *llite_name, const char *based
         }
         llite->general_metric_set = llite_general_create(producer_name,
                                                          llite->fs_name,
-                                                         llite->name);
+                                                         llite->name,
+                                                         &cid);
         if (llite->general_metric_set == NULL)
                 goto out6;
         rbn_init(&llite->llite_tree_node, llite->name);
@@ -237,6 +240,7 @@ static int config(struct ldmsd_plugin *self,
 		}
 	}
 	jobid_helper_config(avl);
+	comp_id_helper_config(avl, &cid);
         return 0;
 }
 
@@ -244,7 +248,7 @@ static int sample(struct ldmsd_sampler *self)
 {
         log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
         if (llite_general_schema_is_initialized() < 0) {
-                if (llite_general_schema_init() < 0) {
+                if (llite_general_schema_init(&cid) < 0) {
                         log_fn(LDMSD_LERROR, SAMP" general schema create failed\n");
                         return ENOMEM;
                 }
