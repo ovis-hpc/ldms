@@ -926,11 +926,15 @@ int ldmsd_req_cmd_attr_append(ldmsd_req_cmd_t rcmd,
 			};
 	if (attr_id == LDMSD_ATTR_TERM) {
 		attr.discrim = 0;
-		return __ldmsd_append_buffer(rcmd->reqc, (void*)&attr.discrim,
+		rc = __ldmsd_append_buffer(rcmd->reqc, (void*)&attr.discrim,
 					     sizeof(attr.discrim),
 					     rcmd->msg_flags|LDMSD_REQ_EOM_F,
 					     LDMSD_REQ_TYPE_CONFIG_CMD);
+		ldmsd_msg_buf_free(rcmd->reqc->rep_buf);
+		rcmd->reqc->rep_buf = NULL;
+		return rc;
 	}
+
 	if (attr_id >= LDMSD_ATTR_LAST)
 		return EINVAL;
 
