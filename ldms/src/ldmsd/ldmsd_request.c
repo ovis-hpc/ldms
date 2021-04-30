@@ -936,11 +936,15 @@ int ldmsd_req_cmd_attr_append(ldmsd_req_cmd_t rcmd,
 			};
 	if (attr_id == LDMSD_ATTR_TERM) {
 		attr.discrim = 0;
-		return __ldmsd_append_buffer(rcmd->reqc, (void*)&attr.discrim,
+		rc = __ldmsd_append_buffer(rcmd->reqc, (void*)&attr.discrim,
 					     sizeof(attr.discrim),
 					     rcmd->msg_flags|LDMSD_REQ_EOM_F,
 					     LDMSD_REQ_TYPE_CONFIG_CMD);
+		ldmsd_msg_buf_free(rcmd->reqc->rep_buf);
+		rcmd->reqc->rep_buf = NULL;
+		return rc;
 	}
+
 	if (attr_id >= LDMSD_ATTR_LAST)
 		return EINVAL;
 
@@ -5934,7 +5938,13 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	reqc->errcode = 0;
-	ldmsd_send_req_response(reqc, "ACK");
+	/*
+	 * If a LDMSD_ATTR_TYPE attribute exists, the publisher does not want
+	 * an acknowledge response.
+	 */
+	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_TYPE);
+	if (!attr)
+		ldmsd_send_req_response(reqc, "ACK");
 
 	if (!ldmsd_stream_subscriber_count(stream_name))
 		/* There are no subscribers, ignore the data */
@@ -5983,7 +5993,18 @@ static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
 	const char *stream = ldmsd_stream_client_name(c);
 	ldmsd_req_cmd_t rcmd = ldmsd_req_cmd_new(ldms, LDMSD_STREAM_PUBLISH_REQ,
 						 NULL, __on_republish_resp, NULL);
+	if (!rcmd) {
+		ldmsd_log(LDMSD_LCRITICAL, "ldmsd is out of memory\n");
+		return ENOMEM;
+	}
 	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, stream);
+	if (rc)
+		goto out;
+	/*
+	 * Add an LDMSD_ATTR_TYPE attribute to let the peer know
+	 * that we don't want an acknowledge response.
+	 */
+	rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_TYPE, "");
 	if (rc)
 		goto out;
 	if (stream_type == LDMSD_STREAM_JSON)
@@ -5993,8 +6014,7 @@ static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
 		goto out;
 	rc = ldmsd_req_cmd_attr_term(rcmd);
  out:
-	if (rc)
-		ldmsd_req_cmd_free(rcmd);
+	ldmsd_req_cmd_free(rcmd);
 	return rc;
 }
 
