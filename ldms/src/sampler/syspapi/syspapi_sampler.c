@@ -65,8 +65,8 @@
 
 #include "ldms.h"
 #include "ldmsd.h"
-#include "ldmsd_stream.h"
 #include "../sampler_base.h"
+#include "../papi/papi_hook.h"
 
 #include "ovis_json/ovis_json.h"
 
@@ -682,26 +682,24 @@ __resume()
 	}
 }
 
-static int
-__stream_cb(ldmsd_stream_client_t c, void *ctxt,
-		ldmsd_stream_type_t stream_type,
-		const char *data, size_t data_len,
-		json_entity_t entity)
+void
+__on_task_init()
 {
 	if (!auto_pause)
-		return 0;
+		return ;
 	pthread_mutex_lock(&syspapi_mutex);
-	if (stream_type != LDMSD_STREAM_STRING)
-		goto out;
-	if (strcmp("pause", data) == 0) {
-		__pause();
-	}
-	if (strcmp("resume", data) == 0) {
-		__resume();
-	}
- out:
+	__pause();
 	pthread_mutex_unlock(&syspapi_mutex);
-	return 0;
+}
+
+void
+__on_task_empty()
+{
+	if (!auto_pause)
+		return ;
+	pthread_mutex_lock(&syspapi_mutex);
+	__resume();
+	pthread_mutex_unlock(&syspapi_mutex);
 }
 
 static struct ldmsd_sampler syspapi_plugin = {
@@ -718,7 +716,6 @@ static struct ldmsd_sampler syspapi_plugin = {
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
-	ldmsd_stream_client_t c;
 	int rc;
 	msglog = pf;
 	rc = PAPI_library_init(PAPI_VER_CURRENT);
@@ -727,10 +724,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 			     "the PAPI library.\n", rc);
 	}
 	NCPU = sysconf(_SC_NPROCESSORS_CONF);
-	c = ldmsd_stream_subscribe("syspapi_stream", __stream_cb, NULL);
-	if (!c) {
-		ldmsd_lerror(SAMP": failed to subscribe to 'syspapi_stream' "
-			     "stream, errno: %d\n", errno);
-	}
+	register_task_init_hook(__on_task_init);
+	register_task_empty_hook(__on_task_empty);
 	return &syspapi_plugin.base;
 }

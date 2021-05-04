@@ -12,6 +12,7 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 		$(top_builddir)/lib/src/coll/libcoll.la
 
 libsyspapi_sampler_la_SOURCES = syspapi_sampler.c
-libsyspapi_sampler_la_LIBADD = $(COMMON_LIBADD) $(LTLIBPAPI) $(LTLIBPFM) -lpthread
+libsyspapi_sampler_la_LIBADD = $(COMMON_LIBADD) $(LTLIBPAPI) $(LTLIBPFM) -lpthread \
+			       ../papi/libpapi_hook.la
 libsyspapi_sampler_la_CFLAGS = $(AM_CFLAGS) -DSYSCONFDIR='"$(sysconfdir)"'
 pkglib_LTLIBRARIES += libsyspapi_sampler.la
