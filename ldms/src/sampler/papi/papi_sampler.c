@@ -61,6 +61,7 @@
 #include "ldmsd_stream.h"
 #include "../sampler_base.h"
 #include "papi_sampler.h"
+#include "papi_hook.h"
 
 static ldmsd_msg_log_f msglog;
 static char *papi_stream_name;
@@ -399,8 +400,7 @@ static int sample(struct ldmsd_sampler *self)
 	}
 	if (rbt_empty(&job_tree)) {
 		/* resume syspapi when no job is running */
-		ldmsd_stream_deliver("syspapi_stream", LDMSD_STREAM_STRING,
-				"resume", 7, NULL);
+		exec_task_empty_hook();
 	}
 	pthread_mutex_unlock(&job_lock);
 	return 0;
@@ -669,8 +669,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 	}
 
 	/* pause syspapi */
-	ldmsd_stream_deliver("syspapi_stream", LDMSD_STREAM_STRING,
-			     "pause", 6, NULL);
+	exec_task_init_hook();
 
 	LIST_FOREACH(t, &job->task_list, entry) {
 		rc = PAPI_create_eventset(&t->event_set);

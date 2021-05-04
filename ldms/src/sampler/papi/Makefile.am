@@ -12,7 +12,10 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 		$(top_builddir)/lib/src/ovis_json/libovis_json.la \
 		-lm -lpthread
 
+libpapi_hook_la_SOURCES = papi_hook.c papi_hook.h
+pkglib_LTLIBRARIES += libpapi_hook.la
+
 libpapi_sampler_la_SOURCES = papi_sampler.h papi_sampler.c papi_config.c
-libpapi_sampler_la_LIBADD = $(COMMON_LIBADD) $(LTLIBPAPI)
+libpapi_sampler_la_LIBADD = $(COMMON_LIBADD) $(LTLIBPAPI) libpapi_hook.la
 libpapi_sampler_la_CFLAGS = -DSYSCONFDIR='"$(sysconfdir)"'
 pkglib_LTLIBRARIES += libpapi_sampler.la
