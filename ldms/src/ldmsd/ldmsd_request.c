@@ -124,12 +124,19 @@ void __dlog(const char *fmt, ...)
 __attribute__((format(printf, 3, 4)))
 size_t Snprintf(char **dst, size_t *len, char *fmt, ...);
 
+#define REQ_CTXT_KEY_F_CFGFILE 1 /* requests from configuration files */
+#define REQ_CTXT_KEY_F_REM_REQ 2 /* remote requests */
+#define REQ_CTXT_KEY_F_LOC_REQ 3 /* requests awaiting for replies */
+
 static int msg_comparator(void *a, const void *b)
 {
 	msg_key_t ak = (msg_key_t)a;
 	msg_key_t bk = (msg_key_t)b;
 	int rc;
 
+	rc = ak->flags - bk->flags;
+	if (rc)
+		return rc;
 	rc = ak->conn_id - bk->conn_id;
 	if (rc)
 		return rc;
@@ -140,8 +147,8 @@ struct rbt msg_tree = RBT_INITIALIZER(msg_comparator);
 static
 void ldmsd_req_ctxt_sec_get(ldmsd_req_ctxt_t rctxt, ldmsd_sec_ctxt_t sctxt)
 {
-	if (rctxt->xprt->xprt) {
-		ldms_xprt_cred_get(rctxt->xprt->xprt, NULL, &sctxt->crd);
+	if (LDMSD_CFG_TYPE_LDMS == rctxt->xprt->type) {
+		ldms_xprt_cred_get(rctxt->xprt->ldms.ldms, NULL, &sctxt->crd);
 	} else {
 		ldmsd_sec_ctxt_get(sctxt);
 	}
@@ -664,7 +671,7 @@ ldmsd_req_cmd_t alloc_req_cmd_ctxt(ldms_t ldms,
 	rcmd = calloc(1, sizeof(*rcmd));
 	if (!rcmd)
 		goto err0;
-
+	key.flags = REQ_CTXT_KEY_F_LOC_REQ;
 	key.msg_no = ldmsd_msg_no_get();
 	key.conn_id = ldms_xprt_conn_id(ldms);
 	rcmd->reqc = alloc_req_ctxt(&key, max_msg_sz);
@@ -770,10 +777,13 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 {
 	struct request_handler_entry *ent;
 	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)reqc->req_buf;
-	ldms_t xprt = reqc->xprt->xprt;
+	ldms_t ldms = NULL;
 	uid_t luid;
 	gid_t lgid;
 	mode_t mask;
+
+	if (LDMSD_CFG_TYPE_LDMS == reqc->xprt->type)
+		ldms = reqc->xprt->ldms.ldms;
 
 	__dlog("handling req %s\n", ldmsd_req_id2str(reqc->req_id));
 
@@ -789,7 +799,7 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 		return unimplemented_handler(reqc);
 
 	/* Check command permission */
-	if (xprt) {
+	if (ldms) {
 		/* NOTE: NULL xprt is a config file.
 		 *       So, this is an in-band ldms xprt */
 
@@ -800,10 +810,10 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 
 		/* check against credential */
 		struct ldms_cred crd;
-		ldms_xprt_cred_get(xprt, &crd, NULL);
+		ldms_xprt_cred_get(ldms, &crd, NULL);
 		luid = crd.uid;
 		lgid = crd.gid;
-		if (0 != ldms_access_check(xprt, 0111, luid, lgid,
+		if (0 != ldms_access_check(ldms, 0111, luid, lgid,
 				ent->flag & 0111))
 			return eperm_handler(reqc);
 	}
@@ -1035,10 +1045,13 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 	char *oom_errstr = "ldmsd out of memory";
 
 	key.msg_no = ntohl(request->msg_no);
-	if (xprt->ldms.ldms)
+	if (LDMSD_CFG_TYPE_LDMS == xprt->type) {
+		key.flags = REQ_CTXT_KEY_F_REM_REQ;
 		key.conn_id = ldms_xprt_conn_id(xprt->ldms.ldms);
-	else
-		key.conn_id = (uint64_t)xprt;
+	} else {
+		key.flags = REQ_CTXT_KEY_F_CFGFILE;
+		key.conn_id = xprt->file.cfgfile_id;
+	}
 
 	if (ntohl(request->marker) != LDMSD_RECORD_MARKER) {
 		char *msg = "Config request is missing record marker";
@@ -1134,6 +1147,7 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 	size_t cnt;
 	int rc = 0;
 
+	key.flags = REQ_CTXT_KEY_F_LOC_REQ;
 	key.msg_no = ntohl(response->msg_no);
 	if (xprt->ldms.ldms)
 		key.conn_id = ldms_xprt_conn_id(xprt->ldms.ldms);
@@ -1364,12 +1378,7 @@ static int prdcr_add_handler(ldmsd_req_ctxt_t reqc)
 	auth = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTH);
 
 	struct ldmsd_sec_ctxt sctxt;
-	if (reqc->xprt->xprt) {
-		/* the requester is the owner of the object */
-		ldms_xprt_cred_get(reqc->xprt->xprt, NULL, &sctxt.crd);
-	} else {
-		ldmsd_sec_ctxt_get(&sctxt);
-	}
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	uid = sctxt.crd.uid;
 	gid = sctxt.crd.gid;
 
@@ -2031,11 +2040,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	}
 
 	struct ldmsd_sec_ctxt sctxt;
-	if (reqc->xprt->xprt) {
-		ldms_xprt_cred_get(reqc->xprt->xprt, NULL, &sctxt.crd);
-	} else {
-		ldmsd_sec_ctxt_get(&sctxt);
-	}
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	uid = sctxt.crd.uid;
 	gid = sctxt.crd.gid;
 
@@ -2727,11 +2732,7 @@ static int updtr_add_handler(ldmsd_req_ctxt_t reqc)
 	auto_interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTO_INTERVAL);
 
 	struct ldmsd_sec_ctxt sctxt;
-	if (reqc->xprt->xprt) {
-		ldms_xprt_cred_get(reqc->xprt->xprt, NULL, &sctxt.crd);
-	} else {
-		ldmsd_sec_ctxt_get(&sctxt);
-	}
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
 	uid = sctxt.crd.uid;
 	gid = sctxt.crd.gid;
 

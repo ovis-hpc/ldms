@@ -343,7 +343,7 @@ struct ldmsd_sec_ctxt __get_sec_ctxt(struct ldmsd_req_ctxt *req)
 {
 	struct ldmsd_sec_ctxt sctxt;
 	if (req) {
-		ldms_xprt_cred_get(req->xprt->xprt, NULL, &sctxt.crd);
+		ldms_xprt_cred_get(req->xprt->ldms.ldms, NULL, &sctxt.crd);
 	} else {
 		ldmsd_sec_ctxt_get(&sctxt);
 	}
