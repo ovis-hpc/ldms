@@ -92,16 +92,6 @@ pthread_mutex_t sp_list_lock = PTHREAD_MUTEX_INITIALIZER;
 #define LDMSD_PLUGIN_LIBPATH_MAX	1024
 struct plugin_list plugin_list;
 
-void ldmsd_cfg_unix_cleanup(ldmsd_cfg_xprt_t xprt)
-{
-	unlink(((struct sockaddr_un *)(&xprt->sock.ss))->sun_path);
-}
-
-void ldmsd_cfg_sock_cleanup(ldmsd_cfg_xprt_t xprt)
-{
-	/* nothing to do */
-}
-
 void ldmsd_cfg_ldms_xprt_cleanup(ldmsd_cfg_xprt_t xprt)
 {
 	/* nothing to do */
@@ -538,6 +528,12 @@ oom:
 	return NULL;
 }
 
+static uint64_t __get_cfgfile_id()
+{
+	static uint64_t id = 1;
+	return __sync_fetch_and_add(&id, 1);
+}
+
 /*
  * \param req_filter is a function that returns zero if we want to process the
  *                   request, and returns non-zero otherwise.
@@ -580,7 +576,8 @@ int __process_config_file(const char *path, int *lno, int trust,
 		goto cleanup;
 	}
 
-	xprt.xprt = NULL;
+	xprt.type = LDMSD_CFG_TYPE_FILE;
+	xprt.file.cfgfile_id = __get_cfgfile_id();
 	xprt.send_fn = log_response_fn;
 	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
 	xprt.trust = trust;
@@ -922,7 +919,7 @@ static inline void __log_sent_req(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t req)
 		ldmsd_lall("sending %s msg_no: %d:%lu, flags: %#o, "
 			   "rec_len: %u\n",
 			   ldmsd_req_id2str(hdr.req_id),
-			   hdr.msg_no, (uint64_t)xprt->xprt,
+			   hdr.msg_no, ldms_xprt_conn_id(xprt->ldms.ldms),
 			   hdr.flags, hdr.rec_len);
 		break;
 	case LDMSD_REQ_TYPE_CONFIG_RESP:

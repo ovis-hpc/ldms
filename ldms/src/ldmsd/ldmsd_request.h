@@ -248,6 +248,7 @@ typedef struct ldmsd_req_hdr_s {
  * +---------------------------------------------------------+
  */
 typedef struct req_ctxt_key {
+	uint8_t flags;
 	uint32_t msg_no;
 	uint64_t conn_id;
 } *msg_key_t;
@@ -259,23 +260,20 @@ typedef struct ldmsd_cfg_ldms_s {
 	ldms_t ldms;
 } *ldmsd_cfg_ldms_t;
 
-typedef struct ldmsd_cfg_sock_s {
-	int fd;
-	struct sockaddr_storage ss;
-} *ldmsd_cfg_sock_t;
-
 typedef struct ldmsd_cfg_file_s {
-	uint32_t next_msg_no;
+	uint64_t cfgfile_id;
 } *ldmsd_cfg_file_t;
 
 struct ldmsd_cfg_xprt_s;
 typedef int (*ldmsd_msg_send_fn_t)(void *xprt, char *data, size_t data_len);
 typedef void (*ldmsd_cfg_cleanup_fn_t)(struct ldmsd_cfg_xprt_s *xprt);
 typedef struct ldmsd_cfg_xprt_s {
+	enum {
+		LDMSD_CFG_TYPE_FILE,
+		LDMSD_CFG_TYPE_LDMS,
+	} type;
 	union {
-		void *xprt;
 		struct ldmsd_cfg_file_s file;
-		struct ldmsd_cfg_sock_s sock;
 		struct ldmsd_cfg_ldms_s ldms;
 	};
 	size_t max_msg;
