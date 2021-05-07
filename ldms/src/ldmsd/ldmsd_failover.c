@@ -388,17 +388,18 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 	ldmsd_req_cmd_t rcmd;
 	char buff[128];
 	const char *cstr;
+	ldmsd_prdcr_stream_t s;
 
 	if (__cfgobj_is_failover(&p->obj)) {
 		rc = EINVAL;
-		goto out;
+		goto err;
 	}
 
 	rcmd = ldmsd_req_cmd_new(x, LDMSD_FAILOVER_CFGPRDCR_REQ,
 				   NULL, NULL, NULL);
 	if (!rcmd) {
 		rc = errno;
-		goto out;
+		goto err;
 	}
 
 	/* NAME */
@@ -457,11 +458,33 @@ int __failover_send_prdcr(ldmsd_failover_t f, ldms_t x, ldmsd_prdcr_t p)
 	rc = ldmsd_req_cmd_attr_term(rcmd);
 	if (rc)
 		goto cleanup;
+	ldmsd_req_cmd_free(rcmd);
 
-	/* let-through for cleanup */
+	/* stream */
+	LIST_FOREACH(s, &p->stream_list, entry) {
+		rcmd = ldmsd_req_cmd_new(x, LDMSD_FAILOVER_CFGPRDCR_REQ,
+					   NULL, NULL, NULL);
+		if (!rcmd) {
+			rc = errno;
+			goto err;
+		}
+		snprintf(buff, sizeof(buff), LDMSD_FAILOVER_NAME_PREFIX "%s", p->obj.name);
+		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_NAME, buff);
+		if (rc)
+			goto cleanup;
+		rc = ldmsd_req_cmd_attr_append_str(rcmd, LDMSD_ATTR_STREAM, s->name);
+		if (rc)
+			goto cleanup;
+		rc = ldmsd_req_cmd_attr_term(rcmd);
+		if (rc)
+			goto cleanup;
+		ldmsd_req_cmd_free(rcmd);
+	}
+
+	return 0;
 cleanup:
 	ldmsd_req_cmd_free(rcmd);
-out:
+err:
 	return rc;
 }
 
@@ -1963,6 +1986,7 @@ int failover_reset_handler(ldmsd_req_ctxt_t req)
 	ldmsd_send_req_response(req, NULL);
 	return 0;
 }
+int ldmsd_prdcr_subscribe(ldmsd_prdcr_t prdcr, const char *stream);
 
 int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 {
@@ -1980,6 +2004,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 	char *gid = __req_attr_gets(req, LDMSD_ATTR_GID);
 	char *perm = __req_attr_gets(req, LDMSD_ATTR_PERM);
 	char *auth = __req_attr_gets(req, LDMSD_ATTR_AUTH);
+	char *stream = __req_attr_gets(req, LDMSD_ATTR_STREAM);
 
 	uid_t _uid;
 	gid_t _gid;
@@ -2007,8 +2032,12 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 
 	p = ldmsd_prdcr_find(name);
 	if (p) {
-		/* update (only interval) */
-		p->conn_intrvl_us = atoi(interval);
+		/* update interval */
+		if (interval)
+			p->conn_intrvl_us = atoi(interval);
+		/* add stream */
+		if (stream)
+			rc = ldmsd_prdcr_subscribe(p, stream);
 		ldmsd_prdcr_put(p);
 		goto out;
 	}
@@ -2028,6 +2057,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 		rc = errno;
 		goto out;
 	}
+
 	p = ldmsd_prdcr_new_with_auth(name, xprt, host, atoi(port), ptype,
 			atoi(interval), auth, _uid, _gid, _perm);
 	if (!p) {
@@ -2036,6 +2066,7 @@ int failover_cfgprdcr_handler(ldmsd_req_ctxt_t req)
 		goto out;
 	}
 	rbt_ins(&f->prdcr_rbt, &srbn->rbn);
+
 out:
 	__failover_unlock(f);
 	if (name)
@@ -2056,6 +2087,7 @@ out:
 		free(gid);
 	if (perm)
 		free(perm);
+	free(stream);
 	/* this req needs no resp */
 	return rc;
 }
