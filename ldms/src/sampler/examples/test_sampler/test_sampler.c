@@ -327,6 +327,7 @@ static int create_metric_set(const char *schema_name, int push)
 			snprintf(metric_name, 127, "metric_%d", i);
 			metric = malloc(sizeof(*metric));
 			metric->name = strdup(metric_name);
+			metric->vtype = LDMS_V_U64;
 			metric->idx = ldms_schema_metric_add(schema, metric_name, LDMS_V_U64);
 			if (metric->idx < 0) {
 				rc = ENOMEM;
