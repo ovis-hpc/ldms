@@ -122,7 +122,7 @@ int papi_process_config_data(job_data_t job, char *buf, size_t buflen, ldmsd_msg
 	int event_code;
 	char *event_str;
 	papi_event_t ev;
-
+	TAILQ_INIT(&job->event_list);
 	for (event_name = json_item_first(events_list); event_name;
 	     event_name = json_item_next(event_name)) {
 		if (JSON_STRING_VALUE != json_entity_type(event_name)) {
