@@ -1337,7 +1337,8 @@ class LdmsdCmdParser(cmd.Cmd):
             'SET_DELETE': {...},
             'DIR_REQ': {...},
             'DIR_REP': {...},
-            'SEND': {...}
+            'SEND': {...},
+            'RECV': {...}
           }
         }
         """
@@ -1451,7 +1452,7 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_listen(self, arg):
         """
         Add a listen endpoint
-        
+
         Parameters:
             xprt=   Transport name [sock, rdma, ugni]
             port=   Port number
@@ -1459,7 +1460,7 @@ class LdmsdCmdParser(cmd.Cmd):
             [auth=] Authenticantion domain.
                     If this is omitted or auth=auth_default is give,
                     the default authentication given the command line (-a and -A)
-                    will be used.. 
+                    will be used..
         """
         self.handle('listen', arg)
 
@@ -1483,7 +1484,7 @@ class LdmsdCmdParser(cmd.Cmd):
     def do_auth_add(self, arg):
         """
         Add an authentication domain
-        
+
         Parameters:
             name=      The authentication domain name
             [plugin=]  The authentication plugin [none, ovis, munge]
