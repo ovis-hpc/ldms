@@ -912,6 +912,7 @@ typedef enum ldms_xprt_ops_e {
 	LDMS_XPRT_OP_DIR_REQ,
 	LDMS_XPRT_OP_DIR_REP,
 	LDMS_XPRT_OP_SEND,
+	LDMS_XPRT_OP_RECV,
 	LDMS_XPRT_OP_COUNT
 } ldms_xprt_ops_t;
 

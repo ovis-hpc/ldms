@@ -92,7 +92,8 @@ const char *ldms_xprt_op_names[] = {
 	"SET_DELETE",
 	"DIR_REQ",
 	"DIR_REP",
-	"SEND"
+	"SEND",
+	"RECV",
 };
 
 /* This function is useful for displaying data structures stored in
