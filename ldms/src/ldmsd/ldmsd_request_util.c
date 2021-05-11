@@ -1008,7 +1008,7 @@ struct ldmsd_msg_buf *ldmsd_msg_buf_new(size_t len)
 	buf = malloc(sizeof(*buf));
 	if (!buf)
 		return NULL;
-	buf->buf = calloc(1, len);
+	buf->buf = malloc(len);
 	if (!buf->buf) {
 		free(buf);
 		return NULL;
