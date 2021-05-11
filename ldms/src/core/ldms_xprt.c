@@ -2037,12 +2037,32 @@ static int ldms_xprt_recv_reply(struct ldms_xprt *x, struct ldms_reply *reply)
 
 static int recv_cb(struct ldms_xprt *x, void *r)
 {
+	int rc;
 	struct ldms_request_hdr *h = r;
+	int64_t dur_us;
+	struct timespec start, end;
+	ldms_stats_entry_t e = NULL;
+	(void)clock_gettime(CLOCK_REALTIME, &start);
+	e = &x->stats.ops[LDMS_XPRT_OP_RECV];
+
 	int cmd = ntohl(h->cmd);
 	if (cmd > LDMS_CMD_REPLY)
-		return ldms_xprt_recv_reply(x, r);
+		rc = ldms_xprt_recv_reply(x, r);
+	else
+		rc = ldms_xprt_recv_request(x, r);
 
-	return ldms_xprt_recv_request(x, r);
+	(void)clock_gettime(CLOCK_REALTIME, &end);
+	dur_us = ldms_timespec_diff_us(&start, &end);
+	(void)clock_gettime(CLOCK_REALTIME, &x->stats.last_op);
+	if (e->min_us > dur_us)
+		e->min_us = dur_us;
+	if (e->max_us < dur_us)
+		e->max_us = dur_us;
+	e->total_us += dur_us;
+	e->mean_us = (e->count * e->mean_us) + dur_us;
+	e->count += 1;
+	e->mean_us /= e->count;
+	return rc;
 }
 
 zap_mem_info_t ldms_zap_mem_info()
