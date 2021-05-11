@@ -281,7 +281,13 @@ int ldmsd_stream_publish(ldms_t xprt,
 
 	rc = stream_send(xprt, buf, msg_no, 0, (char *)data, data_len);
 	if (rc)
-		goto err;
+			goto err;
+
+	if (data[data_len - 1] != '\0') {
+		rc = stream_send(xprt, buf, msg_no, 0, "\0", 1);
+		if (rc)
+			goto err;
+	}
 
 	/* TERMINATING */
 	a.discrim = 0;
@@ -431,6 +437,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	rewind(file);
 	msg_no = ldmsd_msg_no_get();
 
+	data_len += 1; /* +1 for '\0' */
 	rc = stream_hdr_send(x, msg_no, stream, stream_type, buf, data_len);
 	if (rc)
 		goto close_xprt;
@@ -440,6 +447,9 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		if (rc)
 			goto close_xprt;
 	}
+	rc = stream_send(x, buf, msg_no, 0, "\0", 1);
+	if (rc)
+		goto close_xprt;
 
 	/* Terminating */
 	a.discrim = 0;
