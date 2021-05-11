@@ -128,6 +128,9 @@ static void release_job_data(job_data_t jd)
 		jd->papi_init = 0;
 	}
 	rbt_del(&job_tree, &jd->job_ent);
+	if (jd->job_end == 0) {
+		jd->job_end = jd->job_state_time;
+	}
 	LIST_INSERT_HEAD(&job_expiry_list, jd, expiry_entry);
 }
 
@@ -168,14 +171,21 @@ static void *cleanup_proc(void *arg)
 	LIST_HEAD(,job_data) delete_list;
 	LIST_INIT(&delete_list);
 	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
-
+	int sleep_time = papi_job_expiry / 10;
+	if (!sleep_time)
+		sleep_time = 1;
 	while (1) {
-		sleep(papi_job_expiry);
+		sleep(sleep_time);
 		now = time(NULL);
 		pthread_mutex_lock(&job_lock);
 		LIST_FOREACH(job, &job_expiry_list, expiry_entry) {
-			if ((now - job->job_end) > papi_job_expiry)
+			assert(job->job_end);
+			if ((now - job->job_end) > papi_job_expiry) {
+				fprintf(stderr,
+					"now %ld job_end %ld dur %ld\n",
+					now, job->job_end, now - job->job_end);
 				LIST_INSERT_HEAD(&delete_list, job, delete_entry);
+			}
 		}
 		while (!LIST_EMPTY(&delete_list)) {
 			job = LIST_FIRST(&delete_list);
