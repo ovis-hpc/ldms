@@ -216,7 +216,6 @@ static int xprt_stats_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_stats_handler(ldmsd_req_ctxt_t req_ctxt);
 static int thread_stats_handler(ldmsd_req_ctxt_t req_ctxt);
 static int set_stats_handler(ldmsd_req_ctxt_t req_ctxt);
-static int bad_req_handler(ldmsd_req_ctxt_t req_ctxt);
 static int unimplemented_handler(ldmsd_req_ctxt_t req_ctxt);
 static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
 static int ebusy_handler(ldmsd_req_ctxt_t reqc);
@@ -774,36 +773,41 @@ err:
 	return rc;
 }
 
-int validate_ldmsd_req(ldmsd_req_ctxt_t reqc, ldmsd_req_hdr_t rh)
+int validate_ldmsd_req(ldmsd_req_hdr_t rh)
 {
 	ldmsd_req_attr_t attr;
 	unsigned int off;
+	uint32_t rec_len = ntohl(rh->rec_len);
+	uint32_t attr_len;
+
 	/* Request consists of only the header and terminating discriminator */
-	if (rh->rec_len == sizeof(*rh) + sizeof(attr->discrim)) {
+	if (rec_len == sizeof(*rh) + sizeof(attr->discrim)) {
 		attr = (ldmsd_req_attr_t)(rh + 1);
-		if (attr->discrim != 0)
+		if (ntohl(attr->discrim) != 0)
 			return 0;
 		else
 			return 1;
 	}
 	/* Request contains, at least, one attribute*/
-	else if (rh->rec_len < sizeof(*rh) + sizeof(*attr))
+	else if (rec_len < sizeof(*rh) + sizeof(*attr))
 		return 0;
 
 	off = sizeof(*rh);
 	attr = (ldmsd_req_attr_t)(rh+1);
 
 	while (attr->discrim) {
-		off += sizeof(*attr) + attr->attr_len;
+		attr_len = ntohl(attr->attr_len);
+
+		off += sizeof(*attr) + attr_len;
 		/* Check attr doesn't reference beyond end of request buffer */
-		if (off + sizeof(attr->discrim) > rh->rec_len)
+		if (off + sizeof(attr->discrim) > rec_len)
 			return 0;
 		/* Check null termination of each attr_value */
-		else if (attr->attr_len && attr->attr_value[attr->attr_len-1] != '\0')
+		else if (attr_len && (attr->attr_value[attr_len-1] != '\0'))
 			return 0;
-		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
+		attr = (ldmsd_req_attr_t)&attr->attr_value[attr_len];
 		if (attr->discrim) {
-			if (off + sizeof(*attr) + sizeof(attr->discrim) > rh->rec_len)
+			if (off + sizeof(*attr) + sizeof(attr->discrim) > rec_len)
 				return 0;
 		}
 	}
@@ -818,7 +822,6 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 	uid_t luid;
 	gid_t lgid;
 	mode_t mask;
-	int rc;
 
 	if (LDMSD_CFG_TYPE_LDMS == reqc->xprt->type)
 		ldms = reqc->xprt->ldms.ldms;
@@ -832,9 +835,6 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 
 	ent = &request_handler[request->req_id];
 
-	rc = validate_ldmsd_req(reqc, request);
-	if (!rc)
-		return bad_req_handler(reqc);
 	/* Check for unimplemented request */
 	if (!ent->handler)
 		return unimplemented_handler(reqc);
@@ -1158,6 +1158,15 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 		/* Not the end of the message */
 		goto out;
 
+	/* Validate the request */
+	rc = validate_ldmsd_req((ldmsd_req_hdr_t)reqc->req_buf);
+	if (!rc) {
+		char *errstr = "LDMSD received a bad request.";
+		ldmsd_log(LDMSD_LERROR, "%s\n", errstr);
+		ldmsd_send_error_reply(xprt, key.msg_no, rc, errstr, strlen(errstr)+1);
+		goto err_out;
+	}
+
 	/* Convert the request byte order from network to host */
 	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->req_buf);
 	reqc->req_id = ((ldmsd_req_hdr_t)reqc->req_buf)->req_id;
@@ -1237,6 +1246,14 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 	if (0 == (ntohl(response->flags) & LDMSD_REQ_EOM_F))
 		/* Not the end of the message */
 		goto out;
+
+	/* Validate the request */
+	rc = validate_ldmsd_req((ldmsd_req_hdr_t)reqc->req_buf);
+	if (!rc) {
+		char *errstr = "LDMSD received a bad response.";
+		ldmsd_log(LDMSD_LERROR, "%s\n", errstr);
+		goto err_out;
+	}
 
 	/* Convert the request byte order from network to host */
 	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->req_buf);
@@ -5088,16 +5105,6 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 out:
 	free(rep_len_str);
 	free(num_rec_str);
-	return 0;
-}
-
-static int bad_req_handler(ldmsd_req_ctxt_t reqc)
-{
-	size_t cnt;
-	reqc->errcode = EBADRQC;
-	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-			"LDMSD received bad request.");
-	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }
 
