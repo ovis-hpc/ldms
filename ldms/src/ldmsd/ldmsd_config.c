@@ -948,6 +948,7 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 	xprt.send_fn = send_ldms_fn;
 	xprt.max_msg = ldms_xprt_msg_max(x);
 	xprt.trust = 0; /* don't trust any network for CMD expansion */
+	xprt.type = LDMSD_CFG_TYPE_LDMS;
 
 	if (ntohl(request->rec_len) > xprt.max_msg) {
 		/* Send the record length advice */
