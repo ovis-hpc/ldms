@@ -184,6 +184,7 @@ void ldmsd_stream_close(ldmsd_stream_client_t c)
 	pthread_mutex_lock(&c->c_s->s_lock);
 	LIST_REMOVE(c, c_ent);
 	pthread_mutex_unlock(&c->c_s->s_lock);
+	free(c);
 }
 
 static int __stream_send(void *xprt, char *data, size_t data_len)
@@ -388,7 +389,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	}
 	max_msg_len = ldms_xprt_msg_max(x);
 
-	buf = ldmsd_msg_buf_new(max_msg_len);
+	buf = ldmsd_msg_buf_new(max_msg_len+1);
 	if (!buf) {
 		msglog("Out of memory\n");
 		ldms_xprt_put(x);
@@ -431,11 +432,17 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	rewind(file);
 	msg_no = ldmsd_msg_no_get();
 
-	rc = stream_hdr_send(x, msg_no, stream, stream_type, buf, data_len);
+	rc = stream_hdr_send(x, msg_no, stream, stream_type,
+			     buf, data_len + 1 /* terminating '\0' */);
 	if (rc)
 		goto close_xprt;
 
 	while ((cnt = fread(buffer, 1, max_msg_len, file)) > 0) {
+		if (cnt < max_msg_len) {
+			/* Ensure last buffer is '\0' terminated */
+			buffer[cnt] = '\0';
+			cnt += 1;
+		}
 		rc = stream_send(x, buf, msg_no, 0, buffer, cnt);
 		if (rc)
 			goto close_xprt;
