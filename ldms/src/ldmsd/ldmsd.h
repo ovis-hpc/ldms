@@ -1232,4 +1232,6 @@ ldmsd_auth_t ldmsd_auth_find(const char *name)
 {
 	return (ldmsd_auth_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_AUTH);
 }
+void ldmsd_xprt_term(ldms_t x);
+
 #endif
