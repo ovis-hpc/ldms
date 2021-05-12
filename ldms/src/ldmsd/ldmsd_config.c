@@ -968,7 +968,7 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 }
 
 /* implemented in ldmsd_request.c */
-void stream_xprt_term(ldms_t x);
+void ldmsd_xprt_term(ldms_t x);
 
 static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
@@ -976,7 +976,7 @@ static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	case LDMS_XPRT_EVENT_CONNECTED:
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
-		stream_xprt_term(x);
+		ldmsd_xprt_term(x);
 	case LDMS_XPRT_EVENT_REJECTED:
 	case LDMS_XPRT_EVENT_ERROR:
 		ldms_xprt_put(x);
