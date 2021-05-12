@@ -621,9 +621,11 @@ reset_prdcr:
 		assert(0 == "STOPPED shouldn't have xprt event");
 		break;
 	}
-	if (prdcr->xprt)
+	if (prdcr->xprt) {
+		ldmsd_xprt_term(prdcr->xprt);
 		ldms_xprt_put(prdcr->xprt);
-	prdcr->xprt = NULL;
+		prdcr->xprt = NULL;
+	}
 	ldmsd_prdcr_unlock(prdcr);
 }
 
