@@ -6302,7 +6302,7 @@ static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc)
 	return rc;
 }
 
-void stream_xprt_term(ldms_t x)
+void ldmsd_xprt_term(ldms_t x)
 {
 	__RSE_t ent;
 	struct rbn *rbn;
@@ -6324,6 +6324,20 @@ void stream_xprt_term(ldms_t x)
 		__RSE_free(ent);
 	}
 	__RSE_rbt_unlock();
+
+	/* Free outstanding configuration requests */
+	req_ctxt_tree_lock();
+	ldmsd_req_ctxt_t reqc;
+	RBT_FOREACH(rbn, &msg_tree) {
+		struct rbn *succ;
+		reqc = container_of(rbn, struct ldmsd_req_ctxt, rbn);
+		if (reqc->xprt->ldms.ldms == x) {
+			succ = rbn_succ(&reqc->rbn);
+			__free_req_ctxt(reqc);
+			rbn = succ;
+		}
+	}
+	req_ctxt_tree_unlock();
 }
 
 int ldmsd_auth_opt_add(struct attr_value_list *auth_attrs, char *name, char *val)
