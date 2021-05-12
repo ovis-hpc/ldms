@@ -24,6 +24,7 @@ static struct option long_opts[] = {
 	{"xprt",     required_argument, 0,  'x' },
 	{"auth",     required_argument, 0,  'a' },
 	{"auth_arg", required_argument, 0,  'A' },
+	{"line",     no_argument,	0,  'l' },
 	{0,          0,                 0,  0 }
 };
 
@@ -31,12 +32,13 @@ void usage(int argc, char **argv)
 {
 	printf("usage: %s -x <xprt> -h <host> -p <port> "
 	       "-s <stream-name> -t <stream-type> "
-	       "-f <file> -a <auth> -A <auth-opt>\n",
+	       "-f <file> -a <auth> -A <auth-opt> "
+	       "-l\n",
 	       argv[0]);
 	exit(1);
 }
 
-static const char *short_opts = "h:p:f:s:t:x:a:A:v";
+static const char *short_opts = "h:p:f:s:t:x:a:A:l";
 
 #define AUTH_OPT_MAX 128
 
@@ -54,6 +56,8 @@ int main(int argc, char **argv)
 	const int auth_opt_max = AUTH_OPT_MAX;
 	FILE *file;
 	const char *stream_type = "string";
+	ldmsd_stream_type_t typ = LDMSD_STREAM_STRING;
+	int line_mode = 0;	/* publish each line separately */
 
 	auth_opt = av_new(auth_opt_max);
 	if (!auth_opt) {
@@ -125,12 +129,17 @@ int main(int argc, char **argv)
 		case 't':
 			if (0 == strcmp("json", optarg)) {
 				stream_type = "json";
+				typ = LDMSD_STREAM_JSON;
 			} else if (0 == strcmp("string", optarg)) {
 				stream_type = "string";
+				typ = LDMSD_STREAM_STRING;
 			} else {
 				printf("The type argument must be 'json' or 'string'\n");
 				usage(argc, argv);
 			}
+			break;
+		case 'l':
+			line_mode = 1;
 			break;
 		default:
 			usage(argc, argv);
@@ -148,9 +157,29 @@ int main(int argc, char **argv)
 	} else {
 		file = stdin;
 	}
-	int rc = ldmsd_stream_publish_file(stream, stream_type, xprt, host, port, auth, auth_opt, file);
-	if (rc) {
-		printf("Error %d publishing file.\n", rc);
+	if (line_mode) {
+
 	}
+	int rc;
+	if (!line_mode) {
+		rc = ldmsd_stream_publish_file(stream, stream_type, xprt,
+					host, port, auth, auth_opt, file);
+		if (rc) {
+			printf("Error %d publishing file.\n", rc);
+		}
+		return rc;
+	}
+	ldms_t ldms = ldms_xprt_new_with_auth(xprt, NULL, auth, NULL);
+	rc = ldms_xprt_connect_by_name(ldms, host, port, NULL, NULL);
+	if (rc){
+		printf("Error %d connecting to peer\n", rc);
+		return rc;
+	}
+	char line_buffer[4096];
+	char *s;
+	while (0 != (s = fgets(line_buffer, sizeof(line_buffer)-1, file))) {
+		ldmsd_stream_publish(ldms, stream, typ, s, strlen(s)+1);
+	}
+	ldms_xprt_close(ldms);
 	return rc;
 }
