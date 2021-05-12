@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_l2_stream_csv_store
 .\" Contact ovis-help@sandia.gov to correct errors or typos.
-.TH man 7 "1 Apr 2021" "v4" "LDMS Plugin l2_stream_csv_store man page"
+.TH man 7 "26 May 2021" "v4" "LDMS Plugin l2_stream_csv_store man page"
 
 .SH NAME
 Plugin_l2_stream_csv_store - man page for the LDMS l2_stream_csv_store plugin
@@ -17,7 +17,7 @@ With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 .TP
 .BR config
-name=l2_stream_csv_store path=<path> container=<container> stream=<stream> [buffer=<0/1>] [rollover=<N>]
+name=l2_stream_csv_store path=<path> container=<container> stream=<stream> [flushtime=<N>] [buffer=<0/1>] [rollover=<N>]
 .br
 configuration line
 .RS
@@ -37,6 +37,10 @@ directory of the csv output file
 stream=<stream_a,stream_b>
 .br
 csv list of streams to which to subscribe.
+.TP
+flushtime=<N>
+.br
+Optional time for flushing all files, independent of any buffering, rollover, etc. Default no other flushing, min time if enabbled = 120 sec.
 .TP
 buffer=<0/1>
 .br

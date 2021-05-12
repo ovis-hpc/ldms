@@ -43,7 +43,7 @@
  * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
  * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
  * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY out OF THE USE
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
@@ -64,6 +64,7 @@
 #include <unistd.h>
 #include <ovis_json/ovis_json.h>
 #include <coll/idx.h>
+#include <coll/rbt.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_stream.h"
@@ -81,8 +82,8 @@
 
 
 //user changes these in the code before build, for now
-#undef NDATA_TIMING
-#define NDATA 10000
+///#define NDATA_TIMING
+#define NDATA 580
 #define TIMESTAMP_STORE
 #define RESETKEY "LDMS_STREAM_HEADER_RESET\n"
 
@@ -98,6 +99,7 @@
 
 static ldmsd_msg_log_f msglog;
 static int rollover;
+static int flushtime;
 #define DEFAULT_ROLLTYPE -1
 #define ROLL_LIMIT_INTERVAL 60
 #define ROLL_DEFAULT_SLEEP 60
@@ -108,13 +110,19 @@ static int rolltype = DEFAULT_ROLLTYPE;
     rolltype==3 and rollover < MIN_ROLL_RECORDS -> rollover = MIN_ROLL_RECORDS */
 #define MIN_ROLL_RECORDS 3
 /** Interval to check for passing the record or byte count limits. */
+#define MIN_FLUSH_TIME 120
+/** Interval to invoke orthogonal flush */
+
+
 
 static pthread_t rothread;
 static int rothread_used = 0;
+static pthread_t flthread;
+static int flthread_used = 0;
 
 static char* root_path = NULL;
 static char* container = NULL;
-static int buffer = 0;
+static int buffer = 1;
 static pthread_mutex_t cfg_lock; //about config args, not about the header
 
 static idx_t stream_idx;
@@ -152,10 +160,10 @@ struct csv_stream_handle{
         pthread_mutex_t lock;
 };
 
-#ifdef NDATA_TIMING
-static int temp_count = 0; /** tracks written lines for timing. this is
-                               incremented over all stream, not per stream */
-#endif
+//#ifdef NDATA_TIMING
+//static int temp_count = 0; /** tracks written lines for timing. this is
+//                               incremented over all stream, not per stream */
+//#endif
 
 static void _clear_key_info(struct linedata* dataline){
 	int i;
@@ -290,7 +298,7 @@ static int _parse_list_for_header(struct linedata *dataline, json_entity_t e){
 	return 0;
 
 }
-
+/* temporarily removed
 static int _reset_check(const char *msg){
         int rc = strcmp(msg, RESETKEY);
         if (!rc){
@@ -301,7 +309,7 @@ static int _reset_check(const char *msg){
 
         return 0;
 }
-
+*/
 
 
 static int _get_header_from_data(struct linedata *dataline, json_entity_t e){
@@ -500,13 +508,10 @@ static int _print_header(struct csv_stream_handle *stream_handle){
         if (stream_handle &&
             stream_handle->file &&
             stream_handle->dataline.header){
-
                 fprintf(stream_handle->file, "#%s\n",
                         stream_handle->dataline.header);
                 fflush(stream_handle->file);
                 fsync(fileno(stream_handle->file));
-                stream_handle->store_count = 0; //first line in a file
-
                 return 0;
         }
 
@@ -672,7 +677,19 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
                 stream_handle->store_count++; /** stream_cb has the lock, so
                                                   roll cannot be called while
                                                   this is going on. */
-		jbuf_free(jb);
+
+                jbuf_free(jb);
+
+                //#ifdef NDATA_TIMING
+                //                //note this is INFO not DEBUG
+                //        	temp_count++;
+                //        	if ((temp_count % NDATA) == 0){
+                //        		struct timespec tv_now;
+                //        		clock_gettime(CLOCK_REALTIME, &tv_now);
+                //                        msglog(LDMSD_LINFO, PNAME " %d lines processed timestamp %ld %ld\n",
+                //                               temp_count, tv_now.tv_sec, tv_now.tv_nsec);
+                //        	}
+                //#endif
 
 	}
 	jbuf_free(jbs);
@@ -680,29 +697,36 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 
 
 
-#ifdef NDATA_TIMING
-        //note this is INFO not DEBUG
-	temp_count++;
-	if ((temp_count % NDATA) == 0){
-		struct timespec tv_now;
-		clock_gettime(CLOCK_REALTIME, &tv_now);
-		msglog(LDMSD_LINFO, PNAME " %d lines processed timestamp %ld\n",
-		       temp_count, tv_now.tv_sec);
-	}
-#endif
+        //#ifdef NDATA_TIMING
+        //        //note this is INFO not DEBUG
+        //	temp_count++;
+        //	if ((temp_count % NDATA) == 0){
+        //		struct timespec tv_now;
+        //		clock_gettime(CLOCK_REALTIME, &tv_now);
+        //                msglog(LDMSD_LINFO, PNAME " %d lines processed timestamp %ld %ld\n",
+        //                       temp_count, tv_now.tv_sec, tv_now.tv_nsec);
+        //	}
+        //#endif
 
 	return 1;
 }
 
 static void _roll_innards(struct csv_stream_handle *stream_handle);
-
 static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		     ldmsd_stream_type_t stream_type,
 		     const char *msg, size_t msg_len,
 		     json_entity_t e) {
 
+	static uint64_t msg_count = 0;
         struct csv_stream_handle* stream_handle;
 	int rc = 0;
+
+	msg_count += 1;
+	if (0 == (msg_count % 50000)) {
+                extern struct rbt *msg_tree;
+                time_t t = time(NULL);
+		msglog(LDMSD_LERROR, "timestamp %ld msg_tree %ld msg_count %lu\n", t, msg_tree->card, msg_count);
+	}
 
 
         /**    msglog(LDMSD_LDEBUG,
@@ -736,27 +760,48 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
             independent streams at the same time */
 
 	if (!stream_handle->file){
-		msglog(LDMSD_LERROR,
+                msglog(LDMSD_LERROR,
                        PNAME ": Cannot insert values for '%s': file is NULL\n",
 		       stream_handle->stream);
 		rc = EPERM;
 		goto out;
 	}
 
+
 	/** msg will be populated. if the type was json,
             entity will also be populated. */
 	if (stream_type == LDMSD_STREAM_STRING){
-                if (_reset_check(msg)){
-                        _clear_key_info(&stream_handle->dataline);
-                        _roll_innards(stream_handle); //we already have the lock
-                        goto out;
-                }
 
-		fprintf(stream_handle->file, "%s\n", msg);
-		if (!buffer){
-			fflush(stream_handle->file);
+        //  TEMPORARILY REMOVING FIXME TODO
+                /*
+          if (_reset_check(msg)){
+          _clear_key_info(&stream_handle->dataline);
+          _roll_innards(stream_handle); //we already have the lock
+          goto out;
+          }
+        */
+
+                fprintf(stream_handle->file, "%s\n", msg);
+                stream_handle->store_count++;
+        /** stream_cb has the lock, so
+            roll cannot be called while
+            this is going on. */
+
+                //#ifdef NDATA_TIMING
+                //        //note this is INFO not DEBUG
+                //        temp_count++;
+                //        if ((temp_count % NDATA) == 0){
+                //                struct timespec tv_now;
+                //                clock_gettime(CLOCK_REALTIME, &tv_now);
+                //                msglog(LDMSD_LINFO, PNAME " %d lines processed timestamp %ld %ld\n",
+                //                       temp_count, tv_now.tv_sec, tv_now.tv_nsec);
+                //        }
+                //#endif
+
+                if (!buffer){
+        		fflush(stream_handle->file);
 			fsync(fileno(stream_handle->file));
-		}
+                }
 	} else if (stream_type == LDMSD_STREAM_JSON){
 		if (!e){
 			msglog(LDMSD_LERROR, PNAME ": why is entity NULL?\n");
@@ -783,8 +828,9 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		}
 
 		_print_data_lines(stream_handle, e);
-		if (!buffer){
-			fflush(stream_handle->file);
+
+                if (!buffer){
+                        fflush(stream_handle->file);
 			fsync(fileno(stream_handle->file));
 		}
 	} else {
@@ -983,6 +1029,33 @@ static void roll_cb(void *obj, void *cb_arg){
         _roll_innards(stream_handle);
         //only print the header if its on a roll
         _print_header(stream_handle);
+        stream_handle->store_count = 0; //first line in a file
+
+out:
+        pthread_mutex_unlock(&stream_handle->lock);
+
+}
+
+
+static void flush_cb(void *obj, void *cb_arg){
+
+        //if we've got here then we've called a stream_store
+        if (!obj){
+                return;
+        }
+        struct csv_stream_handle *stream_handle =
+                (struct csv_stream_handle *)obj;
+
+        if (!stream_handle) return;
+
+        pthread_mutex_lock(&stream_handle->lock);
+
+        if (stream_handle->file){ //this should always be true
+                //                msglog(LDMSD_LDEBUG, "Async Flush: %s\n");
+                fflush(stream_handle->file);
+                fsync(fileno(stream_handle->file));
+        }
+
 
 out:
         pthread_mutex_unlock(&stream_handle->lock);
@@ -1000,6 +1073,15 @@ static int handleRollover(){
 
         return 0;
 }
+
+
+static int handleFlush(){
+        pthread_mutex_lock(&cfg_lock); /** don't add any stores during this,
+                                           which currently cannot do anyway. */
+        idx_traverse(stream_idx, flush_cb, NULL);
+        pthread_mutex_unlock(&cfg_lock);
+}
+
 
 static void* rolloverThreadInit(void* m){
         //if got here, then rollover requested
@@ -1021,6 +1103,23 @@ static void* rolloverThreadInit(void* m){
                 int oldstate = 0;
                 pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldstate);
                 handleRollover();
+                pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldstate);
+        }
+
+        return NULL;
+}
+
+static void* flushThreadInit(void* m){
+        //if got here, then orthogonal flush requested
+
+        while(1){
+                if (flushtime < MIN_FLUSH_TIME)
+                        flushtime = MIN_FLUSH_TIME;
+
+                sleep(flushtime);
+                int oldstate = 0;
+                pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &oldstate);
+                handleFlush();
                 pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, &oldstate);
         }
 
@@ -1050,7 +1149,7 @@ static int config(struct ldmsd_plugin *self,
         }
 
 	s = av_value(avl, "buffer");
-	if (!s){
+	if (s){
 		buffer = atoi(s);
 		msglog(LDMSD_LDEBUG,
                        PNAME ": setting buffer to '%d'\n", buffer);
@@ -1134,6 +1233,16 @@ static int config(struct ldmsd_plugin *self,
                        PNAME ": setting rollrecords to %d\n", rollover);
         }
 
+        //only set flush once we have created the files
+        s = av_value(avl, "flushtime");
+        if (s) {
+                flushtime = atoi(s);
+                pthread_create(&flthread, NULL, flushThreadInit, NULL);
+                flthread_used = 1;
+                msglog(LDMSD_LDEBUG,
+                       PNAME ": setting default flush time to %d\n", flushtime);
+        }
+
 
         //subscribe to each one
         templist = strdup(streamlist);
@@ -1179,7 +1288,7 @@ static void term(struct ldmsd_plugin *self)
 	root_path = NULL;
 	free(container);
 	container = NULL;
-        buffer = 0;
+        buffer = 1;
         rolltype = DEFAULT_ROLLTYPE;
 
         idx_traverse(stream_idx, close_streamstore, NULL);
@@ -1195,11 +1304,12 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "    config name=l2_stream_csv_store path=<path> container=<container> stream=<stream> [buffer=<0/1>] [rollover=<N>]\n"
+	return  "    config name=l2_stream_csv_store path=<path> container=<container> stream=<stream> [flushtime=<N>] [buffer=<0/1>] [rollover=<N>]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - path          The path to the root of the csv directory\n"
 		"         - container     The directory under the path\n"
 		"         - stream        a comma separated list of streams, each of which will also be its file name\n"
+                "         - flushtime     Time in sec for a regular flush (independent of any other rollover or flush directives)\n"
 		" 	  - buffer        0 to disable buffering, 1 to enable it with autosize (default)\n"
                 "         - rollover      N to enable rollover after approximately N lines in csv. Default no roll\n"
 		;
@@ -1239,6 +1349,11 @@ static void l2_stream_csv_store_fini()
                 void * dontcare = NULL;
                 pthread_cancel(rothread);
                 pthread_join(rothread, &dontcare);
+        }
+        if (flthread_used){
+                void * dontcare = NULL;
+                pthread_cancel(flthread);
+                pthread_join(flthread, &dontcare);
         }
         stream_idx = NULL;
 
