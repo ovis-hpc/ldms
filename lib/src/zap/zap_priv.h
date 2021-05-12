@@ -291,6 +291,7 @@ struct zap_event_queue {
 	zap_thrstat_t stats;
 	TAILQ_HEAD(, zap_event_entry) queue;
 	TAILQ_HEAD(, zap_event_entry) prio_q;
+	TAILQ_HEAD(, zap_event_entry) free_q;
 };
 
 typedef zap_err_t (*zap_get_fn_t)(zap_t *pz, zap_log_fn_t log_fn,
@@ -330,6 +331,7 @@ int zap_event_add(struct zap_event_queue *q, zap_ep_t ep, void *ctxt);
 struct zap_thrstat {
 	char *name;
 	uint64_t window_size;
+	struct timespec start;
 	struct timespec wait_start;
 	struct timespec wait_end;
 	int waiting;

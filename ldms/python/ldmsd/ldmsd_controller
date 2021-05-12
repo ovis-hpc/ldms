@@ -1228,10 +1228,10 @@ class LdmsdCmdParser(cmd.Cmd):
         return self.__complete_attr_list('set_info', text)
 
     def display_thread_stats(self, stats):
-        print(f"{'Name':16} {'Samples':12} {'Utilization':12}")
-        print("---------------- ------------ ------------")
+        print(f"{'Name':16} {'Samples':12} {'Sample Rate':12} {'Utilization':12}")
+        print("---------------- ------------ ------------ ------------")
         for e in stats['entries']:
-            print(f"{e['name']:16} {e['sample_count']:12.0f} {e['utilization'] * 100:12.2f}")
+            print(f"{e['name']:16} {e['sample_count']:12.0f} {e['sample_rate']:12.2f} {e['utilization'] * 100:12.2f}")
 
     def do_thread_stats(self, arg):
         """
