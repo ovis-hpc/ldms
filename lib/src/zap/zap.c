@@ -974,7 +974,7 @@ double zap_thrstat_get_sample_rate(zap_thrstat_t stats)
 	struct timespec now;
 	(void)clock_gettime(CLOCK_REALTIME, &now);
 	return (double)zap_thrstat_get_sample_count(stats)
-		/ ((double)(zap_timespec_diff_us(&stats->start, &now)) / 1000.0);
+		/ ((double)(zap_timespec_diff_us(&stats->start, &now)) / 1000000.0);
 }
 
 double zap_thrstat_get_utilization(zap_thrstat_t in)
