@@ -799,7 +799,7 @@ int validate_ldmsd_req(ldmsd_req_ctxt_t reqc, ldmsd_req_hdr_t rh)
 		if (off + sizeof(attr->discrim) > rh->rec_len)
 			return 0;
 		/* Check null termination of each attr_value */
-		else if (attr->attr_value[attr->attr_len-1] != '\0')
+		else if (attr->attr_len && attr->attr_value[attr->attr_len-1] != '\0')
 			return 0;
 		attr = (ldmsd_req_attr_t)&attr->attr_value[attr->attr_len];
 		if (attr->discrim) {
