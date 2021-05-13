@@ -1105,6 +1105,7 @@ struct failover_ping_data {
 	failover_state_t state;
 	failover_conn_state_t conn_state;
 	uint64_t flags;
+	uint64_t zero; /* padding zero */
 };
 
 void __ping_data_hton(struct failover_ping_data *data)
@@ -2355,6 +2356,7 @@ int failover_ping_handler(ldmsd_req_ctxt_t req)
 	data.state = f->state;
 	data.conn_state = f->conn_state;
 	data.flags = f->flags;
+	data.zero = 0;
 	__ping_data_hton(&data);
 	attr.attr_id = LDMSD_ATTR_UDATA;
 	attr.discrim = 1;
