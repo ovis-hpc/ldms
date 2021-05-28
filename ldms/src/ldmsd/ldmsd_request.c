@@ -3789,8 +3789,6 @@ out:
 	free(producer);
 	free(interval);
 	free(offset);
-	if (grp)
-		ldms_set_put(grp);
 	return rc;
 }
 
