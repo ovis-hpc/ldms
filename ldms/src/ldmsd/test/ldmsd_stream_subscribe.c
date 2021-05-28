@@ -296,11 +296,6 @@ static void recv_msg(ldms_t x, char *data, size_t data_len)
 {
 	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)data;
 
-	if (ntohl(request->rec_len) > ldms_xprt_msg_max(x)) {
-		msglog("Test command does not support multi-record stream data");
-		exit(1);
-	}
-
 	switch (ntohl(request->type)) {
 	case LDMSD_REQ_TYPE_CONFIG_CMD:
 		(void)process_request(x, request);
