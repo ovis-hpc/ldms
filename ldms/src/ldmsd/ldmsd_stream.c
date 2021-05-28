@@ -389,7 +389,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	}
 	max_msg_len = ldms_xprt_msg_max(x);
 
-	buf = ldmsd_msg_buf_new(max_msg_len+1);
+	buf = ldmsd_msg_buf_new(max_msg_len);
 	if (!buf) {
 		msglog("Out of memory\n");
 		ldms_xprt_put(x);
@@ -437,8 +437,8 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	if (rc)
 		goto close_xprt;
 
-	while ((cnt = fread(buffer, 1, max_msg_len, file)) > 0) {
-		if (cnt < max_msg_len) {
+	while ((cnt = fread(buffer, 1, max_msg_len-1, file)) > 0) {
+		if (cnt < max_msg_len-1) {
 			/* Ensure last buffer is '\0' terminated */
 			buffer[cnt] = '\0';
 			cnt += 1;
