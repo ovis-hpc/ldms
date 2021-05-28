@@ -580,6 +580,8 @@ static ldmsd_req_ctxt_t find_req_ctxt(struct req_ctxt_key *key)
 void __free_req_ctxt(ldmsd_req_ctxt_t reqc)
 {
 	rbt_del(&msg_tree, &reqc->rbn);
+	if (reqc->xprt->cleanup_fn)
+		reqc->xprt->cleanup_fn(reqc->xprt);
 	free(reqc->line_buf);
 	ldmsd_msg_buf_free(reqc->_req_buf);
 	ldmsd_msg_buf_free(reqc->rep_buf);
@@ -719,8 +721,6 @@ void free_req_cmd_ctxt(ldmsd_req_cmd_t rcmd)
 		return;
 	if (rcmd->org_reqc)
 		req_ctxt_ref_put(rcmd->org_reqc);
-	if (rcmd->reqc && rcmd->reqc->xprt->cleanup_fn)
-		rcmd->reqc->xprt->cleanup_fn(rcmd->reqc->xprt);
 	if (rcmd->reqc)
 		req_ctxt_ref_put(rcmd->reqc);
 	free(rcmd);
@@ -1125,7 +1125,18 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 		reqc = alloc_req_ctxt(&key, xprt->max_msg);
 		if (!reqc)
 			goto oom;
-		reqc->xprt = xprt;
+		if (LDMSD_CFG_TYPE_LDMS == xprt->type) {
+			reqc->xprt = calloc(1, sizeof(*reqc->xprt));
+			if (!reqc->xprt) {
+				req_ctxt_ref_put(reqc);
+				goto oom;
+			}
+			ldms_xprt_get(xprt->ldms.ldms);
+			memcpy(reqc->xprt, xprt, sizeof(*xprt));
+			reqc->xprt->cleanup_fn = free_cfg_xprt_ldms;
+		} else {
+			reqc->xprt = xprt;
+		}
 	} else {
 		reqc = find_req_ctxt(&key);
 		if (!reqc) {
@@ -6333,7 +6344,7 @@ void ldmsd_xprt_term(ldms_t x)
 		struct rbn *next_rbn = rbn_succ(rbn);
 		reqc = container_of(rbn, struct ldmsd_req_ctxt, rbn);
 		if (reqc->xprt->ldms.ldms == x)
-			__free_req_ctxt(reqc);
+			req_ctxt_ref_put(reqc);
 		rbn = next_rbn;
 	}
 	req_ctxt_tree_unlock();

@@ -555,7 +555,7 @@ int __process_config_file(const char *path, int *lno, int trust,
 	ssize_t off = 0;
 	ssize_t cnt;
 	size_t buf_len = 0;
-	struct ldmsd_cfg_xprt_s xprt;
+	struct ldmsd_cfg_xprt_s xprt = {0};
 	ldmsd_req_hdr_t request = NULL;
 	struct ldmsd_req_array *req_array = NULL;
 	if (!path)
@@ -1034,6 +1034,7 @@ void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
 	xprt->max_msg = ldms_xprt_msg_max(ldms);
 	xprt->cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
 	xprt->trust = 0;
+	xprt->type = LDMSD_CFG_TYPE_LDMS;
 }
 
 void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix)
