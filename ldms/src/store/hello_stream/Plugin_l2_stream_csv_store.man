@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_l2_stream_csv_store
 .\" Contact ovis-help@sandia.gov to correct errors or typos.
-.TH man 7 "26 May 2021" "v4" "LDMS Plugin l2_stream_csv_store man page"
+.TH man 7 "27 May 2021" "v4" "LDMS Plugin l2_stream_csv_store man page"
 
 .SH NAME
 Plugin_l2_stream_csv_store - man page for the LDMS l2_stream_csv_store plugin
@@ -17,7 +17,7 @@ With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 .TP
 .BR config
-name=l2_stream_csv_store path=<path> container=<container> stream=<stream> [flushtime=<N>] [buffer=<0/1>] [rollover=<N>]
+name=l2_stream_csv_store path=<path> container=<container> stream=<stream> [flushtime=<N>] [buffer=<0/1>] [rolltype=<N> rollover=<N> rollagain=<N>]
 .br
 configuration line
 .RS
@@ -46,9 +46,34 @@ buffer=<0/1>
 .br
 Optional buffering of the output. 0 to disable buffering, 1 to enable it with autosize (default)
 .TP
-rollover=<N>
+rolltype=<rolltype>
 .br
-Optional rollover of the output. Only rollover type available is by number of records in the CSV (one per dict).
+By default, the store does not rollover and the data is written to a continously open filehandle. Rolltype and rollover are used in conjunction to enable the store to manage rollover, including flushing before rollover. The header will be rewritten when a roll occurs. Valid options are:
+.RS
+.TP
+1
+.br
+wake approximately every rollover seconds and roll.
+.TP
+2
+.br
+wake daily at rollover seconds after midnight (>=0) and roll.
+.TP
+3
+.br
+roll after approximately rollover records are written.
+.TP
+4
+roll after approximately rollover bytes are written.
+.TP
+5
+.br
+wake at rollover seconds after midnight (>=0) and roll, then repeat every rollagain (> rollover) seconds during the day. For example "rollagain=3600 rollover=0 rolltype=5" rolls files hourly.
+.RE
+.TP
+rollover=<rollover>
+.br
+Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
 .RE
 
 .SH JSON FORMAT AND OUTPUT HEADER AND FORMAT

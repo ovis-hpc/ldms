@@ -98,20 +98,47 @@
 #define PNAME "l2_stream_csv_store"
 
 static ldmsd_msg_log_f msglog;
-static int rollover;
-static int flushtime;
+static int flushtime = 0;
+static int rollover = 0;
+static int rollagain = 0;
+/** rolltype determines how to interpret rollover values > 0. */
 #define DEFAULT_ROLLTYPE -1
-#define ROLL_LIMIT_INTERVAL 60
-#define ROLL_DEFAULT_SLEEP 60
-#define ROLL_BY_RECORDS 3
-//NOTE: only type ROLL_BY_RECORDS is supported for now
 static int rolltype = DEFAULT_ROLLTYPE;
-/** minimum rollover for type 3;
-    rolltype==3 and rollover < MIN_ROLL_RECORDS -> rollover = MIN_ROLL_RECORDS */
-#define MIN_ROLL_RECORDS 3
-/** Interval to check for passing the record or byte count limits. */
+/** default -- do not roll */
 #define MIN_FLUSH_TIME 120
 /** Interval to invoke orthogonal flush */
+
+/** ROLLTYPES documents rolltype and is used in help output. Also used for buffering */
+#define ROLLTYPES \
+"                     1: wake approximately every rollover seconds and roll.\n" \
+"                     2: wake daily at rollover seconds after midnight (>=0) and roll.\n" \
+"                     3: roll after approximately rollover records are written.\n" \
+"                     4: roll after approximately rollover bytes are written.\n" \
+"                     5: wake daily at rollover seconds after midnight and every rollagain seconds thereafter.\n"
+
+#define MAXROLLTYPE 5
+#define MINROLLTYPE 1
+#define ROLL_BY_INTERVAL 1
+#define ROLL_BY_MIDNIGHT 2
+#define ROLL_BY_RECORDS 3
+#define ROLL_BY_BYTES 4
+#define ROLL_BY_MIDNIGHT_AGAIN 5
+/** default -- do not roll */
+#define DEFAULT_ROLLTYPE -1
+/** minimum rollover for type 1;
+    rolltype==1 and rollover < MIN_ROLL_1 -> rollover = MIN_ROLL_1
+    also used for minimum sleep time for type 2;
+    rolltype==2 and rollover results in sleep < MIN_ROLL_SLEEPTIME -> skip this roll and do it the next day */
+#define MIN_ROLL_1 10
+/** minimum rollover for type 3;
+    rolltype==3 and rollover < MIN_ROLL_RECORDS > rollover = MIN_ROLL_RECORDS */
+#define MIN_ROLL_RECORDS 3
+/** minimum rollover for type 4;
+    rolltype==4 and rollover < MIN_ROLL_BYTES -> rollover = MIN_ROLL_BYTES */
+#define MIN_ROLL_BYTES 1024
+/** Interval to check for passing the record or byte count limits. */
+#define ROLL_LIMIT_INTERVAL 60
+#define ROLL_DEFAULT_SLEEP 60
 
 
 
@@ -155,7 +182,8 @@ struct csv_stream_handle{
         char* basename; /** file base name. add the timestamp on:
                             (root_path + container + stream) */
         FILE* file;
-        int store_count; //for the roll
+        int64_t store_count; //for the roll
+        int64_t byte_count; //for the roll
         struct linedata dataline; //used to keep track of keys for the header
         pthread_mutex_t lock;
 };
@@ -220,6 +248,7 @@ static void close_streamstore(void *obj, void *cb_arg){
 
         _clear_key_info(&stream_handle->dataline);
         stream_handle->store_count = 0;
+        stream_handle->byte_count = 0;
         free(stream_handle->basename);
         stream_handle->basename = NULL;
 
@@ -505,6 +534,7 @@ static int _append_singleton(json_entity_t en, jbuf_t jb){
 
 static int _print_header(struct csv_stream_handle *stream_handle){
 
+        //don't count the header in the store_count or byte_count
         if (stream_handle &&
             stream_handle->file &&
             stream_handle->dataline.header){
@@ -576,10 +606,12 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 	//if header has no list or an empty list, just write the singletons
 	if (dataline->nlist == 0){
 #ifdef TIMESTAMP_STORE
-		fprintf(stream_handle->file, "%s,%f\n", jbs->buf,
+		rc = fprintf(stream_handle->file, "%s,%f\n", jbs->buf,
                         (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
+                stream_handle->byte_count += rc;
 #else
-		fprintf(stream_handle->file, "%s\n", jbs->buf);
+		rc = fprintf(stream_handle->file, "%s\n", jbs->buf);
+                stream_handle->byte_count += rc;
 #endif
 		jbuf_free(jbs);
 		return 0;
@@ -597,10 +629,12 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 			jbs = jbuf_append_str(jbs, ",");
 		}
 #ifdef TIMESTAMP_STORE
-		fprintf(stream_handle->file, "%s,%f\n", jbs->buf,
+		rc = fprintf(stream_handle->file, "%s,%f\n", jbs->buf,
                         (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
+                stream_handle->byte_count += rc;
 #else
-		fprintf(stream_handle->file, "%s\n", jbs->buf);
+		rc = fprintf(stream_handle->file, "%s\n", jbs->buf);
+                stream_handle->byte_count += rc;
 #endif
 		jbuf_free(jbs);
 		return 0;
@@ -623,10 +657,12 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 			jbs = jbuf_append_str(jbs, ",");
 		}
 #ifdef TIMESTAMP_STORE
-		fprintf(stream_handle->file, "%s,%f\n", jbs->buf,
+		rc = fprintf(stream_handle->file, "%s,%f\n", jbs->buf,
                         (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
+                stream_handle->byte_count += rc;
 #else
-		fprintf(stream_handle->file, "%s\n", jbs->buf);
+		rc = fprintf(stream_handle->file, "%s\n", jbs->buf);
+                stream_handle->byte_count += rc;
 #endif
 		jbuf_free(jbs);
 		return 0;
@@ -669,10 +705,12 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 			}
 		}
 #ifdef TIMESTAMP_STORE
-		fprintf(stream_handle->file, "%s,%f\n", jb->buf,
+		rc = fprintf(stream_handle->file, "%s,%f\n", jb->buf,
                         (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
+                stream_handle->byte_count += rc;
 #else
-		fprintf(stream_handle->file, "%s\n", jb->buf);
+		rc = fprintf(stream_handle->file, "%s\n", jb->buf);
+                stream_handle->byte_count += rc;
 #endif
                 stream_handle->store_count++; /** stream_cb has the lock, so
                                                   roll cannot be called while
@@ -729,9 +767,11 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 	}
 
 
-        /**    msglog(LDMSD_LDEBUG,
-               PNAME ": Calling stream_cb. msg '%s' on stream '%s'\n",
-               msg, ldmsd_stream_client_name(c)); */
+        //        msglog(LDMSD_LDEBUG,
+        //               PNAME ": Calling stream_cb. on stream '%s'\n",
+        //               ldmsd_stream_client_name(c));
+               //               PNAME ": Calling stream_cb. msg '%s' on stream '%s'\n",
+               //               msg, ldmsd_stream_client_name(c));
 
         // don't need to check the cfgstate. if you've subscribed, it's ok
         const char *skey = ldmsd_stream_client_name(c);
@@ -781,7 +821,8 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
           }
         */
 
-                fprintf(stream_handle->file, "%s\n", msg);
+                rc = fprintf(stream_handle->file, "%s\n", msg);
+                stream_handle->byte_count+= rc;
                 stream_handle->store_count++;
         /** stream_cb has the lock, so
             roll cannot be called while
@@ -1005,18 +1046,40 @@ out:
 static void roll_cb(void *obj, void *cb_arg){
 
         //if we've got here then we've called a stream_store
-        if (!obj){
+        if (!obj)
                 return;
-        }
+
         struct csv_stream_handle *stream_handle =
                 (struct csv_stream_handle *)obj;
 
         pthread_mutex_lock(&stream_handle->lock);
 
         switch (rolltype){
+        case ROLL_BY_INTERVAL:
+        case ROLL_BY_MIDNIGHT:
+        case ROLL_BY_MIDNIGHT_AGAIN:
+                //                msglog(LDMSD_LDEBUG,
+                //                       PNAME ": rolling '%s' (type 1,2 or 5)\n",
+                //                       stream_handle->basename);
+                break;
         case ROLL_BY_RECORDS:
                 if (stream_handle->store_count < rollover){
                         goto out;
+                } else {
+                        //                        msglog(LDMSD_LDEBUG,
+                        //                               PNAME ": rolling '%s' after %d records\n",
+                        //                               stream_handle->basename,
+                        //                               stream_handle->store_count);
+                }
+                break;
+        case ROLL_BY_BYTES:
+                if (stream_handle->byte_count < rollover){
+                        goto out;
+                } else {
+                        //                        msglog(LDMSD_LDEBUG,
+                        //                               PNAME ": rolling '%s'after %d bytes\n",
+                        //                               stream_handle->basename,
+                        //                               stream_handle->byte_count);
                 }
                 break;
         default:
@@ -1026,10 +1089,13 @@ static void roll_cb(void *obj, void *cb_arg){
                 break;
         }
 
+        //always 0 these,so they don't overflow
+        stream_handle->store_count = 0;
+        stream_handle->byte_count = 0;
+
         _roll_innards(stream_handle);
         //only print the header if its on a roll
         _print_header(stream_handle);
-        stream_handle->store_count = 0; //first line in a file
 
 out:
         pthread_mutex_unlock(&stream_handle->lock);
@@ -1056,8 +1122,6 @@ static void flush_cb(void *obj, void *cb_arg){
                 fsync(fileno(stream_handle->file));
         }
 
-
-out:
         pthread_mutex_unlock(&stream_handle->lock);
 
 }
@@ -1080,6 +1144,8 @@ static int handleFlush(){
                                            which currently cannot do anyway. */
         idx_traverse(stream_idx, flush_cb, NULL);
         pthread_mutex_unlock(&cfg_lock);
+
+        return 0;
 }
 
 
@@ -1089,11 +1155,58 @@ static void* rolloverThreadInit(void* m){
         while(1){
                 int tsleep;
                 switch (rolltype){
-                case ROLL_BY_RECORDS: //only currently valid type
+                case ROLL_BY_INTERVAL:
+                        tsleep = (rollover< MIN_ROLL_1)?
+                                MIN_ROLL_1 : rollover;
+                        break;
+                case ROLL_BY_MIDNIGHT:
+                {
+                        time_t rawtime;
+                        struct tm info;
+
+                        time( &rawtime );
+                        localtime_r( &rawtime, &info );
+                        int secSinceMidnight = info.tm_hour*3600 +
+                                info.tm_min*60 + info.tm_sec;
+                        tsleep = 86400 - secSinceMidnight + rollover;
+                        if (tsleep < MIN_ROLL_1){
+				/* if we just did a roll then skip this one */
+                                tsleep+=86400;
+                        }
+                }
+                break;
+                case ROLL_BY_RECORDS:
                         if (rollover < MIN_ROLL_RECORDS)
                                 rollover = MIN_ROLL_RECORDS;
                         tsleep = ROLL_LIMIT_INTERVAL;
                         break;
+                case ROLL_BY_BYTES:
+                        if (rollover < MIN_ROLL_BYTES)
+                                rollover = MIN_ROLL_BYTES;
+                        tsleep = ROLL_LIMIT_INTERVAL;
+                        break;
+                case ROLL_BY_MIDNIGHT_AGAIN:
+                {
+                        time_t rawtime;
+                        struct tm info;
+
+                        time( &rawtime );
+                        localtime_r( &rawtime, &info );
+                        int secSinceMidnight = info.tm_hour*3600 +
+                                info.tm_min*60 + info.tm_sec;
+
+                        if (secSinceMidnight < rollover) {
+                                tsleep = rollover - secSinceMidnight;
+                        } else {
+                                int y = secSinceMidnight - rollover;
+                                int z = y / rollagain;
+                                tsleep = (z + 1)*rollagain + rollover - secSinceMidnight;
+                        }
+                        if (tsleep < MIN_ROLL_1) {
+                                tsleep += rollagain;
+                        }
+                }
+                break;
                 default:
                         tsleep = ROLL_DEFAULT_SLEEP;
                         break;
@@ -1134,6 +1247,7 @@ static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char* s = NULL;
+        char* m = NULL;
         char* streamlist = NULL;
         char* templist = NULL;
         char* saveptr = NULL;
@@ -1223,20 +1337,69 @@ static int config(struct ldmsd_plugin *self,
         templist = NULL;
 
         //only set rollover once we have created the files
-        s = av_value(avl, "rollover");
+        s = av_value(avl, "rolltype");
+        m = av_value(avl, "rollover");
+        if ((s && !m)||(m && !s)){
+                msglog(LDMSD_LERROR, PNAME ": rolltype given without rollover.\n");
+                rolltype = DEFAULT_ROLLTYPE;
+                rc = EINVAL;
+                goto err;
+        }
         if (s) {
-                rollover = atoi(s);
-                rolltype = ROLL_BY_RECORDS;
+                rolltype = atoi(s);
+                rollover = atoi(m);
+                if (rolltype < MINROLLTYPE || rolltype > MAXROLLTYPE){
+                        msglog(LDMSD_LERROR, PNAME
+                               ": rolltype out of range.\n");
+                        rc = EINVAL;
+                        goto err;
+                }
+
+                if (rollover < 0){
+                        msglog(LDMSD_LERROR, PNAME
+                               ": Error: bad rollover value %d\n", rollover);
+                        rc = EINVAL;
+                        goto err;
+                }
+
+                if (rolltype == MAXROLLTYPE){
+                        s = av_value(avl,"rollagain");
+                        if (s){
+                                rollagain = atoi(s);
+                                if (rollagain < 0){
+                                        msglog(LDMSD_LERROR, PNAME
+                                               ": bad rollagain= value %d\n", rollagain);
+                                        rc = EINVAL;
+                                        goto err;
+                                }
+                                if (rollagain < rollover || rollagain < MIN_ROLL_1){
+                                        msglog(LDMSD_LERROR,
+                                               "%s: rolltype=5 needs rollagain > max(rollover,10)\n");
+                                        msglog(LDMSD_LERROR, PNAME
+                                               ": rollagain=%d rollover=%d\n",
+                                               rollover, rollagain);
+                                        rc = EINVAL;
+                                        goto err;
+                                }
+                        } else {
+                                msglog(LDMSD_LERROR, PNAME
+                                       ": rolltype %d requires rollagain\n",
+                                       rolltype);
+                        }
+                }
+
                 pthread_create(&rothread, NULL, rolloverThreadInit, NULL);
                 rothread_used = 1;
                 msglog(LDMSD_LDEBUG,
-                       PNAME ": setting rollrecords to %d\n", rollover);
+                       PNAME ": using rolltype %d rollover %d\n",
+                       rolltype, rollover);
         }
 
         //only set flush once we have created the files
         s = av_value(avl, "flushtime");
         if (s) {
                 flushtime = atoi(s);
+
                 pthread_create(&flthread, NULL, flushThreadInit, NULL);
                 flthread_used = 1;
                 msglog(LDMSD_LDEBUG,
@@ -1261,9 +1424,14 @@ static int config(struct ldmsd_plugin *self,
 
 err:
         //delete any created streamstores
+        rolltype = DEFAULT_ROLLTYPE;
+        rollover = 0;
+        flushtime = 0;
         idx_traverse(stream_idx, close_streamstore, NULL);
         idx_destroy(stream_idx);
         stream_idx = idx_create();
+
+        msglog(LDMSD_LDEBUG, PNAME ": failed config\n");
 
 out:
         free(templist);
@@ -1290,6 +1458,9 @@ static void term(struct ldmsd_plugin *self)
 	container = NULL;
         buffer = 1;
         rolltype = DEFAULT_ROLLTYPE;
+        rollover = 0;
+        rollagain = 0;
+        flushtime = 0;
 
         idx_traverse(stream_idx, close_streamstore, NULL);
         idx_destroy(stream_idx);
@@ -1304,14 +1475,18 @@ static void term(struct ldmsd_plugin *self)
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "    config name=l2_stream_csv_store path=<path> container=<container> stream=<stream> [flushtime=<N>] [buffer=<0/1>] [rollover=<N>]\n"
+	return  "    config name=l2_stream_csv_store path=<path> container=<container> stream=<stream> \n"
+                "          [flushtime=<N>] [buffer=<0/1>] [rollover=<N> rolltype=<N>]\n"
 		"         - Set the root path for the storage of csvs and some default parameters\n"
 		"         - path          The path to the root of the csv directory\n"
 		"         - container     The directory under the path\n"
 		"         - stream        a comma separated list of streams, each of which will also be its file name\n"
                 "         - flushtime     Time in sec for a regular flush (independent of any other rollover or flush directives)\n"
 		" 	  - buffer        0 to disable buffering, 1 to enable it with autosize (default)\n"
-                "         - rollover      N to enable rollover after approximately N lines in csv. Default no roll\n"
+                "         - rollover      Greater than or equal to zero; enables file rollover and sets interval\n"
+                "         - rolltype      [1-n] Defines the policy used to schedule rollover events.\n"
+		ROLLTYPES
+                "\n"
 		;
 }
 
