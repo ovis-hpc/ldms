@@ -535,7 +535,7 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 		DEBUG2("publishing to %s:%s\n", client->host, client->port);
 		DEBUG2("slurm %s:%d %s", __func__, __LINE__, jb->buf);
 		rc = ldmsd_stream_publish(client->ldms, stream,
-					  LDMSD_STREAM_JSON, jb->buf, jb->cursor);
+					  LDMSD_STREAM_JSON, jb->buf, jb->cursor+1);
 		if (rc) {
 			DEBUG2("ERROR %d publishing to %s:%s\n",
 				rc, client->host, client->port);
