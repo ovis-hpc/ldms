@@ -55,7 +55,7 @@ jbuf_t jbuf_append_va(jbuf_t jb, const char *fmt, va_list _ap)
 	space = jb->buf_len - jb->cursor;
 	cnt = vsnprintf(&jb->buf[jb->cursor], space, fmt, ap);
 	va_end(ap);
-	if (cnt > space) {
+	if (cnt >= space) {
 		space = jb->buf_len + cnt + JSON_BUF_START_LEN;
 		jb = realloc(jb, space);
 		if (jb) {
