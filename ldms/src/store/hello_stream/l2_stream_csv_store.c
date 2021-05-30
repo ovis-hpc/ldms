@@ -82,10 +82,9 @@
 
 
 //user changes these in the code before build, for now
-///#define NDATA_TIMING
-#define NDATA 580
+//timestamp store only for json lines, not text
 #define TIMESTAMP_STORE
-#define RESETKEY "LDMS_STREAM_HEADER_RESET\n"
+#define CB_MSG_LOG 50000
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -182,16 +181,14 @@ struct csv_stream_handle{
         char* basename; /** file base name. add the timestamp on:
                             (root_path + container + stream) */
         FILE* file;
-        int64_t store_count; //for the roll
-        int64_t byte_count; //for the roll
+
+        int64_t store_count; //for the roll. Cumulative since last roll
+        int64_t byte_count; //for the roll. Cumulative since last roll
+        struct timeval tlastrcv; //for the flush.
         struct linedata dataline; //used to keep track of keys for the header
         pthread_mutex_t lock;
 };
 
-//#ifdef NDATA_TIMING
-//static int temp_count = 0; /** tracks written lines for timing. this is
-//                               incremented over all stream, not per stream */
-//#endif
 
 static void _clear_key_info(struct linedata* dataline){
 	int i;
@@ -249,6 +246,8 @@ static void close_streamstore(void *obj, void *cb_arg){
         _clear_key_info(&stream_handle->dataline);
         stream_handle->store_count = 0;
         stream_handle->byte_count = 0;
+        stream_handle->tlastrcv.tv_sec = 0;
+        stream_handle->tlastrcv.tv_usec = 0;
         free(stream_handle->basename);
         stream_handle->basename = NULL;
 
@@ -327,19 +326,6 @@ static int _parse_list_for_header(struct linedata *dataline, json_entity_t e){
 	return 0;
 
 }
-/* temporarily removed
-static int _reset_check(const char *msg){
-        int rc = strcmp(msg, RESETKEY);
-        if (!rc){
-                msglog(LDMSD_LDEBUG,
-                       PNAME ": got a reset\n");
-                return 1;
-        }
-
-        return 0;
-}
-*/
-
 
 static int _get_header_from_data(struct linedata *dataline, json_entity_t e){
 	// from the data, builds the header and supporting structs.
@@ -551,6 +537,7 @@ static int _print_header(struct csv_stream_handle *stream_handle){
 
 
 static int _print_data_lines(struct csv_stream_handle *stream_handle,
+                             struct timeval *tv_prev,
                              json_entity_t e){
 	//well known order
 
@@ -569,11 +556,6 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
         }
 
         struct linedata *dataline = &stream_handle->dataline;
-
-#if defined(TIMESTAMP_STORE)
-	struct timeval tv_prev;
-	gettimeofday(&tv_prev, 0);
-#endif
 
 	iheaderkey = 0;
 
@@ -607,13 +589,16 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 	if (dataline->nlist == 0){
 #ifdef TIMESTAMP_STORE
 		rc = fprintf(stream_handle->file, "%s,%f\n", jbs->buf,
-                        (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
-                stream_handle->byte_count += rc;
+                        (tv_prev->tv_sec + tv_prev->tv_usec/1000000.0));
 #else
 		rc = fprintf(stream_handle->file, "%s\n", jbs->buf);
-                stream_handle->byte_count += rc;
+
 #endif
 		jbuf_free(jbs);
+                stream_handle->byte_count += rc;
+                stream_handle->store_count++; /** stream_cb has the lock, so
+                                                  roll cannot be called while
+                                                  this is going on. */
 		return 0;
 	}
 
@@ -630,13 +615,15 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 		}
 #ifdef TIMESTAMP_STORE
 		rc = fprintf(stream_handle->file, "%s,%f\n", jbs->buf,
-                        (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
-                stream_handle->byte_count += rc;
+                        (tv_prev->tv_sec + tv_prev->tv_usec/1000000.0));
 #else
 		rc = fprintf(stream_handle->file, "%s\n", jbs->buf);
-                stream_handle->byte_count += rc;
 #endif
 		jbuf_free(jbs);
+                stream_handle->byte_count += rc;
+                stream_handle->store_count++; /** stream_cb has the lock, so
+                                                  roll cannot be called while
+                                                  this is going on. */
 		return 0;
 	}
 
@@ -658,13 +645,15 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 		}
 #ifdef TIMESTAMP_STORE
 		rc = fprintf(stream_handle->file, "%s,%f\n", jbs->buf,
-                        (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
-                stream_handle->byte_count += rc;
+                        (tv_prev->tv_sec + tv_prev->tv_usec/1000000.0));
 #else
 		rc = fprintf(stream_handle->file, "%s\n", jbs->buf);
-                stream_handle->byte_count += rc;
 #endif
 		jbuf_free(jbs);
+                stream_handle->byte_count += rc;
+                stream_handle->store_count++; /** stream_cb has the lock, so
+                                                  roll cannot be called while
+                                                  this is going on. */
 		return 0;
 	}
 
@@ -706,47 +695,19 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 		}
 #ifdef TIMESTAMP_STORE
 		rc = fprintf(stream_handle->file, "%s,%f\n", jb->buf,
-                        (tv_prev.tv_sec + tv_prev.tv_usec/1000000.0));
-                stream_handle->byte_count += rc;
+                        (tv_prev->tv_sec + tv_prev->tv_usec/1000000.0));
 #else
 		rc = fprintf(stream_handle->file, "%s\n", jb->buf);
-                stream_handle->byte_count += rc;
 #endif
+                jbuf_free(jb);
+                stream_handle->byte_count += rc;
                 stream_handle->store_count++; /** stream_cb has the lock, so
                                                   roll cannot be called while
                                                   this is going on. */
-
-                jbuf_free(jb);
-
-                //#ifdef NDATA_TIMING
-                //                //note this is INFO not DEBUG
-                //        	temp_count++;
-                //        	if ((temp_count % NDATA) == 0){
-                //        		struct timespec tv_now;
-                //        		clock_gettime(CLOCK_REALTIME, &tv_now);
-                //                        msglog(LDMSD_LINFO, PNAME " %d lines processed timestamp %ld %ld\n",
-                //                               temp_count, tv_now.tv_sec, tv_now.tv_nsec);
-                //        	}
-                //#endif
-
 	}
 	jbuf_free(jbs);
 
-
-
-
-        //#ifdef NDATA_TIMING
-        //        //note this is INFO not DEBUG
-        //	temp_count++;
-        //	if ((temp_count % NDATA) == 0){
-        //		struct timespec tv_now;
-        //		clock_gettime(CLOCK_REALTIME, &tv_now);
-        //                msglog(LDMSD_LINFO, PNAME " %d lines processed timestamp %ld %ld\n",
-        //                       temp_count, tv_now.tv_sec, tv_now.tv_nsec);
-        //	}
-        //#endif
-
-	return 1;
+	return 0;
 }
 
 static void _roll_innards(struct csv_stream_handle *stream_handle);
@@ -757,21 +718,28 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 
 	static uint64_t msg_count = 0;
         struct csv_stream_handle* stream_handle;
+        struct timeval tv_prev;
+        int gottime = 0;
 	int rc = 0;
 
+
+        /** diagnostics logging */
+
+        //msglog(LDMSD_LDEBUG,
+        //PNAME ": Calling stream_cb. on stream '%s'\n",
+        //ldmsd_stream_client_name(c));
+        //               PNAME ": Calling stream_cb. msg '%s' on stream '%s'\n",
+        //               msg, ldmsd_stream_client_name(c));
+
 	msg_count += 1;
-	if (0 == (msg_count % 50000)) {
+	if (0 == (msg_count % CB_MSG_LOG)) {
                 extern struct rbt *msg_tree;
                 time_t t = time(NULL);
-		msglog(LDMSD_LERROR, "timestamp %ld msg_tree %ld msg_count %lu\n", t, msg_tree->card, msg_count);
+		msglog(LDMSD_LERROR,
+                       "timestamp %ld msg_tree %ld msg_count %lu\n",
+                       t, msg_tree->card, msg_count);
 	}
 
-
-        //        msglog(LDMSD_LDEBUG,
-        //               PNAME ": Calling stream_cb. on stream '%s'\n",
-        //               ldmsd_stream_client_name(c));
-               //               PNAME ": Calling stream_cb. msg '%s' on stream '%s'\n",
-               //               msg, ldmsd_stream_client_name(c));
 
         // don't need to check the cfgstate. if you've subscribed, it's ok
         const char *skey = ldmsd_stream_client_name(c);
@@ -799,6 +767,21 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
             overall shutdown, plus want to be able to do the callback on
             independent streams at the same time */
 
+
+        /** TODO: decide if this should be inside oor outside the lock.
+            ideally those should not be very different */
+#ifdef TIMESTAMP_STORE
+	gettimeofday(&tv_prev, 0);
+        gottime = 1;
+#endif
+        //also get the time if flushtime is set
+        if (flushtime > 0){
+                if (!gottime) gettimeofday(&tv_prev, 0);
+                /** update the last recv time for this stream, whether
+                    or not we end up processing data for it or not. */
+                stream_handle->tlastrcv = tv_prev;
+        }
+
 	if (!stream_handle->file){
                 msglog(LDMSD_LERROR,
                        PNAME ": Cannot insert values for '%s': file is NULL\n",
@@ -807,39 +790,25 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		goto out;
 	}
 
-
 	/** msg will be populated. if the type was json,
             entity will also be populated. */
+
 	if (stream_type == LDMSD_STREAM_STRING){
-
-        //  TEMPORARILY REMOVING FIXME TODO
-                /*
-          if (_reset_check(msg)){
-          _clear_key_info(&stream_handle->dataline);
-          _roll_innards(stream_handle); //we already have the lock
-          goto out;
-          }
-        */
-
+                /** note that the string might have a newline as part of it */
+#ifdef TIMESTAMP_STORE
+                rc = fprintf(stream_handle->file, "%s,%f\n",
+                             msg,
+                             tv_prev.tv_sec + tv_prev.tv_usec/1000000.0);
+#else
                 rc = fprintf(stream_handle->file, "%s\n", msg);
+#endif
                 stream_handle->byte_count+= rc;
                 stream_handle->store_count++;
-        /** stream_cb has the lock, so
-            roll cannot be called while
-            this is going on. */
-
-                //#ifdef NDATA_TIMING
-                //        //note this is INFO not DEBUG
-                //        temp_count++;
-                //        if ((temp_count % NDATA) == 0){
-                //                struct timespec tv_now;
-                //                clock_gettime(CLOCK_REALTIME, &tv_now);
-                //                msglog(LDMSD_LINFO, PNAME " %d lines processed timestamp %ld %ld\n",
-                //                       temp_count, tv_now.tv_sec, tv_now.tv_nsec);
-                //        }
-                //#endif
 
                 if (!buffer){
+                        /** stream_cb has the lock, so
+                            roll cannot be called while
+                            this is going on. */
         		fflush(stream_handle->file);
 			fsync(fileno(stream_handle->file));
                 }
@@ -861,14 +830,17 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
                 if (!stream_handle->dataline.header){
                         rc = _get_header_from_data(&stream_handle->dataline,e);
 			if (rc != 0) {
-				msglog(LDMSD_LDEBUG,
-                                       PNAME ": error processing header from data <%d>\n", rc);
+				msglog(LDMSD_LDEBUG, PNAME
+                                       ": error getting header from data <%d>\n",
+                                       rc);
 				goto out;
 			}
+                        /** header does not count toward bytes and lines
+                            to simplify diagnostics */
                         _print_header(stream_handle);
 		}
 
-		_print_data_lines(stream_handle, e);
+		_print_data_lines(stream_handle, &tv_prev, e);
 
                 if (!buffer){
                         fflush(stream_handle->file);
@@ -1058,18 +1030,18 @@ static void roll_cb(void *obj, void *cb_arg){
         case ROLL_BY_INTERVAL:
         case ROLL_BY_MIDNIGHT:
         case ROLL_BY_MIDNIGHT_AGAIN:
-                //                msglog(LDMSD_LDEBUG,
-                //                       PNAME ": rolling '%s' (type 1,2 or 5)\n",
-                //                       stream_handle->basename);
+                //                               msglog(LDMSD_LDEBUG,
+                //                                      PNAME ": rolling '%s' (type 1,2 or 5)\n",
+                //                                      stream_handle->basename);
                 break;
         case ROLL_BY_RECORDS:
                 if (stream_handle->store_count < rollover){
                         goto out;
                 } else {
-                        //                        msglog(LDMSD_LDEBUG,
-                        //                               PNAME ": rolling '%s' after %d records\n",
-                        //                               stream_handle->basename,
-                        //                               stream_handle->store_count);
+                        //                                                msglog(LDMSD_LDEBUG,
+                        //                                                       PNAME ": rolling '%s' after %d records\n",
+                        //                                                      stream_handle->basename,
+                        //                                                      stream_handle->store_count);
                 }
                 break;
         case ROLL_BY_BYTES:
@@ -1102,24 +1074,31 @@ out:
 
 }
 
+struct flush_cb_arg{
+        time_t appx;
+};
 
 static void flush_cb(void *obj, void *cb_arg){
+        //flushtime must be > 0 to even get here
 
-        //if we've got here then we've called a stream_store
-        if (!obj){
-                return;
-        }
+        if ((!obj) || (!cb_arg))  return;
+
         struct csv_stream_handle *stream_handle =
                 (struct csv_stream_handle *)obj;
-
         if (!stream_handle) return;
+
+        struct flush_cb_arg *fca = (struct flush_cb_arg *)cb_arg;
+        time_t timex = fca->appx;
 
         pthread_mutex_lock(&stream_handle->lock);
 
         if (stream_handle->file){ //this should always be true
-                //                msglog(LDMSD_LDEBUG, "Async Flush: %s\n");
-                fflush(stream_handle->file);
-                fsync(fileno(stream_handle->file));
+                if (timex - stream_handle->tlastrcv.tv_sec > flushtime){
+                        msglog(LDMSD_LDEBUG, PNAME ": Async Flush: %s (curr %ld last %ld)\n",
+                               stream_handle->stream, timex, stream_handle->tlastrcv.tv_sec);
+                        fflush(stream_handle->file);
+                        fsync(fileno(stream_handle->file));
+                }
         }
 
         pthread_mutex_unlock(&stream_handle->lock);
@@ -1140,9 +1119,13 @@ static int handleRollover(){
 
 
 static int handleFlush(){
+
+        struct flush_cb_arg fca;
+
         pthread_mutex_lock(&cfg_lock); /** don't add any stores during this,
                                            which currently cannot do anyway. */
-        idx_traverse(stream_idx, flush_cb, NULL);
+        fca.appx = time(NULL);
+        idx_traverse(stream_idx, flush_cb, (void *)&fca);
         pthread_mutex_unlock(&cfg_lock);
 
         return 0;

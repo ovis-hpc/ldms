@@ -1,7 +1,6 @@
 .\" Manpage for Plugin_l2_stream_csv_store
 .\" Contact ovis-help@sandia.gov to correct errors or typos.
-.TH man 7 "27 May 2021" "v4" "LDMS Plugin l2_stream_csv_store man page"
-
+.TH man 7 "28 May 2021" "v4" "LDMS Plugin l2_stream_csv_store man page"
 .SH NAME
 Plugin_l2_stream_csv_store - man page for the LDMS l2_stream_csv_store plugin
 
@@ -40,7 +39,7 @@ csv list of streams to which to subscribe.
 .TP
 flushtime=<N>
 .br
-Optional time for flushing all files, independent of any buffering, rollover, etc. Default no other flushing, min time if enabbled = 120 sec.
+Flush any file that has not received data on its stream in the last N sec. This is asynchonous to any buffering or rollover that is occuring. Min time if enabled = 120 sec. This will occur again at this interval if there is still no data received.
 .TP
 buffer=<0/1>
 .br
@@ -64,6 +63,7 @@ wake daily at rollover seconds after midnight (>=0) and roll.
 roll after approximately rollover records are written.
 .TP
 4
+.br
 roll after approximately rollover bytes are written.
 .TP
 5
@@ -84,7 +84,7 @@ The json is expected to be something like:
 .fi
 Note the brackets. There will be at most one list. It is expected that each dictionary in the list will have the same item names. Everything else must be singleton data items.
 .PP
-The header is generated off the first received json ever or after a reset messsage. If that first json is missing the list, or if the list has no entries, then list data will not appear in the header and will not be parsed in subsequent data lines. The header values will be the singleton names (e.g., foo, bar) and a list will be broken up into and item per dictionary item with names listname:dictname (e.g., zed_data:count, zed_data:name).
+The header is generated off the first received json ever. If that first json is missing the list, or if the list has no entries, then list data will not appear in the header and will not be parsed in subsequent data lines. The header values will be the singleton names (e.g., foo, bar) and a list will be broken up into and item per dictionary item with names listname:dictname (e.g., zed_data:count, zed_data:name).
 .PP
 There can be any number of dictionaries in a list. Data lines with multiple dictionaries will be written out in the csv as separate lines, with the singleton items repeated in each line like:
 .nf
@@ -94,13 +94,6 @@ There can be any number of dictionaries in a list. Data lines with multiple dict
 .fi
 .PP
 There will be a header in every output file (can be more than 1 output file because of rollover).
-
-.SH RESETTING/CHANGING THE HEADER
-.PP
-The header is generated off the first received json ever, or after a reset message. If someone sends a message on the stream as type 'string' with content LDMS_STREAM_HEADER_RESET, then the expected headers are deleted and the file is rolled over. A header will then be determined off of the next json.
-.PP
-Note that LDMS Streams does not have guarneteed transmission. Therefore a reset message may be lost and there is no way to know. A message is logged at DEBBUG level, when a reset is received.
-
 
 .SH STORE OUTPUT FILENAME
 .PP
@@ -112,15 +105,11 @@ The filename will be '<streamname>.<timestamp>' (e.g., foo-123456789). The times
 There is only column ordering for 'json' format. There is no column ordering for 'str' format. 'str' format will always be written out, no matter what the 'json' header keys may be. The json order is arbitrary.
 
 .SH TIMING INFORMATION
-There are a few options for timing information. These are driven by #defines in the code source right now.
-.TP
-NDATA_TIMING
-.br
-Set by #define or #undef NDATA_TIMING and NDATA. This will write out an absolute timestamp in the log at level LINFO  every NDATA streaminput (not dictionary) lines. The format looks like "10000 lines timestamp 123456789". The timestamp is only gotten once, if the timing information is to be written out.
+Options for timing information are driven by #defines in the code source right now.
 .TP
 TIMESTAMP_STORE
 .br
-Set by #define or #undef TIMESTAMP_STORE. THis will write out an absolute timestamp in the file as the last item in the csv and is called 'store_recv_time' in the header. The timestamp is only gotten once, when the function is entered (e.g., if a data line has multiple dicts, this will result in multiple output lines each of which will have the same additional timestamp value.
+Set by #define or #undef TIMESTAMP_STORE. This will write out an absolute timestamp in the file as the last item in the csv and is called 'store_recv_time' in the header. The timestamp is only gotten once, when the function is entered (e.g., if a data line has multiple dicts, this will result in multiple output lines each of which will have the same additional timestamp value). Both string and json are timestamped.
 .PP
 
 
@@ -138,13 +127,10 @@ There is no way to know if a stream will actually be used or if a final value is
 It is possible that with buffering, if a stream's sends are ended, there still may be unflushed data to a file.
 .PP
 There is no way to remove a stream from the index nor to unsubscribe. That is, there is nothing that is akin to open_store and close_store pair as in an actual store plugin.
+Note that this is in development and options are changing. For example, RESET funcationality has been removed and flushtime functionality has changed.
 .PP
 Note the restrictions on the data input above. Also how that affects the header.
 .PP
-Note that there is no communication back to be sure that a reset message was received or handled correctly.
-.PP
-This is not full featured, like the csv store. There is only one rollover, yet, for example.
-
 
 
 .SH EXAMPLES
