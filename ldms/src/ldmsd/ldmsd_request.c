@@ -6046,7 +6046,7 @@ static int stream_republish_cb(ldmsd_stream_client_t c, void *ctxt,
 			       const char *data, size_t data_len,
 			       json_entity_t entity)
 {
-	ldms_t ldms = ldms_xprt_get(ctxt);
+	ldms_t ldms = (ldms_t)ctxt;
 	int rc, attr_id = LDMSD_ATTR_STRING;
 	const char *stream = ldmsd_stream_client_name(c);
 	ldmsd_req_cmd_t rcmd = ldmsd_req_cmd_new(ldms, LDMSD_STREAM_PUBLISH_REQ,
