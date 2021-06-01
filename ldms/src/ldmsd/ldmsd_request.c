@@ -1125,7 +1125,6 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 		reqc = alloc_req_ctxt(&key, xprt->max_msg);
 		if (!reqc)
 			goto oom;
-		reqc->xprt = xprt;
 	} else {
 		reqc = find_req_ctxt(&key);
 		if (!reqc) {
@@ -1140,6 +1139,7 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 			goto err_out;
 		}
 	}
+	reqc->xprt = xprt;
 
 	rc = ldmsd_msg_gather(reqc->_req_buf, request);
 	if (rc && (EBUSY != rc))
@@ -6339,7 +6339,7 @@ void ldmsd_xprt_term(ldms_t x)
 	while (rbn) {
 		struct rbn *next_rbn = rbn_succ(rbn);
 		reqc = container_of(rbn, struct ldmsd_req_ctxt, rbn);
-		if (reqc->xprt->ldms.ldms == x)
+		if (reqc->key.conn_id == ldms_xprt_conn_id(x))
 			__free_req_ctxt(reqc);
 		rbn = next_rbn;
 	}
