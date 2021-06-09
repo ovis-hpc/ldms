@@ -75,9 +75,7 @@ static rdc_field_t default_field_ids[] = {
 	RDC_FI_PCIE_RX,
 	RDC_FI_GPU_UTIL,
 	RDC_FI_GPU_MEMORY_USAGE,
-	RDC_FI_GPU_MEMORY_TOTAL,
-	RDC_FI_ECC_CORRECT_TOTAL,
-	RDC_FI_ECC_UNCORRECT_TOTAL
+	RDC_FI_GPU_MEMORY_TOTAL
 };
 
 static const uint32_t num_fields_default = sizeof(default_field_ids)/sizeof(default_field_ids[0]);
@@ -98,9 +96,7 @@ struct defset defs[] = {
 		"RDC_FI_PCIE_RX,"
 		"RDC_FI_GPU_UTIL,"
 		"RDC_FI_GPU_MEMORY_USAGE,"
-		"RDC_FI_GPU_MEMORY_TOTAL,"
-		"RDC_FI_ECC_CORRECT_TOTAL,"
-		"RDC_FI_ECC_UNCORRECT_TOTAL"
+		"RDC_FI_GPU_MEMORY_TOTAL"
 	},
 	{ "xgmi", "RDC_FI_GPU_CLOCK,"
 		"RDC_FI_MEM_CLOCK,"
@@ -112,8 +108,6 @@ struct defset defs[] = {
 		"RDC_FI_GPU_UTIL,"
 		"RDC_FI_GPU_MEMORY_USAGE,"
 		"RDC_FI_GPU_MEMORY_TOTAL,"
-		"RDC_FI_ECC_CORRECT_TOTAL,"
-		"RDC_FI_ECC_UNCORRECT_TOTAL,"
 		"RDC_EVNT_XGMI_0_THRPUT,"
 		"RDC_EVNT_XGMI_1_THRPUT"
 	}
