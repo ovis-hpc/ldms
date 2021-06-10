@@ -144,6 +144,7 @@ const struct req_str_id attr_str_id_table[] = {
 	{  "auto_switch",       LDMSD_ATTR_AUTO_SWITCH  },
 	{  "base",              LDMSD_ATTR_BASE  },
 	{  "container",         LDMSD_ATTR_CONTAINER  },
+	{  "flush",		LDMSD_ATTR_INTERVAL },
 	{  "gid",               LDMSD_ATTR_GID  },
 	{  "host",              LDMSD_ATTR_HOST  },
 	{  "incr",              LDMSD_ATTR_INCREMENT  },
