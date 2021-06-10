@@ -90,8 +90,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       # LDMSD command version 3
                       ###############################
                       ##### Producer Policy #####
-                      'prdcr_add': {'req_attr': ['name', 'type', 'xprt', 'host',
-                                             'port', 'interval']},
+                      'prdcr_add': {'req_attr': ['name', 'type', 'xprt', 'host', 'port', 'interval'],
+                                    'opt_attr' : [ 'auth' ] },
                       'prdcr_del': {'req_attr': ['name']},
                       'prdcr_start': {'req_attr': ['name'],
                                       'opt_attr': ['interval']},
@@ -118,8 +118,8 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'udptr_status': {'req_attr': [], 'opt_attr': ['name']},
                       'updtr_task': {'req_attr': ['name'], 'opt_attr': []},
                       ##### Storage Policy #####
-                      'strgp_add': {'req_attr': ['name', 'plugin', 'container',
-                                              'schema']},
+                      'strgp_add': {'req_attr': ['name', 'plugin', 'container', 'schema'],
+                                    'opt_attr' : [ 'flush' ] },
                       'strgp_del': {'req_attr': ['name']},
                       'strgp_prdcr_add': {'req_attr': ['name', 'regex']},
                       'strgp_prdcr_del': {'req_attr': ['name', 'regex']},
