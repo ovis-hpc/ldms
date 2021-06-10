@@ -1180,6 +1180,8 @@ static void help_strgp_add()
 		"     plugin=      The name of the storage backend.\n"
 		"     container=   The storage backend container name.\n"
 		"     schema=      The schema name of the metric set to store.\n"
+		"     [flush=]     The interval between calls to the storage plugin flush method.\n"
+		"                  By default, the flush method is not called.\n"
 		"     [perm=]      The permission to modify the storage policy in the future.\n");
 }
 
