@@ -46,7 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
+#define _GNU_SOURCE
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,6 +54,7 @@
 #include <errno.h>
 #include <assert.h>
 #include <time.h>
+#include <ctype.h>
 #include <coll/rbt.h>
 #include <ovis_util/util.h>
 #include "ldms.h"
@@ -94,6 +95,83 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 	ldmsd_cfgobj___del(obj);
 }
 
+void ldmsd_timespec_diff(struct timespec *start, struct timespec *stop,
+			 struct timespec *result)
+{
+	if ((stop->tv_nsec - start->tv_nsec) < 0) {
+		result->tv_sec = stop->tv_sec - start->tv_sec - 1;
+		result->tv_nsec = stop->tv_nsec - start->tv_nsec + 1000000000;
+	} else {
+		result->tv_sec = stop->tv_sec - start->tv_sec;
+		result->tv_nsec = stop->tv_nsec - start->tv_nsec;
+	}
+}
+
+int ldmsd_timespec_cmp(struct timespec *a, struct timespec *b)
+{
+	if (a->tv_sec < b->tv_sec)
+		return -1;
+	if (a->tv_sec > b->tv_sec)
+		return 1;
+	if (a->tv_nsec < b->tv_nsec)
+		return -1;
+	if (a->tv_nsec > b->tv_nsec)
+		return 1;
+	return 0;
+}
+
+void ldmsd_timespec_add(struct timespec *a, struct timespec *b, struct timespec *result)
+{
+	result->tv_sec = a->tv_sec + b->tv_sec;
+	if (a->tv_nsec + b->tv_nsec < 1000000000) {
+		result->tv_nsec = a->tv_nsec + b->tv_nsec;
+	} else {
+		result->tv_sec += 1;
+		result->tv_nsec = a->tv_nsec + b->tv_nsec - 1000000000;
+	}
+}
+
+int ldmsd_timespec_from_str(struct timespec *result, const char *str)
+{
+	int rc = 0;
+	long long pos, nanoseconds;
+	char *units;
+	char *input = strdup(str);
+	double term;
+	assert(input);
+	for (pos = 0; input[pos] != '\0'; pos++) {
+		if (!isdigit(input[pos]) && input[pos] != '.')
+			break;
+	}
+	if (input[pos] == '\0') {
+		/* for backward compatability, raw values are considered microseconds */
+		units = strdup("us");
+	} else {
+		units = strdup(&input[pos]);
+		input[pos] = '\0';
+	}
+	assert(units);
+	term = strtod(input, NULL);
+	if (0 == strcasecmp(units, "s")) {
+		nanoseconds = term * 1000000000;
+	} else if (0 == strcasecmp(units, "ms")) {
+		nanoseconds = term * 1000000;
+	} else if (0 == strcasecmp(units, "us")) {
+		nanoseconds = term * 1000;
+	} else if (0 == strcasecmp(units, "ns")) {
+		nanoseconds = term;
+	} else {
+		rc = EINVAL;
+		goto out;
+	}
+	result->tv_sec = nanoseconds / 1000000000;
+	result->tv_nsec = nanoseconds % 1000000000;
+out:
+	free(input);
+	free(units);
+	return rc;
+}
+
 static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 {
 	if (strgp->state != LDMSD_STRGP_STATE_RUNNING)
@@ -104,6 +182,16 @@ static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	}
 	strgp->store->store(strgp->store_handle, prd_set->set,
 			    strgp->metric_arry, strgp->metric_count);
+	if (strgp->flush_interval.tv_sec || strgp->flush_interval.tv_nsec) {
+		struct timespec expiry;
+		struct timespec now;
+		ldmsd_timespec_add(&strgp->last_flush, &strgp->flush_interval, &expiry);
+		clock_gettime(CLOCK_REALTIME, &now);
+		if (ldmsd_timespec_cmp(&now, &expiry) >= 0) {
+			clock_gettime(CLOCK_REALTIME, &strgp->last_flush);
+			strgp->store->flush(strgp->store_handle);
+		}
+	}
 }
 
 ldmsd_strgp_t
@@ -119,6 +207,10 @@ ldmsd_strgp_new_with_auth(const char *name, uid_t uid, gid_t gid, int perm)
 		return NULL;
 
 	strgp->state = LDMSD_STRGP_STATE_STOPPED;
+	strgp->flush_interval.tv_sec = 0;
+	strgp->flush_interval.tv_nsec = 0;
+	strgp->last_flush.tv_sec = 0;
+	strgp->last_flush.tv_nsec = 0;
 	strgp->update_fn = strgp_update_fn;
 	LIST_INIT(&strgp->prdcr_list);
 	TAILQ_INIT(&strgp->metric_list);
@@ -526,6 +618,7 @@ int __ldmsd_strgp_start(ldmsd_strgp_t strgp, ldmsd_sec_ctxt_t ctxt)
 		goto out;
 	}
 	strgp->state = LDMSD_STRGP_STATE_RUNNING;
+	clock_gettime(CLOCK_REALTIME, &strgp->last_flush);
 	strgp->obj.perm |= LDMSD_PERM_DSTART;
 	/* Update all the producers of our changed state */
 	ldmsd_prdcr_update(strgp);

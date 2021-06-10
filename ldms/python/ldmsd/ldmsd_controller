@@ -329,6 +329,7 @@ class LdmsdCmdParser(cmd.Cmd):
         port=     The port number on which the LDMS is listening
         type=     The connection type [active, passive]
         interval= The connection retry interval (us)
+        auth=     The authentication method
         [perm=]   The permission to modify the producer in the future.
         """
         self.handle('prdcr_add', arg)
@@ -556,6 +557,8 @@ class LdmsdCmdParser(cmd.Cmd):
         plugin=    The name of the storage backend.
         container= The storage backend container name.
         schema=    The schema name of the metric set to store.
+        [flush=]   The interval between calls to the storage plugin flush method.
+                   By default, the flush method is not called.
         [perm=]    The permission to modify the storage policy in the future.
         """
         self.handle('strgp_add', arg)

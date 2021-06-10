@@ -2062,13 +2062,14 @@ static int prdcr_set_status_handler(ldmsd_req_ctxt_t reqc)
 
 static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *attr_name, *name, *plugin, *container, *schema;
+	char *attr_name, *name, *plugin, *container, *schema, *interval;
 	name = plugin = container = schema = NULL;
 	size_t cnt = 0;
 	uid_t uid;
 	gid_t gid;
 	int perm;
 	char *perm_s = NULL;
+	struct timespec flush_interval = {0, 0};
 
 	reqc->errcode = 0;
 
@@ -2092,6 +2093,17 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!schema)
 		goto einval;
 
+	attr_name = "flush";
+	interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
+	if (interval) {
+		int rc = ldmsd_timespec_from_str(&flush_interval, interval);
+		if (rc) {
+			reqc->errcode = ENOENT;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"The specified flush interval, \"%s\", is invalid.", interval);
+			goto send_reply;
+		}
+	}
 	struct ldmsd_plugin_cfg *store;
 	store = ldmsd_get_plugin(plugin);
 	if (!store) {
@@ -2131,6 +2143,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!strgp->container)
 		goto enomem_3;
 
+	strgp->flush_interval = flush_interval;
 	goto send_reply;
 
 enomem_3:

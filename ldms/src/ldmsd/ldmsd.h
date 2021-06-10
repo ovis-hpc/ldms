@@ -56,6 +56,7 @@
 #include <limits.h>
 #include <regex.h>
 #include <sys/queue.h>
+#include <time.h>
 #include <pthread.h>
 
 #ifdef LDMSD_UPDATE_TIME
@@ -471,6 +472,10 @@ struct ldmsd_strgp {
 	} state;
 
 	struct ldmsd_task task;	/* rotate open task */
+
+	/** Flush interval */
+	struct timespec flush_interval;
+	struct timespec last_flush;
 
 	/** Update function */
 	strgp_update_fn_t update_fn;
@@ -1233,5 +1238,9 @@ ldmsd_auth_t ldmsd_auth_find(const char *name)
 	return (ldmsd_auth_t)ldmsd_cfgobj_find(name, LDMSD_CFGOBJ_AUTH);
 }
 void ldmsd_xprt_term(ldms_t x);
+int ldmsd_timespec_from_str(struct timespec *result, const char *str);
+void ldmsd_timespec_add(struct timespec *a, struct timespec *b, struct timespec *result);
+int ldmsd_timespec_cmp(struct timespec *a, struct timespec *b);
+void ldmsd_timespec_diff(struct timespec *a, struct timespec *b, struct timespec *result);
 
 #endif
