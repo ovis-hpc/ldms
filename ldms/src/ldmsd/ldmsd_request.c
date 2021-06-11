@@ -2586,12 +2586,15 @@ int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
 		       "\"container\":\"%s\","
 		       "\"schema\":\"%s\","
 		       "\"plugin\":\"%s\","
+		       "\"flush\":\"%ld.%06ld\","
 		       "\"state\":\"%s\","
 		       "\"producers\":[",
 		       strgp->obj.name,
 		       strgp->container,
 		       strgp->schema,
 		       strgp->plugin_name,
+		       strgp->flush_interval.tv_sec,
+		       strgp->flush_interval.tv_nsec,
 		       ldmsd_strgp_state_str(strgp->state));
 	if (rc)
 		goto out;

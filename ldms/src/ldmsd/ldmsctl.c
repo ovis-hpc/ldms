@@ -1245,22 +1245,24 @@ void __print_strgp_status(json_entity_t strgp)
 	if (strgp->type != JSON_DICT_VALUE)
 		goto invalid_result_format;
 
-	json_entity_t name, container, schema, plugin, state;
+	json_entity_t name, container, schema, plugin, state, flush;
 
 	name = json_value_find(strgp, "name");
 	container = json_value_find(strgp, "container");
 	schema = json_value_find(strgp, "schema");
 	plugin = json_value_find(strgp, "plugin");
 	state = json_value_find(strgp, "state");
+	flush = json_value_find(strgp, "flush");
 
-	if (!name || !container || !schema || !plugin || !state)
+	if (!name || !container || !schema || !plugin || !state || !flush)
 		goto invalid_result_format;
 
-	printf("%-16s %-16s %-16s %-16s %s\n",
+	printf("%-16s %-16s %-16s %-16s %-16s %s\n",
 			json_value_str(name)->str,
 			json_value_str(container)->str,
 			json_value_str(schema)->str,
 			json_value_str(plugin)->str,
+			json_value_str(flush)->str,
 			json_value_str(state)->str);
 
 	json_entity_t prdcrs, metrics;
@@ -1328,8 +1330,8 @@ static void resp_strgp_status(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err
 		printf("Unrecognized producer status format\n");
 		goto out;
 	}
-	printf("Name             Container        Schema           Plugin           State\n");
-	printf("---------------- ---------------- ---------------- ---------------- ------------\n");
+	printf("Name             Container        Schema           Plugin           Flush(sec)       State\n");
+	printf("---------------- ---------------- ---------------- ---------------- ------------ ------------\n");
 
 	for (strgp = json_item_first(json); strgp; strgp = json_item_next(strgp)) {
 		__print_strgp_status(strgp);
