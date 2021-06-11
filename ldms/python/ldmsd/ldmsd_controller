@@ -758,12 +758,12 @@ class LdmsdCmdParser(cmd.Cmd):
         resp = self.handle('strgp_status', arg)
         if resp['errcode'] == 0:
             policies = json.loads(resp['msg'])
-            print("Name             Container        Schema           Plugin           State")
-            print("---------------- ---------------- ---------------- ---------------- ------------")
+            print("Name             Container        Schema           Plugin           flush(sec)       State")
+            print("---------------- ---------------- ---------------- ---------------- ------------ ----------------")
             for strgp in policies:
-                print("{0:16} {1:16} {2:16} {3:16} {4}".format(
+                print("{0:16} {1:16} {2:16} {3:16} {4:16} {5}".format(
                     strgp['name'], strgp['container'], strgp['schema'],
-                    strgp['plugin'], strgp['state']))
+                    strgp['plugin'], strgp['flush'], strgp['state']))
                 print("    producers: ", end='')
                 for prdcr in strgp['producers']:
                     print("{0} ".format(prdcr), end='')
