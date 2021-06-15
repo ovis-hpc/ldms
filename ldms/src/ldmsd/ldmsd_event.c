@@ -51,21 +51,58 @@
 #include "ldmsd_event.h"
 
 ev_worker_t logger_w;
+ev_worker_t cfg_w;
+ev_worker_t msg_tree_w;
+
 ev_type_t log_type;
+ev_type_t recv_rec_type;
+ev_type_t reqc_type; /* add to msg_tree, rem to msg_tree, send to cfg */
+ev_type_t deferred_start_type;
+ev_type_t xprt_term_type;
+
+int default_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
+{
+	ldmsd_log(LDMSD_LINFO, "Unhandled Event: type=%s, id=%d\n",
+		  ev_type_name(ev_type(ev)), ev_type_id(ev_type(ev)));
+	ldmsd_log(LDMSD_LINFO, "    status  : %s\n", status ? "FLUSH" : "OK" );
+	ldmsd_log(LDMSD_LINFO, "    src     : %s\n", (src)?ev_worker_name(src):"");
+	ldmsd_log(LDMSD_LINFO, "    dst     : %s\n", (dst)?ev_worker_name(dst):"");
+	return 0;
+}
 
 extern int log_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+extern int reqc_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+extern int recv_rec_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+extern int msg_tree_xprt_term_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+extern int deferred_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+
 int ldmsd_worker_init(void)
 {
 	logger_w = ev_worker_new("logger", log_actor);
 	if (!logger_w)
 		return ENOMEM;
+
+	/* msg_tree */
+	msg_tree_w = ev_worker_new("msg_tree", default_actor);
+	if (!msg_tree_w)
+		return ENOMEM;
+
+	ev_dispatch(msg_tree_w, reqc_type, reqc_actor);
+	ev_dispatch(msg_tree_w, recv_rec_type, recv_rec_actor);
+	ev_dispatch(msg_tree_w, xprt_term_type, msg_tree_xprt_term_actor);
+	ev_dispatch(msg_tree_w, deferred_start_type, deferred_start_actor);
 	return 0;
 }
 
 int ldmsd_ev_init(void)
 {
+	/* Event type */
 	log_type = ev_type_new("ldmsd:log", sizeof(struct log_data));
-	if (!log_type)
-		return ENOMEM;
+
+	xprt_term_type = ev_type_new("ldms:xprt_term", sizeof(struct xprt_term_data));
+	recv_rec_type = ev_type_new("ldms_xprt:recv", sizeof(struct recv_rec_data));
+	reqc_type = ev_type_new("ldmsd:reqc_ev", sizeof(struct reqc_data));
+	deferred_start_type = ev_type_new("ldmsd:deferred_start", 0);
+
 	return 0;
 }

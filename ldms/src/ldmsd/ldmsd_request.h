@@ -49,6 +49,7 @@
 
 #include <inttypes.h>
 #include "coll/rbt.h"
+#include "ovis_ref/ref.h"
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -71,6 +72,8 @@ enum ldmsd_request {
 	LDMSD_PRDCR_HINT_TREE_REQ,
 	LDMSD_PRDCR_SUBSCRIBE_REQ,
 	LDMSD_PRDCR_UNSUBSCRIBE_REQ,
+	LDMSD_PRDCR_DEFER_START_REQ,
+	LDMSD_PRDCR_DEFER_START_REGEX_REQ,
 	LDMSD_STRGP_ADD_REQ = 0x200,
 	LDMSD_STRGP_DEL_REQ,
 	LDMSD_STRGP_START_REQ,
@@ -80,6 +83,7 @@ enum ldmsd_request {
 	LDMSD_STRGP_PRDCR_DEL_REQ,
 	LDMSD_STRGP_METRIC_ADD_REQ,
 	LDMSD_STRGP_METRIC_DEL_REQ,
+	LDMSD_STRGP_DEFER_START_REQ,
 	LDMSD_UPDTR_ADD_REQ = 0x300,
 	LDMSD_UPDTR_DEL_REQ,
 	LDMSD_UPDTR_START_REQ,
@@ -90,6 +94,7 @@ enum ldmsd_request {
 	LDMSD_UPDTR_MATCH_ADD_REQ,
 	LDMSD_UPDTR_MATCH_DEL_REQ,
 	LDMSD_UPDTR_TASK_REQ,
+	LDMSD_UPDTR_DEFER_START_REQ,
 	LDMSD_SMPLR_ADD_REQ = 0X400,
 	LDMSD_SMPLR_DEL_REQ,
 	LDMSD_SMPLR_START_REQ,
@@ -271,6 +276,7 @@ typedef struct ldmsd_cfg_xprt_s {
 	enum {
 		LDMSD_CFG_TYPE_FILE,
 		LDMSD_CFG_TYPE_LDMS,
+		LDMSD_CFG_TYPE_INTR,
 	} type;
 	union {
 		struct ldmsd_cfg_file_s file;
@@ -296,7 +302,8 @@ struct ldmsd_msg_buf {
 typedef struct ldmsd_req_ctxt {
 	struct req_ctxt_key key;
 	struct rbn rbn;
-	int ref_count;
+	struct ref_s ref;
+	ev_t ev; /* reqc_type events */
 
 	ldmsd_cfg_xprt_t xprt;	/* network transport */
 
@@ -314,6 +321,9 @@ typedef struct ldmsd_req_ctxt {
 
 	struct ldmsd_msg_buf *send_buf;
 } *ldmsd_req_ctxt_t;
+
+#define ldmsd_req_ctxt_ref_get(_reqc_, _name_) ref_get(&((_reqc_)->ref), _name_)
+#define ldmsd_req_ctxt_ref_put(_reqc_, _name_) ref_put(&((_reqc_)->ref), _name_)
 
 typedef struct ldmsd_req_cmd *ldmsd_req_cmd_t;
 typedef int (* ldmsd_req_resp_fn)(ldmsd_req_cmd_t rcmd);

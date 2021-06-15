@@ -76,10 +76,12 @@
 #include <coll/str_map.h>
 #include <ovis_util/util.h>
 #include <mmalloc/mmalloc.h>
+#include "ovis_ev/ev.h"
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
+#include "ldmsd_event.h"
 #include "config.h"
 
 extern void cleanup(int x, char *reason);
@@ -534,6 +536,24 @@ static uint64_t __get_cfgfile_id()
 	return __sync_fetch_and_add(&id, 1);
 }
 
+int post_recv_rec_ev(ldmsd_cfg_xprt_t xprt, struct ldmsd_req_hdr_s *req)
+{
+	int rc;
+	ev_t recv_rec_ev = ev_new(recv_rec_type);
+	if (!recv_rec_ev) {
+		rc = ENOMEM;
+		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
+		return rc;
+	}
+
+	EV_DATA(recv_rec_ev, struct recv_rec_data)->rec = req;
+	EV_DATA(recv_rec_ev, struct recv_rec_data)->xprt = *xprt;
+	rc = ev_post(NULL, msg_tree_w, recv_rec_ev, NULL);
+	if (rc)
+		ldmsd_log(LDMSD_LERROR, "Failed to post a recv_rec event.\n");
+	return rc;
+}
+
 /*
  * \param req_filter is a function that returns zero if we want to process the
  *                   request, and returns non-zero otherwise.
@@ -555,11 +575,20 @@ int __process_config_file(const char *path, int *lno, int trust,
 	ssize_t off = 0;
 	ssize_t cnt;
 	size_t buf_len = 0;
-	struct ldmsd_cfg_xprt_s xprt;
+	struct ldmsd_cfg_xprt_s xprt = {0};
 	ldmsd_req_hdr_t request = NULL;
 	struct ldmsd_req_array *req_array = NULL;
+
 	if (!path)
 		return EINVAL;
+
+	xprt.type = LDMSD_CFG_TYPE_FILE;
+	xprt.file.cfgfile_id = __get_cfgfile_id();
+	xprt.send_fn = log_response_fn;
+	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
+	xprt.trust = trust;
+	xprt.rsp_err = 0;
+
 	line = malloc(LDMSD_CFG_FILE_XPRT_MAX_REC);
 	if (!line) {
 		rc = errno;
@@ -575,13 +604,6 @@ int __process_config_file(const char *path, int *lno, int trust,
 				path, STRERROR(rc));
 		goto cleanup;
 	}
-
-	xprt.type = LDMSD_CFG_TYPE_FILE;
-	xprt.file.cfgfile_id = __get_cfgfile_id();
-	xprt.send_fn = log_response_fn;
-	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
-	xprt.trust = trust;
-	xprt.rsp_err = 0;
 
 next_line:
 	errno = 0;
@@ -647,6 +669,9 @@ parse:
 	if (!off)
 		goto next_line;
 
+	/*
+	 * TODO: address line_number as msg_no as that it can be printed with the error log
+	 */
 	req_array = ldmsd_parse_config_str(line, msg_no, xprt.max_msg, ldmsd_log);
 	if (!req_array) {
 		rc = errno;
@@ -671,30 +696,25 @@ parse:
 		xprt.max_msg = ntohl(request->rec_len);
 
 	if (req_filter) {
+		ldmsd_ntoh_req_msg(request);
 		rc = req_filter(&xprt, request, ctxt);
 		/* rc = 0, filter OK */
 		if (rc == 0)
 			goto next_req;
 		/* rc == errno */
 		if (rc > 0) {
-			ldmsd_log(LDMSD_LERROR,
-				  "Configuration error at "
-				  "line %d (%s)\n", lineno, path);
+			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
 			goto cleanup;
 		}
 		/* rc < 0, filter not applied */
+		ldmsd_hton_req_msg(request);
 	}
-	rc = ldmsd_process_config_request(&xprt, request);
-	if (rc || xprt.rsp_err) {
-		if (!rc)
-			rc = xprt.rsp_err;
-		ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
-				lineno, path);
+
+	rc = post_recv_rec_ev(&xprt, request);
+	if (rc)
 		goto cleanup;
-	}
+
 next_req:
-	free(request);
-	request = NULL;
 	msg_no += 1;
 	off = 0;
 	goto next_line;
@@ -709,169 +729,62 @@ cleanup:
 	if (lno)
 		*lno = lineno;
 	ldmsd_req_array_free(req_array);
-	if (request)
-		free(request);
 	return rc;
 }
 
-int __req_deferred_start_regex(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
-{
-	regex_t regex = {0};
-	ldmsd_req_attr_t attr;
-	ldmsd_cfgobj_t obj;
-	int rc;
-	char *val;
-	attr = ldmsd_req_attr_get_by_id((void*)req, LDMSD_ATTR_REGEX);
-	if (!attr) {
-		ldmsd_log(LDMSD_LERROR, "`regex` attribute is required.\n");
-		return EINVAL;
-	}
-	val = str_repl_env_vars((char *)attr->attr_value);
-	if (!val) {
-		ldmsd_log(LDMSD_LERROR, "Not enough memory.\n");
-		return ENOMEM;
-	}
-	rc = regcomp(&regex, val, REG_NOSUB);
-	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "Bad regex: %s\n", val);
-		free(val);
-		return EBADMSG;
-	}
-	free(val);
-	ldmsd_cfg_lock(type);
-	LDMSD_CFGOBJ_FOREACH(obj, type) {
-		rc = regexec(&regex, obj->name, 0, NULL, 0);
-		if (rc == 0) {
-			obj->perm |= LDMSD_PERM_DSTART;
-		}
-	}
-	ldmsd_cfg_unlock(type);
-	return 0;
-}
+struct deferred_start {
+	uint32_t req_id;
+	const char *str;
+	LIST_ENTRY(deferred_start) ent;
+};
+LIST_HEAD(deferred_start_list, deferred_start) dstart_list;
 
-int __req_deferred_start(ldmsd_req_hdr_t req, ldmsd_cfgobj_type_t type)
-{
-	ldmsd_req_attr_t attr;
-	ldmsd_cfgobj_t obj;
-	char *name;
-	attr = ldmsd_req_attr_get_by_id((void*)req, LDMSD_ATTR_NAME);
-	if (!attr) {
-		ldmsd_log(LDMSD_LERROR, "`name` attribute is required.\n");
-		return EINVAL;
-	}
-	name = str_repl_env_vars((char *)attr->attr_value);
-	if (!name) {
-		ldmsd_log(LDMSD_LERROR, "Not enough memory.\n");
-		return ENOMEM;
-	}
-	obj = ldmsd_cfgobj_find(name, type);
-	if (!obj) {
-		ldmsd_log(LDMSD_LERROR, "Config object not found: %s\n", name);
-		free(name);
-		return ENOENT;
-	}
-	free(name);
-	obj->perm |= LDMSD_PERM_DSTART;
-	ldmsd_cfgobj_put(obj);
-	return 0;
-}
-
-/*
- * rc = 0, filter applied OK
- * rc > 0, rc == -errno, error
- * rc = -1, filter not applied (but not an error)
- */
 int __req_filter_failover(ldmsd_cfg_xprt_t x, ldmsd_req_hdr_t req, void *ctxt)
 {
 	int *use_failover = ctxt;
-	int rc;
+	int rc = -1;
+	uint32_t req_id;
+	struct deferred_start *d;
+	struct ldmsd_req_attr_s *attr;
 
-	/* req is in network byte order */
-	ldmsd_ntoh_req_msg(req);
-
+	req_id = req->req_id;
 	switch (req->req_id) {
-	case LDMSD_FAILOVER_START_REQ:
-		*use_failover = 1;
-		rc = 0;
-		break;
 	case LDMSD_PRDCR_START_REGEX_REQ:
-		rc = __req_deferred_start_regex(req, LDMSD_CFGOBJ_PRDCR);
+		req->req_id = LDMSD_PRDCR_DEFER_START_REGEX_REQ;
+		attr = ldmsd_req_attr_get_by_id((char*)req, LDMSD_ATTR_REGEX);
 		break;
 	case LDMSD_PRDCR_START_REQ:
-		rc = __req_deferred_start(req, LDMSD_CFGOBJ_PRDCR);
+		req->req_id = LDMSD_PRDCR_DEFER_START_REQ;
+		attr = ldmsd_req_attr_get_by_id((char*)req, LDMSD_ATTR_NAME);
 		break;
 	case LDMSD_UPDTR_START_REQ:
-		rc = __req_deferred_start(req, LDMSD_CFGOBJ_UPDTR);
+		req->req_id = LDMSD_UPDTR_DEFER_START_REQ;
+		attr = ldmsd_req_attr_get_by_id((char*)req, LDMSD_ATTR_NAME);
 		break;
 	case LDMSD_STRGP_START_REQ:
-		rc = __req_deferred_start(req, LDMSD_CFGOBJ_STRGP);
+		req->req_id = LDMSD_STRGP_DEFER_START_REQ;
+		attr = ldmsd_req_attr_get_by_id((char*)req, LDMSD_ATTR_NAME);
 		break;
+	case LDMSD_FAILOVER_START_REQ:
+		*use_failover = 1;
+		/* let thru */
 	default:
-		rc = -1;
+		/* nothing to do */
+		return rc;
 	}
-	/* convert req back to network byte order */
-	ldmsd_hton_req_msg(req);
-	return rc;
-}
 
-/*
- * Start all cfgobjs for aggregators that `filter(obj) == 0`.
- */
-int ldmsd_cfgobjs_start(int (*filter)(ldmsd_cfgobj_t))
-{
-	int rc = 0;
-	ldmsd_cfgobj_t obj;
-	struct ldmsd_sec_ctxt sctxt;
-
-	ldmsd_sec_ctxt_get(&sctxt);
-
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_PRDCR) {
-		if (filter && filter(obj))
-			continue;
-		rc = __ldmsd_prdcr_start((ldmsd_prdcr_t)obj, &sctxt);
-		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
-				  "prdcr_start failed, name: %s, rc: %d\n",
-				  obj->name, rc);
-			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-			goto out;
-		}
+	rc = 0;
+	d = malloc(sizeof(*d));
+	if (!d)
+		return ENOMEM;
+	d->req_id = req_id;
+	d->str = strdup((char *)attr->attr_value);
+	if (!d->str) {
+		free(d);
+		return ENOMEM;
 	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
-	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_UPDTR) {
-		if (filter && filter(obj))
-			continue;
-		rc = __ldmsd_updtr_start((ldmsd_updtr_t)obj, &sctxt);
-		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
-				  "updtr_start failed, name: %s, rc: %d\n",
-				  obj->name, rc);
-			ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
-			goto out;
-		}
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
-
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_STRGP);
-	LDMSD_CFGOBJ_FOREACH(obj, LDMSD_CFGOBJ_STRGP) {
-		if (filter && filter(obj))
-			continue;
-		rc = __ldmsd_strgp_start((ldmsd_strgp_t)obj, &sctxt);
-		if (rc) {
-			ldmsd_log(LDMSD_LERROR,
-				  "strgp_start failed, name: %s, rc: %d\n",
-				  obj->name, rc);
-			ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
-			goto out;
-		}
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_STRGP);
-
-out:
-	return rc;
+	LIST_INSERT_HEAD(&dstart_list, d, ent);
+	return 0;
 }
 
 int __our_cfgobj_filter(ldmsd_cfgobj_t obj)
@@ -881,15 +794,86 @@ int __our_cfgobj_filter(ldmsd_cfgobj_t obj)
 	return -1;
 }
 
+int cfgobj_start_req(struct deferred_start *d)
+{
+	int rc;
+	struct ldmsd_msg_buf *buf;
+	struct ldmsd_req_hdr_s *req;
+	struct ldmsd_cfg_xprt_s xprt = {0};
+	struct ldmsd_req_attr_s attr;
+
+	buf = ldmsd_msg_buf_new(512);
+	if (!buf)
+		return ENOMEM;
+
+	xprt.type = LDMSD_CFG_TYPE_INTR;
+	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
+	xprt.send_fn = log_response_fn;
+	xprt.trust = 1;
+
+	req = (struct ldmsd_req_hdr_s *)buf->buf;
+	buf->off = sizeof(*req);
+
+	switch (d->req_id) {
+	case LDMSD_PRDCR_START_REGEX_REQ:
+		attr.attr_id = LDMSD_ATTR_REGEX;
+		break;
+	case LDMSD_PRDCR_START_REQ:
+	case LDMSD_UPDTR_START_REQ:
+	case LDMSD_STRGP_START_REQ:
+		attr.attr_id = LDMSD_ATTR_NAME;
+		break;
+	default:
+		break;
+	}
+
+	attr.discrim = 1;
+	attr.attr_len = strlen(d->str) + 1;
+
+	memcpy(&buf->buf[buf->off], &attr, sizeof(attr));
+	buf->off += sizeof(attr);
+
+	memcpy(&buf->buf[buf->off], d->str, attr.attr_len);
+	buf->off += attr.attr_len;
+
+	attr.discrim = 0;
+	memcpy(&buf->buf[buf->off], &attr.discrim, sizeof(attr.discrim));
+	buf->off += sizeof(attr.discrim);
+
+	req->flags = LDMSD_REQ_SOM_F | LDMSD_REQ_EOM_F;
+	req->rec_len = buf->off;
+	req->marker = LDMSD_RECORD_MARKER;
+	req->msg_no = ldmsd_msg_no_get();
+	req->type = LDMSD_REQ_TYPE_CONFIG_CMD;
+	req->req_id = d->req_id;
+	ldmsd_hton_req_msg(req);
+
+	rc = post_recv_rec_ev(&xprt, req);
+	if (rc) {
+		ldmsd_msg_buf_free(buf);
+		ldmsd_log(LDMSD_LERROR, "Failed to post an internal start request.\n");
+	}
+
+	(void) ldmsd_msg_buf_detach(buf);
+	ldmsd_msg_buf_free(buf);
+	return rc;
+}
+
 /*
- * ldmsd config start prodcedure
+ * ldmsd config start procedure
  */
 int ldmsd_ourcfg_start_proc()
 {
+	struct deferred_start *d;
 	int rc;
-	rc = ldmsd_cfgobjs_start(__our_cfgobj_filter);
-	if (rc) {
-		exit(100);
+
+	while ((d = LIST_FIRST(&dstart_list))) {
+		rc = cfgobj_start_req(d);
+		if (rc)
+			return rc;
+		LIST_REMOVE(d, ent);
+		free((char *)d->str);
+		free(d);
 	}
 	return 0;
 }
@@ -942,30 +926,22 @@ static int send_ldms_fn(void *_xprt, char *data, size_t data_len)
 
 void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 {
-	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)data;
-	struct ldmsd_cfg_xprt_s xprt;
-	xprt.ldms.ldms = x;
-	xprt.send_fn = send_ldms_fn;
-	xprt.max_msg = ldms_xprt_msg_max(x);
-	xprt.trust = 0; /* don't trust any network for CMD expansion */
-	xprt.type = LDMSD_CFG_TYPE_LDMS;
+	struct ldmsd_cfg_xprt_s xprt = {0};
+	ldmsd_req_hdr_t rec = malloc(data_len);
+	if (!rec)
+		return;
+	memcpy(rec, data, data_len);
 
-	if (ntohl(request->rec_len) > xprt.max_msg) {
-		/* Send the record length advice */
-		ldmsd_send_cfg_rec_adv(&xprt, ntohl(request->msg_no), xprt.max_msg);
+	ldmsd_cfg_ldms_init(&xprt, x);
+	ev_t ev = ev_new(recv_rec_type);
+	if (!ev) {
+		free(rec);
 		return;
 	}
 
-	switch (ntohl(request->type)) {
-	case LDMSD_REQ_TYPE_CONFIG_CMD:
-		(void)ldmsd_process_config_request(&xprt, request);
-		break;
-	case LDMSD_REQ_TYPE_CONFIG_RESP:
-		(void)ldmsd_process_config_response(&xprt, request);
-		break;
-	default:
-		break;
-	}
+	EV_DATA(ev, struct recv_rec_data)->rec = rec;
+	EV_DATA(ev, struct recv_rec_data)->xprt = xprt;
+	ev_post(NULL, msg_tree_w, ev, NULL);
 }
 
 static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
@@ -1036,6 +1012,7 @@ void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
 	xprt->max_msg = ldms_xprt_msg_max(ldms);
 	xprt->cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
 	xprt->trust = 0;
+	xprt->type = LDMSD_CFG_TYPE_LDMS;
 }
 
 void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix)

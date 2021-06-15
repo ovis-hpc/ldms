@@ -483,6 +483,7 @@ static void prdcr_dir_cb(ldms_t xprt, int status, ldms_dir_t dir, void *arg)
 
 static int __on_subs_resp(ldmsd_req_cmd_t rcmd)
 {
+	ldmsd_req_cmd_free(rcmd);
 	return 0;
 }
 
