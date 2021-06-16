@@ -1,0 +1,13 @@
+export plugname=dstat
+export dsname=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 auto-schema=1)
+export dstat_schema=$dsname
+portbase=61060
+LDMSD 1 2
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -l
+SLEEP 10
+KILL_LDMSD 1 2
+file_created $STOREDIR/blobs/slurm.DAT.1*
+file_created $STOREDIR/blobs/slurm.OFFSET.1*

@@ -288,6 +288,7 @@ OPTION_DEFAULT_DISABLE([filesingle], [ENABLE_FILESINGLE])
 OPTION_DEFAULT_DISABLE([msr_interlagos], [ENABLE_MSR_INTERLAGOS])
 OPTION_DEFAULT_ENABLE([array_example], [ENABLE_ARRAY_EXAMPLE])
 OPTION_DEFAULT_ENABLE([hello_stream], [ENABLE_HELLO_STREAM])
+OPTION_DEFAULT_ENABLE([blob_stream], [ENABLE_BLOB_STREAM])
 OPTION_DEFAULT_DISABLE([perfevent], [ENABLE_PERFEVENT])
 OPTION_DEFAULT_DISABLE([mpi_sampler], [ENABLE_MPI_SAMPLER])
 OPTION_DEFAULT_DISABLE([mpi_noprofile], [ENABLE_MPI_NOPROFILE])
@@ -820,6 +821,7 @@ ldms/src/auth/Makefile
 ldms/src/store/Makefile
 ldms/src/sampler/Makefile
 ldms/src/contrib/Makefile
+ldms/src/sampler/blob_stream/Makefile
 ldms/src/store/hello_stream/Makefile
 ldms/src/store/kokkos/Makefile
 ldms/src/store/papi/Makefile
