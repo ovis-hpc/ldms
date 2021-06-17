@@ -427,23 +427,66 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		goto err;
 	}
 
-	fseek(file, 0L, SEEK_END);
-	data_len = ftell(file);
-	rewind(file);
 	msg_no = ldmsd_msg_no_get();
+	rc = fseek(file, 0L, SEEK_END);
+	if (!rc) {
+		data_len = ftell(file);
+		rewind(file);
 
-	rc = stream_hdr_send(x, msg_no, stream, stream_type,
-			     buf, data_len + 1 /* terminating '\0' */);
-	if (rc)
-		goto close_xprt;
+		rc = stream_hdr_send(x, msg_no, stream, stream_type,
+				     buf, data_len + 1 /* terminating '\0' */);
+		if (rc)
+			goto close_xprt;
 
-	while ((cnt = fread(buffer, 1, max_msg_len-1, file)) > 0) {
-		if (cnt < max_msg_len-1) {
-			/* Ensure last buffer is '\0' terminated */
-			buffer[cnt] = '\0';
-			cnt += 1;
+		while ((cnt = fread(buffer, 1, max_msg_len-1, file)) > 0) {
+			if (cnt < max_msg_len-1) {
+				/* Ensure last buffer is '\0' terminated */
+				buffer[cnt] = '\0';
+				cnt += 1;
+			}
+			rc = stream_send(x, buf, msg_no, 0, buffer, cnt);
+			if (rc)
+				goto close_xprt;
 		}
-		rc = stream_send(x, buf, msg_no, 0, buffer, cnt);
+
+	} else {
+		if (ESPIPE != errno) {
+			msglog("The given file is invalid.\n");
+			goto close_xprt;
+		}
+
+		/* a non-seekable FILE */
+		char *s, *b;
+		size_t cnt;
+		size_t len = max_msg_len;
+		data_len = 0;
+
+		b = malloc(max_msg_len);
+		if (!b) {
+			msglog("Out of memory\n");
+			goto close_xprt;
+		}
+		while (0 != (s = fgets(b, sizeof(b)-1, file))) {
+			cnt = strlen(s);
+			if (data_len + cnt >= len) {
+				char *_b = realloc(buffer, len * 2 + cnt);
+				if (!_b) {
+					msglog("Out of memory\n");
+					goto err;
+				}
+				buffer = _b;
+				len = len * 2 + cnt;
+			}
+			memcpy(&buffer[data_len], b, cnt);
+			data_len += cnt;
+		}
+		free(b);
+
+		rc = stream_hdr_send(x, msg_no, stream, stream_type,
+				     buf, data_len + 1 /* terminating '\0' */);
+		if (rc)
+			goto close_xprt;
+		rc = stream_send(x, buf, msg_no, 0, buffer, data_len + 1);
 		if (rc)
 			goto close_xprt;
 	}
