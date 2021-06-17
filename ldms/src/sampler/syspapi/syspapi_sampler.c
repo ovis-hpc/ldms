@@ -65,6 +65,7 @@
 
 #include "ldms.h"
 #include "ldmsd.h"
+#include "ldmsd_stream.h"
 #include "../sampler_base.h"
 #include "../papi/papi_hook.h"
 
@@ -79,6 +80,8 @@ static int metric_offset;
 static base_data_t base;
 static int cumulative = 0;
 static int auto_pause = 1;
+
+static ldmsd_stream_client_t syspapi_client = NULL;
 
 typedef struct syspapi_metric_s {
 	TAILQ_ENTRY(syspapi_metric_s) entry;
@@ -652,6 +655,10 @@ term(struct ldmsd_plugin *self)
 	FLAG_OFF(syspapi_flags, SYSPAPI_CONFIGURED);
 	FLAG_OFF(syspapi_flags, SYSPAPI_OPENED);
 	pthread_mutex_unlock(&syspapi_mutex);
+	if (syspapi_client) {
+		ldmsd_stream_close(syspapi_client);
+		syspapi_client = NULL;
+	}
 	PAPI_shutdown();
 }
 
@@ -702,6 +709,27 @@ __on_task_empty()
 	pthread_mutex_unlock(&syspapi_mutex);
 }
 
+static int
+__stream_cb(ldmsd_stream_client_t c, void *ctxt,
+		ldmsd_stream_type_t stream_type,
+		const char *data, size_t data_len,
+		json_entity_t entity)
+{
+	if (stream_type != LDMSD_STREAM_STRING)
+		return 0;
+	pthread_mutex_lock(&syspapi_mutex);
+	if (strncmp("pause", data, 5)  == 0) {
+		/* "pause\n" or "pausefoo" would pause too */
+		__pause();
+	}
+	if (strncmp("resume", data, 6)  == 0) {
+		/* "resume\n" or "resumebar" would resume too */
+		__resume();
+	}
+	pthread_mutex_unlock(&syspapi_mutex);
+	return 0;
+}
+
 static struct ldmsd_sampler syspapi_plugin = {
 	.base = {
 		.name = SAMP,
@@ -724,6 +752,11 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 			     "the PAPI library.\n", rc);
 	}
 	NCPU = sysconf(_SC_NPROCESSORS_CONF);
+	syspapi_client = ldmsd_stream_subscribe("syspapi_stream", __stream_cb, NULL);
+	if (!syspapi_client) {
+		ldmsd_lerror(SAMP": failed to subscribe to 'syspapi_stream' "
+			     "stream, errno: %d\n", errno);
+	}
 	register_task_init_hook(__on_task_init);
 	register_task_empty_hook(__on_task_empty);
 	return &syspapi_plugin.base;
