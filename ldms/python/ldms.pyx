@@ -899,15 +899,17 @@ cdef void dir_cb(ldms_t _x, int status, ldms_dir_t d, void *arg) with gil:
         ldms_xprt_dir_free(x.xprt, d)
         return
     # Else, use blocking-dir
-    if d.type != LDMS_DIR_LIST:
-        # NOTE warn about unhandling dir msg?
-        return
     if status:
         x._dir_rc = status
-    for i in range(0, d.set_count):
-        x._dir_list.append(DirSet(PTR(&d.set_data[i])))
-    if not d.more:
         sem_post(&x._dir_sem)
+    else:
+        if d.type != LDMS_DIR_LIST:
+            # NOTE warn about unhandling dir msg?
+            return
+        for i in range(0, d.set_count):
+            x._dir_list.append(DirSet(PTR(&d.set_data[i])))
+        if not d.more:
+            sem_post(&x._dir_sem)
     ldms_xprt_dir_free(x.xprt, d)
 
 
