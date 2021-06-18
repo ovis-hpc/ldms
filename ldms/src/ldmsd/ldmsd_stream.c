@@ -469,17 +469,22 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 		while (0 != (s = fgets(b, sizeof(b)-1, file))) {
 			cnt = strlen(s);
 			if (data_len + cnt >= len) {
-				char *_b = realloc(buffer, len * 2 + cnt);
+				/*
+				 *  +1 to ensure that we have enough space
+				 * to null terminated the buffer
+				 */
+				char *_b = realloc(buffer, len * 2 + cnt + 1);
 				if (!_b) {
 					msglog("Out of memory\n");
 					goto err;
 				}
 				buffer = _b;
-				len = len * 2 + cnt;
+				len = len * 2 + cnt + 1;
 			}
 			memcpy(&buffer[data_len], b, cnt);
 			data_len += cnt;
 		}
+		buffer[data_len] = '\0';
 		free(b);
 
 		rc = stream_hdr_send(x, msg_no, stream, stream_type,
