@@ -2250,12 +2250,12 @@ static int send_credit_update(struct z_rdma_ep *rep)
 	rep->lcl_rq_credits = 0;
 	rbuf->data_len = sizeof(req);
 	pthread_mutex_unlock(&rep->credit_lock);
-
 	pthread_mutex_lock(&rep->ep.lock);
 	ctxt = __rdma_context_alloc(rep, NULL, IBV_WC_SEND, rbuf);
+	pthread_mutex_unlock(&rep->ep.lock);
+	pthread_mutex_lock(&rep->credit_lock);
 	if (!ctxt) {
 		__rdma_buffer_free(rbuf);
-		pthread_mutex_unlock(&rep->ep.lock);
 		rc = ENOMEM;
 		goto out;
 	}
@@ -2278,18 +2278,19 @@ static int send_credit_update(struct z_rdma_ep *rep)
 		     "rem_rq_credits %d.\n",
 		     __func__, rep->sq_credits, rep->lcl_rq_credits,
 		     rep->rem_rq_credits);
+		pthread_mutex_unlock(&rep->credit_lock);
+		pthread_mutex_lock(&rep->ep.lock);
 		__rdma_context_free(ctxt);
 		__rdma_buffer_free(rbuf);
-		rc = ENOSPC;
 		pthread_mutex_unlock(&rep->ep.lock);
+		pthread_mutex_lock(&rep->credit_lock);
+		rc = ENOSPC;
 		goto out;
 	} else {
 		DLOG("ibv_post_send() succeeded, rep %p\n", rep);
 	}
-	pthread_mutex_unlock(&rep->ep.lock);
 	rc = 0;
 out:
-	pthread_mutex_lock(&rep->credit_lock);
 	return rc;
 }
 
