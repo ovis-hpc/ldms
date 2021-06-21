@@ -2582,6 +2582,7 @@ static int init_once(zap_log_fn_t log_fn)
 			    (void *)(unsigned long)cq_fd);
 	if (rc)
 		goto err_2;
+	pthread_setname_np(cq_thread, "zap_rdma:cq");
 
 	/*
 	 * Create the CM event thread that will wait for events on
@@ -2591,6 +2592,7 @@ static int init_once(zap_log_fn_t log_fn)
 			    (void *)(unsigned long)cm_fd);
 	if (rc)
 		goto err_3;
+	pthread_setname_np(cm_thread, "zap_rdma:cm");
 
 	rc = cleanup_channel_init();
 	if (rc)
