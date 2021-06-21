@@ -2298,8 +2298,8 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 {
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 
-	memcpy(remote_sa, rdma_get_local_addr(rep->cm_id), sizeof(struct sockaddr_in));
-	memcpy(local_sa, rdma_get_peer_addr(rep->cm_id), sizeof(struct sockaddr_in));
+	memcpy(remote_sa, rdma_get_peer_addr(rep->cm_id), sizeof(struct sockaddr_in));
+	memcpy(local_sa, rdma_get_local_addr(rep->cm_id), sizeof(struct sockaddr_in));
 	*sa_len = sizeof(struct sockaddr_in);
 	return ZAP_ERR_OK;
 }
