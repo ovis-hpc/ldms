@@ -94,7 +94,9 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "B:H:i:l:S:s:x:I:T:M:t:P:m:FkN:r:R:p:v:Vz:Z:q:c:u:a:A:n:"
+#define FMT "B:H:l:S:s:x:I:M:P:m:Fkr:R:p:v:Vz:Z:q:c:u:a:A:n:"
+
+#define LDMSD_KEEP_ALIVE_30MIN 30*60*1000000 /* 30 mins */
 
 #define LDMSD_MEM_SIZE_ENV "LDMSD_MEM_SZ"
 #define LDMSD_MEM_SIZE_STR "512kB"
@@ -107,9 +109,6 @@ char myhostname[80];
 char ldmstype[20];
 int foreground;
 pthread_t event_thread = (pthread_t)-1;
-char *test_set_name;
-int test_set_count=1;
-int notify=0;
 char *logfile;
 char *pidfile;
 char *bannerfile;
@@ -521,15 +520,10 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -P thr_count   Count of event threads to start.\n");
 	printf("    -f count       The number of flush threads.\n");
 	printf("    -D num	 The dirty threshold.\n");
-	printf("  Test Options\n");
-	printf("    -H host_name   The host/producer name for metric sets.\n");
-	printf("    -i	     Test metric set sample interval.\n");
-	printf("    -t count       Create set_count instances of set_name.\n");
-	printf("    -T set_name    Test set prefix.\n");
-	printf("    -N	     Notify registered monitors of the test metric sets\n");
 	printf("  Configuration Options\n");
 	printf("    -c path	The path to configuration file (optional, default: <none>).\n");
 	printf("    -V	     Print LDMS version and exit\n.");
+	printf("    -H host_name   The host/producer name for metric sets.\n");
 	printf("   Deprecated Options\n");
 	printf("    -S     	   DEPRECATED.\n");
 	printf("    -p     	   DEPRECATED.\n");
@@ -1637,9 +1631,7 @@ int main(int argc, char *argv[])
 	const char *port = NULL;
 	int list_plugins = 0;
 	int ret;
-	int sample_interval = 2000000;
 	int op;
-	ldms_set_t test_set;
 	log_fp = stdout;
 	struct sigaction action;
 	sigset_t sigset;
@@ -1680,11 +1672,6 @@ int main(int argc, char *argv[])
 			if (check_arg("H", optarg, LO_NAME))
 				return 1;
 			strcpy(myhostname, optarg);
-			break;
-		case 'i':
-			if (check_arg("i", optarg, LO_UINT))
-				return 1;
-			sample_interval = atoi(optarg);
 			break;
 		case 'k':
 			do_kernel = 1;
@@ -1734,20 +1721,6 @@ int main(int argc, char *argv[])
 		case 'F':
 			foreground = 1;
 			break;
-		case 'T':
-			if (check_arg("T", optarg, LO_NAME))
-				return 1;
-			test_set_name = strdup(optarg);
-			if (!test_set_name) {
-				printf("Not enough memory!!!\n");
-				exit(1);
-			}
-			break;
-		case 't':
-			if (check_arg("t", optarg, LO_UINT))
-				return 1;
-			test_set_count = atoi(optarg);
-			break;
 		case 'P':
 			if (check_arg("P", optarg, LO_UINT))
 				return 1;
@@ -1756,9 +1729,6 @@ int main(int argc, char *argv[])
 				ev_thread_count = 1;
 			if (ev_thread_count > EVTH_MAX)
 				ev_thread_count = EVTH_MAX;
-			break;
-		case 'N':
-			notify = 1;
 			break;
 		case 'm':
 			max_mem_sz_str = strdup(optarg);
@@ -2027,83 +1997,6 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	/* Create the test sets */
-	ldms_set_t *test_sets = calloc(test_set_count, sizeof(ldms_set_t));
-	int job_id, comp_id;
-	if (test_set_name) {
-		int rc, set_no;
-		static char test_set_name_no[1024];
-		ldms_schema_t schema = ldms_schema_new("test_set");
-		if (!schema)
-			cleanup(11, "test schema create failed");
-		job_id = ldms_schema_meta_add(schema, "job_id", LDMS_V_U32);
-		if (job_id < 0)
-			cleanup(12, "test schema meta_add jid failed");
-		comp_id = ldms_schema_meta_add(schema, "component_id", LDMS_V_U32);
-		if (comp_id < 0)
-			cleanup(12, "test schema meta_add cid failed");
-		rc = ldms_schema_metric_add(schema, "u8_metric", LDMS_V_U8);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u8 failed");
-		rc = ldms_schema_metric_add(schema, "u16_metric", LDMS_V_U16);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u16 failed");
-		rc = ldms_schema_metric_add(schema, "u32_metric", LDMS_V_U32);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u32 failed");
-		rc = ldms_schema_metric_add(schema, "u64_metric", LDMS_V_U64);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u64 failed");
-		rc = ldms_schema_metric_add(schema, "float_metric", LDMS_V_F32);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add float failed");
-		rc = ldms_schema_metric_add(schema, "double_metric", LDMS_V_D64);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add double failed");
-		rc = ldms_schema_metric_array_add(schema, "char_array_metric",
-						  LDMS_V_CHAR_ARRAY, 16);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add char array failed");
-		rc = ldms_schema_metric_array_add(schema, "u8_array_metric",
-						  LDMS_V_U8_ARRAY, 4);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u8 array failed");
-		rc = ldms_schema_metric_array_add(schema, "u16_array_metric",
-						  LDMS_V_U16_ARRAY, 4);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u16 array failed");
-		rc = ldms_schema_metric_array_add(schema, "u32_array_metric",
-						  LDMS_V_U32_ARRAY, 4);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u32 array failed");
-		rc = ldms_schema_metric_array_add(schema, "u64_array_metric",
-						  LDMS_V_U64_ARRAY, 4);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add u64 array failed");
-		rc = ldms_schema_metric_array_add(schema, "f32_array_metric",
-						  LDMS_V_F32_ARRAY, 4);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add f32 array failed");
-		rc = ldms_schema_metric_array_add(schema, "d64_array_metric",
-						  LDMS_V_D64_ARRAY, 4);
-		if (rc < 0)
-			cleanup(13, "test schema metric_add d64 array failed");
-		for (set_no = 1; set_no <= test_set_count; set_no++) {
-			sprintf(test_set_name_no, "%s/%s_%d", myhostname,
-				test_set_name, set_no);
-			test_set = ldms_set_new(test_set_name_no, schema);
-			if (!test_set)
-				cleanup(14, "test set new failed");
-			union ldms_value v;
-			v.v_u64 = set_no;
-			ldms_metric_set(test_set, comp_id, &v);
-			ldms_metric_set(test_set, job_id, &v);
-			ldms_set_producer_name_set(test_set, myhostname);
-			test_sets[set_no-1] = test_set;
-		}
-	} else
-		test_set_count = 0;
-
 	if (!setfile)
 		setfile = LDMSD_SETFILE;
 
@@ -2210,52 +2103,9 @@ int main(int argc, char *argv[])
 		ldmsd_inband_cfg_mask_add(0777);
 	}
 
-	uint64_t count = 1;
-	int name = 0;
-	char *names[] = {
-		"this",
-		"that",
-		"the other",
-		"biffle"
-	};
-	int set_no, i;
-	ldms_set_t set;
+	/* Keep the process alive */
 	do {
-		for (set_no = 0; set_no < test_set_count; set_no++) {
-			set = test_sets[set_no];
-			ldms_transaction_begin(set);
-
-			ldms_metric_set_u64(set, 0, count);
-			ldms_metric_set_u64(set, 1, count);
-			ldms_metric_set_u8 (set, 2, (uint8_t)count);
-			ldms_metric_user_data_set (set, 2, count);
-			ldms_metric_set_u16(set, 3, (uint16_t)count);
-			ldms_metric_set_u32(set, 4, (uint32_t)count);
-			ldms_metric_set_u64(set, 5, count);
-			ldms_metric_set_float(set, 6, (float)count * 3.1415);
-			ldms_metric_set_double(set, 7, (double)count * 3.1415);
-
-			name = (name + 1) % 4;
-			for (i = 0; i < 4; i++) {
-				ldms_metric_array_set_str(set, 8, names[name]);
-				ldms_metric_array_set_u8 (set, 9, i, (uint8_t)(count + i));
-				ldms_metric_array_set_u16(set, 10, i, (uint16_t)(count + i));
-				ldms_metric_array_set_u32(set, 11, i, (uint32_t)(count + i));
-				ldms_metric_array_set_u64(set, 12, i, i + count);
-				ldms_metric_array_set_float(set, 13, i,
-							    (float)(count + i) * 3.1415);
-				ldms_metric_array_set_double(set, 14, i,
-							     (double)(count + i) * 3.1415);
-			}
-			ldms_transaction_end(set);
-			if (notify) {
-				struct ldms_notify_event_s event;
-				ldms_init_notify_modified(&event);
-				ldms_notify(set, &event);
-			}
-		}
-		count++;
-		usleep(sample_interval);
+		usleep(LDMSD_KEEP_ALIVE_30MIN);
 	} while (1);
 
 	cleanup(0,NULL);
