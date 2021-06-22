@@ -89,10 +89,14 @@ typedef struct stream_data {
 	char* stream_name;
 	char* streamfile_name;
 	char* offsetfile_name;
+	char* timingfile_name;
+	char* typefile_name;
 	ldmsd_stream_client_t subscription;
 	/* set at first write */
 	FILE* offsetfile;
 	FILE* streamfile;
+	FILE* timingfile;
+	FILE* typefile;
 	long offset;
 	LIST_ENTRY(stream_data) entry;
 } *stream_data_t;
@@ -103,6 +107,44 @@ static struct stream_data_list data_list;
 static void stream_data_open(stream_data_t sd);
 
 static int debug;
+static int timing;
+static int types;
+
+char blob_stream_char_to_type(char c)
+{
+	switch (c) {
+	case 's':
+		return LDMSD_STREAM_STRING;
+	case 'j':
+		return LDMSD_STREAM_JSON;
+		break;
+#if 0
+	case 'b':
+		return LDMSD_STREAM_BINARY;
+		break;
+#endif
+	default:
+		return '\0';
+	}
+}
+
+char blob_stream_type_to_char(ldmsd_stream_type_t stream_type)
+{
+	switch (stream_type) {
+	case LDMSD_STREAM_STRING:
+		return 's';
+	case LDMSD_STREAM_JSON:
+		return 'j';
+#if 0
+	case LDMSD_STREAM_BINARY:
+		return 'b';
+#endif
+	default:
+		msglog(LDMSD_LERROR, PNAME ": unexpected stream type %d\n",
+			stream_type);
+		return '\0';
+	}
+}
 
 /* open, if not open or already closed, and write to stream files. */
 static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
@@ -135,11 +177,33 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 	if (debug)
 		msglog(LDMSD_LDEBUG, PNAME ": offset=%ld ...\n", sd->offset);
 
+	if (sd->timingfile) {
+		struct timeval now;
+		gettimeofday(&now, NULL);
+		uint64_t tbuf[2];
+		tbuf[0] = htole64((uint64_t)now.tv_sec);
+		tbuf[1] = htole64((uint64_t)now.tv_usec);
+		rc = fwrite(tbuf, sizeof(uint64_t), 2, sd->timingfile);
+		if ( rc != 2) {
+			msglog(LDMSD_LERROR, PNAME ": error writing time to %s\n",
+				sd->timingfile_name);
+		}
+	}
+
+	if (sd->typefile) {
+		char st = blob_stream_type_to_char(stream_type);
+		rc = fwrite(&st, 1, 1, sd->typefile);
+		if (rc != 1) {
+			int ferr = ferror(sd->typefile);
+			msglog(LDMSD_LERROR, PNAME ": short type write in %s: %s\n",
+				sd->typefile_name, STRERROR(ferr));
+		}
+	}
 	rc = fwrite(msg, 1, msg_len, sd->streamfile);
 	sd->offset += rc;
-	if (rc != msg_len) {
+	if (rc != 1) {
 		int ferr = ferror(sd->streamfile);
-		msglog(LDMSD_LERROR, PNAME ": short write of starting at %s:%ld: %s\n",
+		msglog(LDMSD_LERROR, PNAME ": short write starting at %s:%ld: %s\n",
 			sd->streamfile_name, sd->offset, STRERROR(ferr));
 	}
 	if (debug)
@@ -186,6 +250,28 @@ static void stream_data_open(stream_data_t sd)
 		sd->ws = WS_ERR;
 		return;
 	}
+	if (sd->timingfile_name) {
+		end = strlen(sd->timingfile_name);
+		sprintf(sd->timingfile_name + end, "%ld", (long)t);
+		sd->timingfile = fopen_perm(sd->timingfile_name, "w", 0640);
+		if (!sd->timingfile) {
+			msglog(LDMSD_LERROR, PNAME ": Error '%s' opening the file %s.\n",
+			       STRERROR(errno), sd->offsetfile_name, sd->timingfile_name);
+			sd->ws = WS_ERR;
+			return;
+		}
+	}
+	if (sd->typefile_name) {
+		end = strlen(sd->typefile_name);
+		sprintf(sd->typefile_name + end, "%ld", (long)t);
+		sd->typefile = fopen_perm(sd->typefile_name, "w", 0640);
+		if (!sd->typefile) {
+			msglog(LDMSD_LERROR, PNAME ": Error '%s' opening the file %s.\n",
+			       STRERROR(errno), sd->offsetfile_name, sd->typefile_name);
+			sd->ws = WS_ERR;
+			return;
+		}
+	}
 	sd->ws = WS_OPEN;
 	char magic[] = "bloboff";
 	int rc = fwrite(magic, strlen(magic)+1, 1, sd->offsetfile);
@@ -204,6 +290,26 @@ static void stream_data_open(stream_data_t sd)
 		sd->ws = WS_ERR;
 		return;
 	}
+	if (sd->timingfile) {
+		char magic3[] = "blobtim";
+		int rc = fwrite(magic3, strlen(magic3)+1, 1, sd->timingfile);
+		if (rc != 1) {
+			msglog(LDMSD_LERROR, PNAME ": Error '%s' writing to file %s.\n",
+			       STRERROR(errno), sd->timingfile_name);
+			sd->ws = WS_ERR;
+			return;
+		}
+	}
+	if (sd->typefile) {
+		char magic4[] = "blobtyp";
+		int rc = fwrite(magic4, strlen(magic4)+1, 1, sd->typefile);
+		if (rc != 1) {
+			msglog(LDMSD_LERROR, PNAME ": Error '%s' writing to file %s.\n",
+			       STRERROR(errno), sd->typefile_name);
+			sd->ws = WS_ERR;
+			return;
+		}
+	}
 }
 
 static void reset_paths(stream_data_t sd)
@@ -214,6 +320,14 @@ static void reset_paths(stream_data_t sd)
 	sd->offsetfile_name = NULL;
 	free(sd->streamfile_name);
 	sd->streamfile_name = NULL;
+	free(sd->timingfile_name);
+	sd->timingfile_name = NULL;
+	free(sd->typefile_name);
+	sd->typefile_name = NULL;
+	if (sd->typefile) {
+		fclose(sd->typefile);
+		sd->typefile = NULL;
+	}
 	if (sd->streamfile) {
 		fclose(sd->streamfile);
 		sd->streamfile = NULL;
@@ -247,6 +361,26 @@ static int set_paths(stream_data_t sd)
 		return rc;
 	}
 
+	if (timing) {
+		sd->timingfile_name = malloc(pathlen);
+		if (!sd->timingfile_name) {
+			sd->ws = WS_ERR;
+			return ENOMEM;
+		}
+		snprintf(sd->timingfile_name, pathlen, "%s/%s/%s.TIMING.", root_path,
+			container, sd->stream_name);
+	}
+
+	if (types) {
+		sd->typefile_name = malloc(pathlen);
+		if (!sd->typefile_name) {
+			sd->ws = WS_ERR;
+			return ENOMEM;
+		}
+		snprintf(sd->typefile_name, pathlen, "%s/%s/%s.TYPE.", root_path,
+			container, sd->stream_name);
+	}
+
 	sd->streamfile_name = malloc(pathlen);
 	if (!sd->streamfile_name) {
 		sd->ws = WS_ERR;
@@ -254,6 +388,7 @@ static int set_paths(stream_data_t sd)
 	}
 	snprintf(sd->streamfile_name, pathlen, "%s/%s/%s.DAT.", root_path,
 		container, sd->stream_name);
+
 	sd->offsetfile_name = malloc(pathlen);
 	if (!sd->offsetfile_name) {
 		sd->ws = WS_ERR;
@@ -336,6 +471,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		debug = 1;
 	}
 
+	timing = 0;
+	s = av_value(avl, "timing");
+	if (s) {
+		timing = 1;
+	}
+
+	types = 0;
+	s = av_value(avl, "types");
+	if (s) {
+		types = 1;
+	}
+
 	s = av_value(avl, "path");
 	if (!s) {
 		msglog(LDMSD_LERROR, PNAME ": missing path in config\n");
@@ -387,6 +534,14 @@ static void stream_data_close( stream_data_t sd )
 	if (!sd)
 		return;
 	pthread_mutex_lock(&sd->write_lock);
+	if (sd->timingfile) {
+		fclose(sd->timingfile);
+		sd->timingfile = NULL;
+	}
+	if (sd->typefile) {
+		fclose(sd->typefile);
+		sd->typefile = NULL;
+	}
 	if (sd->streamfile) {
 		fclose(sd->streamfile);
 		sd->streamfile = NULL;

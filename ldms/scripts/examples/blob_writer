@@ -2,12 +2,28 @@ export plugname=dstat
 export dsname=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 auto-schema=1)
 export dstat_schema=$dsname
 portbase=61060
+VGARGS="--trace-children=yes --track-origins=yes --leak-check=full --show-leak-kinds=all"
+# track everything notifier config:
+${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --retry=1 -D 10 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
+#vgon
 LDMSD 1 2
+#vgoff
 MESSAGE ldms_ls on host 1:
 LDMS_LS 1 -l
 MESSAGE ldms_ls on host 2:
 LDMS_LS 2 -l
-SLEEP 10
+SLEEP 1
+SLEEP 1
+SLEEP 1
+SLEEP 1
+SLEEP 1
+SLEEP 1
+SLEEP 1
+SLEEP 1
+SLEEP 1
+SLEEP 1
+SLEEP 1
 KILL_LDMSD 1 2
+file_created $STOREDIR/blobs/slurm.TIMING.1*
 file_created $STOREDIR/blobs/slurm.DAT.1*
 file_created $STOREDIR/blobs/slurm.OFFSET.1*
