@@ -5,6 +5,7 @@ aggl2simple
 all_example
 all_example.sos
 array_example
+blob_writer
 clock
 lnet_stats
 meminfo

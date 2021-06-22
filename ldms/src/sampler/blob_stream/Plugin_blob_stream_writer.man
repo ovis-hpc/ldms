@@ -43,6 +43,10 @@ stream to which to subscribe. This argument may be repeated. Each stream will be
 debug=1
 .br
 Enable logging of messages stored to the log file.
+.TP
+timing=1
+.br
+Enable writing timestamps to a separate file.
 .RE
 
 .SH OUTPUT FORMAT
@@ -61,6 +65,14 @@ with le64toh.
 
 Both DAT and OFFSET files begin with an 8 byte magic number: blobdat\\0 and bloboff\\0, respectively.
 
+Optionally (if timing=1 given) the additional file
+$path/$container/$stream.TIMING.$create_time
+is created containing binary timestamps corresponding to the messages.
+The TIMING file begins with an 8 byte magic number: blobtim\\0.
+Each time is the delivery time to the plugin performing the blob storage.
+Each timestamp is written to the .TIMING file as a binary pair (tv_sec, tv_usec)
+with each value stored as a little-endian 64 bit value which should be
+read and then converted with le64toh.
 
 .SH NOTES
 .PP
@@ -86,7 +98,11 @@ start name=name=blob_stream_writer
 .PP
 Examining offsets in a shell:
 .nf
-od -t u8 -w4 slurm.OFFSET.1624033344 |sed -e 's/[0-9,A-F,a-f]* *//'
+od od -A d -t u8 -j 8 -w8 slurm.OFFSET.1624033344 |sed -e 's/[0-9,A-F,a-f]* *//'
+.fi
+Examining timestamps in a shell:
+.nf
+od -A d -j 8 -t u8
 .fi
 
 
