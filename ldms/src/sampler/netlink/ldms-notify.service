@@ -1,0 +1,14 @@
+[Unit]
+Description=LDMS Netlink Notifier Daemon
+After=syslog.target network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/sysconfig/ldms-netlink-notifier.conf
+# ignore root owned processes with -u 1
+# ExecStart=/usr/sbin/ldms-netlink-notifier -u 1 -x -e exec,clone,exit -r
+# get the path defaults from the code or from the environment file.
+ExecStart=/usr/sbin/ldms-netlink-notifier -x -e exec,clone,exit -r
+
+[Install]
+WantedBy=multi-user.target

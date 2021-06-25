@@ -29,6 +29,9 @@ lib_LTLIBRARIES += libsampler_base.la
 ldmssamplerincludedir = $(includedir)/ldms/sampler
 ldmssamplerinclude_HEADERS = sampler_base.h
 
+if HAVE_NETLINK
+SUBDIRS += netlink
+endif
 SUBDIRS += lustre_client
 SUBDIRS += lustre_mdt
 SUBDIRS += lustre_ost
