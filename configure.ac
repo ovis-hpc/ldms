@@ -499,6 +499,9 @@ AS_IF([test "x$with_slurm" != no],[
 ])
 AM_CONDITIONAL([HAVE_SLURM], [test "x$have_slurm" = xyes])
 
+AC_CHECK_HEADER([linux/netlink.h], [have_netlink=yes], [have_netlink=no])
+AM_CONDITIONAL([HAVE_NETLINK], [test "x$have_netlink" = xyes])
+
 if test -z "$ENABLE_SOS_TRUE"; then
 	CHECK_SOS=1
 fi
@@ -849,6 +852,7 @@ ldms/src/sampler/ibnet/Makefile
 ldms/src/sampler/procnet/Makefile
 ldms/src/sampler/rdc_sampler/Makefile
 ldms/src/sampler/slurm/Makefile
+ldms/src/sampler/netlink/Makefile
 ldms/src/sampler/spank/Makefile
 ldms/src/sampler/papi/Makefile
 ldms/src/sampler/appinfo_lib/Makefile
