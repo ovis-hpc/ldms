@@ -617,14 +617,14 @@ ldmsd_req_ctxt_t alloc_req_ctxt(struct req_ctxt_key *key, size_t max_msg_len)
 	if (!reqc->line_buf)
 		goto err;
 	reqc->line_buf[0] = '\0';
-	reqc->_req_buf = ldmsd_msg_buf_new(max_msg_len * 2);
-	if (!reqc->_req_buf)
+	reqc->_recv_buf = ldmsd_msg_buf_new(max_msg_len * 2);
+	if (!reqc->_recv_buf)
 		goto err;
-	reqc->req_buf = reqc->_req_buf->buf;
-	*(uint32_t *)&reqc->req_buf[reqc->_req_buf->off] = 0; /* terminating discrim */
+	reqc->recv_buf = reqc->_recv_buf->buf;
+	*(uint32_t *)&reqc->recv_buf[reqc->_recv_buf->off] = 0; /* terminating discrim */
 
-	reqc->rep_buf = ldmsd_msg_buf_new(max_msg_len);
-	if (!reqc->rep_buf)
+	reqc->send_buf = ldmsd_msg_buf_new(max_msg_len);
+	if (!reqc->send_buf)
 		goto err;
 
 	reqc->key = *key;
@@ -817,7 +817,7 @@ int validate_ldmsd_req(ldmsd_req_hdr_t rh)
 int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 {
 	struct request_handler_entry *ent;
-	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)reqc->req_buf;
+	ldmsd_req_hdr_t request = (ldmsd_req_hdr_t)reqc->recv_buf;
 	ldms_t ldms = NULL;
 	uid_t luid;
 	gid_t lgid;
@@ -950,7 +950,7 @@ int __ldmsd_append_buffer(struct ldmsd_req_ctxt *reqc,
 	else
 		code = reqc->errcode;
 	req_ctxt_ref_get(reqc);
-	rc = ldmsd_msg_buf_send(reqc->rep_buf,
+	rc = ldmsd_msg_buf_send(reqc->send_buf,
 				reqc->xprt, reqc->key.msg_no,
 				reqc->xprt->send_fn,
 				msg_flags, msg_type, code,
@@ -981,8 +981,8 @@ int ldmsd_req_cmd_attr_append(ldmsd_req_cmd_t rcmd,
 					     sizeof(attr.discrim),
 					     rcmd->msg_flags|LDMSD_REQ_EOM_F,
 					     LDMSD_REQ_TYPE_CONFIG_CMD);
-		ldmsd_msg_buf_free(rcmd->reqc->rep_buf);
-		rcmd->reqc->rep_buf = NULL;
+		ldmsd_msg_buf_free(rcmd->reqc->send_buf);
+		rcmd->reqc->send_buf = NULL;
 		return rc;
 	}
 
@@ -1141,17 +1141,17 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 	}
 	reqc->xprt = xprt;
 
-	rc = ldmsd_msg_gather(reqc->_req_buf, request);
+	rc = ldmsd_msg_gather(reqc->_recv_buf, request);
 	if (rc && (EBUSY != rc))
 		goto err_out;
 	else
 		rc = 0;
 
 	/*
-	 * Point req_buf to _req_buf->buf,
-	 * in case _req_buf->buf was re-alloc'ed.
+	 * Point recv_buf to _recv_buf->buf,
+	 * in case _recv_buf->buf was re-alloc'ed.
 	 */
-	reqc->req_buf = reqc->_req_buf->buf;
+	reqc->recv_buf = reqc->_recv_buf->buf;
 	req_ctxt_tree_unlock();
 
 	if (0 == (ntohl(request->flags) & LDMSD_REQ_EOM_F))
@@ -1159,7 +1159,7 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 		goto out;
 
 	/* Validate the request */
-	rc = validate_ldmsd_req((ldmsd_req_hdr_t)reqc->req_buf);
+	rc = validate_ldmsd_req((ldmsd_req_hdr_t)reqc->recv_buf);
 	if (!rc) {
 		char *errstr = "LDMSD received a bad request.";
 		ldmsd_log(LDMSD_LERROR, "%s\n", errstr);
@@ -1168,8 +1168,8 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 	}
 
 	/* Convert the request byte order from network to host */
-	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->req_buf);
-	reqc->req_id = ((ldmsd_req_hdr_t)reqc->req_buf)->req_id;
+	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->recv_buf);
+	reqc->req_id = ((ldmsd_req_hdr_t)reqc->recv_buf)->req_id;
 
 	rc = ldmsd_handle_request(reqc);
 
@@ -1229,7 +1229,7 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 		goto err_out;
 	}
 
-	rc = ldmsd_msg_gather(reqc->_req_buf, response);
+	rc = ldmsd_msg_gather(reqc->_recv_buf, response);
 	if (rc && (EBUSY != rc))
 		goto err_out;
 	else
@@ -1239,7 +1239,7 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 	 * Point req_buf to _req_buf->buf,
 	 * in case _req_buf->buf was re-alloc'ed.
 	 */
-	reqc->req_buf = reqc->_req_buf->buf;
+	reqc->recv_buf = reqc->_recv_buf->buf;
 
 	req_ctxt_tree_unlock();
 
@@ -1248,7 +1248,7 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 		goto out;
 
 	/* Validate the request */
-	rc = validate_ldmsd_req((ldmsd_req_hdr_t)reqc->req_buf);
+	rc = validate_ldmsd_req((ldmsd_req_hdr_t)reqc->recv_buf);
 	if (!rc) {
 		char *errstr = "LDMSD received a bad response.";
 		ldmsd_log(LDMSD_LERROR, "%s\n", errstr);
@@ -1256,7 +1256,7 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 	}
 
 	/* Convert the request byte order from network to host */
-	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->req_buf);
+	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->recv_buf);
 	rcmd = (ldmsd_req_cmd_t)reqc->ctxt;
 	rc = ldmsd_handle_response(rcmd);
 
@@ -1308,7 +1308,7 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 int __example_json_obj(ldmsd_req_ctxt_t reqc)
 {
 	int rc, count = 0;
-	ldmsd_req_attr_t attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->req_buf);
+	ldmsd_req_attr_t attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->recv_buf);
 	reqc->errcode = 0;
 	rc = linebuf_printf(reqc, "[");
 	if (rc)
@@ -4704,7 +4704,7 @@ static int verbosity_change_handler(ldmsd_req_ctxt_t reqc)
 		goto out;
 	}
 
-	if (ldmsd_req_attr_keyword_exist_by_id(reqc->req_buf, LDMSD_ATTR_TEST))
+	if (ldmsd_req_attr_keyword_exist_by_id(reqc->recv_buf, LDMSD_ATTR_TEST))
 		is_test = 1;
 
 	if (is_test) {
@@ -4797,7 +4797,7 @@ static int env_handler(ldmsd_req_ctxt_t reqc)
 	struct attr_value_list *kw_list = NULL;
 	char *exp_val = NULL;
 
-	ldmsd_req_attr_t attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->req_buf);
+	ldmsd_req_attr_t attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->recv_buf);
 	while (attr->discrim) {
 		switch (attr->attr_id) {
 		case LDMSD_ATTR_STRING:
@@ -4958,7 +4958,7 @@ static int __greeting_path_resp_handler(ldmsd_req_cmd_t rcmd)
 	struct ldmsd_req_attr_s my_attr;
 	ldmsd_req_attr_t server_attr;
 	char *path;
-	server_attr = ldmsd_first_attr((ldmsd_req_hdr_t)rcmd->reqc->req_buf);
+	server_attr = ldmsd_first_attr((ldmsd_req_hdr_t)rcmd->reqc->recv_buf);
 	my_attr.discrim = 1;
 	my_attr.attr_id = LDMSD_ATTR_STRING;
 	/* +1 for : */
@@ -5049,7 +5049,7 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 		cnt = snprintf(reqc->line_buf, reqc->line_len, "Hello '%s'", str);
 		ldmsd_log(LDMSD_LDEBUG, "strlen(name)=%zu. %s\n", strlen(str), str);
 		ldmsd_send_req_response(reqc, reqc->line_buf);
-	} else if (ldmsd_req_attr_keyword_exist_by_name(reqc->req_buf, "test")) {
+	} else if (ldmsd_req_attr_keyword_exist_by_name(reqc->recv_buf, "test")) {
 		cnt = snprintf(reqc->line_buf, reqc->line_len, "Hi");
 		ldmsd_send_req_response(reqc, reqc->line_buf);
 	} else if (rep_len_str) {
@@ -5084,14 +5084,14 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 		size_t remaining;
 		attr.attr_id = LDMSD_ATTR_STRING;
 		attr.discrim = 1;
-		attr.attr_len = reqc->rep_buf->len - 2*sizeof(struct ldmsd_req_hdr_s)
+		attr.attr_len = reqc->send_buf->len - 2*sizeof(struct ldmsd_req_hdr_s)
 						- sizeof(struct ldmsd_req_attr_s);
 		ldmsd_hton_req_attr(&attr);
 		int msg_flag = LDMSD_REQ_SOM_F;
 
 		/* Construct the message */
 		for (i = 0; i < num_rec; i++) {
-			remaining = reqc->rep_buf->len - 2* sizeof(struct ldmsd_req_hdr_s);
+			remaining = reqc->send_buf->len - 2* sizeof(struct ldmsd_req_hdr_s);
 			ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), msg_flag);
 			remaining -= sizeof(struct ldmsd_req_attr_s);
 			cnt = snprintf(reqc->line_buf, reqc->line_len, "%d", i);
@@ -5113,7 +5113,7 @@ static int greeting_handler(ldmsd_req_ctxt_t reqc)
 		attr.discrim = 0;
 		ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t),
 								LDMSD_REQ_EOM_F);
-	} else if (ldmsd_req_attr_keyword_exist_by_id(reqc->req_buf, LDMSD_ATTR_PATH)) {
+	} else if (ldmsd_req_attr_keyword_exist_by_id(reqc->recv_buf, LDMSD_ATTR_PATH)) {
 		(void) __greeting_path_req_handler(reqc);
 	} else {
 		ldmsd_send_req_response(reqc, NULL);
@@ -5308,7 +5308,7 @@ static int set_route_resp_handler(ldmsd_req_cmd_t rcmd)
 	ldmsd_req_ctxt_t org_reqc = rcmd->org_reqc;
 	struct set_route_req_ctxt *ctxt = (struct set_route_req_ctxt *)rcmd->ctxt;
 
-	attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->req_buf);
+	attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->recv_buf);
 
 	my_attr.attr_id = LDMSD_ATTR_JSON;
 	/* +1 for a command between two json objects */
@@ -5330,6 +5330,7 @@ static int set_route_resp_handler(ldmsd_req_cmd_t rcmd)
 		(void) ldmsd_append_reply(org_reqc, (char *)attr->attr_value, attr->attr_len, 0);
 	}
 
+out:
 	my_attr.discrim = 0;
 	(void) ldmsd_append_reply(org_reqc, (char *)&my_attr.discrim,
 					sizeof(uint32_t), LDMSD_REQ_EOM_F);
@@ -5356,7 +5357,7 @@ static int set_route_handler(ldmsd_req_ctxt_t reqc)
 		(void) ldmsd_send_req_response(reqc, reqc->line_buf);
 		goto out;
 	}
-	is_internal = ldmsd_req_attr_keyword_exist_by_id(reqc->req_buf, LDMSD_ATTR_TYPE);
+	is_internal = ldmsd_req_attr_keyword_exist_by_id(reqc->recv_buf, LDMSD_ATTR_TYPE);
 
 	info = ldmsd_set_info_get(inst_name);
 	if (!info) {
@@ -6018,7 +6019,7 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 	 * If a LDMSD_ATTR_TYPE attribute exists, the publisher does not want
 	 * an acknowledge response.
 	 */
-	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_TYPE);
+	attr = ldmsd_req_attr_get_by_id(reqc->recv_buf, LDMSD_ATTR_TYPE);
 	if (!attr)
 		ldmsd_send_req_response(reqc, "ACK");
 
@@ -6027,12 +6028,12 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 		goto out_0;
 
 	/* Check for string */
-	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_STRING);
+	attr = ldmsd_req_attr_get_by_id(reqc->recv_buf, LDMSD_ATTR_STRING);
 	if (attr)
 		goto out_1;
 
 	/* Check for JSon */
-	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_JSON);
+	attr = ldmsd_req_attr_get_by_id(reqc->recv_buf, LDMSD_ATTR_JSON);
 	if (attr) {
 		stream_type = LDMSD_STREAM_JSON;
 	} else {
@@ -6053,7 +6054,7 @@ err_reply:
 static int __on_republish_resp(ldmsd_req_cmd_t rcmd)
 {
 	ldmsd_req_attr_t attr;
-	ldmsd_req_hdr_t resp = (ldmsd_req_hdr_t)(rcmd->reqc->req_buf);
+	ldmsd_req_hdr_t resp = (ldmsd_req_hdr_t)(rcmd->reqc->recv_buf);
 	attr = ldmsd_first_attr(resp);
 	ldmsd_log(LDMSD_LDEBUG, "%s: %s\n", __func__, (char *)attr->attr_value);
 	return 0;

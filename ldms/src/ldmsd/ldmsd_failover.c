@@ -777,7 +777,7 @@ static int __on_reset_resp(ldmsd_req_cmd_t rcmd)
 {
 	int rc = 0;
 	ldmsd_failover_t f = rcmd->ctxt;
-	ldmsd_req_hdr_t hdr = (void*)rcmd->reqc->req_buf;
+	ldmsd_req_hdr_t hdr = (void*)rcmd->reqc->recv_buf;
 	__failover_lock(f);
 	__F_OFF(f, __FAILOVER_OUTSTANDING_UNPAIR);
 	switch (hdr->rsp_err) {
@@ -879,7 +879,7 @@ out:
 int __on_peercfg_resp(ldmsd_req_cmd_t rcmd)
 {
 	ldmsd_failover_t f = rcmd->ctxt;
-	ldmsd_req_hdr_t hdr = (void*)rcmd->reqc->req_buf;
+	ldmsd_req_hdr_t hdr = (void*)rcmd->reqc->recv_buf;
 	__failover_lock(f);
 	if (hdr->rsp_err) {
 		ldmsd_lerror("Failover: peer config request remote error: %d\n",
@@ -939,7 +939,7 @@ static
 int __on_pair_resp(ldmsd_req_cmd_t rcmd)
 {
 	ldmsd_failover_t f = rcmd->ctxt;
-	ldmsd_req_hdr_t hdr = (void*)rcmd->reqc->req_buf;
+	ldmsd_req_hdr_t hdr = (void*)rcmd->reqc->recv_buf;
 	int rc = 0;
 
 	__failover_lock(f);
@@ -1176,7 +1176,7 @@ int __on_ping_resp(ldmsd_req_cmd_t rcmd)
 	}
 
 	/* get peer state */
-	attr = ldmsd_req_attr_get_by_id(rcmd->reqc->req_buf, LDMSD_ATTR_UDATA);
+	attr = ldmsd_req_attr_get_by_id(rcmd->reqc->recv_buf, LDMSD_ATTR_UDATA);
 	if (!attr)
 		goto out;
 	ping_data = (void*)attr->attr_value;

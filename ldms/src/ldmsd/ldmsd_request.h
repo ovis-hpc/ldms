@@ -309,10 +309,10 @@ typedef struct ldmsd_req_ctxt {
 	size_t line_off;
 	char *line_buf;
 
-	struct ldmsd_msg_buf *_req_buf;
-	char *req_buf;
+	struct ldmsd_msg_buf *_recv_buf;
+	char *recv_buf;
 
-	struct ldmsd_msg_buf *rep_buf;
+	struct ldmsd_msg_buf *send_buf;
 } *ldmsd_req_ctxt_t;
 
 typedef struct ldmsd_req_cmd *ldmsd_req_cmd_t;
