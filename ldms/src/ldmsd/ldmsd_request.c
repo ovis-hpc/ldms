@@ -5477,6 +5477,17 @@ static int set_route_resp_handler(ldmsd_req_cmd_t rcmd)
 	ldmsd_req_ctxt_t org_reqc = rcmd->org_reqc;
 	struct set_route_req_ctxt *ctxt = (struct set_route_req_ctxt *)rcmd->ctxt;
 
+	if (reqc->errcode) {
+		char *msg = "Failed to get the infomation";
+		my_attr.attr_id = LDMSD_ATTR_STRING;
+		my_attr.attr_len = strlen(msg) + 1;
+		ldmsd_hton_req_attr(&my_attr);
+		(void) ldmsd_append_reply(org_reqc, (char *)&my_attr,
+					sizeof(my_attr), LDMSD_REQ_SOM_F);
+		(void) ldmsd_append_reply(org_reqc, msg, htonl(my_attr.attr_len), 0);
+		goto out;
+	}
+
 	attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->recv_buf);
 
 	my_attr.attr_id = LDMSD_ATTR_JSON;
@@ -5488,21 +5499,25 @@ static int set_route_resp_handler(ldmsd_req_cmd_t rcmd)
 	}
 	my_attr.discrim = 1;
 	ldmsd_hton_req_attr(&my_attr);
-	(void) ldmsd_append_reply(org_reqc, (char *)&my_attr, sizeof(my_attr), 0);
+	(void) ldmsd_append_reply(org_reqc, (char *)&my_attr, sizeof(my_attr),
+								LDMSD_REQ_SOM_F);
 	(void) ldmsd_append_reply(org_reqc, ctxt->my_info, strlen(ctxt->my_info), 0);
 	(void) ldmsd_append_reply(org_reqc, ",", 1, 0);
 	if (!ctxt->is_internal) {
 		/* -1 to exclude the terminating character */
-		(void) ldmsd_append_reply(org_reqc, (char *)attr->attr_value, attr->attr_len - 1, 0);
+		(void) ldmsd_append_reply(org_reqc, (char *)attr->attr_value,
+							attr->attr_len - 1, 0);
 		(void) ldmsd_append_reply(org_reqc, "]}", 3, 0);
 	} else {
-		(void) ldmsd_append_reply(org_reqc, (char *)attr->attr_value, attr->attr_len, 0);
+		(void) ldmsd_append_reply(org_reqc, (char *)attr->attr_value,
+							attr->attr_len, 0);
 	}
 
 	my_attr.discrim = 0;
 	(void) ldmsd_append_reply(org_reqc, (char *)&my_attr.discrim,
 					sizeof(uint32_t), LDMSD_REQ_EOM_F);
 	ldmsd_req_ctxt_ref_put(org_reqc, "create");
+	ldmsd_req_cmd_free(rcmd);
 	free(ctxt->my_info);
 	free(ctxt);
 	return 0;
@@ -5583,8 +5598,10 @@ static int set_route_handler(ldmsd_req_ctxt_t reqc)
 		(void) __ldmsd_append_buffer(reqc, (char *)&attr.discrim,
 				sizeof(uint32_t),
 				LDMSD_REQ_EOM_F, LDMSD_REQ_TYPE_CONFIG_RESP);
+		ldmsd_req_ctxt_ref_put(reqc, "create");
 	}
 	rc = 0;
+	ldmsd_set_info_delete(info);
 	goto out;
 err2:
 	free(ctxt->my_info);
