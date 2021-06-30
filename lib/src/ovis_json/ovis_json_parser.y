@@ -144,6 +144,8 @@ int yylex_destroy(yyscan_t);
 
 void json_parser_free(json_parser_t parser)
 {
+	if (!parser)
+		return;
 	yylex_destroy(parser->scanner);
 	free(parser);
 }
