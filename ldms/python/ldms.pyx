@@ -901,7 +901,7 @@ cdef void dir_cb(ldms_t _x, int status, ldms_dir_t d, void *arg) with gil:
     # Else, use blocking-dir
     if status:
         x._dir_rc = status
-        sem_post(&x._dir_sem)
+        sem_post(&x._conn_sem)
     else:
         if d.type != LDMS_DIR_LIST:
             # NOTE warn about unhandling dir msg?
@@ -909,7 +909,8 @@ cdef void dir_cb(ldms_t _x, int status, ldms_dir_t d, void *arg) with gil:
         for i in range(0, d.set_count):
             x._dir_list.append(DirSet(PTR(&d.set_data[i])))
         if not d.more:
-            sem_post(&x._dir_sem)
+            x._dir_rc = 0
+            sem_post(&x._conn_sem)
     ldms_xprt_dir_free(x.xprt, d)
 
 
@@ -1640,7 +1641,6 @@ cdef class Xprt(object):
     cdef object _conn_cb
     cdef object _conn_cb_arg
 
-    cdef sem_t _dir_sem
     cdef int _dir_rc
     cdef public str _dir_rc_msg
     cdef object _dir_cb
@@ -1674,7 +1674,6 @@ cdef class Xprt(object):
         self._conn_cb = None
         self._conn_cb_arg = None
         # dir
-        sem_init(&self._dir_sem, 0, 0)
         self._dir_rc = 0
         self._dir_rc_msg = "OK"
         self._dir_cb = None
@@ -1846,6 +1845,7 @@ cdef class Xprt(object):
         DIR_UPD) will also be delivered to `cb()`.
         """
         cdef int rc
+        self._dir_rc = EPIPE
         self._dir_cb = cb
         self._dir_cb_arg = cb_arg
         self._dir_list = list()
@@ -1858,7 +1858,7 @@ cdef class Xprt(object):
         if cb:
             return
         with nogil:
-            sem_wait(&self._dir_sem)
+            sem_wait(&self._conn_sem)
         if self._dir_rc:
             rc = self._dir_rc
             raise ConnectionError(rc, "dir callback status: {}" \
