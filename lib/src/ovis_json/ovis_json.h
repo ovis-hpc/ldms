@@ -321,7 +321,15 @@ extern int json_item_rem(json_entity_t l, json_entity_t item);
 extern int64_t json_value_int(json_entity_t e);
 extern int json_value_bool(json_entity_t e);
 extern double json_value_float(json_entity_t e);
+
+/* get the string and length object. */
 extern json_str_t json_value_str(json_entity_t e);
+
+/* \return the underlying null terminated string pointer
+ * if e is a string type, or NULL if it is not.  If NULL,
+ * errno will also be set. */
+extern const char *json_value_cstr(json_entity_t e);
+
 extern json_dict_t json_value_dict(json_entity_t e);
 extern json_list_t json_value_list(json_entity_t e);
 
