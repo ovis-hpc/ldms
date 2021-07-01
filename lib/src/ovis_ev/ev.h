@@ -1,5 +1,6 @@
 #ifndef __EV_H_
 #define __EV_H_
+#include <pthread.h>
 #include <time.h>
 #include <inttypes.h>
 /**
@@ -33,6 +34,15 @@ typedef enum ev_status_e {
 } ev_status_t;
 
 /**
+ * \brief Check if the thread is the worker's thread
+ * \param w    Worker
+ * \param thr  Thread to be checked
+ *
+ * \return 1 if \c thr is the worker's thread. Otherwise, 0 is returned.
+ */
+int is_worker_thread(ev_worker_t w, pthread_t thr);
+
+/**
  * \brief The worker's event callback function
  *
  * \param src Sending worker handle
@@ -43,9 +53,13 @@ typedef enum ev_status_e {
  */
 typedef int (*ev_actor_t)(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 
-ev_t ev_new(ev_type_t evt);
+extern ev_t _ev_new(ev_type_t evt, const char *func, int line);
+#define ev_new(_e_) _ev_new( (_e_), __func__, __LINE__)
+
 ev_t ev_get(ev_t ev);
-void ev_put(ev_t ev);
+void _ev_put(ev_t ev, const char *func, int line);
+#define ev_put(_e_) _ev_put( (_e_), __func__, __LINE__)
+
 
 /**
  * \brief Creates a worker
@@ -148,7 +162,9 @@ int ev_listen(ev_worker_t evw, ev_type_t evt);
  * \retval 0 Event posted
  * \retval EBUSY The event is already posted
  */
-int ev_post(ev_worker_t src, ev_worker_t dst, ev_t ev, struct timespec *to);
+int _ev_post(ev_worker_t src, ev_worker_t dst, ev_t ev, struct timespec *to,
+						const char *func, int line);
+#define ev_post(_s_, _d_, _e_, _t_) _ev_post((_s_), (_d_), (_e_), (_t_), __func__, __LINE__)
 
 /**
  * \brief Cancel a posted event

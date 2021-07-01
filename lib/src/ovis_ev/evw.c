@@ -10,6 +10,25 @@
 #include "ev.h"
 #include "ev_priv.h"
 
+#ifdef _EV_TRACK_
+static int worker_thr_cmp(void *a, const void *b)
+{
+	struct ev_worker_s *wa = (struct ev_worker_s *)a;
+	struct ev_worker_s *wb = (struct ev_worker_s *)b;
+	return wa->w_thread - wb->w_thread;
+}
+static pthread_mutex_t worker_thr_tree_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct rbt worker_thr_tree = RBT_INITIALIZER(worker_thr_cmp);
+
+ev_worker_t worker_find_by_thr(pthread_t thread)
+{
+	struct rbn *rbn = rbt_find(&worker_thr_tree, (void *)thread);
+	if (!rbn)
+		return NULL;
+	return container_of(rbn, struct ev_worker_s, thr_rbn);
+}
+#endif /* _EV_TRACK_ */
+
 static pthread_mutex_t worker_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int type_cmp(void *a, const void *b)
@@ -63,7 +82,9 @@ static void process_immediate_events(ev_worker_t w)
 
 	if (w->w_state == EV_WORKER_FLUSHING)
 		e->e_status = EV_FLUSH;
-
+#ifdef _EV_TRACK_
+	w->cur_ev = e;
+#endif /* _EV_TRACK_ */
 	pthread_mutex_unlock(&w->w_lock);
 	actor = NULL;
 	if (e->e_type->t_id < w->w_dispatch_len)
@@ -71,6 +92,9 @@ static void process_immediate_events(ev_worker_t w)
 	if (!actor)
 		actor = w->w_actor;
 	actor(e->e_src, e->e_dst, e->e_status, &e->e_ev);
+#ifdef _EV_TRACK_
+	w->cur_ev = NULL;
+#endif /* _EV_TRACK_ */
 	ev_put(&e->e_ev);
 	pthread_mutex_lock(&w->w_lock);
 	goto next;
@@ -105,6 +129,9 @@ static ev__t process_to_events(ev_worker_t w)
 
 	rbt_del(&w->w_event_tree, &e->e_to_rbn);
 	e->e_posted = 0;
+#ifdef _EV_TRACK_
+	w->cur_ev = e;
+#endif /* _EV_TRACK_ */
 	pthread_mutex_unlock(&w->w_lock);
 	actor = NULL;
 	if (e->e_type->t_id < w->w_dispatch_len)
@@ -112,6 +139,9 @@ static ev__t process_to_events(ev_worker_t w)
 	if (!actor)
 		actor = w->w_actor;
 	actor(e->e_src, e->e_dst, e->e_status, &e->e_ev);
+#ifdef _EV_TRACK_
+	w->cur_ev = NULL;
+#endif /* _EV_TRACK_ */
 	ev_put(&e->e_ev);
 	pthread_mutex_lock(&w->w_lock);
 	goto next;
@@ -199,6 +229,12 @@ ev_worker_t ev_worker_new(const char *name, ev_actor_t actor_fn)
 		/* Use the last 16 chars of the worker name */
 		nameoff = namelen - 15;
 	pthread_setname_np(w->w_thread, &w->w_name[nameoff]);
+#ifdef _EV_TRACK_
+	rbn_init(&w->thr_rbn, (void *)w->w_thread);
+	pthread_mutex_lock(&worker_thr_tree_lock);
+	rbt_ins(&worker_thr_tree, &w->thr_rbn);
+	pthread_mutex_unlock(&worker_thr_tree_lock);
+#endif /* _EV_TRACK_ */
 	errno = 0;
 	return w;
  err_2:
@@ -283,4 +319,9 @@ int ev_pending(ev_worker_t w)
 	count += w->w_ev_list_len;
 	pthread_mutex_unlock(&w->w_lock);
 	return count;
+}
+
+int is_worker_thread(ev_worker_t w, pthread_t thr)
+{
+	return (w->w_thread == thr);
 }
