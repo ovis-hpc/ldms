@@ -51,7 +51,7 @@ static jbuf_t print_entity(jbuf_t jb, json_entity_t e)
 		jb = jbuf_append_str(jb, "%f", e->value.double_);
 		break;
 	case JSON_STRING_VALUE:
-		jb = jbuf_append_str(jb, "\"%s\"", e->value.str_->str);
+		jb = jbuf_append_str(jb, "\"%s\"", json_value_cstr(e));
 		break;
 	case JSON_LIST_VALUE:
 		print_list(jb, e);
@@ -71,16 +71,27 @@ static jbuf_t print_entity(jbuf_t jb, json_entity_t e)
 char buffer[1024*1024];
 int main(int argc, char *argv[])
 {
+	if (argc < 2) {
+		printf("%s: need input file name\n", argv[0]);
+		return 1;
+	}
 	FILE *fp = fopen(argv[1], "r");
+	if (!fp) {
+		printf("%s: unable to open %s\n" , argv[0], argv[1]);
+		return 1;
+	}
 	json_entity_t entity;
 	json_parser_t parser = json_parser_new(0);
 	int rc = fread(buffer, 1, sizeof(buffer), fp);
 	rc = json_parse_buffer(parser, buffer, rc, &entity);
-#if 0
-	if (rc == 0)
+	jbuf_t jb;
+	jb = jbuf_new();
+	if (rc == 0) {
 		jb = print_entity(jb, entity);
-	printf("%s\n", jb->buf);
-	jbuf_free(jb);
+		printf("%s\n", jb->buf);
+		jbuf_free(jb);
+	}
+#if 0
 	jb = jbuf_new();
 	json_entity_t kernel_data = json_attr_find(entity, "kokkos-kernel-data");
 	if (kernel_data) {

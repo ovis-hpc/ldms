@@ -6,6 +6,7 @@
 
 #define JSON_BUF_START_LEN 8192
 
+
 const char *json_type_name(enum json_value_e typ)
 {
 	static const char *json_type_names[] = {
@@ -120,6 +121,10 @@ json_entity_t json_attr_find(json_entity_t d, const char *name)
 	assert (d->type == JSON_DICT_VALUE);
 	ent = htbl_find(d->value.dict_->attr_table, name, strlen(name));
 	if (ent) {
+#ifdef JDEBUG
+		fprintf(stderr, "json found attr %s while searching for %s\n",
+			(char *)ent->key, name);
+#endif
 		a = container_of(ent, struct json_attr_s, attr_ent);
 		return &a->base;
 	}
@@ -135,6 +140,10 @@ int json_attr_count(json_entity_t d)
 
 int attr_cmp(const void *a, const void *b, size_t key_len)
 {
+#ifdef JDEBUG
+	fprintf(stderr, "attr_cmp( %s, %s, %zu)\n",
+		(char *)a, (char *)b, key_len);
+#endif
 	return strncmp(a, b, key_len);
 }
 
@@ -495,8 +504,13 @@ void __attr_add(json_entity_t d, json_entity_t a)
 
 	name = json_attr_name(a);
 	a_ = json_attr_find(d, name->str);
-	if (a_)
+	if (a_) {
+#ifdef JDEBUG
+		fprintf(stderr, "json removing entry %s for %s\n",
+			json_attr_name(a_)->str, name->str);
+#endif
 		__attr_rem(d, a_);
+	}
 	hent_init(&a->value.attr_->attr_ent, name->str, name->str_len);
 	htbl_ins(d->value.dict_->attr_table, &a->value.attr_->attr_ent);
 }
@@ -652,6 +666,14 @@ json_str_t json_value_str(json_entity_t value)
 {
 	assert(value->type == JSON_STRING_VALUE);
 	return value->value.str_;
+}
+
+const char * json_value_cstr(json_entity_t value)
+{
+	if (value->type == JSON_STRING_VALUE)
+		return value->value.str_->str;
+	errno = EINVAL;
+	return NULL;
 }
 
 json_attr_t json_value_attr(json_entity_t value)
