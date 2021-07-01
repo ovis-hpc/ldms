@@ -51,6 +51,10 @@
 #define FNV_64_PRIME 0x100000001b3ULL
 #define FNV_64_SEED  0xDEADC0DEBEEFDEADULL
 
+#ifdef HTBLDEBUG
+#include <stdio.h>
+#endif
+
 static uint64_t default_hash_fn(const void *key, size_t key_len)
 {
 	int i;
@@ -159,8 +163,13 @@ hent_t htbl_find(htbl_t t, const void *key, size_t key_len)
 	uint64_t h = t->hash_fn(key, key_len);
 	h %= t->table_depth;
 	LIST_FOREACH(e, &t->table[h], hash_link) {
-		if (0 == t->cmp_fn(e->key, key, key_len))
+		if ( 0 == t->cmp_fn(e->key, key, key_len)) {
+#ifdef HDEBUG
+			if ( key_len != e->key_len)
+				fprintf(stderr, "htbl_find returning mismatched key_len item: %s for %s\n", (char *)e->key, (char *)key);
+#endif
 			return e;
+		}
 	}
 	return 0;
 }
@@ -209,3 +218,115 @@ hent_t htbl_next(hent_t e)
 	return NULL;
 }
 
+#ifdef HTBL_TEST
+#include <inttypes.h>
+#include <time.h>
+#include "ovis-test/test.h"
+
+/* testing inspired by:
+const char *data =
+"{\"serial\":1156,\"is_thread\":0,\"uid\":4294967295,\"task_pid\":11344,\"exe\":\"/usr/bin/bash\",\"job_id\":0,\"gid\":4294967295,\"start\":\"1624996169.996169\"}\"";
+*/
+
+enum valtype {
+	t_err,
+	t_string,
+	t_int,
+};
+struct tuple {
+	const char *name;
+	enum valtype t;
+	union {
+		int64_t i;
+		const char *s;
+	} v;
+};
+
+struct tuple values[] = {
+	{"serial", t_int, .v.i = 1156},
+	{"is_thread", t_int, .v.i = 0},
+	{"uid", t_int, .v.i = 4294967295},
+	{"task_pid", t_int, .v.i = 11344},
+	{"exe", t_string, .v.s = "/usr/bin/bash"},
+	{"job_id", t_int, .v.i = 0},
+	{"gid", t_int, .v.i = 4294967295},
+	{"start", t_string, .v.s = "1624996169.996169"}
+};
+
+struct tuple hard_values[] = {
+	{"serial", t_int, .v.i = 1156},
+	{"is_thread", t_int, .v.i = 0},
+	{"job_id1", t_int, .v.i = 0},
+	{"uid", t_int, .v.i = 4294967295},
+	{"task_pid", t_int, .v.i = 11344},
+	{"exe", t_string, .v.s = "/usr/bin/bash"},
+	{"job_id", t_int, .v.i = 0},
+	{"gid", t_int, .v.i = 4294967295},
+	{"job_id2", t_int, .v.i = 0},
+	{"start", t_string, .v.s = "1624996169.996169"}
+};
+
+static int attr_cmp(const void *a, const void *b, size_t key_len)
+{
+        return strncmp(a, b, key_len);
+}
+
+#define JSON_HTBL_DEPTH 3
+
+int main(int argc, char *argv[])
+{
+	const size_t ntv = sizeof(values)/sizeof(values[0]);
+	const size_t nthv = sizeof(hard_values)/sizeof(hard_values[0]);
+	struct hent tv[ntv];
+	struct hent thv[nthv];
+	htbl_t tab_tv = htbl_alloc(attr_cmp, JSON_HTBL_DEPTH);
+	TEST_ASSERT(tab_tv!=NULL, "create tab_tv\n");
+	htbl_t tab_thv = htbl_alloc(attr_cmp, JSON_HTBL_DEPTH);
+	TEST_ASSERT(tab_thv!=NULL, "create tab_thv\n");
+	size_t k;
+	for (k = 0; k < ntv; k++) {
+		hent_init(&tv[k], values[k].name, strlen(values[k].name)+1);
+		htbl_ins(tab_tv, &tv[k]);
+	}
+	for (k = 0; k < nthv; k++) {
+		hent_init(&thv[k], hard_values[k].name,
+				strlen(hard_values[k].name)+1);
+		htbl_ins(tab_thv, &thv[k]);
+	}
+	for (k = ntv; k > 0;  ) {
+		k--;
+		hent_t e = htbl_find(tab_tv, values[k].name,
+					strlen(values[k].name)+1);
+		TEST_ASSERT(e != NULL, "found tab_tv element %s\n",
+				values[k].name);
+	}
+	for (k = nthv; k > 0; ) {
+		k--;
+		hent_t e = htbl_find(tab_thv, hard_values[k].name,
+					strlen(hard_values[k].name)+1);
+		TEST_ASSERT(e != NULL, "found tab_thv element %s\n",
+				hard_values[k].name);
+	}
+	k = 0;
+	hent_t e = htbl_first(tab_tv);
+	TEST_ASSERT(e != NULL, "Found tab_tv first element\n");
+	while (e) {
+		/* printf("list tab_tv includes: %s\n", (char *)e->key); */
+		e = htbl_next(e);
+		k++;
+	}
+	TEST_ASSERT(k == ntv, "htbl tab_tv iterator got expected count of elements.\n");
+	k = 0;
+	e = htbl_first(tab_thv);
+	TEST_ASSERT(e != NULL, "Found tab_thv first element.\n");
+	while (e) {
+		/* printf("list tab_thv includes: %s\n", (char *)e->key); */
+		e = htbl_next(e);
+		k++;
+	}
+	TEST_ASSERT(k == nthv, "htbl tab_thv iterator got expected count of elements.\n");
+	htbl_free(tab_tv);
+	htbl_free(tab_thv);
+	return 0;
+}
+#endif

@@ -27,7 +27,10 @@ libcoll_la_LIBADD = ../third/libovis_third.la ../ovis_util/libovis_util.la
 
 lib_LTLIBRARIES += libcoll.la
 
-check_PROGRAMS += test_ovis_map test_rbt test_label_set test_idx
+check_PROGRAMS += test_ovis_map test_rbt test_label_set test_idx test_htbl
+
+test_htbl_SOURCES = htbl.c htbl.h
+test_htbl_CFLAGS = -DHTBL_TEST
 
 test_rbt_SOURCES = rbt.c rbt.h
 test_rbt_CFLAGS = -DRBT_TEST
