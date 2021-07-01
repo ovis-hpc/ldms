@@ -1027,8 +1027,13 @@ int test_comparator(void *a, const void *b)
 int rbn_print(struct rbn *rbn, void *fn_data, int level)
 {
 	struct test_key *k = (struct test_key *)rbn;
-	printf("%p %*c%-2d: %12d (%d)\n", rbn, 80 - (level * 6), (rbn->color?'B':'R'),
-	       level, k->key, k->ord);
+	printf("%p %*c%-2d: %12" PRId64" (%d)\n",
+		rbn,
+		80 - (level * 6),
+		(rbn->color?'B':'R'),
+		level,
+		k->key,
+		k->ord);
 	return 0;
 }
 
@@ -1039,7 +1044,6 @@ int main(int argc, char *argv[])
 	int key_count, iter_count;
 	int max = -1;
 	int min = 0x7FFFFFFF;
-	struct test_key key;
 	int x;
 	int64_t kv;
 	time_t t = time(NULL);
@@ -1146,7 +1150,7 @@ int main(int argc, char *argv[])
 		k->key = (int)random();
 		rbn = rbt_find(&rbt, &k->key);
 		if (rbn) {
-			printf("FAIL -- DUPLICATE %d.\n", k->key);
+			printf("FAIL -- DUPLICATE %" PRId64 ".\n", k->key);
 			continue;
 		}
 		rbt_ins(&rbt, &k->n);
