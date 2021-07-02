@@ -69,6 +69,7 @@ extern ev_type_t xprt_term_type;
 extern ev_type_t recv_rec_type;
 extern ev_type_t reqc_type; /* add to msg_tree, rem to msg_tree, send to cfg */
 extern ev_type_t deferred_start_type;
+extern ev_type_t cfg_type;
 
 struct log_data {
 	uint8_t is_rotate;

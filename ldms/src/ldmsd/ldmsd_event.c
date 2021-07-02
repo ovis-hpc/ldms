@@ -58,6 +58,7 @@ ev_type_t log_type;
 ev_type_t recv_rec_type;
 ev_type_t reqc_type; /* add to msg_tree, rem to msg_tree, send to cfg */
 ev_type_t deferred_start_type;
+ev_type_t cfg_type;
 ev_type_t xprt_term_type;
 
 int default_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
@@ -76,6 +77,8 @@ extern int recv_rec_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, 
 extern int msg_tree_xprt_term_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 extern int deferred_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 
+extern int recv_cfg_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
+
 int ldmsd_worker_init(void)
 {
 	logger_w = ev_worker_new("logger", log_actor);
@@ -91,6 +94,12 @@ int ldmsd_worker_init(void)
 	ev_dispatch(msg_tree_w, recv_rec_type, recv_rec_actor);
 	ev_dispatch(msg_tree_w, xprt_term_type, msg_tree_xprt_term_actor);
 	ev_dispatch(msg_tree_w, deferred_start_type, deferred_start_actor);
+
+	/* cfg worker */
+	cfg_w = ev_worker_new("cfg", recv_cfg_actor);
+	if (!cfg_w)
+		return ENOMEM;
+
 	return 0;
 }
 
@@ -103,6 +112,7 @@ int ldmsd_ev_init(void)
 	recv_rec_type = ev_type_new("ldms_xprt:recv", sizeof(struct recv_rec_data));
 	reqc_type = ev_type_new("ldmsd:reqc_ev", sizeof(struct reqc_data));
 	deferred_start_type = ev_type_new("ldmsd:deferred_start", 0);
+	cfg_type = ev_type_new("msg_tree:recv_cfg", sizeof(struct reqc_data));
 
 	return 0;
 }

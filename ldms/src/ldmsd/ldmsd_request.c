@@ -1145,6 +1145,18 @@ void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec
 	xprt->send_fn(xprt, (char *)req_reply, reply_size);
 }
 
+static int __post_cfg(struct ldmsd_req_ctxt *reqc)
+{
+	ev_t ev = ev_new(cfg_type);
+	if (!ev)
+		return ENOMEM;
+	ldmsd_req_ctxt_ref_get(reqc, "post_cfg");
+	EV_DATA(ev, struct reqc_data)->reqc = reqc;
+
+	ev_post(msg_tree_w, cfg_w, ev, NULL);
+	return 0;
+}
+
 extern void cleanup(int x, char *reason);
 int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 {
@@ -1245,8 +1257,11 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->recv_buf);
 	reqc->req_id = ((ldmsd_req_hdr_t)reqc->recv_buf)->req_id;
 
-	rc = ldmsd_handle_request(reqc); /* TODO: event-based model */
+	rc = __post_cfg(reqc);
 
+	/*
+	 * TODO: handle the cleanup cmd
+	 */
 	if (cleanup_requested)
 		cleanup(0, "user quit");
  out:
@@ -1265,7 +1280,6 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t response)
 {
 	struct req_ctxt_key key;
-	ldmsd_req_cmd_t rcmd = NULL;
 	ldmsd_req_ctxt_t reqc = NULL;
 	size_t cnt;
 	int rc = 0;
@@ -1323,10 +1337,9 @@ int ldmsd_process_config_response(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t respons
 
 	/* Convert the request byte order from network to host */
 	ldmsd_ntoh_req_msg((ldmsd_req_hdr_t)reqc->recv_buf);
-	rcmd = (ldmsd_req_cmd_t)reqc->ctxt;
-	rc = ldmsd_handle_response(rcmd);
 
-	free_req_cmd_ctxt(rcmd);
+	rc = __post_cfg(reqc);
+
  out:
 	return rc;
 }
@@ -1436,6 +1449,21 @@ int msg_tree_xprt_term_actor(ev_worker_t src, ev_worker_t dst, ev_status_t statu
 	ev_put(ev);
 	ldms_xprt_put(x);
 	return 0;
+}
+
+int recv_cfg_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
+{
+	struct ldmsd_req_ctxt *reqc = EV_DATA(ev, struct reqc_data)->reqc;
+	struct ldmsd_req_cmd *rcmd = reqc->ctxt;
+	int rc;
+
+	if (rcmd)
+		rc = ldmsd_handle_response(rcmd);
+	else
+		rc = ldmsd_handle_request(reqc);
+	ldmsd_req_ctxt_ref_put(reqc, "post_cfg");
+	ev_put(ev);
+	return rc;
 }
 
 /**
