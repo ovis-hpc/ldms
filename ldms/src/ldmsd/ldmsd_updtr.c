@@ -550,11 +550,16 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 					"It is likely that there are multiple "
 					"producers providing a set with the same instance name.\n",
 					prd_set->prdcr->obj.name, prd_set->inst_name);
+		} else if (status == ENOENT) {
+			ldmsd_log(LDMSD_LINFO,
+				  	"prdcr %s: disappeared set in lookup callback of set '%s'\n",
+					prd_set->prdcr->obj.name,
+					prd_set->inst_name);
 		} else {
 			ldmsd_log(LDMSD_LERROR,
-				  	"prdcr %s: Error %d in lookup callback of set '%s'\n",
-					prd_set->prdcr->obj.name,
-					status, prd_set->inst_name);
+				  	"prdcr %s: Error %d(%s) in lookup callback of set '%s'\n",
+					prd_set->prdcr->obj.name, status,
+					STRERROR(status), prd_set->inst_name);
 		}
 		prd_set->state = LDMSD_PRDCR_SET_STATE_START;
 		goto out;
