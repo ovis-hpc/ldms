@@ -1,0 +1,7 @@
+load name=${testname}
+config name=${testname} producer=localhost${i} schema=${testname} instance=localhost${i}/${testname} component_id=${i}
+start name=${testname} interval=1000000 offset=0
+
+load name=dstat
+config name=dstat producer=localhost${i} instance=localhost${i}/${dstat_schema} component_id=${i} mmalloc=1 io=1 fd=1 auto-schema=1)
+start name=dstat interval=1000000 offset=0

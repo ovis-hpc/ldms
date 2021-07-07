@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2020 National Technology & Engineering Solutions
+ * Copyright (c) 2020-2021 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2020 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2020-2021 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -48,7 +48,7 @@
  */
 
 /**
- * \file app_sampler.c
+ * \file linux_proc_sampler.c
  */
 
 #define _GNU_SOURCE
@@ -66,8 +66,11 @@
 #include "ldmsd.h"
 #include "../sampler_base.h"
 #include "ldmsd_stream.h"
+#include "mmalloc.h"
+#define DSTRING_USE_SHORT
+#include "ovis_util/dstring.h"
 
-#define SAMP "app_sampler"
+#define SAMP "linux_proc_sampler"
 
 #define DEFAULT_STREAM "slurm"
 
@@ -78,8 +81,8 @@
 #define ARRAY_LEN(a) (sizeof((a))/sizeof((a)[0]))
 #endif
 
-typedef enum app_sampler_metric app_sampler_metric_e;
-enum app_sampler_metric {
+typedef enum linux_proc_sampler_metric linux_proc_sampler_metric_e;
+enum linux_proc_sampler_metric {
 	APP_ALL = 0,
 
 	/* /proc/[pid]/cmdline */
@@ -223,12 +226,14 @@ enum app_sampler_metric {
 
 	APP_WCHAN, /* string */
 
-	_APP_LAST = APP_WCHAN,
+	APP_TIMING,
+
+	_APP_LAST = APP_TIMING,
 };
 
-typedef struct app_sampler_metric_info_s *app_sampler_metric_info_t;
-struct app_sampler_metric_info_s {
-	app_sampler_metric_e code;
+typedef struct linux_proc_sampler_metric_info_s *linux_proc_sampler_metric_info_t;
+struct linux_proc_sampler_metric_info_s {
+	linux_proc_sampler_metric_e code;
 	const char *name;
 	const char *unit;
 	enum ldms_value_type mtype;
@@ -236,8 +241,11 @@ struct app_sampler_metric_info_s {
 	int is_meta;
 };
 
+/* CMDLINE_SZ is used for loading /proc/pid/[status,cmdline,syscall,stat] */
 #define CMDLINE_SZ 4096
-#define MOUNTINFO_SZ 8192
+/* space for a /proc/$pid/<leaf> name */
+#define PROCPID_SZ 64
+/* #define MOUNTINFO_SZ 8192 */
 #define ROOT_SZ 4096
 #define STAT_COMM_SZ 4096
 #define WCHAN_SZ 128 /* NOTE: KSYM_NAME_LEN = 128 */
@@ -249,7 +257,7 @@ struct app_sampler_metric_info_s {
 #define CPUS_ALLOWED_LIST_SZ 128 /* length of list string */
 #define MEMS_ALLOWED_LIST_SZ 128 /* length of list string */
 
-struct app_sampler_metric_info_s metric_info[] = {
+struct linux_proc_sampler_metric_info_s metric_info[] = {
 	[APP_ALL] = { APP_ALL, "ALL", "", 0, 0, 0 },
 	/* /proc/[pid]/cmdline */
 	[APP_CMDLINE_LEN] = { APP_CMDLINE_LEN, "cmdline_len", "" , LDMS_V_U16, 0, 1 },
@@ -395,26 +403,90 @@ struct app_sampler_metric_info_s metric_info[] = {
 	[APP_TIMERSLACK_NS] = { APP_TIMERSLACK_NS, "timerslack_ns", "ns", LDMS_V_U64, 0, 0 },
 
 	[APP_WCHAN] = { APP_WCHAN, "wchan", "", LDMS_V_CHAR_ARRAY, WCHAN_SZ, 0 },
+	[APP_TIMING] = { APP_TIMING, "sample_us", "", LDMS_V_U64, 0, 0 },
 
 };
 
 /* This array is initialized in __init__() below */
-app_sampler_metric_info_t metric_info_idx_by_name[_APP_LAST + 1];
+linux_proc_sampler_metric_info_t metric_info_idx_by_name[_APP_LAST + 1];
 
-struct app_sampler_set {
-	ldms_set_t set;
-	uint64_t task_pid; /* this is the key */
-	struct rbn rbn;
+struct set_key {
+	uint64_t start_tick;
+	int64_t os_pid;
 };
 
-typedef struct app_sampler_inst_s *app_sampler_inst_t;
-typedef int (*handler_fn_t)(app_sampler_inst_t inst, pid_t pid, ldms_set_t set);
+struct linux_proc_sampler_set {
+	struct set_key key;
+	ldms_set_t set;
+	int64_t task_rank;
+	struct rbn rbn;
+	int dead;
+	LIST_ENTRY(linux_proc_sampler_set) del;
+};
+LIST_HEAD(set_del_list, linux_proc_sampler_set);
 
-struct app_sampler_inst_s {
+
+#if 0
+static void string_to_timeval(struct timeval *t, char *s)
+{
+	if (!t || !s)
+		return;
+	char b[strlen(s)+1];
+	int sec, usec;
+	strcpy(b, s);
+	char *dot = strchr(b, '.');
+	if (!dot) {
+		sscanf(b, "%d", &sec);
+		t->tv_sec = sec;
+		t->tv_usec = 0;
+	} else {
+		size_t fraclen = strlen(dot);
+		if (fraclen > 7) {
+			dot[7] = '\0';
+		}
+		sscanf(b, "%d", &sec);
+		t->tv_sec = sec;
+		sscanf(dot+1, "%d", &usec);
+		size_t usec_len = strlen(dot+1);
+		switch (usec_len) {
+		case 1:
+			usec *= 100000;
+			break;
+		case 2:
+			usec *= 10000;
+			break;
+		case 3:
+			usec *= 1000;
+			break;
+		case 4:
+			usec *= 100;
+			break;
+		case 5:
+			usec *= 10;
+			break;
+		case 6:
+			break;
+		}
+		t->tv_usec = usec;
+	}
+}
+#endif
+
+typedef struct linux_proc_sampler_inst_s *linux_proc_sampler_inst_t;
+typedef int (*handler_fn_t)(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set);
+struct handler_info {
+	handler_fn_t fn;
+	const char *fn_name;
+};
+
+struct linux_proc_sampler_inst_s {
 	struct ldmsd_sampler samp;
 
 	ldmsd_msg_log_f log;
 	base_data_t base_data;
+	char *instance_prefix;
+	bool exe_suffix;
+	struct timeval sample_start;
 
 	struct rbt set_rbt;
 	pthread_mutex_t mutex;
@@ -422,41 +494,61 @@ struct app_sampler_inst_s {
 	char *stream_name;
 	ldmsd_stream_client_t stream;
 
-	handler_fn_t fn[16];
+	struct handler_info fn[17];
 	int n_fn;
 
 	int task_rank_idx;
+	int start_time_idx;
+	int start_tick_idx;
+	int exe_idx;
+	int is_thread_idx;
+	int parent_pid_idx;
 	int metric_idx[_APP_LAST+1]; /* 0 means disabled */
 };
 
-static int cmdline_handler(app_sampler_inst_t, pid_t, ldms_set_t);
-static int n_open_files_handler(app_sampler_inst_t, pid_t, ldms_set_t);
-static int io_handler(app_sampler_inst_t, pid_t, ldms_set_t);
-static int oom_score_handler(app_sampler_inst_t, pid_t, ldms_set_t);
-static int oom_score_adj_handler(app_sampler_inst_t, pid_t, ldms_set_t);
-static int root_handler(app_sampler_inst_t, pid_t, ldms_set_t);
-static int stat_handler(app_sampler_inst_t, pid_t, ldms_set_t);
-static int status_handler(app_sampler_inst_t, pid_t, ldms_set_t);
-static int syscall_handler(app_sampler_inst_t, pid_t, ldms_set_t);
-static int timerslack_ns_handler(app_sampler_inst_t, pid_t, ldms_set_t);
-static int wchan_handler(app_sampler_inst_t, pid_t, ldms_set_t);
+static void data_set_key(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *as, uint64_t tick, int64_t os_pid)
+{
+	if (!as)
+		return;
+	as->key.os_pid = os_pid;
+	as->key.start_tick = tick;
+#ifdef LPDEBUG
+	INST_LOG(inst, LDMSD_LDEBUG,"Creating key at %p: %" PRIu64 " , %" PRId64 "\n",
+		as, tick, os_pid);
+#endif
+
+}
+
+static int cmdline_handler(linux_proc_sampler_inst_t, pid_t, ldms_set_t);
+static int n_open_files_handler(linux_proc_sampler_inst_t, pid_t, ldms_set_t);
+static int io_handler(linux_proc_sampler_inst_t, pid_t, ldms_set_t);
+static int oom_score_handler(linux_proc_sampler_inst_t, pid_t, ldms_set_t);
+static int oom_score_adj_handler(linux_proc_sampler_inst_t, pid_t, ldms_set_t);
+static int root_handler(linux_proc_sampler_inst_t, pid_t, ldms_set_t);
+static int stat_handler(linux_proc_sampler_inst_t, pid_t, ldms_set_t);
+static int status_handler(linux_proc_sampler_inst_t, pid_t, ldms_set_t);
+static int syscall_handler(linux_proc_sampler_inst_t, pid_t, ldms_set_t);
+static int timerslack_ns_handler(linux_proc_sampler_inst_t, pid_t, ldms_set_t);
+static int wchan_handler(linux_proc_sampler_inst_t, pid_t, ldms_set_t);
+static int timing_handler(linux_proc_sampler_inst_t, pid_t, ldms_set_t);
 
 /* mapping metric -> handler */
-handler_fn_t handler_tbl[] = {
-	[_APP_CMDLINE_FIRST ... _APP_CMDLINE_LAST] = cmdline_handler,
-	[APP_N_OPEN_FILES] = n_open_files_handler,
-	[_APP_IO_FIRST ... _APP_IO_LAST] = io_handler,
-	[APP_OOM_SCORE] = oom_score_handler,
-	[APP_OOM_SCORE_ADJ] = oom_score_adj_handler,
-	[APP_ROOT] = root_handler,
-	[_APP_STAT_FIRST ... _APP_STAT_LAST] = stat_handler,
-	[_APP_STATUS_FIRST ... _APP_STATUS_LAST] = status_handler,
-	[APP_SYSCALL] = syscall_handler,
-	[APP_TIMERSLACK_NS] = timerslack_ns_handler,
-	[APP_WCHAN] = wchan_handler,
+struct handler_info handler_info_tbl[] = {
+	[_APP_CMDLINE_FIRST ... _APP_CMDLINE_LAST] = { .fn = cmdline_handler, .fn_name = "cmdline_handler" },
+	[APP_N_OPEN_FILES] = { .fn = n_open_files_handler, .fn_name = "n_open_files_handler" },
+	[_APP_IO_FIRST ... _APP_IO_LAST] = { .fn = io_handler, .fn_name= "io_handler" },
+	[APP_OOM_SCORE] = { .fn = oom_score_handler, .fn_name= "oom_score_handler" },
+	[APP_OOM_SCORE_ADJ] = { .fn = oom_score_adj_handler, .fn_name= "oom_score_adj_handler" },
+	[APP_ROOT] = { .fn = root_handler, .fn_name= "root_handler" },
+	[_APP_STAT_FIRST ... _APP_STAT_LAST] = { .fn = stat_handler, .fn_name = "stat_handler"},
+	[_APP_STATUS_FIRST ... _APP_STATUS_LAST] = { .fn = status_handler, .fn_name = "status_handler" },
+	[APP_SYSCALL] = { .fn = syscall_handler, .fn_name = "syscall_handler" },
+	[APP_TIMERSLACK_NS] = { .fn = timerslack_ns_handler, .fn_name = "timerslack_ns_handler" },
+	[APP_WCHAN] = { .fn = wchan_handler, .fn_name = "wchan_handler" },
+	[APP_TIMING] = { .fn = timing_handler, .fn_name = "timing_handler"}
 };
 
-static inline app_sampler_metric_info_t find_metric_info_by_name(const char *name);
+static inline linux_proc_sampler_metric_info_t find_metric_info_by_name(const char *name);
 
 /* ============ Handlers ============ */
 
@@ -513,12 +605,12 @@ static inline void __may_set_str(ldms_set_t set, int midx, const char *s)
 	snprintf(mval->a_char, len, "%s", s);
 }
 
-static int cmdline_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
+static int cmdline_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
 	/* populate `cmdline` and `cmdline_len` */
 	ldms_mval_t cmdline;
 	int len;
-	char path[4096];
+	char path[CMDLINE_SZ];
 	cmdline = ldms_metric_get(set, inst->metric_idx[APP_CMDLINE]);
 	if (cmdline->a_char[0])
 		return 0; /* already set */
@@ -529,11 +621,11 @@ static int cmdline_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 	return 0;
 }
 
-static int n_open_files_handler(app_sampler_inst_t inst, pid_t pid,
+static int n_open_files_handler(linux_proc_sampler_inst_t inst, pid_t pid,
 				ldms_set_t set)
 {
 	/* populate n_open_files */
-	char path[4096];
+	char path[PROCPID_SZ];
 	DIR *dir;
 	struct dirent *dent;
 	int n;
@@ -554,10 +646,10 @@ static int n_open_files_handler(app_sampler_inst_t inst, pid_t pid,
 	return 0;
 }
 
-static int io_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
+static int io_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
 	/* populate io_* */
-	char path[4096];
+	char path[PROCPID_SZ];
 	uint64_t val[7];
 	int n, rc;
 	snprintf(path, sizeof(path), "/proc/%d/io", pid);
@@ -576,10 +668,10 @@ static int io_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 		rc = EINVAL;
 		goto out;
 	}
-	__may_set_u64(set, inst->metric_idx[APP_IO_READ_B]           , val[0]);
-	__may_set_u64(set, inst->metric_idx[APP_IO_WRITE_B]          , val[1]);
-	__may_set_u64(set, inst->metric_idx[APP_IO_N_READ]           , val[2]);
-	__may_set_u64(set, inst->metric_idx[APP_IO_N_WRITE]          , val[3]);
+	__may_set_u64(set, inst->metric_idx[APP_IO_READ_B]	   , val[0]);
+	__may_set_u64(set, inst->metric_idx[APP_IO_WRITE_B]	  , val[1]);
+	__may_set_u64(set, inst->metric_idx[APP_IO_N_READ]	   , val[2]);
+	__may_set_u64(set, inst->metric_idx[APP_IO_N_WRITE]	  , val[3]);
 	__may_set_u64(set, inst->metric_idx[APP_IO_READ_DEV_B]       , val[4]);
 	__may_set_u64(set, inst->metric_idx[APP_IO_WRITE_DEV_B]      , val[5]);
 	__may_set_u64(set, inst->metric_idx[APP_IO_WRITE_CANCELLED_B], val[6]);
@@ -589,11 +681,11 @@ static int io_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 	return rc;
 }
 
-static int oom_score_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
+static int oom_score_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
 	/* according to `proc_oom_score()` in Linux kernel src tree, oom_score
 	 * is `unsigned long` */
-	char path[4096];
+	char path[PROCPID_SZ];
 	uint64_t x;
 	int n;
 	snprintf(path, sizeof(path), "/proc/%d/oom_score", pid);
@@ -608,11 +700,11 @@ static int oom_score_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 	return 0;
 }
 
-static int oom_score_adj_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
+static int oom_score_adj_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
 	/* according to `proc_oom_score_adj_read()` in Linux kernel src tree,
 	 * oom_score_adj is `short` */
-	char path[4096];
+	char path[PROCPID_SZ];
 	int x;
 	int n;
 	snprintf(path, sizeof(path), "/proc/%d/oom_score_adj", pid);
@@ -627,9 +719,9 @@ static int oom_score_adj_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t 
 	return 0;
 }
 
-static int root_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
+static int root_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
-	char path[256];
+	char path[PROCPID_SZ];
 	ssize_t len;
 	int midx = inst->metric_idx[APP_ROOT];
 	assert(midx > 0);
@@ -646,16 +738,16 @@ static int root_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 	return 0;
 }
 
-static int stat_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
+static int stat_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
-	char buff[4096];
+	char buff[CMDLINE_SZ];
 	char *str;
 	char name[128]; /* should be enough to hold program name */
 	int off, n;
 	uint64_t val;
 	char state;
 	pid_t _pid;
-	app_sampler_metric_e code;
+	linux_proc_sampler_metric_e code;
 	FILE *f;
 	snprintf(buff, sizeof(buff), "/proc/%d/stat", pid);
 	f = fopen(buff, "r");
@@ -668,7 +760,7 @@ static int stat_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 	str = buff;
 	if (s != buff) {
 		if (errno) {
-			INST_LOG(inst, LDMSD_LERROR,
+			INST_LOG(inst, LDMSD_LDEBUG,
 				"error reading /proc/%d/stat %s\n", pid, STRERROR(errno));
 			return errno;
 		}
@@ -695,19 +787,19 @@ static int stat_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 
 typedef struct status_line_handler_s {
 	const char *key;
-	app_sampler_metric_e code;
-	int (*fn)(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf,
-		  app_sampler_metric_e code);
+	linux_proc_sampler_metric_e code;
+	int (*fn)(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf,
+		  linux_proc_sampler_metric_e code);
 } *status_line_handler_t;
 
-int __line_dec(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf, app_sampler_metric_e code);
-int __line_dec_array(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf, app_sampler_metric_e code);
-int __line_hex(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf, app_sampler_metric_e code);
-int __line_oct(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf, app_sampler_metric_e code);
-int __line_char(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf, app_sampler_metric_e code);
-int __line_sigq(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf, app_sampler_metric_e code);
-int __line_str(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf, app_sampler_metric_e code);
-int __line_bitmap(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf, app_sampler_metric_e code);
+int __line_dec(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf, linux_proc_sampler_metric_e code);
+int __line_dec_array(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf, linux_proc_sampler_metric_e code);
+int __line_hex(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf, linux_proc_sampler_metric_e code);
+int __line_oct(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf, linux_proc_sampler_metric_e code);
+int __line_char(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf, linux_proc_sampler_metric_e code);
+int __line_sigq(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf, linux_proc_sampler_metric_e code);
+int __line_str(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf, linux_proc_sampler_metric_e code);
+int __line_bitmap(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf, linux_proc_sampler_metric_e code);
 
 static status_line_handler_t find_status_line_handler(const char *key);
 
@@ -787,9 +879,9 @@ struct status_line_handler_s status_line_tbl[] = {
 	{ "nonvoluntary_ctxt_switches", APP_STATUS_NONVOLUNTARY_CTXT_SWITCHES, __line_dec},
 };
 
-static int status_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
+static int status_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
-	char buff[4096];
+	char buff[CMDLINE_SZ];
 	FILE *f;
 	char *line, *key, *ptr;
 	status_line_handler_t sh;
@@ -816,8 +908,8 @@ static int status_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 	return 0;
 }
 
-int __line_dec(app_sampler_inst_t inst, ldms_set_t set,
-		const char *linebuf, app_sampler_metric_e code)
+int __line_dec(linux_proc_sampler_inst_t inst, ldms_set_t set,
+		const char *linebuf, linux_proc_sampler_metric_e code)
 {
 	/* scan for a uint64_t */
 	int n;
@@ -829,8 +921,8 @@ int __line_dec(app_sampler_inst_t inst, ldms_set_t set,
 	return 0;
 }
 
-int __line_dec_array(app_sampler_inst_t inst, ldms_set_t set,
-		const char *linebuf, app_sampler_metric_e code)
+int __line_dec_array(linux_proc_sampler_inst_t inst, ldms_set_t set,
+		const char *linebuf, linux_proc_sampler_metric_e code)
 {
 	int i, n, alen, pos;
 	int midx = inst->metric_idx[code];
@@ -847,8 +939,8 @@ int __line_dec_array(app_sampler_inst_t inst, ldms_set_t set,
 	return 0;
 }
 
-int __line_hex(app_sampler_inst_t inst, ldms_set_t set,
-		const char *linebuf, app_sampler_metric_e code)
+int __line_hex(linux_proc_sampler_inst_t inst, ldms_set_t set,
+		const char *linebuf, linux_proc_sampler_metric_e code)
 {
 	int n;
 	uint64_t x;
@@ -859,8 +951,8 @@ int __line_hex(app_sampler_inst_t inst, ldms_set_t set,
 	return 0;
 }
 
-int __line_oct(app_sampler_inst_t inst, ldms_set_t set,
-		const char *linebuf, app_sampler_metric_e code)
+int __line_oct(linux_proc_sampler_inst_t inst, ldms_set_t set,
+		const char *linebuf, linux_proc_sampler_metric_e code)
 {
 	int n;
 	uint64_t x;
@@ -871,8 +963,8 @@ int __line_oct(app_sampler_inst_t inst, ldms_set_t set,
 	return 0;
 }
 
-int __line_char(app_sampler_inst_t inst, ldms_set_t set,
-		const char *linebuf, app_sampler_metric_e code)
+int __line_char(linux_proc_sampler_inst_t inst, ldms_set_t set,
+		const char *linebuf, linux_proc_sampler_metric_e code)
 {
 	int n;
 	char x;
@@ -883,8 +975,8 @@ int __line_char(app_sampler_inst_t inst, ldms_set_t set,
 	return 0;
 }
 
-int __line_sigq(app_sampler_inst_t inst, ldms_set_t set,
-		const char *linebuf, app_sampler_metric_e code)
+int __line_sigq(linux_proc_sampler_inst_t inst, ldms_set_t set,
+		const char *linebuf, linux_proc_sampler_metric_e code)
 {
 	uint64_t q, l;
 	int n;
@@ -896,8 +988,8 @@ int __line_sigq(app_sampler_inst_t inst, ldms_set_t set,
 	return 0;
 }
 
-int __line_str(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf,
-		app_sampler_metric_e code)
+int __line_str(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf,
+		linux_proc_sampler_metric_e code)
 {
 	int midx = inst->metric_idx[code];
 	int alen = ldms_metric_array_get_len(set, midx);
@@ -907,8 +999,8 @@ int __line_str(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf,
 	return 0;
 }
 
-int __line_bitmap(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf,
-		  app_sampler_metric_e code)
+int __line_bitmap(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *linebuf,
+		  linux_proc_sampler_metric_e code)
 {
 	/* line format: <4-byte-hex>,<4-byte-hex>,...<4-byte-hex>
 	 * line ordering: high-byte ... low-byte
@@ -935,9 +1027,9 @@ int __line_bitmap(app_sampler_inst_t inst, ldms_set_t set, const char *linebuf,
 	return 0;
 }
 
-static int syscall_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
+static int syscall_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
-	char buff[4096];
+	char buff[CMDLINE_SZ];
 	FILE *f;
 	char *ret;
 	int i, n;
@@ -951,8 +1043,8 @@ static int syscall_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 	 * - "<SYSCALL_NUM> <ARG0> ... <ARG5> <STACK_PTR> <PROGRAM_CTR>": the
 	 *   syscall number, 6 arguments, stack pointer and program counter.
 	 */
-        f = fopen(buff, "r");
-        if (!f)
+	f = fopen(buff, "r");
+	if (!f)
 		return errno;
 	ret = fgets(buff, sizeof(buff), f);
 	fclose(f);
@@ -977,15 +1069,19 @@ static int syscall_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 	return 0;
 }
 
-static int timerslack_ns_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
+static int timerslack_ns_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
-	char path[4096];
+	char path[PROCPID_SZ];
 	uint64_t x;
 	int n;
 	snprintf(path, sizeof(path), "/proc/%d/timerslack_ns", pid);
 	FILE *f = fopen(path, "r");
-	if (!f)
+	if (!f && errno != ENOENT)
 		return errno;
+	if (!f) {
+		ldms_metric_set_u64(set, inst->metric_idx[APP_TIMERSLACK_NS], 0);
+		return 0;
+	}
 	n = fscanf(f, "%lu", &x);
 	fclose(f);
 	if (n != 1)
@@ -994,11 +1090,32 @@ static int timerslack_ns_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t 
 	return 0;
 }
 
-static int wchan_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
+static int wchan_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
-	char path[4096];
+	char path[PROCPID_SZ];
 	snprintf(path, sizeof(path), "/proc/%d/wchan", pid);
 	__read_str0(set, inst->metric_idx[APP_WCHAN], path, WCHAN_SZ);
+	return 0;
+}
+
+
+static int timing_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
+{
+	struct timeval t2;
+	gettimeofday(&t2, NULL);
+	uint64_t x_us = (t2.tv_sec - inst->sample_start.tv_sec)*1000000;
+	int64_t d_us = (int64_t)t2.tv_usec - (int64_t)inst->sample_start.tv_usec;
+	if (d_us < 0)
+		x_us += (uint64_t)(1000000 + d_us);
+	else
+		x_us += (uint64_t) d_us;
+
+	ldms_metric_set_u64(set, inst->metric_idx[APP_TIMING], x_us);
+	inst->sample_start.tv_sec = 0;
+	inst->sample_start.tv_usec = 0;
+#ifdef LPDEBUG
+	INST_LOG(inst, LDMSD_LDEBUG, "In %" PRIu64 " microseconds\n", x_us);
+#endif
 	return 0;
 }
 
@@ -1006,19 +1123,31 @@ static int wchan_handler(app_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 /* ============== Sampler Plugin APIs ================= */
 
 static int
-app_sampler_update_schema(app_sampler_inst_t inst, ldms_schema_t schema)
+linux_proc_sampler_update_schema(linux_proc_sampler_inst_t inst, ldms_schema_t schema)
 {
 	int i, idx;
-	app_sampler_metric_info_t mi;
+	linux_proc_sampler_metric_info_t mi;
 
 	inst->task_rank_idx = ldms_schema_meta_add(schema, "task_rank",
 						   LDMS_V_U64);
+	inst->start_time_idx = ldms_schema_meta_array_add(schema, "start_time",
+						LDMS_V_CHAR_ARRAY, 20);
+	inst->start_tick_idx = ldms_schema_meta_add(schema, "start_tick",
+						LDMS_V_U64);
+	inst->is_thread_idx = ldms_schema_meta_add(schema, "is_thread",
+						LDMS_V_U8);
+	inst->parent_pid_idx = ldms_schema_meta_add(schema, "parent",
+						LDMS_V_S64);
+	inst->exe_idx = ldms_schema_meta_array_add(schema, "exe",
+						LDMS_V_CHAR_ARRAY, 512);
+
 
 	/* Add app metrics to the schema */
 	for (i = 1; i <= _APP_LAST; i++) {
 		if (!inst->metric_idx[i])
 			continue;
 		mi = &metric_info[i];
+		INST_LOG(inst, LDMSD_LDEBUG, "Add metric %s\n", mi->name);
 		if (ldms_type_is_array(mi->mtype)) {
 			if (mi->is_meta) {
 				idx = ldms_schema_meta_array_add(schema,
@@ -1050,21 +1179,66 @@ app_sampler_update_schema(app_sampler_inst_t inst, ldms_schema_t schema)
 	return 0;
 }
 
-static int app_sampler_sample(struct ldmsd_sampler *pi)
+void app_set_destroy(linux_proc_sampler_inst_t inst, struct linux_proc_sampler_set *a)
 {
-	app_sampler_inst_t inst = (void*)pi;
-	int i;
+#ifdef LPDEBUG
+	INST_LOG(inst, LDMSD_LDEBUG, "Removing set %s\n",
+		ldms_set_instance_name_get(a->set));
+	INST_LOG(inst, LDMSD_LDEBUG,"Uncreating key at %p: %" PRIu64 " , %" PRId64 "\n",
+		&a->key, a->key.start_tick, a->key.os_pid);
+#else
+	(void)inst;
+#endif
+	ldmsd_set_deregister(ldms_set_instance_name_get(a->set), SAMP);
+	ldms_set_unpublish(a->set);
+	ldms_set_delete(a->set);
+	a->key.start_tick = 0;
+	a->key.os_pid = 0;
+	a->set = NULL;
+	free(a);
+}
+
+static int linux_proc_sampler_sample(struct ldmsd_sampler *pi)
+{
+	linux_proc_sampler_inst_t inst = (void*)pi;
+	int i, rc;
 	struct rbn *rbn;
-	struct app_sampler_set *app_set;
+#ifdef LPDEBUG
+	INST_LOG(inst, LDMSD_LDEBUG, "Sampling\n");
+#endif
+	struct linux_proc_sampler_set *app_set;
+	struct set_del_list del_list;
+	LIST_INIT(&del_list);
 	pthread_mutex_lock(&inst->mutex);
 	RBT_FOREACH(rbn, &inst->set_rbt) {
-		app_set = container_of(rbn, struct app_sampler_set, rbn);
+		app_set = container_of(rbn, struct linux_proc_sampler_set, rbn);
 		ldms_transaction_begin(app_set->set);
+		gettimeofday(&inst->sample_start, NULL);
 		for (i = 0; i < inst->n_fn; i++) {
-			inst->fn[i](inst, app_set->task_pid, app_set->set);
+			rc = inst->fn[i].fn(inst, app_set->key.os_pid, app_set->set);
+			if (rc) {
+				INST_LOG(inst, LDMSD_LDEBUG, "Removing set %s. Error %d(%s) from %s\n",
+					ldms_set_instance_name_get(app_set->set),
+					rc, STRERROR(rc), inst->fn[i].fn_name);
+				LIST_INSERT_HEAD(&del_list, app_set, del);
+				app_set->dead = rc;
+				break;
+			}
 		}
+#ifdef LPDEBUG
+		INST_LOG(inst, LDMSD_LDEBUG, "Got data for %s\n",
+			ldms_set_instance_name_get(app_set->set));
+#endif
 		ldms_transaction_end(app_set->set);
 	}
+	while (!LIST_EMPTY(&del_list)) {
+                app_set = LIST_FIRST(&del_list);
+		rbn = rbt_find(&inst->set_rbt, &app_set->key);
+		if (rbn)
+			rbt_del(&inst->set_rbt, rbn);
+                LIST_REMOVE(app_set, del);
+                app_set_destroy(inst, app_set);
+        }
 	pthread_mutex_unlock(&inst->mutex);
 	return 0;
 }
@@ -1074,23 +1248,27 @@ static int app_sampler_sample(struct ldmsd_sampler *pi)
 
 static
 char *_help = "\
-app_sampler config synopsis: \n\
-    config name=app_sampler [COMMON_OPTIONS] [stream=STREAM]\n\
-                            [metrics=METRICS] [cfg_file=FILE]\n\
+linux_proc_sampler config synopsis: \n\
+    config name=linux_proc_sampler [COMMON_OPTIONS] [stream=STREAM]\n\
+			    [metrics=METRICS] [cfg_file=FILE] [exe_suffix=1>]]\n\
 \n\
 Option descriptions:\n\
+    instance_prefix    The prefix for generated instance names. Typically a cluster name\n\
+		when needed to disambiguate producer names that appear in multiple clusters.\n\
+	      (default: no prefix).\n\
+    exe_suffix  Append executable path to set instance names.\n\
     stream    The name of the `ldmsd_stream` to listen for SLURM job events.\n\
-              (default: slurm).\n\
+	      (default: slurm).\n\
     metrics   The comma-separated list of metrics to monitor.\n\
-              The default is "" (empty), which is equivalent to monitor ALL\n\
-              metrics.\n\
+	      The default is "" (empty), which is equivalent to monitor ALL\n\
+	      metrics.\n\
     cfg_file  The alternative config file in JSON format. The file is\n\
-              expected to have an object that contains the following \n\
-              attributes:\n\
-              - \"stream\": \"STREAM_NAME\"\n\
-              - \"metrics\": [ METRICS ]\n\
-              If the `cfg_file` is given, `stream` and `metrics` options\n\
-              are ignored.\n\
+	      expected to have an object that contains the following \n\
+	      attributes:\n\
+	      - \"stream\": \"STREAM_NAME\"\n\
+	      - \"metrics\": [ METRICS ]\n\
+	      If the `cfg_file` is given, `stream` and `metrics` options\n\
+	      are ignored.\n\
 \n\
 The sampler creates and destroys sets according to events received from \n\
 LDMSD stream. The sets share the same schema which is contructed according \n\
@@ -1101,6 +1279,7 @@ The following is an example of cfg_file:\n\
 ```\n\
 {\n\
   \"stream\": \"slurm\",\n\
+  \"instance_prefix\": \"cluster2\",\n\
   \"metrics\": [\n\
     \"stat_comm\",\n\
     \"stat_pid\",\n\
@@ -1108,15 +1287,48 @@ The following is an example of cfg_file:\n\
   ]\n\
 }\n\
 ```\n\
+\n\
+The following metadata metrics are always reported:\n\
+name\ttype\tnotes\n\
+task_rank u64 The PID or if slurm present the SLURM_TASK_RANK (inherited by child processes). \n\
+start_time char[20] The epoch time when the process started, as estimated from the start_tick.\n\
+start_tick u64 The node local start time in jiffies from /proc/$pid/stat.\n\
+is_thread u8 Boolean value noting if the process is a child thread in e.g. an OMP application.\n\
+parent s64 The parent pid of the process.\n\
+exe char[] The full path of the executable.\n\
+\n\
 ";
 
-static const char *app_sampler_usage(struct ldmsd_plugin *self)
+static char *help_all;
+static void compute_help() {
+	linux_proc_sampler_metric_info_t mi;
+	char name_buf[80];
+	int i;
+	dsinit2(ds, CMDLINE_SZ);
+	dscat(ds, _help);
+	dscat(ds, "\nThe list of optional metric names and types is:\n");
+	for (i = 1; i <= _APP_LAST; i++) {
+		mi = &metric_info[i];
+		snprintf(name_buf, sizeof name_buf, "\n%10s%s\t%s",
+			ldms_metric_type_to_str(mi->mtype),
+			(mi->is_meta ? ", meta-data," : ",      data,"),
+			mi->name);
+		dscat(ds, name_buf);
+	}
+	help_all = dsdone(ds);
+	if (!help_all)
+		help_all = _help;
+}
+
+static const char *linux_proc_sampler_usage(struct ldmsd_plugin *self)
 {
-	return _help;
+	if (!help_all)
+		compute_help();
+	return help_all;
 }
 
 static
-int __handle_cfg_file(app_sampler_inst_t inst, char *val)
+int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 {
 	int i, fd, rc = -1, off;
 	ssize_t sz;
@@ -1124,7 +1336,7 @@ int __handle_cfg_file(app_sampler_inst_t inst, char *val)
 	json_parser_t jp = NULL;
 	json_entity_t jdoc = NULL;
 	json_entity_t list, ent;
-	app_sampler_metric_info_t minfo;
+	linux_proc_sampler_metric_info_t minfo;
 
 	fd = open(val, O_RDONLY);
 	if (fd < 0)
@@ -1167,6 +1379,24 @@ int __handle_cfg_file(app_sampler_inst_t inst, char *val)
 		goto out;
 	}
 
+	ent = json_value_find(jdoc, "instance_prefix");
+	if (ent) {
+		if (ent->type != JSON_STRING_VALUE) {
+			rc = EINVAL;
+			INST_LOG(inst, LDMSD_LERROR, "Error: `instance_prefix` must be a string.");
+			goto out;
+		}
+		inst->instance_prefix = strdup(ent->value.str_->str);
+		if (!inst->instance_prefix) {
+			rc = ENOMEM;
+			INST_LOG(inst, LDMSD_LERROR, "Out of memory while configuring.");
+			goto out;
+		}
+	}
+	ent = json_value_find(jdoc, "exe_suffix");
+	if (ent) {
+		inst->exe_suffix = 1;
+	}
 	ent = json_value_find(jdoc, "stream");
 	if (ent) {
 		if (ent->type != JSON_STRING_VALUE) {
@@ -1177,7 +1407,7 @@ int __handle_cfg_file(app_sampler_inst_t inst, char *val)
 		inst->stream_name = strdup(ent->value.str_->str);
 		if (!inst->stream_name) {
 			rc = ENOMEM;
-			INST_LOG(inst, LDMSD_LERROR, "Out of memory.");
+			INST_LOG(inst, LDMSD_LERROR, "Out of memory while configuring.");
 			goto out;
 		}
 	} /* else, caller will later set default stream_name */
@@ -1191,7 +1421,7 @@ int __handle_cfg_file(app_sampler_inst_t inst, char *val)
 					 "Error: metric must be a string.");
 				goto out;
 			}
-			minfo = find_metric_info_by_name(ent->value.str_->str);
+			minfo = find_metric_info_by_name(json_value_str_str(ent));
 			if (!minfo) {
 				rc = ENOENT;
 				INST_LOG(inst, LDMSD_LERROR,
@@ -1221,131 +1451,431 @@ int __handle_cfg_file(app_sampler_inst_t inst, char *val)
 	return rc;
 }
 
-int __handle_task_init(app_sampler_inst_t inst, json_entity_t data)
+uint64_t get_field_value_u64(linux_proc_sampler_inst_t inst, json_entity_t src, enum json_value_e et, const char *name)
 {
-	/* create a set per task */
-	struct app_sampler_set *app_set;
+	json_entity_t e = json_value_find(src, name);
+	if (!e) {
+		INST_LOG(inst, LDMSD_LDEBUG, "no json attribute %s found.\n", name);
+		errno = ENOKEY;
+		return 0;
+	}
+	if ( e->type != et) {
+		INST_LOG(inst, LDMSD_LDEBUG, "wrong type found for %s: %s. Expected %s.\n",
+			name, json_type_name(e->type), json_type_name(et));
+		errno = EINVAL;
+		return 0;
+	}
+	uint64_t u64;
+	switch (et) {
+	case JSON_STRING_VALUE:
+		if (sscanf(json_value_str_str(e),"%" SCNu64, &u64) == 1) {
+			return u64;
+		} else {
+			INST_LOG(inst, LDMSD_LDEBUG, "unconvertible to uint64_t: %s from %s.\n",
+				json_value_str_str(e), name);
+			errno = EINVAL;
+			return 0;
+		}
+	case JSON_INT_VALUE:
+		if ( json_value_int(e) < 0) {
+			INST_LOG(inst, LDMSD_LDEBUG, "unconvertible to uint64_t: %" PRId64 " from %s.\n",
+				json_value_int(e), name);
+			errno = ERANGE;
+			return 0;
+		}
+		return (uint64_t)json_value_int(e);
+	case JSON_FLOAT_VALUE:
+		if ( json_value_float(e) < 0 || json_value_float(e) > UINT64_MAX) {
+			errno = ERANGE;
+			INST_LOG(inst, LDMSD_LDEBUG, "unconvertible to uint64_t: %g from %s.\n",
+				json_value_float(e), name);
+			return 0;
+		}
+		return (uint64_t)json_value_float(e);
+	default:
+		errno = EINVAL;
+		return 0;
+	}
+}
+
+static json_entity_t get_field(linux_proc_sampler_inst_t inst, json_entity_t src, enum json_value_e et, const char *name)
+{
+#ifndef LPDEBUG
+	(void)inst;
+#endif
+	json_entity_t e = json_value_find(src, name);
+	if (!e) {
+#ifdef LPDEBUG
+		INST_LOG(inst, LDMSD_LDEBUG, "no json attribute %s found.\n", name);
+#endif
+		return NULL;
+	}
+	if ( e->type != et) {
+#ifdef LPDEBUG
+		INST_LOG(inst, LDMSD_LDEBUG, "wrong type found for %s: %s. Expected %s.\n",
+			name, json_type_name(e->type), json_type_name(et));
+#endif
+		return NULL;
+	}
+	return e;
+}
+
+/* functions lifted from forkstat split out here for copyright notice considerations */
+#include "get_stat_field.c"
+
+static uint64_t get_start_tick(linux_proc_sampler_inst_t inst, json_entity_t data, int64_t pid)
+{
+	if (!inst || !data)
+		return 0;
+	uint64_t start_tick = get_field_value_u64(inst, data, JSON_STRING_VALUE, "start_tick");
+	if (start_tick)
+		return start_tick;
+	char path[PATH_MAX];
+	char buf[STAT_COMM_SZ];
+	snprintf(path, sizeof(path), "/proc/%" PRId64 "/stat", pid);
+	int fd = open(path, O_RDONLY);
+	if (fd < 0)
+		return 0;
+	ssize_t n = read(fd, buf, sizeof(buf) - 1);
+	close(fd);
+	if (n <= 0)
+		return 0;
+	buf[n] = '\0';
+	const char* ptr = get_proc_self_stat_field(buf, 22);
+	uint64_t start = 0;
+	int n2 = sscanf(ptr, "%" PRIu64, &start);
+        if (n2 != 1)
+		return 0;
+        return start;
+}
+
+int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
+{
+	/* create a set per task; deduplicate if multiple spank and linux proc sources
+	 * are both active. */
+	struct linux_proc_sampler_set *app_set;
 	ldms_set_t set;
 	int len;
+	jbuf_t bjb = NULL;
 	json_entity_t job_id;
+	json_entity_t os_pid;
 	json_entity_t task_pid;
 	json_entity_t task_rank;
+	json_entity_t exe;
+	json_entity_t is_thread;
+	json_entity_t parent_pid;
+	json_entity_t start;
 	char setname[512];
-	job_id = json_value_find(data, "job_id");
-	if (!job_id || job_id->type != JSON_INT_VALUE)
-		return EINVAL;
-	task_pid = json_value_find(data, "task_pid");
-	if (!task_pid || task_pid->type != JSON_INT_VALUE)
-		return EINVAL;
-	task_rank = json_value_find(data, "task_global_id");
-	if (!task_rank || task_rank->type != JSON_INT_VALUE)
-		return EINVAL;
-	len = snprintf(setname, sizeof(setname), "%s/%ld/%ld",
-			inst->base_data->producer_name,
-			job_id->value.int_,
-			task_pid->value.int_);
-	if (len >= sizeof(setname))
-		return ENAMETOOLONG;
+	exe = get_field(inst, data, JSON_STRING_VALUE, "exe");
+	start = get_field(inst, data, JSON_STRING_VALUE, "start");
+	job_id = get_field(inst, data, JSON_INT_VALUE, "job_id");
+	os_pid = get_field(inst, data, JSON_INT_VALUE, "os_pid");
+	task_pid = get_field(inst, data, JSON_INT_VALUE, "task_pid");
+	parent_pid = get_field(inst, data, JSON_INT_VALUE, "parent_pid");
+	is_thread = get_field(inst, data, JSON_INT_VALUE, "is_thread");
+	if (!job_id || (!os_pid && !task_pid)) {
+		goto dump;
+	}
+	pid_t  pid;
+	if (os_pid)
+		pid = (pid_t)json_value_int(os_pid);
+	else
+		pid = json_value_int(task_pid); /* from spank plugin */
+
+	bool is_thread_val = false;
+	pid_t parent = 0;
+	if (is_thread) {
+		is_thread_val = json_value_int(is_thread);
+		parent = json_value_int(parent_pid);
+	} else {
+		parent = get_parent_pid(pid, &is_thread_val);
+	}
+	uint64_t start_tick = get_start_tick(inst, data, pid);
+	if (!start_tick) {
+		INST_LOG(inst, LDMSD_LDEBUG, "ignoring start-tickless pid %"
+			PRId64 "\n", pid);
+		return 0;
+	}
+	const char *start_string;
+	char start_string_buf[32];
+	if (!start) {
+		/* message is not from netlink-notifier. and we have to compensate */
+		struct timeval tv = { .tv_sec = 0, .tv_usec = 0 };
+		get_timeval_from_tick(start_tick, &tv);
+		snprintf(start_string_buf, sizeof(start_string_buf),"%lu.%06lu",
+			tv.tv_sec, tv.tv_usec);
+		start_string = start_string_buf;
+	} else {
+		start_string = json_value_str_str(start);
+	}
+	const char *exe_string;
+	char exe_buf[CMDLINE_SZ];
+	if (!exe) {
+		proc_exe_buf(pid, exe_buf, sizeof(exe_buf));
+		exe_string = exe_buf;
+	} else {
+		exe_string = json_value_str_str(exe);
+	}
+	int64_t task_rank_val = -1;
+	task_rank = get_field(inst, data, JSON_INT_VALUE, "task_global_id");
+	if (task_rank) {
+		task_rank_val = json_value_int(task_rank);
+	}
+/* set instance is $iprefix/$producer/$jobid/$start_time/$os_pid
+ * unless it came from spank with task_global_id set, in which case it is.
+ * set instance is $iprefix/$producer/$jobid/$start_time/rank/$task_rank
+ */
+	const char *esep = "";
+	const char *esuffix = "";
+	if (inst->exe_suffix) {
+		esep = "/";
+		esuffix = exe_string;
+	}
+	if (task_rank_val < 0) {
+		/* we haven't seen the pid as a slurm item yet. */
+		/* set instance is $iprefix/$producer/$jobid/$start_time/$os_pid */
+		len = snprintf(setname, sizeof(setname), "%s%s%s/%ld/%s/%" PRId64 "%s%s" ,
+				(inst->instance_prefix ? inst->instance_prefix : ""),
+				(inst->instance_prefix ? "/" : ""),
+				inst->base_data->producer_name,
+				json_value_int(job_id),
+				start_string,
+				(int64_t)pid, esep, esuffix);
+		if (len >= sizeof(setname)) {
+			INST_LOG(inst, LDMSD_LERROR, "set name too big: %s%s%s/%ld/%s/%" PRId64 "%s%s",
+				(inst->instance_prefix ? inst->instance_prefix : ""),
+				(inst->instance_prefix ? "/" : ""),
+				inst->base_data->producer_name,
+				json_value_int(job_id),
+				start_string,
+				(int64_t)pid, esep, esuffix);
+			return ENAMETOOLONG;
+		}
+	} else {
+		/* set instance is $iprefix/$producer/$jobid/$start_time/rank/$task_rank */
+		len = snprintf(setname, sizeof(setname), "%s%s%s/%ld/%s/rank/%" PRId64 "%s%s",
+				(inst->instance_prefix ? inst->instance_prefix : ""),
+				(inst->instance_prefix ? "/" : ""),
+				inst->base_data->producer_name,
+				json_value_int(job_id),
+				start_string,
+				task_rank_val, esep, esuffix);
+		if (len >= sizeof(setname)) {
+			INST_LOG(inst, LDMSD_LERROR, "set name too big: %s%s%s/%ld/%s/rank/%" PRId64 "%s%s",
+				(inst->instance_prefix ? inst->instance_prefix : ""),
+				(inst->instance_prefix ? "/" : ""),
+				inst->base_data->producer_name,
+				json_value_int(job_id),
+				start_string,
+				task_rank_val, esep, esuffix);
+			return ENAMETOOLONG;
+		}
+	}
 	app_set = calloc(1, sizeof(*app_set));
 	if (!app_set)
 		return ENOMEM;
-	app_set->task_pid = task_pid->value.int_;
-        set = ldms_set_new(setname, inst->base_data->schema);
+	app_set->task_rank = task_rank_val;
+	data_set_key(inst, app_set, start_tick, pid);
+
+	set = ldms_set_new(setname, inst->base_data->schema);
+	static int warn_once;
+	static int warn_once_dup;
 	if (!set) {
+		int ec = errno;
+		if (errno != EEXIST && !warn_once) {
+			warn_once = 1;
+			INST_LOG(inst, LDMSD_LERROR, "Out of set memory. Consider bigger -m.\n");
+			struct mm_stat ms;
+			mm_stats(&ms);
+			INST_LOG(inst, LDMSD_LERROR, "mm_stat: size=%zu grain=%zu "
+				"chunks_free=%zu grains_free=%zu grains_largest=%zu "
+				"grains_smallest=%zu bytes_free=%zu bytes_largest=%zu "
+				"bytes_smallest=%zu\n",
+				ms.size, ms.grain, ms.chunks, ms.bytes, ms.largest,
+				ms.smallest, ms.grain*ms.bytes, ms.grain*ms.largest,
+				ms.grain*ms.smallest);
+		}
+		if (ec == EEXIST) {
+			if (!warn_once_dup) {
+				warn_once_dup = 1;
+				INST_LOG(inst, LDMSD_LERROR, "Duplicate set name %s."
+					"Check for redundant notifiers running.\n",
+					setname);
+			}
+			ec = 0; /* expected case for misconfigured notifiers */
+		}
 		free(app_set);
-		return errno;
+		return ec;
 	}
-        base_auth_set(&inst->base_data->auth, set);
-	ldms_metric_set_u64(set, BASE_JOB_ID, job_id->value.int_);
+	ldms_set_producer_name_set(set, inst->base_data->producer_name);
+	base_auth_set(&inst->base_data->auth, set);
+	ldms_metric_set_u64(set, BASE_JOB_ID, json_value_int(job_id));
 	ldms_metric_set_u64(set, BASE_COMPONENT_ID, inst->base_data->component_id);
-	ldms_metric_set_u64(set, inst->task_rank_idx, task_rank->value.int_);
+	ldms_metric_set_s64(set, inst->task_rank_idx, task_rank_val);
+	ldms_metric_array_set_str(set, inst->start_time_idx, start_string);
+	ldms_metric_set_u64(set, inst->start_tick_idx, start_tick);
+	ldms_metric_set_s64(set, inst->parent_pid_idx, parent);
+	ldms_metric_set_u8(set, inst->is_thread_idx, is_thread_val ? 1 : 0);
+	ldms_metric_array_set_str(set, inst->exe_idx, exe_string);
 	app_set->set = set;
-	rbn_init(&app_set->rbn, (void*)app_set->task_pid);
+	rbn_init(&app_set->rbn, (void*)&app_set->key);
+
 	pthread_mutex_lock(&inst->mutex);
+	struct rbn *already = rbt_find(&inst->set_rbt, &app_set->key);
+	if (already) {
+		struct linux_proc_sampler_set *old_app_set;
+		old_app_set = container_of(already, struct linux_proc_sampler_set, rbn);
+		if (app_set->task_rank != -1) { /* new is from spank */
+			if (old_app_set->task_rank == app_set->task_rank) {
+				/*skip spank duplicate */
+#ifdef LPDEBUG
+				INST_LOG(inst, LDMSD_LDEBUG, "Keeping slurm set %s, dropping duplicate %s\n",
+					ldms_set_instance_name_get(old_app_set->set),
+					ldms_set_instance_name_get(app_set->set));
+#endif
+				ldms_set_delete(app_set->set);
+				free(app_set);
+			} else {
+				/* remove/replace set pointer in app_set with newly named set instance */
+#ifdef LPDEBUG
+				INST_LOG(inst, LDMSD_LDEBUG, "Converting set %s to %s\n",
+					ldms_set_instance_name_get(old_app_set->set),
+					ldms_set_instance_name_get(set));
+#endif
+				ldmsd_set_deregister(ldms_set_instance_name_get(old_app_set->set), SAMP);
+				ldms_set_unpublish(old_app_set->set);
+				ldms_set_delete(old_app_set->set);
+				old_app_set->set = set;
+				old_app_set->task_rank = task_rank_val;
+				ldms_set_publish(set);
+				ldmsd_set_register(set, SAMP);
+			}
+		} else {
+			/* keep existing set whether slurm or not. */
+			/* unreachable in principle if set_create maintains uniqueness */
+#ifdef LPDEBUG
+			INST_LOG(inst, LDMSD_LDEBUG, "Keeping existing set %s, dropping %s\n",
+				ldms_set_instance_name_get(old_app_set->set),
+				ldms_set_instance_name_get(app_set->set));
+#endif
+			ldms_set_delete(app_set->set);
+			free(app_set);
+		}
+		pthread_mutex_unlock(&inst->mutex);
+		return 0;
+	}
 	rbt_ins(&inst->set_rbt, &app_set->rbn);
+#ifdef LPDEBUG
+	INST_LOG(inst, LDMSD_LDEBUG, "Adding set %s\n",
+		ldms_set_instance_name_get(app_set->set));
+#endif
 	pthread_mutex_unlock(&inst->mutex);
 	ldms_set_publish(set);
 	ldmsd_set_register(set, SAMP);
 	return 0;
+dump:
+	bjb = json_entity_dump(bjb, data);
+	INST_LOG(inst, LDMSD_LDEBUG, "data was: %s\n", bjb->buf);
+	jbuf_free(bjb);
+	return EINVAL;
 }
 
-int __handle_task_exit(app_sampler_inst_t inst, json_entity_t data)
+int __handle_task_exit(linux_proc_sampler_inst_t inst, json_entity_t data)
 {
 	struct rbn *rbn;
-	struct app_sampler_set *app_set;
+	struct linux_proc_sampler_set *app_set;
 	json_entity_t job_id;
-	json_entity_t task_pid;
-	job_id = json_value_find(data, "job_id");
-	if (!job_id || job_id->type != JSON_INT_VALUE)
+	json_entity_t os_pid;
+	job_id = get_field(inst, data, JSON_INT_VALUE, "job_id");
+	os_pid = get_field(inst, data, JSON_INT_VALUE, "os_pid");
+	if (!job_id || !os_pid )
 		return EINVAL;
-	task_pid = json_value_find(data, "task_pid");
-	if (!task_pid || task_pid->type != JSON_INT_VALUE)
+	pid_t pid = (pid_t)json_value_int(os_pid);
+	uint64_t start_tick = get_start_tick(inst, data, pid);
+	if (!start_tick)
 		return EINVAL;
+	struct linux_proc_sampler_set app_set_search;
+	data_set_key(inst, &app_set_search, start_tick, pid);
 	pthread_mutex_lock(&inst->mutex);
-	rbn = rbt_find(&inst->set_rbt, (void*)task_pid->value.int_);
+	rbn = rbt_find(&inst->set_rbt, (void*)&app_set_search.key);
 	if (!rbn) {
 		pthread_mutex_unlock(&inst->mutex);
-		return ENOENT;
+		return 0; /* exit occuring of process we didn't catch the start of. */
 	}
 	rbt_del(&inst->set_rbt, rbn);
 	pthread_mutex_unlock(&inst->mutex);
-	app_set = container_of(rbn, struct app_sampler_set, rbn);
-	ldmsd_set_deregister(ldms_set_instance_name_get(app_set->set), SAMP);
-	ldms_set_unpublish(app_set->set);
-	ldms_set_delete(app_set->set);
-	free(app_set);
+	app_set = container_of(rbn, struct linux_proc_sampler_set, rbn);
+	app_set_destroy(inst, app_set);
 	return 0;
 }
 
-int __stream_cb(ldmsd_stream_client_t c, void *ctxt,
+static int __stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		ldmsd_stream_type_t stream_type,
 		const char *msg, size_t msg_len, json_entity_t entity)
 {
-	app_sampler_inst_t inst = ctxt;
+	int rc;
+	linux_proc_sampler_inst_t inst = ctxt;
 	json_entity_t event, data;
 	const char *event_name;
 
 	if (stream_type != LDMSD_STREAM_JSON) {
 		INST_LOG(inst, LDMSD_LDEBUG, "Unexpected stream type data...ignoring\n");
 		INST_LOG(inst, LDMSD_LDEBUG, "%s\n", msg);
-		return EINVAL;
+		rc = EINVAL;
+		goto err;
 	}
 
-	event = json_value_find(entity, "event");
+	event = get_field(inst, entity, JSON_STRING_VALUE, "event");
 	if (!event) {
-		INST_LOG(inst, LDMSD_LERROR, "'event' attribute missing\n");
-		goto out_0;
+		rc = ENOENT;
+		goto err;
 	}
-	if (event->type != JSON_STRING_VALUE) {
-		INST_LOG(inst, LDMSD_LERROR, "'event' is not a string\n");
-		goto out_0;
-	}
-	event_name = event->value.str_->str;
+	event_name = json_value_str_str(event);
 	data = json_value_find(entity, "data");
 	if (!data) {
 		INST_LOG(inst, LDMSD_LERROR,
 			 "'%s' event is missing the 'data' attribute\n",
 			 event_name);
-		goto out_0;
+		rc = ENOENT;
+		goto err;
 	}
 	if (0 == strcmp(event_name, "task_init_priv")) {
-		return __handle_task_init(inst, data);
+		rc = __handle_task_init(inst, data);
+		if (rc) {
+			INST_LOG(inst, LDMSD_LERROR,
+				"failed to process task_init: %d: %s\n",
+				rc, STRERROR(rc));
+			goto err;
+		}
 	} else if (0 == strcmp(event_name, "task_exit")) {
-		return __handle_task_exit(inst, data);
+		rc = __handle_task_exit(inst, data);
+		if (rc) {
+			INST_LOG(inst, LDMSD_LERROR,
+				"failed to process task_exit: %d: %s\n",
+				rc, STRERROR(rc));
+			goto err;
+		}
 	}
- out_0:
-	return 0;
+	rc = 0;
+	goto out;
+ err:
+#ifdef LPDEBUG
+	INST_LOG(inst, LDMSD_LDEBUG, "Doing nothing with msg %s.\n",
+		msg);
+#endif
+ out:
+	return rc;
 }
 
-static void app_sampler_term(struct ldmsd_plugin *pi);
+static void linux_proc_sampler_term(struct ldmsd_plugin *pi);
 
 static int
-app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
+linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 					    struct attr_value_list *avl)
 {
-	app_sampler_inst_t inst = (void*)pi;
+	linux_proc_sampler_inst_t inst = (void*)pi;
 	int i, rc;
-	app_sampler_metric_info_t minfo;
+	linux_proc_sampler_metric_info_t minfo;
 	char *val;
 
 	if (inst->base_data) {
@@ -1359,6 +1889,7 @@ app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		/* base_config() already log error message */
 		return errno;
 	}
+	INST_LOG(inst, LDMSD_LDEBUG, "configuring.\n");
 
 	/* Plugin-specific config here */
 	val = av_value(avl, "cfg_file");
@@ -1367,11 +1898,28 @@ app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		if (rc)
 			goto err;
 	} else {
+		val = av_value(avl, "instance_prefix");
+		if (val) {
+			inst->instance_prefix = strdup(val);
+			if (!inst->instance_prefix) {
+				INST_LOG(inst, LDMSD_LERROR, "Config out of memory");
+				rc = ENOMEM;
+				goto err;
+			}
+		}
+		val = av_value(kwl, "exe_suffix");
+		if (val) {
+			inst->exe_suffix = true;
+		}
+		val = av_value(avl, "exe_suffix");
+		if (val) {
+			inst->exe_suffix = true;
+		}
 		val = av_value(avl, "stream");
 		if (val) {
 			inst->stream_name = strdup(val);
 			if (!inst->stream_name) {
-				INST_LOG(inst, LDMSD_LERROR, "Out of memory");
+				INST_LOG(inst, LDMSD_LERROR, "Config out of memory");
 				rc = ENOMEM;
 				goto err;
 			}
@@ -1403,7 +1951,7 @@ app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 	if (!inst->stream_name) {
 		inst->stream_name = strdup("slurm");
 		if (!inst->stream_name) {
-			INST_LOG(inst, LDMSD_LERROR, "Out of memory");
+			INST_LOG(inst, LDMSD_LERROR, "Config: out of memory");
 			rc = ENOMEM;
 			goto err;
 		}
@@ -1413,10 +1961,10 @@ app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 	for (i = _APP_FIRST; i <= _APP_LAST; i++) {
 		if (inst->metric_idx[i] == 0)
 			continue;
-		if (inst->n_fn && inst->fn[inst->n_fn-1] == handler_tbl[i])
+		if (inst->n_fn && inst->fn[inst->n_fn-1].fn == handler_info_tbl[i].fn)
 			continue; /* already added */
 		/* add the handler */
-		inst->fn[inst->n_fn] = handler_tbl[i];
+		inst->fn[inst->n_fn] = handler_info_tbl[i];
 		inst->n_fn++;
 	}
 
@@ -1426,7 +1974,7 @@ app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		rc = errno;
 		goto err;
 	}
-	rc = app_sampler_update_schema(inst, inst->base_data->schema);
+	rc = linux_proc_sampler_update_schema(inst, inst->base_data->schema);
 	if (rc)
 		goto err;
 
@@ -1444,29 +1992,30 @@ app_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 
  err:
 	/* undo the config */
-	app_sampler_term(pi);
+	linux_proc_sampler_term(pi);
 	return rc;
 }
 
 static
-void app_sampler_term(struct ldmsd_plugin *pi)
+void linux_proc_sampler_term(struct ldmsd_plugin *pi)
 {
-	app_sampler_inst_t inst = (void*)pi;
+	linux_proc_sampler_inst_t inst = (void*)pi;
 	struct rbn *rbn;
-	struct app_sampler_set *app_set;
+	struct linux_proc_sampler_set *app_set;
 
 	if (inst->stream)
 		ldmsd_stream_close(inst->stream);
 	pthread_mutex_lock(&inst->mutex);
 	while ((rbn = rbt_min(&inst->set_rbt))) {
 		rbt_del(&inst->set_rbt, rbn);
-		app_set = container_of(rbn, struct app_sampler_set, rbn);
-		ldms_set_delete(app_set->set);
-		free(app_set);
+		app_set = container_of(rbn, struct linux_proc_sampler_set, rbn);
+		app_set_destroy(inst, app_set);
 	}
 	pthread_mutex_unlock(&inst->mutex);
-	if (inst->stream_name)
-		free(inst->stream_name);
+	free(inst->instance_prefix);
+	inst->instance_prefix = NULL;
+	free(inst->stream_name);
+	inst->stream_name = NULL;
 	if (inst->base_data)
 		base_del(inst->base_data);
 	bzero(inst->fn, sizeof(inst->fn));
@@ -1477,23 +2026,23 @@ void app_sampler_term(struct ldmsd_plugin *pi)
 static int
 idx_cmp_by_name(const void *a, const void *b)
 {
-	/* a, b are pointer to app_sampler_metric_info_t */
-	const app_sampler_metric_info_t *_a = a, *_b = b;
+	/* a, b are pointer to linux_proc_sampler_metric_info_t */
+	const linux_proc_sampler_metric_info_t *_a = a, *_b = b;
 	return strcmp((*_a)->name, (*_b)->name);
 }
 
 static int
 idx_key_cmp_by_name(const void *key, const void *ent)
 {
-	const app_sampler_metric_info_t *_ent = ent;
+	const linux_proc_sampler_metric_info_t *_ent = ent;
 	return strcmp(key, (*_ent)->name);
 }
 
-static inline app_sampler_metric_info_t
+static inline linux_proc_sampler_metric_info_t
 find_metric_info_by_name(const char *name)
 {
-	app_sampler_metric_info_t *minfo = bsearch(name, metric_info_idx_by_name,
-			_APP_LAST + 1, sizeof(app_sampler_metric_info_t),
+	linux_proc_sampler_metric_info_t *minfo = bsearch(name, metric_info_idx_by_name,
+			_APP_LAST + 1, sizeof(linux_proc_sampler_metric_info_t),
 			idx_key_cmp_by_name);
 	return minfo?(*minfo):(NULL);
 }
@@ -1520,16 +2069,16 @@ find_status_line_handler(const char *key)
 }
 
 static
-struct app_sampler_inst_s __inst = {
+struct linux_proc_sampler_inst_s __inst = {
 	.samp = {
 		.base = {
 			.name = SAMP,
 			.type = LDMSD_PLUGIN_SAMPLER,
-			.term = app_sampler_term,
-			.config = app_sampler_config,
-			.usage = app_sampler_usage,
+			.term = linux_proc_sampler_term,
+			.config = linux_proc_sampler_config,
+			.usage = linux_proc_sampler_usage,
 		},
-		.sample = app_sampler_sample,
+		.sample = linux_proc_sampler_sample,
 	},
 	.log = ldmsd_log,
 };
@@ -1542,8 +2091,11 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 
 int set_rbn_cmp(void *tree_key, const void *key)
 {
-	/* the keys are uint64_t */
-	return (int64_t)tree_key - (int64_t)key;
+	const struct set_key *tk = tree_key;
+	const struct set_key *k = key;
+	if (tk->start_tick != k->start_tick)
+		return (int64_t)tk->start_tick - (int64_t)k->start_tick;
+	return tk->os_pid - k->os_pid;
 }
 
 __attribute__((constructor))
@@ -1560,4 +2112,13 @@ void __init__()
 	qsort(status_line_tbl, ARRAY_LEN(status_line_tbl),
 			sizeof(status_line_tbl[0]), status_line_cmp);
 	rbt_init(&__inst.set_rbt, set_rbn_cmp);
+}
+
+__attribute__((destructor))
+static
+void __destroy__()
+{
+	if (help_all != _help)
+		free(help_all);
+	help_all = NULL;
 }

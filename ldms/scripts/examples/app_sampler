@@ -1,0 +1,20 @@
+export plugname=app_sampler
+export dsname=$(ldms_dstat_schema_name mmalloc=1 io=1 fd=1 auto-schema=1)
+export dstat_schema=$dsname
+portbase=61060
+${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --retry=1 -D 15 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
+VGARGS="--leak-check=full --track-origins=yes --trace-children=yes"
+vgon
+LDMSD 1
+vgoff
+LDMSD 2
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -v
+MESSAGE ldms_ls on host 2:
+SLEEP 1
+LDMS_LS 2 -l
+SLEEP 5
+LDMS_LS 2 -v
+KILL_LDMSD 1 2
+file_created $STOREDIR/node/$testname
+file_created $STOREDIR/node/$dsname

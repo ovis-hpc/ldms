@@ -1,0 +1,139 @@
+.\" Manpage for Plugin_linux_proc_sampler Plugin_linux_proc
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "15 Jul 2021" "v4" "LDMS Plugin linux_proc man page"
+
+.SH NAME
+Plugin_linux_proc_sampler - man page for the LDMS linux_proc_sampler plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=linux_proc_sampler [common attributes] [stream=STREAM] [metrics=METRICS] [cfg_file=FILE] [instance_prefix=PREFIX] [exe_suffix=1]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or a configuration file. The linux_proc_sampler plugin provides data from /proc/, creating a different set for each process identified in the named stream. The stream can come from the ldms-netlink-notifier daemon or the spank plugin slurm_notifier.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+The linux_proc_sampler plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
+
+.TP
+.BR config
+name=<plugin_name> [other options]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be linux_proc_sampler.
+.TP
+instance_prefix=PREFIX
+.br
+Prepend PREFIX to the set instance names. Typically a cluster name when needed to disambiguate producer names that appear in multiple clusters.  (default: no prefix).
+.TP
+exe_suffix=1
+.br
+If present, set instance names are appended with the full path of the executable. This is most likely
+useful for debugging configuration of the notifier up-stream using ldms_ls. (default: no such suffix)
+.TP
+stream
+.br
+The name of the `ldmsd_stream` to listen for SLURM job events.  (default: slurm).
+.TP
+metrics
+.br
+The comma-separated list of metrics to monitor.  The default is (empty), which is equivalent to monitor ALL metrics.
+.TP
+cfg_file The alternative config file in JSON format. The file is expected to have an object that contains the following attributes: { "stream": "STREAM_NAME", "metrics": [ comma-separated-quoted-strings ] }.  If the `cfg_file` is given, the stream, metrics, instance_prefix and exe_suffix options are ignored.
+.RE
+
+.SH INPUT STREAM FORMAT
+
+The named ldmsd stream should deliver messages with a JSON format which includes the following.
+Messages which do not contain event, data, job_id, and some form of PID will be ignored. Extra
+fields will be ignored.
+.nf
+{ "event" = "$e",
+  "data" : {
+	"job_id" : INT,
+	"task_pid" : INT,
+	"os_pid" : INT,
+	"parent_pid" : INT,
+	"is_thread" : INT,
+	"exe" : STRING,
+	"start" : STRING,
+	"start_tick" : STRING
+  }
+}
+.fi
+where $e is one of task_init_priv or task_exit.
+The data fields other than job_id are all optional, but at least one of os_pid and task_pid must
+contain the PID of a process to be monitored. If present and > 0, task_pid should be the value taken
+from SLURM_TASK_PID or an equivalent value from another resource management environment.
+The value of start, if provided, should be approximately the epoch time ("%lu.%06lu") when the
+PID to be monitored started.
+
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=linux_proc_sampler
+config name=linux_proc_sampler producer=vm1_1 instance=vm1_1/linux_proc_sampler metrics=stat_comm,stat_pid,stat_cutime
+start name=linux_proc_sampler interval=1000000
+.fi
+.PP
+An example metrics configuration file is:
+.nf
+{
+  "stream": "slurm",
+  "instance_prefix" : "cluster2",
+  "metrics": [
+    "stat_state",
+    "stat_rss",
+    "stat_utime",
+    "stat_stime",
+    "stat_cutime",
+    "stat_cstime",
+    "stat_num_threads",
+    "stat_comm",
+    "n_open_files",
+    "io_read_b",
+    "io_write_b",
+    "status_vmdata",
+    "status_rssfile",
+    "status_vmswap",
+    "status_hugetlbpages",
+    "status_voluntary_ctxt_switches",
+    "status_nonvoluntary_ctxt_switches",
+    "syscall",
+    "cmdline"
+  ]
+}
+.fi
+.PP
+Obtaining the currenly supported optional metrics list:
+.nf
+ldms-plugins.sh linux_proc_sampler
+.fi
+
+.SH FILES
+Data is obtained from (depending on configuration) the following files in /proc/[PID]/:
+.nf
+cmdline
+exe
+statm
+stat
+status
+fd
+io
+oom_score
+oom_score_adj
+root
+syscall
+timerslack_ns
+wchan
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), proc(5)
