@@ -221,6 +221,7 @@ int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level)
 /* Impossible file pointer as syslog-use sentinel */
 #define LDMSD_LOG_SYSLOG ((FILE*)0x7)
 
+static int log_time_sec = -1;
 void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 {
 	if ((level != LDMSD_LALL) &&
@@ -230,8 +231,6 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 		vsyslog(ldmsd_loglevel_to_syslog(level),fmt,ap);
 		return;
 	}
-	time_t t;
-	struct tm tm;
 	char dtsz[200];
 
 	pthread_mutex_lock(&log_lock);
@@ -239,10 +238,25 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 		pthread_mutex_unlock(&log_lock);
 		return;
 	}
-	t = time(NULL);
-	localtime_r(&t, &tm);
-	if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", &tm))
-		fprintf(log_fp, "%s: ", dtsz);
+	if (log_time_sec == -1) {
+		char * lt = getenv("LDMSD_LOG_TIME_SEC");
+		if (lt)
+			log_time_sec = 1;
+		else
+			log_time_sec = 0;
+	}
+	if (log_time_sec) {
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
+		fprintf(log_fp, "%lu.%06lu: ", tv.tv_sec, tv.tv_usec);
+	} else {
+		time_t t;
+		t = time(NULL);
+		struct tm tm;
+		localtime_r(&t, &tm);
+		if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", &tm))
+			fprintf(log_fp, "%s: ", dtsz);
+	}
 
 	if (level < LDMSD_LALL) {
 		fprintf(log_fp, "%-10s: ", ldmsd_loglevel_names[level]);
