@@ -201,7 +201,7 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 	}
 	rc = fwrite(msg, 1, msg_len, sd->streamfile);
 	sd->offset += rc;
-	if (rc != 1) {
+	if (rc != msg_len) {
 		int ferr = ferror(sd->streamfile);
 		msglog(LDMSD_LERROR, PNAME ": short write starting at %s:%ld: %s\n",
 			sd->streamfile_name, sd->offset, STRERROR(ferr));
