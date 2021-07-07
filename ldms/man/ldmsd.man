@@ -39,6 +39,9 @@ Path to ovis/lib/ovis-ldms
 LDMSD_PIDFILE
 Full path name of pidfile overriding the default /var/run/ldmsd.pid unless the command line argument "-r pidfilepath" is present.
 .TP
+LDMSD_LOG_TIME_SEC
+If present, log messages are stamped with the epoch time rather than the date string. This is useful when sub-second information is desired or correlating log messages with other epoch-stamped data.
+.TP
 LDMSD_SOCKPATH
 Path to the unix domain socket for the ldmsd. Default is created within /var/run. If you must change the default (e.g., not running as root and hence /var/run is not writeable), set this variable (e.g., /tmp/run/ldmsd) or specify "-S socketpath" to ldmsd.
 .TP
