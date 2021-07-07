@@ -470,9 +470,9 @@ static const char *init_blacklist[] = {
 static const char *update_blacklist[] = {
 	"config",
 	"name",
-	"rollagain", 
-	"rollover", 
-	"rolltype", 
+	"rollagain",
+	"rollover",
+	"rolltype",
 	NULL
 };
 
@@ -492,7 +492,7 @@ static int update_config(struct attr_value_list *kwl, struct attr_value_list *av
 	if (s_handle) {
 		msglog(LDMSD_LWARNING, PNAME " updating config on %s not allowed after store is running.\n", k);
 		/* s_handle *could* consult pa again, but that
-		is up to the implementation of store(). 
+		is up to the implementation of store().
 		Right now it never uses pa after open_store.
 	       	*/
 	} else {
@@ -622,12 +622,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	cvt = ldmsd_plugattr_s32(pa, "rollagain", NULL, &ragain);
 	if (!cvt) {
 		if (ragain < 0) {
-			msglog(LDMSD_LERROR, PNAME 
+			msglog(LDMSD_LERROR, PNAME
 				": bad rollagain= value %d\n", ragain);
 			rc = EINVAL;
 			goto out;
 		}
-	} 
+	}
 	if (cvt == ENOTSUP) {
 		msglog(LDMSD_LERROR, PNAME ": improper rollagain= input.\n");
 		rc = EINVAL;
@@ -798,7 +798,7 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 				s_handle->typefilename, rc);
 		} else {
 			ch_output(fp, s_handle->typefilename, CSHC(s_handle), &PG);
-			csv_format_types_common(s_handle->typeheader, fp, 
+			csv_format_types_common(s_handle->typeheader, fp,
 				s_handle->typefilename, CCSHC(s_handle),
 				s_handle->udata, &PG, set,
 				metric_array, metric_count);
@@ -1122,6 +1122,23 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			if (rc < 0)
 				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
 				       rc, s_handle->path);
+			else
+				s_handle->byte_count += rc;
+			break;
+		case LDMS_V_CHAR:
+			if (s_handle->udata) {
+				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
+				if (rcu < 0)
+					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
+					       rcu, s_handle->path);
+				else
+					s_handle->byte_count += rcu;
+			}
+			rc = fprintf(s_handle->file, ",%c",
+				     ldms_metric_get_char(set, metric_array[i]));
+			if (rc < 0)
+				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
+						rc, s_handle->path);
 			else
 				s_handle->byte_count += rc;
 			break;
@@ -1496,7 +1513,10 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			break;
 		default:
 			if (!s_handle->conflict_warned) {
-				msglog(LDMSD_LERROR, PNAME ":  metric id %d: no name at list index %d.\n", metric_array[i], i);
+				msglog(LDMSD_LERROR, PNAME ":  metric id %d: metric type %d(%s):"
+					" no name at list index %d.\n",
+					metric_array[i], metric_type,
+					ldms_metric_type_to_str(metric_type),i);
 				msglog(LDMSD_LERROR, PNAME ": reconfigure to resolve schema definition conflict for schema=%s and instance=%s.\n",
 					ldms_set_schema_name_get(set),
 					ldms_set_instance_name_get(set));
