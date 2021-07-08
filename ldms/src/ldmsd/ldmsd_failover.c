@@ -2178,15 +2178,12 @@ int failover_cfgupdtr_handler(ldmsd_req_ctxt_t req)
 	} else {
 		/* update by parameters */
 		if (interval) {
-			u->default_task.hint.intrvl_us = atoi(interval);
+			u->sched.intrvl_us = atoi(interval);
 		}
 		if (offset) {
-			u->default_task.hint.offset_us = atoi(offset);
-			u->default_task.task_flags = LDMSD_TASK_F_SYNCHRONOUS;
+			u->sched.offset_us = atoi(offset);
 		}
 		u->push_flags = push_flags;
-		if (push_flags)
-			u->default_task.task_flags = LDMSD_TASK_F_IMMEDIATE;
 	}
 	if (producer) {
 		/* add producer */

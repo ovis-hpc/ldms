@@ -56,6 +56,8 @@
 #include <string.h>
 #include <errno.h>
 #include <coll/rbt.h>
+#include "ldmsd_event.h"
+#include "ldmsd_cfgobj.h"
 #include "ldmsd.h"
 
 int cfgobj_cmp(void *a, const void *b)
@@ -288,4 +290,93 @@ ldmsd_cfgobj_t ldmsd_cfgobj_next(ldmsd_cfgobj_t obj)
 out:
 	ldmsd_cfgobj_put(obj);	/* Drop the next reference */
 	return nobj;
+}
+
+ldmsd_cfgobj_t ldmsd_cfgobj_next_re(ldmsd_cfgobj_t obj, regex_t regex)
+{
+	int rc;
+
+	obj = ldmsd_cfgobj_next(obj);
+	while (obj) {
+		rc = regexec(&regex, obj->name, 0, NULL, 0);
+		if (!rc)
+			break;
+		obj = ldmsd_cfgobj_next(obj);
+	}
+	return obj;
+}
+
+ldmsd_cfgobj_t ldmsd_cfgobj_first_re(ldmsd_cfgobj_type_t type, regex_t regex)
+{
+	int rc;
+	ldmsd_cfgobj_t obj = ldmsd_cfgobj_first(type);
+	if (!obj)
+		return NULL;
+	rc = regexec(&regex, obj->name, 0, NULL, 0);
+	if (!rc)
+		return obj;
+	return ldmsd_cfgobj_next_re(obj, regex);
+}
+
+int ldmsd_cfgtree_done(struct ldmsd_cfgobj_cfg_ctxt *ctxt)
+{
+	if (ctxt->is_all && (ctxt->num_sent == ctxt->num_recv))
+		return 1;
+	return 0;
+}
+
+int ldmsd_cfgtree_post2cfgobj(ldmsd_cfgobj_t obj, ev_worker_t src,
+				ev_worker_t dst, ldmsd_req_ctxt_t reqc,
+					struct ldmsd_cfgobj_cfg_ctxt *ctxt)
+{
+	int rc;
+	ev_t ev = ev_new(cfgobj_cfg_type);
+	if (!ev)
+		return ENOMEM;
+
+	EV_DATA(ev, struct cfgobj_data)->obj = ldmsd_cfgobj_get(obj);
+	EV_DATA(ev, struct cfgobj_data)->ctxt = ctxt;
+	if (ctxt) {
+		ctxt->reqc = reqc;
+		ctxt->num_sent += 1;
+	}
+	rc = ev_post(src, dst, ev, 0);
+	if (rc && ctxt) {
+		ctxt->num_sent -= 1;
+		ref_put(&ctxt->ref, "tree2prdcr");
+	}
+	return rc;
+}
+
+int ldmsd_cfgobj_tree_del_rsp_handler(ldmsd_req_ctxt_t reqc,
+				struct ldmsd_cfgobj_cfg_rsp *rsp,
+				struct ldmsd_cfgobj_cfg_ctxt *ctxt,
+				enum ldmsd_cfgobj_type type)
+{
+	ldmsd_cfgobj_t obj = rsp->ctxt;
+
+	if (rsp->errcode) {
+		if (!reqc->errcode)
+			reqc->errcode = rsp->errcode;
+		if (ctxt->num_recv)
+			(void)linebuf_printf(reqc, ", ");
+		(void)linebuf_printf(reqc, "%s", rsp->errmsg);
+		goto out;
+	}
+
+	ldmsd_cfgobj_del(obj->name, type);
+	ldmsd_cfgobj_put(obj); /* Put back the 'create' reference */
+
+out:
+	ldmsd_cfgobj_put(obj); /* Put back the 'del_rsp' reference */
+	free(rsp->errmsg);
+	free(rsp);
+
+	if (ldmsd_cfgtree_done(ctxt)) {
+		/* All producers have sent back the responses */
+		ldmsd_send_req_response(reqc, reqc->line_buf);
+		free(ctxt);
+	}
+
+	return 0;
 }

@@ -104,6 +104,9 @@
 #define LDMSD_MEM_SIZE_STR "512kB"
 #define LDMSD_MEM_SIZE_DEFAULT 512L * 1024L
 
+#define LDMSD_NUM_PRDCR_WORKERS 1
+#define LDMSD_NUM_PRDSET_WORKERS 1
+
 char myname[512]; /* name to identify ldmsd */
 		  /* NOTE: fqdn limit: 255 characters */
 		  /* DEFAULT: myhostname:port */
@@ -118,6 +121,11 @@ char *bannerfile;
 int banner = 1;
 size_t max_mem_size;
 char *max_mem_sz_str;
+
+int num_prdcr_workers = -1;
+int num_prdset_workers = -1;
+int num_updtr_workers = 1;
+int num_strgp_workers = 1;
 
 /* NOTE: For determining version by dumping binary string */
 char *_VERSION_STR_ = "LDMSD_VERSION " OVIS_LDMS_VERSION;
@@ -169,6 +177,117 @@ int cfgfile_req_cmp(void *a, const void *b)
 	uint32_t _a = (uint32_t)(uint64_t)a;
 	uint32_t _b = (uint32_t)(uint64_t)b;
 	return _a - _b;
+}
+
+int ldmsd_time_dur_str2us(const char *s, unsigned long *x)
+{
+	int rc;
+	char unit[16];
+	unsigned long _x;
+	rc = sscanf(s, "%lu %s", &_x, unit);
+
+	if ((rc == 1) || (0 == strcmp(unit, "us")) || (0 == strncmp(unit, "micro", 5))) {
+		/* microseconds */
+		/* do nothing */
+	} else if ((0 == strcmp(unit, "ms")) || (0 == strncmp(unit, "milli", 5))) {
+		/* milliseconds */
+		_x *= 1000L;
+	} else if ((0 == strcmp(unit, "s")) || (0 == strncmp(unit, "sec", 3))) {
+		/* seconds */
+		_x *= 1000000L;
+	} else if (0 == strncmp(unit, "min", 3)) {
+		/* minutes */
+		_x *= (1000000L * 60L);
+	} else if (unit[0] == 'h') {
+		/* hours */
+		_x *= (1000000L * 60L * 60L);
+	} else if (0 == strncmp(unit, "day", 3)) {
+		/* days */
+		_x *= (1000000L * 60L * 60L * 24L);
+	} else {
+		return ENOTSUP;
+	}
+	if (0 > _x)
+		return EINVAL;
+	*x = _x;
+	return 0;
+}
+
+int ldmsd_num_prdcr_workers_get()
+{
+	return num_prdcr_workers;
+}
+
+int ldmsd_num_prdset_workers_get()
+{
+	return num_prdset_workers;
+}
+
+int ldmsd_num_updtr_workers_get()
+{
+	return num_updtr_workers;
+}
+
+int ldmsd_num_strgp_workers_get()
+{
+	return num_strgp_workers;
+}
+
+void ldmsd_name_match_free(struct ldmsd_name_match *match)
+{
+	if (match->is_regex)
+		regfree(&match->regex);
+	free(match->regex_str);
+	free(match);
+}
+
+void ldmsd_match_queue_free(struct ldmsd_match_queue *list)
+{
+	struct ldmsd_name_match *a;
+	while ((a = TAILQ_FIRST(list))) {
+		TAILQ_REMOVE(list, a, entry);
+		ldmsd_name_match_free(a);
+	}
+}
+
+struct ldmsd_name_match *ldmsd_name_match_copy(struct ldmsd_name_match *src)
+{
+	char err[512];
+	int rc;
+	struct ldmsd_name_match *x;
+	x = malloc(sizeof(*x));
+	if (!x)
+		return NULL;
+	x->is_regex = src->is_regex;
+	x->regex_str = strdup(src->regex_str);
+	if (!x->regex_str) {
+		free(x);
+		return NULL;
+	}
+	rc = ldmsd_compile_regex(&x->regex, x->regex_str, err, 512);
+	if (rc) {
+		free(x->regex_str);
+		free(x);
+		return NULL;
+	}
+	x->regex_flags = src->regex_flags;
+	x->selector = src->selector;
+	return x;
+}
+
+int ldmsd_match_queue_copy(struct ldmsd_match_queue *src, struct ldmsd_match_queue *dst)
+{
+	struct ldmsd_name_match *a, *x;
+	TAILQ_INIT(dst);
+	TAILQ_FOREACH(a, src, entry) {
+		x = ldmsd_name_match_copy(a);
+		if (!x) {
+			ldmsd_match_queue_free(dst);
+			return ENOMEM;
+		}
+		TAILQ_INSERT_TAIL(dst, x, entry);
+	}
+	return 0;
 }
 
 const char* ldmsd_loglevel_names[] = {
@@ -448,16 +567,30 @@ double ldmsd_timeval_diff(struct timeval *start, struct timeval *end)
 }
 #endif /* LDMSD_UPDATE_TIME */
 
-extern void ldmsd_strgp_close();
+void proc_exit(void *args)
+{
+	unsigned long x = (unsigned long)args;
+	exit(x);
+}
+
+void __strgp_cleanup_ev(int x)
+{
+	ev_t cleanup = ev_new(cleanup_type);
+	if (!cleanup) {
+		printf("%s[%d]: Out of memory\n", __func__, __LINE__);
+		return;
+	}
+	EV_DATA(cleanup, struct cleanup_data)->exit_fn = proc_exit;
+	EV_DATA(cleanup, struct cleanup_data)->exit_args = (void *)(unsigned long)x;
+	ev_post(NULL, strgp_tree_w, cleanup, 0);
+}
 
 void cleanup(int x, const char *reason)
 {
-	return; /* DEBUG */
 	int llevel = LDMSD_LINFO;
 	if (x)
 		llevel = LDMSD_LCRITICAL;
 	ldmsd_mm_status(LDMSD_LDEBUG,"mmap use at exit");
-	ldmsd_strgp_close();
 
 	if (!quiet && (llevel >= log_level_thr)) {
 		/*
@@ -499,7 +632,9 @@ void cleanup(int x, const char *reason)
 	}
 
 	av_free(auth_opt);
-	exit(x);
+
+	/* The process will exit after all strgps have been closed. */
+	__strgp_cleanup_ev(x);
 }
 
 /** return a file pointer or a special syslog pointer */
@@ -601,7 +736,7 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
 	       "		   [" LDMSD_SETFILE "]\n");
 	printf("  Thread Options\n");
-	printf("    -P thr_count   Count of event threads to start.\n");
+	printf("    -P count       Count of event workers. The default is 1.\n");
 	printf("    -f count       The number of flush threads.\n");
 	printf("    -D num	 The dirty threshold.\n");
 	printf("  Configuration Options\n");
@@ -609,7 +744,7 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -V	     Print LDMS version and exit\n.");
 	printf("    -H host_name   The host/producer name for metric sets.\n");
 	printf("   Deprecated Options\n");
-	printf("    -S     	   DEPRECATED.\n");
+	printf("    -S		   DEPRECATED.\n");
 	printf("    -p     	   DEPRECATED.\n");
 	if (hint) {
 		printf("\nHINT: %s\n",hint);
@@ -1129,16 +1264,6 @@ void ldmsd_task_join(ldmsd_task_t task)
 	pthread_mutex_unlock(&task->lock);
 }
 
-char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type)
-{
-	if (type == LDMSD_SET_ORIGIN_PRDCR)
-		return "producer";
-	else if (type == LDMSD_SET_ORIGIN_SAMP_PI)
-		return "sampler plugin";
-	else
-		return "";
-}
-
 void __transaction_end_time_get(struct timeval *start, struct timeval *dur,
 							struct timeval *end__)
 {
@@ -1148,139 +1273,6 @@ void __transaction_end_time_get(struct timeval *start, struct timeval *dur,
 		end__->tv_sec += 1;
 		end__->tv_usec -= 1000000;
 	}
-}
-
-/*
- * Get the set information
- *
- * When \c info is unused, ldmsd_set_info_delete() must be called to free \c info.
- */
-ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name)
-{
-	ldmsd_set_info_t info;
-	struct ldms_timestamp t;
-	struct timeval dur;
-	struct ldmsd_plugin_set_list *plugn_set_list;
-	struct ldmsd_plugin_set *plugn_set = NULL;
-	struct ldmsd_plugin_cfg *pi;
-
-	ldms_set_t lset = ldms_set_by_name(inst_name);
-	if (!lset)
-		return NULL;
-
-	info = calloc(1, sizeof(*info));
-	if (!info)
-		return NULL;
-
-	info->set = lset;
-	/* Determine if the set is responsible by a sampler plugin */
-	ldmsd_set_tree_lock();
-	plugn_set_list = ldmsd_plugin_set_list_first();
-	while (plugn_set_list) {
-		LIST_FOREACH(plugn_set, &plugn_set_list->list, entry) {
-			if (0 == strcmp(plugn_set->inst_name, inst_name)) {
-				break;
-			}
-		}
-		if (plugn_set)
-			break;
- 		plugn_set_list = ldmsd_plugin_set_list_next(plugn_set_list);
-	}
-	ldmsd_set_tree_unlock();
-	if (plugn_set) {
-		/* The set is created by a sampler plugin */
-		pi = ldmsd_get_plugin(plugn_set->plugin_name);
-		if (!pi) {
-			ldmsd_log(LDMSD_LERROR, "Set '%s' is created by "
-					"an unloaded plugin '%s'\n",
-					inst_name, plugn_set->plugin_name);
-		} else {
-			pi->ref_count++;
-			info->interval_us = pi->sample_interval_us;
-			info->offset_us = pi->sample_offset_us;
-			info->sync = pi->synchronous;
-			info->pi = pi;
-		}
-		info->origin_name = strdup(plugn_set->plugin_name);
-		info->origin_type = LDMSD_SET_ORIGIN_SAMP_PI;
-
-		t = ldms_transaction_timestamp_get(lset);
-		info->start.tv_sec = (long int)t.sec;
-		info->start.tv_usec = (long int)t.usec;
-		if (!ldms_set_is_consistent(lset)) {
-			info->end.tv_sec = 0;
-			info->end.tv_usec = 0;
-		} else {
-			t = ldms_transaction_duration_get(lset);
-			dur.tv_sec = (long int)t.sec;
-			dur.tv_usec = (long int)t.usec;
-			__transaction_end_time_get(&info->start,
-					&dur, &info->end);
-		}
-		goto out;
-	}
-
-	/*
-	 * The set isn't created by a sampler plugin.
-	 *
-	 * Now search in the producer list.
-	 */
-	ldmsd_prdcr_t prdcr;
-	ldmsd_prdcr_set_t prd_set = NULL;
-	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
-	prdcr = ldmsd_prdcr_first();
-	while (prdcr) {
-		ldmsd_prdcr_lock(prdcr);
-		prd_set = ldmsd_prdcr_set_find(prdcr, inst_name);
-		if (prd_set) {
-			info->origin_name = strdup(prdcr->obj.name);
-			ldmsd_prdcr_unlock(prdcr);
-			ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-			info->origin_type = LDMSD_SET_ORIGIN_PRDCR;
-			ldmsd_prdcr_set_ref_get(prd_set);
-			info->prd_set = prd_set;
-			info->interval_us = prd_set->updt_interval;
-			info->offset_us = prd_set->updt_offset;
-			info->sync = prd_set->updt_sync;
-			info->start = prd_set->updt_start;
-			if (prd_set->state == LDMSD_PRDCR_SET_STATE_UPDATING) {
-				info->end.tv_sec = 0;
-				info->end.tv_usec = 0;
-			} else {
-				info->end = prd_set->updt_end;
-			}
-			goto out;
-		}
-		ldmsd_prdcr_unlock(prdcr);
-		prdcr = ldmsd_prdcr_next(prdcr);
-	}
-	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
-out:
-	return info;
-}
-
-/*
- * Delete the set information
- */
-void ldmsd_set_info_delete(ldmsd_set_info_t info)
-{
-	if (info->set) {
-		ldms_set_put(info->set);
-		info->set = NULL;
-	}
-	if (info->origin_name) {
-		free(info->origin_name);
-		info->origin_name = NULL;
-	}
-	if ((info->origin_type == LDMSD_SET_ORIGIN_PRDCR) && info->prd_set) {
-		ldmsd_prdcr_set_ref_put(info->prd_set);
-		info->prd_set = NULL;
-	}
-	if (info->pi) {
-		info->pi->ref_count--;
-		info->pi = NULL;
-	}
-	free(info);
 }
 
 int __sampler_set_info_add(struct ldmsd_plugin *pi, char *interval, char *offset)
@@ -1704,14 +1696,17 @@ ldms_xprt_event_t ldmsd_xprt_event_get(ldms_xprt_event_t e)
 	if (!xprt_ev)
 		goto enomem;
 
+	memcpy(xprt_ev, e, sizeof(*e));
 	/* copy the ldms_xprt event & its data */
 	if (LDMS_XPRT_EVENT_RECV == e->type) {
 		xprt_ev->data = malloc(e->data_len);
 		if (!xprt_ev->data)
 			goto enomem;
 		memcpy(xprt_ev->data, e->data, e->data_len);
-	} else {
-		memcpy(xprt_ev, e, sizeof(*e));
+	} else if (LDMS_XPRT_EVENT_SET_DELETE == e->type) {
+		xprt_ev->set_delete.name = strdup(e->set_delete.name);
+		if (!xprt_ev->set_delete.name)
+			goto enomem;
 	}
 	return xprt_ev;
 enomem:
@@ -1721,7 +1716,8 @@ enomem:
 
 void ldmsd_xprt_event_free(ldms_xprt_event_t e)
 {
-	free(e->data);
+	if (LDMS_XPRT_EVENT_RECV == e->type)
+		free(e->data);
 	free(e);
 }
 
@@ -1777,9 +1773,10 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	opterr = 0;
 	char * dup_auth = NULL;
 
+	opterr = 0;
+	optind = 0;
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		switch (op) {
 		case 'B':
@@ -1843,11 +1840,11 @@ int main(int argc, char *argv[])
 		case 'P':
 			if (check_arg("P", optarg, LO_UINT))
 				return 1;
-			ev_thread_count = atoi(optarg);
-			if (ev_thread_count < 1 )
-				ev_thread_count = 1;
-			if (ev_thread_count > EVTH_MAX)
-				ev_thread_count = EVTH_MAX;
+			num_prdcr_workers = atoi(optarg);
+			if (num_prdcr_workers < 1 )
+				num_prdcr_workers = 1;
+			if (num_prdcr_workers > EVTH_MAX)
+				num_prdcr_workers = EVTH_MAX;
 			break;
 		case 'm':
 			max_mem_sz_str = strdup(optarg);
@@ -1981,6 +1978,11 @@ int main(int argc, char *argv[])
 			cleanup(8, "daemon failed to start");
 		}
 	}
+
+	if (0 > num_prdcr_workers)
+		num_prdcr_workers = LDMSD_NUM_PRDCR_WORKERS;
+	if (0 > num_prdset_workers)
+		num_prdset_workers = num_prdcr_workers;
 
 	ret = ldmsd_ev_init();
 	if (ret) {
@@ -2204,6 +2206,7 @@ int main(int argc, char *argv[])
 					 "Error %d processing configuration file '%s'",
 					 ret, optarg);
 				cleanup(ret, errstr);
+				goto out;
 			}
 			ldmsd_log(LDMSD_LINFO, "Processing the config file '%s' is done.\n", optarg);
 			break;
@@ -2256,5 +2259,6 @@ int main(int argc, char *argv[])
 	} while (1);
 
 	cleanup(0,NULL);
+out:
 	return 0;
 }

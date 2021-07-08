@@ -1123,3 +1123,34 @@ int ldmsd_msg_gather(struct ldmsd_msg_buf *buf, ldmsd_req_hdr_t req)
 		return 0;
 	return EBUSY;
 }
+
+struct ldmsd_msg_buf *ldmsd_msg_buf_realloc(struct ldmsd_msg_buf *buf, size_t new_len)
+{
+	buf->buf = realloc(buf->buf, new_len);
+	if (!buf->buf) {
+		free(buf);
+		return NULL;
+	}
+	buf->len = new_len;
+	return buf;
+}
+
+size_t ldmsd_msg_buf_append(struct ldmsd_msg_buf *buf, const char *fmt, ...)
+{
+	va_list ap;
+	size_t cnt;
+	va_start(ap, fmt);
+	cnt = vsnprintf(&buf->buf[buf->off], buf->len - buf->off, fmt, ap);
+	va_end(ap);
+	if (cnt >= (buf->len - buf->off)) {
+		buf = ldmsd_msg_buf_realloc(buf, buf->len * 2);
+		if (!buf)
+			return -ENOMEM;
+		va_start(ap, fmt);
+		cnt = vsnprintf(&buf->buf[buf->off], buf->len - buf->off, fmt, ap);
+		va_end(ap);
+	}
+	buf->off += cnt;
+	return cnt;
+}
+

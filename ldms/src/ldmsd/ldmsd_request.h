@@ -517,6 +517,10 @@ int ldmsd_append_reply(struct ldmsd_req_ctxt *reqc, const char *data, size_t dat
 void ldmsd_send_error_reply(ldmsd_cfg_xprt_t xprt, uint32_t msg_no,
 			    uint32_t error, char *data, size_t data_len);
 void ldmsd_send_req_response(ldmsd_req_ctxt_t reqc, const char *msg);
+/*
+ * Send a response with a single JSON attribute besides the terminating attribute
+ */
+void ldmsd_send_json_response(ldmsd_req_ctxt_t reqc, const char *msg);
 int validate_ldmsd_req(ldmsd_req_hdr_t rh);
 int ldmsd_handle_request(ldmsd_req_ctxt_t reqc);
 static inline ldmsd_req_attr_t ldmsd_first_attr(ldmsd_req_hdr_t rh)
@@ -684,5 +688,18 @@ int ldmsd_msg_buf_send(struct ldmsd_msg_buf *buf,
  */
 int ldmsd_msg_gather(struct ldmsd_msg_buf *buf, ldmsd_req_hdr_t req);
 
+/**
+ * \brief Append string to \c reqc->line_buf;
+ */
+int linebuf_printf(struct ldmsd_req_ctxt *reqc, char *fmt, ...);
+
+/**
+ * \brief Append string to \c buf
+ *
+ * \return Number of character printed to \c buf. A negative errno is returned on errors.
+ */
+size_t ldmsd_msg_buf_append(struct ldmsd_msg_buf *buf, const char *fmt, ...);
+
+struct ldmsd_req_ctxt *container_of_reqc_rbn(struct rbn *rbn);
 
 #endif /* LDMS_SRC_LDMSD_LDMSD_REQUEST_H_ */

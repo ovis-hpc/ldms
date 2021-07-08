@@ -51,7 +51,8 @@ libldmsd_request_la_LIBADD = ../core/libldms.la
 ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_request.c \
 	ldmsd_request.h \
-	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
+	ldmsd_cfgobj.c ldmsd_cfgobj.h \
+	ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
 	ldmsd_failover.c ldmsd_group.c ldmsd_auth.c \
 	ldmsd_event.c ldmsd_event.h
 ldmsd_LDADD = ../core/libldms.la libldmsd_request.la libldmsd_stream.la \

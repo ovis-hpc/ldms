@@ -213,24 +213,6 @@ void destroy_plugin(struct ldmsd_plugin_cfg *p)
 	free(p);
 }
 
-const char *prdcr_state_str(enum ldmsd_prdcr_state state)
-{
-	switch (state) {
-	case LDMSD_PRDCR_STATE_STOPPED:
-		return "STOPPED";
-	case LDMSD_PRDCR_STATE_DISCONNECTED:
-		return "DISCONNECTED";
-	case LDMSD_PRDCR_STATE_CONNECTING:
-		return "CONNECTING";
-	case LDMSD_PRDCR_STATE_CONNECTED:
-		return "CONNECTED";
-	case LDMSD_PRDCR_STATE_STOPPING:
-		return "STOPPING";
-	}
-	return "BAD STATE";
-}
-
-
 const char *match_selector_str(enum ldmsd_name_match_sel sel)
 {
 	switch (sel) {
@@ -746,6 +728,7 @@ parse:
 			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
 			goto cleanup;
 		}
+
 		/* rc < 0, post the request */
 	}
 
@@ -1001,15 +984,8 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 	memcpy(rec, data, data_len);
 
 	ldmsd_cfg_ldms_init(&xprt, x);
-	ev_t ev = ev_new(recv_rec_type);
-	if (!ev) {
-		free(rec);
-		return;
-	}
 
-	EV_DATA(ev, struct recv_rec_data)->rec = rec;
-	EV_DATA(ev, struct recv_rec_data)->xprt = xprt;
-	ev_post(NULL, msg_tree_w, ev, NULL);
+	(void) post_recv_rec_ev(&xprt, rec);
 }
 
 static void __listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)

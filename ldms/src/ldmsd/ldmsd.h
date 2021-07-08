@@ -66,6 +66,8 @@
 
 #include <ovis_event/ovis_event.h>
 #include <ovis_util/util.h>
+#include "ovis_ev/ev.h"
+#include "ovis_ref/ref.h"
 #include "ldms.h"
 
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
@@ -99,6 +101,8 @@ void ldmsd_version_get(struct ldmsd_version *v);
 /** Update hint */
 #define LDMSD_SET_INFO_UPDATE_HINT_KEY "updt_hint_us"
 #define LDMSD_UPDT_HINT_OFFSET_NONE LONG_MIN
+
+typedef unsigned long ldmsd_interval;
 
 typedef struct ldmsd_plugin_set {
 	ldms_set_t set;
@@ -234,7 +238,7 @@ typedef struct ldmsd_prdcr {
 		LDMSD_PRDCR_TYPE_LOCAL
 	} type;
 
-	struct ldmsd_task task;
+	ev_worker_t worker;
 
 	/**
 	 * list of subscribed streams from this producer
@@ -248,12 +252,7 @@ typedef struct ldmsd_prdcr {
 	 * producer.
 	 */
 	struct rbt set_tree;
-	/**
-	 * Maintains a free of all metric sets with update hint
-	 * available from this producer. It is a tree to allow
-	 * quick lookup by the logic that handles update schedule.
-	 */
-	struct rbt hint_set_tree;
+
 #ifdef LDMSD_UPDATE_TIME
 	double sched_update_time;
 #endif /* LDMSD_UPDATE_TIME */
@@ -277,9 +276,11 @@ typedef struct ldmsd_updt_hint_set_list {
 struct ldmsd_updtr_schedule {
 	long intrvl_us;
 	long offset_us;
+	long offset_skew;
 };
 typedef struct ldmsd_updtr *ldmsd_updtr_ptr;
 typedef struct ldmsd_prdcr_set {
+	struct ref_s ref;
 	char *inst_name;
 	char *schema_name;
 	char *producer_name;
@@ -298,6 +299,7 @@ typedef struct ldmsd_prdcr_set {
 	LIST_HEAD(ldmsd_strgp_ref_list, ldmsd_strgp_ref) strgp_list;
 	struct rbn rbn;
 
+	ev_worker_t worker;
 	LIST_ENTRY(ldmsd_prdcr_set) updt_hint_entry;
 
 	struct ldmsd_updtr_schedule updt_hint;
@@ -314,7 +316,6 @@ typedef struct ldmsd_prdcr_set {
 	double updt_duration;
 #endif /* LDMSD_UPDATE_TIME */
 
-	int ref_count;
 	struct timespec lookup_complete_ts;
 } *ldmsd_prdcr_set_t;
 
@@ -365,7 +366,24 @@ typedef struct ldmsd_updtr_task {
 } *ldmsd_updtr_task_t;
 LIST_HEAD(ldmsd_updtr_task_list, ldmsd_updtr_task);
 
-struct ldmsd_name_match;
+typedef struct ldmsd_name_match {
+	/** String or Regular expression matching a name */
+	int is_regex;
+	char *regex_str;
+	regex_t regex;
+
+	/** see man recomp */
+	int regex_flags;
+
+	enum ldmsd_name_match_sel {
+		LDMSD_NAME_MATCH_INST_NAME,
+		LDMSD_NAME_MATCH_SCHEMA_NAME,
+	} selector;
+
+	TAILQ_ENTRY(ldmsd_name_match) entry;
+} *ldmsd_name_match_t;
+TAILQ_HEAD(ldmsd_match_queue, ldmsd_name_match);
+
 typedef struct ldmsd_updtr {
 	struct ldmsd_cfgobj obj;
 
@@ -392,16 +410,6 @@ typedef struct ldmsd_updtr {
 	 */
 	uint8_t is_auto_task;
 
-	/* The default schedule specified from configuration */
-	struct ldmsd_updtr_task default_task;
-	/*
-	 * All tasks here don't have the same schedule as the root task.
-	 * The key is interval and offset hint.
-	 */
-	struct rbt task_tree;
-	/* Task to cleanup useless tasks from the task tree */
-	struct ldmsd_updtr_task tree_mgmt_task;
-
 #ifdef LDMSD_UPDATE_TIME
 	struct ldmsd_updt_time *curr_updt_time;
 	double duration;
@@ -412,24 +420,18 @@ typedef struct ldmsd_updtr {
 	 * For quick search when query for updater that updates a prdcr_set.
 	 */
 	struct rbt prdcr_tree;
-	LIST_HEAD(updtr_match_list, ldmsd_name_match) match_list;
+	struct ldmsd_match_queue prdcr_list;
+	struct ldmsd_match_queue match_list;
+
+	/*
+	 * Worker that owns the updater resource and
+	 * handle any work related to the Updater.
+	 */
+	ev_worker_t worker;
+
+	struct ldmsd_updtr_schedule sched;
+
 } *ldmsd_updtr_t;
-
-typedef struct ldmsd_name_match {
-	/** Regular expresion matching schema or instance name */
-	char *regex_str;
-	regex_t regex;
-
-	/** see man recomp */
-	int regex_flags;
-
-	enum ldmsd_name_match_sel {
-		LDMSD_NAME_MATCH_INST_NAME,
-		LDMSD_NAME_MATCH_SCHEMA_NAME,
-	} selector;
-
-	LIST_ENTRY(ldmsd_name_match) entry;
-} *ldmsd_name_match_t;
 
 /** Storage Policy: Defines which producers and metrics are
  * saved when an update completes. Must include meta vs data metric flags.
@@ -447,7 +449,7 @@ struct ldmsd_strgp {
 	struct ldmsd_cfgobj obj;
 
 	/** A set of match strings to select a subset of all producers */
-	LIST_HEAD(ldmsd_strgp_prdcr_list, ldmsd_name_match) prdcr_list;
+	struct ldmsd_match_queue prdcr_list;
 
 	/** A list of the names of the metrics in the set specified by schema */
 	TAILQ_HEAD(ldmsd_strgp_metric_list, ldmsd_strgp_metric) metric_list;
@@ -472,50 +474,46 @@ struct ldmsd_strgp {
 		LDMSD_STRGP_STATE_RUNNING
 	} state;
 
-	struct ldmsd_task task;	/* rotate open task */
-
 	/** Flush interval */
 	struct timespec flush_interval;
 	struct timespec last_flush;
 
 	/** Update function */
 	strgp_update_fn_t update_fn;
+	ev_worker_t worker;
 };
 
-typedef struct ldmsd_set_info {
-	ldms_set_t set;
+struct piset_hop {
+	struct timeval tran_start;
+	struct timeval tran_end;
+	unsigned long samp_interval_us;
+	unsigned long samp_offset_us;
+	int sync; /* 1 if synchronous */
+};
+
+struct prdset_hop {
+	struct timeval update_start;
+	struct timeval update_end;
+	unsigned long update_interval_us;
+	unsigned long update_offset_us;
+	int sync;
+	char *host_name;
+};
+
+struct set_route {
+	int is_internal;
+	char *schema_name;
+	char *inst_name;
 	char *origin_name;
-	enum ldmsd_set_origin_type {
+	enum set_route_origin_type {
 		LDMSD_SET_ORIGIN_SAMP_PI = 1,
 		LDMSD_SET_ORIGIN_PRDCR,
 	} origin_type; /* who is responsible of the set. */
-	unsigned long interval_us; /* sampling interval or update interval */
-	long offset_us; /* sampling offset or update offset */
-	int sync; /* 1 if synchronous */
-	struct timeval start; /* Latest sampling/update timestamp */
-	struct timeval end; /* latest sampling/update timestamp */
 	union {
-		struct ldmsd_plugin_cfg *pi;
-		ldmsd_prdcr_set_t prd_set;
+		struct piset_hop pi_set_info;
+		struct prdset_hop prdcr_set_info;
 	};
-} *ldmsd_set_info_t;
-
-/**
- * \brief Get the set information
- *
- * \return pointer to struct ldmsd_set_info is returned.
- */
-ldmsd_set_info_t ldmsd_set_info_get(const char *inst_name);
-
-/**
- * Delete the set info \c info
- */
-void ldmsd_set_info_delete(ldmsd_set_info_t info);
-
-/**
- * \brief Convert the set origin type from enum to string
- */
-char *ldmsd_set_info_origin_enum2str(enum ldmsd_set_origin_type type);
+};
 
 int process_config_file(const char *path, int trust);
 
@@ -711,6 +709,7 @@ void ldmsd_lall(const char *fmt, ...);
  */
 int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level);
 
+#define LDMSD_LOG_ENOMEM() ldmsd_log(LDMSD_LCRITICAL, "%s[%d]: Out of memory\n", __func__, __LINE__);
 
 /**
  * \brief Get the security context (uid, gid) of the daemon.
@@ -840,6 +839,8 @@ ldmsd_cfgobj_t ldmsd_cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
 void ldmsd_cfgobj_del(const char *name, ldmsd_cfgobj_type_t type);
 ldmsd_cfgobj_t ldmsd_cfgobj_first(ldmsd_cfgobj_type_t type);
 ldmsd_cfgobj_t ldmsd_cfgobj_next(ldmsd_cfgobj_t obj);
+ldmsd_cfgobj_t ldmsd_cfgobj_first_re(ldmsd_cfgobj_type_t type, regex_t regex);
+ldmsd_cfgobj_t ldmsd_cfgobj_next_re(ldmsd_cfgobj_t obj, regex_t regex);
 int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt);
 
 #define LDMSD_CFGOBJ_FOREACH(obj, type) \
@@ -849,6 +850,7 @@ int ldmsd_cfgobj_access_check(ldmsd_cfgobj_t obj, int acc, ldmsd_sec_ctxt_t ctxt
 /** Producer configuration object management */
 int ldmsd_prdcr_str2type(const char *type);
 const char *ldmsd_prdcr_type2str(enum ldmsd_prdcr_type type);
+const char *ldmsd_prdcr_state_str(enum ldmsd_prdcr_state state);
 ldmsd_prdcr_t
 ldmsd_prdcr_new(const char *name, const char *xprt_name,
 		const char *host_name, const unsigned short port_no,
@@ -901,8 +903,8 @@ static inline const char *ldmsd_prdcr_set_state_str(enum ldmsd_prdcr_set_state s
 	}
 	return "BAD STATE";
 }
-void ldmsd_prdcr_set_ref_get(ldmsd_prdcr_set_t set);
-void ldmsd_prdcr_set_ref_put(ldmsd_prdcr_set_t set);
+#define ldmsd_prdcr_set_ref_get(_s_, _n_) ref_get(&(_s_)->ref, _n_)
+#define ldmsd_prdcr_set_ref_put(_s_, _n_) ref_put(&(_s_)->ref, _n_)
 void ldmsd_prd_set_updtr_task_update(ldmsd_prdcr_set_t prd_set);
 int ldmsd_prdcr_start(const char *name, const char *interval_str,
 		      ldmsd_sec_ctxt_t ctxt);
@@ -1038,8 +1040,6 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
 int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 			  char *rep_buf, size_t rep_len, ldmsd_sec_ctxt_t ctxt);
-ldmsd_prdcr_ref_t ldmsd_updtr_prdcr_find(ldmsd_updtr_t updtr,
-					const char *prdcr_name);
 int ldmsd_updtr_schedule_cmp(void *a, const void *b);
 int ldmsd_updtr_tasks_update(ldmsd_updtr_t updtr, ldmsd_prdcr_set_t prd_set);
 
@@ -1223,6 +1223,30 @@ extern int listen_on_ldms_xprt(ldmsd_listen_t listen);
 
 uint8_t ldmsd_is_initialized();
 
+/*
+ * \brief Convert a time duration string to integer in microseconds.
+ *
+ * If no unit is given, the unit is in microseconds.
+ *
+ * The expecting format is <number><unit str>.
+ *
+ * The supported unit strings are as follows.
+ *
+ * microseconds:	us, microsecond(s)
+ * milliseconnds:	ms, millisecond(s)
+ * seconds:		s, sec, second(s)
+ * minutes:		min, minutes(s)
+ * hours:		h, hr(s), hour(s)
+ * days:		day(s)
+ *
+ * \param  s  string to be converted
+ * \param  x  handle to the integer
+ *
+ * \return 0 on succes. EINVAL if the value is negative.
+ *         ENOTSUP if the given string is not supported.
+ */
+int ldmsd_time_dur_str2us(const char *s, unsigned long *x);
+
 /**
  * \brief Create a listening endpoint
  *
@@ -1270,4 +1294,28 @@ void ldmsd_timespec_diff(struct timespec *a, struct timespec *b, struct timespec
 
 void ldmsd_log_flush_interval_set(unsigned long interval);
 void ldmsd_flush_log();
+
+int ldmsd_num_prdcr_workers_get();
+int ldmsd_num_prdset_workers_get();
+int ldmsd_num_updtr_workers_get();
+int ldmsd_num_strgp_workers_get();
+ev_worker_t assign_prdcr_worker();
+ev_worker_t assign_prdset_worker();
+ev_worker_t assign_updtr_worker();
+ev_worker_t assign_strgp_worker();
+
+static inline
+struct ldmsd_name_match *ldmsd_name_match_first(struct ldmsd_match_queue *list)
+{
+	return TAILQ_FIRST(list);
+}
+static inline
+struct ldmsd_name_match *ldmsd_name_match_next(struct ldmsd_name_match *m)
+{
+	return TAILQ_NEXT(m, entry);
+}
+struct ldmsd_name_match *ldmsd_name_match_copy(struct ldmsd_name_match *src);
+void ldmsd_name_match_free(struct ldmsd_name_match *match);
+void ldmsd_match_queue_free(struct ldmsd_match_queue *list);
+int ldmsd_match_queue_copy(struct ldmsd_match_queue *src, struct ldmsd_match_queue *dst);
 #endif

@@ -59,6 +59,17 @@
 extern ev_worker_t logger_w;
 extern ev_worker_t configfile_w;
 extern ev_worker_t msg_tree_w;
+extern ev_worker_t cfg_w;
+
+extern ev_worker_t prdcr_tree_w;
+extern ev_worker_t updtr_tree_w;
+extern ev_worker_t strgp_tree_w;
+
+/* Pool of workers that own the same type of resources */
+extern ev_worker_t *prdcr_pool;
+extern ev_worker_t *prdset_pool;
+extern ev_worker_t *updtr_pool;
+extern ev_worker_t *strgp_pool;
 
 /* Event Types and data */
 struct log_data {
@@ -108,15 +119,113 @@ struct ob_rsp_data {
 	void *ctxt;
 };
 
+struct cfgobj_data {
+	ldmsd_cfgobj_t obj;
+	void *ctxt;
+};
+
+struct cfgobj_rsp_data {
+	void *rsp; /* Response of each cfgobj */
+	void *ctxt; /* Context from the cfgobj_cfg event */
+};
+
 struct xprt_term_data {
 	ldms_t x;
 };
 
-/* Event Types */
+struct prdset_info {
+	struct ref_s ref;
+	char *inst_name;
+	char *schema_name;
+	char *prdcr_name;
+	ev_worker_t prdset_worker;
+	ldms_set_t set_snapshot;
+	void *ctxt;
+};
 
+struct prdset_state_data {
+	enum ldmsd_prdcr_set_state state;
+	struct prdset_info *prdset_info;
+	void *obj;
+};
+
+struct prdset_data {
+	ldmsd_prdcr_set_t prdset;
+};
+
+struct update_hint_data {
+	ldmsd_prdcr_set_t prdset;
+	struct ldmsd_updtr_schedule hint;
+};
+
+struct updtr_info {
+	struct ref_s ref;
+	struct ldmsd_updtr_schedule sched;
+	uint8_t push_flags;
+	uint8_t is_auto;
+	struct ldmsd_match_queue prdcr_list;
+	struct ldmsd_match_queue match_list;
+};
+
+struct updtr_state_data {
+	enum ldmsd_updtr_state state;
+	struct updtr_info *updtr_info;
+	void *obj; /* Object corresponding to the worker that would handle the event */
+	void *ctxt; /* Context for \c obj to use */
+};
+
+struct strgp_state_data {
+	enum ldmsd_strgp_state state;
+	void *obj;
+};
+
+struct strgp_data {
+	ldmsd_strgp_t strgp;
+	void *ctxt;
+};
+
+struct dir_data {
+	ldms_dir_t dir;
+	ldmsd_prdcr_t prdcr;
+	ldmsd_prdcr_set_t prdset;
+	struct ldmsd_updtr_schedule hint;
+};
+
+struct lookup_data {
+	enum ldms_lookup_status status;
+	int more;
+	ldms_set_t set;
+	ldmsd_prdcr_set_t prdset;
+	struct updtr_info *updtr_info;
+};
+
+struct prdcr_filter_req_data {
+	struct ldmsd_match_queue filter;
+	ev_worker_t resp_worker; /* Worker that subscribes to the response */
+	struct ldmsd_match_queue prdcr_list; /* List of producer name matched the filter */
+	struct ldmsd_cfgobj_cfg_rsp *rsp;
+	struct ldmsd_cfgobj_cfg_ctxt *cfg_ctxt;
+};
+
+struct update_complete_data {
+	int status;
+	ldms_set_t set;
+	ldmsd_prdcr_set_t prdset;
+};
+
+typedef void (*proc_exit_fn)(void *args);
+struct cleanup_data {
+	proc_exit_fn exit_fn;
+	void *exit_args;
+};
+
+/* Event Types */
 /* LDMSD log */
 extern ev_type_t log_type;
 
+/* LDMSD messages & request contexts */
+extern ev_type_t recv_rec_type;
+extern ev_type_t reqc_type; /* add to msg_tree, rem to msg_tree, send to cfg */
 extern ev_type_t deferred_start_type;
 extern ev_type_t ib_cfg_type; /* Inbound request event type */
 extern ev_type_t ib_rsp_type; /* Inbound response event type */
@@ -124,12 +233,35 @@ extern ev_type_t ob_rsp_type; /* Outbound response event type */
 
 extern ev_type_t xprt_term_type;
 
+extern ev_type_t deferred_start_type;
+
+/* ldms xprt */
+extern ev_type_t dir_complete_type;
+extern ev_type_t lookup_complete_type;
+extern ev_type_t update_complete_type;
+
+
 /* Configuration */
 extern ev_type_t cfgobj_cfg_type;
 extern ev_type_t cfgobj_rsp_type;
 extern ev_type_t cfgfile_type;
 
+/* Producers */
+extern ev_type_t prdcr_connect_type;
+extern ev_type_t prdcr_xprt_type;
+extern ev_type_t prdcr_filter_req_type;
+
+/* producer sets */
+extern ev_type_t prdset_state_type;
+extern ev_type_t update_hint_type;
+extern ev_type_t prdset_del_type;
+
+/* Updaters */
+extern ev_type_t updtr_state_type;
+
+extern ev_type_t cleanup_type;
+extern ev_type_t strgp_cleanup_type;
+
 int ldmsd_ev_init(void);
 int ldmsd_worker_init(void);
-
 #endif /* __LDMSD_EVENT_H__ */
