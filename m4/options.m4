@@ -110,7 +110,7 @@ AC_ARG_WITH(
 )
 
 case "x$withval" in
-xyes | x/usr | x)
+xyes | x/usr | x/lib | x/lib64 | x)
 	:
 	;;
 *)
