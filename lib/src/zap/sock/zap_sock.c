@@ -698,10 +698,10 @@ static void process_sep_msg_read_resp(struct z_sock_ep *sep)
 	pthread_mutex_lock(&sep->ep.lock);
 	io = TAILQ_FIRST(&sep->io_q);
 	ZAP_ASSERT(io, (&sep->ep), "%s: The io_q is empty.\n", __func__);
-	ZAP_ASSERT(msg->hdr.xid == io->wr->msg.hdr.xid, (&sep->ep),
+	ZAP_ASSERT(msg->hdr.xid == io->xid, (&sep->ep),
 			"%s: The transaction IDs mismatched between the "
 			"IO entry %d and message %d.\n", __func__,
-			io->wr->msg.hdr.xid, msg->hdr.xid);
+			io->xid, msg->hdr.xid);
 	TAILQ_REMOVE(&sep->io_q, io, q_link);
 
 	data_len = ntohl(msg->data_len);
@@ -819,10 +819,10 @@ static void process_sep_msg_write_resp(struct z_sock_ep *sep)
 	io = TAILQ_FIRST(&sep->io_q);
 	ZAP_ASSERT(io, &sep->ep, "%s: The io_q is empty\n", __func__);
 	TAILQ_REMOVE(&sep->io_q, io, q_link);
-	ZAP_ASSERT(io->wr->msg.hdr.xid == msg->hdr.xid, &sep->ep,
+	ZAP_ASSERT(io->xid == msg->hdr.xid, &sep->ep,
 			"%s: The transaction IDs mismatched "
 			"between the IO entry %d and message %d.\n",
-			__func__, io->wr->msg.hdr.xid, msg->hdr.xid);
+			__func__, io->xid, msg->hdr.xid);
 	assert( io->ctxt == (void*)msg->hdr.ctxt );
 	/* Put it back on the free_q */
 	__sock_io_free(sep, io);
@@ -1270,7 +1270,11 @@ static void sock_write(struct epoll_event *ev)
 		assert(ntohs(wr->msg.hdr.msg_type) == SOCK_MSG_SENDRECV);
 		TAILQ_REMOVE(&sep->io_q, wr->io, q_link);
 		TAILQ_INSERT_TAIL(&sep->io_cq, wr->io, q_link);
-		wr->io->wr = NULL; /* wr is not needed anymore */
+	}
+	if (wr->io) {
+		/* record xid */
+		wr->io->xid = wr->msg.hdr.xid;
+		wr->io->wr = NULL;
 	}
 	__sock_wr_free(wr);
 	goto next;
