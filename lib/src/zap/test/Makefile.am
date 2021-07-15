@@ -25,3 +25,7 @@ zap_test_reconnect_many_LDADD = -lzap -lpthread -ldl
 sbin_PROGRAMS += zap_test_shared_map
 zap_test_shared_map_SOURCES = zap_test_shared_map.c
 zap_test_shared_map_LDADD = -lzap -lpthread -ldl
+
+sbin_PROGRAMS += zap_test_many_read
+zap_test_many_read_SOURCES = zap_test_many_read.c
+zap_test_many_read_LDADD = -lzap -lpthread -ldl
