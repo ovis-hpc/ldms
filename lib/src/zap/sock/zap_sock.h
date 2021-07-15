@@ -263,6 +263,7 @@ struct z_sock_io {
 	struct z_sock_send_wr_s *wr;
 	enum zap_event_type comp_type; /**< completion type */
 	void *ctxt; /**< Application context */
+	uint32_t xid;	   /**< Transaction Id to check against reply */
 };
 
 #pragma pack()
