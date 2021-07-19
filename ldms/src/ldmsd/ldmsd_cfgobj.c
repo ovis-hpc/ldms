@@ -250,9 +250,11 @@ void ldmsd_cfgobj_del(const char *name, ldmsd_cfgobj_type_t type)
 	ldmsd_cfgobj_t obj;
 	pthread_mutex_lock(cfgobj_locks[type]);
 	obj = __cfgobj_find(name, type);
-	if (obj)
+	if (obj) {
 		rbt_del(cfgobj_trees[type], &obj->rbn);
-	pthread_mutex_lock(cfgobj_locks[type]);
+		ldmsd_cfgobj_put(obj);
+	}
+	pthread_mutex_unlock(cfgobj_locks[type]);
 }
 
 /**
