@@ -1177,7 +1177,7 @@ int __on_ping_resp(ldmsd_req_cmd_t rcmd)
 		goto out;
 	ping_data = (void*)attr->attr_value;
 	__ping_data_ntoh(ping_data);
-	if (ping_data->flags & __peercfg_activated(f)) {
+	if (ping_data->flags & __FAILOVER_PEERCFG_ACTIVATED) {
 		/* cannot start ours yet */
 		goto out;
 	}
@@ -1304,6 +1304,8 @@ int __peercfg_stop(ldmsd_failover_t f)
 		fn = stop[i];
 		RBT_FOREACH(rbn, t[i]) {
 			ent = STR_RBN(rbn);
+			if (!ent->started)
+				continue;
 			_rc = fn(ent->str, &sctxt);
 			if (0 == _rc)
 				ent->started = 0;
@@ -1317,6 +1319,7 @@ int __peercfg_stop(ldmsd_failover_t f)
 	} else {
 		ldmsd_linfo("Failover: peer config stopped\n");
 		f->timeout_ts.tv_sec = INT64_MAX;
+		__F_OFF(f, __FAILOVER_PEERCFG_ACTIVATED);
 	}
 
 	return rc;
@@ -1516,6 +1519,7 @@ int __peercfg_start(ldmsd_failover_t f)
 	struct rbn *rbn;
 	struct str_rbn *srbn;
 	struct ldmsd_sec_ctxt sctxt = __get_sec_ctxt(NULL);
+	int is_activated = 1;
 
 	ldmsd_linfo("Failover: starting peercfg, flags: %#lo\n", f->flags);
 
@@ -1531,6 +1535,7 @@ int __peercfg_start(ldmsd_failover_t f)
 			continue;
 		}
 		srbn->started = 1;
+		is_activated = 1;
 	}
 
 	RBT_FOREACH(rbn, &f->updtr_rbt) {
@@ -1545,8 +1550,11 @@ int __peercfg_start(ldmsd_failover_t f)
 			continue;
 		}
 		srbn->started = 1;
+		is_activated = 1;
 	}
 
+	if (is_activated)
+		__F_ON(f, __FAILOVER_PEERCFG_ACTIVATED);
 	__dlog("Failover: __peercfg_start(), flags: %#lx, rc: %d\n",
 	       f->flags, rc);
 	return 0;
