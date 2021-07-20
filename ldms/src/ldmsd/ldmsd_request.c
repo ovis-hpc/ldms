@@ -2594,7 +2594,7 @@ int __strgp_status_json_obj(ldmsd_req_ctxt_t reqc, ldmsd_strgp_t strgp,
 		       strgp->schema,
 		       strgp->plugin_name,
 		       strgp->flush_interval.tv_sec,
-		       strgp->flush_interval.tv_nsec,
+		       (strgp->flush_interval.tv_nsec/1000),
 		       ldmsd_strgp_state_str(strgp->state));
 	if (rc)
 		goto out;
