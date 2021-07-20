@@ -282,6 +282,7 @@ typedef struct ldmsd_cfg_xprt_s {
 	union {
 		struct ldmsd_cfg_file_s file;
 		struct ldmsd_cfg_ldms_s ldms;
+		void *ctxt;
 	};
 	size_t max_msg;
 	ldmsd_msg_send_fn_t send_fn;

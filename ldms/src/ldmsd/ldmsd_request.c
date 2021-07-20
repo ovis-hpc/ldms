@@ -577,7 +577,6 @@ static struct request_handler_entry request_handler[] = {
 		LDMSD_FAILOVER_PEERCFG_REQ, failover_peercfg_handler,
 		XUG | LDMSD_PERM_FAILOVER_INTERNAL,
 	},
-
 	/* SETGROUP */
 	[LDMSD_SETGROUP_ADD_REQ] = {
 		LDMSD_SETGROUP_ADD_REQ, setgroup_add_handler, XUG,
@@ -963,6 +962,20 @@ int ldmsd_handle_request(ldmsd_req_ctxt_t reqc)
 	case LDMSD_STRGP_STATUS_REQ:
 		ev = ev_new(ib_cfg_type);
 		dst = strgp_tree_w;
+		EV_DATA(ev, struct cfg_data)->reqc = reqc;
+		EV_DATA(ev, struct cfg_data)->ctxt = NULL;
+		break;
+	case LDMSD_FAILOVER_START_REQ:
+	case LDMSD_FAILOVER_PAIR_REQ:
+	case LDMSD_FAILOVER_PEERCFG_REQ:
+	case LDMSD_FAILOVER_PING_REQ:
+	case LDMSD_FAILOVER_CFGPRDCR_REQ:
+	case LDMSD_FAILOVER_CFGUPDTR_REQ:
+	case LDMSD_FAILOVER_CFGSTRGP_REQ:
+	case LDMSD_FAILOVER_PEERCFG_START_REQ:
+	case LDMSD_FAILOVER_PEERCFG_STOP_REQ:
+		ev = ev_new(ib_cfg_type);
+		dst = failover_w;
 		EV_DATA(ev, struct cfg_data)->reqc = reqc;
 		EV_DATA(ev, struct cfg_data)->ctxt = NULL;
 		break;

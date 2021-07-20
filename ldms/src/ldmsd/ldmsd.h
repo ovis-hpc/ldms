@@ -1291,6 +1291,8 @@ void ldmsd_timespec_diff(struct timespec *a, struct timespec *b, struct timespec
 
 void ldmsd_log_flush_interval_set(unsigned long interval);
 void ldmsd_flush_log();
+ldms_xprt_event_t ldmsd_xprt_event_get(ldms_xprt_event_t e);
+void ldmsd_xprt_event_free(ldms_xprt_event_t e);
 
 int ldmsd_num_prdcr_workers_get();
 int ldmsd_num_prdset_workers_get();
@@ -1300,6 +1302,7 @@ ev_worker_t assign_prdcr_worker();
 ev_worker_t assign_prdset_worker();
 ev_worker_t assign_updtr_worker();
 ev_worker_t assign_strgp_worker();
+ev_worker_t assign_failover_worker();
 
 static inline
 struct ldmsd_name_match *ldmsd_name_match_first(struct ldmsd_match_queue *list)

@@ -380,3 +380,17 @@ out:
 
 	return 0;
 }
+
+ev_worker_t ldmsd_cfgobj_worker_get(ldmsd_cfgobj_t obj)
+{
+	switch (obj->type) {
+	case LDMSD_CFGOBJ_PRDCR:
+		return ((ldmsd_prdcr_t)obj)->worker;
+	case LDMSD_CFGOBJ_UPDTR:
+		return ((ldmsd_updtr_t)obj)->worker;
+	case LDMSD_CFGOBJ_STRGP:
+		return ((ldmsd_strgp_t)obj)->worker;
+	default:
+		return NULL;
+	}
+}

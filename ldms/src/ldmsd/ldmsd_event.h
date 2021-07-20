@@ -64,6 +64,7 @@ extern ev_worker_t cfg_w;
 extern ev_worker_t prdcr_tree_w;
 extern ev_worker_t updtr_tree_w;
 extern ev_worker_t strgp_tree_w;
+extern ev_worker_t failover_w;
 
 /* Pool of workers that own the same type of resources */
 extern ev_worker_t *prdcr_pool;
@@ -220,6 +221,12 @@ struct cleanup_data {
 	void *exit_args;
 };
 
+typedef struct ldmsd_failover *ldmsd_failover_t;
+struct failover_data {
+	ldmsd_failover_t f;
+	void *ctxt;
+};
+
 /* Event Types */
 /* LDMSD log */
 extern ev_type_t log_type;
@@ -262,6 +269,10 @@ extern ev_type_t updtr_state_type;
 
 extern ev_type_t cleanup_type;
 extern ev_type_t strgp_cleanup_type;
+
+/* Failover */
+extern ev_type_t failover_routine_type;
+extern ev_type_t failover_xprt_type;
 
 int ldmsd_ev_init(void);
 int ldmsd_worker_init(void);
