@@ -631,6 +631,15 @@ void ldmsd_msg_buf_init(struct ldmsd_msg_buf *buf);
 void ldmsd_msg_buf_free(struct ldmsd_msg_buf *buf);
 
 /**
+ * \brief Return the raw buffer of \c buf and reset \c buf
+ *
+ * After a call, \c *buf = {0}.
+ *
+ * \return \c buf->buf
+ */
+char *ldmsd_msg_buf_detach(struct ldmsd_msg_buf *buf);
+
+/**
  * \brief Append and send data to an LDMSD message buffer
  *
  * \c data is appended to \c buf. \c data is sent when the buffer is full or

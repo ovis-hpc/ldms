@@ -1027,6 +1027,16 @@ void ldmsd_msg_buf_free(struct ldmsd_msg_buf *buf)
 	free(buf);
 }
 
+char *ldmsd_msg_buf_detach(struct ldmsd_msg_buf *buf)
+{
+	char *_buf = buf->buf;
+	buf->flags = 0;
+	buf->buf = NULL;
+	buf->len = 0;
+	buf->off = 0;
+	return _buf;
+}
+
 int ldmsd_msg_buf_send(struct ldmsd_msg_buf *buf,
 			void *xprt, uint32_t msg_no,
 			ldmsd_msg_send_fn_t send_fn,
