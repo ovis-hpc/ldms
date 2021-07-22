@@ -803,9 +803,32 @@ int __line_bitmap(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *li
 
 static status_line_handler_t find_status_line_handler(const char *key);
 
+/* the following are not optional */
+static char *metrics_always[] = {
+	"job_id",
+	"task_rank",
+	"start_time",
+	"start_tick",
+	"is_thread",
+	"parent",
+	"exe"
+};
+
+struct metric_sub {
+	char *alias;
+	char *name;
+};
+
+static struct metric_sub alii[] = {
+	{"parent_pid", "nothing"},
+	{"ppid", "nothing"},
+	{"os_pid", "stat_pid"},
+	{"pid", "stat_pid"}
+};
+
 /* This table will later be sorted alphabetically in __init__() */
 struct status_line_handler_s status_line_tbl[] = {
-	/* linux/fs/proc/array.c:task_state() */
+/* linux/fs/proc/array.c:task_state() */
 	{ "Name", APP_STATUS_NAME, __line_str},
 	{ "Umask", APP_STATUS_UMASK, __line_oct},
 	{ "State", APP_STATUS_STATE,__line_char },
@@ -1250,7 +1273,7 @@ static
 char *_help = "\
 linux_proc_sampler config synopsis: \n\
     config name=linux_proc_sampler [COMMON_OPTIONS] [stream=STREAM]\n\
-			    [metrics=METRICS] [cfg_file=FILE] [exe_suffix=1>]]\n\
+			    [metrics=METRICS] [cfg_file=FILE] [exe_suffix=1]]\n\
 \n\
 Option descriptions:\n\
     instance_prefix    The prefix for generated instance names. Typically a cluster name\n\
@@ -1315,6 +1338,12 @@ static void compute_help() {
 			mi->name);
 		dscat(ds, name_buf);
 	}
+	dscat(ds, "\nThe following metrics are not optional:\n");
+	for (i = 0; i < ARRAY_LEN(metrics_always); i++) {
+		dscat(ds, "\t");
+		dscat(ds, metrics_always[i]);
+		dscat(ds, "\n");
+	}
 	help_all = dsdone(ds);
 	if (!help_all)
 		help_all = _help;
@@ -1327,11 +1356,33 @@ static const char *linux_proc_sampler_usage(struct ldmsd_plugin *self)
 	return help_all;
 }
 
+static void missing_metric(linux_proc_sampler_inst_t inst, const char *tkn)
+{
+	size_t k, ma = ARRAY_LEN(metrics_always);
+	for (k = 0; k < ma; k++) {
+		if (strcmp(metrics_always[k], tkn) == 0) {
+			INST_LOG(inst, LDMSD_LERROR,
+			"metric '%s' is not optional. Remove it.\n", tkn);
+			return;
+		}
+	}
+	ma = ARRAY_LEN(alii);
+	for (k = 0; k < ma; k++) {
+		if (strcmp(alii[k].alias, tkn) == 0) {
+			INST_LOG(inst, LDMSD_LERROR,
+			"metric '%s' is not supported. Replace with %s.\n", tkn, alii[k].name);
+			return;
+		}
+	}
+	INST_LOG(inst, LDMSD_LERROR,
+		 "optional metric '%s' is unknown.\n", tkn);
+}
+
 static
 int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 {
 	int i, fd, rc = -1, off;
-	ssize_t sz;
+	ssize_t bsz, sz;
 	char *buff = NULL;
 	json_parser_t jp = NULL;
 	json_entity_t jdoc = NULL;
@@ -1348,8 +1399,9 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			 "lseek() failed, errno: %d", errno);
 		goto out;
 	}
+	bsz = sz;
 	lseek(fd, 0, SEEK_SET);
-	buff = malloc(sz);
+	buff = malloc(sz+1);
 	if (!buff) {
 		rc = errno;
 		INST_LOG(inst, LDMSD_LERROR, "Out of memory");
@@ -1373,9 +1425,10 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 		INST_LOG(inst, LDMSD_LERROR, "json_parser_new() error: %d", errno);
 		goto out;
 	}
-	rc = json_parse_buffer(jp, buff, sz, &jdoc);
+	rc = json_parse_buffer(jp, buff, bsz, &jdoc);
 	if (rc) {
 		INST_LOG(inst, LDMSD_LERROR, "JSON parse failed: %d", rc);
+		INST_LOG(inst, LDMSD_LINFO, "input from %s was: %s", val, buff);
 		goto out;
 	}
 
@@ -1424,9 +1477,7 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			minfo = find_metric_info_by_name(json_value_str_str(ent));
 			if (!minfo) {
 				rc = ENOENT;
-				INST_LOG(inst, LDMSD_LERROR,
-					 "Error: metric '%s' not found",
-					 ent->value.str_->str);
+				missing_metric(inst, json_value_str_str(ent));
 				goto out;
 			}
 			inst->metric_idx[minfo->code] = -1;
@@ -1451,6 +1502,7 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 	return rc;
 }
 
+/* verifies named entity has type et unless et is JSON_NULL_VALUE */
 uint64_t get_field_value_u64(linux_proc_sampler_inst_t inst, json_entity_t src, enum json_value_e et, const char *name)
 {
 	json_entity_t e = json_value_find(src, name);
@@ -1459,7 +1511,7 @@ uint64_t get_field_value_u64(linux_proc_sampler_inst_t inst, json_entity_t src, 
 		errno = ENOKEY;
 		return 0;
 	}
-	if ( e->type != et) {
+	if ( e->type != et && et != JSON_NULL_VALUE) {
 		INST_LOG(inst, LDMSD_LDEBUG, "wrong type found for %s: %s. Expected %s.\n",
 			name, json_type_name(e->type), json_type_name(et));
 		errno = EINVAL;
@@ -1557,7 +1609,6 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 	ldms_set_t set;
 	int len;
 	jbuf_t bjb = NULL;
-	json_entity_t job_id;
 	json_entity_t os_pid;
 	json_entity_t task_pid;
 	json_entity_t task_rank;
@@ -1568,12 +1619,18 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 	char setname[512];
 	exe = get_field(inst, data, JSON_STRING_VALUE, "exe");
 	start = get_field(inst, data, JSON_STRING_VALUE, "start");
-	job_id = get_field(inst, data, JSON_INT_VALUE, "job_id");
+	errno = 0;
+	bool job_id = true;
+	uint64_t job_id_val =
+		get_field_value_u64(inst, data, JSON_NULL_VALUE, "job_id");
+	if (errno)
+		job_id = false;
 	os_pid = get_field(inst, data, JSON_INT_VALUE, "os_pid");
 	task_pid = get_field(inst, data, JSON_INT_VALUE, "task_pid");
 	parent_pid = get_field(inst, data, JSON_INT_VALUE, "parent_pid");
 	is_thread = get_field(inst, data, JSON_INT_VALUE, "is_thread");
-	if (!job_id || (!os_pid && !task_pid)) {
+	if (!job_id && (!os_pid && !task_pid)) {
+		INST_LOG(inst, LDMSD_LINFO, "need job_id or (os_pid & task_pid)\n");
 		goto dump;
 	}
 	pid_t  pid;
@@ -1584,7 +1641,7 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 
 	bool is_thread_val = false;
 	pid_t parent = 0;
-	if (is_thread) {
+	if (is_thread && parent_pid) {
 		is_thread_val = json_value_int(is_thread);
 		parent = json_value_int(parent_pid);
 	} else {
@@ -1634,38 +1691,42 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 	if (task_rank_val < 0) {
 		/* we haven't seen the pid as a slurm item yet. */
 		/* set instance is $iprefix/$producer/$jobid/$start_time/$os_pid */
-		len = snprintf(setname, sizeof(setname), "%s%s%s/%ld/%s/%" PRId64 "%s%s" ,
+		len = snprintf(setname, sizeof(setname), "%s%s%s/%" PRIu64
+							"/%s/%" PRId64 "%s%s" ,
 				(inst->instance_prefix ? inst->instance_prefix : ""),
 				(inst->instance_prefix ? "/" : ""),
 				inst->base_data->producer_name,
-				json_value_int(job_id),
+				job_id_val,
 				start_string,
 				(int64_t)pid, esep, esuffix);
 		if (len >= sizeof(setname)) {
-			INST_LOG(inst, LDMSD_LERROR, "set name too big: %s%s%s/%ld/%s/%" PRId64 "%s%s",
+			INST_LOG(inst, LDMSD_LERROR, "set name too big: %s%s%s/%" PRIu64
+							"/%s/%" PRId64 "%s%s",
 				(inst->instance_prefix ? inst->instance_prefix : ""),
 				(inst->instance_prefix ? "/" : ""),
 				inst->base_data->producer_name,
-				json_value_int(job_id),
+				job_id_val,
 				start_string,
 				(int64_t)pid, esep, esuffix);
 			return ENAMETOOLONG;
 		}
 	} else {
 		/* set instance is $iprefix/$producer/$jobid/$start_time/rank/$task_rank */
-		len = snprintf(setname, sizeof(setname), "%s%s%s/%ld/%s/rank/%" PRId64 "%s%s",
+		len = snprintf(setname, sizeof(setname), "%s%s%s/%" PRIu64
+							"/%s/rank/%" PRId64 "%s%s",
 				(inst->instance_prefix ? inst->instance_prefix : ""),
 				(inst->instance_prefix ? "/" : ""),
 				inst->base_data->producer_name,
-				json_value_int(job_id),
+				job_id_val,
 				start_string,
 				task_rank_val, esep, esuffix);
 		if (len >= sizeof(setname)) {
-			INST_LOG(inst, LDMSD_LERROR, "set name too big: %s%s%s/%ld/%s/rank/%" PRId64 "%s%s",
+			INST_LOG(inst, LDMSD_LERROR, "set name too big: %s%s%s/%" PRIu64
+							"/%s/rank/%" PRId64 "%s%s",
 				(inst->instance_prefix ? inst->instance_prefix : ""),
 				(inst->instance_prefix ? "/" : ""),
 				inst->base_data->producer_name,
-				json_value_int(job_id),
+				job_id_val,
 				start_string,
 				task_rank_val, esep, esuffix);
 			return ENAMETOOLONG;
@@ -1709,7 +1770,7 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 	}
 	ldms_set_producer_name_set(set, inst->base_data->producer_name);
 	base_auth_set(&inst->base_data->auth, set);
-	ldms_metric_set_u64(set, BASE_JOB_ID, json_value_int(job_id));
+	ldms_metric_set_u64(set, BASE_JOB_ID, job_id_val);
 	ldms_metric_set_u64(set, BASE_COMPONENT_ID, inst->base_data->component_id);
 	ldms_metric_set_s64(set, inst->task_rank_idx, task_rank_val);
 	ldms_metric_array_set_str(set, inst->start_time_idx, start_string);
@@ -1784,13 +1845,17 @@ int __handle_task_exit(linux_proc_sampler_inst_t inst, json_entity_t data)
 {
 	struct rbn *rbn;
 	struct linux_proc_sampler_set *app_set;
-	json_entity_t job_id;
 	json_entity_t os_pid;
-	job_id = get_field(inst, data, JSON_INT_VALUE, "job_id");
 	os_pid = get_field(inst, data, JSON_INT_VALUE, "os_pid");
-	if (!job_id || !os_pid )
-		return EINVAL;
-	pid_t pid = (pid_t)json_value_int(os_pid);
+	pid_t pid;
+	if (!os_pid ) {
+		/* from spank plugin */
+		json_entity_t task_pid;
+		task_pid = get_field(inst, data, JSON_INT_VALUE, "task_pid");
+		pid = (pid_t)json_value_int(task_pid);
+	} else {
+		pid = (pid_t)json_value_int(os_pid);
+	}
 	uint64_t start_tick = get_start_tick(inst, data, pid);
 	if (!start_tick)
 		return EINVAL;
@@ -1931,10 +1996,8 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 			while (tkn) {
 				minfo = find_metric_info_by_name(tkn);
 				if (!minfo) {
-					INST_LOG(inst, LDMSD_LERROR,
-						 "Error: metric '%s' not found",
-						 tkn);
 					rc = ENOENT;
+					missing_metric(inst, tkn);
 					goto err;
 				}
 				inst->metric_idx[minfo->code] = -1;
