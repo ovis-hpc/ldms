@@ -89,6 +89,7 @@ An example metrics configuration file is:
   "stream": "slurm",
   "instance_prefix" : "cluster2",
   "metrics": [
+    "stat_pid",
     "stat_state",
     "stat_rss",
     "stat_utime",

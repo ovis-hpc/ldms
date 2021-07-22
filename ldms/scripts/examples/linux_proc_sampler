@@ -5,6 +5,19 @@ export LDMSD_LOG_LEVEL=ERROR
 export LDMSD_LOG_TIME_SEC=1
 export LDMSD_EXTRA="-m 128m"
 portbase=61060
+cat << EOF > $LDMSD_RUN/metrics.input
+   { "stream" : "slurm",
+         "metrics" : [
+            "stat_pid" ,
+            "stat_state",
+            "stat_rss",
+            "stat_utime",
+            "stat_stime",
+	    "io_read_b",
+	    "io_write_b"
+         ]
+       }
+EOF
 rm -f $LOGDIR/json*.log
 # valgrind -v --tool=drd --log-file=$LOGDIR/vg.netlink.txt ${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --retry=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
 ${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --retry=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
