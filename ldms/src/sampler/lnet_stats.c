@@ -176,21 +176,17 @@ err:
 
 }
 
-static int create_metric_set(base_data_t base)
+/* file can be missing if all mounts are currently unmounted, but it may appear later. */
+static int get_data()
 {
-	int rc, i;
-	ldms_schema_t schema;
-
+	int i;
 	/* If no user input */
 	if (lnet_state_file == NULL) {
-		/* Try possible luster stat locations */
+		/* Try possible lustre stat locations */
 		for (i=0; i < ARRAY_SIZE(default_lnet_state_files); i++) {
 			lnet_state_file = strdup(default_lnet_state_files[i]);
 			int parse_err = parse_stats();
 			if (parse_err) {
-				msglog(LDMSD_LDEBUG, "Could not "
-					"parse the " SAMP " file '%s'\n", lnet_state_file);
-				/* Set to NULL, failed to parse */
 				free(lnet_state_file);
 				lnet_state_file = NULL;
 				continue;
@@ -200,13 +196,26 @@ static int create_metric_set(base_data_t base)
 	}
 
 	if (lnet_state_file == NULL || parse_stats()) {
-		msglog(LDMSD_LERROR, "Could not parse default " SAMP " files"
-					", or the user file provided\n");
-		rc = ENOENT;
-		goto err;
-	} else {
+		if (!parse_err_cnt) {
+			msglog(LDMSD_LINFO, SAMP ": Could not parse the " SAMP
+				 " file '%s'\n", lnet_state_file ? lnet_state_file :
+				"/sys/kernel/debug/lnet/stats or /proc/sys/lnet/stats"
+				);
+		}
+		parse_err_cnt++;
+		return ENOENT;
+	}
+	if (parse_err_cnt) {
 		msglog(LDMSD_LDEBUG, SAMP ": parsed file '%s'\n", lnet_state_file);
-	} 
+		parse_err_cnt = 0;
+	}
+	return 0;
+}
+
+static int create_metric_set(base_data_t base)
+{
+	int rc, i;
+	ldms_schema_t schema;
 
 	schema = base_schema_new(base);
 	if (!schema) {
@@ -300,7 +309,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc  = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
+		msglog(LDMSD_LWARNING, SAMP ": failed to create a metric set.\n");
 		goto err;
 	}
 
@@ -308,7 +317,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 err:
 	base_del(base);
-	return rc;
+	return 0;
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -318,46 +327,35 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static int sample(struct ldmsd_sampler *self)
 {
-	int rc = 0, i;
+	int i;
 	int metric_no;
 	union ldms_value v;
-//	return 0;
 
 	if (!set) {
-		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
-		return EINVAL;
+		return ENOMEM;
 	}
+
+	int parse_err = get_data();
+	if (parse_err)
+		return 0;
 
 	base_sample_begin(base);
-
 	metric_no = metric_offset;
-	int parse_err = parse_stats();
-	if (parse_err) {
-		if (parse_err_cnt < 2) {
-			msglog(LDMSD_LERROR, SAMP "Could not parse the " SAMP
-				 " file '%s'\n", lnet_state_file);
-		}
-		parse_err_cnt++;
-		rc = parse_err;
-		goto out;
-	}
 	for (i = 0; i < NAME_CNT; i++) {
 		v.v_u64 = stats_val[i];
 		ldms_metric_set(set, metric_no, &v);
 		metric_no++;
 	}
- out:
 	base_sample_end(base);
-	return rc;
+	return 0;
 }
 
 static void term(struct ldmsd_plugin *self)
 {
-	if (base)
-		base_del(base);
+	base_del(base);
 	base = NULL;
-	if (lnet_state_file)
-		free(lnet_state_file);
+	free(lnet_state_file);
+	lnet_state_file = NULL;
 	if (set)
 		ldms_set_delete(set);
 	set = NULL;
