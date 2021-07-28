@@ -1680,7 +1680,7 @@ static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type
 				ldms_dir_set_t dset, json_entity_t info_list)
 {
 	json_entity_t info_entity, e;
-	int j, rc;
+	int j, rc = 0  ;
 	int dir_upd = 0;
 	struct ldms_set_info_pair *pair, *nxt_pair;
 
@@ -1689,20 +1689,24 @@ static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type
 	for (j = 0, info_entity = json_item_first(info_list); info_entity;
 	     info_entity = json_item_next(info_entity), j++) {
 		e = json_value_find(info_entity, "key");
-		dset->info[j].key = strdup(json_value_str(e)->str);
-		if (!dset->info[j].key)
-			return ENOMEM;
 		e = json_value_find(info_entity, "value");
-		dset->info[j].value = strdup(json_value_str(e)->str);
-		if (!dset->info[j].value)
-			return ENOMEM;
+		char *nkey = strdup(json_value_str(e)->str);
+		char *nvalue = strdup(json_value_str(e)->str);
+		if (!nkey || !nvalue) {
+			free(nkey);
+			free(nvalue);
+			rc = ENOMEM;
+			goto out;
+		}
+		dset->info[j].key = nkey;
+		dset->info[j].value = nvalue;
 
 		if (lset) {
 			const char *key = dset->info[j].key;
 			const char *val = dset->info[j].value;
 			rc = __ldms_set_info_set(&lset->remote_info, key, val);
 			if (rc > 0)
-				return rc;
+				goto out;
 			if (rc == 0)
 				dir_upd = 1;
 		}
@@ -1725,14 +1729,17 @@ static int __process_dir_set_info(struct ldms_set *lset, enum ldms_dir_type type
 		}
 		pair = nxt_pair;
 	}
+out:
 	if (lset) {
 		pthread_mutex_unlock(&lset->lock);
-		if ((type == LDMS_DIR_UPD) && dir_upd &&
-				(lset->flags & LDMS_SET_F_PUBLISHED)) {
-			__ldms_dir_upd_set(lset);
+		if (!rc) {
+			if ((type == LDMS_DIR_UPD) && dir_upd &&
+					(lset->flags & LDMS_SET_F_PUBLISHED)) {
+				__ldms_dir_upd_set(lset);
+			}
 		}
 	}
-	return 0;
+	return rc;
 }
 
 static
