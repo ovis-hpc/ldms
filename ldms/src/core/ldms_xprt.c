@@ -1271,6 +1271,7 @@ static int __send_lookup_reply(struct ldms_xprt *x, struct ldms_set *set,
 	msg = calloc(1, msg_len);
 	if (!msg) {
 		rc = ENOMEM;
+		pthread_mutex_unlock(&set->lock);
 		goto err_0;
 	}
 
@@ -1423,7 +1424,9 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 	if (zerr != ZAP_ERR_OK) {
 		x->zerrno = zerr;
 		x->log("%s: x %p: zap_send synchronously errors '%s'\n",
-				__func__, x, zap_err_str(rc));
+				__func__, x, zap_err_str(zerr));
+		x->log("%s: local error code %d (%s)\n",
+				__func__, rc, STRERROR(rc));
 		ldms_xprt_close(x);
 	}
 }
