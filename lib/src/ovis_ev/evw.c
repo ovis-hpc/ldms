@@ -42,8 +42,8 @@ double ev_time_diff(struct timespec *tsa, const struct timespec *tsb)
 {
 	double diff;
 	diff = tsa->tv_sec - tsb->tv_sec;
-	diff += (double)tsa->tv_sec / 1e9;
-	diff -= (double)tsb->tv_sec / 1e9;
+	diff += (double)tsa->tv_nsec / 1e9;
+	diff -= (double)tsb->tv_nsec / 1e9;
 	return diff;
 
 }

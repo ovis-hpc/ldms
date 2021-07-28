@@ -114,6 +114,7 @@ static void ev_dump(ev_t ev, uint64_t id, FILE *f)
 #else /* _EV_TRACK_ */
 	fprintf(stderr, "Not supported. Please compile with -D_EV_TRACK_");
 #endif /* _EV_TRACK_ */
+	fflush(f);
 }
 
 __attribute__((unused))
@@ -149,6 +150,7 @@ static void __ev_tree_dump(FILE *f)
 #else /* _EV_TRACK_ */
 	fprintf(stderr, "Not supported. Please compile with -D_EV_TRACK_\n");
 #endif /* _EV_TRACK_ */
+	fflush(f);
 }
 
 
