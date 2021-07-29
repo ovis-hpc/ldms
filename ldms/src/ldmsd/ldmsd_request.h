@@ -267,6 +267,7 @@ typedef struct ldmsd_cfg_ldms_s {
 
 typedef struct ldmsd_cfg_file_s {
 	uint64_t cfgfile_id;
+	void *ctxt;
 } *ldmsd_cfg_file_t;
 
 struct ldmsd_cfg_xprt_s;

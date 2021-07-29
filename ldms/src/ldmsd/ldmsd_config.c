@@ -443,13 +443,53 @@ out:
 	return rc;
 }
 
+extern struct cfgfile_ctxt cfgfile_ctxt;
+const char *__get_cfgfile_path(uint32_t id)
+{
+	struct str_list_ent_s *ent;
+	int i = cfgfile_ctxt.num_files;
+
+	LIST_FOREACH(ent, &cfgfile_ctxt.cfgfile_list, entry) {
+		if (i == id)
+			return ent->str;
+		i--;
+	}
+	return NULL;
+}
+
+static int configfile_response_fn(void *_xprt, char *data, size_t data_len)
+{
+	ldmsd_cfg_xprt_t xprt = (ldmsd_cfg_xprt_t)_xprt;
+	ldmsd_req_hdr_t hdr;
+	ldmsd_req_attr_t attr;
+	struct cfgfile_ctxt *ctxt = xprt->file.ctxt;
+
+	hdr = (ldmsd_req_hdr_t)data;
+	ldmsd_ntoh_req_msg(hdr);
+
+	attr = ldmsd_first_attr(hdr);
+
+	/* We don't dump attributes to the log */
+	ldmsd_log(LDMSD_LDEBUG, "msg_no %d flags %x rec_len %d rsp_err %d\n",
+		  hdr->msg_no, hdr->flags, hdr->rec_len, hdr->rsp_err);
+
+	if (hdr->rsp_err && (attr->attr_id == LDMSD_ATTR_STRING)) {
+		/* Print the error message to the log */
+		ldmsd_log(LDMSD_LERROR, "%s\n", attr->attr_value);
+		ldmsd_log(LDMSD_LERROR, "Configuration error at line %d (%s)\n",
+				hdr->msg_no, __get_cfgfile_path(xprt->file.cfgfile_id));
+		ctxt->is_error = 1;
+	}
+	__sync_fetch_and_add(&ctxt->num_processed, 1);
+	if (ctxt->num_cfg == ctxt->num_processed)
+		pthread_cond_signal(&ctxt->cfg_done);
+	return 0;
+}
+
 static int log_response_fn(void *_xprt, char *data, size_t data_len)
 {
-	ldmsd_req_attr_t attr;
-	ldmsd_cfg_xprt_t xprt = (ldmsd_cfg_xprt_t)_xprt;
+	struct ldmsd_req_attr_s *attr;
 	ldmsd_req_hdr_t req_reply = (ldmsd_req_hdr_t)data;
-	ldmsd_ntoh_req_msg(req_reply);
-
 	attr = ldmsd_first_attr(req_reply);
 
 	/* We don't dump attributes to the log */
@@ -462,9 +502,9 @@ static int log_response_fn(void *_xprt, char *data, size_t data_len)
 		ldmsd_log(LDMSD_LERROR, "msg_no %d: error %d: %s\n",
 				req_reply->msg_no, req_reply->rsp_err, attr->attr_value);
 	}
-	xprt->rsp_err = req_reply->rsp_err;
 	return 0;
 }
+
 
 /* find # standing alone in a line, indicating rest of line is comment.
  * e.g. ^# rest is comment
@@ -530,9 +570,16 @@ oom:
 	return NULL;
 }
 
-static uint64_t __get_cfgfile_id()
+static uint64_t __get_cfgfile_id(const char *path)
 {
 	static uint64_t id = 1;
+	struct str_list_ent_s *ent;
+
+	ent = malloc(sizeof(*ent) + strlen(path));
+	strcpy(ent->str, path);
+	__sync_fetch_and_add(&cfgfile_ctxt.num_files, 1);
+	LIST_INSERT_HEAD(&cfgfile_ctxt.cfgfile_list, ent, entry);
+
 	return __sync_fetch_and_add(&id, 1);
 }
 
@@ -558,15 +605,19 @@ int post_recv_rec_ev(ldmsd_cfg_xprt_t xprt, struct ldmsd_req_hdr_s *req)
  * \param req_filter is a function that returns zero if we want to process the
  *                   request, and returns non-zero otherwise.
  */
-static
-int __process_config_file(const char *path, int *lno, int trust,
-		int (*req_filter)(ldmsd_cfg_xprt_t, ldmsd_req_hdr_t, void *),
-		void *ctxt)
+int configfile_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e)
 {
-	static uint32_t msg_no = 0;
+	if (EV_OK != status)
+		return 0;
+
+	char *path = EV_DATA(e, struct cfgfile_data)->path;
+	FILE *fin = EV_DATA(e, struct cfgfile_data)->fin;
+	int trust = EV_DATA(e, struct cfgfile_data)->trust;
+	req_filter_fn_t req_filter_fn = EV_DATA(e, struct cfgfile_data)->filter_fn;
+	struct cfgfile_ctxt *ctxt = EV_DATA(e, struct cfgfile_data)->ctxt;
+
 	int rc = 0;
-	int lineno = 0;
-	FILE *fin = NULL;
+	uint32_t lineno = 0;
 	char *buff = NULL;
 	char *line = NULL;
 	char *tmp;
@@ -578,16 +629,15 @@ int __process_config_file(const char *path, int *lno, int trust,
 	struct ldmsd_cfg_xprt_s xprt = {0};
 	ldmsd_req_hdr_t request = NULL;
 	struct ldmsd_req_array *req_array = NULL;
-
-	if (!path)
-		return EINVAL;
+	struct cfgfile_ctxt *cfgfile_ctxt = ctxt;
 
 	xprt.type = LDMSD_CFG_TYPE_FILE;
-	xprt.file.cfgfile_id = __get_cfgfile_id();
-	xprt.send_fn = log_response_fn;
+	xprt.file.cfgfile_id = __get_cfgfile_id(path);
+	xprt.send_fn = configfile_response_fn;
 	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
 	xprt.trust = trust;
 	xprt.rsp_err = 0;
+	xprt.file.ctxt = ctxt;
 
 	line = malloc(LDMSD_CFG_FILE_XPRT_MAX_REC);
 	if (!line) {
@@ -596,14 +646,6 @@ int __process_config_file(const char *path, int *lno, int trust,
 		goto cleanup;
 	}
 	line_sz = LDMSD_CFG_FILE_XPRT_MAX_REC;
-
-	fin = fopen(path, "rt");
-	if (!fin) {
-		rc = errno;
-		ldmsd_log(LDMSD_LERROR, "Failed to open the config file '%s'. %s\n",
-				path, STRERROR(rc));
-		goto cleanup;
-	}
 
 next_line:
 	errno = 0;
@@ -669,10 +711,7 @@ parse:
 	if (!off)
 		goto next_line;
 
-	/*
-	 * TODO: address line_number as msg_no as that it can be printed with the error log
-	 */
-	req_array = ldmsd_parse_config_str(line, msg_no, xprt.max_msg, ldmsd_log);
+	req_array = ldmsd_parse_config_str(line, lineno, xprt.max_msg, ldmsd_log);
 	if (!req_array) {
 		rc = errno;
 		ldmsd_log(LDMSD_LERROR, "Process config file error at line %d "
@@ -695,9 +734,10 @@ parse:
 	if (xprt.max_msg < ntohl(request->rec_len))
 		xprt.max_msg = ntohl(request->rec_len);
 
-	if (req_filter) {
+	if (req_filter_fn) {
 		ldmsd_ntoh_req_msg(request);
-		rc = req_filter(&xprt, request, ctxt);
+		rc = req_filter_fn(&xprt, request, ctxt);
+		ldmsd_hton_req_msg(request);
 		/* rc = 0, filter OK */
 		if (rc == 0)
 			goto next_req;
@@ -706,45 +746,44 @@ parse:
 			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
 			goto cleanup;
 		}
-		/* rc < 0, filter not applied */
-		ldmsd_hton_req_msg(request);
+		/* rc < 0, post the request */
 	}
 
 	rc = post_recv_rec_ev(&xprt, request);
 	if (rc)
 		goto cleanup;
-
+	__sync_fetch_and_add(&cfgfile_ctxt->num_cfg, 1);
 next_req:
-	msg_no += 1;
 	off = 0;
 	goto next_line;
 
 cleanup:
+	__sync_fetch_and_add(&cfgfile_ctxt->num_processed_files, 1);
+	free(path);
 	if (fin)
 		fclose(fin);
 	if (buff)
 		free(buff);
 	if (line)
 		free(line);
-	if (lno)
-		*lno = lineno;
 	ldmsd_req_array_free(req_array);
+	ev_put(e);
 	return rc;
 }
 
 struct deferred_start {
 	uint32_t req_id;
 	const char *str;
-	LIST_ENTRY(deferred_start) ent;
+	TAILQ_ENTRY(deferred_start) ent;
 };
-LIST_HEAD(deferred_start_list, deferred_start) dstart_list;
+TAILQ_HEAD(deferred_start_list, deferred_start) dstart_q = TAILQ_HEAD_INITIALIZER(dstart_q);
 
 int __req_filter_failover(ldmsd_cfg_xprt_t x, ldmsd_req_hdr_t req, void *ctxt)
 {
-	int *use_failover = ctxt;
+	struct cfgfile_ctxt *cfgfile_ctxt = ctxt;
 	int rc = -1;
 	uint32_t req_id;
-	struct deferred_start *d;
+	struct deferred_start *d = NULL;
 	struct ldmsd_req_attr_s *attr;
 
 	req_id = req->req_id;
@@ -752,39 +791,42 @@ int __req_filter_failover(ldmsd_cfg_xprt_t x, ldmsd_req_hdr_t req, void *ctxt)
 	case LDMSD_PRDCR_START_REGEX_REQ:
 		req->req_id = LDMSD_PRDCR_DEFER_START_REGEX_REQ;
 		attr = ldmsd_req_attr_get_by_id((char*)req, LDMSD_ATTR_REGEX);
-		break;
+		goto add_defer;
 	case LDMSD_PRDCR_START_REQ:
 		req->req_id = LDMSD_PRDCR_DEFER_START_REQ;
 		attr = ldmsd_req_attr_get_by_id((char*)req, LDMSD_ATTR_NAME);
-		break;
+		goto add_defer;
 	case LDMSD_UPDTR_START_REQ:
 		req->req_id = LDMSD_UPDTR_DEFER_START_REQ;
 		attr = ldmsd_req_attr_get_by_id((char*)req, LDMSD_ATTR_NAME);
-		break;
+		goto add_defer;
 	case LDMSD_STRGP_START_REQ:
 		req->req_id = LDMSD_STRGP_DEFER_START_REQ;
 		attr = ldmsd_req_attr_get_by_id((char*)req, LDMSD_ATTR_NAME);
-		break;
+		goto add_defer;
 	case LDMSD_FAILOVER_START_REQ:
-		*use_failover = 1;
-		/* let thru */
+		cfgfile_ctxt->use_failover = 1;
+		/* LDMSD will start the failover in main() */
+		return 0;
 	default:
 		/* nothing to do */
 		return rc;
 	}
 
+add_defer:
 	rc = 0;
 	d = malloc(sizeof(*d));
 	if (!d)
-		return ENOMEM;
+		goto enomem;
 	d->req_id = req_id;
 	d->str = strdup((char *)attr->attr_value);
-	if (!d->str) {
-		free(d);
-		return ENOMEM;
-	}
-	LIST_INSERT_HEAD(&dstart_list, d, ent);
-	return 0;
+	if (!d->str)
+		goto enomem;
+	TAILQ_INSERT_TAIL(&dstart_q, d, ent);
+	return -1;
+enomem:
+	free(d);
+	return ENOMEM;
 }
 
 int __our_cfgobj_filter(ldmsd_cfgobj_t obj)
@@ -867,23 +909,49 @@ int ldmsd_ourcfg_start_proc()
 	struct deferred_start *d;
 	int rc;
 
-	while ((d = LIST_FIRST(&dstart_list))) {
+	while ((d = TAILQ_FIRST(&dstart_q))) {
 		rc = cfgobj_start_req(d);
 		if (rc)
 			return rc;
-		LIST_REMOVE(d, ent);
+		TAILQ_REMOVE(&dstart_q, d, ent);
 		free((char *)d->str);
 		free(d);
 	}
 	return 0;
 }
 
-int process_config_file(const char *path, int *lno, int trust)
+int process_config_file(const char *path, int trust)
 {
 	int rc;
-	rc = __process_config_file(path, lno, trust,
-				   __req_filter_failover, &ldmsd_use_failover);
-	return rc;
+	char *s = NULL;
+	FILE *fin = fopen(path, "rt");
+	if (!fin) {
+		rc = errno;
+		ldmsd_log(LDMSD_LERROR, "Failed to open the config file '%s'. %s\n",
+				path, STRERROR(rc));
+		return rc;
+	}
+
+	s = strdup(path);
+	if (!s)
+		goto enomem;
+
+	ev_t ev = ev_new(cfgfile_type);
+	if (!ev)
+		goto enomem;
+
+	EV_DATA(ev, struct cfgfile_data)->fin = fin;
+	EV_DATA(ev, struct cfgfile_data)->path = s;
+	EV_DATA(ev, struct cfgfile_data)->filter_fn = __req_filter_failover;
+	EV_DATA(ev, struct cfgfile_data)->trust = true;
+	EV_DATA(ev, struct cfgfile_data)->ctxt = &cfgfile_ctxt;
+	return ev_post(NULL, configfile_w, ev, 0);
+enomem:
+	free(s);
+	if (fin)
+		fclose(fin);
+	ev_put(ev);
+	return ENOMEM;
 }
 
 static inline void __log_sent_req(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t req)

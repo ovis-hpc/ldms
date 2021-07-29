@@ -57,26 +57,25 @@
 
 /* Worker */
 extern ev_worker_t logger_w;
+extern ev_worker_t configfile_w;
 extern ev_worker_t msg_tree_w;
 
 /* Event Types and data */
-/* LDMSD log */
-extern ev_type_t log_type;
-
-extern ev_type_t xprt_term_type;
-
-/* LDMSD messages & request contexts */
-extern ev_type_t recv_rec_type;
-extern ev_type_t reqc_type; /* add to msg_tree, rem to msg_tree, send to cfg */
-extern ev_type_t deferred_start_type;
-extern ev_type_t cfg_type;
-
 struct log_data {
 	uint8_t is_rotate;
 	enum ldmsd_loglevel level;
 	char *msg;
 	struct timeval tv;
 	struct tm tm;
+};
+
+typedef int (*req_filter_fn_t)(ldmsd_cfg_xprt_t, ldmsd_req_hdr_t, void *);
+struct cfgfile_data {
+	FILE *fin;
+	char *path;
+	int trust;
+	req_filter_fn_t filter_fn;
+	void *ctxt;
 };
 
 struct recv_rec_data {
@@ -93,9 +92,42 @@ struct reqc_data {
 	ldmsd_req_ctxt_t reqc;
 };
 
+struct cfg_data { /* TODO: rename this to recv_cfg_data */
+	ldmsd_req_ctxt_t reqc;
+	void *ctxt;
+};
+
+struct rsp_data { /* TODO: rename this to recv_rsp_data */
+	ldmsd_req_cmd_t rcmd;
+	void *ctxt;
+};
+
+/* Outbound response data */
+struct ob_rsp_data {
+	ldmsd_req_hdr_t hdr;
+	void *ctxt;
+};
+
 struct xprt_term_data {
 	ldms_t x;
 };
+
+/* Event Types */
+
+/* LDMSD log */
+extern ev_type_t log_type;
+
+extern ev_type_t deferred_start_type;
+extern ev_type_t ib_cfg_type; /* Inbound request event type */
+extern ev_type_t ib_rsp_type; /* Inbound response event type */
+extern ev_type_t ob_rsp_type; /* Outbound response event type */
+
+extern ev_type_t xprt_term_type;
+
+/* Configuration */
+extern ev_type_t cfgobj_cfg_type;
+extern ev_type_t cfgobj_rsp_type;
+extern ev_type_t cfgfile_type;
 
 int ldmsd_ev_init(void);
 int ldmsd_worker_init(void);

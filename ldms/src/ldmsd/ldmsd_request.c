@@ -1147,7 +1147,7 @@ void ldmsd_send_cfg_rec_adv(ldmsd_cfg_xprt_t xprt, uint32_t msg_no, uint32_t rec
 
 static int __post_cfg(struct ldmsd_req_ctxt *reqc)
 {
-	ev_t ev = ev_new(cfg_type);
+	ev_t ev = ev_new(ib_cfg_type);
 	if (!ev)
 		return ENOMEM;
 	ldmsd_req_ctxt_ref_get(reqc, "post_cfg");
@@ -5062,18 +5062,11 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 				"The attribute 'path' is required by include.");
 		goto out;
 	}
-	int lineno = -1;
-	reqc->errcode = process_config_file(path, &lineno, reqc->xprt->trust);
+	reqc->errcode = process_config_file(path, reqc->xprt->trust);
 	if (reqc->errcode) {
-		if (lineno == 0) {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Failed to process cfg '%s' at line %d: %s",
-				path, lineno, STRERROR(reqc->errcode));
-		} else {
-			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"Failed to process cfg '%s' at line '%d'",
-				path, lineno);
-		}
+		linebuf_printf(reqc,
+				"Failed to process cfg '%s': %s",
+				path, STRERROR(reqc->errcode));
 	}
 
 out:
@@ -5544,6 +5537,7 @@ static int set_route_resp_handler(ldmsd_req_cmd_t rcmd)
 	my_attr.discrim = 0;
 	(void) ldmsd_append_reply(org_reqc, (char *)&my_attr.discrim,
 					sizeof(uint32_t), LDMSD_REQ_EOM_F);
+out:
 	ldmsd_req_ctxt_ref_put(org_reqc, "create");
 	ldmsd_req_cmd_free(rcmd);
 	free(ctxt->my_info);
@@ -6951,27 +6945,32 @@ __deferred_start_handler(ldmsd_req_ctxt_t reqc, enum ldmsd_cfgobj_type type)
 {
 	ldmsd_cfgobj_t obj;
 	char *name, *value;
+	name = value = NULL;
 
 	value = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!value) {
-		ldmsd_log(LDMSD_LERROR, "`name` attribute is required.\n");
-		return EINVAL;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+					"`name` attribute is required.\n");
+		goto out;
 	}
 	name = str_repl_env_vars(value);
 	if (!name) {
-		ldmsd_log(LDMSD_LERROR, "Not enough memory.\n");
-		return ENOMEM;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+						"Not enough memory.\n");
+		goto out;
 	}
 	obj = ldmsd_cfgobj_find(name, type);
 	if (!obj) {
-		ldmsd_log(LDMSD_LERROR, "Config object not found: %s\n", name);
-		free(name);
-		return ENOENT;
+		reqc->line_off = snprintf(reqc->line_buf, reqc->line_len,
+				  "Config object not found: %s\n", name);
+		goto out;
 	}
-	free(name);
 	obj->perm |= LDMSD_PERM_DSTART;
 	ldmsd_cfgobj_put(obj);
-	ldmsd_req_ctxt_ref_put(reqc, "create");
+out:
+	free(name);
+	free(value);
+	ldmsd_send_req_response(reqc, reqc->line_buf);
 	return 0;
 }
 

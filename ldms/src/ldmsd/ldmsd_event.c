@@ -51,6 +51,7 @@
 #include "ldmsd_event.h"
 
 ev_worker_t logger_w;
+ev_worker_t configfile_w;
 ev_worker_t cfg_w;
 ev_worker_t msg_tree_w;
 
@@ -58,8 +59,12 @@ ev_type_t log_type;
 ev_type_t recv_rec_type;
 ev_type_t reqc_type; /* add to msg_tree, rem to msg_tree, send to cfg */
 ev_type_t deferred_start_type;
-ev_type_t cfg_type;
+ev_type_t ib_cfg_type;
+ev_type_t ib_rsp_type;
+ev_type_t ob_rsp_type;
 ev_type_t xprt_term_type;
+
+ev_type_t cfgfile_type;
 
 int default_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 {
@@ -79,11 +84,22 @@ extern int deferred_start_actor(ev_worker_t src, ev_worker_t dst, ev_status_t st
 
 extern int recv_cfg_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev);
 
+extern int
+configfile_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e);
+
+extern int
+configfile_resp_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e);
+
 int ldmsd_worker_init(void)
 {
 	logger_w = ev_worker_new("logger", log_actor);
 	if (!logger_w)
 		return ENOMEM;
+
+	configfile_w = ev_worker_new("configfile", default_actor);
+	if (!configfile_w)
+		return ENOMEM;
+	ev_dispatch(configfile_w, cfgfile_type, configfile_actor);
 
 	/* msg_tree */
 	msg_tree_w = ev_worker_new("msg_tree", default_actor);
@@ -99,7 +115,6 @@ int ldmsd_worker_init(void)
 	cfg_w = ev_worker_new("cfg", recv_cfg_actor);
 	if (!cfg_w)
 		return ENOMEM;
-
 	return 0;
 }
 
@@ -108,11 +123,15 @@ int ldmsd_ev_init(void)
 	/* Event type */
 	log_type = ev_type_new("ldmsd:log", sizeof(struct log_data));
 
+	cfgfile_type = ev_type_new("ldmsd:configfile", sizeof(struct cfgfile_data));
+
 	xprt_term_type = ev_type_new("ldms:xprt_term", sizeof(struct xprt_term_data));
 	recv_rec_type = ev_type_new("ldms_xprt:recv", sizeof(struct recv_rec_data));
 	reqc_type = ev_type_new("ldmsd:reqc_ev", sizeof(struct reqc_data));
 	deferred_start_type = ev_type_new("ldmsd:deferred_start", 0);
-	cfg_type = ev_type_new("msg_tree:recv_cfg", sizeof(struct reqc_data));
+	ib_cfg_type = ev_type_new("recv_cfg", sizeof(struct cfg_data));
+	ib_rsp_type = ev_type_new("recv_rsp", sizeof(struct rsp_data));
+	ob_rsp_type = ev_type_new("outbound_rsp", sizeof(struct ob_rsp_data));
 
 	return 0;
 }

@@ -129,7 +129,7 @@ mode_t inband_cfg_mask = LDMSD_PERM_FAILOVER_ALLOWED;
 	 * If failover is not in use, 0777 will later be added after
 	 * process_config_file.
 	 */
-int ldmsd_use_failover = 0;
+struct cfgfile_ctxt cfgfile_ctxt;
 
 ldms_t ldms;
 FILE *log_fp;
@@ -162,6 +162,13 @@ uint8_t is_ldmsd_initialized = 0;
 uint8_t ldmsd_is_initialized()
 {
 	return is_ldmsd_initialized;
+}
+
+int cfgfile_req_cmp(void *a, const void *b)
+{
+	uint32_t _a = (uint32_t)(uint64_t)a;
+	uint32_t _b = (uint32_t)(uint64_t)b;
+	return _a - _b;
 }
 
 const char* ldmsd_loglevel_names[] = {
@@ -1691,6 +1698,42 @@ static int __create_default_auth()
 	return rc;
 }
 
+ldms_xprt_event_t ldmsd_xprt_event_get(ldms_xprt_event_t e)
+{
+	ldms_xprt_event_t xprt_ev = calloc(1, sizeof(*xprt_ev));
+	if (!xprt_ev)
+		goto enomem;
+
+	/* copy the ldms_xprt event & its data */
+	if (LDMS_XPRT_EVENT_RECV == e->type) {
+		xprt_ev->data = malloc(e->data_len);
+		if (!xprt_ev->data)
+			goto enomem;
+		memcpy(xprt_ev->data, e->data, e->data_len);
+	} else {
+		memcpy(xprt_ev, e, sizeof(*e));
+	}
+	return xprt_ev;
+enomem:
+	free(xprt_ev);
+	return NULL;
+}
+
+void ldmsd_xprt_event_free(ldms_xprt_event_t e)
+{
+	free(e->data);
+	free(e);
+}
+
+int __is_configured()
+{
+	if (cfgfile_ctxt.num_files == cfgfile_ctxt.num_processed_files) {
+		if (cfgfile_ctxt.num_cfg == cfgfile_ctxt.num_processed)
+			return 1;
+	}
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 #ifdef DEBUG
@@ -2145,13 +2188,15 @@ int main(int argc, char *argv[])
 
 	opterr = 0;
 	optind = 0;
+	pthread_cond_init(&cfgfile_ctxt.cfg_done, 0);
+	pthread_mutex_init(&cfgfile_ctxt.lock, 0);
+	LIST_INIT(&cfgfile_ctxt.cfgfile_list);
 	while ((op = getopt(argc, argv, FMT)) != -1) {
 		char *dup_arg;
-		int lln = -1;
 		switch (op) {
 		case 'c':
 			dup_arg = strdup(optarg);
-			ret = process_config_file(dup_arg, &lln, 1);
+			ret = process_config_file(dup_arg, 1);
 			free(dup_arg);
 			if (ret) {
 				char errstr[128];
@@ -2175,7 +2220,17 @@ int main(int argc, char *argv[])
 			cleanup(7, "error listening on transport");
 	}
 
-	if (ldmsd_use_failover) {
+	ldmsd_log(LDMSD_LDEBUG, "Waiting for configuration to complete\n");
+	pthread_mutex_lock(&cfgfile_ctxt.lock);
+	while (!__is_configured())
+		pthread_cond_wait(&cfgfile_ctxt.cfg_done, &cfgfile_ctxt.lock);
+	pthread_mutex_unlock(&cfgfile_ctxt.lock);
+	if (cfgfile_ctxt.is_error) {
+		cleanup(EINVAL, "Configuration file error");
+	}
+	ldmsd_log(LDMSD_LDEBUG, "Configuration is completed\n");
+
+	if (cfgfile_ctxt.use_failover) {
 		/* failover will be the one starting cfgobjs */
 		ret = ldmsd_failover_start();
 		if (ret) {
