@@ -77,9 +77,9 @@
 #define LDBG 1
 #define LERR 4
 #define DEBUGC(O, K, FMT, ...) \
-	if (O->log && (K > LDBG || O->verbose)) O->log(K, "(%d) %s:%d " FMT, getpid(), __func__, __LINE__, ##__VA_ARGS__)
+	if (O->log && (K > LDBG || O->verbose)) O->log(K, "(%d) %s:%d " FMT, O, getpid(), __func__, __LINE__, ##__VA_ARGS__)
 #define DEBUGL(K, FMT, ...) \
-	if (l->log && (K > LDBG || l->verbose)) l->log(K, "(%d) %s:%d " FMT, getpid(), __func__, __LINE__, ##__VA_ARGS__)
+	if (l->log && (K > LDBG || l->verbose)) l->log(K, "(%d) (%p) %s:%d " FMT, getpid(), l, __func__, __LINE__, ##__VA_ARGS__)
 
 struct sps_target {
 	char xprt[16];
