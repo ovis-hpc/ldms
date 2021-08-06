@@ -77,9 +77,9 @@
 #define LDBG 1
 #define LERR 4
 #define DEBUGC(O, K, FMT, ...) \
-	if (O->log && (K > LDBG || O->verbose)) O->log(K, "(%d) %s:%d " FMT, O, getpid(), __func__, __LINE__, ##__VA_ARGS__)
+	if (O->log && (K > LDBG || O->verbose)) { struct timespec dts; clock_gettime(CLOCK_REALTIME, &dts); O->log(K, "%lu.%09lu: (%p) (%d) %s:%d " FMT, dts.tv_sec, dts.tv_nsec, O, getpid(), __func__, __LINE__, ##__VA_ARGS__); }
 #define DEBUGL(K, FMT, ...) \
-	if (l->log && (K > LDBG || l->verbose)) l->log(K, "(%d) (%p) %s:%d " FMT, getpid(), l, __func__, __LINE__, ##__VA_ARGS__)
+	if (l->log && (K > LDBG || l->verbose)) { struct timespec dts; clock_gettime(CLOCK_REALTIME, &dts); l->log(K, "%lu.%09lu: (%p) (%d) %s:%d " FMT, dts.tv_sec, dts.tv_nsec, l, getpid(), __func__, __LINE__, ##__VA_ARGS__); }
 
 struct sps_target {
 	char xprt[16];
@@ -94,6 +94,7 @@ struct sps_target {
 	int state;
 	int debug_ack;
 	int verbose;
+	int blocking;
 	int last_publish_rc;
 	ldms_sps_msg_log_f log;
 	LIST_ENTRY(sps_target) entry;
@@ -261,6 +262,7 @@ void add_client(struct ldms_sps *l, const char *spec)
 		}
 	}
 
+	client->blocking = l->blocking;
 	client->debug_ack = l->debug_ack;
 	client->log = l->log;
 	client->verbose = l->verbose;
@@ -315,6 +317,10 @@ struct ldms_sps *ldms_sps_create(int argc, const char *argv[], ldms_sps_msg_log_
 			l->verbose = 1;
 			continue;
 		}
+		if (0 == strncasecmp(argv[rc], "blocking", 8)) {
+			l->blocking = 1;
+			continue;
+		}
 	}
 	if (LIST_EMPTY(l->cl)) {
 		add_client(l, DEFAULT_ARGS);
@@ -350,6 +356,10 @@ struct ldms_sps *ldms_sps_create_1(const char *stream, const char *xprt, const c
 	size_t i = 0;
 	if (stream) {
 		argv[i] = stream;
+		i++;
+	}
+	if (flags & LN_FLAG_BLOCKING) {
+		argv[i] = "blocking=";
 		i++;
 	}
 	if (flags & LN_FLAG_DEBUG_ACK) {
@@ -404,8 +414,50 @@ int ldms_sps_target_count_get(struct ldms_sps *l)
 	return 0;
 }
 
+static int update_clients_blocking(struct ldms_sps *l)
+{
+	int rc;
 
-static int update_clients(struct ldms_sps *l)
+	if (LIST_EMPTY(l->cl))
+		return ENOTCONN;
+	struct sps_target *client;
+	time_t now = time(NULL);
+	LIST_FOREACH(client, l->cl, entry) {
+		pthread_mutex_lock(&client->wait_lock);
+		if (client->state == DISCONNECTED)
+			client_reset(client);
+		if (client->state == IDLE && client->ldms == NULL &&
+			now > client->next_try ) {
+			client->ldms = ldms_xprt_new_with_auth(client->xprt,
+					(ldms_log_fn_t)printf, client->auth, NULL);
+			if (!client->ldms) {
+				DEBUGL(LERR, "ERROR %d creating the '%s' transport\n",
+					     errno, client->xprt);
+				client->next_try = now + client->retry;
+				goto next_client;
+			}
+			/* Attempt to connect to each client every retry seconds if
+			 * events happen.
+			 */
+			client_state_set(CONNECTING, client);
+			rc = ldms_xprt_connect_by_name(client->ldms, client->host,
+						       client->port, NULL, NULL);
+			if (rc) {
+				DEBUGL(LERR, "Synchronous error %d connecting to %s:%s\n",
+					rc, client->host, client->port);
+				client_reset(client);
+			} else {
+				client_state_set(CONNECTED, client);
+			}
+		}
+	next_client:
+		pthread_mutex_unlock(&client->wait_lock);
+	}
+
+	return 0;
+}
+
+static int update_clients_nonblocking(struct ldms_sps *l)
 {
 	int rc;
 
@@ -467,7 +519,15 @@ static int update_clients(struct ldms_sps *l)
 		pthread_mutex_unlock(&client->wait_lock);
 	}
 	return 0;
+}
 
+static int update_clients(struct ldms_sps *l)
+{
+	if (!l)
+		return ENOMEM;
+	if (l->blocking)
+		return update_clients_blocking(l);
+	return update_clients_nonblocking(l);
 }
 
 int ldms_sps_destroy(struct ldms_sps *l)
@@ -569,7 +629,7 @@ struct ldms_sps_send_result ldms_sps_send_event(struct ldms_sps *l, jbuf_t jb)
 		pthread_mutex_unlock(&client->wait_lock);
 	}
 
-	if (l->debug_ack) {
+	if (l->debug_ack && !l->blocking) {
 		/*
 		 * Wait for the event to be acknowledged by the client before
 		 * disconnecting. do i need this since we keep connection open?
@@ -687,3 +747,114 @@ void __del__()
 {
 	ldms_xprt_term(0);
 }
+
+#ifdef TEST_LDMS_SPS
+#include <sys/time.h>
+#define LDMSD_STR_WRAP(NAME) #NAME
+#define LDMSD_LWRAP(NAME) LDMSD_L ## NAME
+
+#define LOGLEVELS(WRAP) \
+	WRAP (DEBUG), \
+	WRAP (INFO), \
+	WRAP (WARNING), \
+	WRAP (ERROR), \
+	WRAP (CRITICAL), \
+	WRAP (ALL), \
+	WRAP (LASTLEVEL),
+
+enum ldmsd_loglevel {
+	LDMSD_LNONE = -1,
+	LOGLEVELS(LDMSD_LWRAP)
+};
+
+const char* ldmsd_loglevel_names[] = {
+	LOGLEVELS(LDMSD_STR_WRAP)
+	NULL
+};
+
+
+static int log_time_sec = -1;
+int log_level_thr = 10;
+int quiet = 0;
+pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
+FILE *log_fp;
+static void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
+{
+	log_fp = stdout;
+	if ((level != LDMSD_LALL) &&
+			(quiet || ((0 <= level) && (level < log_level_thr))))
+		return;
+	char dtsz[200];
+
+	pthread_mutex_lock(&log_lock);
+	if (!log_fp) {
+		pthread_mutex_unlock(&log_lock);
+		return;
+	}
+	if (log_time_sec == -1) {
+		char * lt = getenv("LDMSD_LOG_TIME_SEC");
+		if (lt)
+			log_time_sec = 1;
+		else
+			log_time_sec = 0;
+	}
+	if (log_time_sec) {
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
+		fprintf(log_fp, "%lu.%06lu: ", tv.tv_sec, tv.tv_usec);
+	} else {
+		time_t t;
+		t = time(NULL);
+		struct tm tm;
+		localtime_r(&t, &tm);
+		if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", &tm))
+			fprintf(log_fp, "%s: ", dtsz);
+	}
+
+	if (level < LDMSD_LALL) {
+		fprintf(log_fp, "%-10s: ", ldmsd_loglevel_names[level]);
+	}
+
+	vfprintf(log_fp, fmt, ap);
+	fflush(log_fp);
+	pthread_mutex_unlock(&log_lock);
+}
+
+static void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	__ldmsd_log(level, fmt, ap);
+	va_end(ap);
+}
+
+int main(int argc, const char * argv[])
+{
+	struct ldms_sps *sps = ldms_sps_create(argc, argv, ldmsd_log);
+	struct ldms_sps *sps2 = ldms_sps_create_1("teststream", "sock", "localhost", 10444, "none", 1, 2, ldmsd_log, LN_FLAG_VERBOSE);
+
+	jbuf_t jb;
+	jb = jbuf_new(); if (!jb) goto nomem;
+	jb = jbuf_append_str(jb, "{\"foo:\"bar\", data: {\"foo\"=\"baz\"}}"); if (!jb) goto nomem;
+	sleep(2);
+#define TSTR "big string"
+
+	struct ldms_sps_send_result r = ldms_sps_send_event(sps, jb);
+	printf("send_event result: pub=%d ack=%d rc=%d\n", 
+		r.publish_count, r.ack_count, r.rc);
+
+	struct ldms_sps_send_result r2 = ldms_sps_send_string(sps, strlen(TSTR)+1, TSTR);
+	printf("send_string result: pub=%d ack=%d rc=%d\n", 
+		r2.publish_count, r2.ack_count, r2.rc);
+
+	sleep(2);
+	ldms_sps_destroy(sps);
+	ldms_sps_destroy(sps2);
+	return 0;
+ nomem:
+	
+	ldms_sps_destroy(sps);
+	ldms_sps_destroy(sps2);
+	return ENOMEM;
+}
+#endif /* TEST_LDMS_SPS */
