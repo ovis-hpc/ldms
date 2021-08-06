@@ -3,6 +3,7 @@ lib_LTLIBRARIES=
 SUBDIRS = . test
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
+bin_PROGRAMS = test_sps
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
@@ -36,6 +37,7 @@ ldms_ls_LDADD = ../core/libldms.la $(LZAP) $(LMMALLOC) $(LOVIS_UTIL) $(LCOLL) \
 lib_LTLIBRARIES += libldmsd_stream.la
 libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h ldmsd_request_util.c
 libldmsd_stream_la_LIBADD = ../core/libldms.la
+
 
 lib_LTLIBRARIES += libldms_sps.la
 libldms_sps_la_SOURCES = ldms_sps.c ldms_sps.h
@@ -78,6 +80,12 @@ test_plugattr_SOURCES = ldmsd_plugattr.c ldmsd_plugattr.h
 test_plugattr_CFLAGS = -DTEST_PLUGATTR $(AM_CFLAGS)
 test_plugattr_LDADD = $(LOVIS_UTIL) $(LCOLL) -lm -lpthread
 
+test_sps_SOURCES = ldms_sps.c ldms_sps.h
+test_sps_CFLAGS = -DTEST_LDMS_SPS $(AM_CFLAGS)
+test_sps_LDADD = $(top_builddir)/ldms/src/ldmsd/libldmsd_stream.la \
+		 $(top_builddir)/ldms/src/core/libldms.la @LDFLAGS_GETTIME@ \
+		 $(LOVIS_UTIL) $(LCOLL) -lm -lpthread
+
 # make sym links for aggd scripting support
 install-exec-hook:
 	cd $(DESTDIR)$(sbindir) && $(LN_S) -f ldmsd ldms-aggd
@@ -85,5 +93,9 @@ install-exec-hook:
 
 check-local:
 	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) ./test_plugattr $(srcdir)/input/test_plugattr.txt
+
+installcheck-local:
+	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) BIN=$(DESTDIR)$(sbindir) bash $(srcdir)/input/test_sps.sh
+
 EXTRA_DIST += $(srcdir)/input/test_plugattr.txt
 EXTRA_DIST += $(srcdir)/input/bad_test_plugattr.txt

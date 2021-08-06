@@ -77,6 +77,7 @@ struct ldms_sps {
 	int target_count;
 	int debug_ack;
 	int verbose;
+	int blocking;
 	ldms_sps_msg_log_f log;
 };
 
@@ -100,9 +101,10 @@ struct ldms_sps {
  * client=:::: or omitting client= entirely is equivalent to:
  * client=sock:localhost:411:munge:600
  *
- * Independent of specific clients are the stream and timeout:
+ * Independent of specific clients are the blocking, stream and timeout:
  * timeout=1
  * stream=slurm
+ * blocking=1
  *
  * Logging function pointer may be NULL to suppress all logging.
  * If not NULL, the function must be thread-safe.
@@ -112,6 +114,8 @@ struct ldms_sps *ldms_sps_create(int argc, const char *argv[], ldms_sps_msg_log_
 #define LN_FLAG_NONE 0x0
 #define LN_FLAG_DEBUG_ACK 0x1
 #define LN_FLAG_VERBOSE 0x2
+#define LN_FLAG_BLOCKING 0x4
+
 /*
  * Create a single-client list, using C instead of argv syntax.
  * Logging function pointer may be NULL to suppress all logging.
