@@ -1423,10 +1423,9 @@ static void process_lookup_request_re(struct ldms_xprt *x, struct ldms_request *
 	zap_err_t zerr = zap_send(x->zap_ep, &hdr, sizeof(hdr));
 	if (zerr != ZAP_ERR_OK) {
 		x->zerrno = zerr;
-		x->log("%s: x %p: zap_send synchronously errors '%s'\n",
-				__func__, x, zap_err_str(zerr));
-		x->log("%s: local error code %d (%s)\n",
-				__func__, rc, STRERROR(rc));
+		x->log("%s: x %p: zap_send synchronously failed with '%s' "
+			"while trying to send local error code %d (%s)\n",
+			__func__, x, zap_err_str(zerr), rc, STRERROR(rc));
 		ldms_xprt_close(x);
 	}
 }
