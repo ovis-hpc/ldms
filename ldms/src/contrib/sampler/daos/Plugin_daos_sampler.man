@@ -1,0 +1,112 @@
+.\" Manpage for Plugin_daos_sampler
+.TH man 7 "28 Apr 2022" "v1" "LDMS Plugin daos_sampler man page"
+
+.SH NAME
+Plugin_daos_sampler - man page for the LDMS DAOS sampler plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+load name=daos_sampler
+.br
+config name=daos_sampler producer=${HOSTNAME}
+.br
+start name=daos_sampler interval=1000000
+
+.SH DESCRIPTION
+The daos_sampler plugin collects DAOS telemetry from local DAOS I/O Engine instances.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+The daos_sampler plugin uses the sampler_base base class. This man page only covers the
+configuration attributes specific to this plugin; see ldms_sampler_base.man for the
+attributes of the base class.
+
+.TP
+name=<plugin_name>
+.br
+This MUST be daos_sampler.
+.TP
+producer=$HOSTNAME
+.br
+The $HOSTNAME variable provides a good unique producer ID.
+.TP
+engine_count=2
+.br
+The default is 2; don't change it unless the number of per-server engines is different.
+.TP
+target_count=8
+.br
+The default is 8; don't change it unless the number of targets per engine is different.
+.RE
+
+.B SAMPLE FORMAT
+
+The DAOS telemetry is exposed as a set of trees, with the system name as the root:
+
+.PP
+.EX
+  $system/$rank/$target - Per-engine target metrics not associated with a pool
+  $system/$rank/$pool - Per-engine top-level pool metrics
+  $system/$rank/$pool/$target - Per-engine target metrics associated with a pool
+.EE
+.PP
+
+Under each tree is a set of metrics in either counter or gauge format. Counters are
+monotonically-increasing uint64 values; gauges are instantaneous-read uint64
+values that can vary up or down. Certain gauge metrics may have associated statistics
+in min/max/count/mean/stddev format.
+
+.B EXAMPLE SAMPLER USAGE
+
+Start ldmsd as usual, for example:
+
+.PP
+.in +4n
+.EX
+$ ldmsd -m1MB -x sock:10444 -F -c /path/to/sampler.conf
+.EE
+.in
+.PP
+
+NOTE: The default memory size (512KB) may be too small for the number of metrics collected.
+Larger sizes may be specified for a large number of pools.
+
+Once ldmsd is running, it is possible to check that the DAOS telemetry appears in the output
+of ldms_ls, for example:
+
+.PP
+.in +4n
+.EX
+$ ldms_ls -h localhost -x sock -p 10444 -l
+daos_server/0/0: consistent, last update: Wed Aug 25 18:40:25 2021 +0000 [653335us]
+M char[]     system                                     "daos_server"
+M u32        rank                                       0
+M u32        target                                     0
+D u64        io/latency/update/256B                     0
+D u64        io/latency/update/256B/min                 0
+D u64        io/latency/update/256B/max                 0
+D u64        io/latency/update/256B/samples             0
+D d64        io/latency/update/256B/mean                0.000000
+D d64        io/latency/update/256B/stddev              0.000000
+...
+D u64        io/latency/update/32KB                     611
+D u64        io/latency/update/32KB/min                 611
+D u64        io/latency/update/32KB/max                 611
+D u64        io/latency/update/32KB/samples             1
+D d64        io/latency/update/32KB/mean                611.000000
+D d64        io/latency/update/32KB/stddev              0.000000
+D u64        io/latency/update/64KB                     0
+D u64        io/latency/update/64KB/min                 0
+D u64        io/latency/update/64KB/max                 0
+D u64        io/latency/update/64KB/samples             0
+D d64        io/latency/update/64KB/mean                0.000000
+D d64        io/latency/update/64KB/stddev              0.000000
+D u64        io/latency/update/128KB                    1018
+D u64        io/latency/update/128KB/min                567
+D u64        io/latency/update/128KB/max                1214
+D u64        io/latency/update/128KB/samples            8
+D d64        io/latency/update/128KB/mean               828.000000
+D d64        io/latency/update/128KB/stddev             238.011404
+.EE
+.in
+.PP
