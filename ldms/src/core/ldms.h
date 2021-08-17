@@ -304,6 +304,7 @@ typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
 #define LDMS_SET_F_REMOTE	0x0008
 #define LDMS_SET_F_PUSH_CHANGE	0x0010
 #define LDMS_SET_F_DATA_COPY	0x0020 /* set array data copy on transaction begin */
+#define LDMS_SET_F_SNAPSHOT	0x10000 /* A light copy of a set, which must not be published. */
 #define LDMS_SET_F_PUBLISHED	0x100000 /* Set is in the set tree. */
 #define LDMS_SET_ID_DATA	0x1000000
 
@@ -1042,6 +1043,16 @@ extern ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema);
 extern uint64_t ldms_set_id(ldms_set_t set);
 
 /**
+ * \brief Make a snapshot of an LDMS set
+ *
+ * A snapshot of a set always has an array cardinality of 1.
+ * If the original set has the array cardinality larger than 1,
+ * the metric values of the light copy are of the current index of
+ * the original set at the copy time.
+ */
+extern ldms_set_t ldms_set_light_copy(ldms_set_t src);
+
+/**
  * \brief Create an LDMS metric set with owner and permission
  *
  * Create a metric set, like ::ldms_set_new(), but with a specified owner \c
@@ -1110,6 +1121,7 @@ int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, mode_t perm);
  * \param set The set handle.
  * \retval 0      If succeeded.
  * \retval EEXIST If the set has already been published.
+ * \retval EINVAL If the set cannot be published.
  */
 int ldms_set_publish(ldms_set_t set);
 

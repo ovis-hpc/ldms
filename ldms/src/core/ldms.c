@@ -557,6 +557,9 @@ extern struct ldms_set *__ldms_set_by_id(uint64_t id)
 static
 int __ldms_set_publish(struct ldms_set *set)
 {
+	if (set->flags & LDMS_SET_F_SNAPSHOT)
+		return EINVAL;
+
 	if (set->flags & LDMS_SET_F_PUBLISHED)
 		return EEXIST;
 
@@ -749,13 +752,18 @@ void __ldms_set_info_delete(struct ldms_set_info_list *info)
 static void __destroy_set_no_lock(void *v)
 {
 	struct ldms_set *set = v;
-	rbt_del(&del_tree, &set->del_node);
-	mm_free(set->meta);
+	if (set->flags & LDMS_SET_F_SNAPSHOT) {
+		/* This is a light copy of a set */
+		free(set->meta);
+	} else {
+		rbt_del(&del_tree, &set->del_node);
+		mm_free(set->meta);
+		zap_unmap(set->lmap);
+		if (set->rmap)
+			zap_unmap(set->rmap);
+	}
 	__ldms_set_info_delete(&set->local_info);
 	__ldms_set_info_delete(&set->remote_info);
-	zap_unmap(set->lmap);
-	if (set->rmap)
-		zap_unmap(set->rmap);
 	free(set);
 }
 
@@ -841,7 +849,10 @@ void ldms_set_put(ldms_set_t s)
 {
 	if (!s)
 		return;
-	ref_put(&s->ref, "__ldms_find_local_set");
+	if (s->flags & LDMS_SET_F_SNAPSHOT)
+		ref_put(&s->ref, "ldms_set_light_copy");
+	else
+		ref_put(&s->ref, "__ldms_find_local_set");
 }
 
 static  void sync_lookup_cb(ldms_t x, enum ldms_lookup_status status, int more,
@@ -1369,6 +1380,82 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 
 	ldms_set_default_authz(&uid, &gid, &perm, DEFAULT_AUTHZ_READONLY);
 	return ldms_set_new_with_auth(instance_name, schema, uid, gid, perm);
+}
+
+static int
+__set_info_copy(struct ldms_set_info_list *src, struct ldms_set_info_list *dst)
+{
+	struct ldms_set_info_pair *x, *y;
+	LIST_FOREACH(x, src, entry) {
+		y = malloc(sizeof(*y));
+		if (!y)
+			goto enomem;
+		y->key = strdup(x->key);
+		if (!y->key) {
+			free(y);
+			goto enomem;
+		}
+		y->value = strdup(x->value);
+		if (!y->value) {
+			free(y->key);
+			free(y);
+			goto enomem;
+		}
+		LIST_INSERT_HEAD(dst, y, entry);
+	}
+	return 0;
+enomem:
+	__ldms_set_info_delete(dst);
+	return ENOMEM;
+}
+
+ldms_set_t ldms_set_light_copy(ldms_set_t src)
+{
+	struct ldms_set *set = NULL;
+	struct ldms_set_hdr *meta;
+	struct ldms_data_hdr *data, *src_data;
+
+	meta = malloc(src->meta->meta_sz + src->meta->data_sz);
+	if (!meta)
+		return NULL;
+
+	memcpy(meta, src->meta, src->meta->meta_sz);
+	meta->array_card = 1;
+
+	data = (void*)meta + le32toh(meta->meta_sz);
+	data->size = __cpu_to_le64(meta->data_sz);
+	data->curr_idx = 0;
+	data->gn = data->meta_gn = meta->meta_gn;
+
+	set = malloc(sizeof(*set));
+	if (!set) {
+		free(meta);
+		return NULL;
+	}
+	pthread_mutex_init(&set->lock, NULL);
+	rbt_init(&set->push_coll, rbn_ptr_cmp);
+	rbt_init(&set->lookup_coll, rbn_ptr_cmp);
+	LIST_INIT(&set->local_info);
+	LIST_INIT(&set->remote_info);
+	set->flags = LDMS_SET_F_SNAPSHOT;
+	set->set_id = (uint64_t)(unsigned long)src;
+	set->curr_idx = 0;
+	set->meta = meta;
+	set->data_array = set->data = data;
+	/* set info */
+	if (__set_info_copy(&src->local_info, &set->local_info))
+		goto enomem;
+	if (__set_info_copy(&src->remote_info, &set->remote_info))
+		goto enomem;
+
+	/* Copy the metric values of the original set's current index */
+	src_data = __ldms_set_array_get(src, src->curr_idx);
+	memcpy(data, src_data, set->meta->data_sz);
+	ref_init(&set->ref, __func__, __destroy_set, set);
+	return set;
+enomem:
+	__destroy_set_no_lock(set);
+	return NULL;
 }
 
 int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, mode_t perm)
