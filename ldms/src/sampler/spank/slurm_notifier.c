@@ -64,6 +64,7 @@
 #include <netinet/in.h>
 #include <semaphore.h>
 #include <pthread.h>
+#include <slurm/slurm.h>
 #include <slurm/spank.h>
 #include "ldms.h"
 #include <ovis_json/ovis_json.h>
@@ -842,6 +843,13 @@ static int _step_is_valid(spank_t sh, const char *func, int line)
 int slurm_spank_init(spank_t sh, int argc, char *argv[])
 {
 	jbuf_t jb;
+
+#if SLURM_VERSION_NUMBER >= SLURM_VERSION_NUM(20,11,0)
+        /* as of Slurm 20.11.1 slurm_init is required before a call to
+         * libslurm, e.g. slurm_debug2 */
+	slurm_init(NULL);
+#endif
+
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
 	if (!step_is_valid(sh))
