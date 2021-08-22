@@ -7,13 +7,13 @@ vgon
 LDMSD 1
 vgoff
 echo "run -p $port1 -a none -s foo -t json -x sock -h localhost -f $LDMSD_RUN/x.json"
-#gdb hello_cat_publisher
+#gdb ldmsd_stream_publish
 for i in $(seq 1); do
 	SLEEP 1
-	hello_cat_publisher -p $port1 -a none -s foo -t json -x sock -h localhost -f $LDMSD_RUN/x.json
-	echo publisher done $i
+	ldmsd_stream_publish -p $port1 -a none -s foo -t json -x sock -h localhost -f $LDMSD_RUN/x.json
+	echo publish done $i
 done
-ps guxw |grep hello_cat
+ps guxw |grep ldmsd_stream_publish
 
 SLEEP 20
 KILL_LDMSD 1

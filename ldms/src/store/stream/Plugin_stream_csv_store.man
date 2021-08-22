@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_stream_csv_store
 .\" Contact ovis-help@sandia.gov to correct errors or typos.
-.TH man 7 "28 May 2021" "v4" "LDMS Plugin stream_csv_store man page"
+.TH man 7 "21 Aug 2021" "v4" "LDMS Plugin stream_csv_store man page"
 .SH NAME
 Plugin_stream_csv_store - man page for the LDMS stream_csv_store plugin
 
@@ -179,4 +179,4 @@ rank,job-id,kokkos-perf-data:time,kokkos-perf-data:name,kokkos-perf-data:count,s
 
 
 .SH SEE ALSO
-ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), ldmsd_stream_publish(7), hello_publisher, hello_sampler, parser.pl (has perlpod), Plugin_hello_cat_publisher(7), Plugin_hello_stream_store(7)
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), ldmsd_stream_publish(7), Plugin_hello_sampler(7)
