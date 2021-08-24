@@ -1439,7 +1439,7 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			INST_LOG(inst, LDMSD_LERROR, "Error: `instance_prefix` must be a string.");
 			goto out;
 		}
-		inst->instance_prefix = strdup(ent->value.str_->str);
+		inst->instance_prefix = strdup(json_value_cstr(ent));
 		if (!inst->instance_prefix) {
 			rc = ENOMEM;
 			INST_LOG(inst, LDMSD_LERROR, "Out of memory while configuring.");
@@ -1457,7 +1457,7 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			INST_LOG(inst, LDMSD_LERROR, "Error: `stream` must be a string.");
 			goto out;
 		}
-		inst->stream_name = strdup(ent->value.str_->str);
+		inst->stream_name = strdup(json_value_cstr(ent));
 		if (!inst->stream_name) {
 			rc = ENOMEM;
 			INST_LOG(inst, LDMSD_LERROR, "Out of memory while configuring.");
@@ -1474,10 +1474,10 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 					 "Error: metric must be a string.");
 				goto out;
 			}
-			minfo = find_metric_info_by_name(json_value_str_str(ent));
+			minfo = find_metric_info_by_name(json_value_cstr(ent));
 			if (!minfo) {
 				rc = ENOENT;
-				missing_metric(inst, json_value_str_str(ent));
+				missing_metric(inst, json_value_cstr(ent));
 				goto out;
 			}
 			inst->metric_idx[minfo->code] = -1;
@@ -1520,11 +1520,11 @@ uint64_t get_field_value_u64(linux_proc_sampler_inst_t inst, json_entity_t src, 
 	uint64_t u64;
 	switch (et) {
 	case JSON_STRING_VALUE:
-		if (sscanf(json_value_str_str(e),"%" SCNu64, &u64) == 1) {
+		if (sscanf(json_value_cstr(e),"%" SCNu64, &u64) == 1) {
 			return u64;
 		} else {
 			INST_LOG(inst, LDMSD_LDEBUG, "unconvertible to uint64_t: %s from %s.\n",
-				json_value_str_str(e), name);
+				json_value_cstr(e), name);
 			errno = EINVAL;
 			return 0;
 		}
@@ -1663,7 +1663,7 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 			tv.tv_sec, tv.tv_usec);
 		start_string = start_string_buf;
 	} else {
-		start_string = json_value_str_str(start);
+		start_string = json_value_cstr(start);
 	}
 	const char *exe_string;
 	char exe_buf[CMDLINE_SZ];
@@ -1671,7 +1671,7 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 		proc_exe_buf(pid, exe_buf, sizeof(exe_buf));
 		exe_string = exe_buf;
 	} else {
-		exe_string = json_value_str_str(exe);
+		exe_string = json_value_cstr(exe);
 	}
 	int64_t task_rank_val = -1;
 	task_rank = get_field(inst, data, JSON_INT_VALUE, "task_global_id");
@@ -1895,7 +1895,7 @@ static int __stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		rc = ENOENT;
 		goto err;
 	}
-	event_name = json_value_str_str(event);
+	event_name = json_value_cstr(event);
 	data = json_value_find(entity, "data");
 	if (!data) {
 		INST_LOG(inst, LDMSD_LERROR,
