@@ -3,7 +3,7 @@ lib_LTLIBRARIES=
 SUBDIRS = . test
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
-bin_PROGRAMS = test_sps
+sbin_PROGRAMS += test_sps
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
@@ -82,9 +82,9 @@ test_plugattr_LDADD = $(LOVIS_UTIL) $(LCOLL) -lm -lpthread
 
 test_sps_SOURCES = ldms_sps.c ldms_sps.h
 test_sps_CFLAGS = -DTEST_LDMS_SPS $(AM_CFLAGS)
-test_sps_LDADD = $(top_builddir)/ldms/src/ldmsd/libldmsd_stream.la \
-		 $(top_builddir)/ldms/src/core/libldms.la @LDFLAGS_GETTIME@ \
-		 $(LOVIS_UTIL) $(LCOLL) -lm -lpthread
+test_sps_LDADD = libldmsd_stream.la \
+		 ../core/libldms.la @LDFLAGS_GETTIME@ \
+		 $(LOVIS_UTIL) $(LCOLL) $(LJSON_UTIL) -lm -lpthread
 
 # make sym links for aggd scripting support
 install-exec-hook:
@@ -94,8 +94,12 @@ install-exec-hook:
 check-local:
 	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) ./test_plugattr $(srcdir)/input/test_plugattr.txt
 
-installcheck-local:
+installcheck-local: test_sps $(srcdir)/input/test_sps.sh
 	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) BIN=$(DESTDIR)$(sbindir) bash $(srcdir)/input/test_sps.sh
 
 EXTRA_DIST += $(srcdir)/input/test_plugattr.txt
 EXTRA_DIST += $(srcdir)/input/bad_test_plugattr.txt
+EXTRA_DIST += $(srcdir)/input/test_sps.sh
+
+distclean-local:
+	$(RM) test_sps.log* test_sps.*.log

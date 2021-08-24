@@ -69,17 +69,19 @@
 #include <assert.h>
 #include <ovis_json/ovis_json.h>
 #include "ldmsd_stream.h"
+#include <sys/time.h>
 
 #define LNOTIFY_RETRY 600 /* 10 minutes. */
 #define LNOTIFY_AUTH "munge"
 #define LNOTIFY_XPRT "sock"
 
-#define LDBG 1
-#define LERR 4
-#define DEBUGC(O, K, FMT, ...) \
-	if (O->log && (K > LDBG || O->verbose)) { struct timespec dts; clock_gettime(CLOCK_REALTIME, &dts); O->log(K, "%lu.%09lu: (%p) (%d) %s:%d " FMT, dts.tv_sec, dts.tv_nsec, O, getpid(), __func__, __LINE__, ##__VA_ARGS__); }
+
+#define LDBG 0
+#define LERR 3
+#define DEBUGC(C, K, FMT, ...) \
+	if (C->log ) { struct timespec dts; clock_gettime(CLOCK_REALTIME, &dts); C->log(K, "%lu.%09lu: (%p) (%d) %s:%d " FMT, dts.tv_sec, dts.tv_nsec, C, getpid(), __func__, __LINE__, ##__VA_ARGS__); }
 #define DEBUGL(K, FMT, ...) \
-	if (l->log && (K > LDBG || l->verbose)) { struct timespec dts; clock_gettime(CLOCK_REALTIME, &dts); l->log(K, "%lu.%09lu: (%p) (%d) %s:%d " FMT, dts.tv_sec, dts.tv_nsec, l, getpid(), __func__, __LINE__, ##__VA_ARGS__); }
+	if (l->log ) { struct timespec dts; clock_gettime(CLOCK_REALTIME, &dts); l->log(K, "%lu.%09lu: (%p) (%d) %s:%d " FMT, dts.tv_sec, dts.tv_nsec, l, getpid(), __func__, __LINE__, ##__VA_ARGS__); }
 
 struct sps_target {
 	char xprt[16];
@@ -92,8 +94,6 @@ struct sps_target {
 	pthread_cond_t wait_cond;
 	pthread_mutex_t wait_lock;
 	int state;
-	int debug_ack;
-	int verbose;
 	int blocking;
 	int last_publish_rc;
 	ldms_sps_msg_log_f log;
@@ -134,6 +134,7 @@ static int client_state_set(int newstate, struct sps_target *client)
 	return newstate;
 }
 
+/* callback driven by a different thread in ldms_xprt */
 static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	(void)x;
@@ -143,6 +144,9 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 #endif
 	if (!client->ldms)
 		return;
+	/* only change state value outside of send call and wait loop.
+	 * problem is if we go into in condwait, we can never get the lock
+	 * here and we timeout. */
 	pthread_mutex_lock(&client->wait_lock);
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
@@ -155,9 +159,7 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 #ifdef LNDEBUG
 		event = "recv";
 #endif
-		if (client->debug_ack) {
-			client_state_set(ACKED, client);
-		}
+		client_state_set(ACKED, client);
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
 		client_state_set(DISCONNECTED, client);
@@ -263,9 +265,7 @@ void add_client(struct ldms_sps *l, const char *spec)
 	}
 
 	client->blocking = l->blocking;
-	client->debug_ack = l->debug_ack;
 	client->log = l->log;
-	client->verbose = l->verbose;
 	client_state_set(IDLE, client);
 	client->next_try = time(NULL) - 1;
 	pthread_mutex_init(&client->wait_lock, NULL);
@@ -283,6 +283,15 @@ void add_client(struct ldms_sps *l, const char *spec)
 
 #define DEFAULT_ARGS "::::"
 
+static char *format_epoch(char *ts, size_t ts_len)
+{
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	snprintf(ts, ts_len, "%lu.%06lu", tv.tv_sec, tv.tv_usec);
+	return ts;
+}
+#define EPOCH_STRING ({ char *_ts=alloca(32); format_epoch(_ts, 32); _ts; })
+
 struct ldms_sps *ldms_sps_create(int argc, const char *argv[], ldms_sps_msg_log_f log)
 {
 	const char *timeout = NULL;
@@ -297,9 +306,14 @@ struct ldms_sps *ldms_sps_create(int argc, const char *argv[], ldms_sps_msg_log_
 	l->log = log;
 	pthread_mutex_init(&l->list_lock, NULL);
 
+	char *send_log = NULL;
 	for (rc = 0; rc < argc; rc++) {
 		if (0 == strncasecmp(argv[rc], "client", 6)) {
 			add_client(l, get_arg_value(argv[rc]));
+		}
+		if (0 == strncasecmp(argv[rc], "send_log", 8)) {
+			send_log = get_arg_value(argv[rc]);
+			continue;
 		}
 		if (0 == strncasecmp(argv[rc], "stream", 6)) {
 			stream = get_arg_value(argv[rc]);
@@ -309,14 +323,6 @@ struct ldms_sps *ldms_sps_create(int argc, const char *argv[], ldms_sps_msg_log_
 			timeout = get_arg_value(argv[rc]);
 			continue;
 		}
-		if (0 == strncasecmp(argv[rc], "debug_ack", 9)) {
-			l->debug_ack = 1;
-			continue;
-		}
-		if (0 == strncasecmp(argv[rc], "verbose", 7)) {
-			l->verbose = 1;
-			continue;
-		}
 		if (0 == strncasecmp(argv[rc], "blocking", 8)) {
 			l->blocking = 1;
 			continue;
@@ -324,6 +330,9 @@ struct ldms_sps *ldms_sps_create(int argc, const char *argv[], ldms_sps_msg_log_
 	}
 	if (LIST_EMPTY(l->cl)) {
 		add_client(l, DEFAULT_ARGS);
+	}
+	if (send_log) {
+		l->send_log = strdup(send_log);
 	}
 	if (!stream)
 		stream = "slurm";
@@ -340,9 +349,22 @@ struct ldms_sps *ldms_sps_create(int argc, const char *argv[], ldms_sps_msg_log_
 	DEBUGL(LDBG, "timeout %s io_timeout %ld\n", timeout, l->io_timeout);
 	DEBUGL(LDBG, "stream %s\n", stream);
 	l->stream = strdup(stream);
-	if (!l->stream) {
+	if (!l->stream ) {
 		errno = ENOMEM;
 		goto err;
+	}
+	if (send_log) {
+		l->send_log = strdup(send_log);
+		if (!l->send_log) {
+			errno = ENOMEM;
+			goto err;
+		}
+		l->send_log_f = fopen(l->send_log, "a");
+		if (!l->send_log_f) {
+			goto err;
+		} else {
+			fprintf(l->send_log_f, "%s: log started\n", EPOCH_STRING);
+		}
 	}
 	return l;
 err:
@@ -350,24 +372,27 @@ err:
 	return NULL;
 }
 
-struct ldms_sps *ldms_sps_create_1(const char *stream, const char *xprt, const char *host, int port, const char *auth, int retry, int timeout, ldms_sps_msg_log_f log, int flags)
+struct ldms_sps *ldms_sps_create_1(const char *stream, const char *xprt, const char *host, int port, const char *auth, int retry, int timeout, ldms_sps_msg_log_f log, int blocking, const char *send_log)
 {
 	const char *argv[10];
 	size_t i = 0;
+	char *send_arg = NULL;
+	char *stream_arg = NULL;
+
 	if (stream) {
-		argv[i] = stream;
+		stream_arg = malloc(strlen(stream) + 8); /* stream=%s */
+		sprintf(stream_arg, "stream=%s", stream);
+		argv[i] = stream_arg;
 		i++;
 	}
-	if (flags & LN_FLAG_BLOCKING) {
-		argv[i] = "blocking=";
+	if (send_log) {
+		send_arg = malloc(strlen(send_log) + 12); /* send_log=%s */
+		sprintf(send_arg, "send_log=%s", send_log);
+		argv[i] = send_arg;
 		i++;
 	}
-	if (flags & LN_FLAG_DEBUG_ACK) {
-		argv[i] = "debug_ack=";
-		i++;
-	}
-	if (flags & LN_FLAG_VERBOSE) {
-		argv[i] = "verbose=";
+	if (blocking) {
+		argv[i] = "blocking=1";
 		i++;
 	}
 	char tbuf[32];
@@ -385,7 +410,10 @@ struct ldms_sps *ldms_sps_create_1(const char *stream, const char *xprt, const c
 		retry >= 0 ? retry : LNOTIFY_RETRY);
 	argv[i] = client;
 	i++;
-	return ldms_sps_create(i, argv, log);
+	struct ldms_sps *result = ldms_sps_create(i, argv, log);
+	free(send_arg);
+	free(stream_arg);
+	return result;
 }
 
 
@@ -510,7 +538,7 @@ static int update_clients_nonblocking(struct ldms_sps *l)
 				DEBUGL(LDBG, "CONNECTING timed out.\n");
 			}
 			if (client->state != CONNECTED) {
-				DEBUGL(LDBG, "DELAY state=%s connecting to %s:%s\n",
+				DEBUGL(LDBG, "DELAYED state=%s connecting to %s:%s\n",
 					state_name[client->state],
 					client->host, client->port);
 				client_reset(client);
@@ -546,31 +574,38 @@ int ldms_sps_destroy(struct ldms_sps *l)
 				"port=%s auth=%s\n", client->xprt, client->host,
 				client->port, client->auth);
 			ldms_xprt_close(client->ldms);
+			if (l->blocking) {
+				if (client->state < DISCONNECTED && client->ldms) {
+					client_reset(client);
+				}
+			}
 		}
 		pthread_mutex_unlock(&client->wait_lock);
 	}
-	/*
-	 * Wait for close complete
-	 */
-	struct timespec wait_ts;
-	wait_ts.tv_sec = time(NULL) + l->io_timeout;
-	wait_ts.tv_nsec = 0;
-	LIST_FOREACH(client, client_list, entry) {
-		pthread_mutex_lock(&client->wait_lock);
-		if (client->state < DISCONNECTED && client->ldms) {
-			DEBUGL(LDBG, "CLOSE WAIT for client %s:%s\n",
-				client->host, client->port);
-			rc = 0;
-			while (client->state < DISCONNECTED && client->ldms && rc == 0)
-				rc = pthread_cond_timedwait(&client->wait_cond,
-						&client->wait_lock, &wait_ts);
-			if (rc == ETIMEDOUT) {
-				DEBUGL(LDBG, "CLOSE timed out.\n");
+	if (!l->blocking) {
+		/*
+		 * Waits for close complete
+		 */
+		struct timespec wait_ts;
+		wait_ts.tv_sec = time(NULL) + l->io_timeout;
+		wait_ts.tv_nsec = 0;
+		LIST_FOREACH(client, client_list, entry) {
+			pthread_mutex_lock(&client->wait_lock);
+			if (client->state < DISCONNECTED && client->ldms) {
+				DEBUGL(LDBG, "CLOSE WAIT for client %s:%s\n",
+					client->host, client->port);
+				rc = 0;
+				while (client->state < DISCONNECTED && client->ldms && rc == 0)
+					rc = pthread_cond_timedwait(&client->wait_cond,
+							&client->wait_lock, &wait_ts);
+				if (rc == ETIMEDOUT) {
+					DEBUGL(LDBG, "CLOSE timed out.\n");
+				}
+				client_reset(client);
 			}
-			client_reset(client);
+			pthread_mutex_unlock(&client->wait_lock);
+			pthread_mutex_destroy(&client->wait_lock);
 		}
-		pthread_mutex_unlock(&client->wait_lock);
-		pthread_mutex_destroy(&client->wait_lock);
 	}
 	while (!LIST_EMPTY(l->cl)) {
 		client = LIST_FIRST(l->cl);
@@ -580,6 +615,12 @@ int ldms_sps_destroy(struct ldms_sps *l)
 	pthread_mutex_unlock(&l->list_lock);
 	free(l->stream);
 	pthread_mutex_destroy(&l->list_lock);
+	free(l->send_log);
+	if (l->send_log_f) {
+		fprintf(l->send_log_f, "%s: done\n", EPOCH_STRING);
+		fclose(l->send_log_f);
+	}
+	l->send_log_f = NULL;
 	free(l);
 	return 0;
 }
@@ -588,7 +629,6 @@ struct ldms_sps_send_result ldms_sps_send_event(struct ldms_sps *l, jbuf_t jb)
 {
 	struct sps_target *client;
 	struct sps_target_list *client_list = l->cl;
-	struct timespec wait_ts;
 	struct ldms_sps_send_result result = LN_NULL_RESULT;
 
 	if (!l || !jb) {
@@ -603,58 +643,37 @@ struct ldms_sps_send_result ldms_sps_send_event(struct ldms_sps *l, jbuf_t jb)
 	/*
 	 * Publish event to connected clents
 	 */
-	wait_ts.tv_sec = time(NULL) + l->io_timeout;
-	wait_ts.tv_nsec = 0;
 	LIST_FOREACH(client, client_list, entry) {
 		pthread_mutex_lock(&client->wait_lock);
 		if (client->state == CONNECTED || client->state == ACKED) {
 			client_state_set(CONNECTED, client);
 			DEBUGL(LDBG, "publishing to %s:%s\n", client->host, client->port);
-			DEBUGL(LDBG, "slurm %s:%d: %s\n", __func__, __LINE__, jb->buf);
+			DEBUGL(LDBG, "%s %s:%d: %s\n", l->stream, __func__, __LINE__, jb->buf);
+			if (l->send_log_f) {
+				fprintf(l->send_log_f, "%s: publishing to %s:%s (%p)\n",
+					EPOCH_STRING, client->host, client->port, client);
+				fprintf(l->send_log_f, "%s: %s %s:%d: %s\n",
+					EPOCH_STRING, l->stream, __func__, __LINE__, jb->buf);
+			}
 			client->last_publish_rc = ldmsd_stream_publish(
 				client->ldms, l->stream, LDMSD_STREAM_JSON,
 				jb->buf, jb->cursor + 1);
-/*
-			client->last_publish_rc = 0;
-*/
 			if (client->last_publish_rc) {
+				if (l->send_log_f)
+					fprintf(l->send_log_f, "%s: Fail %d publishing json to %s:%s\n",
+						EPOCH_STRING, client->last_publish_rc, client->host, client->port);
 				DEBUGL(LDBG, "Problem %d publishing json to %s:%s\n",
 					client->last_publish_rc, client->host, client->port);
 				client_reset(client);
 			} else {
 				result.publish_count++;
-				DEBUGL(LDBG, "slurm %s: success\n", __func__);
+				if (l->send_log_f)
+					fprintf(l->send_log_f, "%s: %s %s: success\n",
+						EPOCH_STRING, l->stream, __func__);
+				DEBUGL(LDBG, "%s %s: success\n", l->stream, __func__);
 			}
 		}
 		pthread_mutex_unlock(&client->wait_lock);
-	}
-
-	if (l->debug_ack && !l->blocking) {
-		/*
-		 * Wait for the event to be acknowledged by the client before
-		 * disconnecting. do i need this since we keep connection open?
-		 * We have to consume an ack here since it changes state from connected.
-		 */
-		wait_ts.tv_sec = time(NULL) + l->io_timeout;
-		wait_ts.tv_nsec = 0;
-		LIST_FOREACH(client, client_list, entry) {
-			if (client->last_publish_rc != 0)
-				continue;
-			pthread_mutex_lock(&client->wait_lock);
-			int rc = 0;
-			while (client->state == CONNECTED && rc == 0)
-				rc = pthread_cond_timedwait(&client->wait_cond,
-					&client->wait_lock, &wait_ts);
-			if (client->state == ACKED) {
-				DEBUGL(LDBG, "ACKED %s:%s\n", client->host, client->port);
-				result.ack_count++;
-				client_state_set(CONNECTED, client);
-			} else {
-				DEBUGL(LDBG, "ACK TIMEOUT state=%s %s:%s\n",
-					state_name[client->state], client->host, client->port);
-			}
-			pthread_mutex_unlock(&client->wait_lock);
-		}
 	}
 
 	pthread_mutex_unlock(&l->list_lock);
@@ -666,8 +685,7 @@ struct ldms_sps_send_result ldms_sps_send_string(struct ldms_sps *l, size_t buf_
 {
 	struct sps_target *client;
 	struct sps_target_list *client_list = l->cl;
-	struct timespec wait_ts;
-	struct ldms_sps_send_result result = { 0, 0, 0};
+	struct ldms_sps_send_result result = LN_NULL_RESULT;
 
 	if (!l || !buf) {
 		result.rc = EINVAL;
@@ -683,54 +701,37 @@ struct ldms_sps_send_result ldms_sps_send_string(struct ldms_sps *l, size_t buf_
 	/*
 	 * Publish event to connected clents
 	 */
-	wait_ts.tv_sec = time(NULL) + l->io_timeout;
-	wait_ts.tv_nsec = 0;
 	LIST_FOREACH(client, client_list, entry) {
 		pthread_mutex_lock(&client->wait_lock);
 		if (client->state == CONNECTED || client->state == ACKED) {
 			client_state_set(CONNECTED, client);
 			DEBUGL(LDBG, "publishing to %s:%s\n", client->host, client->port);
+			if (l->send_log_f) {
+				fprintf(l->send_log_f, "%s: publishing to %s:%s (%p)\n",
+					EPOCH_STRING, client->host, client->port, client);
+				fprintf(l->send_log_f, "%s: %s %s:%d: %.40s\n",
+					EPOCH_STRING, l->stream, __func__, __LINE__, buf);
+			}
 			client->last_publish_rc = ldmsd_stream_publish(
 				client->ldms, l->stream, LDMSD_STREAM_STRING,
 				buf, buf_len);
 			client->last_publish_rc = 0;
 			if (client->last_publish_rc) {
+				if (l->send_log_f)
+					fprintf(l->send_log_f, "%s: Fail %d publishing buf to %s:%s\n",
+						EPOCH_STRING, client->last_publish_rc, client->host, client->port);
 				DEBUGL(LDBG, "Problem %d publishing buf to %s:%s\n",
 					client->last_publish_rc, client->host, client->port);
 				client_reset(client);
 			} else {
 				result.publish_count++;
+				if (l->send_log_f)
+					fprintf(l->send_log_f, "%s: %s %s: success\n",
+						EPOCH_STRING, l->stream, __func__);
+				DEBUGL(LDBG, "%s %s: success\n", l->stream, __func__);
 			}
 		}
 		pthread_mutex_unlock(&client->wait_lock);
-	}
-
-	if (l->debug_ack) {
-		/*
-		 * Wait for the event to be acknowledged by the client before
-		 * disconnecting. do i need this since we keep connection open?
-		 * We have to consume an ack here since it changes state from connected.
-		 */
-		wait_ts.tv_sec = time(NULL) + l->io_timeout;
-		wait_ts.tv_nsec = 0;
-		LIST_FOREACH(client, client_list, entry) {
-			if (client->last_publish_rc != 0)
-				continue;
-			pthread_mutex_lock(&client->wait_lock);
-			int rc = 0;
-			while (client->state == CONNECTED && rc == 0)
-				rc = pthread_cond_timedwait(&client->wait_cond,
-					&client->wait_lock, &wait_ts);
-			if (client->state == ACKED) {
-				DEBUGL(LDBG, "ACKED %s:%s\n", client->host, client->port);
-				result.ack_count++;
-				client_state_set(CONNECTED, client);
-			} else {
-				DEBUGL(LDBG, "ACK TIMEOUT state=%s %s:%s\n",
-					state_name[client->state], client->host, client->port);
-			}
-			pthread_mutex_unlock(&client->wait_lock);
-		}
 	}
 
 	pthread_mutex_unlock(&l->list_lock);
@@ -774,7 +775,7 @@ const char* ldmsd_loglevel_names[] = {
 
 
 static int log_time_sec = -1;
-int log_level_thr = 10;
+int log_level_thr = 0;
 int quiet = 0;
 pthread_mutex_t log_lock = PTHREAD_MUTEX_INITIALIZER;
 FILE *log_fp;
@@ -830,29 +831,39 @@ static void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...)
 
 int main(int argc, const char * argv[])
 {
+	int i;
+	for (i = 1; i < argc; i++) {
+		if (0 == strncasecmp(argv[i], "debug_level", 11)) {
+			char *ll = get_arg_value(argv[i]);
+			if (ll) {
+				log_level_thr = atoi(ll);
+			}
+			break;
+		}
+	}
 	struct ldms_sps *sps = ldms_sps_create(argc, argv, ldmsd_log);
-	struct ldms_sps *sps2 = ldms_sps_create_1("teststream", "sock", "localhost", 10444, "none", 1, 2, ldmsd_log, LN_FLAG_VERBOSE);
+	struct ldms_sps *sps2 = ldms_sps_create_1("teststream", "sock", "localhost", 10444, "none", 1, 2, ldmsd_log, 0, "test_sps.send.log");
 
 	jbuf_t jb;
 	jb = jbuf_new(); if (!jb) goto nomem;
-	jb = jbuf_append_str(jb, "{\"foo:\"bar\", data: {\"foo\"=\"baz\"}}"); if (!jb) goto nomem;
+	jb = jbuf_append_str(jb, "{\"foo\":\"bar\", \"data\": {\"foo\":\"baz\"}}"); if (!jb) goto nomem;
 	sleep(2);
 #define TSTR "big string"
 
 	struct ldms_sps_send_result r = ldms_sps_send_event(sps, jb);
-	printf("send_event result: pub=%d ack=%d rc=%d\n", 
-		r.publish_count, r.ack_count, r.rc);
+	printf("send_event result: pub=%d rc=%d\n",
+		r.publish_count, r.rc);
 
 	struct ldms_sps_send_result r2 = ldms_sps_send_string(sps, strlen(TSTR)+1, TSTR);
-	printf("send_string result: pub=%d ack=%d rc=%d\n", 
-		r2.publish_count, r2.ack_count, r2.rc);
+	printf("send_string result: pub=%d rc=%d\n",
+		r2.publish_count, r2.rc);
 
 	sleep(2);
 	ldms_sps_destroy(sps);
 	ldms_sps_destroy(sps2);
 	return 0;
  nomem:
-	
+
 	ldms_sps_destroy(sps);
 	ldms_sps_destroy(sps2);
 	return ENOMEM;
