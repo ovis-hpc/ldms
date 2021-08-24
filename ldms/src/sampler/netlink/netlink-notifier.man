@@ -30,6 +30,7 @@ Its messages are mostly compatible with those from the slurm spank based notifie
 -s	show short process name in debugging.
 -t	show debugging trace messages.
 -u umin	ignore processes with uid < umin
+-v lvl  log level for stream library messages. Higher is quieter. Error messages are >= 3.
 -q	run quietly
 -x	show extra process information.
 -X	equivalent to -Egrx.

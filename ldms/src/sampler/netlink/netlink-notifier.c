@@ -396,6 +396,7 @@ static const int signals[] = {
 };
 
 /* add several structures related to filtering. */
+#define default_send_log NULL
 #define default_exclude_programs "(nullexe):<unknown>"
 #define default_exclude_dirs "/sbin"
 #define default_short_path "/bin:/usr"
@@ -2303,7 +2304,8 @@ static struct exclude_arg excludes[] = {
 	{"411", VT_SCALAR, 0, "NOTIFIER_LDMS_PORT", NULL, 0, PLINIT},
 	{"munge", VT_SCALAR, 0, "NOTIFIER_LDMS_AUTH", NULL, 0, PLINIT},
 	{"600", VT_SCALAR, 0, "NOTIFIER_LDMS_RETRY", NULL, 0, PLINIT},
-	{"1", VT_SCALAR, 0, "NOTIFIER_LDMS_TIMEOUT", NULL, 0, PLINIT}
+	{"1", VT_SCALAR, 0, "NOTIFIER_LDMS_TIMEOUT", NULL, 0, PLINIT},
+	{default_send_log, VT_FILE, 0, "NOTIFIER_SEND_LOG", NULL, 0, PLINIT},
 };
 static struct exclude_arg *bin_exclude = &excludes[0];
 static struct exclude_arg *dir_exclude = &excludes[1];
@@ -2316,6 +2318,7 @@ static struct exclude_arg *port_arg = &excludes[7];
 static struct exclude_arg *auth_arg = &excludes[8];
 static struct exclude_arg *retry_arg = &excludes[9];
 static struct exclude_arg *timeout_arg = &excludes[10];
+static struct exclude_arg *send_log_arg = &excludes[11];
 
 static struct option long_options[] = {
 	{"exclude-programs", optional_argument, 0, 0},
@@ -2329,6 +2332,7 @@ static struct option long_options[] = {
 	{"auth", required_argument, 0, 0},
 	{"retry", required_argument, 0, 0},
 	{"timeout", required_argument, 0, 0},
+	{"send-log", required_argument, 0, 0},
 	{0, 0, 0, 0}
 };
 
@@ -2360,6 +2364,7 @@ static void show_help(char *const argv[])
 		"-s\tshow short process name in debugging.\n"
 		"-t\tshow debugging trace messages.\n"
 		"-u umin\tignore processes with uid < umin\n"
+		"-v <int>\tlog detail level for stream library messages. Higher is quieter.\n"
 		"-q\trun quietly\n"
 		"-x\tshow extra process information.\n"
 		"-X\tequivalent to -Egrx.\n");
@@ -2624,9 +2629,17 @@ void forkstat_stop(forkstat_t *ft, int sig)
 	pthread_setcancelstate(dummy, &dummy);
 }
 
+static int log_level = 3;
 static void llog(int lvl, const char *fmt, ...) {
+	if (lvl < log_level)
+		return;
 	pthread_mutex_lock(&log_lock);
-	printf("%s: ", lvl == 4 ? "ERR" : "DBG");
+	switch (lvl) {
+	case 3:
+		printf("ERR: ");
+	default:
+		printf("Level-%d: ", lvl);
+	}
         va_list ap;
         va_start(ap, fmt);
         vprintf(fmt, ap);
@@ -2662,15 +2675,18 @@ static int forkstat_init_ldms_stream(forkstat_t *ft)
 	ft->ln = ldms_sps_create_1(stream_arg->paths[0].n,
 		xprt_arg->paths[0].n, host_arg->paths[0].n, port,
 		auth_arg->paths[0].n, retry, timeout,
-		llog, ft->opt_trace ? LN_FLAG_VERBOSE : LN_FLAG_NONE);
+		llog,
+		0,
+		send_log_arg->paths[0].n);
 	if (!ft->ln) {
 		PRINTF("FAILED ldms_sps_create_1\n");
 		return 1;
 	}
-	PRINTF("Stream handle created for stream=%s xprt=%s host=%s port=%d auth=%s retry=%d timeout=%d\n",
+	PRINTF("Stream handle created for stream=%s xprt=%s host=%s port=%d auth=%s retry=%d timeout=%d log=%s\n",
 		stream_arg->paths[0].n,
                 xprt_arg->paths[0].n, host_arg->paths[0].n, port,
-                auth_arg->paths[0].n, retry, timeout);
+                auth_arg->paths[0].n, retry, timeout,
+		(send_log_arg->paths[0].n ? send_log_arg->paths[0].n : "none"));
 	return 0;
 }
 
@@ -3449,6 +3465,9 @@ int main(int argc, char * argv[])
 				(void)fprintf(stderr, "-u failed.\n");
 				exit(EXIT_FAILURE);
 			}
+			break;
+		case 'v':
+			log_level = get_int(optarg);
 			break;
 		default:
 			fprintf(stderr, "Unexpected option -%c\n", c);

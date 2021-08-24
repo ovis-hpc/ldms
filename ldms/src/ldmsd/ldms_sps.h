@@ -75,10 +75,10 @@ struct ldms_sps {
 	char *stream;
 	time_t io_timeout;
 	int target_count;
-	int debug_ack;
-	int verbose;
 	int blocking;
 	ldms_sps_msg_log_f log;
+	char *send_log;
+	FILE *send_log_f;
 };
 
 /* Create sps_target list details from argv. Clients defined may not
@@ -86,6 +86,8 @@ struct ldms_sps {
  * client=$xprt:$host:$port:$auth:$retry_seconds
  * timeout=$connect_seconds
  * stream=$stream_name
+ * blocking=1
+ * send_log=/path/file
  *
  * All entries are optional. Missing entries have defaults as follows:
  * client= may be repeated for multiple targets.
@@ -95,51 +97,61 @@ struct ldms_sps {
  * port - 411
  * auth - munge
  * retry - 600
+ * blocking - 0 (non-blocking)
+ * send_log - NULL (no send log file appended)
  *
  * Therefore:
  *
  * client=:::: or omitting client= entirely is equivalent to:
  * client=sock:localhost:411:munge:600
  *
- * Independent of specific clients are the blocking, stream and timeout:
+ * Independent of specific clients are the following:
  * timeout=1
  * stream=slurm
  * blocking=1
+ * send_log=/path/file
  *
  * Logging function pointer may be NULL to suppress all logging.
  * If not NULL, the function must be thread-safe.
+ * If NULL, send_log is not used, otherwise info on messages to send is
+ * logged at the sender side.
+ *
+ * There must be only one option of the format opt=val per argv element.
  */
-struct ldms_sps *ldms_sps_create(int argc, const char *argv[], ldms_sps_msg_log_f log);
-
-#define LN_FLAG_NONE 0x0
-#define LN_FLAG_DEBUG_ACK 0x1
-#define LN_FLAG_VERBOSE 0x2
-#define LN_FLAG_BLOCKING 0x4
+struct ldms_sps *ldms_sps_create(int argc, const char *argv[], ldms_sps_msg_log_f debug_log);
 
 /*
- * Create a single-client list, using C instead of argv syntax.
- * Logging function pointer may be NULL to suppress all logging.
+ * Create a single-client list, using C instead of argv opt=value syntax.
+ * Stream, xprt, host, port, auth, retry, timeout as described for
+ * ldms_sps_create.
+ *
+ * \param debug_log function pointer may be NULL to suppress all logging.
  * If not NULL, the function must be thread-safe.
+ * \param send_log If not NULL, message send attempts (including content)
+ * and acks are appended to the named file.
+ * \param blocking If non-zero, connections and sends are blocking and
+ * timeout is ignored. 0 is recommended.
+ *
  */
 struct ldms_sps *ldms_sps_create_1(const char *stream, const char *xprt,
 	const char *host, int port, const char *auth, int retry, int timeout,
-	ldms_sps_msg_log_f log, int flags);
+	ldms_sps_msg_log_f debug_log, int blocking, const char *send_log);
 
 /* return number of clients configured, but not necessarily operating. */
 int ldms_sps_target_count_get(struct ldms_sps *l);
 
 struct ldms_sps_send_result {
 	int publish_count; /* count of successful stream_publish events */
-	int ack_count; /* count of acks within timeout, if compiled -DLNDEBUG, or 0 */
 	int rc; /*< errno if send fails completely. */
 };
 
-#define LN_NULL_RESULT { 0,0,0 }
+#define LN_NULL_RESULT { 0,0 }
 
 /* Publish json event to all clients in list, and attempt updating client connections
  * that are absent longer than the retry interval.
  * Messages can be delayed by the product of the timeout and the number of clients
  * every retry seconds. Messages may be dropped, as can be determined from the return value.
+ * If any of the connections is defined as blocking, this function may block indefinitely.
  * \return tuple of the number of clients to which the message was successfully published
  * etc.
  */
