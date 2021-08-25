@@ -62,6 +62,7 @@
 #include <limits.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <unistd.h>
 #include "ovis-ldms-config.h"
 #include "zap.h"
 #include "zap_priv.h"
@@ -113,6 +114,8 @@ struct ovis_heap *zev_queue_heap;
 #define ZAP_LIBPATH_DEFAULT PLUGINDIR
 #define _SO_EXT ".so"
 #define MAX_ZAP_LIBPATH	1024
+
+static void zap_init(void);
 
 const char *__zap_ep_state_str(zap_ep_state_t state)
 {
@@ -278,6 +281,8 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 		errno = ENAMETOOLONG;
 		goto err;
 	}
+
+	zap_init();
 
 	libdir = getenv("ZAP_LIBPATH");
 	if (!libdir || libdir[0] == '\0')
@@ -454,6 +459,7 @@ struct zap_event_queue *__get_least_busy_zap_event_queue();
 zap_ep_t zap_new(zap_t z, zap_cb_fn_t cb)
 {
 	zap_ep_t zep = NULL;
+	zap_init();
 	if (!cb)
 		cb = blocking_zap_cb;
 	zep = z->new(z, cb);
@@ -1025,11 +1031,29 @@ void zap_thrstat_free_result(struct zap_thrstat_result *res)
 	free(res);
 }
 
-static void init_atfork(void)
+static int zap_initialized = 0;
+
+static void zap_atfork()
+{
+	__atomic_store_n(&zap_initialized, 0, __ATOMIC_SEQ_CST);
+}
+
+static void zap_init(void)
 {
 	int i;
 	int rc;
 	int stats_w;
+	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+	if (__atomic_load_n(&zap_initialized, __ATOMIC_SEQ_CST))
+		return;
+
+	pthread_mutex_lock(&mutex);
+	/* re-check, we can lose the race */
+	if (__atomic_load_n(&zap_initialized, __ATOMIC_SEQ_CST)) {
+		pthread_mutex_unlock(&mutex);
+		return;
+	}
 
 	pthread_mutex_init(&zap_list_lock, 0);
 
@@ -1051,6 +1075,8 @@ static void init_atfork(void)
 		pthread_setname_np(zev_queue[i].thread, thread_name);
 
 	}
+	__atomic_store_n(&zap_initialized, 1, __ATOMIC_SEQ_CST);
+	pthread_mutex_unlock(&mutex);
 }
 
 #ifdef NDEBUG
@@ -1058,8 +1084,8 @@ static void init_atfork(void)
 #endif
 static void __attribute__ ((constructor)) cs_init(void)
 {
-	pthread_atfork(NULL, NULL, init_atfork);
-	init_atfork();
+	pthread_atfork(NULL, NULL, zap_atfork);
+	zap_init();
 }
 
 static void __attribute__ ((destructor)) cs_term(void)

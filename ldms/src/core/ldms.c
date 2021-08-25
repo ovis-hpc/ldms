@@ -953,6 +953,40 @@ uint32_t __ldms_set_size_get(struct ldms_set *s)
 
 #define LDMS_GRAIN_MMALLOC 1024
 
+static int delete_thread_initialized = 0;
+static pthread_t delete_thread;
+
+void ldms_atfork()
+{
+	__atomic_store_n(&delete_thread_initialized, 0, __ATOMIC_SEQ_CST);
+}
+
+static void *delete_proc(void *arg);
+
+int delete_thread_init_once()
+{
+	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+	if (__atomic_load_n(&delete_thread_initialized, __ATOMIC_SEQ_CST))
+		return 0;
+
+	pthread_mutex_lock(&mutex);
+	/* Check if we lose the race */
+	if (__atomic_load_n(&delete_thread_initialized, __ATOMIC_SEQ_CST)) {
+		pthread_mutex_unlock(&mutex);
+		return 0;
+	}
+
+	int rc = pthread_create(&delete_thread, NULL, delete_proc, NULL);
+	if (!rc) {
+		__atomic_store_n(&delete_thread_initialized, 1, __ATOMIC_SEQ_CST);
+		pthread_setname_np(delete_thread, "delete_thread");
+		pthread_atfork(NULL, NULL, ldms_atfork);
+	}
+	pthread_mutex_unlock(&mutex);
+	return rc;
+}
+
 int ldms_init(size_t max_size)
 {
 	size_t grain = LDMS_GRAIN_MMALLOC;
@@ -964,8 +998,7 @@ int ldms_init(size_t max_size)
 	__ldms_config.default_authz_gid = getegid();
 	__ldms_config.default_authz_perm = 0440;
 	pthread_rwlock_init(&__ldms_config.default_authz_lock, NULL);
-
-	return 0;
+	return delete_thread_init_once();
 }
 
 ldms_schema_t ldms_schema_new(const char *schema_name)
@@ -1068,6 +1101,9 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	int metric_idx;
 	int i;
 	int set_array_card;
+
+	if (delete_thread_init_once())
+		return NULL;
 
 	if (!instance_name || !schema) {
 		errno = EINVAL;
@@ -2746,19 +2782,12 @@ static void *delete_proc(void *arg)
 	return NULL;
 }
 
-static pthread_t delete_thread;
-static void __attribute__ ((constructor)) cs_init(void)
-{
-	int rc = pthread_create(&delete_thread, NULL, delete_proc, NULL);
-	if (!rc) {
-		pthread_setname_np(delete_thread, "delete_thread");
-	}
-}
-
 static void __attribute__ ((destructor)) cs_term(void)
 {
 	void *dontcare;
-	(void)pthread_cancel(delete_thread);
-	(void)pthread_join(delete_thread, &dontcare);
+	if (__atomic_load_n(&delete_thread_initialized, __ATOMIC_SEQ_CST)) {
+		(void)pthread_cancel(delete_thread);
+		(void)pthread_join(delete_thread, &dontcare);
+	}
 }
 
