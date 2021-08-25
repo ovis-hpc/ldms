@@ -1666,9 +1666,23 @@ out:
 	return zerr;
 }
 
+void z_sock_atfork()
+{
+	/* reset at fork */
+	__atomic_store_n(&init_complete, 0, __ATOMIC_SEQ_CST);
+}
+
 static int init_once()
 {
 	int rc = ENOMEM;
+	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+	pthread_mutex_lock(&mutex);
+	/* check if we lose the race */
+	if (__atomic_load_n(&init_complete, __ATOMIC_SEQ_CST)) {
+		pthread_mutex_unlock(&mutex);
+		return 0;
+	}
 
 	sock_stats = zap_thrstat_new("sock:io_proc", ZAP_ENV_INT(ZAP_THRSTAT_WINDOW));
 	assert(sock_stats);
@@ -1680,23 +1694,30 @@ static int init_once()
 	if (rc)
 		goto err_1;
 	pthread_setname_np(io_thread, "sock:io_proc");
-	init_complete = 1;
+	pthread_atfork(NULL, NULL, (void*)z_sock_atfork);
 
 	z_key_tree.root = NULL;
 	z_key_tree.comparator = z_rbn_cmp;
 	pthread_mutex_init(&z_key_tree_mutex, NULL);
-	// atexit(z_sock_cleanup);
+
+	__atomic_store_n(&init_complete, 1, __ATOMIC_SEQ_CST);
+	pthread_mutex_unlock(&mutex);
 	return 0;
 
  err_1:
 	ovis_scheduler_free(sched);
 	sched = NULL;
+	pthread_mutex_unlock(&mutex);
 	return rc;
 }
 
 static zap_ep_t z_sock_new(zap_t z, zap_cb_fn_t cb)
 {
 	int rc;
+
+	if (!__atomic_load_n(&init_complete, __ATOMIC_SEQ_CST) && init_once())
+		return NULL;
+
 	struct z_sock_ep *sep = calloc(1, sizeof(*sep));
 	if (!sep) {
 		errno = ZAP_ERR_RESOURCE;
@@ -1993,10 +2014,8 @@ zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
 {
 	zap_t z;
 	size_t sendrecv_sz, rendezvous_sz, hdr_sz;
-	if (!init_complete && init_once())
+	if (!__atomic_load_n(&init_complete, __ATOMIC_SEQ_CST) && init_once())
 		goto err;
-
-	pthread_atfork(NULL, NULL, (void*)init_once);
 
 	z = calloc(1, sizeof (*z));
 	if (!z)
