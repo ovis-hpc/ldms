@@ -94,7 +94,7 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "B:H:l:S:s:x:I:M:P:m:Fkr:R:p:v:Vz:Z:q:c:u:a:A:n:"
+#define FMT "B:H:l:S:s:x:I:M:P:m:Fkr:R:p:v:Vz:Z:q:c:u:a:A:n:t"
 
 #define LDMSD_KEEP_ALIVE_30MIN 30*60*1000000 /* 30 mins */
 
@@ -110,6 +110,7 @@ char ldmstype[20];
 int foreground;
 pthread_t event_thread = (pthread_t)-1;
 char *logfile;
+int log_truncate = 0;
 char *pidfile;
 char *bannerfile;
 int banner = 1;
@@ -406,6 +407,10 @@ FILE *ldmsd_open_log(const char *progname)
 		f = LDMSD_LOG_SYSLOG;
 		openlog(progname, LOG_NDELAY|LOG_PID, LOG_DAEMON);
 		return f;
+	}
+
+	if (log_truncate) {
+		truncate(logfile, 0);
 	}
 
 	f = fopen_perm(logfile, "a", LDMSD_DEFAULT_FILE_PERM);
@@ -1845,6 +1850,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'n':
 			snprintf(myname, sizeof(myname), "%s", optarg);
+			break;
+		case 't':
+			log_truncate = 1;
 			break;
 		case '?':
 			printf("Error: unknown argument: %c\n", optopt);
