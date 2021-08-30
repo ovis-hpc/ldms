@@ -36,22 +36,19 @@ different schema. If not specified, will default to `lnet_stats`.
 .TP
 file=<stats_path>
 .br
-Optional full path name of stats file if not in a default location.
+Optional full path name of stats file to use. If not supplied, the default search path described in NOTES is searched. Typically, this option is only used in test environments which may not have a real Lustre installation or in order to test transient disappearance of the file.
 
 .SH NOTES
 .PP
-The default location for the lnet stats path is:
-/sys/kernel/debug/lnet/stats, and /proc/sys/lnet/stats depends on the Lustre version. Be aware that /sys/kernel/debug is only readable by privileged users.
+The default search path followed for LNET stats is:
+/sys/kernel/debug/lnet/stats:/proc/sys/lnet/stats. Which file will exist, if either, depends on the 
+Lustre version and how many volumes are currently mounted. Be aware that /sys/kernel/debug normally is only readable by privileged users.
 .PP
 The stats file disappears when all mounts are unmounted or not yet mounted. While it is missing, the data set is not updated.
 
-.RE
-
-
-
-.SH BUGS
-Assumes file name instead of looking it up from the Lustre runtime libraries,
-to avoid compile time dependence on Lustre. This will not be fixed.
+.PP
+This assumes the file search path as described above, instead of looking it up from the Lustre runtime libraries.  This avoids compile time dependence on Lustre which may be upgraded
+independently of LDMS. This is not considered a bug.
 
 .SH EXAMPLES
 .PP

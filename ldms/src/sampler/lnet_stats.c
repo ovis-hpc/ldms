@@ -309,7 +309,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc  = create_metric_set(base);
 	if (rc) {
-		msglog(LDMSD_LWARNING, SAMP ": failed to create a metric set.\n");
+		msglog(LDMSD_LERROR, SAMP ": failed to create a metric set.\n");
 		goto err;
 	}
 
