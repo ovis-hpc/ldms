@@ -125,6 +125,7 @@ static struct test_sampler_schema *__schema_find(
 	return NULL;
 }
 
+/*
 static struct test_sampler_set *__set_find(
 		struct test_sampler_set_list *list, char *name)
 {
@@ -135,6 +136,7 @@ static struct test_sampler_set *__set_find(
 	}
 	return NULL;
 }
+*/
 
 /* metric->vtype MUST be initialized before this function is called. */
 static int __metric_init_value_set(struct test_sampler_metric *metric,
@@ -598,12 +600,14 @@ static int config_add_set(struct attr_value_list *avl)
 		push = atoi(push_s);
 
 	struct test_sampler_set *ts_set;
+	/*
 	ts_set = __set_find(&set_list, set_name);
 	if (ts_set) {
 		msglog(LDMSD_LERROR, "test_sampler: Set '%s' already "
 				"exists\n", set_name);
 		return EINVAL;
 	}
+	*/
 
 	set = ldms_set_new(set_name, ts_schema->schema);
 	if (!set) {
