@@ -59,8 +59,8 @@
 #include <time.h>
 #include <pthread.h>
 
-#ifdef LDMSD_UPDATE_TIME
 #include <sys/time.h>
+#ifdef LDMSD_UPDATE_TIME
 #include <coll/idx.h>
 #endif /* LDMSD_UPDATE_TIME */
 
@@ -315,6 +315,7 @@ typedef struct ldmsd_prdcr_set {
 #endif /* LDMSD_UPDATE_TIME */
 
 	int ref_count;
+	struct timespec lookup_complete_ts;
 } *ldmsd_prdcr_set_t;
 
 #ifdef LDMSD_UPDATE_TIME

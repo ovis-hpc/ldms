@@ -567,6 +567,7 @@ void __ldmsd_prdset_lookup_cb(ldms_t xprt, enum ldms_lookup_status status,
 		assert(0 == "multiple lookup on the same prdcr_set");
 	}
 	flags = ldmsd_group_check(prd_set->set);
+	clock_gettime(CLOCK_REALTIME, &prd_set->lookup_complete_ts);
 	if (flags & LDMSD_GROUP_IS_GROUP) {
 		/*
 		 * Lookup the member sets
@@ -586,10 +587,19 @@ out:
 	return;
 }
 
+/* a - b */
+static inline double ts_diff_usec(struct timespec *a, struct timespec *b)
+{
+	double aa = a->tv_sec*1e9 + a->tv_nsec;
+	double bb = b->tv_sec*1e9 + b->tv_nsec;
+	return (aa - bb)/1e3; /* make it usec */
+}
+
 static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 				   ldmsd_prdcr_t prdcr, ldmsd_name_match_t match)
 {
 	ldmsd_updtr_t updtr = task->updtr;
+	struct timespec ts;
 #ifdef LDMSD_UPDATE_TIME
 	struct timeval start, end;
 	gettimeofday(&start, NULL);
@@ -624,6 +634,10 @@ static void schedule_prdcr_updates(ldmsd_updtr_task_t task,
 
 		switch (prd_set->state) {
 		case LDMSD_PRDCR_SET_STATE_READY:
+			clock_gettime(CLOCK_REALTIME, &ts);
+			if (ts_diff_usec(&ts, &prd_set->lookup_complete_ts) < 1000000) {
+				goto next_prd_set;
+			}
 			break;
 		case LDMSD_PRDCR_SET_STATE_START:
 			ldmsd_prdcr_set_ref_get(prd_set); /* It will be put back in lookup_cb */
