@@ -48,6 +48,7 @@ struct ev_worker_s {
 	struct rbt w_event_tree;
 	/* A list of events without timeouts */
 	TAILQ_HEAD(w_event_list, ev__s) w_event_list;
+	int w_ev_list_len;
 };
 
 #define EV(_e_) container_of(_e_, struct ev__s, e_ev);
