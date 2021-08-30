@@ -2711,6 +2711,10 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_CONNECTED:
 		(void)clock_gettime(CLOCK_REALTIME, &x->stats.connected);
 		__sync_fetch_and_add(&xprt_connect_count, 1);
+		/* initialize/cache addr since connected */
+		struct sockaddr l, r;
+		socklen_t len;
+		ldms_xprt_sockaddr(x, &l, &r, &len);
 		/* actively connected -- expecting conn_msg */
 		if (0 != __ldms_conn_msg_verify(x, ev->data, ev->data_len,
 					   rej_msg, sizeof(rej_msg))) {
