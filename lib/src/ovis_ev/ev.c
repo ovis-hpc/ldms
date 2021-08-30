@@ -144,10 +144,13 @@ int ev_post(ev_worker_t src, ev_worker_t dst, ev_t ev, struct timespec *to)
 	if (dst->w_state == EV_WORKER_FLUSHING)
 		goto err;
 	ev_get(&e->e_ev);
-	if (to)
+	if (to) {
 		rbt_ins(&dst->w_event_tree, &e->e_to_rbn);
-	else
+	} else {
+		__sync_fetch_and_add(&dst->w_ev_list_len, 1);
 		TAILQ_INSERT_TAIL(&dst->w_event_list, e, e_entry);
+
+	}
 	rc = (ev_time_cmp(&e->e_to, &dst->w_sem_wait) <= 0);
 	pthread_mutex_unlock(&dst->w_lock);
 	if (rc)
@@ -188,6 +191,7 @@ int ev_cancel(ev_t ev)
 	}
 
 	rbt_del(&e->e_dst->w_event_tree, &e->e_to_rbn);
+	__sync_fetch_and_add(&e->e_dst->w_ev_list_len, 1);
 	TAILQ_INSERT_TAIL(&e->e_dst->w_event_list, e, e_entry);
  out:
 	pthread_mutex_unlock(&e->e_dst->w_lock);

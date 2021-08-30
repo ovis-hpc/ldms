@@ -58,6 +58,7 @@ static void process_immediate_events(ev_worker_t w)
 
 	e = TAILQ_FIRST(&w->w_event_list);
 	TAILQ_REMOVE(&w->w_event_list, e, e_entry);
+	__sync_fetch_and_sub(&w->w_ev_list_len, 1);
 	e->e_posted = 0;
 
 	if (w->w_state == EV_WORKER_FLUSHING)
@@ -271,4 +272,15 @@ int ev_dispatch(ev_worker_t w, ev_type_t t, ev_actor_t fn)
 	}
 	w->w_dispatch[t->t_id] = fn;
 	return 0;
+}
+
+int ev_pending(ev_worker_t w)
+{
+	int count = 0;
+
+	pthread_mutex_lock(&w->w_lock);
+	count = rbt_card(&w->w_event_tree);
+	count += w->w_ev_list_len;
+	pthread_mutex_unlock(&w->w_lock);
+	return count;
 }

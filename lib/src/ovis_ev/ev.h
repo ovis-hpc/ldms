@@ -279,4 +279,16 @@ int ev_time_cmp(struct timespec *tsa, const struct timespec *tsb);
  */
 double ev_time_diff(struct timespec *tsa, const struct timespec *tsb);
 
+/**
+ * \brief Return the number of pending events on the worker
+ *
+ * The returned number does not include the event that is
+ * currently handled by the application.
+ *
+ * \param w Worker
+ *
+ * \return A non-negative number. 0 means no pending events.
+ */
+int ev_pending(ev_worker_t w);
+
 #endif
