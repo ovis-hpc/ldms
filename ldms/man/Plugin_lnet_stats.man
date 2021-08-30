@@ -41,7 +41,7 @@ Optional full path name of stats file to use. If not supplied, the default searc
 .SH NOTES
 .PP
 The default search path followed for LNET stats is:
-/sys/kernel/debug/lnet/stats:/proc/sys/lnet/stats. Which file will exist, if either, depends on the 
+/sys/kernel/debug/lnet/stats:/proc/sys/lnet/stats. Which file will exist, if either, depends on the
 Lustre version and how many volumes are currently mounted. Be aware that /sys/kernel/debug normally is only readable by privileged users.
 .PP
 The stats file disappears when all mounts are unmounted or not yet mounted. While it is missing, the data set is not updated.
