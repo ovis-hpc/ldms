@@ -355,7 +355,7 @@ static jbuf_t __dict_dump(jbuf_t jb, json_entity_t e)
 		if (count)
 			jb = jbuf_append_str(jb, ",");
 		jb = jbuf_append_str(jb, "\"%s\":", a->value.attr_->name->value.str_->str);
-		__entity_dump(jb, a->value.attr_->value);
+		jb = __entity_dump(jb, a->value.attr_->value);
 		count++;
 	}
 	jb = jbuf_append_str(jb, "}");
@@ -380,6 +380,11 @@ static jbuf_t __entity_dump(jbuf_t jb, json_entity_t e)
 	case JSON_STRING_VALUE:
 		jb = jbuf_append_str(jb, "\"%s\"", e->value.str_->str);
 		break;
+	case JSON_ATTR_VALUE:
+		jb = jbuf_append_str(jb, "\"%s\":",
+				     e->value.attr_->name->value.str_->str);
+		jb = __entity_dump(jb, e->value.attr_->value);
+		break;
 	case JSON_LIST_VALUE:
 		__list_dump(jb, e);
 		break;
@@ -389,10 +394,6 @@ static jbuf_t __entity_dump(jbuf_t jb, json_entity_t e)
 	case JSON_NULL_VALUE:
 		jb = jbuf_append_str(jb, "null");
 		break;
-	case JSON_ATTR_VALUE:
-		fprintf(stderr, "%s cannot be dumped as a string.\n",
-				json_type_name(e->type));
-		return NULL;
 	default:
 		fprintf(stderr, "%d is an invalid type.\n", e->type);
 	}
