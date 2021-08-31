@@ -300,7 +300,7 @@ int __log(enum ldmsd_loglevel level, char *msg)
 	}
 
 	fprintf(log_fp, "%s", msg);
-	fflush(log_fp);
+
 	return 0;
 }
 
@@ -311,11 +311,13 @@ int log_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 	uint8_t is_rotate = EV_DATA(ev, struct log_data)->is_rotate;
 	int rc;
 
-	if (is_rotate)
+	if (is_rotate) {
 		rc = __logrotate();
-	else
+	} else {
 		rc = __log(level, msg);
-
+		if (0 == ev_pending(logger_w))
+			fflush(log_fp);
+	}
 	free(msg);
 	ev_put(ev);
 	return rc;
