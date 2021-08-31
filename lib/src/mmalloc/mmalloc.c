@@ -271,6 +271,65 @@ void mm_free(void *d)
 	pthread_mutex_unlock(&mmr->lock);
 }
 
+void *mm_realloc(void *ptr, size_t newsize)
+{
+	struct mm_prefix *p = ptr;
+	struct mm_prefix *q, *r;
+	struct rbn *rbn;
+	void *newbuf = NULL;
+	size_t newcount, remainder;
+
+	newsize = MMR_ROUNDUP(newsize, mmr->grain);
+	newcount = newsize >> mmr->grain_bits;
+	p --;
+
+	pthread_mutex_lock(&mmr->lock);
+	/* See if we can coalesce with our greater sibling */
+	rbn = rbt_find_lub(&mmr->addr_tree, &p->pfx);
+	if (rbn) {
+		q = container_of(rbn, struct mm_prefix, addr_node);
+
+		/* See if q is contiguous with us */
+		r = (struct mm_prefix *)
+			((unsigned char *)p + (p->count << mmr->grain_bits));
+		if (r == q) {
+			if (p->count + q->count >= newcount) {
+				/* Remove the sibling from the tree and coelesce */
+				rbt_del(&mmr->size_tree, &q->size_node);
+				rbt_del(&mmr->addr_tree, &q->addr_node);
+
+				remainder = p->count + q->count - newcount;
+				if (remainder) {
+					/* Put the remainder back into the tree */
+					r = (struct mm_prefix *)
+						((unsigned char *)p + (newcount << mmr->grain_bits));
+					r->count = remainder;
+					r->pfx = r;
+					rbn_init(&r->size_node, &r->count);
+					rbn_init(&r->addr_node, &r->pfx);
+
+					rbt_ins(&mmr->size_tree, &r->size_node);
+					rbt_ins(&mmr->addr_tree, &r->addr_node);
+				}
+				p->count = newcount;
+				goto out;
+			}
+		}
+	}
+
+	/* Allocate a new buffer and copy ptr data to it */
+	newbuf = mm_alloc(newsize);
+	memcpy(newbuf, ptr, (p->count << mmr->grain_bits));
+	p = newbuf;
+	p--;
+
+ out:
+	pthread_mutex_unlock(&mmr->lock);
+	if (newbuf)
+		mm_free(ptr);
+	return ++p;
+}
+
 static int heap_stat(struct rbn *rbn, void *fn_data, int level)
 {
 	struct mm_stat *s = fn_data;

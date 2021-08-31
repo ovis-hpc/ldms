@@ -96,6 +96,21 @@ int mm_init(size_t size, size_t grain);
 void *mm_alloc(size_t size);
 
 /**
+ * \brief Realloc memory from the heap, extending the current ptr if possible
+ *
+ * Allocates additional memory in the heap adjacent to the provided
+ * ptr if possible. If this was not possible, a new buffer of
+ * sufficient size is allocated and the data from ptr copied to
+ * newptr.
+ *
+ * \param ptr	Pointer to the buffer to be expanded
+ * \param size	The requested buffer size in bytes.
+ * \returns	A pointer to the allocated memory or NULL if there is
+ *		insufficient memory.
+ */
+void *mm_realloc(void *ptr, size_t size);
+
+/**
  * \brief Return memory to the heap.
  *
  * \param ptr	Pointer to the buffer to free. Ignores NULL input.
