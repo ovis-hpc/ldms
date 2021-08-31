@@ -1244,4 +1244,6 @@ void ldmsd_timespec_add(struct timespec *a, struct timespec *b, struct timespec 
 int ldmsd_timespec_cmp(struct timespec *a, struct timespec *b);
 void ldmsd_timespec_diff(struct timespec *a, struct timespec *b, struct timespec *result);
 
+void ldmsd_log_flush_interval_set(unsigned long interval);
+void ldmsd_flush_log();
 #endif
