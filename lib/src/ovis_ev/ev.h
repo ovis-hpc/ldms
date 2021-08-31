@@ -254,6 +254,14 @@ int ev_dispatch(ev_worker_t w, ev_type_t t, ev_actor_t fn);
 int ev_posted(ev_t ev);
 
 /**
+ * \brief Returns 1 if the event is canceled
+ *
+ * \retval 1 Event is canceled
+ * \retval 0 Event is not canceled
+ */
+int ev_canceled(ev_t ev);
+
+/**
 * \brief Compare two timespec values
 *
 * Compares two timespace values *tsa and *tsb and returns:
