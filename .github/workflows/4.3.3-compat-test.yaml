@@ -119,15 +119,15 @@ jobs:
         # samp
         echo "starting samp-4.3.3"
         ./ldmsd-4.3.3.sh -c samp-4.3.3.conf -l logs/samp-4.3.3.log -v INFO -x sock:10000
-        sleep 3
+        sleep 10
         # agg1
         echo "starting agg-4.3.3"
         ./ldmsd-4.3.3.sh -c agg-4.3.3.conf -l logs/agg-4.3.3.log -v INFO -x sock:10001
-        sleep 3
+        sleep 10
         # agg2
         echo "starting agg-4"
         ./ldmsd-4.sh -c agg-4.conf -l logs/agg-4.log -v INFO -x sock:10002
-        sleep 3
+        sleep 10
         # check that they're running
         SAMP_433_PID=$(pgrep -f samp-4.3.3.conf)
         AGG_433_PID=$(pgrep -f agg-4.3.3.conf)
