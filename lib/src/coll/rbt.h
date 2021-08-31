@@ -110,7 +110,7 @@ int rbt_is_leaf(struct rbn *n);
 /* from linux kernel */
 #ifndef container_of
 #define container_of(ptr, type, member) ({ \
-	const __typeof__(((type *)0)->member ) *__mptr = (ptr); \
+	const __typeof__(((type *)0)->member ) *__mptr = (void *)(ptr); \
 	(type *)((char *)__mptr - offsetof(type,member));})
 #endif
 #define RBT_FOREACH(rbn, rbt) \
