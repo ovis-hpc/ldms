@@ -76,21 +76,6 @@
  */
 typedef void (*ldms_set_delete_cb_t)(ldms_t xprt, int status, ldms_set_t set, void *cb_arg);
 
-/*
- * Notify a remote peers that this set is being deleted
- *
- * A remote peer is a client that has received a copy of this set via ldms_xprt_lookup.
- *
- * set   The set handle
- * cb_fn Pointer to the ldms_del_rem_set_cb function that will
- *       be called when the peer acknolwedges that receiept of
- *       this set delete request.
- * cb_arg void * argument to pass to the callback function
- */
-extern void ldms_xprt_set_delete(ldms_t x, ldms_set_t set,
-				 ldms_set_delete_cb_t cb_fn,
-				 void *cb_arg);
-
 /**
  * If set in the push_flags, the set changes will be automatically
  * pushed by ldms_transaction_end()
@@ -339,6 +324,7 @@ struct ldms_context {
 			ldms_set_t s;
 			ldms_set_delete_cb_t cb;
 			void *cb_arg;
+			int lookup;
 		} set_delete;
 	};
 	struct timespec start;

@@ -412,6 +412,7 @@ enum ldms_xprt_event_type {
 
 struct ldms_xprt_set_delete_data {
 	ldms_set_t set;		/*! The local set looked up at peer */
+	const char *name;	/*! The name of the set */
 };
 
 typedef struct ldms_xprt_event {

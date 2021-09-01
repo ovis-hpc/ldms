@@ -573,7 +573,6 @@ int __ldms_set_unpublish(struct ldms_set *set)
 		return ENOENT;
 
 	set->flags &= ~LDMS_SET_F_PUBLISHED;
-	__ldms_dir_del_set(set);
 	return 0;
 }
 
@@ -751,12 +750,6 @@ static void __destroy_set(void *v)
 	pthread_mutex_unlock(&__del_tree_lock);
 }
 
-static void __set_delete_cb(ldms_t xprt, int status, ldms_set_t rbd, void *cb_arg)
-{
-	struct ldms_set *set = cb_arg;
-	ref_put(&set->ref, "xprt_set_coll");
-}
-
 void ldms_set_delete(ldms_set_t s)
 {
 	ldms_t x;
@@ -803,6 +796,9 @@ void ldms_set_delete(ldms_set_t s)
 		free(pp);
 	}
 
+	/* Notify downstream transports about the set deletion. */
+	__ldms_dir_del_set(s);
+
 	/*
 	 * Clean up the lookup peer collection and
 	 * remove set from the transport's set collection.
@@ -810,11 +806,9 @@ void ldms_set_delete(ldms_set_t s)
 	while ((rbn = rbt_min(&lookup_coll))) {
 		rbt_del(&lookup_coll, rbn);
 		lp = container_of(rbn, struct ldms_lookup_peer, rbn);
-		x = ldms_xprt_get(lp->xprt);
-		ldms_xprt_set_delete(x, s, __set_delete_cb, s);
-		ldms_xprt_put(lp->xprt);
 		free(lp);
 	}
+
 
 	/* Add the set to the delete tree with the current timestamp */
 	s->del_time = time(NULL);
