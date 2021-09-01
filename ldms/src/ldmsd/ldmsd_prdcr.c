@@ -512,13 +512,11 @@ static int __prdcr_subscribe(ldmsd_prdcr_t prdcr)
 	return rc;
 }
 
-static void __prdcr_remote_set_delete(ldmsd_prdcr_t prdcr, ldms_set_t set)
+static void __prdcr_remote_set_delete(ldmsd_prdcr_t prdcr, const char *name)
 {
 	const char *state_str = "bad_state";
 	ldmsd_prdcr_set_t prdcr_set;
-	if (!set)
-		return;
-	prdcr_set = ldmsd_prdcr_set_find(prdcr, ldms_set_instance_name_get(set));
+	prdcr_set = ldmsd_prdcr_set_find(prdcr, name);
 	pthread_mutex_lock(&prdcr_set->lock);
 	assert(prdcr_set->ref_count);
 	switch (prdcr_set->state) {
@@ -598,7 +596,7 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		ldmsd_recv_msg(x, e->data, e->data_len);
 		break;
 	case LDMS_XPRT_EVENT_SET_DELETE:
-		__prdcr_remote_set_delete(prdcr, e->set_delete.set);
+		__prdcr_remote_set_delete(prdcr, e->set_delete.name);
 		break;
 	case LDMS_XPRT_EVENT_REJECTED:
 		ldmsd_log(LDMSD_LERROR, "Producer %s rejected the "

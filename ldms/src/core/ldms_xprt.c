@@ -112,6 +112,8 @@ static struct {
 } ldms_zap_tbl[16] = {{0}};
 static int ldms_zap_tbl_n = 0;
 
+void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_fn);
+
 ldms_t ldms_xprt_get(ldms_t x)
 {
 	if (x) {
@@ -278,7 +280,7 @@ struct ldms_context *__ldms_alloc_ctxt(struct ldms_xprt *x, size_t sz,
 		ctxt->set_delete.s = va_arg(ap, ldms_set_t);
 		ref_get(&ctxt->set_delete.s->ref, "__ldms_alloc_ctxt");
 		ctxt->set_delete.cb = va_arg(ap, ldms_set_delete_cb_t);
-		ctxt->set_delete.cb_arg = va_arg(ap, void *);
+		ctxt->set_delete.cb_arg = ctxt;
 		break;
 	case LDMS_CONTEXT_PUSH:
 	case LDMS_CONTEXT_DIR_CANCEL:
@@ -492,6 +494,19 @@ void __ldms_dir_add_set(struct ldms_set *set)
 	dir_update(set, LDMS_DIR_ADD);
 }
 
+static void __set_delete_cb(ldms_t xprt, int status, ldms_set_t rbd, void *cb_arg)
+{
+	struct ldms_context *ctxt = cb_arg;
+	struct ldms_set *set = ctxt->set_delete.s;
+	/* If the set was successfully looked up, it will be be put into
+	 * `x->set_coll` and a reference taken. So, we have to put back the
+	 * reference only in this case. If the set was not in the `x->set_coll`,
+	 * the `ctxt->set_delete.lookup` will be 0 and we must not put the
+	 * reference we have not taken. */
+	if (ctxt->set_delete.lookup)
+		ref_put(&set->ref, "xprt_set_coll");
+}
+
 void __ldms_dir_del_set(struct ldms_set *set)
 {
 	/*
@@ -506,6 +521,13 @@ void __ldms_dir_del_set(struct ldms_set *set)
 	 *
 	 * dir_update(set, LDMS_DIR_DEL);
 	 */
+	struct ldms_xprt *x;
+	pthread_mutex_lock(&xprt_list_lock);
+	LIST_FOREACH(x, &xprt_list, xprt_link) {
+		if (x->remote_dir_xid)
+			ldms_xprt_set_delete(x, set, __set_delete_cb);
+	}
+	pthread_mutex_unlock(&xprt_list_lock);
 }
 
 void __ldms_dir_upd_set(struct ldms_set *set)
@@ -610,25 +632,30 @@ static void process_set_delete_request(struct ldms_xprt *x, struct ldms_request 
 	struct ldms_reply reply;
 	struct ldms_set *set;
 
+	/*
+	 * Always notify the application about peer set delete. If we happened
+	 * not to have the set yet, `event.set_delete.set` will be NULL.
+	 */
 	__ldms_set_tree_lock();
 	set = __ldms_find_local_set(req->set_delete.inst_name);
 	__ldms_set_tree_unlock();
-	if (!set)
-		goto reply;
-	if (set->xprt != x) {
-		assert(set->xprt != x);
-		goto reply_1;
+	if (set) {
+		if (set->xprt != x) {
+			assert(set->xprt != x);
+			goto reply_1;
+		}
 	}
 	if (x->event_cb) {
 		struct ldms_xprt_event event;
 		event.type = LDMS_XPRT_EVENT_SET_DELETE;
 		event.set_delete.set = set;
+		event.set_delete.name = req->set_delete.inst_name;
 		event.data_len = sizeof(ldms_set_t);
 		x->event_cb(x, &event, x->event_cb_arg);
 	}
  reply_1:
-	ref_put(&set->ref, "__ldms_find_local_set");
- reply:
+	if (set)
+		ref_put(&set->ref, "__ldms_find_local_set");
 	/* Initialize the reply header */
 	reply.hdr.xid = req->hdr.xid;
 	reply.hdr.cmd = htonl(LDMS_CMD_SET_DELETE_REPLY);
@@ -3343,8 +3370,7 @@ int ldms_register_notify_cb(ldms_t x, ldms_set_t s, int flags,
  * Tell all peers that have an RBD for this set that it is being
  * deleted. When they all reply, we can delete the set.
  */
-void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s,
-			ldms_set_delete_cb_t cb_fn, void *cb_arg)
+void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_fn)
 {
 	struct ldms_request *req;
 	struct ldms_context *ctxt;
@@ -3352,35 +3378,33 @@ void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s,
 	struct rbn *rbn;
 	struct xprt_set_coll_entry *ent;
 
-	ldms_xprt_get(x);
 	pthread_mutex_lock(&x->lock);
-	rbn = rbt_find(&x->set_coll, s);
-	if (!rbn) {
-		assert(rbn);
-		pthread_mutex_unlock(&x->lock);
-		return;
-	}
-	if (rbn) {
-		rbt_del(&x->set_coll, rbn);
-		ent = container_of(rbn, struct xprt_set_coll_entry, rbn);
-		free(ent);
-	}
-
 	ctxt = __ldms_alloc_ctxt
 		(x,
 		 sizeof(struct ldms_request) + sizeof(struct ldms_context),
 		 LDMS_CONTEXT_SET_DELETE,
 		 s,
-		 cb_fn, cb_arg);
-	pthread_mutex_unlock(&x->lock);
+		 cb_fn);
 	if (!ctxt) {
-		ldms_xprt_put(x);
 		if (x->log) {
 			x->log("%s:%s:%d Not enough memory\n",
 				__FILE__, __func__, __LINE__);
 		}
+		pthread_mutex_unlock(&x->lock);
 		return;
 	}
+	rbn = rbt_find(&x->set_coll, s);
+	if (rbn) {
+		/* We'll put set ref when we receive the reply. */
+		ctxt->set_delete.lookup = 1;
+		rbt_del(&x->set_coll, rbn);
+		ent = container_of(rbn, struct xprt_set_coll_entry, rbn);
+		free(ent);
+	} else {
+		/* We won't put ref on receiving reply. */
+		ctxt->set_delete.lookup = 0;
+	}
+	pthread_mutex_unlock(&x->lock);
 	req = (struct ldms_request *)(ctxt + 1);
 	len = format_set_delete_req(req, (uint64_t)(unsigned long)ctxt,
 					ldms_set_instance_name_get(s));
@@ -3391,7 +3415,6 @@ void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s,
 		__ldms_free_ctxt(x, ctxt);
 		pthread_mutex_unlock(&x->lock);
 	}
-	ldms_xprt_put(x);
 }
 
 static int send_cancel_notify(ldms_t _x, ldms_set_t s)
