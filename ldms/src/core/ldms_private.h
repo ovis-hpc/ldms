@@ -54,7 +54,9 @@
 #include <zap/zap.h>
 #include "ovis_util/os_util.h"
 #include "ovis_ref/ref.h"
+#include "ldms_heap.h"
 
+#define LDMS_LIST_GRAIN	(32)
 #define LDMS_GN_INCREMENT(_gn) do { \
 	(_gn) = __cpu_to_le64(__le64_to_cpu((_gn)) + 1); \
 } while (0)
@@ -112,6 +114,8 @@ struct ldms_set {
 	ldms_notify_cb_t notify_cb; /* Callback when we receive NOTIFY */
 	void *notify_arg;           /* Argument for notify_cb() */
 	struct ldms_context *notify_ctxt; /* Notify req context */
+	ldms_heap_t heap;
+	struct ldms_heap_instance heap_inst;
 };
 
 /* Convenience macro to roundup a value to a multiple of the _s parameter */
@@ -125,8 +129,8 @@ extern int __ldms_remote_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t 
 extern int __ldms_remote_dir_cancel(ldms_t x);
 extern struct ldms_set *
 __ldms_create_set(const char *instance_name, const char *schema_name,
-		  size_t meta_len, size_t data_len, size_t card,
-		  size_t array_card,
+		  size_t meta_len, size_t data_heap_len,
+		  size_t card, size_t array_card,
 		  uint32_t flags);
 extern void __ldms_dir_add_set(struct ldms_set *set);
 extern void __ldms_dir_del_set(struct ldms_set *set);

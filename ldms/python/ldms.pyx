@@ -216,7 +216,7 @@ cdef void xprt_log(const char *fmt, ...) nogil:
 
 
 # errno symbol mapping
-cpdef dict ERRNO_SYM_TBL = {
+cdef dict ERRNO_SYM_TBL = {
         E2BIG           : "E2BIG({})".format(E2BIG),
         EACCES          : "EACCES({})".format(EACCES),
         EADDRINUSE      : "EADDRINUSE({})".format(EADDRINUSE),
@@ -323,6 +323,15 @@ cdef str ERRNO_SYM(int e):
     """Convert errno (`int`) to error symbol (e.g. 2 -> "ENOENT(2)")"""
     return ERRNO_SYM_TBL.get(e, "UNKNOWN_ERRNO_{}".format(e))
 
+cdef class Ptr(object):
+    """Pointer wrapper so that C pointer can be passed around as PyOBJ"""
+    cdef void *c_ptr
+
+cdef Ptr PTR(void *ptr):
+    """Returns a `Ptr` object wrapping the given `ptr` pointer"""
+    po = Ptr()
+    po.c_ptr = ptr
+    return po
 
 # ============================ #
 # == metric getter wrappers == #
@@ -400,6 +409,10 @@ cdef py_ldms_metric_get_double(Set s, int m_idx):
 cdef py_ldms_metric_array_get_double(Set s, int m_idx, int e_idx):
     return ldms_metric_array_get_double(s.rbd, m_idx, e_idx)
 
+cdef py_ldms_metric_get_list(Set s, int m_idx):
+    cdef ldms_mval_t lh = ldms_metric_get(s.rbd, m_idx)
+    return MetricList(s, PTR(lh))
+
 METRIC_GETTER_TBL = {
         LDMS_V_CHAR : py_ldms_metric_get_char,
         LDMS_V_U8   : py_ldms_metric_get_u8,
@@ -425,6 +438,8 @@ METRIC_GETTER_TBL = {
         LDMS_V_S64_ARRAY  : py_ldms_metric_array_get_s64,
         LDMS_V_F32_ARRAY  : py_ldms_metric_array_get_float,
         LDMS_V_D64_ARRAY  : py_ldms_metric_array_get_double,
+
+        LDMS_V_LIST : py_ldms_metric_get_list,
     }
 
 
@@ -503,6 +518,9 @@ cdef py_ldms_metric_set_double(Set s, int m_idx, val):
 cdef py_ldms_metric_array_set_double(Set s, int m_idx, int e_idx, val):
     return ldms_metric_array_set_double(s.rbd, m_idx, e_idx, val)
 
+cdef py_ldms_metric_set_list(Set s, int m_idx, val):
+    raise ValueError("metric list cannot be set directly, please `get` and append values.")
+
 METRIC_SETTER_TBL = {
         LDMS_V_CHAR : py_ldms_metric_set_char,
         LDMS_V_U8   : py_ldms_metric_set_u8,
@@ -528,8 +546,250 @@ METRIC_SETTER_TBL = {
         LDMS_V_S64_ARRAY  : py_ldms_metric_array_set_s64,
         LDMS_V_F32_ARRAY  : py_ldms_metric_array_set_float,
         LDMS_V_D64_ARRAY  : py_ldms_metric_array_set_double,
+
+        LDMS_V_LIST : py_ldms_metric_set_list,
     }
 
+
+# ---- mval getters / setters ------------------------------------------------ #
+
+cdef mval_get_char(Ptr p):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    return v.v_char
+
+cdef mval_set_char(Ptr p, val):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    if type(val) not in (str, bytes) or len(val) != 1:
+        raise TypeError("A char must be a `str` or `bytes` of length 1")
+    v.v_char = BYTES(val)[0]
+
+cdef mval_get_u8(Ptr p):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    return v.v_u8
+
+cdef mval_set_u8(Ptr p, uint8_t u8):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    v.v_u8 = u8
+
+cdef mval_get_s8(Ptr p):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    return <int8_t>v.v_s8
+
+cdef mval_set_s8(Ptr p, int8_t s8):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    v.v_s8 = s8
+
+cdef mval_get_u16(Ptr p):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    return __le16_to_cpu(v.v_u16)
+
+cdef mval_set_u16(Ptr p, uint16_t u16):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    v.v_u16 = __cpu_to_le16(u16)
+
+cdef mval_get_s16(Ptr p):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    return <int16_t>__le16_to_cpu(v.v_s16)
+
+cdef mval_set_s16(Ptr p, int16_t s16):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    v.v_s16 = __cpu_to_le16(s16)
+
+cdef mval_get_u32(Ptr p):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    return __le32_to_cpu(v.v_u32)
+
+cdef mval_set_u32(Ptr p, uint32_t u32):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    v.v_u32 = __cpu_to_le32(u32)
+
+cdef mval_get_s32(Ptr p):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    return <int32_t>__le32_to_cpu(v.v_s32)
+
+cdef mval_set_s32(Ptr p, int32_t s32):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    v.v_s32 = __cpu_to_le32(s32)
+
+cdef mval_get_u64(Ptr p):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    return __le64_to_cpu(v.v_u64)
+
+cdef mval_set_u64(Ptr p, uint64_t u64):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    v.v_u64 = __cpu_to_le64(u64)
+
+cdef mval_get_s64(Ptr p):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    return <int64_t>__le64_to_cpu(v.v_s64)
+
+cdef mval_set_s64(Ptr p, int64_t s64):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    v.v_s64 = __cpu_to_le64(s64)
+
+cdef float mval_get_float(Ptr p):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    return v.v_f
+
+cdef void mval_set_float(Ptr p, float _f):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    v.v_f = _f
+
+cdef double mval_get_double(Ptr p):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    return v.v_d
+
+cdef void mval_set_double(Ptr p, double d):
+    cdef ldms_mval_t v = <ldms_mval_t>p.c_ptr
+    v.v_d = d
+
+cdef mval_array_get_str(Ptr p):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    return STR(a.a_char)
+
+cdef void mval_array_set_str(Ptr p, s):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    cdef bytes b = BYTES(s)
+    cdef char *x = b
+    memcpy(a.a_char, x, strlen(x)+1)
+
+cdef mval_array_get_u8(Ptr p, int i):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    return a.a_u8[i]
+
+cdef mval_array_set_u8(Ptr p, int i, uint8_t u8):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    a.a_u8[i] = u8
+
+cdef mval_array_get_s8(Ptr p, int i):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    return <int8_t>a.a_s8[i]
+
+cdef mval_array_set_s8(Ptr p, int i, int8_t s8):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    a.a_s8[i] = s8
+
+cdef mval_array_get_u16(Ptr p, int i):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    return __le16_to_cpu(a.a_u16[i])
+
+cdef mval_array_set_u16(Ptr p, int i, uint16_t u16):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    a.a_u16[i] = __cpu_to_le16(u16)
+
+cdef mval_array_get_s16(Ptr p, int i):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    return <int16_t>__le16_to_cpu(a.a_s16[i])
+
+cdef mval_array_set_s16(Ptr p, int i, int16_t s16):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    a.a_s16[i] = __cpu_to_le16(s16)
+
+cdef mval_array_get_u32(Ptr p, int i):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    return __le32_to_cpu(a.a_u32[i])
+
+cdef mval_array_set_u32(Ptr p, int i, uint32_t u32):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    a.a_u32[i] = __cpu_to_le32(u32)
+
+cdef mval_array_get_s32(Ptr p, int i):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    return <int32_t>__le32_to_cpu(a.a_s32[i])
+
+cdef mval_array_set_s32(Ptr p, int i, int32_t s32):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    a.a_s32[i] = __cpu_to_le32(s32)
+
+cdef mval_array_get_u64(Ptr p, int i):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    return __le64_to_cpu(a.a_u64[i])
+
+cdef mval_array_set_u64(Ptr p, int i, uint64_t u64):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    a.a_u64[i] = __cpu_to_le64(u64)
+
+cdef mval_array_get_s64(Ptr p, int i):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    return <int64_t>__le64_to_cpu(a.a_s64[i])
+
+cdef mval_array_set_s64(Ptr p, int i, int64_t s64):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    a.a_s64[i] = __cpu_to_le64(s64)
+
+cdef float mval_array_get_float(Ptr p, int i):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    return a.a_f[i]
+
+cdef void mval_array_set_float(Ptr p, int i, float _f):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    a.a_f[i] = _f
+
+cdef double mval_array_get_double(Ptr p, int i):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    return a.a_d[i]
+
+cdef void mval_array_set_double(Ptr p, int i, double d):
+    cdef ldms_mval_t a = <ldms_mval_t>p.c_ptr
+    a.a_d[i] = d
+
+MVAL_GETTER_TBL = {
+        LDMS_V_CHAR : mval_get_char,
+        LDMS_V_U8   : mval_get_u8,
+        LDMS_V_S8   : mval_get_s8,
+        LDMS_V_U16  : mval_get_u16,
+        LDMS_V_S16  : mval_get_s16,
+        LDMS_V_U32  : mval_get_u32,
+        LDMS_V_S32  : mval_get_s32,
+        LDMS_V_U64  : mval_get_u64,
+        LDMS_V_S64  : mval_get_s64,
+        LDMS_V_F32  : mval_get_float,
+        LDMS_V_D64  : mval_get_double,
+
+        LDMS_V_CHAR_ARRAY : mval_array_get_str,
+
+        LDMS_V_U8_ARRAY   : mval_array_get_u8,
+        LDMS_V_S8_ARRAY   : mval_array_get_s8,
+        LDMS_V_U16_ARRAY  : mval_array_get_u16,
+        LDMS_V_S16_ARRAY  : mval_array_get_s16,
+        LDMS_V_U32_ARRAY  : mval_array_get_u32,
+        LDMS_V_S32_ARRAY  : mval_array_get_s32,
+        LDMS_V_U64_ARRAY  : mval_array_get_u64,
+        LDMS_V_S64_ARRAY  : mval_array_get_s64,
+        LDMS_V_F32_ARRAY  : mval_array_get_float,
+        LDMS_V_D64_ARRAY  : mval_array_get_double,
+
+    }
+
+MVAL_SETTER_TBL = {
+        LDMS_V_CHAR : mval_set_char,
+        LDMS_V_U8   : mval_set_u8,
+        LDMS_V_S8   : mval_set_s8,
+        LDMS_V_U16  : mval_set_u16,
+        LDMS_V_S16  : mval_set_s16,
+        LDMS_V_U32  : mval_set_u32,
+        LDMS_V_S32  : mval_set_s32,
+        LDMS_V_U64  : mval_set_u64,
+        LDMS_V_S64  : mval_set_s64,
+        LDMS_V_F32  : mval_set_float,
+        LDMS_V_D64  : mval_set_double,
+
+        LDMS_V_CHAR_ARRAY : mval_array_set_str,
+
+        LDMS_V_U8_ARRAY   : mval_array_set_u8,
+        LDMS_V_S8_ARRAY   : mval_array_set_s8,
+        LDMS_V_U16_ARRAY  : mval_array_set_u16,
+        LDMS_V_S16_ARRAY  : mval_array_set_s16,
+        LDMS_V_U32_ARRAY  : mval_array_set_u32,
+        LDMS_V_S32_ARRAY  : mval_array_set_s32,
+        LDMS_V_U64_ARRAY  : mval_array_set_u64,
+        LDMS_V_S64_ARRAY  : mval_array_set_s64,
+        LDMS_V_F32_ARRAY  : mval_array_set_float,
+        LDMS_V_D64_ARRAY  : mval_array_set_double,
+
+    }
+
+# ---------------------------------------------------------------------------- #
 #####################################
 ### value type conversion utility ###
 #####################################
@@ -586,6 +846,8 @@ LDMS_VALUE_TYPE_TBL = {
         "double[]" : LDMS_V_D64_ARRAY,
         "d[]"      : LDMS_V_D64_ARRAY,
         "d64[]"    : LDMS_V_D64_ARRAY,
+
+        "list"     : LDMS_V_LIST,
 
         "char_array"   : LDMS_V_CHAR_ARRAY,
         "s8_array"     : LDMS_V_S8_ARRAY,
@@ -658,21 +920,12 @@ LDMS_VALUE_TYPE_TBL = {
         LDMS_V_D64_ARRAY  : LDMS_V_D64_ARRAY,
         LDMS_V_D64_ARRAY  : LDMS_V_D64_ARRAY,
         LDMS_V_D64_ARRAY  : LDMS_V_D64_ARRAY,
+
+        LDMS_V_LIST       : LDMS_V_LIST,
     }
 
 cdef ldms_value_type LDMS_VALUE_TYPE(t):
     return LDMS_VALUE_TYPE_TBL[t]
-
-
-cdef class Ptr(object):
-    """Pointer wrapper so that C pointer can be passed around as PyOBJ"""
-    cdef void *c_ptr
-
-cdef Ptr PTR(void *ptr):
-    """Returns a `Ptr` object wrapping the given `ptr` pointer"""
-    po = Ptr()
-    po.c_ptr = ptr
-    return po
 
 cdef bytes BYTES(o):
     """Convert Python object `s` to `bytes` (c-string compatible)"""
@@ -1049,6 +1302,7 @@ cdef class Schema(object):
                                  .format(ERRNO_SYM(errno)))
         if metric_list:
             self.add_metrics(metric_list)
+        self.set_array_card(array_card)
 
     def set_array_card(self, array_card):
         """S.set_array_card(num) - change the set array cardinality"""
@@ -1057,15 +1311,25 @@ cdef class Schema(object):
             raise OSError(rc, "ldms_schema_array_card_set() error: {}" \
                               .format(ERRNO_SYM(rc)))
 
-    def add_metric(self, name, metric_type, count=1, meta=False):
-        """S.add_metric(name, type, count=1, meta=False)
+    def add_metric(self, name, metric_type, count=1, meta=False, units=None):
+        """S.add_metric(name, type, count=1, meta=False, units=None)
 
-        Add a metric to the schema"""
+        Add a metric to the schema
+
+        NOTE: If metric_type is LDMS_V_LIST, the count is the heap size in bytes.
+        """
         cdef int idx
+        cdef char *u = NULL
+        cdef bytes b
         if type(metric_type) == str:
             metric_type = metric_type.lower()
         t = LDMS_VALUE_TYPE(metric_type)
-        if ldms_type_is_array(t):
+        if t == LDMS_V_LIST:
+            if units is not None:
+                b = BYTES(units)
+                u = b
+            idx = ldms_schema_metric_list_add(self._schema, BYTES(name), u, count)
+        elif ldms_type_is_array(t):
             if meta:
                 idx = ldms_schema_meta_array_add(self._schema, BYTES(name), t,
                                                  count)
@@ -1098,6 +1362,7 @@ cdef class Schema(object):
                             metric_type = o["type"],
                             count = o.get("count", 1),
                             meta = o.get("meta", False),
+                            units = o.get("units"),
                         )
 
 
@@ -1252,6 +1517,129 @@ cdef class MetricArray(list):
         raise TypeError("MetricArray does not support `sort()`")
 
 
+cdef __ldms_list_append(ldms_set_t cset, ldms_mval_t lh, ldms_value_type v_type, int n):
+    mval = ldms_list_append(cset, lh, v_type, n)
+    if not mval:
+        raise RuntimeError("ldms_list_append() error: {}".format(ERRNO_SYM(errno)))
+    return PTR(mval)
+
+cdef class MVal(Ptr):
+    cdef Set _lset
+    cdef ldms_value_type _type
+    cdef int _n # number of elements
+    cdef _getter
+
+    def __init__(self, Set lset, Ptr mval, ldms_value_type _type, int n):
+        self._lset = lset
+        self.c_ptr = mval.c_ptr
+        self._type = _type
+        self._n = n
+        self._getter = MVAL_GETTER_TBL[self._type] if self._type != LDMS_V_LIST else None
+
+    def get(self):
+        """Get the metric value"""
+        if self._type == LDMS_V_LIST:
+            return self
+        elif ldms_type_is_array(self._type):
+            if self._type == LDMS_V_CHAR_ARRAY:
+                obj = self._getter(self)
+                return obj
+            else:
+                obj = tuple( self._getter(self, i) for i in range(self._n) )
+                return obj
+        else:
+            obj = self._getter(self)
+            return obj
+
+    def set(self, val, idx=None):
+        if self._type == LDMS_V_LIST:
+            raise ValueError("Setting value of MetricList is not supported, please use `append()`")
+        elif ldms_type_is_array(self._type):
+            if self._type == LDMS_V_CHAR_ARRAY:
+                setter = MVAL_SETTER_TBL[self._type]
+                setter(self, val)
+            else:
+                setter = MVAL_SETTER_TBL[self._type]
+                if idx is None: # set the entire array
+                    n = len(val)
+                    for i, v in zip(range(n), val):
+                        setter(self, i, v)
+                else:
+                    setter(self, idx, val)
+        else:
+            setter = MVAL_SETTER_TBL[self._type]
+            setter(self, val)
+
+    def __str__(self):
+        if self._type == V_LIST:
+            return repr(self)
+        return str( self.get() )
+
+cdef class MetricList(MVal):
+
+    def __init__(self, Set lset, Ptr lh):
+        super().__init__(lset, lh, V_LIST, 1)
+
+    def __getitem__(self, key):
+        raise TypeError("MetricList does not support data access with [key]")
+
+    def __setitem__(self, key, value):
+        raise TypeError("MetricList does not support data modification with [key]")
+
+    def set(self, val, idx=None):
+        raise ValueError("Setting value of MetricList is not supported, please use `append()`")
+
+    def get(self):
+        return tuple(self)
+
+    def append(self, v_type, value):
+        """Append/set the value to the list.
+
+        In the case that `v_type` is LDMS_V_LIST, `value` is ignored. A new
+        empty list is created and is appended. In this case, the `MetricList`
+        handle to the new list is returned so that the application can build the
+        sublist.
+        """
+        cdef Ptr p
+        if v_type == LDMS_V_LIST:
+            p = __ldms_list_append(self._lset.rbd, <ldms_mval_t>self.c_ptr, v_type, 1)
+            return MetricList(self._lset, p)
+        else:
+            if ldms_type_is_array(v_type):
+                # value is an iterable object of a basic type
+                if v_type == LDMS_V_CHAR_ARRAY:
+                    n = len(value) + 1
+                else:
+                    n = len(value)
+            else:
+                n = 1
+            p = __ldms_list_append(self._lset.rbd, <ldms_mval_t>self.c_ptr, v_type, n)
+            mval = MVal(self._lset, p, v_type, n)
+            mval.set(value)
+            return mval
+
+    def delete(self, MVal mval):
+        ldms_list_del(self._lset.rbd, <ldms_mval_t>self.c_ptr, <ldms_mval_t>mval.c_ptr)
+
+    def purge(self):
+        ldms_list_purge(self._lset.rbd, <ldms_mval_t>self.c_ptr)
+
+    def __iter__(self):
+        cdef ldms_mval_t v
+        cdef ldms_value_type v_type
+        cdef size_t n
+        v = ldms_list_first(self._lset.rbd, <ldms_mval_t>self.c_ptr, &v_type, &n)
+        while v:
+            if v_type == LDMS_V_LIST:
+                yield MetricList(self._lset, PTR(v))
+            else:
+                yield MVal(self._lset, PTR(v), v_type, n)
+            v = ldms_list_next(self._lset.rbd, v, &v_type, &n)
+
+    def __len__(self):
+        return ldms_list_len(self._lset.rbd, <ldms_mval_t>self.c_ptr)
+
+
 cdef class Set(object):
     """The metric set
 
@@ -1383,6 +1771,14 @@ cdef class Set(object):
         if rc:
             raise OSError(rc, "ldms_transaction_end() error: {}" \
                               .format(ERRNO_SYM(rc)))
+
+    def data_copy_set(self, int on):
+        """S.data_copy_set( bool )
+
+        Turn the set array data copy on (True) or off (False) when the
+        S.transaction_begin() is called.
+        """
+        ldms_set_data_copy_set(self.rbd, on)
 
     def keys(self):
         """S.keys() - iterates over keys (metric names) of the set"""
@@ -1520,6 +1916,11 @@ cdef class Set(object):
     def data_gn(self):
         """data generation number"""
         return ldms_set_data_gn_get(self.rbd)
+
+    @property
+    def heap_gn(self):
+        """heap generation number"""
+        return ldms_set_heap_gn_get(self.rbd)
 
     @property
     def is_consistent(self):

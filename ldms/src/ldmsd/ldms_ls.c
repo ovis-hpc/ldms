@@ -193,15 +193,12 @@ void server_timeout(void)
 	exit(1);
 }
 
-void value_printer(ldms_set_t s, int idx)
+void value_format(ldms_set_t s, enum ldms_value_type type, ldms_mval_t val, size_t n)
 {
-	enum ldms_value_type type;
-	ldms_mval_t val;
-	int n, i;
-
-	type = ldms_metric_type_get(s, idx);
-	n = ldms_metric_array_get_len(s, idx);
-	val = ldms_metric_get(s, idx);
+	ldms_mval_t lval;
+	enum ldms_value_type ltype;
+	int i;
+	size_t count;
 
 	switch (type) {
 	case LDMS_V_CHAR_ARRAY:
@@ -221,7 +218,7 @@ void value_printer(ldms_set_t s, int idx)
 		}
 		break;
 	case LDMS_V_S8:
-		printf("%18hhd", val->v_s8);
+		printf("%hhd", val->v_s8);
 		break;
 	case LDMS_V_S8_ARRAY:
 		for (i = 0; i < n; i++) {
@@ -310,9 +307,32 @@ void value_printer(ldms_set_t s, int idx)
 			printf("%f", val->a_d[i]);
 		}
 		break;
+	case LDMS_V_LIST:
+		printf("[");
+		i = 0;
+		for (lval = ldms_list_first(s, val, &ltype, &count); lval;
+		     lval = ldms_list_next(s, lval, &ltype, &count)) {
+			if (i++)
+				printf(",");
+			if (ldms_type_is_array(ltype) && ltype != LDMS_V_CHAR_ARRAY)
+				printf("[");
+			value_format(s, ltype, lval, count);
+			if (ldms_type_is_array(ltype) && ltype != LDMS_V_CHAR_ARRAY)
+				printf("]");
+		}
+		printf("]");
+		break;
 	default:
 		printf("Unknown metric type\n");
 	}
+}
+
+void value_printer(ldms_set_t s, int idx)
+{
+	enum ldms_value_type type = ldms_metric_type_get(s, idx);
+	ldms_mval_t val = ldms_metric_get(s, idx);
+	int n = ldms_metric_array_get_len(s, idx);
+	value_format(s, type, val, n);
 }
 
 static int user_data = 0;

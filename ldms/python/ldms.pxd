@@ -319,6 +319,7 @@ cdef extern from "ldms.h" nogil:
     const char *ldms_set_name_get(ldms_set_t s)
     uint64_t ldms_set_meta_gn_get(ldms_set_t s)
     uint64_t ldms_set_data_gn_get(ldms_set_t s)
+    uint64_t ldms_set_heap_gn_get(ldms_set_t s)
 
     int ldms_set_is_consistent(ldms_set_t s)
 
@@ -327,11 +328,22 @@ cdef extern from "ldms.h" nogil:
 
     int ldms_transaction_begin(ldms_set_t s)
     int ldms_transaction_end(ldms_set_t s)
+    void ldms_set_data_copy_set(ldms_set_t s, int on)
 
     int ldms_set_info_set(ldms_set_t s, const char *key, const char *value)
     void ldms_set_info_unset(ldms_set_t s, const char *key)
     char *ldms_set_info_get(ldms_set_t s, const char *key)
     ctypedef void (*ldms_update_cb_t)(ldms_t t, ldms_set_t s, int flags, void *arg)
+    struct ldms_list:
+        uint32_t head
+        uint32_t tail
+        uint32_t count
+    struct ldms_list_entry:
+        uint32_t next
+        uint32_t prev
+        uint32_t type
+        uint32_t count
+        uint8_t  value[0]
     cpdef enum:
         UPD_F_PUSH       "LDMS_UPD_F_PUSH"
         UPD_F_PUSH_LAST  "LDMS_UPD_F_PUSH_LAST"
@@ -367,6 +379,8 @@ cdef extern from "ldms.h" nogil:
         V_S64_ARRAY   "LDMS_V_S64_ARRAY"
         V_F32_ARRAY   "LDMS_V_F32_ARRAY"
         V_D64_ARRAY   "LDMS_V_D64_ARRAY"
+        V_LIST        "LDMS_V_LIST"
+        V_LIST_ENTRY  "LDMS_V_LIST_ENTRY"
         V_FIRST       "LDMS_V_FIRST"
         V_LAST        "LDMS_V_LAST"
         LDMS_V_NONE
@@ -392,6 +406,8 @@ cdef extern from "ldms.h" nogil:
         LDMS_V_S64_ARRAY
         LDMS_V_F32_ARRAY
         LDMS_V_D64_ARRAY
+        LDMS_V_LIST
+        LDMS_V_LIST_ENTRY
         LDMS_V_FIRST
         LDMS_V_LAST
     union ldms_value:
@@ -406,6 +422,8 @@ cdef extern from "ldms.h" nogil:
         int64_t v_s64
         float v_f
         double v_d
+        ldms_list v_lh
+        ldms_list_entry v_le
         char a_char[0]
         uint8_t a_u8[0]
         int8_t a_s8[0]
@@ -500,3 +518,23 @@ cdef extern from "ldms.h" nogil:
     void ldms_metric_array_set_s64(ldms_set_t s, int mid, int idx, int64_t v)
     void ldms_metric_array_set_float(ldms_set_t s, int mid, int idx, float v)
     void ldms_metric_array_set_double(ldms_set_t s, int mid, int idx, double v)
+
+    # --- heap / list related functions --- #
+    size_t ldms_list_heap_size_get(ldms_value_type t, size_t item_count,
+                                   size_t array_count)
+    int ldms_schema_metric_list_add(ldms_schema_t s, const char *name,
+				    const char *units, uint32_t heap_sz)
+    ldms_mval_t ldms_list_append(ldms_set_t s, ldms_mval_t l, ldms_value_type typ, size_t count)
+    ldms_mval_t ldms_list_first(ldms_set_t s, ldms_mval_t l, ldms_value_type *typ_out, size_t *count)
+    ldms_mval_t ldms_list_next(ldms_set_t s, ldms_mval_t v, ldms_value_type *typ_out, size_t *count)
+    size_t ldms_list_len(ldms_set_t s, ldms_mval_t l)
+    int ldms_list_del(ldms_set_t s, ldms_mval_t lh, ldms_mval_t v)
+    int ldms_list_purge(ldms_set_t s, ldms_mval_t lh)
+
+cdef extern from "asm/byteorder.h" nogil:
+    uint16_t __le16_to_cpu(uint16_t)
+    uint16_t __cpu_to_le16(uint16_t)
+    uint32_t __le32_to_cpu(uint32_t)
+    uint32_t __cpu_to_le32(uint32_t)
+    uint64_t __le64_to_cpu(uint64_t)
+    uint64_t __cpu_to_le64(uint64_t)

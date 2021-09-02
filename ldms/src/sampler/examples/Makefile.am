@@ -21,3 +21,7 @@ endif
 if ENABLE_TEST_SAMPLER_LDMS_TEST
 SUBDIRS += test_sampler
 endif
+
+if ENABLE_LIST_SAMPLER
+SUBDIRS += list_sampler
+endif
