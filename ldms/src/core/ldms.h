@@ -303,6 +303,7 @@ typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
 #define LDMS_SET_F_LOCAL	0x0004
 #define LDMS_SET_F_REMOTE	0x0008
 #define LDMS_SET_F_PUSH_CHANGE	0x0010
+#define LDMS_SET_F_DATA_COPY	0x0020 /* set array data copy on transaction begin */
 #define LDMS_SET_F_PUBLISHED	0x100000 /* Set is in the set tree. */
 #define LDMS_SET_ID_DATA	0x1000000
 
@@ -1289,7 +1290,7 @@ void ldms_set_default_authz(uid_t *uid, gid_t *gid, mode_t *perm, int set_flags)
 extern uint32_t ldms_set_meta_sz_get(ldms_set_t s);
 
 /**
- * \brief Get the size in bytes of the set's data
+ * \brief Get the size in bytes of the set's data (including heap)
  * \param s	The ldms_set_t handle.
  * \return The size of the set's data in bytes.
  */
@@ -1336,6 +1337,43 @@ uint64_t ldms_set_meta_gn_get(ldms_set_t s);
  * \returns	The 64bit data generation number.
  */
 uint64_t ldms_set_data_gn_get(ldms_set_t s);
+
+/**
+ * \brief Get the heap generation number.
+ *
+ * The heap generation number get incremented when \c ldms_heap_alloc() or
+ * \c ldms_heap_free() is called.
+ *
+ * \param s	The ldms_set_t handle.
+ * \returns	The 64bit heap generation number.
+ */
+uint64_t ldms_set_heap_gn_get(ldms_set_t s);
+
+/**
+ * \brief Tell LDMS to copy previous data in the set array on transaction begin.
+ *
+ * When \c ldms_transaction_begin() is called, the set data points to the next
+ * data slot in the set array and the metric modification by the application
+ * will be applied to the new data slow. By default, the new data slot is left
+ * as-is is. This presumes that the \c sample() function will update all list
+ * entry data at each invocation.
+ *
+ * By calling \c ldms_set_data_copy_set(s, 1), LDMS will copy the data from the
+ * previous slot into the new slot at \c ldms_transaction_begin().
+ *
+ * For the the heap data (in which ldms_list and its elements reside),
+ * if the heap structure has changed (i.e. `ldms_list_append()` or
+ * `ldms_list_del()` was called), the heap section will be copied over to the
+ * new slot regardless of the data copy flag to preserve the heap structure.
+ * Note that in the case of data manipulation w/o heap structure changes (no
+ * calling to `ldms_list_append()` nor `ldms_list_del()`), the data won't be
+ * copied over if the copy flag is not set to on.
+ *
+ * \param s  The \c ldms_set_t handle.
+ * \param on_n_off \c 1 for turning data copy flag on, or \c 0 for turning it off.
+ */
+void ldms_set_data_copy_set(ldms_set_t s, int on_n_off);
+
 /** \} */
 
 /**
@@ -1557,6 +1595,41 @@ extern int ldms_schema_metric_add_with_unit(ldms_schema_t s, const char *name,
 					    const char *unit, enum ldms_value_type type);
 extern int ldms_schema_meta_add_with_unit(ldms_schema_t s, const char *name,
 					  const char *unit, enum ldms_value_type t);
+
+
+/**
+ * \brief Return the heap bytes required
+ *
+ * Given an expected list size and entry type, return the number of
+ * heap bytes required. This is useful for providing hints to the
+ * ldms_schema_metric_list_add() function. Providing enough memory for
+ * the heap when the set is created will avoid unnecessary set memory
+ * relocations. A set relocation results in the destruction of the
+ * set, and associated ldms_xprt_lookup, and set recreation at the
+ * peer.
+ *
+ * \param type The type of entries added to the list
+ * \param item_count The expected list cardinatity
+ * \param array_count if \c type is an array, the expected size of each array
+ * \returns The heap size required for item_count entries of type
+ */
+size_t ldms_list_heap_size_get(enum ldms_value_type type, size_t item_count, size_t array_count);
+
+/**
+ * \brief Add a metric list to schema
+ *
+ * Adds a metric list to a metric set schema.
+ * The \c name of the metric must be unique within the metric set.
+ *
+ * \param s	The ldms_set_t handle.
+ * \param name	The name of the metric.
+ * \param units A 7-character unit string. May be \c NULL.
+ * \param heap_sz The number of heap bytes to reserve for the list
+ * \retval >=0  The metric index.
+ * \retval <0	Insufficient resources or duplicate name
+ */
+int ldms_schema_metric_list_add(ldms_schema_t s, const char *name,
+				const char *units, uint32_t heap_sz);
 
 /**
  * \brief Add an array metric/meta with the unit to schema
@@ -1870,6 +1943,129 @@ int32_t ldms_metric_array_get_s32(ldms_set_t s, int id, int idx);
 int64_t ldms_metric_array_get_s64(ldms_set_t s, int id, int idx);
 float ldms_metric_array_get_float(ldms_set_t s, int id, int idx);
 double ldms_metric_array_get_double(ldms_set_t s, int id, int idx);
+
+/**
+ * \brief Append a new value to a list
+ *
+ * Append a new value entry to a list metric. The list handle \c lh must be
+ * - the metric handle obtained by calling \c ldms_metric_get(s, i) where the ith
+ *   metric is a list, or
+ * - the metric handle returned by \c ldms_list_append(s, some_lh, LDMS_V_LIST, 1) or
+ * - the metric handle returned by \c ldms_list_first(s, some_lh, &otyp, &c)
+ *   where the returned \c otyp must be \c LDMS_V_LIST, or
+ * - the metric handle returned by \c ldms_list_next(s, some_lh, &otyp, &c) where
+ *   the returned \c otyp must be \c LDMS_V_LIST.
+ * Basically, please make sure that \c lh is the metric handle to the type
+ * \c LDMS_V_LIST. If \c lh is not a list, the function call will corrupt the
+ * memory.
+ *
+ * If the requested element type \c typ is \c LDMS_V_LIST, the \c count is
+ * ignored and the handle to the new list inside the list \c lh is returned.
+ *
+ * If the requested element type \c typ is an array type, the \c count is
+ * the array length (number of elements). Otherwise, if \c typ is a regular
+ * type, \c count is also ignored.
+ *
+ * \param s	The set handle.
+ * \param lh	The metric handle of the list.
+ * \param typ	The type of the value to append.
+ * \param count	The element count if the type is an array.
+ *
+ * \retval mval The metric handle to the newly allocated entry in the list.
+ */
+ldms_mval_t ldms_list_append(ldms_set_t s, ldms_mval_t lh, enum ldms_value_type typ, size_t count);
+
+/**
+ * \brief Get the first list entry.
+ *
+ * \c lh must be a list. If \c lh is not a list, the function call results in
+ * a garbage value returned or a segmentation fault.
+ *
+ * \param [in]  s     The ldms set handle.
+ * \param [in]  lh    The list handle.
+ * \param [out] typ   If not NULL, \c *typ value is set to the type of the first entry of the list.
+ * \param [out] count If not NULL, \c *count is set to the array length if the
+ *                    first entry is an array, or 1 if it is not.
+ *
+ * \retval mval The metric handle of the first entry, or
+ * \retval NULL if the list is empty.
+ */
+ldms_mval_t ldms_list_first(ldms_set_t s, ldms_mval_t lh, enum ldms_value_type *typ, size_t *count);
+
+/**
+ * \brief Get the next list entry.
+ *
+ * \c v must be a list entry. In other words, \c v is a handle returned from \c
+ * ldms_list_first() or \c ldms_list_next(). Calling this function with a
+ * non-list-entry \c v results in a garbage value returned or a segmentation
+ * fault.
+ *
+ * \param [in]  s     The ldms set handle.
+ * \param [in]  v     The metric handle returned from
+ *                    \c ldms_list_first() or \c ldms_list_next().
+ * \param [out] typ   If not NULL, \c *typ value is set to the type of the next entry of the list.
+ * \param [out] count If not NULL, \c *count is set to the array length if the
+ *                    next entry is an array, or 1 if it is not.
+ *
+ * \retval mval The metric handle of the next entry, or
+ * \retval NULL if there is no more list entry.
+ */
+ldms_mval_t ldms_list_next(ldms_set_t s, ldms_mval_t v, enum ldms_value_type *typ, size_t *count);
+
+/**
+ * \brief Get the number of entries in the list.
+ *
+ * \param s  The ldms set handle.
+ * \param lh The list handle.
+ *
+ * \retval n The number of entries in the list.
+ */
+size_t ldms_list_len(ldms_set_t s, ldms_mval_t lh);
+
+/**
+ * \brief Remove entry \c v from the list \c lh.
+ *
+ * \c lh must be a list and \c v must be a list entry. In otherwords, \c lh must
+ * be obtained by \c ldms_metric_get(), \c ldms_list_append(),
+ * \c ldms_list_first(), or \c ldms_list_next() where the metric type
+ * is \c LDMS_V_LIST. \c v must be a list entry obtained from
+ * \c ldms_list_append(), \c ldms_list_first(), or \c ldms_list_next().
+ * Calling this function with non-list \c lh, or non-list-entry \c v will
+ * corrupt the memory.
+ *
+ * The handle \c v is not valid after the call since the memory of the list
+ * entry is put back into the heap. If \c v is an \c LDMS_V_LIST,
+ * the members of \c v will be recursively deleted.
+ *
+ * \param s  The set handle.
+ * \param lh The list handle.
+ * \param v  The list entry handle.
+ *
+ * \retval 0     If delete succeeded, or
+ * \retval error if an error occur.
+ *
+ */
+int ldms_list_del(ldms_set_t s, ldms_mval_t lh, ldms_mval_t v);
+
+/**
+ * \brief Recursively purge all elements from the list \c lh.
+ *
+ * \c lh must be a list. In otherwords, \c lh must be obtained by
+ * \c ldms_metric_get(), \c ldms_list_append(), \c ldms_list_first(), or
+ * \c ldms_list_next() where the metric type is \c LDMS_V_LIST.
+ * This function is equivalent to the following pseudo code:
+ * ```
+ * while v = ldms_list_first(s, lh, NULL, NULL):
+ *     ldms_list_del(s, lh, v)
+ * ```
+ *
+ * \param s  The set handle.
+ * \param lh The list handle.
+ *
+ * \retval 0     If delete succeeded, or
+ * \retval error if an error occur.
+ */
+int ldms_list_purge(ldms_set_t s, ldms_mval_t lh);
 /** \} */
 
 /**

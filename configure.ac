@@ -332,6 +332,7 @@ OPTION_DEFAULT_DISABLE([appinfo], [ENABLE_APPINFO])
 OPTION_DEFAULT_DISABLE([app-sampler], [ENABLE_APP_SAMPLER])
 OPTION_DEFAULT_DISABLE([store-app], [ENABLE_STORE_APP])
 OPTION_DEFAULT_DISABLE([test_sampler], [ENABLE_TEST_SAMPLER])
+OPTION_DEFAULT_DISABLE([list_sampler], [ENABLE_LIST_SAMPLER])
 dnl test_sampler will also build with --enable-ldms-test
 AM_CONDITIONAL([ENABLE_TEST_SAMPLER_LDMS_TEST], [test "x$ENABLE_LDMS_TEST_FALSE" = "x#" -o "x$ENABLE_TEST_SAMPLER_FALSE" = "x#"])
 OPTION_DEFAULT_DISABLE([grptest], [ENABLE_GRPTEST])
@@ -871,6 +872,7 @@ ldms/src/sampler/examples/Makefile
 ldms/src/sampler/examples/array_example/Makefile
 ldms/src/sampler/examples/synthetic/Makefile
 ldms/src/sampler/examples/test_sampler/Makefile
+ldms/src/sampler/examples/list_sampler/Makefile
 ldms/src/sampler/ibm_occ/Makefile
 ldms/src/sampler/syspapi/Makefile
 ldms/src/sampler/app_sampler/Makefile

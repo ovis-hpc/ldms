@@ -59,7 +59,7 @@
 #endif
 
 #include <asm/byteorder.h>
-
+#include "ldms_heap.h"
 
 #define LDMS_SETH_F_BE		0x0001
 #define LDMS_SETH_F_LE		0x0002
@@ -129,9 +129,10 @@ struct ldms_data_hdr {
 	struct ldms_transaction trans;
 	uint32_t pad;
 	uint64_t gn;		/* Metric-value generation number */
-	uint64_t size;		/* Max size of data */	/* FIXME: unused */
+	uint64_t size;		/* Size of data + the heap */
 	uint64_t meta_gn;	/* Meta-data generation number */
 	uint32_t curr_idx;      /* Current set array index */
+	struct ldms_heap heap;
 };
 
 /**
@@ -182,6 +183,7 @@ void ldms_version_get(struct ldms_version *v);
 	((version).patch == LDMS_VERSION_PATCH) &&		\
 	((version).flags == LDMS_VERSION_FLAGS) )
 
+#define LDMS_SET_HDR_F_LIST	1
 struct ldms_set_hdr {
 	/* The unique metric set producer name */
 	char producer_name[LDMS_PRODUCER_NAME_MAX];
@@ -198,9 +200,25 @@ struct ldms_set_hdr {
 	uint32_t gid;           /* GID */
 	uint32_t perm;          /* permission */
 	uint32_t array_card;    /* number of sets in the set array */
-	uint32_t reserved[8];	/* area reserved for compatible core updates */
+	uint32_t heap_sz;	/* size of the heap */
+	uint32_t reserved[7];	/* area reserved for compatible core updates */
 	uint32_t dict[OVIS_FLEX];/* The attr/metric dictionary */
 };
+
+#define LDMS_LIST_HEAP	512	/* Per list heap increment */
+typedef struct ldms_list {
+	uint32_t head;		/* Offset of first entry in list */
+	uint32_t tail;		/* Offset of last entry in list */
+	uint32_t count;		/* Entry count */
+} *ldms_list_t;
+
+typedef struct ldms_list_entry {
+	uint32_t next;		/* Offset of next entry */
+	uint32_t prev;		/* Offset of previous entry */
+	uint32_t type:8;	/* Type of element */
+	uint32_t count:24;	/* Count of elements if type is array */
+	uint8_t value[0];
+} *ldms_list_entry_t;
 
 /**
  * \brief Metric value union
@@ -219,6 +237,8 @@ typedef union ldms_value {
 	int64_t v_s64;
 	float v_f;
 	double v_d;
+	struct ldms_list v_lh;
+	struct ldms_list_entry v_le;
 	char a_char[OVIS_FLEX_UNION];
 	uint8_t a_u8[OVIS_FLEX_UNION];
 	int8_t a_s8[OVIS_FLEX_UNION];
@@ -261,8 +281,10 @@ enum ldms_value_type {
 	LDMS_V_S64_ARRAY,
 	LDMS_V_F32_ARRAY,
 	LDMS_V_D64_ARRAY,
+	LDMS_V_LIST,
+	LDMS_V_LIST_ENTRY,
 	LDMS_V_FIRST = LDMS_V_CHAR,
-	LDMS_V_LAST = LDMS_V_D64_ARRAY
+	LDMS_V_LAST = LDMS_V_LIST_ENTRY
 };
 
 typedef struct ldms_name {

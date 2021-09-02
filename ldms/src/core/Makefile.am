@@ -1,7 +1,6 @@
 lib_LTLIBRARIES =
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
-#COMMON_LIBADD = -lsampler_base -lldms @LDFLAGS_GETTIME@ -lovis_util -lcoll
 AM_CPPFLAGS = $(DBGFLAGS) @OVIS_INCLUDE_ABS@
 
 AM_CFLAGS = -DSYSCONFDIR='"$(sysconfdir)"' -DPLUGINDIR='"$(pkglibdir)"'
@@ -10,10 +9,13 @@ AM_CFLAGS += \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
 
 ldmscoreincludedir = $(includedir)/ldms
-ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldms_xprt.h ldms_auth.h kldms_req.h
+ldmscoreinclude_HEADERS = ldms.h ldms_core.h ldms_xprt.h ldms_auth.h \
+			  kldms_req.h ldms_heap.h rrbt.h
 
 libldms_la_SOURCES = ldms.c ldms_xprt.c ldms_private.h \
-		     ldms_auth.c ldms_xprt_auth.c
+		     ldms_auth.c ldms_xprt_auth.c \
+		     rrbt.c rrbt.h \
+		     ldms_heap.c ldms_heap.h
 libldms_la_LIBADD = -ldl -lpthread $(top_builddir)/lib/src/coll/libcoll.la \
 		    $(top_builddir)/lib/src/ovis_json/libovis_json.la \
 		    $(top_builddir)/lib/src/ovis_ev/libovis_ev.la \
