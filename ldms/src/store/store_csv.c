@@ -716,6 +716,9 @@ static const char *usage(struct ldmsd_plugin *self)
 		"         - typeheader Type header line in extra .KIND file (optional, default 0)\n"
 		"                0- no header, 1- types 1:1 with csv columns,\n"
 	       	"                2- types in array notation\n"
+		"         - time_format Format initial time-related fields (optional, default 0)\n"
+		"                0- Time,Time_usec: <seconds since epoch>.<microseconds>,<microseconds>\n"
+		"                1- Time_msec,Time_usec: <milliseconds since epoch>,<microseconds remainder>\n"
 		FILE_PROPS_USAGE
 		"         - userdata     UserData in printout (optional, default 0)\n"
 		"         - metapath A string template for the file rename, where %[BCDPSTs]\n"
@@ -778,7 +781,8 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 	}
 	(void)ec;
 	csv_format_header_common(fp, tmp_path, CCSHC(s_handle), s_handle->udata,
-		&PG, set, metric_array, metric_count);
+                                 &PG, set, metric_array, metric_count,
+                                 s_handle->time_format);
 
 	/* Flush for the header, whether or not it is the data file as well */
 	fflush(fp);
@@ -1083,8 +1087,19 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 		break;
 	}
 
-	fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ",%"PRIu32,
-		ts->sec, ts->usec, ts->usec);
+        /* Print timestamp fields */
+        if (s_handle->time_format == TF_MILLISEC) {
+                /* Alternate time format. First field is milliseconds-since-epoch,
+                   and the second field is the left-over microseconds */
+                fprintf(s_handle->file, "%"PRIu64",%"PRIu32,
+                        ((uint64_t)ts->sec * 1000) + (ts->usec / 1000),
+                        ts->usec % 1000);
+        } else {
+                /* Traditional time format, where the first field is
+                   <seconds>.<microseconds>, second is microseconds repeated */
+                fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ",%"PRIu32,
+                        ts->sec, ts->usec, ts->usec);
+        }
 	pname = ldms_set_producer_name_get(set);
 	if (pname != NULL){
 		fprintf(s_handle->file, ",%s", pname);
