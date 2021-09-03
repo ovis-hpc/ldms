@@ -636,7 +636,7 @@ int csv_format_types_common(int typeformat, FILE* file, const char *fpath, const
 #undef PRINT_UDATA
 }
 
-int csv_format_header_common(FILE *file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count)
+int csv_format_header_common(FILE *file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count, int time_format)
 {
 	if (!sh || !file || !fpath || !cps || !set || !metric_array)
 		return EINVAL;
@@ -660,9 +660,16 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
 		wsqt = "\"";
 	}
 
-	/* This allows optional loading a float (Time) into an int field and
-	   retaining usec as a separate field */
-	ec = fprintf(fp, "#%sTime%s,%sTime_usec%s,%sProducerName%s",wsqt,wsqt,wsqt,wsqt,wsqt,wsqt);
+        /* Print timestamp header fields */
+        if (time_format == TF_MILLISEC) {
+                /* Alternate time format. First field is milliseconds-since-epoch,
+                   and the second field is the left-over microseconds */
+                ec = fprintf(fp, "#%sTime_msec%s,%sTime_usec%s,%sProducerName%s",wsqt,wsqt,wsqt,wsqt,wsqt,wsqt);
+        } else {
+                /* Traditional time format, where the first field is
+                   <seconds>.<microseconds>, second is microseconds repeated */
+                ec = fprintf(fp, "#%sTime%s,%sTime_usec%s,%sProducerName%s",wsqt,wsqt,wsqt,wsqt,wsqt,wsqt);
+        }
 	CHECKERR(ec);
 
 	for (i = 0; i < metric_count; i++) {
@@ -760,6 +767,18 @@ int open_store_common(struct plugattr *pa, struct csv_store_handle_common *s_han
 		return EINVAL;
 	}
 	s_handle->typeheader = th;
+
+	uint32_t time_format = 0;
+	cvt = ldmsd_plugattr_u32(pa, "time_format", k, &time_format);
+	if (cvt && cvt != ENOKEY) {
+		cps->msglog(LDMSD_LERROR,"open_store_common time_format= cannot be parsed\n");
+		return EINVAL;
+	}
+	if (time_format > TF_MAX) {
+		cps->msglog(LDMSD_LERROR,"open_store_common time_format=%u too large\n", time_format);
+		return EINVAL;
+	}
+	s_handle->time_format = time_format;
 
 	const char *rename_template =
 		ldmsd_plugattr_value(pa, "rename_template", k);
@@ -931,6 +950,7 @@ void print_csv_store_handle_common(struct csv_store_handle_common *h, struct csv
 	p->msglog(LDMSD_LALL, "%s: altheader:%s\n", p->pname, h->altheader ?
 			                "true" : "false");
 	p->msglog(LDMSD_LALL, "%s: typeheader:%d\n", p->pname, h->typeheader);
+	p->msglog(LDMSD_LALL, "%s: time_format:%d\n", p->pname, h->time_format);
 	p->msglog(LDMSD_LALL, "%s: buffertype: %d\n", p->pname, h->buffer_type);
 	p->msglog(LDMSD_LALL, "%s: buffer: %d\n", p->pname, h->buffer_sz);
 	p->msglog(LDMSD_LALL, "%s: rename_template:%s\n", p->pname, h->rename_template);

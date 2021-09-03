@@ -77,6 +77,7 @@
 	bool ietfcsv; \
 	int altheader; \
 	int typeheader; \
+	int time_format; \
 	int buffer_type; \
 	int buffer_sz; \
 	char *store_key; /* this is the container/schema */
@@ -225,7 +226,7 @@ void ch_output(FILE *f, const char *name,
  * \param metric_count length of metric_array.
  * \return 0 or errno value.
  */
-int csv_format_header_common(FILE *file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count);
+int csv_format_header_common(FILE *file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count, int time_format);
 
 /** Format a metric types line to a file given following the
  * metric_array indices and conventions of csv_format_common.
@@ -242,6 +243,7 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
  * \param set data to manage output
  * \param metric_array list of indices to use from set.
  * \param metric_count length of metric_array.
+ * \param time_format 0 for traditional time format, 1 for alternate milliseconds-since-epoch time format
  * \return 0 or errno value.
  */
 extern int csv_format_types_common(int typeformat, FILE* f, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count);
@@ -265,6 +267,7 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 	"ietfcsv", \
 	"altheader", \
 	"typeheader", \
+	"time_format", \
 	"buffer", \
 	"buffertype", \
 	"rename_template", \
@@ -281,6 +284,11 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 #define TH_ARRAY 2
 /** Maximum valid typeheader value */
 #define TH_MAX TH_ARRAY
+
+/* Time field format options */
+#define TF_CLASSIC 0
+#define TF_MILLISEC 1
+#define TF_MAX 1
 
 #define FILE_PROPS_USAGE \
 		"         - rename_template  The template string for closed output renaming.\n" \
