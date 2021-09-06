@@ -287,9 +287,6 @@ static struct test_sampler_metric *__schema_metric_new(char *s)
 	name = __strtok(s, delim, &ptr);
 	if (!name || ('\0' == name[0]))
 		return NULL;
-	unit = __strtok(NULL, delim, &ptr);
-	if (!unit || ('\0' == unit[0]))
-		unit = NULL;
 	mtype = __strtok(NULL, delim, &ptr);
 	if (!mtype || ('\0' == mtype[0]))
 		return NULL;
@@ -302,6 +299,9 @@ static struct test_sampler_metric *__schema_metric_new(char *s)
 	count_str = __strtok(NULL, delim, &ptr);
 	if (!count_str || ('\0' == count_str[0]))
 		count_str = "0";
+	unit = __strtok(NULL, delim, &ptr);
+	if (!unit || ('\0' == unit[0]))
+		unit = NULL;
 
 	struct test_sampler_metric *metric;
 	metric = __test_sampler_metric_new(name, unit, mtype,
