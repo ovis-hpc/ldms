@@ -267,31 +267,18 @@ err:
 	return rc;
 }
 
-int __log(enum ldmsd_loglevel level, char *msg)
+int __log(enum ldmsd_loglevel level, char *msg, struct timeval *tv, struct tm *tm)
 {
 	if (log_fp == LDMSD_LOG_SYSLOG) {
 		syslog(ldmsd_loglevel_to_syslog(level), "%s", msg);
 		return 0;
 	}
 
-	if (log_time_sec == -1) {
-		char * lt = getenv("LDMSD_LOG_TIME_SEC");
-		if (lt)
-			log_time_sec = 1;
-		else
-			log_time_sec = 0;
-	}
 	if (log_time_sec) {
-		struct timeval tv;
-		gettimeofday(&tv, NULL);
-		fprintf(log_fp, "%lu.%06lu: ", tv.tv_sec, tv.tv_usec);
+		fprintf(log_fp, "%lu.%06lu: ", tv->tv_sec, tv->tv_usec);
 	} else {
-		time_t t;
 		char dtsz[200];
-		struct tm tm;
-		t = time(NULL);
-		localtime_r(&t, &tm);
-		if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", &tm))
+		if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
 			fprintf(log_fp, "%s: ", dtsz);
 	}
 
@@ -309,16 +296,18 @@ int log_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
 	enum ldmsd_loglevel level = EV_DATA(ev, struct log_data)->level;
 	char *msg = EV_DATA(ev, struct log_data)->msg;
 	uint8_t is_rotate = EV_DATA(ev, struct log_data)->is_rotate;
+	struct timeval *tv = &EV_DATA(ev, struct log_data)->tv;
+	struct tm *tm = &EV_DATA(ev, struct log_data)->tm;
 	int rc;
 
 	if (is_rotate) {
 		rc = __logrotate();
 	} else {
-		rc = __log(level, msg);
+		rc = __log(level, msg, tv, tm);
 		if (0 == ev_pending(logger_w))
 			fflush(log_fp);
+		free(msg);
 	}
-	free(msg);
 	ev_put(ev);
 	return rc;
 }
@@ -328,6 +317,9 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 	ev_t log_ev;
 	char *msg;
 	int rc;
+	struct timeval *tv;
+	struct tm *tm;
+	time_t t;
 
 	log_ev = ev_new(log_type);
 	if (!log_ev)
@@ -339,6 +331,22 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 	EV_DATA(log_ev, struct log_data)->level = level;
 	EV_DATA(log_ev, struct log_data)->is_rotate = 0;
 
+	if (log_time_sec == -1) {
+		char * lt = getenv("LDMSD_LOG_TIME_SEC");
+		if (lt)
+			log_time_sec = 1;
+		else
+			log_time_sec = 0;
+	}
+	if (log_time_sec) {
+		tv = &EV_DATA(log_ev, struct log_data)->tv;
+		gettimeofday(tv, NULL);
+
+	} else {
+		tm = &EV_DATA(log_ev, struct log_data)->tm;
+		t = time(NULL);
+		localtime_r(&t, tm);
+	}
 	ev_post(NULL, logger_w, log_ev, NULL);
 }
 
