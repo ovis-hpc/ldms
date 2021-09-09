@@ -66,6 +66,8 @@ struct log_data {
 	uint8_t is_rotate;
 	enum ldmsd_loglevel level;
 	char *msg;
+	struct timeval tv;
+	struct tm tm;
 };
 
 int ldmsd_ev_init(void);
