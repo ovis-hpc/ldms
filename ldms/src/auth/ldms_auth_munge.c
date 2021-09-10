@@ -174,7 +174,16 @@ int __auth_munge_xprt_begin(ldms_auth_t auth, ldms_t xprt)
 				(void*)&a->rsin, &a->sin_len);
 	if (rc)
 		return rc;
-	merr = munge_encode(&a->local_cred, a->mctx, &a->lsin, a->sin_len);
+	/*
+	 * zap_rdma from OVIS-4.3.7 and earlier has a bug that swaps
+	 * local/remote addresses. Since the old peers expect to receive the
+	 * swapped address, in order to be compatible with them, we have to send
+	 * the swapped address in the case of rdma transport.
+	 */
+	merr = (strncmp(xprt->name, "rdma", 4) == 0)?
+		munge_encode(&a->local_cred, a->mctx, &a->rsin, a->sin_len):
+		munge_encode(&a->local_cred, a->mctx, &a->lsin, a->sin_len);
+
 	if (merr)
 		return EBADR; /* bad request */
 	len = strlen(a->local_cred);
@@ -194,6 +203,7 @@ int __auth_munge_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 	uid_t uid;
 	gid_t gid;
 	int len;
+	int cmp;
 	munge_err_t merr;
 	if (data[data_len-1] != 0)
 		goto invalid;
@@ -205,7 +215,16 @@ int __auth_munge_xprt_recv_cb(ldms_auth_t auth, ldms_t xprt,
 
 	/* check if addr match */
 	sin = payload;
-	if (memcmp(sin, &a->rsin, sizeof(*sin)) != 0)
+	/*
+	 * zap_rdma from OVIS-4.3.7 and earlier has a bug that swaps
+	 * local/remote addresses. Since the old peers send the swapped
+	 * address, in order to be compatible with them, we have to expect the
+	 * swapped address in the case of rdma transport.
+	 */
+	cmp = (strncmp(xprt->name, "rdma", 4) == 0)?
+			memcmp(sin, &a->lsin, sizeof(*sin)):
+			memcmp(sin, &a->rsin, sizeof(*sin));
+	if (cmp != 0)
 		goto invalid; /* bad addr */
 	/* verified */
 	xprt->ruid = uid;
