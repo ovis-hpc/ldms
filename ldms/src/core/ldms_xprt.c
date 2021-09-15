@@ -2807,9 +2807,13 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_xprt_put(x);
 		break;
 	case ZAP_EVENT_SEND_COMPLETE:
-		event.type = LDMS_XPRT_EVENT_SEND_COMPLETE;
-		if (x->event_cb)
-			x->event_cb(x, &event, x->event_cb_arg);
+		if (!(x->auth_flag & LDMS_XPRT_AUTH_APPROVED)) {
+			/* Ignore */
+		} else {
+			event.type = LDMS_XPRT_EVENT_SEND_COMPLETE;
+			if (x->event_cb)
+				x->event_cb(x, &event, x->event_cb_arg);
+		}
 		break;
 	default:
 		x->log("ldms_zap_cb: unexpected zap event value %d from network\n",
