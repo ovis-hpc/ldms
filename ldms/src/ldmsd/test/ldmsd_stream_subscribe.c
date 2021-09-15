@@ -330,6 +330,9 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	case LDMS_XPRT_EVENT_RECV:
 		recv_msg(x, e->data, e->data_len);
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		/* Ignore */
+		break;
 	default:
 		break;
 	}

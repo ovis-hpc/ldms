@@ -224,6 +224,9 @@ static void server_listen_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg
 	case LDMS_XPRT_EVENT_RECV:
 		server_recv_cb(x, e->data, e->data_len, recv_arg);
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		printf("Received SEND_COMPLETE\n");
+		break;
 	default:
 		printf("Unexpected ldms conn event %d.\n", e->type);
 		exit(-1);
@@ -296,6 +299,9 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 		break;
 	case LDMS_XPRT_EVENT_RECV:
 		client_recv_cb(x, e->data, e->data_len, arg);
+		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		printf("Received SEND_COMPLETE\n");
 		break;
 	default:
 		printf("Unhandled ldms event '%d'\n", e->type);

@@ -618,6 +618,9 @@ static void client_event_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 			clnt->clnt_B_do_lookup = 1;
 		sem_post(&clnt->recv_sem);
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		printf("%d: send_complete\n", port);
+		break;
 	default:
 		printf("%d: Unhandled ldms event '%d'\n", port, e->type);
 		exit(-1);
@@ -680,6 +683,8 @@ static void server_event_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 			break;
 		case LDMS_XPRT_EVENT_RECV:
 			server_process_recv(x, e->data, e->data_len, set);
+			break;
+		case LDMS_XPRT_EVENT_SEND_COMPLETE:
 			break;
 		default:
 			break;

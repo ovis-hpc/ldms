@@ -265,6 +265,9 @@ void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		ldms_xprt_put(ldms);
 		conn->ldms = NULL;
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		printf("%s: send_complete\n", conn->port);
+		break;
 	default:
 		printf("%s: Unhandled ldms event '%d'\n", conn->port, e->type);
 		pthread_mutex_unlock(&conn->state_lock);

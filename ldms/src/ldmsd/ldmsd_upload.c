@@ -71,6 +71,9 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		printf("%s:%d %s\n", __func__, __LINE__, e->data);
 		sem_post(&recv_sem);
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		printf("%s:%d \n", __func__, __LINE__);
+		break;
 	default:
 		printf("Received invalid event type %d\n", e->type);
 	}

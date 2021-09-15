@@ -2070,6 +2070,9 @@ void __ldms_passive_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	case LDMS_XPRT_EVENT_RECV:
 		/* Do nothing */
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		/* Do nothing */
+		break;
 	default:
 		x->log("__ldms_passive_connect_cb: unexpected ldms_xprt event value %d\n",
 			(int) e->type);
@@ -3669,6 +3672,9 @@ static void sync_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		break;
 	case LDMS_XPRT_EVENT_RECV:
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		/* Don't post */
+		return;
 	default:
 		x->log("sync_connect_cb: unexpected ldms_xprt event value %d\n",
 			(int) e->type);
