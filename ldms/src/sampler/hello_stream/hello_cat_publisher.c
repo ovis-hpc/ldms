@@ -118,6 +118,9 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		sem_post(&recv_sem);
 		server_rc = ldmsd_stream_response(e);
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		/* ignore */
+		break;
 	default:
 		printf("Received invalid event type %d\n", e->type);
 	}

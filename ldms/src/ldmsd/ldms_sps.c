@@ -179,6 +179,11 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		event = "error";
 #endif
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+#ifdef LNDEBUG
+		event = "send_complete";
+#endif
+		goto out;
 	default:
 #ifdef LNDEBUG
 		event = "INVALID_EVENT";
@@ -186,6 +191,7 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		DEBUGC(client, LERR, "Received invalid event type\n");
 	}
 	pthread_cond_signal(&client->wait_cond);
+out:
 	pthread_mutex_unlock(&client->wait_lock);
 #ifdef LNDEBUG
 	DEBUGL(LDBG, "Event %s received for client xprt=%s host=%s port=%s auth=%s\n",

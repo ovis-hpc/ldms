@@ -481,6 +481,9 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 		ldms_xprt_put(x);
 		sem_post(&exit_sem);
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		printf("%d: send_complete\n", port);
+		break;
 	default:
 		printf("%d: Unhandled ldms event '%d'\n", port, e->type);
 		exit(-1);
