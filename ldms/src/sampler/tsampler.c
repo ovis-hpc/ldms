@@ -71,7 +71,7 @@ static
 void tsampler_cb(ovis_event_t ev)
 {
 	tsampler_timer_t x = ev->param.ctxt;
-	ldms_mval_t mv = ldms_metric_get_addr(x->set, x->tid);
+	ldms_mval_t mv = ldms_metric_get(x->set, x->tid);
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	if (x->tid >= 0) {

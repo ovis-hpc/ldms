@@ -739,7 +739,7 @@ int write_amqp(struct rabbitv3_metric_store *ms,
 	int len = 0;
 	enum ldms_value_type metric_type = ldms_metric_type_get(set,metric_id);
 	uint32_t arr_len = ldms_metric_array_get_len(set,metric_id);
-	void * data = ldms_metric_get_addr(set,metric_id);
+	void * data = ldms_metric_get(set,metric_id);
 	len = write_value[metric_type](data, arr_len,
 			       ms->message, ms->message_cap, metric_type);
 	if (len < 0) {

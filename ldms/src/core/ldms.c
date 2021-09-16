@@ -1788,14 +1788,6 @@ ldms_mval_t ldms_metric_get(ldms_set_t s, int i)
 	return __mval_to_get(s, i, NULL);
 }
 
-ldms_mval_t ldms_metric_get_addr(ldms_set_t s, int i)
-{
-	if (i < 0 || i >= __le32_to_cpu(s->meta->card))
-		return NULL;
-
-	return __mval_to_get(s, i, NULL);
-}
-
 uint32_t ldms_metric_array_get_len(ldms_set_t s, int i)
 {
 	ldms_mdesc_t desc = ldms_ptr_(struct ldms_value_desc, s->meta,

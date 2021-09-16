@@ -1781,18 +1781,6 @@ int ldms_metric_is_array(ldms_set_t s, int i);
 ldms_mval_t ldms_metric_get(ldms_set_t s, int i);
 
 /**
- * \brief Get the address of the metric (array or scalar) in ldms set \c s.
- *
- * \note the data is little-endian. Use accessor functions if portability
- * is required.
- *
- * \param s The set handle.
- * \param i The metric ID.
- * \retval ptr The pointer to the array or scalar in the set.
- */
-ldms_mval_t ldms_metric_get_addr(ldms_set_t s, int i);
-
-/**
  * \brief Get the address of the array metric in ldms set \c s.
  *
  * \note ldms expects the elements in the array to be little-endian.
