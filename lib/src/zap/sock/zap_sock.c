@@ -601,8 +601,7 @@ static void process_sep_msg_read_req(struct z_sock_ep *sep)
 	uint32_t data_len;
 	char *src;
 	struct sock_msg_read_resp rmsg;
-	memset(&(rmsg.status), 0, sizeof(rmsg.status));
-	rmsg.dst_ptr = 0;
+	memset(&(rmsg), 0, sizeof(rmsg));
 
 	msg = sep->buff.data;
 
