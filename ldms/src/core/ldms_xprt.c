@@ -2747,7 +2747,7 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		__sync_fetch_and_add(&xprt_connect_count, 1);
 		/* initialize/cache addr since connected */
 		struct sockaddr l, r;
-		socklen_t len;
+		socklen_t len = 0;
 		ldms_xprt_sockaddr(x, &l, &r, &len);
 		/* actively connected -- expecting conn_msg */
 		if (0 != __ldms_conn_msg_verify(x, ev->data, ev->data_len,
