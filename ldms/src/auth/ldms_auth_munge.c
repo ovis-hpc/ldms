@@ -86,8 +86,8 @@ struct ldms_auth_munge {
 	struct ldms_auth base;
 	munge_ctx_t mctx;
 	char *local_cred;
-	struct sockaddr_in lsin;
-	struct sockaddr_in rsin;
+	struct sockaddr_storage lsin;
+	struct sockaddr_storage rsin;
 	socklen_t sin_len;
 };
 
