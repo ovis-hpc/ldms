@@ -2199,15 +2199,24 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 		goto cleanup;
 	}
 	n = __le32_to_cpu(set->meta->array_card);
-	/* update current index from the update */
+
 	data = __ldms_set_array_get(set, ctxt->update.idx_from);
+	prev_data = __ldms_set_array_get(set, set->curr_idx);
+
+	if (data != prev_data &&
+			__ldms_data_ts_cmp(prev_data, data) >= 0) {
+		/* special case, no new data */
+		ctxt->update.cb(x, set, flags, ctxt->update.cb_arg);
+		goto cleanup;
+	}
+
+	/* update current index from the update */
 	upd_curr_idx = __le32_to_cpu(data->curr_idx);
 	for (i = 0; i < n; i++) {
 		data = __ldms_set_array_get(set, i);
 		data->curr_idx = upd_curr_idx;
 	}
 
-	prev_data = __ldms_set_array_get(set, set->curr_idx);
 	for (i = ctxt->update.idx_from;i <= ctxt->update.idx_to; i++) {
 		data = __ldms_set_array_get(set, i);
 		if (data != prev_data &&
