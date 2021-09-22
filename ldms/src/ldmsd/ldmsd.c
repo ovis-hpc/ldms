@@ -321,6 +321,10 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 	struct tm *tm;
 	time_t t;
 
+	if ((level != LDMSD_LALL) &&
+			(quiet || ((0 <= level) && (level < log_level_thr))))
+		return;
+
 	log_ev = ev_new(log_type);
 	if (!log_ev)
 		return;
@@ -352,10 +356,6 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 
 void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...)
 {
-	if ((level != LDMSD_LALL) &&
-			(quiet || ((0 <= level) && (level < log_level_thr))))
-		return;
-
 	va_list ap;
 	va_start(ap, fmt);
 	__ldmsd_log(level, fmt, ap);
