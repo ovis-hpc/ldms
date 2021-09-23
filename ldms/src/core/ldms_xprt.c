@@ -602,22 +602,16 @@ void ldms_xprt_put(ldms_t x)
 {
 	int remove = 0;
 	assert(x->ref_count);
-	/*
-	 * The xprt could be destroyed any time ldms_xprt_put is called.
-	 * We need to take the xprt list lock to prevent the race
-	 * between destroying the xprt and accessing the xprt from the list
-	 * on another thread.
-	 */
-	pthread_mutex_lock(&xprt_list_lock);
 	if (0 == __sync_sub_and_fetch(&x->ref_count, 1)) {
 		remove = 1;
+		pthread_mutex_lock(&xprt_list_lock);
 		LIST_REMOVE(x, xprt_link);
+		pthread_mutex_unlock(&xprt_list_lock);
 #ifdef DEBUG
 		x->xprt_link.le_next = 0;
 		x->xprt_link.le_prev = 0;
 #endif /* DEBUG */
 	}
-	pthread_mutex_unlock(&xprt_list_lock);
 
 	if (!remove)
 		return;
