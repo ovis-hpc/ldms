@@ -116,9 +116,11 @@ void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_
 
 ldms_t ldms_xprt_get(ldms_t x)
 {
+	int a;
 	if (x) {
 		assert(x->ref_count > 0);
-		__sync_add_and_fetch(&x->ref_count, 1);
+		a = __sync_add_and_fetch(&x->ref_count, 1);
+		assert(a > 1); /* we are not getting a reference after it has reached 0. */
 	}
 	return x;
 }
