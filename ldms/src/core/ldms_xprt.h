@@ -397,11 +397,6 @@ struct ldms_xprt {
 	struct rbt set_coll;
 
 	LIST_ENTRY(ldms_xprt) xprt_link;
-
-	/* for addr caching */
-	socklen_t sa_len;
-	struct sockaddr_storage local_sa;
-	struct sockaddr_storage remote_sa;
 };
 
 void __ldms_xprt_term(struct ldms_xprt *x);
