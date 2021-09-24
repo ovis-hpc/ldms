@@ -2747,10 +2747,6 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_CONNECTED:
 		(void)clock_gettime(CLOCK_REALTIME, &x->stats.connected);
 		__sync_fetch_and_add(&xprt_connect_count, 1);
-		/* initialize/cache addr since connected */
-		struct sockaddr_storage l, r;
-		socklen_t len = sizeof(l);
-		ldms_xprt_sockaddr(x, (struct sockaddr *)&l, (struct sockaddr *)&r, &len);
 		/* actively connected -- expecting conn_msg */
 		if (0 != __ldms_conn_msg_verify(x, ev->data, ev->data_len,
 					   rej_msg, sizeof(rej_msg))) {
@@ -3805,34 +3801,13 @@ int ldms_xprt_term(int sec)
 	return rc;
 }
 
-int ldms_xprt_sockaddr(ldms_t _x, struct sockaddr *local_sa,
+int ldms_xprt_sockaddr(ldms_t x, struct sockaddr *local_sa,
 		       struct sockaddr *remote_sa,
 		       socklen_t *sa_len)
 {
-	struct ldms_xprt *x = _x;
 	zap_err_t zerr;
-
-	if (!x->sa_len) {
-		/*
-		 * The addresses have never been gotten.
-		 * Get the addresses first.
-		 */
-		x->sa_len = sizeof(x->local_sa);
-		zerr = zap_get_name(x->zap_ep, (struct sockaddr *)&x->local_sa,
-				    (struct sockaddr *)&x->remote_sa, &x->sa_len);
-		if (zerr)
-			return zap_zerr2errno(zerr);
-	}
-
-	if (x->sa_len > *sa_len) {
-		*sa_len = x->sa_len;
-		return E2BIG;
-	}
-
-	memcpy(local_sa, &x->local_sa, x->sa_len);
-	memcpy(remote_sa, &x->remote_sa, x->sa_len);
-	*sa_len = x->sa_len;
-	return 0;
+	zerr = zap_get_name(x->zap_ep, local_sa, remote_sa, sa_len);
+	return zap_zerr2errno(zerr);
 }
 
 static void __attribute__ ((constructor)) cs_init(void)
