@@ -3826,6 +3826,10 @@ static void z_ugni_sock_recv(struct z_ugni_ep *uep)
 			/* Otherwise, read error */
 			goto err;
 		}
+		if (n == 0) {
+			errno = ECOMM;
+			goto err;
+		}
 		uep->sock_off += n;
 	}
 	mlen = ntohl(uep->sock_buff.hdr.msg_len);
@@ -3837,6 +3841,10 @@ static void z_ugni_sock_recv(struct z_ugni_ep *uep)
 			if (errno == EAGAIN) /* this is OK */
 				return;
 			/* Otherwise, read error */
+			goto err;
+		}
+		if (n == 0) {
+			errno = ECOMM;
 			goto err;
 		}
 		uep->sock_off += n;
