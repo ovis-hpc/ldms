@@ -404,12 +404,19 @@ static int __ep_flush(struct z_rdma_ep *rep)
 	 * endpoint is in a bad state (rejected, connection errors, or
 	 * disconnected). */
 	int ret;
+	struct ibv_cq *ev_cq;
+	void *ev_ctx;
 
 	/* disable cq events */
 	__disable_cq_events(rep);
 
+	/* clear event from cq channel */
+	if (rep->cq_channel) {
+		ret = ibv_get_cq_event(rep->cq_channel, &ev_cq, &ev_ctx);
+		if (0 == ret)
+			ibv_ack_cq_events(ev_cq, 1);
+	}
 	/* process remaining cq events */
-	z_rdma_handle_cq_event(&rep->cq_ctxt);
 	do {
 		ret = 0;
 		if (rep->sq_cq) {
