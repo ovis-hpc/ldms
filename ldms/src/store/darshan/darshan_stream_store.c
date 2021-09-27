@@ -94,27 +94,7 @@ to_timestamp(double d)
 static const char *time_job_rank_attrs[] = { "timestamp", "job_id", "rank" };
 static const char *job_time_rank_attrs[] = { "job_id", "timestamp", "rank" };
 static const char *job_rank_time_attrs[] = { "job_id", "rank", "timestamp" };
-//static const char *job_name_rank_time_attrs[] = { "job_id", "name", "rank", "timestamp" };
 
-/*
- * Example JSON object:
- *
- * { \"job-id\" : 10053287,
- *   \"rank\" : 1,
- *   \"timestamp\" :	  1626289443.1507,
- *   \"kokkos-perf-data\" :
- *	[
- *	  { \"name\" : \"N9SPARTA_NS14ParticleKokkosE/N9SPARTA_NS28TagParticleCompressReactionsE\",
- *	    \"type\" : 0,
- *	    \"current-kernel-count\" : 2,
- *	    \"total-kernel-count\" : 808,
- *	    \"level\" : 0,
- *	    \"current-kernel-time\" : 0.000028,
- *	    \"total-kernel-time\" : 0.000056
- *	  }
- *     ]
- *  }
- */
 
 /*
  * Example JSON object:
@@ -125,7 +105,9 @@ static const char *job_rank_time_attrs[] = { "job_id", "rank", "timestamp" };
  *   \"file\" : \"/projects/darshan/test/mpi-io-test.tmp.dat\",
  *   \"record_id\" : 6222542600266098259,
  *   \"module\" : \"X_POSIX\",
- *   \"type\" : \"write\",
+ *   \"type\" : \"MOD\",
+ *   \"max_byte\" : 1,
+ *   \"switches\" : 0,
  *   \"cnt\" : 1,
  *   \"op\" : \"writes_segment_0\",
  *   \"seg\" :
@@ -138,6 +120,8 @@ static const char *job_rank_time_attrs[] = { "job_id", "rank", "timestamp" };
  *     ]
  *  }
  */
+
+//{ "job_id":6582,"rank":0,"ProducerName":"nid00021","file":"N/A","record_id":6222542600266098259,"module":"POSIX","type":"MOD","max_byte":16777215,"switches":0,"cnt":1,"op":"writes_segment_0","seg":[{"off":0,"len":16777216,"dur":0.16,"timestamp":1631904596.737955}]}
 
 static struct sos_schema_template darshan_data_template = {
 	.name = "darshan_data",
@@ -331,6 +315,7 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 }
 
 
+// Metadata
 //{ "job_id":6594,"rank":2,"ProducerName":"nid00021","file":"/projects/darshan/test/mpi-io-test.tmp.dat","record_id":6222542600266098259,"module":"POSIX","type":"MET","max_byte":-1,"switches":-1,"cnt":1,"op":"opens_segment_0","seg":[{"off":-1,"len":-1,"dur":0.00,"timestamp":1631904596.556221}]}
 // Module data
 //{ "job_id":6582,"rank":0,"ProducerName":"nid00021","file":"N/A","record_id":6222542600266098259,"module":"POSIX","type":"MOD","max_byte":16777215,"switches":0,"cnt":1,"op":"writes_segment_0","seg":[{"off":0,"len":16777216,"dur":0.16,"timestamp":1631904596.737955}]}
