@@ -86,3 +86,7 @@ endif
 if ENABLE_HELLO_STREAM
 SUBDIRS += hello_stream
 endif
+
+if ENABLE_DARSHAN
+SUBDIRS += darshan
+endif

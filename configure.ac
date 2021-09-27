@@ -325,6 +325,7 @@ OPTION_DEFAULT_DISABLE([atasmart], [ENABLE_ATASMART])
 OPTION_DEFAULT_ENABLE([generic_sampler], [ENABLE_GENERIC_SAMPLER])
 OPTION_DEFAULT_DISABLE([switchx], [ENABLE_SWITCHX])
 OPTION_WITH([switchx], [SWITCHX],[/usr/local])
+OPTION_DEFAULT_DISABLE([darshan], [ENABLE_DARSHAN])
 OPTION_DEFAULT_DISABLE([kokkos], [ENABLE_KOKKOS])
 OPTION_DEFAULT_ENABLE([jobinfo-sampler], [ENABLE_JOBINFO])
 OPTION_DEFAULT_DISABLE([ibm_occ], [ENABLE_IBM_OCC_SAMPLER])
@@ -418,6 +419,10 @@ AM_CONDITIONAL([ENABLE_TX2MON], [test "$enable_tx2mon" = "yes"])
 if test -z "$ENABLE_KOKKOS_TRUE"; then
 	dnl kokkos needs sos (not the storesos).
 	CHECK_SOS=1
+fi
+if test -z "$ENABLE_DARSHAN_TRUE"; then
+        dnl darshan needs sos (not the storesos).
+        CHECK_SOS=1
 fi
 if test -z "$ENABLE_STORE_APP_TRUE"; then
 	dnl kokkos needs sos (not the storesos).
@@ -825,6 +830,7 @@ ldms/src/contrib/Makefile
 ldms/src/sampler/blob_stream/Makefile
 ldms/src/store/hello_stream/Makefile
 ldms/src/store/kokkos/Makefile
+ldms/src/store/darshan/Makefile
 ldms/src/store/papi/Makefile
 ldms/src/store/slurm/Makefile
 ldms/src/store/influx/Makefile
