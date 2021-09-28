@@ -75,6 +75,7 @@
  * `max_hdr_len` - 8.  */
 #define ZAP_UGNI_BUFSZ 1024
 
+#define ZAP_UGNI_EP_GRAIN 2048
 #define ZAP_UGNI_THREAD_EP_MAX 2048 /* max endpoints per thread */
 #define ZAP_UGNI_EP_MSG_CREDIT 8
 #define ZAP_UGNI_RDMA_CQ_DEPTH (4*1024*1024)
@@ -83,6 +84,8 @@
 #define ZAP_UGNI_RDMA_POST_CREDIT (64)
 #define ZAP_UGNI_MSG_POST_CREDIT (32)
 #define ZAP_UGNI_ACK_POST_CREDIT (32)
+
+#define ZAP_UGNI_IDX_POOL_LEN_GRAIN 4096
 
 /* This is used by handle rendezvous */
 struct zap_ugni_map {
@@ -305,8 +308,8 @@ struct z_ugni_sock_msg_conn_accept {
 
 /* Endpoint index structure */
 struct z_ugni_ep_idx {
-	uint16_t idx; /* index to self */
-	uint16_t next_free_idx; /* next idx in the free list */
+	uint32_t idx; /* index to self */
+	uint32_t next_free_idx; /* next idx in the free list */
 	struct z_ugni_ep *uep;
 };
 
@@ -403,8 +406,10 @@ struct z_ugni_ack_status {
 
 /** send/recv buffer for an endpoint */
 struct z_ugni_msg_buf {
+	struct z_ugni_msg_buf_chunk *chunk; /* the chunk this msg_buf belongs to */
 	int curr_rbuf_idx; /* current recv buffer index */
 	int curr_sbuf_idx; /* current send buffer index */
+	TAILQ_ENTRY(z_ugni_msg_buf) entry; /* next buf in the free list */
 
 	/* Peer will write messages to rbuf using RDMA PUT */
 	struct z_ugni_msg_buf_ent rbuf[ZAP_UGNI_EP_MSG_CREDIT];
@@ -432,6 +437,31 @@ struct z_ugni_msg_buf {
 	 * everything in the corresponding cell to 0.
 	 */
 	struct z_ugni_ack_status ack_status[ZAP_UGNI_EP_MSG_CREDIT];
+};
+
+TAILQ_HEAD(z_ugni_msg_buf_head, z_ugni_msg_buf);
+
+/* a chunk consists of multiple buffer */
+struct z_ugni_msg_buf_chunk {
+	TAILQ_ENTRY(z_ugni_msg_buf_chunk) entry;
+	gni_mem_handle_t mbuf_mh; /* mem registration for `buf` */
+	int free_count;
+	struct z_ugni_msg_buf_head free_list;
+	struct z_ugni_msg_buf buf[ZAP_UGNI_EP_GRAIN];
+};
+
+TAILQ_HEAD(z_ugni_msg_buf_chunk_head, z_ugni_msg_buf_chunk);
+
+/* a pool consists of many chunks */
+struct z_ugni_msg_buf_pool {
+	int vacant_count; /* number of chunks in vacant_list */
+	/* chunks that have vacancies are in vacant_list */
+	struct z_ugni_msg_buf_chunk_head vacant_list;
+	/* chunks that have NO vacancies are in full_list */
+	struct z_ugni_msg_buf_chunk_head full_list;
+
+	/* NOTE a fully vacant chunk shall be freed unless it is the last chunk
+	 * in the vacant list */
 };
 
 struct z_ugni_ep {
@@ -501,6 +531,31 @@ struct z_ugni_ep {
 	struct z_ugni_msg_buf *mbuf;
 };
 
+struct z_ugni_ep_idx_pool {
+	/*
+	 * pool[0] contains idx 0..ZAP_UGNI_EP_GRAIN-1
+	 * pool[1] contains idx ZAP_UGNI_EP_GRAIN..2*ZAP_UGNI_EP_GRAIN-1
+	 * ...
+	 */
+	struct z_ugni_ep_idx **pool;
+	int pool_len; /* length of pool */
+	int pool_last; /* pool[pool_last] is the last pool allocated */
+	struct z_ugni_ep_idx *free_head;
+	struct z_ugni_ep_idx *free_tail;
+	int free_count;
+};
+
+/* Get idx entry from the pool */
+static inline
+struct z_ugni_ep_idx * __pool_idx(struct z_ugni_ep_idx_pool *pool, int idx)
+{
+	int p_idx = idx / ZAP_UGNI_EP_GRAIN;
+	int o_idx = idx % ZAP_UGNI_EP_GRAIN;
+	if (p_idx >= pool->pool_len || !pool->pool[p_idx])
+		return NULL;
+	return &pool->pool[p_idx][o_idx];
+}
+
 struct z_ugni_io_thread {
 	struct zap_io_thread zap_io_thread;
 	int efd; /* epoll file descriptor */
@@ -536,9 +591,7 @@ struct z_ugni_io_thread {
 	/* Each endpoint is assigned an index. The peers use this index set
 	 * REMOTE_DATA so that we (the local process) know who (which endpoint)
 	 * RDMA PUT into the recv buffer memory. */
-	struct z_ugni_ep_idx ep_idx[ZAP_UGNI_THREAD_EP_MAX];
-	/* The ep_idx free list (head and tail) */
-	struct z_ugni_ep_idx *free_ep_idx_head, *free_ep_idx_tail;
+	struct z_ugni_ep_idx_pool idx_pool;
 
 	struct rbt zq; /* zap event queue, protected by zap_io_thread.mutex */
 	int zq_fd[2]; /* zap event queue fd (to wake up epoll_wait) */
@@ -579,10 +632,8 @@ struct z_ugni_io_thread {
 	uint64_t wr_seq; /* wr sequence number */
 	/* ---------------------------------------- */
 
-	/* Send/recv message buffer for all endpoints assigned to the thread */
-	struct z_ugni_msg_buf *mbuf;
-	/* Memory registration handle for the mbuf */
-	gni_mem_handle_t mbuf_mh;
+	/* messgae buffer pool for endpoints assigned to the thread */
+	struct z_ugni_msg_buf_pool mbuf_pool;
 };
 
 #endif
