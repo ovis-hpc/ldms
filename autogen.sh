@@ -13,3 +13,9 @@ else
 	echo "this script for regenerating the ovis ldmsd. Cannot find ldms/."
 	exit 1
 fi
+
+if test -f .git/hooks/pre-commit.sample; then
+	if ! test -f .git/hooks/pre-commit; then
+		cp .git/hooks/pre-commit.sample .git/hooks/pre-commit
+	fi
+fi
