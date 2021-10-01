@@ -116,9 +116,11 @@ void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_
 
 ldms_t ldms_xprt_get(ldms_t x)
 {
+	int a;
 	if (x) {
 		assert(x->ref_count > 0);
-		__sync_add_and_fetch(&x->ref_count, 1);
+		a = __sync_add_and_fetch(&x->ref_count, 1);
+		assert(a > 1); /* we are not getting a reference after it has reached 0. */
 	}
 	return x;
 }
@@ -602,22 +604,16 @@ void ldms_xprt_put(ldms_t x)
 {
 	int remove = 0;
 	assert(x->ref_count);
-	/*
-	 * The xprt could be destroyed any time ldms_xprt_put is called.
-	 * We need to take the xprt list lock to prevent the race
-	 * between destroying the xprt and accessing the xprt from the list
-	 * on another thread.
-	 */
-	pthread_mutex_lock(&xprt_list_lock);
 	if (0 == __sync_sub_and_fetch(&x->ref_count, 1)) {
 		remove = 1;
+		pthread_mutex_lock(&xprt_list_lock);
 		LIST_REMOVE(x, xprt_link);
+		pthread_mutex_unlock(&xprt_list_lock);
 #ifdef DEBUG
 		x->xprt_link.le_next = 0;
 		x->xprt_link.le_prev = 0;
 #endif /* DEBUG */
 	}
-	pthread_mutex_unlock(&xprt_list_lock);
 
 	if (!remove)
 		return;
@@ -2203,15 +2199,24 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 		goto cleanup;
 	}
 	n = __le32_to_cpu(set->meta->array_card);
-	/* update current index from the update */
+
 	data = __ldms_set_array_get(set, ctxt->update.idx_from);
+	prev_data = __ldms_set_array_get(set, set->curr_idx);
+
+	if (data != prev_data &&
+			__ldms_data_ts_cmp(prev_data, data) >= 0) {
+		/* special case, no new data */
+		ctxt->update.cb(x, set, flags, ctxt->update.cb_arg);
+		goto cleanup;
+	}
+
+	/* update current index from the update */
 	upd_curr_idx = __le32_to_cpu(data->curr_idx);
 	for (i = 0; i < n; i++) {
 		data = __ldms_set_array_get(set, i);
 		data->curr_idx = upd_curr_idx;
 	}
 
-	prev_data = __ldms_set_array_get(set, set->curr_idx);
 	for (i = ctxt->update.idx_from;i <= ctxt->update.idx_to; i++) {
 		data = __ldms_set_array_get(set, i);
 		if (data != prev_data &&
@@ -2747,10 +2752,6 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 	case ZAP_EVENT_CONNECTED:
 		(void)clock_gettime(CLOCK_REALTIME, &x->stats.connected);
 		__sync_fetch_and_add(&xprt_connect_count, 1);
-		/* initialize/cache addr since connected */
-		struct sockaddr l, r;
-		socklen_t len;
-		ldms_xprt_sockaddr(x, &l, &r, &len);
 		/* actively connected -- expecting conn_msg */
 		if (0 != __ldms_conn_msg_verify(x, ev->data, ev->data_len,
 					   rej_msg, sizeof(rej_msg))) {
@@ -3805,34 +3806,13 @@ int ldms_xprt_term(int sec)
 	return rc;
 }
 
-int ldms_xprt_sockaddr(ldms_t _x, struct sockaddr *local_sa,
+int ldms_xprt_sockaddr(ldms_t x, struct sockaddr *local_sa,
 		       struct sockaddr *remote_sa,
 		       socklen_t *sa_len)
 {
-	struct ldms_xprt *x = _x;
 	zap_err_t zerr;
-
-	if (!x->sa_len) {
-		/*
-		 * The addresses have never been gotten.
-		 * Get the addresses first.
-		 */
-		x->sa_len = sizeof(x->local_sa);
-		zerr = zap_get_name(x->zap_ep, (struct sockaddr *)&x->local_sa,
-				    (struct sockaddr *)&x->remote_sa, &x->sa_len);
-		if (zerr)
-			return zap_zerr2errno(zerr);
-	}
-
-	if (x->sa_len > *sa_len) {
-		*sa_len = x->sa_len;
-		return E2BIG;
-	}
-
-	memcpy(local_sa, &x->local_sa, x->sa_len);
-	memcpy(remote_sa, &x->remote_sa, x->sa_len);
-	*sa_len = x->sa_len;
-	return 0;
+	zerr = zap_get_name(x->zap_ep, local_sa, remote_sa, sa_len);
+	return zap_zerr2errno(zerr);
 }
 
 static void __attribute__ ((constructor)) cs_init(void)
