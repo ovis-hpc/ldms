@@ -1,18 +1,18 @@
-.\" Manpage for Plugin_darshan_stream_store
+.\" Plugin_darshan_stream_store
 .\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
-.TH main 7 "26 September 2021" "v4" "LDMS Plugin darshan_stream_store man page"
+.TH main 7 "26 September 2021" "v4" "LDMS Plugin darshan_stream_store"
 
 .SH NAME
-Plugin_darshan_stream_store - man page for the LDMS darshan_stream_store plugin
+Plugin_darshan_stream_store - LDMS darshan_stream_store plugin
 
 .SH SYNOPSIS
 Within ldmsd_controller or a configuration file:
 .br
-config name=darshan_stream_store [ <attr>=<value> ] 
+config name=darshan_stream_store [ <attr>=<value> ]
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or a configuration file. 
-The darshan_stream_store plugin writes out either a single darshan JSON stream's data to the SOS container. The input data produced by the LDMS darshan plugin and consists of two types of messages "MOD" for module data and "MET for metadata. Both messages are saved into the same SOS container.
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or a configuration file. The darshan_stream_store plugin writes out a single darshan json stream's data to SOS container. The input data produced by the LDMS darshan plugin consist of two types of messages: "MOD" for module data and "MET for meta data. Both messages saved into the same SOS container.
+
 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 .TP
@@ -26,7 +26,7 @@ name=<plugin_name>
 .br
 This MUST be darshan_stream_store.
 .TP
-path=<path> 
+path=<path>
 .br
 The path to the root of the SOS container store (should be created by the user)
 .TP
@@ -41,13 +41,16 @@ The container permission mode for create, (defaults to 0660).
 
 .SH INPUT JSON FORMAT
 .PP
-The input JSON has a "type" field, which selects the message type between module data and metadata.
+The input json has a "type" field, and this type used to select the the message type between module data and meta data.
 .PP
-The reset of the fileds are darshan specific and shown in the example listed below:
+A MOD darshan JSON example is shown below:
 .PP
 {"job_id":6582,"rank":0,"ProducerName":"nid00021","file":"N/A","record_id":6222542600266098259,"module":"POSIX","type":"MOD","max_byte":16777215,"switches":0,"cnt":1,"op":"writes_segment_0","seg":[{"off":0,"len":16777216,"dur":0.16,"timestamp":1631904596.737955}]}
 .PP
-Some fields are set to -1, if they don't have data for that message type.
+A MET darshan JSON example is shown below:
+.PP
+.PP
+Some fields are set to -1 if they don't have data for that message type.
 .PP
 
 
@@ -68,9 +71,7 @@ Within ldmsd_controller or a configuration file:
 .nf
 load name=darshan_stream_store
 config name=darshan_stream_store path=/tmp/darshan_stream stream=darshanConnector
-# dont call anything else on the store...
 
-# how does it know which producer the subscribe is part of?
 prdcr_add name=localhost1 host=localhost type=active xprt=sock port=52001 interval=20000000
 prdcr_subscribe stream=darshanConnector regex=localhost*
 prdcr_start name=localhost1
