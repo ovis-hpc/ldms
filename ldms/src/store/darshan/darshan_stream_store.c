@@ -176,7 +176,7 @@ enum attr_ids {
        OFFSET_ID,
        LENGTH_ID,
        DURATION_ID,
-       TIMESTAMP_ID = 0,
+       TIMESTAMP_ID,
 };
 
 static int create_schema(sos_t sos, sos_schema_t *app)
@@ -189,16 +189,24 @@ static int create_schema(sos_t sos, sos_schema_t *app)
 	if (!schema) {
 		msglog(LDMSD_LERROR, "%s: Error %d creating Darshan data schema.\n",
 		       darshan_stream_store.name, errno);
-		return errno;
+		rc = errno;
+		goto err;
 	}
 	rc = sos_schema_add(sos, schema);
 	if (rc) {
 		msglog(LDMSD_LERROR, "%s: Error %d adding Darshan data schema.\n",
 		       darshan_stream_store.name, rc);
-		return rc;
+		goto err;
 	}
 	*app = schema;
 	return 0;
+
+err:
+	if (schema) {
+		free(schema);
+	}
+	return rc;
+
 }
 
 static int container_mode = 0660;	/* Default container permission bits */
@@ -213,7 +221,7 @@ static int reopen_container(char *path)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
 
 
-	/* Check if the container at path is already present */
+	/* Creates the container if it doesn't already exist  */
 	sos = sos_container_open(path, SOS_PERM_RW|SOS_PERM_CREAT, container_mode);
 	if (!sos) {
 		return errno;
@@ -315,10 +323,10 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 }
 
 
-// Metadata
-//{ "job_id":6594,"rank":2,"ProducerName":"nid00021","file":"/projects/darshan/test/mpi-io-test.tmp.dat","record_id":6222542600266098259,"module":"POSIX","type":"MET","max_byte":-1,"switches":-1,"cnt":1,"op":"opens_segment_0","seg":[{"off":-1,"len":-1,"dur":0.00,"timestamp":1631904596.556221}]}
-// Module data
-//{ "job_id":6582,"rank":0,"ProducerName":"nid00021","file":"N/A","record_id":6222542600266098259,"module":"POSIX","type":"MOD","max_byte":16777215,"switches":0,"cnt":1,"op":"writes_segment_0","seg":[{"off":0,"len":16777216,"dur":0.16,"timestamp":1631904596.737955}]}
+/* Metadata */
+/* { "job_id":6594,"rank":2,"ProducerName":"nid00021","file":"/projects/darshan/test/mpi-io-test.tmp.dat","record_id":6222542600266098259,"module":"POSIX","type":"MET","max_byte":-1,"switches":-1,"cnt":1,"op":"opens_segment_0","seg":[{"off":-1,"len":-1,"dur":0.00,"timestamp":1631904596.556221}]} */
+/* Module data */
+/* { "job_id":6582,"rank":0,"ProducerName":"nid00021","file":"N/A","record_id":6222542600266098259,"module":"POSIX","type":"MOD","max_byte":16777215,"switches":0,"cnt":1,"op":"writes_segment_0","seg":[{"off":0,"len":16777216,"dur":0.16,"timestamp":1631904596.737955}]} */
 
 static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			  ldmsd_stream_type_t stream_type,
@@ -327,7 +335,6 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 {
 	int rc;
 	json_entity_t v, list, item;
-	//uint64_t rank, job_id;
 	double timestamp;
 	uint64_t record_id, count, rank, offset, length, job_id, duration, max_byte, switches;
 	char *module_name, *file_name, *type, *hostname, *operation, *producer_name;
