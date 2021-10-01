@@ -70,6 +70,25 @@
 #include <wordexp.h>
 #include "general_metrics.h"
 
+FILE* ene_f[NUM_ENERGY_METRICS];
+int* metric_table_energy;
+FILE *cf_f;
+int cf_m;
+int* metric_table_current_freemem;
+int (*sample_metrics_cf_ptr)(ldms_set_t set,ldmsd_msg_log_f msglog);
+FILE *v_f;
+int* metric_table_vmstat;
+int (*sample_metrics_vmstat_ptr)(ldms_set_t set,ldmsd_msg_log_f msglog);
+FILE *l_f;
+int *metric_table_loadavg;
+FILE *pnd_f;
+int idx_iface;
+int *metric_table_procnetdev;
+int procnetdev_valid;
+int* metric_table_kgnilnd;
+
+/* KGNILND Specific */
+FILE *k_f;
 
 int sample_metrics_vmstat(ldms_set_t set, ldmsd_msg_log_f msglog)
 {

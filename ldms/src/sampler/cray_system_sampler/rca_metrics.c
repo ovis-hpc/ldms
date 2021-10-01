@@ -56,6 +56,9 @@
 
 #include "rca_metrics.h"
 
+nettopo_coord_t nettopo_coord;
+int* nettopo_metric_table;
+
 /** These only work for gemini */
 #define RCAHELPER_BIN "/opt/cray/rca/default/bin/rca-helper"
 
