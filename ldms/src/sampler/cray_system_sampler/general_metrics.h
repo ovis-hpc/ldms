@@ -90,51 +90,51 @@ static char* ENERGY_FILES[] = {"/sys/cray/pm_counters/energy",
 			       "/sys/cray/pm_counters/power",
 			       "/sys/cray/pm_counters/power_cap"};
 #define NUM_ENERGY_METRICS (sizeof(ENERGY_METRICS)/sizeof(ENERGY_METRICS[0]))
-FILE* ene_f[NUM_ENERGY_METRICS];
-int* metric_table_energy;
+extern FILE* ene_f[NUM_ENERGY_METRICS];
+extern int* metric_table_energy;
 
 /* CURRENT_FREEMEM Specific */
-FILE *cf_f;
-int cf_m;
+extern FILE *cf_f;
+extern int cf_m;
 static char* CURRENT_FREEMEM_METRICS[] = {"current_freemem"};
 #define NUM_CURRENT_FREEMEM_METRICS (sizeof(CURRENT_FREEMEM_METRICS)/sizeof(CURRENT_FREEMEM_METRICS[0]))
-int* metric_table_current_freemem;
-int (*sample_metrics_cf_ptr)(ldms_set_t set,ldmsd_msg_log_f msglog);
+extern int* metric_table_current_freemem;
+extern int (*sample_metrics_cf_ptr)(ldms_set_t set,ldmsd_msg_log_f msglog);
 
 /* VMSTAT Specific */
-FILE *v_f;
+extern FILE *v_f;
 static char* VMSTAT_METRICS[] = {"nr_dirty", "nr_writeback"};
 #define NUM_VMSTAT_METRICS (sizeof(VMSTAT_METRICS)/sizeof(VMSTAT_METRICS[0]))
-int* metric_table_vmstat;
+extern int* metric_table_vmstat;
 /* additional vmstat metrics if getting cf from vmstat. Order matters (see calc within) */
 static char* VMCF_METRICS[] = {"nr_free_pages", "nr_file_pages", "nr_slab_reclaimable", "nr_shmem"};
 #define NUM_VMCF_METRICS (sizeof(VMCF_METRICS)/sizeof(VMCF_METRICS[0]))
-int (*sample_metrics_vmstat_ptr)(ldms_set_t set,ldmsd_msg_log_f msglog);
+extern int (*sample_metrics_vmstat_ptr)(ldms_set_t set,ldmsd_msg_log_f msglog);
 
 
 /* LOADAVG Specific */
-FILE *l_f;
+extern FILE *l_f;
 static char* LOADAVG_METRICS[] = {"loadavg_latest(x100)",
 				  "loadavg_5min(x100)",
 				  "loadavg_running_processes",
 				  "loadavg_total_processes"};
 #define NUM_LOADAVG_METRICS (sizeof(LOADAVG_METRICS)/sizeof(LOADAVG_METRICS[0]))
-int *metric_table_loadavg;
+extern int *metric_table_loadavg;
 
 /* PROCNETDEV Specific (Specific interface and indicies supported)*/
-FILE *pnd_f;
+extern FILE *pnd_f;
 static char* iface ="ipogif0";
-int idx_iface;
+extern int idx_iface;
 static char* PROCNETDEV_METRICS[] = {"ipogif0_rx_bytes",
 				     "ipogif0_tx_bytes"};
 #define NUM_PROCNETDEV_METRICS (sizeof(PROCNETDEV_METRICS)/sizeof(PROCNETDEV_METRICS[0]))
 
-int *metric_table_procnetdev;
-int procnetdev_valid;
+extern int *metric_table_procnetdev;
+extern int procnetdev_valid;
 
 
 /* KGNILND Specific */
-FILE *k_f;
+extern FILE *k_f;
 static char* KGNILND_METRICS[] = {"SMSG_ntx",
 				  "SMSG_tx_bytes",
 				  "SMSG_nrx",
@@ -145,11 +145,11 @@ static char* KGNILND_METRICS[] = {"SMSG_ntx",
 				  "RDMA_rx_bytes"
 };
 #define NUM_KGNILND_METRICS (sizeof(KGNILND_METRICS)/sizeof(KGNILND_METRICS[0]))
-int* metric_table_kgnilnd;
+extern int* metric_table_kgnilnd;
 
 
 /** helpers */
-int procnetdev_setup(ldmsd_msg_log_f msglog);
+extern int procnetdev_setup(ldmsd_msg_log_f msglog);
 
 /** sample */
 int sample_metrics_vmstat(ldms_set_t set, ldmsd_msg_log_f msglog);

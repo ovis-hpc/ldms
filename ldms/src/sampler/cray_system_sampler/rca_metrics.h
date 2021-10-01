@@ -83,8 +83,8 @@ typedef struct {
 } nettopo_coord_t;
 
 /* NETTOPO Specific */
-nettopo_coord_t nettopo_coord;
-int* nettopo_metric_table;
+extern nettopo_coord_t nettopo_coord;
+extern int* nettopo_metric_table;
 
 /** setup after add before sampling */
 int nettopo_setup(ldmsd_msg_log_f msglog);
