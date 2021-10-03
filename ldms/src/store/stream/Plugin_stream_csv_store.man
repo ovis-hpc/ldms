@@ -1,6 +1,6 @@
 .\" Manpage for Plugin_stream_csv_store
 .\" Contact ovis-help@sandia.gov to correct errors or typos.
-.TH man 7 "21 Aug 2021" "v4" "LDMS Plugin stream_csv_store man page"
+.TH man 7 "03 Oct 2021" "v4" "LDMS Plugin stream_csv_store man page"
 .SH NAME
 Plugin_stream_csv_store - man page for the LDMS stream_csv_store plugin
 
@@ -110,6 +110,10 @@ Options for timing information are driven by #defines in the code source right n
 TIMESTAMP_STORE
 .br
 Set by #define or #undef TIMESTAMP_STORE. This will write out an absolute timestamp in the file as the last item in the csv and is called 'store_recv_time' in the header. The timestamp is only gotten once, when the function is entered (e.g., if a data line has multiple dicts, this will result in multiple output lines each of which will have the same additional timestamp value). Both string and json are timestamped.
+.TP
+STREAM_CSV_DIAGNOSTICS
+.br
+Set by #define or #undef STREAM_CSV_DIAGNOSTICS. This will write out diagnostic info to the log when stream_cb is called.
 .PP
 
 

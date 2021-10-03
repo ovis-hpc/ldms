@@ -83,7 +83,8 @@
 
 //user changes these in the code before build, for now
 //timestamp store only for json lines, not text
-#define TIMESTAMP_STORE
+#undef TIMESTAMP_STORE
+#undef STREAM_CSV_DIAGNOSTICS
 #define CB_MSG_LOG 50000
 
 #ifndef ARRAY_SIZE
@@ -148,7 +149,7 @@ static int flthread_used = 0;
 
 static char* root_path = NULL;
 static char* container = NULL;
-static int buffer = 1;
+static int buffer;
 static pthread_mutex_t cfg_lock; /* seralizes config args and stream_idx */
 
 static idx_t stream_idx;
@@ -186,6 +187,7 @@ struct csv_stream_handle{
         int64_t byte_count; //for the roll. Cumulative since last roll
         struct timeval tlastrcv; //for the flush.
         struct linedata dataline; //used to keep track of keys for the header
+        ldmsd_stream_client_t client; //subscribe/unsubscribe
         pthread_mutex_t lock;
 };
 
@@ -213,6 +215,9 @@ static void _clear_key_info(struct linedata* dataline){
 		free(dataline->dictkey[i]);
 		dataline->dictkey[i] = NULL;
 	}
+        free(dataline->dictkey);
+        dataline->dictkey = NULL;
+
 	dataline->ndict = 0;
 	dataline->nheaderkey = 0;
         free(dataline->header);
@@ -220,24 +225,24 @@ static void _clear_key_info(struct linedata* dataline){
 }
 
 static void close_streamstore(void *obj, void *cb_arg){
+        //cfg_lock is held outside of this
 
         if (!obj) return;
 
-        pthread_mutex_lock(&cfg_lock);
         struct csv_stream_handle *stream_handle =
                 (struct csv_stream_handle *)obj;
-
         if (!stream_handle) {
-                pthread_mutex_unlock(&cfg_lock);
                 return;
         }
 
         pthread_mutex_lock(&stream_handle->lock);
-
-        //need a stream unsubscribe!
-
         msglog(LDMSD_LDEBUG, PNAME ": Closing stream store <%s>\n",
                stream_handle->stream);
+
+        /* unsubscribe */
+        if (stream_handle->client)
+                ldmsd_stream_close(stream_handle->client);
+        stream_handle->client = NULL;
 
         if (stream_handle->file) {
                 fflush(stream_handle->file);
@@ -261,9 +266,7 @@ static void close_streamstore(void *obj, void *cb_arg){
 
         pthread_mutex_unlock(&stream_handle->lock);
         pthread_mutex_destroy(&stream_handle->lock);
-
-
-        pthread_mutex_unlock(&cfg_lock);
+        free(stream_handle);
 
         return;
 }
@@ -711,8 +714,11 @@ static int _print_data_lines(struct csv_stream_handle *stream_handle,
 	jbuf_free(jbs);
 
 out:
+
+#ifdef STREAM_CSV_DIAGNOSTICS
         msglog(LDMSD_LDEBUG, PNAME ": message processed. store_count = %d\n",
                stream_handle->store_count);
+#endif
 
 
 	return 0;
@@ -724,15 +730,16 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		     const char *msg, size_t msg_len,
 		     json_entity_t e) {
 
-	static uint64_t msg_count = 0;
         struct csv_stream_handle* stream_handle;
         struct timeval tv_prev;
         int gottime = 0;
 	int rc = 0;
 
+#ifdef STREAM_CSV_DIAGNOSTICS
+        static uint64_t msg_count = 0;
+
 
         /** diagnostics logging */
-
         msglog(LDMSD_LDEBUG,
                PNAME ": Calling stream_cb. msg_count %d on stream '%s'\n",
                msg_count, ldmsd_stream_client_name(c));
@@ -745,6 +752,7 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
                        "timestamp %ld msg_tree %ld msg_count %lu\n",
                        t, msg_tree->card, msg_count);
 	}
+#endif
 
 
         // don't need to check the cfgstate. if you've subscribed, it's ok
@@ -872,7 +880,6 @@ static int open_streamstore(char* stream){
 
 
 	// already have the cfg_lock
-        // perhaps we can later add these after the config is done....
         if ((cfgstate != CFG_BASIC) && (cfgstate != CFG_DONE)){
 	     msglog(LDMSD_LERROR, PNAME ": config not called. cannot open.\n");
 	     return ENOENT;
@@ -944,8 +951,10 @@ static int open_streamstore(char* stream){
                 goto err1;
         }
 
+        //NOTE: subscribing but rollover not set yet
+        msglog(LDMSD_LDEBUG, PNAME ": subscribing to stream '%s'\n", stream);
+        stream_handle->client = ldmsd_stream_subscribe(stream, stream_cb, stream_handle);
         idx_add(stream_idx, (void *)stream, strlen(stream), stream_handle);
-
 	pthread_mutex_unlock(&stream_handle->lock);
 
 	goto out;
@@ -1250,9 +1259,11 @@ static int config(struct ldmsd_plugin *self,
         if (!stream_idx){
                 msglog(LDMSD_LERROR,
                        PNAME ": should have empty stream_idx\n");
+                pthread_mutex_unlock(&cfg_lock);
                 return -1;
         }
 
+        buffer = 1; //default
 	s = av_value(avl, "buffer");
 	if (s){
 		buffer = atoi(s);
@@ -1401,6 +1412,8 @@ static int config(struct ldmsd_plugin *self,
         }
 
 
+        /*
+
         //subscribe to each one
         templist = strdup(streamlist);
         if (!templist){
@@ -1414,7 +1427,10 @@ static int config(struct ldmsd_plugin *self,
                 ldmsd_stream_subscribe(pch, stream_cb, self);
                 pch = strtok_r(NULL, ",", &saveptr);
 	}
+        */
+
         goto out;
+
 
 err:
         //delete any created streamstores
@@ -1445,7 +1461,26 @@ out:
 static void term(struct ldmsd_plugin *self)
 {
 
+        if (rothread_used){
+                void * dontcare = NULL;
+                pthread_cancel(rothread);
+                pthread_join(rothread, &dontcare);
+        }
+        if (flthread_used){
+                void * dontcare = NULL;
+                pthread_cancel(flthread);
+                pthread_join(flthread, &dontcare);
+        }
+
         pthread_mutex_lock(&cfg_lock);
+
+
+        if (stream_idx){
+                idx_traverse(stream_idx, close_streamstore, NULL);
+                idx_destroy(stream_idx);
+                stream_idx = NULL;
+        }
+
         free(root_path);
 	root_path = NULL;
 	free(container);
@@ -1456,15 +1491,8 @@ static void term(struct ldmsd_plugin *self)
         rollagain = 0;
         flushtime = 0;
 
-        if (stream_idx){
-                idx_traverse(stream_idx, close_streamstore, NULL);
-                idx_destroy(stream_idx);
-                stream_idx = NULL;
-        }
-
         cfgstate = CFG_PRE;
         pthread_mutex_unlock(&cfg_lock);
-        pthread_mutex_destroy(&cfg_lock);
 
 	return;
 }
@@ -1516,16 +1544,6 @@ static void stream_csv_store_fini()
 {
 
         term(NULL);
-        if (rothread_used){
-                void * dontcare = NULL;
-                pthread_cancel(rothread);
-                pthread_join(rothread, &dontcare);
-        }
-        if (flthread_used){
-                void * dontcare = NULL;
-                pthread_cancel(flthread);
-                pthread_join(flthread, &dontcare);
-        }
         pthread_mutex_destroy(&cfg_lock);
 
 }
