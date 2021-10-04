@@ -2625,7 +2625,6 @@ zap_ep_t z_ugni_new(zap_t z, zap_cb_fn_t cb)
 static void z_ugni_destroy(zap_ep_t ep)
 {
 	struct z_ugni_ep *uep = (void*)ep;
-	LOG_(uep, "destroying endpoint %p\n", uep);
 	CONN_LOG("destroying endpoint %p\n", uep);
 	pthread_mutex_lock(&z_ugni_list_mutex);
 	ZUGNI_LIST_REMOVE(uep, link);
