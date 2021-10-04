@@ -482,6 +482,10 @@ struct z_ugni_ep {
 	/* endpoint log for debugging */
 	FILE *log;
 #endif
+	/* cached socket address */
+	struct sockaddr_storage local_addr;
+	struct sockaddr_storage remote_addr;
+	socklen_t addr_len;
 
 	/* Pending message WR in the endpoint, waiting for the available send
 	 * buffer */

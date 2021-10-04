@@ -1038,6 +1038,13 @@ int zap_ugni_is_ep_gn_matched(int id, uint32_t gn)
 	return 0;
 }
 
+static void __cache_sockaddr(struct z_ugni_ep *uep)
+{
+	uep->addr_len = sizeof(uep->local_addr);
+	getsockname(uep->sock, (void*)&uep->local_addr, &uep->addr_len);
+	getpeername(uep->sock, (void*)&uep->remote_addr, &uep->addr_len);
+}
+
 /*
  * Caller must hold the z_ugni_list_mutex lock;
  */
@@ -1396,17 +1403,15 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 			    struct sockaddr *remote_sa, socklen_t *sa_len)
 {
 	struct z_ugni_ep *uep = (void*)ep;
-	int rc;
-	*sa_len = sizeof(struct sockaddr_in);
-	rc = getsockname(uep->sock, local_sa, sa_len);
-	if (rc)
-		goto err;
-	rc = getpeername(uep->sock, remote_sa, sa_len);
-	if (rc)
-		goto err;
+	if (*sa_len < uep->addr_len) {
+		/* not enough space. Set the required length and return */
+		*sa_len = uep->addr_len;
+		return ZAP_ERR_RESOURCE;
+	}
+	*sa_len = uep->addr_len;
+	memcpy(local_sa, &uep->local_addr, uep->addr_len);
+	memcpy(remote_sa, &uep->remote_addr, uep->addr_len);
 	return ZAP_ERR_OK;
-err:
-	return zap_errno2zerr(errno);
 }
 
 static zap_err_t z_ugni_connect(zap_ep_t ep,
@@ -3541,6 +3546,8 @@ static void z_ugni_sock_conn_request(struct z_ugni_ep *uep)
 
 	new_uep->sock_epoll_ctxt.type = Z_UGNI_SOCK_EVENT;
 
+	__cache_sockaddr(new_uep);
+
 	rc = zap_io_thread_ep_assign(new_ep);
 	if (rc) {
 		LOG_(new_uep, "thread assignment error: %d\n", rc);
@@ -3969,6 +3976,7 @@ static void z_ugni_handle_sock_event(struct z_ugni_ep *uep, int events)
 		/* just become sock-connected */
 		assert(uep->sock_connected == 0);
 		uep->sock_connected = 1;
+		__cache_sockaddr(uep);
 		CONN_LOG("uep %p becoming sock-connected\n", uep);
 		ev.events = EPOLLIN;
 		ev.data.ptr = &uep->sock_epoll_ctxt;
