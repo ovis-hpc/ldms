@@ -1,3 +1,5 @@
+[![status](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ldms-test/weekly-report/master/status.json)](https://github.com/ldms-test/weekly-report/blob/master/test-all.log)
+
 # OVIS / LDMS
 
 OVIS is a modular system for HPC data collection, transport, storage,
