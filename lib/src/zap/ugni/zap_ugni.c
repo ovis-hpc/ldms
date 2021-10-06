@@ -3342,10 +3342,6 @@ static int z_ugni_handle_rcq_msg(struct z_ugni_io_thread *thr, gni_cq_entry_t cq
 	int rc = 0;
 	int need_ack = 0;
 
-	if (!_idx || _idx >= ZAP_UGNI_THREAD_EP_MAX) {
-		LLOG("Bad ep_idx: %d\n", _idx);
-		return EINVAL;
-	}
 	ep_idx = __pool_idx(&thr->idx_pool, _idx);
 	uep = ep_idx?ep_idx->uep:NULL;
 	if (!uep)
