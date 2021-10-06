@@ -75,15 +75,14 @@
  * `max_hdr_len` - 8.  */
 #define ZAP_UGNI_BUFSZ 1024
 
-#define ZAP_UGNI_EP_GRAIN 2048
+extern uint64_t ZAP_UGNI_RDMA_CQ_DEPTH;
+extern uint64_t ZAP_UGNI_RECV_CQ_DEPTH;
+extern int ZAP_UGNI_EP_GRAIN;
+
 #define ZAP_UGNI_EP_MSG_CREDIT 8
-#define ZAP_UGNI_RDMA_CQ_DEPTH (4*1024*1024)
-#define ZAP_UGNI_RCQ_DEPTH (4*1024*1024)
 #define ZAP_UGNI_RDMA_POST_CREDIT (64)
 #define ZAP_UGNI_MSG_POST_CREDIT (32)
 #define ZAP_UGNI_ACK_POST_CREDIT (32)
-
-#define ZAP_UGNI_IDX_POOL_LEN_GRAIN 4096
 
 /* This is used by handle rendezvous */
 struct zap_ugni_map {
@@ -445,7 +444,7 @@ struct z_ugni_msg_buf_chunk {
 	gni_mem_handle_t mbuf_mh; /* mem registration for `buf` */
 	int free_count;
 	struct z_ugni_msg_buf_head free_list;
-	struct z_ugni_msg_buf buf[ZAP_UGNI_EP_GRAIN];
+	struct z_ugni_msg_buf buf[];
 };
 
 TAILQ_HEAD(z_ugni_msg_buf_chunk_head, z_ugni_msg_buf_chunk);

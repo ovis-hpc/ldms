@@ -64,8 +64,45 @@ ZAP_UGNI_COOKIE
 For XE/XK, the Cookie value corresponding to the PTag value as given by apstat -P
 For XC, the Cookie value (not Cookie2) as given by apstat -P
 .TP
-ZAP_UGNI_CQ_DEPTH
-Optional value for the CQ depth. Default is 2048.
+ZAP_UGNI_CQ_DEPTH (DEPRECATED)
+(DEPRECATED) Optional value for the CQ depth. Default is 2048.
+.TP
+ZAP_UGNI_CQ_RDMA_DEPTH (default: 65536)
+Set the depth of RDMA CQ of each zap_ugni thread. The thread's RDMA CQ is shared
+among endpoints in the thread to handle the completion of the posted RDMA
+operations (zap_read, zap_write, and including zap_send/zap_send_mapped which is
+implemented with RDMA PUT see zap_rdma.c for more information). The default
+value is set to 65536 which should be sufficient for the sampler daemons.
+Increasing CQ depth only consume more memory, and does not consume more GNI
+resources. On the aggregator daemons, this value should be large as the
+aggregators expect to handle a lot more connections. 100 times the number of
+expected connection should be sufficient.
+.TP
+ZAP_UGNI_CQ_RECV_DEPTH (default: 65536)
+Set the depth of RECV CQ of each zap_ugni thread. The thread's RECV CQ is shared
+among endpoints in the thread to handle the notifications when the remote peers
+RDMA PUT into our message buffer (see zap_rdma.c for more information). The
+default value is set to 65536 which should be sufficient for the sampler
+daemons. Increasing RECV CQ depth only consume more memory, and does not
+consume more GNI resources. On the aggregator daemons, this value should be
+large as the aggregators expect to handle a lot more connections. 100 times the
+number of expected connection should be sufficient.
+.TP
+ZAP_UGNI_EP_GRAIN (default: 64)
+A zap_ugni endpoint needs a message buffer to receive messages from peer (via
+RDMA PUT). The message buffer needs to be registered (GNI_MemRegister()), and
+each registration consumes GNI resources. Registering each endpoint's message
+buffer will quickly exhaust GNI resources. As such, we need to pool the message
+buffers (serving multiple endpoints) and register the pool instead of the
+individual buffer to save the GNI resources. The `ZAP_UGNI_EP_GRAIN` is the
+number of buffers (endpoints) in a pool. If this number is large, we may have
+less number of pools (could be just one) and save GNI resources, but risk
+wasting memory for the unused buffers if the number of endpoints is not many. If
+ZAP_UGNI_EP_GRAIN is small, we won't waste as many unused buffers as the
+previous case, but we risk having more pools (consuming GNI resources) if the
+number of endpoints is large. For sampler daemon, we expect not many endpoints,
+so the default value, 64, should be fine. For aggregator daemons, we recommend
+to set this number to 2 times of the expected number of endpoints.
 .TP
 ZAP_UGNI_STATE_INTERVAL
 Optional. If set, then ldmsd will check all nodes' states via rca interface.

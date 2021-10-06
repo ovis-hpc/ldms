@@ -662,6 +662,10 @@ static struct z_ugni_debug_stat {
 static int z_ugni_stat_log_enabled = 0;
 
 
+uint64_t ZAP_UGNI_RDMA_CQ_DEPTH = 65536;
+uint64_t ZAP_UGNI_RECV_CQ_DEPTH = 65536;
+int ZAP_UGNI_EP_GRAIN = 64;
+
 
 /* 100000 because the Cray node names have only 5 digits, e.g, nid00000  */
 #define ZAP_UGNI_MAX_NUM_NODE 100000
@@ -885,7 +889,7 @@ static struct z_ugni_ep_idx *__ep_idx_alloc(struct z_ugni_ep_idx_pool *pool)
 			/* unlikely */
 			/* need to expand pool array */
 			struct z_ugni_ep_idx **p;
-			int new_len = pool->pool_len + ZAP_UGNI_IDX_POOL_LEN_GRAIN;
+			int new_len = pool->pool_len + ZAP_UGNI_EP_GRAIN;
 			int new_sz = new_len * sizeof(p[0]);
 			p = realloc(pool->pool, new_sz);
 			if (!p)
@@ -933,11 +937,11 @@ struct z_ugni_msg_buf_chunk *__msg_buf_chunk_alloc(struct z_ugni_io_thread *thr)
 	struct z_ugni_msg_buf_chunk *chunk;
 	int i;
 	gni_return_t grc;
-	chunk = calloc(1, sizeof(*chunk));
+	chunk = calloc(1, sizeof(*chunk) + sizeof(chunk->buf[0])*ZAP_UGNI_EP_GRAIN);
 	if (!chunk)
 		return NULL;
 	grc = GNI_MemRegister(_dom.nic, (uint64_t)chunk->buf,
-			      sizeof(chunk->buf), thr->rcq,
+			      sizeof(chunk->buf[0])*ZAP_UGNI_EP_GRAIN, thr->rcq,
 			      GNI_MEM_READWRITE | GNI_MEM_RELAXED_PI_ORDERING,
 			      -1, &chunk->mbuf_mh);
 	if (grc != GNI_RC_SUCCESS) {
@@ -2661,11 +2665,37 @@ out:
 	return rc;
 }
 
+void __env_u64(const char *name, uint64_t *var)
+{
+	char *v = getenv(name);
+	uint64_t val;
+	if (v) {
+		val = strtoul(v, NULL, 0);
+		if (val)
+			*var = val;
+	}
+}
+
+void __env_int(const char *name, int *var)
+{
+	char *v = getenv(name);
+	int val;
+	if (v) {
+		val = atoi(v);
+		if (val)
+			*var = val;
+	}
+}
+
 int init_once()
 {
 	int rc = ENOMEM;
 
 	bzero(&z_ugni_stat, sizeof(z_ugni_stat));
+
+	__env_u64("ZAP_UGNI_RDMA_CQ_DEPTH", &ZAP_UGNI_RDMA_CQ_DEPTH);
+	__env_u64("ZAP_UGNI_RECV_CQ_DEPTH", &ZAP_UGNI_RECV_CQ_DEPTH);
+	__env_int("ZAP_UGNI_EP_GRAIN", &ZAP_UGNI_EP_GRAIN);
 
 	ugni_stats = zap_thrstat_new("ugni:cq_proc", ZAP_ENV_INT(ZAP_THRSTAT_WINDOW));
 	rc = ugni_node_state_thread_init();
@@ -4436,7 +4466,7 @@ zap_io_thread_t z_ugni_io_thread_create(zap_t z)
 	if (rc)
 		goto err_1;
 	CONN_LOG("ep_idx initializing ...\n");
-	__ep_idx_pool_init(&thr->idx_pool, ZAP_UGNI_IDX_POOL_LEN_GRAIN);
+	__ep_idx_pool_init(&thr->idx_pool, ZAP_UGNI_EP_GRAIN);
 	CONN_LOG("setting up msg buffer ...\n");
 	thr->efd = epoll_create1(O_CLOEXEC);
 	if (thr->efd < 0)
@@ -4461,7 +4491,7 @@ zap_io_thread_t z_ugni_io_thread_create(zap_t z)
 	/* For remote/destination completion (recv) */
 	Z_GNI_API_LOCK(&thr->zap_io_thread);
 	CONN_LOG("recv CqCreate ...\n");
-	rc = GNI_CqCreate(_dom.nic, ZAP_UGNI_RCQ_DEPTH, 0, GNI_CQ_BLOCKING, NULL, NULL, &thr->rcq);
+	rc = GNI_CqCreate(_dom.nic, ZAP_UGNI_RECV_CQ_DEPTH, 0, GNI_CQ_BLOCKING, NULL, NULL, &thr->rcq);
 	CONN_LOG("recv CqCreate ... done\n");
 	Z_GNI_API_UNLOCK(&thr->zap_io_thread);
 	if (rc != GNI_RC_SUCCESS) {
