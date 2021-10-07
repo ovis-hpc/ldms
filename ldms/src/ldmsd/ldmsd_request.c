@@ -5622,6 +5622,7 @@ static char *__xprt_stats_as_json(size_t *json_sz)
 		strncpy(ip_str, "0.0.0.0:0", sizeof(ip_str));
 		strncpy(xprt_type, "????", sizeof(xprt_type));
 		if (op->op_min_xprt && op->op_min_xprt->zap_ep) {
+			socklen = sizeof(ss_local);
 			zerr = zap_get_name(op->op_min_xprt->zap_ep,
 					    (struct sockaddr *)&ss_local,
 					    (struct sockaddr *)&ss_remote,
@@ -5639,6 +5640,7 @@ static char *__xprt_stats_as_json(size_t *json_sz)
 		memset(&ss_remote, 0, sizeof(ss_remote));
 
 		if (op->op_max_xprt && op->op_max_xprt->zap_ep) {
+			socklen = sizeof(ss_local);
 			zerr = zap_get_name(op->op_max_xprt->zap_ep,
 					    (struct sockaddr *)&ss_local,
 					    (struct sockaddr *)&ss_remote,

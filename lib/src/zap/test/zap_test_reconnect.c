@@ -46,7 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
- 
+
 /**
  * \file zap_test_reconnect.c
  * \brief Zap test for reconnecting scenario
@@ -202,8 +202,8 @@ enum {
 pthread_mutex_t flag_lock = PTHREAD_MUTEX_INITIALIZER;
 void server_cb(zap_ep_t zep, zap_event_t ev)
 {
-	struct sockaddr_in lsin = {0};
-	struct sockaddr_in rsin = {0};
+	struct sockaddr_storage lsin = {0};
+	struct sockaddr_storage rsin = {0};
 	socklen_t slen;
 	char *data;
 
@@ -215,8 +215,9 @@ void server_cb(zap_ep_t zep, zap_event_t ev)
 		printf("connected\n");
 		break;
 	case ZAP_EVENT_DISCONNECTED:
+		slen = sizeof(lsin);
 		zap_get_name(zep, (void*)&lsin, (void*)&rsin, &slen);
-		printf("%X disconnected\n", rsin.sin_addr.s_addr);
+		printf("%X disconnected\n", ((struct sockaddr_in *)&rsin)->sin_addr.s_addr);
 		zap_free(zep);
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
@@ -297,8 +298,8 @@ void do_server(struct sockaddr_in *sin)
 void *send_msg(void *arg)
 {
 	struct sockaddr_in *sin = arg;
-	struct sockaddr_in lsin = {0};
-	struct sockaddr_in rsin = {0};
+	struct sockaddr_storage lsin = {0};
+	struct sockaddr_storage rsin = {0};
 	socklen_t slen;
 	struct timeval tv;
 	zap_err_t zerr;
@@ -337,11 +338,12 @@ void *send_msg(void *arg)
 
 		pthread_mutex_unlock(&flag_lock);
 		gettimeofday(&tv, NULL);
+		slen = sizeof(lsin);
 		zap_get_name(ep, (void*)&lsin, (void*)&rsin, &slen);
 		for (i = 0; i < count; i++) {
 			printf("%d: Sending %d.%d to %X\n", i,
 				(int)tv.tv_sec, (int)tv.tv_usec,
-				rsin.sin_addr.s_addr);
+				((struct sockaddr_in *)&rsin)->sin_addr.s_addr);
 			sprintf(data, "%d: %d.%d", i, (int)tv.tv_sec,
 					(int)tv.tv_usec);
 			pthread_mutex_lock(&flag_lock);
