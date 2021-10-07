@@ -365,8 +365,8 @@ int __connect(struct conn *conn)
 
 void send_msg(struct conn *conn)
 {
-	struct sockaddr_in lsin = {0};
-	struct sockaddr_in rsin = {0};
+	struct sockaddr_storage lsin = {0};
+	struct sockaddr_storage rsin = {0};
 	socklen_t slen;
 	struct timeval tv;
 	char data[512];
@@ -375,6 +375,7 @@ void send_msg(struct conn *conn)
 	zap_ep_t ep = conn->ep;
 
 	gettimeofday(&tv, NULL);
+	slen = sizeof(lsin);
 	zap_get_name(ep, (void*)&lsin, (void*)&rsin, &slen);
 	printf("%hu: Sending %d.%d\n", ntohs(conn->sin.sin_port),
 					(int)tv.tv_sec, (int)tv.tv_usec);

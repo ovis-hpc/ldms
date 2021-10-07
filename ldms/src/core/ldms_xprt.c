@@ -206,6 +206,7 @@ ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin)
 	ldms_t l, next_l;
 	l = ldms_xprt_first();
 	while (l) {
+		socklen = sizeof(ss_local);
 		zap_err_t zerr = zap_get_name(l->zap_ep,
 					      (struct sockaddr *)&ss_local,
 					      (struct sockaddr *)&ss_remote,
@@ -2102,7 +2103,7 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	char rmt_name[RMT_NM_SZ];
 	int rc;
 	zap_err_t zerr;
-	zerr = zap_get_name(zep, &lcl, &rmt, &xlen);
+	zerr = zap_get_name(zep, (struct sockaddr *)&lcl, (struct sockaddr *)&rmt, &xlen);
 	rc = getnameinfo(&rmt, xlen, rmt_name, RMT_NM_SZ, NULL, 0, NI_NUMERICHOST);
 	if (rc)
 		rmt_name[0] = '\0';
@@ -3811,7 +3812,8 @@ int ldms_xprt_sockaddr(ldms_t x, struct sockaddr *local_sa,
 		       socklen_t *sa_len)
 {
 	zap_err_t zerr;
-	zerr = zap_get_name(x->zap_ep, local_sa, remote_sa, sa_len);
+	zerr = zap_get_name(x->zap_ep, (struct sockaddr *)local_sa,
+				(struct sockaddr *)remote_sa, sa_len);
 	return zap_zerr2errno(zerr);
 }
 

@@ -505,15 +505,17 @@
 
 static char *format_4tuple(struct zap_ep *ep, char *str, size_t len)
 {
-	struct sockaddr la = {0};
-	struct sockaddr ra = {0};
+	struct sockaddr_storage la = {0};
+	struct sockaddr_storage ra = {0};
 	char addr_str[INET_ADDRSTRLEN];
 	struct sockaddr_in *l = (struct sockaddr_in *)&la;
 	struct sockaddr_in *r = (struct sockaddr_in *)&ra;
 	socklen_t sa_len = sizeof(la);
 	size_t sz;
 
-	(void) zap_get_name(ep, &la, &ra, &sa_len);
+	sa_len = sizeof(la);
+	(void) zap_get_name(ep, (struct sockaddr *)&la,
+				(struct sockaddr *)&ra, &sa_len);
 	sz = snprintf(str, len, "lcl=%s:%hu <--> ",
 		inet_ntop(AF_INET, &l->sin_addr, addr_str, INET_ADDRSTRLEN),
 		ntohs(l->sin_port));
@@ -1123,15 +1125,18 @@ static zap_err_t __node_state_check(struct z_ugni_ep *uep)
 	if (!_node_state.check_state)
 		return ZAP_ERR_OK;
 	if (uep->node_id == -1) {
-		struct sockaddr lsa, sa;
+		struct sockaddr_storage lsa, sa;
 		socklen_t sa_len;
 		zap_err_t zerr;
-		zerr = zap_get_name(&uep->ep, &lsa, &sa, &sa_len);
+
+		sa_len = sizeof(lsa);
+		zerr = zap_get_name(&uep->ep, (struct sockaddr *)&lsa,
+					(struct sockaddr *)&sa, &sa_len);
 		if (zerr) {
 			DLOG("zap_get_name() error: %d\n", zerr);
 			return ZAP_ERR_ENDPOINT;
 		}
-		uep->node_id = __get_nodeid(&sa, sa_len);
+		uep->node_id = __get_nodeid((struct sockaddr* )&sa, sa_len);
 	}
 	if (uep->node_id != -1) {
 		if (__check_node_state(uep->node_id)) {
