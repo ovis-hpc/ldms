@@ -546,6 +546,8 @@ struct z_ugni_ep_idx_pool {
 static inline
 struct z_ugni_ep_idx * __pool_idx(struct z_ugni_ep_idx_pool *pool, int idx)
 {
+	if (idx == 0)
+		return NULL;
 	int p_idx = idx / ZAP_UGNI_EP_GRAIN;
 	int o_idx = idx % ZAP_UGNI_EP_GRAIN;
 	if (p_idx >= pool->pool_len || !pool->pool[p_idx])
