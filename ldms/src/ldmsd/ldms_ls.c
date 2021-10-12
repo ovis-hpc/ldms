@@ -1075,5 +1075,6 @@ done:
 	_t.tv_sec += 2;
 	sem_timedwait(&conn_sem, &_t);
 
+	ldms_xprt_term(1);
 	exit(0);
 }
