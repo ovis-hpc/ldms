@@ -912,12 +912,14 @@ static struct z_ugni_ep_idx *__ep_idx_alloc(struct z_ugni_ep_idx_pool *pool)
 		pool->free_tail = &pp[ZAP_UGNI_EP_GRAIN-1];
 		pool->free_head->next_free_idx = base;
 		pool->pool[++pool->pool_last] = pp;
+		pool->free_count += ZAP_UGNI_EP_GRAIN;
 		goto again;
 	}
 	/* remove ep_idx from the list */
 	pool->free_head->next_free_idx = ep_idx->next_free_idx;
 	if (!pool->free_head->next_free_idx) /* free list depleted */
 		pool->free_tail = pool->free_head;
+	pool->free_count--;
 
 	return ep_idx;
 }
@@ -929,6 +931,7 @@ static void __ep_idx_free(struct z_ugni_ep_idx_pool *pool, struct z_ugni_ep_idx 
 	ep_idx->next_free_idx = 0;
 	pool->free_tail->next_free_idx = ep_idx->idx;
 	pool->free_tail = ep_idx;
+	pool->free_count++;
 }
 
 static
