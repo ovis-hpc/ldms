@@ -24,7 +24,7 @@ pkglib_LTLIBRARIES += libstore_amqp.la
 endif
 
 if ENABLE_KOKKOS
-MAYBE_KOKKOS = kokkos
+MAYBE_KOKKOS = kokkos kokkos_appmon
 endif
 SUBDIRS += $(MAYBE_KOKKOS)
 
