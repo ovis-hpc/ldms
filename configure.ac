@@ -832,6 +832,7 @@ ldms/src/sampler/blob_stream/Makefile
 ldms/src/store/stream/Makefile
 ldms/src/store/kokkos/Makefile
 ldms/src/store/darshan/Makefile
+ldms/src/store/kokkos_appmon/Makefile
 ldms/src/store/papi/Makefile
 ldms/src/store/slurm/Makefile
 ldms/src/store/influx/Makefile
