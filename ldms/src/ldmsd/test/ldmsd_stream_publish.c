@@ -25,6 +25,8 @@ static struct option long_opts[] = {
 	{"auth",     required_argument, 0,  'a' },
 	{"auth_arg", required_argument, 0,  'A' },
 	{"line",     no_argument,	0,  'l' },
+	{"repeat",   required_argument, 0,  'r' },
+	{"interval", required_argument, 0,  'i' },
 	{0,          0,                 0,  0 }
 };
 
@@ -33,12 +35,12 @@ void usage(int argc, char **argv)
 	printf("usage: %s -x <xprt> -h <host> -p <port> "
 	       "-s <stream-name> -t <stream-type> "
 	       "-f <file> -a <auth> -A <auth-opt> "
-	       "-l\n",
+	       "-l -r <count> -i <microsec>\n",
 	       argv[0]);
 	exit(1);
 }
 
-static const char *short_opts = "h:p:f:s:t:x:a:A:l";
+static const char *short_opts = "h:p:f:s:t:x:a:A:lr:i:";
 
 #define AUTH_OPT_MAX 128
 
@@ -58,6 +60,8 @@ int main(int argc, char **argv)
 	const char *stream_type = "string";
 	ldmsd_stream_type_t typ = LDMSD_STREAM_STRING;
 	int line_mode = 0;	/* publish each line separately */
+	int repeat = 0;
+	unsigned interval = 0;
 
 	auth_opt = av_new(auth_opt_max);
 	if (!auth_opt) {
@@ -141,6 +145,12 @@ int main(int argc, char **argv)
 		case 'l':
 			line_mode = 1;
 			break;
+		case 'r':
+			repeat = atoi(optarg);
+			break;
+		case 'i':
+			interval = (unsigned)atoi(optarg);
+			break;
 		default:
 			usage(argc, argv);
 		}
@@ -155,19 +165,29 @@ int main(int argc, char **argv)
 			exit(1);
 		}
 	} else {
+		if (repeat || interval) {
+			printf("%s: To use -r or -i, -f FILE must also be used.\n",argv[0]);
+			exit(1);
+		}
 		file = stdin;
 	}
-	if (line_mode) {
-
-	}
+	if (!repeat)
+		repeat = 1;
 	int rc;
+	int k;
 	if (!line_mode) {
-		rc = ldmsd_stream_publish_file(stream, stream_type, xprt,
-					host, port, auth, auth_opt, file);
-		if (rc) {
-			printf("Error %d publishing file.\n", rc);
+		for (k = 0; k < repeat; k++) {
+			rc = ldmsd_stream_publish_file(stream, stream_type, xprt,
+						host, port, auth, auth_opt, file);
+			if (repeat == 1 && rc) {
+				printf("Error %d publishing file.\n", rc);
+				return rc;
+			}
+			usleep(interval);
+			if (k)
+				printf("loop: %d returned %d\n", k, rc);
 		}
-		return rc;
+		return 0;
 	}
 	ldms_t ldms = ldms_xprt_new_with_auth(xprt, NULL, auth, NULL);
 	rc = ldms_xprt_connect_by_name(ldms, host, port, NULL, NULL);
@@ -175,10 +195,17 @@ int main(int argc, char **argv)
 		printf("Error %d connecting to peer\n", rc);
 		return rc;
 	}
-	char line_buffer[4096];
-	char *s;
-	while (0 != (s = fgets(line_buffer, sizeof(line_buffer)-1, file))) {
-		ldmsd_stream_publish(ldms, stream, typ, s, strlen(s)+1);
+	for (k = 0; k < repeat; k++) {
+		char line_buffer[4096];
+		char *s;
+		if (k)
+			rewind(file);
+		while (0 != (s = fgets(line_buffer, sizeof(line_buffer)-1, file))) {
+			ldmsd_stream_publish(ldms, stream, typ, s, strlen(s)+1);
+		}
+		if (k)
+			printf("loop: %d finished.\n", k);
+		usleep(interval);
 	}
 	ldms_xprt_close(ldms);
 	return rc;
