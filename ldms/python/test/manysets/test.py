@@ -133,6 +133,7 @@ def server_proc():
             sample(s)
 
 def client_lookup_cb(x, status, more, lset, arg):
+    log.info("  '{lset.name}' lookup complete, status: {status}".format(**vars()))
     g.sets[lset.name] = lset
     g.num_lookups += 1
     if g.num_lookups == g.num_sets:
@@ -143,9 +144,12 @@ def client_lookup_cb(x, status, more, lset, arg):
 
 def client_dir_cb(x, status, dir_data, arg):
     for d in dir_data.set_data:
+        log.info("  dir entry: {d.name} ... looking up".format(**vars()))
         x.lookup(name=d.name, cb=client_lookup_cb)
 
 def on_client_connected(x, ev, arg):
+    log.info("Connected")
+    log.info("Performing xprt dir")
     x.dir(cb = client_dir_cb)
 
 def on_client_rejected(x, ev, arg):
