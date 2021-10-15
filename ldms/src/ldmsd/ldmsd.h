@@ -266,7 +266,7 @@ typedef struct ldmsd_strgp_ref {
 	LIST_ENTRY(ldmsd_strgp_ref) entry;
 } *ldmsd_strgp_ref_t;
 
-#define LDMSD_PRDCR_SET_F_PUSH_REG	1
+#define LDMSD_PRDCR_SET_F_PUSH_REG	0X100000
 
 typedef struct ldmsd_updt_hint_set_list {
 	struct rbn rbn;
@@ -307,9 +307,9 @@ typedef struct ldmsd_prdcr_set {
 	struct timeval updt_start;
 	struct timeval updt_end;
 
-	int updt_interval;
-	int updt_offset;
-	uint8_t updt_sync;
+	char *updtr_name;
+	uint8_t is_auto_update;
+	struct ldmsd_updtr_schedule updt_sched;
 
 #ifdef LDMSD_UPDATE_TIME
 	struct ldmsd_updt_time *updt_time;

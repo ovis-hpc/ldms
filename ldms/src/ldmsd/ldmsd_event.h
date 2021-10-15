@@ -160,6 +160,7 @@ struct update_hint_data {
 
 struct updtr_info {
 	struct ref_s ref;
+	char *name;
 	struct ldmsd_updtr_schedule sched;
 	uint8_t push_flags;
 	uint8_t is_auto;

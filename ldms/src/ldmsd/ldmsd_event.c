@@ -132,8 +132,6 @@ prdcr_dir_complete_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, e
 extern int
 prdcr_updtr_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e);
 extern int
-prdcr_set_route_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e);
-extern int
 prdcr_tree_prdcr_filter_req_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e);
 
 extern int
@@ -146,6 +144,8 @@ extern int
 prdset_update_complete_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e);
 extern int
 prdset_update_hint_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e);
+extern int
+prdset_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e);
 
 extern int
 updtr_tree_prdset_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e);
@@ -248,6 +248,7 @@ int ldmsd_worker_init(void)
 		ev_dispatch(prdset_pool[i], update_complete_type, prdset_update_complete_actor);
 		ev_dispatch(prdset_pool[i], prdset_del_type, prdset_del_actor);
 		ev_dispatch(prdset_pool[i], update_hint_type, prdset_update_hint_actor);
+		ev_dispatch(prdset_pool[i], prdset_state_type, prdset_state_actor);
 	}
 
 	/* updtr_tree worker */

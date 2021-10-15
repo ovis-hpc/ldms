@@ -140,6 +140,7 @@ void __updtr_info_destroy(void *x)
 	struct updtr_info *info = (struct updtr_info *)x;
 	ldmsd_match_queue_free(&info->prdcr_list);
 	ldmsd_match_queue_free(&info->match_list);
+	free(info->name);
 	free(x);
 }
 
@@ -149,6 +150,9 @@ static struct updtr_info *__updtr_info_get(ldmsd_updtr_t updtr)
 	struct updtr_info *info = malloc(sizeof(*info));
 	if (!info)
 		return NULL;
+	info->name = strdup(updtr->obj.name);
+	if (!info->name)
+		goto enomem;
 	TAILQ_INIT(&info->prdcr_list);
 	TAILQ_INIT(&info->match_list);
 	ref_init(&info->ref, "create", __updtr_info_destroy, info);
@@ -169,7 +173,8 @@ enomem:
 	return NULL;
 }
 
-static int __post_updtr_state_ev(ldmsd_updtr_t updtr, ev_worker_t dst, void *ctxt)
+static int __updtr_post_state_ev(ldmsd_updtr_t updtr, ev_worker_t dst,
+						void *obj, void *ctxt)
 {
 	struct updtr_info *info;
 	ev_t e = ev_new(updtr_state_type);
@@ -183,7 +188,7 @@ static int __post_updtr_state_ev(ldmsd_updtr_t updtr, ev_worker_t dst, void *ctx
 		goto enomem;
 	EV_DATA(e, struct updtr_state_data)->updtr_info = info;
 	EV_DATA(e, struct updtr_state_data)->ctxt = ctxt;
-	EV_DATA(e, struct updtr_state_data)->obj = NULL;
+	EV_DATA(e, struct updtr_state_data)->obj = obj;
 	return ev_post(updtr->worker, dst, e, 0);
 enomem:
 	ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
@@ -232,14 +237,6 @@ void __updt_time_put(struct ldmsd_updt_time *updt_time)
 	}
 }
 #endif /* LDMSD_UDPATE_TIME */
-
-void __prdcr_set_update_sched(ldmsd_prdcr_set_t prd_set,
-				  ldmsd_updtr_task_t updt_task)
-{
-	prd_set->updt_interval = updt_task->sched.intrvl_us;
-	prd_set->updt_offset = updt_task->sched.offset_us;
-	prd_set->updt_sync = (updt_task->task_flags & LDMSD_TASK_F_SYNCHRONOUS)?1:0;
-}
 
 #define UPDTR_TREE_MGMT_TASK_INTRVL 3600000000
 
@@ -574,7 +571,7 @@ updtr_stop_handler(ldmsd_updtr_t updtr, void *cfg_ctxt)
 	updtr->state = LDMSD_UPDTR_STATE_STOPPING;
 	updtr->obj.perm &= ~LDMSD_PERM_DSTART;
 	if (updtr->push_flags) {
-		rc = __post_updtr_state_ev(updtr, prdcr_tree_w, NULL);
+		rc = __updtr_post_state_ev(updtr, prdcr_tree_w, NULL, NULL);
 		if (rc == ENOMEM) {
 			goto enomem;
 		} else if (rc) {
@@ -700,7 +697,7 @@ updtr_start_handler(ldmsd_updtr_t updtr, struct ldmsd_cfgobj_cfg_ctxt *cfg_ctxt)
 		goto out;
 
 	updtr->state = LDMSD_UPDTR_STATE_RUNNING;
-	rc = __post_updtr_state_ev(updtr, prdcr_tree_w, NULL);
+	rc = __updtr_post_state_ev(updtr, prdcr_tree_w, NULL, NULL);
 	if (rc == ENOMEM) {
 		goto enomem;
 	} else if (rc) {
@@ -949,8 +946,8 @@ int updtr_prdset_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t statu
 match:
 	if (TAILQ_EMPTY(&updtr->match_list)) {
 		ref_get(&prdset_info->ref, "updtr2prdset");
-		rc = __post_updtr_state_ev(updtr, prdset_info->prdset_worker,
-							   prdset_info);
+		rc = __updtr_post_state_ev(updtr, prdset_info->prdset_worker,
+						prdset_data->obj, prdset_info);
 		if (rc)
 			ref_put(&prdset_info->ref, "updtr2prdset");
 	} else {
@@ -964,8 +961,8 @@ match:
 			if (0 == rc) {
 				/* matched */
 				ref_get(&prdset_info->ref, "updtr2prdset");
-				rc = __post_updtr_state_ev(updtr, prdset_info->prdset_worker,
-								   prdset_info);
+				rc = __updtr_post_state_ev(updtr, prdset_info->prdset_worker,
+								prdset_data->obj, prdset_info);
 				if (rc)
 					ref_put(&prdset_info->ref, "updtr2prdset");
 				break;
