@@ -3,7 +3,6 @@ lib_LTLIBRARIES=
 SUBDIRS = . test
 sbin_PROGRAMS = ldmsd ldms_ls ldmsctl
 check_PROGRAMS = test_plugattr
-sbin_PROGRAMS += test_sps
 
 AM_LDFLAGS = @OVIS_LIB_ABS@
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
@@ -17,7 +16,7 @@ AM_CFLAGS = \
 "-DLDMS_BUILDDIR=\"$(abs_top_builddir)\""
 
 ldmsdincludedir = $(includedir)/ldms
-ldmsdinclude_HEADERS = ldmsd.h ldmsd_stream.h ldms_sps.h
+ldmsdinclude_HEADERS = ldmsd.h ldmsd_stream.h
 
 LZAP = $(top_builddir)/lib/src/zap/libzap.la
 LMMALLOC = $(top_builddir)/lib/src/mmalloc/libmmalloc.la
@@ -40,9 +39,6 @@ libldmsd_stream_la_SOURCES = ldmsd_stream.c ldmsd_stream.h ldmsd_request_util.c
 libldmsd_stream_la_LIBADD = ../core/libldms.la
 
 
-lib_LTLIBRARIES += libldms_sps.la
-libldms_sps_la_SOURCES = ldms_sps.c ldms_sps.h
-libldms_sps_la_LIBADD = libldmsd_stream.la ../core/libldms.la $(LOVIS_UTIL) $(LJSON_UTIL)
 
 lib_LTLIBRARIES += libldmsd_request.la
 libldmsd_request_la_SOURCES = ldmsd_request_util.c
@@ -82,11 +78,7 @@ test_plugattr_SOURCES = ldmsd_plugattr.c ldmsd_plugattr.h
 test_plugattr_CFLAGS = -DTEST_PLUGATTR $(AM_CFLAGS)
 test_plugattr_LDADD = $(LOVIS_UTIL) $(LCOLL) -lm -lpthread
 
-test_sps_SOURCES = ldms_sps.c ldms_sps.h
-test_sps_CFLAGS = -DTEST_LDMS_SPS $(AM_CFLAGS)
-test_sps_LDADD = libldmsd_stream.la \
-		 ../core/libldms.la @LDFLAGS_GETTIME@ \
-		 $(LOVIS_UTIL) $(LCOLL) $(LJSON_UTIL) -lm -lpthread
+
 
 # make sym links for aggd scripting support
 install-exec-hook:
@@ -96,12 +88,5 @@ install-exec-hook:
 check-local:
 	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) ./test_plugattr $(srcdir)/input/test_plugattr.txt
 
-installcheck-local: test_sps $(srcdir)/input/test_sps.sh
-	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) BIN=$(DESTDIR)$(sbindir) bash $(srcdir)/input/test_sps.sh
-
 EXTRA_DIST += $(srcdir)/input/test_plugattr.txt
 EXTRA_DIST += $(srcdir)/input/bad_test_plugattr.txt
-EXTRA_DIST += $(srcdir)/input/test_sps.sh
-
-distclean-local:
-	$(RM) test_sps.log* test_sps.*.log

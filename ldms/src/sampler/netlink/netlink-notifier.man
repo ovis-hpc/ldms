@@ -70,9 +70,9 @@ The 'short' options do not override the exclude entirely options.
 --auth[=]<val>	 change the default value of auth.
 	 If repeated, the last value given wins.
 	 The default munge is used if env NOTIFIER_LDMS_AUTH is not set.
---retry[=]<val>	 change the default value of retry.
+--reconnect[=]<val>	 change the default value of reconnect.
 	 If repeated, the last value given wins.
-	 The default 600 is used if env NOTIFIER_LDMS_RETRY is not set.
+	 The default 600 is used if env NOTIFIER_LDMS_RECONNECT is not set.
 --timeout[=]<val>	 change the default value of timeout.
 	 If repeated, the last value given wins.
 	 The default 1 is used if env NOTIFIER_LDMS_TIMEOUT is not set.
@@ -85,7 +85,7 @@ NOTIFIER_EXCLUDE_PROGRAMS="(nullexe):<unknown>"
 NOTIFIER_EXCLUDE_DIRS=/sbin
 NOTIFIER_EXCLUDE_SHORT_PATH=/bin:/usr
 NOTIFIER_EXCLUDE_SHORT_TIME=1
-NOTIFIER_LDMS_RETRY=600
+NOTIFIER_LDMS_RECONNECT=600
 NOTIFIER_LDMS_TIMEOUT=1
 NOTIFIER_LDMS_STREAM=slurm
 NOTIFIER_LDMS_XPRT=sock
@@ -109,10 +109,10 @@ Run for 30 seconds with screen and json.log test output connecting to the ldmsd 
 .nf
 netlink-notifier -t -D 30 -g -u 1 -x  -e exec,clone,exit -r  \\
 	-j json.log --exclude-dir-path=/bin:/sbin:/usr \\
-	--port=61061 --auth=none --retry=1"
+	--port=61061 --auth=none --reconnect=1"
 .fi
 .PP
-Run in a typical deployment (sock, munge, port 411, localhost, forever, 10 minute retry):
+Run in a typical deployment (sock, munge, port 411, localhost, forever, 10 minute reconnect):
 .nf
 netlink-notifier
 .fi
