@@ -506,7 +506,12 @@ FILE *ldmsd_open_log(const char *progname)
 	}
 
 	if (log_truncate) {
-		truncate(logfile, 0);
+		int err = truncate(logfile, 0);
+		if (err) {
+			ldmsd_log(LDMSD_LERROR, "Could not truncate the log file named '%s'. errno=%d\n",
+				logfile, errno);
+			cleanup(12, "log truncate failed");
+		}
 	}
 
 	f = fopen_perm(logfile, "a", LDMSD_DEFAULT_FILE_PERM);
@@ -1601,36 +1606,46 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
 		port = LDMSD_STR_WRAP(LDMS_DEFAULT_PORT);
 
 	len = asprintf(&name, "%s:%s:%s", xprt, port, host?host:"");
-	if (len < 0)
+	if (len < 0) {
+		errno = EINVAL;
 		return NULL;
+	}
 	listen = (struct ldmsd_listen *)
 		ldmsd_cfgobj_new_with_auth(name, LDMSD_CFGOBJ_LISTEN,
 				sizeof *listen, ldmsd_listen___del,
 				getuid(), getgid(), 0550); /* No one can alter it */
 	free(name);
 	if (!listen) {
+		errno = ENOMEM;
 		return NULL;
 	}
 
 	listen->xprt = strdup(xprt);
-	if (!listen->xprt)
+	if (!listen->xprt) {
+		errno = ENOMEM;
 		goto err;
+	}
 	listen->port_no = atoi(port);
 	if (host) {
 		listen->host = strdup(host);
-		if (!listen->host)
+		if (!listen->host) {
+			errno = ENOMEM;
 			goto err;
+		}
 	}
 	if (!auth)
 		auth = DEFAULT_AUTH;
 	auth_dom = ldmsd_auth_find(auth);
 	if (!auth_dom) {
+		ldmsd_log(LDMSD_LERROR, "Auth method '%s' unconfigured\n", auth);
 		errno = ENOENT;
 		goto err;
 	}
 	listen->auth_name = strdup(auth_dom->plugin);
-	if (!listen->auth_name)
+	if (!listen->auth_name) {
+		errno = ENOMEM;
 		goto err;
+	}
 	if (auth_dom->attrs) {
 		listen->auth_attrs = av_copy(auth_dom->attrs);
 		if (!listen->auth_attrs) {
