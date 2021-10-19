@@ -32,3 +32,4 @@ CLEANFILES = $(LDMS_PYX_C)
 
 clean-local:
 	-rm -rf cython_debug
+	-rm -rf Y
