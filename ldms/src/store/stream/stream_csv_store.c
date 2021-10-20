@@ -153,7 +153,9 @@ static int flthread_used = 0;
 static char *root_path = NULL;
 static char *container = NULL;
 static int buffer;
-static pthread_mutex_t cfg_lock; /* seralizes config args and stream_idx */
+static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
+
+; /* seralizes config args and stream_idx */
 
 static idx_t stream_idx;
 
@@ -775,16 +777,17 @@ static int stream_cb(ldmsd_stream_client_t c, void *ctxt,
 		return -1;
 	}
 
-	pthread_mutex_lock(&cfg_lock); /* lock needed for clean shutdown */
+        pthread_mutex_lock(&cfg_lock);
+        /* really don't need lock since streams cannot be dynamically added */
 	stream_handle = idx_find(stream_idx, (void*) skey, strlen(skey));
 	if (!stream_handle) {
 		msglog(LDMSD_LERROR, PNAME ": No stream_store for '%s'\n", skey);
-		pthread_mutex_unlock(&cfg_lock);
+                pthread_mutex_unlock(&cfg_lock);
 		return -1;
 	}
 
 	pthread_mutex_lock(&stream_handle->lock);
-	pthread_mutex_unlock(&cfg_lock);
+        pthread_mutex_unlock(&cfg_lock);
 	/*
 	 * currently releasing this, since the only way to destroy is in the
 	 * overall shutdown, plus want to be able to do the callback on
@@ -1256,6 +1259,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl,
 		pthread_mutex_unlock(&cfg_lock);
 		return -1;
 	}
+
+        stream_idx = idx_create();
 	if (!stream_idx) {
 		msglog(LDMSD_LERROR, PNAME ": should have empty stream_idx\n");
 		pthread_mutex_unlock(&cfg_lock);
@@ -1494,20 +1499,4 @@ struct ldmsd_plugin* get_plugin(ldmsd_msg_log_f pf)
 {
 	msglog = pf;
 	return &stream_csv_store.base;
-}
-
-static void __attribute__ ((constructor)) stream_csv_store_init();
-static void stream_csv_store_init()
-{
-	stream_idx = idx_create();
-	pthread_mutex_init(&cfg_lock, NULL);
-}
-
-static void __attribute__ ((destructor)) stream_csv_store_fini(void);
-static void stream_csv_store_fini()
-{
-
-	term(NULL);
-	pthread_mutex_destroy(&cfg_lock);
-
 }
