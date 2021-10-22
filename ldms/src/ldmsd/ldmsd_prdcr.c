@@ -517,6 +517,8 @@ static void __prdcr_remote_set_delete(ldmsd_prdcr_t prdcr, const char *name)
 	const char *state_str = "bad_state";
 	ldmsd_prdcr_set_t prdcr_set;
 	prdcr_set = ldmsd_prdcr_set_find(prdcr, name);
+	if (!prdcr_set)
+		return;
 	pthread_mutex_lock(&prdcr_set->lock);
 	assert(prdcr_set->ref_count);
 	switch (prdcr_set->state) {
