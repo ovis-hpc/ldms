@@ -534,6 +534,7 @@ static uint64_t __get_cfgfile_id()
 	return __sync_fetch_and_add(&id, 1);
 }
 
+extern int is_req_id_priority(enum ldmsd_request req_id);
 /*
  * \param req_filter is a function that returns zero if we want to process the
  *                   request, and returns non-zero otherwise.
@@ -663,6 +664,16 @@ parse:
 	ldmsd_req_array_free(req_array);
 	req_array = NULL;
 
+	if (!ldmsd_is_initialized()) {
+		/* Process only the priority commands, e.g., cmd-line options */
+		if (!is_req_id_priority(ntohl(request->req_id)))
+			goto next_req;
+	} else {
+		/* Process non-priority commands, e.g., cfgobj config commands */
+		if (is_req_id_priority(ntohl(request->req_id)))
+			goto next_req;
+	}
+
 	/*
 	 * Make sure that LDMSD will create large enough buffer to receive
 	 * the config data.
@@ -681,9 +692,12 @@ parse:
 				  "Configuration error at "
 				  "line %d (%s)\n", lineno, path);
 			goto cleanup;
+		} else {
+			/* rc < 0, filter not applied */
+			rc = 0;
 		}
-		/* rc < 0, filter not applied */
 	}
+
 	rc = ldmsd_process_config_request(&xprt, request);
 	if (rc || xprt.rsp_err) {
 		if (!rc)
@@ -1018,8 +1032,9 @@ int listen_on_ldms_xprt(ldmsd_listen_t listen)
 	rc = ldms_xprt_listen(listen->x, (struct sockaddr *)&sin, sizeof(sin),
 			       __listen_connect_cb, NULL);
 	if (rc) {
-		ldmsd_log(LDMSD_LERROR, "Error %d listening on the '%s' "
-				"transport.\n", rc, listen->xprt);
+		ldmsd_log(LDMSD_LERROR, "Error %d Listening on %s:%d using `%s` transport and "
+			  "`%s` authentication\n", rc, listen->xprt,
+			  listen->port_no, listen->xprt, listen->auth_name);
 		return rc;
 	}
 	ldmsd_log(LDMSD_LINFO, "Listening on %s:%d using `%s` transport and "
@@ -1097,6 +1112,9 @@ int ldmsd_plugins_usage(const char *plugname)
 	char *pathdir = library_path;
 	char *libpath;
 	char *saveptr = NULL;
+
+	if (0 == strcmp(plugname, "all"))
+		plugname = NULL;
 
 	char *path = getenv("LDMSD_PLUGIN_LIBPATH");
 	if (!path)

@@ -96,7 +96,23 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-#define FMT "B:H:l:S:s:x:I:M:P:m:Fkr:R:p:v:Vz:Z:q:c:u:a:A:n:t"
+const char *short_opts = "B:H:l:S:s:x:I:M:P:m:Fkr:R:p:v:Vz:Z:q:c:u:a:A:n:t";
+
+struct option long_opts[] = {
+	{ "default_auth_args",     required_argument, 0,  'A' },
+	{ "default_auth",          required_argument, 0,  'a' },
+	{ "banner",                required_argument, 0,  'B' },
+	{ "host_name",             required_argument, 0,  'H' },
+	{ "publish_kernel",        optional_argument, 0,  'k' },
+	{ "log_file",              required_argument, 0,  'l' },
+	{ "set_memory",            required_argument, 0,  'm' },
+	{ "daemon_name",           required_argument, 0,  'n' },
+	{ "worker_threads",        required_argument, 0,  'P' },
+	{ "pid_file",              required_argument, 0,  'r' },
+	{ "kernel_file",           required_argument, 0,  's' },
+	{ "log_level",             required_argument, 0,  'v' },
+	{ 0,                       0,                 0,  0 }
+};
 
 #define LDMSD_KEEP_ALIVE_30MIN 30*60*1000000 /* 30 mins */
 
@@ -104,6 +120,7 @@
 #define LDMSD_MEM_SIZE_STR "512kB"
 #define LDMSD_MEM_SIZE_DEFAULT 512L * 1024L
 
+char *progname;
 char myname[512]; /* name to identify ldmsd */
 		  /* NOTE: fqdn limit: 255 characters */
 		  /* DEFAULT: myhostname:port */
@@ -115,9 +132,18 @@ char *logfile;
 int log_truncate = 0;
 char *pidfile;
 char *bannerfile;
-int banner = 1;
+
+#define DEFAULT_BANNER 1
+int banner = -1;
 size_t max_mem_size;
 char *max_mem_sz_str;
+
+#define DEFAULT_AUTH_NAME "none"
+const char *auth_name;
+struct attr_value_list *auth_opt = NULL;
+const int AUTH_OPT_MAX = 128;
+int log_level_thr = LDMSD_LERROR;
+int is_loglevel_thr_set; /* set to 1 when the log_level_thr is specified by users */
 
 /* NOTE: For determining version by dumping binary string */
 char *_VERSION_STR_ = "LDMSD_VERSION " OVIS_LDMS_VERSION;
@@ -151,12 +177,8 @@ static pthread_mutex_t set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 int find_least_busy_thread();
 
 int passive = 0;
-int log_level_thr = LDMSD_LERROR;  /* log level threshold */
 int quiet = 0; /* Is verbosity quiet? 0 for no and 1 for yes */
 
-const char *auth_name = "none";
-struct attr_value_list *auth_opt = NULL;
-const int AUTH_OPT_MAX = 128;
 uint8_t is_ldmsd_initialized = 0;
 
 uint8_t ldmsd_is_initialized()
@@ -317,23 +339,13 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 	ev_t log_ev;
 	char *msg;
 	int rc;
-	struct timeval *tv;
-	struct tm *tm;
+	struct timeval tv;
+	struct tm tm;
 	time_t t;
 
 	if ((level != LDMSD_LALL) &&
 			(quiet || ((0 <= level) && (level < log_level_thr))))
 		return;
-
-	log_ev = ev_new(log_type);
-	if (!log_ev)
-		return;
-	rc = vasprintf(&msg, fmt, ap);
-	if (rc < 0)
-		return;
-	EV_DATA(log_ev, struct log_data)->msg = msg;
-	EV_DATA(log_ev, struct log_data)->level = level;
-	EV_DATA(log_ev, struct log_data)->is_rotate = 0;
 
 	if (log_time_sec == -1) {
 		char * lt = getenv("LDMSD_LOG_TIME_SEC");
@@ -343,14 +355,34 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 			log_time_sec = 0;
 	}
 	if (log_time_sec) {
-		tv = &EV_DATA(log_ev, struct log_data)->tv;
-		gettimeofday(tv, NULL);
+		gettimeofday(&tv, NULL);
 
 	} else {
-		tm = &EV_DATA(log_ev, struct log_data)->tm;
 		t = time(NULL);
-		localtime_r(&t, tm);
+		localtime_r(&t, &tm);
 	}
+
+	rc = vasprintf(&msg, fmt, ap);
+	if (rc < 0)
+		return;
+
+	if (!ldmsd_is_initialized()) {
+		/* No workers, so directly log to the file */
+		(void) __log(level, msg, &tv, &tm);
+		return;
+	}
+
+	log_ev = ev_new(log_type);
+	if (!log_ev)
+		return;
+	EV_DATA(log_ev, struct log_data)->msg = msg;
+	EV_DATA(log_ev, struct log_data)->level = level;
+	EV_DATA(log_ev, struct log_data)->is_rotate = 0;
+
+	if (log_time_sec)
+		EV_DATA(log_ev, struct log_data)->tv = tv;
+	else
+		EV_DATA(log_ev, struct log_data)->tm = tm;
 	ev_post(NULL, logger_w, log_ev, NULL);
 }
 
@@ -456,7 +488,7 @@ void cleanup(int x, const char *reason)
 		 * The logger and the log file may not be created and opened
 		 * at the time the cleanup() function is called.
 		 */
-		printf("LDMSD_ LDMS Daemon exiting...status %d, %s\n", x,
+		ldmsd_log(LDMSD_LALL, "LDMSD_ LDMS Daemon exiting...status %d, %s\n", x,
 			       (reason && x) ? reason : "");
 	}
 
@@ -483,7 +515,7 @@ void cleanup(int x, const char *reason)
 		pidfile = NULL;
 	}
 	if (!quiet && (llevel >= log_level_thr))
-		printf("LDMSD_ cleanup end.\n");
+		ldmsd_log(LDMSD_LALL, "LDMSD_ cleanup end.\n");
 
 	if (logfile) {
 		free(logfile);
@@ -495,7 +527,7 @@ void cleanup(int x, const char *reason)
 }
 
 /** return a file pointer or a special syslog pointer */
-FILE *ldmsd_open_log(const char *progname)
+FILE *ldmsd_open_log()
 {
 	FILE *f;
 	if (strcasecmp(logfile,"syslog")==0) {
@@ -518,18 +550,21 @@ FILE *ldmsd_open_log(const char *progname)
 	if (!f) {
 		ldmsd_log(LDMSD_LERROR, "Could not open the log file named '%s'\n",
 							logfile);
-		cleanup(9, "log open failed");
+		errno = EINVAL;
+		return NULL;
 	} else {
 		int fd = fileno(f);
 		if (dup2(fd, 1) < 0) {
 			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
 							logfile);
-			cleanup(10, "error redirecting stdout");
+			errno = EINTR;
+			return NULL;
 		}
 		if (dup2(fd, 2) < 0) {
 			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
 							logfile);
-			cleanup(11, "error redirecting stderr");
+			errno = EINTR;
+			return NULL;
 		}
 		stdout = f;
 		stderr = f;
@@ -557,7 +592,7 @@ void cleanup_sa(int signal, siginfo_t *info, void *arg)
 
 void usage_hint(char *argv[],char *hint)
 {
-	printf("%s: [%s]\n", argv[0], FMT);
+	printf("%s: [%s]\n", argv[0], short_opts);
 	printf("  General Options\n");
 	printf("    -F	     Foreground mode, don't daemonize the program [false].\n");
 	printf("    -B mode  Daemon mode banner file with pidfile [1].\n"
@@ -600,9 +635,9 @@ void usage_hint(char *argv[],char *hint)
 	printf("  Thread Options\n");
 	printf("    -P thr_count   Count of event threads to start.\n");
 	printf("    -f count       The number of flush threads.\n");
-	printf("    -D num	 The dirty threshold.\n");
+	printf("    -D num         The dirty threshold.\n");
 	printf("  Configuration Options\n");
-	printf("    -c path	The path to configuration file (optional, default: <none>).\n");
+	printf("    -c path        The path to configuration file (optional, default: <none>).\n");
 	printf("    -V	     Print LDMS version and exit\n.");
 	printf("    -H host_name   The host/producer name for metric sets.\n");
 	printf("   Deprecated Options\n");
@@ -619,7 +654,7 @@ void usage(char *argv[]) {
 }
 
 #define EVTH_MAX 1024
-int ev_thread_count = 1;
+int ev_thread_count = 0;
 ovis_scheduler_t *ovis_scheduler;
 pthread_t *ev_thread;		/* sampler threads */
 int *ev_count;			/* number of hosts/samplers assigned to each thread */
@@ -1633,28 +1668,29 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
 			goto err;
 		}
 	}
-	if (!auth)
-		auth = DEFAULT_AUTH;
-	auth_dom = ldmsd_auth_find(auth);
-	if (!auth_dom) {
-		ldmsd_log(LDMSD_LERROR, "Auth method '%s' unconfigured\n", auth);
-		errno = ENOENT;
-		goto err;
-	}
-	listen->auth_name = strdup(auth_dom->plugin);
-	if (!listen->auth_name) {
-		errno = ENOMEM;
-		goto err;
-	}
-	if (auth_dom->attrs) {
-		listen->auth_attrs = av_copy(auth_dom->attrs);
-		if (!listen->auth_attrs) {
+
+	if (auth) {
+		auth_dom = ldmsd_auth_find(auth);
+		if (!auth_dom) {
+			ldmsd_log(LDMSD_LERROR, "Auth method '%s' unconfigured\n", auth);
+			errno = ENOENT;
+			goto err;
+		}
+		listen->auth_name = strdup(auth_dom->plugin);
+		if (!listen->auth_name) {
 			errno = ENOMEM;
 			goto err;
 		}
+		if (auth_dom->attrs) {
+			listen->auth_attrs = av_copy(auth_dom->attrs);
+			if (!listen->auth_attrs) {
+				errno = ENOMEM;
+				goto err;
+			}
+		}
+		if (auth_dom)
+			ldmsd_cfgobj_put(&auth_dom->obj);
 	}
-	if (auth_dom)
-		ldmsd_cfgobj_put(&auth_dom->obj);
 	ldmsd_cfgobj_unlock(&listen->obj);
 	return listen;
 err:
@@ -1665,27 +1701,63 @@ err:
 	return NULL;
 }
 
+int __listen_auth_set(ldmsd_listen_t listen)
+{
+	listen->auth_name = strdup(auth_name);
+	if (!listen->auth_name)
+		return ENOMEM;
+	listen->auth_attrs = av_copy(auth_opt);
+	if (!listen->auth_attrs) {
+		free(listen->auth_name);
+		return ENOMEM;
+	}
+	return 0;
+}
+
+const char *ldmsd_auth_name_get(ldmsd_listen_t listen)
+{
+	if (!listen)
+		return auth_name;
+	if (!listen->auth_name) {
+		if (__listen_auth_set(listen))
+			return NULL;
+	}
+	return listen->auth_name;
+}
+
+struct attr_value_list *ldmsd_auth_attr_get(ldmsd_listen_t listen)
+{
+	if (!listen)
+		return auth_opt;
+	if (!listen->auth_name) {
+		if (__listen_auth_set(listen))
+			return NULL;
+	}
+	return listen->auth_attrs;
+}
+
 int ldmsd_listen_start(ldmsd_listen_t listen)
 {
 	int rc = 0;
 	assert(NULL == listen->x);
 	listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
-				listen->auth_name, listen->auth_attrs);
-		if (!listen->x) {
-			rc = errno;
-			char *args = av_to_string(listen->auth_attrs, AV_EXPAND);
-			ldmsd_log(LDMSD_LERROR,
-				  "'%s' transport creation with auth '%s' "
-				  "failed, error: %s(%d). args='%s'. Please check transport "
-				  "configuration, authentication configuration, "
-				  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
-				  listen->xprt,
-				  listen->auth_name,
-				  ovis_errno_abbvr(rc),
-				  rc, args ? args : "(empty conf=)");
-			free(args);
-			goto out;
-		}
+						ldmsd_auth_name_get(listen),
+						ldmsd_auth_attr_get(listen));
+	if (!listen->x) {
+		rc = errno;
+		char *args = av_to_string(listen->auth_attrs, AV_EXPAND);
+		ldmsd_log(LDMSD_LERROR,
+			  "'%s' transport creation with auth '%s' "
+			  "failed, error: %s(%d). args='%s'. Please check transport "
+			  "configuration, authentication configuration, "
+			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
+			  listen->xprt,
+			  listen->auth_name,
+			  ovis_errno_abbvr(rc),
+			  rc, args ? args : "(empty conf=)");
+		free(args);
+		goto out;
+	}
 
 	rc = listen_on_ldms_xprt(listen);
  out:
@@ -1696,6 +1768,11 @@ static int __create_default_auth()
 {
 	ldmsd_auth_t auth_dom;
 	int rc = 0;
+
+	auth_dom = ldmsd_auth_find(DEFAULT_AUTH);
+	if (auth_dom)
+		return 0;
+
 	auth_dom = ldmsd_auth_new_with_auth(DEFAULT_AUTH, auth_name, auth_opt,
 					geteuid(), getegid(), 0600);
 	if (!auth_dom) {
@@ -1706,23 +1783,292 @@ static int __create_default_auth()
 	return rc;
 }
 
+struct ldmsd_str_ent *ldmsd_str_ent_new(char *s)
+{
+	struct ldmsd_str_ent *ent = malloc(sizeof(*ent));
+	if (!ent)
+		return NULL;
+	ent->str = strdup(s);
+	if (!ent->str) {
+		free(ent);
+		return NULL;
+	}
+	return ent;
+}
+
+void ldmsd_str_ent_free(struct ldmsd_str_ent *ent)
+{
+	free(ent->str);
+	free(ent);
+}
+
+void ldmsd_str_list_destroy(struct ldmsd_str_list *list)
+{
+	struct ldmsd_str_ent *ent;
+
+	while ((ent = TAILQ_FIRST(list))) {
+		TAILQ_REMOVE(list, ent, entry);
+		ldmsd_str_ent_free(ent);
+	}
+}
+
+/*
+ * \return EPERM if the value is already given.
+ *
+ * The command-line options processed in the function
+ * can be specified both at the command line and in configuration files.
+ */
+int ldmsd_process_cmd_line_arg(char opt, char *value)
+{
+	char *lval, *rval;
+	char *dup_auth;
+	switch (opt) {
+	case 'B':
+		if (check_arg("B", value, LO_UINT))
+			return EINVAL;
+		if (banner != -1) {
+			ldmsd_log(LDMSD_LERROR, "LDMSD Banner option was already "
+				"specified to %d. Ignore the new value %s\n",
+							banner, value);
+		} else {
+			banner = atoi(value);
+		}
+		break;
+	case 'H':
+		if (check_arg("H", value, LO_NAME))
+			return EINVAL;
+		if (myhostname[0] != '\0') {
+			/* myhostname was already configured */
+			ldmsd_log(LDMSD_LERROR, "LDMSD hostname was already "
+				"specified to %s. Ignore the new value %s\n",
+							myhostname, value);
+		} else {
+			snprintf(myhostname, sizeof(myhostname), "%s", value);
+		}
+		break;
+	case 'k':
+		do_kernel = 1;
+		break;
+	case 'r':
+		if (check_arg("r", value, LO_PATH))
+			return EINVAL;
+		if (pidfile) {
+			ldmsd_log(LDMSD_LERROR, "The pidfile is already "
+					"specified to %s. Ignore the new value %s\n",
+							pidfile, value);
+		} else {
+			pidfile = strdup(value);
+			if (!pidfile)
+				return ENOMEM;
+		}
+		break;
+	case 'l':
+		if (check_arg("l", value, LO_PATH))
+			return EINVAL;
+		if (logfile) {
+			ldmsd_log(LDMSD_LERROR, "The log path is already "
+						"specified to %s. Ignore the new value %s\n",
+						logfile, value);
+		} else {
+			logfile = strdup(value);
+			if (!logfile)
+				return ENOMEM;
+			log_fp = ldmsd_open_log();
+			if (!log_fp) {
+				log_fp = stdout;
+				return errno;
+			}
+		}
+		break;
+	case 's':
+		if (check_arg("s", value, LO_PATH))
+			return EINVAL;
+		if (setfile) {
+			ldmsd_log(LDMSD_LERROR, "The kernel set file is already "
+					"specified to %s. Ignore the new value %s\n",
+					setfile, value);
+		} else {
+			setfile = strdup(value);
+			if (!setfile)
+				return ENOMEM;
+		}
+		break;
+	case 'v':
+		if (check_arg("v", value, LO_NAME))
+			return EINVAL;
+		if (is_loglevel_thr_set) {
+			ldmsd_log(LDMSD_LERROR, "The log level was already "
+					"specified to %s. Ignore the new value %s\n",
+					ldmsd_loglevel_names[log_level_thr], value);
+		} else {
+			is_loglevel_thr_set = 1;
+			if (0 == strcmp(value, "QUIET")) {
+				quiet = 1;
+				log_level_thr = LDMSD_LLASTLEVEL;
+			} else {
+				log_level_thr = ldmsd_str_to_loglevel(value);
+			}
+			if (log_level_thr < 0) {
+				log_level_thr = LDMSD_LERROR;
+				return EINVAL;
+			}
+		}
+		break;
+	case 'F':
+		/*
+		 * Must be specified at the command line.
+		 * Handle separately in the main() function.
+		 */
+		break;
+	case 'P':
+		if (check_arg("P", value, LO_UINT))
+			return EINVAL;
+		if (ev_thread_count > 0) {
+			ldmsd_log(LDMSD_LERROR, "LDMSD number of worker threads "
+					"was already set to %d. Ignore the new value %s\n",
+					ev_thread_count, value);
+		} else {
+			ev_thread_count = atoi(value);
+			if (ev_thread_count < 1 )
+				ev_thread_count = 1;
+			if (ev_thread_count > EVTH_MAX)
+				ev_thread_count = EVTH_MAX;
+		}
+		break;
+	case 'm':
+		if (max_mem_sz_str) {
+			ldmsd_log(LDMSD_LERROR, "The memory limit was already "
+					"set to '%s'. Ignore the new value '%s'\n",
+					max_mem_sz_str, value);
+		} else {
+			max_mem_sz_str = strdup(value);
+			if (!max_mem_sz_str)
+				return ENOMEM;
+		}
+		break;
+	case 'c':
+		/*
+		 * Must be specified at the command line.
+		 * Handle separately in the main() function.
+		 */
+		break;
+	case 'a':
+		/* auth name */
+		if (auth_name) {
+			ldmsd_log(LDMSD_LERROR, "Default-auth was already "
+					"specified to '%s'. Ignore the new value '%s'\n",
+					auth_name, value);
+			/* Mark 'count' to ignore additional auth arguments */
+			auth_opt->count = -1;
+		} else {
+			auth_name = strdup(value);
+			if (!auth_name)
+				return ENOMEM;
+		}
+		break;
+	case 'A':
+		if (auth_opt->count) {
+			ldmsd_log(LDMSD_LERROR, "Default-auth was already "
+					"specified to '%s'. Ignore the additional "
+					"auth arguments.\n", auth_name);
+		} else {
+			/* (multiple) auth options */
+			dup_auth = strdup(value);
+			if (!dup_auth)
+				return ENOMEM;
+			lval = strtok(dup_auth, "=");
+			if (!lval) {
+				ldmsd_log(LDMSD_LERROR, "Expecting -A name=value. "
+								"Got %s\n", value);
+				free(dup_auth);
+				return EINVAL;
+			}
+			rval = strtok(NULL, "");
+			if (!rval) {
+				ldmsd_log(LDMSD_LERROR,"Expecting -A name=value. "
+								"Got %s\n", value);
+				free(dup_auth);
+				return EINVAL;
+			}
+			if (auth_opt->count == auth_opt->size) {
+				ldmsd_log(LDMSD_LERROR, "Too many (> %d) auth options %s\n",
+							auth_opt->size, value);
+				free(dup_auth);
+				return EINVAL;
+			}
+			auth_opt->list[auth_opt->count].name = strdup(lval);
+			auth_opt->list[auth_opt->count].value = strdup(rval);
+			if (!auth_opt->list[auth_opt->count].name || !auth_opt->list[auth_opt->count].value) {
+				return ENOMEM;
+			}
+			auth_opt->count++;
+			free(dup_auth);
+		}
+		break;
+	case 'n':
+		if (myname[0] != '\0') {
+			ldmsd_log(LDMSD_LERROR, "LDMSD daemon name was "
+					"already set to %s. Ignore "
+					"the new value %s\n", myname, value);
+		} else {
+			snprintf(myname, sizeof(myname), "%s", value);
+		}
+		break;
+	case 't':
+		log_truncate = 1;
+		break;
+	case 'x':
+		if (check_arg("x", value, LO_NAME))
+			return EINVAL;
+		char *dup_xtuple = strdup(value);
+		if (!dup_xtuple)
+			return ENOMEM;
+		char *_xprt, *_port, *_host;
+		_xprt = dup_xtuple;
+		_port = strchr(dup_xtuple, ':');
+		if (!_port) {
+			ldmsd_log(LDMSD_LERROR, "Bad xprt format, expecting XPRT:PORT, "
+						"but got: %s\n", value);
+			free(dup_xtuple);
+			return EINVAL;
+		}
+		*_port = '\0';
+		_port++;
+		/* optional `host` */
+		_host = strchr(_port, ':');
+		if (_host) {
+			*_host = '\0';
+			_host++;
+		}
+		/* Use the default auth domain */
+		ldmsd_listen_t listen = ldmsd_listen_new(_xprt, _port, _host, NULL);
+		free(dup_xtuple);
+		if (!listen) {
+			ldmsd_log(LDMSD_LERROR, "Error %d: failed to add listening "
+						"endpoint: %s\n", errno, value);
+			return ENOMEM;
+		}
+		break;
+	default:
+		return ENOENT;
+	}
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 #ifdef DEBUG
 	mtrace();
 #endif /* DEBUG */
-
+	progname = argv[0];
 	struct ldms_version ldms_version;
 	struct ldmsd_version ldmsd_version;
 	ldms_version_get(&ldms_version);
 	ldmsd_version_get(&ldmsd_version);
-	char *lval = NULL;
-	char *rval = NULL;
 	char *plug_name = NULL;
-	const char *port = NULL;
 	int list_plugins = 0;
 	int ret;
-	int op;
+	int op, op_idx;
 	log_fp = stdout;
 	struct sigaction action;
 	sigset_t sigset;
@@ -1750,94 +2096,20 @@ int main(int argc, char *argv[])
 	}
 
 	opterr = 0;
-	char * dup_auth = NULL;
-
-	while ((op = getopt(argc, argv, FMT)) != -1) {
+	while ((op = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
 		switch (op) {
-		case 'B':
-			if (check_arg("B", optarg, LO_UINT))
-				return 1;
-			banner = atoi(optarg);
-			break;
-		case 'H':
-			if (check_arg("H", optarg, LO_NAME))
-				return 1;
-			strcpy(myhostname, optarg);
-			break;
-		case 'k':
-			do_kernel = 1;
-			break;
-		case 'r':
-			if (check_arg("r", optarg, LO_PATH))
-				return 1;
-			pidfile = strdup(optarg);
-			if (!pidfile) {
-				printf("Not enough memory!!!\n");
-				exit(1);
-			}
-			break;
-		case 'l':
-			if (check_arg("l", optarg, LO_PATH))
-				return 1;
-			logfile = strdup(optarg);
-			if (!logfile) {
-				printf("Not enough memory!!!\n");
-				exit(1);
-			}
-			break;
-		case 's':
-			if (check_arg("s", optarg, LO_PATH))
-				return 1;
-			setfile = strdup(optarg);
-			if (!setfile) {
-				printf("Not enough memory!!!\n");
-				exit(1);
-			}
-			break;
-		case 'v':
-			if (check_arg("v", optarg, LO_NAME))
-				return 1;
-			if (0 == strcmp(optarg, "QUIET")) {
-				quiet = 1;
-				log_level_thr = LDMSD_LLASTLEVEL;
-			} else {
-				log_level_thr = ldmsd_str_to_loglevel(optarg);
-			}
-			if (log_level_thr < 0) {
-				usage(argv);
-				printf("Invalid verbosity levels '%s'. "
-					"See -v option.\n", optarg);
-			}
-			break;
 		case 'F':
 			foreground = 1;
 			break;
-		case 'P':
-			if (check_arg("P", optarg, LO_UINT))
+		case 'u':
+			if (check_arg("u", optarg, LO_NAME))
 				return 1;
-			ev_thread_count = atoi(optarg);
-			if (ev_thread_count < 1 )
-				ev_thread_count = 1;
-			if (ev_thread_count > EVTH_MAX)
-				ev_thread_count = EVTH_MAX;
-			break;
-		case 'm':
-			max_mem_sz_str = strdup(optarg);
-			if (!max_mem_sz_str) {
+			list_plugins = 1;
+			plug_name = strdup(optarg);
+			if (!plug_name) {
 				printf("Not enough memory!!!\n");
 				exit(1);
 			}
-			break;
-		case 'q':
-			usage_hint(argv,"-q becomes -v in LDMS v3. Update your scripts.\n"
-				"This message will disappear in a future release.");
-		case 'z':
-			usage_hint(argv,"-z not available in LDMS v3.\n"
-				"This message will disappear in a future release.");
-			break;
-		case 'Z':
-			usage_hint(argv,"-Z not needed in LDMS v3. Remove it.\n"
-				"This message will disappear in a future release.");
 			break;
 		case 'V':
 			printf("LDMSD Version: %s\n", PACKAGE_VERSION);
@@ -1853,83 +2125,31 @@ int main(int argc, char *argv[])
 							ldmsd_version.flags);
 			printf("git-SHA: %s\n", OVIS_GIT_LONG);
 			exit(0);
+		case 'q':
+			usage_hint(argv,"-q becomes -v in LDMS v3. Update your scripts.\n"
+				"This message will disappear in a future release.");
 			break;
-		case 'u':
-			if (check_arg("u", optarg, LO_NAME))
-				return 1;
-			list_plugins = 1;
-			plug_name = strdup(optarg);
-			if (!plug_name) {
-				printf("Not enough memory!!!\n");
-				exit(1);
-			}
+		case 'z':
+			usage_hint(argv,"-z not available in LDMS v3.\n"
+				"This message will disappear in a future release.");
 			break;
-		case 'x':
-			/* Listening port processing is handled below */
-			port = strchr(optarg, ':');
-			if (!port) {
-				printf("Bad xprt format, expecting XPRT:PORT, "
-				       "but got: %s\n", optarg);
-				exit(1);
-			}
-			port++;
+		case 'Z':
+			usage_hint(argv,"-Z not needed in LDMS v3. Remove it.\n"
+				"This message will disappear in a future release.");
 			break;
 		case 'c':
 			/* Handle below */
 			break;
-		case 'p':
-			usage_hint(argv,"-p is deprecated.");
-			break;
-		case 'a':
-			/* auth name */
-			auth_name = optarg;
-			break;
-		case 'A':
-			/* (multiple) auth options */
-			dup_auth = strdup(optarg);
-			if (!dup_auth) {
-				printf("Not enough memory parsing options!\n");
-				exit(1);
-			}
-			lval = strtok(dup_auth, "=");
-			if (!lval) {
-				printf("ERROR: Expecting -A name=value. Got %s\n",
-					optarg);
-				free(dup_auth);
-				exit(1);
-			}
-			rval = strtok(NULL, "");
-			if (!rval) {
-				printf("ERROR: Expecting -A name=value. Got %s\n",
-					optarg);
-				free(dup_auth);
-				exit(1);
-			}
-			if (auth_opt->count == auth_opt->size) {
-				printf("ERROR: Too many (> %d) auth options %s\n",
-					auth_opt->size, optarg);
-				free(dup_auth);
-				exit(1);
-			}
-			auth_opt->list[auth_opt->count].name = strdup(lval);
-			auth_opt->list[auth_opt->count].value = strdup(rval);
-			if (!auth_opt->list[auth_opt->count].name || !auth_opt->list[auth_opt->count].value) {
-			    printf("Out of memory parsing auth options: %s\n", optarg);
-			    exit(1);
-			}
-			auth_opt->count++;
-			free(dup_auth);
-			break;
-		case 'n':
-			snprintf(myname, sizeof(myname), "%s", optarg);
-			break;
-		case 't':
-			log_truncate = 1;
-			break;
-		case '?':
-			printf("Error: unknown argument: %c\n", optopt);
 		default:
-			usage(argv);
+			ret = ldmsd_process_cmd_line_arg(op, optarg);
+			if (ret) {
+				if (ret == ENOENT)
+					usage(argv);
+				else if (ret == ENOMEM)
+					printf("Out of memory\n");
+				cleanup(ret, "");
+			}
+			break;
 		}
 	}
 
@@ -1965,19 +2185,53 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if (logfile)
-		log_fp = ldmsd_open_log(argv[0]);
+	/* Process cmd-line options in config files */
+	opterr = 0;
+	optind = 0;
+	struct ldmsd_str_list cfgfile_list;
+	TAILQ_INIT(&cfgfile_list);
+	struct ldmsd_str_ent *cpath;
+	while ((op = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
+		switch (op) {
+		case 'c':
+			cpath = ldmsd_str_ent_new(optarg);
+			TAILQ_INSERT_TAIL(&cfgfile_list, cpath, entry);
+			break;
+		}
+	}
+
+	int lln;
+	while ((cpath = TAILQ_FIRST(&cfgfile_list))) {
+		lln = -1;
+		ret = process_config_file(cpath->str, &lln, 1);
+		if (ret) {
+			char errstr[128];
+			snprintf(errstr, sizeof(errstr),
+				 "Error %d processing configuration file '%s'",
+				 ret, cpath->str);
+			ldmsd_str_list_destroy(&cfgfile_list);
+			cleanup(ret, errstr);
+		}
+		TAILQ_REMOVE(&cfgfile_list, cpath, entry);
+		ldmsd_str_ent_free(cpath);
+	}
 
 	/* Initialize LDMS */
 	umask(0);
+	if (!auth_name)
+		auth_name = DEFAULT_AUTH_NAME;
+	if (-1 == banner)
+		banner = DEFAULT_BANNER;
+	if (0 == ev_thread_count)
+		ev_thread_count = 1;
 	if (!max_mem_sz_str) {
 		max_mem_sz_str = getenv(LDMSD_MEM_SIZE_ENV);
 		if (!max_mem_sz_str)
 			max_mem_sz_str = LDMSD_MEM_SIZE_STR;
 	}
 	if ((max_mem_size = ovis_get_mem_size(max_mem_sz_str)) == 0) {
-		printf("Invalid memory size '%s'. See the -m option.\n",
-							max_mem_sz_str);
+		ldmsd_log(LDMSD_LCRITICAL, "Invalid memory size '%s'. "
+				"See the -m option.\n", max_mem_sz_str);
 		usage(argv);
 	}
 	if (ldms_init(max_mem_size)) {
@@ -1991,6 +2245,13 @@ int main(int argc, char *argv[])
 		ret = gethostname(myhostname, sizeof(myhostname));
 		if (ret)
 			myhostname[0] = '\0';
+	}
+
+	if (myname[0] == '\0') {
+		struct ldmsd_listen *listen;
+		listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+		snprintf(myname, sizeof(myname), "%s:%d",
+				myhostname, listen->port_no);
 	}
 
 	if (!foreground) {
@@ -2106,61 +2367,27 @@ int main(int argc, char *argv[])
 	if (!setfile)
 		setfile = LDMSD_SETFILE;
 
-
 	if (do_kernel && publish_kernel(setfile))
 		cleanup(3, "start kernel sampler failed");
 
 	if (__create_default_auth())
 		cleanup(20, "Error creating the default authentication.");
 
-	opterr = 0;
-	optind = 0;
-	while ((op = getopt(argc, argv, FMT)) != -1) {
-		switch (op) {
-		case 'x':
-			if (check_arg("x", optarg, LO_NAME))
-				return EINVAL;
-			char *dup_xtuple = strdup(optarg);
-			if (!dup_xtuple) {
-				printf("out of memory parsing arguments\n");
-				return ENOMEM;
-			}
-			char *_xprt, *_port, *_host;
-			_xprt = dup_xtuple;
-			_port = strchr(dup_xtuple, ':');
-			if (!_port) {
-				printf("Bad xprt format, expecting XPRT:PORT, "
-						"but got: %s\n", optarg);
-				free(dup_xtuple);
-				return EINVAL;
-			}
-			*_port = '\0';
-			_port++;
-			/* optional `host` */
-			_host = strchr(_port, ':');
-			if (_host) {
-				*_host = '\0';
-				_host++;
-			}
-			/* Use the default auth domain */
-			ldmsd_listen_t listen = ldmsd_listen_new(_xprt, _port, _host, DEFAULT_AUTH);
-			free(dup_xtuple);
-			if (!listen) {
-				printf( "Error %d: failed to add listening "
-					"endpoint: %s:%s\n",
-					errno, optarg, rval);
-				cleanup(errno, "listen failed");
-			}
-			if (myname[0] == '\0')
-				snprintf(myname, sizeof(myname), "%s:%s", myhostname, rval);
+	is_ldmsd_initialized = 1;
 
-			break;
-		}
+	/* Start listening on ports */
+	ldmsd_listen_t listen;
+	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+		listen; listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
+		ret = ldmsd_listen_start(listen);
+		if (ret)
+			cleanup(7, "error listening on transport");
 	}
 
+	/* Process configuration files */
 	opterr = 0;
 	optind = 0;
-	while ((op = getopt(argc, argv, FMT)) != -1) {
+	while ((op = getopt_long(argc, argv, short_opts, long_opts, &op_idx)) != -1) {
 		char *dup_arg;
 		int lln = -1;
 		switch (op) {
@@ -2178,15 +2405,6 @@ int main(int argc, char *argv[])
 			ldmsd_log(LDMSD_LINFO, "Processing the config file '%s' is done.\n", optarg);
 			break;
 		}
-	}
-	is_ldmsd_initialized = 1;
-	/* Start listening on ports */
-	ldmsd_listen_t listen;
-	for (listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
-		listen; listen = (ldmsd_listen_t)ldmsd_cfgobj_next(&listen->obj)) {
-		ret = ldmsd_listen_start(listen);
-		if (ret)
-			cleanup(7, "error listening on transport");
 	}
 
 	if (ldmsd_use_failover) {

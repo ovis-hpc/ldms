@@ -1500,6 +1500,35 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_auth_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('auth_add', text)
 
+    def do_option(self, arg):
+        """
+        ONLY SUPPORTED IN CONFIGURATION FILES
+        Specify the command-line options
+
+        Parameters:
+            [defulat_auth_args=]    (-A) Arguments of the default authentication method
+            [default_auth=]         (-a) Default authentication method
+            [banner=]               (-B) Banner mode: 0=do banner file, 1=auto-delete at exit, 2=keep the file
+            [host_name=]            (-H) Host/producer name used by the kernel metric sets
+            [publish_kernel=]       (-k) Publish kernel: true or false
+            [log_file=]             (-l) Path to the log file or 'syslog'
+            [set_memory=]           (-m) Set memory, e.g., 2GB, 512mB
+            [daemon_name=]          (-n) Daemon name
+            [worker_threads=]       (-P) Number of worker threads
+            [pid_file=]             (-r) Path to the PID file
+            [kernel_set_path=]      (-s) Path to a text file containing the kernel metric values
+            [log_level=]            (-v) Log level: DEBUG, INFO, ERROR, CRITICAL, QUIET
+
+        Use 'listen' instead of the -x option.
+
+        The following options must specified only at the command line.
+            -c        Path to a configuration file
+            -F        Foreground mode
+            -u        List named plugins
+            -V        Print LDMS version
+        """
+        print("Not supported! The 'option' command is only supported in a configuration file.")
+
     def parseline(self, line):
         """Parse the line into a command name and a string containing
         the arguments.  Returns a tuple containing (command, args, line).

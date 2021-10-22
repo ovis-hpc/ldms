@@ -59,6 +59,8 @@
 #include <sys/socket.h>
 #include <coll/rbt.h>
 #include <pthread.h>
+#include <unistd.h>
+#include <getopt.h>
 #include <pwd.h>
 #include <grp.h>
 #include <ovis_util/util.h>
@@ -256,6 +258,7 @@ static int auth_add_handler(ldmsd_req_ctxt_t reqc);
 static int auth_del_handler(ldmsd_req_ctxt_t reqc);
 
 static int set_default_authz_handler(ldmsd_req_ctxt_t reqc);
+static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc);
 
 /* executable for all */
 #define XALL 0111
@@ -555,7 +558,25 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_AUTH_DEL_REQ] = {
 		LDMSD_AUTH_DEL_REQ, auth_del_handler, XUG
 	},
+
+	/* CMD-LINE options */
+	[LDMSD_CMDLINE_OPTIONS_SET_REQ] = {
+		LDMSD_CMDLINE_OPTIONS_SET_REQ, cmd_line_arg_set_handler, XUG
+	},
 };
+
+int is_req_id_priority(enum ldmsd_request req_id)
+{
+	switch (req_id) {
+	case LDMSD_VERBOSE_REQ:
+	case LDMSD_LISTEN_REQ:
+	case LDMSD_AUTH_ADD_REQ:
+	case LDMSD_CMDLINE_OPTIONS_SET_REQ:
+		return 1;
+	default:
+		return 0;
+	}
+}
 
 /*
  * The process request function takes records and collects
@@ -6741,4 +6762,90 @@ static int set_default_authz_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 
 	return 0;
+}
+
+extern struct option long_opts[];
+extern char *short_opts;
+extern int ldmsd_process_cmd_line_arg(char opt, char *value);
+static int __cmdline_options(ldmsd_req_ctxt_t reqc, int argc, char *argv[])
+{
+	int opt, opt_idx;
+	reqc->errcode = 0;
+	opterr = 0;
+	optind = 0;
+	while (0 < (opt = getopt_long(argc, argv,
+				  short_opts, long_opts,
+				  &opt_idx))) {
+		switch (opt) {
+		case 'x':
+			reqc->errcode = EINVAL;
+			snprintf(reqc->line_buf, reqc->line_len,
+					"The 'option' command does not support 'x' or 'xprt'. "
+					"Use the 'listen' command instead.");
+			return reqc->errcode;
+		case 'F':
+		case 'u':
+		case 'V':
+			reqc->errcode = EINVAL;
+			snprintf(reqc->line_buf, reqc->line_len,
+					"The option '%s' must be given at the command line.",
+					argv[optind-1]);
+			return reqc->errcode;
+		default:
+			reqc->errcode = ldmsd_process_cmd_line_arg(opt, optarg);
+			if (reqc->errcode == ENOENT) {
+				snprintf(reqc->line_buf, reqc->line_len,
+					"Unknown cmd-line option or it must be "
+					"given at the command line: %s\n", argv[optind-1]);
+				return reqc->errcode;
+			}
+			break;
+		}
+	}
+	return 0;
+}
+
+static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *s, *token, *ptr1, *lval;
+	int rc = 0;
+	int argc = 1;
+	int i;
+	char *argv[11];
+	int max_opt = 11;
+
+	s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+	argv[0] = "";
+	for (token = strtok_r(s, " \t\n", &ptr1); token;
+			token = strtok_r(NULL, " \t\n", &ptr1)) {
+
+		char *ptr2;
+		if (argc > max_opt - 2) {
+			rc = __cmdline_options(reqc, argc, argv);
+			if (rc) {
+				/* Reset rc to 0 because the error is caused by user */
+				rc = 0;
+				goto send_reply;
+			}
+			/* Reset */
+			for (i = 1; i < argc; i++) {
+				free(argv[i]);
+			}
+			argc = 1;
+		}
+
+		lval = strtok_r(token, "=", &ptr2);
+		argv[argc] = malloc(strlen(lval) + 3);
+		sprintf(argv[argc], "--%s", lval);
+		argc++;
+		argv[argc++] = strdup(ptr2);
+	}
+	(void) __cmdline_options(reqc, argc, argv);
+	for (i = 1; i < argc; i++) {
+		free(argv[i]);
+	}
+
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	return rc;
 }

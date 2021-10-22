@@ -227,6 +227,68 @@ These v2 options are no longer supported, and will cause exit with a hint.
 The configuration-only transports have been removed from \fBldmsd\fR v4 to
 leverage the pluggable authentication capability in LDMS transport.
 
+.SH SPECIFYING COMMAND-LINE OPTIONS IN CONFIGURATION FILES
+.PP
+Users can use the 'option' command to specify some command-line options in a configuration file.
+.RS
+option ATTR=VALUE ...
+
+.SS Command-line options supported by the 'option' command and the corresponding attributes
+.TP
+.BI -a
+default_auth=<auth_method>
+.TP
+.BI -A
+default_auth_args=<attribute-value pairs>
+.TP
+.BI -B
+banner=<mode>
+.TP
+.BI -H
+host_name=<name>
+.TP
+.BI -k
+publish_kernel=<true|false>
+.TP
+.BI -l
+log_file=<path>
+.TP
+.BI -m
+set_memory=<size>
+.TP
+.BI -n
+daemon_name=<name>
+.TP
+.BI -P
+worker_threads=<num_threads>
+.TP
+.BI -r
+pid_file=<path>
+.TP
+.BI -s
+kernel_set_path=<path>
+.TP
+.BI -v
+log_level=<level>
+
+.SS Specifying the listen endpoints in configuraton files
+.TP
+Users can use the 'listen' command to define the listen endpoints. For example,
+listen xprt=sock port=411
+
+.SS Example
+> cat ldmsd.conf
+.nf
+  # cmd-line options
+  option log_file=/opt/ovis/var/ldmsd.log
+  option set_memory=2GB worker_threads=16
+  option default_auth=munge
+  listen xprt=ugni port=411
+  # meminfo
+  load name=meminfo
+  config name=meminfo producer=nid0001 instance=nid0001/meminfo
+  start name=meminfo interval=1000000 offset=0
+
 .SH RUNNING LDMSD ON CRAY XE/XK/XC SYSTEMS USING APRUN
 .PP
 ldsmd can be run as either a user or as root using the appropriate PTag and cookie.
