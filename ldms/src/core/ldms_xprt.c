@@ -2673,6 +2673,8 @@ static void __ldms_xprt_release_sets(ldms_t x, struct rbt *set_coll)
 
 	rbn = rbt_min(set_coll);
 	while (rbn) {
+		lp = NULL;
+		pp = NULL;
 		rbt_del(set_coll, rbn);
 		ent = container_of(rbn, struct xprt_set_coll_entry, rbn);
 		pthread_mutex_lock(&ent->set->lock);
