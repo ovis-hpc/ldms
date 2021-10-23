@@ -1,0 +1,15 @@
+load name=stream_csv_store
+# 3 works for longer times (due to fixed internal sleep between count checks)
+#config name=stream_csv_store path=${STOREDIR} container=csv stream=foo buffer=1 rolltype=3 rollover=50
+# 4 works for longer times (due to fixed internal sleep between count checks)
+#config name=stream_csv_store path=${STOREDIR} container=csv stream=foo buffer=1 rolltype=4 rollover=5000
+# 2
+config name=stream_csv_store path=${STOREDIR} container=csv stream=foo buffer=1 rolltype=1 rollover=2
+# 5 works
+#config name=stream_csv_store path=${STOREDIR} container=csv stream=foo buffer=1 rolltype=5 rollover=2 rollagain=10
+# default works
+#config name=stream_csv_store path=${STOREDIR} container=csv stream=foo
+
+prdcr_add name=localhost1 host=localhost type=active xprt=sock port=${port1} interval=20000000
+prdcr_subscribe stream=foo regex=localhost*
+prdcr_start name=localhost1

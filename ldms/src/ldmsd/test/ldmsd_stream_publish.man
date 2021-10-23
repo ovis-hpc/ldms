@@ -71,10 +71,9 @@ No known bugs.
 .SH NOTES
 .PP
 This executable is in development and may change at any time.
-.PP The difference in repeat behavior if -l is present allows for testing two scenarios: repeating many messages to a single connection and repeating connection attempts to a daemon that may come and go during publication attempts.
+.PP
+The difference in repeat behavior if -l is present allows for testing two scenarios: repeating many messages to a single connection and repeating connection attempts to a daemon that may come and go during publication attempts.
 Environment variables LDMSD_STREAM_CONN_TIMEOUT and LDMSD_STREAM_ACK_TIMEOUT will affect the timing of the repeat loop when -l is not given.
-
-
 
 .SH EXAMPLES
 .PP

@@ -13,12 +13,12 @@ STORE_LIBADD = $(top_builddir)/ldms/src/core/libldms.la \
 
 
 if ENABLE_HELLO_STREAM
-libhello_stream_store_la_SOURCES = hello_stream_store.c
-libhello_stream_store_la_LIBADD = $(STORE_LIBADD) -lovis_json
-pkglib_LTLIBRARIES += libhello_stream_store.la
-dist_man7_MANS += Plugin_hello_stream_store.man
+libstream_csv_store_la_SOURCES = stream_csv_store.c
+libstream_csv_store_la_LIBADD = $(STORE_LIBADD) -lovis_json
+pkglib_LTLIBRARIES += libstream_csv_store.la
+dist_man7_MANS += Plugin_stream_csv_store.man
 
 endif
 
 EXTRA_DIST = \
-	Plugin_hello_stream_store.man
+	Plugin_stream_csv_store.man

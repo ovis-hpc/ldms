@@ -1,0 +1,20 @@
+export plugname=stream_store
+portbase=61020
+echo '{"job-id" : 10364, "rank" : 1, "kokkos-perf-data" : [ {"name" : "SPARTAFOO0", "count": 0, "time": 0.0000},{"name" : "SPARTAFOO1", "count": 1, "time": 0.0001},{"name" : "SPARTAFOO2", "count": 2, "time": 0.0002},{"name" : "SPARTAFOO3", "count": 3, "time": 0.0003},{"name" : "SPARTAFOO4", "count": 4, "time": 0.0004},{"name" : "SPARTAFOO5", "count": 5, "time": 0.0005},{"name" : "SPARTAFOO6", "count": 6, "time": 0.0006},{"name" : "SPARTAFOO7", "count": 7, "time": 0.0007},{"name" : "SPARTAFOO8", "count": 8, "time": 0.0008},{"name" : "SPARTAFOO9", "count": 9, "time": 0.0009}] }' > $LDMSD_RUN/x.json
+echo "" >> $LDMSD_RUN/x.json
+VGARGS="--leak-check=full --show-leak-kinds=definite --track-origins=yes --trace-children=yes"
+vgon
+LDMSD 1
+vgoff
+echo "run -p $port1 -a none -s foo -t json -x sock -h localhost -f $LDMSD_RUN/x.json"
+#gdb ldmsd_stream_publish
+for i in $(seq 1); do
+	SLEEP 1
+	ldmsd_stream_publish -p $port1 -a none -s foo -t json -x sock -h localhost -f $LDMSD_RUN/x.json
+	echo publish done $i
+done
+ps guxw |grep ldmsd_stream_publish
+
+SLEEP 20
+KILL_LDMSD 1
+file_created $STOREDIR/csv/foo.*
