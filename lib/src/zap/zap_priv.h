@@ -337,6 +337,9 @@ struct zap {
 	/** Mutex for _io_threads. */
 	pthread_mutex_t _io_mutex;
 
+	/** Number of threads */
+	int _n_threads;
+
 };
 
 static inline zap_err_t
