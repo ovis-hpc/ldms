@@ -63,6 +63,7 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <sys/sysinfo.h>
 #include "ovis-ldms-config.h"
 #include "zap.h"
 #include "zap_priv.h"
@@ -85,6 +86,7 @@ int __zap_assert = 0;
 /* the busy threshold by thread utilization (0.0 - 1.0) */
 #define ZAP_IO_BUSY 0.8 /* default value */
 static double zap_io_busy = ZAP_IO_BUSY;
+static int nprocs;
 
 static void default_log(const char *fmt, ...)
 {
@@ -356,6 +358,7 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	memcpy(z->name, name, strlen(name)+1);
 	z->log_fn = log_fn;
 	z->mem_info_fn = mem_info_fn;
+	z->_n_threads = 0;
 	pthread_mutex_init(&z->_io_mutex, NULL);
 	LIST_INIT(&z->_io_threads);
 
@@ -763,9 +766,14 @@ static zap_io_thread_t __io_thread_create(zap_t z)
 	/* z->_io_mutex is held by the caller */
 
 	zap_io_thread_t t;
+	if (z->_n_threads >= nprocs) {
+		errno = EBUSY;
+		return NULL;
+	}
 	t = z->io_thread_create(z);
 	if (!t)
 		return NULL;
+	z->_n_threads++;
 	LIST_INSERT_HEAD(&z->_io_threads, t, _entry);
 	return t;
 }
@@ -774,6 +782,7 @@ static zap_err_t __io_thread_cancel(zap_io_thread_t t)
 {
 	/* z->_io_mutex is held by the caller */
 	LIST_REMOVE(t, _entry);
+	t->zap->_n_threads--;
 	return t->zap->io_thread_cancel(t);
 }
 
@@ -1090,6 +1099,7 @@ static void zap_atfork()
 
 static void zap_init(void)
 {
+	nprocs = get_nprocs(); /* from sys/sysinf.h */
 	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	if (__atomic_load_n(&zap_initialized, __ATOMIC_SEQ_CST))
 		return;
