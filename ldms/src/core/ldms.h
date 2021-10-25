@@ -644,6 +644,7 @@ typedef struct ldms_dir_set_s {
 	char *flags;		/*! Set state flags */
 	size_t meta_size;	/*! Set meta-data size */
 	size_t data_size;	/*! Set data size */
+	size_t heap_size;	/*! Set heap size */
 	uid_t uid;		/*! Set owner user-id  */
 	gid_t gid;		/*! Set owner group-id */
 	char *perm;		/*! Set owner permission string */

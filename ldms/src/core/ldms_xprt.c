@@ -1793,6 +1793,12 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		e = json_value_find(set_entity, "data_size");
 		dir->set_data[i].data_size = json_value_int(e);
 
+		e = json_value_find(set_entity, "heap_size");
+		if (e)
+			dir->set_data[i].heap_size = json_value_int(e);
+		else
+			dir->set_data[i].heap_size = 0;
+
 		e = json_value_find(set_entity, "uid");
 		dir->set_data[i].uid = json_value_int(e);
 
