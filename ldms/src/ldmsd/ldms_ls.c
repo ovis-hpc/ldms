@@ -527,12 +527,13 @@ void print_set(struct ldms_dir_set_s *set_data)
 	if (!verbose) {
 		printf("%s\n", set_data->inst_name);
 	} else {
-		printf("%-14s %-24s %6s %6lu %6lu %6d %6d %10s %10d.%06d %10d.%06d ",
+		printf("%-14s %-24s %6s %6lu %6lu %6lu %6d %6d %10s %10d.%06d %10d.%06d ",
 		       set_data->schema_name,
 		       set_data->inst_name,
 		       set_data->flags,
 		       set_data->meta_size,
 		       set_data->data_size,
+		       set_data->heap_size,
 		       set_data->uid,
 		       set_data->gid,
 		       set_data->perm,
@@ -886,15 +887,15 @@ int main(int argc, char *argv[])
 	int is_filter_list = 0;
 
 	if (verbose) {
-		printf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s\n",
+		printf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s\n",
 		       14, "Schema",
 		       24, "Instance",
 		       6, "Flags",
-		       6, "Msize", 6, "Dsize",
+		       6, "Msize", 6, "Dsize", 6, "Hsize",
 		       6, "UID", 6, "GID", 10, "Perm",
 		       17, "Update", 17, "Duration", 8, "Info");
 		printf("-------------- ------------------------ ------ ------ "
-		       "------ ------ ------ ---------- ----------------- "
+		       "------ ------ ------ ------ ---------- ----------------- "
 		       "----------------- --------\n");
 	}
 	if (optind == argc) {
@@ -1005,7 +1006,7 @@ int main(int argc, char *argv[])
 
 	if (verbose) {
 		printf("-------------- ------------------------ ------ ------ "
-		       "------ ------ ------ ---------- ----------------- "
+		       "------ ------ ------ ------ ---------- ----------------- "
 		       "----------------- --------\n");
 		printf("Total Sets: %ld, Meta Data (kB): %.2f, Data (kB) %.2f, Memory (kB): %.2f\n",
 		       total_sets, (double)total_meta / 1000.0, (double)total_data / 1000.0,

@@ -358,6 +358,7 @@ size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
 		       "\"flags\":\"%s\","
 		       "\"meta_size\":%d,"
 		       "\"data_size\":%d,"
+		       "\"heap_size\":%d,"
 		       "\"uid\":%d,"
 		       "\"gid\":%d,"
 		       "\"perm\":\"%s\","
@@ -374,6 +375,7 @@ size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
 		       set_state(set),
 		       __le32_to_cpu(set->meta->meta_sz),
 		       __le32_to_cpu(set->meta->data_sz),
+		       __le32_to_cpu(set->meta->heap_sz),
 		       __le32_to_cpu(set->meta->uid),
 		       __le32_to_cpu(set->meta->gid),
 		       perm_string(__le32_to_cpu(set->meta->perm)),
