@@ -1362,11 +1362,11 @@ uint64_t ldms_set_heap_gn_get(ldms_set_t s);
  * previous slot into the new slot at \c ldms_transaction_begin().
  *
  * For the the heap data (in which ldms_list and its elements reside),
- * if the heap structure has changed (i.e. `ldms_list_append()` or
- * `ldms_list_del()` was called), the heap section will be copied over to the
+ * if the heap structure has changed (i.e. `ldms_list_append_item()` or
+ * `ldms_list_remove_item()` was called), the heap section will be copied over to the
  * new slot regardless of the data copy flag to preserve the heap structure.
  * Note that in the case of data manipulation w/o heap structure changes (no
- * calling to `ldms_list_append()` nor `ldms_list_del()`), the data won't be
+ * calling to `ldms_list_append_item()` nor `ldms_list_remove_item()`), the data won't be
  * copied over if the copy flag is not set to on.
  *
  * \param s  The \c ldms_set_t handle.
@@ -1950,7 +1950,7 @@ double ldms_metric_array_get_double(ldms_set_t s, int id, int idx);
  * Append a new value entry to a list metric. The list handle \c lh must be
  * - the metric handle obtained by calling \c ldms_metric_get(s, i) where the ith
  *   metric is a list, or
- * - the metric handle returned by \c ldms_list_append(s, some_lh, LDMS_V_LIST, 1) or
+ * - the metric handle returned by \c ldms_list_append_item(s, some_lh, LDMS_V_LIST, 1) or
  * - the metric handle returned by \c ldms_list_first(s, some_lh, &otyp, &c)
  *   where the returned \c otyp must be \c LDMS_V_LIST, or
  * - the metric handle returned by \c ldms_list_next(s, some_lh, &otyp, &c) where
@@ -1973,7 +1973,7 @@ double ldms_metric_array_get_double(ldms_set_t s, int id, int idx);
  *
  * \retval mval The metric handle to the newly allocated entry in the list.
  */
-ldms_mval_t ldms_list_append(ldms_set_t s, ldms_mval_t lh, enum ldms_value_type typ, size_t count);
+ldms_mval_t ldms_list_append_item(ldms_set_t s, ldms_mval_t lh, enum ldms_value_type typ, size_t count);
 
 /**
  * \brief Get the first list entry.
@@ -2026,10 +2026,10 @@ size_t ldms_list_len(ldms_set_t s, ldms_mval_t lh);
  * \brief Remove entry \c v from the list \c lh.
  *
  * \c lh must be a list and \c v must be a list entry. In otherwords, \c lh must
- * be obtained by \c ldms_metric_get(), \c ldms_list_append(),
+ * be obtained by \c ldms_metric_get(), \c ldms_list_append_item(),
  * \c ldms_list_first(), or \c ldms_list_next() where the metric type
  * is \c LDMS_V_LIST. \c v must be a list entry obtained from
- * \c ldms_list_append(), \c ldms_list_first(), or \c ldms_list_next().
+ * \c ldms_list_append_item(), \c ldms_list_first(), or \c ldms_list_next().
  * Calling this function with non-list \c lh, or non-list-entry \c v will
  * corrupt the memory.
  *
@@ -2045,18 +2045,18 @@ size_t ldms_list_len(ldms_set_t s, ldms_mval_t lh);
  * \retval error if an error occur.
  *
  */
-int ldms_list_del(ldms_set_t s, ldms_mval_t lh, ldms_mval_t v);
+int ldms_list_remove_item(ldms_set_t s, ldms_mval_t lh, ldms_mval_t v);
 
 /**
  * \brief Recursively purge all elements from the list \c lh.
  *
  * \c lh must be a list. In otherwords, \c lh must be obtained by
- * \c ldms_metric_get(), \c ldms_list_append(), \c ldms_list_first(), or
+ * \c ldms_metric_get(), \c ldms_list_append_item(), \c ldms_list_first(), or
  * \c ldms_list_next() where the metric type is \c LDMS_V_LIST.
  * This function is equivalent to the following pseudo code:
  * ```
  * while v = ldms_list_first(s, lh, NULL, NULL):
- *     ldms_list_del(s, lh, v)
+ *     ldms_list_remove_item(s, lh, v)
  * ```
  *
  * \param s  The set handle.

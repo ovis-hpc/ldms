@@ -337,13 +337,13 @@ static int sample(struct ldmsd_sampler *self)
 	if (ldms_list_len(set, lval) == 0) {
 		/* The list-o-lists is a list of lists */
 		for (item = 0; item < item_count; item++) {
-			ll = ldms_list_append(set, lval, LDMS_V_LIST, 1);
+			ll = ldms_list_append_item(set, lval, LDMS_V_LIST, 1);
 			for (i = 0, m = &list_schema.metrics[i]; list_schema.metrics[i].name != NULL;
 			     i++, m = &list_schema.metrics[i]) {
 				if (ldms_type_is_array(m->type))
-					ldms_list_append(set, ll, m->type, array_count);
+					ldms_list_append_item(set, ll, m->type, array_count);
 				else
-					ldms_list_append(set, ll, m->type, 1);
+					ldms_list_append_item(set, ll, m->type, 1);
 			}
 
 		}
@@ -355,9 +355,9 @@ static int sample(struct ldmsd_sampler *self)
 		     len = ldms_list_len(set, lval)) {
 			count = 1;
 			if (ldms_type_is_array(m->type))
-				mval = ldms_list_append(set, lval, m->type, array_count);
+				mval = ldms_list_append_item(set, lval, m->type, array_count);
 			else
-				mval = ldms_list_append(set, lval, m->type, 1);
+				mval = ldms_list_append_item(set, lval, m->type, 1);
 			if (mval == NULL) {
 				assert(0 == "oops");
 			}

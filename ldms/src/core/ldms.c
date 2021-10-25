@@ -2564,7 +2564,7 @@ double ldms_metric_array_get_double(ldms_set_t s, int mid, int idx)
 	return 0;
 }
 
-ldms_mval_t ldms_list_append(ldms_set_t s, ldms_mval_t lh, enum ldms_value_type typ, size_t count)
+ldms_mval_t ldms_list_append_item(ldms_set_t s, ldms_mval_t lh, enum ldms_value_type typ, size_t count)
 {
 	ldms_mval_t le;
 	ldms_mval_t prev;
@@ -2630,7 +2630,7 @@ ldms_mval_t ldms_list_next(ldms_set_t s, ldms_mval_t v, enum ldms_value_type *ty
 	return (ldms_mval_t)le->v_le.value;
 }
 
-int ldms_list_del(ldms_set_t s, ldms_mval_t lh, ldms_mval_t v)
+int ldms_list_remove_item(ldms_set_t s, ldms_mval_t lh, ldms_mval_t v)
 {
 	ldms_mval_t le, prev, next;
 
@@ -2657,7 +2657,7 @@ int ldms_list_purge(ldms_set_t s, ldms_mval_t lh)
 {
 	ldms_mval_t m;
 	while ((m = ldms_list_first(s, lh, NULL, NULL))) {
-		ldms_list_del(s, lh, m);
+		ldms_list_remove_item(s, lh, m);
 	}
 	return 0;
 }
