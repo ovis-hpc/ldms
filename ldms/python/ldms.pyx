@@ -1518,9 +1518,9 @@ cdef class MetricArray(list):
 
 
 cdef __ldms_list_append(ldms_set_t cset, ldms_mval_t lh, ldms_value_type v_type, int n):
-    mval = ldms_list_append(cset, lh, v_type, n)
+    mval = ldms_list_append_item(cset, lh, v_type, n)
     if not mval:
-        raise RuntimeError("ldms_list_append() error: {}".format(ERRNO_SYM(errno)))
+        raise RuntimeError("ldms_list_append_item() error: {}".format(ERRNO_SYM(errno)))
     return PTR(mval)
 
 cdef class MVal(Ptr):
@@ -1619,7 +1619,7 @@ cdef class MetricList(MVal):
             return mval
 
     def delete(self, MVal mval):
-        ldms_list_del(self._lset.rbd, <ldms_mval_t>self.c_ptr, <ldms_mval_t>mval.c_ptr)
+        ldms_list_remove_item(self._lset.rbd, <ldms_mval_t>self.c_ptr, <ldms_mval_t>mval.c_ptr)
 
     def purge(self):
         ldms_list_purge(self._lset.rbd, <ldms_mval_t>self.c_ptr)

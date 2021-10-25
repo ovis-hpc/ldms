@@ -524,11 +524,11 @@ cdef extern from "ldms.h" nogil:
                                    size_t array_count)
     int ldms_schema_metric_list_add(ldms_schema_t s, const char *name,
 				    const char *units, uint32_t heap_sz)
-    ldms_mval_t ldms_list_append(ldms_set_t s, ldms_mval_t l, ldms_value_type typ, size_t count)
+    ldms_mval_t ldms_list_append_item(ldms_set_t s, ldms_mval_t l, ldms_value_type typ, size_t count)
     ldms_mval_t ldms_list_first(ldms_set_t s, ldms_mval_t l, ldms_value_type *typ_out, size_t *count)
     ldms_mval_t ldms_list_next(ldms_set_t s, ldms_mval_t v, ldms_value_type *typ_out, size_t *count)
     size_t ldms_list_len(ldms_set_t s, ldms_mval_t l)
-    int ldms_list_del(ldms_set_t s, ldms_mval_t lh, ldms_mval_t v)
+    int ldms_list_remove_item(ldms_set_t s, ldms_mval_t lh, ldms_mval_t v)
     int ldms_list_purge(ldms_set_t s, ldms_mval_t lh)
 
 cdef extern from "asm/byteorder.h" nogil:
