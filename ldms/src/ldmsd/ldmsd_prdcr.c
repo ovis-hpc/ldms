@@ -265,7 +265,7 @@ int prdset_update_complete_actor(ev_worker_t src, ev_worker_t dst, ev_status_t s
 	}
 
 	free_snapshot = 0;
-	__post_prdset_state_ev(prdset_info, prdset->state, NULL,
+	__post_prdset_state_ev(prdset_info, LDMSD_PRDCR_SET_STATE_READY, NULL,
 				prdset->worker, strgp_tree_w, NULL);
 set_ready:
 	if ((upd_status & LDMS_UPD_F_MORE) == 0)
@@ -430,11 +430,7 @@ static void resched_prdset_update(ldmsd_prdcr_set_t prdset, struct timespec *to)
 	} else {
 		to->tv_sec += prdset->updt_sched.intrvl_us / 1000000;
 		if (prdset->updt_sched.offset_us != LDMSD_UPDT_HINT_OFFSET_NONE) {
-			to->tv_nsec =
-				(prdset->updt_sched.offset_us
-				 + prdset->updt_sched.offset_skew) * 1000;
-		} else {
-			to->tv_nsec = prdset->updt_sched.offset_skew * 1000;
+			to->tv_nsec = prdset->updt_sched.offset_us * 1000;
 		}
 	}
 }
@@ -568,10 +564,13 @@ static void prdset_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 	ldms_set_t lset;
 	ldmsd_prdcr_set_t prd_set = arg;
 	ev_t ev = ev_new(update_complete_type);
+	char thr_name[512];
+	pthread_t thr = pthread_self();
+	pthread_getname_np(thr, thr_name, 512);
 
 	EV_DATA(ev, struct update_complete_data)->status = status;
-	ldmsd_log(LDMSD_LDEBUG, "Update complete for Set %s with status %#x\n",
-					prd_set->inst_name, LDMS_UPD_ERROR(status));
+	ldmsd_log(LDMSD_LDEBUG, "%s[%ld]: Update complete for Set %s with status %#x\n",
+				thr_name, thr, prd_set->inst_name, LDMS_UPD_ERROR(status));
 
 	lset = ldms_set_light_copy(set);
 	if (!lset) {
@@ -641,12 +640,11 @@ int prdset_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_
 {
 	int rc;
 	struct timespec to;
-	struct prdset_info *prdset_info;
 	struct prdset_state_data *prdset_data = EV_DATA(e, struct prdset_state_data);
 	struct ldmsd_prdcr_set *prdset = (struct ldmsd_prdcr_set *)prdset_data->obj;
 
 	struct prdcr_lookup_args *lookup_args;
-	switch (prdset_data->state) {
+	switch (prdset->state) {
 	case LDMSD_PRDCR_SET_STATE_START:
 		prdset->state = LDMSD_PRDCR_SET_STATE_LOOKUP;
 		assert(prdset->set == NULL);
@@ -703,14 +701,8 @@ int prdset_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_
 	}
 	return 0;
 sched:
-	prdset_info = __prdset_info_get(prdset, NULL, "prdset2updtr_tree");
-	if (!prdset_info) {
-		LDMSD_LOG_ENOMEM();
-		rc = ENOMEM;
-		goto out;
-	}
 	resched_prdset_update(prdset, &to);
-	rc = __post_prdset_state_ev(prdset_info, prdset->state, NULL,
+	rc = __post_prdset_state_ev(NULL, prdset->state, prdset,
 				prdset->worker, prdset->worker, &to);
 out:
 	return rc;
@@ -740,6 +732,7 @@ __prdset_assign_updtr(ldmsd_prdcr_set_t prdset, struct updtr_info *updtr_info)
 	prdset->push_flags = updtr_info->push_flags;
 	prdset->is_auto_update = updtr_info->is_auto;
 	prdset->updt_sched = updtr_info->sched;
+	prdset->updt_hint.offset_skew = updtr_info->sched.offset_skew;
 out:
 	return rc;
 }

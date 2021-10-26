@@ -205,8 +205,7 @@ void ldmsd_updtr___del(ldmsd_cfgobj_t obj)
 	ldmsd_cfgobj___del(obj);
 }
 
-
-static int updtr_sched_offset_skew_get()
+static int updt_hint_offset_skew_get()
 {
 	int skew = LDMSD_UPDTR_OFFSET_INCR_DEFAULT;
 	char *str = getenv(LDMSD_UPDTR_OFFSET_INCR_VAR);
@@ -270,8 +269,6 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 				goto einval;
 			if (interval_us < labs(offset_us) * 2)
 				goto einval;
-			/* Make it a hint offset */
-			offset_us -= updtr_sched_offset_skew_get();
 		} else {
 			offset_us = LDMSD_UPDT_HINT_OFFSET_NONE;
 		}
@@ -281,6 +278,7 @@ ldmsd_updtr_new_with_auth(const char *name, char *interval_str, char *offset_str
 	updtr->push_flags = push_flags;
 	updtr->sched.intrvl_us = interval_us;
 	updtr->sched.offset_us = offset_us;
+	updtr->sched.offset_skew = updt_hint_offset_skew_get();
 
 	updtr->worker = assign_updtr_worker();
 	ldmsd_cfgobj_unlock(&updtr->obj);

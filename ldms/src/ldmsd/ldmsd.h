@@ -302,21 +302,18 @@ typedef struct ldmsd_prdcr_set {
 	ev_worker_t worker;
 	LIST_ENTRY(ldmsd_prdcr_set) updt_hint_entry;
 
-	struct ldmsd_updtr_schedule updt_hint;
-
 	struct timeval updt_start;
 	struct timeval updt_end;
 
-	char *updtr_name;
+	char *updtr_name; /* Assigned updater name */
 	uint8_t is_auto_update;
-	struct ldmsd_updtr_schedule updt_sched;
+	struct ldmsd_updtr_schedule updt_hint; /* Update hint from dir */
+	struct ldmsd_updtr_schedule updt_sched; /* Schedule from the assigned updater */
 
 #ifdef LDMSD_UPDATE_TIME
 	struct ldmsd_updt_time *updt_time;
 	double updt_duration;
 #endif /* LDMSD_UPDATE_TIME */
-
-	struct timespec lookup_complete_ts;
 } *ldmsd_prdcr_set_t;
 
 #ifdef LDMSD_UPDATE_TIME
