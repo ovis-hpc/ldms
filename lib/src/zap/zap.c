@@ -86,7 +86,7 @@ int __zap_assert = 0;
 /* the busy threshold by thread utilization (0.0 - 1.0) */
 #define ZAP_IO_BUSY 0.8 /* default value */
 static double zap_io_busy = ZAP_IO_BUSY;
-static int nprocs;
+static int zap_io_max;
 
 static void default_log(const char *fmt, ...)
 {
@@ -766,7 +766,7 @@ static zap_io_thread_t __io_thread_create(zap_t z)
 	/* z->_io_mutex is held by the caller */
 
 	zap_io_thread_t t;
-	if (z->_n_threads >= nprocs) {
+	if (z->_n_threads >= zap_io_max) {
 		errno = EBUSY;
 		return NULL;
 	}
@@ -1099,7 +1099,7 @@ static void zap_atfork()
 
 static void zap_init(void)
 {
-	nprocs = get_nprocs(); /* from sys/sysinf.h */
+	zap_io_max = zap_env_int("ZAP_IO_MAX", get_nprocs());
 	static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 	if (__atomic_load_n(&zap_initialized, __ATOMIC_SEQ_CST))
 		return;
