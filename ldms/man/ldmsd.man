@@ -170,6 +170,9 @@ Silence can be obtained by specifying /dev/null for the log file or using comman
 LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET.
 The default level is ERROR. QUIET produces only user-requested output.
 (Note: this has changed from the previous release where q designated no (QUIET) logging).
+.TP
+.BR -t
+Truncate the log file if it already exists.
 
 .SS
 Kernel Metric Options:
@@ -179,53 +182,16 @@ Publish kernel metrics.
 .TP
 .BI -s " SETFILE"
 Text file containing kernel metric sets to publish. Default: /proc/sys/kldms/set_list
+.TP
+.BI -H " host_name"
+.br
+The host/producer name for test metric sets
 
 .SS Thread Options:
 .TP
 .BI -P " THR_COUNT"
 .br
 THR_COUNT is the number of event threads to start.
-.TP
-.BI -f " COUNT"
-.br
-COUNT is the number of flush threads.
-.TP
-.BI -D " NUM"
-.br
-NUM is the number of bytes of the dirty threshold used for store rollover.
-
-.SS Test Options:
-.TP
-.BI -H " host_name"
-.br
-The host/producer name for test metric sets
-.TP
-.BI -i " interval"
-.br
-Test metric set sample interval
-.TP
-.BI -t " count"
-.br
-Create set_count instances of set_name.
-.TP
-.BI -T " set_name"
-.br
-Test set prefix
-.TP
-.BR -N
-.br
-Notify registered monitors of the test metric sets.
-
-.SS Obsolete options:
-.TP
-.BI "-q -Z -z -S"
-.br
-These v2 options are no longer supported, and will cause exit with a hint.
-
-.TP
-.BI -p " XPRT" : (NAME|PORT)
-The configuration-only transports have been removed from \fBldmsd\fR v4 to
-leverage the pluggable authentication capability in LDMS transport.
 
 .SH SPECIFYING COMMAND-LINE OPTIONS IN CONFIGURATION FILES
 .PP

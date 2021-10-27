@@ -96,7 +96,7 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-const char *short_opts = "B:H:l:S:s:x:I:M:P:m:Fkr:R:p:v:Vz:Z:q:c:u:a:A:n:t";
+const char *short_opts = "B:H:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:t";
 
 struct option long_opts[] = {
 	{ "default_auth_args",     required_argument, 0,  'A' },
@@ -594,12 +594,11 @@ void usage_hint(char *argv[],char *hint)
 {
 	printf("%s: [%s]\n", argv[0], short_opts);
 	printf("  General Options\n");
-	printf("    -F	     Foreground mode, don't daemonize the program [false].\n");
-	printf("    -B mode  Daemon mode banner file with pidfile [1].\n"
-	       "   		modes:0-no banner file, 1-banner auto-deleted, 2-banner left.\n");
-	printf("    -u	name List named plugin if available, and where possible\n");
-	printf("       	its usage, then exit. Name all, sampler, and store limit output.\n");
-	printf("    -u	name List named plugin if available, and where possible their usage, then exit.\n");
+	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
+	printf("    -B mode        Daemon mode banner file with pidfile [1].\n"
+	       "                   modes:0-no banner file, 1-banner auto-deleted, 2-banner left.\n");
+	printf("    -u name        List named plugin if available, and where possible\n");
+	printf("                   its usage, then exit. Name all, sampler, and store limit output.\n");
 	printf("    -m memory size Maximum size of pre-allocated memory for metric sets.\n"
 	       "		   The given size must be less than 1 petabytes.\n"
 	       "		   The default value is %s\n"
@@ -608,7 +607,7 @@ void usage_hint(char *argv[],char *hint)
 	       "		   giving the -m option. If both are given, the -m option\n"
 	       "		   takes precedence over the environment variable.\n",
 	       LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
-	printf("    -n NAME        The name of the daemon. By default, it is \"IHOSTNAME:PORT\".");
+	printf("    -n NAME        The name of the daemon. By default, it is \"HOSTNAME:PORT\".\n");
 	printf("    -r pid_file    The path to the pid file for daemon mode.\n"
 	       "		   [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
 	printf("  Log Verbosity Options\n");
@@ -617,6 +616,7 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -v level       The available verbosity levels, in order of decreasing verbosity,\n"
 	       "		   are DEBUG, INFO, ERROR, CRITICAL and QUIET.\n"
 	       "		   The default level is ERROR.\n");
+	printf("    -t             Truncate the log file at start if the log file exists.\n");
 	printf("  Communication Options\n");
 	printf("    -x xprt:port:host\n"
 	       "		   Specifies the transport type to listen on. May be specified\n"
@@ -629,20 +629,15 @@ void usage_hint(char *argv[],char *hint)
 	printf("    -a AUTH        Transport authentication plugin (default: 'none')\n");
 	printf("    -A KEY=VALUE   Authentication plugin options (repeatable)\n");
 	printf("  Kernel Metric Options\n");
-	printf("    -k	     Publish kernel metrics.\n");
+	printf("    -k             Publish kernel metrics.\n");
 	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
-	       "		   [" LDMSD_SETFILE "]\n");
+	       "                   [" LDMSD_SETFILE "]\n");
 	printf("  Thread Options\n");
 	printf("    -P thr_count   Count of event threads to start.\n");
-	printf("    -f count       The number of flush threads.\n");
-	printf("    -D num         The dirty threshold.\n");
 	printf("  Configuration Options\n");
 	printf("    -c path        The path to configuration file (optional, default: <none>).\n");
-	printf("    -V	     Print LDMS version and exit\n.");
+	printf("    -V             Print LDMS version and exit.\n");
 	printf("    -H host_name   The host/producer name for metric sets.\n");
-	printf("   Deprecated Options\n");
-	printf("    -S     	   DEPRECATED.\n");
-	printf("    -p     	   DEPRECATED.\n");
 	if (hint) {
 		printf("\nHINT: %s\n",hint);
 	}
@@ -2125,18 +2120,6 @@ int main(int argc, char *argv[])
 							ldmsd_version.flags);
 			printf("git-SHA: %s\n", OVIS_GIT_LONG);
 			exit(0);
-		case 'q':
-			usage_hint(argv,"-q becomes -v in LDMS v3. Update your scripts.\n"
-				"This message will disappear in a future release.");
-			break;
-		case 'z':
-			usage_hint(argv,"-z not available in LDMS v3.\n"
-				"This message will disappear in a future release.");
-			break;
-		case 'Z':
-			usage_hint(argv,"-Z not needed in LDMS v3. Remove it.\n"
-				"This message will disappear in a future release.");
-			break;
 		case 'c':
 			/* Handle below */
 			break;
