@@ -96,13 +96,12 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-const char *short_opts = "B:H:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:t";
+const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:t";
 
 struct option long_opts[] = {
 	{ "default_auth_args",     required_argument, 0,  'A' },
 	{ "default_auth",          required_argument, 0,  'a' },
 	{ "banner",                required_argument, 0,  'B' },
-	{ "host_name",             required_argument, 0,  'H' },
 	{ "publish_kernel",        optional_argument, 0,  'k' },
 	{ "log_file",              required_argument, 0,  'l' },
 	{ "set_memory",            required_argument, 0,  'm' },
@@ -436,11 +435,6 @@ const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level)
 	return "LDMSD_LNONE";
 }
 
-const char *ldmsd_myhostname_get()
-{
-	return myhostname;
-}
-
 const char *ldmsd_myname_get()
 {
 	return myname;
@@ -608,6 +602,8 @@ void usage_hint(char *argv[],char *hint)
 	       "		   takes precedence over the environment variable.\n",
 	       LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
 	printf("    -n NAME        The name of the daemon. By default, it is \"HOSTNAME:PORT\".\n");
+	printf("                   The failover uses the daemon name to verify the buddy name.\n");
+	printf("                   The producer name of kernel metric sets is the daemon name.\n");
 	printf("    -r pid_file    The path to the pid file for daemon mode.\n"
 	       "		   [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
 	printf("  Log Verbosity Options\n");
@@ -637,7 +633,8 @@ void usage_hint(char *argv[],char *hint)
 	printf("  Configuration Options\n");
 	printf("    -c path        The path to configuration file (optional, default: <none>).\n");
 	printf("    -V             Print LDMS version and exit.\n");
-	printf("    -H host_name   The host/producer name for metric sets.\n");
+	printf("  Deprecated options\n");
+	printf("    -H             DEPRECATED.\n");
 	if (hint) {
 		printf("\nHINT: %s\n",hint);
 	}
@@ -709,7 +706,7 @@ void kpublish(int map_fd, int set_no, int set_size, char *set_name)
 		return;
 	}
 	sh = meta_addr;
-	snprintf(sh->producer_name, sizeof(sh->producer_name), "%.63s", myhostname);
+	snprintf(sh->producer_name, sizeof(sh->producer_name), "%.63s", ldmsd_myname_get());
 }
 
 pthread_t k_thread;
@@ -1829,18 +1826,6 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			banner = atoi(value);
 		}
 		break;
-	case 'H':
-		if (check_arg("H", value, LO_NAME))
-			return EINVAL;
-		if (myhostname[0] != '\0') {
-			/* myhostname was already configured */
-			ldmsd_log(LDMSD_LERROR, "LDMSD hostname was already "
-				"specified to %s. Ignore the new value %s\n",
-							myhostname, value);
-		} else {
-			snprintf(myhostname, sizeof(myhostname), "%s", value);
-		}
-		break;
 	case 'k':
 		do_kernel = 1;
 		break;
@@ -2224,14 +2209,11 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if (myhostname[0] == '\0') {
+	if (myname[0] == '\0') {
+		struct ldmsd_listen *listen;
 		ret = gethostname(myhostname, sizeof(myhostname));
 		if (ret)
 			myhostname[0] = '\0';
-	}
-
-	if (myname[0] == '\0') {
-		struct ldmsd_listen *listen;
 		listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
 		snprintf(myname, sizeof(myname), "%s:%d",
 				myhostname, listen->port_no);

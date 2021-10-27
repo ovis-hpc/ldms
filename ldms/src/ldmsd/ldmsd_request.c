@@ -5074,7 +5074,7 @@ static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	prdcr = ldmsd_prdcr_first();
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);;
-	char *myself = strdup(ldmsd_myhostname_get());
+	char *myself = strdup(ldmsd_myname_get());
 	if (!myself) {
 		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
 		return ENOMEM;
@@ -5331,7 +5331,7 @@ size_t __set_route_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
 					"\"trans_end_usec\":\"%ld\""
 					"}"
 				"}",
-				ldmsd_myhostname_get(),
+				ldmsd_myname_get(),
 				ldmsd_set_info_origin_enum2str(info->origin_type),
 				info->origin_name,
 				info->interval_us,
@@ -5362,7 +5362,7 @@ size_t __set_route_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
 					"\"last_end_usec\":\"%ld\""
 					"}"
 				"}",
-				ldmsd_myhostname_get(),
+				ldmsd_myname_get(),
 				ldmsd_set_info_origin_enum2str(info->origin_type),
 				info->origin_name,
 				info->prd_set->prdcr->host_name,
@@ -5446,7 +5446,7 @@ static int set_route_handler(ldmsd_req_ctxt_t reqc)
 		/* The set does not exist. */
 		cnt = snprintf(reqc->line_buf, reqc->line_len,
 				"%s: Set '%s' not exist.",
-				ldmsd_myhostname_get(), inst_name);
+				ldmsd_myname_get(), inst_name);
 		(void) ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, ENOENT,
 				reqc->line_buf, cnt + 1);
 		goto out;
@@ -5478,7 +5478,7 @@ static int set_route_handler(ldmsd_req_ctxt_t reqc)
 			reqc->errcode = rc;
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
 					"%s: error forwarding set_route_request to "
-					"prdcr '%s'", ldmsd_myhostname_get(),
+					"prdcr '%s'", ldmsd_myname_get(),
 					info->origin_name);
 			ldmsd_send_req_response(reqc, reqc->line_buf);
 			goto err2;

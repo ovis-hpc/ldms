@@ -114,7 +114,8 @@ For aggregating ldmsd, a rough estimate of preallocated memory needed is (Number
 Data sets containing arrays may require more. The estimate can be checked by enabling DEBUG logging and examining the mm_stat bytes_used+holes value at ldmsd exit.
 .TP
 .BI -n " NAME"
-The name of the daemon. By default, it is "\fIHOSTNAME:PORT\fR".
+.br
+The name of the daemon. By default, it is "\fIHOSTNAME:PORT\fR". The failover feature uses the daemon name to verify the buddy name, and the producer name of kernel metric sets is the daemon name.
 .TP
 .BI -r " pid_file"
 The path to the pid file and prefix of the .version banner file for daemon mode.
@@ -182,10 +183,6 @@ Publish kernel metrics.
 .TP
 .BI -s " SETFILE"
 Text file containing kernel metric sets to publish. Default: /proc/sys/kldms/set_list
-.TP
-.BI -H " host_name"
-.br
-The host/producer name for test metric sets
 
 .SS Thread Options:
 .TP
