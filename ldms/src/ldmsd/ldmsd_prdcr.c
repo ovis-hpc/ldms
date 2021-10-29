@@ -436,6 +436,14 @@ static void resched_prdset_update(ldmsd_prdcr_set_t prdset, struct timespec *to)
 	}
 }
 
+int schedule_update(ldmsd_prdcr_set_t prdset)
+{
+	struct timespec to;
+	resched_prdset_update(prdset, &to);
+	return __post_prdset_state_ev(NULL, prdset->state, prdset,
+				prdset->worker, prdset->worker, &to);
+}
+
 int prdset_lookup_complete_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e)
 {
 	if (EV_OK != status)
@@ -469,6 +477,7 @@ int prdset_lookup_complete_actor(ev_worker_t src, ev_worker_t dst, ev_status_t s
 	}
 	prdset->state = LDMSD_PRDCR_SET_STATE_READY;
 	ldmsd_log(LDMSD_LINFO, "Set %s is ready.\n", prdset->inst_name);
+	rc = schedule_update(prdset);
 out:
 	ldmsd_prdcr_set_ref_put(prdset, "lookup");
 	ev_put(e);
@@ -640,7 +649,6 @@ out:
 int prdset_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t e)
 {
 	int rc;
-	struct timespec to;
 	struct prdset_state_data *prdset_data = EV_DATA(e, struct prdset_state_data);
 	struct ldmsd_prdcr_set *prdset = (struct ldmsd_prdcr_set *)prdset_data->obj;
 
@@ -677,7 +685,7 @@ int prdset_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_
 			}
 			prdset->state = LDMSD_PRDCR_SET_STATE_START;
 		}
-		goto sched;
+		break;
 	case LDMSD_PRDCR_SET_STATE_READY:
 		rc = __prdset_ready(prdset);
 		if (prdset->push_flags && LDMSD_PRDCR_SET_F_PUSH_REG)
@@ -702,9 +710,7 @@ int prdset_state_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_
 	}
 	return 0;
 sched:
-	resched_prdset_update(prdset, &to);
-	rc = __post_prdset_state_ev(NULL, prdset->state, prdset,
-				prdset->worker, prdset->worker, &to);
+	rc = schedule_update(prdset);
 out:
 	return rc;
 }
