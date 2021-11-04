@@ -25,3 +25,7 @@ endif
 if ENABLE_LIST_SAMPLER
 SUBDIRS += list_sampler
 endif
+
+if ENABLE_RECORD_SAMPLER
+SUBDIRS += record_sampler
+endif

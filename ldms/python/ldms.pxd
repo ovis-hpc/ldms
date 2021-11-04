@@ -381,6 +381,9 @@ cdef extern from "ldms.h" nogil:
         V_D64_ARRAY   "LDMS_V_D64_ARRAY"
         V_LIST        "LDMS_V_LIST"
         V_LIST_ENTRY  "LDMS_V_LIST_ENTRY"
+        V_RECORD_TYPE      "LDMS_V_RECORD_TYPE"
+        V_RECORD_INST      "LDMS_V_RECORD_INST"
+        V_RECORD_ARRAY     "LDMS_V_RECORD_ARRAY"
         V_FIRST       "LDMS_V_FIRST"
         V_LAST        "LDMS_V_LAST"
         LDMS_V_NONE
@@ -408,6 +411,9 @@ cdef extern from "ldms.h" nogil:
         LDMS_V_D64_ARRAY
         LDMS_V_LIST
         LDMS_V_LIST_ENTRY
+        LDMS_V_RECORD_TYPE
+        LDMS_V_RECORD_INST
+        LDMS_V_RECORD_ARRAY
         LDMS_V_FIRST
         LDMS_V_LAST
     union ldms_value:
@@ -438,6 +444,7 @@ cdef extern from "ldms.h" nogil:
     ctypedef ldms_value *ldms_mval_t
     int ldms_metric_by_name(ldms_set_t s, const char *name)
     const char *ldms_metric_name_get(ldms_set_t s, int i)
+    const char *ldms_metric_unit_get(ldms_set_t s, int i);
     int ldms_type_is_array(ldms_value_type t)
     ldms_value_type ldms_metric_type_get(ldms_set_t s, int i)
     ldms_mval_t ldms_metric_get(ldms_set_t s, int i)
@@ -530,6 +537,84 @@ cdef extern from "ldms.h" nogil:
     size_t ldms_list_len(ldms_set_t s, ldms_mval_t l)
     int ldms_list_remove_item(ldms_set_t s, ldms_mval_t lh, ldms_mval_t v)
     int ldms_list_purge(ldms_set_t s, ldms_mval_t lh)
+
+    # --- record related functions --- #
+    struct ldms_record:
+        pass # opaque
+    ctypedef ldms_record *ldms_record_t
+    ldms_record_t ldms_record_create(const char *name)
+    int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
+			   const char *unit, ldms_value_type type,
+			   size_t count)
+    int ldms_schema_record_add(ldms_schema_t s, ldms_record_t rec_def)
+    int ldms_schema_record_array_add(ldms_schema_t s, const char *name,
+                                     ldms_record_t rec_def, int array_len)
+    size_t ldms_record_heap_size_get(ldms_record_t rec_def)
+
+    # --- record instance functions --- #
+    int ldms_list_append_record(ldms_set_t set, ldms_mval_t lh, ldms_mval_t rec_inst)
+    ldms_mval_t ldms_record_alloc(ldms_set_t set, int metric_id)
+    int ldms_record_card(ldms_mval_t rec_inst)
+    int ldms_record_metric_find(ldms_mval_t rec_inst, const char *name)
+    ldms_mval_t ldms_record_metric_get(ldms_mval_t rec_inst, int metric_id)
+    const char *ldms_record_metric_name_get(ldms_mval_t rec_inst, int metric_id)
+    const char *ldms_record_metric_unit_get(ldms_mval_t rec_inst, int metric_id)
+    ldms_value_type ldms_record_metric_type_get(ldms_mval_t rec_inst,
+                                                     int metric_id, size_t *count)
+    void ldms_record_metric_set(ldms_mval_t rec_inst, int metric_id,
+                                ldms_mval_t val)
+    void ldms_record_metric_array_set(ldms_mval_t rec_inst, int metric_id,
+                                      ldms_mval_t val, int start, int count)
+    char       ldms_record_get_char(ldms_mval_t rec_inst, int metric_id)
+    uint8_t      ldms_record_get_u8(ldms_mval_t rec_inst, int metric_id)
+    uint16_t    ldms_record_get_u16(ldms_mval_t rec_inst, int metric_id)
+    uint32_t    ldms_record_get_u32(ldms_mval_t rec_inst, int metric_id)
+    uint64_t    ldms_record_get_u64(ldms_mval_t rec_inst, int metric_id)
+    int8_t       ldms_record_get_s8(ldms_mval_t rec_inst, int metric_id)
+    int16_t     ldms_record_get_s16(ldms_mval_t rec_inst, int metric_id)
+    int32_t     ldms_record_get_s32(ldms_mval_t rec_inst, int metric_id)
+    int64_t     ldms_record_get_s64(ldms_mval_t rec_inst, int metric_id)
+    float     ldms_record_get_float(ldms_mval_t rec_inst, int metric_id)
+    double   ldms_record_get_double(ldms_mval_t rec_inst, int metric_id)
+    const char *ldms_record_array_get_str(ldms_mval_t rec_inst, int metric_id)
+    char       ldms_record_array_get_char(ldms_mval_t rec_inst, int metric_id, int idx)
+    uint8_t      ldms_record_array_get_u8(ldms_mval_t rec_inst, int metric_id, int idx)
+    uint16_t    ldms_record_array_get_u16(ldms_mval_t rec_inst, int metric_id, int idx)
+    uint32_t    ldms_record_array_get_u32(ldms_mval_t rec_inst, int metric_id, int idx)
+    uint64_t    ldms_record_array_get_u64(ldms_mval_t rec_inst, int metric_id, int idx)
+    int8_t       ldms_record_array_get_s8(ldms_mval_t rec_inst, int metric_id, int idx)
+    int16_t     ldms_record_array_get_s16(ldms_mval_t rec_inst, int metric_id, int idx)
+    int32_t     ldms_record_array_get_s32(ldms_mval_t rec_inst, int metric_id, int idx)
+    int64_t     ldms_record_array_get_s64(ldms_mval_t rec_inst, int metric_id, int idx)
+    float     ldms_record_array_get_float(ldms_mval_t rec_inst, int metric_id, int idx)
+    double   ldms_record_array_get_double(ldms_mval_t rec_inst, int metric_id, int idx)
+    void   ldms_record_set_char(ldms_mval_t rec_inst, int metric_id,     char val)
+    void     ldms_record_set_u8(ldms_mval_t rec_inst, int metric_id,  uint8_t val)
+    void    ldms_record_set_u16(ldms_mval_t rec_inst, int metric_id, uint16_t val)
+    void    ldms_record_set_u32(ldms_mval_t rec_inst, int metric_id, uint32_t val)
+    void    ldms_record_set_u64(ldms_mval_t rec_inst, int metric_id, uint64_t val)
+    void     ldms_record_set_s8(ldms_mval_t rec_inst, int metric_id,   int8_t val)
+    void    ldms_record_set_s16(ldms_mval_t rec_inst, int metric_id,  int16_t val)
+    void    ldms_record_set_s32(ldms_mval_t rec_inst, int metric_id,  int32_t val)
+    void    ldms_record_set_s64(ldms_mval_t rec_inst, int metric_id,  int64_t val)
+    void  ldms_record_set_float(ldms_mval_t rec_inst, int metric_id,    float val)
+    void ldms_record_set_double(ldms_mval_t rec_inst, int metric_id,   double val)
+    void    ldms_record_array_set_str(ldms_mval_t rec_inst, int metric_id, const char *val)
+    void   ldms_record_array_set_char(ldms_mval_t rec_inst, int metric_id, int idx,     char val)
+    void     ldms_record_array_set_u8(ldms_mval_t rec_inst, int metric_id, int idx,  uint8_t val)
+    void    ldms_record_array_set_u16(ldms_mval_t rec_inst, int metric_id, int idx, uint16_t val)
+    void    ldms_record_array_set_u32(ldms_mval_t rec_inst, int metric_id, int idx, uint32_t val)
+    void    ldms_record_array_set_u64(ldms_mval_t rec_inst, int metric_id, int idx, uint64_t val)
+    void     ldms_record_array_set_s8(ldms_mval_t rec_inst, int metric_id, int idx,   int8_t val)
+    void    ldms_record_array_set_s16(ldms_mval_t rec_inst, int metric_id, int idx,  int16_t val)
+    void    ldms_record_array_set_s32(ldms_mval_t rec_inst, int metric_id, int idx,  int32_t val)
+    void    ldms_record_array_set_s64(ldms_mval_t rec_inst, int metric_id, int idx,  int64_t val)
+    void  ldms_record_array_set_float(ldms_mval_t rec_inst, int metric_id, int idx,    float val)
+    void ldms_record_array_set_double(ldms_mval_t rec_inst, int metric_id, int idx,   double val)
+
+    ldms_mval_t ldms_record_array_get_inst(ldms_mval_t rec_array, int idx);
+    int ldms_record_array_len(ldms_mval_t rec_array)
+
 
 cdef extern from "asm/byteorder.h" nogil:
     uint16_t __le16_to_cpu(uint16_t)

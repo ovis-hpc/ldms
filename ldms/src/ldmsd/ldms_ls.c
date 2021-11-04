@@ -196,8 +196,8 @@ void server_timeout(void)
 void value_format(ldms_set_t s, enum ldms_value_type type, ldms_mval_t val, size_t n)
 {
 	ldms_mval_t lval;
-	enum ldms_value_type ltype;
-	int i;
+	enum ldms_value_type ltype, prev_type;
+	int i, len;
 	size_t count;
 
 	switch (type) {
@@ -307,23 +307,65 @@ void value_format(ldms_set_t s, enum ldms_value_type type, ldms_mval_t val, size
 			printf("%f", val->a_d[i]);
 		}
 		break;
+	case LDMS_V_RECORD_TYPE:
+		printf("LDMS_V_RECORD_TYPE");
+		break;
+	case LDMS_V_RECORD_INST:
+		printf("\t{\n");
+		len = ldms_record_card(val);
+		for (i = 0; i < len; i++) {
+			const char *name = ldms_record_metric_name_get(val, i);
+			ltype = ldms_record_metric_type_get(val, i, &count);
+			lval = ldms_record_metric_get(val, i);
+			printf("\t\t\"%s\": ", name);
+			if (ldms_type_is_array(ltype) && ltype != LDMS_V_CHAR_ARRAY)
+				printf("[ ");
+			value_format(s, ltype, lval, count);
+			if (ldms_type_is_array(ltype) && ltype != LDMS_V_CHAR_ARRAY)
+				printf(" ]");
+			if (i < len-1)
+				printf(",\n");
+			else
+				printf("\n");
+		}
+		printf("\t}");
+		break;
+	case LDMS_V_RECORD_ARRAY:
+		printf("[\n");
+		len = ldms_record_array_len(val);
+		for (i = 0; i < len; i++) {
+			lval = ldms_record_array_get_inst(val, i);
+			value_format(s, LDMS_V_RECORD_INST, lval, 1);
+			if (i < len-1)
+				printf(",\n");
+			else
+				printf("\n");
+		}
+		printf("    ]\n");
+		break;
 	case LDMS_V_LIST:
 		printf("[");
 		i = 0;
-		for (lval = ldms_list_first(s, val, &ltype, &count); lval;
-		     lval = ldms_list_next(s, lval, &ltype, &count)) {
+		prev_type = 0;
+		for (lval = ldms_list_first(s, val, &ltype, &count), prev_type=ltype;
+		     lval; lval = ldms_list_next(s, lval, &ltype, &count)) {
 			if (i++)
 				printf(",");
+			if (prev_type == LDMS_V_RECORD_INST)
+				printf("\n");
 			if (ldms_type_is_array(ltype) && ltype != LDMS_V_CHAR_ARRAY)
 				printf("[");
 			value_format(s, ltype, lval, count);
 			if (ldms_type_is_array(ltype) && ltype != LDMS_V_CHAR_ARRAY)
 				printf("]");
+			prev_type = ltype;
 		}
+		if (prev_type == LDMS_V_RECORD_INST)
+			printf("\n    ");
 		printf("]");
 		break;
 	default:
-		printf("Unknown metric type\n");
+		printf("Unknown metric type");
 	}
 }
 

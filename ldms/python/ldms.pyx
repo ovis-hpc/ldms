@@ -191,6 +191,56 @@ s.transaction_end()
 ```
 
 
+Record Example
+--------------
+```
+MAX_REC = 16 # 16 records max
+
+# Create record definition
+REC_DEF = ldms.RecordDef("device_record", metric_list = [
+         ( "name", ldms.V_CHAR, 16 ),
+         ( "size", ldms.V_U64, 1, "bytes" ),
+         ( "counters", ldms.V_U64_ARRAY, 4 ),
+    ])
+
+# Create schema + add record to the schema + add list with appropriate size
+SCHEMA = ldms.Schema(
+            name = "schema",
+            metric_list = [
+                ( "component_id", "u64",  1, True ),
+                (       "job_id", "u64",  1  ),
+                (       "app_id", "u64",  1  ),
+                (        "round", "u32",  1  ),
+                REC_DEF,
+                ( "device_list", "list", MAX_REC * REC_DEF.heap_size() ),
+            ],
+         )
+
+# Create set
+_set = ldms.Set("my_set", SCHEMA)
+# Get the list
+_lst = _set["device_list"]
+
+# Allocate the record
+rec = _set.record_alloc("device_record")
+# Put it into the list
+_lst.append(ldms.V_RECORD, rec)
+
+# set metric value by key (str or int)
+rec[0] = "dev0"
+rec["size"] = 2048
+rec["counters"][0] = 1
+rec["counters"][1:4] = (2,3,4)
+
+# Iterate list
+for rec in _lst:
+    # Get values by key (str or int)
+    print(rec["name"])
+    print(rec[1])
+    print(rec[2])
+
+```
+
 """
 
 cdef extern void PyEval_InitThreads()
@@ -333,6 +383,15 @@ cdef Ptr PTR(void *ptr):
     po.c_ptr = ptr
     return po
 
+def JSON_OBJ(o):
+    t = type(o)
+    if t in (int, float, str):
+        return o
+    if t == bytes:
+        return o.decode()
+    # otherwise, the object is expected to have `.json_obj()` function
+    return o.json_obj()
+
 # ============================ #
 # == metric getter wrappers == #
 # ============================ #
@@ -413,6 +472,13 @@ cdef py_ldms_metric_get_list(Set s, int m_idx):
     cdef ldms_mval_t lh = ldms_metric_get(s.rbd, m_idx)
     return MetricList(s, PTR(lh))
 
+cdef py_ldms_metric_get_record_type(Set s, int m_idx):
+    cdef ldms_mval_t lt = ldms_metric_get(s.rbd, m_idx)
+    return RecordType(s, PTR(lt))
+
+cdef py_ldms_metric_get_record_array(Set s, int m_idx):
+    return RecordArray(s, m_idx)
+
 METRIC_GETTER_TBL = {
         LDMS_V_CHAR : py_ldms_metric_get_char,
         LDMS_V_U8   : py_ldms_metric_get_u8,
@@ -440,6 +506,114 @@ METRIC_GETTER_TBL = {
         LDMS_V_D64_ARRAY  : py_ldms_metric_array_get_double,
 
         LDMS_V_LIST : py_ldms_metric_get_list,
+
+        LDMS_V_RECORD_TYPE : py_ldms_metric_get_record_type,
+        LDMS_V_RECORD_ARRAY : py_ldms_metric_get_record_array,
+    }
+
+
+# ============================ #
+# == record getter wrappers == #
+# ============================ #
+
+# The functions wrap the associate C functions so that they become Python
+# callables.
+
+cdef py_ldms_record_get_char(RecordInstance r, int m_idx):
+    cdef char buf[2]
+    buf[0] = ldms_record_get_char(r.rec_inst, m_idx)
+    buf[1] = 0 # terminate the string
+    return STR(buf)
+
+cdef py_ldms_record_array_get_str(RecordInstance r, int m_idx):
+    return STR(ldms_record_array_get_str(r.rec_inst, m_idx))
+
+cdef py_ldms_record_get_u8(RecordInstance r, int m_idx):
+    return ldms_record_get_u8(r.rec_inst, m_idx)
+
+cdef py_ldms_record_array_get_u8(RecordInstance r, int m_idx, int e_idx):
+    return ldms_record_array_get_u8(r.rec_inst, m_idx, e_idx)
+
+cdef py_ldms_record_get_s8(RecordInstance r, int m_idx):
+    return ldms_record_get_s8(r.rec_inst, m_idx)
+
+cdef py_ldms_record_array_get_s8(RecordInstance r, int m_idx, int e_idx):
+    return ldms_record_array_get_s8(r.rec_inst, m_idx, e_idx)
+
+cdef py_ldms_record_get_u16(RecordInstance r, int m_idx):
+    return ldms_record_get_u16(r.rec_inst, m_idx)
+
+cdef py_ldms_record_array_get_u16(RecordInstance r, int m_idx, int e_idx):
+    return ldms_record_array_get_u16(r.rec_inst, m_idx, e_idx)
+
+cdef py_ldms_record_get_s16(RecordInstance r, int m_idx):
+    return ldms_record_get_s16(r.rec_inst, m_idx)
+
+cdef py_ldms_record_array_get_s16(RecordInstance r, int m_idx, int e_idx):
+    return ldms_record_array_get_s16(r.rec_inst, m_idx, e_idx)
+
+cdef py_ldms_record_get_u32(RecordInstance r, int m_idx):
+    return ldms_record_get_u32(r.rec_inst, m_idx)
+
+cdef py_ldms_record_array_get_u32(RecordInstance r, int m_idx, int e_idx):
+    return ldms_record_array_get_u32(r.rec_inst, m_idx, e_idx)
+
+cdef py_ldms_record_get_s32(RecordInstance r, int m_idx):
+    return ldms_record_get_s32(r.rec_inst, m_idx)
+
+cdef py_ldms_record_array_get_s32(RecordInstance r, int m_idx, int e_idx):
+    return ldms_record_array_get_s32(r.rec_inst, m_idx, e_idx)
+
+cdef py_ldms_record_get_u64(RecordInstance r, int m_idx):
+    return ldms_record_get_u64(r.rec_inst, m_idx)
+
+cdef py_ldms_record_array_get_u64(RecordInstance r, int m_idx, int e_idx):
+    return ldms_record_array_get_u64(r.rec_inst, m_idx, e_idx)
+
+cdef py_ldms_record_get_s64(RecordInstance r, int m_idx):
+    return ldms_record_get_s64(r.rec_inst, m_idx)
+
+cdef py_ldms_record_array_get_s64(RecordInstance r, int m_idx, int e_idx):
+    return ldms_record_array_get_s64(r.rec_inst, m_idx, e_idx)
+
+cdef py_ldms_record_get_float(RecordInstance r, int m_idx):
+    return ldms_record_get_float(r.rec_inst, m_idx)
+
+cdef py_ldms_record_array_get_float(RecordInstance r, int m_idx, int e_idx):
+    return ldms_record_array_get_float(r.rec_inst, m_idx, e_idx)
+
+cdef py_ldms_record_get_double(RecordInstance r, int m_idx):
+    return ldms_record_get_double(r.rec_inst, m_idx)
+
+cdef py_ldms_record_array_get_double(RecordInstance r, int m_idx, int e_idx):
+    return ldms_record_array_get_double(r.rec_inst, m_idx, e_idx)
+
+RECORD_METRIC_GETTER_TBL = {
+        LDMS_V_CHAR : py_ldms_record_get_char,
+        LDMS_V_U8   : py_ldms_record_get_u8,
+        LDMS_V_S8   : py_ldms_record_get_s8,
+        LDMS_V_U16  : py_ldms_record_get_u16,
+        LDMS_V_S16  : py_ldms_record_get_s16,
+        LDMS_V_U32  : py_ldms_record_get_u32,
+        LDMS_V_S32  : py_ldms_record_get_s32,
+        LDMS_V_U64  : py_ldms_record_get_u64,
+        LDMS_V_S64  : py_ldms_record_get_s64,
+        LDMS_V_F32  : py_ldms_record_get_float,
+        LDMS_V_D64  : py_ldms_record_get_double,
+
+        LDMS_V_CHAR_ARRAY : py_ldms_record_array_get_str,
+
+        LDMS_V_U8_ARRAY   : py_ldms_record_array_get_u8,
+        LDMS_V_S8_ARRAY   : py_ldms_record_array_get_s8,
+        LDMS_V_U16_ARRAY  : py_ldms_record_array_get_u16,
+        LDMS_V_S16_ARRAY  : py_ldms_record_array_get_s16,
+        LDMS_V_U32_ARRAY  : py_ldms_record_array_get_u32,
+        LDMS_V_S32_ARRAY  : py_ldms_record_array_get_s32,
+        LDMS_V_U64_ARRAY  : py_ldms_record_array_get_u64,
+        LDMS_V_S64_ARRAY  : py_ldms_record_array_get_s64,
+        LDMS_V_F32_ARRAY  : py_ldms_record_array_get_float,
+        LDMS_V_D64_ARRAY  : py_ldms_record_array_get_double,
+
     }
 
 
@@ -521,6 +695,12 @@ cdef py_ldms_metric_array_set_double(Set s, int m_idx, int e_idx, val):
 cdef py_ldms_metric_set_list(Set s, int m_idx, val):
     raise ValueError("metric list cannot be set directly, please `get` and append values.")
 
+cdef py_ldms_metric_set_record_type(Set s, int m_idx, val):
+    raise ValueError("record type cannot be set")
+
+cdef py_ldms_metric_set_record_array(Set s, int m_idx, val):
+    raise ValueError("record array cannot be set")
+
 METRIC_SETTER_TBL = {
         LDMS_V_CHAR : py_ldms_metric_set_char,
         LDMS_V_U8   : py_ldms_metric_set_u8,
@@ -548,6 +728,112 @@ METRIC_SETTER_TBL = {
         LDMS_V_D64_ARRAY  : py_ldms_metric_array_set_double,
 
         LDMS_V_LIST : py_ldms_metric_set_list,
+        LDMS_V_RECORD_TYPE : py_ldms_metric_set_record_type,
+        LDMS_V_RECORD_ARRAY : py_ldms_metric_set_record_array,
+    }
+
+
+# ============================ #
+# == record setter wrappers == #
+# ============================ #
+
+# The functions wrap the associate C functions so that they become Python
+# callables.
+
+cdef py_ldms_record_set_char(RecordInstance r, int m_idx, val):
+    if type(val) not in (str, bytes) or len(val) != 1:
+        raise TypeError("A char must be a `str` or `bytes` of length 1")
+    return ldms_record_set_char(r.rec_inst, m_idx, BYTES(val)[0])
+
+cdef py_ldms_record_array_set_str(RecordInstance r, int m_idx, val):
+    return ldms_record_array_set_str(r.rec_inst, m_idx, BYTES(val))
+
+cdef py_ldms_record_set_u8(RecordInstance r, int m_idx, val):
+    return ldms_record_set_u8(r.rec_inst, m_idx, val)
+
+cdef py_ldms_record_array_set_u8(RecordInstance r, int m_idx, int e_idx, val):
+    return ldms_record_array_set_u8(r.rec_inst, m_idx, e_idx, val)
+
+cdef py_ldms_record_set_s8(RecordInstance r, int m_idx, val):
+    return ldms_record_set_s8(r.rec_inst, m_idx, val)
+
+cdef py_ldms_record_array_set_s8(RecordInstance r, int m_idx, int e_idx, val):
+    return ldms_record_array_set_s8(r.rec_inst, m_idx, e_idx, val)
+
+cdef py_ldms_record_set_u16(RecordInstance r, int m_idx, val):
+    return ldms_record_set_u16(r.rec_inst, m_idx, val)
+
+cdef py_ldms_record_array_set_u16(RecordInstance r, int m_idx, int e_idx, val):
+    return ldms_record_array_set_u16(r.rec_inst, m_idx, e_idx, val)
+
+cdef py_ldms_record_set_s16(RecordInstance r, int m_idx, val):
+    return ldms_record_set_s16(r.rec_inst, m_idx, val)
+
+cdef py_ldms_record_array_set_s16(RecordInstance r, int m_idx, int e_idx, val):
+    return ldms_record_array_set_s16(r.rec_inst, m_idx, e_idx, val)
+
+cdef py_ldms_record_set_u32(RecordInstance r, int m_idx, val):
+    return ldms_record_set_u32(r.rec_inst, m_idx, val)
+
+cdef py_ldms_record_array_set_u32(RecordInstance r, int m_idx, int e_idx, val):
+    return ldms_record_array_set_u32(r.rec_inst, m_idx, e_idx, val)
+
+cdef py_ldms_record_set_s32(RecordInstance r, int m_idx, val):
+    return ldms_record_set_s32(r.rec_inst, m_idx, val)
+
+cdef py_ldms_record_array_set_s32(RecordInstance r, int m_idx, int e_idx, val):
+    return ldms_record_array_set_s32(r.rec_inst, m_idx, e_idx, val)
+
+cdef py_ldms_record_set_u64(RecordInstance r, int m_idx, val):
+    return ldms_record_set_u64(r.rec_inst, m_idx, val)
+
+cdef py_ldms_record_array_set_u64(RecordInstance r, int m_idx, int e_idx, val):
+    return ldms_record_array_set_u64(r.rec_inst, m_idx, e_idx, val)
+
+cdef py_ldms_record_set_s64(RecordInstance r, int m_idx, val):
+    return ldms_record_set_s64(r.rec_inst, m_idx, val)
+
+cdef py_ldms_record_array_set_s64(RecordInstance r, int m_idx, int e_idx, val):
+    return ldms_record_array_set_s64(r.rec_inst, m_idx, e_idx, val)
+
+cdef py_ldms_record_set_float(RecordInstance r, int m_idx, val):
+    return ldms_record_set_float(r.rec_inst, m_idx, val)
+
+cdef py_ldms_record_array_set_float(RecordInstance r, int m_idx, int e_idx, val):
+    return ldms_record_array_set_float(r.rec_inst, m_idx, e_idx, val)
+
+cdef py_ldms_record_set_double(RecordInstance r, int m_idx, val):
+    return ldms_record_set_double(r.rec_inst, m_idx, val)
+
+cdef py_ldms_record_array_set_double(RecordInstance r, int m_idx, int e_idx, val):
+    return ldms_record_array_set_double(r.rec_inst, m_idx, e_idx, val)
+
+
+RECORD_METRIC_SETTER_TBL = {
+        LDMS_V_CHAR : py_ldms_record_set_char,
+        LDMS_V_U8   : py_ldms_record_set_u8,
+        LDMS_V_S8   : py_ldms_record_set_s8,
+        LDMS_V_U16  : py_ldms_record_set_u16,
+        LDMS_V_S16  : py_ldms_record_set_s16,
+        LDMS_V_U32  : py_ldms_record_set_u32,
+        LDMS_V_S32  : py_ldms_record_set_s32,
+        LDMS_V_U64  : py_ldms_record_set_u64,
+        LDMS_V_S64  : py_ldms_record_set_s64,
+        LDMS_V_F32  : py_ldms_record_set_float,
+        LDMS_V_D64  : py_ldms_record_set_double,
+
+        LDMS_V_CHAR_ARRAY : py_ldms_record_array_set_str,
+
+        LDMS_V_U8_ARRAY   : py_ldms_record_array_set_u8,
+        LDMS_V_S8_ARRAY   : py_ldms_record_array_set_s8,
+        LDMS_V_U16_ARRAY  : py_ldms_record_array_set_u16,
+        LDMS_V_S16_ARRAY  : py_ldms_record_array_set_s16,
+        LDMS_V_U32_ARRAY  : py_ldms_record_array_set_u32,
+        LDMS_V_S32_ARRAY  : py_ldms_record_array_set_s32,
+        LDMS_V_U64_ARRAY  : py_ldms_record_array_set_u64,
+        LDMS_V_S64_ARRAY  : py_ldms_record_array_set_s64,
+        LDMS_V_F32_ARRAY  : py_ldms_record_array_set_float,
+        LDMS_V_D64_ARRAY  : py_ldms_record_array_set_double,
     }
 
 
@@ -922,6 +1208,9 @@ LDMS_VALUE_TYPE_TBL = {
         LDMS_V_D64_ARRAY  : LDMS_V_D64_ARRAY,
 
         LDMS_V_LIST       : LDMS_V_LIST,
+
+        LDMS_V_RECORD_ARRAY : LDMS_V_RECORD_ARRAY,
+        "record_array"      : LDMS_V_RECORD_ARRAY,
     }
 
 cdef ldms_value_type LDMS_VALUE_TYPE(t):
@@ -1210,6 +1499,102 @@ cdef void update_cb(ldms_t _t, ldms_set_t _s, int flags, void *arg) with gil:
         sem_post(&s._sem)
 
 
+cdef class RecordDef(object):
+    """Record Definition
+
+    LDMS Record is a struct-like object in the dynamically allocated in the heap
+    section of the LDMS set. The application uses RecordDef to declare the
+    record definition and later add the definition to a Schema. The members may
+    be declared at the `__init__()` or may be added later with
+    `RecordDef.add_metric()` or `RecordDef.add_metrics()`. The entries in the
+    list of metrics are tuples of ( _name, _type, _optional_count,
+    _optional_unit).
+
+    Example:
+    >>> REC_DEF = ldms.RecordDef("device_record", metric_list = [
+         ( "name", ldms.V_CHAR, 32 ),
+         ( "size", ldms.V_U64, 1, "bytes" ),
+         ( "counters", ldms.V_U64_ARRAY, 4 ),
+        ])
+
+    The record instances need to reside in a list, hence a list with appropriate
+    size must also be added to the Schema.
+    >>> SCHEMA = ldms.Schema(
+            name = "schema",
+            metric_list = [
+                ( "component_id", "u64",  1, True ),
+                (       "job_id", "u64",  1  ),
+                (       "app_id", "u64",  1  ),
+                REC_DEF,
+                ( "device_list", "list", 16 * REC_DEF.heap_size() ),
+            ]
+         )
+    """
+    cdef str _name
+    cdef list metric_list
+    cdef ldms_record_t _rec_def
+
+    def __init__(self, name, metric_list = list()):
+        self._name = name
+        self._rec_def = ldms_record_create(BYTES(name))
+        self.metric_list = list()
+        self.add_metrics(metric_list)
+
+    @property
+    def name(self):
+        return self._name
+
+    def add_metric(self, name, metric_type, count=1, units=None):
+        """Add metric `name` of type `metric_type` (with `count` length for
+           ARRAY type). The optional `units` is the units of the metric.
+        """
+        cdef int idx
+        if type(metric_type) == str:
+            metric_type = metric_type.lower()
+        t = LDMS_VALUE_TYPE(metric_type)
+        if t < LDMS_V_CHAR or LDMS_V_D64_ARRAY < t:
+            raise TypeError("{} is not supported in a record".format(metric_type))
+        idx = ldms_record_metric_add(self._rec_def, BYTES(name), BYTES(units),
+                                     t, count)
+        if idx < 0:
+            raise RuntimeError("ldms_record_metric_add() error: {}" \
+                               .format(ERRNO_SYM(-idx)))
+        self.metric_list.append((name, t, count, units))
+
+    def add_metrics(self, metrics):
+        """Batch-add metrics to the record definition.
+
+        `metrics` must be a list of tuple ( _name, _type, _optional_count,
+        _optional_units). For example:
+
+        >>> rec_def.add_metrics( [
+                    ("count", ldms.V_U64),
+                    ("size", ldms.V_U64, 1, "bytes")
+                ]
+            )
+        """
+        for o in metrics:
+            if type(o) in (list, tuple):
+                self.add_metric(*o)
+            elif type(o) == dict:
+                self.add_metric(
+                            name = o["name"],
+                            metric_type = o["type"],
+                            count = o.get("count", 1),
+                            units = o.get("units"),
+                        )
+
+    def __iter__(self):
+        return iter(self.metric_list)
+
+    def __len__(self):
+        return len(self.metric_list)
+
+    def heap_size(self):
+        """Determine the size of a record in the LDMS heap"""
+        return ldms_record_heap_size_get(self._rec_def)
+
+
 cdef class Schema(object):
     """LDMS Set Schema for creating LDMS set
 
@@ -1293,6 +1678,7 @@ cdef class Schema(object):
     ... ]
     """
     cdef ldms_schema_t _schema
+    cdef dict rec_defs
 
     def __init__(self, name, array_card=1, metric_list = list()):
         """S.__init__(name, array_card=1, metric_list=list())"""
@@ -1300,6 +1686,7 @@ cdef class Schema(object):
         if not self._schema:
             raise OSError(errno, "ldms_schema_new() error: {}" \
                                  .format(ERRNO_SYM(errno)))
+        self.rec_defs = dict() # rec_defs[ "name" or id ] = Ptr(ldms_record_t)
         if metric_list:
             self.add_metrics(metric_list)
         self.set_array_card(array_card)
@@ -1311,7 +1698,24 @@ cdef class Schema(object):
             raise OSError(rc, "ldms_schema_array_card_set() error: {}" \
                               .format(ERRNO_SYM(rc)))
 
-    def add_metric(self, name, metric_type, count=1, meta=False, units=None):
+    def add_record(self, RecordDef rec_def):
+        """Add a record definition into the Schema"""
+        cdef int _id
+        if type(rec_def) != RecordDef:
+            raise TypeError("rec_type must be a RecordDef object")
+        if rec_def.name in self.rec_defs:
+            raise KeyError("'{}' record definition already existed" \
+                           .format(rec_def.name)
+                    )
+        _id = ldms_schema_record_add(self._schema, rec_def._rec_def)
+        if _id < 0:
+            raise RuntimeError("ldms_schema_record_add() error: {}"\
+                               .format(ERRNO_SYM(-_id)))
+        self.rec_defs[_id] = rec_def
+        self.rec_defs[rec_def.name] = rec_def
+
+    def add_metric(self, name, metric_type, count=1, meta=False, units=None,
+                         rec_def=None):
         """S.add_metric(name, type, count=1, meta=False, units=None)
 
         Add a metric to the schema
@@ -1321,10 +1725,21 @@ cdef class Schema(object):
         cdef int idx
         cdef char *u = NULL
         cdef bytes b
+        cdef RecordDef _rec_def
+
+        if type(metric_type) == RecordDef:
+            self.add_record(metric_type)
+            return
         if type(metric_type) == str:
             metric_type = metric_type.lower()
         t = LDMS_VALUE_TYPE(metric_type)
-        if t == LDMS_V_LIST:
+        if t == LDMS_V_RECORD_ARRAY:
+            if type(rec_def) != RecordDef:
+                raise TypeError("Expecting RecordRef `rec_def`")
+            _rec_def = <RecordDef>rec_def
+            idx = ldms_schema_record_array_add(self._schema, BYTES(name),
+                    _rec_def._rec_def, count)
+        elif t == LDMS_V_LIST:
             if units is not None:
                 b = BYTES(units)
                 u = b
@@ -1357,13 +1772,19 @@ cdef class Schema(object):
             if type(o) in (list, tuple):
                 self.add_metric(*o)
             elif type(o) == dict:
+                mtype = o.get("type")
+                if mtype is None:
+                    mtype = o.get("metric_type")
                 self.add_metric(
                             name = o["name"],
-                            metric_type = o["type"],
+                            metric_type = mtype,
                             count = o.get("count", 1),
                             meta = o.get("meta", False),
                             units = o.get("units"),
+                            rec_def = o.get("rec_def"),
                         )
+            elif type(o) == RecordDef:
+                self.add_record(o)
 
 
 cdef class MetricArray(list):
@@ -1388,23 +1809,37 @@ cdef class MetricArray(list):
     cdef ldms_set_t _rbd
     cdef ldms_value_type _type
     cdef int _mid
-    cdef int _len
+    cdef size_t _len
+    cdef RecordInstance _rec
     cdef object _getter
     cdef object _setter
+    cdef object _get_item
+    cdef object _set_item
 
-    def __init__(self, Set lset, int metric_id):
+    def __init__(self, Set lset, int metric_id, RecordInstance rec=None):
         self._set = lset
         self._rbd = lset.rbd
         self._mid = metric_id
-        self._type = ldms_metric_type_get(self._rbd, self._mid)
+        self._rec = rec
+        self._type = ldms_metric_type_get(self._rbd, self._mid) if rec is None \
+                     else \
+                     ldms_record_metric_type_get(rec.rec_inst, self._mid, &self._len)
         if not ldms_type_is_array(self._type):
             raise TypeError("set {}[{}] is not an array"\
                             .format(lset.name, metric_id))
         if self._type == LDMS_V_CHAR_ARRAY:
             raise TypeError("CHAR_ARRAY should be access as `str`")
-        self._len = ldms_metric_array_get_len(self._rbd, self._mid)
-        self._getter = METRIC_GETTER_TBL[self._type]
-        self._setter = METRIC_SETTER_TBL[self._type]
+        if rec:
+            self._getter = RECORD_METRIC_GETTER_TBL[self._type]
+            self._setter = RECORD_METRIC_SETTER_TBL[self._type]
+            self._get_item = self._rec_get_item
+            self._set_item = self._rec_set_item
+        else:
+            self._len = ldms_metric_array_get_len(self._rbd, self._mid)
+            self._getter = METRIC_GETTER_TBL[self._type]
+            self._setter = METRIC_SETTER_TBL[self._type]
+            self._get_item = self._set_get_item
+            self._set_item = self._set_set_item
 
     def __len__(self):
         return self._len
@@ -1417,6 +1852,18 @@ cdef class MetricArray(list):
         _len = len(self)
         for i in range(0, _len):
             yield self[_len - i - 1]
+
+    def _set_get_item(self, idx):
+        return self._getter(self._set, self._mid, idx)
+
+    def _rec_get_item(self, idx):
+        return self._getter(self._rec, self._mid, idx)
+
+    def _set_set_item(self, idx, val):
+        self._setter(self._set, self._mid, idx, val)
+
+    def _rec_set_item(self, idx, val):
+        self._setter(self._rec, self._mid, idx, val)
 
     def _cmp(self, other):
         for v0, v1 in zip(self, other):
@@ -1448,20 +1895,19 @@ cdef class MetricArray(list):
 
     def __getitem__(self, idx):
         if type(idx) == slice:
-            return [ self._getter(self._set, self._mid, i) \
-                        for i in range(*idx.indices(self._len)) ]
+            return [ self._get_item(i) for i in range(*idx.indices(self._len)) ]
         if idx < 0:
             idx += self._len
-        return self._getter(self._set, self._mid, idx)
+        return self._get_item(idx)
 
     def __setitem__(self, idx, val):
         if type(idx) == slice:
             for i,v in zip(range(*idx.indices(self._len)), val):
-                self._setter(self._set, self._mid, i, v)
+                self._set_item(i, v)
         else:
             if idx < 0:
                 idx += self._len
-            self._setter(self._set, self._mid, idx, val)
+            self._set_item(idx, val)
 
     def __delitem__(self, key):
         raise TypeError("MetricArray does not support item deletion")
@@ -1516,6 +1962,133 @@ cdef class MetricArray(list):
     def sort(self, *args):
         raise TypeError("MetricArray does not support `sort()`")
 
+    def json_obj(self):
+        return [ JSON_OBJ(v) for v in self ]
+
+
+cdef class RecordArray(list):
+    """A list-like object for record array access
+
+    The application does not create this object directly, but rather
+    obtain RecordArray object by getting a metric of type LDMS_V_RECORD_ARRAY
+    from an LDMS Set.
+
+    Usage examples:
+    >>> a = _my_set[12] # assuming that _my_set[12] is LDMS_V_RECORD_ARRAY of length 5
+    >>> len(a) # get the length of the metric array
+    >>> for rec in a: # iterate through all records in the array
+    ...   print(rec)
+    >>> rec = a[2] # get the record object at index 2
+    >>> rec = a[-1] # negative index works too, a[-1] is a[4]
+    """
+
+    cdef Set _set
+    cdef ldms_set_t _rbd
+    cdef size_t _len
+    cdef int _mid
+    cdef ldms_mval_t _rec_array
+
+    def __init__(self, Set lset, int metric_id):
+        cdef ldms_value_type typ
+        self._set = lset
+        self._rbd = lset.rbd
+        self._mid = metric_id
+        typ = ldms_metric_type_get(self._rbd, self._mid)
+        if typ != LDMS_V_RECORD_ARRAY:
+            raise TypeError("Unexpected type: {}".format(typ))
+        self._rec_array = ldms_metric_get(self._rbd, self._mid)
+        self._len = ldms_record_array_len(self._rec_array)
+
+    def __len__(self):
+        return self._len
+
+    def __iter__(self):
+        for i in range(0, len(self)):
+            yield self[i]
+
+    def __reversed__(self):
+        _len = len(self)
+        for i in range(0, _len):
+            yield self[_len - i - 1]
+
+    def _get_item(self, idx):
+        cdef ldms_mval_t _rec_inst
+        if idx not in range(len(self)):
+            raise IndexError("Index out of range")
+        _rec_inst = ldms_record_array_get_inst(self._rec_array, idx)
+        if not _rec_inst:
+            raise IndexError("ldms_record_array_get_inst() error: {}". \
+                             format(errno))
+        ptr = PTR(_rec_inst)
+        return RecordInstance(self._set, ptr)
+
+    def __getitem__(self, idx):
+        if type(idx) == slice:
+            return [ self._get_item(i) for i in range(*idx.indices(self._len)) ]
+        if idx < 0:
+            idx += self._len
+        return self._get_item(idx)
+
+    def __setitem__(self, idx, val):
+        raise ValueError("RecordArray item cannot be set")
+
+    def __delitem__(self, key):
+        raise TypeError("RecordArray does not support item deletion")
+
+    def __repr__(self):
+        sio = io.StringIO()
+        print("[", ", ".join(str(s) for s in self), "]", file=sio, end="", sep="")
+        return sio.getvalue()
+
+    def __call__(self, *args, **kwargs):
+        return self # mimic py_ldms_metric_get_* functions
+
+    def __iadd__(self, other):
+        raise TypeError("RecordArray does not support element appending")
+
+    def append(self, element):
+        raise TypeError("RecordArray does not support element appending")
+
+    def __imul__(self, val):
+        raise TypeError("RecordArray does not support `*=` operation")
+
+    def __mul__(self, val):
+        raise TypeError("RecordArray does not support `*` operation")
+
+    def __rmul__(self, val):
+        raise TypeError("RecordArray does not support `*` operation")
+
+    def clear(self):
+        raise TypeError("RecordArray does not support `clear()`")
+
+    def copy(self):
+        raise TypeError("RecordArray does not support `copy()`")
+
+    def count(self, *args):
+        raise TypeError("RecordArray does not support `count()`")
+
+    def extend(self, *args):
+        raise TypeError("RecordArray does not support `extend()`")
+
+    def index(self, *args):
+        raise TypeError("RecordArray does not support `index()`")
+
+    def pop(self, *args):
+        raise TypeError("RecordArray does not support `pop()`")
+
+    def remove(self, *args):
+        raise TypeError("RecordArray does not support `remove()`")
+
+    def reverse(self, *args):
+        raise TypeError("RecordArray does not support `reverse()`")
+
+    def sort(self, *args):
+        raise TypeError("RecordArray does not support `sort()`")
+
+    def json_obj(self):
+        return [ JSON_OBJ(v) for v in self ]
+
+
 
 cdef __ldms_list_append(ldms_set_t cset, ldms_mval_t lh, ldms_value_type v_type, int n):
     mval = ldms_list_append_item(cset, lh, v_type, n)
@@ -1524,6 +2097,12 @@ cdef __ldms_list_append(ldms_set_t cset, ldms_mval_t lh, ldms_value_type v_type,
     return PTR(mval)
 
 cdef class MVal(Ptr):
+    """Object for scalar metric values and their arrays
+
+    MVal object is usually obtained from MetricList iteration or
+    MetricList.append() since the Set object already provided interfaces to
+    get/set the data metric values.
+    """
     cdef Set _lset
     cdef ldms_value_type _type
     cdef int _n # number of elements
@@ -1534,27 +2113,25 @@ cdef class MVal(Ptr):
         self.c_ptr = mval.c_ptr
         self._type = _type
         self._n = n
-        self._getter = MVAL_GETTER_TBL[self._type] if self._type != LDMS_V_LIST else None
+        self._getter = MVAL_GETTER_TBL.get(self._type)
 
     def get(self):
         """Get the metric value"""
-        if self._type == LDMS_V_LIST:
-            return self
-        elif ldms_type_is_array(self._type):
+        if ldms_type_is_array(self._type):
             if self._type == LDMS_V_CHAR_ARRAY:
                 obj = self._getter(self)
                 return obj
             else:
                 obj = tuple( self._getter(self, i) for i in range(self._n) )
                 return obj
-        else:
+        elif self._type <= LDMS_V_D64:
             obj = self._getter(self)
             return obj
+        else:
+            raise TypeError("Unsupported type: {}".format(self._type))
 
     def set(self, val, idx=None):
-        if self._type == LDMS_V_LIST:
-            raise ValueError("Setting value of MetricList is not supported, please use `append()`")
-        elif ldms_type_is_array(self._type):
+        if ldms_type_is_array(self._type):
             if self._type == LDMS_V_CHAR_ARRAY:
                 setter = MVAL_SETTER_TBL[self._type]
                 setter(self, val)
@@ -1566,16 +2143,22 @@ cdef class MVal(Ptr):
                         setter(self, i, v)
                 else:
                     setter(self, idx, val)
-        else:
+        elif self._type <= LDMS_V_D64:
             setter = MVAL_SETTER_TBL[self._type]
             setter(self, val)
+        else:
+            raise TypeError("Unsupported type: {}".format(self._type))
 
     def __str__(self):
         if self._type == V_LIST:
             return repr(self)
         return str( self.get() )
 
+    def json_obj(self):
+        return self.get()
+
 cdef class MetricList(MVal):
+    """Object for the LDMS metric list"""
 
     def __init__(self, Set lset, Ptr lh):
         super().__init__(lset, lh, V_LIST, 1)
@@ -1601,7 +2184,19 @@ cdef class MetricList(MVal):
         sublist.
         """
         cdef Ptr p
-        if v_type == LDMS_V_LIST:
+        cdef int rc
+        cdef RecordInstance rec
+        if v_type == LDMS_V_RECORD_INST:
+            if type(value) != RecordInstance:
+                raise TypeError("LDMS_V_RECORD_INST needs RecordInstance object")
+            rec = value
+            rc = ldms_list_append_record(self._lset.rbd,
+                    <ldms_mval_t>self.c_ptr,
+                    rec.rec_inst)
+            if rc != 0:
+                raise RuntimeError("ldms_list_append_record() error: {}" \
+                                   .format(ERRNO_SYM(rc)))
+        elif v_type == LDMS_V_LIST:
             p = __ldms_list_append(self._lset.rbd, <ldms_mval_t>self.c_ptr, v_type, 1)
             return MetricList(self._lset, p)
         else:
@@ -1632,12 +2227,211 @@ cdef class MetricList(MVal):
         while v:
             if v_type == LDMS_V_LIST:
                 yield MetricList(self._lset, PTR(v))
+            elif v_type == LDMS_V_RECORD_INST:
+                yield RecordInstance(self._lset, PTR(v))
             else:
                 yield MVal(self._lset, PTR(v), v_type, n)
             v = ldms_list_next(self._lset.rbd, v, &v_type, &n)
 
     def __len__(self):
         return ldms_list_len(self._lset.rbd, <ldms_mval_t>self.c_ptr)
+
+    def json_obj(self):
+        lst = list()
+        for v in self:
+            lst.append(JSON_OBJ(v))
+        return lst
+
+
+cdef class RecordInstance(MVal):
+    """Object for the LDMS Record Instance
+
+    The application should not create Record Instance object directly. It shall
+    be obtained from `_set.record_alloc()` or iterating through `list` of
+    records.
+
+    Example:
+    >>> lst = _set["record_list"] # get the list handle
+    >>> rec = _set.record_alloc("rec_name")
+    >>> lst.append(ldms.V_RECORD, rec) # a record instance must reside in a list
+    >>> rec[0] # metric value in the record by index
+    >>> rec["field_name"] # metric value in the record by name
+    >>> rec[0] = 50 # assign value by index
+    >>> rec["field_name"] = 2 # assign value by name
+    >>> for rec in lst: # access records through list iteration
+    ...     print(rec[0])
+    """
+    cdef ldms_mval_t rec_inst
+    cdef list _member_getter
+    cdef list _member_setter
+
+    def __init__(self, Set ldms_set, Ptr rec_inst):
+        cdef ldms_value_type t
+        cdef size_t alen
+        super().__init__(ldms_set, rec_inst, V_RECORD_INST, 1)
+        self.rec_inst = <ldms_mval_t>rec_inst.c_ptr
+        self._lset = ldms_set
+        self._n = ldms_record_card(self.rec_inst)
+        self._member_getter = list()
+        self._member_setter = list()
+        for i in range(0, len(self)):
+            t = ldms_record_metric_type_get(self.rec_inst, i, &alen)
+            if ldms_type_is_array(t) and t != LDMS_V_CHAR_ARRAY:
+                ma = MetricArray(ldms_set, i, self)
+                self._member_getter.append(ma)
+                self._member_setter.append(ma)
+            else:
+                self._member_getter.append(RECORD_METRIC_GETTER_TBL[t])
+                self._member_setter.append(RECORD_METRIC_SETTER_TBL[t])
+
+    @property
+    def card(self):
+        return self._n
+
+    def __len__(self):
+        return self._n
+
+    def _metric_by_name(self, name):
+        cdef int idx = ldms_record_metric_find(self.rec_inst, BYTES(name))
+        if idx < 0:
+            raise KeyError("'{}' not found in the record".format(name))
+        return idx
+
+    def __getitem__(self, key):
+        if type(key) == int:
+            if key < 0:
+                key += len(self)
+            return self.get_metric(key)
+        if type(key) == slice:
+            return tuple(self.get_metric(i) for i in range(*key.indices(len(self))) )
+        idx = self._metric_by_name(key)
+        return self.get_metric(idx)
+
+    def __setitem__(self, key, val):
+        ktype = type(key)
+        if ktype == int:
+            self.set_metric(key, val)
+        elif ktype == slice:
+            rng = range(*key.indices(len(self)))
+            if len(rng) != len(val):
+                raise ValueError("Mismatch number of assign elements")
+            for idx, v in zip(rng, val):
+                self.set_metric(idx, v)
+        else:
+            idx = self._metric_by_name(key)
+            self.set_metric(idx, val)
+
+    def __iter__(self):
+        for i in range(self._n):
+            yield self[i]
+
+    def get_metric_name(self, i):
+        """Get metric name of the i_th member of the record"""
+        cdef const char *c_str
+        c_str = ldms_record_metric_name_get(self.rec_inst, i)
+        return STR(c_str)
+
+    def get_metric_unit(self, i):
+        """Get metric unit of the i_th member of the record"""
+        cdef const char *c_str
+        c_str = ldms_record_metric_unit_get(self.rec_inst, i)
+        return STR(c_str)
+
+    def keys(self):
+        """Generator yielding the names of the metrics in the record"""
+        cdef const char *c_str
+        for i in range(len(self)):
+            c_str = ldms_record_metric_name_get(self.rec_inst, i)
+            s = STR(c_str)
+            yield s
+
+    def items(self):
+        """Generator yielding `name` and `value` of the metrics in the record"""
+        for k, i in zip(self.keys(), range(len(self))):
+            yield k, self[i]
+
+    def get(self):
+        return tuple(self)
+
+    def set(self, val, idx=None):
+        if idx is None:
+            if len(val) != len(self):
+                raise ValueError("`val` length not matching number of elements in the record")
+            for v, i in zip(val, range(len(self))):
+                self.set_metric(i, v)
+        else:
+            self.set_metric(idx, val)
+
+    def get_metric_info(self, key):
+        """Returns (name, type, count, unit) of the metric by `key`
+
+        The `key` can be `str` or `int`.
+        """
+        cdef size_t count
+        cdef int t
+        ktype = type(key)
+        if ktype in (str, bytes):
+            key = self._metric_by_name(key)
+            ktype = int
+        if ktype == int:
+            name = self.get_metric_name(key)
+            unit = self.get_metric_unit(key)
+            t = ldms_record_metric_type_get(self.rec_inst, key, &count)
+            return (name, ldms_value_type(t), count, unit)
+        if hasattr(key, "__iter__"):
+            return [ self.get_metric_info(k) for k in key ]
+        raise TypeError("Unsupported `key` type; {}".format(type(key)))
+
+    def get_metric_type(self, key):
+        """Get the type of `rec_inst[key]`"""
+        cdef int idx
+        cdef size_t count
+        ktype = type(key)
+        if ktype in (str, bytes):
+            key = self._metric_by_name(key)
+            ktype = int
+        if ktype == int:
+            return ldms_value_type(ldms_record_metric_type_get(self.rec_inst, key, &count))
+        if hasattr(key, "__iter__"):
+            return [ self.get_metric_type(k) for k in key ]
+        raise TypeError("Unsupported `key` type; {}".format(type(key)))
+
+    def get_metric(self, int idx):
+        g = self._member_getter[idx]
+        return g(self, idx)
+
+    def set_metric(self, int idx, val):
+        s = self._member_setter[idx]
+        if type(s) == MetricArray:
+            s[:] = val
+        else:
+            s(self, idx, val)
+
+    def json_obj(self):
+        """Returns a dict from the record data that can be printed with json.dumps()"""
+        obj = dict(self.items())
+        return obj
+
+
+cdef class RecordType(MVal):
+    """Record Type internal information
+
+    Record Type is meant to be used internally only.
+    """
+    def __init__(self, Set lset, Ptr mval):
+        super().__init__(lset, mval, LDMS_V_RECORD_TYPE, 1)
+
+    def get(self):
+        return self
+
+    def set(self, val, idx=None):
+        raise TypeError("RecordType.set() not supported")
+
+    def __str__(self):
+        return repr(self)
+
+    def json_obj(self):
+        return "__record_type__"
 
 
 cdef class Set(object):
@@ -1690,6 +2484,7 @@ cdef class Set(object):
     # getter/setter for each metric
     cdef list _getter
     cdef list _setter
+    cdef Schema schema
 
     def __cinit__(self, *args, **kwargs):
         self.rbd = NULL
@@ -1700,6 +2495,7 @@ cdef class Set(object):
                        int perm=0o777, Ptr set_ptr=None):
         self._getter = list()
         self._setter = list()
+        self.schema = schema
         if set_ptr:
             self.rbd = <ldms_set_t>set_ptr.c_ptr
         elif schema:
@@ -1957,6 +2753,27 @@ cdef class Set(object):
             raise KeyError("metric '{}' not found".format(key))
         return self.get_metric(idx)
 
+    def get_metric_type(self, key):
+        """Get the type of `ldms_set[key]`"""
+        cdef int idx
+        ktype = type(key)
+        if ktype == int:
+            return ldms_value_type(ldms_metric_type_get(self.rbd, key))
+        if ktype in (str, bytes):
+            idx = ldms_metric_by_name(self.rbd, BYTES(key))
+            return ldms_value_type(ldms_metric_type_get(self.rbd, idx))
+        if hasattr(key, "__iter__"):
+            return [ self.get_metric_type(k) for k in key ]
+        raise TypeError("Unsupported `key` type; {}".format(type(key)))
+
+    def get_metric_name(self, key):
+        """Get the name of `ldms_set[key]`"""
+        pass
+
+    def get_metric_unit(self, key):
+        """Get the unit of `ldms_set[key]`"""
+        pass
+
     def get_metric(self, int idx):
         """S.get_metric(idx) - equivalent to S[idx]"""
         cdef ldms_value_type t = ldms_metric_type_get(self.rbd, idx)
@@ -1998,6 +2815,48 @@ cdef class Set(object):
             return
         # else, set value for entire array
         _setter[:] = val
+
+    def record_alloc(self, rec_type):
+        """Allocate a record in the set
+
+        `rec_type` may be integer metric ID or "name" referring to the metric in
+                   the set that represents the record type.
+        """
+        cdef ldms_mval_t rec_inst
+        cdef RecordDef rec_def
+        if self.schema is None:
+            raise TypeError("Looked-up set cannot allocate a record")
+        if type(rec_type) in (str, bytes):
+            tmp = ldms_metric_by_name(self.rbd, BYTES(rec_type))
+            if tmp < 0:
+                raise KeyError("{} record type not found".format(rec_type))
+            rec_type = tmp
+        rec_inst = ldms_record_alloc(self.rbd, rec_type)
+        if not rec_inst:
+            raise RuntimeError("ldms_record_alloc() failed, errno: {}" \
+                               .format(ERRNO_SYM(errno)))
+        p = PTR(rec_inst)
+        return RecordInstance(self, p)
+
+    def json_obj(self):
+        """Return dict/list values appropriate for json.dumps()"""
+        ret = dict()
+        meta_lst = [ 'name', 'schema_name', 'transaction_timestamp',
+                     'transaction_duration', 'card', 'data_gn', 'data_sz',
+                     'gid', 'heap_gn', 'is_consistent', 'meta_gn', 'perm',
+                     'producer_name', 'uid' ]
+        for k in meta_lst:
+            ret[k] = getattr(self, k)
+        data = dict()
+        for k, v in self.items():
+            data[k] = JSON_OBJ(v)
+        ret['data'] = data
+        return ret
+
+    def json(self, indent=None):
+        """JSON representation of the set"""
+        obj = self.json_obj()
+        return json.dumps(obj, indent=indent)
 
 
 cdef class Xprt(object):
