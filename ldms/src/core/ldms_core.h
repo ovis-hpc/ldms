@@ -88,6 +88,7 @@
 #pragma pack(4)
 #define LDMS_MDESC_F_DATA	1
 #define LDMS_MDESC_F_META	2
+#define LDMS_MDESC_F_RECORD	4
 /**
  * \brief Metric value descriptor
  *
@@ -96,7 +97,7 @@
  */
 typedef struct ldms_value_desc {
 	uint64_t vd_user_data;	/*! User defined meta-data */
-	uint32_t vd_data_offset;/*! Value offset in data (metric) or meta-data (attr) */
+	uint32_t vd_data_offset;/*! Value offset in data (metric) or meta-data (attr) or record */
 	uint32_t vd_array_count;/*! Number of elements in the array */
 	uint32_t vd_reserved[2];
 	uint8_t vd_type;	/*! The type of the value, enum ldms_value_type */
@@ -127,7 +128,7 @@ struct ldms_transaction {
 
 struct ldms_data_hdr {
 	struct ldms_transaction trans;
-	uint32_t pad;
+	uint32_t set_off;	/* Offset from the beginning of the set */
 	uint64_t gn;		/* Metric-value generation number */
 	uint64_t size;		/* Size of data + the heap */
 	uint64_t meta_gn;	/* Meta-data generation number */
@@ -220,37 +221,6 @@ typedef struct ldms_list_entry {
 	uint8_t value[0];
 } *ldms_list_entry_t;
 
-/**
- * \brief Metric value union
- *
- * A generic union that encapsulates all of the LDMS value types.
- */
-typedef union ldms_value {
-	char v_char;
-	uint8_t v_u8;
-	int8_t v_s8;
-	uint16_t v_u16;
-	int16_t v_s16;
-	uint32_t v_u32;
-	int32_t v_s32;
-	uint64_t v_u64;
-	int64_t v_s64;
-	float v_f;
-	double v_d;
-	struct ldms_list v_lh;
-	struct ldms_list_entry v_le;
-	char a_char[OVIS_FLEX_UNION];
-	uint8_t a_u8[OVIS_FLEX_UNION];
-	int8_t a_s8[OVIS_FLEX_UNION];
-	uint16_t a_u16[OVIS_FLEX_UNION];
-	int16_t a_s16[OVIS_FLEX_UNION];
-	uint32_t a_u32[OVIS_FLEX_UNION];
-	int32_t a_s32[OVIS_FLEX_UNION];
-	uint64_t a_u64[OVIS_FLEX_UNION];
-	int64_t a_s64[OVIS_FLEX_UNION];
-	float a_f[OVIS_FLEX_UNION];
-	double a_d[OVIS_FLEX_UNION];
-} *ldms_mval_t;
 
 /**
  * \brief LDMS value type enumeration
@@ -283,9 +253,89 @@ enum ldms_value_type {
 	LDMS_V_D64_ARRAY,
 	LDMS_V_LIST,
 	LDMS_V_LIST_ENTRY,
+	LDMS_V_RECORD_TYPE,
+	LDMS_V_RECORD_INST,
+	LDMS_V_RECORD_ARRAY,
 	LDMS_V_FIRST = LDMS_V_CHAR,
-	LDMS_V_LAST = LDMS_V_LIST_ENTRY
+	LDMS_V_LAST = LDMS_V_RECORD_ARRAY
 };
+
+#define LDMS_RECORD_FIELD_INST 255
+
+/* This structure is the value of LDMS_V_RECORD_TYPE. It describes members of the
+ * records (name, unit, type, and array length).
+ *
+ * FORMAT:
+ * ```
+ * ---------
+ *  n
+ *  sz
+ * ---------
+ *  dict[0] (refers to mdesc[0])
+ *  dict[1]
+ *  ...
+ *  dict[N-1]
+ * ---------
+ *  mdesc[0] // mdesc or ldms_value_desc has variable-length //
+ *  mdesc[1]
+ *  ...
+ *  mdesc[N-1]
+ * ---------
+ * ```
+ */
+typedef struct ldms_record_type {
+	int n; /* number of members */
+	int inst_sz; /* the size of the record instance */
+	int dict[OVIS_FLEX]; /* dict[i] is an offset to mdesc[i] */
+} *ldms_record_type_t;
+
+typedef struct ldms_record_inst {
+	uint32_t set_data_off; /* offset from data section */
+	uint32_t record_type; /* record type reference (set-metric index) */
+	char rec_data[OVIS_FLEX_UNION]; /* data of the record */
+} *ldms_record_inst_t;
+
+typedef struct ldms_record_array {
+	int inst_sz;
+	int rec_type; /* reference to rec_type */
+	int array_len;
+	char data[OVIS_FLEX];
+} *ldms_record_array_t;
+
+/**
+ * \brief Metric value union
+ *
+ * A generic union that encapsulates all of the LDMS value types.
+ */
+typedef union ldms_value {
+	char v_char;
+	uint8_t v_u8;
+	int8_t v_s8;
+	uint16_t v_u16;
+	int16_t v_s16;
+	uint32_t v_u32;
+	int32_t v_s32;
+	uint64_t v_u64;
+	int64_t v_s64;
+	float v_f;
+	double v_d;
+	struct ldms_list v_lh;
+	struct ldms_list_entry v_le;
+	struct ldms_record_inst v_rec_inst;
+	struct ldms_record_type v_rec_type;
+	struct ldms_record_array v_rec_array;
+	char a_char[OVIS_FLEX_UNION];
+	uint8_t a_u8[OVIS_FLEX_UNION];
+	int8_t a_s8[OVIS_FLEX_UNION];
+	uint16_t a_u16[OVIS_FLEX_UNION];
+	int16_t a_s16[OVIS_FLEX_UNION];
+	uint32_t a_u32[OVIS_FLEX_UNION];
+	int32_t a_s32[OVIS_FLEX_UNION];
+	uint64_t a_u64[OVIS_FLEX_UNION];
+	int64_t a_s64[OVIS_FLEX_UNION];
+	float a_f[OVIS_FLEX_UNION];
+	double a_d[OVIS_FLEX_UNION];
+} *ldms_mval_t;
 
 typedef struct ldms_name {
 	uint8_t len;

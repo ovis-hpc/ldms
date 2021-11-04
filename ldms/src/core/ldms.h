@@ -68,8 +68,8 @@ extern "C" {
 #endif
 typedef struct ldms_xprt *ldms_t;
 typedef struct ldms_set *ldms_set_t;
-typedef struct ldms_value_s *ldms_value_t;
 typedef struct ldms_schema_s *ldms_schema_t;
+typedef struct ldms_record *ldms_record_t;
 
 /**
  * \mainpage LDMS
@@ -188,6 +188,257 @@ typedef struct ldms_schema_s *ldms_schema_t;
  * a metric set.
  * \li \b ldms_notify() Send a notification event to all consumers
  * registered to receive events on a metric set.
+ *
+ *
+ * \section list_section LDMS Metric List
+ *
+ * LDMS Metric List (\c LDMS_V_LIST) is a metric that contains other metrics as
+ * list entries similar to \c LIST in \c sys/queue.h. The elements in the list
+ * do not have to be of the same type. It is also possible to have a list of
+ * list.
+ *
+ * Synopsis:
+ * \li \b ldms_schema_metric_list_add(schema,"name","units",heap_sz) adds a
+ *     metric list to the LDMS schema.
+ * \li \b ldms_list_heap_size_get(type, item_count, array_len) calculates the
+ *     heap size (\c heap_sz) for \c item_count list entries of \c type.
+ * \li \c ldms_mval_t\ lh=ldms_metric_get(set,i) gets the metric list handle
+ *     from the LDMS set.
+ * \li \b ldms_mval_t\ ent=ldms_list_append_item(set,lh,type,array_len)
+ *     allocates a list entry of type \c type and append to the tail of the list
+ *     \c lh. \c array_len is used only for \c type being an array type.
+ * \li \b ldms_list_remove_item(set,lh,ent) removes the entry \c ent from the
+ *     list \c lh and release the LDMS heap memory consumed by \c ent.
+ * \li \b ldms_mval_t\ ent=ldms_list_first(set,lh,&type,&array_len) gets the
+ *     first entry of the list (along with the \c type and \c array_len).
+ * \li \b ldms_mval_t\c next_ent=ldms_list_next(set,ent,&type,&array_len) gets
+ *     the next entry in the list (along with the \c type and \c array_len).
+ *
+ * \c ldms_schema_metric_list_add(schema, "name", "units", heap_sz) adds a
+ * metric list into the \c schema, similar to \c ldms_schema_metric_add(),
+ * except for the \c heap_sz that specifies the maximum size of the memory
+ * for the list entries. The \c heap_sz information will be added to the
+ * \c schema so that \c ldms_set_new() knows how much memory to allocate for the
+ * set (which consists of metadata part, data part and the heap part).
+ * \c ldms_list_heap_size_get(type, item_count, array_count) determines the
+ * \c heap_sz for \c item_count entries of \c type in the list (with
+ * \c array_count array length if \c type is an array). The entries in the list
+ * can be of different types. In such case, the \c heap_sz can be calculated by
+ * adding up \c ldms_list_heap_size_get() for each of the expected elements.
+ *
+ * \c ldms_metric_get(set, i) returns the pointer to the metric raw data. In the
+ * case of list, it is the handle to the list head. The returned list handle
+ * (\c lh) can then be used with \c ldms_list_append_item() to
+ * allocate-and-append a new metric entry to the list. \c ldms_list_first() and
+ * \c ldms_list_next() are used for iterating through the entries in the list.
+ * \c ldms_list_remove_item() removes an entry from the list and release the
+ * heap memory consumed by the entry.
+ *
+ * The following example illustrates how to use LDMS Metric List. The setup in
+ * the example is to read 4 counters/device from made-up devices (16 devices
+ * max)
+ *
+ * Example:
+ * \code
+ * ldms_schema_t schema = ldms_schema_new("example");
+ * size_t heap_sz = 0;
+ *
+ * // To support at most 16 sublists
+ *
+ * heap_sz += ldms_list_heap_size_get(LDMS_V_LIST, 16, 1);
+ * heap_sz += ldms_list_heap_size_get(LDMS_V_CHAR_ARRAY, 16, 32);
+ * heap_sz += ldms_list_heap_size_get(LDMS_V_U64_ARRAY, 16, 4);
+ *
+ * int lh_idx = ldms_schema_metric_list_add(schema, "my_list", NULL, heap_sz);
+ *
+ * ldms_set_t set = ldms_set_new("my_set", schema);
+ *
+ * ldms_mval_t lh = ldms_metric_get(set, lh_idx);
+ * ldms_mval_t l0, l1; // list in lh
+ *
+ * ldms_mval_t new_list(ldms_set_t set, ldms_mval_t lh, const char *name)
+ * {
+ *     ldms_mval_t ll = ldms_list_append_item(set, lh, LDMS_V_LIST, 1);
+ *
+ *     // add `name` and counters to the sublist `ll`
+ *     ldms_mval_t nm = ldms_list_append_item(set, ll, LDMS_V_CHAR_ARRAY, 32);
+ *     ldms_mval_t ctr = ldms_list_append_item(set, ll, LDMS_V_U64_ARRAY, 4);
+ *
+ *     strncpy(nm->a_char, name, strlen(name)+1);
+ *
+ *     return ll;
+ * }
+ *
+ * void read_counters(ldms_set_t set, ldms_mval_t ll)
+ * {
+ *     enum ldms_value_type typ;
+ *     size_t len;
+ *     int i;
+ *     ldms_mval_t nm = ldms_list_first(set, ll, NULL, NULL);
+ *     ldms_mval_t ctr = ldms_list_next(set, nm, &typ, &len);
+ *     assert(typ == LDMS_V_U64_ARRAY);
+ *     assert(len == 4);
+ *     for (i = 0; i < 4; i++) {
+ *         // LDMS store data in little-endian format
+ *         ctr->a_u64[i] = __cpu_to_le64( READ_SOME_COUNTER(nm.a_char, i) );
+ *     }
+ *
+ * }
+ *
+ * l0 = new_list(set, lh, "dev0");
+ * l1 = new_list(set, lh, "dev1");
+ *
+ * read_counters(set, l0);
+ * read_counters(set, l1);
+ *
+ * ldms_metric_modify(set, lh_idx); // just update data_gn
+ *
+ * \endcode
+ *
+ *
+ * \section record_section LDMS Record
+ *
+ * Struct-like data for LDMS. The LDMS record allows application to add
+ * structure-like data into the LDMS list.
+ *
+ * Synopsis:
+ * \li \b ldms_record_t\ rec_def=ldms_record_create("rec_name") creates a record
+ *     definition.
+ * \li \b ldms_record_metric_add(rec_def,"name","units",type,array_len) add a
+ *     member "name" of type \c type (with \c array_len length in the case of
+ *     array type) into the record definition.
+ * \li \b ldms_record_heap_size_get(rec_def) determines the memory size in the
+ *     heap required for an instance of the given record.
+ * \li \b ldms_schema_record_add(schema,rec_def) adds the record definition into
+ *     the LDMS schema.
+ * \li \b ldms_record_alloc(set,metric_id) allocates an instance of the record
+ *     in the heap memory of the set.
+ * \li \b ldms_list_append_record(set,lh,rec_inst) appends the record instance
+ *     into the list. The record instance not belonging to any list won't be
+ *     accessible to the remote peer.
+ * \li \b ldms_mval_t\ mval=ldms_record_metric_get(rec_inst, i) gets the raw
+ *     metric pointer of the i_th member of the record instance.
+ * \li \b ldms_record_get_XXX(rec_inst,i) are convenient functions for getting
+ *     metric value from the record instance and converting into host format.
+ * \li \b ldms_record_set_XXX(rec_inst,i,val) are convenient functions for
+ *     setting metric value, converting into LDMS format, and increment LDMS
+ *     data_gn.
+ * \li \b ldms_record_array_get_XXX(rec_inst,i,j) same as above, but for array
+ *     metric type.
+ * \li \b ldms_record_array_set_XXX(rec_inst,i,j,val) same as above, but for
+ *     array metric type.
+ * \li \b enum\ ldms_value_type\ type=ldms_record_metric_type_get(rec_inst,i,&array_len)
+ *     gets the metric type, and \c array_len of the i_th member of the record
+ *     instance.
+ * \li \b int\ i=ldms_record_metric_find(rec_inst, "name") returns the index
+ *     of the member "name" in the record.
+ * \li \b const\ char\ *name=ldms_record_metric_name_get(rec_inst, i) returns
+ *     the name of the i_th member of the record.
+ * \li \b const\ char\ *name=ldms_record_metric_unit_get(rec_inst, i) returns
+ *     the unit of the i_th member of the record.
+ *
+ * To use the record, first the application needs to create a record definition
+ * (\c rec_def) with \c ldms_record_create() and add members into the record
+ * definition with \c ldms_record_metric_add(). Then, the \c rec_def must be
+ * added into the schema with \c ldms_schema_record_add() so that the record
+ * definition is stored in the LDMS schema and will be available to the set
+ * created with the schema.
+ *
+ * The instances of the record is dynamically created and reside in the heap
+ * memory of the set and the peer can reach it through \c list iteration.
+ * \c ldms_record_heap_size_get() determines the size of the LDMS heap memory
+ * required for a given record. To support the maximum of \c N records, simply
+ * multiply the recrod size with \c N and supply it to
+ * \c ldms_schema_metric_list_add() when defining a list of the records in the
+ * schema so that the schema will know the size of the heap required.
+ *
+ * \c ldms_record_alloc() allocate a new record instance (\c rec_inst).
+ * The \c rec_inst must be appended into the list by calling
+ * \c ldms_list_append_record() or the peer won't be able to reach it.
+ * \c ldms_record_metric_get() returns the metric value pointer that
+ * can be used to directly access the metric in the record. The caller must
+ * handle data format conversion. \c ldms_record_get_XXX() and
+ * \c ldms_record_array_get_XXX() are convenient record metric getters that
+ * handle the data format conversion for you. \c ldms_record_set_XXX() and
+ * \c ldms_record_array_set_XXX() are the convenient record metric setters that
+ * handle data conversion and data generation number increment. If the
+ * application decides to manipulate the metric value directly, it must call
+ * \c ldms_metric_modify() to increment the data generation number.
+ *
+ * Example:
+ * \code
+ * // defining record similar to the following structure:
+ * // struct my_record {
+ * //     char     name[32];
+ * //     uint64_t counters[4];
+ * // }
+ *
+ * ldms_record_t rec_def = ldms_record_create("my_record");
+ * int i_name = ldms_record_metric_add(rec_def, "name", NULL, LDMS_V_CHAR_ARRAY, 32);
+ * int i_ctrs = ldms_record_metric_add(rec_def, "counters", NULL, * LDMS_V_U64_ARRAY, 4);
+ *
+ * // calculate required heap size to support 16 devices (records)
+ * size_t heap_sz = 16 * ldms_record_heap_size_get(rec_def);
+ *
+ * // create schema
+ * ldms_schema_t schema = ldms_schema_new("my_schema");
+ *
+ * // add record definition to the schema
+ * int rec_def_idx = ldms_schema_record_add(schema, rec_def);
+ *
+ * // add a list to the schema with the heap_sz calculated from above.
+ * // The list will contain the records (max 16 records).
+ * int lh_idx = ldms_schema_metric_list_add(schema, "my_list", NULL, heap_sz);
+ *
+ * ldms_set_t set = ldms_set_new("my_set", schema);
+ *
+ * ldms_mval_t new_record(ldms_set_t set, const char *name)
+ * {
+ *     // allocate new record
+ *     ldms_mval_t rec_inst = ldms_record_alloc(set, rec_def_idx);
+ *
+ *     ldms_mval_t nm = ldms_record_metric_get(rec_inst, i_name);
+ *     // set the name
+ *     strncpy(nm.a_char, name, strlen(name)+1);
+ *     return rec_inst;
+ * }
+ *
+ * void read_counters(ldms_mval_t rec_inst)
+ * {
+ *     ldms_mval_t nm = ldms_record_metric_get(rec_inst, i_name);
+ *     ldms_mval_t ctrs = ldms_record_metric_get(rec_inst, i_ctrs);
+ *     int i;
+ *     uint64_t v;
+ *     for (i = 0; i < 4; i++) {
+ *         // LDMS store data in little-endian format
+ *         v = READ_SOME_COUNTER(nm.a_char, i);
+ *         ctrs->a_u64[i] = __cpu_to_le64(v);
+ *         // or use: ldms_record_array_set_u64(rec_inst, i_ctrs, i, v);
+ *     }
+ * }
+ *
+ * ldms_mval_t rec0 = new_record(set, "rec0");
+ * ldms_mval_t rec1 = new_record(set, "rec1");
+ *
+ * // Don't forget to put the record into the list.
+ * ldms_mval_t lh = ldms_metric_get(set, lh_idx);
+ * ldms_list_append_record(set, lh, rec0);
+ * ldms_list_append_record(set, lh, rec1);
+ *
+ * // iterating through the records in the list and update the counters
+ * enum ldms_value_type type;
+ * size_t array_len;
+ * ldms_mval_t rec;
+ * for (rec = ldms_list_first(set, lh, &type, &array_len);
+ *      rec; rec = ldms_list_next(set, rec, &type, &array_len)) {
+ *     assert( type == LDMS_V_RECORD_INST );
+ *     assert( array_len == 1);
+ *     read_counters(rec);
+ * }
+ * ldms_metric_modify(set, lh_idx); // update data_gn
+ *
+ * \endcode
+ *
  */
 
 /**
@@ -989,6 +1240,62 @@ extern int ldms_schema_metric_count_get(ldms_schema_t schema);
  */
 extern int ldms_schema_array_card_set(ldms_schema_t schema, int card);
 
+/**
+ * Create a record type definition.
+ *
+ * Metric members can be added into the record type definition using
+ * \c ldms_record_metric_add(). The record definition must be added into the
+ * schema with \c ldms_schema_record_add().
+ *
+ * \param name   The name of the record type.
+ *
+ * \retval rec_def The handle of the record type definition.
+ */
+ldms_record_t ldms_record_create(const char *name);
+
+/**
+ * \brief Delete the record type definition.
+ *
+ * \param rec_def The record type definition handle.
+ */
+void ldms_record_delete(ldms_record_t rec_def);
+
+/**
+ * Add a metric member into the record.
+ *
+ * \param rec_def   The handle returned by \c ldms_record_create().
+ * \param name      The name of the metric.
+ * \param unit      The unit of the metric.
+ * \param type      The type of the metric. Only support char, basic number
+ *                  types and their arrays: LDMS_V_CHAR, LDMS_V_CHAR_ARRAY,
+ *                  LDMS_V_U8, LDMS_V_S8, LDMS_V_U8_ARRAY, LDMS_V_S8_ARRAY,
+ *                  LDMS_V_U16, LDMS_V_S16, LDMS_V_U16_ARRAY, LDMS_V_S16_ARRAY,
+ *                  LDMS_V_U32, LDMS_V_S32, LDMS_V_U32_ARRAY, LDMS_V_S32_ARRAY,
+ *                  LDMS_V_U64, LDMS_V_S64, LDMS_V_U64_ARRAY, LDMS_V_S64_ARRAY,
+ *                  LDMS_V_F32, LDMS_V_D64, LDMS_V_F32_ARRAY, LDMS_V_D64_ARRAY.
+ * \param array_len The number of elements in the case of ARRAY type.
+ *
+ * \retval metric_id  The metric ID in the record instance to be used with
+ *                    ldms_record_XXX APIs.
+ */
+int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
+			   const char *unit, enum ldms_value_type type,
+			   size_t array_len);
+
+/**
+ * Get the size (bytes) required in the heap for a record instance.
+ *
+ * This function is useful for estimating the minimum heap size required to a
+ * record instance of the given record type definition. To determine the minimum
+ * heap size supporting \c N record instances, simply multiply the returned
+ * number with \c N.
+ *
+ * \param rec_def  The handle returned by \c ldms_record_create().
+ *
+ * \retval bytes The size of the record instance in the heap.
+ */
+size_t ldms_record_heap_size_get(ldms_record_t rec_def);
+
 void _ldms_set_ref_get(ldms_set_t s, const char *reason, const char *func, int line);
 int _ldms_set_ref_put(ldms_set_t s, const char *reason, const char *func, int line);
 
@@ -1531,7 +1838,7 @@ extern int ldms_set_info_traverse(ldms_set_t s, ldms_set_info_traverse_cb_fn cb,
  * Adds a metric to a metric set schema. The \c name of the metric must be
  * unique within the metric set.
  *
- * \param s	The ldms_set_t handle.
+ * \param s	The schema handle.
  * \param name	The name of the metric.
  * \param t	The type of the metric.
  * \retval >=0  The metric index.
@@ -1631,6 +1938,32 @@ size_t ldms_list_heap_size_get(enum ldms_value_type type, size_t item_count, siz
  */
 int ldms_schema_metric_list_add(ldms_schema_t s, const char *name,
 				const char *units, uint32_t heap_sz);
+
+/**
+ * Add the record definition into the schema.
+ *
+ * \param s       The schema handle
+ * \param rec_def The record definition handle.
+ *
+ * \retval >=0  The metric index in the schema referring to the record type
+ * \retval <0	Insufficient resources or duplicate name
+ */
+int ldms_schema_record_add(ldms_schema_t s, ldms_record_t rec_def);
+
+/**
+ * Add an array of records to the schema.
+ *
+ * The \c rec_def must be completed (i.e. no more metrics adding to it)
+ * and must already be added to the schema (via \c ldms_schema_record_add()).
+ *
+ * \param s         The schema handle.
+ * \param rec_def   The record definition.
+ * \param array_len The length of the array.
+ *
+ * \retval >=0  The metric index.
+ * \retval <0   The negative error number (\c -errno) describing the error.
+ */
+int ldms_schema_record_array_add(ldms_schema_t s, const char *name, ldms_record_t rec_def, int array_len);
 
 /**
  * \brief Add an array metric/meta with the unit to schema
@@ -2067,6 +2400,250 @@ int ldms_list_remove_item(ldms_set_t s, ldms_mval_t lh, ldms_mval_t v);
  * \retval error if an error occur.
  */
 int ldms_list_purge(ldms_set_t s, ldms_mval_t lh);
+
+/**
+ * Allocate a new record in the set.
+ *
+ * The returned \c rec_inst must later be appended into a list (see
+ * \c ldms_list_append_record()). Otherwise, the remote peer won't be able to
+ * reach it.
+ *
+ * \param set       The handle of the LDMS set hosting the record instance.
+ * \param metric_id The metric ID referring to the record type (from
+ *                  \c ldms_schema_record_add()).
+ *
+ * \retval rec_inst A record instance handle.
+ * \retval NULL     If there is an error (e.g. not enough memory). In such case,
+ *                  the \c errno will also be set to describe the nature of the
+ *                  error.
+ */
+ldms_mval_t ldms_record_alloc(ldms_set_t set, int metric_id);
+
+/**
+ * Get the set metric ID of the record type of the given record instance.
+ *
+ * \param  rec_inst  The record instance handle.
+ *
+ * \retval mid>=0    The metric ID (in the set) referring to the record type
+ *                   used to create the record instance.
+ * \retval -EINVAL   If the \c rec_inst is detected to be a not a record
+ *                   instance.
+ */
+int ldms_record_type_get(ldms_mval_t rec_inst);
+
+/**
+ * Get the number of members in the record instance.
+ *
+ * \param rec_inst The record instance handle.
+ *
+ * \retval n The number of members in the record instance.
+ */
+int ldms_record_card(ldms_mval_t rec_inst);
+
+/**
+ * Get the ID of the metric in the record instance.
+ *
+ * This is similar to \c ldms_metric_by_name() for a metric in a set.
+ *
+ * \param rec_inst The record instance.
+ * \param name     The name of the metric.
+ *
+ * \retval metric_id The ID for the metric in the record instance.
+ * \retval -ENOENT   If the metric "name" is not found in the record instance.
+ */
+int ldms_record_metric_find(ldms_mval_t rec_inst, const char *name);
+
+/**
+ * Obtain the pointer to the metric value in the instance.
+ *
+ * This is similar to \c ldms_metric_get(). The application may access/modify
+ * the raw value of the metric, but please be aware of the endianness. For the
+ * direct modification, the LDMS set data generation number won't change. To
+ * increment the set data generation number, the
+ * application shall call \c ldms_metric_modify(set,lh_id), where \c lh_id is
+ * the metric ID of the LIST where \c rec_inst resided.
+ *
+ * \param  rec_inst  The record instance handle.
+ * \param  metric_id The ID of the metric in the record instance.
+ *
+ * \retval mval      The pointer to the metric value in the instance.
+ */
+ldms_mval_t ldms_record_metric_get(ldms_mval_t rec_inst, int metric_id);
+
+/**
+ * Get the name of the metric in the record instance.
+ *
+ * \param rec_inst The record instance handle.
+ * \param metric_id The metric ID in the record instance.
+ *
+ * \retval name The name of the metric in the record instance.
+ */
+const char *ldms_record_metric_name_get(ldms_mval_t rec_inst, int metric_id);
+
+/**
+ * Get the unit of the metric in the record instance.
+ *
+ * \param rec_inst The record instance handle.
+ * \param metric_id The metric ID in the record instance.
+ *
+ * \retval unit The unit of the metric in the record instance.
+ */
+const char *ldms_record_metric_unit_get(ldms_mval_t rec_inst, int metric_id);
+
+/**
+ * Get the type of the metric in the record instance (and count for array).
+ *
+ * \param[in]  rec_inst  The record instance handle.
+ * \param[in]  metric_id The metric ID in the record instance.
+ * \param[out] array_len The number of elements if the type is an ARRAY.
+ *
+ * \retval type The type of the metric in the record instance.
+ *
+ */
+enum ldms_value_type ldms_record_metric_type_get(ldms_mval_t rec_inst,
+					int metric_id, size_t *array_len);
+
+/**
+ * Set the value of the metric in the record instance.
+ *
+ * This is similar to \c ldms_metric_set(set, metric_id, v).
+ *
+ * \param rec_inst  The record instance handle.
+ * \param metric_id The metric ID in the record instance.
+ * \param val       The value to set to the metric in the record.
+ */
+void ldms_record_metric_set(ldms_mval_t rec_inst, int metric_id,
+			    ldms_mval_t val);
+
+/**
+ * Set value to elements in the array metric in the record instance.
+ *
+ * This is similar to \c ldms_metric_array_set(set, metric_id, val, start, count).
+ * The metric referred to by \c metric_id in the record instance must be an
+ * array. The value of the elements from \c start to \c start+count-1 will be
+ * set to \c val.
+ *
+ * \param rec_inst  The record instance handle.
+ * \param metric_id The metric ID in the record instance.
+ * \param val       The value to set to the metric in the record.
+ * \param start     The first element to set the value.
+ * \param count     The number of elements from the \c start to set values.
+ *
+ */
+void ldms_record_metric_array_set(ldms_mval_t rec_inst, int metric_id,
+				  ldms_mval_t val, int start,
+				  int count);
+
+/**
+ * Get the record instance in the record array.
+ *
+ * \param rec_array The record array handle.
+ * \param idx       The index.
+ *
+ * \retval rec_inst The record instance "rec_array[idx]".
+ * \retval NULL     If there is an error. \c errno is also set to describe the
+ *                  error.
+ */
+ldms_mval_t ldms_record_array_get_inst(ldms_mval_t rec_array, int idx);
+
+/**
+ * Get the length of the record array.
+ *
+ * \param rec_array The record array handle.
+ *
+ * \retval len The length of the record array.
+ */
+int ldms_record_array_len(ldms_mval_t rec_array);
+
+/**
+ * Append the record instance to the list.
+ *
+ * Please note that \c ldms_list_remove_item() immediately free the \c rec_inst.
+ *
+ * \param set      The set handle.
+ * \param lh       The list handle.
+ * \param rec_inst The record instance handle.
+ *
+ * \retval 0      If the record instance is added to the list successfully,
+ * \retval EINVAL If the \c list_handle or \c rec_inst is an invalid handle.
+ * \retval EBUSY  If the\c rec_inst is already in a list.
+ */
+int ldms_list_append_record(ldms_set_t set, ldms_mval_t lh, ldms_mval_t rec_inst);
+
+/* Convenient getters
+ *
+ * Get the metric value from the record instance with endianness conversion to
+ * CPU endianness.
+ *
+ * \param rec_inst  The record instance handle.
+ * \param metric_id The metric ID in the record instance.
+ * \param idx       The element index in an array.
+ *
+ * \retval val The value of the metric, or the metric array element.
+ */
+char       ldms_record_get_char(ldms_mval_t rec_inst, int metric_id);
+uint8_t      ldms_record_get_u8(ldms_mval_t rec_inst, int metric_id);
+uint16_t    ldms_record_get_u16(ldms_mval_t rec_inst, int metric_id);
+uint32_t    ldms_record_get_u32(ldms_mval_t rec_inst, int metric_id);
+uint64_t    ldms_record_get_u64(ldms_mval_t rec_inst, int metric_id);
+int8_t       ldms_record_get_s8(ldms_mval_t rec_inst, int metric_id);
+int16_t     ldms_record_get_s16(ldms_mval_t rec_inst, int metric_id);
+int32_t     ldms_record_get_s32(ldms_mval_t rec_inst, int metric_id);
+int64_t     ldms_record_get_s64(ldms_mval_t rec_inst, int metric_id);
+float     ldms_record_get_float(ldms_mval_t rec_inst, int metric_id);
+double   ldms_record_get_double(ldms_mval_t rec_inst, int metric_id);
+
+const char *ldms_record_array_get_str(ldms_mval_t rec_inst, int metric_id);
+
+char       ldms_record_array_get_char(ldms_mval_t rec_inst, int metric_id, int idx);
+uint8_t      ldms_record_array_get_u8(ldms_mval_t rec_inst, int metric_id, int idx);
+uint16_t    ldms_record_array_get_u16(ldms_mval_t rec_inst, int metric_id, int idx);
+uint32_t    ldms_record_array_get_u32(ldms_mval_t rec_inst, int metric_id, int idx);
+uint64_t    ldms_record_array_get_u64(ldms_mval_t rec_inst, int metric_id, int idx);
+int8_t       ldms_record_array_get_s8(ldms_mval_t rec_inst, int metric_id, int idx);
+int16_t     ldms_record_array_get_s16(ldms_mval_t rec_inst, int metric_id, int idx);
+int32_t     ldms_record_array_get_s32(ldms_mval_t rec_inst, int metric_id, int idx);
+int64_t     ldms_record_array_get_s64(ldms_mval_t rec_inst, int metric_id, int idx);
+float     ldms_record_array_get_float(ldms_mval_t rec_inst, int metric_id, int idx);
+double   ldms_record_array_get_double(ldms_mval_t rec_inst, int metric_id, int idx);
+
+
+/* Convenient setters
+ *
+ * Set the metric value in the record instance with endianness conversion if
+ * needed. The \c val is in CPU endianness.
+ *
+ * \param rec_inst  The record instance handle.
+ * \param metric_id The metric ID in the record instance.
+ * \param idx       The element index in an array.
+ * \param val       The value to set to the metric in the record.
+ */
+void   ldms_record_set_char(ldms_mval_t rec_inst, int metric_id,     char val);
+void     ldms_record_set_u8(ldms_mval_t rec_inst, int metric_id,  uint8_t val);
+void    ldms_record_set_u16(ldms_mval_t rec_inst, int metric_id, uint16_t val);
+void    ldms_record_set_u32(ldms_mval_t rec_inst, int metric_id, uint32_t val);
+void    ldms_record_set_u64(ldms_mval_t rec_inst, int metric_id, uint64_t val);
+void     ldms_record_set_s8(ldms_mval_t rec_inst, int metric_id,   int8_t val);
+void    ldms_record_set_s16(ldms_mval_t rec_inst, int metric_id,  int16_t val);
+void    ldms_record_set_s32(ldms_mval_t rec_inst, int metric_id,  int32_t val);
+void    ldms_record_set_s64(ldms_mval_t rec_inst, int metric_id,  int64_t val);
+void  ldms_record_set_float(ldms_mval_t rec_inst, int metric_id,    float val);
+void ldms_record_set_double(ldms_mval_t rec_inst, int metric_id,   double val);
+
+void    ldms_record_array_set_str(ldms_mval_t rec_inst, int metric_id, const char *val);
+
+void   ldms_record_array_set_char(ldms_mval_t rec_inst, int metric_id, int idx,     char val);
+void     ldms_record_array_set_u8(ldms_mval_t rec_inst, int metric_id, int idx,  uint8_t val);
+void    ldms_record_array_set_u16(ldms_mval_t rec_inst, int metric_id, int idx, uint16_t val);
+void    ldms_record_array_set_u32(ldms_mval_t rec_inst, int metric_id, int idx, uint32_t val);
+void    ldms_record_array_set_u64(ldms_mval_t rec_inst, int metric_id, int idx, uint64_t val);
+void     ldms_record_array_set_s8(ldms_mval_t rec_inst, int metric_id, int idx,   int8_t val);
+void    ldms_record_array_set_s16(ldms_mval_t rec_inst, int metric_id, int idx,  int16_t val);
+void    ldms_record_array_set_s32(ldms_mval_t rec_inst, int metric_id, int idx,  int32_t val);
+void    ldms_record_array_set_s64(ldms_mval_t rec_inst, int metric_id, int idx,  int64_t val);
+void  ldms_record_array_set_float(ldms_mval_t rec_inst, int metric_id, int idx,    float val);
+void ldms_record_array_set_double(ldms_mval_t rec_inst, int metric_id, int idx,   double val);
+
 /** \} */
 
 /**

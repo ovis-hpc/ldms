@@ -55,22 +55,31 @@
 #include "ovis_util/os_util.h"
 #include "ovis_ref/ref.h"
 #include "ldms_heap.h"
+#include "ldms.h"
 
 #define LDMS_LIST_GRAIN	(32)
 #define LDMS_GN_INCREMENT(_gn) do { \
 	(_gn) = __cpu_to_le64(__le64_to_cpu((_gn)) + 1); \
 } while (0)
 
+#define HEAP_OFFSET(grained_ref) ( (grained_ref) * LDMS_LIST_GRAIN )
+#define HEAP_REF(offset) ( (offset) / LDMS_LIST_GRAIN )
+
+
 typedef struct ldms_mdef_s {
 	char *name;
 	char *unit;
 	enum ldms_value_type type;
 	uint32_t flags;	/* DATA/MDATA flag */
-	uint32_t count; /* Number of elements in the array if this is of an array type */
+	uint32_t count; /* Number of elements in the array if this is of an
+			 * array type, or number of members if this is a
+			 * record type. */
 	size_t meta_sz;
 	size_t data_sz;
 	STAILQ_ENTRY(ldms_mdef_s) entry;
 } *ldms_mdef_t;
+
+STAILQ_HEAD(metric_list_head, ldms_mdef_s);
 
 struct ldms_schema_s {
 	char *name;
@@ -78,9 +87,30 @@ struct ldms_schema_s {
 	size_t meta_sz;
 	size_t data_sz;
 	int array_card;
-	STAILQ_HEAD(metric_list_head, ldms_mdef_s) metric_list;
+	STAILQ_HEAD(, ldms_mdef_s) metric_list;
 	LIST_ENTRY(ldms_schema_s) entry;
 };
+
+/*
+ * This structure stores user-defined record definition constructed by
+ * ldms_record_create() and ldms_record_metric_add() APIs. This structure will
+ * later be used to create `ldms_record_type` in the set meta data.
+ */
+typedef struct ldms_record {
+	struct ldms_mdef_s mdef; /* base */
+	ldms_schema_t schema;
+	int metric_id;
+	int n; /* the number of members */
+	size_t inst_sz; /* the size of an instance */
+	size_t type_sz; /* the size of the record type (in metadata section) */
+	STAILQ_HEAD(, ldms_mdef_s) rec_metric_list;
+} *ldms_record_t;
+
+typedef struct ldms_record_array_def {
+	struct ldms_mdef_s mdef; /* base */
+	int rec_type; /* index to the record type */
+	int inst_sz;
+} *ldms_record_array_def_t;
 
 struct ldms_set_info_pair {
 	char *key;
