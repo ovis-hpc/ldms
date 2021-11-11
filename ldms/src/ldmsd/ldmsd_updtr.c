@@ -1319,8 +1319,10 @@ int ldmsd_updtr_match_add(const char *updtr_name, const char *regex_str,
 		goto out_3;
 	}
 
-	if (ldmsd_compile_regex(&match->regex, regex_str, rep_buf, rep_len))
+	if (ldmsd_compile_regex(&match->regex, regex_str, rep_buf, rep_len)) {
+		rc = -EINVAL;
 		goto out_3;
+	}
 
 	LIST_INSERT_HEAD(&updtr->match_list, match, entry);
 	goto out_1;
@@ -1450,7 +1452,7 @@ int ldmsd_updtr_prdcr_add(const char *updtr_name, const char *prdcr_regex,
 
 	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
 	if (rc)
-		return rc;
+		return EINVAL;
 
 	updtr = ldmsd_updtr_find(updtr_name);
 	if (!updtr) {
@@ -1505,8 +1507,10 @@ int ldmsd_updtr_prdcr_del(const char *updtr_name, const char *prdcr_regex,
 	ldmsd_prdcr_ref_t ref;
 
 	rc = ldmsd_compile_regex(&regex, prdcr_regex, rep_buf, rep_len);
-	if (rc)
+	if (rc) {
+		rc = EINVAL;
 		goto out_0;
+	}
 
 	ldmsd_updtr_t updtr = ldmsd_updtr_find(updtr_name);
 	if (!updtr) {

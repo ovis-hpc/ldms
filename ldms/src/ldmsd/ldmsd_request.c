@@ -3109,6 +3109,12 @@ static int updtr_match_add_handler(ldmsd_req_ctxt_t reqc)
 				"The value '%s' for match= is invalid.",
 				match_str);
 		break;
+	case -EINVAL:
+		cnt = snprintf(reqc->line_buf, reqc->line_len,
+				"The regex value '%s' is invalid.",
+				regex_str);
+		reqc->errcode = EINVAL;
+		break;
 	case EACCES:
 		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 			       "Permission denied.");
@@ -3205,6 +3211,8 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 	char *updtr_name, *interval_str, *offset_str, *auto_interval;
 	updtr_name = interval_str = offset_str = auto_interval = NULL;
 	size_t cnt = 0;
+	char *endptr;
+	long interval, offset;
 	struct ldmsd_sec_ctxt sctxt;
 
 	reqc->errcode = 0;
@@ -3217,7 +3225,61 @@ static int updtr_start_handler(ldmsd_req_ctxt_t reqc)
 		goto send_reply;
 	}
 	interval_str = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
+	if (interval_str) {
+		if ('\0' == interval_str[0]) {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"The given update interval value is "
+					"an empty string.");
+			goto send_reply;
+		}
+		interval = strtol(interval_str, &endptr, 0);
+		if ('\0' != endptr[0]) {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"The given update interval value (%s) is not a number.",
+				interval_str);
+			goto send_reply;
+		} else {
+			if (0 >= interval) {
+				reqc->errcode = EINVAL;
+				cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+						"The update interval value must "
+						"be larger than 0.");
+				goto send_reply;
+			}
+		}
+	}
+
 	offset_str  = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_OFFSET);
+	if (offset_str) {
+		/*
+		 * Verify that the given offset value is valid.
+		 */
+		if ('\0' == offset_str[0]) {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"The given update offset value is an empty string.");
+			goto send_reply;
+		}
+		offset = strtol(offset_str, &endptr, 0);
+		if ('\0' != endptr[0]) {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"The given update offset value (%s) "
+					"is not a number.", offset_str);
+			goto send_reply;
+		}
+		if (interval_str && (interval < labs(offset) * 2)) {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+					"The absolute value of the offset value "
+					"must not be larger than the half of "
+					"the update interval.");
+			goto send_reply;
+		}
+	}
+
 	auto_interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_AUTO_INTERVAL);
 
 	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
