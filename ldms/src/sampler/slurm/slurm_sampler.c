@@ -432,6 +432,7 @@ static int create_metric_set(void)
 		ldms_metric_array_set_s32(job_set, job_slot_list_idx, i, -1);
 	}
 	ldms_set_publish(job_set);
+	ldmsd_set_register(job_set, "slurm_sampler");
 	return 0;
  err:
 	if (job_schema)
