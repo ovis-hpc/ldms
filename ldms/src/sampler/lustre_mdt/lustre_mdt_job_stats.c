@@ -135,7 +135,7 @@ static struct mdt_job_stats_data *mdt_job_stats_data_create(const char *producer
         index = ldms_metric_by_name(job_stats->metric_set, "job_id");
         ldms_metric_array_set_str(job_stats->metric_set, index, jobid);
         ldms_set_publish(job_stats->metric_set);
-
+        ldmsd_set_register(job_stats->metric_set, SAMP);
         return job_stats;
 out3:
         free(job_stats->jobid);
