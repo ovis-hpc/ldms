@@ -209,7 +209,7 @@ ldms_set_t ost_general_create(const char *producer_name, const char *fs_name,
         index = ldms_metric_by_name(set, "ost");
         ldms_metric_array_set_str(set, index, ost_name);
         ldms_set_publish(set);
-
+	ldmsd_set_register(set, SAMP);
         return set;
 }
 

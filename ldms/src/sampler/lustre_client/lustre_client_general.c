@@ -156,7 +156,7 @@ ldms_set_t llite_general_create(const char *producer_name,
         ldms_metric_array_set_str(set, index, llite_name);
 	comp_id_helper_metric_update(set, cid);
         ldms_set_publish(set);
-
+        ldmsd_set_register(set, SAMP);
         return set;
 }
 

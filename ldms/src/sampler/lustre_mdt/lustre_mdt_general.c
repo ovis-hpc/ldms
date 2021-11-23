@@ -210,7 +210,7 @@ ldms_set_t mdt_general_create(const char *producer_name, const char *fs_name,
         index = ldms_metric_by_name(set, "mdt");
         ldms_metric_array_set_str(set, index, mdt_name);
         ldms_set_publish(set);
-
+	ldmsd_set_register(set, SAMP);
         return set;
 }
 
