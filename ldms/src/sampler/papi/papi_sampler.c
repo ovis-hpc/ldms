@@ -63,6 +63,8 @@
 #include "papi_sampler.h"
 #include "papi_hook.h"
 
+#define SAMP "papi_sampler"
+
 static ldmsd_msg_log_f msglog;
 static char *papi_stream_name;
 base_data_t papi_base;
@@ -301,6 +303,7 @@ static int create_metric_set(job_data_t job)
 		ldms_metric_array_set_u32(job->set, job->task_ranks_mid, i++, t->rank);
 	}
 	ldms_set_publish(job->set);
+	ldmsd_set_register(job->set, SAMP);
 	ldms_schema_delete(schema);
 	return 0;
  err:
@@ -927,7 +930,7 @@ static void term(struct ldmsd_plugin *self)
 
 static struct ldmsd_sampler papi_sampler = {
 	.base = {
-		.name = "papi_sampler",
+		.name = SAMP,
 		.type = LDMSD_PLUGIN_SAMPLER,
 		.term = term,
 		.config = config,
