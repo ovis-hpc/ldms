@@ -1506,18 +1506,18 @@ class LdmsdCmdParser(cmd.Cmd):
         Specify the command-line options
 
         Parameters:
-            [defulat_auth_args=]    (-A) Arguments of the default authentication method
-            [default_auth=]         (-a) Default authentication method
-            [banner=]               (-B) Banner mode: 0=do banner file, 1=auto-delete at exit, 2=keep the file
-            [host_name=]            (-H) Host/producer name used by the kernel metric sets
-            [publish_kernel=]       (-k) Publish kernel: true or false
-            [log_file=]             (-l) Path to the log file or 'syslog'
-            [set_memory=]           (-m) Set memory, e.g., 2GB, 512mB
-            [daemon_name=]          (-n) Daemon name
-            [worker_threads=]       (-P) Number of worker threads
-            [pid_file=]             (-r) Path to the PID file
-            [kernel_set_path=]      (-s) Path to a text file containing the kernel metric values
-            [log_level=]            (-v) Log level: DEBUG, INFO, ERROR, CRITICAL, QUIET
+            -A, -- defulat_auth_args    Arguments of the default authentication method
+            -a, -- default_auth         Default authentication method
+            -B, --banner                Banner mode: 0=do banner file, 1=auto-delete at exit, 2=keep the file
+            -H, --host_name             Host/producer name used by the kernel metric sets
+            -k, --publish_kernel        Publish kernel: true or false
+            -l, --log_file              Path to the log file or 'syslog'
+            -m, --set_memory            Set memory, e.g., 2GB, 512mB
+            -n, --daemon_name           Daemon name
+            -P, --worker_threads        Number of worker threads
+            -r, --pid_file              Path to the PID file
+            -s, --kernel_set_path       Path to a text file containing the kernel metric values
+            -v, --log_level             Log level: DEBUG, INFO, ERROR, CRITICAL, QUIET
 
         Use 'listen' instead of the -x option.
 
@@ -1526,6 +1526,17 @@ class LdmsdCmdParser(cmd.Cmd):
             -F        Foreground mode
             -u        List named plugins
             -V        Print LDMS version
+
+        You would specify the command-line options as if you specify them at
+        the command line.
+
+        Examples:
+           # Specify a short option
+           option -a ovis
+           # Specify multiple short options
+           option -m 2GB -P 16
+           # Specify multiple long options
+           option --log_file /path/to/logfile --log_level ERROR
         """
         print("Not supported! The 'option' command is only supported in a configuration file.")
 

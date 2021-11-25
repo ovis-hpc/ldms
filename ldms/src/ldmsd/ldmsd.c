@@ -588,53 +588,53 @@ void usage_hint(char *argv[],char *hint)
 {
 	printf("%s: [%s]\n", argv[0], short_opts);
 	printf("  General Options\n");
-	printf("    -F             Foreground mode, don't daemonize the program [false].\n");
-	printf("    -B mode        Daemon mode banner file with pidfile [1].\n"
-	       "                   modes:0-no banner file, 1-banner auto-deleted, 2-banner left.\n");
-	printf("    -u name        List named plugin if available, and where possible\n");
-	printf("                   its usage, then exit. Name all, sampler, and store limit output.\n");
-	printf("    -m memory size Maximum size of pre-allocated memory for metric sets.\n"
-	       "		   The given size must be less than 1 petabytes.\n"
-	       "		   The default value is %s\n"
-	       "		   For example, 20M or 20mb are 20 megabytes.\n"
-	       "		   - The environment variable %s could be set instead of\n"
-	       "		   giving the -m option. If both are given, the -m option\n"
-	       "		   takes precedence over the environment variable.\n",
-	       LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
-	printf("    -n NAME        The name of the daemon. By default, it is \"HOSTNAME:PORT\".\n");
-	printf("                   The failover uses the daemon name to verify the buddy name.\n");
-	printf("                   The producer name of kernel metric sets is the daemon name.\n");
-	printf("    -r pid_file    The path to the pid file for daemon mode.\n"
-	       "		   [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
+	printf("    -F                                            Foreground mode, don't daemonize the program [false].\n");
+	printf("    -u name                                       List named plugin if available, and where possible\n");
+	printf("                                                  its usage, then exit. Name all, sampler, and store limit output.\n");
+	printf("    -B MODE,     --banner MODE                    Daemon mode banner file with pidfile [1].\n"
+	       "                                                  modes:0-no banner file, 1-banner auto-deleted, 2-banner left.\n");
+	printf("    -m SIZE,     --set_memory SIZE                Maximum size of pre-allocated memory for metric sets.\n"
+	       "                                                  The given size must be less than 1 petabytes.\n"
+	       "                                                  The default value is %s\n"
+	       "                                                  For example, 20M or 20mb are 20 megabytes.\n"
+	       "                                                  - The environment variable %s could be set instead of\n"
+	       "                                                  giving the -m option. If both are given, the -m option\n"
+	       "                                                  takes precedence over the environment variable.\n",
+	                                                          LDMSD_MEM_SIZE_STR, LDMSD_MEM_SIZE_ENV);
+	printf("    -n NAME,     --daemon_name NAME               The name of the daemon. By default, it is \"HOSTNAME:PORT\".\n");
+	printf("                                                  The failover uses the daemon name to verify the buddy name.\n");
+	printf("                                                  The producer name of kernel metric sets is the daemon name.\n");
+	printf("    -r PATH,     --pid_file PATH                  The path to the pid file for daemon mode.\n"
+	       "                                                  [" LDMSD_PIDFILE_FMT "]\n",basename(argv[0]));
 	printf("  Log Verbosity Options\n");
-	printf("    -l log_file    The path to the log file for status messages.\n"
-	       "		   [" LDMSD_LOGFILE "]\n");
-	printf("    -v level       The available verbosity levels, in order of decreasing verbosity,\n"
-	       "		   are DEBUG, INFO, ERROR, CRITICAL and QUIET.\n"
-	       "		   The default level is ERROR.\n");
-	printf("    -t             Truncate the log file at start if the log file exists.\n");
+	printf("    -l PATH,     --log_file PATH                  The path to the log file for status messages.\n"
+	       "                                                  [" LDMSD_LOGFILE "]\n");
+	printf("    -v LEVEL,    --log_level LEVEL                The available verbosity levels, in order of decreasing verbosity,\n"
+	       "                                                  are DEBUG, INFO, ERROR, CRITICAL and QUIET.\n"
+	       "                                                  The default level is ERROR.\n");
+	printf("    -t,          --log_truncate                   Truncate the log file at start if the log file exists.\n");
 	printf("  Communication Options\n");
 	printf("    -x xprt:port:host\n"
-	       "		   Specifies the transport type to listen on. May be specified\n"
-	       "		   more than once for multiple transports. The transport string\n"
-	       "		   is one of 'rdma', 'sock', 'ugni', or 'fabric'.\n"
-	       "		   A transport specific port number is optionally specified\n"
-	       "		   following a ':', e.g. rdma:50000. Optional host name\n"
-	       "		   or address may be given after the port, e.g. rdma:10000:node1-ib,\n"
-	       "		   to listen to a specific address.\n");
-	printf("    -a AUTH        Transport authentication plugin (default: 'none')\n");
-	printf("    -A KEY=VALUE   Authentication plugin options (repeatable)\n");
+	       "                                                  Specifies the transport type to listen on. May be specified\n"
+	       "                                                  more than once for multiple transports. The transport string\n"
+	       "                                                  is one of 'rdma', 'sock', 'ugni', or 'fabric'.\n"
+	       "                                                  A transport specific port number is optionally specified\n"
+	       "                                                  following a ':', e.g. rdma:50000. Optional host name\n"
+	       "                                                  or address may be given after the port, e.g. rdma:10000:node1-ib,\n"
+	       "                                                  to listen to a specific address.\n");
+	printf("    -a AUTH,      --default_auth AUTH             Transport authentication plugin (default: 'none')\n");
+	printf("    -A KEY=VALUE, --default_auth_args KEY=VALUE   Authentication plugin options (repeatable)\n");
 	printf("  Kernel Metric Options\n");
-	printf("    -k             Publish kernel metrics.\n");
-	printf("    -s setfile     Text file containing kernel metric sets to publish.\n"
-	       "                   [" LDMSD_SETFILE "]\n");
+	printf("    -k,           --publish_kernel                Publish kernel metrics.\n");
+	printf("    -s PATH,      --kernel_set_path PATH          Text file containing kernel metric sets to publish.\n"
+	       "                                                  [" LDMSD_SETFILE "]\n");
 	printf("  Thread Options\n");
-	printf("    -P thr_count   Count of event threads to start.\n");
+	printf("    -P COUNT,     --worker_threads COUNT          Count of event threads to start.\n");
 	printf("  Configuration Options\n");
-	printf("    -c path        The path to configuration file (optional, default: <none>).\n");
-	printf("    -V             Print LDMS version and exit.\n");
+	printf("    -c PATH                                       The path to configuration file (optional, default: <none>).\n");
+	printf("    -V                                            Print LDMS version and exit.\n");
 	printf("  Deprecated options\n");
-	printf("    -H             DEPRECATED.\n");
+	printf("    -H                                            DEPRECATED.\n");
 	if (hint) {
 		printf("\nHINT: %s\n",hint);
 	}

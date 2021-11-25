@@ -86,7 +86,7 @@ General/Configuration Options:
 .BR -F
 Run in foreground mode; don't daemonize the program. Default is false.
 .TP
-.BI -B " version-file-mode [0, 1, 2]"
+.BI "-B, --banner" " version-file-mode [0, 1, 2]"
 When run in daemon mode, controls the existence of the banner file.
 Mode 0 suppresses the version file. Mode 1 deletes it at daemon exit. Mode >= 2 leaves it in place for debugging after daemon exit. Default mode is 1.
 The banner contains the software and protocol versions information, which is also logged at the INFO level. The banner file name is always the pidfile name with .version appended.
@@ -105,7 +105,7 @@ deferred configuration objects will be started. Please also note that while
 failover service is in use, prdcr, updtr, and strgp cannot be altered (start,
 stop, or reconfigure) over in-band configuration.
 .TP
-.BI -m " MEMORY_SIZE"
+.BI "-m, --set_memory" " MEMORY_SIZE"
 .br
 MEMORY_SIZE is the maximum size of pre-allocated memory for metric sets.
 The given size must be less than 1 petabytes.
@@ -113,11 +113,11 @@ For example, 20M or 20mb are 20 megabytes. The default is adequate for most ldms
 For aggregating ldmsd, a rough estimate of preallocated memory needed is (Number of nodes aggregated) x (Number of metric sets per node) x 4k.
 Data sets containing arrays may require more. The estimate can be checked by enabling DEBUG logging and examining the mm_stat bytes_used+holes value at ldmsd exit.
 .TP
-.BI -n " NAME"
+.BI "-n, --daemon_name" " NAME"
 .br
 The name of the daemon. By default, it is "\fIHOSTNAME:PORT\fR". The failover feature uses the daemon name to verify the buddy name, and the producer name of kernel metric sets is the daemon name.
 .TP
-.BI -r " pid_file"
+.BI "-r, --pid_file" " pid_file"
 The path to the pid file and prefix of the .version banner file for daemon mode.
 .TP
 .BR -V
@@ -142,7 +142,7 @@ The listening transports can also be specified in the configuration file using
 \fBlisten\fR command, e.g. `listen xprt=sock port=1234 host=node1-ib`. Please see
 \fBldmsd_controller\fR(8) section \fBLISTEN COMMAND SYNTAX\fR for more details.
 .TP
-.BI -a " AUTH"
+.BI "-a, --default_auth" " AUTH"
 Specify the default LDMS Authentication method for the LDMS connections in this
 daemon (when the connections do not specify authentication method/domain).
 Please see \fBldms_authentication\fR(7) for more information. If this option is
@@ -150,7 +150,7 @@ not given, the default is "none" (no authentication). Also see
 \fBldmsd_controller\fR(8) section \fBAUTHENTICATION COMMAND SYNTAX\fR for how to
 define an authentication domain.
 .TP
-.BI -A " NAME" = VALUE
+.BI "-A, --default_auth_args" " NAME" = VALUE
 Passing the \fINAME\fR=\fIVALUE\fR option to the LDMS Authentication plugin.
 This command line option can be given multiple times. Please see
 \fBldms_authentication\fR(7) for more information, and consult the plugin manual
@@ -160,13 +160,13 @@ page for plugin-specific options.
 .SS
 Log Verbosity Options:
 .TP
-.BI -l " LOGFILE"
+.BI "-l, --log_file" " LOGFILE"
 .br
 LOGFILE is the path to the log file for status messages. Default is stdout unless given.
 The syslog facility is used if LOGFILE is exactly "syslog".
 Silence can be obtained by specifying /dev/null for the log file or using command line redirection as illustrated below.
 .TP
-.BI -v " LOG_LEVEL"
+.BI "-v, --log_level" " LOG_LEVEL"
 .br
 LOG_LEVEL can be one of DEBUG, INFO, ERROR, CRITICAL or QUIET.
 The default level is ERROR. QUIET produces only user-requested output.
@@ -178,15 +178,15 @@ Truncate the log file if it already exists.
 .SS
 Kernel Metric Options:
 .TP
-.BR -k
+.BR "-k, --publish_kernel"
 Publish kernel metrics.
 .TP
-.BI -s " SETFILE"
+.BI "-s, --kernel_set_file" " SETFILE"
 Text file containing kernel metric sets to publish. Default: /proc/sys/kldms/set_list
 
 .SS Thread Options:
 .TP
-.BI -P " THR_COUNT"
+.BI "-P, --worker_threads" " THR_COUNT"
 .br
 THR_COUNT is the number of event threads to start.
 
@@ -194,45 +194,31 @@ THR_COUNT is the number of event threads to start.
 .PP
 Users can use the 'option' command to specify some command-line options in a configuration file.
 .RS
-option ATTR=VALUE ...
+option <COMMAND-LINE OPTIONS>
 
 .SS Command-line options supported by the 'option' command and the corresponding attributes
 .TP
-.BI -a
-default_auth=<auth_method>
+.BI -a, --default_auth
 .TP
-.BI -A
-default_auth_args=<attribute-value pairs>
+.BI -A, --default_auth_args
 .TP
-.BI -B
-banner=<mode>
+.BI -B, --banner
 .TP
-.BI -H
-host_name=<name>
+.BI -k, --publish_kernel
 .TP
-.BI -k
-publish_kernel=<true|false>
+.BI -l, --log_file
+log_file=<pat
+.BI -m, --sett_memory
 .TP
-.BI -l
-log_file=<path>
+.BI -n, --daemon_name
 .TP
-.BI -m
-set_memory=<size>
+.BI -P, --worker_threads
 .TP
-.BI -n
-daemon_name=<name>
+.BI -r, --pid_file
 .TP
-.BI -P
-worker_threads=<num_threads>
+.BI -s, --kernel_set_path
 .TP
-.BI -r
-pid_file=<path>
-.TP
-.BI -s
-kernel_set_path=<path>
-.TP
-.BI -v
-log_level=<level>
+.BI -v, --log_level
 
 .SS Specifying the listen endpoints in configuraton files
 .TP
@@ -243,9 +229,9 @@ listen xprt=sock port=411
 > cat ldmsd.conf
 .nf
   # cmd-line options
-  option log_file=/opt/ovis/var/ldmsd.log
-  option set_memory=2GB worker_threads=16
-  option default_auth=munge
+  option --log_file /opt/ovis/var/ldmsd.log --log_level ERROR
+  option -m 2GB -P 16
+  option -a munge
   listen xprt=ugni port=411
   # meminfo
   load name=meminfo

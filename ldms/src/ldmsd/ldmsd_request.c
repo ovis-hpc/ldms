@@ -6807,45 +6807,53 @@ static int __cmdline_options(ldmsd_req_ctxt_t reqc, int argc, char *argv[])
 
 static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *s, *token, *ptr1, *lval;
+	char *s, *dummy, *token, *ptr1;
 	int rc = 0;
-	int argc = 1;
-	int i;
-	char *argv[11];
-	int max_opt = 11;
+	int argc;
+	char **argv = NULL;
+	int count;
 
+	dummy = NULL;
 	s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
-	argv[0] = "";
+	if (!s) {
+		snprintf(reqc->line_buf, reqc->line_len, "No options are given.");
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
+	dummy = strdup(s);
+	if (!dummy)
+		goto enomem;
+
+	/* Count number of tokens */
+	for (token = strtok_r(dummy, " \t\n", &ptr1); token;
+			token = strtok_r(NULL, " \t\n", &ptr1)) {
+		count++;
+	}
+
+	argv = calloc(count + 2, sizeof(char *)); /* +2 is for "option" and NULL*/
+	if (!argv)
+		goto enomem;
+
+	/* Populate argv */
+	opterr = 0;
+	argv[0] = "option";
+	argc = 1;
 	for (token = strtok_r(s, " \t\n", &ptr1); token;
 			token = strtok_r(NULL, " \t\n", &ptr1)) {
-
-		char *ptr2;
-		if (argc > max_opt - 2) {
-			rc = __cmdline_options(reqc, argc, argv);
-			if (rc) {
-				/* Reset rc to 0 because the error is caused by user */
-				rc = 0;
-				goto send_reply;
-			}
-			/* Reset */
-			for (i = 1; i < argc; i++) {
-				free(argv[i]);
-			}
-			argc = 1;
-		}
-
-		lval = strtok_r(token, "=", &ptr2);
-		argv[argc] = malloc(strlen(lval) + 3);
-		sprintf(argv[argc], "--%s", lval);
-		argc++;
-		argv[argc++] = strdup(ptr2);
+		argv[argc++] = token;
 	}
+
 	(void) __cmdline_options(reqc, argc, argv);
-	for (i = 1; i < argc; i++) {
-		free(argv[i]);
-	}
-
 send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(s);
+	free(dummy);
+	free(argv);
 	return rc;
+enomem:
+	snprintf(reqc->line_buf, reqc->line_len, "ldmsd is out of memory.");
+	reqc->errcode = ENOMEM;
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memroy\n");
+	rc = ENOMEM;
+	goto send_reply;
 }
