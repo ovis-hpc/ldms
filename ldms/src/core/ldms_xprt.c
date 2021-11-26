@@ -1788,6 +1788,12 @@ void __process_dir_reply(struct ldms_xprt *x, struct ldms_reply *reply,
 		e = json_value_find(set_entity, "schema");
 		dir->set_data[i].schema_name = strdup(json_value_str(e)->str);
 
+		e = json_value_find(set_entity, "digest");
+		if (e)
+			dir->set_data[i].digest_str = strdup(json_value_str(e)->str);
+		else
+			dir->set_data[i].digest_str = strdup("");
+
 		e = json_value_find(set_entity, "flags");
 		dir->set_data[i].flags = strdup(json_value_str(e)->str);
 

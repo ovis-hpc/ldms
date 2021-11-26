@@ -96,6 +96,9 @@ const char *ldms_xprt_op_names[] = {
 	"SEND",
 	"RECV",
 };
+static char *type_names[];
+
+static struct ldms_digest_s null_digest;
 
 /* This function is useful for displaying data structures stored in
  * mmap'd memory that on some platforms is not accessible to the
@@ -356,10 +359,13 @@ size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
 				      char *buf, size_t buf_size)
 {
 	size_t cnt;
+	char dbuf[2*LDMS_DIGEST_LENGTH+1];
+	ldms_digest_t digest = ldms_set_digest_get(set);
 	cnt = snprintf(buf, buf_size,
 		       "%c{"
 		       "\"name\":\"%s\","
 		       "\"schema\":\"%s\","
+		       "\"digest\":\"%s\","
 		       "\"flags\":\"%s\","
 		       "\"meta_size\":%d,"
 		       "\"data_size\":%d,"
@@ -377,6 +383,7 @@ size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
 		       need_comma ? ',' : ' ',
 		       get_instance_name(set->meta)->name,
 		       get_schema_name(set->meta)->name,
+		       digest ? ldms_digest_str(digest, dbuf, sizeof(dbuf)) : "",
 		       set_state(set),
 		       __le32_to_cpu(set->meta->meta_sz),
 		       __le32_to_cpu(set->meta->data_sz),
@@ -978,7 +985,7 @@ const char *ldms_set_producer_name_get(ldms_set_t s)
 
 int ldms_set_producer_name_set(ldms_set_t s, const char *name)
 {
-	if (LDMS_PRODUCER_NAME_MAX < strlen(name))
+	if (LDMS_PRODUCER_NAME_MAX < strlen(name) + 1)
 		return EINVAL;
 
 	strncpy(s->meta->producer_name, name, LDMS_PRODUCER_NAME_MAX);
@@ -1102,12 +1109,69 @@ ldms_schema_t ldms_schema_new(const char *schema_name)
 	ldms_schema_t s = calloc(1, sizeof *s);
 	if (s) {
 		s->name = strdup(schema_name);
+		SHA256_Init(&s->sha_ctxt);
 		s->meta_sz = sizeof(struct ldms_set_hdr);
 		s->data_sz = sizeof(struct ldms_data_hdr);
 		s->array_card = 1;
 		STAILQ_INIT(&s->metric_list);
 	}
 	return s;
+}
+
+const char *ldms_digest_str(ldms_digest_t digest, char *buf, int buf_len)
+{
+	char *s;
+	int i;
+
+	if (buf_len < 2*LDMS_DIGEST_LENGTH + 1) {
+		errno = ENOBUFS;
+		return NULL;
+	}
+	s = buf;
+	for (i = 0; i < LDMS_DIGEST_LENGTH; i++) {
+		sprintf(s, "%02X", digest->digest[i]);
+		s += 2;
+	}
+	return buf;
+}
+
+int ldms_schema_fprint(ldms_schema_t schema, FILE *fp)
+{
+	ldms_mdef_t m;
+	int comma = 0;
+	char buf[2*LDMS_DIGEST_LENGTH+1];
+	fprintf(fp, "{ \"name\" : \"%s\",\n", schema->name);
+	fprintf(fp, "  \"digest\" : \"%s\",\n", ldms_digest_str(&schema->digest, buf, sizeof(buf)));
+	fprintf(fp, "  \"attrs\" : [\n");
+	STAILQ_FOREACH(m, &schema->metric_list, entry) {
+		if (comma) {
+			fprintf(fp, ",\n");
+		} else {
+			comma = 1;
+			fprintf(fp, "\n");
+		}
+		fprintf(fp,
+		    "    {\n");
+		fprintf(fp,
+		    "      \"name\" : \"%s\",\n", m->name);
+		fprintf(fp,
+		    "      \"type\" : %d,\n", m->type);
+		fprintf(fp,
+		    "      \"type_name\" : \"%s\",\n", type_names[m->type]);
+		fprintf(fp,
+		    "      \"flags\" : %d,\n", m->flags);
+		fprintf(fp,
+		    "      \"count\" : %d,\n", m->count);
+		fprintf(fp,
+		    "      \"meta_sz\" : %zu,\n", m->meta_sz);
+		fprintf(fp,
+		    "      \"data_sz\" : %zu\n", m->data_sz);
+		fprintf(fp,
+		    "    }\n");
+	}
+	fprintf(fp, "  ]\n");
+	fprintf(fp, "}\n");
+	return 0;
 }
 
 void ldms_record_delete(ldms_record_t rec_def)
@@ -1294,13 +1358,13 @@ static size_t compute_set_sizes(const char *instance_name, ldms_schema_t schema,
 
 	if (!*set_array_card)
 		*set_array_card = 1;
-
-	*meta_sz = schema->meta_sz /* header + metric dict */
-		+ strlen(schema->name) + 2 /* schema name + '\0' + len */
-		+ strlen(instance_name) + 2; /* instance name + '\0' + len */
+	*meta_sz = schema->meta_sz		/* header + metric dict */
+		 + strlen(schema->name) + 2	/* schema name + '\0' + len */
+		 + LDMS_DIGEST_LENGTH		/* digest for schema */
+		 + strlen(instance_name) + 2;	/* instance name + '\0' + len */
 	*meta_sz = roundup(*meta_sz, 8);
 	assert(schema->data_sz == roundup(schema->data_sz, 8) ||
-			NULL == "bad schema.data_sz");
+			(NULL == "bad schema.data_sz"));
 	*array_data_sz = (schema->data_sz + *heap_sz) * *set_array_card;
 	return *meta_sz + *array_data_sz;
 }
@@ -1367,6 +1431,13 @@ void __init_rec_array(ldms_set_t set, ldms_schema_t schema)
 	}
 }
 
+static void __ldms_schema_finalize(ldms_schema_t schema)
+{
+	if (memcmp(&schema->digest, &null_digest, LDMS_DIGEST_LENGTH))
+		return;
+	SHA256_Final(schema->digest.digest, &schema->sha_ctxt);
+}
+
 ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 				  ldms_schema_t schema,
 				  uid_t uid, gid_t gid, mode_t perm)
@@ -1396,6 +1467,8 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	if (!ssz) {
 		return NULL;
 	}
+
+	__ldms_schema_finalize(schema);
 
 	meta = mm_alloc(meta_sz + array_data_sz);
 	if (!meta) {
@@ -1429,8 +1502,12 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 
 	/* Set the schema name. */
 	lname = get_schema_name(meta);
-	lname->len = strlen(schema->name) + 1;
+	size_t schema_sz = strlen(schema->name) + 1;
 	strcpy(lname->name, schema->name);
+	unsigned char *digest =
+		(unsigned char *)&lname->name[schema_sz];
+	memcpy(digest, schema->digest.digest, LDMS_DIGEST_LENGTH);
+	lname->len = schema_sz + LDMS_DIGEST_LENGTH + 1;
 
 	/* set array element data hdr initialization */
 	data_base = (struct ldms_data_hdr *)((void*)meta + meta_sz);
@@ -1565,6 +1642,21 @@ const char *ldms_set_schema_name_get(ldms_set_t s)
 {
 	struct ldms_set_hdr *sh = s->meta;
 	return get_schema_name(sh)->name;
+}
+
+ldms_digest_t ldms_set_digest_get(ldms_set_t s)
+{
+	ldms_name_t inst = get_instance_name(s->meta);
+	ldms_name_t schema = (ldms_name_t)&inst->name[inst->len];
+	size_t sz = strlen(schema->name);
+	if (schema->len >= sz + LDMS_DIGEST_LENGTH)
+		return (ldms_digest_t)&schema->name[sz+1];
+	return &null_digest;
+}
+
+int ldms_digest_cmp(ldms_digest_t a, ldms_digest_t b)
+{
+	return memcmp(a, b, LDMS_DIGEST_LENGTH);
 }
 
 uint32_t ldms_set_card_get(ldms_set_t s)
@@ -1783,6 +1875,20 @@ int ldms_metric_by_name(ldms_set_t set, const char *name)
 
 int __schema_mdef_add(ldms_schema_t s, ldms_mdef_t m)
 {
+	/* Digest */
+	if (m->type == LDMS_V_RECORD_TYPE) {
+		/* If this is a record, digest the members of the record too */
+		ldms_record_t rec_def;
+		ldms_mdef_t rec_m;
+		rec_def = container_of(m, struct ldms_record, mdef);
+		STAILQ_FOREACH(rec_m, &rec_def->rec_metric_list, entry) {
+			SHA256_Update(&s->sha_ctxt, rec_m->name, strlen(rec_m->name));
+			SHA256_Update(&s->sha_ctxt, &rec_m->type, sizeof(rec_m->type));
+		}
+	}
+	SHA256_Update(&s->sha_ctxt, m->name, strlen(m->name));
+	SHA256_Update(&s->sha_ctxt, &m->type, sizeof(m->type));
+
 	STAILQ_INSERT_TAIL(&s->metric_list, m, entry);
 	s->card++;
 	s->meta_sz += m->meta_sz + sizeof(uint32_t) /* + dict entry */;
@@ -1791,6 +1897,7 @@ int __schema_mdef_add(ldms_schema_t s, ldms_mdef_t m)
 	} else {
 		s->meta_sz += m->data_sz;
 	}
+
 	return s->card - 1;
 }
 

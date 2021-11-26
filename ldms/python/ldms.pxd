@@ -252,6 +252,7 @@ cdef extern from "ldms.h" nogil:
     struct ldms_dir_set_s:
         char *inst_name
         char *schema_name
+        char *digest_str
         char *flags
         size_t meta_size
         size_t data_size
@@ -492,6 +493,13 @@ cdef extern from "ldms.h" nogil:
                                      ldms_value_type t, uint32_t count)
     int ldms_schema_meta_array_add(ldms_schema_t s, const char *name,
                                    ldms_value_type t, uint32_t count)
+
+    # --- schema hash / digest --- #
+    ctypedef unsigned char *ldms_digest_t
+    ldms_digest_t ldms_set_digest_get(ldms_set_t s)
+    const char *ldms_digest_str(ldms_digest_t digest, char *buf, int buf_len)
+    cpdef enum:
+        LDMS_DIGEST_LENGTH
 
     # --- set provider --- #
     ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)

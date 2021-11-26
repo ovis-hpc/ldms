@@ -20,6 +20,7 @@ libldms_la_LIBADD = -ldl -lpthread $(top_builddir)/lib/src/coll/libcoll.la \
 		    $(top_builddir)/lib/src/ovis_json/libovis_json.la \
 		    $(top_builddir)/lib/src/ovis_ev/libovis_ev.la \
 		    $(top_builddir)/lib/src/mmalloc/libmmalloc.la \
-		    $(top_builddir)/lib/src/zap/libzap.la
+		    $(top_builddir)/lib/src/zap/libzap.la \
+		    @OPENSSL_LIBS@
 
 lib_LTLIBRARIES += libldms.la

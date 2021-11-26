@@ -569,6 +569,8 @@ void print_set(struct ldms_dir_set_s *set_data)
 	if (!verbose) {
 		printf("%s\n", set_data->inst_name);
 	} else {
+		if (verbose > 1)
+			printf("%-64s ", set_data->digest_str);
 		printf("%-14s %-24s %6s %6lu %6lu %6lu %6d %6d %10s %10d.%06d %10d.%06d ",
 		       set_data->schema_name,
 		       set_data->inst_name,
@@ -929,6 +931,8 @@ int main(int argc, char *argv[])
 	int is_filter_list = 0;
 
 	if (verbose) {
+		if (verbose > 1)
+			printf("%-*s ", 64, "Schema Digest");
 		printf("%-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s %-*s\n",
 		       14, "Schema",
 		       24, "Instance",
@@ -936,6 +940,8 @@ int main(int argc, char *argv[])
 		       6, "Msize", 6, "Dsize", 6, "Hsize",
 		       6, "UID", 6, "GID", 10, "Perm",
 		       17, "Update", 17, "Duration", 8, "Info");
+		if (verbose > 1)
+			printf("---------------------------------------------------------------- ");
 		printf("-------------- ------------------------ ------ ------ "
 		       "------ ------ ------ ------ ---------- ----------------- "
 		       "----------------- --------\n");
@@ -1047,6 +1053,8 @@ int main(int argc, char *argv[])
 	}
 
 	if (verbose) {
+		if (verbose > 1)
+			printf("---------------------------------------------------------------- ");
 		printf("-------------- ------------------------ ------ ------ "
 		       "------ ------ ------ ------ ---------- ----------------- "
 		       "----------------- --------\n");
