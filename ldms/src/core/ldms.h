@@ -56,6 +56,7 @@
 #include <netinet/in.h>
 #include <byteswap.h>
 #include <asm/byteorder.h>
+#include <openssl/sha.h>
 #include "ovis-ldms-config.h"
 #include "ldms_core.h"
 #include "coll/rbt.h"
@@ -892,6 +893,7 @@ typedef struct ldms_key_value_s {
 typedef struct ldms_dir_set_s {
 	char *inst_name;	/*! Instance name */
 	char *schema_name;	/*! Schema name */
+	char *digest_str;	/*! The schema digest string */
 	char *flags;		/*! Set state flags */
 	size_t meta_size;	/*! Set meta-data size */
 	size_t data_size;	/*! Set data size */
@@ -1219,6 +1221,26 @@ extern void ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats);
  * \retval ENOMEM There were insufficient resources to create the schema
  */
 extern ldms_schema_t ldms_schema_new(const char *schema_name);
+
+ /**
+ * \brief Write a JSON representation of the schema to a file
+ *
+ * \param schema The schema handle
+ * \param fp The FILE pointer
+ * \return int 0 on success or errno
+ */
+extern int ldms_schema_fprint(ldms_schema_t schema, FILE *fp);
+
+ /**
+ * \brief Destroy a schema
+ *
+ * Release the resources consumed by the schema.
+ *
+ * This has no affect on any metric sets that were created with
+ * this schema.
+ *
+ * \param schema The schema handle.
+ */
 extern void ldms_schema_delete(ldms_schema_t schema);
 
 /**
@@ -1444,7 +1466,7 @@ extern void ldms_set_delete(ldms_set_t s);
  *
  * Only the set handle \c s will be freed. The set content will not be deleted.
  *
- * @param s	The metric set handle
+ * \param s	The metric set handle
  */
 void ldms_set_put(ldms_set_t s);
 
@@ -1517,6 +1539,55 @@ extern const char *ldms_set_name_get(ldms_set_t s);
  * \return The number of metrics in the set
  */
 extern uint32_t ldms_set_card_get(ldms_set_t s);
+
+/**
+ * \brief Return a copy of the digest of the set schema
+ *
+ * This function returns a copy of the metric set's
+ * schema digest. The \c digest is a SHA256 hash of the
+ * set schema's metric names and types. This has can be
+ * used to confirm that two metric sets have the same
+ * schema.
+ *
+ * The ldms_set_digest_cmp() function should be used to
+ * compare two digests.
+ *
+ * \param s The set handle
+ * \return The schema digest
+ */
+#define LDMS_DIGEST_LENGTH SHA256_DIGEST_LENGTH
+struct ldms_digest_s {
+	unsigned char digest[LDMS_DIGEST_LENGTH];
+};
+typedef struct ldms_digest_s *ldms_digest_t;
+extern ldms_digest_t ldms_set_digest_get(ldms_set_t s);
+
+/**
+ * \brief Return a digest formatted as a string
+ *
+ * \param digest  The digest
+ * \param buf     The output buffer
+ * \param buf_len The buffer length
+ *
+ * \retval NULL If there is an error (\c errno describing the error)
+ * \retval buf  If succeeded, the output buffer containing formatted digest
+ */
+extern const char *ldms_digest_str(ldms_digest_t digest, char *buf, int buf_len);
+
+/**
+ * \brief Compare LDMS digests
+ *
+ * This function compares two digests and
+ * returns 0 if they are equal or !0 if they are
+ * not equal.
+ *
+ * \param a The lhs digest
+ * \param b The rhs digest
+ * \return 0 The digests are equal
+ * \return <0 The lhs is less than the rhs
+ * \return >0 The rhs is greater than the lhs
+ */
+extern int ldms_digest_cmp(ldms_digest_t a, ldms_digest_t b);
 
 /**
  * \brief Retreive the UID of the LDMS set.

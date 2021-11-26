@@ -190,10 +190,10 @@ struct ldms_set_hdr {
 	char producer_name[LDMS_PRODUCER_NAME_MAX];
 	uint64_t meta_gn;	/* Meta-data generation number */
 	struct ldms_version version;	/* LDMS version */
-	uint8_t flags;	/* Set format flags */
-	uint8_t pad1;	/* data pad */
-	uint8_t pad2;	/* data pad */
-	uint8_t pad3;	/* data pad */
+	uint8_t flags;		/* Set format flags */
+	uint8_t pad1;		/* data pad */
+	uint8_t pad2;		/* data pad */
+	uint8_t pad3;		/* data pad */
 	uint32_t card;		/* Size of dictionary */
 	uint32_t meta_sz;	/* size of meta data in bytes */
 	uint32_t data_sz;	/* size of metric values in bytes */

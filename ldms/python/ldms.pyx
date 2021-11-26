@@ -1350,6 +1350,9 @@ cdef class DirSet(object):
     cdef readonly str schema_name
     """(str) The name of the schema"""
 
+    cdef readonly str digest_str
+    """(str) The schema digest string"""
+
     cdef readonly str flags
     """(str) LDMS Flags"""
 
@@ -1393,6 +1396,7 @@ cdef class DirSet(object):
         cdef ldms_dir_set_s *ds = <ldms_dir_set_s*>ptr.c_ptr
         self.name = STR(ds.inst_name)
         self.inst_name = STR(ds.inst_name)
+        self.digest_str = STR(ds.digest_str)
         self.schema_name = STR(ds.schema_name)
         self.flags = STR(ds.flags)
         self.meta_size = ds.meta_size
@@ -2650,6 +2654,20 @@ cdef class Set(object):
     def schema_name(self):
         """Schema name"""
         return STR(ldms_set_schema_name_get(self.rbd))
+
+    @property
+    def digest_str(self):
+        cdef char buf[LDMS_DIGEST_LENGTH*2+1]
+        cdef ldms_digest_t d
+        cdef char *d_str
+        d = ldms_set_digest_get(self.rbd)
+        if not d:
+            return None
+        d_str = ldms_digest_str(d, buf, sizeof(buf))
+        if not d_str:
+            raise RuntimeError("ldms_digest_str() error: {}" \
+                               .format(ERRNO_SYM(errno)))
+        return STR(d_str)
 
     @property
     def producer_name(self):
