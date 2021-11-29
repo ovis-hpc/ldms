@@ -1,16 +1,16 @@
 .TH man 7 "1 May 2019" "LDMS Plugin" "Plugin for LDMS"
 
 .SH NAME
-Plugin_ibmad - man page for the LDMS ibmad plugin
+Plugin_ibmad_sampler - man page for the LDMS ibmad_sampler plugin
 
 .SH SYNOPSIS
 Within ldmsd_controller or a configuration file:
 .br
-config name=ibmad [ <attr>=<value> ]
+config name=ibmad_sampler [ <attr>=<value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
-or a configuration file. The ibmad plugin provide a metric set for each infiniband port discovered on the node.
+or a configuration file. The ibmad_sampler plugin provides a metric set for each infiniband port discovered on the node.
 
 The schema is named "ibmad" by default.
 
@@ -27,7 +27,7 @@ configuration line
 .TP
 name=<plugin_name>
 .br
-This MUST be ibmad.
+This MUST be ibmad_sampler.
 .TP
 schema=<schema_name>
 .br
@@ -46,9 +46,9 @@ No known bugs.
 .PP
 Within ldmsd_controller or a configuration file:
 .nf
-load name=ibmad
-config name=ibmad
-start name=ibmad interval=1000000
+load name=ibmad_sampler
+config name=ibmad_sampler
+start name=ibmad_sampler interval=1000000
 .fi
 
 .SH SEE ALSO

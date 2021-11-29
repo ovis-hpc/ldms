@@ -1,16 +1,16 @@
 .TH man 7 "1 May 2019" "LDMS Plugin" "Plugin for LDMS"
 
 .SH NAME
-Plugin_dcgm - man page for the LDMS dcgm plugin
+Plugin_dcgm_sampler - man page for the LDMS dcgm_sampler plugin
 
 .SH SYNOPSIS
 Within ldmsd_controller or a configuration file:
 .br
-config name=dcgm [ <attr>=<value> ]
+config name=dcgm_sampler [ <attr>=<value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
-or a configuration file. The dcgm plugin provide a metric set for each DCGM-compatible Nvidia GPU on the system.
+or a configuration file. The dcgm_sampler plugin provides a metric set for each DCGM-compatible Nvidia GPU on the system.
 The schema is named "dcgm" by default.
 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
@@ -24,7 +24,7 @@ configuration line
 .TP
 name=<plugin_name>
 .br
-This MUST be dcgm.
+This MUST be dcgm_sampler.
 .TP
 interval=<interval(us)>
 .br
@@ -54,9 +54,9 @@ No known bugs.
 .PP
 Within ldmsd_controller or a configuration file:
 .nf
-load name=dcgm
-config name=dcgm interval=1000000 fields=150,155,1001,1002,1003 schema=dcgmfav5
-start name=dcgm interval=1000000
+load name=dcgm_sampler
+config name=dcgm_sampler interval=1000000 fields=150,155,1001,1002,1003 schema=dcgmfav5
+start name=dcgm_sampler interval=1000000
 .fi
 
 .SH SEE ALSO

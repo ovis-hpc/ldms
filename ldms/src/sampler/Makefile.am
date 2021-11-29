@@ -37,7 +37,7 @@ SUBDIRS += lustre_mdt
 SUBDIRS += lustre_ost
 
 if HAVE_DCGM
-SUBDIRS += dcgm
+SUBDIRS += dcgm_sampler
 endif
 
 if ENABLE_IBNET
@@ -260,7 +260,7 @@ endif
 if HAVE_LIBIBMAD
 if HAVE_LIBIBUMAD
 if HAVE_IBA_IB_TYPES_H
-SUBDIRS += ibmad
+SUBDIRS += ibmad_sampler
 endif
 
 libsysclassib_la_SOURCES = sysclassib.c
