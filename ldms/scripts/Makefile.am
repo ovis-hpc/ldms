@@ -40,12 +40,6 @@ untestsets += uninstall-slurm
 bin_SCRIPTS += pll-ldms-static-test.sh
 endif
 
-ovis-roll-over.py: ${srcdir}/ovis-roll-over.py
-	cp ${srcdir}/ovis-roll-over.py .
-
-lsdate: ${srcdir}/lsdate
-	cp ${srcdir}/lsdate .
-
 install-data-local: $(testsets)
 
 install-serial:
