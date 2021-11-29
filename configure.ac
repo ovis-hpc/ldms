@@ -39,6 +39,7 @@ AC_LIB_RPATH
 
 dnl if LEX is not available, the configure still won't fail
 AC_PROG_LEX
+AC_PROG_LN_S
 
 AC_ARG_VAR([BISON], [bison command])
 AC_CHECK_PROG([BISON], [bison -y], [bison -y], [no])
@@ -839,7 +840,7 @@ ldms/src/store/store_app/Makefile
 ldms/src/contrib/store/Makefile
 ldms/src/contrib/store/tutorial/Makefile
 ldms/src/contrib/store/timescale/Makefile
-ldms/src/sampler/dcgm/Makefile
+ldms/src/sampler/dcgm_sampler/Makefile
 ldms/src/sampler/dstat/Makefile
 ldms/src/sampler/hello_stream/Makefile
 ldms/src/sampler/hello_stream/stream_configs/Makefile
@@ -857,7 +858,7 @@ ldms/src/sampler/shm/mpi_profiler/Makefile
 ldms/src/sampler/cray_system_sampler/Makefile
 ldms/src/sampler/aries_mmr/Makefile
 ldms/src/sampler/aries_mmr/aries_mmr_set_configs/Makefile
-ldms/src/sampler/ibmad/Makefile
+ldms/src/sampler/ibmad_sampler/Makefile
 ldms/src/sampler/ibnet/Makefile
 ldms/src/sampler/procnet/Makefile
 ldms/src/sampler/rdc_sampler/Makefile
