@@ -183,6 +183,7 @@ class LDMSD_Req_Attr(object):
                    GID : 'gid',
                    STREAM : 'stream',
                    RESET : 'reset',
+                   AUTH : 'auth',
                    LAST : 'TERMINATING'
         }
 
