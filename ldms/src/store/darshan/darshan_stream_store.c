@@ -125,6 +125,7 @@ static const char *job_rank_time_attrs[] = { "job_id", "rank", "timestamp" };
 
 static struct sos_schema_template darshan_data_template = {
 	.name = "darshan_data",
+	.uuid = "3a650cf7-0b83-44dc-accc-e44acaa81740",
 	.attrs = {
 		{ .name = "job_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "rank", .type = SOS_TYPE_UINT64 },
