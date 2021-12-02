@@ -490,6 +490,7 @@ static int process_dict_entity(kokkos_context_t k, json_entity_t e, sos_obj_t ob
 
 static struct sos_schema_template kokkos_sha256_template = {
 	.name = "sha256_string",
+	.uuid = "4b777639-7ec4-4e10-9747-b1d3a96400a0",
 	.attrs = {
 		{ .name = "sha256",
 		  .type = SOS_TYPE_STRUCT, .size = 32,
@@ -507,6 +508,7 @@ static const char *comp_job_time_attrs[] = { "component_id", "job_id", "start_ti
 static const char *time_comp_job_attrs[] = { "start_time", "component_id", "job_id" };
 static struct sos_schema_template kokkos_app_template = {
 	.name = "kokkos_app",
+	.uuid = "dece6e5c-16d9-4f7e-8a44-8df117288f06",
 	.attrs = {
 		{ .name = "job_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "job_name", .type = SOS_TYPE_CHAR_ARRAY },
@@ -560,6 +562,7 @@ static struct sos_schema_template kokkos_app_template = {
 
 static struct sos_schema_template kokkos_kernel_template = {
 	.name = "kokkos_kernel",
+	.uuid = "a89531ba-18b8-4089-a03e-a834e48f64ad",
 	.attrs = {
 		{ .name = "job_id", .type = SOS_TYPE_UINT64 },
 		{ .name = "app_id", .type = SOS_TYPE_UINT64 },
