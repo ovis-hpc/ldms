@@ -2878,7 +2878,7 @@ static int add_env_attr(struct env_attr *a, jbuf_t jb, const struct proc_info *i
 	if (a->quoted == ATTR_QUOTED) {
 		jb = jbuf_append_attr(jb, a->attr, "\"%s\",", s );
 	} else {
-		jb = jbuf_append_attr(jb, a->attr, "%s", s);
+		jb = jbuf_append_attr(jb, a->attr, "%s,", s);
 	}
 	if (!jb)
 		return errno;
