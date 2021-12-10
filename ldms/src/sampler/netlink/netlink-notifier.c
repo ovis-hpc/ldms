@@ -469,6 +469,7 @@ static void reset_excludes(struct exclude_arg *e)
 		free(e->paths[k].n);
 	}
 	free(e->paths);
+	e->len_paths = 0;
 	while (!LIST_EMPTY(&e->path_list)) {
 		struct path_elt *pe = LIST_FIRST(&e->path_list);
 		LIST_REMOVE(pe, entry);
@@ -1493,10 +1494,11 @@ static void proc_info_free(const pid_t pid, forkstat_t *ft)
 			info->uid = NULL_UID;
 			info->gid = NULL_GID;
 			info->euid = NULL_UID;
+			free(info->exe);
 			free_env(info->pidenv);
 			info->pidenv = NULL;
-			free(info->exe);
 			free(info->jobid);
+			info->jobid = NULL;
 			info->exe = NULL;
 			free_proc_comm(info->cmdline);
 			info->cmdline = NULL;
@@ -1537,6 +1539,10 @@ static void proc_info_unload(forkstat_t *ft)
 			info->pid = NULL_PID;
 			info->uid = NULL_UID;
 			info->gid = NULL_GID;
+			free_env(info->pidenv);
+			info->pidenv = NULL;
+			free(info->jobid);
+			info->jobid = NULL;
 			free(info);
 			info = next;
 		}
@@ -2719,16 +2725,17 @@ static int forkstat_init_ldms_stream(forkstat_t *ft)
 	ft->ln = slps_create(stream_arg->paths[0].n, SLPS_NONBLOCKING, llog,
 		xprt_arg->paths[0].n, host_arg->paths[0].n, port,
 		auth_arg->paths[0].n, reconnect, timeout,
-		send_log_arg->paths[0].n);
+		send_log_arg->len_paths ? send_log_arg->paths[0].n : NULL);
 	if (!ft->ln) {
 		PRINTF("FAILED slps_create\n");
 		return 1;
 	}
-	PRINTF("Stream handle created for stream=%s xprt=%s host=%s port=%d auth=%s reconnect=%d timeout=%d log=%s\n",
+	PRINTF("Stream handle created for stream=%s xprt=%s host=%s "
+		"port=%d auth=%s reconnect=%d timeout=%d log=%s\n",
 		stream_arg->paths[0].n,
-                xprt_arg->paths[0].n, host_arg->paths[0].n, port,
-                auth_arg->paths[0].n, reconnect, timeout,
-		(send_log_arg->paths[0].n ? send_log_arg->paths[0].n : "none"));
+		xprt_arg->paths[0].n, host_arg->paths[0].n, port,
+		auth_arg->paths[0].n, reconnect, timeout,
+		(send_log_arg->len_paths ?  send_log_arg->paths[0].n : "none"));
 	return 0;
 }
 
@@ -2796,8 +2803,24 @@ static void free_env(char **e)
         free(e);
 }
 
-/* copy env pieces from e to array. */
-static int add_var(char **r, char *e, size_t elen, size_t *out_len)
+static size_t count_vars(const char *e, size_t elen)
+{
+	size_t n, i;
+	i = n = 0;
+	while (i < elen) {
+		while (i < elen && e[i] != '\0' ) /* skip string */
+			i++;
+		n++;
+		while (i < elen && e[i] == '\0') /* eat nuls */
+			i++;
+	}
+	return n;
+}
+
+/* copy env pieces from e to array.
+ * update count out_len of used elements in r.
+ * */
+static int add_var(char **r, char *e, size_t elen, size_t *out_len, size_t len_r)
 {
 	if (!elen || !e || !r)
 		return EINVAL;
@@ -2806,13 +2829,19 @@ static int add_var(char **r, char *e, size_t elen, size_t *out_len)
 
 	/* find next string, copy last string, until done */
 	while (i < elen) {
+		if (*out_len >= len_r) {
+			return ENOMEM;
+		}
 		while (e[i] != '\0')
 			i++;
+		if (!strlen(h))
+			goto skip_copy;
 		char *v = strdup(h);
 		if (!v)
 			return ENOMEM;
 		r[*out_len] = v;
 		(*out_len) += 1;
+	skip_copy:
 		h = &(e[i+1]);
 		i++;
 	}
@@ -2822,31 +2851,33 @@ static int add_var(char **r, char *e, size_t elen, size_t *out_len)
 /* create null terminated array from /proc/$pid/environ */
 static char **load_pid_env(pid_t pid, size_t *out_len)
 {
-        char **result = calloc(1024, sizeof(result[0]));
+        char **result = NULL;
         size_t elen;
         char fname[32];
         *out_len = 0;
         if (pid < 1) {
 		errno = EINVAL;
-                return null_result;
+		goto err;
 	}
 
         snprintf(fname, sizeof(fname), "/proc/%d/environ", pid);
         FILE *f = fopen(fname, "r");
 	if (!f) {
-		return null_result;
+		goto err;
 	}
 	elen = 16384;
 	char * eb = malloc(elen);
 	char * e = eb;
 	if (!e) {
 		errno = ENOMEM;
-		return null_result;
+		goto err;
 	}
 
 	ssize_t rc = getline(&e, &elen, f);
+	size_t rsize = count_vars(e, rc + 1);
+	result = calloc( 2 * (rsize + 1), sizeof(result[0]));
 	while (rc >= 0) {
-		rc = add_var(result, e, rc, out_len);
+		rc = add_var(result, e, rc, out_len, rsize);
 		if (rc) {
 			goto out;
 		}
@@ -2856,6 +2887,9 @@ out:
 	fclose(f);
 	free(e);
 	return result;
+err:
+	free(result);
+	return null_result;
 }
 /* /////////// end of functions to get env var from a pid ///////////////// */
 #include "ovis_json/ovis_json.h"
@@ -3009,7 +3043,7 @@ static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *
 	for (i = 0 ; i < iend; i++)
 		if (add_env_attr(&lsf_env_start_default[i], jb, info, ft))
 			goto out_1;
-	jb = jbuf_append_attr(jb, "uid", "%d,", info->uid); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "uid", "%d", info->uid); if (!jb) goto out_1;
 	jb = jbuf_append_str(jb, "}}");
 
  out_1:
@@ -3054,7 +3088,7 @@ static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_in
 	jb = jbuf_append_attr(jb, "exe", "\"%s\",", info->exe); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "ncpus", NULL_STEP_ID ","); if (!jb) goto out_1;
 
-	jb = jbuf_append_attr(jb, "local_tasks", NULL_STEP_ID ","); if (!jb) goto out_1;
+	jb = jbuf_append_attr(jb, "local_tasks", NULL_STEP_ID ); if (!jb) goto out_1;
 
 	jb = jbuf_append_str(jb, "}}");
 
@@ -3152,8 +3186,10 @@ static jbuf_t make_ldms_message(forkstat_t *ft, struct proc_info *info, const ch
 		info->rm_type = get_rm_from_env(pidenv, info, ft);
 		if (info->rm_type != RM_NONE)
 			info->pidenv = pidenv;
-		else
+		else {
+			info->pidenv = NULL;
 			free_env(pidenv);
+		}
 	}
 
 	if (emit_event & EMIT_EXIT) {
@@ -3520,7 +3556,8 @@ int main(int argc, char * argv[])
 		*opt_flags |= (OPT_EV_FORK | OPT_EV_EXEC | OPT_EV_EXIT | OPT_EV_CLNE | OPT_EV_PTRC);
 
 
-	/* for long opts, take aggregate options, then env if present, then default. */
+	/* for long opts, take aggregate options, then env if present,
+	 * then default. */
 	for (c = 0; c < nlongopt; c++) {
 		if (LIST_EMPTY(&(excludes[c].path_list)) && !excludes[c].parsed) {
 			struct path_elt *elt = calloc(1, sizeof(*elt));
