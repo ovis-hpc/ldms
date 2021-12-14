@@ -55,6 +55,10 @@ stat=<bool>
 .br
 Include the metrics from /proc/self/stat.
 .TP
+tick=<bool>
+.br
+Include the sc_clk_tck from sysconf(3) as a metric.
+.TP
 statm=<bool>
 .br
 Include the metrics from /proc/self/statm.
@@ -88,7 +92,7 @@ start name=dstat interval=1000000
 
 .SH NOTES
 .PP
-See proc(5) for the definitions of all the metrics except fd data. Metrics which are invariant (other than pids) are not included. Where naming is potentially ambiguous and a more specific name is used in /proc/self/status for the same metrics, the name from /proc/self/status is used.
+See proc(5) for the definitions of all the metrics except sc_clk_tck and fd data. Metrics which are invariant (other than pids and sc_clk_tck) are not included. Where naming is potentially ambiguous and a more specific name is used in /proc/self/status for the same metrics, the name from /proc/self/status is used.
 .PP
 Requesting mmalloc or fd or fdtypes (any of which may be high overhead) requires explicitly requesting it and all others which are wanted. 
 .PP
@@ -103,9 +107,11 @@ fd_anon_inode   count of link targets starting with "anon_inode:"
 fd_pipe         count of link targets starting with "pipe:"
 fd_path         count of link targets starting with . or / but not /dev.
 .fi
+.PP
+On most HPC Linux systems sc_clk_tck is 100 Hz. Less common values are 250, 300, and 1000.
 
 .PP
 This is the LDMSD answer to the ancient question "Quis custodiet ipsos custodes?"
 
 .SH SEE ALSO
-proc(5), ldmsd(8)
+proc(5), ldmsd(8), sysconf(3)
