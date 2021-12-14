@@ -83,6 +83,7 @@
 #define PID_MMALLOC 0x8
 #define PID_FD 0x10
 #define PID_FDTYPES 0x20
+#define PID_TICK 0x40
 
 #define PID_DATA \
 	struct proc_pid_fd fd; \
@@ -99,6 +100,7 @@ struct mm_metrics {
 
 static int pidopts = 0; /* pid-opts: bitwise-or of the PID_ flags */
 static ldmsd_msg_log_f msglog;
+static long tick;
 
 static bool get_bool(const char *val, char *name)
 {
@@ -133,8 +135,9 @@ static char * compute_pidopts_schema(struct attr_value_list *kwl, struct attr_va
 {
 	char *buf;
 	size_t bsz;
-	char *doio, *dostat, *dostatm, *dommalloc, *dofd, *dofdtypes;
+	char *doio, *dostat, *dotick, *dostatm, *dommalloc, *dofd, *dofdtypes;
 	char *schema_name = av_value(avl, "schema");
+	dotick = av_value(avl, "sc_clk_tck");
 	doio = av_value(avl, "io");
 	dofd = av_value(avl, "fd");
 	dofdtypes = av_value(avl, "fdtypes");
@@ -143,13 +146,18 @@ static char * compute_pidopts_schema(struct attr_value_list *kwl, struct attr_va
 	dommalloc = av_value(avl, "mmalloc");
 	char *as = av_value(avl, "auto-schema");
 	bool dosuffix = (as && get_bool(as, "auto-schema") );
-	if (!doio && !dostat && !dostatm && !dommalloc && !dofd && !dofdtypes) {
+	if (!doio && !dostat && !dostatm && !dommalloc &&
+		!dofd && !dofdtypes && !dotick) {
 		pidopts = ( PID_IO | PID_STAT | PID_STATM );
 	} else {
 		if (doio && get_bool(doio, "io"))
 			pidopts |= PID_IO;
 		if (dostat && get_bool(dostat, "stat"))
 			pidopts |= PID_STAT;
+		if (dotick && get_bool(dotick, "sc_clk_tck")) {
+			pidopts |= PID_TICK;
+			tick = sysconf(_SC_CLK_TCK);
+		}
 		if (dostatm && get_bool(dostatm, "statm"))
 			pidopts |= PID_STATM;
 		if (dommalloc && get_bool(dommalloc, "mmalloc"))
@@ -242,6 +250,7 @@ static char *pids = "self";
 IOLIST(DECLPOS);
 static int pos_pid = -1;
 static int pos_ppid = -1;
+static int pos_tick = -1;
 STATLIST(DECLPOS);
 STATMLIST(DECLPOS);
 MMALLOCLIST(DECLPOS);
@@ -267,7 +276,7 @@ FDTYPESLIST(DECLPOS);
 
 static int create_metric_set(base_data_t base)
 {
-	int rc;
+	int rc = 0;
 
 	int iorc = -1;
 	int statrc = -1;
@@ -334,6 +343,9 @@ static int create_metric_set(base_data_t base)
 	if (pidopts & PID_FDTYPES) {
 		FDTYPESLIST(METRIC);
 	}
+	if (pidopts & PID_TICK) {
+		META("sc_clk_tck", sc_clk_tck, LDMS_V_U64, pos_tick);
+	}
 
 	set = base_set_new(base);
 	if (!set) {
@@ -394,6 +406,9 @@ static int create_metric_set(base_data_t base)
 	if (pidopts & PID_FDTYPES) {
 		FDTYPESLIST(FDSAMPLE);
 	}
+	if (pidopts & PID_TICK) {
+		ldms_metric_set_u64(set, pos_tick, (uint64_t)tick);
+	}
 
 	base_sample_end(base);
 	return 0;
@@ -411,7 +426,7 @@ static int create_metric_set(base_data_t base)
 static const char *usage(struct ldmsd_plugin *self)
 {
 	return  "config name=" SAMP " " BASE_CONFIG_USAGE
-		" [io=<bool>] [stat=<bool>] [statm=<bool>] [mmalloc=<bool>] [fd=<bool>] [fdtypes=<bool>]\n"
+		" [io=<bool>] [stat=<bool>] [statm=<bool>] [mmalloc=<bool>] [fd=<bool>] [fdtypes=<bool>] [sc_clk_tck=<1/*>\n"
 		"    If none of io, stat, statm, mmalloc is given, all but mmalloc, fd & fdtypes default true.\n"
 		"    If any of io, stat, statm is given, any unmentioned ones default false.\n"
 		"    Enabling mmalloc, fd, or fdtypes is potentially expensive at high frequencies on aggregators.\n"
@@ -436,6 +451,7 @@ static const char *dstat_opts[] = {
 	"fd",
 	"fdtypes",
 	"auto-schema",
+	"sc_clk_tck",
 	NULL
 };
 
