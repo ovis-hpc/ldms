@@ -583,14 +583,15 @@ void usage_hint(char *argv[],char *hint)
 	       "		   are DEBUG, INFO, ERROR, CRITICAL and QUIET.\n"
 	       "		   The default level is ERROR.\n");
 	printf("  Communication Options\n");
-	printf("    -x xprt:port:host\n"
+	printf("    -x xprt:port:host@auth:authopt\n"
 	       "		   Specifies the transport type to listen on. May be specified\n"
 	       "		   more than once for multiple transports. The transport string\n"
 	       "		   is one of 'rdma', 'sock', 'ugni', or 'fabric'.\n"
 	       "		   A transport specific port number is optionally specified\n"
 	       "		   following a ':', e.g. rdma:50000. Optional host name\n"
 	       "		   or address may be given after the port, e.g. rdma:10000:node1-ib,\n"
-	       "		   to listen to a specific address.\n");
+	       "		   to listen to a specific address. Optional authentication method name\n"
+               "                   may be given after host, e.g. sock:411:@ovis:conf=/x/ldmsauth.conf.\n");
 	printf("    -a AUTH        Transport authentication plugin (default: 'none')\n");
 	printf("    -A KEY=VALUE   Authentication plugin options (repeatable)\n");
 	printf("  Kernel Metric Options\n");
@@ -1692,18 +1693,39 @@ int ldmsd_listen_start(ldmsd_listen_t listen)
 	return rc;
 }
 
-static int __create_default_auth()
+static int __create_auth(const char *n, const char *pname, struct attr_value_list *opt)
 {
 	ldmsd_auth_t auth_dom;
 	int rc = 0;
-	auth_dom = ldmsd_auth_new_with_auth(DEFAULT_AUTH, auth_name, auth_opt,
+	auth_dom = ldmsd_auth_find(n);
+	char *sopt = av_to_string(opt, AV_EXPAND);
+	if (auth_dom) {
+		if (opt && opt->count) {
+			ldmsd_log(LDMSD_LERROR, "Repeated auth method %s"
+				" must not have options given again:%s.\n",
+				n, sopt);
+			free(sopt);
+			return E2BIG;
+		}
+		free(sopt);
+		return 0;
+	}
+	ldmsd_log(LDMSD_LINFO, "Configuring auth method %s with plugin %s "
+		"and options %s\n", n, pname, sopt ? sopt : "(none)");
+	free(sopt);
+	auth_dom = ldmsd_auth_new_with_auth(n, pname, opt,
 					geteuid(), getegid(), 0600);
 	if (!auth_dom) {
-		ldmsd_log(LDMSD_LCRITICAL, "Failed to set the default "
-				"authentication method, errno %d\n", errno);
+		ldmsd_log(LDMSD_LCRITICAL, "Failed to set the %s "
+			"authentication method, errno %d\n", n, errno);
 		rc = errno;
 	}
 	return rc;
+}
+
+static int __create_default_auth()
+{
+	return __create_auth(DEFAULT_AUTH, auth_name, auth_opt);
 }
 
 int main(int argc, char *argv[])
@@ -1868,7 +1890,7 @@ int main(int argc, char *argv[])
 			/* Listening port processing is handled below */
 			port = strchr(optarg, ':');
 			if (!port) {
-				printf("Bad xprt format, expecting XPRT:PORT, "
+				printf("Bad xprt format, expecting at least XPRT:PORT, "
 				       "but got: %s\n", optarg);
 				exit(1);
 			}
@@ -2121,17 +2143,27 @@ int main(int argc, char *argv[])
 			if (check_arg("x", optarg, LO_NAME))
 				return EINVAL;
 			char *dup_xtuple = strdup(optarg);
-			if (!dup_xtuple) {
+			char *dup_atuple = strdup(optarg);
+			if (!dup_xtuple || !dup_atuple) {
 				printf("out of memory parsing arguments\n");
+				free(dup_xtuple);
+				free(dup_atuple);
 				return ENOMEM;
 			}
-			char *_xprt, *_port, *_host;
+			char *_xprt, *_port, *_host,
+				*_auth = NULL, *x_auth_opts = NULL;
+			_auth = strchr(dup_atuple, '@');
+			if (_auth) {
+				dup_xtuple[_auth - dup_atuple] = '\0';
+				_auth++;
+			}
 			_xprt = dup_xtuple;
 			_port = strchr(dup_xtuple, ':');
-			if (!_port) {
-				printf("Bad xprt format, expecting XPRT:PORT, "
-						"but got: %s\n", optarg);
+			if (!_port || _port[1] == ':') {
+				printf("Bad xprt format, expecting at least "
+					"XPRT:PORT, but got: %s\n", optarg);
 				free(dup_xtuple);
+				free(dup_atuple);
 				return EINVAL;
 			}
 			*_port = '\0';
@@ -2142,14 +2174,68 @@ int main(int argc, char *argv[])
 				*_host = '\0';
 				_host++;
 			}
-			/* Use the default auth domain */
-			ldmsd_listen_t listen = ldmsd_listen_new(_xprt, _port, _host, DEFAULT_AUTH);
+			/* optional `auth' follows @ (allow ipv6 host) */
+			if (_auth) {
+				/* optional `x_auth_opts` */
+				x_auth_opts = strchr(_auth, ':');
+				if (x_auth_opts) {
+					*x_auth_opts = '\0';
+					x_auth_opts++;
+				}
+			}
+			if (_host && !strlen(_host)) {
+				_host = NULL;
+			}
+			if (_auth && !strlen(_auth)) {
+				_auth = NULL;
+			}
+			/* Use the default auth domain unless specified */
+			if (!_auth) {
+				_auth = DEFAULT_AUTH;
+			} else {
+				/* -x xprt:port:host@auth defines an auth
+				 * instance with name=plugin_name */
+				int xosize = 1;
+				if (x_auth_opts) {
+					/* extra : separated fields of
+					 * x=y convert to av list */
+					char *t = x_auth_opts;
+					while (t[0] != '\0') {
+						if (t[0] == ':') {
+							t[0] = ' ';
+							xosize++;
+						}
+						t++;
+					}
+				}
+				struct attr_value_list *xav = av_new(xosize);
+				struct attr_value_list *xkv = av_new(xosize);
+				if (x_auth_opts) {
+					tokenize(x_auth_opts, xkv, xav);
+				}
+				int xrc = __create_auth(_auth, _auth, xav);
+				av_free(xav);
+				av_free(xkv);
+				if (xrc) {
+					ldmsd_log(LDMSD_LERROR, "%s: failed to"
+						" add auth method %s\n",
+						STRERROR(xrc), _auth);
+					cleanup(13, "add auth on command-line "
+						"failed.");
+				}
+			}
+			ldmsd_log(LDMSD_LINFO, "main() Trying to listen on "
+				"%s:%s:%s@%s.\n", _xprt, _port,
+				_host ? _host : "NULL_HOST", _auth);
+			ldmsd_listen_t listen = ldmsd_listen_new(_xprt,
+							_port, _host, _auth );
 			free(dup_xtuple);
+			free(dup_atuple);
 			if (!listen) {
-				printf( "Error %d: failed to add listening "
-					"endpoint: %s:%s\n",
-					errno, optarg, rval);
-				cleanup(errno, "listen failed");
+				ldmsd_log(LDMSD_LERROR, "Error %s: failed to "
+					"add listening endpoint: %s\n",
+					STRERROR(errno), optarg);
+				cleanup(14, "listen failed");
 			}
 			if (myname[0] == '\0')
 				snprintf(myname, sizeof(myname), "%s:%s", myhostname, rval);
