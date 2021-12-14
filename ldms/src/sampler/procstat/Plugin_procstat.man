@@ -31,6 +31,11 @@ configuration line
 maxcpu=<core count>
 .br
 Values are 0 to N, where 0 logs only totalized data and N reserves slots for N cores. If less than N cores are found, 0-values are reported. If more than N cores are found, they are ignored with an INFO note in the log.  Default is the number of cores found locally when the sampler is started.  If machines monitored may have cores disabled or variable hyperthreading  status, set maxcpu to the most cores that will be reported anywhere in the cluster.
+.TP
+sc_clk_tck=1
+.br
+Enable optional reporting of sysconf(_SC_CLK_TCK), the scheduler ticks-per-second defined at kernel build time as CONFIG_HZ,
+collected from sysconf(3). Typically HPC systems use 100, while 250, 300, 1000 may also occur.
 .RE
 
 .SH DATA

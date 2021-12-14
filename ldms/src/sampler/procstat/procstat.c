@@ -108,6 +108,7 @@ static const char *array_metric_name[] = {
 #define MID_INTR g.scalar_pos[4]
 #define MID_CTXT g.scalar_pos[5]
 #define MID_NCORE g.scalar_pos[6]
+static int mid_tick;
 
 #define MAX_CPU_METRICS sizeof(default_metric_name)/sizeof(default_metric_name[0])
 
@@ -126,6 +127,7 @@ struct sampler_data {
 	int scalar_pos[NUM_MID];
 	uint64_t compid;
 	char *producer_name;
+	long tick;
 	int sum_pos[MAX_CPU_METRICS]; /* mid for summary core metrics */
 	uint64_t sum_data[MAX_CPU_METRICS];
 	int core_pos[MAX_CPU_METRICS]; /* mid for per core metrics */
@@ -141,6 +143,7 @@ struct sampler_data {
 	.warn_col_count = 0,
 	.warn_row_count = 0,
 	.compid = 0,
+	.tick = 0
 };
 // global instance, to become per instance later.
 
@@ -445,6 +448,13 @@ if (strcmp(token,X)==0) { \
 			goto err1;
 		}
 	}
+	if (g.tick) {
+		mid_tick = ldms_schema_meta_add(g.schema, "sc_clk_tck", LDMS_V_U64);
+		if (mid_tick < 0) {
+			rc = -mid_tick;
+			goto err1;
+		}
+	}
 
 
 	g.set = base_set_new(g.base);
@@ -493,8 +503,9 @@ static int config_check(struct attr_value_list *kwl, struct attr_value_list *avl
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=" SAMP " maxcpu=<ncpu>" BASE_CONFIG_USAGE
+	return  "config name=" SAMP " maxcpu=<ncpu> sc_clk_tck=1" BASE_CONFIG_USAGE
 		"    maxcpu       The number of cpus to record. If fewer exist, report 0s; if more ignore them.\n"
+		"    sc_clk_tck   Enable reporting sc_clk_tck (1) or not (any other value).\n"
 	;
 }
 
@@ -533,6 +544,10 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		g.maxcpu = utmp;
 	} else {
 		g.maxcpu = -2;
+	}
+	value = av_value(avl, "sc_clk_tck");
+	if (value && value[0] == '1') {
+		g.tick = sysconf(_SC_CLK_TCK);
 	}
 
 	rc = create_metric_set(g.base);
@@ -708,6 +723,10 @@ static int sample(struct ldmsd_sampler *self)
 		ldms_metric_set_u64(g.set, g.sum_pos[j], g.sum_data[j]);
 	}
 	ldms_metric_set_u64(g.set, MID_NCORE, ncore);
+	if (g.tick) {
+		ldms_metric_set_u64(g.set, mid_tick, g.tick);
+		g.tick = 0; /* do only once */
+	}
 
 
 err1:
