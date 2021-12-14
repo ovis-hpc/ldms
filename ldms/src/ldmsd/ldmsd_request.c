@@ -59,6 +59,8 @@
 #include <sys/socket.h>
 #include <coll/rbt.h>
 #include <pthread.h>
+#include <unistd.h>
+#include <getopt.h>
 #include <pwd.h>
 #include <grp.h>
 #include <ovis_util/util.h>
@@ -256,6 +258,7 @@ static int auth_add_handler(ldmsd_req_ctxt_t reqc);
 static int auth_del_handler(ldmsd_req_ctxt_t reqc);
 
 static int set_default_authz_handler(ldmsd_req_ctxt_t reqc);
+static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc);
 
 /* executable for all */
 #define XALL 0111
@@ -555,7 +558,25 @@ static struct request_handler_entry request_handler[] = {
 	[LDMSD_AUTH_DEL_REQ] = {
 		LDMSD_AUTH_DEL_REQ, auth_del_handler, XUG
 	},
+
+	/* CMD-LINE options */
+	[LDMSD_CMDLINE_OPTIONS_SET_REQ] = {
+		LDMSD_CMDLINE_OPTIONS_SET_REQ, cmd_line_arg_set_handler, XUG
+	},
 };
+
+int is_req_id_priority(enum ldmsd_request req_id)
+{
+	switch (req_id) {
+	case LDMSD_VERBOSE_REQ:
+	case LDMSD_LISTEN_REQ:
+	case LDMSD_AUTH_ADD_REQ:
+	case LDMSD_CMDLINE_OPTIONS_SET_REQ:
+		return 1;
+	default:
+		return 0;
+	}
+}
 
 /*
  * The process request function takes records and collects
@@ -5053,7 +5074,7 @@ static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
 	prdcr = ldmsd_prdcr_first();
 	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);;
-	char *myself = strdup(ldmsd_myhostname_get());
+	char *myself = strdup(ldmsd_myname_get());
 	if (!myself) {
 		ldmsd_log(LDMSD_LERROR, "Out of memory\n");
 		return ENOMEM;
@@ -5310,7 +5331,7 @@ size_t __set_route_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
 					"\"trans_end_usec\":\"%ld\""
 					"}"
 				"}",
-				ldmsd_myhostname_get(),
+				ldmsd_myname_get(),
 				ldmsd_set_info_origin_enum2str(info->origin_type),
 				info->origin_name,
 				info->interval_us,
@@ -5341,7 +5362,7 @@ size_t __set_route_json_get(int is_internal, ldmsd_req_ctxt_t reqc,
 					"\"last_end_usec\":\"%ld\""
 					"}"
 				"}",
-				ldmsd_myhostname_get(),
+				ldmsd_myname_get(),
 				ldmsd_set_info_origin_enum2str(info->origin_type),
 				info->origin_name,
 				info->prd_set->prdcr->host_name,
@@ -5425,7 +5446,7 @@ static int set_route_handler(ldmsd_req_ctxt_t reqc)
 		/* The set does not exist. */
 		cnt = snprintf(reqc->line_buf, reqc->line_len,
 				"%s: Set '%s' not exist.",
-				ldmsd_myhostname_get(), inst_name);
+				ldmsd_myname_get(), inst_name);
 		(void) ldmsd_send_error_reply(reqc->xprt, reqc->key.msg_no, ENOENT,
 				reqc->line_buf, cnt + 1);
 		goto out;
@@ -5457,7 +5478,7 @@ static int set_route_handler(ldmsd_req_ctxt_t reqc)
 			reqc->errcode = rc;
 			cnt = snprintf(reqc->line_buf, reqc->line_len,
 					"%s: error forwarding set_route_request to "
-					"prdcr '%s'", ldmsd_myhostname_get(),
+					"prdcr '%s'", ldmsd_myname_get(),
 					info->origin_name);
 			ldmsd_send_req_response(reqc, reqc->line_buf);
 			goto err2;
@@ -6741,4 +6762,98 @@ static int set_default_authz_handler(ldmsd_req_ctxt_t reqc)
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 
 	return 0;
+}
+
+extern struct option long_opts[];
+extern char *short_opts;
+extern int ldmsd_process_cmd_line_arg(char opt, char *value);
+static int __cmdline_options(ldmsd_req_ctxt_t reqc, int argc, char *argv[])
+{
+	int opt, opt_idx;
+	reqc->errcode = 0;
+	opterr = 0;
+	optind = 0;
+	while (0 < (opt = getopt_long(argc, argv,
+				  short_opts, long_opts,
+				  &opt_idx))) {
+		switch (opt) {
+		case 'x':
+			reqc->errcode = EINVAL;
+			snprintf(reqc->line_buf, reqc->line_len,
+					"The 'option' command does not support 'x' or 'xprt'. "
+					"Use the 'listen' command instead.");
+			return reqc->errcode;
+		case 'F':
+		case 'u':
+		case 'V':
+			reqc->errcode = EINVAL;
+			snprintf(reqc->line_buf, reqc->line_len,
+					"The option '%s' must be given at the command line.",
+					argv[optind-1]);
+			return reqc->errcode;
+		default:
+			reqc->errcode = ldmsd_process_cmd_line_arg(opt, optarg);
+			if (reqc->errcode == ENOENT) {
+				snprintf(reqc->line_buf, reqc->line_len,
+					"Unknown cmd-line option or it must be "
+					"given at the command line: %s\n", argv[optind-1]);
+				return reqc->errcode;
+			}
+			break;
+		}
+	}
+	return 0;
+}
+
+static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc)
+{
+	char *s, *dummy, *token, *ptr1;
+	int rc = 0;
+	int argc;
+	char **argv = NULL;
+	int count;
+
+	dummy = NULL;
+	s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
+	if (!s) {
+		snprintf(reqc->line_buf, reqc->line_len, "No options are given.");
+		reqc->errcode = EINVAL;
+		goto send_reply;
+	}
+	dummy = strdup(s);
+	if (!dummy)
+		goto enomem;
+
+	/* Count number of tokens */
+	for (token = strtok_r(dummy, " \t\n", &ptr1); token;
+			token = strtok_r(NULL, " \t\n", &ptr1)) {
+		count++;
+	}
+
+	argv = calloc(count + 2, sizeof(char *)); /* +2 is for "option" and NULL*/
+	if (!argv)
+		goto enomem;
+
+	/* Populate argv */
+	opterr = 0;
+	argv[0] = "option";
+	argc = 1;
+	for (token = strtok_r(s, " \t\n", &ptr1); token;
+			token = strtok_r(NULL, " \t\n", &ptr1)) {
+		argv[argc++] = token;
+	}
+
+	(void) __cmdline_options(reqc, argc, argv);
+send_reply:
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(s);
+	free(dummy);
+	free(argv);
+	return rc;
+enomem:
+	snprintf(reqc->line_buf, reqc->line_len, "ldmsd is out of memory.");
+	reqc->errcode = ENOMEM;
+	ldmsd_log(LDMSD_LCRITICAL, "Out of memroy\n");
+	rc = ENOMEM;
+	goto send_reply;
 }

@@ -85,6 +85,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "logrotate",          LDMSD_LOGROTATE_REQ  },
 	{  "metric_sets_default_authz", LDMSD_SET_DEFAULT_AUTHZ_REQ  },
 	{  "oneshot",            LDMSD_ONESHOT_REQ  },
+	{  "option",             LDMSD_CMDLINE_OPTIONS_SET_REQ  },
 	{  "plugn_sets",         LDMSD_PLUGN_SETS_REQ  },
 	{  "plugn_status",       LDMSD_PLUGN_STATUS_REQ  },
 	{  "prdcr_add",          LDMSD_PRDCR_ADD_REQ  },
@@ -270,6 +271,7 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_EXIT_DAEMON_REQ       : return "EXIT_DAEMON_REQ";
 	case LDMSD_RECORD_LEN_ADVICE_REQ : return "RECORD_LEN_ADVICE_REQ";
 	case LDMSD_SET_ROUTE_REQ         : return "SET_ROUTE_REQ";
+	case LDMSD_CMDLINE_OPTIONS_SET_REQ : return "CMDLINE_OPTION_SET_REQ";
 
 	/* failover requests by user */
 	case LDMSD_FAILOVER_CONFIG_REQ        : return "FAILOVER_CONFIG_REQ";
@@ -710,6 +712,13 @@ out:
 	return rc;
 }
 
+int __ldmsd_parse_cmdline_req(struct ldmsd_parse_ctxt *ctxt)
+{
+	/* Treat the attribute string as a single STRING attribute value */
+	return add_attr_from_attr_str(NULL, ctxt->av,
+			&ctxt->request, &ctxt->request_sz, ctxt->msglog);
+}
+
 struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 					size_t xprt_max_msg, ldmsd_msg_log_f msglog)
 {
@@ -777,6 +786,9 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 		break;
 	case LDMSD_AUTH_ADD_REQ:
 		rc = __ldmsd_parse_auth_add_req(&ctxt);
+		break;
+	case LDMSD_CMDLINE_OPTIONS_SET_REQ:
+		rc = __ldmsd_parse_cmdline_req(&ctxt);
 		break;
 	default:
 		rc = __ldmsd_parse_generic(&ctxt);

@@ -1223,7 +1223,7 @@ typedef struct ldmsd_auth {
 
 /* Key (name) of the default auth -- intentionally including SPACE as it is not
  * allowed in user-defined names */
-#define DEFAULT_AUTH "auth_default"
+#define DEFAULT_AUTH "DEFAULT"
 
 ldmsd_auth_t
 ldmsd_auth_new_with_auth(const char *name, const char *plugin,
@@ -1246,4 +1246,13 @@ void ldmsd_timespec_diff(struct timespec *a, struct timespec *b, struct timespec
 
 void ldmsd_log_flush_interval_set(unsigned long interval);
 void ldmsd_flush_log();
+
+struct ldmsd_str_ent {
+	char *str;
+	TAILQ_ENTRY(ldmsd_str_ent) entry;
+};
+TAILQ_HEAD(ldmsd_str_list, ldmsd_str_ent);
+struct ldmsd_str_ent *ldmsd_str_ent_new(char *s);
+void ldmsd_str_ent_free(struct ldmsd_str_ent *ent);
+void ldmsd_str_list_destroy(struct ldmsd_str_list *list);
 #endif

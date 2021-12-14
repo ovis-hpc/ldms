@@ -1500,6 +1500,46 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_auth_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('auth_add', text)
 
+    def do_option(self, arg):
+        """
+        ONLY SUPPORTED IN CONFIGURATION FILES
+        Specify the command-line options
+
+        Parameters:
+            -A, -- defulat_auth_args    Arguments of the default authentication method
+            -a, -- default_auth         Default authentication method
+            -B, --banner                Banner mode: 0=do banner file, 1=auto-delete at exit, 2=keep the file
+            -H, --host_name             Host/producer name used by the kernel metric sets
+            -k, --publish_kernel        Publish kernel: true or false
+            -l, --log_file              Path to the log file or 'syslog'
+            -m, --set_memory            Set memory, e.g., 2GB, 512mB
+            -n, --daemon_name           Daemon name
+            -P, --worker_threads        Number of worker threads
+            -r, --pid_file              Path to the PID file
+            -s, --kernel_set_path       Path to a text file containing the kernel metric values
+            -v, --log_level             Log level: DEBUG, INFO, ERROR, CRITICAL, QUIET
+
+        Use 'listen' instead of the -x option.
+
+        The following options must specified only at the command line.
+            -c        Path to a configuration file
+            -F        Foreground mode
+            -u        List named plugins
+            -V        Print LDMS version
+
+        You would specify the command-line options as if you specify them at
+        the command line.
+
+        Examples:
+           # Specify a short option
+           option -a ovis
+           # Specify multiple short options
+           option -m 2GB -P 16
+           # Specify multiple long options
+           option --log_file /path/to/logfile --log_level ERROR
+        """
+        print("Not supported! The 'option' command is only supported in a configuration file.")
+
     def parseline(self, line):
         """Parse the line into a command name and a string containing
         the arguments.  Returns a tuple containing (command, args, line).
