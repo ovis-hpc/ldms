@@ -736,8 +736,10 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			array_value = sos_array_new(array_value, attr,
 							obj, array_len);
 			if (!array_value) {
-				LOG_(LDMSD_LERROR, "Error allocating '%s' array\n",
-				       sos_attr_name(attr));
+				LOG_(LDMSD_LERROR, "Error %d allocating '%s' array of size %d\n",
+				     errno,
+				     sos_attr_name(attr),
+				     array_len);
 				errno = ENOMEM;
 				goto err;
 			}
