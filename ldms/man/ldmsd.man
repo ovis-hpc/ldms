@@ -130,13 +130,22 @@ Display the usage for named plugin. Special names all, sampler, and store match 
 .SS
 Communication Options:
 .TP
-.BI -x " XPRT:PORT:HOST"
+.BI -x " XPRT:PORT[:HOST@AUTH:AUTHOPTS]"
 .br
 Specifies the transport type to listen on. May be specified more than once for
 multiple transports. The XPRT string is one of 'rdma', 'sock', or 'ugni' (CRAY
 XE/XK/XC). A transport specific port number must be specified following a \':',
 e.g. rdma:10000. An optional host or address may be specified after the port,
-e.g. rdma:10000:node1-ib, to listen to a specific address.
+e.g. rdma:10000:node1-ib, to listen to a specific address.  If not specified,
+localhost will be assumed.
+
+The authentication method may be optionally specified with AUTH, and the default
+method (settable with -a) will be used if it is not. Additional options specific
+to the authentication method may be optionally passed as AUTHOPTS, but only for
+the first explicit occurence of each method. Default values for the optional fields
+will be assumed when no space is left between colons. If AUTHOPTS requires multiple
+key=value pairs, they are separated by a colon rather than space.
+
 
 The listening transports can also be specified in the configuration file using
 \fBlisten\fR command, e.g. `listen xprt=sock port=1234 host=node1-ib`. Please see
@@ -272,9 +281,10 @@ None known.
 .SH EXAMPLES
 .PP
 .nf
-$/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -p unix:/var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1
+$ ldmsd -x sock:60000 -p unix:/var/run/ldmsd/metric_socket -l /tmp/opt/ovis/logs/1
 .br
-$/tmp/opt/ovis/sbin/ldmsd -x sock:60000 -p sock:61000 -p unix:/var/runldmsd/metric_socket
+$ ldmsd -x sock:60000 -p sock:61000 -p unix:/var/run/ldmsd/metric_socket
+$ ldmsd -a munge -x sock:412 -x rdma:411:node-ib0@ovis:conf=/install/ldmsauth.conf -x sock:10411:@ovis
 .fi
 
 
