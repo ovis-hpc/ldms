@@ -642,8 +642,6 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	sos_obj_t obj;
 	int i;
 	int rc = 0;
-	int last_rc = 0;
-	int last_errno = 0;
 
 	if (!si)
 		return EINVAL;
@@ -671,13 +669,13 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			       "The job_id is missing from the metric set/schema.\n");
 		assert(si->ts_attr);
 	}
+	sos_begin_x(si->sos_handle->sos);
 	obj = sos_obj_new(si->sos_schema);
 	if (!obj) {
-		pthread_mutex_unlock(&si->lock);
 		LOG_(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
 		       STRERROR(errno), __FILE__, __LINE__);
 		errno = ENOMEM;
-		return -1;
+		goto err;
 	}
 	timestamp = ldms_transaction_timestamp_get(set);
 
@@ -754,17 +752,15 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	}
 	rc = sos_obj_index(obj);
 	sos_obj_put(obj);
+	sos_end_x(si->sos_handle->sos);
 	if (rc) {
-		last_errno = errno;
-		last_rc = rc;
 		LOG_(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
 		       STRERROR(errno), __FILE__, __LINE__);
 	}
-	if (last_errno)
-		errno = last_errno;
 	pthread_mutex_unlock(&si->lock);
-	return last_rc;
+	return rc;
 err:
+	sos_end_x(si->sos_handle->sos);
 	pthread_mutex_unlock(&si->lock);
 	return errno;
 }
