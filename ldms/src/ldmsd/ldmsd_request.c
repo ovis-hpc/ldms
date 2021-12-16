@@ -6811,7 +6811,7 @@ static int cmd_line_arg_set_handler(ldmsd_req_ctxt_t reqc)
 	int rc = 0;
 	int argc;
 	char **argv = NULL;
-	int count;
+	int count = 0;
 
 	dummy = NULL;
 	s = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_STRING);
