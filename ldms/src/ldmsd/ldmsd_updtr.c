@@ -1139,6 +1139,14 @@ int ldmsd_updtr_start(const char *updtr_name, const char *interval_str,
 		offset_us = strtol(offset_str, NULL, 0)
 					- updtr_sched_offset_skew_get();
 
+	if (interval_us < labs(offset_us) * 2) {
+		ldmsd_log(LDMSD_LERROR, "%s: The absolute value of the offset"
+			" value must not be larger than the half of "
+			"the update interval. (i=%ld, o=%ld)\n", "ldmsd_updtr_start",
+			interval_us, offset_us);
+		rc = EINVAL;
+		goto err;
+	}
 	/* Initialize the default task */
 	updtr_task_init(&updtr->default_task, updtr, 1, interval_us, offset_us);
 	ldmsd_updtr_unlock(updtr);
