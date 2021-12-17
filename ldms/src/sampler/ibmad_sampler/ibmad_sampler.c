@@ -27,6 +27,7 @@
 
 #include "config.h"
 #include "jobid_helper.h"
+#include "sampler_base.h" /* for auth mix-in */
 
 #define _GNU_SOURCE
 
@@ -42,6 +43,7 @@ static struct {
 
 ldmsd_msg_log_f log_fn;
 char producer_name[LDMS_PRODUCER_NAME_MAX];
+struct base_auth auth;
 
 /* red-black tree root for infiniband port metrics */
 static struct rbt metrics_tree;
@@ -305,7 +307,9 @@ static struct metric_data *ibmad_metric_create(const char *instance,
 		goto out4;
 	}
 
+	base_auth_set(&auth, data->metric_set);
         ldms_set_publish(data->metric_set);
+        ldmsd_set_register(data->metric_set, SAMP);
         rbn_init(&data->metrics_node, data->instance);
 
         return data;
@@ -323,6 +327,7 @@ out1:
 static void ibmad_metric_destroy(struct metric_data *data)
 {
         log_fn(LDMSD_LDEBUG, SAMP" ibmad_destroy() %s\n", data->instance);
+	ldmsd_set_deregister(data->instance, SAMP);
         ldms_set_unpublish(data->metric_set);
         ldms_set_delete(data->metric_set);
 	_port_close(data);
@@ -526,6 +531,7 @@ static int config(struct ldmsd_plugin *self,
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
 
 	jobid_helper_config(avl);
+	base_auth_parse(avl, &auth, log_fn);
 
         value = av_value(avl, "schema");
         if (value != NULL) {
