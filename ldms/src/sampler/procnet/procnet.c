@@ -167,6 +167,7 @@ static int add_port(const char *name)
 		base->instance_name = tmp;
 		goto err;
 	}
+	base_auth_set(&base->auth, set);
 	ports[n_ports].set = set;
 	strncpy(ports[n_ports].name, name, sizeof(ports[n_ports].name));
 	base->set = NULL;
