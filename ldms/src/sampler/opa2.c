@@ -198,7 +198,7 @@ static int find_all_connected_hfis()
 
 static int create_hfi_port( umad_ca_t *cap, int port_number) {
 	if (! cap || port_number < 1) {
-		return EINVAL;
+		return 0;
 	}
 	if (port_number > cap->numports) {
 		msglog(LDMSD_LERROR, SAMP ": hfi %s has no port %d\n",
