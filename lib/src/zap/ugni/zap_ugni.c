@@ -1396,6 +1396,7 @@ static void process_uep_msg_accepted(struct z_ugni_ep *uep)
 			msg->ep_desc.pe_addr, msg->ep_desc.inst_id);
 
 	/* ack the accept message */
+	memset(&ack, 0, sizeof(ack));
 	ack.data_len = 0;
 	ack.hdr.msg_len = htonl(sizeof(ack));
 	ack.hdr.msg_type = htons(ZAP_UGNI_MSG_ACK_ACCEPTED);
@@ -1690,6 +1691,7 @@ z_ugni_send_mapped(zap_ep_t ep, zap_map_t map, void *buf, size_t len,
 		return ZAP_ERR_NOT_CONNECTED;
 	}
 	EP_UNLOCK(uep);
+	memset(&msg, 0, sizeof(msg));
 	msg.hdr.msg_type = htons(ZAP_UGNI_MSG_SEND_MAPPED);
 	zerr = z_ugni_msg_send(uep, &msg, buf, len, context);
 	return zerr;
@@ -1709,12 +1711,13 @@ static zap_err_t z_ugni_send(zap_ep_t ep, char *buf, size_t len)
 	if (zerr)
 		return zerr;
 
+	memset(&msg, 0, sizeof(msg));
 	EP_LOCK(uep);
 	if (ep->state != ZAP_EP_CONNECTED) {
 		EP_UNLOCK(uep);
 		return ZAP_ERR_NOT_CONNECTED;
 	}
-
+	memset(&msg, 0, sizeof(msg));
 	msg.hdr.msg_type = htons(ZAP_UGNI_MSG_REGULAR);
 	zerr = z_ugni_msg_send(uep, &msg, buf, len, NULL);
 	EP_UNLOCK(uep);
@@ -2287,6 +2290,7 @@ static zap_err_t z_ugni_reject(zap_ep_t ep, char *data, size_t data_len)
 	if (data_len > ZAP_UGNI_MAX_MSG)
 		return ZAP_ERR_PARAMETER;
 
+	memset(&msg, 0, sizeof(msg));
 	msg.hdr.msg_type = htons(ZAP_UGNI_MSG_REJECTED);
 	EP_LOCK(uep);
 	uep->ep.state = ZAP_EP_ERROR;
@@ -3109,6 +3113,7 @@ static int z_ugni_sock_send_conn_req(struct z_ugni_ep *uep)
 
 	assert(uep->ep.state == ZAP_EP_CONNECTING);
 
+	memset(&mbuf, 0, sizeof(mbuf));
 	mbuf.msg.hdr.msg_len = htonl(msg_len);
 	mbuf.msg.hdr.msg_type = htons(ZAP_UGNI_MSG_CONNECT);
 
@@ -3147,6 +3152,7 @@ static int z_ugni_sock_send_conn_accept(struct z_ugni_ep *uep, const char *data,
 
 	assert(uep->ep.state == ZAP_EP_ACCEPTING);
 
+	memset(&mbuf, 0, sizeof(mbuf));
 	mbuf.msg.hdr.msg_len = htonl(msg_len);
 	mbuf.msg.hdr.msg_type = htons(ZAP_UGNI_MSG_ACCEPTED);
 	mbuf.msg.accept.ep_desc.inst_id = htonl(_dom.inst_id.u32);
