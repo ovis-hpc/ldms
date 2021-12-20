@@ -3041,9 +3041,8 @@ int ldms_mval_parse_scalar(ldms_mval_t v, enum ldms_value_type vt, const char *s
 	return 0;
 }
 
-#define DELETE_TIMEOUT	(600)	/* 10 minutes */
-#define DELETE_CHECK	(60)
-#define REPORT_MIN	(10)
+#define DELETE_TIMEOUT	(60)	/* 1 minute */
+#define DELETE_CHECK	(15)
 
 static void *delete_proc(void *arg)
 {
