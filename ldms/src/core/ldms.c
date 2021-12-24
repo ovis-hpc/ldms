@@ -144,7 +144,7 @@ static struct rbt __id_tree = {
 
 static pthread_mutex_t __set_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static struct rbt del_tree = {
+static struct rbt __del_tree = {
 	.root = NULL,
 	.comparator = id_comparator
 };
@@ -156,7 +156,7 @@ int ldms_set_count()
 
 int ldms_set_deleting_count()
 {
-	return del_tree.card;
+	return __del_tree.card;
 }
 
 static pthread_mutex_t __del_tree_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -751,7 +751,41 @@ void __ldms_set_info_delete(struct ldms_set_info_list *info)
 static void __destroy_set_no_lock(void *v)
 {
 	struct ldms_set *set = v;
-	rbt_del(&del_tree, &set->del_node);
+	struct ldms_xprt *x = set->xprt;
+	struct ldms_context *ctxt;
+	if (x) {
+		/*
+		 * Check if there any transports referencing this set
+		 * and if so, remove the reference
+		 */
+		pthread_mutex_lock(&x->lock);
+		TAILQ_FOREACH(ctxt, &x->ctxt_list, link) {
+			ctxt = TAILQ_FIRST(&x->ctxt_list);
+			switch (ctxt->type) {
+			case LDMS_CONTEXT_LOOKUP_READ:
+				if (ctxt->lu_read.s)
+					ctxt->lu_read.s = NULL;
+				break;
+			case LDMS_CONTEXT_UPDATE:
+			case LDMS_CONTEXT_UPDATE_META:
+				if (ctxt->update.s)
+					ctxt->update.s = NULL;
+				break;
+			case LDMS_CONTEXT_REQ_NOTIFY:
+				if (ctxt->req_notify.s)
+					ctxt->req_notify.s = NULL;
+				break;
+			case LDMS_CONTEXT_SET_DELETE:
+				if (ctxt->set_delete.s)
+					ctxt->set_delete.s = NULL;
+				break;
+			default:
+				break;
+			}
+		}
+		pthread_mutex_unlock(&x->lock);
+	}
+	rbt_del(&__del_tree, &set->del_node);
 	mm_free(set->meta);
 	__ldms_set_info_delete(&set->local_info);
 	__ldms_set_info_delete(&set->remote_info);
@@ -832,7 +866,7 @@ void ldms_set_delete(ldms_set_t s)
 	s->del_time = time(NULL);
 	rbn_init(&s->del_node, &s->del_time);
 	pthread_mutex_lock(&__del_tree_lock);
-	rbt_ins(&del_tree, &s->del_node);
+	rbt_ins(&__del_tree, &s->del_node);
 	pthread_mutex_unlock(&__del_tree_lock);
 
 	/* Drop the creation reference */
@@ -3061,7 +3095,7 @@ static void *delete_proc(void *arg)
 		 * newest. Delete any set older than the threshold
 		 */
 		pthread_mutex_lock(&__del_tree_lock);
-		rbn = rbt_max(&del_tree);
+		rbn = rbt_max(&__del_tree);
 		while (rbn) {
 			set = container_of(rbn, struct ldms_set, del_node);
 			name = get_instance_name(set->meta);
@@ -3079,7 +3113,7 @@ static void *delete_proc(void *arg)
 				name->name, set->ref.ref_count, dur);
 			ref_dump(&set->ref, __func__, stderr);
 			__destroy_set_no_lock(set);
-			rbn = rbt_max(&del_tree);
+			rbn = rbt_max(&__del_tree);
 			fflush(stderr);
 		}
 		pthread_mutex_unlock(&__del_tree_lock);

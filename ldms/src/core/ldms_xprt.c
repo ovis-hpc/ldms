@@ -311,19 +311,23 @@ void __ldms_free_ctxt(struct ldms_xprt *x, struct ldms_context *ctxt)
 		break;
 	case LDMS_CONTEXT_LOOKUP_READ:
 		e = &x->stats.ops[LDMS_XPRT_OP_LOOKUP];
-		ref_put(&ctxt->lu_read.s->ref, "__ldms_alloc_ctxt");
+		if (ctxt->lu_read.s)
+			ref_put(&ctxt->lu_read.s->ref, "__ldms_alloc_ctxt");
 		break;
 	case LDMS_CONTEXT_UPDATE:
 	case LDMS_CONTEXT_UPDATE_META:
 		e = &x->stats.ops[LDMS_XPRT_OP_UPDATE];
-		ref_put(&ctxt->update.s->ref, "__ldms_alloc_ctxt");
+		if (ctxt->update.s)
+			ref_put(&ctxt->update.s->ref, "__ldms_alloc_ctxt");
 		break;
 	case LDMS_CONTEXT_REQ_NOTIFY:
-		ref_put(&ctxt->req_notify.s->ref, "__ldms_alloc_ctxt");
+		if (ctxt->req_notify.s)
+			ref_put(&ctxt->req_notify.s->ref, "__ldms_alloc_ctxt");
 		break;
 	case LDMS_CONTEXT_SET_DELETE:
 		e = &x->stats.ops[LDMS_XPRT_OP_SET_DELETE];
-		ref_put(&ctxt->set_delete.s->ref, "__ldms_alloc_ctxt");
+		if (ctxt->set_delete.s)
+			ref_put(&ctxt->set_delete.s->ref, "__ldms_alloc_ctxt");
 		break;
 	case LDMS_CONTEXT_DIR:
 		break;
