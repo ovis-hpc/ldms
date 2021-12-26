@@ -3431,17 +3431,15 @@ void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_
 		/* We won't put ref on receiving reply. */
 		ctxt->set_delete.lookup = 0;
 	}
-	pthread_mutex_unlock(&x->lock);
 	req = (struct ldms_request *)(ctxt + 1);
 	len = format_set_delete_req(req, (uint64_t)(unsigned long)ctxt,
 					ldms_set_instance_name_get(s));
 	zap_err_t zerr = zap_send(x->zap_ep, req, len);
 	if (zerr) {
 		x->zerrno = zerr;
-		pthread_mutex_lock(&x->lock);
 		__ldms_free_ctxt(x, ctxt);
-		pthread_mutex_unlock(&x->lock);
 	}
+	pthread_mutex_unlock(&x->lock);
 }
 
 static int send_cancel_notify(ldms_t _x, ldms_set_t s)
