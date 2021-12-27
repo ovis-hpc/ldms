@@ -348,7 +348,8 @@ static void _add_cb(ldms_t xprt, ldmsd_prdcr_t prdcr, ldms_dir_set_t dset)
 		ldms_set_t xs = ldms_xprt_set_by_name(xprt, dset->inst_name);
 		if (xs) {
 			ldmsd_log(LDMSD_LCRITICAL, "Received dir_add, prdset is missing, but set %s is present...ignoring",
-					dset->inst_name);
+				  dset->inst_name);
+			ldms_set_put(xs);
 			return;
 		}
 		set = prdcr_set_new(dset->inst_name, dset->schema_name);
