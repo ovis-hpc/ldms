@@ -3289,9 +3289,10 @@ int __ldms_remote_lookup(ldms_t _x, const char *path,
 	__ldms_set_tree_lock();
 	struct ldms_set *set = __ldms_find_local_set(path);
 	__ldms_set_tree_unlock();
-	if (set)
+	if (set) {
+		ldms_set_put(set);
 		return EEXIST;
-
+	}
 	char *lu_path = strdup(path);
 	if (!lu_path)
 		return ENOMEM;
@@ -3783,10 +3784,7 @@ extern ldms_set_t ldms_xprt_set_by_name(ldms_t x, const char *set_name)
 		return NULL;
 	pthread_mutex_lock(&x->lock);
 	rbn = rbt_find(&x->set_coll, set);
-	if (rbn) {
-		ref_get(&set->ref, "ldms_xprt_set_by_name");
-		ref_put(&set->ref, "__ldms_find_local_set");
-	} else {
+	if (!rbn) {
 		ref_put(&set->ref, "__ldms_find_local_set");
 		set = NULL;
 	}
