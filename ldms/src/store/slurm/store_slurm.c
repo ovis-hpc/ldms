@@ -61,6 +61,7 @@
 #include <sys/syscall.h>
 #include <assert.h>
 #include <sos/sos.h>
+#include <uuid/uuid.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "slurm_sampler.h"
@@ -530,6 +531,7 @@ _open_store(struct sos_instance *si, ldms_set_t set)
 {
 	int rc;
 	sos_schema_t schema;
+	uuid_t schema_uuid;
 
 	/* Check if the container is already open */
 	si->sos_handle = find_container(si->path);
@@ -564,7 +566,9 @@ _open_store(struct sos_instance *si, ldms_set_t set)
 	}
 
  add_schema:
+	uuid_generate(schema_uuid);
 	slurm_schema_template.name = si->schema_name;
+	slurm_schema_template.uuid = (char*)schema_uuid;
 	schema = sos_schema_from_template(&slurm_schema_template);
 	if (!schema)
 		goto err_0;

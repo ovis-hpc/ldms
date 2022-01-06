@@ -53,6 +53,7 @@
 
 #include <assert.h>
 #include <sos/sos.h>
+#include <uuid/uuid.h>
 
 #include "ldmsd.h"
 
@@ -317,6 +318,7 @@ __get_sos_schema(store_app_cont_t cont, const char *name,
 	struct rbn *rbn;
 	sos_schema_ref_t ref = NULL;
 	sos_schema_t schema = NULL;
+	uuid_t uuid;
 	int rc;
 
 	rbn = rbt_find(&cont->schema_tree, name);
@@ -332,6 +334,8 @@ __get_sos_schema(store_app_cont_t cont, const char *name,
 	if (!schema) {
 		/* Create a new schema for 'name' */
 		struct sos_schema_template *tmp = &app_schema_template;
+		uuid_generate_random(uuid);
+		tmp->uuid = (char*)uuid;
 		tmp->name = name;
 		bzero(&tmp->attrs[METRIC_ATTR], sizeof(tmp->attrs[0]));
 		tmp->attrs[METRIC_ATTR].name = name;
@@ -501,8 +505,10 @@ __store_mval(store_app_cont_t cont, struct metric_desc_s *m,
 	if (ldms_type_is_array(m->type)) {
 		sos_attr = sos_schema_attr_by_id(sos_schema, METRIC_ATTR);
 		v = sos_array_new(&v_, sos_attr, sos_obj, m->count);
+		assert(v);
 	} else {
 		v = sos_value_by_id(&v_, sos_obj, METRIC_ATTR);
+		assert(v);
 	}
 	__sos_val_set(v, m);
 	sos_value_put(v);

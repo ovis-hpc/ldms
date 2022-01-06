@@ -61,6 +61,7 @@
 #include <sys/syscall.h>
 #include <assert.h>
 #include <sos/sos.h>
+#include <uuid/uuid.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -244,6 +245,7 @@ sos_schema_t get_schema(sos_handle_t sh, const char *name)
 	struct rbn *rbn;
 	sos_schema_ref_t ref;
 	sos_schema_t schema = NULL;
+	uuid_t schema_uuid;
 
 	pthread_mutex_lock(&sh->schema_tree_lock);
 	rbn = rbt_find(&sh->schema_tree, name);
@@ -258,6 +260,8 @@ sos_schema_t get_schema(sos_handle_t sh, const char *name)
 		schema = sos_schema_by_name(sh->sos, name);
 		if (!schema) {
 			/* Create a new schema for 'name' */
+			uuid_generate(schema_uuid);
+			papi_event_schema.uuid = (char*)schema_uuid;
 			papi_event_schema.name = name;
 			papi_event_schema.attrs[EVENT_ATTR].name = name;
 			schema = sos_schema_from_template(&papi_event_schema);
