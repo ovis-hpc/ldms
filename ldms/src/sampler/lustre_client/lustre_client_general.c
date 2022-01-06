@@ -131,6 +131,7 @@ void llite_general_schema_fini()
 
 void llite_general_destroy(ldms_set_t set)
 {
+        ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
         ldms_set_unpublish(set);
         ldms_set_delete(set);
 }
