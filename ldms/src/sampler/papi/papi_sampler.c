@@ -142,6 +142,7 @@ static void free_job_data(job_data_t jd)
 	job_task_t t;
 
 	if (jd->set) {
+		ldmsd_set_deregister(jd->instance_name, SAMP);
 		ldms_set_unpublish(jd->set);
 		ldms_set_delete(jd->set);
 	}
