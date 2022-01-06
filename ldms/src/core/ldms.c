@@ -760,23 +760,22 @@ static void __destroy_set_no_lock(void *v)
 		 */
 		pthread_mutex_lock(&x->lock);
 		TAILQ_FOREACH(ctxt, &x->ctxt_list, link) {
-			ctxt = TAILQ_FIRST(&x->ctxt_list);
 			switch (ctxt->type) {
 			case LDMS_CONTEXT_LOOKUP_READ:
-				if (ctxt->lu_read.s)
+				if (ctxt->lu_read.s == set)
 					ctxt->lu_read.s = NULL;
 				break;
 			case LDMS_CONTEXT_UPDATE:
 			case LDMS_CONTEXT_UPDATE_META:
-				if (ctxt->update.s)
+				if (ctxt->update.s == set)
 					ctxt->update.s = NULL;
 				break;
 			case LDMS_CONTEXT_REQ_NOTIFY:
-				if (ctxt->req_notify.s)
+				if (ctxt->req_notify.s == set)
 					ctxt->req_notify.s = NULL;
 				break;
 			case LDMS_CONTEXT_SET_DELETE:
-				if (ctxt->set_delete.s)
+				if (ctxt->set_delete.s == set)
 					ctxt->set_delete.s = NULL;
 				break;
 			default:
