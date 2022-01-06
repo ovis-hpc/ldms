@@ -186,6 +186,7 @@ static void osd_sample(const char *osd_path, ldms_set_t general_metric_set)
 
 void ost_general_destroy(ldms_set_t set)
 {
+        ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
         ldms_set_unpublish(set);
         ldms_set_delete(set);
 }

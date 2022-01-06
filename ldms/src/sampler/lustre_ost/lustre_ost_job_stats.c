@@ -143,6 +143,7 @@ static void ost_job_stats_data_destroy(struct ost_job_stats_data *job_stats)
 {
         log_fn(LDMSD_LDEBUG, SAMP" ost_job_stats_data_destroy() jobid=%s\n",
                job_stats->jobid);
+        ldmsd_set_deregister(ldms_set_instance_name_get(job_stats->metric_set), SAMP);
         ldms_set_unpublish(job_stats->metric_set);
         ldms_set_delete(job_stats->metric_set);
         free(job_stats->jobid);
