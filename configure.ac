@@ -873,6 +873,7 @@ ldms/src/sampler/kgnilnd/Makefile
 ldms/src/sampler/tx2mon/Makefile
 ldms/src/sampler/meminfo/Makefile
 ldms/src/sampler/procinterrupts/Makefile
+ldms/src/sampler/procnetdev2/Makefile
 ldms/src/sampler/variable/Makefile
 ldms/src/sampler/procstat/Makefile
 ldms/src/sampler/loadavg/Makefile

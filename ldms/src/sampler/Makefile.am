@@ -233,6 +233,7 @@ if ENABLE_PROCNETDEV
 libprocnetdev_la_SOURCES = procnetdev.c
 libprocnetdev_la_LIBADD = $(COMMON_LIBADD)
 pkglib_LTLIBRARIES += libprocnetdev.la
+SUBDIRS += procnetdev2
 endif
 
 if ENABLE_PROCNFS
