@@ -241,12 +241,14 @@ static ldms_set_t gpu_metric_set_create(int gpu_id)
         ldms_set_producer_name_set(set, producer_name);
         ldms_metric_set_s32(set, gpu_id_metric_index, gpu_id);
         ldms_set_publish(set);
+        ldmsd_set_register(set, SAMP);
 
         return set;
 }
 
 static void gpu_metric_set_destroy(ldms_set_t set)
 {
+        ldmsd_set_deregister(ldms_set_instance_name_get(set), SAMP);
         ldms_set_unpublish(set);
         ldms_set_delete(set);
 }
