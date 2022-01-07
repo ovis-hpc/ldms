@@ -568,6 +568,7 @@ static struct request_handler_entry request_handler[] = {
 int is_req_id_priority(enum ldmsd_request req_id)
 {
 	switch (req_id) {
+	case LDMSD_ENV_REQ:
 	case LDMSD_VERBOSE_REQ:
 	case LDMSD_LISTEN_REQ:
 	case LDMSD_AUTH_ADD_REQ:
