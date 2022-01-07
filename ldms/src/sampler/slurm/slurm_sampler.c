@@ -980,8 +980,11 @@ static void term(struct ldmsd_plugin *self)
 	if (job_schema)
 		ldms_schema_delete(job_schema);
 	job_schema = NULL;
-	if (job_set)
+	if (job_set) {
+		ldmsd_set_deregister(ldms_set_instance_name_get(job_set), "slurm_sampler");
+		ldms_set_unpublish(job_set);
 		ldms_set_delete(job_set);
+	}
 	job_set = NULL;
 }
 
