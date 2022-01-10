@@ -31,7 +31,7 @@
 
 #define _GNU_SOURCE
 
-#define SAMP "ibmad"
+#define SAMP "ibmad_sampler"
 
 /* So far I cannot find a header that defines these for us */
 #define PORT_STATE_ACTIVE 4

@@ -21,7 +21,7 @@
 
 #define _GNU_SOURCE
 
-#define SAMP "dcgm"
+#define SAMP "dcgm_sampler"
 
 static unsigned short default_fields[] = {
         DCGM_FI_DEV_GPU_TEMP,
