@@ -604,6 +604,8 @@ void ibnet_data_delete(struct ibnet_data *d)
 #ifndef MAIN
 	// timing_set
 	if (d->timing_set) {
+		ldmsd_set_deregister(ldms_set_instance_name_get(d->timing_set),
+					 SAMP);
 		ldms_set_unpublish(d->timing_set);
 		ldms_set_delete(d->timing_set);
 		d->timing_set = NULL;
@@ -912,6 +914,7 @@ int ibnet_data_sets_init(struct ibnet_data *d, const char *port_schema_name, con
 		ldms_metric_set_u64(d->timing_set, d->index_compid,
 					d->comp_id);
 		ldms_set_publish(d->timing_set);
+		ldmsd_set_register(d->timing_set, SAMP);
 	}
 
 	char port_instance_name[MAX_STR_NAME];
@@ -938,6 +941,7 @@ int ibnet_data_sets_init(struct ibnet_data *d, const char *port_schema_name, con
 		ldms_set_producer_name_set(port->set, port->lidname);
 		base_auth_set(&d->auth, port->set);
 		ldms_set_publish(port->set);
+		ldmsd_set_register(port->set, SAMP);
 	}
 	return 0;
 }
@@ -1146,6 +1150,7 @@ static void ibnet_data_port_destroy(struct ib_port *port)
 	if (!port)
 		return;
 	if (port->set) {
+		ldmsd_set_deregister(ldms_set_instance_name_get(port->set), SAMP);
 		ldms_set_unpublish(port->set);
 		ldms_set_delete(port->set);
 	}
