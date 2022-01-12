@@ -1390,8 +1390,10 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 	linux_proc_sampler_metric_info_t minfo;
 
 	fd = open(val, O_RDONLY);
-	if (fd < 0)
+	if (fd < 0) {
+		INST_LOG(inst, LDMSD_LERROR, "Cannot open %s\n", val);
 		return errno;
+	}
 	sz = lseek(fd, 0, SEEK_END);
 	if (sz < 0) {
 		rc = errno;
