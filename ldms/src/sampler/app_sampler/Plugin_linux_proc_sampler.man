@@ -36,6 +36,10 @@ exe_suffix=1
 If present, set instance names are appended with the full path of the executable. This is most likely
 useful for debugging configuration of the notifier up-stream using ldms_ls. (default: no such suffix)
 .TP
+sc_clk_tck=1
+.br
+If present, include sc_clk_tck in the metric set. sc_clk_tck is the ticks per second from sysconf(_SC_CLK_TCK). (default: not included).
+.TP
 stream
 .br
 The name of the `ldmsd_stream` to listen for SLURM job events.  (default: slurm).
@@ -44,7 +48,7 @@ metrics
 .br
 The comma-separated list of metrics to monitor.  The default is (empty), which is equivalent to monitor ALL metrics.
 .TP
-cfg_file The alternative config file in JSON format. The file is expected to have an object that contains the following attributes: { "stream": "STREAM_NAME", "metrics": [ comma-separated-quoted-strings ] }.  If the `cfg_file` is given, the stream, metrics, instance_prefix and exe_suffix options are ignored.
+cfg_file The alternative config file in JSON format. The file is expected to have an object that contains the following attributes: { "stream": "STREAM_NAME", "metrics": [ comma-separated-quoted-strings ] }.  If the `cfg_file` is given, the stream, metrics, instance_prefix, sc_clk_tck and exe_suffix options are ignored.
 .RE
 
 .SH INPUT STREAM FORMAT
@@ -136,5 +140,9 @@ timerslack_ns
 wchan
 .fi
 
+.SH NOTES
+
+The value strings given to the options sc_clk_tck and exe_suffix are ignored; the presence of the option is sufficient to enable the respective features.
+
 .SH SEE ALSO
-ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), proc(5)
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), proc(5), sysconf(3)
