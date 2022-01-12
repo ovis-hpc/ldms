@@ -486,6 +486,7 @@ struct linux_proc_sampler_inst_s {
 	base_data_t base_data;
 	char *instance_prefix;
 	bool exe_suffix;
+	long sc_clk_tck;
 	struct timeval sample_start;
 
 	struct rbt set_rbt;
@@ -501,6 +502,7 @@ struct linux_proc_sampler_inst_s {
 	int start_time_idx;
 	int start_tick_idx;
 	int exe_idx;
+	int sc_clk_tck_idx;
 	int is_thread_idx;
 	int parent_pid_idx;
 	int metric_idx[_APP_LAST+1]; /* 0 means disabled */
@@ -1163,7 +1165,9 @@ linux_proc_sampler_update_schema(linux_proc_sampler_inst_t inst, ldms_schema_t s
 						LDMS_V_S64);
 	inst->exe_idx = ldms_schema_meta_array_add(schema, "exe",
 						LDMS_V_CHAR_ARRAY, 512);
-
+	if (inst->sc_clk_tck)
+		inst->sc_clk_tck_idx = ldms_schema_meta_add(schema, "sc_clk_tck",
+						LDMS_V_S64);
 
 	/* Add app metrics to the schema */
 	for (i = 1; i <= _APP_LAST; i++) {
@@ -1273,7 +1277,7 @@ static
 char *_help = "\
 linux_proc_sampler config synopsis: \n\
     config name=linux_proc_sampler [COMMON_OPTIONS] [stream=STREAM]\n\
-			    [metrics=METRICS] [cfg_file=FILE] [exe_suffix=1]]\n\
+	    [sc_clk_tck=1] [metrics=METRICS] [cfg_file=FILE] [exe_suffix=1]]\n\
 \n\
 Option descriptions:\n\
     instance_prefix    The prefix for generated instance names. Typically a cluster name\n\
@@ -1282,16 +1286,18 @@ Option descriptions:\n\
     exe_suffix  Append executable path to set instance names.\n\
     stream    The name of the `ldmsd_stream` to listen for SLURM job events.\n\
 	      (default: slurm).\n\
+    sc_clk_tck=1 Include sc_clk_tck, the ticks per second, in the set.\n\
+              The default is to exclude sc_clk_tck.\n\
     metrics   The comma-separated list of metrics to monitor.\n\
-	      The default is "" (empty), which is equivalent to monitor ALL\n\
+	      The default is \"\" (empty), which is equivalent to monitor ALL\n\
 	      metrics.\n\
     cfg_file  The alternative config file in JSON format. The file is\n\
 	      expected to have an object that contains the following \n\
 	      attributes:\n\
 	      - \"stream\": \"STREAM_NAME\"\n\
 	      - \"metrics\": [ METRICS ]\n\
-	      If the `cfg_file` is given, `stream` and `metrics` options\n\
-	      are ignored.\n\
+	      If the `cfg_file` is given, `stream`, `metrics`, 'sc_clk_tck'\n\
+	      and 'exe_suffix' options are ignored.\n\
 \n\
 The sampler creates and destroys sets according to events received from \n\
 LDMSD stream. The sets share the same schema which is contructed according \n\
@@ -1451,6 +1457,10 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 	ent = json_value_find(jdoc, "exe_suffix");
 	if (ent) {
 		inst->exe_suffix = 1;
+	}
+	ent = json_value_find(jdoc, "sc_clk_tck");
+	if (ent) {
+		inst->sc_clk_tck = sysconf(_SC_CLK_TCK);
 	}
 	ent = json_value_find(jdoc, "stream");
 	if (ent) {
@@ -1780,6 +1790,8 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 	ldms_metric_set_s64(set, inst->parent_pid_idx, parent);
 	ldms_metric_set_u8(set, inst->is_thread_idx, is_thread_val ? 1 : 0);
 	ldms_metric_array_set_str(set, inst->exe_idx, exe_string);
+	if (inst->sc_clk_tck)
+		ldms_metric_set_s64(set, inst->sc_clk_tck_idx, inst->sc_clk_tck);
 	app_set->set = set;
 	rbn_init(&app_set->rbn, (void*)&app_set->key);
 
@@ -1974,13 +1986,13 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 				goto err;
 			}
 		}
-		val = av_value(kwl, "exe_suffix");
-		if (val) {
-			inst->exe_suffix = true;
-		}
 		val = av_value(avl, "exe_suffix");
 		if (val) {
 			inst->exe_suffix = true;
+		}
+		val = av_value(avl, "sc_clk_tck");
+		if (val) {
+			inst->sc_clk_tck = sysconf(_SC_CLK_TCK);
 		}
 		val = av_value(avl, "stream");
 		if (val) {
