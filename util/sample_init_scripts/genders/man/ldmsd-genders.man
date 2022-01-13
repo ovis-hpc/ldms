@@ -81,6 +81,7 @@ If VERBOSE is defined as "-v", additional messages will be logged from the init 
 
 .B LDMS_AUTH_TYPE=type
 
+If set, overrides the gender ldmsd_auth, defining the authentication plugin default set on the command line.
 This variable defines the type of authentication to use. The supported types are 'ovis' (the v3 secretword file) and 'munge'. See ldms_authentication(7) for details.
 
 .B LDMS_AUTH_FILE=filename

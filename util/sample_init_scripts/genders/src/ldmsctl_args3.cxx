@@ -92,6 +92,7 @@ public:
 	string retry;	// ldmsaggd_conn_retry
 	string host;	// ldms[agg]d_host
 	string xprt;	// ldms[agg]d_xprt
+	string auth;	// ldms[agg]d_auth
 	string port;	// ldms[agg]d_port
 	string interval;// ldms[aggd]_interval_default
 	string offset; 	// ldms[aggd]_offset_default
@@ -323,6 +324,7 @@ public:
 		string ports = "ldmsd_port";
 		string hosts = "ldmsd_host";
 		string xprts = "ldmsd_xprt";
+		string auths = "ldmsd_auth";
 		string producer = prefix + "_producer";
 		string retry = prefix + "_conn_retry";
 		string intervals = prefix + "_interval_default";
@@ -355,6 +357,9 @@ public:
 			t.producer = host;
 		} else {
 			gender_substitute(host, t.producer);
+		}
+		if (! has_property(host, auths, t.auth, true) ) {
+			t.auth = "munge";
 		}
 		if (! has_property(host, xprts, t.xprt, true) ) {
 			t.xprt = "sock";
@@ -503,6 +508,7 @@ private:
 				oss << " host=" << t.host;
 				oss << " type=active";
 				oss << " xprt=" << t.xprt;
+				oss << " auth=" << t.auth;
 				oss << " port=" << t.port;
 				oss << " interval=" << t.retry;
 				oss << endl;
@@ -610,6 +616,7 @@ public:
 						oss << " host=" << t.host;
 						oss << " type=active";
 						oss << " xprt=" << t.xprt;
+						oss << " auth=" << t.auth;
 						oss << " port=" << t.port;
 						oss << " interval=" << t.retry;
 						oss << endl;
@@ -633,7 +640,7 @@ public:
 			oss << "updtr_prdcr_add name=all_" << hostname;
 			oss << " regex=" << ".*";
 			oss << endl;
-			oss << "updtr_start name=all_" << hostname;
+			oss << "updtr_start auto_interval=true name=all_" << hostname;
 			adds.push_back(oss.str());
 		}
 	}

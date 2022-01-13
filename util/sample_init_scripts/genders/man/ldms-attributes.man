@@ -32,6 +32,9 @@ ldmsd_producer=PROD     Defines the producer name reported in ldms data
 ldmsd_port=P            Defines the port number for the data server.
 ldmsd_xprt=X            Defines protocol for data server connections.
                         Typically, one of sock, rdma, ugni.
+ldmsd_auth=X            Defines authentication for data server connections.
+                        Typically, munge or ovis. 'none' is insecure.
+                        Defaults to munge.
 ldmsd_use_unix_socket=V If the value of V is "yes", a unix socket for
                         daemon control will be opened.
 ldmsd_sockpath          Defines the full filename of the unix socket.
