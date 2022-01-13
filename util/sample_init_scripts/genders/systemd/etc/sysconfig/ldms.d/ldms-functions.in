@@ -105,7 +105,7 @@ check_auth_option () {
 			if ! test -f $LDMS_AUTH_FILE; then
 				echoq "LDMS_AUTH_FILE $LDMS_AUTH_FILE not found"
 			fi
-			LDMS_AUTH_ARGS="conf=$LDMS_AUTH_FILE"
+			LDMS_AUTH_ARGS="-A conf=$LDMS_AUTH_FILE"
 		fi
 		;;
 	xmunge)
@@ -119,7 +119,7 @@ check_auth_option () {
 			if ! test -S $LDMS_AUTH_FILE; then
 				echoq "LDMS_AUTH_FILE $LDMS_AUTH_FILE is not a socket as needed by munge"
 			fi
-			LDMS_AUTH_ARGS="socket=$LDMS_AUTH_FILE"
+			LDMS_AUTH_ARGS="-A socket=$LDMS_AUTH_FILE"
 
 		fi
 		;;
@@ -667,6 +667,9 @@ start_ldmsd_plugins () {
 			else
 				instance=${producer}/${pi}
 			fi
+			if echo "$extraconfig" |grep instance=; then
+				instance=$(echo $extraconfig|sed -e 's/.*instance=//g' -e  's/ .*//g')
+			fi > /dev/null
 		fi
 
 		# plugin options from per-plugin plain text file
