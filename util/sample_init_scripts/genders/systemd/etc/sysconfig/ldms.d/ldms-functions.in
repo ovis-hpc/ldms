@@ -92,6 +92,12 @@ check_log_option () {
 
 # check consistency of auth variables.
 check_auth_option () {
+	if test -z "$LDMS_AUTH_TYPE"; then
+		LDMS_AUTH_TYPE=$($NODEATTR $NODEATTRFILE -v $host ldmsd_auth 2>/dev/null)
+		if test -z $LDMS_AUTH_TYPE; then
+			LDMS_AUTH_TYPE=munge
+		fi
+	fi
 	LDMS_AUTH_ARGS=""
 	case x$LDMS_AUTH_TYPE in
 	xovis)
@@ -182,7 +188,7 @@ check_genders_file() {
 	renamed="ldmsaggd_stores:ldmsd_store_plugins ldmsd_metric_sets:ldmsd_metric_plugins ldmsaggd_store_csv:ldmsd_store_csv ldmsaggd_conn_thds:ldmsd_event_thds"
 	# common typos in prefixes here
 	prefixtypo="ldmsd_schema_:ldmsd_schemas_ ldmsd_exclude_schema_:ldmsd_exclude_schemas_ ldms_:ldmsd_ ldmsd_metric_plugin$:ldmsd_metric_plugins"
-	commatypo="chkmeminfo clock cray_power_sampler dstat fptrans lnet_stats job_info jobid meminfo perfevent procdiskstats procinterrupts procnetdev procnfs procsensors procstat sampler_atasmart sysclassib vmstat store_csvdbg lustre2_client lustre2_mds lustre2_oss store_csv store_rabbitv3 store_flatfile store_sos"
+	commatypo="chkmeminfo clock cray_power_sampler dstat fptrans lnet_stats job_info jobid meminfo perfevent procdiskstats procinterrupts procnetdev procnfs procsensors procstat sampler_atasmart sysclassib vmstat store_csvdbg lustre2_client lustre2_mds lustre2_oss store_csv store_rabbitv3 store_flatfile store_sos lustre_client linux_proc_sampler"
 	attrtypo="scheme:schema"
 	n=0
 	v=""
