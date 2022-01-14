@@ -1237,6 +1237,22 @@ typedef struct ldms_metric_template_s {
  */
 extern ldms_schema_t ldms_schema_new(const char *schema_name);
 
+/**
+ * \brief Create a metric set schema from metric templates.
+ *
+ * \param     name The name of the schema.
+ * \param[in]  tmp An array of metric templates. The array must be terminated
+ *                 with {0,0,0,0}.
+ * \param[out] mid An array of int to receive the metric IDs corresponding to
+ *                 the metric member in the record.
+ *
+ * \retval sch  The schema handle.
+ * \retval NULL If there is an error (\c errno is also set).
+ */
+ldms_schema_t ldms_schema_from_template(const char *name,
+			struct ldms_metric_template_s tmp[],
+			int mid[]);
+
  /**
  * \brief Write a JSON representation of the schema to a file
  *
@@ -1968,6 +1984,20 @@ extern int ldms_set_info_traverse(ldms_set_t s, ldms_set_info_traverse_cb_fn cb,
  * \retval <0	Insufficient resources or duplicate name
  */
 extern int ldms_schema_metric_add(ldms_schema_t s, const char *name, enum ldms_value_type t);
+
+/**
+ * \brief Like \c ldms_schema_metric_add(), but using metric template.
+ *
+ * \param        s The schema handle.
+ * \param[in]  tmp The array of metric templates (terminated with {0}).
+ * \param[out] mid The integer array output of metric IDs corresponding to the
+ *                 metrics in \c tmp. This can be \c NULL.
+ *
+ * \retval      0 If there is no error.
+ * \retval -errno If there is an error.
+ */
+extern int ldms_schema_metric_add_template(ldms_schema_t s,
+				struct ldms_metric_template_s tmp[], int mid[]);
 
 /**
  * \brief Add an attribute to schema
