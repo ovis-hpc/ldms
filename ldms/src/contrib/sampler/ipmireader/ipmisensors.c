@@ -103,7 +103,6 @@ static int create_command(char* hostname, char* username, char* password)
 {
 	FILE *mf;
 	char lbuf[256];
-	char *s;
 	int i;
 
 	i = snprintf(cmd, MAXIPMICMDLEN, IPMISENSORSCMDWOR, hostname,
@@ -122,8 +121,8 @@ static int create_command(char* hostname, char* username, char* password)
 		return ENOENT;
 	}
 	// if it fails the first line will have the wrong format
-	s = fgets(lbuf, sizeof(lbuf), mf);
-	if (strchr(lbuf, ',') == NULL){
+	char *s = fgets(lbuf, sizeof(lbuf), mf);
+	if (!s || strchr(lbuf, ',') == NULL){
 		msglog(LDMSD_LERROR, SAMP " bad arguments for command",
 		       "...exiting sampler\n");
 		return EINVAL;
@@ -137,15 +136,12 @@ static int create_command(char* hostname, char* username, char* password)
 static int create_metric_set(base_data_t base)
 {
 	ldms_schema_t schema;
-	uint64_t metric_value;
 	FILE* mf;
-	union ldms_value v;
 	char lbuf[256];
-	char *name, *value, *status, *ptr, *p;
-	char *newname;
+	char *name, *ptr;
 	char *current_pos;
 	char *s;
-	int rc, i;
+	int rc;
 
 
 	mf = popen(cmd, "r");
@@ -197,7 +193,7 @@ static int create_metric_set(base_data_t base)
 		}
 
 		// replace space with underscores
-		for (p = current_pos; (current_pos = strchr(name,' '))!=NULL;
+		for ( ; (current_pos = strchr(name,' '))!=NULL;
 		     *current_pos = '_');
 
 		rc = ldms_schema_metric_add(schema, name, LDMS_V_F32);
@@ -316,16 +312,13 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static int sample(struct ldmsd_sampler *self)
 {
-	int rc;
 	int metric_no;
 	char *s;
 	char lbuf[256];
 	FILE *mf;
 	char *junk, *value, *ptr, *next;
-	char *current_pos;
 	float fvalue;
 	union ldms_value v;
-	int i;
 
 	if (!set) {
 		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
