@@ -4383,3 +4383,86 @@ ldms_record_t ldms_record_from_template(const char *name,
 	ldms_record_delete(rec_def);
 	return NULL;
 }
+
+int ldms_schema_metric_add_template(ldms_schema_t s,
+				    struct ldms_metric_template_s tmp[],
+				    int mid[])
+{
+	int i, ret;
+	ldms_metric_template_t ent;
+
+	for (i=0, ent=tmp; ent->name || ent->rec_def; i++,ent++) {
+		switch (ent->type) {
+		case LDMS_V_RECORD_TYPE:
+			ret = ldms_schema_record_add(s, ent->rec_def);
+			break;
+		case LDMS_V_RECORD_ARRAY:
+			ret = ldms_schema_record_array_add(
+					s, ent->name, ent->rec_def,
+					ent->len
+				 );
+			break;
+		case LDMS_V_LIST:
+			ret = ldms_schema_metric_list_add(
+					s, ent->name, ent->unit, ent->len
+				 );
+			break;
+		case LDMS_V_CHAR:
+		case LDMS_V_U8:
+		case LDMS_V_S8:
+		case LDMS_V_U16:
+		case LDMS_V_S16:
+		case LDMS_V_U32:
+		case LDMS_V_S32:
+		case LDMS_V_U64:
+		case LDMS_V_S64:
+		case LDMS_V_F32:
+		case LDMS_V_D64:
+			ret = ldms_schema_metric_add_with_unit(
+					s, ent->name, ent->unit, ent->type
+				 );
+			break;
+		case LDMS_V_CHAR_ARRAY:
+		case LDMS_V_U8_ARRAY:
+		case LDMS_V_S8_ARRAY:
+		case LDMS_V_U16_ARRAY:
+		case LDMS_V_S16_ARRAY:
+		case LDMS_V_U32_ARRAY:
+		case LDMS_V_S32_ARRAY:
+		case LDMS_V_U64_ARRAY:
+		case LDMS_V_S64_ARRAY:
+		case LDMS_V_F32_ARRAY:
+		case LDMS_V_D64_ARRAY:
+			ret = ldms_schema_metric_array_add_with_unit(
+					s, ent->name, ent->unit,
+					ent->type, ent->len
+				 );
+			break;
+		default:
+			return -EINVAL;
+		}
+		if (ret < 0) /* error */
+			return ret;
+		if (mid)
+			mid[i] = ret;
+	}
+	return 0;
+}
+
+ldms_schema_t ldms_schema_from_template(const char *name,
+				struct ldms_metric_template_s tmp[], int mid[])
+{
+	ldms_schema_t sch;
+	int ret;
+	sch = ldms_schema_new(name);
+	if (!sch)
+		goto err;
+	ret = ldms_schema_metric_add_template(sch, tmp, mid);
+	if (ret)
+		goto err;
+	return sch;
+ err:
+	if (sch)
+		ldms_schema_delete(sch);
+	return NULL;
+}
