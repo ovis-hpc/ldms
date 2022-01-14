@@ -1210,6 +1210,21 @@ typedef struct ldms_xprt_stats {
  */
 extern void ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats);
 
+/*
+ * Metric template for:
+ * - ldms_schema_from_template()
+ * - ldms_schema_metric_add_template()
+ * - ldms_record_from_template()
+ * - ldms_record_metric_add_template()
+ */
+typedef struct ldms_metric_template_s {
+	const char *name;
+	enum ldms_value_type type;
+	const char *unit;
+	uint32_t len; /* array_len for ARRAY, or heap_sz for LIST */
+	ldms_record_t rec_def; /* for LDMS_V_RECORD_TYPE or LDMS_V_RECORD_ARRAY */
+} *ldms_metric_template_t;
+
 /**
  * \brief Create a metric set schema
  *
@@ -1303,6 +1318,43 @@ void ldms_record_delete(ldms_record_t rec_def);
 int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
 			   const char *unit, enum ldms_value_type type,
 			   size_t array_len);
+
+
+/**
+ * Create a record type definition from the record template entries.
+ *
+ * This is a convenient function that creates a record type definition and add
+ * metric members in one go. The \c tmp array must be terminated with
+ * {0,0,0,0}.
+ *
+ * REMARK: A record metric must NOT be a record or a list.
+ *
+ * \param     name The name of the record type.
+ * \param[in]  tmp An array of metric templates. The array must be terminated
+ *                 with {0,0,0,0}.
+ * \param[out] mid An array of int to receive the metric IDs corresponding to
+ *                 the metric member in the record.
+ *
+ * \retval rec_def If there is no error, the handle of the record type def.
+ * \retval NULL    If there is an error. In this case \c errno will also be set.
+ */
+ldms_record_t ldms_record_from_template(const char *name,
+			struct ldms_metric_template_s tmp[],
+			int mid[]);
+
+/**
+ * \brief Like \c ldms_record_metric_add(), but using metric template.
+ *
+ * \param        s The schema handle.
+ * \param[in]  tmp The array of metric templates (terminated with {0}).
+ * \param[out] mid The integer array output of metric IDs corresponding to the
+ *                 metrics in \c tmp. This can be \c NULL.
+ *
+ * \retval 0      If there is no error.
+ * \retval -errno If there is an error.
+ */
+int ldms_record_metric_add_template(ldms_record_t rec_def,
+			struct ldms_metric_template_s tmp[], int mid[]);
 
 /**
  * Get the size (bytes) required in the heap for a record instance.

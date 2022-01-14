@@ -4348,3 +4348,38 @@ int ldms_record_array_len(ldms_mval_t rec_array)
 	return __le32_to_cpu(rec_array->v_rec_array.array_len);
 }
 
+int ldms_record_metric_add_template(ldms_record_t rec_def,
+			struct ldms_metric_template_s tmp[], int mid[])
+{
+	ldms_metric_template_t ent;
+	int i, ret;
+	for (i=0, ent = tmp; ent->name; ent++, i++) {
+		ret = ldms_record_metric_add(rec_def,
+					ent->name, ent->unit,
+					ent->type, ent->len);
+		if (ret < 0)
+			return ret; /* errno is already set */
+		if (mid)
+			mid[i] = ret;
+	}
+	return 0;
+}
+
+ldms_record_t ldms_record_from_template(const char *name,
+			struct ldms_metric_template_s tmp[],
+			int mid[])
+{
+	ldms_record_t rec_def;
+	int ret;
+
+	rec_def = ldms_record_create(name);
+	if (!rec_def)
+		return NULL;
+	ret = ldms_record_metric_add_template(rec_def, tmp, mid);
+	if (ret)
+		goto err;
+	return rec_def;
+ err:
+	ldms_record_delete(rec_def);
+	return NULL;
+}
