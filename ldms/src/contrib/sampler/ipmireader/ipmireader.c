@@ -203,15 +203,13 @@ static int create_commands(char* hostname, char* username, char* password, char*
 static int create_metric_set(base_data_t base)
 {
 	ldms_schema_t schema;
-	uint64_t metric_value;
 	FILE* mf;
-	union ldms_value v;
 	char lbuf[256];
-	char *name, *value, *status, *ptr, *p;
+	char *name, *value, *status, *ptr;
 	char *newname;
 	char *current_pos;
 	char *s;
-	int rc, i;
+	int rc;
 
 
 	mf = popen(cmd, "r");
@@ -262,7 +260,7 @@ static int create_metric_set(base_data_t base)
 		}
 		newname = trim_whitespace(name);
 		// replace space with underscores
-		for (p = current_pos; (current_pos = strchr(newname,' '))!=NULL;
+		for ( ; (current_pos = strchr(newname,' '))!=NULL;
 		     *current_pos = '_');
 
 		value = strtok_r(NULL, "|", &ptr);
@@ -437,14 +435,12 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 
 static int sample(struct ldmsd_sampler *self)
 {
-	int rc;
 	int metric_no;
 	char *s;
 	char lbuf[256];
 	FILE *mf;
 	char *name, *value, *status, *ptr, *next;
 	char *newvalue;
-	char *current_pos;
 	float fvalue;
 	union ldms_value v;
 	int i;
@@ -502,7 +498,6 @@ static int sample(struct ldmsd_sampler *self)
 		metric_no++;
 	} while (s);
 
- out:
 	if (mf)
 		pclose(mf);
 
