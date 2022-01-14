@@ -252,6 +252,7 @@ endif
 
 if ENABLE_PROCSTAT
 SUBDIRS += procstat
+SUBDIRS += procstat2
 endif
 
 if ENABLE_DSTAT
