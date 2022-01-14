@@ -1,0 +1,61 @@
+.\" Manpage for Plugin_procstat2
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "14 Jan 2022" "v4" "LDMS Plugin procstat2 man page"
+
+.SH NAME
+Plugin_procstat2 - man page for the LDMS procstat2 plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=procstat2 [ <attr>=<value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms
+daemon) are configured via ldmsd_controller or a configuration file. The
+procstat2 plugin provides data from /proc/stat.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+The procstat2 plugin uses the sampler_base base class. This man page covers only
+the configuration attributes, or those with default values, specific to the this
+plugin; see ldms_sampler_base(7) for the attributes of the base class.
+
+
+.TP
+.BR config
+name=<plugin_name> [schema=<sname>]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be procstat2.
+.TP
+schema=<schema>
+.br
+Optional schema name. It is intended that the same sampler on different nodes
+with different metrics have a different schema. If not specified, will default
+to `procstat2`.
+.TP
+intr_max=<schema>
+.br
+(Optional). The maximum number of inerrupt numbers supported in intr_list. If
+not specified, intr_max will be the current number of interrupts in the intr
+list.
+.RE
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=procstat2
+config name=procstat2 producer=vm1_1 instance=vm1_1/procstat2
+start name=procstat2 interval=1000000
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7)
