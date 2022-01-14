@@ -20,4 +20,4 @@ export ZAP_LIBPATH=@libdir@/ovis-ldms
 # export ZAP_UGNI_COOKIE=<your cookie>
 #
 # for Python
-# _add PYTHONPATH @pythondir@
+_add PYTHONPATH @pythondir@
