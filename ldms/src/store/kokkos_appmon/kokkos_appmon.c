@@ -76,20 +76,9 @@ static char path_buff[PATH_MAX];
 static char *log_path = "/var/log/ldms/kokkos_appmon_store.log";
 static char *verbosity = "WARN";
 static char *stream;
-
 static char *root_path;
-
+static pthread_mutex_t cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct ldmsd_plugin kokkos_store;
-
-static union sos_timestamp_u
-to_timestamp(double d)
-{
-	union sos_timestamp_u u;
-	double secs = floor(d);
-	u.fine.secs = secs;
-	u.fine.usecs = d - secs;
-	return u;
-}
 
 static const char *time_job_rank_attrs[] = { "timestamp", "job_id", "rank" };
 static const char *job_time_rank_attrs[] = { "job_id", "timestamp", "rank" };
@@ -198,6 +187,12 @@ static int reopen_container(char *path)
 	int rc = 0;
 	sos_schema_t schema;
 
+	/* Check if the configuration has changed */
+	if (sos && (0 == strcmp(path, sos_container_path(sos)))
+	    && (container_mode == sos_container_mode(sos)))
+		/* No change, ignore request */
+		return 0;
+
 	/* Close the container if it already exists */
 	if (sos)
 		sos_container_close(sos, SOS_COMMIT_ASYNC);
@@ -232,14 +227,15 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 {
 	char *value;
 	char *producer_name;
-	int rc;
+	int rc = 0;
 
+	pthread_mutex_lock(&cfg_lock);
 	value = av_value(avl, "mode");
 	if (value)
 		container_mode = strtol(value, NULL, 0);
 	if (!container_mode) {
 		msglog(LDMSD_LERROR,
-		       "%s: ignoring bogus container permission mode of %s, using 0660.\n",
+		       "%s: ignoring container permission mode of %s, using 0660.\n",
 		       kokkos_store.name, value);
 	}
 	value = av_value(avl, "stream");
@@ -254,7 +250,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		msglog(LDMSD_LERROR,
 		       "%s: the path to the container (path=) must be specified.\n",
 		       kokkos_store.name);
-		return ENOENT;
+		rc = ENOENT;
+		goto out;
 	}
 	if (root_path)
 		free(root_path);
@@ -263,16 +260,18 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		msglog(LDMSD_LERROR,
 		       "%s: Error allocating %d bytes for the container path.\n",
 		       strlen(value) + 1);
-		return ENOMEM;
+		rc = ENOMEM;
+		goto out;
 	}
 
 	rc = reopen_container(root_path);
 	if (rc) {
 		msglog(LDMSD_LERROR, "%s: Error opening %s.\n",
 		       kokkos_store.name, root_path);
-		return ENOENT;
 	}
-	return 0;
+ out:
+	pthread_mutex_unlock(&cfg_lock);
+	return rc;
 }
 
 static int get_json_value(json_entity_t e, char *name, int expected_type, json_entity_t *out)
@@ -319,30 +318,30 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		       kokkos_store.name);
 		return 0;
 	}
-
+	pthread_mutex_lock(&cfg_lock);
 	rc = get_json_value(entity, "rank", JSON_INT_VALUE, &v);
 	if (rc)
-		goto err;
+		goto out;
 	rank = json_value_int(v);
 
 	rc = get_json_value(entity, "job-id", JSON_INT_VALUE, &v);
 	if (rc)
-		goto err;
+		goto out;
 	job_id = json_value_int(v);
 
 	rc = get_json_value(entity, "node-name", JSON_STRING_VALUE, &v);
 	if (rc)
-		goto err;
+		goto out;
 	node_name = json_value_str(v)->str;
 
 	rc = get_json_value(entity, "timestamp", JSON_STRING_VALUE, &v);
 	if (rc)
-		goto err;
+		goto out;
 	timestamp = strtod(json_value_str(v)->str, NULL);
 
 	rc = get_json_value(entity, "kokkos-perf-data", JSON_LIST_VALUE, &list);
 	if (rc)
-		goto err;
+		goto out;
 	for (item = json_item_first(list); item; item = json_item_next(item)) {
 
 		if (json_entity_type(item) != JSON_DICT_VALUE) {
@@ -350,42 +349,42 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			       "%s: Items in kokkos-perf-data must all be dictionaries.\n",
 			       kokkos_store.name);
 			rc = EINVAL;
-			goto err;
+			goto out;
 		}
 
 		rc = get_json_value(item, "name", JSON_STRING_VALUE, &v);
 		if (rc)
-			goto err;
+			goto out;
 		name = json_value_str(v)->str;
 
 		rc = get_json_value(item, "type", JSON_INT_VALUE, &v);
 		if (rc)
-			goto err;
+			goto out;
 		type = json_value_int(v);
 
 		rc = get_json_value(item, "current-kernel-count", JSON_INT_VALUE, &v);
 		if (rc)
-			goto err;
+			goto out;
 		current_kernel_count = json_value_int(v);
 
 		rc = get_json_value(item, "total-kernel-count", JSON_INT_VALUE, &v);
 		if (rc)
-			goto err;
+			goto out;
 		total_kernel_count = json_value_int(v);
 
 		rc = get_json_value(item, "level", JSON_INT_VALUE, &v);
 		if (rc)
-			goto err;
+			goto out;
 		level = json_value_int(v);
 
 		rc = get_json_value(item, "current-kernel-time", JSON_FLOAT_VALUE, &v);
 		if (rc)
-			goto err;
+			goto out;
 		current_kernel_time = json_value_float(v);
 
 		rc = get_json_value(item, "total-kernel-time", JSON_FLOAT_VALUE, &v);
 		if (rc)
-			goto err;
+			goto out;
 		total_kernel_time = json_value_float(v);
 
 		sos_obj_t obj = sos_obj_new(app_schema);
@@ -394,7 +393,7 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			msglog(LDMSD_LERROR,
 			       "%s: Error %d creating Kokkos App Mon object.\n",
 			       kokkos_store.name, errno);
-			goto err;
+			goto out;
 		}
 		sos_obj_attr_by_id_set(obj, TIMESTAMP_ID, timestamp);
 		sos_obj_attr_by_id_set(obj, JOB_ID, job_id);
@@ -411,7 +410,8 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		sos_obj_put(obj);
 	}
 	rc = 0;
- err:
+ out:
+	pthread_mutex_unlock(&cfg_lock);
 	return rc;
 }
 
