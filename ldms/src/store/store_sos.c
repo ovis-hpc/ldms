@@ -316,24 +316,29 @@ static sos_handle_t find_container(const char *path)
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	struct sos_instance *si;
-	int rc, len;
+	int rc = 0;
+	int len;
 	char *value;
 	value = av_value(avl, "path");
 	if (!value) {
 		LOG_(LDMSD_LERROR,
-		       "%s[%d]: The 'path' configuraiton option is required.\n",
+		       "%s[%d]: The 'path' configuration option is required.\n",
 		       __func__, __LINE__);
 		return EINVAL;
 	}
+	pthread_mutex_lock(&cfg_lock);
+	if (0 == strcmp(value, root_path))
+		/* Ignore the call if the root_path is unchanged */
+		goto out;
 	len = strlen(value);
 	if (len >= PATH_MAX) {
 		LOG_(LDMSD_LERROR,
 		       "%s[%d]: The 'path' is too long.\n",
 		       __func__, __LINE__);
-		return ENAMETOOLONG;
+		rc = ENAMETOOLONG;
+		goto out;
 	}
-	pthread_mutex_lock(&cfg_lock);
-	memcpy(root_path, value, len+1);
+	strcpy(root_path, value);
 
 	/* Run through all open containers and close them. They will
 	 * get re-opened when store() is next called
@@ -350,15 +355,16 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		if (si->path)
 			free(si->path);
 		si->path = malloc(pathlen);
-		if (!si->path)
-			goto err_0;
+		if (!si->path) {
+			rc = errno;
+			pthread_mutex_unlock(&si->lock);
+			goto out;
+		}
 		sprintf(si->path, "%s/%s", root_path, si->container);
 		pthread_mutex_unlock(&si->lock);
 	}
-	pthread_mutex_unlock(&cfg_lock);
-	return 0;
-
- err_0:
+	rc = 0;
+ out:
 	pthread_mutex_unlock(&cfg_lock);
 	return rc;
 }
