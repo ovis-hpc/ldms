@@ -104,15 +104,22 @@ static const char *job_rank_time_attrs[] = { "job_id", "rank", "timestamp" };
  *   \"ProducerName\" : \"nid00021\",
  *   \"file\" : \"/projects/darshan/test/mpi-io-test.tmp.dat\",
  *   \"record_id\" : 6222542600266098259,
- *   \"module\" : \"X_POSIX\",
+ *   \"module\" : \"POSIX\",
  *   \"type\" : \"MOD\",
  *   \"max_byte\" : 1,
  *   \"switches\" : 0,
+ *   \"flushes\" : -1,
  *   \"cnt\" : 1,
  *   \"op\" : \"writes_segment_0\",
  *   \"seg\" :
  *	[
- *	  { \"off\" : 0,
+ *	  { \"data_set\" : \"N/A\",
+ *	    \"pt_sel\" : -1,
+ *	    \"irreg_hslab\" : -1,
+ *	    \"reg_hslab\" : -1,
+ *	    \"ndims\" : -1,
+ *	    \"npoints\" : 0,
+ *	    \"ofif\" : 0,
  *	    \"len\" : 16777216,
  *	    \"dur\" : 966.3333,
  *	    \"timestamp\" : 163000348.3312,
@@ -120,8 +127,6 @@ static const char *job_rank_time_attrs[] = { "job_id", "rank", "timestamp" };
  *     ]
  *  }
  */
-
-//{ "job_id":6582,"rank":0,"ProducerName":"nid00021","file":"N/A","record_id":6222542600266098259,"module":"POSIX","type":"MOD","max_byte":16777215,"switches":0,"cnt":1,"op":"writes_segment_0","seg":[{"off":0,"len":16777216,"dur":0.16,"timestamp":1631904596.737955}]}
 
 static struct sos_schema_template darshan_data_template = {
 	.name = "darshan_data",
@@ -136,8 +141,15 @@ static struct sos_schema_template darshan_data_template = {
 		{ .name = "type", .type = SOS_TYPE_STRING },
 		{ .name = "max_byte", .type = SOS_TYPE_UINT64 },
 		{ .name = "switches", .type = SOS_TYPE_UINT64 },
+		{ .name = "flushes", .type = SOS_TYPE_UINT64 },
 		{ .name = "cnt", .type = SOS_TYPE_UINT64 },
 		{ .name = "op", .type = SOS_TYPE_STRING },
+		{ .name = "data_set", .type = SOS_TYPE_STRING },
+		{ .name = "pt_sel", .type = SOS_TYPE_UINT64 },
+		{ .name = "irreg_hslab", .type = SOS_TYPE_UINT64 },
+		{ .name = "reg_hslab", .type = SOS_TYPE_UINT64 },
+		{ .name = "ndims", .type = SOS_TYPE_UINT64 },
+		{ .name = "npoints", .type = SOS_TYPE_UINT64 },
 		{ .name = "off", .type = SOS_TYPE_UINT64 },
 		{ .name = "len", .type = SOS_TYPE_UINT64 },
 		{ .name = "dur", .type = SOS_TYPE_DOUBLE },
@@ -162,6 +174,7 @@ static struct sos_schema_template darshan_data_template = {
 	}
 };
 
+
 enum attr_ids {
        JOB_ID,
        RANK_ID,
@@ -172,8 +185,15 @@ enum attr_ids {
        TYPE_ID,
        MAX_BYTE_ID,
        SWITCHES_ID,
+       FLUSHES_ID,
        COUNT_ID,
        OPERATION_ID,
+       DATASET_ID,
+       PTSEL_ID,
+       IRREGHSLAB_ID,
+       REGHSLAB_ID,
+       NDIMS_ID,
+       NPOINTS_ID,
        OFFSET_ID,
        LENGTH_ID,
        DURATION_ID,
@@ -196,7 +216,7 @@ static int create_schema(sos_t sos, sos_schema_t *app)
 	rc = sos_schema_add(sos, schema);
 	if (rc) {
 		msglog(LDMSD_LERROR, "%s: Error %d adding Darshan data schema.\n",
-		       darshan_stream_store.name, rc);
+				darshan_stream_store.name, rc);
 		goto err;
 	}
 	*app = schema;
@@ -324,10 +344,8 @@ static int get_json_value(json_entity_t e, char *name, int expected_type, json_e
 }
 
 
-/* Metadata */
-/* { "job_id":6594,"rank":2,"ProducerName":"nid00021","file":"/projects/darshan/test/mpi-io-test.tmp.dat","record_id":6222542600266098259,"module":"POSIX","type":"MET","max_byte":-1,"switches":-1,"cnt":1,"op":"opens_segment_0","seg":[{"off":-1,"len":-1,"dur":0.00,"timestamp":1631904596.556221}]} */
-/* Module data */
-/* { "job_id":6582,"rank":0,"ProducerName":"nid00021","file":"N/A","record_id":6222542600266098259,"module":"POSIX","type":"MOD","max_byte":16777215,"switches":0,"cnt":1,"op":"writes_segment_0","seg":[{"off":0,"len":16777216,"dur":0.16,"timestamp":1631904596.737955}]} */
+// Json example
+//{ "job_id":78436,"rank":2,"ProducerName":"nid00046","dset_type":"HDF5","file":"N/A","record_id":3442697474759647253,"module":"POSIX","type":"MOD","max_byte":1191,"switches":1,"flushes":-1,"cnt":5,"op":"reads_segment_4","seg":[{"data_set":"N/A","pt_sel":-1,"irreg_hslab":-1,"reg_hslab":-1,"ndims":-1,"npoints":-1,"off":680,"len":512,"dur":0.00,"timestamp":1638309927.374291}]}
 
 static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			  ldmsd_stream_type_t stream_type,
@@ -338,7 +356,8 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	json_entity_t v, list, item;
 	double timestamp;
 	uint64_t record_id, count, rank, offset, length, job_id, duration, max_byte, switches;
-	char *module_name, *file_name, *type, *hostname, *operation, *producer_name;
+	uint64_t flushes, pt_sel, irreg_hslab, reg_hslab, ndims, npoints;
+	char *module_name, *file_name, *type, *hostname, *operation, *producer_name, *data_set;
 
 	if (!entity) {
 		msglog(LDMSD_LERROR,
@@ -392,6 +411,11 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		goto err;
 	switches = json_value_int(v);
 
+	rc = get_json_value(entity, "flushes", JSON_INT_VALUE, &v);
+	if (rc)
+		goto err;
+	flushes = json_value_int(v);
+
 	rc = get_json_value(entity, "cnt", JSON_INT_VALUE, &v);
 	if (rc)
 		goto err;
@@ -414,6 +438,36 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			rc = EINVAL;
 			goto err;
 		}
+
+		rc = get_json_value(item, "data_set", JSON_STRING_VALUE, &v);
+		if (rc)
+			goto err;
+		data_set = json_value_str(v)->str;
+
+		rc = get_json_value(item, "pt_sel", JSON_INT_VALUE, &v);
+		if (rc)
+			goto err;
+		pt_sel = json_value_int(v);
+
+		rc = get_json_value(item, "irreg_hslab", JSON_INT_VALUE, &v);
+		if (rc)
+			goto err;
+		irreg_hslab = json_value_int(v);
+
+		rc = get_json_value(item, "reg_hslab", JSON_INT_VALUE, &v);
+		if (rc)
+			goto err;
+		reg_hslab = json_value_int(v);
+
+		rc = get_json_value(item, "ndims", JSON_INT_VALUE, &v);
+		if (rc)
+			goto err;
+		ndims = json_value_int(v);
+
+		rc = get_json_value(item, "npoints", JSON_INT_VALUE, &v);
+		if (rc)
+			goto err;
+		npoints = json_value_int(v);
 
 		rc = get_json_value(item, "off", JSON_INT_VALUE, &v);
 		if (rc)
@@ -456,9 +510,16 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		sos_obj_attr_by_id_set(obj, TYPE_ID, strlen(type)+1, type);
 		sos_obj_attr_by_id_set(obj, MAX_BYTE_ID, max_byte);
 		sos_obj_attr_by_id_set(obj, SWITCHES_ID, switches);
+		sos_obj_attr_by_id_set(obj, FLUSHES_ID, flushes);
 		sos_obj_attr_by_id_set(obj, COUNT_ID, count);
 		sos_obj_attr_by_id_set(obj, RANK_ID, rank);
 		sos_obj_attr_by_id_set(obj, OPERATION_ID, strlen(operation)+1, operation);
+		sos_obj_attr_by_id_set(obj, DATASET_ID, strlen(data_set)+1, data_set);
+		sos_obj_attr_by_id_set(obj, PTSEL_ID, pt_sel);
+		sos_obj_attr_by_id_set(obj, IRREGHSLAB_ID, irreg_hslab);
+		sos_obj_attr_by_id_set(obj, REGHSLAB_ID, reg_hslab);
+		sos_obj_attr_by_id_set(obj, NDIMS_ID, ndims);
+		sos_obj_attr_by_id_set(obj, NPOINTS_ID, npoints);
 		sos_obj_attr_by_id_set(obj, OFFSET_ID, offset);
 		sos_obj_attr_by_id_set(obj, LENGTH_ID, length);
 		sos_obj_attr_by_id_set(obj, DURATION_ID, duration);
