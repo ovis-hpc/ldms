@@ -84,6 +84,27 @@ typedef struct sos_handle_s {
 
 static LIST_HEAD(sos_handle_list, sos_handle_s) sos_handle_list;
 
+struct sos_single_list_records {
+	int list_mid;
+};
+
+struct sos_lists_of_records {
+	int num_lists;
+	int *list_mid;
+	int *rec_len;
+};
+
+struct sos_list {
+	int list_mid; /* Metric index of each list */
+	enum ldms_value_type mtype; /* Value type of the list entries */
+	size_t count; /* The length of records or arrays, 1 otherwise */
+};
+
+struct sos_list_ctxt {
+	int num_lists;
+	struct sos_list *list;
+};
+
 /*
  * NOTE:
  *   <sos::path> = <root_path>/<container>
@@ -96,6 +117,17 @@ struct sos_instance {
 	void *ucontext;
 	sos_handle_t sos_handle; /**< sos handle */
 	sos_schema_t sos_schema;
+	int store_flags;
+	enum store_sos_mode {
+		STORE_SOS_M_BASIC = 0,
+		STORE_SOS_M_LISTS,
+		STORE_SOS_M_LAST
+	} mode;
+	union {
+		struct sos_single_list_records slist;
+		struct sos_lists_of_records lrec;
+		struct sos_list_ctxt lists;
+	} ctxt;
 	pthread_mutex_t lock; /**< lock at metric store level */
 
 	int job_id_idx;
@@ -143,44 +175,44 @@ sos_type_t sos_type_map[] = {
 	[LDMS_V_D64_ARRAY] = SOS_TYPE_DOUBLE_ARRAY,
 };
 
-static void set_none_fn(sos_value_t v, ldms_set_t set, int i) {
+static void set_none_fn(sos_value_t v, ldms_mval_t mval) {
 	assert(0 == "Invalid LDMS metric type");
 }
-static void set_u8_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.uint32_ = ldms_metric_get_u8(s, i);
+static void set_u8_fn(sos_value_t v, ldms_mval_t mval) {
+	v->data->prim.uint32_ = mval->v_u8;
 }
-static void set_s8_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.int32_ = ldms_metric_get_s8(s, i);
+static void set_s8_fn(sos_value_t v, ldms_mval_t mval) {
+	v->data->prim.int32_ = mval->v_s8;
 }
-static void set_u16_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.uint16_ = ldms_metric_get_u16(s, i);
+static void set_u16_fn(sos_value_t v, ldms_mval_t mval) {
+	v->data->prim.uint16_ = mval->v_u16;
 }
-static void set_s16_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.int16_ = ldms_metric_get_s16(s, i);
+static void set_s16_fn(sos_value_t v, ldms_mval_t mval) {
+	v->data->prim.int16_ = mval->v_s16;
 }
-static void set_char_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.uint32_ = ldms_metric_get_char(s, i);
+static void set_char_fn(sos_value_t v, ldms_mval_t mval) {
+	v->data->prim.uint32_ = mval->v_char;
 }
-static void set_u32_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.uint32_ = ldms_metric_get_u32(s, i);
+static void set_u32_fn(sos_value_t v, ldms_mval_t mval) {
+	v->data->prim.uint32_ = mval->v_u32;
 }
-static void set_s32_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.int32_ = ldms_metric_get_s32(s, i);
+static void set_s32_fn(sos_value_t v, ldms_mval_t mval) {
+	v->data->prim.int32_ = mval->v_s32;
 }
-static void set_u64_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.uint64_ = ldms_metric_get_u64(s, i);
+static void set_u64_fn(sos_value_t v, ldms_mval_t mval) {
+	v->data->prim.uint64_ = mval->v_u64;
 }
-static void set_s64_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.int64_ = ldms_metric_get_s64(s, i);
+static void set_s64_fn(sos_value_t v, ldms_mval_t mval) {
+	v->data->prim.int64_ = mval->v_s64;
 }
-static void set_float_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.float_ = ldms_metric_get_float(s, i);
+static void set_float_fn(sos_value_t v, ldms_mval_t mval) {
+	v->data->prim.float_ = mval->v_f;
 }
-static void set_double_fn(sos_value_t v, ldms_set_t s, int i) {
-	v->data->prim.double_ = ldms_metric_get_double(s, i);
+static void set_double_fn(sos_value_t v, ldms_mval_t mval) {
+	v->data->prim.double_ = mval->v_d;
 }
 
-typedef void (*sos_value_set_fn)(sos_value_t v, ldms_set_t set, int i);
+typedef void (*sos_value_set_fn)(sos_value_t v, ldms_mval_t mval);
 sos_value_set_fn sos_value_set[] = {
 	[LDMS_V_NONE] = set_none_fn,
 	[LDMS_V_CHAR] = set_char_fn,
@@ -427,11 +459,78 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	return NULL;
 }
 
+static int
+__schema_list(sos_schema_t schema, ldms_set_t set, int list_idx)
+{
+	int i, rc, rec_type = -1;
+	ldms_mval_t lent, lh;
+	enum ldms_value_type prev_mtype = LDMS_V_NONE, mtype = 0;
+	size_t count, rlen, rcount;
+	char *name, *lname, *mname;
+	size_t nlen;
+
+	lname = (char *)ldms_metric_name_get(set, list_idx);
+	nlen = strlen(lname);
+	lh = ldms_metric_get(set, list_idx);
+	for (lent = ldms_list_first(set, lh, &mtype, &count);
+	     lent; lent = ldms_list_next(set, lent, &mtype, &count)) {
+		if (LDMS_V_RECORD_INST == mtype) {
+			if (-1 == rec_type) {
+				rec_type = ldms_record_type_get(lent);
+			} else if (rec_type != ldms_record_type_get(lent)) {
+				LOG_(LDMSD_LERROR, "set '%s' contains a list of records "
+					"of multiple record types, which store_sos does "
+					"not support records of multiple record types.\n",
+					ldms_set_instance_name_get(set));
+				return EINVAL;
+			}
+		}
+		if ((LDMS_V_NONE != prev_mtype) && (prev_mtype != mtype)) {
+			LOG_(LDMSD_LERROR, "List '%s' in set '%s' contains "
+					"multiple value types. "
+					"store_sos doesn't support this.\n",
+					lname, ldms_set_instance_name_get(set));
+			return EINVAL;
+		}
+		prev_mtype = mtype;
+	}
+
+	/* Add the list entry index column */
+	mname = "entry_idx";
+	name = malloc(nlen + strlen(mname) + 2);
+	if (!name)
+		return ENOMEM;
+	snprintf(name, nlen + strlen(mname) + 2, "%s_%s", lname, mname);
+	rc = sos_schema_attr_add(schema, name, SOS_TYPE_UINT64);
+
+	if (LDMS_V_RECORD_INST == mtype) {
+		lent = ldms_list_first(set, lh, &mtype, &count);
+		rlen = ldms_record_card(lent);
+		for (i = 0; i < rlen; i++) {
+			mname = (char *)ldms_record_metric_name_get(lent, i);
+			name = malloc(nlen + strlen(mname) + 2); /* +2 for : and \0 */
+			if (!name)
+				return ENOMEM;
+			snprintf(name, nlen + strlen(mname) + 2, "%s_%s", lname, mname);
+			mtype = ldms_record_metric_type_get(lent, i, &rcount);
+			rc = sos_schema_attr_add(schema, name, sos_type_map[mtype]);
+			free(name);
+			if (rc)
+				return rc;
+		}
+	} else {
+		rc = sos_schema_attr_add(schema, lname, sos_type_map[mtype]);
+	}
+	return 0;
+}
+
 static sos_schema_t
 create_schema(struct sos_instance *si, ldms_set_t set,
 	      int *metric_arry, size_t metric_count)
 {
 	int rc, i;
+	enum ldms_value_type mtype;
+
 	sos_schema_t schema = sos_schema_new(si->schema_name);
 	if (!schema)
 		goto err_0;
@@ -446,10 +545,6 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 	if (rc)
 		goto err_1;
 
-	/* The metrics from the set _must_ come before the index
-	 * attributes or the store method will fail attempting to set
-	 * an index attribute from a LDMS metric set value
-	 */
 	for (i = 0; i < metric_count; i++) {
 		if (0 == strcmp("timestamp", ldms_metric_name_get(set, metric_arry[i])))
 			continue;
@@ -459,9 +554,17 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 			continue;
 		LOG_(LDMSD_LINFO, "Adding attribute %s to the schema\n",
 		       ldms_metric_name_get(set, metric_arry[i]));
-		rc = sos_schema_attr_add(schema,
-			ldms_metric_name_get(set, metric_arry[i]),
-			sos_type_map[ldms_metric_type_get(set, metric_arry[i])]);
+
+		mtype = ldms_metric_type_get(set, metric_arry[i]);
+		if (LDMS_V_RECORD_TYPE == mtype) {
+			continue;
+		} else if (LDMS_V_LIST == mtype) {
+			rc = __schema_list(schema, set, metric_arry[i]);
+		} else {
+			rc = sos_schema_attr_add(schema,
+				ldms_metric_name_get(set, metric_arry[i]),
+				sos_type_map[ldms_metric_type_get(set, metric_arry[i])]);
+		}
 		if (rc)
 			goto err_1;
 	}
@@ -539,11 +642,66 @@ create_schema(struct sos_instance *si, ldms_set_t set,
 }
 
 static int
+__sos_mode_set(struct sos_instance *si, ldms_set_t set,
+		      int *metric_arry, size_t metric_count)
+{
+	int i, j;
+	enum ldms_value_type mtype;
+	int num_lists = 0;
+
+	/* The metrics from the set _must_ come before the index
+	 * attributes or the store method will fail attempting to set
+	 * an index attribute from a LDMS metric set value
+	 */
+	for (i = 0; i < metric_count; i++) {
+		if (LDMS_V_LIST == ldms_metric_type_get(set, metric_arry[i])) {
+			if (0 == ldms_list_len(set, ldms_metric_get(set, metric_arry[i]))) {
+				/*
+				 * The list is empty, so we cannot determine
+				 * the value type of list entries.
+				 */
+				 return EINTR;
+			}
+			num_lists++;
+		}
+	}
+	 if (num_lists > 0) {
+		si->mode = STORE_SOS_M_LISTS;
+		si->ctxt.lists.num_lists = num_lists;
+		si->ctxt.lists.list = calloc(num_lists, sizeof(struct sos_list));
+		if (!si->ctxt.lists.list) {
+			LOG_(LDMSD_LCRITICAL, "store_sos: Out of memory\n");
+			return ENOMEM;
+		}
+	} else {
+		si->mode = STORE_SOS_M_BASIC;
+	}
+	j = 0;
+	for (i = 0; i < metric_count; i++) {
+		mtype = ldms_metric_type_get(set, metric_arry[i]);
+		if (LDMS_V_LIST == mtype) {
+			struct sos_list list;
+			list.list_mid = metric_arry[i];
+			/* Get the list entry value type and count */
+			(void) ldms_list_first(set,
+					ldms_metric_get(set, metric_arry[i]),
+					&(list.mtype), &(list.count));
+			si->ctxt.lists.list[j++] = list;
+		}
+	}
+	return 0;
+}
+
+static int
 _open_store(struct sos_instance *si, ldms_set_t set,
 	    int *metric_arry, size_t metric_count)
 {
 	int rc;
 	sos_schema_t schema;
+
+	rc = __sos_mode_set(si, set, metric_arry, metric_count);
+	if (rc)
+		return rc;
 
 	/* Check if the container is already open */
 	si->sos_handle = find_container(si->path);
@@ -602,6 +760,7 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 	sos_schema_free(schema);
  err_0:
 	put_container(si->sos_handle);
+	si->sos_handle = NULL;
 	return EINVAL;
 }
 
@@ -638,6 +797,341 @@ static inline size_t __element_byte_len(enum ldms_value_type t)
 	return __element_byte_len_[t];
 }
 
+static int
+__store_timestamp(struct sos_instance *si, sos_obj_t obj, ldms_set_t set)
+{
+	SOS_VALUE(value);
+	struct ldms_timestamp timestamp = ldms_transaction_timestamp_get(set);
+
+	/* timestamp */
+	if (NULL == sos_value_init(value, obj, si->ts_attr)) {
+		LOG_(LDMSD_LERROR, "Error initializing timestamp attribute\n");
+		return ENOMEM;
+	}
+	value->data->prim.timestamp_.fine.secs = timestamp.sec;
+	value->data->prim.timestamp_.fine.usecs = timestamp.usec;
+	sos_value_put(value);
+
+	return 0;
+}
+
+/* We assume that the order of \c mval passed by the caller and sos attributes are the same. */
+static sos_attr_t
+__store_metric(sos_obj_t obj, sos_attr_t attr, ldms_set_t set,
+				enum ldms_value_type metric_type,
+				ldms_mval_t mval, size_t count)
+{
+	SOS_VALUE(value);
+	SOS_VALUE(array_value);
+	int array_len;
+	int esz;
+	enum ldms_value_type mtype;
+	ldms_mval_t rent;
+	size_t cnt;
+	int i;
+
+	errno = 0;
+	if ((LDMS_V_LIST == metric_type) ||
+			(LDMS_V_RECORD_ARRAY == metric_type) ||
+			(LDMS_V_RECORD_TYPE == metric_type)) {
+		return attr;
+	}
+
+	if (LDMS_V_RECORD_INST == metric_type) {
+		for (i = 0; i < ldms_record_card(mval); i++) {
+			mtype = ldms_record_metric_type_get(mval, i, &cnt);
+			rent = ldms_record_metric_get(mval, i);
+			LOG_(LDMSD_LDEBUG, "store_sos: attr[%s, %d]: metric[%s, %s, %d]\n",
+					sos_attr_name(attr), sos_attr_type(attr),
+					ldms_record_metric_name_get(mval, i),
+					ldms_metric_type_to_str(mtype),
+					sos_type_map[mtype]);
+			attr = __store_metric(obj, attr, set, mtype, rent, cnt);
+			if (!attr && errno) {
+				return NULL;
+			}
+		}
+	} else if (metric_type < LDMS_V_CHAR_ARRAY) {
+		LOG_(LDMSD_LDEBUG, "store_sos: attr[%s, %d]: metric[null, %s, %d]\n",
+				sos_attr_name(attr), sos_attr_type(attr),
+				ldms_metric_type_to_str(metric_type),
+				sos_type_map[metric_type]);
+		if (sos_attr_type(attr) != sos_type_map[metric_type]) {
+			assert(0);
+		}
+		if (NULL == sos_value_init(value, obj, attr)) {
+			LOG_(LDMSD_LERROR, "Error initializing '%s' attribute\n",
+			       sos_attr_name(attr));
+			errno = ENOMEM;
+			return NULL;
+		}
+		sos_value_set[metric_type](value, mval);
+		sos_value_put(value);
+		attr = sos_schema_attr_next(attr);
+	} else {
+		LOG_(LDMSD_LINFO, "store_sos: attr[%s, %d]: metric[null, %s, %d]\n",
+				sos_attr_name(attr), sos_attr_type(attr),
+				ldms_metric_type_to_str(metric_type),
+				sos_type_map[metric_type]);
+		if (sos_attr_type(attr) != sos_type_map[metric_type]) {
+			assert(0);
+		}
+		esz = __element_byte_len(metric_type);
+		if (metric_type == LDMS_V_CHAR_ARRAY) {
+			array_len = strlen(mval->a_char);
+			if (array_len > count) {
+				array_len = count;
+			}
+		} else {
+			array_len = count;
+		}
+		array_value = sos_array_new(array_value, attr, obj, array_len);
+		if (!array_value) {
+			LOG_(LDMSD_LERROR, "Error %d allocating '%s' array of size %d\n",
+			     errno,
+			     sos_attr_name(attr),
+			     array_len);
+			errno = ENOMEM;
+			return NULL;
+		}
+		array_len *= esz;
+		count = sos_value_memcpy(array_value, mval, array_len);
+		assert(count == array_len);
+		sos_value_put(array_value);
+		attr = sos_schema_attr_next(attr);
+	}
+	return attr;
+}
+
+struct sos_list_ent {
+	size_t list_len; /* Number of list entries */
+	ldms_mval_t mval; /* A list entry handle */
+	int idx; /* A list entry index */
+	enum ldms_value_type mtype; /* list entries' value type */
+	size_t count; /* array length if list entries are arrays */
+	int all_stored; /* All list entries have been stored */
+};
+
+static int
+__store_list_row(struct sos_instance *si, ldms_set_t s,
+		int *metric_arry, int metric_count,
+		struct sos_list_ent *lent)
+{
+	int i, rc = 0;
+	sos_obj_t obj;
+	sos_attr_t attr;
+	ldms_mval_t mval;
+	enum ldms_value_type mtype;
+	size_t count;
+	int list_no = 0;
+
+	obj = sos_obj_new(si->sos_schema);
+	if (!obj) {
+		LOG_(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
+		       STRERROR(errno), __FILE__, __LINE__);
+		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = __store_timestamp(si, obj, s);
+	if (rc)
+		goto err;
+
+	attr = si->first_attr;
+	for (i = 0; i < metric_count; i++) {
+		if (!attr) {
+			LOG_(LDMSD_LERROR,
+			       "The set '%s' with schema '%s' has more "
+			       "attributes than the SOS schema '%s' to which "
+			       "it is being stored.\n",
+			       ldms_set_instance_name_get(s),
+			       ldms_set_schema_name_get(s),
+			       sos_schema_name(si->sos_schema),
+			       __FILE__, __LINE__);
+			rc = E2BIG;
+			goto err;
+		}
+		mval = ldms_metric_get(s, metric_arry[i]);
+		mtype = ldms_metric_type_get(s, metric_arry[i]);
+
+		if (ldms_metric_is_array(s, metric_arry[i]))
+			count = ldms_metric_array_get_len(s, metric_arry[i]);
+		else
+			count = 0;
+		if (LDMS_V_LIST == mtype) {
+			if (LDMS_V_LIST == lent[list_no].mtype) {
+				LOG_(LDMSD_LERROR, "List '%s' in set '%s' "
+					"contains a list, which store_sos "
+					"does not support.\n",
+					ldms_metric_name_get(s, metric_arry[i]),
+					ldms_set_instance_name_get(s));
+				rc = ENOTSUP;
+				goto err;
+			}
+			if (si->ctxt.lists.list[list_no].mtype != lent[list_no].mtype) {
+				LOG_(LDMSD_LERROR, "List '%s' in set '%s' "
+					"contains a metric of '%s' instead of '%s'.\n",
+					ldms_metric_name_get(s, metric_arry[i]),
+					ldms_set_instance_name_get(s),
+					ldms_metric_type_to_str(si->ctxt.lists.list[list_no].mtype),
+					ldms_metric_type_to_str(lent[list_no].mtype));
+				rc = EINVAL;
+				goto err;
+			}
+			union ldms_value idxv;
+			idxv.v_u64 = lent[list_no].idx;
+			/* Store the list entry index */
+			attr = __store_metric(obj, attr, s, LDMS_V_U64, &idxv, 1);
+			if (!attr && errno) {
+				rc = errno;
+				goto err;
+			}
+			/* Store the record content */
+			attr = __store_metric(obj, attr, s,
+						lent[list_no].mtype,
+						lent[list_no].mval,
+						lent[list_no].count);
+			if (!attr && errno) {
+				rc = errno;
+				goto err;
+			}
+			if (lent[list_no].idx + 1 == lent[list_no].list_len) {
+				/* All records in the list have been stored. */
+				lent[list_no].all_stored = 1;
+			} else {
+				lent[list_no].mval = ldms_list_next(s,
+							  lent[list_no].mval,
+							  &(lent[list_no].mtype),
+							  &(lent[list_no].count));
+				lent[list_no].idx++;
+			}
+			list_no++;
+		} else {
+			attr = __store_metric(obj, attr, s, mtype, mval, count);
+			if (!attr && errno) {
+				rc = errno;
+				goto err;
+			}
+		}
+	}
+	rc = sos_obj_index(obj);
+	sos_obj_put(obj);
+	return rc;
+err:
+	sos_obj_delete(obj);
+	return rc;
+}
+
+static int
+__store_lists(struct sos_instance *si, ldms_set_t set,
+		int *metric_arry, int metric_count)
+{
+	int rc = 0;
+	int i, mid, num_lists;
+	ldms_mval_t mval;
+	struct sos_list_ent *lent;
+
+	num_lists = si->ctxt.lrec.num_lists;
+	lent = calloc(num_lists, sizeof(*lent));
+	if (!lent) {
+		LOG_(LDMSD_LCRITICAL, "store_sos: Out of memory\n");
+		rc = ENOMEM;
+		goto err;
+	}
+	/*
+	 * store_sos doesn't store the data if one of the list is empty.
+	 */
+	for (i = 0; i < si->ctxt.lists.num_lists; i++) {
+		mid = si->ctxt.lists.list[i].list_mid;
+		mval = ldms_metric_get(set, mid);
+		lent[i].list_len = ldms_list_len(set, mval);
+		if (0 == lent[i].list_len) {
+			LOG_(LDMSD_LINFO, "store_sos: List '%s' in set '%s' is "
+					"empty. store_sos won't store the data.\n",
+					ldms_metric_name_get(set, mid),
+					ldms_set_instance_name_get(set));
+			goto err;
+		}
+		lent[i].mval = ldms_list_first(set, mval, &(lent[i].mtype), &(lent[i].count));
+		lent[i].idx = 0;
+	}
+
+	int do_store;
+	do {
+		rc = __store_list_row(si, set, metric_arry, metric_count, lent);
+		if (rc)
+			goto err;
+		do_store = 0;
+		for (i = 0; i < num_lists; i ++) {
+			if (!lent[i].all_stored) {
+				do_store = 1;
+				break;
+			}
+		}
+	} while (do_store);
+	return 0;
+err:
+	free(lent);
+	return rc;
+}
+
+static int
+__store_basic(struct sos_instance *si, ldms_set_t s,
+		int *metric_arry, int metric_count)
+{
+	int rc, i;
+	sos_obj_t obj;
+	sos_attr_t attr;
+	enum ldms_value_type metric_type;
+	ldms_mval_t mval;
+
+	obj = sos_obj_new(si->sos_schema);
+	if (!obj) {
+		LOG_(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
+		       STRERROR(errno), __FILE__, __LINE__);
+		rc = ENOMEM;
+		goto err;
+	}
+
+	rc = __store_timestamp(si, obj, s);
+	if (rc)
+		goto err;
+
+	metric_count = ldms_set_card_get(s);
+	/*
+	 * The assumption is that the metrics in the SOS schema have the same
+	 * order as in metric_arry.
+	 */
+	for (i = 0, attr = si->first_attr; i < metric_count; i++) {
+		size_t count = 0;
+		if (!attr) {
+			errno = E2BIG;
+			LOG_(LDMSD_LERROR,
+			       "The set '%s' with schema '%s' has fewer "
+			       "attributes than the SOS schema '%s' to which "
+			       "it is being stored.\n",
+			       ldms_set_instance_name_get(s),
+			       ldms_set_schema_name_get(s),
+			       sos_schema_name(si->sos_schema),
+			       __FILE__, __LINE__);
+			goto err;
+		}
+		metric_type = ldms_metric_type_get(s, metric_arry[i]);
+		mval = ldms_metric_get(s, metric_arry[i]);
+		if (ldms_metric_is_array(s, metric_arry[i]))
+			count = ldms_metric_array_get_len(s, metric_arry[i]);
+		attr = __store_metric(obj, attr, s, metric_type, mval, count);
+		if (!attr && errno)
+			goto err;
+	}
+	rc = sos_obj_index(obj);
+	sos_obj_put(obj);
+	return 0;
+err:
+	sos_obj_delete(obj);
+	return rc;
+}
+
 #ifdef NDEBUG
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #endif
@@ -648,11 +1142,8 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	struct sos_instance *si = _sh;
 	struct ldms_timestamp timestamp;
 	struct timespec now;
-	sos_attr_t attr;
 	SOS_VALUE(value);
-	SOS_VALUE(array_value);
 	sos_obj_t obj;
-	int i;
 	int rc = 0;
 
 	if (!si)
@@ -714,71 +1205,20 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	value->data->prim.timestamp_.fine.usecs = timestamp.usec;
 	sos_value_put(value);
 
-	enum ldms_value_type metric_type;
-	int array_len;
-	int esz;
-
-	/*
-	 * The assumption is that the metrics in the SOS schema have the same
-	 * order as in metric_arry.
-	 */
-	for (i = 0, attr = si->first_attr; i < metric_count;
-	     i++, attr = sos_schema_attr_next(attr)) {
-		size_t count;
-		if (!attr) {
-			errno = E2BIG;
-			LOG_(LDMSD_LERROR,
-			       "The set '%s' with schema '%s' has fewer "
-			       "attributes than the SOS schema '%s' to which "
-			       "it is being stored.\n",
-			       ldms_set_instance_name_get(set),
-			       ldms_set_schema_name_get(set),
-			       sos_schema_name(si->sos_schema),
-			       __FILE__, __LINE__);
+	switch (si->mode) {
+		case STORE_SOS_M_BASIC:
+			rc = __store_basic(si, set, metric_arry, metric_count);
+			break;
+		case STORE_SOS_M_LISTS:
+			rc = __store_lists(si, set, metric_arry, metric_count);
+			break;
+		default:
+			LOG_(LDMSD_LERROR, "Unrecognized store_sos mode '%d' "
+							"at %s:%d\n", si->mode,
+							   __FILE__, __LINE__);
+			errno = EINVAL;
 			goto err;
-		}
-		metric_type = ldms_metric_type_get(set, metric_arry[i]);
-		if (metric_type < LDMS_V_CHAR_ARRAY) {
-			if (NULL == sos_value_init(value, obj, attr)) {
-				LOG_(LDMSD_LERROR, "Error initializing '%s' attribute\n",
-				       sos_attr_name(attr));
-				errno = ENOMEM;
-				goto err;
-			}
-			sos_value_set[metric_type](value, set, metric_arry[i]);
-			sos_value_put(value);
-		} else {
-			esz = __element_byte_len(metric_type);
-			if (metric_type == LDMS_V_CHAR_ARRAY) {
-				ldms_mval_t mval = ldms_metric_array_get(set, metric_arry[i]);
-				array_len = strlen(mval->a_char);
-				if (array_len > ldms_metric_array_get_len(set, metric_arry[i])) {
-					array_len = ldms_metric_array_get_len(set, metric_arry[i]);
-				}
-			} else {
-				array_len = ldms_metric_array_get_len(set, metric_arry[i]);
-			}
-			array_value = sos_array_new(array_value, attr,
-							obj, array_len);
-			if (!array_value) {
-				LOG_(LDMSD_LERROR, "Error %d allocating '%s' array of size %d\n",
-				     errno,
-				     sos_attr_name(attr),
-				     array_len);
-				errno = ENOMEM;
-				goto err;
-			}
-			array_len *= esz;
-			count = sos_value_memcpy(array_value,
-					ldms_metric_array_get(set,
-						metric_arry[i]),
-						array_len);
-			assert(count == array_len);
-			sos_value_put(array_value);
-		}
 	}
-	rc = sos_obj_index(obj);
-	sos_obj_put(obj);
 	sos_end_x(si->sos_handle->sos);
 	if (rc) {
 		LOG_(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
