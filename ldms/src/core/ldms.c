@@ -2642,6 +2642,8 @@ ldms_mval_t ldms_list_first(ldms_set_t s, ldms_mval_t lh, enum ldms_value_type *
 	ldms_mval_t le;
 	if (!lh->v_lh.head)
 		return NULL;
+	if (!s->heap)
+		return NULL;
 	le = ldms_heap_ptr(s->heap, lh->v_lh.head);
 	if (typ)
 		*typ = le->v_le.type;
