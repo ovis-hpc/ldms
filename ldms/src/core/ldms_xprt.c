@@ -2273,7 +2273,10 @@ static void __handle_update_data(ldms_t x, struct ldms_context *ctxt,
 		}
 		if (set->meta->heap_sz) {
 			base = ((void*)set->data) + set->data->size - set->meta->heap_sz;
-			set->heap = ldms_heap_get(&set->heap_inst, &set->data->heap, base);
+			if (ldms_set_is_consistent(set))
+				set->heap = ldms_heap_get(&set->heap_inst, &set->data->heap, base);
+			else
+				set->heap = NULL;
 		}
 		ctxt->update.cb(x, set, flags, ctxt->update.cb_arg);
 		prev_data = data;
