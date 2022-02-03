@@ -8,10 +8,13 @@ on:
 jobs:
   build:
     name: Create Release
+    # Make sure that test-make-dist.yaml has the same "runs-on" and
+    # "container" as used here.
     runs-on: ubuntu-20.04
+    container:
+        image: ovishpc/ovis-ubuntu-build
 
     steps:
-    - run: sudo apt install gettext
     - uses: actions/checkout@v2
     # actions/checkout@v2 breaks annotated tags by converting them into
     # lightweight tags, so we need to force fetch the tag again
