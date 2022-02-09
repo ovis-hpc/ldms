@@ -494,6 +494,7 @@ struct linux_proc_sampler_inst_s {
 
 	char *stream_name;
 	ldmsd_stream_client_t stream;
+	char *argv_sep;
 
 	struct handler_info fn[17];
 	int n_fn;
@@ -607,6 +608,66 @@ static inline void __may_set_str(ldms_set_t set, int midx, const char *s)
 	snprintf(mval->a_char, len, "%s", s);
 }
 
+/* reformat nul-delimited argv per sep given.
+ * return new len, or -1 if sep is invalid.
+ * bsiz maximum space available in b.
+ * len space used in b and nul terminated.
+ * sep: a character or character code
+ */
+static int quote_argv(linux_proc_sampler_inst_t inst, int len, char *b, int bsiz, const char *sep)
+{
+	int i = 0;
+	if (!sep || !strlen(sep))
+		return len; /* unmodified nul sep */
+	if ( strlen(sep) == 1) {
+		for ( ; i < (len-1); i++)
+			if (b[i] == '\0')
+				b[i] = sep[0];
+		return len;
+	}
+	char csep = '\0';
+	if (strlen(sep) == 2 && sep[0] == '\\') {
+		switch (sep[1]) {
+		case '0':
+			return len;
+		case 'b':
+			csep  = ' ';
+			break;
+		case 't':
+			csep  = '\t';
+			break;
+		case 'n':
+			csep  = '\n';
+			break;
+		case 'v':
+			csep  = '\v';
+			break;
+		case 'r':
+			csep  = '\r';
+			break;
+		case 'f':
+			csep  = '\f';
+			break;
+		default:
+			return -1;
+		}
+	}
+	for (i = 0; i < (len-1); i++)
+		if (b[i] == '\0')
+			b[i] = csep;
+	return len;
+}
+
+static int check_sep(linux_proc_sampler_inst_t inst, const char *sep)
+{
+	INST_LOG(inst, LDMSD_LDEBUG,"check_sep: %s\n", sep);
+	char testb[6] = "ab\0cd";
+	if (quote_argv(inst, 6, testb, 6, sep) == -1) {
+		return -1;
+	}
+	return 0;
+}
+
 static int cmdline_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
 	/* populate `cmdline` and `cmdline_len` */
@@ -619,6 +680,7 @@ static int cmdline_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t
 	snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
 	len = __read_str(set, inst->metric_idx[APP_CMDLINE], path, CMDLINE_SZ);
 	cmdline->a_char[CMDLINE_SZ - 1] = 0; /* in case len == CMDLINE_SZ */
+	len = quote_argv(inst, len, cmdline->a_char, CMDLINE_SZ, inst->argv_sep);
 	ldms_metric_set_u64(set, inst->metric_idx[APP_CMDLINE_LEN], len);
 	return 0;
 }
@@ -1291,6 +1353,8 @@ Option descriptions:\n\
     metrics   The comma-separated list of metrics to monitor.\n\
 	      The default is \"\" (empty), which is equivalent to monitor ALL\n\
 	      metrics.\n\
+    argv_sep  The separator character to replace nul with in the cmdline string.\n\
+              Special specifiers \n,\t,\b etc are also supported.\n\
     cfg_file  The alternative config file in JSON format. The file is\n\
 	      expected to have an object that contains the following \n\
 	      attributes:\n\
@@ -1404,7 +1468,7 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 	if (sz < 0) {
 		rc = errno;
 		INST_LOG(inst, LDMSD_LERROR,
-			 "lseek() failed, errno: %d", errno);
+			 "lseek() failed, errno: %d\n", errno);
 		goto out;
 	}
 	bsz = sz;
@@ -1412,7 +1476,7 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 	buff = malloc(sz+1);
 	if (!buff) {
 		rc = errno;
-		INST_LOG(inst, LDMSD_LERROR, "Out of memory");
+		INST_LOG(inst, LDMSD_LERROR, "Out of memory parsing %s\n", val);
 		goto out;
 	}
 	off = 0;
@@ -1420,7 +1484,8 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 		rc = read(fd, buff + off, sz);
 		if (rc < 0) {
 			rc = errno;
-			INST_LOG(inst, LDMSD_LERROR, "read() error: %d", errno);
+			INST_LOG(inst, LDMSD_LERROR, "read() error: %d in %s\n",
+				errno, val);
 			goto out;
 		}
 		off += rc;
@@ -1430,27 +1495,47 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 	jp = json_parser_new(0);
 	if (!jp) {
 		rc = errno;
-		INST_LOG(inst, LDMSD_LERROR, "json_parser_new() error: %d", errno);
+		INST_LOG(inst, LDMSD_LERROR, "json_parser_new() error: %d\n", errno);
 		goto out;
 	}
 	rc = json_parse_buffer(jp, buff, bsz, &jdoc);
 	if (rc) {
-		INST_LOG(inst, LDMSD_LERROR, "JSON parse failed: %d", rc);
-		INST_LOG(inst, LDMSD_LINFO, "input from %s was: %s", val, buff);
+		INST_LOG(inst, LDMSD_LERROR, "JSON parse failed: %d\n", rc);
+		INST_LOG(inst, LDMSD_LINFO, "input from %s was: %s\n", val, buff);
 		goto out;
 	}
 
+	ent = json_value_find(jdoc, "argv_sep");
+	if (ent) {
+		if (ent->type != JSON_STRING_VALUE) {
+			rc = EINVAL;
+			INST_LOG(inst, LDMSD_LERROR, "Error: `argv_sep` must be a string.\n");
+			goto out;
+		}
+		inst->argv_sep = strdup(json_value_cstr(ent));
+		if (!inst->argv_sep) {
+			rc = ENOMEM;
+			INST_LOG(inst, LDMSD_LERROR, "Out of memory while configuring argv_sep\n");
+			goto out;
+		}
+		if (check_sep(inst, inst->argv_sep)) {
+			rc = ERANGE;
+			INST_LOG(inst, LDMSD_LERROR, "Config argv_sep='%s' is not supported.\n",
+				inst->argv_sep);
+			goto out;
+		}
+	}
 	ent = json_value_find(jdoc, "instance_prefix");
 	if (ent) {
 		if (ent->type != JSON_STRING_VALUE) {
 			rc = EINVAL;
-			INST_LOG(inst, LDMSD_LERROR, "Error: `instance_prefix` must be a string.");
+			INST_LOG(inst, LDMSD_LERROR, "Error: `instance_prefix` must be a string.\n");
 			goto out;
 		}
 		inst->instance_prefix = strdup(json_value_cstr(ent));
 		if (!inst->instance_prefix) {
 			rc = ENOMEM;
-			INST_LOG(inst, LDMSD_LERROR, "Out of memory while configuring.");
+			INST_LOG(inst, LDMSD_LERROR, "Out of memory while configuring.\n");
 			goto out;
 		}
 	}
@@ -1461,18 +1546,24 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 	ent = json_value_find(jdoc, "sc_clk_tck");
 	if (ent) {
 		inst->sc_clk_tck = sysconf(_SC_CLK_TCK);
+		if (!inst->sc_clk_tck) {
+			INST_LOG(inst, LDMSD_LERROR, "sysconf(_SC_CLK_TCK) returned 0.\n");
+		} else {
+			INST_LOG(inst, LDMSD_LINFO, "sysconf(_SC_CLK_TCK) = %ld.\n",
+				inst->sc_clk_tck);
+		}
 	}
 	ent = json_value_find(jdoc, "stream");
 	if (ent) {
 		if (ent->type != JSON_STRING_VALUE) {
 			rc = EINVAL;
-			INST_LOG(inst, LDMSD_LERROR, "Error: `stream` must be a string.");
+			INST_LOG(inst, LDMSD_LERROR, "Error: `stream` must be a string.\n");
 			goto out;
 		}
 		inst->stream_name = strdup(json_value_cstr(ent));
 		if (!inst->stream_name) {
 			rc = ENOMEM;
-			INST_LOG(inst, LDMSD_LERROR, "Out of memory while configuring.");
+			INST_LOG(inst, LDMSD_LERROR, "Out of memory while configuring.\n");
 			goto out;
 		}
 	} /* else, caller will later set default stream_name */
@@ -1483,7 +1574,7 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			if (ent->type != JSON_STRING_VALUE) {
 				rc = EINVAL;
 				INST_LOG(inst, LDMSD_LERROR,
-					 "Error: metric must be a string.");
+					 "Error: metric must be a string.\n");
 				goto out;
 			}
 			minfo = find_metric_info_by_name(json_value_cstr(ent));
@@ -1713,7 +1804,7 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 				(int64_t)pid, esep, esuffix);
 		if (len >= sizeof(setname)) {
 			INST_LOG(inst, LDMSD_LERROR, "set name too big: %s%s%s/%" PRIu64
-							"/%s/%" PRId64 "%s%s",
+							"/%s/%" PRId64 "%s%s\n",
 				(inst->instance_prefix ? inst->instance_prefix : ""),
 				(inst->instance_prefix ? "/" : ""),
 				inst->base_data->producer_name,
@@ -1734,7 +1825,7 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 				task_rank_val, esep, esuffix);
 		if (len >= sizeof(setname)) {
 			INST_LOG(inst, LDMSD_LERROR, "set name too big: %s%s%s/%" PRIu64
-							"/%s/rank/%" PRId64 "%s%s",
+							"/%s/rank/%" PRId64 "%s%s\n",
 				(inst->instance_prefix ? inst->instance_prefix : ""),
 				(inst->instance_prefix ? "/" : ""),
 				inst->base_data->producer_name,
@@ -1981,8 +2072,23 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		if (val) {
 			inst->instance_prefix = strdup(val);
 			if (!inst->instance_prefix) {
-				INST_LOG(inst, LDMSD_LERROR, "Config out of memory");
+				INST_LOG(inst, LDMSD_LERROR, "Config out of memory for instance_prefix\n");
 				rc = ENOMEM;
+				goto err;
+			}
+		}
+		val = av_value(avl, "argv_sep");
+		if (val) {
+			inst->argv_sep = strdup(val);
+			if (!inst->argv_sep) {
+				INST_LOG(inst, LDMSD_LERROR, "Config out of memory for arg_sep\n");
+				rc = ENOMEM;
+				goto err;
+			}
+			if (check_sep(inst, inst->argv_sep)) {
+				rc = ERANGE;
+				INST_LOG(inst, LDMSD_LERROR, "Config argv_sep='%s' not supported.\n",
+					inst->argv_sep );
 				goto err;
 			}
 		}
@@ -1998,7 +2104,7 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		if (val) {
 			inst->stream_name = strdup(val);
 			if (!inst->stream_name) {
-				INST_LOG(inst, LDMSD_LERROR, "Config out of memory");
+				INST_LOG(inst, LDMSD_LERROR, "Config out of memory for stream\n");
 				rc = ENOMEM;
 				goto err;
 			}
@@ -2028,7 +2134,7 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 	if (!inst->stream_name) {
 		inst->stream_name = strdup("slurm");
 		if (!inst->stream_name) {
-			INST_LOG(inst, LDMSD_LERROR, "Config: out of memory");
+			INST_LOG(inst, LDMSD_LERROR, "Config: out of memory for default stream\n");
 			rc = ENOMEM;
 			goto err;
 		}
@@ -2047,7 +2153,7 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 
 	/* create schema */
 	if (!base_schema_new(inst->base_data)) {
-		INST_LOG(inst, LDMSD_LERROR, "Out of memory");
+		INST_LOG(inst, LDMSD_LERROR, "Out of memory making schema\n");
 		rc = errno;
 		goto err;
 	}
@@ -2059,7 +2165,7 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 	inst->stream = ldmsd_stream_subscribe(inst->stream_name, __stream_cb, inst);
 	if (!inst->stream) {
 		INST_LOG(inst, LDMSD_LERROR,
-			 "Error subcribing to stream `%s`: %d",
+			 "Error subcribing to stream `%s`: %d\n",
 			 inst->stream_name, errno);
 		rc = errno;
 		goto err;
@@ -2093,6 +2199,8 @@ void linux_proc_sampler_term(struct ldmsd_plugin *pi)
 	inst->instance_prefix = NULL;
 	free(inst->stream_name);
 	inst->stream_name = NULL;
+	free(inst->argv_sep);
+	inst->argv_sep = NULL;
 	if (inst->base_data)
 		base_del(inst->base_data);
 	bzero(inst->fn, sizeof(inst->fn));
@@ -2157,12 +2265,13 @@ struct linux_proc_sampler_inst_s __inst = {
 		},
 		.sample = linux_proc_sampler_sample,
 	},
-	.log = ldmsd_log,
+	.log = ldmsd_log
 };
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
 	__inst.log = pf;
+	__inst.argv_sep = NULL;
 	return &__inst.samp.base;
 }
 
