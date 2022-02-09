@@ -459,7 +459,7 @@ static int sample(struct ldmsd_sampler *self)
 			}
 			/* cpu name */
 			mval = ldms_record_metric_get(cpu_rec, cpu_metric_ids[0]);
-			snprintf(mval->a_char, 8, "%s", tok);
+			snprintf(mval->a_char, 8, "%.7s", tok);
 			/* cpu stats */
 			for (i = 0; i < 10; i++) {
 				ldms_record_set_u64(cpu_rec, cpu_metric_ids[i+1], data[i]);
