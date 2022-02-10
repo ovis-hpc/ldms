@@ -1,8 +1,8 @@
 /* -*- c-basic-offset: 8 -*-
- * Copyright (c) 2012-2018 National Technology & Engineering Solutions
+ * Copyright (c) 2012-2018,2022 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2012-2018 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2012-2018,2022 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -46,6 +46,7 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
+#define _GNU_SOURCE
 #include <sys/queue.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -64,6 +65,7 @@
 #include <sys/syscall.h>
 #include <assert.h>
 #include <sos/sos.h>
+#include <coll/rbt.h>
 #include "ldms.h"
 #include "ldmsd.h"
 
@@ -138,13 +140,40 @@ struct sos_instance {
 	sos_attr_t first_attr;
 
 	LIST_ENTRY(sos_instance) entry;
+
+	struct rbt schema_rbt;
 };
 static pthread_mutex_t cfg_lock;
 LIST_HEAD(sos_inst_list, sos_instance) inst_list;
 
 static char root_path[PATH_MAX]; /**< store root path */
-static ldmsd_msg_log_f msglog;
+static ldmsd_msg_log_f msglog __attribute__(( format(printf, 2, 3) ));
 time_t timeout = 5;		/* Default is 5 seconds */
+
+struct row_schema_key_s {
+	const struct ldms_digest_s *digest;
+	const char *name;
+};
+
+struct row_schema_rbn_s {
+	struct rbn rbn;
+	struct row_schema_key_s key;
+	struct ldms_digest_s digest;
+	char name[128];
+	sos_schema_t sos_schema;
+};
+
+static int row_schema_rbn_cmp(void *tree_key, const void *key)
+{
+	const struct row_schema_key_s *tk = tree_key, *k = key;
+	int rc;
+	/* compare digest first */
+	rc = memcmp(tk->digest, k->digest, sizeof(*k->digest));
+	if (rc)
+		return rc;
+	/* then compare name */
+	return strcmp(tk->name, k->name);
+}
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -173,7 +202,57 @@ sos_type_t sos_type_map[] = {
 	[LDMS_V_S64_ARRAY] = SOS_TYPE_INT64_ARRAY,
 	[LDMS_V_F32_ARRAY] = SOS_TYPE_FLOAT_ARRAY,
 	[LDMS_V_D64_ARRAY] = SOS_TYPE_DOUBLE_ARRAY,
+	[LDMS_V_TIMESTAMP] = SOS_TYPE_TIMESTAMP,
 };
+
+static inline sos_type_t
+sos_type_from_ldms_type(enum ldms_value_type ldms_type)
+{
+	if ((LDMS_V_NONE < ldms_type && ldms_type <= LDMS_V_D64_ARRAY) ||
+	    ldms_type == LDMS_V_TIMESTAMP)
+		return sos_type_map[ldms_type];
+	return -1;
+}
+
+const char *_sos_type_sym_tbl[] = {
+	[SOS_TYPE_INT16]             = "SOS_TYPE_INT16",
+	[SOS_TYPE_INT32]             = "SOS_TYPE_INT32",
+	[SOS_TYPE_INT64]             = "SOS_TYPE_INT64",
+	[SOS_TYPE_UINT16]            = "SOS_TYPE_UINT16",
+	[SOS_TYPE_UINT32]            = "SOS_TYPE_UINT32",
+	[SOS_TYPE_UINT64]            = "SOS_TYPE_UINT64",
+	[SOS_TYPE_FLOAT]             = "SOS_TYPE_FLOAT",
+	[SOS_TYPE_DOUBLE]            = "SOS_TYPE_DOUBLE",
+	[SOS_TYPE_LONG_DOUBLE]       = "SOS_TYPE_LONG_DOUBLE",
+	[SOS_TYPE_TIMESTAMP]         = "SOS_TYPE_TIMESTAMP",
+	[SOS_TYPE_OBJ]               = "SOS_TYPE_OBJ",
+	[SOS_TYPE_STRUCT]            = "SOS_TYPE_STRUCT",
+	[SOS_TYPE_JOIN]              = "SOS_TYPE_JOIN",
+	[SOS_TYPE_BYTE_ARRAY]        = "SOS_TYPE_BYTE_ARRAY",
+	[SOS_TYPE_CHAR_ARRAY]        = "SOS_TYPE_CHAR_ARRAY",
+	[SOS_TYPE_INT16_ARRAY]       = "SOS_TYPE_INT16_ARRAY",
+	[SOS_TYPE_INT32_ARRAY]       = "SOS_TYPE_INT32_ARRAY",
+	[SOS_TYPE_INT64_ARRAY]       = "SOS_TYPE_INT64_ARRAY",
+	[SOS_TYPE_UINT16_ARRAY]      = "SOS_TYPE_UINT16_ARRAY",
+	[SOS_TYPE_UINT32_ARRAY]      = "SOS_TYPE_UINT32_ARRAY",
+	[SOS_TYPE_UINT64_ARRAY]      = "SOS_TYPE_UINT64_ARRAY",
+	[SOS_TYPE_FLOAT_ARRAY]       = "SOS_TYPE_FLOAT_ARRAY",
+	[SOS_TYPE_DOUBLE_ARRAY]      = "SOS_TYPE_DOUBLE_ARRAY",
+	[SOS_TYPE_LONG_DOUBLE_ARRAY] = "SOS_TYPE_LONG_DOUBLE_ARRAY",
+	[SOS_TYPE_OBJ_ARRAY]         = "SOS_TYPE_OBJ_ARRAY",
+};
+
+static inline const char *
+sos_type_sym(sos_type_t sos_type)
+{
+	const char *sym;
+	if (sos_type <= SOS_TYPE_LAST) {
+		sym = _sos_type_sym_tbl[sos_type];
+		if (sym)
+			return sym;
+	}
+	return "UNKNOWN";
+}
 
 static void set_none_fn(sos_value_t v, ldms_mval_t mval) {
 	assert(0 == "Invalid LDMS metric type");
@@ -228,7 +307,95 @@ sos_value_set_fn sos_value_set[] = {
 	[LDMS_V_D64] = set_double_fn,
 };
 
-sos_handle_t create_handle(const char *path, sos_t sos)
+typedef void (*sos_mval_set_fn)(sos_value_t, ldms_mval_t);
+static void sos_mval_set_char(sos_value_t v, ldms_mval_t mval)
+{
+	v->data->prim.uint32_ = mval->v_char;
+}
+
+static void sos_mval_set_u8(sos_value_t v, ldms_mval_t mval)
+{
+	v->data->prim.uint32_ = mval->v_u8;
+}
+
+static void sos_mval_set_s8(sos_value_t v, ldms_mval_t mval)
+{
+	v->data->prim.int32_ = mval->v_s8;
+}
+
+static void sos_mval_set_u16(sos_value_t v, ldms_mval_t mval)
+{
+	v->data->prim.uint16_ = mval->v_u16;
+}
+
+static void sos_mval_set_s16(sos_value_t v, ldms_mval_t mval)
+{
+	v->data->prim.int16_ = mval->v_s16;
+}
+
+static void sos_mval_set_u32(sos_value_t v, ldms_mval_t mval)
+{
+	v->data->prim.uint32_ = mval->v_u32;
+}
+
+static void sos_mval_set_s32(sos_value_t v, ldms_mval_t mval)
+{
+	v->data->prim.int32_ = mval->v_s32;
+}
+
+static void sos_mval_set_u64(sos_value_t v, ldms_mval_t mval)
+{
+	v->data->prim.uint64_ = mval->v_u64;
+}
+
+static void sos_mval_set_s64(sos_value_t v, ldms_mval_t mval)
+{
+	v->data->prim.int64_ = mval->v_s64;
+}
+
+static void sos_mval_set_f32(sos_value_t v, ldms_mval_t mval)
+{
+	v->data->prim.float_ = mval->v_f;
+}
+
+static void sos_mval_set_d64(sos_value_t v, ldms_mval_t mval)
+{
+	v->data->prim.double_ = mval->v_d;
+}
+
+static void sos_mval_set_ts(sos_value_t v, ldms_mval_t mval)
+{
+	v->data->prim.timestamp_.fine.secs = mval->v_ts.sec;
+	v->data->prim.timestamp_.fine.usecs = mval->v_ts.usec;
+}
+
+sos_mval_set_fn sos_mval_set_tbl[] = {
+	[LDMS_V_CHAR] = sos_mval_set_char,
+	[LDMS_V_U8] = sos_mval_set_u8,
+	[LDMS_V_S8] = sos_mval_set_s8,
+	[LDMS_V_U16] = sos_mval_set_u16,
+	[LDMS_V_S16] = sos_mval_set_s16,
+	[LDMS_V_U32] = sos_mval_set_u32,
+	[LDMS_V_S32] = sos_mval_set_s32,
+	[LDMS_V_U64] = sos_mval_set_u64,
+	[LDMS_V_S64] = sos_mval_set_s64,
+	[LDMS_V_F32] = sos_mval_set_f32,
+	[LDMS_V_D64] = sos_mval_set_d64,
+	[LDMS_V_TIMESTAMP] = sos_mval_set_ts,
+};
+
+static inline void
+sos_mval_set(sos_value_t v, ldms_mval_t mval, enum ldms_value_type type)
+{
+	sos_mval_set_fn fn;
+	assert(type <= LDMS_V_LAST);
+	fn = sos_mval_set_tbl[type];
+	assert(fn);
+	fn(v, mval);
+}
+
+/* caller must hold cfg_lock */
+static sos_handle_t __create_handle(const char *path, sos_t sos)
 {
 	sos_handle_t h = calloc(1, sizeof(*h));
 	if (!h)
@@ -242,19 +409,19 @@ sos_handle_t create_handle(const char *path, sos_t sos)
 	memcpy(h->path, path, len+1);
 	h->ref_count = 1;
 	h->sos = sos;
-	pthread_mutex_lock(&cfg_lock);
 	LIST_INSERT_HEAD(&sos_handle_list, h, entry);
-	pthread_mutex_unlock(&cfg_lock);
 	return h;
 }
 
-sos_handle_t create_container(const char *path)
+/* caller must hold cfg_lock */
+static sos_handle_t __create_container(const char *path)
 {
 	int rc = 0;
 	sos_t sos;
 	time_t t;
 	char part_name[16];	/* Unix timestamp as string */
 	sos_part_t part;
+	sos_handle_t h;
 
 	rc = sos_container_new(path, 0660);
 	if (rc) {
@@ -291,7 +458,10 @@ sos_handle_t create_container(const char *path)
 		goto err_2;
 	}
 	sos_part_put(part);
-	return create_handle(path, sos);
+	h = __create_handle(path, sos);
+	if (!h)
+		goto err_1;
+	return h;
  err_2:
 	sos_part_put(part);
  err_1:
@@ -326,10 +496,10 @@ static void put_container(sos_handle_t h)
 	pthread_mutex_unlock(&cfg_lock);
 }
 
-static sos_handle_t find_container(const char *path)
+/* caller must hold cfg_lock */
+static sos_handle_t __find_container(const char *path)
 {
 	sos_handle_t h = NULL;
-	pthread_mutex_lock(&cfg_lock);
 	LIST_FOREACH(h, &sos_handle_list, entry){
 		if (0 != strncmp(path, h->path, sizeof(h->path)))
 			continue;
@@ -338,6 +508,32 @@ static sos_handle_t find_container(const char *path)
 		h->ref_count++;
 		break;
 	}
+	return h;
+}
+
+static sos_handle_t get_container(const char *path)
+{
+	sos_handle_t h = NULL;
+	sos_t sos;
+
+	pthread_mutex_lock(&cfg_lock);
+	h = __find_container(path);
+	if (h)
+		goto out;
+	/* See if the container exists, but has not been opened yet. */
+	sos = sos_container_open(path, SOS_PERM_RW);
+	if (sos) {
+		/* Create a new handle and add it for this SOS */
+		h = __create_handle(path, sos);
+		if (!h) {
+			sos_container_close(sos, SOS_COMMIT_ASYNC);
+			errno = ENOMEM;
+		}
+		goto out;
+	}
+	/* the container does not exist, must create it */
+	h = __create_container(path);
+ out:
 	pthread_mutex_unlock(&cfg_lock);
 	return h;
 }
@@ -431,6 +627,7 @@ open_store(struct ldmsd_store *s, const char *container, const char *schema,
 	si = calloc(1, sizeof(*si));
 	if (!si)
 		goto out;
+	rbt_init(&si->schema_rbt, row_schema_rbn_cmp);
 	si->ucontext = ucontext;
 	si->container = strdup(container);
 	if (!si->container)
@@ -704,37 +901,15 @@ _open_store(struct sos_instance *si, ldms_set_t set,
 		return rc;
 
 	/* Check if the container is already open */
-	si->sos_handle = find_container(si->path);
-	if (si->sos_handle) {
-		/* See if the required schema is already present */
-		schema = sos_schema_by_name(si->sos_handle->sos, si->schema_name);
-		if (!schema)
-			goto add_schema;
-		si->sos_schema = schema;
-		return 0;
-	}
-	/* See if it exists, but has not been opened yet. */
-	sos_t sos = sos_container_open(si->path, SOS_PERM_RW);
-	if (sos) {
-		/* Create a new handle and add it for this SOS */
-		si->sos_handle = create_handle(si->path, sos);
-		if (!si->sos_handle) {
-			sos_container_close(sos, SOS_COMMIT_ASYNC);
-			return ENOMEM;
-		}
-
-		/* See if the schema exists */
-		schema = sos_schema_by_name(sos, si->schema_name);
-		if (!schema)
-			goto add_schema;
-		si->sos_schema = schema;
-		return 0;
-	}
-
-	si->sos_handle = create_container(si->path);
-	if (!si->sos_handle) {
+	si->sos_handle = get_container(si->path);
+	if (!si->sos_handle)
 		return errno;
-	}
+	/* See if the required schema is already present */
+	schema = sos_schema_by_name(si->sos_handle->sos, si->schema_name);
+	if (!schema)
+		goto add_schema;
+	si->sos_schema = schema;
+	return 0;
 
  add_schema:
 	schema = create_schema(si, set, metric_arry, metric_count);
@@ -946,8 +1121,7 @@ __store_list_row(struct sos_instance *si, ldms_set_t s,
 			       "it is being stored.\n",
 			       ldms_set_instance_name_get(s),
 			       ldms_set_schema_name_get(s),
-			       sos_schema_name(si->sos_schema),
-			       __FILE__, __LINE__);
+			       sos_schema_name(si->sos_schema));
 			rc = E2BIG;
 			goto err;
 		}
@@ -1112,8 +1286,7 @@ __store_basic(struct sos_instance *si, ldms_set_t s,
 			       "it is being stored.\n",
 			       ldms_set_instance_name_get(s),
 			       ldms_set_schema_name_get(s),
-			       sos_schema_name(si->sos_schema),
-			       __FILE__, __LINE__);
+			       sos_schema_name(si->sos_schema));
 			goto err;
 		}
 		metric_type = ldms_metric_type_get(s, metric_arry[i]);
@@ -1245,9 +1418,11 @@ static int flush_store(ldmsd_store_handle_t _sh)
 	return 0;
 }
 
+/* protected by strgp->lock */
 static void close_store(ldmsd_store_handle_t _sh)
 {
 	struct sos_instance *si = _sh;
+	struct row_schema_rbn_s *rrbn;
 
 	if (!si)
 		return;
@@ -1256,6 +1431,11 @@ static void close_store(ldmsd_store_handle_t _sh)
 	LIST_REMOVE(si, entry);
 	pthread_mutex_unlock(&cfg_lock);
 
+	while ((rrbn = (struct row_schema_rbn_s *)rbt_min(&si->schema_rbt))) {
+		rbt_del(&si->schema_rbt, &rrbn->rbn);
+		/* rrbn->sos_schema will be freed when sos container closed */
+		free(rrbn);
+	}
 	if (si->sos_handle)
 		put_container(si->sos_handle);
 	if (si->path)
@@ -1263,6 +1443,281 @@ static void close_store(ldmsd_store_handle_t _sh)
 	free(si->container);
 	free(si->schema_name);
 	free(si);
+}
+
+static int init_store_instance(ldmsd_strgp_t strgp)
+{
+	struct sos_instance *si;
+	int len, rc;
+
+	si = calloc(1, sizeof(*si));
+	if (!si) {
+		rc = errno;
+		goto err_0;
+	}
+	rbt_init(&si->schema_rbt, row_schema_rbn_cmp);
+	len = asprintf(&si->path, "%s/%s", root_path, strgp->container);
+	if (len < 0) {
+		rc = errno;
+		goto err_1;
+	}
+	si->sos_handle = get_container(si->path);
+	if (!si->sos_handle) {
+		rc = errno;
+		goto err_2;
+	}
+	strgp->store_handle = si;
+	pthread_mutex_init(&si->lock, NULL);
+	pthread_mutex_lock(&cfg_lock);
+	LIST_INSERT_HEAD(&inst_list, si, entry);
+	pthread_mutex_unlock(&cfg_lock);
+	return 0;
+
+ err_2:
+	free(si->path);
+ err_1:
+	free(si);
+ err_0:
+	return rc;
+}
+
+static sos_schema_t
+create_row_schema(ldmsd_strgp_t strgp, ldmsd_row_t row)
+{
+	struct sos_instance *si = (void*)strgp->store_handle;
+	sos_t sos = si->sos_handle->sos;
+	sos_schema_t sos_schema;
+	int i, j, rc;
+	const char *idx_attrs[256]; /* should be reasonably sufficient */
+
+	sos_type_t sos_type;
+
+	sos_schema = sos_schema_new(row->schema_name);
+	if (!sos_schema) {
+		LOG_(LDMSD_LERROR, "sos_schema_new() failed, errno: %d, "
+		     "container: %s, schema: %s\n",
+		     errno, si->path, row->schema_name);
+		goto err_0;
+	}
+
+	/* attributes */
+	for (i = 0; i < row->col_count; i++) {
+		sos_type = sos_type_from_ldms_type(row->cols[i].type);
+		if (sos_type == -1) {
+			LOG_(LDMSD_LERROR, "Unsupported type %s, "
+			     "errno: %d, container: %s, schema: %s\n",
+			     ldms_metric_type_to_str(row->cols[i].type),
+			     errno, si->path, row->schema_name);
+			goto err_1;
+		}
+		rc = sos_schema_attr_add(sos_schema, row->cols[i].name, sos_type);
+		if (rc)
+			goto err_1;
+	}
+
+	/* indices */
+	for (i = 0; i < row->idx_count; i++) {
+		const char *idx_name;
+		assert( row->indices[i]->col_count < 256 );
+		if (row->indices[i]->col_count >= 256) {
+			errno = E2BIG;
+			goto err_1;
+		}
+		if (row->indices[i]->col_count == 1) {
+			idx_name = row->indices[i]->cols[0]->name;
+			goto add_idx;
+		}
+
+		/* join attribute */
+		for (j = 0; j < row->indices[i]->col_count; j++) {
+			idx_attrs[j] = row->indices[i]->cols[j]->name;
+		}
+		rc = sos_schema_attr_add(sos_schema, row->indices[i]->name,
+				SOS_TYPE_JOIN, row->indices[i]->col_count,
+				idx_attrs);
+		if (rc)
+			goto err_1;
+		idx_name = row->indices[i]->name;
+	add_idx:
+		rc = sos_schema_index_add(sos_schema, idx_name);
+		if (rc)
+			goto err_1;
+	}
+
+	/* add to sos container */
+	rc = sos_schema_add(sos, sos_schema);
+	if (rc)
+		goto err_1;
+
+	return sos_schema;
+
+ err_1:
+	sos_schema_free(sos_schema);
+ err_0:
+	return NULL;
+}
+
+/* protected by strgp lock */
+static struct row_schema_rbn_s *
+get_row_schema(ldmsd_strgp_t strgp, ldmsd_row_t row)
+{
+	struct row_schema_rbn_s *rrbn;
+	struct sos_instance *si = (void*)strgp->store_handle;
+	struct row_schema_key_s key = {row->schema_digest, row->schema_name};
+
+	rrbn = (void*)rbt_find(&si->schema_rbt, &key);
+	if (rrbn)
+		return rrbn;
+
+	rrbn = calloc(1, sizeof(*rrbn));
+	if (!rrbn) {
+		LOG_(LDMSD_LERROR, "Not enough memory, errno: %d, "
+		     "container: %s, schema: %s\n",
+		     errno, si->path, row->schema_name);
+		goto err_0;
+	}
+	snprintf(rrbn->name, sizeof(rrbn->name), "%s", row->schema_name);
+	memcpy(&rrbn->digest, row->schema_digest, sizeof(rrbn->digest));
+	rrbn->key.name = rrbn->name;
+	rrbn->key.digest = &rrbn->digest;
+	rbn_init(&rrbn->rbn, &rrbn->key);
+
+	/* sos_schema */
+	rrbn->sos_schema = sos_schema_by_name(si->sos_handle->sos, key.name);
+	if (!rrbn->sos_schema) {
+		rrbn->sos_schema = create_row_schema(strgp, row);
+		if (!rrbn->sos_schema)
+			goto err_1;
+	}
+
+	rbt_ins(&si->schema_rbt, &rrbn->rbn);
+	return rrbn;
+
+ err_1:
+	free(rrbn);
+ err_0:
+	return NULL;
+}
+
+static int
+commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int row_count)
+{
+	int rc = 0;
+	struct sos_instance *si;
+	ldmsd_row_t row;
+	ldmsd_col_t col;
+	struct row_schema_rbn_s *rrbn;
+	sos_obj_t sos_obj;
+	sos_type_t sos_type;
+	SOS_VALUE(value);
+	SOS_VALUE(array_value);
+	sos_attr_t sos_attr;
+	int i, esz, array_len, count;
+
+	if (!strgp->store_handle) {
+		rc = init_store_instance(strgp);
+		if (rc)
+			goto out;
+	}
+	si = strgp->store_handle;
+	if (!si->sos_handle) {
+		/* rare; only in the case of store_sos reconfig */
+		si->sos_handle = get_container(si->path);
+		if (!si->sos_handle) {
+			rc = errno;
+			goto out;
+		}
+	}
+	if (timeout > 0) {
+		struct timespec now;
+		clock_gettime(CLOCK_REALTIME, &now);
+		now.tv_sec += timeout;
+		if (sos_begin_x(si->sos_handle->sos, &now)) {
+			LOG_(LDMSD_LERROR,
+			     "Timeout attempting to open a transaction on the container '%s'.\n",
+			     si->path);
+			errno = ETIMEDOUT;
+			pthread_mutex_unlock(&si->lock);
+			return -1;
+		}
+	} else {
+		sos_begin_x(si->sos_handle->sos, NULL);
+	}
+	TAILQ_FOREACH(row, row_list, entry) {
+		rrbn = get_row_schema(strgp, row);
+		if (!rrbn) {
+			/* get_row_schema() already logged the error */
+			goto row_next;
+		}
+		sos_obj = sos_obj_new(rrbn->sos_schema);
+		if (!sos_obj) {
+			LOG_(LDMSD_LERROR, "cannot create SOS object, "
+			     "errno: %d, container: %s, schema: %s\n",
+			     errno, si->path, rrbn->key.name);
+			goto row_next;
+		}
+		sos_attr = sos_schema_attr_first(rrbn->sos_schema);
+		for (i = 0; i < row->col_count; i++) {
+			col = &row->cols[i];
+			if (!sos_attr) {
+				LOG_(LDMSD_LERROR,
+				     "sos attribute - ldms metric mismatch: "
+				     "expecting more sos attributes\n");
+				goto row_err;
+			}
+			sos_type = sos_type_from_ldms_type(col->type);
+			if (sos_attr_type(sos_attr) != sos_type) {
+				LOG_(LDMSD_LERROR,
+				     "sos attribute - ldms metric type mismatch: "
+				     "expecting %s, but got %s\n",
+				     sos_type_sym(sos_type),
+				     sos_type_sym(sos_attr_type(sos_attr)));
+				goto row_err;
+			}
+			if (0 == ldms_type_is_array(col->type)) {
+				sos_value_init(value, sos_obj, sos_attr);
+				sos_mval_set(value, col->mval, col->type);
+				sos_value_put(value);
+			} else {
+				esz = __element_byte_len(col->type);
+				if (col->type == LDMS_V_CHAR_ARRAY) {
+					array_len = strlen(col->mval->a_char);
+					if (array_len > col->array_len) {
+						array_len = col->array_len;
+					}
+				} else {
+					array_len = col->array_len;
+				}
+				array_value = sos_array_new(array_value,
+						sos_attr, sos_obj, array_len);
+				if (!array_value) {
+					LOG_(LDMSD_LERROR, "Error %d allocating '%s' array of size %d\n",
+					     errno,
+					     sos_attr_name(sos_attr),
+					     array_len);
+					errno = ENOMEM;
+					goto row_err;
+				}
+				count = sos_value_memcpy(array_value,
+						col->mval, array_len * esz);
+				assert(count == array_len * esz);
+				sos_value_put(array_value);
+			}
+			sos_attr = sos_schema_attr_next(sos_attr);
+		}
+		sos_obj_index(sos_obj);
+		sos_obj_put(sos_obj);
+		sos_obj = NULL;
+		goto row_next;
+
+	row_err:
+		sos_obj_delete(sos_obj);
+	row_next:
+		continue;
+	}
+	sos_end_x(si->sos_handle->sos);
+ out:
+	return rc;
 }
 
 static struct ldmsd_store store_sos = {
@@ -1278,6 +1733,7 @@ static struct ldmsd_store store_sos = {
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,
+	.commit = commit_rows,
 };
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)

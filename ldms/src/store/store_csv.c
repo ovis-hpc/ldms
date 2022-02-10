@@ -1,8 +1,8 @@
-/**
- * Copyright (c) 2013-2019 National Technology & Engineering Solutions
+/*
+ * Copyright (c) 2013-2019,2022 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2013-2019 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2013-2019,2022 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -47,6 +47,8 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#define _GNU_SOURCE
+
 #include <ctype.h>
 #include <sys/queue.h>
 #include <sys/types.h>
@@ -64,6 +66,8 @@
 #include <errno.h>
 #include <unistd.h>
 #include <coll/idx.h>
+#include <coll/rbt.h>
+#include <assert.h>
 #include "ldms.h"
 #include "ldmsd.h"
 #include "ldmsd_plugattr.h"
@@ -82,7 +86,7 @@
 
 #define PNAME "store_csv"
 
-static idx_t store_idx;
+static idx_t store_idx; /* protected by cfg_lock */
 struct plugattr *pa = NULL; /* plugin attributes from config */
 static int rollover;
 static int rollagain;
@@ -115,9 +119,19 @@ static int rolltype = -1;
 #define ROLL_LIMIT_INTERVAL 60
 
 
+__attribute__(( format(printf, 2, 3) ))
 static ldmsd_msg_log_f msglog;
 static pthread_t rothread;
 static int rothread_used = 0;
+
+#define ERR_LOG(FMT, ...) do { \
+		msglog(LDMSD_LERROR, PNAME ": " FMT, ## __VA_ARGS__); \
+		assert(0 == "DEBUG"); \
+	} while(0)
+
+#define INFO_LOG(FMT, ...) do { \
+		msglog(LDMSD_LINFO, PNAME ": " FMT, ## __VA_ARGS__); \
+	} while(0)
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -132,12 +146,17 @@ struct csv_lent {
 	int idx; /* list entry's index */
 };
 
+typedef enum csv_store_handle_type {
+	CSV_STORE_HANDLE,     /* for `struct csv_store_handle`     */
+	CSV_ROW_STORE_HANDLE, /* for `struct csv_row_store_handle` */
+} csv_store_handle_type_t;
+
 /*
  * New in v3: no more id_pos. Always producer name which is always written out before the metrics.
  */
 
 struct csv_store_handle {
-	struct ldmsd_store *store;
+	csv_store_handle_type_t type;
 	char *path;
 	FILE *file;
 	FILE *headerfile;
@@ -151,9 +170,38 @@ struct csv_store_handle {
 	int64_t byte_count;
 	int num_lists; /* Number of list metrics */
 	struct csv_lent *lents;
+	int ref_count; /* number of strgp using the csv file; protected by cfg_lock */
 	CSV_STORE_HANDLE_COMMON;
 };
 
+struct csv_row_schema_key_s {
+	const struct ldms_digest_s *digest; /* row schema digest */
+	const char *name; /* row schema name */
+};
+
+int csv_row_schema_key_cmp(void *tree_key, const void *key)
+{
+	int ret;
+	const struct csv_row_schema_key_s *tk = tree_key, *k =key;
+	ret = memcmp(tk->digest, k->digest, sizeof(*tk->digest));
+	if (ret)
+		return ret;
+	return strcmp(tk->name, k->name);
+}
+
+struct csv_row_schema_rbn_s {
+	struct rbn rbn;
+	struct csv_row_schema_key_s key;
+	struct ldms_digest_s digest;
+	char name[128];
+	struct csv_store_handle *s_handle;
+};
+
+/* This is `strgp->store_handle` in the new decomposition path. */
+struct csv_row_store_handle {
+	csv_store_handle_type_t type;
+	struct rbt row_schema_rbt;
+};
 
 static pthread_mutex_t cfg_lock;
 
@@ -192,13 +240,12 @@ static void roll_cb(void *obj, void *cb_arg)
 
 	FILE* nhfp = NULL;
 	FILE* nfp = NULL;
-	char tmp_path[PATH_MAX];
-	char tmp_headerpath[PATH_MAX];
-	char tmp_typepath[PATH_MAX];
-	char tp1[PATH_MAX];
-	char tp2[PATH_MAX];
-	char tp3[PATH_MAX];
-	struct roll_common roc = { tp1, tp2, tp3 };
+
+	char *new_filename = NULL;
+	char *new_headerfilename = NULL;
+	char *new_typefilename = NULL;
+	int len;
+
 	//if we've got here then we've called new_store, but it might be closed
 	pthread_mutex_lock(&s_handle->lock);
 	switch (rolltype) {
@@ -234,59 +281,70 @@ static void roll_cb(void *obj, void *cb_arg)
 	if (s_handle->headerfile)
 		fflush(s_handle->headerfile);
 
+	/* == preparing new filenames == */
+
+	/* new filename */
+	len = asprintf(&new_filename, "%s.%ld", s_handle->path, appx);
+	if (len < 0) {
+		ERR_LOG("out of memory: %s:%s():%d\n", __FILE__, __func__, __LINE__);
+		goto out;
+	}
+
+	/* new headerfilename */
+	if (s_handle->altheader) {
+		/* rolltype >= 1 */
+		len = asprintf(&new_headerfilename, "%s.HEADER.%ld", s_handle->path, appx);
+	} else {
+		len = asprintf(&new_headerfilename, "%s", new_filename);
+	}
+	if (len < 0) {
+		ERR_LOG("out of memory: %s:%s():%d\n", __FILE__, __func__, __LINE__);
+		goto err_1;
+	}
+
+	/* new typefilename */
+	if (s_handle->typeheader) {
+		len = asprintf(&new_typefilename,  "%s.KIND.%ld", s_handle->path, appx);
+		if (len < 0) {
+			ERR_LOG("out of memory: %s:%s():%d\n", __FILE__, __func__, __LINE__);
+			goto err_2;
+		}
+	}
+
+	/* open files */
+
 	//re name: if got here, then rollover requested
-	snprintf(tmp_path, PATH_MAX, "%s.%d",
-		 s_handle->path, (int) appx);
-	nfp = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
+	nfp = fopen_perm(new_filename, "a+", LDMSD_DEFAULT_FILE_PERM);
 	if (!nfp){
 		//we cant open the new file, skip
-		msglog(LDMSD_LERROR, PNAME ": Error: cannot open file <%s>\n",
-		       tmp_path);
-		goto out;
+		ERR_LOG("cannot open file <%s>\n", new_filename);
+		goto err_3;
 	}
-	ch_output(nfp, tmp_path, CSHC(s_handle), cps);
-
-	strcpy(roc.filename, tmp_path);
+	ch_output(nfp, new_filename, CSHC(s_handle), cps);
 
 	if (s_handle->altheader){
-		//re name: if got here, then rollover requested
-		snprintf(tmp_headerpath, PATH_MAX,
-			 "%s.HEADER.%d",
-			 s_handle->path, (int)appx);
 		/* truncate a separate headerfile if it exists.
 		 * FIXME: do we still want to do this? */
-		nhfp = fopen_perm(tmp_headerpath, "w", LDMSD_DEFAULT_FILE_PERM);
+		nhfp = fopen_perm(new_headerfilename, "w", LDMSD_DEFAULT_FILE_PERM);
 		if (!nhfp){
 			fclose(nfp);
-			msglog(LDMSD_LERROR, PNAME ": Error: cannot open file <%s>\n",
-			       tmp_headerpath);
-		} else {
-			ch_output(nhfp, tmp_headerpath, CSHC(s_handle), cps);
+			ERR_LOG("cannot open file <%s>\n", new_headerfilename);
+			goto err_4;
 		}
-		strcpy(roc.headerfilename, tmp_headerpath);
+		ch_output(nhfp, new_headerfilename, CSHC(s_handle), cps);
 	} else {
-		nhfp = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
-		if (!nhfp){
-			fclose(nfp);
-			msglog(LDMSD_LERROR, PNAME ": Error: cannot open file <%s>\n",
-			       tmp_path);
-		} else {
-			ch_output(nhfp, tmp_path, CSHC(s_handle), cps);
-		}
-		strcpy(roc.headerfilename, tmp_path);
-	}
-	if (!nhfp) {
-		goto out;
+		nhfp = nfp;
 	}
 
 	//close and swap
+	if (s_handle->headerfile && s_handle->altheader) {
+		/* if s_handle->altheader == 0, headerfile is file */
+		fclose(s_handle->headerfile);
+	}
 	if (s_handle->file) {
 		fclose(s_handle->file);
 		rename_output(s_handle->filename, FTYPE_DATA,
 			CSHC(s_handle), cps);
-	}
-	if (s_handle->headerfile) {
-		fclose(s_handle->headerfile);
 	}
 	if (s_handle->altheader != 0 && s_handle->headerfilename) {
 		rename_output(s_handle->headerfilename, FTYPE_HDR,
@@ -295,18 +353,27 @@ static void roll_cb(void *obj, void *cb_arg)
 	if (s_handle->typeheader != 0 && s_handle->typefilename) {
 		rename_output(s_handle->typefilename, FTYPE_KIND,
 			CSHC(s_handle), cps);
-		snprintf(tmp_typepath, PATH_MAX, "%s.KIND.%d",
-			s_handle->path, (int)appx);
-		strcpy(roc.typefilename, tmp_typepath);
-		replace_string(&(s_handle->typefilename), roc.typefilename);
+		free(s_handle->typefilename);
+		s_handle->typefilename = new_typefilename;
 	}
 	s_handle->file = nfp;
-	replace_string(&(s_handle->filename), roc.filename);
-	replace_string(&(s_handle->headerfilename), roc.headerfilename);
+	free(s_handle->filename);
+	s_handle->filename = new_filename;
 	s_handle->headerfile = nhfp;
+	free(s_handle->headerfilename);
+	s_handle->headerfilename = new_headerfilename;
 	s_handle->otime = appx;
 	s_handle->printheader = DO_PRINT_HEADER;
+	goto out;
 
+err_4:
+	fclose(nfp);
+err_3:
+	free(new_typefilename); /* may be NULL, but it is OK */
+err_2:
+	free(new_headerfilename);
+err_1:
+	free(new_filename);
 out:
 	pthread_mutex_unlock(&s_handle->lock);
 }
@@ -697,8 +764,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			goto out;
 		}
 		if (rollmethod == 5 && (roll < 0 || ragain < roll || ragain < MIN_ROLL_1)) {
-			msglog(LDMSD_LERROR,
-				"%s: rolltype=5 needs rollagain > max(rollover,10)\n");
+			ERR_LOG( "rolltype=5 needs rollagain > max(rollover,10)\n");
 			msglog(LDMSD_LERROR, PNAME ": rollagain=%d rollover=%d\n",
 			       roll, ragain);
 			rc = EINVAL;
@@ -772,6 +838,58 @@ static void *get_ucontext(ldmsd_store_handle_t _s_handle)
 	return s_handle->ucontext;
 }
 
+/* caller MUST hold the s_handle->lock */
+static int print_header_from_row(struct csv_store_handle *s_handle,
+				 ldms_set_t set, struct ldmsd_row_s *row)
+{
+	/* Only called from Store which already has the lock */
+	FILE* fp;
+
+	if (s_handle == NULL){
+		msglog(LDMSD_LERROR, PNAME ": Null store handle. Cannot print header\n");
+		return EINVAL;
+	}
+	s_handle->printheader = DONT_PRINT_HEADER;
+
+	fp = s_handle->headerfile;
+	if (!fp){
+		msglog(LDMSD_LERROR, PNAME ": Cannot print header. No headerfile\n");
+		return EINVAL;
+	}
+	csv_row_format_header(fp, s_handle->headerfilename, CCSHC(s_handle), s_handle->udata,
+                                 &PG, set, row,
+                                 s_handle->time_format);
+
+	/* Flush for the header, whether or not it is the data file as well */
+	fflush(fp);
+	fsync(fileno(fp));
+
+	if (s_handle->headerfile && s_handle->altheader)
+		fclose(s_handle->headerfile);
+	s_handle->headerfile = 0;
+	fp = NULL;
+
+	/* dump data types header, or whine and continue to other headers. */
+	if (s_handle->typeheader > 0 && s_handle->typeheader <= TH_MAX) {
+		fp = fopen_perm(s_handle->typefilename, "w", LDMSD_DEFAULT_FILE_PERM);
+		if (!fp) {
+			int rc = errno;
+			PG.msglog(LDMSD_LERROR, PNAME ": print_header: %s "
+				"failed to open types file (%d).\n",
+				s_handle->typefilename, rc);
+		} else {
+			ch_output(fp, s_handle->typefilename, CSHC(s_handle), &PG);
+			csv_row_format_types_common(s_handle->typeheader, fp,
+				s_handle->typefilename, CCSHC(s_handle),
+				s_handle->udata, &PG, set,
+				row);
+			fclose(fp);
+		}
+	}
+
+	return 0;
+}
+
 /*
  * note: this should be residual from v2 where we may not have had the header info until a store was called
  * which then meant we had the mvec. ideally the print_header will always happen from the open_store,
@@ -820,7 +938,8 @@ static int print_header_from_store(struct csv_store_handle *s_handle, ldms_set_t
 	fflush(fp);
 	fsync(fileno(fp));
 
-	fclose(s_handle->headerfile);
+	if (s_handle->headerfile && s_handle->altheader)
+		fclose(s_handle->headerfile);
 	s_handle->headerfile = 0;
 	fp = NULL;
 
@@ -855,17 +974,16 @@ static int print_header_from_open(struct csv_store_handle *s_handle,
 }
 #endif
 
+static struct csv_store_handle *
+csv_store_handle_get(const char *container, const char *schema);
+
+static void csv_store_handle_put(struct csv_store_handle *s_handle);
+
 static ldmsd_store_handle_t
 open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		struct ldmsd_strgp_metric_list *list, void *ucontext)
 {
 	struct csv_store_handle *s_handle = NULL;
-	int add_handle = 0;
-	int rc = 0;
-	char* skey = NULL;
-	char* path = NULL;
-	char *hcontainer = NULL;
-	char *hschema = NULL;
 
 	if (!pa) {
 		msglog(LDMSD_LERROR, PNAME ": config not called. cannot open.\n");
@@ -873,199 +991,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 	}
 
 	pthread_mutex_lock(&cfg_lock);
-	skey = allocStoreKey(container, schema);
-	if (skey == NULL){
-		msglog(LDMSD_LERROR, PNAME ": Cannot open store\n");
-		goto out;
-	}
-
-	s_handle = idx_find(store_idx, (void *)skey, strlen(skey));
-	const char *root_path = ldmsd_plugattr_value(pa, "path", skey);
-	/* ideally, s_handle should always be null, because we would have closed
-	 * and removed an existing container before reopening it. defensively
-	 * keeping this like v2.
-	 * Otherwise then could always do all these steps.
-	 */
-	if (!s_handle) {
-		size_t pathlen = strlen(root_path) +
-			strlen(schema) +
-			strlen(container) + 8;
-		path = malloc(pathlen);
-		if (!path)
-			goto out;
-
-		/* New in v3: this is a name change */
-		sprintf(path, "%s/%s/%s", root_path, container, schema);
-		s_handle = calloc(1, sizeof *s_handle);
-		if (!s_handle)
-			goto err0;
-
-		s_handle->ucontext = ucontext;
-		s_handle->store = s;
-		add_handle = 1;
-
-		pthread_mutex_init(&s_handle->lock, NULL);
-		s_handle->path = path;
-		s_handle->store_key = strdup(skey);
-		hcontainer = container ? strdup(container) : NULL;
-		hschema = schema ? strdup(schema) : NULL;
-		if (!s_handle->store_key || ! hcontainer || ! hschema ||
-			config_handle(s_handle)) {
-			/* Take the lock becauase we will unlock in the err path */
-			pthread_mutex_lock(&s_handle->lock);
-			goto err1;
-		}
-		s_handle->container = hcontainer;
-		s_handle->schema = hschema;
-		hcontainer = hschema = NULL;
-
-		s_handle->store_count = 0;
-		s_handle->byte_count = 0;
-		s_handle->lastflush = 0;
-
-		s_handle->printheader = FIRST_PRINT_HEADER;
-		s_handle->num_lists = -1;
-	} else {
-		s_handle->printheader = DO_PRINT_HEADER;
-	}
-
-	/* Take the lock in case its a store that has been closed */
-	pthread_mutex_lock(&s_handle->lock);
-
-	/* create path if not already there. */
-	char *dpath = strdup(s_handle->path);
-	if (!dpath) {
-		msglog(LDMSD_LERROR, PNAME ": strdup failed creating directory '%s'\n",
-			 errno, s_handle->path);
-		goto err2;
-	}
-	sprintf(dpath, "%s/%s", root_path, container);
-	rc = create_outdir(dpath, CSHC(s_handle), &PG);
-	free(dpath);
-	if ((rc != 0) && (errno != EEXIST)) {
-		msglog(LDMSD_LERROR, PNAME ": Failure %d creating directory containing '%s'\n",
-			 errno, path);
-		goto err2;
-	}
-
-	/* For both actual new store and reopened store, open the data file */
-	char tmp_path[PATH_MAX];
-	time_t appx = time(NULL);
-	if (rolltype >= MINROLLTYPE){
-		//append the files with epoch. assume wont collide to the sec.
-		snprintf(tmp_path, PATH_MAX, "%s.%d",
-			 s_handle->path, (int)appx);
-	} else {
-		snprintf(tmp_path, PATH_MAX, "%s",
-			 s_handle->path);
-	}
-
-	char tp1[PATH_MAX];
-	char tp2[PATH_MAX];
-	char tp3[PATH_MAX];
-	struct roll_common roc = { tp1, tp2, tp3 };
-	if (!s_handle->file) { /* theoretically, we should never already have this file */
-		s_handle->file = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
-		s_handle->otime = appx;
-	}
-	if (!s_handle->file){
-		msglog(LDMSD_LERROR, PNAME ": Error %d opening the file %s.\n",
-		       errno, s_handle->path);
-		goto err2;
-	}
-	ch_output(s_handle->file, tmp_path, CSHC(s_handle), &PG);
-	strcpy(roc.filename, tmp_path);
-	replace_string(&(s_handle->filename), roc.filename);
-
-	/*
-	 * Always reprint the header because this is a store that may have been
-	 * closed and then reopened because a new metric has been added.
-	 * New in v3: since it may be a new set of metrics, possibly append to the header.
-	 */
-
-	if (!s_handle->headerfile){ /* theoretically, we should never already have this file */
-		if (s_handle->altheader) {
-			char tmp_headerpath[PATH_MAX];
-			if (rolltype >= MINROLLTYPE){
-				snprintf(tmp_headerpath, PATH_MAX,
-					 "%s.HEADER.%d", s_handle->path, (int)appx);
-			} else {
-				snprintf(tmp_headerpath, PATH_MAX,
-					 "%s.HEADER", s_handle->path);
-			}
-
-			/* truncate a separate headerfile if its the first time */
-			if (s_handle->printheader == FIRST_PRINT_HEADER){
-				s_handle->headerfile = fopen_perm(tmp_headerpath, "w", LDMSD_DEFAULT_FILE_PERM);
-			} else if (s_handle->printheader == DO_PRINT_HEADER){
-				s_handle->headerfile = fopen_perm(tmp_headerpath, "a+", LDMSD_DEFAULT_FILE_PERM);
-			}
-			strcpy(roc.headerfilename, tmp_headerpath);
-		} else {
-			s_handle->headerfile = fopen_perm(tmp_path, "a+", LDMSD_DEFAULT_FILE_PERM);
-			strcpy(roc.headerfilename, tmp_path);
-		}
-
-		if (!s_handle->headerfile) {
-			msglog(LDMSD_LERROR, PNAME ": Error: Cannot open headerfile\n");
-			goto err3;
-		}
-		ch_output(s_handle->headerfile, tmp_path, CSHC(s_handle), &PG);
-	}
-	replace_string(&(s_handle->headerfilename), roc.headerfilename);
-
-	if (s_handle->typeheader > 0) {
-		char tmp_typepath[PATH_MAX];
-		if (rolltype >= MINROLLTYPE){
-			snprintf(tmp_typepath, PATH_MAX, "%s.KIND.%d",
-				s_handle->path, (int)appx);
-		} else {
-			snprintf(tmp_typepath, PATH_MAX, "%s.KIND",
-				s_handle->path);
-		}
-		strcpy(roc.typefilename, tmp_typepath);
-		replace_string(&(s_handle->typefilename), roc.typefilename);
-	}
-
-	/* ideally here should always be the printing of the header, and
-	 * we could drop keeping track of printheader.
-	 * FIXME: cant do this because only at store() do we know types/sizes
-	 * of metrics that go with names of metrics.
-	 * print_header_from_open(s_handle, struct ldmsd_store_metric_index_list *list, void *ucontext);
-	 * Must make open_store a conditional part of store() if
-	 * this is to be done.
-	 */
-
-#if 0
-	print_csv_store_handle_common(CSHC(s_handle), &PG);
-	ldmsd_plugattr_log(LDMSD_LINFO, pa, NULL);
-#endif
-	if (add_handle) {
-		idx_add(store_idx, (void *)skey, strlen(skey), s_handle);
-	}
-
-	pthread_mutex_unlock(&s_handle->lock);
-	goto out;
-
-err3:
-	fclose(s_handle->file);
-	s_handle->file = NULL;
-err2:
-	free(s_handle->store_key);
-err1:
-	pthread_mutex_unlock(&s_handle->lock);
-	pthread_mutex_destroy(&s_handle->lock);
-	free(s_handle);
-	s_handle = NULL;
-err0:
-	free(path);
-out:
-	if (skey)
-		  free(skey);
-	if (hschema)
-		  free(hschema);
-	if (hcontainer)
-		  free(hcontainer);
+	s_handle = csv_store_handle_get(container, schema);
 	pthread_mutex_unlock(&cfg_lock);
 	return s_handle;
 }
@@ -1725,24 +1651,12 @@ static int flush_store(ldmsd_store_handle_t _s_handle)
 	return 0;
 }
 
-static void close_store(ldmsd_store_handle_t _s_handle)
+static void __csv_handle_close(struct csv_store_handle *s_handle)
 {
-	/* note: closing a store removes from the idx list.
-	 * note: do not remove the specialkeys
-	 */
-
-	pthread_mutex_lock(&cfg_lock);
-	struct csv_store_handle *s_handle = _s_handle;
-	if (!s_handle) {
-		pthread_mutex_unlock(&cfg_lock);
-		return;
-	}
-
 	pthread_mutex_lock(&s_handle->lock);
 	msglog(LDMSD_LDEBUG, PNAME ": Closing with path <%s>\n",
 	       s_handle->path);
 	fflush(s_handle->file);
-	s_handle->store = NULL;
 	if (s_handle->path)
 		free(s_handle->path);
 	s_handle->path = NULL;
@@ -1750,7 +1664,7 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	if (s_handle->file)
 		fclose(s_handle->file);
 	s_handle->file = NULL;
-	if (s_handle->headerfile)
+	if (s_handle->headerfile && s_handle->altheader)
 		fclose(s_handle->headerfile);
 	s_handle->headerfile = NULL;
 	CLOSE_STORE_COMMON(s_handle);
@@ -1763,9 +1677,609 @@ static void close_store(ldmsd_store_handle_t _s_handle)
 	free(s_handle->schema);
 	pthread_mutex_unlock(&s_handle->lock);
 	pthread_mutex_destroy(&s_handle->lock);
-	pthread_mutex_unlock(&cfg_lock);
+	free(s_handle);
+}
 
-	free(s_handle); //FIXME: should this happen?
+/* must hold cfg_lock */
+static void csv_store_handle_put(struct csv_store_handle *s_handle)
+{
+	assert(s_handle->ref_count > 0);
+	if (s_handle->ref_count == 0) {
+		ERR_LOG("%s:%s():%d s_handle->ref_count is 0\n", __FILE__, __func__, __LINE__);
+		return;
+	}
+	s_handle->ref_count--;
+	if (s_handle->ref_count == 0)
+		__csv_handle_close(s_handle);
+}
+
+/* must hold cfg_lock */
+static void __csv_row_handle_close(struct csv_row_store_handle *rs_handle)
+{
+	struct csv_row_schema_rbn_s *rbn;
+	while ((rbn = (void*)rbt_min(&rs_handle->row_schema_rbt))) {
+		rbt_del(&rs_handle->row_schema_rbt, &rbn->rbn);
+		csv_store_handle_put(rbn->s_handle);
+		free(rbn);
+	}
+	free(rs_handle);
+}
+
+static void close_store(ldmsd_store_handle_t _s_handle)
+{
+	pthread_mutex_lock(&cfg_lock);
+	struct csv_store_handle *s_handle = _s_handle;
+	if (!s_handle) {
+		pthread_mutex_unlock(&cfg_lock);
+		return;
+	}
+
+	/* The s_handle may be CSV_STORE_HANDLE or CSV_ROW_STORE_HANDLE.
+	 * - In the case of CSV_STORE_HANDLE, the _s_handle is the handle
+	 *   returned by open_store().
+	 * - In the case of CSV_ROW_STORE_HANDLE, the _s_handle is
+	 *   `strgp->store_handle` that was set in `commit_rows()`.
+	 */
+	switch (s_handle->type) {
+	case CSV_STORE_HANDLE:
+		csv_store_handle_put(s_handle);
+		break;
+	case CSV_ROW_STORE_HANDLE:
+		__csv_row_handle_close((void*)s_handle);
+		break;
+	default:
+		ERR_LOG("Unknown csv_handle type: %d\n", s_handle->type);
+	}
+	pthread_mutex_unlock(&cfg_lock);
+}
+
+static struct csv_row_store_handle *
+row_store_new()
+{
+	struct csv_row_store_handle *rs_handle;
+	rs_handle = calloc(1, sizeof(*rs_handle));
+	if (!rs_handle)
+		return NULL;
+	rs_handle->type = CSV_ROW_STORE_HANDLE;
+	rbt_init(&rs_handle->row_schema_rbt, csv_row_schema_key_cmp);
+	return rs_handle;
+}
+
+/*
+ * - caller MUST hold cfg_lock
+ * - `store_key` is "<CONTAINER>/<SCHEMA>"
+ */
+static struct csv_store_handle *
+csv_store_handle_get(const char *container, const char *schema)
+{
+	struct csv_store_handle *s_handle;
+	int len, rc;
+	char *store_key;
+	char path[PATH_MAX];
+
+	store_key = allocStoreKey(container, schema);
+	if (!store_key)
+		goto err_0;
+
+	s_handle = idx_find(store_idx, (void *)store_key, strlen(store_key));
+	if (s_handle) {
+		assert(s_handle->ref_count > 0);
+		s_handle->ref_count++;
+		free(store_key); /* s_handle already have store_key */
+		goto out;
+	}
+
+	/* CSV file not opened yet */
+	s_handle = calloc(1, sizeof(*s_handle));
+	if (!s_handle) {
+		ERR_LOG("Not enough memory (%s:%s():%d)", __FILE__, __func__, __LINE__);
+		goto err_1;
+	}
+	s_handle->num_lists = -1;
+	s_handle->ref_count = 1;
+	s_handle->type = CSV_STORE_HANDLE;
+	s_handle->store_key = store_key; /* give store_key to s_handle */
+	const char *root_path = ldmsd_plugattr_value(pa, "path", store_key);
+	if (!root_path) {
+		ERR_LOG("`path` plugin attribute is not set\n");
+		errno = EINVAL;
+		goto err_2;
+	}
+	len = asprintf(&s_handle->path, "%s/%s/%s", root_path, container, schema);
+	if (len < 0) {
+		ERR_LOG("Not enough memory (%s:%s():%d)", __FILE__, __func__, __LINE__);
+		goto err_2;
+	}
+	s_handle->container = strdup(container);
+	if (!s_handle->container) {
+		ERR_LOG("Not enough memory (%s:%s():%d)", __FILE__, __func__, __LINE__);
+		goto err_3;
+	}
+	s_handle->schema = strdup(schema);
+	if (!s_handle->schema) {
+		ERR_LOG("Not enough memory (%s:%s():%d)", __FILE__, __func__, __LINE__);
+		goto err_4;
+	}
+	s_handle->printheader = FIRST_PRINT_HEADER;
+	rc = config_handle(s_handle);
+	if (rc) /* error already logged */
+		goto err_5;
+
+	snprintf(path, sizeof(path), "%s/%s", root_path, container);
+	rc = create_outdir(path, CSHC(s_handle), &PG);
+	if (rc) {
+		ERR_LOG("Failure %d creating directory containing '%s'\n", errno, path);
+		goto err_5;
+	}
+
+	time_t appx = time(NULL);
+
+	/* csv filename */
+	if (rolltype >= MINROLLTYPE){
+		//append the files with epoch. assume wont collide to the sec.
+		len = asprintf(&s_handle->filename, "%s.%ld", s_handle->path, appx);
+	} else {
+		len = asprintf(&s_handle->filename, "%s", s_handle->path);
+	}
+	if (len < 0) {
+		ERR_LOG("Not enough memory (%s:%s():%d)", __FILE__, __func__, __LINE__);
+		goto err_5;
+	}
+
+	/* the CSV FILE */
+	s_handle->file = fopen_perm(s_handle->filename, "a+", LDMSD_DEFAULT_FILE_PERM);
+	s_handle->otime = appx;
+	if (!s_handle->file) {
+		ERR_LOG("Error %d opening the file %s.\n", errno, s_handle->path);
+		goto err_6;
+	}
+	ch_output(s_handle->file, s_handle->filename, CSHC(s_handle), &PG);
+
+	/* header file name */
+	if (s_handle->altheader) {
+		if (rolltype >= MINROLLTYPE) {
+			len = asprintf(&s_handle->headerfilename, "%s.HEADER.%ld", s_handle->path, appx);
+		} else {
+			len = asprintf(&s_handle->headerfilename, "%s.HEADER", s_handle->path);
+		}
+	} else {
+		/* header file is the csv file */
+		len = asprintf(&s_handle->headerfilename, "%s", s_handle->filename);
+	}
+
+	if (len < 0) {
+		ERR_LOG("Not enough memory (%s:%s():%d)", __FILE__, __func__, __LINE__);
+		goto err_7;
+	}
+
+	/* the header FILE */
+	if (s_handle->altheader) {
+		const char *_mode;
+		if (s_handle->printheader == FIRST_PRINT_HEADER){
+			_mode = "w";
+		} else {
+			_mode = "a+";
+		}
+		s_handle->headerfile = fopen_perm(s_handle->headerfilename, _mode, LDMSD_DEFAULT_FILE_PERM);
+		if (!s_handle->headerfile) {
+			ERR_LOG("Error: Cannot open headerfile '%s', errno: %d\n", s_handle->headerfilename, errno);
+			goto err_8;
+		}
+		ch_output(s_handle->headerfile, s_handle->headerfilename, CSHC(s_handle), &PG);
+	} else {
+		s_handle->headerfile = s_handle->file;
+	}
+
+	if (s_handle->typeheader > 0) {
+		if (rolltype >= MINROLLTYPE){
+			len = asprintf(&s_handle->typefilename,  "%s.KIND.%ld",
+				s_handle->path, appx);
+		} else {
+			len = asprintf(&s_handle->typefilename,  "%s.KIND",
+				s_handle->path);
+		}
+		if (len < 0) {
+			ERR_LOG("Not enough memory (%s:%s():%d)", __FILE__, __func__, __LINE__);
+			goto err_9;
+		}
+	}
+
+	idx_add(store_idx, s_handle->store_key, strlen(s_handle->store_key), s_handle);
+
+ out:
+	return s_handle;
+
+ err_9:
+	if (s_handle->altheader)
+		fclose(s_handle->headerfile);
+ err_8:
+	free(s_handle->headerfilename);
+ err_7:
+	fclose(s_handle->file);
+ err_6:
+	free(s_handle->filename);
+ err_5:
+	free(s_handle->schema);
+ err_4:
+	free(s_handle->container);
+ err_3:
+	free(s_handle->path);
+ err_2:
+	free(s_handle);
+ err_1:
+	free(store_key);
+ err_0:
+	return NULL;
+}
+
+/* protected by strgp->lock */
+static struct csv_row_schema_rbn_s *
+csv_row_schema_get(ldmsd_strgp_t strgp, struct csv_row_store_handle *rs_handle,
+		   struct csv_row_schema_key_s *key)
+{
+	struct csv_row_schema_rbn_s *rrbn;
+
+	rrbn = (void*)rbt_find(&rs_handle->row_schema_rbt, key);
+	if (rrbn)
+		return rrbn;
+	rrbn = calloc(1, sizeof(*rrbn));
+	if (!rrbn) {
+		ERR_LOG("Out of memory: %s:%s():%d\n", __FILE__, __func__, __LINE__);
+		goto err_0;
+	}
+	rbn_init(&rrbn->rbn, &rrbn->key);
+	rrbn->key.name = rrbn->name;
+	rrbn->key.digest = &rrbn->digest;
+	snprintf(rrbn->name, sizeof(rrbn->name), "%s", key->name);
+	memcpy(&rrbn->digest, key->digest, sizeof(*key->digest));
+
+	pthread_mutex_lock(&cfg_lock);
+	rrbn->s_handle = csv_store_handle_get(strgp->container, key->name);
+	pthread_mutex_unlock(&cfg_lock);
+	if (!rrbn->s_handle)
+		goto err_1;
+
+	rbt_ins(&rs_handle->row_schema_rbt, &rrbn->rbn);
+	return rrbn;
+ err_1:
+	free(rrbn);
+ err_0:
+	return NULL;
+}
+
+typedef struct csv_store_col_info_s {
+	struct csv_store_handle *s_handle;
+	ldms_mval_t v;
+	const char *ustr;
+	const char *sep;
+	const char *wsqt;
+	int i;
+} *csv_store_col_info_t;
+
+typedef int (*csv_store_col_fn)(csv_store_col_info_t ci);
+
+static int store_col_char(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%c", ci->ustr, ci->sep, ci->v->v_char);
+}
+
+static int store_col_u8(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%hhu", ci->ustr, ci->sep, ci->v->v_u8);
+}
+
+static int store_col_s8(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%hhd", ci->ustr, ci->sep, ci->v->v_s8);
+}
+
+static int store_col_u16(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%hu", ci->ustr, ci->sep, ci->v->v_u16);
+}
+
+static int store_col_s16(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%hd", ci->ustr, ci->sep, ci->v->v_s16);
+}
+
+static int store_col_u32(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%u", ci->ustr, ci->sep, ci->v->v_u32);
+}
+
+static int store_col_s32(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%d", ci->ustr, ci->sep, ci->v->v_s32);
+}
+
+static int store_col_u64(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%lu", ci->ustr, ci->sep, ci->v->v_u64);
+}
+
+static int store_col_s64(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%ld", ci->ustr, ci->sep, ci->v->v_s64);
+}
+
+static int store_col_f(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%f", ci->ustr, ci->sep, ci->v->v_f);
+}
+
+static int store_col_d(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%f", ci->ustr, ci->sep, ci->v->v_d);
+}
+
+static int store_col_ts(csv_store_col_info_t ci)
+{
+	if (ci->s_handle->time_format == TF_MILLISEC) {
+		/* Alternate time format. First field is milliseconds-since-epoch,
+		   and the second field is the left-over microseconds */
+		return fprintf(ci->s_handle->file, "%s%s%lu,%u",
+				ci->ustr, ci->sep,
+				((uint64_t)ci->v->v_ts.sec * 1000) + (ci->v->v_ts.usec / 1000),
+				ci->v->v_ts.usec % 1000);
+	} else {
+		/* Traditional time format, where the first field is
+		   <seconds>.<microseconds>, second is microseconds repeated */
+		return fprintf(ci->s_handle->file, "%s%s%u.%06u,%u",
+				ci->ustr, ci->sep, ci->v->v_ts.sec,
+				ci->v->v_ts.usec, ci->v->v_ts.usec);
+	}
+}
+
+static int store_col_char_array(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%s%s%s",
+			ci->ustr, ci->sep, ci->wsqt, ci->v->a_char, ci->wsqt);
+}
+
+static int store_col_u8_array(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%hhu", ci->ustr, ci->sep, ci->v->a_u8[ci->i]);
+}
+
+static int store_col_s8_array(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%hhd", ci->ustr, ci->sep, ci->v->a_s8[ci->i]);
+}
+
+static int store_col_u16_array(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%hu", ci->ustr, ci->sep, ci->v->a_u16[ci->i]);
+}
+
+static int store_col_s16_array(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%hd", ci->ustr, ci->sep, ci->v->a_s16[ci->i]);
+}
+
+static int store_col_u32_array(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%u", ci->ustr, ci->sep, ci->v->a_u32[ci->i]);
+}
+
+static int store_col_s32_array(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%d", ci->ustr, ci->sep, ci->v->a_s32[ci->i]);
+}
+
+static int store_col_u64_array(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%lu", ci->ustr, ci->sep, ci->v->a_u64[ci->i]);
+}
+
+static int store_col_s64_array(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%ld", ci->ustr, ci->sep, ci->v->a_s64[ci->i]);
+}
+
+static int store_col_f_array(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%.9g", ci->ustr, ci->sep, ci->v->a_f[ci->i]);
+}
+
+static int store_col_d_array(csv_store_col_info_t ci)
+{
+	return fprintf(ci->s_handle->file, "%s%s%.17g", ci->ustr, ci->sep, ci->v->a_d[ci->i]);
+}
+
+csv_store_col_fn __store_col_fn_tbl[] = {
+	[LDMS_V_CHAR]       = store_col_char,
+	[LDMS_V_U8]         = store_col_u8,
+	[LDMS_V_S8]         = store_col_s8,
+	[LDMS_V_U16]        = store_col_u16,
+	[LDMS_V_S16]        = store_col_s16,
+	[LDMS_V_U32]        = store_col_u32,
+	[LDMS_V_S32]        = store_col_s32,
+	[LDMS_V_U64]        = store_col_u64,
+	[LDMS_V_S64]        = store_col_s64,
+	[LDMS_V_F32]        = store_col_f,
+	[LDMS_V_D64]        = store_col_d,
+	[LDMS_V_CHAR_ARRAY] = store_col_char_array,
+	[LDMS_V_U8_ARRAY]   = store_col_u8_array,
+	[LDMS_V_S8_ARRAY]   = store_col_s8_array,
+	[LDMS_V_U16_ARRAY]  = store_col_u16_array,
+	[LDMS_V_S16_ARRAY]  = store_col_s16_array,
+	[LDMS_V_U32_ARRAY]  = store_col_u32_array,
+	[LDMS_V_S32_ARRAY]  = store_col_s32_array,
+	[LDMS_V_U64_ARRAY]  = store_col_u64_array,
+	[LDMS_V_S64_ARRAY]  = store_col_s64_array,
+	[LDMS_V_F32_ARRAY]  = store_col_f_array,
+	[LDMS_V_D64_ARRAY]  = store_col_d_array,
+	[LDMS_V_TIMESTAMP]  = store_col_ts,
+	[LDMS_V_LAST+1]     = NULL,
+};
+
+/* caller MUST hold s_handle->lock */
+static int store_col(ldms_set_t set, struct csv_store_handle *s_handle,
+		     ldmsd_col_t col, int is_first)
+{
+	uint64_t udata;
+	int rc = 0, i, len;
+	const char *ustr = "";
+	char udata_str[64] = "";
+	char udata_str_arr[64] = ""; /* for array elements */
+	const char *sep = is_first?"":",";
+	struct csv_store_col_info_s ci;
+	csv_store_col_fn col_fn;
+
+	col_fn = col->type > LDMS_V_LAST ? NULL : __store_col_fn_tbl[col->type];
+	if (!col_fn) {
+		ERR_LOG("Unsupported type %d: %s\n", col->type, ldms_metric_type_to_str(col->type));
+		return EINVAL;
+	}
+
+	if (s_handle->udata && !is_phony_metric_id(col->metric_id)) {
+		/* NOTE: Phony metrics do NOT have udata. */
+		udata = ldms_metric_user_data_get(set, col->metric_id);
+		snprintf(udata_str, sizeof(udata_str), "%s%lu", sep, udata);
+		sep = ",";
+		snprintf(udata_str_arr, sizeof(udata_str_arr), "%s%lu", sep, udata);
+		ustr = udata_str;
+	}
+
+	ci.ustr = ustr;
+	ci.sep = sep;
+	ci.s_handle = s_handle;
+	ci.v = col->mval;
+	ci.wsqt = s_handle->ietfcsv?"\"":""; /* ietf quotation wrapping strings */
+
+	if (ldms_type_is_array(col->type) && col->type != LDMS_V_CHAR_ARRAY) {
+		/* array */
+		for (i = 0; i < col->array_len; i++) {
+			ci.i = i;
+			len = col_fn(&ci);
+			if (len < 0) {
+				rc = errno;
+				ERR_LOG("Error %d writing to '%s'\n", errno, s_handle->filename);
+			} else {
+				s_handle->byte_count += len;
+			}
+			if (i == 0) {
+				/* make sure to have "," for the rest */
+				ci.ustr = udata_str_arr;
+				ci.sep = ",";
+			}
+		}
+	} else {
+		/* single value */
+		len = col_fn(&ci);
+		if (len < 0) {
+			rc = errno;
+			ERR_LOG("Error %d writing to '%s'\n", errno, s_handle->filename);
+		} else {
+			s_handle->byte_count += len;
+		}
+	}
+
+	return rc;
+}
+
+static int
+store_row(ldmsd_strgp_t strgp, ldms_set_t set, struct csv_store_handle *s_handle, ldmsd_row_t row)
+{
+	int rc, i, col_rc;
+	ldmsd_col_t col;
+
+	rc = 0;
+
+	pthread_mutex_lock(&s_handle->lock);
+
+	/* headers */
+	switch (s_handle->printheader){
+	case DO_PRINT_HEADER:
+		/* fall thru */
+	case FIRST_PRINT_HEADER:
+		rc = print_header_from_row(s_handle, set, row);
+		if (rc){
+			msglog(LDMSD_LERROR, PNAME ": %s cannot print header: %d. Not storing\n",
+			       s_handle->store_key, rc);
+			s_handle->printheader = BAD_HEADER;
+			/* FIXME: will returning an error stop the store? */
+			goto out;
+		}
+		break;
+	case BAD_HEADER:
+		rc = EINVAL;
+		goto out;
+	default:
+		/* ok to continue */
+		break;
+	}
+
+	for (i = 0; i < row->col_count; i++) {
+		col = &row->cols[i];
+		col_rc = store_col(set, s_handle, col, 0 == i);
+		if (col_rc)
+			rc = col_rc;
+	}
+	fprintf(s_handle->file, "\n");
+	int doflush = 0;
+	if ((s_handle->buffer_type == 3) &&
+	    ((s_handle->store_count - s_handle->lastflush) >=
+	     s_handle->buffer_sz)){
+		s_handle->lastflush = s_handle->store_count;
+		doflush = 1;
+	} else if ((s_handle->buffer_type == 4) &&
+		 ((s_handle->byte_count - s_handle->lastflush) >=
+		  s_handle->buffer_sz)){
+		s_handle->lastflush = s_handle->byte_count;
+		doflush = 1;
+	}
+	if ((s_handle->buffer_sz == 0) || doflush){
+		fflush(s_handle->file);
+		fsync(fileno(s_handle->file));
+	}
+ out:
+	pthread_mutex_unlock(&s_handle->lock);
+	return rc;
+}
+
+/* This function is protected by strgp->lock */
+static int
+commit_rows(ldmsd_strgp_t strgp, ldms_set_t set,
+	    ldmsd_row_list_t row_list, int row_count)
+{
+	struct csv_row_store_handle *rs_handle;
+	struct csv_row_schema_rbn_s *rbn;
+	struct csv_row_schema_key_s key;
+	ldmsd_row_t row;
+
+	rs_handle = strgp->store_handle;
+	if (!rs_handle) {
+		rs_handle = strgp->store_handle = row_store_new();
+		if (!rs_handle)
+			return ENOMEM;
+	}
+
+	if (rs_handle->type != CSV_ROW_STORE_HANDLE) {
+		ERR_LOG("Invalid handle type\n");
+		assert(0 == "Invalid handle type");
+		return EINVAL;
+	}
+
+	TAILQ_FOREACH(row, row_list, entry) {
+		/* get schema */
+		key.digest = row->schema_digest;
+		key.name = row->schema_name;
+		/* protected by strgp->lock */
+		rbn = (void*)rbt_find(&rs_handle->row_schema_rbt, &key);
+		if (!rbn) {
+			rbn = csv_row_schema_get(strgp, rs_handle, &key);
+			if (!rbn) {
+				/* csv_row_schema_get() already log the error */
+				continue;
+			}
+		}
+
+		/* write row */
+		store_row(strgp, set, rbn->s_handle, row);
+	}
+	return 0;
 }
 
 static struct ldmsd_store store_csv = {
@@ -1781,6 +2295,7 @@ static struct ldmsd_store store_csv = {
 	.store = store,
 	.flush = flush_store,
 	.close = close_store,
+	.commit = commit_rows,
 };
 
 struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)

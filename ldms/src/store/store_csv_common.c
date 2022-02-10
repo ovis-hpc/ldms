@@ -543,19 +543,22 @@ static int config_buffer(const char *bs, const char *bt, int *rbs, int *rbt, con
 }
 
 
-int csv_format_types_common(int typeformat, FILE* file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count)
+int csv_row_format_types_common(int typeformat, FILE* file, const char *fpath,
+		const struct csv_store_handle_common *sh, int doudata,
+		struct csv_plugin_static *cps, ldms_set_t set,
+		struct ldmsd_row_s *row)
 {
 	if (typeformat < 1)
 		return 0;
-	if (!sh || !file || !fpath || !cps || !set || !metric_array)
+	if (!sh || !file || !fpath || !cps || !set)
 		return EINVAL;
 	const char *pn = cps->pname;
-	uint32_t len;
 	size_t i;
 	int j;
 	int rc;
 	const char *u64str = ldms_metric_type_to_str(LDMS_V_U64);
 	const char *castr = ldms_metric_type_to_str(LDMS_V_CHAR_ARRAY);
+	ldmsd_col_t col;
 
 #define CHECKERR(fprintfresult) \
 	if (fprintfresult < 0) { \
@@ -566,62 +569,80 @@ int csv_format_types_common(int typeformat, FILE* file, const char *fpath, const
 
 #define PRINT_UDATA \
 	if (doudata) { \
-		rc = fprintf(file, ",%s", u64str); \
+		rc = fprintf(file, "%s%s", sep, u64str); \
+		sep = ","; \
 		CHECKERR(rc); \
 	}
 
 	const char *ud = "-udata";
+	const char *arr;
 	if (!doudata) {
 		ud = "";
 	}
 	switch (typeformat) {
 	case TH_UNROLL:
-		rc = fprintf(file, "#!ldms-kinds%s!%s,%s,%s%d", ud, "timestamp",
-				u64str, castr, LDMS_PRODUCER_NAME_MAX);
+		arr = "";
 		break;
 	case TH_ARRAY:
-		rc = fprintf(file, "#!ldms-array-kinds%s!%s,%s,%s%d",
-				ud, "timestamp", u64str, castr,
-				LDMS_PRODUCER_NAME_MAX);
+		arr = "-array";
 		break;
 	default:
 		rc = EINVAL;
-		break;
+		CHECKERR(rc);
 	}
+	rc = fprintf(file, "#!ldms%s-kinds%s!", arr, ud);
 	CHECKERR(rc);
 
 	const char *mt;
-	for (i = 0; i < metric_count; i++) {
-		int m = metric_array[i];
-		enum ldms_value_type met_type = ldms_metric_type_get(set, m);
+	const char *sep = "";
+	for (i = 0; i < row->col_count; i++, sep=",") {
+		col = &row->cols[i];
+		enum ldms_value_type met_type = col->type;
+
+		/* Handle phony metrics. They don't have udata. */
+		switch (col->metric_id) {
+		case LDMSD_PHONY_METRIC_ID_TIMESTAMP:
+			/* timestamp (sec or msec) and remaining usec */
+			rc = fprintf(file,"%stimestamp,%s", sep, u64str);
+			CHECKERR(rc);
+			continue;
+		case LDMSD_PHONY_METRIC_ID_PRODUCER:
+			rc = fprintf(file,"%s%s%d", sep, castr, LDMS_PRODUCER_NAME_MAX);
+			CHECKERR(rc);
+			continue;
+		case LDMSD_PHONY_METRIC_ID_INSTANCE:
+			rc = fprintf(file,"%s%s%d", sep, castr, LDMS_SET_NAME_MAX);
+			CHECKERR(rc);
+			continue;
+		}
+
+		/* otherwise, this is a normal metric */
 		enum ldms_value_type base_type =
 			ldms_metric_type_to_scalar_type(met_type);
 		/* unroll arrays, except strings */
 		if (TH_UNROLL == typeformat) {
 			if ( met_type != LDMS_V_CHAR_ARRAY) {
-				len = ldms_metric_array_get_len(set, m);
-				for (j = 0; j < len; j++) {
+				for (j = 0; j < col->array_len; j++) {
 					PRINT_UDATA;
 					mt = ldms_metric_type_to_str(base_type);
-					rc = fprintf(file,",%s", mt);
+					rc = fprintf(file,"%s%s", sep, mt);
 					CHECKERR(rc);
 				}
 			} else {
 				PRINT_UDATA;
 				mt = ldms_metric_type_to_str(met_type);
-				rc = fprintf(file,",%s", mt);
+				rc = fprintf(file,"%s%s", sep, mt);
 				CHECKERR(rc);
 			}
 		}
 		/*  S32[]$len */
 		if (TH_ARRAY == typeformat) {
-			len = ldms_metric_array_get_len(set, m);
 			PRINT_UDATA;
 			mt = ldms_metric_type_to_str(met_type);
-			if (met_type != base_type)
-				rc = fprintf(file,",%s%d", mt, len);
+			if (met_type != base_type) /* array */
+				rc = fprintf(file,"%s%s%d", sep, mt, col->array_len);
 			else
-				rc = fprintf(file,",%s", mt);
+				rc = fprintf(file,"%s%s", sep, mt);
 			CHECKERR(rc);
 			continue;
 		}
@@ -638,7 +659,7 @@ int csv_format_types_common(int typeformat, FILE* file, const char *fpath, const
 
 int __primitive_metric_header(FILE *fp, const struct csv_store_handle_common *sh,
 		    int doudata, char *wsqt, const char *mname,
-		    enum ldms_value_type mtype, size_t len)
+		    enum ldms_value_type mtype, size_t len, const char *sep)
 {
 	int j, ec;
 
@@ -662,14 +683,14 @@ int __primitive_metric_header(FILE *fp, const struct csv_store_handle_common *sh
 			goto store;
 		if (doudata) {
 			for (j = 0; j < len; j++) { // only 1 name for all of them.
-				ec = fprintf(fp, ",%s%s%d.userdata%s,%s%s%d.value%s",
-					wsqt, mname, j, wsqt, wsqt, mname, j, wsqt);
+				ec = fprintf(fp, "%s%s%s%d.userdata%s,%s%s%d.value%s",
+					sep, wsqt, mname, j, wsqt, wsqt, mname, j, wsqt);
 				if (ec < 0)
 					return ec;
 			}
 		} else {
 			for (j = 0; j < len; j++) { // only 1 name for all of them.
-				ec = fprintf(fp, ",%s%s%d%s", wsqt, mname, j, wsqt);
+				ec = fprintf(fp, "%s%s%s%d%s", sep, wsqt, mname, j, wsqt);
 				if (ec < 0)
 					return ec;
 			}
@@ -693,9 +714,73 @@ store:
 	return 0;
 }
 
-int csv_format_header_common(FILE *file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count, int time_format)
+int csv_format_types_common(int typeformat, FILE* file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count)
 {
+	if (typeformat < 1)
+		return 0;
 	if (!sh || !file || !fpath || !cps || !set || !metric_array)
+		return EINVAL;
+	const char *pn = cps->pname;
+	size_t i;
+	int rc;
+
+	/* make row */
+	struct ldmsd_row_s *row;
+	struct ldmsd_col_s *col;
+
+#define CHECKERR(fprintfresult) \
+	if (fprintfresult < 0) { \
+		cps->msglog(LDMSD_LERROR, "%s: Error %d writing to type header '%s'\n", pn, \
+		       fprintfresult, fpath); \
+		goto error; \
+	}
+
+#define PRINT_UDATA \
+	if (doudata) { \
+		rc = fprintf(file, ",%s", u64str); \
+		CHECKERR(rc); \
+	}
+
+	row = calloc(1, sizeof(*row) + (2+metric_count) * sizeof(row->cols[0]));
+	if (!row)
+		return ENOMEM;
+	row->col_count = 2 + metric_count;
+	row->cols[0].name = "timestamp";
+	row->cols[0].type = LDMS_V_U64;
+	row->cols[0].metric_id = LDMSD_PHONY_METRIC_ID_TIMESTAMP;
+	row->cols[0].array_len = 1;
+
+	row->cols[1].name = "ProducerName";
+	row->cols[1].type = LDMS_V_CHAR_ARRAY;
+	row->cols[1].metric_id = LDMSD_PHONY_METRIC_ID_PRODUCER;
+	row->cols[1].array_len = 16; /* can be anything, unused in this case */
+
+	for (i = 0; i < metric_count; i++) {
+		col = &row->cols[2+i];
+		col->name = ldms_metric_name_get(set, metric_array[i]);
+		col->type = ldms_metric_type_get(set, metric_array[i]);
+		col->metric_id = metric_array[i];
+		col->array_len = ldms_metric_array_get_len(set, metric_array[i]);
+	}
+
+	rc = csv_row_format_types_common(typeformat, file, fpath, sh, doudata,cps, set, row);
+	free(row);
+	CHECKERR(rc);
+
+	return 0;
+ error:
+	return 1;
+#undef CHECKERR
+#undef PRINT_UDATA
+}
+
+int csv_row_format_header(FILE *file, const char *fpath,
+		const struct csv_store_handle_common *sh, int doudata,
+		struct csv_plugin_static *cps, ldms_set_t set,
+		struct ldmsd_row_s *row,
+		int time_format)
+{
+	if (!sh || !file || !fpath || !cps || !set)
 		return EINVAL;
 	FILE *fp = file;
 	const char *pn = cps->pname;
@@ -712,25 +797,40 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
 	}
 
 	char *wsqt = ""; /* stub for ietfcsv */
+	char *sep = "";
 	if (sh->ietfcsv) {
 		wsqt = "\"";
 	}
 
-        /* Print timestamp header fields */
-        if (time_format == TF_MILLISEC) {
-                /* Alternate time format. First field is milliseconds-since-epoch,
-                   and the second field is the left-over microseconds */
-                ec = fprintf(fp, "#%sTime_msec%s,%sTime_usec%s,%sProducerName%s",wsqt,wsqt,wsqt,wsqt,wsqt,wsqt);
-        } else {
-                /* Traditional time format, where the first field is
-                   <seconds>.<microseconds>, second is microseconds repeated */
-                ec = fprintf(fp, "#%sTime%s,%sTime_usec%s,%sProducerName%s",wsqt,wsqt,wsqt,wsqt,wsqt,wsqt);
-        }
-	CHECKERR(ec);
+	ec = fprintf(fp, "#");
 
-	for (i = 0; i < metric_count; i++) {
-		const char* name = ldms_metric_name_get(set, metric_array[i]);
-		enum ldms_value_type metric_type = ldms_metric_type_get(set, metric_array[i]);
+	for (i = 0; i < row->col_count; i++, sep = ",") {
+		struct ldmsd_col_s *col = &row->cols[i];
+		const char* name = col->name;
+		enum ldms_value_type metric_type = col->type;
+
+		/* timestamp is a special case */
+		switch (col->metric_id) {
+		case LDMSD_PHONY_METRIC_ID_TIMESTAMP:
+			/* Print timestamp header fields */
+			if (time_format == TF_MILLISEC) {
+				/* Alternate time format. First field is milliseconds-since-epoch,
+				   and the second field is the left-over microseconds */
+				ec = fprintf(fp, "%s%sTime_msec%s,%sTime_usec%s",sep,wsqt,wsqt,wsqt,wsqt);
+			} else {
+				/* Traditional time format, where the first field is
+				   <seconds>.<microseconds>, second is microseconds repeated */
+				ec = fprintf(fp, "%s%sTime%s,%sTime_usec%s",sep,wsqt,wsqt,wsqt,wsqt);
+			}
+			CHECKERR(ec);
+			continue;
+		case LDMSD_PHONY_METRIC_ID_PRODUCER:
+		case LDMSD_PHONY_METRIC_ID_INSTANCE:
+			/* phony metrics don't have udata */
+			ec = fprintf(fp, "%s%s%s%s", sep, wsqt, name, wsqt);
+			CHECKERR(ec);
+			continue;
+		}
 
 		if (LDMS_V_RECORD_TYPE == metric_type)
 			continue;
@@ -740,7 +840,7 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
 			size_t cnt, prev_cnt;
 			char n[100];
 
-			lh = ldms_metric_get(set, metric_array[i]);
+			lh = col->mval;
 			lent = ldms_list_first(set, lh, &mtype, &cnt);
 			if (!lent) {
 				/*
@@ -752,7 +852,7 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
 			}
 			/* Print list entry index header */
 			snprintf(n, 100, "%s_entry_idx", name);
-			ec = __primitive_metric_header(fp, sh, doudata, wsqt, n, LDMS_V_U64, 1);
+			ec = __primitive_metric_header(fp, sh, doudata, wsqt, n, LDMS_V_U64, 1, sep);
 			CHECKERR(ec);
 
 			/* Print list entries' column headers */
@@ -778,12 +878,12 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
 						ldms_record_metric_name_get(lent, j));
 					mt = ldms_record_metric_type_get(lent, j, &c);
 					ec = __primitive_metric_header(fp, sh, doudata,
-								  wsqt, n, mt, c);
+								  wsqt, n, mt, c, sep);
 					CHECKERR(ec);
 				}
 			} else {
 				ec = __primitive_metric_header(fp, sh, doudata, wsqt,
-							  name, mtype, cnt);
+							  name, mtype, cnt, sep);
 				CHECKERR(ec);
 			}
 			do {
@@ -803,9 +903,9 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
 		} else {
 			size_t cnt = 1;
 			if (ldms_type_is_array(metric_type))
-				cnt = ldms_metric_array_get_len(set, metric_array[i]);
+				cnt = col->array_len;
 			ec = __primitive_metric_header(fp, sh, doudata, wsqt, name,
-						  metric_type, cnt);
+						  metric_type, cnt, sep);
 			CHECKERR(ec);
 		}
 	}
@@ -813,6 +913,43 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
 	fprintf(fp, "\n");
 	return 0;
  err:
+	return ec;
+}
+
+int csv_format_header_common(FILE *file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count, int time_format)
+{
+	if (!sh || !file || !fpath || !cps || !set || !metric_array)
+		return EINVAL;
+	size_t i;
+	int ec;
+
+	struct ldmsd_row_s *row;
+	struct ldmsd_col_s *col;
+
+	row = calloc(1, sizeof(*row) + (2+metric_count) * sizeof(row->cols[0]));
+	if (!row)
+		return ENOMEM;
+	row->col_count = 2 + metric_count;
+	row->cols[0].name = "timestamp";
+	row->cols[0].type = LDMS_V_U64;
+	row->cols[0].metric_id = LDMSD_PHONY_METRIC_ID_TIMESTAMP;
+	row->cols[0].array_len = 1;
+
+	row->cols[1].name = "ProducerName";
+	row->cols[1].type = LDMS_V_CHAR_ARRAY;
+	row->cols[1].metric_id = LDMSD_PHONY_METRIC_ID_PRODUCER;
+	row->cols[1].array_len = 16; /* can be anything, unused in this case */
+
+	for (i = 0; i < metric_count; i++) {
+		col = &row->cols[2+i];
+		col->name = ldms_metric_name_get(set, metric_array[i]);
+		col->type = ldms_metric_type_get(set, metric_array[i]);
+		col->metric_id = metric_array[i];
+		col->array_len = ldms_metric_array_get_len(set, metric_array[i]);
+	}
+
+	ec = csv_row_format_header(file, fpath, sh, doudata, cps, set, row, time_format);
+	free(row);
 	return ec;
 }
 

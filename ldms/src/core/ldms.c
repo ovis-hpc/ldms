@@ -1825,6 +1825,7 @@ static char *type_names[] = {
 	[LDMS_V_RECORD_TYPE] = "record_type",
 	[LDMS_V_RECORD_INST] = "record_inst",
 	[LDMS_V_RECORD_ARRAY] = "record_array",
+	[LDMS_V_TIMESTAMP] = "timestamp",
 };
 
 static enum ldms_value_type type_scalar_types[] = {
@@ -2071,6 +2072,8 @@ static struct _ldms_type_name_map {
 	{ "S64_ARRAY", LDMS_V_S64_ARRAY},
 	{ "S8", LDMS_V_S8, },
 	{ "S8_ARRAY", LDMS_V_S8_ARRAY},
+	{ "TIMESTAMP", LDMS_V_TIMESTAMP},
+	{ "TS", LDMS_V_TIMESTAMP},
 	{ "U16", LDMS_V_U16, },
 	{ "U16_ARRAY", LDMS_V_U16_ARRAY},
 	{ "U32", LDMS_V_U32, },

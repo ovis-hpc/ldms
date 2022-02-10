@@ -2295,9 +2295,12 @@ static int prdcr_set_status_handler(ldmsd_req_ctxt_t reqc)
 	return rc;
 }
 
+int strgp_decomp_init(ldmsd_strgp_t strgp, ldmsd_req_ctxt_t req);
+
 static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *attr_name, *name, *plugin, *container, *schema, *interval;
+	char *decomp;
 	name = plugin = container = schema = NULL;
 	size_t cnt = 0;
 	uid_t uid;
@@ -2305,6 +2308,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	int perm;
 	char *perm_s = NULL;
 	struct timespec flush_interval = {0, 0};
+	struct ldmsd_sec_ctxt sec_ctxt = {};
 
 	reqc->errcode = 0;
 
@@ -2339,6 +2343,10 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 			goto send_reply;
 		}
 	}
+
+	attr_name = "decomposition";
+	decomp = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_DECOMP);
+
 	struct ldmsd_plugin_cfg *store;
 	store = ldmsd_get_plugin(plugin);
 	if (!store) {
@@ -2366,6 +2374,7 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 			goto enomem;
 	}
 
+	strgp->store = store->store;
 	strgp->plugin_name = strdup(plugin);
 	if (!strgp->plugin_name)
 		goto enomem_1;
@@ -2379,14 +2388,23 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 		goto enomem_3;
 
 	strgp->flush_interval = flush_interval;
+
+	if (decomp) {
+		strgp->decomp_name = strdup(decomp);
+		if (!strgp->decomp_name)
+			goto enomem_3;
+		/* reqc->errcode, reqc->line_buf will be populated if there is an error */
+		strgp_decomp_init(strgp, reqc);
+	} else {
+		strgp->decomp_name = NULL;
+	}
+
 	goto send_reply;
 
 enomem_3:
-	free(strgp->schema);
 enomem_2:
-	free(strgp->plugin_name);
 enomem_1:
-	free(strgp);
+	ldmsd_strgp_del(name, &sec_ctxt);
 enomem:
 	reqc->errcode = ENOMEM;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,

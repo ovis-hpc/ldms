@@ -240,11 +240,17 @@ void ch_output(FILE *f, const char *name,
  */
 int csv_format_header_common(FILE *file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count, int time_format);
 
+int csv_row_format_header(FILE *file, const char *fpath,
+		const struct csv_store_handle_common *sh, int doudata,
+		struct csv_plugin_static *cps, ldms_set_t set,
+		struct ldmsd_row_s *row,
+		int time_format);
+
 /** Format a metric types line to a file given following the
  * metric_array indices and conventions of csv_format_common.
  * String quoting is never used.
- * \param typeformat: 0 (do nothing), 
- * 	1 expand arrays (ldmstype), 
+ * \param typeformat: 0 (do nothing),
+ * 	1 expand arrays (ldmstype),
  * 	2 'ldmstype[]len' for arrays
  * 	All other arguments ignored if typeformat is 0.
  * 	CHAR_ARRAYs are never expanded, as with csv_format_common.
@@ -259,6 +265,11 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
  * \return 0 or errno value.
  */
 extern int csv_format_types_common(int typeformat, FILE* f, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count);
+
+int csv_row_format_types_common(int typeformat, FILE* file, const char *fpath,
+		const struct csv_store_handle_common *sh, int doudata,
+		struct csv_plugin_static *cps, ldms_set_t set,
+		struct ldmsd_row_s *row);
 
 #define OPEN_STORE_COMMON(pa, h) open_store_common(pa, CSHC(h), &PG)
 /**

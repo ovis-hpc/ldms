@@ -442,6 +442,8 @@ typedef struct ldmsd_strgp_metric {
 	TAILQ_ENTRY(ldmsd_strgp_metric) entry;
 } *ldmsd_strgp_metric_t;
 
+typedef struct ldmsd_row_s *ldmsd_row_t;
+typedef struct ldmsd_row_list_s *ldmsd_row_list_t;
 typedef void (*strgp_update_fn_t)(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set);
 struct ldmsd_strgp {
 	struct ldmsd_cfgobj obj;
@@ -480,7 +482,181 @@ struct ldmsd_strgp {
 
 	/** Update function */
 	strgp_update_fn_t update_fn;
+
+	/** Decomposer resource handle */
+	struct ldmsd_decomp_s *decomp;
+	char *decomp_name;
 };
+
+
+/* === Decompositions === */
+
+typedef struct ldmsd_req_ctxt *ldmsd_req_ctxt_t;
+typedef struct ldmsd_decomp_s *ldmsd_decomp_t;
+typedef struct json_entity_s *json_entity_t;
+
+/** Decomposition interface. */
+struct ldmsd_decomp_s {
+
+	/**
+	 * Configuring the decomposition according to \c strgp and \c json_path.
+	 *
+	 * \c reqc is given so that the config function can describe the errors
+	 * back to the user (not just log file) in details.
+	 *
+	 * \param strgp
+	 * \param json_path
+	 * \param reqc
+	 *
+	 * \retval decomp The decomposition resource handle.
+	 * \retval NULL   If there is an error. In this case, \c errno must also
+	 *                be set to describe the error.
+	 */
+	ldmsd_decomp_t (*config)(ldmsd_strgp_t strgp, json_entity_t jcfg, ldmsd_req_ctxt_t reqc);
+
+	/**
+	 * Decompose method.
+	 *
+	 * \param      strgp     The storage policy.
+	 * \param      set       The LDMS set to be decomposed.
+	 * \param      row_list  The list head to which the output rows are
+	 *                       appended.
+	 * \param[out] row_count The number of rows appended to the \c row_list.
+	 *
+	 * \retval 0     If configure successfully.
+	 * \retval errno If there is an error.
+	 */
+	int (*decompose)(ldmsd_strgp_t strgp, ldms_set_t set,
+			 ldmsd_row_list_t row_list, int *row_count);
+
+	/**
+	 * Release resources of rows from \c decompose().
+	 *
+	 * When \c ldmsd is done with the rows in the storage routine, it calls
+	 * \c strgp->release_rows() to let the decomposer releases the rows and
+	 * their resources.
+	 */
+	void (*release_rows)(ldmsd_strgp_t strgp, ldmsd_row_list_t row_list);
+
+	/**
+	 * Release decomposer resources (\c strgp->decomp).
+	 *
+	 * This will be called in the \c strgp_del call chain.
+	 */
+	void (*release_decomp)(ldmsd_strgp_t strgp);
+};
+
+/*
+ * Phony metric IDs are used in `struct ldmsd_col_s` construction when the
+ * value of the column refers to a non-metric set data such as:
+ *   - timestamp
+ *   - producer
+ *   - instance
+ */
+typedef enum ldmsd_phony_metric_id {
+	LDMSD_PHONY_METRIC_ID_FIRST = 65536,
+	LDMSD_PHONY_METRIC_ID_TIMESTAMP = LDMSD_PHONY_METRIC_ID_FIRST,
+	LDMSD_PHONY_METRIC_ID_PRODUCER,
+	LDMSD_PHONY_METRIC_ID_INSTANCE,
+} ldmsd_phony_metric_id_t;
+
+__attribute__((unused)) /* compiler hush */
+static int is_phony_metric_id(int metric_id)
+{
+	return metric_id >= LDMSD_PHONY_METRIC_ID_FIRST;
+}
+
+struct ldmsd_col_s {
+	const char *name;          /* The column name */
+	ldms_mval_t mval;          /* The metric value for this column */
+	void *column;              /* The plugin’s column handle */
+	enum ldms_value_type type; /* The LDMS metric type */
+	int array_len;             /* if mval is an array */
+	int metric_id;             /* metric ID */
+
+	int rec_metric_id;         /* If this is in a record,
+				      rec_metric_id >= 0.
+				      metric_id in this case refers to
+				      the list head containing the record. */
+};
+typedef struct ldmsd_col_s *ldmsd_col_t;
+
+struct ldmsd_row_index_s {
+	const char *name;    /* The name of the index */
+	int col_count;       /* number of columns comprising the index */
+	int pad;
+	ldmsd_col_t cols[OVIS_FLEX]; /* reference to the columns comprising the index */
+};
+typedef struct ldmsd_row_index_s *ldmsd_row_index_t;
+
+struct ldmsd_row_s {
+	TAILQ_ENTRY(ldmsd_row_s) entry;
+	void *schema; /* The storage plugin’s schema handle */
+	const char *schema_name; /* The name of the schema from the
+				    configuration. */
+	const struct ldms_digest_s *schema_digest; /* row schema digest.
+						       Not to confuse
+						       with LDMS schema digest.
+						       */
+	int idx_count; /* the number of indices */
+	int col_count; /* The number of columns */
+	ldmsd_row_index_t *indices; /* pointer to array of indices */
+	struct ldmsd_col_s cols[OVIS_FLEX];
+};
+typedef struct ldmsd_row_s *ldmsd_row_t;
+
+TAILQ_HEAD(ldmsd_row_list_s, ldmsd_row_s);
+typedef struct ldmsd_row_list_s *ldmsd_row_list_t;
+
+typedef struct ldmsd_req_ctxt *ldmsd_req_ctxt_t;
+
+/**
+ * A utility to convert \c row to JSON array.
+ *
+ * The output format is in the form of JSON array as follows
+ * \code
+ *   [ COL_1_VAL, COL_2_VAL, COL_3_VAL, ..., COL_N_VAL ]
+ * \endcode
+ *
+ * \param       row The row handle.
+ * \param [out] str The output C string containing JSON array for the \c row.
+ * \param [out] len The strlen() of \c *str.
+ *
+ * \retval 0     If succeded.
+ * \retval errno If there is an error.
+ */
+int ldmsd_row_to_json_array(ldmsd_row_t row, char **str, int *len);
+
+/**
+ * A utility to convert \c row to JSON object.
+ *
+ * The output format is in the form of JSON object as follows
+ * \code
+ *   { "COL_1_NAME":COL_1_VAL, "COL_2_NAME":COL_2_VAL, ...,
+ *     "COL_N_NAME":COL_N_VAL }
+ * \endcode
+ *
+ * \param       row The row handle.
+ * \param [out] str The output C string containing JSON object for the \c row.
+ * \param [out] len The strlen() of \c *str.
+ *
+ * \retval 0     If succeded.
+ * \retval errno If there is an error.
+ */
+int ldmsd_row_to_json_object(ldmsd_row_t row, char **str, int *len);
+
+/**
+ * Configure strgp decomposer.
+ *
+ * The decomposer shall use the \c strgp->decomp generic pointer
+ * for the decomposer's resources associated with the \c strgp.
+ *
+ * \retval 0     If configure successfully.
+ * \retval errno If there is an error.
+ */
+int ldmsd_decomp_config(ldmsd_strgp_t strgp, const char *json_path, ldmsd_req_ctxt_t reqc);
+
+/* ---------------------- */
 
 typedef struct ldmsd_set_info {
 	ldms_set_t set;
@@ -607,6 +783,8 @@ struct ldmsd_store {
 	int (*flush)(ldmsd_store_handle_t sh);
 	void *(*get_context)(ldmsd_store_handle_t sh);
 	int (*store)(ldmsd_store_handle_t sh, ldms_set_t set, int *, size_t count);
+
+	int (*commit)(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int row_count);
 };
 
 #define LDMSD_STR_WRAP(NAME) #NAME
@@ -1212,4 +1390,7 @@ TAILQ_HEAD(ldmsd_str_list, ldmsd_str_ent);
 struct ldmsd_str_ent *ldmsd_str_ent_new(char *s);
 void ldmsd_str_ent_free(struct ldmsd_str_ent *ent);
 void ldmsd_str_list_destroy(struct ldmsd_str_list *list);
+
+__attribute__((format(printf, 3, 4)))
+size_t Snprintf(char **dst, size_t *len, char *fmt, ...);
 #endif
