@@ -256,8 +256,9 @@ enum ldms_value_type {
 	LDMS_V_RECORD_TYPE,
 	LDMS_V_RECORD_INST,
 	LDMS_V_RECORD_ARRAY,
+	LDMS_V_TIMESTAMP,
 	LDMS_V_FIRST = LDMS_V_CHAR,
-	LDMS_V_LAST = LDMS_V_RECORD_ARRAY
+	LDMS_V_LAST = LDMS_V_TIMESTAMP
 };
 
 #define LDMS_RECORD_FIELD_INST 255
@@ -344,6 +345,8 @@ typedef union ldms_value {
 	int64_t a_s64[OVIS_FLEX_UNION];
 	float a_f[OVIS_FLEX_UNION];
 	double a_d[OVIS_FLEX_UNION];
+
+	struct ldms_timestamp v_ts;
 } *ldms_mval_t;
 
 typedef struct ldms_name {

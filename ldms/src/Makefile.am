@@ -4,6 +4,8 @@ SUBDIRS += third-plugins
 SUBDIRS += core
 SUBDIRS += ldmsd
 
+SUBDIRS += decomp
+
 if ENABLE_OVIS_AUTH
 SUBDIRS += auth
 endif

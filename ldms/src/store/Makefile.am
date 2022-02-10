@@ -90,3 +90,7 @@ endif
 if ENABLE_DARSHAN
 SUBDIRS += darshan
 endif
+
+if HAVE_KAFKA
+SUBDIRS += kafka
+endif

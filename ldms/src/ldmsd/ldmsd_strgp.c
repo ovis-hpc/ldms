@@ -92,6 +92,8 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 	}
 	if (strgp->plugin_name)
 		free(strgp->plugin_name);
+	if (strgp->decomp_name)
+		free(strgp->decomp_name);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -172,16 +174,47 @@ out:
 	return rc;
 }
 
+static void strgp_decompose(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
+{
+	struct ldmsd_row_list_s row_list = TAILQ_HEAD_INITIALIZER(row_list);
+	int row_count, rc;
+	rc = strgp->decomp->decompose(strgp, prd_set->set, &row_list, &row_count);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "strgp decompose error: %d\n", rc);
+		return;
+	}
+	rc = strgp->store->commit(strgp, prd_set->set, &row_list, row_count);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "strgp row commit error: %d\n", rc);
+	}
+	strgp->decomp->release_rows(strgp, &row_list);
+}
+
+/* protected by strgp lock */
 static void strgp_update_fn(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 {
 	if (strgp->state != LDMSD_STRGP_STATE_RUNNING)
 		return;
+	if (!strgp->decomp_name)
+		goto store_routine;
+
+	/* decomp() interface routine */
+	if (!strgp->decomp) {
+		strgp->state = LDMSD_STRGP_STATE_STOPPED;
+		return;
+	}
+	strgp_decompose(strgp, prd_set);
+	goto out;
+
+	/* store() interface routine */
+ store_routine:
 	if (!strgp->store_handle) {
 		strgp->state = LDMSD_STRGP_STATE_STOPPED;
 		return;
 	}
 	strgp->store->store(strgp->store_handle, prd_set->set,
 			    strgp->metric_arry, strgp->metric_count);
+ out:
 	if (strgp->flush_interval.tv_sec || strgp->flush_interval.tv_nsec) {
 		struct timespec expiry;
 		struct timespec now;
@@ -536,6 +569,22 @@ err:
 	return rc;
 }
 
+/* protected by strgp lock */
+int strgp_decomp_init(ldmsd_strgp_t strgp, ldmsd_req_ctxt_t reqc)
+{
+
+	if (!strgp->store) {
+		/* load store */
+		struct ldmsd_plugin_cfg *store;
+		store = ldmsd_get_plugin(strgp->plugin_name);
+		if (!store)
+			return ENOENT;
+		strgp->store = store->store;
+	}
+	assert(!strgp->decomp);
+	return ldmsd_decomp_config(strgp, strgp->decomp_name, reqc);
+}
+
 /** Must be called with the producer set lock and the strgp config lock held and in this order*/
 int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 {
@@ -559,7 +608,13 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 		rc = EEXIST;
 		if (ref)
 			break;
-		if (!strgp->store_handle) {
+		if (strgp->decomp_name) {
+			if (!strgp->decomp) {
+				rc = strgp_decomp_init(strgp, NULL);
+				if (rc)
+					break;
+			}
+		} else if (!strgp->store_handle) {
 			rc = strgp_open(strgp, prd_set);
 			if (rc)
 				break;
@@ -703,6 +758,10 @@ int ldmsd_strgp_del(const char *strgp_name, ldmsd_sec_ctxt_t ctxt)
 
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_STRGP], &strgp->obj.rbn);
 	ldmsd_strgp_put(strgp); /* tree reference */
+
+	if (strgp->decomp) {
+		strgp->decomp->release_decomp(strgp);
+	}
 
 	/* let through */
 out_1:
