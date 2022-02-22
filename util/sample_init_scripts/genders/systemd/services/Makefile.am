@@ -1,5 +1,5 @@
 
-docdir = $(datadir)/doc/@PACKAGE@-@VERSION@/sample_init_scripts/genders/systemd/services
+docdir = $(datadir)/doc/@PACKAGE@/sample_init_scripts/genders/systemd/services
 
 doc_DATA=ldmsd.service ldmsd@.service README.ldmsd
 

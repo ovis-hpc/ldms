@@ -1,5 +1,5 @@
 
-docdir = $(datadir)/doc/@PACKAGE@-@VERSION@/sample_init_scripts/genders/examples
+docdir = $(datadir)/doc/@PACKAGE@/sample_init_scripts/genders/examples
 
 dist_doc_DATA = \
 genders.shaun \

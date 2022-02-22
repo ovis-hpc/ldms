@@ -1,5 +1,5 @@
 
-docdir = $(datadir)/doc/@PACKAGE@-@VERSION@/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/ClusterSecrets
+docdir = $(datadir)/doc/@PACKAGE@/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d/ClusterSecrets
 
 if ENABLE_TOSS_SYSTEMD
 dist_doc_DATA = \
