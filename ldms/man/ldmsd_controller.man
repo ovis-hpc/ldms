@@ -114,7 +114,7 @@ The plugin name
 .TP
 .BR attr=value
 .br
-Plugin specific attr=value tuples
+Plugin specific attr=value tuples. Values may contain substitution specifications (${environment\_variable} or ~{other_key}).
 
 .RS
 .B Attributes specific for sampler plugins (Some sampler plugins may have additional
