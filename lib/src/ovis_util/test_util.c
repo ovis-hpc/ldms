@@ -22,6 +22,54 @@ void test_str_repl_cmd()
 	__test_str_repl_cmd("verb opt=$(sleep 3) opt2=$(hostname)");
 }
 
+void test_av_tilde()
+{
+	struct attr_value_list *av_list, *kw_list;
+	av_list = av_new(7);
+	kw_list = av_new(7);
+	char *s = strdup("a=b c=~{a} d=~{c}q f=g~{a} a1=~{a2} a2=~{a1} k=~{m}");
+	if (!s) {
+		printf("test_av_tilde: strdup fail\n");
+		return;
+	}
+	int rc = tokenize(s, kw_list, av_list);
+	if (rc) {
+		printf("test_av_tilde: failed tokenize\n");
+		return;
+	}
+	if (strcmp(av_value(av_list, "a"), "b")) {
+		printf("test_av_tilde: list[a] != 'b'\n");
+	}
+	if (strcmp(av_value(av_list, "c"), "b")) {
+		printf("test_av_tilde: list[c] != 'b'\n");
+	}
+	if (strcmp(av_value(av_list, "d"), "bq")) {
+		printf("test_av_tilde: list[d] != 'bq'\n");
+	}
+	if (strcmp(av_value(av_list, "f"), "gb")) {
+		printf("test_av_tilde: list[f] != 'gb'\n");
+	}
+	char *empty = av_value(av_list, "k");
+	if (empty) {
+		if (strcmp(empty, ""))
+			printf("test_av_tilde: list[k] != ''\n");
+	} else {
+			printf("test_av_tilde: list[k] returned NULL\n");
+	}
+	char *badslt = av_value(av_list, "a1");
+	if (badslt) {
+		printf("test_av_tilde: recursion ->'%s'\n", badslt);
+		if (strcmp(badslt, "")) {
+			printf("test_av_tilde: list[a1] != ''\n");
+		}
+	} else {
+		printf("test_av_tilde: recursion found: errno:%s\n",strerror(errno));
+	}
+	free(s);
+	av_free(av_list);
+	av_free(kw_list);
+}
+
 void test_av()
 {
 	struct attr_value_list *av_list, *kw_list, *cp;
@@ -97,6 +145,8 @@ int main(int argc, char **argv)
 	test_str_repl_cmd();
 
 	test_av();
+
+	test_av_tilde();
 
 	/* odd cases */
 

@@ -116,6 +116,11 @@ struct attr_value_list {
 
 /**
  * \brief Get the value of attribute \c name
+ * Values will be fully substituted by str_repl_env_vars before
+ * being returned.
+ * \param name the key to search for in av_list.
+ * \return the first value with key name, or NULL if there is no
+ * key with the name or if the value cannot be expanded.
  */
 char *av_value(struct attr_value_list *av_list, const char *name);
 
@@ -256,10 +261,10 @@ int f_is_dir(const char *path);
 int f_mkdir_p(const char *path, __mode_t mode);
 
 /**
- * \brief Replace environment variables in a string
+ * \brief Replace tilde ~{} and environment ${} variables in a string.
  *
- * This function handles the ${<name>} syntax for replacing these
- * strings with the corresponding environment variable value.
+ * This function handles the ~ and $ syntax for replacing these
+ * strings with the corresponding attribute or environment variable value.
  *
  * The syntax is similar to bash, for example if getenv("HOSTNAME") ==
  * "orion-08", then:
@@ -268,13 +273,20 @@ int f_mkdir_p(const char *path, __mode_t mode);
  *
  * The supported syntax for the <name> is [[:alnum:]_]+. That is, one
  * or more alpha-numeric or '_' characters. Environment variables that
- * are missing are replaced with "".
+ * are missing are replaced with "". Similarly, ~{key} is replaced with
+ * the value of its first occurence in the avl, or the empty string if it is
+ * undefined.
+ *
+ * All tilde substitions are processed before any environment
+ * variable substitutions. If recursion among 2 or more ~{} substitutions
+ * is detected, the values for the involved keys are undefined.
  *
  * The function returns memory that was allocated with malloc()
  *
  * \param str The input string.
- * \retval NULL There was insufficient memory to allocate the output string.
- * \retval Ptr to a string with the environment variable values replaced.
+ * \retval NULL There was insufficient memory to allocate the output string
+ * or recursion was detected; errno will be ENOMEM or EBADSLT respectively.
+ * \retval Ptr to a string with the environment variable and ~{} values replaced.
  */
 char *str_repl_env_vars(const char *str);
 
