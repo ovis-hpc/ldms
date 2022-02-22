@@ -1643,7 +1643,6 @@ ldmsd_listen_t ldmsd_listen_new(char *xprt, char *port, char *host, char *auth)
 				getuid(), getgid(), 0550); /* No one can alter it */
 	free(name);
 	if (!listen) {
-		errno = ENOMEM;
 		return NULL;
 	}
 
