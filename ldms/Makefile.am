@@ -15,7 +15,6 @@ endif
 
 LDMS = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 LDMS_TARBALL = $(LDMS).tar.gz
-OPV=-$(PACKAGE_VERSION)
 
 PHONY_doc = doxygen doc install-doc
 
@@ -29,7 +28,7 @@ test/failover-simple/agg1.sh \
 test/failover-simple/agg2.sh \
 test/failover-simple/sampler.sh
 
-docversiondir=$(docdir)$(OPV)
+docversiondir=$(docdir)
 docversion_DATA=AUTHORS
 
 install-exec-hook:
@@ -61,13 +60,13 @@ doxygen-out: $(DOCDEPS)
 	@(errcnt=`wc -l ldms.doxygen.log|sed -e s'% .*%%g'`; echo doxygen errors $$errcnt; if [ "$$errcnt" -ge 10 ]; then echo "WOW WE NEED TO CLEAN UP THE COMMENTS!"; fi)
 
 install-doxygen: doxygen-out
-	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search
+	$(MKDIR_P) $(DESTDIR)$(docdir)/html/search
 	for f in doxygen/html/* ; do \
-		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html; \
+		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)/html; \
 	done
 	if [ -d doxygen/html/search ]; then \
 	for f in doxygen/html/search/*; do \
-		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
+		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)/html/search; \
 	done \
 	fi
 

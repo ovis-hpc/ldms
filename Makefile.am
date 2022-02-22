@@ -24,7 +24,7 @@ nobase_include_HEADERS = ovis-ldms-config.h
 
 
 
-docdir = $(datadir)/doc/@PACKAGE@-@VERSION@
+docdir = $(datadir)/doc/@PACKAGE@
 dist_doc_DATA = COPYING gpl-2.0.txt
 
 SUBDIRS = lib ldms util
@@ -40,7 +40,6 @@ NODIST_SUBDIRS =
 
 BASE = $(PACKAGE_NAME)-$(PACKAGE_VERSION)
 BASE_TARBALL = $(BASE).tar.gz
-OPV=-$(PACKAGE_VERSION)
 
 .PHONY: doxygen
 

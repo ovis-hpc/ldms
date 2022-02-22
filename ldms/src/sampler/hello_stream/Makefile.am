@@ -20,7 +20,7 @@ dist_man7_MANS += Plugin_hello_sampler.man
 
 SUBDIRS = stream_configs
 
-docversionexamplesdir = $(docdir)-$(PACKAGE_VERSION)/examples/hello_sampler_util
+docversionexamplesdir = $(docdir)/examples/hello_sampler_util
 
 endif
 

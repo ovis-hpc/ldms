@@ -15,7 +15,6 @@ bin_SCRIPTS += ldms-csv-export-sos
 bin_SCRIPTS += ldmsd-check-env
 
 DISTCLEANFILES = $(gen_scripts) $(sgen_scripts)
-OPV=-$(PACKAGE_VERSION)
 
 sgen_scripts = ldms-wrapper
 
@@ -43,30 +42,30 @@ endif
 install-data-local: $(testsets)
 
 install-serial:
-	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/examples/static-test && \
-	uf=$(DESTDIR)$(docdir)$(OPV)/examples/static-test/.uninst.ldms && \
+	$(MKDIR_P) $(DESTDIR)$(docdir)/examples/static-test && \
+	uf=$(DESTDIR)$(docdir)/examples/static-test/.uninst.ldms && \
 	touch $$uf && \
 	for f in $(srcdir)/examples/* ; do \
 		if test "$$f" = "$(srcdir)/examples/README"; then \
 			continue; \
 		fi; \
-		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/examples/static-test; \
+		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)/examples/static-test; \
 		echo $$(basename $$f) >> $$uf; \
 	done
-	$(INSTALL_DATA) $(srcdir)/examples/.canned $(DESTDIR)$(docdir)$(OPV)/examples/static-test
+	$(INSTALL_DATA) $(srcdir)/examples/.canned $(DESTDIR)$(docdir)/examples/static-test
 
 install-slurm:
-	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/examples/slurm-test && \
-	uf=$(DESTDIR)$(docdir)$(OPV)/examples/slurm-test/.uninst.ldms && \
+	$(MKDIR_P) $(DESTDIR)$(docdir)/examples/slurm-test && \
+	uf=$(DESTDIR)$(docdir)/examples/slurm-test/.uninst.ldms && \
 	touch $$uf && \
 	for f in $(srcdir)/slurm-examples/* ; do \
 		if test "$$f" = "$(srcdir)/slurm-examples/README"; then \
 			continue; \
 		fi; \
-		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/examples/slurm-test; \
+		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)/examples/slurm-test; \
 		echo $$(basename $$f) >> $$uf; \
 	done
-	$(INSTALL_DATA) $(srcdir)/slurm-examples/.canned $(DESTDIR)$(docdir)$(OPV)/examples/slurm-test
+	$(INSTALL_DATA) $(srcdir)/slurm-examples/.canned $(DESTDIR)$(docdir)/examples/slurm-test
 
 install-exec-hook:
 	mv $(DESTDIR)/$(sbindir)/ldms-wrapper $(DESTDIR)/$(sbindir)/.ldms-wrapper
@@ -75,19 +74,19 @@ uninstall-serial:
 	echo removing static-test files:
 	while read f; do \
 		echo $$f; \
-		$(RM) $(DESTDIR)$(docdir)$(OPV)/examples/static-test/$$f; \
-	done < $(DESTDIR)$(docdir)$(OPV)/examples/static-test/.uninst.ldms
-	$(RM) $(DESTDIR)$(docdir)$(OPV)/examples/static-test/.canned
-	$(RM) $(DESTDIR)$(docdir)$(OPV)/examples/static-test/.uninst.ldms
+		$(RM) $(DESTDIR)$(docdir)/examples/static-test/$$f; \
+	done < $(DESTDIR)$(docdir)/examples/static-test/.uninst.ldms
+	$(RM) $(DESTDIR)$(docdir)/examples/static-test/.canned
+	$(RM) $(DESTDIR)$(docdir)/examples/static-test/.uninst.ldms
 
 uninstall-slurm:
 	echo removing slurm-test files:
 	while read f; do \
 		echo $$f; \
-		$(RM) $(DESTDIR)$(docdir)$(OPV)/examples/slurm-test/$$f; \
-	done < $(DESTDIR)$(docdir)$(OPV)/examples/slurm-test/.uninst.ldms
-	$(RM) $(DESTDIR)$(docdir)$(OPV)/examples/slurm-test/.canned
-	$(RM) $(DESTDIR)$(docdir)$(OPV)/examples/slurm-test/.uninst.ldms
+		$(RM) $(DESTDIR)$(docdir)/examples/slurm-test/$$f; \
+	done < $(DESTDIR)$(docdir)/examples/slurm-test/.uninst.ldms
+	$(RM) $(DESTDIR)$(docdir)/examples/slurm-test/.canned
+	$(RM) $(DESTDIR)$(docdir)/examples/slurm-test/.uninst.ldms
 
 uninstall-local: $(untestsets)
 	echo removing other files:

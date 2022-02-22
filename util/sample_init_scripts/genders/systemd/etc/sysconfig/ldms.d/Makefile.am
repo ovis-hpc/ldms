@@ -1,4 +1,4 @@
-docdir = $(datadir)/doc/@PACKAGE@-@VERSION@/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d
+docdir = $(datadir)/doc/@PACKAGE@/sample_init_scripts/genders/systemd/etc/sysconfig/ldms.d
 
 EXTRA_DIST = ldmsd.in ldms-functions.in
 DISTCLEANFILES = ldmsd ldms-functions

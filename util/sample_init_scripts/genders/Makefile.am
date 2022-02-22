@@ -1,5 +1,5 @@
 
-docdir = $(datadir)/doc/@PACKAGE@-@VERSION@/sample_init_scripts/genders
+docdir = $(datadir)/doc/@PACKAGE@/sample_init_scripts/genders
 
 if ENABLE_TOSS_SYSTEMD
 SUBDIRS = src systemd sysv man examples

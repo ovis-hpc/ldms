@@ -8,7 +8,7 @@ ACLOCAL_AMFLAGS = -I m4
 #
 EXTRA_DIST= m4/my_plugin_top.m4
 
-docdir = $(datadir)/doc/@PACKAGE@-@VERSION@
+docdir = $(datadir)/doc/@PACKAGE@
 # dist_doc_DATA = README.txt
 
 SUBDIRS = scripts src test

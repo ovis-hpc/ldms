@@ -7,8 +7,6 @@ endif
 
 EXTRA_DIST =
 
-OPV=-$(PACKAGE_VERSION)
-
 PHONY_doc = doxygen doc install-doc
 
 if ENABLE_DOC
@@ -27,13 +25,13 @@ doxygen-out: $(DOCDEPS)
 
 .PHONY: install-doxygen $(PHONY_doc)
 install-doxygen: doxygen-out
-	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)/html/search
+	$(MKDIR_P) $(DESTDIR)$(docdir)/html/search
 	for f in doxygen/html/* ; do \
-		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html; \
+		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)/html; \
 	done
 	if [ -d doxygen/html/search ]; then \
 	for f in doxygen/html/search/*; do \
-		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)$(OPV)/html/search; \
+		$(INSTALL_DATA) $$f $(DESTDIR)$(docdir)/html/search; \
 	done \
 	fi
 
@@ -43,6 +41,6 @@ install-dox:
 endif
 
 install-doc: install-dox
-	$(MKDIR_P) $(DESTDIR)$(docdir)$(OPV)
+	$(MKDIR_P) $(DESTDIR)$(docdir)
 
 clean-local:
