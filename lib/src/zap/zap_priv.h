@@ -334,6 +334,8 @@ struct zap {
 	 */
 	LIST_HEAD(, zap_io_thread) _io_threads;
 
+	struct zap_io_thread *_passive_ep_thread;
+
 	/** Mutex for _io_threads. */
 	pthread_mutex_t _io_mutex;
 
