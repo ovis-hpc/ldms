@@ -298,6 +298,7 @@ void ldms_heap_free(ldms_heap_t heap, void *d)
 		}
 	}
 	/* See if we can coalesce with our greater sibling */
+	offset = ldms_heap_off(heap, p);
 	rbn = rrbt_find_lub(heap->addr_tree, &offset);
 	if (rbn) {
 		q = container_of(rbn, struct mm_free, addr_node);
@@ -313,7 +314,7 @@ void ldms_heap_free(ldms_heap_t heap, void *d)
 	}
 	/* Fix-up our nodes' key in case we coelesced */
 	offset = ldms_heap_off(heap, p);
-	// rrbn_init(RRBN(p->size_node), &p->count, sizeof(p->count));
+//	rrbn_init(RRBN(p->size_node), &p->count, sizeof(p->count));
 	rrbn_init(RRBN(p->addr_node), &offset, sizeof(offset));
 
 	/* Put 'p' back in the trees */
