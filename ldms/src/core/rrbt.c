@@ -85,6 +85,7 @@ static void rotate_left(rrbt_t t, struct rrbn *x)
 	} else {
 		assert(x->parent == 0);
 		*t->root = rrbt_off(t, y);
+		y->parent = 0;
 	}
 
 	/* Attach x as y's new left */
