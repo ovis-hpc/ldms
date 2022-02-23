@@ -817,13 +817,36 @@ static zap_io_thread_t __zap_least_busy_thread(zap_t z)
 	return t;
 }
 
+static zap_io_thread_t __zap_passive_ep_thread(zap_t z)
+{
+	zap_io_thread_t t = z->_passive_ep_thread;
+	if (t)
+		return t;
+	char name[16];
+	t = z->io_thread_create(z);
+	z->_passive_ep_thread = t;
+	if (t) {
+		/* append "_p" to the thread name for "passive" endpoint thread.
+		 * The suffix is shorten due to pthread 16-char name limit. */
+		snprintf(name, sizeof(name), "%s_p", t->stat->name);
+		pthread_setname_np(t->thread, name);
+	}
+	return t;
+}
+
 zap_err_t zap_io_thread_ep_assign(zap_ep_t ep)
 {
 	zap_err_t zerr = ZAP_ERR_OK;
 	zap_t z = ep->z;
 	zap_io_thread_t t;
 
-	t = __zap_least_busy_thread(z);
+	if (ep->state == ZAP_EP_LISTENING) {
+		/* pasive endpoint */
+		t = __zap_passive_ep_thread(z);
+	} else {
+		t = __zap_least_busy_thread(z);
+	}
+
 	if (!t) {
 		zerr = errno; /* expect zap_err_t in errno */
 		goto out;
