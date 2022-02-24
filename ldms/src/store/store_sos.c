@@ -111,8 +111,8 @@ static pthread_mutex_t cfg_lock;
 LIST_HEAD(sos_inst_list, sos_instance) inst_list;
 
 static char root_path[PATH_MAX]; /**< store root path */
-
 static ldmsd_msg_log_f msglog;
+time_t timeout = 5;		/* Default is 5 seconds */
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -319,6 +319,11 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	int rc = 0;
 	int len;
 	char *value;
+
+	value = av_value(avl, "timeout");
+	if (value)
+		timeout = strtol(value, NULL, 0);
+
 	value = av_value(avl, "path");
 	if (!value) {
 		LOG_(LDMSD_LERROR,
@@ -642,6 +647,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 {
 	struct sos_instance *si = _sh;
 	struct ldms_timestamp timestamp;
+	struct timespec now;
 	sos_attr_t attr;
 	SOS_VALUE(value);
 	SOS_VALUE(array_value);
@@ -675,7 +681,20 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			       "The job_id is missing from the metric set/schema.\n");
 		assert(si->ts_attr);
 	}
-	sos_begin_x(si->sos_handle->sos);
+	if (timeout > 0) {
+		clock_gettime(CLOCK_REALTIME, &now);
+		now.tv_sec += timeout;
+		if (sos_begin_x(si->sos_handle->sos, &now)) {
+			LOG_(LDMSD_LERROR,
+			     "Timeout attempting to open a transaction on the container '%s'.\n",
+			     si->path);
+			errno = ETIMEDOUT;
+			pthread_mutex_unlock(&si->lock);
+			return -1;
+		}
+	} else {
+		sos_begin_x(si->sos_handle->sos, NULL);
+	}
 	obj = sos_obj_new(si->sos_schema);
 	if (!obj) {
 		LOG_(LDMSD_LERROR, "Error %d: %s at %s:%d\n", errno,
