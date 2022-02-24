@@ -113,6 +113,7 @@
 #include "stdbool.h"
 #include <stdint.h>
 #include <string.h>
+#include <sys/utsname.h>
 
 #define SAMP "tx2mon"
 
@@ -135,6 +136,7 @@ static struct tx2mon_sampler *tx2mon = &tx2mon_s;
 static int pidarray = 0;
 static int pidextra = 0;
 static char *pids = "self";
+static int noop = 0;
 
 /*
  * - Define metric list found in /usr/include/tx2mon/mc_oper_region.h.
@@ -486,6 +488,15 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	int ret = parse_socinfo();
 	if (ret != 0) {
+		struct utsname un;
+		int ue = uname(&un);
+		if (!ue && strcmp(un.machine,"aarch64")) {
+			noop = 1;
+			msglog(LDMSD_LWARNING, SAMP
+				": tx2mon does nothing except on ThunderX2/aarch64.\n");
+			tx2mon->n_cpu = 0;
+			return 0;
+		}
 		msglog(LDMSD_LERROR, SAMP ": Failed. Check that you loaded tx2mon_kmod module. \n");
 		return EINVAL;
 	}
@@ -579,6 +590,8 @@ static void term(struct ldmsd_plugin *self)
 
 static int sample(struct ldmsd_sampler *self)
 {
+	if (noop)
+		return 0;
 	int rc = 0;
 	int i;
 	int mcprc = -1;
