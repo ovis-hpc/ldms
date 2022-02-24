@@ -139,6 +139,9 @@ Some of the on-chip components (such as the IO blocks) do not have sensors
 and therefore the voltage and power measurements of these blocks are not
 provided by tx2mon.
 
+On systems that are not arm 64 (aarch64 from uname), the sampler does nothing.
+On systems that are aarch64 but missing /sys/bus/platform/devices/tx2mon, the
+sampler issues an error about the missing tx2mon kernel module.
 
 .SH SEE ALSO
 ldmsd(8), ldms_sampler_base
