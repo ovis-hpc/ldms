@@ -609,53 +609,6 @@ struct ldmsd_store {
 	int (*store)(ldmsd_store_handle_t sh, ldms_set_t set, int *, size_t count);
 };
 
-struct store_instance;
-typedef void (*io_work_fn)(struct store_instance *);
-struct store_instance {
-	struct ldmsd_store *plugin; /**< The store plugin. */
-	ldmsd_store_handle_t store_handle; /**< The store handle from store->new
-						or store->get */
-	struct flush_thread *ft; /**< The pointer to the assigned
-				      flush_thread */
-	enum {
-		STORE_STATE_INIT=0,
-		STORE_STATE_OPEN,
-		STORE_STATE_CLOSED,
-		STORE_STATE_ERROR
-	} state;
-	size_t dirty_count;
-	pthread_mutex_t lock;
-	TAILQ_ENTRY(store_instance) lru_entry;
-	LIST_ENTRY(store_instance) flush_entry;
-	io_work_fn work_fn;
-	int work_pending;
-};
-
-struct ldmsd_store_host {
-	char *name;
-	struct rbn rbn;
-};
-
-struct ldmsd_store_policy {
-	char *name;
-	char *container;
-	char *schema;
-	int metric_count;
-	int *metric_arry;
-	struct ldmsd_strgp_metric_list metric_list;
-	struct rbt host_tree;
-	struct ldmsd_store *plugin;
-	struct store_instance *si;
-
-	enum {
-		STORE_POLICY_CONFIGURING=0, /* Need metric index list */
-		STORE_POLICY_READY,
-		STORE_POLICY_ERROR
-	} state;
-	pthread_mutex_t cfg_lock;
-	LIST_ENTRY(ldmsd_store_policy) link;
-};
-
 #define LDMSD_STR_WRAP(NAME) #NAME
 #define LDMSD_LWRAP(NAME) LDMSD_L ## NAME
 /**
