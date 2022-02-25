@@ -86,7 +86,6 @@ extern void cleanup(int x, char *reason);
 
 pthread_mutex_t host_list_lock = PTHREAD_MUTEX_INITIALIZER;
 LIST_HEAD(host_list_s, hostspec) host_list;
-LIST_HEAD(ldmsd_store_policy_list, ldmsd_store_policy) sp_list;
 pthread_mutex_t sp_list_lock = PTHREAD_MUTEX_INITIALIZER;
 
 #define LDMSD_PLUGIN_LIBPATH_MAX	1024
