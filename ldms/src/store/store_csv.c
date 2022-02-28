@@ -52,6 +52,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <assert.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -123,6 +124,14 @@ static int rothread_used = 0;
 
 #define LOGFILE "/var/log/store_csv.log"
 
+struct csv_lent {
+	ldms_mval_t mval; /* list entry value */
+	uint64_t udata; /* User data */
+	enum ldms_value_type mtype; /* list entry's value type */
+	size_t count; /* array length if the value type is an array. */
+	int idx; /* list entry's index */
+};
+
 /*
  * New in v3: no more id_pos. Always producer name which is always written out before the metrics.
  */
@@ -140,6 +149,8 @@ struct csv_store_handle {
 	int64_t lastflush;
 	int64_t store_count;
 	int64_t byte_count;
+	int num_lists; /* Number of list metrics */
+	struct csv_lent *lents;
 	CSV_STORE_HANDLE_COMMON;
 };
 
@@ -403,6 +414,7 @@ static int config_handle(struct csv_store_handle *s_handle)
 		return cic_err;
 	}
 	const char *k = s_handle->store_key;
+	char *c;
 
 	bool r = false; /* default if not in pa */
 	int cvt = ldmsd_plugattr_bool(pa, "userdata", k, &r);
@@ -411,7 +423,27 @@ static int config_handle(struct csv_store_handle *s_handle)
 		return EINVAL;
 	}
 	s_handle->udata = r;
-
+	r = true;
+	cvt = ldmsd_plugattr_bool(pa, "expand_array", k, &r);
+	if (cvt == -1) {
+		msglog(LDMSD_LERROR, PNAME ": improper expand_array= input.\n");
+		return EINVAL;
+	}
+	s_handle->expand_array = r;
+	if (!s_handle->expand_array) {
+		s_handle->array_sep = ':';
+		s_handle->array_lquote = '\"';
+		s_handle->array_rquote = '\"';
+		c = (char *)ldmsd_plugattr_value(pa, "array_sep", k);
+		if (c)
+			s_handle->array_sep = c[0];
+		c = (char *)ldmsd_plugattr_value(pa, "array_lquote", k);
+		if (c)
+			s_handle->array_lquote = c[0];
+		c = (char *)ldmsd_plugattr_value(pa, "array_rquote", k);
+		if (c)
+			s_handle->array_rquote = c[0];
+	}
 	return 0;
 }
 
@@ -892,6 +924,7 @@ open_store(struct ldmsd_store *s, const char *container, const char* schema,
 		s_handle->lastflush = 0;
 
 		s_handle->printheader = FIRST_PRINT_HEADER;
+		s_handle->num_lists = -1;
 	} else {
 		s_handle->printheader = DO_PRINT_HEADER;
 	}
@@ -1037,21 +1070,516 @@ out:
 	return s_handle;
 }
 
+static inline void __print_check(struct csv_store_handle *sh, int rc)
+{
+	if (rc < 0) {
+		msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
+		       rc, sh->path);
+	} else {
+		sh->byte_count += rc;
+	}
+}
+
+static void
+store_metric(struct csv_store_handle *sh, const char *wsqt, uint64_t udata,
+		enum ldms_value_type mtype, size_t count, ldms_mval_t mval)
+{
+	int rc, i;
+	ldms_mval_t v;
+	switch (mtype) {
+	case LDMS_V_CHAR_ARRAY:
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",%"PRIu64, udata);
+			__print_check(sh, rc);
+		}
+		/* our csv does not included embedded nuls */
+		rc = fprintf(sh->file, ",%s%s%s", wsqt, mval->a_char, wsqt);
+		__print_check(sh, rc);
+		break;
+	case LDMS_V_CHAR:
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",%"PRIu64, udata);
+			__print_check(sh, rc);
+		}
+		rc = fprintf(sh->file, ",%c", mval->v_char);
+		__print_check(sh, rc);
+		break;
+	case LDMS_V_U8_ARRAY:
+		if (sh->expand_array) {
+			for (i = 0; i < count; i++){
+				if (sh->udata) {
+					rc = fprintf(sh->file, ",%"PRIu64, udata);
+					__print_check(sh, rc);
+				}
+				rc = fprintf(sh->file, ",%hhu", mval->a_u8[i]);
+				__print_check(sh, rc);
+			}
+		} else {
+			if (sh->udata) {
+				rc = fprintf(sh->file, ",%"PRIu64, udata);
+				__print_check(sh, rc);
+			}
+			for (i = 0; i < count; i++) {
+				if (i == 0) {
+					rc = fprintf(sh->file, ",%c%hhu",
+							sh->array_lquote,
+							mval->a_u8[i]);
+				} else {
+					rc = fprintf(sh->file, "%c%hhu",
+							sh->array_sep,
+							mval->a_u8[i]);
+				}
+				__print_check(sh, rc);
+			}
+			rc = fprintf(sh->file, "%c", sh->array_rquote);
+			__print_check(sh, rc);
+		}
+		break;
+	case LDMS_V_U8:
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",%"PRIu64, udata);
+			__print_check(sh, rc);
+		}
+		rc = fprintf(sh->file, ",%hhu", mval->v_u8);
+		__print_check(sh, rc);
+		break;
+	case LDMS_V_S8_ARRAY:
+		if (sh->expand_array) {
+			for (i = 0; i < count; i++) {
+				if (sh->udata) {
+					rc = fprintf(sh->file, ",%"PRIu64, udata);
+					__print_check(sh, rc);
+				}
+				rc = fprintf(sh->file, ",%hhd", mval->a_s8[i]);
+				__print_check(sh, rc);
+			}
+		} else {
+			if (sh->udata) {
+				rc = fprintf(sh->file, ",%"PRIu64, udata);
+				__print_check(sh, rc);
+			}
+			for (i = 0; i < count; i++) {
+				if (i == 0) {
+					rc = fprintf(sh->file, ",%c%hhd",
+							sh->array_lquote,
+							mval->a_s8[i]);
+				} else {
+					rc = fprintf(sh->file, "%c%hhd",
+							sh->array_sep,
+							mval->a_s8[i]);
+				}
+				__print_check(sh, rc);
+			}
+			rc = fprintf(sh->file, "%c", sh->array_rquote);
+			__print_check(sh, rc);
+		}
+		break;
+	case LDMS_V_S8:
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",%"PRIu64, udata);
+			__print_check(sh, rc);
+		}
+		rc = fprintf(sh->file, ",%hhd", mval->v_s8);
+		__print_check(sh, rc);
+		break;
+	case LDMS_V_U16_ARRAY:
+		if (sh->expand_array) {
+			for (i = 0; i < count; i++) {
+				if (sh->udata) {
+					rc = fprintf(sh->file, ",%"PRIu64, udata);
+					__print_check(sh, rc);
+				}
+				rc = fprintf(sh->file, ",%hu", mval->a_u16[i]);
+				__print_check(sh, rc);
+			}
+		} else {
+			if (sh->udata) {
+				rc = fprintf(sh->file, ",%"PRIu64, udata);
+				__print_check(sh, rc);
+			}
+			for (i = 0; i < count; i++) {
+				if (i == 0) {
+					rc = fprintf(sh->file, ",%c%hu",
+							sh->array_lquote,
+							mval->a_u16[i]);
+				} else {
+					rc = fprintf(sh->file, "%c%hu",
+							sh->array_sep,
+							mval->a_u16[i]);
+				}
+				__print_check(sh, rc);
+			}
+			rc = fprintf(sh->file, "%c", sh->array_rquote);
+			__print_check(sh, rc);
+		}
+		break;
+	case LDMS_V_U16:
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",%"PRIu64, udata);
+			__print_check(sh, rc);
+		}
+		rc = fprintf(sh->file, ",%hu", mval->v_u16);
+		__print_check(sh, rc);
+		break;
+	case LDMS_V_S16_ARRAY:
+		if (sh->expand_array) {
+			for (i = 0; i < count; i++) {
+				if (sh->udata) {
+					rc = fprintf(sh->file, ",%"PRIu64, udata);
+					__print_check(sh, rc);
+				}
+				rc = fprintf(sh->file, ",%hd", mval->a_s16[i]);
+				__print_check(sh, rc);
+			}
+		} else {
+			if (sh->udata) {
+				rc = fprintf(sh->file, ",%"PRIu64, udata);
+				__print_check(sh, rc);
+			}
+			for (i = 0; i < count; i++) {
+				if (i == 0) {
+					rc = fprintf(sh->file, ",%c%hd",
+							sh->array_lquote,
+							mval->a_s16[i]);
+				} else {
+					rc = fprintf(sh->file, "%c%hd",
+							sh->array_sep,
+							mval->a_s16[i]);
+				}
+				__print_check(sh, rc);
+			}
+			rc = fprintf(sh->file, "%c", sh->array_rquote);
+			__print_check(sh, rc);
+		}
+		break;
+	case LDMS_V_S16:
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",%"PRIu64, udata);
+			__print_check(sh, rc);
+		}
+		rc = fprintf(sh->file, ",%hd", mval->v_s16);
+		__print_check(sh, rc);
+		break;
+	case LDMS_V_U32_ARRAY:
+		if (sh->expand_array) {
+			for (i = 0; i < count; i++) {
+				if (sh->udata) {
+					rc = fprintf(sh->file, ",%"PRIu64, udata);
+					__print_check(sh, rc);
+				}
+				rc = fprintf(sh->file, ",%" PRIu32, mval->a_u32[i]);
+				__print_check(sh, rc);
+			}
+		} else {
+			if (sh->udata) {
+				rc = fprintf(sh->file, ",%"PRIu64, udata);
+				__print_check(sh, rc);
+			}
+			for (i = 0; i < count; i++) {
+				if (i == 0) {
+					rc = fprintf(sh->file, ",%c%" PRIu32,
+							sh->array_lquote,
+							mval->a_u32[i]);
+				} else {
+					rc = fprintf(sh->file, "%c%" PRIu32,
+							sh->array_sep,
+							mval->a_u32[i]);
+				}
+				__print_check(sh, rc);
+			}
+			rc = fprintf(sh->file, "%c", sh->array_rquote);
+			__print_check(sh, rc);
+		}
+		break;
+	case LDMS_V_U32:
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",%"PRIu64, udata);
+			__print_check(sh, rc);
+		}
+		rc = fprintf(sh->file, ",%" PRIu32, mval->v_u32);
+		__print_check(sh, rc);
+		break;
+	case LDMS_V_S32_ARRAY:
+		if (sh->expand_array) {
+			for (i = 0; i < count; i++) {
+				if (sh->udata) {
+					rc = fprintf(sh->file, ",%"PRIu64, udata);
+					__print_check(sh, rc);
+				}
+				rc = fprintf(sh->file, ",%" PRId32, mval->a_s32[i]);
+				__print_check(sh, rc);
+			}
+		} else {
+			if (sh->udata) {
+				rc = fprintf(sh->file, ",%"PRIu64, udata);
+				__print_check(sh, rc);
+			}
+			for (i = 0; i < count; i++) {
+				if (i == 0) {
+					rc = fprintf(sh->file, ",%c%" PRId32,
+							sh->array_lquote,
+							mval->a_s32[i]);
+				} else {
+					rc = fprintf(sh->file, "%c%" PRId32,
+							sh->array_sep,
+							mval->a_s32[i]);
+				}
+				__print_check(sh, rc);
+			}
+			rc = fprintf(sh->file, "%c", sh->array_rquote);
+			__print_check(sh, rc);
+		}
+		break;
+	case LDMS_V_S32:
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",%"PRIu64, udata);
+			__print_check(sh, rc);
+		}
+		rc = fprintf(sh->file, ",%" PRId32, mval->v_s32);
+		__print_check(sh, rc);
+		break;
+	case LDMS_V_U64_ARRAY:
+		if (sh->expand_array) {
+			for (i = 0; i < count; i++) {
+				if (sh->udata) {
+					rc = fprintf(sh->file, ",%"PRIu64, udata);
+					__print_check(sh, rc);
+				}
+				rc = fprintf(sh->file, ",%" PRIu64, mval->a_u64[i]);
+				__print_check(sh, rc);
+			}
+		} else {
+			if (sh->udata) {
+				rc = fprintf(sh->file, ",%"PRIu64, udata);
+				__print_check(sh, rc);
+			}
+			for (i = 0; i < count; i++) {
+				if (i == 0) {
+					rc = fprintf(sh->file, ",%c%" PRIu64,
+							sh->array_lquote,
+							mval->a_u64[i]);
+				} else {
+					rc = fprintf(sh->file, "%c%" PRIu64,
+							sh->array_sep,
+							mval->a_u64[i]);
+				}
+				__print_check(sh, rc);
+			}
+			rc = fprintf(sh->file, "%c", sh->array_rquote);
+			__print_check(sh, rc);
+		}
+		break;
+	case LDMS_V_U64:
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",%"PRIu64, udata);
+			__print_check(sh, rc);
+		}
+		rc = fprintf(sh->file, ",%"PRIu64, mval->v_u64);
+		__print_check(sh, rc);
+		break;
+	case LDMS_V_S64_ARRAY:
+		if (sh->expand_array) {
+			for (i = 0; i < count; i++) {
+				if (sh->udata) {
+					rc = fprintf(sh->file, ",%"PRIu64, udata);
+					__print_check(sh, rc);
+				}
+				rc = fprintf(sh->file, ",%" PRId64, mval->a_s64[i]);
+				__print_check(sh, rc);
+			}
+		} else {
+			if (sh->udata) {
+				rc = fprintf(sh->file, ",%"PRIu64, udata);
+				__print_check(sh, rc);
+			}
+			for (i = 0; i < count; i++) {
+				if (i == 0) {
+					rc = fprintf(sh->file, ",\"%" PRId64, mval->a_s64[i]);
+				} else {
+					rc = fprintf(sh->file, ",%" PRId64, mval->a_s64[i]);
+				}
+				__print_check(sh, rc);
+			}
+			rc = fprintf(sh->file, "\"");
+			__print_check(sh, rc);
+		}
+		break;
+	case LDMS_V_S64:
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",%"PRIu64, udata);
+			__print_check(sh, rc);
+		}
+		rc = fprintf(sh->file, ",%" PRId64, mval->v_s64);
+		__print_check(sh, rc);
+		break;
+	case LDMS_V_F32_ARRAY:
+		if (sh->expand_array) {
+			for (i = 0; i < count; i++) {
+				if (sh->udata) {
+					rc = fprintf(sh->file, ",%"PRIu64, udata);
+					__print_check(sh, rc);
+				}
+				rc = fprintf(sh->file, ",%.9g", mval->a_f[i]);
+				__print_check(sh, rc);
+			}
+		} else {
+			if (sh->udata) {
+				rc = fprintf(sh->file, ",%"PRIu64, udata);
+				__print_check(sh, rc);
+			}
+			for (i = 0; i < count; i++) {
+				if (i == 0) {
+					rc = fprintf(sh->file, ",%c%.9g",
+							sh->array_lquote,
+							mval->a_f[i]);
+				} else {
+					rc = fprintf(sh->file, "%c%.9g",
+							sh->array_sep,
+							mval->a_f[i]);
+				}
+				__print_check(sh, rc);
+			}
+			rc = fprintf(sh->file, "%c", sh->array_rquote);
+			__print_check(sh, rc);
+		}
+		break;
+	case LDMS_V_F32:
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",%"PRIu64, udata);
+			__print_check(sh, rc);
+		}
+		rc = fprintf(sh->file, ",%.9g", mval->v_f);
+		__print_check(sh, rc);
+		break;
+	case LDMS_V_D64_ARRAY:
+		if (sh->expand_array) {
+			for (i = 0; i < count; i++) {
+				if (sh->udata) {
+					rc = fprintf(sh->file, ",%"PRIu64, udata);
+					__print_check(sh, rc);
+				}
+				rc = fprintf(sh->file, ",%.17g", mval->a_d[i]);
+				__print_check(sh, rc);
+			}
+		} else {
+			if (sh->udata) {
+				rc = fprintf(sh->file, ",%"PRIu64, udata);
+				__print_check(sh, rc);
+			}
+			for (i = 0; i < count; i++) {
+				if (i == 0) {
+					rc = fprintf(sh->file, ",%c%.17g",
+							sh->array_lquote,
+							mval->a_d[i]);
+				} else {
+					rc = fprintf(sh->file, "%c%.17g",
+							sh->array_sep,
+							mval->a_d[i]);
+				}
+				__print_check(sh, rc);
+			}
+			rc = fprintf(sh->file, "%c", sh->array_rquote);
+			__print_check(sh, rc);
+		}
+		break;
+	case LDMS_V_D64:
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",%"PRIu64, udata);
+			__print_check(sh, rc);
+		}
+		rc = fprintf(sh->file, ",%.17g", mval->v_d);
+		__print_check(sh, rc);
+		break;
+	case LDMS_V_RECORD_INST:
+		for (i = 0; i < ldms_record_card(mval); i++) {
+			mtype = ldms_record_metric_type_get(mval, i, &count);
+			v = ldms_record_metric_get(mval, i);
+			store_metric(sh, wsqt, udata, mtype, count, v);
+		}
+		break;
+	default:
+		msglog(LDMSD_LERROR, PNAME ": Received unrecognized metric value type %d\n", mtype);
+		/* print no value */
+		if (sh->udata) {
+			rc = fprintf(sh->file, ",");
+			__print_check(sh, rc);
+		}
+		rc = fprintf(sh->file, ",");
+		__print_check(sh, rc);
+		break;
+	}
+}
+
+static void
+store_time_job_app(struct csv_store_handle *sh, const struct ldms_timestamp *ts, ldms_set_t set)
+{
+	const char *pname;
+	/* Print timestamp fields */
+	if (sh->time_format == TF_MILLISEC) {
+		/* Alternate time format. First field is milliseconds-since-epoch,
+		   and the second field is the left-over microseconds */
+		fprintf(sh->file, "%"PRIu64",%"PRIu32,
+			((uint64_t)ts->sec * 1000) + (ts->usec / 1000),
+			ts->usec % 1000);
+	} else {
+		/* Traditional time format, where the first field is
+		   <seconds>.<microseconds>, second is microseconds repeated */
+		fprintf(sh->file, "%"PRIu32".%06"PRIu32 ",%"PRIu32,
+			ts->sec, ts->usec, ts->usec);
+	}
+	pname = ldms_set_producer_name_get(set);
+	if (pname != NULL){
+		fprintf(sh->file, ",%s", pname);
+		sh->byte_count += strlen(pname);
+	} else {
+		fprintf(sh->file, ",");
+	}
+}
+
 static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_array, size_t metric_count)
 {
 	const struct ldms_timestamp _ts = ldms_transaction_timestamp_get(set);
 	const struct ldms_timestamp *ts = &_ts;
-	const char* pname;
 	uint64_t udata;
 	struct csv_store_handle *s_handle;
-	uint32_t len;
-	int i, j;
+	int i;
 	int doflush = 0;
-	int rc, rcu;
+	int rc;
+	ldms_mval_t mval;
+	enum ldms_value_type metric_type;
 
 	s_handle = _s_handle;
 	if (!s_handle)
 		return EINVAL;
+
+	if (s_handle->num_lists < 0) {
+		s_handle->num_lists = 0;
+		for (i = 0; i < metric_count; i++) {
+			if (LDMS_V_LIST == ldms_metric_type_get(set, metric_array[i])) {
+				s_handle->num_lists++;
+				if (0 == ldms_list_len(set,
+					ldms_metric_get(set, metric_array[i]))) {
+					msglog(LDMSD_LERROR, PNAME ": set '%s' contains an empty list '%s'.\n",
+						ldms_set_instance_name_get(set),
+						ldms_metric_name_get(set, metric_array[i]));
+					/*
+					 * We cannot determine the number of columns.
+					 * Do nothing.
+					 */
+					return 0;
+				}
+			}
+		}
+		s_handle->lents = malloc(s_handle->num_lists * sizeof(*s_handle->lents));
+		if (!s_handle->lents) {
+			msglog(LDMSD_LCRITICAL, PNAME ": Out of memory\n");
+			return ENOMEM;
+		}
+	}
+	for (i = 0; i < s_handle->num_lists; i++) {
+		memset(&s_handle->lents[i], 0, sizeof(struct csv_lent));
+		s_handle->lents[i].idx = -1;
+	}
 
 	pthread_mutex_lock(&s_handle->lock);
 	if (!s_handle->file){
@@ -1087,479 +1615,82 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 		break;
 	}
 
-        /* Print timestamp fields */
-        if (s_handle->time_format == TF_MILLISEC) {
-                /* Alternate time format. First field is milliseconds-since-epoch,
-                   and the second field is the left-over microseconds */
-                fprintf(s_handle->file, "%"PRIu64",%"PRIu32,
-                        ((uint64_t)ts->sec * 1000) + (ts->usec / 1000),
-                        ts->usec % 1000);
-        } else {
-                /* Traditional time format, where the first field is
-                   <seconds>.<microseconds>, second is microseconds repeated */
-                fprintf(s_handle->file, "%"PRIu32".%06"PRIu32 ",%"PRIu32,
-                        ts->sec, ts->usec, ts->usec);
-        }
-	pname = ldms_set_producer_name_get(set);
-	if (pname != NULL){
-		fprintf(s_handle->file, ",%s", pname);
-		s_handle->byte_count += strlen(pname);
-	} else {
-		fprintf(s_handle->file, ",");
-	}
-
 	/* FIXME: will we want to throw an error if we cannot write? */
 	char *wsqt = ""; /* ietf quotation wrapping strings */
 	if (s_handle->ietfcsv) {
 		wsqt = "\"";
 	}
-	const char * str;
-	for (i = 0; i != metric_count; i++) {
-		udata = ldms_metric_user_data_get(set, metric_array[i]);
-		enum ldms_value_type metric_type = ldms_metric_type_get(set, metric_array[i]);
-		//use same formats as ldms_ls
-		switch (metric_type){
-		case LDMS_V_CHAR_ARRAY:
-			/* our csv does not included embedded nuls */
-			str = ldms_metric_array_get_str(set, metric_array[i]);
-			if (!str) {
-				str = "";
-			}
-			if (s_handle->udata) {
-				rc = fprintf(s_handle->file, ",%"PRIu64, udata);
-				if (rc < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
-			}
-			rc = fprintf(s_handle->file, ",%s%s%s", wsqt, str, wsqt);
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-				       rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
-			break;
-		case LDMS_V_CHAR:
-			if (s_handle->udata) {
-				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-				if (rcu < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rcu, s_handle->path);
-				else
-					s_handle->byte_count += rcu;
-			}
-			rc = fprintf(s_handle->file, ",%c",
-				     ldms_metric_get_char(set, metric_array[i]));
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
-			break;
-		case LDMS_V_U8_ARRAY:
-			len = ldms_metric_array_get_len(set, metric_array[i]);
-			for (j = 0; j < len; j++){
-				if (s_handle->udata) {
-					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-					if (rcu < 0)
-						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						       rcu, s_handle->path);
-					else
-						s_handle->byte_count += rcu;
-				}
-				rc = fprintf(s_handle->file, ",%hhu",
-					     ldms_metric_array_get_u8(set, metric_array[i], j));
-				if (rc < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
-			}
-			break;
-		case LDMS_V_U8:
-			if (s_handle->udata) {
-				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-				if (rcu < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rcu, s_handle->path);
-				else
-					s_handle->byte_count += rcu;
-			}
-			rc = fprintf(s_handle->file, ",%hhu",
-				     ldms_metric_get_u8(set, metric_array[i]));
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
-			break;
-		case LDMS_V_S8_ARRAY:
-			len = ldms_metric_array_get_len(set, metric_array[i]);
-			for (j = 0; j < len; j++){
-				if (s_handle->udata) {
-					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-					if (rcu < 0)
-						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						       rcu, s_handle->path);
-					else
-						s_handle->byte_count += rcu;
-				}
-				rc = fprintf(s_handle->file, ",%hhd",
-					     ldms_metric_array_get_s8(set, metric_array[i], j));
-				if (rc < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-							rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
-			}
-			break;
-		case LDMS_V_S8:
-			if (s_handle->udata) {
-				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-				if (rcu < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rcu, s_handle->path);
-				else
-					s_handle->byte_count += rcu;
-			}
-			rc = fprintf(s_handle->file, ",%hhd",
-					     ldms_metric_get_s8(set, metric_array[i]));
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-							rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
-			break;
-		case LDMS_V_U16_ARRAY:
-			len = ldms_metric_array_get_len(set, metric_array[i]);
-			for (j = 0; j < len; j++){
-				if (s_handle->udata) {
-					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-					if (rcu < 0)
-						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						       rcu, s_handle->path);
-					else
-						s_handle->byte_count += rcu;
-				}
-				rc = fprintf(s_handle->file, ",%hu",
-						ldms_metric_array_get_u16(set, metric_array[i], j));
-				if (rc < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-							rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
-			}
-			break;
-		case LDMS_V_U16:
-			if (s_handle->udata) {
-				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-				if (rcu < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rcu, s_handle->path);
-				else
-					s_handle->byte_count += rcu;
-			}
-			rc = fprintf(s_handle->file, ",%hu",
-					ldms_metric_get_u16(set, metric_array[i]));
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
-			break;
-		case LDMS_V_S16_ARRAY:
-			len = ldms_metric_array_get_len(set, metric_array[i]);
-			for (j = 0; j < len; j++){
-				if (s_handle->udata) {
-					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-					if (rcu < 0)
-						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						       rcu, s_handle->path);
-					else
-						s_handle->byte_count += rcu;
-				}
-				rc = fprintf(s_handle->file, ",%hd",
-						ldms_metric_array_get_s16(set, metric_array[i], j));
-				if (rc < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-							rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
-			}
-			break;
-		case LDMS_V_S16:
-			if (s_handle->udata) {
-				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-				if (rcu < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rcu, s_handle->path);
-				else
-					s_handle->byte_count += rcu;
-			}
-			rc = fprintf(s_handle->file, ",%hd",
-					ldms_metric_get_s16(set, metric_array[i]));
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
 
-			break;
-		case LDMS_V_U32_ARRAY:
-			len = ldms_metric_array_get_len(set, metric_array[i]);
-			for (j = 0; j < len; j++){
-				if (s_handle->udata) {
-					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-					if (rcu < 0)
-						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						       rcu, s_handle->path);
-					else
-						s_handle->byte_count += rcu;
+	int done = 0;
+	const char *name;
+	size_t count;
+	union ldms_value v;
+	struct csv_lent *lents = s_handle->lents;
+	while (done < s_handle->num_lists) {
+		int lidx = 0;
+		store_time_job_app(s_handle, ts, set);
+		for (i = 0; i < metric_count; i++) {
+			mval = ldms_metric_get(set, metric_array[i]);
+			udata = ldms_metric_user_data_get(set, metric_array[i]);
+			metric_type = ldms_metric_type_get(set, metric_array[i]);
+			if (LDMS_V_RECORD_TYPE == metric_type) {
+				continue;
+			} else if (LDMS_V_LIST ==  metric_type) {
+				/* List entry */
+				if (0 == ldms_list_len(set, mval)) {
+					name = ldms_metric_name_get(set, metric_array[i]);
+					msglog(LDMSD_LERROR, PNAME " : set '%s' "
+						"containing an empty list '%s', "
+						"which is not supported. \n",
+						ldms_set_instance_name_get(set), name);
+					break;
 				}
-				rc = fprintf(s_handle->file, ",%" PRIu32,
-						ldms_metric_array_get_u32(set, metric_array[i], j));
-				if (rc < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
-			}
-			break;
-		case LDMS_V_U32:
-			if (s_handle->udata) {
-				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-				if (rcu < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rcu, s_handle->path);
-				else
-					s_handle->byte_count += rcu;
-			}
-			rc = fprintf(s_handle->file, ",%" PRIu32,
-					ldms_metric_get_u32(set, metric_array[i]));
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
-			break;
-		case LDMS_V_S32_ARRAY:
-			len = ldms_metric_array_get_len(set, metric_array[i]);
-			for (j = 0; j < len; j++){
-				if (s_handle->udata) {
-					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-					if (rcu < 0)
-						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						       rcu, s_handle->path);
-					else
-						s_handle->byte_count += rcu;
+				if (lents[lidx].idx + 1 == ldms_list_len(set, mval)) {
+					/* done, do nothing */
+				} else {
+					if (!lents[lidx].mval) {
+						/*
+						 * lents[lidx].idx starts from 0 already.
+						 */
+						lents[lidx].mval = ldms_list_first(set, mval,
+									&lents[lidx].mtype,
+									&lents[lidx].count);
+					} else {
+						lents[lidx].mval = ldms_list_next(set,
+									lents[lidx].mval,
+									&lents[lidx].mtype,
+									&lents[lidx].count);
+					}
+					lents[lidx].idx++;
+					if (lents[lidx].idx + 1 == ldms_list_len(set, mval))
+						done++;
 				}
-				rc = fprintf(s_handle->file, ",%" PRId32,
-						ldms_metric_array_get_s32(set, metric_array[i], j));
-				if (rc < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-							rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
-			}
-			break;
-		case LDMS_V_S32:
-			if (s_handle->udata) {
-				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-				if (rcu < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rcu, s_handle->path);
-				else
-					s_handle->byte_count += rcu;
-			}
-			rc = fprintf(s_handle->file, ",%" PRId32,
-					ldms_metric_get_s32(set, metric_array[i]));
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
-			break;
-		case LDMS_V_U64_ARRAY:
-			len = ldms_metric_array_get_len(set, metric_array[i]);
-			for (j = 0; j < len; j++){
-				if (s_handle->udata) {
-					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-					if (rcu < 0)
-						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						       rcu, s_handle->path);
-					else
-						s_handle->byte_count += rcu;
+
+				/* Store list entry index */
+				v.v_u64 = lents[lidx].idx;
+				store_metric(s_handle, wsqt, udata, LDMS_V_U64, 1, &v);
+
+				assert(lents[lidx].mval);
+				/* Store list entry */
+				store_metric(s_handle, wsqt, udata,
+						lents[lidx].mtype,
+						lents[lidx].count,
+						lents[lidx].mval);
+				lidx++;
+			} else {
+				if (ldms_type_is_array(metric_type)) {
+					count = ldms_metric_array_get_len(set, metric_array[i]);
+				} else {
+					count = 1;
 				}
-				rc = fprintf(s_handle->file, ",%" PRIu64,
-						ldms_metric_array_get_u64(set, metric_array[i], j));
-				if (rc < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-							rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
+				store_metric(s_handle, wsqt, udata,
+					     metric_type, count, mval);
 			}
-			break;
-		case LDMS_V_U64:
-			if (s_handle->udata) {
-				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-				if (rcu < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rcu, s_handle->path);
-				else
-					s_handle->byte_count += rcu;
-			}
-			rc = fprintf(s_handle->file, ",%"PRIu64,
-					ldms_metric_get_u64(set, metric_array[i]));
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						rc, s_handle->path);
-			break;
-		case LDMS_V_S64_ARRAY:
-			len = ldms_metric_array_get_len(set, metric_array[i]);
-			for (j = 0; j < len; j++){
-				if (s_handle->udata) {
-					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-					if (rcu < 0)
-						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						       rcu, s_handle->path);
-					else
-						s_handle->byte_count += rcu;
-				}
-				rc = fprintf(s_handle->file, ",%" PRId64,
-						ldms_metric_array_get_s64(set, metric_array[i], j));
-				if (rc < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-							rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
-			}
-			break;
-		case LDMS_V_S64:
-			if (s_handle->udata) {
-				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-				if (rcu < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rcu, s_handle->path);
-				else
-					s_handle->byte_count += rcu;
-			}
-			rc = fprintf(s_handle->file, ",%" PRId64,
-					ldms_metric_get_s64(set, metric_array[i]));
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
-			break;
-		case LDMS_V_F32_ARRAY:
-			len = ldms_metric_array_get_len(set, metric_array[i]);
-			for (j = 0; j < len; j++){
-				if (s_handle->udata) {
-					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-					if (rcu < 0)
-						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						       rcu, s_handle->path);
-					else
-						s_handle->byte_count += rcu;
-				}
-				rc = fprintf(s_handle->file, ",%.9g",
-						ldms_metric_array_get_float(set, metric_array[i], j));
-				if (rc < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-							rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
-			}
-			break;
-		case LDMS_V_F32:
-			if (s_handle->udata) {
-				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-				if (rcu < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rcu, s_handle->path);
-				else
-					s_handle->byte_count += rcu;
-			}
-			rc = fprintf(s_handle->file, ",%.9g",
-					ldms_metric_get_float(set, metric_array[i]));
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
-			break;
-		case LDMS_V_D64_ARRAY:
-			len = ldms_metric_array_get_len(set, metric_array[i]);
-			for (j = 0; j < len; j++){
-				if (s_handle->udata) {
-					rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-					if (rcu < 0)
-						msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						       rcu, s_handle->path);
-					else
-						s_handle->byte_count += rcu;
-				}
-				rc = fprintf(s_handle->file, ",%.17g",
-						ldms_metric_array_get_double(set, metric_array[i], j));
-				if (rc < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-							rc, s_handle->path);
-				else
-					s_handle->byte_count += rc;
-			}
-			break;
-		case LDMS_V_D64:
-			if (s_handle->udata) {
-				rcu = fprintf(s_handle->file, ",%"PRIu64, udata);
-				if (rcu < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rcu, s_handle->path);
-				else
-					s_handle->byte_count += rcu;
-			}
-			rc = fprintf(s_handle->file, ",%.17g",
-					ldms_metric_get_double(set, metric_array[i]));
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
-			break;
-		default:
-			if (!s_handle->conflict_warned) {
-				msglog(LDMSD_LERROR, PNAME ":  metric id %d: metric type %d(%s):"
-					" no name at list index %d.\n",
-					metric_array[i], metric_type,
-					ldms_metric_type_to_str(metric_type),i);
-				msglog(LDMSD_LERROR, PNAME ": reconfigure to resolve schema definition conflict for schema=%s and instance=%s.\n",
-					ldms_set_schema_name_get(set),
-					ldms_set_instance_name_get(set));
-				s_handle->conflict_warned = true;
-			}
-			/* print no value */
-			if (s_handle->udata) {
-				rcu = fprintf(s_handle->file, ",");
-				if (rcu < 0)
-					msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-					       rcu, s_handle->path);
-				else
-					s_handle->byte_count += rcu;
-			}
-			rc = fprintf(s_handle->file, ",");
-			if (rc < 0)
-				msglog(LDMSD_LERROR, PNAME ": Error %d writing to '%s'\n",
-						rc, s_handle->path);
-			else
-				s_handle->byte_count += rc;
-			break;
 		}
+		fprintf(s_handle->file,"\n");
 	}
-	fprintf(s_handle->file,"\n");
 
 	s_handle->store_count++;
-
-
 
 	if ((s_handle->buffer_type == 3) &&
 	    ((s_handle->store_count - s_handle->lastflush) >=

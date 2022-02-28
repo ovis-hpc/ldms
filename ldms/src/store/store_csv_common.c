@@ -636,6 +636,63 @@ int csv_format_types_common(int typeformat, FILE* file, const char *fpath, const
 #undef PRINT_UDATA
 }
 
+int __primitive_metric_header(FILE *fp, const struct csv_store_handle_common *sh,
+		    int doudata, char *wsqt, const char *mname,
+		    enum ldms_value_type mtype, size_t len)
+{
+	int j, ec;
+
+	/* use same formats as ldms_ls */
+	switch (mtype) {
+	case LDMS_V_LIST:
+	case LDMS_V_RECORD_INST:
+	case LDMS_V_RECORD_TYPE:
+		return EINTR;
+	case LDMS_V_U8_ARRAY:
+	case LDMS_V_S8_ARRAY:
+	case LDMS_V_U16_ARRAY:
+	case LDMS_V_S16_ARRAY:
+	case LDMS_V_U32_ARRAY:
+	case LDMS_V_S32_ARRAY:
+	case LDMS_V_U64_ARRAY:
+	case LDMS_V_S64_ARRAY:
+	case LDMS_V_F32_ARRAY:
+	case LDMS_V_D64_ARRAY:
+		if (!sh->expand_array)
+			goto store;
+		if (doudata) {
+			for (j = 0; j < len; j++) { // only 1 name for all of them.
+				ec = fprintf(fp, ",%s%s%d.userdata%s,%s%s%d.value%s",
+					wsqt, mname, j, wsqt, wsqt, mname, j, wsqt);
+				if (ec < 0)
+					return ec;
+			}
+		} else {
+			for (j = 0; j < len; j++) { // only 1 name for all of them.
+				ec = fprintf(fp, ",%s%s%d%s", wsqt, mname, j, wsqt);
+				if (ec < 0)
+					return ec;
+			}
+		}
+		return 0;
+	default:
+		goto store;
+	}
+
+store:
+	if (doudata) {
+		ec = fprintf(fp, ",%s%s.userdata%s,%s%s.value%s",
+			wsqt, mname, wsqt, wsqt, mname, wsqt);
+		if (ec < 0)
+			return ec;
+	} else {
+		ec = fprintf(fp, ",%s%s%s", wsqt, mname, wsqt);
+		if (ec < 0)
+			return ec;
+	}
+	return 0;
+}
+
 int csv_format_header_common(FILE *file, const char *fpath, const struct csv_store_handle_common *sh, int doudata, struct csv_plugin_static *cps, ldms_set_t set, int *metric_array, size_t metric_count, int time_format)
 {
 	if (!sh || !file || !fpath || !cps || !set || !metric_array)
@@ -644,7 +701,6 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
 	const char *pn = cps->pname;
 	size_t i;
 	int j;
-	uint32_t len;
 	int ec;
 
 #define CHECKERR(fprintfresult) \
@@ -676,42 +732,81 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
 		const char* name = ldms_metric_name_get(set, metric_array[i]);
 		enum ldms_value_type metric_type = ldms_metric_type_get(set, metric_array[i]);
 
-		/* use same formats as ldms_ls */
-		switch (metric_type) {
-		case LDMS_V_U8_ARRAY:
-		case LDMS_V_S8_ARRAY:
-		case LDMS_V_U16_ARRAY:
-		case LDMS_V_S16_ARRAY:
-		case LDMS_V_U32_ARRAY:
-		case LDMS_V_S32_ARRAY:
-		case LDMS_V_U64_ARRAY:
-		case LDMS_V_S64_ARRAY:
-		case LDMS_V_F32_ARRAY:
-		case LDMS_V_D64_ARRAY:
-			len = ldms_metric_array_get_len(set, metric_array[i]);
-			if (doudata) {
-				for (j = 0; j < len; j++) { // only 1 name for all of them.
-					ec = fprintf(fp, ",%s%s%d.userdata%s,%s%s%d.value%s",
-						wsqt, name, j, wsqt, wsqt, name, j, wsqt);
+		if (LDMS_V_RECORD_TYPE == metric_type)
+			continue;
+		if (LDMS_V_LIST == metric_type) {
+			ldms_mval_t lh, lent;
+			enum ldms_value_type mtype, prev_mtype;
+			size_t cnt, prev_cnt;
+			char n[100];
+
+			lh = ldms_metric_get(set, metric_array[i]);
+			lent = ldms_list_first(set, lh, &mtype, &cnt);
+			if (!lent) {
+				/*
+				 * No list entry.
+				 * We cannot determine the list entry's type.
+				 */
+				ec = EINTR;
+				return ec;
+			}
+			/* Print list entry index header */
+			snprintf(n, 100, "%s_entry_idx", name);
+			ec = __primitive_metric_header(fp, sh, doudata, wsqt, n, LDMS_V_U64, 1);
+			CHECKERR(ec);
+
+			/* Print list entries' column headers */
+			if (LDMS_V_LIST == mtype) {
+				/* We don't support list of lists */
+				ec = ENOTSUP;
+				return ec;
+			} else if (LDMS_V_RECORD_INST == mtype) {
+				enum ldms_value_type mt;
+				size_t c;
+				size_t rsz = ldms_record_card(lent);
+				int rec_def = -1;
+				for (j = 0; j < rsz; j++) {
+					if (rec_def >= 0) {
+						if (rec_def != ldms_record_type_get(lent)) {
+							/* Different record types */
+							ec = ENOTSUP;
+							return ec;
+						}
+					}
+					rec_def = ldms_record_type_get(lent);
+					snprintf(n, 100, "%s_%s", name,
+						ldms_record_metric_name_get(lent, j));
+					mt = ldms_record_metric_type_get(lent, j, &c);
+					ec = __primitive_metric_header(fp, sh, doudata,
+								  wsqt, n, mt, c);
 					CHECKERR(ec);
 				}
 			} else {
-				for (j = 0; j < len; j++) { // only 1 name for all of them.
-					ec = fprintf(fp, ",%s%s%d%s", wsqt, name, j, wsqt);
-					CHECKERR(ec);
+				ec = __primitive_metric_header(fp, sh, doudata, wsqt,
+							  name, mtype, cnt);
+				CHECKERR(ec);
+			}
+			do {
+				/*
+				 * Verify whether the list is supported or not.
+				 */
+				prev_mtype = mtype;
+				prev_cnt = cnt;
+				lent = ldms_list_next(set, lent, &mtype, &cnt);
+				if (!lent)
+					break;
+				if ((prev_mtype != mtype) || (prev_cnt != cnt)) {
+					ec = ENOTSUP;
+					return ec;
 				}
-			}
-			break;
-		default:
-			if (doudata) {
-				ec = fprintf(fp, ",%s%s.userdata%s,%s%s.value%s",
-					wsqt, name, wsqt, wsqt, name, wsqt);
-				CHECKERR(ec);
-			} else {
-				ec = fprintf(fp, ",%s%s%s", wsqt, name, wsqt);
-				CHECKERR(ec);
-			}
-			break;
+			} while (lent);
+		} else {
+			size_t cnt = 1;
+			if (ldms_type_is_array(metric_type))
+				cnt = ldms_metric_array_get_len(set, metric_array[i]);
+			ec = __primitive_metric_header(fp, sh, doudata, wsqt, name,
+						  metric_type, cnt);
+			CHECKERR(ec);
 		}
 	}
 

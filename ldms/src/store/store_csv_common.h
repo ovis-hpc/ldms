@@ -108,6 +108,18 @@ struct csv_plugin_static {
 #define CSV_STORE_HANDLE_COMMON \
 	char *container; \
 	char *schema; \
+	/* \
+	 * 1 means each array element is stored it its own column. \
+	 * 0 means all array elements are stored in a column as a commn-separated string. \
+	 * The default is 0. \
+	 */ \
+	int expand_array; \
+	/* Separating character between array elements when expand_array is false */ \
+	char array_sep; \
+	/* Left quote of an array sample */ \
+	char array_lquote; \
+	/* Right quote of an array sample */ \
+	char array_rquote; \
 	/* handle roll_common strings with replace_string in store handle */ \
 	ROLL_COMMON; \
 	STOREK_COMMON
@@ -276,7 +288,11 @@ void print_csv_store_handle_common(struct csv_store_handle_common *s_handle, str
 	"rename_perm", \
 	"create_uid", \
 	"create_gid", \
-	"create_perm"
+	"create_perm", \
+	"expand_array", \
+	"array_sep", \
+	"array_lquote", \
+	"array_rquote"
 
 /** Loop unrolled array formatting of typeheader */
 #define TH_UNROLL 1
