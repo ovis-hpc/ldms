@@ -42,7 +42,7 @@ take on the value configured in the default config line or opt_file.
 .SH STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
 .TP
 .BR config
-name=<plugin_name> path=<path> [ altheader=<0/!0> typeheader=<typeformat> time_format=<0/1> ietfcsv=<0/1> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>] [opt_file=filename] [ietfcsv=<0/1>] [typeheader=<0/1/2>]
+name=<plugin_name> path=<path> [ altheader=<0/!0> typeheader=<typeformat> time_format=<0/1> ietfcsv=<0/1> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>] [opt_file=filename] [ietfcsv=<0/1>] [typeheader=<0/1/2>] [array_expand=<false/true>] [array_sep=<separating char>] [array_lquote=<left-quote char>] [array_rquote=<right-quote char>]
 .br
 ldmsd_controller configuration line
 .RS
@@ -159,6 +159,22 @@ Changes in ownership of the files do not affect intermediate directories that mi
 rename_gid=<numeric-gid>
 .br
 Specify a new group id for the file. If unspecified, no change in group ownership is made. This option is applied only if rename_template is applied.
+.TP
+expand_array=<true/false>
+.br
+The default is false. Each array element is stored in a column. True means that all elements are stored in a single column.
+.TP
+array_sep=<char>
+.br
+Specify a character to separate array elements. If exand_array is true, the value is ignored.
+.TP
+array_lquote=<char>
+.br
+Specify the left-quote character if expand_array is true. If expand_array is false, the value is ignored.
+.TP
+array_rquote=<char>
+.br
+Specify the right-quote character if expand_array is true. If expand_array is false, the value is ignored.
 
 .RE
 
