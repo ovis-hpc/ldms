@@ -573,6 +573,7 @@ int is_req_id_priority(enum ldmsd_request req_id)
 	case LDMSD_LISTEN_REQ:
 	case LDMSD_AUTH_ADD_REQ:
 	case LDMSD_CMDLINE_OPTIONS_SET_REQ:
+	case LDMSD_INCLUDE_REQ:
 		return 1;
 	default:
 		return 0;
