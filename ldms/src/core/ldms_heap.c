@@ -278,6 +278,7 @@ void ldms_heap_free(ldms_heap_t heap, void *d)
 	a--;
 	count = a->count;
 	p = (void *)a;
+	pthread_mutex_lock(&heap->lock);
 	offset = ldms_heap_off(heap, p);
 	rrbn_init(RRBN(p->size_node), &count, sizeof(count));
 	rrbn_init(RRBN(p->addr_node), &offset, sizeof(offset));
