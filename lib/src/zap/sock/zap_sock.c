@@ -661,24 +661,17 @@ void __sock_wr_free(struct z_sock_send_wr_s *wr)
 }
 
 /* caller must hold sep->ep.lock */
+static inline
 struct z_sock_io *__sock_io_alloc(struct z_sock_ep *sep)
 {
-	struct z_sock_io *io;
-	if (!TAILQ_EMPTY(&sep->free_q)) {
-		io = TAILQ_FIRST(&sep->free_q);
-		TAILQ_REMOVE(&sep->free_q, io, q_link);
-	} else
-		io = calloc(1, sizeof(*io));
-	return io;
+	return calloc(1, sizeof(struct z_sock_io));
 }
 
 /* caller must hold sep->ep.lock */
+static inline
 void __sock_io_free(struct z_sock_ep *sep, struct z_sock_io *io)
 {
-	if (!sep)
-		return;
-	io->wr = NULL;
-	TAILQ_INSERT_TAIL(&sep->free_q, io, q_link);
+	free(io);
 }
 
 /**
@@ -1882,7 +1875,6 @@ static zap_ep_t z_sock_new(zap_t z, zap_cb_fn_t cb)
 		errno = ZAP_ERR_RESOURCE;
 		return NULL;
 	}
-	TAILQ_INIT(&sep->free_q);
 	TAILQ_INIT(&sep->io_q);
 	TAILQ_INIT(&sep->io_cq);
 	TAILQ_INIT(&sep->sq);
@@ -1907,7 +1899,6 @@ static zap_ep_t z_sock_new(zap_t z, zap_cb_fn_t cb)
 
 static void z_sock_destroy(zap_ep_t ep)
 {
-	struct z_sock_io *io;
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
 	z_sock_send_wr_t wr;
 
@@ -1928,11 +1919,6 @@ static void z_sock_destroy(zap_ep_t ep)
 	/* all pending I/O should have been flushed */
 	ZAP_ASSERT(TAILQ_EMPTY(&sep->io_q), ep, "%s: The io_q is not empty "
 			"when the reference count reaches 0.\n", __func__);
-	while (!TAILQ_EMPTY(&sep->free_q)) {
-		io = TAILQ_FIRST(&sep->free_q);
-		TAILQ_REMOVE(&sep->free_q, io, q_link);
-		free(io);
-	}
 	z_sock_buff_cleanup(&sep->buff);
 	pthread_mutex_lock(&z_sock_list_mutex);
 	LIST_REMOVE(sep, link);
