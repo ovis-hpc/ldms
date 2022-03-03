@@ -291,7 +291,6 @@ struct z_sock_ep {
 	struct z_sock_buff_s buff;
 
 	pthread_mutex_t q_lock;
-	TAILQ_HEAD(, z_sock_io) free_q;
 	TAILQ_HEAD(, z_sock_io) io_q; /* manages ops from app (read/write/send) */
 	TAILQ_HEAD(, z_sock_io) io_cq; /* completion queue, currently serves only send completion */
 	TAILQ_HEAD(, z_sock_send_wr_s) sq; /* send queue */
