@@ -79,8 +79,9 @@ struct mm_alloc {
 
 static int compare_size(void *node_key, const void *val_key)
 {
-	size_t a = *(size_t *)node_key;
-	size_t b = *(uint8_t *)val_key;
+	/* The key value is the number of grains. */
+	uint64_t a = *(uint64_t *)node_key;
+	uint64_t b = *(uint64_t *)val_key;
 	if (a > b)
 		return 1;
 	if (a < b)
@@ -90,8 +91,9 @@ static int compare_size(void *node_key, const void *val_key)
 
 static int compare_addr(void *node_key, const void *val_key)
 {
-	uint8_t *a = *(uint8_t **)node_key;
-	uint8_t *b = *(uint8_t **)val_key;
+	/* The key value is the offset from the heap base. */
+	uint64_t a = *(uint64_t *)node_key;
+	uint64_t b = *(uint64_t *)val_key;
 	if (a > b)
 		return 1;
 	if (a < b)
@@ -304,7 +306,7 @@ void *ldms_heap_alloc(ldms_heap_t heap, size_t size)
 
 void ldms_heap_free(ldms_heap_t heap, void *d)
 {
-	uint32_t count;
+	uint64_t count;
 	struct mm_alloc *a = d;
 	struct mm_free *p;
 	struct mm_free *q;
