@@ -47,6 +47,18 @@
 #include "rrbt.h"
 #include <assert.h>
 #include <string.h>
+#include <stdio.h>
+
+static void verify_tree(rrbt_t t);
+
+int rrbn_print(struct rrbn *rrbn, void *fn_data, int level)
+{
+	rrbt_t t = fn_data;
+	printf("%*lx (%" PRIu32 ") - %c L:%08lX R:%08lX P:%08lX\n", 50 - (level * 3),
+	       rrbt_off(t, rrbn), rrbn->key_u32[0], (rrbn->color?'B':'R'),
+	       (uint64_t)rrbn->left, rrbn->right, rrbn->parent);
+	return 0;
+}
 
 /* A LEAF (NULL) is considered BLACK */
 static int is_red(struct rrbn *x)
@@ -54,13 +66,6 @@ static int is_red(struct rrbn *x)
 	if (!x)
 		return 0;
 	return x->color == RRBN_RED;
-}
-
-static int is_black(struct rrbn *x)
-{
-	if (!x)
-		return 1;
-	return x->color == RRBN_BLACK;
 }
 
 static void rotate_left(rrbt_t t, struct rrbn *x)
@@ -86,6 +91,7 @@ static void rotate_left(rrbt_t t, struct rrbn *x)
 		assert(x->parent == 0);
 		*t->root = rrbt_off(t, y);
 		y->parent = 0;
+		y->color = RRBN_BLACK;
 	}
 
 	/* Attach x as y's new left */
@@ -112,6 +118,7 @@ static void rotate_right(rrbt_t t, struct rrbn *x)
 			parent->left = rrbt_off(t, y);
 	} else {
 		*t->root = rrbt_off(t, y);
+		y->color = RRBN_BLACK;
 		y->parent = 0;
 	}
 
@@ -124,8 +131,6 @@ static void rotate_right(rrbt_t t, struct rrbn *x)
  * \brief Initialize an RRBT.
  *
  * \param t	Pointer to the RRBT.
- * \param c	Pointer to the function that compares nodes in the
- *		RRBT.
  */
 void rrbt_init(struct rrbt *t)
 {
@@ -185,14 +190,17 @@ void rrbt_ins(rrbt_t t, struct rrbn *x)
 	struct rrbn *n;
 	int c = 0;
 
+	verify_tree(t);
+
 	/* Initialize new node */
-	x->left = x->right = 0;
+	x->left = x->right = x->parent = 0;
 
 	/* Trivial root insertion */
 	if (!*t->root) {
 		x->parent = 0;
 		x->color = RRBN_BLACK;
 		*t->root = rrbt_off(t, x);
+		verify_tree(t);
 		return;
 	}
 
@@ -257,155 +265,467 @@ void rrbt_ins(rrbt_t t, struct rrbn *x)
 		}
 	}
 	rrbn_ptr(t, *t->root)->color = RRBN_BLACK;
+	verify_tree(t);
+}
+
+static void delete_case1(rrbt_t t, struct rrbn *n);
+static void delete_case2(rrbt_t t, struct rrbn *n);
+static void delete_case3(rrbt_t t, struct rrbn *n);
+static void delete_case4(rrbt_t t, struct rrbn *n);
+static void delete_case5(rrbt_t t, struct rrbn *n);
+static void delete_case6(rrbt_t t, struct rrbn *n);
+
+static inline struct rrbn *find_pred(rrbt_t t, struct rrbn *n)
+{
+	struct rrbn *x;
+	for (x = rrbn_ptr(t, n->left); x->right; x = rrbn_ptr(t, x->right));
+	return x;
+}
+
+static inline struct rrbn *find_succ(rrbt_t t, struct rrbn *n)
+{
+	struct rrbn *x;
+	for (x = rrbn_ptr(t, n->right); x->left; x = rrbn_ptr(t, x->left));
+	return x;
+}
+
+static struct rrbn *sibling(rrbt_t t, struct rrbn *n)
+{
+	assert (n != 0);
+	assert (n->parent != 0); /* Root node has no sibling */
+	if (rrbt_off(t, n) == rrbn_ptr(t, n->parent)->left)
+		return rrbn_ptr(t, rrbn_ptr(t, n->parent)->right);
+	else
+		return rrbn_ptr(t, rrbn_ptr(t, n->parent)->left);
+}
+
+void replace_node(rrbt_t t, struct rrbn *oldn, struct rrbn *newn)
+{
+	if (oldn->parent == 0) {
+		*t->root = rrbt_off(t, newn);
+		newn->parent = 0;
+		newn->color = RRBN_BLACK;
+	} else {
+		if (rrbt_off(t, oldn) == rrbn_ptr(t, oldn->parent)->left)
+			rrbn_ptr(t, oldn->parent)->left = rrbt_off(t, newn);
+		else
+			rrbn_ptr(t, oldn->parent)->right = rrbt_off(t, newn);
+		if (newn != NULL)
+			newn->parent = oldn->parent;
+	}
+}
+
+static int node_color(struct rrbn *n) {
+	return n == NULL ? RRBN_BLACK : n->color;
+}
+
+/* These functions verify red-black tree properties */
+static void verify_property_1(rrbt_t t, struct rrbn *n);
+static void verify_property_2(rrbt_t t, struct rrbn *n);
+static void verify_property_4(rrbt_t t, struct rrbn *n);
+static void verify_property_5(rrbt_t t, struct rrbn *n);
+/*
+ * 1. Each node is either red or black
+ * 1.1 No loops
+ */
+static void verify_property_1(rrbt_t t, struct rrbn *n) {
+	if (n == NULL)
+		return;
+	uint64_t off = rrbt_off(t, n);
+	assert(node_color(n) == RRBN_RED || node_color(n) == RRBN_BLACK);
+	assert(off != n->left && off != n->right);
+	verify_property_1(t, rrbn_ptr(t, n->left));
+	verify_property_1(t, rrbn_ptr(t, n->right));
+}
+
+/*
+ * 2. The root node is black.
+ */
+static void verify_property_2(rrbt_t t, struct rrbn *root) {
+	if (root == NULL)
+		return;
+	assert(root->parent == 0);
+	assert(node_color(root) == RRBN_BLACK);
+}
+
+/*
+* 3. All NULL leaves are black and contain no data.
+* This property is assured by always treating NULL as black.
+*/
+
+/*
+ * 4. Every red node has two children, and both are black (or
+ * equivalently, the parent of every red node is black).
+ */
+static void verify_property_4(rrbt_t t, struct rrbn * n)
+{
+	if (n == NULL)
+		return;
+	if (node_color(n) == RRBN_RED) {
+		assert (node_color(rrbn_ptr(t, n->left))   == RRBN_BLACK);
+		assert (node_color(rrbn_ptr(t, n->right))  == RRBN_BLACK);
+		assert (node_color(rrbn_ptr(t, n->parent)) == RRBN_BLACK);
+	}
+	verify_property_4(t, rrbn_ptr(t, n->left));
+	verify_property_4(t, rrbn_ptr(t, n->right));
+}
+
+/*
+ * 5. All paths from any given node to its leaf nodes contain the same
+ * number of black nodes. Traverse the tree counting black nodes until
+ * a leaf is reached; save this count. Compare this saved count to all
+ * other paths to a leaf.
+ */
+static void verify_property_5_helper(rrbt_t t, struct rrbn * n, int black_count, int* path_black_count)
+{
+	if (n == NULL) {
+		if (*path_black_count == -1) {
+			*path_black_count = black_count;
+		} else {
+			assert (black_count == *path_black_count);
+		}
+		return;
+	}
+	if (node_color(n) == RRBN_BLACK)
+		black_count++;
+	verify_property_5_helper(t, rrbn_ptr(t, n->left),  black_count, path_black_count);
+	verify_property_5_helper(t, rrbn_ptr(t, n->right), black_count, path_black_count);
+}
+
+static void verify_property_5(rrbt_t t, struct rrbn *n)
+{
+	int black_count_path = -1;
+	verify_property_5_helper(t, n, 0, &black_count_path);
+}
+
+static void verify_tree(rrbt_t t) {
+	struct rrbn *root = rrbn_ptr(t, *t->root);
+	if (!root)
+		return;
+	verify_property_1(t, root);
+	verify_property_2(t, root);
+	verify_property_4(t, root);
+	verify_property_5(t, root);
 }
 
 /**
- * \brief Delete a node from the RRBT.
- *
- * \param t	Pointer to the RRBT.
- * \param z	Pointer to the node to delete.
+ * \brief verify that the tree is correct
  */
-void rrbt_del(rrbt_t t, struct rrbn *z)
+void rrbt_verify(rrbt_t t)
 {
-	struct rrbn *y = z;
-	struct rrbn *x;
-	int del_color;
+	verify_tree(t);
+}
 
-	/* If this is the only node, special-case the tree back to empty. */
-	if (*t->root == rrbt_off(t, y) && y->left == 0 && y->right == 0) {
-		*t->root = 0;
-		return;
-	}
+void rrbt_del(rrbt_t t, struct rrbn * n)
+{
+	struct rrbn *pred;
+	struct rrbn *child;
+	struct rrbn *parent;
+	assert(n);
+	verify_tree(t);
+	if (n->left != 0 && n->right != 0) {
+		/*
+		 * Swap n with it's predecessor's location in the
+		 * tree, and then delete 'n'. The simplifies the
+		 * delete to the case where n->right is NULL.
+		 */
+		pred = find_pred(t, n);
+		struct rrbn P = *pred;
 
-	/*
-	 * If the node to be deleted has both a left and right child, we
-	 * must find a partially empty node in a subtree to replace z with.
-	 */
-	if (y->left && y->right)
-		for (y = rrbn_ptr(t, z->right); y->left; y = rrbn_ptr(t, y->left));
+		assert(pred->right == 0);
+		assert(pred->parent != 0);
 
-	if (y->left)
-		x = rrbn_ptr(t, y->left);
-	else
-		/* Note that y->right may be NULL */
-		x = rrbn_ptr(t, y->right);
-
-	/* Replace y with x where it is attached at y's parent. */
-	if (x)
-		x->parent = y->parent;
-	if (*t->root != rrbt_off(t, y)) {
-		if (rrbt_off(t, y) == rrbn_ptr(t, y->parent)->left)
-			rrbn_ptr(t, y->parent)->left = rrbt_off(t, x);
-		else
-			rrbn_ptr(t, y->parent)->right = rrbt_off(t, x);
-	} else
-		*t->root = rrbt_off(t, x);
-
-	/*
-	 * Replace z in the tree with y if z had 2 children
-	 */
-	del_color = y->color;
-	if (y != z) {
-		y->left = z->left;
-		y->right = z->right;
-		y->color = z->color;
-		y->parent = z->parent;
-		if (y->left)
-			rrbn_ptr(t, y->left)->parent = rrbt_off(t, y);
-		if (y->right)
-			rrbn_ptr(t, y->right)->parent = rrbt_off(t, y);
-		if (*t->root != rrbt_off(t, z)) {
-			if (rrbn_ptr(t, z->parent)->left == rrbt_off(t, z))
-				rrbn_ptr(t, z->parent)->left = rrbt_off(t, y);
-			else
-				rrbn_ptr(t, z->parent)->right = rrbt_off(t, y);
-		} else
-			*t->root = rrbt_off(t, y);
-	}
-
-	/* If we deleted a red node, there is nothing to be done. */
-	if (del_color == RRBN_RED)
-		return;
-
-	/* Now recolor and balance the tree */
-	while (rrbt_off(t, x) != *t->root && x && is_black(x)) {
-		assert(x->parent);
-		if (rrbt_off(t, x) == rrbn_ptr(t, x->parent)->left) {
-			y = rrbn_ptr(t, rrbn_ptr(t, x->parent)->right);
-			if (!y) {
-				x = rrbn_ptr(t, x->parent);
-				continue;
-			}
-			if (is_red(y)) {
-				y->color = RRBN_BLACK;
-				rrbn_ptr(t, x->parent)->color = RRBN_RED;
-				rotate_left(t, rrbn_ptr(t, x->parent));
-				y = rrbn_ptr(t, rrbn_ptr(t, x->parent)->right);
-				if (!y) {
-					x = rrbn_ptr(t, x->parent);
-					continue;
-				}
-			}
-			if (is_black(rrbn_ptr(t, y->left)) && is_black(rrbn_ptr(t, y->right))) {
-				y->color = RRBN_RED;
-				x = rrbn_ptr(t, x->parent);
+		/* Move pred to n's location */
+		if (pred->parent != rrbt_off(t, n)) {
+			/* n's predecessor is max of left subtree */
+			/*
+			 *            R           R
+			 *             \           \
+			 *              N           Pr
+			 *             / \         / \
+			 *            L   R  ==>  L   R
+			 *           / \         / \
+			 *          X   Pr      X   N
+			 *             /           /
+			 *            Y           Y
+			 */
+			pred->left = n->left;
+			pred->right = n->right;
+			pred->parent = n->parent;
+			pred->color = n->color;
+			n->color = P.color;
+			rrbn_ptr(t, n->left)->parent = rrbn_ptr(t, n->right)->parent = rrbt_off(t, pred);
+			if (n->parent) {
+				parent = rrbn_ptr(t, n->parent);
+				if (parent->left == rrbt_off(t, n))
+					parent->left = rrbt_off(t, pred);
+				else
+					parent->right = rrbt_off(t, pred);
 			} else {
-				if (is_black(rrbn_ptr(t, y->right))) {
-					rrbn_ptr(t, y->left)->color = RRBN_BLACK;
-					y->color = RRBN_RED;
-					rotate_right(t, y);
-					y = rrbn_ptr(t, rrbn_ptr(t, x->parent)->right);
-					if (!y) {
-						x = rrbn_ptr(t, x->parent);
-						continue;
-					}
-				}
-				y->color = rrbn_ptr(t, x->parent)->color;
-				rrbn_ptr(t, x->parent)->color = RRBN_BLACK;
-				rrbn_ptr(t, y->right)->color = RRBN_BLACK;
-				rotate_left(t, rrbn_ptr(t, x->parent));
-				x = rrbn_ptr(t, *t->root);
+				*t->root = rrbt_off(t, pred);
+				pred->parent = 0;
 			}
-		} else {                /* x == x->parent->right */
-			y = rrbn_ptr(t, rrbn_ptr(t, x->parent)->left);
-			if (!y) {
-				x = rrbn_ptr(t, x->parent);
-				continue;
+
+			if (node_color(n) == RRBN_RED) {
+				/*
+				 * Removing a red node does not
+				 * require rebalancing
+				 */
+				rrbn_ptr(t, P.parent)->right = P.left;
+				goto out;
 			}
-			if (is_red(y)) {
-				y->color = RRBN_BLACK;
-				rrbn_ptr(t, x->parent)->color = RRBN_RED;
-				rotate_right(t, rrbn_ptr(t, x->parent));
-				y = rrbn_ptr(t, rrbn_ptr(t, x->parent)->left);
-				if (!y) {
-					x = rrbn_ptr(t, x->parent);
-					continue;
-				}
-			}
-			if (is_black(rrbn_ptr(t, y->right)) && is_black(rrbn_ptr(t, y->left))) {
-				y->color = RRBN_RED;
-				x = rrbn_ptr(t, x->parent);
+			/* Move n to pred's location */
+			n->left = P.left;
+			n->right = 0;
+			n->parent = P.parent;
+			if (P.left)
+				rrbn_ptr(t, P.left)->parent = rrbt_off(t, n);
+			assert(rrbn_ptr(t, P.parent)->right == rrbt_off(t, pred));
+			rrbn_ptr(t, P.parent)->right = rrbt_off(t, n);
+		} else {
+			/* n's predecessor is its left child */
+			/*
+			 *            R           R
+			 *             \           \
+			 *              N           Pr
+			 *             / \         / \
+			 *            Pr  R  ==>  N   R
+			 *           / \         /
+			 *          X   -       X
+			 */
+			/* pred becomes 'n' */
+			pred->color = n->color;
+			n->color = P.color;
+			pred->parent = n->parent;
+			pred->right = n->right;
+			rrbn_ptr(t, n->right)->parent = rrbt_off(t, pred);
+
+			/* Attach P to parent */
+			if (n->parent) {
+				parent = rrbn_ptr(t, n->parent);
+				if (rrbt_off(t, n) == parent->left)
+					parent->left = rrbt_off(t, pred);
+				else
+					parent->right = rrbt_off(t, pred);
+				pred->parent = n->parent;
 			} else {
-				if (is_black(rrbn_ptr(t, y->left))) {
-					rrbn_ptr(t, y->right)->color = RRBN_BLACK;
-					y->color = RRBN_RED;
-					rotate_left(t, y);
-					y = rrbn_ptr(t, rrbn_ptr(t, x->parent)->left);
-					if (!y) {
-						x = rrbn_ptr(t, x->parent);
-						continue;
-					}
-				}
-				y->color = rrbn_ptr(t, x->parent)->color;
-				rrbn_ptr(t, x->parent)->color = RRBN_BLACK;
-				rrbn_ptr(t, y->left)->color = RRBN_BLACK;
-				rotate_right(t, rrbn_ptr(t, x->parent));
-				x = rrbn_ptr(t, *t->root);
+				*t->root = rrbt_off(t, pred);
+				pred->color = RRBN_BLACK;
+				pred->parent = 0;
 			}
+
+			if (node_color(n) == RRBN_RED) {
+				/* n->left == pred. pred->left still
+				 * poits to it's old left, which is
+				 * correct when we're deleting 'n'.
+				 * Deleting RED, no rebalance */
+				goto out;
+			}
+
+			/* Attach 'n' to pred->left */
+			n->left = P.left;
+			if (P.left)
+				rrbn_ptr(t, P.left)->parent = rrbt_off(t, n);
+			pred->left = rrbt_off(t, n);
+			n->parent = rrbt_off(t, pred);
+			n->right = 0;
+			n->parent = rrbt_off(t, pred);
 		}
 	}
-	if (x)
-		x->color = RRBN_BLACK;
+
+	assert(n->left == 0 || n->right == 0);
+	child = rrbn_ptr(t, (n->right == 0 ? n->left : n->right));
+	struct rrbn *delete_me = n;
+
+	/* Check if we're deleting the last node */
+	if (child == NULL && *t->root == rrbt_off(t, n)) {
+		*t->root = 0;
+		goto out;
+	}
+
+	/* If 'n' is RED, we don't need to rebalance, just remove it. */
+	if (node_color(n) == RRBN_RED) {
+		replace_node(t, n, child);
+		goto out;
+	}
+
+	n->color = node_color(child);
+
+	/*
+	 * If n is the root, just remove it since it will change the
+	 * number of black nodes on every path to a leaf and not
+	 * require rebalancing the tree.
+	 */
+	if (n->parent == 0) {
+		*t->root = rrbt_off(t, child);
+		if (child) {
+			child->color = RRBN_BLACK;
+			child->parent = 0;
+		}
+		goto out;
+	}
+
+	delete_case2(t, n);
+
+	replace_node(t, delete_me, child);
+ out:
+	if (*t->root)
+		rrbn_ptr(t, *t->root)->color = RRBN_BLACK;
+	verify_tree(t);
+}
+
+static void delete_case1(rrbt_t  t, struct rrbn *n)
+{
+	if (n->parent == 0)
+		return;
+	delete_case2(t, n);
+}
+
+/*
+ * Case 2: N's sibling is RED
+ *
+ * In this case we exchange the colors of the parent and sibling, then
+ * rotate about the parent so that the sibling becomes the parent of
+ * its former parent. This does not restore the tree properties, but
+ * reduces the problem to one of the remaining cases.
+ */
+static void delete_case2(rrbt_t  t, struct rrbn *n)
+{
+	struct rrbn *s = sibling(t, n);
+	struct rrbn *p = rrbn_ptr(t, n->parent);
+	if (!s)
+		return;
+	if (node_color(s) == RRBN_RED) {
+		p->color = RRBN_RED;
+		s->color = RRBN_BLACK;
+		if (rrbt_off(t, n) == p->left)
+			rotate_left(t, p);
+		else
+			rotate_right(t, p);
+	}
+	delete_case3(t, n);
+}
+
+/*
+ * Case 3: N's parent, sibling, and sibling's children are black.
+ *
+ * Paint the sibling red. Now all paths passing through N's parent
+ * have one less black node than before the deletion, so we must
+ * recursively run this procedure from case 1 on N's parent.
+ */
+static void delete_case3(rrbt_t t, struct rrbn *n)
+{
+	struct rrbn *s = sibling(t, n);
+	struct rrbn *p = rrbn_ptr(t, n->parent);
+	assert(s);
+	if (node_color(p) == RRBN_BLACK &&
+	    node_color(s) == RRBN_BLACK &&
+	    node_color(rrbn_ptr(t, s->left)) == RRBN_BLACK &&
+	    node_color(rrbn_ptr(t, s->right)) == RRBN_BLACK) {
+		s->color = RRBN_RED;
+		delete_case1(t, p);
+	} else {
+		delete_case4(t, n);
+	}
+}
+
+/*
+ * Case 4: N's sibling and sibling's children are black, but its parent is red
+ *
+ * Exchange the colors of the sibling and parent; this restores the
+ * tree properties.
+ */
+void delete_case4(rrbt_t t, struct rrbn *n)
+{
+	struct rrbn *s = sibling(t, n);
+	struct rrbn *p = rrbn_ptr(t, n->parent);
+	assert(s);
+	if (node_color(p) == RRBN_RED &&
+	    node_color(s) == RRBN_BLACK &&
+	    node_color(rrbn_ptr(t, s->left)) == RRBN_BLACK &&
+	    node_color(rrbn_ptr(t, s->right)) == RRBN_BLACK) {
+		s->color = RRBN_RED;
+		p->color = RRBN_BLACK;
+	} else {
+		delete_case5(t, n);
+	}
+}
+
+/*
+ * Case 5: There are two cases handled here which are mirror images of
+ * one another:
+ *
+ * N's sibling S is black, S's left child is red, S's right child is
+ * black, and N is the left child of its parent. We exchange the
+ * colors of S and its left sibling and rotate right at S.  N's
+ * sibling S is black, S's right child is red, S's left child is
+ * black, and N is the right child of its parent. We exchange the
+ * colors of S and its right sibling and rotate left at S.
+ *
+ * Both of these function to reduce us to the situation described in case 6.
+ */
+static void delete_case5(rrbt_t  t, struct rrbn *n)
+{
+	struct rrbn *s = sibling(t, n);
+	struct rrbn *p = rrbn_ptr(t, n->parent);
+	assert(s);
+	if (rrbt_off(t, n) == p->left &&
+	    node_color(s) == RRBN_BLACK &&
+	    node_color(rrbn_ptr(t, s->left)) == RRBN_RED &&
+	    node_color(rrbn_ptr(t, s->right)) == RRBN_BLACK) {
+		s->color = RRBN_RED;
+		rrbn_ptr(t, s->left)->color = RRBN_BLACK;
+		rotate_right(t, s);
+	} else if (rrbt_off(t, n) == p->right &&
+		   node_color(s) == RRBN_BLACK &&
+		   node_color(rrbn_ptr(t, s->right)) == RRBN_RED &&
+		   node_color(rrbn_ptr(t, s->left)) == RRBN_BLACK) {
+		s->color = RRBN_RED;
+		rrbn_ptr(t, s->right)->color = RRBN_BLACK;
+		rotate_left(t, s);
+	}
+	delete_case6(t, n);
+}
+
+/*
+ * Case 6: There are two cases handled here which are mirror images of
+ * one another:
+ *
+ * N's sibling S is black, S's right child is red, and N is the left
+ * child of its parent. We exchange the colors of N's parent and
+ * sibling, make S's right child black, then rotate left at N's
+ * parent.  N's sibling S is black, S's left child is red, and N is
+ * the right child of its parent. We exchange the colors of N's
+ * parent and sibling, make S's left child black, then rotate right
+ * at N's parent.
+ *
+ * This accomplishes three things at once:
+ *
+ * - We add a black node to all paths through N, either by adding a
+ * -   black S to those paths or by recoloring N's parent black.  We
+ * -   remove a black node from all paths through S's red child,
+ * -   either by removing P from those paths or by recoloring S.  We
+ * -   recolor S's red child black, adding a black node back to all
+ * -   paths through S's red child.
+ *
+ * S's left child has become a child of N's parent during the rotation and so is unaffected.
+ */
+static void delete_case6(rrbt_t t, struct rrbn *n)
+{
+	struct rrbn *s = sibling(t, n);
+	struct rrbn *p = rrbn_ptr(t, n->parent);
+	assert(s);
+	s->color = p->color;
+	p->color = RRBN_BLACK;
+	if (rrbt_off(t, n) == p->left) {
+		assert (node_color(rrbn_ptr(t, s->right)) == RRBN_RED);
+		rrbn_ptr(t, s->right)->color = RRBN_BLACK;
+		rotate_left(t, p);
+	} else {
+		assert (node_color(rrbn_ptr(t, s->left)) == RRBN_RED);
+		rrbn_ptr(t, s->left)->color = RRBN_BLACK;
+		rotate_right(t, p);
+	}
 }
 
 /**
@@ -594,6 +914,11 @@ int rrbt_traverse(rrbt_t t, rrbn_node_fn f, void *p)
 	if (*t->root)
 		return rrbt_traverse_subtree(t, rrbn_ptr(t, *t->root), f, p, 0);
 	return 0;
+}
+
+void rrbt_print(rrbt_t t)
+{
+	rrbt_traverse(t, rrbn_print, t);
 }
 
 /**
