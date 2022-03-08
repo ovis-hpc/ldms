@@ -26,7 +26,7 @@ fi
 export pkglibdir=${ovis_ldms_pkglibdir}
 export PACKAGE_TARNAME=ovis-ldms
 export docdir=${ovis_ldms_datarootdir}/doc/${PACKAGE_TARNAME}
-export exdir=${ovis_ldms_datarootdir}/doc/${PACKAGE_TARNAME}-@VERSION@
+export exdir=$docdir
 
 if test -z "$ZAP_LIBPATH"; then
 	ZAP_LIBPATH=$ovis_ldms_plugins
