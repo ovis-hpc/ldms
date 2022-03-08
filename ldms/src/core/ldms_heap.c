@@ -118,15 +118,19 @@ static int heap_stat(struct rrbn *rbn, void *fn_data, int level)
 
 uint64_t ldms_heap_off(ldms_heap_t h, void *p)
 {
+	uint64_t off;
 	if (!p)
 		return 0;
-	return (uint64_t)p - (uint64_t)h->base;
+	off = (uint64_t)p - (uint64_t)h->base;
+	assert(off < h->data->size);
+	return off;
 }
 
 void *ldms_heap_ptr(ldms_heap_t h, uint64_t off)
 {
 	if (!off)
 		return NULL;
+	assert(off < h->data->size);
 	return (void *)((uint64_t)h->base + off);
 }
 
@@ -157,6 +161,11 @@ static void get_pow2(size_t n, size_t *pow2, size_t *bits)
 	*bits = _bits;
 }
 
+size_t ldms_heap_grain_size(size_t grain_sz)
+{
+	return ((grain_sz > sizeof(struct mm_free)) ? grain_sz : sizeof(struct mm_free));
+}
+
 void ldms_heap_init(struct ldms_heap *heap, void *base, size_t size, size_t grain)
 {
 	uint64_t count;
@@ -169,7 +178,7 @@ void ldms_heap_init(struct ldms_heap *heap, void *base, size_t size, size_t grai
 	size = MMR_ROUNDUP(size, LDMS_HEAP_MIN_SIZE);
 
 	for (heap->grain = 1, heap->grain_bits = 0;
-	     heap->grain < grain;
+	     heap->grain < ldms_heap_grain_size(grain);
 	     heap->grain <<= 1, heap->grain_bits++);
 
 	heap->size = size;
@@ -220,7 +229,7 @@ size_t ldms_heap_alloc_size(size_t grain_sz, size_t data_sz)
 	/* The memory chunk must hold mm_free */
 	if (data_sz < sizeof(struct mm_free))
 		data_sz = sizeof(struct mm_free);
-	return MMR_ROUNDUP(data_sz, grain_sz);
+	return MMR_ROUNDUP(data_sz, ldms_heap_grain_size(grain_sz));
 }
 
 void *ldms_heap_alloc(ldms_heap_t heap, size_t size)
@@ -231,8 +240,19 @@ void *ldms_heap_alloc(ldms_heap_t heap, size_t size)
 	uint64_t count;
 	uint64_t remainder;
 
+
 	size = ldms_heap_alloc_size(heap->data->grain, size);
 	count = size >> heap->data->grain_bits;
+
+#if LDMS_HEAP_DEBUG
+	printf("------- heap_alloc(%ld) -- start\n", count);
+	printf("                         ---size tree ----\n");
+	rrbt_verify(heap->size_tree);
+	rrbt_print(heap->size_tree);
+	printf("                         ---addr tree ----\n");
+	rrbt_verify(heap->addr_tree);
+	rrbt_print(heap->addr_tree);
+#endif /* LDMS_HEAP_DEBUG */
 
 	pthread_mutex_lock(&heap->lock);
 	rbn = rrbt_find_lub(heap->size_tree, &count);
@@ -261,9 +281,25 @@ void *ldms_heap_alloc(ldms_heap_t heap, size_t size)
 	}
 	a = (struct mm_alloc *)p;
 	a->count = count;
+	a += 1;
+#if LDMS_HEAP_DEBUG
+	printf("---%lx (size:%lx[%p], addr:%lx[%p], end:%lx) ---- heap_alloc(%ld) -- end\n",
+			ldms_heap_off(heap, a),
+			rrbt_off(heap->size_tree, rbn),
+			rbn,
+			rrbt_off(heap->addr_tree, RRBN(p->addr_node)),
+			&p->addr_node,
+			rrbt_off(heap->addr_tree, RRBN(p->addr_node)) + size,  count);
+	printf("                         ---size tree ----\n");
+	rrbt_verify(heap->size_tree);
+	rrbt_print(heap->size_tree);
+	printf("                         ---addr tree ----\n");
+	rrbt_verify(heap->addr_tree);
+	rrbt_print(heap->addr_tree);
+#endif /* LDMS_HEAP_DEBUG */
 	heap->data->gn++;
 	pthread_mutex_unlock(&heap->lock);
-	return ++a;
+	return a;
 }
 
 void ldms_heap_free(ldms_heap_t heap, void *d)
@@ -274,12 +310,33 @@ void ldms_heap_free(ldms_heap_t heap, void *d)
 	struct mm_free *q;
 	struct rrbn *rbn;
 	uint64_t offset;
+	uint64_t end;
 
 	a--;
-	count = a->count;
 	p = (void *)a;
 	pthread_mutex_lock(&heap->lock);
 	offset = ldms_heap_off(heap, p);
+	count = a->count;
+#if LDMS_HEAP_DEBUG
+	printf("------- heap_free(%lx, %ld) -- start\n",
+			ldms_heap_off(heap, d),
+			count);
+	rbn = rrbt_find_glb(heap->addr_tree, &offset);
+	if (rbn) {
+		q = container_of(rbn, struct mm_free, addr_node);
+		uint64_t end = q->addr_node.key_u64[0] + (q->size_node.key_u64[0] << heap->data->grain_bits);
+		if (offset >= q->addr_node.key_u64[0] && offset < end) {
+			printf("Double free detected. The memory in question is already in the heap.\n");
+			assert(0);
+		}
+	}
+	printf("                         ---size tree ----\n");
+	rrbt_verify(heap->size_tree);
+	rrbt_print(heap->size_tree);
+	printf("                         ---addr tree ----\n");
+	rrbt_verify(heap->addr_tree);
+	rrbt_print(heap->addr_tree);
+#endif /* LDMS_HEAP_DEBUG */
 	rrbn_init(RRBN(p->size_node), &count, sizeof(count));
 	rrbn_init(RRBN(p->addr_node), &offset, sizeof(offset));
 
@@ -289,8 +346,8 @@ void ldms_heap_free(ldms_heap_t heap, void *d)
 		q = container_of(rbn, struct mm_free, addr_node);
 
 		/* See if q is contiguous with p */
-		offset = q->addr_node.key_u64[0] + (q->size_node.key_u64[0] << heap->data->grain_bits);
-		if (offset == p->addr_node.key_u64[0]) {
+		end = q->addr_node.key_u64[0] + (q->size_node.key_u64[0] << heap->data->grain_bits);
+		if (end == p->addr_node.key_u64[0]) {
 			/* Remove the left sibling from the tree and coelesce */
 			rrbt_del(heap->size_tree, RRBN(q->size_node));
 			rrbt_del(heap->addr_tree, RRBN(q->addr_node));
@@ -304,19 +361,17 @@ void ldms_heap_free(ldms_heap_t heap, void *d)
 	if (rbn) {
 		q = container_of(rbn, struct mm_free, addr_node);
 
-		offset = p->addr_node.key_u64[0] + (p->size_node.key_u64[0] << heap->data->grain_bits);
-		if (offset == q->addr_node.key_u64[0]) {
+		end = p->addr_node.key_u64[0] + (p->size_node.key_u64[0] << heap->data->grain_bits);
+		if (end == q->addr_node.key_u64[0]) {
 			/* Remove the right sibling from the tree and coelesce */
 			rrbt_del(heap->size_tree, RRBN(q->size_node));
 			rrbt_del(heap->addr_tree, RRBN(q->addr_node));
-
 			p->size_node.key_u64[0] += q->size_node.key_u64[0];
 		}
 	}
-	/* Fix-up our nodes' key in case we coelesced */
 	offset = ldms_heap_off(heap, p);
-//	rrbn_init(RRBN(p->size_node), &p->count, sizeof(p->count));
-	rrbn_init(RRBN(p->addr_node), &offset, sizeof(offset));
+	rrbn_init(RRBN(p->size_node), p->size_node.key_u64, sizeof(uint64_t));
+	rrbn_init(RRBN(p->addr_node), p->addr_node.key_u64, sizeof(uint64_t));
 
 	/* Put 'p' back in the trees */
 	rrbt_ins(heap->size_tree, RRBN(p->size_node));
@@ -325,6 +380,15 @@ void ldms_heap_free(ldms_heap_t heap, void *d)
 	/* Modify generation nubmer */
 	heap->data->gn++;
 
+#if LDMS_HEAP_DEBUG
+	printf("------- heap_free(%lx, %ld) -- end\n", ldms_heap_off(heap, d), count);
+	printf("                         ---size tree ----\n");
+	rrbt_verify(heap->size_tree);
+	rrbt_print(heap->size_tree);
+	printf("                         ---addr tree ----\n");
+	rrbt_verify(heap->addr_tree);
+	rrbt_print(heap->addr_tree);
+#endif /* LDMS_HEAP_DEBUG */
 	pthread_mutex_unlock(&heap->lock);
 }
 
