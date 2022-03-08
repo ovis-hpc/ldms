@@ -73,7 +73,7 @@ extern "C" {
 /* Relocatable Red/Black Node */
 struct rrbn {
 	uint64_t color:1;
-	uint64_t left:31;	/* struct rrbn */
+	uint64_t left:63;	/* struct rrbn */
 	uint64_t right; 	/* struct rrbn */
 	uint64_t parent;	/* struct rrbn */
 	union {
@@ -123,6 +123,8 @@ rrbt_t rrbt_get(struct rrbt_instance *inst, uint64_t *root, void *base, rrbn_com
 
 #define RRBT_INITIALIZER(_c_, _m_) { .comparator = _c_, .base = _m_ }
 
+void rrbt_print(rrbt_t t);
+void rrbt_verify(rrbt_t t);
 int rrbt_empty(rrbt_t t);
 struct rrbn *rrbt_least_gt_or_eq(rrbt_t t, struct rrbn *n);
 struct rrbn *rrbt_greatest_lt_or_eq(rrbt_t t, struct rrbn *n);
