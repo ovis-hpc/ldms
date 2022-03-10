@@ -392,13 +392,13 @@ struct rbn *rbt_find(struct rbt *t, const void *key)
 	return NULL;
 }
 
-struct rbn *__rbn_min(struct rbn *n)
+static struct rbn *__rbn_min(struct rbn *n)
 {
 	for (; n && n->left; n = n->left);
 	return n;
 }
 
-struct rbn *__rbn_max(struct rbn *n)
+static struct rbn *__rbn_max(struct rbn *n)
 {
 	for (; n && n->right; n = n->right);
 	return n;
@@ -518,7 +518,7 @@ static struct rbn *sibling(struct rbn *n)
 		return n->parent->left;
 }
 
-void replace_node(struct rbt *t, struct rbn *oldn, struct rbn *newn)
+static void replace_node(struct rbt *t, struct rbn *oldn, struct rbn *newn)
 {
 	if (oldn->parent == NULL) {
 		t->root = newn;
@@ -910,7 +910,7 @@ static void delete_case3(struct rbt *t, struct rbn *n)
  * Exchange the colors of the sibling and parent; this restores the
  * tree properties.
  */
-void delete_case4(struct rbt *t, struct rbn *n)
+static void delete_case4(struct rbt *t, struct rbn *n)
 {
 	struct rbn *s = sibling(n);
 	struct rbn *p = n->parent;
