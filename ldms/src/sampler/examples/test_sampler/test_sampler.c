@@ -263,6 +263,14 @@ __test_sampler_metric_new(const char *name, const char *unit,
 	return metric;
 }
 
+/*
+ * `strtok()` and `strtok_r()` do not return EMPTY token (""). If the delimiter
+ * is ":" and the string to be tokenized is "a:b::d", `strtok()` and
+ * `strtok_r()` would yield three tokens: "a", "b", and "d".
+ *
+ * `__strtok()` allows EMPTY tokens. "a:b::d" would yield four tokens: "a", "b",
+ * "", and "d".
+ */
 static char *__strtok(char *s, char delim, char **ptr)
 {
 	char *d, *_p;
@@ -271,11 +279,15 @@ static char *__strtok(char *s, char delim, char **ptr)
 		_p = s;
 	else
 		_p = *ptr;
+	if (!_p || _p[0] == 0)
+		return NULL; /* no more tokens */
 	d = strchr(_p, delim);
-	if (!d)
-		return NULL;
-	*d = '\0';
-	*ptr = d+1;
+	if (d) {
+		*d = '\0';
+		*ptr = d+1;
+	} else {
+		*ptr = _p + strlen(_p);
+	}
 	return _p;
 }
 
