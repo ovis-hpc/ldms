@@ -395,7 +395,7 @@ void metric_printer(ldms_set_t s, int i)
 	       (ldms_metric_flags_get(s, i) & LDMS_MDESC_F_DATA ? 'D' : 'M'),
 	       ldms_metric_type_to_str(type), metname);
 	if (user_data)
-		printf("%#" PRIx64, ldms_metric_user_data_get(s,i));
+		printf("0x%" PRIx64 " ", ldms_metric_user_data_get(s,i));
 
 	value_printer(s, i);
 	if (metunit)
