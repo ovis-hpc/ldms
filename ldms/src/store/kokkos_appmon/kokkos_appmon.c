@@ -318,7 +318,6 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 		       kokkos_store.name);
 		return 0;
 	}
-	pthread_mutex_lock(&cfg_lock);
 	rc = get_json_value(entity, "rank", JSON_INT_VALUE, &v);
 	if (rc)
 		goto out;
@@ -411,7 +410,6 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 	}
 	rc = 0;
  out:
-	pthread_mutex_unlock(&cfg_lock);
 	return rc;
 }
 
