@@ -307,6 +307,7 @@ class LDMSD_Request(object):
     UPDTR_MATCH_ADD = 0X300 + 7
     UPDTR_MATCH_DEL = 0X300 + 8
     UPDTR_TASK = 0x300 + 9
+    UPDTR_MATCH_LIST = 0x300 + 10
 
     SMPLR_ADD = 0X400
     SMPLR_DEL = 0X400 + 1
@@ -399,6 +400,7 @@ class LDMSD_Request(object):
             'updtr_prdcr_del': {'id': UPDTR_PRDCR_DEL},
             'updtr_match_add': {'id': UPDTR_MATCH_ADD},
             'updtr_match_del': {'id': UPDTR_MATCH_DEL},
+            'updtr_match_list' : {'id' : UPDTR_MATCH_LIST},
             'updtr_task': {'id': UPDTR_TASK},
 
             'start': {'id': PLUGN_START},
