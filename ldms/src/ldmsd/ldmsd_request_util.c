@@ -127,6 +127,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "updtr_del",          LDMSD_UPDTR_DEL_REQ  },
 	{  "updtr_match_add",    LDMSD_UPDTR_MATCH_ADD_REQ  },
 	{  "updtr_match_del",    LDMSD_UPDTR_MATCH_DEL_REQ  },
+	{  "updtr_match_list",   LDMSD_UPDTR_MATCH_LIST_REQ },
 	{  "updtr_prdcr_add",    LDMSD_UPDTR_PRDCR_ADD_REQ  },
 	{  "updtr_prdcr_del",    LDMSD_UPDTR_PRDCR_DEL_REQ  },
 	{  "updtr_start",        LDMSD_UPDTR_START_REQ  },
@@ -232,16 +233,17 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 	case LDMSD_STRGP_METRIC_ADD_REQ : return "STRGP_METRIC_ADD_REQ";
 	case LDMSD_STRGP_METRIC_DEL_REQ : return "STRGP_METRIC_DEL_REQ";
 
-	case LDMSD_UPDTR_ADD_REQ       : return "UPDTR_ADD_REQ";
-	case LDMSD_UPDTR_DEL_REQ       : return "UPDTR_DEL_REQ";
-	case LDMSD_UPDTR_START_REQ     : return "UPDTR_START_REQ";
-	case LDMSD_UPDTR_STOP_REQ      : return "UPDTR_STOP_REQ";
-	case LDMSD_UPDTR_STATUS_REQ    : return "UPDTR_STATUS_REQ";
-	case LDMSD_UPDTR_PRDCR_ADD_REQ : return "UPDTR_PRDCR_ADD_REQ";
-	case LDMSD_UPDTR_PRDCR_DEL_REQ : return "UPDTR_PRDCR_DEL_REQ";
-	case LDMSD_UPDTR_MATCH_ADD_REQ : return "UPDTR_MATCH_ADD_REQ";
-	case LDMSD_UPDTR_MATCH_DEL_REQ : return "UPDTR_MATCH_DEL_REQ";
-	case LDMSD_UPDTR_TASK_REQ      : return "UPDTR_TASK_REQ";
+	case LDMSD_UPDTR_ADD_REQ        : return "UPDTR_ADD_REQ";
+	case LDMSD_UPDTR_DEL_REQ        : return "UPDTR_DEL_REQ";
+	case LDMSD_UPDTR_START_REQ      : return "UPDTR_START_REQ";
+	case LDMSD_UPDTR_STOP_REQ       : return "UPDTR_STOP_REQ";
+	case LDMSD_UPDTR_STATUS_REQ     : return "UPDTR_STATUS_REQ";
+	case LDMSD_UPDTR_PRDCR_ADD_REQ  : return "UPDTR_PRDCR_ADD_REQ";
+	case LDMSD_UPDTR_PRDCR_DEL_REQ  : return "UPDTR_PRDCR_DEL_REQ";
+	case LDMSD_UPDTR_MATCH_ADD_REQ  : return "UPDTR_MATCH_ADD_REQ";
+	case LDMSD_UPDTR_MATCH_DEL_REQ  : return "UPDTR_MATCH_DEL_REQ";
+	case LDMSD_UPDTR_MATCH_LIST_REQ : return "UPDTR_MATCH_LIST_REQ";
+	case LDMSD_UPDTR_TASK_REQ       : return "UPDTR_TASK_REQ";
 
 	case LDMSD_SMPLR_ADD_REQ   : return "SMPLR_ADD_REQ";
 	case LDMSD_SMPLR_DEL_REQ   : return "SMPLR_DEL_REQ";

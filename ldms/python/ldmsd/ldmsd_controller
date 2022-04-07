@@ -493,6 +493,25 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_updtr_match_del(self, text, line, begidx, endidx):
         return self.__complete_attr_list('updtr_match_del', text)
 
+    def do_updtr_match_list(self, arg):
+        """
+        Return sets matched to this updater with updtr_match_add.
+        Parameters are as follows:
+        name=  The update policy name. If none, return all updaters
+        """
+        resp = self.handle('updtr_match_list', arg)
+        if resp['errcode'] == 0:
+            updaters = json.loads(resp['msg'])
+            print("     Updater Name        Set Name")
+            print("--------------------- ---------------- ")
+            for updtr in updaters:
+                print("{0:21}".format(updtr['name']))
+                for set_ in updtr['match_sets']:
+                    print("                     {0:16}".format(set_))
+
+    def complete_updtr_match_list(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('updtr_match_list', text)
+
     def do_updtr_prdcr_add(self, arg):
         """
         Add matching Producers to an Updater policy. The parameters are as
