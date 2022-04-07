@@ -158,6 +158,141 @@ AC_SUBST([$2_INCDIR_FLAG], [$$2_INCDIR_FLAG])
 AC_SUBST(plugins_rpath)
 ])
 
+dnl SYNOPSIS: OPTION_WITH_CHECK([name], [VAR_BASE_NAME], [HEADER], [LIB], [FN])
+dnl EXAMPLE: OPTION_WITH_CHECK([munge], [MUNGE], [munge.h], [munge], dnl [munge_encode])
+dnl DESCRIPTION:
+dnl     Similar to OPTION_WITH, but with header+library check.
+dnl     - On successful check, VAR_BASE_NAME_CFLAGS, VAR_BASE_NAME_LDFLAGS,
+dnl       VAR_BASE_NAME_INCDIR, VAR_BASE_NAME_INCDIR_FLAG, VAR_BASE_NAME_LIBDIR,
+dnl       VAR_BASE_NAME_LIBDIR_FLAG, VAR_BASE_NAME_LIB64DIR, and
+dnl       VAR_BASE_NAME_LIB64DIR_FLAG will be set accordingly. The
+dnl       `HAVE_VAR_BASENAME` (e.g. HAVE_MUNGE) AM_CONDITIONAL is set to TRUE.
+dnl     - If the `--with-NAME` option is NOT specified in the configure command,
+dnl       proceed as if `--with-NAME=check` is given.
+dnl     - If the `--with-NAME` option is given in the configure command WITHOUT
+dnl       any values, proceed as if `--with-NAME=check` is given.
+dnl     - If the  `--with-NAME=check` is given, check if the HEADER and LIB are
+dnl       available. If one of them is NOT available, proceed as if
+dnl       `--with-NAME=no` is given.
+dnl     - If the `--with-NAME=no` is given, `HAVE_VAR_BASE_NAME` (e.g.
+dnl       HAVE_MUNGE) AM_CONDITIONAL is set to FALSE. Checking procedure won't
+dnl       be executed.
+dnl     - If the `--with-NAME=yes` is given, check if the HEADER and LIB are
+dnl       available. If one of them is NOT available, the configure script
+dnl       gave an error message and exited with non-zero status.
+dnl     - If the `--with-NAME=PATH` is given, *INCDIRs and *LIBDIRs are set
+dnl       accordingly and HEADER and LIB checking is performed. If the check
+dnl       failed, a warning will be printed and the configure script exited with
+dnl       a non-zero status.
+AC_DEFUN([OPTION_WITH_CHECK], [
+_HDR=$3
+_LIB=$4
+_FN=$5
+withval=""
+AC_ARG_WITH(
+	$1,
+	[AS_HELP_STRING(
+		[--with-$1@<:@=check|yes|no|PATH@:>@],
+		[Specify $1 path @<:@default=check@:>@])]
+	,
+	[WITH_$2=$withval],
+	[WITH_$2=]
+)
+$2_CFLAGS=
+$2_LDFLAGS=
+AS_CASE( x$withval,
+	[xno],[
+		check=
+		err_exit=
+	],
+	[x|xcheck], [
+		check=y
+		err_exit=
+	],
+	[xyes], [
+		check=y
+		err_exi=y
+	],
+	dnl default-case: $withval is PREFIX_PATH
+	[
+		check=y
+		err_exi=y
+		$2_CFLAGS="$withval/include"
+		havelibdir=""
+		havelib64dir=""
+		AS_IF([ test -d "$withval/lib64" ], [
+			havelib64dir="yes"
+			$2_LIB64DIR=$withval/lib64
+			$2_LIB64DIR_FLAG="-L$withval/lib64"
+			plugins_rpath="$plugins_rpath:$WITH_$2/lib64"
+			_LDFLAGS="-L$withval/lib64 -Wl,-rpath-link=$withval/lib64"
+
+			dnl These are overridden later if $withval/lib exists
+			$2_LIBDIR=$withval/lib64
+			$2_LIBDIR_FLAG="-L$withval/lib64"
+		])
+		AS_IF([ test -d "$withval/lib" ], [
+			havelibdir="yes"
+			$2_LIBDIR=$withval/lib
+			$2_LIBDIR_FLAG="-L$withval/lib"
+			plugins_rpath="$plugins_rpath:$WITH_$2/lib"
+			_LDFLAGS="$_LDFLAGS -L$withval/lib -Wl,-rpath-link=$withval/lib"
+		])
+		AS_IF([ test -n "$havelibdir" -a -n "$havelib64dir" ], [
+			AC_MSG_NOTICE([For $2 both lib and lib64 exist. Expect the unexpected.])
+		])
+		$2_LDFLAGS="$_LDFLAGS"
+	]
+)
+
+_HAVE_HDR=
+_HAVE_LIB=
+AS_IF([ test "x$check" = "xy" ], [
+	dnl check header
+	SAVED_CFLAGS="$CFLAGS"
+	CFLAGS="$CFLAGS $$2_CFLAGS"
+	AC_CHECK_HEADER([$_HDR], [
+		_HAVE_HDR=y
+	], [
+		AS_IF([ test x$err_exit = xy ], [
+			AC_MSG_ERROR([ $_HDR not found. ])
+		])
+	])
+	CFLAGS="$SAVED_CFLAGS"
+
+	dnl check the library
+	SAVED_LIBS="$LIBS"
+	AC_CHECK_LIB( $_LIB, $_FN, [
+		dnl action-if-found
+		_HAVE_LIB=y
+	],[
+		dnl action-if-not-found
+		AS_IF([ test x$err_exit = xy ], [
+			AC_MSG_ERROR([ lib$_LIB not found. ])
+		])
+	],[
+		dnl other-libraries
+		$$2_LDFLAGS
+	])
+	LIBS="$SAVED_LIBS"
+])
+
+$2_LDFLAGS="$$2_LDFLAGS -l$_LIB"
+
+AM_CONDITIONAL([HAVE_$2], [ test x$_HAVE_HDR = xy -a x$_HAVE_LIB = xy ])
+AC_SUBST([$2_CFLAGS], [$$2_CFLAGS])
+AC_SUBST([$2_LDFLAGS], [$$2_LDFLAGS])
+AC_SUBST([$2_LIBDIR], [$$2_LIBDIR])
+AC_SUBST([$2_LIB64DIR], [$$2_LIB64DIR])
+AC_SUBST([$2_INCDIR], [$$2_INCDIR])
+AC_SUBST([$2_LIBDIR_FLAG], [$$2_LIBDIR_FLAG])
+AC_SUBST([$2_LIB64DIR_FLAG], [$$2_LIB64DIR_FLAG])
+AC_SUBST([$2_INCDIR_FLAG], [$$2_INCDIR_FLAG])
+AC_SUBST(plugins_rpath)
+])
+dnl end OPTION_WITH_CHECK
+
+
 dnl SYNOPSIS: OPTION_WITH_PORT([name])
 dnl EXAMPLE: OPTION_WITH_PORT([XYZ],[411])
 dnl sets default value of XYZPORT, using second argument as value if not given
