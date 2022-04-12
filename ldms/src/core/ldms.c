@@ -2877,6 +2877,265 @@ double ldms_metric_array_get_double(ldms_set_t s, int mid, int idx)
 	return 0;
 }
 
+void ldms_mval_set_char(ldms_mval_t mv, char v)
+{
+	mv->v_char = v;
+}
+
+void ldms_mval_set_u8(ldms_mval_t mv, uint8_t v)
+{
+	mv->v_u8 = v;
+}
+
+void ldms_mval_set_s8(ldms_mval_t mv, int8_t v)
+{
+	mv->v_s8 = v;
+}
+
+void ldms_mval_set_u16(ldms_mval_t mv, uint16_t v)
+{
+	mv->v_u16 = __cpu_to_le16(v);
+}
+
+void ldms_mval_set_s16(ldms_mval_t mv, int16_t v)
+{
+	mv->v_s16 = __cpu_to_le16(v);
+}
+
+void ldms_mval_set_u32(ldms_mval_t mv, uint32_t v)
+{
+	mv->v_u32 = __cpu_to_le32(v);
+}
+
+void ldms_mval_set_s32(ldms_mval_t mv, int32_t v)
+{
+	mv->v_s32 = __cpu_to_le32(v);
+}
+
+void ldms_mval_set_u64(ldms_mval_t mv, uint64_t v)
+{
+	mv->v_u64 = __cpu_to_le64(v);
+}
+
+void ldms_mval_set_s64(ldms_mval_t mv, int64_t v)
+{
+	mv->v_s64 = __cpu_to_le64(v);
+}
+
+void ldms_mval_set_float(ldms_mval_t mv, float v)
+{
+	/*
+	 * This type abuse is necessary to avoid the integer cast
+	 * that will strip the fractional portion of the float value
+	 */
+	*(uint32_t *)&mv->v_f = __cpu_to_le32(*(uint32_t *)&v);
+}
+
+void ldms_mval_set_double(ldms_mval_t mv, double v)
+{
+	*(uint64_t *)&mv->v_d = __cpu_to_le64(*(uint64_t *)&v);
+}
+
+void ldms_mval_array_set_str(ldms_mval_t mv, const char *str, size_t count)
+{
+	strncpy(mv->a_char, str, count);
+}
+
+void ldms_mval_array_set_char(ldms_mval_t mv, int idx, char v)
+{
+	mv->a_char[idx] = v;
+}
+
+void ldms_mval_array_set_u8(ldms_mval_t mv, int idx, uint8_t v)
+{
+	mv->a_u8[idx] = v;
+}
+
+void ldms_mval_array_set_s8(ldms_mval_t mv, int idx, int8_t v)
+{
+	mv->a_s8[idx] = v;
+}
+
+void ldms_mval_array_set_u16(ldms_mval_t mv, int idx, uint16_t v)
+{
+	mv->a_u16[idx] = __cpu_to_le16(v);
+}
+
+void ldms_mval_array_set_s16(ldms_mval_t mv, int idx, int16_t v)
+{
+	mv->a_s16[idx] = __cpu_to_le16(v);
+}
+
+void ldms_mval_array_set_u32(ldms_mval_t mv, int idx, uint32_t v)
+{
+	mv->a_u32[idx] = __cpu_to_le32(v);
+}
+
+void ldms_mval_array_set_s32(ldms_mval_t mv, int idx, int32_t v)
+{
+	mv->a_s32[idx] = __cpu_to_le32(v);
+}
+
+void ldms_mval_array_set_u64(ldms_mval_t mv, int idx, uint64_t v)
+{
+	mv->a_u64[idx] = __cpu_to_le64(v);
+}
+
+void ldms_mval_array_set_s64(ldms_mval_t mv, int idx, int64_t v)
+{
+	mv->a_s64[idx] = __cpu_to_le64(v);
+}
+
+void ldms_mval_array_set_float(ldms_mval_t mv, int idx, float v)
+{
+	/*
+	 * This type abuse is necessary to avoid the integer cast
+	 * that will strip the fractional portion of the float value
+	 */
+	*(uint32_t *)&mv->a_f[idx] = __cpu_to_le32(*(uint32_t *)&v);
+}
+
+void ldms_mval_array_set_double(ldms_mval_t mv, int idx, double v)
+{
+	/* See xxx_set_float for type abuse note */
+	*(uint64_t *)&mv->a_d[idx] = __cpu_to_le64(*(uint64_t *)&v);
+}
+
+char ldms_mval_get_char(ldms_mval_t mv)
+{
+	return mv->v_char;
+}
+
+uint8_t ldms_mval_get_u8(ldms_mval_t mv)
+{
+	return mv->v_u8;
+}
+
+int8_t ldms_mval_get_s8(ldms_mval_t mv)
+{
+	return mv->v_s8;
+}
+
+uint16_t ldms_mval_get_u16(ldms_mval_t mv)
+{
+	return __le16_to_cpu(mv->v_u16);
+}
+
+int16_t ldms_mval_get_s16(ldms_mval_t mv)
+{
+	return __le16_to_cpu(mv->v_s16);
+}
+
+uint32_t ldms_mval_get_u32(ldms_mval_t mv)
+{
+	return __le32_to_cpu(mv->v_u32);
+}
+
+int32_t ldms_mval_get_s32(ldms_mval_t mv)
+{
+	return __le32_to_cpu(mv->v_s32);
+}
+
+uint64_t ldms_mval_get_u64(ldms_mval_t mv)
+{
+	return __le64_to_cpu(mv->v_u64);
+}
+
+int64_t ldms_mval_get_s64(ldms_mval_t mv)
+{
+	return __le64_to_cpu(mv->v_s64);
+}
+
+float ldms_mval_get_float(ldms_mval_t mv)
+{
+#if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
+	return mv->v_f;
+#else
+	uint32_t tmp = __le32_to_cpu(*(uint32_t*)&mv->v_f);
+	return *(float *)&tmp;
+#endif
+}
+
+double ldms_mval_get_double(ldms_mval_t mv)
+{
+#if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
+	return mv->v_d;
+#else
+	uint64_t tmp = __le64_to_cpu(*(uint64_t*)&mv->v_d);
+		return *(double *)&tmp;
+#endif
+}
+
+const char *ldms_mval_array_get_str(ldms_mval_t mv)
+{
+	return mv->a_char;
+}
+
+char ldms_mval_array_get_char(ldms_mval_t mv, int idx)
+{
+	return mv->a_char[idx];
+}
+
+uint8_t ldms_mval_array_get_u8(ldms_mval_t mv, int idx)
+{
+	return mv->a_u8[idx];
+}
+
+int8_t ldms_mval_array_get_s8(ldms_mval_t mv, int idx)
+{
+	return mv->a_s8[idx];
+}
+
+uint16_t ldms_mval_array_get_u16(ldms_mval_t mv, int idx)
+{
+	return __le16_to_cpu(mv->a_u16[idx]);
+}
+
+int16_t ldms_mval_array_get_s16(ldms_mval_t mv, int idx)
+{
+	return __le16_to_cpu(mv->a_s16[idx]);
+}
+
+uint32_t ldms_mval_array_get_u32(ldms_mval_t mv, int idx)
+{
+	return __le32_to_cpu(mv->a_u32[idx]);
+}
+
+int32_t ldms_mval_array_get_s32(ldms_mval_t mv, int idx)
+{
+	return __le32_to_cpu(mv->a_s32[idx]);
+}
+
+uint64_t ldms_mval_array_get_u64(ldms_mval_t mv, int idx)
+{
+	return __le64_to_cpu(mv->a_u64[idx]);
+}
+
+int64_t ldms_mval_array_get_s64(ldms_mval_t mv, int idx)
+{
+	return __le64_to_cpu(mv->a_s64[idx]);
+}
+
+float ldms_mval_array_get_float(ldms_mval_t mv, int idx)
+{
+#if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
+	return mv->a_f[idx];
+#else
+	uint32_t tmp = __le32_to_cpu(*(uint32_t*)&mv->a_f[idx]);
+	return *(float *)&tmp;
+#endif
+}
+
+double ldms_mval_array_get_double(ldms_mval_t mv, int idx)
+{
+#if LDMS_SETH_F_LCLBYTEORDER == LDMS_SETH_F_LE
+	return mv->a_d[idx];
+#else
+	uint64_t tmp = __le64_to_cpu(*(uint64_t*)&mv->a_d[idx]);
+	return *(double *)&tmp;
+#endif
+}
+
 void __list_append(ldms_heap_t heap, ldms_mval_t lh, ldms_mval_t le)
 {
 	/* list append routine */
