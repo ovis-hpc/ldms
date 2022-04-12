@@ -2432,6 +2432,77 @@ float ldms_metric_array_get_float(ldms_set_t s, int id, int idx);
 double ldms_metric_array_get_double(ldms_set_t s, int id, int idx);
 
 /**
+ * \brief Set the value of an ldms_mval_t.
+ *
+ * Set \c mval to the value specified by \c v.
+ * When working with an array, \c mval must have enough space to set the value \c v
+ * at the index \c idx.
+ *
+ * \param mv	A metric value
+ * \param v	The value
+ * \param idx	Array index
+ * \param count	Array length
+ */
+void ldms_mval_set_char(ldms_mval_t mv, char v);
+void ldms_mval_set_u8(ldms_mval_t mv, uint8_t v);
+void ldms_mval_set_u16(ldms_mval_t mv, uint16_t v);
+void ldms_mval_set_u32(ldms_mval_t mv, uint32_t v);
+void ldms_mval_set_u64(ldms_mval_t mv, uint64_t v);
+void ldms_mval_set_s8(ldms_mval_t mv, int8_t v);
+void ldms_mval_set_s16(ldms_mval_t mv, int16_t v);
+void ldms_mval_set_s32(ldms_mval_t mv, int32_t v);
+void ldms_mval_set_s64(ldms_mval_t mv, int64_t v);
+void ldms_mval_set_float(ldms_mval_t mv, float v);
+void ldms_mval_set_double(ldms_mval_t mv, double v);
+
+void ldms_mval_array_set_str(ldms_mval_t mv, const char *str, size_t count);
+void ldms_mval_array_set_char(ldms_mval_t mv, int idx, char v);
+void ldms_mval_array_set_u8(ldms_mval_t mv, int idx, uint8_t v);
+void ldms_mval_array_set_u16(ldms_mval_t mv, int idx, uint16_t v);
+void ldms_mval_array_set_u32(ldms_mval_t mv, int idx, uint32_t v);
+void ldms_mval_array_set_u64(ldms_mval_t mv, int idx, uint64_t v);
+void ldms_mval_array_set_s8(ldms_mval_t mv, int idx, int8_t v);
+void ldms_mval_array_set_s16(ldms_mval_t mv, int idx, int16_t v);
+void ldms_mval_array_set_s32(ldms_mval_t mv, int idx, int32_t v);
+void ldms_mval_array_set_s64(ldms_mval_t mv, int idx, int64_t v);
+void ldms_mval_array_set_float(ldms_mval_t mv, int idx, float v);
+void ldms_mval_array_set_double(ldms_mval_t mv, int idx, double v);
+
+/**
+ * \brief Get the value from a metric value
+ *
+ * When working with an array value, \c idx must not exceed the array length.
+ *
+ * \param mval    The metric value handle
+ * \param idx       The array index
+ */
+char ldms_mval_get_char(ldms_mval_t mv);
+uint8_t ldms_mval_get_u8(ldms_mval_t mv);
+uint16_t ldms_mval_get_u16(ldms_mval_t mv);
+uint32_t ldms_mval_get_u32(ldms_mval_t mv);
+uint64_t ldms_mval_get_u64(ldms_mval_t mv);
+int8_t ldms_mval_get_s8(ldms_mval_t mv);
+int16_t ldms_mval_get_s16(ldms_mval_t mv);
+int32_t ldms_mval_get_s32(ldms_mval_t mv);
+int64_t ldms_mval_get_s64(ldms_mval_t mv);
+float ldms_mval_get_float(ldms_mval_t mv);
+double ldms_mval_get_double(ldms_mval_t mv);
+
+const char *ldms_mval_array_get_str(ldms_mval_t mv);
+char ldms_mval_array_get_char(ldms_mval_t mv, int idx);
+uint8_t ldms_mval_array_get_u8(ldms_mval_t mv, int idx);
+uint16_t ldms_mval_array_get_u16(ldms_mval_t mv, int idx);
+uint32_t ldms_mval_array_get_u32(ldms_mval_t mv, int idx);
+uint64_t ldms_mval_array_get_u64(ldms_mval_t mv, int idx);
+int8_t ldms_mval_array_get_s8(ldms_mval_t mv, int idx);
+int16_t ldms_mval_array_get_s16(ldms_mval_t mv, int idx);
+int32_t ldms_mval_array_get_s32(ldms_mval_t mv, int idx);
+int64_t ldms_mval_array_get_s64(ldms_mval_t mv, int idx);
+float ldms_mval_array_get_float(ldms_mval_t mv, int idx);
+double ldms_mval_array_get_double(ldms_mval_t mv, int idx);
+
+
+/**
  * \brief Append a new value to a list
  *
  * Append a new value entry to a list metric. The list handle \c lh must be
