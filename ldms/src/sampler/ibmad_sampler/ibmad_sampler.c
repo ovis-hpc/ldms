@@ -36,13 +36,28 @@
 /* So far I cannot find a header that defines these for us */
 #define PORT_STATE_ACTIVE 4
 
+#define MAX_CA_NAMES 32
+#define PORT_FILTER_NONE 0
+#define PORT_FILTER_INCLUDE 1
+#define PORT_FILTER_EXCLUDE 2
+struct port_name {
+	char ca_name[UMAD_CA_NAME_LEN];
+	uint64_t port_bits;
+	/*< 1: matches $name.*. bits & 1 << $port matches $name.$port.
+	* this works because ib disallows port number 0. */
+};
+#define ALL_PORTS(p) (p & 1)
+
 static struct {
         char *schema_name;
+	char producer_name[LDMS_PRODUCER_NAME_MAX];
 	bool use_rate_metrics;
+	int port_filter;
+	struct port_name ports[MAX_CA_NAMES];
 } conf;
 
+
 ldmsd_msg_log_f log_fn;
-char producer_name[LDMS_PRODUCER_NAME_MAX];
 struct base_auth auth;
 
 /* red-black tree root for infiniband port metrics */
@@ -57,7 +72,9 @@ struct metric_data {
         struct ibmad_port *srcport;
 	ib_portid_t portid;
 	int ext; /**< Extended metric indicator */
+	int repeat; /**< true if not the first sample */
 };
+
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -308,6 +325,7 @@ static struct metric_data *ibmad_metric_create(const char *instance,
 	}
 
 	base_auth_set(&auth, data->metric_set);
+	ldms_set_producer_name_set(data->metric_set, conf.producer_name);
         ldms_set_publish(data->metric_set);
         ldmsd_set_register(data->metric_set, SAMP);
         rbn_init(&data->metrics_node, data->instance);
@@ -349,7 +367,60 @@ static void metrics_tree_destroy()
         }
 }
 
-#define MAX_CA_NAMES 32
+#define NOT_IN_FILTER -1
+static int in_port_filter(const char *name)
+{ /* return index where found or NOT_IN_FILTER */
+	int i;
+	for (i = 0 ; i < MAX_CA_NAMES; i++) {
+		if (conf.ports[i].ca_name[0] == '\0')
+			break;
+		if ( !strcmp(conf.ports[i].ca_name, name))
+			return i;
+	}
+	return NOT_IN_FILTER;
+}
+
+static bool collect_ca(const char *name)
+{ /* return false if do not collect at the name level */
+	if (conf.port_filter == PORT_FILTER_NONE)
+		return true;
+	int pi = in_port_filter(name);
+	if (pi != NOT_IN_FILTER) {
+		if (conf.port_filter == PORT_FILTER_INCLUDE)
+			return true;
+		if (conf.port_filter == PORT_FILTER_EXCLUDE) {
+			if (conf.ports[pi].port_bits != 0 )
+				return true;
+			return false;
+		}
+	}
+	return (conf.port_filter == PORT_FILTER_EXCLUDE);
+}
+
+static int collect_ca_port(const char *name, int port)
+{ /* return true if collect */
+	if (conf.port_filter == PORT_FILTER_NONE)
+		return true;
+	int pi = in_port_filter(name);
+	if (pi != NOT_IN_FILTER) {
+		if (conf.port_filter == PORT_FILTER_INCLUDE) {
+			if ( ALL_PORTS(conf.ports[pi].port_bits) ||
+				(conf.ports[pi].port_bits & (1 << port)))
+				return true; /* match port.* or exact */
+			else
+				return false;
+		}
+		if (conf.port_filter == PORT_FILTER_EXCLUDE) {
+			if ( ALL_PORTS(conf.ports[pi].port_bits) ||
+				(conf.ports[pi].port_bits & (1 << port)))
+				return false; /* matched port.* or exact*/
+			else
+				return true;
+		}
+	}
+	return (conf.port_filter == PORT_FILTER_EXCLUDE);
+}
+
 static void metrics_tree_refresh()
 {
         struct rbt new_metrics_tree;
@@ -368,6 +439,9 @@ static void metrics_tree_refresh()
 		umad_ca_t ca;
 		int j, cnt;
 
+		if (!collect_ca(ca_names[i])) {
+			continue;
+		}
 		umad_get_ca(ca_names[i], &ca);
 		for (j = 0, cnt = 0; j < UMAD_CA_MAX_PORTS && cnt < ca.numports; j++) {
 			char instance[UMAD_CA_NAME_LEN+128];
@@ -379,6 +453,9 @@ static void metrics_tree_refresh()
 			else
 				cnt++;
 
+			if (!collect_ca_port(ca_names[i], ca.ports[j]->portnum)) {
+				continue;
+			}
 			if (ca.ports[j]->state != PORT_STATE_ACTIVE) {
 				log_fn(LDMSD_LDEBUG, SAMP" metric_tree_refresh() skipping non-active ca %s port %d\n",
 				       ca.ports[j]->ca_name, ca.ports[j]->portnum);
@@ -386,7 +463,7 @@ static void metrics_tree_refresh()
 			}
 
 			snprintf(instance, sizeof(instance), "%s/%s.%d",
-				 producer_name,
+				 conf.producer_name,
 				 ca.ports[j]->ca_name,
 				 ca.ports[j]->portnum);
 			rbn = rbt_find(&metrics_tree, instance);
@@ -430,7 +507,8 @@ inline void update_metric(struct metric_data *data, int metric, uint64_t new_v,
 	if (conf.use_rate_metrics) {
 		ldms_metric_set_double(data->metric_set,
 				       metric_rate_indices[metric],
-				       ((double)new_v - (double)old_v) / dt);
+				       ((dt > 0 && new_v >= old_v && data->repeat) ?
+					((double)(new_v - old_v)) / dt : -1.0));
 	}
 }
 
@@ -493,6 +571,7 @@ static int metric_sample(struct metric_data *data, double dt)
 		update_metric(data, j, v, dt);
 	}
 
+	data->repeat = 1;
 	return 0;
 
 }
@@ -523,10 +602,108 @@ static void metrics_tree_sample()
 	memcpy(&tv_prev, &tv_now, sizeof(tv_prev));
 }
 
+static void reinit_ports()
+{
+	int i;
+	conf.port_filter = PORT_FILTER_NONE;
+	for (i = 0; i < MAX_CA_NAMES; i++) {
+		conf.ports[i].ca_name[0] = '\0';
+		conf.ports[i].port_bits = 0;
+	}
+}
+
+static void dump_port_filters()
+{
+	int i;
+	log_fn(LDMSD_LDEBUG, SAMP ": dump_port_filters: filt=%s\n",
+		(conf.port_filter == PORT_FILTER_NONE ? "NONE" : (
+			conf.port_filter == PORT_FILTER_INCLUDE ?
+				"INCLUDE" : "EXCLUDE")));
+	for (i = 0 ; i < MAX_CA_NAMES; i++) {
+		if (conf.ports[i].ca_name[0] == '\0')
+			break;
+		log_fn(LDMSD_LDEBUG, SAMP ": dpf: %s : 0x%x\n",
+			conf.ports[i].ca_name, conf.ports[i].port_bits);
+	}
+}
+
+static int parse_port_filters(const char *include, const char *exclude)
+{
+	if (include && exclude) {
+                log_fn(LDMSD_LERROR, SAMP": config: specify either include or exclude option but not both.\n");
+		return 1;
+	}
+	const char *val = NULL;
+	if (include) {
+		val = include;
+		conf.port_filter = PORT_FILTER_INCLUDE;
+	}
+	if (exclude) {
+		val = exclude;
+		conf.port_filter = PORT_FILTER_EXCLUDE;
+	}
+	int k = 0;
+	int num_ca = 0;
+	if (val) {
+		uint64_t num;
+		size_t len = strlen(val);
+		char s[len+1];
+		strcpy(s, val);
+		char *pch, *saveptr;
+		pch = strtok_r(s, ",", &saveptr);
+		while (pch != NULL){
+			char *dot = strchr(pch, '.');
+			num = 0;
+			if (dot) {
+				char *end = NULL;
+				dot[0] = '\0';
+				dot++;
+				errno = 0;
+				num = strtoull(dot, &end, 10);
+				if (*end != '\0' || errno == ERANGE) {
+					log_fn(LDMSD_LERROR, SAMP": config: "
+						"%s port invalid: %s.\n",
+						val, dot);
+				}
+				if (num > 63) {
+					log_fn(LDMSD_LERROR, SAMP": config: "
+						"%s port > 63: %" PRIu64 ".\n",
+						val, num);
+					return 1;
+				}
+			}
+			for (k = 0; k < num_ca; k++) {
+				if (strcmp(conf.ports[k].ca_name, pch) == 0) {
+					conf.ports[k].port_bits |= (1 << num);
+					break;
+				}
+			}
+			if (k == num_ca) {
+				if (k > MAX_CA_NAMES) {
+					log_fn(LDMSD_LERROR, SAMP": config: "
+						"too many CA in %s\n", val);
+					return 1;
+				}
+				strcpy(conf.ports[k].ca_name, pch);
+				conf.ports[k].port_bits |= (1 << num);
+				num_ca++;
+			}
+			if (num)
+				log_fn(LDMSD_LDEBUG, SAMP ": parsed %s port %d\n", pch,
+					(int)num);
+			else
+				log_fn(LDMSD_LDEBUG, SAMP ": parsed %s all ports\n", pch);
+			pch = strtok_r(NULL, ",", &saveptr);
+		}
+	}
+	dump_port_filters();
+	return 0;
+}
+
 static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-        char *value;
+        char *value, *value2;
 
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
 
@@ -542,8 +719,24 @@ static int config(struct ldmsd_plugin *self,
                 log_fn(LDMSD_LERROR, SAMP" config() strdup schema failed: %d", errno);
 		return 1;
         }
-
-	return 0;
+        value = av_value(avl, "producer");
+        if (value != NULL) {
+                strcpy(conf.producer_name, value);
+	} else {
+		gethostname(conf.producer_name, sizeof(conf.producer_name));
+	}
+        if (conf.producer_name[0] == '\0') {
+                log_fn(LDMSD_LERROR, SAMP" config() producer unset\n");
+		return 1;
+        }
+	value = av_value(avl, "rate");
+	if (value != NULL && value[0] == '0') {
+		conf.use_rate_metrics = false;
+	}
+	reinit_ports();
+	value = av_value(avl, "include");
+	value2 = av_value(avl, "exclude");
+	return parse_port_filters(value, value2);
 }
 
 static int sample(struct ldmsd_sampler *self)
@@ -598,7 +791,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
         log_fn = pf;
         log_fn(LDMSD_LDEBUG, SAMP" get_plugin() called ("PACKAGE_STRING")\n");
         rbt_init(&metrics_tree, string_comparator);
-        gethostname(producer_name, sizeof(producer_name));
 	conf.schema_name = strdup("ibmad");
 	conf.use_rate_metrics = true;
 

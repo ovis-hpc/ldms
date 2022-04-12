@@ -8,6 +8,7 @@ array_example
 blob_writer
 clock
 lnet_stats
+ibmad_sampler
 meminfo
 procdiskstats
 procinterrupts

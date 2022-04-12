@@ -1,0 +1,12 @@
+export plugname=ibmad_sampler
+portbase=61060
+DAEMONS 1 2 3
+LDMSD 3
+SLEEP 1
+LDMSD 1  2
+LDMS_LS 1 -l
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -lv
+SLEEP 5
+KILL_LDMSD 1 2 3
+file_created $STOREDIR/node/$testname
