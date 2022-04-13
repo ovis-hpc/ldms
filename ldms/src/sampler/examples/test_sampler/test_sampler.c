@@ -60,7 +60,9 @@
 #include <pthread.h>
 #include <assert.h>
 #include "ldms.h"
+#include "ovis_json/ovis_json.h"
 #include "ldmsd.h"
+#include "ldmsd_stream.h"
 
 #define _stringify(_x) #_x
 #define stringify(_x) _stringify(_x)
@@ -130,10 +132,30 @@ struct test_sampler_schema {
 };
 LIST_HEAD(test_sampler_schema_list, test_sampler_schema);
 
+struct test_sampler_stream_client {
+	const char *xprt;
+	const char *port;
+	const char *host;
+	ldms_t ldms;
+	ldmsd_auth_t auth_dom;
+	LIST_ENTRY(test_sampler_stream_client) entry;
+};
+LIST_HEAD(test_sampler_stream_client_list, test_sampler_stream_client);
+struct test_sampler_stream {
+	const char *name;
+	const char *path;
+	FILE *file;
+	ldmsd_stream_type_t type;
+	struct test_sampler_stream_client_list client_list;
+	LIST_ENTRY(test_sampler_stream) entry;
+};
+LIST_HEAD(test_sampler_stream_list, test_sampler_stream);
+
 static ldmsd_msg_log_f msglog;
 static int num_sets;
 static struct test_sampler_schema_list schema_list;
 static struct test_sampler_set_list set_list;
+static struct test_sampler_stream_list stream_list;
 
 static struct test_sampler_schema *test_sampler_schema_find(
 		struct test_sampler_schema_list *list, char *name)
@@ -142,6 +164,75 @@ static struct test_sampler_schema *test_sampler_schema_find(
 	LIST_FOREACH(ts_schema, list, entry) {
 		if (0== strcmp(ts_schema->name, name))
 			return ts_schema;
+	}
+	return NULL;
+}
+
+static struct test_sampler_stream *
+__stream_find(struct test_sampler_stream_list *list, const char *name)
+{
+	struct test_sampler_stream *ts_stream;
+	LIST_FOREACH(ts_stream, list, entry) {
+		if (0 == strcmp(ts_stream->name, name))
+			return ts_stream;
+	}
+	return NULL;
+}
+
+static struct test_sampler_stream *
+__stream_new(const char *name, ldmsd_stream_type_t type)
+{
+	struct test_sampler_stream *ts_stream;
+
+	ts_stream = calloc(1, sizeof(*ts_stream));
+	if (!ts_stream)
+		return NULL;
+	ts_stream->name = strdup(name);
+	if (!ts_stream->name) {
+		free(ts_stream);
+		return NULL;
+	}
+	ts_stream->type = type;
+	LIST_INIT(&ts_stream->client_list);
+	return ts_stream;
+}
+
+static void __stream_client_free(struct test_sampler_stream_client *c)
+{
+	free((char*)c->host);
+	free((char*)c->port);
+	free((char*)c->xprt);
+	ldmsd_cfgobj_put(&c->auth_dom->obj);
+	free(c);
+}
+
+static void __stream_free(struct test_sampler_stream *ts_stream)
+{
+	struct test_sampler_stream_client *c;
+	free((char*)ts_stream->path);
+	free((char*)ts_stream->name);
+	while ((c = LIST_FIRST(&ts_stream->client_list))) {
+		LIST_REMOVE(c, entry);
+		__stream_client_free(c);
+	}
+	free(ts_stream);
+}
+
+static struct test_sampler_stream_client *
+__stream_client_find(struct test_sampler_stream *s, const char *host,
+			const char *port, const char *xprt, const char *auth)
+{
+	struct test_sampler_stream_client *c;
+	LIST_FOREACH(c, &s->client_list, entry) {
+		if (0 != strcmp(c->host, host))
+			continue;
+		if (0 != strcmp(c->port, port))
+			continue;
+		if (0 != strcmp(c->xprt, xprt))
+			continue;
+		if (0 != strcmp(c->auth_dom->obj.name, auth))
+			continue;
+		return c;
 	}
 	return NULL;
 }
@@ -1405,6 +1496,122 @@ err:
 	goto out;
 }
 
+static int config_add_stream(struct attr_value_list *avl)
+{
+	int rc = 0;
+	char *stream_name, *type, *path, *xprt, *host, *port, *auth;
+	struct test_sampler_stream *ts_stream = NULL;
+	enum ldmsd_stream_type_e stype;
+	struct test_sampler_stream_client *c = NULL;
+	int free_stream = 0;
+
+	stream_name = av_value(avl, "stream");
+	if (!stream_name) {
+		msglog(LDMSD_LERROR, "test_sampler: 'stream' is required.\n");
+		return EINVAL;
+	}
+
+	type = av_value(avl, "type"); /* stream type */
+	if (!type) {
+		msglog(LDMSD_LERROR, "test_sampler: 'type' is required.\n");
+		return EINVAL;
+	}
+	if (0 == strcasecmp(type, "json")) {
+		stype = LDMSD_STREAM_JSON;
+	} else if (0 == strcasecmp(type, "string")) {
+		stype = LDMSD_STREAM_STRING;
+	} else {
+		msglog(LDMSD_LERROR, "test_sampler: The 'type' value ('%s') is "
+							   "invalid.\n", type);
+		return EINVAL;
+	}
+
+	path = av_value(avl, "path");
+	if (!path) {
+		msglog(LDMSD_LERROR, "test_sampler: 'path' is required.\n");
+		return EINVAL;
+	}
+
+	host = av_value(avl, "host");
+	if (!host)
+		host = "localhost";
+	port = av_value(avl, "port");
+	if (!port) {
+		msglog(LDMSD_LERROR, "test_sampler: 'port' is required.\n");
+		return EINVAL;
+	}
+	xprt = av_value(avl, "xprt");
+	if (!xprt)
+		xprt = "sock";
+	auth = av_value(avl, "auth");
+	if (!auth)
+		auth = DEFAULT_AUTH;
+
+	ts_stream = __stream_find(&stream_list, stream_name);
+	if (ts_stream) {
+		if (0 != strcmp(path, ts_stream->path)) {
+			msglog(LDMSD_LERROR, "test_sampler: stream '%s' "
+					"already exists.\n", stream_name);
+			return EINVAL;
+		}
+	} else {
+		free_stream = 1;
+		ts_stream = __stream_new(stream_name, stype);
+		if (!ts_stream)
+			goto enomem;
+		ts_stream->path = strdup(path);
+		if (!ts_stream->path) {
+			goto enomem;
+		}
+		ts_stream->file = fopen(ts_stream->path, "r");
+		if (!ts_stream->file) {
+			msglog(LDMSD_LERROR, "test_sampler: Cannot open file '%s'\n",
+								ts_stream->path);
+			rc = EINVAL;
+			goto err;
+		}
+		LIST_INSERT_HEAD(&stream_list, ts_stream, entry);
+	}
+
+	c = __stream_client_find(ts_stream, host, port, xprt, auth);
+	if (c) {
+		msglog(LDMSD_LERROR, "test_sampler: stream '%s' the client "
+				"%s:%s:%s already exists.\n", ts_stream->name,
+				c->xprt, c->port, c->host, c->auth_dom->obj.name);
+	} else {
+		c = malloc(sizeof(*c));
+		if (!c)
+			goto enomem;
+		c->host = strdup(host);
+		if (!c->host)
+			goto enomem;
+		c->xprt = strdup(xprt);
+		if (!c->xprt)
+			goto enomem;
+		c->port = strdup(port);
+		if (!c->port)
+			goto enomem;
+		c->auth_dom = ldmsd_auth_find(auth);
+		if (!c->auth_dom) {
+			msglog(LDMSD_LERROR, "test_sampler: Cannot find auth '%s'\n", auth);
+			rc = EINVAL;
+			goto err;
+		}
+		LIST_INSERT_HEAD(&ts_stream->client_list, c, entry);
+	}
+	return 0;
+
+enomem:
+	msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
+	rc = ENOMEM;
+err:
+	if (c)
+		__stream_client_free(c);
+	if (free_stream)
+		__stream_free(ts_stream);
+	return rc;
+}
+
 static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct attr_value_list *avl)
 {
 	char *action;
@@ -1421,6 +1628,8 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			rc = config_add_default(avl);
 		} else if (0 == strcmp(action, "add_lists")) {
 			rc = config_add_lists(avl);
+		} else if (0 == strcmp(action, "add_stream")) {
+			rc = config_add_stream(avl);
 		} else {
 			msglog(LDMSD_LERROR, "test_sampler: Unrecognized "
 				"action '%s'.\n", action);
@@ -1461,7 +1670,6 @@ static int __sample_classic(struct test_sampler_set *ts_set)
 		if (LDMS_V_RECORD_TYPE == type) {
 			continue;
 		}
-
 		if (LDMS_V_LIST == type) {
 			struct test_sampler_list_info *list;
 			ldms_mval_t lent;
@@ -1607,6 +1815,24 @@ static int sample(struct ldmsd_sampler *self)
 			}
 		}
 	}
+
+	struct test_sampler_stream *ts_stream;
+	struct test_sampler_stream_client *c;
+	LIST_FOREACH(ts_stream, &stream_list, entry) {
+		LIST_FOREACH(c, &ts_stream->client_list, entry) {
+			rc = ldmsd_stream_publish_file(ts_stream->name,
+					(LDMSD_STREAM_JSON==ts_stream->type)?"json":"string",
+					c->xprt, c->host, c->port,
+					c->auth_dom->plugin,
+					c->auth_dom->attrs, ts_stream->file);
+			if (rc) {
+				msglog(LDMSD_LERROR, "test_sampler: Failed to "
+					"publish stream '%s' to %s:%s:%s:%s\n",
+					ts_stream->name, c->xprt, c->port,
+					c->host, c->auth_dom->obj.name);
+			}
+		}
+	}
 	return 0;
 }
 
@@ -1617,11 +1843,18 @@ static void term(struct ldmsd_plugin *self)
 		LIST_REMOVE(tschema, entry);
 		test_sampler_schema_free(tschema);
 	}
+
+	struct test_sampler_stream *ts_stream;
+	while ((ts_stream = LIST_FIRST(&stream_list))) {
+		LIST_REMOVE(ts_stream, entry);
+		__stream_free(ts_stream);
+	}
 }
 
 static const char *usage(struct ldmsd_plugin *self)
 {
-	return  "config name=test_sampler action=add_schema schema=<schema_name>\n"
+	return  "Create and define schema:\n"
+		"config name=test_sampler action=add_schema schema=<schema_name>\n"
 		"       [set_array_card=number of elements in the set ring buffer]\n"
 		"       [metrics=<comma-separated list of metrics' definition]\n"
 		"       [num_metrics=<num_metrics>] [type=<metric type>]\n"
@@ -1640,6 +1873,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"       For lists of records, the format is <metric name>:<metric type>:list:[record:<record def's name>:]:<max list length>:unit.\n"
 		"       The record definitions must be given before referring to it.\n"
 		"\n"
+		"Create sets:\n"
 		"config name=test_sampler action=add_set instance=<set_name>\n"
 		"       schema=<schema_name> producer=<producer>\n"
 		"       [component_id=<compid>] [jobid=<jobid>]\n"
@@ -1656,6 +1890,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                    3 means the sampler will push every third updates,\n"
 		"                    and so on.\n"
 		"\n"
+		"Create the default schema:\n"
 		"config name=test_sampler action=default [base=<base>] [schema=<sname>]\n"
 		"       [num_sets=<nsets>] [num_metrics=<nmetrics>]\n"
 		"\n"
@@ -1664,10 +1899,22 @@ static const char *usage(struct ldmsd_plugin *self)
 		"    <nsets>      Number of sets\n"
 		"    <nmetrics>   Number of metrics\n"
 		"\n"
+		"Create a schema containing a single list:\n"
+		"\n"
 		"config name=test_sampler action=add_lists [schema=<schema>]\n"
 		"\n"
-		"    <schema>       The schema name\n";
-
+		"    <schema>       The schema name\n"
+		"\n"
+		"Publish streams:\n"
+		"config name=test_sampler action=add_stream stream=<stream_name>\n"
+		"       path=<path> port=<port> [host=<host>] [xprt=<xprt>] [auth=<auth>]\n"
+		"\n"
+		"    <stream_name>    Stream name\n"
+		"    <path>           Path to the file containing the stream data\n"
+		"    <port>           Port of a stream client\n"
+		"    <host>           Host of a stream client\n"
+		"    <xprt>           Transport to connect to a stream client\n"
+		"    <auth>           A authentication domain name\n";
 }
 
 static struct ldmsd_sampler test_sampler_plugin = {
@@ -1687,5 +1934,6 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 	msglog = pf;
 	LIST_INIT(&schema_list);
 	LIST_INIT(&set_list);
+	LIST_INIT(&stream_list);
 	return &test_sampler_plugin.base;
 }
