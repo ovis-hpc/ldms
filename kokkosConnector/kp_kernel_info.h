@@ -103,8 +103,6 @@ class KernelPerformanceInfo {
 			addTime(sample_time);
 			incrementCount();
 
-			//printf(".")
-
 			if( (*ldms_publish) ) {
 				const int buffer_size = (NULL == kernelName) ? 4096 :
 					( strlen(kernelName) > 3072 ? 2048 + strlen(kernelName) : 4096 );
