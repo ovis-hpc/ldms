@@ -17,7 +17,6 @@
 #include <ldms/ldms.h>
 #include <ldms/ldmsd_stream.h>
 #include <ovis_util/util.h>
-//#include <ldms/ldmsd_stream.h>
 
 static uint64_t uniqID = 0;
 static KernelPerformanceInfo* currentEntry;
@@ -34,7 +33,6 @@ static int slurm_rank;
 static int slurm_job_id;
 static int tool_verbosity;
 static char hostname_kp[HOST_NAME_MAX];
-//extern int xprt_auth_done;
 
 void increment_counter(const char* name, KernelExecutionType kType) {
 	std::string nameStr(name);
@@ -173,22 +171,12 @@ extern "C" void kokkosp_init_library(const int loadSeq,
 		fprintf(stderr, "Error connecting to LDMS return-code: %d\n", ldms_rc);
 		return;
 	}
-	//int ldms_rc = ldms_xprt_connect_by_name(ldms, ldms_host, ldms_port, NULL, NULL);
-
-	//if( ldms_rc ) {
-	//	fprintf(stderr, "Error connecting to LDMS return-code: %d\n", ldms_rc);
-	//	exit(0);
-	//}
 
 	printf("KokkosP: LDMS Connector Interface Initialized (sequence is %d, version: %llu, job: %d / rank: %d, LDMS: %s:%s)\n", loadSeq, interfaceVer,
 		slurm_job_id, slurm_rank, ldms_host, ldms_port);
 
 	initTime = seconds();
 	initTimeEpochMS = getEpochMS();
-
-	//printf("xprt_auth_done: %d\n", xprt_auth_done);
-
-	//while (ldms_xprt_connected(ldms) == 0);
 }
 
 extern "C" void kokkosp_finalize_library() {
