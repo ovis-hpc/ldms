@@ -56,7 +56,7 @@ class KernelPerformanceInfo {
 				const uint16_t kernel_nest_level,
 				const int tool_verbosity,
 				bool* ldms_global_publish):
-			kType(kernelType), ldms(the_ldms), 
+			kType(kernelType), ldms(the_ldms),
 				nodename(node_name), rank(rank_no),
 				jobid(job_id), jobStartTime(job_start),
 				jobStartEpochTimeMS(job_epoch_start),
