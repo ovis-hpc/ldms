@@ -13,7 +13,8 @@ COMMON_LIBADD = $(top_builddir)/ldms/src/sampler/libsampler_base.la \
 
 if ENABLE_TEST_SAMPLER_LDMS_TEST
 libtest_sampler_la_SOURCES = test_sampler.c
-libtest_sampler_la_LIBADD = $(COMMON_LIBADD)
+libtest_sampler_la_LIBADD = $(COMMON_LIBADD) $(top_builddir)/lib/src/ovis_json/libovis_json.la
+
 pkglib_LTLIBRARIES += libtest_sampler.la
 #dist_man7_MANS += Plugin_test_sampler.man
 endif
