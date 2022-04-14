@@ -1569,6 +1569,7 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 		ldms_mdesc_t rec_vd; /* value desc in rec_type */
 		ldms_record_t rec_def = (void*)md;
 		ldms_record_type_t rec_type = ldms_ptr_(void, meta, value_off);
+		rec_type->hdr.flags = LDMS_RECORD_F_TYPE;
 		int j;
 		off_t rec_type_off = sizeof(*rec_type) + rec_def->n * sizeof(rec_type->dict[0]);
 		off_t rec_inst_off = sizeof(struct ldms_record_inst);
@@ -3439,10 +3440,10 @@ ldms_mval_t ldms_record_alloc(ldms_set_t set, int metric_id)
 	list_ent->type = LDMS_V_RECORD_INST;
 	list_ent->count = __cpu_to_le32(1);
 	rec_inst = (void*)list_ent->value;
+	rec_inst->hdr.flags = __cpu_to_le32(LDMS_RECORD_F_INST);
 	rec_inst->record_type = __cpu_to_le32(metric_id);
 	rec_inst->set_data_off = __cpu_to_le32(ldms_off_(set->data, rec_inst));
 	return (void*)rec_inst;
-
 
  einval:
 	errno = EINVAL;
@@ -3485,11 +3486,29 @@ __rec_type(struct ldms_record_inst *rec_inst, ldms_mdesc_t *mdesc,
 	return rec_type;
 }
 
+static inline ldms_mdesc_t __record_mdesc_get(ldms_mval_t rec, int i)
+{
+	ldms_record_type_t rec_type;
+	ldms_record_hdr_t hdr = (ldms_record_hdr_t)&rec->v_rec_inst;
+	if (hdr->flags == LDMS_RECORD_F_TYPE) {
+		rec_type = &rec->v_rec_type;
+	} else {
+		rec_type = __rec_type((void*)rec, NULL, NULL, NULL);
+	}
+	if (i < 0 || __le32_to_cpu(rec_type->n) <= i) {
+		errno = ENOENT;
+		return NULL;
+	}
+	return ldms_ptr_(void, rec_type, __le32_to_cpu(rec_type->dict[i]));
+}
+
 int ldms_record_type_get(ldms_mval_t mval)
 {
 	ldms_record_type_t rec_type;
 	ldms_mdesc_t mdesc;
 	ldms_record_inst_t rec_inst = &mval->v_rec_inst;
+	if (rec_inst->hdr.flags != LDMS_RECORD_F_INST)
+		return -EINVAL;
 	rec_type = __rec_type(rec_inst, &mdesc, NULL, NULL);
 	if (!rec_type || mdesc->vd_type != LDMS_V_RECORD_TYPE)
 		return -EINVAL;
@@ -3498,15 +3517,21 @@ int ldms_record_type_get(ldms_mval_t mval)
 
 int ldms_record_metric_find(ldms_mval_t mval, const char *name)
 {
-	ldms_record_inst_t rec_inst = &mval->v_rec_inst;
+	ldms_record_hdr_t hdr = (ldms_record_hdr_t)&mval->v_rec_inst;
+	ldms_record_inst_t rec_inst;
 	ldms_mdesc_t vd, type_vd;
 	ldms_record_type_t rec_type;
 	int i, n;
 
-	rec_type = __rec_type(rec_inst, &type_vd, NULL, NULL);
-	if (!rec_type || type_vd->vd_type != LDMS_V_RECORD_TYPE) {
-		assert(0 == "Not a record instance");
-		return -EINVAL;
+	if (hdr->flags == LDMS_RECORD_F_TYPE) {
+		rec_type = &mval->v_rec_type;
+	} else {
+		rec_inst = &mval->v_rec_inst;
+		rec_type = __rec_type(rec_inst, &type_vd, NULL, NULL);
+		if (!rec_type || type_vd->vd_type != LDMS_V_RECORD_TYPE) {
+			assert(0 == "Not a record instance");
+			return -EINVAL;
+		}
 	}
 	n = __le32_to_cpu(rec_type->n);
 	for (i = 0; i < n; i++) {
@@ -3666,12 +3691,17 @@ size_t ldms_record_heap_size_get(ldms_record_t rec_def)
 	return sz;
 }
 
-int ldms_record_card(ldms_mval_t rec_inst)
+int ldms_record_card(ldms_mval_t rec)
 {
+	struct ldms_record_hdr *hdr = (struct ldms_record_hdr *)&rec->v_rec_inst;
 	ldms_record_type_t rec_type;
-	rec_type = __rec_type((void*)rec_inst, NULL, NULL, NULL);
-	if (!rec_type)
-		return -EINVAL;
+	if (hdr->flags && LDMS_RECORD_F_INST) {
+		rec_type = __rec_type((void*)rec, NULL, NULL, NULL);
+		if (!rec_type)
+			return -EINVAL;
+	} else {
+		rec_type = &rec->v_rec_type;
+	}
 	return __le32_to_cpu(rec_type->n);
 }
 
@@ -3685,16 +3715,17 @@ ldms_mval_t __record_metric_get(ldms_mval_t rec_inst, int i,
 	ldms_mval_t mval;
 	ldms_mdesc_t vd;
 	ldms_record_type_t rec_type;
+	ldms_record_hdr_t hdr = (ldms_record_hdr_t)&rec_inst->v_rec_inst;
+	if (hdr->flags != LDMS_RECORD_F_INST) {
+		errno = EINVAL;
+		return NULL;
+	}
 	rec_type = __rec_type((void*)rec_inst, NULL, meta_out, data_out);
 	if (!rec_type)
 		return NULL;
-	if (i < 0 || __le32_to_cpu(rec_type->n) <= i) {
-		errno = ENOENT;
-		return NULL;
-	}
 	if (type_out)
 		*type_out = rec_type;
-	vd = ldms_ptr_(void, rec_type, __le32_to_cpu(rec_type->dict[i]));
+	vd = __record_mdesc_get(rec_inst, i);
 	if (vd_out)
 		*vd_out = vd;
 	mval = ldms_ptr_(void, rec_inst, __le32_to_cpu(vd->vd_data_offset));
@@ -3706,21 +3737,21 @@ ldms_mval_t ldms_record_metric_get(ldms_mval_t rec_inst, int metric_id)
 	return __record_metric_get(rec_inst, metric_id, NULL, NULL, NULL, NULL);
 }
 
-const char *ldms_record_metric_name_get(ldms_mval_t rec_inst, int metric_id)
+const char *ldms_record_metric_name_get(ldms_mval_t rec, int metric_id)
 {
 	ldms_mdesc_t vd;
-	ldms_mval_t mval = __record_metric_get(rec_inst, metric_id, NULL, &vd, NULL, NULL);
-	if (!mval)
+	vd = __record_mdesc_get(rec, metric_id);
+	if (!vd)
 		return NULL;
 	return vd->vd_name_unit;
 }
 
-const char *ldms_record_metric_unit_get(ldms_mval_t rec_inst, int metric_id)
+const char *ldms_record_metric_unit_get(ldms_mval_t rec, int metric_id)
 {
 	ldms_mdesc_t vd;
 	int len;
-	ldms_mval_t mval = __record_metric_get(rec_inst, metric_id, NULL, &vd, NULL, NULL);
-	if (!mval)
+	vd = __record_mdesc_get(rec, metric_id);
+	if (!vd)
 		return NULL;
 	len = strlen(vd->vd_name_unit);
 	if (len + 1 < vd->vd_name_unit_len) {
@@ -3729,20 +3760,13 @@ const char *ldms_record_metric_unit_get(ldms_mval_t rec_inst, int metric_id)
 	return NULL;
 }
 
-enum ldms_value_type ldms_record_metric_type_get(ldms_mval_t rec_inst,
+enum ldms_value_type ldms_record_metric_type_get(ldms_mval_t rec,
 						 int metric_id, size_t *count)
 {
-	ldms_record_type_t rec_type;
 	ldms_mdesc_t vd;
-	rec_type = __rec_type((void*)rec_inst, NULL, NULL, NULL);
-	if (!rec_type)
+	vd = __record_mdesc_get(rec, metric_id);
+	if (!vd)
 		return LDMS_V_NONE;
-	if (metric_id < 0 || __le32_to_cpu(rec_type->n) <= metric_id) {
-		errno = ENOENT;
-		return LDMS_V_NONE;
-	}
-
-	vd = ldms_ptr_(void, rec_type, __le32_to_cpu(rec_type->dict[metric_id]));
 
 	if (count) {
 		*count = __le32_to_cpu(vd->vd_array_count);
@@ -3784,6 +3808,9 @@ void ldms_record_metric_array_set(ldms_mval_t rec_inst, int metric_id,
 
 int ldms_list_append_record(ldms_set_t set, ldms_mval_t lh, ldms_mval_t rec_inst)
 {
+	ldms_record_hdr_t hdr = (ldms_record_hdr_t)&rec_inst->v_rec_inst;
+	if (hdr->flags != LDMS_RECORD_F_INST)
+		return EINVAL;
 	ldms_list_entry_t le = container_of(rec_inst, struct ldms_list_entry, value);
 	struct ldms_data_hdr *data;
 	if (le->prev || le->next)

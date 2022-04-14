@@ -2587,11 +2587,11 @@ int ldms_record_type_get(ldms_mval_t rec_inst);
 /**
  * Get the number of members in the record instance.
  *
- * \param rec_inst The record instance handle.
+ * \param rec    The record instance or the record type handle.
  *
  * \retval n The number of members in the record instance.
  */
-int ldms_record_card(ldms_mval_t rec_inst);
+int ldms_record_card(ldms_mval_t rec);
 
 /**
  * Get the ID of the metric in the record instance.
@@ -2626,34 +2626,34 @@ ldms_mval_t ldms_record_metric_get(ldms_mval_t rec_inst, int metric_id);
 /**
  * Get the name of the metric in the record instance.
  *
- * \param rec_inst The record instance handle.
+ * \param rec       The record instance or the record type handle.
  * \param metric_id The metric ID in the record instance.
  *
  * \retval name The name of the metric in the record instance.
  */
-const char *ldms_record_metric_name_get(ldms_mval_t rec_inst, int metric_id);
+const char *ldms_record_metric_name_get(ldms_mval_t rec, int metric_id);
 
 /**
  * Get the unit of the metric in the record instance.
  *
- * \param rec_inst The record instance handle.
+ * \param rec_inst The record instance or the record type handle.
  * \param metric_id The metric ID in the record instance.
  *
  * \retval unit The unit of the metric in the record instance.
  */
-const char *ldms_record_metric_unit_get(ldms_mval_t rec_inst, int metric_id);
+const char *ldms_record_metric_unit_get(ldms_mval_t rec, int metric_id);
 
 /**
  * Get the type of the metric in the record instance (and count for array).
  *
- * \param[in]  rec_inst  The record instance handle.
+ * \param[in]  rec_inst  The record instance or the record type handle.
  * \param[in]  metric_id The metric ID in the record instance.
  * \param[out] array_len The number of elements if the type is an ARRAY.
  *
  * \retval type The type of the metric in the record instance.
  *
  */
-enum ldms_value_type ldms_record_metric_type_get(ldms_mval_t rec_inst,
+enum ldms_value_type ldms_record_metric_type_get(ldms_mval_t rec,
 					int metric_id, size_t *array_len);
 
 /**
