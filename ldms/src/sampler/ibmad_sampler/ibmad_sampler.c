@@ -1,5 +1,5 @@
 /* -*- c-basic-offset: 8 -*- */
-/* Copyright (c) 2012-2018 National Technology & Engineering Solutions
+/* Copyright (c) 2012-2022 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
  * Copyright (c) 2012-2018 Open Grid Computing, Inc. All rights reserved.
@@ -43,10 +43,8 @@
 struct port_name {
 	char ca_name[UMAD_CA_NAME_LEN];
 	uint64_t port_bits;
-	/*< 1: matches $name.*. bits & 1 << $port matches $name.$port.
-	* this works because ib disallows port number 0. */
+	/**< if n-th bit is 1, port n of ca_name is matched by the filter. */
 };
-#define ALL_PORTS(p) (p & 1)
 
 static struct {
         char *schema_name;
@@ -368,8 +366,9 @@ static void metrics_tree_destroy()
 }
 
 #define NOT_IN_FILTER -1
+/* return the index where name appears in conf.ports or NOT_IN_FILTER */
 static int in_port_filter(const char *name)
-{ /* return index where found or NOT_IN_FILTER */
+{
 	int i;
 	for (i = 0 ; i < MAX_CA_NAMES; i++) {
 		if (conf.ports[i].ca_name[0] == '\0')
@@ -380,8 +379,10 @@ static int in_port_filter(const char *name)
 	return NOT_IN_FILTER;
 }
 
+/* return true if some port on device named might be collectable
+ * based on filter. */
 static bool collect_ca(const char *name)
-{ /* return false if do not collect at the name level */
+{
 	if (conf.port_filter == PORT_FILTER_NONE)
 		return true;
 	int pi = in_port_filter(name);
@@ -397,25 +398,18 @@ static bool collect_ca(const char *name)
 	return (conf.port_filter == PORT_FILTER_EXCLUDE);
 }
 
+/* return true if both name and port are collectable based on filter. */
 static int collect_ca_port(const char *name, int port)
-{ /* return true if collect */
+{
 	if (conf.port_filter == PORT_FILTER_NONE)
 		return true;
 	int pi = in_port_filter(name);
 	if (pi != NOT_IN_FILTER) {
 		if (conf.port_filter == PORT_FILTER_INCLUDE) {
-			if ( ALL_PORTS(conf.ports[pi].port_bits) ||
-				(conf.ports[pi].port_bits & (1 << port)))
-				return true; /* match port.* or exact */
-			else
-				return false;
+			return ( conf.ports[pi].port_bits & (1 << port)) != 0;
 		}
 		if (conf.port_filter == PORT_FILTER_EXCLUDE) {
-			if ( ALL_PORTS(conf.ports[pi].port_bits) ||
-				(conf.ports[pi].port_bits & (1 << port)))
-				return false; /* matched port.* or exact*/
-			else
-				return true;
+			return ( conf.ports[pi].port_bits & (1 << port)) == 0;
 		}
 	}
 	return (conf.port_filter == PORT_FILTER_EXCLUDE);
@@ -573,7 +567,6 @@ static int metric_sample(struct metric_data *data, double dt)
 
 	data->repeat = 1;
 	return 0;
-
 }
 
 static void metrics_tree_sample()
@@ -627,74 +620,66 @@ static void dump_port_filters()
 	}
 }
 
-static int parse_port_filters(const char *include, const char *exclude)
+static int parse_port_filters(const char *val)
 {
-	if (include && exclude) {
-                log_fn(LDMSD_LERROR, SAMP": config: specify either include or exclude option but not both.\n");
-		return 1;
-	}
-	const char *val = NULL;
-	if (include) {
-		val = include;
-		conf.port_filter = PORT_FILTER_INCLUDE;
-	}
-	if (exclude) {
-		val = exclude;
-		conf.port_filter = PORT_FILTER_EXCLUDE;
-	}
 	int k = 0;
 	int num_ca = 0;
-	if (val) {
-		uint64_t num;
-		size_t len = strlen(val);
-		char s[len+1];
-		strcpy(s, val);
-		char *pch, *saveptr;
-		pch = strtok_r(s, ",", &saveptr);
-		while (pch != NULL){
-			char *dot = strchr(pch, '.');
-			num = 0;
-			if (dot) {
-				char *end = NULL;
-				dot[0] = '\0';
-				dot++;
-				errno = 0;
-				num = strtoull(dot, &end, 10);
-				if (*end != '\0' || errno == ERANGE) {
-					log_fn(LDMSD_LERROR, SAMP": config: "
-						"%s port invalid: %s.\n",
-						val, dot);
-				}
-				if (num > 63) {
-					log_fn(LDMSD_LERROR, SAMP": config: "
-						"%s port > 63: %" PRIu64 ".\n",
-						val, num);
-					return 1;
-				}
+	if (!val) {
+		return 0;
+	}
+	unsigned long num;
+	size_t len = strlen(val);
+	char s[len+1];
+	strcpy(s, val);
+	char *pch, *saveptr;
+	pch = strtok_r(s, ",", &saveptr);
+	while (pch != NULL){
+		char *dot = strchr(pch, '.');
+		num = 0;
+		if (dot) {
+			char *end = NULL;
+			dot[0] = '\0';
+			dot++;
+			errno = 0;
+			num = strtoul(dot, &end, 10);
+			if (*end != '\0' || errno == ERANGE) {
+				log_fn(LDMSD_LERROR, SAMP": config: "
+					"%s port invalid: %s.\n",
+					val, dot);
+				return 1;
 			}
-			for (k = 0; k < num_ca; k++) {
-				if (strcmp(conf.ports[k].ca_name, pch) == 0) {
-					conf.ports[k].port_bits |= (1 << num);
-					break;
-				}
+			if (num > 63) {
+				log_fn(LDMSD_LERROR, SAMP": config: "
+					"%s port > 63: %lu.\n",
+					val, num);
+				return 1;
 			}
-			if (k == num_ca) {
-				if (k > MAX_CA_NAMES) {
-					log_fn(LDMSD_LERROR, SAMP": config: "
-						"too many CA in %s\n", val);
-					return 1;
-				}
-				strcpy(conf.ports[k].ca_name, pch);
-				conf.ports[k].port_bits |= (1 << num);
-				num_ca++;
-			}
-			if (num)
-				log_fn(LDMSD_LDEBUG, SAMP ": parsed %s port %d\n", pch,
-					(int)num);
-			else
-				log_fn(LDMSD_LDEBUG, SAMP ": parsed %s all ports\n", pch);
-			pch = strtok_r(NULL, ",", &saveptr);
 		}
+		for (k = 0; k < num_ca; k++) {
+			if (strcmp(conf.ports[k].ca_name, pch) == 0) {
+				conf.ports[k].port_bits |= (1 << num);
+				break;
+			}
+		}
+		if (k == num_ca) {
+			if (k > MAX_CA_NAMES) {
+				log_fn(LDMSD_LERROR, SAMP": config: "
+					"too many CA in %s\n", val);
+				return 1;
+			}
+			strcpy(conf.ports[k].ca_name, pch);
+			conf.ports[k].port_bits |= (1 << num);
+			num_ca++;
+		}
+		if (num) {
+			log_fn(LDMSD_LDEBUG, SAMP ": parsed %s port %d\n", pch,
+				(int)num);
+		} else {
+			log_fn(LDMSD_LDEBUG, SAMP ": parsed %s all ports\n",
+				pch);
+			conf.ports[k].port_bits = UINT64_MAX;
+		}
+		pch = strtok_r(NULL, ",", &saveptr);
 	}
 	dump_port_filters();
 	return 0;
@@ -703,7 +688,7 @@ static int parse_port_filters(const char *include, const char *exclude)
 static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
-        char *value, *value2;
+        char *value;
 
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
 
@@ -734,9 +719,22 @@ static int config(struct ldmsd_plugin *self,
 		conf.use_rate_metrics = false;
 	}
 	reinit_ports();
-	value = av_value(avl, "include");
-	value2 = av_value(avl, "exclude");
-	return parse_port_filters(value, value2);
+	const char *include = av_value(avl, "include");
+	const char *exclude = av_value(avl, "exclude");
+	if (include && exclude) {
+                log_fn(LDMSD_LERROR, SAMP": config: specify either include or exclude option but not both.\n");
+		return 1;
+	}
+	const char *val = NULL;
+	if (include) {
+		val = include;
+		conf.port_filter = PORT_FILTER_INCLUDE;
+	}
+	if (exclude) {
+		val = exclude;
+		conf.port_filter = PORT_FILTER_EXCLUDE;
+	}
+	return parse_port_filters(val);
 }
 
 static int sample(struct ldmsd_sampler *self)
