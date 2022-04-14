@@ -34,6 +34,10 @@ test_ldms_set_info_SOURCES = test_ldms_set_info.c
 test_ldms_set_info_LDADD = -lldms
 test_ldms_set_info_LDFLAGS = $(AM_LDFLAGS) -pthread
 
+sbin_PROGRAMS += test_ldms_record
+test_ldms_record_SOURCES = test_ldms_record.c
+test_ldms_record_LDADD = -lldms
+
 check_PROGRAMS = test_metric
 test_metric_SOURCES = test_metric.c
 test_metric_LDADD = -lldms

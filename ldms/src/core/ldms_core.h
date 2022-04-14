@@ -262,6 +262,13 @@ enum ldms_value_type {
 
 #define LDMS_RECORD_FIELD_INST 255
 
+#define LDMS_RECORD_F_TYPE 1
+#define LDMS_RECORD_F_INST 2
+typedef struct ldms_record_hdr {
+	int flags;
+	int pad;
+} *ldms_record_hdr_t;
+
 /* This structure is the value of LDMS_V_RECORD_TYPE. It describes members of the
  * records (name, unit, type, and array length).
  *
@@ -284,12 +291,14 @@ enum ldms_value_type {
  * ```
  */
 typedef struct ldms_record_type {
+	struct ldms_record_hdr hdr;
 	int n; /* number of members */
 	int inst_sz; /* the size of the record instance */
 	int dict[OVIS_FLEX]; /* dict[i] is an offset to mdesc[i] */
 } *ldms_record_type_t;
 
 typedef struct ldms_record_inst {
+	struct ldms_record_hdr hdr;
 	uint32_t set_data_off; /* offset from data section */
 	uint32_t record_type; /* record type reference (set-metric index) */
 	char rec_data[OVIS_FLEX_UNION]; /* data of the record */
