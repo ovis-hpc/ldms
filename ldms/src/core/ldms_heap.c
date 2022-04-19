@@ -247,7 +247,7 @@ void *ldms_heap_alloc(ldms_heap_t heap, size_t size)
 	count = size >> heap->data->grain_bits;
 
 #if LDMS_HEAP_DEBUG
-	printf("------- heap_alloc(%ld) -- start\n", count);
+	printf("------- %p: heap_alloc(%ld) -- start\n", heap, count);
 	printf("                         ---size tree ----\n");
 	rrbt_verify(heap->size_tree);
 	rrbt_print(heap->size_tree);
@@ -298,6 +298,7 @@ void *ldms_heap_alloc(ldms_heap_t heap, size_t size)
 	printf("                         ---addr tree ----\n");
 	rrbt_verify(heap->addr_tree);
 	rrbt_print(heap->addr_tree);
+	printf("------------------------------------------\n");
 #endif /* LDMS_HEAP_DEBUG */
 	heap->data->gn++;
 	pthread_mutex_unlock(&heap->lock);
@@ -320,7 +321,8 @@ void ldms_heap_free(ldms_heap_t heap, void *d)
 	offset = ldms_heap_off(heap, p);
 	count = a->count;
 #if LDMS_HEAP_DEBUG
-	printf("------- heap_free(%lx, %ld) -- start\n",
+	printf("------- %p: heap_free(%lx, %ld) -- start\n",
+			heap,
 			ldms_heap_off(heap, d),
 			count);
 	rbn = rrbt_find_glb(heap->addr_tree, &offset);
@@ -390,6 +392,7 @@ void ldms_heap_free(ldms_heap_t heap, void *d)
 	printf("                         ---addr tree ----\n");
 	rrbt_verify(heap->addr_tree);
 	rrbt_print(heap->addr_tree);
+	printf("------------------------------------------\n");
 #endif /* LDMS_HEAP_DEBUG */
 	pthread_mutex_unlock(&heap->lock);
 }
