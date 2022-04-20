@@ -250,6 +250,11 @@ uint64_t ldms_set_heap_gn_get(ldms_set_t s)
 	return s->heap->data->gn;
 }
 
+size_t ldms_set_heap_size_get(ldms_set_t s)
+{
+	return s->data->heap.size;
+}
+
 void ldms_set_data_copy_set(ldms_set_t s, int on)
 {
 	if (on)
@@ -1349,15 +1354,17 @@ static size_t compute_set_sizes(const char *instance_name, ldms_schema_t schema,
 	}
 	*heap_sz = ldms_heap_size(*heap_sz);
 
-	*set_array_card = schema->array_card;
-
-	if (*set_array_card < 0) {
-		errno = EINVAL;
-		return 0;
+	if (set_array_card) {
+		*set_array_card = schema->array_card;
+		if (*set_array_card < 0) {
+			errno = EINVAL;
+			return 0;
+		}
+		if (!*set_array_card)
+			*set_array_card = 1;
 	}
 
-	if (!*set_array_card)
-		*set_array_card = 1;
+
 	*meta_sz = schema->meta_sz		/* header + metric dict */
 		 + strlen(schema->name) + 2	/* schema name + '\0' + len */
 		 + LDMS_DIGEST_LENGTH		/* digest for schema */
@@ -1439,14 +1446,15 @@ static void __ldms_schema_finalize(ldms_schema_t schema)
 	SHA256_Final(schema->digest.digest, &schema->sha_ctxt);
 }
 
-ldms_set_t ldms_set_new_with_auth(const char *instance_name,
-				  ldms_schema_t schema,
-				  uid_t uid, gid_t gid, mode_t perm)
+ldms_set_t ldms_set_new_custom(const char *instance_name,
+				ldms_schema_t schema,
+				uid_t uid, gid_t gid, mode_t perm,
+				uint32_t heap_sz)
 {
 	struct ldms_data_hdr *data, *data_base;
 	struct ldms_set_hdr *meta = NULL;
 	struct ldms_value_desc *vd;
-	size_t meta_sz = 0, array_data_sz = 0, heap_sz = 0;
+	size_t meta_sz = 0, array_data_sz = 0, hsz = 0;
 	off_t value_off;
 	ldms_mdef_t md;
 	int metric_idx;
@@ -1464,10 +1472,12 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 
 	int ssz = compute_set_sizes(instance_name, schema,
 				    &set_array_card, &meta_sz,
-				    &array_data_sz, &heap_sz);
-	if (!ssz) {
+				    &array_data_sz, &hsz);
+	if (!ssz)
 		return NULL;
-	}
+
+	/* Use the given heap size instead of the cached value in the schema. */
+	hsz = heap_sz;
 
 	__ldms_schema_finalize(schema);
 
@@ -1483,8 +1493,8 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	meta->card = __cpu_to_le32(schema->card);
 	meta->meta_sz = __cpu_to_le32(meta_sz);
 	meta->data_sz = __cpu_to_le32(schema->data_sz) +
-			     __cpu_to_le32(heap_sz);
-	meta->heap_sz = __cpu_to_le32(heap_sz);
+			     __cpu_to_le32(hsz);
+	meta->heap_sz = __cpu_to_le32(hsz);
 	meta->meta_gn = __cpu_to_le64(1);
 	meta->flags = LDMS_SETH_F_LCLBYTEORDER;
 	meta->uid = __cpu_to_le32(uid);
@@ -1514,15 +1524,15 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	data_base = (struct ldms_data_hdr *)((void*)meta + meta_sz);
 	for (i = 0; i < set_array_card; i++) {
 		data = (struct ldms_data_hdr *)
-			((uint8_t *)data_base + i * (schema->data_sz + heap_sz));
-		data->size = __cpu_to_le64(schema->data_sz + heap_sz);
+			((uint8_t *)data_base + i * (schema->data_sz + hsz));
+		data->size = __cpu_to_le64(schema->data_sz + hsz);
 		data->curr_idx = __cpu_to_le32(set_array_card - 1);
 		data->gn = data->meta_gn = meta->meta_gn;
 		data->set_off = __cpu_to_le32(ldms_off_(meta, data));
-		if (heap_sz) {
+		if (hsz) {
 			void *hbase = &((uint8_t *)data)[schema->data_sz];
 			ldms_heap_init(&data->heap, hbase,
-				       heap_sz, LDMS_LIST_GRAIN);
+				       hsz, LDMS_LIST_GRAIN);
 		}
 	}
 
@@ -1606,6 +1616,28 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	return set;
 }
 
+ldms_set_t ldms_set_new_with_auth(const char *instance_name,
+				  ldms_schema_t schema,
+				  uid_t uid, gid_t gid, mode_t perm)
+{
+	size_t meta_sz = 0, array_data_sz = 0, heap_sz = 0;
+	int set_array_card;
+	(void) compute_set_sizes(instance_name, schema, &set_array_card,
+					&meta_sz, &array_data_sz, &heap_sz);
+	return ldms_set_new_custom(instance_name, schema, uid, gid, perm, heap_sz);
+}
+
+ldms_set_t ldms_set_new_with_heap(const char *instance_name,
+				  ldms_schema_t schema, uint32_t heap_sz)
+{
+	uid_t uid;
+	gid_t gid;
+	mode_t perm;
+
+	ldms_set_default_authz(&uid, &gid, &perm, DEFAULT_AUTHZ_READONLY);
+	return ldms_set_new_custom(instance_name, schema, uid, gid, perm, heap_sz);
+}
+
 size_t ldms_list_heap_size_get(enum ldms_value_type type, size_t item_count, size_t array_count)
 {
 	size_t value_sz, entry_sz;
@@ -1621,9 +1653,14 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 	uid_t uid;
 	gid_t gid;
 	mode_t perm;
+	size_t meta_sz = 0, array_data_sz = 0, heap_sz = 0;
+	int set_array_card;
+
+	(void) compute_set_sizes(instance_name, schema, &set_array_card,
+					&meta_sz, &array_data_sz, &heap_sz);
 
 	ldms_set_default_authz(&uid, &gid, &perm, DEFAULT_AUTHZ_READONLY);
-	return ldms_set_new_with_auth(instance_name, schema, uid, gid, perm);
+	return ldms_set_new_custom(instance_name, schema, uid, gid, perm, heap_sz);
 }
 
 int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, mode_t perm)

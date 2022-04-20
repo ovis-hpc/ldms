@@ -1481,6 +1481,34 @@ extern ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema);
 extern uint64_t ldms_set_id(ldms_set_t set);
 
 /**
+ * \brief Create an LDMS metric set with a heap of the given heap size \c heap_sz
+ *
+ * ::ldms_set_new() creates a set with a heap of the size cached in the schema \c schema.
+ * A set with a different heap size can be created by calling ::ldms_set_new_with_heap().
+ * It is useful with a bigger heap is needed. For example, an LDMS_V_LIST metric
+ * needs to be bigger than the anticipated size at schema creation time.
+ * The existing set must be deleted by calling ::ldms_set_delete() before creating
+ * a new set (of the same name) with a bigger heap by calling ::ldms_set_new_with_heap().
+ * The new set must be published manually by calling ::ldms_set_publish().
+ *
+ * \param instance_name   The metric set instance name
+ * \param schema          The metric set schema
+ * \param heap_sz         The size of the set heap
+ *
+ * \return Pointer to the new metric set or NULL if there is an error.
+ *         Errno will be set as appropriate as follows:
+ *         - ENOMEM   Insufficient resources
+ *         - EEXIST   The specified instance name is already used.
+ *         - EINVAL   A parameter or the schema itself is invalid.
+ *
+ * \see ldms_set_new(), ldms_set_new_with_auth(), ldms_schema_metric_list_add(),
+ *      ldms_set_delete()
+ */
+extern ldms_set_t ldms_set_new_with_heap(const char *instance_name,
+					ldms_schema_t schema,
+					uint32_t heap_sz);
+
+/**
  * \brief Create an LDMS metric set with owner and permission
  *
  * Create a metric set, like ::ldms_set_new(), but with a specified owner \c
@@ -1501,6 +1529,31 @@ extern uint64_t ldms_set_id(ldms_set_t set);
 ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 				  ldms_schema_t schema,
 				  uid_t uid, gid_t gid, mode_t perm);
+
+/**
+ * \brief Create an LDMS metric set with owner, permission, and heap size
+ *
+ * Create a metric set, but with customized \c uid, \c gid, \c perm, and \c heap_sz
+ *
+ * \param instance_name   The name of the metric set
+ * \param schema          The schema of the set
+ * \param uid             The user ID of the set owner
+ * \param gid             The group ID of the set owner
+ * \param perm            The UNIX mode_t bits (see chmod)
+ * \param heap_sz         The size of the set heap
+ *
+ * \return A pointer to a metric set or NULL if there is an error.
+ *         Errno will be set as appropriate as follows:
+ *         - ENOMEM   Insufficient resources
+ *         - EEXIST   The specified instance name is already used.
+ *         - EINVAL   A parameter or the schema itself is invalid.
+ *
+ * \see ldms_set_new(), ldms_set_new_with_auth(), ldms_set_new_with_heap()
+ */
+ldms_set_t ldms_set_new_custom(const char *instance_name,
+				  ldms_schema_t schema,
+				  uid_t uid, gid_t gid, mode_t perm,
+				  uint32_t heap_sz);
 
 /**
  * \brief Return the number of metric sets
@@ -1836,6 +1889,14 @@ uint64_t ldms_set_data_gn_get(ldms_set_t s);
  * \returns	The 64bit heap generation number.
  */
 uint64_t ldms_set_heap_gn_get(ldms_set_t s);
+
+/**
+ * \brief Get the heap size
+ *
+ * \param s    The ldms_set_t handle.
+ * \return     The size of the set's heap
+ */
+uint64_t ldms_set_heap_size_get(ldms_set_t s);
 
 /**
  * \brief Tell LDMS to copy previous data in the set array on transaction begin.
