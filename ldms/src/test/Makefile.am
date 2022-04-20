@@ -42,6 +42,10 @@ sbin_PROGRAMS += test_ldms_mval_setter_getter
 test_ldms_mval_setter_getter_SOURCES = test_ldms_mval_setter_getter.c
 test_ldms_mval_setter_getter_LDADD = -lldms
 
+sbin_PROGRAMS += test_ldms_set_new
+test_ldms_set_new_SOURCES = test_ldms_set_new.c
+test_ldms_set_new_LDADD = -lldms
+
 check_PROGRAMS = test_metric
 test_metric_SOURCES = test_metric.c
 test_metric_LDADD = -lldms
