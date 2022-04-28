@@ -375,8 +375,8 @@ size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
 		       "\"perm\":\"%s\","
 		       "\"card\":%d,"
 		       "\"array_card\":%d,"
-		       "\"meta_gn\":%lld,"
-		       "\"data_gn\":%lld,"
+		       "\"meta_gn\":%" PRIu64 ","
+		       "\"data_gn\":%" PRIu64 ","
 		       "\"timestamp\":{\"sec\":%d,\"usec\":%d},"
 		       "\"duration\":{\"sec\":%d,\"usec\":%d},"
 		       "\"info\":[",
@@ -393,8 +393,8 @@ size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
 		       perm_string(__le32_to_cpu(set->meta->perm)),
 		       __le32_to_cpu(set->meta->card),
 		       __le32_to_cpu(set->meta->array_card),
-		       __le64_to_cpu(set->meta->meta_gn),
-		       __le64_to_cpu(set->data->gn),
+		       (uint64_t)__le64_to_cpu(set->meta->meta_gn),
+		       (uint64_t)__le64_to_cpu(set->data->gn),
 		       __le32_to_cpu(set->data->trans.ts.sec), __le32_to_cpu(set->data->trans.ts.usec),
 		       __le32_to_cpu(set->data->trans.dur.sec), __le32_to_cpu(set->data->trans.dur.usec)
 		       );
