@@ -1626,7 +1626,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 	size_t count;
 	union ldms_value v;
 	struct csv_lent *lents = s_handle->lents;
-	while (done < s_handle->num_lists) {
+	do {
 		int lidx = 0;
 		store_time_job_app(s_handle, ts, set);
 		for (i = 0; i < metric_count; i++) {
@@ -1688,7 +1688,7 @@ static int store(ldmsd_store_handle_t _s_handle, ldms_set_t set, int *metric_arr
 			}
 		}
 		fprintf(s_handle->file,"\n");
-	}
+	} while (done < s_handle->num_lists);
 
 	s_handle->store_count++;
 
