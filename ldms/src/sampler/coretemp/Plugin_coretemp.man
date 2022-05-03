@@ -1,0 +1,35 @@
+.\" Manpage for Plugin_coretemp
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "3 May 2022" "v4" "LDMS Plugin coretemp man page"
+
+.SH NAME
+Plugin_coretemp - man page for the LDMS coretemp plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=coretemp [ <attr> = <value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms
+daemon) are configured via ldmsd_controller or a configuration file.
+
+The coretemp sampler collects information from the Linux coretemp module through
+the /sys/devices interface. The coretemp Linux module must be loaded in order
+for this sampler to function. See the Linux insmod(8) command for information
+on how to load Linux modules.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+See man Plugin_base.
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=coretemp
+config name=coretempp producer=vm1_1 instance=vm1_1/coretemp
+start name=coretemp interval=1000000 offset=0
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7)
