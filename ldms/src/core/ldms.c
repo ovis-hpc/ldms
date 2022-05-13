@@ -1424,6 +1424,7 @@ void __init_rec_array(ldms_set_t set, ldms_schema_t schema)
 				rec_inst = ldms_ptr_(void, rec_array->data, j*ra->inst_sz);
 				rec_inst->record_type = rec_array->rec_type;
 				rec_inst->set_data_off = __cpu_to_le32(ldms_off_(dh, rec_inst));
+				rec_inst->hdr.flags = LDMS_RECORD_F_INST;
 			}
 		}
 	next:
@@ -3695,7 +3696,7 @@ int ldms_record_card(ldms_mval_t rec)
 {
 	struct ldms_record_hdr *hdr = (struct ldms_record_hdr *)&rec->v_rec_inst;
 	ldms_record_type_t rec_type;
-	if (hdr->flags && LDMS_RECORD_F_INST) {
+	if (hdr->flags & LDMS_RECORD_F_INST) {
 		rec_type = __rec_type((void*)rec, NULL, NULL, NULL);
 		if (!rec_type)
 			return -EINVAL;
