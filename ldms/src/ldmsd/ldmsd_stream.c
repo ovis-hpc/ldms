@@ -27,6 +27,13 @@ static int s_cmp(void *tree_key, const void *key)
 	return strcmp((char *)tree_key, (const char *)key);
 }
 
+struct ldmsd_stream_info_s {
+	time_t first_ts; /* Timestamp of the first message */
+	time_t last_ts; /* Timestamp of the last message */
+	int count; /* The number of received messages */
+	size_t total_bytes; /* Total data size of all received messages */
+};
+
 typedef struct ldmsd_stream_s *ldmsd_stream_t;
 struct ldmsd_stream_client_s {
 	ldmsd_stream_recv_cb_t c_cb_fn;
@@ -38,6 +45,7 @@ struct ldmsd_stream_client_s {
 
 struct ldmsd_stream_s {
 	const char *s_name;
+	struct ldmsd_stream_info_s s_info;
 	struct rbn s_ent;
 	pthread_mutex_t s_lock;
 	LIST_HEAD(ldmsd_client_list, ldmsd_stream_client_s) s_c_list;
@@ -196,8 +204,20 @@ void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_ty
 	ldmsd_stream_client_t c;
 	ldmsd_stream_t s = __find_stream(stream_name);
 	int need_free = 0;
-	if (!s)
-		return;
+	time_t now;
+
+	now = time(NULL);
+	if (!s) {
+		s = __new_stream(stream_name);
+		if (!s)
+			return;
+		pthread_mutex_lock(&s->s_lock);
+	}
+	if (!s->s_info.first_ts)
+		s->s_info.first_ts = now;
+	s->s_info.count += 1;
+	s->s_info.last_ts = now;
+	s->s_info.total_bytes += data_len;
 
 	LIST_FOREACH(c, &s->s_c_list, c_ent) {
 		if (stream_type == LDMSD_STREAM_JSON
