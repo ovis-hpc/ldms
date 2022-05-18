@@ -60,6 +60,120 @@ static ldmsd_stream_t __find_stream(const char *stream_name)
 	return s;
 }
 
+static struct ldmsd_stream_s *__new_stream(const char *name)
+{
+	struct ldmsd_stream_s *s = calloc(1, sizeof(*s));
+	if (!s)
+		return NULL;
+	s->s_name = strdup(name);
+	if (!s->s_name)
+		goto del_stream;
+	pthread_mutex_init(&s->s_lock, NULL);
+	LIST_INIT(&s->s_c_list);
+	rbn_init(&s->s_ent, (char *)s->s_name);
+	pthread_mutex_lock(&s_tree_lock);
+	rbt_ins(&s_tree, &s->s_ent);
+	pthread_mutex_unlock(&s_tree_lock);
+	return s;
+
+ del_stream:
+	free(s);
+	return NULL;
+}
+
+struct stream_ctxt {
+	ldms_t x;
+	int is_done;
+};
+
+static int __stream_send(void *xprt, char *data, size_t data_len)
+{
+	struct stream_ctxt *ctxt = (struct stream_ctxt *)xprt;
+	return ldms_xprt_send(ctxt->x, data, data_len);
+}
+
+int __stream_new_send(ldms_t xprt, ldmsd_stream_t s)
+{
+	int rc;
+	size_t len;
+	struct ldmsd_msg_buf *b;
+	uint32_t msg_no = ldmsd_msg_no_get();
+	struct stream_ctxt ctxt = { .x = xprt };
+	struct ldmsd_req_attr_s a;
+
+	b = ldmsd_msg_buf_new(ldms_xprt_msg_max(xprt));
+	if (!b)
+		return ENOMEM;
+
+	len = strlen(s->s_name) + 1;
+	a.discrim = 1;
+	a.attr_id = LDMSD_ATTR_NAME;
+	a.attr_len = len;
+	ldmsd_hton_req_attr(&a);
+	rc  = ldmsd_msg_buf_send(b, &ctxt, msg_no,
+				__stream_send, LDMSD_REQ_SOM_F,
+				LDMSD_REQ_TYPE_CONFIG_CMD,
+				LDMSD_STREAM_NEW_REQ,
+				(char *)(&a), sizeof(a));
+	if (rc)
+		goto cleanup;
+
+	rc = ldmsd_msg_buf_send(b, &ctxt, msg_no,
+				__stream_send, 0,
+				LDMSD_REQ_TYPE_CONFIG_CMD,
+				LDMSD_STREAM_NEW_REQ,
+				s->s_name, len);
+	if (rc)
+		goto cleanup;
+
+	a.discrim = 0;
+	rc = ldmsd_msg_buf_send(b, &ctxt, msg_no,
+				__stream_send, LDMSD_REQ_EOM_F,
+				LDMSD_REQ_TYPE_CONFIG_CMD,
+				LDMSD_STREAM_NEW_REQ,
+				(char*)&(a.discrim), sizeof(a.discrim));
+	if (rc)
+		goto cleanup;
+ cleanup:
+	ldmsd_msg_buf_free(b);
+	return rc;
+}
+
+
+int ldmsd_stream_new(const char *name)
+{
+	struct ldmsd_stream_s *s;
+	s = __find_stream(name);
+	if (s) {
+		pthread_mutex_unlock(&s->s_lock);
+		return EEXIST;
+	}
+
+	s = __new_stream(name);
+	if (!s)
+		return ENOMEM;
+	return 0;
+}
+
+int ldmsd_stream_new_publish(const char *name, ldms_t xprt)
+{
+	int rc = 0;
+	struct ldmsd_stream_s *s;
+
+	if (!xprt)
+		return EINVAL;
+
+	s = __find_stream(name);
+	if (!s) {
+		s = __new_stream(name);
+		if (!s)
+			return ENOMEM;
+	}
+	rc = __stream_new_send(xprt, s);
+	pthread_mutex_unlock(&s->s_lock);
+	return rc;
+}
+
 int ldmsd_stream_subscriber_count(const char *stream_name)
 {
 	int subscriber_count = 0;
@@ -121,18 +235,9 @@ ldmsd_stream_subscribe(const char *stream_name,
 	/* Find the stream */
 	s = __find_stream(stream_name);
 	if (!s) {
-		s = malloc(sizeof *s);
+		s = __new_stream(stream_name);
 		if (!s)
 			goto err_1;
-		s->s_name = strdup(stream_name);
-		if (!s->s_name)
-			goto err_2;
-		pthread_mutex_init(&s->s_lock, NULL);
-		LIST_INIT(&s->s_c_list);
-		rbn_init(&s->s_ent, (char *)s->s_name);
-		pthread_mutex_lock(&s_tree_lock);
-		rbt_ins(&s_tree, &s->s_ent);
-		pthread_mutex_unlock(&s_tree_lock);
 		pthread_mutex_lock(&s->s_lock);
 	}
 	LIST_FOREACH(cc, &s->s_c_list, c_ent) {
@@ -151,8 +256,6 @@ ldmsd_stream_subscribe(const char *stream_name,
 	LIST_INSERT_HEAD(&s->s_c_list, c, c_ent);
 	pthread_mutex_unlock(&s->s_lock);
 	return c;
- err_2:
-	free(s);
  err_1:
 	free(c);
  err_0:
@@ -185,17 +288,6 @@ void ldmsd_stream_close(ldmsd_stream_client_t c)
 	LIST_REMOVE(c, c_ent);
 	pthread_mutex_unlock(&c->c_s->s_lock);
 	free(c);
-}
-
-struct stream_ctxt {
-	ldms_t x;
-	int is_done;
-};
-
-static int __stream_send(void *xprt, char *data, size_t data_len)
-{
-	struct stream_ctxt *ctxt = (struct stream_ctxt *)xprt;
-	return ldms_xprt_send(ctxt->x, data, data_len);
 }
 
 static int stream_send(struct stream_ctxt *ctxt, struct ldmsd_msg_buf *buf,
