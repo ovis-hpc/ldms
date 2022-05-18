@@ -304,6 +304,7 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
 
 	case LDMSD_STREAM_SUBSCRIBE_REQ : return "STREAM_SUBSCRIBE_REQ";
 	case LDMSD_STREAM_PUBLISH_REQ : return "STREAM_PUBLISH_REQ";
+	case LDMSD_STREAM_NEW_REQ : return "STREAM_NEW_REQ";
 	default: return "UNKNOWN_REQ";
 	}
 }
