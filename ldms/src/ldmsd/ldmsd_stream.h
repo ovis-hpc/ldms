@@ -177,6 +177,16 @@ int ldmsd_stream_subscriber_count(const char *stream_name);
  */
 char * ldmsd_stream_client_dump();
 
+/**
+ * \brief Dump stream information in JSON
+ *
+ * The caller is responsible for freeing the returned string.
+ *
+ * \return s    The stream information in JSON format.
+ *         NULL if there is an error. \c errno is also set in this case.
+ */
+char *ldmsd_stream_dir_dump();
+
 #ifdef __cplusplus
 }
 #endif
