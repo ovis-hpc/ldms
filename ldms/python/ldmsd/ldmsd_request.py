@@ -362,6 +362,8 @@ class LDMSD_Request(object):
     STREAM_SUBSCRIBE = STREAM_PUBLISH + 1
     STREAM_UNSUBSCRIBE = STREAM_PUBLISH + 2
     STREAM_CLIENT_DUMP = STREAM_PUBLISH + 3
+    STREAM_NEW = STREAM_PUBLISH + 4
+    STREAM_DIR = STREAM_PUBLISH + 5
 
     AUTH_ADD = 0xa00
 
@@ -445,6 +447,7 @@ class LDMSD_Request(object):
             'unsubscribe'   :  {'id' : STREAM_UNSUBSCRIBE },
 
             'stream_client_dump'   :  {'id' : STREAM_CLIENT_DUMP },
+            'stream_dir'    :  {'id' : STREAM_DIR },
 
             'listen'        :  {'id' : LISTEN },
             'auth_add'      :  {'id' : AUTH_ADD },

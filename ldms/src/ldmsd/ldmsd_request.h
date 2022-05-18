@@ -158,6 +158,7 @@ enum ldmsd_request {
 	LDMSD_STREAM_UNSUBSCRIBE_REQ,	  /* Unsubscribe to a stream */
 	LDMSD_STREAM_CLIENT_DUMP_REQ,	  /* Dump stream client info */
 	LDMSD_STREAM_NEW_REQ,	/* Create a stream */
+	LDMSD_STREAM_DIR_REQ,	/* Query stream information */
 
 	/* Auth */
 	LDMSD_AUTH_ADD_REQ = 0xa00, /* Add auth domain */

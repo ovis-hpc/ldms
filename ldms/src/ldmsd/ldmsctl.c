@@ -1768,6 +1768,116 @@ static void resp_stream_client_dump(ldmsd_req_hdr_t resp, size_t len,
 	json_entity_free(json);
 }
 
+static void help_stream_dir()
+{
+	printf("Dump the stream information\n");
+}
+
+static double __info_rate(json_entity_t info)
+{
+	json_entity_t rate;
+	rate = json_value_find(info, "bytes/sec");
+	if (!rate)
+		return 0;
+	return json_value_float(rate);
+}
+
+static double __info_freq(json_entity_t info)
+{
+	json_entity_t freq;
+	freq = json_value_find(info, "msg/sec");
+	if (!freq)
+		return 0;
+	return json_value_float(freq);
+}
+
+static int __info_tot_bytes(json_entity_t info)
+{
+	json_entity_t tot;
+	tot = json_value_find(info, "total_bytes");
+	if (!tot)
+		return 0;
+	return json_value_int(tot);
+}
+
+static int __info_count(json_entity_t info)
+{
+	json_entity_t count;
+	count = json_value_find(info, "count");
+	if (!count)
+		return 0;
+	return json_value_int(count);
+}
+
+static const char *__json_str_find(json_entity_t d, const char *name)
+{
+	json_entity_t v = json_value_find(d, name);
+	if (!v)
+		return "";
+	return json_value_str(v)->str;
+}
+
+static void resp_stream_dir(ldmsd_req_hdr_t resp, size_t len,
+				    uint32_t rsp_err)
+{
+	int rc;
+	json_parser_t parser;
+	json_entity_t json;
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
+		return;
+	}
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	json_parser_free(parser);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+
+	json_entity_t stream, p, info, l;
+	char *name, *mode;
+	double rate, freq;
+	int tot_bytes, count;
+
+	printf("Name            Mode       bytes/sec    msg/sec      total bytes  msg count   \n");
+	printf("--------------- ---------- ------------ ----------- ------------ ------------\n");
+	for (stream = json_attr_first(json); stream; stream = json_attr_next(stream)) {
+		name = json_attr_name(stream)->str;
+		mode = (char *)__json_str_find(json_attr_value(stream), "mode");
+		info = json_value_find(json_attr_value(stream), "info");
+		assert(info);
+		rate = __info_rate(info);
+		freq = __info_freq(info);
+		tot_bytes = __info_tot_bytes(info);
+		count = __info_count(info);
+		l = json_value_find(json_attr_value(stream), "publishers");
+		printf("%-15s %-10s %-12lf %-12lf %-12d %-12d\n", name, mode,
+						rate, freq, tot_bytes, count);
+		for (p = json_attr_first(l); p; p = json_attr_next(p)) {
+			name = json_attr_name(p)->str;
+			info = json_value_find(json_attr_value(p), "info");
+			assert(info);
+			rate = __info_rate(info);
+			freq = __info_freq(info);
+			tot_bytes = __info_tot_bytes(info);
+			count = __info_count(info);
+			printf("%15s %-10s %-12lf %-12lf %-12d %-12d\n", "", name, rate,
+							freq, tot_bytes, count);
+		}
+	}
+	json_entity_free(json);
+}
+
 static void help_subscribe()
 {
 	printf( "\nSubscribe to a stream\n"
@@ -2111,6 +2221,7 @@ static struct command command_tbl[] = {
 	{ "start", LDMSD_PLUGN_START_REQ, NULL, help_start, resp_generic },
 	{ "stop", LDMSD_PLUGN_STOP_REQ, NULL, help_stop, resp_generic },
 	{ "stream_client_dump", LDMSD_STREAM_CLIENT_DUMP_REQ, NULL, help_stream_client_dump, resp_stream_client_dump },
+	{ "stream_dir", LDMSD_STREAM_DIR_REQ, NULL, help_stream_dir, resp_stream_dir },
 	{ "strgp_add", LDMSD_STRGP_ADD_REQ, NULL, help_strgp_add, resp_generic },
 	{ "strgp_del", LDMSD_STRGP_DEL_REQ, NULL, help_strgp_del, resp_generic },
 	{ "strgp_metric_add", LDMSD_STRGP_METRIC_ADD_REQ, NULL, help_strgp_metric_add, resp_generic },
