@@ -252,6 +252,7 @@ static int stream_publish_handler(ldmsd_req_ctxt_t req_ctxt);
 static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc);
 static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc);
 static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc);
+static int stream_new_handler(ldmsd_req_ctxt_t reqc);
 
 static int listen_handler(ldmsd_req_ctxt_t reqc);
 
@@ -548,6 +549,9 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_STREAM_CLIENT_DUMP_REQ] = {
 		LDMSD_STREAM_CLIENT_DUMP_REQ, stream_client_dump_handler, XUG
+	},
+	[LDMSD_STREAM_NEW_REQ] = {
+		LDMSD_STREAM_NEW_REQ, stream_new_handler, XUG
 	},
 
 	/* LISTEN */
@@ -6539,6 +6543,26 @@ static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc)
 	attr.discrim = 0;
 	ldmsd_append_reply(reqc, (char *)&attr.discrim, sizeof(uint32_t), LDMSD_REQ_EOM_F);
 	return rc;
+}
+
+static int stream_new_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	char *name;
+
+	name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
+	if (!name) {
+		ldmsd_log(LDMSD_LERROR, "Received %s without the stream name\n",
+				ldmsd_req_id2str(reqc->req_id));
+		return 0;
+	}
+	rc = ldmsd_stream_new(name);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Error %d: failed to create stream %s\n",
+									rc, name);
+		free(name);
+	}
+	return 0;
 }
 
 void ldmsd_xprt_term(ldms_t x)

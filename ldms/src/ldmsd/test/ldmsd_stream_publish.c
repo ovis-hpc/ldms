@@ -27,6 +27,8 @@ static struct option long_opts[] = {
 	{"line",     no_argument,	0,  'l' },
 	{"repeat",   required_argument, 0,  'r' },
 	{"interval", required_argument, 0,  'i' },
+	{"new",      no_argument,       0,  'n' },
+	{"new_only", no_argument,       0,  'N' },
 	{0,          0,                 0,  0 }
 };
 
@@ -35,12 +37,12 @@ void usage(int argc, char **argv)
 	printf("usage: %s -x <xprt> -h <host> -p <port> "
 	       "-s <stream-name> -t <stream-type> "
 	       "-f <file> -a <auth> -A <auth-opt> "
-	       "-l -r <count> -i <microsec>\n",
+	       "-l -r <count> -i <microsec> -n -N\n",
 	       argv[0]);
 	exit(1);
 }
 
-static const char *short_opts = "h:p:f:s:t:x:a:A:lr:i:";
+static const char *short_opts = "h:p:f:s:t:x:a:A:lr:i:nN";
 
 #define AUTH_OPT_MAX 128
 
@@ -62,6 +64,11 @@ int main(int argc, char **argv)
 	int line_mode = 0;	/* publish each line separately */
 	int repeat = 0;
 	unsigned interval = 0;
+	enum {
+		NEW_FALSE = 0,
+		NEW_TRUE,
+		NEW_ONLY,
+	} stream_new = NEW_FALSE;
 
 	auth_opt = av_new(auth_opt_max);
 	if (!auth_opt) {
@@ -151,6 +158,12 @@ int main(int argc, char **argv)
 		case 'i':
 			interval = (unsigned)atoi(optarg);
 			break;
+		case 'n':
+			stream_new = NEW_TRUE;
+			break;
+		case 'N':
+			stream_new = NEW_ONLY;
+			break;
 		default:
 			usage(argc, argv);
 		}
@@ -173,7 +186,29 @@ int main(int argc, char **argv)
 	}
 	if (!repeat)
 		repeat = 1;
+
 	int rc;
+	ldms_t ldms;
+	if (stream_new || line_mode) {
+		/* Create a transport endpoint */
+		ldms = ldms_xprt_new_with_auth(xprt, NULL, auth, NULL);
+		rc = ldms_xprt_connect_by_name(ldms, host, port, NULL, NULL);
+		if (rc){
+			printf("Error %d connecting to peer\n", rc);
+			return rc;
+		}
+	}
+	if (stream_new) {
+		/* Create and send a STREAM_NEW message */
+		rc = ldmsd_stream_new_publish(stream, ldms);
+		if (rc) {
+			printf("Error %d creating stream and notifying client\n", rc);
+			return rc;
+		}
+		if (NEW_ONLY == stream_new)
+			return 0;
+	}
+
 	int k;
 	if (!line_mode) {
 		for (k = 0; k < repeat; k++) {
@@ -189,12 +224,7 @@ int main(int argc, char **argv)
 		}
 		return 0;
 	}
-	ldms_t ldms = ldms_xprt_new_with_auth(xprt, NULL, auth, NULL);
-	rc = ldms_xprt_connect_by_name(ldms, host, port, NULL, NULL);
-	if (rc){
-		printf("Error %d connecting to peer\n", rc);
-		return rc;
-	}
+
 	for (k = 0; k < repeat; k++) {
 		char line_buffer[4096];
 		char *s;
