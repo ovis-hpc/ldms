@@ -253,6 +253,7 @@ static int stream_subscribe_handler(ldmsd_req_ctxt_t reqc);
 static int stream_unsubscribe_handler(ldmsd_req_ctxt_t reqc);
 static int stream_client_dump_handler(ldmsd_req_ctxt_t reqc);
 static int stream_new_handler(ldmsd_req_ctxt_t reqc);
+static int stream_dir_handler(ldmsd_req_ctxt_t reqc);
 
 static int listen_handler(ldmsd_req_ctxt_t reqc);
 
@@ -552,6 +553,9 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_STREAM_NEW_REQ] = {
 		LDMSD_STREAM_NEW_REQ, stream_new_handler, XUG
+	},
+	[LDMSD_STREAM_DIR_REQ] = {
+		LDMSD_STREAM_DIR_REQ, stream_dir_handler, XUG
 	},
 
 	/* LISTEN */
@@ -6563,6 +6567,41 @@ static int stream_new_handler(ldmsd_req_ctxt_t reqc)
 		free(name);
 	}
 	return 0;
+}
+
+static int stream_dir_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	char *s;
+	size_t len;
+	struct ldmsd_req_attr_s attr;
+
+	s = ldmsd_stream_dir_dump();
+	if (!s) {
+		reqc->errcode = errno;
+		rc = snprintf(reqc->line_buf, reqc->line_len,
+				"Failed to get stream_info_dump.");
+		ldmsd_send_req_response(reqc, reqc->line_buf);
+		return 0;
+	}
+	attr.discrim = 1;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	attr.attr_len = len = strlen(s) + 1;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		goto out;
+
+	rc = ldmsd_append_reply(reqc, s, strlen(s) + 1, 0);
+	if (rc)
+		goto out;
+
+	attr.discrim = 0;
+	rc = ldmsd_append_reply(reqc, (char *)(&attr.discrim),
+				sizeof(attr.discrim), LDMSD_REQ_EOM_F);
+out:
+	free(s);
+	return rc;
 }
 
 void ldmsd_xprt_term(ldms_t x)

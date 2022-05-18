@@ -134,6 +134,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'publish': {'req_attr': ['name'], 'opt_attr': []},
                       'subscribe': {'req_attr': ['name'], 'opt_attr': []},
                       'stream_client_dump': {'req_attr': [], 'opt_attr': []},
+                      'stream_dir' : {'req_attr': [], 'opt_attr': []},
                       ##### Daemon #####
                       'daemon_status': {'req_attr': [], 'opt_attr': []},
                       ##### Misc. #####
