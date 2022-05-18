@@ -764,3 +764,94 @@ char * ldmsd_stream_client_dump()
  err_0:
 	return NULL;
 }
+
+int __stream_info_json(struct buf_s *buf, struct ldmsd_stream_info_s *info)
+{
+	int rc;
+	rc = buf_printf(buf, "{");
+	if (rc)
+		return rc;
+	if (0 == info->first_ts)
+		goto end;
+
+	rc = buf_printf(buf, "\"first_ts\":%ld,"
+			     "\"last_ts\":%ld,"
+			     "\"count\":%d,"
+			     "\"total_bytes\":%ld",
+			     info->first_ts, info->last_ts,
+			     info->count, info->total_bytes);
+	if (rc)
+		return rc;
+	if (info->last_ts != info->first_ts) {
+		rc = buf_printf(buf, ",\"msg/sec\":%lf,"
+				     "\"bytes/sec\":%lf",
+				     (info->count*1.0)/(info->last_ts - info->first_ts),
+				     info->total_bytes*1.0/(info->last_ts - info->first_ts));
+	}
+end:
+	rc = buf_printf(buf, "}");
+	return rc;
+}
+
+int __stream_json(struct buf_s *buf, ldmsd_stream_t s)
+{
+	int rc;
+	rc = buf_printf(buf, "\"%s\":{", s->s_name);
+	if (rc)
+		return rc;
+	rc = buf_printf(buf, "\"mode\":\"%s\","
+			     "\"info\":",
+			     (LIST_EMPTY(&s->s_c_list)?"not subscribed":"subscribed"));
+	if (rc)
+		return rc;
+	rc = __stream_info_json(buf, &s->s_info);
+	if (rc)
+		return rc;
+	rc = buf_printf(buf, "}");
+	return rc;
+}
+
+char *ldmsd_stream_dir_dump()
+{
+	int rc;
+	ldmsd_stream_t s;
+	struct rbn *rbn;
+	struct buf_s buf = {.sz = 4096};
+	int first = 1;
+
+	buf.buf = malloc(buf.sz);
+	if (!buf.buf) {
+		errno = ENOMEM;
+		return NULL;
+	}
+
+	rc = buf_printf(&buf, "{");
+	if (rc)
+		goto free_buf;
+	pthread_mutex_lock(&s_tree_lock);
+	RBT_FOREACH(rbn, &s_tree) {
+		s = container_of(rbn, struct ldmsd_stream_s, s_ent);
+		rc = buf_printf(&buf, "%s", ((first)?"":","));
+		if (rc)
+			goto unlock_s;
+		first = 0;
+		pthread_mutex_lock(&s->s_lock);
+		rc = __stream_json(&buf, s);
+		if (rc)
+			goto unlock_s;
+		pthread_mutex_unlock(&s->s_lock);
+	}
+	pthread_mutex_unlock(&s_tree_lock);
+	rc = buf_printf(&buf, "}");
+	if (rc)
+		goto unlock_s_tree;
+	return buf.buf;
+unlock_s:
+	pthread_mutex_unlock(&s->s_lock);
+unlock_s_tree:
+	pthread_mutex_unlock(&s_tree_lock);
+free_buf:
+	free(buf.buf);
+	errno = rc;
+	return NULL;
+}
