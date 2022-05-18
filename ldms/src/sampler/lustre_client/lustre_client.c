@@ -177,7 +177,7 @@ static void llites_refresh()
            here. */
         dir = opendir(llite_path);
         if (dir == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" unable to open llite dir %s\n",
+                log_fn(LDMSD_LDEBUG, SAMP" unable to open llite dir %s\n",
                        llite_path);
                 return;
         }

@@ -22,6 +22,8 @@
 #define OBDFILTER_PATH "/proc/fs/lustre/obdfilter"
 #define OSD_SEARCH_PATH "/proc/fs/lustre"
 
+static struct comp_id_data cid;
+
 ldmsd_msg_log_f log_fn;
 char producer_name[LDMS_PRODUCER_NAME_MAX];
 
@@ -79,7 +81,7 @@ static struct ost_data *ost_create(const char *ost_name, const char *basedir)
                        ost->fs_name);
                 goto out7;
         }
-        ost->general_metric_set = ost_general_create(producer_name, ost->fs_name, ost->name);
+        ost->general_metric_set = ost_general_create(producer_name, ost->fs_name, ost->name, &cid);
         if (ost->general_metric_set == NULL)
                 goto out7;
         ost->osd_path = ost_general_osd_path_find(OSD_SEARCH_PATH, ost->name);
@@ -150,7 +152,7 @@ static void osts_refresh()
 
         dir = opendir(OBDFILTER_PATH);
         if (dir == NULL) {
-                log_fn(LDMSD_LWARNING, SAMP" unable to open obdfilter dir %s\n",
+                log_fn(LDMSD_LDEBUG, SAMP" unable to open obdfilter dir %s\n",
                        OBDFILTER_PATH);
                 return;
         }
@@ -205,6 +207,16 @@ static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
+	char *ival = av_value(avl, "producer");
+	if (ival) {
+		if (strlen(ival) < sizeof(producer_name)) {
+			strncpy(producer_name, ival, sizeof(producer_name));
+		} else {
+                        log_fn(LDMSD_LERROR, SAMP": config: producer name too long.\n");
+                        return EINVAL;
+		}
+	}
+	comp_id_helper_config(avl, &cid);
         return 0;
 }
 
@@ -212,7 +224,7 @@ static int sample(struct ldmsd_sampler *self)
 {
         log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
         if (ost_general_schema_is_initialized() < 0) {
-                if (ost_general_schema_init() < 0) {
+                if (ost_general_schema_init(&cid) < 0) {
                         log_fn(LDMSD_LERROR, SAMP" general schema create failed\n");
                         return ENOMEM;
                 }
