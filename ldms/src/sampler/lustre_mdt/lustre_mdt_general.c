@@ -56,7 +56,7 @@ int mdt_general_schema_is_initialized()
                 return -1;
 }
 
-int mdt_general_schema_init(const char *producer_name)
+int mdt_general_schema_init(comp_id_t cid)
 {
         ldms_schema_t sch;
         int rc;
@@ -66,6 +66,13 @@ int mdt_general_schema_init(const char *producer_name)
         sch = ldms_schema_new("lustre_mdt");
         if (sch == NULL)
                 goto err1;
+	const char *field;
+	field = "component_id";
+	rc = comp_id_helper_schema_add(sch, cid);
+	if (rc) {
+		rc = -rc;
+		goto err2;
+	}
         rc = ldms_schema_meta_array_add(sch, "fs_name", LDMS_V_CHAR_ARRAY, 64);
         if (rc < 0)
                 goto err2;
@@ -91,6 +98,8 @@ int mdt_general_schema_init(const char *producer_name)
 
         return 0;
 err2:
+	log_fn(LDMSD_LERROR, SAMP ": lustre_mdt_general schema creation failed to add %s. (%s)\n",
+		field, STRERROR(-rc));
         ldms_schema_delete(sch);
 err1:
         log_fn(LDMSD_LERROR, SAMP" lustre_mdt_general schema creation failed\n");
@@ -194,12 +203,14 @@ void mdt_general_destroy(ldms_set_t set)
 
 
 /* must be schema created by mdt_general_schema_create() */
-ldms_set_t mdt_general_create(const char *producer_name, const char *fs_name,
-                              const char *mdt_name)
+ldms_set_t mdt_general_create(const char *producer_name,
+			      const char *fs_name,
+			      const char *mdt_name,
+			      const comp_id_t cid)
 {
         ldms_set_t set;
         int index;
-        char instance_name[256];
+        char instance_name[LDMS_PRODUCER_NAME_MAX+64];
 
         log_fn(LDMSD_LDEBUG, SAMP" mdt_general_create()\n");
         snprintf(instance_name, sizeof(instance_name), "%s/%s",
@@ -210,6 +221,7 @@ ldms_set_t mdt_general_create(const char *producer_name, const char *fs_name,
         ldms_metric_array_set_str(set, index, fs_name);
         index = ldms_metric_by_name(set, "mdt");
         ldms_metric_array_set_str(set, index, mdt_name);
+	comp_id_helper_metric_update(set, cid);
         ldms_set_publish(set);
 	ldmsd_set_register(set, SAMP);
         return set;
