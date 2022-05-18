@@ -15,6 +15,40 @@ typedef enum ldmsd_stream_type_e {
 } ldmsd_stream_type_t;
 
 /**
+ * \brief Create a new stream
+ *
+ * Create a stream of the given name \c name.
+ *
+ * \param name   Stream name
+ *
+ * \return 0 on success.
+ *         EEXIST if the stream already exists.
+ *         ENOMEM if it fails to allocate memory
+ *
+ * \seealso ldmsd_streame_new_publish
+ */
+extern int ldmsd_stream_new(const char *name);
+
+/**
+ * \brief Notify a client of a new stream
+ *
+ * Send a LDMSD_STREAM_NEW_REQ message of a stream \c name to a client connected by \c xprt.
+ * If stream \c name does not exist, it is created and then a notification is sent
+ * to the client.
+ *
+ * Applications may call the function multiple times to notify multiple clients.
+ *
+ * \param name   Stream name
+ * \param xprt   LDMS endpoint to a client
+ *
+ * \return 0 on success.
+ *         EINVAL if \c xprt is NULL.
+ *         ENOMEM if it fails to allocate memory.
+ *         Other errno, if it fails to send the STREAM_NEW message.
+ */
+extern int ldmsd_stream_new_publish(const char *name, ldms_t xprt);
+
+/**
  * \brief Publish data to a stream
  * Publish JSON or STRING data to a stream. JSON data is formatted as
  * a JSON object. JSON formatted data is validated at the subscriber;
