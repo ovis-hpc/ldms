@@ -1410,7 +1410,7 @@ cdef class DirSet(object):
         self.data_gn = ds.meta_gn
         self.timestamp = (ds.timestamp.sec, ds.timestamp.usec)
         self.duration = (ds.duration.sec, ds.timestamp.usec)
-        self.info = { ds.info[i].key : ds.info[i].value \
+        self.info = { ds.info[i].key.decode(encoding='utf-8') : ds.info[i].value.decode(encoding='utf-8') \
                       for i in range(0, ds.info_count) }
 
 
