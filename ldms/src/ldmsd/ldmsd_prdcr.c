@@ -561,8 +561,16 @@ static const char *conn_state_str(int state)
 	return "UNKNOWN_STATE";
 }
 
+static void __ldmsd_xprt_ctxt_free(void *_ctxt)
+{
+	struct ldmsd_xprt_ctxt *ctxt = _ctxt;
+	free(ctxt->name);
+	free(ctxt);
+}
+
 static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
+	ldmsd_xprt_ctxt_t ctxt;
 	ldmsd_prdcr_t prdcr = cb_arg;
 	ldmsd_prdcr_lock(prdcr);
 	ldmsd_log(LDMSD_LINFO, "%s:%d Producer %s (%s %s:%d) conn_state: %d %s\n",
@@ -584,6 +592,17 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		ldmsd_log(LDMSD_LINFO, "Producer %s is connected (%s %s:%d)\n",
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no);
+		ctxt = malloc(sizeof(*ctxt));
+		if (!ctxt) {
+			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+			return;
+		}
+		ctxt->name = strdup(prdcr->obj.name);
+		if (!ctxt->name) {
+			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+			return;
+		}
+		ldms_xprt_ctxt_set(x, ctxt, __ldmsd_xprt_ctxt_free);
 		prdcr->conn_state = LDMSD_PRDCR_STATE_CONNECTED;
 		if (__prdcr_subscribe(prdcr)) {
 			ldmsd_log(LDMSD_LERROR,
@@ -835,6 +854,7 @@ extern struct rbt *cfgobj_trees[];
 extern pthread_mutex_t *cfgobj_locks[];
 ldmsd_cfgobj_t __cfgobj_find(const char *name, ldmsd_cfgobj_type_t type);
 
+extern void ldmsd_stream_publisher_remove(const char *p_name);
 int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 {
 	int rc = 0;
@@ -858,6 +878,8 @@ int ldmsd_prdcr_del(const char *prdcr_name, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out_1;
 	}
+
+	ldmsd_stream_publisher_remove(prdcr_name);
 
 	/* removing from the tree */
 	rbt_del(cfgobj_trees[LDMSD_CFGOBJ_PRDCR], &prdcr->obj.rbn);

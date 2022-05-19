@@ -500,6 +500,10 @@ typedef struct ldmsd_set_info {
 	};
 } *ldmsd_set_info_t;
 
+typedef struct ldmsd_xprt_ctxt {
+	char *name;
+} *ldmsd_xprt_ctxt_t;
+
 /**
  * \brief Get the set information
  *
