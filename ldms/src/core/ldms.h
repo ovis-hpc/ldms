@@ -498,6 +498,28 @@ int ldms_version_check(const struct ldms_version *v);
  */
 ldms_t ldms_xprt_by_remote_sin(struct sockaddr_in *sin);
 
+#define LDMS_XPRT_NAME_LEN 128
+/**
+ * \brief Get the local and remote names of a transport
+ *
+ * The local and remote names are set in the provided \c lcl_name and \c rem_name buffers.
+ * If the buffers are smaller than LDMS_XPRT_NAME_LEN, the output may will be truncated.
+ *
+ * \param x    A transport
+ * \param lcl_name  A buffer to receive the local name.
+ * \param lcl_name_sz    The size of \c lcl_name
+ * \param lcl_port  A buffer to receive the local port
+ * \param lcl_port_sz    The size of \c lcl_port
+ * \param rem_name  A buffer to receive the remote name.
+ * \param rem_name_sz    The size of \c rem_name
+ * \param rem_port  A buffer to receive the remote port.
+ * \param rem_port_sz    The size of \c rem_port
+ */
+void ldms_xprt_names(ldms_t x, char *lcl_name, size_t lcl_name_sz,
+				char *lcl_port, size_t lcl_port_sz,
+				char *rem_name, size_t rem_name_sz,
+				char *rem_port, size_t rem_port_sz);
+
 /**
  * \brief Returns the 'first' transport endpoint
  *

@@ -2108,36 +2108,76 @@ void __ldms_xprt_conn_msg_init(ldms_t _x, struct ldms_conn_msg *msg)
 
 void __ldms_xprt_init(struct ldms_xprt *x, const char *name,
 					ldms_log_fn_t log_fn);
-static char __remote_name[256];
-static char __local_name[256];
+
+pthread_mutex_t xprt_names_lock = PTHREAD_MUTEX_INITIALIZER;
+static char __remote_name[LDMS_XPRT_NAME_LEN];
+static char __remote_port[LDMS_XPRT_NAME_LEN];
+static char __local_name[LDMS_XPRT_NAME_LEN];
+static char __local_port[LDMS_XPRT_NAME_LEN];
 static const char *__names[] = {
 	__local_name,
-	__remote_name
+	__local_port,
+	__remote_name,
+	__remote_port
 };
 #define LDMS_XPRT_LCL_NAME	0
-#define LDMS_XPRT_RMT_NAME	1
-const char **ldms_xprt_names(ldms_t x)
+#define LDMS_XPRT_LCL_PORT	1
+#define LDMS_XPRT_RMT_NAME	2
+#define LDMS_XPRT_RMT_PORT	3
+const char **__ldms_xprt_names(ldms_t x)
 {
 	struct sockaddr lcl, rmt;
 	socklen_t xlen = sizeof(lcl);
 	zap_err_t zerr;
 	memset(&rmt, 0, sizeof(rmt));
 	memset(&lcl, 0, sizeof(rmt));
-	__remote_name[0] = '\0';
-	__local_name[0] = '\0';
+	__remote_name[0] = __remote_port[0] = '\0';
+	__local_name[0] = __local_port[0] = '\0';
 	zerr = zap_get_name(x->zap_ep,
 			    (struct sockaddr *)&lcl,
 			    (struct sockaddr *)&rmt, &xlen);
 	if (zerr)
 		goto out;
 	(void)getnameinfo(&rmt, xlen, __remote_name, sizeof(__remote_name),
-			  NULL, 0, NI_NUMERICHOST);
+			  __remote_port, sizeof(__remote_port),
+			  NI_NUMERICSERV);
 	(void)getnameinfo(&lcl, xlen, __local_name, sizeof(__local_name),
-			  NULL, 0, NI_NUMERICHOST);
+			  __local_port, sizeof(__local_port),
+			  NI_NUMERICSERV);
 out:
 	__names[0] = __local_name;
-	__names[1] = __remote_name;
+	__names[1] = __local_port;
+	__names[2] = __remote_name;
+	__names[3] = __remote_port;
 	return __names;
+}
+
+void ldms_xprt_names(ldms_t x, char *lcl_name, size_t lcl_name_sz,
+				char *lcl_port, size_t lcl_port_sz,
+				char *rem_name, size_t rem_name_sz,
+				char *rem_port, size_t rem_port_sz)
+{
+	const char **names;
+	pthread_mutex_lock(&xprt_names_lock);
+	names = __ldms_xprt_names(x);
+	if (lcl_name) {
+		memcpy(lcl_name, names[LDMS_XPRT_LCL_NAME],
+			((lcl_name_sz<LDMS_XPRT_NAME_LEN)?lcl_name_sz:LDMS_XPRT_NAME_LEN));
+	}
+	if (lcl_port) {
+		memcpy(lcl_port, names[LDMS_XPRT_LCL_PORT],
+			((lcl_port_sz<LDMS_XPRT_NAME_LEN)?lcl_port_sz:LDMS_XPRT_NAME_LEN));
+	}
+	if (rem_name) {
+		memcpy(rem_name, names[LDMS_XPRT_RMT_NAME],
+			((rem_name_sz<LDMS_XPRT_NAME_LEN)?rem_name_sz:LDMS_XPRT_NAME_LEN));
+	}
+	if (rem_port) {
+		memcpy(rem_port, names[LDMS_XPRT_RMT_PORT],
+			((rem_port_sz<LDMS_XPRT_NAME_LEN)?rem_port_sz:LDMS_XPRT_NAME_LEN));
+	}
+
+	pthread_mutex_unlock(&xprt_names_lock);
 }
 
 static void ldms_zap_handle_conn_req(zap_ep_t zep)
@@ -2149,7 +2189,7 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	zap_err_t zerr;
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	struct ldms_auth *auth;
-	names = ldms_xprt_names(x);
+	names = __ldms_xprt_names(x);
 	/*
 	 * Accepting zep inherit ucontext from the listening endpoint.
 	 * Hence, x is of listening endpoint, not of accepting zep,
@@ -3473,7 +3513,7 @@ void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_
 	zap_err_t zerr = zap_send(x->zap_ep, req, len);
 	if (zerr) {
 		if (x->log) {
-			const char **names = ldms_xprt_names(x);
+			const char **names = __ldms_xprt_names(x);
 			x->log("%s:%s:%d Error %d sending the LDMS_SET_DELETE "
 				"message to '%s'\n",
 				__FILE__, __func__, __LINE__,
