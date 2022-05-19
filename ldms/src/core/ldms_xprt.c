@@ -2108,36 +2108,44 @@ void __ldms_xprt_conn_msg_init(ldms_t _x, struct ldms_conn_msg *msg)
 
 void __ldms_xprt_init(struct ldms_xprt *x, const char *name,
 					ldms_log_fn_t log_fn);
-static char __remote_name[256];
-static char __local_name[256];
-static const char *__names[] = {
-	__local_name,
-	__remote_name
-};
-#define LDMS_XPRT_LCL_NAME	0
-#define LDMS_XPRT_RMT_NAME	1
-const char **ldms_xprt_names(ldms_t x)
+
+int ldms_xprt_names(ldms_t x, char *lcl_name, size_t lcl_name_sz,
+				char *lcl_port, size_t lcl_port_sz,
+				char *rem_name, size_t rem_name_sz,
+				char *rem_port, size_t rem_port_sz,
+				int flags)
 {
 	struct sockaddr lcl, rmt;
 	socklen_t xlen = sizeof(lcl);
 	zap_err_t zerr;
+
+	if (lcl_name)
+		lcl_name[0] = '\0';
+	if (lcl_port)
+		lcl_port[0] = '\0';
+	if (rem_name)
+		rem_name[0] = '\0';
+	if (rem_port)
+		rem_port[0] = '\0';
+
 	memset(&rmt, 0, sizeof(rmt));
 	memset(&lcl, 0, sizeof(rmt));
-	__remote_name[0] = '\0';
-	__local_name[0] = '\0';
 	zerr = zap_get_name(x->zap_ep,
 			    (struct sockaddr *)&lcl,
 			    (struct sockaddr *)&rmt, &xlen);
 	if (zerr)
-		goto out;
-	(void)getnameinfo(&rmt, xlen, __remote_name, sizeof(__remote_name),
-			  NULL, 0, NI_NUMERICHOST);
-	(void)getnameinfo(&lcl, xlen, __local_name, sizeof(__local_name),
-			  NULL, 0, NI_NUMERICHOST);
-out:
-	__names[0] = __local_name;
-	__names[1] = __remote_name;
-	return __names;
+		return zap_zerr2errno(zerr);
+
+	if (lcl_name || lcl_port) {
+		(void) getnameinfo(&lcl, xlen, lcl_name, lcl_name_sz,
+					lcl_port, lcl_port_sz, flags);
+	}
+
+	if (rem_name || rem_port) {
+		(void)getnameinfo(&lcl, xlen, rem_name, rem_name_sz,
+					rem_port, rem_port_sz, flags);
+	}
+	return 0;
 }
 
 static void ldms_zap_handle_conn_req(zap_ep_t zep)
@@ -2145,11 +2153,12 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	static char rej_msg[64] = "Insufficient resources";
 	struct ldms_conn_msg msg;
 	int rc;
-	const char **names;
+	char name[128];
 	zap_err_t zerr;
 	struct ldms_xprt *x = zap_get_ucontext(zep);
 	struct ldms_auth *auth;
-	names = ldms_xprt_names(x);
+	(void) ldms_xprt_names(x, NULL, 0, NULL, 0, name, 128,
+				     NULL, 0, NI_NUMERICHOST);
 	/*
 	 * Accepting zep inherit ucontext from the listening endpoint.
 	 * Hence, x is of listening endpoint, not of accepting zep,
@@ -2158,7 +2167,7 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 	struct ldms_xprt *_x = calloc(1, sizeof(*_x));
 	if (!_x) {
 		x->log("ERROR: Cannot create new ldms_xprt for connection"
-				" from %s.\n", names[LDMS_XPRT_RMT_NAME]);
+				" from %s.\n", name);
 		goto err0;
 	}
 	__ldms_xprt_init(_x, x->name, x->log);
@@ -2189,8 +2198,7 @@ static void ldms_zap_handle_conn_req(zap_ep_t zep)
 
 	zerr = zap_accept(zep, ldms_zap_auto_cb, (void*)&msg, sizeof(msg));
 	if (zerr) {
-		x->log("ERROR: %d accepting connection from %s.\n",
-			zerr, names[LDMS_XPRT_RMT_NAME]);
+		x->log("ERROR: %d accepting connection from %s.\n", zerr, name);
 		goto err2;
 	}
 
@@ -3473,11 +3481,12 @@ void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_
 	zap_err_t zerr = zap_send(x->zap_ep, req, len);
 	if (zerr) {
 		if (x->log) {
-			const char **names = ldms_xprt_names(x);
+			char name[128];
+			(void) ldms_xprt_names(x, NULL, 0, NULL, 0, name, 128,
+						     NULL, 0, NI_NUMERICHOST);
 			x->log("%s:%s:%d Error %d sending the LDMS_SET_DELETE "
 				"message to '%s'\n",
-				__FILE__, __func__, __LINE__,
-				names[LDMS_XPRT_RMT_NAME]);
+				__FILE__, __func__, __LINE__, name);
 		}
 		x->zerrno = zerr;
 		__ldms_free_ctxt(x, ctxt);
