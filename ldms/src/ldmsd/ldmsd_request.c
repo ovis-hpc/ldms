@@ -6219,12 +6219,21 @@ err:
 	return ENOMEM;
 }
 
+static const char *__xprt_prdcr_name_get(ldms_t x)
+{
+	ldmsd_xprt_ctxt_t ctxt = x->app_ctxt;
+	if (!ctxt)
+		return NULL;
+	return ctxt->name;
+}
+
 static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 {
 	char *stream_name;
 	ldmsd_stream_type_t stream_type = LDMSD_STREAM_STRING;
 	ldmsd_req_attr_t attr;
 	int cnt;
+	char *p_name;
 
 	stream_name = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_NAME);
 	if (!stream_name) {
@@ -6245,10 +6254,6 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 	if (!attr)
 		ldmsd_send_req_response(reqc, "ACK");
 
-	if (!ldmsd_stream_subscriber_count(stream_name))
-		/* There are no subscribers, ignore the data */
-		goto out_0;
-
 	/* Check for string */
 	attr = ldmsd_req_attr_get_by_id(reqc->req_buf, LDMSD_ATTR_STRING);
 	if (attr)
@@ -6262,8 +6267,10 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 		goto out_0;
 	}
 out_1:
+	p_name = (char *)__xprt_prdcr_name_get(reqc->xprt->ldms.ldms);
 	ldmsd_stream_deliver(stream_name, stream_type,
-			     (char *)attr->attr_value, attr->attr_len, NULL, NULL);
+			     (char *)attr->attr_value,
+			     attr->attr_len, NULL, p_name);
 out_0:
 	free(stream_name);
 	return 0;
