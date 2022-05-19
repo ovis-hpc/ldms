@@ -2215,7 +2215,7 @@ int main(int argc, char *argv[])
 			myhostname[0] = '\0';
 		listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
 		snprintf(myname, sizeof(myname), "%s:%d",
-				myhostname, listen->port_no);
+				myhostname, listen ? listen->port_no : -1);
 	}
 
 	if (!foreground) {
