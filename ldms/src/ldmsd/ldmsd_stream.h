@@ -135,10 +135,12 @@ extern int ldmsd_stream_publish_file(const char *stream, const char *type,
  * \param data_len Bytes of data in \c data
  * \param entity An optional parsed JSON object. If entity is NULL, and
  * stream_type == JSON, the data will be parsed perior to delivery to the subscribers.
+ * \param p_name   Publisher name or NULL. If a string is given, the statistic of
+ *                 stream data sent by the publisher will be collected.
  */
 void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_type,
 			  const char *data, size_t data_len,
-			  json_entity_t entity);
+			  json_entity_t entitym, const char *p_name);
 
 int ldmsd_stream_response(ldms_xprt_event_t e);
 
@@ -187,6 +189,12 @@ char * ldmsd_stream_client_dump();
  */
 char *ldmsd_stream_dir_dump();
 
+/**
+ * \brief Remove a publisher from all streams
+ *
+ * \param p_name   Publisher name
+ */
+void ldmsd_stream_publisher_remove(const char *p_name);
 #ifdef __cplusplus
 }
 #endif
