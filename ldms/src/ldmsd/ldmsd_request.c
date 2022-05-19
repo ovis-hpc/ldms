@@ -6258,7 +6258,7 @@ static int stream_publish_handler(ldmsd_req_ctxt_t reqc)
 	}
 out_1:
 	ldmsd_stream_deliver(stream_name, stream_type,
-			     (char *)attr->attr_value, attr->attr_len, NULL);
+			     (char *)attr->attr_value, attr->attr_len, NULL, NULL);
 out_0:
 	free(stream_name);
 	return 0;

@@ -34,6 +34,14 @@ struct ldmsd_stream_info_s {
 	size_t total_bytes; /* Total data size of all received messages */
 };
 
+typedef struct ldmsd_stream_publisher_s {
+	const char *p_name; /* Publisher name */
+	ldmsd_stream_type_t p_type;
+	struct ldmsd_stream_info_s p_info;
+	struct rbn p_ent;
+
+} *ldmsd_stream_publisher_t;
+
 typedef struct ldmsd_stream_s *ldmsd_stream_t;
 struct ldmsd_stream_client_s {
 	ldmsd_stream_recv_cb_t c_cb_fn;
@@ -43,12 +51,18 @@ struct ldmsd_stream_client_s {
 	LIST_ENTRY(ldmsd_stream_client_s) c_ent;
 };
 
+static int p_cmp(void *tree_key, const void *key)
+{
+	return strcmp((char *)tree_key, (const char *)key);
+}
+
 struct ldmsd_stream_s {
 	const char *s_name;
 	struct ldmsd_stream_info_s s_info;
 	struct rbn s_ent;
 	pthread_mutex_t s_lock;
 	LIST_HEAD(ldmsd_client_list, ldmsd_stream_client_s) s_c_list;
+	struct rbt s_p_tree;
 };
 
 static pthread_mutex_t s_tree_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -78,6 +92,7 @@ static struct ldmsd_stream_s *__new_stream(const char *name)
 		goto del_stream;
 	pthread_mutex_init(&s->s_lock, NULL);
 	LIST_INIT(&s->s_c_list);
+	rbt_init(&s->s_p_tree, p_cmp);
 	rbn_init(&s->s_ent, (char *)s->s_name);
 	pthread_mutex_lock(&s_tree_lock);
 	rbt_ins(&s_tree, &s->s_ent);
@@ -87,6 +102,39 @@ static struct ldmsd_stream_s *__new_stream(const char *name)
  del_stream:
 	free(s);
 	return NULL;
+}
+
+static void __free_publisher(struct ldmsd_stream_publisher_s *p)
+{
+	free((char*)p->p_name);
+	free(p);
+}
+
+static struct ldmsd_stream_publisher_s *__new_publisher(const char *name)
+{
+	struct ldmsd_stream_publisher_s *p;
+	p = calloc(1, sizeof(*p));
+	if (!p)
+		return NULL;
+
+	p->p_name = strdup(name);
+	if (!p->p_name)
+		goto err;
+	rbn_init(&p->p_ent, (char*)name);
+	return p;
+err:
+	__free_publisher(p);
+	return NULL;
+}
+
+/* The caller must hold the stream lock. */
+static struct ldmsd_stream_publisher_s *
+__find_publisher(ldmsd_stream_t s, const char *name)
+{
+	struct rbn *rbn = rbt_find(&s->s_p_tree, name);
+	if (!rbn)
+		return NULL;
+	return container_of(rbn, struct ldmsd_stream_publisher_s, p_ent);
 }
 
 struct stream_ctxt {
@@ -182,6 +230,25 @@ int ldmsd_stream_new_publish(const char *name, ldms_t xprt)
 	return rc;
 }
 
+void ldmsd_stream_publisher_remove(const char *name)
+{
+	ldmsd_stream_t s;
+	struct rbn *rbn;
+	ldmsd_stream_publisher_t p;
+	pthread_mutex_lock(&s_tree_lock);
+	RBT_FOREACH(rbn, &s_tree) {
+		s = container_of(rbn, struct ldmsd_stream_s, s_ent);
+		pthread_mutex_lock(&s->s_lock);
+		p = __find_publisher(s, name);
+		if (p) {
+			rbt_del(&s->s_p_tree, &p->p_ent);
+			__free_publisher(p);
+		}
+		pthread_mutex_unlock(&s->s_lock);
+	}
+	pthread_mutex_unlock(&s_tree_lock);
+}
+
 int ldmsd_stream_subscriber_count(const char *stream_name)
 {
 	int subscriber_count = 0;
@@ -198,10 +265,11 @@ int ldmsd_stream_subscriber_count(const char *stream_name)
 
 void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_type,
 			  const char *data, size_t data_len,
-			  json_entity_t entity)
+			  json_entity_t entity, const char *p_name)
 {
 	json_parser_t parser = NULL;
 	ldmsd_stream_client_t c;
+	ldmsd_stream_publisher_t p;
 	ldmsd_stream_t s = __find_stream(stream_name);
 	int need_free = 0;
 	time_t now;
@@ -235,6 +303,21 @@ void ldmsd_stream_deliver(const char *stream_name, ldmsd_stream_type_t stream_ty
 		}
 		c->c_cb_fn(c, c->c_ctxt, stream_type, data, data_len, entity);
 	}
+
+	if (p_name) {
+		p = __find_publisher(s, p_name);
+		if (!p) {
+			p = __new_publisher(p_name);
+			if (!p)
+				return;
+			p->p_info.first_ts = now;
+			rbt_ins(&s->s_p_tree, &p->p_ent);
+		}
+		p->p_info.last_ts = now;
+		p->p_info.count += 1;
+		p->p_info.total_bytes += data_len;
+	}
+
 	if (entity && need_free)
 		json_entity_free(entity);
 	if (parser)
@@ -793,9 +876,27 @@ end:
 	return rc;
 }
 
+int __publisher_json(struct buf_s *buf, ldmsd_stream_publisher_t p)
+{
+	int rc;
+	rc = buf_printf(buf, "\"%s\":{"
+			      "\"info\":",
+			      p->p_name);
+	if (rc)
+		return rc;
+	rc = __stream_info_json(buf, &p->p_info);
+	if (rc)
+		return rc;
+	rc = buf_printf(buf, "}");
+	return rc;
+}
+
 int __stream_json(struct buf_s *buf, ldmsd_stream_t s)
 {
 	int rc;
+	int first = 1;
+	ldmsd_stream_publisher_t p;
+	struct rbn *rbn;
 	rc = buf_printf(buf, "\"%s\":{", s->s_name);
 	if (rc)
 		return rc;
@@ -807,7 +908,23 @@ int __stream_json(struct buf_s *buf, ldmsd_stream_t s)
 	rc = __stream_info_json(buf, &s->s_info);
 	if (rc)
 		return rc;
-	rc = buf_printf(buf, "}");
+	rc = buf_printf(buf, ",\"publishers\":{");
+	if (rc)
+		return rc;
+	RBT_FOREACH(rbn, &s->s_p_tree) {
+		if (!first) {
+			rc = buf_printf(buf, ",");
+			if (rc)
+				return rc;
+		} else {
+			first = 0;
+		}
+		p = container_of(rbn, struct ldmsd_stream_publisher_s, p_ent);
+		rc = __publisher_json(buf, p);
+		if (rc)
+			return rc;
+	}
+	rc = buf_printf(buf, "}}");
 	return rc;
 }
 

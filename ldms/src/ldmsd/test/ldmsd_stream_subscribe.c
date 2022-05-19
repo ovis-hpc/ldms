@@ -170,7 +170,7 @@ static int stream_publish_handler(ldmsd_req_hdr_t req)
 	}
 	if (attr->discrim) {
 		ldmsd_stream_deliver(stream_name, LDMSD_STREAM_STRING,
-				     (char *)attr->attr_value, attr->attr_len, NULL);
+				     (char *)attr->attr_value, attr->attr_len, NULL, NULL);
 		free(stream_name);
 		return 0;
 	}
@@ -201,7 +201,7 @@ static int stream_publish_handler(ldmsd_req_hdr_t req)
 		exit(8);
 	}
 	ldmsd_stream_deliver(stream_name, LDMSD_STREAM_JSON,
-			     (char *)attr->attr_value, attr->attr_len, entity);
+			     (char *)attr->attr_value, attr->attr_len, entity, NULL);
 	free(stream_name);
 	json_entity_free(entity);
 	return 0;
