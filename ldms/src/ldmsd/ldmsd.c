@@ -2339,6 +2339,7 @@ int main(int argc, char *argv[])
 	}
 
 	/* Process configuration files */
+	int has_config_file = 0;
 	opterr = 0;
 	optind = 0;
 	while ((op = getopt_long(argc, argv, short_opts, long_opts, &op_idx)) != -1) {
@@ -2346,6 +2347,7 @@ int main(int argc, char *argv[])
 		int lln = -1;
 		switch (op) {
 		case 'c':
+			has_config_file = 1;
 			dup_arg = strdup(optarg);
 			ret = process_config_file(dup_arg, &lln, 1);
 			free(dup_arg);
@@ -2379,6 +2381,15 @@ int main(int argc, char *argv[])
 		}
 		ldmsd_linfo("Enabling in-band config\n");
 		ldmsd_inband_cfg_mask_add(0777);
+	}
+
+	/* Check for at least a listening port */
+	struct ldmsd_listen *_listen;
+	_listen = (ldmsd_listen_t) ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+	if (!_listen && !has_config_file) {
+		ldmsd_log(LDMSD_LCRITICAL,
+			"No config files nor listening ports are given ... exiting\n");
+		cleanup(101, "no config files nor listening ports");
 	}
 
 	/* Keep the process alive */
