@@ -1591,6 +1591,7 @@ int failover_config_handler(ldmsd_req_ctxt_t req)
 	char *auto_switch;
 	char *interval;
 	char *peer_name;
+	const char *myname;
 	char *timeout_factor;
 	const char *errmsg = NULL;
 	ldmsd_failover_t f;
@@ -1617,6 +1618,13 @@ int failover_config_handler(ldmsd_req_ctxt_t req)
 	if (f->state != FAILOVER_STATE_STOP) {
 		rc = EBUSY;
 		errmsg = "cannot reconfigure due to busy failover service";
+		goto out;
+	}
+	myname = ldmsd_myname_get();
+	if (!myname || !*myname) {
+		rc = EINVAL;
+		errmsg = "`-n <NAME>` command line option is required to "
+			 "use failover";
 		goto out;
 	}
 	if (host) {
@@ -1653,6 +1661,10 @@ int failover_config_handler(ldmsd_req_ctxt_t req)
 			rc = ENAMETOOLONG;
 			errmsg = "";
 		}
+	} else {
+		rc = EINVAL;
+		errmsg = "failover_config: peer_name attribute is required";
+		goto out;
 	}
 	if (auto_switch) {
 		f->auto_switch = atoi(auto_switch);
