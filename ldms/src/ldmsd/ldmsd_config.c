@@ -583,6 +583,7 @@ int __process_config_file(const char *path, int *lno, int trust,
 	xprt.max_msg = LDMSD_CFG_FILE_XPRT_MAX_REC;
 	xprt.trust = trust;
 	xprt.rsp_err = 0;
+	xprt.cleanup_fn = NULL;
 
 next_line:
 	errno = 0;
@@ -963,6 +964,7 @@ void ldmsd_recv_msg(ldms_t x, char *data, size_t data_len)
 	xprt.max_msg = ldms_xprt_msg_max(x);
 	xprt.trust = 0; /* don't trust any network for CMD expansion */
 	xprt.type = LDMSD_CFG_TYPE_LDMS;
+	xprt.cleanup_fn = NULL;
 
 	if (ntohl(request->rec_len) > xprt.max_msg) {
 		/* Send the record length advice */
@@ -1051,6 +1053,7 @@ void ldmsd_cfg_ldms_init(ldmsd_cfg_xprt_t xprt, ldms_t ldms)
 	xprt->max_msg = ldms_xprt_msg_max(ldms);
 	xprt->cleanup_fn = ldmsd_cfg_ldms_xprt_cleanup;
 	xprt->trust = 0;
+	xprt->type = LDMSD_CFG_TYPE_LDMS;
 }
 
 void ldmsd_mm_status(enum ldmsd_loglevel level, const char *prefix)
