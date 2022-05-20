@@ -1614,6 +1614,15 @@ int failover_config_handler(ldmsd_req_ctxt_t req)
 	peer_name = __req_attr_gets(req, LDMSD_ATTR_PEER_NAME);
 	timeout_factor = __req_attr_gets(req, LDMSD_ATTR_TIMEOUT_FACTOR);
 
+	/* Check for at least a listening port */
+	struct ldmsd_listen *_listen;
+	_listen = (ldmsd_listen_t) ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
+	if (!_listen) {
+		rc = EINVAL;
+		errmsg = "ldmsd_failover requires at least one listening port";
+		goto out;
+	}
+
 	__failover_lock(f);
 	if (f->state != FAILOVER_STATE_STOP) {
 		rc = EBUSY;
