@@ -5526,15 +5526,14 @@ static int set_route_resp_handler(ldmsd_req_cmd_t rcmd)
 	attr = ldmsd_first_attr((ldmsd_req_hdr_t)reqc->req_buf);
 
 	my_attr.attr_id = LDMSD_ATTR_JSON;
-	/* +1 for a command between two json objects */
-	my_attr.attr_len = strlen(ctxt->my_info) + attr->attr_len + 1;
+	my_attr.attr_len = strlen(ctxt->my_info) + attr->attr_len;
 	if (!ctxt->is_internal) {
-		/* +2 for a square bracket and a curly bracket */
-		my_attr.attr_len += 2;
+		/* +2 for a square bracket and a curly bracket and '\0'*/
+		my_attr.attr_len += 3;
 	}
 	my_attr.discrim = 1;
 	ldmsd_hton_req_attr(&my_attr);
-	(void) ldmsd_append_reply(org_reqc, (char *)&my_attr, sizeof(my_attr), 0);
+	(void) ldmsd_append_reply(org_reqc, (char *)&my_attr, sizeof(my_attr), LDMSD_REQ_SOM_F);
 	(void) ldmsd_append_reply(org_reqc, ctxt->my_info, strlen(ctxt->my_info), 0);
 	(void) ldmsd_append_reply(org_reqc, ",", 1, 0);
 	if (!ctxt->is_internal) {
