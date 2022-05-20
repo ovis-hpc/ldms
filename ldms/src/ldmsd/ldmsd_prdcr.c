@@ -57,6 +57,7 @@
 #include <assert.h>
 #include <coll/rbt.h>
 #include <ovis_util/util.h>
+#include <ovis_json/ovis_json.h>
 #include <netdb.h>
 #include "ldms.h"
 #include "ldmsd.h"

@@ -104,6 +104,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'prdcr_hint_tree': {'req_attr':['name'], 'opt_attr': []},
                       'prdcr_subscribe': {'req_attr':['regex', 'stream'], 'opt_attr': []},
                       'prdcr_unsubscribe': {'req_attr':['regex', 'stream'], 'opt_attr': []},
+                      'prdcr_stream_dir' : {'req_attr':['regex'], 'opt_attr':[]},
                       ##### Updater Policy #####
                       'updtr_add': {'req_attr': ['name'],
                                     'opt_attr': ['offset', 'push', 'interval', 'auto_interval']},
