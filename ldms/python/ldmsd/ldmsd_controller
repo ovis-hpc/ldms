@@ -421,6 +421,56 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_prdcr_unsubscribe(self, text, line, begidx, endidx):
         return self.__complete_attr_list('prdcr_unsubscribe', text)
 
+    def do_prdcr_stream_dir(self, arg):
+        """
+        Get stream_dir of the matched prdcr. The connected LDMSD acts as a proxy.
+        Parameters:
+        regex=     A regular expression matching producer names
+        """
+        FIRST = "first_ts"
+        LAST = "last_ts"
+        RATE = "bytes/sec"
+        FREQ = "msg/sec"
+
+        def dur(info):
+            return (info[LAST] - info[FIRST])/60.0
+
+        def rate(info):
+            if not info or RATE not in info.keys():
+                return "-"
+            return info[RATE]
+
+        def freq(info):
+            if not info or FREQ not in info.keys():
+                return "-"
+            return info[FREQ]
+
+        def total_bytes(info):
+            if not info or "total_bytes" not in info.keys():
+                return "-"
+            return info['total_bytes']
+
+        def count(info):
+            if not info or "count" not in info.keys():
+                return "-"
+            return info['count']
+
+        resp = self.handle('prdcr_stream_dir', arg)
+        if resp is None:
+            raise RuntimeError("no response")
+        if (resp['errcode'] == 0):
+            streams = json.loads(resp['msg'])
+            print("Name         Producer     mode            bytes/sec    msg/sec      total bytes  msg count   ")
+            print("-" * 12, "-" * 12, "-" * 15, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
+            # print("--------------- -------------- --------------- ----- ----------------- -----------\n")
+            for name,s in streams.items():
+                print(f"{name:12}")
+                for name,p in s.items():
+                    print(f"             {name:12} {p['mode']:15} {rate(p['info']):>12} {freq(p['info']):>12} {total_bytes(p['info']):>12} {count(p['info']):>12}")
+
+    def complete_prdcr_stream_dir(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('prdcr_stream_dir', text)
+
     def do_updtr_add(self, arg):
         """
         Add an Updater that will periodically update Producer metric sets either

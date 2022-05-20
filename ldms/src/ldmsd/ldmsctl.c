@@ -2141,6 +2141,66 @@ static void resp_set_stats(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
  	return;
 }
 
+static void help_prdcr_stream_dir()
+{
+	printf( "\nGet stream_dir of the matched producers. The connect LDMSD acts as a proxy.\n\n"
+		"Parameters:\n"
+		"     regex=   A regular expression to matched producer names\n");
+}
+
+static void resp_prdcr_stream_dir(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	int rc;
+	json_parser_t parser;
+	json_entity_t json;
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
+		return;
+	}
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	json_parser_free(parser);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+
+	json_entity_t stream, p, info, l;
+	char *name, *mode;
+	double rate, freq;
+	int tot_bytes, count;
+
+	printf("Name            Producer       Mode       Bytes/sec    Msg/sec      Total bytes  Msg count   \n");
+	printf("--------------- ---------- ------------ ----------- ------------ ------------\n");
+	for (stream = json_attr_first(json); stream; stream = json_attr_next(stream)) {
+		name = json_attr_name(stream)->str;
+		printf("%-12s\n", name);
+		l = json_attr_value(stream);
+		for (p = json_attr_first(l); p; p = json_attr_next(p)) {
+			name = json_attr_name(p)->str;
+			mode = (char *)__json_str_find(json_attr_value(p), "mode");
+			info = json_value_find(json_attr_value(p), "info");
+			assert(info);
+			rate = __info_rate(info);
+			freq = __info_freq(info);
+			tot_bytes = __info_tot_bytes(info);
+			count = __info_count(info);
+			printf("            %-12s %-15s %-12lf %-12lf %-12d %-12d\n",
+					    name, mode, rate, freq, tot_bytes, count);
+		}
+	}
+	json_entity_free(json);
+}
+
 static void help_listen()
 {
 	printf( "\nAdd a listen endpoint\n\n"
@@ -2206,6 +2266,7 @@ static struct command command_tbl[] = {
 	{ "prdcr_status", LDMSD_PRDCR_STATUS_REQ, NULL, help_prdcr_status, resp_prdcr_status },
 	{ "prdcr_stop", LDMSD_PRDCR_STOP_REQ, NULL, help_prdcr_stop, resp_generic },
 	{ "prdcr_stop_regex", LDMSD_PRDCR_STOP_REGEX_REQ, NULL, help_prdcr_stop_regex, resp_generic },
+	{ "prdcr_stream_dir", LDMSD_PRDCR_STREAM_DIR_REQ, NULL, help_prdcr_stream_dir, resp_prdcr_stream_dir },
 	{ "prdcr_subscribe", LDMSD_PRDCR_SUBSCRIBE_REQ, NULL, help_prdcr_subscribe_regex, resp_generic },
 	{ "prdcr_unsubscribe", LDMSD_PRDCR_UNSUBSCRIBE_REQ, NULL, help_prdcr_unsubscribe_regex, resp_generic },
 	{ "quit", LDMSCTL_QUIT, handle_quit, help_quit, resp_generic },
