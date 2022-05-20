@@ -609,6 +609,10 @@ void __free_req_ctxt(ldmsd_req_ctxt_t reqc)
 	free(reqc->line_buf);
 	ldmsd_msg_buf_free(reqc->_req_buf);
 	ldmsd_msg_buf_free(reqc->rep_buf);
+	if (reqc->xprt->cleanup_fn)
+		reqc->xprt->cleanup_fn(reqc->xprt);
+	else
+		free(reqc->xprt);
 	free(reqc);
 }
 
@@ -745,8 +749,6 @@ void free_req_cmd_ctxt(ldmsd_req_cmd_t rcmd)
 		return;
 	if (rcmd->org_reqc)
 		req_ctxt_ref_put(rcmd->org_reqc);
-	if (rcmd->reqc && rcmd->reqc->xprt->cleanup_fn)
-		rcmd->reqc->xprt->cleanup_fn(rcmd->reqc->xprt);
 	if (rcmd->reqc)
 		req_ctxt_ref_put(rcmd->reqc);
 	free(rcmd);
@@ -1152,6 +1154,12 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 		reqc = alloc_req_ctxt(&key, xprt->max_msg);
 		if (!reqc)
 			goto oom;
+		reqc->xprt = malloc(sizeof(*xprt));
+		if (!reqc->xprt) {
+			req_ctxt_ref_put(reqc);
+			goto oom;
+		}
+		memcpy(reqc->xprt, xprt, sizeof(*xprt));
 	} else {
 		reqc = find_req_ctxt(&key);
 		if (!reqc) {
@@ -1166,7 +1174,6 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 			goto err_out;
 		}
 	}
-	reqc->xprt = xprt;
 
 	rc = ldmsd_msg_gather(reqc->_req_buf, request);
 	if (rc && (EBUSY != rc))
