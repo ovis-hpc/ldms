@@ -176,6 +176,7 @@ static int prdcr_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_set_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_subscribe_regex_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_unsubscribe_regex_handler(ldmsd_req_ctxt_t req_ctxt);
+static int prdcr_stream_dir_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_add_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_del_handler(ldmsd_req_ctxt_t req_ctxt);
 static int strgp_start_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -308,6 +309,10 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_PRDCR_UNSUBSCRIBE_REQ] = {
 		LDMSD_PRDCR_UNSUBSCRIBE_REQ, prdcr_unsubscribe_regex_handler,
+		XUG | LDMSD_PERM_FAILOVER_ALLOWED
+	},
+	[LDMSD_PRDCR_STREAM_DIR_REQ] = {
+		LDMSD_PRDCR_STREAM_DIR_REQ, prdcr_stream_dir_handler,
 		XUG | LDMSD_PERM_FAILOVER_ALLOWED
 	},
 
@@ -1018,8 +1023,8 @@ int ldmsd_req_cmd_attr_append(ldmsd_req_cmd_t rcmd,
 					     sizeof(attr.discrim),
 					     rcmd->msg_flags|LDMSD_REQ_EOM_F,
 					     LDMSD_REQ_TYPE_CONFIG_CMD);
-		ldmsd_msg_buf_free(rcmd->reqc->rep_buf);
-		rcmd->reqc->rep_buf = NULL;
+//		ldmsd_msg_buf_free(rcmd->reqc->rep_buf);
+//		rcmd->reqc->rep_buf = NULL;
 		return rc;
 	}
 
@@ -1819,6 +1824,194 @@ send_reply:
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(prdcr_regex);
 	free(stream_name);
+	return 0;
+}
+
+struct prdcr_stream_dir_regex_ctxt {
+	int sent_req; /* Number of producers the STREAM_INFO_REG sent to */
+	int all; /* 1 if LDMSD sent a request to all matched producers */
+	int recv_resp; /* Number of responses received by LDMSD */
+	json_entity_t stream_dict;
+	pthread_mutex_t lock;
+};
+
+struct prdcr_stream_dir_ctxt {
+	const char *prdcr_name;
+	struct prdcr_stream_dir_regex_ctxt *base;
+};
+
+static int __process_stream_dir(struct prdcr_stream_dir_ctxt *ctxt, char *data, size_t data_len)
+{
+	int rc = 0;
+	json_parser_t parser;
+	json_entity_t d, a, s, ss, p;
+	char *stream_name;
+
+	parser = json_parser_new(0);
+	if (!parser)
+		return ENOMEM;
+	rc = json_parse_buffer(parser, data, data_len, &d);
+	json_parser_free(parser);
+	if (rc)
+		return rc;
+
+	for (a = json_attr_first(d); a; a = json_attr_next(a)) {
+		stream_name = json_attr_name(a)->str;
+		s = json_attr_value(a);
+		ss = json_value_find(ctxt->base->stream_dict, stream_name);
+		if (!ss) {
+			ss = json_entity_new(JSON_DICT_VALUE);
+			json_attr_add(ctxt->base->stream_dict, stream_name, ss);
+		}
+		assert(!json_value_find(ss, ctxt->prdcr_name)); /* Receive stream_dir from this producer twice */
+		json_attr_rem(s, "publishers"); /* We need to know only the overall statistic on sampler. */
+		p = json_entity_copy(s);
+		if (!p) {
+			rc = ENOMEM;
+			goto free_json;
+		}
+		json_attr_add(ss, ctxt->prdcr_name, p);
+	}
+free_json:
+	json_entity_free(d);
+	return rc;
+}
+
+static int __on_stream_dir_resp(ldmsd_req_cmd_t rcmd)
+{
+	int rc = 0;
+	struct prdcr_stream_dir_ctxt *ctxt = rcmd->ctxt;
+	struct prdcr_stream_dir_regex_ctxt *base = ctxt->base;
+
+	__sync_fetch_and_add(&base->recv_resp, 1);
+	ldmsd_req_hdr_t resp = (ldmsd_req_hdr_t)(rcmd->reqc->req_buf);
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	assert(attr->attr_id == LDMSD_ATTR_JSON);
+	pthread_mutex_lock(&ctxt->base->lock);
+	rc = __process_stream_dir(ctxt, (char*)attr->attr_value, attr->attr_len);
+	pthread_mutex_unlock(&ctxt->base->lock);
+	free(ctxt);
+
+	if (!base->all)
+		goto out;
+	if (base->sent_req != base->recv_resp)
+		goto out;
+
+	/* Respond to the client */
+	jbuf_t jb;
+	struct ldmsd_req_attr_s _a;
+	jb = json_entity_dump(NULL, base->stream_dict);
+
+	_a.discrim = 1;
+	_a.attr_id = LDMSD_ATTR_JSON;
+	_a.attr_len = jb->cursor + 1;
+	ldmsd_hton_req_attr(&_a);
+	ldmsd_append_reply(rcmd->org_reqc, (char*)&_a, sizeof(_a), LDMSD_REQ_SOM_F);
+	ldmsd_append_reply(rcmd->org_reqc, jb->buf, jb->cursor+1, 0);
+	uint32_t discrim = 0;
+	ldmsd_append_reply(rcmd->org_reqc, (char*)&(discrim),
+				sizeof(discrim), LDMSD_REQ_EOM_F);
+	free(base);
+out:
+	return rc;
+}
+
+static int __prdcr_stream_dir(ldmsd_prdcr_t prdcr, ldmsd_req_ctxt_t oreqc,
+				struct prdcr_stream_dir_regex_ctxt *base)
+{
+	int rc;
+	ldmsd_req_cmd_t rcmd;
+	struct prdcr_stream_dir_ctxt *ctxt;
+
+	ctxt = malloc(sizeof(*ctxt));
+	if (!ctxt)
+		return ENOMEM;
+	ctxt->prdcr_name = prdcr->obj.name;
+	ctxt->base = base;
+
+	ldmsd_prdcr_lock(prdcr);
+	if (prdcr->conn_state == LDMSD_PRDCR_STATE_CONNECTED) {
+		/* issue stream subscribe request right away if connected */
+		rcmd = ldmsd_req_cmd_new(prdcr->xprt, LDMSD_STREAM_DIR_REQ,
+					 oreqc, __on_stream_dir_resp, ctxt);
+		rc = errno;
+		if (!rcmd)
+			goto rcmd_err;
+
+		rc = ldmsd_req_cmd_attr_term(rcmd);
+		if (rc)
+			goto rcmd_err;
+		__sync_fetch_and_add(&base->sent_req, 1);
+	}
+	ldmsd_prdcr_unlock(prdcr);
+	return 0;
+
+ rcmd_err:
+	ldmsd_prdcr_unlock(prdcr);
+	if (rcmd)
+		ldmsd_req_cmd_free(rcmd);
+	return rc;
+}
+
+int prdcr_stream_dir_handler(ldmsd_req_ctxt_t reqc)
+{
+	int rc;
+	char *prdcr_regex;
+	size_t cnt = 0;
+	struct ldmsd_sec_ctxt sctxt;
+	regex_t regex;
+	ldmsd_prdcr_t prdcr;
+	struct prdcr_stream_dir_regex_ctxt *ctxt;
+	int count = 0;
+
+	prdcr_regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
+	if (!prdcr_regex) {
+		rc = EINVAL;
+		cnt = snprintf(reqc->line_buf, reqc->line_len,
+				"The attribute 'regex' is required by prdcr_stop_regex.");
+		goto send_reply;
+	}
+	ldmsd_req_ctxt_sec_get(reqc, &sctxt);
+
+	ctxt = calloc(1, sizeof(*ctxt));
+	if (!ctxt)
+		return ENOMEM;
+	ctxt->stream_dict = json_entity_new(JSON_DICT_VALUE);
+	if (!ctxt->stream_dict) {
+		rc = ENOMEM;
+		goto free_ctxt;
+	}
+	pthread_mutex_init(&ctxt->lock, NULL);
+
+	rc = ldmsd_compile_regex(&regex, prdcr_regex, reqc->line_buf, reqc->line_len);
+	if (rc)
+		goto free_ctxt;
+
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_PRDCR);
+	for (prdcr = ldmsd_prdcr_first(); prdcr; prdcr = ldmsd_prdcr_next(prdcr)) {
+		rc = regexec(&regex, prdcr->obj.name, 0, NULL, 0);
+		if (rc)
+			continue;
+		(void) __prdcr_stream_dir(prdcr, reqc, ctxt); /* Ignore the failed one */
+		count++;
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_PRDCR);
+	ctxt->all = 1;
+	regfree(&regex);
+	/* Don't reply now. LDMSD will reply when receiving the response from the producers. */
+	if (0 == count) {
+		snprintf(reqc->line_buf, reqc->line_len, "No matched producers");
+		rc = ENOENT;
+		goto send_reply;
+	}
+	return 0;
+
+free_ctxt:
+	free(ctxt);
+send_reply:
+	reqc->errcode = rc;
+	ldmsd_send_req_response(reqc, reqc->line_buf);
+	free(prdcr_regex);
 	return 0;
 }
 

@@ -286,6 +286,7 @@ class LDMSD_Request(object):
     PRDCR_HINT_TREE = 0x100 + 8
     PRDCR_SUBSCRIBE = 0x100 + 9
     PRDCR_UNSUBSCRIBE = 0x100 + 10
+    PRDCR_STREAM_DIR = 0x100 + 11
 
     STRGP_ADD = 0x200
     STRGP_DEL = 0x200 + 1
@@ -382,6 +383,7 @@ class LDMSD_Request(object):
             'prdcr_hint_tree': {'id': PRDCR_HINT_TREE},
             'prdcr_subscribe': {'id': PRDCR_SUBSCRIBE},
             'prdcr_unsubscribe': {'id': PRDCR_UNSUBSCRIBE},
+            'prdcr_stream_dir' : {'id': PRDCR_STREAM_DIR},
 
             'strgp_add': {'id': STRGP_ADD},
             'strgp_del': {'id': STRGP_DEL},
