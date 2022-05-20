@@ -2208,16 +2208,6 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	if (myname[0] == '\0') {
-		struct ldmsd_listen *listen;
-		ret = gethostname(myhostname, sizeof(myhostname));
-		if (ret)
-			myhostname[0] = '\0';
-		listen = (ldmsd_listen_t)ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
-		snprintf(myname, sizeof(myname), "%s:%d",
-				myhostname, listen->port_no);
-	}
-
 	if (!foreground) {
 		/* Create pidfile for daemon that usually goes away on exit. */
 		/* user arg, then env, then default to get pidfile name */
