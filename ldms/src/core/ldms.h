@@ -636,6 +636,25 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name, ldms_log_fn_t log_fn,
 			       const char *auth_name,
 			       struct attr_value_list *auth_av_list);
 
+/**
+ * \brief Set application's context
+ *
+ * LDMS calls the given function \c fn to free the context when the reference
+ * reaches zero.
+ *
+ * \param x      LDMS transport
+ * \param ctxt   Application's context
+ * \param fn     Application's function to free the context
+ */
+typedef void (*app_ctxt_free_fn)(void *ctxt);
+void ldms_xprt_ctxt_set(ldms_t x, void *ctxt, app_ctxt_free_fn fn);
+
+/**
+ * \brief Get application's context
+ *
+ * \param x      LDMS transport
+ */
+void *ldms_xprt_ctxt_get(ldms_t x);
 
 /**
  * \brief Return the unique connection id for a transport instance
