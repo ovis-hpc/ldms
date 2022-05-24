@@ -857,6 +857,7 @@ int main(int argc, char *argv[])
 			auth_opt->count++;
 			break;
 		default:
+			printf("%s: unknown option %c\n", argv[0], optopt);
 			usage(argv);
 		}
 	}
@@ -864,11 +865,16 @@ int main(int argc, char *argv[])
 	h = gethostbyname(hostname);
 	if (!h) {
 		herror(argv[0]);
-		usage(argv);
+		printf("%s: %s does not resolve.\n", argv[0], hostname);
+		exit(1);
 	}
 
-	if (h->h_addrtype != AF_INET)
-		usage(argv);
+	if (h->h_addrtype != AF_INET) {
+		printf("%s: -h %s does not provide an AF_INET address.\n",
+			argv[0], hostname);
+		printf("%s: please give a proper hostname.\n", argv[0]);
+		exit(1);
+	}
 
 	/* Initialize LDMS */
 	if (!mem_sz) {
