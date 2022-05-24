@@ -396,6 +396,10 @@ struct ldms_xprt {
 
 	struct rbt set_coll;
 
+	/** Application's context */
+	void *app_ctxt;
+	app_ctxt_free_fn app_ctxt_free_fn;
+
 	LIST_ENTRY(ldms_xprt) xprt_link;
 };
 
