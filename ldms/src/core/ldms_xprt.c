@@ -160,6 +160,17 @@ ldms_t ldms_xprt_next(ldms_t x)
 	return x;
 }
 
+void ldms_xprt_ctxt_set(ldms_t x, void *ctxt, app_ctxt_free_fn fn)
+{
+	x->app_ctxt = ctxt;
+	x->app_ctxt_free_fn = fn;
+}
+
+void *ldms_xprt_ctxt_get(ldms_t x)
+{
+	return x->app_ctxt;
+}
+
 /* Global Transport Statistics */
 static uint64_t xprt_connect_count;
 static uint64_t xprt_connect_request_count;
@@ -625,6 +636,8 @@ void ldms_xprt_put(ldms_t x)
 
 	__ldms_xprt_resource_free(x);
 	sem_destroy(&x->sem);
+	if (x->app_ctxt && x->app_ctxt_free_fn)
+		x->app_ctxt_free_fn(x->app_ctxt);
 	free(x);
 }
 
