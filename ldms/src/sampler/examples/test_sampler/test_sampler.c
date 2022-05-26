@@ -923,19 +923,6 @@ static int __init_set(struct test_sampler_set *ts_set)
 	union ldms_value v;
 	int mid = 0;
 
-	mid = ldms_metric_by_name(ts_set->set, "component_id");
-	if (mid >= 0) {
-		v.v_u64 = ts_set->compid;
-		ldms_metric_set(ts_set->set, mid, &v);
-	}
-
-
-	mid = ldms_metric_by_name(ts_set->set, LDMSD_JOBID);
-	if (mid >= 0) {
-		v.v_u64 = ts_set->jobid;
-		ldms_metric_set(ts_set->set, mid, &v);
-	}
-
 	int i, j, card, len;
 	struct test_sampler_metric_info *minfo;
 	enum ldms_value_type type;
@@ -986,6 +973,19 @@ static int __init_set(struct test_sampler_set *ts_set)
 		} else {
 			ldms_metric_set(ts_set->set, i, &(minfo[i].init_value));
 		}
+	}
+
+	mid = ldms_metric_by_name(ts_set->set, "component_id");
+	if (mid >= 0) {
+		v.v_u64 = ts_set->compid;
+		ldms_metric_set(ts_set->set, mid, &v);
+	}
+
+
+	mid = ldms_metric_by_name(ts_set->set, LDMSD_JOBID);
+	if (mid >= 0) {
+		v.v_u64 = ts_set->jobid;
+		ldms_metric_set(ts_set->set, mid, &v);
 	}
 
 	ldms_set_producer_name_set(ts_set->set, ts_set->producer);
@@ -1658,6 +1658,7 @@ static int __sample_classic(struct test_sampler_set *ts_set)
 	int i, j, card, len;
 	enum ldms_value_type type;
 	ldms_mval_t mval;
+	const char *name;
 	uint64_t v;
 
 	minfo = ts_set->ts_schema->metric_info;
@@ -1670,6 +1671,11 @@ static int __sample_classic(struct test_sampler_set *ts_set)
 		if (LDMS_V_RECORD_TYPE == type) {
 			continue;
 		}
+		name = ldms_metric_name_get(ts_set->set, i);
+		if (0 == strcmp(name, "component_id"))
+			continue;
+		if (0 == strcmp(name, LDMSD_JOBID))
+			continue;
 		if (LDMS_V_LIST == type) {
 			struct test_sampler_list_info *list;
 			ldms_mval_t lent;
