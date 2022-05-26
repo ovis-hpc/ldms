@@ -2388,7 +2388,8 @@ int main(int argc, char *argv[])
 	_listen = (ldmsd_listen_t) ldmsd_cfgobj_first(LDMSD_CFGOBJ_LISTEN);
 	if (!_listen && !has_config_file) {
 		ldmsd_log(LDMSD_LCRITICAL,
-			"No config files nor listening ports are given ... exiting\n");
+			"A config file (-c) or listening port (-x) is required."
+			" Specify at least one of these. ... exiting\n");
 		cleanup(101, "no config files nor listening ports");
 	}
 
