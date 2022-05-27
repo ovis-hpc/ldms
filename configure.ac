@@ -288,6 +288,7 @@ OPTION_DEFAULT_ENABLE([synthetic], [ENABLE_SYNTHETIC])
 OPTION_DEFAULT_ENABLE([varset], [ENABLE_VARSET])
 OPTION_DEFAULT_ENABLE([lnet_stats], [ENABLE_LNET_STATS])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
+OPTION_DEFAULT_ENABLE([coretemp], [ENABLE_CORETEMP])
 OPTION_DEFAULT_DISABLE([filesingle], [ENABLE_FILESINGLE])
 OPTION_DEFAULT_DISABLE([msr_interlagos], [ENABLE_MSR_INTERLAGOS])
 OPTION_DEFAULT_ENABLE([array_example], [ENABLE_ARRAY_EXAMPLE])
@@ -886,6 +887,7 @@ ldms/src/sampler/procstat/Makefile
 ldms/src/sampler/procstat2/Makefile
 ldms/src/sampler/loadavg/Makefile
 ldms/src/sampler/vmstat/Makefile
+ldms/src/sampler/coretemp/Makefile
 ldms/src/sampler/examples/Makefile
 ldms/src/sampler/examples/array_example/Makefile
 ldms/src/sampler/examples/synthetic/Makefile

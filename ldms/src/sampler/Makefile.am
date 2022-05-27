@@ -92,6 +92,9 @@ if ENABLE_LOADAVG
 SUBDIRS += loadavg
 endif
 
+if ENABLE_CORETEMP
+SUBDIRS += coretemp
+endif
 
 if ENABLE_CLOCK
 libclock_la_SOURCES = clock.c
