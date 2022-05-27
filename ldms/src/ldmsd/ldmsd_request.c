@@ -6370,6 +6370,12 @@ static char * __set_stats_as_json(size_t *json_sz)
 	char *buff, *s;
 	size_t sz = __APPEND_SZ;
 	struct mm_stat stats;
+	int rc;
+	double freq;
+	double set_load = 0;
+	uint32_t data_sz;
+	ldmsd_name_match_t match;
+	ldmsd_updtr_t updtr = NULL;
 
 	(void)clock_gettime(CLOCK_REALTIME, &start);
 	mm_stats(&stats);
@@ -6379,12 +6385,57 @@ static char * __set_stats_as_json(size_t *json_sz)
 		goto __APPEND_ERR;
 	s = buff;
 
+	ldmsd_cfg_lock(LDMSD_CFGOBJ_UPDTR);
+	for (updtr = ldmsd_updtr_first(); updtr;
+			updtr = ldmsd_updtr_next(updtr)) {
+		if (!LIST_EMPTY(&updtr->match_list)) {
+			LIST_FOREACH(match, &updtr->match_list, entry) {
+				ldmsd_prdcr_ref_t ref;
+				for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
+						ref = ldmsd_updtr_prdcr_next(ref)) {
+					ldmsd_prdcr_lock(ref->prdcr);
+					ldmsd_prdcr_set_t prd_set;
+					for (prd_set = ldmsd_prdcr_set_first(ref->prdcr); prd_set;
+							prd_set = ldmsd_prdcr_set_next(prd_set)) {
+						rc = regexec(&match->regex, prd_set->inst_name, 0, NULL, 0);
+						if (rc)
+							continue;
+						freq = 1000000 / (double)prd_set->updt_interval;
+						if (prd_set->set) {
+							data_sz = ldms_set_data_sz_get(prd_set->set);
+							set_load += data_sz * freq;
+						}
+					}
+					ldmsd_prdcr_unlock(ref->prdcr);
+				}
+			}
+		} else {
+			ldmsd_prdcr_ref_t ref;
+			for (ref = ldmsd_updtr_prdcr_first(updtr); ref;
+					ref = ldmsd_updtr_prdcr_next(ref)) {
+				ldmsd_prdcr_lock(ref->prdcr);
+				ldmsd_prdcr_set_t prd_set;
+				for (prd_set = ldmsd_prdcr_set_first(ref->prdcr); prd_set;
+						prd_set = ldmsd_prdcr_set_next(prd_set)) {
+					freq = 1000000 / (double)prd_set->updt_interval;
+					if (prd_set->set) {
+						data_sz = ldms_set_data_sz_get(prd_set->set);
+						set_load += data_sz * freq;
+					}
+				}
+				ldmsd_prdcr_unlock(ref->prdcr);
+			}
+		}
+	}
+	ldmsd_cfg_unlock(LDMSD_CFGOBJ_UPDTR);
+
 	__APPEND("{");
 	__APPEND(" \"active_count\": %d,\n", ldms_set_count());
 	__APPEND(" \"deleting_count\": %d,\n", ldms_set_deleting_count());
 	__APPEND(" \"mem_total_kb\": %g,\n", (double)stats.size / 1024.0);
 	__APPEND(" \"mem_free_kb\": %g,\n", (double)(stats.bytes * stats.grain) / 1024.0);
 	__APPEND(" \"mem_used_kb\": %g,\n", (double)(stats.size - (stats.bytes * stats.grain)) / 1024.0);
+	__APPEND(" \"set_load\": %g,\n", set_load);
 	(void)clock_gettime(CLOCK_REALTIME, &end);
 	uint64_t compute_time = ldms_timespec_diff_us(&start, &end);
 	__APPEND(" \"compute_time\": %ld\n", compute_time);
