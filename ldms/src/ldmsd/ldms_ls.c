@@ -193,11 +193,283 @@ void server_timeout(void)
 	exit(1);
 }
 
+#define BUF_LEN 128
+size_t prim_value_format(enum ldms_value_type type, ldms_mval_t val, size_t n, int width, int print)
+{
+	int i;
+	char buf[BUF_LEN];
+	size_t cnt;
+
+	switch (type) {
+	case LDMS_V_CHAR_ARRAY:
+		cnt = snprintf(buf, BUF_LEN, "\"%s\"", val->a_char);
+		break;
+	case LDMS_V_CHAR:
+		cnt = snprintf(buf, BUF_LEN, "'%c'", val->v_char);
+		break;
+	case LDMS_V_U8:
+		cnt = snprintf(buf, BUF_LEN, "%hhu", val->v_u8);
+		break;
+	case LDMS_V_U8_ARRAY:
+		cnt = 0;
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
+			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "0x%02hhx", val->a_u8[i]);
+		}
+		break;
+	case LDMS_V_S8:
+		cnt = snprintf(buf, BUF_LEN, "%hhd", val->v_s8);
+		break;
+	case LDMS_V_S8_ARRAY:
+		cnt = 0;
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
+			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%hhd", val->a_s8[i]);
+		}
+		break;
+	case LDMS_V_U16:
+		cnt = snprintf(buf, BUF_LEN, "%hu", val->v_u16);
+		break;
+	case LDMS_V_U16_ARRAY:
+		cnt = 0;
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
+			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%hu", val->a_u16[i]);
+		}
+		break;
+	case LDMS_V_S16:
+		cnt = snprintf(buf, BUF_LEN, "%hd", val->v_s16);
+		break;
+	case LDMS_V_S16_ARRAY:
+		cnt = 0;
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
+			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%hd", val->a_s16[i]);
+		}
+		break;
+	case LDMS_V_U32:
+		cnt = snprintf(buf, BUF_LEN, "%u", val->v_u32);
+		break;
+	case LDMS_V_U32_ARRAY:
+		cnt = 0;
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
+			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%u", val->a_u32[i]);
+		}
+		break;
+	case LDMS_V_S32:
+		cnt = snprintf(buf, BUF_LEN, "%d", val->v_s32);
+		break;
+	case LDMS_V_S32_ARRAY:
+		cnt = 0;
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], BUF_LEN-cnt, ",");
+			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%d", val->a_s32[i]);
+		}
+		break;
+	case LDMS_V_U64:
+		cnt = snprintf(buf, BUF_LEN, "%"PRIu64, val->v_u64);
+		break;
+	case LDMS_V_U64_ARRAY:
+		cnt = 0;
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
+			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%"PRIu64, val->a_u64[i]);
+		}
+		break;
+	case LDMS_V_S64:
+		cnt = snprintf(buf, BUF_LEN, "%"PRId64, val->v_s64);
+		break;
+	case LDMS_V_S64_ARRAY:
+		cnt = 0;
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
+			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%"PRId64, val->a_s64[i]);
+		}
+		break;
+	case LDMS_V_F32:
+		cnt = snprintf(buf, BUF_LEN, "%f", val->v_f);
+		break;
+	case LDMS_V_F32_ARRAY:
+		cnt = 0;
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
+			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%f", val->a_f[i]);
+		}
+		break;
+	case LDMS_V_D64:
+		cnt = snprintf(buf, BUF_LEN, "%f", val->v_d);
+		break;
+	case LDMS_V_D64_ARRAY:
+		cnt = 0;
+		for (i = 0; i < n; i++) {
+			if (i)
+				cnt += snprintf(&buf[cnt], BUF_LEN - cnt, ",");
+			cnt += snprintf(&buf[cnt], BUF_LEN - cnt, "%f", val->a_d[i]);
+		}
+		break;
+	default:
+		return 0;
+	}
+	if (print)
+		printf("%*s", width, buf);
+	return cnt;
+}
+
+void rec_col_width(ldms_mval_t rec, size_t card, int *col)
+{
+	int i;
+	char *unit;
+	size_t cnt;
+	enum ldms_value_type etype;
+	size_t ecount;
+	ldms_mval_t e;
+
+	if (0 == col[0]) {
+		for (i = 0; i < card; i++) {
+			col[i] = strlen(ldms_record_metric_name_get(rec, i));
+			unit = (char*)ldms_record_metric_unit_get(rec, i);
+			if (unit && strlen(unit))
+				col[i] += strlen(unit) + 3;
+		}
+	}
+	for (i = 0; i < card; i++) {
+		e = ldms_record_metric_get(rec, i);
+		etype = ldms_record_metric_type_get(rec, i, &ecount);
+		cnt = prim_value_format(etype, e, ecount, 0, 0);
+		if (col[i] < cnt)
+			col[i] = cnt;
+	}
+}
+
+void record_header_format(ldms_mval_t rec, size_t card, int *col)
+{
+	int i;
+	char *unit;
+	char buf[128];
+	size_t len = 128;
+
+	for (i = 0; i < card; i++) {
+		if (i)
+			printf(" ");
+		unit = (char*)ldms_record_metric_unit_get(rec, i);
+		if (unit && strlen(unit)) {
+			snprintf(buf, len, "%s (%s)",
+				ldms_record_metric_name_get(rec, i), unit);
+		} else {
+			snprintf(buf, len, "%s",
+				ldms_record_metric_name_get(rec, i));
+		}
+		printf("%*s", col[i], buf);
+	}
+}
+
+void record_format(ldms_mval_t rec, size_t card, int *col)
+{
+	int i;
+	ldms_mval_t e;
+	enum ldms_value_type etyp;
+	size_t count;
+
+	for (i = 0; i < card; i++) {
+		if (i)
+			printf(" ");
+		e = ldms_record_metric_get(rec, i);
+		etyp = ldms_record_metric_type_get(rec, i, &count);
+		prim_value_format(etyp, e, count, col[i], 1);
+	}
+}
+
+void list_record_format(ldms_set_t s, ldms_mval_t lh)
+{
+	ldms_mval_t lval;
+	size_t count;
+	enum ldms_value_type prev_ltype, ltype;
+	int rec_type_id, prev_rec_type_id;
+	int *cw;
+	int card;
+	prev_rec_type_id = -1;
+	int i;
+
+	card = ldms_record_card(ldms_list_first(s, lh, &ltype, &count));
+	cw = calloc(card, sizeof(int));
+
+	/* Determine the column widths */
+	for (lval = ldms_list_first(s, lh, &ltype, &count), i = 0; lval;
+			lval = ldms_list_next(s, lval, &ltype, &count), i++) {
+		if (i && prev_ltype != ltype) {
+			printf("Error: A list contains entries of different types.\n");
+			exit(ENOTSUP);
+		}
+		if (i && prev_rec_type_id != rec_type_id) {
+			printf("Error: A list contains entries of different record types.\n");
+			exit(ENOTSUP);
+		}
+		rec_type_id = ldms_record_type_get(lval);
+		rec_col_width(lval, card, cw);
+		prev_ltype = ltype;
+		prev_rec_type_id = rec_type_id;
+	}
+
+	/* Print header */
+	lval = ldms_list_first(s, lh, &ltype, &count);
+	printf("  ");
+	record_header_format(lval, card, cw);
+
+	printf("\n");
+
+	/* Print record values */
+	for (lval = ldms_list_first(s, lh, &ltype, &count); lval;
+			lval = ldms_list_next(s, lval, &ltype, &count)) {
+		printf("  ");
+		record_format(lval, card, cw);
+		printf("\n");
+	}
+}
+
+void record_array_format(ldms_set_t s, ldms_mval_t rh)
+{
+	int i;
+	ldms_mval_t rec, frec;
+	size_t card;
+	int *width;
+	size_t len = ldms_record_array_len(rh);
+
+	frec = ldms_record_array_get_inst(rh, 0);
+	card = ldms_record_card(frec);
+	width = calloc(card, sizeof(int));
+
+	for (i = 0; i < len; i++) {
+		rec = ldms_record_array_get_inst(rh, i);
+		rec_col_width(rec, card, width);
+	}
+
+	printf("  ");
+	record_header_format(frec, card, width);
+	printf("\n");
+
+	for (i = 0; i < len; i++) {
+		rec = ldms_record_array_get_inst(rh, i);
+		printf("  ");
+		record_format(rec, card, width);
+		printf("\n");
+	}
+}
+
 void value_format(ldms_set_t s, enum ldms_value_type type, ldms_mval_t val, size_t n)
 {
 	ldms_mval_t lval;
 	enum ldms_value_type ltype, prev_type;
-	int i, len;
+	int i;
 	size_t count;
 
 	switch (type) {
@@ -311,58 +583,42 @@ void value_format(ldms_set_t s, enum ldms_value_type type, ldms_mval_t val, size
 		printf("LDMS_V_RECORD_TYPE");
 		break;
 	case LDMS_V_RECORD_INST:
-		printf("\t{\n");
-		len = ldms_record_card(val);
-		for (i = 0; i < len; i++) {
-			const char *name = ldms_record_metric_name_get(val, i);
-			ltype = ldms_record_metric_type_get(val, i, &count);
-			lval = ldms_record_metric_get(val, i);
-			printf("\t\t\"%s\": ", name);
-			if (ldms_type_is_array(ltype) && ltype != LDMS_V_CHAR_ARRAY)
-				printf("[ ");
-			value_format(s, ltype, lval, count);
-			if (ldms_type_is_array(ltype) && ltype != LDMS_V_CHAR_ARRAY)
-				printf(" ]");
-			if (i < len-1)
-				printf(",\n");
-			else
-				printf("\n");
-		}
-		printf("\t}");
+		/*
+		 * Record instances are handled in the record array and
+		 * list cases.
+		 */
+		assert(0);
 		break;
 	case LDMS_V_RECORD_ARRAY:
-		printf("[\n");
-		len = ldms_record_array_len(val);
-		for (i = 0; i < len; i++) {
-			lval = ldms_record_array_get_inst(val, i);
-			value_format(s, LDMS_V_RECORD_INST, lval, 1);
-			if (i < len-1)
-				printf(",\n");
-			else
-				printf("\n");
-		}
-		printf("    ]\n");
+		printf("\n");
+		record_array_format(s, val);
 		break;
 	case LDMS_V_LIST:
-		printf("[");
-		i = 0;
 		prev_type = 0;
-		for (lval = ldms_list_first(s, val, &ltype, &count), prev_type=ltype;
-		     lval; lval = ldms_list_next(s, lval, &ltype, &count)) {
-			if (i++)
-				printf(",");
-			if (prev_type == LDMS_V_RECORD_INST)
-				printf("\n");
-			if (ldms_type_is_array(ltype) && ltype != LDMS_V_CHAR_ARRAY)
-				printf("[");
-			value_format(s, ltype, lval, count);
-			if (ldms_type_is_array(ltype) && ltype != LDMS_V_CHAR_ARRAY)
-				printf("]");
-			prev_type = ltype;
+		lval = ldms_list_first(s, val, &ltype, &count);
+		if (LDMS_V_RECORD_INST == ltype) {
+			printf("\n");
+			list_record_format(s, val);
+		} else {
+			printf("[");
+			for (lval = ldms_list_first(s, val, &ltype, &count), prev_type=ltype, i = 0;
+			     lval; lval = ldms_list_next(s, lval, &ltype, &count), i++) {
+				if (i++) {
+					if (prev_type != ltype) {
+						printf("Error: A list contains entries of different types.\n");
+						exit(ENOTSUP);
+					}
+					printf(",");
+				}
+				if (ldms_type_is_array(ltype) && ltype != LDMS_V_CHAR_ARRAY)
+					printf("[");
+				value_format(s, ltype, lval, count);
+				if (ldms_type_is_array(ltype) && ltype != LDMS_V_CHAR_ARRAY)
+					printf("]");
+			}
+			printf("]");
+			printf("\n");
 		}
-		if (prev_type == LDMS_V_RECORD_INST)
-			printf("\n    ");
-		printf("]");
 		break;
 	default:
 		printf("Unknown metric type");
