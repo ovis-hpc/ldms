@@ -38,6 +38,7 @@ clock.job
 meminfo.job
 procstat.job
 lustre2_client
+lustre_mdc
 dstat.job
 many
 conf_csv

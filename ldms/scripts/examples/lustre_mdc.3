@@ -1,0 +1,20 @@
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0
+
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=2000000
+prdcr_start name=localhost1
+
+prdcr_add name=localhost2 host=${HOST} type=active xprt=${XPRT} port=${port2} interval=2000000
+prdcr_start name=localhost2
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+strgp_add name=store_${testname}_ops plugin=store_csv schema=${testname}_ops container=node
+strgp_prdcr_add name=store_${testname}_ops regex=.*
+strgp_start name=store_${testname}_ops
+
+strgp_add name=store_${testname}_all plugin=store_csv schema=${testname}_ops_timing container=node
+strgp_prdcr_add name=store_${testname}_all regex=.*
+strgp_start name=store_${testname}_all

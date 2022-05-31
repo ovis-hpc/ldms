@@ -1,0 +1,128 @@
+.TH man 7 "1 May 2019" "LDMS Plugin" "Plugin for LDMS"
+
+.SH NAME
+Plugin_lustre_mdc - man page for the LDMS lustre_mdc plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=lustre_mdc
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
+or a configuration file.
+
+The lustre_mdc plugin provides schema lustre_mdc for daemons with read access to
+the lustre files in /proc/fs/lustre/mdc/*/md_stats and  /sys/kernel/debug/lustre/mdc/*/stats.
+The metric sets will have instance names combining the producer name and the mdc name.
+
+This plugin will work with Lustre versions 2.12 and others which share these file locations and formats.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> [producer=<name>] [component_id=<u64>]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be lustre_mdc.
+.TP
+producer=<alternate host name>
+.br
+The default used for producer (if not provided) is the result of gethostname().
+The set instance names will be <producer>/<mdc_name>
+.TP
+component_id=<uint64_t>
+.br
+Optional (defaults to 0) number of the host where the sampler is running. All sets on a host will have the same value.
+.TP
+job_set=<job information set name>
+.br
+Optional (defaults to "job_info"). Typically should be set to <hostname>/jobid or <hostname>/job_info depending on choice of job sampling plugin.
+.TP
+mdc_timing=0
+.br
+Optionally exclude timing data from /sys/kernel/debug/lustre/mdc/*/stats. If given,
+the sampler may be run by unprivileged users. If /sys/kernel/debug/ cannot be opened
+by the user, it is a configuration error unless mdc_timing=0 is given.
+.RE
+
+.SH SCHEMA
+The default schema name is lustre_mdc_ops_timing with all the data described in DATA REPORTED below included. If mdc_timing=0 is given, only the operation counts from md_stats are reported and the default schema name changes to lustre_mdc_ops.
+
+.SH DATA REPORTED
+
+Operation counts from /proc/fs/lustre/mdc/*/md_stats.
+See also kernel source lustre/lustre/obdclass/lprocfs_status.c and
+lustre/lustre/include/obd_class.h: mps_stats[]:
+        "close",
+        "create",
+        "enqueue",
+        "getattr",
+        "intent_lock",
+        "link",
+        "rename",
+        "setattr",
+        "fsync",
+        "read_page",
+        "unlink",
+        "setxattr",
+        "getxattr",
+        "intent_getattr_async",
+        "revalidate_lock",
+
+Client operation timing statistics (all but .count are in microseconds) for the following list of fields in /sys/kernel/debug/lustre/mdc/*/stats:
+     "req_waittime",
+     "mds_getattr",
+     "mds_getattr_lock",
+     "mds_close",
+     "mds_readpage",
+     "mds_connect",
+     "mds_get_root",
+     "mds_statfs",
+     "ldlm_cancel",
+     "obd_ping",
+     "seq_query",
+     "fld_query"
+
+and statistics:
+     "__count" the number of events observed,
+     "__min" the minimum event duration observed,
+     "__max" the maximum duration observed,
+     "__sum" the sum of all durations observed,
+     "__sumsqs" the sum of squares of all durations observed
+
+.SH NOTES
+The counters and file locations supported by this plugin are those present in Lustre 2.12.
+The fields labeled [reqs] are omitted. Data names not listed here are simply ignored.
+
+The minimum sample interval recommended for this sampler is 5-10 seconds, as the data volume may
+be substantial and the resolving shorter bursts of metadata activity is generally unnecessary.
+
+The average and sample standard deviation can be computed from sum and sumsqs, but
+once these counters roll over on a high up-time client, they may be less useful.
+
+The lustre utility equivalent of this plugin is to inspect the output of
+  lctl get_param -R mdc.*.stats
+  lctl get_param -R mdc.*.md_stats
+
+specifying instance=xxx as an option will be ignored.
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=lustre_mdc
+config name=lustre_mdc
+start name=lustre_mdc interval=1000000
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), lctl(8).

@@ -1,0 +1,76 @@
+Read data is found in (for lustre 2.12)
+
+FILE (operation counts)
+
+/proc/fs/lustre/mdc/*/md_stats
+snapshot_time             1653661756.400269074 secs.nsecs
+close                     3485 samples [reqs]
+create                    4694 samples [reqs]
+getattr                   34 samples [reqs]
+intent_lock               990613 samples [reqs]
+rename                    13906 samples [reqs]
+setattr                   12082 samples [reqs]
+read_page                 6102 samples [reqs]
+unlink                    3 samples [reqs]
+intent_getattr_async      23075 samples [reqs]
+revalidate_lock           79295 samples [reqs]
+
+and these values are defined in kernel code:
+
+lustre/lustre/obdclass/lprocfs_status.c
+lustre/lustre/include/obd_class.h
+mps_stats[], enum mps_stat_idx
+most recently (2.12 lustre) seen to be:
+	[LPROC_MD_CLOSE]		= "close",
+	[LPROC_MD_CREATE]		= "create",
+	[LPROC_MD_ENQUEUE]		= "enqueue",
+	[LPROC_MD_GETATTR]		= "getattr",
+	[LPROC_MD_INTENT_LOCK]		= "intent_lock",
+	[LPROC_MD_LINK]			= "link",
+	[LPROC_MD_RENAME]		= "rename",
+	[LPROC_MD_SETATTR]		= "setattr",
+	[LPROC_MD_FSYNC]		= "fsync",
+	[LPROC_MD_READ_PAGE]		= "read_page",
+	[LPROC_MD_UNLINK]		= "unlink",
+	[LPROC_MD_SETXATTR]		= "setxattr",
+	[LPROC_MD_GETXATTR]		= "getxattr",
+	[LPROC_MD_INTENT_GETATTR_ASYNC]	= "intent_getattr_async",
+	[LPROC_MD_REVALIDATE_LOCK]	= "revalidate_lock",
+
+Where values of 0 may be omitted from the dump file in /proc.
+
+and in:
+FILE (operation timing)
+/sys/kernel/debug/lustre/mdc/*/stats
+
+snapshot_time             1653661841.175727462 secs.nsecs
+req_waittime              568454 samples [usec] 78 890906 342452119 1647791995921
+req_active                568454 samples [reqs] 1 13 670364 1107000
+ldlm_glimpse_enqueue      15 samples [reqs] 1 1 15 15
+ldlm_ibits_enqueue        124765 samples [reqs] 1 1 124765 124765
+mds_getattr               34 samples [usec] 115 577 7380 1978142
+mds_getattr_lock          3 samples [usec] 759 836 2382 1894346
+mds_close                 3485 samples [usec] 118 2645 1776310 992011638
+mds_readpage              97 samples [usec] 1224 29713 345324 4116029462
+mds_connect               1 samples [usec] 916 916 916 839056
+mds_get_root              1 samples [usec] 365 365 365 133225
+mds_statfs                370308 samples [usec] 179 3213 242293389 171142540723
+ldlm_cancel               14851 samples [usec] 88 5228 5434823 3284658567
+obd_ping                  27318 samples [usec] 172 10251 18467610 14396646894
+seq_query                 1 samples [usec] 483 483 483 233289
+fld_query                 1 samples [usec] 293 293 293 85849
+
+Where values of 0 may be omitted.
+
+format: {name of statistic} {count of events} samples [{units}] {minimum value} {maximum value} {sum of values} {sum of value squared}
+which may be reduced by any number of trailing field omissions.
+
+Naming of files referencing the same device across proc, sys is like:
+
+/proc
+xxxxxxx-MDT0000-mdc-ffff99967cc54000  yyyyyyyy-MDT0000-mdc-ffff99a62a682800
+xxxxxxx-MDT0001-mdc-ffff99967cc54000  yyyyyyyy-MDT0001-mdc-ffff99a62a682800
+
+/sys
+xxxxxxx-MDT0000-mdc-ffff99967cc54000  yyyyyyyy-MDT0000-mdc-ffff99a62a682800
+xxxxxxx-MDT0001-mdc-ffff99967cc54000  yyyyyyyy-MDT0001-mdc-ffff99a62a682800
