@@ -275,6 +275,9 @@ OPTION_WITH_OR_BUILD([gpcdlocal],[../gpcd-support],[gpcd],[gpcdlocal.sh], ,[gpcd
 OPTION_DEFAULT_DISABLE([sos], [ENABLE_SOS])
 OPTION_WITH_OR_BUILD([sos],[../sos],[sos/src sos/include ods/src ods/include])
 
+OPTION_WITH_CHECK([kafka], [KAFKA], [librdkafka/rdkafka.h],
+		  [rdkafka], [rd_kafka_new] )
+
 dnl Options for sampler
 OPTION_DEFAULT_ENABLE([sampler], [ENABLE_SAMPLER])
 OPTION_DEFAULT_DISABLE([kgnilnd], [ENABLE_KGNILND])
@@ -840,6 +843,7 @@ ldms/src/store/kokkos_appmon/Makefile
 ldms/src/store/papi/Makefile
 ldms/src/store/slurm/Makefile
 ldms/src/store/influx/Makefile
+ldms/src/store/kafka/Makefile
 ldms/src/store/store_flatfile/Makefile
 ldms/src/store/store_app/Makefile
 ldms/src/contrib/store/Makefile
