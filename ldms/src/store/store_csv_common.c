@@ -946,6 +946,7 @@ int csv_format_header_common(FILE *file, const char *fpath, const struct csv_sto
 		col->type = ldms_metric_type_get(set, metric_array[i]);
 		col->metric_id = metric_array[i];
 		col->array_len = ldms_metric_array_get_len(set, metric_array[i]);
+		col->mval = ldms_metric_get(set, metric_array[i]);
 	}
 
 	ec = csv_row_format_header(file, fpath, sh, doudata, cps, set, row, time_format);
