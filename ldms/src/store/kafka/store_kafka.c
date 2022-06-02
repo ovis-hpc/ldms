@@ -92,7 +92,8 @@ static const char *_help_str =
 "    The `container` of the `strgp` that uses `store_kafka` is a CSV list of\n"
 "    of brokers (host or host:port). For example:\n"
 "\n"
-"    strgp_add name=kp plugin=store_kafka container=localhost,br1.kf:9898 ...\n"
+"    strgp_add name=kp plugin=store_kafka container=localhost,br1.kf:9898 \\\n"
+"              decomposition=decomp.json\n"
 "";
 
 static const char *usage(struct ldmsd_plugin *self)
