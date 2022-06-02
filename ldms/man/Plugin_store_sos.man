@@ -45,6 +45,7 @@ The strgp_add sets the policies being added. This line identifies the container 
 .TP
 .BR strgp_add
 plugin=store_sos name=<policy_name> schema=<schema> container=<container>
+[decomposition=<DECOMP_CONFIG_FILE_JSON>]
 .br
 ldmsd_controller strgp_add line
 .br
@@ -66,6 +67,11 @@ schema=<schema>
 .br
 The container and schema define the store as described above (see path).
 You can have multiples of the same path and container, but with different schema (which means they will have different metrics) and they will be stored in the same store.
+.TP
+decomposition=<DECOMP_CONFIG_FILE_JSON>
+.br
+Optionally use set-to-row decomposition with the specified configuration file in
+JSON format. See more about decomposition in ldmsd_decomposition(7).
 .RE
 
 
@@ -339,4 +345,4 @@ timestamp                        AR_NIC_NETMON_ORB_EVENT_CNTR_REQ_PKTS
 
 
 .SH SEE ALSO
-ldms(7), Plugin_store_csv(7)
+ldms(7), Plugin_store_csv(7), ldmsd_decomposition(7)

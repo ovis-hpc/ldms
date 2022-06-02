@@ -17,6 +17,7 @@ config name=store_csv [opt_file=filename] [ <attr> = <value> ]
 config name=store_csv [container=c schema=s] [ <attr> = <value> ]
 .br
 strgp_add name=<policyname> plugin=store_csv container=<c> schema=<s>
+          [decomposition=<DECOMP_CONFIG_FILE_JSON>]
 .br
 
 
@@ -68,8 +69,8 @@ typeheader=<typeformat>
 .br
 Controls the presence and format of a .KIND file. The kind CSV file gives type information on each metric (or metric array).
 For example, if the metric file is named meminfo, the kind file is named meminfo.KIND and if the metric file is named
-meminfo.15111111, the kind file is named meminfo.KIND.15111111. The typeformat parameter is 0 (no kind file), 
-1 (ldms kinds with arrays flattend out into scalars), 2 (LDMS kinds with arrays). 
+meminfo.15111111, the kind file is named meminfo.KIND.15111111. The typeformat parameter is 0 (no kind file),
+1 (ldms kinds with arrays flattend out into scalars), 2 (LDMS kinds with arrays).
 The typeformat supporting arrays uses the notation <typename>[]<len> for extraction of lengths by scripting tools. The default typeformat is 0.
 .TP
 time_format=<0/1>
@@ -179,7 +180,7 @@ Specify the right-quote character if expand_array is true. If expand_array is fa
 .RE
 
 .SH OPTIONS FILE
-The plug-in options file or repeated scripted config calls replace the LDMS v3 'action' keyword for defining instance specific settings. 
+The plug-in options file or repeated scripted config calls replace the LDMS v3 'action' keyword for defining instance specific settings.
 
 
 The options file recognizes lines starting with # as comments. Continuation lines are allowed (end lines with a \\ to continue them).
@@ -193,9 +194,11 @@ If the option is found in none of these places, the compiled default is applied.
 .SH STRGP_ADD ATTRIBUTE SYNTAX
 The strgp_add sets the policies being added. This line determines the output files via
 identification of the container and schema.
+
 .TP
 .BR strgp_add
 plugin=store_csv name=<policy_name> schema=<schema> container=<container>
+[decomposition=<DECOMP_CONFIG_FILE_JSON>]
 .br
 ldmsd_controller strgp_add line
 .br
@@ -217,6 +220,11 @@ schema=<schema>
 .br
 The container and the schema determine where the output files will be written (see path above).
 You can have multiples of the same sampler, but with different schema (which means they will have different metrics) and they will be stored in different containers (and therefore files).
+.TP
+decomposition=<DECOMP_CONFIG_FILE_JSON>
+.br
+Optionally use set-to-row decomposition with the specified configuration file in
+JSON format. See more about decomposition in ldmsd_decomposition(7).
 .RE
 
 .SH STORE COLUMN ORDERING
@@ -251,7 +259,7 @@ Note that the sampler's number and order of metric additions may vary with the k
 The following % escape sequence replacements are performed on the rename_template value for file renamings:
 .PP
 .TP
-%P 
+%P
 .br
 plugin name
 .TP
@@ -263,7 +271,7 @@ container name
 .br
 schema name
 .TP
-%T 
+%T
 .br
 file type (DATA, HEADER, KIND, UNITS, CNAMES, PYNAMES)
 .TP
@@ -282,7 +290,7 @@ Characters in the environment variable are restricted to: 'A-Za-z0-9%@()+-_./:='
 .TP
 %s
 .br
-timestamp suffix, if it exists. 
+timestamp suffix, if it exists.
 .PP
 
 .SH NOTES
@@ -293,7 +301,7 @@ Please note the argument changes from v2 and v3. The notification of file events
 The 'sequence' option has been removed. The 'action' option has been replaced; see "OPTIONS FILE" above.
 .PP
 .IP \[bu]
-In the opt_file passed by name to store_csv, including the line prefix "config name=store_csv" is redundant and is disallowed. The opt_file syntax is plugin specific and is not an ldmsd configuration script. 
+In the opt_file passed by name to store_csv, including the line prefix "config name=store_csv" is redundant and is disallowed. The opt_file syntax is plugin specific and is not an ldmsd configuration script.
 Scripts written in the store_csv opt_file syntax cannot be used directly with the ldmsd include statement.
 
 .SH BUGS
@@ -336,7 +344,7 @@ Updating from v3:
 
 If in version 3 "config name=store_csv action=custom container=cstore schema=meminfo" was used for a specific csv instance, then put the additional options for that store instance in the store_csv options file on a line:
 
-container=cstore schema=meminfo <op=val >* 
+container=cstore schema=meminfo <op=val >*
 
 or use them interactively or in a script as:
 
@@ -345,4 +353,4 @@ config name=store_csv container=cstore schema=meminfo <op=val >*
 after the store_csv defaults have been set.
 
 .SH SEE ALSO
-ldmsd(8), ldms_quickstart(7), ldmsd_controller(8)
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldmsd_decomposition(7)

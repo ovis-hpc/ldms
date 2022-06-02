@@ -1,0 +1,191 @@
+.\" Manpage for Plugin_store_kafka
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "2 Jun 2022" "v4" "LDMSD Decomposition man page"
+
+.SH NAME
+ldmsd_decomposition - manual for LDMSD decomposition
+
+.SH DESCRIPTION
+A decomposition is a routine that converts LDMS set into one or more rows before
+feeding them to the store. Currently, only \fBstore_sos\fR, \fBstore_csv\fR, and
+\fBstore_kafka\fR support decomposition. To use decomposition, simply specify
+\fBdecomposition=\fIDECOMP_CONFI_JSON_FILE\fR option in the \fBstrgp_add\fR
+command. There are two types of decompositions: \fBstatic\fR and \fBas_is\fR.
+\fBstatic\fR decomposition statically and strictly decompose LDMS set according
+to the definitions in the \fIDECOMP_CONFI_JSON_FILE\fR. \fBas_is\fR
+decomposition on the other hand takes all metrics and converts them as-is.
+Please see section \fBSTATIC DECOMPOSITION\fR and \fBAS_IS DECOMPOSITION\fR for
+more information.
+
+More decomposition types may be added in the future. The decomposition mechanism
+is pluggable. Please see `as_is` and `static` decomposition implementation in
+\:`ldms/src/decomp/` directory in the source tree for more information.
+
+
+.SH STATIC DECOMPOSITION
+The \fBstatic\fR decomposition statically and strictly converts LDMS set to one
+or more rows according to the \fIDECOMP_CONFI_JSON_FILE\fR. The format of the
+JSON configuration file is as follows:
+
+.EX
+{
+  "type": "static",
+  "rows": [
+    {
+      "schema": "OUTPUT_ROW_SCHEMA",
+      "cols": [
+        { "src":"LDMS_METRIC_NAME", "dst":"OUTPUT_COL_NAME","type":"TYPE",
+	  "array_len": ARRAY_LEN_IF_TYPE_IS_ARRAY,
+	  "rec_member": "REC_MEMBER_NAME_IF_SRC_IS_RECORD",
+	  "fill": "FILL_VALUE"
+	},
+	...
+      ],
+      "indices": [
+	{ "name":"INDEX_NAME", "cols":[ OUTPUT_COLUMNS, ... ] },
+	...
+      ]
+    },
+    ...
+  ]
+}
+.EE
+
+The "rows" is an array of row definition object, each of which defines an output
+row. The "schema" attribute specifies the output schema name, which is the
+schema name used by the storage plugin to identify the row schema. Each row
+definition contains "cols" which is a list of column definitions, and
+"indices" which is a list of index definitions. Each column
+definition is an object with at least "src" describing the metric name, "dst"
+describing the output column name, and "type" describing the value type of the
+column. If the type is an array, "array_len" is required. If the "src" is a list
+of record, "rec_member" is required to specify the record member for the output
+column. The "fill" value is used to fill in the output column in the case that
+the "src" metric is not present in the LDMS set (e.g. in the case of meminfo).
+
+Each index definition object contains "name" (the name of the index) and "cols"
+which is the names of the OUTPUT columns comprising the index.
+
+The \fB"timestamp"\fR, \fB"producer"\fR, and \fB"instance"\fR are special "src"
+that refer to update timestamp, producer name and instance name of the set
+respectively.
+
+The following is an example of a static decomposition definition converting
+meminfo set into two schemas, "meminfo_filter" (select a few metrics)
+and "meminfo_directmap" (select a few direct map metrics with "fill" since
+DirectMap varies by CPU architecture).
+
+.EX
+{
+  "type": "static",
+  "rows": [
+    {
+      "schema": "meminfo_filter",
+      "cols": [
+        { "src":"timestamp",    "dst":"ts",      "type":"ts"                         },
+        { "src":"producer",     "dst":"prdcr",   "type":"char_array", "array_len":64 },
+        { "src":"instance",     "dst":"inst",    "type":"char_array", "array_len":64 },
+        { "src":"component_id", "dst":"comp_id", "type":"u64"                        },
+        { "src":"MemFree",      "dst":"free",    "type":"u64"                        },
+        { "src":"MemActive",    "dst":"active",  "type":"u64"                        }
+      ],
+      "indices": [
+	{ "name":"time_comp", "cols":["ts", "comp_id"] },
+	{ "name":"time", "cols":["ts"] }
+      ]
+    },
+    {
+      "schema": "meminfo_directmap",
+      "cols": [
+        { "src":"timestamp",    "dst":"ts",          "type":"ts"               },
+        { "src":"component_id", "dst":"comp_id",     "type":"u64"              },
+	{ "src":"DirectMap4k",  "dst":"directmap4k", "type":"u64",   "fill": 0 },
+	{ "src":"DirectMap2M",  "dst":"directmap2M", "type":"u64",   "fill": 0 },
+	{ "src":"DirectMap4M",  "dst":"directmap4M", "type":"u64",   "fill": 0 },
+	{ "src":"DirectMap1G",  "dst":"directmap1G", "type":"u64",   "fill": 0 }
+      ],
+      "indices": [
+	{ "name":"time_comp", "cols":["ts", "comp_id"] },
+	{ "name":"time", "cols":["ts"] }
+      ]
+    }
+  ]
+}
+.EE
+
+The following is an example of a static decomposition with "rec_member" usage.
+
+.EX
+{
+  "type": "static",
+  "rows": [
+    {
+      "schema": "netdev2_small",
+      "cols": [
+        { "src":"timestamp",    "dst":"ts",      "type":"ts"                         },
+        { "src":"producer",     "dst":"prdcr",   "type":"char_array", "array_len":64 },
+        { "src":"instance",     "dst":"inst",    "type":"char_array", "array_len":64 },
+        { "src":"component_id", "dst":"comp_id", "type":"u64"                        },
+        { "src":"netdev_list",  "rec_member":"name",
+	   "dst":"netdev.name", "type":"char_array", "array_len":16 },
+        { "src":"netdev_list",  "rec_member":"rx_bytes",
+	  "dst":"netdev.rx_bytes", "type":"u64" },
+        { "src":"netdev_list",  "rec_member":"tx_bytes",
+	  "dst":"netdev.tx_bytes", "type":"u64" },
+      ],
+      "indices": [
+	{ "name":"time_comp", "cols":["ts", "comp_id"] },
+	{ "name":"time", "cols":["ts"] }
+      ]
+    }
+  ]
+}
+.EE
+
+In this case, if the "netdev_list" has N members, the decomposition will expand
+the set into N rows.
+
+
+.SH `as_is` decomposition
+The \fBas_is\fR decomposition generate rows as-is according to metrics in the
+LDMS set. To avoid schema conflict, such as meminfo collecting from
+heterogeneous CPU architectures, \fBas_is\fR decomposition appends the short
+LDMS schema digest (7 characters) to the row schema name before submitting the
+rows to the storage plugin. For example, "meminfo" LDMS schema may turn into
+"meminfo_8d2b8bd" row schema. The \fBas_is\fR decomposition configuration only
+takes "indices" attribute which defines indices for the output rows. When
+encountering a list of primitives, the as_is decomposition expands the set into
+multiple rows (the non-list metrics' values are repeated). When encountering a
+list of records, in addition to expanding rows, the decomposition also expand
+the record into multiple columns with the name formatted as
+"LIST_NAME.REC_MEMBER_NAME". The "timestamp" is not a metric in the set but it
+is used in all storage plugins. So, the "timestamp" column is prepended to each
+of the output rows.
+
+The format of the JSON configuration is as follows:
+
+.EX
+{
+  "type": "as_is",
+  "indices": [
+    { "name": "INDEX_NAME", "cols": [ COLUMN_NAMES, ... ] },
+    ...
+  ]
+}
+.EE
+
+The following is an \fBas_is\fR decomposition configuration example with two
+indices:
+
+.EX
+{
+  "type": "as_is",
+  "indices": [
+    { "name": "time", "cols": [ "timestamp" ] },
+    { "name": "time_comp", "cols": [ "timestamp", "component_id" ] }
+  ]
+}
+.EE
+
+.SH SEE ALSO
+Plugin_store_sos(7), Plugin_store_csv(7), Plugin_store_kafka(7)

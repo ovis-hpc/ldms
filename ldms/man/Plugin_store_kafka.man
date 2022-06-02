@@ -1,0 +1,90 @@
+.\" Manpage for Plugin_store_kafka
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "2 Jun 2022" "v4" "LDMS Plugin store_kafka man page"
+
+.SH NAME
+Plugin_store_kafka - man page for the LDMS store_kafka plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller script:
+.br
+ldmsd_controller> load name=store_kafka
+.br
+ldmsd_controller> config name=store_kafka [path=<KAFKA_CONFIG_JSON_FILE>]
+.br
+ldmsd_controller> strgp_add name=<NAME> plugin=store_kafka
+                            container=<KAFKA_SERVER_LIST>
+                            decomposition=<DECOMP_CONFIG_JSON_FILE>
+.br
+
+.SH DESCRIPTION
+
+\fBstore_kafka\fP uses librdkafka to send rows from the decomposition to the
+Kafka servers (specified by strgp's \fIcontainer\fP parameter) in JSON format.
+The row JSON objects have the following format:
+{ "column_name": COLUMN_VALUE, ... }.
+
+
+.SH PLUGIN CONFIGURATION
+.SY config
+.BI name= store_kafka
+.OP \fBpath=\fIKAFKA_CONFIG_JSON_FILE\fR
+.YS
+
+Configuration Options:
+.RS
+.TP
+.BI name= store_kafka
+.br
+The name of the plugin. This must be \fBstore_kafka\fR.
+
+.TP
+.BI path= KAFKA_CONFIG_JSON_FILE
+The optional KAFKA_CONFIG_JSON_FILE contains a dictionary with KEYS being Kafka
+configuration properties and VALUES being their corresponding values.
+\fBstore_kafka\fR usually does not require this option. The properties in the
+KAFKA_CONFIG_JSON_FILE is applied to all Kafka connections from store_kafka.
+Please see
+.UR \:https://github.com/edenhill/librdkafka/blob/master/CONFIGURATION.md
+librdkafka CONFIGURATION page
+.UE
+for a list of supported properties.
+.RE
+
+
+.SH STRGP CONFIGURATION
+.SY strgp_add
+.BI name= NAME
+.BR plugin= store_kafka
+.BI container= KAFKA_SERVER_LIST
+.BI decomposition= DECOMP_CONFIG_JSON_FILE
+.YS
+
+strgp options:
+.RS
+.TP
+.BI name= NAME
+.br
+The name of the strgp.
+
+.TP
+.BR plugin= store_kafka
+.br
+The plugin must be store_kafka.
+
+.TP
+.BI container= KAFKA_SERVER_LIST
+.br
+A comma-separated list of Kafka servers (host[:port]). For example:
+container=localhost,br1.kf:9898.
+
+.TP
+.BI decomposition= DECOMP_CONFIG_JSON_FILE
+.br
+Set-to-row decomposition configuration file (JSON format). See more about
+decomposition in \fBldmsd_decomposition\fP(7).
+
+.RE
+
+.SH SEE ALSO
+ldmsd_decomposition(7)
