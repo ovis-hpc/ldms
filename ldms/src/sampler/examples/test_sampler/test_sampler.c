@@ -432,6 +432,23 @@ static void test_sampler_set_free(struct test_sampler_set *s)
 		ldms_set_delete(s->set);
 	}
 	free(s->name);
+	free(s);
+}
+
+static void test_sampler_set_reset(struct test_sampler_set *s)
+{
+	if (s->set) {
+		ldmsd_set_deregister(s->name, SAMP);
+		ldms_set_unpublish(s->set);
+		ldms_set_delete(s->set);
+	}
+	s->set = ldms_set_new(s->name, s->ts_schema->schema);
+	if (!s->set) {
+		ldmsd_log(LDMSD_LCRITICAL, SAMP ": Failed to create set %s\n", s->name);
+		return;
+	}
+	ldms_set_publish(s->set);
+	ldmsd_set_register(s->set, SAMP);
 }
 
 static struct test_sampler_set *test_sampler_set_create(ldms_set_t set,
@@ -440,7 +457,7 @@ static struct test_sampler_set *test_sampler_set_create(ldms_set_t set,
 {
 	struct test_sampler_set *ts_set = malloc(sizeof(*ts_set));
 	if (!ts_set) {
-		msglog(LDMSD_LERROR, "test_sampler: Out of memory\n");
+		msglog(LDMSD_LERROR, SAMP ": Out of memory\n");
 		return NULL;
 	}
 	ts_set->set = set;
@@ -449,7 +466,7 @@ static struct test_sampler_set *test_sampler_set_create(ldms_set_t set,
 	ts_set->push = push;
 	ts_set->skip_push = 1;
 	ldms_set_publish(set);
-	ldmsd_set_register(set, "test_sampler");
+	ldmsd_set_register(set, SAMP);
 	LIST_INSERT_HEAD(&ts_schema->set_list, ts_set, entry);
 	return ts_set;
 }
@@ -457,7 +474,8 @@ static struct test_sampler_set *test_sampler_set_create(ldms_set_t set,
 static void test_sampler_schema_free(struct test_sampler_schema *ts_schema)
 {
 	struct test_sampler_set *s;
-
+	if (!ts_schema)
+		return;
 	LIST_REMOVE(ts_schema, entry);
 	if (ts_schema->schema)
 		ldms_schema_delete(ts_schema->schema);
@@ -655,6 +673,16 @@ static int __parse_list_str(char *ptr, struct test_sampler_metric_info *_minfo,
 		list->max_len = atoi(count_str);
 	else
 		list->max_len = LIST_MAX_LENGTH;
+	if (LDMS_V_RECORD_INST == list->type) {
+		int i;
+		for (i = 0; i < idx; i++) {
+			if (_temp[i].rec_def && (0 == strcmp(_temp[i].name, list->rec_type_name))) {
+				temp->len = list->max_len * ldms_record_heap_size_get(_temp[i].rec_def);
+			}
+		}
+	} else {
+		temp->len = ldms_list_heap_size_get(list->type, list->max_len, list->cnt);
+	}
 
 	unit = __strtok(NULL, delim, &ptr);
 	if (!unit || ('\0' == unit[0]))
@@ -1721,7 +1749,7 @@ static int __sample_classic(struct test_sampler_set *ts_set)
 	return 0;
 delete_set:
 	ldms_transaction_end(ts_set->set);
-	ldms_set_delete(ts_set->set);
+	test_sampler_set_reset(ts_set);
 	rc = __init_set(ts_set);
 	return rc;
 }
