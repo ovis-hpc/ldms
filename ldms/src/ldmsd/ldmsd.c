@@ -469,8 +469,15 @@ double ldmsd_timeval_diff(struct timeval *start, struct timeval *end)
 
 extern void ldmsd_strgp_close();
 
+static pthread_mutex_t cleanup_lock = PTHREAD_MUTEX_INITIALIZER;
+static int cleaned;
 void cleanup(int x, const char *reason)
 {
+	pthread_mutex_lock(&cleanup_lock);
+	if (cleaned) {
+		pthread_mutex_unlock(&cleanup_lock);
+		exit(x);
+	}
 	int llevel = LDMSD_LINFO;
 	if (x)
 		llevel = LDMSD_LCRITICAL;
@@ -517,6 +524,9 @@ void cleanup(int x, const char *reason)
 	}
 
 	av_free(auth_opt);
+	auth_opt = NULL;
+	cleaned = 1;
+	pthread_mutex_unlock(&cleanup_lock);
 	exit(x);
 }
 
