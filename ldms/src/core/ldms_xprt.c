@@ -1992,6 +1992,7 @@ void ldms_xprt_dir_free(ldms_t t, ldms_dir_t dir)
 		free(dir->set_data[i].inst_name);
 		free(dir->set_data[i].schema_name);
 		free(dir->set_data[i].flags);
+		free(dir->set_data[i].digest_str);
 		free(dir->set_data[i].perm);
 		if (NULL == dir->set_data[i].info)
 			continue;
