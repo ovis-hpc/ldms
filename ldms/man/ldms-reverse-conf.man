@@ -1,0 +1,25 @@
+.\" Manpage for ldms-reverse-conf.sh
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 8 "6 Jun 2022" "v4.3.8" "ldms-reverse-conf.sh man page"
+
+.SH NAME
+ldms-reverse-conf.sh \- generate a tear-down configuration file
+
+.SH SYNOPSIS
+.PP
+ldms-reverse-conf.sh <input>
+
+.SH DESCRIPTION
+The ldms-reverse-conf.sh command parses an LDMS control script in the key/value language
+which sets up samplers, stores, producers, updaters, and subscriptions,
+and attempts to generate the matching tear-down script to stdout.
+Invoking the ldmsd_controller or ldmsctl with the teardown script should yield
+and almost idle daemon (listeners are still active).
+
+.NOTES
+Typically, a daemon is configured and left to run. The intent of this utility
+is to make it easy to deconfigure a running daemon in the proper command order
+given the original scripted configuration.
+
+.SH SEE ALSO
+ldmsctl(8), ldmsd_controller(8)
