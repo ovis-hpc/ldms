@@ -140,7 +140,7 @@ function DAEMONS {
 		return
 	fi
 	for i in $*; do
-		/bin/rm -f ${LOGDIR}/$i.txt ${LOGDIR}/vg.$i
+		/bin/rm -f ${LOGDIR}/$i.txt ${LOGDIR}/vg.$i ${LOGDIR}/teardown.$i.txt
 		ports[$i]=$(($portbase + $i))
 		eval export port$i=${ports[$i]}
 		binname=ldmsd.${ports[$i]}
@@ -260,6 +260,7 @@ function LDMSD {
 			echo "# generated from $input.$i" >> $LDMSD_RUN/conf.$i
 			cat $input.$i >> $LDMSD_RUN/conf.$i
 			clonefile=$LDMSD_RUN/conf.$i
+			ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
 			env > $LDMSD_RUN/env.$i
 			if test -n "$GDB"; then
 				echo "run -x ${XPRT}:${ports[$i]}:${XPRTHOST} -c $LDMSD_RUN/conf.$i -l ${LOGDIR}/$i.txt -v DEBUG $LDMSD_EXTRA -r $LDMSD_PIDFILE.$i"
@@ -285,6 +286,7 @@ function LDMSD {
 			fi
 			if test -f $clonefile -a $cloneinput = "1"; then
 				cp $clonefile $LDMSD_RUN/conf.$i
+				ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
 				env > $LDMSD_RUN/env.$i
 				echo $wrap ldmsd.${ports[$i]} \
 					-x ${XPRT}:${ports[$i]}${XPRTHOST} \
@@ -301,6 +303,7 @@ function LDMSD {
 			else
 				echo IDLE DAEMON $i
 				env > $LDMSD_RUN/env.$i
+				echo "#" > $LDMSD_RUN/revconf.$i
 				ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]}${XPRTHOST} \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG \
@@ -370,9 +373,19 @@ function KILL_LDMSD {
 		fi
 
 		if test -f $LDMSD_PIDFILE.$i; then
-			kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
-
-		else 
+			if test -n "$PORT"; then
+				iport=$PORT
+			else
+				iport=${ports[$i]}
+			fi
+			if test -z "$KILL_NO_TEARDOWN"; then
+				echo "ldmsctl -x $XPRT -p $iport -h $HOST -s $LDMSD_RUN/revconf.$i" > ${LOGDIR}/teardown.$i.txt
+				ldmsctl -x $XPRT -p $iport -h $HOST -s $LDMSD_RUN/revconf.$i >> ${LOGDIR}/teardown.$i.txt
+			fi
+			if test -f $LDMSD_PIDFILE.$i; then
+				kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
+			fi
+		else
 			if test "$KILL_LDMSD_STRICT" = "1"; then
 				bypass=1;
 			fi
@@ -454,8 +467,6 @@ for i in $*; do
 	job_vals $f.$i
 done
 }
-
-
 
 portbase=61100
 if test ! -x $BUILDDIR/sbin/ldmsd; then

@@ -203,6 +203,12 @@ VGSUFF
 .br
 If valgrind is used (see vgon, vgoff), then $VGSUFF is appended to the valgrind
 output file name when defined. A good practice is for VGSUFF to start with ".".
+.TP
+KILL_NO_TEARDOWN
+.br
+Set KILL_NO_TEARDOWN=1 to suppress attempting configuration cleanup during KILL_LDMSD.
+If set, ldmsd internal cleanup() function will attempt partial cleanup, but possibly
+leave active data structures to be reported by valgrind.
 
 The following variables are visible to the input file and the configuration file.
 .TP
@@ -306,9 +312,17 @@ The valgrind log for the kth daemon with PID %p or the valgrind log for ldms_ls 
 .br
 The log for the kth daemon.
 .TP
+.I $test_dir/logs/teardown.$k.txt
+.br
+The teardown log for the kth daemon.
+.TP
 .I $test_dir/run/conf.$k
 .br
 The input for the kth daemon.
+.TP
+.I $test_dir/run/revconf.$k
+.br
+The input for the kth daemon teardown.
 .TP
 .I $test_dir/run/env.$k
 .br

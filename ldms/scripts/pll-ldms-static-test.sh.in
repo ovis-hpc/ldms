@@ -205,7 +205,7 @@ function DAEMONS {
 			return
 		fi
 			
-		/bin/rm -f ${LOGDIR}/$i.txt ${LOGDIR}/vg.$i
+		/bin/rm -f ${LOGDIR}/$i.txt ${LOGDIR}/vg.$i ${LOGDIR}/teardown.$i.txt
 		binname=ldmsd.${ports[$i]}
 		pkill -9 $binname
 		/bin/rm -f $LDMSD_RUN/$binname
@@ -340,6 +340,7 @@ function LDMSD {
 			echo "# generated from $input.$insuff" >> $LDMSD_RUN/conf.$i
 			cat $input.$insuff >> $LDMSD_RUN/conf.$i
 			clonefile=$LDMSD_RUN/conf.$i
+			ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
 			echo $myproc: starting daemon $i
 			env > $LDMSD_RUN/env.$i
 			echo $wrap ldmsd.${ports[$i]} \
@@ -357,6 +358,7 @@ function LDMSD {
 		else
 			if test -f $clonefile -a $cloneinput = "1"; then
 				cp $clonefile $LDMSD_RUN/conf.$i
+				ldms-reverse-conf.sh $LDMSD_RUN/conf.$i > $LDMSD_RUN/revconf.$i
 				echo $myproc: starting daemon $i
 				env > $LDMSD_RUN/env.$i
 				echo $wrap ldmsd.${ports[$i]} \
@@ -374,6 +376,7 @@ function LDMSD {
 			else
 				echo $myproc: IDLE DAEMON $i
 				env > $LDMSD_RUN/env.$i
+				echo "#" > $LDMSD_RUN/revconf.$i
 				echo ldmsd.${ports[$i]} -x ${XPRT}:${ports[$i]} \
 					-l ${LOGDIR}/$i.txt \
 					-v DEBUG \
@@ -475,7 +478,18 @@ function KILL_LDMSD {
 			continue
 		fi
 		if test -f $LDMSD_PIDFILE.$i; then
-			kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
+			if test -n "$PORT"; then
+				iport=$PORT
+			else
+				iport=${ports[$i]}
+			fi
+			if test -z "$KILL_NO_TEARDOWN"; then
+				echo "ldmsctl -x $XPRT -p $iport -h $HOST -s $LDMSD_RUN/revconf.$i" > ${LOGDIR}/teardown.$i.txt
+				ldmsctl -x $XPRT -p $iport -h $HOST -s $LDMSD_RUN/revconf.$i >> ${LOGDIR}/teardown.$i.txt
+			fi
+			if test -f $LDMSD_PIDFILE.$i; then
+				kill -SIGTERM `cat $LDMSD_PIDFILE.$i`
+			fi
 		else
 			if test "$KILL_LDMSD_STRICT" = "1"; then
 				bypass=1;
