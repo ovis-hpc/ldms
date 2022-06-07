@@ -111,15 +111,18 @@
 #include <errno.h>
 #include "zap/zap.h"
 
-char *short_opt = "h:x:p:n:sfm?";
+char *short_opt = "H:h:x:p:n:r:sfmd?";
 struct option long_opt[] = {
 	{"host",     1,  0,  'h'},
+	{"hostfile", 1,  0,  'H'},
 	{"xprt",     1,  0,  'x'},
 	{"port",     1,  0,  'p'},
 	{"server",   0,  0,  's'},
 	{"forever",  0,  0,  'f'},
 	{"num_servers", 1, 0, 'n'},
 	{"message",  0,  0,  'm'},
+	{"daemonize", 0, 0,  'd'},
+	{"reconnect", 1, 0,  'r'},
 	{"help",     0,  0,  '?'},
 	{0,0,        0,  0}
 };
@@ -127,13 +130,15 @@ struct option long_opt[] = {
 void usage()
 {
 	printf(
-"Usage: test [-x <XPRT>] [-p <PORT>] [-h <HOST>] [-n <NUM> ] [--msg] [--forever] [-s]\n"
+"Usage: test [-x <XPRT>] [-p <PORT>] [-h <HOST>] [-H <HOSTFILE>] [-n <NUM> ] [--msg] [--forever] [-s]\n"
 "\n"
 "OPTIONS:\n"
 "	-x XPRT		Transport. The default is sock.\n"
 "	-p PORT		Port to listen/connect. The default is 55555\n"
 "	-h HOST		(client mode only) Host to connect to. The default is localhost.\n"
+"	-H HOSTFILE	(client mode only) A host file containing hostnames. One hostname per line.\n"
 "	-n NUM		Number of servers to connect to\n"
+"       -r RECONNECT    Reconnect time in seconds\n"
 "	-s		Indicates server mode.\n"
 "	-f,--forever	(client mode only) the client will keep sending messages to\n"
 "			the server forever.\n"
@@ -147,9 +152,14 @@ uint16_t port = 10001;
 int server_mode = 0;
 int forever = 0;
 int message = 0;
-int num_server = 0;
+int num_processes = 0;
+int num_hosts = 0;
+char *hostfile;
+int is_daemon;
+int reconnect;
 
 struct conn {
+	char *host;
 	struct sockaddr_in sin;
 	zap_t zap;
 	zap_ep_t ep;
@@ -177,8 +187,11 @@ loop:
 	case 'h':
 		host = optarg;
 		break;
+	case 'H':
+		hostfile = optarg;
+		break;
 	case 'n':
-		num_server = atoi(optarg);
+		num_processes = atoi(optarg);
 		break;
 	case 's':
 		server_mode = 1;
@@ -188,6 +201,12 @@ loop:
 		break;
 	case 'm':
 		message = 1;
+		break;
+	case 'd':
+		is_daemon = 1;
+		break;
+	case 'r':
+		reconnect = atoi(optarg);
 		break;
 	case -1:
 		goto out;
@@ -262,25 +281,25 @@ void client_cb(zap_ep_t zep, zap_event_t ev)
 	switch(ev->type) {
 	case ZAP_EVENT_CONNECTED:
 		conn->state = CONNECTED;
-		printf("%s to %hu\n", zap_event_str(ev->type),
-				ntohs(conn->sin.sin_port));
+		printf("%s to %s:%hu\n", zap_event_str(ev->type),
+				conn->host, ntohs(conn->sin.sin_port));
 		break;
 	case ZAP_EVENT_CONNECT_ERROR:
-		printf("%s from %hu\n", zap_event_str(ev->type),
-				ntohs(conn->sin.sin_port));
+		printf("%s from %s:%hu\n", zap_event_str(ev->type),
+				conn->host, ntohs(conn->sin.sin_port));
 		conn->state = DISCONNECTED;
 		zap_free(zep);
 		conn->ep = NULL;
 		break;
 	case ZAP_EVENT_DISCONNECTED:
-		printf("%s from %hu\n", zap_event_str(ev->type),
-				ntohs(conn->sin.sin_port));
+		printf("%s from %s:%hu\n", zap_event_str(ev->type),
+				conn->host, ntohs(conn->sin.sin_port));
 		conn->state = DISCONNECTED;
 		zap_free(zep);
 		conn->ep = NULL;
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
-		printf("%hu: recv: %s\n", ntohs(conn->sin.sin_port),
+		printf("%s:%hu: recv: %s\n", conn->host, ntohs(conn->sin.sin_port),
 						(char*)ev->data);
 		break;
 	case ZAP_EVENT_REJECTED:
@@ -352,7 +371,6 @@ int __connect(struct conn *conn)
 
 	zap_set_ucontext(conn->ep, (void *)conn);
 
-	printf("connecting to %s:%hu\n", host, ntohs(conn->sin.sin_port));
 	conn->state = CONNECTING;
 
 	zerr = zap_connect(conn->ep, (void *)&(conn->sin), sizeof(conn->sin), NULL, 0);
@@ -391,14 +409,15 @@ void *client_routine(void *arg)
 	int i;
 	zap_err_t zerr;
 
-	for (i = 0; i < num_server; i++) {
+	for (i = 0; i < num_processes * num_hosts; i++) {
+		printf("connecting to %s:%hu\n", conn_list[i].host, ntohs(conn_list[i].sin.sin_port));
 		__connect(&conn_list[i]);
 	}
-	sleep(1);
+	sleep(reconnect);
 	struct conn *conn;
 	int connected = 0;
 	while (1) {
-		for (i = 0; i < num_server; i++) {
+		for (i = 0; i < num_processes * num_hosts; i++) {
 			conn = &conn_list[i];
 			pthread_mutex_lock(&conn->state_lock);
 			if (conn->state == CONNECTED) {
@@ -412,12 +431,13 @@ void *client_routine(void *arg)
 								zerr);
 				}
 			} else if (conn->state == DISCONNECTED) {
+				printf("connecting to %s:%hu\n", conn_list[i].host, ntohs(conn_list[i].sin.sin_port));
 				__connect(conn);
 			}
 			pthread_mutex_unlock(&conn->state_lock);
 		}
-		sleep(2);
-		if (!forever && (!message || (connected == num_server))) {
+		sleep(reconnect);
+		if (!forever && (!message || (connected == num_processes*num_hosts))) {
 			pthread_mutex_lock(&exiting_mutex);
 			exiting = 1;
 			pthread_mutex_unlock(&exiting_mutex);
@@ -431,32 +451,22 @@ void do_client(struct sockaddr_in *sin)
 {
 	struct addrinfo *ai;
 	int rc;
+	int i, j, idx;
 
-	conn_list = calloc(num_server, sizeof(struct conn));
-	if (!conn_list) {
-		printf("Out of memory\n");
-		exit(-1);
+	for (i = 0; i < num_hosts; i++) {
+		idx = num_processes * i;
+		rc = getaddrinfo(conn_list[idx].host, NULL, NULL, &ai);
+		if (rc) {
+			printf("getaddrinfo error: %d\n", rc);
+			exit(-1);
+		}
+		for (j = 0; j < num_processes; j++) {
+			conn_list[(i*num_processes) + j].sin = *(struct sockaddr_in *)ai[0].ai_addr;
+			conn_list[(i*num_processes) + j].sin.sin_port = htons(port + j);
+			pthread_mutex_init(&conn_list[(i*num_processes) + j].state_lock, NULL);
+		}
+		freeaddrinfo(ai);
 	}
-
-	if (!host) {
-		printf("Please give the host name of the server\n");
-		exit(-1);
-	}
-
-	rc = getaddrinfo(host, NULL, NULL, &ai);
-	if (rc) {
-		printf("getaddrinfo error: %d\n", rc);
-		exit(-1);
-	}
-
-	int i;
-	for (i = 0; i < num_server; i++) {
-		conn_list[i].sin = *(struct sockaddr_in *)ai[0].ai_addr;
-		conn_list[i].sin.sin_port = htons(port + i);
-		pthread_mutex_init(&conn_list[i].state_lock, NULL);
-	}
-
-	freeaddrinfo(ai);
 
 	pthread_t t;
 	rc = pthread_create(&t, NULL, client_routine, conn_list);
@@ -467,13 +477,79 @@ void do_client(struct sockaddr_in *sin)
 	pthread_join(t, NULL);
 }
 
+int process_hosts()
+{
+	FILE *hf;
+	char buf[128];
+	size_t len = 128;
+	char *s;
+	num_hosts = 0;
+	int i = 0;
+	int j;
+
+	if (hostfile) {
+		hf = fopen(hostfile, "r");
+		if (!hf) {
+			printf("Failed to open the hostfile '%s'\n", hostfile);
+			exit(1);
+		}
+		while ((s = fgets(buf, len, hf))) {
+			if (s[0] == '#')
+				continue;
+			num_hosts++;
+		}
+		conn_list = calloc(num_hosts * num_processes, sizeof(struct conn));
+		if (!conn_list) {
+			printf("Out of memory\n");
+			exit(1);
+		}
+		fseek(hf, 0, SEEK_SET);
+		while ((s = fgets(buf, len, hf))) {
+			if (s[0] == '#')
+				continue;
+			s[strcspn(s, "\n\r")] = '\0';
+			for (j = 0; j < num_processes; j++) {
+				conn_list[i * num_processes + j].host = strdup(s);
+				if (!conn_list[i * num_processes + j].host) {
+					printf("Out of memory\n");
+					exit(1);
+				}
+			}
+			i++;
+		}
+		fclose(hf);
+	} else {
+		conn_list = calloc(num_processes, sizeof(struct conn));
+		if (!conn_list) {
+			printf("Out of memory\n");
+			exit(1);
+		}
+		conn_list[0].host = strdup(host);
+		if (!conn_list[0].host) {
+			printf("Out of memory\n");
+			exit(1);
+		}
+		num_hosts = 1;
+	}
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	handle_args(argc, argv);
+	if (!server_mode)
+		process_hosts();
 
 	struct sockaddr_in sin = {0};
 	sin.sin_port = htons(port);
 	sin.sin_family = AF_INET;
+
+	if (is_daemon) {
+		if (daemon(1, 1)) {
+			printf("Failed to daemonize the process.\n");
+			exit(1);
+		}
+	}
 
 	if (server_mode)
 		do_server(&sin);
