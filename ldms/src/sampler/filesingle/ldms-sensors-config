@@ -9,10 +9,12 @@ import tempfile
 import subprocess
 import argparse
 
-def fixlabel(s):
+def fixlabel(s, nodash=False):
     if s[-2:] == "\\n":
         s = s[:-2]
     s = s.replace(" ", "_")
+    if nodash:
+        s = s.replace("-", "_")
     return s
 
 ignore_types = [
@@ -29,6 +31,8 @@ def main():
             help="Full path to lm_sensor 'sensors' program")
     opts.add_argument("--lscpu", metavar="LSCPU-PATH", default="/usr/bin/lscpu",
             help="Full path to 'lscpu' program")
+    opts.add_argument("--nodash", default=False, action='store_true',
+            help="enable replacing - with _ in names.")
     opts.add_argument("--test-lscpu", metavar="TEST-INPUT", required=False,
             help="path to strace result file for parser testing")
     opts.add_argument("--test-sensors", metavar="TEST-INPUT", required=False,
@@ -54,6 +58,7 @@ def main():
 
     sensorsbin = args.sensors
     lscpubin = args.lscpu
+    nodash = args.nodash
 
     # build and parse sensors trace
     tf = tempfile.mktemp(dir="/tmp", suffix=".trace", prefix="ldms-config-sensors.")
@@ -179,8 +184,8 @@ def main():
     for k,d in devices.iteritems():
         if len(d["items"]) > 0:
             for i in d["items"]:
-                print ".".join([d["group"], d[i]["label"] ]), \
-                        d[i]["inputfile"], "S64 -1"
+                ilbl = fixlabel(".".join([d["group"], d[i]["label"] ]), nodash)
+                print ilbl, d[i]["inputfile"], "S64 -1"
 
     devices = dict()
     # build and parse lscpu trace
@@ -249,7 +254,8 @@ def main():
     for k,d in devices.iteritems():
         if len(d["items"]) > 0:
             for i in d["items"]:
-                ln = ".".join([d["group"], d[i]["label"] ]) + " " + d[i]["inputfile"] + " " + "S64 -1"
+                ilbl = fixlabel(".".join([d["group"], d[i]["label"] ]), nodash)
+                ln = ilbl + " " + d[i]["inputfile"] + " " + "S64 -1"
                 llist.append(ln)
     for i in sorted(llist):
         print i
