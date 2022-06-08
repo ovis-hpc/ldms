@@ -24,6 +24,11 @@ sampler. The user should tailor the selection, naming, data storage type, and de
 specify an alternate location of the sensors program. The default is /usr/bin/sensors, and the PATH variable is not used to search for alternatives.
 
 .TP
+--nodash
+.br
+Replace all - characters in metric names with _ characters.
+
+.TP
 --lscpu=<path>
 .br
 specify an alternate location of the lscpu program. The default is /usr/bin/lscpu and the PATH variable is not used to search for alternatives.
@@ -53,6 +58,9 @@ script -c 'strace -e trace=open,openat lscpu' /tmp/lscpu.tmp | grep '^open.*cpui
 When using test input file(s), the live system data will be used if the corresponding test file is not specified.
 
 Systems (kernels) lacking cpu frequency reporting produce no output from lscpu.
+
+The use of --nodash is recommended for compatibility with downstream analysis tools. White space
+appearing in metric names is unconditionally transformed to _.
 
 .SH SEE ALSO
 sensors(1), lscpu(1), Plugin_filesingle(7), ldmsd.
