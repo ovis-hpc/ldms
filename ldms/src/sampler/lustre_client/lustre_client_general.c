@@ -18,6 +18,8 @@
 
 static ldms_schema_t llite_general_schema;
 
+#define MAXNAMESIZE 64
+
 static char *llite_stats_uint64_t_entries[] = {
         "dirty_pages_hits",
         "dirty_pages_misses",
@@ -139,8 +141,9 @@ void llite_general_destroy(ldms_set_t set)
 /* must be schema created by llite_general_schema_create() */
 ldms_set_t llite_general_create(const char *producer_name,
                                 const char *fs_name,
-                                const char *llite_name,
-				const comp_id_t cid)
+				const char *llite_name,
+				const comp_id_t cid,
+				const struct base_auth *auth)
 {
         ldms_set_t set;
         int index;
@@ -150,7 +153,12 @@ ldms_set_t llite_general_create(const char *producer_name,
         snprintf(instance_name, sizeof(instance_name), "%s/%s",
                  producer_name, llite_name);
         set = ldms_set_new(instance_name, llite_general_schema);
+	if (!set) {
+		errno = ENOMEM;
+		return NULL;
+	}
         ldms_set_producer_name_set(set, producer_name);
+	base_auth_set(auth, set);
         index = ldms_metric_by_name(set, "fs_name");
         ldms_metric_array_set_str(set, index, fs_name);
         index = ldms_metric_by_name(set, "llite");
@@ -161,18 +169,19 @@ ldms_set_t llite_general_create(const char *producer_name,
         return set;
 }
 
-static void llite_stats_sample(const char *stats_path,
+static int llite_stats_sample(const char *stats_path,
                                    ldms_set_t general_metric_set)
 {
         FILE *sf;
         char buf[512];
-        char str1[64+1];
+	char str1[MAXNAMESIZE+1];
+	int ec = 0;
 
         sf = fopen(stats_path, "r");
         if (sf == NULL) {
                 log_fn(LDMSD_LWARNING, SAMP ": file %s not found\n",
                        stats_path);
-                return;
+                return ENOENT;
         }
 
         /* The first line should always be "snapshot_time"
@@ -182,11 +191,13 @@ static void llite_stats_sample(const char *stats_path,
         if (fgets(buf, sizeof(buf), sf) == NULL) {
                 log_fn(LDMSD_LWARNING, SAMP ": failed on read from %s\n",
                        stats_path);
+		ec = ENOMSG;
                 goto out1;
         }
         if (strncmp("snapshot_time", buf, sizeof("snapshot_time")-1) != 0) {
                 log_fn(LDMSD_LWARNING, SAMP ": first line in %s is not \"snapshot_time\": %s\n",
                        stats_path, buf);
+		ec = ENOMSG;
                 goto out1;
         }
 
@@ -225,7 +236,7 @@ static void llite_stats_sample(const char *stats_path,
 out1:
         fclose(sf);
 
-        return;
+        return ec;
 }
 
 void llite_general_sample(const char *llite_name, const char *stats_path,

@@ -46,6 +46,10 @@ The set instance names will be $producer/$llite_name.
 component_id=<uint64_t>
 .br
 Optional (defaults to 0) number of the host where the sampler is running. All sets on a host will have the same value.
+.TP
+perm=<octal number>
+.br
+Set the access permissions for the metric sets. (default 0440). When specified, the leading 0 is required.
 .RE
 
 .SH NOTES
