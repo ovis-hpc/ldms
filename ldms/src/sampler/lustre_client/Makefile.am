@@ -6,8 +6,10 @@ liblustre_client_la_SOURCES = \
 liblustre_client_la_LIBADD = \
 	$(top_builddir)/ldms/src/core/libldms.la \
 	$(top_builddir)/lib/src/coll/libcoll.la \
+	$(top_builddir)/ldms/src/sampler/libsampler_base.la \
 	$(top_builddir)/ldms/src/sampler/libldms_compid_helper.la \
-        $(top_builddir)/ldms/src/sampler/libjobid_helper.la
+	$(top_builddir)/ldms/src/sampler/libjobid_helper.la
+
 liblustre_client_la_LDFLAGS = \
 	-no-undefined \
         -export-symbols-regex 'get_plugin' \

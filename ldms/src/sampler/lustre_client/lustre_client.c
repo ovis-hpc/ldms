@@ -36,6 +36,8 @@ char producer_name[LDMS_PRODUCER_NAME_MAX];
 /* red-black tree root for llites */
 static struct rbt llite_tree;
 
+static struct base_auth auth;
+
 struct llite_data {
         char *fs_name;
         char *name;
@@ -83,7 +85,7 @@ static struct llite_data *llite_create(const char *llite_name, const char *based
         llite->general_metric_set = llite_general_create(producer_name,
                                                          llite->fs_name,
                                                          llite->name,
-                                                         &cid);
+                                                         &cid, &auth);
         if (llite->general_metric_set == NULL)
                 goto out6;
         rbn_init(&llite->llite_tree_node, llite->name);
@@ -153,19 +155,21 @@ static const char *const find_llite_path()
         return NULL;
 }
 
+static int dir_once_log;
 /* List subdirectories in llite_path to get list of
    LLITE names.  Create llite_data structures for any LLITEs that we
    have not seen, and delete any that we no longer see. */
-static void llites_refresh()
+static int llites_refresh()
 {
         const char *llite_path;
         struct dirent *dirent;
         DIR *dir;
         struct rbt new_llite_tree;
+	int err = 0;
 
         llite_path = find_llite_path();
         if (llite_path == NULL) {
-                return;
+                return 0;
         }
 
         rbt_init(&new_llite_tree, string_comparator);
@@ -177,10 +181,14 @@ static void llites_refresh()
            here. */
         dir = opendir(llite_path);
         if (dir == NULL) {
-                log_fn(LDMSD_LDEBUG, SAMP" unable to open llite dir %s\n",
-                       llite_path);
-                return;
+		if (!dir_once_log) {
+	                log_fn(LDMSD_LDEBUG, SAMP" unable to open llite dir %s\n",
+	                       llite_path);
+			dir_once_log = 1;
+		}
+                return 0;
         }
+	dir_once_log = 0;
         while ((dirent = readdir(dir)) != NULL) {
                 struct rbn *rbn;
                 struct llite_data *llite;
@@ -190,6 +198,7 @@ static void llites_refresh()
                     strcmp(dirent->d_name, "..") == 0)
                         continue;
                 rbn = rbt_find(&llite_tree, dirent->d_name);
+		errno = 0;
                 if (rbn) {
                         llite = container_of(rbn, struct llite_data,
                                            llite_tree_node);
@@ -197,8 +206,10 @@ static void llites_refresh()
                 } else {
                         llite = llite_create(dirent->d_name, llite_path);
                 }
-                if (llite == NULL)
+                if (llite == NULL) {
+			err = errno;
                         continue;
+		}
                 rbt_ins(&new_llite_tree, &llite->llite_tree_node);
         }
         closedir(dir);
@@ -210,7 +221,7 @@ static void llites_refresh()
         /* copy the new_llite_tree into place over the global llite_tree */
         memcpy(&llite_tree, &new_llite_tree, sizeof(struct rbt));
 
-        return;
+        return err;
 }
 
 static void llites_sample()
@@ -239,6 +250,7 @@ static int config(struct ldmsd_plugin *self,
                         return EINVAL;
 		}
 	}
+	(void)base_auth_parse(avl, &auth, log_fn);
 	jobid_helper_config(avl);
 	comp_id_helper_config(avl, &cid);
         return 0;
@@ -254,10 +266,10 @@ static int sample(struct ldmsd_sampler *self)
                 }
         }
 
-        llites_refresh();
+        int err = llites_refresh();  /* running out of set memory is an error */
         llites_sample();
 
-        return 0;
+        return err;
 }
 
 static void term(struct ldmsd_plugin *self)
