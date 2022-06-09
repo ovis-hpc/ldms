@@ -629,6 +629,7 @@ class LdmsdCmdParser(cmd.Cmd):
         [flush=]   The interval between calls to the storage plugin flush method.
                    By default, the flush method is not called.
         [perm=]    The permission to modify the storage policy in the future.
+        [decomposition=]   Path to a decomposition configuration file
         """
         self.handle('strgp_add', arg)
 
