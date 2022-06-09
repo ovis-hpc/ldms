@@ -104,7 +104,8 @@ class LDMSD_Req_Attr(object):
     STREAM = 34
     AUTH = 35
     RESET = 36
-    LAST = 37
+    DECOMPOSITION = 37
+    LAST = 38
 
     NAME_ID_MAP = {'name': NAME,
                    'interval': INTERVAL,
@@ -145,6 +146,7 @@ class LDMSD_Req_Attr(object):
                    'period': INTERVAL,
                    'reset': RESET,
                    'auth': AUTH,
+                   'decomposition' : DECOMPOSITION,
                    'TERMINATING': LAST
         }
 
@@ -184,6 +186,7 @@ class LDMSD_Req_Attr(object):
                    STREAM : 'stream',
                    RESET : 'reset',
                    AUTH : 'auth',
+                   DECOMPOSITION : 'decomposition',
                    LAST : 'TERMINATING'
         }
 

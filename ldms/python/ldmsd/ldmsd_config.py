@@ -120,7 +120,7 @@ LDMSD_CTRL_CMD_MAP = {'usage': {'req_attr': [], 'opt_attr': ['name']},
                       'updtr_task': {'req_attr': ['name'], 'opt_attr': []},
                       ##### Storage Policy #####
                       'strgp_add': {'req_attr': ['name', 'plugin', 'container', 'schema'],
-                                    'opt_attr' : [ 'flush' ] },
+                                    'opt_attr' : [ 'flush', 'decomposition' ] },
                       'strgp_del': {'req_attr': ['name']},
                       'strgp_prdcr_add': {'req_attr': ['name', 'regex']},
                       'strgp_prdcr_del': {'req_attr': ['name', 'regex']},
