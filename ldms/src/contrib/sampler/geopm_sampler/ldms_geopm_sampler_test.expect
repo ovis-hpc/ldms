@@ -1,0 +1,11 @@
+ldms_geopm_sampler: Success opening configuration file: 'ldms_geopm_sampler_test.conf'
+ldms_geopm_sampler: Adding metric: TIME-board-0
+ldms_geopm_sampler: Adding metric: TIME-package-0
+ldms_geopm_sampler: Adding metric: TIME-core-0
+ldms_geopm_sampler: Adding metric: TIME-cpu-0
+ldms_geopm_sampler: metric_0 = XXXX
+ldms_geopm_sampler: metric_1 = XXXX
+ldms_geopm_sampler: metric_2 = XXXX
+ldms_geopm_sampler: metric_3 = XXXX
+
+SUCCESS

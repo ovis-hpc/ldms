@@ -1,0 +1,74 @@
+.\" Manpage for Plugin_geopm
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "06 May 2022" "v4" "LDMS Plugin geopm man page"
+
+.SH NAME
+Plugin_geopm - man page for the LDMS geopm plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=geopm geopm_request_path=<value>
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the
+ldmsd (ldms daemon) are configured via ldmsd_controller or a
+configuration file. The geopm plugin provides access to the geopm(7)
+PlatformIO interface by configuring the request file with signal
+requests.
+
+The format of this file is a three column white space delimited ascii
+file.  Each line must contain a GEOPM PlatformIO request of the
+form:
+
+.B <SIGNAL_NAME> <DOMAIN> <DOMAIN_INDEX>
+
+The signal name must be a signal supported by GEOPM on the system.  To
+see a full list of supported signals run the geopmread(1) command
+without any options.  The domain must match one of the GEOPM domains.
+Run the geopmread(1) command with the -d option to see a full list of
+supported domains and the number of instances of each on the system.
+The domain index provided must be greater or equal to zero and less
+than the number of available domains.
+
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+The ldms_geopm_sampler plugin uses the sampler_base base class. This man page
+covers only the configuration attributes, or those with default
+values, specific to the this plugin; see ldms_sampler_base.man for the
+attributes of the base class.
+
+
+.TP
+.BR config
+name=<plugin_name> [schema=<sname>]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be geopm.
+.TP
+schema=<schema>
+.br
+Optional schema name. It is intended that the same sampler on
+different nodes with different metrics have a different schema. If not
+specified, will default to `geopm`.
+.RE
+
+.SH BUGS
+No known bugs.
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=geopm
+config name=geopm producer=vm1_1 instance=vm1_1/geopm geopm_request_path=/etc/ldms/geopm_request
+start name=geopm interval=1000000
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8),
+ldms_sampler_base(7), geopm(7)

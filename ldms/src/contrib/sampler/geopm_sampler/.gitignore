@@ -1,0 +1,4 @@
+/ldms_geopm_sampler_test
+/*.sh.log
+/*.sh.trs
+test-suite.log
