@@ -1,0 +1,4 @@
+ldms_geopm_sampler: ldms_geopm_sampler.c:XXXX: Failed call to geopm_pio_push_signal(TIME, 0, 2)
+<geopm> Invalid argument: PlatformIOImp::push_signal(): domain_idx is out of range: at src/PlatformIO.cpp:XXXX
+
+FAIL

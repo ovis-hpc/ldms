@@ -351,6 +351,7 @@ dnl options for contributed samplers
 OPTION_DEFAULT_DISABLE([ipmireader], [ENABLE_IPMIREADER])
 OPTION_DEFAULT_DISABLE([tutorial-sampler],[ENABLE_TUTORIAL_SAMPLER])
 
+
 dnl check for libcurl if influx is configured
 OPTION_DEFAULT_DISABLE([influx], [ENABLE_INFLUX])
 if test -z "$ENABLE_INFLUX_TRUE"; then
@@ -482,6 +483,40 @@ AX_LIB_READLINE
 LDFLAGS_READLINE=$LIBS
 AC_SUBST([LDFLAGS_READLINE])
 LIBS=$TMPLIBS
+
+
+dnl GEOPM telemetry support
+AC_MSG_CHECKING([for GEOPM telemetry library])
+AC_ARG_WITH([geopm],
+        [AS_HELP_STRING([--with-geopm],
+                [build GEOPM telemetry sampler @<:@default=check@:>@])],
+                [AS_IF([test "x$withval" != xyes -a "x$withval" != xno],
+                        [GEOPM_CFLAGS="-I$withval/include"
+                         GEOPM_LDFLAGS="-L$withval/lib64 -L$withval/lib"]
+                )],
+        [with_geopm=check])
+have_geopm=no
+AC_SUBST([GEOPM_CFLAGS])
+AC_SUBST([GEOPM_LDFLAGS])
+AS_IF([test "x$with_geopm" != xno], [
+        save_LDFLAGS=$LDFLAGS
+        LDFLAGS="$LDFLAGS $GEOPM_LDFLAGS"
+        save_CFLAGS=$CFLAGS
+        CFLAGS="$CFLAGS $GEOPM_CFLAGS"
+        save_CPPFLAGS=$CPPFLAGS
+        CPPFLAGS="$CPPFLAGS $GEOPM_CFLAGS"
+        AC_CHECK_HEADER(geopm_pio.h, [have_geopm=yes], [have_geopm=no])
+        AC_CHECK_HEADER(geopm_topo.h, [have_geopm=yes], [have_geopm=no])
+        AC_CHECK_LIB([geopmd], [geopm_pio_push_signal], [have_geopm=yes], [have_geopm=no])
+        CPPFLAGS=$save_CPPFLAGS
+        CFLAGS=$save_CFLAGS
+        LDFLAGS=$save_LDFLAGS
+])
+AM_CONDITIONAL([ENABLE_GEOPM_SAMPLER], [test x$have_geopm = xyes])
+AM_COND_IF([ENABLE_GEOPM_SAMPLER],[
+        AC_DEFINE([ENABLE_GEOPM_SAMPLER], [], [Build GEOPM telemetry sampler])
+])
+AC_MSG_RESULT([$with_geopm])
 
 dnl Munge library check
 if test -z "$ENABLE_MUNGE_TRUE"; then
@@ -902,6 +937,7 @@ ldms/src/sampler/app_sampler/Makefile
 ldms/src/contrib/sampler/Makefile
 ldms/src/contrib/sampler/ipmireader/Makefile
 ldms/src/contrib/sampler/tutorial/Makefile
+ldms/src/contrib/sampler/geopm_sampler/Makefile
 ldms/src/third-plugins/Makefile
 ldms/src/ldmsd/Makefile
 ldms/src/ldmsd/test/Makefile

@@ -1,0 +1,3 @@
+ldms_geopm_sampler: ldms_geopm_sampler.c:XXXX: Error in opening file 'ldms_geopm_sampler_test_noent.conf' containing list of samples, errno=2
+
+FAIL
