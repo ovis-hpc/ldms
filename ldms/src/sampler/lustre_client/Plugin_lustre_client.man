@@ -49,7 +49,7 @@ Optional (defaults to 0) number of the host where the sampler is running. All se
 .TP
 perm=<octal number>
 .br
-Set the access permissions for the metric sets. (default 0440). When specified, the leading 0 is required.
+Set the access permissions for the metric sets. (default 440).
 .RE
 
 .SH NOTES
