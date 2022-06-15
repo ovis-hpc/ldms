@@ -15,15 +15,3 @@ libdcgm_sampler_la_CPPFLAGS = \
 pkglib_LTLIBRARIES = libdcgm_sampler.la
 
 dist_man7_MANS = Plugin_dcgm_sampler.man
-
-# libdcgm is DEPRECATED
-#
-# This symlink is to maintain backward compatibilty as we rename
-# the plugin from "dcgm" to "dcgm_sampler" in 4.3.8. The next time
-# that we make a major verion change allowing a break in compatibility,
-# this symlink can be removed.
-install-exec-hook:
-	$(LN_S) libdcgm_sampler.so $(DESTDIR)$(pkglibdir)/libdcgm.so
-
-uninstall-hook:
-	rm $(DESTDIR)$(pkglibdir)/libdcgm.so
