@@ -147,7 +147,7 @@ Where multiple daemon numbers are specified, the input generated for the first n
 .TP
 -s <wait_microseconds>
 .br
-After an ldmsd is started, wait wait_microseconds before checking for the daemon PID file to exist. The appropriate wait time is variable depending on the complexity of the configuration. If not specified, the default is 2 seconds wait time. If the command usleep is not available, 0 wait is applied and work continues.
+After an ldmsd is started, wait wait_microseconds before checking for the daemon PID file to exist. The appropriate wait time is variable depending on the complexity of the configuration. If not specified, the default is 2 seconds wait time. If the gnu command sleep is not available, 0 wait is applied and work continues.
 
 .SH ENVIRONMENT
 The following variables must be set in the job submission script (using information

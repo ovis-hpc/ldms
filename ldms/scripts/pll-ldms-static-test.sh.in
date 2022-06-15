@@ -387,7 +387,9 @@ function LDMSD {
 					-r $LDMSD_PIDFILE.$i
 			fi
 		fi
-		usleep $startwait
+		# assume gnu sleep and bc exist, because usleep deprecated
+		sleep $(echo "0.000001 * $startwait" |bc)
+
 		if ! test -f $LDMSD_PIDFILE.$i; then
 			echo FAIL: $myproc: failed to start $i $XPRTHOST. check ${LOGDIR}/$i.txt
 			#bypass=1
@@ -631,8 +633,8 @@ if test $myproc -eq 1; then
 	rm -rf ${STOREDIR}/*
 	echo "$myproc: logs and data stored under $TESTDIR"
 else
-	while [ ! -f $SECRET ]; do usleep 1000; done
-	# if your system has no usleep, replace usleep 1000 with sleep 1
+	while [ ! -f $SECRET ]; do sleep 0.001; done
+	# if your system has no gnu sleep, replace 0.001 with 1
 fi
 export LDMS_AUTH_FILE=$SECRET
 chmod go-rwx $SECRET
