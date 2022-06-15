@@ -1219,6 +1219,8 @@ int ldmsd_process_config_request(ldmsd_cfg_xprt_t xprt, ldmsd_req_hdr_t request)
 	reqc->req_id = ((ldmsd_req_hdr_t)reqc->req_buf)->req_id;
 
 	rc = ldmsd_handle_request(reqc);
+	if (xprt != reqc->xprt)
+		memcpy(xprt, reqc->xprt, sizeof(*xprt));
 
 	req_ctxt_tree_lock();
 	req_ctxt_ref_put(reqc);
