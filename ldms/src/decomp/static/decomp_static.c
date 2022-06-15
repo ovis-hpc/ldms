@@ -438,7 +438,9 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 
 	jrows = __jdict_list(jcfg, "rows");
 	if (!jrows) {
-		DECOMP_ERR(reqc, errno, "cannot get 'rows', error: %d\n", errno);
+		DECOMP_ERR(reqc, errno, "strgp '%s': The 'rows' attribute is missing, "
+						     "or its value is not a list.\n",
+						     strgp->obj.name);
 		goto err_0;
 	}
 	dcfg = calloc(1, sizeof(*dcfg) + jrows->item_count*sizeof(dcfg->rows[0]));
@@ -452,7 +454,9 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 	i = 0;
 	TAILQ_FOREACH(jrow, &jrows->item_list, item_entry) {
 		if (jrow->type != JSON_DICT_VALUE) {
-			DECOMP_ERR(reqc, EINVAL, "a row must be an object\n");
+			DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
+					"The list item must be a dictionary.\n",
+					strgp->obj.name, i);
 			goto err_0;
 		}
 
@@ -464,7 +468,9 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 		/* schema name */
 		jsch = __jdict_str(jrow, "schema");
 		if (!jsch) {
-			DECOMP_ERR(reqc, EINVAL, "row['schema'] attribute is required\n");
+			DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
+					"row['schema'] attribute is required\n",
+					strgp->obj.name, i);
 			goto err_0;
 		}
 		drow->schema_name = strdup(jsch->str);
@@ -474,7 +480,9 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 		/* columns */
 		jcols = __jdict_list(jrow, "cols");
 		if (!jcols) {
-			DECOMP_ERR(reqc, EINVAL, "row['cols'] list is required\n");
+			DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
+					"row['cols'] list is required\n",
+					strgp->obj.name, i);
 			goto err_0;
 		}
 		drow->col_count = jcols->item_count;
@@ -487,13 +495,17 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 		TAILQ_FOREACH(jcol, &jcols->item_list, item_entry) {
 			dcol = &drow->cols[j];
 			if (jcol->type != JSON_DICT_VALUE) {
-				DECOMP_ERR(reqc, EINVAL, "a column must be an object\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col '%d': "
+						"a column must be a dictionary.\n",
+						strgp->obj.name, i, j);
 				goto err_0;
 			}
 			jfill = __jdict_ent(jcol, "fill");
 			jsrc = __jdict_str(jcol, "src");
 			if (!jsrc) {
-				DECOMP_ERR(reqc, EINVAL, "column['src'] is required\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d'--col '%d': "
+						"column['src'] is required\n",
+						strgp->obj.name, i, j);
 				goto err_0;
 			}
 			dcol->src = strdup(jsrc->str);
@@ -505,7 +517,9 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 			}
 			jdst = __jdict_str(jcol, "dst");
 			if (!jdst) {
-				DECOMP_ERR(reqc, EINVAL, "column['dst'] is required\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d'--col '%d': "
+						"column['dst'] is required\n",
+						strgp->obj.name, i, j);
 				goto err_0;
 			}
 			dcol->dst = strdup(jdst->str);
@@ -519,12 +533,16 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 			}
 			jtype = __jdict_str(jcol, "type");
 			if (!jtype) {
-				DECOMP_ERR(reqc, EINVAL, "column['type'] is required\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
+						"column['type'] is required\n",
+						strgp->obj.name, i, dcol->dst);
 				goto err_0;
 			}
 			dcol->type = ldms_metric_str_to_type(jtype->str);
 			if (dcol->type == LDMS_V_NONE) {
-				DECOMP_ERR(reqc, EINVAL, "column['type']: unknown type: %s\n", jtype->str);
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s',"
+						"column['type'] value is an unknown type: %s\n",
+						strgp->obj.name, i, dcol->dst, jtype->str);
 				goto err_0;
 			}
 			/* update row schema digest */
@@ -535,11 +553,15 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 			/* array routine */
 			jarray_len = __jdict_ent(jcol, "array_len");
 			if (!jarray_len) {
-				DECOMP_ERR(reqc, EINVAL, "column['array_len']: not found\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
+						"column['array_len'] is required.\n",
+						strgp->obj.name, i, dcol->dst);
 				goto err_0;
 			}
 			if (jarray_len->type != JSON_INT_VALUE) {
-				DECOMP_ERR(reqc, EINVAL, "column['array_len']: must be an integer\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
+						"column['array_len'] value must be an integer.\n",
+						strgp->obj.name, i, dcol->dst);
 				goto err_0;
 			}
 			dcol->array_len = jarray_len->value.int_;
@@ -554,17 +576,23 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 			if (!jfill) /* fill values are already 0 */
 				goto next_col;
 			if (jfill->type != JSON_LIST_VALUE) {
-				DECOMP_ERR(reqc, EINVAL, "'fill' type mismatch: expecting a LIST\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
+						"'fill' type mismatch: expecting a LIST\n",
+						strgp->obj.name, i, dcol->dst);
 				goto err_0;
 			}
 			dcol->fill_len = jfill->value.list_->item_count;
 			if (dcol->fill_len > dcol->array_len) {
-				DECOMP_ERR(reqc, EINVAL, "'fill' array length too long\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
+						"'fill' array length too long\n",
+						strgp->obj.name, i, dcol->dst);
 				goto err_0;
 			}
 			rc = __array_fill_from_json(dcol->fill, dcol->type, jfill->value.list_);
 			if (rc) {
-				DECOMP_ERR(reqc, EINVAL, "'fill' error: type mismatch\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
+						"'fill' error: type mismatch\n",
+						strgp->obj.name, i, dcol->dst);
 				goto err_0;
 			}
 			goto next_col;
@@ -573,12 +601,16 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 			if (!jfill) /* fill values are already 0 */
 				goto next_col;
 			if (jfill->type != JSON_STRING_VALUE) {
-				DECOMP_ERR(reqc, EINVAL, "'fill' type mismatch: expecting a STRING\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
+						"'fill' type mismatch: expecting a STRING\n",
+						strgp->obj.name, i, dcol->dst);
 				goto err_0;
 			}
 			dcol->fill_len = jfill->value.str_->str_len + 1;
 			if (dcol->fill_len > dcol->array_len) {
-				DECOMP_ERR(reqc, EINVAL, "'fill' array length too long\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s': "
+						"'fill' array length too long\n",
+						strgp->obj.name, i, dcol->dst);
 				goto err_0;
 			}
 			memcpy(dcol->fill, jfill->value.str_->str, dcol->fill_len);
@@ -590,7 +622,9 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 				goto next_col;
 			rc = __prim_fill_from_json(dcol->fill, dcol->type, jfill);
 			if (rc) {
-				DECOMP_ERR(reqc, EINVAL, "'fill' error: type mismatch\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': col[dst] '%s',"
+						"'fill' error: type mismatch\n",
+						strgp->obj.name, i, dcol->dst);
 				goto err_0;
 			}
 		next_col:
@@ -626,12 +660,16 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 		TAILQ_FOREACH(jidx, &jidxs->item_list, item_entry) {
 			didx = &drow->idxs[j];
 			if (jidx->type != JSON_DICT_VALUE) {
-				DECOMP_ERR(reqc, EINVAL, "an index must be an object\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': "
+						"an index must be a dictionary.\n",
+						strgp->obj.name, i);
 				goto err_0;
 			}
 			jname = __jdict_str(jidx, "name");
 			if (!jname) {
-				DECOMP_ERR(reqc, EINVAL, "index['name'] is required\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': index '%d': "
+						"index['name'] is required.\n",
+						strgp->obj.name, i, j);
 				goto err_0;
 			}
 			didx->name = strdup(jname->str);
@@ -639,7 +677,9 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 				goto err_enomem;
 			jidx_cols = __jdict_list(jidx, "cols");
 			if (!jidx_cols) {
-				DECOMP_ERR(reqc, EINVAL, "index['cols'] is required\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': index '%d':"
+						"index['cols'] is required.\n",
+						strgp->obj.name, i, j);
 				goto err_0;
 			}
 			didx->col_count = jidx_cols->item_count;
@@ -652,7 +692,9 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 			k = 0;
 			TAILQ_FOREACH(jcol, &jidx_cols->item_list, item_entry) {
 				if (jcol->type != JSON_STRING_VALUE) {
-					DECOMP_ERR(reqc, EINVAL, "index['cols'][x] must be a string\n");
+					DECOMP_ERR(reqc, EINVAL, "strgp '%s': row '%d': index '%d': col '%d': "
+							"index['cols'][x] value must be a string.\n",
+							strgp->obj.name, i, j, k);
 					goto err_0;
 				}
 				key.str = jcol->value.str_->str;
@@ -661,7 +703,9 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 						  sizeof(col_id_tbl->ent[0]),
 						  str_int_cmp);
 				if (!tbl_ent) {
-					DECOMP_ERR(reqc, ENOENT, "column '%s' not found.\n", key.str);
+					DECOMP_ERR(reqc, ENOENT, "strgp '%s': row '%d': index '%d': "
+							"column '%s' not found.\n",
+							strgp->obj.name, i, j, key.str);
 					goto err_0;
 				}
 				didx->col_idx[k] = tbl_ent->i;
