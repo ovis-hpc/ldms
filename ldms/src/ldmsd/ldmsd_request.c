@@ -2379,34 +2379,32 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	strgp->store = store->store;
 	strgp->plugin_name = strdup(plugin);
 	if (!strgp->plugin_name)
-		goto enomem_1;
+		goto enomem;
 
 	strgp->schema = strdup(schema);
 	if (!strgp->schema)
-		goto enomem_2;
+		goto enomem;
 
 	strgp->container = strdup(container);
 	if (!strgp->container)
-		goto enomem_3;
+		goto enomem;
 
 	strgp->flush_interval = flush_interval;
 
 	if (decomp) {
 		strgp->decomp_name = strdup(decomp);
 		if (!strgp->decomp_name)
-			goto enomem_3;
+			goto enomem;
 		/* reqc->errcode, reqc->line_buf will be populated if there is an error */
-		strgp_decomp_init(strgp, reqc);
+		if (strgp_decomp_init(strgp, reqc)) {
+			goto send_reply;
+		}
 	} else {
 		strgp->decomp_name = NULL;
 	}
 
 	goto send_reply;
 
-enomem_3:
-enomem_2:
-enomem_1:
-	ldmsd_strgp_del(name, &sec_ctxt);
 enomem:
 	reqc->errcode = ENOMEM;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
@@ -2415,7 +2413,7 @@ enomem:
 eexist:
 	reqc->errcode = EEXIST;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
-				"The prdcr %s already exists.", name);
+				"The strgp %s already exists.", name);
 	goto send_reply;
 einval:
 	reqc->errcode = EINVAL;
@@ -2423,6 +2421,8 @@ einval:
 			"The attribute '%s' is required by strgp_add.",
 		       	attr_name);
 send_reply:
+	if (reqc->errcode)
+		ldmsd_strgp_del(name, &sec_ctxt);
 	ldmsd_send_req_response(reqc, reqc->line_buf);
 	free(name);
 	free(plugin);
