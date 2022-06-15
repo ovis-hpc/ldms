@@ -908,7 +908,18 @@ static int __decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			}
 			mval = ldms_metric_get(set, mid);
 			mtype = ldms_metric_type_get(set, mid);
-			assert(mtype == mid_rbn->col_mids[j].mtype);
+			if (mtype != mid_rbn->col_mids[j].mtype) {
+				ldmsd_lerror("strgp '%s': row '%d' col[dst] '%s': "
+					     "the value type (%s) is not "
+					     "compatible with the source metric type (%s). "
+					     "Please check the decomposition configuration.\n",
+					     strgp->obj.name, i, dcol->dst,
+					     ldms_metric_type_to_str(dcol->type),
+					     ldms_metric_type_to_str(mcol->mtype));
+				rc = EINVAL;
+				goto err_0;
+			}
+
 			if (mtype == LDMS_V_LIST)
 				goto col_mvals_list;
 			if (mtype == LDMS_V_RECORD_ARRAY)
@@ -1021,7 +1032,17 @@ static int __decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			dcol = &drow->cols[j];
 			mcol = &col_mvals[j];
 
-			assert(dcol->type == mcol->mtype);
+			if (dcol->type != mcol->mtype) {
+				ldmsd_lerror("strgp '%s': row '%d' col[dst] '%s': "
+					     "the value type (%s) is not "
+					     "compatible with the source metric type (%s). "
+					     "Please check the decomposition configuration.\n",
+					     strgp->obj.name, i, dcol->dst,
+					     ldms_metric_type_to_str(dcol->type),
+					     ldms_metric_type_to_str(mcol->mtype));
+				rc = EINVAL;
+				goto err_0;
+			}
 
 			col->metric_id = mcol->metric_id;
 			col->rec_metric_id = mcol->rec_metric_id;
