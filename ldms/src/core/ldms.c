@@ -309,10 +309,21 @@ struct get_set_names_arg {
  * }
  */
 
-static const char *perm_string(uint32_t perm)
+
+#define STATE_BUF_SZ 4
+#define PERM_BUF_SZ 16
+size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
+				      int need_comma,
+				      char *buf, size_t buf_size)
 {
-	static char str[16];
-	char *s = str;
+	size_t cnt;
+	char dbuf[2*LDMS_DIGEST_LENGTH+1];
+	ldms_digest_t digest = ldms_set_digest_get(set);
+
+	/* format perm */
+	uint32_t perm = __le32_to_cpu(set->meta->perm);
+	char perm_str[PERM_BUF_SZ];
+	char *s = perm_str;
 	int i;
 	*s = '-';
 	s++;
@@ -335,37 +346,25 @@ static const char *perm_string(uint32_t perm)
 		s++;
 	}
 	*s = '\0';
-	return str;
-}
 
-char *set_state(struct ldms_set *set)
-{
-	static char str[8];
+	/* format state flags */
+	char state[STATE_BUF_SZ];
 	if (set->data->trans.flags == LDMS_TRANSACTION_END)
-		str[0] = 'C';
+		state[0] = 'C';
 	else
-		str[0] = ' ';
+		state[0] = ' ';
 	if (set->flags & LDMS_SET_F_LOCAL)
-		str[1] = 'L';
+		state[1] = 'L';
 	else if (set->flags & LDMS_SET_F_REMOTE)
-		str[1] = 'R';
+		state[1] = 'R';
 	else
-		str[1] = ' ';
+		state[1] = ' ';
 	if (set->flags & LDMS_SET_F_PUSH_CHANGE)
-		str[2] = 'P';
+		state[2] = 'P';
 	else
-		str[2] = ' ';
-	str[3] = '\0';
-	return str;
-}
+		state[2] = ' ';
+	state[3] = '\0';
 
-size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
-				      int need_comma,
-				      char *buf, size_t buf_size)
-{
-	size_t cnt;
-	char dbuf[2*LDMS_DIGEST_LENGTH+1];
-	ldms_digest_t digest = ldms_set_digest_get(set);
 	cnt = snprintf(buf, buf_size,
 		       "%c{"
 		       "\"name\":\"%s\","
@@ -389,13 +388,13 @@ size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
 		       get_instance_name(set->meta)->name,
 		       get_schema_name(set->meta)->name,
 		       digest ? ldms_digest_str(digest, dbuf, sizeof(dbuf)) : "",
-		       set_state(set),
+		       state,
 		       __le32_to_cpu(set->meta->meta_sz),
 		       __le32_to_cpu(set->meta->data_sz),
 		       __le32_to_cpu(set->meta->heap_sz),
 		       __le32_to_cpu(set->meta->uid),
 		       __le32_to_cpu(set->meta->gid),
-		       perm_string(__le32_to_cpu(set->meta->perm)),
+		       perm_str,
 		       __le32_to_cpu(set->meta->card),
 		       __le32_to_cpu(set->meta->array_card),
 		       (uint64_t)__le64_to_cpu(set->meta->meta_gn),
