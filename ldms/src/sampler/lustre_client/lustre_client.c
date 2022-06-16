@@ -251,8 +251,18 @@ static int config(struct ldmsd_plugin *self,
 		}
 	}
 	(void)base_auth_parse(avl, &auth, log_fn);
-	jobid_helper_config(avl);
-	comp_id_helper_config(avl, &cid);
+	int jc = jobid_helper_config(avl);
+        if (jc) {
+		log_fn(LDMSD_LERROR, SAMP": set name for job_set="
+			" is too long.\n");
+		return jc;
+	}
+	int cc = comp_id_helper_config(avl, &cid);
+        if (cc) {
+		log_fn(LDMSD_LERROR, SAMP": value of component_id="
+			" is invalid.\n");
+		return cc;
+	}
         return 0;
 }
 

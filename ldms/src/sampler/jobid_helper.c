@@ -7,7 +7,7 @@
 
 #include "jobid_helper.h"
 
-static char *job_set_name;
+static char job_set_name[MAX_JOB_SET_NAME];
 static ldms_set_t job_set;
 static int job_id_idx = -1;
 static int app_id_idx;
@@ -22,11 +22,11 @@ int jobid_helper_schema_add(ldms_schema_t schema)
 
 	rc = ldms_schema_metric_add(schema, "job_id", LDMS_V_U64);
 	if (rc < 0) {
-		return -1;
+		return rc;
 	}
 	rc = ldms_schema_metric_add(schema, "app_id", LDMS_V_U64);
 	if (rc < 0) {
-		return -1;
+		return rc;
 	}
 
 	return 0;
@@ -115,13 +115,17 @@ void jobid_helper_metric_update(ldms_set_t set)
 
 }
 
-void jobid_helper_config(struct attr_value_list *avl)
+int jobid_helper_config(struct attr_value_list *avl)
 {
 	char *value;
 
 	value = av_value(avl, "job_set");
-	if (!value)
-		job_set_name = strdup("job_info");
-	else
-		job_set_name = strdup(value);
+	if (!value) {
+		strcpy(job_set_name, "job_info");
+	} else {
+		if (strlen(value) > MAX_JOB_SET_NAME -1)
+			return ENAMETOOLONG;
+		strcpy(job_set_name, value);
+	}
+	return 0;
 }

@@ -264,7 +264,9 @@ static int gpu_schema_create()
         sch = ldms_schema_new(conf.schema_name);
         if (sch == NULL)
                 goto err1;
-        jobid_helper_schema_add(sch);
+        rc = jobid_helper_schema_add(sch);
+	if (rc < 0)
+		goto err2;
         rc = ldms_schema_meta_add(sch, "gpu_id", LDMS_V_S32);
         if (rc < 0)
                 goto err2;
@@ -289,7 +291,7 @@ static int gpu_schema_create()
 err2:
         ldms_schema_delete(sch);
 err1:
-        log_fn(LDMSD_LERROR, SAMP" schema creation failed\n");
+        log_fn(LDMSD_LERROR, SAMP" schema creation failed.\n");
         return -1;
 }
 
@@ -386,7 +388,13 @@ static int config(struct ldmsd_plugin *self,
 
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
 
-        jobid_helper_config(avl);
+        int jc = jobid_helper_config(avl);
+        if (jc) {
+		log_fn(LDMSD_LERROR, SAMP": set name for job_set="
+			" is too long.\n");
+		rc = jc;
+		goto err0;
+	}
         value = av_value(avl, "interval");
         if (value == NULL) {
                 log_fn(LDMSD_LERROR, SAMP" config() \"interval\" option missing\n");
