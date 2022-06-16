@@ -1990,7 +1990,7 @@ int ldms_schema_metric_add_with_unit(ldms_schema_t s, const char *name,
 				     const char *unit, enum ldms_value_type type)
 {
 	if (ldms_type_is_array(type) || type == LDMS_V_LIST)
-		return EINVAL;
+		return -EINVAL;
 	return __schema_metric_add(s, name, unit, LDMS_MDESC_F_DATA, type, 1);
 }
 
@@ -2004,7 +2004,7 @@ int ldms_schema_meta_add_with_unit(ldms_schema_t s, const char *name,
 				   const char *unit, enum ldms_value_type type)
 {
 	if (type == LDMS_V_LIST || type > LDMS_V_LAST)
-		return EINVAL;
+		return -EINVAL;
 	return __schema_metric_add(s, name, unit, LDMS_MDESC_F_META, type, 1);
 }
 
@@ -2019,7 +2019,7 @@ int ldms_schema_metric_array_add_with_unit(ldms_schema_t s, const char *name,
 					   uint32_t count)
 {
 	if (!ldms_type_is_array(type))
-		return EINVAL;
+		return -EINVAL;
 	return __schema_metric_add(s, name, unit, LDMS_MDESC_F_DATA, type, count);
 }
 
