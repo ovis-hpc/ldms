@@ -256,12 +256,16 @@ __decomp_as_is_config(ldmsd_strgp_t strgp, json_entity_t jcfg,
 	TAILQ_FOREACH(jidx, &jidxs->item_list, item_entry) {
 		didx = &dcfg->idxs[j];
 		if (jidx->type != JSON_DICT_VALUE) {
-			DECOMP_ERR(reqc, EINVAL, "an index must be an object\n");
+			DECOMP_ERR(reqc, EINVAL, "strgp '%s': index '%d': "
+					"an index entry must be a dictionary.\n",
+					strgp->obj.name, j);
 			goto err_0;
 		}
 		jname = __jdict_str(jidx, "name");
 		if (!jname) {
-			DECOMP_ERR(reqc, EINVAL, "index['name'] is required\n");
+			DECOMP_ERR(reqc, EINVAL, "strgp '%s': index '%d': "
+					"index['name'] is required.\n",
+					strgp->obj.name, j);
 			goto err_0;
 		}
 		didx->name = strdup(jname->str);
@@ -269,7 +273,9 @@ __decomp_as_is_config(ldmsd_strgp_t strgp, json_entity_t jcfg,
 			goto err_enomem;
 		jidx_cols = __jdict_list(jidx, "cols");
 		if (!jidx_cols) {
-			DECOMP_ERR(reqc, EINVAL, "index['cols'] is required\n");
+			DECOMP_ERR(reqc, EINVAL, "strgp '%s': index '%d': "
+					"index['cols'] is required.\n",
+					strgp->obj.name, j);
 			goto err_0;
 		}
 		didx->col_count = jidx_cols->item_count;
@@ -279,7 +285,9 @@ __decomp_as_is_config(ldmsd_strgp_t strgp, json_entity_t jcfg,
 		k = 0;
 		TAILQ_FOREACH(jidx_col, &jidx_cols->item_list, item_entry) {
 			if (jidx_col->type != JSON_STRING_VALUE) {
-				DECOMP_ERR(reqc, EINVAL, "index['cols'][x] must be a string\n");
+				DECOMP_ERR(reqc, EINVAL, "strgp '%s': index '%d':"
+						"index['cols'][%d] must be a string.\n",
+						strgp->obj.name, j, k);
 				goto err_0;
 			}
 			didx->col_names[k] = strdup(jidx_col->value.str_->str);
