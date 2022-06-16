@@ -186,7 +186,9 @@ static int ibmad_schema_create()
         sch = ldms_schema_new(conf.schema_name);
         if (sch == NULL)
                 goto err1;
-        jobid_helper_schema_add(sch);
+        rc = jobid_helper_schema_add(sch);
+	if (rc < 0)
+		goto err2;
         rc = ldms_schema_meta_array_add(sch, "ca_name", LDMS_V_CHAR_ARRAY, 64);
         if (rc < 0)
                 goto err2;
@@ -692,7 +694,12 @@ static int config(struct ldmsd_plugin *self,
 
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
 
-	jobid_helper_config(avl);
+	int jc = jobid_helper_config(avl);
+        if (jc) {
+		log_fn(LDMSD_LERROR, SAMP": set name for job_set="
+			" is too long.\n");
+		return jc;
+	}
 	base_auth_parse(avl, &auth, log_fn);
 
         value = av_value(avl, "schema");
