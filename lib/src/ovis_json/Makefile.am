@@ -9,6 +9,7 @@ AM_YFLAGS = -d
 
 EXTRA_DIST = ovis_json_lexer.l ovis_json_parser.y
 
+
 CLEANFILES = ovis_json_parser.h ovis_json_parser.c ovis_json_lexer.c
 
 ovis_json_parser.c: ovis_json_parser.h ovis_json.h
@@ -31,4 +32,12 @@ ovis_json_test_SOURCES = ovis_json_test.c ovis_json.h
 ovis_json_test_CFLAGS = $(AM_CFLAGS) -g -O0
 ovis_json_test_LDADD = libovis_json.la
 
-sbin_PROGRAMS = ovis_json_test
+ovis_json_perf_test_SOURCES = ovis_json_perf_test.c ovis_json.h
+ovis_json_perf_test_CFLAGS = $(AM_CFLAGS) -g -O3
+ovis_json_perf_test_LDADD = libovis_json.la
+EXTRA_DIST += $(srcdir)/input/ovis_json_perf_test.sh
+
+sbin_PROGRAMS = ovis_json_test ovis_json_perf_test
+
+installcheck-local: ovis_json_perf_test $(srcdir)/input/ovis_json_perf_test.sh
+	LD_LIBRARY_PATH=$(DESTDIR)$(libdir) BIN=$(DESTDIR)$(sbindir) TESTBIN=. bash $(srcdir)/input/ovis_json_perf_test.sh
