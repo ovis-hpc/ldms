@@ -152,8 +152,8 @@ int main(int argc, char *argv[])
 	int64_t flushes = 987;
 	double start_time = 1.234567;
 	double end_time = 3.456789;
-	struct timespec tspec_start;
-	struct timespec tspec_end;
+	struct timespec tspec_start = { 1000, 100};
+	struct timespec tspec_end = { 1001, 101 };
 	double total_time = 1.2345;
 	char *mod_name ="mod_name";
 	char *data_type = "datatype";
