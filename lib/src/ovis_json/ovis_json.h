@@ -338,5 +338,6 @@ extern jbuf_t jbuf_append_attr(jbuf_t jb, const char *name, const char *fmt, ...
 extern jbuf_t jbuf_append_str(jbuf_t jb, const char *fmt, ...);
 extern jbuf_t jbuf_append_va(jbuf_t jb, const char *fmt, va_list ap);
 extern void jbuf_free(jbuf_t jb);
+extern void jbuf_reset(jbuf_t jb);
 
 #endif
