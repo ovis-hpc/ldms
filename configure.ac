@@ -288,6 +288,7 @@ OPTION_DEFAULT_ENABLE([synthetic], [ENABLE_SYNTHETIC])
 OPTION_DEFAULT_ENABLE([varset], [ENABLE_VARSET])
 OPTION_DEFAULT_ENABLE([lnet_stats], [ENABLE_LNET_STATS])
 OPTION_DEFAULT_ENABLE([meminfo], [ENABLE_MEMINFO])
+OPTION_DEFAULT_DISABLE([gpumetrics], [ENABLE_GPU_METRICS])
 OPTION_DEFAULT_ENABLE([coretemp], [ENABLE_CORETEMP])
 OPTION_DEFAULT_DISABLE([filesingle], [ENABLE_FILESINGLE])
 OPTION_DEFAULT_DISABLE([msr_interlagos], [ENABLE_MSR_INTERLAGOS])
@@ -880,6 +881,7 @@ ldms/src/sampler/appinfo_lib/Makefile
 ldms/src/sampler/kgnilnd/Makefile
 ldms/src/sampler/tx2mon/Makefile
 ldms/src/sampler/meminfo/Makefile
+ldms/src/contrib/sampler/gpu_metrics_sampler/Makefile
 ldms/src/sampler/procinterrupts/Makefile
 ldms/src/sampler/procnetdev2/Makefile
 ldms/src/sampler/variable/Makefile
