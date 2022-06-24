@@ -42,6 +42,11 @@ jbuf_t jbuf_new(void)
 	return jb;
 }
 
+void jbuf_reset(jbuf_t jb)
+{
+	jb->cursor = 0;
+}
+
 void jbuf_free(jbuf_t jb)
 {
 	free(jb);
