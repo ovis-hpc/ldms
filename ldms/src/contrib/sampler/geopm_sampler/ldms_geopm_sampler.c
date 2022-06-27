@@ -58,6 +58,7 @@
 
 #include "ldms_geopm_sampler.h"
 
+#include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -150,6 +151,7 @@ void ldms_geopm_sampler_set_log(void (*pf)(int, const char *fms, ...))
 int ldms_geopm_sampler_open_config(const char *config_path, FILE **result)
 {
 	int rc = 0;
+	errno = 0;
 	*result = fopen(config_path, "r");
 	if (*result == NULL) {
 		msglog(LDMSD_LERROR,
@@ -175,14 +177,12 @@ int ldms_geopm_sampler_parse_line(FILE *fid,
 	int format_size = snprintf(format, sizeof(format),
 				   "%%%ds %%%ds %%d %%%ds ",
 				   NAME_MAX - 1, NAME_MAX - 1, NAME_MAX - 1);
-	if (format_size >= NAME_MAX) {
-		return ENAMETOOLONG;
-	}
-
+	assert(format_size < NAME_MAX);
 	char domain_type_str[NAME_MAX];
 	char *line = NULL;
 	size_t line_len = 0;
 	int num_scan = 0;
+	errno = 0;
 	while (num_scan == 0) {
 		if (getline(&line, &line_len, fid) == -1) {
 			if (errno) {
@@ -215,7 +215,16 @@ int ldms_geopm_sampler_parse_line(FILE *fid,
 	if (num_scan == EOF) {
 		return EOF;
 	}
+	else if (num_scan == ENOMEM) {
+		msglog(LDMSD_LERROR,
+		       SAMP": %s:%d: Unable to allocate memory while parsing GEOPM Sampler configuration file\n",
+		       __FILE__, __LINE__);
+		return ENOMEM;
+	}
 	else if (num_scan != 3) {
+		msglog(LDMSD_LERROR,
+		       SAMP": %s:%d: File format error for GEOPM Sampler configuration file\n",
+		       __FILE__, __LINE__);
 		return EINVAL;
 	}
 	*domain_type = geopm_topo_domain_type(domain_type_str);
@@ -251,7 +260,7 @@ int ldms_geopm_sampler_parse_line(FILE *fid,
 		msglog(LDMSD_LERROR,
 		       SAMP": %s:%d: Unable to create metric name with snprintf() ",
 		       __FILE__, __LINE__);
-		return errno ? errno : -1;
+		return -1;
 	}
 	msglog(LDMSD_LDEBUG, SAMP": Adding metric: %s\n", metric_name);
 	return 0;
@@ -261,7 +270,7 @@ int ldms_geopm_sampler_parse_check(int parse_rc)
 {
 	if (parse_rc != EOF) {
 		msglog(LDMSD_LERROR,
-		       SAMP": %s:%d: File format error for GEOPM Sampler configuration file\n",
+		       SAMP": %s:%d: Unable to parse GEOPM Sampler configuration file\n",
 		       __FILE__, __LINE__);
 		return parse_rc;
 	}
@@ -352,6 +361,7 @@ static int create_metric_set(void)
 	enum geopm_domain_e domain_type = GEOPM_DOMAIN_INVALID;
 	FILE *signal_fileptr = NULL;
 
+	errno = 0;
 	schema = base_schema_new(g_base);
 	if (schema == NULL) {
 		msglog(LDMSD_LERROR,
@@ -391,10 +401,9 @@ static int create_metric_set(void)
 		rc = ldms_schema_metric_add(schema, metric_name,
 					    ldms_geopm_sampler_value_type(metric_type));
 		if (rc < 0) {
-			rc = errno ? errno : ENOMEM;
 			msglog(LDMSD_LERROR,
-			       SAMP": %s:%d: Unable to add metric using ldms_schma_metric_add()\n",
-			       __FILE__, __LINE__);
+			       SAMP": %s:%d: Unable to add metric using ldms_schma_metric_add(), returned: %d.\n",
+			       __FILE__, __LINE__, rc);
 			goto exit;
 		}
 	}
@@ -402,12 +411,13 @@ static int create_metric_set(void)
 	if (rc != 0) {
 		goto exit;
 	}
+	errno = 0;
 	g_set = base_set_new(g_base);
 	if (g_set == NULL) {
 		rc = errno ? errno : -1;
 		msglog(LDMSD_LERROR,
-		       SAMP": %s:%d: Unable to call base_set_new()\n",
-		       __FILE__, __LINE__);
+		       SAMP": %s:%d: Failed to call base_set_new(), returned NULL: errno: %d.\n",
+		       __FILE__, __LINE__, errno);
 		goto exit;
 	}
 
@@ -468,12 +478,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	/* Configure sampler base
 	 * This makes call into core LDMS functions for initializing the sampler
 	 */
+	errno = 0;
 	g_base = base_config(avl, SAMP, SAMP, msglog);
 	msglog(LDMSD_LDEBUG, SAMP": Base config() called.\n");
 	if (g_base == NULL) {
 		rc = errno ? errno : -1;
 		msglog(LDMSD_LERROR,
-		       SAMP ": %s:%d: Failed to call base_config(), returnned NULL: errno: %d.\n",
+		       SAMP ": %s:%d: Failed to call base_config(), returned NULL: errno: %d.\n",
 		       __FILE__, __LINE__, errno);
 		goto exit;
 	}
