@@ -73,9 +73,29 @@ for general guidance on building the OVIS/LDMS codebase.
     ./configure --with-geopm=${GEOPM_PREFIX}
 
 
+Unit Tests
+----------
+
+The GEOPM LDMS sampler unit tests are executed as part of the
+``make check`` target of the OVIS autotools build system.  The
+test binary can be used to test the validity of any GEOPM LDMS sampler
+configuration file.  There are scripts  that execute this binary on a
+a set of configuration files, and then validates the output and return
+code.
+
+There is an option to execute these tests with an analysis tool
+wrapper, like valgrind:
+
+    export TEST_WRAPPER="valgrind --leak-check=full --log-file=%q{TEST_NAME}_valgrind.log"
+    make check
+
+This command will execute the unit tests under while running the
+valgrind memcheck tests as well.  The log from valgrind will be
+created based on the test name.
+
 
 Using the GEOPM LDMS Sampler
-------------------------------
+----------------------------
 
 More details on using the sampler can be found on the 
 [man page](Plugin_geopm_sampler.man).
