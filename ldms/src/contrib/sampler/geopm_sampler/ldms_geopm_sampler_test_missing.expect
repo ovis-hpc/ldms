@@ -1,3 +1,4 @@
 ldms_geopm_sampler: ldms_geopm_sampler.c:XXXX: File format error for GEOPM Sampler configuration file
+ldms_geopm_sampler: ldms_geopm_sampler.c:XXXX: Unable to parse GEOPM Sampler configuration file
 
 FAIL

@@ -1,4 +1,4 @@
-TEST_NAME=$(basename ${TEST_FILE} | sed 's|.sh||')
+export TEST_NAME=$(basename ${TEST_FILE} | sed 's|.sh||')
 TEST_CONF=${TEST_DIR}/${TEST_NAME}.conf
 TEST_LOG_OUT=${TEST_DIR}/${TEST_NAME}.out
 TEST_LOG_ERR=${TEST_DIR}/${TEST_NAME}.err
@@ -8,7 +8,7 @@ TEST_BIN=${TEST_DIR}/ldms_geopm_sampler_test
 
 ldms_geopm_sampler_test_run()
 {
-    ${TEST_BIN} ${TEST_CONF} \
+    ${TEST_WRAPPER} ${TEST_BIN} ${TEST_CONF} \
         1> ${TEST_LOG_OUT} \
         2> ${TEST_LOG_ERR}
     TEST_EXIT=$?
