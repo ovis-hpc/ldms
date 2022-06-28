@@ -1,5 +1,5 @@
 ldms_geopm_sampler: ldms_geopm_sampler.c:XXXX: Unable to determine signal format
 <geopm> Invalid argument: PlatformIOImp::agg_function(): unknown how to aggregate "INVALID_NAME": at src/PlatformIO.cpp:XXXX
-ldms_geopm_sampler: ldms_geopm_sampler.c:XXXX: File format error for GEOPM Sampler configuration file
+ldms_geopm_sampler: ldms_geopm_sampler.c:XXXX: Unable to parse GEOPM Sampler configuration file
 
 FAIL

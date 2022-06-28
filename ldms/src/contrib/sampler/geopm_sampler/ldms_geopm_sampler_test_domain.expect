@@ -1,5 +1,5 @@
 ldms_geopm_sampler: ldms_geopm_sampler.c:XXXX: Invalid domain name 'duck' provided in GEOPM configuration file
 <geopm> Invalid argument: PlatformTopo::domain_name_to_type(): unrecognized domain_name: duck: at src/PlatformTopo.cpp:453
-ldms_geopm_sampler: ldms_geopm_sampler.c:XXXX: File format error for GEOPM Sampler configuration file
+ldms_geopm_sampler: ldms_geopm_sampler.c:XXXX: Unable to parse GEOPM Sampler configuration file
 
 FAIL
