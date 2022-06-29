@@ -254,7 +254,7 @@ int ldms_geopm_sampler_parse_line(FILE *fid,
 
 	}
 	*metric_type = format_type;
-	int print_rc = snprintf(metric_name, NAME_MAX, "%s-%s-%d",
+	int print_rc = snprintf(metric_name, NAME_MAX, "%s_%s_%d",
 				signal_name, domain_type_str, *domain_idx);
 	if (print_rc >= NAME_MAX || print_rc < 0) {
 		msglog(LDMSD_LERROR,
