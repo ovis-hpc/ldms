@@ -94,6 +94,7 @@ void ldmsd_strgp___del(ldmsd_cfgobj_t obj)
 		free(strgp->plugin_name);
 	if (strgp->decomp_name)
 		free(strgp->decomp_name);
+	free(strgp->digest);
 	ldmsd_cfgobj___del(obj);
 }
 
@@ -517,6 +518,7 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	const char *name;
 	ldmsd_strgp_metric_t metric;
 	struct ldmsd_plugin_cfg *store;
+	int alloc_digest = 0;
 
 	if (!prd_set->set)
 		return ENOENT;
@@ -544,6 +546,30 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 			TAILQ_INSERT_TAIL(&strgp->metric_list, metric, entry);
 		}
 	}
+
+	if (strgp->digest) {
+		/*
+		 * The storage policy has been restarted.
+		 * We are making sure that we are building the metric array from
+		 * the schema of the same digest.
+		 */
+		if (0 != ldms_digest_cmp(strgp->digest, ldms_set_digest_get(prd_set->set))) {
+			ldmsd_log(LDMSD_LERROR,
+				  "strgp '%s' ignores set '%s' because "
+				  "the metric lists are mismatched.\n",
+				  strgp->obj.name, prd_set->inst_name);
+			rc = EINVAL;
+			goto err;
+		}
+	} else {
+		alloc_digest = 1;
+		strgp->digest = calloc(1, sizeof(*strgp->digest));
+		if (!strgp->digest) {
+			rc = ENOMEM;
+			goto err;
+		}
+	}
+
 	rc = ENOENT;
 	for (i = 0, metric = ldmsd_strgp_metric_first(strgp);
 	     metric; metric = ldmsd_strgp_metric_next(metric), i++) {
@@ -561,8 +587,16 @@ static int strgp_open(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	rc = EINVAL;
 	if (!strgp->store_handle)
 		goto err;
+	if (alloc_digest) {
+		memcpy(strgp->digest, ldms_set_digest_get(prd_set->set),
+						    LDMS_DIGEST_LENGTH);
+	}
 	return 0;
 err:
+	if (alloc_digest) {
+		free(strgp->digest);
+		strgp->digest = NULL;
+	}
 	free(strgp->metric_arry);
 	strgp->metric_arry = NULL;
 	strgp->metric_count = 0;
@@ -614,7 +648,20 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 				if (rc)
 					break;
 			}
-		} else if (!strgp->store_handle) {
+		} else if (strgp->digest) {
+			/*
+			 * The strgp has cached a digest and been restarted.
+			 */
+			if (0 != ldms_digest_cmp(strgp->digest,
+					ldms_set_digest_get(prd_set->set))) {
+				ldmsd_log(LDMSD_LERROR,
+					  "strgp '%s' ignores set '%s' because "
+					  "the metric lists are mismatched.\n",
+					  strgp->obj.name, prd_set->inst_name);
+				break;
+			}
+		}
+		if (!strgp->store_handle) {
 			rc = strgp_open(strgp, prd_set);
 			if (rc)
 				break;

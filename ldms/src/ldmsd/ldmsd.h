@@ -459,6 +459,9 @@ struct ldmsd_strgp {
 	/** Schema name of the metric set on the producer */
 	char *schema;
 
+	/** The digest of the first set used in opening the store */
+	ldms_digest_t digest;
+
 	/** The container name in which the storage backend will place data */
 	char *container;
 
