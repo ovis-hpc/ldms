@@ -4,7 +4,7 @@ GEOPM LDMS SAMPLER PLUGIN
 This directory contains the source, build scripts, and unit tests for
 the GEOPM LDMS Sampler Plugin. When enabled, this sampler relies on the
 interfaces provided by the GEOPM Service package to read signals. This package
-is part of the open source [GEOPM](https://geopm.github.io) project. 
+is part of the open source [GEOPM](https://geopm.github.io) project.
 
 Build Requirements
 ------------------
@@ -49,22 +49,22 @@ The bash script below shows an example source build that uses the
     tar xvf geopm-service-2.0.0.rc1.tar.gz
     cd geopm-service-2.0.0~rc1/
     GEOPM_PREFIX=$HOME/build/geopm
-    # Use configure --help for details on enabling optional accelerator support 
+    # Use configure --help for details on enabling optional accelerator support
     ./configure --prefix=${GEOPM_PREFIX} --libdir=${GEOPM_PREFIX}/lib64
     make
     make install
-    
+
 For reference, the instructions for building different components
-of the GEOPM project can be found here: 
+of the GEOPM project can be found here:
 [Source Build Instructions](https://geopm.github.io/devel.html#developer-build-process)
 
 
 OVIS Build
 ----------
 
-To enable the sampler provide the ``--with-geopm`` option to the configure 
-script while building OVIS from source. Please refer to the OVIS documentation 
-for general guidance on building the OVIS/LDMS codebase. 
+To enable the sampler provide the ``--with-geopm`` option to the configure
+script while building OVIS from source. Please refer to the OVIS documentation
+for general guidance on building the OVIS/LDMS codebase.
 
 
     #!/bin/bash
@@ -80,7 +80,7 @@ The GEOPM LDMS sampler unit tests are executed as part of the
 ``make check`` target of the OVIS autotools build system.  The test
 binary ``ldms_geopm_sampler_test`` can be used to test the validity of
 any GEOPM LDMS sampler configuration file.  There are scripts that
-execute this binary on a a set of configuration files, and then
+execute this binary on a set of configuration files, and then
 validate the output and return code.
 
 There is an option to execute these tests with an analysis tool
@@ -97,6 +97,5 @@ created based on the test name.
 Using the GEOPM LDMS Sampler
 ----------------------------
 
-More details on using the sampler can be found on the 
+More details on using the sampler can be found on the
 [man page](Plugin_geopm_sampler.man).
-
