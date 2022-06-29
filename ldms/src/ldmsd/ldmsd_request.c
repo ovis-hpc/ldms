@@ -2301,13 +2301,13 @@ int strgp_decomp_init(ldmsd_strgp_t strgp, ldmsd_req_ctxt_t req);
 
 static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 {
-	char *attr_name, *name, *plugin, *container, *schema, *interval;
+	char *attr_name, *name, *plugin, *container, *schema, *interval, *regex;
 	char *decomp;
 	name = plugin = container = schema = NULL;
 	size_t cnt = 0;
 	uid_t uid;
 	gid_t gid;
-	int perm;
+	int perm, rc;
 	char *perm_s = NULL;
 	struct timespec flush_interval = {0, 0};
 	struct ldmsd_sec_ctxt sec_ctxt = {};
@@ -2329,10 +2329,34 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!container)
 		goto einval;
 
-	attr_name = "schema";
 	schema = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_SCHEMA);
-	if (!schema)
-		goto einval;
+	regex = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_REGEX);
+	decomp = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_DECOMP);
+	if (schema) {
+		/* must not have regex */
+		if (regex) {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				       "The attributes 'schema' and 'regex' "
+				       "are mutually exclusive.");
+			goto send_reply;
+		}
+	} else if (regex) {
+		/* must use decomp */
+		if (!decomp) {
+			reqc->errcode = EINVAL;
+			cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				       "The attributes 'decomposition' is "
+				       "required when 'regex' is used.");
+			goto send_reply;
+		}
+	} else {
+		reqc->errcode = EINVAL;
+		cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+			       "The attribute 'schema' or 'regex' is "
+			       "required by strgp_add.");
+		goto send_reply;
+	}
 
 	attr_name = "flush";
 	interval = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_INTERVAL);
@@ -2346,8 +2370,6 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 		}
 	}
 
-	attr_name = "decomposition";
-	decomp = ldmsd_req_attr_str_value_get_by_id(reqc, LDMSD_ATTR_DECOMP);
 
 	struct ldmsd_plugin_cfg *store;
 	store = ldmsd_get_plugin(plugin);
@@ -2381,9 +2403,17 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 	if (!strgp->plugin_name)
 		goto enomem;
 
-	strgp->schema = strdup(schema);
-	if (!strgp->schema)
-		goto enomem;
+
+	char regex_err[512] = "";
+	if (regex) {
+		rc = ldmsd_compile_regex(&strgp->schema_regex, regex, regex_err, sizeof(regex_err));
+		if (rc)
+			goto eregex;
+	} else {
+		strgp->schema = strdup(schema);
+		if (!strgp->schema)
+			goto enomem;
+	}
 
 	strgp->container = strdup(container);
 	if (!strgp->container)
@@ -2405,10 +2435,20 @@ static int strgp_add_handler(ldmsd_req_ctxt_t reqc)
 
 	goto send_reply;
 
+eregex:
+	reqc->errcode = rc;
+	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
+				"Regular expression error: %s", regex_err);
+	goto strgp_del;
 enomem:
 	reqc->errcode = ENOMEM;
 	cnt = Snprintf(&reqc->line_buf, &reqc->line_len,
 				"Memory allocation failed.");
+	if (!strgp)
+		goto send_reply;
+	/* let through */
+strgp_del:
+	ldmsd_strgp_del(name, &sec_ctxt);
 	goto send_reply;
 eexist:
 	reqc->errcode = EEXIST;

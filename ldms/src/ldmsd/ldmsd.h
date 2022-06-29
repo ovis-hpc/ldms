@@ -489,6 +489,9 @@ struct ldmsd_strgp {
 	/** Decomposer resource handle */
 	struct ldmsd_decomp_s *decomp;
 	char *decomp_name;
+
+	/** Regular expression for the schema */
+	regex_t schema_regex;
 };
 
 
