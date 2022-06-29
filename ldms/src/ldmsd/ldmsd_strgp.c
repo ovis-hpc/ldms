@@ -625,8 +625,15 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 	int rc = 0;
 	ldmsd_strgp_ref_t ref;
 
-	if (strcmp(strgp->schema, prd_set->schema_name))
-		return ENOENT;
+	if (strgp->schema) {
+		/* schema exact match */
+		if (strcmp(strgp->schema, prd_set->schema_name))
+			return ENOENT;
+	} else {
+		/* regex match */
+		if (regexec(&strgp->schema_regex, prd_set->schema_name, 0, NULL, 0))
+			return ENOENT;
+	}
 
 	ref = strgp_ref_find(prd_set, strgp);
 	switch (strgp->state) {
