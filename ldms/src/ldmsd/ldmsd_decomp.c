@@ -211,6 +211,13 @@ int ldmsd_decomp_config(ldmsd_strgp_t strgp, const char *json_path, ldmsd_req_ct
 	char *buff = NULL;
 	ldmsd_decomp_t decomp_api;
 
+	if (strgp->decomp) {
+		/* already configured */
+		rc = EALREADY;
+		DECOMP_ERR(reqc, EALREADY, "Already configurd\n");
+		goto err_0;
+	}
+
 	/* Load JSON from file */
 	fd = open(json_path, O_RDONLY);
 	if (fd < 0) {
