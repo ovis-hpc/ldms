@@ -961,11 +961,10 @@ char *ldmsd_stream_dir_dump()
 	pthread_mutex_unlock(&s_tree_lock);
 	rc = buf_printf(&buf, "}");
 	if (rc)
-		goto unlock_s_tree;
+		goto free_buf;
 	return buf.buf;
 unlock_s:
 	pthread_mutex_unlock(&s->s_lock);
-unlock_s_tree:
 	pthread_mutex_unlock(&s_tree_lock);
 free_buf:
 	free(buf.buf);
