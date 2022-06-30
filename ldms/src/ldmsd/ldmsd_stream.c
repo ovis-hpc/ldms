@@ -935,6 +935,7 @@ char *ldmsd_stream_dir_dump()
 	struct rbn *rbn;
 	struct buf_s buf = {.sz = 4096};
 	int first = 1;
+	struct ldmsd_stream_info_s tot_info = {0};
 
 	buf.buf = malloc(buf.sz);
 	if (!buf.buf) {
@@ -948,6 +949,16 @@ char *ldmsd_stream_dir_dump()
 	pthread_mutex_lock(&s_tree_lock);
 	RBT_FOREACH(rbn, &s_tree) {
 		s = container_of(rbn, struct ldmsd_stream_s, s_ent);
+
+		tot_info.total_bytes += s->s_info.total_bytes;
+		tot_info.count += s->s_info.count;
+		if (tot_info.first_ts == 0)
+			tot_info.first_ts = s->s_info.first_ts;
+		else if (tot_info.first_ts > s->s_info.first_ts)
+			tot_info.first_ts = s->s_info.first_ts;
+		if (tot_info.last_ts < s->s_info.last_ts)
+			tot_info.last_ts = s->s_info.last_ts;
+
 		rc = buf_printf(&buf, "%s", ((first)?"":","));
 		if (rc)
 			goto unlock_s;
@@ -959,13 +970,20 @@ char *ldmsd_stream_dir_dump()
 		pthread_mutex_unlock(&s->s_lock);
 	}
 	pthread_mutex_unlock(&s_tree_lock);
-	rc = buf_printf(&buf, "}");
+
+	rc = buf_printf(&buf, ",\"_AGGREGATED_\":{"
+				   "\"info\":");
 	if (rc)
-		goto unlock_s_tree;
+		goto free_buf;
+	rc = __stream_info_json(&buf, &tot_info);
+	if (rc)
+		goto free_buf;
+	rc = buf_printf(&buf, "}}");
+	if (rc)
+		goto free_buf;
 	return buf.buf;
 unlock_s:
 	pthread_mutex_unlock(&s->s_lock);
-unlock_s_tree:
 	pthread_mutex_unlock(&s_tree_lock);
 free_buf:
 	free(buf.buf);
