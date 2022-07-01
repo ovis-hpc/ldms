@@ -122,6 +122,7 @@ int rec_metric_ids[REC_METRICS_LEN];
 ldms_record_t rec_def;
 int rec_def_idx;
 int netdev_list_mid;
+size_t rec_heap_sz;
 
 int niface = 0;
 //max number of interfaces we can include.
@@ -168,6 +169,7 @@ static int create_metric_set(base_data_t base)
 
 	/* Create netdev record definition */
 	rec_def = ldms_record_from_template("netdev", rec_metrics, rec_metric_ids);
+	rec_heap_sz = ldms_record_heap_size_get(rec_def);
 	heap_sz = MAXIFACE * ldms_record_heap_size_get(rec_def);
 
 	/* Add record definition into the schema */
@@ -305,14 +307,14 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 static int sample(struct ldmsd_sampler *self)
 {
+	int rc;
 	char *s;
 	char lbuf[256];
 	char curriface[IFNAMSIZ];
 	union ldms_value v[REC_METRICS_LEN];
 	int i;
 	ldms_mval_t lh, rec_inst, name_mval;
-	static int warned = 0;
-	int skip;
+	size_t heap_sz;
 
 	if (!set){
 		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
@@ -326,7 +328,7 @@ static int sample(struct ldmsd_sampler *self)
 				"'%s'...exiting\n", procfile);
 		return ENOENT;
 	}
-
+begin:
 	base_sample_begin(base);
 
 	lh = ldms_metric_get(set, netdev_list_mid);
@@ -339,14 +341,10 @@ static int sample(struct ldmsd_sampler *self)
 	s = fgets(lbuf, sizeof(lbuf), mf);
 
 	/* data */
-	skip = 0;
 	do {
 		s = fgets(lbuf, sizeof(lbuf), mf);
 		if (!s)
 			break;
-
-		if (skip)
-			continue; /* must get to EOF for seek to work */
 
 		char *pch = strchr(lbuf, ':');
 		if (pch != NULL){
@@ -380,17 +378,8 @@ static int sample(struct ldmsd_sampler *self)
 		}
 	rec:
 		rec_inst = ldms_record_alloc(set, rec_def_idx);
-		if (!rec_inst) {
-			if (!warned) {
-				msglog(LDMSD_LERROR,
-				       SAMP ": too many net devices");
-				/* So that we don't flood the log with the
-				 * warning */
-				warned = 1;
-			}
-			skip = 1;
-			continue; /* must get to EOF for seek to work */
-		}
+		if (!rec_inst)
+			goto resize;
 		/* iface name */
 		name_mval = ldms_record_metric_get(rec_inst, rec_metric_ids[0]);
 		snprintf(name_mval->a_char, IFNAMSIZ, "%s", curriface);
@@ -401,14 +390,23 @@ static int sample(struct ldmsd_sampler *self)
 		ldms_list_append_record(set, lh, rec_inst);
 	} while (s);
 
-	if (!skip) {
-		/* we finished the /proc/net/dev file w/o skipping; reset
-		 * warning flag */
-		warned = 0;
-	}
-
 	base_sample_end(base);
 	return 0;
+resize:
+	/*
+	 * We intend to leave the set in the inconsistent state so that
+	 * the aggregators are aware that some metrics have not been newly sampled.
+	 */
+	heap_sz = ldms_set_heap_size_get(base->set) + 2*rec_heap_sz;
+	base_set_delete(base);
+	base->set = base_set_new_heap(base, heap_sz);
+	if (!base->set) {
+		rc = errno;
+		ldmsd_log(LDMSD_LCRITICAL, SAMP " : Failed to create a set with "
+						"a bigger heap. Error %d\n", rc);
+		return rc;
+	}
+	goto begin;
 }
 
 
