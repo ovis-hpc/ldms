@@ -15,5 +15,6 @@ endif
 SUBDIRS += $(MAYBE_TUTORIAL_SAMPLER)
 
 
-
-
+if ENABLE_GPU_METRICS
+SUBDIRS += gpu_metrics_sampler
+endif
