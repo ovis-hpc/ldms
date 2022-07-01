@@ -150,6 +150,24 @@ base_data_t base_config(struct attr_value_list *avl,
 ldms_set_t base_set_new(base_data_t base);
 
 /**
+ * \brief Create and initialize the base entries of the metric set with a specific heap size.
+ *
+ * The function is similar to \c base_set_new(), except it takes a heap size.
+ *
+ * \param base The base data structure
+ * \param heap_sz the heap size
+ *
+ * \return An LDMS set
+ */
+ldms_set_t base_set_new_heap(base_data_t base, size_t heap_sz);
+
+/**
+ * \brief Deregister and delete the LDMS set
+ * \param base The base data structure
+ */
+void base_set_delete(base_data_t base);
+
+/**
  * \brief Start the base metric sampling
  *
  * This function calls ldms_transaction_begin() and then stores the
