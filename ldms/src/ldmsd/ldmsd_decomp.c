@@ -281,17 +281,11 @@ int ldmsd_decomp_config(ldmsd_strgp_t strgp, const char *json_path, ldmsd_req_ct
 
 	/* let-through, clean-up */
  err_4:
-	#if 1
 	json_entity_free(cfg);
-	#endif
  err_3:
-	#if 1
 	json_parser_free(jp);
-	#endif
  err_2:
-	#if 1
 	free(buff);
-	#endif
  err_1:
 	close(fd);
  err_0:
