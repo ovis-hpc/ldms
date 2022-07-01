@@ -112,6 +112,23 @@ static struct {
 } ldms_zap_tbl[16] = {{0}};
 static int ldms_zap_tbl_n = 0;
 
+static char *xprt_event_type_names[] = {
+	[LDMS_XPRT_EVENT_CONNECTED] = "CONNECTED",
+	[LDMS_XPRT_EVENT_REJECTED] = "REJECTED",
+	[LDMS_XPRT_EVENT_ERROR] = "ERROR",
+	[LDMS_XPRT_EVENT_DISCONNECTED] = "DISCONNECTED",
+	[LDMS_XPRT_EVENT_RECV] = "RECV",
+	[LDMS_XPRT_EVENT_SET_DELETE] = "SET_DELETE",
+	[LDMS_XPRT_EVENT_SEND_COMPLETE] = "SEND_COMPLETE",
+};
+
+const char *ldms_xprt_event_type_to_str(enum ldms_xprt_event_type t)
+{
+	if (t > LDMS_XPRT_EVENT_LAST)
+		return "INVALID";
+	return xprt_event_type_names[t];
+}
+
 void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_fn);
 
 ldms_t ldms_xprt_get(ldms_t x)

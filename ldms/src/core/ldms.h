@@ -731,6 +731,8 @@ typedef struct ldms_cred {
 	gid_t gid;
 } *ldms_cred_t;
 
+extern const char *ldms_xprt_event_type_to_str(enum ldms_xprt_event_type t);
+
 /**
  * Definition of callback function for ldms_xprt_connect and ldms_xprt_listen.
  *
