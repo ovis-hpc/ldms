@@ -1850,11 +1850,15 @@ static void resp_stream_dir(ldmsd_req_hdr_t resp, size_t len,
 	double rate, freq;
 	int tot_bytes, count;
 
-	printf("Name            Mode       bytes/sec    msg/sec      total bytes  msg count   \n");
-	printf("--------------- ---------- ------------ ----------- ------------ ------------\n");
+	printf("Name            Mode            bytes/sec    msg/sec      total bytes  msg count   \n");
+	printf("--------------- --------------- ------------ ----------- ------------ ------------\n");
 	for (stream = json_attr_first(json); stream; stream = json_attr_next(stream)) {
 		name = json_attr_name(stream)->str;
-		mode = (char *)__json_str_find(json_attr_value(stream), "mode");
+		if (0 == strcmp(name, "_AGGREGATED_")) {
+			mode = "";
+		} else {
+			mode = (char *)__json_str_find(json_attr_value(stream), "mode");
+		}
 		info = json_value_find(json_attr_value(stream), "info");
 		assert(info);
 		rate = __info_rate(info);
@@ -1862,8 +1866,10 @@ static void resp_stream_dir(ldmsd_req_hdr_t resp, size_t len,
 		tot_bytes = __info_tot_bytes(info);
 		count = __info_count(info);
 		l = json_value_find(json_attr_value(stream), "publishers");
-		printf("%-15s %-10s %-12lf %-12lf %-12d %-12d\n", name, mode,
+		printf("%-15s %-15s %-12lf %-12lf %-12d %-12d\n", name, mode,
 						rate, freq, tot_bytes, count);
+		if (!l || !json_attr_count(l))
+			continue;
 		for (p = json_attr_first(l); p; p = json_attr_next(p)) {
 			name = json_attr_name(p)->str;
 			info = json_value_find(json_attr_value(p), "info");
@@ -2176,19 +2182,23 @@ static void resp_prdcr_stream_dir(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp
 	}
 
 	json_entity_t stream, p, info, l;
-	char *name, *mode;
+	char *sname, *name, *mode;
 	double rate, freq;
 	int tot_bytes, count;
 
 	printf("Name            Producer       Mode       Bytes/sec    Msg/sec      Total bytes  Msg count   \n");
 	printf("--------------- ---------- ------------ ----------- ------------ ------------\n");
 	for (stream = json_attr_first(json); stream; stream = json_attr_next(stream)) {
-		name = json_attr_name(stream)->str;
-		printf("%-12s\n", name);
+		sname = json_attr_name(stream)->str;
+		printf("%-12s\n", sname);
 		l = json_attr_value(stream);
 		for (p = json_attr_first(l); p; p = json_attr_next(p)) {
+			if (0 == strcmp(sname, "_AGGREGATED_")) {
+				mode = "";
+			} else {
+				mode = (char *)__json_str_find(json_attr_value(p), "mode");
+			}
 			name = json_attr_name(p)->str;
-			mode = (char *)__json_str_find(json_attr_value(p), "mode");
 			info = json_value_find(json_attr_value(p), "info");
 			assert(info);
 			rate = __info_rate(info);

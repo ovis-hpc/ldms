@@ -463,9 +463,11 @@ class LdmsdCmdParser(cmd.Cmd):
             print("Name         Producer     mode            bytes/sec    msg/sec      total bytes  msg count   ")
             print("-" * 12, "-" * 12, "-" * 15, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
             # print("--------------- -------------- --------------- ----- ----------------- -----------\n")
-            for name,s in streams.items():
-                print(f"{name:12}")
+            for sname,s in streams.items():
+                print(f"{sname:12}")
                 for name,p in s.items():
+                    if sname == "_AGGREGATED_":
+                        p['mode'] = ""
                     print(f"             {name:12} {p['mode']:15} {rate(p['info']):>12} {freq(p['info']):>12} {total_bytes(p['info']):>12} {count(p['info']):>12}")
 
     def complete_prdcr_stream_dir(self, text, line, begidx, endidx):
@@ -1575,7 +1577,11 @@ class LdmsdCmdParser(cmd.Cmd):
             print("-" * 15, "-" * 15, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12, "-" * 12)
             # print("--------------- -------------- --------------- ----- ----------------- -----------\n")
             for name,s in streams.items():
+                if name == "_AGGREGATED_":
+                    s['mode'] = ""
                 print(f"{name:15} {s['mode']:15} {rate(s['info']):>12} {freq(s['info']):>12} {total_bytes(s['info']):>12} {count(s['info']):>12} {first(s['info']):>12} {last(s['info']):>12}")
+                if 'publishers' not in s.keys() or len(s['publishers']) == 0:
+                    continue
                 print("   Producers")
                 for name,p in s['publishers'].items():
                     print(f"                {name:15} {rate(p['info']):>12} {freq(p['info']):>12} {total_bytes(p['info']):>12} {count(p['info']):>12} {first(p['info']):>12} {last(p['info']):>12}")
