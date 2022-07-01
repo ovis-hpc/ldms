@@ -1348,7 +1348,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 	if (timeout > 0) {
 		clock_gettime(CLOCK_REALTIME, &now);
 		now.tv_sec += timeout;
-		if (sos_begin_x(si->sos_handle->sos, &now)) {
+		if (sos_begin_x_wait(si->sos_handle->sos, &now)) {
 			LOG_(LDMSD_LERROR,
 			     "Timeout attempting to open a transaction on the container '%s'.\n",
 			     si->path);
@@ -1357,7 +1357,7 @@ store(ldmsd_store_handle_t _sh, ldms_set_t set,
 			return -1;
 		}
 	} else {
-		sos_begin_x(si->sos_handle->sos, NULL);
+		sos_begin_x(si->sos_handle->sos);
 	}
 	obj = sos_obj_new(si->sos_schema);
 	if (!obj) {
@@ -1632,7 +1632,7 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int 
 		struct timespec now;
 		clock_gettime(CLOCK_REALTIME, &now);
 		now.tv_sec += timeout;
-		if (sos_begin_x(si->sos_handle->sos, &now)) {
+		if (sos_begin_x_wait(si->sos_handle->sos, &now)) {
 			LOG_(LDMSD_LERROR,
 			     "Timeout attempting to open a transaction on the container '%s'.\n",
 			     si->path);
@@ -1641,7 +1641,7 @@ commit_rows(ldmsd_strgp_t strgp, ldms_set_t set, ldmsd_row_list_t row_list, int 
 			return -1;
 		}
 	} else {
-		sos_begin_x(si->sos_handle->sos, NULL);
+		sos_begin_x(si->sos_handle->sos);
 	}
 	TAILQ_FOREACH(row, row_list, entry) {
 		rrbn = get_row_schema(strgp, row);
