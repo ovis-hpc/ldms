@@ -287,6 +287,25 @@ ldms_schema_t base_schema_new(base_data_t base)
 	return NULL;
 }
 
+int __set_init(base_data_t base)
+{
+	int rc;
+	ldms_set_producer_name_set(base->set, base->producer_name);
+	ldms_metric_set_u64(base->set, BASE_COMPONENT_ID, base->component_id);
+	ldms_metric_set_u64(base->set, BASE_JOB_ID, 0);
+	ldms_metric_set_u64(base->set, BASE_APP_ID, 0);
+	base_auth_set(&base->auth, base->set);
+
+	rc = ldms_set_publish(base->set);
+	if (rc) {
+		base->log(LDMSD_LERROR,"base_set_new: ldms_set_publish failed for %s\n",
+				base->instance_name);
+		return rc;
+	}
+	ldmsd_set_register(base->set, base->pi_name);
+	return 0;
+}
+
 ldms_set_t base_set_new(base_data_t base)
 {
 	int rc;
@@ -299,23 +318,42 @@ ldms_set_t base_set_new(base_data_t base)
 				errno, serr, base->instance_name);
 		return NULL;
 	}
-	ldms_set_producer_name_set(base->set, base->producer_name);
-	ldms_metric_set_u64(base->set, BASE_COMPONENT_ID, base->component_id);
-	ldms_metric_set_u64(base->set, BASE_JOB_ID, 0);
-	ldms_metric_set_u64(base->set, BASE_APP_ID, 0);
-	base_auth_set(&base->auth, base->set);
-
-	rc = ldms_set_publish(base->set);
+	rc = __set_init(base);
 	if (rc) {
 		ldms_set_delete(base->set);
 		base->set = NULL;
-		errno = rc;
-		base->log(LDMSD_LERROR,"base_set_new: ldms_set_publish failed for %s\n",
-				base->instance_name);
+	}
+	return base->set;
+}
+
+ldms_set_t base_set_new_heap(base_data_t base, size_t heap_sz)
+{
+	int rc;
+	base->missing_warned = 0;
+	errno = 0;
+	base->set = ldms_set_new_with_heap(base->instance_name, base->schema, heap_sz);
+	if (!base->set) {
+		const char *serr = STRERROR(errno);
+		base->log(LDMSD_LERROR,"base_set_new: ldms_set_new failed %d(%s) for %s\n",
+				errno, serr, base->instance_name);
 		return NULL;
 	}
-	ldmsd_set_register(base->set, base->pi_name);
+	rc = __set_init(base);
+	if (rc) {
+		ldms_set_delete(base->set);
+		base->set = NULL;
+	}
 	return base->set;
+}
+
+void base_set_delete(base_data_t base)
+{
+	if (!base->set)
+		return;
+	ldmsd_set_deregister(base->instance_name, base->pi_name);
+	ldms_set_unpublish(base->set);
+	ldms_set_delete(base->set);
+	base->set = NULL;
 }
 
 void base_sample_begin(base_data_t base)
