@@ -1552,7 +1552,7 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
  *
  * \see ldms_set_new(), ldms_set_new_with_auth(), ldms_set_new_with_heap()
  */
-ldms_set_t ldms_set_new_custom(const char *instance_name,
+ldms_set_t ldms_set_create(const char *instance_name,
 				  ldms_schema_t schema,
 				  uid_t uid, gid_t gid, mode_t perm,
 				  uint32_t heap_sz);

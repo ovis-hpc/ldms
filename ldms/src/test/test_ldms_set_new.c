@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
 	verify(ldms_set_heap_size_get(set) == heap_sz);
 	ldms_set_delete(set);
 
-	set = ldms_set_new_custom(SET_NAME, schema, UID, GID, PERM, heap_sz *2);
+	set = ldms_set_create(SET_NAME, schema, UID, GID, PERM, heap_sz *2);
 	assert(set);
 	printf("ldms_set_new_custom -- correct uid: ");
 	verify(ldms_set_uid_get(set) == UID);
