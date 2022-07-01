@@ -1445,7 +1445,7 @@ static void __ldms_schema_finalize(ldms_schema_t schema)
 	SHA256_Final(schema->digest.digest, &schema->sha_ctxt);
 }
 
-ldms_set_t ldms_set_new_custom(const char *instance_name,
+ldms_set_t ldms_set_create(const char *instance_name,
 				ldms_schema_t schema,
 				uid_t uid, gid_t gid, mode_t perm,
 				uint32_t heap_sz)
@@ -1606,11 +1606,14 @@ ldms_set_t ldms_set_new_custom(const char *instance_name,
 
 	data_base = (void*)meta + le32toh(meta->meta_sz);
 	set = __record_set(instance_name, meta, data_base, LDMS_SET_F_LOCAL);
-	if (!set)
+	if (!set) {
 		mm_free(meta);
-	if (meta->heap_sz)
+		return NULL;
+	}
+	if (meta->heap_sz) {
 		set->heap = ldms_heap_get(&set->heap_inst, &set->data->heap,
 				&((uint8_t *)set->data)[schema->data_sz]);
+	}
 	__init_rec_array(set, schema);
 	return set;
 }
@@ -1623,7 +1626,7 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 	int set_array_card;
 	(void) compute_set_sizes(instance_name, schema, &set_array_card,
 					&meta_sz, &array_data_sz, &heap_sz);
-	return ldms_set_new_custom(instance_name, schema, uid, gid, perm, heap_sz);
+	return ldms_set_create(instance_name, schema, uid, gid, perm, heap_sz);
 }
 
 ldms_set_t ldms_set_new_with_heap(const char *instance_name,
@@ -1634,7 +1637,7 @@ ldms_set_t ldms_set_new_with_heap(const char *instance_name,
 	mode_t perm;
 
 	ldms_set_default_authz(&uid, &gid, &perm, DEFAULT_AUTHZ_READONLY);
-	return ldms_set_new_custom(instance_name, schema, uid, gid, perm, heap_sz);
+	return ldms_set_create(instance_name, schema, uid, gid, perm, heap_sz);
 }
 
 size_t ldms_list_heap_size_get(enum ldms_value_type type, size_t item_count, size_t array_count)
@@ -1659,7 +1662,7 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 					&meta_sz, &array_data_sz, &heap_sz);
 
 	ldms_set_default_authz(&uid, &gid, &perm, DEFAULT_AUTHZ_READONLY);
-	return ldms_set_new_custom(instance_name, schema, uid, gid, perm, heap_sz);
+	return ldms_set_create(instance_name, schema, uid, gid, perm, heap_sz);
 }
 
 int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, mode_t perm)
