@@ -136,6 +136,7 @@ static ldmsd_msg_log_f msglog;
 #define SAMP "procstat2"
 static int metric_offset;
 static base_data_t base;
+static size_t incr_heap_sz;
 
 #ifndef ARRAY_LEN
 #define ARRAY_LEN(A) ( sizeof(A) / sizeof(A[0]) )
@@ -281,6 +282,9 @@ static int create_metric_set(base_data_t base)
 	sz = ldms_list_heap_size_get(LDMS_V_U64, nr_softirqs, 1);
 	sch_metrics[8].len = sz;
 
+	incr_heap_sz += ldms_record_heap_size_get(rec_def);
+	incr_heap_sz += ldms_list_heap_size_get(LDMS_V_U64, 2, 1);
+
 	rc = ldms_schema_metric_add_template(schema, sch_metrics, sch_metric_ids);
 
 	if (rc < 0)
@@ -417,12 +421,13 @@ static int sample(struct ldmsd_sampler *self)
 	struct stat_row_ent *ent;
 	uint64_t u64, data[16];
 	ldms_mval_t cpu_rec, cpu_list, mval, lh;
+	size_t heap_sz;
 
 	if (!set) {
 		msglog(LDMSD_LDEBUG, SAMP ": plugin not initialized\n");
 		return EINVAL;
 	}
-
+begin:
 	base_sample_begin(base);
 	cpu_list = ldms_metric_get(set, sch_metric_ids[STAT_CPU]);
 	assert(cpu_list >= 0);
@@ -441,8 +446,7 @@ static int sample(struct ldmsd_sampler *self)
 			if (!cpu_rec) {
 				cpu_rec = ldms_record_alloc(set, sch_metric_ids[0]);
 				if (!cpu_rec) {
-					rc = ENOMEM;
-					goto out;
+					goto resize;
 				}
 				ldms_list_append_record(set, cpu_list, cpu_rec);
 			}
@@ -472,8 +476,8 @@ static int sample(struct ldmsd_sampler *self)
 			while (1 == fscanf(mf, "%"PRIu64, &u64)) {
 				if (!mval) {
 					mval = ldms_list_append_item( set, lh, LDMS_V_U64, 1);
-					if (!mval) /* truncate data */
-						continue;
+					if (!mval)
+						goto resize;
 				}
 				mval->v_u64 = htole64(u64);
 				mval = ldms_list_next(set, mval, NULL, NULL);
@@ -496,10 +500,8 @@ static int sample(struct ldmsd_sampler *self)
 			for (i = 0; i < n; i++) {
 				if (!mval) {
 					mval = ldms_list_append_item( set, lh, LDMS_V_U64, 1);
-					if (!mval) {
-						rc = ENOMEM;
-						goto out;
-					}
+					if (!mval)
+						goto resize;
 				}
 				mval->v_u64 = htole64(data[i]);
 				mval = ldms_list_next(set, mval, NULL, NULL);
@@ -526,6 +528,21 @@ static int sample(struct ldmsd_sampler *self)
  out:
 	base_sample_end(base);
 	return rc;
+resize:
+	/*
+	 * We intend to leave the set in the inconsistent state so that
+	 * the aggregators are aware that some metrics have not been newly sampled.
+	 */
+	heap_sz = ldms_set_heap_size_get(base->set) + 2 * incr_heap_sz;
+	base_set_delete(base);
+	base->set = base_set_new_heap(base, heap_sz);
+	if (!base->set) {
+		rc = errno;
+		ldmsd_log(LDMSD_LCRITICAL, SAMP " : Failed to create a set with "
+						"a bigger heap. Error %d.\n", rc);
+		return rc;
+	}
+	goto begin;
 }
 
 static void term(struct ldmsd_plugin *self)
