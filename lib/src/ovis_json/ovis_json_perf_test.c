@@ -46,7 +46,7 @@ int make_string_sprintf(int iter, char * jb11,
 {
 	uint64_t micro_s = tspec_end.tv_nsec/1.0e3;
 
-	sprintf(jb11, "{ \"uid\":%" PRId64 ", \"exe\":\"%s\",\"job_id\":%" PRId64
+	sprintf(jb11, "{\"uid\":%" PRId64 ",\"exe\":\"%s\",\"job_id\":%" PRId64
 		",\"rank\":%" PRIu64 ",\"ProducerName\":\"%s\",\"file\":\"%s\",\"record_id\":%"
 		PRIu64",\"module\":\"%s\",\"type\":\"%s\",\"max_byte\":%" PRId64
 		",\"switches\":%" PRId64 ",\"flushes\":%" PRId64 ",\"cnt\":%" PRId64
@@ -84,13 +84,14 @@ int make_string_sprintf(int iter, char * jb11,
 	return 0;
 }
 
+/* use elementwise append */
 int make_string_jbuf(int iter,
 	int64_t record_count, char *rwo, int64_t offset, int64_t length, int64_t max_byte, int64_t rw_switch, int64_t flushes,  double start_time, double end_time, struct timespec tspec_start, struct timespec tspec_end, double total_time, char *mod_name, char *data_type)
 {
 	uint64_t micro_s = tspec_end.tv_nsec/1.0e3;
 	jbuf_t jb, jbd;
 	jbd = jb = jbuf_new(); if (!jb) goto out_1;
-	jb = jbuf_append_str(jb, "{ "); if (!jb) goto out_1;
+	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "uid", "%d,", dC.uid); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "exe", "\"%s\",", dC.exename); if (!jb) goto out_1;
 	jb = jbuf_append_attr(jb, "job_id", "%d,", dC.jobid); if (!jb) goto out_1;
@@ -120,6 +121,78 @@ int make_string_jbuf(int iter,
 	if (!iter)
 		printf("%s\n", jbd->buf);
 	jbuf_free(jbd);
+	return 0;
+out_1:
+	return 1;
+
+}
+
+/* use recycled string and bulk formatted append with escape sequences
+ * for quotes. split the format by items with lines for readability and visual matching
+ * to correct args. */
+int make_string_jbuf_append_recycle(jbuf_t jb, int iter,
+	int64_t record_count, char *rwo, int64_t offset, int64_t length, int64_t max_byte, int64_t rw_switch, int64_t flushes,  double start_time, double end_time, struct timespec tspec_start, struct timespec tspec_end, double total_time, char *mod_name, char *data_type)
+{
+	uint64_t micro_s = tspec_end.tv_nsec/1.0e3;
+	jbuf_t jbd = jb;
+	if (!jb) goto out_1;
+	jbuf_reset(jb);
+	jb = jbuf_append_str(jbd,
+		"{"
+		"\"uid\":%" PRId64 ","
+		"\"exe\":\"%s\","
+		"\"job_id\":%" PRId64 ","
+		"\"rank\":%" PRIu64 ","
+		"\"ProducerName\":\"%s\","
+		"\"file\":\"%s\","
+		"\"record_id\":%" PRIu64 ","
+		"\"module\":\"%s\","
+		"\"type\":\"%s\","
+		"\"max_byte\":%lld,"
+		"\"switches\":%d,"
+		"\"flushes\":%d,"
+		"\"cnt\":%d,"
+		"\"op\":\"%s\","
+		"\"seg\":[{"
+			"\"data_set\":\"%s\","
+			"\"pt_sel\":%lld,"
+			"\"irreg_hslab\":%lld,"
+			"\"reg_hslab\":%lld,"
+			"\"ndims\":%lld,"
+			"\"npoints\":%lld,"
+			"\"off\":%lld,"
+			"\"len\":%lld,"
+			"\"dur\":%0.6f,"
+			"\"timestamp\":%lu.%0.6lu"
+			"}]"
+		"}",
+		dC.uid,
+		dC.exename,
+		dC.jobid,
+		dC.rank,
+		hname,
+		dC.filename,
+		dC.record_id,
+		mod_name,
+		data_type,
+		max_byte,
+		rw_switch,
+		flushes,
+		record_count,
+		rwo,
+			dC.data_set,
+			dC.hdf5_data[0],
+			dC.hdf5_data[1],
+			dC.hdf5_data[2],
+			dC.hdf5_data[3],
+			dC.hdf5_data[4],
+			offset,
+			length,
+			total_time,
+			tspec_end.tv_sec, micro_s
+		);
+	if (!iter)
+		printf("%s\n", jbd->buf);
 	return 0;
 out_1:
 	return 1;
@@ -158,19 +231,33 @@ int main(int argc, char *argv[])
 	char *mod_name ="mod_name";
 	char *data_type = "datatype";
 	char buf[2048];
-	struct timeval tv1, tv2, tv3;
+	struct timeval tv1, tv2, tv3, tv4;
+
 	gettimeofday(&tv1, NULL);
 	for (i = 0; i< count; i++) {
 		make_string_sprintf(i, buf,
 			record_count, rwo, offset, length, max_byte, rw_switch, flushes, start_time, end_time, tspec_start, tspec_end, total_time, mod_name, data_type);
 	}
+
 	gettimeofday(&tv2, NULL);
 	for (i = 0; i< count; i++) {
 		make_string_jbuf(i,
 			record_count, rwo, offset, length, max_byte, rw_switch, flushes, start_time, end_time, tspec_start, tspec_end, total_time, mod_name, data_type);
 	}
+
 	gettimeofday(&tv3, NULL);
+	jbuf_t jb = jbuf_new();
+	if (jb) {
+		for (i = 0; i< count; i++) {
+			make_string_jbuf_append_recycle(jb, i,
+				record_count, rwo, offset, length, max_byte, rw_switch, flushes, start_time, end_time, tspec_start, tspec_end, total_time, mod_name, data_type);
+		}
+	}
+	jbuf_free(jb);
+
+	gettimeofday(&tv4, NULL);
 	printf("%d sprintf time us %g\n",count, ldmsd_timeval_diff(&tv1, &tv2));
-	printf("%d jbuf time us    %g\n",count, ldmsd_timeval_diff(&tv2, &tv3));
+	printf("%d jbuf elements time us    %g\n",count, ldmsd_timeval_diff(&tv2, &tv3));
+	printf("%d jbuf fmt time us    %g\n",count, ldmsd_timeval_diff(&tv3, &tv4));
 	return 0;
 }
