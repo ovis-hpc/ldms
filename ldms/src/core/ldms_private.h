@@ -181,6 +181,10 @@ extern int __ldms_get_local_set_list(struct ldms_name_list *head);
 extern void __ldms_empty_name_list(struct ldms_name_list *name_list);
 
 extern void __ldms_dir_update(ldms_set_t set, enum ldms_dir_type t);
+/* format set meta info (not metrics) into buf.
+ * \return count of characters added.
+ * NOTE: set->lock mutex must be held before this is called.
+ */
 extern size_t __ldms_format_set_meta_as_json(struct ldms_set *set,
 					     int need_comma,
 					     char *buf, size_t buf_size);
