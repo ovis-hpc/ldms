@@ -817,9 +817,11 @@ static void process_dir_request(struct ldms_xprt *x, struct ldms_request *req)
 
 		if (0 == ldms_access_check(x, LDMS_ACCESS_READ, uid, gid, perm)) {
 			/* no access, skip it */
+			pthread_mutex_lock(&set->lock);
 			cnt += __ldms_format_set_meta_as_json(set, last_cnt,
 						      &reply->dir.json_data[cnt],
 						      len - hdrlen - cnt - 3 /* ]}\0 */);
+			pthread_mutex_unlock(&set->lock);
 		}
 
 		if (/* Too big to fit in transport message, send what we have */
