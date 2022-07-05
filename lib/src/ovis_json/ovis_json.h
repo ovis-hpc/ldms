@@ -346,7 +346,7 @@ extern jbuf_t jbuf_append_attr(jbuf_t jb, const char *name, const char *fmt, ...
 
 /** \brief Extend jbuf by the output of formatting with fmt.
  * The fmt argument must include all required JSON elements, which
- * may be {} [] : and ". No validation is applied.
+ * may be {} [] : , and ". No validation is applied.
  * Note: Automatically extends jbuf space as needed with realloc.
  * \return updated pointer for jb, or NULL if realloc fails.
  */
