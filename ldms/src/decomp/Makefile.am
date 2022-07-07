@@ -1,1 +1,1 @@
-SUBDIRS = static as_is
+SUBDIRS = static as_is flex

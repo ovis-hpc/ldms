@@ -9,22 +9,26 @@ ldmsd_decomposition - manual for LDMSD decomposition
 A decomposition is a routine that converts LDMS set into one or more rows before
 feeding them to the store. Currently, only \fBstore_sos\fR, \fBstore_csv\fR, and
 \fBstore_kafka\fR support decomposition. To use decomposition, simply specify
-\fBdecomposition=\fIDECOMP_CONFI_JSON_FILE\fR option in the \fBstrgp_add\fR
-command. There are two types of decompositions: \fBstatic\fR and \fBas_is\fR.
-\fBstatic\fR decomposition statically and strictly decompose LDMS set according
-to the definitions in the \fIDECOMP_CONFI_JSON_FILE\fR. \fBas_is\fR
-decomposition on the other hand takes all metrics and converts them as-is.
-Please see section \fBSTATIC DECOMPOSITION\fR and \fBAS_IS DECOMPOSITION\fR for
-more information.
+\fBdecomposition=\fIDECOMP_CONFIG_JSON_FILE\fR option in the \fBstrgp_add\fR
+command. There are three types of decompositions: \fBstatic\fR, \fBas_is\fR,
+and `flex`. \fBstatic\fR decomposition statically and strictly decompose LDMS
+set according to the definitions in the \fIDECOMP_CONFIG_JSON_FILE\fR.
+\fBas_is\fR decomposition on the other hand takes all metrics and converts them
+as-is into rows. \fBflex\fR decomposition applies various decompositions by LDMS
+schema digest mapping from the configuration.
+
+Please see section \fBSTATIC DECOMPOSITION\fR, \fBAS_IS DECOMPOSITION\fR , and
+\fBFLEX DECOMPOSITION\fR for more information.
 
 More decomposition types may be added in the future. The decomposition mechanism
-is pluggable. Please see `as_is` and `static` decomposition implementation in
-\:`ldms/src/decomp/` directory in the source tree for more information.
+is pluggable. Please see \fBas_is\fR, \fBstatic\fR, and \fBflex\fR decomposition
+implementation in \:`ldms/src/decomp/` directory in the source tree for more
+information.
 
 
 .SH STATIC DECOMPOSITION
 The \fBstatic\fR decomposition statically and strictly converts LDMS set to one
-or more rows according to the \fIDECOMP_CONFI_JSON_FILE\fR. The format of the
+or more rows according to the \fIDECOMP_CONFIG_JSON_FILE\fR. The format of the
 JSON configuration file is as follows:
 
 .EX
@@ -35,15 +39,15 @@ JSON configuration file is as follows:
       "schema": "OUTPUT_ROW_SCHEMA",
       "cols": [
         { "src":"LDMS_METRIC_NAME", "dst":"OUTPUT_COL_NAME","type":"TYPE",
-	  "array_len": ARRAY_LEN_IF_TYPE_IS_ARRAY,
-	  "rec_member": "REC_MEMBER_NAME_IF_SRC_IS_RECORD",
-	  "fill": "FILL_VALUE"
-	},
-	...
+          "array_len": ARRAY_LEN_IF_TYPE_IS_ARRAY,
+          "rec_member": "REC_MEMBER_NAME_IF_SRC_IS_RECORD",
+          "fill": "FILL_VALUE"
+        },
+        ...
       ],
       "indices": [
-	{ "name":"INDEX_NAME", "cols":[ OUTPUT_COLUMNS, ... ] },
-	...
+        { "name":"INDEX_NAME", "cols":[ OUTPUT_COLUMNS, ... ] },
+        ...
       ]
     },
     ...
@@ -90,8 +94,8 @@ DirectMap varies by CPU architecture).
         { "src":"MemActive",    "dst":"active",  "type":"u64"                        }
       ],
       "indices": [
-	{ "name":"time_comp", "cols":["ts", "comp_id"] },
-	{ "name":"time", "cols":["ts"] }
+        { "name":"time_comp", "cols":["ts", "comp_id"] },
+        { "name":"time", "cols":["ts"] }
       ]
     },
     {
@@ -99,14 +103,14 @@ DirectMap varies by CPU architecture).
       "cols": [
         { "src":"timestamp",    "dst":"ts",          "type":"ts"               },
         { "src":"component_id", "dst":"comp_id",     "type":"u64"              },
-	{ "src":"DirectMap4k",  "dst":"directmap4k", "type":"u64",   "fill": 0 },
-	{ "src":"DirectMap2M",  "dst":"directmap2M", "type":"u64",   "fill": 0 },
-	{ "src":"DirectMap4M",  "dst":"directmap4M", "type":"u64",   "fill": 0 },
-	{ "src":"DirectMap1G",  "dst":"directmap1G", "type":"u64",   "fill": 0 }
+        { "src":"DirectMap4k",  "dst":"directmap4k", "type":"u64",   "fill": 0 },
+        { "src":"DirectMap2M",  "dst":"directmap2M", "type":"u64",   "fill": 0 },
+        { "src":"DirectMap4M",  "dst":"directmap4M", "type":"u64",   "fill": 0 },
+        { "src":"DirectMap1G",  "dst":"directmap1G", "type":"u64",   "fill": 0 }
       ],
       "indices": [
-	{ "name":"time_comp", "cols":["ts", "comp_id"] },
-	{ "name":"time", "cols":["ts"] }
+        { "name":"time_comp", "cols":["ts", "comp_id"] },
+        { "name":"time", "cols":["ts"] }
       ]
     }
   ]
@@ -127,15 +131,15 @@ The following is an example of a static decomposition with "rec_member" usage.
         { "src":"instance",     "dst":"inst",    "type":"char_array", "array_len":64 },
         { "src":"component_id", "dst":"comp_id", "type":"u64"                        },
         { "src":"netdev_list",  "rec_member":"name",
-	   "dst":"netdev.name", "type":"char_array", "array_len":16 },
+          "dst":"netdev.name", "type":"char_array", "array_len":16 },
         { "src":"netdev_list",  "rec_member":"rx_bytes",
-	  "dst":"netdev.rx_bytes", "type":"u64" },
+          "dst":"netdev.rx_bytes", "type":"u64" },
         { "src":"netdev_list",  "rec_member":"tx_bytes",
-	  "dst":"netdev.tx_bytes", "type":"u64" },
+          "dst":"netdev.tx_bytes", "type":"u64" },
       ],
       "indices": [
-	{ "name":"time_comp", "cols":["ts", "comp_id"] },
-	{ "name":"time", "cols":["ts"] }
+        { "name":"time_comp", "cols":["ts", "comp_id"] },
+        { "name":"time", "cols":["ts"] }
       ]
     }
   ]
@@ -146,7 +150,7 @@ In this case, if the "netdev_list" has N members, the decomposition will expand
 the set into N rows.
 
 
-.SH `as_is` decomposition
+.SH AS_IS DECOMPOSITION
 The \fBas_is\fR decomposition generate rows as-is according to metrics in the
 LDMS set. To avoid schema conflict, such as meminfo collecting from
 heterogeneous CPU architectures, \fBas_is\fR decomposition appends the short
@@ -184,6 +188,106 @@ indices:
     { "name": "time", "cols": [ "timestamp" ] },
     { "name": "time_comp", "cols": [ "timestamp", "component_id" ] }
   ]
+}
+.EE
+
+
+.SH FLEX DECOMPOSITION
+The \fBflex\fR decomposition applies various decompositions by LDMS schema
+digests specified in the configuration. The configurations of the applied
+decompositions are also specified in `flex` decomposition file as follows:
+
+.EX
+{
+  "type": "flex",
+  /* defining decompositions to be applied */
+  "decomposition": {
+    "<DECOMP_1>": {
+      "type": "<DECOMP_1_TYPE>",
+      ...
+    },
+    ...
+  },
+  /* specifying digests and the decompositions to apply */
+  "digest": {
+    "<LDMS_DIGEST_1>": "<DECOMP_A>",
+    "<LDMS_DIGEST_2>": [ "<DECOMP_B>", "<DECOMP_c>" ],
+    ...
+    "*": "<DECOMP_Z>" /* optional : the unmatched */
+  }
+}
+.EE
+
+.B Example:
+In the following example, the "meminfo" LDMS sets have 2 digests due to
+different metrics from different architecture. The configuration then maps those
+digests to "meminfo" static decomposition (producing "meminfo_filter" rows). It
+also showcases the ability to apply multiple decompositions to a matching
+digest. The procnetdev2 sets with digest
+"E8B9CC8D83FB4E5B779071E801CA351B69DCB9E9CE2601A0B127A2977F11C62A" will have
+"netdev2" static decomposition and "the_default" as-is decomposition applied to
+them. The sets that do not match any specific digest will match the "*" digest.
+In this example, "the_default" as-is decomposition is applied.
+
+.EX
+{
+  "type": "flex",
+  "decomposition": {
+    "meminfo": {
+      "type": "static",
+      "rows": [
+        {
+          "schema": "meminfo_filter",
+          "cols": [
+            { "src":"timestamp",    "dst":"ts",      "type":"ts"                         },
+            { "src":"producer",     "dst":"prdcr",   "type":"char_array", "array_len":64 },
+            { "src":"instance",     "dst":"inst",    "type":"char_array", "array_len":64 },
+            { "src":"component_id", "dst":"comp_id", "type":"u64"                        },
+            { "src":"MemFree",      "dst":"free",    "type":"u64"                        },
+            { "src":"MemActive",    "dst":"active",  "type":"u64"                        }
+          ],
+          "indices": [
+            { "name":"time_comp", "cols":["ts", "comp_id"] },
+            { "name":"time", "cols":["ts"] }
+          ]
+        }
+      ]
+    },
+    "netdev2" : {
+      "type" : "static",
+      "rows": [
+        {
+          "schema": "procnetdev2",
+          "cols": [
+            { "src":"timestamp", "dst":"ts","type":"ts" },
+            { "src":"component_id", "dst":"comp_id","type":"u64" },
+            { "src":"netdev_list", "rec_member":"name", "dst":"dev.name",
+              "type":"char_array", "array_len": 16 },
+              { "src":"netdev_list", "rec_member":"rx_bytes", "dst":"dev.rx_bytes",
+                "type":"u64" },
+                { "src":"netdev_list", "rec_member":"tx_bytes", "dst":"dev.tx_bytes",
+                  "type":"u64" }
+          ],
+          "indices": [
+            { "name":"time_comp", "cols":["ts", "comp_id"] }
+          ]
+        }
+      ]
+    },
+    "the_default": {
+      "type": "as_is",
+      "indices": [
+        { "name": "time", "cols": [ "timestamp" ] },
+        { "name": "time_comp", "cols": [ "timestamp", "component_id" ] }
+      ]
+    }
+  },
+  "digest": {
+    "71B03E47E7C9033E359DB5225BC6314A589D8772F4BC0866B6E79A698C8799C0": "meminfo",
+    "59DD05D768CFF8F175496848486275822A6A9795286FD9B534FDB9434EAF4D50": "meminfo",
+    "E8B9CC8D83FB4E5B779071E801CA351B69DCB9E9CE2601A0B127A2977F11C62A": [ "netdev2", "the_default" ],
+    "*": "the_default"
+  }
 }
 .EE
 
