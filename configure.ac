@@ -871,6 +871,7 @@ ldms/src/sampler/Makefile
 ldms/src/decomp/Makefile
 ldms/src/decomp/static/Makefile
 ldms/src/decomp/as_is/Makefile
+ldms/src/decomp/flex/Makefile
 ldms/src/contrib/Makefile
 ldms/src/sampler/blob_stream/Makefile
 ldms/src/store/stream/Makefile
