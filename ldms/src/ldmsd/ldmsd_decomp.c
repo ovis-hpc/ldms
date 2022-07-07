@@ -199,6 +199,12 @@ static ldmsd_decomp_t __decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
 	return dc;
 }
 
+/* Export so that decomp_flex can call, but don't advertise this in ldmsd.h */
+ldmsd_decomp_t ldmsd_decomp_get(const char *decomp, ldmsd_req_ctxt_t reqc)
+{
+	return __decomp_get(decomp, reqc);
+}
+
 /* protected by strgp lock */
 int ldmsd_decomp_config(ldmsd_strgp_t strgp, const char *json_path, ldmsd_req_ctxt_t reqc)
 {
