@@ -1139,6 +1139,78 @@ const char *ldms_digest_str(ldms_digest_t digest, char *buf, int buf_len)
 	return buf;
 }
 
+static unsigned char hex_int[] = {
+	['0'] = 0,
+	['1'] = 1,
+	['2'] = 2,
+	['3'] = 3,
+	['4'] = 4,
+	['5'] = 5,
+	['6'] = 6,
+	['7'] = 7,
+	['8'] = 8,
+	['9'] = 9,
+
+	['A'] = 10,
+	['a'] = 10,
+	['B'] = 11,
+	['b'] = 11,
+	['C'] = 12,
+	['c'] = 12,
+	['D'] = 13,
+	['d'] = 13,
+	['E'] = 14,
+	['e'] = 14,
+	['F'] = 15,
+	['f'] = 15,
+
+	[255] = 0,
+};
+
+static unsigned char hex_valid[] = {
+	['0'] = 1,
+	['1'] = 1,
+	['2'] = 1,
+	['3'] = 1,
+	['4'] = 1,
+	['5'] = 1,
+	['6'] = 1,
+	['7'] = 1,
+	['8'] = 1,
+	['9'] = 1,
+
+	['A'] = 1,
+	['a'] = 1,
+	['B'] = 1,
+	['b'] = 1,
+	['C'] = 1,
+	['c'] = 1,
+	['D'] = 1,
+	['d'] = 1,
+	['E'] = 1,
+	['e'] = 1,
+	['F'] = 1,
+	['f'] = 1,
+
+	[255] = 0,
+};
+
+int ldms_str_digest(const char *str, ldms_digest_t digest)
+{
+	int len = strlen(str);
+	unsigned char *d = digest->digest;
+	const unsigned char *c;
+	if (len != 2*sizeof(digest->digest))
+		return EINVAL;
+	for (c = (unsigned char*)str; *c; c += 2) {
+		if (!hex_valid[*c] || !hex_valid[*(c+1)])
+			return EINVAL;
+		*d = (hex_int[*c]<<4) | (hex_int[*(c+1)]);
+		d += 1;
+	}
+	return 0;
+}
+
 int ldms_schema_fprint(ldms_schema_t schema, FILE *fp)
 {
 	ldms_mdef_t m;
