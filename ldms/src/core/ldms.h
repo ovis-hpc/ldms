@@ -1739,6 +1739,17 @@ extern ldms_digest_t ldms_set_digest_get(ldms_set_t s);
 extern const char *ldms_digest_str(ldms_digest_t digest, char *buf, int buf_len);
 
 /**
+ * Populate \c digest according to hex string representation.
+ *
+ * \param [in]  str    The hexadecimal string representation of the digest.
+ * \param [out] digest The digest.
+ *
+ * \retval 0     If there are no errors, or
+ * \retval errno If there is an error.
+ */
+int ldms_str_digest(const char *str, ldms_digest_t digest);
+
+/**
  * \brief Compare LDMS digests
  *
  * This function compares two digests and
