@@ -971,14 +971,19 @@ char *ldmsd_stream_dir_dump()
 	}
 	pthread_mutex_unlock(&s_tree_lock);
 
-	rc = buf_printf(&buf, ",\"_AGGREGATED_\":{"
-				   "\"info\":");
-	if (rc)
-		goto free_buf;
-	rc = __stream_info_json(&buf, &tot_info);
-	if (rc)
-		goto free_buf;
-	rc = buf_printf(&buf, "}}");
+	if (!first) {
+		rc = buf_printf(&buf, ",\"_AGGREGATED_\":{"
+					   "\"info\":");
+		if (rc)
+			goto free_buf;
+		rc = __stream_info_json(&buf, &tot_info);
+		if (rc)
+			goto free_buf;
+		rc = buf_printf(&buf, "}");
+		if (rc)
+			goto free_buf;
+	}
+	rc = buf_printf(&buf, "}");
 	if (rc)
 		goto free_buf;
 	return buf.buf;
