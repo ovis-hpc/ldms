@@ -1324,8 +1324,20 @@ static void sock_read(struct epoll_event *ev)
 			/* good */
 			break;
 		case ZAP_EP_CLOSE:
-			/* shutdown is called already. No need to shut it down agian. */
-			ZAP_ASSERT(0, &(sep->ep), "%s bad ep state (ZAP_EP_CLOSE)", __func__);
+			/*
+			 * We can arrive in this case when
+			 * the EPOLLIN events arrived between
+			 * the endpoint state moving to ZAP_EP_CLOSE and
+			 * the connection shutdown. Thus, we should not call
+			 * assert() here.
+			 *
+			 * The ZAP_EP_CLOSE state does not distinguish
+			 * before and after Zap has delivered the DISCONNECTED
+			 * event to the application. We do not process
+			 * the EPOLLIN events to be on the safe side if
+			 * Zap has delivered the DISCONNECTED event already
+			 * and we arrived here unexpectedly.
+			 */
 			return;
 		case ZAP_EP_INIT:
 			/* No connection. Impossible to reach this. */
