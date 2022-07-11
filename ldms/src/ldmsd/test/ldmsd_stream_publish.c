@@ -198,6 +198,10 @@ int main(int argc, char **argv)
 			return rc;
 		}
 	}
+	if (!ldms) {
+		printf("%s: -n, -N or -l required.\n");
+		usage(argc, argv);
+	}
 	if (stream_new) {
 		/* Create and send a STREAM_NEW message */
 		rc = ldmsd_stream_new_publish(stream, ldms);
