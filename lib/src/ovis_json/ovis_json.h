@@ -334,10 +334,36 @@ extern json_dict_t json_value_dict(json_entity_t e);
 extern json_list_t json_value_list(json_entity_t e);
 
 extern jbuf_t jbuf_new(void);
+/**
+ * \brief Add the named attribute (as formatted with fmt) to jb.
+ * The JSON formatting "name":<formatted_data> is automatically applied.
+ * The fmt argument must include escaped double-quotes if it is a string.
+ * Note: Repeated calls to this are slower than a single call to
+ * jbuf_append_str with a complex argument list, but more flexible.
+ * \return updated pointer for jb, or NULL if realloc fails.
+ */
 extern jbuf_t jbuf_append_attr(jbuf_t jb, const char *name, const char *fmt, ...);
+
+/** \brief Extend jbuf by the output of formatting with fmt.
+ * The fmt argument must include all required JSON elements, which
+ * may be {} [] : , and ". No validation is applied.
+ * Note: Automatically extends jbuf space as needed with realloc.
+ * \return updated pointer for jb, or NULL if realloc fails.
+ */
 extern jbuf_t jbuf_append_str(jbuf_t jb, const char *fmt, ...);
+
+/**
+ * \brief Var args version of jbuf_append_str.
+ */
 extern jbuf_t jbuf_append_va(jbuf_t jb, const char *fmt, va_list ap);
+/**
+ * Destroy result of jbuf_new.
+ */
 extern void jbuf_free(jbuf_t jb);
+/**
+ * Change jb to contain 0-length string data, without modifying
+ * the currently allocated buffer memory.
+ */
 extern void jbuf_reset(jbuf_t jb);
 
 #endif
