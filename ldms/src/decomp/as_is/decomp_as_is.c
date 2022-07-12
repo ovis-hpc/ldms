@@ -833,7 +833,7 @@ static int __decomp_as_is_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 				goto col_fill;
 			}
 			mcol->col_mval = ldms_record_metric_get(mcol->rec, mcol->dcol->rec_mid);
-			mtype = ldms_record_metric_type_get(mcol->le, rec_mid, &mcol->col_mlen);
+			mtype = ldms_record_metric_type_get(mcol->le, mcol->dcol->rec_mid, &mcol->col_mlen);
 			continue;
 		}
 
