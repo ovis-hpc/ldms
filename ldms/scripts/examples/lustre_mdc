@@ -1,0 +1,18 @@
+export plugname=lustre_mdc
+#VGARGS="--tool=drd --gen-suppressions=all --suppressions=ldms/scripts/examples/sampler.drd.supp --trace-mutex=yes --trace-cond=yes"
+#VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=all"
+#vgon
+portbase=61060
+LDMSD -s 2000000 1 2 3
+#vgoff
+SLEEP 2
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -v
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -v
+MESSAGE ldms_ls on host 3:
+LDMS_LS 3 -vl
+SLEEP 5
+KILL_LDMSD 1 2 3
+file_created $STOREDIR/node/${testname}_ops
+file_created $STOREDIR/node/${testname}_ops_timing
