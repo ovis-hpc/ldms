@@ -201,3 +201,10 @@ int ldms_geopm_sampler_read_batch(void);
  *  @returns Zero on success, GEOPM error code on failure.
  */
 int ldms_geopm_sampler_sample_batch(void);
+
+/**
+ *
+ *  @brief Reset the geopm sampler state
+ *
+ */
+void ldms_geopm_sampler_reset(void);

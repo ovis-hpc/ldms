@@ -39,15 +39,15 @@ GEOPM LDMS sampler, if need be.
 
 
 The bash script below shows an example source build that uses the
-``v2.0.0+rc1`` release candidate:
+``v2.0.0+rc2`` release candidate:
 
     #!/bin/bash
     # Build GEOPM libraries
     GEOPM_URL="https://github.com/geopm/geopm/releases/download"
-    GEOPM_RELEASE="/v2.0.0%2Brc1/geopm-service-2.0.0.rc1.tar.gz"
+    GEOPM_RELEASE="/v2.0.0%2Brc2/geopm-service-2.0.0.rc2.tar.gz"
     wget ${GEOPM_URL}${GEOPM_RELEASE}
-    tar xvf geopm-service-2.0.0.rc1.tar.gz
-    cd geopm-service-2.0.0~rc1/
+    tar xvf geopm-service-2.0.0.rc2.tar.gz
+    cd geopm-service-2.0.0~rc2/
     GEOPM_PREFIX=$HOME/build/geopm
     # Use configure --help for details on enabling optional accelerator support
     ./configure --prefix=${GEOPM_PREFIX} --libdir=${GEOPM_PREFIX}/lib64

@@ -187,6 +187,9 @@ static int run(const char *path)
 	if (!err) {
 		err = ldms_geopm_sampler_sample_batch();
 	}
+	if (!err) {
+		ldms_geopm_sampler_reset();
+	}
 	return err;
 }
 
@@ -199,7 +202,12 @@ int main(int argc, char **argv)
 	}
 
 	ldms_geopm_sampler_set_log(test_logger);
+
 	err = run(argv[1]);
+	if (err == 0) {
+		// Run twice to validate reset
+		err = run(argv[1]);
+	}
 
 	if (!err) {
 		printf("\nSUCCESS\n");
