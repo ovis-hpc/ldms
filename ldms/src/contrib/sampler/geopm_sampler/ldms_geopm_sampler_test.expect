@@ -7,5 +7,14 @@ ldms_geopm_sampler: metric_0 = XXXX
 ldms_geopm_sampler: metric_1 = XXXX
 ldms_geopm_sampler: metric_2 = XXXX
 ldms_geopm_sampler: metric_3 = XXXX
+ldms_geopm_sampler: Success opening configuration file: 'ldms_geopm_sampler_test.conf'
+ldms_geopm_sampler: Adding metric: TIME_board_0
+ldms_geopm_sampler: Adding metric: TIME_package_0
+ldms_geopm_sampler: Adding metric: TIME_core_0
+ldms_geopm_sampler: Adding metric: TIME_cpu_0
+ldms_geopm_sampler: metric_0 = XXXX
+ldms_geopm_sampler: metric_1 = XXXX
+ldms_geopm_sampler: metric_2 = XXXX
+ldms_geopm_sampler: metric_3 = XXXX
 
 SUCCESS

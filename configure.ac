@@ -508,6 +508,7 @@ AS_IF([test "x$with_geopm" != xno], [
         AC_CHECK_HEADER(geopm_pio.h, [have_geopm=yes], [have_geopm=no])
         AC_CHECK_HEADER(geopm_topo.h, [have_geopm=yes], [have_geopm=no])
         AC_CHECK_LIB([geopmd], [geopm_pio_push_signal], [have_geopm=yes], [have_geopm=no])
+        AC_CHECK_LIB([geopmd], [geopm_pio_reset], [have_geopm=yes], [have_geopm=no])
         CPPFLAGS=$save_CPPFLAGS
         CFLAGS=$save_CFLAGS
         LDFLAGS=$save_LDFLAGS

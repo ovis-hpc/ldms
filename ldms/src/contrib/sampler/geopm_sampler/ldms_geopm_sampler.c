@@ -350,6 +350,13 @@ int ldms_geopm_sampler_sample_batch(void)
 	return rc;
 }
 
+void ldms_geopm_sampler_reset(void)
+{
+	g_metric_offset = 0;
+	g_metric_cnt = 0;
+	geopm_pio_reset();
+}
+
 static int create_metric_set(void)
 {
 	ldms_schema_t schema;
@@ -558,6 +565,9 @@ static void term(struct ldmsd_plugin *self)
 	}
 	if (g_set) {
 		ldms_set_delete(g_set);
+	}
+	if (g_metric_cnt != 0) {
+		ldms_geopm_sampler_reset();
 	}
 	g_set = NULL;
 }
