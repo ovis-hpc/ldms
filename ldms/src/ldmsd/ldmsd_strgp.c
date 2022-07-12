@@ -648,23 +648,26 @@ int ldmsd_strgp_update_prdcr_set(ldmsd_strgp_t strgp, ldmsd_prdcr_set_t prd_set)
 				if (rc)
 					break;
 			}
-		} else if (strgp->digest) {
-			/*
-			 * The strgp has cached a digest and been restarted.
-			 */
-			if (0 != ldms_digest_cmp(strgp->digest,
-					ldms_set_digest_get(prd_set->set))) {
-				ldmsd_log(LDMSD_LERROR,
-					  "strgp '%s' ignores set '%s' because "
-					  "the metric lists are mismatched.\n",
-					  strgp->obj.name, prd_set->inst_name);
-				break;
+		} else {
+			/* legacy store path */
+			if (strgp->digest) {
+				/*
+				 * The strgp has cached a digest and been restarted.
+				 */
+				if (0 != ldms_digest_cmp(strgp->digest,
+						ldms_set_digest_get(prd_set->set))) {
+					ldmsd_log(LDMSD_LERROR,
+						  "strgp '%s' ignores set '%s' because "
+						  "the metric lists are mismatched.\n",
+						  strgp->obj.name, prd_set->inst_name);
+					break;
+				}
 			}
-		}
-		if (!strgp->store_handle) {
-			rc = strgp_open(strgp, prd_set);
-			if (rc)
-				break;
+			if (!strgp->store_handle) {
+				rc = strgp_open(strgp, prd_set);
+				if (rc)
+					break;
+			}
 		}
 		rc = ENOMEM;
 		ref = strgp_ref_new(strgp);
