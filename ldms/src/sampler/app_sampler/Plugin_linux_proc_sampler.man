@@ -8,7 +8,7 @@ Plugin_linux_proc_sampler - man page for the LDMS linux_proc_sampler plugin
 .SH SYNOPSIS
 Within ldmsd_controller or a configuration file:
 .br
-config name=linux_proc_sampler [common attributes] [stream=STREAM] [metrics=METRICS] [cfg_file=FILE] [instance_prefix=PREFIX] [exe_suffix=1]
+config name=linux_proc_sampler [common attributes] [stream=STREAM] [metrics=METRICS] [cfg_file=FILE] [instance_prefix=PREFIX] [exe_suffix=1] [argv_sep=<char>]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or a configuration file. The linux_proc_sampler plugin provides data from /proc/, creating a different set for each process identified in the named stream. The stream can come from the ldms-netlink-notifier daemon or the spank plugin slurm_notifier.
@@ -43,6 +43,11 @@ If present, include sc_clk_tck in the metric set. sc_clk_tck is the ticks per se
 stream
 .br
 The name of the `ldmsd_stream` to listen for SLURM job events.  (default: slurm).
+.TP
+argv_sep=<char>
+.br
+Replace nul within the cmdline string with char.
+Special specifiers \\b,\\n,\\t,\\v,\\r,\\f are also supported.
 .TP
 metrics
 .br
@@ -92,6 +97,7 @@ An example metrics configuration file is:
 {
   "stream": "slurm",
   "instance_prefix" : "cluster2",
+  "argv_sep":"\t",
   "metrics": [
     "stat_pid",
     "stat_state",

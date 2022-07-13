@@ -7,14 +7,16 @@ export LDMSD_EXTRA="-m 128m"
 portbase=61060
 cat << EOF > $LDMSD_RUN/metrics.input
    { "stream" : "slurm",
+	"argv_sep":"\t",
          "metrics" : [
             "stat_pid" ,
             "stat_state",
             "stat_rss",
             "stat_utime",
             "stat_stime",
-	    "io_read_b",
-	    "io_write_b"
+            "io_read_b",
+            "io_write_b",
+            "cmdline"
          ]
        }
 EOF
