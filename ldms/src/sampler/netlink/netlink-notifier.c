@@ -625,10 +625,8 @@ struct dump_args {
 	forkstat_t *ft;
 }; // thread_args;
 
-static int emit_info(forkstat_t *ft, struct proc_info *info, const char *type, int step, bool lock);
+static int emit_info(forkstat_t *ft, struct proc_info *info, const char *type, int step, bool lock, jbuf_t *jbd);
 static int forkstat_stop_requested(forkstat_t *ft);
-
-
 
 #define BUFSZ 4096
 
@@ -1883,7 +1881,9 @@ static void *monitor(void *vp)
 
 	print_heading(ft);
 
-	while (true && !forkstat_stop_requested(ft)) {
+	jbuf_t jbd = jbuf_new();
+	jbuf_t jb = jbd;
+	while (jb && !forkstat_stop_requested(ft)) {
 		ssize_t len;
 		char __attribute__ ((aligned(NLMSG_ALIGNTO)))buf[BUFSZ];
 
@@ -2027,7 +2027,10 @@ static void *monitor(void *vp)
 								info2->exe,
 								info1->kernel_thread ? "]" : "");
 						}
-						emit_info(ft, info2, type, EMIT_ADD, true);
+						emit_info(ft, info2, type, EMIT_ADD, true, &jb);
+						if (!jb)
+							jbuf_free(jbd);
+						jbd = jb;
 					}
 				}
 				break;
@@ -2075,7 +2078,10 @@ static void *monitor(void *vp)
 							info1->start.tv_usec
 							);
 					}
-					emit_info(ft, info1, "exec", EMIT_ADD, true);
+					emit_info(ft, info1, "exec", EMIT_ADD, true, &jb);
+					if (!jb)
+						jbuf_free(jbd);
+					jbd = jb;
 				}
 				break;
 			case PROC_EVENT_EXIT:
@@ -2120,7 +2126,10 @@ static void *monitor(void *vp)
 							info1->kernel_thread ? "]" : "");
 					}
 					emit_info(ft, info1, "exit",
-						info1->emitted | EMIT_EXIT, true);
+						info1->emitted | EMIT_EXIT, true, &jb);
+					if (!jb)
+						jbuf_free(jbd);
+					jbd = jb;
 				}
 			case_exit_out:
 				proc_info_free(proc_ev->event_data.exit.process_pid, ft);
@@ -2280,6 +2289,7 @@ static void *monitor(void *vp)
 			}
 		}
 	}
+	jbuf_free(jbd);
 	return NULL;
 }
 
@@ -2894,239 +2904,300 @@ err:
 /* /////////// end of functions to get env var from a pid ///////////////// */
 #include "ovis_json/ovis_json.h"
 
-static jbuf_t add_msg_serial(forkstat_t *ft, jbuf_t jb)
-{
-	(void)ft;
-	uint64_t ser = forkstat_get_serial(ft);
-	jb = jbuf_append_attr(jb, "msgno", "%"PRIu64",", ser);
-	return jb;
-}
-
 #define info_jobid_str(info) info->jobid ? info->jobid : "0"
 
-static int add_env_attr(struct env_attr *a, jbuf_t jb, const struct proc_info *info, forkstat_t *ft)
+static int add_env_attr(struct env_attr *a, jbuf_t *jb, const struct proc_info *info, forkstat_t *ft)
 {
 	const char *s = info_get_var(a->env, info, ft);
 	if (!s)
 		s = a->v_default;
 	if (a->quoted == ATTR_QUOTED) {
-		jb = jbuf_append_attr(jb, a->attr, "\"%s\",", s );
+		*jb = jbuf_append_attr(*jb, a->attr, "\"%s\",", s );
 	} else {
-		jb = jbuf_append_attr(jb, a->attr, "%s,", s);
+		*jb = jbuf_append_attr(*jb, a->attr, "%s,", s);
 	}
-	if (!jb)
+	if (!*jb)
 		return errno;
 	return 0;
 }
 
-static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_info *info
+static jbuf_t make_process_start_data_linux(forkstat_t *ft, const struct proc_info *info,
 #if DEBUG_EMITTER
-, const char *type
+					const char *type,
 #endif
-)
+					jbuf_t jbd)
 {
 	(void)ft;
-	jbuf_t jb, jbd;
-	jbd = jb = jbuf_new(); if (!jb) goto out_1;
-	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
-	jb = add_msg_serial(ft, jb); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "schema", "\"linux_task_data\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "event", "\"task_init_priv\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
-#if DEBUG_EMITTER
-	jb = jbuf_append_attr(jb, "emitter", "\"%s\",", type); if (!jb) goto out_1;
-#endif
-	jb = jbuf_append_attr(jb, "context", "\"*\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "start", "\"%lu.%06lu\",", info->start.tv_sec, info->start.tv_usec );
-	/* format start_tick as string because u64 is out of ovis_json signed int range */
-	jb = jbuf_append_attr(jb, "start_tick", "\"%" PRIu64 "\",", info->start_tick );
-	jb = jbuf_append_attr(jb, "job_id", "\"%s\",", info_jobid_str(info));
-	if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "serial", "%" PRId64 ",", info->serno); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "os_pid", "%" PRId64 ",", (int64_t)info->pid); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "uid", "%" PRId64 ",", (int64_t)info->uid); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "gid", "%" PRId64 ",", (int64_t)info->gid); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "task_pid", "%d,", (int)info->pid); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "task_global_id", NULL_STEP_ID ","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "is_thread", "%d,", (int)info->is_thread); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "exe", "\"%s\"", info->exe); if (!jb) goto out_1;
-	jb = jbuf_append_str(jb, "}}");
-
- out_1:
+	jbuf_t jb = jbd;
 	if (!jb)
-		jbuf_free(jbd);
+		return NULL;
+	jb = jbuf_append_str(jb,
+		"{"
+		"\"msgno\":%" PRIu64 ","
+		"\"schema\":\"linux_task_data\","
+		"\"event\":\"task_init_priv\","
+		"\"timestamp\":%d,"
+#if DEBUG_EMITTER
+		"\"emitter\":\"%s\","
+#endif
+		"\"context\":\"*\","
+		"\"data\":"
+			"{"
+			"\"start\":\"%lu.%06lu\","
+			/* format start_tick as string because u64 is out
+			 * of ovis_json signed int range */
+			"\"start_tick\":\"%" PRIu64 "\","
+			"\"job_id\":\"%s\","
+			"\"serial\":%" PRId64 ","
+			"\"os_pid\":%" PRId64 ","
+			"\"uid\":%" PRId64 ","
+			"\"gid\":%" PRId64 ","
+			"\"task_pid\":%d,"
+			"\"task_global_id\":" NULL_STEP_ID ","
+			"\"is_thread\":%d,"
+			"\"exe\":\"%s\""
+			"}"
+		"}",
+		forkstat_get_serial(ft),
+		time(NULL),
+#if DEBUG_EMITTER
+		type,
+#endif
+			info->start.tv_sec, info->start.tv_usec,
+			info->start_tick,
+			info_jobid_str(info),
+			info->serno,
+			(int64_t)info->pid,
+			(int64_t)info->uid,
+			(int64_t)info->gid,
+			(int)info->pid,
+			(int)info->is_thread,
+			info->exe);
 	return jb;
 
 }
 
-static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info *info)
+static jbuf_t make_process_end_data_linux(forkstat_t *ft, const struct proc_info *info, jbuf_t jbd)
 {
-	jbuf_t jb, jbd;
+	jbuf_t jb = jbd;
 	(void)ft;
 
-	jbd = jb = jbuf_new(); if (!jb) goto out_1;
-	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
-	jb = add_msg_serial(ft, jb); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "schema", "\"linux_task_data\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "event", "\"task_exit\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "context", "\"*\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "start", "\"%lu.%06lu\",", info->start.tv_sec, info->start.tv_usec );
-	jb = jbuf_append_attr(jb, "start_tick", "\"%" PRIu64 "\",", info->start_tick );
-	jb = jbuf_append_attr(jb, "job_id", "\"%s\",", info_jobid_str(info) );
-	if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "serial", "%"PRId64",", info->serno); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "os_pid", "%" PRId64 ",", (int64_t)info->pid); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "task_pid", "%d", (int)info->pid); if (!jb) goto out_1;
-	jb = jbuf_append_str(jb, "}}");
-
- out_1:
 	if (!jb)
-		jbuf_free(jbd);
+		return NULL;
+	jb = jbuf_append_str(jb,
+		"{"
+		"\"msgno\":%" PRIu64 ","
+		"\"schema\":\"linux_task_data\","
+		"\"event\":\"task_exit\","
+		"\"timestamp\":%d,"
+		"\"context\":\"*\","
+		"\"data\":"
+			"{"
+			"\"start\":\"%lu.%06lu\","
+			/* format start_tick as string because u64
+			* is out of ovis_json signed int range */
+			"\"start_tick\":\"%" PRIu64 "\","
+			"\"job_id\":\"%s\","
+			"\"serial\":%" PRId64 ","
+			"\"os_pid\":%" PRId64 ","
+			"\"task_pid\":%d"
+			"}"
+		"}",
+		forkstat_get_serial(ft),
+		time(NULL),
+			info->start.tv_sec, info->start.tv_usec,
+			info->start_tick,
+			info_jobid_str(info),
+			info->serno,
+			(int64_t)info->pid,
+			(int)info->pid);
+
 	return jb;
 }
 
-static jbuf_t make_process_start_data_lsf(forkstat_t *ft, const struct proc_info *info)
+static jbuf_t make_process_start_data_lsf(forkstat_t *ft, const struct proc_info *info, jbuf_t jbd)
 {
 	(void)ft;
-	jbuf_t jb, jbd;
-	jbd = jb = jbuf_new(); if (!jb) goto out_1;
-	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
-	jb = add_msg_serial(ft, jb); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "schema", "\"lsf_task_data\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "event", "\"task_init_priv\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "context", "\"*\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "start", "\"%lu.%06lu\",", info->start.tv_sec, info->start.tv_usec );
-	jb = jbuf_append_attr(jb, "job_id", "\"%s\",", info_jobid_str(info) ); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "serial", "%" PRId64 ",", info->serno); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "os_pid", "%" PRId64 ",", (int64_t)info->pid); if (!jb) goto out_1;
-
+	jbuf_t jb = jbd;
+	if (!jb)
+		return NULL;
+	jb = jbuf_append_str(jb,
+		"{"
+		"\"msgno\":%" PRIu64 ","
+		"\"schema\":\"lsf_task_data\","
+		"\"event\":\"task_init_priv\","
+		"\"timestamp\":%d,"
+		"\"context\":\"*\","
+		"\"data\":"
+			"{"
+			"\"start\":\"%lu.%06lu\","
+			"\"job_id\":\"%s\","
+			"\"serial\":%" PRId64 ","
+			"\"os_pid\":%" PRId64 ",",
+		forkstat_get_serial(ft),
+		time(NULL),
+			info->start.tv_sec, info->start.tv_usec,
+			info_jobid_str(info),
+			info->serno,
+			(int64_t)info->pid);
+	if (!jb)
+		goto out_1;
 	size_t i, iend;
 	iend = sizeof(lsf_env_start_default)/sizeof(lsf_env_start_default[0]);
 	for (i = 0 ; i < iend; i++)
-		if (add_env_attr(&lsf_env_start_default[i], jb, info, ft))
+		if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft))
 			goto out_1;
-	jb = jbuf_append_attr(jb, "uid", "%d,", info->uid); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "gid", "%d,", info->gid); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "is_thread", "%d,", (int)info->is_thread); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "exe", "\"%s\"", info->exe); if (!jb) goto out_1;
-	jb = jbuf_append_str(jb, "}}");
+	jb = jbuf_append_str(jb,
+			"\"uid\":%" PRId64 ","
+			"\"gid\":%" PRId64 ","
+			"\"is_thread\":%d,"
+			"\"exe\":\"%s\""
+			"}"
+		"}",
+			(int64_t)info->uid,
+			(int64_t)info->gid,
+			(int)info->is_thread,
+			info->exe);
 
  out_1:
-	if (!jb)
-		jbuf_free(jbd);
 	return jb;
 }
 
-static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *info)
+static jbuf_t make_process_end_data_lsf(forkstat_t *ft, const struct proc_info *info, jbuf_t jbd)
 {
 	(void)ft;
-	jbuf_t jb, jbd;
-	jbd = jb = jbuf_new(); if (!jb) goto out_1;
-	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
-	jb = add_msg_serial(ft, jb); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "schema", "\"lsf_task_data\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "event", "\"task_exit\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "context", "\"*\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "job_id", "\"%s\",", info_jobid_str(info) ); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "start", "%lu.%06lu,", info->start.tv_sec, info->start.tv_usec );
-	jb = jbuf_append_attr(jb, "serial", "%" PRId64 ",", info->serno); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "os_pid", "%" PRId64 ",", (int64_t)info->pid); if (!jb) goto out_1;
+	jbuf_t jb = jbd;
+	if (!jb)
+		return NULL;
+	jb = jbuf_append_str(jb,
+		"{"
+		"\"msgno\":%" PRIu64 ","
+		"\"schema\":\"lsf_task_data\","
+		"\"event\":\"task_exit\","
+		"\"timestamp\":%d,"
+		"\"context\":\"*\","
+		"\"data\":"
+			"{"
+			"\"start\":\"%lu.%06lu\","
+			"\"job_id\":\"%s\","
+			"\"serial\":%" PRId64 ","
+			"\"os_pid\":%" PRId64 ",",
+		forkstat_get_serial(ft),
+		time(NULL),
+			info->start.tv_sec, info->start.tv_usec,
+			info_jobid_str(info),
+			info->serno,
+			(int64_t)info->pid);
+	if (!jb)
+		goto out_1;
 	size_t i, iend;
 	iend = sizeof(lsf_env_start_default)/sizeof(lsf_env_start_default[0]);
 	for (i = 0 ; i < iend; i++)
-		if (add_env_attr(&lsf_env_start_default[i], jb, info, ft))
+		if (add_env_attr(&lsf_env_start_default[i], &jb, info, ft))
 			goto out_1;
-	jb = jbuf_append_attr(jb, "uid", "%d", info->uid); if (!jb) goto out_1;
-	jb = jbuf_append_str(jb, "}}");
+	jb = jbuf_append_str(jb,
+			"\"uid\":%" PRId64
+			"}"
+		"}",
+			(int64_t)info->uid);
 
  out_1:
-	if (!jb)
-		jbuf_free(jbd);
 	return jb;
 }
 
-static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_info *info
+static jbuf_t make_process_start_data_slurm(forkstat_t *ft, const struct proc_info *info,
 #if DEBUG_EMITTER
-, const char *type
+					const char *type,
 #endif
-)
+					jbuf_t jbd)
 {
 	(void)ft;
-	jbuf_t jb, jbd;
-	jbd = jb = jbuf_new(); if (!jb) goto out_1;
-	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
-	jb = add_msg_serial(ft, jb); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "schema", "\"slurm_task_data\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "event", "\"task_init_priv\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
+	jbuf_t jb = jbd;
+	if (!jb)
+		return NULL;
+	jb = jbuf_append_str(jb,
+		"{"
+		"\"msgno\":%" PRIu64 ","
+		"\"schema\":\"slurm_task_data\","
+		"\"event\":\"task_init_priv\","
+		"\"timestamp\":%d,"
 #if DEBUG_EMITTER
-	jb = jbuf_append_attr(jb, "emitter", "\"%s\",", type); if (!jb) goto out_1;
+		"\"emitter\":\"%s\","
 #endif
-	jb = jbuf_append_attr(jb, "context", "\"*\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "job_id", "\"%s\",", info_jobid_str(info) ); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "serial", "%" PRId64 ",", info->serno); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "os_pid", "%" PRId64 ",", (int64_t)info->pid); if (!jb) goto out_1;
-
+		"\"context\":\"*\","
+		"\"data\":"
+			"{"
+			"\"job_id\":\"%s\","
+			"\"serial\":%" PRId64 ","
+			"\"os_pid\":%" PRId64 ",",
+		forkstat_get_serial(ft),
+		time(NULL),
+#if DEBUG_EMITTER
+		type,
+#endif
+			info_jobid_str(info),
+			info->serno,
+			(int64_t)info->pid);
 	size_t i, iend;
 	iend = sizeof(slurm_env_start_default)/sizeof(slurm_env_start_default[0]);
 	for (i = 0 ; i < iend; i++)
-		if (add_env_attr(&slurm_env_start_default[i], jb, info, ft))
+		if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft))
 			goto out_1;
-
-	jb = jbuf_append_attr(jb, "task_id", NULL_STEP_ID ","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "task_global_id", NULL_STEP_ID ","); if (!jb) goto out_1;
-
-	jb = jbuf_append_attr(jb, "is_thread", "%d,", (int)info->is_thread); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "exe", "\"%s\",", info->exe); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "ncpus", NULL_STEP_ID ","); if (!jb) goto out_1;
-
-	jb = jbuf_append_attr(jb, "local_tasks", NULL_STEP_ID ); if (!jb) goto out_1;
-
-	jb = jbuf_append_str(jb, "}}");
-
+	jb = jbuf_append_str(jb,
+			"\"task_id\":" NULL_STEP_ID ","
+			"\"task_global_id\":" NULL_STEP_ID ","
+			"\"is_thread\":%d,"
+			"\"exe\":\"%s\","
+			"\"ncpus\":" NULL_STEP_ID ","
+			"\"local_tasks\":" NULL_STEP_ID
+			"}"
+		"}",
+			(int)info->is_thread,
+			info->exe);
  out_1:
-	if (!jb)
-		jbuf_free(jbd);
 	return jb;
 
 }
 
-static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info *info)
+static jbuf_t make_process_end_data_slurm(forkstat_t *ft, const struct proc_info *info, jbuf_t jbd)
 {
-	jbuf_t jb, jbd;
+	jbuf_t jb = jbd;
 	(void)ft;
 
-	jbd = jb = jbuf_new(); if (!jb) goto out_1;
-	jb = jbuf_append_str(jb, "{"); if (!jb) goto out_1;
-	jb = add_msg_serial(ft, jb); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "schema", "\"slurm_task_data\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "event", "\"task_exit\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "timestamp", "%d,", time(NULL)); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "context", "\"*\","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "data", "{"); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "job_id", "\"%s\",", info_jobid_str(info) ); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "serial", "%" PRId64 ",", info->serno); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "os_pid", "%" PRId64 ",", (int64_t)info->pid); if (!jb) goto out_1;
+	if (!jb)
+		return NULL;
+	jb = jbuf_append_str(jb,
+		"{"
+		"\"msgno\":%" PRIu64 ","
+		"\"schema\":\"slurm_task_data\","
+		"\"event\":\"task_exit\","
+		"\"timestamp\":%d,"
+		"\"context\":\"*\","
+		"\"data\":"
+			"{"
+			"\"job_id\":\"%s\","
+			"\"serial\":%" PRId64 ","
+			"\"os_pid\":%" PRId64 ",",
+		forkstat_get_serial(ft),
+		time(NULL),
+			info_jobid_str(info),
+			info->serno,
+			(int64_t)info->pid);
+	if (!jb)
+		goto out_1;
 	int i, iend;
 	iend = sizeof(slurm_env_end_default)/sizeof(slurm_env_end_default[0]);
 	for (i = 0 ; i < iend; i++)
-		if (add_env_attr(&slurm_env_start_default[i], jb, info, ft))
+		if (add_env_attr(&slurm_env_start_default[i], &jb, info, ft))
 			goto out_1;
-	jb = jbuf_append_attr(jb, "task_id", NULL_STEP_ID ","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "task_global_id", NULL_STEP_ID ","); if (!jb) goto out_1;
-	jb = jbuf_append_attr(jb, "task_exit_status", "\"*\""); if (!jb) goto out_1;
-	jb = jbuf_append_str(jb, "}}");
+	jb = jbuf_append_str(jb,
+			"\"task_id\":" NULL_STEP_ID ","
+			"\"task_global_id\":" NULL_STEP_ID ","
+			"\"task_exit_status\":\"*\""
+			"}"
+		"}");
+
  out_1:
-	if (!jb)
-		jbuf_free(jbd);
 	return jb;
 }
 
@@ -3176,11 +3247,14 @@ static enum rm_type get_rm_from_env(char **pidenv, struct proc_info *info, forks
 	return RM_NONE;
 }
 
-static jbuf_t make_ldms_message(forkstat_t *ft, struct proc_info *info, const char *type, int emit_event)
+static jbuf_t make_ldms_message(forkstat_t *ft, struct proc_info *info, const char *type, int emit_event, jbuf_t jbd)
 {
 	(void)type;
 	char **pidenv = NULL;
 	size_t pesize = 0;
+	if (!jbd)
+		return NULL;
+	jbuf_reset(jbd);
 	if (info->rm_type == RM_UNKNOWN) {
 		pidenv = load_pid_env(info->pid, &pesize);
 		info->rm_type = get_rm_from_env(pidenv, info, ft);
@@ -3195,11 +3269,11 @@ static jbuf_t make_ldms_message(forkstat_t *ft, struct proc_info *info, const ch
 	if (emit_event & EMIT_EXIT) {
 		switch (info->rm_type) {
 		case RM_NONE:
-			return make_process_end_data_linux(ft, info);
+			return make_process_end_data_linux(ft, info, jbd);
 		case RM_SLURM:
-			return make_process_end_data_slurm(ft, info);
+			return make_process_end_data_slurm(ft, info, jbd);
 		case RM_LSF:
-			return make_process_end_data_lsf(ft, info);
+			return make_process_end_data_lsf(ft, info, jbd);
 		default:
 			break;
 		}
@@ -3212,15 +3286,15 @@ static jbuf_t make_ldms_message(forkstat_t *ft, struct proc_info *info, const ch
 #if DEBUG_EMITTER
 								, type
 #endif
-								);
+								, jbd);
 		case RM_SLURM:
 			return make_process_start_data_slurm(ft, info
 #if DEBUG_EMITTER
 								, type
 #endif
-								);
+								, jbd);
 		case RM_LSF:
-			return make_process_start_data_lsf(ft, info);
+			return make_process_start_data_lsf(ft, info, jbd);
 		default:
 			break;
 		}
@@ -3253,10 +3327,10 @@ static int64_t procinfo_get_serial()
 static int send_ldms_message(forkstat_t *ft, jbuf_t jb);
 
 /* type is exec, exit, execlong, (fork,clone) */
-static int emit_info(forkstat_t *ft, struct proc_info *info, const char *type, int emit_event, bool lock)
+static int emit_info(forkstat_t *ft, struct proc_info *info, const char *type, int emit_event, bool lock, jbuf_t *jbd)
 {
 	// this is a proxy for the ldms stream notifier
-	if (!info || !ft || !type)
+	if (!info || !ft || !type || !jbd || !(*jbd))
 		return EINVAL;
 	pid_t pid = info->pid;
 	if (lock)
@@ -3270,17 +3344,17 @@ static int emit_info(forkstat_t *ft, struct proc_info *info, const char *type, i
 			info->start.tv_usec);
 		*/
 		if (type[0] == 'e') { /* exec, execlong, exit only go to stream*/
-			jbuf_t jb = make_ldms_message(ft, info, type, emit_event);
+			jbuf_t jb = make_ldms_message(ft, info, type, emit_event, *jbd);
 			if (jb) {
 				int rc = send_ldms_message(ft, jb);
 				if (!rc)
 					override_emitted(info, emit_event);
 				else
 					PRINTF("FAILED sending for %d\n", pid);
-				jbuf_free(jb);
 			} else {
 				PRINTF("FAILED make_ldms_message for %d event %d\n", pid, emit_event);
 			}
+			*jbd = jb;
 		}
 	}
 	if (lock)
@@ -3361,7 +3435,9 @@ static void *dump_pids(void *vp)
 		s.tv_sec = 1;
 		s.tv_nsec = 0;
 	}
-	while (1) {
+	jbuf_t jbd = jbuf_new();
+	jbuf_t jb = jbd;
+	while (1 && jb) {
 		if (forkstat_stop_requested(ft))
 			break;
 		size_t i;
@@ -3383,7 +3459,10 @@ static void *dump_pids(void *vp)
 					short_exceeded(ft, info, &tv)) {
 					emit_info(ft, info, "execlong",
 						EMIT_ADD | info->emitted,
-						false);
+						false, &jb);
+					if (!jb)
+						jbuf_free(jbd);
+					jbd = jb;
 				}
 				info = info->next;
 			}
@@ -3395,6 +3474,7 @@ static void *dump_pids(void *vp)
 
 		nanosleep(&s, NULL);
 	}
+	jbuf_free(jb);
 	if (ft->opt_trace)
 		PRINTF("END printer %d\n", ft->stop_recv);
 	return NULL;
