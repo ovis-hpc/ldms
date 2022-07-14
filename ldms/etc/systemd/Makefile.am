@@ -1,4 +1,6 @@
-SYSTEMD_DIR = $(DESTDIR)$(sysconfdir)/systemd/system
+docdir = $(datadir)/doc/@PACKAGE@/sample_init_scripts/opt/etc
+
+SYSTEMD_DIR = $(DESTDIR)$(docdir)/systemd/system
 
 do_subst = @LDMS_SUBST_RULE@
 
@@ -11,7 +13,7 @@ BUILT_FILES_SRC = $(BUILT_FILES:=.in)
 
 EXTRA_DIST = $(BUILT_FILES_SRC)
 
-sysconfsystemdsystemdir=$(sysconfdir)/systemd/system
+sysconfsystemdsystemdir=$(docdir)/systemd/system
 nodist_sysconfsystemdsystem_DATA=$(BUILT_FILES)
 
 $(builddir)/%.service: $(srcdir)/%.service.in

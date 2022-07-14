@@ -2,7 +2,6 @@ For TOSS deployment, see genders/.
 	This uses a cluster-wide genders file to manage
 	daemon config consistency under systemd or sysvinit.
 
-For irregular clusters, see rhel/
-	This uses tedious lists to manage daemon config consistency.
-	Save yourself the pain and install libgenders.
+For other clusters see opt/
+	This uses assorted local scripts to manage local daemons under systemd.
 

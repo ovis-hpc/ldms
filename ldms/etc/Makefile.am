@@ -1,4 +1,6 @@
 ACLOCAL_AMFLAGS = -I m4
+docdir = $(datadir)/doc/@PACKAGE@/sample_init_scripts/opt/etc
+
 SUBDIRS =
 
 # init script
@@ -24,7 +26,7 @@ BUILT_FILES_SRC = $(BUILT_FILES:=.in)
 
 EXTRA_DIST=$(BUILT_FILES_SRC)
 
-sysconfldmsdir=$(sysconfdir)/ldms
+sysconfldmsdir=$(docdir)/ldms
 dist_sysconfldms_DATA= \
 	aggregator.conf.cray_xc.example \
 	sampler.conf.cray_xc.example \
