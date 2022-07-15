@@ -875,6 +875,7 @@ ldms/src/decomp/flex/Makefile
 ldms/src/contrib/Makefile
 ldms/src/sampler/blob_stream/Makefile
 ldms/src/store/stream/Makefile
+ldms/src/store/test/Makefile
 ldms/src/store/kokkos/Makefile
 ldms/src/store/darshan/Makefile
 ldms/src/store/kokkos_appmon/Makefile

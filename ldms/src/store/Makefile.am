@@ -1,4 +1,4 @@
-SUBDIRS =
+SUBDIRS = test
 lib_LTLIBRARIES =
 pkglib_LTLIBRARIES =
 
