@@ -3,7 +3,7 @@ AM_CFLAGS = \
 $(BOOST_CPPFLAGS)
 dist_man8_MANS =
 
-if ENABLE_CSV
+if ENABLE_CSV_CHECK
 dist_man8_MANS += ldms_csv_time_drops.man
 bin_PROGRAMS = ldms_csv_time_drops_range ldms_csv_time_drops
 

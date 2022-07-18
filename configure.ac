@@ -745,6 +745,7 @@ LIBS=""
 ## stuff from top
 OPTION_DEFAULT_DISABLE([libgenders], [ENABLE_LIBGENDERS],[  requires C++,boost])
 OPTION_DEFAULT_DISABLE([genderssystemd], [ENABLE_TOSS_SYSTEMD],[  toss systemd init scripts])
+OPTION_DEFAULT_DISABLE([csv_check], [ENABLE_CSV_CHECK],[  requires C++,boost])
 OPTION_EXTRA_BUILD_DIRS([third-plugins], [ENABLE_THIRD_PLUGINS], [THIRD_PLUGINS_DIRS])
 
 if test -z "$ENABLE_LIBGENDERS_TRUE"
@@ -758,6 +759,14 @@ then
 	AX_CXX_CHECK_LIB(gendersplusplus,[Gendersplusplus::GendersException], [],
 		AC_MSG_ERROR([libgendersplusplus not found. ]))
 	LDFLAGS=$save_LDFLAGS
+	AC_LANG_POP([C++])
+	LIBS=""
+fi
+if test -z "$ENABLE_CSV_CHECK_TRUE"
+then
+	AC_LANG_PUSH([C++])
+	BOOST_REQUIRE( , AC_MSG_ERROR([csv_check enabled but boost not found.]))
+	BOOST_STRING_ALGO
 	AC_LANG_POP([C++])
 	LIBS=""
 fi
