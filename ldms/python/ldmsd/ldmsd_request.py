@@ -346,6 +346,7 @@ class LDMSD_Request(object):
     SET_STATS = 0x600 + 15
     LISTEN = 0x600 + 16
     SET_DEFAULT_AUTHZ = 0x600 + 17
+    CONFIG_FILE_LIST = 0x600 + 18
 
     FAILOVER_CONFIG        = 0x700
     FAILOVER_PEERCFG_START = 0x700  +  1
@@ -458,6 +459,8 @@ class LDMSD_Request(object):
             'auth_add'      :  {'id' : AUTH_ADD },
 
             'metric_sets_default_authz' : {'id' : SET_DEFAULT_AUTHZ },
+
+            'config_file_list' : {'id' : CONFIG_FILE_LIST },
     }
 
     TYPE_CONFIG_CMD = 1

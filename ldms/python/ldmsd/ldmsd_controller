@@ -1637,6 +1637,23 @@ class LdmsdCmdParser(cmd.Cmd):
     def complete_auth_add(self, text, line, begidx, endidx):
         return self.__complete_attr_list('auth_add', text)
 
+    def do_config_file_list(self, arg):
+        """
+        Report the paths of the configuration files
+
+        Parameters - None
+        """
+        resp = self.handle('config_file_list', arg)
+        if resp['errcode'] == 0:
+            cfg_files =  json.loads(resp['msg'])
+            print("Configuration files")
+            print("-------------------")
+            for f in cfg_files:
+                print(f"{f}")
+
+    def complete_config_file_list(self, text, line, begidx, endidx):
+        return self.__complete_attr_list('config_file_list', text)
+
     def do_option(self, arg):
         """
         ONLY SUPPORTED IN CONFIGURATION FILES

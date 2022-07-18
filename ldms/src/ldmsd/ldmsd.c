@@ -131,6 +131,7 @@ char *logfile;
 int log_truncate = 0;
 char *pidfile;
 char *bannerfile;
+struct ldmsd_str_list cfgfile_list;
 
 #define DEFAULT_BANNER 1
 int banner = -1;
@@ -2165,7 +2166,6 @@ int main(int argc, char *argv[])
 	/* Process cmd-line options in config files */
 	opterr = 0;
 	optind = 0;
-	struct ldmsd_str_list cfgfile_list;
 	TAILQ_INIT(&cfgfile_list);
 	struct ldmsd_str_ent *cpath;
 	while ((op = getopt_long(argc, argv, short_opts, long_opts, NULL)) != -1) {
@@ -2178,7 +2178,8 @@ int main(int argc, char *argv[])
 	}
 
 	int lln;
-	while ((cpath = TAILQ_FIRST(&cfgfile_list))) {
+	char *abspath;
+	TAILQ_FOREACH(cpath, &cfgfile_list, entry) {
 		lln = -1;
 		ret = process_config_file(cpath->str, &lln, 1);
 		if (ret) {
@@ -2189,8 +2190,17 @@ int main(int argc, char *argv[])
 			ldmsd_str_list_destroy(&cfgfile_list);
 			cleanup(ret, errstr);
 		}
-		TAILQ_REMOVE(&cfgfile_list, cpath, entry);
-		ldmsd_str_ent_free(cpath);
+		abspath = realpath(cpath->str, NULL);
+		if (!abspath) {
+			ldmsd_log(LDMSD_LINFO, "Failed to get the absolute path "
+						"of config file '%s'. Error %d\n",
+							     cpath->str, errno);
+
+		} else {
+			/* Replace the given path with the absolute path */
+			free(cpath->str);
+			cpath->str = abspath;
+		}
 	}
 
 	/* Initialize LDMS */

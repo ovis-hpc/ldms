@@ -2212,6 +2212,54 @@ static void resp_prdcr_stream_dir(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp
 	json_entity_free(json);
 }
 
+static void help_config_file_list()
+{
+	printf( "\nReport the paths of the configuration files.\n\n"
+		"Parameters: - None\n");
+}
+
+static void resp_config_file_list(ldmsd_req_hdr_t resp, size_t len, uint32_t rsp_err)
+{
+	int rc;
+	json_parser_t parser;
+	json_entity_t json;
+	if (rsp_err) {
+		resp_generic(resp, len, rsp_err);
+		return;
+	}
+
+	ldmsd_req_attr_t attr = ldmsd_first_attr(resp);
+	if (!attr->discrim || (attr->attr_id != LDMSD_ATTR_JSON))
+		return;
+
+	parser = json_parser_new(0);
+	if (!parser) {
+		printf("Error creating a JSON parser.\n");
+		return;
+	}
+	rc = json_parse_buffer(parser, (char*)attr->attr_value, len, &json);
+	json_parser_free(parser);
+	if (rc) {
+		printf("syntax error parsing JSON string\n");
+		json_parser_free(parser);
+		return;
+	}
+
+	printf("Configuration path(s)\n");
+	printf("---------------------\n");
+	if (0 == json_list_len(json)) {
+		printf("No configuration files\n");
+		return;
+	}
+
+	json_entity_t cfg_path;
+	for (cfg_path = json_item_first(json); cfg_path;
+			cfg_path = json_item_next(cfg_path)) {
+		printf("%s\n", json_value_str(cfg_path)->str);
+	}
+	json_entity_free(json);
+}
+
 static void help_listen()
 {
 	printf( "\nAdd a listen endpoint\n\n"
@@ -2244,6 +2292,7 @@ static struct command command_tbl[] = {
 	{ "?", LDMSCTL_HELP, handle_help, NULL, NULL },
 	{ "auth_add", LDMSD_AUTH_ADD_REQ, NULL, help_auth, resp_generic },
 	{ "config", LDMSD_PLUGN_CONFIG_REQ, NULL, help_config, resp_generic },
+	{ "config_file_list", LDMSD_CONFIG_FILE_LIST_REQ, NULL, help_config_file_list, resp_config_file_list },
 	{ "daemon_exit", LDMSD_EXIT_DAEMON_REQ, NULL, help_daemon_exit, resp_daemon_exit },
 	{ "daemon_status", LDMSD_DAEMON_STATUS_REQ, NULL, help_daemon_status, resp_daemon_status },
 	{ "failover_config", LDMSD_FAILOVER_CONFIG_REQ, NULL,

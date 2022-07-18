@@ -66,6 +66,7 @@ const struct req_str_id req_str_id_table[] = {
 	{  "auth_add",           LDMSD_AUTH_ADD_REQ  },
 	{  "auth_del",           LDMSD_AUTH_DEL_REQ  },
 	{  "config",             LDMSD_PLUGN_CONFIG_REQ  },
+	{  "config_file_list",   LDMSD_CONFIG_FILE_LIST_REQ  },
 	{  "daemon",             LDMSD_DAEMON_STATUS_REQ  },
 	{  "daemon_exit",        LDMSD_EXIT_DAEMON_REQ  },
 	{  "daemon_status",      LDMSD_DAEMON_STATUS_REQ  },

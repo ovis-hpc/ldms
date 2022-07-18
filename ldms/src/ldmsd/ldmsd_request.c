@@ -225,6 +225,7 @@ static int eperm_handler(ldmsd_req_ctxt_t req_ctxt);
 static int ebusy_handler(ldmsd_req_ctxt_t reqc);
 static int updtr_task_status_handler(ldmsd_req_ctxt_t req_ctxt);
 static int prdcr_hint_tree_status_handler(ldmsd_req_ctxt_t reqc);
+static int config_file_list_handler(ldmsd_req_ctxt_t reqc);
 
 /* these are implemented in ldmsd_failover.c */
 int failover_config_handler(ldmsd_req_ctxt_t req_ctxt);
@@ -450,6 +451,9 @@ static struct request_handler_entry request_handler[] = {
 	},
 	[LDMSD_SET_ROUTE_REQ] = {
 		LDMSD_SET_ROUTE_REQ, set_route_handler, XUG
+	},
+	[LDMSD_CONFIG_FILE_LIST_REQ] = {
+		LDMSD_CONFIG_FILE_LIST_REQ, config_file_list_handler, XUG
 	},
 
 	/* Transport Stats Request */
@@ -5330,6 +5334,7 @@ out:
 
 static int include_handler(ldmsd_req_ctxt_t reqc)
 {
+	extern struct ldmsd_str_list cfgfile_list;
 	char *path = NULL;
 	int rc = 0;
 	size_t cnt = 0;
@@ -5353,6 +5358,20 @@ static int include_handler(ldmsd_req_ctxt_t reqc)
 				"Failed to process cfg '%s' at line '%d'",
 				path, lineno);
 		}
+	} else {
+		struct ldmsd_str_ent *cpath = ldmsd_str_ent_new(path);
+		if (!cpath) {
+			ldmsd_log(LDMSD_LCRITICAL, "Memory allocation error in "
+						    "include_handler()[%d]\n",
+								    __LINE__);
+			return ENOMEM;
+		}
+		char *abspath = realpath(path, NULL);
+		if (abspath) {
+			free(cpath->str);
+			cpath->str = abspath;
+		}
+		TAILQ_INSERT_TAIL(&cfgfile_list, cpath, entry);
 	}
 
 out:
@@ -7361,4 +7380,46 @@ enomem:
 	ldmsd_log(LDMSD_LCRITICAL, "Out of memroy\n");
 	rc = ENOMEM;
 	goto send_reply;
+}
+
+static int config_file_list_handler(ldmsd_req_ctxt_t reqc)
+{
+	extern struct ldmsd_str_list cfgfile_list;
+	struct ldmsd_str_ent *cfg;
+	int first = 1;
+	struct ldmsd_req_attr_s attr;
+	int rc;
+
+	reqc->line_off = snprintf(reqc->line_buf, reqc->line_len, "[");
+	TAILQ_FOREACH(cfg, &cfgfile_list, entry) {
+		if (!first) {
+			reqc->line_off += snprintf(&reqc->line_buf[reqc->line_off],
+						   reqc->line_len - reqc->line_off, ",");
+		} else {
+			first = 0;
+		}
+		reqc->line_off += snprintf(&reqc->line_buf[reqc->line_off],
+					   reqc->line_len - reqc->line_off,
+					   "\"%s\"", cfg->str);
+	}
+	reqc->line_off += snprintf(&reqc->line_buf[reqc->line_off],
+				   reqc->line_len - reqc->line_off, "]");
+	reqc->line_off += 1; /* Null terminating character */
+	attr.discrim = 1;
+	attr.attr_len = reqc->line_off;
+	attr.attr_id = LDMSD_ATTR_JSON;
+	ldmsd_hton_req_attr(&attr);
+	rc = ldmsd_append_reply(reqc, (char *)&attr, sizeof(attr), LDMSD_REQ_SOM_F);
+	if (rc)
+		goto out;
+	rc = ldmsd_append_reply(reqc, reqc->line_buf, reqc->line_off, 0);
+	if (rc)
+		goto out;
+
+	attr.discrim = 0;
+	rc = ldmsd_append_reply(reqc, (char *)&attr.discrim,
+				sizeof(uint32_t), LDMSD_REQ_EOM_F);
+
+out:
+	return rc;
 }
