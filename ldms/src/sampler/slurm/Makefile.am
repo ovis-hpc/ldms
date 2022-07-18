@@ -17,3 +17,6 @@ libslurm_sampler_la_LIBADD = $(COMMON_LIBADD)
 libslurm_sampler_la_CFLAGS = -DSYSCONFDIR='"$(sysconfdir)"'
 pkglib_LTLIBRARIES += libslurm_sampler.la
 
+libslurm_sampler2_la_SOURCES = slurm_sampler2.c
+libslurm_sampler2_ls_LIBADD = $(COMMON_LIBADD)
+pkglib_LTLIBRARIES += libslurm_sampler2.la
