@@ -953,13 +953,12 @@ static int __decomp_static_decompose(ldmsd_strgp_t strgp, ldms_set_t set,
 			mval = ldms_metric_get(set, mid);
 			mtype = ldms_metric_type_get(set, mid);
 			if (mtype != mid_rbn->col_mids[j].mtype) {
-				ldmsd_lerror("strgp '%s': row '%d' col[dst] '%s': "
-					     "the value type (%s) is not "
-					     "compatible with the source metric type (%s). "
-					     "Please check the decomposition configuration.\n",
-					     strgp->obj.name, i, dcol->dst,
-					     ldms_metric_type_to_str(dcol->type),
-					     ldms_metric_type_to_str(mcol->mtype));
+				ldmsd_lerror("strgp '%s': the metric type (%s) of "
+					     "row %d:col %d is different from the type (%s) of "
+					     "LDMS metric '%s'.\n", strgp->obj.name,
+					     ldms_metric_type_to_str(mid_rbn->col_mids[j].mtype),
+					     i, j, ldms_metric_type_to_str(mtype),
+					     ldms_metric_name_get(set, mid));
 				rc = EINVAL;
 				goto err_0;
 			}
