@@ -193,15 +193,16 @@ int main(int argc, char **argv)
 	if (stream_new || line_mode) {
 		/* Create a transport endpoint */
 		ldms = ldms_xprt_new_with_auth(xprt, NULL, auth, NULL);
+		if (!ldms) {
+			rc = errno;
+			printf("Failed to create the LDMS transport endpoint.\n");
+			return rc;
+		}
 		rc = ldms_xprt_connect_by_name(ldms, host, port, NULL, NULL);
 		if (rc){
 			printf("Error %d connecting to peer\n", rc);
 			return rc;
 		}
-	}
-	if (!ldms) {
-		printf("%s: -n, -N or -l required.\n", argv[0]);
-		usage(argc, argv);
 	}
 	if (stream_new) {
 		/* Create and send a STREAM_NEW message */
