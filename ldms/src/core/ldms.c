@@ -1414,15 +1414,17 @@ static size_t compute_set_sizes(const char *instance_name, ldms_schema_t schema,
 				int *set_array_card,
 				size_t *meta_sz, size_t *array_data_sz, size_t *heap_sz)
 {
-	*heap_sz = 0;
 	ldms_mdef_t md;
+	size_t _hsz = 0;
 	STAILQ_FOREACH(md, &schema->metric_list, entry) {
 		if (md->type == LDMS_V_LIST) {
 			if (md->count == 0)
 				md->count = LDMS_LIST_HEAP;
-			*heap_sz = *heap_sz + md->count;
+			_hsz += md->count;
 		}
 	}
+	if (*heap_sz < _hsz)
+		*heap_sz = _hsz;
 	*heap_sz = ldms_heap_size(*heap_sz);
 
 	if (set_array_card) {
@@ -1434,7 +1436,6 @@ static size_t compute_set_sizes(const char *instance_name, ldms_schema_t schema,
 		if (!*set_array_card)
 			*set_array_card = 1;
 	}
-
 
 	*meta_sz = schema->meta_sz		/* header + metric dict */
 		 + strlen(schema->name) + 2	/* schema name + '\0' + len */
@@ -1541,14 +1542,12 @@ ldms_set_t ldms_set_create(const char *instance_name,
 		return NULL;
 	}
 
+	hsz = heap_sz;
 	int ssz = compute_set_sizes(instance_name, schema,
 				    &set_array_card, &meta_sz,
 				    &array_data_sz, &hsz);
 	if (!ssz)
 		return NULL;
-
-	/* Use the given heap size instead of the cached value in the schema. */
-	hsz = heap_sz;
 
 	__ldms_schema_finalize(schema);
 
@@ -1694,11 +1693,7 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
 				  ldms_schema_t schema,
 				  uid_t uid, gid_t gid, mode_t perm)
 {
-	size_t meta_sz = 0, array_data_sz = 0, heap_sz = 0;
-	int set_array_card;
-	(void) compute_set_sizes(instance_name, schema, &set_array_card,
-					&meta_sz, &array_data_sz, &heap_sz);
-	return ldms_set_create(instance_name, schema, uid, gid, perm, heap_sz);
+	return ldms_set_create(instance_name, schema, uid, gid, perm, 0);
 }
 
 ldms_set_t ldms_set_new_with_heap(const char *instance_name,
@@ -1727,14 +1722,9 @@ ldms_set_t ldms_set_new(const char *instance_name, ldms_schema_t schema)
 	uid_t uid;
 	gid_t gid;
 	mode_t perm;
-	size_t meta_sz = 0, array_data_sz = 0, heap_sz = 0;
-	int set_array_card;
-
-	(void) compute_set_sizes(instance_name, schema, &set_array_card,
-					&meta_sz, &array_data_sz, &heap_sz);
 
 	ldms_set_default_authz(&uid, &gid, &perm, DEFAULT_AUTHZ_READONLY);
-	return ldms_set_create(instance_name, schema, uid, gid, perm, heap_sz);
+	return ldms_set_create(instance_name, schema, uid, gid, perm, 0);
 }
 
 int ldms_set_config_auth(ldms_set_t set, uid_t uid, gid_t gid, mode_t perm)
