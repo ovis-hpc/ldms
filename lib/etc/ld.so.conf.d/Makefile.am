@@ -9,3 +9,8 @@ docdir = $(datadir)/doc/@PACKAGE@/sample_init_scripts/opt/etc
 
 sysconfldsodir = $(docdir)/ld.so.conf.d
 sysconfldso_DATA = ovis-ld-so.conf
+
+if SYSCONFDIR_NOT_ETC
+sysconfldsoddir = $(sysconfdir)/ld.so.conf.d
+sysconfldsod_DATA = ovis-ld-so.conf
+endif

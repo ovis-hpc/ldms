@@ -825,6 +825,8 @@ AS_IF([test "x$with_dcgm" != xno],
       [have_dcgm=false])
 AM_CONDITIONAL([HAVE_DCGM], [test x$have_dcgm = xtrue])
 
+AM_CONDITIONAL([SYSCONFDIR_NOT_ETC], [test "${sysconfdir}" != "/etc"])
+
 # define substitutions for configvars and other sed-generated files.
 # note carefully the escapes.
 OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
