@@ -45,7 +45,6 @@ jobs:
         ../configure --prefix=/opt/ovis-4 --enable-etc --enable-munge
         make
         make install
-        ln -s /opt/ovis-4/share/doc/ovis-ldms/sample_init_scripts/opt/etc /opt/ovis-4
     - name: test preparation
       run: |
         set -e

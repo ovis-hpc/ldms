@@ -11,5 +11,9 @@ dist_sysconfovis_DATA = ovis-functions.sh
 sysconfprofiledir = $(docdir)/profile.d
 sysconfprofile_DATA = set-ovis-variables.sh
 
-EXTRA_DIST = set-ovis-variables.sh.in
+if SYSCONFDIR_NOT_ETC
+sysconfprofileddir=$(sysconfdir)/profile.d
+sysconfprofiled_DATA=set-ovis-variables.sh
+endif
 
+EXTRA_DIST = set-ovis-variables.sh.in
