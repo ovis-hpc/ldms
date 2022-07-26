@@ -1542,7 +1542,8 @@ ldms_set_t ldms_set_new_with_auth(const char *instance_name,
  * \param uid             The user ID of the set owner
  * \param gid             The group ID of the set owner
  * \param perm            The UNIX mode_t bits (see chmod)
- * \param heap_sz         The size of the set heap
+ * \param heap_sz         The size of the set heap. If 0 is given,
+ *                        the heap size is the size set in \c schema.
  *
  * \return A pointer to a metric set or NULL if there is an error.
  *         Errno will be set as appropriate as follows:
