@@ -630,6 +630,8 @@ static int __rbn_print(struct rbn *rbn, void *fn_data, int level)
 
 void rbt_print(struct rbt *t)
 {
+	if (0 == t->card)
+		printf("EMPTY\n");
 	rbt_traverse(t, __rbn_print, NULL);
 }
 
