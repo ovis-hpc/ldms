@@ -176,6 +176,17 @@ void *mm_alloc(size_t size)
 	size = MMR_ROUNDUP(size, mmr->grain);
 	count = size >> mmr->grain_bits;
 
+#if LDMS_MM_DEBUG
+	printf("================== %s -- BEGIN =====================\n", __func__);
+	printf("          ---- size_tree ----\n");
+	rbt_verify(&mmr->size_tree);
+	rbt_print(&mmr->size_tree);
+	printf("          ---- addr_tree ----\n");
+	rbt_verify(&mmr->addr_tree);
+	rbt_print(&mmr->addr_tree);
+
+#endif /* LDMS_MM_DEBUG */
+
 	pthread_mutex_lock(&mmr->lock);
 	rbn = rbt_find_lub(&mmr->size_tree, &count);
 	if (!rbn) {
@@ -189,6 +200,16 @@ void *mm_alloc(size_t size)
 	rbt_del(&mmr->size_tree, &p->size_node);
 	rbt_del(&mmr->addr_tree, &p->addr_node);
 
+#if LDMS_MM_DEBUG
+	printf("================== %s -- remove node from tree =====================\n", __func__);
+	printf("          ---- size_tree ----\n");
+	rbt_verify(&mmr->size_tree);
+	rbt_print(&mmr->size_tree);
+	printf("          ---- addr_tree ----\n");
+	rbt_verify(&mmr->addr_tree);
+	rbt_print(&mmr->addr_tree);
+#endif /* LDMS_MM_DEBUG */
+
 	/* Create a new node from the remainder of p if any */
 	remainder = p->count - count;
 	if (remainder) {
@@ -201,9 +222,21 @@ void *mm_alloc(size_t size)
 
 		rbt_ins(&mmr->size_tree, &n->size_node);
 		rbt_ins(&mmr->addr_tree, &n->addr_node);
+#if LDMS_MM_DEBUG
+		printf("================== %s -- add reminder =====================\n", __func__);
+		printf("          ---- size_tree ----\n");
+		rbt_verify(&mmr->size_tree);
+		rbt_print(&mmr->size_tree);
+		printf("          ---- addr_tree ----\n");
+		rbt_verify(&mmr->addr_tree);
+		rbt_print(&mmr->addr_tree);
+#endif /* LDMS_MM_DEBUG */
 	}
 	p->count = count;
 	p->pfx = p;
+#if LDMS_MM_DEBUG
+	printf("================== %s -- END =====================\n", __func__);
+#endif /* LDMS_MM_DEBUG */
 	pthread_mutex_unlock(&mmr->lock);
 	return ++p;
 }
@@ -220,6 +253,16 @@ void mm_free(void *d)
 	struct rbn *rbn;
 
 	p --;
+
+#if LDMS_MM_DEBUG
+	printf("================== %s --- BEGIN =====================\n", __func__);
+	printf("          ---- size_tree ----\n");
+	rbt_verify(&mmr->size_tree);
+	rbt_print(&mmr->size_tree);
+	printf("          ---- addr_tree ----\n");
+	rbt_verify(&mmr->addr_tree);
+	rbt_print(&mmr->addr_tree);
+#endif /* LDMS_MM_DEBUG */
 
 	pthread_mutex_lock(&mmr->lock);
 	/* See if we can coalesce with our lesser sibling */
@@ -238,6 +281,15 @@ void mm_free(void *d)
 			q->count += p->count;
 			p = q;
 		}
+#if LDMS_MM_DEBUG
+		printf("================== %s --- coalesce =====================\n", __func__);
+		printf("          ---- size_tree ----\n");
+		rbt_verify(&mmr->size_tree);
+		rbt_print(&mmr->size_tree);
+		printf("          ---- addr_tree ----\n");
+		rbt_verify(&mmr->addr_tree);
+		rbt_print(&mmr->addr_tree);
+#endif /* LDMS_MM_DEBUG */
 	}
 
 	/* See if we can coalesce with our greater sibling */
@@ -268,6 +320,16 @@ void mm_free(void *d)
 	/* Put 'p' back in the trees */
 	rbt_ins(&mmr->size_tree, &p->size_node);
 	rbt_ins(&mmr->addr_tree, &p->addr_node);
+#if LDMS_MM_DEBUG
+	printf("================== %s --- put back =====================\n", __func__);
+	printf("          ---- size_tree ----\n");
+	rbt_verify(&mmr->size_tree);
+	rbt_print(&mmr->size_tree);
+	printf("          ---- addr_tree ----\n");
+	rbt_verify(&mmr->addr_tree);
+	rbt_print(&mmr->addr_tree);
+	printf("================== %s --- END =====================\n", __func__);
+#endif /* LDMS_MM_DEBUG */
 	pthread_mutex_unlock(&mmr->lock);
 }
 
