@@ -56,7 +56,7 @@
 #include <assert.h>
 #include <errno.h>
 
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 
 #include "ovis_json/ovis_json.h"
 #include "coll/rbt.h"
@@ -434,13 +434,18 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 	int i, j, k, rc;
 	struct str_int_tbl_s *col_id_tbl = NULL;
 	struct str_int_s key, *tbl_ent;
-	SHA256_CTX sha_ctxt;
+	EVP_MD_CTX *evp_ctx = NULL;
 
 	jrows = __jdict_list(jcfg, "rows");
 	if (!jrows) {
 		DECOMP_ERR(reqc, errno, "strgp '%s': The 'rows' attribute is missing, "
 						     "or its value is not a list.\n",
 						     strgp->obj.name);
+		goto err_0;
+	}
+	evp_ctx = EVP_MD_CTX_create();
+	if (!evp_ctx) {
+		DECOMP_ERR(reqc, errno, "out of memory\n");
 		goto err_0;
 	}
 	dcfg = calloc(1, sizeof(*dcfg) + jrows->item_count*sizeof(dcfg->rows[0]));
@@ -462,7 +467,7 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 
 		drow = &dcfg->rows[i];
 		drow->row_sz = sizeof(struct ldmsd_row_s);
-		SHA256_Init(&sha_ctxt);
+		EVP_DigestInit_ex(evp_ctx, EVP_sha256(), NULL);
 		rbt_init(&drow->mid_rbt, __mid_rbn_cmp);
 
 		/* schema name */
@@ -546,8 +551,8 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 				goto err_0;
 			}
 			/* update row schema digest */
-			SHA256_Update(&sha_ctxt, dcol->dst, strlen(dcol->dst));
-			SHA256_Update(&sha_ctxt, &dcol->type, sizeof(dcol->type));
+			EVP_DigestUpdate(evp_ctx, dcol->dst, strlen(dcol->dst));
+			EVP_DigestUpdate(evp_ctx, &dcol->type, sizeof(dcol->type));
 			if (!ldms_type_is_array(dcol->type))
 				goto not_array_fill;
 			/* array routine */
@@ -633,7 +638,8 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 		assert(j == jcols->item_count);
 
 		/* Finalize row schema digest */
-		SHA256_Final(drow->schema_digest.digest, &sha_ctxt);
+		unsigned int len = LDMS_DIGEST_LENGTH;
+		EVP_DigestFinal(evp_ctx, drow->schema_digest.digest, &len);
 
 		/* indices */
 		jidxs = __jdict_list(jrow, "indices");
@@ -723,6 +729,8 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
 		i++;
 	}
 	assert(i == jrows->item_count);
+	if (evp_ctx)
+		EVP_MD_CTX_destroy(evp_ctx);
 	return &dcfg->decomp;
 
  err_enomem:
@@ -730,6 +738,8 @@ __decomp_static_config( ldmsd_strgp_t strgp, json_entity_t jcfg,
  err_0:
 	__decomp_static_cfg_free(dcfg);
 	free(col_id_tbl);
+	if (evp_ctx)
+		EVP_MD_CTX_destroy(evp_ctx);
 	return NULL;
 }
 

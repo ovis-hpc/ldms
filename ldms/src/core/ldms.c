@@ -1110,16 +1110,32 @@ int ldms_init(size_t max_size)
 
 ldms_schema_t ldms_schema_new(const char *schema_name)
 {
+	int evp_success;
 	ldms_schema_t s = calloc(1, sizeof *s);
-	if (s) {
-		s->name = strdup(schema_name);
-		SHA256_Init(&s->sha_ctxt);
-		s->meta_sz = sizeof(struct ldms_set_hdr);
-		s->data_sz = sizeof(struct ldms_data_hdr);
-		s->array_card = 1;
-		STAILQ_INIT(&s->metric_list);
-	}
+	if (!s)
+		goto err_0;
+	s->name = strdup(schema_name);
+	if (!s->name)
+		goto err_1;
+	s->evp_ctx = EVP_MD_CTX_create();
+	if (!s->evp_ctx)
+		goto err_2;
+	evp_success = EVP_DigestInit_ex(s->evp_ctx, EVP_sha256(), NULL);
+	if (!evp_success)
+		goto err_3;
+	s->meta_sz = sizeof(struct ldms_set_hdr);
+	s->data_sz = sizeof(struct ldms_data_hdr);
+	s->array_card = 1;
+	STAILQ_INIT(&s->metric_list);
 	return s;
+ err_3:
+	EVP_MD_CTX_destroy(s->evp_ctx);
+ err_2:
+	free(s->name);
+ err_1:
+	free(s);
+ err_0:
+	return NULL;
 }
 
 const char *ldms_digest_str(ldms_digest_t digest, char *buf, int buf_len)
@@ -1287,6 +1303,9 @@ void ldms_schema_delete(ldms_schema_t schema)
 		free(m);
 	}
 	free(schema->name);
+	if (schema->evp_ctx) {
+		EVP_MD_CTX_destroy(schema->evp_ctx);
+	}
 	free(schema);
 }
 
@@ -1514,7 +1533,8 @@ static void __ldms_schema_finalize(ldms_schema_t schema)
 {
 	if (memcmp(&schema->digest, &null_digest, LDMS_DIGEST_LENGTH))
 		return;
-	SHA256_Final(schema->digest.digest, &schema->sha_ctxt);
+	unsigned int len = LDMS_DIGEST_LENGTH;
+	EVP_DigestFinal_ex(schema->evp_ctx, schema->digest.digest, &len);
 }
 
 ldms_set_t ldms_set_create(const char *instance_name,
@@ -1996,12 +2016,12 @@ int __schema_mdef_add(ldms_schema_t s, ldms_mdef_t m)
 		ldms_mdef_t rec_m;
 		rec_def = container_of(m, struct ldms_record, mdef);
 		STAILQ_FOREACH(rec_m, &rec_def->rec_metric_list, entry) {
-			SHA256_Update(&s->sha_ctxt, rec_m->name, strlen(rec_m->name));
-			SHA256_Update(&s->sha_ctxt, &rec_m->type, sizeof(rec_m->type));
+			EVP_DigestUpdate(s->evp_ctx, rec_m->name, strlen(rec_m->name));
+			EVP_DigestUpdate(s->evp_ctx, &rec_m->type, sizeof(rec_m->type));
 		}
 	}
-	SHA256_Update(&s->sha_ctxt, m->name, strlen(m->name));
-	SHA256_Update(&s->sha_ctxt, &m->type, sizeof(m->type));
+	EVP_DigestUpdate(s->evp_ctx, m->name, strlen(m->name));
+	EVP_DigestUpdate(s->evp_ctx, &m->type, sizeof(m->type));
 
 	STAILQ_INSERT_TAIL(&s->metric_list, m, entry);
 	s->card++;
