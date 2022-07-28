@@ -52,7 +52,7 @@
 #include <ldms_xprt.h>
 #include <pthread.h>
 #include <zap/zap.h>
-#include <openssl/sha.h>
+#include <openssl/evp.h>
 #include "ovis_util/os_util.h"
 #include "ovis_ref/ref.h"
 #include "ldms_heap.h"
@@ -85,7 +85,7 @@ STAILQ_HEAD(metric_list_head, ldms_mdef_s);
 struct ldms_schema_s {
 	char *name;
 	struct ldms_digest_s digest;
-	SHA256_CTX sha_ctxt;
+	EVP_MD_CTX *evp_ctx;
 	int card;
 	size_t meta_sz;
 	size_t data_sz;
