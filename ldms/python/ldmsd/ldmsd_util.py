@@ -68,7 +68,7 @@ import io
 from io import StringIO
 import errno
 import tty
-from distutils.spawn import find_executable
+import shutil
 
 def add_cmd_line_arg(arg, value = None):
     """Return a string of command line option and value
@@ -366,7 +366,7 @@ class LDMSD(object):
         """
         self.cmd_args = []
         if gdb_port:
-            ldmsd_path = find_executable("ldmsd")
+            ldmsd_path = shutil.which("ldmsd")
             if not ldmsd_path:
                 raise RuntimeError("ldmsd not found")
             self.cmd_args.extend([
