@@ -1,0 +1,36 @@
+export plugname=meminfo
+portbase=61096
+#export VGARGS="--track-origins=yes --leak-check=full"
+LDMSD -p prolog.sampler 1
+#vgon
+LDMSD 2
+LDMSD 3
+SLEEP 2
+#vgoff
+MESSAGE ldms_ls on host 1:
+LDMS_LS 1 -v
+MESSAGE ldms_ls on host 2:
+LDMS_LS 2 -v
+MESSAGE ldms_ls on host 2:
+LDMS_LS 3 -v
+SLEEP 30
+KILL_LDMSD 1
+SLEEP 90
+KILL_LDMSD $(seq 2 3)
+noempty=$(ls $STOREDIR/$HOSTNAME/rollempty0/rollemptycsv.* |wc -l)
+yesempty=$(ls $STOREDIR/$HOSTNAME/rollempty1/rollemptycsv.* |wc -l)
+if ! test "$bypass" = "1"; then
+	if test $noempty -lt 2 -o $yesempty -lt 2; then
+		echo "FAIL: roll-over files $STOREDIR/$HOSTNAME/rollempty*/rollemptycsv.* not created."
+		bypass=1
+	fi
+	# There should be a substantial difference
+	# between rollempty=0 and rollempty=1 output file counts
+	diffempty=$(( $yesempty - $noempty))
+	if test $diffempty -lt 8; then
+		echo "FAIL: rollempty setting not working as expected."
+		echo "FAIL: rollempty=0 -> $noempty; rollempty=1 -> $yesempty"
+		bypass=1
+	fi
+	echo "rollempty=0 -> $noempty; rollempty=1 -> $yesempty"
+fi

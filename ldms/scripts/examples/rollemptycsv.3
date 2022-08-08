@@ -1,0 +1,13 @@
+load name=store_csv
+config name=store_csv path=${STOREDIR} altheader=0 rollover=2 rolltype=1 rollempty=1 rename_template=${STOREDIR}/%{HOSTNAME}/%C/%B
+
+prdcr_add name=localhost1 host=${HOST} type=active xprt=${XPRT} port=${port1} interval=10000000
+prdcr_start name=localhost1
+
+updtr_add name=allhosts interval=1000000 offset=100000
+updtr_prdcr_add name=allhosts regex=.*
+updtr_start name=allhosts
+
+strgp_add name=store_${testname} plugin=store_csv schema=${testname} container=rollempty1
+strgp_prdcr_add name=store_${testname} regex=.*
+strgp_start name=store_${testname}

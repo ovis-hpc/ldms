@@ -1,8 +1,8 @@
 /**
- * Copyright (c) 2014-2017 National Technology & Engineering Solutions
+ * Copyright (c) 2014-2022 National Technology & Engineering Solutions
  * of Sandia, LLC (NTESS). Under the terms of Contract DE-NA0003525 with
  * NTESS, the U.S. Government retains certain rights in this software.
- * Copyright (c) 2014-2017 Open Grid Computing, Inc. All rights reserved.
+ * Copyright (c) 2014-2022 Open Grid Computing, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -89,6 +89,10 @@ static int altheader;
 static char* derivedconf = NULL;  //Mutliple derived files
 static int ageusec = -1;
 static int rollover;
+/** rollempty determines if timed rollovers are performed even
+ * when no data has been written (producing empty files).
+ */
+static int rollempty = 1;
 static int rolltype;
 /** ROLLTYPES documents rolltype and is used in help output. Also used for buffering. */
 #define ROLLTYPES \
@@ -366,7 +370,7 @@ static char* allocStoreKey(const char* container, const char* schema){
 }
 
 
-/* Time-based rolltypes will always roll the files when this
+/* Time-based rolltypes will always roll the nonempty files when this
  * function is called.
  * Volume-based rolltypes must check and shortcircuit within this
  * function.
@@ -395,8 +399,10 @@ static int handleRollover(){
 				pthread_mutex_lock(&s_handle->lock);
 				switch (rolltype) {
 				case 1:
-					break;
 				case 2:
+					if (!s_handle->store_count && !rollempty)
+						/* skip rollover of empty files */
+						goto out;
 					break;
 				case 3:
 					if (s_handle->store_count < rollover)  {
@@ -473,6 +479,8 @@ static int handleRollover(){
 				s_handle->file = nfp;
 				s_handle->headerfile = nhfp;
 				s_handle->printheader = DO_PRINT_HEADER;
+				s_handle->store_count = 0;
+out:
 				pthread_mutex_unlock(&s_handle->lock);
 			}
 		}
@@ -1108,6 +1116,13 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 			return EINVAL;
 	}
 
+	rvalue = av_value(avl, "rollempty");
+	if (rvalue){
+		rollempty = atoi(rvalue);
+		if (rollempty < 0)
+			return EINVAL;
+	}
+
 	//TODO: make this variable per schema or similar.
 	ivalue = av_value(avl, "ageusec");
 	if (ivalue){
@@ -1208,6 +1223,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"         - buffertype [3,4] Defines the policy used to schedule buffer flush.\n"
 		"                      Only applies for N > 1. Same as rolltypes.\n"
 		"         - rollover   Greater than zero; enables file rollover and sets interval\n"
+		"         - rollempty  0/1; 0 suppresses rollover of empty files, 1 allows it (default)\n"
 		"         - rolltype   [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
 		"         - derivedconf Full path to derived config files. csv for multiple files.\n"
