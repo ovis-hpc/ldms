@@ -43,7 +43,7 @@ take on the value configured in the default config line or opt_file.
 .SH STORE_CSV CONFIGURATION ATTRIBUTE SYNTAX
 .TP
 .BR config
-name=<plugin_name> path=<path> [ altheader=<0/!0> typeheader=<typeformat> time_format=<0/1> ietfcsv=<0/1> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> userdata=<0/!0>] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>] [opt_file=filename] [ietfcsv=<0/1>] [typeheader=<0/1/2>] [array_expand=<false/true>] [array_sep=<separating char>] [array_lquote=<left-quote char>] [array_rquote=<right-quote char>]
+name=<plugin_name> path=<path> [ altheader=<0/!0> typeheader=<typeformat> time_format=<0/1> ietfcsv=<0/1> buffer=<0/1/N> buffertype=<3/4> rolltype=<rolltype> rollover=<rollover> rollempty=<0/1> userdata=<0/!0>] [rename_template=<metapath> [rename_uid=<int-uid> [rename_gid=<int-gid] rename_perm=<octal-mode>]] [create_uid=<int-uid>] [create_gid=<int-gid] [create_perm=<octal-mode>] [opt_file=filename] [ietfcsv=<0/1>] [typeheader=<0/1/2>] [array_expand=<false/true>] [array_sep=<separating char>] [array_lquote=<left-quote char>] [array_rquote=<right-quote char>]
 .br
 ldmsd_controller configuration line
 .RS
@@ -108,10 +108,12 @@ By default, the store does not rollover and the data is written to a continously
 1
 .br
 wake approximately every rollover seconds and roll.
+Rollover is suppressed if no data at all has been written and rollempty=0.
 .TP
 2
 .br
 wake daily at rollover seconds after midnight (>=0) and roll.
+Rollover is suppressed if no data at all has been written and rollempty=0.
 .TP
 3
 .br
@@ -123,11 +125,16 @@ roll after approximately rollover bytes are written.
 5
 .br
 wake at rollover seconds after midnight (>=0) and roll, then repeat every rollagain (> rollover) seconds during the day. For example "rollagain=3600 rollover=0 rolltype=5" rolls files hourly.
+Rollover is suppressed if no data at all has been written and rollempty=0.
 .RE
 .TP
 rollover=<rollover>
 .br
 Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
+.TP
+rollempty=0
+.br
+Turn off rollover of empty files. Default value is 1 (create extra empty files).
 .TP
 create_perm=<modebits>
 .br

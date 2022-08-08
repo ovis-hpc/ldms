@@ -90,6 +90,10 @@ static idx_t store_idx; /* protected by cfg_lock */
 struct plugattr *pa = NULL; /* plugin attributes from config */
 static int rollover;
 static int rollagain;
+/** rollempty determines if timed rollovers are performed even
+ * when no data has been written (producing empty files).
+ */
+static bool rollempty = true;
 /** rolltype determines how to interpret rollover values > 0. */
 static int rolltype = -1;
 /** ROLLTYPES documents rolltype and is used in help output. Also used for buffering */
@@ -252,6 +256,9 @@ static void roll_cb(void *obj, void *cb_arg)
 	case 1:
 	case 2:
 	case 5:
+		if (!s_handle->store_count && !rollempty)
+			/* skip rollover of empty files */
+			goto out;
 		break;
 	case 3:
 		if (s_handle->store_count < rollover)  {
@@ -364,6 +371,7 @@ static void roll_cb(void *obj, void *cb_arg)
 	s_handle->headerfilename = new_headerfilename;
 	s_handle->otime = appx;
 	s_handle->printheader = DO_PRINT_HEADER;
+	s_handle->store_count = 0;
 	goto out;
 
 err_4:
@@ -572,6 +580,7 @@ static const char *update_blacklist[] = {
 	"rollagain",
 	"rollover",
 	"rolltype",
+	"rollempty",
 	NULL
 };
 
@@ -639,6 +648,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		"rollagain",
 		"rollover",
 		"rolltype",
+		"rollempty",
 		CSV_STORE_ATTR_COMMON,
 		NULL
 	};
@@ -776,6 +786,12 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 		rc = EINVAL;
 		goto out;
 	}
+	cvt = ldmsd_plugattr_bool(pa, "rollempty", NULL, &rollempty);
+	if (cvt == -1) {
+		msglog(LDMSD_LERROR, PNAME ": expected boole for rollempty= input.\n");
+		rc = EINVAL;
+		goto out;
+	}
 
 	rollover = roll;
 	rollagain = ragain;
@@ -822,6 +838,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"         - metapath A string template for the file rename, where %[BCDPSTs]\n"
 		"           are replaced per the man page Plugin_store_csv.\n"
 		"         - rollover  Greater than or equal to zero; enables file rollover and sets interval\n"
+		"         - rollempty 0/1; 0 suppresses rollover of empty files, 1 allows (default)\n"
 		"         - rolltype  [1-n] Defines the policy used to schedule rollover events.\n"
 		ROLLTYPES
 		"         - buffer    0 to disable buffering, 1 to enable it with autosize (default)\n"

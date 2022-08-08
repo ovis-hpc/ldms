@@ -66,10 +66,12 @@ By default, the store does not rollover and the data is written to a continously
 1
 .br
 wake approximately every rollover seconds and roll.
+Rollover is suppressed if no data at all has been written and rollempty=0.
 .TP
 2
 .br
 wake daily at rollover seconds after midnight (>=0) and roll.
+Rollover is suppressed if no data at all has been written and rollempty=0.
 .TP
 3
 .br
@@ -82,6 +84,10 @@ roll after approximately rollover bytes are written.
 rollover=<rollover>
 .br
 Rollover value controls the frequency of rollover (e.g., number of bytes, number of records, time interval, seconds after midnight). Note that these values are estimates.
+.TP
+rollempty=0
+.br
+Turn off rollover of empty files. Default value is 1 (create extra empty files).
 .RE
 
 

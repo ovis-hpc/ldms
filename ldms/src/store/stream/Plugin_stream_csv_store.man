@@ -53,10 +53,12 @@ By default, the store does not rollover and the data is written to a continously
 1
 .br
 wake approximately every rollover seconds and roll.
+Rollover is suppressed if no data at all has been written.
 .TP
 2
 .br
 wake daily at rollover seconds after midnight (>=0) and roll.
+Rollover is suppressed if no data at all has been written.
 .TP
 3
 .br
@@ -69,6 +71,7 @@ roll after approximately rollover bytes are written.
 5
 .br
 wake at rollover seconds after midnight (>=0) and roll, then repeat every rollagain (> rollover) seconds during the day. For example "rollagain=3600 rollover=0 rolltype=5" rolls files hourly.
+Rollover is suppressed if no data at all has been written.
 .RE
 .TP
 rollover=<rollover>

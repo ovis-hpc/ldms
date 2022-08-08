@@ -1054,6 +1054,8 @@ static void roll_cb(void *obj, void *cb_arg)
 	case ROLL_BY_INTERVAL:
 	case ROLL_BY_MIDNIGHT:
 	case ROLL_BY_MIDNIGHT_AGAIN:
+		if (stream_handle->store_count == 0)
+			goto out;
 		break;
 	case ROLL_BY_RECORDS:
 		if (stream_handle->store_count < rollover) {
