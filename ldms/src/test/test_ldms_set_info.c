@@ -524,6 +524,7 @@ static void __test_dir_upd_reset_A(ldms_dir_set_t dset)
 
 static void __test_dir_set_info_A(ldms_dir_set_t dset)
 {
+	printf("Verifying the set info at the 1st level");
 	char *keys[3] = {SET_INFO_INT_KEY, SET_INFO_OFFSET_KEY, SET_INFO_SYNC_KEY};
 	char *values[3] = {SET_INFO_INT_VALUE, SET_INFO_RESET_NEW_VALUE, SET_INFO_SYNC_VALUE};
 	int key_marks[3] = {0, 0, 0};
@@ -619,7 +620,6 @@ static void client_event_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 		sem_post(&clnt->recv_sem);
 		break;
 	case LDMS_XPRT_EVENT_SEND_COMPLETE:
-		printf("%d: send_complete\n", port);
 		break;
 	default:
 		printf("%d: Unhandled ldms event '%d'\n", port, e->type);
@@ -881,6 +881,7 @@ static void do_client_A(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 
 static void __test_set_info_B(ldms_dir_set_t dset)
 {
+	printf("Verifying the set_info at the 2nd level");
 	char *keys[4] = {SET_INFO_CLNT1_RESET_KEY, SET_INFO_CLNT1_ADD_KEY,
 				SET_INFO_SYNC_KEY, CLNT_A_TO_SERVER_ADD_KEY};
 	char *values[4] = {SET_INFO_INT_VALUE, SET_INFO_CLNT1_ADD_VALUE,
@@ -1003,22 +1004,21 @@ static void do_client_B(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 	sem_wait(&clnt->dir_sem);
 	printf(" ----- PASSED\n");
 
-	printf("Test set info propagation\n");
-	printf("       resetting a key on the set origin\n");
+	printf("Test set info propagation: resetting a key on the set origin");
 	clnt->test_fn = __test_dir_upd_prop_reset_B;
 	clnt_send_msg(clnt, FWD | RESET, CLNT_B_PROP_UPD_RESET_KEY, CLNT_B_PROP_UPD_RESET_VALUE);
 	sem_wait(&clnt->dir_upd_sem);
 	free(clnt->msg);
 	printf(" ----- PASSED\n");
 
-	printf("       unsetting a key on the set origin\n");
+	printf("Test set info propagation: unsetting a key on the set origin");
 	clnt->test_fn = __test_dir_upd_prop_unset_B;
 	clnt_send_msg(clnt, FWD | UNSET, CLNT_B_PROP_UPD_UNSET_KEY, "");
 	sem_wait(&clnt->dir_upd_sem);
 	free(clnt->msg);
 	printf(" ----- PASSED\n");
 
-	printf("       adding a key on the set origin\n");
+	printf("Test set info propagation: adding a key on the set origin");
 	clnt->test_fn = __test_dir_upd_prop_add_B;
 	clnt_send_msg(clnt, FWD | ADD, CLNT_B_PROP_UPD_ADD_KEY, CLNT_B_PROP_UPD_ADD_VALUE);
 	sem_wait(&clnt->dir_upd_sem);
