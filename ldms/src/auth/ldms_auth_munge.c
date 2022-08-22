@@ -99,10 +99,15 @@ ldms_auth_t __auth_munge_new(ldms_auth_plugin_t plugin,
 	struct ldms_auth_munge *a;
 	munge_ctx_t mctx;
 	munge_err_t merr;
+	char *test_cred;
+
+	merr = munge_encode(&test_cred, NULL, NULL, 0);
+	if (merr != EMUNGE_SUCCESS)
+		goto err0;
 
 	a = calloc(1, sizeof(*a));
 	if (!a)
-		goto err0;
+		goto free_test_cred;
 
 	mctx = munge_ctx_create();
 	if (!mctx)
@@ -122,6 +127,8 @@ err2:
 	munge_ctx_destroy(mctx);
 err1:
 	free(a);
+free_test_cred:
+	free(test_cred);
 err0:
 	return NULL;
 }
