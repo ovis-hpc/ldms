@@ -1751,7 +1751,8 @@ int ldmsd_listen_start(ldmsd_listen_t listen)
 			  "'%s' transport creation with auth '%s' "
 			  "failed, error: %s(%d). args='%s'. Please check transport "
 			  "configuration, authentication configuration, "
-			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH.\n",
+			  "ZAP_LIBPATH (env var), and LD_LIBRARY_PATH. "
+			  "If using Munge, please check the Munge daemon.\n",
 			  listen->xprt,
 			  listen->auth_name,
 			  ovis_errno_abbvr(rc),
