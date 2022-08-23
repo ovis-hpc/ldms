@@ -22,9 +22,11 @@ ldms_la_CFLAGS = -g -O0  $(PY_INCLUDES) $(PYTHON_CPPFLAGS)
 ldms_la_LDFLAGS = $(PYTHON_LDFLAGS) -module -shared
 ldms_la_LIBADD = $(top_builddir)/ldms/src/core/libldms.la
 
+CYTHON_GDB = $(shell [ "$(uname -p)" = "x86_64" ] && echo --gdb || echo "" )
+
 $(LDMS_PYX_C): ldms.pyx ldms.pxd
 	echo PYTHON_LDFLAGS are "$(PYTHON_LDFLAGS)"
-	$(CYTHON) -3 --directive language_level=3 --fast-fail --gdb -I $(srcdir) $< -o $@
+	$(CYTHON) -3 --directive language_level=3 --fast-fail $(CYTHON_GDB) -I $(srcdir) $< -o $@
 
 SUBDIRS = ldmsd cmds
 
