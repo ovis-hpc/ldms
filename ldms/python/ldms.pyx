@@ -3026,6 +3026,9 @@ cdef class Xprt(object):
         rc = ldms_xprt_connect_by_name(self.xprt, BYTES(host), BYTES(port),
                                        xprt_cb, <void*>self)
         if rc:
+            # synchronously failed, self.xprt is no good. Need to "put" it down.
+            ldms_xprt_put(self.xprt)
+            self.xprt = NULL
             raise ConnectionError(rc, "ldms_xprt_connect_by_name() error: {}" \
                                       .format(ERRNO_SYM(rc)))
         if cb:
@@ -3068,6 +3071,9 @@ cdef class Xprt(object):
         rc = ldms_xprt_listen_by_name(self.xprt, BYTES(host), BYTES(port),
                                       passive_xprt_cb, <void*>self)
         if rc:
+            # synchronously failed, self.xprt is no good. Need to "put" it down.
+            ldms_xprt_put(self.xprt)
+            self.xprt = NULL
             raise ConnectionError(rc, "ldms_xprt_listen_by_name() error: {}" \
                                       .format(ERRNO_SYM(rc)))
 
