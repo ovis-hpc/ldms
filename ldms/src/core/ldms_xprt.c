@@ -3481,6 +3481,11 @@ void ldms_xprt_set_delete(ldms_t x, struct ldms_set *s, ldms_set_delete_cb_t cb_
 	struct xprt_set_coll_entry *ent;
 
 	pthread_mutex_lock(&x->lock);
+	if (!ldms_xprt_connected(x)) {
+		pthread_mutex_unlock(&x->lock);
+		return;
+	}
+
 	ctxt = __ldms_alloc_ctxt
 		(x,
 		 sizeof(struct ldms_request) + sizeof(struct ldms_context),
