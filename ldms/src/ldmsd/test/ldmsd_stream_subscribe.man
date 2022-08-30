@@ -1,0 +1,105 @@
+.\" Manpage for ldmsd_stream_subscribe
+.\" Contact ovis-help@ca.sandia.gov to correct errors or typos.
+.TH man 7 "21 Aug 2021" "v4" "LDMS utility ldmsd_streams_subscribe man page"
+
+.SH NAME
+ldmsd_stream_subscribe - man page for the LDMS ldmsd_stream_subscribe utility
+
+.SH SYNOPSIS
+At the command line:
+ldmsd_stream_subscribe [args]
+
+.SH DESCRIPTION
+The ldmsd_stream_subscribe program subscribes to a stream in place of a full ldmsd daemon, writing received messages to a file or to stdout.
+
+.SH COMMAND LINE SYNTAX
+
+.TP
+ldmsd_stream_subscribe -x <xprt> -h <host> -p <port> -s <stream-name> -a <auth> -A <auth-opt> -f <file> -D -i -R -q -E
+
+.br
+.RS
+.TP
+-x,--xprt <xprt>
+.br
+transport type on which to listen.
+.TP
+-p,--port <port>
+.br
+port on which to listen.
+.TP
+-h,--host <port>
+.br
+hostname or IP address of interface on which to listen.
+.TP
+-a,--auth <auth>
+.br
+authentication to expect from publishers.
+.TP
+-A,--auth_arg <auth-opt>
+.br
+auth options if needed (for e.g. ovis auth or munge on unusual port)
+.TP
+-s,--stream <stream-name>
+.br
+Name of the stream to subscribe.
+.TP
+-f,--file <file>
+.br
+File where messages delivered are written. If not specified, STDOUT.
+.TP
+-E,--events-raw
+.br
+Suppress delivery envelope information in message output.
+.TP
+-q,--quiet
+.br
+Suppress message output to file or stdout entirely.
+.TP
+-D,--daemonize
+.br
+Put the process in the background as a daemon.
+.TP
+-R,--daemon-noroot
+.br
+Prevent file system root (/) change-directory when starting the daemon.
+(Does nothing if -D is not present).
+.br
+.TP
+-i,--daemon-io
+.br
+Keep the input and output file descriptors attached to the daemon instead
+of closing them. (Does nothing if -D is not present).
+.RE
+
+.SH BUGS
+No known bugs.
+
+.SH NOTES
+.PP
+This program is in development and may change at any time.
+.PP
+Using "-a none" is insecure and should only be used with care.
+
+.SH EXAMPLES
+.PP
+Running in user mode as a sink to test a stream publishing program writing to tag 'mystream':
+.nf
+ldmsd_stream_subscribe -x sock -h 127.0.0.1 -p 20411 -s mystream -a none -f messages.out -D -R
+.fi
+
+.PP
+Running in root mode and testing on port 511
+.nf
+ldmsd_stream_subscribe -x sock -h 127.0.0.1 -p 511 -s mystream -a munge -f /var/log/ldms-stream/messages.out -D
+.fi
+
+.PP
+Sending data to listening subscriber
+.nf
+echo '{ "a": "worthless message"}' | ./ldmsd_stream_publish -x sock -h 127.0.0.1 -p 20411 -s mystream -a none -t json
+
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_stream_publish(8), ldms_authentication(7)
