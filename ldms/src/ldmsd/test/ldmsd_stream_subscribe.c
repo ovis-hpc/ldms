@@ -7,6 +7,7 @@
 #include <stdarg.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <sys/types.h>
 #include <getopt.h>
 #include <semaphore.h>
 #include <pthread.h>
@@ -22,6 +23,9 @@ static ldms_t ldms;
 static sem_t recv_sem;
 static FILE *file;
 static int quiet;
+static int daemon_io;
+static int daemon_noroot;
+static int events_raw;
 
 void msglog(const char *fmt, ...)
 {
@@ -45,6 +49,9 @@ static struct option long_opts[] = {
 	{"auth",     required_argument, 0,  'a' },
 	{"auth_arg", required_argument, 0,  'A' },
 	{"daemonize",no_argument,       0,  'D' },
+	{"daemon-io",no_argument,       0,  'i' },
+	{"daemon-noroot",no_argument,   0,  'R' },
+	{"events-raw",no_argument,       0,  'E' },
 	{"host",     required_argument, 0,  'h' },
 	{"quiet",	no_argument,		0,	'q' },
 	{0,          0,                 0,  0 }
@@ -52,15 +59,15 @@ static struct option long_opts[] = {
 
 void usage(int argc, char **argv)
 {
-	printf("usage: %s -x <xprt> -p <port> -h <host>"
+	printf("usage: %s -x <xprt> -p <port> -h <host> "
 	       "-s <stream-name> "
 	       "-f <file> -a <auth> -A <auth-opt> "
-	       "-D\n",
+	       "-D -i -R -E\n",
 	       argv[0]);
 	exit(1);
 }
 
-static const char *short_opts = "p:f:s:x:a:A:Dqh:";
+static const char *short_opts = "p:f:s:x:a:A:DiRqh:E";
 
 #define AUTH_OPT_MAX 128
 
@@ -129,12 +136,16 @@ static int stream_recv_cb(ldmsd_stream_client_t c, void *ctxt,
 			 const char *msg, size_t msg_len,
 			 json_entity_t entity)
 {
-	if (stream_type == LDMSD_STREAM_STRING)
-		msglog("EVENT:{\"type\":\"string\",\"size\":%d,\"event\":", msg_len);
-	else
-		msglog("EVENT:{\"type\":\"json\",\"size\":%d,\"event\":", msg_len);
+	if (!events_raw) {
+		if (stream_type == LDMSD_STREAM_STRING)
+			msglog("EVENT:{\"type\":\"string\",\"size\":%d,\"event\":", msg_len);
+		else
+			msglog("EVENT:{\"type\":\"json\",\"size\":%d,\"event\":", msg_len);
+	}
 	msglog(msg);
-	msglog("}\n");
+	if (!events_raw)
+		msglog("}");
+	msglog("\n");
 	return 0;
 }
 
@@ -341,7 +352,10 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 static int setup_connection(char *xprt, char *host, char *port, char *auth)
 {
 	int rc;
-	struct addrinfo *ai, hint = { .ai_flags = AI_PASSIVE, .ai_family = AF_INET };
+	struct addrinfo *ai = NULL, hint;
+	memset(&hint, 0, sizeof(hint));
+	hint.ai_flags = AI_PASSIVE;
+	hint.ai_family = AF_INET;
 
 	rc = getaddrinfo(host, port, &hint, &ai);
 	if (rc)
@@ -438,6 +452,15 @@ int main(int argc, char **argv)
 		case 'D':
 			daemonize = 1;
 			break;
+		case 'i':
+			daemon_io = 1;
+			break;
+		case 'R':
+			daemon_noroot = 1;
+			break;
+		case 'E':
+			events_raw = 1;
+			break;
 		case 'h':
 			host = optarg;
 			break;
@@ -449,9 +472,17 @@ int main(int argc, char **argv)
 		usage(argc, argv);
 
 	if (daemonize) {
-		if (daemon(0, 0)) {
-			perror("ldmsd_stream_subscribe: ");
-			return 2;
+		uid_t u = geteuid();
+		if (u || daemon_noroot) {
+			if (daemon(1, daemon_io)) {
+				perror("ldmsd_stream_subscribe(pwd): ");
+				return 2;
+			}
+		} else {
+			if (daemon(0, daemon_io)) {
+				perror("ldmsd_stream_subscribe(/): ");
+				return 2;
+			}
 		}
 	}
 
