@@ -21,3 +21,4 @@ sbin_PROGRAMS += ldmsd_stream_subscribe
 ldmsd_stream_subscribe_SOURCES = ldmsd_stream_subscribe.c
 ldmsd_stream_subscribe_LDADD = $(COMMON_LD_ADD)
 ldmsd_stream_subscribe_LDFLAGS = $(AM_LDFLAGS) -pthread 
+dist_man7_MANS += ldmsd_stream_subscribe.man
