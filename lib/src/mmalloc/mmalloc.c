@@ -165,6 +165,8 @@ int mm_init(size_t size, size_t grain)
 	return errno;
 }
 
+int __mm_debug_verbose = 0;
+
 void *mm_alloc(size_t size)
 {
 	struct mm_prefix *p, *n;
@@ -176,21 +178,31 @@ void *mm_alloc(size_t size)
 	size = MMR_ROUNDUP(size, mmr->grain);
 	count = size >> mmr->grain_bits;
 
+	pthread_mutex_lock(&mmr->lock);
 #if LDMS_MM_DEBUG
-	printf("================== %s -- BEGIN =====================\n", __func__);
-	printf("          ---- size_tree ----\n");
+	if (__mm_debug_verbose) {
+		printf("================== %s -- BEGIN =====================\n", __func__);
+		printf("          ---- size_tree ----\n");
+	}
 	rbt_verify(&mmr->size_tree);
-	rbt_print(&mmr->size_tree);
-	printf("          ---- addr_tree ----\n");
+
+	if (__mm_debug_verbose) {
+		rbt_print(&mmr->size_tree);
+		printf("          ---- addr_tree ----\n");
+	}
+
 	rbt_verify(&mmr->addr_tree);
-	rbt_print(&mmr->addr_tree);
+	if (__mm_debug_verbose)
+		rbt_print(&mmr->addr_tree);
 
 #endif /* LDMS_MM_DEBUG */
-
-	pthread_mutex_lock(&mmr->lock);
 	rbn = rbt_find_lub(&mmr->size_tree, &count);
 	if (!rbn) {
 		pthread_mutex_unlock(&mmr->lock);
+#if LDMS_MM_DEBUG
+		if (__mm_debug_verbose)
+			printf("================== %s -- END =====================\n", __func__);
+#endif /* LDMS_MM_DEBUG */
 		return NULL;
 	}
 
@@ -201,13 +213,19 @@ void *mm_alloc(size_t size)
 	rbt_del(&mmr->addr_tree, &p->addr_node);
 
 #if LDMS_MM_DEBUG
-	printf("================== %s -- remove node from tree =====================\n", __func__);
-	printf("          ---- size_tree ----\n");
+	if (__mm_debug_verbose) {
+		printf("================== %s -- remove node from tree =====================\n", __func__);
+		printf("          ---- size_tree ----\n");
+	}
+
 	rbt_verify(&mmr->size_tree);
-	rbt_print(&mmr->size_tree);
-	printf("          ---- addr_tree ----\n");
+	if (__mm_debug_verbose) {
+		rbt_print(&mmr->size_tree);
+		printf("          ---- addr_tree ----\n");
+	}
 	rbt_verify(&mmr->addr_tree);
-	rbt_print(&mmr->addr_tree);
+	if (__mm_debug_verbose)
+		rbt_print(&mmr->addr_tree);
 #endif /* LDMS_MM_DEBUG */
 
 	/* Create a new node from the remainder of p if any */
@@ -223,21 +241,29 @@ void *mm_alloc(size_t size)
 		rbt_ins(&mmr->size_tree, &n->size_node);
 		rbt_ins(&mmr->addr_tree, &n->addr_node);
 #if LDMS_MM_DEBUG
-		printf("================== %s -- add reminder =====================\n", __func__);
-		printf("          ---- size_tree ----\n");
+		if (__mm_debug_verbose) {
+			printf("================== %s -- add reminder =====================\n", __func__);
+			printf("          ---- size_tree ----\n");
+		}
+
 		rbt_verify(&mmr->size_tree);
-		rbt_print(&mmr->size_tree);
-		printf("          ---- addr_tree ----\n");
+		if (__mm_debug_verbose) {
+			rbt_print(&mmr->size_tree);
+			printf("          ---- addr_tree ----\n");
+		}
+
 		rbt_verify(&mmr->addr_tree);
-		rbt_print(&mmr->addr_tree);
+		if (__mm_debug_verbose)
+			rbt_print(&mmr->addr_tree);
 #endif /* LDMS_MM_DEBUG */
 	}
 	p->count = count;
 	p->pfx = p;
-#if LDMS_MM_DEBUG
-	printf("================== %s -- END =====================\n", __func__);
-#endif /* LDMS_MM_DEBUG */
 	pthread_mutex_unlock(&mmr->lock);
+#if LDMS_MM_DEBUG
+	if (__mm_debug_verbose)
+		printf("================== %s -- END =====================\n", __func__);
+#endif /* LDMS_MM_DEBUG */
 	return ++p;
 }
 
@@ -254,17 +280,21 @@ void mm_free(void *d)
 
 	p --;
 
-#if LDMS_MM_DEBUG
-	printf("================== %s --- BEGIN =====================\n", __func__);
-	printf("          ---- size_tree ----\n");
-	rbt_verify(&mmr->size_tree);
-	rbt_print(&mmr->size_tree);
-	printf("          ---- addr_tree ----\n");
-	rbt_verify(&mmr->addr_tree);
-	rbt_print(&mmr->addr_tree);
-#endif /* LDMS_MM_DEBUG */
-
 	pthread_mutex_lock(&mmr->lock);
+#if LDMS_MM_DEBUG
+	if (__mm_debug_verbose) {
+		printf("================== %s --- BEGIN =====================\n", __func__);
+		printf("          ---- size_tree ----\n");
+	}
+	rbt_verify(&mmr->size_tree);
+	if (__mm_debug_verbose) {
+		rbt_print(&mmr->size_tree);
+		printf("          ---- addr_tree ----\n");
+	}
+	rbt_verify(&mmr->addr_tree);
+	if (__mm_debug_verbose)
+		rbt_print(&mmr->addr_tree);
+#endif /* LDMS_MM_DEBUG */
 	/* See if we can coalesce with our lesser sibling */
 	rbn = rbt_find_glb(&mmr->addr_tree, &p->pfx);
 	if (rbn) {
@@ -282,13 +312,18 @@ void mm_free(void *d)
 			p = q;
 		}
 #if LDMS_MM_DEBUG
-		printf("================== %s --- coalesce =====================\n", __func__);
-		printf("          ---- size_tree ----\n");
+		if (__mm_debug_verbose) {
+			printf("================== %s --- coalesce =====================\n", __func__);
+			printf("          ---- size_tree ----\n");
+		}
 		rbt_verify(&mmr->size_tree);
-		rbt_print(&mmr->size_tree);
-		printf("          ---- addr_tree ----\n");
+		if (__mm_debug_verbose) {
+			rbt_print(&mmr->size_tree);
+			printf("          ---- addr_tree ----\n");
+		}
 		rbt_verify(&mmr->addr_tree);
-		rbt_print(&mmr->addr_tree);
+		if (__mm_debug_verbose)
+			rbt_print(&mmr->addr_tree);
 #endif /* LDMS_MM_DEBUG */
 	}
 
@@ -321,14 +356,20 @@ void mm_free(void *d)
 	rbt_ins(&mmr->size_tree, &p->size_node);
 	rbt_ins(&mmr->addr_tree, &p->addr_node);
 #if LDMS_MM_DEBUG
-	printf("================== %s --- put back =====================\n", __func__);
-	printf("          ---- size_tree ----\n");
+	if (__mm_debug_verbose) {
+		printf("================== %s --- put back =====================\n", __func__);
+		printf("          ---- size_tree ----\n");
+	}
 	rbt_verify(&mmr->size_tree);
-	rbt_print(&mmr->size_tree);
-	printf("          ---- addr_tree ----\n");
+	if (__mm_debug_verbose) {
+		rbt_print(&mmr->size_tree);
+		printf("          ---- addr_tree ----\n");
+	}
 	rbt_verify(&mmr->addr_tree);
-	rbt_print(&mmr->addr_tree);
-	printf("================== %s --- END =====================\n", __func__);
+	if (__mm_debug_verbose) {
+		rbt_print(&mmr->addr_tree);
+		printf("================== %s --- END =====================\n", __func__);
+	}
 #endif /* LDMS_MM_DEBUG */
 	pthread_mutex_unlock(&mmr->lock);
 }
@@ -346,6 +387,20 @@ void *mm_realloc(void *ptr, size_t newsize)
 	p --;
 
 	pthread_mutex_lock(&mmr->lock);
+#if LDMS_MM_DEBUG
+	if (__mm_debug_verbose) {
+		printf("================== %s --- BEGIN =====================\n", __func__);
+		printf("          ---- size_tree ----\n");
+	}
+	rbt_verify(&mmr->size_tree);
+	if (__mm_debug_verbose) {
+		rbt_print(&mmr->size_tree);
+		printf("          ---- addr_tree ----\n");
+	}
+	rbt_verify(&mmr->addr_tree);
+	if (__mm_debug_verbose)
+		rbt_print(&mmr->addr_tree);
+#endif /* LDMS_MM_DEBUG */
 	/* See if we can coalesce with our greater sibling */
 	rbn = rbt_find_lub(&mmr->addr_tree, &p->pfx);
 	if (rbn) {
@@ -360,6 +415,21 @@ void *mm_realloc(void *ptr, size_t newsize)
 				rbt_del(&mmr->size_tree, &q->size_node);
 				rbt_del(&mmr->addr_tree, &q->addr_node);
 
+#if LDMS_MM_DEBUG
+				if (__mm_debug_verbose) {
+					printf("================== %s -- remove node from tree =====================\n", __func__);
+					printf("          ---- size_tree ----\n");
+				}
+				rbt_verify(&mmr->size_tree);
+				if (__mm_debug_verbose) {
+					rbt_print(&mmr->size_tree);
+					printf("          ---- addr_tree ----\n");
+				}
+				rbt_verify(&mmr->addr_tree);
+				if (__mm_debug_verbose)
+					rbt_print(&mmr->addr_tree);
+#endif /* LDMS_MM_DEBUG */
+
 				remainder = p->count + q->count - newcount;
 				if (remainder) {
 					/* Put the remainder back into the tree */
@@ -372,6 +442,21 @@ void *mm_realloc(void *ptr, size_t newsize)
 
 					rbt_ins(&mmr->size_tree, &r->size_node);
 					rbt_ins(&mmr->addr_tree, &r->addr_node);
+
+#if LDMS_MM_DEBUG
+					if (__mm_debug_verbose) {
+						printf("================== %s -- add reminder =====================\n", __func__);
+						printf("          ---- size_tree ----\n");
+					}
+					rbt_verify(&mmr->size_tree);
+					if (__mm_debug_verbose) {
+						rbt_print(&mmr->size_tree);
+						printf("          ---- addr_tree ----\n");
+					}
+					rbt_verify(&mmr->addr_tree);
+					if (__mm_debug_verbose)
+						rbt_print(&mmr->addr_tree);
+#endif /* LDMS_MM_DEBUG */
 				}
 				p->count = newcount;
 				goto out;
@@ -389,6 +474,10 @@ void *mm_realloc(void *ptr, size_t newsize)
 	pthread_mutex_unlock(&mmr->lock);
 	if (newbuf)
 		mm_free(ptr);
+#if LDMS_MM_DEBUG
+	if (__mm_debug_verbose)
+		printf("================== %s -- END =====================\n", __func__);
+#endif /* LDMS_MM_DEBUG */
 	return ++p;
 }
 
