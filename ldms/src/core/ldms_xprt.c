@@ -142,11 +142,12 @@ ldms_t ldms_xprt_get(ldms_t x)
 	return x;
 }
 
-static int ldms_xprt_connected(struct ldms_xprt *x)
+int ldms_xprt_connected(struct ldms_xprt *x)
 {
 	assert(x && x->ref_count);
 	return (x->disconnected == 0 && x->zap_ep && zap_ep_connected(x->zap_ep));
 }
+
 LIST_HEAD(xprt_list, ldms_xprt) xprt_list;
 ldms_t ldms_xprt_first()
 {
