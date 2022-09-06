@@ -349,9 +349,9 @@ const char *ovis_strerror(int e) __attribute__((deprecated("use thread-safe macr
  * type conflicts from using the wrong macro expansion.
  */
 #ifdef _GNU_SOURCE
-#define STRERROR(_rc_) ({ char *msg=alloca(80); char * _e_ = strerror_r(_rc_, msg, 80); _e_; })
+#define STRERROR(_rc_) ({ char *msg=(char *)alloca(80); char * _e_ = strerror_r(_rc_, msg, 80); _e_; })
 #else
-#define STRERROR(_rc_) ({ char *msg=alloca(80); long long __attribute__((__unused__)) _e_ = (long long)strerror_r(_rc_, msg, 80); msg; })
+#define STRERROR(_rc_) ({ char *msg=(char *)alloca(80); long long __attribute__((__unused__)) _e_ = (long long)strerror_r(_rc_, msg, 80); msg; })
 #endif
 
 typedef
