@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 
-AC_PREREQ(2.63)
+AC_PREREQ(2.64)
 AC_INIT([ovis-ldms],
         m4_esyscmd([config/git-version-gen --prefix 'OVIS-' .tarball-version]),
         [ovis-help@sandia.gov])
