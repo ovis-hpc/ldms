@@ -1712,13 +1712,16 @@ if __name__ == "__main__":
                                          "To connect to an ldmsd, either give " \
                                          "the socket path of the ldmsd or " \
                                          "give both hostname and inet control port. " \
-                                         "If all are given, the sockname takes the priority.")
-        parser.add_argument('--host',
+                                         "If all are given, the sockname takes the priority.",
+                                         add_help=False)
+        parser.add_argument('-?', '--help', action='help', default='==SUPPRESS==',
+                help='show this help message and exit')
+        parser.add_argument('-h','--host',
                             help = "Hostname of ldmsd to connect to",
                             default = 'localhost')
-        parser.add_argument('--port',
+        parser.add_argument('-p','--port',
                             help = "Inet ctrl listener port of ldmsd")
-        parser.add_argument('--xprt',
+        parser.add_argument('-x','--xprt',
                             help = "LDMS Transport type",
                             choices = ['sock', 'ugni', 'rdma', 'fabric'],
                             default = 'sock')
