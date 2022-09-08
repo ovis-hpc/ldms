@@ -33,21 +33,21 @@ PATH
 
 .SH LDMSD_CONTROLLER OPTIONS
 .TP
-.BI --host " HOST"
+.BI -h,--host " HOST"
 Hostname of \fBldmsd\fR to connect to
 .TP
-.BI --port " PORT"
+.BI -p,--port " PORT"
 The port of \fBldmsd\fR to connect to
 .TP
-.BI --xprt " XPRT"
+.BI -x,--xprt " XPRT"
 The transport type (\fBsock\fR, \fBrdma\fR, \fBugni\fR).
 .TP
-.BI -a " AUTH" " | --auth" " AUTH"
+.BI -a,--auth " AUTH"
 The LDMS authentication plugin. Please see
 .BR ldms_authentication (7)
 for more information.
 .TP
-.BI "-A " NAME = VALUE " | --auth-arg " NAME = VALUE
+.BI -A,--auth-arg " NAME=VALUE "
 Options
 .IR NAME = VALUE
 Passing the \fINAME\fR=\fIVALUE\fR option to the LDMS Authentication plugin.
@@ -64,7 +64,7 @@ Path to the config file
 .br
 Execute the script and send the output commands to the connected ldmsd
 .TP
-.BR -h
+.BR -?
 Display help
 .TP
 .BR --help
