@@ -399,8 +399,8 @@ resize:
 	 */
 	heap_sz = ldms_set_heap_size_get(base->set) + 2*rec_heap_sz;
 	base_set_delete(base);
-	base->set = base_set_new_heap(base, heap_sz);
-	if (!base->set) {
+	set = base_set_new_heap(base, heap_sz);
+	if (!set) {
 		rc = errno;
 		ldmsd_log(LDMSD_LCRITICAL, SAMP " : Failed to create a set with "
 						"a bigger heap. Error %d\n", rc);
