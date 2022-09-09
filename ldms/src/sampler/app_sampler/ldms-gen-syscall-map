@@ -1,0 +1,21 @@
+#! /bin/bash
+# compute system call names from syscall numbers and dump to standard out
+# requires: awk, gcc, sys/syscall.h, readable /proc/kallsyms
+if ! test "$#" = "0"; then
+	echo "$0 usage: $0 > output_file"
+	exit 1
+fi
+cat << EOF
+# This file contains one per line pairs of "int string"
+# where the int is the syscall number mapped to name 'string' detected using
+# /proc/kallsyms and include <sys/syscall.h>.
+# It should be updated when the used kernel is significantly updated.
+# 'blocked' means blocked but not in a system call.
+# 'running' has no numerical equivalent and means not in system call.
+# awk 'BEGIN { print "#include <sys/syscall.h>" } /p_syscall_meta/ { syscall = substr(\$NF, 19); printf "X[SYS_%s] = \"%s\";\n", syscall, syscall }' /proc/kallsyms | sort -u | gcc -E -P - | sed -e 's/X\[//g' -e 's/\] =//g' -e 's/[";]//g' -e 's/^ *//g'| sort -g -k1 |grep -v SYS_
+EOF
+echo "# kernel: $(uname -rv)"
+awk 'BEGIN { print "#include <sys/syscall.h>" } /p_syscall_meta/ { syscall = substr($NF, 19); printf "X[SYS_%s] = \"%s\";\n", syscall, syscall }' /proc/kallsyms | \
+sort -u | gcc -E -P - | \
+sed -e 's/X\[//g' -e 's/\] =//g' -e 's/[";]//g' -e 's/^ *//g'| \
+sort -g -k1 |grep -v SYS_ |grep -v ^$

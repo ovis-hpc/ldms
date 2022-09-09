@@ -221,6 +221,7 @@ enum linux_proc_sampler_metric {
 	_APP_STATUS_LAST = APP_STATUS_NONVOLUNTARY_CTXT_SWITCHES,
 
 	APP_SYSCALL,
+	APP_SYSCALL_NAME, /* string */
 
 	APP_TIMERSLACK_NS,
 
@@ -250,6 +251,7 @@ struct linux_proc_sampler_metric_info_s {
 #define STAT_COMM_SZ 4096
 #define WCHAN_SZ 128 /* NOTE: KSYM_NAME_LEN = 128 */
 #define SPECULATION_SZ 64
+#define SYSCALL_MAX 64 /* longest syscall name */
 #define GROUPS_SZ 16
 #define NS_SZ 16
 #define CPUS_ALLOWED_SZ 4 /* 4 x 64 = 256 bits max */
@@ -399,6 +401,8 @@ struct linux_proc_sampler_metric_info_s metric_info[] = {
 	[APP_STATUS_NONVOLUNTARY_CTXT_SWITCHES] = { APP_STATUS_NONVOLUNTARY_CTXT_SWITCHES, "status_nonvoluntary_ctxt_switches", "", LDMS_V_U64, 0, 0 },
 
 	[APP_SYSCALL] = { APP_SYSCALL, "syscall", "", LDMS_V_U64_ARRAY, 9, 0 },
+	[APP_SYSCALL_NAME] = { APP_SYSCALL_NAME, "syscall_name", "",
+				LDMS_V_CHAR_ARRAY, SYSCALL_MAX, 0 },
 
 	[APP_TIMERSLACK_NS] = { APP_TIMERSLACK_NS, "timerslack_ns", "ns", LDMS_V_U64, 0, 0 },
 
@@ -495,6 +499,9 @@ struct linux_proc_sampler_inst_s {
 	char *stream_name;
 	ldmsd_stream_client_t stream;
 	char *argv_sep;
+	char *syscalls; /* file of 'int name' lines with # comments */
+	int n_syscalls; /* maximum number of syscalls aliased/mapped */
+	char **name_syscall; /* syscall names index by call's int id */
 
 	struct handler_info fn[17];
 	int n_fn;
@@ -546,6 +553,7 @@ struct handler_info handler_info_tbl[] = {
 	[_APP_STAT_FIRST ... _APP_STAT_LAST] = { .fn = stat_handler, .fn_name = "stat_handler"},
 	[_APP_STATUS_FIRST ... _APP_STATUS_LAST] = { .fn = status_handler, .fn_name = "status_handler" },
 	[APP_SYSCALL] = { .fn = syscall_handler, .fn_name = "syscall_handler" },
+	[APP_SYSCALL_NAME] = { .fn = syscall_handler, .fn_name = "syscall_handler" },
 	[APP_TIMERSLACK_NS] = { .fn = timerslack_ns_handler, .fn_name = "timerslack_ns_handler" },
 	[APP_WCHAN] = { .fn = wchan_handler, .fn_name = "wchan_handler" },
 	[APP_TIMING] = { .fn = timing_handler, .fn_name = "timing_handler"}
@@ -1114,6 +1122,131 @@ int __line_bitmap(linux_proc_sampler_inst_t inst, ldms_set_t set, const char *li
 	return 0;
 }
 
+static char *get_syscall_name(linux_proc_sampler_inst_t inst, int call)
+{
+	if (call >=0 && call <= inst->n_syscalls)
+		return inst->name_syscall[call];
+	if (call == -1)
+		return "blocked";
+	return NULL;
+}
+
+static int load_syscall_names(linux_proc_sampler_inst_t inst)
+{
+	char buf[ROOT_SZ];
+	char buf2[ROOT_SZ];
+	if (!inst)
+		return EINVAL;
+	if (!inst->syscalls)
+		return 0;
+	int rc = 0;
+	INST_LOG(inst, LDMSD_LDEBUG, "linux_proc_sampler: reading %s\n",
+		inst->syscalls);
+	FILE *f = fopen(inst->syscalls, "r");
+	if (!f) {
+		rc = errno;
+		INST_LOG(inst, LDMSD_LERROR,
+			"linux_proc_sampler: unable to load %s. %s\n",
+			inst->syscalls, STRERROR(rc));
+		return rc;
+	}
+	char *ret;
+	int call = -1;
+	/* scan for max call number */
+	int line = 0;
+	while ( (ret = fgets(buf, sizeof(buf), f))) {
+		line++;
+		if (buf[0] == '#' || buf[0] == '\n' || buf[0] == '\0')
+			continue;
+		int items = sscanf(buf, "%d %s", &call, buf2);
+		if (items != 2) {
+			INST_LOG(inst, LDMSD_LERROR,
+				"linux_proc_sampler: %s. Error at line %d: %s\n",
+				inst->syscalls, line, buf);
+			rc = EINVAL;
+			goto err;
+		}
+		if (call > inst->n_syscalls)
+			inst->n_syscalls = call;
+		if (strlen(buf2) >= SYSCALL_MAX) {
+			INST_LOG(inst, LDMSD_LERROR,
+				"linux_proc_sampler: %s. name too long at line %d: %s\n",
+				inst->syscalls, line, buf2);
+			rc = EINVAL;
+			goto err;
+		}
+	}
+	/* load the data */
+	if (inst->n_syscalls < 0) {
+		rc = 0;
+		goto err;
+	}
+	inst->name_syscall = calloc( inst->n_syscalls + 1, sizeof(char *));
+	if (!inst->syscalls) {
+		INST_LOG(inst, LDMSD_LERROR,
+			"linux_proc_sampler: parsing %s. out of memory.\n",
+			inst->syscalls);
+		rc = ENOMEM;
+		goto err;
+	}
+	rewind(f);
+	while ( (ret = fgets(buf, sizeof(buf), f)) ) {
+		if (buf[0] == '#' || buf[0] == '\n' || buf[0] == '\0')
+			continue;
+		int items = sscanf(buf, "%d %s", &call, buf2);
+		if (items == 2) {
+			if (call < 0 || call > inst->n_syscalls) {
+				INST_LOG(inst, LDMSD_LERROR, "linux_proc_sampler"
+					" read call %d out of range.'%s'\n", call,
+					buf);
+				continue;
+			}
+			char *s = malloc(SYSCALL_MAX);
+			if (!s) {
+				INST_LOG(inst, LDMSD_LERROR,
+					"linux_proc_sampler: parsing %s."
+					" Out of memory.\n",
+					inst->syscalls);
+				rc = ENOMEM;
+				goto err;
+			}
+			inst->name_syscall[call] = s;
+			strncpy(s, buf2, SYSCALL_MAX);
+		}
+	}
+	fclose(f);
+	f = NULL;
+	/* fill holes in the data */
+	for (call = 0; call <= inst->n_syscalls; call++) {
+		if (inst->name_syscall[call])
+			continue;
+		inst->name_syscall[call] = malloc(SYSCALL_MAX);
+		if (!inst->name_syscall[call]) {
+			INST_LOG(inst, LDMSD_LERROR,
+				"linux_proc_sampler: parsing %s."
+				" Out of memory.\n",
+				inst->syscalls);
+			rc = ENOMEM;
+			goto err;
+		}
+		sprintf(inst->name_syscall[call], "SYS_%d", call);
+	}
+
+	INST_LOG(inst, LDMSD_LDEBUG, "linux_proc_sampler: read %d\n",
+		inst->n_syscalls);
+	return 0;
+err:
+	if (f)
+		fclose(f);
+	if (inst->syscalls)
+		for (call = 0; call <= inst->n_syscalls; call++)
+			free(inst->name_syscall[call]);
+	free(inst->name_syscall);
+	inst->name_syscall = NULL;
+	inst->n_syscalls = -1;
+	return rc;
+}
+
 static int syscall_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
 	char buff[CMDLINE_SZ];
@@ -1135,23 +1268,51 @@ static int syscall_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t
 		return errno;
 	ret = fgets(buff, sizeof(buff), f);
 	fclose(f);
+	int call = -1;
 	if (!ret)
 		return errno;
 	if (0 == strncmp(buff, "running", 7)) {
 		n = 0;
 	} else {
-		n = sscanf(buff, "%ld %lx %lx %lx %lx %lx %lx %lx %lx",
-				 val+0, val+1, val+2, val+3, val+4,
+		n = sscanf(buff, "%d %lx %lx %lx %lx %lx %lx %lx %lx",
+				 &call, val+1, val+2, val+3, val+4,
 				 val+5, val+6, val+7, val+8);
+		if (n)
+			val[0] = (uint64_t)call;
 	}
-	for (i = 0; i < n; i++) {
-		ldms_metric_array_set_u64(set, inst->metric_idx[APP_SYSCALL],
-					  i, val[i]);
+	if (inst->metric_idx[APP_SYSCALL] > 0) {
+		for (i = 0; i < n; i++) {
+			ldms_metric_array_set_u64(set,
+						inst->metric_idx[APP_SYSCALL],
+						i, val[i]);
+		}
+		for (i = n; i < 9; i++) {
+			/* zero */
+			ldms_metric_array_set_u64(set,
+						inst->metric_idx[APP_SYSCALL],
+						i, 0);
+		}
 	}
-	for (i = n; i < 9; i++) {
-		/* zero */
-		ldms_metric_array_set_u64(set, inst->metric_idx[APP_SYSCALL],
-					  i, 0);
+	if (inst->metric_idx[APP_SYSCALL_NAME] > 0) {
+		char *name0[SYSCALL_MAX];
+		char *name = (char*)name0;
+		if (n > 0) {
+			if (inst->n_syscalls != -1) {
+				name = get_syscall_name(inst, call);
+				if (!name) {
+					sprintf(name, "SYS_%d", call);
+				}
+			} else {
+				if (call == -1) {
+					name = "blocked";
+				} else {
+					sprintf(name, "SYS_%d", call);
+				}
+			}
+		} else {
+			name = "running";
+		}
+		ldms_metric_array_set_str(set, inst->metric_idx[APP_SYSCALL_NAME], name);
 	}
 	return 0;
 }
@@ -1567,6 +1728,20 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			goto out;
 		}
 	} /* else, caller will later set default stream_name */
+	ent = json_value_find(jdoc, "syscalls");
+	if (ent) {
+		if (ent->type != JSON_STRING_VALUE) {
+			rc = EINVAL;
+			INST_LOG(inst, LDMSD_LERROR, "Error: `syscalls` must be a path.\n");
+			goto out;
+		}
+		inst->syscalls = strdup(json_value_cstr(ent));
+		if (!inst->syscalls) {
+			rc = ENOMEM;
+			INST_LOG(inst, LDMSD_LERROR, "Out of memory while configuring.\n");
+			goto out;
+		}
+	}
 	list = json_value_find(jdoc, "metrics");
 	if (list) {
 		for (ent = json_item_first(list); ent;
@@ -1848,10 +2023,10 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 		int ec = errno;
 		if (errno != EEXIST && !warn_once) {
 			warn_once = 1;
-			INST_LOG(inst, LDMSD_LERROR, "Out of set memory. Consider bigger -m.\n");
+			INST_LOG(inst, LDMSD_LWARNING, "Out of set memory. Consider bigger -m.\n");
 			struct mm_stat ms;
 			mm_stats(&ms);
-			INST_LOG(inst, LDMSD_LERROR, "mm_stat: size=%zu grain=%zu "
+			INST_LOG(inst, LDMSD_LWARNING, "mm_stat: size=%zu grain=%zu "
 				"chunks_free=%zu grains_free=%zu grains_largest=%zu "
 				"grains_smallest=%zu bytes_free=%zu bytes_largest=%zu "
 				"bytes_smallest=%zu\n",
@@ -2109,6 +2284,15 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 				goto err;
 			}
 		}
+		val = av_value(avl, "syscalls");
+		if (val) {
+			inst->syscalls = strdup(val);
+			if (!inst->syscalls) {
+				INST_LOG(inst, LDMSD_LERROR, "Config out of memory for stream\n");
+				rc = ENOMEM;
+				goto err;
+			}
+		}
 		val = av_value(avl, "metrics");
 		if (val) {
 			char *tkn, *ptr;
@@ -2130,6 +2314,10 @@ linux_proc_sampler_config(struct ldmsd_plugin *pi, struct attr_value_list *kwl,
 		}
 	}
 
+	rc = load_syscall_names(inst);
+	if (rc) {
+		goto err;
+	}
 	/* default stream */
 	if (!inst->stream_name) {
 		inst->stream_name = strdup("slurm");
@@ -2206,6 +2394,14 @@ void linux_proc_sampler_term(struct ldmsd_plugin *pi)
 	bzero(inst->fn, sizeof(inst->fn));
 	inst->n_fn = 0;
 	bzero(inst->metric_idx, sizeof(inst->metric_idx));
+	int call;
+	if (inst->name_syscall)
+		for (call = 0; call <= inst->n_syscalls; call++)
+			free(inst->name_syscall[call]);
+	free(inst->name_syscall);
+	free(inst->syscalls);
+	inst->name_syscall = NULL;
+	inst->n_syscalls = -1;
 }
 
 static int
@@ -2265,6 +2461,7 @@ struct linux_proc_sampler_inst_s __inst = {
 		},
 		.sample = linux_proc_sampler_sample,
 	},
+	.n_syscalls = -1,
 	.log = ldmsd_log
 };
 
