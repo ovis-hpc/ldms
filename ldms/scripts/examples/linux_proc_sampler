@@ -5,20 +5,22 @@ export LDMSD_LOG_LEVEL=ERROR
 export LDMSD_LOG_TIME_SEC=1
 export LDMSD_EXTRA="-m 128m"
 portbase=61060
+ldms-gen-syscall-map > $LDMSD_RUN/syscalls.map
 cat << EOF > $LDMSD_RUN/metrics.input
-   { "stream" : "slurm",
-	"argv_sep":"\t",
-         "metrics" : [
-            "stat_pid" ,
-            "stat_state",
-            "stat_rss",
-            "stat_utime",
-            "stat_stime",
-            "io_read_b",
-            "io_write_b",
-            "cmdline"
-         ]
-       }
+{ "stream" : "slurm",
+  "argv_sep":"\t",
+  "syscalls": "${LDMSD_RUN}/syscalls.map",
+  "metrics" : [
+    "stat_pid" ,
+    "stat_state",
+    "stat_rss",
+    "stat_utime",
+    "stat_stime",
+    "io_read_b",
+    "io_write_b",
+    "syscall_name"
+  ]
+}
 EOF
 rm -f $LOGDIR/json*.log
 # valgrind -v --tool=drd --log-file=$LOGDIR/vg.netlink.txt ${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
@@ -29,6 +31,7 @@ VGARGS="--tool=drd --suppressions=ldms/scripts/examples/linux_proc_sampler.drd.s
 VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite"
 #vgon
 LDMSD 1
+vgoff
 LDMSD 2
 LDMSD 3
 vgoff

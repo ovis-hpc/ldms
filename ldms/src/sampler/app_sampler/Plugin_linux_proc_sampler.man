@@ -40,7 +40,7 @@ sc_clk_tck=1
 .br
 If present, include sc_clk_tck in the metric set. sc_clk_tck is the ticks per second from sysconf(_SC_CLK_TCK). (default: not included).
 .TP
-stream
+stream=STREAM
 .br
 The name of the `ldmsd_stream` to listen for SLURM job events.  (default: slurm).
 .TP
@@ -49,11 +49,16 @@ argv_sep=<char>
 Replace nul within the cmdline string with char.
 Special specifiers \\b,\\n,\\t,\\v,\\r,\\f are also supported.
 .TP
+syscalls=FILE
+.br
+File mapping syscall integers to symbolic names.
+Not needed unless syscall_name is included in the metrics. See FILES for details.
+.TP
 metrics
 .br
 The comma-separated list of metrics to monitor.  The default is (empty), which is equivalent to monitor ALL metrics.
 .TP
-cfg_file The alternative config file in JSON format. The file is expected to have an object that contains the following attributes: { "stream": "STREAM_NAME", "metrics": [ comma-separated-quoted-strings ] }.  If the `cfg_file` is given, the stream, metrics, instance_prefix, sc_clk_tck and exe_suffix options are ignored.
+cfg_file The alternative configuration file in JSON format. The file is expected to have an object that contains the following attributes: { "stream": "STREAM_NAME", "syscalls" : "/file", "metrics": [ comma-separated-quoted-strings ] }.  If the `cfg_file` is given, the stream, metrics, instance_prefix, sc_clk_tck and exe_suffix options are ignored. In the configuration JSON, the syscalls value is optional; if not given and the syscall_name metric is included, the names reported will be SYS_nnn rather than function names.
 .RE
 
 .SH INPUT STREAM FORMAT
@@ -98,6 +103,7 @@ An example metrics configuration file is:
   "stream": "slurm",
   "instance_prefix" : "cluster2",
   "argv_sep":"\t",
+  "syscalls": "/etc/sysconfig/ldms.d/plugins-conf/syscalls.map",
   "metrics": [
     "stat_pid",
     "stat_state",
@@ -117,16 +123,19 @@ An example metrics configuration file is:
     "status_hugetlbpages",
     "status_voluntary_ctxt_switches",
     "status_nonvoluntary_ctxt_switches",
-    "syscall",
+    "syscall_name",
     "cmdline"
   ]
 }
 .fi
 .PP
-Obtaining the currenly supported optional metrics list:
+Obtaining the currently supported optional metrics list:
 .nf
 ldms-plugins.sh linux_proc_sampler
 .fi
+.PP Generating syscalls.map
+# ldms-gen-syscalls-map > /etc/sysconfig/ldms.d/plugins-conf/syscalls.map
+.nf
 
 .SH FILES
 Data is obtained from (depending on configuration) the following files in /proc/[PID]/:
@@ -146,9 +155,22 @@ timerslack_ns
 wchan
 .fi
 
+The system call integer:name mapping varies with kernel and is therefore read
+from an input file of the format:
+.nf
+# comments
+0 read
+ ...
+.fi
+where all lines are <int name> pairs. This file can be created from the output of
+ldms-gen-syscall-map. System call names must be less than 64 characters. Unmapped
+system calls will be given names of the form SYS_<num>.
+
 .SH NOTES
 
 The value strings given to the options sc_clk_tck and exe_suffix are ignored; the presence of the option is sufficient to enable the respective features.
 
+Some of the optionally collected data might be security sensitive.
+
 .SH SEE ALSO
-ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), proc(5), sysconf(3)
+syscalls(2), ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), proc(5), sysconf(3)
