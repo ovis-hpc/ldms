@@ -118,3 +118,21 @@ The following LDMS sampler plugins are considered unsupported. Use are your own 
 * perfevent sampler
 * hweventpapi sampler
 * switchx
+
+## gnulib
+
+Some m4 files come from the gnulib project. To update these files, first checkout
+gnulib:
+
+  git clone git://git.savannah.gnu.org/gnulib.git
+
+There is no need to build or install the checked out code. The gnulib/gnulib-tool
+program works directly from the checked out tree.
+
+Next look at the comment at the top of the gnulib/Makefile.am file in the _ovis_
+source tree. That comment will tell you the full gnulib-tool command to repeat
+to install the latest versions of the currently selected components from gnulib.
+Additional gnulib components can be added to the command line as more macros are
+desired.
+
+After running gnulib-tool, check in the resulting changes.
