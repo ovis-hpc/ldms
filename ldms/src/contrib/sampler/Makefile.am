@@ -28,3 +28,9 @@ if ENABLE_DAOS_SAMPLER
     MAYBE_DAOS_SAMPLER = daos
 endif
 SUBDIRS += $(MAYBE_DAOS_SAMPLER)
+
+if HAVE_LIBJANSSON
+if HAVE_LIBVARIORUM
+SUBDIRS += variorum_sampler
+endif
+endif

@@ -353,6 +353,26 @@ dnl options for contributed samplers
 OPTION_DEFAULT_DISABLE([ipmireader], [ENABLE_IPMIREADER])
 OPTION_DEFAULT_DISABLE([tutorial-sampler],[ENABLE_TUTORIAL_SAMPLER])
 
+dnl Variorum dependency support
+AC_ARG_ENABLE([variorum],
+    [AS_HELP_STRING([--enable-variorum], [require components that depend upon libvariorum (and libjansson) @<:@default=check@:>@])],
+    [],
+    [enable_variorum="check"])
+AS_IF([test "x$enable_variorum" != xno],[
+    AC_LIB_HAVE_LINKFLAGS([variorum], [], [#include <variorum.h>
+                           #include <variorum_topology.h>])
+    AS_IF([test "x$enable_variorum" != xcheck],[
+        AS_IF([test "x$HAVE_LIBVARIORUM" = xno],
+            [AC_MSG_ERROR([libvariorum or headers not found])])
+    ])
+    AC_LIB_HAVE_LINKFLAGS([jansson], [], [#include <jansson.h>])
+    AS_IF([test "x$enable_variorum" != xcheck],[
+        AS_IF([test "x$HAVE_LIBJANSSON" = xno],
+            [AC_MSG_ERROR([libjansson or headers not found])])
+    ])
+])
+AM_CONDITIONAL([HAVE_LIBVARIORUM], [test "x$HAVE_LIBVARIORUM" = xyes])
+AM_CONDITIONAL([HAVE_LIBJANSSON], [test "x$HAVE_LIBJANSSON" = xyes])
 
 dnl check for libcurl if influx is configured
 OPTION_DEFAULT_DISABLE([influx], [ENABLE_INFLUX])
@@ -990,6 +1010,7 @@ ldms/src/contrib/sampler/daos/Makefile
 ldms/src/contrib/sampler/daos/test/Makefile
 ldms/src/contrib/sampler/ipmireader/Makefile
 ldms/src/contrib/sampler/tutorial/Makefile
+ldms/src/contrib/sampler/variorum_sampler/Makefile
 ldms/src/contrib/sampler/geopm_sampler/Makefile
 ldms/src/third-plugins/Makefile
 ldms/src/ldmsd/Makefile
