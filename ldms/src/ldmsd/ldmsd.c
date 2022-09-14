@@ -368,6 +368,7 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 	if (!ldmsd_is_initialized()) {
 		/* No workers, so directly log to the file */
 		(void) __log(level, msg, &tv, &tm);
+		free(msg);
 		return;
 	}
 
