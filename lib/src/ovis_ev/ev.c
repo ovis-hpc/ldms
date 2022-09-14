@@ -19,7 +19,7 @@ static struct rbt type_tree = RBT_INITIALIZER(type_cmp);
 
 ev_type_t ev_type_new(const char *name, size_t size)
 {
-	ev_type_t evt = calloc(1, sizeof(*evt));
+	ev_type_t evt;
 	struct rbn *rbn;
 
 	evt = calloc(1, sizeof(*evt));
