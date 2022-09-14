@@ -835,6 +835,8 @@ static int config_add_schema(struct attr_value_list *avl)
 			}
 			s++;
 		}
+	} else {
+		num_metrics = atoi(value);
 	}
 
 	temp = calloc(num_metrics + 1, sizeof(struct ldms_metric_template_s));
