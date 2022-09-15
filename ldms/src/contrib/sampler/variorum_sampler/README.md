@@ -58,7 +58,7 @@ internally, for which documentation can be found here:
 
 For each socket, the values provided are: node power consumption in Watts (identical across sockets);
 socket ID number; CPU power consumption in Watts;
-GPU power consumption in Watts (aggregated across all GPUs on the socket, and   
+GPU power consumption in Watts (aggregated across all GPUs on the socket, and
 reported as -1 on unsupported platforms); and
 memory power consumption in Watts.
 
