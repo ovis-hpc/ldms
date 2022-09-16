@@ -747,20 +747,20 @@ static void term(struct ldmsd_plugin *self)
 		free(g.core_data);
 		g.core_data = NULL;
 	}
-	if (g.base)
+	if (g.base) {
 		base_del(g.base);
+		g.base = NULL;
+	}
 	if (g.set) {
 		ldms_set_delete(g.set);
 		g.set = NULL;
 	}
-	if (g.schema) {
-		ldms_schema_delete(g.schema);
-		g.schema = NULL;
-	}
 	free(g.line);
 	g.line = NULL;
-	if (g.mf)
+	if (g.mf) {
 		fclose(g.mf);
+		g.mf = NULL;
+	}
 }
 
 static struct ldmsd_sampler procstat_plugin = {
