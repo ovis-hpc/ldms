@@ -2,6 +2,7 @@
 in=$1
 tac $in | \
 grep -v '^# ' | \
+grep -v 'option ' | \
 grep -v 'listen ' | \
 grep -v 'config ' | \
 sed -e 's/strgp_start/strgp_stop/' | \
