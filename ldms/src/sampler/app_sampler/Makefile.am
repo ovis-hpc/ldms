@@ -18,3 +18,6 @@ liblinux_proc_sampler_la_SOURCES = linux_proc_sampler.c
 liblinux_proc_sampler_la_CFLAGS  = @OVIS_INCLUDE_ABS@
 liblinux_proc_sampler_la_LIBADD  = $(COMMON_LIBS)
 liblinux_proc_sampler_la_LDFLAGS = @OVIS_LIB_ABS@
+
+check_PROGRAMS = test_fd_timing
+test_fd_timing_SOURCES=test_fd_timing.c
