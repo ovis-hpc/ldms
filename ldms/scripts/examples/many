@@ -1,11 +1,21 @@
 portbase=61076
 MESSAGE starting agg and two collectors
+DAEMONS $(seq 3)
 JOBDATA $TESTDIR/job.data 1 2 3
+VGARGS="--tool=drd"
+VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=definite"
+/bin/rm ${LOGDIR}/log_config.*
 #vgon
-VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=all"
-LDMSD -p prolog.jobidinfo `seq 3`
-#vgoff
+LDMSD_EXTRA="-L 15:${LOGDIR}/log_config.1"
+LDMSD -p prolog.jobidinfo 1
+LDMSD_EXTRA="-L 2:${LOGDIR}/log_config.2"
+LDMSD -p prolog.jobidinfo 2
+LDMSD_EXTRA="-L 31:${LOGDIR}/log_config.3"
+LDMSD -p prolog.jobidinfo 3
+vgoff
 LDMS_LS 1
+LDMS_LS 2
+LDMS_LS 3
 SLEEP 15
 KILL_LDMSD `seq 3`
 MESSAGE logs and data under ${TESTDIR}

@@ -96,7 +96,7 @@
 #define LDMSD_LOGFILE "/var/log/ldmsd.log"
 #define LDMSD_PIDFILE_FMT "/var/run/%s.pid"
 
-const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:t";
+const char *short_opts = "B:l:s:x:P:m:Fkr:v:Vc:u:a:A:n:tL:";
 
 struct option long_opts[] = {
 	{ "default_auth_args",     required_argument, 0,  'A' },
@@ -110,6 +110,7 @@ struct option long_opts[] = {
 	{ "pid_file",              required_argument, 0,  'r' },
 	{ "kernel_file",           required_argument, 0,  's' },
 	{ "log_level",             required_argument, 0,  'v' },
+	{ "log_config",            required_argument, 0,  'L' },
 	{ 0,                       0,                 0,  0 }
 };
 
@@ -368,9 +369,9 @@ void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
 	if (!ldmsd_is_initialized()) {
 		/* No workers, so directly log to the file */
 		(void) __log(level, msg, &tv, &tm);
+		free(msg);
 		return;
 	}
-
 	log_ev = ev_new(log_type);
 	if (!log_ev)
 		return;
@@ -623,6 +624,7 @@ void usage_hint(char *argv[],char *hint)
 	       "                                                  are DEBUG, INFO, ERROR, CRITICAL and QUIET.\n"
 	       "                                                  The default level is ERROR.\n");
 	printf("    -t,          --log_truncate                   Truncate the log file at start if the log file exists.\n");
+	printf("    -L optlog, --log_config optlog                Log config commands; optlog is INT:PATH\n");
 	printf("  Communication Options\n");
 	printf("    -x xprt:port:host\n"
 	       "                                                  Specifies the transport type to listen on. May be specified\n"
@@ -1814,6 +1816,103 @@ void ldmsd_str_list_destroy(struct ldmsd_str_list *list)
 	}
 }
 
+/* if path is NULL, close file.
+ * if path is not NULL, open the file.
+ */
+static int reset_log_config_file(const char *path)
+{
+	if (path) {
+		reset_log_config_file(NULL);
+		ldmsd_req_debug_file = fopen(path, "a");
+		if (ldmsd_req_debug_file) {
+			struct tm tm;
+			time_t t;
+			gettimeofday(&ldmsd_req_last_time, NULL);
+			t = time(NULL);
+			localtime_r(&t, &tm);
+			int e = 0, fe;
+			fe = fprintf(ldmsd_req_debug_file, "# log begin:");
+			if (fe < 0)
+				e |= fe;
+			fprintf(ldmsd_req_debug_file, " %lu.%06lu: ",
+					ldmsd_req_last_time.tv_sec,
+					ldmsd_req_last_time.tv_usec);
+			char dtsz[200];
+			strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y",
+				&tm);
+			fe = fprintf(ldmsd_req_debug_file, " %s", dtsz);
+			if (fe < 0)
+				e |= fe;
+			fe |= fprintf(ldmsd_req_debug_file, "\n");
+			if (fe < 0)
+				e |= fe;
+			e |= fflush(ldmsd_req_debug_file);
+			if (e) {
+				ldmsd_req_debug = 0;
+				fclose(ldmsd_req_debug_file);
+				return EBADFD;
+			}
+			return 0;
+		}
+		return errno;
+	}
+	if (ldmsd_req_debug_file) {
+		fprintf(ldmsd_req_debug_file,"# log end\n");
+		fclose(ldmsd_req_debug_file);
+		ldmsd_req_debug_file = NULL;
+	}
+	return 0;
+}
+/* if value is integer, convert to bits and log to regular log.
+ * if value is a path, set log_config file to path and assume int=1.
+ * if value is int:path, log to path per 0-LRD_ALL
+ * numbers out of range mean silence is desired.
+ * if value is null, it's a recursive call to set default log and req messages.
+ */
+static int process_log_config(char *value)
+{
+	if (!value) {
+		ldmsd_req_debug = 1;
+		reset_log_config_file(NULL);
+		return 0;
+	}
+	if (value[0] == '-') {
+		ldmsd_log(LDMSD_LERROR,
+			"-L option is missing an argument. Found %s\n", value);
+		return EINVAL;
+	}
+	int on_off = 0;
+	char *path = strdup(value);
+	int argc = sscanf(value, "%d:%s", &on_off, path);
+	switch (argc) {
+	case 0: /* no int: found value is path */
+		ldmsd_req_debug = 1;
+		free(path);
+		return reset_log_config_file(value);
+	case 1: /* int only found */
+		reset_log_config_file(NULL);
+		break;
+	case 2: /* both */
+		reset_log_config_file(path);
+		break;
+	default:
+		free(path);
+		ldmsd_log(LDMSD_LERROR,
+			"-L expected CINT:/path Found %s\n", value);
+		return EINVAL;
+	}
+	if (on_off > 0 && on_off <= LRD_ALL)
+		ldmsd_req_debug = on_off;
+	else {
+		ldmsd_req_debug = 0;
+		ldmsd_log(LDMSD_LERROR,
+			"-L expected CINT <= %d. Got %d\n", LRD_ALL, on_off);
+		free(path);
+		return EINVAL;
+	}
+	free(path);
+	return 0;
+}
 /*
  * \return EPERM if the value is already given.
  *
@@ -1870,6 +1969,8 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			}
 		}
 		break;
+	case 'L':
+		 return process_log_config(value);
 	case 's':
 		if (check_arg("s", value, LO_PATH))
 			return EINVAL;
