@@ -926,6 +926,7 @@ int __ldmsd_prdcr_start(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 	ldmsd_task_start(&prdcr->task, prdcr_task_cb, prdcr,
 			 LDMSD_TASK_F_IMMEDIATE,
 			 prdcr->conn_intrvl_us, 0);
+	ldmsd_log(LDMSD_LINFO, "Starting producer %s\n", prdcr->obj.name);
 out:
 	ldmsd_prdcr_unlock(prdcr);
 	return rc;
@@ -962,6 +963,7 @@ int __ldmsd_prdcr_stop(ldmsd_prdcr_t prdcr, ldmsd_sec_ctxt_t ctxt)
 		rc = EBUSY;
 		goto out;
 	}
+	ldmsd_log(LDMSD_LINFO, "Stopping producer %s\n", prdcr->obj.name);
 	if (prdcr->type == LDMSD_PRDCR_TYPE_LOCAL)
 		prdcr_reset_sets(prdcr);
 	ldmsd_task_stop(&prdcr->task);

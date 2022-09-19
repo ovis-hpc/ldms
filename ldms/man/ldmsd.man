@@ -103,7 +103,7 @@ are executed sequentially, except for \fBprdcr_start\fR, \fBupdtr_start\fR,
 the deferred). Then, upon failover pairing success or failure, the other
 deferred configuration objects will be started. Please also note that while
 failover service is in use, prdcr, updtr, and strgp cannot be altered (start,
-stop, or reconfigure) over in-band configuration.
+stop, or reconfigure) over in-band configuration. See also REORDERED COMMANDS below.
 .TP
 .BI "-m, --set_memory" " MEMORY_SIZE"
 .br
@@ -174,6 +174,20 @@ The default level is ERROR. QUIET produces only user-requested output.
 .TP
 .BR -t
 Truncate the log file if it already exists.
+.TP
+.BI -L, --log_config " <CINT:PATH> | <CINT> | <PATH>"
+.br
+Append configuration replay messages or configuration debugging messages to the log indicated by -l (when PATH is omitted) or to the file named PATH. Bit values of CINT correspond to:
+.nf
+      0: no messages
+      1: debug messages from the generic 'request' handler
+      2: config history messages in replayable format
+      4: query history messages in replayable format
+      8: failover debugging messages
+     16: include delta time prefix when using PATH
+     32: include epoch timestamp prefix when using PATH
+.fi
+These values may be added together to enable multiple outputs. All messages are logged at the user-requested level, LDMSD_LALL. CINT values 2, 26 and 27 are often interesting. When CINT is omitted, 1 is the default. When PATH is used, the log messages are flushed to as they are generated.
 
 .SS
 Kernel Metric Options:
@@ -206,9 +220,9 @@ option <COMMAND-LINE OPTIONS>
 .TP
 .BI -k, --publish_kernel
 .TP
-.BI -l, --log_file
-log_file=<pat
-.BI -m, --sett_memory
+.BI -l, --log_file " PATH"
+.TP
+.BI -m, --set_memory
 .TP
 .BI -n, --daemon_name
 .TP
@@ -219,6 +233,8 @@ log_file=<pat
 .BI -s, --kernel_set_path
 .TP
 .BI -v, --log_level
+.TP
+.BI -L, --log_config " <CINT[:PATH]>"
 
 .SS Specifying the listen endpoints in configuraton files
 .TP
@@ -262,6 +278,9 @@ foo         user 20596 0x86bb0000 0x86bc0000
 Set the environment variables ZAP_UGNI_PTAG and ZAP_UGNI_COOKIE with the appropriate ptag and cookie.
 .PP
 Run ldmsd directly or as part of a script launched from aprun. In either case, Use aprun with the correct -p <ptag> when running.
+
+.SH REORDERED COMMANDS
+Certain commands in are reordered when processing input scripts specified with -c. Items related to failover are handled as described in the '-c' section above. Other commands are promoted to run before any non-promoted commands from the loaded script. In particular, env, loglevel, listen, auth, and option are promoted.
 
 .SH NOTES
 OCM flags are unsupported at this time.

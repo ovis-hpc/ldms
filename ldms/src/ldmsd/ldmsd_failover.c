@@ -73,24 +73,10 @@
 
 #define ARRAY_LEN(x) (sizeof(x)/sizeof(*(x)))
 
-/* So that we can change this in gdb */
-static int failover_debug = 0;
+/* Use -L 8 or set ldmsd_req_debug |= 8 to enable failover messages */
+/* static int failover_debug; */
 
 #define __ASSERT(x) assert(x)
-
-void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap);
-
-__attribute__((format(printf, 1, 2)))
-static inline
-void __dlog(const char *fmt, ...)
-{
-	if (!failover_debug)
-		return;
-	va_list ap;
-	va_start(ap, fmt);
-	__ldmsd_log(LDMSD_LALL, fmt, ap);
-	va_end(ap);
-}
 
 /*
  * active-side tasks:
@@ -802,7 +788,7 @@ int __failover_send_reset(ldmsd_failover_t f, ldms_t xprt)
 	ldmsd_req_cmd_t rcmd = NULL;
 
 	if (__F_GET(f, __FAILOVER_OUTSTANDING_UNPAIR)) {
-		__dlog("(DEBUG) ERROR: Outstanding unpair.\n");
+		__dlog(DLOG_FOVER,"(DEBUG) ERROR: Outstanding unpair.\n");
 		rc = EINPROGRESS;
 		goto out;
 	}
@@ -1019,7 +1005,7 @@ void __failover_xprt_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	ldmsd_failover_t f = cb_arg;
 	switch (e->type) {
 	case LDMS_XPRT_EVENT_CONNECTED:
-		__dlog("Failover: xprt connected\n");
+		__dlog(DLOG_FOVER,"Failover: xprt connected\n");
 		ldms_xprt_priority_set(f->ax, 1);
 		__failover_lock(f);
 		/* so that retry operations can follow up not too slow */
@@ -1030,7 +1016,7 @@ void __failover_xprt_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		__failover_unlock(f);
 		break;
 	case LDMS_XPRT_EVENT_DISCONNECTED:
-		__dlog("Failover: xprt disconnected\n");
+		__dlog(DLOG_FOVER,"Failover: xprt disconnected\n");
 	case LDMS_XPRT_EVENT_ERROR:
 	case LDMS_XPRT_EVENT_REJECTED:
 		__failover_lock(f);
@@ -1068,7 +1054,7 @@ int __failover_active_connect(ldmsd_failover_t f)
 {
 	/* f->lock is held */
 	int rc = 0;
-	__dlog("Failover: connecting, flags: %#lx\n", f->flags);
+	__dlog(DLOG_FOVER,"Failover: connecting, flags: %#lx\n", f->flags);
 	__ASSERT(f->ax == NULL);
 	__ASSERT(f->conn_state == FAILOVER_CONN_STATE_DISCONNECTED);
 	f->ax = ldms_xprt_new_with_auth(f->xprt, ldmsd_linfo,
@@ -1088,7 +1074,7 @@ err1:
 	f->ax = NULL;
 	f->conn_state = FAILOVER_CONN_STATE_DISCONNECTED;
 out:
-	__dlog("Failover: __failover_active_connect() rc: %d, flags: %#lx\n",
+	__dlog(DLOG_FOVER,"Failover: __failover_active_connect() rc: %d, flags: %#lx\n",
 	       rc, f->flags);
 	return rc;
 }
@@ -1098,11 +1084,11 @@ static
 void __ping_stat_dlog(ldmsd_failover_t f)
 {
 	/* f->lock is held */
-	__dlog("Failover stat: number of pings: %d\n", f->ping_n);
-	__dlog("Failover stat: ping MAX: %ld\n", f->ping_max);
-	__dlog("Failover stat: ping AVG: %ld\n", f->ping_avg);
-	__dlog("Failover stat: ping SSE: %lf\n", f->ping_sse);
-	__dlog("Failover stat: ping SD: %lf\n", f->ping_sd);
+	__dlog(DLOG_FOVER,"Failover stat: number of pings: %d\n", f->ping_n);
+	__dlog(DLOG_FOVER,"Failover stat: ping MAX: %ld\n", f->ping_max);
+	__dlog(DLOG_FOVER,"Failover stat: ping AVG: %ld\n", f->ping_avg);
+	__dlog(DLOG_FOVER,"Failover stat: ping SSE: %lf\n", f->ping_sse);
+	__dlog(DLOG_FOVER,"Failover stat: ping SD: %lf\n", f->ping_sd);
 }
 
 struct failover_ping_data {
@@ -1139,7 +1125,7 @@ int __on_ping_resp(ldmsd_req_cmd_t rcmd)
 	int i;
 	__failover_lock(f);
 
-	__dlog("Failover: PING resp recv\n");
+	__dlog(DLOG_FOVER,"Failover: PING resp recv\n");
 
 	/* Update ping statistics */
 	gettimeofday(&f->echo_ts, NULL);
@@ -1202,12 +1188,12 @@ int __on_ping_resp(ldmsd_req_cmd_t rcmd)
 	/* pick the larger of the two */
 	dur = (dur > dur2)?(dur):(dur2);
 
-	__dlog("Failover: timeout (duration): %lu\n", dur);
+	__dlog(DLOG_FOVER,"Failover: timeout (duration): %lu\n", dur);
 
 	tv.tv_sec = dur / 1000000;
 	tv.tv_usec = dur % 1000000;
 	timeradd(&f->echo_ts, &tv, &f->timeout_ts);
-	__dlog("Failover: timeout (timestamp): %lu.%06lu\n",
+	__dlog(DLOG_FOVER,"Failover: timeout (timestamp): %lu.%06lu\n",
 		f->timeout_ts.tv_sec, f->timeout_ts.tv_usec);
 
 out:
@@ -1228,7 +1214,7 @@ void __failover_ping(ldmsd_failover_t f)
 	const char *name;
 	if (__F_GET(f, __FAILOVER_OUTSTANDING_PING)) {
 		f->ping_skipped++;
-		__dlog("Failover: OUTSTANDING_PING ... will not ping\n");
+		__dlog(DLOG_FOVER,"Failover: OUTSTANDING_PING ... will not ping\n");
 		return;
 	}
 	rcmd = ldmsd_req_cmd_new(f->ax, LDMSD_FAILOVER_PING_REQ,
@@ -1559,7 +1545,7 @@ int __peercfg_start(ldmsd_failover_t f)
 
 	if (is_activated)
 		__F_ON(f, __FAILOVER_PEERCFG_ACTIVATED);
-	__dlog("Failover: __peercfg_start(), flags: %#lx, rc: %d\n",
+	__dlog(DLOG_FOVER,"Failover: __peercfg_start(), flags: %#lx, rc: %d\n",
 	       f->flags, rc);
 	return 0;
 }
@@ -2385,7 +2371,7 @@ int failover_ping_handler(ldmsd_req_ctxt_t req)
 		errstr = "peer name unmatched";
 		goto err;
 	}
-	__dlog("Failover: PING received, our flags: %#lx\n", f->flags);
+	__dlog(DLOG_FOVER,"Failover: PING received, our flags: %#lx\n", f->flags);
 	data.state = f->state;
 	data.conn_state = f->conn_state;
 	data.flags = f->flags;
