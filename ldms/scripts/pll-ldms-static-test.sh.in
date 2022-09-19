@@ -37,6 +37,7 @@ if test -z "$LDMSD_PLUGIN_LIBPATH"; then
 fi
 export LDMSD_PLUGIN_LIBPATH
 export LD_LIBRARY_PATH=${ovis_ldms_plugins_rpath}:${BUILDDIR}/lib:${exec_prefix}/lib:$ovis_ldms_plugins:$LD_LIBRARY_PATH
+export PYTHONPATH=${ovis_ldms_pythondir}:$PYTHONPATH
 
 function clusage {
 cat << EOF
