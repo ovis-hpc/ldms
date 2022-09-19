@@ -4,12 +4,47 @@ export dstat_schema=$dsname
 export LDMSD_LOG_LEVEL=ERROR
 export LDMSD_LOG_TIME_SEC=1
 export LDMSD_EXTRA="-m 128m"
+export PYTHONPATH=$ovis_ldms_pythondir:$PYTHONPATH
+
 portbase=61060
+cat << EOF > $LDMSD_RUN/exclude_env
+^COLORTERM
+^DBU.*
+^DESKTOP_SESSION
+^DISPLAY
+^GDM.*
+^GNO.*
+^GUESTFISH.*
+^XDG.*
+^LS_COLORS
+^SESSION_MANAGER
+^SSH.*
+^XAU.*
+^BASH_FUNC_m
+"
+EOF
 ldms-gen-syscall-map > $LDMSD_RUN/syscalls.map
 cat << EOF > $LDMSD_RUN/metrics.input
 { "stream" : "slurm",
   "argv_sep":"\t",
   "syscalls": "${LDMSD_RUN}/syscalls.map",
+  "argv_msg": 1,
+  "env_msg": 1,
+  "env_exclude": "${LDMSD_RUN}/exclude_env",
+  "fd_msg": 1,
+  "fd_exclude": [
+        "^/dev/",
+        "^/run/",
+        "^/var/",
+        "^/etc/",
+        "^/sys/",
+        "^/tmp/",
+        "^/proc/",
+        "^/ram/tmp/",
+        "^/usr/lib",
+        "^/usr/share/",
+        "^/opt/ness"
+    ],
   "metrics" : [
     "stat_pid" ,
     "stat_state",
@@ -27,8 +62,8 @@ rm -f $LOGDIR/json*.log
 ${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
 # uncomment next one to test duplicate handling
 #${BUILDDIR}/sbin/ldms-netlink-notifier --port=61061 --auth=none --reconnect=1 -D 30 -r -j $LOGDIR/json2.log --exclude-dir-path= --exclude-short-path= --exclude-programs &
-VGARGS="--tool=drd --suppressions=ldms/scripts/examples/linux_proc_sampler.drd.supp"
-VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite"
+VGARGS="--tool=drd --suppressions=/scratch1/baallan/ovis/ldms/scripts/examples/linux_proc_sampler.drd.supp"
+VGARGS="--leak-check=full --track-origins=yes --trace-children=yes --show-leak-kinds=definite --time-stamp=yes --keep-debuginfo=yes"
 #vgon
 LDMSD 1
 vgoff
@@ -41,8 +76,17 @@ LDMS_LS 1 -v
 MESSAGE ldms_ls on host 2:
 SLEEP 1
 LDMS_LS 2 -v
-SLEEP 30
-LDMS_LS 2 -v
-KILL_LDMSD 1 2 3
+SLEEP 5
+MESSAGE stream_client_dump on sampler daemon 1
+for lc in $(seq 50); do
+	ldmsd_controller --auth none --port 61061 --cmd stream_client_dump
+	SLEEP 1
+done
+SLEEP 5
+for lc in $(seq 50); do
+	LDMS_LS 2 -v
+done
+SLEEP 2
+KILL_LDMSD 3 2 1
 file_created $STOREDIR/node/$testname
 file_created $STOREDIR/node/$dsname

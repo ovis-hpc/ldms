@@ -2,7 +2,7 @@ portbase=61076
 MESSAGE starting agg and two collectors
 DAEMONS $(seq 3)
 JOBDATA $TESTDIR/job.data 1 2 3
-VGARGS="--tool=drd"
+VGARGS="--tool=drd --gen-suppressions=all --suppressions=/ascldap/users/baallan/eclipse/drd.set.supp --segment-merging=no --trace-mutex=yes"
 VGARGS="--track-origins=yes --leak-check=full --show-leak-kinds=definite"
 /bin/rm ${LOGDIR}/log_config.*
 #vgon

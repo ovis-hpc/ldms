@@ -8,10 +8,10 @@ Plugin_linux_proc_sampler - man page for the LDMS linux_proc_sampler plugin
 .SH SYNOPSIS
 Within ldmsd_controller or a configuration file:
 .br
-config name=linux_proc_sampler [common attributes] [stream=STREAM] [metrics=METRICS] [cfg_file=FILE] [instance_prefix=PREFIX] [exe_suffix=1] [argv_sep=<char>]
+config name=linux_proc_sampler [common attributes] [stream=STREAM] [metrics=METRICS] [cfg_file=FILE] [instance_prefix=PREFIX] [exe_suffix=1] [argv_sep=<char>] [argv_msg=1] [argv_fmt=<1,2>] [env_msg=1] [env_exclude=EFILE] [fd_msg=1] [fd_exclude=EFILE]
 
 .SH DESCRIPTION
-With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or a configuration file. The linux_proc_sampler plugin provides data from /proc/, creating a different set for each process identified in the named stream. The stream can come from the ldms-netlink-notifier daemon or the spank plugin slurm_notifier.
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller or a configuration file. The linux_proc_sampler plugin provides data from /proc/, creating a different set for each process identified in the named stream. The stream can come from the ldms-netlink-notifier daemon or the spank plugin slurm_notifier. The per-process data from /proc/self/environ and /proc/self/cmdline can optionally be published to streams.
 
 .SH CONFIGURATION ATTRIBUTE SYNTAX
 The linux_proc_sampler plugin uses the sampler_base base class. This man page covers only the configuration attributes, or those with default values, specific to the this plugin; see ldms_sampler_base.man for the attributes of the base class.
@@ -58,7 +58,47 @@ metrics
 .br
 The comma-separated list of metrics to monitor.  The default is (empty), which is equivalent to monitor ALL metrics.
 .TP
-cfg_file The alternative configuration file in JSON format. The file is expected to have an object that contains the following attributes: { "stream": "STREAM_NAME", "syscalls" : "/file", "metrics": [ comma-separated-quoted-strings ] }.  If the `cfg_file` is given, the stream, metrics, instance_prefix, sc_clk_tck and exe_suffix options are ignored. In the configuration JSON, the syscalls value is optional; if not given and the syscall_name metric is included, the names reported will be SYS_nnn rather than function names.
+cfg_file=CFILE
+.br
+The alternative configuration file in JSON format. The file is expected to have an object that contains the following attributes: { "stream": "STREAM_NAME", "syscalls" : "/file", "metrics": [ comma-separated-quoted-strings ] }.  If the `cfg_file` is given, all other sampler-specific options given on the key=value line
+are ignored.
+.TP
+argv_msg=1
+.br
+Publish the argv items to a stream named <SCHEMA>_argv, where if the schema is not specified, the default schema is linux_proc_sampler. (Default: argv_msg=0; no publication of argv). E.g. a downstream daemon will need to subscribe to
+linux_proc_sampler_argv to receive the published messages and store them.
+.TP
+argv_fmt=<1,2>
+.br
+Publish the argv items formatted as (1) a json list of strings ['argv0', 'argv1'] or (2) a json list of key/value tuples, e.g. [ {"k":0, "v":"argv[0]"}, {"k":1, "v":"argv[1]"}].
+.TP
+env_msg=1
+.br
+Publish the environment items to a stream named <SCHEMA>_env, where if the schema is not specified, the default SCHEMA is linux_proc_sampler. (Default: env_msg=0; no publication of the environment). Environment data is published as a list in the style of argv_fmt=2.  E.g. a downstream daemon will need to subscribe to linux_proc_sampler_env to receive the published messages and store them.
+.TP
+env_exclude=ELIST
+.br
+Exclude the environment items named with regular expressions in ELIST.
+On the configuration key=value line, ELIST must be a file name of a file
+containing a list of regular expressions one per line. An environment variable that
+matches any of the listed regular expressions will be excluded.
+When used in the cfg_file, the env_exclude value may be either the
+string name of the regular expression file or a JSON array
+of expression strings as shown in EXAMPLES.
+.TP
+fd_exclude=ELIST
+.br
+Exclude the files named with regular expressions in ELIST.
+On the configuration key=value line, ELIST must be a file name of a file
+containing a list of regular expressions one per line. A file that
+matches any of the listed regular expressions will be excluded.
+When used in the cfg_file, the fd_exclude value may be either the
+string name of the regular expression file or a JSON array
+of expression strings as shown in EXAMPLES.
+.TP
+fd_msg=N
+.br
+Publish new /proc/pid/fd scan data to the <SCHEMA>_files stream every N-th sample, where if the schema is not specified, the default SCHEMA is linux_proc_sampler. (Default: fd_msg=0; no publication of the file details). A downstream daemon will need to subscribe to linux_proc_sampler_files to receive the published messages and store them. Files that are not opened long enough to be caught in a scan of fds will be missed. Files will be reported as 'opened' the first time seen and as 'closed' when they are no longer seen. Only regular files (not sockets, etc) are reported, and additionally files matching the following prefixes are ignored: /var, /dev, /run, /proc, /etc, /sys, /tmp. Use a larger N to reduce the scan overhead at the cost of missing short-access files. If a close-reopen of the same file occurs between scans, no corresponding events are generated.
 .RE
 
 .SH INPUT STREAM FORMAT
@@ -87,6 +127,24 @@ from SLURM_TASK_PID or an equivalent value from another resource management envi
 The value of start, if provided, should be approximately the epoch time ("%lu.%06lu") when the
 PID to be monitored started.
 
+.SH OUTPUT STREAM FORMAT
+The json formatted output for argv and environment values includes a
+common header:
+.nf
+{
+   "producerName":"localhost1",
+   "component_id":1,
+   "pid":8991,
+   "job_id":0,
+   "timestamp":"1663086686.947600",
+   "task_rank":-1,
+   "parent":1,
+   "is_thread":0,
+   "exe":"/usr/sbin/ldmsd",
+   "data":[LIST]
+.fi
+where LIST is formatted as described for argv_fmt option.
+
 
 .SH EXAMPLES
 .PP
@@ -102,8 +160,34 @@ An example metrics configuration file is:
 {
   "stream": "slurm",
   "instance_prefix" : "cluster2",
-  "argv_sep":"\t",
   "syscalls": "/etc/sysconfig/ldms.d/plugins-conf/syscalls.map",
+  "env_msg": 1,
+  "argv_msg": 1,
+  "fd_msg" : 1,
+  "fd_exclude": [
+        "/dev/",
+        "/run/",
+        "/var/",
+        "/etc/",
+        "/sys/",
+        "/tmp/",
+        "/proc/",
+        "/ram/tmp/",
+        "/usr/lib"
+    ],
+  "env_exclude": [
+	"COLORTERM",
+	"DBU.*",
+	"DESKTOP_SESSION",
+	"DISPLAY",
+	"GDM.*",
+	"GNO.*",
+	"XDG.*",
+	"LS_COLORS",
+	"SESSION_MANAGER",
+	"SSH.*",
+	"XAU.*"
+    ],
   "metrics": [
     "stat_pid",
     "stat_state",
@@ -123,19 +207,20 @@ An example metrics configuration file is:
     "status_hugetlbpages",
     "status_voluntary_ctxt_switches",
     "status_nonvoluntary_ctxt_switches",
-    "syscall_name",
-    "cmdline"
+    "syscall_name"
   ]
 }
+.fi
+.PP
+Generating syscalls.map:
+.nf
+# ldms-gen-syscalls-map > /etc/sysconfig/ldms.d/plugins-conf/syscalls.map
 .fi
 .PP
 Obtaining the currently supported optional metrics list:
 .nf
 ldms-plugins.sh linux_proc_sampler
 .fi
-.PP Generating syscalls.map
-# ldms-gen-syscalls-map > /etc/sysconfig/ldms.d/plugins-conf/syscalls.map
-.nf
 
 .SH FILES
 Data is obtained from (depending on configuration) the following files in /proc/[PID]/:
@@ -166,11 +251,47 @@ where all lines are <int name> pairs. This file can be created from the output o
 ldms-gen-syscall-map. System call names must be less than 64 characters. Unmapped
 system calls will be given names of the form SYS_<num>.
 
+.PP
+The env_msg option can have its output filtered by json or a text file, e.g.:
+.nf
+# env var name regular expressions (all OR-d together)
+COLORTERM
+DBU.*
+DESKTOP_SESSION
+DISPLAY
+GDM.*
+GNO.*
+XDG.*
+LS_COLORS
+SESSION_MANAGER
+SSH.*
+XAU.*
+.fi
+
+.PP
+The fd_msg option can have its output filtered by json or a text file, e.g.:
+.nf
+/dev/
+/run/
+/var/
+/etc/
+/sys/
+/tmp/
+/proc/
+/ram/tmp/
+/usr/lib64/
+/usr/lib/
+.fi
+
 .SH NOTES
 
 The value strings given to the options sc_clk_tck and exe_suffix are ignored; the presence of the option is sufficient to enable the respective features.
 
 Some of the optionally collected data might be security sensitive.
 
+The publication of environment and cmdline (argv) stream data is done once at the start of metric collection for the process. The message will not be reemitted unless the sampler is restarted. Also, changes to the environment and argv lists made within a running process are NOT reflected in the /proc data maintained by the linux kernel. The environment and cmdline values may contain non-JSON characters; these will be escaped in the published strings.
+
+The publication of file information via fd_msg information may be effectively made one-shot-per-process by setting fd_msg=2147483647. This will cause late-loaded plugin library dependencies to be missed, however.
+
 .SH SEE ALSO
-syscalls(2), ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), proc(5), sysconf(3)
+syscalls(2), ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7), proc(5), sysconf(3), environ(3).
