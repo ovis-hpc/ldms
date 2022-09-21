@@ -684,8 +684,11 @@ parse:
 	if (req_filter) {
 		rc = req_filter(&xprt, request, ctxt);
 		/* rc = 0, filter OK */
-		if (rc == 0)
+		if (rc == 0) {
+			__dlog(DLOG_CFGOK, "# deferring line %d (%s): %s\n",
+				lineno, path, line);
 			goto next_req;
+		}
 		/* rc == errno */
 		if (rc > 0) {
 			ldmsd_log(LDMSD_LERROR,
