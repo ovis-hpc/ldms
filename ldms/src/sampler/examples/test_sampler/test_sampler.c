@@ -537,7 +537,7 @@ static int __parse_record_def(char *ptr, struct test_sampler_metric_info *_minfo
 	char *vtype, *init_value, *count_str, *unit, *name;
 	char delim = ':';
 	int rc;
-	int count;
+	int count = -1;
 
 	char *end;
 	int num_entries = 1;
@@ -598,6 +598,8 @@ static int __parse_record_def(char *ptr, struct test_sampler_metric_info *_minfo
 		count_str = __strtok(NULL, delim, &ptr);
 		if (count_str && ('\0' != count_str[0]))
 			count = atoi(count_str);
+		if (count < 0)
+			return EINVAL;
 		if (strchr(ptr, ';') && (strchr(ptr, ';') < strchr(ptr, '}')))
 			unit = __strtok(NULL, ';', &ptr);
 		else
@@ -992,6 +994,7 @@ static int __init_set(struct test_sampler_set *ts_set)
 						return rc;
 				} else {
 					lent = ldms_list_append_item(ts_set->set, lh, list->type, list->cnt);
+					cnt = 1;
 					__metric_set(lent, type, cnt, list->init_value.v_u64);
 				}
 
@@ -1272,7 +1275,7 @@ static int config_add_lists(struct attr_value_list *avl)
 	struct test_sampler_metric_info *minfo, *rcontent;
 	ldms_record_t rec_def;
 	int *mid = NULL;
-	int round_idx;
+	int round_idx = -1;
 	int rec_type_idx;
 	time_t t;
 	rc = 0;
@@ -1513,8 +1516,10 @@ static int config_add_lists(struct attr_value_list *avl)
 	ts_schema->metric_info = minfo;
 out:
 	if (temp) {
-		for (i = round_idx + 1; i < card; i++) {
-			free((char*)temp[i].name);
+		if (round_idx >= 0) {
+			for (i = round_idx + 1; i < card; i++) {
+				free((char*)temp[i].name);
+			}
 		}
 		free(temp);
 	}
@@ -1744,6 +1749,8 @@ static int __sample_classic(struct test_sampler_set *ts_set)
 			v = mval->v_u64 + 1;
 			if (ldms_metric_is_array(ts_set->set, i))
 				len = ldms_metric_array_get_len(ts_set->set, i);
+			else
+				len = 1;
 			__metric_set(mval, type, len, v);
 		}
 	}
