@@ -656,7 +656,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	rc = ldmsd_plugattr_config_check(attributes, keywords, avl, kwl, dep, PG.pname);
 	if (rc != 0) {
-		int warnon = (ldmsd_loglevel_get() > LDMSD_LWARNING);
+		int warnon = (ovis_log_get_level(NULL) > LDMSD_LWARNING);
 		msglog(LDMSD_LERROR, PNAME " config arguments unexpected.%s\n",
 		       	(warnon ? " Enable log level WARNING for details." : ""));
 		return EINVAL;

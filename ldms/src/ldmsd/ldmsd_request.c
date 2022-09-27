@@ -107,8 +107,6 @@ FILE *ldmsd_req_debug_file = NULL; /* change with -L or
 
 static int cleanup_requested = 0;
 
-void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap);
-
 static char * __thread_stats_as_json(size_t *json_sz);
 static char * __xprt_stats_as_json(size_t *json_sz, int reset);
 extern const char *prdcr_state_str(enum ldmsd_prdcr_state state);
@@ -143,11 +141,10 @@ void __dlog(int match, const char *fmt, ...)
 		vfprintf(ldmsd_req_debug_file, fmt, ap);
 		fflush(ldmsd_req_debug_file);
 	} else {
-		__ldmsd_log(LDMSD_LALL, fmt, ap);
+		ldmsd_log(LDMSD_LALL, fmt, ap);
 	}
 	va_end(ap);
 }
-
 
 __attribute__((format(printf, 3, 4)))
 size_t Snprintf(char **dst, size_t *len, char *fmt, ...);
@@ -5877,7 +5874,7 @@ static int __greeting_path_req_handler(ldmsd_req_ctxt_t reqc)
 		ldmsd_prdcr_lock(prdcr);
 		char *ctxt = strdup(myself);
 		if (!ctxt) {
-			ldmsd_log(LDMSD_LCRITICAL, "Out of memory\n");
+			ovis_log(config_log, OVIS_LCRITICAL, "Out of memory\n");
 			return ENOMEM;
 		}
 		rcmd = alloc_req_cmd_ctxt(prdcr->xprt, ldms_xprt_msg_max(prdcr->xprt),

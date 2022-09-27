@@ -385,15 +385,14 @@ struct ldmsd_req_array {
  * \param cfg A string containing the configuaration command text
  * \param msg_no The next unique message number
  * \param xprt_max_msg The
- * \param msglog Destination for error messages.
  *
  * \return a handle to an ldmsd_request_array. NULL is returned in case of error
  *         and errno is set.
  *
  * \seealso ldmsd_request_array
  */
-struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
-					size_t xprt_max_msg, ldmsd_msg_log_f msglog);
+struct ldmsd_req_array *
+ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, size_t xprt_max_msg);
 
 /**
  * \brief Destroy the result of ldmsd_parse_config_str. Ignores NULL input.

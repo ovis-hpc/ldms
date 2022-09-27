@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <semaphore.h>
 #include <ovis_json/ovis_json.h>
+#include "ovis_log/ovis_log.h"
 #include <execinfo.h> /* for backtrace_symbols() */
 #include "ldms.h"
 #include "ldms_xprt.h"

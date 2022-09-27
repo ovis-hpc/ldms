@@ -63,6 +63,7 @@
 
 #include <ovis_event/ovis_event.h>
 #include <ovis_util/util.h>
+#include "ovis_log/ovis_log.h"
 #include "ldms.h"
 
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
@@ -851,7 +852,6 @@ struct ldmsd_store {
 };
 
 #define LDMSD_STR_WRAP(NAME) #NAME
-#define LDMSD_LWRAP(NAME) LDMSD_L ## NAME
 /**
  * \brief ldmsd log levels
  *
@@ -866,30 +866,23 @@ struct ldmsd_store {
  * ALL is for messages printed to the log file per users requests,
  * e.g, messages printed from the 'info' command.
  */
-#define LOGLEVELS(WRAP) \
-	WRAP (DEBUG), \
-	WRAP (INFO), \
-	WRAP (WARNING), \
-	WRAP (ERROR), \
-	WRAP (CRITICAL), \
-	WRAP (ALL), \
-	WRAP (LASTLEVEL),
-
 enum ldmsd_loglevel {
-	LDMSD_LNONE = -1,
-	LOGLEVELS(LDMSD_LWRAP)
+	LDMSD_LDEBUG = OVIS_LDEBUG,
+	LDMSD_LINFO = OVIS_LINFO,
+	LDMSD_LWARNING = OVIS_LWARNING,
+	LDMSD_LERROR = OVIS_LERROR,
+	LDMSD_LCRITICAL = OVIS_LCRITICAL,
+	LDMSD_LALL = OVIS_LALWAYS,
 };
 
-extern const char *ldmsd_loglevel_names[];
-
-__attribute__((format(printf, 2, 3)))
 void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...);
+int ldmsd_loglevel_set(const char *s);
 
-int ldmsd_loglevel_set(char *verbose_level);
-enum ldmsd_loglevel ldmsd_loglevel_get();
+#define ldmsd_loglevel_get() ovis_log_get_level(NULL)
 
-enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s);
-const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level);
+
+#define ldmsd_str_to_loglevel(_s_) ovis_log_str_to_level(_s_)
+#define ldmsd_loglevel_to_str(_level_) ovis_loglevel_to_str(_level_)
 
 __attribute__((format(printf, 1, 2)))
 void ldmsd_ldebug(const char *fmt, ...);
@@ -907,8 +900,7 @@ void ldmsd_lall(const char *fmt, ...);
 /** Get syslog int value for a level.
  *  \return LOG_CRIT for invalid inputs, NONE, & ENDLEVEL.
  */
-int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level);
-
+#define ldmsd_loglevel_to_syslog(_level_) ovis_loglevel_to_syslog(_level_)
 
 /**
  * \brief Get the security context (uid, gid) of the daemon.
@@ -944,8 +936,26 @@ ldmsd_store_close(struct ldmsd_store *store, ldmsd_store_handle_t sh)
 	store->close(sh);
 }
 
-typedef void (*ldmsd_msg_log_f)(enum ldmsd_loglevel level, const char *fmt, ...);
+/*
+ * The #define ldmsd's log levels are defined here
+ * to transition the new LDMSD's plugin interfaces
+ * that do not receive a log function handle.
+ *
+ * The LDMSD log level macro will be removed when
+ * we completely remove the logic that passes
+ * around a log function handle.
+ */
+#define LDMSD_LDEBUG    OVIS_LDEBUG
+#define LDMSD_LINFO     OVIS_LINFO
+#define LDMSD_LWARNING  OVIS_LWARN
+#define LDMSD_LERROR    OVIS_LERROR
+#define LDMSD_LCRITICAL OVIS_LCRIT
+#define LDMSD_LALL      OVIS_LALWAYS
+
+
+typedef void (*ldmsd_msg_log_f)(int level, const char *fmt, ...);
 typedef struct ldmsd_plugin *(*ldmsd_plugin_get_f)(ldmsd_msg_log_f pf);
+void ldmsd_log(int level, const char *fmt, ...);
 
 /* ldmsctl command callback function definition */
 typedef int (*ldmsctl_cmd_fn_t)(char *, struct attr_value_list*, struct attr_value_list *);
