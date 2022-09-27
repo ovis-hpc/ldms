@@ -648,7 +648,7 @@ parse:
 	if (!off)
 		goto next_line;
 
-	req_array = ldmsd_parse_config_str(line, msg_no, xprt.max_msg, ldmsd_log);
+	req_array = ldmsd_parse_config_str(line, msg_no, xprt.max_msg);
 	if (!req_array) {
 		rc = errno;
 		ldmsd_log(LDMSD_LERROR, "Process config file error at line %d "

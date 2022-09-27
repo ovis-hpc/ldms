@@ -67,6 +67,7 @@
 #include <time.h>
 #include <ctype.h>
 #include "ovis_json/ovis_json.h"
+#include "ovis_log/ovis_log.h"
 #include "ldms.h"
 #include "ldmsd_request.h"
 #include "config.h"
@@ -206,14 +207,6 @@ static void ldmsctl_recv_buf_new(void *data, size_t data_len)
 #define LDMSCTL_QUIT LDMSD_NOTSUPPORT_REQ + 2
 #define LDMSCTL_SCRIPT LDMSD_NOTSUPPORT_REQ + 3
 #define LDMSCTL_SOURCE LDMSD_NOTSUPPORT_REQ + 4
-
-static void ldmsctl_log(enum ldmsd_loglevel level, const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	vfprintf(stdout, fmt, ap);
-	va_end(ap);
-}
 
 static void usage(char *argv[])
 {
@@ -2573,8 +2566,7 @@ static int __handle_cmd(struct ldmsctl_ctrl *ctrl, char *cmd_str)
 	free(dummy);
 
 	req_array = ldmsd_parse_config_str(cmd_str, msg_no,
-					   ldms_xprt_msg_max(ctrl->ldms_xprt.x),
-					   ldmsctl_log);
+					   ldms_xprt_msg_max(ctrl->ldms_xprt.x));
 	if (!req_array) {
 		printf("Failed to process the request. ");
 		if (errno == ENOMEM)

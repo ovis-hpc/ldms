@@ -80,7 +80,6 @@
 #include "ldmsd.h"
 #include "ldms_xprt.h"
 #include "ldmsd_request.h"
-#include "ldmsd_event.h"
 #include "config.h"
 #include "kldms_req.h"
 
@@ -143,7 +142,7 @@ char *max_mem_sz_str;
 const char *auth_name;
 struct attr_value_list *auth_opt = NULL;
 const int AUTH_OPT_MAX = 128;
-int log_level_thr = LDMSD_LERROR;
+int log_level_thr = OVIS_LERROR|OVIS_LCRIT;
 int is_loglevel_thr_set; /* set to 1 when the log_level_thr is specified by users */
 
 /* NOTE: For determining version by dumping binary string */
@@ -159,7 +158,6 @@ mode_t inband_cfg_mask = LDMSD_PERM_FAILOVER_ALLOWED;
 int ldmsd_use_failover = 0;
 
 ldms_t ldms;
-FILE *log_fp;
 
 int do_kernel = 0;
 char *setfile = NULL;
@@ -187,11 +185,6 @@ uint8_t ldmsd_is_initialized()
 	return is_ldmsd_initialized;
 }
 
-const char* ldmsd_loglevel_names[] = {
-	LOGLEVELS(LDMSD_STR_WRAP)
-	NULL
-};
-
 void ldmsd_sec_ctxt_get(ldmsd_sec_ctxt_t sctxt)
 {
 	sctxt->crd.gid = getegid();
@@ -206,236 +199,40 @@ void ldmsd_version_get(struct ldmsd_version *v)
 	v->flags = LDMSD_VERSION_FLAGS;
 }
 
-int ldmsd_loglevel_set(char *verbose_level)
-{
-	int level = -1;
-	if (0 == strcmp(verbose_level, "QUIET")) {
-		quiet = 1;
-		level = LDMSD_LLASTLEVEL;
-	} else {
-		level = ldmsd_str_to_loglevel(verbose_level);
-		quiet = 0;
-	}
-	if (level < 0)
-		return level;
-	log_level_thr = level;
-	return 0;
-}
-
-enum ldmsd_loglevel ldmsd_loglevel_get()
-{
-	return log_level_thr;
-}
-
-int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level)
-{
-	switch (level) {
-#define MAPLOG(X,Y) case LDMSD_L##X: return LOG_##Y
-	MAPLOG(DEBUG,DEBUG);
-	MAPLOG(INFO,INFO);
-	MAPLOG(WARNING,WARNING);
-	MAPLOG(ERROR,ERR);
-	MAPLOG(CRITICAL,CRIT);
-	MAPLOG(ALL,ALERT);
-	default:
-		return LOG_ERR;
-	}
-#undef MAPLOG
-}
-
-/* Impossible file pointer as syslog-use sentinel */
-#define LDMSD_LOG_SYSLOG ((FILE*)0x7)
-
-static int log_time_sec = -1;
-int __logrotate()
-{
-	int rc;
-	if (!logfile) {
-		ldmsd_log(LDMSD_LERROR, "Received a logrotate command but "
-			"the log messages are printed to the standard out.\n");
-		return EINVAL;
-	}
-	if (log_fp == LDMSD_LOG_SYSLOG) {
-		/* nothing to do */
-		return 0;
-	}
-	struct timeval tv;
-	char ofile_name[PATH_MAX];
-	gettimeofday(&tv, NULL);
-	sprintf(ofile_name, "%s-%ld", logfile, tv.tv_sec);
-
-	fflush(log_fp);
-	fclose(log_fp);
-	rename(logfile, ofile_name);
-	log_fp = fopen_perm(logfile, "a", LDMSD_DEFAULT_FILE_PERM);
-	if (!log_fp) {
-		printf("%-10s: Failed to rotate the log file. Cannot open a new "
-			"log file\n", "ERROR");
-		fflush(stdout);
-		rc = errno;
-		goto err;
-	}
-	int fd = fileno(log_fp);
-	if (dup2(fd, 1) < 0) {
-		rc = errno;
-		goto err;
-	}
-	if (dup2(fd, 2) < 0) {
-		rc = errno;
-		goto err;
-	}
-	stdout = stderr = log_fp;
-	return 0;
-err:
-	return rc;
-}
-
-int __log(enum ldmsd_loglevel level, char *msg, struct timeval *tv, struct tm *tm)
-{
-	if (log_fp == LDMSD_LOG_SYSLOG) {
-		syslog(ldmsd_loglevel_to_syslog(level), "%s", msg);
-		return 0;
-	}
-
-	if (log_time_sec) {
-		fprintf(log_fp, "%lu.%06lu: ", tv->tv_sec, tv->tv_usec);
-	} else {
-		char dtsz[200];
-		if (strftime(dtsz, sizeof(dtsz), "%a %b %d %H:%M:%S %Y", tm))
-			fprintf(log_fp, "%s: ", dtsz);
-	}
-
-	if (level < LDMSD_LALL) {
-		fprintf(log_fp, "%-10s: ", ldmsd_loglevel_names[level]);
-	}
-
-	fprintf(log_fp, "%s", msg);
-
-	return 0;
-}
-
-int log_actor(ev_worker_t src, ev_worker_t dst, ev_status_t status, ev_t ev)
-{
-	enum ldmsd_loglevel level = EV_DATA(ev, struct log_data)->level;
-	char *msg = EV_DATA(ev, struct log_data)->msg;
-	uint8_t is_rotate = EV_DATA(ev, struct log_data)->is_rotate;
-	struct timeval *tv = &EV_DATA(ev, struct log_data)->tv;
-	struct tm *tm = &EV_DATA(ev, struct log_data)->tm;
-	int rc;
-
-	if (is_rotate) {
-		rc = __logrotate();
-	} else {
-		rc = __log(level, msg, tv, tm);
-		if (0 == ev_pending(logger_w))
-			fflush(log_fp);
-		free(msg);
-	}
-	ev_put(ev);
-	return rc;
-}
-
-void __ldmsd_log(enum ldmsd_loglevel level, const char *fmt, va_list ap)
-{
-	ev_t log_ev;
-	char *msg;
-	int rc;
-	struct timeval tv;
-	struct tm tm;
-	time_t t;
-
-	if ((level != LDMSD_LALL) &&
-			(quiet || ((0 <= level) && (level < log_level_thr))))
-		return;
-
-	if (log_time_sec == -1) {
-		char * lt = getenv("LDMSD_LOG_TIME_SEC");
-		if (lt)
-			log_time_sec = 1;
-		else
-			log_time_sec = 0;
-	}
-	if (log_time_sec) {
-		gettimeofday(&tv, NULL);
-
-	} else {
-		t = time(NULL);
-		localtime_r(&t, &tm);
-	}
-
-	rc = vasprintf(&msg, fmt, ap);
-	if (rc < 0)
-		return;
-
-	if (!ldmsd_is_initialized()) {
-		/* No workers, so directly log to the file */
-		(void) __log(level, msg, &tv, &tm);
-		free(msg);
-		return;
-	}
-	log_ev = ev_new(log_type);
-	if (!log_ev)
-		return;
-	EV_DATA(log_ev, struct log_data)->msg = msg;
-	EV_DATA(log_ev, struct log_data)->level = level;
-	EV_DATA(log_ev, struct log_data)->is_rotate = 0;
-
-	if (log_time_sec)
-		EV_DATA(log_ev, struct log_data)->tv = tv;
-	else
-		EV_DATA(log_ev, struct log_data)->tm = tm;
-	ev_post(NULL, logger_w, log_ev, NULL);
-}
-
 void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...)
 {
 	va_list ap;
 	va_start(ap, fmt);
-	__ldmsd_log(level, fmt, ap);
+	(void) ovis_vlog(NULL, level, fmt, ap);
 	va_end(ap);
 }
 
-/* All messages from the ldms library are of e level.*/
-#define LDMSD_LOG_AT(e,fsuf) \
+#ifndef LDMSD_LOG_AT
+#define LDMSD_LOG_AT(l, fsuf) \
 void ldmsd_l##fsuf(const char *fmt, ...) \
 { \
 	va_list ap; \
 	va_start(ap, fmt); \
-	__ldmsd_log(e, fmt, ap); \
+	ovis_vlog(NULL, l, fmt, ap); \
 	va_end(ap); \
 }
+#endif /* LDMSD_LOG_AT */
 
-LDMSD_LOG_AT(LDMSD_LDEBUG,debug);
-LDMSD_LOG_AT(LDMSD_LINFO,info);
-LDMSD_LOG_AT(LDMSD_LWARNING,warning);
-LDMSD_LOG_AT(LDMSD_LERROR,error);
-LDMSD_LOG_AT(LDMSD_LCRITICAL,critical);
-LDMSD_LOG_AT(LDMSD_LALL,all);
-
-enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s)
+int ldmsd_loglevel_set(const char *s)
 {
-	int i;
-	for (i = 0; i < LDMSD_LLASTLEVEL; i++)
-		if (0 == strcasecmp(level_s, ldmsd_loglevel_names[i]))
-			return i;
-	if (strcasecmp(level_s,"QUIET") == 0) {
-		return LDMSD_LALL;
-				}
-	if (strcasecmp(level_s,"ALWAYS") == 0) {
-		return LDMSD_LALL;
-	}
-	if (strcasecmp(level_s,"CRIT") == 0) {
-		return LDMSD_LCRITICAL;
-	}
-	return LDMSD_LNONE;
+	int level = ovis_log_str_to_level(s);
+	if (level < 0)
+		return level;
+	ovis_log_set_level(NULL, level);
+	return 0;
 }
 
-const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level)
-{
-	if ((level >= LDMSD_LDEBUG) && (level < LDMSD_LLASTLEVEL))
-		return ldmsd_loglevel_names[level];
-	return "LDMSD_LNONE";
-}
+LDMSD_LOG_AT(LDMSD_LDEBUG, debug);
+LDMSD_LOG_AT(LDMSD_LINFO, info);
+LDMSD_LOG_AT(LDMSD_LWARNING, warning);
+LDMSD_LOG_AT(LDMSD_LERROR, error);
+LDMSD_LOG_AT(LDMSD_LCRITICAL, critical);
+LDMSD_LOG_AT(LDMSD_LALL, all);
 
 void ldmsd_inc_cfg_cntr()
 {
@@ -520,8 +317,8 @@ void cleanup(int x, const char *reason)
 		free(pidfile);
 		pidfile = NULL;
 	}
-	if (!quiet && (llevel >= log_level_thr))
-		ldmsd_log(LDMSD_LALL, "LDMSD_ cleanup end.\n");
+
+	ldmsd_log(LDMSD_LALL, "LDMSD_ cleanup end.\n");
 
 	if (logfile) {
 		free(logfile);
@@ -535,59 +332,32 @@ void cleanup(int x, const char *reason)
 	exit(x);
 }
 
-/** return a file pointer or a special syslog pointer */
-FILE *ldmsd_open_log()
-{
-	FILE *f;
-	if (strcasecmp(logfile,"syslog")==0) {
-		ldmsd_log(LDMSD_LDEBUG, "Switching to syslog.\n");
-		f = LDMSD_LOG_SYSLOG;
-		openlog(progname, LOG_NDELAY|LOG_PID, LOG_DAEMON);
-		return f;
-	}
-
-	if (log_truncate) {
-		int err = truncate(logfile, 0);
-		if (err) {
-			ldmsd_log(LDMSD_LERROR, "Could not truncate the log file named '%s'. errno=%d\n",
-				logfile, errno);
-			cleanup(12, "log truncate failed");
-		}
-	}
-
-	f = fopen_perm(logfile, "a", LDMSD_DEFAULT_FILE_PERM);
-	if (!f) {
-		ldmsd_log(LDMSD_LERROR, "Could not open the log file named '%s'\n",
-							logfile);
-		errno = EINVAL;
-		return NULL;
-	} else {
-		int fd = fileno(f);
-		if (dup2(fd, 1) < 0) {
-			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
-							logfile);
-			errno = EINTR;
-			return NULL;
-		}
-		if (dup2(fd, 2) < 0) {
-			ldmsd_log(LDMSD_LERROR, "Cannot redirect log to %s\n",
-							logfile);
-			errno = EINTR;
-			return NULL;
-		}
-		stdout = f;
-		stderr = f;
-	}
-	return f;
-}
-
 int ldmsd_logrotate() {
-	ev_t ev = ev_new(log_type);
-	if (!ev)
-		return ENOMEM;
-	EV_DATA(ev, struct log_data)->is_rotate = 1;
-	EV_DATA(ev, struct log_data)->msg = NULL;
-	ev_post(NULL, logger_w, ev, NULL);
+	if (!logfile) {
+		ldmsd_log(LDMSD_LERROR, "Received a logrotate command but "
+				"the log messages are printed to the standard out.\n");
+		return EINVAL;
+	}
+
+	if (0 == strcmp(logfile, "syslog")) {
+		/* nothing to do */
+		return 0;
+	}
+
+	int rc;
+	struct timeval tv;
+	char ofile_name[PATH_MAX];
+	gettimeofday(&tv, NULL);
+	sprintf(ofile_name, "%s-%ld", logfile, tv.tv_sec);
+
+	rename(logfile, ofile_name);
+	rc = ovis_log_open(logfile);
+	if (rc) {
+		ldmsd_log(LDMSD_LERROR, "Failed to rotate the log file. "
+					"Error %d The messages are going to "
+					"the old file.\n", rc);
+		return rc;
+	}
 	return 0;
 }
 
@@ -1920,6 +1690,7 @@ static int process_log_config(char *value)
  */
 int ldmsd_process_cmd_line_arg(char opt, char *value)
 {
+	int rc;
 	char *lval, *rval;
 	char *dup_auth;
 	switch (opt) {
@@ -1961,10 +1732,19 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 			logfile = strdup(value);
 			if (!logfile)
 				return ENOMEM;
-			log_fp = ldmsd_open_log();
-			if (!log_fp) {
-				log_fp = stdout;
-				return errno;
+			if (log_truncate) {
+				rc = truncate(logfile, 0);
+				if (rc) {
+					rc = errno;
+					ldmsd_log(LDMSD_LERROR, "Could not truncate "
+						"the log file named '%s'. errno = %d\n",
+						logfile, rc);
+					return rc;
+				}
+			}
+			rc = ovis_log_open(logfile);
+			if (rc) {
+				return rc;
 			}
 		}
 		break;
@@ -1989,12 +1769,12 @@ int ldmsd_process_cmd_line_arg(char opt, char *value)
 		if (is_loglevel_thr_set) {
 			ldmsd_log(LDMSD_LERROR, "The log level was already "
 					"specified to %s. Ignore the new value %s\n",
-					ldmsd_loglevel_names[log_level_thr], value);
+					ovis_log_level_to_str(ovis_log_get_level(NULL)), value);
 		} else {
 			is_loglevel_thr_set = 1;
 			if (0 == strcmp(value, "QUIET")) {
 				quiet = 1;
-				log_level_thr = LDMSD_LLASTLEVEL;
+				log_level_thr = OVIS_LQUIET;
 			} else {
 				log_level_thr = ldmsd_str_to_loglevel(value);
 			}
@@ -2159,7 +1939,6 @@ int main(int argc, char *argv[])
 	int list_plugins = 0;
 	int ret;
 	int op, op_idx;
-	log_fp = stdout;
 	struct sigaction action;
 	sigset_t sigset;
 	sigemptyset(&sigset);
@@ -2252,12 +2031,14 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	ret = ldmsd_ev_init();
-	if (ret) {
-		printf("Memory allocation failure.\n");
-		exit(1);
-	}
-	ret = ldmsd_worker_init();
+	/*
+	 * TODO: It should be a better way to get this information.
+	 */
+	char *lt = getenv("LDMSD_LOG_TIME_SEC");
+	int log_mode = 0;
+	if (lt)
+		log_mode = OVIS_LOG_M_TS;
+	ret = ovis_log_init("ldmsd", log_level_thr, log_mode);
 	if (ret) {
 		printf("Memory allocation failure.\n");
 		exit(1);

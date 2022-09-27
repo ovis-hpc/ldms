@@ -328,8 +328,7 @@ const char *ldmsd_req_id2str(enum ldmsd_request req_id)
  * \c request_sz, ENOMEM is returned.
  */
 static int add_attr_from_attr_str(const char *name, const char *value,
-				  ldmsd_req_hdr_t *request, size_t *_req_sz,
-				  ldmsd_msg_log_f msglog)
+				  ldmsd_req_hdr_t *request, size_t *_req_sz)
 {
 	ldmsd_req_attr_t attr;
 	size_t attr_sz, val_sz;
@@ -358,7 +357,7 @@ static int add_attr_from_attr_str(const char *name, const char *value,
 	while (req_sz - req->rec_len < attr_sz) {
 		char *tmp = realloc(buf, req_sz * 2);
 		if (!tmp) {
-			msglog(LDMSD_LERROR, "Out of memory\n", name);
+			ovis_log(NULL, LDMSD_LCRITICAL, "Out of memory\n", name);
 			return ENOMEM;
 		}
 		buf = tmp;
@@ -376,7 +375,7 @@ static int add_attr_from_attr_str(const char *name, const char *value,
 		} else {
 			attr->attr_id = ldmsd_req_attr_str2id(name);
 			if ((int)attr->attr_id < 0) {
-				msglog(LDMSD_LERROR, "Invalid attribute: %s\n", name);
+				ovis_log(NULL, LDMSD_LERROR, "Invalid attribute: %s\n", name);
 				return EINVAL;
 			}
 		}
@@ -421,7 +420,6 @@ struct ldmsd_parse_ctxt {
 	char *av;
 	int line_no;
 	uint32_t msg_no;
-	ldmsd_msg_log_f msglog;
 };
 
 #define LDMSD_REQ_ARRAY_CARD_INIT 5
@@ -447,8 +445,7 @@ int __ldmsd_parse_generic(struct ldmsd_parse_ctxt *ctxt)
 		}
 		rc = add_attr_from_attr_str(name, value,
 					    &ctxt->request,
-					    &ctxt->request_sz,
-					    ctxt->msglog);
+					    &ctxt->request_sz);
 		if (rc)
 			goto out;
 		av = strtok_r(NULL, __ldmsd_cfg_delim, &ptr);
@@ -494,8 +491,7 @@ int __ldmsd_parse_plugin_config(struct ldmsd_parse_ctxt *ctxt)
 			/* Find the name attribute */
 			rc = add_attr_from_attr_str(name, value,
 						    &ctxt->request,
-						    &ctxt->request_sz,
-						    ctxt->msglog);
+						    &ctxt->request_sz);
 			if (rc)
 				goto out;
 		} else {
@@ -516,8 +512,7 @@ int __ldmsd_parse_plugin_config(struct ldmsd_parse_ctxt *ctxt)
 	/* Add an attribute of type 'STRING' */
 	rc = add_attr_from_attr_str(NULL, tmp,
 				    &ctxt->request,
-				    &ctxt->request_sz,
-				    ctxt->msglog);
+				    &ctxt->request_sz);
 out:
 	if (tmp)
 		free(tmp);
@@ -569,8 +564,7 @@ int __ldmsd_parse_env(struct ldmsd_parse_ctxt *ctxt)
 	/* Add an attribute of type 'STRING' */
 	rc = add_attr_from_attr_str(NULL, tmp,
 				    &ctxt->request,
-				    &ctxt->request_sz,
-				    ctxt->msglog);
+				    &ctxt->request_sz);
 out:
 	if (tmp)
 		free(tmp);
@@ -592,8 +586,7 @@ int __parse_xprt_endpoint(struct ldmsd_parse_ctxt *ctxt,
 		/* xprt, port, host, auth */
 		rc = add_attr_from_attr_str(name, value,
 					    &ctxt->request,
-					    &ctxt->request_sz,
-					    ctxt->msglog);
+					    &ctxt->request_sz);
 		if (rc)
 			goto out;
 	} else {
@@ -651,8 +644,7 @@ int __ldmsd_parse_listen_req(struct ldmsd_parse_ctxt *ctxt)
 		/* Add an attribute of type 'STRING' */
 		rc = add_attr_from_attr_str(NULL, tmp,
 					    &ctxt->request,
-					    &ctxt->request_sz,
-					    ctxt->msglog);
+					    &ctxt->request_sz);
 	}
 
 out:
@@ -693,8 +685,7 @@ int __ldmsd_parse_auth_add_req(struct ldmsd_parse_ctxt *ctxt)
 		if (0 == strcmp(name, "name") || 0 == strcmp(name, "plugin")) {
 			rc = add_attr_from_attr_str(name, value,
 						    &ctxt->request,
-						    &ctxt->request_sz,
-						    ctxt->msglog);
+						    &ctxt->request_sz);
 			if (rc)
 				goto out;
 		} else {
@@ -710,8 +701,7 @@ int __ldmsd_parse_auth_add_req(struct ldmsd_parse_ctxt *ctxt)
 		/* Add an attribute of type 'STRING' */
 		rc = add_attr_from_attr_str(NULL, tmp,
 					    &ctxt->request,
-					    &ctxt->request_sz,
-					    ctxt->msglog);
+					    &ctxt->request_sz);
 	}
 
 out:
@@ -726,11 +716,11 @@ int __ldmsd_parse_cmdline_req(struct ldmsd_parse_ctxt *ctxt)
 {
 	/* Treat the attribute string as a single STRING attribute value */
 	return add_attr_from_attr_str(NULL, ctxt->av,
-			&ctxt->request, &ctxt->request_sz, ctxt->msglog);
+			&ctxt->request, &ctxt->request_sz);
 }
 
-struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
-					size_t xprt_max_msg, ldmsd_msg_log_f msglog)
+struct ldmsd_req_array *
+ldmsd_parse_config_str(const char *cfg, uint32_t msg_no, size_t xprt_max_msg)
 {
 	char *av, *verb, *dummy;
 	struct ldmsd_parse_ctxt ctxt = {0};
@@ -762,7 +752,6 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 	}
 
 	ctxt.request_sz = xprt_max_msg;
-	ctxt.msglog = msglog;
 	ctxt.av = av;
 	ctxt.request = calloc(1, ctxt.request_sz);
 	if (!ctxt.request) {
@@ -807,8 +796,7 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 		goto err;
 out:
 	/* Add the terminating attribute */
-	rc = add_attr_from_attr_str(NULL, NULL, &ctxt.request,
-				    &ctxt.request_sz, ctxt.msglog);
+	rc = add_attr_from_attr_str(NULL, NULL, &ctxt.request, &ctxt.request_sz);
 	if (rc)
 		goto err;
 	/* Make sure that all records aren't larger than xprt_max_msg. */
