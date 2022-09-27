@@ -82,6 +82,7 @@ OPTION_INCLUDE_FLAGS([OVIS],[ \
 	lib/src/ovis_ev \
 	lib/src/ovis_event \
 	lib/src/ovis_json \
+	lib/src/ovis_log \
 	lib/src/zap \
 	lib/src/mmalloc \
 	ldms/src \
@@ -102,6 +103,7 @@ OPTION_LIB_FLAGS([OVIS],[ \
 	lib/src/ovis_ev \
 	lib/src/ovis_event \
 	lib/src/ovis_json \
+	lib/src/ovis_log \
 	lib/src/zap \
 	lib/src/mmalloc \
 	ldms/src/core \
@@ -118,7 +120,6 @@ AC_SEARCH_LIBS([clock_gettime],[rt posix4],[LDFLAGS_GETTIME=$LIBS])
 AC_SUBST([LDFLAGS_GETTIME])
 LIBS=""
 
-OPTION_DEFAULT_ENABLE([ovis_ev], [ENABLE_OVIS_EV])
 OPTION_DEFAULT_ENABLE([ovis_event], [ENABLE_OVIS_EVENT])
 OPTION_DEFAULT_ENABLE([mmalloc], [ENABLE_MMALLOC])
 OPTION_DEFAULT_ENABLE([ovis_ctrl], [ENABLE_OVIS_CTRL])
@@ -969,6 +970,7 @@ lib/src/ovis_util/Makefile
 lib/src/ovis_auth/Makefile
 lib/src/ovis_auth/ovis-auth.sh
 lib/src/ovis_ref/Makefile
+lib/src/ovis_log/Makefile
 lib/src/zap/Makefile
 lib/src/zap/rdma/Makefile
 lib/src/zap/fabric/Makefile
