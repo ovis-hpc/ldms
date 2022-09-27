@@ -12,6 +12,8 @@ SUBDIRS = third
 
 SUBDIRS += ovis_util
 SUBDIRS += coll
+SUBDIRS += ovis_ev
+SUBDIRS += ovis_log
 
 if ENABLE_MMALLOC
 SUBDIRS += mmalloc
@@ -23,10 +25,6 @@ endif
 
 if ENABLE_OVIS_EVENT
 SUBDIRS += ovis_event
-endif
-
-if ENABLE_OVIS_EV
-SUBDIRS += ovis_ev
 endif
 
 SUBDIRS += ovis_ref
