@@ -63,6 +63,7 @@
 
 #include <ovis_event/ovis_event.h>
 #include <ovis_util/util.h>
+#include "ovis_log/ovis_log.h"
 #include "ldms.h"
 
 #define LDMSD_PLUGIN_LIBPATH_DEFAULT PLUGINDIR
@@ -804,7 +805,6 @@ struct ldmsd_store {
 };
 
 #define LDMSD_STR_WRAP(NAME) #NAME
-#define LDMSD_LWRAP(NAME) LDMSD_L ## NAME
 /**
  * \brief ldmsd log levels
  *
@@ -819,30 +819,23 @@ struct ldmsd_store {
  * ALL is for messages printed to the log file per users requests,
  * e.g, messages printed from the 'info' command.
  */
-#define LOGLEVELS(WRAP) \
-	WRAP (DEBUG), \
-	WRAP (INFO), \
-	WRAP (WARNING), \
-	WRAP (ERROR), \
-	WRAP (CRITICAL), \
-	WRAP (ALL), \
-	WRAP (LASTLEVEL),
-
 enum ldmsd_loglevel {
-	LDMSD_LNONE = -1,
-	LOGLEVELS(LDMSD_LWRAP)
+	LDMSD_LDEBUG = OVIS_LDEBUG,
+	LDMSD_LINFO = OVIS_LINFO,
+	LDMSD_LWARNING = OVIS_LWARNING,
+	LDMSD_LERROR = OVIS_LERROR,
+	LDMSD_LCRITICAL = OVIS_LCRITICAL,
+	LDMSD_LALL = OVIS_LALWAYS,
 };
 
-extern const char *ldmsd_loglevel_names[];
-
-__attribute__((format(printf, 2, 3)))
 void ldmsd_log(enum ldmsd_loglevel level, const char *fmt, ...);
+int ldmsd_loglevel_set(const char *s);
 
-int ldmsd_loglevel_set(char *verbose_level);
-enum ldmsd_loglevel ldmsd_loglevel_get();
+#define ldmsd_loglevel_get() ovis_log_get_level(NULL)
 
-enum ldmsd_loglevel ldmsd_str_to_loglevel(const char *level_s);
-const char *ldmsd_loglevel_to_str(enum ldmsd_loglevel level);
+
+#define ldmsd_str_to_loglevel(_s_) ovis_log_str_to_level(_s_)
+#define ldmsd_loglevel_to_str(_level_) ovis_loglevel_to_str(_level_)
 
 __attribute__((format(printf, 1, 2)))
 void ldmsd_ldebug(const char *fmt, ...);
@@ -860,8 +853,7 @@ void ldmsd_lall(const char *fmt, ...);
 /** Get syslog int value for a level.
  *  \return LOG_CRIT for invalid inputs, NONE, & ENDLEVEL.
  */
-int ldmsd_loglevel_to_syslog(enum ldmsd_loglevel level);
-
+#define ldmsd_loglevel_to_syslog(_level_) ovis_loglevel_to_syslog(_level_)
 
 /**
  * \brief Get the security context (uid, gid) of the daemon.

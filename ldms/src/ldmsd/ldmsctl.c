@@ -67,6 +67,7 @@
 #include <time.h>
 #include <ctype.h>
 #include "ovis_json/ovis_json.h"
+#include "ovis_log/ovis_log.h"
 #include "ldms.h"
 #include "ldmsd_request.h"
 #include "config.h"

@@ -22,6 +22,7 @@ LJSON_UTIL = $(top_builddir)/lib/src/ovis_json/libovis_json.la
 LOVIS_EVENT = $(top_builddir)/lib/src/ovis_event/libovis_event.la
 LOVIS_CTRL = $(top_builddir)/lib/src/ovis_ctrl/libovis_ctrl.la
 LOVIS_EV = $(top_builddir)/lib/src/ovis_ev/libovis_ev.la
+LOVIS_LOG = $(top_builddir)/lib/src/ovis_log/libovis_log.la
 
 AM_CFLAGS += -DPLUGINDIR='"$(pkglibdir)"'
 
@@ -45,11 +46,11 @@ ldmsd_SOURCES = ldmsd.c ldmsd_config.c \
 	ldmsd_request.h \
 	ldmsd_cfgobj.c ldmsd_prdcr.c ldmsd_updtr.c ldmsd_strgp.c \
 	ldmsd_failover.c ldmsd_group.c ldmsd_auth.c \
-	ldmsd_event.c ldmsd_event.h \
 	ldmsd_decomp.c
 ldmsd_LDADD = ../core/libldms.la libldmsd_request.la libldmsd_stream.la \
 	$(LZAP) $(LMMALLOC) $(LOVIS_UTIL) $(LCOLL) $(LJSON_UTIL) \
-	$(LOVIS_EVENT) $(LOVIS_EV) -lpthread $(LOVIS_CTRL) -lm -ldl
+	$(LOVIS_EVENT) $(LOVIS_EV) -lpthread $(LOVIS_CTRL) -lm -ldl \
+	$(LOVIS_LOG)
 ldmsd_CFLAGS = $(AM_CFLAGS)
 ldmsd_LDFLAGS = $(AM_LDFLAGS) -rdynamic -pthread
 
