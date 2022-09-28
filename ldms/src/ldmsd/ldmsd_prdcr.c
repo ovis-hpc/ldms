@@ -574,10 +574,12 @@ static void prdcr_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 	ldmsd_xprt_ctxt_t ctxt;
 	ldmsd_prdcr_t prdcr = cb_arg;
 	ldmsd_prdcr_lock(prdcr);
-	ldmsd_log(LDMSD_LINFO, "%s:%d Producer %s (%s %s:%d) conn_state: %d %s event type: %s\n",
+	ldmsd_log(LDMSD_LINFO, "%s:%d Producer %s (%s %s:%d:%s)"
+				" conn_state: %d %s event type: %s\n",
 				__func__, __LINE__,
 				prdcr->obj.name, prdcr->xprt_name,
 				prdcr->host_name, (int)prdcr->port_no,
+				prdcr->conn_auth,
 				prdcr->conn_state,
 				conn_state_str(prdcr->conn_state),
 				ldms_xprt_event_type_to_str(e->type));
