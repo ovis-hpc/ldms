@@ -568,7 +568,6 @@ static void process_sep_msg_ack_accepted(struct z_sock_ep *sep)
 		.type = ZAP_EVENT_CONNECTED,
 		.status = ZAP_ERR_OK,
 	};
-	ref_get(&sep->ep.ref, "accept/connect"); /* Release when receive disconnect/error event. */
 	sep->ep.cb(&sep->ep, &ev);
 }
 
@@ -1579,6 +1578,7 @@ static void sock_event(struct epoll_event *ev)
 			zev.type = ZAP_EVENT_CONNECT_ERROR;
 			do_cb = 1;
 		}
+		drop_conn_ref = 1;
 		break;
 	case ZAP_EP_CONNECTING:
 		zev.type = ZAP_EVENT_CONNECT_ERROR;
@@ -1593,6 +1593,7 @@ static void sock_event(struct epoll_event *ev)
 		break;
 	case ZAP_EP_ERROR:
 		do_cb = 0;
+		drop_conn_ref = 1;
 		break;
 	default:
 		LOG_(sep, "Unexpected state for EOF %d.\n",
@@ -1654,6 +1655,7 @@ static void __z_sock_conn_request(struct epoll_event *ev)
 	new_sep->ev.data.ptr = new_sep;
 	new_sep->ev.events = EPOLLIN;
 
+	ref_get(&new_sep->ep.ref, "accept/connect"); /* Release when receive disconnect/error event. */
 	rc = __set_sock_opts(new_sep);
 	if (rc)
 		goto err_1;
