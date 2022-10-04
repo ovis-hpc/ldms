@@ -4180,6 +4180,11 @@ size_t ldms_record_heap_size_get(ldms_record_t rec_def)
 	return sz;
 }
 
+size_t ldms_record_value_size_get(ldms_record_t rec_def)
+{
+	return rec_def->inst_sz - sizeof(struct ldms_record_inst);
+}
+
 int ldms_record_card(ldms_mval_t rec)
 {
 	struct ldms_record_hdr *hdr = (struct ldms_record_hdr *)&rec->v_rec_inst;

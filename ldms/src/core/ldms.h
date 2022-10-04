@@ -1429,6 +1429,15 @@ int ldms_record_metric_add_template(ldms_record_t rec_def,
  */
 size_t ldms_record_heap_size_get(ldms_record_t rec_def);
 
+/**
+ * Get the size (bytes) of the heap memory storing the record metric values.
+ *
+ * \param rec_def  The handle returned by \c ldms_record_create().
+ *
+ * \retval bytes The size of the heap memory
+ */
+size_t ldms_record_value_size_get(ldms_record_t rec_def);
+
 void _ldms_set_ref_get(ldms_set_t s, const char *reason, const char *func, int line);
 int _ldms_set_ref_put(ldms_set_t s, const char *reason, const char *func, int line);
 
