@@ -75,11 +75,12 @@ static struct rbt job_tree;
 static pthread_mutex_t job_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 struct job_data;
 
-#define WAIT_TIME 60 * 5 /* 5 minute */
+#define WAIT_TIME 5 /* 5 seconds */
 static TAILQ_HEAD(job_list, job_data) complete_job_list;
 
 enum job_metric_order {
-	JOB_ID,
+	JM_FIRST = 0,
+	JOB_ID = 0,
 	APP_ID,
 	USER,
 	JOB_NAME,
@@ -92,6 +93,7 @@ enum job_metric_order {
 	JOB_END,
 	NODE_COUNT,
 	TASK_COUNT,
+	JM_LAST,
 };
 
 struct ldms_metric_template_s job_rec_metrics[] = {
@@ -114,10 +116,12 @@ struct ldms_metric_template_s job_rec_metrics[] = {
 static int job_metric_ids[JOB_REC_LEN];
 
 enum task_metric_order {
-	TASK_JOB_ID,
+	TM_FIRST = 0,
+	TASK_JOB_ID = 0,
 	TASK_PID,
 	TASK_RANK,
 	TASK_EXIT_STATUS,
+	TM_LAST,
 };
 
 struct ldms_metric_template_s task_rec_metrics[] = {
@@ -140,7 +144,7 @@ static int task_metric_ids[TASK_REC_LEN];
 typedef struct task_data {
 	union ldms_value v[TASK_REC_LEN];
 	ldms_mval_t rec_inst;
-	LIST_ENTRY(task_data) ent;
+	TAILQ_ENTRY(task_data) ent;
 } *task_data_t;
 
 typedef struct job_data {
@@ -157,7 +161,7 @@ typedef struct job_data {
 	union ldms_value v[JOB_REC_LEN];
 	ldms_mval_t rec_inst;
 	/* List of tasks that has not been assigned the task_pid. */
-	LIST_HEAD(task_list, task_data) task_list;
+	TAILQ_HEAD(task_list, task_data) task_list;
 	struct rbn rbn;
 	TAILQ_ENTRY(job_data) ent; /* stopped_job_list entry */
 } *job_data_t;
@@ -204,15 +208,15 @@ static task_data_t task_data_alloc(job_data_t job)
 	if (!task)
 		return NULL;
 	task->v[TASK_JOB_ID].v_u64 = job_id_get(job);
-	LIST_INSERT_HEAD(&job->task_list, task, ent);
+	TAILQ_INSERT_TAIL(&job->task_list, task, ent);
 	return task;
 }
 
 static void job_data_free(job_data_t job)
 {
 	task_data_t task;
-	while ((task = LIST_FIRST(&job->task_list))) {
-		LIST_REMOVE(task, ent);
+	while ((task = TAILQ_FIRST(&job->task_list))) {
+		TAILQ_REMOVE(&job->task_list, task, ent);
 		task_data_free(task);
 	}
 	free(job);
@@ -227,8 +231,9 @@ static job_data_t job_data_alloc(uint64_t job_id)
 		return NULL;
 	job_id_set(job, job_id);
 	rbn_init(&job->rbn, &job->v[JOB_ID].v_u64);
-	job->v[JOB_START].v_u8 = JOB_STARTING;
+	job->v[JOB_STATE].v_u8 = JOB_STARTING;
 	rbt_ins(&job_tree, &job->rbn);
+	TAILQ_INIT(&job->task_list);
 	return job;
 }
 
@@ -245,7 +250,7 @@ static job_data_t job_data_find(uint64_t job_id)
 static task_data_t task_data_find(job_data_t job, uint64_t task_pid)
 {
 	task_data_t task;
-	LIST_FOREACH(task, &job->task_list, ent) {
+	TAILQ_FOREACH(task, &job->task_list, ent) {
 		if (task_pid_get(task) == task_pid)
 			break;
 	}
@@ -284,7 +289,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"         [stream=<stream_name>] [component_id=<component_id>] [perm=<permissions>]\n"
 		"         [uid=<user_name>] [gid=<group_name>]\n"
 		"         [job_count=<job_count>] [task_count=<task_count>]"
-		"         [delete_job=<wait_time>]\n"
+		"         [delete_time=<delete_time>]\n"
 		"     producer      A unique name for the host providing the data\n"
 		"     instance      A unique name for the metric set\n"
 		"     stream        A stream name to subscribe the slurm_sampler2 to. Defaults to '" DEFAULT_STREAM_NAME "'\n"
@@ -296,10 +301,10 @@ static const char *usage(struct ldmsd_plugin *self)
 		"                   Default to 8\n"
 		"     task_count    The estimated maximum number of tasks/job. The actual number can be larger.\n"
 		"                   Default to 8\n"
-		"     wait_time     The time duration in seconds after a job is completed\n"
-		"                   before its data gets deleted from the set.\n"
+		"     delete_time   The data of completed jobs will persist in the set at least 'delete_time' seconds\n"
+		"                   before it gets deleted from the set.\n"
 		"                   0 means to delete any completed jobs when\n"
-		"                   the plugin receives the data of a new job. Default to 5 minutes.\n"
+		"                   the plugin receives the data of a new job. Default to 5 seconds.\n"
 		"                   -1 means to not delete any jobs. This is for debugging.\n";
 }
 
@@ -516,7 +521,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 	else
 		task_list_len = TASK_PER_JOB_COUNT * job_list_len;
 
-	value = av_value(avl, "delete_job");
+	value = av_value(avl, "delete_time");
 	if (value)
 		wait_time = atoi(value);
 	else
@@ -621,8 +626,8 @@ static void remove_completed_jobs(ldms_mval_t job_list, ldms_mval_t task_list, u
 		TAILQ_REMOVE(&complete_job_list, job, ent);
 		if (job->rec_inst)
 			ldms_list_remove_item(set, job_list, job->rec_inst);
-		while ((task = LIST_FIRST(&job->task_list))) {
-			LIST_REMOVE(task, ent);
+		while ((task = TAILQ_FIRST(&job->task_list))) {
+			TAILQ_REMOVE(&job->task_list, task, ent);
 			if (task->rec_inst)
 				ldms_list_remove_item(set, task_list, task->rec_inst);
 			task_data_free(task);
@@ -631,6 +636,26 @@ static void remove_completed_jobs(ldms_mval_t job_list, ldms_mval_t task_list, u
 	next:
 		job = nxt;
 	}
+}
+
+static ldms_mval_t __job_rec_alloc(ldms_set_t set)
+{
+	ldms_mval_t rec = ldms_record_alloc(set, job_rec_def_idx);
+	if (!rec)
+		return NULL;
+	memset(((ldms_record_inst_t)rec)->rec_data, 0,
+			ldms_record_value_size_get(job_rec_def));
+	return rec;
+}
+
+static ldms_mval_t __task_rec_alloc(ldms_set_t set)
+{
+	ldms_mval_t rec = ldms_record_alloc(set, task_rec_def_idx);
+	if (!rec)
+		return NULL;
+	memset(((ldms_record_inst_t)rec)->rec_data, 0,
+			ldms_record_value_size_get(task_rec_def));
+	return rec;
 }
 
 static int __expand_heap()
@@ -671,13 +696,13 @@ static int __expand_heap()
 		job = container_of(rbn, struct job_data, rbn);
 
 		/* Add a job record */
-		job->rec_inst = rec = ldms_record_alloc(set, job_rec_def_idx);
+		job->rec_inst = rec = __job_rec_alloc(set);
 		for (i = 0; i < JOB_REC_LEN; i++)
 			job_metric_set(job, i);
 		ldms_list_append_record(set, job_list, rec);
 
-		LIST_FOREACH(task, &job->task_list, ent) {
-			task->rec_inst = rec = ldms_record_alloc(set, task_rec_def_idx);
+		TAILQ_FOREACH(task, &job->task_list, ent) {
+			task->rec_inst = rec = __task_rec_alloc(set);
 			for (i = 0; i < TASK_REC_LEN; i++)
 				task_metric_set(task, i);
 			ldms_list_append_record(set, task_list, rec);
@@ -762,7 +787,7 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 	 */
 	remove_completed_jobs(job_list, task_list, timestamp);
 
-	job_rec = ldms_record_alloc(set, job_rec_def_idx);
+	job_rec = __job_rec_alloc(set);
 	if (!job_rec) {
 		rc = errno;
 		if (ENOMEM == rc) {
@@ -776,12 +801,15 @@ static void handle_job_init(job_data_t job, json_entity_t e)
 	}
 	job->rec_inst = job_rec;
 	ldms_list_append_record(set, job_list, job_rec);
+	/* Initialize the record entry */
 	job_metric_set(job, JOB_ID);
 	job_metric_set(job, JOB_START);
 	job_metric_set(job, JOB_END);
 	job_metric_set(job, JOB_STATE);
 	job_metric_set(job, TASK_COUNT);
 	job_metric_set(job, JOB_SIZE);
+	job_metric_set(job, JOB_UID);
+	job_metric_set(job, JOB_GID);
 
 out:
 	ldms_transaction_end(set);
@@ -950,7 +978,7 @@ static void handle_task_init(job_data_t job, json_entity_t e)
 	ldms_transaction_begin(set);
 	task_list = ldms_metric_get(set, task_list_idx);
 	job_metric_set(job, JOB_STATE);
-	task_rec = ldms_record_alloc(set, task_rec_def_idx);
+	task_rec = __task_rec_alloc(set);
 	if (!task_rec)
 		goto expand_heap;
 	ldms_list_append_record(set, task_list, task_rec);
