@@ -435,52 +435,6 @@ struct linux_proc_sampler_set {
 };
 LIST_HEAD(set_del_list, linux_proc_sampler_set);
 
-#if 0
-static void string_to_timeval(struct timeval *t, char *s)
-{
-	if (!t || !s)
-		return;
-	char b[strlen(s)+1];
-	int sec, usec;
-	strcpy(b, s);
-	char *dot = strchr(b, '.');
-	if (!dot) {
-		sscanf(b, "%d", &sec);
-		t->tv_sec = sec;
-		t->tv_usec = 0;
-	} else {
-		size_t fraclen = strlen(dot);
-		if (fraclen > 7) {
-			dot[7] = '\0';
-		}
-		sscanf(b, "%d", &sec);
-		t->tv_sec = sec;
-		sscanf(dot+1, "%d", &usec);
-		size_t usec_len = strlen(dot+1);
-		switch (usec_len) {
-		case 1:
-			usec *= 100000;
-			break;
-		case 2:
-			usec *= 10000;
-			break;
-		case 3:
-			usec *= 1000;
-			break;
-		case 4:
-			usec *= 100;
-			break;
-		case 5:
-			usec *= 10;
-			break;
-		case 6:
-			break;
-		}
-		t->tv_usec = usec;
-	}
-}
-#endif
-
 typedef struct linux_proc_sampler_inst_s *linux_proc_sampler_inst_t;
 typedef int (*handler_fn_t)(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set);
 struct handler_info {
@@ -2324,7 +2278,7 @@ int string_clean_json(const char *v, char *vsub, size_t vsub_sz)
 		default:
 			break;
 		}
-#if 0
+#ifdef REMAP_CTL_CHAR
 		if (v[i] < 32) {
 			sprintf(&vsub[j], "\\u%.04x", v[i]);
 			j += 6;
@@ -3287,14 +3241,14 @@ int __handle_task_init(linux_proc_sampler_inst_t inst, json_entity_t data)
 		rc = publish_argv_pid(inst, app_set, start_string, exe_string,
 			is_thread_val, parent, job_id_val);
 		if (rc) {
-#if 0
+#ifdef LPDEBUG
 			INST_LOG(inst, LDMSD_LDEBUG,
 				"publish_argv_pid failed for %d %s\n",
 				app_set->key.os_pid, STRERROR(rc) );
 #endif
 			app_set->dead = rc;
 		}
-#if 0
+#ifdef LPDEBUG
 else {
 			INST_LOG(inst, LDMSD_LDEBUG,
 				"publish_argv_pid OK for %d\n",
@@ -3306,14 +3260,14 @@ else {
 		rc = publish_env_pid(inst, app_set, start_string, exe_string,
 			is_thread_val, parent, job_id_val);
 		if (rc) {
-#if 0
+#ifdef LPDEBUG
 			INST_LOG(inst, LDMSD_LDEBUG,
 				"publish_env_pid failed for %d %s\n",
 				app_set->key.os_pid, STRERROR(rc) );
 #endif
 			app_set->dead = rc;
 		}
-#if 0
+#ifdef LPDEBUG
 else {
 			INST_LOG(inst, LDMSD_LDEBUG,
 				"publish_env_pid OK for %d\n",
