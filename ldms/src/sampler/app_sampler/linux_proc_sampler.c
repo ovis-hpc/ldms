@@ -428,7 +428,6 @@ struct linux_proc_sampler_set {
 	struct rbn rbn; /* hook for app_set list */
 	int dead;
 	int fd_skip;
-	// struct rbt fd_rbt; /* tree for files of this process */
 	char *fd_ident; /* json prefix for all file messages */
 	size_t fd_ident_sz; /* json prefix for all file messages */
 	struct rbt fn_rbt; /* tree for fd numbers of this process */
@@ -517,6 +516,7 @@ struct linux_proc_sampler_inst_s {
 	char *recycle_buf;
 	size_t recycle_buf_sz;
 	ldmsd_stream_client_t stream;
+	int log_send;
 	char *argv_sep;
 	char *syscalls; /* file of 'int name' lines with # comments */
 	int n_syscalls; /* maximum number of syscalls aliased/mapped */
@@ -1517,9 +1517,12 @@ static int linux_proc_sampler_sample(struct ldmsd_sampler *pi)
 		for (i = 0; i < inst->n_fn; i++) {
 			rc = inst->fn[i].fn(inst, app_set->key.os_pid, app_set->set);
 			if (rc) {
-				INST_LOG(inst, LDMSD_LDEBUG, "Removing set %s. Error %d(%s) from %s\n",
+#ifdef LPDEBUG
+				INST_LOG(inst, LDMSD_LDEBUG,
+					"Removing set %s. Error %d(%s) from %s\n",
 					ldms_set_instance_name_get(app_set->set),
 					rc, STRERROR(rc), inst->fn[i].fn_name);
+#endif
 				LIST_INSERT_HEAD(&del_list, app_set, del);
 				app_set->dead = rc;
 				break;
@@ -1528,7 +1531,6 @@ static int linux_proc_sampler_sample(struct ldmsd_sampler *pi)
 		app_set->fd_skip++;
 		if (!app_set->dead && inst->fd_msg &&
 			(app_set->fd_skip % inst->fd_msg == 0)) {
-			// INST_LOG(inst, LDMSD_LDEBUG,"rescan fd stream for %d\n", app_set->key.os_pid );
 			rc = publish_fd_pid(inst, app_set);
 			if (rc) {
 				INST_LOG(inst, LDMSD_LDEBUG, "Removing set %s."
@@ -1627,6 +1629,9 @@ is_thread u8 Boolean value noting if the process is a child thread in\n\
 parent s64 The parent pid of the process.\n\
 exe char[] The full path of the executable.\n\
 \n\
+The config file, but not the command line, allow the option\n\
+  \"log_send\":1\n\
+which adds logging of stream message events (less the json).\n\
 ";
 
 static char *help_all;
@@ -2040,6 +2045,16 @@ int __handle_cfg_file(linux_proc_sampler_inst_t inst, char *val)
 			}
 		}
 	}
+	ent = json_value_find(jdoc, "log_send");
+	if (ent) {
+		if (ent->type != JSON_INT_VALUE) {
+			rc = EINVAL;
+			INST_LOG(inst, LDMSD_LERROR,
+				"Error: `log_send` must be 1 or 0\n");
+			goto out;
+		}
+		inst->log_send = (json_value_int(ent) != 0);
+	}
 	list = json_value_find(jdoc, "metrics");
 	if (list) {
 		for (ent = json_item_first(list); ent;
@@ -2326,12 +2341,14 @@ int string_clean_json(const char *v, char *vsub, size_t vsub_sz)
 }
 
 /* put a lock around here if we need it, but don't if publication
- * is serialized at the set addition/callback */
+ * is serialized at the set addition/callback, as it seems to be */
 static char *get_buf(linux_proc_sampler_inst_t inst, size_t n)
 {
-#ifndef NOREUSE
 	if (!inst->recycle_buf) {
 		inst->recycle_buf = malloc(2*n);
+		if (!inst->recycle_buf)
+			return NULL;
+		inst->recycle_buf_sz = 2*n;
 		return inst->recycle_buf;
 	}
 	if (inst->recycle_buf_sz < 2*n) {
@@ -2343,13 +2360,6 @@ static char *get_buf(linux_proc_sampler_inst_t inst, size_t n)
 		inst->recycle_buf_sz = 2*n;
 	}
 	return inst->recycle_buf;
-#else
-	if (inst->recycle_buf)
-		free(inst->recycle_buf);
-	inst->recycle_buf = malloc(2*n);
-	inst->recycle_buf_sz = 2*n;
-	return inst->recycle_buf;
-#endif
 }
 
 /* the env/argv data to be published can disappear under us, so there's
@@ -2423,7 +2433,6 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 		rc = ENOMEM;
 		goto out;
 	}
-	// INST_LOG(inst, LDMSD_LDEBUG, "vsub_sz= %zu\n", vsub_sz);
 	for (i = 0; i < argc; i++) {
 		k = envp[i];
 		if (!k) {
@@ -2441,14 +2450,14 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 		int dirty = string_clean_json(v, vsub, vsub_sz);
 		switch (dirty) {
 		case 1:
-			INST_LOG(inst, LDMSD_LWARNING, "cannot send val of %s\n",
-				k);
-			usleep(1000);
+			INST_LOG(inst, LDMSD_LWARNING,
+				"cannot send env val of %s for pid %d\n",
+				k, pid);
 			continue;
 		case 2:
-			INST_LOG(inst, LDMSD_LWARNING, "esc too long of %s\n",
-				k);
-			usleep(1000);
+			INST_LOG(inst, LDMSD_LWARNING,
+				"esc too long of env val %s for pid %d\n",
+				k, pid);
 			continue;
 		default:
 			break;
@@ -2467,16 +2476,18 @@ static int publish_env_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sam
 	if (buf_sz < off) {
 		INST_LOG(inst, LDMSD_LERROR, "env buf_sz miscalculated.\n");
 	}
-#if 0
+#ifdef USE_PNAME
 	char pname[64+20];
 	snprintf(pname, 84, "%s/linux_proc_sampler", producer);
 #else
 	char *pname= NULL;
 #endif
-	INST_LOG(inst, LDMSD_LDEBUG,
-		"Sending pid %d env with count %d size %zu %s%s\n",
-		app_set->key.os_pid, argc, off, pname ? " on" : "",
-		pname ? pname : "");
+	if (inst->log_send) {
+		INST_LOG(inst, LDMSD_LDEBUG,
+			"Sending pid %d env with count %d size %zu %s%s\n",
+			app_set->key.os_pid, argc, off, pname ? " on" : "",
+			pname ? pname : "");
+	}
 	ldmsd_stream_deliver(inst->env_stream, LDMSD_STREAM_JSON,
 				buf, off, NULL, pname);
 out:
@@ -2607,11 +2618,24 @@ static int publish_argv_pid(linux_proc_sampler_inst_t inst, struct linux_proc_sa
 	}
 	off += more;
 
-	if (buf_sz < off) {
-		INST_LOG(inst, LDMSD_LERROR, "argv buf_sz miscalculated.\n");
+	if (inst->recycle_buf_sz < off) {
+		INST_LOG(inst, LDMSD_LERROR,
+			"argv buf_sz miscalculated (%zu < %zu).\n",
+			inst->recycle_buf_sz, off);
 	}
-	char pname[64+20];
-	snprintf(pname, 84, "%s/linux_proc_sampler", producer);
+#ifdef USE_PNAME
+	char pname[HOST_NAME_MAX + 21];
+	snprintf(pname, 84, "%s/linux_proc_sampler",
+		inst->base_data->producer_name);
+#else
+	char *pname= NULL;
+#endif
+	if (inst->log_send) {
+		INST_LOG(inst, LDMSD_LDEBUG,
+			"Sending pid %d argv %s%s%s\n",
+			app_set->key.os_pid, pname ? " on" : "",
+			pname ? pname : "");
+	}
 	ldmsd_stream_deliver(inst->argv_stream, LDMSD_STREAM_JSON, buf, off, NULL, pname);
 out:
 	release_proc_strings(argv, argc);
@@ -2646,8 +2670,6 @@ void fentry_destroy(linux_proc_sampler_inst_t inst, struct fentry *f)
 {
 	if (!f)
 		return;
-	// INST_LOG(inst, LDMSD_LDEBUG, "fentry_destroy pid %d fd %d inode %d %s\n",
-	//	f->pid, f->l_fd, f->l_ino, f->name ? f->name : "");
 	free(f->name);
 	f->name = NULL;
 	free(f);
@@ -2704,7 +2726,6 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 		stat_format_sz = strlen(stat_format);
 
 	size_t slen = app_set->fd_ident_sz + stat_format_sz + nlen + 6*20 + 10;
-	// INST_LOG(inst, LDMSD_LDEBUG, "fd slen %zu fi %zu nlen %zu const 130\n", app_set->fd_ident_sz, stat_format_sz, nlen);
 	size_t ssize;
 	char *buf = get_buf(inst, slen);
 	if (!buf)
@@ -2724,22 +2745,23 @@ static int string_send_state(linux_proc_sampler_inst_t inst, struct linux_proc_s
 			str,
 			-1, -1, -1, 0, -1, 0, 0, state);
 
-	// INST_LOG(inst, LDMSD_LERROR, "ssize oversize %zu\n", slen, ssize - slen);
-	if (slen < ssize) {
+	if (inst->recycle_buf_sz < ssize) {
 		INST_LOG(inst, LDMSD_LERROR, "fd buf_sz miscalculated. %zu < %zu\n",
 			slen, ssize);
 	}
-#if 0
+#ifdef USE_PNAME
 	char pname[HOST_NAME_MAX + 21];
 	snprintf(pname, 84, "%s/linux_proc_sampler",
 		inst->base_data->producer_name);
 #else
 	char *pname= NULL;
 #endif
-	INST_LOG(inst, LDMSD_LDEBUG,
-		"Sending pid %d fd %d file %s new state %s%s%s\n",
-		app_set->key.os_pid, fd, str, state, pname ? " on" : "",
-		pname ? pname : "");
+	if (inst->log_send) {
+		INST_LOG(inst, LDMSD_LDEBUG,
+			"Sending pid %d fd %d file %s new state %s%s%s\n",
+			app_set->key.os_pid, fd, str, state, pname ? " on" : "",
+			pname ? pname : "");
+	}
 	ldmsd_stream_deliver(inst->fd_stream, LDMSD_STREAM_JSON, buf, ssize,
 			 NULL, pname);
 	return 0;
@@ -2836,7 +2858,6 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 	int rc;
 	char *endptr;
 	struct fentry *fe;
-	// INST_LOG(inst, LDMSD_LDEBUG, "Checking pid %d\n", app_set->key.os_pid);
 	while ( (rc = readdir_r(dir, &enttmp, &dent)),
 			(rc == 0 && dent != NULL)) {
 		fe = NULL;
@@ -2852,12 +2873,10 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 			/* the file descriptor will not change what file it points
 			 * to without a change of inode # in the symlink. */
 			if (fe->l_ino == enttmp.d_ino) {
-				// INST_LOG(inst, LDMSD_LDEBUG, "Repeated pid %d fd %d %s\n", app_set->key.os_pid, fe->l_fd, buf);
 				fe->seen = 1;
 				continue;
 			}
-			// recycle fe
-			INST_LOG(inst, LDMSD_LDEBUG, "pid %d fd %d changed inode %d  to %d on %s\n", app_set->key.os_pid, fe->l_fd, fe->l_ino,  enttmp.d_ino, fe->name);
+			/* recycle fe */
 			fe->l_ino = enttmp.d_ino;
 			if (!fe->ignore) {
 				dfe = calloc(1, sizeof(*dfe));
@@ -2870,7 +2889,7 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 				dfe->nlen = fe->nlen;
 				LIST_INSERT_HEAD(&del_list, dfe, del);
 			} else {
-				free(fe->name); // ever needed?
+				free(fe->name); /* ever needed? */
 			}
 			fe->name = NULL;
 		}
@@ -2889,7 +2908,6 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 			fe->l_fd = n;
 			fe->l_ino = enttmp.d_ino;
 			fe->pid = app_set->key.os_pid;
-			//fe->seen = 1;
 			rbn_init(&(fe->fn_rbn), (void*)(&fe->l_fd));
 			rbt_ins(&app_set->fn_rbt, &(fe->fn_rbn));
 		}
@@ -2897,7 +2915,6 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 			0 == regexec(&(inst->fd_regex), buf, 0, NULL, 0))) {
 			fe->ignore = 1;
 			fe->seen = 1;
-			// INST_LOG(inst, LDMSD_LDEBUG, "pid %d ignoring %d %s\n", n, app_set->key.os_pid, buf);
 			continue;
 		} else {
 			fe->name = malloc(blen+1);
@@ -2937,7 +2954,6 @@ close_check:
 				msg = "deleted";
 				statp = NULL;
 			}
-			INST_LOG(inst, LDMSD_LDEBUG, "fd state %s %s\n", msg, fe->name);
 			fentry_send_state(inst, app_set, statp, fe, msg);
 		}
 		dfe = calloc(1, sizeof(*dfe));
@@ -3306,7 +3322,6 @@ else {
 #endif
 	}
 	if (inst->fd_msg && !app_set->dead) {
-	//	INST_LOG(inst, LDMSD_LDEBUG, "start fd stream for %d\n", app_set->key.os_pid );
 		rc = publish_fd_pid_first(inst, app_set, start_string,
 			exe_string, is_thread_val, parent, job_id_val);
 		app_set->fd_skip++;
