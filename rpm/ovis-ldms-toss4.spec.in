@@ -87,11 +87,6 @@ BuildRequires: librdkafka-devel
 Requires: librdkafka
 %endif
 
-#Obsoletes: ovis
-#Obsoletes: ovis-initscripts-base
-#Obsoletes: ovis-initscripts-systemd
-#Obsoletes: ovis-initscripts-sysv
-
 Url: https://github.com/ovis-hpc/ovis
 
 %description
