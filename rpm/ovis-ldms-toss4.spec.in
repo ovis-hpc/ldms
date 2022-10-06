@@ -5,6 +5,7 @@
 %bcond_without infiniband
 %bcond_without dcgm
 %bcond_without rdc
+%bcond_without kafka
 %bcond_with genders
 
 %ifarch ppc64le
@@ -81,6 +82,10 @@ BuildRequires: slurm-devel
 %if %{with papi}
 BuildRequires: papi600-devel
 %endif
+%if %{with kafka}
+BuildRequires: librdkafka-devel
+Requires: librdkafka
+%endif
 
 #Obsoletes: ovis
 #Obsoletes: ovis-initscripts-base
@@ -116,6 +121,7 @@ export CFLAGS="-g -O2 -fdiagnostics-color=auto %{optflags}"
     %{?with_dcgm:--with-dcgm}%{!?with_dcgm:--without-dcgm} \
     %{?with_infiniband:--enable-infiniband}%{!?with_infiniband:--disable-infiniband} \
     %{?with_rdc:--enable-rdc RDC_CFLAGS=-I/opt/rocm-%{rocm_version}/rdc/include RDC_LIBS=-L/opt/rocm-%{rocm_version}/rdc/lib}%{!?with_rdc:--disable-rdc} \
+    %{?with_kafka:--enable-kafka}%{!?with_kafka:--disable-kafka} \
 %if %{with papi}
     --enable-papi \
     --with-libpapi-prefix=/usr/papi600 \
@@ -130,9 +136,9 @@ make DESTDIR=${RPM_BUILD_ROOT} V=1 install
 %if %{with genders}
 # rearrange ldms systemd init scripts and associated files into needed locations
 mkdir -p ${RPM_BUILD_ROOT}%{_unitdir}
-cp ${RPM_BUILD_ROOT}%{_docdir}/%{name}-%{tarball_version}/sample_init_scripts/genders/systemd/services/ldms*.service ${RPM_BUILD_ROOT}%{_unitdir}
+cp ${RPM_BUILD_ROOT}%{_pkgdocdir}/sample_init_scripts/genders/systemd/services/ldms*.service ${RPM_BUILD_ROOT}%{_unitdir}
 mkdir -p ${RPM_BUILD_ROOT}%{_sysconfdir}
-cp -r ${RPM_BUILD_ROOT}%{_docdir}/%{name}-%{tarball_version}/sample_init_scripts/genders/systemd/etc/* ${RPM_BUILD_ROOT}%{_sysconfdir}
+cp -r ${RPM_BUILD_ROOT}%{_pkgdocdir}/sample_init_scripts/genders/systemd/etc/* ${RPM_BUILD_ROOT}%{_sysconfdir}
 %endif
 # only used by sysv init scripts
 rm ${RPM_BUILD_ROOT}%{_bindir}/ldmsd-pre-sysvinit || /bin/true
@@ -213,8 +219,8 @@ Doxygen files for ovis package.
 %files doc
 %defattr(-,root,root)
 %{_mandir}/*/*
-%{_docdir}/%{name}-%{tarball_version}
-%docdir %{_docdir}
+%{_pkgdocdir}
+%docdir %{_pkgdocdir}
 
 %if %{with python}
 %package python3
