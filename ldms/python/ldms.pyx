@@ -2659,7 +2659,7 @@ cdef class Set(object):
     def digest_str(self):
         cdef char buf[LDMS_DIGEST_LENGTH*2+1]
         cdef ldms_digest_t d
-        cdef char *d_str
+        cdef const char *d_str
         d = ldms_set_digest_get(self.rbd)
         if not d:
             return None
