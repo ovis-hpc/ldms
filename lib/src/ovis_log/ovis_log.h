@@ -50,82 +50,128 @@
 #define _OVIS_LOG_H_
 
 #include <stdio.h>
+#include "coll/rbt.h"
 
 #define OVIS_DEFAULT_FILE_PERM 0600
 
 /* Impossible file pointer as syslog-use sentinel */
 #define OVIS_LOG_SYSLOG ((FILE*)0x7)
 
-#define OVIS_STR_WRAP(NAME) #NAME
-#define OVIS_LWRAP(NAME) OVIS_L ## NAME
 /**
- * \brief ldmsd log levels
+ * \brief ovis log levels
  *
- * The ldmsd log levels, in order of increasing importance, are
+ * The ovis log levels, in order of increasing severity, are
  *  - DEBUG
  *  - INFO
  *  - WARNING
  *  - ERROR
  *  - CRITICAL
- *  - ALL
- *
- * ALL is for messages printed to the log file per users requests,
- * e.g, messages printed from the 'info' command.
+ * Two special levels are ALWAYS and QUIET.
+ *  QUIET means to disable all log messages. On the other hand,
+ *  any log messages belong to the ALWAYS level will be reported unless
+ *  QUIET is enabled.
  */
-#define LOGLEVELS(WRAP) \
-	WRAP (DEBUG), \
-	WRAP (INFO), \
-	WRAP (WARNING), \
-	WRAP (ERROR), \
-	WRAP (CRITICAL), \
-	WRAP (ALL), \
-	WRAP (LASTLEVEL),
 
-enum ovis_loglevel {
-	OVIS_LNONE = -1,
-	LOGLEVELS(OVIS_LWRAP)
-};
+#define OVIS_LDEFAULT	-1 /* Use the default level */
+#define OVIS_LQUIET	0
+#define OVIS_LDEBUG	0x01
+#define OVIS_LINFO	0x02
+#define OVIS_LWARN	0x04
+#define OVIS_LWARNING	OVIS_LWARN
+#define OVIS_LERROR	0x08
+#define OVIS_LCRITICAL	0x10
+#define OVIS_LCRIT	OVIS_LCRITICAL
+/* OVIS_LALWAYS is always enabled unless QUIET is given. */
+#define OVIS_LALWAYS	(OVIS_LDEBUG|OVIS_LINFO|OVIS_LWARN|OVIS_LERROR|OVIS_LCRITICAL)
+#define OVIS_ALL_LEVELS	OVIS_LALWAYS
+
+typedef struct ovis_log_s {
+	const char *name;
+	const char *desc;
+	int level;
+	struct rbn rbn;
+	int ref_count;
+} *ovis_log_t;
 
 /**
  * \brief Initialize the logging system
  *
- * It creates a log worker thread. By calling this,
- * \c ovis_log() is a non-block call. The slowness of the file system
- * will not affect the thread that calls \c ovis_log().
+ * \c ovis_log_init() creates the logging worker, sets the default values, and
+ *  configures the logging modes.
  *
- * \param name   Name of logger (worker)
+ * \c subsys_name is the subsystem name of the default log.
+ *  \c level is the value of a log level or the bitwise-or of multiple log levels.
+ *  \c modes defines different logging behaviors.
+ *
+ * Available modes:
+ *  OVIS_LOG_M_DT means using the date-time format to print the logging time. (default)
+ *  OVIS_LOG_M TS means using the timestamp format to print the logging time.
+ *  OVIS_LOG_M_TS_NONE means no logging time.
+ *
+ * The \c ovis_log_init() call makes \c ovis_log_open, \c ovis_log_close,
+ *  \c ovis_log, and \c ovis_vlog asynchronous.
+ *
+ * \param subsys_name	The default log subsystem name, e.g., the application name.
+ * \param level		The default log level.
+ * \param modes		Logging modes. 0 means the default mode.
  *
  * \return 0 on success.
  *         ENOMEM is returned if it fails create the worker and the event type.
- * \see ovis_log_open, ovis_log
+ *
+ * \see ovis_log_open, ovis_log, ovis_log_close
  */
-int ovis_log_init(const char *name);
-
-/* \brief Open a log file
- *
- * The function opens the given log file. If the log file exists,
- * calling \c ovis_log() will append the messages to the existing file.
- * It also points both stdout and stderr to the opened file.
- *
- * If the string 'syslog' is given, the messages will be sent to syslog.
- *
- * If applications do not call this function,
- * the messages will be logged to stdout.
- *
- * Applications must call \c ovis_log_open only once. To change the log file,
- *  applications should call \c ovis_log_reopen().
- *
- * \param logfile   Path to the log file or 'syslog'
- *
- * \return 0 on success. Otherwise, an errno is returned.
- * \see ovis_log_init, ovis_log
- */
-int ovis_log_open(const char *logfile);
+#define OVIS_LOG_M_DT	0	/* Date-time format */
+#define OVIS_LOG_M_TS	1	/* timestamp in seconds format */
+#define OVIS_LOG_M_TS_NONE 2	/* No messages' time information */
+int ovis_log_init(const char *default_subsys_name, int default_level, int modes);
 
 /**
- * \brief Flush the outstanding messages
+ * \brief Set the message format
  *
- * \c ovis_log_fflush() is equivalent to calling \c fflush().
+ *  See the available modes \c ovis_log_init
+ *
+ * \param mode   a mode
+ *
+ * \see ovis_log_init
+ */
+void ovis_log_set_mode(int mode);
+
+/**
+ * \brief Open a log file
+ *
+ * Call \c ovis_log_open() to redirect the log messages to a log file.
+ *  If \c path is 'syslog', the log messages go to Syslog.
+ *
+ * The process of opening a log file is as follows.
+ *  - If a log file exists,
+ *    - the outstanding messages are flushed, and
+ *    - the current log file is closed.
+ *  - If \c path is Syslog, the subsequent messages go to Syslog.
+ *  - Otherwise, a new log file is opened at \c path.
+ *  - Point both stdout and stderr to the new log file.
+ *
+ * The above steps happen asynchronously to the \c ovis_log_open() call.
+ *  \c ovis_log_open() posts a event to the log worker when \c ovis_log_init()
+ *  is called. The success return value of \c ovis_log_open() does not mean
+ *  that the log file is opened successfully.
+
+ * \c ovis_log_open() is synchronous if applications have not called \c ovis_log_init().
+ *
+ * All log messages go to stdout when no log files are successfully opened.
+ *
+ *
+ * \param path   Path to the log file or 'syslog'
+ *
+ * \return 0 on success. Otherwise, an errno is returned.
+ * \see ovis_log_init, ovis_log, ovis_log_close, ovis_log_flush
+ */
+int ovis_log_open(const char *path);
+
+/**
+ * \brief Flush the outstanding messages to the log file
+ *
+ * \c ovis_log_flush() is equivalent to calling \c fflush().
+ *  If the log messages go to Syslog, the function is a no-op.
  *
  * \return 0 on success. Otherwise, an errno is returned.
  */
@@ -138,85 +184,170 @@ int ovis_log_flush();
  *  to stdout. A call to \c ovis_log_close() is discourage unless
  *  applications will not log any more messages.
  *
- * Do not call \c ovis_log_reopen() after calling this function. To close and open,
- *  call \c ovis_log_reopen() will suffice.
- *
  * \return 0 on success. Otherwise, an errno is returned.
  * \see ovis_log_reopen, ovis_log_open
  */
 int ovis_log_close();
 
 /**
- * \brief Open a new log file
+ * \brief  Rotate the log file
  *
- * \c ovis_log_reopen() closes the current log file and opens a new file at \c path,
- *  although \c path is the same as the path of the current log file. The function
- *  will print the subsequent messages to the new file.
+ * Not supported yet.
+ * Please use \c ovis_log_open to implement your log rotate functionality.
  *
- * If \c path is 'syslog', \c ovis_log_reopen() will close the current log file
- *  ane print the subsequent messages to Syslog.
+ * The current log file is renamed and then closed.
+ *  The new log file is opened at \c path.
+ *  If \c path is NULL, the log file is opened at the previous path.
  *
- * Calling \c ovis_log_reopen() after calling \c ovis_log_close() may result
- *  in a crash.
+ * If prior to the call messages going to Syslog, the function is a no-op.
  *
- * \param new_file   The path of the new log file.
+ * \param path   Path of the new log file. NULL to used the path of the current file.
  *
  * \return 0 on success. Otherwise, an errno is returned.
- * \see ovis_log_close, ovis_log_open
  */
-int ovis_log_reopen(const char *path);
+int ovis_log_rotate(const char *path);
 
-/*
+/**
+ * \brief Create the log of a subsystem.
+ *
+ * \param subsys_name   The subsystem name
+ * \param desc		The description of the subsystem
+ *
+ * \return The log handle of the subsystem.
+ *         On error, NULL is returned, and errno is set.
+ *            EINVAL   Either \c subsys_name or \c desc is NULL.
+ *            EEXIST   The log of the subsystem \c subsys_name already exists.
+ *            ENOMEM   Memory allocation failure
+ */
+ovis_log_t ovis_log_create(const char *subsys_name, const char *desc);
+
+/**
+ * \brief Destroy the log of a subsystem
+ *
+ * \param log   the log handle of a subsystem
+ */
+void ovis_log_destroy(ovis_log_t log);
+
+/**
+ * \brief List the information of a log subsystem or all log subsystems
+ *
+ * The returned string is a JSON-formatted string.
+ * [{"name": "<subsystem's name>",
+ *   "desc": "<subsystem's description>",
+ *   "level": "<subsystem's enabled level string>"
+ *  },
+ *  ...
+ * ]
+ *
+ * The caller is responsible for freeing the returned string.
+ *
+ * \param subsys   A subsystem name. If this is NULL,
+ *                 the information of all subsystems is returned.
+ *
+ * \return a string on success. Otherwise, NULL is returned, and errno is set.
+ *
+ */
+char *ovis_log_list(const char *subsys);
+
+/**
  * \brief Log a message
  *
  * Both \c ovis_log() and \c ovis_vlog() log a message. The difference is that
  *  \c ovis_log() receives variable length arguments, but \c ovis_vlog()
  *  receives \c va_list.
  *
+ * The format of the log messages is
+ *            <logging time>: <log level>: <subsystem name>: <message>.
+ *  The <logging time> is either a timestamp or a date-time string. Specify
+ *  the mode when calling \c ovis_log_init() to configure the format.
+ *  The <log level> will not show if the message belongs to the OVIS_LALWAYS level.
+ *  The <subsystem name> is the subsystem the message belongs to.
+ *
+ * \param log     The log handle of a subsystem
  * \param level   Log level of the message
+ *
+ * \return 0 on success. On errors, a negative number is returned.
  */
-void ovis_log(enum ovis_loglevel level, const char *fmt, ...);
-void ovis_vlog(enum ovis_loglevel level, const char *fmt, va_list ap);
+int ovis_log(ovis_log_t log, int level, const char *fmt, ...);
+int ovis_vlog(ovis_log_t log, int level, const char *fmt, va_list ap);
+
+/**
+ * \brief Set the log level of a subsystem.
+ *
+ * If \c level is OVIS_LDEFAULT, the subsystem is set to the default level.
+ *  If \c subsys_name or \c mylog is NULL, and \c level is OVIS_LDEFAULT,
+ *  \c level is ignored and 0 is returned.
+ *
+ * \param regex_s         A regular expression string to match subsystem names
+ * \param subsys_name     The name of the subsystem to set the log level.
+ *                        If NULL is given, the default log level will be set.
+ * \param mylog           A log subsystem handle
+ * \param level           The log levels to be enabled. This could be
+ *                        the bitwise-or of multiple log levels.
+ *
+ * \return 0 on success. On error, an errno is returned.
+ *         ENOENT   Subsystem \c subsys_name does not exist.
+ *         EINVAL   \c level is invalid.
+ */
+int ovis_log_set_level_by_regex(const char *regex_s, int level);
+int ovis_log_set_level_by_name(const char *subsys_name, int level);
+int ovis_log_set_level(ovis_log_t mylog, int level);
+
+/**
+ * \brief Get the log level of a subsystem
+ *
+ * \param subsys_name    A subsystem name. If NULL is given, the default log level is returned.
+ * \param mylog          A log subsystem handle
+ *
+ * \return the bitwise-or of the enabled log levels.
+ *         The OVIS_LDEFAULT value is returned if the subsystem uses the default level.
+ *         On error, a negative errno is returned.
+ *          -ENOENT        Subsystem \c subsys_name does not exist.
+ */
+int ovis_log_get_level_by_name(const char *subsys_name);
+int ovis_log_get_level(ovis_log_t mylog);
 
 /*
- * \brief Set the log level
+ * \brief Convert a string to the bitwise-or of log level integers.
  *
- * \param verbose_level   Log level string
+ * For example,
+ *    "QUIET" is converted to 0.
+ *    "ERROR,INFO" is converted to OVIS_LERROR|OVIS_LINFO.
+ *    "ERROR," is converted to OVIS_LERROR.
+ *    "ERROR" is converted to OVIS_LERROR|OVIS_LCRITICAL, i.e., the log levels equal and above.
  *
- * \return 0 on success. If \c verbose_level is invalid, -1 is returned.
+ * \param level_s   The string 'QUIET' or a comma-seprated string of log level names.
+ *
+ * \return 0 or the bitwise-or of log levels. On errors, a negative errno is returned.
+ *        -EINVAL is returned if the string contains an unrecognized level name.
  */
-int ovis_loglevel_set(char *verbose_level);
+int ovis_log_str_to_level(const char *level_s);
 
 /*
- * \brief Get the log level threshold
+ * \brief Return a comma-separated string of the level names
  *
- * \return An enumerate of a log level
+ * If \c level is the bitwise-or of multiple log levels,
+ * the returned string is the comma-separated string of each log level name.
+ *
+ * If \c level is the value of a single log level,
+ * the returned string is the log level name appended with a comma "<level>,".
+ *
+ * NOTE: The caller must free the returned string.
+ *
+ * For example,
+ *   \c str = ovis_log_level_to_str(OVIS_LDEBUG|OVIS_LERROR)
+ *   str is "DEBUG,ERROR"
+ *
+ *   \c str = ovis_log_level_to_str(OVIS_LERROR|OVIS_LCRITICAL)
+ *   str is "ERROR,CRITICAL"
+ *
+ *   \c str = ovis_log_level_to_str(OVIS_LCRITICAL)
+ *   str is "CRITICAL,"
+ *
+ * \param level   a log level value or the bitwise-or of multiple log levels.
+ *
+ * \return a string. On errors, NULL is returned, and errno is set.
  */
-enum ovis_loglevel ovis_loglevel_get();
-
-/*
- * \brief Convert a string to a log level enumerate
- *
- * The valid strings are DEBUG, INFO, WARNING, ERROR, CRITICAL, ALL.
- *
- * \param level_s   A string
- *
- * return log level enumerate. -1 is returned if the string is unrecognized.
- */
-enum ovis_loglevel ovis_str_to_loglevel(const char *level_s);
-
-/*
- * \brief Convert a log level enumerate to a string
- *
- * \param level   an integer
- *
- * return a log level string. 'OVIS_LNONE' is returned if the given integer is invalid.
- */
-const char *ovis_loglevel_to_str(enum ovis_loglevel level);
-
-/** Get syslog int value for a level.
- *  \return LOG_CRIT for invalid inputs, NONE, & ENDLEVEL.
- */
-int ovis_loglevel_to_syslog(enum ovis_loglevel level);
+char *ovis_log_level_to_str(int level);
 
 #endif
