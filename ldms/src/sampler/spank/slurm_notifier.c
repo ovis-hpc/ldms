@@ -75,7 +75,12 @@ static char *stream;
 #define SLURM_NOTIFY_TIMEOUT 5
 static time_t io_timeout = SLURM_NOTIFY_TIMEOUT;
 
-#define DEBUG2(FMT, ...) slurm_debug2("(%d) %s:%d " FMT, getpid(), __func__, __LINE__, ##__VA_ARGS__)
+static const char *stepd_event = "";
+#define DEBUG2(FMT, ...) do { \
+	printf("slurm_notifier: (%ld) [%s] %s:%d " FMT "\n", \
+	       (long)getpid(), stepd_event, __func__, __LINE__, ##__VA_ARGS__); \
+} while (0)
+
 
 static void msglog(const char *format, ...)
 {
@@ -329,6 +334,9 @@ static void event_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 		client->state = DISCONNECTED;
 		event = "error";
 		break;
+	case LDMS_XPRT_EVENT_SEND_COMPLETE:
+		event = "send_complete";
+		break;
 	default:
 		event = "INVALID_EVENT";
 		DEBUG2("Received invalid event type\n");
@@ -456,6 +464,7 @@ int purge(struct client_list *client_list, struct client_list *delete_list)
 	return 0;
 }
 
+static pthread_mutex_t exit_lock = PTHREAD_MUTEX_INITIALIZER;
 static int send_event(int argc, char *argv[], jbuf_t jb)
 {
 	struct client_list client_list;
@@ -483,6 +492,7 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	if (LIST_EMPTY(&client_list))
 		return ENOTCONN;
 
+	pthread_mutex_lock(&exit_lock);
 	/* Attempt to connect to each client */
 	LIST_FOREACH(client, &client_list, entry) {
 		client->state = CONNECTING;
@@ -497,7 +507,7 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	}
 	rc = purge(&client_list, &delete_list);
 	if (rc)
-		return rc;
+		goto out;
 	/*
 	 * Wait for the connections to complete and purge clients who
 	 * failed to connect
@@ -524,7 +534,7 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	 */
 	rc = purge(&client_list, &delete_list);
 	if (rc)
-		return rc;
+		goto out;
 
 	/*
 	 * Publish event to connected clents
@@ -534,7 +544,6 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	LIST_INIT(&delete_list);
 	LIST_FOREACH(client, &client_list, entry) {
 		DEBUG2("publishing to %s:%s\n", client->host, client->port);
-		DEBUG2("slurm %s:%d %s", __func__, __LINE__, jb->buf);
 		rc = ldmsd_stream_publish(client->ldms, stream,
 					  LDMSD_STREAM_JSON, jb->buf, jb->cursor+1);
 		if (rc) {
@@ -546,7 +555,7 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 	}
 	rc = purge(&client_list, &delete_list);
 	if (rc)
-		return rc;
+		goto out;
 	/*
 	 * Wait for the event to be acknowledged by the client before
 	 * disconnecting
@@ -595,7 +604,9 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 		}
 		pthread_mutex_unlock(&client->wait_lock);
 	}
-	return 0;
+ out:
+	pthread_mutex_unlock(&exit_lock);
+	return rc;
 }
 
 /**
@@ -829,11 +840,11 @@ static int _step_is_valid(spank_t sh, const char *func, int line)
 	spank_err_t err;
 	err = _get_item_u32(sh, S_JOB_STEPID, &step_id);
 	if (err) {
-		DEBUG2("%s:%d Error %d getting S_JOB_STEPID", func, line, err);
+		DEBUG2("Error %d getting S_JOB_STEPID", err);
 		return 0;
 	}
 	if ((int)step_id < 0) {
-		DEBUG2("%s:%d Ignoring event with negative S_JOB_STEPID", func, line);
+		DEBUG2("Ignoring event with negative S_JOB_STEPID %#x\n", (int)step_id);
 		return 0;
 	}
 	return 1;
@@ -842,6 +853,7 @@ static int _step_is_valid(spank_t sh, const char *func, int line)
 
 int slurm_spank_init(spank_t sh, int argc, char *argv[])
 {
+	stepd_event = "step_init";
 	jbuf_t jb;
 
 #if SLURM_VERSION_NUMBER >= SLURM_VERSION_NUM(20,11,0)
@@ -866,6 +878,7 @@ int slurm_spank_init(spank_t sh, int argc, char *argv[])
 
 int slurm_spank_job_prolog(spank_t sh, int argc, char *argv[])
 {
+	stepd_event = "job_init";
 	jbuf_t jb = make_job_init_data(sh);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
@@ -877,6 +890,7 @@ int slurm_spank_job_prolog(spank_t sh, int argc, char *argv[])
 
 int slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 {
+	stepd_event = "task_init";
 	jbuf_t jb;
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
@@ -893,6 +907,7 @@ int slurm_spank_task_init_privileged(spank_t sh, int argc, char *argv[])
 
 int slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 {
+	stepd_event = "task_exit";
 	jbuf_t jb;
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
@@ -909,6 +924,7 @@ int slurm_spank_task_exit(spank_t sh, int argc, char *argv[])
 
 int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 {
+	stepd_event = "step_exit";
 	jbuf_t jb;
 	if (spank_context() != S_CTX_REMOTE)
 		return ESPANK_SUCCESS;
@@ -925,6 +941,7 @@ int slurm_spank_exit(spank_t sh, int argc, char *argv[])
 
 int slurm_spank_job_epilog(spank_t sh, int argc, char *argv[])
 {
+	stepd_event = "job_exit";
 	jbuf_t jb = make_job_exit_data(sh);
 	if (jb) {
 		DEBUG2("%s", jb->buf);
@@ -943,6 +960,8 @@ void __init__()
 __attribute__((destructor))
 void __del__()
 {
+	pthread_mutex_lock(&exit_lock);
+	pthread_mutex_unlock(&exit_lock);
 	ldms_xprt_term(0);
 	DEBUG2("Unloading slurm_notifier\n");
 }
