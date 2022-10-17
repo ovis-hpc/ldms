@@ -82,11 +82,11 @@ void printGpuMetrics(ze_device_handle_t device, uint32_t devNumber) {
     cout << " " << devNumber << "     " << metricNumber++ << "         "
          << getPerfLevel(device) << "           perf_level" << endl;
 
-    cout << " " << devNumber << "     " << metricNumber++ << "         "
+/*    cout << " " << devNumber << "     " << metricNumber++ << "         "
          << getPowerUsage(device) << "             power_usage (mW)" << endl;
 
     cout << " " << devNumber << "     " << metricNumber++ << "         "
-         << getGpuTemp(device) << "          gpu_temp (Celsius)" << endl;
+         << getGpuTemp(device) << "          gpu_temp (Celsius)" << endl;*/
 }
 
 int sampleGpuMetrics(int argc, char *argv[]) {
