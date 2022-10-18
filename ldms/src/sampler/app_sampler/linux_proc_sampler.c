@@ -651,7 +651,7 @@ static int check_sep(linux_proc_sampler_inst_t inst, const char *sep)
 
 static int cmdline_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t set)
 {
-	/* populate `cmdline` and `cmdline_len` */
+	/* populate `cmdline` and maybe `cmdline_len` */
 	ldms_mval_t cmdline;
 	int len;
 	char path[CMDLINE_SZ];
@@ -662,7 +662,8 @@ static int cmdline_handler(linux_proc_sampler_inst_t inst, pid_t pid, ldms_set_t
 	len = __read_str(set, inst->metric_idx[APP_CMDLINE], path, CMDLINE_SZ);
 	cmdline->a_char[CMDLINE_SZ - 1] = 0; /* in case len == CMDLINE_SZ */
 	len = quote_argv(inst, len, cmdline->a_char, CMDLINE_SZ, inst->argv_sep);
-	ldms_metric_set_u64(set, inst->metric_idx[APP_CMDLINE_LEN], len);
+	if (inst->metric_idx[APP_CMDLINE_LEN] > 0)
+		ldms_metric_set_u64(set, inst->metric_idx[APP_CMDLINE_LEN], len);
 	return 0;
 }
 
