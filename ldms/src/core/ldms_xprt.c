@@ -2907,8 +2907,12 @@ static void ldms_zap_cb(zap_ep_t zep, zap_event_t ev)
 		ldms_xprt_put(x);
 		break;
 	case ZAP_EVENT_SEND_COMPLETE:
-		if (!(x->auth_flag & LDMS_XPRT_AUTH_APPROVED)) {
-			/* Ignore */
+		if (x->auth_flag != LDMS_XPRT_AUTH_APPROVED) {
+			/*
+			 * Do not forward the send_complete to applications
+			 * if the authentication is not approved.
+			 * Applications know only the connection is connecting.
+			 */
 		} else {
 			event.type = LDMS_XPRT_EVENT_SEND_COMPLETE;
 			if (x->event_cb)
