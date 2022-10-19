@@ -570,7 +570,7 @@ static int config(struct ldmsd_plugin *self, struct attr_value_list *kwl, struct
 
 	value = av_value(avl, "job_count");
 	if (value)
-		job_list_len = atoi(value);
+		job_list_len = atoi(value) * 2;
 	int i;
 	rc = ENOMEM;
 	for (i = 0; i < job_list_len; i++) {
