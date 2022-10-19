@@ -1,4 +1,4 @@
-[![status](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ldms-test/weekly-report/master/status.json)](https://github.com/ldms-test/weekly-report/blob/master/test-all.log)
+[![status](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/ldms-test/weekly-report/master/status.json)](https://github.com/ldms-test/weekly-report/blob/master/summary.md)
 
 # OVIS / LDMS
 
