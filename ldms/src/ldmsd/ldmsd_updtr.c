@@ -233,7 +233,7 @@ static void updtr_task_set_reset(ldmsd_updtr_task_t task)
 
 static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 {
-	uint64_t gn;
+	uint64_t gn, push_it = 0;
 	ldmsd_prdcr_set_t prd_set = arg;
 	int errcode;
 
@@ -271,6 +271,7 @@ static void updtr_update_cb(ldms_t t, ldms_set_t set, int status, void *arg)
 		goto set_ready;
 	}
 	prd_set->last_gn = gn;
+	push_it = 1;
 
 	ldmsd_strgp_ref_t str_ref;
 	LIST_FOREACH(str_ref, &prd_set->strgp_list, entry) {
@@ -286,7 +287,7 @@ set_ready:
 		prd_set->state = LDMSD_PRDCR_SET_STATE_READY;
 out:
 	pthread_mutex_unlock(&prd_set->lock);
-	if (0 == errcode) {
+	if (0 == errcode && push_it) {
 		ldmsd_log(LDMSD_LDEBUG, "Pushing set %p %s\n",
 			  prd_set->set, prd_set->inst_name);
 		int rc = ldms_xprt_push(prd_set->set);
