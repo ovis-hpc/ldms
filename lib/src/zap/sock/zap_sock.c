@@ -99,7 +99,7 @@ static int init_complete = 0;
 static void *io_thread_proc(void *arg);
 
 static void sock_event(struct epoll_event *ev);
-static void sock_read(struct epoll_event *ev);
+static void sock_read(z_sock_io_thread_t thr, struct epoll_event *ev);
 static void sock_write(struct epoll_event *ev);
 static void sock_send_complete(struct epoll_event *ev);
 static void sock_connect(struct epoll_event *ev);
@@ -107,7 +107,7 @@ static void sock_connect(struct epoll_event *ev);
 static int __disable_epoll_out(struct z_sock_ep *sep);
 static int __enable_epoll_out(struct z_sock_ep *sep);
 
-static void sock_ev_cb(struct epoll_event *ev);
+static void sock_ev_cb(z_sock_io_thread_t thr, struct epoll_event *ev);
 
 static zap_err_t __sock_send_msg(struct z_sock_ep *sep, struct sock_msg_hdr *m,
 				 size_t msg_size,
@@ -1111,7 +1111,7 @@ static zap_err_t __sock_send_connect(struct z_sock_ep *sep, char *buf, size_t le
  * important to avoid queuing a disconnect prior to the last
  * send/recv.
  */
-static void sock_ev_cb(struct epoll_event *ev)
+static void sock_ev_cb(z_sock_io_thread_t thr, struct epoll_event *ev)
 {
 	struct z_sock_ep *sep = ev->data.ptr;
 
@@ -1138,7 +1138,7 @@ static void sock_ev_cb(struct epoll_event *ev)
 
 	/* Handle read */
 	if (ev->events & EPOLLIN) {
-		sock_read(ev);
+		sock_read(thr, ev);
 	}
 
 	/* Handle disconnect
@@ -1281,7 +1281,7 @@ static void sock_write(struct epoll_event *ev)
 }
 
 #define min_t(t, x, y) (t)((t)x < (t)y?(t)x:(t)y)
-static void sock_read(struct epoll_event *ev)
+static void sock_read(z_sock_io_thread_t thr, struct epoll_event *ev)
 {
 	struct z_sock_ep *sep = ev->data.ptr;
 	struct sock_msg_hdr *hdr;
@@ -1305,6 +1305,11 @@ static void sock_read(struct epoll_event *ev)
 		switch (sep->ep.state) {
 		case ZAP_EP_ACCEPTING:
 			/* expecting `connect` or `ack_accepted` message */
+			if (sep->ep.thread == NULL) {
+				/* return the borrowed thread */
+				struct epoll_event ignore;
+				epoll_ctl(thr->efd, EPOLL_CTL_DEL, sep->sock, &ignore);
+			}
 			if (msg_type != SOCK_MSG_CONNECT &&
 					msg_type != SOCK_MSG_ACK_ACCEPTED) {
 				/* invalid */
@@ -1409,7 +1414,7 @@ static void *io_thread_proc(void *arg)
 		}
 		for (i = 0; i < n; i++) {
 			sep = thr->ev[i].data.ptr;
-			sep->ev_fn(&thr->ev[i]);
+			sep->ev_fn(thr, &thr->ev[i]);
 		}
 	}
 
@@ -1457,26 +1462,28 @@ static zap_err_t __sock_send(struct z_sock_ep *sep, uint16_t msg_type,
 /* caller must have sep->ep.lock held */
 static int __enable_epoll_out(struct z_sock_ep *sep)
 {
-	int rc;
+	int rc = 0;
 	z_sock_io_thread_t thr = (z_sock_io_thread_t)sep->ep.thread;
 	if (sep->ev.events & EPOLLOUT)
 		return 0; /* already enabled */
 	DEBUG_LOG(sep, "ep: %p, Enabling EPOLLOUT\n", sep);
 	sep->ev.events = EPOLLIN|EPOLLOUT;
-	rc = epoll_ctl(thr->efd, EPOLL_CTL_MOD, sep->sock, &sep->ev);
+	if (thr)
+		rc = epoll_ctl(thr->efd, EPOLL_CTL_MOD, sep->sock, &sep->ev);
 	return rc;
 }
 
 /* caller must have sep->ep.lock held */
 static int __disable_epoll_out(struct z_sock_ep *sep)
 {
-	int rc;
+	int rc = 0;
 	z_sock_io_thread_t thr = (z_sock_io_thread_t)sep->ep.thread;
 	if ((sep->ev.events & EPOLLOUT) == 0)
 		return 0; /* already disabled */
 	DEBUG_LOG(sep, "ep: %p, Disabling EPOLLOUT\n", sep);
 	sep->ev.events = EPOLLIN;
-	rc = epoll_ctl(thr->efd, EPOLL_CTL_MOD, sep->sock, &sep->ev);
+	if (thr)
+		rc = epoll_ctl(thr->efd, EPOLL_CTL_MOD, sep->sock, &sep->ev);
 	return rc;
 }
 
@@ -1621,7 +1628,7 @@ static void sock_event(struct epoll_event *ev)
 	return;
 }
 
-static void __z_sock_conn_request(struct epoll_event *ev)
+static void __z_sock_conn_request(z_sock_io_thread_t thr, struct epoll_event *ev)
 {
 	struct z_sock_ep *sep = ev->data.ptr;
 	zap_ep_t new_ep;
@@ -1666,14 +1673,8 @@ static void __z_sock_conn_request(struct epoll_event *ev)
 	if (rc)
 		goto err_1;
 
-	zerr = zap_io_thread_ep_assign(&new_sep->ep);
-	if (zerr) {
-		/* synchronous error & app doesn't know about this new
-		 * endpoint yet ... so just log and cleanup. */
-		LOG_(sep, "zap_io_thread_ep_assign() error %d on fd %d", rc,
-					new_sep->sock);
-		goto err_1;
-	}
+	/* temporarily borrow passive thread */
+	rc = epoll_ctl(thr->efd, EPOLL_CTL_ADD, new_sep->sock, &new_sep->ev);
 
 	return;
 
@@ -1968,6 +1969,12 @@ zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 
 	/* Replace the callback with the one provided by the caller */
 	sep->ep.cb = cb;
+
+	zerr = zap_io_thread_ep_assign(&sep->ep);
+	if (zerr) {
+		LOG_(sep, "zap_io_thread_ep_assign() error %d on fd %d", zerr, sep->sock);
+		goto err_1;
+	}
 
 	zerr = __sock_send(sep, SOCK_MSG_ACCEPTED, data, data_len);
 	if (zerr)

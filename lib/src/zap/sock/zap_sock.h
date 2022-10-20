@@ -275,6 +275,8 @@ typedef struct z_sock_buff_s {
 	void *data;
 } *z_sock_buff_t;
 
+typedef struct z_sock_io_thread *z_sock_io_thread_t;
+
 struct z_sock_ep {
 	struct zap_ep ep;
 
@@ -287,7 +289,7 @@ struct z_sock_ep {
 	int app_accepted;
 
 	struct epoll_event ev;
-	void (*ev_fn)(struct epoll_event *);
+	void (*ev_fn)(struct z_sock_io_thread *, struct epoll_event *);
 	struct z_sock_buff_s buff;
 
 	pthread_mutex_t q_lock;
@@ -300,11 +302,11 @@ struct z_sock_ep {
 
 #define ZAP_SOCK_EV_SIZE 4096
 
-typedef struct z_sock_io_thread {
+struct z_sock_io_thread {
 	struct zap_io_thread zap_io_thread;
 	int efd; /* epoll fd */
 	struct epoll_event ev[ZAP_SOCK_EV_SIZE];
-} *z_sock_io_thread_t;
+};
 
 static inline struct z_sock_ep *z_sock_from_ep(zap_ep_t *ep)
 {
