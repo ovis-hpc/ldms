@@ -354,11 +354,12 @@ static int add_attr_from_attr_str(const char *name, const char *value,
 
 	/* Make sure that the buffer is large enough */
 	while (req_sz - req->rec_len < attr_sz) {
-		buf = realloc(buf, req_sz * 2);
-		if (!buf) {
-			msglog(LDMSD_LERROR, "out of memory\n", name);
+		char *tmp = realloc(buf, req_sz * 2);
+		if (!tmp) {
+			msglog(LDMSD_LERROR, "Out of memory\n", name);
 			return ENOMEM;
 		}
+		buf = tmp;
 		*request = req = (ldmsd_req_hdr_t)buf;
 		req_sz = req_sz * 2;
 	}
@@ -736,7 +737,6 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 	ldmsd_req_hdr_t req;
 	size_t req_off, remaining;
 	size_t req_hdr_sz = sizeof(struct ldmsd_req_hdr_s);
-	size_t attr_discrim_sz = sizeof(uint32_t);
 
 	errno = ENOMEM;
 	req_array = calloc(1, sizeof(*req_array) + LDMSD_REQ_ARRAY_CARD_INIT * sizeof(ldmsd_req_hdr_t));
@@ -803,12 +803,13 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 	}
 	if (rc)
 		goto err;
+	/* Add the terminating attribute */
+	rc = add_attr_from_attr_str(NULL, NULL, &ctxt.request,
+				    &ctxt.request_sz, ctxt.msglog);
+	if (rc)
+		goto err;
 
 out:
-	/*
-	 * Assume that ctxt->request does _not_ contain the terminating attribute.
-	 */
-
 	/* Make sure that all records aren't larger than xprt_max_msg. */
 	req_off = 0; /* offset from the end of the header */
 	/*
@@ -816,6 +817,17 @@ out:
 	 */
 	size_t data_len = ctxt.request->rec_len - req_hdr_sz;
 	ldmsd_hton_req_msg(ctxt.request);
+	/*
+	 * The message is chunked in multiple records if the length is larger than
+	 * the max of the transport message size. An attribute may be split
+	 * and sent separatedly in multiple records. In other words,
+	 * a record may contain an incomplete attribute. Only the last record
+	 * of a request contains the terminating attribute. The last record is
+	 * the record that the flags contain LDMSD_REQ_EOM_F, i.e.,
+	 * (req->flags & LDMSD_REQ_EOM_F != 0).
+	 *
+	 * The client must aggregate all records into a single message before processing the message.
+	 */
 	while (1) {
 		if (req_array->num_reqs == array_sz) {
 			req_array = realloc(req_array, sizeof(*req_array) +
@@ -838,13 +850,11 @@ out:
 		else
 			req->flags= 0;
 		req->rec_len = req_hdr_sz;
-		/* To guarantee that the last record will have enough space for the terminating attribute */
-		remaining = xprt_max_msg - req_hdr_sz - attr_discrim_sz;
+		remaining = xprt_max_msg - req_hdr_sz;
 		if (remaining >= data_len) {
 			/* Last record */
 			remaining = data_len;
 		}
-		/* the terminating attribute isn't copied */
 		memcpy(req + 1, &((char *)(ctxt.request + 1))[req_off], remaining);
 		req_off += remaining;
 		data_len -= remaining;
@@ -859,11 +869,6 @@ out:
 			 * This is the last record.
 			 */
 			req->flags |= htonl(LDMSD_REQ_EOM_F);
-			/*
-			 * Count the terminating attribute size toward the record length.
-			 * No need to set it to 0 because the request is allocated by using calloc.
-			 */
-			req->rec_len = htonl(ntohl(req->rec_len) + attr_discrim_sz);
 			break;
 		}
 	}
