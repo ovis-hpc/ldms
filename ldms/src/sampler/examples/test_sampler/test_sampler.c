@@ -79,6 +79,7 @@
 
 #define ARRAY_COUNT	4
 #define LIST_MAX_LENGTH 5
+#define METRIC_ATTR_DELIM ':'
 
 struct test_sampler_set {
 	char *name;
@@ -713,11 +714,10 @@ static int __parse_list_str(char *ptr, struct test_sampler_metric_info *_minfo,
 }
 
 
-static int __parse_metric_str(char *s, struct test_sampler_metric_info *_minfo,
+static int __parse_metric_str(char *s, char delim, struct test_sampler_metric_info *_minfo,
 				struct ldms_metric_template_s *_temp, int idx)
 {
 	char *name, *mtype, *vtype, *init_value, *count_str, *unit, *ptr;
-	char delim = ':';
 	int rc = 0;
 
 	struct test_sampler_metric_info *minfo = &_minfo[idx];
@@ -726,6 +726,9 @@ static int __parse_metric_str(char *s, struct test_sampler_metric_info *_minfo,
 	memset(minfo, 0, sizeof(*minfo));
 	memset(temp, 0, sizeof(*temp));
 
+	/*
+	 * <name>:<mtype>:<vtype>:...
+	 */
 	name = __strtok(s, delim, &ptr);
 	if (!name || ('\0' == name[0]))
 		return EINVAL;
@@ -761,6 +764,10 @@ static int __parse_metric_str(char *s, struct test_sampler_metric_info *_minfo,
 			return rc;
 	} else {
 		/* Primitive */
+		/*
+		 * Primitive
+		 * <name>:<mtype>:<dtype>:<init_value>:<array_len>:<unit>
+		 */
 		init_value = __strtok(NULL, delim, &ptr);
 		if (!init_value || ('\0' == init_value[0]))
 			return EINVAL;
@@ -773,7 +780,7 @@ static int __parse_metric_str(char *s, struct test_sampler_metric_info *_minfo,
 
 		unit = __strtok(NULL, delim, &ptr);
 		if (!unit || ('\0' == unit[0]))
-			unit = "unit";
+			unit = "";
 		temp->unit = strdup(unit);
 		if (!temp->unit)
 			return ENOMEM;
@@ -798,6 +805,11 @@ static int config_add_schema(struct attr_value_list *avl)
 		msglog(LDMSD_LERROR, "test_sampler: Need schema_name\n");
 		return EINVAL;
 	}
+
+	char mattr_delim = METRIC_ATTR_DELIM;
+	char *tmp = av_value(avl, "delim");
+	if (tmp)
+		mattr_delim = tmp[0];
 
 	ts_schema = test_sampler_schema_find(&schema_list, schema_name);
 	if (ts_schema) {
@@ -871,7 +883,7 @@ static int config_add_schema(struct attr_value_list *avl)
 				s = strchr(s, ']');
 			} else if (*s == ',') {
 				*s = '\0';
-				rc = __parse_metric_str(m, minfo, temp, i);
+				rc = __parse_metric_str(m, mattr_delim, minfo, temp, i);
 				if (rc)
 					goto cleanup;
 				i++;
@@ -880,7 +892,7 @@ static int config_add_schema(struct attr_value_list *avl)
 			s++;
 			if (*s == '\0') {
 				/* Last metric */
-				rc = __parse_metric_str(m, minfo, temp, i);
+				rc = __parse_metric_str(m, mattr_delim, minfo, temp, i);
 				if (rc)
 					goto cleanup;
 			}
@@ -1011,14 +1023,24 @@ static int __init_set(struct test_sampler_set *ts_set)
 	mid = ldms_metric_by_name(ts_set->set, "component_id");
 	if (mid >= 0) {
 		v.v_u64 = ts_set->compid;
-		ldms_metric_set(ts_set->set, mid, &v);
+		if (ldms_metric_is_array(ts_set->set, mid)) {
+			uint32_t count = ldms_metric_array_get_len(ts_set->set, mid);
+			ldms_metric_array_set(ts_set->set, mid, &v, 0, count);
+		} else {
+			ldms_metric_set(ts_set->set, mid, &v);
+		}
 	}
 
 
 	mid = ldms_metric_by_name(ts_set->set, LDMSD_JOBID);
 	if (mid >= 0) {
 		v.v_u64 = ts_set->jobid;
-		ldms_metric_set(ts_set->set, mid, &v);
+		if (ldms_metric_is_array(ts_set->set, mid)) {
+			uint32_t count = ldms_metric_array_get_len(ts_set->set, mid);
+			ldms_metric_array_set(ts_set->set, mid, &v, 0, count);
+		} else {
+			ldms_metric_set(ts_set->set, mid, &v);
+		}
 	}
 
 	ldms_set_producer_name_set(ts_set->set, ts_set->producer);
