@@ -1239,6 +1239,20 @@ cdef str STR(o):
         return o.decode()
     return str(o)
 
+cdef class CreditEventData(object):
+    cdef readonly uint64_t credit
+    cdef readonly int      ep_idx
+    """Data of a credit deposit event"""
+    def __cinit__(self, uint64_t credit, int ep_idx):
+        self.credit = credit
+        self.ep_idx = ep_idx
+
+    def __str__(self):
+        return f"({self.credit}, {self.ep_idx})"
+
+    def __repr__(self):
+        return str(self)
+
 
 cdef class XprtEvent(object):
     """An LDMS transport event
@@ -1253,6 +1267,7 @@ cdef class XprtEvent(object):
               - EVENT_DISCONNECTED
               - EVENT_RECV
               - EVENT_SEND_COMPLETE
+              - EVENT_SEND_CREDIT_DEPOSITED
     - `data`: a byte array containing event data
     """
 
@@ -1262,6 +1277,9 @@ cdef class XprtEvent(object):
     cdef readonly bytes data
     """A `bytes` containing event data"""
 
+    cdef readonly CreditEventData credit
+    """Current send credit (for the EVENT_SEND_CREDIT_DEPOSITED"""
+
     # NOTE: This is a Python object wrapper of `struct ldms_xprt_event`.
     #
     #       The values of the attributes are also new Python objects. So, we
@@ -1270,7 +1288,10 @@ cdef class XprtEvent(object):
     def __cinit__(self, Ptr ptr):
         cdef ldms_xprt_event_t e = <ldms_xprt_event_t>ptr.c_ptr
         self.type = ldms_xprt_event_type(e.type)
-        self.data = e.data[:e.data_len]
+        if self.type == ldms.LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED:
+            self.credit = CreditEventData(e.credit.credit, e.credit.ep_idx)
+        else:
+            self.data = e.data[:e.data_len]
 
 
 # This is the C callback function for active xprt (the one initiating connect).
@@ -1279,6 +1300,14 @@ cdef class XprtEvent(object):
 cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
     cdef Xprt x = <Xprt>arg
     cdef bytes b
+    if x.xprt:
+        if e.type == EVENT_DISCONNECTED or \
+           e.type == EVENT_REJECTED or \
+           e.type == EVENT_ERROR:
+            if x.xprt:
+                _xprt = x.xprt
+                x.xprt = NULL
+                ldms_xprt_put(_xprt)
     if x._conn_cb:
         # Call the callback
         x._conn_cb(x, XprtEvent(PTR(e)), x._conn_cb_arg)
@@ -1306,6 +1335,9 @@ cdef void xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
     elif e.type == EVENT_SEND_COMPLETE:
         # do NOT sem_post()
         return
+    elif e.type == EVENT_SEND_CREDIT_DEPOSITED:
+        # do NOT sem_post()
+        return
     else:
         raise OSError(EINVAL, "Unknown LDMS event type {}".format(e.type))
     sem_post(&x._conn_sem)
@@ -1325,9 +1357,12 @@ cdef void passive_xprt_cb(ldms_t _x, ldms_xprt_event *e, void *arg) with gil:
         x._conn_cb_arg = lx._conn_cb_arg
         lx._psv_xprts[<uint64_t>_x] = x
     if e.type == EVENT_DISCONNECTED or \
-       e.type == EVENT_REJECTED or \
        e.type == EVENT_ERROR:
         lx._psv_xprts.pop(<uint64_t>_x, None)
+        if x.xprt:
+            _xprt = x.xprt
+            x.xprt = NULL
+            ldms_xprt_put(_xprt)
     if x._conn_cb:
         # Call the callback
         x._conn_cb(x, XprtEvent(PTR(e)), x._conn_cb_arg)
@@ -1507,6 +1542,13 @@ cdef void update_cb(ldms_t _t, ldms_set_t _s, int flags, void *arg) with gil:
     s._update_rc = rc
     if 0 == (flags & LDMS_UPD_F_MORE):
         sem_post(&s._sem)
+
+cdef void push_cb(ldms_t _t, ldms_set_t _s, int flags, void *arg) with gil:
+    cdef int rc = LDMS_UPD_ERROR(flags)
+    s = <Set>arg
+    s._update_rc = rc
+    if s._push_cb:
+        s._push_cb(s, flags, s._push_cb_arg)
 
 
 cdef class RecordDef(object):
@@ -2495,6 +2537,8 @@ cdef class Set(object):
     cdef list _getter
     cdef list _setter
     cdef Schema schema
+    cdef object _push_cb
+    cdef object _push_cb_arg
 
     def __cinit__(self, *args, **kwargs):
         self.rbd = NULL
@@ -2882,6 +2926,24 @@ cdef class Set(object):
         obj = self.json_obj()
         return json.dumps(obj, indent=indent)
 
+    def register_push(self, flag = LDMS_XPRT_PUSH_F_CHANGE, cb=None, cb_arg=None):
+        cdef int rc
+        self._push_cb = cb
+        self._push_cb_arg = cb_arg
+        rc = ldms_xprt_register_push(self.rbd, flag, push_cb, <void*>self)
+        if rc: # synchronous error
+            raise RuntimeError(f"ldms_xprt_register_push() error: {rc}")
+
+    def cancel_push(self):
+        cdef int rc
+        rc = ldms_xprt_cancel_push(self.rbd)
+        if rc: # synchronous error
+            raise RuntimeError(f"ldms_xprt_cancel_push() error: {rc}")
+
+cdef void __xprt_free_cb(void* p) with gil:
+    cdef Xprt x = <Xprt>p
+    x._xprt_free_cb(x)
+    Py_DECREF(x)
 
 cdef class Xprt(object):
     """LDMS transport
@@ -2942,13 +3004,19 @@ cdef class Xprt(object):
     cdef public object _recv_queue
     cdef public object _accept_queue
 
+    cdef object _xprt_free_cb
+
     cdef public object _psv_xprts
     # _psv_xprts is a dict(ldms_t :-> Xprt). This is a work around as the newly
     # created passive endpoint inherited callback function and argument from the
     # listening endpoint and LDMS does not have a way (e.g.
     # `ldms_xprt_accept()`) to change the callback function and argument yet.
 
+    cdef int rail_eps
+
     def __init__(self, name="sock", auth="none", auth_opts=None,
+                       rail_eps = 0, rail_recv_limit = -1,
+                       rail_rate_limit = -1,
                        Ptr xprt_ptr=None):
         cdef attr_value_list *avl = NULL;
         cdef int rc;
@@ -2978,6 +3046,7 @@ cdef class Xprt(object):
         if xprt_ptr:
             # wrap the existing ldms_t and done
             self.xprt = <ldms_t>xprt_ptr.c_ptr
+            self.rail_eps = ldms_xprt_rail_eps(self.xprt)
             return
         # otherwise create new xprt with the supplied options
         if auth_opts:
@@ -2990,7 +3059,13 @@ cdef class Xprt(object):
                     av_free(avl)
                     raise OSError(rc, "av_add() error: {}"\
                                   .format(ERRNO_SYM(rc)))
-        self.xprt = ldms_xprt_new_with_auth(BYTES(name), BYTES(auth), avl)
+        self.rail_eps = rail_eps
+        if rail_eps > 0:
+            self.xprt = ldms_xprt_rail_new(BYTES(name), rail_eps,
+                                        rail_recv_limit, rail_rate_limit,
+                                        BYTES(auth), avl)
+        else:
+            self.xprt = ldms_xprt_new_with_auth(BYTES(name), BYTES(auth), avl)
         av_free(avl)
         if not self.xprt:
             raise ConnectionError(errno, "Error creating transport, errno: {}"\
@@ -3114,6 +3189,7 @@ cdef class Xprt(object):
         cdef timespec ts
         if self.xprt:
             ldms_xprt_close(self.xprt)
+            ldms_xprt_put(self.xprt)
             self.xprt = NULL
             if self._conn_cb: # has `cb` ==> asynchronous/non-blocking mode
                 return
@@ -3241,8 +3317,10 @@ cdef class Xprt(object):
         cdef int rc
         cdef int data_len = len(data)
         cdef char *c_data = data
+        rc = 0
         with nogil:
-            rc = ldms_xprt_send(self.xprt, c_data, data_len)
+            if self.xprt:
+                rc = ldms_xprt_send(self.xprt, c_data, data_len)
         if rc:
             raise ConnectionError(rc, "ldms_xprt_send() error: {}" \
                                       .format(ERRNO_SYM(rc)))
@@ -3272,4 +3350,117 @@ cdef class Xprt(object):
     @property
     def msg_max(self):
         """Maximum length of send/recv message"""
-        return ldms_xprt_msg_max(self.xprt)
+        if self.xprt:
+            return ldms_xprt_msg_max(self.xprt)
+        return 0
+
+    def get_threads(self):
+        """Get the threads associated to the endpoint"""
+        cdef pthread_t *out
+        cdef pthread_t buff
+        cdef int n, rc
+        if self.rail_eps > 0:
+            out = <pthread_t*>calloc(self.rail_eps, sizeof(pthread_t))
+            n = self.rail_eps
+        else:
+            out = &buff
+            n = 1
+        rc = ldms_xprt_get_threads(self.xprt, out, n)
+        if rc < 0:
+            if self.rail_eps > 0:
+                free(out)
+            raise RuntimeError(f"ldms_xprt_get_threads() error: {rc}")
+        lst = list()
+        for i in range(0, n):
+            lst.append(int(out[i]))
+        return lst
+
+    def set_xprt_free_cb(self, cb = None):
+        """Set a callback function in the event of the underlying transport is freed
+
+        This is used primarily for testing purposes.
+        """
+        if self._xprt_free_cb:
+            self._xprt_free_cb = None
+            Py_DECREF(self)
+        if cb is not None:
+            self._xprt_free_cb = cb
+            Py_INCREF(self)
+            ldms_xprt_ctxt_set(self.xprt, <void*>self, __xprt_free_cb)
+        else:
+            ldms_xprt_ctxt_set(self.xprt, NULL, NULL)
+
+    def get_send_credits(self):
+        if self.rail_eps <= 0:
+            raise RuntimeError("Not a rail")
+        cdef uint64_t *tmp = <uint64_t*>calloc(self.rail_eps, sizeof(uint64_t))
+        cdef int rc, i
+        if not tmp:
+            raise RuntimeError("Not enough memory")
+        rc = ldms_xprt_rail_send_credit_get(self.xprt, tmp, self.rail_eps)
+        if rc:
+            free(tmp)
+            raise RuntimeError(f"ldms_xprt_rail_send_credit_get() error: {rc}")
+        lst = list()
+        for i in range(0, self.rail_eps):
+            lst.append(tmp[i])
+        free(tmp)
+        return lst
+
+    @property
+    def send_credits(self):
+        return self.get_send_credits()
+
+
+cdef class ZapThrStat(object):
+    """Zap thread statistics information.
+
+    This is a zap_thrstat structure wrapper. To get statistics of all zap
+    threads, please call `ZapThrStat.get_result()` class method.
+    """
+    cdef readonly str      name
+    cdef readonly double   sample_count
+    cdef readonly double   sample_rate
+    cdef readonly double   utilization
+    cdef readonly int      pool_idx
+    cdef readonly uint64_t thread_id
+
+    def __cinit__(self, Ptr ptr):
+        cdef zap_thrstat_result_entry *e = <zap_thrstat_result_entry*>ptr.c_ptr
+        self.name         = STR(e.name)
+        self.sample_count = e.sample_count
+        self.sample_rate  = e.sample_rate
+        self.utilization  = e.utilization
+        self.pool_idx     = e.pool_idx
+        self.thread_id    = e.thread_id
+
+    @classmethod
+    def get_result(cls):
+        cdef int i
+        cdef zap_thrstat_result *r = zap_thrstat_get_result()
+        cdef list lst = list()
+        for i in range(0, r.count):
+            e = ZapThrStat(PTR(&r.entries[i]))
+            lst.append(e)
+        return lst
+
+    def as_list(self):
+        return (self.name, self.thread_id, self.pool_idx,
+                self.sample_count, self.sample_rate, self.utilization)
+
+    def as_dict(self):
+        keys = [ 'name', 'sample_count', 'sample_rate', 'utilization',
+                 'pool_idx', 'thread_id' ]
+        return { k : getattr(self, k) for k in keys }
+
+    def __str__(self):
+        return f"('{self.name}'" \
+               f", {hex(self.thread_id)}" \
+               f", {self.pool_idx}" \
+               f", {self.sample_count}" \
+               f", {self.sample_rate}" \
+               f", {self.utilization}" \
+               f")"
+
+    def __repr__(self):
+        return str(self)

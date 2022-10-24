@@ -257,7 +257,7 @@ zap_t zap_get(const char *name, zap_mem_info_fn_t mem_info_fn)
 	char *lib = _libpath;
 	zap_t z = NULL;
 	char *errstr;
-	int ret, len;
+	int ret, len, i;
 	void *d = NULL;
 	char *saveptr = NULL;
 	struct zap_tbl_entry *zent;
@@ -331,12 +331,18 @@ zap_t zap_get(const char *name, zap_mem_info_fn_t mem_info_fn)
 	ret = get(&z, mem_info_fn);
 	if (ret)
 		goto err1;
-
 	memcpy(z->name, name, strlen(name)+1);
+	int default_pools = sysconf(_SC_NPROCESSORS_CONF);
+	if (default_pools < 0)
+		default_pools = 8;
+	z->_n_pools = zap_env_int("ZAP_POOLS", default_pools);
+	for (i = 0; i < z->_n_pools; i++) {
+		z->_thr_pool[i].n = 0;
+		z->_thr_pool[i].idx = i;
+		LIST_INIT(&z->_thr_pool[i]._io_threads);
+	}
 	z->mem_info_fn = mem_info_fn;
-	z->_n_threads = 0;
 	pthread_mutex_init(&z->_io_mutex, NULL);
-	LIST_INIT(&z->_io_threads);
 
 	pthread_mutex_lock(&zap_list_lock);
 	zent->zap = z;
@@ -433,9 +439,15 @@ void zap_set_priority(zap_ep_t ep, int prio)
 
 zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len)
 {
+	return zap_accept2(ep, cb, data, data_len, -1);
+}
+
+zap_err_t zap_accept2(zap_ep_t ep, zap_cb_fn_t cb, char *data,
+		size_t data_len, int tpi)
+{
 	zap_err_t zerr;
 	ep->cb = cb;
-	zerr = ep->z->accept(ep, cb, data, data_len);
+	zerr = ep->z->accept(ep, cb, data, data_len, tpi);
 	return zerr;
 }
 
@@ -467,7 +479,13 @@ zap_err_t zap_connect_sync(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len,
 zap_err_t zap_connect(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len,
 		      char *data, size_t data_len)
 {
-	return ep->z->connect(ep, sa, sa_len, data, data_len);
+	return zap_connect2(ep, sa, sa_len, data, data_len, -1);
+}
+
+zap_err_t zap_connect2(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len,
+		      char *data, size_t data_len, int tpi)
+{
+	return ep->z->connect(ep, sa, sa_len, data, data_len, tpi);
 }
 
 zap_err_t zap_listen(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len)
@@ -486,6 +504,17 @@ zap_err_t zap_send(zap_ep_t ep, void *buf, size_t sz)
 	zap_err_t zerr;
 	ref_get(&ep->ref, "zap_send");
 	zerr = ep->z->send(ep, buf, sz);
+	ref_put(&ep->ref, "zap_send");
+	return zerr;
+}
+
+zap_err_t zap_send2(zap_ep_t ep, void *buf, size_t sz, void *cb_arg)
+{
+	zap_err_t zerr;
+//	zap_get_ep(ep);
+	ref_get(&ep->ref, "zap_send");
+	zerr = ep->z->send2(ep, buf, sz, cb_arg);
+//	zap_put_ep(ep);
 	ref_put(&ep->ref, "zap_send");
 	return zerr;
 }
@@ -662,7 +691,7 @@ double zap_env_dbl(char *name, double default_value)
 static zap_err_t __io_thread_cancel(zap_io_thread_t t);
 int zap_term(zap_t z, int timeout_sec)
 {
-	int tmp, i, n;
+	int tmp, i, n, j;
 	int rc = 0;
 	struct timespec ts;
 	zap_io_thread_t t;
@@ -670,8 +699,8 @@ int zap_term(zap_t z, int timeout_sec)
 
 	pthread_mutex_lock(&z->_io_mutex);
 	n = 0;
-	LIST_FOREACH(t, &z->_io_threads, _entry) {
-		n++;
+	for (i = 0; i < z->_n_pools; i++) {
+		n += z->_thr_pool[i].n;
 	}
 	thr = malloc(sizeof(*thr) * n);
 	if (!thr) {
@@ -679,9 +708,11 @@ int zap_term(zap_t z, int timeout_sec)
 		goto out;
 	}
 	i = 0;
-	while ((t = LIST_FIRST(&z->_io_threads))) {
-		thr[i++] = t->thread;
-		__io_thread_cancel(t); /* t is removed and invalidated */
+	for (j = 0; j < z->_n_pools; j++) {
+		while ((t = LIST_FIRST(&z->_thr_pool[j]._io_threads))) {
+			thr[i++] = t->thread;
+			__io_thread_cancel(t); /* t is removed and invalidated */
+		}
 	}
 	/* join */
 	for (i = 0; i < n; i++) {
@@ -733,34 +764,38 @@ static inline uint64_t timespec2usec(struct timespec *ts)
 	return ts->tv_sec*1000000 + ts->tv_nsec/1000;
 }
 
-static zap_io_thread_t __io_thread_create(zap_t z)
+static zap_io_thread_t __io_thread_create(zap_t z, struct zap_io_thread_pool_s *tp)
 {
 	/* z->_io_mutex is held by the caller */
 
 	zap_io_thread_t t;
-	if (z->_n_threads >= zap_io_max) {
+	if (tp->n >= zap_io_max) {
 		errno = EBUSY;
 		return NULL;
 	}
 	t = z->io_thread_create(z);
 	if (!t)
 		return NULL;
-	z->_n_threads++;
-	LIST_INSERT_HEAD(&z->_io_threads, t, _entry);
+	t->stat->thread_id = t->thread;
+	t->stat->pool_idx = tp->idx;
+	t->tp = tp;
+	tp->n++;
+	LIST_INSERT_HEAD(&tp->_io_threads, t, _entry);
 	return t;
 }
 
 static zap_err_t __io_thread_cancel(zap_io_thread_t t)
 {
 	/* z->_io_mutex is held by the caller */
+	struct zap_io_thread_pool_s *tp = t->tp;
 	LIST_REMOVE(t, _entry);
-	t->zap->_n_threads--;
+	tp->n--;
 	return t->zap->io_thread_cancel(t);
 }
 
 static double zap_utilization(zap_thrstat_t in, struct timespec *now);
 
-static zap_io_thread_t __zap_least_busy_thread(zap_t z, zap_ep_t ep)
+static zap_io_thread_t __zap_least_busy_thread(zap_t z, zap_ep_t ep, struct zap_io_thread_pool_s *p)
 {
 	zap_io_thread_t t = NULL, _t;
 	struct timespec now;
@@ -768,24 +803,13 @@ static zap_io_thread_t __zap_least_busy_thread(zap_t z, zap_ep_t ep)
 
 	clock_gettime(CLOCK_REALTIME, &now);
 	pthread_mutex_lock(&z->_io_mutex);
-
-	/* Reap idle threads */
-	LIST_FOREACH(_t, &z->_io_threads, _entry)
-	{
-		if (0 == _t->_n_ep) {
-			t = _t;
-			goto out;
-		}
-	}
-
-	/* Create a new thread to the limit zap_io_max */
-	t = __io_thread_create(z);
+	/* always try to create a new thread to the max; otherwise,
+	 * use the thread with the least number of endpoints. */
+	t = __io_thread_create(z, p);
 	if (t)
 		goto out;
-
-	/* Find the thread with the fewest endpoints */
-	min_ep = INT_MAX;
-	LIST_FOREACH(_t, &z->_io_threads, _entry)
+	min_ep = 0x7FFFFFFF;
+	LIST_FOREACH(_t, &p->_io_threads, _entry)
 	{
 		if (_t->_n_ep < min_ep) {
 			t = _t;
@@ -813,6 +837,8 @@ static zap_io_thread_t __zap_passive_ep_thread(zap_t z, zap_ep_t ep)
 		goto out;
 	char name[16];
 	t = z->io_thread_create(z);
+	t->stat->thread_id = t->thread;
+	t->stat->pool_idx = -1;
 	z->_passive_ep_thread = t;
 	if (t) {
 		/* append "_p" to the thread name for "passive" endpoint thread.
@@ -833,17 +859,24 @@ static zap_io_thread_t __zap_passive_ep_thread(zap_t z, zap_ep_t ep)
 	return t;
 }
 
-zap_err_t zap_io_thread_ep_assign(zap_ep_t ep)
+zap_err_t zap_io_thread_ep_assign(zap_ep_t ep, int tpi)
 {
 	zap_err_t zerr = ZAP_ERR_OK;
 	zap_t z = ep->z;
 	zap_io_thread_t t;
+	struct zap_io_thread_pool_s *tp;
 
 	if (ep->state == ZAP_EP_LISTENING) {
 		/* pasive endpoint */
 		t = __zap_passive_ep_thread(z, ep);
 	} else {
-		t = __zap_least_busy_thread(z, ep);
+		if (tpi < 0){
+			/* TODO round robin? */
+			tpi = 0;
+		}
+		tpi %= z->_n_pools;
+		tp = &z->_thr_pool[tpi];
+		t = __zap_least_busy_thread(z, ep, tp);
 	}
 
 	if (!t) {
@@ -1081,6 +1114,8 @@ struct zap_thrstat_result *zap_thrstat_get_result()
 		res->entries[i].utilization = zap_thrstat_get_utilization(t);
 		res->entries[i].n_eps = t->n_eps;
 		res->entries[i].sq_sz = t->sq_sz;
+		res->entries[i].thread_id = t->thread_id;
+		res->entries[i].pool_idx = t->pool_idx;
 		i += 1;
 	}
 out:
@@ -1100,19 +1135,27 @@ void zap_thrstat_free_result(struct zap_thrstat_result *res)
 	free(res);
 }
 
+pthread_t zap_ep_thread(zap_ep_t ep)
+{
+	return ep->thread?ep->thread->thread:0;
+}
+
 static int zap_initialized = 0;
 
 static void zap_atfork()
 {
 	__atomic_store_n(&zap_initialized, 0, __ATOMIC_SEQ_CST);
 	zap_t z;
+	int i;
 	zap_io_thread_t t;
 	/* notify zap plugins to cleanup the lingering thread resources */
 	pthread_mutex_lock(&zap_list_lock);
 	LIST_FOREACH(z, &zap_list, zap_link) {
 		pthread_mutex_lock(&z->_io_mutex);
-		while ((t = LIST_FIRST(&z->_io_threads))) {
-			__io_thread_cancel(t);
+		for (i = 0; i < z->_n_pools; i++) {
+			while ((t = LIST_FIRST(&z->_thr_pool[i]._io_threads))) {
+				__io_thread_cancel(t);
+			}
 		}
 		pthread_mutex_unlock(&z->_io_mutex);
 	}

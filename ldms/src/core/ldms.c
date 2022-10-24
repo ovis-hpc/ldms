@@ -727,11 +727,6 @@ void *_open_and_map_file(const char *path, int type, int create, size_t *size)
 	return p;
 }
 
-void ldms_xprt_stats(ldms_t _x, ldms_xprt_stats_t stats)
-{
-	*stats = _x->stats;
-}
-
 static void sync_update_cb(ldms_t x, ldms_set_t s, int status, void *arg)
 {
 	ldms_set_t *ps = arg;
@@ -741,9 +736,9 @@ static void sync_update_cb(ldms_t x, ldms_set_t s, int status, void *arg)
 	sem_post(&x->sem);
 }
 
-int ldms_xprt_update(struct ldms_set *set, ldms_update_cb_t cb, void *arg)
+int __ldms_xprt_update(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void *arg)
 {
-	ldms_t xprt = ldms_xprt_get(set->xprt);
+	ldms_t xprt = ldms_xprt_get(x);
 	int rc;
 
 	assert(set);
@@ -773,6 +768,12 @@ int ldms_xprt_update(struct ldms_set *set, ldms_update_cb_t cb, void *arg)
 	}
 	ldms_xprt_put(xprt);
 	return rc;
+}
+
+int ldms_xprt_update(struct ldms_set *set, ldms_update_cb_t cb, void *arg)
+{
+	ldms_t x = set->xprt;
+	return x->ops.update(x, set, cb, arg);
 }
 
 void __ldms_set_on_xprt_term(ldms_set_t set, ldms_t xprt)
@@ -929,44 +930,6 @@ void ldms_set_put(ldms_set_t s)
 	if (!s)
 		return;
 	ref_put(&s->ref, "__ldms_find_local_set");
-}
-
-static  void sync_lookup_cb(ldms_t x, enum ldms_lookup_status status, int more,
-			    ldms_set_t s, void *arg)
-{
-	ldms_set_t *ps = arg;
-	x->sem_rc = status;
-	if (ps)
-		*ps = s;
-	sem_post(&x->sem);
-}
-
-int ldms_xprt_lookup(ldms_t x, const char *path, enum ldms_lookup_flags flags,
-		     ldms_lookup_cb_t cb, void *cb_arg)
-{
-	int rc;
-	if ((flags & !cb)
-	    || strlen(path) > LDMS_LOOKUP_PATH_MAX)
-		return EINVAL;
-	if (!cb) {
-		rc = __ldms_remote_lookup(x, path, flags, sync_lookup_cb, cb_arg);
-		if (rc)
-			return rc;
-		sem_wait(&x->sem);
-		rc = x->sem_rc;
-	} else
-		rc = __ldms_remote_lookup(x, path, flags, cb, cb_arg);
-	return rc;
-}
-
-int ldms_xprt_dir(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags)
-{
-	return __ldms_remote_dir(x, cb, cb_arg, flags);
-}
-
-int ldms_xprt_dir_cancel(ldms_t x)
-{
-	return __ldms_remote_dir_cancel(x);
 }
 
 char *_create_path(const char *set_name)
@@ -3560,19 +3523,6 @@ int ldms_set_is_consistent(ldms_set_t s)
 {
 	struct ldms_data_hdr *dh = s->data;
 	return (dh->trans.flags == LDMS_TRANSACTION_END);
-}
-
-void ldms_xprt_cred_get(ldms_t x, ldms_cred_t lcl, ldms_cred_t rmt)
-{
-	if (lcl) {
-		lcl->uid = x->luid;
-		lcl->gid = x->lgid;
-	}
-
-	if (rmt) {
-		rmt->uid = x->ruid;
-		rmt->gid = x->rgid;
-	}
 }
 
 void ldms_local_cred_get(ldms_t x, ldms_cred_t lcl)

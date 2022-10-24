@@ -1191,7 +1191,7 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 
 static zap_err_t z_ugni_connect(zap_ep_t ep,
 				struct sockaddr *sa, socklen_t sa_len,
-				char *data, size_t data_len)
+				char *data, size_t data_len, int tpi)
 {
 	int rc;
 	zap_err_t zerr;
@@ -1248,7 +1248,7 @@ static zap_err_t z_ugni_connect(zap_ep_t ep,
 	uep->ev.events = EPOLLIN|EPOLLOUT;
 	uep->ev.data.ptr = &uep->sock_epoll_ctxt;
 
-	zerr = zap_io_thread_ep_assign(&uep->ep);
+	zerr = zap_io_thread_ep_assign(&uep->ep, tpi);
 	if (zerr)
 		goto err_1;
 
@@ -1643,7 +1643,7 @@ static zap_err_t z_ugni_listen(zap_ep_t ep, struct sockaddr *sa,
 	uep->ev.events = EPOLLIN;
 	uep->ev.data.ptr = &uep->sock_epoll_ctxt;
 
-	zerr = zap_io_thread_ep_assign(&uep->ep);
+	zerr = zap_io_thread_ep_assign(&uep->ep, -1);
 	if (zerr)
 		goto err_1;
 
@@ -1689,7 +1689,7 @@ z_ugni_send_mapped(zap_ep_t ep, zap_map_t map, void *buf, size_t len,
 	return zerr;
 }
 
-static zap_err_t z_ugni_send(zap_ep_t ep, char *buf, size_t len)
+static zap_err_t z_ugni_send2(zap_ep_t ep, char *buf, size_t len, void *cb_arg)
 {
 	struct z_ugni_ep *uep = (void*)ep;
 	zap_err_t zerr;
@@ -1711,9 +1711,14 @@ static zap_err_t z_ugni_send(zap_ep_t ep, char *buf, size_t len)
 	}
 	memset(&msg, 0, sizeof(msg));
 	msg.hdr.msg_type = htons(ZAP_UGNI_MSG_REGULAR);
-	zerr = z_ugni_msg_send(uep, &msg, buf, len, NULL);
+	zerr = z_ugni_msg_send(uep, &msg, buf, len, cb_arg);
 	EP_UNLOCK(uep);
 	return zerr;
+}
+
+static zap_err_t z_ugni_send(zap_ep_t ep, char *buf, size_t len)
+{
+	return z_ugni_send2(ep, buf, len, NULL);
 }
 
 static uint8_t __get_ptag()
@@ -2244,7 +2249,7 @@ static void z_ugni_destroy(zap_ep_t ep)
 	free(ep);
 }
 
-zap_err_t z_ugni_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len)
+zap_err_t z_ugni_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len, int tpi)
 {
 	/* ep is the newly created ep from __z_ugni_conn_request */
 	struct z_ugni_ep *uep = (struct z_ugni_ep *)ep;
@@ -2262,7 +2267,7 @@ zap_err_t z_ugni_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 		goto out;
 	}
 
-	rc = zap_io_thread_ep_assign(ep);
+	rc = zap_io_thread_ep_assign(ep, tpi);
 	if (rc) {
 		zerr = ZAP_ERR_RESOURCE;
 		EP_UNLOCK(uep);
@@ -3924,6 +3929,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_mem_info_fn_t mem_info_fn)
 	z->listen = z_ugni_listen;
 	z->close = z_ugni_close;
 	z->send = z_ugni_send;
+	z->send2 = z_ugni_send2;
 	z->send_mapped = z_ugni_send_mapped;
 	z->read = z_ugni_read;
 	z->write = z_ugni_write;

@@ -999,13 +999,13 @@ static void submit_pending(struct z_rdma_ep *rep)
 }
 
 /* caller must NOT hold rep->ep.lock */
-static zap_err_t __rdma_post_send(struct z_rdma_ep *rep, struct z_rdma_buffer *rbuf)
+static zap_err_t __rdma_post_send(struct z_rdma_ep *rep, struct z_rdma_buffer *rbuf, void *cb_arg)
 {
 	int rc;
 
 	pthread_mutex_lock(&rep->ep.lock);
 	struct z_rdma_context *ctxt =
-		__rdma_context_alloc(rep, NULL, IBV_WC_SEND, rbuf);
+		__rdma_context_alloc(rep, cb_arg, IBV_WC_SEND, rbuf);
 	if (!ctxt) {
 		errno = ENOMEM;
 		pthread_mutex_unlock(&rep->ep.lock);
@@ -1077,7 +1077,7 @@ static zap_err_t z_rdma_close(zap_ep_t ep)
 
 static zap_err_t z_rdma_connect(zap_ep_t ep,
 				struct sockaddr *sin, socklen_t sa_len,
-				char *data, size_t data_len)
+				char *data, size_t data_len, int tpi)
 {
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	zap_err_t zerr;
@@ -1099,7 +1099,7 @@ static zap_err_t z_rdma_connect(zap_ep_t ep,
 	if (zerr)
 		goto err_0;
 
-	zerr = zap_io_thread_ep_assign(ep); /* also assign rep->cm_channel */
+	zerr = zap_io_thread_ep_assign(ep, tpi); /* also assign rep->cm_channel */
 	if (zerr)
 		goto err_0;
 
@@ -1448,7 +1448,7 @@ static zap_err_t z_rdma_reject(zap_ep_t ep, char *data, size_t data_len)
 }
 
 static zap_err_t z_rdma_accept(zap_ep_t ep, zap_cb_fn_t cb,
-				char *data, size_t data_len)
+				char *data, size_t data_len, int tpi)
 {
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	struct rdma_conn_param conn_param;
@@ -1474,7 +1474,7 @@ static zap_err_t z_rdma_accept(zap_ep_t ep, zap_cb_fn_t cb,
 
 	ref_get(&rep->ep.ref, "accept/connect"); /* Release when disconnected */
 
-	ret = zap_io_thread_ep_assign(ep);
+	ret = zap_io_thread_ep_assign(ep, tpi);
 	if (ret)
 		goto err_0;
 
@@ -2053,7 +2053,7 @@ z_rdma_listen(zap_ep_t ep, struct sockaddr *sin, socklen_t sa_len)
 		goto out;
 	}
 
-	zerr = zap_io_thread_ep_assign(ep);
+	zerr = zap_io_thread_ep_assign(ep, -1);
 	if (zerr) {
 		LOG("%s: thread assignment failed. zerr %d\n", __func__, zerr);
 		goto err_0;
@@ -2194,7 +2194,7 @@ static zap_err_t z_get_name(zap_ep_t ep, struct sockaddr *local_sa,
 	return ZAP_ERR_OK;
 }
 
-static zap_err_t z_rdma_send(zap_ep_t ep, char *buf, size_t len)
+static zap_err_t z_rdma_send2(zap_ep_t ep, char *buf, size_t len, void *cb_arg)
 {
 	struct z_rdma_ep *rep = (struct z_rdma_ep *)ep;
 	struct z_rdma_message_hdr *hdr;
@@ -2225,17 +2225,23 @@ static zap_err_t z_rdma_send(zap_ep_t ep, char *buf, size_t len)
 	memcpy(rbuf->msg->bytes+sizeof(struct z_rdma_message_hdr), buf, len);
 	rbuf->data_len = len + sizeof(struct z_rdma_message_hdr);
 
-	rc = __rdma_post_send(rep, rbuf);
+	rc = __rdma_post_send(rep, rbuf, cb_arg);
 	if (rc) {
 		pthread_mutex_lock(&rep->ep.lock);
-		__rdma_buffer_free(rbuf);
-		pthread_mutex_unlock(&rep->ep.lock);
+		goto err_1;
 	}
 
 	return rc;
+ err_1:
+	__rdma_buffer_free(rbuf);
  out:
 	pthread_mutex_unlock(&rep->ep.lock);
 	return rc;
+}
+
+static zap_err_t z_rdma_send(zap_ep_t ep, char *buf, size_t len)
+{
+	return z_rdma_send2(ep, buf, len, NULL);
 }
 
 static zap_err_t z_rdma_send_mapped(zap_ep_t ep, zap_map_t map, void *buf,
@@ -2370,7 +2376,7 @@ static zap_err_t z_rdma_share(zap_ep_t ep, zap_map_t map,
 
 	rbuf->data_len = sz;
 
-	rc = __rdma_post_send(rep, rbuf);
+	rc = __rdma_post_send(rep, rbuf, NULL);
 	if (rc) {
 		pthread_mutex_lock(&rep->ep.lock);
 		__rdma_buffer_free(rbuf);
@@ -2845,6 +2851,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_mem_info_fn_t mem_info_fn)
 	z->listen = z_rdma_listen;
 	z->close = z_rdma_close;
 	z->send = z_rdma_send;
+	z->send2 = z_rdma_send2;
 	z->send_mapped = z_rdma_send_mapped;
 	z->read = z_rdma_read;
 	z->write = z_rdma_write;

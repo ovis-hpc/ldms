@@ -121,6 +121,7 @@ enum ldms_request_cmd {
 	LDMS_CMD_CANCEL_PUSH,
 	LDMS_CMD_AUTH,
 	LDMS_CMD_SET_DELETE,
+	LDMS_CMD_SEND_CREDIT, /* for updaing send credit */
 	LDMS_CMD_REPLY = 0x100,
 	LDMS_CMD_DIR_REPLY,
 	LDMS_CMD_DIR_CANCEL_REPLY,
@@ -141,9 +142,24 @@ struct ldms_conn_msg {
 	char auth_name[LDMS_AUTH_NAME_MAX + 1];
 };
 
+enum ldms_conn_type {
+	LDMS_CONN_TYPE_XPRT = 0,
+	LDMS_CONN_TYPE_RAIL,
+};
+
+struct ldms_conn_msg2 {
+	struct ldms_version ver;
+	char auth_name[LDMS_AUTH_NAME_MAX + 1];
+	enum ldms_conn_type conn_type;
+};
+
 struct ldms_send_cmd_param {
 	uint32_t msg_len;
 	char msg[OVIS_FLEX];
+};
+
+struct ldms_send_credit_param {
+	uint32_t send_credit;
 };
 
 struct ldms_lookup_cmd_param {
@@ -184,6 +200,7 @@ struct ldms_request {
 	struct ldms_request_hdr hdr;
 	union {
 		struct ldms_send_cmd_param send;
+		struct ldms_send_credit_param send_credit;
 		struct ldms_dir_cmd_param dir;
 		struct ldms_set_delete_cmd_param set_delete;
 		struct ldms_lookup_cmd_param lookup;
@@ -333,17 +350,64 @@ struct ldms_context {
 
 #define LDMS_MAX_TRANSPORT_NAME_LEN 16
 
+typedef enum ldms_xtype_e {
+	/* legacy xprt */
+	LDMS_XTYPE_ACTIVE_XPRT  = 0x0,
+	LDMS_XTYPE_PASSIVE_XPRT = 0x1,
+	/* rail */
+	LDMS_XTYPE_ACTIVE_RAIL  = 0x2,
+	LDMS_XTYPE_PASSIVE_RAIL = 0x3,
+} ldms_xtype_t;
+
+#define XTYPE_IS_PASSIVE(t) ((t) & 0x1)
+#define XTYPE_IS_LEGACY(t) (((t) & (~0x1)) == 0)
+#define XTYPE_IS_RAIL(t) ((t) & 0x2)
+
+struct ldms_xprt_ops_s {
+	int (*connect)(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
+			ldms_event_cb_t cb, void *cb_arg);
+	int (*is_connected)(struct ldms_xprt *x);
+	int (*listen)(ldms_t x, struct sockaddr *sa, socklen_t sa_len,
+		ldms_event_cb_t cb, void *cb_arg);
+	int (*sockaddr)(ldms_t x, struct sockaddr *local_sa,
+		       struct sockaddr *remote_sa,
+		       socklen_t *sa_len);
+	void (*close)(ldms_t x);
+	int (*send)(ldms_t x, char *msg_buf, size_t msg_len);
+	size_t (*msg_max)(ldms_t x);
+	int (*dir)(ldms_t x, ldms_dir_cb_t cb, void *cb_arg, uint32_t flags);
+	int (*dir_cancel)(ldms_t x);
+	int (*lookup)(ldms_t t, const char *name, enum ldms_lookup_flags flags,
+		       ldms_lookup_cb_t cb, void *cb_arg);
+	void (*stats)(ldms_t x, ldms_xprt_stats_t stats);
+
+	ldms_t (*get)(ldms_t x); /* ref get */
+	void (*put)(ldms_t x); /* ref put */
+	void (*ctxt_set)(ldms_t x, void *ctxt, app_ctxt_free_fn fn);
+	void *(*ctxt_get)(ldms_t x);
+	uint64_t (*conn_id)(ldms_t x);
+	const char *(*type_name)(ldms_t x);
+	void (*priority_set)(ldms_t x, int prio);
+	void (*cred_get)(ldms_t x, ldms_cred_t lcl, ldms_cred_t rmt);
+	int (*update)(ldms_t x, struct ldms_set *set, ldms_update_cb_t cb, void *arg);
+
+	int (*get_threads)(ldms_t x, pthread_t *out, int n);
+};
+
 struct ldms_xprt {
+	enum ldms_xtype_e xtype;
+	struct ldms_xprt_ops_s ops;
+
+	/* Semaphore and return code for synchronous xprt calls */
+	sem_t sem;
+	int sem_rc;
+
 	char name[LDMS_MAX_TRANSPORT_NAME_LEN];
 	uint32_t ref_count;
 	pthread_mutex_t lock;
 	int disconnected;
 	zap_err_t zerrno;
 	struct ldms_xprt_stats stats;
-
-	/* Semaphore and return code for synchronous xprt calls */
-	sem_t sem;
-	int sem_rc;
 
 	/* Maximum size of the underlying transport send/recv message */
 	int max_msg;
