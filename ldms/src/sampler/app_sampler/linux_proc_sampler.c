@@ -60,6 +60,7 @@
 #include <dirent.h>
 #include <ctype.h>
 #include <assert.h>
+#include <sys/sysmacros.h>
 
 #include <coll/rbt.h>
 
@@ -2795,11 +2796,10 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 	}
 
 	char path[PROCPID_SZ];
-	char dname[PROCPID_SZ];
+	char dname[PATH_MAX];
 	int blen;
 	char buf[BUFMAX];
 	DIR *dir;
-	struct dirent enttmp;
 	struct dirent *dent;
 	snprintf(path, sizeof(path), "/proc/%" PRId64 "/fd",
 		app_set->key.os_pid);
@@ -2810,14 +2810,12 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 	}
 	errno = 0;
 	long n;
-	int rc;
 	char *endptr;
 	struct fentry *fe;
-	while ( (rc = readdir_r(dir, &enttmp, &dent)),
-			(rc == 0 && dent != NULL)) {
+	while ((dent = readdir(dir))) {
 		fe = NULL;
 		buf[0] = '\0';
-		n = strtol(enttmp.d_name, &endptr, 10);
+		n = strtol(dent->d_name, &endptr, 10);
 		if (endptr && (endptr[0] != '\0')) {
 			/* This is not a file descriptor, e.g., '.' and '..' */
 			continue;
@@ -2827,12 +2825,12 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 			fe = container_of(nalready, struct fentry, fn_rbn);
 			/* the file descriptor will not change what file it points
 			 * to without a change of inode # in the symlink. */
-			if (fe->l_ino == enttmp.d_ino) {
+			if (fe->l_ino == dent->d_ino) {
 				fe->seen = 1;
 				continue;
 			}
 			/* recycle fe */
-			fe->l_ino = enttmp.d_ino;
+			fe->l_ino = dent->d_ino;
 			if (!fe->ignore) {
 				dfe = calloc(1, sizeof(*dfe));
 				if (!dfe) {
@@ -2849,7 +2847,7 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 			fe->name = NULL;
 		}
 		buf[0] = '\0';
-		snprintf(dname, PROCPID_SZ, "%s/%s", path, enttmp.d_name);
+		snprintf(dname, sizeof(dname), "%s/%s", path, dent->d_name);
 		blen = readlink(dname, buf, BUFMAX);
 		if (blen < 0 || blen == BUFMAX) /* file closed or too big */
 			continue;
@@ -2861,7 +2859,7 @@ static int publish_fd_pid(linux_proc_sampler_inst_t inst, struct linux_proc_samp
 				continue;
 			}
 			fe->l_fd = n;
-			fe->l_ino = enttmp.d_ino;
+			fe->l_ino = dent->d_ino;
 			fe->pid = app_set->key.os_pid;
 			rbn_init(&(fe->fn_rbn), (void*)(&fe->l_fd));
 			rbt_ins(&app_set->fn_rbt, &(fe->fn_rbn));
