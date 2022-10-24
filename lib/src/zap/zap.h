@@ -440,6 +440,9 @@ int zap_ep_listening(zap_ep_t ep);
 zap_err_t zap_connect(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len,
 		      char *data, size_t data_len);
 
+zap_err_t zap_connect2(zap_ep_t ep, struct sockaddr *sa, socklen_t sa_len,
+		      char *data, size_t data_len, int tpi);
+
 /**
  * A syncrhonous version of ::zap_connect()
  *
@@ -484,6 +487,25 @@ zap_err_t zap_connect_by_name(zap_ep_t ep, const char *host_port, const char *po
  * \return !0	A Zap error code. See zap_err_t.
  */
 zap_err_t zap_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len);
+
+/**
+ * \brief Same as \c zap_accept(), but with thread pool index.
+ *
+ * The endpoint is assigned a thread in connect or accept steps. The thread pool
+ * index (\c tpi) instructs zap library to pick a thread from the specified
+ * thread pool. Hence, if two endpoints have different \c tpi, they are
+ * guaranteed to be on different threads. This feature is used by ldms_rail.
+ *
+ * \param ep	The endpoint handle.
+ * \param cb	Pointer to a function to receive asynchronous events on the endpoint.
+ * \param data	Pointer to connection data.
+ * \param data_len The size of the connection data in bytes.
+ * \param tpi   The thread pool index.
+ *
+ * \retval 0        If success, or
+ * \retval zap_err  Error code describing the error.
+ */
+zap_err_t zap_accept2(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len, int tpi);
 
 /** \brief Return the local and remote addresses for an endpoint.
  *
@@ -578,6 +600,18 @@ zap_err_t zap_close(zap_ep_t ep);
  *		reason for failure.
  */
 zap_err_t zap_send(zap_ep_t ep, void *buf, size_t sz);
+
+/**
+ * \brief Like \c zap_send(), but with \c cb_arg for * ZAP_EVENT_SEND_COMPLETE event.
+ *
+ * \param ep	The endpoint handle
+ * \param buf	Pointer to the buffer to send
+ * \param sz	The number of bytes from the buffer to send
+ * \param cb_arg The callback argument for ZAP_EVENT_SEND_COMPLETE
+ * \retval ZAP_ERR_OK If success, or
+ * \retval zap_err    value indicating the reason for failure.
+ */
+zap_err_t zap_send2(zap_ep_t ep, void *buf, size_t sz, void *cb_arg);
 
 /**
  * \brief Send data to peer using map.
@@ -833,6 +867,8 @@ struct zap_thrstat_result_entry {
 	double utilization;		/*< The thread utilization */
 	uint64_t n_eps;			/*< Number of endpoints */
 	uint64_t sq_sz;			/*< Send queue size */
+	int pool_idx;			/*< Thread pool index */
+	uint64_t thread_id;		/*< The thread ID (pthread_t) */
 };
 
 struct zap_thrstat_result {
@@ -881,5 +917,12 @@ static inline int64_t zap_timespec_diff_us(struct timespec *start, struct timesp
 	nsecs = end->tv_nsec - start->tv_nsec;
 	return (secs_ns + nsecs) / 1000;
 }
+
+/**
+ * Get the IO thread associated with the endpoint.
+ *
+ * \retval thread_id The thread ID associated to the endpoint
+ */
+pthread_t zap_ep_thread(zap_ep_t ep);
 
 #endif

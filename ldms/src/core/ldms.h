@@ -639,6 +639,24 @@ ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
 			       struct attr_value_list *auth_av_list);
 
 /**
+ * \brief Create a new LDMS Rail handle.
+ *
+ * \param xprt_name The transport type name string.
+ * \param n The number of endpoints in the rail.
+ * \param recv_limit Our recv buffer limit in bytes, -1 for unlimited.
+ * \param rate_limit Our transfer rate limit in bytes per second.
+ * \param auth_name The authentication plugin name (e.g. munge).
+ * \param auth_av_list The options for the authentication.
+ *
+ * \retval rail The rail handle, if there is no error.
+ * \retval NULL If there is an error. \c errno is set to describe the error.
+ */
+ldms_t ldms_xprt_rail_new(const char *xprt_name,
+			  int n, int64_t recv_limit, int32_t rate_limit,
+			  const char *auth_name,
+			  struct attr_value_list *auth_av_list);
+
+/**
  * \brief Set application's context
  *
  * LDMS calls the given function \c fn to free the context when the reference
@@ -703,12 +721,19 @@ enum ldms_xprt_event_type {
 	LDMS_XPRT_EVENT_SET_DELETE,
 	/*! A send request is completed */
 	LDMS_XPRT_EVENT_SEND_COMPLETE,
+	/*! The send credit is deposited.  */
+	LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED,
 	LDMS_XPRT_EVENT_LAST
 };
 
 struct ldms_xprt_set_delete_data {
 	ldms_set_t set;		/*! The local set looked up at peer */
 	const char *name;	/*! The name of the set */
+};
+
+struct ldms_xprt_credit_event_data {
+	uint64_t credit; /* current credit */
+	int      ep_idx; /* the index of the endpoint in the rail */
 };
 
 typedef struct ldms_xprt_event {
@@ -724,6 +749,7 @@ typedef struct ldms_xprt_event {
 		 */
 		char *data;
 		struct ldms_xprt_set_delete_data set_delete;
+		struct ldms_xprt_credit_event_data credit;
 	};
 	size_t data_len;
 } *ldms_xprt_event_t;
@@ -877,6 +903,67 @@ extern int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len);
  * \retval sz The maximum message size.
  */
 size_t ldms_xprt_msg_max(ldms_t x);
+
+
+/**
+ * \brief Get the threads associated with the xprt.
+ *
+ * \param x   The transport handle.
+ * \param out The buffer array to store the results.
+ * \param n   The length of the buffer array \c out.
+ *
+ * \retval N  A positive integer indicating the number of elemnts in \c out that
+ *            has been written.
+ * \retval -EINVAL if \c n <= 0
+ * \retval -ENOMEM if the buffer is to small.
+ */
+int ldms_xprt_get_threads(ldms_t x, pthread_t *out, int n);
+
+/**
+ * \brief Check if \c x is a rail.
+ *
+ * \param x  The transport handle.
+ *
+ * \retval 1 If \c x is a rail.
+ * \retval 0 If \c x is not a rail.
+ */
+int ldms_xprt_is_rail(ldms_t x);
+
+/**
+ * \brief Check if the remote peer is also using a rail transport.
+ *
+ * \param x  The transport handle.
+ *
+ * \retval 1 If the remote peer of \c x is a rail.
+ * \retval 0 If the remote peer of \c x is not a rail.
+ */
+int ldms_xprt_is_remote_rail(ldms_t x);
+
+
+/**
+ * \brief Get the number of endpoints in the rail \c x.
+ *
+ * \param x The rail transport handle.
+ *
+ * \retval N       The number of endpoints in the rail.
+ * \retval -EINVAL If \c x is not a rail.
+ */
+int ldms_xprt_rail_eps(ldms_t x);
+
+/**
+ * \brief Get the send credit
+ *
+ * \param[in]  x       The rail transport handle.
+ * \param[out] credits The array to receive the send-credit for each endpoint in
+ *                     the rail.
+ * \param[in]  n       The size of \c credits array. Must be greater than the
+ *                     number of endpoints in the rail.
+ *
+ * \retval       0 If there is no error.
+ * \retval -EINVAL If \c x is not a rail.
+ * \retval -ENOMEM If \c n is less than the number of endpoints in the rail.
+ */
+int ldms_xprt_rail_send_credit_get(ldms_t x, uint64_t *credits, int n);
 
 /** \} */
 

@@ -208,6 +208,7 @@ cdef extern from "ldms.h" nogil:
         EVENT_DISCONNECTED  "LDMS_XPRT_EVENT_DISCONNECTED"
         EVENT_RECV          "LDMS_XPRT_EVENT_RECV"
         EVENT_SEND_COMPLETE "LDMS_XPRT_EVENT_SEND_COMPLETE"
+        EVENT_SEND_CREDIT_DEPOSITED "LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED"
         EVENT_LAST          "LDMS_XPRT_EVENT_LAST"
         LDMS_XPRT_EVENT_CONNECTED
         LDMS_XPRT_EVENT_REJECTED
@@ -215,11 +216,18 @@ cdef extern from "ldms.h" nogil:
         LDMS_XPRT_EVENT_DISCONNECTED
         LDMS_XPRT_EVENT_RECV
         LDMS_XPRT_EVENT_SEND_COMPLETE
+        LDMS_XPRT_EVENT_SEND_CREDIT_DEPOSITED
         LDMS_XPRT_EVENT_LAST
+    cdef struct ldms_xprt_credit_event_data:
+        uint64_t credit
+        int      ep_idx
     cdef struct ldms_xprt_event:
         ldms_xprt_event_type type
-        char *data
         size_t data_len
+        # data, and credit are in union. Cython doesn't care. It just want to
+        # know the names of the "fields" it can access in C code.
+        char *data
+        ldms_xprt_credit_event_data credit
     ctypedef ldms_xprt_event *ldms_xprt_event_t
     ctypedef void (*ldms_event_cb_t)(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 
@@ -227,12 +235,19 @@ cdef extern from "ldms.h" nogil:
     ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
                                    const char *auth_name,
                                    attr_value_list *auth_av_list)
+    ldms_t ldms_xprt_rail_new(const char *xprt_name,
+			  int n, int64_t recv_limit, int32_t rate_limit,
+			  const char *auth_name,
+			  attr_value_list *auth_av_list)
     void ldms_xprt_put(ldms_t x)
     void ldms_xprt_close(ldms_t x)
     int ldms_xprt_connect_by_name(ldms_t x, const char *host, const char *port,
                                   ldms_event_cb_t cb, void *cb_arg)
     int ldms_xprt_listen_by_name(ldms_t x, const char *host, const char *port,
                                  ldms_event_cb_t cb, void *cb_arg)
+
+    ctypedef void (*app_ctxt_free_fn)(void *ctxt)
+    void ldms_xprt_ctxt_set(ldms_t x, void *ctxt, app_ctxt_free_fn fn)
 
     # --- dir operation related --- #
     struct ldms_key_value_s:
@@ -302,6 +317,11 @@ cdef extern from "ldms.h" nogil:
 		         ldms_lookup_cb_t cb, void *cb_arg)
     int ldms_xprt_send(ldms_t x, char *msg_buf, size_t msg_len)
     size_t ldms_xprt_msg_max(ldms_t x)
+    ctypedef uint64_t pthread_t
+    int ldms_xprt_get_threads(ldms_t x, pthread_t *out, int n)
+    int ldms_xprt_is_rail(ldms_t x)
+    int ldms_xprt_rail_eps(ldms_t x)
+    int ldms_xprt_rail_send_credit_get(ldms_t x, uint64_t *credits, int n)
 
     # --- set related --- #
     ldms_set_t ldms_set_by_name(const char *set_name)
@@ -353,8 +373,13 @@ cdef extern from "ldms.h" nogil:
         LDMS_UPD_F_PUSH_LAST
         LDMS_UPD_F_MORE
         LDMS_UPD_ERROR_MASK
+        LDMS_XPRT_PUSH_F_CHANGE "LDMS_XPRT_PUSH_F_CHANGE"
     int LDMS_UPD_ERROR(int flags)
     int ldms_xprt_update(ldms_set_t s, ldms_update_cb_t update_cb, void *arg)
+    int ldms_xprt_register_push(ldms_set_t s, int push_flags,
+				ldms_update_cb_t cb_fn, void *cb_arg)
+    int ldms_xprt_cancel_push(ldms_set_t s)
+
     cpdef enum ldms_value_type:
         V_NONE        "LDMS_V_NONE"
         V_CHAR        "LDMS_V_CHAR"
@@ -622,6 +647,20 @@ cdef extern from "ldms.h" nogil:
     ldms_mval_t ldms_record_array_get_inst(ldms_mval_t rec_array, int idx);
     int ldms_record_array_len(ldms_mval_t rec_array)
 
+cdef extern from "zap/zap.h" nogil:
+    struct zap_thrstat_result_entry:
+        char *name
+        double sample_count
+        double sample_rate
+        double utilization
+        uint64_t n_eps
+        uint64_t sq_sz
+        int pool_idx
+        uint64_t thread_id
+    struct zap_thrstat_result:
+        int count
+        zap_thrstat_result_entry entries[0]
+    zap_thrstat_result *zap_thrstat_get_result()
 
 cdef extern from "asm/byteorder.h" nogil:
     uint16_t __le16_to_cpu(uint16_t)

@@ -238,4 +238,7 @@ void __ldms_xprt_on_set_del(ldms_t xprt, ldms_set_t set);
 void __ldms_set_on_xprt_term(ldms_set_t set, ldms_t xprt);
 void __ldms_set_delete(ldms_set_t s, int notify);
 
+ldms_t __ldms_xprt_new_with_auth(const char *xprt_name,
+			       const char *auth_name,
+			       struct attr_value_list *auth_av_list);
 #endif

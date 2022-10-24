@@ -375,7 +375,7 @@ static int __set_sock_opts(struct z_sock_ep *sep)
 
 static zap_err_t z_sock_connect(zap_ep_t ep,
 				struct sockaddr *sa, socklen_t sa_len,
-				char *data, size_t data_len)
+				char *data, size_t data_len, int tpi)
 {
 	int rc;
 	zap_err_t zerr;
@@ -419,7 +419,7 @@ static zap_err_t z_sock_connect(zap_ep_t ep,
 	sep->ev.data.ptr = sep;
 	sep->ev.events = EPOLLIN|EPOLLOUT;
 
-	zerr = zap_io_thread_ep_assign(&sep->ep);
+	zerr = zap_io_thread_ep_assign(&sep->ep, tpi);
 	if (zerr)
 		goto err3;
 	return ZAP_ERR_OK;
@@ -1737,7 +1737,7 @@ static zap_err_t z_sock_listen(zap_ep_t ep, struct sockaddr *sa,
 	sep->ev.events = EPOLLIN;
 
 	/* assign the endpoint to a thread */
-	zerr = zap_io_thread_ep_assign(&sep->ep);
+	zerr = zap_io_thread_ep_assign(&sep->ep, -1);
 	if (zerr)
 		goto err_1;
 
@@ -1749,7 +1749,7 @@ static zap_err_t z_sock_listen(zap_ep_t ep, struct sockaddr *sa,
 	return zerr;
 }
 
-static zap_err_t z_sock_send(zap_ep_t ep, char *buf, size_t len)
+static zap_err_t z_sock_send2(zap_ep_t ep, char *buf, size_t len, void *cb_arg)
 {
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
 	struct z_sock_io *io;
@@ -1769,7 +1769,7 @@ static zap_err_t z_sock_send(zap_ep_t ep, char *buf, size_t len)
 	}
 
 	io->comp_type = ZAP_EVENT_SEND_COMPLETE;
-	io->ctxt = NULL;
+	io->ctxt = cb_arg;
 
 	io->wr = __sock_wr_alloc(len, io);
 	if (!io->wr) {
@@ -1796,6 +1796,11 @@ err1:
 err0:
 	pthread_mutex_unlock(&sep->ep.lock);
 	return zerr;
+}
+
+static zap_err_t z_sock_send(zap_ep_t ep, char *buf, size_t len)
+{
+	return z_sock_send2(ep, buf, len, NULL);
 }
 
 void z_sock_atfork()
@@ -1954,7 +1959,7 @@ static void z_sock_destroy(zap_ep_t ep)
 	free(ep);
 }
 
-zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len)
+zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len, int tpi)
 {
 	/* ep is the newly created ep from __z_sock_conn_request */
 	struct z_sock_ep *sep = (struct z_sock_ep *)ep;
@@ -1970,7 +1975,7 @@ zap_err_t z_sock_accept(zap_ep_t ep, zap_cb_fn_t cb, char *data, size_t data_len
 	/* Replace the callback with the one provided by the caller */
 	sep->ep.cb = cb;
 
-	zerr = zap_io_thread_ep_assign(&sep->ep);
+	zerr = zap_io_thread_ep_assign(&sep->ep, tpi);
 	if (zerr) {
 		LOG_(sep, "zap_io_thread_ep_assign() error %d on fd %d", zerr, sep->sock);
 		goto err_1;
@@ -2279,6 +2284,7 @@ zap_err_t zap_transport_get(zap_t *pz, zap_mem_info_fn_t mem_info_fn)
 	z->listen = z_sock_listen;
 	z->close = z_sock_close;
 	z->send = z_sock_send;
+	z->send2 = z_sock_send2;
 	z->read = z_sock_read;
 	z->write = z_sock_write;
 	z->unmap = z_sock_unmap;
