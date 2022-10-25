@@ -267,6 +267,7 @@ if HAVE_LIBIBMAD
 if HAVE_LIBIBUMAD
 if HAVE_IBA_IB_TYPES_H
 SUBDIRS += ibmad_sampler
+SUBDIRS += ibmad_records_sampler
 endif
 
 libsysclassib_la_SOURCES = sysclassib.c
