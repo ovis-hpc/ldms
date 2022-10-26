@@ -803,13 +803,12 @@ struct ldmsd_req_array *ldmsd_parse_config_str(const char *cfg, uint32_t msg_no,
 	}
 	if (rc)
 		goto err;
+out:
 	/* Add the terminating attribute */
 	rc = add_attr_from_attr_str(NULL, NULL, &ctxt.request,
 				    &ctxt.request_sz, ctxt.msglog);
 	if (rc)
 		goto err;
-
-out:
 	/* Make sure that all records aren't larger than xprt_max_msg. */
 	req_off = 0; /* offset from the end of the header */
 	/*
