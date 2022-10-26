@@ -26,8 +26,7 @@
 #include <iba/ib_types.h>
 
 #include "config.h"
-#include "jobid_helper.h"
-#include "sampler_base.h" /* for auth mix-in */
+#include "sampler_base.h"
 
 #define _GNU_SOURCE
 
@@ -47,32 +46,29 @@ struct port_name {
 };
 
 static struct {
-        char *schema_name;
-	char producer_name[LDMS_PRODUCER_NAME_MAX];
 	bool use_rate_metrics;
 	int port_filter;
 	struct port_name ports[MAX_CA_NAMES];
 } conf;
 
-
-ldmsd_msg_log_f log_fn;
-struct base_auth auth;
+static ldmsd_msg_log_f log_fn;
+static base_data_t sampler_base; /* contains the schema */
+static ldms_record_t ibmad_record; /* a pointer */
 
 /* red-black tree root for infiniband port metrics */
-static struct rbt metrics_tree;
+static struct rbt interfaces_tree;
+static int interfaces_max = 8;
 
-struct metric_data {
-	char *instance;
-        struct rbn metrics_node;
-	ldms_set_t metric_set; /* a pointer */
+struct interface_data {
+        struct rbn interface_rbn;
 
+        char *ca_name;
 	int port;
         struct ibmad_port *srcport;
 	ib_portid_t portid;
 	int ext; /**< Extended metric indicator */
 	int repeat; /**< true if not the first sample */
 };
-
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(*a))
@@ -169,65 +165,82 @@ static const int scib_idx[] = {
 	[IB_PC_EXT_RCV_MPKTS_F]       =  21,
 };
 
-static ldms_schema_t ibmad_schema;
-static int metric_port_index;
-static int metric_ca_name_index;
-static int metric_counter_indices[ARRAY_SIZE(all_metric_names)];
-static int metric_rate_indices[ARRAY_SIZE(all_metric_names)];
+static struct {
+        int port;
+        int ca_name;
+        int record_definition;
+        int record_list;
+        int counters[ARRAY_SIZE(all_metric_names)];
+        int rates[ARRAY_SIZE(all_metric_names)];
+} mindex;
 
-static int ibmad_schema_create()
+/* Creates the schema, the "ibmad_record", and the metric set */
+static int ibmad_initialize()
 {
-        ldms_schema_t sch;
 	char metric_name[128];
         int rc;
         int i;
 
-        log_fn(LDMSD_LDEBUG, SAMP" ibmad_schema_create()\n");
-        sch = ldms_schema_new(conf.schema_name);
-        if (sch == NULL)
-                goto err1;
-        rc = jobid_helper_schema_add(sch);
-	if (rc < 0)
-		goto err2;
-        rc = ldms_schema_meta_array_add(sch, "ca_name", LDMS_V_CHAR_ARRAY, 64);
-        if (rc < 0)
-                goto err2;
-        metric_ca_name_index = rc;
-        rc = ldms_schema_meta_add(sch, "port", LDMS_V_U32);
-        if (rc < 0)
-                goto err2;
-        metric_port_index = rc;
+        log_fn(LDMSD_LDEBUG, SAMP" ibmad_initialize()\n");
 
+        /* Create the record that will be used in the schema's list */
+        ibmad_record = ldms_record_create("ib_nic");
+        if (ibmad_record == NULL)
+                goto err1;
+        rc = ldms_record_metric_add(ibmad_record, "ca_name", NULL, LDMS_V_CHAR_ARRAY, 64);
+        if (rc < 0)
+                goto err2;
+        mindex.ca_name = rc;
+        rc = ldms_record_metric_add(ibmad_record, "port", NULL, LDMS_V_U32, 1);
+        if (rc < 0)
+                goto err2;
+        mindex.port = rc;
 	for (i = 0; i < ARRAY_SIZE(all_metric_names); i++) {
 		/* add ibmad counter metrics */
 		snprintf(metric_name, 128, "%s",
 			 all_metric_names[i]);
-		metric_counter_indices[i] =
-			ldms_schema_metric_add(sch, metric_name, LDMS_V_U64);
+		mindex.counters[i] =
+			ldms_record_metric_add(ibmad_record, metric_name, NULL, LDMS_V_U64, 1);
 
 		if (conf.use_rate_metrics) {
 			/* add ibmad rate metrics */
 			snprintf(metric_name, 128, "%s.rate",
 				 all_metric_names[i]);
-			metric_rate_indices[i] =
-				ldms_schema_metric_add(sch, metric_name, LDMS_V_D64);
+			mindex.rates[i] =
+				ldms_record_metric_add(ibmad_record, metric_name, NULL, LDMS_V_D64, 1);
 		}
 	}
 
-	ibmad_schema = sch;
+        /* Create the schema */
+        base_schema_new(sampler_base);
+        if (sampler_base->schema == NULL)
+                goto err2;
+        rc = ldms_schema_record_add(sampler_base->schema, ibmad_record);
+        if (rc < 0) {
+                goto err3;
+        }
+        mindex.record_definition = rc;
+        rc = ldms_schema_metric_list_add(sampler_base->schema, "ib_nics", NULL, 1024);
+        if (rc < 0) {
+                goto err3;
+        }
+        mindex.record_list = rc;
+
+        /* Create the metric set */
+        base_set_new(sampler_base);
+        if (sampler_base->set == NULL) {
+                goto err3;
+        }
 
         return 0;
+err3:
+        ldms_schema_delete(sampler_base->schema);
 err2:
-        ldms_schema_delete(sch);
+        ldms_record_delete(ibmad_record);
+        ibmad_record = NULL;
 err1:
         log_fn(LDMSD_LERROR, SAMP" schema creation failed\n");
         return -1;
-}
-
-static void ibmad_schema_destroy()
-{
-        ldms_schema_delete(ibmad_schema);
-        ibmad_schema = NULL;
 }
 
 static int string_comparator(void *a, const void *b)
@@ -242,7 +255,7 @@ static int string_comparator(void *a, const void *b)
  * \return 0 if success.
  * \return Error number if error.
  */
-static int _port_open(struct metric_data *data, const char *ca_name, unsigned base_lid)
+static int _port_open(struct interface_data *data, unsigned base_lid)
 {
 	int mgmt_classes[3] = {IB_SMI_CLASS, IB_SA_CLASS, IB_PERFORMANCE_CLASS};
 	void *p;
@@ -250,10 +263,10 @@ static int _port_open(struct metric_data *data, const char *ca_name, unsigned ba
 	uint8_t rcvbuf[BUFSIZ];
 
 	/* open source port for sending MAD messages */
-	data->srcport = mad_rpc_open_port((char *)ca_name, data->port, mgmt_classes, 3);
+	data->srcport = mad_rpc_open_port(data->ca_name, data->port, mgmt_classes, 3);
 	if (!data->srcport) {
 		log_fn(LDMSD_LERROR, SAMP ": ERROR: Cannot open CA:%s port:%d,"
-				" ERRNO: %d\n", ca_name, data->port,
+				" ERRNO: %d\n", data->ca_name, data->port,
 				errno);
 		return errno;
 	}
@@ -266,7 +279,7 @@ static int _port_open(struct metric_data *data, const char *ca_name, unsigned ba
 			  CLASS_PORT_INFO, data->srcport);
 	if (!p) {
 		log_fn(LDMSD_LDEBUG, SAMP ": pma_query_via() failed: ca_name=%s port=%d"
-				"  %d\n", ca_name, data->port, errno);
+				"  %d\n", data->ca_name, data->port, errno);
 		mad_rpc_close_port(data->srcport);
 		return -1;
 	}
@@ -277,7 +290,7 @@ static int _port_open(struct metric_data *data, const char *ca_name, unsigned ba
 	if (!data->ext) {
 		log_fn(LDMSD_LDEBUG, SAMP ": WARNING: Extended query not "
 			"supported for %s:%d, the sampler will reset "
-			"counters every query\n", ca_name, data->port);
+			"counters every query\n", data->ca_name, data->port);
 	}
 
 	return 0;
@@ -288,7 +301,7 @@ static int _port_open(struct metric_data *data, const char *ca_name, unsigned ba
  *
  * This function only close IB port.
  */
-static void _port_close(struct metric_data *data)
+static void _port_close(struct interface_data *data)
 {
 	if (data->srcport)
 		mad_rpc_close_port(data->srcport);
@@ -296,74 +309,58 @@ static void _port_close(struct metric_data *data)
 }
 
 
-static struct metric_data *ibmad_metric_create(const char *instance,
-					      const char *ca_name, int port, unsigned base_lid)
+static struct interface_data *interface_create(const char *ca_name,
+                                               int port, unsigned base_lid)
 {
-        struct metric_data *data;
+        struct interface_data *data;
 	int rc;
 
-        log_fn(LDMSD_LDEBUG, SAMP" ibmad_metric_create() %s, base_lid=%u\n",
-               instance, base_lid);
+        log_fn(LDMSD_LDEBUG, SAMP" interface_create() %s, base_lid=%u\n",
+               ca_name, base_lid);
         data = calloc(1, sizeof(*data));
         if (data == NULL)
                 goto out1;
 	data->port = port;
-        data->instance = strdup(instance);
-        if (data->instance == NULL)
+        data->ca_name = strdup(ca_name);
+        if (data->ca_name == NULL)
                 goto out2;
 
-        data->metric_set = ldms_set_new(instance, ibmad_schema);
-        if (data->metric_set == NULL)
-                goto out3;
-
-	ldms_metric_array_set_str(data->metric_set,  metric_ca_name_index, ca_name);
-	ldms_metric_set_u32(data->metric_set, metric_port_index, port);
-
-	rc = _port_open(data, ca_name, base_lid);
+	rc = _port_open(data, base_lid);
 	if (rc != 0) {
-		goto out4;
+		goto out3;
 	}
 
-	base_auth_set(&auth, data->metric_set);
-	ldms_set_producer_name_set(data->metric_set, conf.producer_name);
-        ldms_set_publish(data->metric_set);
-        ldmsd_set_register(data->metric_set, SAMP);
-        rbn_init(&data->metrics_node, data->instance);
+        rbn_init(&data->interface_rbn, data->ca_name);
 
         return data;
 
-out4:
-        ldms_set_delete(data->metric_set);
 out3:
-        free(data->instance);
+        free(data->ca_name);
 out2:
         free(data);
 out1:
         return NULL;
 }
 
-static void ibmad_metric_destroy(struct metric_data *data)
+static void interface_destroy(struct interface_data *data)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" ibmad_destroy() %s\n", data->instance);
-	ldmsd_set_deregister(data->instance, SAMP);
-        ldms_set_unpublish(data->metric_set);
-        ldms_set_delete(data->metric_set);
-	_port_close(data);
-        free(data->instance);
-	free(data);
+        log_fn(LDMSD_LDEBUG, SAMP" interface_destroy() %s\n", data->ca_name);
+        _port_close(data);
+        free(data->ca_name);
+        free(data);
 }
 
-static void metrics_tree_destroy()
+static void interfaces_tree_destroy()
 {
         struct rbn *rbn;
-        struct metric_data *data;
+        struct interface_data *data;
 
-        while (!rbt_empty(&metrics_tree)) {
-                rbn = rbt_min(&metrics_tree);
-                data = container_of(rbn, struct metric_data,
-                                   metrics_node);
-                rbt_del(&metrics_tree, rbn);
-                ibmad_metric_destroy(data);
+        while (!rbt_empty(&interfaces_tree)) {
+                rbn = rbt_min(&interfaces_tree);
+                data = container_of(rbn, struct interface_data,
+                                   interface_rbn);
+                rbt_del(&interfaces_tree, rbn);
+                interface_destroy(data);
         }
 }
 
@@ -417,14 +414,14 @@ static int collect_ca_port(const char *name, int port)
 	return (conf.port_filter == PORT_FILTER_EXCLUDE);
 }
 
-static void metrics_tree_refresh()
+static void interfaces_tree_refresh()
 {
-        struct rbt new_metrics_tree;
+        struct rbt new_interfaces_tree;
         char ca_names[MAX_CA_NAMES][UMAD_CA_NAME_LEN];
         int num_ca_names;
 	int i;
 
-	rbt_init(&new_metrics_tree, string_comparator);
+	rbt_init(&new_interfaces_tree, string_comparator);
 
         num_ca_names = umad_get_cas_names(ca_names, MAX_CA_NAMES);
         if (num_ca_names < 0) {
@@ -440,9 +437,9 @@ static void metrics_tree_refresh()
 		}
 		umad_get_ca(ca_names[i], &ca);
 		for (j = 0, cnt = 0; j < UMAD_CA_MAX_PORTS && cnt < ca.numports; j++) {
-			char instance[UMAD_CA_NAME_LEN+128];
+			char name_and_port[UMAD_CA_NAME_LEN+128];
 			struct rbn *rbn;
-			struct metric_data *data;
+			struct interface_data *data;
 
 			if (ca.ports[j] == NULL)
 				continue;
@@ -453,62 +450,61 @@ static void metrics_tree_refresh()
 				continue;
 			}
 			if (ca.ports[j]->state != PORT_STATE_ACTIVE) {
-				log_fn(LDMSD_LDEBUG, SAMP" metric_tree_refresh() skipping non-active ca %s port %d\n",
-				       ca.ports[j]->ca_name, ca.ports[j]->portnum);
+                                log_fn(LDMSD_LDEBUG, SAMP" metric_tree_refresh() skipping non-active ca %s port %d\n",
+                                       ca.ports[j]->ca_name, ca.ports[j]->portnum);
 				continue;
 			}
 
-			snprintf(instance, sizeof(instance), "%s/%s.%d",
-				 conf.producer_name,
+			snprintf(name_and_port, sizeof(name_and_port), "%s.%d",
 				 ca.ports[j]->ca_name,
 				 ca.ports[j]->portnum);
-			rbn = rbt_find(&metrics_tree, instance);
+			rbn = rbt_find(&interfaces_tree, name_and_port);
 			if (rbn) {
-				data = container_of(rbn, struct metric_data,
-						    metrics_node);
-				rbt_del(&metrics_tree, &data->metrics_node);
+				data = container_of(rbn, struct interface_data,
+						    interface_rbn);
+				rbt_del(&interfaces_tree, &data->interface_rbn);
 			} else {
-				data = ibmad_metric_create(instance,
-							   ca.ports[j]->ca_name,
-							   ca.ports[j]->portnum,
-							   ca.ports[j]->base_lid);
+				data = interface_create(ca.ports[j]->ca_name,
+							ca.ports[j]->portnum,
+							ca.ports[j]->base_lid);
 			}
 			if (data == NULL)
 				continue;
-			rbt_ins(&new_metrics_tree, &data->metrics_node);
+			rbt_ins(&new_interfaces_tree, &data->interface_rbn);
 		}
 		umad_release_ca(&ca);
         }
 
-        /* destroy any infiniband data remaining in the global metrics_tree
+        /* destroy any infiniband data remaining in the global interfaces_tree
 	   since we did not see their associated directories this time around */
-        metrics_tree_destroy();
+        interfaces_tree_destroy();
 
-        /* copy the new_metrics_tree into place over the global metrics_tree */
-        memcpy(&metrics_tree, &new_metrics_tree, sizeof(struct rbt));
+        /* copy the new_interfaces_tree into place over the global interfaces_tree */
+        memcpy(&interfaces_tree, &new_interfaces_tree, sizeof(struct rbt));
 
         return;
 }
 
 /* Utility function for updating a single metric in a metric set. */
 static
-inline void update_metric(struct metric_data *data, int metric, uint64_t new_v,
-			double dt)
+inline void update_metric(struct interface_data *data, ldms_mval_t record_instance,
+                          int metric, uint64_t new_v, double dt)
 {
-	uint64_t old_v = ldms_metric_get_u64(data->metric_set,
-					     metric_counter_indices[metric]);
+	uint64_t old_v = ldms_record_get_u64(record_instance,
+					     mindex.counters[metric]);
 	if (!data->ext)
 		new_v += old_v;
-	ldms_metric_set_u64(data->metric_set, metric_counter_indices[metric], new_v);
+	ldms_record_set_u64(record_instance, mindex.counters[metric], new_v);
 	if (conf.use_rate_metrics) {
-		ldms_metric_set_double(data->metric_set,
-				       metric_rate_indices[metric],
+		ldms_record_set_double(record_instance,
+				       mindex.rates[metric],
 				       ((dt > 0 && new_v >= old_v && data->repeat) ?
 					((double)(new_v - old_v)) / dt : -1.0));
 	}
 }
 
-static int metric_sample(struct metric_data *data, double dt)
+static int metrics_sample(struct interface_data *data, ldms_mval_t record_instance,
+                         double dt)
 {
 	void *p;
 	int rc;
@@ -521,21 +517,24 @@ static int metric_sample(struct metric_data *data, double dt)
 	if (p == NULL) {
 		rc = errno;
 		log_fn(LDMSD_LDEBUG, SAMP ": Error querying %s, errno: %d\n",
-				data->instance, rc);
+				data->ca_name, rc);
 		return rc;
 	}
+
+        ldms_record_array_set_str(record_instance, mindex.ca_name, data->ca_name);
+        ldms_record_set_u32(record_instance, mindex.port, data->port);
 
 	/* 1st part: the data that only exist in the non-ext */
 	for (i = SCIB_PC_FIRST; i < IB_PC_XMT_BYTES_F; i++) {
 		v = 0;
 		mad_decode_field(rcvbuf, i, &v);
 		j = scib_idx[i];
-		update_metric(data, j, v, dt);
+		update_metric(data, record_instance, j, v, dt);
 	}
 	v = 0;
 	mad_decode_field(rcvbuf, IB_PC_XMT_WAIT_F, &v);
 	j = scib_idx[IB_PC_XMT_WAIT_F];
-	update_metric(data, j, v, dt);
+	update_metric(data, record_instance, j, v, dt);
 
 	/* 2nd part: the shared and the ext part */
 	if (!data->ext) {
@@ -543,7 +542,7 @@ static int metric_sample(struct metric_data *data, double dt)
 		for (i = IB_PC_XMT_BYTES_F; i < IB_PC_XMT_WAIT_F; i++) {
 			mad_decode_field(rcvbuf, i, &v);
 			j = scib_idx[i];
-			update_metric(data, j, v, dt);
+			update_metric(data, record_instance, j, v, dt);
 		}
 		/* and reset the counters */
 		performance_reset_via(rcvbuf, &data->portid, data->port,
@@ -557,21 +556,34 @@ static int metric_sample(struct metric_data *data, double dt)
 	if (!p) {
 		rc = errno;
 		log_fn(LDMSD_LDEBUG, SAMP ": Error extended querying %s, "
-				"errno: %d\n", data->instance, rc);
+				"errno: %d\n", data->ca_name, rc);
 		return rc;
 	}
 	for (i = SCIB_PC_EXT_FIRST; i < SCIB_PC_EXT_LAST; i++) {
 		v = 0;
 		mad_decode_field(rcvbuf, i, &v);
 		j = scib_idx[i];
-		update_metric(data, j, v, dt);
+		update_metric(data, record_instance, j, v, dt);
 	}
 
 	data->repeat = 1;
 	return 0;
 }
 
-static void metrics_tree_sample()
+static void resize_metric_set()
+{
+        size_t previous_heap_size;
+
+        previous_heap_size = ldms_set_heap_size_get(sampler_base->set);
+        base_set_delete(sampler_base);
+        base_set_new_heap(sampler_base, previous_heap_size * 2);
+        if (sampler_base->set == NULL) {
+                ldmsd_log(LDMSD_LERROR,
+                          SAMP" : Failed to resize metric set heap: %d\n", errno);
+        }
+}
+
+static void interfaces_tree_sample()
 {
 	static struct timeval tv_prev;
 
@@ -579,20 +591,36 @@ static void metrics_tree_sample()
 	struct timeval tv_now;
 	struct timeval tv_diff;
 	double dt;
+        ldms_mval_t list_handle;
+        int rc;
 
 	gettimeofday(&tv_now, 0);
 	timersub(&tv_now, &tv_prev, &tv_diff);
 	dt = (double)tv_diff.tv_sec + tv_diff.tv_usec / 1.0e06;
 
-        /* walk tree of known infiniband ports */
-        RBT_FOREACH(rbn, &metrics_tree) {
-                struct metric_data *data;
+        base_sample_begin(sampler_base);
 
-                data = container_of(rbn, struct metric_data, metrics_node);
-		ldms_transaction_begin(data->metric_set);
-		metric_sample(data, dt);
-		ldms_transaction_end(data->metric_set);
+        list_handle = ldms_metric_get(sampler_base->set, mindex.record_list);
+        ldms_list_purge(sampler_base->set, list_handle);
+
+        /* walk tree of known infiniband ports */
+        RBT_FOREACH(rbn, &interfaces_tree) {
+                struct interface_data *data;
+                ldms_mval_t record_instance;
+
+                record_instance = ldms_record_alloc(sampler_base->set, mindex.record_definition);
+                if (record_instance == NULL) {
+                        log_fn(LDMSD_LDEBUG, SAMP": ldms_record_alloc() failed, resizing metric set\n");
+                        resize_metric_set();
+                        break;
+                }
+                rc = ldms_list_append_record(sampler_base->set, list_handle, record_instance);
+
+                data = container_of(rbn, struct interface_data, interface_rbn);
+		metrics_sample(data, record_instance, dt);
+
         }
+        base_sample_end(sampler_base);
 
 	memcpy(&tv_prev, &tv_now, sizeof(tv_prev));
 }
@@ -690,37 +718,13 @@ static int parse_port_filters(const char *val)
 static int config(struct ldmsd_plugin *self,
                   struct attr_value_list *kwl, struct attr_value_list *avl)
 {
+        int rc;
         char *value;
 
         log_fn(LDMSD_LDEBUG, SAMP" config() called\n");
 
-	int jc = jobid_helper_config(avl);
-        if (jc) {
-		log_fn(LDMSD_LERROR, SAMP": set name for job_set="
-			" is too long.\n");
-		return jc;
-	}
-	base_auth_parse(avl, &auth, log_fn);
+        sampler_base = base_config(avl, SAMP, "ibmad", log_fn);
 
-        value = av_value(avl, "schema");
-        if (value != NULL) {
-		free(conf.schema_name);
-                conf.schema_name = strdup(value);
-	}
-        if (conf.schema_name == NULL) {
-                log_fn(LDMSD_LERROR, SAMP" config() strdup schema failed: %d", errno);
-		return 1;
-        }
-        value = av_value(avl, "producer");
-        if (value != NULL) {
-                strcpy(conf.producer_name, value);
-	} else {
-		gethostname(conf.producer_name, sizeof(conf.producer_name));
-	}
-        if (conf.producer_name[0] == '\0') {
-                log_fn(LDMSD_LERROR, SAMP" config() producer unset\n");
-		return 1;
-        }
 	value = av_value(avl, "rate");
 	if (value != NULL && value[0] == '0') {
 		conf.use_rate_metrics = false;
@@ -741,21 +745,28 @@ static int config(struct ldmsd_plugin *self,
 		val = exclude;
 		conf.port_filter = PORT_FILTER_EXCLUDE;
 	}
-	return parse_port_filters(val);
+
+        rc = parse_port_filters(val);
+        if (rc != 0) {
+                return rc;
+        }
+
+        rc = ibmad_initialize();
+        if (rc != 0) {
+                return rc;
+        }
+
+        return 0;
 }
 
 static int sample(struct ldmsd_sampler *self)
 {
-        log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
-        if (ibmad_schema == NULL) {
-                if (ibmad_schema_create() < 0) {
-                        log_fn(LDMSD_LERROR, SAMP" schema create failed\n");
-                        return ENOMEM;
-                }
-        }
+        int rc;
 
-        metrics_tree_refresh();
-        metrics_tree_sample();
+        log_fn(LDMSD_LDEBUG, SAMP" sample() called\n");
+
+        interfaces_tree_refresh();
+        interfaces_tree_sample();
 
         return 0;
 }
@@ -763,9 +774,13 @@ static int sample(struct ldmsd_sampler *self)
 static void term(struct ldmsd_plugin *self)
 {
         log_fn(LDMSD_LDEBUG, SAMP" term() called\n");
-        metrics_tree_destroy();
-        ibmad_schema_destroy();
-	free(conf.schema_name);
+        interfaces_tree_destroy();
+        base_del(sampler_base);
+        sampler_base->schema = NULL;
+        if (ibmad_record != NULL) {
+                ldms_record_delete(ibmad_record);
+                ibmad_record = NULL;
+        }
 }
 
 static ldms_set_t get_set(struct ldmsd_sampler *self)
@@ -776,7 +791,9 @@ static ldms_set_t get_set(struct ldmsd_sampler *self)
 static const char *usage(struct ldmsd_plugin *self)
 {
         log_fn(LDMSD_LDEBUG, SAMP" usage() called\n");
-	return  "config name=" SAMP;
+	return  "config name=" SAMP " " BASE_CONFIG_SYNOPSIS
+                BASE_CONFIG_DESC
+                ;
 }
 
 static struct ldmsd_sampler ibmad_plugin = {
@@ -795,8 +812,7 @@ struct ldmsd_plugin *get_plugin(ldmsd_msg_log_f pf)
 {
         log_fn = pf;
         log_fn(LDMSD_LDEBUG, SAMP" get_plugin() called ("PACKAGE_STRING")\n");
-        rbt_init(&metrics_tree, string_comparator);
-	conf.schema_name = strdup("ibmad");
+        rbt_init(&interfaces_tree, string_comparator);
 	conf.use_rate_metrics = true;
 
         return &ibmad_plugin.base;

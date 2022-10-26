@@ -976,6 +976,7 @@ ldms/src/sampler/cray_system_sampler/Makefile
 ldms/src/sampler/aries_mmr/Makefile
 ldms/src/sampler/aries_mmr/aries_mmr_set_configs/Makefile
 ldms/src/sampler/ibmad_sampler/Makefile
+ldms/src/sampler/ibmad_records_sampler/Makefile
 ldms/src/sampler/ibnet/Makefile
 ldms/src/sampler/procnet/Makefile
 ldms/src/sampler/rdc_sampler/Makefile

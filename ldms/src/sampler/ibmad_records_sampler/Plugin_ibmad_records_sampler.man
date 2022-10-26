@@ -1,18 +1,19 @@
 .TH man 7 "1 May 2019" "LDMS Plugin" "Plugin for LDMS"
 
 .SH NAME
-Plugin_ibmad_sampler - man page for the LDMS ibmad_sampler plugin
+Plugin_ibmad_records_sampler - man page for the LDMS ibmad_records_sampler plugin
 
 .SH SYNOPSIS
 Within ldmsd_controller or a configuration file:
 .br
-config name=ibmad_sampler [ <attr>=<value> ]
+config name=ibmad_records_sampler [ <attr>=<value> ]
 
 .SH DESCRIPTION
 With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
-or a configuration file. The ibmad_sampler plugin provides a metric set for each infiniband port discovered on the node.
+or a configuration file. The ibmad_records_sampler plugin provides a single metric set that contains a list of
+records. Each record contains all of the metrics for a single infiniband port.
 
-The schema is named "ibmad_sampler" by default.
+The schema is named "ibmad" by default.
 
 NOTE: This plugin will not currently work with virtual IB devices.
 
@@ -27,11 +28,11 @@ configuration line
 .TP
 name=<plugin_name>
 .br
-This MUST be ibmad_sampler.
+This MUST be ibmad_records_sampler.
 .TP
 schema=<schema_name>
 .br
-The schema name defaults to "ibmad_sampler", but it can be renamed at the
+The schema name defaults to "ibmad", but it can be renamed at the
 user's choice.
 
 .TP
@@ -80,21 +81,21 @@ rate computation is invalid.
 .PP
 Within ldmsd_controller or a configuration file:
 .nf
-load name=ibmad_sampler
-config name=ibmad_sampler
-start name=ibmad_sampler interval=1000000
+load name=ibmad_records_sampler
+config name=ibmad_records_sampler
+start name=ibmad_records_sampler interval=1000000
 .fi
 
 .nf
-load name=ibmad_sampler
-config name=ibmad_sampler include=hfi1_0.1 rate=0
-start name=ibmad_sampler interval=1000000
+load name=ibmad_records_sampler
+config name=ibmad_records_sampler include=hfi1_0.1 rate=0
+start name=ibmad_records_sampler interval=1000000
 .fi
 
 .nf
-load name=ibmad_sampler
-config name=ibmad_sampler exclude=mlx5_0.2,mlx5_0.3,mlx5_0.4,
-start name=ibmad_sampler interval=1000000
+load name=ibmad_records_sampler
+config name=ibmad_records_sampler exclude=mlx5_0.2,mlx5_0.3,mlx5_0.4,
+start name=ibmad_records_sampler interval=1000000
 .fi
 
 .SH SEE ALSO
