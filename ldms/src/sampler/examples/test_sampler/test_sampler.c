@@ -1020,26 +1020,40 @@ static int __init_set(struct test_sampler_set *ts_set)
 		}
 	}
 
-	mid = ldms_metric_by_name(ts_set->set, "component_id");
-	if (mid >= 0) {
-		v.v_u64 = ts_set->compid;
-		if (ldms_metric_is_array(ts_set->set, mid)) {
-			uint32_t count = ldms_metric_array_get_len(ts_set->set, mid);
-			ldms_metric_array_set(ts_set->set, mid, &v, 0, count);
+	if (ts_set->compid) {
+		mid = ldms_metric_by_name(ts_set->set, "component_id");
+		if (mid >= 0) {
+			v.v_u64 = ts_set->compid;
+			if (ldms_metric_is_array(ts_set->set, mid)) {
+				uint32_t count = ldms_metric_array_get_len(ts_set->set, mid);
+				for (j = 0; j < count; j++)
+					ldms_metric_array_set_u64(ts_set->set, mid, j, ts_set->compid);
+			} else {
+				ldms_metric_set(ts_set->set, mid, &v);
+			}
 		} else {
-			ldms_metric_set(ts_set->set, mid, &v);
+			msglog(LDMSD_LERROR, "test_sampler: "
+				"component_id=%lu is given at the action=add_set line "
+				"but the set does not contain the metric 'component_id'\n",
+				ts_set->compid);
 		}
 	}
 
-
-	mid = ldms_metric_by_name(ts_set->set, LDMSD_JOBID);
-	if (mid >= 0) {
-		v.v_u64 = ts_set->jobid;
-		if (ldms_metric_is_array(ts_set->set, mid)) {
-			uint32_t count = ldms_metric_array_get_len(ts_set->set, mid);
-			ldms_metric_array_set(ts_set->set, mid, &v, 0, count);
+	if (ts_set->jobid) {
+		mid = ldms_metric_by_name(ts_set->set, LDMSD_JOBID);
+		if (mid >= 0) {
+			v.v_u64 = ts_set->jobid;
+			if (ldms_metric_is_array(ts_set->set, mid)) {
+				uint32_t count = ldms_metric_array_get_len(ts_set->set, mid);
+				ldms_metric_array_set(ts_set->set, mid, &v, 0, count);
+			} else {
+				ldms_metric_set(ts_set->set, mid, &v);
+			}
 		} else {
-			ldms_metric_set(ts_set->set, mid, &v);
+			msglog(LDMSD_LERROR, "test_sampler: "
+				"job_id=%lu is given at the action=add_set line "
+				"but the set does not contain the metric 'component_id'\n",
+				ts_set->jobid);
 		}
 	}
 
@@ -1073,7 +1087,7 @@ static int config_add_set(struct attr_value_list *avl)
 	}
 
 	char *compid = av_value(avl, "component_id");
-	char *jobid = av_value(avl, "jobid");
+	char *jobid = av_value(avl, LDMSD_JOBID);
 
 	char *producer = av_value(avl, "producer");
 	if (!producer) {
@@ -1937,7 +1951,7 @@ static const char *usage(struct ldmsd_plugin *self)
 		"Create sets:\n"
 		"config name=test_sampler action=add_set instance=<set_name>\n"
 		"       schema=<schema_name> producer=<producer>\n"
-		"       [component_id=<compid>] [jobid=<jobid>]\n"
+		"       [component_id=<compid>] ["LDMSD_JOBID"=<jobid>]\n"
 		"       [push=<push>]\n"
 		"\n"
 		"    <set name>      The set name\n"
