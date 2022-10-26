@@ -105,13 +105,13 @@ struct sensor {
 };
 
 struct ldms_metric_template_s core_template[] = {
-	{ "package_no", LDMS_V_U32, "", 1 },
-	{ "sensor_no", LDMS_V_U32, "", 1 },
-	{ "label", LDMS_V_CHAR_ARRAY, "", 32 },
-	{ "max_temp", LDMS_V_F32, "C", 1 },
-	{ "critical_temp", LDMS_V_F32, "C", 1 },
-	{ "critical_alarm_temp", LDMS_V_F32, "C", 1 },
-	{ "current_temp", LDMS_V_F32, "C", 1 },
+	{ "package_no", LDMS_MDESC_F_DATA, LDMS_V_U32, "", 1 },
+	{ "sensor_no", LDMS_MDESC_F_DATA, LDMS_V_U32, "", 1 },
+	{ "label", LDMS_MDESC_F_DATA, LDMS_V_CHAR_ARRAY, "", 32 },
+	{ "max_temp", LDMS_MDESC_F_DATA, LDMS_V_F32, "C", 1 },
+	{ "critical_temp", LDMS_MDESC_F_DATA, LDMS_V_F32, "C", 1 },
+	{ "critical_alarm_temp", LDMS_MDESC_F_META, LDMS_V_F32, "C", 1 },
+	{ "current_temp", LDMS_MDESC_F_DATA, LDMS_V_F32, "C", 1 },
 	{}
 };
 

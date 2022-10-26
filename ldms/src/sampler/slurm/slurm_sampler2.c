@@ -97,19 +97,19 @@ enum job_metric_order {
 };
 
 struct ldms_metric_template_s job_rec_metrics[] = {
-	{ "job_id"           , LDMS_V_U64         , ""          , 1 },
-	{ "app_id"           , LDMS_V_U64         , ""          , 1 },
-	{ "user"             , LDMS_V_CHAR_ARRAY  , ""          , JOB_USER_STR_LEN },
-	{ "job_name"         , LDMS_V_CHAR_ARRAY  , ""          , JOB_NAME_STR_LEN },
-	{ "job_tag"          , LDMS_V_CHAR_ARRAY  , ""          , JOB_TAG_STR_LEN },
-	{ "job_state"        , LDMS_V_U8          , ""          , 1 },
-	{ "job_size"         , LDMS_V_U32         , ""          , 1 },
-	{ "job_uid"          , LDMS_V_U32         , ""          , 1 },
-	{ "job_gid"          , LDMS_V_U32         , ""          , 1 },
-	{ "job_start"        , LDMS_V_U32         , "timestamp" , 1 },
-	{ "job_end"          , LDMS_V_U32         , "timestamp" , 1 },
-	{ "node_count"       , LDMS_V_U32         , ""          , 1 },
-	{ "task_count"       , LDMS_V_U32         , ""          , 1 },
+	{ "job_id"       , 0,   LDMS_V_U64         , ""          , 1 },
+	{ "app_id"       , 0,   LDMS_V_U64         , ""          , 1 },
+	{ "user"         , 0,   LDMS_V_CHAR_ARRAY  , ""          , JOB_USER_STR_LEN },
+	{ "job_name"     , 0,   LDMS_V_CHAR_ARRAY  , ""          , JOB_NAME_STR_LEN },
+	{ "job_tag"      , 0,   LDMS_V_CHAR_ARRAY  , ""          , JOB_TAG_STR_LEN },
+	{ "job_state"    , 0,   LDMS_V_U8          , ""          , 1 },
+	{ "job_size"     , 0,   LDMS_V_U32         , ""          , 1 },
+	{ "job_uid"      , 0,   LDMS_V_U32         , ""          , 1 },
+	{ "job_gid"      , 0,   LDMS_V_U32         , ""          , 1 },
+	{ "job_start"    , 0,   LDMS_V_U32         , "timestamp" , 1 },
+	{ "job_end"      , 0,   LDMS_V_U32         , "timestamp" , 1 },
+	{ "node_count"   , 0,   LDMS_V_U32         , ""          , 1 },
+	{ "task_count"   , 0,   LDMS_V_U32         , ""          , 1 },
 	{ 0 }
 };
 #define JOB_REC_LEN (ARRAY_LEN(job_rec_metrics) - 1)
@@ -125,10 +125,10 @@ enum task_metric_order {
 };
 
 struct ldms_metric_template_s task_rec_metrics[] = {
-	{ "job_id"             , LDMS_V_U64         , ""     , 1 },
-	{ "task_pid"           , LDMS_V_U32         , ""     , 1 },
-	{ "task_rank"          , LDMS_V_U32         , ""     , 1 },
-	{ "task_exit_status"   , LDMS_V_U32         , ""     , 1 },
+	{ "job_id"             , 0,   LDMS_V_U64         , ""     , 1 },
+	{ "task_pid"           , 0,   LDMS_V_U32         , ""     , 1 },
+	{ "task_rank"          , 0,   LDMS_V_U32         , ""     , 1 },
+	{ "task_exit_status"   , 0,   LDMS_V_U32         , ""     , 1 },
 	{ 0 }
 };
 #define TASK_REC_LEN (ARRAY_LEN(task_rec_metrics) - 1)
