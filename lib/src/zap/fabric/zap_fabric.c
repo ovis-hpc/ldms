@@ -66,6 +66,7 @@
 #include <rdma/fi_cm.h>
 #include <rdma/fi_rma.h>
 #include <infiniband/verbs.h>
+#include "ovis_log/ovis_log.h"
 #include "zap_fabric.h"
 
 #define Z_FI_CAPS (FI_MSG|FI_RMA)
@@ -84,7 +85,6 @@ static struct {
 	struct z_fi_fabdom	dom[ZAP_FI_MAX_DOM];
 	int			dom_count;
 	uint64_t		mr_key;
-	zap_log_fn_t		log_fn;
 	pthread_mutex_t		lock;
 } g;
 
@@ -95,6 +95,8 @@ static const char *z_fi_op_str[] = {
 	[Z_FI_WC_RDMA_READ]   =  "ZAP_WC_RDMA_READ",
 	[Z_FI_WC_RDMA_WRITE]  =  "ZAP_WC_RDMA_WRITE",
 };
+
+static ovis_log_t zflog;
 
 /*
  * DLOG(fmt, ...)
@@ -118,24 +120,23 @@ static void dlog_(const char *func, int line, char *fmt, ...)
 	va_start(ap, fmt);
 	vasprintf(&buf, fmt, ap);
 	va_end(ap);
-	g.log_fn("[%d] %d.%09d: %s:%d | %s", tid, ts.tv_sec, ts.tv_nsec, func, line, buf);
+	ovis_log(zflog, OVIS_LDEBUG, "[%d] %d.%09d: %s:%d | %s", tid, ts.tv_sec, ts.tv_nsec, func, line, buf);
 	free(buf);
 }
 #endif
 
-#define LOG(FMT, ...) g.log_fn("[zap_fabric] " FMT, ##__VA_ARGS__)
-#define LLOG(FMT, ...) g.log_fn("[zap_fabric:%s():%d] " FMT, __func__, __LINE__, ##__VA_ARGS__)
+#define LOG(FMT, ...) ovis_log(zflog, OVIS_LERROR, "[zap_fabric] " FMT, ##__VA_ARGS__)
+#define LLOG(FMT, ...) ovis_log(zflog, OVIS_LERROR, "[zap_fabric:%s():%d] " FMT, __func__, __LINE__, ##__VA_ARGS__)
 #define TLOG(FMT, ...) do { \
 	struct timespec _t; \
 	pid_t _tid = (pid_t) syscall (SYS_gettid); \
 	clock_gettime(CLOCK_REALTIME, &_t); \
-	g.log_fn("[zap_fabric:%s():%d %ld.%09ld %d] " FMT, __func__, __LINE__, \
+	ovis_log(zflog, OVIS_LERROR, "[zap_fabric:%s():%d %ld.%09ld %d] " FMT, __func__, __LINE__, \
 			_t.tv_sec, _t.tv_nsec, _tid, ##__VA_ARGS__); \
 } while(0)
 
 #define LOG_(rep, fmt, ...) do { \
-	if (rep && rep->ep.z && rep->ep.z->log_fn) \
-		rep->ep.z->log_fn(fmt, ##__VA_ARGS__); \
+	ovis_log(zflog, OVIS_LERROR, fmt, ##__VA_ARGS__); \
 } while (0)
 
 #if defined(DEBUG) || defined(EP_DEBUG)
@@ -196,8 +197,7 @@ static void dlog_(const char *func, int line, char *fmt, ...)
 static int z_fi_info_log_on = 1;
 
 #define Z_FI_INFO_LOG(rep, fmt, ...) do { \
-	if (z_fi_info_log_on && rep && rep->ep.z && rep->ep.z->log_fn) \
-		rep->ep.z->log_fn(fmt, ##__VA_ARGS__); \
+	ovis_log(zflog, OVIS_LINFO, fmt, ##__VA_ARGS__); \
 } while (0)
 
 
@@ -2752,18 +2752,20 @@ static int init_once()
 		z_fi_info_log_on = atoi(env);
 
 	init_complete = 1;
+
+	zflog = ovis_log_register("xprt.zap.fabric", "Messages for zap_fabric");
+	if (!zflog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create zap_fabric's "
+				"log subsystem. Error %d.\n", errno);
+	}
 //	atexit(z_fi_cleanup);
 	return 0;
 
 }
 
-zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
-			    zap_mem_info_fn_t mem_info_fn)
+zap_err_t zap_transport_get(zap_t *pz, zap_mem_info_fn_t mem_info_fn)
 {
 	zap_t z;
-
-	if (!g.log_fn && log_fn)
-		g.log_fn = log_fn;
 
 	if (init_once())
 		goto err_0;

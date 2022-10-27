@@ -2983,7 +2983,7 @@ zap_t __ldms_zap_get(const char *xprt, ldms_log_fn_t log_fn)
 		errno = ENOMEM;
 		goto out;
 	}
-	zap = zap_get(xprt, log_fn, ldms_zap_mem_info);
+	zap = zap_get(xprt, ldms_zap_mem_info);
 	if (!zap) {
 		log_fn("ldms: Cannot get zap plugin: %s\n", xprt);
 		errno = ENOENT;

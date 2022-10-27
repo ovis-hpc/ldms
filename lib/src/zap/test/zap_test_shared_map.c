@@ -179,14 +179,6 @@ void usage()
 	printf("%s", _usage);
 }
 
-void __log(const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	vprintf(fmt, ap);
-	va_end(ap);
-}
-
 zap_mem_info_t __meminfo(void)
 {
 	return &meminfo;
@@ -239,7 +231,7 @@ void server_proc()
 	}
 
 	for (i = 0; i < xprt_spec_n; i++) {
-		zap = zap_get(xprt_spec[i].xprt, __log, __meminfo);
+		zap = zap_get(xprt_spec[i].xprt, __meminfo);
 		assert(zap);
 		zep = zap_new(zap, server_cb);
 		if (!zep) {
@@ -322,7 +314,7 @@ void writer_proc()
 		assert(0);
 		exit(-1);
 	}
-	zap = zap_get(spec->xprt, __log, __meminfo);
+	zap = zap_get(spec->xprt, __meminfo);
 	assert(zap);
 	zep = zap_new(zap, writer_cb);
 	if (!zep) {
@@ -416,7 +408,7 @@ void reader_proc()
 		assert(0);
 		exit(-1);
 	}
-	zap = zap_get(spec->xprt, __log, __meminfo);
+	zap = zap_get(spec->xprt, __meminfo);
 	assert(zap);
 	zep = zap_new(zap, reader_cb);
 	if (!zep) {

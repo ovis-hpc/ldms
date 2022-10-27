@@ -85,8 +85,7 @@ struct zap_version {
 )
 
 #define ZLOG(ep, fmt, ...) do { \
-	if (ep && ep->z && ep->z->log_fn) \
-		ep->z->log_fn(fmt, ##__VA_ARGS__); \
+	ovis_log(NULL, OVIS_LERROR, fmt, ## __VA_ARGS__); \
 } while(0)
 
 extern int __zap_assert;
@@ -241,9 +240,6 @@ struct zap {
 	zap_err_t (*get_name)(zap_ep_t ep, struct sockaddr *local_sa,
 			      struct sockaddr *remote_sa, socklen_t *sa_len);
 
-	/** Transport message logging callback */
-	zap_log_fn_t log_fn;
-
 	/** Memory information callback */
 	zap_mem_info_fn_t mem_info_fn;
 
@@ -392,8 +388,7 @@ struct zap_event_queue {
 	TAILQ_HEAD(, zap_event_entry) free_q;
 };
 
-typedef zap_err_t (*zap_get_fn_t)(zap_t *pz, zap_log_fn_t log_fn,
-				  zap_mem_info_fn_t map_info_fn);
+typedef zap_err_t (*zap_get_fn_t)(zap_t *pz, zap_mem_info_fn_t map_info_fn);
 
 /**
  * validate map access.

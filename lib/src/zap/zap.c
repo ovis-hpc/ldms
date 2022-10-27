@@ -64,18 +64,12 @@
 #include <netdb.h>
 #include <unistd.h>
 #include <sys/sysinfo.h>
+#include "ovis_log/ovis_log.h"
 #include "ovis-ldms-config.h"
 #include "zap.h"
 #include "zap_priv.h"
 
-#ifdef DEBUG
-#define DLOG(ep, fmt, ...) do { \
-	if (ep && ep->z && ep->z->log_fn) \
-		ep->z->log_fn(fmt, ##__VA_ARGS__); \
-} while(0)
-#else /* DEBUG */
-#define DLOG(ep, fmt, ...)
-#endif /* DEBUG */
+static ovis_log_t zlog;
 
 #ifdef DEBUG
 int __zap_assert = 1;
@@ -87,21 +81,6 @@ int __zap_assert = 0;
 #define ZAP_IO_BUSY 0.8 /* default value */
 static double zap_io_busy = ZAP_IO_BUSY;
 static int zap_io_max;
-
-static void default_log(const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	vfprintf(stdout, fmt, ap);
-	fflush(stdout);
-}
-
-#if 0
-#define TF() default_log("%s:%d\n", __FUNCTION__, __LINE__)
-#else
-#define TF()
-#endif
 
 LIST_HEAD(zap_list, zap) zap_list;
 
@@ -269,7 +248,7 @@ struct zap_tbl_entry __zap_tbl[] = {
 	[ ZAP_LAST   ]  =  { 0          , NULL     , NULL },
 };
 
-zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_fn)
+zap_t zap_get(const char *name, zap_mem_info_fn_t mem_info_fn)
 {
 	char _libdir[MAX_ZAP_LIBPATH];
 	char _libpath[MAX_ZAP_LIBPATH];
@@ -302,8 +281,6 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	}
 
 	/* otherwise, it is a known zap name but has not been loaded yet */
-	if (!log_fn)
-		log_fn = default_log;
 	if (!mem_info_fn)
 		mem_info_fn = default_zap_mem_info;
 
@@ -338,7 +315,7 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 
 	if (!d) {
 		/* The library doesn't exist */
-		log_fn("dlopen: %s\n", dlerror());
+		ovis_log(zlog, OVIS_LERROR, "dlopen: %s\n", dlerror());
 		goto err;
 	}
 
@@ -346,17 +323,16 @@ zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t mem_info_
 	zap_get_fn_t get = dlsym(d, "zap_transport_get");
 	errstr = dlerror();
 	if (errstr || !get) {
-		log_fn("dlsym: %s\n", errstr);
+		ovis_log(zlog, OVIS_LERROR, "dlsym: %s\n", errstr);
 		/* The library exists but doesn't export the correct
 		 * symbol and is therefore likely the wrong library type */
 		goto err1;
 	}
-	ret = get(&z, log_fn, mem_info_fn);
+	ret = get(&z, mem_info_fn);
 	if (ret)
 		goto err1;
 
 	memcpy(z->name, name, strlen(name)+1);
-	z->log_fn = log_fn;
 	z->mem_info_fn = mem_info_fn;
 	z->_n_threads = 0;
 	pthread_mutex_init(&z->_io_mutex, NULL);
@@ -373,7 +349,7 @@ err1:
 	ret = dlclose(d);
 	if (ret) {
 		errstr = dlerror();
-		log_fn("dlclose: %s\n", errstr);
+		ovis_log(zlog, OVIS_LERROR, "dlclose: %s\n", errstr);
 	}
 err:
 	return NULL;
@@ -1154,10 +1130,13 @@ static void zap_init(void)
 	TAILQ_INIT(&zap_ep_list);
 	pthread_mutex_init(&zap_ep_list_lock, 0);
 #endif /* _ZAP_EP_TRACK_ */
+	zlog = ovis_log_register("xprt.zap", "Messages for Zap");
+	if (!zlog)
+		ovis_log(zlog, OVIS_LWARN, "Failed to create Zap's log subsystem.\n");
 	zap_io_busy = ZAP_ENV_DBL(ZAP_IO_BUSY);
 	if (zap_io_busy < 0.0 || zap_io_busy > 1.0) {
 		/* bad value, set to default */
-		fprintf(stderr, "*** ERROR *** bad ZAP_IO_BUSY value: %lf, "
+		ovis_log(NULL, OVIS_LERROR, "bad ZAP_IO_BUSY value: %lf, "
 				"the value must be in (0.0-1.0) range\n",
 				zap_io_busy);
 		zap_io_busy = ZAP_IO_BUSY;

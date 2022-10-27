@@ -73,8 +73,11 @@
 #include "ovis_util/os_util.h"
 #include "coll/rbt.h"
 #include "mmalloc/mmalloc.h"
+#include "ovis_log/ovis_log.h"
 
 #include "zap_ugni.h"
+
+static ovis_log_t zulog;
 
 #ifdef EP_LOG_ENABLED
 #define EP_LOG(EP, FMT, ...) do { \
@@ -541,20 +544,18 @@ static char *format_4tuple(struct zap_ep *ep, char *str, size_t len)
 }
 
 #define LOG_(uep, fmt, ...) do { \
-	if ((uep) && (uep)->ep.z && (uep)->ep.z->log_fn) { \
-		char name[ZAP_UGNI_EP_NAME_SZ]; \
-		format_4tuple(&(uep)->ep, name, ZAP_UGNI_EP_NAME_SZ); \
-		uep->ep.z->log_fn("zap_ugni:%d %s " fmt, __LINE__, name, ##__VA_ARGS__); \
-	} \
+	char name[ZAP_UGNI_EP_NAME_SZ]; \
+	format_4tuple(&(uep)->ep, name, ZAP_UGNI_EP_NAME_SZ); \
+	ovis_log(zulog, OVIS_LERROR, "zap_ugni:%d %s " fmt, __LINE__, name, ##__VA_ARGS__); \
 } while(0);
 
 #define LOG(...) do { \
-	zap_ugni_log("zap_ugni: " __VA_ARGS__); \
+	ovis_log(zulog, OVIS_LERROR, "zap_ugni: " __VA_ARGS__); \
 } while(0);
 
 /* log with file, function name, and line number */
 #define LLOG(FMT, ...) do { \
-	zap_ugni_log("zap_ugni: %s():%d " FMT, __func__, __LINE__, ##__VA_ARGS__); \
+	ovis_log(zulog, OVIS_LERROR, "zap_ugni: %s():%d " FMT, __func__, __LINE__, ##__VA_ARGS__); \
 } while(0)
 
 #ifdef DEBUG
@@ -565,15 +566,13 @@ static char *format_4tuple(struct zap_ep *ep, char *str, size_t len)
 
 #ifdef DEBUG
 #define DLOG_(uep, fmt, ...) do { \
-	if ((uep) && (uep)->ep.z && (uep)->ep.z->log_fn) { \
-		char name[ZAP_UGNI_EP_NAME_SZ]; \
-		format_4tuple(&(uep)->ep, name, ZAP_UGNI_EP_NAME_SZ); \
-		uep->ep.z->log_fn("zap_ugni [DEBUG]: %s " fmt, name, ##__VA_ARGS__); \
-	} \
+	char name[ZAP_UGNI_EP_NAME_SZ]; \
+	format_4tuple(&(uep)->ep, name, ZAP_UGNI_EP_NAME_SZ); \
+	ovis_log(zulog, OVIS_LDEBUG, "zap_ugni [DEBUG]: %s " fmt, name, ##__VA_ARGS__); \
 } while(0);
 
 #define DLOG(...) do { \
-	zap_ugni_log("zap_ugni [DEBUG]: " __VA_ARGS__); \
+	ovis_log(zulog, OVIS_LDEBUG, "zap_ugni [DEBUG]: " __VA_ARGS__); \
 } while(0);
 #else
 #define DLOG_(UEP, ...)
@@ -646,8 +645,6 @@ static char *format_4tuple(struct zap_ep *ep, char *str, size_t len)
 
 int init_complete = 0;
 
-static void zap_ugni_default_log(const char *fmt, ...);
-static zap_log_fn_t zap_ugni_log = zap_ugni_default_log;
 zap_mem_info_fn_t __mem_info_fn = NULL;
 
 
@@ -777,14 +774,6 @@ static void z_ugni_zq_try_post(struct z_ugni_ep *uep, uint64_t ts_msec, int type
 static void z_ugni_thr_ep_flush(struct z_ugni_io_thread *thr, struct z_ugni_ep *uep);
 
 static void z_ugni_io_thread_wakeup(struct z_ugni_io_thread *thr);
-
-static void zap_ugni_default_log(const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	va_end(ap);
-}
 
 int z_rbn_cmp(void *a, void *b)
 {
@@ -2115,6 +2104,12 @@ out:
 int init_once()
 {
 	int rc = ENOMEM;
+
+	zulog = ovis_log_register("xprt.zap.ugni", "Messages for zap_ugni");
+	if (!zulog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create zap_ugni's "
+				"log subsystem. Error %d.\n", errno);
+	}
 
 	bzero(&z_ugni_stat, sizeof(z_ugni_stat));
 
@@ -3900,12 +3895,9 @@ zap_err_t z_ugni_io_thread_ep_release(zap_io_thread_t t, zap_ep_t ep)
 	return ZAP_ERR_OK;
 }
 
-zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
-			    zap_mem_info_fn_t mem_info_fn)
+zap_err_t zap_transport_get(zap_t *pz, zap_mem_info_fn_t mem_info_fn)
 {
 	zap_t z;
-	if (log_fn)
-		zap_ugni_log = log_fn;
 	if (!init_complete && init_once())
 		goto err;
 
