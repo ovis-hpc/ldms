@@ -88,7 +88,6 @@
 
 typedef struct zap_ep *zap_ep_t;
 typedef struct zap *zap_t;
-typedef void (*zap_log_fn_t)(const char *fmt, ...);
 typedef struct zap_map *zap_map_t;
 
 #define ZAP_EVENT_BAD -1
@@ -328,11 +327,10 @@ void zap_set_ucontext(zap_ep_t ep, void *context);
  * Get a transport handle to a transport.
  *
  * \param name	The transport name, e.g. 'rdma', 'sock', etc...
- * \param log_fn Pointer to the function to uuse for logging errors or status
  * \param mfn	Pointer to a function that returns the mapped memory info
  * \return Pointer to the transport or NULL if the transport does not exist.
  */
-zap_t zap_get(const char *name, zap_log_fn_t log_fn, zap_mem_info_fn_t map_info_fn);
+zap_t zap_get(const char *name, zap_mem_info_fn_t map_info_fn);
 
 /** \brief Returns the max send message size.
  *

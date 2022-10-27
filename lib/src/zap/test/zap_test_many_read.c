@@ -558,7 +558,7 @@ int main(int argc, char *argv[])
 	meminfo.start = sets;
 	meminfo.len = num_sets * sizeof(sets[0]);
 
-	zap = zap_get(xprt, test_log, test_meminfo);
+	zap = zap_get(xprt, test_meminfo);
 	if (!zap) {
 		printf("%s: could not load the '%s' xprt.\n",
 		       __func__, xprt);

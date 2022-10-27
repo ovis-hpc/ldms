@@ -64,22 +64,22 @@
 #include <signal.h>
 #include "coll/rbt.h"
 #include "ovis_util/os_util.h"
+#include "ovis_log/ovis_log.h"
 
 #include "zap_sock.h"
 
+static ovis_log_t zslog;
+
 #define LOG__(ep, ...) do { \
-	if ((ep) && (ep)->z && (ep)->z->log_fn) \
-		(ep)->z->log_fn(__VA_ARGS__); \
+	ovis_log(zslog, OVIS_LERROR, ## __VA_ARGS__); \
 } while (0);
 
 #define LOG_(sep, ...) do { \
-	if ((sep) && (sep)->ep.z && (sep)->ep.z->log_fn) \
-		(sep)->ep.z->log_fn(__VA_ARGS__); \
+	ovis_log(zslog, OVIS_LERROR, ## __VA_ARGS__); \
 } while(0);
 
 #define ZLOG_(z, ...) do { \
-	if (z->log_fn)\
-		z->log_fn(__VA_ARGS__);\
+	ovis_log(zslog, OVIS_LERROR, ## __VA_ARGS__); \
 } while (0)
 
 #ifdef DEBUG_ZAP_SOCK
@@ -1877,6 +1877,13 @@ static int init_once()
 	z_key_tree.root = NULL;
 	z_key_tree.comparator = z_rbn_cmp;
 	pthread_mutex_init(&z_key_tree_mutex, NULL);
+
+	zslog = ovis_log_register("xprt.zap.sock", "Messages for zap_sock");
+	if (!zslog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create zap_sock's "
+				"log subsystem. Error %d.\n", errno);
+	}
+
 	__atomic_store_n(&init_complete, 1, __ATOMIC_SEQ_CST);
 	pthread_mutex_unlock(&mutex);
 
@@ -2240,8 +2247,7 @@ zap_err_t z_sock_io_thread_ep_release(zap_io_thread_t t, zap_ep_t ep)
 	return rc ? ZAP_ERR_RESOURCE : ZAP_ERR_OK;
 }
 
-zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
-			    zap_mem_info_fn_t mem_info_fn)
+zap_err_t zap_transport_get(zap_t *pz, zap_mem_info_fn_t mem_info_fn)
 {
 	zap_t z;
 	size_t sendrecv_sz, rendezvous_sz, hdr_sz;

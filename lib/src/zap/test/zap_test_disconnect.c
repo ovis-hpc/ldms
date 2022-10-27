@@ -212,24 +212,16 @@ zap_ep_t ep = NULL;
 sem_t _sem;
 sem_t *sem = &_sem;
 
-void log_fn(const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	vprintf(fmt, ap);
-	va_end(ap);
-}
-
-zap_mem_info_t mem_fn(void)
+static zap_mem_info_t mem_fn(void)
 {
 	return NULL;
 }
 
-void init_zap(zap_ep_t *epp, zap_cb_fn_t cb)
+static void init_zap(zap_ep_t *epp, zap_cb_fn_t cb)
 {
 	zap_err_t zerr;
 	zap_ep_t ep;
-	zap = zap_get(xprt, log_fn, mem_fn);
+	zap = zap_get(xprt, mem_fn);
 	if (!zap) {
 		zerr = errno;
 		LOG("zap_get err %d: %s\n", zerr, zap_err_str(zerr));
@@ -250,16 +242,7 @@ void init_zap(zap_ep_t *epp, zap_cb_fn_t cb)
 	}
 }
 
-const char *ep_name(zap_ep_t _ep)
-{
-	if (_ep == listen_ep)
-		return "listen_ep";
-	if (_ep == ep)
-		return "ep";
-	return "unknown_ep";
-}
-
-void mutual_cb(zap_ep_t _ep, zap_event_t ev)
+static void mutual_cb(zap_ep_t _ep, zap_event_t ev)
 {
 	zap_err_t zerr;
 	switch (ev->type) {
@@ -293,7 +276,7 @@ void mutual_cb(zap_ep_t _ep, zap_event_t ev)
 	}
 }
 
-void do_mutual()
+static void do_mutual()
 {
 	/* wait for connected event */
 	sem_wait(sem);
@@ -311,7 +294,7 @@ void do_mutual()
 	zap_free(ep);
 }
 
-void do_server()
+static void do_server()
 {
 	zap_err_t zerr;
 
@@ -333,7 +316,7 @@ void do_server()
 	zap_free(listen_ep);
 }
 
-void do_client()
+static void do_client()
 {
 	struct addrinfo *ai;
 	char _port[8];

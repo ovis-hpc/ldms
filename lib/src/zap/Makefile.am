@@ -23,7 +23,8 @@ endif
 AM_CPPFLAGS = @OVIS_INCLUDE_ABS@
 AM_CFLAGS = -DPLUGINDIR='"$(pkglibdir)"'
 libzap_la_SOURCES = zap.c zap_priv.h
-libzap_la_LIBADD = -ldl -lpthread
+libzap_la_LIBADD = ../ovis_log/libovis_log.la \
+		   -ldl -lpthread
 libzapincludedir = $(includedir)/zap
 libzapinclude_HEADERS = zap.h
 
