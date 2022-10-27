@@ -196,7 +196,6 @@ cdef extern from "ldms.h" nogil:
     struct ldms_xprt:
         pass
     ctypedef ldms_xprt *ldms_t
-    ctypedef void (*ldms_log_fn_t)(const char *fmt, ...)
     struct ldms_timestamp:
         uint32_t sec
         uint32_t usec
@@ -225,7 +224,7 @@ cdef extern from "ldms.h" nogil:
     ctypedef void (*ldms_event_cb_t)(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 
     int ldms_init(size_t max_size)
-    ldms_t ldms_xprt_new_with_auth(const char *xprt_name, ldms_log_fn_t log_fn,
+    ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
                                    const char *auth_name,
                                    attr_value_list *auth_av_list)
     void ldms_xprt_put(ldms_t x)

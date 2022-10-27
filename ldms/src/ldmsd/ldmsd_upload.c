@@ -103,7 +103,7 @@ ldms_t setup_connection(const char *xprt, const char *host,
 		ts.tv_sec = time(NULL) + to;
 		ts.tv_nsec = 0;
 	}
-	ldms = ldms_xprt_new_with_auth(xprt, NULL, auth, NULL);
+	ldms = ldms_xprt_new_with_auth(xprt, auth, NULL);
 	if (!ldms) {
 		printf("Error %d creating the '%s' transport\n",
 		       errno, xprt);

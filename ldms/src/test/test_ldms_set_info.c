@@ -770,13 +770,13 @@ static void do_client_A(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 
 	sem_init(&exit_sem, 0, 0);
 	clnt = clnt_new();
-	listen_ldms = ldms_xprt_new(xprt, NULL);
+	listen_ldms = ldms_xprt_new(xprt);
 	if (!listen_ldms) {
 		printf("Failed to create ldms xprt\n");
 		exit(1);
 	}
 
-	connect_ldms = ldms_xprt_new(xprt, NULL);
+	connect_ldms = ldms_xprt_new(xprt);
 	if (!connect_ldms) {
 		printf("Failed to create ldms xprt\n");
 		exit(1);
@@ -958,13 +958,13 @@ static void do_client_B(struct sockaddr_in *listen_sin, struct sockaddr_in *conn
 	ldms_t connect_ldms_server;
 	clnt = clnt_new();
 
-	listen_ldms = ldms_xprt_new(xprt, NULL);
+	listen_ldms = ldms_xprt_new(xprt);
 	if (!listen_ldms) {
 		printf("Failed to create ldms xprt\n");
 		exit(1);
 	}
 
-	connect_ldms_server = ldms_xprt_new(xprt, NULL);
+	connect_ldms_server = ldms_xprt_new(xprt);
 	if (!connect_ldms_server) {
 		printf("Failed to create ldms xprt\n");
 		exit(1);
@@ -1113,7 +1113,7 @@ int do_server(struct sockaddr_in *sin)
 		exit(1);
 	}
 
-	my_ldms = ldms_xprt_new(xprt, NULL);
+	my_ldms = ldms_xprt_new(xprt);
 	if (!my_ldms) {
 		printf("Failed to create ldms xprt\n");
 		return 1;

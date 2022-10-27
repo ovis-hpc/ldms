@@ -723,7 +723,7 @@ int main(int argc, char **argv) {
 
 	setlinebuf(stdout);
 
-	ldms = ldms_xprt_new(xprt, _log);
+	ldms = ldms_xprt_new(xprt);
 	if (!ldms) {
 		_log("Failed to create ldms xprt\n");
 		assert(ldms);

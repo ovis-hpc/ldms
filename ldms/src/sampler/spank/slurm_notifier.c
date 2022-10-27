@@ -87,14 +87,6 @@ else \
 } while (0)
 
 
-static void msglog(const char *format, ...)
-{
-	va_list ap;
-	va_start(ap, format);
-	vprintf(format, ap);
-	va_end(ap);
-}
-
 /*
  * From the spank.h header file
  *
@@ -488,8 +480,7 @@ static int send_event(int argc, char *argv[], jbuf_t jb)
 
 	LIST_FOREACH(client, &client_list, entry) {
 		client->ldms =
-			ldms_xprt_new_with_auth(client->xprt,
-						msglog, client->auth, NULL);
+			ldms_xprt_new_with_auth(client->xprt, client->auth, NULL);
 		if (!client->ldms) {
 			DEBUG2("ERROR %d creating the '%s' transport\n",
 				     errno, client->xprt);

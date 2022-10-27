@@ -192,7 +192,7 @@ int main(int argc, char **argv)
 	ldms_t ldms = NULL;
 	if (stream_new || line_mode) {
 		/* Create a transport endpoint */
-		ldms = ldms_xprt_new_with_auth(xprt, NULL, auth, NULL);
+		ldms = ldms_xprt_new_with_auth(xprt, auth, NULL);
 		if (!ldms) {
 			rc = errno;
 			printf("Failed to create the LDMS transport endpoint.\n");

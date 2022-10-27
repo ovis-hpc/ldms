@@ -630,7 +630,7 @@ int ldmsd_stream_publish_file(const char *stream, const char *type,
 	else
 		return EINVAL;
 
-	x = ldms_xprt_new_with_auth(xprt, msglog, auth, auth_opt);
+	x = ldms_xprt_new_with_auth(xprt, auth, auth_opt);
 	if (!x) {
 		msglog("Error %d creating the '%s' transport\n",
 			errno, xprt);

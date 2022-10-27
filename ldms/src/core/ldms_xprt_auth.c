@@ -62,6 +62,9 @@
  * ========================
  */
 
+/* Defined in ldms.c */
+extern ovis_log_t xlog;
+
 int ldms_xprt_auth_bind(ldms_t _x, ldms_auth_t a)
 {
 	struct ldms_xprt *x = _x;
@@ -106,11 +109,9 @@ int ldms_xprt_auth_send(ldms_t _x, const char *msg_buf, size_t msg_len)
 	req->hdr.len = htonl(len);
 
 	rc = zap_send(x->zap_ep, req, len);
-#ifdef DEBUG
 	if (rc) {
-		x->log("DEBUG: send: error. put ref %p.\n", x->zap_ep);
+		ovis_log(xlog, OVIS_LDEBUG, "send: error. put ref %p.\n", x->zap_ep);
 	}
-#endif
 	__ldms_free_ctxt(x, ctxt);
  err_0:
 	pthread_mutex_unlock(&x->lock);
