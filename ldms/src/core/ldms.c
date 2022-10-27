@@ -73,6 +73,8 @@
 #include "ldms_private.h"
 #include "coll/rbt.h"
 
+ovis_log_t xlog;
+
 #define SET_DIR_PATH "/var/run/ldms"
 static char *__set_dir = SET_DIR_PATH;
 #define SET_DIR_LEN sizeof(SET_DIR_PATH)
@@ -1083,6 +1085,13 @@ int delete_thread_init_once()
 int ldms_init(size_t max_size)
 {
 	size_t grain = LDMS_GRAIN_MMALLOC;
+
+	xlog = ovis_log_register("xprt.ldms", "Messages for ldms");
+	if (!xlog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create ldms's "
+				"log subsystem. Error %d.\n", errno);
+	}
+
 	int rc = mm_init(max_size, grain); /* mm_init() returns errno */
 	if (rc)
 		return rc;

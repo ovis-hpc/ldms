@@ -132,15 +132,6 @@ const char *auth_name = "none";
 struct attr_value_list *auth_opt = NULL;
 const int auth_opt_max = 128;
 
-void null_log(const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	vfprintf(stderr, fmt, ap);
-	fflush(stderr);
-}
-
 #define FMT "h:p:x:w:m:ESIlvua:A:VP"
 void usage(char *argv[])
 {
@@ -1151,7 +1142,7 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	ldms = ldms_xprt_new_with_auth(xprt, null_log, auth_name, auth_opt);
+	ldms = ldms_xprt_new_with_auth(xprt, auth_name, auth_opt);
 	if (!ldms) {
 		printf("Error creating transport.\n");
 		exit(1);

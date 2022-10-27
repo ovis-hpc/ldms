@@ -713,8 +713,7 @@ static int update_targets_blocking(struct slps *l)
 		if (target->state == IDLE && target->ldms == NULL &&
 			now > target->next_try ) {
 			target->ldms = ldms_xprt_new_with_auth(target->xprt,
-					(ldms_log_fn_t)printf, target->auth,
-					NULL);
+					target->auth, NULL);
 			if (!target->ldms) {
 				DEBUGL(LERR, "ERROR %d creating the '%s' transport\n",
 					     errno, target->xprt);
@@ -762,8 +761,7 @@ static int update_targets_nonblocking(struct slps *l)
 		if (target->state == IDLE && target->ldms == NULL &&
 			now > target->next_try ) {
 			target->ldms = ldms_xprt_new_with_auth(target->xprt,
-					(ldms_log_fn_t)printf, target->auth,
-					NULL);
+					target->auth, NULL);
 			if (!target->ldms) {
 				DEBUGL(LERR, "ERROR %d creating the '%s' transport\n",
 					     errno, target->xprt);

@@ -272,15 +272,6 @@ def init(int max_sz):
         raise OSError(rc, "ldms_init({}) error: {}" \
                           .format(max_sz, ERRNO_SYM(rc)))
 
-
-# This is a logging function for LDMS library
-cdef void xprt_log(const char *fmt, ...) nogil:
-    cdef va_list va
-    va_start(va, <void*>fmt)
-    vfprintf(stderr, fmt, va)
-    va_end(va)
-
-
 # errno symbol mapping
 cdef dict ERRNO_SYM_TBL = {
         E2BIG           : "E2BIG({})".format(E2BIG),
@@ -2999,7 +2990,7 @@ cdef class Xprt(object):
                     av_free(avl)
                     raise OSError(rc, "av_add() error: {}"\
                                   .format(ERRNO_SYM(rc)))
-        self.xprt = ldms_xprt_new_with_auth(BYTES(name), xprt_log, BYTES(auth), avl)
+        self.xprt = ldms_xprt_new_with_auth(BYTES(name), BYTES(auth), avl)
         av_free(avl)
         if not self.xprt:
             raise ConnectionError(errno, "Error creating transport, errno: {}"\

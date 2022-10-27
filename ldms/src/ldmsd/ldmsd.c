@@ -1742,7 +1742,7 @@ int ldmsd_listen_start(ldmsd_listen_t listen)
 {
 	int rc = 0;
 	assert(NULL == listen->x);
-	listen->x = ldms_xprt_new_with_auth(listen->xprt, ldmsd_linfo,
+	listen->x = ldms_xprt_new_with_auth(listen->xprt,
 						ldmsd_auth_name_get(listen),
 						ldmsd_auth_attr_get(listen));
 	if (!listen->x) {
