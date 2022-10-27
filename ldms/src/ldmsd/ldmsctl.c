@@ -2599,7 +2599,7 @@ struct ldmsctl_ctrl *__ldms_xprt_ctrl(const char *host, const char *port,
 	ctrl->send_req = __ldms_xprt_send;
 	ctrl->close = __ldms_xprt_close;
 
-	ctrl->ldms_xprt.x = ldms_xprt_new_with_auth(xprt, NULL, auth, auth_opt);
+	ctrl->ldms_xprt.x = ldms_xprt_new_with_auth(xprt, auth, auth_opt);
 	if (!ctrl->ldms_xprt.x) {
 		printf("Failed to create an ldms transport. %s\n",
 						STRERROR(errno));

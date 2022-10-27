@@ -361,7 +361,7 @@ static int setup_connection(char *xprt, char *host, char *port, char *auth)
 	if (rc)
 		return errno;
 
-	ldms = ldms_xprt_new_with_auth(xprt, msglog, auth, NULL);
+	ldms = ldms_xprt_new_with_auth(xprt, auth, NULL);
 	if (!ldms) {
 		msglog("Error %d creating the '%s' transport\n", errno, xprt);
 		rc = errno;

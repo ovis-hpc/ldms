@@ -105,14 +105,7 @@ struct conn {
 
 struct conn *conn_list = 0;
 
-void _log(const char *fmt, ...) {
-	va_list l;
-	va_start(l, fmt);
-	vprintf(fmt, l);
-	va_end(l);
-}
-
-void client_update_cb(ldms_t ldms, ldms_set_t set, int status, void *arg)
+static void client_update_cb(ldms_t ldms, ldms_set_t set, int status, void *arg)
 {
 	struct conn *conn = (struct conn *)arg;
 	const char *set_name = ldms_set_instance_name_get(conn->set);
@@ -143,7 +136,7 @@ void client_update_cb(ldms_t ldms, ldms_set_t set, int status, void *arg)
 	return;
 }
 
-void client_lookup_cb(ldms_t ldms, enum ldms_lookup_status status,
+static void client_lookup_cb(ldms_t ldms, enum ldms_lookup_status status,
 		int more, ldms_set_t set, void *arg)
 {
 	char inst_name[32];
@@ -180,7 +173,7 @@ void client_lookup_cb(ldms_t ldms, enum ldms_lookup_status status,
 	pthread_mutex_unlock(&exit_mutex);
 }
 
-void client_dir_cb(ldms_t ldms, int status, ldms_dir_t dir, void *arg)
+static void client_dir_cb(ldms_t ldms, int status, ldms_dir_t dir, void *arg)
 {
 	int rc;
 	char *set_name = NULL;
@@ -221,7 +214,7 @@ void client_dir_cb(ldms_t ldms, int status, ldms_dir_t dir, void *arg)
 	pthread_mutex_unlock(&exit_mutex);
 }
 
-void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
+static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
 {
 	int rc = 0;
 	struct conn *conn = (struct conn *)cb_arg;
@@ -281,10 +274,10 @@ void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *cb_arg)
  * 		1 for busy
  * 		2 for already-connected
  */
-int client_connect(struct conn *conn)
+static int client_connect(struct conn *conn)
 {
 	int rc = 0;
-	conn->ldms = ldms_xprt_new(xprt, _log);
+	conn->ldms = ldms_xprt_new(xprt);
 	if (!conn->ldms) {
 		printf("ldms_xprt_new error\n");
 		exit(-1);
@@ -299,7 +292,7 @@ int client_connect(struct conn *conn)
 	return rc;
 }
 
-void *client_routine(void *arg)
+static void *client_routine(void *arg)
 {
 	struct conn *conn_list = (struct conn *)arg;
 	int rc = 0;
@@ -347,7 +340,7 @@ void *client_routine(void *arg)
 	return NULL;
 }
 
-void *server_create_sets(void *arg)
+static void *server_create_sets(void *arg)
 {
 	char instance_name[32];
 	if (metric_set) {
@@ -384,11 +377,11 @@ void *server_create_sets(void *arg)
 	}
 }
 
-void do_server(struct sockaddr_in *sin)
+static void do_server(struct sockaddr_in *sin)
 {
 	int rc;
 	ldms_t ldms;
-	ldms = ldms_xprt_new(xprt, _log);
+	ldms = ldms_xprt_new(xprt);
 	if (!ldms) {
 		printf("ldms_xprt_new error\n");
 		exit(-1);
@@ -411,7 +404,7 @@ void do_server(struct sockaddr_in *sin)
 	pthread_join(t, NULL);
 }
 
-void do_client(struct sockaddr_in *_sin)
+static void do_client(struct sockaddr_in *_sin)
 {
 	struct addrinfo *ai;
 	int rc, i;
@@ -457,7 +450,7 @@ void do_client(struct sockaddr_in *_sin)
 	pthread_join(t, NULL);
 }
 
-void usage()
+static void usage()
 {
 	printf("	-d		Send dir request\n");
 	printf("	-f		Client runs forever\n");
@@ -471,7 +464,7 @@ void usage()
 	printf("	-x xprt		sock, rdma, or ugni\n");
 }
 
-void process_arg(int argc, char **argv)
+static void process_arg(int argc, char **argv)
 {
 	char op;
 	while ((op = getopt(argc, argv, FMT)) != -1) {

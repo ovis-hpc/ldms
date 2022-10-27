@@ -107,13 +107,6 @@ static char *__type2str(enum msg_type type)
 	}
 }
 
-static void _log(const char *fmt, ...) {
-	va_list l;
-	va_start(l, fmt);
-	vprintf(fmt, l);
-	va_end(l);
-}
-
 static void __check_msg_correctness(struct user_msg *msg)
 {
 	char *correct_str;
@@ -238,7 +231,7 @@ static void do_server(struct sockaddr_in *sin)
 	int rc;
 	ldms_t ldms;
 
-	ldms = ldms_xprt_new(xprt, _log);
+	ldms = ldms_xprt_new(xprt);
 	if (!ldms) {
 		printf("ldms_xprt_new error\n");
 		exit(-1);
@@ -330,7 +323,7 @@ static void do_client(struct sockaddr_in *_sin)
 	}
 
 	ldms_t x;
-	x = ldms_xprt_new(xprt, _log);
+	x = ldms_xprt_new(xprt);
 	if (!x) {
 		printf("ldms_xprt_new error\n");
 		exit(-1);

@@ -63,6 +63,7 @@
 #include "ovis_util/os_util.h"
 #include "ovis_util/util.h"
 #include "ovis_ev/ev.h"
+#include "ovis_log/ovis_log.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -603,7 +604,7 @@ typedef void (*ldms_lookup_cb_t)(ldms_t t, enum ldms_lookup_status status,
  *
  * \param fmt The format of the printing string (as in \c printf).
  */
-typedef void (*ldms_log_fn_t)(const char *fmt, ...);
+typedef void (*ldms_log_fn_t)(ovis_log_t subsys, int level, const char *fmt, ...);
 
 /**
  * \brief Create a transport handle
@@ -617,7 +618,7 @@ typedef void (*ldms_log_fn_t)(const char *fmt, ...);
  * \returns	A transport handle on success.
  * \returns	0 If the transport could not be created.
  */
-extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn);
+extern ldms_t ldms_xprt_new(const char *name);
 
 /**
  * \brief Create a transport handle with authentication
@@ -632,7 +633,7 @@ extern ldms_t ldms_xprt_new(const char *name, ldms_log_fn_t log_fn);
  *                     authentication plugin. Please consult the plugin manual
  *                     for the options.
  */
-ldms_t ldms_xprt_new_with_auth(const char *xprt_name, ldms_log_fn_t log_fn,
+ldms_t ldms_xprt_new_with_auth(const char *xprt_name,
 			       const char *auth_name,
 			       struct attr_value_list *auth_av_list);
 

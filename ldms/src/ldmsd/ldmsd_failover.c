@@ -1057,8 +1057,7 @@ int __failover_active_connect(ldmsd_failover_t f)
 	__dlog(DLOG_FOVER,"Failover: connecting, flags: %#lx\n", f->flags);
 	__ASSERT(f->ax == NULL);
 	__ASSERT(f->conn_state == FAILOVER_CONN_STATE_DISCONNECTED);
-	f->ax = ldms_xprt_new_with_auth(f->xprt, ldmsd_linfo,
-					auth_name, auth_opt);
+	f->ax = ldms_xprt_new_with_auth(f->xprt, auth_name, auth_opt);
 	if (!f->ax) {
 		rc = errno;
 		goto out;

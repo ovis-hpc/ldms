@@ -177,14 +177,6 @@ static void process_args(int argc, char **argv) {
 	}
 }
 
-static void _log(const char *fmt, ...)
-{
-	va_list l;
-	va_start(l, fmt);
-	vprintf(fmt, l);
-	va_end(l);
-}
-
 static void __print_set(ldms_set_t set)
 {
 	int card = ldms_set_card_get(set);
@@ -287,25 +279,25 @@ static ldms_set_t __server_create_set(const char *name)
 {
 	ldms_schema_t schema = ldms_schema_new("TEST SCHEMA");
 	if (!schema) {
-		_log("Failed to create the schema\n");
+		printf("Failed to create the schema\n");
 		assert(schema);
 	}
 
 	int rc;
 	rc = ldms_schema_metric_add(schema, "FOO", LDMS_V_U64);
 	if (rc) {
-		_log("Failed to add metric\n");
+		printf("Failed to add metric\n");
 		assert(rc == 0);
 	}
 
 	ldms_set_t set = ldms_set_new(name, schema);
 	if (!set) {
-		_log("Failed to create the set '%s'\n", name);
+		printf("Failed to create the set '%s'\n", name);
 		assert(set);
 	}
 	rc = ldms_set_publish(set);
 	if (rc) {
-		_log("Failed to publish the set '%s'\n", name);
+		printf("Failed to publish the set '%s'\n", name);
 		assert(set);
 	}
 	ldms_metric_set_u64(set, 0, 0);
@@ -324,11 +316,11 @@ static void do_server(struct sockaddr_in *sin)
 	int rc;
 	rc = ldms_xprt_listen(ldms, (void *)sin, sizeof(*sin), NULL, NULL);
 	if (rc) {
-		_log("Failed to listen '%d'\n", rc);
+		printf("Failed to listen '%d'\n", rc);
 		assert(0);
 	}
 
-	_log("Listening on port '%d'\n", port);
+	printf("Listening on port '%d'\n", port);
 
 	char user_data_buf[USER_DATA_LEN];
 	sprintf(user_data_buf, USER_EVENT);
@@ -364,7 +356,7 @@ static void do_server(struct sockaddr_in *sin)
 static void client_update_cb(ldms_t x, ldms_set_t set, int status, void *arg)
 {
 	if (status) {
-		_log("Update_cb error: status '%d'\n", status);
+		printf("Update_cb error: status '%d'\n", status);
 		assert(0);
 	}
 	__print_set(set);
@@ -382,24 +374,24 @@ static void client_notify_cb(ldms_t x, ldms_set_t set,
 	switch (e->type) {
 	case LDMS_SET_MODIFIED:
 		is_recvd_modified = 1;
-		_log("Receive .... notification type: SET MODIFIED\n");
+		printf("Receive .... notification type: SET MODIFIED\n");
 		if (!want_modified)
 			assert(0 == "Not requested");
 		break;
 	case LDMS_USER_DATA:
 		is_recvd_uevent = 1;
-		_log("Receive .... Notification type: USER DATA\n");
+		printf("Receive .... Notification type: USER DATA\n");
 		if (0 != strcmp(uevent, USER_EVENT)) {
-			_log("Wrong user data. Expected: %s. Received: %s\n",
+			printf("Wrong user data. Expected: %s. Received: %s\n",
 					USER_EVENT, uevent);
 			assert(0);
 		}
 		if (!want_uevent)
 			assert(0 == "Not requested\n");
-		_log("User event: %s\n", e->u_data);
+		printf("User event: %s\n", e->u_data);
 		break;
 	default:
-		_log("Unsupported notify type '%d'.\n", e->type);
+		printf("Unsupported notify type '%d'.\n", e->type);
 		assert(0);
 	}
 
@@ -408,7 +400,7 @@ static void client_notify_cb(ldms_t x, ldms_set_t set,
 		printf("Updating ...\n");
 		rc = ldms_xprt_update(set, client_update_cb, NULL);
 		if (rc) {
-			_log("ldms_xprt_update failed '%d'\n", rc);
+			printf("ldms_xprt_update failed '%d'\n", rc);
 			assert(0);
 		}
 	}
@@ -422,7 +414,7 @@ static void client_notify_cb(ldms_t x, ldms_set_t set,
 		printf("Canceling ... notify request\n");
 		rc = ldms_cancel_notify(x, set);
 		if (rc) {
-			_log("ldms_cancel_notify failed '%d'\n", rc);
+			printf("ldms_cancel_notify failed '%d'\n", rc);
 			assert(0);
 		}
 		need_close = 1;
@@ -433,7 +425,7 @@ static void client_lookup_cb(ldms_t x, enum ldms_lookup_status status,
 		int more, ldms_set_t set, void *arg)
 {
 	if (status != LDMS_LOOKUP_OK) {
-		_log("Lookup failed '%d'\n", status);
+		printf("Lookup failed '%d'\n", status);
 		assert(0);
 	}
 
@@ -453,7 +445,7 @@ static void client_lookup_cb(ldms_t x, enum ldms_lookup_status status,
 	rc = ldms_register_notify_cb(x, set, notify_flags,
 			client_notify_cb, NULL);
 	if (rc) {
-		_log("ldms_register_notify_cb SET_MODIFIED "
+		printf("ldms_register_notify_cb SET_MODIFIED "
 				"failed '%d'\n", rc);
 		assert(0);
 	}
@@ -468,7 +460,7 @@ static void client_connect_cb(ldms_t x, ldms_xprt_event_t e, void *arg)
 		rc = ldms_xprt_lookup(x, setname, LDMS_LOOKUP_BY_INSTANCE,
 				client_lookup_cb, NULL);
 		if (rc) {
-			_log("ldms_xprt_lookup failed '%d'\n", rc);
+			printf("ldms_xprt_lookup failed '%d'\n", rc);
 			assert(0);
 		}
 		break;
@@ -497,12 +489,12 @@ static void do_client(struct sockaddr_in *sin)
 	rc = ldms_xprt_connect(ldms, (void *)sin, sizeof(*sin),
 			client_connect_cb, NULL);
 	if (rc) {
-		_log("ldms_xprt_connect failed '%d'\n", rc);
+		printf("ldms_xprt_connect failed '%d'\n", rc);
 		assert(0);
 	}
 
 	sem_wait(&exit_sem);
-	_log("Exiting\n");
+	printf("Exiting\n");
 	sem_destroy(&exit_sem);
 }
 
@@ -515,9 +507,9 @@ int main(int argc, char **argv) {
 	sin.sin_port = htons(port);
 	sin.sin_family = AF_INET;
 
-	ldms = ldms_xprt_new(xprt, _log);
+	ldms = ldms_xprt_new(xprt);
 	if (!ldms) {
-		_log("Failed to create ldms xprt\n");
+		printf("Failed to create ldms xprt\n");
 		assert(ldms);
 	}
 

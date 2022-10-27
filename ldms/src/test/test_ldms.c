@@ -134,13 +134,6 @@ struct conn {
 
 struct conn *conn_list = 0;
 
-void _log(const char *fmt, ...) {
-	va_list l;
-	va_start(l, fmt);
-	vprintf(fmt, l);
-	va_end(l);
-}
-
 static struct test_schema *__schema_new(const char *name) {
 	printf("Creating schema %s\n", name);
 	struct test_schema *tschema = malloc(sizeof(*tschema));
@@ -322,7 +315,7 @@ void do_server(struct sockaddr_in *sin)
 	int rc;
 	ldms_t ldms;
 
-	ldms = ldms_xprt_new_with_auth(xprt, _log, auth_name, auth_opt);
+	ldms = ldms_xprt_new_with_auth(xprt, auth_name, auth_opt);
 	if (!ldms) {
 		printf("ldms_xprt_new_with_auth error\n");
 		exit(errno);
