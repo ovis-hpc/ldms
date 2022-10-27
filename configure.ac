@@ -849,6 +849,22 @@ AM_CONDITIONAL([HAVE_DCGM], [test x$have_dcgm = xtrue])
 
 AM_CONDITIONAL([SYSCONFDIR_NOT_ETC], [test "${sysconfdir}" != "/etc"])
 
+AC_LIB_HAVE_LINKFLAGS([cxi], [], [
+#include <stddef.h> /* libcxi.h fails to include this */
+#include <libcxi/libcxi.h>
+])
+AM_CONDITIONAL([HAVE_LIBCXI], [test "x$HAVE_LIBCXI" = xyes])
+
+AC_ARG_ENABLE([slingshot],
+    [AS_HELP_STRING([--enable-slingshot], [require the slinghost related plugins @<:@default=check@:>@])],
+    [],
+    [enable_slingshot="check"])
+AS_IF([test "x$enable_slingshot" = xyes],[
+    AS_IF([test "x$HAVE_LIBCXI" = xno],
+        [AC_MSG_ERROR([libcxi or its headers not found])])
+])
+AM_CONDITIONAL([ENABLE_SLINGSHOT], [test "xenable_slingshot" != xno])
+
 # define substitutions for configvars and other sed-generated files.
 # note carefully the escapes.
 OVIS_DO_SUBST([LDMS_SUBST_RULE], ["sed \
@@ -1006,6 +1022,7 @@ ldms/src/sampler/examples/record_sampler/Makefile
 ldms/src/sampler/ibm_occ/Makefile
 ldms/src/sampler/syspapi/Makefile
 ldms/src/sampler/app_sampler/Makefile
+ldms/src/sampler/slingshot_metrics/Makefile
 ldms/src/contrib/sampler/Makefile
 ldms/src/contrib/sampler/daos/Makefile
 ldms/src/contrib/sampler/daos/test/Makefile
