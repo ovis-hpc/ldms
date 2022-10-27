@@ -67,14 +67,18 @@
 #include <time.h>
 #include <pthread.h>
 #include <fcntl.h>
+
+#include "ovis_log/ovis_log.h"
 #include "zap_rdma.h"
+
+static ovis_log_t zrlog;
 
 #define LOG(FMT, ...)							\
 	do {								\
 		pid_t _tid = (pid_t) syscall (SYS_gettid);		\
 		struct timespec _ts;					\
 		clock_gettime(CLOCK_REALTIME, &_ts);			\
-		z_rdma_log_fn("ZAP_RDMA [%ld.%09ld](%d) " FMT,		\
+		ovis_log(zrlog, OVIS_LERROR, "ZAP_RDMA [%ld.%09ld](%d) " FMT,		\
 				_ts.tv_sec, _ts.tv_nsec,		\
 				_tid, ##__VA_ARGS__);			\
 	} while (0)
@@ -138,20 +142,6 @@ static int devices_len = 0;
 
 #define CQ_EVENT_LEN 16
 
-void __default_log_fn(const char *fmt, ...)
-{
-	va_list ap;
-	pid_t tid;
-	struct timespec ts;
-	char buf[4096];
-
-	tid = (pid_t) syscall (SYS_gettid);
-	clock_gettime(CLOCK_REALTIME, &ts);
-	va_start(ap, fmt);
-	vsnprintf(buf, sizeof(buf), fmt, ap);
-	fprintf(stderr, "[%d] %ld.%09ld: | %s", tid, ts.tv_sec, ts.tv_nsec, buf);
-}
-
 static const char *ibv_op_str(int op)
 {
 	switch (op) {
@@ -176,7 +166,6 @@ static const char *ibv_op_str(int op)
 	return "UNKNOWN_OP";
 }
 
-zap_log_fn_t z_rdma_log_fn = __default_log_fn;
 static int ZAP_RDMA_MAX_PD = 16;
 
 static int context_cmp(void *a, const void *b)
@@ -2801,11 +2790,10 @@ zap_err_t z_rdma_io_thread_ep_release(zap_io_thread_t t, zap_ep_t ep)
 
 static int init_complete = 0;
 
-static int init_once(zap_log_fn_t log_fn)
+static int init_once()
 {
 	const char *s;
 	int num;
-	z_rdma_log_fn = log_fn;
 
 	/* obtain all devices */
 	devices = rdma_get_devices(&devices_len);
@@ -2819,6 +2807,12 @@ static int init_once(zap_log_fn_t log_fn)
 			ZAP_RDMA_MAX_PD = num;
 	}
 
+	zrlog = ovis_log_register("xprt.zap.rdma", "Messages for zap_rdma");
+	if (!zrlog) {
+		ovis_log(NULL, OVIS_LWARN, "Failed to create zap_rdma's "
+				"log subsystem. Error %d.\n", errno);
+	}
+
 	init_complete = 1;
 	return 0;
 
@@ -2826,12 +2820,11 @@ static int init_once(zap_log_fn_t log_fn)
 	return 1;
 }
 
-zap_err_t zap_transport_get(zap_t *pz, zap_log_fn_t log_fn,
-			    zap_mem_info_fn_t mem_info_fn)
+zap_err_t zap_transport_get(zap_t *pz, zap_mem_info_fn_t mem_info_fn)
 {
 	zap_t z;
 	if (!init_complete) {
-		if (init_once(log_fn)) {
+		if (init_once()) {
 			errno = ENOMEM;
 			goto err_0;
 		}

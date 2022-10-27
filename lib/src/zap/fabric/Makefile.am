@@ -4,4 +4,5 @@ AM_CFLAGS = -I$(srcdir)/../.. -I$(srcdir)/.. -I$(top_srcdir) -I../..
 
 libzap_fabric_la_SOURCES = zap_fabric.c zap_fabric.h
 libzap_fabric_la_CFLAGS = -I@LIBFABRIC_INCDIR@ ${AM_CFLAGS}
-libzap_fabric_la_LIBADD = -lfabric ../libzap.la
+libzap_fabric_la_LIBADD = -lfabric ../libzap.la \
+			  ../../ovis_log/libovis_log.la

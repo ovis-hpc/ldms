@@ -181,14 +181,6 @@ pthread_mutex_t exiting_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 int done = 0;
 
-void zap_log(const char *fmt, ...)
-{
-	va_list l;
-	va_start(l, fmt);
-	vprintf(fmt, l);
-	va_end(l);
-}
-
 zap_mem_info_t zap_mem_info(void)
 {
 	return NULL;
@@ -399,7 +391,7 @@ int main(int argc, char **argv)
 {
 	zap_err_t zerr;
 	handle_args(argc, argv);
-	zap = zap_get(xprt, zap_log, zap_mem_info);
+	zap = zap_get(xprt, zap_mem_info);
 	if (!zap) {
 		zerr = errno;
 		printf("zap_get error: %d\n", zerr);

@@ -275,14 +275,6 @@ void client_cb(zap_ep_t ep, zap_event_t ev)
 	printf("---- %s: END: ep %p event %s ----\n", __func__, ep, ev_str[ev->type]);
 }
 
-void test_log(const char *fmt, ...)
-{
-	va_list ap;
-	va_start(ap, fmt);
-	vprintf(fmt, ap);
-	fflush(stdout);
-}
-
 zap_mem_info_t test_meminfo(void)
 {
 	return NULL;
@@ -438,7 +430,7 @@ int main(int argc, char *argv[])
 		sin.sin_family = AF_INET;
 	sin.sin_port = htons(port_no);
 
-	zap = zap_get(transport, test_log, test_meminfo);
+	zap = zap_get(transport, test_meminfo);
 	if (!zap) {
 		printf("%s: could not load the '%s' transport.\n",
 		       __func__, transport);

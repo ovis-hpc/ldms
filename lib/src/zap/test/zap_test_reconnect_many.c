@@ -225,15 +225,6 @@ struct conn *conn_list = 0;
 int exiting = 0;
 pthread_mutex_t exiting_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-void zap_log(const char *fmt, ...)
-{
-	va_list l;
-	va_start(l, fmt);
-	printf("%d: ", port);
-	vprintf(fmt, l);
-	va_end(l);
-}
-
 zap_mem_info_t zap_mem_info(void)
 {
 	return NULL;
@@ -248,24 +239,24 @@ void server_cb(zap_ep_t zep, zap_event_t ev)
 		zap_accept(zep, server_cb, (void *)ev->data, ev->data_len);
 		break;
 	case ZAP_EVENT_CONNECTED:
-		zap_log("connected\n");
+		printf("connected\n");
 		break;
 	case ZAP_EVENT_DISCONNECTED:
-		zap_log("disconnected\n");
+		printf("disconnected\n");
 		zap_free(zep);
 		break;
 	case ZAP_EVENT_RECV_COMPLETE:
 		data = (char *)ev->data;
-		zap_log("recv: %s\n", data);
-		zap_log("echoing: %s\n", data);
+		printf("recv: %s\n", data);
+		printf("echoing: %s\n", data);
 		zap_send(zep, ev->data, ev->data_len);
 		break;
 	case ZAP_EVENT_REJECTED:
 	case ZAP_EVENT_CONNECT_ERROR:
-		zap_log("Unexpected Zap event %s\n", zap_event_str(ev->type));
+		printf("Unexpected Zap event %s\n", zap_event_str(ev->type));
 		assert(0);
 	default:
-		zap_log("Unhandled Zap event %s\n", zap_event_str(ev->type));
+		printf("Unhandled Zap event %s\n", zap_event_str(ev->type));
 		exit(-1);
 	}
 }
@@ -320,25 +311,25 @@ void do_server(struct sockaddr_in *sin)
 	zap_t zap;
 	zap_ep_t ep;
 	int zerr;
-	zap = zap_get(xprt, zap_log, zap_mem_info);
+	zap = zap_get(xprt, zap_mem_info);
 	if (!zap) {
 		zerr = errno;
-		zap_log("zap_get error: %d\n", zerr);
+		printf("zap_get error: %d\n", zerr);
 		exit(-1);
 	}
 	ep = zap_new(zap, server_cb);
 	if (!ep) {
 		zerr = errno;
-		zap_log("zap_new error: %d\n", zerr);
+		printf("zap_new error: %d\n", zerr);
 		exit(-1);
 	}
 
 	zerr = zap_listen(ep, (void*)sin, sizeof(*sin));
 	if (zerr) {
-		zap_log("zap_listen error: %d\n", zerr);
+		printf("zap_listen error: %d\n", zerr);
 		exit(-1);
 	}
-	zap_log("Listening on port %hu\n", port);
+	printf("Listening on port %hu\n", port);
 	/* Run forever */
 	while (1) {
 		/* do nothing */
@@ -356,7 +347,7 @@ int __connect(struct conn *conn)
 	}
 
 	if (!conn->zap) {
-		conn->zap = zap_get(xprt, zap_log, zap_mem_info);
+		conn->zap = zap_get(xprt, zap_mem_info);
 		if (!conn->zap) {
 			printf("zap_get error\n");
 			exit(-1);
