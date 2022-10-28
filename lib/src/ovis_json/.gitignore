@@ -2,3 +2,4 @@
 /ovis_json_parser.c
 /ovis_json_parser.h
 /ovis_json_test
+/ovis_json_perf_test
