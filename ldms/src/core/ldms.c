@@ -4910,15 +4910,21 @@ int ldms_schema_metric_add_template(ldms_schema_t s,
 	for (i=0, ent=tmp; ent->name || ent->rec_def; i++,ent++) {
 		switch (ent->type) {
 		case LDMS_V_RECORD_TYPE:
+			if (ent->flags & LDMS_MDESC_F_META)
+				return -EINVAL;
 			ret = ldms_schema_record_add(s, ent->rec_def);
 			break;
 		case LDMS_V_RECORD_ARRAY:
+			if (ent->flags & LDMS_MDESC_F_META)
+				return -EINVAL;
 			ret = ldms_schema_record_array_add(
 					s, ent->name, ent->rec_def,
 					ent->len
 				 );
 			break;
 		case LDMS_V_LIST:
+			if (ent->flags & LDMS_MDESC_F_META)
+				return -EINVAL;
 			ret = ldms_schema_metric_list_add(
 					s, ent->name, ent->unit, ent->len
 				 );
@@ -4934,9 +4940,15 @@ int ldms_schema_metric_add_template(ldms_schema_t s,
 		case LDMS_V_S64:
 		case LDMS_V_F32:
 		case LDMS_V_D64:
-			ret = ldms_schema_metric_add_with_unit(
-					s, ent->name, ent->unit, ent->type
-				 );
+			if (ent->flags & LDMS_MDESC_F_META) {
+				ret = ldms_schema_meta_add_with_unit(
+						s, ent->name, ent->unit, ent->type
+						);
+			} else {
+				ret = ldms_schema_metric_add_with_unit(
+						s, ent->name, ent->unit, ent->type
+						);
+			}
 			break;
 		case LDMS_V_CHAR_ARRAY:
 		case LDMS_V_U8_ARRAY:
@@ -4949,10 +4961,17 @@ int ldms_schema_metric_add_template(ldms_schema_t s,
 		case LDMS_V_S64_ARRAY:
 		case LDMS_V_F32_ARRAY:
 		case LDMS_V_D64_ARRAY:
-			ret = ldms_schema_metric_array_add_with_unit(
-					s, ent->name, ent->unit,
-					ent->type, ent->len
-				 );
+			if (ent->flags & LDMS_MDESC_F_META) {
+				ret = ldms_schema_meta_array_add_with_unit(
+						s, ent->name, ent->unit,
+						ent->type, ent->len
+					 );
+			} else {
+				ret = ldms_schema_metric_array_add_with_unit(
+						s, ent->name, ent->unit,
+						ent->type, ent->len
+					 );
+			}
 			break;
 		default:
 			return -EINVAL;

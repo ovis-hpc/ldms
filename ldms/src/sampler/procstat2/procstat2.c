@@ -143,32 +143,32 @@ static size_t incr_heap_sz;
 #endif
 
 struct ldms_metric_template_s cpu_metrics[] = {
-	{       "name", LDMS_V_CHAR_ARRAY,        "", 8 },
-	{       "user",        LDMS_V_U64, "jiffies", 1 },
-	{       "nice",        LDMS_V_U64, "jiffies", 1 },
-	{     "system",        LDMS_V_U64, "jiffies", 1 },
-	{       "idle",        LDMS_V_U64, "jiffies", 1 },
-	{     "iowait",        LDMS_V_U64, "jiffies", 1 },
-	{        "irq",        LDMS_V_U64, "jiffies", 1 },
-	{    "softirq",        LDMS_V_U64, "jiffies", 1 },
-	{      "steal",        LDMS_V_U64, "jiffies", 1 },
-	{      "guest",        LDMS_V_U64, "jiffies", 1 },
-	{ "guest_nice",        LDMS_V_U64, "jiffies", 1 },
+	{       "name",        0,   LDMS_V_CHAR_ARRAY,        "", 8 },
+	{       "user",        0,   LDMS_V_U64, "jiffies", 1 },
+	{       "nice",        0,   LDMS_V_U64, "jiffies", 1 },
+	{     "system",        0,   LDMS_V_U64, "jiffies", 1 },
+	{       "idle",        0,   LDMS_V_U64, "jiffies", 1 },
+	{     "iowait",        0,   LDMS_V_U64, "jiffies", 1 },
+	{        "irq",        0,   LDMS_V_U64, "jiffies", 1 },
+	{    "softirq",        0,   LDMS_V_U64, "jiffies", 1 },
+	{      "steal",        0,   LDMS_V_U64, "jiffies", 1 },
+	{      "guest",        0,   LDMS_V_U64, "jiffies", 1 },
+	{ "guest_nice",        0,   LDMS_V_U64, "jiffies", 1 },
 	{0},
 };
 int cpu_metric_ids[ARRAY_LEN(cpu_metrics)];
 
 /* metric templates for the set schema */
 struct ldms_metric_template_s sch_metrics[] = {
-	{       "cpu_rec", LDMS_V_RECORD_TYPE,        "", /* set rec_def later */ },
-	{      "cpu_list",        LDMS_V_LIST,        "", /* set heap_sz later */ },
-	{     "intr_list",        LDMS_V_LIST,        "", /* set heap_sz later */ },
-	{          "ctxt",         LDMS_V_U64,        "",                       1 },
-	{         "btime",         LDMS_V_U64, "seconds",                       1 },
-	{     "processes",         LDMS_V_U64,        "",                       1 },
-	{ "procs_running",         LDMS_V_U64,        "",                       1 },
-	{ "procs_blocked",         LDMS_V_U64,        "",                       1 },
-	{  "softirq_list",        LDMS_V_LIST,        "", /* set heap_sz later */ },
+	{       "cpu_rec",        0, LDMS_V_RECORD_TYPE,        "", /* set rec_def later */ },
+	{      "cpu_list",        0, LDMS_V_LIST,        "", /* set heap_sz later */ },
+	{     "intr_list",        0, LDMS_V_LIST,        "", /* set heap_sz later */ },
+	{          "ctxt",        0, LDMS_V_U64,        "",                       1 },
+	{         "btime",        0, LDMS_V_U64, "seconds",                       1 },
+	{     "processes",        0, LDMS_V_U64,        "",                       1 },
+	{ "procs_running",        0, LDMS_V_U64,        "",                       1 },
+	{ "procs_blocked",        0, LDMS_V_U64,        "",                       1 },
+	{  "softirq_list",        0, LDMS_V_LIST,        "", /* set heap_sz later */ },
 	{0},
 };
 int sch_metric_ids[ARRAY_LEN(sch_metrics)];
