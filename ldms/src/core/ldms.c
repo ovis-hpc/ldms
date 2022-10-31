@@ -4137,12 +4137,19 @@ int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
 	mdef = calloc(1, sizeof(*mdef));
 	if (!mdef)
 		return -ENOMEM;
-	mdef->name = strdup(name);
-	if (!mdef->name)
-		goto err_1;
-	mdef->unit = strdup(unit);
-	if (!mdef->unit)
-		goto err_2;
+        if (name != NULL) {
+                mdef->name = strdup(name);
+                if (!mdef->name)
+                        goto err_1;
+        } else {
+                errno = EINVAL;
+                goto err_1;
+        }
+        if (unit != NULL) {
+                mdef->unit = strdup(unit);
+                if (!mdef->unit)
+                        goto err_2;
+        }
 	mdef->type = type;
 	mdef->count = count;
 

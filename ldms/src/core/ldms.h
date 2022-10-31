@@ -1360,8 +1360,8 @@ void ldms_record_delete(ldms_record_t rec_def);
  * Add a metric member into the record.
  *
  * \param rec_def   The handle returned by \c ldms_record_create().
- * \param name      The name of the metric.
- * \param unit      The unit of the metric.
+ * \param name      The name of the metric. (May not be NULL)
+ * \param unit      The unit of the metric. (May be NULL)
  * \param type      The type of the metric. Only support char, basic number
  *                  types and their arrays: LDMS_V_CHAR, LDMS_V_CHAR_ARRAY,
  *                  LDMS_V_U8, LDMS_V_S8, LDMS_V_U8_ARRAY, LDMS_V_S8_ARRAY,
