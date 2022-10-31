@@ -1,0 +1,102 @@
+.TH man 7 "1 May 2019" "LDMS Plugin" "Plugin for LDMS"
+
+.SH NAME
+Plugin_ibmad_records_sampler - man page for the LDMS ibmad_records_sampler plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=ibmad_records_sampler [ <attr>=<value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms daemon) are configured via ldmsd_controller
+or a configuration file. The ibmad_records_sampler plugin provides a single metric set that contains a list of
+records. Each record contains all of the metrics for a single infiniband port.
+
+The schema is named "ibmad" by default.
+
+NOTE: This plugin will not currently work with virtual IB devices.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+
+.TP
+.BR config
+name=<plugin_name> [schema=<schema_name>] [job_set=<metric set name>]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be ibmad_records_sampler.
+.TP
+schema=<schema_name>
+.br
+The schema name defaults to "ibmad", but it can be renamed at the
+user's choice.
+
+.TP
+rate=0
+.br
+Stop the default inclusion of rate values in the set.
+.TP
+job_set=<metric set name>
+.br
+The name of the metric set that contains the job id information (default=job_id)
+.TP
+include=PORTLIST
+.br
+Ignore any devices and ports discovered that are not matched by PORTLIST. See PORTLIST below.
+Cannot be combined with the exclude option.
+.TP
+exclude=PORTLIST
+.br
+Collect all devices and ports discovered and active that are not matched by PORTLIST. See PORTLIST below.
+Cannot be combined with the include option.
+.RE
+
+.SH PORTLIST
+Providing a port list specification will stop the automated
+discovery process at every sample time from requerying devices and ports
+that are not of interest, eliminating
+nuisance log messages from the MAD libraries. Such messages are frequently seen
+on systems using SocketDirect hardware.
+
+The port list is a comma-separated list of CA name and optionally number. E.g.
+"mlx4_0.1,mlx4_1". A device name specified without a port number (.N) matches all
+ports on that device. The maximum port number supported for a single device is 63.
+Including a device or port which does not exist or is not active in the port list
+has no effect on the metric sets reported.
+
+.SH BUGS
+No known bugs.
+
+.SH NOTES
+The rates reported are computed from the last sample taken and the present sample; however
+the last sample may not have been stored downstream and the sample interval size may
+vary due to kernel wakeup variations. Rate values are set to -1 for samples where the
+rate computation is invalid.
+
+.SH EXAMPLES
+.PP
+Within ldmsd_controller or a configuration file:
+.nf
+load name=ibmad_records_sampler
+config name=ibmad_records_sampler
+start name=ibmad_records_sampler interval=1000000
+.fi
+
+.nf
+load name=ibmad_records_sampler
+config name=ibmad_records_sampler include=hfi1_0.1 rate=0
+start name=ibmad_records_sampler interval=1000000
+.fi
+
+.nf
+load name=ibmad_records_sampler
+config name=ibmad_records_sampler exclude=mlx5_0.2,mlx5_0.3,mlx5_0.4,
+start name=ibmad_records_sampler interval=1000000
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8)
