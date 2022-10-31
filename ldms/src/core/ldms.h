@@ -1262,6 +1262,7 @@ extern void ldms_xprt_stats(ldms_t x, ldms_xprt_stats_t stats);
  */
 typedef struct ldms_metric_template_s {
 	const char *name;
+	int flags;
 	enum ldms_value_type type;
 	const char *unit;
 	uint32_t len; /* array_len for ARRAY, or heap_sz for LIST */
@@ -1384,7 +1385,8 @@ int ldms_record_metric_add(ldms_record_t rec_def, const char *name,
  *
  * This is a convenient function that creates a record type definition and add
  * metric members in one go. The \c tmp array must be terminated with
- * {0,0,0,0}.
+ * {0}. The \c flags field of the template entries is ignored because
+ *  a record types is always a meta metric.
  *
  * REMARK: A record metric must NOT be a record or a list.
  *
@@ -1403,6 +1405,9 @@ ldms_record_t ldms_record_from_template(const char *name,
 
 /**
  * \brief Like \c ldms_record_metric_add(), but using metric template.
+ *
+ * The \c flags field of the template entries is ignored because a record type
+ *  is always a meta metric.
  *
  * \param        s The schema handle.
  * \param[in]  tmp The array of metric templates (terminated with {0}).
