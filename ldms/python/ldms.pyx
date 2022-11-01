@@ -243,11 +243,27 @@ for rec in _lst:
 
 """
 
-cdef extern void PyEval_InitThreads()
+# Python version < 3.9 Need PyEval_InitThreads() before PyGILState_Ensure(), cb,
+# PyGILState_Release(). 2nd call to this function is a no-op.
+#
+# Since Python 3.9, PyEval_InitThreads() is deprecated. It will be removed in
+# Python 3.11. Hence, the function call is put into the preprocessor wrapper.
+cdef extern from *:
+    # verbatim C directive
+    """
+    void __init_threads()
+    {
+        #if PY_VERSION_HEX < 0x03090000
+        extern void PyEval_InitThreads();
+        PyEval_InitThreads();
+        #else
+        /* no-op */
+        #endif
+    }
+    """
+    cdef void __init_threads()
+__init_threads()
 
-# Need initialization before PyGILState_Ensure(), cb, PyGILState_Release().
-# 2nd call to this function is a no-op.
-PyEval_InitThreads()
 
 def init(int max_sz):
     """init(max_sz) - initialize LDMS with memory pool `max_sz` bytes"""
