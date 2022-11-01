@@ -1,0 +1,53 @@
+.TH man 7 "1 May 2022" "LDMS Plugin" "Plugin for LDMS"
+
+.SH NAME
+Plugin_slingshot_info - man page for the LDMS slingshot_info plugin
+
+.SH SYNOPSIS
+Within ldmsd_controller or a configuration file:
+.br
+config name=slingshot_info [ <attr> = <value> ]
+
+.SH DESCRIPTION
+With LDMS (Lightweight Distributed Metric Service), plugins for the ldmsd (ldms
+aemon) are configured via ldmsd_controller or a configuration file. The
+slingshot_info plugin provides a single metric set that contains a list of
+records. Each record contains all of the informational fields for a single
+slingshot NIC.
+
+The slingshot_info sampler plugin provides a fairly small set of general information
+about each slingshot NIC, including FRU description, serial number, etc. Likely
+users will want to sample this plugin relatively infrequently. For detailed
+slingshot NIC counter data, see the slingshot_metrics sampler plugin.
+
+The schema is named "slingshot_info" by default.
+
+.SH CONFIGURATION ATTRIBUTE SYNTAX
+The slingshot_info plugin uses the sampler_base base class. This man page covers
+only the configuration attributes, or those with default values, specific to the
+this plugin; see ldms_sampler_base.man for the attributes of the base class.
+
+.TP
+.BR config
+name=<plugin_name> [counters=<COUNTER NAMES>] [counters_file=<path to counters file>]
+.br
+configuration line
+.RS
+.TP
+name=<plugin_name>
+.br
+This MUST be slingshot_info.
+.RE
+
+.SH EXAMPLES
+.PP
+Within ldmsd_conteroller or a configuration file:
+.nf
+load name=slingshot_info
+config name=slingshot_info producer=host1 instance=host1/slingshot_info
+start name=slingshot_info interval=1000000 offset=0
+.fi
+
+.SH SEE ALSO
+ldmsd(8), ldms_quickstart(7), ldmsd_controller(8), ldms_sampler_base(7),
+Plugin_slingshot_metrics(7)
