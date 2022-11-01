@@ -318,5 +318,6 @@ endif
 if ENABLE_SLINGSHOT
 if HAVE_LIBCXI
 SUBDIRS += slingshot_metrics
+SUBDIRS += slingshot_info
 endif
 endif
