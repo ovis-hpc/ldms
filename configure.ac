@@ -1023,6 +1023,7 @@ ldms/src/sampler/ibm_occ/Makefile
 ldms/src/sampler/syspapi/Makefile
 ldms/src/sampler/app_sampler/Makefile
 ldms/src/sampler/slingshot_metrics/Makefile
+ldms/src/sampler/slingshot_info/Makefile
 ldms/src/contrib/sampler/Makefile
 ldms/src/contrib/sampler/daos/Makefile
 ldms/src/contrib/sampler/daos/test/Makefile
